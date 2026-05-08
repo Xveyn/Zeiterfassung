@@ -3,6 +3,7 @@ import tkinter as tk
 from tkinter import messagebox
 
 from src.holidays_de import get_holidays
+from src.settings import WEEKDAY_KEYS
 from src.theme import (
     BG, FONT, PAUSE_VALUES, TEXT, TIME_VALUES,
     apply_combobox_style, center_dialog_on_parent,
@@ -29,12 +30,17 @@ def open_entry_dialog(parent, date_str, storage, settings, on_change):
 
     tk.Label(dialog, text="Start:", font=FONT, bg=BG, fg=TEXT).grid(
         row=0, column=0, padx=10, pady=8, sticky="w")
-    start_var = tk.StringVar(value=entry["start"] if entry else settings.get("default_start"))
+    weekday_key = WEEKDAY_KEYS[datetime.date.fromisoformat(date_str).weekday()]
+    start_var = tk.StringVar(
+        value=entry["start"] if entry else settings.get(f"default_start_{weekday_key}")
+    )
     dark_combo(dialog, start_var, TIME_VALUES).grid(row=0, column=1, padx=10, pady=8)
 
     tk.Label(dialog, text="Ende:", font=FONT, bg=BG, fg=TEXT).grid(
         row=1, column=0, padx=10, pady=8, sticky="w")
-    end_var = tk.StringVar(value=entry["end"] if entry else settings.get("default_end"))
+    end_var = tk.StringVar(
+        value=entry["end"] if entry else settings.get(f"default_end_{weekday_key}")
+    )
     dark_combo(dialog, end_var, TIME_VALUES).grid(row=1, column=1, padx=10, pady=8)
 
     tk.Label(dialog, text="Pause (Min):", font=FONT, bg=BG, fg=TEXT).grid(

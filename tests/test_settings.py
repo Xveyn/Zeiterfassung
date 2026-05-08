@@ -2,7 +2,7 @@ import json
 from unittest.mock import patch
 
 import pytest
-from src.settings import Settings
+from src.settings import Settings, WEEKDAY_KEYS
 
 @pytest.fixture
 def tmp_settings(tmp_path):
@@ -136,3 +136,98 @@ def test_load_toplevel_not_dict_resets_to_defaults(tmp_path, caplog):
     assert s.get("default_pause") == 30
     assert s.get("email") == ""
     assert any("Toplevel" in rec.message or "toplevel" in rec.message for rec in caplog.records)
+
+
+# --- Per-Wochentag-Defaults (1.10.0) ---
+
+
+def test_per_weekday_defaults_present(tmp_settings):
+    """Frische Settings haben für alle 7 Tage je 08:00 / 16:00."""
+    for day in WEEKDAY_KEYS:
+        assert tmp_settings.get(f"default_start_{day}") == "08:00"
+        assert tmp_settings.get(f"default_end_{day}") == "16:00"
+
+
+def test_old_default_start_end_no_longer_in_defaults(tmp_settings):
+    """Die alten globalen Keys existieren nicht mehr — get liefert None."""
+    assert tmp_settings.get("default_start") is None
+    assert tmp_settings.get("default_end") is None
+
+
+def test_migration_legacy_to_per_weekday(tmp_path):
+    """Alte default_start/default_end werden auf alle 7 Tage gespiegelt."""
+    path = _write_json(tmp_path, json.dumps({
+        "default_start": "09:30",
+        "default_end": "17:00",
+    }))
+    s = Settings(path)
+    for day in WEEKDAY_KEYS:
+        assert s.get(f"default_start_{day}") == "09:30"
+        assert s.get(f"default_end_{day}") == "17:00"
+
+
+def test_migration_partial_legacy_only_start(tmp_path):
+    """Nur default_start im JSON: alle 7 default_start_* migriert,
+    default_end_* bleibt Default."""
+    path = _write_json(tmp_path, json.dumps({"default_start": "07:15"}))
+    s = Settings(path)
+    for day in WEEKDAY_KEYS:
+        assert s.get(f"default_start_{day}") == "07:15"
+        assert s.get(f"default_end_{day}") == "16:00"  # Default
+
+
+def test_migration_partial_legacy_only_end(tmp_path):
+    """Symmetrisch: nur default_end im JSON."""
+    path = _write_json(tmp_path, json.dumps({"default_end": "18:30"}))
+    s = Settings(path)
+    for day in WEEKDAY_KEYS:
+        assert s.get(f"default_start_{day}") == "08:00"  # Default
+        assert s.get(f"default_end_{day}") == "18:30"
+
+
+def test_migration_per_day_wins_over_legacy(tmp_path):
+    """Per-Tag-Keys schlagen das alte Globalfeld."""
+    path = _write_json(tmp_path, json.dumps({
+        "default_start": "09:00",
+        "default_start_mon": "07:00",
+    }))
+    s = Settings(path)
+    assert s.get("default_start_mon") == "07:00"
+    for day in ("tue", "wed", "thu", "fri", "sat", "sun"):
+        assert s.get(f"default_start_{day}") == "09:00"
+
+
+def test_migration_drops_legacy_keys_on_save(tmp_path):
+    """Nach Migration + irgendeinem set_many sind die alten Keys
+    nicht mehr in settings.json."""
+    path = _write_json(tmp_path, json.dumps({
+        "default_start": "09:30",
+        "default_end": "17:00",
+    }))
+    s = Settings(path)
+    s.set("email", "trigger@save.de")  # erzwingt Disk-Write
+    with open(path, "r", encoding="utf-8") as f:
+        on_disk = json.load(f)
+    assert "default_start" not in on_disk
+    assert "default_end" not in on_disk
+    # Per-Tag-Keys sind drin
+    assert on_disk["default_start_mon"] == "09:30"
+    assert on_disk["default_end_sun"] == "17:00"
+
+
+def test_migration_ignores_null_legacy(tmp_path):
+    """null im JSON wird nicht migriert — Defaults bleiben bestehen."""
+    path = _write_json(tmp_path, json.dumps({"default_start": None, "default_end": None}))
+    s = Settings(path)
+    for day in WEEKDAY_KEYS:
+        assert s.get(f"default_start_{day}") == "08:00"
+        assert s.get(f"default_end_{day}") == "16:00"
+
+
+def test_migration_empty_string_legacy_skipped(tmp_path):
+    """Leerer String wird nicht migriert."""
+    path = _write_json(tmp_path, json.dumps({"default_start": "", "default_end": ""}))
+    s = Settings(path)
+    for day in WEEKDAY_KEYS:
+        assert s.get(f"default_start_{day}") == "08:00"
+        assert s.get(f"default_end_{day}") == "16:00"
