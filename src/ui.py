@@ -34,7 +34,7 @@ from src.theme import (
     BG, CELL_BG, WEEKEND_BG, ACCENT, ACCENT_HOVER, TEXT, TEXT_MUTED,
     ENTRY_BG, WEEKEND_ENTRY_BG, WEEKEND_FG,
     HOLIDAY_BG, HOLIDAY_BG_HOVER, HOLIDAY_ACCENT,
-    FONT, FONT_BOLD, FONT_HEADER, FONT_FOOTER, FONT_SMALL,
+    FONT, FONT_BOLD, FONT_HEADER, FONT_HEADER_SMALL, FONT_FOOTER, FONT_SMALL, FONT_TINY,
     CELL_BG_HOVER, WEEKEND_BG_HOVER, ENTRY_BG_HOVER, WEEKEND_ENTRY_BG_HOVER,
     icon_button, secondary_button, set_toggle_active, toggle_button,
 )
@@ -163,7 +163,7 @@ class App:
             return
         self._update_banner = tk.Frame(self.root, bg=ACCENT)
         self._update_banner.pack(
-            before=self.grid_frame, fill=tk.X, padx=10, pady=(5, 0),
+            before=self.grid_container, fill=tk.X, padx=10, pady=(5, 0),
         )
 
         tk.Label(
@@ -221,8 +221,12 @@ class App:
         )
         self.btn_week.pack(side=tk.LEFT)
 
+        # font und width werden in _refresh() je nach View gesetzt — fixe
+        # width verhindert Pack-Reflow beim Text-Wechsel innerhalb derselben
+        # View, und die Wochen-Variante braucht eine kleinere Schrift, weil
+        # das KW-Label sonst breiter als das Fenster ist.
         self.header_label = tk.Label(
-            frame, text="", font=FONT_HEADER, bg=BG, fg="#ffffff",
+            frame, text="", bg=BG, fg="#ffffff",
         )
         self.header_label.pack(side=tk.LEFT, expand=True)
 
@@ -234,16 +238,35 @@ class App:
         icon_button(frame, "\u203a", self._next).pack(side=tk.RIGHT, padx=(0, 5))
 
     def _build_grid(self):
-        self.grid_frame = tk.Frame(self.root, bg=BG)
-        self.grid_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
+        # Double-Buffer: zwei dauerhafte Frames im selben Grid-Slot. Refresh
+        # baut in den inaktiven (versteckt unter dem aktiven), dann lift()
+        # tauscht atomar. So nie sichtbar leerer Hintergrund zwischen Destroy
+        # und Pack.
+        self.grid_container = tk.Frame(self.root, bg=BG)
+        self.grid_container.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
+        self.grid_container.rowconfigure(0, weight=1)
+        self.grid_container.columnconfigure(0, weight=1)
+        self.grid_frames = []
+        for _ in range(2):
+            f = tk.Frame(self.grid_container, bg=BG)
+            f.grid(row=0, column=0, sticky="nsew")
+            for col in range(7):
+                f.columnconfigure(col, weight=1)
+            self.grid_frames.append(f)
+        self.grid_frames[0].lift()
+        self._active_grid_idx = 0
+        self.grid_frame = self.grid_frames[0]  # Alias auf aktiven Frame
 
     def _build_footer(self):
         footer_frame = tk.Frame(self.root, bg=BG)
         footer_frame.pack(fill=tk.X, padx=10, pady=(0, 10))
 
+        # width fixiert reqwidth → kein Pack-Reflow, wenn sich die Stunden-/
+        # Brutto-Summe beim Monatswechsel ändert. 40 deckt die längste
+        # Variante ab ("Gesamt: 999.99h  —  99999.99 € brutto" ≈ 38 Zeichen).
         self.footer_label = tk.Label(
             footer_frame, text="Gesamt: 0.0h", font=FONT_FOOTER,
-            bg=BG, fg=ACCENT
+            bg=BG, fg=ACCENT, width=40,
         )
         self.footer_label.pack(side=tk.LEFT, expand=True)
 
@@ -308,16 +331,53 @@ class App:
 
     def _refresh(self):
         if self.view_mode == "month":
-            self.header_label.config(text=f"{MONTHS_DE[self.month]} {self.year}")
+            # FONT_HEADER (16pt) + width=16 — längste Variante "September 2026"
+            # (14 Zeichen) passt rein.
+            self.header_label.config(
+                text=f"{MONTHS_DE[self.month]} {self.year}",
+                font=FONT_HEADER, width=16,
+            )
             self._refresh_month()
         else:
+            # FONT_HEADER_SMALL (12pt) + width=32 — die längste Variante
+            # mit Jahreswechsel "KW 53 · 30.12.2025 – 05.01.2026" (31 Zeichen)
+            # passt in 16pt nicht ins Fenster (7 × Standardzelle), daher
+            # in der Wochenansicht kleinerer Header-Font.
             self.header_label.config(
-                text=get_week_label(self.iso_year, self.current_week)
+                text=get_week_label(self.iso_year, self.current_week),
+                font=FONT_HEADER_SMALL, width=32,
             )
             self._refresh_week()
-        # Let tkinter compute the required size, then resize window
-        self.root.update_idletasks()
-        self.root.geometry("")
+        # Geometry nur beim First-Render und bei View-Wechsel neu setzen.
+        # Innerhalb derselben View ist die natürliche Größe seit Pad- und
+        # Minsize-Fix konstant; ein erneuter `geometry("")`-Aufruf triggert
+        # trotzdem einen WM-Repaint und erzeugt sichtbares Flackern.
+        if getattr(self, "_last_refresh_view", None) != self.view_mode:
+            self._last_refresh_view = self.view_mode
+            # Beim View-Wechsel hält der jetzt-inaktive Buffer noch den alten
+            # View (z.B. 6-Wochen-Monat während die Wochenansicht aktiv ist).
+            # Sein reqheight blockt `geometry("")`, das Fenster schrumpft erst
+            # beim nächsten Refresh (wenn der alte Buffer überschrieben wird).
+            # Deshalb hier explizit ausräumen.
+            # Inaktiv-Buffer komplett zurücksetzen — analog zu
+            # _get_inactive_grid. Children allein reicht NICHT: die
+            # `rowconfigure(minsize=...)` aus dem alten View bleibt sonst
+            # am Frame kleben und hält dessen reqheight auf Monats-Niveau,
+            # obwohl er leer ist → Container schrumpft nicht.
+            inactive = self.grid_frames[1 - self._active_grid_idx]
+            for child in list(inactive.winfo_children()):
+                child.destroy()
+            for row in range(8):
+                inactive.rowconfigure(row, minsize=0, weight=0)
+            self.root.update_idletasks()
+            # Tk schrumpft Toplevels auf Windows nicht zuverlässig via
+            # `geometry("")` — explizit auf reqsize setzen erzwingt Resize.
+            # FIXME: schrumpft beim Monat→Woche-Wechsel die Höhe nicht
+            # vollständig auf Wochen-Niveau; erst der erste Wochenwechsel
+            # innerhalb der View korrigiert das. Workaround tolerierbar.
+            self.root.geometry(
+                f"{self.root.winfo_reqwidth()}x{self.root.winfo_reqheight()}"
+            )
 
     def _build_grid_header(self, parent):
         for col, day_name in enumerate(DAYS_DE):
@@ -326,21 +386,29 @@ class App:
                 parent, text=day_name, font=FONT_BOLD, bg=BG, fg=fg,
             ).grid(row=0, column=col, sticky="nsew", padx=2, pady=2)
 
-    def _build_entry_cell(self, parent, date_str, day_text, entry, is_weekend, pad):
+    def _build_entry_cell(self, parent, date_str, day_text, entry, is_weekend, pad, cell_size=None):
         bg = WEEKEND_ENTRY_BG if is_weekend else ENTRY_BG
         hover_bg = WEEKEND_ENTRY_BG_HOVER if is_weekend else ENTRY_BG_HOVER
         cell = tk.Frame(
             parent, bg=bg, relief=tk.SOLID,
             highlightbackground=ACCENT, highlightthickness=1, cursor="hand2",
         )
+        if cell_size is not None:
+            # Pixel-fixiert wie die Feiertagszelle — sonst weitet die Zeit-Zeile
+            # ("HH:MM-HH:MM" in FONT_SMALL) die Spalte auf und der Header-Reflow
+            # lässt den Monatsnamen flackern, sobald Einträge dazukommen.
+            cell.config(width=cell_size[0], height=cell_size[1])
+            cell.pack_propagate(False)
         day_lbl = tk.Label(
             cell, text=day_text, font=FONT,
             bg=bg, fg=TEXT, cursor="hand2",
         )
         day_lbl.pack(pady=(pad, 0))
+        # FONT_TINY (7pt) statt FONT_SMALL (8pt), damit "HH:MM-HH:MM" in die
+        # pixel-fixierte Standardzelle (width=8 in FONT) reinpasst.
         time_lbl = tk.Label(
             cell, text=f"{entry['start']}-{entry['end']}",
-            font=FONT_SMALL, bg=bg, fg=TEXT_MUTED, cursor="hand2",
+            font=FONT_TINY, bg=bg, fg=TEXT_MUTED, cursor="hand2",
         )
         time_lbl.pack(pady=(0, pad))
         for w in (cell, day_lbl, time_lbl):
@@ -366,12 +434,14 @@ class App:
 
     def _build_day_cell(self, parent, date_str, day_text, day_date, is_weekend,
                         entry, holidays_map, pad, empty_height,
-                        holiday_max_len, holiday_cell_size=None):
+                        holiday_max_len, holiday_cell_size=None,
+                        entry_cell_size=None):
         """Dispatcht auf Entry-, Holiday- oder Empty-Zelle und liefert die fertig
         konfigurierte Widget-Instanz. Caller grided das Ergebnis selbst."""
         if entry:
             cell = self._build_entry_cell(
                 parent, date_str, day_text, entry, is_weekend, pad,
+                cell_size=entry_cell_size,
             )
             if day_date in holidays_map:
                 attach_tooltip(cell, f"Feiertag: {holidays_map[day_date]}")
@@ -387,15 +457,23 @@ class App:
             parent, date_str, day_text, is_weekend, empty_height,
         )
 
-    def _swap_grid(self, new_frame):
-        for col in range(7):
-            new_frame.columnconfigure(col, weight=1)
-        self.grid_frame.destroy()
-        self.grid_frame = new_frame
-        self.grid_frame.pack(
-            fill=tk.BOTH, expand=True, padx=10, pady=5,
-            before=self.footer_label.master,
-        )
+    def _get_inactive_grid(self):
+        """Liefert das versteckte Grid-Frame (Double-Buffer-Backbuffer).
+        Children und Row-Config werden zurückgesetzt — Column-Config bleibt
+        (in `_build_grid` einmal gesetzt)."""
+        inactive = self.grid_frames[1 - self._active_grid_idx]
+        for child in list(inactive.winfo_children()):
+            child.destroy()
+        for row in range(8):
+            inactive.rowconfigure(row, minsize=0, weight=0)
+        return inactive
+
+    def _activate_grid(self, frame):
+        """Hebt das eben gefüllte Backbuffer-Frame nach vorne. Der bisherige
+        Front-Buffer bleibt als Backbuffer hinten — keine Destroy-Lücke."""
+        frame.lift()
+        self._active_grid_idx = 1 - self._active_grid_idx
+        self.grid_frame = frame
 
     def _update_footer(self, total_hours):
         rate = self.settings.get("hourly_rate") or 0
@@ -414,8 +492,9 @@ class App:
         )
 
     def _refresh_month(self):
-        # Build new grid off-screen, then swap to avoid flicker
-        new_frame = tk.Frame(self.root, bg=BG)
+        # In den versteckten Backbuffer bauen, dann via lift() in den Vordergrund
+        # holen — verhindert sichtbare leere Fläche zwischen Refreshes.
+        new_frame = self._get_inactive_grid()
         self._build_grid_header(new_frame)
 
         cal = calendar.Calendar(firstweekday=0)
@@ -425,7 +504,25 @@ class App:
         state = self.settings.get("state")
         holidays_map = get_holidays(state, self.year) if state else {}
 
-        for row, week in enumerate(cal.monthdayscalendar(self.year, self.month), start=1):
+        # Probe-Label, um die natürliche Pixel-Größe einer Standard-Tageszelle
+        # zu ermitteln. Wird genutzt für:
+        #  (a) Feiertagszellen pixel-fixieren — sonst weiten lange Feiertags-
+        #      namen die Spalte auf, das Grid wächst und der Header-Reflow
+        #      lässt den Monatsnamen flackern.
+        #  (b) konstante Reihenhöhe (minsize unten), damit gepaddete Wochen
+        #      ohne Content nicht zusammenklappen.
+        probe = tk.Label(new_frame, text="", font=FONT, width=8, height=3)
+        probe.update_idletasks()
+        cell_size = (probe.winfo_reqwidth(), probe.winfo_reqheight())
+        probe.destroy()
+
+        # Auf 6 Wochen padden, damit die Fensterhöhe zwischen Monaten konstant
+        # bleibt und `geometry("")` in `_refresh` keinen sichtbaren Resize auslöst.
+        weeks = cal.monthdayscalendar(self.year, self.month)
+        while len(weeks) < 6:
+            weeks.append([0] * 7)
+
+        for row, week in enumerate(weeks, start=1):
             for col, day in enumerate(week):
                 if day == 0:
                     tk.Label(new_frame, text="", bg=BG, relief=tk.FLAT).grid(
@@ -442,14 +539,20 @@ class App:
                     new_frame, date_str, str(day), day_date,
                     is_weekend=col >= 5, entry=entry, holidays_map=holidays_map,
                     pad=4, empty_height=3, holiday_max_len=12,
+                    holiday_cell_size=cell_size,
+                    entry_cell_size=cell_size,
                 )
                 cell.grid(row=row, column=col, sticky="nsew", padx=2, pady=2)
 
-        self._swap_grid(new_frame)
+        row_min_h = cell_size[1] + 4  # +4 für pady=2 oben/unten
+        for row in range(1, 7):
+            new_frame.rowconfigure(row, minsize=row_min_h)
+
+        self._activate_grid(new_frame)
         self._update_footer(total_hours)
 
     def _refresh_week(self):
-        new_frame = tk.Frame(self.root, bg=BG)
+        new_frame = self._get_inactive_grid()
         self._build_grid_header(new_frame)
 
         dates = get_week_dates(self.iso_year, self.current_week)
@@ -482,10 +585,11 @@ class App:
                 is_weekend=col >= 5, entry=entry, holidays_map=holidays_map,
                 pad=8, empty_height=5, holiday_max_len=18,
                 holiday_cell_size=cell_size,
+                entry_cell_size=cell_size,
             )
             cell.grid(row=1, column=col, sticky="nsew", padx=2, pady=2)
 
-        self._swap_grid(new_frame)
+        self._activate_grid(new_frame)
         self._update_footer(total_hours)
 
     @staticmethod

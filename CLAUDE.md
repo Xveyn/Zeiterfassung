@@ -1,6 +1,22 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
 # Zeiterfassung – Projekthinweise
 
 Kleines Desktop-Tool zur Zeiterfassung (Tkinter + Python) für Windows, macOS und Linux, das PDF-Berichte erzeugt und per Gmail verschickt.
+
+## Entwicklung
+
+```
+pip install -r requirements.txt
+python -m src.main          # App aus dem Repo starten
+pytest                      # alle Tests
+pytest tests/test_storage.py             # eine Datei
+pytest tests/test_storage.py::test_name  # einzelner Test
+```
+
+Die App muss als Modul gestartet werden (`python -m src.main`), nicht als Script — die Imports innerhalb von `src/` sind absolut (`from src...`).
 
 ## Release-Prozess
 
@@ -82,10 +98,22 @@ Lokal: `pytest` aus dem Repo-Root. Alle Tests müssen vor dem PR-Merge grün sei
 
 ## Struktur
 
-- `src/ui.py` — Tkinter-GUI, Sende-Dialog
-- `src/report.py` — HTML-Mail und PDF (dark-Theme / light-Theme), gruppiert pro ISO-Kalenderwoche
-- `src/mail.py` — Gmail-API-Wrapper
+- `src/main.py` — Einstiegspunkt; baut `Tk`-Root, instanziert `Storage`/`Settings`/`App`, behandelt `--minimized`
+- `src/ui.py` — Tkinter-GUI (Kalender, Header, Banner-Updater)
+- `src/dialogs/` — Modal-Dialoge (`entry_dialog`, `send_dialog`, `settings_dialog`)
+- `src/storage.py` — JSON-Persistenz der Zeiteinträge (Schlüssel: ISO-Datum)
+- `src/settings.py` — Benutzereinstellungen mit Defaults
+- `src/report.py` — HTML-Mail und PDF (dark/light Theme), gruppiert pro ISO-Kalenderwoche; `xhtml2pdf`-Import ist **lazy** in `generate_pdf` (siehe Tests/CI)
+- `src/mail.py` — Gmail-API-Wrapper (OAuth2, `token.json` / `credentials.json`)
 - `src/time_utils.py` — Stundenberechnung, KW-Labels
-- `src/paths.py` — Datenverzeichnis (frozen vs. repo)
-- `src/version.py` — Einzige Quelle für die App-Version
+- `src/holidays_de.py` — Feiertags-Lookup (über `holidays`-Lib)
+- `src/paths.py` — `get_base_path()` dispatched über `platform.system()` und Frozen- vs. Repo-Modus
+- `src/autostart.py` — plattformabhängiger Autostart (Windows-Shortcut / macOS-LaunchAgent / Linux `.desktop`)
+- `src/updater.py` — GitHub-Releases-Check (stdlib-only, gedrosselt 1×/Tag)
+- `src/platform_open.py` — `os.startfile`/`open`/`xdg-open`-Wrapper
+- `src/logging_setup.py` — File-Logging + globaler Excepthook (Setup-Fehler sind **nicht-fatal**, siehe `main.py`)
+- `src/theme.py`, `src/tooltip.py` — UI-Hilfen
+- `src/version.py` — Einzige Quelle für die App-Version (von Workflow & `installer.iss` gelesen)
 - `installer.iss` — Inno Setup Script, Version wird per `/DAppVer=...` vom Workflow übergeben
+
+Hinweis: Es gibt **keine** `Zeiterfassung.spec`-Datei (entgegen der README-Erwähnung) — Build läuft komplett über `build.py` mit expliziten PyInstaller-Args.

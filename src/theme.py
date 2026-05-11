@@ -16,8 +16,10 @@ WEEKEND_FG = "#6c6c80"
 
 FONT = ("Segoe UI", 10)
 FONT_SMALL = ("Segoe UI", 8)
+FONT_TINY = ("Segoe UI", 7)
 FONT_BOLD = ("Segoe UI", 10, "bold")
 FONT_HEADER = ("Segoe UI", 16, "bold")
+FONT_HEADER_SMALL = ("Segoe UI", 12, "bold")
 FONT_FOOTER = ("Segoe UI", 12, "bold")
 
 # Hover colors (slightly lighter variants)

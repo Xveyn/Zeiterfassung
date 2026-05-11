@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.10.1
+- Monats- und Wochenansicht flackern beim Navigieren nicht mehr: Header (Monatsname / KW-Label), Footer-Stunden und Tageszellen behalten ihre Position, wenn sich der Inhalt zwischen Monaten oder Wochen ändert. Hintergrund: Labels und Zellen haben jetzt fixe Pixel-/Zeichenbreiten, sodass der Pack-Manager bei Text-Wechseln keine Layout-Reflows mehr triggert
+- Feiertagsanzeige weitet die Kalenderspalten in der Monatsansicht nicht mehr auf — analog zur Wochenansicht sind Feiertagszellen pixel-fixiert mit Wraplength als Sicherheitsnetz für lange Namen
+- Wochenansicht-Header: das KW-Label nutzt jetzt eine kleinere Schrift (12pt bold), damit z.B. „KW 19 · 04.05. – 10.05.2026" auch bei Jahreswechseln vollständig ins Fenster passt — vorher wurde der Text rechts und links abgeschnitten
+
 ## v1.10.0
 - Standard-Arbeitszeiten lassen sich jetzt **pro Wochentag** konfigurieren — der Settings-Dialog zeigt eine Tabelle Mo–So mit je einem Start- und Endefeld, die der Eintrags-Dialog beim Anlegen eines neuen Tages automatisch zieht. Bestehende globale Werte (`Standard-Start` / `Standard-Ende`) werden beim ersten App-Start auf alle sieben Wochentage übernommen, sodass sich für Bestandsnutzer nichts ändert, bis sie einzelne Tage abweichend einstellen. Pause bleibt eine globale Einstellung
 
