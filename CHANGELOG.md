@@ -1,5 +1,8 @@
 # Changelog
 
+## v1.10.2
+- Eintrags-Dialog zeigt den „Löschen"-Button nur noch, wenn der Tag tatsächlich einen Eintrag hat — bei leeren Tagen war der Button vorher sichtbar, hatte aber keine Funktion
+
 ## v1.10.1
 - Monats- und Wochenansicht flackern beim Navigieren nicht mehr: Header (Monatsname / KW-Label), Footer-Stunden und Tageszellen behalten ihre Position, wenn sich der Inhalt zwischen Monaten oder Wochen ändert. Hintergrund: Labels und Zellen haben jetzt fixe Pixel-/Zeichenbreiten, sodass der Pack-Manager bei Text-Wechseln keine Layout-Reflows mehr triggert
 - Feiertagsanzeige weitet die Kalenderspalten in der Monatsansicht nicht mehr auf — analog zur Wochenansicht sind Feiertagszellen pixel-fixiert mit Wraplength als Sicherheitsnetz für lange Namen
