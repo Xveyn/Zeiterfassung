@@ -90,6 +90,7 @@ def open_entry_dialog(parent, date_str, storage, settings, on_change):
     btn_frame.grid(row=3, column=0, columnspan=2, pady=12)
 
     primary_button(btn_frame, "Speichern", save).pack(side=tk.LEFT, padx=5)
-    secondary_button(btn_frame, "Löschen", delete).pack(side=tk.LEFT, padx=5)
+    if entry is not None:
+        secondary_button(btn_frame, "Löschen", delete).pack(side=tk.LEFT, padx=5)
 
     center_dialog_on_parent(dialog, parent)
