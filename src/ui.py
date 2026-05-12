@@ -356,25 +356,24 @@ class App:
             self._last_refresh_view = self.view_mode
             # Beim View-Wechsel hält der jetzt-inaktive Buffer noch den alten
             # View (z.B. 6-Wochen-Monat während die Wochenansicht aktiv ist).
-            # Sein reqheight blockt `geometry("")`, das Fenster schrumpft erst
-            # beim nächsten Refresh (wenn der alte Buffer überschrieben wird).
-            # Deshalb hier explizit ausräumen.
-            # Inaktiv-Buffer komplett zurücksetzen — analog zu
-            # _get_inactive_grid. Children allein reicht NICHT: die
-            # `rowconfigure(minsize=...)` aus dem alten View bleibt sonst
-            # am Frame kleben und hält dessen reqheight auf Monats-Niveau,
-            # obwohl er leer ist → Container schrumpft nicht.
-            inactive = self.grid_frames[1 - self._active_grid_idx]
-            for child in list(inactive.winfo_children()):
-                child.destroy()
-            for row in range(8):
-                inactive.rowconfigure(row, minsize=0, weight=0)
+            # Children destroyen + rowconfigure zurücksetzen reicht NICHT:
+            # Tk's reqheight-Cache des Frames bleibt auf der alten View-Höhe,
+            # `grid_container.reqheight = max(active, inactive)` zieht das
+            # Window-Resize hoch. Den Inactive-Frame komplett ersetzen umgeht
+            # den Cache — frischer Frame hat reqheight = 0.
+            inactive_idx = 1 - self._active_grid_idx
+            self.grid_frames[inactive_idx].destroy()
+            new_inactive = tk.Frame(self.grid_container, bg=BG)
+            new_inactive.grid(row=0, column=0, sticky="nsew")
+            for col in range(7):
+                new_inactive.columnconfigure(col, weight=1)
+            self.grid_frames[inactive_idx] = new_inactive
+            # Frisch erstellter Frame liegt in der Stacking-Order obenauf und
+            # würde den aktiven Frame verdecken — active wieder nach vorn.
+            self.grid_frames[self._active_grid_idx].lift()
             self.root.update_idletasks()
             # Tk schrumpft Toplevels auf Windows nicht zuverlässig via
             # `geometry("")` — explizit auf reqsize setzen erzwingt Resize.
-            # FIXME: schrumpft beim Monat→Woche-Wechsel die Höhe nicht
-            # vollständig auf Wochen-Niveau; erst der erste Wochenwechsel
-            # innerhalb der View korrigiert das. Workaround tolerierbar.
             self.root.geometry(
                 f"{self.root.winfo_reqwidth()}x{self.root.winfo_reqheight()}"
             )

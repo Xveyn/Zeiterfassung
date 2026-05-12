@@ -1,5 +1,8 @@
 # Changelog
 
+## v1.10.3
+- Beim Umschalten zwischen Monats- und Wochenansicht schrumpft das Fenster jetzt sofort auf die richtige Höhe (vorher blieb beim ersten Monat→Woche-Wechsel die Monatshöhe stehen, bis ein weiterer Refresh innerhalb der Wochenansicht erfolgte). Hintergrund: der inaktive Double-Buffer-Frame wird beim View-Wechsel komplett ersetzt statt nur ausgeräumt — Tk's reqheight-Cache hielt sonst die alte Höhe trotz Cleanup
+
 ## v1.10.2
 - Eintrags-Dialog zeigt den „Löschen"-Button nur noch, wenn der Tag tatsächlich einen Eintrag hat — bei leeren Tagen war der Button vorher sichtbar, hatte aber keine Funktion
 
