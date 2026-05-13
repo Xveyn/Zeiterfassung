@@ -1,5 +1,7 @@
 import tkinter as tk
 
+from src.theme import FONT_FAMILY
+
 
 class _Tooltip:
     """Hover-Tooltip an ein beliebiges Tk-Widget binden.
@@ -40,7 +42,7 @@ class _Tooltip:
             borderwidth=1,
             padx=8,
             pady=4,
-            font=("Segoe UI", 9),
+            font=(FONT_FAMILY, 9),
         ).pack()
 
     def _on_leave(self, _event):

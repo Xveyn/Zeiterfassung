@@ -1,5 +1,14 @@
+import platform
 import tkinter as tk
 from tkinter import ttk
+
+_system = platform.system()
+if _system == "Darwin":
+    FONT_FAMILY = "Helvetica Neue"
+elif _system == "Linux":
+    FONT_FAMILY = "DejaVu Sans"
+else:
+    FONT_FAMILY = "Segoe UI"
 
 # Dark Modern color palette
 BG = "#1a1a2e"
@@ -14,13 +23,13 @@ ENTRY_BG = "#1a3a5c"
 WEEKEND_ENTRY_BG = "#1a3050"
 WEEKEND_FG = "#6c6c80"
 
-FONT = ("Segoe UI", 10)
-FONT_SMALL = ("Segoe UI", 8)
-FONT_TINY = ("Segoe UI", 7)
-FONT_BOLD = ("Segoe UI", 10, "bold")
-FONT_HEADER = ("Segoe UI", 16, "bold")
-FONT_HEADER_SMALL = ("Segoe UI", 12, "bold")
-FONT_FOOTER = ("Segoe UI", 12, "bold")
+FONT = (FONT_FAMILY, 10)
+FONT_SMALL = (FONT_FAMILY, 8)
+FONT_TINY = (FONT_FAMILY, 7)
+FONT_BOLD = (FONT_FAMILY, 10, "bold")
+FONT_HEADER = (FONT_FAMILY, 16, "bold")
+FONT_HEADER_SMALL = (FONT_FAMILY, 12, "bold")
+FONT_FOOTER = (FONT_FAMILY, 12, "bold")
 
 # Hover colors (slightly lighter variants)
 CELL_BG_HOVER = "#1e2d52"
@@ -86,54 +95,112 @@ def dark_text(parent, width, height, **kw):
     )
 
 
-def primary_button(parent, text, command, **kw):
-    kw.setdefault("font", FONT_BOLD)
-    kw.setdefault("padx", 16)
-    kw.setdefault("pady", 4)
-    return tk.Button(
-        parent, text=text, command=command,
+def label_button(
+    parent, text, command, *,
+    bg, fg, hover_bg, hover_fg,
+    font,
+    label_padx=0, label_pady=0,
+    width=None,
+):
+    """Frame+Label-Konstrukt als Button-Ersatz.
+
+    `tk.Button` ignoriert auf macOS bg/fg (Aqua-Backend zeichnet nativ).
+    `tk.Label` respektiert bg/fg auf allen Plattformen — daher Label
+    mit Klick-Bindings statt echtem Button.
+
+    Rückgabe: tk.Frame mit Attributen `_label` (inneres Label) und
+    `_colors` (dict mit bg/fg/hover_bg/hover_fg). set_toggle_active
+    mutiert `_colors`; die in dieser Funktion gesetzten Bindings lesen
+    daraus — kein Unbind nötig, attach_tooltip (add="+") bleibt
+    funktional.
+    """
+    frame = tk.Frame(parent, bg=bg, cursor="hand2")
+    label = tk.Label(
+        frame, text=text, font=font,
+        bg=bg, fg=fg, cursor="hand2",
+        width=width,
+    )
+    label.pack(padx=label_padx, pady=label_pady)
+    frame._label = label
+    frame._colors = {
+        "bg": bg, "fg": fg,
+        "hover_bg": hover_bg, "hover_fg": hover_fg,
+    }
+
+    def on_click(_e):
+        command()
+
+    def on_enter(_e):
+        c = frame._colors
+        frame.config(bg=c["hover_bg"])
+        label.config(bg=c["hover_bg"], fg=c["hover_fg"])
+
+    def on_leave(_e):
+        c = frame._colors
+        frame.config(bg=c["bg"])
+        label.config(bg=c["bg"], fg=c["fg"])
+
+    for w in (frame, label):
+        w.bind("<Button-1>", on_click)
+        w.bind("<Enter>", on_enter)
+        w.bind("<Leave>", on_leave)
+
+    return frame
+
+
+def primary_button(parent, text, command, font=FONT_BOLD, padx=16, pady=4):
+    return label_button(
+        parent, text, command,
         bg=ACCENT, fg="#ffffff",
-        activebackground=ACCENT_HOVER, activeforeground="#ffffff",
-        relief=tk.FLAT, cursor="hand2", **kw,
+        hover_bg=ACCENT_HOVER, hover_fg="#ffffff",
+        font=font,
+        label_padx=padx, label_pady=pady,
     )
 
 
-def secondary_button(parent, text, command, **kw):
-    kw.setdefault("font", FONT)
-    kw.setdefault("padx", 16)
-    kw.setdefault("pady", 4)
-    return tk.Button(
-        parent, text=text, command=command,
+def secondary_button(parent, text, command, font=FONT, padx=16, pady=4):
+    return label_button(
+        parent, text, command,
         bg=CELL_BG, fg=TEXT,
-        activebackground=ENTRY_BG, activeforeground=TEXT,
-        relief=tk.FLAT, cursor="hand2", **kw,
+        hover_bg=ENTRY_BG, hover_fg=TEXT,
+        font=font,
+        label_padx=padx, label_pady=pady,
     )
 
 
-def toggle_button(parent, text, command, active=False, **kw):
+def _toggle_colors(active):
+    if active:
+        # Aktive Toggle-Variante: kein Hover-Farbwechsel (würde wie "klickbar" aussehen)
+        return {
+            "bg": ACCENT, "fg": "#ffffff",
+            "hover_bg": ACCENT, "hover_fg": "#ffffff",
+        }
+    return {
+        "bg": CELL_BG, "fg": TEXT_MUTED,
+        "hover_bg": ENTRY_BG, "hover_fg": TEXT,
+    }
+
+
+def toggle_button(parent, text, command, active=False):
     """Two-state segmented button used for the Monat/Woche switcher.
 
     Re-style with set_toggle_active(btn, bool) when state changes.
     """
-    btn = tk.Button(
-        parent, text=text, command=command,
-        font=FONT_SMALL, width=6, relief=tk.FLAT, cursor="hand2", **kw,
+    return label_button(
+        parent, text, command,
+        font=FONT_SMALL, width=6,
+        **_toggle_colors(active),
     )
-    set_toggle_active(btn, active)
-    return btn
 
 
 def set_toggle_active(btn, active):
-    if active:
-        btn.config(
-            bg=ACCENT, fg="#ffffff",
-            activebackground=ACCENT, activeforeground="#ffffff",
-        )
-    else:
-        btn.config(
-            bg=CELL_BG, fg=TEXT_MUTED,
-            activebackground=ENTRY_BG, activeforeground=TEXT,
-        )
+    """Mutiert die in `label_button` gesetzten `_colors`. Die Enter/Leave-
+    Handler lesen bei jedem Hover frisch daraus — kein Unbind nötig,
+    keine Closures mit alten Farben."""
+    btn._colors = _toggle_colors(active)
+    c = btn._colors
+    btn.config(bg=c["bg"])
+    btn._label.config(bg=c["bg"], fg=c["fg"])
 
 
 def center_dialog_on_parent(dialog, parent):
@@ -163,13 +230,14 @@ def center_dialog_on_parent(dialog, parent):
     dialog.geometry(f"+{x}+{y}")
 
 
-def icon_button(parent, text, command, fg=ACCENT, hover_fg=None, **kw):
+def icon_button(parent, text, command, fg=ACCENT, hover_fg=None):
     """Compact icon-style button used in the header (‹ › ⚙)."""
     if hover_fg is None:
         hover_fg = fg
-    return tk.Button(
-        parent, text=text, command=command, width=3,
-        font=FONT_BOLD, bg=CELL_BG, fg=fg,
-        activebackground=ENTRY_BG, activeforeground=hover_fg,
-        relief=tk.FLAT, cursor="hand2", **kw,
+    return label_button(
+        parent, text, command,
+        bg=CELL_BG, fg=fg,
+        hover_bg=ENTRY_BG, hover_fg=hover_fg,
+        font=FONT_BOLD,
+        width=3,
     )

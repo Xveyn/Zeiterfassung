@@ -36,7 +36,7 @@ from src.theme import (
     HOLIDAY_BG, HOLIDAY_BG_HOVER, HOLIDAY_ACCENT,
     FONT, FONT_BOLD, FONT_HEADER, FONT_HEADER_SMALL, FONT_FOOTER, FONT_SMALL, FONT_TINY,
     CELL_BG_HOVER, WEEKEND_BG_HOVER, ENTRY_BG_HOVER, WEEKEND_ENTRY_BG_HOVER,
-    icon_button, secondary_button, set_toggle_active, toggle_button,
+    icon_button, label_button, secondary_button, set_toggle_active, toggle_button,
 )
 
 class App:
@@ -172,22 +172,24 @@ class App:
             bg=ACCENT, fg="#ffffff", font=FONT_BOLD,
         ).pack(side=tk.LEFT, padx=10, pady=6)
 
-        dismiss_btn = tk.Button(
-            self._update_banner, text="✕",
-            command=lambda: self._dismiss_update_banner(release.version),
-            font=FONT_BOLD, bg=ACCENT, fg="#ffffff",
-            activebackground=ACCENT_HOVER, activeforeground="#ffffff",
-            relief=tk.FLAT, cursor="hand2", bd=0, padx=8,
+        dismiss_btn = label_button(
+            self._update_banner, "✕",
+            lambda: self._dismiss_update_banner(release.version),
+            bg=ACCENT, fg="#ffffff",
+            hover_bg=ACCENT_HOVER, hover_fg="#ffffff",
+            font=FONT_BOLD,
+            label_padx=8,
         )
-        dismiss_btn.pack(side=tk.RIGHT, padx=(0, 4))
+        dismiss_btn.pack(side=tk.RIGHT, padx=(0, 4), pady=6)
         attach_tooltip(dismiss_btn, "Diese Version ausblenden")
 
-        tk.Button(
-            self._update_banner, text="Download",
-            command=lambda: self._open_update_download(release),
-            font=FONT_BOLD, bg="#ffffff", fg=ACCENT,
-            activebackground="#f0f0f0", activeforeground=ACCENT_HOVER,
-            relief=tk.FLAT, cursor="hand2", bd=0, padx=14, pady=2,
+        label_button(
+            self._update_banner, "Download",
+            lambda: self._open_update_download(release),
+            bg="#ffffff", fg=ACCENT,
+            hover_bg="#f0f0f0", hover_fg=ACCENT_HOVER,
+            font=FONT_BOLD,
+            label_padx=14, label_pady=2,
         ).pack(side=tk.RIGHT, padx=8, pady=4)
 
     def _open_update_download(self, release: "Release"):

@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.11.0
+- macOS: alle Buttons rendern jetzt im Dark-Theme statt als native Aqua-Buttons (Header `‹ › ⚙`, Monat/Woche-Toggle, Footer „Monat senden", Dialog-Buttons, Update-Banner). Bisher war der Text auf primären und aktiven Buttons unter macOS weiß auf weiß und damit unlesbar — der Grund: das Aqua-Backend ignoriert `bg`/`fg` für `tk.Button` und zeichnet sie nativ. Die App benutzt jetzt Label-basierte Custom-Buttons, die auf allen Plattformen das Theme respektieren
+- Font-Familie wird plattformabhängig gewählt: Windows „Segoe UI", macOS „Helvetica Neue", Linux „DejaVu Sans". Verhindert stille Fallback-Drift der Pixel-Metriken in den Kalenderzellen, wenn die Default-Familie nicht installiert ist
+
 ## v1.10.3
 - Beim Umschalten zwischen Monats- und Wochenansicht schrumpft das Fenster jetzt sofort auf die richtige Höhe (vorher blieb beim ersten Monat→Woche-Wechsel die Monatshöhe stehen, bis ein weiterer Refresh innerhalb der Wochenansicht erfolgte). Hintergrund: der inaktive Double-Buffer-Frame wird beim View-Wechsel komplett ersetzt statt nur ausgeräumt — Tk's reqheight-Cache hielt sonst die alte Höhe trotz Cleanup
 
