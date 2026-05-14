@@ -350,3 +350,25 @@ def test_apply_synced_overwrites_value_and_meta(tmp_path):
 
 def test_get_synced_doc_empty_when_nothing_set(tmp_settings):
     assert tmp_settings.get_synced_doc() == {}
+
+
+def test_set_synced_stamps_meta_per_key(tmp_path):
+    """Regression: simulate Settings-Dialog save behavior — synced keys must
+    stamp _synced_meta, otherwise sync silently drops them."""
+    from src.settings import Settings, SYNCED_SETTING_KEYS
+    s = Settings(str(tmp_path / "settings.json"))
+    s.device_id_for_sync = "dev-1"
+    updates = {"recipient": "a@b.de", "name": "Max", "default_pause": 45}
+    synced = {k: v for k, v in updates.items() if k in SYNCED_SETTING_KEYS}
+    plain = {k: v for k, v in updates.items() if k not in SYNCED_SETTING_KEYS}
+    for key, value in synced.items():
+        s.set_synced(key, value)
+    if plain:
+        s.set_many(plain)
+    doc = s.get_synced_doc()
+    assert "recipient" in doc and doc["recipient"]["value"] == "a@b.de"
+    assert "name" in doc and doc["name"]["value"] == "Max"
+    # non-synced key not in synced_doc
+    assert "default_pause" not in doc
+    # but still in regular settings
+    assert s.get("default_pause") == 45

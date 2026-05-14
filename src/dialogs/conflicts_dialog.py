@@ -23,6 +23,7 @@ class ConflictsDialog:
         self.storage = storage
         self.settings = settings
         self.conflicts_store = conflicts_store
+        self._selected = None
 
         self.top = tk.Toplevel(parent)
         self.top.title("Konflikte auflösen")
@@ -83,6 +84,8 @@ class ConflictsDialog:
         self._selected = c
 
     def _resolve_with_candidate(self, idx):
+        if self._selected is None:
+            return
         c = self._selected
         cand = c["candidates"][idx]
         if c["kind"] == "entry":

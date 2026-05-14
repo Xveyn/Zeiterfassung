@@ -1,5 +1,6 @@
 import logging
 import os
+import threading
 import tkinter as tk
 import traceback
 from tkinter import messagebox
@@ -15,7 +16,7 @@ from src.theme import (
     primary_button, secondary_button,
 )
 from src.holidays_de import STATES
-from src.settings import WEEKDAY_KEYS
+from src.settings import WEEKDAY_KEYS, SYNCED_SETTING_KEYS
 from src.time_utils import DAYS_DE, validate_entry
 
 
@@ -202,35 +203,54 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
 
     var_sync = tk.BooleanVar(value=settings.get("sync_enabled"))
 
+    # cb is assigned after creation so _on_sync_toggled and _finish_oauth can reference it
+    cb_sync = None
+
+    def _finish_oauth(err, tb):
+        cb_sync.config(state="normal")
+        if err is None:
+            settings.set("sync_enabled", True)
+            return
+        messagebox.showerror(
+            "Synchronisation aktivieren",
+            f"OAuth-Flow fehlgeschlagen:\n\n{err}\n\n{tb}",
+            parent=dialog,
+        )
+        var_sync.set(False)
+
     def _on_sync_toggled():
         new_state = var_sync.get()
         if new_state and not settings.get("sync_enabled"):
-            try:
-                from src import drive
-                drive.get_drive_service(
-                    os.path.join(base_path, "credentials.json"),
-                    os.path.join(base_path, "token.json"),
-                )
-            except Exception as e:
-                messagebox.showerror(
-                    "Synchronisation aktivieren",
-                    f"OAuth-Flow fehlgeschlagen:\n\n{e}",
-                    parent=dialog,
-                )
-                var_sync.set(False)
-                return
-            settings.set("sync_enabled", True)
-        elif not new_state and settings.get("sync_enabled"):
+            cb_sync.config(state="disabled")
+
+            def _do_oauth():
+                err = None
+                tb = ""
+                try:
+                    from src import drive
+                    drive.get_drive_service(
+                        os.path.join(base_path, "credentials.json"),
+                        os.path.join(base_path, "token.json"),
+                    )
+                except Exception as e:
+                    err = e
+                    tb = traceback.format_exc()
+                dialog.after(0, lambda: _finish_oauth(err, tb))
+
+            threading.Thread(target=_do_oauth, daemon=True).start()
+            return
+        if not new_state and settings.get("sync_enabled"):
             settings.set("sync_enabled", False)
 
-    tk.Checkbutton(
+    cb_sync = tk.Checkbutton(
         dialog, text="Mit Google Drive synchronisieren",
         variable=var_sync, font=FONT,
         bg=BG, fg=TEXT, selectcolor=CELL_BG,
         activebackground=BG, activeforeground=TEXT,
         cursor="hand2",
         command=_on_sync_toggled,
-    ).grid(row=19, column=0, columnspan=2, padx=10, pady=(4, 0), sticky="w")
+    )
+    cb_sync.grid(row=19, column=0, columnspan=2, padx=10, pady=(4, 0), sticky="w")
 
     device_id = settings.get("device_id") or "(noch nicht gesetzt)"
     device_id_short = device_id[:8] + "…" if len(device_id) > 8 else device_id
@@ -319,7 +339,12 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
         for key in WEEKDAY_KEYS:
             updates[f"default_start_{key}"] = start_vars[key].get()
             updates[f"default_end_{key}"] = end_vars[key].get()
-        settings.set_many(updates)
+        synced_updates = {k: v for k, v in updates.items() if k in SYNCED_SETTING_KEYS}
+        plain_updates = {k: v for k, v in updates.items() if k not in SYNCED_SETTING_KEYS}
+        for key, value in synced_updates.items():
+            settings.set_synced(key, value)
+        if plain_updates:
+            settings.set_many(plain_updates)
         on_change()
         dialog.destroy()
 

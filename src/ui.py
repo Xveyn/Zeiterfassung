@@ -98,7 +98,7 @@ class App:
 
         def worker():
             try:
-                refresh_token_if_needed(token_path)
+                refresh_token_if_needed(token_path, sync_enabled=self.settings.get("sync_enabled"))
             except TokenAuthError as e:
                 msg = str(e)
                 self.root.after(0, lambda: messagebox.showwarning(
@@ -728,10 +728,11 @@ class App:
         self._refresh()
         self._update_sync_status_label()
 
-    def on_sync_pull_error(self, error):
+    def on_sync_pull_error(self, error, tb=""):
         import tkinter.messagebox as mb
+        detail = f"{error}\n\n{tb}" if tb else str(error)
         mb.showerror("Synchronisation fehlgeschlagen",
-                      f"Beim Abrufen der Drive-Daten ist ein Fehler aufgetreten:\n\n{error}")
+                      f"Beim Abrufen der Drive-Daten ist ein Fehler aufgetreten:\n\n{detail}")
         self._update_sync_status_label()
 
     def _update_sync_status_label(self):
@@ -759,17 +760,18 @@ class App:
         import threading
         from src.main import _run_push_blocking
         def _do():
-            ok = _run_push_blocking(
+            result = _run_push_blocking(
                 self.storage, self.settings, self.conflicts_store,
                 self.base_path, timeout_seconds=15,
             )
-            self.root.after(0, lambda: self._on_manual_sync_done(ok))
+            self.root.after(0, lambda: self._on_manual_sync_done(result))
         threading.Thread(target=_do, daemon=True).start()
 
-    def _on_manual_sync_done(self, ok):
-        if not ok:
+    def _on_manual_sync_done(self, result):
+        if not result.get("ok"):
             import tkinter.messagebox as mb
-            mb.showerror("Synchronisation", "Synchronisation fehlgeschlagen. Logs prüfen.")
+            detail = f"{result.get('error', '?')}\n\n{result.get('tb', '')}"
+            mb.showerror("Synchronisation", f"Synchronisation fehlgeschlagen:\n\n{detail}")
         # _refresh() re-renders the full calendar grid so newly detected conflict
         # markers appear immediately without requiring a manual view-change.
         self._refresh()

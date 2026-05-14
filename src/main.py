@@ -4,6 +4,7 @@ import os
 import sys
 import threading
 import tkinter as tk
+import traceback
 import uuid
 
 from src.conflicts_store import ConflictsStore
@@ -65,10 +66,11 @@ def _run_pull_in_background(storage, settings, conflicts_store, base, ui_callbac
             "last_pull_at": sync._utc_now_iso(),
             "drive_etag": etag,
         })
-        ui_callback(ok=True, error=None)
+        ui_callback(ok=True, error=None, tb="")
     except Exception as e:
+        tb = traceback.format_exc()
         logging.getLogger(__name__).exception("Sync pull failed")
-        ui_callback(ok=False, error=e)
+        ui_callback(ok=False, error=e, tb=tb)
 
 
 def _run_push_blocking(storage, settings, conflicts_store, base, timeout_seconds=5):
@@ -109,12 +111,15 @@ def _run_push_blocking(storage, settings, conflicts_store, base, timeout_seconds
         except Exception as e:
             logging.getLogger(__name__).exception("Sync push failed: %s", e)
             result["ok"] = False
-            result["error"] = e
+            result["error"] = str(e)
+            result["tb"] = traceback.format_exc()
 
     t = threading.Thread(target=_do, daemon=True)
     t.start()
     t.join(timeout=timeout_seconds)
-    return result.get("ok", False)
+    if not result:
+        result = {"ok": False, "error": "Timeout", "tb": ""}
+    return result
 
 
 def main():
@@ -141,12 +146,12 @@ def main():
         root.iconify()
 
     if settings.get("sync_enabled"):
-        def _on_sync_done(ok, error):
+        def _on_sync_done(ok, error, tb=""):
             def apply():
                 if ok:
                     app.on_sync_pull_success()
                 else:
-                    app.on_sync_pull_error(error)
+                    app.on_sync_pull_error(error, tb)
             root.after(0, apply)
         threading.Thread(
             target=_run_pull_in_background,
