@@ -93,11 +93,18 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
     )
     sender_label.pack(side=tk.LEFT)
 
+    def _set_sender_btn_text(text):
+        # secondary_button ist ein Frame+Label-Konstrukt (kein tk.Button),
+        # der Text liegt am inneren `_label`. Kein -state-Option — wir
+        # markieren den laufenden Zustand nur über den Text.
+        if hasattr(sender_btn, "_label"):
+            sender_btn._label.config(text=text)
+
     def _refresh_sender():
         """OAuth-Flow + userinfo-Fetch im Thread, danach Label aktualisieren."""
         from src.mail import fetch_user_email, get_gmail_service
 
-        sender_btn.config(state="disabled", text="Verbinde…")
+        _set_sender_btn_text("Verbinde…")
 
         def _do():
             try:
@@ -123,7 +130,7 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
     def _finish_refresh_ok(email):
         if not sender_label.winfo_exists():
             return
-        sender_btn.config(state="normal", text="Aktualisieren")
+        _set_sender_btn_text("Aktualisieren")
         if email:
             settings.set("sender_email", email)
             sender_label.config(text=email)
@@ -133,7 +140,7 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
     def _finish_refresh_error(err, tb):
         if not sender_label.winfo_exists():
             return
-        sender_btn.config(state="normal", text="Aktualisieren")
+        _set_sender_btn_text("Aktualisieren")
         messagebox.showerror(
             "Anmeldung fehlgeschlagen",
             f"OAuth-Flow oder Userinfo-Aufruf fehlgeschlagen:\n\n{err}\n\n{tb}",
