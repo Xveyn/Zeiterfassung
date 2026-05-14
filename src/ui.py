@@ -788,8 +788,6 @@ class App:
         # den Zellrändern. Caller sorgt mit passendem max_name_len dafür,
         # dass der Text in die verbleibende Breite passt.
         name_lbl.pack(pady=(0, 4), padx=4)
-        if truncated != name:
-            attach_tooltip(cell, f"Feiertag: {name}")
 
         for w in (cell, day_lbl, name_lbl):
             w.bind("<Button-1>", lambda e: on_click())
@@ -798,9 +796,14 @@ class App:
             w.bind("<Leave>", lambda e, c=cell, dl=day_lbl, nl=name_lbl:
                 self._cell_hover(c, dl, nl, HOLIDAY_BG))
         if truncated != name:
-            # Nur am äußersten Frame binden, sonst gleichzeitige Tooltips, weil
-            # Tk Enter-Events an Frame und Child unabhängig schickt.
-            attach_tooltip(cell, name)
+            # Tooltip an alle drei Widgets binden, damit Hovering überall in
+            # der Zelle den vollen Namen zeigt. Die Tooltip-Klasse nutzt
+            # add="+", daher koexistieren die Bindings mit dem Hover-BG-Swap.
+            # Mehrfach-Bindung an Frame + Children erzeugt theoretisch
+            # gleichzeitige Tooltips, in der Praxis blendet der 80ms-Close-
+            # Delay das sauber zusammen.
+            for w in (cell, day_lbl, name_lbl):
+                attach_tooltip(w, f"Feiertag: {name}")
         return cell
 
     @staticmethod
