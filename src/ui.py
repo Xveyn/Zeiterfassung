@@ -472,7 +472,7 @@ class App:
                         entry, holidays_map, pad, empty_height,
                         holiday_max_len, holiday_cell_size=None,
                         entry_cell_size=None, conflict_dates=None,
-                        entry_time_font=FONT_TINY):
+                        entry_time_font=FONT_TINY, holiday_name_font=FONT_SMALL):
         """Dispatcht auf Entry-, Holiday- oder Empty-Zelle und liefert die fertig
         konfigurierte Widget-Instanz. Caller grided das Ergebnis selbst.
 
@@ -493,6 +493,7 @@ class App:
                 name=holidays_map[day_date], max_name_len=holiday_max_len,
                 on_click=lambda d=date_str: self._open_dialog(d),
                 cell_size=holiday_cell_size,
+                name_font=holiday_name_font,
             )
         else:
             cell = self._build_empty_cell(
@@ -580,6 +581,7 @@ class App:
         wide_cells = not self.settings.get("show_weekend")
         probe_width = 12 if wide_cells else 8
         entry_time_font = FONT if wide_cells else FONT_TINY
+        holiday_name_font = FONT if wide_cells else FONT_SMALL
         probe = tk.Label(new_frame, text="", font=FONT, width=probe_width, height=3)
         probe.update_idletasks()
         cell_size = (probe.winfo_reqwidth(), probe.winfo_reqheight())
@@ -616,6 +618,7 @@ class App:
                     entry_cell_size=cell_size,
                     conflict_dates=conflict_dates,
                     entry_time_font=entry_time_font,
+                    holiday_name_font=holiday_name_font,
                 )
                 cell.grid(row=row, column=col, sticky="nsew", padx=2, pady=2)
 
@@ -647,6 +650,7 @@ class App:
         wide_cells = not self.settings.get("show_weekend")
         probe_width = 12 if wide_cells else 8
         entry_time_font = FONT if wide_cells else FONT_TINY
+        holiday_name_font = FONT if wide_cells else FONT_SMALL
         probe = tk.Label(new_frame, text="", font=FONT, width=probe_width, height=5)
         probe.update_idletasks()
         cell_size = (probe.winfo_reqwidth(), probe.winfo_reqheight())
@@ -671,6 +675,7 @@ class App:
                 entry_cell_size=cell_size,
                 conflict_dates=conflict_dates,
                 entry_time_font=entry_time_font,
+                holiday_name_font=holiday_name_font,
             )
             cell.grid(row=1, column=col, sticky="nsew", padx=2, pady=2)
 
@@ -683,12 +688,15 @@ class App:
             return text
         return text[: max_len - 1] + "…"
 
-    def _build_holiday_cell(self, parent, day_text, name, max_name_len, on_click, cell_size=None):
+    def _build_holiday_cell(self, parent, day_text, name, max_name_len, on_click,
+                             cell_size=None, name_font=FONT_SMALL):
         """Grüne Feiertagszelle. Layout analog zur Eintragszelle.
 
         cell_size: optional (width_px, height_px). Wenn gesetzt, wird der Frame
         auf diese Pixel-Größe fixiert (verhindert Aufweitung der Spalte durch
         längere Namen — relevant für die Wochenansicht).
+        name_font: Schriftart für den Feiertagsnamen. Default FONT_SMALL (8pt);
+        bei breiteren Zellen (Wochenenden ausgeblendet) kann FONT übergeben werden.
         """
         cell = tk.Frame(
             parent, bg=HOLIDAY_BG, relief=tk.SOLID,
@@ -706,7 +714,7 @@ class App:
         truncated = self._truncate(name, max_name_len)
         name_lbl = tk.Label(
             cell, text=truncated,
-            font=FONT_SMALL, bg=HOLIDAY_BG, fg=TEXT_MUTED, cursor="hand2",
+            font=name_font, bg=HOLIDAY_BG, fg=TEXT_MUTED, cursor="hand2",
         )
         name_lbl.pack(pady=(0, 4))
 
