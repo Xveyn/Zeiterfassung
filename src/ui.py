@@ -341,6 +341,8 @@ class App:
         open_settings_dialog(
             self.root, self.settings, self.base_path,
             on_change=self._refresh,
+            conflicts_store=self.conflicts_store,
+            storage=self.storage,
         )
 
     def _refresh(self):

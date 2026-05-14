@@ -10,7 +10,7 @@ from src.platform_open import open_folder
 from src.theme import (
     ACCENT, BG, CELL_BG, FONT, FONT_BOLD, FONT_SMALL,
     PAUSE_VALUES, STATUS_OK, TEXT, TEXT_MUTED, TIME_VALUES,
-    apply_combobox_style, center_dialog_on_parent,
+    apply_combobox_style, apply_dark_titlebar, center_dialog_on_parent,
     dark_combo, dark_entry, dark_text,
     primary_button, secondary_button,
 )
@@ -19,16 +19,20 @@ from src.settings import WEEKDAY_KEYS
 from src.time_utils import DAYS_DE, validate_entry
 
 
-def open_settings_dialog(parent, settings, base_path, on_change):
+def open_settings_dialog(parent, settings, base_path, on_change, *,
+                         conflicts_store=None, storage=None):
     """Modal dialog for editing app settings.
 
     on_change is called after a successful save so the calendar can refresh.
+    conflicts_store and storage are optional; when provided, a Sync section
+    with a conflicts button is shown.
     """
     dialog = tk.Toplevel(parent)
     dialog.title("Einstellungen")
     dialog.resizable(False, False)
     dialog.grab_set()
     dialog.configure(bg=BG)
+    apply_dark_titlebar(dialog)
 
     apply_combobox_style(dialog)
 
@@ -190,6 +194,72 @@ def open_settings_dialog(parent, settings, base_path, on_change):
         cursor="hand2",
     ).grid(row=17, column=0, columnspan=2, padx=10, pady=(0, 8), sticky="w")
 
+    # --- Synchronisation (Multi-Device-Sync, Phase 4.6) ---
+    tk.Label(
+        dialog, text="— Synchronisation —", font=FONT_BOLD,
+        bg=BG, fg=TEXT_MUTED,
+    ).grid(row=18, column=0, columnspan=2, padx=10, pady=(16, 4))
+
+    var_sync = tk.BooleanVar(value=settings.get("sync_enabled"))
+
+    def _on_sync_toggled():
+        new_state = var_sync.get()
+        if new_state and not settings.get("sync_enabled"):
+            try:
+                from src import drive
+                drive.get_drive_service(
+                    os.path.join(base_path, "credentials.json"),
+                    os.path.join(base_path, "token.json"),
+                )
+            except Exception as e:
+                messagebox.showerror(
+                    "Synchronisation aktivieren",
+                    f"OAuth-Flow fehlgeschlagen:\n\n{e}",
+                    parent=dialog,
+                )
+                var_sync.set(False)
+                return
+            settings.set("sync_enabled", True)
+        elif not new_state and settings.get("sync_enabled"):
+            settings.set("sync_enabled", False)
+
+    tk.Checkbutton(
+        dialog, text="Mit Google Drive synchronisieren",
+        variable=var_sync, font=FONT,
+        bg=BG, fg=TEXT, selectcolor=CELL_BG,
+        activebackground=BG, activeforeground=TEXT,
+        cursor="hand2",
+        command=_on_sync_toggled,
+    ).grid(row=19, column=0, columnspan=2, padx=10, pady=(4, 0), sticky="w")
+
+    device_id = settings.get("device_id") or "(noch nicht gesetzt)"
+    device_id_short = device_id[:8] + "…" if len(device_id) > 8 else device_id
+    tk.Label(
+        dialog, text=f"Geräte-ID: {device_id_short}", font=FONT_SMALL,
+        bg=BG, fg=TEXT_MUTED,
+    ).grid(row=20, column=0, columnspan=2, padx=10, pady=(2, 0), sticky="w")
+
+    last = settings.get("last_pull_at") or "noch nie"
+    tk.Label(
+        dialog, text=f"Letzte Synchronisation: {last}", font=FONT_SMALL,
+        bg=BG, fg=TEXT_MUTED,
+    ).grid(row=21, column=0, columnspan=2, padx=10, pady=(2, 4), sticky="w")
+
+    unresolved = 0
+    if conflicts_store is not None:
+        unresolved = conflicts_store.count_unresolved()
+    if unresolved > 0:
+        def _open_conflicts_dialog():
+            from src.dialogs.conflicts_dialog import ConflictsDialog
+            ConflictsDialog(dialog, storage, settings, conflicts_store)
+
+        secondary_button(
+            dialog,
+            f"Konflikte ansehen ({unresolved})",
+            _open_conflicts_dialog,
+            padx=12, pady=2,
+        ).grid(row=22, column=0, columnspan=2, padx=10, pady=(0, 8), sticky="w")
+
     def save_settings():
         for key, lbl in zip(WEEKDAY_KEYS, DAYS_DE):
             ok, msg = validate_entry(start_vars[key].get(), end_vars[key].get())
@@ -254,7 +324,7 @@ def open_settings_dialog(parent, settings, base_path, on_change):
         dialog.destroy()
 
     btn_frame = tk.Frame(dialog, bg=BG)
-    btn_frame.grid(row=18, column=0, columnspan=2, pady=12)
+    btn_frame.grid(row=23, column=0, columnspan=2, pady=12)
 
     primary_button(btn_frame, "Speichern", save_settings).pack(side=tk.LEFT, padx=5)
     secondary_button(btn_frame, "Abbrechen", dialog.destroy).pack(side=tk.LEFT, padx=5)
