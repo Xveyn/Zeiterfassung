@@ -81,6 +81,8 @@ class App:
         self._build_grid()
         self._build_footer()
         self._apply_always_on_top()
+        self._tray = None
+        self._apply_tray_setting()
         self.root.bind("<Left>", lambda e: self._prev())
         self.root.bind("<Right>", lambda e: self._next())
         self._refresh()
@@ -344,6 +346,7 @@ class App:
             self._refresh()
             self._update_sync_status_label()
             self._apply_always_on_top()
+            self._apply_tray_setting()
         open_settings_dialog(
             self.root, self.settings, self.base_path,
             on_change=_on_change,
@@ -361,6 +364,55 @@ class App:
         except tk.TclError:
             # Sehr exotische WMs ohne topmost-Unterstützung — silently ignore.
             pass
+
+    def _apply_tray_setting(self):
+        """Startet oder stoppt das Tray-Icon abhängig vom Settings-Toggle.
+
+        Auf Linux unterstützen wir Tray bewusst nicht — pystray-Backend ist
+        je nach Desktop-Umgebung unzuverlässig. Wenn das Setup auf Win/macOS
+        fehlschlägt (z.B. fehlende Lib im Frozen-Build), wird ein Toast
+        gezeigt und das Feature deaktiviert.
+        """
+        from src.tray import TrayIcon, is_supported
+
+        want_tray = bool(self.settings.get("minimize_to_tray"))
+
+        if want_tray and self._tray is None:
+            if not is_supported():
+                messagebox.showinfo(
+                    "Infobereich-Icon",
+                    "Das Minimieren in den Infobereich ist auf dieser Plattform "
+                    "nicht zuverlässig nutzbar (typisch Linux). Option wurde "
+                    "wieder deaktiviert.",
+                )
+                self.settings.set("minimize_to_tray", False)
+                return
+            tray = TrayIcon(
+                self.base_path,
+                on_show=lambda: self.root.after(0, self._restore_from_tray),
+                on_quit=lambda: self.root.after(0, self._quit_with_sync_push),
+            )
+            try:
+                tray.start()
+            except Exception as e:
+                logging.getLogger(__name__).exception("Tray-Start fehlgeschlagen")
+                messagebox.showerror(
+                    "Infobereich-Icon",
+                    f"Tray-Icon konnte nicht gestartet werden:\n\n{e}",
+                )
+                self.settings.set("minimize_to_tray", False)
+                return
+            self._tray = tray
+
+        elif not want_tray and self._tray is not None:
+            self._tray.stop()
+            self._tray = None
+
+    def _restore_from_tray(self):
+        """Bringt das Fenster aus dem `withdraw()`-Zustand zurück."""
+        self.root.deiconify()
+        self.root.lift()
+        self.root.focus_force()
 
     def _refresh(self):
         if self.view_mode == "month":
@@ -836,6 +888,18 @@ class App:
         self._update_sync_status_label()
 
     def _on_close(self):
+        # Bei aktivem Minimize-to-Tray klappt der X-Button das Fenster nur weg;
+        # der Prozess lebt weiter und ist über das Tray-Icon erreichbar. Sync-
+        # Push und Quit passieren erst beim Tray-Menü-„Beenden" bzw. wenn das
+        # Feature deaktiviert oder das Tray-Setup fehlgeschlagen ist.
+        if self.settings.get("minimize_to_tray") and getattr(self, "_tray", None) is not None:
+            self.root.withdraw()
+            return
+        self._quit_with_sync_push()
+
+    def _quit_with_sync_push(self):
+        """Push zum Drive (falls aktiv) und App komplett beenden. Wird vom
+        normalen X-Klick (ohne Tray) und vom Tray-Menü-„Beenden" aufgerufen."""
         if self.settings.get("sync_enabled"):
             from src.main import _run_push_blocking
             try:
@@ -856,4 +920,6 @@ class App:
                     "Lokale Daten bleiben erhalten und werden beim nächsten Start "
                     "synchronisiert.",
                 )
+        if getattr(self, "_tray", None) is not None:
+            self._tray.stop()
         self.root.destroy()

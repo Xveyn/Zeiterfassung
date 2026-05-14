@@ -39,6 +39,7 @@ DEFAULTS = {
     "default_end_sun": "16:00",
     "show_weekend": True,
     "always_on_top": False,
+    "minimize_to_tray": False,
     "sync_enabled": False,
     "device_id": "",
     "last_pull_at": "",
