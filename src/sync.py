@@ -84,3 +84,29 @@ def _merge_one(local, remote, last_pull_at, equal_fn=_values_equal_entry, kind="
 def _strip_for_candidate(item):
     """Reduziert ein Entry/Setting auf das, was im conflict.candidates landen soll."""
     return {k: v for k, v in item.items()}
+
+
+def merge(local, remote, last_pull_at):
+    """Hauptfunktion: erwartet zwei Sync-Docs, liefert das gemergte Doc."""
+    merged = {
+        "schema_version": SCHEMA_VERSION,
+        "entries": {},
+        "settings": {},
+        "conflicts": [],
+    }
+    new_conflicts = []
+
+    # Entries
+    all_keys = set(local.get("entries", {}).keys()) | set(remote.get("entries", {}).keys())
+    for key in all_keys:
+        l = local.get("entries", {}).get(key)
+        r = remote.get("entries", {}).get(key)
+        winner, conflict = _merge_one(l, r, last_pull_at,
+                                       equal_fn=_values_equal_entry, kind="entry", key=key)
+        if winner is not None:
+            merged["entries"][key] = winner
+        if conflict is not None:
+            new_conflicts.append(conflict)
+
+    merged["conflicts"] = new_conflicts
+    return merged
