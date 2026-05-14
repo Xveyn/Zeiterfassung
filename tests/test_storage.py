@@ -23,6 +23,7 @@ def test_delete_entry(tmp_storage):
 
 def test_delete_nonexistent(tmp_storage):
     tmp_storage.delete("2026-01-01")  # should not raise
+    assert tmp_storage.get_all_raw() == {}
 
 def test_persistence(tmp_path):
     path = str(tmp_path / "test.json")
@@ -98,3 +99,22 @@ def test_get_returns_user_shape_without_metadata(tmp_path):
     storage.save("2026-05-14", "08:00", "16:00", pause=30)
     assert storage.get("2026-05-14") == {"start": "08:00", "end": "16:00", "pause": 30}
     assert storage.get_all()["2026-05-14"] == {"start": "08:00", "end": "16:00", "pause": 30}
+
+
+def test_apply_merge_rejects_entry_missing_required_keys(tmp_path):
+    storage = Storage(str(tmp_path / "t.json"), device_id="dev-1")
+    with pytest.raises(ValueError, match="missing keys"):
+        storage.apply_merge({"2026-05-14": {"start": "08:00", "end": "16:00"}})
+    # _data unverändert geblieben (kein Halb-Schreiben)
+    assert storage.get_all_raw() == {}
+
+
+def test_apply_merge_accepts_complete_entries(tmp_path):
+    storage = Storage(str(tmp_path / "t.json"), device_id="dev-1")
+    storage.apply_merge({"2026-05-14": {
+        "start": "08:00", "end": "16:00", "pause": 30,
+        "modified_at": "2026-05-14T10:00:00Z",
+        "device_id": "other-dev",
+        "deleted": False,
+    }})
+    assert storage.get("2026-05-14") == {"start": "08:00", "end": "16:00", "pause": 30}

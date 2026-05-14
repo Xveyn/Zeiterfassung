@@ -8,6 +8,9 @@ def _utc_now_iso():
     return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+_REQUIRED_ENTRY_KEYS = frozenset({"start", "end", "pause", "modified_at", "device_id", "deleted"})
+
+
 class Storage:
     def __init__(self, filepath="zeiterfassung.json", device_id=""):
         self.filepath = filepath
@@ -73,6 +76,8 @@ class Storage:
         self._save_to_disk()
 
     def delete(self, date_str):
+        if date_str not in self._data:
+            return
         # Tombstone: behält die Zeile mit deleted=true, damit der Sync ein
         # Delete gegen ein veraltetes Save eines anderen Geräts durchsetzen kann.
         self._data[date_str] = {
@@ -87,6 +92,13 @@ class Storage:
 
     def apply_merge(self, merged_entries):
         """Ersetzt den kompletten Storage-Stand durch das Merge-Ergebnis.
-        merged_entries: {date: {start, end, pause, modified_at, device_id, deleted}}"""
+        merged_entries: {date: {start, end, pause, modified_at, device_id, deleted}}.
+        Wirft ValueError, wenn ein Eintrag Pflichtfelder vermissen lässt."""
+        for date, entry in merged_entries.items():
+            missing = _REQUIRED_ENTRY_KEYS - entry.keys()
+            if missing:
+                raise ValueError(
+                    f"apply_merge: entry {date!r} missing keys {sorted(missing)}"
+                )
         self._data = dict(merged_entries)
         self._save_to_disk()
