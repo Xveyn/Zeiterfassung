@@ -72,16 +72,17 @@ class TrayIcon:
             pystray.Menu.SEPARATOR,
             pystray.MenuItem("Beenden", _on_quit_click),
         )
-        self._icon = pystray.Icon(
+        icon = pystray.Icon(
             "zeiterfassung",
             image,
             "Zeiterfassung",
             menu,
         )
+        self._icon = icon
 
         def _run():
             try:
-                self._icon.run()
+                icon.run()
             except Exception:
                 logging.getLogger(__name__).exception("Tray-Icon-Thread crashed")
 

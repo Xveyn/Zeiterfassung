@@ -66,6 +66,15 @@ def get_drive_service(credentials_path, token_path):
     """OAuth mit kombinierten Scopes (Gmail + Drive appdata). Token wird mit
     beiden Scopes geschrieben — Gmail send funktioniert weiter mit demselben
     token.json. Wirft DriveAuthError oder DriveNetworkError bei Problemen."""
+    # Gate: Modul-Top setzt die Google-Symbole im ImportError-Fallback auf None,
+    # damit der Import in Test- und Build-Umgebungen ohne installierte Libs
+    # nicht crasht. Ein Aufruf dieser Funktion ohne Libs muss aber explodieren.
+    if (Credentials is None or InstalledAppFlow is None
+            or Request is None or build is None):
+        raise ImportError(
+            "Google-API-Libs fehlen — google-api-python-client und "
+            "google-auth-oauthlib müssen installiert sein."
+        )
     creds = None
     if os.path.exists(token_path):
         creds = Credentials.from_authorized_user_file(token_path, SYNC_SCOPES)
@@ -119,6 +128,8 @@ def download(service, file_id):
     zurückgegeben; aktuell ohne Optimistic-Lock-Verwendung beim Push.
 
     Wirft DriveNetworkError bei API-Fehlern."""
+    if MediaIoBaseDownload is None:
+        raise ImportError("googleapiclient fehlt — Drive-Sync nicht verfügbar.")
     try:
         meta = service.files().get(fileId=file_id, fields="version").execute()
         request = service.files().get_media(fileId=file_id)
@@ -147,6 +158,8 @@ def upload(service, content_bytes, file_id=None, expected_etag=None):
 
     Liefert (file_id, new_version_token).
     """
+    if MediaIoBaseUpload is None:
+        raise ImportError("googleapiclient fehlt — Drive-Sync nicht verfügbar.")
     media = MediaIoBaseUpload(io.BytesIO(content_bytes),
                                 mimetype=SYNC_MIMETYPE,
                                 resumable=False)
@@ -162,7 +175,11 @@ def upload(service, content_bytes, file_id=None, expected_etag=None):
         ).execute()
         return resp["id"], str(resp.get("version", ""))
     except HttpError as e:
-        status = getattr(e.resp, "status", None) if hasattr(e, "resp") else None
+        # googleapiclient's HttpError trägt e.resp (httplib2.Response) — der
+        # Fallback oben aliased HttpError auf Exception, daher kennt Pylance
+        # das Attribut nicht statisch. getattr() umgeht das sauber.
+        resp_obj = getattr(e, "resp", None)
+        status = getattr(resp_obj, "status", None) if resp_obj is not None else None
         if status == 412:
             raise DriveConflictError(str(e)) from e
         raise DriveNetworkError(str(e)) from e

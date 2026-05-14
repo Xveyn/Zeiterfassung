@@ -23,10 +23,16 @@ from src.ui import App
 from src.version import VERSION
 
 
-def _ensure_device_id(settings):
-    """Bei Erststart oder fehlendem device_id: UUID generieren und persistieren."""
-    if not settings.get("device_id"):
-        settings.set("device_id", str(uuid.uuid4()))
+def _ensure_device_id(settings) -> str:
+    """Bei Erststart oder fehlendem device_id: UUID generieren und persistieren.
+
+    Liefert die garantiert vorhandene Device-ID — spart dem Caller einen
+    zweiten settings.get()-Call (der Pylance-seitig wieder Optional wäre)."""
+    device_id = settings.get("device_id")
+    if not device_id:
+        device_id = str(uuid.uuid4())
+        settings.set("device_id", device_id)
+    return device_id
 
 
 def _parse_remote_or_quarantine(content_bytes, file_id, on_corrupt):
@@ -138,8 +144,7 @@ def main():
         pass
 
     settings = Settings(os.path.join(base, "settings.json"))
-    _ensure_device_id(settings)
-    device_id = settings.get("device_id")
+    device_id = _ensure_device_id(settings)
     settings.device_id_for_sync = device_id
 
     storage = Storage(os.path.join(base, "zeiterfassung.json"), device_id=device_id)

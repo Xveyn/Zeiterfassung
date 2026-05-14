@@ -296,10 +296,14 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
 
     var_sync = tk.BooleanVar(value=settings.get("sync_enabled"))
 
-    # cb is assigned after creation so _on_sync_toggled and _finish_oauth can reference it
-    cb_sync = None
+    # Forward-Deklaration: die Closures unten referenzieren cb_sync, das erst
+    # weiter unten als Checkbutton erzeugt wird. Beim ersten Aufruf der
+    # Closures (User-Interaktion) ist cb_sync garantiert gesetzt — das assert
+    # narrowt den Typ für Pylance.
+    cb_sync: tk.Checkbutton | None = None
 
     def _finish_oauth(err, tb):
+        assert cb_sync is not None
         cb_sync.config(state="normal")
         if err is None:
             settings.set("sync_enabled", True)
@@ -313,6 +317,7 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
         var_sync.set(False)
 
     def _on_sync_toggled():
+        assert cb_sync is not None
         new_state = var_sync.get()
         if new_state and not settings.get("sync_enabled"):
             cb_sync.config(state="disabled")

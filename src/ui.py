@@ -947,7 +947,7 @@ class App:
         # der Prozess lebt weiter und ist über das Tray-Icon erreichbar. Sync-
         # Push und Quit passieren erst beim Tray-Menü-„Beenden" bzw. wenn das
         # Feature deaktiviert oder das Tray-Setup fehlgeschlagen ist.
-        if self.settings.get("minimize_to_tray") and getattr(self, "_tray", None) is not None:
+        if self.settings.get("minimize_to_tray") and self._tray is not None:
             self.root.withdraw()
             return
         self._quit_with_sync_push()
@@ -975,6 +975,6 @@ class App:
                     "Lokale Daten bleiben erhalten und werden beim nächsten Start "
                     "synchronisiert.",
                 )
-        if getattr(self, "_tray", None) is not None:
+        if self._tray is not None:
             self._tray.stop()
         self.root.destroy()
