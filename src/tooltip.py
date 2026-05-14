@@ -4,33 +4,40 @@ from src.theme import FONT_FAMILY
 
 
 class _Tooltip:
-    """Hover-Tooltip an ein beliebiges Tk-Widget binden.
+    """Hover-Tooltip an ein oder mehrere Tk-Widgets binden.
 
-    Tk feuert ``<Leave>`` auch dann, wenn der Pointer in ein Child-Widget
-    wandert. Damit der Tooltip in dem Fall nicht aufflackert, wird das
-    Schließen kurz verzögert und nur ausgeführt, wenn der Pointer
-    tatsächlich außerhalb des Bind-Widgets steht.
+    Mehrere Widgets teilen eine einzige Tooltip-Instanz — Hovering über
+    irgendeines von ihnen zeigt genau ein Popup. Wechsel zwischen den
+    Widgets (z.B. Frame → Child-Label) blendet den Tooltip nicht weg, weil
+    `_maybe_close` prüft, ob der Pointer noch in einem der Widgets ist.
     """
 
     _CLOSE_DELAY_MS = 80
 
-    def __init__(self, widget: tk.Widget, text: str):
-        self.widget = widget
+    def __init__(self, widgets, text: str):
+        self.widgets = tuple(widgets)
         self.text = text
         self.tip: tk.Toplevel | None = None
         self._close_after_id: str | None = None
-        widget.bind("<Enter>", self._show, add="+")
-        widget.bind("<Leave>", self._on_leave, add="+")
+        for w in self.widgets:
+            w.bind("<Enter>", self._show, add="+")
+            w.bind("<Leave>", self._on_leave, add="+")
+
+    def _primary(self):
+        return self.widgets[0]
 
     def _show(self, _event):
         if self._close_after_id is not None:
-            self.widget.after_cancel(self._close_after_id)
+            self._primary().after_cancel(self._close_after_id)
             self._close_after_id = None
         if self.tip is not None or not self.text:
             return
-        x = self.widget.winfo_rootx() + 20
-        y = self.widget.winfo_rooty() + self.widget.winfo_height() + 4
-        self.tip = tk.Toplevel(self.widget)
+        # Positioniere relativ zum ersten (typisch äußersten) Widget — stabile
+        # Tooltip-Position auch wenn der Mauszeiger zwischen Children wandert.
+        anchor = self._primary()
+        x = anchor.winfo_rootx() + 20
+        y = anchor.winfo_rooty() + anchor.winfo_height() + 4
+        self.tip = tk.Toplevel(anchor)
         self.tip.wm_overrideredirect(True)
         self.tip.wm_geometry(f"+{x}+{y}")
         # Falls das Hauptfenster topmost ist (Setting 'Immer im Vordergrund'),
@@ -54,8 +61,8 @@ class _Tooltip:
 
     def _on_leave(self, _event):
         if self._close_after_id is not None:
-            self.widget.after_cancel(self._close_after_id)
-        self._close_after_id = self.widget.after(
+            self._primary().after_cancel(self._close_after_id)
+        self._close_after_id = self._primary().after(
             self._CLOSE_DELAY_MS, self._maybe_close
         )
 
@@ -63,18 +70,35 @@ class _Tooltip:
         self._close_after_id = None
         if self.tip is None:
             return
-        # Pointer immer noch über dem Widget (z.B. in einem Child)? Dann offen lassen.
-        x, y = self.widget.winfo_pointerxy()
-        wx = self.widget.winfo_rootx()
-        wy = self.widget.winfo_rooty()
-        ww = self.widget.winfo_width()
-        wh = self.widget.winfo_height()
-        if wx <= x < wx + ww and wy <= y < wy + wh:
-            return
+        # Pointer immer noch über IRGENDEINEM der getrackten Widgets? Dann offen
+        # lassen. Wichtig für (Frame, Child)-Binding: Enter auf Child schickt
+        # Leave auf Frame und umgekehrt — würden wir einzeln tracken, ploppte
+        # der Tooltip bei jedem Wechsel zu.
+        for w in self.widgets:
+            try:
+                x, y = w.winfo_pointerxy()
+                wx = w.winfo_rootx()
+                wy = w.winfo_rooty()
+                ww = w.winfo_width()
+                wh = w.winfo_height()
+            except tk.TclError:
+                continue
+            if wx <= x < wx + ww and wy <= y < wy + wh:
+                return
         self.tip.destroy()
         self.tip = None
 
 
-def attach_tooltip(widget: tk.Widget, text: str) -> None:
-    """Bindet ein Tooltip an widget. Mehrfachaufruf erzeugt mehrere Tooltips — Aufrufer ist verantwortlich, das nur einmal pro Widget zu tun."""
-    _Tooltip(widget, text)
+def attach_tooltip(widget_or_widgets, text: str) -> None:
+    """Bindet ein Tooltip an ein Widget oder eine Gruppe von Widgets.
+
+    Bei einer Gruppe (Tuple/Liste) gibt es genau einen geteilten Tooltip —
+    nützlich für Container + Child-Labels, die als ein logisches Element
+    fungieren. Mehrfachaufruf mit demselben Widget erzeugt allerdings mehrere
+    unabhängige Tooltips; Aufrufer ist dafür verantwortlich, das zu vermeiden.
+    """
+    if isinstance(widget_or_widgets, tk.Misc):
+        widgets = (widget_or_widgets,)
+    else:
+        widgets = tuple(widget_or_widgets)
+    _Tooltip(widgets, text)

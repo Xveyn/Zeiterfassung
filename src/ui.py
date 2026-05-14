@@ -796,14 +796,10 @@ class App:
             w.bind("<Leave>", lambda e, c=cell, dl=day_lbl, nl=name_lbl:
                 self._cell_hover(c, dl, nl, HOLIDAY_BG))
         if truncated != name:
-            # Tooltip an alle drei Widgets binden, damit Hovering überall in
-            # der Zelle den vollen Namen zeigt. Die Tooltip-Klasse nutzt
-            # add="+", daher koexistieren die Bindings mit dem Hover-BG-Swap.
-            # Mehrfach-Bindung an Frame + Children erzeugt theoretisch
-            # gleichzeitige Tooltips, in der Praxis blendet der 80ms-Close-
-            # Delay das sauber zusammen.
-            for w in (cell, day_lbl, name_lbl):
-                attach_tooltip(w, f"Feiertag: {name}")
+            # Geteilter Tooltip über alle drei Widgets — _Tooltip trackt sie
+            # gemeinsam, sodass Pointer-Wechsel zwischen Frame und Child-
+            # Labels den Tooltip nicht schließt/neu öffnet.
+            attach_tooltip((cell, day_lbl, name_lbl), f"Feiertag: {name}")
         return cell
 
     @staticmethod
