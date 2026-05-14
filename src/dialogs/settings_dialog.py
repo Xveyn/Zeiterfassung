@@ -84,10 +84,69 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
     # Absender-Zeile: zeigt die authentifizierte E-Mail-Adresse, die ui.py
     # im Hintergrund über OAuth2-userinfo abruft und in settings cached.
     label("Absender:", row=2, pady=(0, 4))
-    sender_email = settings.get("sender_email") or "(noch nicht ermittelt)"
-    tk.Label(
-        dialog, text=sender_email, font=FONT, bg=BG, fg=TEXT_MUTED,
-    ).grid(row=2, column=1, padx=10, pady=(0, 4), sticky="w")
+    sender_row = tk.Frame(dialog, bg=BG)
+    sender_row.grid(row=2, column=1, padx=10, pady=(0, 4), sticky="w")
+    sender_label = tk.Label(
+        sender_row,
+        text=settings.get("sender_email") or "(noch nicht ermittelt)",
+        font=FONT, bg=BG, fg=TEXT_MUTED,
+    )
+    sender_label.pack(side=tk.LEFT)
+
+    def _refresh_sender():
+        """OAuth-Flow + userinfo-Fetch im Thread, danach Label aktualisieren."""
+        from src.mail import fetch_user_email, get_gmail_service
+
+        sender_btn.config(state="disabled", text="Verbinde…")
+
+        def _do():
+            try:
+                # OAuth-Flow läuft, falls Token fehlt oder Scopes upgegradet werden müssen.
+                get_gmail_service(
+                    os.path.join(base_path, "credentials.json"),
+                    os.path.join(base_path, "token.json"),
+                    sync_enabled=settings.get("sync_enabled"),
+                )
+                email = fetch_user_email(
+                    os.path.join(base_path, "token.json"),
+                    sync_enabled=settings.get("sync_enabled"),
+                )
+            except Exception as e:
+                err = e
+                tb = traceback.format_exc()
+                dialog.after(0, lambda: _finish_refresh_error(err, tb))
+                return
+            dialog.after(0, lambda: _finish_refresh_ok(email))
+
+        threading.Thread(target=_do, daemon=True).start()
+
+    def _finish_refresh_ok(email):
+        if not sender_label.winfo_exists():
+            return
+        sender_btn.config(state="normal", text="Aktualisieren")
+        if email:
+            settings.set("sender_email", email)
+            sender_label.config(text=email)
+        else:
+            sender_label.config(text="(nicht verfügbar — Scope fehlt evtl.)")
+
+    def _finish_refresh_error(err, tb):
+        if not sender_label.winfo_exists():
+            return
+        sender_btn.config(state="normal", text="Aktualisieren")
+        messagebox.showerror(
+            "Anmeldung fehlgeschlagen",
+            f"OAuth-Flow oder Userinfo-Aufruf fehlgeschlagen:\n\n{err}\n\n{tb}",
+            parent=dialog,
+        )
+
+    sender_btn = secondary_button(
+        sender_row,
+        "Aktualisieren" if settings.get("sender_email") else "Anmelden",
+        _refresh_sender,
+        padx=12, pady=2,
+    )
+    sender_btn.pack(side=tk.LEFT, padx=(10, 0))
 
     times_label = tk.Label(
         dialog, text="Standardzeiten: ▶", font=FONT, bg=BG, fg=TEXT,
