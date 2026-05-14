@@ -85,3 +85,57 @@ def test_find_sync_file_queries_appdatafolder():
     call_kwargs = service.files().list.call_args[1]
     assert call_kwargs.get("spaces") == "appDataFolder"
     assert "zeiterfassung-sync.json" in call_kwargs.get("q", "")
+
+
+import io
+
+from src.drive import download, upload
+
+
+def test_download_returns_content_and_etag():
+    service = mock.MagicMock()
+    service.files().get_media.return_value = "media-request"
+    service.files().get().execute.return_value = {"etag": "etag-123"}
+
+    with mock.patch("src.drive.MediaIoBaseDownload") as mock_dl_cls:
+        # Simuliere Downloader, der sofort done=True liefert
+        mock_dl = mock.MagicMock()
+        mock_dl.next_chunk.return_value = (None, True)
+        mock_dl_cls.return_value = mock_dl
+
+        # Buffer-Inhalt durch Side-Effect simulieren
+        def fake_init(buf, req):
+            buf.write(b'{"hello": "world"}')
+            return mock_dl
+        mock_dl_cls.side_effect = fake_init
+
+        content, etag = download(service, "file-123")
+
+    assert content == b'{"hello": "world"}'
+    assert etag == "etag-123"
+
+
+def test_upload_new_file_when_file_id_none():
+    service = mock.MagicMock()
+    service.files().create().execute.return_value = {"id": "new-id", "etag": "etag-new"}
+    file_id, etag = upload(service, b'{"x":1}', file_id=None, expected_etag="")
+    assert file_id == "new-id"
+    assert etag == "etag-new"
+
+
+def test_upload_existing_file_uses_update():
+    service = mock.MagicMock()
+    service.files().update().execute.return_value = {"id": "file-123", "etag": "etag-2"}
+    file_id, etag = upload(service, b'{"x":2}', file_id="file-123", expected_etag="etag-1")
+    assert file_id == "file-123"
+    assert etag == "etag-2"
+
+
+def test_upload_etag_mismatch_raises_drive_conflict_error():
+    from googleapiclient.errors import HttpError
+    service = mock.MagicMock()
+    # HttpError mit status 412 (Precondition Failed) simulieren
+    resp = mock.MagicMock(status=412, reason="Precondition Failed")
+    service.files().update().execute.side_effect = HttpError(resp, b"")
+    with pytest.raises(DriveConflictError):
+        upload(service, b'{"x":1}', file_id="file-1", expected_etag="old")

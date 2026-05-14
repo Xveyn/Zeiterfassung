@@ -107,3 +107,55 @@ def find_sync_file(service):
     if not files:
         return None
     return files[0]["id"]
+
+
+def download(service, file_id):
+    """Lädt die Sync-Datei herunter. Liefert (bytes, etag).
+    Wirft DriveNetworkError bei API-Fehlern."""
+    try:
+        meta = service.files().get(fileId=file_id, fields="etag").execute()
+        request = service.files().get_media(fileId=file_id)
+        buf = io.BytesIO()
+        downloader = MediaIoBaseDownload(buf, request)
+        done = False
+        while not done:
+            _, done = downloader.next_chunk()
+    except HttpError as e:
+        raise DriveNetworkError(str(e)) from e
+    return buf.getvalue(), meta.get("etag", "")
+
+
+def upload(service, content_bytes, file_id=None, expected_etag=None):
+    """Uploadet `content_bytes` als Sync-Datei.
+
+    - file_id=None  → neues File in appDataFolder anlegen
+    - file_id gesetzt + expected_etag gesetzt → If-Match-Header für optimistic locking
+    - Bei ETag-Mismatch → DriveConflictError
+
+    Liefert (file_id, new_etag).
+    """
+    media = MediaIoBaseUpload(io.BytesIO(content_bytes),
+                                mimetype=SYNC_MIMETYPE,
+                                resumable=False)
+    try:
+        if file_id is None:
+            metadata = {"name": SYNC_FILENAME, "parents": ["appDataFolder"]}
+            resp = service.files().create(
+                body=metadata, media_body=media, fields="id, etag",
+            ).execute()
+            return resp["id"], resp.get("etag", "")
+        else:
+            kwargs = {"fileId": file_id, "media_body": media, "fields": "id, etag"}
+            if expected_etag:
+                # If-Match-Header via Request-Builder
+                update_request = service.files().update(**kwargs)
+                update_request.headers["If-Match"] = expected_etag
+                resp = update_request.execute()
+            else:
+                resp = service.files().update(**kwargs).execute()
+            return resp["id"], resp.get("etag", "")
+    except HttpError as e:
+        status = getattr(e.resp, "status", None) if hasattr(e, "resp") else None
+        if status == 412:
+            raise DriveConflictError(str(e)) from e
+        raise DriveNetworkError(str(e)) from e
