@@ -380,8 +380,17 @@ class App:
                 f"{self.root.winfo_reqwidth()}x{self.root.winfo_reqheight()}"
             )
 
+    def _visible_day_count(self):
+        """Sichtbare Wochentag-Spalten (5 bei show_weekend=False, sonst 7).
+
+        Wird von _build_grid_header und den Refresh-Pfaden als einzige
+        Quelle der Wahrheit konsultiert.
+        """
+        return 7 if self.settings.get("show_weekend") else 5
+
     def _build_grid_header(self, parent):
-        for col, day_name in enumerate(DAYS_DE):
+        n = self._visible_day_count()
+        for col, day_name in enumerate(DAYS_DE[:n]):
             fg = TEXT_MUTED if col < 5 else WEEKEND_FG
             tk.Label(
                 parent, text=day_name, font=FONT_BOLD, bg=BG, fg=fg,
@@ -519,12 +528,13 @@ class App:
 
         # Auf 6 Wochen padden, damit die Fensterhöhe zwischen Monaten konstant
         # bleibt und `geometry("")` in `_refresh` keinen sichtbaren Resize auslöst.
+        n = self._visible_day_count()
         weeks = cal.monthdayscalendar(self.year, self.month)
         while len(weeks) < 6:
             weeks.append([0] * 7)
 
         for row, week in enumerate(weeks, start=1):
-            for col, day in enumerate(week):
+            for col, day in enumerate(week[:n]):
                 if day == 0:
                     tk.Label(new_frame, text="", bg=BG, relief=tk.FLAT).grid(
                         row=row, column=col, sticky="nsew", padx=2, pady=2)
@@ -574,7 +584,8 @@ class App:
         cell_size = (probe.winfo_reqwidth(), probe.winfo_reqheight())
         probe.destroy()
 
-        for col, day_date in enumerate(dates):
+        n = self._visible_day_count()
+        for col, day_date in enumerate(dates[:n]):
             date_str = day_date.isoformat()
             entry = entries.get(date_str)
             if entry:
