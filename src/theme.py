@@ -228,6 +228,10 @@ def center_dialog_on_parent(dialog, parent):
     kleinem App-Fenster), wird statt zentriert auf Parent-Top-Left
     ausgerichtet — sonst rutscht die Titlebar oberhalb des Monitorrands.
 
+    Danach wird die Position an die Bildschirmgrenzen geklammert, damit ein
+    Parent am unteren/oberen Rand den Dialog nicht aus dem sichtbaren Bereich
+    schiebt. `wm_maxsize()` liefert auf Windows die taskbar-freie Arbeitsfläche.
+
     Muss gerufen werden, nachdem alle Widgets erstellt sind, damit
     winfo_reqwidth/reqheight die finale Größe liefern.
     """
@@ -239,8 +243,17 @@ def center_dialog_on_parent(dialog, parent):
     py = parent.winfo_rooty()
     pw = parent.winfo_width()
     ph = parent.winfo_height()
+    try:
+        max_w, max_h = dialog.wm_maxsize()
+    except tk.TclError:
+        max_w = dialog.winfo_screenwidth()
+        max_h = dialog.winfo_screenheight()
     x = px + max(0, (pw - w) // 2)
     y = py + max(0, (ph - h) // 2)
+    # max(0, max_* - *) sorgt dafür, dass bei einem Dialog größer als der
+    # Bildschirm der obere/linke Rand sichtbar bleibt (statt negativem Offset).
+    x = max(0, min(x, max(0, max_w - w)))
+    y = max(0, min(y, max(0, max_h - h)))
     dialog.geometry(f"+{x}+{y}")
 
 
