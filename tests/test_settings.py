@@ -231,3 +231,36 @@ def test_migration_empty_string_legacy_skipped(tmp_path):
     for day in WEEKDAY_KEYS:
         assert s.get(f"default_start_{day}") == "08:00"
         assert s.get(f"default_end_{day}") == "16:00"
+
+
+# --- show_weekend (1.11.1) ---
+
+
+def test_show_weekend_default_is_true(tmp_settings):
+    """Frische Settings haben show_weekend=True (Backward-Compat)."""
+    assert tmp_settings.get("show_weekend") is True
+
+
+def test_show_weekend_persists_false(tmp_path):
+    """set(False) persistiert über einen Reload."""
+    path = str(tmp_path / "settings.json")
+    s1 = Settings(path)
+    s1.set("show_weekend", False)
+    s2 = Settings(path)
+    assert s2.get("show_weekend") is False
+
+
+def test_show_weekend_string_falls_back_to_default(tmp_path, caplog):
+    """JSON mit String 'false' wird von _coerce abgelehnt → Default True."""
+    path = _write_json(tmp_path, json.dumps({"show_weekend": "false"}))
+    with caplog.at_level("WARNING"):
+        s = Settings(path)
+    assert s.get("show_weekend") is True
+    assert any("show_weekend" in rec.message for rec in caplog.records)
+
+
+def test_show_weekend_missing_key_uses_default(tmp_path):
+    """settings.json ohne show_weekend → Default True (alte Installationen)."""
+    path = _write_json(tmp_path, json.dumps({"email": "a@b.de"}))
+    s = Settings(path)
+    assert s.get("show_weekend") is True

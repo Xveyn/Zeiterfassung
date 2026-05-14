@@ -32,6 +32,7 @@ DEFAULTS = {
     "default_end_fri": "16:00",
     "default_end_sat": "16:00",
     "default_end_sun": "16:00",
+    "show_weekend": True,
 }
 
 _COERCE_FAILED = object()
