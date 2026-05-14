@@ -244,6 +244,86 @@ def center_dialog_on_parent(dialog, parent):
     dialog.geometry(f"+{x}+{y}")
 
 
+def _hex_to_colorref(hex_color: str) -> int:
+    """Wandelt '#RRGGBB' in Win32 COLORREF (0x00BBGGRR) — Win32 erwartet
+    BGR-Byteorder, nicht RGB."""
+    r = int(hex_color[1:3], 16)
+    g = int(hex_color[3:5], 16)
+    b = int(hex_color[5:7], 16)
+    return (b << 16) | (g << 8) | r
+
+
+def apply_dark_titlebar(window):
+    """Färbt auf Windows 11 (22H2+) die Titelleiste in den App-Theme-Farben.
+
+    Nutzt DWM-Attribute (alle Win11 22H2+):
+      - DWMWA_CAPTION_COLOR (35): Titelleisten-Hintergrund → `BG`
+      - DWMWA_TEXT_COLOR    (36): Titelleisten-Schrift     → `TEXT`
+      - DWMWA_BORDER_COLOR  (34): Fensterrand              → `BG`
+
+    Win10-Fallback: DWMWA_USE_IMMERSIVE_DARK_MODE (Index 20 ab Win10 20H1,
+    19 davor) — gibt nur Default-Dark statt Custom-Color, aber besser als
+    nichts.
+
+    macOS/Linux: No-op (System-Theme bzw. WM zuständig).
+
+    Wichtig: Tk setzt nach Toplevel-Erzeugung weitere Fenster-Properties
+    (iconbitmap, resizable, geometry), die das DWM-Attribut clobbern. Daher
+    via `window.after(100, ...)` deferren bis nach dem Tk-Init. SET allein
+    triggert auf Win11 24H2 keinen Frame-Redraw, also explizit per
+    `SetWindowPos(SWP_FRAMECHANGED)` nachschieben.
+    """
+    if platform.system() != "Windows":
+        return
+    window.after(100, lambda: _apply_dark_titlebar_now(window))
+
+
+def _apply_dark_titlebar_now(window):
+    try:
+        import ctypes
+        u32 = ctypes.windll.user32
+        GWL_STYLE = -16
+        WS_CAPTION = 0x00C00000
+        GA_ROOT = 2
+        try:
+            get_long = u32.GetWindowLongPtrW
+        except AttributeError:
+            get_long = u32.GetWindowLongW
+
+        wid = window.winfo_id()
+        # winfo_id() ist auf Tk-Toplevels die innere Child-HWND (WS_CHILD).
+        # Die echte WS_CAPTION-Top-Level ist der GA_ROOT-Ancestor.
+        hwnd = u32.GetAncestor(wid, GA_ROOT) or wid
+        if not (get_long(hwnd, GWL_STYLE) & WS_CAPTION):
+            return
+
+        set_attr = ctypes.windll.dwmapi.DwmSetWindowAttribute
+        bg = ctypes.c_int(_hex_to_colorref(BG))
+        text = ctypes.c_int(_hex_to_colorref(TEXT))
+
+        DWMWA_BORDER_COLOR, DWMWA_CAPTION_COLOR, DWMWA_TEXT_COLOR = 34, 35, 36
+        DWMWA_USE_IMMERSIVE_DARK_MODE = 20
+
+        set_attr(hwnd, DWMWA_CAPTION_COLOR, ctypes.byref(bg), ctypes.sizeof(bg))
+        set_attr(hwnd, DWMWA_TEXT_COLOR, ctypes.byref(text), ctypes.sizeof(text))
+        set_attr(hwnd, DWMWA_BORDER_COLOR, ctypes.byref(bg), ctypes.sizeof(bg))
+
+        # Win10-Fallback (Default-Dark statt Light)
+        dark = ctypes.c_int(1)
+        for attribute in (20, 19):
+            if set_attr(hwnd, attribute, ctypes.byref(dark), ctypes.sizeof(dark)) == 0:
+                break
+
+        # SET allein reicht auf Win11 nicht, wenn das Fenster bereits gemappt
+        # ist — Frame ist gecached. SWP_FRAMECHANGED zwingt Recalc der
+        # Non-Client-Area, DWM zeichnet sie mit den neuen Attributen neu.
+        SWP_NOSIZE, SWP_NOMOVE, SWP_NOZORDER, SWP_NOACTIVATE, SWP_FRAMECHANGED = 0x1, 0x2, 0x4, 0x10, 0x20
+        u32.SetWindowPos(hwnd, 0, 0, 0, 0, 0,
+            SWP_NOSIZE | SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED)
+    except Exception:
+        pass
+
+
 def icon_button(parent, text, command, fg=ACCENT, hover_fg=None):
     """Compact icon-style button used in the header (‹ › ⚙)."""
     if hover_fg is None:
