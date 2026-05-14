@@ -193,13 +193,22 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
         bg=BG, fg=TEXT, selectcolor=CELL_BG,
         activebackground=BG, activeforeground=TEXT,
         cursor="hand2",
-    ).grid(row=17, column=0, columnspan=2, padx=10, pady=(0, 8), sticky="w")
+    ).grid(row=17, column=0, columnspan=2, padx=10, pady=(0, 0), sticky="w")
+
+    always_on_top_var = tk.BooleanVar(value=settings.get("always_on_top"))
+    tk.Checkbutton(
+        dialog, text="Immer im Vordergrund",
+        variable=always_on_top_var, font=FONT,
+        bg=BG, fg=TEXT, selectcolor=CELL_BG,
+        activebackground=BG, activeforeground=TEXT,
+        cursor="hand2",
+    ).grid(row=18, column=0, columnspan=2, padx=10, pady=(0, 8), sticky="w")
 
     # --- Synchronisation (Multi-Device-Sync, Phase 4.6) ---
     tk.Label(
         dialog, text="— Synchronisation —", font=FONT_BOLD,
         bg=BG, fg=TEXT_MUTED,
-    ).grid(row=18, column=0, columnspan=2, padx=10, pady=(16, 4))
+    ).grid(row=19, column=0, columnspan=2, padx=10, pady=(16, 4))
 
     var_sync = tk.BooleanVar(value=settings.get("sync_enabled"))
 
@@ -252,20 +261,20 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
         cursor="hand2",
         command=_on_sync_toggled,
     )
-    cb_sync.grid(row=19, column=0, columnspan=2, padx=10, pady=(4, 0), sticky="w")
+    cb_sync.grid(row=20, column=0, columnspan=2, padx=10, pady=(4, 0), sticky="w")
 
     device_id = settings.get("device_id") or "(noch nicht gesetzt)"
     device_id_short = device_id[:8] + "…" if len(device_id) > 8 else device_id
     tk.Label(
         dialog, text=f"Geräte-ID: {device_id_short}", font=FONT_SMALL,
         bg=BG, fg=TEXT_MUTED,
-    ).grid(row=20, column=0, columnspan=2, padx=10, pady=(2, 0), sticky="w")
+    ).grid(row=21, column=0, columnspan=2, padx=10, pady=(2, 0), sticky="w")
 
     last = settings.get("last_pull_at") or "noch nie"
     tk.Label(
         dialog, text=f"Letzte Synchronisation: {last}", font=FONT_SMALL,
         bg=BG, fg=TEXT_MUTED,
-    ).grid(row=21, column=0, columnspan=2, padx=10, pady=(2, 4), sticky="w")
+    ).grid(row=22, column=0, columnspan=2, padx=10, pady=(2, 4), sticky="w")
 
     unresolved = 0
     if conflicts_store is not None:
@@ -280,7 +289,7 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
             f"Konflikte ansehen ({unresolved})",
             _open_conflicts_dialog,
             padx=12, pady=2,
-        ).grid(row=22, column=0, columnspan=2, padx=10, pady=(0, 8), sticky="w")
+        ).grid(row=23, column=0, columnspan=2, padx=10, pady=(0, 8), sticky="w")
 
     def save_settings():
         for key, lbl in zip(WEEKDAY_KEYS, DAYS_DE):
@@ -337,6 +346,7 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
             "hourly_rate": hourly_rate,
             "state": selected_code,
             "show_weekend": show_weekend_var.get(),
+            "always_on_top": always_on_top_var.get(),
         }
         for key in WEEKDAY_KEYS:
             updates[f"default_start_{key}"] = start_vars[key].get()
@@ -351,7 +361,7 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
         dialog.destroy()
 
     btn_frame = tk.Frame(dialog, bg=BG)
-    btn_frame.grid(row=23, column=0, columnspan=2, pady=12)
+    btn_frame.grid(row=24, column=0, columnspan=2, pady=12)
 
     primary_button(btn_frame, "Speichern", save_settings).pack(side=tk.LEFT, padx=5)
     secondary_button(btn_frame, "Abbrechen", dialog.destroy).pack(side=tk.LEFT, padx=5)

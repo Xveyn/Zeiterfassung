@@ -80,6 +80,7 @@ class App:
         self._build_header()
         self._build_grid()
         self._build_footer()
+        self._apply_always_on_top()
         self.root.bind("<Left>", lambda e: self._prev())
         self.root.bind("<Right>", lambda e: self._next())
         self._refresh()
@@ -342,12 +343,24 @@ class App:
         def _on_change():
             self._refresh()
             self._update_sync_status_label()
+            self._apply_always_on_top()
         open_settings_dialog(
             self.root, self.settings, self.base_path,
             on_change=_on_change,
             conflicts_store=self.conflicts_store,
             storage=self.storage,
         )
+
+    def _apply_always_on_top(self):
+        """Tk-übergreifender Topmost-Toggle. Funktioniert auf Windows, macOS
+        und Linux (X11/Wayland mit gängigen WMs) identisch — kein OS-Sniffing
+        nötig. Bei deaktivierter Option wird das Attribut explizit auf False
+        gesetzt, damit ein Toggle wirklich zurücksetzt."""
+        try:
+            self.root.attributes("-topmost", bool(self.settings.get("always_on_top")))
+        except tk.TclError:
+            # Sehr exotische WMs ohne topmost-Unterstützung — silently ignore.
+            pass
 
     def _refresh(self):
         if self.view_mode == "month":
