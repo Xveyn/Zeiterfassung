@@ -196,6 +196,22 @@ def get_gmail_service(credentials_path="credentials.json", token_path="token.jso
 
     if os.path.exists(token_path):
         creds = Credentials.from_authorized_user_file(token_path, scopes)
+        # Scope-Upgrade-Erkennung: wenn der gespeicherte Token nicht alle
+        # angeforderten Scopes hat (typisch nach Feature-Update), zwingt wir
+        # einen frischen OAuth-Flow. Sonst bleibt der Token "valid" und der
+        # User wundert sich, warum eine Scope-abhängige Funktion 401/403 wirft.
+        try:
+            import json as _json
+            with open(token_path, "r", encoding="utf-8") as f:
+                granted = set(_json.load(f).get("scopes") or [])
+            if not set(scopes).issubset(granted):
+                creds = None
+                try:
+                    os.remove(token_path)
+                except OSError:
+                    pass
+        except Exception:
+            pass
 
     if creds and creds.expired and creds.refresh_token:
         try:
