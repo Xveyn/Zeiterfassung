@@ -28,6 +28,32 @@ class Storage:
             stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
             os.replace(self.filepath, f"{self.filepath}.corrupt-{stamp}")
             self._data = {}
+            return
+        self._migrate_legacy_entries()
+
+    def _migrate_legacy_entries(self):
+        """Spendet alten Einträgen ohne modified_at/device_id/deleted die
+        Sync-Metadaten. Idempotent: Einträge mit modified_at bleiben unberührt.
+        modified_at wird aus der File-mtime abgeleitet (best lower bound)."""
+        try:
+            mtime = os.path.getmtime(self.filepath)
+        except OSError:
+            mtime = None
+        fallback_modified_at = (
+            datetime.datetime.fromtimestamp(mtime, datetime.timezone.utc)
+            .strftime("%Y-%m-%dT%H:%M:%SZ")
+            if mtime is not None
+            else _utc_now_iso()
+        )
+        for date, entry in list(self._data.items()):
+            if not isinstance(entry, dict):
+                continue
+            if "modified_at" in entry:
+                continue
+            entry.setdefault("pause", 0)
+            entry["modified_at"] = fallback_modified_at
+            entry["device_id"] = self.device_id
+            entry["deleted"] = False
 
     def _save_to_disk(self):
         tmp = self.filepath + ".tmp"
