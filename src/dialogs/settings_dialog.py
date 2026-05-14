@@ -3,6 +3,7 @@ import os
 import tkinter as tk
 import traceback
 from tkinter import messagebox
+from typing import Any
 
 from src.autostart import disable_autostart, enable_autostart, resolve_autostart_target
 from src.platform_open import open_folder
@@ -34,7 +35,7 @@ def open_settings_dialog(parent, settings, base_path, on_change):
     creds_path = os.path.join(base_path, "credentials.json")
 
     def label(text, row, col=0, **grid_kw):
-        kw = dict(padx=10, pady=8, sticky="w")
+        kw: dict[str, Any] = dict(padx=10, pady=8, sticky="w")
         kw.update(grid_kw)
         tk.Label(dialog, text=text, font=FONT, bg=BG, fg=TEXT).grid(row=row, column=col, **kw)
 
