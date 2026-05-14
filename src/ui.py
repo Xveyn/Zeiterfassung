@@ -578,8 +578,8 @@ class App:
         # Horizontalplatz pro Spalte — Zellen werden breiter, damit die
         # Zeit-Zeile in FONT_SMALL statt FONT_TINY lesbar dargestellt wird.
         wide_cells = not self.settings.get("show_weekend")
-        probe_width = 11 if wide_cells else 8
-        entry_time_font = FONT_SMALL if wide_cells else FONT_TINY
+        probe_width = 12 if wide_cells else 8
+        entry_time_font = FONT if wide_cells else FONT_TINY
         probe = tk.Label(new_frame, text="", font=FONT, width=probe_width, height=3)
         probe.update_idletasks()
         cell_size = (probe.winfo_reqwidth(), probe.winfo_reqheight())
@@ -645,8 +645,8 @@ class App:
         # längere Feiertagsnamen die Spalte nicht aufweiten.
         # Bei ausgeblendeten Wochenenden: breitere Zellen + größere Time-Schrift.
         wide_cells = not self.settings.get("show_weekend")
-        probe_width = 11 if wide_cells else 8
-        entry_time_font = FONT_SMALL if wide_cells else FONT_TINY
+        probe_width = 12 if wide_cells else 8
+        entry_time_font = FONT if wide_cells else FONT_TINY
         probe = tk.Label(new_frame, text="", font=FONT, width=probe_width, height=5)
         probe.update_idletasks()
         cell_size = (probe.winfo_reqwidth(), probe.winfo_reqheight())
