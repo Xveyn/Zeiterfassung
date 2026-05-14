@@ -197,3 +197,20 @@ def merge(local, remote, last_pull_at):
                 }
 
     return merged
+
+
+def build_local_doc(storage, settings, conflicts_store):
+    """Erzeugt das Sync-Doc-Format aus den lokalen Stores."""
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "entries": storage.get_all_raw(),
+        "settings": settings.get_synced_doc(),
+        "conflicts": conflicts_store.get_all(),
+    }
+
+
+def apply_merged_doc(merged_doc, storage, settings, conflicts_store):
+    """Schreibt das Merge-Ergebnis zurück in die lokalen Stores."""
+    storage.apply_merge(merged_doc.get("entries", {}))
+    settings.apply_synced(merged_doc.get("settings", {}))
+    conflicts_store.save_all(merged_doc.get("conflicts", []))

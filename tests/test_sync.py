@@ -1,4 +1,9 @@
-from src.sync import _merge_one, merge
+import pytest
+
+from src.conflicts_store import ConflictsStore
+from src.settings import Settings
+from src.storage import Storage
+from src.sync import _merge_one, apply_merged_doc, build_local_doc, merge
 
 
 def _e(start, end, pause, modified_at, device_id="d", deleted=False):
@@ -261,3 +266,37 @@ def test_merge_applies_resolved_setting_conflict():
     merged = merge(local, _doc(), "2026-05-13T00:00:00Z")
     assert merged["settings"]["recipient"]["value"] == "final@x.de"
     assert merged["settings"]["recipient"]["device_id"] == "A"
+
+
+# --- Task 2.7: build_local_doc + apply_merged_doc ---
+
+def test_build_local_doc_includes_storage_settings_conflicts(tmp_path):
+    storage = Storage(str(tmp_path / "z.json"), device_id="A")
+    storage.save("2026-05-14", "08:00", "16:00", 30)
+    settings = Settings(str(tmp_path / "s.json"))
+    settings.device_id_for_sync = "A"
+    settings.set_synced("recipient", "a@b.de")
+    conflicts = ConflictsStore(str(tmp_path / "c.json"))
+    conflicts.save_all([{"id": "c-1", "kind": "entry", "key": "D", "resolved": False}])
+
+    doc = build_local_doc(storage, settings, conflicts)
+    assert "2026-05-14" in doc["entries"]
+    assert doc["settings"]["recipient"]["value"] == "a@b.de"
+    assert doc["conflicts"][0]["id"] == "c-1"
+    assert doc["schema_version"] == 1
+
+
+def test_round_trip_no_loss(tmp_path):
+    storage = Storage(str(tmp_path / "z.json"), device_id="A")
+    storage.save("2026-05-14", "08:00", "16:00", 30)
+    settings = Settings(str(tmp_path / "s.json"))
+    settings.device_id_for_sync = "A"
+    settings.set_synced("name", "Max")
+    conflicts = ConflictsStore(str(tmp_path / "c.json"))
+
+    local = build_local_doc(storage, settings, conflicts)
+    merged = merge(local, _doc(), "2025-01-01T00:00:00Z")
+    apply_merged_doc(merged, storage, settings, conflicts)
+
+    assert storage.get("2026-05-14") == {"start": "08:00", "end": "16:00", "pause": 30}
+    assert settings.get("name") == "Max"
