@@ -10,19 +10,17 @@ from email.header import Header
 GMAIL_SEND_SCOPE = "https://www.googleapis.com/auth/gmail.send"
 DRIVE_APPDATA_SCOPE = "https://www.googleapis.com/auth/drive.appdata"
 USERINFO_EMAIL_SCOPE = "https://www.googleapis.com/auth/userinfo.email"
-# Identity-Scope, der automatisch das User-Profil-Endpoint öffnet.
-OPENID_SCOPE = "openid"
 
 
 def get_scopes(sync_enabled):
     """Liefert die OAuth-Scopes der App.
 
-    `userinfo.email` + `openid` sind Identity-Scopes (non-sensitive), damit
-    wir den Absender im Settings-Dialog anzeigen können — Google liefert
-    diese Scopes außerdem oft implizit zurück, sodass der Match-Check in
-    google-auth keine Probleme macht.
+    `userinfo.email` (Identity-Scope, non-sensitive) erlaubt die Anzeige
+    des Absenders im Settings-Dialog. `openid` wurde absichtlich entfernt,
+    weil Google den Scope mitunter normalisiert/strippt, was zu Scope-
+    Mismatch-Warnings in google-auth führt.
     """
-    scopes = [GMAIL_SEND_SCOPE, USERINFO_EMAIL_SCOPE, OPENID_SCOPE]
+    scopes = [GMAIL_SEND_SCOPE, USERINFO_EMAIL_SCOPE]
     if sync_enabled:
         scopes.append(DRIVE_APPDATA_SCOPE)
     return scopes
@@ -45,6 +43,9 @@ def fetch_user_email(token_path="token.json", sync_enabled=False):
     oder Fehler. Diese Funktion soll im Hintergrundthread laufen, weil sie
     HTTP-Calls macht.
     """
+    import logging
+    log = logging.getLogger(__name__)
+
     if not os.path.exists(token_path):
         return ""
     try:
@@ -59,10 +60,23 @@ def fetch_user_email(token_path="token.json", sync_enabled=False):
                 creds.refresh(Request())
                 _write_token(creds, token_path)
             except Exception:
+                log.warning("fetch_user_email: token refresh failed")
                 return ""
         if not creds.valid or not creds.token:
+            log.warning("fetch_user_email: no valid token after refresh")
             return ""
+        # Diagnose: welche Scopes hat der Token tatsächlich? google-auth's
+        # creds.scopes spiegelt nur den im Konstruktor übergebenen Wert wider —
+        # die GRANTED Scopes stehen im JSON-File.
+        try:
+            import json as _json
+            with open(token_path, "r", encoding="utf-8") as f:
+                _td = _json.load(f)
+            log.info("fetch_user_email: granted scopes = %r", _td.get("scopes"))
+        except Exception:
+            pass
     except Exception:
+        log.exception("fetch_user_email: setup failed")
         return ""
 
     # Pfad 1: Gmail-API getProfile mit dem bereits autorisierten Service.
@@ -90,8 +104,10 @@ def fetch_user_email(token_path="token.json", sync_enabled=False):
         )
         with urllib.request.urlopen(url, timeout=10) as resp:
             data = json.load(resp)
+        log.info("fetch_user_email: tokeninfo response keys = %r", list(data.keys()))
         return (data.get("email") or "")
     except Exception:
+        log.exception("fetch_user_email: tokeninfo lookup failed")
         return ""
 
 

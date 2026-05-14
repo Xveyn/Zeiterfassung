@@ -76,7 +76,6 @@ def test_get_scopes_without_sync_includes_gmail_and_userinfo():
     scopes = get_scopes(sync_enabled=False)
     assert "https://www.googleapis.com/auth/gmail.send" in scopes
     assert "https://www.googleapis.com/auth/userinfo.email" in scopes
-    assert "openid" in scopes
     assert "https://www.googleapis.com/auth/drive.appdata" not in scopes
 
 
