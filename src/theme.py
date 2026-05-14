@@ -217,6 +217,33 @@ def set_toggle_active(btn: _LabelButton, active):
     btn._label.config(bg=c["bg"], fg=c["fg"])
 
 
+_FOCUSABLE_INPUT_CLASSES = frozenset({
+    "Entry", "Text", "Checkbutton", "Spinbox", "Listbox", "Radiobutton",
+    "TCombobox", "TEntry", "TSpinbox", "TCheckbutton",
+})
+
+
+def attach_unfocus_on_click(dialog):
+    """Klick auf nicht-interaktive Bereiche zieht den Fokus weg von
+    Eingabefeldern. Sonst bleibt der rote Fokusrand (`highlightcolor=ACCENT`)
+    auf einem Entry sichtbar, auch wenn der User längst nicht mehr darin
+    schreibt.
+
+    Tk's Standard-bindtags enthalten den Toplevel bei jedem Descendant —
+    eine einzige `<Button-1>`-Bindung auf dem Dialog fängt daher alle Klicks
+    im Dialog. Im Handler filtern wir nach Widget-Klasse: fokussierbare
+    Eingabe-Widgets (Entry, Text, Checkbutton, Combobox, …) ziehen den
+    Fokus selbst und sollen ihn behalten; bei allen anderen Klicks (Label,
+    Frame-Bg, Frame+Label-Button) ziehen wir den Fokus auf den Dialog.
+    """
+    def _unfocus(event):
+        if event.widget.winfo_class() in _FOCUSABLE_INPUT_CLASSES:
+            return
+        dialog.focus_set()
+
+    dialog.bind("<Button-1>", _unfocus, add="+")
+
+
 def center_dialog_on_parent(dialog, parent):
     """Position a Toplevel dialog over its parent's screen rect.
 
