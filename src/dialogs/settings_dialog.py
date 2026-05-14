@@ -210,6 +210,7 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
         cb_sync.config(state="normal")
         if err is None:
             settings.set("sync_enabled", True)
+            on_change()
             return
         messagebox.showerror(
             "Synchronisation aktivieren",
@@ -241,6 +242,7 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
             return
         if not new_state and settings.get("sync_enabled"):
             settings.set("sync_enabled", False)
+            on_change()
 
     cb_sync = tk.Checkbutton(
         dialog, text="Mit Google Drive synchronisieren",

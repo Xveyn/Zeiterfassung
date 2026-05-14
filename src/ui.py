@@ -242,13 +242,14 @@ class App:
             fg=TEXT_MUTED, hover_fg=TEXT,
         ).pack(side=tk.RIGHT)
 
-        icon_button(frame, "\u203a", self._next).pack(side=tk.RIGHT, padx=(0, 5))
+        self._next_button = icon_button(frame, "\u203a", self._next)
+        self._next_button.pack(side=tk.RIGHT, padx=(0, 5))
 
-        # --- Sync-Button und Status (Multi-Device-Sync, Phase 4.5) ---
+        # --- Sync-Button und Status (Multi-Device-Sync) ---
+        # Widgets werden erzeugt, aber nur gepackt wenn sync_enabled. Sync
+        # ist opt-in; bei deaktiviertem Sync soll der Header unver\u00e4ndert wirken.
         self.sync_button = icon_button(frame, "\u27f3", self._on_sync_clicked)
-        self.sync_button.pack(side=tk.RIGHT, padx=(4, 0))
         self.sync_status_label = tk.Label(frame, text="", bg=BG, fg=TEXT_MUTED, font=FONT_SMALL)
-        self.sync_status_label.pack(side=tk.RIGHT, padx=(8, 4))
         self._update_sync_status_label()
 
     def _build_grid(self):
@@ -338,9 +339,12 @@ class App:
         set_toggle_active(self.btn_week, self.view_mode == "week")
 
     def _open_settings(self):
+        def _on_change():
+            self._refresh()
+            self._update_sync_status_label()
         open_settings_dialog(
             self.root, self.settings, self.base_path,
-            on_change=self._refresh,
+            on_change=_on_change,
             conflicts_store=self.conflicts_store,
             storage=self.storage,
         )
@@ -738,9 +742,20 @@ class App:
     def _update_sync_status_label(self):
         if not hasattr(self, "sync_status_label"):
             return
-        if not self.settings.get("sync_enabled"):
+        enabled = self.settings.get("sync_enabled")
+        if not enabled:
+            # Widgets verstecken, falls vorher sichtbar.
+            self.sync_button.pack_forget()
+            self.sync_status_label.pack_forget()
             self.sync_status_label.config(text="")
             return
+        # Sichtbar machen, falls vorher versteckt. Vor dem ›-Button einsortieren,
+        # damit Layout-Reihenfolge identisch zum Build-Time-Pack ist.
+        if not self.sync_button.winfo_ismapped():
+            self.sync_button.pack(side=tk.RIGHT, padx=(4, 0), before=self._next_button)
+            self.sync_status_label.pack(
+                side=tk.RIGHT, padx=(8, 4), before=self.sync_button
+            )
         n = 0
         if self.conflicts_store is not None:
             n = self.conflicts_store.count_unresolved()
