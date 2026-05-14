@@ -10,10 +10,25 @@
   erscheinen beide Versionen in einem Konflikt-Dialog zur manuellen Auswahl.
 - Sync-Button und Status-Anzeige im Header (nur sichtbar bei aktivem Sync).
 - Geräte-ID wird einmal pro Installation generiert (siehe Einstellungen).
+- Absender-E-Mail wird automatisch aus dem authentifizierten Google-Konto übernommen — kein manuelles Eintragen mehr. „Aktualisieren"-Button in den Einstellungen, falls der Scope noch fehlt oder das Konto gewechselt wurde
+- Neue Einstellung „Immer im Vordergrund" — App-Fenster bleibt über anderen Anwendungen
+- Neue Einstellung „Beim Schließen in den Infobereich minimieren" (Windows + macOS) — Tray-Icon mit Anzeigen-/Beenden-Menü ersetzt das tatsächliche Beenden, bis du es willst
+- Themed Success-Popup nach erfolgreichem Mail-Versand (statt System-Messagebox)
+- Themed Bestätigungs-Dialog (Ja/Nein) beim Löschen eines Eintrags (statt System-Messagebox)
+- Dunkle Titelleiste auf Windows 11 22H2+ (über DWM)
+- Tooltip auf truncated Feiertagsnamen — Hover zeigt den vollen Namen
+
+### Geändert
+- Kalender-Spaltenbreiten sind jetzt strikt unabhängig vom Zellen-Inhalt — Einträge, Feiertage und leere Tage haben identische Pixel-Breite, kein visueller Versatz mehr je nach Text
+- Monatsansicht mit eingeblendeten Wochenenden: Zeit-Schrift in Eintragszellen größer (8pt statt 7pt) für bessere Lesbarkeit; Feiertagsnamen mit kleinerem Font (im 7-Spalten-Modus)
+- Wochenansicht: Feiertagsnamen werden enger truncated, sodass „Christi Himmelfahrt" nicht mehr über den Zellrand läuft
+- Settings-Dialog: Klick auf nicht-interaktive Bereiche (Labels, Frame-Bg) entfernt den roten Fokusrand vom zuletzt aktiven Eingabefeld
+- Dialog-Position wird an die Bildschirmgrenzen geklammert — das Settings-Modal wird nicht mehr unten/oben abgeschnitten, wenn das Hauptfenster nah am Bildschirmrand sitzt (auf Windows respektiert die Klammerung die Taskleiste)
+- Fehler beim Sync-Push beim Schließen werden jetzt als Messagebox sichtbar (vorher still verschluckt)
 
 ### Hinweise
-- Aktivierung erfordert einen erneuten Google-OAuth-Consent mit erweitertem Scope
-  (`drive.appdata`, non-sensitive).
+- Aktivierung erfordert einen erneuten Google-OAuth-Consent mit erweiterten Scopes
+  (`drive.appdata` für Sync, `userinfo.email` für Absender-Auto-Fetch — beide non-sensitive).
 - Beim Aufräumen alter Einträge wachsen Tombstone-Marker derzeit unbeschränkt —
   siehe `docs/known-limitations.md`.
 
