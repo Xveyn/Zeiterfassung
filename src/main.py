@@ -7,6 +7,13 @@ import tkinter as tk
 import traceback
 import uuid
 
+# OAuthlib bricht den Flow ab, wenn die zurückgegebenen Scopes nicht exakt mit
+# den angeforderten matchen. Google fügt aber bei Identity-Scopes wie
+# userinfo.email automatisch 'openid' hinzu — die Lib wirft dann
+# "Scope has changed". Diese Env-Variable lockert den Check; muss VOR dem
+# Import von google_auth_oauthlib stehen (frühester Punkt: main.py).
+os.environ.setdefault("OAUTHLIB_RELAX_TOKEN_SCOPE", "1")
+
 from src.conflicts_store import ConflictsStore
 from src.logging_setup import setup_logging
 from src.paths import get_base_path
