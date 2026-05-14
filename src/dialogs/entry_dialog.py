@@ -18,14 +18,31 @@ def open_entry_dialog(parent, date_str, storage, settings, on_change):
     on_change is invoked after successful save or delete so the caller
     can refresh the calendar view.
     """
+    entry = storage.get(date_str)
+
+    # Feiertags-Warnung beim Öffnen, nur beim Anlegen (nicht beim Edit)
+    if entry is None:
+        state = settings.get("state")
+        if state:
+            day = datetime.date.fromisoformat(date_str)
+            feiertage = get_holidays(state, day.year)
+            if day in feiertage:
+                date_de = day.strftime("%d.%m.%Y")
+                confirm = themed_askyesno(
+                    parent,
+                    "Feiertag",
+                    f"Der {date_de} ist {feiertage[day]} (Feiertag).\n\n"
+                    "Trotzdem Eintrag anlegen?",
+                )
+                if not confirm:
+                    return
+
     dialog = tk.Toplevel(parent)
     dialog.title(date_str)
     dialog.resizable(False, False)
     dialog.grab_set()
     dialog.configure(bg=BG)
     apply_dark_titlebar(dialog)
-
-    entry = storage.get(date_str)
 
     apply_combobox_style(dialog)
 
@@ -60,23 +77,6 @@ def open_entry_dialog(parent, date_str, storage, settings, on_change):
         if not ok:
             messagebox.showerror("Fehler", msg, parent=dialog)
             return
-
-        # Feiertags-Warnung nur beim Anlegen, nicht beim Edit (entry is None)
-        if entry is None:
-            state = settings.get("state")
-            if state:
-                day = datetime.date.fromisoformat(date_str)
-                feiertage = get_holidays(state, day.year)
-                if day in feiertage:
-                    date_de = day.strftime("%d.%m.%Y")
-                    confirm = themed_askyesno(
-                        dialog,
-                        "Feiertag",
-                        f"Der {date_de} ist {feiertage[day]} (Feiertag).\n\n"
-                        "Trotzdem Eintrag anlegen?",
-                    )
-                    if not confirm:
-                        return
 
         storage.save(date_str, start_var.get(), end_var.get(), pause=int(pause_var.get()))
         dialog.destroy()
