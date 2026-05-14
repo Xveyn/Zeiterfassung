@@ -33,6 +33,13 @@ class _Tooltip:
         self.tip = tk.Toplevel(self.widget)
         self.tip.wm_overrideredirect(True)
         self.tip.wm_geometry(f"+{x}+{y}")
+        # Falls das Hauptfenster topmost ist (Setting 'Immer im Vordergrund'),
+        # muss das Tooltip-Toplevel ebenfalls topmost sein — sonst landet es
+        # hinter dem Mainwindow und der User sieht nichts.
+        try:
+            self.tip.attributes("-topmost", True)
+        except tk.TclError:
+            pass
         tk.Label(
             self.tip,
             text=self.text,
