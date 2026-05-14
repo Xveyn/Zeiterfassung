@@ -34,22 +34,21 @@ SCOPES = [GMAIL_SEND_SCOPE]
 
 
 def fetch_user_email(token_path="token.json", sync_enabled=False):
-    """Liest die E-Mail-Adresse des authentifizierten Users via OAuth2-userinfo.
+    """Liest die E-Mail-Adresse des authentifizierten Users.
+
+    Versucht zuerst Gmail's `users().getProfile()` (klappt in der Praxis oft
+    auch mit `gmail.send`-Scope, obwohl die Doku read-Scopes verlangt), und
+    fällt sonst auf den `tokeninfo`-Endpoint zurück, der die E-Mail aus dem
+    Access-Token meldet wenn der `userinfo.email`-Scope authorisiert ist.
 
     Liefert die E-Mail oder leeren String bei fehlendem/ungültigem Token
     oder Fehler. Diese Funktion soll im Hintergrundthread laufen, weil sie
-    einen HTTP-Call macht.
-
-    Erfordert den `userinfo.email`-Scope (Teil der App-Scopes seit 1.12.x).
-    Bei einem alten Token ohne diesen Scope fängt der except-Block den
-    Fehler und liefert leeren String — der Caller weiß dann, dass ein
-    Re-Consent fällig ist (passiert beim nächsten Mailversand automatisch).
+    HTTP-Calls macht.
     """
     if not os.path.exists(token_path):
         return ""
     try:
         from google.oauth2.credentials import Credentials
-        from googleapiclient.discovery import build
 
         creds = Credentials.from_authorized_user_file(
             token_path, get_scopes(sync_enabled)
@@ -61,11 +60,37 @@ def fetch_user_email(token_path="token.json", sync_enabled=False):
                 _write_token(creds, token_path)
             except Exception:
                 return ""
-        if not creds.valid:
+        if not creds.valid or not creds.token:
             return ""
-        service = build("oauth2", "v2", credentials=creds)
-        info = service.userinfo().get().execute()
-        return info.get("email", "") or ""
+    except Exception:
+        return ""
+
+    # Pfad 1: Gmail-API getProfile mit dem bereits autorisierten Service.
+    try:
+        from googleapiclient.discovery import build
+        service = build("gmail", "v1", credentials=creds)
+        profile = service.users().getProfile(userId="me").execute()
+        email = profile.get("emailAddress", "")
+        if email:
+            return email
+    except Exception:
+        pass
+
+    # Pfad 2: Tokeninfo — liest die E-Mail direkt aus dem Access-Token, sofern
+    # userinfo.email-Scope autorisiert ist. Kein API-Auth nötig (Token kommt
+    # als Query-Param), daher kein 401-Risiko.
+    try:
+        import json
+        import urllib.parse
+        import urllib.request
+
+        url = (
+            "https://oauth2.googleapis.com/tokeninfo?"
+            + urllib.parse.urlencode({"access_token": creds.token})
+        )
+        with urllib.request.urlopen(url, timeout=10) as resp:
+            data = json.load(resp)
+        return (data.get("email") or "")
     except Exception:
         return ""
 
