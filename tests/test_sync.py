@@ -128,3 +128,36 @@ def test_merge_no_conflict_when_only_one_side_changed():
     merged = merge(local, remote, "2026-05-10T00:00:00Z")
     assert merged["conflicts"] == []
     assert merged["entries"]["D"]["start"] == "09:00"
+
+
+# --- Task 2.4: merge() for Settings (Whitelist) ---
+
+def _s(value, modified_at, device_id="d"):
+    return {"value": value, "modified_at": modified_at, "device_id": device_id}
+
+
+def test_merge_setting_local_only():
+    local = _doc(settings={"recipient": _s("a@b.de", "2026-05-14T10:00:00Z")})
+    merged = merge(local, _doc(), "2026-05-13T00:00:00Z")
+    assert merged["settings"]["recipient"]["value"] == "a@b.de"
+
+
+def test_merge_setting_conflict_creates_setting_conflict():
+    local = _doc(settings={
+        "recipient": _s("a@b.de", "2026-05-14T09:00:00Z", "A"),
+    })
+    remote = _doc(settings={
+        "recipient": _s("x@y.de", "2026-05-14T10:00:00Z", "B"),
+    })
+    merged = merge(local, remote, "2026-05-13T00:00:00Z")
+    assert len(merged["conflicts"]) == 1
+    assert merged["conflicts"][0]["kind"] == "setting"
+    assert merged["conflicts"][0]["key"] == "recipient"
+
+
+def test_merge_setting_ignores_non_whitelisted():
+    """Settings außerhalb der SYNCED_SETTING_KEYS werden im Merge ignoriert."""
+    local = _doc(settings={"autostart": _s(True, "2026-05-14T10:00:00Z")})
+    remote = _doc(settings={"autostart": _s(False, "2026-05-14T11:00:00Z")})
+    merged = merge(local, remote, "2026-05-13T00:00:00Z")
+    assert "autostart" not in merged["settings"]

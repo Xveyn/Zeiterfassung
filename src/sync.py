@@ -108,5 +108,16 @@ def merge(local, remote, last_pull_at):
         if conflict is not None:
             new_conflicts.append(conflict)
 
+    # Settings (Whitelist)
+    for key in SYNCED_SETTING_KEYS:
+        l = local.get("settings", {}).get(key)
+        r = remote.get("settings", {}).get(key)
+        winner, conflict = _merge_one(l, r, last_pull_at,
+                                       equal_fn=_values_equal_setting, kind="setting", key=key)
+        if winner is not None:
+            merged["settings"][key] = winner
+        if conflict is not None:
+            new_conflicts.append(conflict)
+
     merged["conflicts"] = new_conflicts
     return merged
