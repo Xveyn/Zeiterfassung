@@ -172,7 +172,10 @@ def open_send_dialog(parent, storage, settings, base_path):
 
         try:
             pdf_bytes = generate_pdf(date_from, date_to, entries, name=settings.get("name"))
-            service = get_gmail_service(credentials_path, token_path)
+            service = get_gmail_service(
+                credentials_path, token_path,
+                sync_enabled=settings.get("sync_enabled"),
+            )
             subject = (
                 settings.get("mail_subject")
                 .replace("{zeitraum}", label)
@@ -181,6 +184,15 @@ def open_send_dialog(parent, storage, settings, base_path):
             pdf_filename = f"Zeiterfassung_{date_from.strftime('%Y%m%d')}_{date_to.strftime('%Y%m%d')}.pdf"
             send_email(service, recipient, subject, html,
                        pdf_bytes=pdf_bytes, pdf_filename=pdf_filename)
+            # Nach erfolgreichem Send ist der Token frisch — gute Gelegenheit,
+            # die Absender-Adresse zu cachen.
+            try:
+                from src.mail import fetch_user_email
+                email = fetch_user_email(token_path, sync_enabled=settings.get("sync_enabled"))
+                if email and email != settings.get("sender_email"):
+                    settings.set("sender_email", email)
+            except Exception:
+                logging.getLogger(__name__).exception("sender_email fetch after send failed")
             dialog.destroy()
             themed_showinfo(
                 parent,

@@ -375,6 +375,11 @@ class App:
             self._update_sync_status_label()
             self._apply_always_on_top()
             self._apply_tray_setting()
+            # Nach jeder Settings-Speicherung den sender_email-Fetch nochmal
+            # anstoßen. Damit erscheint die Absender-Adresse automatisch nach
+            # Sync-Aktivierung (frischer Token mit userinfo.email-Scope), ohne
+            # dass der User den "Aktualisieren"-Button drücken muss.
+            self._proactive_sender_email_fetch()
         open_settings_dialog(
             self.root, self.settings, self.base_path,
             on_change=_on_change,
