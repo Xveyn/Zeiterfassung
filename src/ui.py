@@ -350,19 +350,24 @@ class App:
                 font=FONT_HEADER_SMALL, width=32,
             )
             self._refresh_week()
-        # Geometry nur beim First-Render und bei View-Wechsel neu setzen.
-        # Innerhalb derselben View ist die natürliche Größe seit Pad- und
-        # Minsize-Fix konstant; ein erneuter `geometry("")`-Aufruf triggert
-        # trotzdem einen WM-Repaint und erzeugt sichtbares Flackern.
-        if getattr(self, "_last_refresh_view", None) != self.view_mode:
+        # Geometry nur beim First-Render, bei View-Wechsel und bei Wechsel der
+        # sichtbaren Spaltenzahl (show_weekend-Toggle) neu setzen. Innerhalb
+        # derselben Kombination ist die natürliche Größe konstant; ein erneuter
+        # `geometry("")`-Aufruf triggert trotzdem einen WM-Repaint und erzeugt
+        # sichtbares Flackern.
+        current_cols = self._visible_day_count()
+        view_changed = getattr(self, "_last_refresh_view", None) != self.view_mode
+        cols_changed = getattr(self, "_last_refresh_columns", None) != current_cols
+        if view_changed or cols_changed:
             self._last_refresh_view = self.view_mode
-            # Beim View-Wechsel hält der jetzt-inaktive Buffer noch den alten
-            # View (z.B. 6-Wochen-Monat während die Wochenansicht aktiv ist).
-            # Children destroyen + rowconfigure zurücksetzen reicht NICHT:
-            # Tk's reqheight-Cache des Frames bleibt auf der alten View-Höhe,
-            # `grid_container.reqheight = max(active, inactive)` zieht das
-            # Window-Resize hoch. Den Inactive-Frame komplett ersetzen umgeht
-            # den Cache — frischer Frame hat reqheight = 0.
+            self._last_refresh_columns = current_cols
+            # Beim View- oder Spalten-Wechsel hält der jetzt-inaktive Buffer
+            # noch den alten Layout-Stand. Children destroyen + rowconfigure
+            # zurücksetzen reicht NICHT: Tk's reqheight-Cache des Frames bleibt
+            # auf der alten Höhe, `grid_container.reqheight = max(active,
+            # inactive)` zieht das Window-Resize hoch. Den Inactive-Frame
+            # komplett ersetzen umgeht den Cache — frischer Frame hat
+            # reqheight = 0.
             inactive_idx = 1 - self._active_grid_idx
             self.grid_frames[inactive_idx].destroy()
             new_inactive = tk.Frame(self.grid_container, bg=BG)
