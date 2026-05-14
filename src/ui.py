@@ -788,6 +788,8 @@ class App:
         # den Zellrändern. Caller sorgt mit passendem max_name_len dafür,
         # dass der Text in die verbleibende Breite passt.
         name_lbl.pack(pady=(0, 4), padx=4)
+        if truncated != name:
+            attach_tooltip(cell, f"Feiertag: {name}")
 
         for w in (cell, day_lbl, name_lbl):
             w.bind("<Button-1>", lambda e: on_click())
