@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.12.0 — 2026-05-14
+
+### Hinzugefügt
+- Multi-Device-Sync via Google Drive (opt-in). Zeiteinträge und Mail-Settings
+  synchronisieren über einen versteckten Ordner in deinem Drive (`appDataFolder`).
+  Pull beim App-Start, Push manuell oder beim Schließen.
+- Konflikt-Behandlung: Wenn derselbe Tag auf zwei Geräten offline bearbeitet wird,
+  erscheinen beide Versionen in einem Konflikt-Dialog zur manuellen Auswahl.
+- Sync-Button und Status-Anzeige im Header (nur sichtbar bei aktivem Sync).
+- Geräte-ID wird einmal pro Installation generiert (siehe Einstellungen).
+
+### Hinweise
+- Aktivierung erfordert einen erneuten Google-OAuth-Consent mit erweitertem Scope
+  (`drive.appdata`, non-sensitive).
+- Beim Aufräumen alter Einträge wachsen Tombstone-Marker derzeit unbeschränkt —
+  siehe `docs/known-limitations.md`.
+
 ## v1.11.1
 - Neue Option in den Einstellungen: „Wochenende (Sa/So) im Kalender anzeigen". Wenn deaktiviert, fallen Sa und So aus der Monats- und Wochenansicht weg, das Fenster wird entsprechend schmaler. Bestehende Wochenend-Einträge bleiben gespeichert und werden weiterhin in Mail/PDF exportiert — nur die Kalender-Anzeige ändert sich. Default: angezeigt (kein Verhaltenssprung für Bestandsnutzer)
 - Das „Absender"-Feld in den Einstellungen wurde entfernt. Es hatte keine Wirkung — die Absender-Adresse wird zwingend vom Gmail-OAuth-Token bestimmt (`userId=me`), das eingetragene Feld wurde nie als `From:`-Header gesetzt. Ein evtl. vorhandener Wert in `settings.json` wird beim nächsten Settings-Speichern still entfernt
