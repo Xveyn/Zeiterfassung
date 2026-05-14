@@ -6,7 +6,7 @@ from src.storage import Storage
 
 @pytest.fixture
 def tmp_storage(tmp_path):
-    return Storage(str(tmp_path / "test.json"))
+    return Storage(str(tmp_path / "test.json"), device_id="test-device")
 
 def test_load_empty(tmp_storage):
     assert tmp_storage.get_all() == {}
@@ -77,3 +77,24 @@ def test_save_does_not_leave_tmp_files(tmp_path):
 
     leftovers = [p.name for p in tmp_path.iterdir() if p.name.endswith(".tmp")]
     assert leftovers == []
+
+
+def test_save_stamps_modified_at_and_device_id(tmp_path):
+    storage = Storage(str(tmp_path / "t.json"), device_id="dev-1")
+    storage.save("2026-05-14", "08:00", "16:00", pause=30)
+    raw = storage.get_all_raw()
+    assert raw["2026-05-14"]["start"] == "08:00"
+    assert raw["2026-05-14"]["device_id"] == "dev-1"
+    assert "modified_at" in raw["2026-05-14"]
+    # ISO-Format
+    assert "T" in raw["2026-05-14"]["modified_at"]
+    assert raw["2026-05-14"]["modified_at"].endswith("Z")
+
+
+def test_get_returns_user_shape_without_metadata(tmp_path):
+    """Bestehende UI-Code-Pfade dürfen sich nicht ändern: get() liefert
+    weiter {start, end, pause}, get_all() ebenso."""
+    storage = Storage(str(tmp_path / "t.json"), device_id="dev-1")
+    storage.save("2026-05-14", "08:00", "16:00", pause=30)
+    assert storage.get("2026-05-14") == {"start": "08:00", "end": "16:00", "pause": 30}
+    assert storage.get_all()["2026-05-14"] == {"start": "08:00", "end": "16:00", "pause": 30}
