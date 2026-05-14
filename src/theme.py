@@ -324,6 +324,48 @@ def _apply_dark_titlebar_now(window):
         pass
 
 
+def themed_askyesno(parent, title: str, message: str) -> bool:
+    """Modaler Ja/Nein-Dialog im App-Theme. Drop-in für `messagebox.askyesno`.
+
+    Eigener Toplevel statt der Tk-Messagebox, damit die DWM-Titelleiste
+    (apply_dark_titlebar) und die Theme-Farben angewendet werden können —
+    `tkinter.messagebox.*` ist eine Black-Box ohne Customization-Hooks.
+    """
+    dialog = tk.Toplevel(parent)
+    dialog.title(title)
+    dialog.resizable(False, False)
+    dialog.configure(bg=BG)
+    apply_dark_titlebar(dialog)
+
+    result = {"value": False}
+
+    tk.Label(
+        dialog, text=message, font=FONT, bg=BG, fg=TEXT,
+        wraplength=380, justify="left",
+    ).pack(padx=24, pady=(20, 14))
+
+    def click_yes():
+        result["value"] = True
+        dialog.destroy()
+
+    def click_no():
+        dialog.destroy()
+
+    btn_frame = tk.Frame(dialog, bg=BG)
+    btn_frame.pack(pady=(0, 18))
+    primary_button(btn_frame, "Ja", click_yes).pack(side=tk.LEFT, padx=6)
+    secondary_button(btn_frame, "Nein", click_no).pack(side=tk.LEFT, padx=6)
+
+    dialog.bind("<Return>", lambda e: click_yes())
+    dialog.bind("<Escape>", lambda e: click_no())
+    dialog.protocol("WM_DELETE_WINDOW", click_no)
+
+    center_dialog_on_parent(dialog, parent)
+    dialog.grab_set()
+    dialog.wait_window()
+    return result["value"]
+
+
 def icon_button(parent, text, command, fg=ACCENT, hover_fg=None):
     """Compact icon-style button used in the header (‹ › ⚙)."""
     if hover_fg is None:

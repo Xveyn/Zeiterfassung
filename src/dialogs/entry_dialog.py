@@ -7,7 +7,7 @@ from src.settings import WEEKDAY_KEYS
 from src.theme import (
     BG, FONT, PAUSE_VALUES, TEXT, TIME_VALUES,
     apply_combobox_style, apply_dark_titlebar, center_dialog_on_parent,
-    dark_combo, primary_button, secondary_button,
+    dark_combo, primary_button, secondary_button, themed_askyesno,
 )
 from src.time_utils import validate_entry
 
@@ -69,11 +69,11 @@ def open_entry_dialog(parent, date_str, storage, settings, on_change):
                 feiertage = get_holidays(state, day.year)
                 if day in feiertage:
                     date_de = day.strftime("%d.%m.%Y")
-                    confirm = messagebox.askyesno(
+                    confirm = themed_askyesno(
+                        dialog,
                         "Feiertag",
                         f"Der {date_de} ist {feiertage[day]} (Feiertag).\n\n"
                         "Trotzdem Eintrag anlegen?",
-                        parent=dialog,
                     )
                     if not confirm:
                         return

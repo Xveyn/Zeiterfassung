@@ -36,7 +36,7 @@ from src.theme import (
     HOLIDAY_BG, HOLIDAY_BG_HOVER, HOLIDAY_ACCENT,
     FONT, FONT_BOLD, FONT_HEADER, FONT_HEADER_SMALL, FONT_FOOTER, FONT_SMALL, FONT_TINY,
     CELL_BG_HOVER, WEEKEND_BG_HOVER, ENTRY_BG_HOVER, WEEKEND_ENTRY_BG_HOVER,
-    apply_dark_titlebar,
+    apply_dark_titlebar, themed_askyesno,
     icon_button, label_button, secondary_button, set_toggle_active, toggle_button,
 )
 
@@ -713,7 +713,7 @@ class App:
         time_lbl.config(bg=bg)
 
     def _delete_entry(self, date_str):
-        if messagebox.askyesno("Eintrag löschen", f"Eintrag für {date_str} löschen?"):
+        if themed_askyesno(self.root, "Eintrag löschen", f"Eintrag für {date_str} löschen?"):
             self.storage.delete(date_str)
             self._refresh()
 
