@@ -175,6 +175,15 @@ def open_settings_dialog(parent, settings, base_path, on_change):
         bg=BG, fg=TEXT_MUTED,
     ).grid(row=15, column=0, columnspan=2, padx=10, pady=(0, 4))
 
+    show_weekend_var = tk.BooleanVar(value=settings.get("show_weekend"))
+    tk.Checkbutton(
+        dialog, text="Wochenende (Sa/So) im Kalender anzeigen",
+        variable=show_weekend_var, font=FONT,
+        bg=BG, fg=TEXT, selectcolor=CELL_BG,
+        activebackground=BG, activeforeground=TEXT,
+        cursor="hand2",
+    ).grid(row=16, column=0, columnspan=2, padx=10, pady=(8, 0), sticky="w")
+
     autostart_var = tk.BooleanVar(value=settings.get("autostart"))
     tk.Checkbutton(
         dialog, text="Autostart (minimiert bei Anmeldung)",
@@ -182,7 +191,7 @@ def open_settings_dialog(parent, settings, base_path, on_change):
         bg=BG, fg=TEXT, selectcolor=CELL_BG,
         activebackground=BG, activeforeground=TEXT,
         cursor="hand2",
-    ).grid(row=16, column=0, columnspan=2, padx=10, pady=8, sticky="w")
+    ).grid(row=17, column=0, columnspan=2, padx=10, pady=(0, 8), sticky="w")
 
     def save_settings():
         for key, lbl in zip(WEEKDAY_KEYS, DAYS_DE):
@@ -239,6 +248,7 @@ def open_settings_dialog(parent, settings, base_path, on_change):
             "mail_closing": closing_text.get("1.0", "end-1c"),
             "hourly_rate": hourly_rate,
             "state": selected_code,
+            "show_weekend": show_weekend_var.get(),
         }
         for key in WEEKDAY_KEYS:
             updates[f"default_start_{key}"] = start_vars[key].get()
@@ -248,7 +258,7 @@ def open_settings_dialog(parent, settings, base_path, on_change):
         dialog.destroy()
 
     btn_frame = tk.Frame(dialog, bg=BG)
-    btn_frame.grid(row=17, column=0, columnspan=2, pady=12)
+    btn_frame.grid(row=18, column=0, columnspan=2, pady=12)
 
     primary_button(btn_frame, "Speichern", save_settings).pack(side=tk.LEFT, padx=5)
     secondary_button(btn_frame, "Abbrechen", dialog.destroy).pack(side=tk.LEFT, padx=5)
