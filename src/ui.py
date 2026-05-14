@@ -645,9 +645,6 @@ class App:
             cell, text=truncated,
             font=FONT_SMALL, bg=HOLIDAY_BG, fg=TEXT_MUTED, cursor="hand2",
         )
-        if cell_size is not None:
-            # Pixel-fixierte Zelle: Text bei Bedarf umbrechen, nicht horizontal überstehen.
-            name_lbl.config(wraplength=cell_size[0] - 6, justify="center")
         name_lbl.pack(pady=(0, 4))
 
         for w in (cell, day_lbl, name_lbl):
