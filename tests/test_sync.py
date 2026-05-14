@@ -161,3 +161,67 @@ def test_merge_setting_ignores_non_whitelisted():
     remote = _doc(settings={"autostart": _s(False, "2026-05-14T11:00:00Z")})
     merged = merge(local, remote, "2026-05-13T00:00:00Z")
     assert "autostart" not in merged["settings"]
+
+
+# --- Task 2.5: Conflict-list merge + idempotency ---
+
+def _conflict(id_, key="D", kind="entry", resolved=False,
+              resolution=None, resolved_at=None, resolved_by=None,
+              candidates=None):
+    return {
+        "id": id_, "kind": kind, "key": key,
+        "candidates": candidates or [],
+        "detected_at": "2026-05-14T10:00:00Z",
+        "resolved": resolved, "resolution": resolution,
+        "resolved_at": resolved_at, "resolved_by": resolved_by,
+    }
+
+
+def test_merge_conflicts_union_by_id():
+    local = _doc(conflicts=[_conflict("c-1"), _conflict("c-2")])
+    remote = _doc(conflicts=[_conflict("c-2"), _conflict("c-3")])
+    merged = merge(local, remote, "2026-05-13T00:00:00Z")
+    ids = sorted(c["id"] for c in merged["conflicts"])
+    assert ids == ["c-1", "c-2", "c-3"]
+
+
+def test_merge_conflicts_resolved_wins_over_unresolved():
+    """Wenn dasselbe Konflikt-ID auf einer Seite resolved ist, gilt resolved."""
+    resolved = _conflict("c-1", resolved=True,
+                         resolution={"start": "08:00", "end": "16:00", "pause": 30},
+                         resolved_at="2026-05-14T11:00:00Z",
+                         resolved_by="A")
+    unresolved = _conflict("c-1", resolved=False)
+    merged = merge(_doc(conflicts=[resolved]), _doc(conflicts=[unresolved]),
+                    "2026-05-13T00:00:00Z")
+    assert len(merged["conflicts"]) == 1
+    assert merged["conflicts"][0]["resolved"] is True
+
+
+def test_merge_conflicts_lww_on_resolved_at_when_both_resolved():
+    c_a = _conflict("c-1", resolved=True,
+                    resolution={"start": "08:00"}, resolved_at="2026-05-14T11:00:00Z",
+                    resolved_by="A")
+    c_b = _conflict("c-1", resolved=True,
+                    resolution={"start": "09:00"}, resolved_at="2026-05-14T12:00:00Z",
+                    resolved_by="B")
+    merged = merge(_doc(conflicts=[c_a]), _doc(conflicts=[c_b]), "2026-05-13T00:00:00Z")
+    assert len(merged["conflicts"]) == 1
+    assert merged["conflicts"][0]["resolved_by"] == "B"
+
+
+def test_merge_idempotent_does_not_duplicate_unresolved_conflict():
+    """Bei wiederholtem merge mit denselben Inputs entsteht kein zweiter Eintrag."""
+    local = _doc(
+        entries={"D": _e("08:00", "16:00", 30, "2026-05-14T09:00:00Z", "A")},
+        conflicts=[_conflict("c-1", key="D",
+                              candidates=[_e("08:00", "16:00", 30, "2026-05-14T09:00:00Z", "A"),
+                                          _e("09:00", "17:00", 30, "2026-05-14T10:00:00Z", "B")])],
+    )
+    remote = _doc(entries={"D": _e("09:00", "17:00", 30, "2026-05-14T10:00:00Z", "B")})
+    merged = merge(local, remote, "2026-05-13T00:00:00Z")
+    # Conflict für D existiert schon → kein neuer
+    entry_conflicts_for_d = [c for c in merged["conflicts"]
+                              if c["kind"] == "entry" and c["key"] == "D"]
+    assert len(entry_conflicts_for_d) == 1
+    assert entry_conflicts_for_d[0]["id"] == "c-1"

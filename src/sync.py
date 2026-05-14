@@ -86,8 +86,39 @@ def _strip_for_candidate(item):
     return {k: v for k, v in item.items()}
 
 
+def _merge_conflict_pair(a, b):
+    """LWW auf resolved_at, resolved beats unresolved."""
+    if a.get("resolved") and not b.get("resolved"):
+        return a
+    if b.get("resolved") and not a.get("resolved"):
+        return b
+    if a.get("resolved") and b.get("resolved"):
+        return a if (a.get("resolved_at") or "") >= (b.get("resolved_at") or "") else b
+    return a  # beide unresolved — ID-Match heißt dasselbe Detection-Event
+
+
+def _equivalent_unresolved_exists(existing, new_conflict):
+    """Dedupe: existiert bereits ein unresolved Konflikt mit gleichem
+    (kind, key, Kandidaten-Set)?"""
+    if new_conflict.get("resolved"):
+        return False
+    new_keys = _candidate_signatures(new_conflict["candidates"])
+    for c in existing:
+        if c.get("resolved"):
+            continue
+        if c["kind"] != new_conflict["kind"] or c["key"] != new_conflict["key"]:
+            continue
+        if _candidate_signatures(c["candidates"]) == new_keys:
+            return True
+    return False
+
+
+def _candidate_signatures(candidates):
+    """Sortiertes Tuple aus (modified_at, device_id) — als Set-Vergleichsbasis."""
+    return tuple(sorted((c.get("modified_at"), c.get("device_id")) for c in candidates))
+
+
 def merge(local, remote, last_pull_at):
-    """Hauptfunktion: erwartet zwei Sync-Docs, liefert das gemergte Doc."""
     merged = {
         "schema_version": SCHEMA_VERSION,
         "entries": {},
@@ -97,8 +128,8 @@ def merge(local, remote, last_pull_at):
     new_conflicts = []
 
     # Entries
-    all_keys = set(local.get("entries", {}).keys()) | set(remote.get("entries", {}).keys())
-    for key in all_keys:
+    all_entry_keys = set(local.get("entries", {}).keys()) | set(remote.get("entries", {}).keys())
+    for key in all_entry_keys:
         l = local.get("entries", {}).get(key)
         r = remote.get("entries", {}).get(key)
         winner, conflict = _merge_one(l, r, last_pull_at,
@@ -119,5 +150,21 @@ def merge(local, remote, last_pull_at):
         if conflict is not None:
             new_conflicts.append(conflict)
 
-    merged["conflicts"] = new_conflicts
+    # Conflicts-Liste: Union by ID
+    by_id = {}
+    for c in local.get("conflicts", []) + remote.get("conflicts", []):
+        cid = c["id"]
+        if cid in by_id:
+            by_id[cid] = _merge_conflict_pair(by_id[cid], c)
+        else:
+            by_id[cid] = c
+
+    # Neu erkannte Konflikte dazu, mit Dedup
+    existing = list(by_id.values())
+    for c in new_conflicts:
+        if not _equivalent_unresolved_exists(existing, c):
+            by_id[c["id"]] = c
+            existing.append(c)
+
+    merged["conflicts"] = list(by_id.values())
     return merged
