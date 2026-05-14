@@ -81,6 +81,14 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
 
     refresh_status()
 
+    # Absender-Zeile: zeigt die authentifizierte E-Mail-Adresse, die ui.py
+    # im Hintergrund über OAuth2-userinfo abruft und in settings cached.
+    label("Absender:", row=2, pady=(0, 4))
+    sender_email = settings.get("sender_email") or "(noch nicht ermittelt)"
+    tk.Label(
+        dialog, text=sender_email, font=FONT, bg=BG, fg=TEXT_MUTED,
+    ).grid(row=2, column=1, padx=10, pady=(0, 4), sticky="w")
+
     times_label = tk.Label(
         dialog, text="Standardzeiten: ▶", font=FONT, bg=BG, fg=TEXT,
         cursor="hand2",

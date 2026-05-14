@@ -16,7 +16,7 @@ from src.time_utils import (
 )
 from src.holidays_de import get_holidays
 from src.tooltip import attach_tooltip
-from src.mail import refresh_token_if_needed, TokenAuthError, TokenNetworkError
+from src.mail import fetch_user_email, refresh_token_if_needed, TokenAuthError, TokenNetworkError
 from src.version import VERSION
 from src.updater import (
     check_latest_release,
@@ -87,6 +87,7 @@ class App:
         self.root.bind("<Right>", lambda e: self._next())
         self._refresh()
         self._proactive_token_refresh()
+        self._proactive_sender_email_fetch()
         self._update_banner = None
         self._proactive_update_check()
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
@@ -118,6 +119,33 @@ class App:
                 self.root.after(0, lambda: messagebox.showerror(
                     "Token-Refresh fehlgeschlagen", err
                 ))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _proactive_sender_email_fetch(self):
+        """Holt einmalig pro App-Start die authentifizierte E-Mail-Adresse über
+        das OAuth2-Userinfo-Endpoint und cached sie in `settings.sender_email`.
+
+        Schlägt still fehl, wenn kein Token, kein Netz oder der userinfo.email-
+        Scope dem Token noch nicht gewährt wurde — der nächste Send-Dialog
+        triggert dann den OAuth-Re-Consent, und beim nächsten App-Start klappt
+        es. So bekommt der User nichts mit, wenn alles funktioniert.
+        """
+        token_path = os.path.join(self.base_path, "token.json")
+        if not os.path.exists(token_path):
+            return
+
+        def worker():
+            try:
+                email = fetch_user_email(
+                    token_path,
+                    sync_enabled=self.settings.get("sync_enabled"),
+                )
+            except Exception:
+                logging.getLogger(__name__).exception("sender_email-Fetch fehlgeschlagen")
+                return
+            if email and email != self.settings.get("sender_email"):
+                self.root.after(0, lambda: self.settings.set("sender_email", email))
 
         threading.Thread(target=worker, daemon=True).start()
 

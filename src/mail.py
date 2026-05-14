@@ -9,17 +9,65 @@ from email.header import Header
 
 GMAIL_SEND_SCOPE = "https://www.googleapis.com/auth/gmail.send"
 DRIVE_APPDATA_SCOPE = "https://www.googleapis.com/auth/drive.appdata"
+USERINFO_EMAIL_SCOPE = "https://www.googleapis.com/auth/userinfo.email"
+# Identity-Scope, der automatisch das User-Profil-Endpoint öffnet.
+OPENID_SCOPE = "openid"
 
 
 def get_scopes(sync_enabled):
+    """Liefert die OAuth-Scopes der App.
+
+    `userinfo.email` + `openid` sind Identity-Scopes (non-sensitive), damit
+    wir den Absender im Settings-Dialog anzeigen können — Google liefert
+    diese Scopes außerdem oft implizit zurück, sodass der Match-Check in
+    google-auth keine Probleme macht.
+    """
+    scopes = [GMAIL_SEND_SCOPE, USERINFO_EMAIL_SCOPE, OPENID_SCOPE]
     if sync_enabled:
-        return [GMAIL_SEND_SCOPE, DRIVE_APPDATA_SCOPE]
-    return [GMAIL_SEND_SCOPE]
+        scopes.append(DRIVE_APPDATA_SCOPE)
+    return scopes
 
 
 # Legacy: alte Callers benutzen weiter SCOPES (gmail-only). Neue Callers
 # benutzen get_scopes(settings.get("sync_enabled")).
 SCOPES = [GMAIL_SEND_SCOPE]
+
+
+def fetch_user_email(token_path="token.json", sync_enabled=False):
+    """Liest die E-Mail-Adresse des authentifizierten Users via OAuth2-userinfo.
+
+    Liefert die E-Mail oder leeren String bei fehlendem/ungültigem Token
+    oder Fehler. Diese Funktion soll im Hintergrundthread laufen, weil sie
+    einen HTTP-Call macht.
+
+    Erfordert den `userinfo.email`-Scope (Teil der App-Scopes seit 1.12.x).
+    Bei einem alten Token ohne diesen Scope fängt der except-Block den
+    Fehler und liefert leeren String — der Caller weiß dann, dass ein
+    Re-Consent fällig ist (passiert beim nächsten Mailversand automatisch).
+    """
+    if not os.path.exists(token_path):
+        return ""
+    try:
+        from google.oauth2.credentials import Credentials
+        from googleapiclient.discovery import build
+
+        creds = Credentials.from_authorized_user_file(
+            token_path, get_scopes(sync_enabled)
+        )
+        if creds.expired and creds.refresh_token:
+            from google.auth.transport.requests import Request
+            try:
+                creds.refresh(Request())
+                _write_token(creds, token_path)
+            except Exception:
+                return ""
+        if not creds.valid:
+            return ""
+        service = build("oauth2", "v2", credentials=creds)
+        info = service.userinfo().get().execute()
+        return info.get("email", "") or ""
+    except Exception:
+        return ""
 
 
 class TokenAuthError(Exception):

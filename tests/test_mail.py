@@ -72,15 +72,19 @@ from src.mail import (  # noqa: E402
 )
 
 
-def test_get_scopes_without_sync_only_gmail():
+def test_get_scopes_without_sync_includes_gmail_and_userinfo():
     scopes = get_scopes(sync_enabled=False)
-    assert scopes == ["https://www.googleapis.com/auth/gmail.send"]
+    assert "https://www.googleapis.com/auth/gmail.send" in scopes
+    assert "https://www.googleapis.com/auth/userinfo.email" in scopes
+    assert "openid" in scopes
+    assert "https://www.googleapis.com/auth/drive.appdata" not in scopes
 
 
 def test_get_scopes_with_sync_includes_drive_appdata():
     scopes = get_scopes(sync_enabled=True)
     assert "https://www.googleapis.com/auth/gmail.send" in scopes
     assert "https://www.googleapis.com/auth/drive.appdata" in scopes
+    assert "https://www.googleapis.com/auth/userinfo.email" in scopes
 
 
 def test_no_token_file(tmp_path):
