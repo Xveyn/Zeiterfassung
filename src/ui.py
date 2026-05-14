@@ -373,7 +373,7 @@ class App:
             new_inactive = tk.Frame(self.grid_container, bg=BG)
             new_inactive.grid(row=0, column=0, sticky="nsew")
             for col in range(7):
-                new_inactive.columnconfigure(col, weight=1)
+                new_inactive.columnconfigure(col, weight=1 if col < current_cols else 0)
             self.grid_frames[inactive_idx] = new_inactive
             # Frisch erstellter Frame liegt in der Stacking-Order obenauf und
             # würde den aktiven Frame verdecken — active wieder nach vorn.
@@ -474,13 +474,18 @@ class App:
 
     def _get_inactive_grid(self):
         """Liefert das versteckte Grid-Frame (Double-Buffer-Backbuffer).
-        Children und Row-Config werden zurückgesetzt — Column-Config bleibt
-        (in `_build_grid` einmal gesetzt)."""
+        Children, Row- und Column-Config werden zurückgesetzt. Nur sichtbare
+        Spalten erhalten weight=1 — ausgeblendete (Sa/So bei show_weekend=False)
+        würden sonst den vom Header/Footer geforderten Extra-Platz absorbieren
+        und einen Leerraum-Streifen rechts neben Fr produzieren."""
         inactive = self.grid_frames[1 - self._active_grid_idx]
         for child in list(inactive.winfo_children()):
             child.destroy()
         for row in range(8):
             inactive.rowconfigure(row, minsize=0, weight=0)
+        n = self._visible_day_count()
+        for col in range(7):
+            inactive.columnconfigure(col, weight=1 if col < n else 0)
         return inactive
 
     def _activate_grid(self, frame):
