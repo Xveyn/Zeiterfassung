@@ -271,3 +271,37 @@ def test_show_weekend_missing_key_uses_default(tmp_path):
     path = _write_json(tmp_path, json.dumps({"recipient": "a@b.de"}))
     s = Settings(path)
     assert s.get("show_weekend") is True
+
+
+# --- Sync metadata (1.12.0) ---
+
+
+def test_sync_enabled_default_is_false(tmp_settings):
+    assert tmp_settings.get("sync_enabled") is False
+
+
+def test_device_id_default_is_empty(tmp_settings):
+    """device_id wird beim ersten App-Start in main.py befüllt, nicht hier."""
+    assert tmp_settings.get("device_id") == ""
+
+
+def test_last_pull_at_default_is_empty(tmp_settings):
+    assert tmp_settings.get("last_pull_at") == ""
+
+
+def test_drive_etag_default_is_empty(tmp_settings):
+    assert tmp_settings.get("drive_etag") == ""
+
+
+def test_sync_meta_persists(tmp_path):
+    path = str(tmp_path / "settings.json")
+    s1 = Settings(path)
+    s1.set("sync_enabled", True)
+    s1.set("device_id", "dev-uuid")
+    s1.set("last_pull_at", "2026-05-14T10:00:00Z")
+    s1.set("drive_etag", "etag-123")
+    s2 = Settings(path)
+    assert s2.get("sync_enabled") is True
+    assert s2.get("device_id") == "dev-uuid"
+    assert s2.get("last_pull_at") == "2026-05-14T10:00:00Z"
+    assert s2.get("drive_etag") == "etag-123"
