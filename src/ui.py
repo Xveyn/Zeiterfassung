@@ -211,6 +211,7 @@ class App:
     def _build_header(self):
         frame = tk.Frame(self.root, bg=BG)
         frame.pack(fill=tk.X, padx=10, pady=(10, 0))
+        self.header_frame = frame
 
         icon_button(frame, "\u2039", self._prev).pack(side=tk.LEFT)
 
@@ -242,6 +243,13 @@ class App:
         ).pack(side=tk.RIGHT)
 
         icon_button(frame, "\u203a", self._next).pack(side=tk.RIGHT, padx=(0, 5))
+
+        # --- Sync-Button und Status (Multi-Device-Sync, Phase 4.5) ---
+        self.sync_button = icon_button(frame, "\u27f3", self._on_sync_clicked)
+        self.sync_button.pack(side=tk.RIGHT, padx=(4, 0))
+        self.sync_status_label = tk.Label(frame, text="", bg=BG, fg=TEXT_MUTED, font=FONT_SMALL)
+        self.sync_status_label.pack(side=tk.RIGHT, padx=(8, 4))
+        self._update_sync_status_label()
 
     def _build_grid(self):
         # Double-Buffer: zwei dauerhafte Frames im selben Grid-Slot. Refresh
@@ -687,11 +695,51 @@ class App:
         """Wird aus dem UI-Thread nach erfolgreichem Pull aufgerufen."""
         # _refresh() re-renders the full calendar grid (month or week view).
         self._refresh()
+        self._update_sync_status_label()
 
     def on_sync_pull_error(self, error):
         import tkinter.messagebox as mb
         mb.showerror("Synchronisation fehlgeschlagen",
                       f"Beim Abrufen der Drive-Daten ist ein Fehler aufgetreten:\n\n{error}")
+        self._update_sync_status_label()
+
+    def _update_sync_status_label(self):
+        if not hasattr(self, "sync_status_label"):
+            return
+        if not self.settings.get("sync_enabled"):
+            self.sync_status_label.config(text="")
+            return
+        n = 0
+        if self.conflicts_store is not None:
+            n = self.conflicts_store.count_unresolved()
+        if n > 0:
+            self.sync_status_label.config(text=f"⚠ {n} Konflikt{'e' if n != 1 else ''}")
+        else:
+            last = self.settings.get("last_pull_at") or "noch nie"
+            self.sync_status_label.config(text=f"✓ {last[:10] if len(last) >= 10 else last}")
+
+    def _on_sync_clicked(self):
+        if not self.settings.get("sync_enabled"):
+            import tkinter.messagebox as mb
+            mb.showinfo("Synchronisation",
+                          "Synchronisation ist deaktiviert. In den Einstellungen aktivierbar.")
+            return
+        self.sync_status_label.config(text="Synchronisiere…")
+        import threading
+        from src.main import _run_push_blocking
+        def _do():
+            ok = _run_push_blocking(
+                self.storage, self.settings, self.conflicts_store,
+                self.base_path, timeout_seconds=15,
+            )
+            self.root.after(0, lambda: self._on_manual_sync_done(ok))
+        threading.Thread(target=_do, daemon=True).start()
+
+    def _on_manual_sync_done(self, ok):
+        if not ok:
+            import tkinter.messagebox as mb
+            mb.showerror("Synchronisation", "Synchronisation fehlgeschlagen. Logs prüfen.")
+        self._update_sync_status_label()
 
     def _on_close(self):
         if self.settings.get("sync_enabled"):
