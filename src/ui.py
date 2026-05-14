@@ -419,7 +419,8 @@ class App:
                 parent, text=day_name, font=FONT_BOLD, bg=BG, fg=fg,
             ).grid(row=0, column=col, sticky="nsew", padx=2, pady=2)
 
-    def _build_entry_cell(self, parent, date_str, day_text, entry, is_weekend, pad, cell_size=None):
+    def _build_entry_cell(self, parent, date_str, day_text, entry, is_weekend, pad,
+                          cell_size=None, time_font=FONT_TINY):
         bg = WEEKEND_ENTRY_BG if is_weekend else ENTRY_BG
         hover_bg = WEEKEND_ENTRY_BG_HOVER if is_weekend else ENTRY_BG_HOVER
         cell = tk.Frame(
@@ -437,11 +438,13 @@ class App:
             bg=bg, fg=TEXT, cursor="hand2",
         )
         day_lbl.pack(pady=(pad, 0))
-        # FONT_TINY (7pt) statt FONT_SMALL (8pt), damit "HH:MM-HH:MM" in die
-        # pixel-fixierte Standardzelle (width=8 in FONT) reinpasst.
+        # time_font default FONT_TINY (7pt) damit "HH:MM-HH:MM" in die
+        # pixel-fixierte Standardzelle (width=8 in FONT) reinpasst. Wenn der
+        # Caller eine breitere Zelle nutzt (z.B. bei ausgeblendeten Wochenenden
+        # mit width=11), kann eine größere Schrift übergeben werden.
         time_lbl = tk.Label(
             cell, text=f"{entry['start']}-{entry['end']}",
-            font=FONT_TINY, bg=bg, fg=TEXT_MUTED, cursor="hand2",
+            font=time_font, bg=bg, fg=TEXT_MUTED, cursor="hand2",
         )
         time_lbl.pack(pady=(0, pad))
         for w in (cell, day_lbl, time_lbl):
@@ -468,7 +471,8 @@ class App:
     def _build_day_cell(self, parent, date_str, day_text, day_date, is_weekend,
                         entry, holidays_map, pad, empty_height,
                         holiday_max_len, holiday_cell_size=None,
-                        entry_cell_size=None, conflict_dates=None):
+                        entry_cell_size=None, conflict_dates=None,
+                        entry_time_font=FONT_TINY):
         """Dispatcht auf Entry-, Holiday- oder Empty-Zelle und liefert die fertig
         konfigurierte Widget-Instanz. Caller grided das Ergebnis selbst.
 
@@ -479,7 +483,7 @@ class App:
         if entry:
             cell = self._build_entry_cell(
                 parent, date_str, day_text, entry, is_weekend, pad,
-                cell_size=entry_cell_size,
+                cell_size=entry_cell_size, time_font=entry_time_font,
             )
             if day_date in holidays_map:
                 attach_tooltip(cell, f"Feiertag: {holidays_map[day_date]}")
@@ -570,7 +574,13 @@ class App:
         #      lässt den Monatsnamen flackern.
         #  (b) konstante Reihenhöhe (minsize unten), damit gepaddete Wochen
         #      ohne Content nicht zusammenklappen.
-        probe = tk.Label(new_frame, text="", font=FONT, width=8, height=3)
+        # Bei ausgeblendeten Wochenenden (5 Spalten statt 7) bleibt mehr
+        # Horizontalplatz pro Spalte — Zellen werden breiter, damit die
+        # Zeit-Zeile in FONT_SMALL statt FONT_TINY lesbar dargestellt wird.
+        wide_cells = not self.settings.get("show_weekend")
+        probe_width = 11 if wide_cells else 8
+        entry_time_font = FONT_SMALL if wide_cells else FONT_TINY
+        probe = tk.Label(new_frame, text="", font=FONT, width=probe_width, height=3)
         probe.update_idletasks()
         cell_size = (probe.winfo_reqwidth(), probe.winfo_reqheight())
         probe.destroy()
@@ -605,6 +615,7 @@ class App:
                     holiday_cell_size=cell_size,
                     entry_cell_size=cell_size,
                     conflict_dates=conflict_dates,
+                    entry_time_font=entry_time_font,
                 )
                 cell.grid(row=row, column=col, sticky="nsew", padx=2, pady=2)
 
@@ -632,7 +643,11 @@ class App:
         # Probe-Label, um die natürliche Pixel-Größe einer Standard-Wochenzelle
         # zu ermitteln. Holiday-Zellen werden auf diese Größe fixiert, damit
         # längere Feiertagsnamen die Spalte nicht aufweiten.
-        probe = tk.Label(new_frame, text="", font=FONT, width=8, height=5)
+        # Bei ausgeblendeten Wochenenden: breitere Zellen + größere Time-Schrift.
+        wide_cells = not self.settings.get("show_weekend")
+        probe_width = 11 if wide_cells else 8
+        entry_time_font = FONT_SMALL if wide_cells else FONT_TINY
+        probe = tk.Label(new_frame, text="", font=FONT, width=probe_width, height=5)
         probe.update_idletasks()
         cell_size = (probe.winfo_reqwidth(), probe.winfo_reqheight())
         probe.destroy()
@@ -655,6 +670,7 @@ class App:
                 holiday_cell_size=cell_size,
                 entry_cell_size=cell_size,
                 conflict_dates=conflict_dates,
+                entry_time_font=entry_time_font,
             )
             cell.grid(row=1, column=col, sticky="nsew", padx=2, pady=2)
 
