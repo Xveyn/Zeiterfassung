@@ -464,9 +464,14 @@ class App:
     def _build_day_cell(self, parent, date_str, day_text, day_date, is_weekend,
                         entry, holidays_map, pad, empty_height,
                         holiday_max_len, holiday_cell_size=None,
-                        entry_cell_size=None):
+                        entry_cell_size=None, conflict_dates=None):
         """Dispatcht auf Entry-, Holiday- oder Empty-Zelle und liefert die fertig
-        konfigurierte Widget-Instanz. Caller grided das Ergebnis selbst."""
+        konfigurierte Widget-Instanz. Caller grided das Ergebnis selbst.
+
+        conflict_dates: optionales Set von ISO-Datumsstrings mit ungelösten
+        Konflikten. Zellen, deren date_str enthalten ist, erhalten einen
+        orangefarbenen Rand und einen Hinweis-Tooltip.
+        """
         if entry:
             cell = self._build_entry_cell(
                 parent, date_str, day_text, entry, is_weekend, pad,
@@ -474,17 +479,23 @@ class App:
             )
             if day_date in holidays_map:
                 attach_tooltip(cell, f"Feiertag: {holidays_map[day_date]}")
-            return cell
-        if day_date in holidays_map:
-            return self._build_holiday_cell(
+        elif day_date in holidays_map:
+            cell = self._build_holiday_cell(
                 parent, day_text=day_text,
                 name=holidays_map[day_date], max_name_len=holiday_max_len,
                 on_click=lambda d=date_str: self._open_dialog(d),
                 cell_size=holiday_cell_size,
             )
-        return self._build_empty_cell(
-            parent, date_str, day_text, is_weekend, empty_height,
-        )
+        else:
+            cell = self._build_empty_cell(
+                parent, date_str, day_text, is_weekend, empty_height,
+            )
+
+        if conflict_dates and date_str in conflict_dates:
+            cell.configure(highlightbackground="orange", highlightthickness=2)
+            attach_tooltip(cell, "Konflikt — bitte auflösen")
+
+        return cell
 
     def _get_inactive_grid(self):
         """Liefert das versteckte Grid-Frame (Double-Buffer-Backbuffer).
@@ -525,6 +536,16 @@ class App:
             entry["start"], entry["end"], pause_minutes=entry.get("pause", 0),
         )
 
+    def _dates_with_unresolved_conflicts(self):
+        """Gibt die Menge der ISO-Datums-Strings zurück, für die ungelöste
+        Konflikte vom Typ 'entry' vorliegen."""
+        if not self.conflicts_store:
+            return set()
+        return {
+            c["key"] for c in self.conflicts_store.get_all()
+            if c.get("kind") == "entry" and not c.get("resolved")
+        }
+
     def _refresh_month(self):
         # In den versteckten Backbuffer bauen, dann via lift() in den Vordergrund
         # holen — verhindert sichtbare leere Fläche zwischen Refreshes.
@@ -557,6 +578,9 @@ class App:
         while len(weeks) < 6:
             weeks.append([0] * 7)
 
+        # Einmal pro Render berechnen, nicht pro Zelle.
+        conflict_dates = self._dates_with_unresolved_conflicts()
+
         for row, week in enumerate(weeks, start=1):
             for col, day in enumerate(week[:n]):
                 if day == 0:
@@ -576,6 +600,7 @@ class App:
                     pad=4, empty_height=3, holiday_max_len=12,
                     holiday_cell_size=cell_size,
                     entry_cell_size=cell_size,
+                    conflict_dates=conflict_dates,
                 )
                 cell.grid(row=row, column=col, sticky="nsew", padx=2, pady=2)
 
@@ -609,6 +634,9 @@ class App:
         probe.destroy()
 
         n = self._visible_day_count()
+        # Einmal pro Render berechnen, nicht pro Zelle.
+        conflict_dates = self._dates_with_unresolved_conflicts()
+
         for col, day_date in enumerate(dates[:n]):
             date_str = day_date.isoformat()
             entry = entries.get(date_str)
@@ -622,6 +650,7 @@ class App:
                 pad=8, empty_height=5, holiday_max_len=18,
                 holiday_cell_size=cell_size,
                 entry_cell_size=cell_size,
+                conflict_dates=conflict_dates,
             )
             cell.grid(row=1, column=col, sticky="nsew", padx=2, pady=2)
 
@@ -741,6 +770,9 @@ class App:
         if not ok:
             import tkinter.messagebox as mb
             mb.showerror("Synchronisation", "Synchronisation fehlgeschlagen. Logs prüfen.")
+        # _refresh() re-renders the full calendar grid so newly detected conflict
+        # markers appear immediately without requiring a manual view-change.
+        self._refresh()
         self._update_sync_status_label()
 
     def _on_close(self):
