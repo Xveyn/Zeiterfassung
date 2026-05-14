@@ -21,6 +21,17 @@ def _ensure_device_id(settings):
         settings.set("device_id", str(uuid.uuid4()))
 
 
+def _parse_remote_or_quarantine(content_bytes, file_id, on_corrupt):
+    """Parsed Remote-Bytes als JSON. Bei Fehler ruft on_corrupt(file_id) auf
+    und liefert ein leeres Doc."""
+    import json
+    try:
+        return json.loads(content_bytes)
+    except (json.JSONDecodeError, ValueError):
+        on_corrupt(file_id)
+        return {"schema_version": 1, "entries": {}, "settings": {}, "conflicts": []}
+
+
 def _run_pull_in_background(storage, settings, conflicts_store, base, ui_callback):
     """Pull läuft in einem Thread; UI-Update über ui_callback (root.after)."""
     from src import drive, sync
@@ -35,8 +46,18 @@ def _run_pull_in_background(storage, settings, conflicts_store, base, ui_callbac
             etag = ""
         else:
             content, etag = drive.download(service, file_id)
-            import json
-            remote_doc = json.loads(content) if content else {"entries": {}, "settings": {}, "conflicts": []}
+            def _quarantine(fid):
+                import datetime
+                stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+                try:
+                    service.files().update(
+                        fileId=fid,
+                        body={"name": f"zeiterfassung-sync.corrupt-{stamp}.json"},
+                    ).execute()
+                except Exception:
+                    logging.getLogger(__name__).warning(
+                        "Quarantine rename failed for %s", fid, exc_info=True)
+            remote_doc = _parse_remote_or_quarantine(content, file_id, _quarantine)
         local_doc = sync.build_local_doc(storage, settings, conflicts_store)
         merged = sync.merge(local_doc, remote_doc, settings.get("last_pull_at") or "")
         sync.apply_merged_doc(merged, storage, settings, conflicts_store)

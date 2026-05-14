@@ -1,3 +1,5 @@
+import json as _json
+
 import pytest
 
 from src.conflicts_store import ConflictsStore
@@ -351,6 +353,29 @@ def test_resolve_setting_conflict_updates_settings(tmp_path):
     resolve_conflict("c-2", {"value": "x@y.de"}, conflicts, storage, settings, device_id="A")
     assert settings.get("recipient") == "x@y.de"
     assert conflicts.get_all()[0]["resolved"] is True
+
+
+def test_main_pull_quarantines_corrupt_remote():
+    """Wenn die Drive-Datei kein gültiges JSON ist, wird sie via Drive umbenannt
+    und der Pull behandelt sie als 'leer'.
+    Wir testen das auf der Sync-Engine-Ebene: parse_remote_or_quarantine sollte
+    bei kaputtem Inhalt ein leeres Doc zurückgeben und einen Callback aufrufen."""
+    from src.main import _parse_remote_or_quarantine
+
+    quarantined = []
+    def fake_quarantine(file_id):
+        quarantined.append(file_id)
+
+    doc = _parse_remote_or_quarantine(b"not json{{{", "file-1", fake_quarantine)
+    assert doc == {"schema_version": 1, "entries": {}, "settings": {}, "conflicts": []}
+    assert quarantined == ["file-1"]
+
+
+def test_main_pull_returns_doc_when_valid_json():
+    from src.main import _parse_remote_or_quarantine
+    raw = _json.dumps({"schema_version": 1, "entries": {"D": {}}, "settings": {}, "conflicts": []})
+    doc = _parse_remote_or_quarantine(raw.encode(), "file-1", lambda fid: None)
+    assert "D" in doc["entries"]
 
 
 def test_resolve_nonexistent_conflict_raises(tmp_path):
