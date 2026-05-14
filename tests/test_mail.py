@@ -68,7 +68,19 @@ from src.mail import (  # noqa: E402
     refresh_token_if_needed,
     TokenAuthError,
     TokenNetworkError,
+    get_scopes,
 )
+
+
+def test_get_scopes_without_sync_only_gmail():
+    scopes = get_scopes(sync_enabled=False)
+    assert scopes == ["https://www.googleapis.com/auth/gmail.send"]
+
+
+def test_get_scopes_with_sync_includes_drive_appdata():
+    scopes = get_scopes(sync_enabled=True)
+    assert "https://www.googleapis.com/auth/gmail.send" in scopes
+    assert "https://www.googleapis.com/auth/drive.appdata" in scopes
 
 
 def test_no_token_file(tmp_path):

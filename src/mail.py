@@ -7,7 +7,19 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.application import MIMEApplication
 from email.header import Header
 
-SCOPES = ["https://www.googleapis.com/auth/gmail.send"]
+GMAIL_SEND_SCOPE = "https://www.googleapis.com/auth/gmail.send"
+DRIVE_APPDATA_SCOPE = "https://www.googleapis.com/auth/drive.appdata"
+
+
+def get_scopes(sync_enabled):
+    if sync_enabled:
+        return [GMAIL_SEND_SCOPE, DRIVE_APPDATA_SCOPE]
+    return [GMAIL_SEND_SCOPE]
+
+
+# Legacy: alte Callers benutzen weiter SCOPES (gmail-only). Neue Callers
+# benutzen get_scopes(settings.get("sync_enabled")).
+SCOPES = [GMAIL_SEND_SCOPE]
 
 
 class TokenAuthError(Exception):
@@ -48,7 +60,7 @@ def _refresh_and_persist(creds, token_path):
     _write_token(creds, token_path)
 
 
-def refresh_token_if_needed(token_path="token.json"):
+def refresh_token_if_needed(token_path="token.json", sync_enabled=False):
     """Proactively refresh the Gmail token when it is expired.
 
     Returns one of:
@@ -62,10 +74,12 @@ def refresh_token_if_needed(token_path="token.json"):
     """
     from google.oauth2.credentials import Credentials
 
+    scopes = get_scopes(sync_enabled)
+
     if not os.path.exists(token_path):
         return "no_token"
 
-    creds = Credentials.from_authorized_user_file(token_path, SCOPES)
+    creds = Credentials.from_authorized_user_file(token_path, scopes)
 
     if creds.valid:
         return "valid"
@@ -79,7 +93,7 @@ def refresh_token_if_needed(token_path="token.json"):
     return "refreshed"
 
 
-def get_gmail_service(credentials_path="credentials.json", token_path="token.json"):
+def get_gmail_service(credentials_path="credentials.json", token_path="token.json", sync_enabled=False):
     """Authenticate with Gmail API and return a service object.
 
     Returns the service object, or raises an exception on failure.
@@ -88,10 +102,11 @@ def get_gmail_service(credentials_path="credentials.json", token_path="token.jso
     from google_auth_oauthlib.flow import InstalledAppFlow
     from googleapiclient.discovery import build
 
+    scopes = get_scopes(sync_enabled)
     creds = None
 
     if os.path.exists(token_path):
-        creds = Credentials.from_authorized_user_file(token_path, SCOPES)
+        creds = Credentials.from_authorized_user_file(token_path, scopes)
 
     if creds and creds.expired and creds.refresh_token:
         try:
@@ -106,7 +121,7 @@ def get_gmail_service(credentials_path="credentials.json", token_path="token.jso
                 "Bitte erstelle ein Google Cloud Projekt mit Gmail API "
                 "und lade die OAuth2 Client-ID dort ab."
             )
-        flow = InstalledAppFlow.from_client_secrets_file(credentials_path, SCOPES)
+        flow = InstalledAppFlow.from_client_secrets_file(credentials_path, scopes)
         creds = flow.run_local_server(port=0)
         _write_token(creds, token_path)
 
