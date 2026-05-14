@@ -2,7 +2,7 @@ import json
 from unittest.mock import patch
 
 import pytest
-from src.settings import Settings, WEEKDAY_KEYS
+from src.settings import Settings, WEEKDAY_KEYS, SYNCED_SETTING_KEYS
 
 @pytest.fixture
 def tmp_settings(tmp_path):
@@ -305,3 +305,48 @@ def test_sync_meta_persists(tmp_path):
     assert s2.get("device_id") == "dev-uuid"
     assert s2.get("last_pull_at") == "2026-05-14T10:00:00Z"
     assert s2.get("drive_etag") == "etag-123"
+
+
+# --- set_synced / get_synced_doc / apply_synced (1.12.0) ---
+
+
+def test_set_synced_records_metadata(tmp_path):
+    """set_synced(key, value) speichert value im flachen Dict und führt
+    Per-Field-Metadaten in _synced_meta."""
+    path = str(tmp_path / "settings.json")
+    s = Settings(path)
+    s.device_id_for_sync = "dev-1"  # Wird von main.py gesetzt
+    s.set_synced("recipient", "a@b.de")
+    assert s.get("recipient") == "a@b.de"
+    meta = s.get_synced_doc()
+    assert meta["recipient"]["value"] == "a@b.de"
+    assert meta["recipient"]["device_id"] == "dev-1"
+    assert meta["recipient"]["modified_at"].endswith("Z")
+
+
+def test_set_synced_persists_metadata_across_reload(tmp_path):
+    path = str(tmp_path / "settings.json")
+    s1 = Settings(path)
+    s1.device_id_for_sync = "dev-1"
+    s1.set_synced("name", "Max Mustermann")
+    s2 = Settings(path)
+    meta = s2.get_synced_doc()
+    assert meta["name"]["value"] == "Max Mustermann"
+    assert meta["name"]["device_id"] == "dev-1"
+
+
+def test_apply_synced_overwrites_value_and_meta(tmp_path):
+    """apply_synced(merged_settings) wird vom Sync-Pfad genutzt: setzt sowohl
+    flat value als auch _synced_meta-Eintrag."""
+    path = str(tmp_path / "settings.json")
+    s = Settings(path)
+    s.apply_synced({
+        "recipient": {"value": "remote@x.de", "modified_at": "2026-05-14T10:00:00Z",
+                       "device_id": "other-dev"},
+    })
+    assert s.get("recipient") == "remote@x.de"
+    assert s.get_synced_doc()["recipient"]["device_id"] == "other-dev"
+
+
+def test_get_synced_doc_empty_when_nothing_set(tmp_settings):
+    assert tmp_settings.get_synced_doc() == {}

@@ -1,8 +1,14 @@
+import datetime
 import json
 import logging
 import os
 
 WEEKDAY_KEYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")  # Index = datetime.weekday()
+
+SYNCED_SETTING_KEYS = (
+    "recipient", "name", "hourly_rate",
+    "mail_subject", "mail_greeting", "mail_content", "mail_closing",
+)
 
 DEFAULTS = {
     "default_pause": 30,
@@ -90,10 +96,16 @@ def _migrate_legacy_default_times(loaded):
             loaded[f"default_end_{day}"] = legacy_end
 
 
+def _utc_now_iso():
+    return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
 class Settings:
     def __init__(self, filepath="settings.json"):
         self.filepath = filepath
         self._data = dict(DEFAULTS)
+        self._synced_meta = {}   # {key: {"modified_at": ..., "device_id": ...}}
+        self.device_id_for_sync = ""  # wird von main.py auf settings.device_id gesetzt
         self._load()
 
     def _load(self):
@@ -116,6 +128,18 @@ class Settings:
             self._data = dict(DEFAULTS)
             return
 
+        # _synced_meta aus der Datei extrahieren, sonst landet es als unbekannter Key
+        synced_meta_raw = loaded.pop("_synced_meta", None)
+        if isinstance(synced_meta_raw, dict):
+            for k, v in synced_meta_raw.items():
+                if not isinstance(v, dict):
+                    continue
+                if "modified_at" in v and "device_id" in v:
+                    self._synced_meta[k] = {
+                        "modified_at": str(v["modified_at"]),
+                        "device_id": str(v["device_id"]),
+                    }
+
         _migrate_legacy_default_times(loaded)
 
         for key, default_value in DEFAULTS.items():
@@ -135,13 +159,13 @@ class Settings:
 
     def _save_to_disk(self):
         # Atomic write: temp file + replace, damit ein Crash mid-write
-        # kein halb geschriebenes settings.json hinterlässt. Relevant, weil
-        # der Update-Banner den Settings-Write aus einem Worker-Thread
-        # via root.after auf den UI-Thread schiebt und parallel zum Settings-
-        # Dialog schreiben kann.
+        # kein halb geschriebenes settings.json hinterlässt.
+        payload = dict(self._data)
+        if self._synced_meta:
+            payload["_synced_meta"] = self._synced_meta
         tmp = self.filepath + ".tmp"
         with open(tmp, "w", encoding="utf-8") as f:
-            json.dump(self._data, f, indent=2, ensure_ascii=False)
+            json.dump(payload, f, indent=2, ensure_ascii=False)
         try:
             os.replace(tmp, self.filepath)
         except OSError:
@@ -163,4 +187,49 @@ class Settings:
         if not updates:
             return
         self._data.update(updates)
+        self._save_to_disk()
+
+    def set_synced(self, key, value):
+        """Setzt einen whitelisted Sync-Key und stempelt Per-Field-Metadaten.
+        Außerhalb der Whitelist verhält sich wie ein normales set()."""
+        if key not in SYNCED_SETTING_KEYS:
+            self.set(key, value)
+            return
+        self._data[key] = value
+        self._synced_meta[key] = {
+            "modified_at": _utc_now_iso(),
+            "device_id": self.device_id_for_sync,
+        }
+        self._save_to_disk()
+
+    def get_synced_doc(self):
+        """{key: {value, modified_at, device_id}} — Eingabe für den Sync-Merge.
+        Nur Keys mit vorhandener Metadaten-Spur werden zurückgegeben."""
+        doc = {}
+        for key in SYNCED_SETTING_KEYS:
+            meta = self._synced_meta.get(key)
+            if meta is None:
+                continue
+            doc[key] = {
+                "value": self._data.get(key, DEFAULTS.get(key)),
+                "modified_at": meta["modified_at"],
+                "device_id": meta["device_id"],
+            }
+        return doc
+
+    def apply_synced(self, synced_doc):
+        """Übernimmt das Merge-Ergebnis: schreibt value in _data und Meta in
+        _synced_meta. Schreibt einmal auf Platte."""
+        if not synced_doc:
+            return
+        for key, payload in synced_doc.items():
+            if key not in SYNCED_SETTING_KEYS:
+                continue
+            if not isinstance(payload, dict) or "value" not in payload:
+                continue
+            self._data[key] = payload["value"]
+            self._synced_meta[key] = {
+                "modified_at": str(payload.get("modified_at", "")),
+                "device_id": str(payload.get("device_id", "")),
+            }
         self._save_to_disk()
