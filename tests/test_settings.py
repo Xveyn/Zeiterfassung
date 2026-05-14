@@ -9,12 +9,12 @@ def tmp_settings(tmp_path):
     return Settings(str(tmp_path / "settings.json"))
 
 def test_defaults(tmp_settings):
-    assert tmp_settings.get("email") == ""
+    assert tmp_settings.get("recipient") == ""
     assert tmp_settings.get("default_pause") == 30
 
 def test_save_and_load(tmp_settings):
-    tmp_settings.set("email", "test@example.com")
-    assert tmp_settings.get("email") == "test@example.com"
+    tmp_settings.set("recipient", "test@example.com")
+    assert tmp_settings.get("recipient") == "test@example.com"
 
 def test_set_default_pause(tmp_settings):
     tmp_settings.set("default_pause", 45)
@@ -23,10 +23,10 @@ def test_set_default_pause(tmp_settings):
 def test_persistence(tmp_path):
     path = str(tmp_path / "settings.json")
     s1 = Settings(path)
-    s1.set("email", "test@example.com")
+    s1.set("recipient", "test@example.com")
     s1.set("default_pause", 15)
     s2 = Settings(path)
-    assert s2.get("email") == "test@example.com"
+    assert s2.get("recipient") == "test@example.com"
     assert s2.get("default_pause") == 15
 
 def test_corrupted_file(tmp_path):
@@ -34,7 +34,7 @@ def test_corrupted_file(tmp_path):
     with open(path, "w") as f:
         f.write("not json{{{")
     s = Settings(path)
-    assert s.get("email") == ""
+    assert s.get("recipient") == ""
     assert s.get("default_pause") == 30
 
 def test_recipient_default(tmp_settings):
@@ -55,13 +55,13 @@ def test_dismissed_version_default(tmp_settings):
 def test_set_many_writes_once(tmp_settings):
     """set_many ruft _save_to_disk genau einmal auf."""
     with patch.object(tmp_settings, "_save_to_disk") as mock_save:
-        tmp_settings.set_many({"email": "a@b.de", "default_pause": 45})
+        tmp_settings.set_many({"recipient": "a@b.de", "default_pause": 45})
     assert mock_save.call_count == 1
 
 
 def test_set_many_updates_data(tmp_settings):
-    tmp_settings.set_many({"email": "a@b.de", "default_pause": 45})
-    assert tmp_settings.get("email") == "a@b.de"
+    tmp_settings.set_many({"recipient": "a@b.de", "default_pause": 45})
+    assert tmp_settings.get("recipient") == "a@b.de"
     assert tmp_settings.get("default_pause") == 45
 
 
@@ -74,9 +74,9 @@ def test_set_many_empty_is_noop(tmp_settings):
 
 def test_set_is_wrapper_around_set_many(tmp_settings):
     with patch.object(tmp_settings, "_save_to_disk") as mock_save:
-        tmp_settings.set("email", "x@y.de")
+        tmp_settings.set("recipient", "x@y.de")
     assert mock_save.call_count == 1
-    assert tmp_settings.get("email") == "x@y.de"
+    assert tmp_settings.get("recipient") == "x@y.de"
 
 
 def _write_json(tmp_path, payload):
@@ -123,10 +123,17 @@ def test_load_int_for_float_default(tmp_path):
 
 
 def test_load_unknown_key_is_ignored(tmp_path):
-    path = _write_json(tmp_path, json.dumps({"old_field": "x", "email": "a@b.de"}))
+    path = _write_json(tmp_path, json.dumps({"old_field": "x", "recipient": "a@b.de"}))
     s = Settings(path)
     assert s.get("old_field") is None
-    assert s.get("email") == "a@b.de"
+    assert s.get("recipient") == "a@b.de"
+
+
+def test_load_removed_email_key_is_ignored(tmp_path):
+    """Der frühere 'email'-Key (in 1.11.2 entfernt) wird stillschweigend verworfen."""
+    path = _write_json(tmp_path, json.dumps({"email": "user@example.com"}))
+    s = Settings(path)
+    assert s.get("email") is None
 
 
 def test_load_toplevel_not_dict_resets_to_defaults(tmp_path, caplog):
@@ -134,7 +141,7 @@ def test_load_toplevel_not_dict_resets_to_defaults(tmp_path, caplog):
     with caplog.at_level("WARNING"):
         s = Settings(path)
     assert s.get("default_pause") == 30
-    assert s.get("email") == ""
+    assert s.get("recipient") == ""
     assert any("Toplevel" in rec.message or "toplevel" in rec.message for rec in caplog.records)
 
 
@@ -205,7 +212,7 @@ def test_migration_drops_legacy_keys_on_save(tmp_path):
         "default_end": "17:00",
     }))
     s = Settings(path)
-    s.set("email", "trigger@save.de")  # erzwingt Disk-Write
+    s.set("recipient", "trigger@save.de")  # erzwingt Disk-Write
     with open(path, "r", encoding="utf-8") as f:
         on_disk = json.load(f)
     assert "default_start" not in on_disk
@@ -261,6 +268,6 @@ def test_show_weekend_string_falls_back_to_default(tmp_path, caplog):
 
 def test_show_weekend_missing_key_uses_default(tmp_path):
     """settings.json ohne show_weekend → Default True (alte Installationen)."""
-    path = _write_json(tmp_path, json.dumps({"email": "a@b.de"}))
+    path = _write_json(tmp_path, json.dumps({"recipient": "a@b.de"}))
     s = Settings(path)
     assert s.get("show_weekend") is True

@@ -5,7 +5,6 @@ import os
 WEEKDAY_KEYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")  # Index = datetime.weekday()
 
 DEFAULTS = {
-    "email": "",
     "default_pause": 30,
     "recipient": "",
     "autostart": False,

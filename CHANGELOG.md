@@ -2,6 +2,7 @@
 
 ## v1.11.1
 - Neue Option in den Einstellungen: „Wochenende (Sa/So) im Kalender anzeigen". Wenn deaktiviert, fallen Sa und So aus der Monats- und Wochenansicht weg, das Fenster wird entsprechend schmaler. Bestehende Wochenend-Einträge bleiben gespeichert und werden weiterhin in Mail/PDF exportiert — nur die Kalender-Anzeige ändert sich. Default: angezeigt (kein Verhaltenssprung für Bestandsnutzer)
+- Das „Absender"-Feld in den Einstellungen wurde entfernt. Es hatte keine Wirkung — die Absender-Adresse wird zwingend vom Gmail-OAuth-Token bestimmt (`userId=me`), das eingetragene Feld wurde nie als `From:`-Header gesetzt. Ein evtl. vorhandener Wert in `settings.json` wird beim nächsten Settings-Speichern still entfernt
 
 ## v1.11.0
 - macOS: alle Buttons rendern jetzt im Dark-Theme statt als native Aqua-Buttons (Header `‹ › ⚙`, Monat/Woche-Toggle, Footer „Monat senden", Dialog-Buttons, Update-Banner). Bisher war der Text auf primären und aktiven Buttons unter macOS weiß auf weiß und damit unlesbar — der Grund: das Aqua-Backend ignoriert `bg`/`fg` für `tk.Button` und zeichnet sie nativ. Die App benutzt jetzt Label-basierte Custom-Buttons, die auf allen Plattformen das Theme respektieren

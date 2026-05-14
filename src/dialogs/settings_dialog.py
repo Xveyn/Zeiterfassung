@@ -76,10 +76,6 @@ def open_settings_dialog(parent, settings, base_path, on_change):
 
     refresh_status()
 
-    label("Absender:", row=2)
-    email_var = tk.StringVar(value=settings.get("email"))
-    dark_entry(dialog, email_var, width=25).grid(row=2, column=1, padx=10, pady=8)
-
     times_label = tk.Label(
         dialog, text="Standardzeiten: ▶", font=FONT, bg=BG, fg=TEXT,
         cursor="hand2",
@@ -239,7 +235,6 @@ def open_settings_dialog(parent, settings, base_path, on_change):
 
         updates = {
             "autostart": new_autostart,
-            "email": email_var.get(),
             "default_pause": int(pause_var.get()),
             "recipient": recipient_var.get(),
             "name": name_var.get(),
