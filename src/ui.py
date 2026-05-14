@@ -36,17 +36,20 @@ from src.theme import (
     HOLIDAY_BG, HOLIDAY_BG_HOVER, HOLIDAY_ACCENT,
     FONT, FONT_BOLD, FONT_HEADER, FONT_HEADER_SMALL, FONT_FOOTER, FONT_SMALL, FONT_TINY,
     CELL_BG_HOVER, WEEKEND_BG_HOVER, ENTRY_BG_HOVER, WEEKEND_ENTRY_BG_HOVER,
+    apply_dark_titlebar,
     icon_button, label_button, secondary_button, set_toggle_active, toggle_button,
 )
 
 class App:
-    def __init__(self, root, storage, settings, base_path="."):
+    def __init__(self, root, storage, settings, base_path=".", conflicts_store=None):
         self.root = root
         self.storage = storage
         self.settings = settings
         self.base_path = base_path
+        self.conflicts_store = conflicts_store
         self.root.title(f"Zeiterfassung v{VERSION}")
         self.root.configure(bg=BG)
+        apply_dark_titlebar(self.root)
 
         # Set unique AppUserModelID so Windows shows our icon in taskbar
         try:
@@ -83,6 +86,7 @@ class App:
         self._proactive_token_refresh()
         self._update_banner = None
         self._proactive_update_check()
+        self.root.protocol("WM_DELETE_WINDOW", self._on_close)
 
     def _proactive_token_refresh(self):
         """Erneuert den Gmail-Token beim App-Start im Hintergrund.
@@ -678,3 +682,23 @@ class App:
 
     def _send(self):
         open_send_dialog(self.root, self.storage, self.settings, self.base_path)
+
+    def on_sync_pull_success(self):
+        """Wird aus dem UI-Thread nach erfolgreichem Pull aufgerufen."""
+        # _refresh() re-renders the full calendar grid (month or week view).
+        self._refresh()
+
+    def on_sync_pull_error(self, error):
+        import tkinter.messagebox as mb
+        mb.showerror("Synchronisation fehlgeschlagen",
+                      f"Beim Abrufen der Drive-Daten ist ein Fehler aufgetreten:\n\n{error}")
+
+    def _on_close(self):
+        if self.settings.get("sync_enabled"):
+            from src.main import _run_push_blocking
+            try:
+                _run_push_blocking(self.storage, self.settings, self.conflicts_store,
+                                    self.base_path, timeout_seconds=5)
+            except Exception:
+                pass
+        self.root.destroy()
