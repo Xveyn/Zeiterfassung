@@ -613,7 +613,10 @@ class App:
                 cell = self._build_day_cell(
                     new_frame, date_str, str(day), day_date,
                     is_weekend=col >= 5, entry=entry, holidays_map=holidays_map,
-                    pad=4, empty_height=3, holiday_max_len=12,
+                    pad=4, empty_height=3,
+                    # Bei schmalen Zellen (7-Spalten-Modus) kürzer trunkieren,
+                    # damit der padx=4-Innenraum der Holiday-Zelle erhalten bleibt.
+                    holiday_max_len=12 if wide_cells else 9,
                     holiday_cell_size=cell_size,
                     entry_cell_size=cell_size,
                     conflict_dates=conflict_dates,
@@ -716,7 +719,10 @@ class App:
             cell, text=truncated,
             font=name_font, bg=HOLIDAY_BG, fg=TEXT_MUTED, cursor="hand2",
         )
-        name_lbl.pack(pady=(0, 4))
+        # padx=4 für sichtbare Innenränder, sonst klebt der Feiertagsname an
+        # den Zellrändern. Caller sorgt mit passendem max_name_len dafür,
+        # dass der Text in die verbleibende Breite passt.
+        name_lbl.pack(pady=(0, 4), padx=4)
 
         for w in (cell, day_lbl, name_lbl):
             w.bind("<Button-1>", lambda e: on_click())
