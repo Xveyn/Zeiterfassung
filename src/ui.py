@@ -552,27 +552,37 @@ class App:
             w.bind("<Leave>", lambda e, c=cell, dl=day_lbl, tl=time_lbl, ob=bg: self._cell_hover(c, dl, tl, ob))
         return cell
 
-    def _build_empty_cell(self, parent, date_str, day_text, is_weekend, height):
+    def _build_empty_cell(self, parent, date_str, day_text, is_weekend, cell_size):
         bg = WEEKEND_BG if is_weekend else CELL_BG
         hover_bg = WEEKEND_BG_HOVER if is_weekend else CELL_BG_HOVER
         fg = WEEKEND_FG if is_weekend else TEXT
-        cell = tk.Label(
-            parent, text=day_text, font=FONT,
-            bg=bg, fg=fg, relief=tk.FLAT,
-            width=8, height=height, cursor="hand2",
+        # Pixel-fixiert auf dieselbe Außengröße wie Entry-/Holiday-Zellen, damit
+        # Spaltenbreiten nicht je nach Inhalt variieren (Tk berechnet die natürliche
+        # Breite eines Labels aus dem Text — eine leere "1" wäre sonst schmaler als
+        # eine Zelle mit "09:30-17:00"). +2 px in jeder Dimension kompensiert den
+        # 1-px-Highlight-Rand der gefüllten Zellen.
+        cell = tk.Frame(parent, bg=bg, cursor="hand2")
+        cell.config(width=cell_size[0] + 2, height=cell_size[1] + 2)
+        cell.pack_propagate(False)
+        day_lbl = tk.Label(
+            cell, text=day_text, font=FONT, bg=bg, fg=fg, cursor="hand2",
         )
-        cell.bind("<Button-1>", lambda e, d=date_str: self._open_dialog(d))
-        cell.bind("<Enter>", lambda e, c=cell, hb=hover_bg: c.config(bg=hb))
-        cell.bind("<Leave>", lambda e, c=cell, ob=bg: c.config(bg=ob))
+        day_lbl.pack(expand=True)
+        for w in (cell, day_lbl):
+            w.bind("<Button-1>", lambda e, d=date_str: self._open_dialog(d))
+            w.bind("<Enter>", lambda e, c=cell, dl=day_lbl, hb=hover_bg: self._empty_hover(c, dl, hb))
+            w.bind("<Leave>", lambda e, c=cell, dl=day_lbl, ob=bg: self._empty_hover(c, dl, ob))
         return cell
 
     def _build_day_cell(self, parent, date_str, day_text, day_date, is_weekend,
-                        entry, holidays_map, pad, empty_height,
-                        holiday_max_len, holiday_cell_size=None,
-                        entry_cell_size=None, conflict_dates=None,
+                        entry, holidays_map, pad,
+                        holiday_max_len, cell_size, conflict_dates=None,
                         entry_time_font=FONT_TINY, holiday_name_font=FONT_SMALL):
         """Dispatcht auf Entry-, Holiday- oder Empty-Zelle und liefert die fertig
         konfigurierte Widget-Instanz. Caller grided das Ergebnis selbst.
+
+        cell_size: (width_px, height_px) — alle drei Zelltypen werden auf diese
+        Größe pixel-fixiert, sodass Spaltenbreiten unabhängig vom Inhalt sind.
 
         conflict_dates: optionales Set von ISO-Datumsstrings mit ungelösten
         Konflikten. Zellen, deren date_str enthalten ist, erhalten einen
@@ -581,7 +591,7 @@ class App:
         if entry:
             cell = self._build_entry_cell(
                 parent, date_str, day_text, entry, is_weekend, pad,
-                cell_size=entry_cell_size, time_font=entry_time_font,
+                cell_size=cell_size, time_font=entry_time_font,
             )
             if day_date in holidays_map:
                 attach_tooltip(cell, f"Feiertag: {holidays_map[day_date]}")
@@ -590,12 +600,12 @@ class App:
                 parent, day_text=day_text,
                 name=holidays_map[day_date], max_name_len=holiday_max_len,
                 on_click=lambda d=date_str: self._open_dialog(d),
-                cell_size=holiday_cell_size,
+                cell_size=cell_size,
                 name_font=holiday_name_font,
             )
         else:
             cell = self._build_empty_cell(
-                parent, date_str, day_text, is_weekend, empty_height,
+                parent, date_str, day_text, is_weekend, cell_size,
             )
 
         if conflict_dates and date_str in conflict_dates:
@@ -711,12 +721,11 @@ class App:
                 cell = self._build_day_cell(
                     new_frame, date_str, str(day), day_date,
                     is_weekend=col >= 5, entry=entry, holidays_map=holidays_map,
-                    pad=4, empty_height=3,
+                    pad=4,
                     # Bei schmalen Zellen (7-Spalten-Modus) kürzer trunkieren,
                     # damit der padx=4-Innenraum der Holiday-Zelle erhalten bleibt.
                     holiday_max_len=12 if wide_cells else 9,
-                    holiday_cell_size=cell_size,
-                    entry_cell_size=cell_size,
+                    cell_size=cell_size,
                     conflict_dates=conflict_dates,
                     entry_time_font=entry_time_font,
                     holiday_name_font=holiday_name_font,
@@ -771,9 +780,8 @@ class App:
             cell = self._build_day_cell(
                 new_frame, date_str, day_text, day_date,
                 is_weekend=col >= 5, entry=entry, holidays_map=holidays_map,
-                pad=8, empty_height=5, holiday_max_len=18,
-                holiday_cell_size=cell_size,
-                entry_cell_size=cell_size,
+                pad=8, holiday_max_len=18,
+                cell_size=cell_size,
                 conflict_dates=conflict_dates,
                 entry_time_font=entry_time_font,
                 holiday_name_font=holiday_name_font,
@@ -840,6 +848,11 @@ class App:
         frame.config(bg=bg)
         day_lbl.config(bg=bg)
         time_lbl.config(bg=bg)
+
+    @staticmethod
+    def _empty_hover(frame, day_lbl, bg):
+        frame.config(bg=bg)
+        day_lbl.config(bg=bg)
 
     def _delete_entry(self, date_str):
         if themed_askyesno(self.root, "Eintrag löschen", f"Eintrag für {date_str} löschen?"):
