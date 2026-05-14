@@ -225,3 +225,39 @@ def test_merge_idempotent_does_not_duplicate_unresolved_conflict():
                               if c["kind"] == "entry" and c["key"] == "D"]
     assert len(entry_conflicts_for_d) == 1
     assert entry_conflicts_for_d[0]["id"] == "c-1"
+
+
+# --- Task 2.6: Resolution-Propagation ---
+
+def test_merge_applies_resolved_conflict_to_entry():
+    """Resolved Konflikt aktualisiert merged.entries auf die Resolution."""
+    resolved = _conflict("c-1", key="D",
+                         resolved=True,
+                         resolution={"start": "10:00", "end": "18:00", "pause": 30},
+                         resolved_at="2026-05-14T12:00:00Z",
+                         resolved_by="A")
+    local = _doc(
+        entries={"D": _e("08:00", "16:00", 30, "2026-05-14T11:00:00Z")},
+        conflicts=[resolved],
+    )
+    remote = _doc(entries={"D": _e("09:00", "17:00", 30, "2026-05-14T10:00:00Z")})
+    merged = merge(local, remote, "2026-05-13T00:00:00Z")
+    e = merged["entries"]["D"]
+    assert e["start"] == "10:00"
+    assert e["end"] == "18:00"
+    assert e["modified_at"] == "2026-05-14T12:00:00Z"
+    assert e["device_id"] == "A"
+    assert e["deleted"] is False
+
+
+def test_merge_applies_resolved_setting_conflict():
+    resolved = _conflict("c-1", kind="setting", key="recipient",
+                         resolved=True, resolution={"value": "final@x.de"},
+                         resolved_at="2026-05-14T12:00:00Z", resolved_by="A")
+    local = _doc(
+        settings={"recipient": _s("a@b.de", "2026-05-14T09:00:00Z")},
+        conflicts=[resolved],
+    )
+    merged = merge(local, _doc(), "2026-05-13T00:00:00Z")
+    assert merged["settings"]["recipient"]["value"] == "final@x.de"
+    assert merged["settings"]["recipient"]["device_id"] == "A"

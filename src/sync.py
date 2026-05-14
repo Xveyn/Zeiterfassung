@@ -167,4 +167,33 @@ def merge(local, remote, last_pull_at):
             existing.append(c)
 
     merged["conflicts"] = list(by_id.values())
+
+    # Resolutions anwenden: jeder resolved Konflikt überschreibt entries/settings,
+    # falls die Resolution jünger ist als der aktuelle merged-Wert.
+    for c in merged["conflicts"]:
+        if not c.get("resolved"):
+            continue
+        resolution = c.get("resolution") or {}
+        resolved_at = c.get("resolved_at") or ""
+        resolved_by = c.get("resolved_by") or ""
+        if c["kind"] == "entry":
+            current = merged["entries"].get(c["key"])
+            if current is None or current["modified_at"] < resolved_at:
+                merged["entries"][c["key"]] = {
+                    "start": resolution.get("start"),
+                    "end": resolution.get("end"),
+                    "pause": resolution.get("pause", 0),
+                    "modified_at": resolved_at,
+                    "device_id": resolved_by,
+                    "deleted": bool(resolution.get("deleted", False)),
+                }
+        elif c["kind"] == "setting":
+            current = merged["settings"].get(c["key"])
+            if current is None or current["modified_at"] < resolved_at:
+                merged["settings"][c["key"]] = {
+                    "value": resolution.get("value"),
+                    "modified_at": resolved_at,
+                    "device_id": resolved_by,
+                }
+
     return merged
