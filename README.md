@@ -143,7 +143,8 @@ Damit die App E-Mails versenden kann, muss einmalig ein Google Cloud Projekt mit
    - Support-E-Mail: deine Gmail-Adresse
    - Entwickler-E-Mail: deine Gmail-Adresse
 4. **Speichern und fortfahren**
-5. Bei **Bereiche**: `gmail.send` hinzufügen → **Aktualisieren** → **Speichern**
+5. Bei **Bereiche**: `gmail.send` und `userinfo.email` hinzufügen → **Aktualisieren** → **Speichern**
+   - `userinfo.email` wird benötigt, damit die App die Absender-E-Mail-Adresse automatisch aus dem Google-Konto übernehmen kann (non-sensitive, keine Verifizierung nötig)
 6. Bei **Testnutzer**: deine Gmail-Adresse hinzufügen → **Speichern**
 
 ### 4. OAuth2 Client-ID erstellen
