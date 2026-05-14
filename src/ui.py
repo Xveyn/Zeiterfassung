@@ -796,8 +796,21 @@ class App:
         if self.settings.get("sync_enabled"):
             from src.main import _run_push_blocking
             try:
-                _run_push_blocking(self.storage, self.settings, self.conflicts_store,
-                                    self.base_path, timeout_seconds=5)
-            except Exception:
-                pass
+                result = _run_push_blocking(
+                    self.storage, self.settings, self.conflicts_store,
+                    self.base_path, timeout_seconds=5,
+                )
+            except Exception as e:
+                result = {"ok": False, "error": e, "tb": traceback.format_exc()}
+            if not result.get("ok"):
+                # CLAUDE.md: Fehler dürfen nicht silently verschluckt werden.
+                # Wir zeigen die Messagebox blockierend; User entscheidet, ob er
+                # die Daten nochmal woanders sichern will oder die App so schließt.
+                detail = f"{result.get('error', '?')}\n\n{result.get('tb', '')}"
+                messagebox.showerror(
+                    "Synchronisation beim Schließen fehlgeschlagen",
+                    f"Push zum Drive ist fehlgeschlagen:\n\n{detail}\n\n"
+                    "Lokale Daten bleiben erhalten und werden beim nächsten Start "
+                    "synchronisiert.",
+                )
         self.root.destroy()
