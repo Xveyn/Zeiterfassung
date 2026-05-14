@@ -59,3 +59,23 @@ def test_merge_one_both_changed_creates_conflict():
     # Beide Kandidaten im Conflict
     candidate_devices = sorted(c["device_id"] for c in conflict["candidates"])
     assert candidate_devices == ["A", "B"]
+
+
+# --- Task 2.2: Tombstone tests ---
+
+def test_merge_one_tombstone_wins_when_only_remote_changed():
+    local = _e("08:00", "16:00", 30, "2026-05-01T10:00:00Z")  # before last_pull
+    remote = _e(None, None, None, "2026-05-14T10:00:00Z", deleted=True)
+    merged, conflict = _merge_one(local, remote, "2026-05-10T00:00:00Z")
+    assert merged is remote
+    assert merged["deleted"] is True
+    assert conflict is None
+
+
+def test_merge_one_tombstone_vs_edit_creates_conflict_when_both_changed():
+    local = _e("08:00", "16:00", 30, "2026-05-14T09:00:00Z")
+    remote = _e(None, None, None, "2026-05-14T10:00:00Z", deleted=True)
+    merged, conflict = _merge_one(local, remote, "2026-05-13T00:00:00Z")
+    assert conflict is not None
+    # LWW: jüngerer gewinnt provisorisch
+    assert merged is remote
