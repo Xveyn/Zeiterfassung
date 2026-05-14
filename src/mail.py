@@ -121,7 +121,7 @@ def send_email(service, to, subject, html_body, pdf_bytes=None, pdf_filename=Non
     if pdf_bytes:
         message = MIMEMultipart()
         message["to"] = to
-        message["subject"] = Header(subject, "utf-8")
+        message["subject"] = Header(subject, "utf-8")  # pyright: ignore[reportArgumentType]
         message.attach(MIMEText(html_body, "html", _charset="utf-8"))
 
         attachment = MIMEApplication(pdf_bytes, _subtype="pdf")
@@ -133,7 +133,7 @@ def send_email(service, to, subject, html_body, pdf_bytes=None, pdf_filename=Non
     else:
         message = MIMEText(html_body, "html", _charset="utf-8")
         message["to"] = to
-        message["subject"] = Header(subject, "utf-8")
+        message["subject"] = Header(subject, "utf-8")  # pyright: ignore[reportArgumentType]
 
     raw = base64.urlsafe_b64encode(message.as_bytes()).decode()
     body = {"raw": raw}

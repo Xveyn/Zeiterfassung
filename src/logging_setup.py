@@ -74,4 +74,4 @@ def _install_excepthooks() -> None:
                 "Messagebox für uncaught Tk exception konnte nicht angezeigt werden",
             )
 
-    tk.Tk.report_callback_exception = _tk_hook
+    tk.Tk.report_callback_exception = _tk_hook  # pyright: ignore[reportAttributeAccessIssue]

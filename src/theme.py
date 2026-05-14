@@ -1,6 +1,7 @@
 import platform
 import tkinter as tk
 from tkinter import ttk
+from typing import TypedDict
 
 _system = platform.system()
 if _system == "Darwin":
@@ -45,6 +46,19 @@ HOLIDAY_ACCENT = "#4ade80"  # gleicher Grünton wie STATUS_OK
 # Time dropdown values (5-min steps, 00:00 - 23:55)
 TIME_VALUES = [f"{h:02d}:{m:02d}" for h in range(24) for m in range(0, 60, 5)]
 PAUSE_VALUES = [str(m) for m in range(0, 125, 5)]
+
+
+class _ToggleColors(TypedDict):
+    bg: str
+    fg: str
+    hover_bg: str
+    hover_fg: str
+
+
+class _LabelButton(tk.Frame):
+    """tk.Frame mit zusätzlichen Attributen für das label_button-Konstrukt."""
+    _label: tk.Label
+    _colors: _ToggleColors
 
 
 def apply_combobox_style(dialog):
@@ -100,7 +114,7 @@ def label_button(
     bg, fg, hover_bg, hover_fg,
     font,
     label_padx=0, label_pady=0,
-    width=None,
+    width=0,
 ):
     """Frame+Label-Konstrukt als Button-Ersatz.
 
@@ -114,7 +128,7 @@ def label_button(
     daraus — kein Unbind nötig, attach_tooltip (add="+") bleibt
     funktional.
     """
-    frame = tk.Frame(parent, bg=bg, cursor="hand2")
+    frame = _LabelButton(parent, bg=bg, cursor="hand2")
     label = tk.Label(
         frame, text=text, font=font,
         bg=bg, fg=fg, cursor="hand2",
@@ -168,7 +182,7 @@ def secondary_button(parent, text, command, font=FONT, padx=16, pady=4):
     )
 
 
-def _toggle_colors(active):
+def _toggle_colors(active) -> _ToggleColors:
     if active:
         # Aktive Toggle-Variante: kein Hover-Farbwechsel (würde wie "klickbar" aussehen)
         return {
@@ -193,7 +207,7 @@ def toggle_button(parent, text, command, active=False):
     )
 
 
-def set_toggle_active(btn, active):
+def set_toggle_active(btn: _LabelButton, active):
     """Mutiert die in `label_button` gesetzten `_colors`. Die Enter/Leave-
     Handler lesen bei jedem Hover frisch daraus — kein Unbind nötig,
     keine Closures mit alten Farben."""
