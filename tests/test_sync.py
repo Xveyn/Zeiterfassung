@@ -3,7 +3,7 @@ import pytest
 from src.conflicts_store import ConflictsStore
 from src.settings import Settings
 from src.storage import Storage
-from src.sync import _merge_one, apply_merged_doc, build_local_doc, merge
+from src.sync import _merge_one, apply_merged_doc, build_local_doc, merge, resolve_conflict
 
 
 def _e(start, end, pause, modified_at, device_id="d", deleted=False):
@@ -300,3 +300,62 @@ def test_round_trip_no_loss(tmp_path):
 
     assert storage.get("2026-05-14") == {"start": "08:00", "end": "16:00", "pause": 30}
     assert settings.get("name") == "Max"
+
+
+# --- Task 2.8: resolve_conflict ---
+
+def test_resolve_entry_conflict_updates_storage_and_marks_resolved(tmp_path):
+    storage = Storage(str(tmp_path / "z.json"), device_id="A")
+    settings = Settings(str(tmp_path / "s.json"))
+    conflicts = ConflictsStore(str(tmp_path / "c.json"))
+    conflicts.save_all([{
+        "id": "c-1", "kind": "entry", "key": "2026-05-14",
+        "candidates": [
+            {"start": "08:00", "end": "16:00", "pause": 30,
+             "modified_at": "2026-05-14T09:00:00Z", "device_id": "A", "deleted": False},
+            {"start": "09:00", "end": "17:00", "pause": 30,
+             "modified_at": "2026-05-14T10:00:00Z", "device_id": "B", "deleted": False},
+        ],
+        "detected_at": "2026-05-14T11:00:00Z",
+        "resolved": False, "resolution": None,
+        "resolved_at": None, "resolved_by": None,
+    }])
+
+    chosen = {"start": "09:00", "end": "17:00", "pause": 30}
+    resolve_conflict("c-1", chosen, conflicts, storage, settings, device_id="A")
+
+    # storage hat den Wert
+    assert storage.get("2026-05-14") == {"start": "09:00", "end": "17:00", "pause": 30}
+    # conflict ist resolved
+    c = conflicts.get_all()[0]
+    assert c["resolved"] is True
+    assert c["resolution"] == chosen
+    assert c["resolved_by"] == "A"
+    assert c["resolved_at"].endswith("Z")
+
+
+def test_resolve_setting_conflict_updates_settings(tmp_path):
+    storage = Storage(str(tmp_path / "z.json"), device_id="A")
+    settings = Settings(str(tmp_path / "s.json"))
+    settings.device_id_for_sync = "A"
+    conflicts = ConflictsStore(str(tmp_path / "c.json"))
+    conflicts.save_all([{
+        "id": "c-2", "kind": "setting", "key": "recipient",
+        "candidates": [
+            {"value": "a@b.de", "modified_at": "...", "device_id": "A"},
+            {"value": "x@y.de", "modified_at": "...", "device_id": "B"},
+        ],
+        "detected_at": "...", "resolved": False, "resolution": None,
+        "resolved_at": None, "resolved_by": None,
+    }])
+    resolve_conflict("c-2", {"value": "x@y.de"}, conflicts, storage, settings, device_id="A")
+    assert settings.get("recipient") == "x@y.de"
+    assert conflicts.get_all()[0]["resolved"] is True
+
+
+def test_resolve_nonexistent_conflict_raises(tmp_path):
+    storage = Storage(str(tmp_path / "z.json"), device_id="A")
+    settings = Settings(str(tmp_path / "s.json"))
+    conflicts = ConflictsStore(str(tmp_path / "c.json"))
+    with pytest.raises(KeyError):
+        resolve_conflict("missing", {}, conflicts, storage, settings, device_id="A")

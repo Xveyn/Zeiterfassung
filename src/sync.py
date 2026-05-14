@@ -214,3 +214,36 @@ def apply_merged_doc(merged_doc, storage, settings, conflicts_store):
     storage.apply_merge(merged_doc.get("entries", {}))
     settings.apply_synced(merged_doc.get("settings", {}))
     conflicts_store.save_all(merged_doc.get("conflicts", []))
+
+
+def resolve_conflict(conflict_id, chosen_value, conflicts_store, storage, settings, device_id):
+    """User hat einen Konflikt aufgelöst. chosen_value enthält den gewählten
+    (oder manuell editierten) Wert. Für entries: {start, end, pause} (und
+    optional deleted). Für settings: {value}.
+    Schreibt den Wert in den entsprechenden Store und markiert den Konflikt
+    als resolved im ConflictsStore."""
+    all_conflicts = conflicts_store.get_all()
+    target = next((c for c in all_conflicts if c["id"] == conflict_id), None)
+    if target is None:
+        raise KeyError(f"Konflikt {conflict_id!r} nicht gefunden")
+
+    now = _utc_now_iso()
+    target["resolved"] = True
+    target["resolution"] = dict(chosen_value)
+    target["resolved_at"] = now
+    target["resolved_by"] = device_id
+
+    if target["kind"] == "entry":
+        if chosen_value.get("deleted"):
+            storage.delete(target["key"])
+        else:
+            storage.save(
+                target["key"],
+                chosen_value.get("start"),
+                chosen_value.get("end"),
+                chosen_value.get("pause", 0),
+            )
+    elif target["kind"] == "setting":
+        settings.set_synced(target["key"], chosen_value.get("value"))
+
+    conflicts_store.save_all(all_conflicts)
