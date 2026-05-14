@@ -88,3 +88,22 @@ def get_drive_service(credentials_path, token_path):
         _write_token(creds, token_path)
 
     return build("drive", "v3", credentials=creds)
+
+
+def find_sync_file(service):
+    """Listet appDataFolder und sucht nach SYNC_FILENAME. Liefert file_id oder None.
+    Wirft DriveNetworkError bei API-Fehlern."""
+    try:
+        result = service.files().list(
+            spaces="appDataFolder",
+            q=f"name = '{SYNC_FILENAME}'",
+            fields="files(id, name)",
+            pageSize=10,
+        ).execute()
+    except HttpError as e:
+        raise DriveNetworkError(str(e)) from e
+
+    files = result.get("files", [])
+    if not files:
+        return None
+    return files[0]["id"]

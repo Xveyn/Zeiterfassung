@@ -58,3 +58,30 @@ def test_get_drive_service_runs_oauth_flow_when_no_token(tmp_path):
     assert "https://www.googleapis.com/auth/gmail.send" in used_scopes
     # Token wurde geschrieben
     assert token_path.exists()
+
+
+from src.drive import find_sync_file
+
+
+def test_find_sync_file_returns_id_when_present():
+    service = mock.MagicMock()
+    service.files().list().execute.return_value = {
+        "files": [{"id": "file-abc", "name": "zeiterfassung-sync.json"}],
+    }
+    assert find_sync_file(service) == "file-abc"
+
+
+def test_find_sync_file_returns_none_when_absent():
+    service = mock.MagicMock()
+    service.files().list().execute.return_value = {"files": []}
+    assert find_sync_file(service) is None
+
+
+def test_find_sync_file_queries_appdatafolder():
+    service = mock.MagicMock()
+    service.files().list().execute.return_value = {"files": []}
+    find_sync_file(service)
+    # spaces='appDataFolder' wurde verwendet
+    call_kwargs = service.files().list.call_args[1]
+    assert call_kwargs.get("spaces") == "appDataFolder"
+    assert "zeiterfassung-sync.json" in call_kwargs.get("q", "")
