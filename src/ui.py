@@ -688,7 +688,11 @@ class App:
         # Zeit-Zeile in FONT_SMALL statt FONT_TINY lesbar dargestellt wird.
         wide_cells = not self.settings.get("show_weekend")
         probe_width = 12 if wide_cells else 8
-        entry_time_font = FONT if wide_cells else FONT_TINY
+        # FONT_SMALL (8pt) statt FONT_TINY (7pt) im 7-Spalten-Modus — Spalten
+        # werden durch sticky="nsew" + columnconfigure(weight=1) über die
+        # Probe-Breite hinaus gestreckt, sodass "09:30-17:00" auch in 8pt
+        # bequem reinpasst und besser lesbar bleibt.
+        entry_time_font = FONT if wide_cells else FONT_SMALL
         holiday_name_font = FONT if wide_cells else FONT_SMALL
         probe = tk.Label(new_frame, text="", font=FONT, width=probe_width, height=3)
         probe.update_idletasks()
@@ -780,7 +784,11 @@ class App:
             cell = self._build_day_cell(
                 new_frame, date_str, day_text, day_date,
                 is_weekend=col >= 5, entry=entry, holidays_map=holidays_map,
-                pad=8, holiday_max_len=18,
+                pad=8,
+                # 18 war zu lang für die gerenderte Spaltenbreite — "Christi
+                # Himmelfa…" lief über den Zellenrand hinaus. Werte unten
+                # passen zu den effektiv gestreckten Spalten in beiden Modi.
+                holiday_max_len=14 if wide_cells else 12,
                 cell_size=cell_size,
                 conflict_dates=conflict_dates,
                 entry_time_font=entry_time_font,
