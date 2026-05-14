@@ -92,10 +92,10 @@ import io
 from src.drive import download, upload
 
 
-def test_download_returns_content_and_etag():
+def test_download_returns_content_and_version():
     service = mock.MagicMock()
     service.files().get_media.return_value = "media-request"
-    service.files().get().execute.return_value = {"etag": "etag-123"}
+    service.files().get().execute.return_value = {"version": 123}
 
     with mock.patch("src.drive.MediaIoBaseDownload") as mock_dl_cls:
         # Simuliere Downloader, der sofort done=True liefert
@@ -109,33 +109,34 @@ def test_download_returns_content_and_etag():
             return mock_dl
         mock_dl_cls.side_effect = fake_init
 
-        content, etag = download(service, "file-123")
+        content, version = download(service, "file-123")
 
     assert content == b'{"hello": "world"}'
-    assert etag == "etag-123"
+    assert version == "123"
 
 
 def test_upload_new_file_when_file_id_none():
     service = mock.MagicMock()
-    service.files().create().execute.return_value = {"id": "new-id", "etag": "etag-new"}
-    file_id, etag = upload(service, b'{"x":1}', file_id=None, expected_etag="")
+    service.files().create().execute.return_value = {"id": "new-id", "version": 1}
+    file_id, version = upload(service, b'{"x":1}', file_id=None, expected_etag="")
     assert file_id == "new-id"
-    assert etag == "etag-new"
+    assert version == "1"
 
 
 def test_upload_existing_file_uses_update():
     service = mock.MagicMock()
-    service.files().update().execute.return_value = {"id": "file-123", "etag": "etag-2"}
-    file_id, etag = upload(service, b'{"x":2}', file_id="file-123", expected_etag="etag-1")
+    service.files().update().execute.return_value = {"id": "file-123", "version": 2}
+    file_id, version = upload(service, b'{"x":2}', file_id="file-123", expected_etag="")
     assert file_id == "file-123"
-    assert etag == "etag-2"
+    assert version == "2"
 
 
-def test_upload_etag_mismatch_raises_drive_conflict_error():
+def test_upload_412_response_raises_drive_conflict_error():
+    """Drive API v3 schickt normalerweise kein 412, aber die 412→DriveConflictError-
+    Mappung bleibt als defensiver Pfad bestehen."""
     from googleapiclient.errors import HttpError
     service = mock.MagicMock()
-    # HttpError mit status 412 (Precondition Failed) simulieren
     resp = mock.MagicMock(status=412, reason="Precondition Failed")
     service.files().update().execute.side_effect = HttpError(resp, b"")
     with pytest.raises(DriveConflictError):
-        upload(service, b'{"x":1}', file_id="file-1", expected_etag="old")
+        upload(service, b'{"x":1}', file_id="file-1", expected_etag="")

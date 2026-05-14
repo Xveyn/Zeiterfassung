@@ -110,10 +110,16 @@ def find_sync_file(service):
 
 
 def download(service, file_id):
-    """Lädt die Sync-Datei herunter. Liefert (bytes, etag).
+    """Lädt die Sync-Datei herunter. Liefert (bytes, version_token).
+
+    version_token ist in Drive API v3 keine echte ETag mehr (das Feld wurde
+    in v3 entfernt), sondern die `version`-Nummer der Datei als String —
+    monoton steigend, eindeutig pro Modifikation. Wird nur informativ
+    zurückgegeben; aktuell ohne Optimistic-Lock-Verwendung beim Push.
+
     Wirft DriveNetworkError bei API-Fehlern."""
     try:
-        meta = service.files().get(fileId=file_id, fields="etag").execute()
+        meta = service.files().get(fileId=file_id, fields="version").execute()
         request = service.files().get_media(fileId=file_id)
         buf = io.BytesIO()
         downloader = MediaIoBaseDownload(buf, request)
@@ -122,17 +128,23 @@ def download(service, file_id):
             _, done = downloader.next_chunk()
     except HttpError as e:
         raise DriveNetworkError(str(e)) from e
-    return buf.getvalue(), meta.get("etag", "")
+    return buf.getvalue(), str(meta.get("version", ""))
 
 
 def upload(service, content_bytes, file_id=None, expected_etag=None):
     """Uploadet `content_bytes` als Sync-Datei.
 
     - file_id=None  → neues File in appDataFolder anlegen
-    - file_id gesetzt + expected_etag gesetzt → If-Match-Header für optimistic locking
-    - Bei ETag-Mismatch → DriveConflictError
+    - file_id gesetzt → update der bestehenden Datei
 
-    Liefert (file_id, new_etag).
+    Drive API v3 kennt kein `etag`-Feld mehr und unterstützt kein
+    granulares If-Match auf Datei-Updates ohne HTTP-Header-Tricks, die
+    googleapiclient nicht sauber freilegt. Die `expected_etag`-Signatur
+    bleibt aus Kompatibilitätsgründen erhalten, wird aber ignoriert.
+    Konflikt-Erkennung passiert pro-Eintrag über `modified_at` im
+    Sync-Doc-Merge, nicht auf File-Ebene.
+
+    Liefert (file_id, new_version_token).
     """
     media = MediaIoBaseUpload(io.BytesIO(content_bytes),
                                 mimetype=SYNC_MIMETYPE,
@@ -141,19 +153,13 @@ def upload(service, content_bytes, file_id=None, expected_etag=None):
         if file_id is None:
             metadata = {"name": SYNC_FILENAME, "parents": ["appDataFolder"]}
             resp = service.files().create(
-                body=metadata, media_body=media, fields="id, etag",
+                body=metadata, media_body=media, fields="id, version",
             ).execute()
-            return resp["id"], resp.get("etag", "")
-        else:
-            kwargs = {"fileId": file_id, "media_body": media, "fields": "id, etag"}
-            if expected_etag:
-                # If-Match-Header via Request-Builder
-                update_request = service.files().update(**kwargs)
-                update_request.headers["If-Match"] = expected_etag
-                resp = update_request.execute()
-            else:
-                resp = service.files().update(**kwargs).execute()
-            return resp["id"], resp.get("etag", "")
+            return resp["id"], str(resp.get("version", ""))
+        resp = service.files().update(
+            fileId=file_id, media_body=media, fields="id, version",
+        ).execute()
+        return resp["id"], str(resp.get("version", ""))
     except HttpError as e:
         status = getattr(e.resp, "status", None) if hasattr(e, "resp") else None
         if status == 412:
