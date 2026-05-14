@@ -12,7 +12,7 @@ from src.report import generate_pdf, generate_report
 from src.theme import (
     BG, FONT, TEXT,
     apply_combobox_style, apply_dark_titlebar, center_dialog_on_parent,
-    dark_combo, primary_button, secondary_button,
+    dark_combo, primary_button, secondary_button, themed_showinfo,
 )
 
 
@@ -182,10 +182,10 @@ def open_send_dialog(parent, storage, settings, base_path):
             send_email(service, recipient, subject, html,
                        pdf_bytes=pdf_bytes, pdf_filename=pdf_filename)
             dialog.destroy()
-            messagebox.showinfo(
+            themed_showinfo(
+                parent,
                 "Gesendet",
                 f"Bericht für {label} wurde an {recipient} gesendet.",
-                parent=parent,
             )
         except FileNotFoundError as e:
             messagebox.showerror("Fehler", str(e), parent=dialog)

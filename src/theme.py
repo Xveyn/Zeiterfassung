@@ -366,6 +366,36 @@ def themed_askyesno(parent, title: str, message: str) -> bool:
     return result["value"]
 
 
+def themed_showinfo(parent, title: str, message: str) -> None:
+    """Modaler Info-Dialog im App-Theme. Drop-in für `messagebox.showinfo`.
+
+    Eigener Toplevel mit Dark-Theme-Farben und gebrandeter Titelleiste —
+    `tkinter.messagebox.*` ist eine Black-Box ohne Customization-Hooks.
+    """
+    dialog = tk.Toplevel(parent)
+    dialog.title(title)
+    dialog.resizable(False, False)
+    dialog.configure(bg=BG)
+    apply_dark_titlebar(dialog)
+
+    tk.Label(
+        dialog, text=message, font=FONT, bg=BG, fg=TEXT,
+        wraplength=380, justify="left",
+    ).pack(padx=24, pady=(20, 14))
+
+    btn_frame = tk.Frame(dialog, bg=BG)
+    btn_frame.pack(pady=(0, 18))
+    primary_button(btn_frame, "OK", dialog.destroy).pack()
+
+    dialog.bind("<Return>", lambda e: dialog.destroy())
+    dialog.bind("<Escape>", lambda e: dialog.destroy())
+    dialog.protocol("WM_DELETE_WINDOW", dialog.destroy)
+
+    center_dialog_on_parent(dialog, parent)
+    dialog.grab_set()
+    dialog.wait_window()
+
+
 def icon_button(parent, text, command, fg=ACCENT, hover_fg=None):
     """Compact icon-style button used in the header (‹ › ⚙)."""
     if hover_fg is None:
