@@ -85,6 +85,10 @@ class App:
         self._apply_tray_setting()
         self.root.bind("<Left>", lambda e: self._prev())
         self.root.bind("<Right>", lambda e: self._next())
+        # Tab schaltet zwischen Monat- und Wochenansicht. "break" verhindert
+        # die Default-Focus-Traversal, die sonst zwischen den Toggle-Buttons
+        # springen würde und das Toggle visuell zerschießt.
+        self.root.bind("<Tab>", self._on_tab_toggle_view)
         self._refresh()
         self._proactive_token_refresh()
         self._proactive_sender_email_fetch()
@@ -349,6 +353,10 @@ class App:
             self.iso_year = iso[0]
             self.current_week = iso[1]
         self._refresh()
+
+    def _on_tab_toggle_view(self, _event=None):
+        self._set_view("week" if self.view_mode == "month" else "month")
+        return "break"
 
     def _set_view(self, mode):
         if mode == self.view_mode:
