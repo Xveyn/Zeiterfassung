@@ -703,6 +703,12 @@ class App:
         # bleibt und `geometry("")` in `_refresh` keinen sichtbaren Resize auslöst.
         n = self._visible_day_count()
         weeks = cal.monthdayscalendar(self.year, self.month)
+        # Bei ausgeblendetem Wochenende: führende Wochen verwerfen, deren
+        # sichtbarer Anteil (Mo–Fr) komplett aus 0 besteht — sonst entsteht
+        # eine sichtbar leere erste Zeile, wenn der Monat am Sa/So beginnt.
+        if n < 7:
+            while weeks and not any(weeks[0][:n]):
+                weeks.pop(0)
         while len(weeks) < 6:
             weeks.append([0] * 7)
 
