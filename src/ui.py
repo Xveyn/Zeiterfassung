@@ -248,6 +248,13 @@ class App:
         frame.pack(fill=tk.X, padx=10, pady=(10, 0))
         self.header_frame = frame
 
+        # H\u00f6hen-Anker: leeres Label mit FONT_HEADER. H\u00e4lt die Header-Reihe auf
+        # konstanter H\u00f6he (= Lineh\u00f6he von FONT_HEADER), damit Toggle- und
+        # Icon-Buttons beim View-Wechsel nicht vertikal springen \u2014 das
+        # header_label wechselt zwischen 16pt (Monat) und 12pt (Woche), und
+        # die Reihenh\u00f6he folgt sonst dem gr\u00f6\u00dften Kind.
+        tk.Label(frame, text="", font=FONT_HEADER, bg=BG, width=0).pack(side=tk.LEFT)
+
         icon_button(frame, "\u2039", self._prev).pack(side=tk.LEFT)
 
         toggle_frame = tk.Frame(frame, bg=BG)
