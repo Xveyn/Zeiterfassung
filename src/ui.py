@@ -89,6 +89,11 @@ class App:
         # die Default-Focus-Traversal, die sonst zwischen den Toggle-Buttons
         # springen würde und das Toggle visuell zerschießt.
         self.root.bind("<Tab>", self._on_tab_toggle_view)
+        # Vor dem ersten echten Refresh: alle 4 Kombinationen
+        # (view × show_weekend) einmal in den Backbuffer rendern, max reqwidth
+        # observen. Das Fenster ist noch nicht gemappt (mainloop nicht
+        # gestartet) — keine sichtbaren Zwischenzustände.
+        self._fixed_width = self._measure_max_width()
         self._refresh()
         self._proactive_token_refresh()
         self._proactive_sender_email_fetch()
@@ -365,6 +370,41 @@ class App:
         self._set_view("week" if self.view_mode == "month" else "month")
         return "break"
 
+    def _measure_max_width(self):
+        """Pre-warm: rendert alle 4 (view × show_weekend)-Kombinationen einmal
+        in den versteckten Backbuffer und gibt die maximale reqwidth zurück.
+        Läuft vor `mainloop()` — Zwischenzustände sind nie sichtbar.
+
+        Settings werden direkt über `_data` mutiert (kein Disk-Save) und am
+        Ende wiederhergestellt. `_suppress_geometry` verhindert den
+        Resize-Call im _refresh-Pfad während der Messung.
+        """
+        saved_view = self.view_mode
+        saved_weekend = self.settings.get("show_weekend")
+        max_w = 0
+        self._suppress_geometry = True
+        try:
+            for view in ("month", "week"):
+                for weekend in (True, False):
+                    self.view_mode = view
+                    self.settings._data["show_weekend"] = weekend
+                    # Force-rebuild über Tracking-Reset — sonst greift der
+                    # view_changed/cols_changed-Shortcut in _refresh.
+                    self._last_refresh_view = None
+                    self._last_refresh_columns = None
+                    self._refresh()
+                    self.root.update_idletasks()
+                    w = self.root.winfo_reqwidth()
+                    if w > max_w:
+                        max_w = w
+        finally:
+            self._suppress_geometry = False
+            self.view_mode = saved_view
+            self.settings._data["show_weekend"] = saved_weekend
+            self._last_refresh_view = None
+            self._last_refresh_columns = None
+        return max_w
+
     def _set_view(self, mode):
         if mode == self.view_mode:
             return
@@ -512,9 +552,18 @@ class App:
             self.root.update_idletasks()
             # Tk schrumpft Toplevels auf Windows nicht zuverlässig via
             # `geometry("")` — explizit auf reqsize setzen erzwingt Resize.
-            self.root.geometry(
-                f"{self.root.winfo_reqwidth()}x{self.root.winfo_reqheight()}"
-            )
+            # Breite wird auf den beim Start gemessenen Max-Wert gepinnt,
+            # damit View-/Weekend-Toggle die Fensterbreite nicht ändern.
+            # Während der Initial-Messung (_measure_max_width) suppress geometry,
+            # sonst flackert das Fenster beim Probing.
+            if not getattr(self, "_suppress_geometry", False):
+                width = max(
+                    getattr(self, "_fixed_width", 0),
+                    self.root.winfo_reqwidth(),
+                )
+                self.root.geometry(
+                    f"{width}x{self.root.winfo_reqheight()}"
+                )
 
     def _visible_day_count(self):
         """Sichtbare Wochentag-Spalten (5 bei show_weekend=False, sonst 7).
