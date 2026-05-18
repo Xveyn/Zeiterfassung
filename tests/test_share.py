@@ -1,0 +1,103 @@
+import json
+
+import pytest
+
+from src.share import ShareValidationError, parse_share_doc
+
+
+def _bytes(obj):
+    return json.dumps(obj).encode("utf-8")
+
+
+def test_parse_rejects_broken_json():
+    with pytest.raises(ShareValidationError, match="JSON"):
+        parse_share_doc(b"{not json")
+
+
+def test_parse_rejects_non_object_toplevel():
+    with pytest.raises(ShareValidationError, match="JSON-Objekt"):
+        parse_share_doc(_bytes(["array", "instead"]))
+
+
+def test_parse_rejects_wrong_kind():
+    with pytest.raises(ShareValidationError, match="geteilte Zeiterfassung"):
+        parse_share_doc(_bytes({"kind": "something-else", "schema_version": 1, "entries": {}}))
+
+
+def test_parse_rejects_missing_kind():
+    with pytest.raises(ShareValidationError, match="geteilte Zeiterfassung"):
+        parse_share_doc(_bytes({"schema_version": 1, "entries": {}}))
+
+
+def test_parse_rejects_missing_schema_version():
+    with pytest.raises(ShareValidationError, match="schema_version"):
+        parse_share_doc(_bytes({"kind": "zeiterfassung-share", "entries": {}}))
+
+
+def test_parse_rejects_future_schema_version():
+    with pytest.raises(ShareValidationError, match="neueren Version"):
+        parse_share_doc(_bytes({
+            "kind": "zeiterfassung-share",
+            "schema_version": 2,
+            "entries": {},
+        }))
+
+
+def test_parse_rejects_missing_entries():
+    with pytest.raises(ShareValidationError, match="entries"):
+        parse_share_doc(_bytes({"kind": "zeiterfassung-share", "schema_version": 1}))
+
+
+def test_parse_rejects_bad_date_key():
+    with pytest.raises(ShareValidationError, match="Datum"):
+        parse_share_doc(_bytes({
+            "kind": "zeiterfassung-share",
+            "schema_version": 1,
+            "entries": {"not-a-date": {"start": "08:00", "end": "16:00", "pause": 0}},
+        }))
+
+
+def test_parse_rejects_extra_entry_field():
+    with pytest.raises(ShareValidationError, match="unbekannt"):
+        parse_share_doc(_bytes({
+            "kind": "zeiterfassung-share",
+            "schema_version": 1,
+            "entries": {"2026-05-14": {"start": "08:00", "end": "16:00", "pause": 0, "deleted": True}},
+        }))
+
+
+def test_parse_rejects_missing_entry_field():
+    with pytest.raises(ShareValidationError, match="fehlend"):
+        parse_share_doc(_bytes({
+            "kind": "zeiterfassung-share",
+            "schema_version": 1,
+            "entries": {"2026-05-14": {"start": "08:00", "end": "16:00"}},
+        }))
+
+
+def test_parse_rejects_bad_time_format():
+    with pytest.raises(ShareValidationError, match="Startzeit"):
+        parse_share_doc(_bytes({
+            "kind": "zeiterfassung-share",
+            "schema_version": 1,
+            "entries": {"2026-05-14": {"start": "8:00", "end": "16:00", "pause": 0}},
+        }))
+
+
+def test_parse_rejects_negative_pause():
+    with pytest.raises(ShareValidationError, match="Pause"):
+        parse_share_doc(_bytes({
+            "kind": "zeiterfassung-share",
+            "schema_version": 1,
+            "entries": {"2026-05-14": {"start": "08:00", "end": "16:00", "pause": -5}},
+        }))
+
+
+def test_parse_rejects_bool_as_pause():
+    """bool ist Subklasse von int — verhindern, dass True als pause=1 durchgeht."""
+    with pytest.raises(ShareValidationError, match="Pause"):
+        parse_share_doc(_bytes({
+            "kind": "zeiterfassung-share",
+            "schema_version": 1,
+            "entries": {"2026-05-14": {"start": "08:00", "end": "16:00", "pause": True}},
+        }))
