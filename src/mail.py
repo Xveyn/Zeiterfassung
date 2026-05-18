@@ -233,21 +233,33 @@ def get_gmail_service(credentials_path="credentials.json", token_path="token.jso
     return build("gmail", "v1", credentials=creds)
 
 
-def send_email(service, to, subject, html_body, pdf_bytes=None, pdf_filename=None):
-    """Send an HTML email via Gmail API, optionally with a PDF attachment.
+def send_email(service, to, subject, html_body,
+               attachment_bytes=None, attachment_filename=None,
+               attachment_subtype="pdf",
+               # legacy aliases — bleibe rückwärtskompatibel falls ein Caller
+               # noch nicht migriert ist:
+               pdf_bytes=None, pdf_filename=None):
+    """Send an HTML email via Gmail API, optionally with a binary attachment.
 
-    Returns the sent message id, or raises an exception on failure.
+    attachment_subtype steuert den MIMEApplication-_subtype (z.B. 'pdf', 'json').
+    pdf_bytes/pdf_filename sind Legacy-Aliase und werden auf
+    attachment_bytes/attachment_filename gemappt.
     """
-    if pdf_bytes:
+    if pdf_bytes is not None and attachment_bytes is None:
+        attachment_bytes = pdf_bytes
+        attachment_filename = attachment_filename or pdf_filename
+        attachment_subtype = "pdf"
+
+    if attachment_bytes:
         message = MIMEMultipart()
         message["to"] = to
         message["subject"] = Header(subject, "utf-8")  # pyright: ignore[reportArgumentType]
         message.attach(MIMEText(html_body, "html", _charset="utf-8"))
 
-        attachment = MIMEApplication(pdf_bytes, _subtype="pdf")
+        attachment = MIMEApplication(attachment_bytes, _subtype=attachment_subtype)
         attachment.add_header(
             "Content-Disposition", "attachment",
-            filename=pdf_filename or "Zeiterfassung.pdf"
+            filename=attachment_filename or f"attachment.{attachment_subtype}",
         )
         message.attach(attachment)
     else:

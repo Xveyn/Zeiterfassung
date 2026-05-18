@@ -183,7 +183,9 @@ def open_send_dialog(parent, storage, settings, base_path):
             )
             pdf_filename = f"Zeiterfassung_{date_from.strftime('%Y%m%d')}_{date_to.strftime('%Y%m%d')}.pdf"
             send_email(service, recipient, subject, html,
-                       pdf_bytes=pdf_bytes, pdf_filename=pdf_filename)
+                       attachment_bytes=pdf_bytes,
+                       attachment_filename=pdf_filename,
+                       attachment_subtype="pdf")
             # Nach erfolgreichem Send ist der Token frisch — gute Gelegenheit,
             # die Absender-Adresse zu cachen.
             try:

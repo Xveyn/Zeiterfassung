@@ -205,6 +205,30 @@ def test_failed_refresh_does_not_overwrite_token(tmp_path):
         assert f.read() == "original-content"
 
 
+def test_send_email_json_attachment_uses_subtype():
+    """JSON-Anhang setzt MIME-Subtype 'json' statt 'pdf'."""
+    from unittest.mock import MagicMock
+    from src.mail import send_email
+
+    service = MagicMock()
+    service.users().messages().send().execute.return_value = {"id": "mid-1"}
+
+    msg_id = send_email(
+        service, "to@example.com", "Subj", "<p>body</p>",
+        attachment_bytes=b'{"x":1}',
+        attachment_filename="share.json",
+        attachment_subtype="json",
+    )
+    assert msg_id == "mid-1"
+    # Inspect the raw body sent to Gmail
+    call_kwargs = service.users().messages().send.call_args
+    body = call_kwargs.kwargs.get("body") or call_kwargs.args[-1]
+    import base64
+    raw = base64.urlsafe_b64decode(body["raw"]).decode()
+    assert "application/json" in raw
+    assert "share.json" in raw
+
+
 import platform  # noqa: E402
 import stat  # noqa: E402
 
