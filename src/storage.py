@@ -128,3 +128,26 @@ class Storage:
                 )
         self._data = dict(merged_entries)
         self._save_to_disk()
+
+    def save_many(self, updates):
+        """Mehrere Einträge in einem einzigen Disk-Write speichern.
+
+        updates: {date_str: {start, end, pause}}. Jeder Eintrag bekommt
+        frische modified_at/device_id/deleted=False. Existierende Tombstones
+        am selben Datum werden überschrieben.
+
+        Leeres Dict ist No-op (kein Disk-Roundtrip).
+        """
+        if not updates:
+            return
+        now = _utc_now_iso()
+        for date_str, payload in updates.items():
+            self._data[date_str] = {
+                "start": payload["start"],
+                "end": payload["end"],
+                "pause": payload.get("pause", 0),
+                "modified_at": now,
+                "device_id": self.device_id,
+                "deleted": False,
+            }
+        self._save_to_disk()

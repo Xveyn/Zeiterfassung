@@ -118,3 +118,52 @@ def test_apply_merge_accepts_complete_entries(tmp_path):
         "deleted": False,
     }})
     assert storage.get("2026-05-14") == {"start": "08:00", "end": "16:00", "pause": 30}
+
+
+def test_save_many_empty_is_noop(tmp_path):
+    """Leeres Dict darf keinen File-Write triggern."""
+    path = str(tmp_path / "noop.json")
+    s = Storage(path, device_id="d1")
+    s.save_many({})
+    assert not os.path.exists(path)
+
+
+def test_save_many_writes_all_entries(tmp_storage):
+    tmp_storage.save_many({
+        "2026-05-14": {"start": "08:00", "end": "16:00", "pause": 30},
+        "2026-05-15": {"start": "09:00", "end": "17:30", "pause": 45},
+    })
+    entries = tmp_storage.get_all()
+    assert entries["2026-05-14"] == {"start": "08:00", "end": "16:00", "pause": 30}
+    assert entries["2026-05-15"] == {"start": "09:00", "end": "17:30", "pause": 45}
+
+
+def test_save_many_sets_metadata(tmp_storage):
+    tmp_storage.save_many({"2026-05-14": {"start": "08:00", "end": "16:00", "pause": 30}})
+    raw = tmp_storage.get_all_raw()["2026-05-14"]
+    assert raw["device_id"] == "test-device"
+    assert raw["deleted"] is False
+    assert "modified_at" in raw and raw["modified_at"]
+
+
+def test_save_many_overwrites_tombstone(tmp_storage):
+    tmp_storage.save("2026-05-14", "08:00", "16:00", 30)
+    tmp_storage.delete("2026-05-14")
+    assert tmp_storage.get("2026-05-14") is None
+    tmp_storage.save_many({"2026-05-14": {"start": "09:00", "end": "17:00", "pause": 0}})
+    assert tmp_storage.get("2026-05-14") == {"start": "09:00", "end": "17:00", "pause": 0}
+
+
+def test_save_many_calls_disk_write_once(tmp_storage):
+    with mock.patch.object(tmp_storage, "_save_to_disk") as m:
+        tmp_storage.save_many({
+            "2026-05-14": {"start": "08:00", "end": "16:00", "pause": 30},
+            "2026-05-15": {"start": "09:00", "end": "17:30", "pause": 45},
+        })
+    assert m.call_count == 1
+
+
+def test_save_many_pause_default_zero(tmp_storage):
+    """Pause-Feld fehlt → wird auf 0 default-gesetzt (analog zu save())."""
+    tmp_storage.save_many({"2026-05-14": {"start": "08:00", "end": "16:00"}})
+    assert tmp_storage.get_all()["2026-05-14"]["pause"] == 0
