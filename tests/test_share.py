@@ -101,3 +101,33 @@ def test_parse_rejects_bool_as_pause():
             "schema_version": 1,
             "entries": {"2026-05-14": {"start": "08:00", "end": "16:00", "pause": True}},
         }))
+
+
+def test_parse_rejects_past_schema_version():
+    """schema_version < 1 ist defensiv reserviert — muss ShareValidationError werfen."""
+    with pytest.raises(ShareValidationError, match="schema_version"):
+        parse_share_doc(_bytes({
+            "kind": "zeiterfassung-share",
+            "schema_version": 0,
+            "entries": {},
+        }))
+
+
+def test_parse_rejects_bad_end_time():
+    """Ungültiges Format für end-Zeit schlägt mit passendem Fehler fehl."""
+    with pytest.raises(ShareValidationError, match="Endzeit"):
+        parse_share_doc(_bytes({
+            "kind": "zeiterfassung-share",
+            "schema_version": 1,
+            "entries": {"2026-05-14": {"start": "08:00", "end": "16:0", "pause": 0}},
+        }))
+
+
+def test_parse_rejects_unreal_time():
+    """Regex-valide aber unmögliche Uhrzeiten (25:00, 08:99) müssen abgelehnt werden."""
+    with pytest.raises(ShareValidationError, match="Startzeit"):
+        parse_share_doc(_bytes({
+            "kind": "zeiterfassung-share",
+            "schema_version": 1,
+            "entries": {"2026-05-14": {"start": "25:00", "end": "16:00", "pause": 0}},
+        }))

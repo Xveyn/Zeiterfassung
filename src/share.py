@@ -90,7 +90,19 @@ def parse_share_doc(raw_bytes):
             raise ShareValidationError(
                 f"Eintrag {date_str}: ungültige Startzeit {start!r}"
             )
+        try:
+            datetime.time.fromisoformat(start)
+        except ValueError:
+            raise ShareValidationError(
+                f"Eintrag {date_str}: ungültige Startzeit {start!r}"
+            )
         if not isinstance(end, str) or not _TIME_RE.match(end):
+            raise ShareValidationError(
+                f"Eintrag {date_str}: ungültige Endzeit {end!r}"
+            )
+        try:
+            datetime.time.fromisoformat(end)
+        except ValueError:
             raise ShareValidationError(
                 f"Eintrag {date_str}: ungültige Endzeit {end!r}"
             )
