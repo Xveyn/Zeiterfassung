@@ -133,3 +133,56 @@ def build_share_doc(storage, sender_email):
 def serialize_share_doc(doc):
     """Stabiles UTF-8-JSON, sortierte Keys (deterministisch für Tests)."""
     return json.dumps(doc, indent=2, ensure_ascii=False, sort_keys=True).encode("utf-8")
+
+
+def _entries_equal(a, b):
+    return (a.get("start") == b.get("start")
+            and a.get("end") == b.get("end")
+            and a.get("pause", 0) == b.get("pause", 0))
+
+
+def diff_share_against_local(share_entries, storage, date_from=None, date_to=None):
+    """Vergleicht share_entries mit storage.get_all().
+
+    date_from/date_to: optional datetime.date, inclusive auf beiden Seiten.
+    None = unbeschränkt. Einträge außerhalb fallen in 'out_of_range'-Count
+    und tauchen sonst nirgends auf.
+
+    Returns dict mit 'additions' (list of (date, entry)), 'conflicts'
+    (list of (date, local_entry, share_entry)), 'untouched' (list of date)
+    und 'out_of_range' (int).
+    """
+    additions = []
+    conflicts = []
+    untouched = []
+    out_of_range = 0
+    local = storage.get_all()
+
+    for date_str in sorted(share_entries.keys()):
+        try:
+            d = datetime.date.fromisoformat(date_str)
+        except ValueError:
+            # parse_share_doc hat das schon abgefangen — defensive Skip.
+            continue
+        if date_from is not None and d < date_from:
+            out_of_range += 1
+            continue
+        if date_to is not None and d > date_to:
+            out_of_range += 1
+            continue
+
+        share_entry = share_entries[date_str]
+        local_entry = local.get(date_str)
+        if local_entry is None:
+            additions.append((date_str, share_entry))
+        elif _entries_equal(local_entry, share_entry):
+            untouched.append(date_str)
+        else:
+            conflicts.append((date_str, local_entry, share_entry))
+
+    return {
+        "additions": additions,
+        "conflicts": conflicts,
+        "untouched": untouched,
+        "out_of_range": out_of_range,
+    }

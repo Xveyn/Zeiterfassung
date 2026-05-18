@@ -189,3 +189,71 @@ def test_serialize_utf8_umlauts():
     assert b"\\u" not in payload  # ensure_ascii=False — Umlaute literal
     parsed = parse_share_doc(payload)
     assert parsed["exported_by"] == "äöü@example.com"
+
+
+from src.share import diff_share_against_local
+
+
+def test_diff_only_additions():
+    storage = _FakeStorage({})
+    share = {"2026-05-14": {"start": "08:00", "end": "16:00", "pause": 30}}
+    diff = diff_share_against_local(share, storage)
+    assert diff["additions"] == [("2026-05-14", {"start": "08:00", "end": "16:00", "pause": 30})]
+    assert diff["conflicts"] == []
+    assert diff["untouched"] == []
+    assert diff["out_of_range"] == 0
+
+
+def test_diff_only_untouched():
+    storage = _FakeStorage({"2026-05-14": {"start": "08:00", "end": "16:00", "pause": 30}})
+    share = {"2026-05-14": {"start": "08:00", "end": "16:00", "pause": 30}}
+    diff = diff_share_against_local(share, storage)
+    assert diff["additions"] == []
+    assert diff["conflicts"] == []
+    assert diff["untouched"] == ["2026-05-14"]
+
+
+def test_diff_only_conflicts():
+    storage = _FakeStorage({"2026-05-14": {"start": "08:00", "end": "16:00", "pause": 30}})
+    share = {"2026-05-14": {"start": "09:00", "end": "17:30", "pause": 30}}
+    diff = diff_share_against_local(share, storage)
+    assert len(diff["conflicts"]) == 1
+    date, local, shared = diff["conflicts"][0]
+    assert date == "2026-05-14"
+    assert local["start"] == "08:00"
+    assert shared["start"] == "09:00"
+
+
+def test_diff_pause_difference_is_conflict():
+    storage = _FakeStorage({"2026-05-14": {"start": "08:00", "end": "16:00", "pause": 30}})
+    share = {"2026-05-14": {"start": "08:00", "end": "16:00", "pause": 45}}
+    diff = diff_share_against_local(share, storage)
+    assert len(diff["conflicts"]) == 1
+    assert diff["untouched"] == []
+
+
+def test_diff_mixed():
+    storage = _FakeStorage({
+        "2026-05-14": {"start": "08:00", "end": "16:00", "pause": 30},  # untouched
+        "2026-05-15": {"start": "08:00", "end": "16:00", "pause": 30},  # conflict
+    })
+    share = {
+        "2026-05-14": {"start": "08:00", "end": "16:00", "pause": 30},
+        "2026-05-15": {"start": "09:00", "end": "17:00", "pause": 30},
+        "2026-05-16": {"start": "10:00", "end": "18:00", "pause": 0},   # addition
+    }
+    diff = diff_share_against_local(share, storage)
+    assert diff["untouched"] == ["2026-05-14"]
+    assert [d for d, _, _ in diff["conflicts"]] == ["2026-05-15"]
+    assert [d for d, _ in diff["additions"]] == ["2026-05-16"]
+
+
+def test_diff_tombstone_treated_as_addition():
+    """Tombstones im Storage tauchen in get_all() nicht auf → share entry zählt als addition."""
+    class _StorageWithTombstone:
+        def get_all(self):
+            return {}  # tombstone gefiltert
+    share = {"2026-05-14": {"start": "08:00", "end": "16:00", "pause": 0}}
+    diff = diff_share_against_local(share, _StorageWithTombstone())
+    assert len(diff["additions"]) == 1
+    assert diff["conflicts"] == []
