@@ -23,6 +23,10 @@ _TIME_RE = re.compile(r"^\d{2}:\d{2}$")
 _ENTRY_KEYS = frozenset({"start", "end", "pause"})
 
 
+def _utc_now_iso():
+    return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
 class ShareValidationError(Exception):
     """Datei kann nicht importiert werden. `.reason` enthält den deutschen Grund."""
 
@@ -112,3 +116,20 @@ def parse_share_doc(raw_bytes):
             )
 
     return doc
+
+
+def build_share_doc(storage, sender_email):
+    """Baut das Share-Doc aus dem lokalen Storage. Tombstones werden via
+    storage.get_all() bereits ausgefiltert."""
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "kind": KIND,
+        "exported_at": _utc_now_iso(),
+        "exported_by": sender_email or "",
+        "entries": dict(storage.get_all()),
+    }
+
+
+def serialize_share_doc(doc):
+    """Stabiles UTF-8-JSON, sortierte Keys (deterministisch für Tests)."""
+    return json.dumps(doc, indent=2, ensure_ascii=False, sort_keys=True).encode("utf-8")
