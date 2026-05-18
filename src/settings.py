@@ -13,6 +13,7 @@ SYNCED_SETTING_KEYS = (
 DEFAULTS = {
     "default_pause": 30,
     "recipient": "",
+    "share_recipient": "",
     "autostart": False,
     "name": "",
     "mail_subject": "Zeiterfassung — {zeitraum}",

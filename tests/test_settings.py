@@ -372,3 +372,21 @@ def test_set_synced_stamps_meta_per_key(tmp_path):
     assert "default_pause" not in doc
     # but still in regular settings
     assert s.get("default_pause") == 45
+
+
+# --- share_recipient (per-device, not synced) ---
+
+
+def test_share_recipient_default_empty(tmp_path):
+    from src.settings import Settings
+    s = Settings(str(tmp_path / "s.json"))
+    assert s.get("share_recipient") == ""
+
+
+def test_share_recipient_persists(tmp_path):
+    from src.settings import Settings
+    path = str(tmp_path / "s.json")
+    s1 = Settings(path)
+    s1.set("share_recipient", "bob@example.com")
+    s2 = Settings(path)
+    assert s2.get("share_recipient") == "bob@example.com"
