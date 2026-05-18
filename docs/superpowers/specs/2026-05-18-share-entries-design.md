@@ -12,11 +12,11 @@ User möchten ihre Zeiterfassungs-Einträge an eine zweite Person (Lebenspartner
 
 **Im Scope (MVP):**
 - Export aller lokalen Einträge als JSON-Anhang per Gmail an eine konfigurierbare Empfänger-Adresse.
-- Import eines solchen Anhangs auf Empfängerseite, mit drei Konflikt-Modi (alles importieren / alles lokal / pro Tag entscheiden) und atomarer Anwendung.
+- Import eines solchen Anhangs auf Empfängerseite, mit Zeitraum-Filter (Von/Bis) und drei Konflikt-Modi (alles importieren / alles lokal / pro Tag entscheiden) und atomarer Anwendung.
 - Defensive Validierung des Import-Files — defekte oder fremde Files dürfen den lokalen Bestand nicht beschädigen.
 
 **Out of scope (bewusst):**
-- Zeitraum-Filter beim Export (MVP: immer „alles"; Filter ist in planned-features.md als „Rest später" markiert).
+- Zeitraum-Filter beim Export (MVP: immer „alles"; Filter ist in planned-features.md als „Rest später" markiert). Empfänger kann beim Import filtern — das deckt die meisten Anwendungsfälle ab.
 - Settings-Übertragung — nur Entries werden geteilt.
 - Verschlüsselung/Signing des Anhangs (Vertrauen in Mail-Transport-TLS).
 - Automatischer Import beim Mail-Empfang.
@@ -62,7 +62,7 @@ Validation-Regeln (jede Verletzung → ganzer Import-Abbruch):
 
 ### Diff-Resultat
 
-`diff_share_against_local(share_entries, storage)` liefert ein Dict mit drei Listen:
+`diff_share_against_local(share_entries, storage, date_from=None, date_to=None)` liefert ein Dict mit drei Listen:
 
 ```python
 {
@@ -72,7 +72,7 @@ Validation-Regeln (jede Verletzung → ganzer Import-Abbruch):
 }
 ```
 
-Vergleichsgrundlage für „identisch": `{start, end, pause}` per-Feld-Equality. `local_entry` ist das User-Shape aus `storage.get(date_str)` (kein Tombstone, kein device_id).
+`date_from`/`date_to` sind optionale `datetime.date`-Filter (inclusive auf beiden Seiten). `None` bedeutet jeweils unbeschränkt. Einträge außerhalb des Ranges werden komplett aus dem Diff ausgeklammert — tauchen weder in additions noch conflicts noch untouched auf und werden auch nicht importiert. Vergleichsgrundlage für „identisch": `{start, end, pause}` per-Feld-Equality. `local_entry` ist das User-Shape aus `storage.get(date_str)` (kein Tombstone, kein device_id).
 
 ### Import-Decisions
 
@@ -133,6 +133,7 @@ In allen drei Fällen sind `untouched`-Tage out — sie sind per Definition no-o
   - Round-Trip: `build → serialize → parse` liefert äquivalentes Doc.
   - Reject-Cases: falsches `kind`, fehlende Pflichtfelder, falsche Datumsformate, falsche Uhrzeit-Formate, negative Pause, unbekannte Keys pro Entry, falsche `schema_version`, fremder JSON-Inhalt (Liste statt Dict), kaputtes JSON.
   - Diff-Cases: nur Additionen, nur Konflikte, nur Untouched, Mischung; Storage mit Tombstones (Tombstone-Tag zählt als „nicht lokal vorhanden" → addition).
+  - Diff-Range-Cases: Filter klammert Tage links/rechts/beidseitig aus; Filter komplett außerhalb → leer; `None`-Grenzen verhalten sich wie unbeschränkt.
   - Apply: Alle drei Modi gegen einen echten `Storage` mit `tmp_path`. Atomar-Check: ein `apply_import`-Aufruf führt zu genau einem File-Write, der entweder vollständig durchgeht oder den Vorzustand belässt. Mock-Test gegen `Storage.save_many`, dass die Methode genau einmal aufgerufen wird (und nicht N-mal `save`).
   - `Storage.save_many` separat: schreibt einmal, schreibt alle Felder, leeres Dict ist No-op.
 - Keine UI-Tests (folgt bestehender Konvention — kein UI-Test-Setup im Repo).
@@ -165,18 +166,23 @@ In allen drei Fällen sind `untouched`-Tage out — sie sind per Definition no-o
 2. `tkinter.filedialog.askopenfilename(filetypes=[("Zeiterfassung Share", "*.json"), ("Alle Dateien", "*.*")])`.
 3. Datei lesen → `parse_share_doc(raw_bytes)`.
    - Bei `ShareValidationError`: `messagebox.showerror("Datei ungültig", f"Die Datei kann nicht importiert werden:\n\n{e.reason}")`. Lokaler Bestand bleibt unverändert. Ende.
-4. `diff = diff_share_against_local(doc["entries"], storage)`.
-5. Wenn alle drei Listen ergeben „nichts zu tun" (additions+conflicts=0): Info-Dialog „Alle Einträge sind bereits identisch — nichts zu importieren." Ende.
-6. **Summary-Modal:**
+4. Initial-Range berechnen: `date_from`/`date_to` = min/max der Datums-Keys in `doc["entries"]` (voller Datenbereich der Datei).
+5. `diff = diff_share_against_local(doc["entries"], storage, date_from, date_to)`.
+6. **Summary-Modal mit Zeitraum-Filter:**
 
    ```
    Datei: zeiterfassung-share-20260518.json
    Geteilt von: alice@example.com   (oder: „unbekannt" wenn Feld leer)
    Exportiert: 2026-05-18 12:00 UTC
 
+   Zeitraum filtern:
+     Von:  [01].[04].[2026]    Bis:  [18].[05].[2026]
+     (Voller Bereich der Datei: 2026-04-01 bis 2026-05-18)
+
    • 12 neue Tage werden importiert
    •  3 Tage haben Konflikte
    •  5 Tage sind identisch (übersprungen)
+   •  0 Tage außerhalb des Zeitraums (ignoriert)
 
    Konflikt-Behandlung:
    (•) Alles vom Import übernehmen
@@ -186,7 +192,11 @@ In allen drei Fällen sind `untouched`-Tage out — sie sind per Definition no-o
    [Weiter]  [Abbrechen]
    ```
 
+   - Von/Bis verwenden dieselben `dark_combo`-Day/Month/Year-Tripletts wie `send_dialog.py` (Recycling der `build_date_row`-Logik wäre ein Refactoring-Spike — MVP: dupliziert, Cleanup später).
+   - Bei jeder Änderung der Von/Bis-Felder läuft `diff` neu, die Count-Zeilen aktualisieren live. Out-of-range-Count zeigt, wie viele Tage durch den Filter ausgeklammert wurden — Transparenz für den User.
+   - Validation: `Von > Bis` → Inline-Hinweis statt sofortigem Recompute (siehe Edge-Cases).
    - „Abbrechen" oder Window-Close: Ende, kein Effekt.
+   - „Weiter" mit `additions+conflicts == 0` (nichts zu tun): Info-Hinweis „Im gewählten Zeitraum sind alle Einträge bereits identisch — nichts zu importieren." Dialog bleibt offen, User kann Range anpassen oder abbrechen.
    - „Weiter" + Modus „alles import": baut Decisions, direkt zu Schritt 8.
    - „Weiter" + Modus „alles lokal": baut Decisions (nur additions), direkt zu Schritt 8.
    - „Weiter" + Modus „pro Tag" + conflicts > 0: zu Schritt 7.
@@ -237,6 +247,9 @@ Recycelt vollständig: gleicher OAuth-Flow, gleicher `get_gmail_service`, gleich
 - **Riesige Files (z.B. 10 Jahre tägliche Einträge ≈ 3650 Tage):** JSON liegt im einstelligen MB-Bereich; Gmail-Anhang-Limit 25 MB — kein Problem. Per-Tag-Modal mit 3000 Zeilen ist UI-mäßig grenzwertig, aber MVP-akzeptabel (User wird in der Praxis kaum so viele Konflikte haben; Scrollbar reicht).
 - **Empfänger hat keine Einträge:** Diff = nur additions, Pro-Tag-Modus zeigt leere Liste → Verhalten wie „alles import".
 - **Sender hat keine Einträge:** Export-Pre-Check fängt das.
+- **Zeitraum-Filter komplett außerhalb der Datei (z.B. Von=2030):** Diff liefert leere Listen → „Weiter" zeigt Info „nichts zu importieren", User passt Range an oder bricht ab.
+- **Zeitraum-Filter `Von > Bis`:** Inline-Hinweis im Dialog („Von-Datum muss vor Bis-Datum liegen"); „Weiter" bleibt aktiv aber recomputet erst, wenn der Range wieder gültig ist. Alternativ Button-Disable — Implementierungs-Detail.
+- **Datei ist leer (`entries: {}`):** initial-Range fällt zurück auf heute=heute (oder gibt's keinen sinnvollen Default — dann Default-Range = `(None, None)` und „nichts zu importieren"-Hinweis). Pragmatisch: Pre-Check vor Dialog-Öffnung fängt diesen Fall mit „Datei enthält keine Einträge".
 
 ## Offene Punkte (für Implementierungs-Plan, nicht für diese Spec)
 
