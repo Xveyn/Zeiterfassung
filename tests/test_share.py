@@ -257,3 +257,64 @@ def test_diff_tombstone_treated_as_addition():
     diff = diff_share_against_local(share, _StorageWithTombstone())
     assert len(diff["additions"]) == 1
     assert diff["conflicts"] == []
+
+
+import datetime as _dt
+
+
+def test_diff_range_filter_excludes_left():
+    storage = _FakeStorage({})
+    share = {
+        "2026-05-10": {"start": "08:00", "end": "16:00", "pause": 0},
+        "2026-05-15": {"start": "08:00", "end": "16:00", "pause": 0},
+    }
+    diff = diff_share_against_local(share, storage, date_from=_dt.date(2026, 5, 12))
+    assert [d for d, _ in diff["additions"]] == ["2026-05-15"]
+    assert diff["out_of_range"] == 1
+
+
+def test_diff_range_filter_excludes_right():
+    storage = _FakeStorage({})
+    share = {
+        "2026-05-10": {"start": "08:00", "end": "16:00", "pause": 0},
+        "2026-05-15": {"start": "08:00", "end": "16:00", "pause": 0},
+    }
+    diff = diff_share_against_local(share, storage, date_to=_dt.date(2026, 5, 12))
+    assert [d for d, _ in diff["additions"]] == ["2026-05-10"]
+    assert diff["out_of_range"] == 1
+
+
+def test_diff_range_filter_inclusive_bounds():
+    storage = _FakeStorage({})
+    share = {
+        "2026-05-10": {"start": "08:00", "end": "16:00", "pause": 0},
+        "2026-05-15": {"start": "08:00", "end": "16:00", "pause": 0},
+    }
+    diff = diff_share_against_local(
+        share, storage,
+        date_from=_dt.date(2026, 5, 10),
+        date_to=_dt.date(2026, 5, 15),
+    )
+    assert len(diff["additions"]) == 2
+    assert diff["out_of_range"] == 0
+
+
+def test_diff_range_filter_completely_outside():
+    storage = _FakeStorage({})
+    share = {"2026-05-14": {"start": "08:00", "end": "16:00", "pause": 0}}
+    diff = diff_share_against_local(
+        share, storage,
+        date_from=_dt.date(2030, 1, 1),
+    )
+    assert diff["additions"] == []
+    assert diff["conflicts"] == []
+    assert diff["untouched"] == []
+    assert diff["out_of_range"] == 1
+
+
+def test_diff_range_none_bounds_unconstrained():
+    storage = _FakeStorage({})
+    share = {"2026-05-14": {"start": "08:00", "end": "16:00", "pause": 0}}
+    diff = diff_share_against_local(share, storage, date_from=None, date_to=None)
+    assert len(diff["additions"]) == 1
+    assert diff["out_of_range"] == 0
