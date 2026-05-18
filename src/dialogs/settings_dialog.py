@@ -202,20 +202,24 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
     recipient_var = tk.StringVar(value=settings.get("recipient"))
     dark_entry(dialog, recipient_var, width=25).grid(row=6, column=1, padx=10, pady=8)
 
-    label("Name:", row=7)
-    name_var = tk.StringVar(value=settings.get("name"))
-    dark_entry(dialog, name_var, width=25).grid(row=7, column=1, padx=10, pady=8)
+    label("Teilen mit:", row=7)
+    share_recipient_var = tk.StringVar(value=settings.get("share_recipient"))
+    dark_entry(dialog, share_recipient_var, width=25).grid(row=7, column=1, padx=10, pady=8)
 
-    label("Stundenlohn (€):", row=8)
+    label("Name:", row=8)
+    name_var = tk.StringVar(value=settings.get("name"))
+    dark_entry(dialog, name_var, width=25).grid(row=8, column=1, padx=10, pady=8)
+
+    label("Stundenlohn (€):", row=9)
     rate_var = tk.StringVar(value=str(settings.get("hourly_rate") or ""))
-    dark_entry(dialog, rate_var, width=10).grid(row=8, column=1, padx=10, pady=8, sticky="w")
+    dark_entry(dialog, rate_var, width=10).grid(row=9, column=1, padx=10, pady=8, sticky="w")
 
     tk.Label(
         dialog, text="(optional – nur für dich sichtbar)", font=FONT_SMALL,
         bg=BG, fg=TEXT_MUTED,
-    ).grid(row=8, column=1, padx=(120, 10), pady=8, sticky="w")
+    ).grid(row=9, column=1, padx=(120, 10), pady=8, sticky="w")
 
-    label("Bundesland:", row=9)
+    label("Bundesland:", row=10)
     state_labels = [lbl for _, lbl in STATES]
     current_code = settings.get("state")
     current_label = next(
@@ -223,34 +227,34 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
         STATES[0][1],
     )
     state_var = tk.StringVar(value=current_label)
-    dark_combo(dialog, state_var, state_labels, width=22).grid(row=9, column=1, padx=10, pady=8)
+    dark_combo(dialog, state_var, state_labels, width=22).grid(row=10, column=1, padx=10, pady=8)
 
     tk.Label(
         dialog, text="— Mail-Vorlage —", font=FONT_BOLD, bg=BG, fg=TEXT_MUTED,
-    ).grid(row=10, column=0, columnspan=2, padx=10, pady=(16, 4))
+    ).grid(row=11, column=0, columnspan=2, padx=10, pady=(16, 4))
 
-    label("Betreff:", row=11, pady=4)
+    label("Betreff:", row=12, pady=4)
     subject_var = tk.StringVar(value=settings.get("mail_subject"))
-    dark_entry(dialog, subject_var, width=35).grid(row=11, column=1, padx=10, pady=4)
+    dark_entry(dialog, subject_var, width=35).grid(row=12, column=1, padx=10, pady=4)
 
-    label("Anrede:", row=12, pady=4)
+    label("Anrede:", row=13, pady=4)
     greeting_var = tk.StringVar(value=settings.get("mail_greeting"))
-    dark_entry(dialog, greeting_var, width=35).grid(row=12, column=1, padx=10, pady=4)
+    dark_entry(dialog, greeting_var, width=35).grid(row=13, column=1, padx=10, pady=4)
 
-    label("Inhalt:", row=13, pady=4, sticky="nw")
+    label("Inhalt:", row=14, pady=4, sticky="nw")
     content_text = dark_text(dialog, 35, 3)
-    content_text.grid(row=13, column=1, padx=10, pady=4)
+    content_text.grid(row=14, column=1, padx=10, pady=4)
     content_text.insert("1.0", settings.get("mail_content"))
 
-    label("Gruß:", row=14, pady=4, sticky="nw")
+    label("Gruß:", row=15, pady=4, sticky="nw")
     closing_text = dark_text(dialog, 35, 2)
-    closing_text.grid(row=14, column=1, padx=10, pady=4)
+    closing_text.grid(row=15, column=1, padx=10, pady=4)
     closing_text.insert("1.0", settings.get("mail_closing"))
 
     tk.Label(
         dialog, text="Platzhalter: {zeitraum}, {gesamt}", font=("Segoe UI", 8),
         bg=BG, fg=TEXT_MUTED,
-    ).grid(row=15, column=0, columnspan=2, padx=10, pady=(0, 4))
+    ).grid(row=16, column=0, columnspan=2, padx=10, pady=(0, 4))
 
     show_weekend_var = tk.BooleanVar(value=settings.get("show_weekend"))
     tk.Checkbutton(
@@ -259,7 +263,7 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
         bg=BG, fg=TEXT, selectcolor=CELL_BG,
         activebackground=BG, activeforeground=TEXT,
         cursor="hand2",
-    ).grid(row=16, column=0, columnspan=2, padx=10, pady=(8, 0), sticky="w")
+    ).grid(row=17, column=0, columnspan=2, padx=10, pady=(8, 0), sticky="w")
 
     autostart_var = tk.BooleanVar(value=settings.get("autostart"))
     tk.Checkbutton(
@@ -268,7 +272,7 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
         bg=BG, fg=TEXT, selectcolor=CELL_BG,
         activebackground=BG, activeforeground=TEXT,
         cursor="hand2",
-    ).grid(row=17, column=0, columnspan=2, padx=10, pady=(0, 0), sticky="w")
+    ).grid(row=18, column=0, columnspan=2, padx=10, pady=(0, 0), sticky="w")
 
     always_on_top_var = tk.BooleanVar(value=settings.get("always_on_top"))
     tk.Checkbutton(
@@ -277,7 +281,7 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
         bg=BG, fg=TEXT, selectcolor=CELL_BG,
         activebackground=BG, activeforeground=TEXT,
         cursor="hand2",
-    ).grid(row=18, column=0, columnspan=2, padx=10, pady=(0, 0), sticky="w")
+    ).grid(row=19, column=0, columnspan=2, padx=10, pady=(0, 0), sticky="w")
 
     minimize_to_tray_var = tk.BooleanVar(value=settings.get("minimize_to_tray"))
     tk.Checkbutton(
@@ -286,13 +290,13 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
         bg=BG, fg=TEXT, selectcolor=CELL_BG,
         activebackground=BG, activeforeground=TEXT,
         cursor="hand2",
-    ).grid(row=19, column=0, columnspan=2, padx=10, pady=(0, 8), sticky="w")
+    ).grid(row=20, column=0, columnspan=2, padx=10, pady=(0, 8), sticky="w")
 
     # --- Synchronisation (Multi-Device-Sync, Phase 4.6) ---
     tk.Label(
         dialog, text="— Synchronisation —", font=FONT_BOLD,
         bg=BG, fg=TEXT_MUTED,
-    ).grid(row=20, column=0, columnspan=2, padx=10, pady=(16, 4))
+    ).grid(row=21, column=0, columnspan=2, padx=10, pady=(16, 4))
 
     var_sync = tk.BooleanVar(value=settings.get("sync_enabled"))
 
@@ -350,20 +354,20 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
         cursor="hand2",
         command=_on_sync_toggled,
     )
-    cb_sync.grid(row=21, column=0, columnspan=2, padx=10, pady=(4, 0), sticky="w")
+    cb_sync.grid(row=22, column=0, columnspan=2, padx=10, pady=(4, 0), sticky="w")
 
     device_id = settings.get("device_id") or "(noch nicht gesetzt)"
     device_id_short = device_id[:8] + "…" if len(device_id) > 8 else device_id
     tk.Label(
         dialog, text=f"Geräte-ID: {device_id_short}", font=FONT_SMALL,
         bg=BG, fg=TEXT_MUTED,
-    ).grid(row=22, column=0, columnspan=2, padx=10, pady=(2, 0), sticky="w")
+    ).grid(row=23, column=0, columnspan=2, padx=10, pady=(2, 0), sticky="w")
 
     last = settings.get("last_pull_at") or "noch nie"
     tk.Label(
         dialog, text=f"Letzte Synchronisation: {last}", font=FONT_SMALL,
         bg=BG, fg=TEXT_MUTED,
-    ).grid(row=23, column=0, columnspan=2, padx=10, pady=(2, 4), sticky="w")
+    ).grid(row=24, column=0, columnspan=2, padx=10, pady=(2, 4), sticky="w")
 
     unresolved = 0
     if conflicts_store is not None:
@@ -378,7 +382,7 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
             f"Konflikte ansehen ({unresolved})",
             _open_conflicts_dialog,
             padx=12, pady=2,
-        ).grid(row=24, column=0, columnspan=2, padx=10, pady=(0, 8), sticky="w")
+        ).grid(row=25, column=0, columnspan=2, padx=10, pady=(0, 8), sticky="w")
 
     def save_settings():
         for key, lbl in zip(WEEKDAY_KEYS, DAYS_DE):
@@ -427,6 +431,7 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
             "autostart": new_autostart,
             "default_pause": int(pause_var.get()),
             "recipient": recipient_var.get(),
+            "share_recipient": share_recipient_var.get(),
             "name": name_var.get(),
             "mail_subject": subject_var.get(),
             "mail_greeting": greeting_var.get(),
@@ -451,7 +456,7 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
         dialog.destroy()
 
     btn_frame = tk.Frame(dialog, bg=BG)
-    btn_frame.grid(row=25, column=0, columnspan=2, pady=12)
+    btn_frame.grid(row=26, column=0, columnspan=2, pady=12)
 
     primary_button(btn_frame, "Speichern", save_settings).pack(side=tk.LEFT, padx=5)
     secondary_button(btn_frame, "Abbrechen", dialog.destroy).pack(side=tk.LEFT, padx=5)
