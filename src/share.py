@@ -186,3 +186,12 @@ def diff_share_against_local(share_entries, storage, date_from=None, date_to=Non
         "untouched": untouched,
         "out_of_range": out_of_range,
     }
+
+
+def apply_import(storage, decisions):
+    """Wendet Import-Decisions atomar an (eine save_many-Aufruf).
+
+    decisions: list of {"date": "YYYY-MM-DD", "entry": {start, end, pause}}.
+    """
+    updates = {d["date"]: d["entry"] for d in decisions}
+    storage.save_many(updates)

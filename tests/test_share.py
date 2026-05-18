@@ -318,3 +318,51 @@ def test_diff_range_none_bounds_unconstrained():
     diff = diff_share_against_local(share, storage, date_from=None, date_to=None)
     assert len(diff["additions"]) == 1
     assert diff["out_of_range"] == 0
+
+
+from unittest import mock
+
+from src.share import apply_import
+
+
+class _RecordingStorage:
+    def __init__(self):
+        self.save_many_calls = []
+
+    def save_many(self, updates):
+        self.save_many_calls.append(dict(updates))
+
+
+def test_apply_import_empty_is_noop():
+    s = _RecordingStorage()
+    apply_import(s, [])
+    # save_many wird mit leerem Dict aufgerufen; Storage selbst dedupliziert das
+    # zu einem No-op. Hier reicht uns: keine Exception.
+    assert s.save_many_calls in ([], [{}])
+
+
+def test_apply_import_single_call_for_all_decisions():
+    s = _RecordingStorage()
+    decisions = [
+        {"date": "2026-05-14", "entry": {"start": "08:00", "end": "16:00", "pause": 30}},
+        {"date": "2026-05-15", "entry": {"start": "09:00", "end": "17:00", "pause": 0}},
+    ]
+    apply_import(s, decisions)
+    assert len(s.save_many_calls) == 1
+    assert s.save_many_calls[0] == {
+        "2026-05-14": {"start": "08:00", "end": "16:00", "pause": 30},
+        "2026-05-15": {"start": "09:00", "end": "17:00", "pause": 0},
+    }
+
+
+def test_apply_import_integration_with_real_storage(tmp_path):
+    from src.storage import Storage
+    s = Storage(str(tmp_path / "z.json"), device_id="dev1")
+    s.save("2026-05-14", "08:00", "16:00", 30)
+    apply_import(s, [
+        {"date": "2026-05-15", "entry": {"start": "09:00", "end": "17:00", "pause": 0}},
+        {"date": "2026-05-14", "entry": {"start": "10:00", "end": "18:00", "pause": 45}},
+    ])
+    entries = s.get_all()
+    assert entries["2026-05-14"] == {"start": "10:00", "end": "18:00", "pause": 45}
+    assert entries["2026-05-15"] == {"start": "09:00", "end": "17:00", "pause": 0}
