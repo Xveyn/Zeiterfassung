@@ -333,6 +333,9 @@ class App:
         self.footer_label.pack(side=tk.LEFT, expand=True)
 
         secondary_button(
+            footer_frame, "Teilen…", self._share, padx=12,
+        ).pack(side=tk.RIGHT, padx=(0, 4))
+        secondary_button(
             footer_frame, "Monat senden", self._send, padx=12,
         ).pack(side=tk.RIGHT)
 
@@ -945,6 +948,10 @@ class App:
 
     def _send(self):
         open_send_dialog(self.root, self.storage, self.settings, self.base_path)
+
+    def _share(self):
+        from src.dialogs.share_dialog import open_share_dialog
+        open_share_dialog(self.root, self.storage, self.settings, self.base_path)
 
     def on_sync_pull_success(self):
         """Wird aus dem UI-Thread nach erfolgreichem Pull aufgerufen."""

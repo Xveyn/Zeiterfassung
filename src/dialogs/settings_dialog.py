@@ -384,6 +384,23 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
             padx=12, pady=2,
         ).grid(row=25, column=0, columnspan=2, padx=10, pady=(0, 8), sticky="w")
 
+    def _open_import_dialog():
+        from src.dialogs.import_dialog import open_import_dialog
+
+        def _after_import():
+            on_change()
+            dialog.destroy()
+
+        open_import_dialog(dialog, storage, settings, _after_import)
+
+    if storage is not None:
+        secondary_button(
+            dialog,
+            "Arbeitszeiten importieren…",
+            _open_import_dialog,
+            padx=12, pady=2,
+        ).grid(row=26, column=0, columnspan=2, padx=10, pady=(4, 8), sticky="w")
+
     def save_settings():
         for key, lbl in zip(WEEKDAY_KEYS, DAYS_DE):
             ok, msg = validate_entry(start_vars[key].get(), end_vars[key].get())
@@ -456,7 +473,7 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
         dialog.destroy()
 
     btn_frame = tk.Frame(dialog, bg=BG)
-    btn_frame.grid(row=26, column=0, columnspan=2, pady=12)
+    btn_frame.grid(row=27, column=0, columnspan=2, pady=12)
 
     primary_button(btn_frame, "Speichern", save_settings).pack(side=tk.LEFT, padx=5)
     secondary_button(btn_frame, "Abbrechen", dialog.destroy).pack(side=tk.LEFT, padx=5)
