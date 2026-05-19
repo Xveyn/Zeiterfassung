@@ -17,6 +17,8 @@
 - Themed Bestätigungs-Dialog (Ja/Nein) beim Löschen eines Eintrags (statt System-Messagebox)
 - Dunkle Titelleiste auf Windows 11 22H2+ (über DWM)
 - Tooltip auf truncated Feiertagsnamen — Hover zeigt den vollen Namen
+- Arbeitszeiten an eine zweite Person teilen: neuer Footer-Button „Teilen…" und Empfänger-Adresse „Teilen mit:" in den Einstellungen. Versendet eine JSON-Datei mit den eigenen Einträgen per Mail.
+- Arbeitszeiten aus einer Share-Datei importieren: Einstellungen → „Arbeitszeiten importieren…", mit Zeitraum-Filter und drei Konflikt-Modi (alles importieren / alles lokal / pro Tag entscheiden). Anwenden ist atomar — Abbruch im Pro-Tag-Modal hinterlässt keinen Teilzustand.
 
 ### Geändert
 - Kalender-Spaltenbreiten sind jetzt strikt unabhängig vom Zellen-Inhalt — Einträge, Feiertage und leere Tage haben identische Pixel-Breite, kein visueller Versatz mehr je nach Text
