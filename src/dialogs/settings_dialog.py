@@ -114,10 +114,12 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
                     os.path.join(base_path, "credentials.json"),
                     os.path.join(base_path, "token.json"),
                     sync_enabled=settings.get("sync_enabled"),
+                    gcal_enabled=settings.get("gcal_enabled"),
                 )
                 email = fetch_user_email(
                     os.path.join(base_path, "token.json"),
                     sync_enabled=settings.get("sync_enabled"),
+                    gcal_enabled=settings.get("gcal_enabled"),
                 )
             except Exception as e:
                 err = e
@@ -334,6 +336,7 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
                     drive.get_drive_service(
                         os.path.join(base_path, "credentials.json"),
                         os.path.join(base_path, "token.json"),
+                        gcal_enabled=settings.get("gcal_enabled"),
                     )
                 except Exception as e:
                     err = e

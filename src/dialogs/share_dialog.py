@@ -81,6 +81,7 @@ def open_share_dialog(parent, storage, settings, base_path):
             service = get_gmail_service(
                 credentials_path, token_path,
                 sync_enabled=settings.get("sync_enabled"),
+                gcal_enabled=settings.get("gcal_enabled"),
             )
             subject = f"Arbeitszeiten geteilt von {display_name}"
             html = (

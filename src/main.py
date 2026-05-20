@@ -53,6 +53,7 @@ def _run_pull_in_background(storage, settings, conflicts_store, base, ui_callbac
         service = drive.get_drive_service(
             os.path.join(base, "credentials.json"),
             os.path.join(base, "token.json"),
+            gcal_enabled=settings.get("gcal_enabled"),
         )
         file_id = drive.find_sync_file(service)
         if file_id is None:
@@ -99,6 +100,7 @@ def _run_push_blocking(storage, settings, conflicts_store, base, timeout_seconds
             service = drive.get_drive_service(
                 os.path.join(base, "credentials.json"),
                 os.path.join(base, "token.json"),
+                gcal_enabled=settings.get("gcal_enabled"),
             )
             file_id = drive.find_sync_file(service)
             doc = sync.build_local_doc(storage, settings, conflicts_store)

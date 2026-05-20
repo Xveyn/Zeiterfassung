@@ -175,6 +175,7 @@ def open_send_dialog(parent, storage, settings, base_path):
             service = get_gmail_service(
                 credentials_path, token_path,
                 sync_enabled=settings.get("sync_enabled"),
+                gcal_enabled=settings.get("gcal_enabled"),
             )
             subject = (
                 settings.get("mail_subject")
@@ -190,7 +191,11 @@ def open_send_dialog(parent, storage, settings, base_path):
             # die Absender-Adresse zu cachen.
             try:
                 from src.mail import fetch_user_email
-                email = fetch_user_email(token_path, sync_enabled=settings.get("sync_enabled"))
+                email = fetch_user_email(
+                    token_path,
+                    sync_enabled=settings.get("sync_enabled"),
+                    gcal_enabled=settings.get("gcal_enabled"),
+                )
                 if email and email != settings.get("sender_email"):
                     settings.set("sender_email", email)
             except Exception:

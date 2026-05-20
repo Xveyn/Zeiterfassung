@@ -111,7 +111,11 @@ class App:
 
         def worker():
             try:
-                refresh_token_if_needed(token_path, sync_enabled=self.settings.get("sync_enabled"))
+                refresh_token_if_needed(
+                    token_path,
+                    sync_enabled=self.settings.get("sync_enabled"),
+                    gcal_enabled=self.settings.get("gcal_enabled"),
+                )
             except TokenAuthError as e:
                 msg = str(e)
                 self.root.after(0, lambda: messagebox.showwarning(
@@ -149,6 +153,7 @@ class App:
                 email = fetch_user_email(
                     token_path,
                     sync_enabled=self.settings.get("sync_enabled"),
+                    gcal_enabled=self.settings.get("gcal_enabled"),
                 )
             except Exception:
                 logging.getLogger(__name__).exception("sender_email-Fetch fehlgeschlagen")
