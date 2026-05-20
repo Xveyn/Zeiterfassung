@@ -34,6 +34,7 @@ from src.theme import (
     BG, CELL_BG, WEEKEND_BG, ACCENT, ACCENT_HOVER, TEXT, TEXT_MUTED,
     ENTRY_BG, WEEKEND_ENTRY_BG, WEEKEND_FG,
     HOLIDAY_BG, HOLIDAY_BG_HOVER, HOLIDAY_ACCENT,
+    RESERVATION_BG, RESERVATION_BG_HOVER, RESERVATION_ACCENT,
     FONT, FONT_BOLD, FONT_HEADER, FONT_HEADER_SMALL, FONT_FOOTER, FONT_SMALL, FONT_TINY,
     CELL_BG_HOVER, WEEKEND_BG_HOVER, ENTRY_BG_HOVER, WEEKEND_ENTRY_BG_HOVER,
     apply_dark_titlebar, themed_askyesno,
@@ -41,12 +42,14 @@ from src.theme import (
 )
 
 class App:
-    def __init__(self, root, storage, settings, base_path=".", conflicts_store=None):
+    def __init__(self, root, storage, settings, base_path=".", conflicts_store=None,
+                 reservation_store=None):
         self.root = root
         self.storage = storage
         self.settings = settings
         self.base_path = base_path
         self.conflicts_store = conflicts_store
+        self.reservation_store = reservation_store
         self.root.title(f"Zeiterfassung v{VERSION}")
         self.root.configure(bg=BG)
         apply_dark_titlebar(self.root)
@@ -99,6 +102,7 @@ class App:
         self._proactive_sender_email_fetch()
         self._update_banner = None
         self._proactive_update_check()
+        self._proactive_calendar_reconcile()
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
 
     def _proactive_token_refresh(self):
@@ -193,6 +197,54 @@ class App:
             )
 
         threading.Thread(target=worker, daemon=True).start()
+
+    def _proactive_calendar_reconcile(self):
+        """Gleicht beim App-Start die Reservierungen mit dem Google Kalender ab.
+
+        Läuft im Hintergrund. Fehler werden STILL geloggt (ein Offline-Start
+        darf nicht nerven — analog Token-Refresh/Update-Check).
+        """
+        if self.reservation_store is None:
+            return
+        if not self.settings.get("gcal_enabled"):
+            return
+
+        def worker():
+            from src.main import run_calendar_reconcile
+            result = run_calendar_reconcile(
+                self.reservation_store, self.settings, self.base_path)
+            if result.get("ok"):
+                self.root.after(0, self._refresh)
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _trigger_calendar_reconcile(self):
+        """Stößt nach einer Reservierungsänderung den Kalender-Abgleich an.
+
+        Fehler werden hier ALS MESSAGEBOX gezeigt — der User hat aktiv
+        gespeichert und erwartet Feedback (CLAUDE.md: Sendepfad-Fehler sichtbar).
+        """
+        if self.reservation_store is None or not self.settings.get("gcal_enabled"):
+            return
+
+        def worker():
+            from src.main import run_calendar_reconcile
+            result = run_calendar_reconcile(
+                self.reservation_store, self.settings, self.base_path)
+            self.root.after(0, lambda: self._on_reconcile_done(result))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _on_reconcile_done(self, result):
+        if not result.get("ok"):
+            messagebox.showerror(
+                "Google-Kalender-Abgleich fehlgeschlagen",
+                f"Die Reservierung wurde lokal gespeichert, der Kalender-Abgleich "
+                f"ist aber fehlgeschlagen:\n\n{result.get('error', '?')}\n\n"
+                f"{result.get('tb', '')}\n\n"
+                "Der Abgleich wird beim nächsten Start erneut versucht.",
+            )
+        self._refresh()
 
     def _handle_update_check_result(self, release: "Release", newer: bool):
         """Läuft im UI-Thread. Persistiert den Check-Stand und zeigt ggf. den Banner.
@@ -624,6 +676,51 @@ class App:
             w.bind("<Leave>", lambda e, c=cell, dl=day_lbl, tl=time_lbl, ob=bg: self._cell_hover(c, dl, tl, ob))
         return cell
 
+    def _build_reservation_cell(self, parent, date_str, day_text, reservation,
+                                pad, cell_size=None, time_font=FONT_TINY):
+        """Violette „geplant"-Zelle für einen Tag mit nur einer Reservierung.
+        Layout analog zu _build_entry_cell."""
+        bg = RESERVATION_BG
+        hover_bg = RESERVATION_BG_HOVER
+        cell = tk.Frame(
+            parent, bg=bg, relief=tk.SOLID,
+            highlightbackground=RESERVATION_ACCENT, highlightthickness=1,
+            cursor="hand2",
+        )
+        if cell_size is not None:
+            cell.config(width=cell_size[0], height=cell_size[1])
+            cell.pack_propagate(False)
+        day_lbl = tk.Label(cell, text=day_text, font=FONT, bg=bg, fg=TEXT,
+                           cursor="hand2")
+        day_lbl.pack(pady=(pad, 0))
+        time_lbl = tk.Label(
+            cell, text=f"{reservation['start']}-{reservation['end']}",
+            font=time_font, bg=bg, fg=TEXT_MUTED, cursor="hand2",
+        )
+        time_lbl.pack(pady=(0, pad))
+        # Kein <Button-3>-Schnelllöschen wie bei Ist-Zeit-Zellen: Reservierungen
+        # werden ausschließlich über den Tages-Dialog ("Reservierung löschen")
+        # verwaltet.
+        for w in (cell, day_lbl, time_lbl):
+            w.bind("<Button-1>", lambda e, d=date_str: self._open_dialog(d))
+            w.bind("<Enter>", lambda e, c=cell, dl=day_lbl, tl=time_lbl, hb=hover_bg:
+                   self._cell_hover(c, dl, tl, hb))
+            w.bind("<Leave>", lambda e, c=cell, dl=day_lbl, tl=time_lbl, ob=bg:
+                   self._cell_hover(c, dl, tl, ob))
+        return cell
+
+    def _add_reservation_marker(self, cell):
+        """Kleiner Eck-Marker auf einer Ist-Zeitzelle, die zusätzlich eine
+        Reservierung hat. place() überlagert die gepackten Kind-Widgets.
+        Der Marker wird als cell._reservation_marker getaggt, damit
+        _cell_hover ihn beim Hover mitfärbt."""
+        marker = tk.Label(
+            cell, text="•", font=FONT_BOLD,
+            bg=cell.cget("bg"), fg=RESERVATION_ACCENT,
+        )
+        marker.place(relx=1.0, x=-3, y=-1, anchor="ne")
+        cell._reservation_marker = marker
+
     def _build_empty_cell(self, parent, date_str, day_text, is_weekend, cell_size):
         bg = WEEKEND_BG if is_weekend else CELL_BG
         hover_bg = WEEKEND_BG_HOVER if is_weekend else CELL_BG_HOVER
@@ -649,20 +746,30 @@ class App:
     def _build_day_cell(self, parent, date_str, day_text, day_date, is_weekend,
                         entry, holidays_map, pad,
                         holiday_max_len, cell_size, conflict_dates=None,
-                        entry_time_font=FONT_TINY, holiday_name_font=FONT_SMALL):
-        """Dispatcht auf Entry-, Holiday- oder Empty-Zelle und liefert die fertig
-        konfigurierte Widget-Instanz. Caller grided das Ergebnis selbst.
+                        entry_time_font=FONT_TINY, holiday_name_font=FONT_SMALL,
+                        reservation=None):
+        """Dispatcht auf Entry-, Reservierungs-, Holiday- oder Empty-Zelle.
 
-        cell_size: (width_px, height_px) — alle drei Zelltypen werden auf diese
-        Größe pixel-fixiert, sodass Spaltenbreiten unabhängig vom Inhalt sind.
-
-        conflict_dates: optionales Set von ISO-Datumsstrings mit ungelösten
-        Konflikten. Zellen, deren date_str enthalten ist, erhalten einen
-        orangefarbenen Rand und einen Hinweis-Tooltip.
+        reservation: optionales {start, end} für den Tag. Hat der Tag eine
+        Ist-Zeit UND eine Reservierung, wird die Ist-Zeitzelle gebaut und mit
+        einem Eck-Marker versehen; nur-Reservierungs-Tage bekommen eine eigene
+        violette Zelle.
         """
         if entry:
             cell = self._build_entry_cell(
                 parent, date_str, day_text, entry, is_weekend, pad,
+                cell_size=cell_size, time_font=entry_time_font,
+            )
+            if reservation is not None:
+                self._add_reservation_marker(cell)
+                attach_tooltip(
+                    cell,
+                    f"Reservierung: {reservation['start']}-{reservation['end']}")
+            elif day_date in holidays_map:
+                attach_tooltip(cell, f"Feiertag: {holidays_map[day_date]}")
+        elif reservation is not None:
+            cell = self._build_reservation_cell(
+                parent, date_str, day_text, reservation, pad,
                 cell_size=cell_size, time_font=entry_time_font,
             )
             if day_date in holidays_map:
@@ -743,6 +850,8 @@ class App:
 
         cal = calendar.Calendar(firstweekday=0)
         entries = self.storage.get_all()
+        reservations = (
+            self.reservation_store.get_all() if self.reservation_store else {})
         total_hours = 0.0
 
         state = self.settings.get("state")
@@ -811,6 +920,7 @@ class App:
                     conflict_dates=conflict_dates,
                     entry_time_font=entry_time_font,
                     holiday_name_font=holiday_name_font,
+                    reservation=reservations.get(date_str),
                 )
                 cell.grid(row=row, column=col, sticky="nsew", padx=2, pady=2)
 
@@ -827,6 +937,8 @@ class App:
 
         dates = get_week_dates(self.iso_year, self.current_week)
         entries = self.storage.get_all()
+        reservations = (
+            self.reservation_store.get_all() if self.reservation_store else {})
         total_hours = 0.0
         spans = week_spans_months(self.iso_year, self.current_week)
         state = self.settings.get("state")
@@ -871,6 +983,7 @@ class App:
                 conflict_dates=conflict_dates,
                 entry_time_font=entry_time_font,
                 holiday_name_font=holiday_name_font,
+                reservation=reservations.get(date_str),
             )
             cell.grid(row=1, column=col, sticky="nsew", padx=2, pady=2)
 
@@ -934,6 +1047,11 @@ class App:
         frame.config(bg=bg)
         day_lbl.config(bg=bg)
         time_lbl.config(bg=bg)
+        # Eck-Marker (nur auf Entry-Zellen mit zusätzlicher Reservierung)
+        # mitfärben, sonst bleibt beim Hover ein andersfarbiges Rechteck stehen.
+        marker = getattr(frame, "_reservation_marker", None)
+        if marker is not None:
+            marker.config(bg=bg)
 
     @staticmethod
     def _empty_hover(frame, day_lbl, bg):
@@ -949,6 +1067,8 @@ class App:
         open_entry_dialog(
             self.root, date_str, self.storage, self.settings,
             on_change=self._refresh,
+            reservation_store=self.reservation_store,
+            trigger_reconcile=self._trigger_calendar_reconcile,
         )
 
     def _send(self):
