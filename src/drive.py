@@ -62,22 +62,25 @@ def _write_token(creds, token_path):
         pass
 
 
-def get_drive_service(credentials_path, token_path):
-    """OAuth mit kombinierten Scopes (Gmail + Drive appdata). Token wird mit
-    beiden Scopes geschrieben — Gmail send funktioniert weiter mit demselben
-    token.json. Wirft DriveAuthError oder DriveNetworkError bei Problemen."""
-    # Gate: Modul-Top setzt die Google-Symbole im ImportError-Fallback auf None,
-    # damit der Import in Test- und Build-Umgebungen ohne installierte Libs
-    # nicht crasht. Ein Aufruf dieser Funktion ohne Libs muss aber explodieren.
+def get_drive_service(credentials_path, token_path, gcal_enabled=False):
+    """OAuth mit kombinierten Scopes (Gmail + Drive appdata, optional Calendar).
+    Token wird mit allen Scopes geschrieben — Gmail send und Calendar
+    funktionieren weiter mit demselben token.json. Wirft DriveAuthError oder
+    DriveNetworkError bei Problemen."""
     if (Credentials is None or InstalledAppFlow is None
             or Request is None or build is None):
         raise ImportError(
             "Google-API-Libs fehlen — google-api-python-client und "
             "google-auth-oauthlib müssen installiert sein."
         )
+    scopes = list(SYNC_SCOPES)
+    if gcal_enabled:
+        scopes.append("https://www.googleapis.com/auth/calendar.events")
+        scopes.append("https://www.googleapis.com/auth/calendar.calendarlist.readonly")
+
     creds = None
     if os.path.exists(token_path):
-        creds = Credentials.from_authorized_user_file(token_path, SYNC_SCOPES)
+        creds = Credentials.from_authorized_user_file(token_path, scopes)
 
     if creds and creds.expired and creds.refresh_token:
         try:
@@ -93,7 +96,7 @@ def get_drive_service(credentials_path, token_path):
             raise FileNotFoundError(
                 f"credentials.json nicht gefunden unter:\n{credentials_path}"
             )
-        flow = InstalledAppFlow.from_client_secrets_file(credentials_path, SYNC_SCOPES)
+        flow = InstalledAppFlow.from_client_secrets_file(credentials_path, scopes)
         creds = flow.run_local_server(port=0)
         _write_token(creds, token_path)
 

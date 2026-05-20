@@ -140,3 +140,35 @@ def test_upload_412_response_raises_drive_conflict_error():
     service.files().update().execute.side_effect = HttpError(resp, b"")
     with pytest.raises(DriveConflictError):
         upload(service, b'{"x":1}', file_id="file-1", expected_etag="")
+
+
+def test_get_drive_service_with_gcal_requests_calendar_scopes(tmp_path, monkeypatch):
+    """Bei gcal_enabled fordert get_drive_service auch die Calendar-Scopes an,
+    damit ein Drive-Re-Consent die Calendar-Scopes nicht aus token.json wirft."""
+    import json
+    from src import drive
+
+    token_path = tmp_path / "token.json"
+    token_path.write_text(json.dumps({
+        "token": "t", "refresh_token": "r", "client_id": "c",
+        "client_secret": "s", "scopes": ["x"],
+    }), encoding="utf-8")
+
+    captured = {}
+
+    class _FakeCreds:
+        valid = True
+        expired = False
+        refresh_token = None
+
+        @classmethod
+        def from_authorized_user_file(cls, path, scopes):
+            captured["scopes"] = scopes
+            return cls()
+
+    monkeypatch.setattr(drive, "Credentials", _FakeCreds)
+    monkeypatch.setattr(drive, "build", lambda *a, **k: object())
+
+    drive.get_drive_service("credentials.json", str(token_path), gcal_enabled=True)
+    assert "https://www.googleapis.com/auth/calendar.events" in captured["scopes"]
+    assert "https://www.googleapis.com/auth/calendar.calendarlist.readonly" in captured["scopes"]
