@@ -254,3 +254,14 @@ def test_refresh_writes_token_with_0600_permissions(tmp_path):
 
     mode = os.stat(path).st_mode & 0o777
     assert mode == 0o600, f"Erwartete 0o600, ist {oct(mode)}"
+
+
+def test_get_scopes_with_gcal_includes_calendar_scopes():
+    scopes = get_scopes(sync_enabled=False, gcal_enabled=True)
+    assert "https://www.googleapis.com/auth/calendar.events" in scopes
+    assert "https://www.googleapis.com/auth/calendar.calendarlist.readonly" in scopes
+
+
+def test_get_scopes_without_gcal_has_no_calendar_scopes():
+    scopes = get_scopes(sync_enabled=True, gcal_enabled=False)
+    assert not any("calendar" in s for s in scopes)

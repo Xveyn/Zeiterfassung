@@ -10,10 +10,12 @@ from email.header import Header
 GMAIL_SEND_SCOPE = "https://www.googleapis.com/auth/gmail.send"
 DRIVE_APPDATA_SCOPE = "https://www.googleapis.com/auth/drive.appdata"
 USERINFO_EMAIL_SCOPE = "https://www.googleapis.com/auth/userinfo.email"
+CALENDAR_EVENTS_SCOPE = "https://www.googleapis.com/auth/calendar.events"
+CALENDAR_LIST_SCOPE = "https://www.googleapis.com/auth/calendar.calendarlist.readonly"
 
 
-def get_scopes(sync_enabled):
-    """Liefert die OAuth-Scopes der App.
+def get_scopes(sync_enabled, gcal_enabled=False):
+    """Liefert die OAuth-Scopes der App als Vereinigung aller aktiven Features.
 
     `userinfo.email` (Identity-Scope, non-sensitive) erlaubt die Anzeige
     des Absenders im Settings-Dialog. `openid` wurde absichtlich entfernt,
@@ -23,6 +25,9 @@ def get_scopes(sync_enabled):
     scopes = [GMAIL_SEND_SCOPE, USERINFO_EMAIL_SCOPE]
     if sync_enabled:
         scopes.append(DRIVE_APPDATA_SCOPE)
+    if gcal_enabled:
+        scopes.append(CALENDAR_EVENTS_SCOPE)
+        scopes.append(CALENDAR_LIST_SCOPE)
     return scopes
 
 
@@ -31,7 +36,7 @@ def get_scopes(sync_enabled):
 SCOPES = [GMAIL_SEND_SCOPE]
 
 
-def fetch_user_email(token_path="token.json", sync_enabled=False):
+def fetch_user_email(token_path="token.json", sync_enabled=False, gcal_enabled=False):
     """Liest die E-Mail-Adresse des authentifizierten Users.
 
     Versucht zuerst Gmail's `users().getProfile()` (klappt in der Praxis oft
@@ -52,7 +57,7 @@ def fetch_user_email(token_path="token.json", sync_enabled=False):
         from google.oauth2.credentials import Credentials
 
         creds = Credentials.from_authorized_user_file(
-            token_path, get_scopes(sync_enabled)
+            token_path, get_scopes(sync_enabled, gcal_enabled)
         )
         if creds.expired and creds.refresh_token:
             from google.auth.transport.requests import Request
@@ -149,7 +154,8 @@ def _refresh_and_persist(creds, token_path):
     _write_token(creds, token_path)
 
 
-def refresh_token_if_needed(token_path="token.json", sync_enabled=False):
+def refresh_token_if_needed(token_path="token.json", sync_enabled=False,
+                            gcal_enabled=False):
     """Proactively refresh the Gmail token when it is expired.
 
     Returns one of:
@@ -163,7 +169,7 @@ def refresh_token_if_needed(token_path="token.json", sync_enabled=False):
     """
     from google.oauth2.credentials import Credentials
 
-    scopes = get_scopes(sync_enabled)
+    scopes = get_scopes(sync_enabled, gcal_enabled)
 
     if not os.path.exists(token_path):
         return "no_token"
@@ -182,7 +188,8 @@ def refresh_token_if_needed(token_path="token.json", sync_enabled=False):
     return "refreshed"
 
 
-def get_gmail_service(credentials_path="credentials.json", token_path="token.json", sync_enabled=False):
+def get_gmail_service(credentials_path="credentials.json", token_path="token.json",
+                      sync_enabled=False, gcal_enabled=False):
     """Authenticate with Gmail API and return a service object.
 
     Returns the service object, or raises an exception on failure.
@@ -191,7 +198,7 @@ def get_gmail_service(credentials_path="credentials.json", token_path="token.jso
     from google_auth_oauthlib.flow import InstalledAppFlow
     from googleapiclient.discovery import build
 
-    scopes = get_scopes(sync_enabled)
+    scopes = get_scopes(sync_enabled, gcal_enabled)
     creds = None
 
     if os.path.exists(token_path):
