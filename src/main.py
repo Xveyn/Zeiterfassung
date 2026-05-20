@@ -137,6 +137,36 @@ def _run_push_blocking(storage, settings, conflicts_store, base, timeout_seconds
     return result
 
 
+def run_calendar_reconcile(reservation_store, settings, base):
+    """Baut den Calendar-Service und fährt einen Reservierungs-Reconcile.
+
+    Liefert {"ok": bool, "error": str, "tb": str}. Wirft NICHT — der Caller
+    (UI-Thread) wertet das Dict aus. No-op, wenn gcal deaktiviert oder kein
+    Kalender gewählt ist.
+    """
+    from src import gcal
+    from src.reservations_sync import reconcile_reservations
+
+    if not settings.get("gcal_enabled"):
+        return {"ok": True, "error": "", "tb": ""}
+    calendar_id = settings.get("gcal_calendar_id")
+    if not calendar_id:
+        return {"ok": True, "error": "", "tb": ""}
+
+    try:
+        service = gcal.get_calendar_service(
+            os.path.join(base, "credentials.json"),
+            os.path.join(base, "token.json"),
+            sync_enabled=settings.get("sync_enabled"),
+        )
+        reconcile_reservations(service, calendar_id, reservation_store, settings)
+        return {"ok": True, "error": "", "tb": ""}
+    except Exception as e:
+        logging.getLogger(__name__).exception("Kalender-Reconcile fehlgeschlagen")
+        return {"ok": False, "error": f"{type(e).__name__}: {e}",
+                "tb": traceback.format_exc()}
+
+
 def main():
     base = get_base_path()
     try:
