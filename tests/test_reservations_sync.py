@@ -158,3 +158,29 @@ def test_reconcile_deletes_orphaned_event(tmp_path, monkeypatch):
     assert deleted == ["ev-old"]  # eines der Duplikate wird gelöscht
     assert store.get("2026-06-01") == {"start": "09:00", "end": "17:00"}
     assert store.get_all_raw()["2026-06-01"]["gcal_event_id"] == "ev-old"
+
+
+def test_reconcile_preserves_concurrent_local_save(tmp_path, monkeypatch):
+    """Eine Reservierung, die WÄHREND des Reconcile-Netzwerkteils lokal
+    gespeichert wird, darf nicht durch den apply_reconciled-Replace verloren
+    gehen."""
+    from src import gcal, reservations_sync
+    from src.reservations import ReservationStore
+    from src.settings import Settings
+
+    store = ReservationStore(str(tmp_path / "res.json"))
+    settings = Settings(str(tmp_path / "set.json"))
+
+    def fake_list(s, c):
+        # Simuliert einen lokalen Save mitten im Reconcile.
+        store.save("2026-07-01", "10:00", "18:00")
+        return []
+
+    monkeypatch.setattr(gcal, "list_app_events", fake_list)
+    monkeypatch.setattr(gcal, "create_event", lambda *a: "ev")
+    monkeypatch.setattr(gcal, "update_event", lambda *a: None)
+    monkeypatch.setattr(gcal, "delete_event", lambda *a: None)
+
+    reservations_sync.reconcile_reservations(object(), "cal-1", store, settings)
+
+    assert store.get("2026-07-01") == {"start": "10:00", "end": "18:00"}

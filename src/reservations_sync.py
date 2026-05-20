@@ -129,8 +129,9 @@ def reconcile_reservations(service, calendar_id, store, settings):
     from src import gcal
 
     watermark = settings.get("last_calendar_sync_at") or ""
+    local_snapshot = store.get_all_raw()
     remote_events = gcal.list_app_events(service, calendar_id)
-    result = merge_reservations(store.get_all_raw(), remote_events, watermark)
+    result = merge_reservations(local_snapshot, remote_events, watermark)
     merged, plan = result["merged"], result["plan"]
 
     for item in plan["delete"]:
@@ -148,6 +149,16 @@ def reconcile_reservations(service, calendar_id, store, settings):
             item["date"], item["start"], item["end"], item["modified_at"],
         )
         merged[item["date"]]["gcal_event_id"] = event_id
+
+    # Rebase: Reservierungen, die seit dem Snapshot lokal gespeichert oder
+    # geändert wurden (z.B. ein parallel laufender Reconcile beim App-Start
+    # oder ein User-Save während des Netzwerk-Teils), dürfen nicht durch den
+    # blinden apply_reconciled-Replace verloren gehen. Sie werden beim nächsten
+    # Reconcile in den Kalender gepusht.
+    for date, entry in store.get_all_raw().items():
+        snap = local_snapshot.get(date)
+        if snap is None or entry.get("modified_at", "") > snap.get("modified_at", ""):
+            merged[date] = entry
 
     store.apply_reconciled(merged)
     settings.set("last_calendar_sync_at", _utc_now_iso())

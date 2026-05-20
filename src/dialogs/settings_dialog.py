@@ -593,8 +593,10 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
         if plain_updates:
             settings.set_many(plain_updates)
         # Kalender-Auswahl: Klarname zurück auf ID mappen, als Sync-Setting
-        # speichern (reist über die Drive-Settings-Sync mit).
-        if settings.get("gcal_enabled"):
+        # speichern (reist über die Drive-Settings-Sync mit). Nur wenn die
+        # Kalenderliste schon geladen ist (cal_map gefüllt) — sonst würde ein
+        # vorschnelles "Speichern" fälschlich "primary" festschreiben.
+        if settings.get("gcal_enabled") and cal_map:
             selected_cal_id = cal_map.get(
                 cal_var.get(), settings.get("gcal_calendar_id") or "primary")
             if selected_cal_id != settings.get("gcal_calendar_id"):
