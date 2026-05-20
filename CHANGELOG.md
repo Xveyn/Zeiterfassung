@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.13.0 — 2026-05-20
+
+### Hinzugefügt
+- Reservierungen: zukünftige Arbeitszeiten lassen sich pro Tag im Tages-Dialog
+  reservieren — ein eigenständiges Konzept neben den erfassten Ist-Zeiten.
+  Reservierungen werden im Kalender violett dargestellt und sind über das
+  Tages-Modal einsehbar.
+- Google-Kalender-Anbindung: in den Einstellungen aktivierbar; Reservierungen
+  werden mit einem wählbaren Google Kalender abgeglichen. Push überschreibt die
+  Remote-Kalender-Einträge — Synchronisierung funktioniert geräteübergreifend
+  über den Kalender.
+
+### Geändert
+- Tages-Dialog zeigt einen neuen „Reservierung"-Sektor mit Start/Ende-Feldern,
+  unabhängig von den Ist-Arbeitszeiten. Reservierungen können auch gelöscht werden.
+
 ## 1.12.0 — 2026-05-14
 
 ### Hinzugefügt
