@@ -17,6 +17,7 @@ os.environ.setdefault("OAUTHLIB_RELAX_TOKEN_SCOPE", "1")
 from src.conflicts_store import ConflictsStore
 from src.logging_setup import setup_logging
 from src.paths import get_base_path
+from src.reservations import ReservationStore
 from src.settings import Settings
 from src.storage import Storage
 from src.ui import App
@@ -183,8 +184,11 @@ def main():
 
     conflicts_store = ConflictsStore(os.path.join(base, "conflicts.json"))
 
+    reservation_store = ReservationStore(os.path.join(base, "reservations.json"))
+
     root = tk.Tk()
-    app = App(root, storage, settings, base_path=base, conflicts_store=conflicts_store)
+    app = App(root, storage, settings, base_path=base, conflicts_store=conflicts_store,
+              reservation_store=reservation_store)
 
     if "--minimized" in sys.argv:
         root.iconify()
