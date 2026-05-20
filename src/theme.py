@@ -43,6 +43,12 @@ HOLIDAY_BG = "#0f3a2a"
 HOLIDAY_BG_HOVER = "#15523a"
 HOLIDAY_ACCENT = "#4ade80"  # gleicher Grünton wie STATUS_OK
 
+# Reservation cell colors ("geplant"-Look — violetter Akzent, abgesetzt von
+# der roten Ist-Zeit-Zelle und der grünen Feiertagszelle)
+RESERVATION_BG = "#2a2150"
+RESERVATION_BG_HOVER = "#352a66"
+RESERVATION_ACCENT = "#a78bfa"
+
 # Time dropdown values (5-min steps, 00:00 - 23:55)
 TIME_VALUES = [f"{h:02d}:{m:02d}" for h in range(24) for m in range(0, 60, 5)]
 PAUSE_VALUES = [str(m) for m in range(0, 125, 5)]
