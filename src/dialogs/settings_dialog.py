@@ -404,6 +404,126 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
             padx=12, pady=2,
         ).grid(row=26, column=0, columnspan=2, padx=10, pady=(4, 8), sticky="w")
 
+    # --- Google Kalender (Reservierungen) ---
+    tk.Label(
+        dialog, text="— Google Kalender —", font=FONT_BOLD,
+        bg=BG, fg=TEXT_MUTED,
+    ).grid(row=27, column=0, columnspan=2, padx=10, pady=(16, 4))
+
+    var_gcal = tk.BooleanVar(value=settings.get("gcal_enabled"))
+    cb_gcal: tk.Checkbutton | None = None
+
+    # Kalender-Auswahl: Combobox zeigt Klarnamen, gespeichert wird die ID.
+    # cal_map summary->id wird im Hintergrund per API befüllt.
+    cal_map: dict[str, str] = {}
+    cal_var = tk.StringVar(value=settings.get("gcal_calendar_id") or "primary")
+
+    cal_combo = dark_combo(dialog, cal_var, [cal_var.get()], width=30)
+    cal_combo.grid(row=29, column=1, padx=10, pady=4, sticky="w")
+    tk.Label(dialog, text="Kalender:", font=FONT, bg=BG, fg=TEXT).grid(
+        row=29, column=0, padx=10, pady=4, sticky="w")
+
+    cal_status = tk.Label(dialog, text="", font=FONT_SMALL, bg=BG, fg=TEXT_MUTED)
+    cal_status.grid(row=30, column=0, columnspan=2, padx=10, pady=(0, 4), sticky="w")
+
+    def _populate_calendars(items):
+        if not cal_combo.winfo_exists():
+            return
+        cal_map.clear()
+        for it in items:
+            cal_map[it["summary"]] = it["id"]
+        cal_combo["values"] = list(cal_map.keys()) or [cal_var.get()]
+        # Gespeicherte ID auf den passenden Klarnamen zurückmappen.
+        stored_id = settings.get("gcal_calendar_id") or "primary"
+        for summary, cid in cal_map.items():
+            if cid == stored_id:
+                cal_var.set(summary)
+                break
+        cal_status.config(text="")
+
+    def _load_calendars():
+        cal_status.config(text="Kalenderliste wird geladen…")
+
+        def _do():
+            try:
+                from src import gcal
+                service = gcal.get_calendar_service(
+                    os.path.join(base_path, "credentials.json"),
+                    os.path.join(base_path, "token.json"),
+                    sync_enabled=settings.get("sync_enabled"),
+                )
+                items = gcal.list_calendars(service)
+            except Exception as e:
+                tb = traceback.format_exc()
+                dialog.after(0, lambda: _load_calendars_error(e, tb))
+                return
+            dialog.after(0, lambda: _populate_calendars(items))
+
+        threading.Thread(target=_do, daemon=True).start()
+
+    def _load_calendars_error(err, tb):
+        if cal_status.winfo_exists():
+            cal_status.config(text="Kalenderliste nicht verfügbar")
+        messagebox.showerror(
+            "Google Kalender",
+            f"Kalenderliste konnte nicht geladen werden:\n\n{err}\n\n{tb}",
+            parent=dialog,
+        )
+
+    def _finish_gcal_oauth(err, tb):
+        assert cb_gcal is not None
+        if not cb_gcal.winfo_exists():
+            return  # Dialog wurde während des OAuth-Flows geschlossen.
+        cb_gcal.config(state="normal")
+        if err is None:
+            settings.set("gcal_enabled", True)
+            on_change()
+            _load_calendars()
+            return
+        messagebox.showerror(
+            "Google Kalender aktivieren",
+            f"OAuth-Flow fehlgeschlagen:\n\n{err}\n\n{tb}",
+            parent=dialog,
+        )
+        var_gcal.set(False)
+
+    def _on_gcal_toggled():
+        assert cb_gcal is not None
+        new_state = var_gcal.get()
+        if new_state and not settings.get("gcal_enabled"):
+            cb_gcal.config(state="disabled")
+
+            def _do_oauth():
+                err, tb = None, ""
+                try:
+                    from src import gcal
+                    gcal.get_calendar_service(
+                        os.path.join(base_path, "credentials.json"),
+                        os.path.join(base_path, "token.json"),
+                        sync_enabled=settings.get("sync_enabled"),
+                    )
+                except Exception as e:
+                    err, tb = e, traceback.format_exc()
+                dialog.after(0, lambda: _finish_gcal_oauth(err, tb))
+
+            threading.Thread(target=_do_oauth, daemon=True).start()
+            return
+        if not new_state and settings.get("gcal_enabled"):
+            settings.set("gcal_enabled", False)
+            on_change()
+
+    cb_gcal = tk.Checkbutton(
+        dialog, text="Reservierungen mit Google Kalender abgleichen",
+        variable=var_gcal, font=FONT,
+        bg=BG, fg=TEXT, selectcolor=CELL_BG,
+        activebackground=BG, activeforeground=TEXT,
+        cursor="hand2", command=_on_gcal_toggled,
+    )
+    cb_gcal.grid(row=28, column=0, columnspan=2, padx=10, pady=(4, 0), sticky="w")
+
+    if settings.get("gcal_enabled"):
+        _load_calendars()
+
     def save_settings():
         for key, lbl in zip(WEEKDAY_KEYS, DAYS_DE):
             ok, msg = validate_entry(start_vars[key].get(), end_vars[key].get())
@@ -472,11 +592,18 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
             settings.set_synced(key, value)
         if plain_updates:
             settings.set_many(plain_updates)
+        # Kalender-Auswahl: Klarname zurück auf ID mappen, als Sync-Setting
+        # speichern (reist über die Drive-Settings-Sync mit).
+        if settings.get("gcal_enabled"):
+            selected_cal_id = cal_map.get(
+                cal_var.get(), settings.get("gcal_calendar_id") or "primary")
+            if selected_cal_id != settings.get("gcal_calendar_id"):
+                settings.set_synced("gcal_calendar_id", selected_cal_id)
         on_change()
         dialog.destroy()
 
     btn_frame = tk.Frame(dialog, bg=BG)
-    btn_frame.grid(row=27, column=0, columnspan=2, pady=12)
+    btn_frame.grid(row=31, column=0, columnspan=2, pady=12)
 
     primary_button(btn_frame, "Speichern", save_settings).pack(side=tk.LEFT, padx=5)
     secondary_button(btn_frame, "Abbrechen", dialog.destroy).pack(side=tk.LEFT, padx=5)
