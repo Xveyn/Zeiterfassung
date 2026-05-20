@@ -19,6 +19,7 @@ SCHEMA_VERSION = 1
 SYNCED_SETTING_KEYS = (
     "recipient", "name", "hourly_rate",
     "mail_subject", "mail_greeting", "mail_content", "mail_closing",
+    "gcal_calendar_id",
 )
 
 

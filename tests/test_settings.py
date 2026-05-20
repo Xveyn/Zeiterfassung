@@ -390,3 +390,23 @@ def test_share_recipient_persists(tmp_path):
     s1.set("share_recipient", "bob@example.com")
     s2 = Settings(path)
     assert s2.get("share_recipient") == "bob@example.com"
+
+
+def test_gcal_defaults_present():
+    from src.settings import DEFAULTS
+    assert DEFAULTS["gcal_enabled"] is False
+    assert DEFAULTS["gcal_calendar_id"] == ""
+    assert DEFAULTS["last_calendar_sync_at"] == ""
+
+
+def test_gcal_calendar_id_is_synced_setting():
+    from src.settings import SYNCED_SETTING_KEYS
+    assert "gcal_calendar_id" in SYNCED_SETTING_KEYS
+
+
+def test_synced_whitelists_in_settings_and_sync_match():
+    """Die Whitelist existiert dupliziert in settings.py und sync.py und
+    muss identisch bleiben — sonst mergt sync.py einen Key nicht."""
+    from src.settings import SYNCED_SETTING_KEYS as a
+    from src.sync import SYNCED_SETTING_KEYS as b
+    assert set(a) == set(b)
