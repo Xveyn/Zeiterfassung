@@ -12,21 +12,11 @@ from src.share import build_share_doc, serialize_share_doc
 from src.theme import (
     BG, FONT, TEXT,
     apply_dark_titlebar, center_dialog_on_parent,
-    primary_button, secondary_button, themed_showinfo,
+    dark_entry, primary_button, secondary_button, themed_showinfo,
 )
 
 
 def open_share_dialog(parent, storage, settings, base_path):
-    share_recipient = settings.get("share_recipient")
-    if not share_recipient:
-        messagebox.showwarning(
-            "Kein Empfänger zum Teilen",
-            "Bitte zuerst eine Empfänger-Adresse unter „Teilen mit:“ in den "
-            "Einstellungen angeben.",
-            parent=parent,
-        )
-        return
-
     credentials_path = os.path.join(base_path, "credentials.json")
     token_path = os.path.join(base_path, "token.json")
 
@@ -52,16 +42,37 @@ def open_share_dialog(parent, storage, settings, base_path):
 
     tk.Label(
         dialog,
-        text=(
-            f"Alle {len(entries)} Einträge werden als JSON-Anhang an\n"
-            f"{share_recipient}\n"
-            "gesendet."
-        ),
+        text=f"Alle {len(entries)} Einträge werden als JSON-Anhang gesendet.",
         font=FONT, bg=BG, fg=TEXT,
         wraplength=380, justify="left",
-    ).grid(row=0, column=0, columnspan=2, padx=20, pady=(20, 12))
+    ).grid(row=0, column=0, columnspan=2, padx=20, pady=(20, 12), sticky="w")
+
+    tk.Label(
+        dialog, text="Empfänger:", font=FONT, bg=BG, fg=TEXT,
+    ).grid(row=1, column=0, padx=(20, 6), pady=(0, 4), sticky="w")
+
+    recipient_var = tk.StringVar(value=settings.get("share_recipient") or "")
+    recipient_entry = dark_entry(dialog, recipient_var, width=35)
+    recipient_entry.grid(row=1, column=1, padx=(0, 20), pady=(0, 4), sticky="w")
+
+    save_default_var = tk.BooleanVar(value=False)
+    tk.Checkbutton(
+        dialog,
+        text="Als Standard-Empfänger speichern",
+        variable=save_default_var,
+        font=FONT, bg=BG, fg=TEXT, selectcolor=BG,
+        activebackground=BG, activeforeground=TEXT,
+    ).grid(row=2, column=0, columnspan=2, padx=20, pady=(0, 12), sticky="w")
 
     def do_send():
+        share_recipient = recipient_var.get().strip()
+        if not share_recipient:
+            messagebox.showerror(
+                "Empfänger fehlt",
+                "Bitte eine E-Mail-Adresse angeben.",
+                parent=dialog,
+            )
+            return
         sender_email = settings.get("sender_email") or ""
         display_name = settings.get("name") or sender_email or "anonym"
         try:
@@ -91,6 +102,8 @@ def open_share_dialog(parent, storage, settings, base_path):
                 attachment_filename=filename,
                 attachment_subtype="json",
             )
+            if save_default_var.get():
+                settings.set("share_recipient", share_recipient)
             dialog.destroy()
             themed_showinfo(
                 parent,
@@ -108,7 +121,7 @@ def open_share_dialog(parent, storage, settings, base_path):
             )
 
     btn_frame = tk.Frame(dialog, bg=BG)
-    btn_frame.grid(row=1, column=0, columnspan=2, pady=(0, 16))
+    btn_frame.grid(row=3, column=0, columnspan=2, pady=(0, 16))
 
     primary_button(btn_frame, "Senden", do_send).pack(side=tk.LEFT, padx=5)
     secondary_button(btn_frame, "Abbrechen", dialog.destroy).pack(side=tk.LEFT, padx=5)

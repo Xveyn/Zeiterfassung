@@ -69,10 +69,10 @@ def _default_from_date(today):
 def open_send_dialog(parent, storage, settings, base_path):
     recipient = settings.get("recipient")
     if not recipient:
-        messagebox.showwarning(
+        themed_showinfo(
+            parent,
             "Kein Empfänger",
             "Bitte zuerst einen Empfänger in den Einstellungen angeben.",
-            parent=parent,
         )
         return
 
