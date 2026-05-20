@@ -113,3 +113,41 @@ def merge_reservations(local_raw, remote_events, watermark):
             watermark, merged, plan,
         )
     return {"merged": merged, "plan": plan}
+
+
+def reconcile_reservations(service, calendar_id, store, settings):
+    """Voller Kalender-Abgleich: pull → merge → push.
+
+    service:     gebauter Google-Calendar-Service (aus gcal.get_calendar_service)
+    calendar_id: ID des Ziel-Kalenders
+    store:       ReservationStore
+    settings:    Settings (liest/schreibt last_calendar_sync_at)
+
+    Mutiert store und settings. Wirft bei Netz-/API-Fehlern weiter — der Caller
+    entscheidet, ob still geloggt oder als Messagebox gezeigt wird.
+    """
+    from src import gcal
+
+    watermark = settings.get("last_calendar_sync_at") or ""
+    remote_events = gcal.list_app_events(service, calendar_id)
+    result = merge_reservations(store.get_all_raw(), remote_events, watermark)
+    merged, plan = result["merged"], result["plan"]
+
+    for item in plan["delete"]:
+        gcal.delete_event(service, calendar_id, item["event_id"])
+
+    for item in plan["update"]:
+        gcal.update_event(
+            service, calendar_id, item["event_id"],
+            item["date"], item["start"], item["end"], item["modified_at"],
+        )
+
+    for item in plan["create"]:
+        event_id = gcal.create_event(
+            service, calendar_id,
+            item["date"], item["start"], item["end"], item["modified_at"],
+        )
+        merged[item["date"]]["gcal_event_id"] = event_id
+
+    store.apply_reconciled(merged)
+    settings.set("last_calendar_sync_at", _utc_now_iso())

@@ -111,3 +111,50 @@ def test_local_only_exactly_at_watermark_is_dropped():
         [], "2026-05-19T00:00:00Z")
     assert res["merged"] == {}
     assert res["plan"]["create"] == []
+
+
+def test_reconcile_creates_event_and_persists_event_id(tmp_path, monkeypatch):
+    from src import gcal, reservations_sync
+    from src.reservations import ReservationStore
+    from src.settings import Settings
+
+    store = ReservationStore(str(tmp_path / "res.json"))
+    store.save("2026-06-01", "09:00", "17:00")
+    settings = Settings(str(tmp_path / "set.json"))
+
+    monkeypatch.setattr(gcal, "list_app_events", lambda s, c: [])
+    monkeypatch.setattr(gcal, "update_event", lambda *a: None)
+    monkeypatch.setattr(gcal, "delete_event", lambda *a: None)
+    monkeypatch.setattr(
+        gcal, "create_event",
+        lambda s, c, date, start, end, modified_at: "new-event-id")
+
+    reservations_sync.reconcile_reservations(object(), "cal-1", store, settings)
+
+    assert store.get_all_raw()["2026-06-01"]["gcal_event_id"] == "new-event-id"
+    assert settings.get("last_calendar_sync_at") != ""
+
+
+def test_reconcile_deletes_orphaned_event(tmp_path, monkeypatch):
+    from src import gcal, reservations_sync
+    from src.reservations import ReservationStore
+    from src.settings import Settings
+
+    store = ReservationStore(str(tmp_path / "res.json"))
+    settings = Settings(str(tmp_path / "set.json"))
+
+    remote = {"date": "2026-06-01", "start": "09:00", "end": "17:00",
+              "modified_at": "2026-05-20T10:00:00Z", "event_id": "ev-old"}
+    deleted = []
+    monkeypatch.setattr(gcal, "list_app_events", lambda s, c: [remote, dict(remote)])
+    monkeypatch.setattr(gcal, "create_event", lambda *a: "x")
+    monkeypatch.setattr(gcal, "update_event", lambda *a: None)
+    monkeypatch.setattr(
+        gcal, "delete_event",
+        lambda s, c, event_id: deleted.append(event_id))
+
+    reservations_sync.reconcile_reservations(object(), "cal-1", store, settings)
+
+    assert deleted == ["ev-old"]  # eines der Duplikate wird gelöscht
+    assert store.get("2026-06-01") == {"start": "09:00", "end": "17:00"}
+    assert store.get_all_raw()["2026-06-01"]["gcal_event_id"] == "ev-old"
