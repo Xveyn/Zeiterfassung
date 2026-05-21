@@ -198,15 +198,21 @@ class App:
 
         threading.Thread(target=worker, daemon=True).start()
 
+    def _reservations_active(self):
+        """True, wenn Reservierungen angezeigt/bearbeitet werden dürfen: ein
+        Store existiert UND der Google-Kalender-Sync ist in den Settings aktiv.
+        Bei deaktiviertem Sync werden Reservierungen weder im Kalender
+        gerendert noch im Tages-Dialog angeboten."""
+        return (self.reservation_store is not None
+                and bool(self.settings.get("gcal_enabled")))
+
     def _proactive_calendar_reconcile(self):
         """Gleicht beim App-Start die Reservierungen mit dem Google Kalender ab.
 
         Läuft im Hintergrund. Fehler werden STILL geloggt (ein Offline-Start
         darf nicht nerven — analog Token-Refresh/Update-Check).
         """
-        if self.reservation_store is None:
-            return
-        if not self.settings.get("gcal_enabled"):
+        if not self._reservations_active():
             return
 
         def worker():
@@ -224,7 +230,7 @@ class App:
         Fehler werden hier ALS MESSAGEBOX gezeigt — der User hat aktiv
         gespeichert und erwartet Feedback (CLAUDE.md: Sendepfad-Fehler sichtbar).
         """
-        if self.reservation_store is None or not self.settings.get("gcal_enabled"):
+        if not self._reservations_active():
             return
 
         def worker():
@@ -830,7 +836,7 @@ class App:
         cal = calendar.Calendar(firstweekday=0)
         entries = self.storage.get_all()
         reservations = (
-            self.reservation_store.get_all() if self.reservation_store else {})
+            self.reservation_store.get_all() if self._reservations_active() else {})
         total_hours = 0.0
 
         state = self.settings.get("state")
@@ -917,7 +923,7 @@ class App:
         dates = get_week_dates(self.iso_year, self.current_week)
         entries = self.storage.get_all()
         reservations = (
-            self.reservation_store.get_all() if self.reservation_store else {})
+            self.reservation_store.get_all() if self._reservations_active() else {})
         total_hours = 0.0
         spans = week_spans_months(self.iso_year, self.current_week)
         state = self.settings.get("state")
@@ -1053,10 +1059,14 @@ class App:
             self._refresh()
 
     def _open_dialog(self, date_str):
+        # Bei deaktiviertem Kalender-Sync KEIN reservation_store an den Dialog
+        # geben — dann wird der Reservierungs-Block nicht angezeigt und ist per
+        # Linksklick nicht setzbar (open_entry_dialog wertet None entsprechend).
         open_entry_dialog(
             self.root, date_str, self.storage, self.settings,
             on_change=self._refresh,
-            reservation_store=self.reservation_store,
+            reservation_store=(
+                self.reservation_store if self._reservations_active() else None),
             trigger_reconcile=self._trigger_calendar_reconcile,
         )
 
