@@ -1,6 +1,7 @@
 # src/mail.py
 import base64
 import os
+import socket
 import stat
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
@@ -122,6 +123,46 @@ class TokenAuthError(Exception):
 
 class TokenNetworkError(Exception):
     """Refresh fehlgeschlagen wegen Netzwerkproblem."""
+
+
+# Klassennamen netzwerkbezogener Exceptions, die auf eine fehlende
+# Internetverbindung hindeuten. Geprüft wird über den Namen, damit mail.py
+# httplib2/requests/google.auth nicht eager importieren muss (CI ohne
+# requirements.txt, s. CLAUDE.md).
+_OFFLINE_EXC_NAMES = frozenset({
+    "TransportError",        # google.auth.exceptions
+    "ServerNotFoundError",   # httplib2.error — typisch beim Offline-Send
+    "NewConnectionError",    # urllib3
+    "MaxRetryError",         # urllib3
+    "ConnectTimeout",        # requests
+    "URLError",              # urllib.error
+})
+
+
+def is_offline_error(exc):
+    """True, wenn `exc` (oder eine Ursache in seiner Kette) auf eine fehlende
+    Internetverbindung hindeutet — anders als ein echter Bug oder ein
+    API-Fehler (z.B. ein 4xx von Google).
+
+    Der Sendepfad nutzt das, um statt eines kryptischen Tracebacks eine
+    verständliche „kein Internet"-Meldung zu zeigen.
+    """
+    seen = set()
+    current = exc
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        if isinstance(current, TokenNetworkError):
+            return True
+        # socket.gaierror (DNS schlägt fehl), ConnectionError und
+        # TimeoutError sind OSError-Subklassen und die klassischen
+        # Offline-Symptome. googleapiclient.errors.HttpError (echte
+        # API-Fehler) ist KEIN OSError und wird so nicht fälschlich erfasst.
+        if isinstance(current, (socket.gaierror, ConnectionError, TimeoutError)):
+            return True
+        if type(current).__name__ in _OFFLINE_EXC_NAMES:
+            return True
+        current = current.__cause__ or current.__context__
+    return False
 
 
 def _write_token(creds, token_path):

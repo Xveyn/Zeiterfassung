@@ -7,7 +7,7 @@ import traceback
 from tkinter import messagebox
 
 from src.dialogs.send_dialog import show_missing_credentials_dialog
-from src.mail import get_gmail_service, send_email
+from src.mail import get_gmail_service, is_offline_error, send_email
 from src.share import build_share_doc, serialize_share_doc
 from src.theme import (
     BG, FONT, TEXT,
@@ -114,12 +114,25 @@ def open_share_dialog(parent, storage, settings, base_path):
         except FileNotFoundError as e:
             messagebox.showerror("Fehler", str(e), parent=dialog)
         except Exception as e:
+            # Trace landet immer im Logfile. Bei einem reinen Offline-Fehler
+            # zeigen wir dem Nutzer aber eine verständliche Meldung statt des
+            # kryptischen Tracebacks — das ist kein Bug, sondern fehlendes Netz.
             logging.getLogger(__name__).exception("Teilen fehlgeschlagen")
-            messagebox.showerror(
-                "Teilen fehlgeschlagen",
-                f"{type(e).__name__}: {e}\n\n{traceback.format_exc()}",
-                parent=dialog,
-            )
+            if is_offline_error(e):
+                messagebox.showerror(
+                    "Keine Internetverbindung",
+                    "Die Arbeitszeiten konnten nicht gesendet werden, weil "
+                    "keine Verbindung zum Internet besteht.\n\n"
+                    "Bitte prüfe deine Internetverbindung und versuche es "
+                    "dann erneut.",
+                    parent=dialog,
+                )
+            else:
+                messagebox.showerror(
+                    "Teilen fehlgeschlagen",
+                    f"{type(e).__name__}: {e}\n\n{traceback.format_exc()}",
+                    parent=dialog,
+                )
 
     btn_frame = tk.Frame(dialog, bg=BG)
     btn_frame.grid(row=3, column=0, columnspan=2, pady=(0, 16))

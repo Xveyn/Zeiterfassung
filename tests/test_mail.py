@@ -64,8 +64,11 @@ import os  # noqa: E402
 import pytest  # noqa: E402
 from unittest.mock import patch, MagicMock  # noqa: E402
 
+import socket  # noqa: E402
+
 from src.mail import (  # noqa: E402
     refresh_token_if_needed,
+    is_offline_error,
     TokenAuthError,
     TokenNetworkError,
     get_scopes,
@@ -265,3 +268,40 @@ def test_get_scopes_with_gcal_includes_calendar_scopes():
 def test_get_scopes_without_gcal_has_no_calendar_scopes():
     scopes = get_scopes(sync_enabled=True, gcal_enabled=False)
     assert not any("calendar" in s for s in scopes)
+
+
+def _named_exc(name):
+    """Erzeugt eine Exception-Klasse mit exakt diesem __name__ — simuliert
+    bibliotheksspezifische Netzwerkfehler (httplib2, requests, google.auth)
+    ohne deren Import."""
+    return type(name, (Exception,), {})
+
+
+def test_is_offline_error_true_for_token_network_error():
+    assert is_offline_error(TokenNetworkError("connection refused"))
+
+
+def test_is_offline_error_true_for_socket_and_connection_errors():
+    assert is_offline_error(socket.gaierror("getaddrinfo failed"))
+    assert is_offline_error(ConnectionError("connection reset"))
+    assert is_offline_error(TimeoutError("timed out"))
+
+
+def test_is_offline_error_true_for_library_errors_by_name():
+    # httplib2 / google.auth / requests werden in den Tests nicht importiert —
+    # die Erkennung läuft über den Klassennamen.
+    assert is_offline_error(_named_exc("ServerNotFoundError")("kein Server"))
+    assert is_offline_error(_named_exc("TransportError")("transport"))
+
+
+def test_is_offline_error_walks_cause_chain():
+    """Ein in einen generischen Fehler verpackter Netzwerkfehler wird erkannt."""
+    outer = RuntimeError("Senden fehlgeschlagen")
+    outer.__cause__ = ConnectionError("offline")
+    assert is_offline_error(outer)
+
+
+def test_is_offline_error_false_for_genuine_errors():
+    assert not is_offline_error(ValueError("ungültiges Datum"))
+    assert not is_offline_error(RuntimeError("Gmail API: 403 insufficient scope"))
+    assert not is_offline_error(None)

@@ -15,6 +15,9 @@
 ### Geändert
 - Tages-Dialog zeigt einen neuen „Reservierung"-Sektor mit Start/Ende-Feldern,
   unabhängig von den Ist-Arbeitszeiten. Reservierungen können auch gelöscht werden.
+- Schlägt „Monat senden" oder „Teilen…" mangels Internetverbindung fehl, erscheint
+  jetzt eine verständliche „Keine Internetverbindung"-Meldung statt eines
+  technischen Tracebacks. Andere Fehler zeigen weiterhin die Detail-Ausgabe.
 
 ## 1.12.0 — 2026-05-14
 

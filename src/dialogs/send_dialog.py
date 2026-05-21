@@ -6,7 +6,7 @@ import tkinter as tk
 import traceback
 from tkinter import messagebox
 
-from src.mail import get_gmail_service, send_email
+from src.mail import get_gmail_service, is_offline_error, send_email
 from src.platform_open import open_folder
 from src.report import generate_pdf, generate_report
 from src.theme import (
@@ -209,12 +209,25 @@ def open_send_dialog(parent, storage, settings, base_path):
         except FileNotFoundError as e:
             messagebox.showerror("Fehler", str(e), parent=dialog)
         except Exception as e:
+            # Trace landet immer im Logfile. Bei einem reinen Offline-Fehler
+            # zeigen wir dem Nutzer aber eine verständliche Meldung statt des
+            # kryptischen Tracebacks — das ist kein Bug, sondern fehlendes Netz.
             logging.getLogger(__name__).exception("Senden fehlgeschlagen")
-            messagebox.showerror(
-                "Senden fehlgeschlagen",
-                f"{type(e).__name__}: {e}\n\n{traceback.format_exc()}",
-                parent=dialog,
-            )
+            if is_offline_error(e):
+                messagebox.showerror(
+                    "Keine Internetverbindung",
+                    "Der Bericht konnte nicht gesendet werden, weil keine "
+                    "Verbindung zum Internet besteht.\n\n"
+                    "Bitte prüfe deine Internetverbindung und versuche es "
+                    "dann erneut.",
+                    parent=dialog,
+                )
+            else:
+                messagebox.showerror(
+                    "Senden fehlgeschlagen",
+                    f"{type(e).__name__}: {e}\n\n{traceback.format_exc()}",
+                    parent=dialog,
+                )
 
     btn_frame = tk.Frame(dialog, bg=BG)
     btn_frame.grid(row=2, column=0, columnspan=6, pady=12)
