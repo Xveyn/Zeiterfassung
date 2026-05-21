@@ -204,10 +204,6 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
     recipient_var = tk.StringVar(value=settings.get("recipient"))
     dark_entry(dialog, recipient_var, width=25).grid(row=6, column=1, padx=10, pady=8)
 
-    label("Teilen mit:", row=7)
-    share_recipient_var = tk.StringVar(value=settings.get("share_recipient"))
-    dark_entry(dialog, share_recipient_var, width=25).grid(row=7, column=1, padx=10, pady=8)
-
     label("Name:", row=8)
     name_var = tk.StringVar(value=settings.get("name"))
     dark_entry(dialog, name_var, width=25).grid(row=8, column=1, padx=10, pady=8)
@@ -571,7 +567,6 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
             "autostart": new_autostart,
             "default_pause": int(pause_var.get()),
             "recipient": recipient_var.get(),
-            "share_recipient": share_recipient_var.get(),
             "name": name_var.get(),
             "mail_subject": subject_var.get(),
             "mail_greeting": greeting_var.get(),
