@@ -1,24 +1,5 @@
 # Changelog
 
-## 1.13.0 — 2026-05-20
-
-### Hinzugefügt
-- Reservierungen: zukünftige Arbeitszeiten lassen sich pro Tag im Tages-Dialog
-  reservieren — ein eigenständiges Konzept neben den erfassten Ist-Zeiten.
-  Reservierungen werden im Kalender violett dargestellt und sind über das
-  Tages-Modal einsehbar.
-- Google-Kalender-Anbindung: in den Einstellungen aktivierbar; Reservierungen
-  werden mit einem wählbaren Google Kalender abgeglichen. Push überschreibt die
-  Remote-Kalender-Einträge — Synchronisierung funktioniert geräteübergreifend
-  über den Kalender.
-
-### Geändert
-- Tages-Dialog zeigt einen neuen „Reservierung"-Sektor mit Start/Ende-Feldern,
-  unabhängig von den Ist-Arbeitszeiten. Reservierungen können auch gelöscht werden.
-- Schlägt „Monat senden" oder „Teilen…" mangels Internetverbindung fehl, erscheint
-  jetzt eine verständliche „Keine Internetverbindung"-Meldung statt eines
-  technischen Tracebacks. Andere Fehler zeigen weiterhin die Detail-Ausgabe.
-
 ## 1.12.0 — 2026-05-14
 
 ### Hinzugefügt
@@ -36,8 +17,16 @@
 - Themed Bestätigungs-Dialog (Ja/Nein) beim Löschen eines Eintrags (statt System-Messagebox)
 - Dunkle Titelleiste auf Windows 11 22H2+ (über DWM)
 - Tooltip auf truncated Feiertagsnamen — Hover zeigt den vollen Namen
-- Arbeitszeiten an eine zweite Person teilen: neuer Footer-Button „Teilen…" und Empfänger-Adresse „Teilen mit:" in den Einstellungen. Versendet eine JSON-Datei mit den eigenen Einträgen per Mail.
+- Arbeitszeiten an eine zweite Person teilen: neuer Footer-Button „Teilen…". Versendet eine JSON-Datei mit den eigenen Einträgen per Mail; der Empfänger wird direkt im Teilen-Dialog eingegeben.
 - Arbeitszeiten aus einer Share-Datei importieren: Einstellungen → „Arbeitszeiten importieren…", mit Zeitraum-Filter und drei Konflikt-Modi (alles importieren / alles lokal / pro Tag entscheiden). Anwenden ist atomar — Abbruch im Pro-Tag-Modal hinterlässt keinen Teilzustand.
+- Reservierungen: zukünftige Arbeitszeiten lassen sich pro Tag im Tages-Dialog
+  reservieren — ein eigenständiges Konzept neben den erfassten Ist-Zeiten.
+  Reservierungen werden im Kalender als violetter Eck-Punkt am Tag markiert und
+  sind über das Tages-Modal einsehbar.
+- Google-Kalender-Anbindung: in den Einstellungen aktivierbar; Reservierungen
+  werden mit einem wählbaren Google Kalender abgeglichen. Push überschreibt die
+  Remote-Kalender-Einträge — Synchronisierung funktioniert geräteübergreifend
+  über den Kalender.
 
 ### Geändert
 - Kalender-Spaltenbreiten sind jetzt strikt unabhängig vom Zellen-Inhalt — Einträge, Feiertage und leere Tage haben identische Pixel-Breite, kein visueller Versatz mehr je nach Text
@@ -46,6 +35,8 @@
 - Settings-Dialog: Klick auf nicht-interaktive Bereiche (Labels, Frame-Bg) entfernt den roten Fokusrand vom zuletzt aktiven Eingabefeld
 - Dialog-Position wird an die Bildschirmgrenzen geklammert — das Settings-Modal wird nicht mehr unten/oben abgeschnitten, wenn das Hauptfenster nah am Bildschirmrand sitzt (auf Windows respektiert die Klammerung die Taskleiste)
 - Fehler beim Sync-Push beim Schließen werden jetzt als Messagebox sichtbar (vorher still verschluckt)
+- Tages-Dialog zeigt einen neuen „Reservierung"-Sektor mit Start/Ende-Feldern, unabhängig von den Ist-Arbeitszeiten. Reservierungen können auch gelöscht werden.
+- Schlägt „Monat senden" oder „Teilen…" mangels Internetverbindung fehl, erscheint jetzt eine verständliche „Keine Internetverbindung"-Meldung statt eines technischen Tracebacks. Andere Fehler zeigen weiterhin die Detail-Ausgabe.
 
 ### Hinweise
 - Aktivierung erfordert einen erneuten Google-OAuth-Consent mit erweiterten Scopes
