@@ -451,7 +451,12 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
                 items = gcal.list_calendars(service)
             except Exception as e:
                 tb = traceback.format_exc()
-                dialog.after(0, lambda: _load_calendars_error(e, tb))
+                # e/tb als Default-Argumente binden: das Lambda läuft via
+                # dialog.after() VERZÖGERT — bis dahin hat Python die
+                # except-Variable `e` am Blockende gelöscht (impliziter del),
+                # ein freier Zugriff gäbe NameError.
+                dialog.after(
+                    0, lambda e=e, tb=tb: _load_calendars_error(e, tb))
                 return
             dialog.after(0, lambda: _populate_calendars(items))
 
