@@ -34,7 +34,7 @@ from src.theme import (
     BG, CELL_BG, WEEKEND_BG, ACCENT, ACCENT_HOVER, TEXT, TEXT_MUTED,
     ENTRY_BG, WEEKEND_ENTRY_BG, WEEKEND_FG,
     HOLIDAY_BG, HOLIDAY_BG_HOVER, HOLIDAY_ACCENT,
-    RESERVATION_BG, RESERVATION_BG_HOVER, RESERVATION_ACCENT,
+    RESERVATION_ACCENT,
     FONT, FONT_BOLD, FONT_HEADER, FONT_HEADER_SMALL, FONT_FOOTER, FONT_SMALL, FONT_TINY,
     CELL_BG_HOVER, WEEKEND_BG_HOVER, ENTRY_BG_HOVER, WEEKEND_ENTRY_BG_HOVER,
     apply_dark_titlebar, themed_askyesno,
@@ -676,49 +676,24 @@ class App:
             w.bind("<Leave>", lambda e, c=cell, dl=day_lbl, tl=time_lbl, ob=bg: self._cell_hover(c, dl, tl, ob))
         return cell
 
-    def _build_reservation_cell(self, parent, date_str, day_text, reservation,
-                                pad, cell_size=None, time_font=FONT_TINY):
-        """Violette „geplant"-Zelle für einen Tag mit nur einer Reservierung.
-        Layout analog zu _build_entry_cell."""
-        bg = RESERVATION_BG
-        hover_bg = RESERVATION_BG_HOVER
-        cell = tk.Frame(
-            parent, bg=bg, relief=tk.SOLID,
-            highlightbackground=RESERVATION_ACCENT, highlightthickness=1,
-            cursor="hand2",
-        )
-        if cell_size is not None:
-            cell.config(width=cell_size[0], height=cell_size[1])
-            cell.pack_propagate(False)
-        day_lbl = tk.Label(cell, text=day_text, font=FONT, bg=bg, fg=TEXT,
-                           cursor="hand2")
-        day_lbl.pack(pady=(pad, 0))
-        time_lbl = tk.Label(
-            cell, text=f"{reservation['start']}-{reservation['end']}",
-            font=time_font, bg=bg, fg=TEXT_MUTED, cursor="hand2",
-        )
-        time_lbl.pack(pady=(0, pad))
-        # Kein <Button-3>-Schnelllöschen wie bei Ist-Zeit-Zellen: Reservierungen
-        # werden ausschließlich über den Tages-Dialog ("Reservierung löschen")
-        # verwaltet.
-        for w in (cell, day_lbl, time_lbl):
-            w.bind("<Button-1>", lambda e, d=date_str: self._open_dialog(d))
-            w.bind("<Enter>", lambda e, c=cell, dl=day_lbl, tl=time_lbl, hb=hover_bg:
-                   self._cell_hover(c, dl, tl, hb))
-            w.bind("<Leave>", lambda e, c=cell, dl=day_lbl, tl=time_lbl, ob=bg:
-                   self._cell_hover(c, dl, tl, ob))
-        return cell
-
     def _add_reservation_marker(self, cell):
-        """Kleiner Eck-Marker auf einer Ist-Zeitzelle, die zusätzlich eine
-        Reservierung hat. place() überlagert die gepackten Kind-Widgets.
-        Der Marker wird als cell._reservation_marker getaggt, damit
-        _cell_hover ihn beim Hover mitfärbt."""
-        marker = tk.Label(
-            cell, text="•", font=FONT_BOLD,
-            bg=cell.cget("bg"), fg=RESERVATION_ACCENT,
+        """Runder violetter Eck-Punkt auf einer Ist-Zeitzelle, die zusätzlich
+        eine Reservierung hat. Ein Canvas-Oval statt eines Text-Bullets — „•"
+        rendert je nach Font als kaum sichtbarer Fleck; das Oval gibt einen
+        sauber gerundeten, größenkontrollierten Punkt. place() überlagert die
+        gepackten Kind-Widgets. Der Marker wird als cell._reservation_marker
+        getaggt, damit _cell_hover seinen Hintergrund beim Hover mitfärbt."""
+        box, dot = 12, 7
+        marker = tk.Canvas(
+            cell, width=box, height=box, bg=cell.cget("bg"),
+            highlightthickness=0, cursor="hand2",
         )
-        marker.place(relx=1.0, x=-3, y=-1, anchor="ne")
+        inset = (box - dot) // 2
+        marker.create_oval(
+            inset, inset, inset + dot, inset + dot,
+            fill=RESERVATION_ACCENT, outline="",
+        )
+        marker.place(relx=1.0, x=-3, y=3, anchor="ne")
         cell._reservation_marker = marker
 
     def _build_empty_cell(self, parent, date_str, day_text, is_weekend, cell_size):
@@ -748,44 +723,48 @@ class App:
                         holiday_max_len, cell_size, conflict_dates=None,
                         entry_time_font=FONT_TINY, holiday_name_font=FONT_SMALL,
                         reservation=None):
-        """Dispatcht auf Entry-, Reservierungs-, Holiday- oder Empty-Zelle.
+        """Dispatcht auf Entry-, Holiday- oder Empty-Zelle.
 
-        reservation: optionales {start, end} für den Tag. Hat der Tag eine
-        Ist-Zeit UND eine Reservierung, wird die Ist-Zeitzelle gebaut und mit
-        einem Eck-Marker versehen; nur-Reservierungs-Tage bekommen eine eigene
-        violette Zelle.
+        reservation: optionales {start, end} für den Tag. Eine Reservierung
+        ändert den Zelltyp NICHT — sie wird ausschließlich als kleiner
+        violetter Eck-Punkt (plus Tooltip) auf die ohnehin gebaute Zelle
+        gelegt. Ein Tag mit nur einer Reservierung sieht also aus wie ein
+        leerer Tag (bzw. Feiertag) mit Punkt.
         """
+        is_holiday = day_date in holidays_map
         if entry:
             cell = self._build_entry_cell(
                 parent, date_str, day_text, entry, is_weekend, pad,
                 cell_size=cell_size, time_font=entry_time_font,
             )
-            if reservation is not None:
-                self._add_reservation_marker(cell)
-                attach_tooltip(
-                    cell,
-                    f"Reservierung: {reservation['start']}-{reservation['end']}")
-            elif day_date in holidays_map:
-                attach_tooltip(cell, f"Feiertag: {holidays_map[day_date]}")
-        elif reservation is not None:
-            cell = self._build_reservation_cell(
-                parent, date_str, day_text, reservation, pad,
-                cell_size=cell_size, time_font=entry_time_font,
-            )
-            if day_date in holidays_map:
-                attach_tooltip(cell, f"Feiertag: {holidays_map[day_date]}")
-        elif day_date in holidays_map:
+        elif is_holiday:
             cell = self._build_holiday_cell(
                 parent, day_text=day_text,
                 name=holidays_map[day_date], max_name_len=holiday_max_len,
                 on_click=lambda d=date_str: self._open_dialog(d),
                 cell_size=cell_size,
                 name_font=holiday_name_font,
+                # Bei zusätzlicher Reservierung übernimmt der Reservierungs-
+                # Tooltip unten den Feiertagsnamen — sonst klebten zwei
+                # unabhängige Tooltips am selben Widget (s. attach_tooltip).
+                name_tooltip=reservation is None,
             )
         else:
             cell = self._build_empty_cell(
                 parent, date_str, day_text, is_weekend, cell_size,
             )
+
+        # Reservierung ist ein reiner Overlay-Marker (Eck-Punkt) — sie ändert
+        # den Zelltyp nicht. Genau ein attach_tooltip pro Zelle: Mehrfachaufruf
+        # erzeugt überlappende Tooltips (s. attach_tooltip-Docstring).
+        if reservation is not None:
+            self._add_reservation_marker(cell)
+            tip = f"Reservierung: {reservation['start']}-{reservation['end']}"
+            if is_holiday:
+                tip += f"\nFeiertag: {holidays_map[day_date]}"
+            attach_tooltip(cell, tip)
+        elif entry and is_holiday:
+            attach_tooltip(cell, f"Feiertag: {holidays_map[day_date]}")
 
         if conflict_dates and date_str in conflict_dates:
             cell.configure(highlightbackground="orange", highlightthickness=2)
@@ -997,7 +976,8 @@ class App:
         return text[: max_len - 1] + "…"
 
     def _build_holiday_cell(self, parent, day_text, name, max_name_len, on_click,
-                             cell_size=None, name_font=FONT_SMALL):
+                             cell_size=None, name_font=FONT_SMALL,
+                             name_tooltip=True):
         """Grüne Feiertagszelle. Layout analog zur Eintragszelle.
 
         cell_size: optional (width_px, height_px). Wenn gesetzt, wird der Frame
@@ -1005,6 +985,9 @@ class App:
         längere Namen — relevant für die Wochenansicht).
         name_font: Schriftart für den Feiertagsnamen. Default FONT_SMALL (8pt);
         bei breiteren Zellen (Wochenenden ausgeblendet) kann FONT übergeben werden.
+        name_tooltip: ob bei abgeschnittenem Namen ein Voll-Namen-Tooltip
+        angehängt wird. False, wenn der Aufrufer selbst einen Tooltip setzt
+        (Doppel-Tooltip am selben Widget vermeiden).
         """
         cell = tk.Frame(
             parent, bg=HOLIDAY_BG, relief=tk.SOLID,
@@ -1035,7 +1018,7 @@ class App:
                 self._cell_hover(c, dl, nl, HOLIDAY_BG_HOVER))
             w.bind("<Leave>", lambda e, c=cell, dl=day_lbl, nl=name_lbl:
                 self._cell_hover(c, dl, nl, HOLIDAY_BG))
-        if truncated != name:
+        if name_tooltip and truncated != name:
             # Geteilter Tooltip über alle drei Widgets — _Tooltip trackt sie
             # gemeinsam, sodass Pointer-Wechsel zwischen Frame und Child-
             # Labels den Tooltip nicht schließt/neu öffnet.
@@ -1057,6 +1040,12 @@ class App:
     def _empty_hover(frame, day_lbl, bg):
         frame.config(bg=bg)
         day_lbl.config(bg=bg)
+        # Reservierungs-Eck-Punkt mitfärben — Nur-Reservierungs-Tage sind
+        # Empty-Zellen mit Marker; sonst bliebe beim Hover ein andersfarbiges
+        # Rechteck hinter dem Punkt stehen.
+        marker = getattr(frame, "_reservation_marker", None)
+        if marker is not None:
+            marker.config(bg=bg)
 
     def _delete_entry(self, date_str):
         if themed_askyesno(self.root, "Eintrag löschen", f"Eintrag für {date_str} löschen?"):
