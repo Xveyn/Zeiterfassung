@@ -250,6 +250,73 @@ def attach_unfocus_on_click(dialog):
     dialog.bind("<Button-1>", _unfocus, add="+")
 
 
+def _parent_workarea(parent):
+    """Liefert (left, top, right, bottom) der taskbar-freien Arbeitsfläche
+    des Monitors, auf dem `parent` liegt.
+
+    `wm_maxsize()` liefert auf Windows nur die Arbeitsfläche des Primär-
+    monitors — bei einem Parent auf Monitor 2 würde das Clamping den Dialog
+    fälschlich zurück auf Monitor 1 ziehen. Daher auf Windows direkt via
+    ctypes den richtigen Monitor des Parent ermitteln.
+
+    macOS/Linux: Multi-Monitor-Workarea ist ohne externe Lib nicht sauber
+    aus Tk abrufbar — Fallback auf den Primärmonitor (`wm_maxsize`).
+    """
+    if platform.system() == "Windows":
+        try:
+            import ctypes
+            from ctypes import wintypes
+
+            class RECT(ctypes.Structure):
+                _fields_ = [
+                    ("left", wintypes.LONG), ("top", wintypes.LONG),
+                    ("right", wintypes.LONG), ("bottom", wintypes.LONG),
+                ]
+
+            class MONITORINFO(ctypes.Structure):
+                _fields_ = [
+                    ("cbSize", wintypes.DWORD), ("rcMonitor", RECT),
+                    ("rcWork", RECT), ("dwFlags", wintypes.DWORD),
+                ]
+
+            user32 = ctypes.windll.user32
+            # argtypes/restype explizit setzen — ohne das ist restype c_int
+            # (32 Bit), und ein HMONITOR auf 64-Bit-Windows kann darüber
+            # liegen → truncated → GetMonitorInfo bekommt einen ungültigen
+            # Handle → Fallback auf Primärmonitor (genau der bisherige Bug).
+            user32.MonitorFromPoint.argtypes = [wintypes.POINT, wintypes.DWORD]
+            user32.MonitorFromPoint.restype = wintypes.HANDLE
+            user32.GetMonitorInfoW.argtypes = [
+                wintypes.HANDLE, ctypes.POINTER(MONITORINFO)]
+            user32.GetMonitorInfoW.restype = wintypes.BOOL
+
+            MONITOR_DEFAULTTONEAREST = 2
+            # Lookup über den Mittelpunkt des Parent statt über dessen HWND:
+            # Tk's winfo_id() liefert auf Windows den Client-HWND (nicht den
+            # WM-Frame). MonitorFromPoint umgeht die HWND-Abstraktion und
+            # arbeitet direkt auf den Bildschirmkoordinaten, die Tk per
+            # winfo_rootx/y konsistent liefert.
+            cx = parent.winfo_rootx() + parent.winfo_width() // 2
+            cy = parent.winfo_rooty() + parent.winfo_height() // 2
+            pt = wintypes.POINT(cx, cy)
+            hmon = user32.MonitorFromPoint(pt, MONITOR_DEFAULTTONEAREST)
+            if hmon:
+                mi = MONITORINFO()
+                mi.cbSize = ctypes.sizeof(MONITORINFO)
+                if user32.GetMonitorInfoW(hmon, ctypes.byref(mi)):
+                    r = mi.rcWork
+                    return (r.left, r.top, r.right, r.bottom)
+        except Exception:
+            pass  # Fallback unten
+
+    try:
+        max_w, max_h = parent.wm_maxsize()
+    except tk.TclError:
+        max_w = parent.winfo_screenwidth()
+        max_h = parent.winfo_screenheight()
+    return (0, 0, max_w, max_h)
+
+
 def center_dialog_on_parent(dialog, parent):
     """Position a Toplevel dialog over its parent's screen rect.
 
@@ -261,9 +328,10 @@ def center_dialog_on_parent(dialog, parent):
     kleinem App-Fenster), wird statt zentriert auf Parent-Top-Left
     ausgerichtet — sonst rutscht die Titlebar oberhalb des Monitorrands.
 
-    Danach wird die Position an die Bildschirmgrenzen geklammert, damit ein
-    Parent am unteren/oberen Rand den Dialog nicht aus dem sichtbaren Bereich
-    schiebt. `wm_maxsize()` liefert auf Windows die taskbar-freie Arbeitsfläche.
+    Danach wird die Position an die Arbeitsfläche **des Parent-Monitors**
+    geklammert, damit ein Parent am unteren/oberen Rand den Dialog nicht aus
+    dem sichtbaren Bereich schiebt und gleichzeitig auf demselben Bildschirm
+    bleibt wie der Parent (siehe `_parent_workarea`).
 
     Muss gerufen werden, nachdem alle Widgets erstellt sind, damit
     winfo_reqwidth/reqheight die finale Größe liefern.
@@ -276,17 +344,13 @@ def center_dialog_on_parent(dialog, parent):
     py = parent.winfo_rooty()
     pw = parent.winfo_width()
     ph = parent.winfo_height()
-    try:
-        max_w, max_h = dialog.wm_maxsize()
-    except tk.TclError:
-        max_w = dialog.winfo_screenwidth()
-        max_h = dialog.winfo_screenheight()
+    wa_left, wa_top, wa_right, wa_bottom = _parent_workarea(parent)
     x = px + max(0, (pw - w) // 2)
     y = py + max(0, (ph - h) // 2)
-    # max(0, max_* - *) sorgt dafür, dass bei einem Dialog größer als der
-    # Bildschirm der obere/linke Rand sichtbar bleibt (statt negativem Offset).
-    x = max(0, min(x, max(0, max_w - w)))
-    y = max(0, min(y, max(0, max_h - h)))
+    # max(wa_*, wa_*_far - *) sorgt dafür, dass bei einem Dialog größer als
+    # der Bildschirm der obere/linke Rand sichtbar bleibt.
+    x = max(wa_left, min(x, max(wa_left, wa_right - w)))
+    y = max(wa_top, min(y, max(wa_top, wa_bottom - h)))
     dialog.geometry(f"+{x}+{y}")
 
 
