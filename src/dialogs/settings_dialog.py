@@ -43,17 +43,57 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
     def label(text, row, col=0, **grid_kw):
         kw: dict[str, Any] = dict(padx=10, pady=8, sticky="w")
         kw.update(grid_kw)
-        tk.Label(dialog, text=text, font=FONT, bg=BG, fg=TEXT).grid(row=row, column=col, **kw)
+        lbl = tk.Label(dialog, text=text, font=FONT, bg=BG, fg=TEXT)
+        lbl.grid(row=row, column=col, **kw)
+        return lbl
 
-    tk.Label(
-        dialog, text="— Gmail-Zugangsdaten —", font=FONT_BOLD,
-        bg=BG, fg=TEXT_MUTED,
-    ).grid(row=0, column=0, columnspan=2, padx=10, pady=(8, 4))
+    def _section_header(title, row, top_pad=8):
+        """Klickbarer Section-Header mit ▶/▼-Toggle. Caller hängt jedes zur
+        Section gehörende Widget an `widgets` an. Beim Collapse merkt sich
+        der Toggle pro Widget, ob es im Grid lag — damit eine eingeklappt-
+        gestartete Sub-Section (z.B. Standardzeiten) beim Re-Expand nicht
+        versehentlich aufgeht.
 
-    label("Datenordner:", row=1, pady=4)
+        Wir nutzen `winfo_manager()` statt `winfo_ismapped()`, weil letzteres
+        vor dem ersten Window-Mapping False liefert — beim initialen Toggle
+        (Default-Einklappen vor dem Anzeigen des Dialogs) würden sonst alle
+        Widgets als 'nicht sichtbar' eingestuft, kein grid_remove() ausgeführt,
+        und der User müsste zweimal klicken bis der Header-Text und der
+        Inhalt sync sind. `winfo_manager()` ist mapping-unabhängig."""
+        state = {"collapsed": False}
+        header = tk.Label(
+            dialog, text=f"— {title} — ▼", font=FONT_BOLD,
+            bg=BG, fg=TEXT_MUTED, cursor="hand2",
+        )
+        header.grid(row=row, column=0, columnspan=2, padx=10, pady=(top_pad, 4))
+        widgets: list[tk.Widget] = []
+
+        def toggle(_event=None):
+            if state["collapsed"]:
+                for w in widgets:
+                    if getattr(w, "_was_in_grid", True):
+                        w.grid()
+                header.config(text=f"— {title} — ▼")
+                state["collapsed"] = False
+            else:
+                for w in widgets:
+                    w._was_in_grid = (w.winfo_manager() == "grid")
+                    if w._was_in_grid:
+                        w.grid_remove()
+                header.config(text=f"— {title} — ▶")
+                state["collapsed"] = True
+
+        header.bind("<Button-1>", toggle)
+        return header, widgets, toggle
+
+    gmail_header, gmail_widgets, gmail_toggle = _section_header(
+        "Gmail-Zugangsdaten", row=0)
+
+    gmail_widgets.append(label("Datenordner:", row=1, pady=4))
 
     creds_row = tk.Frame(dialog, bg=BG)
     creds_row.grid(row=1, column=1, padx=10, pady=4, sticky="w")
+    gmail_widgets.append(creds_row)
 
     def open_data_folder():
         try:
@@ -84,9 +124,10 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
 
     # Absender-Zeile: zeigt die authentifizierte E-Mail-Adresse, die ui.py
     # im Hintergrund über OAuth2-userinfo abruft und in settings cached.
-    label("Absender:", row=2, pady=(0, 4))
+    gmail_widgets.append(label("Absender:", row=2, pady=(0, 4)))
     sender_row = tk.Frame(dialog, bg=BG)
     sender_row.grid(row=2, column=1, padx=10, pady=(0, 4), sticky="w")
+    gmail_widgets.append(sender_row)
     sender_label = tk.Label(
         sender_row,
         text=settings.get("sender_email") or "(noch nicht ermittelt)",
@@ -163,10 +204,12 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
         cursor="hand2",
     )
     times_label.grid(row=3, column=0, padx=10, pady=8, sticky="w")
+    gmail_widgets.append(times_label)
 
     times_frame = tk.Frame(dialog, bg=BG)
     times_frame.grid(row=3, column=1, rowspan=2, padx=10, pady=4, sticky="w")
     times_frame.grid_remove()  # default eingeklappt — User klappt bei Bedarf auf
+    gmail_widgets.append(times_frame)
 
     def toggle_times(_event=None):
         if times_frame.winfo_ismapped():
@@ -196,28 +239,38 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
             row=i, column=2, padx=2, pady=2)
 
     # Pause bleibt absichtlich global — Spec 2026-05-08, Out-of-Scope: Pause pro Wochentag.
-    label("Standard-Pause (Min):", row=5)
+    gmail_widgets.append(label("Standard-Pause (Min):", row=5))
     pause_var = tk.StringVar(value=str(settings.get("default_pause")))
-    dark_combo(dialog, pause_var, PAUSE_VALUES).grid(row=5, column=1, padx=10, pady=8)
+    pause_combo = dark_combo(dialog, pause_var, PAUSE_VALUES)
+    pause_combo.grid(row=5, column=1, padx=10, pady=8)
+    gmail_widgets.append(pause_combo)
 
-    label("Empfänger:", row=6)
+    gmail_widgets.append(label("Empfänger:", row=6))
     recipient_var = tk.StringVar(value=settings.get("recipient"))
-    dark_entry(dialog, recipient_var, width=25).grid(row=6, column=1, padx=10, pady=8)
+    recipient_entry = dark_entry(dialog, recipient_var, width=25)
+    recipient_entry.grid(row=6, column=1, padx=10, pady=8)
+    gmail_widgets.append(recipient_entry)
 
-    label("Name:", row=8)
+    gmail_widgets.append(label("Name:", row=8))
     name_var = tk.StringVar(value=settings.get("name"))
-    dark_entry(dialog, name_var, width=25).grid(row=8, column=1, padx=10, pady=8)
+    name_entry = dark_entry(dialog, name_var, width=25)
+    name_entry.grid(row=8, column=1, padx=10, pady=8)
+    gmail_widgets.append(name_entry)
 
-    label("Stundenlohn (€):", row=9)
+    gmail_widgets.append(label("Stundenlohn (€):", row=9))
     rate_var = tk.StringVar(value=str(settings.get("hourly_rate") or ""))
-    dark_entry(dialog, rate_var, width=10).grid(row=9, column=1, padx=10, pady=8, sticky="w")
+    rate_entry = dark_entry(dialog, rate_var, width=10)
+    rate_entry.grid(row=9, column=1, padx=10, pady=8, sticky="w")
+    gmail_widgets.append(rate_entry)
 
-    tk.Label(
+    rate_hint = tk.Label(
         dialog, text="(optional – nur für dich sichtbar)", font=FONT_SMALL,
         bg=BG, fg=TEXT_MUTED,
-    ).grid(row=9, column=1, padx=(120, 10), pady=8, sticky="w")
+    )
+    rate_hint.grid(row=9, column=1, padx=(120, 10), pady=8, sticky="w")
+    gmail_widgets.append(rate_hint)
 
-    label("Bundesland:", row=10)
+    gmail_widgets.append(label("Bundesland:", row=10))
     state_labels = [lbl for _, lbl in STATES]
     current_code = settings.get("state")
     current_label = next(
@@ -225,34 +278,43 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
         STATES[0][1],
     )
     state_var = tk.StringVar(value=current_label)
-    dark_combo(dialog, state_var, state_labels, width=22).grid(row=10, column=1, padx=10, pady=8)
+    state_combo = dark_combo(dialog, state_var, state_labels, width=22)
+    state_combo.grid(row=10, column=1, padx=10, pady=8)
+    gmail_widgets.append(state_combo)
 
-    tk.Label(
-        dialog, text="— Mail-Vorlage —", font=FONT_BOLD, bg=BG, fg=TEXT_MUTED,
-    ).grid(row=11, column=0, columnspan=2, padx=10, pady=(16, 4))
+    mv_header, mv_widgets, mv_toggle = _section_header(
+        "Mail-Vorlage", row=11, top_pad=16)
 
-    label("Betreff:", row=12, pady=4)
+    mv_widgets.append(label("Betreff:", row=12, pady=4))
     subject_var = tk.StringVar(value=settings.get("mail_subject"))
-    dark_entry(dialog, subject_var, width=35).grid(row=12, column=1, padx=10, pady=4)
+    subject_entry = dark_entry(dialog, subject_var, width=35)
+    subject_entry.grid(row=12, column=1, padx=10, pady=4)
+    mv_widgets.append(subject_entry)
 
-    label("Anrede:", row=13, pady=4)
+    mv_widgets.append(label("Anrede:", row=13, pady=4))
     greeting_var = tk.StringVar(value=settings.get("mail_greeting"))
-    dark_entry(dialog, greeting_var, width=35).grid(row=13, column=1, padx=10, pady=4)
+    greeting_entry = dark_entry(dialog, greeting_var, width=35)
+    greeting_entry.grid(row=13, column=1, padx=10, pady=4)
+    mv_widgets.append(greeting_entry)
 
-    label("Inhalt:", row=14, pady=4, sticky="nw")
+    mv_widgets.append(label("Inhalt:", row=14, pady=4, sticky="nw"))
     content_text = dark_text(dialog, 35, 3)
     content_text.grid(row=14, column=1, padx=10, pady=4)
     content_text.insert("1.0", settings.get("mail_content"))
+    mv_widgets.append(content_text)
 
-    label("Gruß:", row=15, pady=4, sticky="nw")
+    mv_widgets.append(label("Gruß:", row=15, pady=4, sticky="nw"))
     closing_text = dark_text(dialog, 35, 2)
     closing_text.grid(row=15, column=1, padx=10, pady=4)
     closing_text.insert("1.0", settings.get("mail_closing"))
+    mv_widgets.append(closing_text)
 
-    tk.Label(
+    placeholder_hint = tk.Label(
         dialog, text="Platzhalter: {zeitraum}, {gesamt}", font=("Segoe UI", 8),
         bg=BG, fg=TEXT_MUTED,
-    ).grid(row=16, column=0, columnspan=2, padx=10, pady=(0, 4))
+    )
+    placeholder_hint.grid(row=16, column=0, columnspan=2, padx=10, pady=(0, 4))
+    mv_widgets.append(placeholder_hint)
 
     show_weekend_var = tk.BooleanVar(value=settings.get("show_weekend"))
     tk.Checkbutton(
@@ -611,4 +673,8 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
     secondary_button(btn_frame, "Abbrechen", dialog.destroy).pack(side=tk.LEFT, padx=5)
 
     attach_unfocus_on_click(dialog)
+    # Mail-Vorlage default eingeklappt — spart Höhe, der Block wird selten
+    # geändert. Funktioniert vor dem Mapping, weil der Toggle-Helper
+    # winfo_manager() (mapping-unabhängig) statt winfo_ismapped() nutzt.
+    mv_toggle()
     center_dialog_on_parent(dialog, parent)
