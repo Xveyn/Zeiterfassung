@@ -6,9 +6,12 @@ zeiterfassung.json
 credentials.json
 token.json
 settings.json
+conflicts.json
+logs/
 dist/
 build/
 *.spec
 .claude/
 .superpowers/
 .venv/
+.aider*

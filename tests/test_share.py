@@ -1,0 +1,368 @@
+import json
+
+import pytest
+
+from src.share import ShareValidationError, parse_share_doc
+
+
+def _bytes(obj):
+    return json.dumps(obj).encode("utf-8")
+
+
+def test_parse_rejects_broken_json():
+    with pytest.raises(ShareValidationError, match="JSON"):
+        parse_share_doc(b"{not json")
+
+
+def test_parse_rejects_non_object_toplevel():
+    with pytest.raises(ShareValidationError, match="JSON-Objekt"):
+        parse_share_doc(_bytes(["array", "instead"]))
+
+
+def test_parse_rejects_wrong_kind():
+    with pytest.raises(ShareValidationError, match="geteilte Zeiterfassung"):
+        parse_share_doc(_bytes({"kind": "something-else", "schema_version": 1, "entries": {}}))
+
+
+def test_parse_rejects_missing_kind():
+    with pytest.raises(ShareValidationError, match="geteilte Zeiterfassung"):
+        parse_share_doc(_bytes({"schema_version": 1, "entries": {}}))
+
+
+def test_parse_rejects_missing_schema_version():
+    with pytest.raises(ShareValidationError, match="schema_version"):
+        parse_share_doc(_bytes({"kind": "zeiterfassung-share", "entries": {}}))
+
+
+def test_parse_rejects_future_schema_version():
+    with pytest.raises(ShareValidationError, match="neueren Version"):
+        parse_share_doc(_bytes({
+            "kind": "zeiterfassung-share",
+            "schema_version": 2,
+            "entries": {},
+        }))
+
+
+def test_parse_rejects_missing_entries():
+    with pytest.raises(ShareValidationError, match="entries"):
+        parse_share_doc(_bytes({"kind": "zeiterfassung-share", "schema_version": 1}))
+
+
+def test_parse_rejects_bad_date_key():
+    with pytest.raises(ShareValidationError, match="Datum"):
+        parse_share_doc(_bytes({
+            "kind": "zeiterfassung-share",
+            "schema_version": 1,
+            "entries": {"not-a-date": {"start": "08:00", "end": "16:00", "pause": 0}},
+        }))
+
+
+def test_parse_rejects_extra_entry_field():
+    with pytest.raises(ShareValidationError, match="unbekannt"):
+        parse_share_doc(_bytes({
+            "kind": "zeiterfassung-share",
+            "schema_version": 1,
+            "entries": {"2026-05-14": {"start": "08:00", "end": "16:00", "pause": 0, "deleted": True}},
+        }))
+
+
+def test_parse_rejects_missing_entry_field():
+    with pytest.raises(ShareValidationError, match="fehlend"):
+        parse_share_doc(_bytes({
+            "kind": "zeiterfassung-share",
+            "schema_version": 1,
+            "entries": {"2026-05-14": {"start": "08:00", "end": "16:00"}},
+        }))
+
+
+def test_parse_rejects_bad_time_format():
+    with pytest.raises(ShareValidationError, match="Startzeit"):
+        parse_share_doc(_bytes({
+            "kind": "zeiterfassung-share",
+            "schema_version": 1,
+            "entries": {"2026-05-14": {"start": "8:00", "end": "16:00", "pause": 0}},
+        }))
+
+
+def test_parse_rejects_negative_pause():
+    with pytest.raises(ShareValidationError, match="Pause"):
+        parse_share_doc(_bytes({
+            "kind": "zeiterfassung-share",
+            "schema_version": 1,
+            "entries": {"2026-05-14": {"start": "08:00", "end": "16:00", "pause": -5}},
+        }))
+
+
+def test_parse_rejects_bool_as_pause():
+    """bool ist Subklasse von int — verhindern, dass True als pause=1 durchgeht."""
+    with pytest.raises(ShareValidationError, match="Pause"):
+        parse_share_doc(_bytes({
+            "kind": "zeiterfassung-share",
+            "schema_version": 1,
+            "entries": {"2026-05-14": {"start": "08:00", "end": "16:00", "pause": True}},
+        }))
+
+
+def test_parse_rejects_past_schema_version():
+    """schema_version < 1 ist defensiv reserviert — muss ShareValidationError werfen."""
+    with pytest.raises(ShareValidationError, match="schema_version"):
+        parse_share_doc(_bytes({
+            "kind": "zeiterfassung-share",
+            "schema_version": 0,
+            "entries": {},
+        }))
+
+
+def test_parse_rejects_bad_end_time():
+    """Ungültiges Format für end-Zeit schlägt mit passendem Fehler fehl."""
+    with pytest.raises(ShareValidationError, match="Endzeit"):
+        parse_share_doc(_bytes({
+            "kind": "zeiterfassung-share",
+            "schema_version": 1,
+            "entries": {"2026-05-14": {"start": "08:00", "end": "16:0", "pause": 0}},
+        }))
+
+
+def test_parse_rejects_unreal_time():
+    """Regex-valide aber unmögliche Uhrzeiten (25:00, 08:99) müssen abgelehnt werden."""
+    with pytest.raises(ShareValidationError, match="Startzeit"):
+        parse_share_doc(_bytes({
+            "kind": "zeiterfassung-share",
+            "schema_version": 1,
+            "entries": {"2026-05-14": {"start": "25:00", "end": "16:00", "pause": 0}},
+        }))
+
+
+from src.share import build_share_doc, serialize_share_doc, KIND, SCHEMA_VERSION
+
+
+class _FakeStorage:
+    def __init__(self, entries):
+        self._entries = entries
+
+    def get_all(self):
+        return dict(self._entries)
+
+
+def test_build_share_doc_basic():
+    storage = _FakeStorage({
+        "2026-05-14": {"start": "08:00", "end": "16:00", "pause": 30},
+    })
+    doc = build_share_doc(storage, "alice@example.com")
+    assert doc["kind"] == KIND
+    assert doc["schema_version"] == SCHEMA_VERSION
+    assert doc["exported_by"] == "alice@example.com"
+    assert doc["entries"] == {"2026-05-14": {"start": "08:00", "end": "16:00", "pause": 30}}
+    assert "exported_at" in doc and doc["exported_at"].endswith("Z")
+
+
+def test_build_share_doc_empty_sender():
+    storage = _FakeStorage({})
+    doc = build_share_doc(storage, "")
+    assert doc["exported_by"] == ""
+    assert doc["entries"] == {}
+
+
+def test_build_share_doc_none_sender_becomes_empty_string():
+    storage = _FakeStorage({})
+    doc = build_share_doc(storage, None)
+    assert doc["exported_by"] == ""
+
+
+def test_round_trip_build_serialize_parse():
+    storage = _FakeStorage({
+        "2026-05-14": {"start": "08:00", "end": "16:00", "pause": 30},
+        "2026-05-15": {"start": "09:00", "end": "17:30", "pause": 45},
+    })
+    doc = build_share_doc(storage, "alice@example.com")
+    payload = serialize_share_doc(doc)
+    parsed = parse_share_doc(payload)
+    assert parsed["entries"] == doc["entries"]
+    assert parsed["kind"] == KIND
+    assert parsed["schema_version"] == SCHEMA_VERSION
+
+
+def test_serialize_utf8_umlauts():
+    storage = _FakeStorage({})
+    doc = build_share_doc(storage, "äöü@example.com")
+    payload = serialize_share_doc(doc)
+    assert b"\\u" not in payload  # ensure_ascii=False — Umlaute literal
+    parsed = parse_share_doc(payload)
+    assert parsed["exported_by"] == "äöü@example.com"
+
+
+from src.share import diff_share_against_local
+
+
+def test_diff_only_additions():
+    storage = _FakeStorage({})
+    share = {"2026-05-14": {"start": "08:00", "end": "16:00", "pause": 30}}
+    diff = diff_share_against_local(share, storage)
+    assert diff["additions"] == [("2026-05-14", {"start": "08:00", "end": "16:00", "pause": 30})]
+    assert diff["conflicts"] == []
+    assert diff["untouched"] == []
+    assert diff["out_of_range"] == 0
+
+
+def test_diff_only_untouched():
+    storage = _FakeStorage({"2026-05-14": {"start": "08:00", "end": "16:00", "pause": 30}})
+    share = {"2026-05-14": {"start": "08:00", "end": "16:00", "pause": 30}}
+    diff = diff_share_against_local(share, storage)
+    assert diff["additions"] == []
+    assert diff["conflicts"] == []
+    assert diff["untouched"] == ["2026-05-14"]
+
+
+def test_diff_only_conflicts():
+    storage = _FakeStorage({"2026-05-14": {"start": "08:00", "end": "16:00", "pause": 30}})
+    share = {"2026-05-14": {"start": "09:00", "end": "17:30", "pause": 30}}
+    diff = diff_share_against_local(share, storage)
+    assert len(diff["conflicts"]) == 1
+    date, local, shared = diff["conflicts"][0]
+    assert date == "2026-05-14"
+    assert local["start"] == "08:00"
+    assert shared["start"] == "09:00"
+
+
+def test_diff_pause_difference_is_conflict():
+    storage = _FakeStorage({"2026-05-14": {"start": "08:00", "end": "16:00", "pause": 30}})
+    share = {"2026-05-14": {"start": "08:00", "end": "16:00", "pause": 45}}
+    diff = diff_share_against_local(share, storage)
+    assert len(diff["conflicts"]) == 1
+    assert diff["untouched"] == []
+
+
+def test_diff_mixed():
+    storage = _FakeStorage({
+        "2026-05-14": {"start": "08:00", "end": "16:00", "pause": 30},  # untouched
+        "2026-05-15": {"start": "08:00", "end": "16:00", "pause": 30},  # conflict
+    })
+    share = {
+        "2026-05-14": {"start": "08:00", "end": "16:00", "pause": 30},
+        "2026-05-15": {"start": "09:00", "end": "17:00", "pause": 30},
+        "2026-05-16": {"start": "10:00", "end": "18:00", "pause": 0},   # addition
+    }
+    diff = diff_share_against_local(share, storage)
+    assert diff["untouched"] == ["2026-05-14"]
+    assert [d for d, _, _ in diff["conflicts"]] == ["2026-05-15"]
+    assert [d for d, _ in diff["additions"]] == ["2026-05-16"]
+
+
+def test_diff_tombstone_treated_as_addition():
+    """Tombstones im Storage tauchen in get_all() nicht auf → share entry zählt als addition."""
+    class _StorageWithTombstone:
+        def get_all(self):
+            return {}  # tombstone gefiltert
+    share = {"2026-05-14": {"start": "08:00", "end": "16:00", "pause": 0}}
+    diff = diff_share_against_local(share, _StorageWithTombstone())
+    assert len(diff["additions"]) == 1
+    assert diff["conflicts"] == []
+
+
+import datetime as _dt
+
+
+def test_diff_range_filter_excludes_left():
+    storage = _FakeStorage({})
+    share = {
+        "2026-05-10": {"start": "08:00", "end": "16:00", "pause": 0},
+        "2026-05-15": {"start": "08:00", "end": "16:00", "pause": 0},
+    }
+    diff = diff_share_against_local(share, storage, date_from=_dt.date(2026, 5, 12))
+    assert [d for d, _ in diff["additions"]] == ["2026-05-15"]
+    assert diff["out_of_range"] == 1
+
+
+def test_diff_range_filter_excludes_right():
+    storage = _FakeStorage({})
+    share = {
+        "2026-05-10": {"start": "08:00", "end": "16:00", "pause": 0},
+        "2026-05-15": {"start": "08:00", "end": "16:00", "pause": 0},
+    }
+    diff = diff_share_against_local(share, storage, date_to=_dt.date(2026, 5, 12))
+    assert [d for d, _ in diff["additions"]] == ["2026-05-10"]
+    assert diff["out_of_range"] == 1
+
+
+def test_diff_range_filter_inclusive_bounds():
+    storage = _FakeStorage({})
+    share = {
+        "2026-05-10": {"start": "08:00", "end": "16:00", "pause": 0},
+        "2026-05-15": {"start": "08:00", "end": "16:00", "pause": 0},
+    }
+    diff = diff_share_against_local(
+        share, storage,
+        date_from=_dt.date(2026, 5, 10),
+        date_to=_dt.date(2026, 5, 15),
+    )
+    assert len(diff["additions"]) == 2
+    assert diff["out_of_range"] == 0
+
+
+def test_diff_range_filter_completely_outside():
+    storage = _FakeStorage({})
+    share = {"2026-05-14": {"start": "08:00", "end": "16:00", "pause": 0}}
+    diff = diff_share_against_local(
+        share, storage,
+        date_from=_dt.date(2030, 1, 1),
+    )
+    assert diff["additions"] == []
+    assert diff["conflicts"] == []
+    assert diff["untouched"] == []
+    assert diff["out_of_range"] == 1
+
+
+def test_diff_range_none_bounds_unconstrained():
+    storage = _FakeStorage({})
+    share = {"2026-05-14": {"start": "08:00", "end": "16:00", "pause": 0}}
+    diff = diff_share_against_local(share, storage, date_from=None, date_to=None)
+    assert len(diff["additions"]) == 1
+    assert diff["out_of_range"] == 0
+
+
+from unittest import mock
+
+from src.share import apply_import
+
+
+class _RecordingStorage:
+    def __init__(self):
+        self.save_many_calls = []
+
+    def save_many(self, updates):
+        self.save_many_calls.append(dict(updates))
+
+
+def test_apply_import_empty_is_noop():
+    s = _RecordingStorage()
+    apply_import(s, [])
+    # save_many wird mit leerem Dict aufgerufen; Storage selbst dedupliziert das
+    # zu einem No-op. Hier reicht uns: keine Exception.
+    assert s.save_many_calls in ([], [{}])
+
+
+def test_apply_import_single_call_for_all_decisions():
+    s = _RecordingStorage()
+    decisions = [
+        {"date": "2026-05-14", "entry": {"start": "08:00", "end": "16:00", "pause": 30}},
+        {"date": "2026-05-15", "entry": {"start": "09:00", "end": "17:00", "pause": 0}},
+    ]
+    apply_import(s, decisions)
+    assert len(s.save_many_calls) == 1
+    assert s.save_many_calls[0] == {
+        "2026-05-14": {"start": "08:00", "end": "16:00", "pause": 30},
+        "2026-05-15": {"start": "09:00", "end": "17:00", "pause": 0},
+    }
+
+
+def test_apply_import_integration_with_real_storage(tmp_path):
+    from src.storage import Storage
+    s = Storage(str(tmp_path / "z.json"), device_id="dev1")
+    s.save("2026-05-14", "08:00", "16:00", 30)
+    apply_import(s, [
+        {"date": "2026-05-15", "entry": {"start": "09:00", "end": "17:00", "pause": 0}},
+        {"date": "2026-05-14", "entry": {"start": "10:00", "end": "18:00", "pause": 45}},
+    ])
+    entries = s.get_all()
+    assert entries["2026-05-14"] == {"start": "10:00", "end": "18:00", "pause": 45}
+    assert entries["2026-05-15"] == {"start": "09:00", "end": "17:00", "pause": 0}

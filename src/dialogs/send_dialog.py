@@ -6,13 +6,13 @@ import tkinter as tk
 import traceback
 from tkinter import messagebox
 
-from src.mail import get_gmail_service, send_email
+from src.mail import get_gmail_service, is_offline_error, send_email
 from src.platform_open import open_folder
 from src.report import generate_pdf, generate_report
 from src.theme import (
     BG, FONT, TEXT,
-    apply_combobox_style, center_dialog_on_parent,
-    dark_combo, primary_button, secondary_button,
+    apply_combobox_style, apply_dark_titlebar, center_dialog_on_parent,
+    dark_combo, primary_button, secondary_button, themed_showinfo,
 )
 
 
@@ -22,6 +22,7 @@ def show_missing_credentials_dialog(parent, base_path):
     dialog.resizable(False, False)
     dialog.grab_set()
     dialog.configure(bg=BG)
+    apply_dark_titlebar(dialog)
 
     tk.Label(
         dialog,
@@ -68,10 +69,10 @@ def _default_from_date(today):
 def open_send_dialog(parent, storage, settings, base_path):
     recipient = settings.get("recipient")
     if not recipient:
-        messagebox.showwarning(
+        themed_showinfo(
+            parent,
             "Kein Empfänger",
             "Bitte zuerst einen Empfänger in den Einstellungen angeben.",
-            parent=parent,
         )
         return
 
@@ -87,6 +88,7 @@ def open_send_dialog(parent, storage, settings, base_path):
     dialog.resizable(False, False)
     dialog.grab_set()
     dialog.configure(bg=BG)
+    apply_dark_titlebar(dialog)
 
     apply_combobox_style(dialog)
 
@@ -170,7 +172,11 @@ def open_send_dialog(parent, storage, settings, base_path):
 
         try:
             pdf_bytes = generate_pdf(date_from, date_to, entries, name=settings.get("name"))
-            service = get_gmail_service(credentials_path, token_path)
+            service = get_gmail_service(
+                credentials_path, token_path,
+                sync_enabled=settings.get("sync_enabled"),
+                gcal_enabled=settings.get("gcal_enabled"),
+            )
             subject = (
                 settings.get("mail_subject")
                 .replace("{zeitraum}", label)
@@ -178,22 +184,50 @@ def open_send_dialog(parent, storage, settings, base_path):
             )
             pdf_filename = f"Zeiterfassung_{date_from.strftime('%Y%m%d')}_{date_to.strftime('%Y%m%d')}.pdf"
             send_email(service, recipient, subject, html,
-                       pdf_bytes=pdf_bytes, pdf_filename=pdf_filename)
+                       attachment_bytes=pdf_bytes,
+                       attachment_filename=pdf_filename,
+                       attachment_subtype="pdf")
+            # Nach erfolgreichem Send ist der Token frisch — gute Gelegenheit,
+            # die Absender-Adresse zu cachen.
+            try:
+                from src.mail import fetch_user_email
+                email = fetch_user_email(
+                    token_path,
+                    sync_enabled=settings.get("sync_enabled"),
+                    gcal_enabled=settings.get("gcal_enabled"),
+                )
+                if email and email != settings.get("sender_email"):
+                    settings.set("sender_email", email)
+            except Exception:
+                logging.getLogger(__name__).exception("sender_email fetch after send failed")
             dialog.destroy()
-            messagebox.showinfo(
+            themed_showinfo(
+                parent,
                 "Gesendet",
                 f"Bericht für {label} wurde an {recipient} gesendet.",
-                parent=parent,
             )
         except FileNotFoundError as e:
             messagebox.showerror("Fehler", str(e), parent=dialog)
         except Exception as e:
+            # Trace landet immer im Logfile. Bei einem reinen Offline-Fehler
+            # zeigen wir dem Nutzer aber eine verständliche Meldung statt des
+            # kryptischen Tracebacks — das ist kein Bug, sondern fehlendes Netz.
             logging.getLogger(__name__).exception("Senden fehlgeschlagen")
-            messagebox.showerror(
-                "Senden fehlgeschlagen",
-                f"{type(e).__name__}: {e}\n\n{traceback.format_exc()}",
-                parent=dialog,
-            )
+            if is_offline_error(e):
+                messagebox.showerror(
+                    "Keine Internetverbindung",
+                    "Der Bericht konnte nicht gesendet werden, weil keine "
+                    "Verbindung zum Internet besteht.\n\n"
+                    "Bitte prüfe deine Internetverbindung und versuche es "
+                    "dann erneut.",
+                    parent=dialog,
+                )
+            else:
+                messagebox.showerror(
+                    "Senden fehlgeschlagen",
+                    f"{type(e).__name__}: {e}\n\n{traceback.format_exc()}",
+                    parent=dialog,
+                )
 
     btn_frame = tk.Frame(dialog, bg=BG)
     btn_frame.grid(row=2, column=0, columnspan=6, pady=12)

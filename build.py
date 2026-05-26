@@ -21,6 +21,7 @@ def _pyinstaller_common(extra_args):
         "--collect-all", "xhtml2pdf",
         "--collect-all", "reportlab",
         "--collect-all", "holidays",
+        "--collect-all", "pystray",
         *extra_args,
         "src/main.py",
     ]

@@ -64,11 +64,29 @@ import os  # noqa: E402
 import pytest  # noqa: E402
 from unittest.mock import patch, MagicMock  # noqa: E402
 
+import socket  # noqa: E402
+
 from src.mail import (  # noqa: E402
     refresh_token_if_needed,
+    is_offline_error,
     TokenAuthError,
     TokenNetworkError,
+    get_scopes,
 )
+
+
+def test_get_scopes_without_sync_includes_gmail_and_userinfo():
+    scopes = get_scopes(sync_enabled=False)
+    assert "https://www.googleapis.com/auth/gmail.send" in scopes
+    assert "https://www.googleapis.com/auth/userinfo.email" in scopes
+    assert "https://www.googleapis.com/auth/drive.appdata" not in scopes
+
+
+def test_get_scopes_with_sync_includes_drive_appdata():
+    scopes = get_scopes(sync_enabled=True)
+    assert "https://www.googleapis.com/auth/gmail.send" in scopes
+    assert "https://www.googleapis.com/auth/drive.appdata" in scopes
+    assert "https://www.googleapis.com/auth/userinfo.email" in scopes
 
 
 def test_no_token_file(tmp_path):
@@ -190,6 +208,30 @@ def test_failed_refresh_does_not_overwrite_token(tmp_path):
         assert f.read() == "original-content"
 
 
+def test_send_email_json_attachment_uses_subtype():
+    """JSON-Anhang setzt MIME-Subtype 'json' statt 'pdf'."""
+    from unittest.mock import MagicMock
+    from src.mail import send_email
+
+    service = MagicMock()
+    service.users().messages().send().execute.return_value = {"id": "mid-1"}
+
+    msg_id = send_email(
+        service, "to@example.com", "Subj", "<p>body</p>",
+        attachment_bytes=b'{"x":1}',
+        attachment_filename="share.json",
+        attachment_subtype="json",
+    )
+    assert msg_id == "mid-1"
+    # Inspect the raw body sent to Gmail
+    call_kwargs = service.users().messages().send.call_args
+    body = call_kwargs.kwargs.get("body") or call_kwargs.args[-1]
+    import base64
+    raw = base64.urlsafe_b64decode(body["raw"]).decode()
+    assert "application/json" in raw
+    assert "share.json" in raw
+
+
 import platform  # noqa: E402
 import stat  # noqa: E402
 
@@ -215,3 +257,51 @@ def test_refresh_writes_token_with_0600_permissions(tmp_path):
 
     mode = os.stat(path).st_mode & 0o777
     assert mode == 0o600, f"Erwartete 0o600, ist {oct(mode)}"
+
+
+def test_get_scopes_with_gcal_includes_calendar_scopes():
+    scopes = get_scopes(sync_enabled=False, gcal_enabled=True)
+    assert "https://www.googleapis.com/auth/calendar.events" in scopes
+    assert "https://www.googleapis.com/auth/calendar.calendarlist.readonly" in scopes
+
+
+def test_get_scopes_without_gcal_has_no_calendar_scopes():
+    scopes = get_scopes(sync_enabled=True, gcal_enabled=False)
+    assert not any("calendar" in s for s in scopes)
+
+
+def _named_exc(name):
+    """Erzeugt eine Exception-Klasse mit exakt diesem __name__ — simuliert
+    bibliotheksspezifische Netzwerkfehler (httplib2, requests, google.auth)
+    ohne deren Import."""
+    return type(name, (Exception,), {})
+
+
+def test_is_offline_error_true_for_token_network_error():
+    assert is_offline_error(TokenNetworkError("connection refused"))
+
+
+def test_is_offline_error_true_for_socket_and_connection_errors():
+    assert is_offline_error(socket.gaierror("getaddrinfo failed"))
+    assert is_offline_error(ConnectionError("connection reset"))
+    assert is_offline_error(TimeoutError("timed out"))
+
+
+def test_is_offline_error_true_for_library_errors_by_name():
+    # httplib2 / google.auth / requests werden in den Tests nicht importiert —
+    # die Erkennung läuft über den Klassennamen.
+    assert is_offline_error(_named_exc("ServerNotFoundError")("kein Server"))
+    assert is_offline_error(_named_exc("TransportError")("transport"))
+
+
+def test_is_offline_error_walks_cause_chain():
+    """Ein in einen generischen Fehler verpackter Netzwerkfehler wird erkannt."""
+    outer = RuntimeError("Senden fehlgeschlagen")
+    outer.__cause__ = ConnectionError("offline")
+    assert is_offline_error(outer)
+
+
+def test_is_offline_error_false_for_genuine_errors():
+    assert not is_offline_error(ValueError("ungültiges Datum"))
+    assert not is_offline_error(RuntimeError("Gmail API: 403 insufficient scope"))
+    assert not is_offline_error(None)

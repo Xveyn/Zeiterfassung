@@ -12,8 +12,18 @@ def get_base_path():
     Frozen macOS: ~/Library/Application Support/Zeiterfassung.
     Frozen Linux/other: $XDG_DATA_HOME/Zeiterfassung or ~/.local/share/Zeiterfassung.
 
+    Override: `ZEITERFASSUNG_DATA_DIR` setzt den base_path direkt — gedacht
+    für Dev-Setups, in denen `python -m src.main` aus dem Repo auf die
+    installierte Daten-Ablage zugreifen soll (Hard-/Symlinks scheitern,
+    weil alle Stores per `os.replace(tmp, target)` atomar speichern und
+    dabei den Verzeichniseintrag ersetzen).
+
     Ensures the directory exists on macOS/Linux.
     """
+    override = os.environ.get("ZEITERFASSUNG_DATA_DIR")
+    if override:
+        return override
+
     if not getattr(sys, "frozen", False):
         return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 

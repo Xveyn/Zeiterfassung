@@ -6,7 +6,7 @@ from src.storage import Storage
 
 @pytest.fixture
 def tmp_storage(tmp_path):
-    return Storage(str(tmp_path / "test.json"))
+    return Storage(str(tmp_path / "test.json"), device_id="test-device")
 
 def test_load_empty(tmp_storage):
     assert tmp_storage.get_all() == {}
@@ -23,6 +23,7 @@ def test_delete_entry(tmp_storage):
 
 def test_delete_nonexistent(tmp_storage):
     tmp_storage.delete("2026-01-01")  # should not raise
+    assert tmp_storage.get_all_raw() == {}
 
 def test_persistence(tmp_path):
     path = str(tmp_path / "test.json")
@@ -77,3 +78,92 @@ def test_save_does_not_leave_tmp_files(tmp_path):
 
     leftovers = [p.name for p in tmp_path.iterdir() if p.name.endswith(".tmp")]
     assert leftovers == []
+
+
+def test_save_stamps_modified_at_and_device_id(tmp_path):
+    storage = Storage(str(tmp_path / "t.json"), device_id="dev-1")
+    storage.save("2026-05-14", "08:00", "16:00", pause=30)
+    raw = storage.get_all_raw()
+    assert raw["2026-05-14"]["start"] == "08:00"
+    assert raw["2026-05-14"]["device_id"] == "dev-1"
+    assert "modified_at" in raw["2026-05-14"]
+    # ISO-Format
+    assert "T" in raw["2026-05-14"]["modified_at"]
+    assert raw["2026-05-14"]["modified_at"].endswith("Z")
+
+
+def test_get_returns_user_shape_without_metadata(tmp_path):
+    """Bestehende UI-Code-Pfade dürfen sich nicht ändern: get() liefert
+    weiter {start, end, pause}, get_all() ebenso."""
+    storage = Storage(str(tmp_path / "t.json"), device_id="dev-1")
+    storage.save("2026-05-14", "08:00", "16:00", pause=30)
+    assert storage.get("2026-05-14") == {"start": "08:00", "end": "16:00", "pause": 30}
+    assert storage.get_all()["2026-05-14"] == {"start": "08:00", "end": "16:00", "pause": 30}
+
+
+def test_apply_merge_rejects_entry_missing_required_keys(tmp_path):
+    storage = Storage(str(tmp_path / "t.json"), device_id="dev-1")
+    with pytest.raises(ValueError, match="missing keys"):
+        storage.apply_merge({"2026-05-14": {"start": "08:00", "end": "16:00"}})
+    # _data unverändert geblieben (kein Halb-Schreiben)
+    assert storage.get_all_raw() == {}
+
+
+def test_apply_merge_accepts_complete_entries(tmp_path):
+    storage = Storage(str(tmp_path / "t.json"), device_id="dev-1")
+    storage.apply_merge({"2026-05-14": {
+        "start": "08:00", "end": "16:00", "pause": 30,
+        "modified_at": "2026-05-14T10:00:00Z",
+        "device_id": "other-dev",
+        "deleted": False,
+    }})
+    assert storage.get("2026-05-14") == {"start": "08:00", "end": "16:00", "pause": 30}
+
+
+def test_save_many_empty_is_noop(tmp_path):
+    """Leeres Dict darf keinen File-Write triggern."""
+    path = str(tmp_path / "noop.json")
+    s = Storage(path, device_id="d1")
+    s.save_many({})
+    assert not os.path.exists(path)
+
+
+def test_save_many_writes_all_entries(tmp_storage):
+    tmp_storage.save_many({
+        "2026-05-14": {"start": "08:00", "end": "16:00", "pause": 30},
+        "2026-05-15": {"start": "09:00", "end": "17:30", "pause": 45},
+    })
+    entries = tmp_storage.get_all()
+    assert entries["2026-05-14"] == {"start": "08:00", "end": "16:00", "pause": 30}
+    assert entries["2026-05-15"] == {"start": "09:00", "end": "17:30", "pause": 45}
+
+
+def test_save_many_sets_metadata(tmp_storage):
+    tmp_storage.save_many({"2026-05-14": {"start": "08:00", "end": "16:00", "pause": 30}})
+    raw = tmp_storage.get_all_raw()["2026-05-14"]
+    assert raw["device_id"] == "test-device"
+    assert raw["deleted"] is False
+    assert "modified_at" in raw and raw["modified_at"]
+
+
+def test_save_many_overwrites_tombstone(tmp_storage):
+    tmp_storage.save("2026-05-14", "08:00", "16:00", 30)
+    tmp_storage.delete("2026-05-14")
+    assert tmp_storage.get("2026-05-14") is None
+    tmp_storage.save_many({"2026-05-14": {"start": "09:00", "end": "17:00", "pause": 0}})
+    assert tmp_storage.get("2026-05-14") == {"start": "09:00", "end": "17:00", "pause": 0}
+
+
+def test_save_many_calls_disk_write_once(tmp_storage):
+    with mock.patch.object(tmp_storage, "_save_to_disk") as m:
+        tmp_storage.save_many({
+            "2026-05-14": {"start": "08:00", "end": "16:00", "pause": 30},
+            "2026-05-15": {"start": "09:00", "end": "17:30", "pause": 45},
+        })
+    assert m.call_count == 1
+
+
+def test_save_many_pause_default_zero(tmp_storage):
+    """Pause-Feld fehlt → wird auf 0 default-gesetzt (analog zu save())."""
+    tmp_storage.save_many({"2026-05-14": {"start": "08:00", "end": "16:00"}})
+    assert tmp_storage.get_all()["2026-05-14"]["pause"] == 0

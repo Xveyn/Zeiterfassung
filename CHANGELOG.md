@@ -1,5 +1,53 @@
 # Changelog
 
+## 1.12.0 — 2026-05-14
+
+### Hinzugefügt
+- Multi-Device-Sync via Google Drive (opt-in). Zeiteinträge und Mail-Settings
+  synchronisieren über einen versteckten Ordner in deinem Drive (`appDataFolder`).
+  Pull beim App-Start, Push manuell oder beim Schließen.
+- Konflikt-Behandlung: Wenn derselbe Tag auf zwei Geräten offline bearbeitet wird,
+  erscheinen beide Versionen in einem Konflikt-Dialog zur manuellen Auswahl.
+- Sync-Button und Status-Anzeige im Header (nur sichtbar bei aktivem Sync).
+- Geräte-ID wird einmal pro Installation generiert (siehe Einstellungen).
+- Absender-E-Mail wird automatisch aus dem authentifizierten Google-Konto übernommen — kein manuelles Eintragen mehr. „Aktualisieren"-Button in den Einstellungen, falls der Scope noch fehlt oder das Konto gewechselt wurde
+- Neue Einstellung „Immer im Vordergrund" — App-Fenster bleibt über anderen Anwendungen
+- Neue Einstellung „Beim Schließen in den Infobereich minimieren" (Windows + macOS) — Tray-Icon mit Anzeigen-/Beenden-Menü ersetzt das tatsächliche Beenden, bis du es willst
+- Themed Success-Popup nach erfolgreichem Mail-Versand (statt System-Messagebox)
+- Themed Bestätigungs-Dialog (Ja/Nein) beim Löschen eines Eintrags (statt System-Messagebox)
+- Dunkle Titelleiste auf Windows 11 22H2+ (über DWM)
+- Tooltip auf truncated Feiertagsnamen — Hover zeigt den vollen Namen
+- Arbeitszeiten an eine zweite Person teilen: neuer Footer-Button „Teilen…". Versendet eine JSON-Datei mit den eigenen Einträgen per Mail; der Empfänger wird direkt im Teilen-Dialog eingegeben.
+- Arbeitszeiten aus einer Share-Datei importieren: Einstellungen → „Arbeitszeiten importieren…", mit Zeitraum-Filter und drei Konflikt-Modi (alles importieren / alles lokal / pro Tag entscheiden). Anwenden ist atomar — Abbruch im Pro-Tag-Modal hinterlässt keinen Teilzustand.
+- Reservierungen: zukünftige Arbeitszeiten lassen sich pro Tag im Tages-Dialog
+  reservieren — ein eigenständiges Konzept neben den erfassten Ist-Zeiten.
+  Reservierungen werden im Kalender als violetter Eck-Punkt am Tag markiert und
+  sind über das Tages-Modal einsehbar.
+- Google-Kalender-Anbindung: in den Einstellungen aktivierbar; Reservierungen
+  werden mit einem wählbaren Google Kalender abgeglichen. Push überschreibt die
+  Remote-Kalender-Einträge — Synchronisierung funktioniert geräteübergreifend
+  über den Kalender.
+
+### Geändert
+- Kalender-Spaltenbreiten sind jetzt strikt unabhängig vom Zellen-Inhalt — Einträge, Feiertage und leere Tage haben identische Pixel-Breite, kein visueller Versatz mehr je nach Text
+- Monatsansicht mit eingeblendeten Wochenenden: Zeit-Schrift in Eintragszellen größer (8pt statt 7pt) für bessere Lesbarkeit; Feiertagsnamen mit kleinerem Font (im 7-Spalten-Modus)
+- Wochenansicht: Feiertagsnamen werden enger truncated, sodass „Christi Himmelfahrt" nicht mehr über den Zellrand läuft
+- Settings-Dialog: Klick auf nicht-interaktive Bereiche (Labels, Frame-Bg) entfernt den roten Fokusrand vom zuletzt aktiven Eingabefeld
+- Dialog-Position wird an die Bildschirmgrenzen geklammert — das Settings-Modal wird nicht mehr unten/oben abgeschnitten, wenn das Hauptfenster nah am Bildschirmrand sitzt (auf Windows respektiert die Klammerung die Taskleiste)
+- Fehler beim Sync-Push beim Schließen werden jetzt als Messagebox sichtbar (vorher still verschluckt)
+- Tages-Dialog zeigt einen neuen „Reservierung"-Sektor mit Start/Ende-Feldern, unabhängig von den Ist-Arbeitszeiten. Reservierungen können auch gelöscht werden.
+- Schlägt „Monat senden" oder „Teilen…" mangels Internetverbindung fehl, erscheint jetzt eine verständliche „Keine Internetverbindung"-Meldung statt eines technischen Tracebacks. Andere Fehler zeigen weiterhin die Detail-Ausgabe.
+
+### Hinweise
+- Aktivierung erfordert einen erneuten Google-OAuth-Consent mit erweiterten Scopes
+  (`drive.appdata` für Sync, `userinfo.email` für Absender-Auto-Fetch — beide non-sensitive).
+- Beim Aufräumen alter Einträge wachsen Tombstone-Marker derzeit unbeschränkt —
+  siehe `docs/known-limitations.md`.
+
+## v1.11.1
+- Neue Option in den Einstellungen: „Wochenende (Sa/So) im Kalender anzeigen". Wenn deaktiviert, fallen Sa und So aus der Monats- und Wochenansicht weg, das Fenster wird entsprechend schmaler. Bestehende Wochenend-Einträge bleiben gespeichert und werden weiterhin in Mail/PDF exportiert — nur die Kalender-Anzeige ändert sich. Default: angezeigt (kein Verhaltenssprung für Bestandsnutzer)
+- Das „Absender"-Feld in den Einstellungen wurde entfernt. Es hatte keine Wirkung — die Absender-Adresse wird zwingend vom Gmail-OAuth-Token bestimmt (`userId=me`), das eingetragene Feld wurde nie als `From:`-Header gesetzt. Ein evtl. vorhandener Wert in `settings.json` wird beim nächsten Settings-Speichern still entfernt
+
 ## v1.11.0
 - macOS: alle Buttons rendern jetzt im Dark-Theme statt als native Aqua-Buttons (Header `‹ › ⚙`, Monat/Woche-Toggle, Footer „Monat senden", Dialog-Buttons, Update-Banner). Bisher war der Text auf primären und aktiven Buttons unter macOS weiß auf weiß und damit unlesbar — der Grund: das Aqua-Backend ignoriert `bg`/`fg` für `tk.Button` und zeichnet sie nativ. Die App benutzt jetzt Label-basierte Custom-Buttons, die auf allen Plattformen das Theme respektieren
 - Font-Familie wird plattformabhängig gewählt: Windows „Segoe UI", macOS „Helvetica Neue", Linux „DejaVu Sans". Verhindert stille Fallback-Drift der Pixel-Metriken in den Kalenderzellen, wenn die Default-Familie nicht installiert ist
