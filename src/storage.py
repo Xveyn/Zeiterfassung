@@ -55,6 +55,15 @@ class Storage:
             entry["device_id"] = self.device_id
             entry["deleted"] = False
 
+    def reload(self):
+        """Verwirft den In-Memory-Stand und liest die Datei neu ein.
+
+        Für Dev-Tools, die die JSON-Datei unter der laufenden App ersetzen
+        (z.B. Reseed). Setzt `_data` erst leer, damit ein Reload nach dem
+        Löschen der Datei nicht den alten Stand behält."""
+        self._data = {}
+        self._load()
+
     def _save_to_disk(self):
         tmp = self.filepath + ".tmp"
         with open(tmp, "w", encoding="utf-8") as f:

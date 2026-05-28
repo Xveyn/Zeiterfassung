@@ -167,3 +167,20 @@ def test_save_many_pause_default_zero(tmp_storage):
     """Pause-Feld fehlt → wird auf 0 default-gesetzt (analog zu save())."""
     tmp_storage.save_many({"2026-05-14": {"start": "08:00", "end": "16:00"}})
     assert tmp_storage.get_all()["2026-05-14"]["pause"] == 0
+
+
+def test_reload_picks_up_external_file_change(tmp_path):
+    from src.storage import Storage
+    fp = tmp_path / "z.json"
+    fp.write_text('{}', encoding="utf-8")
+    s = Storage(str(fp), device_id="dev")
+    assert s.get_all() == {}
+
+    # Datei extern ersetzen (simuliert Reseed)
+    fp.write_text(
+        '{"2026-05-28": {"start": "08:00", "end": "16:00", "pause": 30,'
+        ' "modified_at": "2026-05-28T00:00:00Z", "device_id": "dev", "deleted": false}}',
+        encoding="utf-8",
+    )
+    s.reload()
+    assert s.get("2026-05-28") == {"start": "08:00", "end": "16:00", "pause": 30}
