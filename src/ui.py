@@ -43,14 +43,15 @@ from src.theme import (
 
 class App:
     def __init__(self, root, storage, settings, base_path=".", conflicts_store=None,
-                 reservation_store=None):
+                 reservation_store=None, dev_mode=False):
         self.root = root
         self.storage = storage
         self.settings = settings
         self.base_path = base_path
         self.conflicts_store = conflicts_store
         self.reservation_store = reservation_store
-        self.root.title(f"Zeiterfassung v{VERSION}")
+        self.dev_mode = dev_mode
+        self.root.title(f"Zeiterfassung v{VERSION}" + (" — Dev-Mode" if dev_mode else ""))
         self.root.configure(bg=BG)
         apply_dark_titlebar(self.root)
 
@@ -108,6 +109,11 @@ class App:
         self._proactive_update_check()
         self._proactive_calendar_reconcile()
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
+
+        self._dev_console = None
+        if self.dev_mode:
+            from src.dev.console import DevConsole
+            self._dev_console = DevConsole(self.root, self)
 
     def _proactive_token_refresh(self):
         """Erneuert den Gmail-Token beim App-Start im Hintergrund.
@@ -1103,6 +1109,44 @@ class App:
         mb.showerror("Synchronisation fehlgeschlagen",
                       f"Beim Abrufen der Drive-Daten ist ein Fehler aufgetreten:\n\n{detail}")
         self._update_sync_status_label()
+
+    def dev_sync_pull(self):
+        """Dev-Konsole: stößt denselben Hintergrund-Pull an wie der App-Start."""
+        from src.main import _run_pull_in_background
+
+        def cb(ok, error, tb=""):
+            def apply():
+                if ok:
+                    self.on_sync_pull_success()
+                else:
+                    self.on_sync_pull_error(error, tb)
+            self.root.after(0, apply)
+
+        threading.Thread(
+            target=_run_pull_in_background,
+            args=(self.storage, self.settings, self.conflicts_store, self.base_path, cb),
+            daemon=True,
+        ).start()
+
+    def dev_sync_push(self):
+        """Dev-Konsole: synchroner Push (Ergebnis landet im Log)."""
+        from src.main import _run_push_blocking
+
+        def work():
+            result = _run_push_blocking(
+                self.storage, self.settings, self.conflicts_store, self.base_path)
+            logging.getLogger("zeiterfassung.dev").info("DEV push result=%s", result)
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def dev_reload_sample_data(self):
+        """Dev-Konsole: Fake-State zurücksetzen, Daten neu seeden, UI refreshen."""
+        from src.dev import fakes, seed
+        fakes.reset_state()
+        seed.reseed(self.base_path)
+        self.storage.reload()
+        self._refresh()
+        logging.getLogger("zeiterfassung.dev").info("DEV Sample-Daten neu geladen")
 
     def _update_sync_status_label(self):
         if not hasattr(self, "sync_status_label"):
