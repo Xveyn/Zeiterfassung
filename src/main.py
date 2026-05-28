@@ -169,12 +169,21 @@ def run_calendar_reconcile(reservation_store, settings, base):
 
 
 def main():
+    dev_mode = "--dev" in sys.argv
+    if dev_mode and not os.environ.get("ZEITERFASSUNG_DATA_DIR"):
+        repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        os.environ["ZEITERFASSUNG_DATA_DIR"] = os.path.join(repo_root, "dev-data")
+
     base = get_base_path()
     try:
         setup_logging(base)
         logging.getLogger(__name__).info("Zeiterfassung v%s gestartet", VERSION)
     except Exception:
         pass
+
+    if dev_mode:
+        from src.dev import activate
+        activate(base)
 
     settings = Settings(os.path.join(base, "settings.json"))
     device_id = _ensure_device_id(settings)
@@ -188,7 +197,7 @@ def main():
 
     root = tk.Tk()
     app = App(root, storage, settings, base_path=base, conflicts_store=conflicts_store,
-              reservation_store=reservation_store)
+              reservation_store=reservation_store, dev_mode=dev_mode)
 
     if "--minimized" in sys.argv:
         root.iconify()
