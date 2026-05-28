@@ -53,3 +53,25 @@ def test_normal_import_does_not_load_dev():
         capture_output=True, text=True, cwd=str(repo),
     )
     assert result.returncode == 0, result.stderr
+
+
+def test_log_handler_formats_record():
+    import logging as _logging
+    from src.dev.console import _TkLogHandler
+
+    captured = []
+
+    class _FakeWidget:
+        def config(self, **k): pass
+        def insert(self, *a): captured.append(a[1])
+        def see(self, *a): pass
+
+    class _FakeRoot:
+        def after(self, _delay, fn, *args):
+            fn(*args)  # synchron ausführen statt über die Tk-Eventloop
+
+    handler = _TkLogHandler(_FakeWidget(), _FakeRoot())
+    record = _logging.LogRecord("zeiterfassung.dev", _logging.INFO,
+                                "x.py", 1, "Hallo Welt", None, None)
+    handler.emit(record)
+    assert any("Hallo Welt" in line for line in captured)
