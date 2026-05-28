@@ -110,6 +110,13 @@ def fake_get_calendar_service(credentials_path="credentials.json",
     return _FakeService()
 
 
+def fake_list_calendars(service):
+    return [
+        {"id": "primary", "summary": "Dev-Kalender (primary)"},
+        {"id": "dev-cal-2", "summary": "Dev-Zweitkalender"},
+    ]
+
+
 def fake_list_app_events(service, calendar_id):
     return [dict(ev) for ev in _events.values()]
 

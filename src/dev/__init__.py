@@ -19,6 +19,7 @@ def activate(base_path):
     drive.upload = fakes.fake_upload
 
     gcal.get_calendar_service = fakes.fake_get_calendar_service
+    gcal.list_calendars = fakes.fake_list_calendars
     gcal.list_app_events = fakes.fake_list_app_events
     gcal.create_event = fakes.fake_create_event
     gcal.update_event = fakes.fake_update_event

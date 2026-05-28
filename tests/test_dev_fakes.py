@@ -40,6 +40,15 @@ def test_fake_drive_roundtrip():
     assert int(ver3) > int(ver1)
 
 
+def test_fake_list_calendars_returns_id_summary_dicts():
+    service = fakes.fake_get_calendar_service()
+    calendars = fakes.fake_list_calendars(service)
+    assert len(calendars) >= 1
+    for cal in calendars:
+        assert set(cal) == {"id", "summary"}
+    assert any(c["id"] == "primary" for c in calendars)
+
+
 def test_fake_calendar_create_list_delete():
     service = fakes.fake_get_calendar_service()
     assert fakes.fake_list_app_events(service, "cal") == []

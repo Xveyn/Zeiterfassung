@@ -19,6 +19,7 @@ def test_activate_patches_module_functions(tmp_path):
         (drive, "download"): drive.download,
         (drive, "upload"): drive.upload,
         (gcal, "get_calendar_service"): gcal.get_calendar_service,
+        (gcal, "list_calendars"): gcal.list_calendars,
         (gcal, "list_app_events"): gcal.list_app_events,
         (gcal, "create_event"): gcal.create_event,
         (gcal, "update_event"): gcal.update_event,
@@ -32,6 +33,7 @@ def test_activate_patches_module_functions(tmp_path):
         assert drive.find_sync_file is fakes.fake_find_sync_file
         assert gcal.create_event is fakes.fake_create_event
         assert gcal.list_app_events is fakes.fake_list_app_events
+        assert gcal.list_calendars is fakes.fake_list_calendars
         # Seed lief mit
         assert (tmp_path / "zeiterfassung.json").exists()
     finally:
