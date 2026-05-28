@@ -3,6 +3,7 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 
 from src import sync
+from src.theme import apply_app_icon
 
 
 def _fmt_entry_candidate(cand):
@@ -29,6 +30,9 @@ class ConflictsDialog:
         self.top.title("Konflikte auflösen")
         self.top.transient(parent)
         self.top.grab_set()
+        self.top.focus_set()
+        apply_app_icon(self.top)
+        self.top.bind("<Escape>", lambda _e: self.top.destroy())
 
         self._build()
         self._refresh_list()

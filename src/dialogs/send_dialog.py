@@ -11,7 +11,8 @@ from src.platform_open import open_folder
 from src.report import generate_pdf, generate_report
 from src.theme import (
     BG, FONT, TEXT,
-    apply_combobox_style, apply_dark_titlebar, center_dialog_on_parent,
+    apply_app_icon, apply_combobox_style, apply_dark_titlebar,
+    attach_unfocus_on_click, center_dialog_on_parent, disable_min_max,
     dark_combo, primary_button, secondary_button, themed_showinfo,
 )
 
@@ -21,8 +22,11 @@ def show_missing_credentials_dialog(parent, base_path):
     dialog.title("Keine Zugangsdaten")
     dialog.resizable(False, False)
     dialog.grab_set()
+    dialog.focus_set()
     dialog.configure(bg=BG)
     apply_dark_titlebar(dialog)
+    disable_min_max(dialog)
+    apply_app_icon(dialog)
 
     tk.Label(
         dialog,
@@ -55,6 +59,7 @@ def show_missing_credentials_dialog(parent, base_path):
     primary_button(btn_frame, "Datenordner öffnen", open_and_close).pack(side=tk.LEFT, padx=5)
     secondary_button(btn_frame, "OK", dialog.destroy).pack(side=tk.LEFT, padx=5)
 
+    dialog.bind("<Escape>", lambda _e: dialog.destroy())
     center_dialog_on_parent(dialog, parent)
 
 
@@ -87,10 +92,15 @@ def open_send_dialog(parent, storage, settings, base_path):
     dialog.title("Zeitraum wählen")
     dialog.resizable(False, False)
     dialog.grab_set()
+    dialog.focus_set()
     dialog.configure(bg=BG)
     apply_dark_titlebar(dialog)
+    disable_min_max(dialog)
+    apply_app_icon(dialog)
 
     apply_combobox_style(dialog)
+    attach_unfocus_on_click(dialog)
+    dialog.bind("<Escape>", lambda _e: dialog.destroy())
 
     today = datetime.date.today()
     from_default = _default_from_date(today)

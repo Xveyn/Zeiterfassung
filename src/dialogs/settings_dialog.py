@@ -11,8 +11,9 @@ from src.platform_open import open_folder
 from src.theme import (
     ACCENT, BG, CELL_BG, FONT, FONT_BOLD, FONT_SMALL,
     PAUSE_VALUES, STATUS_OK, TEXT, TEXT_MUTED, TIME_VALUES,
-    apply_combobox_style, apply_dark_titlebar, attach_unfocus_on_click,
-    center_dialog_on_parent,
+    apply_app_icon, apply_combobox_style, apply_dark_titlebar,
+    attach_unfocus_on_click,
+    center_dialog_on_parent, disable_min_max,
     dark_combo, dark_entry, dark_text,
     primary_button, secondary_button,
 )
@@ -33,8 +34,11 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
     dialog.title("Einstellungen")
     dialog.resizable(False, False)
     dialog.grab_set()
+    dialog.focus_set()
     dialog.configure(bg=BG)
     apply_dark_titlebar(dialog)
+    disable_min_max(dialog)
+    apply_app_icon(dialog)
 
     apply_combobox_style(dialog)
 
@@ -673,6 +677,7 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
     secondary_button(btn_frame, "Abbrechen", dialog.destroy).pack(side=tk.LEFT, padx=5)
 
     attach_unfocus_on_click(dialog)
+    dialog.bind("<Escape>", lambda _e: dialog.destroy())
     # Mail-Vorlage default eingeklappt — spart Höhe, der Block wird selten
     # geändert. Funktioniert vor dem Mapping, weil der Toggle-Helper
     # winfo_manager() (mapping-unabhängig) statt winfo_ismapped() nutzt.

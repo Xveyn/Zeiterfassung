@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.12.1 — 2026-05-28
+
+### Behoben
+- Combobox-Dropdowns: Scrollbar, Popdown-Border und Pfeil-Button im Dark-Theme statt heller System-Standard
+- Roter Fokusrand in Eingabefeldern verschwindet beim Klick auf Dialog-Hintergrund — gilt jetzt überall, nicht mehr nur in Settings
+- App-Icon (margenheld) in allen Modal-Dialogen — statt Tk-Standard-Feder
+- Token-Fehlermeldungen beim App-Start im App-Theme statt heller System-Messagebox
+
+### Geändert
+- Escape-Taste schließt alle Modal-Dialoge (Eintrag, Settings, Senden, Teilen, Import, Konflikte)
+- Modal-Dialoge zeigen in der Titelleiste nur noch den Close-Button — keine ausgegrauten Min/Max-Schaltflächen mehr (Windows)
+
 ## 1.12.0 — 2026-05-14
 
 ### Hinzugefügt

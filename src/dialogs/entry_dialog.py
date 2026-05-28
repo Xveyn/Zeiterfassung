@@ -6,7 +6,8 @@ from src.holidays_de import get_holidays
 from src.settings import WEEKDAY_KEYS
 from src.theme import (
     BG, FONT, FONT_BOLD, PAUSE_VALUES, TEXT, TEXT_MUTED, TIME_VALUES,
-    apply_combobox_style, apply_dark_titlebar, center_dialog_on_parent,
+    apply_app_icon, apply_combobox_style, apply_dark_titlebar,
+    attach_unfocus_on_click, center_dialog_on_parent, disable_min_max,
     dark_combo, primary_button, secondary_button, themed_askyesno,
 )
 from src.time_utils import validate_entry
@@ -52,9 +53,17 @@ def open_entry_dialog(parent, date_str, storage, settings, on_change,
     dialog.title(date_str)
     dialog.resizable(False, False)
     dialog.grab_set()
+    # focus_set() ist nach grab_set() Pflicht, sonst bleibt der Keyboard-
+    # Fokus auf dem Hauptfenster und Tastatur-Bindungen (z.B. Escape) am
+    # Dialog feuern nie. grab_set steuert nur Mouse-Events.
+    dialog.focus_set()
     dialog.configure(bg=BG)
     apply_dark_titlebar(dialog)
+    disable_min_max(dialog)
+    apply_app_icon(dialog)
     apply_combobox_style(dialog)
+    attach_unfocus_on_click(dialog)
+    dialog.bind("<Escape>", lambda _e: dialog.destroy())
 
     # --- Ist-Zeit ---
     tk.Label(dialog, text="Start:", font=FONT, bg=BG, fg=TEXT).grid(

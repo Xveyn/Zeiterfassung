@@ -16,7 +16,8 @@ from src.share import (
 )
 from src.theme import (
     BG, CELL_BG, FONT, FONT_SMALL, TEXT, TEXT_MUTED,
-    apply_combobox_style, apply_dark_titlebar, center_dialog_on_parent,
+    apply_app_icon, apply_combobox_style, apply_dark_titlebar,
+    attach_unfocus_on_click, center_dialog_on_parent, disable_min_max,
     dark_combo, primary_button, secondary_button, themed_showinfo,
 )
 
@@ -82,9 +83,14 @@ class _ImportSummaryDialog:
         self.top.title("Arbeitszeiten importieren")
         self.top.resizable(False, False)
         self.top.grab_set()
+        self.top.focus_set()
         self.top.configure(bg=BG)
         apply_dark_titlebar(self.top)
+        disable_min_max(self.top)
+        apply_app_icon(self.top)
         apply_combobox_style(self.top)
+        attach_unfocus_on_click(self.top)
+        self.top.bind("<Escape>", lambda _e: self.top.destroy())
 
         self._build()
         center_dialog_on_parent(self.top, parent)
@@ -316,8 +322,12 @@ class _PerDayDialog:
         self.top.title("Pro Tag entscheiden")
         self.top.transient(parent)
         self.top.grab_set()
+        self.top.focus_set()
         self.top.configure(bg=BG)
         apply_dark_titlebar(self.top)
+        disable_min_max(self.top)
+        apply_app_icon(self.top)
+        self.top.bind("<Escape>", lambda _e: self.top.destroy())
 
         self._build()
         center_dialog_on_parent(self.top, parent)
