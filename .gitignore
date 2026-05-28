@@ -17,3 +17,7 @@ build/
 .aider*
 credentials.lnk
 release-artifacts/
+reservations.json*
+
+# Dev-Mode Daten-Verzeichnis (python -m src.main --dev)
+dev-data/
