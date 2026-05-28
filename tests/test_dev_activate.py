@@ -37,6 +37,7 @@ def test_activate_patches_module_functions(tmp_path):
     finally:
         for (module, name), fn in originals.items():
             setattr(module, name, fn)
+        fakes.reset_state()
 
 
 def test_normal_import_does_not_load_dev():
