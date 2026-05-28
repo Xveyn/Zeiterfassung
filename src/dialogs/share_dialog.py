@@ -7,7 +7,7 @@ import traceback
 from tkinter import messagebox
 
 from src.dialogs.send_dialog import show_missing_credentials_dialog
-from src.mail import get_gmail_service, is_offline_error, send_email
+from src import mail
 from src.share import build_share_doc, serialize_share_doc
 from src.theme import (
     BG, FONT, TEXT,
@@ -84,7 +84,7 @@ def open_share_dialog(parent, storage, settings, base_path):
         try:
             doc = build_share_doc(storage, sender_email)
             payload = serialize_share_doc(doc)
-            service = get_gmail_service(
+            service = mail.get_gmail_service(
                 credentials_path, token_path,
                 sync_enabled=settings.get("sync_enabled"),
                 gcal_enabled=settings.get("gcal_enabled"),
@@ -103,7 +103,7 @@ def open_share_dialog(parent, storage, settings, base_path):
                 "</body></html>"
             )
             filename = f"zeiterfassung-share-{doc['exported_at'][:10].replace('-', '')}.json"
-            send_email(
+            mail.send_email(
                 service, share_recipient, subject, html,
                 attachment_bytes=payload,
                 attachment_filename=filename,
@@ -124,7 +124,7 @@ def open_share_dialog(parent, storage, settings, base_path):
             # zeigen wir dem Nutzer aber eine verständliche Meldung statt des
             # kryptischen Tracebacks — das ist kein Bug, sondern fehlendes Netz.
             logging.getLogger(__name__).exception("Teilen fehlgeschlagen")
-            if is_offline_error(e):
+            if mail.is_offline_error(e):
                 messagebox.showerror(
                     "Keine Internetverbindung",
                     "Die Arbeitszeiten konnten nicht gesendet werden, weil "

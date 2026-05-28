@@ -6,7 +6,7 @@ import tkinter as tk
 import traceback
 from tkinter import messagebox
 
-from src.mail import get_gmail_service, is_offline_error, send_email
+from src import mail
 from src.platform_open import open_folder
 from src.report import generate_pdf, generate_report
 from src.theme import (
@@ -182,7 +182,7 @@ def open_send_dialog(parent, storage, settings, base_path):
 
         try:
             pdf_bytes = generate_pdf(date_from, date_to, entries, name=settings.get("name"))
-            service = get_gmail_service(
+            service = mail.get_gmail_service(
                 credentials_path, token_path,
                 sync_enabled=settings.get("sync_enabled"),
                 gcal_enabled=settings.get("gcal_enabled"),
@@ -193,7 +193,7 @@ def open_send_dialog(parent, storage, settings, base_path):
                 .replace("{gesamt}", f"{total}h")
             )
             pdf_filename = f"Zeiterfassung_{date_from.strftime('%Y%m%d')}_{date_to.strftime('%Y%m%d')}.pdf"
-            send_email(service, recipient, subject, html,
+            mail.send_email(service, recipient, subject, html,
                        attachment_bytes=pdf_bytes,
                        attachment_filename=pdf_filename,
                        attachment_subtype="pdf")
@@ -223,7 +223,7 @@ def open_send_dialog(parent, storage, settings, base_path):
             # zeigen wir dem Nutzer aber eine verständliche Meldung statt des
             # kryptischen Tracebacks — das ist kein Bug, sondern fehlendes Netz.
             logging.getLogger(__name__).exception("Senden fehlgeschlagen")
-            if is_offline_error(e):
+            if mail.is_offline_error(e):
                 messagebox.showerror(
                     "Keine Internetverbindung",
                     "Der Bericht konnte nicht gesendet werden, weil keine "
