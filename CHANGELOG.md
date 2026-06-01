@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.12.2 — 2026-06-01
+
+### Dokumentation
+- Sicherheitshinweis in der README zu `token.json` (enthält im Klartext einen
+  langlebigen OAuth-Refresh-Token; wer den Daten-/Installationsordner kopiert,
+  sichert oder cloud-synct, nimmt diesen Token mit — inkl. Widerruf-Anleitung).
+- README und `CLAUDE.md` auf den aktuellen Feature-Stand gebracht: Teilen/Import
+  und Reservierungen/Google-Kalender in der Feature-Liste, Projektstruktur auf
+  den realen `src/`-Stand (kein nicht-existentes `Zeiterfassung.spec` mehr).
+- `planned-features.md`: „Teilen + Import" als umgesetzt (v1.12.0) markiert.
+- `docs/gmail-setup.md`: `userinfo.email`-Scope ergänzt.
+- Spec und Implementierungsplan für das geplante Auto-Update-Feature ergänzt
+  (noch keine Implementierung — reine Planung).
+
+_Keine Verhaltensänderung an der App — reiner Doku-Release._
+
 ## 1.12.1 — 2026-05-28
 
 ### Behoben
