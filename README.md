@@ -2,7 +2,7 @@
 
 Desktop-App zur Erfassung von Arbeitszeiten mit Kalenderansicht, PDF-Report und automatischem Gmail-Versand.
 
-[![Release](https://img.shields.io/github/v/release/margenheld/Zeiterfassung?label=Release&color=success&logo=github)](https://github.com/margenheld/Zeiterfassung/releases/latest) ![Python](https://img.shields.io/badge/Python-3.10+-blue) ![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)
+[![Release](https://img.shields.io/github/v/release/margenheld/Zeiterfassung?label=Release&color=success&logo=github)](https://github.com/margenheld/Zeiterfassung/releases/latest) ![Python](https://img.shields.io/badge/Python-3.10+-blue) ![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow)](LICENSE)
 
 ## Features
 
@@ -337,3 +337,9 @@ Speicherort je nach Plattform (siehe `src/paths.py`):
 > Kompromittierung den Zugriff in den [Google-Kontoeinstellungen](https://myaccount.google.com/permissions)
 > entziehen und `token.json` löschen (die App startet beim nächsten Versand einen
 > neuen Anmelde-Flow).
+
+## Lizenz
+
+Veröffentlicht unter der [MIT-Lizenz](LICENSE) — frei nutz-, änder- und weiterverbreitbar bei Erhalt des Copyright-Hinweises.
+
+Die App bündelt im Installer Drittanbieter-Bibliotheken mit eigenen Lizenzen (u.a. pystray unter LGPL-3.0 sowie die Google-API- und xhtml2pdf-Pakete unter Apache-2.0). Deren Lizenztexte gelten unverändert fort. `build.py` erzeugt dafür beim Bauen automatisch eine `THIRD-PARTY-NOTICES.txt` (via `pip-licenses`) und liefert sie in jedem Artefakt mit — im Windows-Setup und der AppImage neben der Anwendung, unter macOS in `Zeiterfassung.app/Contents/Resources/`.

@@ -20,6 +20,7 @@ Name: "german"; MessagesFile: "compiler:Languages\German.isl"
 
 [Files]
 Source: "dist\Zeiterfassung.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "dist\THIRD-PARTY-NOTICES.txt"; DestDir: "{app}"; Flags: ignoreversion
 Source: "assets\margenheld-icon.ico"; DestDir: "{app}\assets"; Flags: ignoreversion
 Source: "assets\margenheld-icon.png"; DestDir: "{app}\assets"; Flags: ignoreversion
 

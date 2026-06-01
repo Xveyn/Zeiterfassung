@@ -7,6 +7,68 @@ import sys
 
 from src.version import VERSION
 
+NOTICES_PATH = os.path.join("dist", "THIRD-PARTY-NOTICES.txt")
+
+_NOTICES_HEADER = (
+    "Zeiterfassung — Third-Party Software Notices\n"
+    "============================================\n\n"
+    "Diese Anwendung bündelt die unten aufgeführten Open-Source-Bibliotheken.\n"
+    "Ihre Lizenzbedingungen und Copyright-Hinweise gelten unverändert fort und\n"
+    "sind nachstehend im vollständigen Wortlaut wiedergegeben.\n\n"
+    "Der eigene Quellcode der Zeiterfassung steht unter der MIT-Lizenz "
+    "(siehe LICENSE).\n\n"
+    "============================================\n\n"
+)
+
+_NOTICES_FALLBACK = (
+    "THIRD-PARTY-NOTICES konnten beim Build nicht automatisch erzeugt werden\n"
+    "(pip-licenses war nicht verfügbar). Die gebündelten Bibliotheken sind in\n"
+    "requirements.txt aufgeführt; ihre Lizenztexte liegen den jeweiligen Paketen\n"
+    "auf PyPI bei.\n"
+)
+
+
+def generate_third_party_notices():
+    """Erzeugt dist/THIRD-PARTY-NOTICES.txt aus den im aktuellen Environment
+    installierten Paketen (inkl. transitiver Deps) via pip-licenses.
+
+    Fehlt pip-licenses lokal, wird — analog zum übersprungenen Pack-Schritt —
+    nur gewarnt und ein Hinweis-Stub geschrieben, damit das Bündeln nie an einer
+    fehlenden Datei scheitert. Im CI ist pip-licenses installiert, dort entsteht
+    die echte Liste. Aufruf von print() im Child würde unter Windows an der
+    cp1252-Konsole an Nicht-Latin1-Namen scheitern (z.B. „Grönholm"), daher
+    PYTHONUTF8/PYTHONIOENCODING setzen und die Ausgabe selbst als UTF-8 schreiben.
+    """
+    os.makedirs("dist", exist_ok=True)
+    cmd = [
+        sys.executable, "-m", "piplicenses",
+        "--format=plain-vertical",
+        "--with-license-file", "--with-notice-file", "--no-license-path",
+        "--with-authors", "--with-urls",
+        # Reines Build-/Notices-Tooling, das nicht ins Artefakt gebündelt wird.
+        "--ignore-packages", "pip-licenses", "prettytable", "wcwidth", "tomli",
+    ]
+    env = {**os.environ, "PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8"}
+    try:
+        result = subprocess.run(
+            cmd, capture_output=True, text=True, encoding="utf-8", env=env,
+        )
+    except OSError as exc:
+        result = None
+        print(f"pip-licenses konnte nicht gestartet werden ({exc}) — schreibe Stub.")
+
+    if result is not None and result.returncode == 0 and result.stdout.strip():
+        body = _NOTICES_HEADER + result.stdout
+        print(f"Third-Party-Notices erzeugt: {NOTICES_PATH}")
+    else:
+        if result is not None:
+            print("pip-licenses nicht verfügbar oder fehlgeschlagen — schreibe Stub. "
+                  "Für vollständige Notices: pip install pip-licenses")
+        body = _NOTICES_HEADER + _NOTICES_FALLBACK
+
+    with open(NOTICES_PATH, "w", encoding="utf-8") as f:
+        f.write(body)
+
 
 def _pyinstaller_common(extra_args):
     """Return the PyInstaller command with the mandatory flags prepended."""
@@ -50,6 +112,7 @@ def build_windows():
         "--icon", "assets/margenheld-icon.ico",
     ])
     subprocess.run(cmd, check=True)
+    generate_third_party_notices()
 
     inno_compiler = _find_inno_compiler()
     if not inno_compiler:
@@ -69,6 +132,12 @@ def build_macos():
         "--osx-bundle-identifier", "com.margenheld.zeiterfassung",
     ])
     subprocess.run(cmd, check=True)
+    generate_third_party_notices()
+
+    # Notices in das App-Bundle legen, damit sie mit dem DMG ausgeliefert werden.
+    app_resources = os.path.join("dist", "Zeiterfassung.app", "Contents", "Resources")
+    if os.path.isdir(app_resources):
+        shutil.copy2(NOTICES_PATH, os.path.join(app_resources, "THIRD-PARTY-NOTICES.txt"))
 
     arch = platform.machine()
     dmg_name = f"Zeiterfassung-{VERSION}-{arch}.dmg"
@@ -100,6 +169,7 @@ def build_linux():
         "--onefile",
     ])
     subprocess.run(cmd, check=True)
+    generate_third_party_notices()
 
     if shutil.which("appimagetool") is None:
         print("appimagetool not found on PATH — skipping AppImage.")
@@ -114,6 +184,7 @@ def build_linux():
     os.chmod(os.path.join(appdir, "usr", "bin", "Zeiterfassung"), 0o755)
 
     shutil.copy2("assets/margenheld-icon.png", os.path.join(appdir, "margenheld-icon.png"))
+    shutil.copy2(NOTICES_PATH, os.path.join(appdir, "THIRD-PARTY-NOTICES.txt"))
 
     desktop = (
         "[Desktop Entry]\n"

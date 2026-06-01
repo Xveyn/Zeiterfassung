@@ -66,19 +66,27 @@ def open_entry_dialog(parent, date_str, storage, settings, on_change,
     dialog.bind("<Escape>", lambda _e: dialog.destroy())
 
     # --- Ist-Zeit ---
+    # Vorauswahl-Priorität beim Anlegen: vorhandener Ist-Eintrag → bestehende
+    # Reservierung → Standardzeit des Wochentags. Eine Reservierung überschreibt
+    # also die Standardzeiten, weil der Tag dann bereits konkret verplant ist.
     tk.Label(dialog, text="Start:", font=FONT, bg=BG, fg=TEXT).grid(
         row=0, column=0, padx=10, pady=8, sticky="w")
     weekday_key = WEEKDAY_KEYS[day.weekday()]
-    start_var = tk.StringVar(
-        value=entry["start"] if entry else settings.get(f"default_start_{weekday_key}")
-    )
+    if entry:
+        default_start = entry["start"]
+        default_end = entry["end"]
+    elif existing_reservation:
+        default_start = existing_reservation["start"]
+        default_end = existing_reservation["end"]
+    else:
+        default_start = settings.get(f"default_start_{weekday_key}")
+        default_end = settings.get(f"default_end_{weekday_key}")
+    start_var = tk.StringVar(value=default_start)
     dark_combo(dialog, start_var, TIME_VALUES).grid(row=0, column=1, padx=10, pady=8)
 
     tk.Label(dialog, text="Ende:", font=FONT, bg=BG, fg=TEXT).grid(
         row=1, column=0, padx=10, pady=8, sticky="w")
-    end_var = tk.StringVar(
-        value=entry["end"] if entry else settings.get(f"default_end_{weekday_key}")
-    )
+    end_var = tk.StringVar(value=default_end)
     dark_combo(dialog, end_var, TIME_VALUES).grid(row=1, column=1, padx=10, pady=8)
 
     tk.Label(dialog, text="Pause (Min):", font=FONT, bg=BG, fg=TEXT).grid(

@@ -15,3 +15,5 @@ build/
 .superpowers/
 .venv/
 .aider*
+credentials.lnk
+release-artifacts/

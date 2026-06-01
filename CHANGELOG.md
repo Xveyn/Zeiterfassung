@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.13.0 — 2026-06-01
+
+### Hinzugefügt
+- MIT-Lizenz: Das Repository steht jetzt explizit unter der MIT-Lizenz
+  (`LICENSE`), README mit Badge und Lizenzabschnitt. Der Build erzeugt zudem
+  automatisch eine `THIRD-PARTY-NOTICES.txt` (via `pip-licenses`) und liefert
+  sie in jedem Installer mit (Windows-Setup, macOS-App-Bundle, AppImage).
+
+### Geändert
+- Beim Anlegen einer Arbeitszeit an einem bereits reservierten Tag werden
+  Start/Ende mit den Reservierungszeiten vorbelegt statt mit den Standardzeiten
+  des Wochentags — eine Reservierung überschreibt also die Standardzeiten.
+
+### Behoben
+- Hover-Tooltip im Kalender blieb sichtbar über allen Fenstern hängen, wenn das
+  Hauptfenster ohne Mausbewegung minimiert (bzw. in den Infobereich geklappt)
+  oder der Kalender neu gerendert wurde. Das Tooltip schließt jetzt zusätzlich
+  bei minimiertem/weggeklapptem Fenster und beim Zerstören der Kalenderzelle.
+
 ## 1.12.2 — 2026-06-01
 
 ### Dokumentation
