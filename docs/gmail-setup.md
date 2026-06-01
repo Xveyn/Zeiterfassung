@@ -24,6 +24,7 @@
 4. Klicke **Speichern und fortfahren**
 5. Bei **Bereiche**: Klicke **Bereiche hinzufügen oder entfernen**
    - Suche nach `gmail.send` und aktiviere es
+   - Suche nach `userinfo.email` und aktiviere es (damit die App die Absender-Adresse automatisch aus dem Google-Konto übernimmt — non-sensitive, keine Verifizierung nötig)
    - **Aktualisieren** → **Speichern und fortfahren**
 6. Bei **Testnutzer**: Klicke **Nutzer hinzufügen**
    - Trage deine Gmail-Adresse ein

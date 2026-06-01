@@ -8,7 +8,10 @@ Spec-Ersatz — dient als Notizblock für Ideen, bevor sie in
 
 ## Arbeitszeiten an andere Mail teilen + importieren
 
-**Status:** geplant, noch nicht implementiert.
+**Status:** ✅ umgesetzt in v1.12.0 (2026-05-14). Implementierung in `src/share.py`,
+`src/dialogs/share_dialog.py` und `src/dialogs/import_dialog.py`; finale Spec unter
+[`docs/superpowers/specs/2026-05-18-share-entries-design.md`](docs/superpowers/specs/2026-05-18-share-entries-design.md).
+Die nachstehende Skizze ist nur noch historischer Kontext (Vor-Implementierungs-Stand).
 
 ### Idee
 

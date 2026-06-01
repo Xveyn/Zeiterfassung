@@ -105,6 +105,14 @@ Lokal: `pytest` aus dem Repo-Root. Alle Tests müssen vor dem PR-Merge grün sei
 - `src/settings.py` — Benutzereinstellungen mit Defaults
 - `src/report.py` — HTML-Mail und PDF (dark/light Theme), gruppiert pro ISO-Kalenderwoche; `xhtml2pdf`-Import ist **lazy** in `generate_pdf` (siehe Tests/CI)
 - `src/mail.py` — Gmail-API-Wrapper (OAuth2, `token.json` / `credentials.json`)
+- `src/drive.py` — Google-Drive-API-Wrapper für den Multi-Device-Sync (`appDataFolder`, Scope `drive.appdata`)
+- `src/sync.py` — Sync-Engine (pure Logik: LWW-Merge der Entries/Settings, Konflikterkennung); enthält ein **Duplikat** von `SYNCED_SETTING_KEYS` (muss konsistent zu `settings.py` bleiben)
+- `src/conflicts_store.py` — lokale JSON-Persistenz der Sync-Konfliktliste
+- `src/share.py` — Export/Import von Arbeitszeiten als Share-JSON (Teilen per Mail-Anhang)
+- `src/reservations.py` — Reservierungen (zukünftige Soll-Zeiten, eigenes Konzept neben Ist-Zeiten)
+- `src/reservations_sync.py` — Abgleich der Reservierungen mit einem Google Kalender
+- `src/gcal.py` — Google-Calendar-API-Wrapper (lazy Imports wie `drive.py`, wegen CI ohne `requirements.txt`)
+- `src/tray.py` — Infobereich-Icon (Minimize-to-Tray, Windows + macOS)
 - `src/time_utils.py` — Stundenberechnung, KW-Labels
 - `src/holidays_de.py` — Feiertags-Lookup (über `holidays`-Lib)
 - `src/paths.py` — `get_base_path()` dispatched über `platform.system()` und Frozen- vs. Repo-Modus

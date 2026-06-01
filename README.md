@@ -10,41 +10,54 @@ Desktop-App zur Erfassung von Arbeitszeiten mit Kalenderansicht, PDF-Report und 
 - **PDF-Report** — Automatische Generierung als druckfreundliches PDF
 - **E-Mail-Versand** — HTML-E-Mail mit PDF-Anhang über Gmail API (OAuth2)
 - **Multi-Device-Sync** — Optionale Synchronisation von Zeiteinträgen und Mail-Vorlagen über Google Drive (`appDataFolder`), inklusive manueller Konflikt-Auflösung wenn dasselbe Datum offline auf mehreren Geräten bearbeitet wurde
+- **Teilen & Importieren** — Eigene Arbeitszeiten als JSON-Anhang per Mail an eine zweite Person teilen; der Empfänger importiert sie mit Zeitraum-Filter und drei Konflikt-Modi (alles importieren / alles lokal / pro Tag entscheiden)
+- **Reservierungen & Google-Kalender** — Zukünftige Arbeitszeiten pro Tag reservieren (eigenes Konzept neben den Ist-Zeiten, im Kalender als violetter Eck-Punkt markiert); optionaler Abgleich mit einem wählbaren Google Kalender
 - **Zeitraumwahl** — Flexibler Datumsbereich für Reports
 - **Einstellungen** — E-Mail-Vorlagen mit Platzhaltern, Standardpause, Empfänger
 - **Autostart** — Optionaler minimierter Start bei Anmeldung (Windows, macOS, Linux)
 - **Update-Check** — Prüft beim Start einmal pro Tag auf neuere Releases und zeigt einen unaufdringlichen Banner mit Direkt-Download
 - **Dark Mode UI** — Modernes dunkles Design
-- **Standalone .exe** — Per PyInstaller als einzelne Datei paketierbar
+- **Cross-Platform-Installer** — Per PyInstaller gebaut, als Setup-Exe (Windows), DMG (macOS) und AppImage (Linux) paketierbar
 
 ## Projektstruktur
 
 ```
 Zeiterfassung/
 ├── src/
-│   ├── main.py          # Einstiegspunkt
-│   ├── ui.py            # Tkinter-GUI (Kalender, Dialoge, Einstellungen)
-│   ├── storage.py       # JSON-basierte Speicherung der Zeiteinträge
-│   ├── settings.py      # Einstellungen mit Standardwerten
-│   ├── report.py        # HTML- & PDF-Reportgenerierung
-│   ├── mail.py          # Gmail OAuth2-Authentifizierung & Versand
-│   ├── drive.py         # Google Drive API-Wrapper (Multi-Device-Sync)
-│   ├── sync.py          # Sync-Engine (pure Logik, LWW-Merge, Konflikterkennung)
+│   ├── main.py            # Einstiegspunkt
+│   ├── ui.py              # Tkinter-GUI (Kalender, Header, Banner-Updater)
+│   ├── dialogs/           # Modal-Dialoge (entry, send, settings, share, import, conflicts)
+│   ├── storage.py         # JSON-Persistenz der Zeiteinträge
+│   ├── settings.py        # Einstellungen mit Standardwerten
+│   ├── report.py          # HTML- & PDF-Reportgenerierung
+│   ├── mail.py            # Gmail OAuth2-Authentifizierung & Versand
+│   ├── drive.py           # Google Drive API-Wrapper (Multi-Device-Sync)
+│   ├── sync.py            # Sync-Engine (pure Logik, LWW-Merge, Konflikterkennung)
 │   ├── conflicts_store.py # Lokale Persistenz der Konfliktliste
-│   ├── autostart.py     # Plattformabhängiger Autostart (Windows/macOS/Linux)
-│   ├── updater.py       # GitHub-Releases-Check (stdlib-only, gedrosselt 1×/Tag)
-│   ├── time_utils.py    # Zeitberechnung und Validierung
-│   └── paths.py         # Pfadauflösung (Script- vs. Frozen-Modus)
-├── tests/               # pytest-Testdateien
+│   ├── share.py           # Export/Import von Arbeitszeiten als Share-JSON
+│   ├── reservations.py    # Reservierungen (zukünftige Soll-Zeiten)
+│   ├── reservations_sync.py # Abgleich der Reservierungen mit Google Kalender
+│   ├── gcal.py            # Google-Calendar-API-Wrapper
+│   ├── tray.py            # Infobereich-Icon (Minimize-to-Tray)
+│   ├── autostart.py       # Plattformabhängiger Autostart (Windows/macOS/Linux)
+│   ├── updater.py         # GitHub-Releases-Check (stdlib-only, gedrosselt 1×/Tag)
+│   ├── holidays_de.py     # Feiertags-Lookup (python-holidays)
+│   ├── time_utils.py      # Zeitberechnung und Validierung
+│   ├── logging_setup.py   # File-Logging + globaler Excepthook
+│   ├── platform_open.py   # os.startfile/open/xdg-open-Wrapper
+│   ├── theme.py           # Theme-/Font-Konstanten
+│   ├── tooltip.py         # Tooltip-Helfer
+│   ├── version.py         # Einzige Quelle der App-Version
+│   └── paths.py           # Pfadauflösung (Script- vs. Frozen-Modus)
+├── tests/                 # pytest-Testdateien
 ├── assets/
-│   └── margenheld-icon  # App-Icon (.png + .ico + .icns)
-├── docs/
-│   └── gmail-setup.md   # Gmail-Einrichtungsanleitung
-├── build.py             # PyInstaller-Buildskript
-├── Zeiterfassung.spec   # PyInstaller-Konfiguration
-├── requirements.txt     # Python-Abhängigkeiten
-├── settings.json        # Benutzereinstellungen (wird automatisch erstellt)
-└── zeiterfassung.json   # Gespeicherte Zeiteinträge (wird automatisch erstellt)
+│   └── margenheld-icon    # App-Icon (.png + .ico + .icns)
+├── docs/                  # Setup-Anleitung, Specs/Plans, Known Limitations
+├── build.py               # Plattform-Dispatcher für den PyInstaller-Build
+├── installer.iss          # Inno Setup Script (Windows-Installer)
+├── requirements.txt       # Python-Abhängigkeiten
+├── settings.json          # Benutzereinstellungen (wird automatisch erstellt)
+└── zeiterfassung.json     # Gespeicherte Zeiteinträge (wird automatisch erstellt)
 ```
 
 ## Installation
@@ -313,3 +326,14 @@ Speicherort je nach Plattform (siehe `src/paths.py`):
 | macOS (installiert) | `~/Library/Application Support/Zeiterfassung/` |
 | Linux (AppImage) | `$XDG_DATA_HOME/Zeiterfassung/` (Fallback `~/.local/share/Zeiterfassung/`) |
 | Entwicklung (Source) | Projekt-Root |
+
+> **Sicherheitshinweis:** `token.json` enthält im Klartext einen langlebigen
+> OAuth-Refresh-Token, der laufenden Zugriff auf dein Google-Konto (Gmail-Versand,
+> Drive-Sync, ggf. Kalender) gewährt. Unter macOS/Linux wird die Datei mit
+> `chmod 0600` nur für deinen Benutzer lesbar gemacht; unter Windows schützt sie
+> die ACL deines Benutzerprofils. **Wer den Daten-/Installationsordner kopiert,
+> sichert oder in die Cloud synchronisiert, nimmt diesen Token mit** — behandle
+> den Ordner entsprechend vertraulich und gib ihn nicht weiter. Bei Verdacht auf
+> Kompromittierung den Zugriff in den [Google-Kontoeinstellungen](https://myaccount.google.com/permissions)
+> entziehen und `token.json` löschen (die App startet beim nächsten Versand einen
+> neuen Anmelde-Flow).
