@@ -17,6 +17,7 @@ from src.time_utils import (
 from src.holidays_de import get_holidays
 from src.tooltip import attach_tooltip
 from src.mail import fetch_user_email, refresh_token_if_needed, TokenAuthError, TokenNetworkError
+from src.drive import DriveAuthError, DriveNetworkError
 from src.version import VERSION
 from src.updater import (
     check_latest_release,
@@ -40,6 +41,71 @@ from src.theme import (
     apply_dark_titlebar, themed_askyesno, themed_showinfo,
     icon_button, label_button, secondary_button, set_toggle_active, toggle_button,
 )
+
+
+def _classify_sync_error(error):
+    """Kategorisiert einen Google-Sync/Reconcile-Fehler als 'auth', 'network'
+    oder 'unknown'. `error` kann eine Exception oder ein String sein (der
+    Push-/Reconcile-Pfad liefert str(e), der Pull-Pfad das Exception-Objekt).
+    Der abgelaufene/widerrufene Token kommt als invalid_grant durch — sowohl
+    bei Drive als auch beim Kalender, da beide denselben OAuth-Token nutzen."""
+    text = str(error)
+    if (isinstance(error, DriveAuthError)
+            or "invalid_grant" in text
+            or "expired or revoked" in text):
+        return "auth"
+    if isinstance(error, DriveNetworkError):
+        return "network"
+    return "unknown"
+
+
+def _friendly_sync_message(error, tb=""):
+    """Mappt einen Drive-Sync-Fehler auf (Titel, Meldung) für die Messagebox.
+
+    Bekannte, erwartbare Fälle (abgelaufener/​widerrufener Token, fehlendes Netz)
+    bekommen eine verständliche Meldung OHNE Traceback. Nur bei wirklich
+    unerwarteten Fehlern bleibt der Traceback erhalten (CLAUDE.md: Fehler im
+    Sendepfad sichtbar machen)."""
+    kind = _classify_sync_error(error)
+
+    if kind == "auth":
+        return (
+            "Google-Verbindung abgelaufen",
+            "Die Verbindung zu Google Drive ist abgelaufen oder wurde "
+            "widerrufen.\n\nBitte verbinde die App neu: in den Einstellungen "
+            "die Synchronisation aus- und wieder einschalten und den "
+            "Google-Login erneut bestätigen.",
+            True,
+        )
+    if kind == "network":
+        return (
+            "Keine Internetverbindung",
+            "Die Synchronisation mit Google Drive ist fehlgeschlagen, weil "
+            "keine Verbindung zum Internet besteht.\n\nBitte prüfe deine "
+            "Verbindung und versuche es erneut.",
+            True,
+        )
+    detail = f"{error}\n\n{tb}" if tb else str(error)
+    return (
+        "Synchronisation fehlgeschlagen",
+        "Bei der Synchronisation mit Google Drive ist ein unerwarteter "
+        f"Fehler aufgetreten:\n\n{detail}",
+        False,
+    )
+
+
+def _show_sync_error(parent, error, tb="", suffix=""):
+    """Zeigt einen Sync-Fehler im passenden Stil: bekannte Fälle (Token/Netz)
+    als themed Info-Dialog (wie die Gmail-Token-Meldung), unerwartete Fehler
+    als `showerror` mit Traceback (CLAUDE.md). `suffix` wird optional angehängt."""
+    title, message, known = _friendly_sync_message(error, tb)
+    if suffix:
+        message = f"{message}\n\n{suffix}"
+    if known:
+        themed_showinfo(parent, title, message)
+    else:
+        messagebox.showerror(title, message)
+
 
 class App:
     def __init__(self, root, storage, settings, base_path=".", conflicts_store=None,
@@ -248,13 +314,26 @@ class App:
 
     def _on_reconcile_done(self, result):
         if not result.get("ok"):
-            messagebox.showerror(
-                "Google-Kalender-Abgleich fehlgeschlagen",
-                f"Die Reservierung wurde lokal gespeichert, der Kalender-Abgleich "
-                f"ist aber fehlgeschlagen:\n\n{result.get('error', '?')}\n\n"
-                f"{result.get('tb', '')}\n\n"
-                "Der Abgleich wird beim nächsten Start erneut versucht.",
-            )
+            error = result.get("error", "?")
+            if _classify_sync_error(error) == "auth":
+                themed_showinfo(
+                    self.root,
+                    "Google-Verbindung abgelaufen",
+                    "Die Reservierung wurde lokal gespeichert. Der "
+                    "Kalender-Abgleich ist fehlgeschlagen, weil die Verbindung "
+                    "zu Google abgelaufen oder widerrufen wurde.\n\nBitte "
+                    "verbinde die App in den Einstellungen neu (Google-Kalender "
+                    "aus- und wieder einschalten). Der Abgleich wird danach "
+                    "automatisch nachgeholt.",
+                )
+            else:
+                messagebox.showerror(
+                    "Google-Kalender-Abgleich fehlgeschlagen",
+                    f"Die Reservierung wurde lokal gespeichert, der Kalender-Abgleich "
+                    f"ist aber fehlgeschlagen:\n\n{error}\n\n"
+                    f"{result.get('tb', '')}\n\n"
+                    "Der Abgleich wird beim nächsten Start erneut versucht.",
+                )
         self._refresh()
 
     def _handle_update_check_result(self, release: "Release", newer: bool):
@@ -1102,10 +1181,7 @@ class App:
         self._update_sync_status_label()
 
     def on_sync_pull_error(self, error, tb=""):
-        import tkinter.messagebox as mb
-        detail = f"{error}\n\n{tb}" if tb else str(error)
-        mb.showerror("Synchronisation fehlgeschlagen",
-                      f"Beim Abrufen der Drive-Daten ist ein Fehler aufgetreten:\n\n{detail}")
+        _show_sync_error(self.root, error, tb)
         self._update_sync_status_label()
 
     def _update_sync_status_label(self):
@@ -1160,9 +1236,8 @@ class App:
 
     def _on_manual_sync_done(self, result):
         if not result.get("ok"):
-            import tkinter.messagebox as mb
-            detail = f"{result.get('error', '?')}\n\n{result.get('tb', '')}"
-            mb.showerror("Synchronisation", f"Synchronisation fehlgeschlagen:\n\n{detail}")
+            _show_sync_error(
+                self.root, result.get("error", "?"), result.get("tb", ""))
         # _refresh() re-renders the full calendar grid so newly detected conflict
         # markers appear immediately without requiring a manual view-change.
         self._refresh()
@@ -1194,12 +1269,10 @@ class App:
                 # CLAUDE.md: Fehler dürfen nicht silently verschluckt werden.
                 # Wir zeigen die Messagebox blockierend; User entscheidet, ob er
                 # die Daten nochmal woanders sichern will oder die App so schließt.
-                detail = f"{result.get('error', '?')}\n\n{result.get('tb', '')}"
-                messagebox.showerror(
-                    "Synchronisation beim Schließen fehlgeschlagen",
-                    f"Push zum Drive ist fehlgeschlagen:\n\n{detail}\n\n"
-                    "Lokale Daten bleiben erhalten und werden beim nächsten Start "
-                    "synchronisiert.",
+                _show_sync_error(
+                    self.root, result.get("error", "?"), result.get("tb", ""),
+                    suffix="Lokale Daten bleiben erhalten und werden beim "
+                           "nächsten Start synchronisiert.",
                 )
         if self._tray is not None:
             self._tray.stop()
