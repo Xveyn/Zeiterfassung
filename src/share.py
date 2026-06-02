@@ -1,13 +1,18 @@
 """Arbeitszeiten teilen + importieren — pure functions, kein UI-Import.
 
-Wire-Format (eigenständig, kein Sync-Doc-Re-Use):
+Wire-Format v2 (eigenständig, kein Sync-Doc-Re-Use):
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "kind": "zeiterfassung-share",
   "exported_at": "<UTC-ISO>",
   "exported_by": "<email or empty>",
-  "entries": {"YYYY-MM-DD": {"start": "HH:MM", "end": "HH:MM", "pause": int>=0}}
+  "entries":      {"YYYY-MM-DD": {"start": "HH:MM", "end": "HH:MM", "pause": int>=0}},
+  "reservations": {"YYYY-MM-DD": {"start": "HH:MM", "end": "HH:MM"}}
 }
+
+Beide Felder ("entries", "reservations") sind optional, aber mind. eines muss
+nicht-leer sein. v1-Dateien (nur "entries", Pflichtfeld) werden beim Lesen
+weiterhin akzeptiert (Abwärtskompatibilität).
 """
 
 import datetime
@@ -54,9 +59,9 @@ def _validate_date_key(date_str):
         raise ShareValidationError(f"Ungültiges Datum: {date_str!r}")
 
 
-def _check_keys(date_str, entry, expected_keys):
+def _check_keys(date_str, entry, expected_keys, label="Eintrag"):
     if not isinstance(entry, dict):
-        raise ShareValidationError(f"Eintrag {date_str} ist kein Objekt.")
+        raise ShareValidationError(f"{label} {date_str} ist kein Objekt.")
     keys = set(entry.keys())
     if keys != expected_keys:
         extras = sorted(keys - expected_keys)
@@ -66,7 +71,7 @@ def _check_keys(date_str, entry, expected_keys):
             parts.append(f"unbekannte Felder: {extras}")
         if missing:
             parts.append(f"fehlende Felder: {missing}")
-        raise ShareValidationError(f"Eintrag {date_str}: {'; '.join(parts)}")
+        raise ShareValidationError(f"{label} {date_str}: {'; '.join(parts)}")
 
 
 def _validate_entries(entries):
@@ -83,7 +88,7 @@ def _validate_entries(entries):
 def _validate_reservations(reservations):
     for date_str, entry in reservations.items():
         _validate_date_key(date_str)
-        _check_keys(date_str, entry, _RESERVATION_KEYS)
+        _check_keys(date_str, entry, _RESERVATION_KEYS, label="Reservierung")
         _validate_time(date_str, "Startzeit", entry["start"])
         _validate_time(date_str, "Endzeit", entry["end"])
 

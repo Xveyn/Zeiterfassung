@@ -320,8 +320,6 @@ def test_diff_range_none_bounds_unconstrained():
     assert diff["out_of_range"] == 0
 
 
-from unittest import mock
-
 from src.share import apply_import
 
 
@@ -388,7 +386,7 @@ def test_parse_v1_entries_only_still_accepted():
 
 def test_parse_v2_entries_only():
     doc = parse_share_doc(_v2(entries={"2026-05-14": {"start": "08:00", "end": "16:00", "pause": 0}}))
-    assert doc["entries"] != {}
+    assert doc["entries"] == {"2026-05-14": {"start": "08:00", "end": "16:00", "pause": 0}}
 
 
 def test_parse_v2_reservations_only():
@@ -401,7 +399,16 @@ def test_parse_v2_both():
         entries={"2026-05-14": {"start": "08:00", "end": "16:00", "pause": 0}},
         reservations={"2026-05-15": {"start": "09:00", "end": "12:00"}},
     ))
-    assert doc["entries"] and doc["reservations"]
+    assert doc["entries"] == {"2026-05-14": {"start": "08:00", "end": "16:00", "pause": 0}}
+    assert doc["reservations"] == {"2026-05-15": {"start": "09:00", "end": "12:00"}}
+
+
+def test_parse_v2_empty_entries_with_reservations_ok():
+    doc = parse_share_doc(_v2(
+        entries={},
+        reservations={"2026-05-14": {"start": "08:00", "end": "12:00"}},
+    ))
+    assert doc["reservations"] == {"2026-05-14": {"start": "08:00", "end": "12:00"}}
 
 
 def test_parse_v2_rejects_both_missing():
