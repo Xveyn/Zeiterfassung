@@ -132,9 +132,27 @@ zeigt **pro vorhandenem Typ einen Abschnitt** mit demselben Funktionsumfang wie
 heute für Arbeitszeiten:
 
 - gemeinsamer **Zeitraum-Filter** oben (gilt für beide Typen),
+- pro Typ eine **„… importieren"-Checkbox** als Master-Schalter des Abschnitts
+  (siehe unten),
 - pro Typ eine **Counts-Zeile** (neue / Konflikte / identisch / außerhalb),
 - pro Typ **Konflikt-Modi** (alles Import / alles lokal / pro Tag),
 - pro Typ ein **Pro-Tag-Modal** (`_PerDayDialog`) bei Modus „pro Tag".
+
+#### Typ-Auswahl beim Import (optional)
+
+Jeder Abschnitt hat eine **Checkbox „Arbeitszeiten importieren" bzw.
+„Reservierungen importieren"** als Master-Schalter. Ist sie **aus**, wird der
+gesamte Typ ignoriert — auch *neue* Tage (`additions`) werden dann nicht
+übernommen, und die Konflikt-Modi des Abschnitts sind ausgegraut. So kann der
+Empfänger z.B. nur die Arbeitszeiten übernehmen und die mitgelieferten
+Reservierungen komplett auslassen (und umgekehrt).
+
+- Default: Checkbox eines vorhandenen Typs ist **angehakt**.
+- Enthält die Datei nur einen Typ, ist dessen Checkbox trotzdem sichtbar, darf
+  aber nicht zu „nichts importieren" führen ohne Hinweis: Sind beim Klick auf
+  „Weiter" **beide** Master-Schalter aus (bzw. der einzige), erscheint die
+  bestehende Info „Nichts zu importieren".
+- Nur angehakte Typen durchlaufen Diff/Apply.
 
 „Weiter" verarbeitet zuerst Arbeitszeiten, dann Reservierungen (jeweils inkl.
 etwaigem Pro-Tag-Modal), und wendet danach beide an. Wird ein Pro-Tag-Modal
