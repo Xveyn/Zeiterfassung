@@ -1,4 +1,5 @@
-"""Modal-Dialog „Arbeitszeiten teilen": baut Share-Doc, sendet per Gmail."""
+"""Modal-Dialog „Teilen": baut Share-Doc für Arbeitszeiten und/oder
+Reservierungen, sendet per Gmail."""
 
 import logging
 import os
