@@ -478,3 +478,74 @@ def test_build_doc_both():
     assert doc["entries"] and doc["reservations"]
     parsed = parse_share_doc(serialize_share_doc(doc))
     assert parsed["entries"] and parsed["reservations"]
+
+
+from src.share import (
+    apply_reservation_import,
+    diff_reservations_against_local,
+)
+
+
+def test_diff_reservations_additions_and_conflicts():
+    store = _FakeResStore({"2026-05-14": {"start": "08:00", "end": "12:00"}})
+    share = {
+        "2026-05-14": {"start": "09:00", "end": "12:00"},  # conflict
+        "2026-05-16": {"start": "10:00", "end": "14:00"},  # addition
+    }
+    diff = diff_reservations_against_local(share, store)
+    assert [d for d, _ in diff["additions"]] == ["2026-05-16"]
+    assert [d for d, _l, _s in diff["conflicts"]] == ["2026-05-14"]
+
+
+def test_diff_reservations_untouched():
+    store = _FakeResStore({"2026-05-14": {"start": "08:00", "end": "12:00"}})
+    share = {"2026-05-14": {"start": "08:00", "end": "12:00"}}
+    diff = diff_reservations_against_local(share, store)
+    assert diff["untouched"] == ["2026-05-14"]
+    assert diff["conflicts"] == []
+
+
+def test_diff_reservations_range_filter():
+    store = _FakeResStore({})
+    share = {
+        "2026-05-10": {"start": "08:00", "end": "12:00"},
+        "2026-05-20": {"start": "08:00", "end": "12:00"},
+    }
+    diff = diff_reservations_against_local(share, store, date_from=_dt.date(2026, 5, 15))
+    assert [d for d, _ in diff["additions"]] == ["2026-05-20"]
+    assert diff["out_of_range"] == 1
+
+
+class _RecordingResStore:
+    def __init__(self):
+        self.saved = []
+
+    def save(self, date_str, start, end):
+        self.saved.append((date_str, start, end))
+
+
+def test_apply_reservation_import_calls_save_per_decision():
+    store = _RecordingResStore()
+    apply_reservation_import(store, [
+        {"date": "2026-05-14", "entry": {"start": "08:00", "end": "12:00"}},
+        {"date": "2026-05-15", "entry": {"start": "09:00", "end": "13:00"}},
+    ])
+    assert store.saved == [
+        ("2026-05-14", "08:00", "12:00"),
+        ("2026-05-15", "09:00", "13:00"),
+    ]
+
+
+def test_apply_reservation_import_integration_keeps_event_id(tmp_path):
+    from src.reservations import ReservationStore
+    store = ReservationStore(str(tmp_path / "r.json"))
+    store.save("2026-05-14", "08:00", "12:00")
+    # gcal_event_id simulieren
+    raw = store.get_all_raw()
+    raw["2026-05-14"]["gcal_event_id"] = "evt-1"
+    store.apply_reconciled(raw)
+    apply_reservation_import(store, [
+        {"date": "2026-05-14", "entry": {"start": "10:00", "end": "14:00"}},
+    ])
+    assert store.get("2026-05-14") == {"start": "10:00", "end": "14:00"}
+    assert store.get_all_raw()["2026-05-14"]["gcal_event_id"] == "evt-1"

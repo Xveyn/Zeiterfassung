@@ -176,28 +176,26 @@ def _entries_equal(a, b):
             and a.get("pause", 0) == b.get("pause", 0))
 
 
-def diff_share_against_local(share_entries, storage, date_from=None, date_to=None):
-    """Vergleicht share_entries mit storage.get_all().
+def _reservations_equal(a, b):
+    return a.get("start") == b.get("start") and a.get("end") == b.get("end")
 
-    date_from/date_to: optional datetime.date, inclusive auf beiden Seiten.
-    None = unbeschränkt. Einträge außerhalb fallen in 'out_of_range'-Count
-    und tauchen sonst nirgends auf.
 
-    Returns dict mit 'additions' (list of (date, entry)), 'conflicts'
-    (list of (date, local_entry, share_entry)), 'untouched' (list of date)
-    und 'out_of_range' (int).
+def _diff_records(share_records, local_snapshot, equal_fn, date_from=None, date_to=None):
+    """Typ-neutraler Diff zwischen Share-Records und lokalem Snapshot.
+
+    share_records / local_snapshot: {date: record}.
+    equal_fn(local_record, share_record) -> bool.
+    Rückgabe: additions / conflicts / untouched / out_of_range.
     """
     additions = []
     conflicts = []
     untouched = []
     out_of_range = 0
-    local = storage.get_all()
 
-    for date_str in sorted(share_entries.keys()):
+    for date_str in sorted(share_records.keys()):
         try:
             d = datetime.date.fromisoformat(date_str)
         except ValueError:
-            # parse_share_doc hat das schon abgefangen — defensive Skip.
             continue
         if date_from is not None and d < date_from:
             out_of_range += 1
@@ -206,14 +204,14 @@ def diff_share_against_local(share_entries, storage, date_from=None, date_to=Non
             out_of_range += 1
             continue
 
-        share_entry = share_entries[date_str]
-        local_entry = local.get(date_str)
-        if local_entry is None:
-            additions.append((date_str, share_entry))
-        elif _entries_equal(local_entry, share_entry):
+        share_rec = share_records[date_str]
+        local_rec = local_snapshot.get(date_str)
+        if local_rec is None:
+            additions.append((date_str, share_rec))
+        elif equal_fn(local_rec, share_rec):
             untouched.append(date_str)
         else:
-            conflicts.append((date_str, local_entry, share_entry))
+            conflicts.append((date_str, local_rec, share_rec))
 
     return {
         "additions": additions,
@@ -221,6 +219,29 @@ def diff_share_against_local(share_entries, storage, date_from=None, date_to=Non
         "untouched": untouched,
         "out_of_range": out_of_range,
     }
+
+
+def diff_share_against_local(share_entries, storage, date_from=None, date_to=None):
+    """Arbeitszeiten-Diff (Wrapper, unverändertes Verhalten)."""
+    return _diff_records(
+        share_entries, storage.get_all(), _entries_equal, date_from, date_to)
+
+
+def diff_reservations_against_local(share_reservations, reservation_store,
+                                    date_from=None, date_to=None):
+    """Reservierungs-Diff gegen den ReservationStore-Snapshot ({date:{start,end}})."""
+    return _diff_records(
+        share_reservations, reservation_store.get_all(),
+        _reservations_equal, date_from, date_to)
+
+
+def apply_reservation_import(reservation_store, decisions):
+    """Schreibt importierte Reservierungen in den Store. save() setzt
+    modified_at neu und behält eine vorhandene gcal_event_id, sodass der
+    nächste Kalender-Reconcile das Event aktualisiert statt zu duplizieren."""
+    for d in decisions:
+        entry = d["entry"]
+        reservation_store.save(d["date"], entry["start"], entry["end"])
 
 
 def apply_import(storage, decisions):
