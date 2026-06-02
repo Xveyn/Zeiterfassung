@@ -1148,7 +1148,8 @@ class App:
             marker.config(bg=bg)
 
     def _delete_entry(self, date_str):
-        if themed_askyesno(self.root, "Eintrag löschen", f"Eintrag für {date_str} löschen?"):
+        if themed_askyesno(self.root, "Eintrag löschen",
+                           f"Eintrag für {format_iso_date(date_str)} löschen?"):
             self.storage.delete(date_str)
             self._refresh()
 

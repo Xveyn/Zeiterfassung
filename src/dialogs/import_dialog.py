@@ -168,7 +168,8 @@ class _ImportSummaryDialog:
         tk.Label(
             self.top,
             text=f"Voller Bereich der Datei: "
-                 f"{self.file_min.isoformat()} bis {self.file_max.isoformat()}",
+                 f"{self.file_min.strftime('%d.%m.%Y')} bis "
+                 f"{self.file_max.strftime('%d.%m.%Y')}",
             font=FONT_SMALL, bg=BG, fg=TEXT_MUTED,
         ).grid(row=row, column=0, columnspan=6, padx=10, pady=(0, 8), sticky="w")
         row += 1
