@@ -145,16 +145,24 @@ def parse_share_doc(raw_bytes):
     return doc
 
 
-def build_share_doc(storage, sender_email):
-    """Baut das Share-Doc aus dem lokalen Storage. Tombstones werden via
-    storage.get_all() bereits ausgefiltert."""
-    return {
+def build_share_doc(storage, sender_email, *, reservation_store=None,
+                    include_entries=True, include_reservations=False):
+    """Baut das Share-Doc. Tombstones sind via get_all() bereits gefiltert.
+
+    include_entries / include_reservations steuern, welche Typen mitgehen.
+    reservations werden nur aufgenommen, wenn ein reservation_store übergeben
+    wurde."""
+    doc = {
         "schema_version": SCHEMA_VERSION,
         "kind": KIND,
         "exported_at": _utc_now_iso(),
         "exported_by": sender_email or "",
-        "entries": dict(storage.get_all()),
     }
+    if include_entries:
+        doc["entries"] = dict(storage.get_all())
+    if include_reservations and reservation_store is not None:
+        doc["reservations"] = dict(reservation_store.get_all())
+    return doc
 
 
 def serialize_share_doc(doc):

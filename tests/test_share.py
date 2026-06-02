@@ -439,3 +439,42 @@ def test_parse_v2_reservation_rejects_bad_time():
 def test_parse_v2_reservation_rejects_bad_date_key():
     with pytest.raises(ShareValidationError, match="Datum"):
         parse_share_doc(_v2(reservations={"not-a-date": {"start": "08:00", "end": "12:00"}}))
+
+
+class _FakeResStore:
+    def __init__(self, data):
+        self._d = data
+
+    def get_all(self):
+        return dict(self._d)
+
+
+def test_build_doc_entries_only_omits_reservations():
+    storage = _FakeStorage({"2026-05-14": {"start": "08:00", "end": "16:00", "pause": 0}})
+    doc = build_share_doc(storage, "a@b.de")
+    assert "entries" in doc
+    assert "reservations" not in doc
+    assert doc["schema_version"] == 2
+
+
+def test_build_doc_reservations_only():
+    storage = _FakeStorage({"2026-05-14": {"start": "08:00", "end": "16:00", "pause": 0}})
+    res = _FakeResStore({"2026-05-15": {"start": "09:00", "end": "12:00"}})
+    doc = build_share_doc(
+        storage, "a@b.de", reservation_store=res,
+        include_entries=False, include_reservations=True,
+    )
+    assert "entries" not in doc
+    assert doc["reservations"] == {"2026-05-15": {"start": "09:00", "end": "12:00"}}
+
+
+def test_build_doc_both():
+    storage = _FakeStorage({"2026-05-14": {"start": "08:00", "end": "16:00", "pause": 0}})
+    res = _FakeResStore({"2026-05-15": {"start": "09:00", "end": "12:00"}})
+    doc = build_share_doc(
+        storage, "a@b.de", reservation_store=res,
+        include_entries=True, include_reservations=True,
+    )
+    assert doc["entries"] and doc["reservations"]
+    parsed = parse_share_doc(serialize_share_doc(doc))
+    assert parsed["entries"] and parsed["reservations"]
