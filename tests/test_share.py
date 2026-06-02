@@ -549,3 +549,39 @@ def test_apply_reservation_import_integration_keeps_event_id(tmp_path):
     ])
     assert store.get("2026-05-14") == {"start": "10:00", "end": "14:00"}
     assert store.get_all_raw()["2026-05-14"]["gcal_event_id"] == "evt-1"
+
+
+def test_apply_reservation_import_empty_is_noop():
+    store = _RecordingResStore()
+    apply_reservation_import(store, [])
+    assert store.saved == []
+
+
+def test_apply_reservation_import_then_reconcile_plans_update(tmp_path):
+    """End-to-End-Garantie: ein importiertes Reservierungs-Update wird beim
+    nächsten Kalender-Reconcile als update für das bestehende Event geplant
+    (kein Duplikat, gleiche gcal_event_id)."""
+    from src.reservations import ReservationStore
+    from src.reservations_sync import merge_reservations
+
+    store = ReservationStore(str(tmp_path / "r.json"))
+    store.save("2026-05-14", "08:00", "12:00")
+    raw = store.get_all_raw()
+    raw["2026-05-14"]["gcal_event_id"] = "evt-1"
+    store.apply_reconciled(raw)
+
+    # Import ändert die Zeiten (modified_at = jetzt, jünger als der Remote-Stand).
+    apply_reservation_import(store, [
+        {"date": "2026-05-14", "entry": {"start": "10:00", "end": "14:00"}},
+    ])
+
+    remote_events = [{
+        "date": "2026-05-14", "start": "08:00", "end": "12:00",
+        "modified_at": "2020-01-01T00:00:00Z", "event_id": "evt-1",
+    }]
+    result = merge_reservations(
+        store.get_all_raw(), remote_events, watermark="2020-01-01T00:00:00Z")
+    updates = result["plan"]["update"]
+    assert [u["event_id"] for u in updates] == ["evt-1"]
+    assert result["plan"]["create"] == []
+    assert updates[0]["start"] == "10:00" and updates[0]["end"] == "14:00"
