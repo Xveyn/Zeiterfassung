@@ -1,5 +1,6 @@
-"""Modal-Dialog „Arbeitszeiten importieren": Datei-Pick, Summary mit
-Zeitraum-Filter + Konflikt-Modi, optional Pro-Tag-Modal, atomarer Apply."""
+"""Modal-Dialog „Daten importieren": Datei-Pick, je Datentyp
+(Arbeitszeiten/Reservierungen) ein Abschnitt mit Master-Schalter, Zeitraum-
+Filter und Konflikt-Modi, optional Pro-Tag-Modal, atomarer Apply."""
 
 import calendar
 import datetime
@@ -11,6 +12,8 @@ from tkinter import filedialog, messagebox
 from src.share import (
     ShareValidationError,
     apply_import,
+    apply_reservation_import,
+    diff_reservations_against_local,
     diff_share_against_local,
     parse_share_doc,
 )
@@ -22,9 +25,9 @@ from src.theme import (
 )
 
 
-def open_import_dialog(parent, storage, settings, on_change):
-    """Startet den Import-Flow. on_change wird bei erfolgreichem Apply aufgerufen
-    (damit der Kalender re-rendert)."""
+def open_import_dialog(parent, storage, settings, on_change, reservation_store=None):
+    """Startet den Import-Flow. on_change wird bei erfolgreichem Apply
+    aufgerufen. reservation_store=None → Reservierungen werden ignoriert."""
     path = filedialog.askopenfilename(
         parent=parent,
         title="Share-Datei auswählen",
@@ -38,10 +41,7 @@ def open_import_dialog(parent, storage, settings, on_change):
             raw = f.read()
     except OSError as e:
         messagebox.showerror(
-            "Datei nicht lesbar",
-            f"{type(e).__name__}: {e}",
-            parent=parent,
-        )
+            "Datei nicht lesbar", f"{type(e).__name__}: {e}", parent=parent)
         return
 
     try:
@@ -54,33 +54,51 @@ def open_import_dialog(parent, storage, settings, on_change):
         )
         return
 
-    share_entries = doc["entries"]
-    if not share_entries:
+    entries = doc.get("entries") or {}
+    reservations = doc.get("reservations") or {}
+    if reservation_store is None:
+        reservations = {}
+
+    if not entries and not reservations:
         messagebox.showinfo(
             "Leere Datei",
-            "Die Datei enthält keine Einträge.",
+            "Die Datei enthält keine importierbaren Daten.",
             parent=parent,
         )
         return
 
-    dates = sorted(datetime.date.fromisoformat(d) for d in share_entries.keys())
-    file_min, file_max = dates[0], dates[-1]
+    all_dates = sorted(
+        datetime.date.fromisoformat(d)
+        for d in (set(entries.keys()) | set(reservations.keys()))
+    )
+    file_min, file_max = all_dates[0], all_dates[-1]
 
-    _ImportSummaryDialog(parent, storage, doc, file_min, file_max, on_change).show()
+    _ImportSummaryDialog(
+        parent, storage, reservation_store, settings, doc,
+        entries, reservations, file_min, file_max, on_change,
+    ).show()
 
 
 class _ImportSummaryDialog:
-    def __init__(self, parent, storage, doc, file_min, file_max, on_change):
+    def __init__(self, parent, storage, reservation_store, settings, doc,
+                 entries, reservations, file_min, file_max, on_change):
         self.parent = parent
         self.storage = storage
+        self.reservation_store = reservation_store
+        self.settings = settings
         self.doc = doc
-        self.share_entries = doc["entries"]
         self.file_min = file_min
         self.file_max = file_max
         self.on_change = on_change
 
+        self.sections = []
+        if entries:
+            self.sections.append(self._make_section("entries", "Arbeitszeiten", entries, True))
+        if reservations:
+            self.sections.append(self._make_section("reservations", "Reservierungen", reservations, False))
+
         self.top = tk.Toplevel(parent)
-        self.top.title("Arbeitszeiten importieren")
+        self.top.title("Daten importieren")
         self.top.resizable(False, False)
         self.top.grab_set()
         self.top.focus_set()
@@ -95,8 +113,27 @@ class _ImportSummaryDialog:
         self._build()
         center_dialog_on_parent(self.top, parent)
 
+    @staticmethod
+    def _make_section(key, label, records, has_pause):
+        return {
+            "key": key,
+            "label": label,
+            "records": records,
+            "has_pause": has_pause,
+            "enabled": tk.BooleanVar(value=True),
+            "mode": tk.StringVar(value="import"),
+            "counts_label": None,
+            "radios": [],
+        }
+
     def show(self):
         self.top.wait_window()
+
+    def _diff_for(self, section, d_from, d_to):
+        if section["key"] == "entries":
+            return diff_share_against_local(section["records"], self.storage, d_from, d_to)
+        return diff_reservations_against_local(
+            section["records"], self.reservation_store, d_from, d_to)
 
     def _build(self):
         row = 0
@@ -135,28 +172,50 @@ class _ImportSummaryDialog:
         ).grid(row=row, column=0, columnspan=6, padx=10, pady=(0, 8), sticky="w")
         row += 1
 
-        self.counts_label = tk.Label(
-            self.top, text="", font=FONT, bg=BG, fg=TEXT, justify="left",
-        )
-        self.counts_label.grid(row=row, column=0, columnspan=6, padx=10, pady=(4, 4), sticky="w")
-        row += 1
-
-        tk.Label(
-            self.top, text="Konflikt-Behandlung:", font=FONT, bg=BG, fg=TEXT,
-        ).grid(row=row, column=0, columnspan=6, padx=10, pady=(8, 0), sticky="w")
-        row += 1
-
-        self.mode_var = tk.StringVar(value="import")
-        for mode_value, mode_label in [
-            ("import", "Alles vom Import übernehmen"),
-            ("local", "Alles lokal behalten"),
-            ("per_day", "Pro Tag entscheiden"),
-        ]:
-            tk.Radiobutton(
-                self.top, text=mode_label, variable=self.mode_var, value=mode_value,
+        for section in self.sections:
+            tk.Checkbutton(
+                self.top, text=f"{section['label']} importieren",
+                variable=section["enabled"], command=self._on_toggle_section,
                 font=FONT, bg=BG, fg=TEXT, selectcolor=CELL_BG,
                 activebackground=BG, activeforeground=TEXT,
-            ).grid(row=row, column=0, columnspan=6, padx=20, pady=0, sticky="w")
+            ).grid(row=row, column=0, columnspan=6, padx=10, pady=(10, 0), sticky="w")
+            row += 1
+
+            counts = tk.Label(self.top, text="", font=FONT, bg=BG, fg=TEXT, justify="left")
+            counts.grid(row=row, column=0, columnspan=6, padx=24, pady=(2, 2), sticky="w")
+            section["counts_label"] = counts
+            row += 1
+
+            tk.Label(
+                self.top, text="Konflikt-Behandlung:", font=FONT_SMALL,
+                bg=BG, fg=TEXT_MUTED,
+            ).grid(row=row, column=0, columnspan=6, padx=24, pady=(2, 0), sticky="w")
+            row += 1
+
+            section["radios"] = []
+            for mode_value, mode_label in [
+                ("import", "Alles vom Import übernehmen"),
+                ("local", "Alles lokal behalten"),
+                ("per_day", "Pro Tag entscheiden"),
+            ]:
+                rb = tk.Radiobutton(
+                    self.top, text=mode_label, variable=section["mode"],
+                    value=mode_value, font=FONT_SMALL, bg=BG, fg=TEXT,
+                    selectcolor=CELL_BG, activebackground=BG, activeforeground=TEXT,
+                )
+                rb.grid(row=row, column=0, columnspan=6, padx=40, pady=0, sticky="w")
+                section["radios"].append(rb)
+                row += 1
+
+        if (any(s["key"] == "reservations" for s in self.sections)
+                and not self.settings.get("gcal_enabled")):
+            tk.Label(
+                self.top,
+                text="Hinweis: Reservierungen werden sichtbar und mit dem "
+                     "Kalender\nabgeglichen, sobald der Google-Kalender-Sync "
+                     "in den Einstellungen aktiviert ist.",
+                font=FONT_SMALL, bg=BG, fg=TEXT_MUTED, justify="left",
+            ).grid(row=row, column=0, columnspan=6, padx=10, pady=(8, 4), sticky="w")
             row += 1
 
         btn_frame = tk.Frame(self.top, bg=BG)
@@ -164,6 +223,7 @@ class _ImportSummaryDialog:
         primary_button(btn_frame, "Weiter", self._on_next).pack(side=tk.LEFT, padx=5)
         secondary_button(btn_frame, "Abbrechen", self.top.destroy).pack(side=tk.LEFT, padx=5)
 
+        self._on_toggle_section()
         self._recompute_counts()
 
     def _build_date_row(self, row, label_text, default_date):
@@ -173,14 +233,14 @@ class _ImportSummaryDialog:
         day_var = tk.StringVar(value=str(default_date.day))
         max_day = calendar.monthrange(default_date.year, default_date.month)[1]
         day_cb = dark_combo(self.top, day_var,
-                             [str(d) for d in range(1, max_day + 1)], width=3)
+                            [str(d) for d in range(1, max_day + 1)], width=3)
         day_cb.grid(row=row, column=1, padx=2, pady=4)
 
         tk.Label(self.top, text=".", font=FONT, bg=BG, fg=TEXT).grid(row=row, column=2)
 
         month_var = tk.StringVar(value=str(default_date.month))
         dark_combo(self.top, month_var,
-                    [str(m) for m in range(1, 13)], width=3).grid(
+                   [str(m) for m in range(1, 13)], width=3).grid(
             row=row, column=3, padx=2, pady=4)
 
         tk.Label(self.top, text=".", font=FONT, bg=BG, fg=TEXT).grid(row=row, column=4)
@@ -225,61 +285,82 @@ class _ImportSummaryDialog:
             return None, None
         return d_from, d_to
 
-    def _compute_diff(self):
-        d_from, d_to = self._get_range()
-        if d_from is None:
-            return None
-        return diff_share_against_local(
-            self.share_entries, self.storage,
-            date_from=d_from, date_to=d_to,
-        )
+    def _on_toggle_section(self):
+        for section in self.sections:
+            state = "normal" if section["enabled"].get() else "disabled"
+            for rb in section["radios"]:
+                rb.config(state=state)
+        self._recompute_counts()
 
     def _recompute_counts(self):
-        diff = self._compute_diff()
-        if diff is None:
-            self.counts_label.config(
-                text="(Von-Datum muss vor Bis-Datum liegen)",
-                fg=TEXT_MUTED,
+        d_from, d_to = self._get_range()
+        for section in self.sections:
+            label = section["counts_label"]
+            if label is None:
+                continue
+            if not section["enabled"].get():
+                label.config(text="(übersprungen)", fg=TEXT_MUTED)
+                continue
+            if d_from is None:
+                label.config(text="(Von-Datum muss vor Bis-Datum liegen)", fg=TEXT_MUTED)
+                continue
+            diff = self._diff_for(section, d_from, d_to)
+            label.config(
+                text=(
+                    f"• {len(diff['additions'])} neu  "
+                    f"• {len(diff['conflicts'])} Konflikte  "
+                    f"• {len(diff['untouched'])} identisch  "
+                    f"• {diff['out_of_range']} außerhalb"
+                ),
+                fg=TEXT,
             )
-            return
-        text = (
-            f"• {len(diff['additions'])} neue Tage werden importiert\n"
-            f"• {len(diff['conflicts'])} Tage haben Konflikte\n"
-            f"• {len(diff['untouched'])} Tage sind identisch (übersprungen)\n"
-            f"• {diff['out_of_range']} Tage außerhalb des Zeitraums (ignoriert)"
-        )
-        self.counts_label.config(text=text, fg=TEXT)
 
     def _on_next(self):
-        diff = self._compute_diff()
-        if diff is None:
+        d_from, d_to = self._get_range()
+        if d_from is None:
             messagebox.showerror(
                 "Ungültiger Zeitraum",
                 "Das Von-Datum muss vor dem Bis-Datum liegen.",
                 parent=self.top,
             )
             return
-        if not diff["additions"] and not diff["conflicts"]:
+
+        planned = []  # list of (apply_fn, decisions)
+        for section in self.sections:
+            if not section["enabled"].get():
+                continue
+            diff = self._diff_for(section, d_from, d_to)
+            if not diff["additions"] and not diff["conflicts"]:
+                continue
+            mode = section["mode"].get()
+            if mode == "import":
+                decisions = self._decisions_from(diff, take_import_for_conflicts=True)
+            elif mode == "local":
+                decisions = self._decisions_from(diff, take_import_for_conflicts=False)
+            else:  # per_day
+                if not diff["conflicts"]:
+                    decisions = self._decisions_from(diff, take_import_for_conflicts=True)
+                else:
+                    decisions = _PerDayDialog(
+                        self.top, diff, section["label"], section["has_pause"]).show()
+                    if decisions is None:
+                        return  # Abbruch → atomar nichts tun
+            if not decisions:
+                continue
+            if section["key"] == "entries":
+                planned.append((lambda dec: apply_import(self.storage, dec), decisions))
+            else:
+                planned.append((lambda dec: apply_reservation_import(self.reservation_store, dec), decisions))
+
+        if not planned:
             messagebox.showinfo(
                 "Nichts zu importieren",
-                "Im gewählten Zeitraum sind alle Einträge bereits identisch.",
+                "Im gewählten Zeitraum gibt es nichts zu übernehmen.",
                 parent=self.top,
             )
             return
 
-        mode = self.mode_var.get()
-        if mode == "import":
-            decisions = self._decisions_from(diff, take_import_for_conflicts=True)
-        elif mode == "local":
-            decisions = self._decisions_from(diff, take_import_for_conflicts=False)
-        else:  # per_day
-            if not diff["conflicts"]:
-                decisions = self._decisions_from(diff, take_import_for_conflicts=True)
-            else:
-                decisions = _PerDayDialog(self.top, diff).show()
-                if decisions is None:
-                    return  # User abgebrochen → atomar nichts tun
-        self._apply(decisions)
+        self._apply(planned)
 
     @staticmethod
     def _decisions_from(diff, *, take_import_for_conflicts):
@@ -290,9 +371,12 @@ class _ImportSummaryDialog:
             ]
         return decisions
 
-    def _apply(self, decisions):
+    def _apply(self, planned):
+        total = 0
         try:
-            apply_import(self.storage, decisions)
+            for apply_fn, decisions in planned:
+                apply_fn(decisions)
+                total += len(decisions)
         except Exception as e:
             logging.getLogger(__name__).exception("Import fehlgeschlagen")
             messagebox.showerror(
@@ -306,20 +390,21 @@ class _ImportSummaryDialog:
         themed_showinfo(
             self.parent,
             "Importiert",
-            f"{len(decisions)} Einträge wurden importiert.",
+            f"{total} Einträge wurden importiert.",
         )
 
 
 class _PerDayDialog:
     """Modal mit Pro-Tag-Wahl (lokal vs. import). Liefert decisions oder None
-    bei Abbruch."""
+    bei Abbruch. has_pause steuert die Anzeige der Pause (Reservierungen ohne)."""
 
-    def __init__(self, parent, diff):
+    def __init__(self, parent, diff, type_label="Arbeitszeiten", has_pause=True):
         self.diff = diff
+        self.has_pause = has_pause
         self._result = None
 
         self.top = tk.Toplevel(parent)
-        self.top.title("Pro Tag entscheiden")
+        self.top.title(f"Pro Tag entscheiden — {type_label}")
         self.top.transient(parent)
         self.top.grab_set()
         self.top.focus_set()
@@ -335,6 +420,11 @@ class _PerDayDialog:
     def show(self):
         self.top.wait_window()
         return self._result
+
+    def _fmt(self, rec):
+        if self.has_pause:
+            return f"{rec['start']}—{rec['end']} (P{rec.get('pause', 0)})"
+        return f"{rec['start']}—{rec['end']}"
 
     def _build(self):
         tk.Label(
@@ -361,14 +451,12 @@ class _PerDayDialog:
             ).grid(row=i, column=0, padx=4, pady=2, sticky="w")
 
             tk.Label(
-                list_frame,
-                text=f"Lokal: {local['start']}—{local['end']} (P{local.get('pause', 0)})",
+                list_frame, text=f"Lokal: {self._fmt(local)}",
                 font=FONT_SMALL, bg=BG, fg=TEXT_MUTED, anchor="w",
             ).grid(row=i, column=1, padx=4, pady=2, sticky="w")
 
             tk.Label(
-                list_frame,
-                text=f"Import: {shared['start']}—{shared['end']} (P{shared.get('pause', 0)})",
+                list_frame, text=f"Import: {self._fmt(shared)}",
                 font=FONT_SMALL, bg=BG, fg=TEXT_MUTED, anchor="w",
             ).grid(row=i, column=2, padx=4, pady=2, sticky="w")
 
