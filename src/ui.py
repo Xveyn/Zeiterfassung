@@ -945,7 +945,7 @@ class App:
         probe_width = 12 if wide_cells else 8
         entry_time_font = FONT if wide_cells else FONT_TINY
         holiday_name_font = FONT if wide_cells else FONT_SMALL
-        probe = tk.Label(new_frame, text="", font=FONT, width=probe_width, height=5)
+        probe = tk.Label(new_frame, text="", font=FONT, width=probe_width, height=3)
         probe.update_idletasks()
         cell_size = (probe.winfo_reqwidth(), probe.winfo_reqheight())
         probe.destroy()

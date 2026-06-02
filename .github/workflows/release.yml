@@ -16,8 +16,8 @@ jobs:
     outputs:
       version: ${{ steps.version.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.10'
 
@@ -42,8 +42,8 @@ jobs:
     needs: pre-check
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.10'
       - name: Install dependencies
@@ -53,7 +53,7 @@ jobs:
         run: choco install innosetup -y --no-progress
       - name: Build
         run: python build.py
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: windows
           path: dist/Zeiterfassung_Setup.exe
@@ -62,8 +62,8 @@ jobs:
     needs: pre-check
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.10'
       - name: Install dependencies
@@ -72,7 +72,7 @@ jobs:
         run: brew install create-dmg
       - name: Build
         run: python build.py
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: macos-arm
           path: dist/Zeiterfassung-*-arm64.dmg
@@ -81,8 +81,8 @@ jobs:
     needs: pre-check
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.10'
       - name: Install system dependencies
@@ -98,7 +98,7 @@ jobs:
         run: pip install -r requirements.txt pyinstaller pip-licenses
       - name: Build
         run: python build.py
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: linux
           path: dist/Zeiterfassung-*-x86_64.AppImage
@@ -109,9 +109,9 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: dist
           merge-multiple: true

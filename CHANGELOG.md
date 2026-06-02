@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.13.1 — 2026-06-02
+
+### Behoben
+- Wochenansicht: Die Tageszellen waren höher als in der Monatsansicht. Beide
+  Ansichten rendern jetzt gleich hohe Zellen.
+
+### Geändert
+- Copyright-Halter in der MIT-Lizenz auf „MargenHeld GmbH" präzisiert.
+
+### Intern
+- GitHub-Actions-Workflows auf Node-24-Runtime angehoben (`checkout@v6`,
+  `setup-python@v6`, `upload-artifact@v7`, `download-artifact@v8`), bevor
+  GitHub Node 20 zum 16.09.2026 von den Runnern entfernt.
+
 ## 1.13.0 — 2026-06-01
 
 ### Hinzugefügt
