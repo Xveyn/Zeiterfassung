@@ -511,6 +511,7 @@ class App:
             on_change=_on_change,
             conflicts_store=self.conflicts_store,
             storage=self.storage,
+            reservation_store=self.reservation_store,
         )
 
     def _apply_always_on_top(self):
@@ -1089,7 +1090,10 @@ class App:
 
     def _share(self):
         from src.dialogs.share_dialog import open_share_dialog
-        open_share_dialog(self.root, self.storage, self.settings, self.base_path)
+        open_share_dialog(
+            self.root, self.storage, self.settings, self.base_path,
+            reservation_store=self.reservation_store,
+        )
 
     def on_sync_pull_success(self):
         """Wird aus dem UI-Thread nach erfolgreichem Pull aufgerufen."""

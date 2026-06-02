@@ -23,7 +23,8 @@ from src.time_utils import DAYS_DE, validate_entry
 
 
 def open_settings_dialog(parent, settings, base_path, on_change, *,
-                         conflicts_store=None, storage=None):
+                         conflicts_store=None, storage=None,
+                         reservation_store=None):
     """Modal dialog for editing app settings.
 
     on_change is called after a successful save so the calendar can refresh.
@@ -456,12 +457,15 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
             on_change()
             dialog.destroy()
 
-        open_import_dialog(dialog, storage, settings, _after_import)
+        open_import_dialog(
+            dialog, storage, settings, _after_import,
+            reservation_store=reservation_store,
+        )
 
     if storage is not None:
         secondary_button(
             dialog,
-            "Arbeitszeiten importieren…",
+            "Daten importieren…",
             _open_import_dialog,
             padx=12, pady=2,
         ).grid(row=26, column=0, columnspan=2, padx=10, pady=(4, 8), sticky="w")
