@@ -17,6 +17,7 @@ from src.share import (
     diff_share_against_local,
     parse_share_doc,
 )
+from src.time_utils import format_iso_date
 from src.theme import (
     BG, CELL_BG, FONT, FONT_SMALL, TEXT, TEXT_MUTED,
     apply_app_icon, apply_combobox_style, apply_dark_titlebar,
@@ -147,7 +148,7 @@ class _ImportSummaryDialog:
 
         tk.Label(
             self.top,
-            text=f"Exportiert: {self.doc.get('exported_at', '')}",
+            text=f"Exportiert: {format_iso_date(self.doc.get('exported_at', ''))}",
             font=FONT_SMALL, bg=BG, fg=TEXT_MUTED, justify="left",
         ).grid(row=row, column=0, columnspan=6, padx=10, pady=(0, 10), sticky="w")
         row += 1

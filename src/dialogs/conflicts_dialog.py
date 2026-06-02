@@ -4,18 +4,21 @@ from tkinter import ttk, messagebox
 
 from src import sync
 from src.theme import apply_app_icon
+from src.time_utils import format_iso_datetime
 
 
 def _fmt_entry_candidate(cand):
+    when = format_iso_datetime(cand.get("modified_at", ""), fallback="")
     if cand.get("deleted"):
-        return f"GELÖSCHT (von {cand.get('device_id', '?')[:8]}…, {cand.get('modified_at', '')})"
+        return f"GELÖSCHT (von {cand.get('device_id', '?')[:8]}…, {when})"
     return (f"{cand.get('start', '')}—{cand.get('end', '')} "
             f"(Pause {cand.get('pause', 0)} min, von "
-            f"{cand.get('device_id', '?')[:8]}…, {cand.get('modified_at', '')})")
+            f"{cand.get('device_id', '?')[:8]}…, {when})")
 
 
 def _fmt_setting_candidate(cand):
-    return f"{cand.get('value', '')!r} (von {cand.get('device_id', '?')[:8]}…, {cand.get('modified_at', '')})"
+    when = format_iso_datetime(cand.get("modified_at", ""), fallback="")
+    return f"{cand.get('value', '')!r} (von {cand.get('device_id', '?')[:8]}…, {when})"
 
 
 class ConflictsDialog:

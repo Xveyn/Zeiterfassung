@@ -12,7 +12,7 @@ import traceback
 import webbrowser
 from src.time_utils import (
     DAYS_DE, MONTHS_DE,
-    calculate_hours, get_week_dates, get_week_label, week_spans_months,
+    calculate_hours, format_iso_date, get_week_dates, get_week_label, week_spans_months,
 )
 from src.holidays_de import get_holidays
 from src.tooltip import attach_tooltip
@@ -1207,14 +1207,8 @@ class App:
         if n > 0:
             self.sync_status_label.config(text=f"⚠ {n} Konflikt{'e' if n != 1 else ''}")
         else:
-            last = self.settings.get("last_pull_at")
-            if last and len(last) >= 10:
-                try:
-                    shown = datetime.date.fromisoformat(last[:10]).strftime("%d.%m.%Y")
-                except ValueError:
-                    shown = last[:10]
-            else:
-                shown = "noch nie"
+            shown = format_iso_date(
+                self.settings.get("last_pull_at"), fallback="noch nie")
             self.sync_status_label.config(text=f"✓ {shown}")
 
     def _on_sync_clicked(self):
