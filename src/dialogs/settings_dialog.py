@@ -1,3 +1,4 @@
+import datetime
 import logging
 import os
 import threading
@@ -429,7 +430,14 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
         bg=BG, fg=TEXT_MUTED,
     ).grid(row=23, column=0, columnspan=2, padx=10, pady=(2, 0), sticky="w")
 
-    last = settings.get("last_pull_at") or "noch nie"
+    last_raw = settings.get("last_pull_at")
+    if last_raw and len(last_raw) >= 10:
+        try:
+            last = datetime.date.fromisoformat(last_raw[:10]).strftime("%d.%m.%Y")
+        except ValueError:
+            last = last_raw[:10]
+    else:
+        last = "noch nie"
     tk.Label(
         dialog, text=f"Letzte Synchronisation: {last}", font=FONT_SMALL,
         bg=BG, fg=TEXT_MUTED,
