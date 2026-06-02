@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.13.2 — 2026-06-02
+
+### Behoben
+- Wochenansicht: Die Tageszellen sprangen beim Wechsel zwischen Monats- und
+  Wochenansicht leicht in der Breite — die Spalten richten sich jetzt in beiden
+  Ansichten identisch aus.
+
+### Geändert
+- Wochenansicht: Die Zeitzeile der Einträge nutzt dieselbe Schriftgröße wie die
+  Monatsansicht, und Tagesziffer/Zeitzeile sitzen vertikal an derselben Position.
+
 ## 1.13.1 — 2026-06-02
 
 ### Behoben

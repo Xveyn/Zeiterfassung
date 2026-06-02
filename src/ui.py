@@ -712,12 +712,19 @@ class App:
         hover_bg = WEEKEND_BG_HOVER if is_weekend else CELL_BG_HOVER
         fg = WEEKEND_FG if is_weekend else TEXT
         # Pixel-fixiert auf dieselbe Außengröße wie Entry-/Holiday-Zellen, damit
-        # Spaltenbreiten nicht je nach Inhalt variieren (Tk berechnet die natürliche
-        # Breite eines Labels aus dem Text — eine leere "1" wäre sonst schmaler als
-        # eine Zelle mit "09:30-17:00"). +2 px in jeder Dimension kompensiert den
-        # 1-px-Highlight-Rand der gefüllten Zellen.
+        # die per sticky="nsew"+weight gestreckten Spalten unabhängig vom Inhalt
+        # gleich breit bleiben.
+        # Breite OHNE Aufschlag: die reqwidth muss exakt der der gefüllten Zellen
+        # entsprechen (die mit width=cell_size[0]+highlightthickness=1 gebaut
+        # werden). Tk zählt den 1-px-Highlight-Rand hier NICHT zur reqwidth, also
+        # ist deren reqwidth ebenfalls cell_size[0]. Ein früher gesetztes +2
+        # machte leere Spalten 2 px breiter als Eintragsspalten — in der
+        # Wochenansicht (1 Zelle pro Spalte) verschob das die Spaltenbreiten
+        # gegenüber der Monatsansicht (dort mittelt sich der Unterschied über die
+        # 6 Zeilen weg). Höhe +2 kompensiert den Rand der gefüllten Zellen
+        # vertikal und betrifft die Spaltenbreite nicht.
         cell = tk.Frame(parent, bg=bg, cursor="hand2")
-        cell.config(width=cell_size[0] + 2, height=cell_size[1] + 2)
+        cell.config(width=cell_size[0], height=cell_size[1] + 2)
         cell.pack_propagate(False)
         day_lbl = tk.Label(
             cell, text=day_text, font=FONT, bg=bg, fg=fg, cursor="hand2",
@@ -943,7 +950,7 @@ class App:
         # Bei ausgeblendeten Wochenenden: breitere Zellen + größere Time-Schrift.
         wide_cells = not self.settings.get("show_weekend")
         probe_width = 12 if wide_cells else 8
-        entry_time_font = FONT if wide_cells else FONT_TINY
+        entry_time_font = FONT if wide_cells else FONT_SMALL
         holiday_name_font = FONT if wide_cells else FONT_SMALL
         probe = tk.Label(new_frame, text="", font=FONT, width=probe_width, height=3)
         probe.update_idletasks()
@@ -964,7 +971,9 @@ class App:
             cell = self._build_day_cell(
                 new_frame, date_str, day_text, day_date,
                 is_weekend=col >= 5, entry=entry, holidays_map=holidays_map,
-                pad=8,
+                # pad=4 wie in der Monatsansicht, damit die vertikale Anordnung
+                # von Tagesziffer und Zeitzeile beim View-Wechsel nicht springt.
+                pad=4,
                 # 18 war zu lang für die gerenderte Spaltenbreite — "Christi
                 # Himmelfa…" lief über den Zellenrand hinaus. Werte unten
                 # passen zu den effektiv gestreckten Spalten in beiden Modi.
