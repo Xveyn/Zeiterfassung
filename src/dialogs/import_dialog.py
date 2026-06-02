@@ -223,8 +223,7 @@ class _ImportSummaryDialog:
         primary_button(btn_frame, "Weiter", self._on_next).pack(side=tk.LEFT, padx=5)
         secondary_button(btn_frame, "Abbrechen", self.top.destroy).pack(side=tk.LEFT, padx=5)
 
-        self._on_toggle_section()
-        self._recompute_counts()
+        self._on_toggle_section()  # ruft intern bereits _recompute_counts()
 
     def _build_date_row(self, row, label_text, default_date):
         tk.Label(self.top, text=label_text, font=FONT, bg=BG, fg=TEXT).grid(
@@ -390,7 +389,7 @@ class _ImportSummaryDialog:
         themed_showinfo(
             self.parent,
             "Importiert",
-            f"{total} Einträge wurden importiert.",
+            f"{total} Datensätze wurden importiert.",
         )
 
 
