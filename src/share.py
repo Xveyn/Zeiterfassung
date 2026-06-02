@@ -15,12 +15,13 @@ import json
 import re
 
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 KIND = "zeiterfassung-share"
 
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 _TIME_RE = re.compile(r"^\d{2}:\d{2}$")
 _ENTRY_KEYS = frozenset({"start", "end", "pause"})
+_RESERVATION_KEYS = frozenset({"start", "end"})
 
 
 def _utc_now_iso():
@@ -33,6 +34,58 @@ class ShareValidationError(Exception):
     def __init__(self, reason):
         super().__init__(reason)
         self.reason = reason
+
+
+def _validate_time(date_str, label, value):
+    if not isinstance(value, str) or not _TIME_RE.match(value):
+        raise ShareValidationError(f"Eintrag {date_str}: ungültige {label} {value!r}")
+    try:
+        datetime.time.fromisoformat(value)
+    except ValueError:
+        raise ShareValidationError(f"Eintrag {date_str}: ungültige {label} {value!r}")
+
+
+def _validate_date_key(date_str):
+    if not isinstance(date_str, str) or not _DATE_RE.match(date_str):
+        raise ShareValidationError(f"Ungültiger Datums-Key: {date_str!r}")
+    try:
+        datetime.date.fromisoformat(date_str)
+    except ValueError:
+        raise ShareValidationError(f"Ungültiges Datum: {date_str!r}")
+
+
+def _check_keys(date_str, entry, expected_keys):
+    if not isinstance(entry, dict):
+        raise ShareValidationError(f"Eintrag {date_str} ist kein Objekt.")
+    keys = set(entry.keys())
+    if keys != expected_keys:
+        extras = sorted(keys - expected_keys)
+        missing = sorted(expected_keys - keys)
+        parts = []
+        if extras:
+            parts.append(f"unbekannte Felder: {extras}")
+        if missing:
+            parts.append(f"fehlende Felder: {missing}")
+        raise ShareValidationError(f"Eintrag {date_str}: {'; '.join(parts)}")
+
+
+def _validate_entries(entries):
+    for date_str, entry in entries.items():
+        _validate_date_key(date_str)
+        _check_keys(date_str, entry, _ENTRY_KEYS)
+        _validate_time(date_str, "Startzeit", entry["start"])
+        _validate_time(date_str, "Endzeit", entry["end"])
+        pause = entry["pause"]
+        if not isinstance(pause, int) or isinstance(pause, bool) or pause < 0:
+            raise ShareValidationError(f"Eintrag {date_str}: ungültige Pause {pause!r}")
+
+
+def _validate_reservations(reservations):
+    for date_str, entry in reservations.items():
+        _validate_date_key(date_str)
+        _check_keys(date_str, entry, _RESERVATION_KEYS)
+        _validate_time(date_str, "Startzeit", entry["start"])
+        _validate_time(date_str, "Endzeit", entry["end"])
 
 
 def parse_share_doc(raw_bytes):
@@ -58,63 +111,32 @@ def parse_share_doc(raw_bytes):
             "Diese Datei wurde mit einer neueren Version erstellt. "
             "Bitte App aktualisieren."
         )
-    if schema_version < SCHEMA_VERSION:
+    if schema_version < 1:
         raise ShareValidationError(f"Unbekannte schema_version: {schema_version}")
 
     entries = doc.get("entries")
-    if not isinstance(entries, dict):
-        raise ShareValidationError("Feld 'entries' fehlt oder ist kein Objekt.")
+    reservations = doc.get("reservations")
 
-    for date_str, entry in entries.items():
-        if not isinstance(date_str, str) or not _DATE_RE.match(date_str):
-            raise ShareValidationError(f"Ungültiger Datums-Key: {date_str!r}")
-        try:
-            datetime.date.fromisoformat(date_str)
-        except ValueError:
-            raise ShareValidationError(f"Ungültiges Datum: {date_str!r}")
+    if schema_version == 1:
+        # v1: nur entries, Pflichtfeld (Abwärtskompatibilität für Alt-Dateien).
+        if not isinstance(entries, dict):
+            raise ShareValidationError("Feld 'entries' fehlt oder ist kein Objekt.")
+        _validate_entries(entries)
+        return doc
 
-        if not isinstance(entry, dict):
-            raise ShareValidationError(f"Eintrag {date_str} ist kein Objekt.")
-
-        keys = set(entry.keys())
-        if keys != _ENTRY_KEYS:
-            extras = sorted(keys - _ENTRY_KEYS)
-            missing = sorted(_ENTRY_KEYS - keys)
-            parts = []
-            if extras:
-                parts.append(f"unbekannte Felder: {extras}")
-            if missing:
-                parts.append(f"fehlende Felder: {missing}")
-            raise ShareValidationError(f"Eintrag {date_str}: {'; '.join(parts)}")
-
-        start = entry["start"]
-        end = entry["end"]
-        pause = entry["pause"]
-        if not isinstance(start, str) or not _TIME_RE.match(start):
-            raise ShareValidationError(
-                f"Eintrag {date_str}: ungültige Startzeit {start!r}"
-            )
-        try:
-            datetime.time.fromisoformat(start)
-        except ValueError:
-            raise ShareValidationError(
-                f"Eintrag {date_str}: ungültige Startzeit {start!r}"
-            )
-        if not isinstance(end, str) or not _TIME_RE.match(end):
-            raise ShareValidationError(
-                f"Eintrag {date_str}: ungültige Endzeit {end!r}"
-            )
-        try:
-            datetime.time.fromisoformat(end)
-        except ValueError:
-            raise ShareValidationError(
-                f"Eintrag {date_str}: ungültige Endzeit {end!r}"
-            )
-        if not isinstance(pause, int) or isinstance(pause, bool) or pause < 0:
-            raise ShareValidationError(
-                f"Eintrag {date_str}: ungültige Pause {pause!r}"
-            )
-
+    # v2: entries und reservations beide optional, mind. eines nicht-leer.
+    if entries is not None:
+        if not isinstance(entries, dict):
+            raise ShareValidationError("Feld 'entries' ist kein Objekt.")
+        _validate_entries(entries)
+    if reservations is not None:
+        if not isinstance(reservations, dict):
+            raise ShareValidationError("Feld 'reservations' ist kein Objekt.")
+        _validate_reservations(reservations)
+    if not entries and not reservations:
+        raise ShareValidationError(
+            "Datei enthält weder Arbeitszeiten noch Reservierungen."
+        )
     return doc
 
 

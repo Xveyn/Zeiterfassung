@@ -38,7 +38,7 @@ def test_parse_rejects_future_schema_version():
     with pytest.raises(ShareValidationError, match="neueren Version"):
         parse_share_doc(_bytes({
             "kind": "zeiterfassung-share",
-            "schema_version": 2,
+            "schema_version": 3,
             "entries": {},
         }))
 
@@ -183,7 +183,7 @@ def test_round_trip_build_serialize_parse():
 
 
 def test_serialize_utf8_umlauts():
-    storage = _FakeStorage({})
+    storage = _FakeStorage({"2026-05-14": {"start": "08:00", "end": "16:00", "pause": 0}})
     doc = build_share_doc(storage, "äöü@example.com")
     payload = serialize_share_doc(doc)
     assert b"\\u" not in payload  # ensure_ascii=False — Umlaute literal
@@ -366,3 +366,69 @@ def test_apply_import_integration_with_real_storage(tmp_path):
     entries = s.get_all()
     assert entries["2026-05-14"] == {"start": "10:00", "end": "18:00", "pause": 45}
     assert entries["2026-05-15"] == {"start": "09:00", "end": "17:00", "pause": 0}
+
+
+# --- v2: Reservierungen + abwärtskompatibles Lesen ---
+
+def _v2(**fields):
+    base = {"kind": "zeiterfassung-share", "schema_version": 2}
+    base.update(fields)
+    return _bytes(base)
+
+
+def test_parse_v1_entries_only_still_accepted():
+    doc = parse_share_doc(_bytes({
+        "kind": "zeiterfassung-share",
+        "schema_version": 1,
+        "entries": {"2026-05-14": {"start": "08:00", "end": "16:00", "pause": 0}},
+    }))
+    assert doc["schema_version"] == 1
+    assert "2026-05-14" in doc["entries"]
+
+
+def test_parse_v2_entries_only():
+    doc = parse_share_doc(_v2(entries={"2026-05-14": {"start": "08:00", "end": "16:00", "pause": 0}}))
+    assert doc["entries"] != {}
+
+
+def test_parse_v2_reservations_only():
+    doc = parse_share_doc(_v2(reservations={"2026-05-14": {"start": "08:00", "end": "12:00"}}))
+    assert doc["reservations"] == {"2026-05-14": {"start": "08:00", "end": "12:00"}}
+
+
+def test_parse_v2_both():
+    doc = parse_share_doc(_v2(
+        entries={"2026-05-14": {"start": "08:00", "end": "16:00", "pause": 0}},
+        reservations={"2026-05-15": {"start": "09:00", "end": "12:00"}},
+    ))
+    assert doc["entries"] and doc["reservations"]
+
+
+def test_parse_v2_rejects_both_missing():
+    with pytest.raises(ShareValidationError, match="weder"):
+        parse_share_doc(_v2())
+
+
+def test_parse_v2_rejects_both_empty():
+    with pytest.raises(ShareValidationError, match="weder"):
+        parse_share_doc(_v2(entries={}, reservations={}))
+
+
+def test_parse_v2_reservation_rejects_pause_field():
+    with pytest.raises(ShareValidationError, match="unbekannt"):
+        parse_share_doc(_v2(reservations={"2026-05-14": {"start": "08:00", "end": "12:00", "pause": 0}}))
+
+
+def test_parse_v2_reservation_rejects_missing_field():
+    with pytest.raises(ShareValidationError, match="fehlend"):
+        parse_share_doc(_v2(reservations={"2026-05-14": {"start": "08:00"}}))
+
+
+def test_parse_v2_reservation_rejects_bad_time():
+    with pytest.raises(ShareValidationError, match="Startzeit"):
+        parse_share_doc(_v2(reservations={"2026-05-14": {"start": "25:00", "end": "12:00"}}))
+
+
+def test_parse_v2_reservation_rejects_bad_date_key():
+    with pytest.raises(ShareValidationError, match="Datum"):
+        parse_share_doc(_v2(reservations={"not-a-date": {"start": "08:00", "end": "12:00"}}))
