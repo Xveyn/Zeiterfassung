@@ -1131,8 +1131,15 @@ class App:
         if n > 0:
             self.sync_status_label.config(text=f"⚠ {n} Konflikt{'e' if n != 1 else ''}")
         else:
-            last = self.settings.get("last_pull_at") or "noch nie"
-            self.sync_status_label.config(text=f"✓ {last[:10] if len(last) >= 10 else last}")
+            last = self.settings.get("last_pull_at")
+            if last and len(last) >= 10:
+                try:
+                    shown = datetime.date.fromisoformat(last[:10]).strftime("%d.%m.%Y")
+                except ValueError:
+                    shown = last[:10]
+            else:
+                shown = "noch nie"
+            self.sync_status_label.config(text=f"✓ {shown}")
 
     def _on_sync_clicked(self):
         if not self.settings.get("sync_enabled"):
