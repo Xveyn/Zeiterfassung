@@ -48,11 +48,16 @@ def _classify_sync_error(error):
     oder 'unknown'. `error` kann eine Exception oder ein String sein (der
     Push-/Reconcile-Pfad liefert str(e), der Pull-Pfad das Exception-Objekt).
     Der abgelaufene/widerrufene Token kommt als invalid_grant durch — sowohl
-    bei Drive als auch beim Kalender, da beide denselben OAuth-Token nutzen."""
+    bei Drive als auch beim Kalender, da beide denselben OAuth-Token nutzen.
+    Ein 403 'insufficient authentication scopes' / 'insufficientPermissions'
+    ist ebenfalls ein Auth-Fall (Token deckt einen Scope nicht ab → Re-Consent):
+    im String-Pfad fehlt die Typinfo, daher zusätzlich per Textmuster erkannt."""
     text = str(error)
     if (isinstance(error, DriveAuthError)
             or "invalid_grant" in text
-            or "expired or revoked" in text):
+            or "expired or revoked" in text
+            or "insufficientPermissions" in text
+            or "insufficient authentication scopes" in text):
         return "auth"
     if isinstance(error, DriveNetworkError):
         return "network"
@@ -70,11 +75,12 @@ def _friendly_sync_message(error, tb=""):
 
     if kind == "auth":
         return (
-            "Google-Verbindung abgelaufen",
-            "Die Verbindung zu Google Drive ist abgelaufen oder wurde "
-            "widerrufen.\n\nBitte verbinde die App neu: in den Einstellungen "
-            "die Synchronisation aus- und wieder einschalten und den "
-            "Google-Login erneut bestätigen.",
+            "Google-Verbindung erneuern",
+            "Die App braucht erneut deine Erlaubnis für Google Drive. Das "
+            "passiert, wenn die Verbindung abgelaufen oder widerrufen wurde "
+            "oder eine neue Freigabe nötig ist.\n\nBitte verbinde die App neu: "
+            "in den Einstellungen die Synchronisation aus- und wieder "
+            "einschalten und beim Google-Login die Freigabe bestätigen.",
             True,
         )
     if kind == "network":

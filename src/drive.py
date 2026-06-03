@@ -46,6 +46,21 @@ except ImportError:
     MediaIoBaseUpload = None  # type: ignore
 
 
+def _http_error_to_drive_error(e):
+    """Mappt einen googleapiclient HttpError auf die passende Drive-Fehlerklasse.
+
+    403 ('insufficient authentication scopes' / 'insufficientPermissions') ist
+    ein Berechtigungs-/Scope-Problem: die API hat geantwortet, es ist KEIN
+    Netzfehler. Der gespeicherte Token deckt einen benötigten Scope nicht ab →
+    DriveAuthError, damit das UI zur Neuverbindung (Re-Consent) auffordert.
+    Alles andere bleibt DriveNetworkError."""
+    resp_obj = getattr(e, "resp", None)
+    status = getattr(resp_obj, "status", None) if resp_obj is not None else None
+    if status == 403:
+        return DriveAuthError(str(e))
+    return DriveNetworkError(str(e))
+
+
 SYNC_SCOPES = [
     "https://www.googleapis.com/auth/gmail.send",
     "https://www.googleapis.com/auth/userinfo.email",
@@ -114,7 +129,7 @@ def find_sync_file(service):
             pageSize=10,
         ).execute()
     except HttpError as e:
-        raise DriveNetworkError(str(e)) from e
+        raise _http_error_to_drive_error(e) from e
 
     files = result.get("files", [])
     if not files:
@@ -142,7 +157,7 @@ def download(service, file_id):
         while not done:
             _, done = downloader.next_chunk()
     except HttpError as e:
-        raise DriveNetworkError(str(e)) from e
+        raise _http_error_to_drive_error(e) from e
     return buf.getvalue(), str(meta.get("version", ""))
 
 
@@ -185,4 +200,4 @@ def upload(service, content_bytes, file_id=None, expected_etag=None):
         status = getattr(resp_obj, "status", None) if resp_obj is not None else None
         if status == 412:
             raise DriveConflictError(str(e)) from e
-        raise DriveNetworkError(str(e)) from e
+        raise _http_error_to_drive_error(e) from e

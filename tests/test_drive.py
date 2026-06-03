@@ -142,6 +142,47 @@ def test_upload_412_response_raises_drive_conflict_error():
         upload(service, b'{"x":1}', file_id="file-1", expected_etag="")
 
 
+def test_find_sync_file_403_raises_drive_auth_error():
+    """403 'insufficient authentication scopes / insufficientPermissions' ist ein
+    Berechtigungs-/Scope-Problem (Re-Consent nötig), KEIN Netzfehler — muss als
+    DriveAuthError kommen, damit das UI die richtige Reconnect-Meldung zeigt."""
+    from googleapiclient.errors import HttpError
+    service = mock.MagicMock()
+    resp = mock.MagicMock(status=403, reason="Forbidden")
+    service.files().list().execute.side_effect = HttpError(
+        resp, b'{"error": {"message": "Insufficient Permission"}}')
+    with pytest.raises(DriveAuthError):
+        find_sync_file(service)
+
+
+def test_find_sync_file_non_403_http_error_stays_network():
+    """Andere HTTP-Fehler (z.B. 500) bleiben DriveNetworkError."""
+    from googleapiclient.errors import HttpError
+    service = mock.MagicMock()
+    resp = mock.MagicMock(status=500, reason="Server Error")
+    service.files().list().execute.side_effect = HttpError(resp, b"")
+    with pytest.raises(DriveNetworkError):
+        find_sync_file(service)
+
+
+def test_download_403_raises_drive_auth_error():
+    from googleapiclient.errors import HttpError
+    service = mock.MagicMock()
+    resp = mock.MagicMock(status=403, reason="Forbidden")
+    service.files().get().execute.side_effect = HttpError(resp, b"")
+    with pytest.raises(DriveAuthError):
+        download(service, "file-1")
+
+
+def test_upload_403_raises_drive_auth_error():
+    from googleapiclient.errors import HttpError
+    service = mock.MagicMock()
+    resp = mock.MagicMock(status=403, reason="Forbidden")
+    service.files().update().execute.side_effect = HttpError(resp, b"")
+    with pytest.raises(DriveAuthError):
+        upload(service, b'{"x":1}', file_id="file-1", expected_etag="")
+
+
 def test_get_drive_service_with_gcal_requests_calendar_scopes(tmp_path, monkeypatch):
     """Bei gcal_enabled fordert get_drive_service auch die Calendar-Scopes an,
     damit ein Drive-Re-Consent die Calendar-Scopes nicht aus token.json wirft."""
