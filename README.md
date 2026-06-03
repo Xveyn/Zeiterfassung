@@ -147,25 +147,27 @@ Damit die App E-Mails versenden kann, muss einmalig ein Google Cloud Projekt mit
 1. **APIs & Dienste** → **Bibliothek**
 2. Nach "Gmail API" suchen → **Aktivieren**
 
-### 3. OAuth-Zustimmungsbildschirm
+### 3. OAuth-Zustimmungsbildschirm (Google Auth Platform)
 
-1. **APIs & Dienste** → **OAuth-Zustimmungsbildschirm**
-2. **Extern** → **Erstellen**
-3. Ausfüllen:
-   - App-Name: "Zeiterfassung"
-   - Support-E-Mail: deine Gmail-Adresse
-   - Entwickler-E-Mail: deine Gmail-Adresse
-4. **Speichern und fortfahren**
-5. Bei **Bereiche**: `gmail.send` und `userinfo.email` hinzufügen → **Aktualisieren** → **Speichern**
-   - `userinfo.email` wird benötigt, damit die App die Absender-E-Mail-Adresse automatisch aus dem Google-Konto übernehmen kann (non-sensitive, keine Verifizierung nötig)
-6. Bei **Testnutzer**: deine Gmail-Adresse hinzufügen → **Speichern**
+Google hat die OAuth-Konfiguration 2025 unter **Google Auth Platform** zusammengezogen (früher „OAuth-Zustimmungsbildschirm" unter APIs & Dienste).
+
+1. **Menü ☰ → Google Auth Platform** öffnen (oder direkt [console.cloud.google.com/auth/overview](https://console.cloud.google.com/auth/overview))
+2. Falls noch nicht konfiguriert: **Jetzt starten** / **Get Started** klicken
+3. **Branding**: App-Name "Zeiterfassung" + Support-E-Mail (deine Gmail-Adresse)
+4. **Zielgruppe / Audience**: Nutzertyp **Extern** wählen
+5. **Kontaktinformationen**: deine E-Mail-Adresse für Benachrichtigungen
+6. Datenschutzbedingungen akzeptieren → **Erstellen / Finish**
+7. Anschließend unter **Zielgruppe / Audience → Testnutzer → Nutzer hinzufügen**: deine Gmail-Adresse eintragen
+
+Die Scopes werden nicht hier, sondern unter **Data Access** vergeben — entweder fügt sie der Consent-Flow beim ersten Versand automatisch hinzu, oder du trägst sie manuell ein (siehe Hinweis unten und den Sync-/Kalender-Abschnitt). Für reinen Gmail-Versand reichen `gmail.send` und `userinfo.email`.
+
+- `userinfo.email` wird benötigt, damit die App die Absender-E-Mail-Adresse automatisch aus dem Google-Konto übernehmen kann (non-sensitive, keine Verifizierung nötig)
 
 ### 4. OAuth2 Client-ID erstellen
 
-1. **APIs & Dienste** → **Anmeldedaten**
-2. **Anmeldedaten erstellen** → **OAuth-Client-ID**
-3. Anwendungstyp: **Desktopanwendung** → Name: "Zeiterfassung" → **Erstellen**
-4. **JSON herunterladen** → als `credentials.json` speichern:
+1. **Menü ☰ → Google Auth Platform → Clients** → **Client erstellen** (alternativ weiterhin unter **APIs & Dienste → Anmeldedaten → Anmeldedaten erstellen → OAuth-Client-ID**)
+2. Anwendungstyp: **Desktop-App** → Name: "Zeiterfassung" → **Erstellen**
+3. **JSON herunterladen** → als `credentials.json` speichern:
    - **Entwicklung (aus dem Source):** im Projekt-Root
    - **Windows (installiert):** `%LOCALAPPDATA%\Programs\Zeiterfassung\`
    - **macOS (installiert):** `~/Library/Application Support/Zeiterfassung/`
@@ -176,13 +178,15 @@ Damit die App E-Mails versenden kann, muss einmalig ein Google Cloud Projekt mit
 1. App starten
 2. Unter **Einstellungen** (⚙) E-Mail und Empfänger eintragen
 3. **Monat senden** klicken
-4. Browser öffnet sich → mit Google anmelden → Zugriff erlauben
-5. `token.json` wird automatisch erstellt — ab jetzt kein erneutes Anmelden nötig
+4. Browser öffnet sich → mit Google anmelden → Zugriff erlauben (bei unverifizierter App: **Erweitert → „Zu Zeiterfassung (unsicher)"**)
+5. `token.json` wird automatisch erstellt
 
 ### Hinweise
 
-- Die App läuft im **Test-Modus** — nur eingetragene Testnutzer können sich authentifizieren
-- Das Token wird automatisch erneuert; bei Ablauf öffnet sich der Browser erneut
+- **Test-Modus läuft alle 7 Tage ab:** Solange das Cloud-Projekt den Veröffentlichungsstatus **„Testing"** hat und Scopes über `userinfo.email`/`profile` hinaus anfordert (Gmail, Drive, Kalender — also bei dieser App immer), widerruft Google den Refresh-Token nach **7 Tagen** ([Google-Doku](https://developers.google.com/identity/protocols/oauth2)). Folge: ungefähr wöchentlich öffnet sich der Anmelde-Browser erneut.
+  - **Abhilfe:** Unter **Google Auth Platform → Zielgruppe / Audience** den Status auf **„In Produktion"** setzen. Dann bleibt der Refresh-Token langlebig. Für rein **private** Nutzung ist **keine** Google-Verifizierung nötig — die App bleibt „nicht verifiziert" (Warnscreen beim ersten Login, Limit 100 Nutzer), funktioniert aber dauerhaft ohne wöchentliche Neuanmeldung.
+- Im Test-Modus können sich nur eingetragene **Testnutzer** authentifizieren (deine eigene Gmail-Adresse zählt mit)
+- Innerhalb der Token-Gültigkeit wird der Access-Token automatisch erneuert; läuft der Refresh-Token ab, öffnet sich der Browser erneut
 - `credentials.json` und `token.json` gehören **nicht** ins Repository
 
 ## Multi-Device-Sync einrichten (optional)
@@ -246,6 +250,35 @@ Wiederhole Schritte 3-4 auf jedem weiteren Gerät mit demselben Google-Konto.
 - **Wo die Sync-Datei liegt:** Im versteckten `appDataFolder` deines Google Drives — nicht über `drive.google.com` einsehbar, nur diese App kommt dran.
 - **Test-Modus:** Solange dein Cloud-Projekt im Test-Modus bleibt, müssen alle Nutzer (deine eigenen Geräte zählen mit deiner E-Mail) als Testnutzer eingetragen sein. Verifizierung durch Google ist für rein private Nutzung nicht nötig.
 - **Tombstones wachsen unbeschränkt** — gelöschte Einträge bleiben als Marker im Sync-File, damit Löschungen sich gegen veraltete Speicherungen anderer Geräte durchsetzen. Bei normalem Gebrauch unproblematisch über Jahre; siehe [`docs/known-limitations.md`](docs/known-limitations.md).
+
+## Google-Kalender für Reservierungen einrichten (optional)
+
+Die Reservierungs-Funktion (zukünftige Soll-Zeiten) kann optional mit einem wählbaren Google Kalender abgeglichen werden. Dafür braucht die App zwei zusätzliche Scopes — analog zum Drive-Sync.
+
+**Voraussetzung:** Gmail API ist bereits eingerichtet (siehe Abschnitt oben).
+
+### 1. Google Calendar API aktivieren
+
+1. [Google Cloud Console](https://console.cloud.google.com/) öffnen, dein bestehendes Zeiterfassungs-Projekt wählen
+2. **APIs & Dienste** → **Bibliothek**
+3. Nach "Google Calendar API" suchen → **Aktivieren**
+
+### 2. Kalender-Scopes hinzufügen
+
+**Menü ☰ → Google Auth Platform → Data Access** → **Bereiche hinzufügen oder entfernen**. Zwei Scopes setzen:
+
+- `.../auth/calendar.events` — Reservierungs-Events im gewählten Kalender lesen/schreiben
+- `.../auth/calendar.calendarlist.readonly` — Liste deiner Kalender zur Auswahl abrufen
+
+Beide sind **sensitive** Scopes (im Gegensatz zu `drive.appdata`). Für rein private Nutzung gilt dasselbe wie beim Versand: kein Verifizierungs-Review nötig, aber siehe den 7-Tage-Hinweis oben — bei aktivem Kalender-Abgleich greift er erst recht.
+
+### 3. Bestehendes Token verwerfen
+
+Ein bereits gespeicherter Token ohne die Kalender-Scopes löst keinen neuen Consent-Flow aus. `token.json` löschen (Pfade siehe Sync-Abschnitt oben) — beim nächsten Start fordert die App den Consent inkl. Kalender neu an. Die App erkennt fehlende Scopes auch selbst und erzwingt dann einen frischen Flow.
+
+### 4. Kalender in der App wählen
+
+Reservierungen anlegen und den Abgleich über die App-Oberfläche aktivieren; beim ersten Zugriff zeigt der Consent-Screen die beiden Kalender-Berechtigungen zusätzlich an.
 
 ## Einstellungen
 
