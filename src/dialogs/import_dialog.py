@@ -448,7 +448,7 @@ class _PerDayDialog:
             self.choices[date] = var
 
             tk.Label(
-                list_frame, text=date, font=FONT, bg=BG, fg=TEXT, width=12, anchor="w",
+                list_frame, text=format_iso_date(date), font=FONT, bg=BG, fg=TEXT, width=12, anchor="w",
             ).grid(row=i, column=0, padx=4, pady=2, sticky="w")
 
             tk.Label(
