@@ -1,13 +1,18 @@
 """Arbeitszeiten teilen + importieren — pure functions, kein UI-Import.
 
-Wire-Format (eigenständig, kein Sync-Doc-Re-Use):
+Wire-Format v2 (eigenständig, kein Sync-Doc-Re-Use):
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "kind": "zeiterfassung-share",
   "exported_at": "<UTC-ISO>",
   "exported_by": "<email or empty>",
-  "entries": {"YYYY-MM-DD": {"start": "HH:MM", "end": "HH:MM", "pause": int>=0}}
+  "entries":      {"YYYY-MM-DD": {"start": "HH:MM", "end": "HH:MM", "pause": int>=0}},
+  "reservations": {"YYYY-MM-DD": {"start": "HH:MM", "end": "HH:MM"}}
 }
+
+Beide Felder ("entries", "reservations") sind optional, aber mind. eines muss
+nicht-leer sein. v1-Dateien (nur "entries", Pflichtfeld) werden beim Lesen
+weiterhin akzeptiert (Abwärtskompatibilität).
 """
 
 import datetime
@@ -15,12 +20,13 @@ import json
 import re
 
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 KIND = "zeiterfassung-share"
 
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 _TIME_RE = re.compile(r"^\d{2}:\d{2}$")
 _ENTRY_KEYS = frozenset({"start", "end", "pause"})
+_RESERVATION_KEYS = frozenset({"start", "end"})
 
 
 def _utc_now_iso():
@@ -33,6 +39,58 @@ class ShareValidationError(Exception):
     def __init__(self, reason):
         super().__init__(reason)
         self.reason = reason
+
+
+def _validate_time(date_str, label, value):
+    if not isinstance(value, str) or not _TIME_RE.match(value):
+        raise ShareValidationError(f"Eintrag {date_str}: ungültige {label} {value!r}")
+    try:
+        datetime.time.fromisoformat(value)
+    except ValueError:
+        raise ShareValidationError(f"Eintrag {date_str}: ungültige {label} {value!r}")
+
+
+def _validate_date_key(date_str):
+    if not isinstance(date_str, str) or not _DATE_RE.match(date_str):
+        raise ShareValidationError(f"Ungültiger Datums-Key: {date_str!r}")
+    try:
+        datetime.date.fromisoformat(date_str)
+    except ValueError:
+        raise ShareValidationError(f"Ungültiges Datum: {date_str!r}")
+
+
+def _check_keys(date_str, entry, expected_keys, label="Eintrag"):
+    if not isinstance(entry, dict):
+        raise ShareValidationError(f"{label} {date_str} ist kein Objekt.")
+    keys = set(entry.keys())
+    if keys != expected_keys:
+        extras = sorted(keys - expected_keys)
+        missing = sorted(expected_keys - keys)
+        parts = []
+        if extras:
+            parts.append(f"unbekannte Felder: {extras}")
+        if missing:
+            parts.append(f"fehlende Felder: {missing}")
+        raise ShareValidationError(f"{label} {date_str}: {'; '.join(parts)}")
+
+
+def _validate_entries(entries):
+    for date_str, entry in entries.items():
+        _validate_date_key(date_str)
+        _check_keys(date_str, entry, _ENTRY_KEYS)
+        _validate_time(date_str, "Startzeit", entry["start"])
+        _validate_time(date_str, "Endzeit", entry["end"])
+        pause = entry["pause"]
+        if not isinstance(pause, int) or isinstance(pause, bool) or pause < 0:
+            raise ShareValidationError(f"Eintrag {date_str}: ungültige Pause {pause!r}")
+
+
+def _validate_reservations(reservations):
+    for date_str, entry in reservations.items():
+        _validate_date_key(date_str)
+        _check_keys(date_str, entry, _RESERVATION_KEYS, label="Reservierung")
+        _validate_time(date_str, "Startzeit", entry["start"])
+        _validate_time(date_str, "Endzeit", entry["end"])
 
 
 def parse_share_doc(raw_bytes):
@@ -58,76 +116,53 @@ def parse_share_doc(raw_bytes):
             "Diese Datei wurde mit einer neueren Version erstellt. "
             "Bitte App aktualisieren."
         )
-    if schema_version < SCHEMA_VERSION:
+    if schema_version < 1:
         raise ShareValidationError(f"Unbekannte schema_version: {schema_version}")
 
     entries = doc.get("entries")
-    if not isinstance(entries, dict):
-        raise ShareValidationError("Feld 'entries' fehlt oder ist kein Objekt.")
+    reservations = doc.get("reservations")
 
-    for date_str, entry in entries.items():
-        if not isinstance(date_str, str) or not _DATE_RE.match(date_str):
-            raise ShareValidationError(f"Ungültiger Datums-Key: {date_str!r}")
-        try:
-            datetime.date.fromisoformat(date_str)
-        except ValueError:
-            raise ShareValidationError(f"Ungültiges Datum: {date_str!r}")
+    if schema_version == 1:
+        # v1: nur entries, Pflichtfeld (Abwärtskompatibilität für Alt-Dateien).
+        if not isinstance(entries, dict):
+            raise ShareValidationError("Feld 'entries' fehlt oder ist kein Objekt.")
+        _validate_entries(entries)
+        return doc
 
-        if not isinstance(entry, dict):
-            raise ShareValidationError(f"Eintrag {date_str} ist kein Objekt.")
-
-        keys = set(entry.keys())
-        if keys != _ENTRY_KEYS:
-            extras = sorted(keys - _ENTRY_KEYS)
-            missing = sorted(_ENTRY_KEYS - keys)
-            parts = []
-            if extras:
-                parts.append(f"unbekannte Felder: {extras}")
-            if missing:
-                parts.append(f"fehlende Felder: {missing}")
-            raise ShareValidationError(f"Eintrag {date_str}: {'; '.join(parts)}")
-
-        start = entry["start"]
-        end = entry["end"]
-        pause = entry["pause"]
-        if not isinstance(start, str) or not _TIME_RE.match(start):
-            raise ShareValidationError(
-                f"Eintrag {date_str}: ungültige Startzeit {start!r}"
-            )
-        try:
-            datetime.time.fromisoformat(start)
-        except ValueError:
-            raise ShareValidationError(
-                f"Eintrag {date_str}: ungültige Startzeit {start!r}"
-            )
-        if not isinstance(end, str) or not _TIME_RE.match(end):
-            raise ShareValidationError(
-                f"Eintrag {date_str}: ungültige Endzeit {end!r}"
-            )
-        try:
-            datetime.time.fromisoformat(end)
-        except ValueError:
-            raise ShareValidationError(
-                f"Eintrag {date_str}: ungültige Endzeit {end!r}"
-            )
-        if not isinstance(pause, int) or isinstance(pause, bool) or pause < 0:
-            raise ShareValidationError(
-                f"Eintrag {date_str}: ungültige Pause {pause!r}"
-            )
-
+    # v2: entries und reservations beide optional, mind. eines nicht-leer.
+    if entries is not None:
+        if not isinstance(entries, dict):
+            raise ShareValidationError("Feld 'entries' ist kein Objekt.")
+        _validate_entries(entries)
+    if reservations is not None:
+        if not isinstance(reservations, dict):
+            raise ShareValidationError("Feld 'reservations' ist kein Objekt.")
+        _validate_reservations(reservations)
+    if not entries and not reservations:
+        raise ShareValidationError(
+            "Datei enthält weder Arbeitszeiten noch Reservierungen."
+        )
     return doc
 
 
-def build_share_doc(storage, sender_email):
-    """Baut das Share-Doc aus dem lokalen Storage. Tombstones werden via
-    storage.get_all() bereits ausgefiltert."""
-    return {
+def build_share_doc(storage, sender_email, *, reservation_store=None,
+                    include_entries=True, include_reservations=False):
+    """Baut das Share-Doc. Tombstones sind via get_all() bereits gefiltert.
+
+    include_entries / include_reservations steuern, welche Typen mitgehen.
+    reservations werden nur aufgenommen, wenn ein reservation_store übergeben
+    wurde."""
+    doc = {
         "schema_version": SCHEMA_VERSION,
         "kind": KIND,
         "exported_at": _utc_now_iso(),
         "exported_by": sender_email or "",
-        "entries": dict(storage.get_all()),
     }
+    if include_entries:
+        doc["entries"] = dict(storage.get_all())
+    if include_reservations and reservation_store is not None:
+        doc["reservations"] = dict(reservation_store.get_all())
+    return doc
 
 
 def serialize_share_doc(doc):
@@ -141,28 +176,26 @@ def _entries_equal(a, b):
             and a.get("pause", 0) == b.get("pause", 0))
 
 
-def diff_share_against_local(share_entries, storage, date_from=None, date_to=None):
-    """Vergleicht share_entries mit storage.get_all().
+def _reservations_equal(a, b):
+    return a.get("start") == b.get("start") and a.get("end") == b.get("end")
 
-    date_from/date_to: optional datetime.date, inclusive auf beiden Seiten.
-    None = unbeschränkt. Einträge außerhalb fallen in 'out_of_range'-Count
-    und tauchen sonst nirgends auf.
 
-    Returns dict mit 'additions' (list of (date, entry)), 'conflicts'
-    (list of (date, local_entry, share_entry)), 'untouched' (list of date)
-    und 'out_of_range' (int).
+def _diff_records(share_records, local_snapshot, equal_fn, date_from=None, date_to=None):
+    """Typ-neutraler Diff zwischen Share-Records und lokalem Snapshot.
+
+    share_records / local_snapshot: {date: record}.
+    equal_fn(local_record, share_record) -> bool.
+    Rückgabe: additions / conflicts / untouched / out_of_range.
     """
     additions = []
     conflicts = []
     untouched = []
     out_of_range = 0
-    local = storage.get_all()
 
-    for date_str in sorted(share_entries.keys()):
+    for date_str in sorted(share_records.keys()):
         try:
             d = datetime.date.fromisoformat(date_str)
         except ValueError:
-            # parse_share_doc hat das schon abgefangen — defensive Skip.
             continue
         if date_from is not None and d < date_from:
             out_of_range += 1
@@ -171,14 +204,14 @@ def diff_share_against_local(share_entries, storage, date_from=None, date_to=Non
             out_of_range += 1
             continue
 
-        share_entry = share_entries[date_str]
-        local_entry = local.get(date_str)
-        if local_entry is None:
-            additions.append((date_str, share_entry))
-        elif _entries_equal(local_entry, share_entry):
+        share_rec = share_records[date_str]
+        local_rec = local_snapshot.get(date_str)
+        if local_rec is None:
+            additions.append((date_str, share_rec))
+        elif equal_fn(local_rec, share_rec):
             untouched.append(date_str)
         else:
-            conflicts.append((date_str, local_entry, share_entry))
+            conflicts.append((date_str, local_rec, share_rec))
 
     return {
         "additions": additions,
@@ -186,6 +219,29 @@ def diff_share_against_local(share_entries, storage, date_from=None, date_to=Non
         "untouched": untouched,
         "out_of_range": out_of_range,
     }
+
+
+def diff_share_against_local(share_entries, storage, date_from=None, date_to=None):
+    """Arbeitszeiten-Diff (Wrapper, unverändertes Verhalten)."""
+    return _diff_records(
+        share_entries, storage.get_all(), _entries_equal, date_from, date_to)
+
+
+def diff_reservations_against_local(share_reservations, reservation_store,
+                                    date_from=None, date_to=None):
+    """Reservierungs-Diff gegen den ReservationStore-Snapshot ({date:{start,end}})."""
+    return _diff_records(
+        share_reservations, reservation_store.get_all(),
+        _reservations_equal, date_from, date_to)
+
+
+def apply_reservation_import(reservation_store, decisions):
+    """Schreibt importierte Reservierungen in den Store. save() setzt
+    modified_at neu und behält eine vorhandene gcal_event_id, sodass der
+    nächste Kalender-Reconcile das Event aktualisiert statt zu duplizieren."""
+    for d in decisions:
+        entry = d["entry"]
+        reservation_store.save(d["date"], entry["start"], entry["end"])
 
 
 def apply_import(storage, decisions):

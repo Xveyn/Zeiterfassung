@@ -1,5 +1,41 @@
 # Changelog
 
+## 1.14.0 — 2026-06-02
+
+### Hinzugefügt
+- Teilen umfasst jetzt auch Reservierungen: Über „Teilen" lassen sich
+  Arbeitszeiten, Reservierungen oder beide als JSON-Datei verschicken. Beim
+  Import kann der Empfänger jeden Datentyp einzeln an- oder abwählen und für
+  jeden die gewohnte Konflikt-Behandlung (alles übernehmen / alles lokal / pro
+  Tag) wählen. Bereits verschickte Alt-Dateien (nur Arbeitszeiten) bleiben
+  importierbar.
+- Schaltfläche „Google neu verbinden" in den Einstellungen: erneuert die
+  Google-Berechtigungen (Drive/Gmail/Kalender) per frischer Anmeldung. Nötig,
+  wenn der gespeicherte Zugriff eine inzwischen benötigte Berechtigung nicht
+  abdeckt — ein bloßes Aus-/Einschalten der Synchronisation hat das vorher
+  nicht behoben.
+
+### Behoben
+- Synchronisations-Fehlermeldungen: Bei abgelaufenem oder widerrufenem
+  Google-Token (oder fehlender Internetverbindung) erscheint jetzt eine
+  verständliche, ins App-Theme integrierte Meldung mit Hinweis zum Neuverbinden
+  — statt eines rohen Python-Tracebacks im weißen Systemdialog. Greift sowohl
+  beim Drive-Sync (Pull, Push, Push beim Schließen) als auch beim
+  Google-Kalender-Abgleich. Unerwartete Fehler zeigen weiterhin den Traceback.
+- Fehlende Google-Berechtigung (HTTP 403): Eine nicht abgedeckte
+  Drive-Berechtigung wurde fälschlich als Netzwerkfehler bzw. als roher
+  Traceback angezeigt. Sie erscheint jetzt als verständliche Meldung mit
+  Verweis auf „Google neu verbinden".
+
+### Geändert
+- Datumsanzeigen durchgehend im deutschen Format: Sync-Status, „Letzte
+  Synchronisation", das Export-Datum sowie die Tagesdaten im Pro-Tag-Schritt
+  des Import-Dialogs erscheinen als `TT.MM.JJJJ`, Konflikt-Zeitstempel als
+  `TT.MM.JJJJ HH:MM` — statt im ISO-Format.
+
+### Intern
+- `reservations.json` wird nun von Git ignoriert (persönliche Nutzerdaten).
+
 ## 1.13.2 — 2026-06-02
 
 ### Behoben

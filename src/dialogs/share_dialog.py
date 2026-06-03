@@ -1,4 +1,5 @@
-"""Modal-Dialog „Arbeitszeiten teilen“: baut Share-Doc, sendet per Gmail."""
+"""Modal-Dialog „Teilen": baut Share-Doc für Arbeitszeiten und/oder
+Reservierungen, sendet per Gmail."""
 
 import logging
 import os
@@ -17,7 +18,7 @@ from src.theme import (
 )
 
 
-def open_share_dialog(parent, storage, settings, base_path):
+def open_share_dialog(parent, storage, settings, base_path, reservation_store=None):
     credentials_path = os.path.join(base_path, "credentials.json")
     token_path = os.path.join(base_path, "token.json")
 
@@ -26,16 +27,20 @@ def open_share_dialog(parent, storage, settings, base_path):
         return
 
     entries = storage.get_all()
-    if not entries:
+    reservations = (
+        reservation_store.get_all() if reservation_store is not None else {})
+
+    if not entries and not reservations:
         messagebox.showinfo(
-            "Keine Einträge",
-            "Es sind keine Einträge zum Teilen vorhanden.",
+            "Nichts zum Teilen",
+            "Es sind weder Arbeitszeiten noch Reservierungen zum Teilen "
+            "vorhanden.",
             parent=parent,
         )
         return
 
     dialog = tk.Toplevel(parent)
-    dialog.title("Arbeitszeiten teilen")
+    dialog.title("Teilen")
     dialog.resizable(False, False)
     dialog.grab_set()
     dialog.focus_set()
@@ -46,20 +51,46 @@ def open_share_dialog(parent, storage, settings, base_path):
     attach_unfocus_on_click(dialog)
     dialog.bind("<Escape>", lambda _e: dialog.destroy())
 
+    row = 0
     tk.Label(
-        dialog,
-        text=f"Alle {len(entries)} Einträge werden als JSON-Anhang gesendet.",
-        font=FONT, bg=BG, fg=TEXT,
-        wraplength=380, justify="left",
-    ).grid(row=0, column=0, columnspan=2, padx=20, pady=(20, 12), sticky="w")
+        dialog, text="Was möchtest Du teilen?", font=FONT, bg=BG, fg=TEXT,
+    ).grid(row=row, column=0, columnspan=2, padx=20, pady=(20, 6), sticky="w")
+    row += 1
+
+    include_entries_var = tk.BooleanVar(value=bool(entries))
+    cb_entries = tk.Checkbutton(
+        dialog, text=f"Arbeitszeiten ({len(entries)} Tage)",
+        variable=include_entries_var,
+        font=FONT, bg=BG, fg=TEXT, selectcolor=BG,
+        activebackground=BG, activeforeground=TEXT,
+    )
+    if not entries:
+        include_entries_var.set(False)
+        cb_entries.config(state="disabled")
+    cb_entries.grid(row=row, column=0, columnspan=2, padx=20, pady=0, sticky="w")
+    row += 1
+
+    include_res_var = tk.BooleanVar(value=bool(reservations))
+    cb_res = tk.Checkbutton(
+        dialog, text=f"Reservierungen ({len(reservations)} Tage)",
+        variable=include_res_var,
+        font=FONT, bg=BG, fg=TEXT, selectcolor=BG,
+        activebackground=BG, activeforeground=TEXT,
+    )
+    if not reservations:
+        include_res_var.set(False)
+        cb_res.config(state="disabled")
+    cb_res.grid(row=row, column=0, columnspan=2, padx=20, pady=(0, 12), sticky="w")
+    row += 1
 
     tk.Label(
         dialog, text="Empfänger:", font=FONT, bg=BG, fg=TEXT,
-    ).grid(row=1, column=0, padx=(20, 6), pady=(0, 4), sticky="w")
+    ).grid(row=row, column=0, padx=(20, 6), pady=(0, 4), sticky="w")
 
     recipient_var = tk.StringVar(value=settings.get("share_recipient") or "")
     recipient_entry = dark_entry(dialog, recipient_var, width=35)
-    recipient_entry.grid(row=1, column=1, padx=(0, 20), pady=(0, 4), sticky="w")
+    recipient_entry.grid(row=row, column=1, padx=(0, 20), pady=(0, 4), sticky="w")
+    row += 1
 
     save_default_var = tk.BooleanVar(value=False)
     tk.Checkbutton(
@@ -68,9 +99,19 @@ def open_share_dialog(parent, storage, settings, base_path):
         variable=save_default_var,
         font=FONT, bg=BG, fg=TEXT, selectcolor=BG,
         activebackground=BG, activeforeground=TEXT,
-    ).grid(row=2, column=0, columnspan=2, padx=20, pady=(0, 12), sticky="w")
+    ).grid(row=row, column=0, columnspan=2, padx=20, pady=(0, 12), sticky="w")
+    row += 1
 
     def do_send():
+        want_entries = include_entries_var.get()
+        want_res = include_res_var.get()
+        if not want_entries and not want_res:
+            messagebox.showerror(
+                "Nichts ausgewählt",
+                "Bitte mindestens einen Datentyp zum Teilen auswählen.",
+                parent=dialog,
+            )
+            return
         share_recipient = recipient_var.get().strip()
         if not share_recipient:
             messagebox.showerror(
@@ -82,27 +123,40 @@ def open_share_dialog(parent, storage, settings, base_path):
         sender_email = settings.get("sender_email") or ""
         display_name = settings.get("name") or sender_email or "anonym"
         try:
-            doc = build_share_doc(storage, sender_email)
+            doc = build_share_doc(
+                storage, sender_email,
+                reservation_store=reservation_store,
+                include_entries=want_entries,
+                include_reservations=want_res,
+            )
             payload = serialize_share_doc(doc)
             service = get_gmail_service(
                 credentials_path, token_path,
                 sync_enabled=settings.get("sync_enabled"),
                 gcal_enabled=settings.get("gcal_enabled"),
             )
-            subject = f"Arbeitszeiten geteilt von {display_name}"
+            parts = []
+            if want_entries:
+                parts.append("Arbeitszeiten")
+            if want_res:
+                parts.append("Reservierungen")
+            what = " und ".join(parts)
+            subject = f"{what} geteilt von {display_name}"
             html = (
                 "<html><head><meta charset=\"utf-8\"></head><body>"
-                f"<p>Hallo,</p>"
-                f"<p>im Anhang findest Du meine Arbeitszeiten "
-                f"({len(entries)} Tage) als JSON-Datei.</p>"
-                "<p>Du kannst sie in der Zeiterfassung-App über "
-                "<em>Einstellungen → Arbeitszeiten importieren…</em> einlesen. "
-                "Vor dem Import kannst Du einen Zeitraum auswählen und "
-                "festlegen, was bei Konflikten passieren soll.</p>"
+                "<p>Hallo,</p>"
+                f"<p>im Anhang findest Du meine {what} als JSON-Datei.</p>"
+                "<p>Du kannst die Datei in der Zeiterfassung-App über "
+                "<em>Einstellungen → Daten importieren…</em> einlesen. "
+                "Vor dem Import kannst Du einen Zeitraum auswählen und je "
+                "Datentyp festlegen, was bei Konflikten passieren soll.</p>"
                 f"<p>Viele Grüße<br/>{display_name}</p>"
                 "</body></html>"
             )
-            filename = f"zeiterfassung-share-{doc['exported_at'][:10].replace('-', '')}.json"
+            filename = (
+                "zeiterfassung-share-"
+                f"{doc['exported_at'][:10].replace('-', '')}.json"
+            )
             send_email(
                 service, share_recipient, subject, html,
                 attachment_bytes=payload,
@@ -115,20 +169,17 @@ def open_share_dialog(parent, storage, settings, base_path):
             themed_showinfo(
                 parent,
                 "Geteilt",
-                f"Arbeitszeiten wurden an {share_recipient} gesendet.",
+                f"{what} wurden an {share_recipient} gesendet.",
             )
         except FileNotFoundError as e:
             messagebox.showerror("Fehler", str(e), parent=dialog)
         except Exception as e:
-            # Trace landet immer im Logfile. Bei einem reinen Offline-Fehler
-            # zeigen wir dem Nutzer aber eine verständliche Meldung statt des
-            # kryptischen Tracebacks — das ist kein Bug, sondern fehlendes Netz.
             logging.getLogger(__name__).exception("Teilen fehlgeschlagen")
             if is_offline_error(e):
                 messagebox.showerror(
                     "Keine Internetverbindung",
-                    "Die Arbeitszeiten konnten nicht gesendet werden, weil "
-                    "keine Verbindung zum Internet besteht.\n\n"
+                    "Die Daten konnten nicht gesendet werden, weil keine "
+                    "Verbindung zum Internet besteht.\n\n"
                     "Bitte prüfe deine Internetverbindung und versuche es "
                     "dann erneut.",
                     parent=dialog,
@@ -141,7 +192,7 @@ def open_share_dialog(parent, storage, settings, base_path):
                 )
 
     btn_frame = tk.Frame(dialog, bg=BG)
-    btn_frame.grid(row=3, column=0, columnspan=2, pady=(0, 16))
+    btn_frame.grid(row=row, column=0, columnspan=2, pady=(0, 16))
 
     primary_button(btn_frame, "Senden", do_send).pack(side=tk.LEFT, padx=5)
     secondary_button(btn_frame, "Abbrechen", dialog.destroy).pack(side=tk.LEFT, padx=5)

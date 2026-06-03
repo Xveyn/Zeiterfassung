@@ -50,7 +50,7 @@ def open_entry_dialog(parent, date_str, storage, settings, on_change,
     )
 
     dialog = tk.Toplevel(parent)
-    dialog.title(date_str)
+    dialog.title(day.strftime("%d.%m.%Y"))
     dialog.resizable(False, False)
     dialog.grab_set()
     # focus_set() ist nach grab_set() Pflicht, sonst bleibt der Keyboard-

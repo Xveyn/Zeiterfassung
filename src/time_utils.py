@@ -69,3 +69,32 @@ def week_spans_months(iso_year, iso_week):
     """Return True if the week spans two different months."""
     dates = get_week_dates(iso_year, iso_week)
     return dates[0].month != dates[6].month
+
+
+def format_iso_date(iso, fallback="—"):
+    """ISO-Datum oder -Zeitstempel → 'TT.MM.JJJJ' für die Anzeige.
+
+    Akzeptiert sowohl reine Daten ('2026-06-02') als auch Zeitstempel
+    ('2026-06-02T14:30:00Z'). Leere oder unparsbare Werte liefern `fallback`.
+    """
+    if not iso or len(iso) < 10:
+        return fallback
+    try:
+        return datetime.date.fromisoformat(iso[:10]).strftime("%d.%m.%Y")
+    except ValueError:
+        return iso[:10]
+
+
+def format_iso_datetime(iso, fallback="—"):
+    """ISO-Zeitstempel → 'TT.MM.JJJJ HH:MM' für die Anzeige.
+
+    Die Uhrzeit wird unverändert aus dem String übernommen (keine
+    Zeitzonen-Umrechnung). Fehlt der Zeitanteil, wird nur das Datum gezeigt.
+    Leere oder unparsbare Werte liefern `fallback`.
+    """
+    if not iso or len(iso) < 10:
+        return fallback
+    date_part = format_iso_date(iso, fallback)
+    if len(iso) >= 16 and iso[10] in ("T", " "):
+        return f"{date_part} {iso[11:16]}"
+    return date_part

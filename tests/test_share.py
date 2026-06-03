@@ -38,7 +38,7 @@ def test_parse_rejects_future_schema_version():
     with pytest.raises(ShareValidationError, match="neueren Version"):
         parse_share_doc(_bytes({
             "kind": "zeiterfassung-share",
-            "schema_version": 2,
+            "schema_version": 3,
             "entries": {},
         }))
 
@@ -183,7 +183,7 @@ def test_round_trip_build_serialize_parse():
 
 
 def test_serialize_utf8_umlauts():
-    storage = _FakeStorage({})
+    storage = _FakeStorage({"2026-05-14": {"start": "08:00", "end": "16:00", "pause": 0}})
     doc = build_share_doc(storage, "äöü@example.com")
     payload = serialize_share_doc(doc)
     assert b"\\u" not in payload  # ensure_ascii=False — Umlaute literal
@@ -320,8 +320,6 @@ def test_diff_range_none_bounds_unconstrained():
     assert diff["out_of_range"] == 0
 
 
-from unittest import mock
-
 from src.share import apply_import
 
 
@@ -366,3 +364,224 @@ def test_apply_import_integration_with_real_storage(tmp_path):
     entries = s.get_all()
     assert entries["2026-05-14"] == {"start": "10:00", "end": "18:00", "pause": 45}
     assert entries["2026-05-15"] == {"start": "09:00", "end": "17:00", "pause": 0}
+
+
+# --- v2: Reservierungen + abwärtskompatibles Lesen ---
+
+def _v2(**fields):
+    base = {"kind": "zeiterfassung-share", "schema_version": 2}
+    base.update(fields)
+    return _bytes(base)
+
+
+def test_parse_v1_entries_only_still_accepted():
+    doc = parse_share_doc(_bytes({
+        "kind": "zeiterfassung-share",
+        "schema_version": 1,
+        "entries": {"2026-05-14": {"start": "08:00", "end": "16:00", "pause": 0}},
+    }))
+    assert doc["schema_version"] == 1
+    assert "2026-05-14" in doc["entries"]
+
+
+def test_parse_v2_entries_only():
+    doc = parse_share_doc(_v2(entries={"2026-05-14": {"start": "08:00", "end": "16:00", "pause": 0}}))
+    assert doc["entries"] == {"2026-05-14": {"start": "08:00", "end": "16:00", "pause": 0}}
+
+
+def test_parse_v2_reservations_only():
+    doc = parse_share_doc(_v2(reservations={"2026-05-14": {"start": "08:00", "end": "12:00"}}))
+    assert doc["reservations"] == {"2026-05-14": {"start": "08:00", "end": "12:00"}}
+
+
+def test_parse_v2_both():
+    doc = parse_share_doc(_v2(
+        entries={"2026-05-14": {"start": "08:00", "end": "16:00", "pause": 0}},
+        reservations={"2026-05-15": {"start": "09:00", "end": "12:00"}},
+    ))
+    assert doc["entries"] == {"2026-05-14": {"start": "08:00", "end": "16:00", "pause": 0}}
+    assert doc["reservations"] == {"2026-05-15": {"start": "09:00", "end": "12:00"}}
+
+
+def test_parse_v2_empty_entries_with_reservations_ok():
+    doc = parse_share_doc(_v2(
+        entries={},
+        reservations={"2026-05-14": {"start": "08:00", "end": "12:00"}},
+    ))
+    assert doc["reservations"] == {"2026-05-14": {"start": "08:00", "end": "12:00"}}
+
+
+def test_parse_v2_rejects_both_missing():
+    with pytest.raises(ShareValidationError, match="weder"):
+        parse_share_doc(_v2())
+
+
+def test_parse_v2_rejects_both_empty():
+    with pytest.raises(ShareValidationError, match="weder"):
+        parse_share_doc(_v2(entries={}, reservations={}))
+
+
+def test_parse_v2_reservation_rejects_pause_field():
+    with pytest.raises(ShareValidationError, match="unbekannt"):
+        parse_share_doc(_v2(reservations={"2026-05-14": {"start": "08:00", "end": "12:00", "pause": 0}}))
+
+
+def test_parse_v2_reservation_rejects_missing_field():
+    with pytest.raises(ShareValidationError, match="fehlend"):
+        parse_share_doc(_v2(reservations={"2026-05-14": {"start": "08:00"}}))
+
+
+def test_parse_v2_reservation_rejects_bad_time():
+    with pytest.raises(ShareValidationError, match="Startzeit"):
+        parse_share_doc(_v2(reservations={"2026-05-14": {"start": "25:00", "end": "12:00"}}))
+
+
+def test_parse_v2_reservation_rejects_bad_date_key():
+    with pytest.raises(ShareValidationError, match="Datum"):
+        parse_share_doc(_v2(reservations={"not-a-date": {"start": "08:00", "end": "12:00"}}))
+
+
+class _FakeResStore:
+    def __init__(self, data):
+        self._d = data
+
+    def get_all(self):
+        return dict(self._d)
+
+
+def test_build_doc_entries_only_omits_reservations():
+    storage = _FakeStorage({"2026-05-14": {"start": "08:00", "end": "16:00", "pause": 0}})
+    doc = build_share_doc(storage, "a@b.de")
+    assert "entries" in doc
+    assert "reservations" not in doc
+    assert doc["schema_version"] == 2
+
+
+def test_build_doc_reservations_only():
+    storage = _FakeStorage({"2026-05-14": {"start": "08:00", "end": "16:00", "pause": 0}})
+    res = _FakeResStore({"2026-05-15": {"start": "09:00", "end": "12:00"}})
+    doc = build_share_doc(
+        storage, "a@b.de", reservation_store=res,
+        include_entries=False, include_reservations=True,
+    )
+    assert "entries" not in doc
+    assert doc["reservations"] == {"2026-05-15": {"start": "09:00", "end": "12:00"}}
+
+
+def test_build_doc_both():
+    storage = _FakeStorage({"2026-05-14": {"start": "08:00", "end": "16:00", "pause": 0}})
+    res = _FakeResStore({"2026-05-15": {"start": "09:00", "end": "12:00"}})
+    doc = build_share_doc(
+        storage, "a@b.de", reservation_store=res,
+        include_entries=True, include_reservations=True,
+    )
+    assert doc["entries"] and doc["reservations"]
+    parsed = parse_share_doc(serialize_share_doc(doc))
+    assert parsed["entries"] and parsed["reservations"]
+
+
+from src.share import (
+    apply_reservation_import,
+    diff_reservations_against_local,
+)
+
+
+def test_diff_reservations_additions_and_conflicts():
+    store = _FakeResStore({"2026-05-14": {"start": "08:00", "end": "12:00"}})
+    share = {
+        "2026-05-14": {"start": "09:00", "end": "12:00"},  # conflict
+        "2026-05-16": {"start": "10:00", "end": "14:00"},  # addition
+    }
+    diff = diff_reservations_against_local(share, store)
+    assert [d for d, _ in diff["additions"]] == ["2026-05-16"]
+    assert [d for d, _l, _s in diff["conflicts"]] == ["2026-05-14"]
+
+
+def test_diff_reservations_untouched():
+    store = _FakeResStore({"2026-05-14": {"start": "08:00", "end": "12:00"}})
+    share = {"2026-05-14": {"start": "08:00", "end": "12:00"}}
+    diff = diff_reservations_against_local(share, store)
+    assert diff["untouched"] == ["2026-05-14"]
+    assert diff["conflicts"] == []
+
+
+def test_diff_reservations_range_filter():
+    store = _FakeResStore({})
+    share = {
+        "2026-05-10": {"start": "08:00", "end": "12:00"},
+        "2026-05-20": {"start": "08:00", "end": "12:00"},
+    }
+    diff = diff_reservations_against_local(share, store, date_from=_dt.date(2026, 5, 15))
+    assert [d for d, _ in diff["additions"]] == ["2026-05-20"]
+    assert diff["out_of_range"] == 1
+
+
+class _RecordingResStore:
+    def __init__(self):
+        self.saved = []
+
+    def save(self, date_str, start, end):
+        self.saved.append((date_str, start, end))
+
+
+def test_apply_reservation_import_calls_save_per_decision():
+    store = _RecordingResStore()
+    apply_reservation_import(store, [
+        {"date": "2026-05-14", "entry": {"start": "08:00", "end": "12:00"}},
+        {"date": "2026-05-15", "entry": {"start": "09:00", "end": "13:00"}},
+    ])
+    assert store.saved == [
+        ("2026-05-14", "08:00", "12:00"),
+        ("2026-05-15", "09:00", "13:00"),
+    ]
+
+
+def test_apply_reservation_import_integration_keeps_event_id(tmp_path):
+    from src.reservations import ReservationStore
+    store = ReservationStore(str(tmp_path / "r.json"))
+    store.save("2026-05-14", "08:00", "12:00")
+    # gcal_event_id simulieren
+    raw = store.get_all_raw()
+    raw["2026-05-14"]["gcal_event_id"] = "evt-1"
+    store.apply_reconciled(raw)
+    apply_reservation_import(store, [
+        {"date": "2026-05-14", "entry": {"start": "10:00", "end": "14:00"}},
+    ])
+    assert store.get("2026-05-14") == {"start": "10:00", "end": "14:00"}
+    assert store.get_all_raw()["2026-05-14"]["gcal_event_id"] == "evt-1"
+
+
+def test_apply_reservation_import_empty_is_noop():
+    store = _RecordingResStore()
+    apply_reservation_import(store, [])
+    assert store.saved == []
+
+
+def test_apply_reservation_import_then_reconcile_plans_update(tmp_path):
+    """End-to-End-Garantie: ein importiertes Reservierungs-Update wird beim
+    nächsten Kalender-Reconcile als update für das bestehende Event geplant
+    (kein Duplikat, gleiche gcal_event_id)."""
+    from src.reservations import ReservationStore
+    from src.reservations_sync import merge_reservations
+
+    store = ReservationStore(str(tmp_path / "r.json"))
+    store.save("2026-05-14", "08:00", "12:00")
+    raw = store.get_all_raw()
+    raw["2026-05-14"]["gcal_event_id"] = "evt-1"
+    store.apply_reconciled(raw)
+
+    # Import ändert die Zeiten (modified_at = jetzt, jünger als der Remote-Stand).
+    apply_reservation_import(store, [
+        {"date": "2026-05-14", "entry": {"start": "10:00", "end": "14:00"}},
+    ])
+
+    remote_events = [{
+        "date": "2026-05-14", "start": "08:00", "end": "12:00",
+        "modified_at": "2020-01-01T00:00:00Z", "event_id": "evt-1",
+    }]
+    result = merge_reservations(
+        store.get_all_raw(), remote_events, watermark="2020-01-01T00:00:00Z")
+    updates = result["plan"]["update"]
+    assert [u["event_id"] for u in updates] == ["evt-1"]
+    assert result["plan"]["create"] == []
+    assert updates[0]["start"] == "10:00" and updates[0]["end"] == "14:00"

@@ -16,14 +16,17 @@ from src.theme import (
     center_dialog_on_parent, disable_min_max,
     dark_combo, dark_entry, dark_text,
     primary_button, secondary_button,
+    themed_askyesno, themed_showinfo,
 )
 from src.holidays_de import STATES
 from src.settings import WEEKDAY_KEYS, SYNCED_SETTING_KEYS
+from src.time_utils import format_iso_date
 from src.time_utils import DAYS_DE, validate_entry
 
 
 def open_settings_dialog(parent, settings, base_path, on_change, *,
-                         conflicts_store=None, storage=None):
+                         conflicts_store=None, storage=None,
+                         reservation_store=None):
     """Modal dialog for editing app settings.
 
     on_change is called after a successful save so the calendar can refresh.
@@ -428,7 +431,7 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
         bg=BG, fg=TEXT_MUTED,
     ).grid(row=23, column=0, columnspan=2, padx=10, pady=(2, 0), sticky="w")
 
-    last = settings.get("last_pull_at") or "noch nie"
+    last = format_iso_date(settings.get("last_pull_at"), fallback="noch nie")
     tk.Label(
         dialog, text=f"Letzte Synchronisation: {last}", font=FONT_SMALL,
         bg=BG, fg=TEXT_MUTED,
@@ -456,15 +459,70 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
             on_change()
             dialog.destroy()
 
-        open_import_dialog(dialog, storage, settings, _after_import)
+        open_import_dialog(
+            dialog, storage, settings, _after_import,
+            reservation_store=reservation_store,
+        )
+
+    btn_row = tk.Frame(dialog, bg=BG)
+    btn_row.grid(row=26, column=0, columnspan=2, padx=10, pady=(4, 8), sticky="w")
+
+    # label_button liefert einen tk.Frame (keine -state-Option) — Doppelklick-
+    # Schutz daher über ein Flag statt cb.config(state=...).
+    reconnect_busy = {"value": False}
+
+    def _finish_reconnect(err, tb):
+        reconnect_busy["value"] = False
+        if not dialog.winfo_exists():
+            return
+        if err is None:
+            themed_showinfo(
+                dialog, "Google neu verbunden",
+                "Die Google-Berechtigungen wurden erneuert. Die "
+                "Synchronisation sollte jetzt wieder funktionieren.",
+            )
+            return
+        messagebox.showerror(
+            "Google neu verbinden",
+            f"Die Neuverbindung ist fehlgeschlagen:\n\n{err}\n\n{tb}",
+            parent=dialog,
+        )
+
+    def _reconnect_google():
+        if reconnect_busy["value"]:
+            return
+        if not themed_askyesno(
+            dialog, "Google neu verbinden",
+            "Die App fragt die Google-Berechtigungen neu ab. Dazu öffnet sich "
+            "ein Browser-Fenster zur Anmeldung — bitte dort die Freigabe "
+            "bestätigen.\n\nFortfahren?",
+        ):
+            return
+        reconnect_busy["value"] = True
+
+        def _do():
+            err, tb = None, ""
+            try:
+                from src import drive
+                drive.reconnect(
+                    os.path.join(base_path, "credentials.json"),
+                    os.path.join(base_path, "token.json"),
+                    gcal_enabled=settings.get("gcal_enabled"),
+                )
+            except Exception as e:
+                err, tb = e, traceback.format_exc()
+            dialog.after(0, lambda: _finish_reconnect(err, tb))
+
+        threading.Thread(target=_do, daemon=True).start()
+
+    reconnect_btn = secondary_button(
+        btn_row, "Google neu verbinden", _reconnect_google, padx=12, pady=2)
+    reconnect_btn.pack(side=tk.LEFT)
 
     if storage is not None:
         secondary_button(
-            dialog,
-            "Arbeitszeiten importieren…",
-            _open_import_dialog,
-            padx=12, pady=2,
-        ).grid(row=26, column=0, columnspan=2, padx=10, pady=(4, 8), sticky="w")
+            btn_row, "Daten importieren…", _open_import_dialog, padx=12, pady=2,
+        ).pack(side=tk.LEFT, padx=(8, 0))
 
     # --- Google Kalender (Reservierungen) ---
     tk.Label(
