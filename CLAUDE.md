@@ -90,6 +90,19 @@ Damit Umlaute/ß nicht als Mojibake ankommen, gelten drei Pflichten:
 - `MIMEText(html, "html", _charset="utf-8")`
 - Betreff: `Header(subject, "utf-8")`
 
+## Datumsformat: intern ISO, in der UI deutsch
+
+Gespeichert und intern verarbeitet wird **immer ISO** (`YYYY-MM-DD`,
+Timestamps `…THH:MM…`): Storage-Keys, Filter, Sync-Doc, gcal-Payloads,
+Update-Throttle. Nicht anfassen — daran hängen Vergleiche und Persistenz.
+
+In der **UI** wird **immer deutsch** angezeigt: Datum `TT.MM.JJJJ`,
+Zeitstempel `TT.MM.JJJJ HH:MM`. Dafür gibt es die zentralen Helfer
+`src/time_utils.py::format_iso_date` / `format_iso_datetime` (reine
+Anzeige-Formatierung, ISO bleibt die Quelle). Neue datumsanzeigende
+UI-Stellen über diese Helfer formatieren, nicht roh `isoformat()`/`str()`
+ausgeben.
+
 ## Tests / CI
 
 `.github/workflows/test.yml` installiert gezielt nur die Pakete, die die Tests brauchen (`pytest`, `holidays`), **nicht** `requirements.txt`. Grund: `pycairo` (transitive Dep von `xhtml2pdf`) braucht Cairo-Systemheader auf Ubuntu und bricht sonst den CI-Build. Der Import von `xhtml2pdf` in `src/report.py::generate_pdf` ist lazy, daher laufen die Report-Tests ohne die Lib. `holidays` ist pure Python ohne C-Deps und problemlos installierbar.
