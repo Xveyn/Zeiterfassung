@@ -118,6 +118,22 @@ def get_drive_service(credentials_path, token_path, gcal_enabled=False):
     return build("drive", "v3", credentials=creds)
 
 
+def reconnect(credentials_path, token_path, gcal_enabled=False):
+    """Erzwingt einen frischen OAuth-Consent: löscht ein vorhandenes token.json
+    und startet den vollen Flow neu (über get_drive_service ohne Token).
+
+    Nötig, weil ein gespeicherter Token, der einen inzwischen benötigten Scope
+    NICHT abdeckt, weder über `creds.valid` (ignoriert Scopes) noch über einen
+    Refresh (fordert fehlende Scopes nicht nach) ersetzt wird — der Consent-
+    Screen erscheint nur, wenn kein Token existiert. Holt mit den aktuellen
+    Scopes (inkl. Calendar bei gcal_enabled) neu ein."""
+    try:
+        os.remove(token_path)
+    except FileNotFoundError:
+        pass
+    return get_drive_service(credentials_path, token_path, gcal_enabled=gcal_enabled)
+
+
 def find_sync_file(service):
     """Listet appDataFolder und sucht nach SYNC_FILENAME. Liefert file_id oder None.
     Wirft DriveNetworkError bei API-Fehlern."""

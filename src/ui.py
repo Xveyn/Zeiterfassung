@@ -78,9 +78,9 @@ def _friendly_sync_message(error, tb=""):
             "Google-Verbindung erneuern",
             "Die App braucht erneut deine Erlaubnis für Google Drive. Das "
             "passiert, wenn die Verbindung abgelaufen oder widerrufen wurde "
-            "oder eine neue Freigabe nötig ist.\n\nBitte verbinde die App neu: "
-            "in den Einstellungen die Synchronisation aus- und wieder "
-            "einschalten und beim Google-Login die Freigabe bestätigen.",
+            "oder eine neue Freigabe nötig ist.\n\nBitte öffne die "
+            "Einstellungen und klicke auf „Google neu verbinden\" — danach "
+            "im Browser die Freigabe bestätigen.",
             True,
         )
     if kind == "network":

@@ -183,6 +183,54 @@ def test_upload_403_raises_drive_auth_error():
         upload(service, b'{"x":1}', file_id="file-1", expected_etag="")
 
 
+from src.drive import reconnect
+
+
+def test_reconnect_deletes_existing_token_and_forces_flow(tmp_path):
+    """Kern des Re-Consent-Fixes: trotz vorhandenem, gültigem Alt-Token muss
+    reconnect den vollen OAuth-Flow erzwingen (Token löschen → Consent-Screen),
+    sonst wird ein scope-armer Token nie ersetzt."""
+    token = tmp_path / "token.json"
+    token.write_text('{"token": "old-underscoped"}')
+    creds_path = tmp_path / "credentials.json"
+    creds_path.write_text('{"installed": {}}')
+
+    new_creds = mock.MagicMock()
+    new_creds.valid = True
+    new_creds.to_json.return_value = '{"token": "fresh"}'
+
+    with mock.patch("src.drive.InstalledAppFlow") as mock_flow_cls, \
+         mock.patch("src.drive.build"):
+        mock_flow = mock.MagicMock()
+        mock_flow.run_local_server.return_value = new_creds
+        mock_flow_cls.from_client_secrets_file.return_value = mock_flow
+        reconnect(str(creds_path), str(token))
+
+    assert mock_flow_cls.from_client_secrets_file.called  # voller Flow erzwungen
+    assert token.read_text() == '{"token": "fresh"}'      # Alt-Token ersetzt
+
+
+def test_reconnect_without_existing_token_runs_flow(tmp_path):
+    """Fehlt token.json bereits, darf reconnect nicht scheitern, sondern den
+    Flow normal starten."""
+    token = tmp_path / "token.json"  # existiert nicht
+    creds_path = tmp_path / "credentials.json"
+    creds_path.write_text('{"installed": {}}')
+
+    new_creds = mock.MagicMock()
+    new_creds.valid = True
+    new_creds.to_json.return_value = '{"token": "fresh"}'
+
+    with mock.patch("src.drive.InstalledAppFlow") as mock_flow_cls, \
+         mock.patch("src.drive.build"):
+        mock_flow = mock.MagicMock()
+        mock_flow.run_local_server.return_value = new_creds
+        mock_flow_cls.from_client_secrets_file.return_value = mock_flow
+        reconnect(str(creds_path), str(token))
+
+    assert mock_flow_cls.from_client_secrets_file.called
+
+
 def test_get_drive_service_with_gcal_requests_calendar_scopes(tmp_path, monkeypatch):
     """Bei gcal_enabled fordert get_drive_service auch die Calendar-Scopes an,
     damit ein Drive-Re-Consent die Calendar-Scopes nicht aus token.json wirft."""
