@@ -47,6 +47,7 @@ DEFAULTS = {
     "device_id": "",
     "last_pull_at": "",
     "drive_etag": "",
+    "gc_watermark": "",
     "gcal_enabled": False,
     "gcal_calendar_id": "",
     "last_calendar_sync_at": "",

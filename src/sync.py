@@ -14,7 +14,20 @@ import datetime
 import uuid
 
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
+
+
+def _watermark_of(doc):
+    return ((doc.get("meta") or {}).get("gc_watermark") or "")
+
+
+def _is_settled_entry(entry, watermark):
+    return bool(entry.get("deleted")) and (entry.get("modified_at") or "") < watermark
+
+
+def _is_settled_conflict(conflict, watermark):
+    resolved_at = conflict.get("resolved_at") or ""
+    return bool(conflict.get("resolved")) and resolved_at != "" and resolved_at < watermark
 
 SYNCED_SETTING_KEYS = (
     "recipient", "name", "hourly_rate",
@@ -125,7 +138,12 @@ def merge(local, remote, last_pull_at):
         "entries": {},
         "settings": {},
         "conflicts": [],
+        "meta": {"gc_watermark": ""},
     }
+    watermark = max(_watermark_of(local), _watermark_of(remote))
+    merged["meta"]["gc_watermark"] = watermark
+    remote_wm = _watermark_of(remote)
+    excluded = bool(last_pull_at) and last_pull_at < remote_wm
     new_conflicts = []
 
     # Entries
@@ -135,6 +153,11 @@ def merge(local, remote, last_pull_at):
         r = remote.get("entries", {}).get(key)
         winner, conflict = _merge_one(l, r, last_pull_at,
                                        equal_fn=_values_equal_entry, kind="entry", key=key)
+        # Regel 2: Self-Heal — ein zurückgekehrtes (excluded) Gerät darf einen
+        # alten, remote-fehlenden lebenden Eintrag nicht auferstehen lassen.
+        if (excluded and r is None and l is not None
+                and (l.get("modified_at") or "") < remote_wm):
+            winner = None
         if winner is not None:
             merged["entries"][key] = winner
         if conflict is not None:
@@ -197,6 +220,18 @@ def merge(local, remote, last_pull_at):
                     "device_id": resolved_by,
                 }
 
+    # Regel 1: settled Tombstones entfernen (Kompaktierung propagieren).
+    # Läuft NACH der Resolution-Application, damit kein resolved-Wert verloren geht.
+    if watermark:
+        merged["entries"] = {
+            k: v for k, v in merged["entries"].items()
+            if not _is_settled_entry(v, watermark)
+        }
+        merged["conflicts"] = [
+            c for c in merged["conflicts"]
+            if not _is_settled_conflict(c, watermark)
+        ]
+
     return merged
 
 
@@ -207,6 +242,7 @@ def build_local_doc(storage, settings, conflicts_store):
         "entries": storage.get_all_raw(),
         "settings": settings.get_synced_doc(),
         "conflicts": conflicts_store.get_all(),
+        "meta": {"gc_watermark": settings.get("gc_watermark") or ""},
     }
 
 
@@ -215,6 +251,33 @@ def apply_merged_doc(merged_doc, storage, settings, conflicts_store):
     storage.apply_merge(merged_doc.get("entries", {}))
     settings.apply_synced(merged_doc.get("settings", {}))
     conflicts_store.save_all(merged_doc.get("conflicts", []))
+    settings.set("gc_watermark", (merged_doc.get("meta") or {}).get("gc_watermark") or "")
+
+
+def compact_local(storage, settings, conflicts_store, now):
+    """Schreibt das gc_watermark lokal und strippt settled Tombstones aus
+    Storage und ConflictsStore. Ein lokaler Schreibvorgang pro Store
+    (Wiederverwendung von storage.apply_merge — Required-Key-Validator +
+    Atomic-Write bleiben auf einem Pfad)."""
+    settings.set("gc_watermark", now)
+    storage.apply_merge({
+        k: v for k, v in storage.get_all_raw().items()
+        if not _is_settled_entry(v, now)
+    })
+    conflicts_store.save_all([
+        c for c in conflicts_store.get_all()
+        if not _is_settled_conflict(c, now)
+    ])
+
+
+def _remote_is_pre_v2(remote_doc):
+    """True, wenn das Remote-Doc von einem v1-Gerät stammt (Schema < 2 oder
+    fehlendes/leeres meta ohne gc_watermark-Key) — dann ist gerade ein älteres
+    Gerät aktiv und die Kompaktierung muss abbrechen."""
+    if (remote_doc.get("schema_version") or 1) < 2:
+        return True
+    meta = remote_doc.get("meta")
+    return not (isinstance(meta, dict) and "gc_watermark" in meta)
 
 
 def resolve_conflict(conflict_id, chosen_value, conflicts_store, storage, settings, device_id):

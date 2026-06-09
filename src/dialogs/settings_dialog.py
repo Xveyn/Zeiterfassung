@@ -524,11 +524,59 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
             btn_row, "Daten importieren…", _open_import_dialog, padx=12, pady=2,
         ).pack(side=tk.LEFT, padx=(8, 0))
 
+    if settings.get("sync_enabled") and storage is not None and conflicts_store is not None:
+        def _on_compact_clicked():
+            confirmed = messagebox.askyesno(
+                "Sync-Daten kompaktieren",
+                "Entfernt alte gelöschte Einträge endgültig aus dem Sync.\n\n"
+                "Nur ausführen, wenn ALLE deine Geräte auf der aktuellen Version "
+                "sind und kürzlich synchronisiert haben.\n\nFortfahren?",
+                parent=dialog,
+            )
+            if not confirmed:
+                return
+
+            def _show(res):
+                if not dialog.winfo_exists():
+                    return
+                if res.get("reason") == "old_version":
+                    messagebox.showwarning(
+                        "Kompaktierung abgebrochen",
+                        "Ein Gerät nutzt noch eine ältere Version — bitte erst "
+                        "alle Geräte aktualisieren und synchronisieren.",
+                        parent=dialog,
+                    )
+                elif not res.get("ok"):
+                    detail = f"{res.get('error', '?')}\n\n{res.get('tb', '')}"
+                    messagebox.showerror(
+                        "Kompaktierung fehlgeschlagen",
+                        f"Die Kompaktierung ist fehlgeschlagen:\n\n{detail}",
+                        parent=dialog,
+                    )
+                else:
+                    messagebox.showinfo(
+                        "Kompaktierung", "Sync-Daten wurden kompaktiert.",
+                        parent=dialog,
+                    )
+
+            def _do():
+                from src.main import _run_compaction_blocking
+                res = _run_compaction_blocking(
+                    storage, settings, conflicts_store, base_path)
+                dialog.after(0, lambda: _show(res))
+
+            threading.Thread(target=_do, daemon=True).start()
+
+        secondary_button(
+            dialog, "Sync-Daten kompaktieren", _on_compact_clicked,
+            padx=12, pady=2,
+        ).grid(row=27, column=0, columnspan=2, padx=10, pady=(0, 8), sticky="w")
+
     # --- Google Kalender (Reservierungen) ---
     tk.Label(
         dialog, text="— Google Kalender —", font=FONT_BOLD,
         bg=BG, fg=TEXT_MUTED,
-    ).grid(row=27, column=0, columnspan=2, padx=10, pady=(16, 4))
+    ).grid(row=28, column=0, columnspan=2, padx=10, pady=(16, 4))
 
     var_gcal = tk.BooleanVar(value=settings.get("gcal_enabled"))
     cb_gcal: tk.Checkbutton | None = None
@@ -539,12 +587,12 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
     cal_var = tk.StringVar(value=settings.get("gcal_calendar_id") or "primary")
 
     cal_combo = dark_combo(dialog, cal_var, [cal_var.get()], width=30)
-    cal_combo.grid(row=29, column=1, padx=10, pady=4, sticky="w")
+    cal_combo.grid(row=30, column=1, padx=10, pady=4, sticky="w")
     tk.Label(dialog, text="Kalender:", font=FONT, bg=BG, fg=TEXT).grid(
-        row=29, column=0, padx=10, pady=4, sticky="w")
+        row=30, column=0, padx=10, pady=4, sticky="w")
 
     cal_status = tk.Label(dialog, text="", font=FONT_SMALL, bg=BG, fg=TEXT_MUTED)
-    cal_status.grid(row=30, column=0, columnspan=2, padx=10, pady=(0, 4), sticky="w")
+    cal_status.grid(row=31, column=0, columnspan=2, padx=10, pady=(0, 4), sticky="w")
 
     def _populate_calendars(items):
         if not cal_combo.winfo_exists():
@@ -644,7 +692,7 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
         activebackground=BG, activeforeground=TEXT,
         cursor="hand2", command=_on_gcal_toggled,
     )
-    cb_gcal.grid(row=28, column=0, columnspan=2, padx=10, pady=(4, 0), sticky="w")
+    cb_gcal.grid(row=29, column=0, columnspan=2, padx=10, pady=(4, 0), sticky="w")
 
     if settings.get("gcal_enabled"):
         _load_calendars()
@@ -729,7 +777,7 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
         dialog.destroy()
 
     btn_frame = tk.Frame(dialog, bg=BG)
-    btn_frame.grid(row=31, column=0, columnspan=2, pady=12)
+    btn_frame.grid(row=32, column=0, columnspan=2, pady=12)
 
     primary_button(btn_frame, "Speichern", save_settings).pack(side=tk.LEFT, padx=5)
     secondary_button(btn_frame, "Abbrechen", dialog.destroy).pack(side=tk.LEFT, padx=5)

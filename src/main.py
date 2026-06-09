@@ -138,6 +138,66 @@ def _run_push_blocking(storage, settings, conflicts_store, base, timeout_seconds
     return result
 
 
+def _run_compaction_blocking(storage, settings, conflicts_store, base, timeout_seconds=20):
+    """User-ausgelöste Kompaktierung: frischer Pull → v1-Guard → Merge →
+    Watermark setzen + lokal strippen → Push. Liefert
+    {"ok": bool, "reason": str, "error": ..., "tb": ...}.
+
+    reason == "old_version": ein älteres Gerät ist aktiv (Remote ist pre-v2),
+    Kompaktierung abgebrochen, KEINE Änderung vorgenommen."""
+    import json
+    from src import drive, sync
+
+    result = {}
+
+    def _do():
+        try:
+            service = drive.get_drive_service(
+                os.path.join(base, "credentials.json"),
+                os.path.join(base, "token.json"),
+                gcal_enabled=settings.get("gcal_enabled"),
+            )
+            file_id = drive.find_sync_file(service)
+            if file_id is not None:
+                content, _etag = drive.download(service, file_id)
+                try:
+                    remote_doc = json.loads(content)
+                except (json.JSONDecodeError, ValueError):
+                    remote_doc = {"schema_version": 1}
+                # v1-Guard auf dem FRISCH gepullten Doc (nie gecacht):
+                if sync._remote_is_pre_v2(remote_doc):
+                    result.update({"ok": False, "reason": "old_version"})
+                    return
+            else:
+                remote_doc = {"schema_version": 2, "entries": {}, "settings": {},
+                              "conflicts": [], "meta": {"gc_watermark": ""}}
+
+            # 1) normaler Merge des frischen Remote-Stands
+            now = sync._utc_now_iso()
+            local_doc = sync.build_local_doc(storage, settings, conflicts_store)
+            merged = sync.merge(local_doc, remote_doc, settings.get("last_pull_at") or "")
+            sync.apply_merged_doc(merged, storage, settings, conflicts_store)
+            settings.set("last_pull_at", now)
+            # 2) Watermark setzen + lokal strippen
+            sync.compact_local(storage, settings, conflicts_store, now)
+            # 3) kompaktiertes Doc hochladen
+            doc = sync.build_local_doc(storage, settings, conflicts_store)
+            payload = json.dumps(doc, ensure_ascii=False).encode("utf-8")
+            new_id, new_etag = drive.upload(service, payload, file_id, expected_etag="")
+            settings.set("drive_etag", new_etag)
+            result.update({"ok": True})
+        except Exception as e:
+            logging.getLogger(__name__).exception("Kompaktierung fehlgeschlagen")
+            result.update({"ok": False, "error": str(e), "tb": traceback.format_exc()})
+
+    t = threading.Thread(target=_do, daemon=True)
+    t.start()
+    t.join(timeout=timeout_seconds)
+    if not result:
+        result = {"ok": False, "error": "Timeout", "tb": ""}
+    return result
+
+
 def run_calendar_reconcile(reservation_store, settings, base):
     """Baut den Calendar-Service und fährt einen Reservierungs-Reconcile.
 

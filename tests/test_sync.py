@@ -285,7 +285,7 @@ def test_build_local_doc_includes_storage_settings_conflicts(tmp_path):
     assert "2026-05-14" in doc["entries"]
     assert doc["settings"]["recipient"]["value"] == "a@b.de"
     assert doc["conflicts"][0]["id"] == "c-1"
-    assert doc["schema_version"] == 1
+    assert doc["schema_version"] == 2
 
 
 def test_round_trip_no_loss(tmp_path):
@@ -384,3 +384,244 @@ def test_resolve_nonexistent_conflict_raises(tmp_path):
     conflicts = ConflictsStore(str(tmp_path / "c.json"))
     with pytest.raises(KeyError):
         resolve_conflict("missing", {}, conflicts, storage, settings, device_id="A")
+
+
+# --- Tombstone-Kompaktierung: Watermark-Propagation ---
+
+def _meta_doc(entries=None, conflicts=None, watermark=""):
+    d = _doc(entries=entries, conflicts=conflicts)
+    d["schema_version"] = 2
+    d["meta"] = {"gc_watermark": watermark}
+    return d
+
+
+def test_merge_watermark_propagates_max():
+    local = _meta_doc(watermark="2026-05-01T00:00:00Z")
+    remote = _meta_doc(watermark="2026-05-10T00:00:00Z")
+    merged = merge(local, remote, "2026-04-01T00:00:00Z")
+    assert merged["meta"]["gc_watermark"] == "2026-05-10T00:00:00Z"
+
+
+def test_merge_watermark_monotonic_local_wins_when_remote_missing_meta():
+    """v1-Remote ohne meta darf das lokale Watermark nicht zurücksetzen."""
+    local = _meta_doc(watermark="2026-05-10T00:00:00Z")
+    remote = _doc()  # schema_version 1, kein meta
+    merged = merge(local, remote, "2026-04-01T00:00:00Z")
+    assert merged["meta"]["gc_watermark"] == "2026-05-10T00:00:00Z"
+
+
+def test_merge_no_meta_either_side_yields_empty_watermark():
+    merged = merge(_doc(), _doc(), "2026-04-01T00:00:00Z")
+    assert merged["meta"]["gc_watermark"] == ""
+
+
+def test_build_local_doc_includes_watermark_from_settings(tmp_path):
+    storage = Storage(str(tmp_path / "z.json"), device_id="A")
+    settings = Settings(str(tmp_path / "s.json"))
+    settings.set("gc_watermark", "2026-05-10T00:00:00Z")
+    conflicts = ConflictsStore(str(tmp_path / "c.json"))
+    doc = build_local_doc(storage, settings, conflicts)
+    assert doc["meta"]["gc_watermark"] == "2026-05-10T00:00:00Z"
+
+
+def test_apply_merged_doc_persists_watermark(tmp_path):
+    storage = Storage(str(tmp_path / "z.json"), device_id="A")
+    settings = Settings(str(tmp_path / "s.json"))
+    conflicts = ConflictsStore(str(tmp_path / "c.json"))
+    merged = _meta_doc(watermark="2026-05-11T00:00:00Z")
+    apply_merged_doc(merged, storage, settings, conflicts)
+    assert settings.get("gc_watermark") == "2026-05-11T00:00:00Z"
+
+
+# --- Regel 1: settled Tombstones droppen ---
+
+def test_merge_drops_settled_entry_tombstone():
+    wm = "2026-05-10T00:00:00Z"
+    local = _meta_doc(
+        entries={"D": _e(None, None, None, "2026-05-05T00:00:00Z", deleted=True)},
+        watermark=wm,
+    )
+    merged = merge(local, _meta_doc(watermark=wm), "2026-04-01T00:00:00Z")
+    assert "D" not in merged["entries"]
+
+
+def test_merge_keeps_tombstone_at_or_after_watermark():
+    wm = "2026-05-10T00:00:00Z"
+    # genau auf der Grenze: strikt < → bleibt
+    local = _meta_doc(
+        entries={"D": _e(None, None, None, wm, deleted=True)},
+        watermark=wm,
+    )
+    merged = merge(local, _meta_doc(watermark=wm), "2026-04-01T00:00:00Z")
+    assert "D" in merged["entries"]
+
+
+def test_merge_keeps_live_entry_older_than_watermark():
+    """Regel 1 entfernt nur deleted-Einträge, keine lebenden.
+    last_pull_at == wm → Gerät ist nicht excluded (kein Regel-2-Eingriff)."""
+    wm = "2026-05-10T00:00:00Z"
+    local = _meta_doc(
+        entries={"D": _e("08:00", "16:00", 30, "2026-05-05T00:00:00Z")},
+        watermark=wm,
+    )
+    merged = merge(local, _meta_doc(watermark=wm), wm)
+    assert "D" in merged["entries"]
+
+
+def test_merge_compaction_propagates_and_sticks():
+    """Gerät B hält lokalen Tombstone, pullt kompaktierten Remote (ohne D,
+    Watermark gesetzt) → B verwirft den Tombstone, lädt ihn nicht erneut hoch."""
+    wm = "2026-05-10T00:00:00Z"
+    local = _meta_doc(  # B hat den alten Tombstone noch
+        entries={"D": _e(None, None, None, "2026-05-05T00:00:00Z", deleted=True)},
+        watermark="",
+    )
+    remote = _meta_doc(entries={}, watermark=wm)  # bereits kompaktiert
+    merged = merge(local, remote, "2026-05-06T00:00:00Z")
+    assert "D" not in merged["entries"]
+    assert merged["meta"]["gc_watermark"] == wm
+
+
+def test_merge_recovers_after_failed_compaction_push():
+    """Partial-Failure: lokal wurde kompaktiert (Watermark=now gesetzt), aber der
+    Push schlug fehl → Remote trägt den Tombstone noch. Beim nächsten Sync gewinnt
+    das höhere lokale Watermark monoton und Regel 1 entfernt den Remote-Tombstone."""
+    now = "2026-06-09T12:00:00Z"
+    local = _meta_doc(entries={}, watermark=now)  # lokal schon kompaktiert
+    remote = _meta_doc(  # Remote hat den alten Tombstone noch, altes/leeres Watermark
+        entries={"D": _e(None, None, None, "2026-05-05T00:00:00Z", deleted=True)},
+        watermark="",
+    )
+    merged = merge(local, remote, "2026-05-06T00:00:00Z")
+    assert "D" not in merged["entries"]
+    assert merged["meta"]["gc_watermark"] == now
+
+
+def test_merge_drops_settled_resolved_conflict():
+    wm = "2026-05-10T00:00:00Z"
+    c = _conflict("c-1", resolved=True, resolution={"start": "08:00"},
+                  resolved_at="2026-05-05T00:00:00Z", resolved_by="A")
+    local = _meta_doc(conflicts=[c], watermark=wm)
+    merged = merge(local, _meta_doc(watermark=wm), "2026-04-01T00:00:00Z")
+    assert merged["conflicts"] == []
+
+
+def test_merge_keeps_resolved_conflict_without_resolved_at():
+    """Defensiv: resolved=True aber resolved_at None/'' → nicht droppen (kein Crash)."""
+    wm = "2026-05-10T00:00:00Z"
+    c = _conflict("c-1", resolved=True, resolution={"start": "08:00"},
+                  resolved_at=None, resolved_by="A")
+    local = _meta_doc(conflicts=[c], watermark=wm)
+    merged = merge(local, _meta_doc(watermark=wm), "2026-04-01T00:00:00Z")
+    assert len(merged["conflicts"]) == 1
+
+
+def test_merge_keeps_unresolved_conflict_regardless_of_watermark():
+    wm = "2026-05-10T00:00:00Z"
+    c = _conflict("c-1", resolved=False)
+    local = _meta_doc(conflicts=[c], watermark=wm)
+    merged = merge(local, _meta_doc(watermark=wm), "2026-04-01T00:00:00Z")
+    assert len(merged["conflicts"]) == 1
+
+
+def test_merge_no_drop_when_watermark_empty():
+    """Backwards-compat: ohne Watermark verhält sich merge wie bisher."""
+    local = _doc(entries={"D": _e(None, None, None, "2026-05-05T00:00:00Z", deleted=True)})
+    merged = merge(local, _doc(), "2026-04-01T00:00:00Z")
+    assert "D" in merged["entries"]
+
+
+# --- Regel 2: Self-Heal-Suppression ---
+
+def test_merge_suppresses_stale_live_entry_for_excluded_device():
+    """Zurückkehrendes Gerät (last_pull_at < remote.watermark) verwirft einen
+    alten, anderswo gelöschten-und-kompaktierten Tag statt ihn aufstehen zu lassen."""
+    wm = "2026-05-10T00:00:00Z"
+    local = _meta_doc(
+        entries={"D": _e("08:00", "16:00", 30, "2026-05-05T00:00:00Z")},  # alt, lebend
+        watermark="",
+    )
+    remote = _meta_doc(entries={}, watermark=wm)  # D wurde anderswo kompaktiert
+    # last_pull_at < remote.watermark → excluded
+    merged = merge(local, remote, "2026-05-06T00:00:00Z")
+    assert "D" not in merged["entries"]
+
+
+def test_merge_first_sync_device_keeps_history():
+    """Erstsync (last_pull_at == '') ist NICHT excluded → Historie bleibt/lädt hoch."""
+    wm = "2026-05-10T00:00:00Z"
+    local = _meta_doc(
+        entries={"D": _e("08:00", "16:00", 30, "2026-05-05T00:00:00Z")},
+        watermark="",
+    )
+    remote = _meta_doc(entries={}, watermark=wm)
+    merged = merge(local, remote, "")  # Erstsync
+    assert merged["entries"]["D"]["start"] == "08:00"
+
+
+def test_merge_keeps_fresh_offline_edit_for_excluded_device():
+    """Excluded, aber Eintrag NEUER als Watermark → echter Offline-Edit, bleibt."""
+    wm = "2026-05-10T00:00:00Z"
+    local = _meta_doc(
+        entries={"D": _e("08:00", "16:00", 30, "2026-05-15T00:00:00Z")},  # > watermark
+        watermark="",
+    )
+    remote = _meta_doc(entries={}, watermark=wm)
+    merged = merge(local, remote, "2026-05-06T00:00:00Z")  # excluded
+    assert merged["entries"]["D"]["start"] == "08:00"
+
+
+def test_merge_no_suppression_when_remote_present():
+    """Suppression greift nur bei remote-fehlendem Key."""
+    wm = "2026-05-10T00:00:00Z"
+    local = _meta_doc(
+        entries={"D": _e("08:00", "16:00", 30, "2026-05-05T00:00:00Z")},
+        watermark="",
+    )
+    remote = _meta_doc(
+        entries={"D": _e("09:00", "17:00", 30, "2026-05-04T00:00:00Z")},
+        watermark=wm,
+    )
+    merged = merge(local, remote, "2026-05-06T00:00:00Z")
+    assert "D" in merged["entries"]
+
+
+# --- Kompaktierungs-Helfer ---
+
+from src.sync import compact_local, _remote_is_pre_v2
+
+
+def test_compact_local_strips_stores_and_sets_watermark(tmp_path):
+    storage = Storage(str(tmp_path / "z.json"), device_id="A")
+    storage.save("LIVE", "08:00", "16:00", 30)
+    storage.save("DEL", "08:00", "16:00", 30)
+    storage.delete("DEL")  # Tombstone
+    settings = Settings(str(tmp_path / "s.json"))
+    conflicts = ConflictsStore(str(tmp_path / "c.json"))
+    conflicts.save_all([
+        {"id": "c-1", "kind": "entry", "key": "X", "candidates": [],
+         "detected_at": "...", "resolved": True, "resolution": {"start": "08:00"},
+         "resolved_at": "2026-05-05T00:00:00Z", "resolved_by": "A"},
+        {"id": "c-2", "kind": "entry", "key": "Y", "candidates": [],
+         "detected_at": "...", "resolved": False, "resolution": None,
+         "resolved_at": None, "resolved_by": None},
+    ])
+    # Watermark unzweideutig in der Zukunft jeder realen delete()-Stempelung
+    # (storage.delete stempelt modified_at = wall-clock UTC); sonst flippt
+    # der Strip ab dem Watermark-Zeitpunkt (_is_settled_entry nutzt strikt <).
+    now = "2099-01-01T00:00:00Z"
+    compact_local(storage, settings, conflicts, now)
+
+    assert settings.get("gc_watermark") == now
+    raw = storage.get_all_raw()
+    assert "DEL" not in raw            # Tombstone gestrippt
+    assert "LIVE" in raw               # lebend bleibt
+    remaining = [c["id"] for c in conflicts.get_all()]
+    assert remaining == ["c-2"]        # nur unresolved bleibt
+
+
+def test_remote_is_pre_v2():
+    assert _remote_is_pre_v2({"schema_version": 1, "entries": {}}) is True
+    assert _remote_is_pre_v2({"schema_version": 2, "entries": {}}) is True  # kein meta
+    assert _remote_is_pre_v2({"schema_version": 2, "meta": {"gc_watermark": ""}}) is False
+    assert _remote_is_pre_v2({"schema_version": 2, "meta": {}}) is True     # meta ohne key
