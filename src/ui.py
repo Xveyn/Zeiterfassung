@@ -35,7 +35,7 @@ from src.theme import (
     BG, CELL_BG, WEEKEND_BG, ACCENT, ACCENT_HOVER, TEXT, TEXT_MUTED,
     ENTRY_BG, WEEKEND_ENTRY_BG, WEEKEND_FG,
     HOLIDAY_BG, HOLIDAY_BG_HOVER, HOLIDAY_ACCENT,
-    RESERVATION_ACCENT,
+    RESERVATION_ACCENT, TODAY_ACCENT,
     FONT, FONT_BOLD, FONT_HEADER, FONT_HEADER_SMALL, FONT_FOOTER, FONT_SMALL, FONT_TINY,
     CELL_BG_HOVER, WEEKEND_BG_HOVER, ENTRY_BG_HOVER, WEEKEND_ENTRY_BG_HOVER,
     apply_dark_titlebar, themed_askyesno, themed_showinfo,
@@ -869,6 +869,11 @@ class App:
             attach_tooltip(cell, tip)
         elif entry and is_holiday:
             attach_tooltip(cell, f"Feiertag: {holidays_map[day_date]}")
+
+        # Heutigen Tag mit blauem Rahmen hervorheben. Vor dem Konflikt-Block,
+        # damit ein Konflikt (orange) auf demselben Tag den Rand gewinnt.
+        if day_date == datetime.date.today():
+            cell.configure(highlightbackground=TODAY_ACCENT, highlightthickness=2)
 
         if conflict_dates and date_str in conflict_dates:
             cell.configure(highlightbackground="orange", highlightthickness=2)

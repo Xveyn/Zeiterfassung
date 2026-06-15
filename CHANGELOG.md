@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.14.1 — 2026-06-15
+
+### Hinzugefügt
+- Der heutige Tag wird im Kalender hervorgehoben: Die heutige Zelle erhält in
+  Monats- und Wochenansicht einen blauen Rahmen — klar abgesetzt von
+  Eintrags- (rot), Feiertags- (grün), Reservierungs- (violett) und
+  Konflikt-Markierung (orange).
+
 ## 1.14.0 — 2026-06-02
 
 ### Hinzugefügt

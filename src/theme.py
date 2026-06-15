@@ -52,6 +52,10 @@ RESERVATION_BG = "#2a2150"
 RESERVATION_BG_HOVER = "#352a66"
 RESERVATION_ACCENT = "#a78bfa"
 
+# Rahmenfarbe für den heutigen Tag — blau, klar abgesetzt von rotem Eintrag,
+# grünem Feiertag, violetter Reservierung und orangem Konflikt-Rand.
+TODAY_ACCENT = "#38bdf8"
+
 # Time dropdown values (5-min steps, 00:00 - 23:55)
 TIME_VALUES = [f"{h:02d}:{m:02d}" for h in range(24) for m in range(0, 60, 5)]
 PAUSE_VALUES = [str(m) for m in range(0, 125, 5)]
