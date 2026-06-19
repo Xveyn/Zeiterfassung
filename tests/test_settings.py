@@ -41,7 +41,7 @@ def test_recipient_default(tmp_settings):
     assert tmp_settings.get("recipient") == ""
 
 def test_autostart_default(tmp_settings):
-    assert tmp_settings.get("autostart") == False
+    assert tmp_settings.get("autostart") is False
 
 
 def test_last_update_check_at_default(tmp_settings):
@@ -355,7 +355,7 @@ def test_get_synced_doc_empty_when_nothing_set(tmp_settings):
 def test_set_synced_stamps_meta_per_key(tmp_path):
     """Regression: simulate Settings-Dialog save behavior — synced keys must
     stamp _synced_meta, otherwise sync silently drops them."""
-    from src.settings import Settings, SYNCED_SETTING_KEYS
+    from src.settings import Settings
     s = Settings(str(tmp_path / "settings.json"))
     s.device_id_for_sync = "dev-1"
     updates = {"recipient": "a@b.de", "name": "Max", "default_pause": 45}
@@ -400,7 +400,6 @@ def test_gcal_defaults_present():
 
 
 def test_gcal_calendar_id_is_synced_setting():
-    from src.settings import SYNCED_SETTING_KEYS
     assert "gcal_calendar_id" in SYNCED_SETTING_KEYS
 
 

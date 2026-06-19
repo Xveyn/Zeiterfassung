@@ -1,6 +1,5 @@
 # tests/test_ui_autostart_target.py
 import sys
-import pytest
 from src.autostart import resolve_autostart_target
 
 

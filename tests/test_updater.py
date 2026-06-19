@@ -5,7 +5,7 @@ from io import BytesIO
 from unittest.mock import patch
 from urllib.error import HTTPError, URLError
 
-from src.updater import Asset, Release, check_latest_release, is_newer, pick_asset_url, should_check_today, today_iso
+from src.updater import Asset, check_latest_release, is_newer, pick_asset_url, should_check_today, today_iso
 
 
 class TestIsNewer:

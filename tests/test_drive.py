@@ -27,7 +27,7 @@ def test_get_drive_service_uses_existing_valid_token(tmp_path):
     with mock.patch("src.drive.Credentials") as mock_cred_cls, \
          mock.patch("src.drive.build") as mock_build:
         mock_cred_cls.from_authorized_user_file.return_value = mock_creds
-        service = get_drive_service("credentials.json", str(token_path))
+        get_drive_service("credentials.json", str(token_path))
 
     mock_cred_cls.from_authorized_user_file.assert_called_once()
     assert mock_build.called
@@ -87,7 +87,6 @@ def test_find_sync_file_queries_appdatafolder():
     assert "zeiterfassung-sync.json" in call_kwargs.get("q", "")
 
 
-import io
 
 from src.drive import download, upload
 

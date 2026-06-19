@@ -584,7 +584,6 @@ def _apply_dark_titlebar_now(window):
         text = ctypes.c_int(_hex_to_colorref(TEXT))
 
         DWMWA_BORDER_COLOR, DWMWA_CAPTION_COLOR, DWMWA_TEXT_COLOR = 34, 35, 36
-        DWMWA_USE_IMMERSIVE_DARK_MODE = 20
 
         set_attr(hwnd, DWMWA_CAPTION_COLOR, ctypes.byref(bg), ctypes.sizeof(bg))
         set_attr(hwnd, DWMWA_TEXT_COLOR, ctypes.byref(text), ctypes.sizeof(text))

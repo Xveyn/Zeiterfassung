@@ -5,6 +5,10 @@ Hält die appDataFolder-spezifische Datei `zeiterfassung-sync.json`.
 Scope: drive.appdata (non-sensitive, per-app-isolated).
 """
 
+import io
+import os
+import stat
+
 SYNC_FILENAME = "zeiterfassung-sync.json"
 SYNC_MIMETYPE = "application/json"
 DRIVE_APPDATA_SCOPE = "https://www.googleapis.com/auth/drive.appdata"
@@ -21,10 +25,6 @@ class DriveNetworkError(Exception):
 class DriveConflictError(Exception):
     """ETag-Mismatch beim Upload — Remote wurde inzwischen verändert."""
 
-
-import io
-import os
-import stat
 
 try:
     from google.auth.exceptions import RefreshError, TransportError

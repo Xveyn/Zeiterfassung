@@ -149,14 +149,14 @@ def merge(local, remote, last_pull_at):
     # Entries
     all_entry_keys = set(local.get("entries", {}).keys()) | set(remote.get("entries", {}).keys())
     for key in all_entry_keys:
-        l = local.get("entries", {}).get(key)
-        r = remote.get("entries", {}).get(key)
-        winner, conflict = _merge_one(l, r, last_pull_at,
+        loc = local.get("entries", {}).get(key)
+        rem = remote.get("entries", {}).get(key)
+        winner, conflict = _merge_one(loc, rem, last_pull_at,
                                        equal_fn=_values_equal_entry, kind="entry", key=key)
         # Regel 2: Self-Heal — ein zurückgekehrtes (excluded) Gerät darf einen
         # alten, remote-fehlenden lebenden Eintrag nicht auferstehen lassen.
-        if (excluded and r is None and l is not None
-                and (l.get("modified_at") or "") < remote_wm):
+        if (excluded and rem is None and loc is not None
+                and (loc.get("modified_at") or "") < remote_wm):
             winner = None
         if winner is not None:
             merged["entries"][key] = winner
@@ -165,9 +165,9 @@ def merge(local, remote, last_pull_at):
 
     # Settings (Whitelist)
     for key in SYNCED_SETTING_KEYS:
-        l = local.get("settings", {}).get(key)
-        r = remote.get("settings", {}).get(key)
-        winner, conflict = _merge_one(l, r, last_pull_at,
+        loc = local.get("settings", {}).get(key)
+        rem = remote.get("settings", {}).get(key)
+        winner, conflict = _merge_one(loc, rem, last_pull_at,
                                        equal_fn=_values_equal_setting, kind="setting", key=key)
         if winner is not None:
             merged["settings"][key] = winner

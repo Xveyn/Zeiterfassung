@@ -1,5 +1,4 @@
 import datetime
-import pytest
 from src.report import generate_report
 
 def test_empty_entries():

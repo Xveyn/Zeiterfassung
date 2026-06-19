@@ -233,7 +233,6 @@ def test_send_email_json_attachment_uses_subtype():
 
 
 import platform  # noqa: E402
-import stat  # noqa: E402
 
 
 @pytest.mark.skipif(

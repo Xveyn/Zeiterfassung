@@ -1,6 +1,6 @@
 # src/dialogs/conflicts_dialog.py
 import tkinter as tk
-from tkinter import ttk, messagebox
+from tkinter import messagebox
 
 from src import sync
 from src.theme import apply_app_icon

@@ -1,6 +1,5 @@
 # tests/test_autostart.py
 import os
-import sys
 import platform
 import plistlib
 import pytest
