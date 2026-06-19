@@ -758,11 +758,16 @@ durch:
     to_day, to_month, to_year = build_date_row(1, "Bis:", today)
 
     # --- Kategorie-Auswahl ---
-    # Vorhandene Kategorien aus dem Bestand sammeln ("" = ohne Kategorie). Alle
-    # standardmäßig ausgewählt; sind alle ausgewählt, wird kein Filter gesetzt.
+    # Kategorien aus dem Bestand UND der Settings-Pickliste sammeln ("" = ohne
+    # Kategorie). Alle standardmäßig ausgewählt; sind alle ausgewählt, wird kein
+    # Filter gesetzt. Bewusste Vereinfachung: die Liste wird NICHT auf den
+    # gewählten Zeitraum eingeschränkt (das bräuchte dynamisches Neu-Aufbauen bei
+    # Datumswechsel) — eine im Zeitraum nicht vorkommende Kategorie bleibt
+    # wirkungslos, daher unkritisch.
     all_entries = storage.get_all()
     present_categories = sorted(
-        {(s.get("kategorie") or "") for e in all_entries.values() for s in e["slots"]},
+        {(s.get("kategorie") or "") for e in all_entries.values() for s in e["slots"]}
+        | {c for c in (settings.get("categories") or [])},
         key=lambda k: (k == "", k.lower()),
     )
     category_vars = {}  # rohe Kategorie -> BooleanVar
