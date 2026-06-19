@@ -9,7 +9,7 @@ from src.theme import (
     apply_app_icon, apply_combobox_style, apply_dark_titlebar,
     attach_unfocus_on_click, center_dialog_on_parent, dark_combo,
     dark_combo_editable, disable_min_max, primary_button, secondary_button,
-    themed_askyesno, themed_showerror,
+    themed_askyesno, themed_showinfo,
 )
 from src.time_utils import validate_slots
 
@@ -145,7 +145,7 @@ def open_entry_dialog(parent, date_str, storage, settings, on_change,
             return
         ok, msg = validate_slots(slots, with_pause=True)
         if not ok:
-            themed_showerror(dialog, "Fehler", msg)
+            themed_showinfo(dialog, "Hinweis", msg)
             return
         storage.save(date_str, slots)
         dialog.destroy()
@@ -218,7 +218,7 @@ def open_entry_dialog(parent, date_str, storage, settings, on_change,
                 return
             ok, msg = validate_slots(slots, with_pause=False)
             if not ok:
-                themed_showerror(dialog, "Fehler", msg)
+                themed_showinfo(dialog, "Hinweis", msg)
                 return
             reservation_store.save(date_str, slots)
             dialog.destroy()
