@@ -15,3 +15,33 @@ select = ["E4", "E7", "E9", "F"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.pyright]
+# Wird sowohl von der Pyright-CLI als auch von Pylance (VS Code) gelesen —
+# eine einzige Quelle. Bewusst KEINE separate pyrightconfig.json, die wuerde
+# diesen Block ueberstimmen.
+typeCheckingMode = "basic"       # gleicht dem Pylance-Default an
+pythonVersion = "3.10"
+include = ["src", "tests"]
+# Repo-Root in den Import-Suchpfad: sonst findet pyright das `src`-Paket aus
+# den Test-Dateien (`from src.foo import ...`) nicht -> reportMissingImports.
+extraPaths = ["."]
+
+# Tkinter-typisches Rauschen: viele Widgets/Vars werden mit None initialisiert
+# und erst spaeter gesetzt; pyright kann dieses Narrowing nicht nachvollziehen.
+# Reiner False-Positive -> ganz aus.
+reportOptionalMemberAccess = "none"
+# Gemischt: teils Monkeypatch-FP (z.B. _was_in_grid), teils echte Fragilitaet
+# (Lib-Internals, build-generierte Importe). Sichtbar lassen, aber entschaerfen.
+reportAttributeAccessIssue = "warning"
+
+# Tests werden weiter geprueft, aber das Mock-/MagicMock-typische Rauschen
+# (Operatoren & Member-Zugriffe auf Mocks) wird dort unterdrueckt.
+[[tool.pyright.executionEnvironments]]
+root = "tests"
+reportOperatorIssue = "none"
+reportOptionalSubscript = "none"
+reportOptionalMemberAccess = "none"
+reportAttributeAccessIssue = "none"
+reportCallIssue = "none"
+reportArgumentType = "none"
