@@ -20,6 +20,9 @@ CELL_BG = "#16213e"
 WEEKEND_BG = "#0f3460"
 ACCENT = "#e94560"
 ACCENT_HOVER = "#c73550"
+# Gedämpfter, entsättigter Akzent für deaktivierte Primary-Buttons — klar als
+# "nicht klickbar" erkennbar, behält aber den Rot-Charakter des Löschen-Buttons.
+ACCENT_DISABLED = "#5c2a37"
 STATUS_OK = "#4ade80"
 TEXT = "#e0e0e0"
 TEXT_MUTED = "#888888"
@@ -633,6 +636,96 @@ def themed_askyesno(parent, title: str, message: str) -> bool:
     dialog.bind("<Return>", lambda e: click_yes())
     dialog.bind("<Escape>", lambda e: click_no())
     dialog.protocol("WM_DELETE_WINDOW", click_no)
+
+    center_dialog_on_parent(dialog, parent)
+    dialog.grab_set()
+    dialog.wait_window()
+    return result["value"]
+
+
+def themed_ask_delete_choice(parent, title: str, message: str, options):
+    """Modaler Lösch-Dialog mit Checkboxen — das Gegenstück zu `themed_askyesno`
+    für Tage, an denen mehrere löschbare Objekte liegen (Ist-Zeit UND
+    Reservierung).
+
+    `options` ist eine Liste von (key, label)-Tupeln; alle Checkboxen sind
+    vorausgewählt. Rückgabe: die Menge der angehakten keys, die der User mit
+    „Löschen" bestätigt — oder None bei Abbruch (Escape / Schließen /
+    „Abbrechen"). Sind alle Checkboxen abgewählt, ist „Löschen" deaktiviert
+    (gedämpfter Rotton, nicht klickbar) — so kann der Klick nicht versehentlich
+    den Dialog schließen und auf einem Kalendertag dahinter landen.
+    """
+    dialog = tk.Toplevel(parent)
+    dialog.title(title)
+    dialog.resizable(False, False)
+    dialog.configure(bg=BG)
+    apply_dark_titlebar(dialog)
+    disable_min_max(dialog)
+    apply_app_icon(dialog)
+    dialog.focus_set()
+
+    result = {"value": None}
+
+    tk.Label(
+        dialog, text=message, font=FONT, bg=BG, fg=TEXT,
+        wraplength=380, justify="left",
+    ).pack(padx=24, pady=(20, 10))
+
+    checkbuttons = []
+    vars_by_key = {}
+    for key, label in options:
+        var = tk.BooleanVar(value=True)
+        vars_by_key[key] = var
+        cb = tk.Checkbutton(
+            dialog, text=label, variable=var, font=FONT,
+            bg=BG, fg=TEXT, selectcolor=CELL_BG,
+            activebackground=BG, activeforeground=TEXT, cursor="hand2",
+        )
+        cb.pack(padx=28, anchor="w")
+        checkbuttons.append(cb)
+
+    def click_delete():
+        selected = {key for key, var in vars_by_key.items() if var.get()}
+        # Leere Auswahl ist ein No-Op: Dialog NICHT schließen, sonst landet der
+        # Klick auf einem Kalendertag dahinter und öffnet den Speichern-Dialog.
+        if not selected:
+            return
+        result["value"] = selected
+        dialog.destroy()
+
+    def click_cancel():
+        dialog.destroy()
+
+    btn_frame = tk.Frame(dialog, bg=BG)
+    btn_frame.pack(pady=(14, 18))
+    delete_btn = primary_button(btn_frame, "Löschen", click_delete)
+    delete_btn.pack(side=tk.LEFT, padx=6)
+    secondary_button(btn_frame, "Abbrechen", click_cancel).pack(side=tk.LEFT, padx=6)
+
+    def _refresh_delete_btn(*_):
+        """Löschen-Button nur klickbar, wenn mind. eine Option gewählt ist —
+        sonst gedämpfter Rotton + Pfeil-Cursor (sichtbar deaktiviert). Mutiert
+        `_colors` analog set_toggle_active; die Hover-Handler lesen frisch."""
+        enabled = any(var.get() for var in vars_by_key.values())
+        cursor = "hand2" if enabled else "arrow"
+        c = (
+            {"bg": ACCENT, "fg": "#ffffff",
+             "hover_bg": ACCENT_HOVER, "hover_fg": "#ffffff"}
+            if enabled else
+            {"bg": ACCENT_DISABLED, "fg": TEXT_MUTED,
+             "hover_bg": ACCENT_DISABLED, "hover_fg": TEXT_MUTED}
+        )
+        delete_btn._colors = c
+        delete_btn.config(bg=c["bg"], cursor=cursor)
+        delete_btn._label.config(bg=c["bg"], fg=c["fg"], cursor=cursor)
+
+    for cb in checkbuttons:
+        cb.config(command=_refresh_delete_btn)
+    _refresh_delete_btn()
+
+    dialog.bind("<Return>", lambda e: click_delete())
+    dialog.bind("<Escape>", lambda e: click_cancel())
+    dialog.protocol("WM_DELETE_WINDOW", click_cancel)
 
     center_dialog_on_parent(dialog, parent)
     dialog.grab_set()

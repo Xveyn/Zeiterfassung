@@ -38,7 +38,7 @@ from src.theme import (
     RESERVATION_ACCENT, TODAY_ACCENT,
     FONT, FONT_BOLD, FONT_HEADER, FONT_HEADER_SMALL, FONT_FOOTER, FONT_SMALL, FONT_TINY,
     CELL_BG_HOVER, WEEKEND_BG_HOVER, ENTRY_BG_HOVER, WEEKEND_ENTRY_BG_HOVER,
-    apply_dark_titlebar, themed_askyesno, themed_showinfo,
+    apply_dark_titlebar, themed_askyesno, themed_ask_delete_choice, themed_showinfo,
     icon_button, label_button, secondary_button, set_toggle_active, toggle_button,
 )
 
@@ -768,7 +768,7 @@ class App:
         time_lbl.pack(pady=(0, pad))
         for w in (cell, day_lbl, time_lbl):
             w.bind("<Button-1>", lambda e, d=date_str: self._open_dialog(d))
-            w.bind("<Button-3>", lambda e, d=date_str: self._delete_entry(d))
+            w.bind("<Button-3>", lambda e, d=date_str: self._delete_day(d))
             w.bind("<Enter>", lambda e, c=cell, dl=day_lbl, tl=time_lbl, hb=hover_bg: self._cell_hover(c, dl, tl, hb))
             w.bind("<Leave>", lambda e, c=cell, dl=day_lbl, tl=time_lbl, ob=bg: self._cell_hover(c, dl, tl, ob))
         return cell
@@ -818,6 +818,7 @@ class App:
         day_lbl.pack(expand=True)
         for w in (cell, day_lbl):
             w.bind("<Button-1>", lambda e, d=date_str: self._open_dialog(d))
+            w.bind("<Button-3>", lambda e, d=date_str: self._delete_day(d))
             w.bind("<Enter>", lambda e, c=cell, dl=day_lbl, hb=hover_bg: self._empty_hover(c, dl, hb))
             w.bind("<Leave>", lambda e, c=cell, dl=day_lbl, ob=bg: self._empty_hover(c, dl, ob))
         return cell
@@ -846,6 +847,7 @@ class App:
                 parent, day_text=day_text,
                 name=holidays_map[day_date], max_name_len=holiday_max_len,
                 on_click=lambda d=date_str: self._open_dialog(d),
+                on_right_click=lambda d=date_str: self._delete_day(d),
                 cell_size=cell_size,
                 name_font=holiday_name_font,
                 # Bei zusätzlicher Reservierung übernimmt der Reservierungs-
@@ -1088,7 +1090,7 @@ class App:
 
     def _build_holiday_cell(self, parent, day_text, name, max_name_len, on_click,
                              cell_size=None, name_font=FONT_SMALL,
-                             name_tooltip=True):
+                             name_tooltip=True, on_right_click=None):
         """Grüne Feiertagszelle. Layout analog zur Eintragszelle.
 
         cell_size: optional (width_px, height_px). Wenn gesetzt, wird der Frame
@@ -1125,6 +1127,8 @@ class App:
 
         for w in (cell, day_lbl, name_lbl):
             w.bind("<Button-1>", lambda e: on_click())
+            if on_right_click is not None:
+                w.bind("<Button-3>", lambda e: on_right_click())
             w.bind("<Enter>", lambda e, c=cell, dl=day_lbl, nl=name_lbl:
                 self._cell_hover(c, dl, nl, HOLIDAY_BG_HOVER))
             w.bind("<Leave>", lambda e, c=cell, dl=day_lbl, nl=name_lbl:
@@ -1158,11 +1162,58 @@ class App:
         if marker is not None:
             marker.config(bg=bg)
 
-    def _delete_entry(self, date_str):
-        if themed_askyesno(self.root, "Eintrag löschen",
-                           f"Eintrag für {format_iso_date(date_str)} löschen?"):
+    def _delete_day(self, date_str):
+        """Rechtsklick-Löschen für einen Tag. Löscht NIE ohne Bestätigung.
+
+        Je nachdem, was am Tag liegt:
+        - nur Arbeitszeit   → Ja/Nein-Abfrage
+        - nur Reservierung  → Ja/Nein-Abfrage
+        - beides            → Checkbox-Auswahl, was gelöscht werden soll
+
+        Reservierungen werden nur berücksichtigt, wenn sie aktiv sind
+        (_reservations_active); das Löschen einer Reservierung stößt den
+        Kalender-Abgleich an.
+        """
+        entry = self.storage.get(date_str)
+        reservation = (
+            self.reservation_store.get(date_str)
+            if self._reservations_active() else None
+        )
+        if entry is None and reservation is None:
+            return
+
+        date_de = format_iso_date(date_str)
+        delete_entry = False
+        delete_reservation = False
+
+        if entry is not None and reservation is not None:
+            choice = themed_ask_delete_choice(
+                self.root, "Löschen", f"Was für den {date_de} löschen?",
+                [("entry", "Arbeitszeit"), ("reservation", "Reservierung")],
+            )
+            if not choice:
+                return
+            delete_entry = "entry" in choice
+            delete_reservation = "reservation" in choice
+        elif entry is not None:
+            if not themed_askyesno(self.root, "Arbeitszeit löschen",
+                                   f"Arbeitszeit für {date_de} löschen?"):
+                return
+            delete_entry = True
+        else:
+            if not themed_askyesno(self.root, "Reservierung löschen",
+                                   f"Reservierung für {date_de} löschen?"):
+                return
+            delete_reservation = True
+
+        if delete_entry:
             self.storage.delete(date_str)
-            self._refresh()
+        if delete_reservation:
+            self.reservation_store.delete(date_str)
+
+        self._refresh()
+        if delete_reservation:
+            self._trigger_calendar_reconcile()
 
     def _open_dialog(self, date_str):
         # Bei deaktiviertem Kalender-Sync KEIN reservation_store an den Dialog
