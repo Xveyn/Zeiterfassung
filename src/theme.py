@@ -167,6 +167,16 @@ def dark_combo(parent, textvariable, values, width=8, **kw):
     )
 
 
+def dark_combo_editable(parent, textvariable, values, width=14, **kw):
+    """Wie dark_combo, aber editierbar (state="normal") — Freitext plus
+    Vorschlagsliste. Für die Kategorie-Auswahl je Slot, deren Werte aus
+    settings['categories'] kommen, aber auch frei eingetippt werden dürfen."""
+    return ttk.Combobox(
+        parent, textvariable=textvariable, values=values,
+        width=width, font=FONT, style="Dark.TCombobox", state="normal", **kw,
+    )
+
+
 def dark_text(parent, width, height, **kw):
     return tk.Text(
         parent, width=width, height=height, font=FONT,

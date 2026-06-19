@@ -8,10 +8,11 @@ from src.settings import WEEKDAY_KEYS
 from src.theme import (
     BG, FONT, FONT_BOLD, PAUSE_VALUES, TEXT, TEXT_MUTED, TIME_VALUES,
     apply_app_icon, apply_combobox_style, apply_dark_titlebar,
-    attach_unfocus_on_click, center_dialog_on_parent, disable_min_max,
-    dark_combo, primary_button, secondary_button, themed_askyesno,
+    attach_unfocus_on_click, center_dialog_on_parent, dark_combo,
+    dark_combo_editable, disable_min_max, primary_button, secondary_button,
+    themed_askyesno,
 )
-from src.time_utils import validate_entry
+from src.time_utils import validate_slots
 
 
 # Löschen folgt im Kalender dem Muster „Linksklick = speichern, Rechtsklick =
@@ -26,15 +27,20 @@ def open_entry_dialog(parent, date_str, storage, settings, on_change,
                       reservation_store=None, trigger_reconcile=None):
     """Modaler Dialog zum Bearbeiten von Ist-Zeit und Reservierung eines Tages.
 
-    on_change wird nach erfolgreichem Speichern/Löschen aufgerufen, damit der
-    Aufrufer den Kalender neu rendert.
-    reservation_store / trigger_reconcile sind optional; sind sie gesetzt und
-    ist der Tag heute/zukünftig (oder existiert bereits eine Reservierung),
-    wird der Reservierungs-Block angezeigt. trigger_reconcile() stößt nach
-    einer Reservierungsänderung den Kalender-Abgleich an.
+    Beide Blöcke führen eine Liste von Slot-Zeilen (Start/Ende/Pause/Kategorie
+    bzw. Start/Ende/Kategorie). Speichern sammelt die Zeilen, validiert sie
+    (validate_slots: pro Slot + Überlappungsfreiheit) und schreibt die Slot-
+    Liste. Entfernt man alle Zeilen eines Blocks und speichert, wird der Block
+    gelöscht — kein separater Lösch-Button (außer macOS).
+
+    on_change wird nach erfolgreichem Speichern/Löschen aufgerufen.
+    reservation_store / trigger_reconcile sind optional; ist der Tag
+    heute/zukünftig (oder existiert bereits eine Reservierung), erscheint der
+    Reservierungs-Block. trigger_reconcile() stößt den Kalender-Abgleich an.
     """
     entry = storage.get(date_str)
     day = datetime.date.fromisoformat(date_str)
+    weekday_key = WEEKDAY_KEYS[day.weekday()]
 
     # Feiertags-Warnung beim Anlegen einer Ist-Zeit (nicht beim Edit).
     if entry is None:
@@ -58,13 +64,17 @@ def open_entry_dialog(parent, date_str, storage, settings, on_change,
         day >= datetime.date.today() or existing_reservation is not None
     )
 
+    categories = settings.get("categories") or []
+    default_start = settings.get(f"default_start_{weekday_key}")
+    default_end = settings.get(f"default_end_{weekday_key}")
+    default_pause = settings.get("default_pause")
+
     dialog = tk.Toplevel(parent)
     dialog.title(day.strftime("%d.%m.%Y"))
     dialog.resizable(False, False)
     dialog.grab_set()
-    # focus_set() ist nach grab_set() Pflicht, sonst bleibt der Keyboard-
-    # Fokus auf dem Hauptfenster und Tastatur-Bindungen (z.B. Escape) am
-    # Dialog feuern nie. grab_set steuert nur Mouse-Events.
+    # focus_set() ist nach grab_set() Pflicht, sonst feuern Tastatur-Bindungen
+    # (z.B. Escape) am Dialog nie.
     dialog.focus_set()
     dialog.configure(bg=BG)
     apply_dark_titlebar(dialog)
@@ -74,96 +84,144 @@ def open_entry_dialog(parent, date_str, storage, settings, on_change,
     attach_unfocus_on_click(dialog)
     dialog.bind("<Escape>", lambda _e: dialog.destroy())
 
-    # --- Ist-Zeit ---
-    # Vorauswahl-Priorität beim Anlegen: vorhandener Ist-Eintrag → bestehende
-    # Reservierung → Standardzeit des Wochentags. Eine Reservierung überschreibt
-    # also die Standardzeiten, weil der Tag dann bereits konkret verplant ist.
-    tk.Label(dialog, text="Start:", font=FONT, bg=BG, fg=TEXT).grid(
-        row=0, column=0, padx=10, pady=8, sticky="w")
-    weekday_key = WEEKDAY_KEYS[day.weekday()]
-    if entry:
-        default_start = entry["start"]
-        default_end = entry["end"]
-    elif existing_reservation:
-        default_start = existing_reservation["start"]
-        default_end = existing_reservation["end"]
+    outer = tk.Frame(dialog, bg=BG)
+    outer.pack(padx=12, pady=12)
+
+    # ---------- Ist-Zeit ----------
+    tk.Label(outer, text="Arbeitszeit", font=FONT_BOLD, bg=BG, fg=TEXT).pack(anchor="w")
+    ist_rows_frame = tk.Frame(outer, bg=BG)
+    ist_rows_frame.pack(fill="x")
+    ist_rows = []  # Liste von {frame, start, end, pause, kategorie}
+
+    def add_ist_row(start, end, pause, kategorie):
+        row = tk.Frame(ist_rows_frame, bg=BG)
+        row.pack(fill="x", pady=2)
+        sv = tk.StringVar(value=start)
+        ev = tk.StringVar(value=end)
+        pv = tk.StringVar(value=str(pause))
+        kv = tk.StringVar(value=kategorie)
+        dark_combo(row, sv, TIME_VALUES, width=6).pack(side=tk.LEFT, padx=2)
+        tk.Label(row, text="–", font=FONT, bg=BG, fg=TEXT_MUTED).pack(side=tk.LEFT)
+        dark_combo(row, ev, TIME_VALUES, width=6).pack(side=tk.LEFT, padx=2)
+        dark_combo(row, pv, PAUSE_VALUES, width=4).pack(side=tk.LEFT, padx=2)
+        dark_combo_editable(row, kv, categories, width=14).pack(side=tk.LEFT, padx=2)
+        record = {"frame": row, "start": sv, "end": ev, "pause": pv, "kategorie": kv}
+
+        def remove():
+            row.destroy()
+            ist_rows.remove(record)
+
+        secondary_button(row, "×", remove, padx=8, pady=0).pack(side=tk.LEFT, padx=2)
+        ist_rows.append(record)
+
+    # Vorbelegung: vorhandene Ist-Slots → bestehende Reservierung (erste Slot-
+    # Zeit) → Standardzeit des Wochentags.
+    if entry and entry["slots"]:
+        for s in entry["slots"]:
+            add_ist_row(s["start"], s["end"], s.get("pause", 0), s.get("kategorie", ""))
+    elif existing_reservation and existing_reservation["slots"]:
+        first = existing_reservation["slots"][0]
+        add_ist_row(first["start"], first["end"], default_pause, "")
     else:
-        default_start = settings.get(f"default_start_{weekday_key}")
-        default_end = settings.get(f"default_end_{weekday_key}")
-    start_var = tk.StringVar(value=default_start)
-    dark_combo(dialog, start_var, TIME_VALUES).grid(row=0, column=1, padx=10, pady=8)
+        add_ist_row(default_start, default_end, default_pause, "")
 
-    tk.Label(dialog, text="Ende:", font=FONT, bg=BG, fg=TEXT).grid(
-        row=1, column=0, padx=10, pady=8, sticky="w")
-    end_var = tk.StringVar(value=default_end)
-    dark_combo(dialog, end_var, TIME_VALUES).grid(row=1, column=1, padx=10, pady=8)
+    ist_btns = tk.Frame(outer, bg=BG)
+    ist_btns.pack(fill="x", pady=(2, 8))
+    secondary_button(
+        ist_btns, "+ Slot",
+        lambda: add_ist_row(default_start, default_end, 0, ""),
+    ).pack(side=tk.LEFT, padx=2)
 
-    tk.Label(dialog, text="Pause (Min):", font=FONT, bg=BG, fg=TEXT).grid(
-        row=2, column=0, padx=10, pady=8, sticky="w")
-    default_pause = settings.get("default_pause")
-    if entry and "pause" in entry:
-        current_pause = str(entry["pause"])
-    else:
-        current_pause = str(default_pause) if not entry else "0"
-    pause_var = tk.StringVar(value=current_pause)
-    dark_combo(dialog, pause_var, PAUSE_VALUES).grid(row=2, column=1, padx=10, pady=8)
-
-    def save():
-        ok, msg = validate_entry(start_var.get(), end_var.get(),
-                                 pause_minutes=int(pause_var.get()))
+    def save_ist():
+        slots = [{
+            "start": r["start"].get(),
+            "end": r["end"].get(),
+            "pause": int(r["pause"].get() or 0),
+            "kategorie": r["kategorie"].get().strip(),
+        } for r in ist_rows]
+        if not slots:
+            storage.delete(date_str)
+            dialog.destroy()
+            on_change()
+            return
+        ok, msg = validate_slots(slots, with_pause=True)
         if not ok:
             messagebox.showerror("Fehler", msg, parent=dialog)
             return
-        storage.save(date_str, start_var.get(), end_var.get(),
-                     pause=int(pause_var.get()))
+        storage.save(date_str, slots)
         dialog.destroy()
         on_change()
 
-    def delete():
+    def delete_ist():
         storage.delete(date_str)
         dialog.destroy()
         on_change()
 
-    btn_frame = tk.Frame(dialog, bg=BG)
-    btn_frame.grid(row=3, column=0, columnspan=2, pady=12)
-    primary_button(btn_frame, "Speichern", save).pack(side=tk.LEFT, padx=5)
+    ist_save = tk.Frame(outer, bg=BG)
+    ist_save.pack(fill="x")
+    primary_button(ist_save, "Speichern", save_ist).pack(side=tk.LEFT, padx=2)
     if entry is not None and _SHOW_DELETE_IN_DIALOG:
-        secondary_button(btn_frame, "Löschen", delete).pack(side=tk.LEFT, padx=5)
+        secondary_button(ist_save, "Löschen", delete_ist).pack(side=tk.LEFT, padx=2)
 
-    # --- Reservierung ---
-    # Ist-Zeit und Reservierung sind bewusst getrennte Konzepte mit je eigenem
-    # Speichern-Button. Jeder Block speichert unabhängig und schließt danach den
-    # Dialog — es gibt absichtlich keinen kombinierten Speichern-Pfad.
+    # ---------- Reservierung ----------
     if show_reservation:
         tk.Label(
-            dialog, text="— Reservierung —", font=FONT_BOLD, bg=BG, fg=TEXT_MUTED,
-        ).grid(row=4, column=0, columnspan=2, padx=10, pady=(8, 4))
+            outer, text="— Reservierung —", font=FONT_BOLD, bg=BG, fg=TEXT_MUTED,
+        ).pack(anchor="w", pady=(12, 2))
+        res_rows_frame = tk.Frame(outer, bg=BG)
+        res_rows_frame.pack(fill="x")
+        res_rows = []  # Liste von {frame, start, end, kategorie}
 
-        tk.Label(dialog, text="Start:", font=FONT, bg=BG, fg=TEXT).grid(
-            row=5, column=0, padx=10, pady=8, sticky="w")
-        res_start_var = tk.StringVar(
-            value=existing_reservation["start"] if existing_reservation
-            else settings.get(f"default_start_{weekday_key}")
-        )
-        dark_combo(dialog, res_start_var, TIME_VALUES).grid(
-            row=5, column=1, padx=10, pady=8)
+        def add_res_row(start, end, kategorie):
+            row = tk.Frame(res_rows_frame, bg=BG)
+            row.pack(fill="x", pady=2)
+            sv = tk.StringVar(value=start)
+            ev = tk.StringVar(value=end)
+            kv = tk.StringVar(value=kategorie)
+            dark_combo(row, sv, TIME_VALUES, width=6).pack(side=tk.LEFT, padx=2)
+            tk.Label(row, text="–", font=FONT, bg=BG, fg=TEXT_MUTED).pack(side=tk.LEFT)
+            dark_combo(row, ev, TIME_VALUES, width=6).pack(side=tk.LEFT, padx=2)
+            dark_combo_editable(row, kv, categories, width=14).pack(side=tk.LEFT, padx=2)
+            record = {"frame": row, "start": sv, "end": ev, "kategorie": kv}
 
-        tk.Label(dialog, text="Ende:", font=FONT, bg=BG, fg=TEXT).grid(
-            row=6, column=0, padx=10, pady=8, sticky="w")
-        res_end_var = tk.StringVar(
-            value=existing_reservation["end"] if existing_reservation
-            else settings.get(f"default_end_{weekday_key}")
-        )
-        dark_combo(dialog, res_end_var, TIME_VALUES).grid(
-            row=6, column=1, padx=10, pady=8)
+            def remove():
+                row.destroy()
+                res_rows.remove(record)
+
+            secondary_button(row, "×", remove, padx=8, pady=0).pack(side=tk.LEFT, padx=2)
+            res_rows.append(record)
+
+        if existing_reservation and existing_reservation["slots"]:
+            for s in existing_reservation["slots"]:
+                add_res_row(s["start"], s["end"], s.get("kategorie", ""))
+        else:
+            add_res_row(default_start, default_end, "")
+
+        res_btns = tk.Frame(outer, bg=BG)
+        res_btns.pack(fill="x", pady=(2, 8))
+        secondary_button(
+            res_btns, "+ Slot",
+            lambda: add_res_row(default_start, default_end, ""),
+        ).pack(side=tk.LEFT, padx=2)
 
         def save_reservation():
-            ok, msg = validate_entry(res_start_var.get(), res_end_var.get(),
-                                     pause_minutes=0)
+            slots = [{
+                "start": r["start"].get(),
+                "end": r["end"].get(),
+                "kategorie": r["kategorie"].get().strip(),
+            } for r in res_rows]
+            if not slots:
+                reservation_store.delete(date_str)
+                dialog.destroy()
+                on_change()
+                if trigger_reconcile is not None:
+                    trigger_reconcile()
+                return
+            ok, msg = validate_slots(slots, with_pause=False)
             if not ok:
                 messagebox.showerror("Fehler", msg, parent=dialog)
                 return
-            reservation_store.save(date_str, res_start_var.get(), res_end_var.get())
+            reservation_store.save(date_str, slots)
             dialog.destroy()
             on_change()
             if trigger_reconcile is not None:
@@ -176,12 +234,12 @@ def open_entry_dialog(parent, date_str, storage, settings, on_change,
             if trigger_reconcile is not None:
                 trigger_reconcile()
 
-        res_btn_frame = tk.Frame(dialog, bg=BG)
-        res_btn_frame.grid(row=7, column=0, columnspan=2, pady=12)
-        primary_button(res_btn_frame, "Reservierung speichern",
-                       save_reservation).pack(side=tk.LEFT, padx=5)
+        res_save = tk.Frame(outer, bg=BG)
+        res_save.pack(fill="x")
+        primary_button(res_save, "Reservierung speichern",
+                       save_reservation).pack(side=tk.LEFT, padx=2)
         if existing_reservation is not None and _SHOW_DELETE_IN_DIALOG:
-            secondary_button(res_btn_frame, "Reservierung löschen",
-                             delete_reservation).pack(side=tk.LEFT, padx=5)
+            secondary_button(res_save, "Reservierung löschen",
+                             delete_reservation).pack(side=tk.LEFT, padx=2)
 
     center_dialog_on_parent(dialog, parent)
