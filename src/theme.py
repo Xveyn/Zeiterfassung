@@ -752,7 +752,7 @@ def themed_askyesno(parent, title: str, message: str) -> bool:
     return result["value"]
 
 
-def themed_ask_delete_choice(parent, title: str, message: str, options):
+def themed_ask_delete_choice(parent, title: str, message: str, options, lock_ms: int = 0):
     """Modaler Lösch-Dialog mit Checkboxen — das Gegenstück zu `themed_askyesno`
     für Tage, an denen mehrere löschbare Objekte liegen (Ist-Zeit UND
     Reservierung).
@@ -774,6 +774,9 @@ def themed_ask_delete_choice(parent, title: str, message: str, options):
     dialog.focus_set()
 
     result = {"value": None}
+    # Optionaler kurzer Lock nach dem Öffnen: verhindert versehentliches
+    # Sofort-Löschen, wenn (wie üblich) alle Optionen vorausgewählt sind.
+    unlock = {"ready": lock_ms <= 0}
 
     tk.Label(
         dialog, text=message, font=FONT, bg=BG, fg=TEXT,
@@ -794,6 +797,8 @@ def themed_ask_delete_choice(parent, title: str, message: str, options):
         checkbuttons.append(cb)
 
     def click_delete():
+        if not unlock["ready"]:
+            return
         selected = {key for key, var in vars_by_key.items() if var.get()}
         # Leere Auswahl ist ein No-Op: Dialog NICHT schließen, sonst landet der
         # Klick auf einem Kalendertag dahinter und öffnet den Speichern-Dialog.
@@ -812,12 +817,20 @@ def themed_ask_delete_choice(parent, title: str, message: str, options):
     secondary_button(btn_frame, "Abbrechen", click_cancel).pack(side=tk.LEFT, padx=6)
 
     def _refresh_delete_btn(*_):
-        # Löschen nur klickbar, wenn mind. eine Option gewählt ist.
+        # Löschen nur klickbar, wenn der Lock abgelaufen ist UND mind. eine
+        # Option gewählt ist.
         set_primary_button_enabled(
-            delete_btn, any(var.get() for var in vars_by_key.values()))
+            delete_btn,
+            unlock["ready"] and any(var.get() for var in vars_by_key.values()))
 
     for cb in checkbuttons:
         cb.config(command=_refresh_delete_btn)
+
+    if lock_ms > 0:
+        def _unlock():
+            unlock["ready"] = True
+            _refresh_delete_btn()
+        dialog.after(lock_ms, _unlock)
     _refresh_delete_btn()
 
     dialog.bind("<Return>", lambda e: click_delete())

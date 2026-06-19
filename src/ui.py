@@ -119,6 +119,25 @@ def _show_sync_error(parent, error, tb="", suffix=""):
         messagebox.showerror(title, message)
 
 
+def _delete_action(slots, selected, prefix):
+    """Entscheidet beim Rechtsklick-Löschen, was mit einem Typ (Arbeitszeit
+    bzw. Reservierung) passiert.
+
+    `selected` ist die Menge angehakter Keys; pro Typ entweder '<prefix>:all'
+    (ganzer Typ) oder '<prefix>:<index>' (einzelne Slots). Liefert (action,
+    keep): 'none' (Typ nicht betroffen) / 'delete' (Tag-Typ ganz löschen) /
+    'save' (mit den verbleibenden Slots überschreiben)."""
+    keys = {k for k in selected if k.startswith(prefix + ":")}
+    if not keys:
+        return "none", None
+    if f"{prefix}:all" in keys:
+        return "delete", None
+    keep = [s for i, s in enumerate(slots) if f"{prefix}:{i}" not in keys]
+    if not keep:
+        return "delete", None
+    return "save", keep
+
+
 class App:
     def __init__(self, root, storage, settings, base_path=".", conflicts_store=None,
                  reservation_store=None):
@@ -1225,14 +1244,16 @@ class App:
     def _delete_day(self, date_str):
         """Rechtsklick-Löschen für einen Tag. Löscht NIE ohne Bestätigung.
 
-        Je nachdem, was am Tag liegt:
-        - nur Arbeitszeit   → Ja/Nein-Abfrage
-        - nur Reservierung  → Ja/Nein-Abfrage
-        - beides            → Checkbox-Auswahl, was gelöscht werden soll
+        - Genau eine löschbare Einheit (1 Arbeitszeit-Slot ODER 1 Reservierung)
+          → Ja/Nein-Abfrage.
+        - Mehrere Einheiten (mehrere Slots und/oder Arbeitszeit + Reservierung)
+          → Auswahl-Dialog: pro Slot bzw. pro Typ eine Checkbox, alle
+          vorausgewählt; der „Löschen"-Button ist nach dem Öffnen kurz gesperrt
+          (gegen versehentliches Sofort-Löschen).
 
         Reservierungen werden nur berücksichtigt, wenn sie aktiv sind
-        (_reservations_active); das Löschen einer Reservierung stößt den
-        Kalender-Abgleich an.
+        (_reservations_active); eine Reservierungs-Änderung stößt den Kalender-
+        Abgleich an.
         """
         if _stray_click_suppressed(getattr(self.root, "_dialog_closed_at", 0),
                                    time.monotonic()):
@@ -1242,40 +1263,58 @@ class App:
             self.reservation_store.get(date_str)
             if self._reservations_active() else None
         )
-        if entry is None and reservation is None:
+        entry_slots = entry["slots"] if entry else []
+        res_slots = reservation["slots"] if reservation else []
+        if not entry_slots and not res_slots:
             return
 
         date_de = format_iso_date(date_str)
-        delete_entry = False
-        delete_reservation = False
 
-        if entry is not None and reservation is not None:
-            choice = themed_ask_delete_choice(
-                self.root, "Löschen", f"Was für den {date_de} löschen?",
-                [("entry", "Arbeitszeit"), ("reservation", "Reservierung")],
-            )
-            if not choice:
+        # Löschbare Einheiten: bei genau einem Slot der Typ als Ganzes, bei
+        # mehreren je Slot eine Checkbox.
+        options = []
+        if entry_slots:
+            if len(entry_slots) == 1:
+                options.append(("entry:all", "Arbeitszeit"))
+            else:
+                for i, s in enumerate(entry_slots):
+                    options.append((f"entry:{i}", f"Arbeitszeit  {self._fmt_slot_line(s)}"))
+        if res_slots:
+            if len(res_slots) == 1:
+                options.append(("reservation:all", "Reservierung"))
+            else:
+                for i, s in enumerate(res_slots):
+                    options.append((f"reservation:{i}", f"Reservierung  {self._fmt_slot_line(s)}"))
+
+        if len(options) == 1:
+            kind = "Arbeitszeit" if options[0][0].startswith("entry") else "Reservierung"
+            if not themed_askyesno(self.root, f"{kind} löschen",
+                                   f"{kind} für {date_de} löschen?"):
                 return
-            delete_entry = "entry" in choice
-            delete_reservation = "reservation" in choice
-        elif entry is not None:
-            if not themed_askyesno(self.root, "Arbeitszeit löschen",
-                                   f"Arbeitszeit für {date_de} löschen?"):
-                return
-            delete_entry = True
+            selected = {options[0][0]}
         else:
-            if not themed_askyesno(self.root, "Reservierung löschen",
-                                   f"Reservierung für {date_de} löschen?"):
+            selected = themed_ask_delete_choice(
+                self.root, "Löschen", f"Was für den {date_de} löschen?",
+                options, lock_ms=600,
+            )
+            if not selected:
                 return
-            delete_reservation = True
 
-        if delete_entry:
+        entry_action, entry_keep = _delete_action(entry_slots, selected, "entry")
+        if entry_action == "delete":
             self.storage.delete(date_str)
-        if delete_reservation:
+        elif entry_action == "save":
+            self.storage.save(date_str, entry_keep)
+
+        res_action, res_keep = _delete_action(res_slots, selected, "reservation")
+        res_touched = res_action != "none"
+        if res_action == "delete":
             self.reservation_store.delete(date_str)
+        elif res_action == "save":
+            self.reservation_store.save(date_str, res_keep)
 
         self._refresh()
-        if delete_reservation:
+        if res_touched:
             self._trigger_calendar_reconcile()
 
     def _open_dialog(self, date_str):
