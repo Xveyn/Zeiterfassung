@@ -148,6 +148,22 @@ jobs:
       - name: List downloaded artefacts
         run: ls -la dist/
 
+      - name: Generate SHA256 checksums
+        shell: bash
+        run: |
+          VERSION="${{ needs.pre-check.outputs.version }}"
+          # Prüfsummen mit reinen Dateinamen (ohne dist/-Pfad), damit der Nutzer
+          # nach dem Download `sha256sum -c SHA256SUMS` im Ordner laufen lassen
+          # kann. Explizite Namen statt Glob — sonst hasht SHA256SUMS sich selbst.
+          cd dist
+          sha256sum \
+            Zeiterfassung_Setup.exe \
+            "Zeiterfassung-${VERSION}-arm64.dmg" \
+            "Zeiterfassung-${VERSION}-x86_64.AppImage" \
+            > SHA256SUMS
+          echo "=== SHA256SUMS ==="
+          cat SHA256SUMS
+
       - name: Tag and publish release
         shell: bash
         env:
@@ -162,5 +178,6 @@ jobs:
             dist/Zeiterfassung_Setup.exe \
             dist/Zeiterfassung-${VERSION}-arm64.dmg \
             dist/Zeiterfassung-${VERSION}-x86_64.AppImage \
+            dist/SHA256SUMS \
             --title "Zeiterfassung v${VERSION}" \
             --generate-notes
