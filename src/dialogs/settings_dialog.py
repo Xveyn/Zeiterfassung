@@ -16,7 +16,7 @@ from src.theme import (
     center_dialog_on_parent, disable_min_max,
     dark_combo, dark_entry, dark_text,
     primary_button, secondary_button,
-    themed_askyesno, themed_showinfo,
+    themed_askyesno, themed_showinfo, themed_showwarning, themed_showerror,
 )
 from src.holidays_de import STATES
 from src.settings import WEEKDAY_KEYS, SYNCED_SETTING_KEYS
@@ -526,12 +526,12 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
 
     if settings.get("sync_enabled") and storage is not None and conflicts_store is not None:
         def _on_compact_clicked():
-            confirmed = messagebox.askyesno(
+            confirmed = themed_askyesno(
+                dialog,
                 "Sync-Daten kompaktieren",
                 "Entfernt alte gelöschte Einträge endgültig aus dem Sync.\n\n"
                 "Nur ausführen, wenn ALLE deine Geräte auf der aktuellen Version "
                 "sind und kürzlich synchronisiert haben.\n\nFortfahren?",
-                parent=dialog,
             )
             if not confirmed:
                 return
@@ -540,23 +540,23 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
                 if not dialog.winfo_exists():
                     return
                 if res.get("reason") == "old_version":
-                    messagebox.showwarning(
+                    themed_showwarning(
+                        dialog,
                         "Kompaktierung abgebrochen",
                         "Ein Gerät nutzt noch eine ältere Version — bitte erst "
                         "alle Geräte aktualisieren und synchronisieren.",
-                        parent=dialog,
                     )
                 elif not res.get("ok"):
                     detail = f"{res.get('error', '?')}\n\n{res.get('tb', '')}"
-                    messagebox.showerror(
+                    themed_showerror(
+                        dialog,
                         "Kompaktierung fehlgeschlagen",
                         f"Die Kompaktierung ist fehlgeschlagen:\n\n{detail}",
-                        parent=dialog,
                     )
                 else:
-                    messagebox.showinfo(
+                    themed_showinfo(
+                        dialog,
                         "Kompaktierung", "Sync-Daten wurden kompaktiert.",
-                        parent=dialog,
                     )
 
             def _do():

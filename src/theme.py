@@ -25,6 +25,9 @@ ACCENT_HOVER = "#c73550"
 # "nicht klickbar" erkennbar, behält aber den Rot-Charakter des Löschen-Buttons.
 ACCENT_DISABLED = "#5c2a37"
 STATUS_OK = "#4ade80"
+# Amber für Warn-Dialoge (dezenter Akzentbalken) — hebt Warnung von neutralem
+# Info ab, ohne den roten Fehler-/Lösch-Akzent (ACCENT) zu verwenden.
+WARNING = "#e8a13a"
 TEXT = "#e0e0e0"
 TEXT_MUTED = "#888888"
 ENTRY_BG = "#1a3a5c"
@@ -800,11 +803,13 @@ def themed_ask_delete_choice(parent, title: str, message: str, options):
     return result["value"]
 
 
-def themed_showinfo(parent, title: str, message: str) -> None:
-    """Modaler Info-Dialog im App-Theme. Drop-in für `messagebox.showinfo`.
+def _themed_ok_dialog(parent, title: str, message: str, accent=None) -> None:
+    """Modaler OK-Dialog im App-Theme — Basis für info/warning/error.
 
-    Eigener Toplevel mit Dark-Theme-Farben und gebrandeter Titelleiste —
-    `tkinter.messagebox.*` ist eine Black-Box ohne Customization-Hooks.
+    Eigener Toplevel mit Dark-Theme-Farben und gebrandeter Titelleiste
+    (`tkinter.messagebox.*` ist eine Black-Box ohne Customization-Hooks).
+    `accent`: optionale Farbe für einen dezenten Balken am oberen Rand, der
+    Warnung (amber) bzw. Fehler (rot) vom neutralen Info-Dialog abhebt.
     """
     dialog = tk.Toplevel(parent)
     dialog.title(title)
@@ -814,6 +819,11 @@ def themed_showinfo(parent, title: str, message: str) -> None:
     disable_min_max(dialog)
     apply_app_icon(dialog)
     dialog.focus_set()
+
+    if accent is not None:
+        bar = tk.Frame(dialog, bg=accent, height=4)
+        bar.pack(fill=tk.X)
+        bar.pack_propagate(False)
 
     tk.Label(
         dialog, text=message, font=FONT, bg=BG, fg=TEXT,
@@ -831,6 +841,21 @@ def themed_showinfo(parent, title: str, message: str) -> None:
     center_dialog_on_parent(dialog, parent)
     dialog.grab_set()
     dialog.wait_window()
+
+
+def themed_showinfo(parent, title: str, message: str) -> None:
+    """Modaler Info-Dialog im App-Theme. Drop-in für `messagebox.showinfo`."""
+    _themed_ok_dialog(parent, title, message)
+
+
+def themed_showwarning(parent, title: str, message: str) -> None:
+    """Modaler Warn-Dialog im App-Theme. Drop-in für `messagebox.showwarning`."""
+    _themed_ok_dialog(parent, title, message, accent=WARNING)
+
+
+def themed_showerror(parent, title: str, message: str) -> None:
+    """Modaler Fehler-Dialog im App-Theme. Drop-in für `messagebox.showerror`."""
+    _themed_ok_dialog(parent, title, message, accent=ACCENT)
 
 
 def icon_button(parent, text, command, fg=ACCENT, hover_fg=None):
