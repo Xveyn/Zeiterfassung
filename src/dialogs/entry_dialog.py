@@ -1,7 +1,6 @@
 import datetime
 import platform
 import tkinter as tk
-from tkinter import messagebox
 
 from src.holidays_de import get_holidays
 from src.settings import WEEKDAY_KEYS
@@ -10,7 +9,7 @@ from src.theme import (
     apply_app_icon, apply_combobox_style, apply_dark_titlebar,
     attach_unfocus_on_click, center_dialog_on_parent, dark_combo,
     dark_combo_editable, disable_min_max, primary_button, secondary_button,
-    themed_askyesno,
+    themed_askyesno, themed_showerror,
 )
 from src.time_utils import validate_slots
 
@@ -146,7 +145,7 @@ def open_entry_dialog(parent, date_str, storage, settings, on_change,
             return
         ok, msg = validate_slots(slots, with_pause=True)
         if not ok:
-            messagebox.showerror("Fehler", msg, parent=dialog)
+            themed_showerror(dialog, "Fehler", msg)
             return
         storage.save(date_str, slots)
         dialog.destroy()
@@ -219,7 +218,7 @@ def open_entry_dialog(parent, date_str, storage, settings, on_change,
                 return
             ok, msg = validate_slots(slots, with_pause=False)
             if not ok:
-                messagebox.showerror("Fehler", msg, parent=dialog)
+                themed_showerror(dialog, "Fehler", msg)
                 return
             reservation_store.save(date_str, slots)
             dialog.destroy()
