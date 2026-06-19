@@ -19,25 +19,29 @@ EVENT_SUMMARY = "Arbeitszeit (reserviert)"
 EVENT_DESCRIPTION = "Von der Zeiterfassung verwaltete Reservierung."
 
 
-def event_payload(date_str, start, end, modified_at):
-    """Baut den Calendar-API-Event-Body aus einer Reservierung.
+def event_payload(date_str, start, end, kategorie, modified_at):
+    """Baut den Calendar-API-Event-Body aus einem Reservierungs-Slot.
 
     date_str ISO ('YYYY-MM-DD'), start/end 'HH:MM'. Die dateTime-Werte tragen
     den lokalen UTC-Offset (`astimezone()`) — kein IANA-Zeitzonenname nötig.
+    Die Kategorie steht im Titel (für die Kalender-Anzeige) UND als private
+    Property (damit parse_event sie verlustfrei zurückliest).
     """
     day = datetime.date.fromisoformat(date_str)
     sh, sm = (int(p) for p in start.split(":"))
     eh, em = (int(p) for p in end.split(":"))
     start_dt = datetime.datetime(day.year, day.month, day.day, sh, sm).astimezone()
     end_dt = datetime.datetime(day.year, day.month, day.day, eh, em).astimezone()
+    summary = f"{EVENT_SUMMARY} — {kategorie}" if kategorie else EVENT_SUMMARY
     return {
-        "summary": EVENT_SUMMARY,
+        "summary": summary,
         "description": EVENT_DESCRIPTION,
         "start": {"dateTime": start_dt.isoformat()},
         "end": {"dateTime": end_dt.isoformat()},
         "extendedProperties": {
             "private": {
                 APP_MARKER_KEY: APP_MARKER_VALUE,
+                "kategorie": kategorie,
                 "modified_at": modified_at,
             },
         },
@@ -66,6 +70,7 @@ def parse_event(event):
         "date": start_dt.date().isoformat(),
         "start": start_dt.strftime("%H:%M"),
         "end": end_dt.strftime("%H:%M"),
+        "kategorie": private.get("kategorie", ""),
         "modified_at": private.get("modified_at", ""),
         "event_id": event.get("id", ""),
     }
@@ -180,16 +185,16 @@ def list_app_events(service, calendar_id):
     return events
 
 
-def create_event(service, calendar_id, date_str, start, end, modified_at):
+def create_event(service, calendar_id, date_str, start, end, kategorie, modified_at):
     """Legt ein Event an und liefert dessen event_id."""
-    body = event_payload(date_str, start, end, modified_at)
+    body = event_payload(date_str, start, end, kategorie, modified_at)
     created = service.events().insert(calendarId=calendar_id, body=body).execute()
     return created["id"]
 
 
-def update_event(service, calendar_id, event_id, date_str, start, end, modified_at):
+def update_event(service, calendar_id, event_id, date_str, start, end, kategorie, modified_at):
     """Überschreibt ein bestehendes Event mit den Reservierungs-Werten."""
-    body = event_payload(date_str, start, end, modified_at)
+    body = event_payload(date_str, start, end, kategorie, modified_at)
     service.events().update(
         calendarId=calendar_id, eventId=event_id, body=body,
     ).execute()
