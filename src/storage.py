@@ -83,6 +83,8 @@ class Storage:
                 entry.pop("start", None)
                 entry.pop("end", None)
                 entry.pop("pause", None)
+                entry.setdefault("device_id", self.device_id)
+                entry.setdefault("deleted", False)
 
     def _save_to_disk(self):
         tmp = self.filepath + ".tmp"

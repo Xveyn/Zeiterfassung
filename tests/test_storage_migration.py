@@ -64,6 +64,7 @@ def test_v2_entry_with_metadata_gets_slot_wrapped_keeping_metadata(tmp_path):
     assert raw["slots"] == [{"start": "08:00", "end": "16:30", "pause": 30, "kategorie": ""}]
     assert raw["modified_at"] == "2026-05-01T10:00:00Z"
     assert raw["device_id"] == "other-device"
+    assert raw["deleted"] is False
 
 
 def test_legacy_tombstone_becomes_empty_slots(tmp_path):
