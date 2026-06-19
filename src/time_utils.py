@@ -98,3 +98,40 @@ def format_iso_datetime(iso, fallback="—"):
     if len(iso) >= 16 and iso[10] in ("T", " "):
         return f"{date_part} {iso[11:16]}"
     return date_part
+
+
+def slots_overlap(slots):
+    """True, wenn sich zwei Slots zeitlich überlappen.
+
+    `slots`: Liste von Dicts mit 'start'/'end' (HH:MM). Slots mit unparsbarer
+    Zeit werden übersprungen (Format-Fehler fängt validate_slots separat ab).
+    Angrenzend (Ende == Start des nächsten) gilt NICHT als Überlappung.
+    """
+    intervals = []
+    for s in slots:
+        start = parse_time(s.get("start"))
+        end = parse_time(s.get("end"))
+        if start is None or end is None:
+            continue
+        intervals.append((start[0] * 60 + start[1], end[0] * 60 + end[1]))
+    intervals.sort()
+    for (_prev_start, prev_end), (next_start, _next_end) in zip(intervals, intervals[1:]):
+        if next_start < prev_end:
+            return True
+    return False
+
+
+def validate_slots(slots, with_pause=True):
+    """Validiert eine Slot-Liste: jeden Slot einzeln (validate_entry) und die
+    zeitliche Überlappungsfreiheit. Liefert (ok, fehlermeldung).
+
+    with_pause=False (Reservierungen): das Pause-Feld wird ignoriert (als 0
+    behandelt). Eine leere Liste ist gültig (ok, "")."""
+    for s in slots:
+        pause = int(s.get("pause", 0)) if with_pause else 0
+        ok, msg = validate_entry(s.get("start"), s.get("end"), pause_minutes=pause)
+        if not ok:
+            return False, msg
+    if slots_overlap(slots):
+        return False, "Zeitslots dürfen sich zeitlich nicht überlappen."
+    return True, ""
