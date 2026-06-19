@@ -1,5 +1,35 @@
 # Changelog
 
+## 1.15.0 — 2026-06-19
+
+### Hinzugefügt
+- Schnellaktionen im Infobereich-Menü (Tray): „Monat senden", „Teilen…" und
+  „Mit Google Drive synchronisieren" lassen sich direkt über das Tray-Icon
+  auslösen, ohne das Hauptfenster zu öffnen. Das Sync-Ergebnis erscheint als
+  Windows-Benachrichtigung (Toast) mit App-Logo. (Der Sync-Eintrag ist nur bei
+  aktivierter Synchronisation sichtbar.)
+- Veröffentlichte Releases enthalten jetzt eine `SHA256SUMS`-Datei zur
+  Integritätsprüfung der heruntergeladenen Dateien.
+
+### Geändert
+- Einheitliches Löschen im Kalender: Rechtsklick auf einen Tag löscht – immer
+  mit Rückfrage. Liegen Arbeitszeit und Reservierung am selben Tag, fragt ein
+  Auswahldialog, was gelöscht werden soll. Der Tages-Dialog (Linksklick) dient
+  auf Windows/Linux nur noch dem Anlegen/Bearbeiten; seine Lösch-Schaltflächen
+  sind entfallen. Auf macOS bleiben sie erhalten (Rechtsklick ist dort
+  systembedingt unzuverlässig).
+- Die Dialoge des „Sync-Daten kompaktieren"-Vorgangs erscheinen jetzt im dunklen
+  App-Design statt als helle System-Meldungen.
+- Selbst gebaute bzw. aus dem Quellcode gestartete Versionen weisen sich im
+  Fenstertitel mit „-dev" (samt Commit-Kürzel) aus; offizielle Releases zeigen
+  unverändert nur die Versionsnummer.
+
+### Behoben
+- Versehentliche Klicks direkt nach dem Schließen eines Dialogs lösen keine
+  ungewollte Aktion mehr aus: Der Kalender ignoriert für einen kurzen Moment
+  Klicks, sodass der Schließen-Klick nicht auf einer dahinterliegenden Zelle
+  „durchschlägt".
+
 ## 1.14.1 — 2026-06-15
 
 ### Hinzugefügt
