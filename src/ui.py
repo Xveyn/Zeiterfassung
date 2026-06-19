@@ -126,9 +126,28 @@ class App:
         self.root.configure(bg=BG)
         apply_dark_titlebar(self.root)
 
-        # Set unique AppUserModelID so Windows shows our icon in taskbar
+        # Set unique AppUserModelID so Windows shows our icon in taskbar.
+        # Die AUMID bleibt bewusst die stabile, namespaced ID — Windows knüpft
+        # Taskbar-Pins und Fenster-Gruppierung daran; ein Wechsel würde
+        # bestehende Pins beim Update lösen. Den lesbaren Absender-Namen für
+        # Toast-Benachrichtigungen (inkl. dynamischer Version) registrieren wir
+        # separat als DisplayName unter dem AUMID-Registry-Key — den greift
+        # Windows für die Toast-Attribution, ohne die AUMID selbst zu ändern.
+        app_aumid = "margenheld.zeiterfassung"
         try:
-            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("margenheld.zeiterfassung")
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(app_aumid)
+        except Exception:
+            pass
+        try:
+            import winreg
+            with winreg.CreateKeyEx(
+                winreg.HKEY_CURRENT_USER,
+                rf"Software\Classes\AppUserModelId\{app_aumid}",
+            ) as _aumid_key:
+                winreg.SetValueEx(
+                    _aumid_key, "DisplayName", 0, winreg.REG_SZ,
+                    f"Zeiterfassung v{VERSION}",
+                )
         except Exception:
             pass
 
@@ -636,6 +655,15 @@ class App:
                 self.base_path,
                 on_show=lambda: self.root.after(0, self._restore_from_tray),
                 on_quit=lambda: self.root.after(0, self._quit_with_sync_push),
+                actions=[
+                    ("Monat senden",
+                     lambda: self.root.after(0, self._send), None),
+                    ("Teilen…",
+                     lambda: self.root.after(0, self._share), None),
+                    ("Mit Google Drive synchronisieren",
+                     lambda: self.root.after(0, self._tray_sync),
+                     lambda: bool(self.settings.get("sync_enabled"))),
+                ],
             )
             try:
                 tray.start()
@@ -1299,6 +1327,44 @@ class App:
         # markers appear immediately without requiring a manual view-change.
         self._refresh()
         self._update_sync_status_label()
+
+    def _tray_sync(self):
+        """Drive-Sync aus dem Tray-Menü. Wie _on_sync_clicked, aber das Ergebnis
+        geht als Tray-Toast zurück statt ins (im Tray-Modus versteckte) Status-
+        Label. Der Menüpunkt ist ohnehin nur bei aktivem Sync sichtbar; der
+        Guard fängt den Grenzfall ab, dass Sync zwischen Menü-Öffnen und Klick
+        deaktiviert wurde."""
+        if not self.settings.get("sync_enabled"):
+            return
+        import threading
+        from src.main import _run_push_blocking
+
+        def _do():
+            result = _run_push_blocking(
+                self.storage, self.settings, self.conflicts_store,
+                self.base_path, timeout_seconds=15,
+            )
+            self.root.after(0, lambda: self._on_tray_sync_done(result))
+        threading.Thread(target=_do, daemon=True).start()
+
+    def _on_tray_sync_done(self, result):
+        # Still aktualisieren, damit der nächste Fenster-Aufruf den Stand zeigt.
+        self._refresh()
+        self._update_sync_status_label()
+        if self._tray is None:
+            return
+        # title="" — kein fetter Titel: der Absender oben („Zeiterfassung
+        # vX.Y.Z") nennt die App bereits, eine zusätzliche „Zeiterfassung"-
+        # Titelzeile wäre redundant. Es bleibt nur die Statusmeldung.
+        if result.get("ok"):
+            n = (self.conflicts_store.count_unresolved()
+                 if self.conflicts_store is not None else 0)
+            msg = ("Synchronisiert." if n == 0
+                   else f"Synchronisiert — {n} Konflikt{'e' if n != 1 else ''} offen.")
+            self._tray.notify(msg, title="")
+        else:
+            self._tray.notify(f"Sync fehlgeschlagen:\n{result.get('error', '?')}",
+                              title="")
 
     def _on_close(self):
         # Bei aktivem Minimize-to-Tray klappt der X-Button das Fenster nur weg;

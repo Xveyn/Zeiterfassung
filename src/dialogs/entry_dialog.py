@@ -1,4 +1,5 @@
 import datetime
+import platform
 import tkinter as tk
 from tkinter import messagebox
 
@@ -11,6 +12,14 @@ from src.theme import (
     dark_combo, primary_button, secondary_button, themed_askyesno,
 )
 from src.time_utils import validate_entry
+
+
+# Löschen folgt im Kalender dem Muster „Linksklick = speichern, Rechtsklick =
+# löschen". Der Dialog (Linksklick) ist daher rein zum Anlegen/Bearbeiten — die
+# Lösch-Buttons sind dort raus. AUSNAHME macOS: Tkinters Maustasten-Nummerierung
+# macht den Rechtsklick (`<Button-3>`) dort unzuverlässig; damit Löschen auf dem
+# Mac überhaupt erreichbar bleibt, behält der Dialog dort seine Lösch-Buttons.
+_SHOW_DELETE_IN_DIALOG = platform.system() == "Darwin"
 
 
 def open_entry_dialog(parent, date_str, storage, settings, on_change,
@@ -118,7 +127,7 @@ def open_entry_dialog(parent, date_str, storage, settings, on_change,
     btn_frame = tk.Frame(dialog, bg=BG)
     btn_frame.grid(row=3, column=0, columnspan=2, pady=12)
     primary_button(btn_frame, "Speichern", save).pack(side=tk.LEFT, padx=5)
-    if entry is not None:
+    if entry is not None and _SHOW_DELETE_IN_DIALOG:
         secondary_button(btn_frame, "Löschen", delete).pack(side=tk.LEFT, padx=5)
 
     # --- Reservierung ---
@@ -171,7 +180,7 @@ def open_entry_dialog(parent, date_str, storage, settings, on_change,
         res_btn_frame.grid(row=7, column=0, columnspan=2, pady=12)
         primary_button(res_btn_frame, "Reservierung speichern",
                        save_reservation).pack(side=tk.LEFT, padx=5)
-        if existing_reservation is not None:
+        if existing_reservation is not None and _SHOW_DELETE_IN_DIALOG:
             secondary_button(res_btn_frame, "Reservierung löschen",
                              delete_reservation).pack(side=tk.LEFT, padx=5)
 

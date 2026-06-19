@@ -14,7 +14,8 @@ from src.theme import (
     BG, FONT, TEXT,
     apply_app_icon, apply_dark_titlebar, attach_unfocus_on_click,
     center_dialog_on_parent, disable_min_max,
-    dark_entry, primary_button, secondary_button, themed_showinfo,
+    dark_entry, primary_button, secondary_button,
+    set_primary_button_enabled, themed_showinfo,
 )
 
 
@@ -106,11 +107,7 @@ def open_share_dialog(parent, storage, settings, base_path, reservation_store=No
         want_entries = include_entries_var.get()
         want_res = include_res_var.get()
         if not want_entries and not want_res:
-            messagebox.showerror(
-                "Nichts ausgewählt",
-                "Bitte mindestens einen Datentyp zum Teilen auswählen.",
-                parent=dialog,
-            )
+            # „Senden" ist in diesem Zustand deaktiviert (s.u.) — No-op.
             return
         share_recipient = recipient_var.get().strip()
         if not share_recipient:
@@ -194,7 +191,17 @@ def open_share_dialog(parent, storage, settings, base_path, reservation_store=No
     btn_frame = tk.Frame(dialog, bg=BG)
     btn_frame.grid(row=row, column=0, columnspan=2, pady=(0, 16))
 
-    primary_button(btn_frame, "Senden", do_send).pack(side=tk.LEFT, padx=5)
+    send_btn = primary_button(btn_frame, "Senden", do_send)
+    send_btn.pack(side=tk.LEFT, padx=5)
     secondary_button(btn_frame, "Abbrechen", dialog.destroy).pack(side=tk.LEFT, padx=5)
+
+    def _refresh_send_btn(*_):
+        # „Senden" nur klickbar, wenn mind. ein Datentyp gewählt ist.
+        set_primary_button_enabled(
+            send_btn, include_entries_var.get() or include_res_var.get())
+
+    cb_entries.config(command=_refresh_send_btn)
+    cb_res.config(command=_refresh_send_btn)
+    _refresh_send_btn()
 
     center_dialog_on_parent(dialog, parent)

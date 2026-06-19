@@ -103,6 +103,29 @@ Anzeige-Formatierung, ISO bleibt die Quelle). Neue datumsanzeigende
 UI-Stellen über diese Helfer formatieren, nicht roh `isoformat()`/`str()`
 ausgeben.
 
+## Kalender-Interaktion: Linksklick speichert, Rechtsklick löscht
+
+Im Kalender gilt ein striktes Modell: **Linksklick** öffnet den Tages-Dialog
+zum Anlegen/Bearbeiten (Ist-Zeit *und* Reservierung), **Rechtsklick** löscht.
+Rechtsklick löscht nie ohne Bestätigung; liegen an einem Tag Ist-Zeit **und**
+Reservierung, fragt ein Checkbox-Dialog (`themed_ask_delete_choice`), was
+gelöscht wird. Gebunden an `<Button-3>` auf allen Zelltypen
+(`src/ui.py::_delete_day`, für Eintrags-, Leer- und Feiertagszellen).
+
+Der Tages-Dialog (`src/dialogs/entry_dialog.py`) ist deshalb bewusst **rein
+zum Speichern** — er hat **keine** Lösch-Buttons.
+
+**Plattform-Ausnahme macOS:** Tkinters Maustasten-Nummerierung macht den
+Rechtsklick (`<Button-3>`) auf macOS unzuverlässig (Sekundärklick ist je nach
+Tk-Version `<Button-2>` bzw. Control-Klick). Damit Löschen auf dem Mac
+überhaupt erreichbar bleibt, behält der Dialog **dort** seine Lösch-Buttons
+(„Löschen" / „Reservierung löschen"). Gesteuert über
+`_SHOW_DELETE_IN_DIALOG = platform.system() == "Darwin"` in `entry_dialog.py`.
+Auf Windows/Linux ist Löschen ausschließlich der Rechtsklick.
+
+Neue Lösch-/Rechtsklick-Stellen müssen dieses Modell einhalten (kein zweiter
+Lösch-Pfad im Linksklick-Dialog auf Win/Linux).
+
 ## Tests / CI
 
 `.github/workflows/test.yml` installiert gezielt nur die Pakete, die die Tests brauchen (`pytest`, `holidays`), **nicht** `requirements.txt`. Grund: `pycairo` (transitive Dep von `xhtml2pdf`) braucht Cairo-Systemheader auf Ubuntu und bricht sonst den CI-Build. Der Import von `xhtml2pdf` in `src/report.py::generate_pdf` ist lazy, daher laufen die Report-Tests ohne die Lib. `holidays` ist pure Python ohne C-Deps und problemlos installierbar.
