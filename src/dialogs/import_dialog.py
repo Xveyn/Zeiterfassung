@@ -423,9 +423,14 @@ class _PerDayDialog:
         return self._result
 
     def _fmt(self, rec):
-        if self.has_pause:
-            return f"{rec['start']}—{rec['end']} (P{rec.get('pause', 0)})"
-        return f"{rec['start']}—{rec['end']}"
+        parts = []
+        for s in rec.get("slots", []):
+            kat = f" {s['kategorie']}" if s.get("kategorie") else ""
+            if self.has_pause:
+                parts.append(f"{s['start']}—{s['end']} (P{s.get('pause', 0)}){kat}")
+            else:
+                parts.append(f"{s['start']}—{s['end']}{kat}")
+        return ", ".join(parts) if parts else "—"
 
     def _build(self):
         tk.Label(

@@ -11,7 +11,7 @@ from src.dialogs.send_dialog import show_missing_credentials_dialog
 from src.mail import get_gmail_service, is_offline_error, send_email
 from src.share import build_share_doc, serialize_share_doc
 from src.theme import (
-    BG, FONT, TEXT,
+    BG, CELL_BG, FONT, TEXT,
     apply_app_icon, apply_dark_titlebar, attach_unfocus_on_click,
     center_dialog_on_parent, disable_min_max,
     dark_entry, primary_button, secondary_button,
@@ -84,6 +84,41 @@ def open_share_dialog(parent, storage, settings, base_path, reservation_store=No
     cb_res.grid(row=row, column=0, columnspan=2, padx=20, pady=(0, 12), sticky="w")
     row += 1
 
+    # --- Kategorie-Auswahl (optional) ---
+    # Kategorien aus Arbeitszeiten + Reservierungen + settings.categories.
+    present_categories = sorted(
+        {(s.get("kategorie") or "")
+         for rec in list(entries.values()) + list(reservations.values())
+         for s in rec["slots"]}
+        | set(settings.get("categories") or []),
+        key=lambda k: (k == "", k.lower()),
+    )
+    category_vars = {}
+    if present_categories:
+        tk.Label(
+            dialog, text="Kategorien:", font=FONT, bg=BG, fg=TEXT,
+        ).grid(row=row, column=0, padx=(20, 6), pady=(0, 4), sticky="nw")
+        cat_frame = tk.Frame(dialog, bg=BG)
+        cat_frame.grid(row=row, column=1, padx=(0, 20), pady=(0, 4), sticky="w")
+        for kat in present_categories:
+            var = tk.BooleanVar(value=True)
+            category_vars[kat] = var
+            tk.Checkbutton(
+                cat_frame, text=(kat if kat else "(ohne Kategorie)"), variable=var,
+                font=FONT, bg=BG, fg=TEXT, selectcolor=CELL_BG,
+                activebackground=BG, activeforeground=TEXT,
+                highlightthickness=0, bd=0, anchor="w",
+            ).pack(anchor="w")
+        row += 1
+
+    def _selected_categories():
+        if not category_vars:
+            return None
+        selected = {kat for kat, var in category_vars.items() if var.get()}
+        if len(selected) == len(category_vars):
+            return None
+        return selected
+
     tk.Label(
         dialog, text="Empfänger:", font=FONT, bg=BG, fg=TEXT,
     ).grid(row=row, column=0, padx=(20, 6), pady=(0, 4), sticky="w")
@@ -125,6 +160,7 @@ def open_share_dialog(parent, storage, settings, base_path, reservation_store=No
                 reservation_store=reservation_store,
                 include_entries=want_entries,
                 include_reservations=want_res,
+                categories=_selected_categories(),
             )
             payload = serialize_share_doc(doc)
             service = get_gmail_service(
