@@ -73,6 +73,10 @@ def _friendly_sync_message(error, tb=""):
     bekommen eine verständliche Meldung OHNE Traceback. Nur bei wirklich
     unerwarteten Fehlern bleibt der Traceback erhalten (CLAUDE.md: Fehler im
     Sendepfad sichtbar machen)."""
+    from src.sync import OLD_REMOTE_VERSION_MSG
+    if str(error) == OLD_REMOTE_VERSION_MSG:
+        return ("Anderes Gerät veraltet", OLD_REMOTE_VERSION_MSG, True)
+
     kind = _classify_sync_error(error)
 
     if kind == "auth":

@@ -17,6 +17,15 @@ import uuid
 SCHEMA_VERSION = 3
 
 
+OLD_REMOTE_VERSION_MSG = (
+    "Ein anderes Gerät nutzt eine ältere App-Version, die das neue Format "
+    "(Mehrfach-Slots/Kategorien) noch nicht versteht.\n\n"
+    "Bitte aktualisiere die App auf dem anderen Gerät, bevor du dort "
+    "synchronisierst. Bis dahin pausiert die Synchronisation, damit keine "
+    "Daten verloren gehen."
+)
+
+
 def _watermark_of(doc):
     return ((doc.get("meta") or {}).get("gc_watermark") or "")
 

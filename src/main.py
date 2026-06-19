@@ -74,6 +74,11 @@ def _run_pull_in_background(storage, settings, conflicts_store, base, ui_callbac
                     logging.getLogger(__name__).warning(
                         "Quarantine rename failed for %s", fid, exc_info=True)
             remote_doc = _parse_remote_or_quarantine(content, file_id, _quarantine)
+            if sync._remote_is_pre_v3(remote_doc):
+                # Älteres Gerät aktiv: nicht mergen (ein v2-Eintrag hat kein
+                # 'slots' → würde apply_merge verletzen / Daten plätten).
+                ui_callback(ok=False, error=sync.OLD_REMOTE_VERSION_MSG, tb="")
+                return
         local_doc = sync.build_local_doc(storage, settings, conflicts_store)
         merged = sync.merge(local_doc, remote_doc, settings.get("last_pull_at") or "")
         sync.apply_merged_doc(merged, storage, settings, conflicts_store)
@@ -114,6 +119,11 @@ def _run_push_blocking(storage, settings, conflicts_store, base, timeout_seconds
                 if file_id is not None:
                     remote_bytes, _ = drive.download(service, file_id)
                     remote_doc = json.loads(remote_bytes)
+                    if sync._remote_is_pre_v3(remote_doc):
+                        result["ok"] = False
+                        result["error"] = sync.OLD_REMOTE_VERSION_MSG
+                        result["tb"] = ""
+                        return
                 else:
                     remote_doc = {"schema_version": 1, "entries": {}, "settings": {}, "conflicts": []}
                 local_doc = sync.build_local_doc(storage, settings, conflicts_store)
