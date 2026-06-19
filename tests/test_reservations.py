@@ -9,44 +9,66 @@ def store(tmp_path):
     return ReservationStore(str(tmp_path / "res.json"))
 
 
+def _slot(start, end, kategorie="", gcal_event_id=None):
+    """Roh-Slot (inkl. gcal_event_id), wie er in get_all_raw erscheint."""
+    return {"start": start, "end": end, "kategorie": kategorie, "gcal_event_id": gcal_event_id}
+
+
+def _ushape(*slots):
+    """Erwartete User-Shape: slots ohne gcal_event_id."""
+    return {"slots": [{"start": s["start"], "end": s["end"], "kategorie": s["kategorie"]}
+                      for s in slots]}
+
+
 def test_load_empty(store):
     assert store.get_all() == {}
 
 
 def test_save_and_get(store):
-    store.save("2026-06-01", "09:00", "17:00")
-    assert store.get("2026-06-01") == {"start": "09:00", "end": "17:00"}
-    assert store.get_all() == {"2026-06-01": {"start": "09:00", "end": "17:00"}}
+    store.save("2026-06-01", [_slot("09:00", "17:00")])
+    assert store.get("2026-06-01") == _ushape(_slot("09:00", "17:00"))
+    assert store.get_all() == {"2026-06-01": _ushape(_slot("09:00", "17:00"))}
+
+
+def test_save_multiple_slots_with_categories(store):
+    slots = [_slot("09:00", "12:00", "Kundentermin"), _slot("13:00", "17:00", "Büro")]
+    store.save("2026-06-01", slots)
+    assert store.get("2026-06-01") == _ushape(*slots)
 
 
 def test_save_stamps_metadata(store):
-    store.save("2026-06-01", "09:00", "17:00")
+    store.save("2026-06-01", [_slot("09:00", "17:00")])
     raw = store.get_all_raw()["2026-06-01"]
     assert raw["deleted"] is False
-    assert raw["gcal_event_id"] is None
     assert raw["modified_at"].endswith("Z") and "T" in raw["modified_at"]
 
 
-def test_save_preserves_existing_event_id(store):
-    store.save("2026-06-01", "09:00", "17:00")
-    store.apply_reconciled({"2026-06-01": {
-        "start": "09:00", "end": "17:00", "modified_at": "2026-05-20T10:00:00Z",
-        "deleted": False, "gcal_event_id": "ev-1",
-    }})
-    store.save("2026-06-01", "08:00", "16:00")
-    assert store.get_all_raw()["2026-06-01"]["gcal_event_id"] == "ev-1"
+def test_save_stores_provided_event_id(store):
+    """save speichert eine mitgelieferte gcal_event_id am Slot. Der Erhalt
+    bestehender event_ids über Edits ist Sache des Reconcile (AP7)."""
+    store.save("2026-06-01", [_slot("09:00", "17:00", "", "ev-1")])
+    assert store.get_all_raw()["2026-06-01"]["slots"][0]["gcal_event_id"] == "ev-1"
 
 
-def test_delete_writes_tombstone_and_keeps_event_id(store):
-    store.apply_reconciled({"2026-06-01": {
-        "start": "09:00", "end": "17:00", "modified_at": "2026-05-20T10:00:00Z",
-        "deleted": False, "gcal_event_id": "ev-1",
-    }})
+def test_slot_defaults_kategorie_and_event_id(store):
+    store.save("2026-06-01", [{"start": "09:00", "end": "17:00"}])
+    slot = store.get_all_raw()["2026-06-01"]["slots"][0]
+    assert slot["gcal_event_id"] is None
+    assert slot["kategorie"] == ""
+
+
+def test_user_shape_excludes_event_id(store):
+    store.save("2026-06-01", [_slot("09:00", "17:00", "Büro", "ev-1")])
+    assert store.get("2026-06-01") == {"slots": [{"start": "09:00", "end": "17:00", "kategorie": "Büro"}]}
+
+
+def test_delete_writes_empty_slots_tombstone(store):
+    store.save("2026-06-01", [_slot("09:00", "17:00", "", "ev-1")])
     store.delete("2026-06-01")
     assert store.get("2026-06-01") is None
     tomb = store.get_all_raw()["2026-06-01"]
     assert tomb["deleted"] is True
-    assert tomb["gcal_event_id"] == "ev-1"
+    assert tomb["slots"] == []
 
 
 def test_delete_nonexistent_is_noop(store):
@@ -55,7 +77,7 @@ def test_delete_nonexistent_is_noop(store):
 
 
 def test_get_excludes_tombstones(store):
-    store.save("2026-06-01", "09:00", "17:00")
+    store.save("2026-06-01", [_slot("09:00", "17:00")])
     store.delete("2026-06-01")
     assert "2026-06-01" not in store.get_all()
     assert "2026-06-01" in store.get_all_raw()
@@ -63,18 +85,25 @@ def test_get_excludes_tombstones(store):
 
 def test_persistence(tmp_path):
     path = str(tmp_path / "res.json")
-    ReservationStore(path).save("2026-06-01", "09:00", "17:00")
-    assert ReservationStore(path).get("2026-06-01") == {"start": "09:00", "end": "17:00"}
+    ReservationStore(path).save("2026-06-01", [_slot("09:00", "17:00")])
+    assert ReservationStore(path).get("2026-06-01") == _ushape(_slot("09:00", "17:00"))
 
 
 def test_apply_reconciled_replaces_data(store):
-    store.save("2026-06-01", "09:00", "17:00")
+    store.save("2026-06-01", [_slot("09:00", "17:00")])
     store.apply_reconciled({"2026-07-01": {
-        "start": "10:00", "end": "18:00", "modified_at": "2026-05-20T10:00:00Z",
-        "deleted": False, "gcal_event_id": "ev-9",
+        "slots": [_slot("10:00", "18:00", "", "ev-9")],
+        "modified_at": "2026-05-20T10:00:00Z", "deleted": False,
     }})
     assert "2026-06-01" not in store.get_all_raw()
-    assert store.get("2026-07-01") == {"start": "10:00", "end": "18:00"}
+    assert store.get("2026-07-01") == _ushape(_slot("10:00", "18:00"))
+
+
+def test_apply_reconciled_rejects_missing_keys(store):
+    with pytest.raises(ValueError, match="missing keys"):
+        store.apply_reconciled({"2026-06-01": {"slots": [_slot("09:00", "17:00")]}})
+    # _data unverändert (kein Halb-Schreiben)
+    assert store.get_all_raw() == {}
 
 
 def test_corrupt_json_is_quarantined_and_starts_empty(tmp_path):
@@ -88,17 +117,10 @@ def test_corrupt_json_is_quarantined_and_starts_empty(tmp_path):
 def test_save_failure_keeps_original_intact(tmp_path):
     path = tmp_path / "res.json"
     store = ReservationStore(str(path))
-    store.save("2026-06-01", "09:00", "17:00")
+    store.save("2026-06-01", [_slot("09:00", "17:00")])
     original = path.read_bytes()
     with mock.patch("os.replace", side_effect=OSError("disk full")):
         with pytest.raises(OSError):
-            store.save("2026-06-02", "09:00", "17:00")
+            store.save("2026-06-02", [_slot("09:00", "17:00")])
     assert path.read_bytes() == original
     assert [p for p in tmp_path.iterdir() if p.suffix == ".tmp"] == []
-
-
-def test_apply_reconciled_rejects_missing_keys(store):
-    with pytest.raises(ValueError, match="missing keys"):
-        store.apply_reconciled({"2026-06-01": {"start": "09:00", "end": "17:00"}})
-    # _data unverändert (kein Halb-Schreiben)
-    assert store.get_all_raw() == {}
