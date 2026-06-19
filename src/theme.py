@@ -335,11 +335,28 @@ def attach_unfocus_on_click(dialog):
     Frame-Bg, Frame+Label-Button) ziehen wir den Fokus auf den Dialog.
     """
     def _unfocus(event):
-        if event.widget.winfo_class() in _FOCUSABLE_INPUT_CLASSES:
+        if _click_keeps_focus(event.widget):
             return
         dialog.focus_set()
 
     dialog.bind("<Button-1>", _unfocus, add="+")
+
+
+def _click_keeps_focus(widget):
+    """True, wenn der geklickte Widget den Fokus behalten soll (Eingabefeld).
+
+    Defensiv: Wird ein Widget WÄHREND seines Klick-Events zerstört (z.B. die
+    "×"-Schaltfläche einer Slot-Zeile im Tages-Dialog), liefert Tk für das
+    nachgelagerte Toplevel-`<Button-1>` `event.widget` als Pfad-String statt
+    als Widget-Objekt — `winfo_class()` würde dann mit AttributeError crashen.
+    Ein String- oder bereits zerstörtes Widget → Fokus auf den Dialog ziehen
+    (kein Eingabefeld)."""
+    if isinstance(widget, str):
+        return False
+    try:
+        return widget.winfo_class() in _FOCUSABLE_INPUT_CLASSES
+    except tk.TclError:
+        return False
 
 
 def _parent_workarea(parent):
