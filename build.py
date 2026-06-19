@@ -4,6 +4,7 @@ import platform
 import shutil
 import subprocess
 import sys
+from datetime import datetime, timezone
 
 from src.version import VERSION
 
@@ -79,6 +80,10 @@ def _pyinstaller_common(extra_args):
         sys.executable, "-m", "PyInstaller",
         "--noconfirm",
         "--name", "Zeiterfassung",
+        # build_info wird in einem function-/try-Import (src/version.py) geladen
+        # und von PyInstaller sonst evtl. nicht erfasst — explizit einbündeln,
+        # damit der Release-Kanal-Stempel im Artefakt landet.
+        "--hidden-import", "src.build_info",
         "--add-data", add_data,
         "--collect-all", "xhtml2pdf",
         "--collect-all", "reportlab",
@@ -215,7 +220,43 @@ def build_linux():
     print(f"AppImage created: {appimage_path}")
 
 
+def generate_build_info():
+    """Schreibt src/build_info.py mit dem Build-Kanal-Stempel (#45). Wird beim
+    Build erzeugt (gitignored) und von PyInstaller mitgebündelt — daher VOR dem
+    eigentlichen Build aufrufen.
+
+    Nur der Release-Workflow setzt ZEIT_RELEASE=1 → CHANNEL='release'. Lokales
+    `python build.py` ohne Flag → 'dev' + Commit-Hash. Der Release-Tag vX.Y.Z
+    entsteht erst nach dem Build, taugt daher nicht zur Kanal-Erkennung — daher
+    das explizite Flag."""
+    channel = "release" if os.environ.get("ZEIT_RELEASE") == "1" else "dev"
+
+    def _git(args):
+        try:
+            return subprocess.run(
+                ["git", *args], capture_output=True, text=True, check=True,
+            ).stdout.strip()
+        except (subprocess.CalledProcessError, OSError):
+            return ""
+
+    sha = _git(["rev-parse", "--short", "HEAD"])
+    dirty = bool(_git(["status", "--porcelain"]))
+    build_time = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    path = os.path.join("src", "build_info.py")
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(
+            "# Generiert von build.py — NICHT committen (s. .gitignore).\n"
+            f'CHANNEL = "{channel}"\n'
+            f'GIT_SHA = "{sha}"\n'
+            f"GIT_DIRTY = {dirty}\n"
+            f'BUILD_TIME = "{build_time}"\n'
+        )
+    print(f"build_info: CHANNEL={channel} SHA={sha or '-'} DIRTY={dirty}")
+
+
 def main():
+    generate_build_info()
     system = platform.system()
     if system == "Windows":
         build_windows()

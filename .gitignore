@@ -12,6 +12,7 @@ logs/
 dist/
 build/
 *.spec
+src/build_info.py
 .claude/
 .superpowers/
 .venv/

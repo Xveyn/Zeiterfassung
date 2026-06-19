@@ -19,7 +19,7 @@ from src.holidays_de import get_holidays
 from src.tooltip import attach_tooltip
 from src.mail import fetch_user_email, refresh_token_if_needed, TokenAuthError, TokenNetworkError
 from src.drive import DriveAuthError, DriveNetworkError
-from src.version import VERSION
+from src.version import VERSION, version_label
 from src.updater import (
     check_latest_release,
     is_newer,
@@ -124,7 +124,7 @@ class App:
         self.base_path = base_path
         self.conflicts_store = conflicts_store
         self.reservation_store = reservation_store
-        self.root.title(f"Zeiterfassung v{VERSION}")
+        self.root.title(f"Zeiterfassung v{version_label()}")
         self.root.configure(bg=BG)
         apply_dark_titlebar(self.root)
 

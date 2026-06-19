@@ -78,6 +78,8 @@ jobs:
         shell: powershell
         run: choco install innosetup -y --no-progress
       - name: Build
+        env:
+          ZEIT_RELEASE: "1"
         run: python build.py
       - uses: actions/upload-artifact@v7
         with:
@@ -98,6 +100,8 @@ jobs:
       - name: Install create-dmg
         run: brew install create-dmg
       - name: Build
+        env:
+          ZEIT_RELEASE: "1"
         run: python build.py
       - uses: actions/upload-artifact@v7
         with:
@@ -125,6 +129,8 @@ jobs:
       - name: Install Python dependencies
         run: pip install -r requirements.txt pyinstaller pip-licenses
       - name: Build
+        env:
+          ZEIT_RELEASE: "1"
         run: python build.py
       - uses: actions/upload-artifact@v7
         with:
