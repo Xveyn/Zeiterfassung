@@ -32,7 +32,7 @@ def _is_settled_conflict(conflict, watermark):
 SYNCED_SETTING_KEYS = (
     "recipient", "name", "hourly_rate",
     "mail_subject", "mail_greeting", "mail_content", "mail_closing",
-    "gcal_calendar_id",
+    "gcal_calendar_id", "categories",
 )
 
 
