@@ -10,7 +10,7 @@ from src.mail import get_gmail_service, is_offline_error, send_email
 from src.platform_open import open_folder
 from src.report import generate_pdf, generate_report
 from src.theme import (
-    BG, FONT, TEXT,
+    BG, CELL_BG, FONT, TEXT,
     apply_app_icon, apply_combobox_style, apply_dark_titlebar,
     attach_unfocus_on_click, center_dialog_on_parent,
     disable_min_max, dark_combo, primary_button, secondary_button,
@@ -146,6 +146,46 @@ def open_send_dialog(parent, storage, settings, base_path):
     from_day, from_month, from_year = build_date_row(0, "Von:", from_default)
     to_day, to_month, to_year = build_date_row(1, "Bis:", today)
 
+    # --- Kategorie-Auswahl ---
+    # Kategorien aus dem Bestand UND der Settings-Pickliste sammeln ("" = ohne
+    # Kategorie). Alle standardmäßig ausgewählt; sind alle ausgewählt, wird kein
+    # Filter gesetzt. Bewusste Vereinfachung: die Liste wird NICHT auf den
+    # gewählten Zeitraum eingeschränkt (das bräuchte dynamisches Neu-Aufbauen bei
+    # Datumswechsel) — eine im Zeitraum nicht vorkommende Kategorie bleibt
+    # wirkungslos, daher unkritisch.
+    all_entries = storage.get_all()
+    present_categories = sorted(
+        {(s.get("kategorie") or "") for e in all_entries.values() for s in e["slots"]}
+        | {c for c in (settings.get("categories") or [])},
+        key=lambda k: (k == "", k.lower()),
+    )
+    category_vars = {}  # rohe Kategorie -> BooleanVar
+    if present_categories:
+        tk.Label(dialog, text="Kategorien:", font=FONT, bg=BG, fg=TEXT).grid(
+            row=2, column=0, padx=(10, 5), pady=(4, 8), sticky="nw")
+        cat_frame = tk.Frame(dialog, bg=BG)
+        cat_frame.grid(row=2, column=1, columnspan=5, padx=(0, 10), pady=(4, 8), sticky="w")
+        for kat in present_categories:
+            var = tk.BooleanVar(value=True)
+            category_vars[kat] = var
+            label = kat if kat else "(ohne Kategorie)"
+            tk.Checkbutton(
+                cat_frame, text=label, variable=var,
+                font=FONT, bg=BG, fg=TEXT, selectcolor=CELL_BG,
+                activebackground=BG, activeforeground=TEXT,
+                highlightthickness=0, bd=0, anchor="w",
+            ).pack(anchor="w")
+
+    def _selected_categories():
+        """None, wenn keine Kategorien existieren oder alle ausgewählt sind
+        (= kein Filter). Sonst die Menge der ausgewählten rohen Kategorien."""
+        if not category_vars:
+            return None
+        selected = {kat for kat, var in category_vars.items() if var.get()}
+        if len(selected) == len(category_vars):
+            return None
+        return selected
+
     def do_send():
         try:
             date_from = datetime.date(int(from_year.get()), int(from_month.get()), int(from_day.get()))
@@ -162,13 +202,15 @@ def open_send_dialog(parent, storage, settings, base_path):
             )
             return
 
-        entries = storage.get_all()
+        entries = all_entries
+        categories = _selected_categories()
 
         html, total = generate_report(
             date_from, date_to, entries,
             greeting=settings.get("mail_greeting"),
             content=settings.get("mail_content"),
             closing=settings.get("mail_closing"),
+            categories=categories,
         )
 
         if html is None:
@@ -182,7 +224,8 @@ def open_send_dialog(parent, storage, settings, base_path):
         label = f"{date_from.strftime('%d.%m.%Y')} – {date_to.strftime('%d.%m.%Y')}"
 
         try:
-            pdf_bytes = generate_pdf(date_from, date_to, entries, name=settings.get("name"))
+            pdf_bytes = generate_pdf(date_from, date_to, entries, name=settings.get("name"),
+                                     categories=categories)
             service = get_gmail_service(
                 credentials_path, token_path,
                 sync_enabled=settings.get("sync_enabled"),
@@ -241,7 +284,7 @@ def open_send_dialog(parent, storage, settings, base_path):
                 )
 
     btn_frame = tk.Frame(dialog, bg=BG)
-    btn_frame.grid(row=2, column=0, columnspan=6, pady=12)
+    btn_frame.grid(row=3, column=0, columnspan=6, pady=12)
 
     primary_button(btn_frame, "Senden", do_send).pack(side=tk.LEFT, padx=5)
     secondary_button(btn_frame, "Abbrechen", dialog.destroy).pack(side=tk.LEFT, padx=5)
