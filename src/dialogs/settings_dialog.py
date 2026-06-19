@@ -18,6 +18,7 @@ from src.theme import (
     primary_button, secondary_button,
     themed_askyesno, themed_showinfo, themed_showwarning, themed_showerror,
 )
+from src.dialogs.category_dialog import open_category_dialog
 from src.holidays_de import STATES
 from src.settings import WEEKDAY_KEYS, SYNCED_SETTING_KEYS
 from src.time_utils import format_iso_date
@@ -779,6 +780,10 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
     btn_frame = tk.Frame(dialog, bg=BG)
     btn_frame.grid(row=32, column=0, columnspan=2, pady=12)
 
+    secondary_button(
+        btn_frame, "Kategorien verwalten…",
+        lambda: open_category_dialog(dialog, settings),
+    ).pack(side=tk.LEFT, padx=5)
     primary_button(btn_frame, "Speichern", save_settings).pack(side=tk.LEFT, padx=5)
     secondary_button(btn_frame, "Abbrechen", dialog.destroy).pack(side=tk.LEFT, padx=5)
 
