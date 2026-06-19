@@ -8,7 +8,7 @@ from tkinter import messagebox
 
 from src.mail import get_gmail_service, is_offline_error, send_email
 from src.platform_open import open_folder
-from src.report import generate_pdf, generate_report
+from src.report import generate_pdf, generate_report, total_hours
 from src.theme import (
     BG, CELL_BG, FONT, TEXT,
     apply_app_icon, apply_combobox_style, apply_dark_titlebar,
@@ -171,6 +171,7 @@ def open_send_dialog(parent, storage, settings, base_path):
             label = kat if kat else "(ohne Kategorie)"
             tk.Checkbutton(
                 cat_frame, text=label, variable=var,
+                command=lambda: _update_total(),
                 font=FONT, bg=BG, fg=TEXT, selectcolor=CELL_BG,
                 activebackground=BG, activeforeground=TEXT,
                 highlightthickness=0, bd=0, anchor="w",
@@ -185,6 +186,30 @@ def open_send_dialog(parent, storage, settings, base_path):
         if len(selected) == len(category_vars):
             return None
         return selected
+
+    # --- Live-Vorschau der Gesamtstunden (Zeitraum × gewählte Kategorien) ---
+    total_label = tk.Label(dialog, text="", font=FONT, bg=BG, fg=TEXT)
+    total_label.grid(row=3, column=0, columnspan=6, padx=10, pady=(0, 8), sticky="w")
+
+    def _current_range():
+        try:
+            df = datetime.date(int(from_year.get()), int(from_month.get()), int(from_day.get()))
+            dt = datetime.date(int(to_year.get()), int(to_month.get()), int(to_day.get()))
+        except ValueError:
+            return None, None
+        return df, dt
+
+    def _update_total(*_):
+        df, dt = _current_range()
+        if df is None or dt is None or df > dt:
+            total_label.config(text="Gesamtstunden: —")
+            return
+        hours = total_hours(df, dt, all_entries, _selected_categories())
+        total_label.config(text=f"Gesamtstunden: {hours}h")
+
+    for _v in (from_day, from_month, from_year, to_day, to_month, to_year):
+        _v.trace_add("write", _update_total)
+    _update_total()
 
     def do_send():
         try:
@@ -284,7 +309,7 @@ def open_send_dialog(parent, storage, settings, base_path):
                 )
 
     btn_frame = tk.Frame(dialog, bg=BG)
-    btn_frame.grid(row=3, column=0, columnspan=6, pady=12)
+    btn_frame.grid(row=4, column=0, columnspan=6, pady=12)
 
     primary_button(btn_frame, "Senden", do_send).pack(side=tk.LEFT, padx=5)
     secondary_button(btn_frame, "Abbrechen", dialog.destroy).pack(side=tk.LEFT, padx=5)

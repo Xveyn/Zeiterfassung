@@ -309,3 +309,40 @@ def test_pdf_category_filter_applied():
 
     assert "Büro" in captured_html["html"]
     assert "HO" not in captured_html["html"]
+
+
+from src.report import total_hours
+
+
+def test_total_hours_basic():
+    entries = {"2026-03-23": _e("08:00", "16:00", 0)}
+    assert total_hours(datetime.date(2026, 3, 1), datetime.date(2026, 3, 31), entries) == 8.0
+
+
+def test_total_hours_sums_slots_and_days():
+    entries = {
+        "2026-03-23": {"slots": [_slot("08:00", "12:00", 0, "Büro"), _slot("13:00", "17:00", 30, "HO")]},
+        "2026-03-24": _e("09:00", "17:00", 60),
+    }
+    # 4 + 3.5 + 7 = 14.5
+    assert total_hours(datetime.date(2026, 3, 1), datetime.date(2026, 3, 31), entries) == 14.5
+
+
+def test_total_hours_category_filter():
+    entries = {"2026-03-23": {"slots": [_slot("08:00", "12:00", 0, "Büro"), _slot("13:00", "17:00", 0, "HO")]}}
+    assert total_hours(datetime.date(2026, 3, 1), datetime.date(2026, 3, 31), entries, categories={"Büro"}) == 4.0
+
+
+def test_total_hours_none_categories_is_all():
+    entries = {"2026-03-23": {"slots": [_slot("08:00", "12:00", 0, "A"), _slot("13:00", "17:00", 0, "B")]}}
+    assert total_hours(datetime.date(2026, 3, 1), datetime.date(2026, 3, 31), entries) == 8.0
+
+
+def test_total_hours_empty_range_is_zero():
+    entries = {"2026-03-23": _e("08:00", "16:00", 0)}
+    assert total_hours(datetime.date(2026, 1, 1), datetime.date(2026, 1, 31), entries) == 0.0
+
+
+def test_total_hours_filtered_to_nothing_is_zero():
+    entries = {"2026-03-23": _e("08:00", "16:00", 0, "Büro")}
+    assert total_hours(datetime.date(2026, 3, 1), datetime.date(2026, 3, 31), entries, categories={"X"}) == 0.0

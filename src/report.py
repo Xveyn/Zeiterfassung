@@ -112,6 +112,18 @@ def _apply_category_filter(entries, categories):
     return out
 
 
+def total_hours(date_from, date_to, all_entries, categories=None):
+    """Gesamtstunden im Zeitraum, gefiltert auf die gewählten Kategorien
+    (None = alle). Pure Funktion für die Live-Vorschau im Sende-Dialog —
+    summiert dieselben Slot-Stunden wie der Report. Leerer Bereich → 0.0."""
+    range_entries = _filter_entries(date_from, date_to, all_entries)
+    if range_entries:
+        range_entries = _apply_category_filter(range_entries, categories)
+    if not range_entries:
+        return 0.0
+    return round(sum(_entry_hours(e) for e in range_entries.values()), 2)
+
+
 def _apply_placeholders(text, label, total):
     return text.replace("{zeitraum}", _esc(label)).replace("{gesamt}", _esc(f"{total}h"))
 
