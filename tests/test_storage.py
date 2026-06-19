@@ -4,43 +4,67 @@ from unittest import mock
 import pytest
 from src.storage import Storage
 
+
 @pytest.fixture
 def tmp_storage(tmp_path):
     return Storage(str(tmp_path / "test.json"), device_id="test-device")
 
+
+def _slot(start, end, pause=0, kategorie=""):
+    return {"start": start, "end": end, "pause": pause, "kategorie": kategorie}
+
+
 def test_load_empty(tmp_storage):
     assert tmp_storage.get_all() == {}
 
+
 def test_save_and_load(tmp_storage):
-    tmp_storage.save("2026-03-23", "08:00", "16:30")
+    tmp_storage.save("2026-03-23", [_slot("08:00", "16:30")])
     entries = tmp_storage.get_all()
-    assert entries["2026-03-23"] == {"start": "08:00", "end": "16:30", "pause": 0}
+    assert entries["2026-03-23"] == {"slots": [_slot("08:00", "16:30")]}
+
+
+def test_save_multiple_slots(tmp_storage):
+    slots = [_slot("08:00", "12:00", 0, "Büro"), _slot("13:00", "17:00", 30, "Homeoffice")]
+    tmp_storage.save("2026-03-23", slots)
+    assert tmp_storage.get("2026-03-23") == {"slots": slots}
+
+
+def test_slot_defaults_pause_and_kategorie(tmp_storage):
+    tmp_storage.save("2026-03-23", [{"start": "08:00", "end": "16:30"}])
+    assert tmp_storage.get("2026-03-23") == {"slots": [_slot("08:00", "16:30", 0, "")]}
+
 
 def test_delete_entry(tmp_storage):
-    tmp_storage.save("2026-03-23", "08:00", "16:30")
+    tmp_storage.save("2026-03-23", [_slot("08:00", "16:30")])
     tmp_storage.delete("2026-03-23")
     assert "2026-03-23" not in tmp_storage.get_all()
+
+
+def test_delete_writes_tombstone(tmp_storage):
+    tmp_storage.save("2026-03-23", [_slot("08:00", "16:30")])
+    tmp_storage.delete("2026-03-23")
+    raw = tmp_storage.get_all_raw()["2026-03-23"]
+    assert raw["deleted"] is True
+    assert raw["slots"] == []
+
 
 def test_delete_nonexistent(tmp_storage):
     tmp_storage.delete("2026-01-01")  # should not raise
     assert tmp_storage.get_all_raw() == {}
 
+
 def test_persistence(tmp_path):
     path = str(tmp_path / "test.json")
     s1 = Storage(path)
-    s1.save("2026-03-23", "08:00", "16:30")
+    s1.save("2026-03-23", [_slot("08:00", "16:30")])
     s2 = Storage(path)
-    assert s2.get_all()["2026-03-23"] == {"start": "08:00", "end": "16:30", "pause": 0}
+    assert s2.get_all()["2026-03-23"] == {"slots": [_slot("08:00", "16:30")]}
+
 
 def test_save_with_pause(tmp_storage):
-    tmp_storage.save("2026-03-23", "08:00", "16:30", pause=30)
-    entry = tmp_storage.get("2026-03-23")
-    assert entry == {"start": "08:00", "end": "16:30", "pause": 30}
-
-def test_save_default_pause_zero(tmp_storage):
-    tmp_storage.save("2026-03-23", "08:00", "16:30")
-    entry = tmp_storage.get("2026-03-23")
-    assert entry == {"start": "08:00", "end": "16:30", "pause": 0}
+    tmp_storage.save("2026-03-23", [_slot("08:00", "16:30", 30)])
+    assert tmp_storage.get("2026-03-23") == {"slots": [_slot("08:00", "16:30", 30)]}
 
 
 def test_corrupt_json_is_quarantined_and_starts_empty(tmp_path):
@@ -58,12 +82,12 @@ def test_corrupt_json_is_quarantined_and_starts_empty(tmp_path):
 def test_save_failure_keeps_original_file_intact(tmp_path):
     path = tmp_path / "test.json"
     storage = Storage(str(path))
-    storage.save("2026-03-23", "08:00", "16:30")
+    storage.save("2026-03-23", [_slot("08:00", "16:30")])
     original_bytes = path.read_bytes()
 
     with mock.patch("os.replace", side_effect=OSError("disk full")):
         with pytest.raises(OSError):
-            storage.save("2026-03-24", "09:00", "17:00")
+            storage.save("2026-03-24", [_slot("09:00", "17:00")])
 
     assert path.read_bytes() == original_bytes
     leftovers = [p for p in tmp_path.iterdir() if p.suffix == ".tmp"]
@@ -73,8 +97,8 @@ def test_save_failure_keeps_original_file_intact(tmp_path):
 def test_save_does_not_leave_tmp_files(tmp_path):
     path = tmp_path / "test.json"
     storage = Storage(str(path))
-    storage.save("2026-03-23", "08:00", "16:30")
-    storage.save("2026-03-24", "09:00", "17:00")
+    storage.save("2026-03-23", [_slot("08:00", "16:30")])
+    storage.save("2026-03-24", [_slot("09:00", "17:00")])
 
     leftovers = [p.name for p in tmp_path.iterdir() if p.name.endswith(".tmp")]
     assert leftovers == []
@@ -82,29 +106,34 @@ def test_save_does_not_leave_tmp_files(tmp_path):
 
 def test_save_stamps_modified_at_and_device_id(tmp_path):
     storage = Storage(str(tmp_path / "t.json"), device_id="dev-1")
-    storage.save("2026-05-14", "08:00", "16:00", pause=30)
+    storage.save("2026-05-14", [_slot("08:00", "16:00", 30)])
     raw = storage.get_all_raw()
-    assert raw["2026-05-14"]["start"] == "08:00"
+    assert raw["2026-05-14"]["slots"] == [_slot("08:00", "16:00", 30)]
     assert raw["2026-05-14"]["device_id"] == "dev-1"
-    assert "modified_at" in raw["2026-05-14"]
-    # ISO-Format
     assert "T" in raw["2026-05-14"]["modified_at"]
     assert raw["2026-05-14"]["modified_at"].endswith("Z")
 
 
 def test_get_returns_user_shape_without_metadata(tmp_path):
-    """Bestehende UI-Code-Pfade dürfen sich nicht ändern: get() liefert
-    weiter {start, end, pause}, get_all() ebenso."""
     storage = Storage(str(tmp_path / "t.json"), device_id="dev-1")
-    storage.save("2026-05-14", "08:00", "16:00", pause=30)
-    assert storage.get("2026-05-14") == {"start": "08:00", "end": "16:00", "pause": 30}
-    assert storage.get_all()["2026-05-14"] == {"start": "08:00", "end": "16:00", "pause": 30}
+    storage.save("2026-05-14", [_slot("08:00", "16:00", 30)])
+    assert storage.get("2026-05-14") == {"slots": [_slot("08:00", "16:00", 30)]}
+    assert storage.get_all()["2026-05-14"] == {"slots": [_slot("08:00", "16:00", 30)]}
+
+
+def test_user_shape_returns_independent_copies(tmp_path):
+    """get() darf keine Referenz auf interne Slot-Dicts herausgeben."""
+    storage = Storage(str(tmp_path / "t.json"))
+    storage.save("2026-05-14", [_slot("08:00", "16:00")])
+    got = storage.get("2026-05-14")
+    got["slots"][0]["start"] = "00:00"
+    assert storage.get("2026-05-14")["slots"][0]["start"] == "08:00"
 
 
 def test_apply_merge_rejects_entry_missing_required_keys(tmp_path):
     storage = Storage(str(tmp_path / "t.json"), device_id="dev-1")
     with pytest.raises(ValueError, match="missing keys"):
-        storage.apply_merge({"2026-05-14": {"start": "08:00", "end": "16:00"}})
+        storage.apply_merge({"2026-05-14": {"slots": [_slot("08:00", "16:00")]}})
     # _data unverändert geblieben (kein Halb-Schreiben)
     assert storage.get_all_raw() == {}
 
@@ -112,16 +141,15 @@ def test_apply_merge_rejects_entry_missing_required_keys(tmp_path):
 def test_apply_merge_accepts_complete_entries(tmp_path):
     storage = Storage(str(tmp_path / "t.json"), device_id="dev-1")
     storage.apply_merge({"2026-05-14": {
-        "start": "08:00", "end": "16:00", "pause": 30,
+        "slots": [_slot("08:00", "16:00", 30)],
         "modified_at": "2026-05-14T10:00:00Z",
         "device_id": "other-dev",
         "deleted": False,
     }})
-    assert storage.get("2026-05-14") == {"start": "08:00", "end": "16:00", "pause": 30}
+    assert storage.get("2026-05-14") == {"slots": [_slot("08:00", "16:00", 30)]}
 
 
 def test_save_many_empty_is_noop(tmp_path):
-    """Leeres Dict darf keinen File-Write triggern."""
     path = str(tmp_path / "noop.json")
     s = Storage(path, device_id="d1")
     s.save_many({})
@@ -130,16 +158,16 @@ def test_save_many_empty_is_noop(tmp_path):
 
 def test_save_many_writes_all_entries(tmp_storage):
     tmp_storage.save_many({
-        "2026-05-14": {"start": "08:00", "end": "16:00", "pause": 30},
-        "2026-05-15": {"start": "09:00", "end": "17:30", "pause": 45},
+        "2026-05-14": {"slots": [_slot("08:00", "16:00", 30)]},
+        "2026-05-15": {"slots": [_slot("09:00", "17:30", 45)]},
     })
     entries = tmp_storage.get_all()
-    assert entries["2026-05-14"] == {"start": "08:00", "end": "16:00", "pause": 30}
-    assert entries["2026-05-15"] == {"start": "09:00", "end": "17:30", "pause": 45}
+    assert entries["2026-05-14"] == {"slots": [_slot("08:00", "16:00", 30)]}
+    assert entries["2026-05-15"] == {"slots": [_slot("09:00", "17:30", 45)]}
 
 
 def test_save_many_sets_metadata(tmp_storage):
-    tmp_storage.save_many({"2026-05-14": {"start": "08:00", "end": "16:00", "pause": 30}})
+    tmp_storage.save_many({"2026-05-14": {"slots": [_slot("08:00", "16:00", 30)]}})
     raw = tmp_storage.get_all_raw()["2026-05-14"]
     assert raw["device_id"] == "test-device"
     assert raw["deleted"] is False
@@ -147,23 +175,24 @@ def test_save_many_sets_metadata(tmp_storage):
 
 
 def test_save_many_overwrites_tombstone(tmp_storage):
-    tmp_storage.save("2026-05-14", "08:00", "16:00", 30)
+    tmp_storage.save("2026-05-14", [_slot("08:00", "16:00", 30)])
     tmp_storage.delete("2026-05-14")
     assert tmp_storage.get("2026-05-14") is None
-    tmp_storage.save_many({"2026-05-14": {"start": "09:00", "end": "17:00", "pause": 0}})
-    assert tmp_storage.get("2026-05-14") == {"start": "09:00", "end": "17:00", "pause": 0}
+    tmp_storage.save_many({"2026-05-14": {"slots": [_slot("09:00", "17:00")]}})
+    assert tmp_storage.get("2026-05-14") == {"slots": [_slot("09:00", "17:00")]}
 
 
 def test_save_many_calls_disk_write_once(tmp_storage):
     with mock.patch.object(tmp_storage, "_save_to_disk") as m:
         tmp_storage.save_many({
-            "2026-05-14": {"start": "08:00", "end": "16:00", "pause": 30},
-            "2026-05-15": {"start": "09:00", "end": "17:30", "pause": 45},
+            "2026-05-14": {"slots": [_slot("08:00", "16:00", 30)]},
+            "2026-05-15": {"slots": [_slot("09:00", "17:30", 45)]},
         })
     assert m.call_count == 1
 
 
-def test_save_many_pause_default_zero(tmp_storage):
-    """Pause-Feld fehlt → wird auf 0 default-gesetzt (analog zu save())."""
-    tmp_storage.save_many({"2026-05-14": {"start": "08:00", "end": "16:00"}})
-    assert tmp_storage.get_all()["2026-05-14"]["pause"] == 0
+def test_save_many_slot_defaults(tmp_storage):
+    tmp_storage.save_many({"2026-05-14": {"slots": [{"start": "08:00", "end": "16:00"}]}})
+    slot = tmp_storage.get_all()["2026-05-14"]["slots"][0]
+    assert slot["pause"] == 0
+    assert slot["kategorie"] == ""
