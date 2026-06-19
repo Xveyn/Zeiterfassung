@@ -791,8 +791,16 @@ class App:
         # pixel-fixierte Standardzelle (width=8 in FONT) reinpasst. Wenn der
         # Caller eine breitere Zelle nutzt (z.B. bei ausgeblendeten Wochenenden
         # mit width=11), kann eine größere Schrift übergeben werden.
+        slots = entry.get("slots", [])
+        if slots:
+            first = slots[0]
+            time_text = f"{first['start']}-{first['end']}"
+            if len(slots) > 1:
+                time_text += f"  +{len(slots) - 1}"
+        else:
+            time_text = ""
         time_lbl = tk.Label(
-            cell, text=f"{entry['start']}-{entry['end']}",
+            cell, text=time_text,
             font=time_font, bg=bg, fg=TEXT_MUTED, cursor="hand2",
         )
         time_lbl.pack(pady=(0, pad))
@@ -802,6 +810,13 @@ class App:
             w.bind("<Enter>", lambda e, c=cell, dl=day_lbl, tl=time_lbl, hb=hover_bg: self._cell_hover(c, dl, tl, hb))
             w.bind("<Leave>", lambda e, c=cell, dl=day_lbl, tl=time_lbl, ob=bg: self._cell_hover(c, dl, tl, ob))
         return cell
+
+    @staticmethod
+    def _fmt_slot_line(slot):
+        """Eine Tooltip-Zeile für einen Slot: 'HH:MM-HH:MM  Kategorie'
+        (Kategorie weggelassen, wenn leer)."""
+        kat = f"  {slot['kategorie']}" if slot.get("kategorie") else ""
+        return f"{slot['start']}-{slot['end']}{kat}"
 
     def _add_reservation_marker(self, cell):
         """Runder violetter Eck-Punkt auf einer Ist-Zeitzelle, die zusätzlich
@@ -891,16 +906,26 @@ class App:
             )
 
         # Reservierung ist ein reiner Overlay-Marker (Eck-Punkt) — sie ändert
-        # den Zelltyp nicht. Genau ein attach_tooltip pro Zelle: Mehrfachaufruf
-        # erzeugt überlappende Tooltips (s. attach_tooltip-Docstring).
+        # den Zelltyp nicht. Genau EIN attach_tooltip pro Zelle (Mehrfachaufruf
+        # erzeugt überlappende Tooltips); deshalb alle relevanten Infos
+        # (mehrere Arbeitszeit-Slots, Reservierung, Feiertag) in einen
+        # kombinierten Tooltip. Ein Feiertag-OHNE-Eintrag/-Reservierung zeigt
+        # seinen Namen weiterhin als Zelltext (Holiday-Zelle) bzw. eigenen
+        # Tooltip (name_tooltip) und kommt hier NICHT rein.
+        tip_parts = []
+        if entry and len(entry.get("slots", [])) > 1:
+            tip_parts.append(
+                "Arbeitszeit:\n"
+                + "\n".join(self._fmt_slot_line(s) for s in entry["slots"]))
         if reservation is not None:
             self._add_reservation_marker(cell)
-            tip = f"Reservierung: {reservation['start']}-{reservation['end']}"
-            if is_holiday:
-                tip += f"\nFeiertag: {holidays_map[day_date]}"
-            attach_tooltip(cell, tip)
-        elif entry and is_holiday:
-            attach_tooltip(cell, f"Feiertag: {holidays_map[day_date]}")
+            tip_parts.append(
+                "Reservierung:\n"
+                + "\n".join(self._fmt_slot_line(s) for s in reservation.get("slots", [])))
+        if is_holiday and (reservation is not None or entry):
+            tip_parts.append(f"Feiertag: {holidays_map[day_date]}")
+        if tip_parts:
+            attach_tooltip(cell, "\n".join(tip_parts))
 
         # Heutigen Tag mit blauem Rahmen hervorheben. Vor dem Konflikt-Block,
         # damit ein Konflikt (orange) auf demselben Tag den Rand gewinnt.
@@ -948,9 +973,10 @@ class App:
             self.footer_label.config(text=f"Gesamt: {total_rounded}h")
 
     def _entry_hours(self, entry):
-        return calculate_hours(
-            entry["start"], entry["end"], pause_minutes=entry.get("pause", 0),
-        )
+        return round(sum(
+            calculate_hours(s["start"], s["end"], pause_minutes=s.get("pause", 0))
+            for s in entry.get("slots", [])
+        ), 2)
 
     def _dates_with_unresolved_conflicts(self):
         """Gibt die Menge der ISO-Datums-Strings zurück, für die ungelöste
