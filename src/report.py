@@ -14,11 +14,10 @@ def _esc_multiline(text):
     return _esc(text).replace("\n", "<br>")
 
 
-COLUMN_LABELS = ["Datum", "Tag", "Start", "Ende", "Stunden"]
+COLUMN_LABELS = ["Datum", "Tag", "Kategorie", "Start", "Ende", "Stunden"]
 
 # Style-Dict pro Render-Ziel. Felder werden direkt als CSS-Strings in die
-# Inline-Styles der Zellen geschrieben — `_week_block` und `_build_table`
-# sind dadurch struktur-, nicht stylegetrieben.
+# Inline-Styles der Zellen geschrieben.
 HTML_STYLE = {
     "table_extra": "border-radius:8px;overflow:hidden;",
     "th_row":      "background:#1e293b;",
@@ -30,6 +29,7 @@ HTML_STYLE = {
     "td_base":     "padding:10px 14px;border-bottom:1px solid rgba(255,255,255,0.08);",
     "c_date":      "color:#cbd5e1;",
     "c_day":       "color:#94a3b8;",
+    "c_kat":       "color:#94a3b8;",
     "c_time":      "color:#cbd5e1;",
     "c_hours":     "color:#00D8A7;font-weight:600;",
     "sum_row":     "background:#263244;",
@@ -51,6 +51,7 @@ PDF_STYLE = {
     "td_base":     "padding:8px 12px;border-bottom:1px solid #d1d5db;",
     "c_date":      "color:#111827;",
     "c_day":       "color:#4b5563;",
+    "c_kat":       "color:#4b5563;",
     "c_time":      "color:#111827;",
     "c_hours":     "color:#111827;font-weight:600;",
     "sum_row":     "background:#cbd5e1;",
@@ -62,9 +63,13 @@ PDF_STYLE = {
 }
 
 
+def _slot_hours(slot):
+    return round(calculate_hours(slot["start"], slot["end"], pause_minutes=slot.get("pause", 0)), 2)
+
+
 def _entry_hours(entry):
-    pause = entry.get("pause", 0)
-    return round(calculate_hours(entry["start"], entry["end"], pause_minutes=pause), 2)
+    """Summe der Stunden über alle Slots eines Tages."""
+    return round(sum(_slot_hours(s) for s in entry.get("slots", [])), 2)
 
 
 def _group_by_week(range_entries):
@@ -92,23 +97,35 @@ def _filter_entries(date_from, date_to, all_entries):
     return range_entries if range_entries else None
 
 
+def _apply_category_filter(entries, categories):
+    """categories=None → unverändert. Sonst werden je Tag nur Slots behalten,
+    deren Kategorie (oder "" für ohne) in `categories` liegt; Tage ohne
+    verbleibende Slots fallen weg. Liefert ein neues Dict."""
+    if categories is None:
+        return entries
+    cats = set(categories)
+    out = {}
+    for date_str, entry in entries.items():
+        kept = [s for s in entry["slots"] if (s.get("kategorie") or "") in cats]
+        if kept:
+            out[date_str] = {"slots": kept}
+    return out
+
+
 def _apply_placeholders(text, label, total):
-    # text ist bereits escaped; label und total sind strukturell sicher
-    # (Datum + Float), werden aber für Konsistenz ebenfalls escaped.
     return text.replace("{zeitraum}", _esc(label)).replace("{gesamt}", _esc(f"{total}h"))
 
 
-# _week_block und _build_table rendern Werte aus dem Storage (entry["start"],
-# entry["end"], weekday, day_fmt, iso_week). Diese sind durch validate_entry
-# bzw. datetime-Formatter strukturell auf [0-9:.-] beschränkt — kein Escape
-# nötig. Wenn diese Quelle sich mal ändert (z.B. freie Eingabe), Escape ergänzen.
+# _week_block / _build_table / _build_category_summary rendern Werte aus dem
+# Storage. start/end/Datum/KW sind strukturell auf [0-9:.-] beschränkt (kein
+# Escape nötig). `kategorie` ist FREIER Nutzertext → wird mit _esc() escaped.
 def _week_block(iso_year, iso_week, week_entries, style):
-    """Render einen Wochen-Block (KW-Header, Tageszeilen, Wochensumme).
-    Returns (rows_html, week_total)."""
+    """Render einen Wochen-Block: KW-Header, je Slot eine Zeile, Tages-Subtotal
+    bei >1 Slot, Wochensumme. Returns (rows_html, week_total)."""
     s = style
     rows = [
         f"<tr style='{s['kw_row']}'>"
-        f"<td colspan='5' style='{s['kw_cell']}'>{get_week_label(iso_year, iso_week)}</td>"
+        f"<td colspan='6' style='{s['kw_cell']}'>{get_week_label(iso_year, iso_week)}</td>"
         f"</tr>"
     ]
 
@@ -117,24 +134,39 @@ def _week_block(iso_year, iso_week, week_entries, style):
         dt = datetime.date.fromisoformat(date_str)
         weekday = DAYS_DE[dt.weekday()]
         day_fmt = dt.strftime("%d.%m.%Y")
-        hours = _entry_hours(entry)
-        week_total += hours
         row_bg = s["row_a"] if idx % 2 == 0 else s["row_b"]
         td = s["td_base"]
-        rows.append(
-            f"<tr style='{row_bg}'>"
-            f"<td style='{td}{s['c_date']}'>{day_fmt}</td>"
-            f"<td style='{td}{s['c_day']}'>{weekday}</td>"
-            f"<td style='{td}{s['c_time']}'>{entry['start']}</td>"
-            f"<td style='{td}{s['c_time']}'>{entry['end']}</td>"
-            f"<td style='{td}{s['c_hours']}'>{hours}h</td>"
-            f"</tr>"
-        )
+        slots = entry["slots"]
+        day_total = 0.0
+        for sidx, slot in enumerate(slots):
+            hours = _slot_hours(slot)
+            day_total += hours
+            week_total += hours
+            date_cell = day_fmt if sidx == 0 else ""
+            day_cell = weekday if sidx == 0 else ""
+            rows.append(
+                f"<tr style='{row_bg}'>"
+                f"<td style='{td}{s['c_date']}'>{date_cell}</td>"
+                f"<td style='{td}{s['c_day']}'>{day_cell}</td>"
+                f"<td style='{td}{s['c_kat']}'>{_esc(slot.get('kategorie') or '')}</td>"
+                f"<td style='{td}{s['c_time']}'>{slot['start']}</td>"
+                f"<td style='{td}{s['c_time']}'>{slot['end']}</td>"
+                f"<td style='{td}{s['c_hours']}'>{hours}h</td>"
+                f"</tr>"
+            )
+        if len(slots) > 1:
+            day_total = round(day_total, 2)
+            rows.append(
+                f"<tr style='{row_bg}'>"
+                f"<td colspan='5' style='{td}{s['c_day']}'>Summe {day_fmt}</td>"
+                f"<td style='{td}{s['c_hours']}'>{day_total}h</td>"
+                f"</tr>"
+            )
 
     week_total = round(week_total, 2)
     rows.append(
         f"<tr style='{s['sum_row']}'>"
-        f"<td colspan='4' style='{s['sum_lbl']}'>Summe KW {iso_week}</td>"
+        f"<td colspan='5' style='{s['sum_lbl']}'>Summe KW {iso_week}</td>"
         f"<td style='{s['sum_hrs']}'>{week_total}h</td>"
         f"</tr>"
     )
@@ -142,8 +174,7 @@ def _week_block(iso_year, iso_week, week_entries, style):
 
 
 def _build_table(groups, style):
-    """Bauen die komplette Stundentabelle (Header, alle Wochen-Blöcke,
-    Gesamt-Footer). Returns (table_html, total)."""
+    """Bauen die komplette Stundentabelle. Returns (table_html, total)."""
     s = style
     week_blocks = []
     total = 0.0
@@ -162,7 +193,7 @@ def _build_table(groups, style):
         f'<tr style="{s["th_row"]}">{th_cells}</tr>'
         f'{"".join(week_blocks)}'
         f'<tr style="{s["total_row"]}">'
-        f'<td colspan="4" style="{s["total_lbl"]}">Gesamt</td>'
+        f'<td colspan="5" style="{s["total_lbl"]}">Gesamt</td>'
         f'<td style="{s["total_hrs"]}">{total}h</td>'
         f'</tr>'
         f'</table>'
@@ -170,18 +201,61 @@ def _build_table(groups, style):
     return table, total
 
 
-def generate_report(date_from, date_to, all_entries, greeting="", content="", closing=""):
-    """Generate an HTML email report with greeting, content, table, and closing.
+def _build_category_summary(range_entries, style):
+    """„Summe je Kategorie"-Tabelle über den (gefilterten) Zeitraum. Leerer
+    String ('' = keine Kategorie) wird als '(ohne Kategorie)' ans Ende
+    sortiert. Liefert '' wenn keine Slots vorhanden."""
+    s = style
+    totals = {}
+    for entry in range_entries.values():
+        for slot in entry["slots"]:
+            kat = slot.get("kategorie") or ""
+            totals[kat] = totals.get(kat, 0.0) + _slot_hours(slot)
+    if not totals:
+        return ""
 
+    td = s["td_base"]
+    rows = []
+    for idx, kat in enumerate(sorted(totals, key=lambda k: (k == "", k.lower()))):
+        label = kat if kat else "(ohne Kategorie)"
+        hours = round(totals[kat], 2)
+        row_bg = s["row_a"] if idx % 2 == 0 else s["row_b"]
+        rows.append(
+            f"<tr style='{row_bg}'>"
+            f"<td style='{td}{s['c_day']}'>{_esc(label)}</td>"
+            f"<td style='{td}{s['c_hours']}'>{hours}h</td>"
+            f"</tr>"
+        )
+
+    return (
+        f'<table style="border-collapse:collapse;width:100%;margin-top:16px;{s["table_extra"]}">'
+        f'<tr style="{s["th_row"]}">'
+        f'<th style="{s["th_cell"]}">Kategorie</th>'
+        f'<th style="{s["th_cell"]}">Stunden</th>'
+        f'</tr>'
+        f'{"".join(rows)}'
+        f'</table>'
+    )
+
+
+def generate_report(date_from, date_to, all_entries, greeting="", content="",
+                    closing="", categories=None):
+    """Generate an HTML email report with greeting, content, table, category
+    summary, and closing.
+
+    categories: None = alle; sonst Menge von Kategorie-Strings ('' = ohne).
     Returns (html, total) tuple, or (None, 0) if no entries.
     """
     range_entries = _filter_entries(date_from, date_to, all_entries)
+    if range_entries:
+        range_entries = _apply_category_filter(range_entries, categories)
     if not range_entries:
         return None, 0
 
     label = f"{date_from.strftime('%d.%m.%Y')} – {date_to.strftime('%d.%m.%Y')}"
     groups = _group_by_week(range_entries)
     table, total = _build_table(groups, HTML_STYLE)
+    category_summary = _build_category_summary(range_entries, HTML_STYLE)
 
     greeting_filled = _apply_placeholders(_esc_multiline(greeting), label, total)
     content_filled = _apply_placeholders(_esc_multiline(content), label, total)
@@ -198,6 +272,7 @@ def generate_report(date_from, date_to, all_entries, greeting="", content="", cl
 {greeting_html}
 {content_html}
 {table}
+{category_summary}
 {closing_html}
 </div>
 </body></html>"""
@@ -205,17 +280,20 @@ def generate_report(date_from, date_to, all_entries, greeting="", content="", cl
     return html_out, total
 
 
-def generate_pdf(date_from, date_to, all_entries, name=""):
+def generate_pdf(date_from, date_to, all_entries, name="", categories=None):
     """Generate a PDF of the time tracking table. Returns PDF bytes, or None if no entries."""
     from xhtml2pdf import pisa
 
     range_entries = _filter_entries(date_from, date_to, all_entries)
+    if range_entries:
+        range_entries = _apply_category_filter(range_entries, categories)
     if not range_entries:
         return None
 
     label = f"{date_from.strftime('%d.%m.%Y')} – {date_to.strftime('%d.%m.%Y')}"
     groups = _group_by_week(range_entries)
     table, _ = _build_table(groups, PDF_STYLE)
+    category_summary = _build_category_summary(range_entries, PDF_STYLE)
 
     name_html = (
         f"<p style='color:#111827;font-size:13px;margin:0 0 2px 0;font-weight:600;'>{_esc(name)}</p>"
@@ -228,6 +306,7 @@ def generate_pdf(date_from, date_to, all_entries, name=""):
 {name_html}
 <p style="color:#4b5563;font-size:12px;margin:0 0 16px 0;">{_esc(label)}</p>
 {table}
+{category_summary}
 </body></html>"""
 
     buffer = io.BytesIO()
