@@ -435,15 +435,51 @@ Führe diese exakten Ersetzungen durch (jede Zeile genau einmal vorhanden):
     → `    chosen = {"slots": [_slot("09:00", "17:00", 30)]}`
   - Z. ~330: `    assert storage.get("2026-05-14") == {"start": "09:00", "end": "17:00", "pause": 30}`
     → `    assert storage.get("2026-05-14") == {"slots": [_slot("09:00", "17:00", 30)]}`
-- Übrige entry-Konflikt-Resolutions, die noch `{"start": ...}` nutzen, auf Slot-Shape angleichen (nicht asserted, aber konsistent halten):
-  - `test_merge_conflicts_resolved_wins_over_unresolved` (Z. ~198):
-    `resolution={"start": "08:00", "end": "16:00", "pause": 30}`
-    → `resolution={"slots": [_slot("08:00", "16:00", 30)]}`
-  - `test_merge_conflicts_lww_on_resolved_at_when_both_resolved` (Z. ~210 und ~213):
-    `resolution={"start": "08:00"}` → `resolution={"slots": [_slot("08:00", "16:00", 30)]}`
-    und `resolution={"start": "09:00"}` → `resolution={"slots": [_slot("09:00", "17:00", 30)]}`
-  - `test_compact_local_strips_stores_and_sets_watermark`, Konflikt `c-1` (Z. ~603):
-    `"resolution": {"start": "08:00"}` → `"resolution": {"slots": [_slot("08:00", "16:00", 30)]}`
+- **Übrige entry-Konflikt-Resolutions auf Slot-Shape angleichen** (nicht asserted, aber konsistent — und nötig, damit der Resolution-Apply keine Leer-Slot-Einträge erzeugt). **Wichtig:** `resolution={"start": "08:00"}` ist im File NICHT eindeutig; daher jede Ersetzung über den gezeigten Mehr-Zeilen-Kontext verankern (nicht über die nackte `{"start": ...}`-Zeile).
+
+  a) `test_merge_conflicts_resolved_wins_over_unresolved` — diese Zeile ist eindeutig:
+  `                         resolution={"start": "08:00", "end": "16:00", "pause": 30},`
+  → `                         resolution={"slots": [_slot("08:00", "16:00", 30)]},`
+
+  b) `test_merge_conflicts_lww_on_resolved_at_when_both_resolved` — beide Zeilen tragen ihr `resolved_at` und sind dadurch eindeutig:
+  `                    resolution={"start": "08:00"}, resolved_at="2026-05-14T11:00:00Z",`
+  → `                    resolution={"slots": [_slot("08:00", "16:00", 30)]}, resolved_at="2026-05-14T11:00:00Z",`
+  und
+  `                    resolution={"start": "09:00"}, resolved_at="2026-05-14T12:00:00Z",`
+  → `                    resolution={"slots": [_slot("09:00", "17:00", 30)]}, resolved_at="2026-05-14T12:00:00Z",`
+
+  c) `test_merge_drops_settled_resolved_conflict` — über die 2-Zeilen-Folge (`resolved_at` macht sie eindeutig):
+  ```python
+      c = _conflict("c-1", resolved=True, resolution={"start": "08:00"},
+                    resolved_at="2026-05-05T00:00:00Z", resolved_by="A")
+  ```
+  →
+  ```python
+      c = _conflict("c-1", resolved=True, resolution={"slots": [_slot("08:00", "16:00", 30)]},
+                    resolved_at="2026-05-05T00:00:00Z", resolved_by="A")
+  ```
+
+  d) `test_merge_keeps_resolved_conflict_without_resolved_at` — über die 2-Zeilen-Folge (`resolved_at=None` macht sie eindeutig):
+  ```python
+      c = _conflict("c-1", resolved=True, resolution={"start": "08:00"},
+                    resolved_at=None, resolved_by="A")
+  ```
+  →
+  ```python
+      c = _conflict("c-1", resolved=True, resolution={"slots": [_slot("08:00", "16:00", 30)]},
+                    resolved_at=None, resolved_by="A")
+  ```
+
+  e) `test_compact_local_strips_stores_and_sets_watermark`, Konflikt `c-1` — über die 2-Zeilen-Folge mit `"key": "X"` (eindeutig):
+  ```python
+        {"id": "c-1", "kind": "entry", "key": "X", "candidates": [],
+         "detected_at": "...", "resolved": True, "resolution": {"start": "08:00"},
+  ```
+  →
+  ```python
+        {"id": "c-1", "kind": "entry", "key": "X", "candidates": [],
+         "detected_at": "...", "resolved": True, "resolution": {"slots": [_slot("08:00", "16:00", 30)]},
+  ```
 
 - [ ] **Step 11: `_remote_is_pre_v2`-Import + -Test auf v3 umstellen, Slot-Tests ergänzen**
 
@@ -490,6 +526,11 @@ def test_merge_different_slots_conflict_candidates_carry_slots():
 ```
 
 ### Teil D — Verifikation
+
+- [ ] **Step 12a: Grep-Gate — keine alt-geformten Eintrags-Daten mehr in test_sync.py**
+
+Run (PowerShell): `Select-String -Path tests\test_sync.py -Pattern 'resolution.*\{.*"start"', 'chosen.*=.*\{.*"start"', '\["start"\]\s*==', '\["end"\]\s*==' | Select-Object LineNumber, Line`
+Expected: **keine Treffer** für Resolution-/chosen-Dicts mit `"start"` und keine `["start"]==`/`["end"]==`-Assertions auf Einträgen. (Treffer in den NEUEN Slot-Tests wie `_slot("08:00", ...)` sind ok — die matchen das Muster nicht.) Falls Treffer: die entsprechende Stelle wurde in Step 8/10 übersehen → nachziehen.
 
 - [ ] **Step 12: Import-Smoke-Test für die `main.py`-Wiring-Änderung**
 
