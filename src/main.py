@@ -139,11 +139,11 @@ def _run_push_blocking(storage, settings, conflicts_store, base, timeout_seconds
 
 
 def _run_compaction_blocking(storage, settings, conflicts_store, base, timeout_seconds=20):
-    """User-ausgelöste Kompaktierung: frischer Pull → v1-Guard → Merge →
+    """User-ausgelöste Kompaktierung: frischer Pull → Alt-Client-Guard → Merge →
     Watermark setzen + lokal strippen → Push. Liefert
     {"ok": bool, "reason": str, "error": ..., "tb": ...}.
 
-    reason == "old_version": ein älteres Gerät ist aktiv (Remote ist pre-v2),
+    reason == "old_version": ein älteres Gerät ist aktiv (Remote ist pre-v3),
     Kompaktierung abgebrochen, KEINE Änderung vorgenommen."""
     import json
     from src import drive, sync
@@ -164,8 +164,8 @@ def _run_compaction_blocking(storage, settings, conflicts_store, base, timeout_s
                     remote_doc = json.loads(content)
                 except (json.JSONDecodeError, ValueError):
                     remote_doc = {"schema_version": 1}
-                # v1-Guard auf dem FRISCH gepullten Doc (nie gecacht):
-                if sync._remote_is_pre_v2(remote_doc):
+                # Alt-Client-Guard auf dem FRISCH gepullten Doc (nie gecacht):
+                if sync._remote_is_pre_v3(remote_doc):
                     result.update({"ok": False, "reason": "old_version"})
                     return
             else:

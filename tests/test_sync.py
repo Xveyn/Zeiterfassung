@@ -9,10 +9,15 @@ from src.sync import _merge_one, apply_merged_doc, build_local_doc, merge, resol
 
 
 def _e(start, end, pause, modified_at, device_id="d", deleted=False):
+    slots = [] if deleted else [{"start": start, "end": end, "pause": pause, "kategorie": ""}]
     return {
-        "start": start, "end": end, "pause": pause,
+        "slots": slots,
         "modified_at": modified_at, "device_id": device_id, "deleted": deleted,
     }
+
+
+def _slot(start, end, pause=0, kategorie=""):
+    return {"start": start, "end": end, "pause": pause, "kategorie": kategorie}
 
 
 def test_merge_one_local_only_keeps_local():
@@ -35,7 +40,7 @@ def test_merge_one_equal_values_no_conflict():
     merged, conflict = _merge_one(e1, e2, "2026-05-13T00:00:00Z")
     assert conflict is None
     # bei gleichen Values darf irgendeine Seite gewinnen, aber kein Conflict
-    assert merged["start"] == "08:00"
+    assert merged["slots"][0]["start"] == "08:00"
 
 
 def test_merge_one_only_local_changed_no_conflict():
@@ -115,7 +120,7 @@ def test_merge_local_only_entry_preserved():
 def test_merge_remote_only_entry_added():
     remote = _doc(entries={"2026-05-14": _e("09:00", "17:00", 30, "2026-05-14T10:00:00Z")})
     merged = merge(_doc(), remote, "2026-05-13T00:00:00Z")
-    assert merged["entries"]["2026-05-14"]["start"] == "09:00"
+    assert merged["entries"]["2026-05-14"]["slots"][0]["start"] == "09:00"
 
 
 def test_merge_conflict_creates_conflict_object():
@@ -134,7 +139,7 @@ def test_merge_no_conflict_when_only_one_side_changed():
     remote = _doc(entries={"D": _e("09:00", "17:00", 30, "2026-05-14T10:00:00Z")})
     merged = merge(local, remote, "2026-05-10T00:00:00Z")
     assert merged["conflicts"] == []
-    assert merged["entries"]["D"]["start"] == "09:00"
+    assert merged["entries"]["D"]["slots"][0]["start"] == "09:00"
 
 
 # --- Task 2.4: merge() for Settings (Whitelist) ---
@@ -195,7 +200,7 @@ def test_merge_conflicts_union_by_id():
 def test_merge_conflicts_resolved_wins_over_unresolved():
     """Wenn dasselbe Konflikt-ID auf einer Seite resolved ist, gilt resolved."""
     resolved = _conflict("c-1", resolved=True,
-                         resolution={"start": "08:00", "end": "16:00", "pause": 30},
+                         resolution={"slots": [_slot("08:00", "16:00", 30)]},
                          resolved_at="2026-05-14T11:00:00Z",
                          resolved_by="A")
     unresolved = _conflict("c-1", resolved=False)
@@ -207,10 +212,10 @@ def test_merge_conflicts_resolved_wins_over_unresolved():
 
 def test_merge_conflicts_lww_on_resolved_at_when_both_resolved():
     c_a = _conflict("c-1", resolved=True,
-                    resolution={"start": "08:00"}, resolved_at="2026-05-14T11:00:00Z",
+                    resolution={"slots": [_slot("08:00", "16:00", 30)]}, resolved_at="2026-05-14T11:00:00Z",
                     resolved_by="A")
     c_b = _conflict("c-1", resolved=True,
-                    resolution={"start": "09:00"}, resolved_at="2026-05-14T12:00:00Z",
+                    resolution={"slots": [_slot("09:00", "17:00", 30)]}, resolved_at="2026-05-14T12:00:00Z",
                     resolved_by="B")
     merged = merge(_doc(conflicts=[c_a]), _doc(conflicts=[c_b]), "2026-05-13T00:00:00Z")
     assert len(merged["conflicts"]) == 1
@@ -240,7 +245,7 @@ def test_merge_applies_resolved_conflict_to_entry():
     """Resolved Konflikt aktualisiert merged.entries auf die Resolution."""
     resolved = _conflict("c-1", key="D",
                          resolved=True,
-                         resolution={"start": "10:00", "end": "18:00", "pause": 30},
+                         resolution={"slots": [_slot("10:00", "18:00", 30)]},
                          resolved_at="2026-05-14T12:00:00Z",
                          resolved_by="A")
     local = _doc(
@@ -250,8 +255,8 @@ def test_merge_applies_resolved_conflict_to_entry():
     remote = _doc(entries={"D": _e("09:00", "17:00", 30, "2026-05-14T10:00:00Z")})
     merged = merge(local, remote, "2026-05-13T00:00:00Z")
     e = merged["entries"]["D"]
-    assert e["start"] == "10:00"
-    assert e["end"] == "18:00"
+    assert e["slots"][0]["start"] == "10:00"
+    assert e["slots"][0]["end"] == "18:00"
     assert e["modified_at"] == "2026-05-14T12:00:00Z"
     assert e["device_id"] == "A"
     assert e["deleted"] is False
@@ -274,7 +279,7 @@ def test_merge_applies_resolved_setting_conflict():
 
 def test_build_local_doc_includes_storage_settings_conflicts(tmp_path):
     storage = Storage(str(tmp_path / "z.json"), device_id="A")
-    storage.save("2026-05-14", "08:00", "16:00", 30)
+    storage.save("2026-05-14", [_slot("08:00", "16:00", 30)])
     settings = Settings(str(tmp_path / "s.json"))
     settings.device_id_for_sync = "A"
     settings.set_synced("recipient", "a@b.de")
@@ -285,12 +290,12 @@ def test_build_local_doc_includes_storage_settings_conflicts(tmp_path):
     assert "2026-05-14" in doc["entries"]
     assert doc["settings"]["recipient"]["value"] == "a@b.de"
     assert doc["conflicts"][0]["id"] == "c-1"
-    assert doc["schema_version"] == 2
+    assert doc["schema_version"] == 3
 
 
 def test_round_trip_no_loss(tmp_path):
     storage = Storage(str(tmp_path / "z.json"), device_id="A")
-    storage.save("2026-05-14", "08:00", "16:00", 30)
+    storage.save("2026-05-14", [_slot("08:00", "16:00", 30)])
     settings = Settings(str(tmp_path / "s.json"))
     settings.device_id_for_sync = "A"
     settings.set_synced("name", "Max")
@@ -300,7 +305,7 @@ def test_round_trip_no_loss(tmp_path):
     merged = merge(local, _doc(), "2025-01-01T00:00:00Z")
     apply_merged_doc(merged, storage, settings, conflicts)
 
-    assert storage.get("2026-05-14") == {"start": "08:00", "end": "16:00", "pause": 30}
+    assert storage.get("2026-05-14") == {"slots": [_slot("08:00", "16:00", 30)]}
     assert settings.get("name") == "Max"
 
 
@@ -313,9 +318,9 @@ def test_resolve_entry_conflict_updates_storage_and_marks_resolved(tmp_path):
     conflicts.save_all([{
         "id": "c-1", "kind": "entry", "key": "2026-05-14",
         "candidates": [
-            {"start": "08:00", "end": "16:00", "pause": 30,
+            {"slots": [_slot("08:00", "16:00", 30)],
              "modified_at": "2026-05-14T09:00:00Z", "device_id": "A", "deleted": False},
-            {"start": "09:00", "end": "17:00", "pause": 30,
+            {"slots": [_slot("09:00", "17:00", 30)],
              "modified_at": "2026-05-14T10:00:00Z", "device_id": "B", "deleted": False},
         ],
         "detected_at": "2026-05-14T11:00:00Z",
@@ -323,11 +328,11 @@ def test_resolve_entry_conflict_updates_storage_and_marks_resolved(tmp_path):
         "resolved_at": None, "resolved_by": None,
     }])
 
-    chosen = {"start": "09:00", "end": "17:00", "pause": 30}
+    chosen = {"slots": [_slot("09:00", "17:00", 30)]}
     resolve_conflict("c-1", chosen, conflicts, storage, settings, device_id="A")
 
     # storage hat den Wert
-    assert storage.get("2026-05-14") == {"start": "09:00", "end": "17:00", "pause": 30}
+    assert storage.get("2026-05-14") == {"slots": [_slot("09:00", "17:00", 30)]}
     # conflict ist resolved
     c = conflicts.get_all()[0]
     assert c["resolved"] is True
@@ -499,7 +504,7 @@ def test_merge_recovers_after_failed_compaction_push():
 
 def test_merge_drops_settled_resolved_conflict():
     wm = "2026-05-10T00:00:00Z"
-    c = _conflict("c-1", resolved=True, resolution={"start": "08:00"},
+    c = _conflict("c-1", resolved=True, resolution={"slots": [_slot("08:00", "16:00", 30)]},
                   resolved_at="2026-05-05T00:00:00Z", resolved_by="A")
     local = _meta_doc(conflicts=[c], watermark=wm)
     merged = merge(local, _meta_doc(watermark=wm), "2026-04-01T00:00:00Z")
@@ -509,7 +514,7 @@ def test_merge_drops_settled_resolved_conflict():
 def test_merge_keeps_resolved_conflict_without_resolved_at():
     """Defensiv: resolved=True aber resolved_at None/'' → nicht droppen (kein Crash)."""
     wm = "2026-05-10T00:00:00Z"
-    c = _conflict("c-1", resolved=True, resolution={"start": "08:00"},
+    c = _conflict("c-1", resolved=True, resolution={"slots": [_slot("08:00", "16:00", 30)]},
                   resolved_at=None, resolved_by="A")
     local = _meta_doc(conflicts=[c], watermark=wm)
     merged = merge(local, _meta_doc(watermark=wm), "2026-04-01T00:00:00Z")
@@ -556,7 +561,7 @@ def test_merge_first_sync_device_keeps_history():
     )
     remote = _meta_doc(entries={}, watermark=wm)
     merged = merge(local, remote, "")  # Erstsync
-    assert merged["entries"]["D"]["start"] == "08:00"
+    assert merged["entries"]["D"]["slots"][0]["start"] == "08:00"
 
 
 def test_merge_keeps_fresh_offline_edit_for_excluded_device():
@@ -568,7 +573,7 @@ def test_merge_keeps_fresh_offline_edit_for_excluded_device():
     )
     remote = _meta_doc(entries={}, watermark=wm)
     merged = merge(local, remote, "2026-05-06T00:00:00Z")  # excluded
-    assert merged["entries"]["D"]["start"] == "08:00"
+    assert merged["entries"]["D"]["slots"][0]["start"] == "08:00"
 
 
 def test_merge_no_suppression_when_remote_present():
@@ -588,19 +593,19 @@ def test_merge_no_suppression_when_remote_present():
 
 # --- Kompaktierungs-Helfer ---
 
-from src.sync import compact_local, _remote_is_pre_v2
+from src.sync import compact_local, _remote_is_pre_v3
 
 
 def test_compact_local_strips_stores_and_sets_watermark(tmp_path):
     storage = Storage(str(tmp_path / "z.json"), device_id="A")
-    storage.save("LIVE", "08:00", "16:00", 30)
-    storage.save("DEL", "08:00", "16:00", 30)
+    storage.save("LIVE", [_slot("08:00", "16:00", 30)])
+    storage.save("DEL", [_slot("08:00", "16:00", 30)])
     storage.delete("DEL")  # Tombstone
     settings = Settings(str(tmp_path / "s.json"))
     conflicts = ConflictsStore(str(tmp_path / "c.json"))
     conflicts.save_all([
         {"id": "c-1", "kind": "entry", "key": "X", "candidates": [],
-         "detected_at": "...", "resolved": True, "resolution": {"start": "08:00"},
+         "detected_at": "...", "resolved": True, "resolution": {"slots": [_slot("08:00", "16:00", 30)]},
          "resolved_at": "2026-05-05T00:00:00Z", "resolved_by": "A"},
         {"id": "c-2", "kind": "entry", "key": "Y", "candidates": [],
          "detected_at": "...", "resolved": False, "resolution": None,
@@ -620,8 +625,35 @@ def test_compact_local_strips_stores_and_sets_watermark(tmp_path):
     assert remaining == ["c-2"]        # nur unresolved bleibt
 
 
-def test_remote_is_pre_v2():
-    assert _remote_is_pre_v2({"schema_version": 1, "entries": {}}) is True
-    assert _remote_is_pre_v2({"schema_version": 2, "entries": {}}) is True  # kein meta
-    assert _remote_is_pre_v2({"schema_version": 2, "meta": {"gc_watermark": ""}}) is False
-    assert _remote_is_pre_v2({"schema_version": 2, "meta": {}}) is True     # meta ohne key
+def test_remote_is_pre_v3():
+    assert _remote_is_pre_v3({"schema_version": 1, "entries": {}}) is True
+    assert _remote_is_pre_v3({"schema_version": 2, "entries": {}}) is True
+    assert _remote_is_pre_v3({"schema_version": 3, "entries": {}}) is False
+    assert _remote_is_pre_v3({}) is True  # fehlende schema_version → pre-v3
+
+
+def test_merge_slot_reorder_is_not_a_conflict():
+    """Gleiche Slots in unterschiedlicher Reihenfolge zählen als gleich →
+    kein Konflikt, auch wenn beide Seiten seit last_pull geändert haben."""
+    a = {"slots": [_slot("08:00", "12:00", 0, "Büro"), _slot("13:00", "17:00", 0, "HO")],
+         "modified_at": "2026-05-14T10:00:00Z", "device_id": "A", "deleted": False}
+    b = {"slots": [_slot("13:00", "17:00", 0, "HO"), _slot("08:00", "12:00", 0, "Büro")],
+         "modified_at": "2026-05-14T11:00:00Z", "device_id": "B", "deleted": False}
+    local = _doc(entries={"D": a})
+    remote = _doc(entries={"D": b})
+    merged = merge(local, remote, "2026-05-13T00:00:00Z")
+    assert merged["conflicts"] == []
+
+
+def test_merge_different_slots_conflict_candidates_carry_slots():
+    """Unterschiedliche Slot-Listen, beide geändert → Konflikt; die Kandidaten
+    tragen die jeweilige Slot-Liste."""
+    a = {"slots": [_slot("08:00", "16:00", 30, "Büro")],
+         "modified_at": "2026-05-14T09:00:00Z", "device_id": "A", "deleted": False}
+    b = {"slots": [_slot("09:00", "17:00", 30, "HO")],
+         "modified_at": "2026-05-14T10:00:00Z", "device_id": "B", "deleted": False}
+    merged = merge(_doc(entries={"D": a}), _doc(entries={"D": b}), "2026-05-13T00:00:00Z")
+    assert len(merged["conflicts"]) == 1
+    cand_by_dev = {c["device_id"]: c for c in merged["conflicts"][0]["candidates"]}
+    assert cand_by_dev["A"]["slots"] == [_slot("08:00", "16:00", 30, "Büro")]
+    assert cand_by_dev["B"]["slots"] == [_slot("09:00", "17:00", 30, "HO")]

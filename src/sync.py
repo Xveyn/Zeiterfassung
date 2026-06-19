@@ -14,7 +14,7 @@ import datetime
 import uuid
 
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 
 def _watermark_of(doc):
@@ -40,10 +40,18 @@ def _utc_now_iso():
     return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+def _slots_signature(entry):
+    """Reihenfolge-normalisierte Signatur der Slot-Liste eines Eintrags,
+    für den Gleichheitsvergleich im Merge. Sortiert nach den Slot-Feldern,
+    damit eine reine Umordnung der Slots NICHT als Änderung zählt."""
+    return sorted(
+        (s.get("start"), s.get("end"), s.get("pause", 0), s.get("kategorie", ""))
+        for s in (entry.get("slots") or [])
+    )
+
+
 def _values_equal_entry(a, b):
-    return (a.get("start") == b.get("start")
-            and a.get("end") == b.get("end")
-            and a.get("pause") == b.get("pause")
+    return (_slots_signature(a) == _slots_signature(b)
             and bool(a.get("deleted")) == bool(b.get("deleted")))
 
 
@@ -204,9 +212,7 @@ def merge(local, remote, last_pull_at):
             current = merged["entries"].get(c["key"])
             if current is None or current["modified_at"] < resolved_at:
                 merged["entries"][c["key"]] = {
-                    "start": resolution.get("start"),
-                    "end": resolution.get("end"),
-                    "pause": resolution.get("pause", 0),
+                    "slots": resolution.get("slots", []),
                     "modified_at": resolved_at,
                     "device_id": resolved_by,
                     "deleted": bool(resolution.get("deleted", False)),
@@ -270,19 +276,17 @@ def compact_local(storage, settings, conflicts_store, now):
     ])
 
 
-def _remote_is_pre_v2(remote_doc):
-    """True, wenn das Remote-Doc von einem v1-Gerät stammt (Schema < 2 oder
-    fehlendes/leeres meta ohne gc_watermark-Key) — dann ist gerade ein älteres
-    Gerät aktiv und die Kompaktierung muss abbrechen."""
-    if (remote_doc.get("schema_version") or 1) < 2:
-        return True
-    meta = remote_doc.get("meta")
-    return not (isinstance(meta, dict) and "gc_watermark" in meta)
+def _remote_is_pre_v3(remote_doc):
+    """True, wenn das Remote-Doc von einem Gerät stammt, das das Multi-Slot-
+    Schema (v3) noch nicht versteht (schema_version < 3). Dann ist ein
+    älteres Gerät aktiv: Kompaktierung muss abbrechen, und ein v2-Remote darf
+    nicht in einen v3-Client gemergt werden (er hätte keine `slots`)."""
+    return (remote_doc.get("schema_version") or 1) < 3
 
 
 def resolve_conflict(conflict_id, chosen_value, conflicts_store, storage, settings, device_id):
     """User hat einen Konflikt aufgelöst. chosen_value enthält den gewählten
-    (oder manuell editierten) Wert. Für entries: {start, end, pause} (und
+    (oder manuell editierten) Wert. Für entries: {slots: [...]} (und
     optional deleted). Für settings: {value}.
     Schreibt den Wert in den entsprechenden Store und markiert den Konflikt
     als resolved im ConflictsStore."""
@@ -301,12 +305,7 @@ def resolve_conflict(conflict_id, chosen_value, conflicts_store, storage, settin
         if chosen_value.get("deleted"):
             storage.delete(target["key"])
         else:
-            storage.save(
-                target["key"],
-                chosen_value.get("start"),
-                chosen_value.get("end"),
-                chosen_value.get("pause", 0),
-            )
+            storage.save(target["key"], chosen_value.get("slots", []))
     elif target["kind"] == "setting":
         settings.set_synced(target["key"], chosen_value.get("value"))
 
