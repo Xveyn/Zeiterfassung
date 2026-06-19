@@ -8,6 +8,7 @@ import logging
 import os
 import platform
 import threading
+import time
 import traceback
 import webbrowser
 from src.time_utils import (
@@ -40,6 +41,7 @@ from src.theme import (
     CELL_BG_HOVER, WEEKEND_BG_HOVER, ENTRY_BG_HOVER, WEEKEND_ENTRY_BG_HOVER,
     apply_dark_titlebar, themed_askyesno, themed_ask_delete_choice, themed_showinfo,
     icon_button, label_button, secondary_button, set_toggle_active, toggle_button,
+    _stray_click_suppressed,
 )
 
 
@@ -1202,6 +1204,9 @@ class App:
         (_reservations_active); das Löschen einer Reservierung stößt den
         Kalender-Abgleich an.
         """
+        if _stray_click_suppressed(getattr(self.root, "_dialog_closed_at", 0),
+                                   time.monotonic()):
+            return  # Rechtsklick schlägt von einem eben geschlossenen Dialog durch (#44).
         entry = self.storage.get(date_str)
         reservation = (
             self.reservation_store.get(date_str)
@@ -1244,6 +1249,9 @@ class App:
             self._trigger_calendar_reconcile()
 
     def _open_dialog(self, date_str):
+        if _stray_click_suppressed(getattr(self.root, "_dialog_closed_at", 0),
+                                   time.monotonic()):
+            return  # Linksklick schlägt von einem eben geschlossenen Dialog durch (#44).
         # Bei deaktiviertem Kalender-Sync KEIN reservation_store an den Dialog
         # geben — dann wird der Reservierungs-Block nicht angezeigt und ist per
         # Linksklick nicht setzbar (open_entry_dialog wertet None entsprechend).

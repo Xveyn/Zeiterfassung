@@ -1,5 +1,6 @@
 import os
 import platform
+import time
 import tkinter as tk
 from tkinter import ttk
 from typing import TypedDict
@@ -395,6 +396,24 @@ def _parent_workarea(parent):
     return (0, 0, max_w, max_h)
 
 
+STRAY_CLICK_GUARD_S = 0.2
+
+
+def _stray_click_suppressed(closed_at, now, window=STRAY_CLICK_GUARD_S):
+    """True, wenn ein Klick unterdrückt werden soll, weil gerade (< `window`
+    Sekunden) ein Dialog geschlossen wurde — sonst schlägt der Schließ-Klick auf
+    eine Kalenderzelle durch (#44).
+
+    `closed_at` ist ein `time.monotonic()`-Wert oder 0/None (nie ein Dialog
+    geschlossen). Grenze offen: genau bei `window` wird nicht mehr unterdrückt.
+    now < closed_at (Uhr-Anomalie, mit monotonic praktisch unmöglich) → nicht
+    unterdrücken.
+    """
+    if not closed_at:
+        return False
+    return 0 <= (now - closed_at) < window
+
+
 def center_dialog_on_parent(dialog, parent):
     """Position a Toplevel dialog over its parent's screen rect.
 
@@ -454,6 +473,22 @@ def center_dialog_on_parent(dialog, parent):
         # öffnet er bei verstecktem Hauptfenster unfokussiert im Hintergrund.
         dialog.lift()
         dialog.focus_force()
+
+    # Stray-Klick-Guard (#44): Schließt dieser Dialog, während das Hauptfenster
+    # sichtbar dahinter liegt, kann der Schließ-Klick auf eine Kalenderzelle
+    # durchschlagen. Beim Zerstören den Schließzeitpunkt aufs Toplevel stempeln;
+    # die Klick-Handler in ui.py ignorieren Klicks im Guard-Fenster. Nur bei
+    # sichtbarem Parent (im Tray-/withdrawn-Zustand gibt es keinen Durchschlag).
+    def _stamp_close(event, _dialog=dialog, _parent=parent):
+        if str(event.widget) != str(_dialog):
+            return  # Destroy eines Kind-Widgets, nicht des Dialogs selbst.
+        try:
+            if _parent.winfo_viewable():
+                _parent.winfo_toplevel()._dialog_closed_at = time.monotonic()
+        except tk.TclError:
+            pass  # Parent bereits zerstört (App-Teardown) — irrelevant.
+
+    dialog.bind("<Destroy>", _stamp_close, add="+")
 
 
 def _hex_to_colorref(hex_color: str) -> int:
