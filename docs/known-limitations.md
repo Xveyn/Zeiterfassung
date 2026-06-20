@@ -24,3 +24,33 @@ In den Einstellungen steht unter „Synchronisation" die Aktion **„Sync-Daten 
 - **Altes Gerät offline während der Kompaktierung:** Ein Gerät auf einer Version ohne Kompaktierungs-Support, das beim Kompaktieren offline ist und danach mit veralteten, lebenden Daten zurückkehrt, kann Resurrection auslösen, weil es die Self-Heal-Suppression nicht kennt. Mitigation: der v1-Schema-Guard (Best-Effort-Erkennung aktiver v1-Geräte) und die Bestätigung. Ein zum Zeitpunkt der Aktion offline v1-Gerät bleibt unerkennbar — bewusst akzeptiert.
 - **v2-Gerät mit Offline-Edit vor dem Watermark:** Ein v2-Gerät, das beim Kompaktieren offline war und einen lebenden Eintrag mit `modified_at` vor dem Watermark hält, verliert diesen Eintrag beim Zurückkehren (Regel 2 — Self-Heal-Suppression). Extrem selten in der Praxis (offline gewesene Geräte haben typischerweise keine alten unbewegten Einträge).
 - **Clock-Skew:** Wie im bestehenden Sync — bei grob synchronen Uhren vernachlässigbar.
+
+## Sync: Irreführende „älteres Gerät"-Meldung beim Einzelgerät-Upgrade auf v3
+
+Mit dem Multi-Timeslot-/Kategorien-Feature steigt das Sync-Schema auf v3
+(`slots` statt flacher `start/end/pause`-Keys). Der Pull-Pfad lehnt jedes
+pre-v3-Remote-Doc ab (`sync._remote_is_pre_v3` in `src/main.py::_run_pull_in_background`)
+und pausiert mit der Meldung `OLD_REMOTE_VERSION_MSG` („ein anderes Gerät nutzt
+eine ältere App-Version").
+
+**Symptom:** Ein Nutzer mit **nur einem Gerät**, der bisher v2 lokal *und* im
+Sync genutzt hat, sieht beim **ersten** Start nach dem v3-Upgrade genau diese
+Meldung — obwohl es gar kein anderes Gerät gibt. Der Guard greift hier auf das
+**eigene**, zuletzt selbst gepushte v2-Doc auf Drive.
+
+**Self-Heal:** Es korrigiert sich von selbst. Die lokalen Daten sind beim Start
+bereits nach v3 migriert; der nächste Push (manuell oder beim Schließen)
+überschreibt das Drive-Doc mit v3 — der `expected_etag` passt noch auf das
+unveränderte v2-Doc, also kein Konflikt, kein Guard-Abbruch. Ab dem zweiten
+Start ist alles normal.
+
+**Auswirkung:** Reine UX-Kosmetik — **kein Datenverlust, kein Überschreiben**
+fremder Daten. Nur die Meldung ist in diesem Einzelgerät-Fall einmalig
+irreführend.
+
+**Möglicher Fix (später, im Rahmen von PR #60):** Den Pull nicht pausieren,
+wenn das pre-v3-Remote-Doc ausschließlich Einträge des **eigenen** `device_id`
+enthält (= eigenes Alt-Doc, kein fremdes aktives Gerät) — dann still nach v3
+migrieren/pushen. Alternativ die Meldung so umformulieren, dass sie den
+Einzelgerät-Fall mit abdeckt. Der Guard für echte Multi-Device-Fälle bleibt
+unangetastet.
