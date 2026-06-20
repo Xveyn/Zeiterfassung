@@ -74,6 +74,13 @@ def _run_pull_in_background(storage, settings, conflicts_store, base, ui_callbac
                     logging.getLogger(__name__).warning(
                         "Quarantine rename failed for %s", fid, exc_info=True)
             remote_doc = _parse_remote_or_quarantine(content, file_id, _quarantine)
+        if sync._remote_is_newer(remote_doc):
+            # Ein neueres Gerät hat ein Doc-Format geschrieben, das diese
+            # Version nicht versteht. NICHT mergen (würde in apply_merge
+            # crashen) und NICHT pushen (würde das neuere Doc überschreiben) —
+            # Pull sauber abbrechen, last_pull_at/etag unverändert lassen.
+            ui_callback(ok=False, error=sync.NEWER_REMOTE_VERSION_MSG, tb="")
+            return
         local_doc = sync.build_local_doc(storage, settings, conflicts_store)
         merged = sync.merge(local_doc, remote_doc, settings.get("last_pull_at") or "")
         sync.apply_merged_doc(merged, storage, settings, conflicts_store)
@@ -116,6 +123,14 @@ def _run_push_blocking(storage, settings, conflicts_store, base, timeout_seconds
                     remote_doc = json.loads(remote_bytes)
                 else:
                     remote_doc = {"schema_version": 1, "entries": {}, "settings": {}, "conflicts": []}
+                if sync._remote_is_newer(remote_doc):
+                    # Ein neueres Gerät hat das Remote-Doc fortgeschrieben.
+                    # Nicht mergen/überschreiben — Push abbrechen, damit die
+                    # neueren Daten erhalten bleiben.
+                    result["ok"] = False
+                    result["error"] = sync.NEWER_REMOTE_VERSION_MSG
+                    result["tb"] = ""
+                    return
                 local_doc = sync.build_local_doc(storage, settings, conflicts_store)
                 merged = sync.merge(local_doc, remote_doc, settings.get("last_pull_at") or "")
                 sync.apply_merged_doc(merged, storage, settings, conflicts_store)
