@@ -118,10 +118,13 @@ zum Speichern** — er hat **keine** Lösch-Buttons.
 **Plattform-Ausnahme macOS:** Tkinters Maustasten-Nummerierung macht den
 Rechtsklick (`<Button-3>`) auf macOS unzuverlässig (Sekundärklick ist je nach
 Tk-Version `<Button-2>` bzw. Control-Klick). Damit Löschen auf dem Mac
-überhaupt erreichbar bleibt, behält der Dialog **dort** seine Lösch-Buttons
-(„Löschen" / „Reservierung löschen"). Gesteuert über
-`_SHOW_DELETE_IN_DIALOG = platform.system() == "Darwin"` in `entry_dialog.py`.
-Auf Windows/Linux ist Löschen ausschließlich der Rechtsklick.
+erreichbar bleibt, zeigt die Tageszelle **dort** ein kleines ✕ oben links,
+sobald der Tag löschbare Einheiten hat (Ist-Zeit oder aktive Reservierung).
+Der ✕-Button löst denselben Lösch-Pfad wie der Rechtsklick aus
+(`App._delete_day` inkl. Bestätigung/Slot-Auswahl). Gesteuert über
+`_should_show_delete_button` (`theme.py`) + `App._add_delete_button` (`ui.py`).
+Der Tages-Dialog hat auf **allen** Plattformen keine Lösch-Buttons. Auf
+Windows/Linux ist Löschen ausschließlich der Rechtsklick.
 
 Neue Lösch-/Rechtsklick-Stellen müssen dieses Modell einhalten (kein zweiter
 Lösch-Pfad im Linksklick-Dialog auf Win/Linux).
