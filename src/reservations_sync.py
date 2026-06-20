@@ -55,6 +55,9 @@ def _merge_one_date(date, local, remotes, watermark, merged, plan):
     if is_tombstone:
         if not remotes:
             return  # Tombstone fällt weg.
+        # Garantiert gesetzt: Tombstone -> local vorhanden -> local_mod; remotes
+        # nicht leer -> remote_mod nicht None.
+        assert local_mod is not None and remote_mod is not None
         if local_mod >= remote_mod:
             for ev in remotes:
                 plan["delete"].append({"event_id": ev["event_id"]})
@@ -79,6 +82,9 @@ def _merge_one_date(date, local, remotes, watermark, merged, plan):
         return
 
     # Fall 5: lokal (echt) + Remote-Events.
+    # Garantiert gesetzt: Fall 2 hat local=None abgefangen -> local_mod; Fall 4
+    # hat leere remotes abgefangen -> remote_mod nicht None.
+    assert local_mod is not None and remote_mod is not None
     if remote_mod > local_mod:
         _adopt_remote(date, remotes, merged)
         return
