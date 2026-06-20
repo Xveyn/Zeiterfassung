@@ -266,10 +266,19 @@ def main():
     if settings.get("sync_enabled"):
         def _on_sync_done(ok, error, tb=""):
             def apply():
-                if ok:
-                    app.on_sync_pull_success()
-                else:
-                    app.on_sync_pull_error(error, tb)
+                # Der Startup-Sync läuft im Daemon-Thread und marshallt sein
+                # Ergebnis via after(0) zurück. Schließt der Nutzer das Fenster,
+                # bevor dieser Callback feuert, ist der Tk-Interpreter bereits
+                # zerstört — jeder winfo-/config-Aufruf wirft dann
+                # "application has been destroyed". Der Callback ist dann
+                # gegenstandslos und wird verworfen (vgl. tooltip.py).
+                try:
+                    if ok:
+                        app.on_sync_pull_success()
+                    else:
+                        app.on_sync_pull_error(error, tb)
+                except tk.TclError:
+                    pass
             root.after(0, apply)
         threading.Thread(
             target=_run_pull_in_background,

@@ -242,7 +242,7 @@ class App:
                 )
             except TokenAuthError as e:
                 msg = str(e)
-                self.root.after(0, lambda: themed_showinfo(
+                self._marshal_to_ui(lambda: themed_showinfo(
                     self.root,
                     "Gmail-Anmeldung abgelaufen",
                     "Der Gmail-Token konnte nicht automatisch erneuert werden:\n\n"
@@ -254,7 +254,7 @@ class App:
             except Exception as e:
                 logging.getLogger(__name__).exception("Token-Refresh fehlgeschlagen")
                 err = f"{type(e).__name__}: {e}\n\n{traceback.format_exc()}"
-                self.root.after(0, lambda: themed_showinfo(
+                self._marshal_to_ui(lambda: themed_showinfo(
                     self.root, "Token-Refresh fehlgeschlagen", err
                 ))
 
@@ -284,7 +284,7 @@ class App:
                 logging.getLogger(__name__).exception("sender_email-Fetch fehlgeschlagen")
                 return
             if email and email != self.settings.get("sender_email"):
-                self.root.after(0, lambda: self.settings.set("sender_email", email))
+                self._marshal_to_ui(lambda: self.settings.set("sender_email", email))
 
         threading.Thread(target=worker, daemon=True).start()
 
@@ -313,8 +313,8 @@ class App:
                 # Trace landet im Logfile, falls jemand den Fehler diagnostizieren will.
                 logging.getLogger(__name__).exception("Update-Check fehlgeschlagen")
                 return
-            self.root.after(
-                0, lambda: self._handle_update_check_result(release, newer)
+            self._marshal_to_ui(
+                lambda: self._handle_update_check_result(release, newer)
             )
 
         threading.Thread(target=worker, daemon=True).start()
@@ -341,7 +341,7 @@ class App:
             result = run_calendar_reconcile(
                 self.reservation_store, self.settings, self.base_path)
             if result.get("ok"):
-                self.root.after(0, self._refresh)
+                self._marshal_to_ui(self._refresh)
 
         threading.Thread(target=worker, daemon=True).start()
 
@@ -358,7 +358,7 @@ class App:
             from src.main import run_calendar_reconcile
             result = run_calendar_reconcile(
                 self.reservation_store, self.settings, self.base_path)
-            self.root.after(0, lambda: self._on_reconcile_done(result))
+            self._marshal_to_ui(lambda: self._on_reconcile_done(result))
 
         threading.Thread(target=worker, daemon=True).start()
 
@@ -711,6 +711,27 @@ class App:
         self.root.deiconify()
         self.root.lift()
         self.root.focus_force()
+
+    def _marshal_to_ui(self, fn):
+        """Marshallt `fn` aus einem Daemon-Worker auf den Tk-Thread via
+        after(0) und verwirft den Aufruf still, falls das Fenster
+        zwischenzeitlich geschlossen wurde.
+
+        Hintergrund-Threads (Sync-Pull, Reconcile, Update-Check, Token-
+        Refresh) planen ihr Ergebnis per after(0). Schließt der Nutzer das
+        Fenster, bevor der Callback feuert, läuft er gegen den zerstörten
+        Tk-Interpreter -> "application has been destroyed" (TclError). Sowohl
+        das Einplanen als auch das spätere Ausführen werden daher gegen
+        TclError abgesichert (vgl. tooltip.py)."""
+        def guarded():
+            try:
+                fn()
+            except tk.TclError:
+                pass
+        try:
+            self.root.after(0, guarded)
+        except tk.TclError:
+            pass
 
     def _refresh(self):
         if self.view_mode == "month":
@@ -1393,7 +1414,7 @@ class App:
                 self.storage, self.settings, self.conflicts_store,
                 self.base_path, timeout_seconds=15,
             )
-            self.root.after(0, lambda: self._on_manual_sync_done(result))
+            self._marshal_to_ui(lambda: self._on_manual_sync_done(result))
         threading.Thread(target=_do, daemon=True).start()
 
     def _on_manual_sync_done(self, result):
@@ -1421,7 +1442,7 @@ class App:
                 self.storage, self.settings, self.conflicts_store,
                 self.base_path, timeout_seconds=15,
             )
-            self.root.after(0, lambda: self._on_tray_sync_done(result))
+            self._marshal_to_ui(lambda: self._on_tray_sync_done(result))
         threading.Thread(target=_do, daemon=True).start()
 
     def _on_tray_sync_done(self, result):
