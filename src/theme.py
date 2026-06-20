@@ -444,6 +444,14 @@ def _stray_click_suppressed(closed_at, now, window=STRAY_CLICK_GUARD_S):
     return 0 <= (now - closed_at) < window
 
 
+def _should_show_delete_button(is_macos, has_entry, has_reservation):
+    """macOS-only Lösch-Button (✕) in der Tageszelle: nur auf macOS und nur,
+    wenn der Tag löschbare Einheiten hat — Ist-Zeit ODER aktive Reservierung.
+    Reine Logik, damit aus den Tests ohne Tk/UI-Deps prüfbar (vgl.
+    _stray_click_suppressed)."""
+    return is_macos and (has_entry or has_reservation)
+
+
 def center_dialog_on_parent(dialog, parent):
     """Position a Toplevel dialog over its parent's screen rect.
 
