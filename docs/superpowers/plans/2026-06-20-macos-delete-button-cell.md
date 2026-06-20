@@ -13,7 +13,8 @@
 - macOS-exklusiv: alle Verhaltensänderungen gegated über `platform.system() == "Darwin"`. Win/Linux bleiben unverändert (Rechtsklick bleibt einziger Lösch-Pfad).
 - Datumsformat intern ISO, UI deutsch (hier nicht betroffen — Button trägt kein Datum).
 - Tkinter-Widget-Aufbau wird nicht automatisiert getestet (CI ohne Display). Auto-Tests nur für reine Logik; UI-Schicht per `py_compile`-Smoke + manuellem macOS-Test.
-- CI installiert nur `pytest` + `holidays` (kein `requirements.txt`): Test-Code darf **nicht** `src.ui` importieren. Reine Helfer in `src/theme.py` ansiedeln.
+- CI (`.github/workflows/test.yml`) installiert `pytest`, `holidays`, `google-api-python-client`, `google-auth`, `google-auth-oauthlib`; `src.ui` IST in Tests importierbar (s. `tests/test_ui_delete.py`, das `_delete_action` direkt importiert). Der `lint`-Job läuft `ruff check .` — keine unbenutzten Imports/Namen zurücklassen.
+- Reine UI-Entscheidungs-Helfer leben gebündelt in `src/theme.py` (vgl. `_stray_click_suppressed`, `_click_keeps_focus`) — dep-leicht und in jeder Umgebung (auch lokal ohne Google-Libs) importierbar. Die neue Sichtbarkeitslogik folgt diesem Muster.
 - Lösch-*Mechanismus* (`App._delete_day`, `_delete_action`, `themed_ask_delete_choice`) bleibt unverändert — der Button ist nur ein weiterer Auslöser.
 - Theme: keine neuen Tokens; nur vorhandene `TEXT_MUTED`/`ACCENT`/`FONT_TINY`.
 - Shell ist PowerShell 5.1: keine `&&`-Verkettung (mit `;` trennen). Git-Commits enden mit `Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>`.
@@ -181,6 +182,12 @@ ergänzen zu:
 ```
 
 - [ ] **Step 4: `_cell_hover` um `_delete_button` erweitern**
+
+Hinweis: `_cell_hover` deckt sowohl Entry-Zellen (`ui.py:854-855`) als auch
+Feiertags-Zellen ab — `_build_holiday_cell` bindet seinen Hover ebenfalls auf
+`self._cell_hover` (`ui.py:1232-1235`), keinen eigenen Pfad. Diese eine
+Erweiterung färbt also den ✕-Hintergrund auf Entry- UND Feiertags-Zellen mit;
+`_empty_hover` (Step 5) deckt die reinen Reservierungstage (Empty-Zellen) ab.
 
 In `src/ui.py` die Methode `_cell_hover` (Zeile 1244-1252). Vorhandenen Body:
 
