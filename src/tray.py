@@ -90,7 +90,9 @@ class TrayIcon:
         for label, callback, visible in self._actions:
             items.append(pystray.MenuItem(
                 label, self._wrap_action(callback),
-                visible=self._wrap_visible(visible),
+                # pystray akzeptiert für `visible` auch ein Callable (dynamische
+                # Sichtbarkeit), sein Typ-Stub deklariert aber nur bool.
+                visible=self._wrap_visible(visible),  # pyright: ignore[reportArgumentType]
             ))
         if self._actions:
             items.append(pystray.Menu.SEPARATOR)
