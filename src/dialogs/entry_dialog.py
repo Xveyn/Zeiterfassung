@@ -1,5 +1,4 @@
 import datetime
-import platform
 import tkinter as tk
 
 from src.holidays_de import get_holidays
@@ -14,14 +13,6 @@ from src.theme import (
 from src.time_utils import validate_slots
 
 
-# Löschen folgt im Kalender dem Muster „Linksklick = speichern, Rechtsklick =
-# löschen". Der Dialog (Linksklick) ist daher rein zum Anlegen/Bearbeiten — die
-# Lösch-Buttons sind dort raus. AUSNAHME macOS: Tkinters Maustasten-Nummerierung
-# macht den Rechtsklick (`<Button-3>`) dort unzuverlässig; damit Löschen auf dem
-# Mac überhaupt erreichbar bleibt, behält der Dialog dort seine Lösch-Buttons.
-_SHOW_DELETE_IN_DIALOG = platform.system() == "Darwin"
-
-
 def open_entry_dialog(parent, date_str, storage, settings, on_change,
                       reservation_store=None, trigger_reconcile=None):
     """Modaler Dialog zum Bearbeiten von Ist-Zeit und Reservierung eines Tages.
@@ -30,7 +21,8 @@ def open_entry_dialog(parent, date_str, storage, settings, on_change,
     bzw. Start/Ende/Kategorie). Speichern sammelt die Zeilen, validiert sie
     (validate_slots: pro Slot + Überlappungsfreiheit) und schreibt die Slot-
     Liste. Entfernt man alle Zeilen eines Blocks und speichert, wird der Block
-    gelöscht — kein separater Lösch-Button (außer macOS).
+    gelöscht — der Dialog hat keinen Lösch-Button (Löschen läuft im Kalender:
+    Rechtsklick auf Win/Linux, ✕-Button in der Zelle auf macOS).
 
     on_change wird nach erfolgreichem Speichern/Löschen aufgerufen.
     reservation_store / trigger_reconcile sind optional; ist der Tag
@@ -151,16 +143,9 @@ def open_entry_dialog(parent, date_str, storage, settings, on_change,
         dialog.destroy()
         on_change()
 
-    def delete_ist():
-        storage.delete(date_str)
-        dialog.destroy()
-        on_change()
-
     ist_save = tk.Frame(outer, bg=BG)
     ist_save.pack(fill="x")
     primary_button(ist_save, "Speichern", save_ist).pack(side=tk.LEFT, padx=2)
-    if entry is not None and _SHOW_DELETE_IN_DIALOG:
-        secondary_button(ist_save, "Löschen", delete_ist).pack(side=tk.LEFT, padx=2)
 
     # ---------- Reservierung ----------
     if show_reservation:
@@ -226,19 +211,9 @@ def open_entry_dialog(parent, date_str, storage, settings, on_change,
             if trigger_reconcile is not None:
                 trigger_reconcile()
 
-        def delete_reservation():
-            reservation_store.delete(date_str)
-            dialog.destroy()
-            on_change()
-            if trigger_reconcile is not None:
-                trigger_reconcile()
-
         res_save = tk.Frame(outer, bg=BG)
         res_save.pack(fill="x")
         primary_button(res_save, "Reservierung speichern",
                        save_reservation).pack(side=tk.LEFT, padx=2)
-        if existing_reservation is not None and _SHOW_DELETE_IN_DIALOG:
-            secondary_button(res_save, "Reservierung löschen",
-                             delete_reservation).pack(side=tk.LEFT, padx=2)
 
     center_dialog_on_parent(dialog, parent)
