@@ -34,6 +34,7 @@ from src.dialogs.send_dialog import open_send_dialog
 from src.dialogs.settings_dialog import open_settings_dialog
 from src.theme import (
     BG, CELL_BG, WEEKEND_BG, ACCENT, ACCENT_HOVER, TEXT, TEXT_MUTED,
+    _should_show_delete_button,
     ENTRY_BG, WEEKEND_ENTRY_BG, WEEKEND_FG,
     HOLIDAY_BG, HOLIDAY_BG_HOVER, HOLIDAY_ACCENT,
     RESERVATION_ACCENT, TODAY_ACCENT,
@@ -882,6 +883,30 @@ class App:
         marker.place(relx=1.0, x=-3, y=3, anchor="ne")
         cell._reservation_marker = marker
 
+    def _add_delete_button(self, cell, date_str):
+        """macOS-only: kleines ✕ oben links, das den Lösch-Pfad auslöst.
+
+        <Button-3> ist auf macOS unzuverlässig (Sekundärklick je nach Tk-Version
+        <Button-2>/Control-Klick); dieser Button gibt dort einen verlässlichen
+        Lösch-Auslöser, ohne den Linksklick-Dialog mit Lösch-Buttons zu belasten.
+        Klick ruft denselben _delete_day-Pfad wie der Win/Linux-Rechtsklick
+        (Ja/Nein bzw. Slot-Auswahl). Getaggt als cell._delete_button, damit
+        _cell_hover/_empty_hover seinen Hintergrund beim Hover mitfärben."""
+        bg = cell.cget("bg")
+        btn = tk.Label(
+            cell, text="✕", font=FONT_TINY, bg=bg, fg=TEXT_MUTED, cursor="hand2",
+        )
+        btn.place(relx=0.0, x=3, y=2, anchor="nw")
+        # "break" stoppt jede Propagation, damit der Klick nicht zusätzlich als
+        # Zell-Linksklick (Bearbeiten-Dialog) durchschlägt.
+        btn.bind("<Button-1>",
+                 lambda e, d=date_str: (self._delete_day(d), "break")[1])
+        # fg-Hover (rot als Lösch-Affordance) steuert der Button selbst; den bg
+        # färbt _cell_hover/_empty_hover mit der Zelle.
+        btn.bind("<Enter>", lambda e: btn.config(fg=ACCENT))
+        btn.bind("<Leave>", lambda e: btn.config(fg=TEXT_MUTED))
+        cell._delete_button = btn
+
     def _build_empty_cell(self, parent, date_str, day_text, is_weekend, cell_size):
         bg = WEEKEND_BG if is_weekend else CELL_BG
         hover_bg = WEEKEND_BG_HOVER if is_weekend else CELL_BG_HOVER
@@ -970,6 +995,15 @@ class App:
             tip_parts.append(f"Feiertag: {holidays_map[day_date]}")
         if tip_parts:
             attach_tooltip(cell, "\n".join(tip_parts))
+
+        # macOS-only Lösch-Button (✕) oben links, sobald der Tag löschbare
+        # Einheiten hat (Ist-Zeit ODER aktive Reservierung). reservation wird
+        # nur bei aktivem Kalender-Sync übergeben (vgl. _add_reservation_marker),
+        # daher deckt `reservation is not None` die aktive Reservierung ab.
+        if _should_show_delete_button(
+            platform.system() == "Darwin", bool(entry), reservation is not None
+        ):
+            self._add_delete_button(cell, date_str)
 
         # Heutigen Tag mit blauem Rahmen hervorheben. Vor dem Konflikt-Block,
         # damit ein Konflikt (orange) auf demselben Tag den Rand gewinnt.
@@ -1245,22 +1279,29 @@ class App:
         frame.config(bg=bg)
         day_lbl.config(bg=bg)
         time_lbl.config(bg=bg)
-        # Eck-Marker (nur auf Entry-Zellen mit zusätzlicher Reservierung)
-        # mitfärben, sonst bleibt beim Hover ein andersfarbiges Rechteck stehen.
+        # Eck-Overlays (Reservierungs-Marker, macOS-Lösch-Button) mitfärben,
+        # sonst bleibt beim Hover ein andersfarbiges Rechteck stehen. Nur bg —
+        # die fg des Lösch-Buttons steuert dessen eigener Enter/Leave-Handler.
         marker = getattr(frame, "_reservation_marker", None)
         if marker is not None:
             marker.config(bg=bg)
+        del_btn = getattr(frame, "_delete_button", None)
+        if del_btn is not None:
+            del_btn.config(bg=bg)
 
     @staticmethod
     def _empty_hover(frame, day_lbl, bg):
         frame.config(bg=bg)
         day_lbl.config(bg=bg)
-        # Reservierungs-Eck-Punkt mitfärben — Nur-Reservierungs-Tage sind
-        # Empty-Zellen mit Marker; sonst bliebe beim Hover ein andersfarbiges
-        # Rechteck hinter dem Punkt stehen.
+        # Eck-Overlays mitfärben — Nur-Reservierungs-Tage sind Empty-Zellen mit
+        # Marker (und auf macOS zusätzlich dem Lösch-Button); sonst bliebe beim
+        # Hover ein andersfarbiges Rechteck dahinter stehen. Nur bg.
         marker = getattr(frame, "_reservation_marker", None)
         if marker is not None:
             marker.config(bg=bg)
+        del_btn = getattr(frame, "_delete_button", None)
+        if del_btn is not None:
+            del_btn.config(bg=bg)
 
     def _delete_day(self, date_str):
         """Rechtsklick-Löschen für einen Tag. Löscht NIE ohne Bestätigung.
