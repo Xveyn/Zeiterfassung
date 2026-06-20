@@ -95,3 +95,83 @@ def test_migration_idempotent_after_persist(tmp_path):
     assert raw["slots"] == [{"start": "08:00", "end": "16:30", "pause": 30, "kategorie": ""}]
     # Slot ist nicht doppelt verschachtelt
     assert "slots" not in raw["slots"][0]
+
+
+# --- v2 -> v3 über die Sync-Grenze: migrierte Altdaten müssen sich verlustfrei
+#     als v3-Doc bauen und in ein frisches v3-Gerät mergen lassen ---
+
+from src.sync import build_local_doc, merge, apply_merged_doc, SCHEMA_VERSION
+from src.settings import Settings
+from src.conflicts_store import ConflictsStore
+
+
+def _stores(tmp_path, name, device_id):
+    storage = Storage(str(tmp_path / f"{name}.json"), device_id=device_id)
+    settings = Settings(str(tmp_path / f"{name}-s.json"))
+    settings.device_id_for_sync = device_id
+    conflicts = ConflictsStore(str(tmp_path / f"{name}-c.json"))
+    return storage, settings, conflicts
+
+
+def test_migrated_v2_entry_round_trips_through_v3_sync(tmp_path):
+    """End-to-End: Gerät mit flachen v2-Daten wird auf v3 aktualisiert; die
+    migrierten Daten erscheinen als valides v3-Doc (schema_version 3 + slots)
+    und mergen verlustfrei in ein frisches v3-Gerät (kein ValueError in
+    apply_merge, keine geplätteten Einträge)."""
+    path = _write_legacy_json(tmp_path, {
+        "2026-03-23": {
+            "start": "08:00", "end": "16:30", "pause": 30,
+            "modified_at": "2026-05-01T10:00:00Z",
+            "device_id": "old-dev", "deleted": False,
+        },
+    })
+    old = Storage(path, device_id="old-dev")
+    old_settings = Settings(str(tmp_path / "old-s.json"))
+    old_settings.device_id_for_sync = "old-dev"
+    old_conflicts = ConflictsStore(str(tmp_path / "old-c.json"))
+
+    # build_local_doc nach Migration -> v3-Doc mit slots
+    doc = build_local_doc(old, old_settings, old_conflicts)
+    assert SCHEMA_VERSION == 3
+    assert doc["schema_version"] == 3
+    assert doc["entries"]["2026-03-23"]["slots"] == [
+        {"start": "08:00", "end": "16:30", "pause": 30, "kategorie": ""}
+    ]
+
+    # frisches v3-Gerät pullt das Doc -> verlustfreier Merge
+    fresh, fresh_settings, fresh_conflicts = _stores(tmp_path, "fresh", "new-dev")
+    merged = merge(build_local_doc(fresh, fresh_settings, fresh_conflicts), doc, "")
+    apply_merged_doc(merged, fresh, fresh_settings, fresh_conflicts)
+
+    assert fresh.get_all() == {
+        "2026-03-23": {"slots": [
+            {"start": "08:00", "end": "16:30", "pause": 30, "kategorie": ""}]}
+    }
+
+
+def test_migrated_v2_tombstone_round_trips_through_v3_sync(tmp_path):
+    """Auch ein migrierter Alt-Tombstone (deleted=true -> slots=[]) muss die
+    Sync-Grenze als Löschung überstehen, nicht als lebender Leereintrag."""
+    path = _write_legacy_json(tmp_path, {
+        "2026-03-23": {
+            "start": None, "end": None, "pause": None,
+            "modified_at": "2026-05-01T10:00:00Z",
+            "device_id": "old-dev", "deleted": True,
+        },
+    })
+    old = Storage(path, device_id="old-dev")
+    old_settings = Settings(str(tmp_path / "old2-s.json"))
+    old_settings.device_id_for_sync = "old-dev"
+    old_conflicts = ConflictsStore(str(tmp_path / "old2-c.json"))
+
+    doc = build_local_doc(old, old_settings, old_conflicts)
+    assert doc["entries"]["2026-03-23"]["slots"] == []
+    assert doc["entries"]["2026-03-23"]["deleted"] is True
+
+    fresh, fresh_settings, fresh_conflicts = _stores(tmp_path, "fresh2", "new-dev")
+    merged = merge(build_local_doc(fresh, fresh_settings, fresh_conflicts), doc, "")
+    apply_merged_doc(merged, fresh, fresh_settings, fresh_conflicts)
+
+    # Tombstone bleibt Löschung: nicht in der User-Sicht, aber als deleted im Raw.
+    assert "2026-03-23" not in fresh.get_all()
+    assert fresh.get_all_raw()["2026-03-23"]["deleted"] is True
