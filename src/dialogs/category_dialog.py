@@ -10,6 +10,7 @@ settings.set_synced.
 
 import tkinter as tk
 
+from src.settings import WEEKDAY_KEYS
 from src.theme import (
     BG, FONT, FONT_BOLD, PAUSE_VALUES, TEXT, TEXT_MUTED, TIME_VALUES,
     apply_app_icon, apply_dark_titlebar, attach_unfocus_on_click,
@@ -94,15 +95,45 @@ def open_category_dialog(parent, settings, on_change=None):
     tk.Label(head, text="Name", font=FONT, bg=BG, fg=TEXT_MUTED,
              width=15, anchor="w").pack(side=tk.LEFT, padx=2)
     tk.Label(head, text="Start", font=FONT, bg=BG, fg=TEXT_MUTED,
-             width=9, anchor="w").pack(side=tk.LEFT, padx=2)
+             width=11, anchor="w").pack(side=tk.LEFT, padx=2)
     tk.Label(head, text="Ende", font=FONT, bg=BG, fg=TEXT_MUTED,
-             width=10, anchor="w").pack(side=tk.LEFT, padx=2)
+             width=13, anchor="w").pack(side=tk.LEFT, padx=2)
     tk.Label(head, text="Pause", font=FONT, bg=BG, fg=TEXT_MUTED,
-             width=9, anchor="w").pack(side=tk.LEFT, padx=2)
+             width=11, anchor="w").pack(side=tk.LEFT, padx=2)
 
     rows_frame = tk.Frame(outer, bg=BG)
     rows_frame.pack(fill="x")
     rows = []  # Liste von {frame, name, start, end, pause}
+    _keep = []  # haltet StringVars der read-only Zeile am Leben
+
+    # Read-only Referenzzeile: die globalen Standardzeiten, damit der Nutzer
+    # direkt sieht, worauf „(Standard)" hinausläuft. Start/Ende sind pro
+    # Wochentag konfigurierbar — sind alle Tage gleich, zeigen wir den Wert,
+    # sonst „variabel". Pause ist global. Nicht editierbar, nicht in `rows`.
+    starts = {settings.get(f"default_start_{d}") for d in WEEKDAY_KEYS}
+    ends = {settings.get(f"default_end_{d}") for d in WEEKDAY_KEYS}
+    std_start = next(iter(starts)) if len(starts) == 1 else "variabel"
+    std_end = next(iter(ends)) if len(ends) == 1 else "variabel"
+    std_pause = str(settings.get("default_pause"))
+
+    std_row = tk.Frame(rows_frame, bg=BG)
+    std_row.pack(fill="x", pady=2)
+    std_name = tk.StringVar(value="Standard")
+    _keep.append(std_name)
+    std_name_e = dark_entry(std_row, std_name, width=15)
+    std_name_e.configure(state="disabled")
+    std_name_e.pack(side=tk.LEFT, padx=2)
+
+    def _ro_combo(val, width):
+        c = dark_combo(std_row, None, [val], width=width)
+        c.set(val)
+        c.configure(state="disabled")
+        return c
+
+    _ro_combo(std_start, 11).pack(side=tk.LEFT, padx=2)
+    tk.Label(std_row, text="–", font=FONT, bg=BG, fg=TEXT_MUTED).pack(side=tk.LEFT)
+    _ro_combo(std_end, 11).pack(side=tk.LEFT, padx=2)
+    _ro_combo(std_pause, 11).pack(side=tk.LEFT, padx=2)
 
     def add_row(name="", start=STANDARD, end=STANDARD, pause=STANDARD):
         row = tk.Frame(rows_frame, bg=BG)
@@ -112,10 +143,10 @@ def open_category_dialog(parent, settings, on_change=None):
         ev = tk.StringVar(value=end)
         pv = tk.StringVar(value=pause)
         dark_entry(row, nv, width=15).pack(side=tk.LEFT, padx=2)
-        dark_combo(row, sv, [STANDARD, *TIME_VALUES], width=8).pack(side=tk.LEFT, padx=2)
+        dark_combo(row, sv, [STANDARD, *TIME_VALUES], width=11).pack(side=tk.LEFT, padx=2)
         tk.Label(row, text="–", font=FONT, bg=BG, fg=TEXT_MUTED).pack(side=tk.LEFT)
-        dark_combo(row, ev, [STANDARD, *TIME_VALUES], width=8).pack(side=tk.LEFT, padx=2)
-        dark_combo(row, pv, [STANDARD, *PAUSE_VALUES], width=8).pack(side=tk.LEFT, padx=2)
+        dark_combo(row, ev, [STANDARD, *TIME_VALUES], width=11).pack(side=tk.LEFT, padx=2)
+        dark_combo(row, pv, [STANDARD, *PAUSE_VALUES], width=11).pack(side=tk.LEFT, padx=2)
         record = {"frame": row, "name": nv, "start": sv, "end": ev, "pause": pv}
 
         def remove():
