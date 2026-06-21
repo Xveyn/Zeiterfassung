@@ -86,7 +86,7 @@ def open_entry_dialog(parent, date_str, storage, settings, on_change,
     ist_rows_frame.pack(fill="x")
     ist_rows = []  # Liste von {frame, start, end, pause, kategorie}
 
-    def add_ist_row(start, end, pause, kategorie):
+    def add_ist_row(start, end, pause, kategorie, removable=True):
         row = tk.Frame(ist_rows_frame, bg=BG)
         row.pack(fill="x", pady=2)
         sv = tk.StringVar(value=start)
@@ -133,7 +133,12 @@ def open_entry_dialog(parent, date_str, storage, settings, on_change,
             if not ist_rows:
                 ist_rows_frame.configure(height=1)
 
-        secondary_button(row, "×", remove, padx=8, pady=0).pack(side=tk.LEFT, padx=2)
+        # Bereits gespeicherte Slots tragen kein ×: Löschen läuft ausschließlich
+        # über den Rechtsklick im Kalender (Design-Entscheidung — der Dialog
+        # speichert nur). Das × erscheint nur an neu hinzugefügten, noch nicht
+        # persistierten Zeilen.
+        if removable:
+            secondary_button(row, "×", remove, padx=8, pady=0).pack(side=tk.LEFT, padx=2)
         ist_rows.append(record)
 
     # Vorbelegung: vorhandene Ist-Slots → bestehende Reservierung (erste Slot-
@@ -141,8 +146,11 @@ def open_entry_dialog(parent, date_str, storage, settings, on_change,
     # nur der „+ Slot"-Button erscheint, keine Default-Zeile.
     if entry and entry["slots"]:
         for s in entry["slots"]:
-            add_ist_row(s["start"], s["end"], s.get("pause", 0), s.get("kategorie", ""))
+            add_ist_row(s["start"], s["end"], s.get("pause", 0),
+                        s.get("kategorie", ""), removable=False)
     elif existing_reservation and existing_reservation["slots"]:
+        # Vorschlag aus der Reservierung (noch nicht als Ist-Zeit gespeichert)
+        # → entfernbar.
         first = existing_reservation["slots"][0]
         add_ist_row(first["start"], first["end"], default_pause, "")
 
@@ -186,7 +194,7 @@ def open_entry_dialog(parent, date_str, storage, settings, on_change,
         res_rows_frame.pack(fill="x")
         res_rows = []  # Liste von {frame, start, end, kategorie}
 
-        def add_res_row(start, end, kategorie):
+        def add_res_row(start, end, kategorie, removable=True):
             row = tk.Frame(res_rows_frame, bg=BG)
             row.pack(fill="x", pady=2)
             sv = tk.StringVar(value=start)
@@ -220,14 +228,19 @@ def open_entry_dialog(parent, date_str, storage, settings, on_change,
                 if not res_rows:
                     res_rows_frame.configure(height=1)
 
-            secondary_button(row, "×", remove, padx=8, pady=0).pack(side=tk.LEFT, padx=2)
+            # Gespeicherte Reservierungs-Slots tragen kein × (Löschen per
+            # Rechtsklick im Kalender); nur neue, ungespeicherte Zeilen.
+            if removable:
+                secondary_button(row, "×", remove, padx=8, pady=0).pack(
+                    side=tk.LEFT, padx=2)
             res_rows.append(record)
 
         # Bestehende Reservierung → Zeilen. Sonst leer: nur der „+ Slot"-Button
         # (an der Stelle, wo sonst die Default-Zeile stünde), keine Vorbelegung.
         if existing_reservation and existing_reservation["slots"]:
             for s in existing_reservation["slots"]:
-                add_res_row(s["start"], s["end"], s.get("kategorie", ""))
+                add_res_row(s["start"], s["end"], s.get("kategorie", ""),
+                            removable=False)
 
         res_btns = tk.Frame(outer, bg=BG)
         res_btns.pack(fill="x", pady=(2, 8))

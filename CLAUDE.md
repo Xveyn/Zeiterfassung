@@ -115,6 +115,13 @@ gelöscht wird. Gebunden an `<Button-3>` auf allen Zelltypen
 Der Tages-Dialog (`src/dialogs/entry_dialog.py`) ist deshalb bewusst **rein
 zum Speichern** — er hat **keine** Lösch-Buttons.
 
+Das gilt auch für die Multi-Slot-Zeilen: das per-Zeile-**×** erscheint **nur an
+neu hinzugefügten, noch nicht gespeicherten** Slots (über „+ Slot"). Bereits
+gespeicherte Ist-/Reservierungs-Slots tragen **kein ×** — sie lassen sich im
+Dialog editieren/überschreiben, aber **nicht löschen**. Löschen gespeicherter
+Slots läuft ausschließlich über den Rechtsklick im Kalender (mit Slot-Auswahl).
+Gesteuert über den `removable`-Parameter von `add_ist_row`/`add_res_row`.
+
 **Plattform-Ausnahme macOS:** Tkinters Maustasten-Nummerierung macht den
 Rechtsklick (`<Button-3>`) auf macOS unzuverlässig (Sekundärklick ist je nach
 Tk-Version `<Button-2>` bzw. Control-Klick). Damit Löschen auf dem Mac
