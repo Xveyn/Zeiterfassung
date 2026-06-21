@@ -17,10 +17,7 @@ from src.theme import (
     center_dialog_on_parent, dark_combo, dark_entry, disable_min_max,
     primary_button, secondary_button,
 )
-from src.tooltip import attach_tooltip
-
-# Deutsche Wochentags-Kürzel, indexgleich zu WEEKDAY_KEYS (Mo=mon … So=sun).
-_WEEKDAY_LABELS_DE = ("Mo", "Di", "Mi", "Do", "Fr", "Sa", "So")
+from src.time_utils import DAYS_DE
 
 # Sentinel-Eintrag in den Zeit-Combos: „kein eigener Wert, globaler Standard
 # gilt". Wird beim Speichern als fehlendes/leeres Feld abgelegt.
@@ -65,6 +62,49 @@ def collect_categories(rows):
         if entry:
             category_times[name] = entry
     return categories, category_times
+
+
+def _open_standard_times(parent, settings):
+    """Read-only Popup mit den globalen Standardzeiten je Wochentag.
+
+    Nur zur Ansicht — editiert wird in den Einstellungen. Wird vom „Pro Tag…"-
+    Button der Standard-Zeile geöffnet, wenn die Zeiten nicht an allen Tagen
+    gleich sind.
+    """
+    pop = tk.Toplevel(parent)
+    pop.title("Standardzeiten pro Tag")
+    pop.resizable(False, False)
+    pop.grab_set()
+    pop.focus_set()
+    pop.configure(bg=BG)
+    apply_dark_titlebar(pop)
+    disable_min_max(pop)
+    apply_app_icon(pop)
+    pop.bind("<Escape>", lambda _e: pop.destroy())
+
+    box = tk.Frame(pop, bg=BG)
+    box.pack(padx=16, pady=14)
+
+    tk.Label(box, text="Start", font=FONT, bg=BG, fg=TEXT_MUTED).grid(
+        row=0, column=1, padx=8)
+    tk.Label(box, text="Ende", font=FONT, bg=BG, fg=TEXT_MUTED).grid(
+        row=0, column=2, padx=8)
+    for i, (key, lbl) in enumerate(zip(WEEKDAY_KEYS, DAYS_DE), start=1):
+        tk.Label(box, text=lbl, font=FONT, bg=BG, fg=TEXT,
+                 width=4, anchor="w").grid(row=i, column=0, padx=(0, 8),
+                                           pady=2, sticky="w")
+        tk.Label(box, text=settings.get(f"default_start_{key}"),
+                 font=FONT, bg=BG, fg=TEXT).grid(row=i, column=1, padx=8, pady=2)
+        tk.Label(box, text=settings.get(f"default_end_{key}"),
+                 font=FONT, bg=BG, fg=TEXT).grid(row=i, column=2, padx=8, pady=2)
+
+    tk.Label(box, text=f"Pause: {settings.get('default_pause')} Min (global)",
+             font=FONT, bg=BG, fg=TEXT_MUTED).grid(
+        row=8, column=0, columnspan=3, pady=(10, 0), sticky="w")
+    secondary_button(box, "Schließen", pop.destroy).grid(
+        row=9, column=0, columnspan=3, pady=(12, 0))
+
+    center_dialog_on_parent(pop, parent)
 
 
 def open_category_dialog(parent, settings, on_change=None):
@@ -123,26 +163,23 @@ def open_category_dialog(parent, settings, on_change=None):
 
     std_row = tk.Frame(rows_frame, bg=BG)
     std_row.pack(fill="x", pady=2)
-    std_labels = [std_row]
     for text, w, fg in (
         ("Standard", 15, TEXT_MUTED),
         (std_start, 11, TEXT),
         (std_end, 13, TEXT),
         (std_pause, 11, TEXT),
     ):
-        lbl = tk.Label(std_row, text=text, font=FONT, bg=BG, fg=fg,
-                       width=w, anchor="w")
-        lbl.pack(side=tk.LEFT, padx=2)
-        std_labels.append(lbl)
+        tk.Label(std_row, text=text, font=FONT, bg=BG, fg=fg,
+                 width=w, anchor="w").pack(side=tk.LEFT, padx=2)
 
-    # Bei abweichenden Wochentagen sind die echten Zeiten im "variabel" nicht
-    # ablesbar — per Hover die Zeiten je Tag zeigen.
+    # Bei abweichenden Wochentagen zeigen Start/Ende „variabel" — ein kleiner
+    # Button blendet die echten Zeiten je Tag ein (read-only, vgl. Settings).
     if is_variable:
-        lines = [
-            f"{lbl}: {s}–{e}"
-            for lbl, s, e in zip(_WEEKDAY_LABELS_DE, day_starts, day_ends)
-        ]
-        attach_tooltip(std_labels, "Standardzeiten je Wochentag:\n" + "\n".join(lines))
+        secondary_button(
+            std_row, "Pro Tag…",
+            lambda: _open_standard_times(dialog, settings),
+            padx=8, pady=0,
+        ).pack(side=tk.LEFT, padx=2)
 
     def add_row(name="", start=STANDARD, end=STANDARD, pause=STANDARD):
         row = tk.Frame(rows_frame, bg=BG)
