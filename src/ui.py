@@ -534,7 +534,7 @@ class App:
             footer_frame, "Teilen…", self._share, padx=12,
         ).pack(side=tk.RIGHT, padx=(0, 4))
         secondary_button(
-            footer_frame, "Monat senden", self._send, padx=12,
+            footer_frame, "Arbeitszeiten senden", self._send, padx=12,
         ).pack(side=tk.RIGHT)
 
     def _prev(self):
@@ -682,7 +682,7 @@ class App:
                 on_show=lambda: self.root.after(0, self._restore_from_tray),
                 on_quit=lambda: self.root.after(0, self._quit_with_sync_push),
                 actions=[
-                    ("Monat senden",
+                    ("Arbeitszeiten senden",
                      lambda: self.root.after(0, self._send), None),
                     ("Teilen…",
                      lambda: self.root.after(0, self._share), None),
