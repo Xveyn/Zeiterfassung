@@ -4,11 +4,7 @@ resolve_slot_defaults wendet einen Per-Feld-Fallback auf die globalen
 Standardwerte an; rename/remove halten das category_times-Dict konsistent
 zur Kategorie-Liste."""
 
-from src.category_defaults import (
-    remove_category_times,
-    rename_category_times,
-    resolve_slot_defaults,
-)
+from src.category_defaults import resolve_slot_defaults
 
 G = ("08:00", "16:00", 30)  # globale Standardwerte (start, end, pause)
 
@@ -60,59 +56,3 @@ def test_pause_garbage_falls_back_to_global():
 def test_non_dict_entry_falls_back_to_global():
     times = {"Office": "kaputt"}
     assert resolve_slot_defaults(times, "Office", *G) == ("08:00", "16:00", 30)
-
-
-# --- rename_category_times ---
-
-
-def test_rename_moves_entry():
-    times = {"Office": {"start": "09:00", "end": "17:00", "pause": 0}}
-    out = rename_category_times(times, "Office", "Büro")
-    assert out == {"Büro": {"start": "09:00", "end": "17:00", "pause": 0}}
-
-
-def test_rename_returns_new_dict_original_untouched():
-    times = {"Office": {"start": "09:00"}}
-    out = rename_category_times(times, "Office", "Büro")
-    assert times == {"Office": {"start": "09:00"}}
-    assert out is not times
-
-
-def test_rename_noop_when_old_has_no_times():
-    times = {"Office": {"start": "09:00"}}
-    assert rename_category_times(times, "Homeoffice", "HO") == times
-
-
-def test_rename_noop_when_new_empty():
-    times = {"Office": {"start": "09:00"}}
-    assert rename_category_times(times, "Office", "  ") == times
-
-
-def test_rename_does_not_clobber_existing_new_entry():
-    times = {"Office": {"start": "09:00"}, "Büro": {"start": "10:00"}}
-    assert rename_category_times(times, "Office", "Büro") == times
-
-
-def test_rename_same_name_is_noop():
-    times = {"Office": {"start": "09:00"}}
-    assert rename_category_times(times, "Office", "Office") == times
-
-
-# --- remove_category_times ---
-
-
-def test_remove_drops_entry():
-    times = {"Office": {"start": "09:00"}, "Büro": {"start": "10:00"}}
-    assert remove_category_times(times, "Office") == {"Büro": {"start": "10:00"}}
-
-
-def test_remove_returns_new_dict_original_untouched():
-    times = {"Office": {"start": "09:00"}}
-    out = remove_category_times(times, "Office")
-    assert times == {"Office": {"start": "09:00"}}
-    assert out is not times
-
-
-def test_remove_unknown_is_noop():
-    times = {"Office": {"start": "09:00"}}
-    assert remove_category_times(times, "Homeoffice") == times

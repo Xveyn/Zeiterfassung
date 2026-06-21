@@ -33,45 +33,51 @@ Liste von Strings — Report, Send-Dialog und die Combos lesen sie weiter direkt
   Ganzes, wie bei `categories`.
 - `_coerce` lässt Dicts unverändert durch (wie die `categories`-Liste).
 
-## Pure Logik — `src/category_defaults.py` (neu, testbar)
+## Pure Logik
+
+`src/category_defaults.py` (neu, testbar):
 
 ```python
 def resolve_slot_defaults(category_times, kategorie, g_start, g_end, g_pause):
     """(start, end, pause) mit Per-Feld-Fallback auf die globalen Werte."""
-
-def rename_category_times(times, old, new):
-    """Verschiebt den Time-Eintrag old→new. Liefert neues Dict."""
-
-def remove_category_times(times, name):
-    """Entfernt den Time-Eintrag. Liefert neues Dict."""
 ```
 
 - Leere Strings / fehlende Keys im Eintrag → Fallback pro Feld.
 - `pause`: leer/None → globale Pause; sonst int.
-- `rename`: No-op wenn `old` keinen Eintrag hat; überschreibt vorhandenen
-  `new`-Eintrag nicht (konsistent zur `rename_category`-Semantik).
+
+`src/dialogs/category_dialog.py::collect_categories(rows)` (pure, testbar):
+
+```python
+def collect_categories(rows):
+    """rows: [{name, start, end, pause}] (Roh-Strings der Zeilen-Widgets)
+    → (categories, category_times).
+    Namen getrimmt, ohne Leere, dedupliziert (erstes Vorkommen gewinnt).
+    STANDARD/leere Felder entfallen → Per-Feld-Fallback. pause → int."""
+```
 
 ## UI — Kategorien-Dialog (`src/dialogs/category_dialog.py`)
 
-Unter der Kategorie-Liste erscheinen drei Combos **Start / Ende / Pause** für die
-aktuell selektierte Kategorie. Jede Combo hat als **ersten** Eintrag die Option **„(Standard)"** — ein
-literaler Combo-Wert, der beim Speichern als **leerer String** im Eintrag
-landet (bzw. das Feld weglässt) und so den Per-Feld-Fallback auf global
-auslöst. Beim Laden eines leeren/fehlenden Feldes wird „(Standard)" angezeigt.
-`TIME_VALUES` / `PAUSE_VALUES` (theme.py, reine String-Listen) werden NICHT
-global mutiert — „(Standard)" wird nur lokal in diesen Dialog-Combos
-vorangestellt (`["(Standard)", *TIME_VALUES]`).
+**Inline-Zeilen-Modell wie der Tages-Dialog** (Entscheidung 2026-06-21): keine
+separate Listbox + Detail-Sektion mehr, sondern **eine Zeile pro Kategorie** mit
+allen Feldern direkt drin:
 
-- Eine `category_times`-Kopie wird beim Öffnen geladen:
-  `category_times = dict(settings.get("category_times") or {})` — parallel zur
-  bestehenden lokalen `categories`-Liste, im selben `nonlocal`-Scope mutiert.
-- Listbox-Auswahl wechselt (`<<ListboxSelect>>`-Binding, existiert noch nicht)
-  → Felder aus dem In-Memory-`category_times` laden.
-- **Vorherige Auswahl** wird in einem Holder (`prev_sel = [None]`) gemerkt, weil
-  Tk im Select-Event nur die NEUE Auswahl liefert. Der Handler schreibt zuerst
-  die aktuellen Feldwerte in den Eintrag der `prev_sel`-Kategorie zurück, lädt
-  dann die neue und setzt `prev_sel[0]` auf die neue Kategorie. Auch `on_save`
-  schreibt die Felder der aktuell selektierten Kategorie final zurück.
+```
+[Name-Entry] [Start-Combo] – [Ende-Combo] [Pause-Combo] [×]
+```
+
+Darunter ein **„+ Kategorie"**-Button (legt leere Zeile an) und Speichern/
+Schließen. Umbenennen = Name-Feld editieren, Entfernen = ×-Button. Die früheren
+`add/rename/remove_category`-Helfer und die Listbox/`prev_sel`-Logik entfallen.
+
+- Beim Öffnen werden `categories` + `category_times` geladen und je Kategorie
+  eine vorbefüllte Zeile erzeugt (Zeit-Felder aus `category_times`, sonst
+  „(Standard)"). Ohne Kategorien: eine leere Startzeile.
+- Jede Zeit-Combo hat als **ersten** Eintrag **„(Standard)"** — ein literaler
+  Wert, der beim Speichern als fehlendes Feld abgelegt wird (Per-Feld-Fallback
+  auf global). `TIME_VALUES` / `PAUSE_VALUES` werden NICHT global mutiert —
+  „(Standard)" nur lokal vorangestellt (`["(Standard)", *TIME_VALUES]`).
+- **Speichern** liest alle Zeilen-Widgets in Roh-Dicts, ruft `collect_categories`
+  und persistiert `categories` + `category_times` via `set_synced`.
 - Sind alle drei Felder „(Standard)" → Kategorie-Eintrag wird entfernt
   (komplett globaler Fallback).
 - **Speichern** persistiert `categories` UND `category_times` via `set_synced`.
@@ -110,7 +116,9 @@ bekannten Kategorie.
 ## Tests
 
 - `tests/test_category_defaults.py`: Per-Feld-Fallback, leere Felder, unbekannte
-  Kategorie, rename/remove der Time-Keys, pause-Coercion.
+  Kategorie, pause-Coercion, Nicht-Dict-Eintrag.
+- `tests/test_category_dialog.py`: `collect_categories` — Dedup, Reihenfolge,
+  leere/getrimmte Namen, partielle Zeilen, pause=0, mehrere Kategorien.
 - Settings/Sync: `category_times` ist whitelisted und synct (Smoke).
 
 ## Bewusst nicht enthalten (YAGNI)

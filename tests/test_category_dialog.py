@@ -1,56 +1,76 @@
-from src.dialogs.category_dialog import add_category, remove_category, rename_category
+"""collect_categories baut aus den Inline-Zeilen (Name + Start/Ende/Pause) die
+beiden persistierten Strukturen: die categories-Liste und das category_times-
+Dict. STANDARD/leere Felder entfallen → Per-Feld-Fallback auf global."""
+
+from src.dialogs.category_dialog import STANDARD, collect_categories
 
 
-def test_add_category():
-    assert add_category([], "Büro") == ["Büro"]
+def _row(name, start=STANDARD, end=STANDARD, pause=STANDARD):
+    return {"name": name, "start": start, "end": end, "pause": pause}
 
 
-def test_add_strips_whitespace():
-    assert add_category([], "  Büro  ") == ["Büro"]
+def test_empty_rows_yield_empty_structures():
+    assert collect_categories([]) == ([], {})
 
 
-def test_add_empty_is_ignored():
-    assert add_category(["A"], "   ") == ["A"]
+def test_name_only_row_has_no_times():
+    cats, times = collect_categories([_row("Office")])
+    assert cats == ["Office"]
+    assert times == {}
 
 
-def test_add_duplicate_is_ignored():
-    assert add_category(["Büro"], "Büro") == ["Büro"]
+def test_full_row_persists_all_fields():
+    cats, times = collect_categories([_row("Office", "09:00", "17:00", "30")])
+    assert cats == ["Office"]
+    assert times == {"Office": {"start": "09:00", "end": "17:00", "pause": 30}}
 
 
-def test_add_returns_new_list():
-    orig = ["A"]
-    result = add_category(orig, "B")
-    assert orig == ["A"]            # Original unverändert
-    assert result == ["A", "B"]
+def test_partial_row_only_persists_set_fields():
+    cats, times = collect_categories([_row("Office", start="09:00")])
+    assert cats == ["Office"]
+    assert times == {"Office": {"start": "09:00"}}
 
 
-def test_remove_category():
-    assert remove_category(["A", "B"], "A") == ["B"]
+def test_pause_zero_is_kept():
+    _, times = collect_categories([_row("Office", pause="0")])
+    assert times == {"Office": {"pause": 0}}
 
 
-def test_remove_absent_is_noop():
-    assert remove_category(["A"], "X") == ["A"]
+def test_name_is_trimmed():
+    cats, _ = collect_categories([_row("  Office  ")])
+    assert cats == ["Office"]
 
 
-def test_rename_category():
-    assert rename_category(["A", "B"], "A", "C") == ["C", "B"]
+def test_empty_name_row_is_skipped():
+    cats, times = collect_categories([_row("   ", "09:00", "17:00", "30")])
+    assert cats == []
+    assert times == {}
 
 
-def test_rename_strips_whitespace():
-    assert rename_category(["A"], "A", "  C  ") == ["C"]
+def test_duplicate_name_keeps_first_occurrence():
+    rows = [
+        _row("Office", "09:00", "17:00", "30"),
+        _row("Office", "10:00", "18:00", "45"),
+    ]
+    cats, times = collect_categories(rows)
+    assert cats == ["Office"]
+    assert times == {"Office": {"start": "09:00", "end": "17:00", "pause": 30}}
 
 
-def test_rename_empty_new_is_ignored():
-    assert rename_category(["A"], "A", "   ") == ["A"]
+def test_order_is_preserved():
+    cats, _ = collect_categories([_row("B"), _row("A"), _row("C")])
+    assert cats == ["B", "A", "C"]
 
 
-def test_rename_absent_old_is_noop():
-    assert rename_category(["A"], "X", "C") == ["A"]
-
-
-def test_rename_to_existing_other_is_ignored():
-    assert rename_category(["A", "B"], "A", "B") == ["A", "B"]
-
-
-def test_rename_to_same_name_keeps_list():
-    assert rename_category(["A", "B"], "A", "A") == ["A", "B"]
+def test_multiple_categories_mixed_times():
+    rows = [
+        _row("Office", "09:00", "17:00", "30"),
+        _row("Homeoffice"),
+        _row("Kunde", start="08:00"),
+    ]
+    cats, times = collect_categories(rows)
+    assert cats == ["Office", "Homeoffice", "Kunde"]
+    assert times == {
+        "Office": {"start": "09:00", "end": "17:00", "pause": 30},
+        "Kunde": {"start": "08:00"},
+    }
