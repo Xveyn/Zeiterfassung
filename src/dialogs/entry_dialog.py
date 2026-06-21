@@ -131,15 +131,14 @@ def open_entry_dialog(parent, date_str, storage, settings, on_change,
         ist_rows.append(record)
 
     # Vorbelegung: vorhandene Ist-Slots → bestehende Reservierung (erste Slot-
-    # Zeit) → Standardzeit des Wochentags.
+    # Zeit). Gibt es weder Ist-Zeit noch Reservierung, bleibt der Block leer —
+    # nur der „+ Slot"-Button erscheint, keine Default-Zeile.
     if entry and entry["slots"]:
         for s in entry["slots"]:
             add_ist_row(s["start"], s["end"], s.get("pause", 0), s.get("kategorie", ""))
     elif existing_reservation and existing_reservation["slots"]:
         first = existing_reservation["slots"][0]
         add_ist_row(first["start"], first["end"], default_pause, "")
-    else:
-        add_ist_row(default_start, default_end, default_pause, "")
 
     ist_btns = tk.Frame(outer, bg=BG)
     ist_btns.pack(fill="x", pady=(2, 8))
@@ -216,11 +215,11 @@ def open_entry_dialog(parent, date_str, storage, settings, on_change,
             secondary_button(row, "×", remove, padx=8, pady=0).pack(side=tk.LEFT, padx=2)
             res_rows.append(record)
 
+        # Bestehende Reservierung → Zeilen. Sonst leer: nur der „+ Slot"-Button
+        # (an der Stelle, wo sonst die Default-Zeile stünde), keine Vorbelegung.
         if existing_reservation and existing_reservation["slots"]:
             for s in existing_reservation["slots"]:
                 add_res_row(s["start"], s["end"], s.get("kategorie", ""))
-        else:
-            add_res_row(default_start, default_end, "")
 
         res_btns = tk.Frame(outer, bg=BG)
         res_btns.pack(fill="x", pady=(2, 8))
