@@ -1,6 +1,7 @@
 import datetime
 import tkinter as tk
 
+from src.category_defaults import resolve_slot_defaults
 from src.holidays_de import get_holidays
 from src.settings import WEEKDAY_KEYS
 from src.theme import (
@@ -56,6 +57,7 @@ def open_entry_dialog(parent, date_str, storage, settings, on_change,
     )
 
     categories = settings.get("categories") or []
+    category_times = settings.get("category_times") or {}
     default_start = settings.get(f"default_start_{weekday_key}")
     default_end = settings.get(f"default_end_{weekday_key}")
     default_pause = settings.get("default_pause")
@@ -91,12 +93,35 @@ def open_entry_dialog(parent, date_str, storage, settings, on_change,
         ev = tk.StringVar(value=end)
         pv = tk.StringVar(value=str(pause))
         kv = tk.StringVar(value=kategorie)
+        # Basis = die Werte, mit denen die Zeile angelegt wurde. Ein Kategorie-
+        # Wechsel überschreibt ein Feld NUR, solange es noch der Basis
+        # entspricht (= nicht manuell geändert), und zieht die Basis nach.
+        base = {"start": start, "end": end, "pause": str(pause)}
         dark_combo(row, sv, TIME_VALUES, width=6).pack(side=tk.LEFT, padx=2)
         tk.Label(row, text="–", font=FONT, bg=BG, fg=TEXT_MUTED).pack(side=tk.LEFT)
         dark_combo(row, ev, TIME_VALUES, width=6).pack(side=tk.LEFT, padx=2)
         dark_combo(row, pv, PAUSE_VALUES, width=4).pack(side=tk.LEFT, padx=2)
         dark_combo_editable(row, kv, categories, width=14).pack(side=tk.LEFT, padx=2)
         record = {"frame": row, "start": sv, "end": ev, "pause": pv, "kategorie": kv}
+
+        def on_cat_change(*_a):
+            t_start, t_end, t_pause = resolve_slot_defaults(
+                category_times, kv.get().strip(),
+                default_start, default_end, default_pause,
+            )
+            t_pause = str(t_pause)
+            if sv.get() == base["start"]:
+                sv.set(t_start)
+                base["start"] = t_start
+            if ev.get() == base["end"]:
+                ev.set(t_end)
+                base["end"] = t_end
+            if pv.get() == base["pause"]:
+                pv.set(t_pause)
+                base["pause"] = t_pause
+
+        # Trace NACH dem initialen kv-Set, damit die Vorbelegung nicht feuert.
+        kv.trace_add("write", on_cat_change)
 
         def remove():
             row.destroy()
@@ -162,11 +187,27 @@ def open_entry_dialog(parent, date_str, storage, settings, on_change,
             sv = tk.StringVar(value=start)
             ev = tk.StringVar(value=end)
             kv = tk.StringVar(value=kategorie)
+            base = {"start": start, "end": end}
             dark_combo(row, sv, TIME_VALUES, width=6).pack(side=tk.LEFT, padx=2)
             tk.Label(row, text="–", font=FONT, bg=BG, fg=TEXT_MUTED).pack(side=tk.LEFT)
             dark_combo(row, ev, TIME_VALUES, width=6).pack(side=tk.LEFT, padx=2)
             dark_combo_editable(row, kv, categories, width=14).pack(side=tk.LEFT, padx=2)
             record = {"frame": row, "start": sv, "end": ev, "kategorie": kv}
+
+            def on_cat_change(*_a):
+                # Reservierungen haben keine Pause → nur Start/Ende anwenden.
+                t_start, t_end, _ = resolve_slot_defaults(
+                    category_times, kv.get().strip(),
+                    default_start, default_end, default_pause,
+                )
+                if sv.get() == base["start"]:
+                    sv.set(t_start)
+                    base["start"] = t_start
+                if ev.get() == base["end"]:
+                    ev.set(t_end)
+                    base["end"] = t_end
+
+            kv.trace_add("write", on_cat_change)
 
             def remove():
                 row.destroy()

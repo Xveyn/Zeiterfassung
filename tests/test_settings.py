@@ -447,3 +447,31 @@ def test_categories_synced_doc_roundtrip(tmp_path):
     doc = s.get_synced_doc()
     assert doc["categories"]["value"] == ["Büro", "Kundentermin"]
     assert doc["categories"]["device_id"] == "dev-1"
+
+
+# --- category_times (Per-Kategorie-Standardzeiten) ---
+
+
+def test_category_times_default_is_empty_dict(tmp_settings):
+    assert tmp_settings.get("category_times") == {}
+
+
+def test_category_times_is_synced_setting():
+    assert "category_times" in SYNCED_SETTING_KEYS
+
+
+def test_category_times_persists_dict(tmp_path):
+    path = str(tmp_path / "settings.json")
+    value = {"Office": {"start": "09:00", "end": "17:00", "pause": 0}}
+    s1 = Settings(path)
+    s1.set("category_times", value)
+    s2 = Settings(path)
+    assert s2.get("category_times") == value
+
+
+def test_category_times_non_dict_falls_back_to_default(tmp_path, caplog):
+    path = _write_json(tmp_path, json.dumps({"category_times": ["kaputt"]}))
+    with caplog.at_level("WARNING"):
+        s = Settings(path)
+    assert s.get("category_times") == {}
+    assert any("category_times" in rec.message for rec in caplog.records)
