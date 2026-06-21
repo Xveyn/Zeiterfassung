@@ -64,49 +64,6 @@ def collect_categories(rows):
     return categories, category_times
 
 
-def _open_standard_times(parent, settings):
-    """Read-only Popup mit den globalen Standardzeiten je Wochentag.
-
-    Nur zur Ansicht — editiert wird in den Einstellungen. Wird vom „Pro Tag…"-
-    Button der Standard-Zeile geöffnet, wenn die Zeiten nicht an allen Tagen
-    gleich sind.
-    """
-    pop = tk.Toplevel(parent)
-    pop.title("Standardzeiten pro Tag")
-    pop.resizable(False, False)
-    pop.grab_set()
-    pop.focus_set()
-    pop.configure(bg=BG)
-    apply_dark_titlebar(pop)
-    disable_min_max(pop)
-    apply_app_icon(pop)
-    pop.bind("<Escape>", lambda _e: pop.destroy())
-
-    box = tk.Frame(pop, bg=BG)
-    box.pack(padx=16, pady=14)
-
-    tk.Label(box, text="Start", font=FONT, bg=BG, fg=TEXT_MUTED).grid(
-        row=0, column=1, padx=8)
-    tk.Label(box, text="Ende", font=FONT, bg=BG, fg=TEXT_MUTED).grid(
-        row=0, column=2, padx=8)
-    for i, (key, lbl) in enumerate(zip(WEEKDAY_KEYS, DAYS_DE), start=1):
-        tk.Label(box, text=lbl, font=FONT, bg=BG, fg=TEXT,
-                 width=4, anchor="w").grid(row=i, column=0, padx=(0, 8),
-                                           pady=2, sticky="w")
-        tk.Label(box, text=settings.get(f"default_start_{key}"),
-                 font=FONT, bg=BG, fg=TEXT).grid(row=i, column=1, padx=8, pady=2)
-        tk.Label(box, text=settings.get(f"default_end_{key}"),
-                 font=FONT, bg=BG, fg=TEXT).grid(row=i, column=2, padx=8, pady=2)
-
-    tk.Label(box, text=f"Pause: {settings.get('default_pause')} Min (global)",
-             font=FONT, bg=BG, fg=TEXT_MUTED).grid(
-        row=8, column=0, columnspan=3, pady=(10, 0), sticky="w")
-    secondary_button(box, "Schließen", pop.destroy).grid(
-        row=9, column=0, columnspan=3, pady=(12, 0))
-
-    center_dialog_on_parent(pop, parent)
-
-
 def open_category_dialog(parent, settings, on_change=None):
     categories = list(settings.get("categories") or [])
     category_times = dict(settings.get("category_times") or {})
@@ -172,14 +129,37 @@ def open_category_dialog(parent, settings, on_change=None):
         tk.Label(std_row, text=text, font=FONT, bg=BG, fg=fg,
                  width=w, anchor="w").pack(side=tk.LEFT, padx=2)
 
-    # Bei abweichenden Wochentagen zeigen Start/Ende „variabel" — ein kleiner
-    # Button blendet die echten Zeiten je Tag ein (read-only, vgl. Settings).
+    # Bei abweichenden Wochentagen zeigen Start/Ende „variabel". Ein Toggle
+    # klappt — wie in den Einstellungen — die echten Zeiten je Tag inline aus
+    # (read-only); das Fenster passt seine Höhe automatisch an.
     if is_variable:
-        secondary_button(
-            std_row, "Pro Tag…",
-            lambda: _open_standard_times(dialog, settings),
-            padx=8, pady=0,
-        ).pack(side=tk.LEFT, padx=2)
+        daygrid = tk.Frame(rows_frame, bg=BG)
+        tk.Label(daygrid, text="Start", font=FONT, bg=BG, fg=TEXT_MUTED).grid(
+            row=0, column=1, padx=6)
+        tk.Label(daygrid, text="Ende", font=FONT, bg=BG, fg=TEXT_MUTED).grid(
+            row=0, column=2, padx=6)
+        for i, (key, lbl) in enumerate(zip(WEEKDAY_KEYS, DAYS_DE), start=1):
+            tk.Label(daygrid, text=lbl, font=FONT, bg=BG, fg=TEXT,
+                     width=4, anchor="w").grid(row=i, column=0, padx=(2, 8),
+                                               pady=1, sticky="w")
+            tk.Label(daygrid, text=settings.get(f"default_start_{key}"),
+                     font=FONT, bg=BG, fg=TEXT).grid(row=i, column=1, padx=6, pady=1)
+            tk.Label(daygrid, text=settings.get(f"default_end_{key}"),
+                     font=FONT, bg=BG, fg=TEXT).grid(row=i, column=2, padx=6, pady=1)
+
+        toggle_holder = {}
+
+        def _toggle_daygrid():
+            if daygrid.winfo_ismapped():
+                daygrid.pack_forget()
+                toggle_holder["btn"]._label.config(text="Pro Tag ▶")
+            else:
+                daygrid.pack(after=std_row, anchor="w", pady=(0, 4))
+                toggle_holder["btn"]._label.config(text="Pro Tag ▼")
+
+        toggle_holder["btn"] = secondary_button(
+            std_row, "Pro Tag ▶", _toggle_daygrid, padx=8, pady=0)
+        toggle_holder["btn"].pack(side=tk.LEFT, padx=2)
 
     def add_row(name="", start=STANDARD, end=STANDARD, pause=STANDARD):
         row = tk.Frame(rows_frame, bg=BG)
