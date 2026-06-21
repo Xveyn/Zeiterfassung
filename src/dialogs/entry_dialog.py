@@ -126,6 +126,12 @@ def open_entry_dialog(parent, date_str, storage, settings, on_change,
         def remove():
             row.destroy()
             ist_rows.remove(record)
+            # Ein leeres Tk-Frame behält sonst die Höhe seiner letzten Zeile als
+            # Lücke — beim Entfernen der letzten Zeile explizit kollabieren,
+            # damit der Dialog passend schrumpft (pack_propagate baut die Höhe
+            # beim nächsten "+ Slot" wieder auf).
+            if not ist_rows:
+                ist_rows_frame.configure(height=1)
 
         secondary_button(row, "×", remove, padx=8, pady=0).pack(side=tk.LEFT, padx=2)
         ist_rows.append(record)
@@ -211,6 +217,8 @@ def open_entry_dialog(parent, date_str, storage, settings, on_change,
             def remove():
                 row.destroy()
                 res_rows.remove(record)
+                if not res_rows:
+                    res_rows_frame.configure(height=1)
 
             secondary_button(row, "×", remove, padx=8, pady=0).pack(side=tk.LEFT, padx=2)
             res_rows.append(record)
