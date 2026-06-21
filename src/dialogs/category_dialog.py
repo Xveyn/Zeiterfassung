@@ -17,6 +17,10 @@ from src.theme import (
     center_dialog_on_parent, dark_combo, dark_entry, disable_min_max,
     primary_button, secondary_button,
 )
+from src.tooltip import attach_tooltip
+
+# Deutsche Wochentags-Kürzel, indexgleich zu WEEKDAY_KEYS (Mo=mon … So=sun).
+_WEEKDAY_LABELS_DE = ("Mo", "Di", "Mi", "Do", "Fr", "Sa", "So")
 
 # Sentinel-Eintrag in den Zeit-Combos: „kein eigener Wert, globaler Standard
 # gilt". Wird beim Speichern als fehlendes/leeres Feld abgelegt.
@@ -110,22 +114,35 @@ def open_category_dialog(parent, settings, on_change=None):
     # Eingabefeld) — eindeutig nicht editierbar. Start/Ende sind pro Wochentag
     # konfigurierbar: sind alle Tage gleich, zeigen wir den Wert, sonst
     # „variabel"; Pause ist global. Spaltenbreiten = die der Überschriften.
-    starts = {settings.get(f"default_start_{d}") for d in WEEKDAY_KEYS}
-    ends = {settings.get(f"default_end_{d}") for d in WEEKDAY_KEYS}
-    std_start = next(iter(starts)) if len(starts) == 1 else "variabel"
-    std_end = next(iter(ends)) if len(ends) == 1 else "variabel"
+    day_starts = [settings.get(f"default_start_{d}") for d in WEEKDAY_KEYS]
+    day_ends = [settings.get(f"default_end_{d}") for d in WEEKDAY_KEYS]
+    is_variable = len(set(day_starts)) > 1 or len(set(day_ends)) > 1
+    std_start = "variabel" if len(set(day_starts)) > 1 else day_starts[0]
+    std_end = "variabel" if len(set(day_ends)) > 1 else day_ends[0]
     std_pause = str(settings.get("default_pause"))
 
     std_row = tk.Frame(rows_frame, bg=BG)
     std_row.pack(fill="x", pady=2)
-    tk.Label(std_row, text="Standard", font=FONT, bg=BG, fg=TEXT_MUTED,
-             width=15, anchor="w").pack(side=tk.LEFT, padx=2)
-    tk.Label(std_row, text=std_start, font=FONT, bg=BG, fg=TEXT,
-             width=11, anchor="w").pack(side=tk.LEFT, padx=2)
-    tk.Label(std_row, text=std_end, font=FONT, bg=BG, fg=TEXT,
-             width=13, anchor="w").pack(side=tk.LEFT, padx=2)
-    tk.Label(std_row, text=std_pause, font=FONT, bg=BG, fg=TEXT,
-             width=11, anchor="w").pack(side=tk.LEFT, padx=2)
+    std_labels = [std_row]
+    for text, w, fg in (
+        ("Standard", 15, TEXT_MUTED),
+        (std_start, 11, TEXT),
+        (std_end, 13, TEXT),
+        (std_pause, 11, TEXT),
+    ):
+        lbl = tk.Label(std_row, text=text, font=FONT, bg=BG, fg=fg,
+                       width=w, anchor="w")
+        lbl.pack(side=tk.LEFT, padx=2)
+        std_labels.append(lbl)
+
+    # Bei abweichenden Wochentagen sind die echten Zeiten im "variabel" nicht
+    # ablesbar — per Hover die Zeiten je Tag zeigen.
+    if is_variable:
+        lines = [
+            f"{lbl}: {s}–{e}"
+            for lbl, s, e in zip(_WEEKDAY_LABELS_DE, day_starts, day_ends)
+        ]
+        attach_tooltip(std_labels, "Standardzeiten je Wochentag:\n" + "\n".join(lines))
 
     def add_row(name="", start=STANDARD, end=STANDARD, pause=STANDARD):
         row = tk.Frame(rows_frame, bg=BG)
