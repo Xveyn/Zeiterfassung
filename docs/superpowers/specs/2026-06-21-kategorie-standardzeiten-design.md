@@ -54,12 +54,24 @@ def remove_category_times(times, name):
 ## UI — Kategorien-Dialog (`src/dialogs/category_dialog.py`)
 
 Unter der Kategorie-Liste erscheinen drei Combos **Start / Ende / Pause** für die
-aktuell selektierte Kategorie. Jede Combo hat eine Leer-Option **„(Standard)"**
-= globaler Fallback (leerer gespeicherter Wert).
+aktuell selektierte Kategorie. Jede Combo hat als **ersten** Eintrag die Option **„(Standard)"** — ein
+literaler Combo-Wert, der beim Speichern als **leerer String** im Eintrag
+landet (bzw. das Feld weglässt) und so den Per-Feld-Fallback auf global
+auslöst. Beim Laden eines leeren/fehlenden Feldes wird „(Standard)" angezeigt.
+`TIME_VALUES` / `PAUSE_VALUES` (theme.py, reine String-Listen) werden NICHT
+global mutiert — „(Standard)" wird nur lokal in diesen Dialog-Combos
+vorangestellt (`["(Standard)", *TIME_VALUES]`).
 
-- Listbox-Auswahl wechselt → Felder aus dem In-Memory-`category_times` laden.
-- Vor dem Wechsel: aktuelle Feldwerte in das In-Memory-Dict der vorher
-  selektierten Kategorie zurückschreiben.
+- Eine `category_times`-Kopie wird beim Öffnen geladen:
+  `category_times = dict(settings.get("category_times") or {})` — parallel zur
+  bestehenden lokalen `categories`-Liste, im selben `nonlocal`-Scope mutiert.
+- Listbox-Auswahl wechselt (`<<ListboxSelect>>`-Binding, existiert noch nicht)
+  → Felder aus dem In-Memory-`category_times` laden.
+- **Vorherige Auswahl** wird in einem Holder (`prev_sel = [None]`) gemerkt, weil
+  Tk im Select-Event nur die NEUE Auswahl liefert. Der Handler schreibt zuerst
+  die aktuellen Feldwerte in den Eintrag der `prev_sel`-Kategorie zurück, lädt
+  dann die neue und setzt `prev_sel[0]` auf die neue Kategorie. Auch `on_save`
+  schreibt die Felder der aktuell selektierten Kategorie final zurück.
 - Sind alle drei Felder „(Standard)" → Kategorie-Eintrag wird entfernt
   (komplett globaler Fallback).
 - **Speichern** persistiert `categories` UND `category_times` via `set_synced`.
@@ -69,8 +81,16 @@ aktuell selektierte Kategorie. Jede Combo hat eine Leer-Option **„(Standard)"*
 ## UI — Tages-Dialog (`src/dialogs/entry_dialog.py`)
 
 Pro Slot-Zeile wird die zuletzt automatisch gesetzte Default-Basis gemerkt
-(`base_start/base_end/base_pause`), initial die globalen Standardzeiten des
-Wochentags (bzw. die Werte, mit denen die Zeile angelegt wurde).
+(`base_start/base_end/base_pause`). **Die Basis sind exakt die Werte, mit denen
+die Zeile angelegt wurde** — NICHT pauschal die globalen Standardzeiten:
+- Erste/aus Reservierung übernommene Ist-Zeile: globaler Start/Ende +
+  `default_pause` (entry_dialog.py:115/117).
+- „+ Slot"-Ist-Zeile: globaler Start/Ende, **`pause=0`** (entry_dialog.py:123).
+- Geladene bestehende Zeile: die gespeicherten Slot-Werte.
+
+Die Basis wird in `add_ist_row` / `add_res_row` aus den übergebenen
+Start/Ende/Pause-Argumenten gesetzt, damit jede Zeile ihre eigene korrekte
+Basis hat.
 
 Bei **Kategorie-Wechsel** (Trace auf der `kategorie`-StringVar der Zeile):
 1. Zielwerte via `resolve_slot_defaults(...)` bestimmen.
