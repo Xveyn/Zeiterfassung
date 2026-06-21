@@ -154,7 +154,7 @@ def open_category_dialog(parent, settings, on_change=None):
                 daygrid.pack_forget()
                 toggle_holder["btn"]._label.config(text="Pro Tag ▶")
             else:
-                daygrid.pack(after=std_row, anchor="w", pady=(0, 4))
+                daygrid.pack(after=std_row, anchor="center", pady=(0, 4))
                 toggle_holder["btn"]._label.config(text="Pro Tag ▼")
 
         toggle_holder["btn"] = secondary_button(
