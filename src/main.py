@@ -111,33 +111,36 @@ def _run_push_blocking(storage, settings, conflicts_store, base, timeout_seconds
                 gcal_enabled=settings.get("gcal_enabled"),
             )
             file_id = drive.find_sync_file(service)
-            doc = sync.build_local_doc(storage, settings, conflicts_store)
-            content = json.dumps(doc, ensure_ascii=False).encode("utf-8")
-            expected_etag = settings.get("drive_etag")
-            try:
-                new_id, new_etag = drive.upload(service, content, file_id, expected_etag)
-            except drive.DriveConflictError:
-                # Etag-Mismatch: 1× pull-merge-push retry
-                if file_id is not None:
-                    remote_bytes, _ = drive.download(service, file_id)
+            # Push = download -> Guard -> Merge -> upload. drive.upload kennt
+            # kein File-level If-Match (ignoriert expected_etag), daher MUSS hier
+            # das frische Remote-Doc gelesen und gemergt werden — sonst
+            # überschreibt der Push fremde oder neuere Stände blind (Datenverlust
+            # bzw. Clobber eines neueren Schemas während eines Rollouts).
+            if file_id is not None:
+                remote_bytes, _etag = drive.download(service, file_id)
+                try:
                     remote_doc = json.loads(remote_bytes)
-                else:
+                except (json.JSONDecodeError, ValueError):
                     remote_doc = {"schema_version": 1, "entries": {}, "settings": {}, "conflicts": []}
                 if sync._remote_is_newer(remote_doc):
-                    # Ein neueres Gerät hat das Remote-Doc fortgeschrieben.
-                    # Nicht mergen/überschreiben — Push abbrechen, damit die
-                    # neueren Daten erhalten bleiben.
+                    # Neueres Gerät hat das Remote-Doc fortgeschrieben: nicht
+                    # mergen/überschreiben — Push abbrechen, neuere Daten bleiben.
                     result["ok"] = False
                     result["error"] = sync.NEWER_REMOTE_VERSION_MSG
                     result["tb"] = ""
                     return
-                local_doc = sync.build_local_doc(storage, settings, conflicts_store)
-                merged = sync.merge(local_doc, remote_doc, settings.get("last_pull_at") or "")
-                sync.apply_merged_doc(merged, storage, settings, conflicts_store)
-                doc = sync.build_local_doc(storage, settings, conflicts_store)
-                content = json.dumps(doc, ensure_ascii=False).encode("utf-8")
-                new_id, new_etag = drive.upload(service, content, file_id, expected_etag="")
-            settings.set("drive_etag", new_etag)
+            else:
+                remote_doc = {"schema_version": 1, "entries": {}, "settings": {}, "conflicts": []}
+            local_doc = sync.build_local_doc(storage, settings, conflicts_store)
+            merged = sync.merge(local_doc, remote_doc, settings.get("last_pull_at") or "")
+            sync.apply_merged_doc(merged, storage, settings, conflicts_store)
+            doc = sync.build_local_doc(storage, settings, conflicts_store)
+            content = json.dumps(doc, ensure_ascii=False).encode("utf-8")
+            new_id, new_etag = drive.upload(service, content, file_id, expected_etag="")
+            settings.set_many({
+                "last_pull_at": sync._utc_now_iso(),
+                "drive_etag": new_etag,
+            })
             result["ok"] = True
         except Exception as e:
             logging.getLogger(__name__).exception("Sync push failed: %s", e)

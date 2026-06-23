@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.15.2 — 2026-06-23
+
+### Behoben
+- Multi-Geräte-Sync: Beim Hochladen wird der aktuelle Stand aus Google Drive
+  jetzt zuerst gelesen und zusammengeführt, statt ihn blind zu überschreiben.
+  Dadurch kann ein älteres Gerät die Daten eines Geräts mit neuerem Datenformat
+  nicht mehr versehentlich überschreiben, und gleichzeitige Änderungen auf
+  mehreren Geräten gehen beim Speichern nicht mehr verloren.
+
 ## 1.15.1 — 2026-06-23
 
 ### Behoben
