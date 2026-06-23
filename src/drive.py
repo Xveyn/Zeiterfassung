@@ -7,7 +7,8 @@ Scope: drive.appdata (non-sensitive, per-app-isolated).
 
 import io
 import os
-import stat
+
+from src.oauth_utils import write_token
 
 SYNC_FILENAME = "zeiterfassung-sync.json"
 SYNC_MIMETYPE = "application/json"
@@ -68,15 +69,6 @@ SYNC_SCOPES = [
 ]
 
 
-def _write_token(creds, token_path):
-    with open(token_path, "w") as f:
-        f.write(creds.to_json())
-    try:
-        os.chmod(token_path, stat.S_IRUSR | stat.S_IWUSR)  # 0o600
-    except OSError:
-        pass
-
-
 def get_drive_service(credentials_path, token_path, gcal_enabled=False):
     """OAuth mit kombinierten Scopes (Gmail + Drive appdata, optional Calendar).
     Token wird mit allen Scopes geschrieben — Gmail send und Calendar
@@ -104,7 +96,7 @@ def get_drive_service(credentials_path, token_path, gcal_enabled=False):
             raise DriveAuthError(str(e)) from e
         except TransportError as e:
             raise DriveNetworkError(str(e)) from e
-        _write_token(creds, token_path)
+        write_token(creds, token_path)
 
     if not creds or not creds.valid:
         if not os.path.exists(credentials_path):
@@ -113,7 +105,7 @@ def get_drive_service(credentials_path, token_path, gcal_enabled=False):
             )
         flow = InstalledAppFlow.from_client_secrets_file(credentials_path, scopes)
         creds = flow.run_local_server(port=0)
-        _write_token(creds, token_path)
+        write_token(creds, token_path)
 
     return build("drive", "v3", credentials=creds)
 
