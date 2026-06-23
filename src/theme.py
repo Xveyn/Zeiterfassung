@@ -746,7 +746,7 @@ def themed_ask_delete_choice(parent, title: str, message: str, options):
     apply_app_icon(dialog)
     dialog.focus_set()
 
-    result = {"value": None}
+    result: dict[str, set[str] | None] = {"value": None}
 
     tk.Label(
         dialog, text=message, font=FONT, bg=BG, fg=TEXT,
