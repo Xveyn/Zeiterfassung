@@ -7,6 +7,8 @@ Display zum Import nötig). `_run_push_blocking` wird LAZY in den Methoden aus
 src.sync_orchestrator).
 """
 
+import tkinter as tk
+import traceback
 from tkinter import messagebox
 
 from src.drive import DriveAuthError, DriveNetworkError
@@ -97,3 +99,120 @@ def _tray_toast(ok, n_conflicts, error):
     if n_conflicts == 0:
         return "Synchronisiert."
     return f"Synchronisiert — {n_conflicts} Konflikt{'e' if n_conflicts != 1 else ''} offen."
+
+
+class SyncOrchestrator:
+    """Kapselt den Drive-Sync der UI. Hält stabile Deps; die Header-Widgets
+    werden nach dem Build über attach_widgets nachgereicht, das Tray-Objekt
+    lazy über get_tray gelesen (einzige Quelle bleibt App._tray)."""
+
+    def __init__(self, root, storage, settings, conflicts_store, base_path,
+                 runner, on_refresh, get_tray):
+        self._root = root
+        self._storage = storage
+        self._settings = settings
+        self._conflicts_store = conflicts_store
+        self._base_path = base_path
+        self._runner = runner          # App._bg, hat .run(fn, on_done)
+        self._on_refresh = on_refresh    # App._refresh
+        self._get_tray = get_tray        # lambda: App._tray
+        self._sync_button = None
+        self._status_label = None
+        self._next_button = None
+
+    def attach_widgets(self, sync_button, status_label, next_button):
+        self._sync_button = sync_button
+        self._status_label = status_label
+        self._next_button = next_button
+
+    def _conflict_count(self):
+        if self._conflicts_store is not None:
+            return self._conflicts_store.count_unresolved()
+        return 0
+
+    def _push(self):
+        from src.main import _run_push_blocking
+        return _run_push_blocking(
+            self._storage, self._settings, self._conflicts_store,
+            self._base_path, timeout_seconds=15,
+        )
+
+    def on_pull_success(self):
+        """Aus dem UI-Thread nach erfolgreichem Pull."""
+        self._on_refresh()
+        self.update_status_label()
+
+    def on_pull_error(self, error, tb=""):
+        _show_sync_error(self._root, error, tb)
+        self.update_status_label()
+
+    def update_status_label(self):
+        if self._status_label is None:
+            return
+        if not self._settings.get("sync_enabled"):
+            self._sync_button.pack_forget()
+            self._status_label.pack_forget()
+            self._status_label.config(text="")
+            return
+        # Sichtbar machen, falls vorher versteckt. Reihenfolge wie Build-Time.
+        if not self._sync_button.winfo_ismapped():
+            self._sync_button.pack(side=tk.RIGHT, padx=(4, 0),
+                                   before=self._next_button)
+            self._status_label.pack(side=tk.RIGHT, padx=(8, 4),
+                                    before=self._sync_button)
+        self._status_label.config(
+            text=_status_text(self._conflict_count(),
+                              self._settings.get("last_pull_at")))
+
+    def on_sync_clicked(self):
+        if not self._settings.get("sync_enabled"):
+            messagebox.showinfo(
+                "Synchronisation",
+                "Synchronisation ist deaktiviert. In den Einstellungen aktivierbar.")
+            return
+        self._status_label.config(text="Synchronisiere…")
+        self._runner.run(self._push, self._on_manual_done)
+
+    def _on_manual_done(self, result):
+        if not result.get("ok"):
+            _show_sync_error(self._root, result.get("error", "?"),
+                             result.get("tb", ""))
+        self._on_refresh()
+        self.update_status_label()
+
+    def tray_sync(self):
+        if not self._settings.get("sync_enabled"):
+            return
+        self._runner.run(self._push, self._on_tray_done)
+
+    def _on_tray_done(self, result):
+        self._on_refresh()
+        self.update_status_label()
+        tray = self._get_tray()
+        if tray is None:
+            return
+        tray.notify(
+            _tray_toast(result.get("ok"), self._conflict_count(),
+                       result.get("error", "?")),
+            title="",
+        )
+
+    def push_on_quit(self):
+        """Blockierender Push beim Beenden (kurzes Timeout). Kein tray.stop()
+        (bleibt App-Lifecycle)."""
+        if not self._settings.get("sync_enabled"):
+            return
+        from src.main import _run_push_blocking
+        try:
+            result = _run_push_blocking(
+                self._storage, self._settings, self._conflicts_store,
+                self._base_path, timeout_seconds=5,
+            )
+        except Exception as e:
+            result = {"ok": False, "error": e, "tb": traceback.format_exc()}
+        if not result.get("ok"):
+            _show_sync_error(
+                self._root, result.get("error", "?"), result.get("tb", ""),
+                suffix="Lokale Daten bleiben erhalten und werden beim "
+                       "nächsten Start synchronisiert.",
+            )
