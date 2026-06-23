@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.15.1 — 2026-06-23
+
+### Behoben
+- Multi-Geräte-Sync: Nutzt ein Gerät bereits eine neuere App-Version mit einem
+  neueren Datenformat, pausiert die Synchronisation auf älteren Geräten jetzt
+  mit einem klaren Hinweis („Update erforderlich"), statt mit einem Fehler
+  abzubrechen oder Daten zu überschreiben. Das gilt für den Abgleich ebenso wie
+  für das Kompaktieren der Sync-Daten. Die vollständige Synchronisation läuft
+  wieder, sobald alle Geräte aktualisiert sind.
+
 ## 1.15.0 — 2026-06-19
 
 ### Hinzugefügt

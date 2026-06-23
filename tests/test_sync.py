@@ -625,3 +625,105 @@ def test_remote_is_pre_v2():
     assert _remote_is_pre_v2({"schema_version": 2, "entries": {}}) is True  # kein meta
     assert _remote_is_pre_v2({"schema_version": 2, "meta": {"gc_watermark": ""}}) is False
     assert _remote_is_pre_v2({"schema_version": 2, "meta": {}}) is True     # meta ohne key
+
+
+# --- Forward-Compat-Guard: neueres Remote-Schema nicht crashen/überschreiben ---
+
+from src.sync import _remote_is_newer, NEWER_REMOTE_VERSION_MSG, SCHEMA_VERSION
+
+
+def test_remote_is_newer():
+    assert _remote_is_newer({"schema_version": SCHEMA_VERSION + 1, "entries": {}}) is True
+    assert _remote_is_newer({"schema_version": 99, "entries": {}}) is True
+    assert _remote_is_newer({"schema_version": SCHEMA_VERSION, "entries": {}}) is False
+    assert _remote_is_newer({"schema_version": 1, "entries": {}}) is False
+    assert _remote_is_newer({"entries": {}}) is False  # fehlend -> 1
+
+
+def _v3_remote_bytes():
+    """Ein Remote-Doc im v3-Slot-Format, wie es eine neuere App schreibt:
+    Einträge haben `slots` statt der flachen start/end/pause-Keys."""
+    return _json.dumps({
+        "schema_version": 3,
+        "entries": {
+            "2026-06-04": {
+                "slots": [{"start": "08:00", "end": "16:00", "pause": 30,
+                           "kategorie": "Arbeit"}],
+                "modified_at": "2026-06-04T10:00:00Z",
+                "device_id": "B", "deleted": False,
+            }
+        },
+        "settings": {}, "conflicts": [],
+        "meta": {"gc_watermark": ""},
+    }, ensure_ascii=False).encode("utf-8")
+
+
+def test_apply_merge_crashes_on_v3_entry_without_guard(tmp_path):
+    """Beleg für den Grund des Guards: ohne ihn würde das v3-Doc in
+    apply_merge hart abbrechen (fehlende start/end/pause)."""
+    storage = Storage(str(tmp_path / "z.json"), device_id="A")
+    v3_entries = {
+        "2026-06-04": {"slots": [{"start": "08:00", "end": "16:00"}],
+                       "modified_at": "2026-06-04T10:00:00Z",
+                       "device_id": "B", "deleted": False}
+    }
+    with pytest.raises(ValueError):
+        storage.apply_merge(v3_entries)
+
+
+def test_run_pull_aborts_on_newer_remote(tmp_path, monkeypatch):
+    """Pull gegen ein v3-Remote: Callback meldet ok=False mit der Update-
+    Meldung, NICHTS wird lokal angewendet (kein Crash), last_pull_at bleibt
+    unverändert."""
+    from src import drive
+    import src.main as main
+
+    storage = Storage(str(tmp_path / "z.json"), device_id="A")
+    settings = Settings(str(tmp_path / "s.json"))
+    settings.device_id_for_sync = "A"
+    conflicts = ConflictsStore(str(tmp_path / "c.json"))
+    before_pull_at = settings.get("last_pull_at")
+
+    monkeypatch.setattr(drive, "get_drive_service", lambda *a, **k: object())
+    monkeypatch.setattr(drive, "find_sync_file", lambda service: "file-1")
+    monkeypatch.setattr(drive, "download", lambda service, fid: (_v3_remote_bytes(), "etag-x"))
+
+    received = {}
+    def ui_callback(ok, error, tb=""):
+        received["ok"] = ok
+        received["error"] = error
+
+    main._run_pull_in_background(storage, settings, conflicts, str(tmp_path), ui_callback)
+
+    assert received["ok"] is False
+    assert str(received["error"]) == NEWER_REMOTE_VERSION_MSG
+    assert storage.get_all_raw() == {}              # nichts angewendet
+    assert settings.get("last_pull_at") == before_pull_at  # unverändert
+
+
+def test_run_compaction_aborts_on_newer_remote(tmp_path, monkeypatch):
+    """Kompaktierung gegen ein v3-Remote: bricht freundlich ab (reason
+    'newer_version'), wendet NICHTS an und lädt NICHTS hoch (kein Clobber des
+    neueren Docs) — analog zum Pull-Guard, nicht ein roher apply_merge-Crash."""
+    from src import drive
+    import src.main as main
+
+    storage = Storage(str(tmp_path / "z.json"), device_id="A")
+    settings = Settings(str(tmp_path / "s.json"))
+    settings.device_id_for_sync = "A"
+    conflicts = ConflictsStore(str(tmp_path / "c.json"))
+
+    monkeypatch.setattr(drive, "get_drive_service", lambda *a, **k: object())
+    monkeypatch.setattr(drive, "find_sync_file", lambda service: "file-1")
+    monkeypatch.setattr(drive, "download", lambda service, fid: (_v3_remote_bytes(), "etag-x"))
+    upload_calls = []
+    monkeypatch.setattr(
+        drive, "upload",
+        lambda *a, **k: (upload_calls.append(a), ("id", "etag"))[1])
+
+    res = main._run_compaction_blocking(storage, settings, conflicts, str(tmp_path))
+
+    assert res.get("ok") is False
+    assert res.get("reason") == "newer_version"     # freundlicher Fall, kein Traceback
+    assert upload_calls == []                        # neueres Remote-Doc NICHT überschrieben
+    assert storage.get_all_raw() == {}              # nichts lokal angewendet

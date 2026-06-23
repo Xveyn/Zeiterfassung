@@ -17,6 +17,14 @@ import uuid
 SCHEMA_VERSION = 2
 
 
+NEWER_REMOTE_VERSION_MSG = (
+    "Ein anderes Gerät nutzt eine neuere App-Version mit einem Datenformat, "
+    "das diese (ältere) Version noch nicht versteht.\n\n"
+    "Bitte aktualisiere die App auf diesem Gerät. Bis dahin pausiert die "
+    "Synchronisation, damit keine Daten verloren gehen oder überschrieben werden."
+)
+
+
 def _watermark_of(doc):
     return ((doc.get("meta") or {}).get("gc_watermark") or "")
 
@@ -278,6 +286,18 @@ def _remote_is_pre_v2(remote_doc):
         return True
     meta = remote_doc.get("meta")
     return not (isinstance(meta, dict) and "gc_watermark" in meta)
+
+
+def _remote_is_newer(remote_doc):
+    """True, wenn das Remote-Doc von einer NEUEREN App-Version stammt
+    (schema_version > der hier verstandenen SCHEMA_VERSION).
+
+    Forward-Compat-Guard: Ab Schema 3 enthalten Einträge `slots` statt der
+    flachen `start/end/pause`-Keys. Würde diese ältere Version so ein Doc
+    mergen und via `storage.apply_merge` schreiben, bräche der Required-Key-
+    Validator hart ab ("missing keys ['start','end','pause']"). Stattdessen
+    muss der Pull/Push abbrechen, ohne das neuere Remote-Doc zu überschreiben."""
+    return (remote_doc.get("schema_version") or 1) > SCHEMA_VERSION
 
 
 def resolve_conflict(conflict_id, chosen_value, conflicts_store, storage, settings, device_id):

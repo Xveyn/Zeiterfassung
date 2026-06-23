@@ -1,4 +1,4 @@
-VERSION = "1.15.0"
+VERSION = "1.15.1"
 
 # build_info wird beim Build von build.py generiert (gitignored) und von
 # PyInstaller mitgebündelt. Beim Start aus dem Quellcode existiert es nicht —

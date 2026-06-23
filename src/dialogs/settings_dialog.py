@@ -546,6 +546,11 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
                         "Ein Gerät nutzt noch eine ältere Version — bitte erst "
                         "alle Geräte aktualisieren und synchronisieren.",
                     )
+                elif res.get("reason") == "newer_version":
+                    from src.sync import NEWER_REMOTE_VERSION_MSG
+                    themed_showwarning(
+                        dialog, "Update erforderlich", NEWER_REMOTE_VERSION_MSG,
+                    )
                 elif not res.get("ok"):
                     detail = f"{res.get('error', '?')}\n\n{res.get('tb', '')}"
                     themed_showerror(
