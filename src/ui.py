@@ -839,8 +839,8 @@ class App:
         for w in (cell, day_lbl, time_lbl):
             w.bind("<Button-1>", lambda e, d=date_str: self._open_dialog(d))
             w.bind("<Button-3>", lambda e, d=date_str: self._delete_day(d))
-            w.bind("<Enter>", lambda e, c=cell, dl=day_lbl, tl=time_lbl, hb=hover_bg: self._cell_hover(c, dl, tl, hb))
-            w.bind("<Leave>", lambda e, c=cell, dl=day_lbl, tl=time_lbl, ob=bg: self._cell_hover(c, dl, tl, ob))
+            w.bind("<Enter>", lambda e, c=cell, dl=day_lbl, tl=time_lbl, hb=hover_bg: self._hover(c, hb, dl, tl))
+            w.bind("<Leave>", lambda e, c=cell, dl=day_lbl, tl=time_lbl, ob=bg: self._hover(c, ob, dl, tl))
         return cell
 
     @staticmethod
@@ -856,7 +856,7 @@ class App:
         rendert je nach Font als kaum sichtbarer Fleck; das Oval gibt einen
         sauber gerundeten, größenkontrollierten Punkt. place() überlagert die
         gepackten Kind-Widgets. Der Marker wird als cell._reservation_marker
-        getaggt, damit _cell_hover seinen Hintergrund beim Hover mitfärbt."""
+        getaggt, damit _hover seinen Hintergrund beim Hover mitfärbt."""
         box, dot = 12, 7
         marker = tk.Canvas(
             cell, width=box, height=box, bg=cell.cget("bg"),
@@ -878,7 +878,7 @@ class App:
         Lösch-Auslöser, ohne den Linksklick-Dialog mit Lösch-Buttons zu belasten.
         Klick ruft denselben _delete_day-Pfad wie der Win/Linux-Rechtsklick
         (Ja/Nein bzw. Slot-Auswahl). Getaggt als cell._delete_button, damit
-        _cell_hover/_empty_hover seinen Hintergrund beim Hover mitfärben."""
+        _hover seinen Hintergrund beim Hover mitfärbt."""
         bg = cell.cget("bg")
         btn = tk.Label(
             cell, text="✕", font=FONT_TINY, bg=bg, fg=TEXT_MUTED, cursor="hand2",
@@ -889,7 +889,7 @@ class App:
         btn.bind("<Button-1>",
                  lambda e, d=date_str: (self._delete_day(d), "break")[1])
         # fg-Hover (rot als Lösch-Affordance) steuert der Button selbst; den bg
-        # färbt _cell_hover/_empty_hover mit der Zelle.
+        # färbt _hover mit der Zelle.
         btn.bind("<Enter>", lambda e: btn.config(fg=ACCENT))
         btn.bind("<Leave>", lambda e: btn.config(fg=TEXT_MUTED))
         cell._delete_button = btn
@@ -920,8 +920,8 @@ class App:
         for w in (cell, day_lbl):
             w.bind("<Button-1>", lambda e, d=date_str: self._open_dialog(d))
             w.bind("<Button-3>", lambda e, d=date_str: self._delete_day(d))
-            w.bind("<Enter>", lambda e, c=cell, dl=day_lbl, hb=hover_bg: self._empty_hover(c, dl, hb))
-            w.bind("<Leave>", lambda e, c=cell, dl=day_lbl, ob=bg: self._empty_hover(c, dl, ob))
+            w.bind("<Enter>", lambda e, c=cell, dl=day_lbl, hb=hover_bg: self._hover(c, hb, dl))
+            w.bind("<Leave>", lambda e, c=cell, dl=day_lbl, ob=bg: self._hover(c, ob, dl))
         return cell
 
     def _build_day_cell(self, parent, date_str, day_text, day_date, is_weekend,
@@ -1251,9 +1251,9 @@ class App:
             if on_right_click is not None:
                 w.bind("<Button-3>", lambda e: on_right_click())
             w.bind("<Enter>", lambda e, c=cell, dl=day_lbl, nl=name_lbl:
-                self._cell_hover(c, dl, nl, HOLIDAY_BG_HOVER))
+                self._hover(c, HOLIDAY_BG_HOVER, dl, nl))
             w.bind("<Leave>", lambda e, c=cell, dl=day_lbl, nl=name_lbl:
-                self._cell_hover(c, dl, nl, HOLIDAY_BG))
+                self._hover(c, HOLIDAY_BG, dl, nl))
         if name_tooltip and truncated != name:
             # Geteilter Tooltip über alle drei Widgets — _Tooltip trackt sie
             # gemeinsam, sodass Pointer-Wechsel zwischen Frame und Child-
@@ -1262,33 +1262,18 @@ class App:
         return cell
 
     @staticmethod
-    def _cell_hover(frame, day_lbl, time_lbl, bg):
+    def _hover(frame, bg, *labels):
+        """Faerbt Zelle + uebergebene Labels beim Hover. Die Eck-Overlays
+        (_reservation_marker, macOS-_delete_button) werden mitgefaerbt, sonst
+        bleibt ein andersfarbiges Rechteck stehen. Nur bg — die fg des
+        Loesch-Buttons steuert dessen eigener Enter/Leave-Handler."""
         frame.config(bg=bg)
-        day_lbl.config(bg=bg)
-        time_lbl.config(bg=bg)
-        # Eck-Overlays (Reservierungs-Marker, macOS-Lösch-Button) mitfärben,
-        # sonst bleibt beim Hover ein andersfarbiges Rechteck stehen. Nur bg —
-        # die fg des Lösch-Buttons steuert dessen eigener Enter/Leave-Handler.
-        marker = getattr(frame, "_reservation_marker", None)
-        if marker is not None:
-            marker.config(bg=bg)
-        del_btn = getattr(frame, "_delete_button", None)
-        if del_btn is not None:
-            del_btn.config(bg=bg)
-
-    @staticmethod
-    def _empty_hover(frame, day_lbl, bg):
-        frame.config(bg=bg)
-        day_lbl.config(bg=bg)
-        # Eck-Overlays mitfärben — Nur-Reservierungs-Tage sind Empty-Zellen mit
-        # Marker (und auf macOS zusätzlich dem Lösch-Button); sonst bliebe beim
-        # Hover ein andersfarbiges Rechteck dahinter stehen. Nur bg.
-        marker = getattr(frame, "_reservation_marker", None)
-        if marker is not None:
-            marker.config(bg=bg)
-        del_btn = getattr(frame, "_delete_button", None)
-        if del_btn is not None:
-            del_btn.config(bg=bg)
+        for lbl in labels:
+            lbl.config(bg=bg)
+        for attr in ("_reservation_marker", "_delete_button"):
+            w = getattr(frame, attr, None)
+            if w is not None:
+                w.config(bg=bg)
 
     def _delete_day(self, date_str):
         """Rechtsklick-Löschen für einen Tag. Löscht NIE ohne Bestätigung.
