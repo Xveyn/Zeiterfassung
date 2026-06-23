@@ -386,13 +386,17 @@ class _ImportSummaryDialog:
                 parent=self.top,
             )
             return
-        self.on_change()
+        # themed_showinfo läuft VOR on_change: on_change kann self.parent
+        # zerstören (settings_dialog._after_import ruft dialog.destroy()), und
+        # der Info-Dialog braucht den Parent noch lebendig — sonst TclError:
+        # bad window path name.
         self.top.destroy()
         themed_showinfo(
             self.parent,
             "Importiert",
             f"{total} Datensätze wurden importiert.",
         )
+        self.on_change()
 
 
 class _PerDayDialog:
