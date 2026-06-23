@@ -7,7 +7,6 @@ import datetime
 import logging
 import os
 import platform
-import threading
 import time
 import traceback
 import webbrowser
@@ -1299,13 +1298,13 @@ class App:
             return
         self.sync_status_label.config(text="Synchronisiere…")
         from src.main import _run_push_blocking
-        def _do():
-            result = _run_push_blocking(
+        self._bg.run(
+            lambda: _run_push_blocking(
                 self.storage, self.settings, self.conflicts_store,
                 self.base_path, timeout_seconds=15,
-            )
-            self._marshal_to_ui(lambda: self._on_manual_sync_done(result))
-        threading.Thread(target=_do, daemon=True).start()
+            ),
+            self._on_manual_sync_done,
+        )
 
     def _on_manual_sync_done(self, result):
         if not result.get("ok"):
@@ -1325,14 +1324,13 @@ class App:
         if not self.settings.get("sync_enabled"):
             return
         from src.main import _run_push_blocking
-
-        def _do():
-            result = _run_push_blocking(
+        self._bg.run(
+            lambda: _run_push_blocking(
                 self.storage, self.settings, self.conflicts_store,
                 self.base_path, timeout_seconds=15,
-            )
-            self._marshal_to_ui(lambda: self._on_tray_sync_done(result))
-        threading.Thread(target=_do, daemon=True).start()
+            ),
+            self._on_tray_sync_done,
+        )
 
     def _on_tray_sync_done(self, result):
         # Still aktualisieren, damit der nächste Fenster-Aufruf den Stand zeigt.
