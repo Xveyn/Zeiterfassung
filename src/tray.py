@@ -164,12 +164,16 @@ class TrayIcon:
         try:
             from pystray._util import win32
             handle = getattr(self._icon, "_icon_handle", None)
-            if not handle:
+            # _message ist eine pystray-Interne (nicht im Type-Stub) — wie
+            # _icon_handle per getattr holen: entfernt die Pylance-Warnung und
+            # faellt sauber auf Standard-notify() zurueck, falls sie fehlt.
+            send_message = getattr(self._icon, "_message", None)
+            if not handle or send_message is None:
                 return False
             # Konstanten sind in pystrays win32-Util nicht definiert.
             NIIF_USER = 0x00000004
             NIIF_LARGE_ICON = 0x00000020
-            self._icon._message(
+            send_message(
                 win32.NIM_MODIFY,
                 win32.NIF_INFO,
                 szInfo=message,

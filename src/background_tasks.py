@@ -34,7 +34,10 @@ class BackgroundTaskRunner:
         def worker():
             result = fn()
             if on_done is not None:
-                self._marshal(lambda: on_done(result))
+                # Lokale Bindung: Pyright traegt das None-Narrowing sonst nicht
+                # in die Closure (reportOptionalCall-FP).
+                done = on_done
+                self._marshal(lambda: done(result))
         threading.Thread(target=worker, daemon=True).start()
 
     def refresh_token(self, on_auth_error, on_error):
