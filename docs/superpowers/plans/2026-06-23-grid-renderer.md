@@ -399,6 +399,14 @@ In `src/ui.py` folgende Methoden **komplett löschen** (sie leben jetzt im Rende
 
 **Behalten:** `_refresh` (Shim), `_open_dialog`, `_delete_day`, `_navigate`, `_set_view`, `_update_toggle_style`, `_on_tab_toggle_view`, `_build_header`, `_build_footer`.
 
+**WICHTIG — `_fmt_slot_line`-Aufrufer in `_delete_day`:** `_delete_day` bleibt in `App`, ruft aber `self._fmt_slot_line(s)` an zwei Stellen (~1061, ~1067). Da `_fmt_slot_line` in den Renderer wandert, diese beiden Aufrufe auf den Static der Klasse umstellen (`ui.py` importiert `GridRenderer` aus Step 1):
+```python
+options.append((f"entry:{i}", f"Arbeitszeit  {GridRenderer._fmt_slot_line(s)}"))
+...
+options.append((f"reservation:{i}", f"Reservierung  {GridRenderer._fmt_slot_line(s)}"))
+```
+(`_fmt_slot_line` bleibt `@staticmethod` auf `GridRenderer`.) Per Grep verifizieren, dass `self._fmt_slot_line` danach nirgends mehr in `ui.py` vorkommt.
+
 - [ ] **Step 5: Ungenutzte Imports trimmen**
 
 Per `python -m ruff check src/ui.py` die jetzt ungenutzten Imports finden und entfernen — erwartbar betroffen: aus `src.theme` viele Zell-Farben/-Fonts (z.B. `CELL_BG`, `WEEKEND_BG`, `ENTRY_BG`, `WEEKEND_ENTRY_BG`, `WEEKEND_FG`, `HOLIDAY_*`, `RESERVATION_ACCENT`, `TODAY_ACCENT`, `*_HOVER`, `FONT_TINY`, `_should_show_delete_button`), aus `src.time_utils` ggf. `DAYS_DE`/`get_week_dates`?/`week_spans_months`/`calculate_hours`, `get_holidays`, ggf. `attach_tooltip`, `calendar`. **Nur tatsächlich ungenutzte entfernen** — Namen, die `_navigate`/`_set_view`/`_open_dialog`/`_delete_day`/`_build_header`/`_build_footer` noch nutzen, bleiben (z.B. `get_week_dates` in `_navigate`, `FONT_HEADER`? nein bleibt im Renderer, `ACCENT`/`BG`/`FONT_FOOTER` in `_build_footer`/`_build_header`, `format_iso_date`/`themed_*` in `_delete_day`). Lint entscheidet.
