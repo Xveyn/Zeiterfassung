@@ -458,7 +458,7 @@ class App:
         # die Reihenh\u00f6he folgt sonst dem gr\u00f6\u00dften Kind.
         tk.Label(frame, text="", font=FONT_HEADER, bg=BG, width=0).pack(side=tk.LEFT)
 
-        icon_button(frame, "\u2039", self._prev).pack(side=tk.LEFT)
+        icon_button(frame, "\u2039", lambda: self._navigate(-1)).pack(side=tk.LEFT)
 
         toggle_frame = tk.Frame(frame, bg=BG)
         toggle_frame.pack(side=tk.LEFT, padx=10)
@@ -487,7 +487,7 @@ class App:
             fg=TEXT_MUTED, hover_fg=TEXT,
         ).pack(side=tk.RIGHT)
 
-        self._next_button = icon_button(frame, "\u203a", self._next)
+        self._next_button = icon_button(frame, "\u203a", lambda: self._navigate(+1))
         self._next_button.pack(side=tk.RIGHT, padx=(0, 5))
 
         # --- Sync-Button und Status (Multi-Device-Sync) ---
