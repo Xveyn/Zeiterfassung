@@ -20,10 +20,7 @@ from src.tooltip import attach_tooltip
 from src.drive import DriveAuthError, DriveNetworkError
 from src.version import VERSION, version_label
 from src.updater import (
-    check_latest_release,
-    is_newer,
     pick_asset_url,
-    should_check_today,
     today_iso,
     Release,
 )
@@ -243,40 +240,9 @@ class App:
         )
         self._bg.fetch_sender_email()
         self._update_banner = None
-        self._proactive_update_check()
-        self._proactive_calendar_reconcile()
+        self._bg.check_update(on_result=self._handle_update_check_result)
+        self._bg.reconcile_on_start(on_ok=self._refresh)
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
-
-    def _proactive_update_check(self):
-        """Fragt einmal pro Kalendertag GitHub nach einer neueren Version.
-
-        Der HTTP-Call läuft in einem Daemon-Thread; alle State-Mutationen
-        (Settings-Write, Banner-Aufbau) werden via `root.after(0, ...)` auf
-        den UI-Thread marshallt, damit `Settings.set` nicht parallel zu
-        Schreibvorgängen aus dem Settings-Dialog läuft.
-
-        Fehler werden still verschluckt — Update-Hinweis ist nice-to-have.
-        """
-        if not should_check_today(self.settings.get("last_update_check_at")):
-            return
-
-        def worker():
-            try:
-                release = check_latest_release("MargenHeld/Zeiterfassung")
-                if release is None:
-                    return
-                newer = is_newer(VERSION, release.version)
-            except Exception:
-                # Pure Logik, robust gegen exotische Tags. Bei jedem Fehler:
-                # nichts persistieren, nichts anzeigen — morgen nochmal probieren.
-                # Trace landet im Logfile, falls jemand den Fehler diagnostizieren will.
-                logging.getLogger(__name__).exception("Update-Check fehlgeschlagen")
-                return
-            self._marshal_to_ui(
-                lambda: self._handle_update_check_result(release, newer)
-            )
-
-        threading.Thread(target=worker, daemon=True).start()
 
     def _reservations_active(self):
         """True, wenn Reservierungen angezeigt/bearbeitet werden dürfen: ein
@@ -285,41 +251,6 @@ class App:
         gerendert noch im Tages-Dialog angeboten."""
         return (self.reservation_store is not None
                 and bool(self.settings.get("gcal_enabled")))
-
-    def _proactive_calendar_reconcile(self):
-        """Gleicht beim App-Start die Reservierungen mit dem Google Kalender ab.
-
-        Läuft im Hintergrund. Fehler werden STILL geloggt (ein Offline-Start
-        darf nicht nerven — analog Token-Refresh/Update-Check).
-        """
-        if not self._reservations_active():
-            return
-
-        def worker():
-            from src.main import run_calendar_reconcile
-            result = run_calendar_reconcile(
-                self.reservation_store, self.settings, self.base_path)
-            if result.get("ok"):
-                self._marshal_to_ui(self._refresh)
-
-        threading.Thread(target=worker, daemon=True).start()
-
-    def _trigger_calendar_reconcile(self):
-        """Stößt nach einer Reservierungsänderung den Kalender-Abgleich an.
-
-        Fehler werden hier ALS MESSAGEBOX gezeigt — der User hat aktiv
-        gespeichert und erwartet Feedback (CLAUDE.md: Sendepfad-Fehler sichtbar).
-        """
-        if not self._reservations_active():
-            return
-
-        def worker():
-            from src.main import run_calendar_reconcile
-            result = run_calendar_reconcile(
-                self.reservation_store, self.settings, self.base_path)
-            self._marshal_to_ui(lambda: self._on_reconcile_done(result))
-
-        threading.Thread(target=worker, daemon=True).start()
 
     def _on_reconcile_done(self, result):
         if not result.get("ok"):
@@ -1296,7 +1227,7 @@ class App:
 
         self._refresh()
         if res_touched:
-            self._trigger_calendar_reconcile()
+            self._bg.trigger_reconcile(self._on_reconcile_done)
 
     def _open_dialog(self, date_str):
         if _stray_click_suppressed(getattr(self.root, "_dialog_closed_at", 0),
@@ -1310,7 +1241,7 @@ class App:
             on_change=self._refresh,
             reservation_store=(
                 self.reservation_store if self._reservations_active() else None),
-            trigger_reconcile=self._trigger_calendar_reconcile,
+            trigger_reconcile=lambda: self._bg.trigger_reconcile(self._on_reconcile_done),
         )
 
     def _send(self):
@@ -1367,7 +1298,6 @@ class App:
                           "Synchronisation ist deaktiviert. In den Einstellungen aktivierbar.")
             return
         self.sync_status_label.config(text="Synchronisiere…")
-        import threading
         from src.main import _run_push_blocking
         def _do():
             result = _run_push_blocking(
@@ -1394,7 +1324,6 @@ class App:
         deaktiviert wurde."""
         if not self.settings.get("sync_enabled"):
             return
-        import threading
         from src.main import _run_push_blocking
 
         def _do():

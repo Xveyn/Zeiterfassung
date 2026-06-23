@@ -44,6 +44,29 @@ def test_run_without_on_done_still_executes_fn():
     assert ran.wait(timeout=5)
 
 
+def test_check_update_skips_when_not_due(monkeypatch):
+    import src.background_tasks as bg
+    monkeypatch.setattr(bg, "should_check_today", lambda v: False)
+    called = {"n": 0}
+    monkeypatch.setattr(bg, "check_latest_release",
+                        lambda repo: called.__setitem__("n", called["n"] + 1))
+    r = _runner(settings={"last_update_check_at": None})
+    # settings als dict -> .get reicht; should_check_today ist gepatcht
+    r.check_update(on_result=lambda rel, newer: None)
+    import time
+    time.sleep(0.2)
+    assert called["n"] == 0
+
+
+def test_reconcile_on_start_skips_when_reservations_inactive():
+    ran = {"n": 0}
+    r = _runner(reservations_active=lambda: False)
+    r.reconcile_on_start(on_ok=lambda: ran.__setitem__("n", ran["n"] + 1))
+    import time
+    time.sleep(0.2)
+    assert ran["n"] == 0
+
+
 def test_fetch_sender_email_noop_without_token(tmp_path):
     # base_path ohne token.json -> fetch_user_email darf nicht aufgerufen werden
     import src.background_tasks as bg

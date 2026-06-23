@@ -13,6 +13,8 @@ import threading
 import traceback
 
 from src.mail import fetch_user_email, refresh_token_if_needed, TokenAuthError, TokenNetworkError
+from src.updater import check_latest_release, is_newer, should_check_today
+from src.version import VERSION
 
 log = logging.getLogger(__name__)
 
@@ -91,5 +93,62 @@ class BackgroundTaskRunner:
         def on_done(email):
             if email and email != self._settings.get("sender_email"):
                 self._settings.set("sender_email", email)
+
+        self.run(fn, on_done)
+
+    def check_update(self, on_result):
+        """Fragt 1x pro Kalendertag GitHub nach einer neueren Version. `is_newer`
+        wird bereits im Worker ausgewertet, damit on_result(release, newer) im
+        UI-Thread keine ungeschuetzte Logik mehr ausfuehrt. Fehler still."""
+        if not should_check_today(self._settings.get("last_update_check_at")):
+            return
+
+        def fn():
+            try:
+                release = check_latest_release("MargenHeld/Zeiterfassung")
+                if release is None:
+                    return None
+                return (release, is_newer(VERSION, release.version))
+            except Exception:
+                log.exception("Update-Check fehlgeschlagen")
+                return None
+
+        def on_done(result):
+            if result is None:
+                return
+            release, newer = result
+            on_result(release, newer)
+
+        self.run(fn, on_done)
+
+    def reconcile_on_start(self, on_ok):
+        """Gleicht beim Start die Reservierungen mit dem Google Kalender ab.
+        Fehler werden STILL geloggt (Offline-Start nicht stoeren); bei Erfolg
+        on_ok() im UI-Thread."""
+        if not self._reservations_active():
+            return
+
+        def fn():
+            from src.main import run_calendar_reconcile  # lazy: Circular-Import-Schutz
+            return run_calendar_reconcile(
+                self._reservation_store, self._settings, self._base_path)
+
+        def on_done(result):
+            if result.get("ok"):
+                on_ok()
+
+        self.run(fn, on_done)
+
+    def trigger_reconcile(self, on_done):
+        """Stoesst nach einer Reservierungsaenderung den Abgleich an. Das
+        Ergebnis geht IMMER an on_done(result) (User hat aktiv gespeichert und
+        erwartet Feedback)."""
+        if not self._reservations_active():
+            return
+
+        def fn():
+            from src.main import run_calendar_reconcile  # lazy: Circular-Import-Schutz
+            return run_calendar_reconcile(
+                self._reservation_store, self._settings, self._base_path)
 
         self.run(fn, on_done)
