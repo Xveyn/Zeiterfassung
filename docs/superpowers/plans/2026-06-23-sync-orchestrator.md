@@ -263,9 +263,8 @@ class _FakeLabel:
 
 def _orch(sync_enabled=True, execute_runner=False, get_tray=lambda: None,
           conflicts=0, on_refresh=None):
-    settings = {"sync_enabled": sync_enabled, "last_pull_at": None}
-    settings = MagicMock(get=lambda k, d=None: {"sync_enabled": sync_enabled,
-                                                 "last_pull_at": None}.get(k, d))
+    _vals = {"sync_enabled": sync_enabled, "last_pull_at": None}
+    settings = MagicMock(get=lambda k, d=None: _vals.get(k, d))
     conflicts_store = MagicMock(count_unresolved=lambda: conflicts)
     runner = _FakeRunner(execute=execute_runner)
     orch = SyncOrchestrator(
@@ -535,7 +534,8 @@ In `src/ui.py`:
 
 (b) Die Methoden `_update_sync_status_label`, `_on_sync_clicked`, `_on_manual_sync_done`, `_tray_sync`, `_on_tray_sync_done` **komplett löschen**.
 
-(c) `_quit_with_sync_push` schrumpfen zu:
+(c) `_quit_with_sync_push` schrumpfen zu (das abschließende `self.root.destroy()`
+**muss erhalten bleiben** — sonst hängt die App beim Schließen):
 ```python
     def _quit_with_sync_push(self):
         """Push zum Drive (falls aktiv) und App komplett beenden. Wird vom
@@ -543,6 +543,7 @@ In `src/ui.py`:
         self._sync.push_on_quit()
         if self._tray is not None:
             self._tray.stop()
+        self.root.destroy()
 ```
 
 - [ ] **Step 6: `_apply_tray_setting` + Import-Trim**
