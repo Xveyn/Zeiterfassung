@@ -207,8 +207,8 @@ class App:
         self._apply_always_on_top()
         self._tray = None
         self._apply_tray_setting()
-        self.root.bind("<Left>", lambda e: self._prev())
-        self.root.bind("<Right>", lambda e: self._next())
+        self.root.bind("<Left>", lambda e: self._navigate(-1))
+        self.root.bind("<Right>", lambda e: self._navigate(+1))
         # Tab schaltet zwischen Monat- und Wochenansicht. "break" verhindert
         # die Default-Focus-Traversal, die sonst zwischen den Toggle-Buttons
         # springen würde und das Toggle visuell zerschießt.
@@ -537,34 +537,21 @@ class App:
             footer_frame, "Arbeitszeiten senden", self._send, padx=12,
         ).pack(side=tk.RIGHT)
 
-    def _prev(self):
+    def _navigate(self, direction):
+        """Blättert die Ansicht um `direction` Einheiten (-1 zurück, +1 vor):
+        im Monatsmodus ±1 Monat (mit Jahreswechsel), im Wochenmodus ±7 Tage."""
         if self.view_mode == "month":
-            if self.month == 1:
-                self.month = 12
-                self.year -= 1
+            m = self.month + direction
+            if m < 1:
+                self.month, self.year = 12, self.year - 1
+            elif m > 12:
+                self.month, self.year = 1, self.year + 1
             else:
-                self.month -= 1
+                self.month = m
         else:
-            dates = get_week_dates(self.iso_year, self.current_week)
-            prev_monday = dates[0] - datetime.timedelta(days=7)
-            iso = prev_monday.isocalendar()
-            self.iso_year = iso[0]
-            self.current_week = iso[1]
-        self._refresh()
-
-    def _next(self):
-        if self.view_mode == "month":
-            if self.month == 12:
-                self.month = 1
-                self.year += 1
-            else:
-                self.month += 1
-        else:
-            dates = get_week_dates(self.iso_year, self.current_week)
-            next_monday = dates[0] + datetime.timedelta(days=7)
-            iso = next_monday.isocalendar()
-            self.iso_year = iso[0]
-            self.current_week = iso[1]
+            monday = get_week_dates(self.iso_year, self.current_week)[0] \
+                + datetime.timedelta(days=7 * direction)
+            self.iso_year, self.current_week = monday.isocalendar()[:2]
         self._refresh()
 
     def _on_tab_toggle_view(self, _event=None):
