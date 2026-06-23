@@ -139,6 +139,12 @@ def _delete_action(slots, selected, prefix):
     return "save", keep
 
 
+# Probe-Label-Geometrie zur Zellgroessen-Messung (Month- und Week-Render teilen sie).
+PROBE_WIDTH_WIDE = 12    # ausgeblendetes Wochenende -> breitere Zellen
+PROBE_WIDTH_NARROW = 8   # 7-Spalten-Modus
+PROBE_HEIGHT = 3
+
+
 class App:
     def __init__(self, root, storage, settings, base_path=".", conflicts_store=None,
                  reservation_store=None):
@@ -1053,6 +1059,25 @@ class App:
             if c.get("kind") == "entry" and not c.get("resolved")
         }
 
+    def _cell_layout_metrics(self, frame):
+        """Misst die natuerliche Pixelgroesse einer Standard-Tageszelle (Probe-
+        Label) und liefert die layout-abhaengigen Groessen.
+
+        Bei ausgeblendetem Wochenende (5 statt 7 Spalten) bleibt mehr Horizontal-
+        platz pro Spalte: breitere Zellen und groessere Zeit-/Feiertagsschrift
+        (FONT statt FONT_SMALL), damit z.B. '09:30-17:00' bequem lesbar bleibt.
+        Holiday-Zellen werden spaeter auf `cell_size` fixiert, damit lange
+        Feiertagsnamen die Spalte nicht aufweiten (Header-Reflow/Flackern)."""
+        wide_cells = not self.settings.get("show_weekend")
+        probe_width = PROBE_WIDTH_WIDE if wide_cells else PROBE_WIDTH_NARROW
+        entry_time_font = FONT if wide_cells else FONT_SMALL
+        holiday_name_font = FONT if wide_cells else FONT_SMALL
+        probe = tk.Label(frame, text="", font=FONT, width=probe_width, height=PROBE_HEIGHT)
+        probe.update_idletasks()
+        cell_size = (probe.winfo_reqwidth(), probe.winfo_reqheight())
+        probe.destroy()
+        return cell_size, entry_time_font, holiday_name_font, wide_cells
+
     def _refresh_month(self):
         # In den versteckten Backbuffer bauen, dann via lift() in den Vordergrund
         # holen — verhindert sichtbare leere Fläche zwischen Refreshes.
@@ -1068,28 +1093,8 @@ class App:
         state = self.settings.get("state")
         holidays_map = get_holidays(state, self.year) if state else {}
 
-        # Probe-Label, um die natürliche Pixel-Größe einer Standard-Tageszelle
-        # zu ermitteln. Wird genutzt für:
-        #  (a) Feiertagszellen pixel-fixieren — sonst weiten lange Feiertags-
-        #      namen die Spalte auf, das Grid wächst und der Header-Reflow
-        #      lässt den Monatsnamen flackern.
-        #  (b) konstante Reihenhöhe (minsize unten), damit gepaddete Wochen
-        #      ohne Content nicht zusammenklappen.
-        # Bei ausgeblendeten Wochenenden (5 Spalten statt 7) bleibt mehr
-        # Horizontalplatz pro Spalte — Zellen werden breiter, damit die
-        # Zeit-Zeile in FONT_SMALL statt FONT_TINY lesbar dargestellt wird.
-        wide_cells = not self.settings.get("show_weekend")
-        probe_width = 12 if wide_cells else 8
-        # FONT_SMALL (8pt) statt FONT_TINY (7pt) im 7-Spalten-Modus — Spalten
-        # werden durch sticky="nsew" + columnconfigure(weight=1) über die
-        # Probe-Breite hinaus gestreckt, sodass "09:30-17:00" auch in 8pt
-        # bequem reinpasst und besser lesbar bleibt.
-        entry_time_font = FONT if wide_cells else FONT_SMALL
-        holiday_name_font = FONT if wide_cells else FONT_SMALL
-        probe = tk.Label(new_frame, text="", font=FONT, width=probe_width, height=3)
-        probe.update_idletasks()
-        cell_size = (probe.winfo_reqwidth(), probe.winfo_reqheight())
-        probe.destroy()
+        cell_size, entry_time_font, holiday_name_font, wide_cells = \
+            self._cell_layout_metrics(new_frame)
 
         # Auf 6 Wochen padden, damit die Fensterhöhe zwischen Monaten konstant
         # bleibt und `geometry("")` in `_refresh` keinen sichtbaren Resize auslöst.
@@ -1158,18 +1163,8 @@ class App:
             for y in {dates[0].year, dates[-1].year}:
                 holidays_map.update(get_holidays(state, y))
 
-        # Probe-Label, um die natürliche Pixel-Größe einer Standard-Wochenzelle
-        # zu ermitteln. Holiday-Zellen werden auf diese Größe fixiert, damit
-        # längere Feiertagsnamen die Spalte nicht aufweiten.
-        # Bei ausgeblendeten Wochenenden: breitere Zellen + größere Time-Schrift.
-        wide_cells = not self.settings.get("show_weekend")
-        probe_width = 12 if wide_cells else 8
-        entry_time_font = FONT if wide_cells else FONT_SMALL
-        holiday_name_font = FONT if wide_cells else FONT_SMALL
-        probe = tk.Label(new_frame, text="", font=FONT, width=probe_width, height=3)
-        probe.update_idletasks()
-        cell_size = (probe.winfo_reqwidth(), probe.winfo_reqheight())
-        probe.destroy()
+        cell_size, entry_time_font, holiday_name_font, wide_cells = \
+            self._cell_layout_metrics(new_frame)
 
         n = self._visible_day_count()
         # Einmal pro Render berechnen, nicht pro Zelle.
