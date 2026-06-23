@@ -45,7 +45,7 @@ class GridRenderer:
         self._reservations_active = reservations_active  # () -> bool
         # Rendering-State:
         self.grid_container = None
-        self._grid_frames = None
+        self._grid_frames = []
         self._active_grid_idx = 0
         self._grid_frame = None
         self._header_label = None
@@ -54,12 +54,13 @@ class GridRenderer:
         self._suppress_geometry = False
         self._last_refresh_view = None
         self._last_refresh_columns = None
-        # Transienter Datum/View-Stand (von refresh gesetzt):
-        self._view_mode = None
-        self._year = None
-        self._month = None
-        self._iso_year = None
-        self._current_week = None
+        # Transienter Datum/View-Stand (von refresh gesetzt; Defaults nur
+        # Platzhalter, refresh() ueberschreibt sie vor jedem Render).
+        self._view_mode = "month"
+        self._year = 0
+        self._month = 0
+        self._iso_year = 0
+        self._current_week = 0
 
     def build_grid(self, parent):
         # Double-Buffer: zwei dauerhafte Frames im selben Grid-Slot. Refresh
@@ -84,7 +85,8 @@ class GridRenderer:
         self._header_label = header_label
         self._footer_label = footer_label
 
-    def refresh(self, view_mode, year, month, iso_year, current_week):
+    def refresh(self, view_mode: str, year: int, month: int,
+                iso_year: int, current_week: int):
         self._view_mode = view_mode
         self._year = year
         self._month = month
@@ -124,7 +126,8 @@ class GridRenderer:
                 width = max(self._fixed_width or 0, self._root.winfo_reqwidth())
                 self._root.geometry(f"{width}x{self._root.winfo_reqheight()}")
 
-    def measure_max_width(self, view_mode, year, month, iso_year, current_week):
+    def measure_max_width(self, view_mode: str, year: int, month: int,
+                          iso_year: int, current_week: int):
         """Pre-warm: rendert alle 4 (view × show_weekend)-Kombinationen einmal
         in den versteckten Backbuffer und merkt die maximale reqwidth intern
         (self._fixed_width). show_weekend wird über _data temporär mutiert
