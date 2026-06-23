@@ -16,7 +16,7 @@ from src.time_utils import (
 )
 from src.holidays_de import get_holidays
 from src.tooltip import attach_tooltip
-from src.drive import DriveAuthError, DriveNetworkError
+
 from src.version import VERSION, version_label
 from src.updater import (
     pick_asset_url,
@@ -25,6 +25,7 @@ from src.updater import (
 )
 
 from src.background_tasks import BackgroundTaskRunner
+from src.sync_orchestrator import _classify_sync_error, _show_sync_error
 from src.dialogs.entry_dialog import open_entry_dialog
 from src.dialogs.send_dialog import open_send_dialog
 from src.dialogs.settings_dialog import open_settings_dialog
@@ -40,80 +41,6 @@ from src.theme import (
     icon_button, label_button, secondary_button, set_toggle_active, toggle_button,
     _stray_click_suppressed,
 )
-
-
-def _classify_sync_error(error):
-    """Kategorisiert einen Google-Sync/Reconcile-Fehler als 'auth', 'network'
-    oder 'unknown'. `error` kann eine Exception oder ein String sein (der
-    Push-/Reconcile-Pfad liefert str(e), der Pull-Pfad das Exception-Objekt).
-    Der abgelaufene/widerrufene Token kommt als invalid_grant durch — sowohl
-    bei Drive als auch beim Kalender, da beide denselben OAuth-Token nutzen.
-    Ein 403 'insufficient authentication scopes' / 'insufficientPermissions'
-    ist ebenfalls ein Auth-Fall (Token deckt einen Scope nicht ab → Re-Consent):
-    im String-Pfad fehlt die Typinfo, daher zusätzlich per Textmuster erkannt."""
-    text = str(error)
-    if (isinstance(error, DriveAuthError)
-            or "invalid_grant" in text
-            or "expired or revoked" in text
-            or "insufficientPermissions" in text
-            or "insufficient authentication scopes" in text):
-        return "auth"
-    if isinstance(error, DriveNetworkError):
-        return "network"
-    return "unknown"
-
-
-def _friendly_sync_message(error, tb=""):
-    """Mappt einen Drive-Sync-Fehler auf (Titel, Meldung) für die Messagebox.
-
-    Bekannte, erwartbare Fälle (abgelaufener/​widerrufener Token, fehlendes Netz)
-    bekommen eine verständliche Meldung OHNE Traceback. Nur bei wirklich
-    unerwarteten Fehlern bleibt der Traceback erhalten (CLAUDE.md: Fehler im
-    Sendepfad sichtbar machen)."""
-    from src.sync import NEWER_REMOTE_VERSION_MSG
-    if str(error) == NEWER_REMOTE_VERSION_MSG:
-        return ("Update erforderlich", NEWER_REMOTE_VERSION_MSG, True)
-
-    kind = _classify_sync_error(error)
-
-    if kind == "auth":
-        return (
-            "Google-Verbindung erneuern",
-            "Die App braucht erneut deine Erlaubnis für Google Drive. Das "
-            "passiert, wenn die Verbindung abgelaufen oder widerrufen wurde "
-            "oder eine neue Freigabe nötig ist.\n\nBitte öffne die "
-            "Einstellungen und klicke auf „Google neu verbinden\" — danach "
-            "im Browser die Freigabe bestätigen.",
-            True,
-        )
-    if kind == "network":
-        return (
-            "Keine Internetverbindung",
-            "Die Synchronisation mit Google Drive ist fehlgeschlagen, weil "
-            "keine Verbindung zum Internet besteht.\n\nBitte prüfe deine "
-            "Verbindung und versuche es erneut.",
-            True,
-        )
-    detail = f"{error}\n\n{tb}" if tb else str(error)
-    return (
-        "Synchronisation fehlgeschlagen",
-        "Bei der Synchronisation mit Google Drive ist ein unerwarteter "
-        f"Fehler aufgetreten:\n\n{detail}",
-        False,
-    )
-
-
-def _show_sync_error(parent, error, tb="", suffix=""):
-    """Zeigt einen Sync-Fehler im passenden Stil: bekannte Fälle (Token/Netz)
-    als themed Info-Dialog (wie die Gmail-Token-Meldung), unerwartete Fehler
-    als `showerror` mit Traceback (CLAUDE.md). `suffix` wird optional angehängt."""
-    title, message, known = _friendly_sync_message(error, tb)
-    if suffix:
-        message = f"{message}\n\n{suffix}"
-    if known:
-        themed_showinfo(parent, title, message)
-    else:
-        messagebox.showerror(title, message)
 
 
 def _delete_action(slots, selected, prefix):
