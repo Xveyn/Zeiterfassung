@@ -15,7 +15,7 @@ from src.theme import (
     apply_app_icon, apply_dark_titlebar, attach_unfocus_on_click,
     center_dialog_on_parent, disable_min_max,
     dark_entry, primary_button, secondary_button,
-    set_primary_button_enabled, themed_showinfo,
+    set_primary_button_enabled, themed_showerror, themed_showinfo,
 )
 
 
@@ -32,11 +32,11 @@ def open_share_dialog(parent, storage, settings, base_path, reservation_store=No
         reservation_store.get_all() if reservation_store is not None else {})
 
     if not entries and not reservations:
-        messagebox.showinfo(
+        themed_showinfo(
+            parent,
             "Nichts zum Teilen",
             "Es sind weder Arbeitszeiten noch Reservierungen zum Teilen "
             "vorhanden.",
-            parent=parent,
         )
         return
 
@@ -146,10 +146,10 @@ def open_share_dialog(parent, storage, settings, base_path, reservation_store=No
             return
         share_recipient = recipient_var.get().strip()
         if not share_recipient:
-            messagebox.showerror(
+            themed_showerror(
+                dialog,
                 "Empfänger fehlt",
                 "Bitte eine E-Mail-Adresse angeben.",
-                parent=dialog,
             )
             return
         sender_email = settings.get("sender_email") or ""
@@ -205,17 +205,17 @@ def open_share_dialog(parent, storage, settings, base_path, reservation_store=No
                 f"{what} wurden an {share_recipient} gesendet.",
             )
         except FileNotFoundError as e:
-            messagebox.showerror("Fehler", str(e), parent=dialog)
+            themed_showerror(dialog, "Fehler", str(e))
         except Exception as e:
             logging.getLogger(__name__).exception("Teilen fehlgeschlagen")
             if is_offline_error(e):
-                messagebox.showerror(
+                themed_showerror(
+                    dialog,
                     "Keine Internetverbindung",
                     "Die Daten konnten nicht gesendet werden, weil keine "
                     "Verbindung zum Internet besteht.\n\n"
                     "Bitte prüfe deine Internetverbindung und versuche es "
                     "dann erneut.",
-                    parent=dialog,
                 )
             else:
                 messagebox.showerror(
