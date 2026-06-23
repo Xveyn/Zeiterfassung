@@ -22,7 +22,7 @@ from src.theme import (
     BG, CELL_BG, FONT, FONT_SMALL, TEXT, TEXT_MUTED,
     apply_app_icon, apply_combobox_style, apply_dark_titlebar,
     attach_unfocus_on_click, center_dialog_on_parent, disable_min_max,
-    dark_combo, primary_button, secondary_button, themed_showinfo,
+    dark_combo, primary_button, secondary_button, themed_showerror, themed_showinfo,
 )
 
 
@@ -41,17 +41,17 @@ def open_import_dialog(parent, storage, settings, on_change, reservation_store=N
         with open(path, "rb") as f:
             raw = f.read()
     except OSError as e:
-        messagebox.showerror(
-            "Datei nicht lesbar", f"{type(e).__name__}: {e}", parent=parent)
+        themed_showerror(
+            parent, "Datei nicht lesbar", f"{type(e).__name__}: {e}")
         return
 
     try:
         doc = parse_share_doc(raw)
     except ShareValidationError as e:
-        messagebox.showerror(
+        themed_showerror(
+            parent,
             "Datei ungültig",
             f"Die Datei kann nicht importiert werden:\n\n{e.reason}",
-            parent=parent,
         )
         return
 
@@ -61,10 +61,10 @@ def open_import_dialog(parent, storage, settings, on_change, reservation_store=N
         reservations = {}
 
     if not entries and not reservations:
-        messagebox.showinfo(
+        themed_showinfo(
+            parent,
             "Leere Datei",
             "Die Datei enthält keine importierbaren Daten.",
-            parent=parent,
         )
         return
 
@@ -319,10 +319,10 @@ class _ImportSummaryDialog:
     def _on_next(self):
         d_from, d_to = self._get_range()
         if d_from is None:
-            messagebox.showerror(
+            themed_showerror(
+                self.top,
                 "Ungültiger Zeitraum",
                 "Das Von-Datum muss vor dem Bis-Datum liegen.",
-                parent=self.top,
             )
             return
 
@@ -354,10 +354,10 @@ class _ImportSummaryDialog:
                 planned.append((lambda dec: apply_reservation_import(self.reservation_store, dec), decisions))
 
         if not planned:
-            messagebox.showinfo(
+            themed_showinfo(
+                self.top,
                 "Nichts zu importieren",
                 "Im gewählten Zeitraum gibt es nichts zu übernehmen.",
-                parent=self.top,
             )
             return
 
