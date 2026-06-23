@@ -75,12 +75,14 @@ def _run_pull_in_background(storage, settings, conflicts_store, base, ui_callbac
                         "Quarantine rename failed for %s", fid, exc_info=True)
             remote_doc = _parse_remote_or_quarantine(content, file_id, _quarantine)
         if sync._remote_is_newer(remote_doc):
-            # Ein neueres Gerät hat ein Doc-Format geschrieben, das diese
-            # Version nicht versteht. NICHT mergen (würde in apply_merge
-            # crashen) und NICHT pushen (würde das neuere Doc überschreiben) —
-            # Pull sauber abbrechen, last_pull_at/etag unverändert lassen.
+            # Neueres (zukünftiges) Schema: NICHT mergen/pushen — Pull sauber
+            # abbrechen, last_pull_at/etag unverändert lassen.
             ui_callback(ok=False, error=sync.NEWER_REMOTE_VERSION_MSG, tb="")
             return
+        # Älteres Remote (v1/v2) wird aufs aktuelle Schema migriert und normal
+        # gemergt (absorb-and-upgrade). Dass ältere Geräte ein hochgezogenes
+        # v3-Doc nicht überschreiben, sichert deren Push-Guard (ab v1.15.2).
+        remote_doc = sync.migrate_doc_to_v3(remote_doc)
         local_doc = sync.build_local_doc(storage, settings, conflicts_store)
         merged = sync.merge(local_doc, remote_doc, settings.get("last_pull_at") or "")
         sync.apply_merged_doc(merged, storage, settings, conflicts_store)
@@ -131,6 +133,9 @@ def _run_push_blocking(storage, settings, conflicts_store, base, timeout_seconds
                     return
             else:
                 remote_doc = {"schema_version": 1, "entries": {}, "settings": {}, "conflicts": []}
+            # Älteres Remote (v1/v2) absorbieren: aufs aktuelle Schema migrieren,
+            # dann mergen — sonst gingen v2-only-Stände beim Upload verloren.
+            remote_doc = sync.migrate_doc_to_v3(remote_doc)
             local_doc = sync.build_local_doc(storage, settings, conflicts_store)
             merged = sync.merge(local_doc, remote_doc, settings.get("last_pull_at") or "")
             sync.apply_merged_doc(merged, storage, settings, conflicts_store)
@@ -157,15 +162,14 @@ def _run_push_blocking(storage, settings, conflicts_store, base, timeout_seconds
 
 
 def _run_compaction_blocking(storage, settings, conflicts_store, base, timeout_seconds=20):
-    """User-ausgelöste Kompaktierung: frischer Pull → v1-Guard → Merge →
+    """User-ausgelöste Kompaktierung: frischer Pull → Alt-Client-Guard → Merge →
     Watermark setzen + lokal strippen → Push. Liefert
     {"ok": bool, "reason": str, "error": ..., "tb": ...}.
 
-    reason == "old_version": ein älteres Gerät ist aktiv (Remote ist pre-v2),
-    Kompaktierung abgebrochen, KEINE Änderung vorgenommen.
     reason == "newer_version": ein neueres Gerät hat ein Schema geschrieben, das
     diese Version nicht versteht — Kompaktierung abgebrochen, kein Merge/Upload
-    (sonst Crash in apply_merge bzw. Überschreiben des neueren Docs)."""
+    (sonst würde das neuere Doc überschrieben). Ältere Remote-Docs (v1/v2) werden
+    wie bei Pull/Push aufs aktuelle Schema migriert."""
     import json
     from src import drive, sync
 
@@ -185,13 +189,8 @@ def _run_compaction_blocking(storage, settings, conflicts_store, base, timeout_s
                     remote_doc = json.loads(content)
                 except (json.JSONDecodeError, ValueError):
                     remote_doc = {"schema_version": 1}
-                # Guards auf dem FRISCH gepullten Doc (nie gecacht):
-                if sync._remote_is_pre_v2(remote_doc):
-                    result.update({"ok": False, "reason": "old_version"})
-                    return
-                # Forward-Compat: neueres Schema nicht mergen/überschreiben
-                # (analog zu Pull/Push) — sonst crasht apply_merge bzw. das
-                # neuere Remote-Doc würde beim Upload geplättet.
+                # Neueres Schema (>v3) auf dem FRISCH gepullten Doc: nicht
+                # mergen/überschreiben — Kompaktierung abbrechen.
                 if sync._remote_is_newer(remote_doc):
                     result.update({"ok": False, "reason": "newer_version"})
                     return
@@ -199,6 +198,8 @@ def _run_compaction_blocking(storage, settings, conflicts_store, base, timeout_s
                 remote_doc = {"schema_version": 2, "entries": {}, "settings": {},
                               "conflicts": [], "meta": {"gc_watermark": ""}}
 
+            # Älteres Remote (v1/v2) absorbieren: aufs aktuelle Schema migrieren.
+            remote_doc = sync.migrate_doc_to_v3(remote_doc)
             # 1) normaler Merge des frischen Remote-Stands
             now = sync._utc_now_iso()
             local_doc = sync.build_local_doc(storage, settings, conflicts_store)
@@ -283,10 +284,19 @@ def main():
     if settings.get("sync_enabled"):
         def _on_sync_done(ok, error, tb=""):
             def apply():
-                if ok:
-                    app.on_sync_pull_success()
-                else:
-                    app.on_sync_pull_error(error, tb)
+                # Der Startup-Sync läuft im Daemon-Thread und marshallt sein
+                # Ergebnis via after(0) zurück. Schließt der Nutzer das Fenster,
+                # bevor dieser Callback feuert, ist der Tk-Interpreter bereits
+                # zerstört — jeder winfo-/config-Aufruf wirft dann
+                # "application has been destroyed". Der Callback ist dann
+                # gegenstandslos und wird verworfen (vgl. tooltip.py).
+                try:
+                    if ok:
+                        app.on_sync_pull_success()
+                    else:
+                        app.on_sync_pull_error(error, tb)
+                except tk.TclError:
+                    pass
             root.after(0, apply)
         threading.Thread(
             target=_run_pull_in_background,

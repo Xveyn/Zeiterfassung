@@ -8,7 +8,7 @@ WEEKDAY_KEYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")  # Index = date
 SYNCED_SETTING_KEYS = (
     "recipient", "name", "hourly_rate",
     "mail_subject", "mail_greeting", "mail_content", "mail_closing",
-    "gcal_calendar_id",
+    "gcal_calendar_id", "categories", "category_times",
 )
 
 DEFAULTS = {
@@ -51,6 +51,8 @@ DEFAULTS = {
     "gcal_enabled": False,
     "gcal_calendar_id": "",
     "last_calendar_sync_at": "",
+    "categories": [],
+    "category_times": {},
 }
 
 _COERCE_FAILED = object()

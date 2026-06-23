@@ -1,5 +1,35 @@
 # Changelog
 
+## 1.16.0 — 2026-06-23
+
+### Hinzugefügt
+- Mehrere Zeitblöcke pro Tag mit eigenen Kategorien — für Arbeitszeiten und
+  Reservierungen. Pro Kategorie lassen sich Standard-Start/-Ende und -Pause
+  hinterlegen („Kategorien verwalten"), die beim Anlegen neuer Slots automatisch
+  greifen.
+- Im Bericht: Kategorie-Spalte, Tages-Summen und eine „Summe je Kategorie".
+  Beim Senden und Teilen lässt sich nach Kategorie filtern.
+- Reservierungen erzeugen je Slot ein eigenes Google-Kalender-Event (Kategorie
+  im Titel).
+
+### Geändert
+- Der Footer- und Tray-Eintrag „Monat senden" heißt jetzt „Arbeitszeiten
+  senden".
+- Bestehende Einträge und Reservierungen werden beim ersten Start automatisch
+  ins neue Format übernommen — wer keine Kategorien oder mehrere Slots nutzt,
+  merkt nichts.
+
+### Behoben
+- Das Setzen einer Kategorie überschreibt gespeicherte Slot-Zeiten nicht mehr.
+- Bearbeiten einer Reservierung aktualisiert das bestehende Kalender-Event,
+  statt es zu löschen und neu anzulegen.
+- Fehlt `credentials.json`, erscheint auch beim Absender-„Anmelden/
+  Aktualisieren" der freundliche Hinweis mit „Datenordner öffnen".
+- Multi-Geräte-Sync zwischen unterschiedlichen App-Versionen überschreibt keine
+  Daten mehr: ein neueres Datenformat wird auf älteren Geräten pausiert
+  („Update erforderlich"), ein neueres Gerät übernimmt ein älteres Drive-
+  Dokument verlustfrei und zieht es aufs neue Format hoch.
+
 ## 1.15.2 — 2026-06-23
 
 ### Behoben

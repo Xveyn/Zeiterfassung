@@ -7,13 +7,25 @@ from src.theme import apply_app_icon
 from src.time_utils import format_iso_datetime
 
 
+def _fmt_slot(slot):
+    kat = f" {slot['kategorie']}" if slot.get("kategorie") else ""
+    return f"{slot.get('start', '')}—{slot.get('end', '')} (P{slot.get('pause', 0)}){kat}"
+
+
+def _entry_chosen(cand):
+    """Baut den chosen-Wert für sync.resolve_conflict aus einem Entry-Kandidaten:
+    die Slot-Liste + das deleted-Flag (kein Top-Level start/end/pause mehr)."""
+    return {"slots": cand.get("slots", []), "deleted": cand.get("deleted", False)}
+
+
 def _fmt_entry_candidate(cand):
     when = format_iso_datetime(cand.get("modified_at", ""), fallback="")
+    dev = cand.get("device_id", "?")[:8]
     if cand.get("deleted"):
-        return f"GELÖSCHT (von {cand.get('device_id', '?')[:8]}…, {when})"
-    return (f"{cand.get('start', '')}—{cand.get('end', '')} "
-            f"(Pause {cand.get('pause', 0)} min, von "
-            f"{cand.get('device_id', '?')[:8]}…, {when})")
+        return f"GELÖSCHT (von {dev}…, {when})"
+    slots = cand.get("slots", [])
+    body = ", ".join(_fmt_slot(s) for s in slots) if slots else "(leer)"
+    return f"{body} (von {dev}…, {when})"
 
 
 def _fmt_setting_candidate(cand):
@@ -96,12 +108,7 @@ class ConflictsDialog:
         c = self._selected
         cand = c["candidates"][idx]
         if c["kind"] == "entry":
-            chosen = {
-                "start": cand.get("start"),
-                "end": cand.get("end"),
-                "pause": cand.get("pause", 0),
-                "deleted": cand.get("deleted", False),
-            }
+            chosen = _entry_chosen(cand)
         else:
             chosen = {"value": cand.get("value")}
         device_id = self.settings.get("device_id") or ""

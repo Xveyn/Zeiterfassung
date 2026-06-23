@@ -115,20 +115,30 @@ gelöscht wird. Gebunden an `<Button-3>` auf allen Zelltypen
 Der Tages-Dialog (`src/dialogs/entry_dialog.py`) ist deshalb bewusst **rein
 zum Speichern** — er hat **keine** Lösch-Buttons.
 
+Das gilt auch für die Multi-Slot-Zeilen: das per-Zeile-**×** erscheint **nur an
+neu hinzugefügten, noch nicht gespeicherten** Slots (über „+ Slot"). Bereits
+gespeicherte Ist-/Reservierungs-Slots tragen **kein ×** — sie lassen sich im
+Dialog editieren/überschreiben, aber **nicht löschen**. Löschen gespeicherter
+Slots läuft ausschließlich über den Rechtsklick im Kalender (mit Slot-Auswahl).
+Gesteuert über den `removable`-Parameter von `add_ist_row`/`add_res_row`.
+
 **Plattform-Ausnahme macOS:** Tkinters Maustasten-Nummerierung macht den
 Rechtsklick (`<Button-3>`) auf macOS unzuverlässig (Sekundärklick ist je nach
 Tk-Version `<Button-2>` bzw. Control-Klick). Damit Löschen auf dem Mac
-überhaupt erreichbar bleibt, behält der Dialog **dort** seine Lösch-Buttons
-(„Löschen" / „Reservierung löschen"). Gesteuert über
-`_SHOW_DELETE_IN_DIALOG = platform.system() == "Darwin"` in `entry_dialog.py`.
-Auf Windows/Linux ist Löschen ausschließlich der Rechtsklick.
+erreichbar bleibt, zeigt die Tageszelle **dort** ein kleines ✕ oben links,
+sobald der Tag löschbare Einheiten hat (Ist-Zeit oder aktive Reservierung).
+Der ✕-Button löst denselben Lösch-Pfad wie der Rechtsklick aus
+(`App._delete_day` inkl. Bestätigung/Slot-Auswahl). Gesteuert über
+`_should_show_delete_button` (`theme.py`) + `App._add_delete_button` (`ui.py`).
+Der Tages-Dialog hat auf **allen** Plattformen keine Lösch-Buttons. Auf
+Windows/Linux ist Löschen ausschließlich der Rechtsklick.
 
 Neue Lösch-/Rechtsklick-Stellen müssen dieses Modell einhalten (kein zweiter
 Lösch-Pfad im Linksklick-Dialog auf Win/Linux).
 
 ## Tests / CI
 
-`.github/workflows/test.yml` installiert gezielt nur die Pakete, die die Tests brauchen (`pytest`, `holidays`), **nicht** `requirements.txt`. Grund: `pycairo` (transitive Dep von `xhtml2pdf`) braucht Cairo-Systemheader auf Ubuntu und bricht sonst den CI-Build. Der Import von `xhtml2pdf` in `src/report.py::generate_pdf` ist lazy, daher laufen die Report-Tests ohne die Lib. `holidays` ist pure Python ohne C-Deps und problemlos installierbar.
+`.github/workflows/test.yml` installiert gezielt nur die Pakete, die die Tests brauchen (`pytest`, `holidays==0.99`, `google-api-python-client`, `google-auth`, `google-auth-oauthlib`), **nicht** `requirements.txt`. Grund: `pycairo` (transitive Dep von `xhtml2pdf`) braucht Cairo-Systemheader auf Ubuntu und bricht sonst den CI-Build. Der Import von `xhtml2pdf` in `src/report.py::generate_pdf` ist lazy, daher laufen die Report-Tests ohne die Lib. `holidays` und die Google-Libs sind pure Python ohne C-Deps und problemlos installierbar — letztere sind nötig, weil Tests `src.ui` importieren (z.B. `tests/test_ui_delete.py`), dessen Importkette die Google-Wrapper zieht. Ein zweiter Job läuft `ruff check .` (Lint).
 
 Lokal: `pytest` aus dem Repo-Root. Alle Tests müssen vor dem PR-Merge grün sein.
 

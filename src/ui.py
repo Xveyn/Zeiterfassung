@@ -34,6 +34,7 @@ from src.dialogs.send_dialog import open_send_dialog
 from src.dialogs.settings_dialog import open_settings_dialog
 from src.theme import (
     BG, CELL_BG, WEEKEND_BG, ACCENT, ACCENT_HOVER, TEXT, TEXT_MUTED,
+    _should_show_delete_button,
     ENTRY_BG, WEEKEND_ENTRY_BG, WEEKEND_FG,
     HOLIDAY_BG, HOLIDAY_BG_HOVER, HOLIDAY_ACCENT,
     RESERVATION_ACCENT, TODAY_ACCENT,
@@ -117,6 +118,25 @@ def _show_sync_error(parent, error, tb="", suffix=""):
         themed_showinfo(parent, title, message)
     else:
         messagebox.showerror(title, message)
+
+
+def _delete_action(slots, selected, prefix):
+    """Entscheidet beim Rechtsklick-Löschen, was mit einem Typ (Arbeitszeit
+    bzw. Reservierung) passiert.
+
+    `selected` ist die Menge angehakter Keys; pro Typ entweder '<prefix>:all'
+    (ganzer Typ) oder '<prefix>:<index>' (einzelne Slots). Liefert (action,
+    keep): 'none' (Typ nicht betroffen) / 'delete' (Tag-Typ ganz löschen) /
+    'save' (mit den verbleibenden Slots überschreiben)."""
+    keys = {k for k in selected if k.startswith(prefix + ":")}
+    if not keys:
+        return "none", None
+    if f"{prefix}:all" in keys:
+        return "delete", None
+    keep = [s for i, s in enumerate(slots) if f"{prefix}:{i}" not in keys]
+    if not keep:
+        return "delete", None
+    return "save", keep
 
 
 class App:
@@ -223,7 +243,7 @@ class App:
                 )
             except TokenAuthError as e:
                 msg = str(e)
-                self.root.after(0, lambda: themed_showinfo(
+                self._marshal_to_ui(lambda: themed_showinfo(
                     self.root,
                     "Gmail-Anmeldung abgelaufen",
                     "Der Gmail-Token konnte nicht automatisch erneuert werden:\n\n"
@@ -235,7 +255,7 @@ class App:
             except Exception as e:
                 logging.getLogger(__name__).exception("Token-Refresh fehlgeschlagen")
                 err = f"{type(e).__name__}: {e}\n\n{traceback.format_exc()}"
-                self.root.after(0, lambda: themed_showinfo(
+                self._marshal_to_ui(lambda: themed_showinfo(
                     self.root, "Token-Refresh fehlgeschlagen", err
                 ))
 
@@ -265,7 +285,7 @@ class App:
                 logging.getLogger(__name__).exception("sender_email-Fetch fehlgeschlagen")
                 return
             if email and email != self.settings.get("sender_email"):
-                self.root.after(0, lambda: self.settings.set("sender_email", email))
+                self._marshal_to_ui(lambda: self.settings.set("sender_email", email))
 
         threading.Thread(target=worker, daemon=True).start()
 
@@ -294,8 +314,8 @@ class App:
                 # Trace landet im Logfile, falls jemand den Fehler diagnostizieren will.
                 logging.getLogger(__name__).exception("Update-Check fehlgeschlagen")
                 return
-            self.root.after(
-                0, lambda: self._handle_update_check_result(release, newer)
+            self._marshal_to_ui(
+                lambda: self._handle_update_check_result(release, newer)
             )
 
         threading.Thread(target=worker, daemon=True).start()
@@ -322,7 +342,7 @@ class App:
             result = run_calendar_reconcile(
                 self.reservation_store, self.settings, self.base_path)
             if result.get("ok"):
-                self.root.after(0, self._refresh)
+                self._marshal_to_ui(self._refresh)
 
         threading.Thread(target=worker, daemon=True).start()
 
@@ -339,7 +359,7 @@ class App:
             from src.main import run_calendar_reconcile
             result = run_calendar_reconcile(
                 self.reservation_store, self.settings, self.base_path)
-            self.root.after(0, lambda: self._on_reconcile_done(result))
+            self._marshal_to_ui(lambda: self._on_reconcile_done(result))
 
         threading.Thread(target=worker, daemon=True).start()
 
@@ -511,10 +531,10 @@ class App:
         self.footer_label.pack(side=tk.LEFT, expand=True)
 
         secondary_button(
-            footer_frame, "Teilen…", self._share, padx=12,
+            footer_frame, "Teilen", self._share, padx=12,
         ).pack(side=tk.RIGHT, padx=(0, 4))
         secondary_button(
-            footer_frame, "Monat senden", self._send, padx=12,
+            footer_frame, "Arbeitszeiten senden", self._send, padx=12,
         ).pack(side=tk.RIGHT)
 
     def _prev(self):
@@ -662,9 +682,9 @@ class App:
                 on_show=lambda: self.root.after(0, self._restore_from_tray),
                 on_quit=lambda: self.root.after(0, self._quit_with_sync_push),
                 actions=[
-                    ("Monat senden",
+                    ("Arbeitszeiten senden",
                      lambda: self.root.after(0, self._send), None),
-                    ("Teilen…",
+                    ("Teilen",
                      lambda: self.root.after(0, self._share), None),
                     ("Mit Google Drive synchronisieren",
                      lambda: self.root.after(0, self._tray_sync),
@@ -692,6 +712,27 @@ class App:
         self.root.deiconify()
         self.root.lift()
         self.root.focus_force()
+
+    def _marshal_to_ui(self, fn):
+        """Marshallt `fn` aus einem Daemon-Worker auf den Tk-Thread via
+        after(0) und verwirft den Aufruf still, falls das Fenster
+        zwischenzeitlich geschlossen wurde.
+
+        Hintergrund-Threads (Sync-Pull, Reconcile, Update-Check, Token-
+        Refresh) planen ihr Ergebnis per after(0). Schließt der Nutzer das
+        Fenster, bevor der Callback feuert, läuft er gegen den zerstörten
+        Tk-Interpreter -> "application has been destroyed" (TclError). Sowohl
+        das Einplanen als auch das spätere Ausführen werden daher gegen
+        TclError abgesichert (vgl. tooltip.py)."""
+        def guarded():
+            try:
+                fn()
+            except tk.TclError:
+                pass
+        try:
+            self.root.after(0, guarded)
+        except tk.TclError:
+            pass
 
     def _refresh(self):
         if self.view_mode == "month":
@@ -795,8 +836,16 @@ class App:
         # pixel-fixierte Standardzelle (width=8 in FONT) reinpasst. Wenn der
         # Caller eine breitere Zelle nutzt (z.B. bei ausgeblendeten Wochenenden
         # mit width=11), kann eine größere Schrift übergeben werden.
+        slots = entry.get("slots", [])
+        if slots:
+            first = slots[0]
+            time_text = f"{first['start']}-{first['end']}"
+            if len(slots) > 1:
+                time_text += f"  +{len(slots) - 1}"
+        else:
+            time_text = ""
         time_lbl = tk.Label(
-            cell, text=f"{entry['start']}-{entry['end']}",
+            cell, text=time_text,
             font=time_font, bg=bg, fg=TEXT_MUTED, cursor="hand2",
         )
         time_lbl.pack(pady=(0, pad))
@@ -806,6 +855,13 @@ class App:
             w.bind("<Enter>", lambda e, c=cell, dl=day_lbl, tl=time_lbl, hb=hover_bg: self._cell_hover(c, dl, tl, hb))
             w.bind("<Leave>", lambda e, c=cell, dl=day_lbl, tl=time_lbl, ob=bg: self._cell_hover(c, dl, tl, ob))
         return cell
+
+    @staticmethod
+    def _fmt_slot_line(slot):
+        """Eine Tooltip-Zeile für einen Slot: 'HH:MM-HH:MM  Kategorie'
+        (Kategorie weggelassen, wenn leer)."""
+        kat = f"  {slot['kategorie']}" if slot.get("kategorie") else ""
+        return f"{slot['start']}-{slot['end']}{kat}"
 
     def _add_reservation_marker(self, cell):
         """Runder violetter Eck-Punkt auf einer Ist-Zeitzelle, die zusätzlich
@@ -826,6 +882,30 @@ class App:
         )
         marker.place(relx=1.0, x=-3, y=3, anchor="ne")
         cell._reservation_marker = marker
+
+    def _add_delete_button(self, cell, date_str):
+        """macOS-only: kleines ✕ oben links, das den Lösch-Pfad auslöst.
+
+        <Button-3> ist auf macOS unzuverlässig (Sekundärklick je nach Tk-Version
+        <Button-2>/Control-Klick); dieser Button gibt dort einen verlässlichen
+        Lösch-Auslöser, ohne den Linksklick-Dialog mit Lösch-Buttons zu belasten.
+        Klick ruft denselben _delete_day-Pfad wie der Win/Linux-Rechtsklick
+        (Ja/Nein bzw. Slot-Auswahl). Getaggt als cell._delete_button, damit
+        _cell_hover/_empty_hover seinen Hintergrund beim Hover mitfärben."""
+        bg = cell.cget("bg")
+        btn = tk.Label(
+            cell, text="✕", font=FONT_TINY, bg=bg, fg=TEXT_MUTED, cursor="hand2",
+        )
+        btn.place(relx=0.0, x=3, y=2, anchor="nw")
+        # "break" stoppt jede Propagation, damit der Klick nicht zusätzlich als
+        # Zell-Linksklick (Bearbeiten-Dialog) durchschlägt.
+        btn.bind("<Button-1>",
+                 lambda e, d=date_str: (self._delete_day(d), "break")[1])
+        # fg-Hover (rot als Lösch-Affordance) steuert der Button selbst; den bg
+        # färbt _cell_hover/_empty_hover mit der Zelle.
+        btn.bind("<Enter>", lambda e: btn.config(fg=ACCENT))
+        btn.bind("<Leave>", lambda e: btn.config(fg=TEXT_MUTED))
+        cell._delete_button = btn
 
     def _build_empty_cell(self, parent, date_str, day_text, is_weekend, cell_size):
         bg = WEEKEND_BG if is_weekend else CELL_BG
@@ -895,16 +975,35 @@ class App:
             )
 
         # Reservierung ist ein reiner Overlay-Marker (Eck-Punkt) — sie ändert
-        # den Zelltyp nicht. Genau ein attach_tooltip pro Zelle: Mehrfachaufruf
-        # erzeugt überlappende Tooltips (s. attach_tooltip-Docstring).
+        # den Zelltyp nicht. Genau EIN attach_tooltip pro Zelle (Mehrfachaufruf
+        # erzeugt überlappende Tooltips); deshalb alle relevanten Infos
+        # (mehrere Arbeitszeit-Slots, Reservierung, Feiertag) in einen
+        # kombinierten Tooltip. Ein Feiertag-OHNE-Eintrag/-Reservierung zeigt
+        # seinen Namen weiterhin als Zelltext (Holiday-Zelle) bzw. eigenen
+        # Tooltip (name_tooltip) und kommt hier NICHT rein.
+        tip_parts = []
+        if entry and len(entry.get("slots", [])) > 1:
+            tip_parts.append(
+                "Arbeitszeit:\n"
+                + "\n".join(self._fmt_slot_line(s) for s in entry["slots"]))
         if reservation is not None:
             self._add_reservation_marker(cell)
-            tip = f"Reservierung: {reservation['start']}-{reservation['end']}"
-            if is_holiday:
-                tip += f"\nFeiertag: {holidays_map[day_date]}"
-            attach_tooltip(cell, tip)
-        elif entry and is_holiday:
-            attach_tooltip(cell, f"Feiertag: {holidays_map[day_date]}")
+            tip_parts.append(
+                "Reservierung:\n"
+                + "\n".join(self._fmt_slot_line(s) for s in reservation.get("slots", [])))
+        if is_holiday and (reservation is not None or entry):
+            tip_parts.append(f"Feiertag: {holidays_map[day_date]}")
+        if tip_parts:
+            attach_tooltip(cell, "\n".join(tip_parts))
+
+        # macOS-only Lösch-Button (✕) oben links, sobald der Tag löschbare
+        # Einheiten hat (Ist-Zeit ODER aktive Reservierung). reservation wird
+        # nur bei aktivem Kalender-Sync übergeben (vgl. _add_reservation_marker),
+        # daher deckt `reservation is not None` die aktive Reservierung ab.
+        if _should_show_delete_button(
+            platform.system() == "Darwin", bool(entry), reservation is not None
+        ):
+            self._add_delete_button(cell, date_str)
 
         # Heutigen Tag mit blauem Rahmen hervorheben. Vor dem Konflikt-Block,
         # damit ein Konflikt (orange) auf demselben Tag den Rand gewinnt.
@@ -952,9 +1051,10 @@ class App:
             self.footer_label.config(text=f"Gesamt: {total_rounded}h")
 
     def _entry_hours(self, entry):
-        return calculate_hours(
-            entry["start"], entry["end"], pause_minutes=entry.get("pause", 0),
-        )
+        return round(sum(
+            calculate_hours(s["start"], s["end"], pause_minutes=s.get("pause", 0))
+            for s in entry.get("slots", [])
+        ), 2)
 
     def _dates_with_unresolved_conflicts(self):
         """Gibt die Menge der ISO-Datums-Strings zurück, für die ungelöste
@@ -1179,34 +1279,43 @@ class App:
         frame.config(bg=bg)
         day_lbl.config(bg=bg)
         time_lbl.config(bg=bg)
-        # Eck-Marker (nur auf Entry-Zellen mit zusätzlicher Reservierung)
-        # mitfärben, sonst bleibt beim Hover ein andersfarbiges Rechteck stehen.
+        # Eck-Overlays (Reservierungs-Marker, macOS-Lösch-Button) mitfärben,
+        # sonst bleibt beim Hover ein andersfarbiges Rechteck stehen. Nur bg —
+        # die fg des Lösch-Buttons steuert dessen eigener Enter/Leave-Handler.
         marker = getattr(frame, "_reservation_marker", None)
         if marker is not None:
             marker.config(bg=bg)
+        del_btn = getattr(frame, "_delete_button", None)
+        if del_btn is not None:
+            del_btn.config(bg=bg)
 
     @staticmethod
     def _empty_hover(frame, day_lbl, bg):
         frame.config(bg=bg)
         day_lbl.config(bg=bg)
-        # Reservierungs-Eck-Punkt mitfärben — Nur-Reservierungs-Tage sind
-        # Empty-Zellen mit Marker; sonst bliebe beim Hover ein andersfarbiges
-        # Rechteck hinter dem Punkt stehen.
+        # Eck-Overlays mitfärben — Nur-Reservierungs-Tage sind Empty-Zellen mit
+        # Marker (und auf macOS zusätzlich dem Lösch-Button); sonst bliebe beim
+        # Hover ein andersfarbiges Rechteck dahinter stehen. Nur bg.
         marker = getattr(frame, "_reservation_marker", None)
         if marker is not None:
             marker.config(bg=bg)
+        del_btn = getattr(frame, "_delete_button", None)
+        if del_btn is not None:
+            del_btn.config(bg=bg)
 
     def _delete_day(self, date_str):
         """Rechtsklick-Löschen für einen Tag. Löscht NIE ohne Bestätigung.
 
-        Je nachdem, was am Tag liegt:
-        - nur Arbeitszeit   → Ja/Nein-Abfrage
-        - nur Reservierung  → Ja/Nein-Abfrage
-        - beides            → Checkbox-Auswahl, was gelöscht werden soll
+        - Genau eine löschbare Einheit (1 Arbeitszeit-Slot ODER 1 Reservierung)
+          → Ja/Nein-Abfrage.
+        - Mehrere Einheiten (mehrere Slots und/oder Arbeitszeit + Reservierung)
+          → Auswahl-Dialog: pro Slot bzw. pro Typ eine Checkbox, alle
+          vorausgewählt; der „Löschen"-Button ist nach dem Öffnen kurz gesperrt
+          (gegen versehentliches Sofort-Löschen).
 
         Reservierungen werden nur berücksichtigt, wenn sie aktiv sind
-        (_reservations_active); das Löschen einer Reservierung stößt den
-        Kalender-Abgleich an.
+        (_reservations_active); eine Reservierungs-Änderung stößt den Kalender-
+        Abgleich an.
         """
         if _stray_click_suppressed(getattr(self.root, "_dialog_closed_at", 0),
                                    time.monotonic()):
@@ -1216,40 +1325,58 @@ class App:
             self.reservation_store.get(date_str)
             if self._reservations_active() else None
         )
-        if entry is None and reservation is None:
+        entry_slots = entry["slots"] if entry else []
+        res_slots = reservation["slots"] if reservation else []
+        if not entry_slots and not res_slots:
             return
 
         date_de = format_iso_date(date_str)
-        delete_entry = False
-        delete_reservation = False
 
-        if entry is not None and reservation is not None:
-            choice = themed_ask_delete_choice(
-                self.root, "Löschen", f"Was für den {date_de} löschen?",
-                [("entry", "Arbeitszeit"), ("reservation", "Reservierung")],
-            )
-            if not choice:
+        # Löschbare Einheiten: bei genau einem Slot der Typ als Ganzes, bei
+        # mehreren je Slot eine Checkbox.
+        options = []
+        if entry_slots:
+            if len(entry_slots) == 1:
+                options.append(("entry:all", "Arbeitszeit"))
+            else:
+                for i, s in enumerate(entry_slots):
+                    options.append((f"entry:{i}", f"Arbeitszeit  {self._fmt_slot_line(s)}"))
+        if res_slots:
+            if len(res_slots) == 1:
+                options.append(("reservation:all", "Reservierung"))
+            else:
+                for i, s in enumerate(res_slots):
+                    options.append((f"reservation:{i}", f"Reservierung  {self._fmt_slot_line(s)}"))
+
+        if len(options) == 1:
+            kind = "Arbeitszeit" if options[0][0].startswith("entry") else "Reservierung"
+            if not themed_askyesno(self.root, f"{kind} löschen",
+                                   f"{kind} für {date_de} löschen?"):
                 return
-            delete_entry = "entry" in choice
-            delete_reservation = "reservation" in choice
-        elif entry is not None:
-            if not themed_askyesno(self.root, "Arbeitszeit löschen",
-                                   f"Arbeitszeit für {date_de} löschen?"):
-                return
-            delete_entry = True
+            selected = {options[0][0]}
         else:
-            if not themed_askyesno(self.root, "Reservierung löschen",
-                                   f"Reservierung für {date_de} löschen?"):
+            selected = themed_ask_delete_choice(
+                self.root, "Löschen", f"Was für den {date_de} löschen?",
+                options, lock_ms=600,
+            )
+            if not selected:
                 return
-            delete_reservation = True
 
-        if delete_entry:
+        entry_action, entry_keep = _delete_action(entry_slots, selected, "entry")
+        if entry_action == "delete":
             self.storage.delete(date_str)
-        if delete_reservation:
+        elif entry_action == "save":
+            self.storage.save(date_str, entry_keep)
+
+        res_action, res_keep = _delete_action(res_slots, selected, "reservation")
+        res_touched = res_action != "none"
+        if res_action == "delete":
             self.reservation_store.delete(date_str)
+        elif res_action == "save":
+            self.reservation_store.save(date_str, res_keep)
 
         self._refresh()
-        if delete_reservation:
+        if res_touched:
             self._trigger_calendar_reconcile()
 
     def _open_dialog(self, date_str):
@@ -1328,7 +1455,7 @@ class App:
                 self.storage, self.settings, self.conflicts_store,
                 self.base_path, timeout_seconds=15,
             )
-            self.root.after(0, lambda: self._on_manual_sync_done(result))
+            self._marshal_to_ui(lambda: self._on_manual_sync_done(result))
         threading.Thread(target=_do, daemon=True).start()
 
     def _on_manual_sync_done(self, result):
@@ -1356,7 +1483,7 @@ class App:
                 self.storage, self.settings, self.conflicts_store,
                 self.base_path, timeout_seconds=15,
             )
-            self.root.after(0, lambda: self._on_tray_sync_done(result))
+            self._marshal_to_ui(lambda: self._on_tray_sync_done(result))
         threading.Thread(target=_do, daemon=True).start()
 
     def _on_tray_sync_done(self, result):

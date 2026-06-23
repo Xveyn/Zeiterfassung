@@ -2,28 +2,48 @@ from src import gcal
 
 
 def test_event_payload_has_summary_and_marker():
-    body = gcal.event_payload("2026-06-01", "09:00", "17:00", "2026-05-20T10:00:00Z")
+    body = gcal.event_payload("2026-06-01", "09:00", "17:00", "", "2026-05-20T10:00:00Z")
     assert body["summary"] == gcal.EVENT_SUMMARY
     private = body["extendedProperties"]["private"]
     assert private[gcal.APP_MARKER_KEY] == gcal.APP_MARKER_VALUE
+    assert private["kategorie"] == ""
     assert private["modified_at"] == "2026-05-20T10:00:00Z"
 
 
+def test_event_payload_summary_includes_kategorie():
+    body = gcal.event_payload("2026-06-01", "09:00", "17:00", "Büro", "2026-05-20T10:00:00Z")
+    assert body["summary"] == f"{gcal.EVENT_SUMMARY} — Büro"
+    assert body["extendedProperties"]["private"]["kategorie"] == "Büro"
+
+
 def test_event_payload_datetime_encodes_date_and_time():
-    body = gcal.event_payload("2026-06-01", "09:30", "17:45", "2026-05-20T10:00:00Z")
-    # dateTime trägt das Datum und die HH:MM-Zeit (plus lokalem Offset).
+    body = gcal.event_payload("2026-06-01", "09:30", "17:45", "", "2026-05-20T10:00:00Z")
     assert body["start"]["dateTime"].startswith("2026-06-01T09:30:00")
     assert body["end"]["dateTime"].startswith("2026-06-01T17:45:00")
 
 
-def test_parse_event_roundtrips_payload():
-    body = gcal.event_payload("2026-06-01", "09:00", "17:00", "2026-05-20T10:00:00Z")
+def test_parse_event_roundtrips_payload_with_kategorie():
+    body = gcal.event_payload("2026-06-01", "09:00", "17:00", "Büro", "2026-05-20T10:00:00Z")
     body["id"] = "ev-42"
     parsed = gcal.parse_event(body)
     assert parsed == {
         "date": "2026-06-01", "start": "09:00", "end": "17:00",
-        "modified_at": "2026-05-20T10:00:00Z", "event_id": "ev-42",
+        "kategorie": "Büro", "modified_at": "2026-05-20T10:00:00Z", "event_id": "ev-42",
     }
+
+
+def test_parse_event_missing_kategorie_defaults_empty():
+    # Event ohne kategorie-Property (z.B. von einer älteren App-Version)
+    body = {
+        "id": "ev-1",
+        "start": {"dateTime": "2026-06-01T09:00:00+02:00"},
+        "end": {"dateTime": "2026-06-01T17:00:00+02:00"},
+        "extendedProperties": {"private": {
+            gcal.APP_MARKER_KEY: gcal.APP_MARKER_VALUE,
+            "modified_at": "2026-05-20T10:00:00Z",
+        }},
+    }
+    assert gcal.parse_event(body)["kategorie"] == ""
 
 
 def test_parse_event_ignores_non_app_events():
@@ -88,7 +108,7 @@ class _FakeService:
 
 
 def test_list_app_events_filters_and_parses():
-    body = gcal.event_payload("2026-06-01", "09:00", "17:00", "2026-05-20T10:00:00Z")
+    body = gcal.event_payload("2026-06-01", "09:00", "17:00", "", "2026-05-20T10:00:00Z")
     body["id"] = "ev-1"
     foreign = {"id": "ev-2", "start": {"dateTime": "2026-06-02T09:00:00+02:00"},
                "end": {"dateTime": "2026-06-02T17:00:00+02:00"}}
@@ -108,9 +128,20 @@ def test_create_event_returns_event_id():
     recorder = []
     service = _FakeService(recorder)
     event_id = gcal.create_event(
-        service, "cal-1", "2026-06-01", "09:00", "17:00", "2026-05-20T10:00:00Z")
+        service, "cal-1", "2026-06-01", "09:00", "17:00", "Büro", "2026-05-20T10:00:00Z")
     assert event_id == "created-id"
     assert recorder[0][0] == "insert"
+    assert recorder[0][1]["body"]["extendedProperties"]["private"]["kategorie"] == "Büro"
+
+
+def test_update_event_sends_kategorie():
+    recorder = []
+    service = _FakeService(recorder)
+    gcal.update_event(
+        service, "cal-1", "ev-1", "2026-06-01", "09:00", "17:00", "HO", "2026-05-20T10:00:00Z")
+    assert recorder[0][0] == "update"
+    assert recorder[0][1]["eventId"] == "ev-1"
+    assert recorder[0][1]["body"]["extendedProperties"]["private"]["kategorie"] == "HO"
 
 
 def test_delete_event_swallows_already_gone():
@@ -129,5 +160,4 @@ def test_delete_event_swallows_already_gone():
                     return _Boom()
             return _E()
 
-    # Darf NICHT werfen.
     gcal.delete_event(_GoneService(), "cal-1", "ev-x")

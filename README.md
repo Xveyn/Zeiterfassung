@@ -177,7 +177,7 @@ Die Scopes werden nicht hier, sondern unter **Data Access** vergeben — entwede
 
 1. App starten
 2. Unter **Einstellungen** (⚙) E-Mail und Empfänger eintragen
-3. **Monat senden** klicken
+3. **Arbeitszeiten senden** klicken
 4. Browser öffnet sich → mit Google anmelden → Zugriff erlauben (bei unverifizierter App: **Erweitert → „Zu Zeiterfassung (unsicher)"**)
 5. `token.json` wird automatisch erstellt
 

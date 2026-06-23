@@ -409,3 +409,69 @@ def test_synced_whitelists_in_settings_and_sync_match():
     from src.settings import SYNCED_SETTING_KEYS as a
     from src.sync import SYNCED_SETTING_KEYS as b
     assert set(a) == set(b)
+
+
+# --- categories (Multi-Slot-Feature, AP2) ---
+
+
+def test_categories_default_is_empty_list(tmp_settings):
+    assert tmp_settings.get("categories") == []
+
+
+def test_categories_is_synced_setting():
+    assert "categories" in SYNCED_SETTING_KEYS
+
+
+def test_categories_persists_list(tmp_path):
+    path = str(tmp_path / "settings.json")
+    s1 = Settings(path)
+    s1.set("categories", ["Büro", "Homeoffice"])
+    s2 = Settings(path)
+    assert s2.get("categories") == ["Büro", "Homeoffice"]
+
+
+def test_categories_non_list_falls_back_to_default(tmp_path, caplog):
+    """Ein Nicht-Listen-Wert wird von _coerce abgelehnt → Default []."""
+    path = _write_json(tmp_path, json.dumps({"categories": "Büro"}))
+    with caplog.at_level("WARNING"):
+        s = Settings(path)
+    assert s.get("categories") == []
+    assert any("categories" in rec.message for rec in caplog.records)
+
+
+def test_categories_synced_doc_roundtrip(tmp_path):
+    path = str(tmp_path / "settings.json")
+    s = Settings(path)
+    s.device_id_for_sync = "dev-1"
+    s.set_synced("categories", ["Büro", "Kundentermin"])
+    doc = s.get_synced_doc()
+    assert doc["categories"]["value"] == ["Büro", "Kundentermin"]
+    assert doc["categories"]["device_id"] == "dev-1"
+
+
+# --- category_times (Per-Kategorie-Standardzeiten) ---
+
+
+def test_category_times_default_is_empty_dict(tmp_settings):
+    assert tmp_settings.get("category_times") == {}
+
+
+def test_category_times_is_synced_setting():
+    assert "category_times" in SYNCED_SETTING_KEYS
+
+
+def test_category_times_persists_dict(tmp_path):
+    path = str(tmp_path / "settings.json")
+    value = {"Office": {"start": "09:00", "end": "17:00", "pause": 0}}
+    s1 = Settings(path)
+    s1.set("category_times", value)
+    s2 = Settings(path)
+    assert s2.get("category_times") == value
+
+
+def test_category_times_non_dict_falls_back_to_default(tmp_path, caplog):
+    path = _write_json(tmp_path, json.dumps({"category_times": ["kaputt"]}))
+    with caplog.at_level("WARNING"):
+        s = Settings(path)
+    assert s.get("category_times") == {}
+    assert any("category_times" in rec.message for rec in caplog.records)

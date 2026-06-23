@@ -43,7 +43,7 @@
 
 1. Starte die App: `python -m src.main`
 2. Trage unter **Einstellungen** (Zahnrad-Symbol) einen Empfänger ein
-3. Klicke auf **Monat senden**
+3. Klicke auf **Arbeitszeiten senden**
 4. Ein Browser-Fenster öffnet sich zur Google-Anmeldung
 5. Melde dich mit deinem Google-Konto an und erlaube den Zugriff
 6. Der Bericht wird gesendet — ab jetzt funktioniert es ohne erneute Anmeldung

@@ -8,7 +8,21 @@ def _utc_now_iso():
     return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-_REQUIRED_ENTRY_KEYS = frozenset({"start", "end", "pause", "modified_at", "device_id", "deleted"})
+_REQUIRED_ENTRY_KEYS = frozenset({"slots", "modified_at", "device_id", "deleted"})
+
+
+def _normalize_slot(slot):
+    """Vervollständigt einen Ist-Zeit-Slot auf {start, end, pause, kategorie}.
+
+    Fehlende `pause` → 0, fehlende `kategorie` → "" (= keine Kategorie,
+    Verhalten wie vor der Migration). Storage validiert die Zeitwerte
+    bewusst nicht (wie bisher) — das ist Sache der UI/Validierung (AP3)."""
+    return {
+        "start": slot.get("start"),
+        "end": slot.get("end"),
+        "pause": slot.get("pause", 0),
+        "kategorie": slot.get("kategorie", ""),
+    }
 
 
 class Storage:
@@ -32,9 +46,11 @@ class Storage:
         self._migrate_legacy_entries()
 
     def _migrate_legacy_entries(self):
-        """Spendet alten Einträgen ohne modified_at/device_id/deleted die
-        Sync-Metadaten. Idempotent: Einträge mit modified_at bleiben unberührt.
-        modified_at wird aus der File-mtime abgeleitet (best lower bound)."""
+        """Rüstet Sync-Metadaten nach UND wrappt alte Ein-Eintrag-Tage in eine
+        Slot-Liste. Idempotent: Einträge mit `slots` bleiben unangetastet,
+        Einträge mit `modified_at` behalten ihre Metadaten.
+        modified_at wird (für ganz alte Einträge ohne Metadaten) aus der
+        File-mtime abgeleitet (best lower bound)."""
         try:
             mtime = os.path.getmtime(self.filepath)
         except OSError:
@@ -48,12 +64,27 @@ class Storage:
         for date, entry in list(self._data.items()):
             if not isinstance(entry, dict):
                 continue
-            if "modified_at" in entry:
-                continue
-            entry.setdefault("pause", 0)
-            entry["modified_at"] = fallback_modified_at
-            entry["device_id"] = self.device_id
-            entry["deleted"] = False
+            # 1. Sync-Metadaten für ganz alte Einträge nachrüsten.
+            if "modified_at" not in entry:
+                entry["modified_at"] = fallback_modified_at
+                entry["device_id"] = self.device_id
+                entry.setdefault("deleted", False)
+            # 2. Slot-Wrapping für Einträge im alten Ein-Eintrag-Schema.
+            if "slots" not in entry:
+                if entry.get("deleted"):
+                    entry["slots"] = []
+                else:
+                    entry["slots"] = [{
+                        "start": entry.get("start"),
+                        "end": entry.get("end"),
+                        "pause": entry.get("pause", 0),
+                        "kategorie": "",
+                    }]
+                entry.pop("start", None)
+                entry.pop("end", None)
+                entry.pop("pause", None)
+                entry.setdefault("device_id", self.device_id)
+                entry.setdefault("deleted", False)
 
     def _save_to_disk(self):
         tmp = self.filepath + ".tmp"
@@ -68,11 +99,12 @@ class Storage:
 
     @staticmethod
     def _user_shape(entry):
-        """Reduziert ein Roh-Entry auf {start, end, pause} für UI-Callers."""
-        return {"start": entry["start"], "end": entry["end"], "pause": entry.get("pause", 0)}
+        """Reduziert ein Roh-Entry auf {slots: [...]} für UI-Caller.
+        Liefert frische Kopien, damit Caller den internen Stand nicht mutieren."""
+        return {"slots": [dict(s) for s in entry.get("slots", [])]}
 
     def get_all(self):
-        """Liefert {date: {start, end, pause}} ohne Tombstones."""
+        """Liefert {date: {slots: [...]}} ohne Tombstones."""
         return {
             date: self._user_shape(entry)
             for date, entry in self._data.items()
@@ -90,11 +122,9 @@ class Storage:
             return None
         return self._user_shape(entry)
 
-    def save(self, date_str, start, end, pause=0):
+    def save(self, date_str, slots):
         self._data[date_str] = {
-            "start": start,
-            "end": end,
-            "pause": pause,
+            "slots": [_normalize_slot(s) for s in slots],
             "modified_at": _utc_now_iso(),
             "device_id": self.device_id,
             "deleted": False,
@@ -107,9 +137,7 @@ class Storage:
         # Tombstone: behält die Zeile mit deleted=true, damit der Sync ein
         # Delete gegen ein veraltetes Save eines anderen Geräts durchsetzen kann.
         self._data[date_str] = {
-            "start": None,
-            "end": None,
-            "pause": None,
+            "slots": [],
             "modified_at": _utc_now_iso(),
             "device_id": self.device_id,
             "deleted": True,
@@ -118,7 +146,7 @@ class Storage:
 
     def apply_merge(self, merged_entries):
         """Ersetzt den kompletten Storage-Stand durch das Merge-Ergebnis.
-        merged_entries: {date: {start, end, pause, modified_at, device_id, deleted}}.
+        merged_entries: {date: {slots, modified_at, device_id, deleted}}.
         Wirft ValueError, wenn ein Eintrag Pflichtfelder vermissen lässt."""
         for date, entry in merged_entries.items():
             missing = _REQUIRED_ENTRY_KEYS - entry.keys()
@@ -132,7 +160,7 @@ class Storage:
     def save_many(self, updates):
         """Mehrere Einträge in einem einzigen Disk-Write speichern.
 
-        updates: {date_str: {start, end, pause}}. Jeder Eintrag bekommt
+        updates: {date_str: {"slots": [...]}}. Jeder Eintrag bekommt
         frische modified_at/device_id/deleted=False. Existierende Tombstones
         am selben Datum werden überschrieben.
 
@@ -143,9 +171,7 @@ class Storage:
         now = _utc_now_iso()
         for date_str, payload in updates.items():
             self._data[date_str] = {
-                "start": payload["start"],
-                "end": payload["end"],
-                "pause": payload.get("pause", 0),
+                "slots": [_normalize_slot(s) for s in payload.get("slots", [])],
                 "modified_at": now,
                 "device_id": self.device_id,
                 "deleted": False,

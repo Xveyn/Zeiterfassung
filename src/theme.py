@@ -167,6 +167,16 @@ def dark_combo(parent, textvariable, values, width=8, **kw):
     )
 
 
+def dark_combo_editable(parent, textvariable, values, width=14, **kw):
+    """Wie dark_combo, aber editierbar (state="normal") — Freitext plus
+    Vorschlagsliste. Für die Kategorie-Auswahl je Slot, deren Werte aus
+    settings['categories'] kommen, aber auch frei eingetippt werden dürfen."""
+    return ttk.Combobox(
+        parent, textvariable=textvariable, values=values,
+        width=width, font=FONT, style="Dark.TCombobox", state="normal", **kw,
+    )
+
+
 def dark_text(parent, width, height, **kw):
     return tk.Text(
         parent, width=width, height=height, font=FONT,
@@ -325,11 +335,28 @@ def attach_unfocus_on_click(dialog):
     Frame-Bg, Frame+Label-Button) ziehen wir den Fokus auf den Dialog.
     """
     def _unfocus(event):
-        if event.widget.winfo_class() in _FOCUSABLE_INPUT_CLASSES:
+        if _click_keeps_focus(event.widget):
             return
         dialog.focus_set()
 
     dialog.bind("<Button-1>", _unfocus, add="+")
+
+
+def _click_keeps_focus(widget):
+    """True, wenn der geklickte Widget den Fokus behalten soll (Eingabefeld).
+
+    Defensiv: Wird ein Widget WÄHREND seines Klick-Events zerstört (z.B. die
+    "×"-Schaltfläche einer Slot-Zeile im Tages-Dialog), liefert Tk für das
+    nachgelagerte Toplevel-`<Button-1>` `event.widget` als Pfad-String statt
+    als Widget-Objekt — `winfo_class()` würde dann mit AttributeError crashen.
+    Ein String- oder bereits zerstörtes Widget → Fokus auf den Dialog ziehen
+    (kein Eingabefeld)."""
+    if isinstance(widget, str):
+        return False
+    try:
+        return widget.winfo_class() in _FOCUSABLE_INPUT_CLASSES
+    except tk.TclError:
+        return False
 
 
 def _parent_workarea(parent):
@@ -415,6 +442,14 @@ def _stray_click_suppressed(closed_at, now, window=STRAY_CLICK_GUARD_S):
     if not closed_at:
         return False
     return 0 <= (now - closed_at) < window
+
+
+def _should_show_delete_button(is_macos, has_entry, has_reservation):
+    """macOS-only Lösch-Button (✕) in der Tageszelle: nur auf macOS und nur,
+    wenn der Tag löschbare Einheiten hat — Ist-Zeit ODER aktive Reservierung.
+    Reine Logik, damit aus den Tests ohne Tk/UI-Deps prüfbar (vgl.
+    _stray_click_suppressed)."""
+    return is_macos and (has_entry or has_reservation)
 
 
 def center_dialog_on_parent(dialog, parent):
@@ -725,7 +760,7 @@ def themed_askyesno(parent, title: str, message: str) -> bool:
     return result["value"]
 
 
-def themed_ask_delete_choice(parent, title: str, message: str, options):
+def themed_ask_delete_choice(parent, title: str, message: str, options, lock_ms: int = 0):
     """Modaler Lösch-Dialog mit Checkboxen — das Gegenstück zu `themed_askyesno`
     für Tage, an denen mehrere löschbare Objekte liegen (Ist-Zeit UND
     Reservierung).
@@ -747,6 +782,9 @@ def themed_ask_delete_choice(parent, title: str, message: str, options):
     dialog.focus_set()
 
     result: dict[str, set[str] | None] = {"value": None}
+    # Optionaler kurzer Lock nach dem Öffnen: verhindert versehentliches
+    # Sofort-Löschen, wenn (wie üblich) alle Optionen vorausgewählt sind.
+    unlock = {"ready": lock_ms <= 0}
 
     tk.Label(
         dialog, text=message, font=FONT, bg=BG, fg=TEXT,
@@ -767,6 +805,8 @@ def themed_ask_delete_choice(parent, title: str, message: str, options):
         checkbuttons.append(cb)
 
     def click_delete():
+        if not unlock["ready"]:
+            return
         selected = {key for key, var in vars_by_key.items() if var.get()}
         # Leere Auswahl ist ein No-Op: Dialog NICHT schließen, sonst landet der
         # Klick auf einem Kalendertag dahinter und öffnet den Speichern-Dialog.
@@ -785,12 +825,20 @@ def themed_ask_delete_choice(parent, title: str, message: str, options):
     secondary_button(btn_frame, "Abbrechen", click_cancel).pack(side=tk.LEFT, padx=6)
 
     def _refresh_delete_btn(*_):
-        # Löschen nur klickbar, wenn mind. eine Option gewählt ist.
+        # Löschen nur klickbar, wenn der Lock abgelaufen ist UND mind. eine
+        # Option gewählt ist.
         set_primary_button_enabled(
-            delete_btn, any(var.get() for var in vars_by_key.values()))
+            delete_btn,
+            unlock["ready"] and any(var.get() for var in vars_by_key.values()))
 
     for cb in checkbuttons:
         cb.config(command=_refresh_delete_btn)
+
+    if lock_ms > 0:
+        def _unlock():
+            unlock["ready"] = True
+            _refresh_delete_btn()
+        dialog.after(lock_ms, _unlock)
     _refresh_delete_btn()
 
     dialog.bind("<Return>", lambda e: click_delete())

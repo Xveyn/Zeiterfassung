@@ -14,7 +14,7 @@ import datetime
 import uuid
 
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 
 NEWER_REMOTE_VERSION_MSG = (
@@ -40,7 +40,7 @@ def _is_settled_conflict(conflict, watermark):
 SYNCED_SETTING_KEYS = (
     "recipient", "name", "hourly_rate",
     "mail_subject", "mail_greeting", "mail_content", "mail_closing",
-    "gcal_calendar_id",
+    "gcal_calendar_id", "categories", "category_times",
 )
 
 
@@ -48,10 +48,18 @@ def _utc_now_iso():
     return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+def _slots_signature(entry):
+    """Reihenfolge-normalisierte Signatur der Slot-Liste eines Eintrags,
+    für den Gleichheitsvergleich im Merge. Sortiert nach den Slot-Feldern,
+    damit eine reine Umordnung der Slots NICHT als Änderung zählt."""
+    return sorted(
+        (s.get("start"), s.get("end"), s.get("pause", 0), s.get("kategorie", ""))
+        for s in (entry.get("slots") or [])
+    )
+
+
 def _values_equal_entry(a, b):
-    return (a.get("start") == b.get("start")
-            and a.get("end") == b.get("end")
-            and a.get("pause") == b.get("pause")
+    return (_slots_signature(a) == _slots_signature(b)
             and bool(a.get("deleted")) == bool(b.get("deleted")))
 
 
@@ -212,9 +220,7 @@ def merge(local, remote, last_pull_at):
             current = merged["entries"].get(c["key"])
             if current is None or current["modified_at"] < resolved_at:
                 merged["entries"][c["key"]] = {
-                    "start": resolution.get("start"),
-                    "end": resolution.get("end"),
-                    "pause": resolution.get("pause", 0),
+                    "slots": resolution.get("slots", []),
                     "modified_at": resolved_at,
                     "device_id": resolved_by,
                     "deleted": bool(resolution.get("deleted", False)),
@@ -278,14 +284,38 @@ def compact_local(storage, settings, conflicts_store, now):
     ])
 
 
-def _remote_is_pre_v2(remote_doc):
-    """True, wenn das Remote-Doc von einem v1-Gerät stammt (Schema < 2 oder
-    fehlendes/leeres meta ohne gc_watermark-Key) — dann ist gerade ein älteres
-    Gerät aktiv und die Kompaktierung muss abbrechen."""
-    if (remote_doc.get("schema_version") or 1) < 2:
-        return True
-    meta = remote_doc.get("meta")
-    return not (isinstance(meta, dict) and "gc_watermark" in meta)
+def migrate_doc_to_v3(remote_doc):
+    """Migriert ein Sync-Doc auf das aktuelle Schema (v3): flache Einträge
+    (start/end/pause) werden in eine Slot-Liste gewrappt. Idempotent — Einträge,
+    die bereits `slots` tragen, bleiben unangetastet; Tombstones (deleted=True)
+    bekommen eine leere Slot-Liste. settings/conflicts/meta bleiben unberührt.
+
+    Damit kann ein v3-Client ein älteres (v1/v2) Remote-Doc absorbieren und
+    hochziehen, statt es abzuweisen oder beim Push zu plätten."""
+    entries = remote_doc.get("entries") or {}
+    migrated = {}
+    for date, entry in entries.items():
+        if not isinstance(entry, dict):
+            continue
+        if "slots" in entry:
+            migrated[date] = entry
+            continue
+        if entry.get("deleted"):
+            slots = []
+        else:
+            slots = [{
+                "start": entry.get("start"),
+                "end": entry.get("end"),
+                "pause": entry.get("pause", 0),
+                "kategorie": "",
+            }]
+        migrated[date] = {
+            "slots": slots,
+            "modified_at": entry.get("modified_at"),
+            "device_id": entry.get("device_id"),
+            "deleted": bool(entry.get("deleted", False)),
+        }
+    return {**remote_doc, "schema_version": SCHEMA_VERSION, "entries": migrated}
 
 
 def _remote_is_newer(remote_doc):
@@ -302,7 +332,7 @@ def _remote_is_newer(remote_doc):
 
 def resolve_conflict(conflict_id, chosen_value, conflicts_store, storage, settings, device_id):
     """User hat einen Konflikt aufgelöst. chosen_value enthält den gewählten
-    (oder manuell editierten) Wert. Für entries: {start, end, pause} (und
+    (oder manuell editierten) Wert. Für entries: {slots: [...]} (und
     optional deleted). Für settings: {value}.
     Schreibt den Wert in den entsprechenden Store und markiert den Konflikt
     als resolved im ConflictsStore."""
@@ -321,12 +351,7 @@ def resolve_conflict(conflict_id, chosen_value, conflicts_store, storage, settin
         if chosen_value.get("deleted"):
             storage.delete(target["key"])
         else:
-            storage.save(
-                target["key"],
-                chosen_value.get("start"),
-                chosen_value.get("end"),
-                chosen_value.get("pause", 0),
-            )
+            storage.save(target["key"], chosen_value.get("slots", []))
     elif target["kind"] == "setting":
         settings.set_synced(target["key"], chosen_value.get("value"))
 
