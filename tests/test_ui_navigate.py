@@ -1,8 +1,6 @@
 """_navigate ersetzt _prev/_next. Getestet ohne Tk über einen Stub mit den
 relevanten Attributen; _refresh ist ein No-op."""
 
-import datetime
-
 from src.ui import App
 
 
