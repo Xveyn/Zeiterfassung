@@ -42,3 +42,19 @@ def test_run_without_on_done_still_executes_fn():
     _runner().run(fn)
 
     assert ran.wait(timeout=5)
+
+
+def test_fetch_sender_email_noop_without_token(tmp_path):
+    # base_path ohne token.json -> fetch_user_email darf nicht aufgerufen werden
+    import src.background_tasks as bg
+
+    called = {"n": 0}
+    orig = bg.fetch_user_email
+    bg.fetch_user_email = lambda *a, **k: called.__setitem__("n", called["n"] + 1) or ""
+    try:
+        _runner(base_path=str(tmp_path)).fetch_sender_email()
+        import time
+        time.sleep(0.2)
+    finally:
+        bg.fetch_user_email = orig
+    assert called["n"] == 0

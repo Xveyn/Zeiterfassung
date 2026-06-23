@@ -17,7 +17,6 @@ from src.time_utils import (
 )
 from src.holidays_de import get_holidays
 from src.tooltip import attach_tooltip
-from src.mail import fetch_user_email, refresh_token_if_needed, TokenAuthError, TokenNetworkError
 from src.drive import DriveAuthError, DriveNetworkError
 from src.version import VERSION, version_label
 from src.updater import (
@@ -29,6 +28,7 @@ from src.updater import (
     Release,
 )
 
+from src.background_tasks import BackgroundTaskRunner
 from src.dialogs.entry_dialog import open_entry_dialog
 from src.dialogs.send_dialog import open_send_dialog
 from src.dialogs.settings_dialog import open_settings_dialog
@@ -225,75 +225,27 @@ class App:
         # gestartet) — keine sichtbaren Zwischenzustände.
         self._fixed_width = self._measure_max_width()
         self._refresh()
-        self._proactive_token_refresh()
-        self._proactive_sender_email_fetch()
+        self._bg = BackgroundTaskRunner(
+            self._marshal_to_ui, self.settings, self.base_path,
+            self.reservation_store, self._reservations_active,
+        )
+        self._bg.refresh_token(
+            on_auth_error=lambda msg: themed_showinfo(
+                self.root,
+                "Gmail-Anmeldung abgelaufen",
+                "Der Gmail-Token konnte nicht automatisch erneuert werden:\n\n"
+                f"{msg}\n\n"
+                "Beim nächsten Senden wirst du zur erneuten Anmeldung aufgefordert.",
+            ),
+            on_error=lambda tb: themed_showinfo(
+                self.root, "Token-Refresh fehlgeschlagen", tb,
+            ),
+        )
+        self._bg.fetch_sender_email()
         self._update_banner = None
         self._proactive_update_check()
         self._proactive_calendar_reconcile()
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
-
-    def _proactive_token_refresh(self):
-        """Erneuert den Gmail-Token beim App-Start im Hintergrund.
-
-        Auth-Fehler werden als Messagebox gezeigt, Netzwerkfehler still
-        übergangen, damit ein Offline-Start nicht stört.
-        """
-        token_path = os.path.join(self.base_path, "token.json")
-
-        def worker():
-            try:
-                refresh_token_if_needed(
-                    token_path,
-                    sync_enabled=self.settings.get("sync_enabled"),
-                    gcal_enabled=self.settings.get("gcal_enabled"),
-                )
-            except TokenAuthError as e:
-                msg = str(e)
-                self._marshal_to_ui(lambda: themed_showinfo(
-                    self.root,
-                    "Gmail-Anmeldung abgelaufen",
-                    "Der Gmail-Token konnte nicht automatisch erneuert werden:\n\n"
-                    f"{msg}\n\n"
-                    "Beim nächsten Senden wirst du zur erneuten Anmeldung aufgefordert."
-                ))
-            except TokenNetworkError:
-                pass
-            except Exception as e:
-                logging.getLogger(__name__).exception("Token-Refresh fehlgeschlagen")
-                err = f"{type(e).__name__}: {e}\n\n{traceback.format_exc()}"
-                self._marshal_to_ui(lambda: themed_showinfo(
-                    self.root, "Token-Refresh fehlgeschlagen", err
-                ))
-
-        threading.Thread(target=worker, daemon=True).start()
-
-    def _proactive_sender_email_fetch(self):
-        """Holt einmalig pro App-Start die authentifizierte E-Mail-Adresse über
-        das OAuth2-Userinfo-Endpoint und cached sie in `settings.sender_email`.
-
-        Schlägt still fehl, wenn kein Token, kein Netz oder der userinfo.email-
-        Scope dem Token noch nicht gewährt wurde — der nächste Send-Dialog
-        triggert dann den OAuth-Re-Consent, und beim nächsten App-Start klappt
-        es. So bekommt der User nichts mit, wenn alles funktioniert.
-        """
-        token_path = os.path.join(self.base_path, "token.json")
-        if not os.path.exists(token_path):
-            return
-
-        def worker():
-            try:
-                email = fetch_user_email(
-                    token_path,
-                    sync_enabled=self.settings.get("sync_enabled"),
-                    gcal_enabled=self.settings.get("gcal_enabled"),
-                )
-            except Exception:
-                logging.getLogger(__name__).exception("sender_email-Fetch fehlgeschlagen")
-                return
-            if email and email != self.settings.get("sender_email"):
-                self._marshal_to_ui(lambda: self.settings.set("sender_email", email))
-
-        threading.Thread(target=worker, daemon=True).start()
 
     def _proactive_update_check(self):
         """Fragt einmal pro Kalendertag GitHub nach einer neueren Version.
@@ -628,7 +580,7 @@ class App:
             # anstoßen. Damit erscheint die Absender-Adresse automatisch nach
             # Sync-Aktivierung (frischer Token mit userinfo.email-Scope), ohne
             # dass der User den "Aktualisieren"-Button drücken muss.
-            self._proactive_sender_email_fetch()
+            self._bg.fetch_sender_email()
         open_settings_dialog(
             self.root, self.settings, self.base_path,
             on_change=_on_change,
