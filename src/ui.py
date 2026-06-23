@@ -22,7 +22,7 @@ from src.dialogs.send_dialog import open_send_dialog
 from src.dialogs.settings_dialog import open_settings_dialog
 from src.theme import (
     BG, ACCENT, TEXT, TEXT_MUTED,
-    FONT_HEADER, FONT_FOOTER, FONT_SMALL, apply_dark_titlebar, themed_askyesno, themed_ask_delete_choice, themed_showinfo,
+    FONT_HEADER, FONT_FOOTER, FONT_SMALL, apply_dark_titlebar, themed_askyesno, themed_ask_delete_choice, themed_showerror, themed_showinfo,
     icon_button, secondary_button, set_toggle_active, toggle_button,
     _stray_click_suppressed,
 )
@@ -350,7 +350,8 @@ class App:
 
         if want_tray and self._tray is None:
             if not is_supported():
-                messagebox.showinfo(
+                themed_showinfo(
+                    self.root,
                     "Infobereich-Icon",
                     "Das Minimieren in den Infobereich ist auf dieser Plattform "
                     "nicht zuverlässig nutzbar (typisch Linux). Option wurde "
@@ -376,7 +377,8 @@ class App:
                 tray.start()
             except Exception as e:
                 logging.getLogger(__name__).exception("Tray-Start fehlgeschlagen")
-                messagebox.showerror(
+                themed_showerror(
+                    self.root,
                     "Infobereich-Icon",
                     f"Tray-Icon konnte nicht gestartet werden:\n\n{e}",
                 )
