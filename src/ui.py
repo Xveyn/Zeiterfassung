@@ -8,7 +8,6 @@ import logging
 import os
 import platform
 import time
-import webbrowser
 from src.time_utils import (
     DAYS_DE, MONTHS_DE,
     calculate_hours, format_iso_date, get_week_dates, get_week_label, week_spans_months,
@@ -17,19 +16,15 @@ from src.holidays_de import get_holidays
 from src.tooltip import attach_tooltip
 
 from src.version import VERSION, version_label
-from src.updater import (
-    pick_asset_url,
-    today_iso,
-    Release,
-)
 
 from src.background_tasks import BackgroundTaskRunner
 from src.sync_orchestrator import _classify_sync_error, SyncOrchestrator
+from src.update_banner import UpdateBanner
 from src.dialogs.entry_dialog import open_entry_dialog
 from src.dialogs.send_dialog import open_send_dialog
 from src.dialogs.settings_dialog import open_settings_dialog
 from src.theme import (
-    BG, CELL_BG, WEEKEND_BG, ACCENT, ACCENT_HOVER, TEXT, TEXT_MUTED,
+    BG, CELL_BG, WEEKEND_BG, ACCENT, TEXT, TEXT_MUTED,
     _should_show_delete_button,
     ENTRY_BG, WEEKEND_ENTRY_BG, WEEKEND_FG,
     HOLIDAY_BG, HOLIDAY_BG_HOVER, HOLIDAY_ACCENT,
@@ -37,7 +32,7 @@ from src.theme import (
     FONT, FONT_BOLD, FONT_HEADER, FONT_HEADER_SMALL, FONT_FOOTER, FONT_SMALL, FONT_TINY,
     CELL_BG_HOVER, WEEKEND_BG_HOVER, ENTRY_BG_HOVER, WEEKEND_ENTRY_BG_HOVER,
     apply_dark_titlebar, themed_askyesno, themed_ask_delete_choice, themed_showinfo,
-    icon_button, label_button, secondary_button, set_toggle_active, toggle_button,
+    icon_button, secondary_button, set_toggle_active, toggle_button,
     _stray_click_suppressed,
 )
 
@@ -171,8 +166,9 @@ class App:
             ),
         )
         self._bg.fetch_sender_email()
-        self._update_banner = None
-        self._bg.check_update(on_result=self._handle_update_check_result)
+        self._update_banner = UpdateBanner(
+            self.root, self.settings, lambda: self.grid_container)
+        self._bg.check_update(on_result=self._update_banner.handle_check_result)
         self._bg.reconcile_on_start(on_ok=self._refresh)
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
 
@@ -207,65 +203,6 @@ class App:
                     "Der Abgleich wird beim nächsten Start erneut versucht.",
                 )
         self._refresh()
-
-    def _handle_update_check_result(self, release: "Release", newer: bool):
-        """Läuft im UI-Thread. Persistiert den Check-Stand und zeigt ggf. den Banner.
-
-        `is_newer` ist bereits im Worker ausgewertet, damit hier keine ungeschützte
-        Logik im Tk-Event-Loop läuft.
-        """
-        self.settings.set("last_update_check_at", today_iso())
-        if not newer:
-            return
-        if release.version == self.settings.get("dismissed_version"):
-            return
-        self._show_update_banner(release)
-
-    def _show_update_banner(self, release: "Release"):
-        if self._update_banner is not None:
-            return
-        self._update_banner = tk.Frame(self.root, bg=ACCENT)
-        self._update_banner.pack(
-            before=self.grid_container, fill=tk.X, padx=10, pady=(5, 0),
-        )
-
-        tk.Label(
-            self._update_banner,
-            text=f"Version {release.version} verfügbar",
-            bg=ACCENT, fg="#ffffff", font=FONT_BOLD,
-        ).pack(side=tk.LEFT, padx=10, pady=6)
-
-        dismiss_btn = label_button(
-            self._update_banner, "✕",
-            lambda: self._dismiss_update_banner(release.version),
-            bg=ACCENT, fg="#ffffff",
-            hover_bg=ACCENT_HOVER, hover_fg="#ffffff",
-            font=FONT_BOLD,
-            label_padx=8,
-        )
-        dismiss_btn.pack(side=tk.RIGHT, padx=(0, 4), pady=6)
-        attach_tooltip(dismiss_btn, "Diese Version ausblenden")
-
-        label_button(
-            self._update_banner, "Download",
-            lambda: self._open_update_download(release),
-            bg="#ffffff", fg=ACCENT,
-            hover_bg="#f0f0f0", hover_fg=ACCENT_HOVER,
-            font=FONT_BOLD,
-            label_padx=14, label_pady=2,
-        ).pack(side=tk.RIGHT, padx=8, pady=4)
-
-    def _open_update_download(self, release: "Release"):
-        url = pick_asset_url(
-            release.assets, platform.system(), release.version,
-        ) or release.html_url
-        webbrowser.open(url)
-
-    def _dismiss_update_banner(self, version: str):
-        self.settings.set("dismissed_version", version)
-        if self._update_banner is not None:
-            self._update_banner.destroy()
-            self._update_banner = None
 
     def _build_header(self):
         frame = tk.Frame(self.root, bg=BG)
