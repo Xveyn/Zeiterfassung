@@ -33,6 +33,32 @@ def _should_hide_tip(root_state, widget_rects, pointer):
     return True
 
 
+# Genau ein Tooltip darf gleichzeitig sichtbar sein (#66). Die Instanzen kennen
+# einander nicht, daher hält das Modul eine globale Referenz auf das aktuell
+# offene Tooltip: beim Anzeigen eines neuen wird das vorherige sofort geschlossen
+# (sonst hängt es bis zu seinem Close-Delay/Watchdog noch sichtbar herum, wenn
+# der Zeiger schnell über mehrere Elemente fährt).
+_active_tip = None
+
+
+def _set_active_tip(tip):
+    """Macht `tip` zum einzigen sichtbaren Tooltip: schließt ein evtl. anderes
+    aktives und merkt sich `tip`."""
+    global _active_tip
+    prev = _active_tip
+    if prev is not None and prev is not tip:
+        prev._close()  # ruft seinerseits _clear_active_tip(prev)
+    _active_tip = tip
+
+
+def _clear_active_tip(tip):
+    """Entfernt `tip` aus der Registry — aber nur, wenn es das aktive ist
+    (ein bereits abgelöstes Tooltip darf das neue nicht überschreiben)."""
+    global _active_tip
+    if _active_tip is tip:
+        _active_tip = None
+
+
 class _Tooltip:
     """Hover-Tooltip an ein oder mehrere Tk-Widgets binden.
 
@@ -104,6 +130,8 @@ class _Tooltip:
         # Re-Render, Fokuswechsel): solange das Tooltip offen ist, periodisch
         # selbst prüfen, ob es noch sichtbar sein darf.
         self._schedule_watchdog()
+        # Nur eines gleichzeitig (#66): ein evtl. noch offenes anderes schließen.
+        _set_active_tip(self)
 
     def _on_leave(self, _event):
         if self._close_after_id is not None:
@@ -181,6 +209,7 @@ class _Tooltip:
             except tk.TclError:
                 pass
             self.tip = None
+        _clear_active_tip(self)
 
 
 def attach_tooltip(widget_or_widgets, text: str) -> None:
