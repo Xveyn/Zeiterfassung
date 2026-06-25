@@ -25,10 +25,15 @@ Desktop-App zur Erfassung von Arbeitszeiten mit Kalenderansicht, PDF-Report und 
 Zeiterfassung/
 ├── src/
 │   ├── main.py            # Einstiegspunkt
-│   ├── ui.py              # Tkinter-GUI (Kalender, Header, Banner-Updater)
-│   ├── dialogs/           # Modal-Dialoge (entry, send, settings, share, import, conflicts)
+│   ├── ui.py              # Tkinter-GUI; App koordiniert die Komponenten (Chrome, Navigation, Dialog-Routing)
+│   ├── grid_renderer.py   # Kalender-/Grid-Rendering (Monats-/Wochenansicht, Zelltypen, Double-Buffer)
+│   ├── background_tasks.py # Hintergrund-Worker + Thread-Mechanik (Token-Refresh, Update-Check, Reconcile)
+│   ├── sync_orchestrator.py # Drive-Sync-Steuerung (manuell/Tray/Pull/Quit, Fehler-Aufbereitung)
+│   ├── update_banner.py   # GitHub-Release-Hinweis-Banner
+│   ├── dialogs/           # Modal-Dialoge (entry, send, settings, share, import, conflicts, category)
 │   ├── storage.py         # JSON-Persistenz der Zeiteinträge
 │   ├── settings.py        # Einstellungen mit Standardwerten
+│   ├── category_defaults.py # Default-Kategorien für Zeit-Slots
 │   ├── report.py          # HTML- & PDF-Reportgenerierung
 │   ├── mail.py            # Gmail OAuth2-Authentifizierung & Versand
 │   ├── drive.py           # Google Drive API-Wrapper (Multi-Device-Sync)
@@ -59,6 +64,8 @@ Zeiterfassung/
 ├── settings.json          # Benutzereinstellungen (wird automatisch erstellt)
 └── zeiterfassung.json     # Gespeicherte Zeiteinträge (wird automatisch erstellt)
 ```
+
+> Detaillierte Architektur — die `App`-Komponenten (`GridRenderer`, `BackgroundTaskRunner`, `SyncOrchestrator`, `UpdateBanner`), ihre Verträge und das Threading-Modell: [`src/CLAUDE.md`](src/CLAUDE.md).
 
 ## Installation
 
