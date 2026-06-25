@@ -1,9 +1,8 @@
 # src/dialogs/conflicts_dialog.py
 import tkinter as tk
-from tkinter import messagebox
 
 from src import sync
-from src.theme import apply_app_icon
+from src.theme import apply_app_icon, themed_showerror
 from src.time_utils import format_iso_datetime
 
 
@@ -116,7 +115,7 @@ class ConflictsDialog:
             sync.resolve_conflict(c["id"], chosen, self.conflicts_store,
                                   self.storage, self.settings, device_id)
         except Exception as e:
-            messagebox.showerror("Konflikt-Resolution fehlgeschlagen", str(e))
+            themed_showerror(self.top, "Konflikt-Resolution fehlgeschlagen", str(e))
             return
         self._refresh_list()
         self.btn_a.config(state="disabled")

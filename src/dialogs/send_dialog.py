@@ -14,7 +14,7 @@ from src.theme import (
     apply_app_icon, apply_combobox_style, apply_dark_titlebar,
     attach_unfocus_on_click, center_dialog_on_parent,
     disable_min_max, dark_combo, primary_button, secondary_button,
-    themed_showinfo,
+    themed_showerror, themed_showinfo,
 )
 
 
@@ -216,14 +216,14 @@ def open_send_dialog(parent, storage, settings, base_path):
             date_from = datetime.date(int(from_year.get()), int(from_month.get()), int(from_day.get()))
             date_to = datetime.date(int(to_year.get()), int(to_month.get()), int(to_day.get()))
         except ValueError:
-            messagebox.showerror("Ungültiges Datum", "Bitte ein gültiges Datum eingeben.", parent=dialog)
+            themed_showerror(dialog, "Ungültiges Datum", "Bitte ein gültiges Datum eingeben.")
             return
 
         if date_from > date_to:
-            messagebox.showerror(
+            themed_showerror(
+                dialog,
                 "Ungültiger Zeitraum",
                 "Das Von-Datum muss vor dem Bis-Datum liegen.",
-                parent=dialog,
             )
             return
 
@@ -241,10 +241,10 @@ def open_send_dialog(parent, storage, settings, base_path):
         )
 
         if html is None:
-            messagebox.showinfo(
+            themed_showinfo(
+                dialog,
                 "Keine Einträge",
                 f"Keine Einträge für {date_from.strftime('%d.%m.%Y')} – {date_to.strftime('%d.%m.%Y')} vorhanden.",
-                parent=dialog,
             )
             return
 
@@ -288,20 +288,20 @@ def open_send_dialog(parent, storage, settings, base_path):
                 f"Bericht für {label} wurde an {recipient} gesendet.",
             )
         except FileNotFoundError as e:
-            messagebox.showerror("Fehler", str(e), parent=dialog)
+            themed_showerror(dialog, "Fehler", str(e))
         except Exception as e:
             # Trace landet immer im Logfile. Bei einem reinen Offline-Fehler
             # zeigen wir dem Nutzer aber eine verständliche Meldung statt des
             # kryptischen Tracebacks — das ist kein Bug, sondern fehlendes Netz.
             logging.getLogger(__name__).exception("Senden fehlgeschlagen")
             if is_offline_error(e):
-                messagebox.showerror(
+                themed_showerror(
+                    dialog,
                     "Keine Internetverbindung",
                     "Der Bericht konnte nicht gesendet werden, weil keine "
                     "Verbindung zum Internet besteht.\n\n"
                     "Bitte prüfe deine Internetverbindung und versuche es "
                     "dann erneut.",
-                    parent=dialog,
                 )
             else:
                 messagebox.showerror(

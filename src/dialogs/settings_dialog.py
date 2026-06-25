@@ -714,10 +714,10 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
         for key, lbl in zip(WEEKDAY_KEYS, DAYS_DE):
             ok, msg = validate_entry(start_vars[key].get(), end_vars[key].get())
             if not ok:
-                messagebox.showerror(
+                themed_showerror(
+                    dialog,
                     "Standard-Arbeitszeit ungültig",
                     f"{lbl}: {msg}",
-                    parent=dialog,
                 )
                 return
 
@@ -734,10 +734,10 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
                 else:
                     disable_autostart()
             except Exception as e:
-                messagebox.showerror(
+                themed_showerror(
+                    dialog,
                     "Autostart-Fehler",
                     f"Autostart konnte nicht geändert werden:\n{e}",
-                    parent=dialog,
                 )
                 return
 
