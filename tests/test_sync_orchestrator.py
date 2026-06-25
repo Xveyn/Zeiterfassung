@@ -79,7 +79,7 @@ def _orch(sync_enabled=True, execute_runner=False, get_tray=lambda: None,
 def test_on_sync_clicked_disabled_does_not_run(monkeypatch):
     import src.sync_orchestrator as so
     shown = []
-    monkeypatch.setattr(so.messagebox, "showinfo",
+    monkeypatch.setattr(so, "themed_showinfo",
                         lambda *a, **k: shown.append(a))
     orch, runner = _orch(sync_enabled=False)
     orch.on_sync_clicked()
