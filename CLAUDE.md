@@ -144,8 +144,12 @@ Lokal: `pytest` aus dem Repo-Root. Alle Tests müssen vor dem PR-Merge grün sei
 
 ## Struktur
 
+> Detaillierte Architektur-Referenz (Schichten, App-Komponenten, Verträge,
+> Threading-Modell): **`src/CLAUDE.md`** — bei Verantwortlichkeits-Änderungen
+> mitpflegen.
+
 - `src/main.py` — Einstiegspunkt; baut `Tk`-Root, instanziert `Storage`/`Settings`/`App`, behandelt `--minimized`
-- `src/ui.py` — Tkinter-GUI (Kalender, Header, Banner-Updater)
+- `src/ui.py` — Tkinter-GUI; `App` ist schlanker Koordinator über `GridRenderer`/`BackgroundTaskRunner`/`SyncOrchestrator`/`UpdateBanner` (siehe `src/CLAUDE.md`)
 - `src/dialogs/` — Modal-Dialoge (`entry_dialog`, `send_dialog`, `settings_dialog`)
 - `src/storage.py` — JSON-Persistenz der Zeiteinträge (Schlüssel: ISO-Datum)
 - `src/settings.py` — Benutzereinstellungen mit Defaults
