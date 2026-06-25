@@ -2,11 +2,12 @@
 import base64
 import os
 import socket
-import stat
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.mime.application import MIMEApplication
 from email.header import Header
+
+from src.oauth_utils import discard_token_for_scope_upgrade, write_token
 
 GMAIL_SEND_SCOPE = "https://www.googleapis.com/auth/gmail.send"
 DRIVE_APPDATA_SCOPE = "https://www.googleapis.com/auth/drive.appdata"
@@ -64,7 +65,7 @@ def fetch_user_email(token_path="token.json", sync_enabled=False, gcal_enabled=F
             from google.auth.transport.requests import Request
             try:
                 creds.refresh(Request())
-                _write_token(creds, token_path)
+                write_token(creds, token_path)
             except Exception:
                 log.warning("fetch_user_email: token refresh failed")
                 return ""
@@ -165,21 +166,6 @@ def is_offline_error(exc):
     return False
 
 
-def _write_token(creds, token_path):
-    """Persistiere Credentials und setze restriktive Permissions (Unix only).
-
-    Auf Windows bleibt das chmod ein No-op — POSIX-Permissions gibt es
-    dort nicht. `try/except OSError` deckt zusätzlich exotische Filesystems
-    (sshfs, FAT32 auf USB-Stick) ab, wo chmod fehlschlagen kann.
-    """
-    with open(token_path, "w") as f:
-        f.write(creds.to_json())
-    try:
-        os.chmod(token_path, stat.S_IRUSR | stat.S_IWUSR)  # 0o600
-    except OSError:
-        pass
-
-
 def _refresh_and_persist(creds, token_path):
     """Refresh credentials and write them back. Translates Google exceptions."""
     from google.auth.exceptions import RefreshError, TransportError
@@ -192,7 +178,7 @@ def _refresh_and_persist(creds, token_path):
     except TransportError as e:
         raise TokenNetworkError(str(e)) from e
 
-    _write_token(creds, token_path)
+    write_token(creds, token_path)
 
 
 def refresh_token_if_needed(token_path="token.json", sync_enabled=False,
@@ -244,22 +230,12 @@ def get_gmail_service(credentials_path="credentials.json", token_path="token.jso
 
     if os.path.exists(token_path):
         creds = Credentials.from_authorized_user_file(token_path, scopes)
-        # Scope-Upgrade-Erkennung: wenn der gespeicherte Token nicht alle
-        # angeforderten Scopes hat (typisch nach Feature-Update), zwingt wir
+        # Scope-Upgrade-Erkennung: deckt der gespeicherte Token nicht alle
+        # angeforderten Scopes ab (typisch nach Feature-Update), erzwingen wir
         # einen frischen OAuth-Flow. Sonst bleibt der Token "valid" und der
         # User wundert sich, warum eine Scope-abhängige Funktion 401/403 wirft.
-        try:
-            import json as _json
-            with open(token_path, "r", encoding="utf-8") as f:
-                granted = set(_json.load(f).get("scopes") or [])
-            if not set(scopes).issubset(granted):
-                creds = None
-                try:
-                    os.remove(token_path)
-                except OSError:
-                    pass
-        except Exception:
-            pass
+        if discard_token_for_scope_upgrade(token_path, scopes):
+            creds = None
 
     if creds and creds.expired and creds.refresh_token:
         try:
@@ -276,7 +252,7 @@ def get_gmail_service(credentials_path="credentials.json", token_path="token.jso
             )
         flow = InstalledAppFlow.from_client_secrets_file(credentials_path, scopes)
         creds = flow.run_local_server(port=0)
-        _write_token(creds, token_path)
+        write_token(creds, token_path)
 
     return build("gmail", "v1", credentials=creds)
 

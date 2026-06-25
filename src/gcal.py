@@ -9,6 +9,7 @@ Die pure Helper `event_payload` / `parse_event` haben keine Google-Abhängigkeit
 import datetime
 
 from src.mail import get_scopes
+from src.oauth_utils import discard_token_for_scope_upgrade, write_token
 
 # Marker in extendedProperties.private — über diesen findet der Pull "seine"
 # Events; manuell angelegte Termine bleiben dadurch unangetastet.
@@ -85,9 +86,7 @@ def get_calendar_service(credentials_path="credentials.json",
     Scopes aus dem gemeinsamen token.json. Spiegelt get_gmail_service inkl.
     Scope-Upgrade-Erkennung. Google-Imports lazy (CI ohne requirements.txt).
     """
-    import json as _json
     import os
-    import stat
 
     from google.oauth2.credentials import Credentials
     from google.auth.transport.requests import Request
@@ -96,29 +95,12 @@ def get_calendar_service(credentials_path="credentials.json",
 
     scopes = get_scopes(sync_enabled, gcal_enabled=True)
 
-    def _write(c):
-        with open(token_path, "w") as f:
-            f.write(c.to_json())
-        try:
-            os.chmod(token_path, stat.S_IRUSR | stat.S_IWUSR)  # 0o600
-        except OSError:
-            pass
-
     creds = None
     if os.path.exists(token_path):
         creds = Credentials.from_authorized_user_file(token_path, scopes)
         # Scope-Upgrade-Erkennung: hat der Token nicht alle Scopes, frischer Flow.
-        try:
-            with open(token_path, "r", encoding="utf-8") as f:
-                granted = set(_json.load(f).get("scopes") or [])
-            if not set(scopes).issubset(granted):
-                creds = None
-                try:
-                    os.remove(token_path)
-                except OSError:
-                    pass
-        except Exception:
-            pass
+        if discard_token_for_scope_upgrade(token_path, scopes):
+            creds = None
 
     if creds and creds.expired and creds.refresh_token:
         # Spiegelt get_gmail_service: ein ungültiger Refresh-Token (RefreshError)
@@ -127,7 +109,7 @@ def get_calendar_service(credentials_path="credentials.json",
         from google.auth.exceptions import RefreshError
         try:
             creds.refresh(Request())
-            _write(creds)
+            write_token(creds, token_path)
         except RefreshError:
             creds = None
 
@@ -138,7 +120,7 @@ def get_calendar_service(credentials_path="credentials.json",
             )
         flow = InstalledAppFlow.from_client_secrets_file(credentials_path, scopes)
         creds = flow.run_local_server(port=0)
-        _write(creds)
+        write_token(creds, token_path)
 
     return build("calendar", "v3", credentials=creds)
 
