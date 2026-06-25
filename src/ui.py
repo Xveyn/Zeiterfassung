@@ -8,7 +8,6 @@ import logging
 import os
 import platform
 import time
-import traceback
 import webbrowser
 from src.time_utils import (
     DAYS_DE, MONTHS_DE,
@@ -16,7 +15,7 @@ from src.time_utils import (
 )
 from src.holidays_de import get_holidays
 from src.tooltip import attach_tooltip
-from src.drive import DriveAuthError, DriveNetworkError
+
 from src.version import VERSION, version_label
 from src.updater import (
     pick_asset_url,
@@ -25,6 +24,7 @@ from src.updater import (
 )
 
 from src.background_tasks import BackgroundTaskRunner
+from src.sync_orchestrator import _classify_sync_error, SyncOrchestrator
 from src.dialogs.entry_dialog import open_entry_dialog
 from src.dialogs.send_dialog import open_send_dialog
 from src.dialogs.settings_dialog import open_settings_dialog
@@ -40,80 +40,6 @@ from src.theme import (
     icon_button, label_button, secondary_button, set_toggle_active, toggle_button,
     _stray_click_suppressed,
 )
-
-
-def _classify_sync_error(error):
-    """Kategorisiert einen Google-Sync/Reconcile-Fehler als 'auth', 'network'
-    oder 'unknown'. `error` kann eine Exception oder ein String sein (der
-    Push-/Reconcile-Pfad liefert str(e), der Pull-Pfad das Exception-Objekt).
-    Der abgelaufene/widerrufene Token kommt als invalid_grant durch — sowohl
-    bei Drive als auch beim Kalender, da beide denselben OAuth-Token nutzen.
-    Ein 403 'insufficient authentication scopes' / 'insufficientPermissions'
-    ist ebenfalls ein Auth-Fall (Token deckt einen Scope nicht ab → Re-Consent):
-    im String-Pfad fehlt die Typinfo, daher zusätzlich per Textmuster erkannt."""
-    text = str(error)
-    if (isinstance(error, DriveAuthError)
-            or "invalid_grant" in text
-            or "expired or revoked" in text
-            or "insufficientPermissions" in text
-            or "insufficient authentication scopes" in text):
-        return "auth"
-    if isinstance(error, DriveNetworkError):
-        return "network"
-    return "unknown"
-
-
-def _friendly_sync_message(error, tb=""):
-    """Mappt einen Drive-Sync-Fehler auf (Titel, Meldung) für die Messagebox.
-
-    Bekannte, erwartbare Fälle (abgelaufener/​widerrufener Token, fehlendes Netz)
-    bekommen eine verständliche Meldung OHNE Traceback. Nur bei wirklich
-    unerwarteten Fehlern bleibt der Traceback erhalten (CLAUDE.md: Fehler im
-    Sendepfad sichtbar machen)."""
-    from src.sync import NEWER_REMOTE_VERSION_MSG
-    if str(error) == NEWER_REMOTE_VERSION_MSG:
-        return ("Update erforderlich", NEWER_REMOTE_VERSION_MSG, True)
-
-    kind = _classify_sync_error(error)
-
-    if kind == "auth":
-        return (
-            "Google-Verbindung erneuern",
-            "Die App braucht erneut deine Erlaubnis für Google Drive. Das "
-            "passiert, wenn die Verbindung abgelaufen oder widerrufen wurde "
-            "oder eine neue Freigabe nötig ist.\n\nBitte öffne die "
-            "Einstellungen und klicke auf „Google neu verbinden\" — danach "
-            "im Browser die Freigabe bestätigen.",
-            True,
-        )
-    if kind == "network":
-        return (
-            "Keine Internetverbindung",
-            "Die Synchronisation mit Google Drive ist fehlgeschlagen, weil "
-            "keine Verbindung zum Internet besteht.\n\nBitte prüfe deine "
-            "Verbindung und versuche es erneut.",
-            True,
-        )
-    detail = f"{error}\n\n{tb}" if tb else str(error)
-    return (
-        "Synchronisation fehlgeschlagen",
-        "Bei der Synchronisation mit Google Drive ist ein unerwarteter "
-        f"Fehler aufgetreten:\n\n{detail}",
-        False,
-    )
-
-
-def _show_sync_error(parent, error, tb="", suffix=""):
-    """Zeigt einen Sync-Fehler im passenden Stil: bekannte Fälle (Token/Netz)
-    als themed Info-Dialog (wie die Gmail-Token-Meldung), unerwartete Fehler
-    als `showerror` mit Traceback (CLAUDE.md). `suffix` wird optional angehängt."""
-    title, message, known = _friendly_sync_message(error, tb)
-    if suffix:
-        message = f"{message}\n\n{suffix}"
-    if known:
-        themed_showinfo(parent, title, message)
-    else:
-        messagebox.showerror(title, message)
 
 
 def _delete_action(slots, selected, prefix):
@@ -203,11 +129,22 @@ class App:
         self.iso_year = iso[0]
         self.current_week = iso[1]
 
+        self._tray = None
+        self._bg = BackgroundTaskRunner(
+            self._marshal_to_ui, self.settings, self.base_path,
+            self.reservation_store, self._reservations_active,
+        )
+        self._sync = SyncOrchestrator(
+            self.root, self.storage, self.settings, self.conflicts_store,
+            self.base_path, self._bg, self._refresh, lambda: self._tray,
+        )
         self._build_header()
         self._build_grid()
         self._build_footer()
+        self._sync.attach_widgets(
+            self.sync_button, self.sync_status_label, self._next_button)
+        self._sync.update_status_label()
         self._apply_always_on_top()
-        self._tray = None
         self._apply_tray_setting()
         self.root.bind("<Left>", lambda e: self._navigate(-1))
         self.root.bind("<Right>", lambda e: self._navigate(+1))
@@ -221,10 +158,6 @@ class App:
         # gestartet) — keine sichtbaren Zwischenzustände.
         self._fixed_width = self._measure_max_width()
         self._refresh()
-        self._bg = BackgroundTaskRunner(
-            self._marshal_to_ui, self.settings, self.base_path,
-            self.reservation_store, self._reservations_active,
-        )
         self._bg.refresh_token(
             on_auth_error=lambda msg: themed_showinfo(
                 self.root,
@@ -381,9 +314,8 @@ class App:
         # --- Sync-Button und Status (Multi-Device-Sync) ---
         # Widgets werden erzeugt, aber nur gepackt wenn sync_enabled. Sync
         # ist opt-in; bei deaktiviertem Sync soll der Header unver\u00e4ndert wirken.
-        self.sync_button = icon_button(frame, "\u27f3", self._on_sync_clicked)
+        self.sync_button = icon_button(frame, "\u27f3", self._sync.on_sync_clicked)
         self.sync_status_label = tk.Label(frame, text="", bg=BG, fg=TEXT_MUTED, font=FONT_SMALL)
-        self._update_sync_status_label()
 
     def _build_grid(self):
         # Double-Buffer: zwei dauerhafte Frames im selben Grid-Slot. Refresh
@@ -503,7 +435,7 @@ class App:
     def _open_settings(self):
         def _on_change():
             self._refresh()
-            self._update_sync_status_label()
+            self._sync.update_status_label()
             self._apply_always_on_top()
             self._apply_tray_setting()
             # Nach jeder Settings-Speicherung den sender_email-Fetch nochmal
@@ -562,7 +494,7 @@ class App:
                     ("Teilen",
                      lambda: self.root.after(0, self._share), None),
                     ("Mit Google Drive synchronisieren",
-                     lambda: self.root.after(0, self._tray_sync),
+                     lambda: self.root.after(0, self._sync.tray_sync),
                      lambda: bool(self.settings.get("sync_enabled"))),
                 ],
             )
@@ -1254,102 +1186,11 @@ class App:
         )
 
     def on_sync_pull_success(self):
-        """Wird aus dem UI-Thread nach erfolgreichem Pull aufgerufen."""
-        # _refresh() re-renders the full calendar grid (month or week view).
-        self._refresh()
-        self._update_sync_status_label()
+        """Public-API für main.py: nach erfolgreichem Pull (UI-Thread)."""
+        self._sync.on_pull_success()
 
     def on_sync_pull_error(self, error, tb=""):
-        _show_sync_error(self.root, error, tb)
-        self._update_sync_status_label()
-
-    def _update_sync_status_label(self):
-        if not hasattr(self, "sync_status_label"):
-            return
-        enabled = self.settings.get("sync_enabled")
-        if not enabled:
-            # Widgets verstecken, falls vorher sichtbar.
-            self.sync_button.pack_forget()
-            self.sync_status_label.pack_forget()
-            self.sync_status_label.config(text="")
-            return
-        # Sichtbar machen, falls vorher versteckt. Vor dem ›-Button einsortieren,
-        # damit Layout-Reihenfolge identisch zum Build-Time-Pack ist.
-        if not self.sync_button.winfo_ismapped():
-            self.sync_button.pack(side=tk.RIGHT, padx=(4, 0), before=self._next_button)
-            self.sync_status_label.pack(
-                side=tk.RIGHT, padx=(8, 4), before=self.sync_button
-            )
-        n = 0
-        if self.conflicts_store is not None:
-            n = self.conflicts_store.count_unresolved()
-        if n > 0:
-            self.sync_status_label.config(text=f"⚠ {n} Konflikt{'e' if n != 1 else ''}")
-        else:
-            shown = format_iso_date(
-                self.settings.get("last_pull_at"), fallback="noch nie")
-            self.sync_status_label.config(text=f"✓ {shown}")
-
-    def _on_sync_clicked(self):
-        if not self.settings.get("sync_enabled"):
-            import tkinter.messagebox as mb
-            mb.showinfo("Synchronisation",
-                          "Synchronisation ist deaktiviert. In den Einstellungen aktivierbar.")
-            return
-        self.sync_status_label.config(text="Synchronisiere…")
-        from src.main import _run_push_blocking
-        self._bg.run(
-            lambda: _run_push_blocking(
-                self.storage, self.settings, self.conflicts_store,
-                self.base_path, timeout_seconds=15,
-            ),
-            self._on_manual_sync_done,
-        )
-
-    def _on_manual_sync_done(self, result):
-        if not result.get("ok"):
-            _show_sync_error(
-                self.root, result.get("error", "?"), result.get("tb", ""))
-        # _refresh() re-renders the full calendar grid so newly detected conflict
-        # markers appear immediately without requiring a manual view-change.
-        self._refresh()
-        self._update_sync_status_label()
-
-    def _tray_sync(self):
-        """Drive-Sync aus dem Tray-Menü. Wie _on_sync_clicked, aber das Ergebnis
-        geht als Tray-Toast zurück statt ins (im Tray-Modus versteckte) Status-
-        Label. Der Menüpunkt ist ohnehin nur bei aktivem Sync sichtbar; der
-        Guard fängt den Grenzfall ab, dass Sync zwischen Menü-Öffnen und Klick
-        deaktiviert wurde."""
-        if not self.settings.get("sync_enabled"):
-            return
-        from src.main import _run_push_blocking
-        self._bg.run(
-            lambda: _run_push_blocking(
-                self.storage, self.settings, self.conflicts_store,
-                self.base_path, timeout_seconds=15,
-            ),
-            self._on_tray_sync_done,
-        )
-
-    def _on_tray_sync_done(self, result):
-        # Still aktualisieren, damit der nächste Fenster-Aufruf den Stand zeigt.
-        self._refresh()
-        self._update_sync_status_label()
-        if self._tray is None:
-            return
-        # title="" — kein fetter Titel: der Absender oben („Zeiterfassung
-        # vX.Y.Z") nennt die App bereits, eine zusätzliche „Zeiterfassung"-
-        # Titelzeile wäre redundant. Es bleibt nur die Statusmeldung.
-        if result.get("ok"):
-            n = (self.conflicts_store.count_unresolved()
-                 if self.conflicts_store is not None else 0)
-            msg = ("Synchronisiert." if n == 0
-                   else f"Synchronisiert — {n} Konflikt{'e' if n != 1 else ''} offen.")
-            self._tray.notify(msg, title="")
-        else:
-            self._tray.notify(f"Sync fehlgeschlagen:\n{result.get('error', '?')}",
-                              title="")
+        self._sync.on_pull_error(error, tb)
 
     def _on_close(self):
         # Bei aktivem Minimize-to-Tray klappt der X-Button das Fenster nur weg;
@@ -1364,24 +1205,7 @@ class App:
     def _quit_with_sync_push(self):
         """Push zum Drive (falls aktiv) und App komplett beenden. Wird vom
         normalen X-Klick (ohne Tray) und vom Tray-Menü-„Beenden" aufgerufen."""
-        if self.settings.get("sync_enabled"):
-            from src.main import _run_push_blocking
-            try:
-                result = _run_push_blocking(
-                    self.storage, self.settings, self.conflicts_store,
-                    self.base_path, timeout_seconds=5,
-                )
-            except Exception as e:
-                result = {"ok": False, "error": e, "tb": traceback.format_exc()}
-            if not result.get("ok"):
-                # CLAUDE.md: Fehler dürfen nicht silently verschluckt werden.
-                # Wir zeigen die Messagebox blockierend; User entscheidet, ob er
-                # die Daten nochmal woanders sichern will oder die App so schließt.
-                _show_sync_error(
-                    self.root, result.get("error", "?"), result.get("tb", ""),
-                    suffix="Lokale Daten bleiben erhalten und werden beim "
-                           "nächsten Start synchronisiert.",
-                )
+        self._sync.push_on_quit()
         if self._tray is not None:
             self._tray.stop()
         self.root.destroy()

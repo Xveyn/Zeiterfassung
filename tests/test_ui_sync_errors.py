@@ -6,7 +6,7 @@ weg. Ein 403 'insufficient authentication scopes' muss trotzdem als 'auth'
 (Re-Consent nötig) erkannt werden, nicht als 'unknown' (roher Traceback) oder
 'network' ('Keine Internetverbindung').
 """
-from src.ui import _classify_sync_error, _friendly_sync_message
+from src.sync_orchestrator import _classify_sync_error, _friendly_sync_message
 from src.drive import DriveAuthError, DriveNetworkError
 from src.sync import NEWER_REMOTE_VERSION_MSG
 
