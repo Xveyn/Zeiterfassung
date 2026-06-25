@@ -7,7 +7,6 @@ import datetime
 import logging
 import os
 import platform
-import threading
 import time
 import traceback
 import webbrowser
@@ -17,18 +16,15 @@ from src.time_utils import (
 )
 from src.holidays_de import get_holidays
 from src.tooltip import attach_tooltip
-from src.mail import fetch_user_email, refresh_token_if_needed, TokenAuthError, TokenNetworkError
 from src.drive import DriveAuthError, DriveNetworkError
 from src.version import VERSION, version_label
 from src.updater import (
-    check_latest_release,
-    is_newer,
     pick_asset_url,
-    should_check_today,
     today_iso,
     Release,
 )
 
+from src.background_tasks import BackgroundTaskRunner
 from src.dialogs.entry_dialog import open_entry_dialog
 from src.dialogs.send_dialog import open_send_dialog
 from src.dialogs.settings_dialog import open_settings_dialog
@@ -139,6 +135,12 @@ def _delete_action(slots, selected, prefix):
     return "save", keep
 
 
+# Probe-Label-Geometrie zur Zellgroessen-Messung (Month- und Week-Render teilen sie).
+PROBE_WIDTH_WIDE = 12    # ausgeblendetes Wochenende -> breitere Zellen
+PROBE_WIDTH_NARROW = 8   # 7-Spalten-Modus
+PROBE_HEIGHT = 3
+
+
 class App:
     def __init__(self, root, storage, settings, base_path=".", conflicts_store=None,
                  reservation_store=None):
@@ -207,8 +209,8 @@ class App:
         self._apply_always_on_top()
         self._tray = None
         self._apply_tray_setting()
-        self.root.bind("<Left>", lambda e: self._prev())
-        self.root.bind("<Right>", lambda e: self._next())
+        self.root.bind("<Left>", lambda e: self._navigate(-1))
+        self.root.bind("<Right>", lambda e: self._navigate(+1))
         # Tab schaltet zwischen Monat- und Wochenansicht. "break" verhindert
         # die Default-Focus-Traversal, die sonst zwischen den Toggle-Buttons
         # springen würde und das Toggle visuell zerschießt.
@@ -219,106 +221,27 @@ class App:
         # gestartet) — keine sichtbaren Zwischenzustände.
         self._fixed_width = self._measure_max_width()
         self._refresh()
-        self._proactive_token_refresh()
-        self._proactive_sender_email_fetch()
+        self._bg = BackgroundTaskRunner(
+            self._marshal_to_ui, self.settings, self.base_path,
+            self.reservation_store, self._reservations_active,
+        )
+        self._bg.refresh_token(
+            on_auth_error=lambda msg: themed_showinfo(
+                self.root,
+                "Gmail-Anmeldung abgelaufen",
+                "Der Gmail-Token konnte nicht automatisch erneuert werden:\n\n"
+                f"{msg}\n\n"
+                "Beim nächsten Senden wirst du zur erneuten Anmeldung aufgefordert.",
+            ),
+            on_error=lambda tb: themed_showinfo(
+                self.root, "Token-Refresh fehlgeschlagen", tb,
+            ),
+        )
+        self._bg.fetch_sender_email()
         self._update_banner = None
-        self._proactive_update_check()
-        self._proactive_calendar_reconcile()
+        self._bg.check_update(on_result=self._handle_update_check_result)
+        self._bg.reconcile_on_start(on_ok=self._refresh)
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
-
-    def _proactive_token_refresh(self):
-        """Erneuert den Gmail-Token beim App-Start im Hintergrund.
-
-        Auth-Fehler werden als Messagebox gezeigt, Netzwerkfehler still
-        übergangen, damit ein Offline-Start nicht stört.
-        """
-        token_path = os.path.join(self.base_path, "token.json")
-
-        def worker():
-            try:
-                refresh_token_if_needed(
-                    token_path,
-                    sync_enabled=self.settings.get("sync_enabled"),
-                    gcal_enabled=self.settings.get("gcal_enabled"),
-                )
-            except TokenAuthError as e:
-                msg = str(e)
-                self._marshal_to_ui(lambda: themed_showinfo(
-                    self.root,
-                    "Gmail-Anmeldung abgelaufen",
-                    "Der Gmail-Token konnte nicht automatisch erneuert werden:\n\n"
-                    f"{msg}\n\n"
-                    "Beim nächsten Senden wirst du zur erneuten Anmeldung aufgefordert."
-                ))
-            except TokenNetworkError:
-                pass
-            except Exception as e:
-                logging.getLogger(__name__).exception("Token-Refresh fehlgeschlagen")
-                err = f"{type(e).__name__}: {e}\n\n{traceback.format_exc()}"
-                self._marshal_to_ui(lambda: themed_showinfo(
-                    self.root, "Token-Refresh fehlgeschlagen", err
-                ))
-
-        threading.Thread(target=worker, daemon=True).start()
-
-    def _proactive_sender_email_fetch(self):
-        """Holt einmalig pro App-Start die authentifizierte E-Mail-Adresse über
-        das OAuth2-Userinfo-Endpoint und cached sie in `settings.sender_email`.
-
-        Schlägt still fehl, wenn kein Token, kein Netz oder der userinfo.email-
-        Scope dem Token noch nicht gewährt wurde — der nächste Send-Dialog
-        triggert dann den OAuth-Re-Consent, und beim nächsten App-Start klappt
-        es. So bekommt der User nichts mit, wenn alles funktioniert.
-        """
-        token_path = os.path.join(self.base_path, "token.json")
-        if not os.path.exists(token_path):
-            return
-
-        def worker():
-            try:
-                email = fetch_user_email(
-                    token_path,
-                    sync_enabled=self.settings.get("sync_enabled"),
-                    gcal_enabled=self.settings.get("gcal_enabled"),
-                )
-            except Exception:
-                logging.getLogger(__name__).exception("sender_email-Fetch fehlgeschlagen")
-                return
-            if email and email != self.settings.get("sender_email"):
-                self._marshal_to_ui(lambda: self.settings.set("sender_email", email))
-
-        threading.Thread(target=worker, daemon=True).start()
-
-    def _proactive_update_check(self):
-        """Fragt einmal pro Kalendertag GitHub nach einer neueren Version.
-
-        Der HTTP-Call läuft in einem Daemon-Thread; alle State-Mutationen
-        (Settings-Write, Banner-Aufbau) werden via `root.after(0, ...)` auf
-        den UI-Thread marshallt, damit `Settings.set` nicht parallel zu
-        Schreibvorgängen aus dem Settings-Dialog läuft.
-
-        Fehler werden still verschluckt — Update-Hinweis ist nice-to-have.
-        """
-        if not should_check_today(self.settings.get("last_update_check_at")):
-            return
-
-        def worker():
-            try:
-                release = check_latest_release("MargenHeld/Zeiterfassung")
-                if release is None:
-                    return
-                newer = is_newer(VERSION, release.version)
-            except Exception:
-                # Pure Logik, robust gegen exotische Tags. Bei jedem Fehler:
-                # nichts persistieren, nichts anzeigen — morgen nochmal probieren.
-                # Trace landet im Logfile, falls jemand den Fehler diagnostizieren will.
-                logging.getLogger(__name__).exception("Update-Check fehlgeschlagen")
-                return
-            self._marshal_to_ui(
-                lambda: self._handle_update_check_result(release, newer)
-            )
-
-        threading.Thread(target=worker, daemon=True).start()
 
     def _reservations_active(self):
         """True, wenn Reservierungen angezeigt/bearbeitet werden dürfen: ein
@@ -327,41 +250,6 @@ class App:
         gerendert noch im Tages-Dialog angeboten."""
         return (self.reservation_store is not None
                 and bool(self.settings.get("gcal_enabled")))
-
-    def _proactive_calendar_reconcile(self):
-        """Gleicht beim App-Start die Reservierungen mit dem Google Kalender ab.
-
-        Läuft im Hintergrund. Fehler werden STILL geloggt (ein Offline-Start
-        darf nicht nerven — analog Token-Refresh/Update-Check).
-        """
-        if not self._reservations_active():
-            return
-
-        def worker():
-            from src.main import run_calendar_reconcile
-            result = run_calendar_reconcile(
-                self.reservation_store, self.settings, self.base_path)
-            if result.get("ok"):
-                self._marshal_to_ui(self._refresh)
-
-        threading.Thread(target=worker, daemon=True).start()
-
-    def _trigger_calendar_reconcile(self):
-        """Stößt nach einer Reservierungsänderung den Kalender-Abgleich an.
-
-        Fehler werden hier ALS MESSAGEBOX gezeigt — der User hat aktiv
-        gespeichert und erwartet Feedback (CLAUDE.md: Sendepfad-Fehler sichtbar).
-        """
-        if not self._reservations_active():
-            return
-
-        def worker():
-            from src.main import run_calendar_reconcile
-            result = run_calendar_reconcile(
-                self.reservation_store, self.settings, self.base_path)
-            self._marshal_to_ui(lambda: self._on_reconcile_done(result))
-
-        threading.Thread(target=worker, daemon=True).start()
 
     def _on_reconcile_done(self, result):
         if not result.get("ok"):
@@ -458,7 +346,7 @@ class App:
         # die Reihenh\u00f6he folgt sonst dem gr\u00f6\u00dften Kind.
         tk.Label(frame, text="", font=FONT_HEADER, bg=BG, width=0).pack(side=tk.LEFT)
 
-        icon_button(frame, "\u2039", self._prev).pack(side=tk.LEFT)
+        icon_button(frame, "\u2039", lambda: self._navigate(-1)).pack(side=tk.LEFT)
 
         toggle_frame = tk.Frame(frame, bg=BG)
         toggle_frame.pack(side=tk.LEFT, padx=10)
@@ -487,7 +375,7 @@ class App:
             fg=TEXT_MUTED, hover_fg=TEXT,
         ).pack(side=tk.RIGHT)
 
-        self._next_button = icon_button(frame, "\u203a", self._next)
+        self._next_button = icon_button(frame, "\u203a", lambda: self._navigate(+1))
         self._next_button.pack(side=tk.RIGHT, padx=(0, 5))
 
         # --- Sync-Button und Status (Multi-Device-Sync) ---
@@ -537,34 +425,21 @@ class App:
             footer_frame, "Arbeitszeiten senden", self._send, padx=12,
         ).pack(side=tk.RIGHT)
 
-    def _prev(self):
+    def _navigate(self, direction):
+        """Blättert die Ansicht um `direction` Einheiten (-1 zurück, +1 vor):
+        im Monatsmodus ±1 Monat (mit Jahreswechsel), im Wochenmodus ±7 Tage."""
         if self.view_mode == "month":
-            if self.month == 1:
-                self.month = 12
-                self.year -= 1
+            m = self.month + direction
+            if m < 1:
+                self.month, self.year = 12, self.year - 1
+            elif m > 12:
+                self.month, self.year = 1, self.year + 1
             else:
-                self.month -= 1
+                self.month = m
         else:
-            dates = get_week_dates(self.iso_year, self.current_week)
-            prev_monday = dates[0] - datetime.timedelta(days=7)
-            iso = prev_monday.isocalendar()
-            self.iso_year = iso[0]
-            self.current_week = iso[1]
-        self._refresh()
-
-    def _next(self):
-        if self.view_mode == "month":
-            if self.month == 12:
-                self.month = 1
-                self.year += 1
-            else:
-                self.month += 1
-        else:
-            dates = get_week_dates(self.iso_year, self.current_week)
-            next_monday = dates[0] + datetime.timedelta(days=7)
-            iso = next_monday.isocalendar()
-            self.iso_year = iso[0]
-            self.current_week = iso[1]
+            monday = get_week_dates(self.iso_year, self.current_week)[0] \
+                + datetime.timedelta(days=7 * direction)
+            self.iso_year, self.current_week = monday.isocalendar()[:2]
         self._refresh()
 
     def _on_tab_toggle_view(self, _event=None):
@@ -635,7 +510,7 @@ class App:
             # anstoßen. Damit erscheint die Absender-Adresse automatisch nach
             # Sync-Aktivierung (frischer Token mit userinfo.email-Scope), ohne
             # dass der User den "Aktualisieren"-Button drücken muss.
-            self._proactive_sender_email_fetch()
+            self._bg.fetch_sender_email()
         open_settings_dialog(
             self.root, self.settings, self.base_path,
             on_change=_on_change,
@@ -852,8 +727,8 @@ class App:
         for w in (cell, day_lbl, time_lbl):
             w.bind("<Button-1>", lambda e, d=date_str: self._open_dialog(d))
             w.bind("<Button-3>", lambda e, d=date_str: self._delete_day(d))
-            w.bind("<Enter>", lambda e, c=cell, dl=day_lbl, tl=time_lbl, hb=hover_bg: self._cell_hover(c, dl, tl, hb))
-            w.bind("<Leave>", lambda e, c=cell, dl=day_lbl, tl=time_lbl, ob=bg: self._cell_hover(c, dl, tl, ob))
+            w.bind("<Enter>", lambda e, c=cell, dl=day_lbl, tl=time_lbl, hb=hover_bg: self._hover(c, hb, dl, tl))
+            w.bind("<Leave>", lambda e, c=cell, dl=day_lbl, tl=time_lbl, ob=bg: self._hover(c, ob, dl, tl))
         return cell
 
     @staticmethod
@@ -869,7 +744,7 @@ class App:
         rendert je nach Font als kaum sichtbarer Fleck; das Oval gibt einen
         sauber gerundeten, größenkontrollierten Punkt. place() überlagert die
         gepackten Kind-Widgets. Der Marker wird als cell._reservation_marker
-        getaggt, damit _cell_hover seinen Hintergrund beim Hover mitfärbt."""
+        getaggt, damit _hover seinen Hintergrund beim Hover mitfärbt."""
         box, dot = 12, 7
         marker = tk.Canvas(
             cell, width=box, height=box, bg=cell.cget("bg"),
@@ -891,7 +766,7 @@ class App:
         Lösch-Auslöser, ohne den Linksklick-Dialog mit Lösch-Buttons zu belasten.
         Klick ruft denselben _delete_day-Pfad wie der Win/Linux-Rechtsklick
         (Ja/Nein bzw. Slot-Auswahl). Getaggt als cell._delete_button, damit
-        _cell_hover/_empty_hover seinen Hintergrund beim Hover mitfärben."""
+        _hover seinen Hintergrund beim Hover mitfärbt."""
         bg = cell.cget("bg")
         btn = tk.Label(
             cell, text="✕", font=FONT_TINY, bg=bg, fg=TEXT_MUTED, cursor="hand2",
@@ -902,7 +777,7 @@ class App:
         btn.bind("<Button-1>",
                  lambda e, d=date_str: (self._delete_day(d), "break")[1])
         # fg-Hover (rot als Lösch-Affordance) steuert der Button selbst; den bg
-        # färbt _cell_hover/_empty_hover mit der Zelle.
+        # färbt _hover mit der Zelle.
         btn.bind("<Enter>", lambda e: btn.config(fg=ACCENT))
         btn.bind("<Leave>", lambda e: btn.config(fg=TEXT_MUTED))
         cell._delete_button = btn
@@ -933,8 +808,8 @@ class App:
         for w in (cell, day_lbl):
             w.bind("<Button-1>", lambda e, d=date_str: self._open_dialog(d))
             w.bind("<Button-3>", lambda e, d=date_str: self._delete_day(d))
-            w.bind("<Enter>", lambda e, c=cell, dl=day_lbl, hb=hover_bg: self._empty_hover(c, dl, hb))
-            w.bind("<Leave>", lambda e, c=cell, dl=day_lbl, ob=bg: self._empty_hover(c, dl, ob))
+            w.bind("<Enter>", lambda e, c=cell, dl=day_lbl, hb=hover_bg: self._hover(c, hb, dl))
+            w.bind("<Leave>", lambda e, c=cell, dl=day_lbl, ob=bg: self._hover(c, ob, dl))
         return cell
 
     def _build_day_cell(self, parent, date_str, day_text, day_date, is_weekend,
@@ -1066,6 +941,25 @@ class App:
             if c.get("kind") == "entry" and not c.get("resolved")
         }
 
+    def _cell_layout_metrics(self, frame):
+        """Misst die natuerliche Pixelgroesse einer Standard-Tageszelle (Probe-
+        Label) und liefert die layout-abhaengigen Groessen.
+
+        Bei ausgeblendetem Wochenende (5 statt 7 Spalten) bleibt mehr Horizontal-
+        platz pro Spalte: breitere Zellen und groessere Zeit-/Feiertagsschrift
+        (FONT statt FONT_SMALL), damit z.B. '09:30-17:00' bequem lesbar bleibt.
+        Holiday-Zellen werden spaeter auf `cell_size` fixiert, damit lange
+        Feiertagsnamen die Spalte nicht aufweiten (Header-Reflow/Flackern)."""
+        wide_cells = not self.settings.get("show_weekend")
+        probe_width = PROBE_WIDTH_WIDE if wide_cells else PROBE_WIDTH_NARROW
+        entry_time_font = FONT if wide_cells else FONT_SMALL
+        holiday_name_font = FONT if wide_cells else FONT_SMALL
+        probe = tk.Label(frame, text="", font=FONT, width=probe_width, height=PROBE_HEIGHT)
+        probe.update_idletasks()
+        cell_size = (probe.winfo_reqwidth(), probe.winfo_reqheight())
+        probe.destroy()
+        return cell_size, entry_time_font, holiday_name_font, wide_cells
+
     def _refresh_month(self):
         # In den versteckten Backbuffer bauen, dann via lift() in den Vordergrund
         # holen — verhindert sichtbare leere Fläche zwischen Refreshes.
@@ -1081,28 +975,8 @@ class App:
         state = self.settings.get("state")
         holidays_map = get_holidays(state, self.year) if state else {}
 
-        # Probe-Label, um die natürliche Pixel-Größe einer Standard-Tageszelle
-        # zu ermitteln. Wird genutzt für:
-        #  (a) Feiertagszellen pixel-fixieren — sonst weiten lange Feiertags-
-        #      namen die Spalte auf, das Grid wächst und der Header-Reflow
-        #      lässt den Monatsnamen flackern.
-        #  (b) konstante Reihenhöhe (minsize unten), damit gepaddete Wochen
-        #      ohne Content nicht zusammenklappen.
-        # Bei ausgeblendeten Wochenenden (5 Spalten statt 7) bleibt mehr
-        # Horizontalplatz pro Spalte — Zellen werden breiter, damit die
-        # Zeit-Zeile in FONT_SMALL statt FONT_TINY lesbar dargestellt wird.
-        wide_cells = not self.settings.get("show_weekend")
-        probe_width = 12 if wide_cells else 8
-        # FONT_SMALL (8pt) statt FONT_TINY (7pt) im 7-Spalten-Modus — Spalten
-        # werden durch sticky="nsew" + columnconfigure(weight=1) über die
-        # Probe-Breite hinaus gestreckt, sodass "09:30-17:00" auch in 8pt
-        # bequem reinpasst und besser lesbar bleibt.
-        entry_time_font = FONT if wide_cells else FONT_SMALL
-        holiday_name_font = FONT if wide_cells else FONT_SMALL
-        probe = tk.Label(new_frame, text="", font=FONT, width=probe_width, height=3)
-        probe.update_idletasks()
-        cell_size = (probe.winfo_reqwidth(), probe.winfo_reqheight())
-        probe.destroy()
+        cell_size, entry_time_font, holiday_name_font, wide_cells = \
+            self._cell_layout_metrics(new_frame)
 
         # Auf 6 Wochen padden, damit die Fensterhöhe zwischen Monaten konstant
         # bleibt und `geometry("")` in `_refresh` keinen sichtbaren Resize auslöst.
@@ -1171,18 +1045,8 @@ class App:
             for y in {dates[0].year, dates[-1].year}:
                 holidays_map.update(get_holidays(state, y))
 
-        # Probe-Label, um die natürliche Pixel-Größe einer Standard-Wochenzelle
-        # zu ermitteln. Holiday-Zellen werden auf diese Größe fixiert, damit
-        # längere Feiertagsnamen die Spalte nicht aufweiten.
-        # Bei ausgeblendeten Wochenenden: breitere Zellen + größere Time-Schrift.
-        wide_cells = not self.settings.get("show_weekend")
-        probe_width = 12 if wide_cells else 8
-        entry_time_font = FONT if wide_cells else FONT_SMALL
-        holiday_name_font = FONT if wide_cells else FONT_SMALL
-        probe = tk.Label(new_frame, text="", font=FONT, width=probe_width, height=3)
-        probe.update_idletasks()
-        cell_size = (probe.winfo_reqwidth(), probe.winfo_reqheight())
-        probe.destroy()
+        cell_size, entry_time_font, holiday_name_font, wide_cells = \
+            self._cell_layout_metrics(new_frame)
 
         n = self._visible_day_count()
         # Einmal pro Render berechnen, nicht pro Zelle.
@@ -1264,9 +1128,9 @@ class App:
             if on_right_click is not None:
                 w.bind("<Button-3>", lambda e: on_right_click())
             w.bind("<Enter>", lambda e, c=cell, dl=day_lbl, nl=name_lbl:
-                self._cell_hover(c, dl, nl, HOLIDAY_BG_HOVER))
+                self._hover(c, HOLIDAY_BG_HOVER, dl, nl))
             w.bind("<Leave>", lambda e, c=cell, dl=day_lbl, nl=name_lbl:
-                self._cell_hover(c, dl, nl, HOLIDAY_BG))
+                self._hover(c, HOLIDAY_BG, dl, nl))
         if name_tooltip and truncated != name:
             # Geteilter Tooltip über alle drei Widgets — _Tooltip trackt sie
             # gemeinsam, sodass Pointer-Wechsel zwischen Frame und Child-
@@ -1275,33 +1139,18 @@ class App:
         return cell
 
     @staticmethod
-    def _cell_hover(frame, day_lbl, time_lbl, bg):
+    def _hover(frame, bg, *labels):
+        """Faerbt Zelle + uebergebene Labels beim Hover. Die Eck-Overlays
+        (_reservation_marker, macOS-_delete_button) werden mitgefaerbt, sonst
+        bleibt ein andersfarbiges Rechteck stehen. Nur bg — die fg des
+        Loesch-Buttons steuert dessen eigener Enter/Leave-Handler."""
         frame.config(bg=bg)
-        day_lbl.config(bg=bg)
-        time_lbl.config(bg=bg)
-        # Eck-Overlays (Reservierungs-Marker, macOS-Lösch-Button) mitfärben,
-        # sonst bleibt beim Hover ein andersfarbiges Rechteck stehen. Nur bg —
-        # die fg des Lösch-Buttons steuert dessen eigener Enter/Leave-Handler.
-        marker = getattr(frame, "_reservation_marker", None)
-        if marker is not None:
-            marker.config(bg=bg)
-        del_btn = getattr(frame, "_delete_button", None)
-        if del_btn is not None:
-            del_btn.config(bg=bg)
-
-    @staticmethod
-    def _empty_hover(frame, day_lbl, bg):
-        frame.config(bg=bg)
-        day_lbl.config(bg=bg)
-        # Eck-Overlays mitfärben — Nur-Reservierungs-Tage sind Empty-Zellen mit
-        # Marker (und auf macOS zusätzlich dem Lösch-Button); sonst bliebe beim
-        # Hover ein andersfarbiges Rechteck dahinter stehen. Nur bg.
-        marker = getattr(frame, "_reservation_marker", None)
-        if marker is not None:
-            marker.config(bg=bg)
-        del_btn = getattr(frame, "_delete_button", None)
-        if del_btn is not None:
-            del_btn.config(bg=bg)
+        for lbl in labels:
+            lbl.config(bg=bg)
+        for attr in ("_reservation_marker", "_delete_button"):
+            w = getattr(frame, attr, None)
+            if w is not None:
+                w.config(bg=bg)
 
     def _delete_day(self, date_str):
         """Rechtsklick-Löschen für einen Tag. Löscht NIE ohne Bestätigung.
@@ -1377,7 +1226,7 @@ class App:
 
         self._refresh()
         if res_touched:
-            self._trigger_calendar_reconcile()
+            self._bg.trigger_reconcile(self._on_reconcile_done)
 
     def _open_dialog(self, date_str):
         if _stray_click_suppressed(getattr(self.root, "_dialog_closed_at", 0),
@@ -1391,7 +1240,7 @@ class App:
             on_change=self._refresh,
             reservation_store=(
                 self.reservation_store if self._reservations_active() else None),
-            trigger_reconcile=self._trigger_calendar_reconcile,
+            trigger_reconcile=lambda: self._bg.trigger_reconcile(self._on_reconcile_done),
         )
 
     def _send(self):
@@ -1448,15 +1297,14 @@ class App:
                           "Synchronisation ist deaktiviert. In den Einstellungen aktivierbar.")
             return
         self.sync_status_label.config(text="Synchronisiere…")
-        import threading
         from src.main import _run_push_blocking
-        def _do():
-            result = _run_push_blocking(
+        self._bg.run(
+            lambda: _run_push_blocking(
                 self.storage, self.settings, self.conflicts_store,
                 self.base_path, timeout_seconds=15,
-            )
-            self._marshal_to_ui(lambda: self._on_manual_sync_done(result))
-        threading.Thread(target=_do, daemon=True).start()
+            ),
+            self._on_manual_sync_done,
+        )
 
     def _on_manual_sync_done(self, result):
         if not result.get("ok"):
@@ -1475,16 +1323,14 @@ class App:
         deaktiviert wurde."""
         if not self.settings.get("sync_enabled"):
             return
-        import threading
         from src.main import _run_push_blocking
-
-        def _do():
-            result = _run_push_blocking(
+        self._bg.run(
+            lambda: _run_push_blocking(
                 self.storage, self.settings, self.conflicts_store,
                 self.base_path, timeout_seconds=15,
-            )
-            self._marshal_to_ui(lambda: self._on_tray_sync_done(result))
-        threading.Thread(target=_do, daemon=True).start()
+            ),
+            self._on_tray_sync_done,
+        )
 
     def _on_tray_sync_done(self, result):
         # Still aktualisieren, damit der nächste Fenster-Aufruf den Stand zeigt.
