@@ -43,6 +43,7 @@ Zeiterfassung/
 │   ├── reservations.py    # Reservierungen (zukünftige Soll-Zeiten)
 │   ├── reservations_sync.py # Abgleich der Reservierungen mit Google Kalender
 │   ├── gcal.py            # Google-Calendar-API-Wrapper
+│   ├── oauth_utils.py     # Gemeinsame OAuth-Token-Boilerplate (Persistenz, Scope-Upgrade) für mail/drive/gcal
 │   ├── tray.py            # Infobereich-Icon (Minimize-to-Tray)
 │   ├── autostart.py       # Plattformabhängiger Autostart (Windows/macOS/Linux)
 │   ├── updater.py         # GitHub-Releases-Check (stdlib-only, gedrosselt 1×/Tag)
