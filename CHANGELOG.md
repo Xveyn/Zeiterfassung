@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.16.1 — 2026-06-25
+
+### Behoben
+- Es wird jetzt zu jedem Zeitpunkt nur **ein Tooltip gleichzeitig** angezeigt —
+  beim schnellen Überfahren mehrerer Elemente bleibt kein zweiter mehr stehen.
+- Import: Die Erfolgsmeldung erscheint wieder zuverlässig, statt gelegentlich
+  mit einem Fehler abzubrechen (der Dialog wurde zu früh geschlossen).
+- Info- und Fehler-Dialoge (Senden, Teilen, Einstellungen, Import, Tray-Einrichtung)
+  erscheinen jetzt einheitlich im App-Design statt als native System-Dialoge.
+
+### Intern
+- Die UI-Schicht (`ui.py`) wurde in eigenständige Komponenten entflochten
+  (Kalender-Rendering, Hintergrund-Tasks, Drive-Sync, Update-Banner) — ohne
+  funktionale Änderung, für bessere Wartbarkeit. Details: [`src/CLAUDE.md`](src/CLAUDE.md).
+- Das OAuth-Token-Handling für Gmail/Drive/Kalender liegt jetzt in einem
+  gemeinsamen Helfer (`src/oauth_utils.py`); Token werden atomar geschrieben.
+
 ## 1.16.0 — 2026-06-23
 
 ### Hinzugefügt
