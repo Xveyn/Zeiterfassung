@@ -166,7 +166,8 @@ class SyncOrchestrator:
 
     def on_sync_clicked(self):
         if not self._settings.get("sync_enabled"):
-            messagebox.showinfo(
+            themed_showinfo(
+                self._root,
                 "Synchronisation",
                 "Synchronisation ist deaktiviert. In den Einstellungen aktivierbar.")
             return
