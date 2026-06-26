@@ -192,7 +192,7 @@ def open_send_dialog(parent, storage, settings, base_path):
                 )
 
     btn_frame = tk.Frame(dialog, bg=BG)
-    btn_frame.grid(row=1, column=0, columnspan=6, pady=12)
+    btn_frame.grid(row=1, column=0, pady=12)
 
     primary_button(btn_frame, "Senden", do_send).pack(side=tk.LEFT, padx=5)
     secondary_button(btn_frame, "Abbrechen", dialog.destroy).pack(side=tk.LEFT, padx=5)

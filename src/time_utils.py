@@ -49,6 +49,7 @@ def validate_entry(start_str, end_str, pause_minutes=0):
         return False, f"Pause ({pause_minutes} Min) muss kleiner als die Arbeitszeit ({working_min} Min) sein"
     return True, ""
 
+
 def validate_period(date_from, date_to):
     """Validiert einen Datums-Zeitraum für Bericht/Export. Liefert
     (ok, fehlermeldung). von > bis ist ungültig; von == bis ist erlaubt
