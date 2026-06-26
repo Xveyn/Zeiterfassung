@@ -53,6 +53,7 @@ DEFAULTS = {
     "last_calendar_sync_at": "",
     "categories": [],
     "category_times": {},
+    "ui_scale": 1.0,
 }
 
 _COERCE_FAILED = object()
@@ -145,6 +146,18 @@ def resolve_calendar_id(cal_map, selected_label, current_id):
     die Kalender-ID. Unbekanntes Label → bisheriger Wert, ersatzweise
     "primary" (nie leer, damit der gcal-Abgleich einen gültigen Kalender hat)."""
     return cal_map.get(selected_label, current_id or "primary")
+
+
+def clamp_ui_scale(value):
+    """Normalisiert den UI-Skalierungsfaktor defensiv: castet zu float und
+    klemmt auf [0.75, 2.0]. Nicht-castbare Werte (None, Müll-String) → 1.0
+    (Default). Schützt das tk-scaling vor korrupten settings.json-Werten und
+    Slider-Ausreißern."""
+    try:
+        f = float(value)
+    except (TypeError, ValueError):
+        return 1.0
+    return max(0.75, min(2.0, f))
 
 
 class Settings:
