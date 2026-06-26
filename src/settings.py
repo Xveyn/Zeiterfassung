@@ -111,6 +111,42 @@ def _utc_now_iso():
     return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+# --- Reine Helfer für den Settings-Dialog-Save-Pfad (ohne Tk, headless testbar,
+# extrahiert aus settings_dialog.save_settings, Issue #51). settings.py bleibt
+# bewusst stdlib-only — kein holidays/google-Import (sync.py importiert dieses
+# Modul, vgl. Issue #48). Das State-Label→Code-Mapping lebt deshalb in
+# holidays_de.code_for_state_label, nicht hier.
+
+
+def parse_hourly_rate(raw):
+    """Parst die Stundensatz-Eingabe (String) zu float. Leer/nur Whitespace oder
+    ungültig → 0.0 (bewusst tolerant: der Dialog soll bei Tippfehlern nicht
+    blocken). Komma-Dezimal wird nicht unterstützt (float() wirft → 0.0)."""
+    raw = (raw or "").strip()
+    if not raw:
+        return 0.0
+    try:
+        return float(raw)
+    except ValueError:
+        return 0.0
+
+
+def split_synced_updates(updates):
+    """Partitioniert ein updates-Dict in (synced, plain) anhand
+    SYNCED_SETTING_KEYS. synced reist per Drive-Sync mit (set_synced), plain
+    bleibt gerätelokal (set_many)."""
+    synced = {k: v for k, v in updates.items() if k in SYNCED_SETTING_KEYS}
+    plain = {k: v for k, v in updates.items() if k not in SYNCED_SETTING_KEYS}
+    return synced, plain
+
+
+def resolve_calendar_id(cal_map, selected_label, current_id):
+    """Mappt den im Dialog gewählten Kalender-Klarnamen über cal_map zurück auf
+    die Kalender-ID. Unbekanntes Label → bisheriger Wert, ersatzweise
+    "primary" (nie leer, damit der gcal-Abgleich einen gültigen Kalender hat)."""
+    return cal_map.get(selected_label, current_id or "primary")
+
+
 class Settings:
     def __init__(self, filepath="settings.json"):
         self.filepath = filepath
@@ -212,6 +248,17 @@ class Settings:
             "device_id": self.device_id_for_sync,
         }
         self._save_to_disk()
+
+    def apply_updates(self, updates):
+        """Routet ein updates-Dict aus dem Settings-Dialog auf den korrekten
+        Persistenz-Pfad: Keys in SYNCED_SETTING_KEYS über set_synced (je ein
+        Per-Field-Stempel + Disk-Write), der Rest in einem set_many. Single
+        Entry-Point für den Dialog-Save (Issue #51)."""
+        synced, plain = split_synced_updates(updates)
+        for key, value in synced.items():
+            self.set_synced(key, value)
+        if plain:
+            self.set_many(plain)
 
     def get_synced_doc(self):
         """{key: {value, modified_at, device_id}} — Eingabe für den Sync-Merge.

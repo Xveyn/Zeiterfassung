@@ -477,3 +477,96 @@ def test_category_times_non_dict_falls_back_to_default(tmp_path, caplog):
         s = Settings(path)
     assert s.get("category_times") == {}
     assert any("category_times" in rec.message for rec in caplog.records)
+
+
+# --- Issue #51: aus settings_dialog.save_settings extrahierte pure Logik ---
+
+
+def test_parse_hourly_rate_valid():
+    from src.settings import parse_hourly_rate
+    assert parse_hourly_rate("12.5") == 12.5
+
+
+def test_parse_hourly_rate_empty_or_blank_is_zero():
+    from src.settings import parse_hourly_rate
+    assert parse_hourly_rate("") == 0.0
+    assert parse_hourly_rate("   ") == 0.0
+
+
+def test_parse_hourly_rate_strips_whitespace():
+    from src.settings import parse_hourly_rate
+    assert parse_hourly_rate("  8  ") == 8.0
+
+
+def test_parse_hourly_rate_invalid_is_zero():
+    from src.settings import parse_hourly_rate
+    # Tolerantes Parsen (Dialog soll bei Tippfehlern nicht blocken).
+    assert parse_hourly_rate("abc") == 0.0
+    # Aktuelles Verhalten: Komma-Dezimal wird NICHT unterstützt (float() wirft) → 0.0.
+    assert parse_hourly_rate("12,5") == 0.0
+
+
+def test_split_synced_updates_partitions_by_whitelist():
+    from src.settings import split_synced_updates
+    updates = {
+        "recipient": "a@b.de",   # synced
+        "name": "X",             # synced
+        "autostart": True,       # plain
+        "default_pause": 30,     # plain
+    }
+    synced, plain = split_synced_updates(updates)
+    assert synced == {"recipient": "a@b.de", "name": "X"}
+    assert plain == {"autostart": True, "default_pause": 30}
+
+
+def test_split_synced_updates_empty():
+    from src.settings import split_synced_updates
+    assert split_synced_updates({}) == ({}, {})
+
+
+def test_apply_updates_routes_synced_per_key_and_plain_in_one_call():
+    from unittest.mock import MagicMock
+    settings = MagicMock()
+    updates = {
+        "recipient": "a@b.de", "name": "X",   # synced
+        "autostart": True, "default_pause": 30,  # plain
+    }
+    Settings.apply_updates(settings, updates)
+    synced_calls = {c.args for c in settings.set_synced.call_args_list}
+    assert synced_calls == {("recipient", "a@b.de"), ("name", "X")}
+    settings.set_many.assert_called_once_with({"autostart": True, "default_pause": 30})
+
+
+def test_apply_updates_no_plain_skips_set_many():
+    from unittest.mock import MagicMock
+    settings = MagicMock()
+    Settings.apply_updates(settings, {"recipient": "a@b.de"})
+    settings.set_synced.assert_called_once_with("recipient", "a@b.de")
+    settings.set_many.assert_not_called()
+
+
+def test_apply_updates_persists_routing_on_real_settings(tmp_settings):
+    # End-to-end gegen echte Settings: synced-Key bekommt Sync-Metadaten,
+    # plain-Key nicht.
+    tmp_settings.apply_updates({"recipient": "a@b.de", "autostart": True})
+    assert tmp_settings.get("recipient") == "a@b.de"
+    assert tmp_settings.get("autostart") is True
+    assert "recipient" in tmp_settings.get_synced_doc()
+    assert "autostart" not in tmp_settings.get_synced_doc()
+
+
+def test_resolve_calendar_id_selected_label_in_map():
+    from src.settings import resolve_calendar_id
+    cal_map = {"Privat": "cal_123", "Arbeit": "cal_456"}
+    assert resolve_calendar_id(cal_map, "Arbeit", "cal_123") == "cal_456"
+
+
+def test_resolve_calendar_id_unknown_label_falls_back_to_current():
+    from src.settings import resolve_calendar_id
+    assert resolve_calendar_id({}, "Weg", "cal_current") == "cal_current"
+
+
+def test_resolve_calendar_id_unknown_and_no_current_is_primary():
+    from src.settings import resolve_calendar_id
+    assert resolve_calendar_id({}, "Weg", "") == "primary"
+    assert resolve_calendar_id({}, "Weg", None) == "primary"
