@@ -331,51 +331,59 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
     placeholder_hint.grid(row=16, column=0, columnspan=2, padx=10, pady=(0, 4))
     mv_widgets.append(placeholder_hint)
 
+    # --- App-Einstellungen (gerätelokale UI-Optionen, einklappbar) ---
+    # Alle Member liegen in app_frame (einem einzigen Grid-Member der Section),
+    # damit der Collapse-Toggle nur diesen Frame ein-/ausblendet und die übrigen
+    # Dialog-Reihen (Synchronisation usw.) unberührt bleiben.
+    app_header, app_widgets, app_toggle = _section_header(
+        "App-Einstellungen", row=17, top_pad=16)
+    app_frame = tk.Frame(dialog, bg=BG)
+    app_frame.grid(row=18, column=0, columnspan=2, padx=10, pady=(0, 4),
+                   sticky="we")
+    app_widgets.append(app_frame)
+
     show_weekend_var = tk.BooleanVar(value=settings.get("show_weekend"))
     tk.Checkbutton(
-        dialog, text="Wochenende (Sa/So) im Kalender anzeigen",
+        app_frame, text="Wochenende (Sa/So) im Kalender anzeigen",
         variable=show_weekend_var, font=FONT,
         bg=BG, fg=TEXT, selectcolor=CELL_BG,
         activebackground=BG, activeforeground=TEXT,
         cursor="hand2",
-    ).grid(row=17, column=0, columnspan=2, padx=10, pady=(8, 0), sticky="w")
+    ).pack(anchor="w")
 
     autostart_var = tk.BooleanVar(value=settings.get("autostart"))
     tk.Checkbutton(
-        dialog, text="Autostart (minimiert bei Anmeldung)",
+        app_frame, text="Autostart (minimiert bei Anmeldung)",
         variable=autostart_var, font=FONT,
         bg=BG, fg=TEXT, selectcolor=CELL_BG,
         activebackground=BG, activeforeground=TEXT,
         cursor="hand2",
-    ).grid(row=18, column=0, columnspan=2, padx=10, pady=(0, 0), sticky="w")
+    ).pack(anchor="w")
 
     always_on_top_var = tk.BooleanVar(value=settings.get("always_on_top"))
     tk.Checkbutton(
-        dialog, text="Immer im Vordergrund",
+        app_frame, text="Immer im Vordergrund",
         variable=always_on_top_var, font=FONT,
         bg=BG, fg=TEXT, selectcolor=CELL_BG,
         activebackground=BG, activeforeground=TEXT,
         cursor="hand2",
-    ).grid(row=19, column=0, columnspan=2, padx=10, pady=(0, 0), sticky="w")
+    ).pack(anchor="w")
 
     minimize_to_tray_var = tk.BooleanVar(value=settings.get("minimize_to_tray"))
     tk.Checkbutton(
-        dialog, text="Beim Schließen in den Infobereich minimieren",
+        app_frame, text="Beim Schließen in den Infobereich minimieren",
         variable=minimize_to_tray_var, font=FONT,
         bg=BG, fg=TEXT, selectcolor=CELL_BG,
         activebackground=BG, activeforeground=TEXT,
         cursor="hand2",
-    ).grid(row=20, column=0, columnspan=2, padx=10, pady=(0, 8), sticky="w")
+    ).pack(anchor="w")
 
     # --- Darstellung (UI-Skalierung, gerätelokal) ---
-    display_frame = tk.Frame(dialog, bg=BG)
-    display_frame.grid(row=21, column=0, columnspan=2, padx=10, pady=(16, 4),
-                       sticky="we")
     tk.Label(
-        display_frame, text="— Darstellung —", font=FONT_BOLD,
+        app_frame, text="— Darstellung —", font=FONT_BOLD,
         bg=BG, fg=TEXT_MUTED,
-    ).pack(pady=(0, 4))
-    scale_row = tk.Frame(display_frame, bg=BG)
+    ).pack(pady=(12, 4))
+    scale_row = tk.Frame(app_frame, bg=BG)
     scale_row.pack(fill="x")
     tk.Label(
         scale_row, text="Skalierung:", font=FONT, bg=BG, fg=TEXT,
@@ -408,7 +416,7 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
     ).pack(side=tk.LEFT)
     scale_value_label.pack(side=tk.LEFT, padx=(8, 0))
     tk.Label(
-        display_frame, text="Änderung startet die App neu.", font=FONT_SMALL,
+        app_frame, text="Änderung startet die App neu.", font=FONT_SMALL,
         bg=BG, fg=TEXT_MUTED,
     ).pack(anchor="w", pady=(2, 0))
 
