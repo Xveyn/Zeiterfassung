@@ -403,12 +403,14 @@ def test_gcal_calendar_id_is_synced_setting():
     assert "gcal_calendar_id" in SYNCED_SETTING_KEYS
 
 
-def test_synced_whitelists_in_settings_and_sync_match():
-    """Die Whitelist existiert dupliziert in settings.py und sync.py und
-    muss identisch bleiben — sonst mergt sync.py einen Key nicht."""
+def test_sync_reexports_settings_whitelist():
+    """Single Source of Truth (Issue #48): sync.py definiert die Whitelist nicht
+    mehr selbst, sondern importiert sie aus settings.py. Identität (`is`) erzwingt
+    strukturell, dass keine divergierende Zweitdefinition zurückkehrt — sonst
+    mergt sync.py einen Key nicht (stiller Sync-Datenverlust)."""
     from src.settings import SYNCED_SETTING_KEYS as a
     from src.sync import SYNCED_SETTING_KEYS as b
-    assert set(a) == set(b)
+    assert a is b
 
 
 # --- categories (Multi-Slot-Feature, AP2) ---

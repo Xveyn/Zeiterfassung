@@ -13,6 +13,13 @@ Doc-Struktur (Sync-File und Zwischenformate):
 import datetime
 import uuid
 
+# SYNCED_SETTING_KEYS lebt als Single Source of Truth in settings.py — hier nur
+# importieren, NICHT erneut definieren. Eine zweite (divergierende) Definition
+# würde dazu führen, dass sync.py einen synchronisierten Key nicht mergt →
+# stiller Datenverlust im Multi-Device-Sync (Issue #48). settings.py ist
+# stdlib-only und importiert sync.py nicht (kein Zyklus, CI-import-sicher).
+from src.settings import SYNCED_SETTING_KEYS
+
 
 SCHEMA_VERSION = 3
 
@@ -36,12 +43,6 @@ def _is_settled_entry(entry, watermark):
 def _is_settled_conflict(conflict, watermark):
     resolved_at = conflict.get("resolved_at") or ""
     return bool(conflict.get("resolved")) and resolved_at != "" and resolved_at < watermark
-
-SYNCED_SETTING_KEYS = (
-    "recipient", "name", "hourly_rate",
-    "mail_subject", "mail_greeting", "mail_content", "mail_closing",
-    "gcal_calendar_id", "categories", "category_times",
-)
 
 
 def _utc_now_iso():

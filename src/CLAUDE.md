@@ -88,9 +88,9 @@ gegen `TclError` abgesichert, falls das Fenster zwischenzeitlich zu ist). Keine 
 - `storage.py` — Ist-Zeiten (JSON, Schlüssel = ISO-Datum). `reservations.py` — Reservierungen
   (zukünftige Soll-Zeiten, eigenes Konzept). `settings.py` — Einstellungen mit Defaults.
 - `conflicts_store.py` — lokale Sync-Konfliktliste. `category_defaults.py` — Default-Kategorien.
-- `sync.py` — pure Sync-Logik (LWW-Merge, Konflikterkennung); enthält ein **Duplikat** von
-  `SYNCED_SETTING_KEYS` (muss konsistent zu `settings.py` bleiben). `share.py` — Export/Import
-  als Share-JSON.
+- `sync.py` — pure Sync-Logik (LWW-Merge, Konflikterkennung); importiert
+  `SYNCED_SETTING_KEYS` aus `settings.py` (Single Source of Truth, nicht hier neu definieren).
+  `share.py` — Export/Import als Share-JSON.
 
 ## Google-Integration (alle Wrapper mit Lazy-Imports für CI ohne requirements.txt)
 
