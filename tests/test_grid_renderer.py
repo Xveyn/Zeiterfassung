@@ -28,6 +28,49 @@ def test_fmt_slot_line_without_category():
         {"start": "08:00", "end": "12:00"}) == "08:00-12:00"
 
 
+def test_tooltip_text_single_slot_shows_category():
+    # Neu: schon bei EINEM Slot erscheint der Arbeitszeit-Block, damit die
+    # Kategorie beim Hovern sichtbar wird (vorher erst ab >1 Slot).
+    entry = {"slots": [{"start": "09:30", "end": "16:00", "kategorie": "Office"}]}
+    assert GridRenderer._build_tooltip_text(entry, None, None) == (
+        "Arbeitszeit:\n09:30-16:00  Office")
+
+
+def test_tooltip_text_single_slot_without_category():
+    entry = {"slots": [{"start": "09:30", "end": "16:00"}]}
+    assert GridRenderer._build_tooltip_text(entry, None, None) == (
+        "Arbeitszeit:\n09:30-16:00")
+
+
+def test_tooltip_text_multi_slot_lists_all():
+    entry = {"slots": [
+        {"start": "08:00", "end": "12:00", "kategorie": "Büro"},
+        {"start": "13:00", "end": "17:00"},
+    ]}
+    assert GridRenderer._build_tooltip_text(entry, None, None) == (
+        "Arbeitszeit:\n08:00-12:00  Büro\n13:00-17:00")
+
+
+def test_tooltip_text_combines_arbeitszeit_and_reservation():
+    entry = {"slots": [{"start": "09:30", "end": "16:00", "kategorie": "Office"}]}
+    reservation = {"slots": [{"start": "18:00", "end": "20:00"}]}
+    assert GridRenderer._build_tooltip_text(entry, reservation, None) == (
+        "Arbeitszeit:\n09:30-16:00  Office\n"
+        "Reservierung:\n18:00-20:00")
+
+
+def test_tooltip_text_empty_when_nothing():
+    assert GridRenderer._build_tooltip_text(None, None, None) == ""
+
+
+def test_tooltip_text_holiday_only_with_entry_or_reservation():
+    entry = {"slots": [{"start": "09:30", "end": "16:00"}]}
+    assert GridRenderer._build_tooltip_text(entry, None, "Neujahr") == (
+        "Arbeitszeit:\n09:30-16:00\nFeiertag: Neujahr")
+    # Feiertag ohne Eintrag/Reservierung -> kein kombinierter Tooltip
+    assert GridRenderer._build_tooltip_text(None, None, "Neujahr") == ""
+
+
 def test_truncate_clips_long_text():
     assert GridRenderer._truncate("Donnerstag", 5) == "Donn…"
 
