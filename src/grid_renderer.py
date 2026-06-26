@@ -221,6 +221,37 @@ class GridRenderer:
         kat = f"  {slot['kategorie']}" if slot.get("kategorie") else ""
         return f"{slot['start']}-{slot['end']}{kat}"
 
+    @staticmethod
+    def _build_tooltip_text(entry, reservation, holiday_name):
+        """Baut den kombinierten Hover-Tooltip aus den vorhandenen Einheiten.
+
+        Reine Funktion (Tk-frei, testbar): entscheidet, WELCHE Blöcke der
+        Tooltip enthält und in welcher Reihenfolge. Gibt "" zurück, wenn nichts
+        anzuzeigen ist. Die Zelle zeigt nur Tagnummer + erste Slot-Zeit; der
+        Arbeitszeit-Block erscheint deshalb schon ab EINEM Slot, damit beim
+        Hovern die Kategorie ('Office') sichtbar wird.
+
+        holiday_name: Feiertagsname, falls der Tag ein Feiertag ist, sonst None.
+        Der Feiertag kommt nur in den kombinierten Tooltip, wenn ohnehin ein
+        Eintrag oder eine Reservierung vorhanden ist (sonst zeigt die Holiday-
+        Zelle ihren Namen selbst).
+        """
+        parts = []
+        if entry and entry.get("slots"):
+            parts.append(
+                "Arbeitszeit:\n"
+                + "\n".join(
+                    GridRenderer._fmt_slot_line(s) for s in entry["slots"]))
+        if reservation is not None:
+            parts.append(
+                "Reservierung:\n"
+                + "\n".join(
+                    GridRenderer._fmt_slot_line(s)
+                    for s in reservation.get("slots", [])))
+        if holiday_name and (reservation is not None or entry):
+            parts.append(f"Feiertag: {holiday_name}")
+        return "\n".join(parts)
+
     def _add_reservation_marker(self, cell):
         """Runder violetter Eck-Punkt auf einer Ist-Zeitzelle, die zusätzlich
         eine Reservierung hat. Ein Canvas-Oval statt eines Text-Bullets — „•"
@@ -335,24 +366,18 @@ class GridRenderer:
         # Reservierung ist ein reiner Overlay-Marker (Eck-Punkt) — sie ändert
         # den Zelltyp nicht. Genau EIN attach_tooltip pro Zelle (Mehrfachaufruf
         # erzeugt überlappende Tooltips); deshalb alle relevanten Infos
-        # (mehrere Arbeitszeit-Slots, Reservierung, Feiertag) in einen
-        # kombinierten Tooltip. Ein Feiertag-OHNE-Eintrag/-Reservierung zeigt
-        # seinen Namen weiterhin als Zelltext (Holiday-Zelle) bzw. eigenen
-        # Tooltip (name_tooltip) und kommt hier NICHT rein.
-        tip_parts = []
-        if entry and len(entry.get("slots", [])) > 1:
-            tip_parts.append(
-                "Arbeitszeit:\n"
-                + "\n".join(self._fmt_slot_line(s) for s in entry["slots"]))
+        # (Arbeitszeit-Slots, Reservierung, Feiertag) in einen kombinierten
+        # Tooltip (Textaufbau in _build_tooltip_text). Ein Feiertag-OHNE-
+        # Eintrag/-Reservierung zeigt seinen Namen weiterhin als Zelltext
+        # (Holiday-Zelle) bzw. eigenen Tooltip (name_tooltip) und kommt hier
+        # NICHT rein.
         if reservation is not None:
             self._add_reservation_marker(cell)
-            tip_parts.append(
-                "Reservierung:\n"
-                + "\n".join(self._fmt_slot_line(s) for s in reservation.get("slots", [])))
-        if is_holiday and (reservation is not None or entry):
-            tip_parts.append(f"Feiertag: {holidays_map[day_date]}")
-        if tip_parts:
-            attach_tooltip(cell, "\n".join(tip_parts))
+        tip_text = self._build_tooltip_text(
+            entry, reservation,
+            holidays_map[day_date] if is_holiday else None)
+        if tip_text:
+            attach_tooltip(cell, tip_text)
 
         # macOS-only Lösch-Button (✕) oben links, sobald der Tag löschbare
         # Einheiten hat (Ist-Zeit ODER aktive Reservierung). reservation wird
