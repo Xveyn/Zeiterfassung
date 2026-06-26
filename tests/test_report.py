@@ -86,10 +86,22 @@ def test_category_summary_block():
     assert "4.0h" in html
 
 
-def test_category_summary_uncategorized_label():
+def test_category_summary_suppressed_when_only_uncategorized():
+    """Sind alle Slots ohne Kategorie, ist die Kategorie-Summentabelle
+    bedeutungslos (nur eine Zeile = Gesamtsumme) und wird weggelassen."""
     entries = {"2026-03-23": _e("08:00", "16:00")}  # kategorie ""
     html, _ = generate_report(datetime.date(2026, 3, 1), datetime.date(2026, 3, 31), entries)
+    assert "(ohne Kategorie)" not in html
+
+
+def test_category_summary_shown_when_mixed():
+    """Sobald mindestens eine echte Kategorie existiert, erscheint die Tabelle
+    inklusive der (ohne Kategorie)-Zeile für die unkategorisierten Slots."""
+    entries = {"2026-03-23": {"slots": [_slot("08:00", "12:00", 0, "Büro"),
+                                         _slot("13:00", "17:00", 0, "")]}}
+    html, _ = generate_report(datetime.date(2026, 3, 1), datetime.date(2026, 3, 31), entries)
     assert "(ohne Kategorie)" in html
+    assert "Büro" in html
 
 
 def test_category_filter_includes_only_selected():

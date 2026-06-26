@@ -224,14 +224,18 @@ def _build_table(groups, style):
 def _build_category_summary(range_entries, style):
     """„Summe je Kategorie"-Tabelle über den (gefilterten) Zeitraum. Leerer
     String ('' = keine Kategorie) wird als '(ohne Kategorie)' ans Ende
-    sortiert. Liefert '' wenn keine Slots vorhanden."""
+    sortiert. Liefert '' wenn keine Slots vorhanden — oder wenn alle Slots
+    unkategorisiert sind (dann wäre die Tabelle nur die Gesamtsumme)."""
     s = style
     totals = {}
     for entry in range_entries.values():
         for slot in entry["slots"]:
             kat = slot.get("kategorie") or ""
             totals[kat] = totals.get(kat, 0.0) + _slot_hours(slot)
-    if not totals:
+    # Keine Slots, oder ausschließlich unkategorisierte: die Tabelle bestünde
+    # dann nur aus der "(ohne Kategorie)"-Zeile = exakt die ohnehin gezeigte
+    # Gesamtsumme. Weglassen, statt eine leere Pseudo-Aufschlüsselung zu zeigen.
+    if not totals or set(totals) == {""}:
         return ""
 
     td = s["td_base"]
