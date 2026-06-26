@@ -395,25 +395,44 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
     # Wert wird in einem eigenen Label gezeigt (kein klobiger showvalue-Kasten);
     # gerastert wird auf 5er-Schritte (= Faktor-Schritt 0.05) beim Anzeigen und
     # beim Speichern, da ttk.Scale kein resolution kennt.
-    ttk.Style(dialog).configure(
+    # Akzent analog zum Eingabefeld-Muster (theme.py dark_entry/dark_text):
+    # im Ruhezustand gedämpftes TEXT_MUTED, bei Aktivität (State "pressed") rot
+    # (ACCENT) als Fokus-Feedback. ACCENT ist der rote Fehler-/Lösch-Akzent und
+    # würde den Slider dauerhaft als Alarm-Element wirken lassen. Das
+    # Prozent-Label zieht über Press/Release-Bindings mit.
+    scale_style = ttk.Style(dialog)
+    scale_style.configure(
         "Display.Horizontal.TScale",
-        background=ACCENT, troughcolor=CELL_BG,
-        bordercolor=CELL_BG, darkcolor=ACCENT, lightcolor=ACCENT,
+        background=TEXT_MUTED, troughcolor=CELL_BG,
+        bordercolor=CELL_BG, darkcolor=TEXT_MUTED, lightcolor=TEXT_MUTED,
+    )
+    scale_style.map(
+        "Display.Horizontal.TScale",
+        background=[("pressed", ACCENT)],
+        darkcolor=[("pressed", ACCENT)],
+        lightcolor=[("pressed", ACCENT)],
     )
     scale_var = tk.DoubleVar(value=round(settings.get("ui_scale") * 100))
     scale_value_label = tk.Label(
         scale_row, text=f"{round(scale_var.get() / 5) * 5} %", font=FONT,
-        bg=BG, fg=ACCENT, width=5, anchor="w",
+        bg=BG, fg=TEXT_MUTED, width=5, anchor="w",
     )
 
     def _on_scale(_raw):
         scale_value_label.config(text=f"{round(scale_var.get() / 5) * 5} %")
 
-    ttk.Scale(
+    scale_widget = ttk.Scale(
         scale_row, from_=75, to=200, orient="horizontal",
         variable=scale_var, command=_on_scale, length=200,
         style="Display.Horizontal.TScale",
-    ).pack(side=tk.LEFT)
+    )
+    scale_widget.bind(
+        "<ButtonPress-1>", lambda _e: scale_value_label.config(fg=ACCENT), add="+",
+    )
+    scale_widget.bind(
+        "<ButtonRelease-1>", lambda _e: scale_value_label.config(fg=TEXT), add="+",
+    )
+    scale_widget.pack(side=tk.LEFT)
     scale_value_label.pack(side=tk.LEFT, padx=(8, 0))
     tk.Label(
         app_frame, text="Änderung startet die App neu.", font=FONT_SMALL,
