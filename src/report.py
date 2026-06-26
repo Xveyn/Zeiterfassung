@@ -259,11 +259,13 @@ def _build_category_summary(range_entries, style):
 
 
 def generate_report(date_from, date_to, all_entries, greeting="", content="",
-                    closing="", categories=None):
+                    closing="", categories=None, category_breakdown=True):
     """Generate an HTML email report with greeting, content, table, category
     summary, and closing.
 
     categories: None = alle; sonst Menge von Kategorie-Strings ('' = ohne).
+    category_breakdown: True = "Summe je Kategorie"-Tabelle anhängen (Default,
+    bisheriges Verhalten); False = weglassen, nur das Gesamt der Tagestabelle.
     Returns (html, total) tuple, or (None, 0) if no entries.
     """
     range_entries = _filter_entries(date_from, date_to, all_entries)
@@ -275,7 +277,10 @@ def generate_report(date_from, date_to, all_entries, greeting="", content="",
     label = f"{date_from.strftime('%d.%m.%Y')} – {date_to.strftime('%d.%m.%Y')}"
     groups = _group_by_week(range_entries)
     table, total = _build_table(groups, HTML_STYLE)
-    category_summary = _build_category_summary(range_entries, HTML_STYLE)
+    category_summary = (
+        _build_category_summary(range_entries, HTML_STYLE)
+        if category_breakdown else ""
+    )
 
     greeting_filled = _apply_placeholders(_esc_multiline(greeting), label, total)
     content_filled = _apply_placeholders(_esc_multiline(content), label, total)
@@ -300,8 +305,13 @@ def generate_report(date_from, date_to, all_entries, greeting="", content="",
     return html_out, total
 
 
-def generate_pdf(date_from, date_to, all_entries, name="", categories=None):
-    """Generate a PDF of the time tracking table. Returns PDF bytes, or None if no entries."""
+def generate_pdf(date_from, date_to, all_entries, name="", categories=None,
+                 category_breakdown=True):
+    """Generate a PDF of the time tracking table. Returns PDF bytes, or None if no entries.
+
+    category_breakdown: True = "Summe je Kategorie"-Tabelle anhängen (Default);
+    False = weglassen, nur das Gesamt der Tagestabelle.
+    """
     from xhtml2pdf import pisa
 
     range_entries = _filter_entries(date_from, date_to, all_entries)
@@ -313,7 +323,10 @@ def generate_pdf(date_from, date_to, all_entries, name="", categories=None):
     label = f"{date_from.strftime('%d.%m.%Y')} – {date_to.strftime('%d.%m.%Y')}"
     groups = _group_by_week(range_entries)
     table, _ = _build_table(groups, PDF_STYLE)
-    category_summary = _build_category_summary(range_entries, PDF_STYLE)
+    category_summary = (
+        _build_category_summary(range_entries, PDF_STYLE)
+        if category_breakdown else ""
+    )
 
     name_html = (
         f"<p style='color:#111827;font-size:13px;margin:0 0 2px 0;font-weight:600;'>{_esc(name)}</p>"

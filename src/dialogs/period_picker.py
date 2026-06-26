@@ -33,10 +33,11 @@ class _PeriodPickerHandle:
     """Lese-Schnittstelle auf die Picker-Widgets, ohne dass der Aufrufer die
     Tk-Vars kennt."""
 
-    def __init__(self, from_vars, to_vars, category_vars):
+    def __init__(self, from_vars, to_vars, category_vars, breakdown_var):
         self._from = from_vars        # (day_var, month_var, year_var)
         self._to = to_vars            # (day_var, month_var, year_var)
         self._cats = category_vars    # {kategorie: BooleanVar}
+        self._breakdown = breakdown_var  # BooleanVar
 
     def get_range(self):
         try:
@@ -50,6 +51,10 @@ class _PeriodPickerHandle:
 
     def get_categories(self):
         return selected_category_filter({k: v.get() for k, v in self._cats.items()})
+
+    def get_category_breakdown(self):
+        """True = "Summe je Kategorie"-Tabelle in den Bericht aufnehmen."""
+        return bool(self._breakdown.get())
 
 
 def build_period_picker(parent, storage, settings, on_change=None):
@@ -127,11 +132,22 @@ def build_period_picker(parent, storage, settings, on_change=None):
                 highlightthickness=0, bd=0, anchor="w",
             ).pack(anchor="w")
 
-    handle = _PeriodPickerHandle(from_vars, to_vars, category_vars)
+    # Schalter: Gesamtstunden nach Kategorie aufschlüsseln. Default aus —
+    # standardmäßig zeigt der Bericht nur das Gesamt, die "Summe je Kategorie"-
+    # Tabelle ist opt-in. Greift in PDF-Export und Mail-Versand gleichermaßen.
+    breakdown_var = tk.BooleanVar(value=False)
+    tk.Checkbutton(
+        frame, text="Nach Kategorie aufschlüsseln", variable=breakdown_var,
+        font=FONT, bg=BG, fg=TEXT, selectcolor=CELL_BG,
+        activebackground=BG, activeforeground=TEXT,
+        highlightthickness=0, bd=0, anchor="w",
+    ).grid(row=3, column=0, columnspan=6, padx=10, pady=(0, 4), sticky="w")
+
+    handle = _PeriodPickerHandle(from_vars, to_vars, category_vars, breakdown_var)
 
     # Live-Vorschau (Gesamtstunden über den Build-Zeit-Snapshot all_entries).
     total_label = tk.Label(frame, text="", font=FONT, bg=BG, fg=TEXT)
-    total_label.grid(row=3, column=0, columnspan=6, padx=10, pady=(0, 8), sticky="w")
+    total_label.grid(row=4, column=0, columnspan=6, padx=10, pady=(0, 8), sticky="w")
 
     def _update_total(*_):
         df, dt = handle.get_range()

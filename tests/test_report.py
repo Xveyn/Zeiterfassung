@@ -311,6 +311,55 @@ def test_pdf_category_filter_applied():
     assert "HO" not in captured_html["html"]
 
 
+def test_category_breakdown_default_includes_summary():
+    """Default (category_breakdown nicht gesetzt) = aufgeschlüsselt: 'Büro'
+    erscheint zweimal — in der Tageszeile UND in der Kategorie-Summentabelle."""
+    entries = {"2026-03-23": _e("08:00", "16:00", 0, "Büro")}
+    html, _ = generate_report(datetime.date(2026, 3, 1), datetime.date(2026, 3, 31), entries)
+    assert html.count("Büro") == 2
+
+
+def test_category_breakdown_false_hides_summary_keeps_total():
+    """category_breakdown=False lässt die 'Summe je Kategorie'-Tabelle weg;
+    die Tagestabelle inkl. Gesamt bleibt unverändert."""
+    entries = {"2026-03-23": _e("08:00", "16:00", 0, "Büro")}
+    html, total = generate_report(
+        datetime.date(2026, 3, 1), datetime.date(2026, 3, 31), entries,
+        category_breakdown=False)
+    # Tagestabelle + Gesamt bleiben
+    assert "23.03.2026" in html
+    assert "Gesamt" in html
+    assert "8.0h" in html
+    assert total == 8.0
+    # 'Büro' nur noch in der Tageszeile, nicht mehr in einer Summentabelle
+    assert html.count("Büro") == 1
+
+
+def test_pdf_category_breakdown_false_hides_summary():
+    """generate_pdf respektiert category_breakdown=False."""
+    from src import report as report_mod
+    entries = {"2026-03-23": _e("08:00", "16:00", 0, "Büro")}
+    captured_html = {}
+
+    class FakePisa:
+        @staticmethod
+        def CreatePDF(html_str, dest):
+            captured_html["html"] = html_str
+            return MagicMock(err=0)
+
+    fake_xhtml2pdf = MagicMock()
+    fake_xhtml2pdf.pisa = FakePisa
+
+    with patch.dict("sys.modules", {"xhtml2pdf": fake_xhtml2pdf}):
+        report_mod.generate_pdf(
+            datetime.date(2026, 3, 1), datetime.date(2026, 3, 31), entries,
+            category_breakdown=False)
+
+    html = captured_html["html"]
+    assert html.count("Büro") == 1
+    assert "Gesamt" in html
+
+
 from src.report import total_hours
 
 
