@@ -53,3 +53,21 @@ def test_returned_dict_is_independent_copy():
     h1[date(2099, 1, 1)] = "MUTATION"
     h2 = get_holidays("BY", 2026)
     assert date(2099, 1, 1) not in h2
+
+
+# --- code_for_state_label (Issue #51: extrahiert aus settings_dialog) ---
+
+
+def test_code_for_state_label_known():
+    from src.holidays_de import code_for_state_label
+    assert code_for_state_label("Bayern") == "BY"
+
+
+def test_code_for_state_label_empty_option_maps_to_empty_code():
+    from src.holidays_de import code_for_state_label
+    assert code_for_state_label("— kein Bundesland —") == ""
+
+
+def test_code_for_state_label_unknown_label_is_empty():
+    from src.holidays_de import code_for_state_label
+    assert code_for_state_label("Atlantis") == ""

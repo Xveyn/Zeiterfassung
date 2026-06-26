@@ -19,8 +19,8 @@ from src.theme import (
     themed_askyesno, themed_showinfo, themed_showwarning, themed_showerror,
 )
 from src.dialogs.category_dialog import open_category_dialog
-from src.holidays_de import STATES
-from src.settings import WEEKDAY_KEYS, SYNCED_SETTING_KEYS
+from src.holidays_de import STATES, code_for_state_label
+from src.settings import WEEKDAY_KEYS, parse_hourly_rate, resolve_calendar_id
 from src.time_utils import format_iso_date
 from src.time_utils import DAYS_DE, validate_entry
 
@@ -741,17 +741,8 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
                 )
                 return
 
-        rate_str = rate_var.get().strip()
-        try:
-            hourly_rate = float(rate_str) if rate_str else 0.0
-        except ValueError:
-            hourly_rate = 0.0
-
-        selected_label = state_var.get()
-        selected_code = next(
-            (code for code, lbl in STATES if lbl == selected_label),
-            "",
-        )
+        hourly_rate = parse_hourly_rate(rate_var.get())
+        selected_code = code_for_state_label(state_var.get())
 
         updates = {
             "autostart": new_autostart,
@@ -771,19 +762,14 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
         for key in WEEKDAY_KEYS:
             updates[f"default_start_{key}"] = start_vars[key].get()
             updates[f"default_end_{key}"] = end_vars[key].get()
-        synced_updates = {k: v for k, v in updates.items() if k in SYNCED_SETTING_KEYS}
-        plain_updates = {k: v for k, v in updates.items() if k not in SYNCED_SETTING_KEYS}
-        for key, value in synced_updates.items():
-            settings.set_synced(key, value)
-        if plain_updates:
-            settings.set_many(plain_updates)
+        settings.apply_updates(updates)
         # Kalender-Auswahl: Klarname zurück auf ID mappen, als Sync-Setting
         # speichern (reist über die Drive-Settings-Sync mit). Nur wenn die
         # Kalenderliste schon geladen ist (cal_map gefüllt) — sonst würde ein
         # vorschnelles "Speichern" fälschlich "primary" festschreiben.
         if settings.get("gcal_enabled") and cal_map:
-            selected_cal_id = cal_map.get(
-                cal_var.get(), settings.get("gcal_calendar_id") or "primary")
+            selected_cal_id = resolve_calendar_id(
+                cal_map, cal_var.get(), settings.get("gcal_calendar_id"))
             if selected_cal_id != settings.get("gcal_calendar_id"):
                 settings.set_synced("gcal_calendar_id", selected_cal_id)
         on_change()

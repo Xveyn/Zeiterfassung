@@ -25,6 +25,13 @@ STATES: list[tuple[str, str]] = [
 _VALID_CODES = {code for code, _ in STATES if code}
 
 
+def code_for_state_label(label: str) -> str:
+    """Mappt ein im Settings-Dialog gewähltes State-Klartext-Label (z.B.
+    "Bayern") zurück auf den Bundesland-Code ("BY"). Unbekanntes Label oder die
+    "— kein Bundesland —"-Option → "" (kein Bundesland)."""
+    return next((code for code, lbl in STATES if lbl == label), "")
+
+
 @lru_cache(maxsize=64)
 def _holidays_cached(state_code: str, year: int) -> dict[date, str]:
     import holidays
