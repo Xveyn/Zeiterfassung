@@ -3,7 +3,7 @@ import os
 import threading
 import tkinter as tk
 import traceback
-from tkinter import messagebox
+from tkinter import messagebox, ttk
 from typing import Any
 
 from src.autostart import disable_autostart, enable_autostart, resolve_autostart_target
@@ -378,15 +378,35 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
     scale_row = tk.Frame(display_frame, bg=BG)
     scale_row.pack(fill="x")
     tk.Label(
-        scale_row, text="Skalierung (%):", font=FONT, bg=BG, fg=TEXT,
+        scale_row, text="Skalierung:", font=FONT, bg=BG, fg=TEXT,
     ).pack(side=tk.LEFT, padx=(0, 8))
-    scale_var = tk.IntVar(value=round(settings.get("ui_scale") * 100))
-    tk.Scale(
-        scale_row, from_=75, to=200, resolution=5, orient=tk.HORIZONTAL,
-        variable=scale_var, length=200,
-        bg=BG, fg=TEXT, troughcolor=CELL_BG, highlightthickness=0,
-        activebackground=ACCENT, bd=0,
+
+    # ttk.Scale statt klassischer tk.Scale: das clam-Theme ist via
+    # apply_combobox_style aktiv, klassische tk.Scale rendert unter Windows
+    # einen hellen System-Trough/-Regler, der nicht zum Dark-Theme passt.
+    # Wert wird in einem eigenen Label gezeigt (kein klobiger showvalue-Kasten);
+    # gerastert wird auf 5er-Schritte (= Faktor-Schritt 0.05) beim Anzeigen und
+    # beim Speichern, da ttk.Scale kein resolution kennt.
+    ttk.Style(dialog).configure(
+        "Display.Horizontal.TScale",
+        background=ACCENT, troughcolor=CELL_BG,
+        bordercolor=CELL_BG, darkcolor=ACCENT, lightcolor=ACCENT,
+    )
+    scale_var = tk.DoubleVar(value=round(settings.get("ui_scale") * 100))
+    scale_value_label = tk.Label(
+        scale_row, text=f"{round(scale_var.get() / 5) * 5} %", font=FONT,
+        bg=BG, fg=ACCENT, width=5, anchor="w",
+    )
+
+    def _on_scale(_raw):
+        scale_value_label.config(text=f"{round(scale_var.get() / 5) * 5} %")
+
+    ttk.Scale(
+        scale_row, from_=75, to=200, orient="horizontal",
+        variable=scale_var, command=_on_scale, length=200,
+        style="Display.Horizontal.TScale",
     ).pack(side=tk.LEFT)
+    scale_value_label.pack(side=tk.LEFT, padx=(8, 0))
     tk.Label(
         display_frame, text="Änderung startet die App neu.", font=FONT_SMALL,
         bg=BG, fg=TEXT_MUTED,
@@ -769,7 +789,7 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
         hourly_rate = parse_hourly_rate(rate_var.get())
         selected_code = code_for_state_label(state_var.get())
         old_scale = settings.get("ui_scale")
-        new_scale = clamp_ui_scale(scale_var.get() / 100)
+        new_scale = clamp_ui_scale((round(scale_var.get() / 5) * 5) / 100)
 
         updates = {
             "autostart": new_autostart,
