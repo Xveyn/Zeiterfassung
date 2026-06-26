@@ -439,7 +439,8 @@ Den Button-Frame `btn_frame` von `row=4` auf `row=1` setzen (der Picker belegt j
 - [ ] **Step 4: Ungenutzte Imports/Namen entfernen via ruff**
 
 Run: `ruff check src/dialogs/send_dialog.py`
-Erwartet werden F401-Hinweise auf jetzt ungenutzte Namen — entfernen, was gemeldet wird (voraussichtlich: `calendar`, `total_hours`, sowie aus dem `theme`-Import `CELL_BG`, `dark_combo`, evtl. `FONT`/`TEXT`, falls im Rest der Datei nicht mehr genutzt). **Nur** entfernen, was ruff als ungenutzt meldet.
+Erwartet werden F401-Hinweise auf jetzt ungenutzte Namen — entfernen, was gemeldet wird (voraussichtlich: `calendar`, `datetime`, `total_hours` sowie aus dem `theme`-Import `CELL_BG` und `dark_combo`).
+**Nicht entfernen:** `FONT`, `TEXT`, `BG` — die nutzt `show_missing_credentials_dialog` (Zeile ~40) weiter; ruff meldet sie deshalb gar nicht. **Nur** entfernen, was ruff als ungenutzt meldet (F401 ist aktiv: `select = ["E4","E7","E9","F"]`).
 Danach erneut: `ruff check src/dialogs/send_dialog.py` → `All checks passed!`
 
 - [ ] **Step 5: Volle Suite + Import-Check** (keine Regression)
@@ -635,7 +636,25 @@ Run: `python -c "import src.ui"` (Expected: Exit 0)
 Run: `python -m pytest -q` (Expected: alle grün)
 Run: `ruff check src/ui.py` (Expected: `All checks passed!`)
 
-- [ ] **Step 5: Manuelles QA Export** (Display nötig)
+- [ ] **Step 5: Architektur-Doku nachziehen** (`src/CLAUDE.md`, Abschnitt „## Dialoge (`src/dialogs/`)")
+
+In der Dialog-Aufzählung `export_dialog` ergänzen und den geteilten Picker erwähnen. Die Zeile
+
+```
+`send_dialog`, `settings_dialog`, `share_dialog`, `import_dialog`, `category_dialog`,
+`conflicts_dialog`.
+```
+
+ersetzen durch:
+
+```
+`send_dialog`, `export_dialog` (Zeitraum-Modal → PDF lokal speichern),
+`settings_dialog`, `share_dialog`, `import_dialog`, `category_dialog`,
+`conflicts_dialog`. `period_picker` ist kein Dialog, sondern der von
+`send_dialog` + `export_dialog` geteilte Zeitraum+Kategorie+Vorschau-Baustein.
+```
+
+- [ ] **Step 6: Manuelles QA Export** (Display nötig)
 
 `python -m src.main`:
 1. Footer zeigt drei Buttons in Reihenfolge „Arbeitszeiten senden", „Export", „Teilen".
@@ -645,11 +664,11 @@ Run: `ruff check src/ui.py` (Expected: `All checks passed!`)
 5. „Speichern unter" abbrechen → kein Fehler, Dialog bleibt offen.
 6. Tray-Menü (falls Tray aktiv, Win/macOS) zeigt „Export".
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
-git add src/ui.py
-git commit -m "feat(ui): Footer- und Tray-Aktion 'Export' verdrahten"
+git add src/ui.py src/CLAUDE.md
+git commit -m "feat(ui): Footer- und Tray-Aktion 'Export' verdrahten + Doku"
 ```
 
 ---
