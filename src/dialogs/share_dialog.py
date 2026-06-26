@@ -105,6 +105,7 @@ def open_share_dialog(parent, storage, settings, base_path, reservation_store=No
             category_vars[kat] = var
             tk.Checkbutton(
                 cat_frame, text=(kat if kat else "(ohne Kategorie)"), variable=var,
+                command=lambda: _refresh_send_btn(),
                 font=FONT, bg=BG, fg=TEXT, selectcolor=CELL_BG,
                 activebackground=BG, activeforeground=TEXT,
                 highlightthickness=0, bd=0, anchor="w",
@@ -143,6 +144,9 @@ def open_share_dialog(parent, storage, settings, base_path, reservation_store=No
         want_res = include_res_var.get()
         if not want_entries and not want_res:
             # „Senden" ist in diesem Zustand deaktiviert (s.u.) — No-op.
+            return
+        if _selected_categories() == set():
+            # leere Kategorie-Auswahl → „Senden" optisch deaktiviert — No-op.
             return
         share_recipient = recipient_var.get().strip()
         if not share_recipient:
@@ -232,9 +236,11 @@ def open_share_dialog(parent, storage, settings, base_path, reservation_store=No
     secondary_button(btn_frame, "Abbrechen", dialog.destroy).pack(side=tk.LEFT, padx=5)
 
     def _refresh_send_btn(*_):
-        # „Senden" nur klickbar, wenn mind. ein Datentyp gewählt ist.
-        set_primary_button_enabled(
-            send_btn, include_entries_var.get() or include_res_var.get())
+        # „Senden" nur klickbar, wenn mind. ein Datentyp UND (falls Kategorien
+        # existieren) mind. eine Kategorie gewählt ist.
+        has_datatype = include_entries_var.get() or include_res_var.get()
+        has_category = _selected_categories() != set()
+        set_primary_button_enabled(send_btn, has_datatype and has_category)
 
     cb_entries.config(command=_refresh_send_btn)
     cb_res.config(command=_refresh_send_btn)

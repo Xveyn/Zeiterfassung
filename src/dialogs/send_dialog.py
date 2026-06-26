@@ -1,21 +1,21 @@
-import calendar
-import datetime
 import logging
 import os
 import tkinter as tk
 import traceback
 from tkinter import messagebox
 
+from src.dialogs.period_picker import build_period_picker
 from src.mail import get_gmail_service, is_offline_error, send_email
 from src.platform_open import open_folder
-from src.report import generate_pdf, generate_report, total_hours
+from src.report import default_pdf_filename, generate_pdf, generate_report
 from src.theme import (
-    BG, CELL_BG, FONT, TEXT,
+    BG, FONT, TEXT,
     apply_app_icon, apply_combobox_style, apply_dark_titlebar,
     attach_unfocus_on_click, center_dialog_on_parent,
-    disable_min_max, dark_combo, primary_button, secondary_button,
+    disable_min_max, primary_button, secondary_button,
     themed_showerror, themed_showinfo,
 )
+from src.time_utils import validate_period
 
 
 def show_missing_credentials_dialog(parent, base_path):
@@ -64,14 +64,6 @@ def show_missing_credentials_dialog(parent, base_path):
     center_dialog_on_parent(dialog, parent)
 
 
-def _default_from_date(today):
-    if today.month == 1:
-        return today.replace(year=today.year - 1, month=12)
-    from_month = today.month - 1
-    max_day = calendar.monthrange(today.year, from_month)[1]
-    return today.replace(month=from_month, day=min(today.day, max_day))
-
-
 def open_send_dialog(parent, storage, settings, base_path):
     recipient = settings.get("recipient")
     if not recipient:
@@ -103,134 +95,23 @@ def open_send_dialog(parent, storage, settings, base_path):
     attach_unfocus_on_click(dialog)
     dialog.bind("<Escape>", lambda _e: dialog.destroy())
 
-    today = datetime.date.today()
-    from_default = _default_from_date(today)
-    month_values = [str(m) for m in range(1, 13)]
-    year_values = [str(y) for y in range(2020, today.year + 2)]
-
-    def update_day_values(day_cb, day_var, month_var, year_var):
-        try:
-            m = int(month_var.get())
-            y = int(year_var.get())
-            max_day = calendar.monthrange(y, m)[1]
-        except (ValueError, KeyError):
-            max_day = 31
-        day_cb["values"] = [str(d) for d in range(1, max_day + 1)]
-        if int(day_var.get()) > max_day:
-            day_var.set(str(max_day))
-
-    def build_date_row(row, label_text, default_date):
-        tk.Label(dialog, text=label_text, font=FONT, bg=BG, fg=TEXT).grid(
-            row=row, column=0, padx=(10, 5), pady=8, sticky="w")
-
-        day_var = tk.StringVar(value=str(default_date.day))
-        max_day = calendar.monthrange(default_date.year, default_date.month)[1]
-        day_cb = dark_combo(dialog, day_var, [str(d) for d in range(1, max_day + 1)], width=3)
-        day_cb.grid(row=row, column=1, padx=2, pady=8)
-
-        tk.Label(dialog, text=".", font=FONT, bg=BG, fg=TEXT).grid(row=row, column=2)
-
-        month_var = tk.StringVar(value=str(default_date.month))
-        dark_combo(dialog, month_var, month_values, width=3).grid(row=row, column=3, padx=2, pady=8)
-
-        tk.Label(dialog, text=".", font=FONT, bg=BG, fg=TEXT).grid(row=row, column=4)
-
-        year_var = tk.StringVar(value=str(default_date.year))
-        dark_combo(dialog, year_var, year_values, width=5).grid(row=row, column=5, padx=(2, 10), pady=8)
-
-        month_var.trace_add("write", lambda *_: update_day_values(day_cb, day_var, month_var, year_var))
-        year_var.trace_add("write", lambda *_: update_day_values(day_cb, day_var, month_var, year_var))
-
-        return day_var, month_var, year_var
-
-    from_day, from_month, from_year = build_date_row(0, "Von:", from_default)
-    to_day, to_month, to_year = build_date_row(1, "Bis:", today)
-
-    # --- Kategorie-Auswahl ---
-    # Kategorien aus dem Bestand UND der Settings-Pickliste sammeln ("" = ohne
-    # Kategorie). Alle standardmäßig ausgewählt; sind alle ausgewählt, wird kein
-    # Filter gesetzt. Bewusste Vereinfachung: die Liste wird NICHT auf den
-    # gewählten Zeitraum eingeschränkt (das bräuchte dynamisches Neu-Aufbauen bei
-    # Datumswechsel) — eine im Zeitraum nicht vorkommende Kategorie bleibt
-    # wirkungslos, daher unkritisch.
-    all_entries = storage.get_all()
-    present_categories = sorted(
-        {(s.get("kategorie") or "") for e in all_entries.values() for s in e["slots"]}
-        | {c for c in (settings.get("categories") or [])},
-        key=lambda k: (k == "", k.lower()),
-    )
-    category_vars = {}  # rohe Kategorie -> BooleanVar
-    if present_categories:
-        tk.Label(dialog, text="Kategorien:", font=FONT, bg=BG, fg=TEXT).grid(
-            row=2, column=0, padx=(10, 5), pady=(4, 8), sticky="nw")
-        cat_frame = tk.Frame(dialog, bg=BG)
-        cat_frame.grid(row=2, column=1, columnspan=5, padx=(0, 10), pady=(4, 8), sticky="w")
-        for kat in present_categories:
-            var = tk.BooleanVar(value=True)
-            category_vars[kat] = var
-            label = kat if kat else "(ohne Kategorie)"
-            tk.Checkbutton(
-                cat_frame, text=label, variable=var,
-                command=lambda: _update_total(),
-                font=FONT, bg=BG, fg=TEXT, selectcolor=CELL_BG,
-                activebackground=BG, activeforeground=TEXT,
-                highlightthickness=0, bd=0, anchor="w",
-            ).pack(anchor="w")
-
-    def _selected_categories():
-        """None, wenn keine Kategorien existieren oder alle ausgewählt sind
-        (= kein Filter). Sonst die Menge der ausgewählten rohen Kategorien."""
-        if not category_vars:
-            return None
-        selected = {kat for kat, var in category_vars.items() if var.get()}
-        if len(selected) == len(category_vars):
-            return None
-        return selected
-
-    # --- Live-Vorschau der Gesamtstunden (Zeitraum × gewählte Kategorien) ---
-    total_label = tk.Label(dialog, text="", font=FONT, bg=BG, fg=TEXT)
-    total_label.grid(row=3, column=0, columnspan=6, padx=10, pady=(0, 8), sticky="w")
-
-    def _current_range():
-        try:
-            df = datetime.date(int(from_year.get()), int(from_month.get()), int(from_day.get()))
-            dt = datetime.date(int(to_year.get()), int(to_month.get()), int(to_day.get()))
-        except ValueError:
-            return None, None
-        return df, dt
-
-    def _update_total(*_):
-        df, dt = _current_range()
-        if df is None or dt is None or df > dt:
-            total_label.config(text="Gesamtstunden: —")
-            return
-        hours = total_hours(df, dt, all_entries, _selected_categories())
-        total_label.config(text=f"Gesamtstunden: {hours}h")
-
-    for _v in (from_day, from_month, from_year, to_day, to_month, to_year):
-        _v.trace_add("write", _update_total)
-    _update_total()
+    picker_frame, picker = build_period_picker(dialog, storage, settings)
+    picker_frame.grid(row=0, column=0, sticky="w")
 
     def do_send():
-        try:
-            date_from = datetime.date(int(from_year.get()), int(from_month.get()), int(from_day.get()))
-            date_to = datetime.date(int(to_year.get()), int(to_month.get()), int(to_day.get()))
-        except ValueError:
+        date_from, date_to = picker.get_range()
+        if date_from is None:
             themed_showerror(dialog, "Ungültiges Datum", "Bitte ein gültiges Datum eingeben.")
             return
-
-        if date_from > date_to:
-            themed_showerror(
-                dialog,
-                "Ungültiger Zeitraum",
-                "Das Von-Datum muss vor dem Bis-Datum liegen.",
-            )
+        ok, msg = validate_period(date_from, date_to)
+        if not ok:
+            themed_showerror(dialog, "Ungültiger Zeitraum", msg)
             return
 
         # Frisch lesen statt den Dialog-Snapshot zu senden — der Storage kann
         # sich bei offenem Dialog geändert haben (Hintergrund-Drive-Sync).
         entries = storage.get_all()
-        categories = _selected_categories()
+        categories = picker.get_categories()
 
         html, total = generate_report(
             date_from, date_to, entries,
@@ -263,7 +144,7 @@ def open_send_dialog(parent, storage, settings, base_path):
                 .replace("{zeitraum}", label)
                 .replace("{gesamt}", f"{total}h")
             )
-            pdf_filename = f"Zeiterfassung_{date_from.strftime('%Y%m%d')}_{date_to.strftime('%Y%m%d')}.pdf"
+            pdf_filename = default_pdf_filename(date_from, date_to)
             send_email(service, recipient, subject, html,
                        attachment_bytes=pdf_bytes,
                        attachment_filename=pdf_filename,
@@ -311,7 +192,7 @@ def open_send_dialog(parent, storage, settings, base_path):
                 )
 
     btn_frame = tk.Frame(dialog, bg=BG)
-    btn_frame.grid(row=4, column=0, columnspan=6, pady=12)
+    btn_frame.grid(row=1, column=0, pady=12)
 
     primary_button(btn_frame, "Senden", do_send).pack(side=tk.LEFT, padx=5)
     secondary_button(btn_frame, "Abbrechen", dialog.destroy).pack(side=tk.LEFT, padx=5)

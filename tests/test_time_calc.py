@@ -107,3 +107,26 @@ def test_validate_slots_without_pause_ignores_pause():
     # Reservierungs-Slots: pause wird ignoriert (with_pause=False), kein Pausenfehler
     ok, msg = validate_slots([_s("08:00", "09:00", 999)], with_pause=False)
     assert ok is True
+
+
+def test_validate_period_from_after_to_is_invalid():
+    import datetime
+    from src.time_utils import validate_period
+    ok, msg = validate_period(datetime.date(2026, 3, 31), datetime.date(2026, 3, 1))
+    assert ok is False
+    assert "Von-Datum" in msg
+
+
+def test_validate_period_equal_dates_ok():
+    import datetime
+    from src.time_utils import validate_period
+    ok, msg = validate_period(datetime.date(2026, 3, 1), datetime.date(2026, 3, 1))
+    assert ok is True
+    assert msg == ""
+
+
+def test_validate_period_from_before_to_ok():
+    import datetime
+    from src.time_utils import validate_period
+    ok, _ = validate_period(datetime.date(2026, 3, 1), datetime.date(2026, 3, 31))
+    assert ok is True

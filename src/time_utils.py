@@ -49,6 +49,15 @@ def validate_entry(start_str, end_str, pause_minutes=0):
         return False, f"Pause ({pause_minutes} Min) muss kleiner als die Arbeitszeit ({working_min} Min) sein"
     return True, ""
 
+
+def validate_period(date_from, date_to):
+    """Validiert einen Datums-Zeitraum für Bericht/Export. Liefert
+    (ok, fehlermeldung). von > bis ist ungültig; von == bis ist erlaubt
+    (Ein-Tages-Bericht)."""
+    if date_from > date_to:
+        return False, "Das Von-Datum muss vor dem Bis-Datum liegen."
+    return True, ""
+
 def get_week_dates(iso_year, iso_week):
     """Return list of 7 datetime.date objects (Mon-Sun) for the given ISO week."""
     monday = datetime.date.fromisocalendar(iso_year, iso_week, 1)

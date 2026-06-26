@@ -111,8 +111,10 @@ denselben OAuth-Token; Scope-Upgrade erzwingt frischen Consent.
 
 Modale Tk-Dialoge, von `App` geroutet (Klick-Modell: Linksklick = bearbeiten, Rechtsklick =
 löschen — siehe Root-`CLAUDE.md`): `entry_dialog` (Tages-Dialog, rein zum Speichern),
-`send_dialog`, `settings_dialog`, `share_dialog`, `import_dialog`, `category_dialog`,
-`conflicts_dialog`.
+`send_dialog`, `export_dialog` (Zeitraum-Modal → PDF lokal speichern),
+`settings_dialog`, `share_dialog`, `import_dialog`, `category_dialog`,
+`conflicts_dialog`. `period_picker` ist kein Dialog, sondern der von
+`send_dialog` + `export_dialog` geteilte Zeitraum+Kategorie+Vorschau-Baustein.
 
 ## Wo gehört neuer Code hin?
 

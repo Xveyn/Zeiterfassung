@@ -346,3 +346,19 @@ def test_total_hours_empty_range_is_zero():
 def test_total_hours_filtered_to_nothing_is_zero():
     entries = {"2026-03-23": _e("08:00", "16:00", 0, "Büro")}
     assert total_hours(datetime.date(2026, 3, 1), datetime.date(2026, 3, 31), entries, categories={"X"}) == 0.0
+
+
+def test_default_pdf_filename_format():
+    from src.report import default_pdf_filename
+    assert default_pdf_filename(
+        datetime.date(2026, 3, 1), datetime.date(2026, 3, 31)
+    ) == "Zeiterfassung_20260301_20260331.pdf"
+
+
+def test_generate_pdf_returns_none_for_empty_range():
+    from src import report as report_mod
+    fake_xhtml2pdf = MagicMock()
+    with patch.dict("sys.modules", {"xhtml2pdf": fake_xhtml2pdf}):
+        result = report_mod.generate_pdf(
+            datetime.date(2026, 3, 1), datetime.date(2026, 3, 31), {})
+    assert result is None
