@@ -263,6 +263,9 @@ class App:
             footer_frame, "Teilen", self._share, padx=12,
         ).pack(side=tk.RIGHT, padx=(0, 4))
         secondary_button(
+            footer_frame, "Export", self._export, padx=12,
+        ).pack(side=tk.RIGHT, padx=(0, 4))
+        secondary_button(
             footer_frame, "Arbeitszeiten senden", self._send, padx=12,
         ).pack(side=tk.RIGHT)
 
@@ -368,6 +371,8 @@ class App:
                      lambda: self.root.after(0, self._send), None),
                     ("Teilen",
                      lambda: self.root.after(0, self._share), None),
+                    ("Export",
+                     lambda: self.root.after(0, self._export), None),
                     ("Mit Google Drive synchronisieren",
                      lambda: self.root.after(0, self._sync.tray_sync),
                      lambda: bool(self.settings.get("sync_enabled"))),
@@ -521,6 +526,10 @@ class App:
             self.root, self.storage, self.settings, self.base_path,
             reservation_store=self.reservation_store,
         )
+
+    def _export(self):
+        from src.dialogs.export_dialog import open_export_dialog
+        open_export_dialog(self.root, self.storage, self.settings)
 
     def on_sync_pull_success(self):
         """Public-API für main.py: nach erfolgreichem Pull (UI-Thread)."""
