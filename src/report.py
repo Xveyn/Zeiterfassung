@@ -124,6 +124,14 @@ def total_hours(date_from, date_to, all_entries, categories=None):
     return round(sum(_entry_hours(e) for e in range_entries.values()), 2)
 
 
+def default_pdf_filename(date_from, date_to):
+    """Default-Dateiname für den PDF-Bericht: Zeiterfassung_<VON>_<BIS>.pdf
+    mit Datums-Stempeln im Format YYYYMMDD (z.B.
+    Zeiterfassung_20260301_20260331.pdf). Genutzt vom Senden- (Mail-Anhang)
+    und vom Export-Pfad."""
+    return f"Zeiterfassung_{date_from:%Y%m%d}_{date_to:%Y%m%d}.pdf"
+
+
 def _apply_placeholders(text, label, total):
     return text.replace("{zeitraum}", _esc(label)).replace("{gesamt}", _esc(f"{total}h"))
 
