@@ -570,3 +570,40 @@ def test_resolve_calendar_id_unknown_and_no_current_is_primary():
     from src.settings import resolve_calendar_id
     assert resolve_calendar_id({}, "Weg", "") == "primary"
     assert resolve_calendar_id({}, "Weg", None) == "primary"
+
+
+def test_ui_scale_default(tmp_settings):
+    assert tmp_settings.get("ui_scale") == 1.0
+
+
+def test_ui_scale_is_not_synced():
+    # Gerätespezifisch -> darf nicht per Drive synchronisieren.
+    assert "ui_scale" not in SYNCED_SETTING_KEYS
+
+
+def test_clamp_ui_scale_within_range():
+    from src.settings import clamp_ui_scale
+    assert clamp_ui_scale(1.25) == 1.25
+    assert clamp_ui_scale(0.75) == 0.75
+    assert clamp_ui_scale(2.0) == 2.0
+
+
+def test_clamp_ui_scale_below_min_clamps_to_075():
+    from src.settings import clamp_ui_scale
+    assert clamp_ui_scale(0.5) == 0.75
+
+
+def test_clamp_ui_scale_above_max_clamps_to_2():
+    from src.settings import clamp_ui_scale
+    assert clamp_ui_scale(3.0) == 2.0
+
+
+def test_clamp_ui_scale_string_is_cast():
+    from src.settings import clamp_ui_scale
+    assert clamp_ui_scale("1.5") == 1.5
+
+
+def test_clamp_ui_scale_invalid_falls_back_to_1():
+    from src.settings import clamp_ui_scale
+    assert clamp_ui_scale(None) == 1.0
+    assert clamp_ui_scale("abc") == 1.0
