@@ -18,3 +18,11 @@ def test_selected_category_filter_none_selected_returns_empty_set():
     # exakt die bisherige send_dialog-Semantik.
     from src.dialogs.period_picker import selected_category_filter
     assert selected_category_filter({"Büro": False, "HO": False}) == set()
+
+
+def test_selected_category_filter_only_uncategorized_is_nonempty():
+    # "(ohne Kategorie)" = "" ist eine gültige, nicht-leere Auswahl: nur sie
+    # angehakt -> {""}. Damit bleibt der Export-Button klickbar UND Zeiten ohne
+    # Kategorie sind exportierbar (Filter "" -> Slots ohne kategorie).
+    from src.dialogs.period_picker import selected_category_filter
+    assert selected_category_filter({"": True, "Büro": False}) == {""}

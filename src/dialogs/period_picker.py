@@ -52,11 +52,16 @@ class _PeriodPickerHandle:
         return selected_category_filter({k: v.get() for k, v in self._cats.items()})
 
 
-def build_period_picker(parent, storage, settings):
+def build_period_picker(parent, storage, settings, on_change=None):
     """Baut Von/Bis-Datumszeilen + Kategorie-Checkboxen + Live-Stundenvorschau
     in einen eigenen Frame. Liefert (frame, handle). Der Frame wird vom
     Aufrufer ins Dialog-Layout gegridded; die Aktions-Buttons bleiben Sache
-    des Aufrufers (Senden bzw. Export)."""
+    des Aufrufers (Senden bzw. Export).
+
+    on_change: optionaler Callback, der bei jeder Benutzer-Änderung an Datum
+    oder Kategorie-Auswahl gefeuert wird (z.B. damit der Export-Dialog seinen
+    Button (de)aktivieren kann). Wird beim initialen Aufbau NICHT gefeuert —
+    der Aufrufer setzt den Anfangszustand selbst."""
     frame = tk.Frame(parent, bg=BG)
 
     today = datetime.date.today()
@@ -116,7 +121,7 @@ def build_period_picker(parent, storage, settings):
             label = kat if kat else "(ohne Kategorie)"
             tk.Checkbutton(
                 cat_frame, text=label, variable=var,
-                command=lambda: _update_total(),
+                command=lambda: _changed(),
                 font=FONT, bg=BG, fg=TEXT, selectcolor=CELL_BG,
                 activebackground=BG, activeforeground=TEXT,
                 highlightthickness=0, bd=0, anchor="w",
@@ -136,8 +141,15 @@ def build_period_picker(parent, storage, settings):
         hours = total_hours(df, dt, all_entries, handle.get_categories())
         total_label.config(text=f"Gesamtstunden: {hours}h")
 
+    def _changed(*_):
+        # Benutzer-Änderung an Datum oder Kategorie: Vorschau aktualisieren und
+        # den Aufrufer benachrichtigen (Export-Button (de)aktivieren).
+        _update_total()
+        if on_change is not None:
+            on_change()
+
     for _v in (*from_vars, *to_vars):
-        _v.trace_add("write", _update_total)
+        _v.trace_add("write", _changed)
     _update_total()
 
     return frame, handle

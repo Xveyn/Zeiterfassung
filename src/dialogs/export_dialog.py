@@ -11,7 +11,7 @@ from src.theme import (
     apply_app_icon, apply_combobox_style, apply_dark_titlebar,
     attach_unfocus_on_click, center_dialog_on_parent,
     disable_min_max, primary_button, secondary_button,
-    themed_showerror, themed_showinfo,
+    set_primary_button_enabled, themed_showerror, themed_showinfo,
 )
 
 
@@ -31,10 +31,16 @@ def open_export_dialog(parent, storage, settings):
     attach_unfocus_on_click(dialog)
     dialog.bind("<Escape>", lambda _e: dialog.destroy())
 
-    picker_frame, picker = build_period_picker(dialog, storage, settings)
+    picker_frame, picker = build_period_picker(
+        dialog, storage, settings, on_change=lambda: _refresh_export_btn())
     picker_frame.grid(row=0, column=0, sticky="w")
 
     def do_export():
+        if picker.get_categories() == set():
+            # "Exportieren" ist in diesem Zustand optisch deaktiviert — No-op.
+            # set_primary_button_enabled blockt den Klick nicht (nur die Optik),
+            # daher hier abfangen, statt ein "Keine Einträge"-Modal zu zeigen.
+            return
         date_from, date_to = picker.get_range()
         if date_from is None:
             themed_showerror(dialog, "Ungültiges Datum", "Bitte ein gültiges Datum eingeben.")
@@ -95,7 +101,17 @@ def open_export_dialog(parent, storage, settings):
 
     btn_frame = tk.Frame(dialog, bg=BG)
     btn_frame.grid(row=1, column=0, pady=12)
-    primary_button(btn_frame, "Exportieren", do_export).pack(side=tk.LEFT, padx=5)
+    export_btn = primary_button(btn_frame, "Exportieren", do_export)
+    export_btn.pack(side=tk.LEFT, padx=5)
     secondary_button(btn_frame, "Abbrechen", dialog.destroy).pack(side=tk.LEFT, padx=5)
+
+    def _refresh_export_btn(*_):
+        # "Exportieren" nur klickbar, wenn die Kategorie-Auswahl nicht leer ist.
+        # get_categories(): None = alle gewählt bzw. keine Kategorien vorhanden
+        # → klickbar; nicht-leere Menge (auch {""} = nur "(ohne Kategorie)")
+        # → klickbar; set() = nichts angehakt → deaktiviert.
+        set_primary_button_enabled(export_btn, picker.get_categories() != set())
+
+    _refresh_export_btn()
 
     center_dialog_on_parent(dialog, parent)
