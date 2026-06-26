@@ -36,6 +36,18 @@ def _ensure_device_id(settings) -> str:
     return device_id
 
 
+def relaunch_command(argv, executable, frozen):
+    """Baut das Kommando, um die App neu zu starten (nach UI-Skalierungs-
+    Änderung). Im Frozen-Build ist `executable` die App-Exe selbst; im
+    Repo-Modus wird `python -m src.main` aufgerufen. `--minimized` wird
+    entfernt, weil der Nutzer nach einer interaktiven Skalierungsänderung das
+    Fenster sehen will, nicht ein erneut minimiertes."""
+    rest = [a for a in argv[1:] if a != "--minimized"]
+    if frozen:
+        return [executable] + rest
+    return [executable, "-m", "src.main"] + rest
+
+
 def _parse_remote_or_quarantine(content_bytes, file_id, on_corrupt):
     """Parsed Remote-Bytes als JSON. Bei Fehler ruft on_corrupt(file_id) auf
     und liefert ein leeres Doc."""
