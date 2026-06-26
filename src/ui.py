@@ -6,6 +6,8 @@ import datetime
 import logging
 import os
 import platform
+import subprocess
+import sys
 import time
 from src.time_utils import (
     format_iso_date, get_week_dates,
@@ -326,6 +328,7 @@ class App:
             conflicts_store=self.conflicts_store,
             storage=self.storage,
             reservation_store=self.reservation_store,
+            on_request_restart=self.restart_for_scaling,
         )
 
     def _apply_always_on_top(self):
@@ -552,6 +555,31 @@ class App:
         """Push zum Drive (falls aktiv) und App komplett beenden. Wird vom
         normalen X-Klick (ohne Tray) und vom Tray-Menü-„Beenden" aufgerufen."""
         self._sync.push_on_quit()
+        if self._tray is not None:
+            self._tray.stop()
+        self.root.destroy()
+
+    def restart_for_scaling(self):
+        """Startet die App neu, damit eine geänderte UI-Skalierung greift
+        (tk-scaling wird nur beim Start gesetzt). Erst den neuen Prozess
+        spawnen, dann erst das alte Fenster abbauen — schlägt Popen fehl,
+        bleibt die laufende App vollständig intakt (Tray läuft, Fenster offen)
+        und der Nutzer bekommt einen Hinweis. Kein Sync-Push: der Faktor ist
+        lokal, ein 5-s-Push würde den Neustart nur verzögern."""
+        from src.main import relaunch_command
+        cmd = relaunch_command(
+            sys.argv, sys.executable, getattr(sys, "frozen", False))
+        try:
+            subprocess.Popen(cmd)
+        except Exception:
+            logging.getLogger(__name__).exception(
+                "Neustart für UI-Skalierung fehlgeschlagen")
+            themed_showinfo(
+                self.root,
+                "Neustart nötig",
+                "Die Skalierung wird beim nächsten Start der App wirksam.",
+            )
+            return
         if self._tray is not None:
             self._tray.stop()
         self.root.destroy()

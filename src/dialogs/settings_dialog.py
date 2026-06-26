@@ -20,14 +20,14 @@ from src.theme import (
 )
 from src.dialogs.category_dialog import open_category_dialog
 from src.holidays_de import STATES, code_for_state_label
-from src.settings import WEEKDAY_KEYS, parse_hourly_rate, resolve_calendar_id
+from src.settings import WEEKDAY_KEYS, clamp_ui_scale, parse_hourly_rate, resolve_calendar_id
 from src.time_utils import format_iso_date
 from src.time_utils import DAYS_DE, validate_entry
 
 
 def open_settings_dialog(parent, settings, base_path, on_change, *,
                          conflicts_store=None, storage=None,
-                         reservation_store=None):
+                         reservation_store=None, on_request_restart=None):
     """Modal dialog for editing app settings.
 
     on_change is called after a successful save so the calendar can refresh.
@@ -367,11 +367,36 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
         cursor="hand2",
     ).grid(row=20, column=0, columnspan=2, padx=10, pady=(0, 8), sticky="w")
 
+    # --- Darstellung (UI-Skalierung, gerätelokal) ---
+    display_frame = tk.Frame(dialog, bg=BG)
+    display_frame.grid(row=21, column=0, columnspan=2, padx=10, pady=(16, 4),
+                       sticky="we")
+    tk.Label(
+        display_frame, text="— Darstellung —", font=FONT_BOLD,
+        bg=BG, fg=TEXT_MUTED,
+    ).pack(pady=(0, 4))
+    scale_row = tk.Frame(display_frame, bg=BG)
+    scale_row.pack(fill="x")
+    tk.Label(
+        scale_row, text="Skalierung (%):", font=FONT, bg=BG, fg=TEXT,
+    ).pack(side=tk.LEFT, padx=(0, 8))
+    scale_var = tk.IntVar(value=round(settings.get("ui_scale") * 100))
+    tk.Scale(
+        scale_row, from_=75, to=200, resolution=5, orient=tk.HORIZONTAL,
+        variable=scale_var, length=200,
+        bg=BG, fg=TEXT, troughcolor=CELL_BG, highlightthickness=0,
+        activebackground=ACCENT, bd=0,
+    ).pack(side=tk.LEFT)
+    tk.Label(
+        display_frame, text="Änderung startet die App neu.", font=FONT_SMALL,
+        bg=BG, fg=TEXT_MUTED,
+    ).pack(anchor="w", pady=(2, 0))
+
     # --- Synchronisation (Multi-Device-Sync, Phase 4.6) ---
     tk.Label(
         dialog, text="— Synchronisation —", font=FONT_BOLD,
         bg=BG, fg=TEXT_MUTED,
-    ).grid(row=21, column=0, columnspan=2, padx=10, pady=(16, 4))
+    ).grid(row=22, column=0, columnspan=2, padx=10, pady=(16, 4))
 
     var_sync = tk.BooleanVar(value=settings.get("sync_enabled"))
 
@@ -430,20 +455,20 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
         cursor="hand2",
         command=_on_sync_toggled,
     )
-    cb_sync.grid(row=22, column=0, columnspan=2, padx=10, pady=(4, 0), sticky="w")
+    cb_sync.grid(row=23, column=0, columnspan=2, padx=10, pady=(4, 0), sticky="w")
 
     device_id = settings.get("device_id") or "(noch nicht gesetzt)"
     device_id_short = device_id[:8] + "…" if len(device_id) > 8 else device_id
     tk.Label(
         dialog, text=f"Geräte-ID: {device_id_short}", font=FONT_SMALL,
         bg=BG, fg=TEXT_MUTED,
-    ).grid(row=23, column=0, columnspan=2, padx=10, pady=(2, 0), sticky="w")
+    ).grid(row=24, column=0, columnspan=2, padx=10, pady=(2, 0), sticky="w")
 
     last = format_iso_date(settings.get("last_pull_at"), fallback="noch nie")
     tk.Label(
         dialog, text=f"Letzte Synchronisation: {last}", font=FONT_SMALL,
         bg=BG, fg=TEXT_MUTED,
-    ).grid(row=24, column=0, columnspan=2, padx=10, pady=(2, 4), sticky="w")
+    ).grid(row=25, column=0, columnspan=2, padx=10, pady=(2, 4), sticky="w")
 
     unresolved = 0
     if conflicts_store is not None:
@@ -458,7 +483,7 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
             f"Konflikte ansehen ({unresolved})",
             _open_conflicts_dialog,
             padx=12, pady=2,
-        ).grid(row=25, column=0, columnspan=2, padx=10, pady=(0, 8), sticky="w")
+        ).grid(row=26, column=0, columnspan=2, padx=10, pady=(0, 8), sticky="w")
 
     def _open_import_dialog():
         from src.dialogs.import_dialog import open_import_dialog
@@ -473,7 +498,7 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
         )
 
     btn_row = tk.Frame(dialog, bg=BG)
-    btn_row.grid(row=26, column=0, columnspan=2, padx=10, pady=(4, 8), sticky="w")
+    btn_row.grid(row=27, column=0, columnspan=2, padx=10, pady=(4, 8), sticky="w")
 
     # label_button liefert einen tk.Frame (keine -state-Option) — Doppelklick-
     # Schutz daher über ein Flag statt cb.config(state=...).
@@ -583,13 +608,13 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
         secondary_button(
             dialog, "Sync-Daten kompaktieren", _on_compact_clicked,
             padx=12, pady=2,
-        ).grid(row=27, column=0, columnspan=2, padx=10, pady=(0, 8), sticky="w")
+        ).grid(row=28, column=0, columnspan=2, padx=10, pady=(0, 8), sticky="w")
 
     # --- Google Kalender (Reservierungen) ---
     tk.Label(
         dialog, text="— Google Kalender —", font=FONT_BOLD,
         bg=BG, fg=TEXT_MUTED,
-    ).grid(row=28, column=0, columnspan=2, padx=10, pady=(16, 4))
+    ).grid(row=29, column=0, columnspan=2, padx=10, pady=(16, 4))
 
     var_gcal = tk.BooleanVar(value=settings.get("gcal_enabled"))
     cb_gcal: tk.Checkbutton | None = None
@@ -600,12 +625,12 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
     cal_var = tk.StringVar(value=settings.get("gcal_calendar_id") or "primary")
 
     cal_combo = dark_combo(dialog, cal_var, [cal_var.get()], width=30)
-    cal_combo.grid(row=30, column=1, padx=10, pady=4, sticky="w")
+    cal_combo.grid(row=31, column=1, padx=10, pady=4, sticky="w")
     tk.Label(dialog, text="Kalender:", font=FONT, bg=BG, fg=TEXT).grid(
-        row=30, column=0, padx=10, pady=4, sticky="w")
+        row=31, column=0, padx=10, pady=4, sticky="w")
 
     cal_status = tk.Label(dialog, text="", font=FONT_SMALL, bg=BG, fg=TEXT_MUTED)
-    cal_status.grid(row=31, column=0, columnspan=2, padx=10, pady=(0, 4), sticky="w")
+    cal_status.grid(row=32, column=0, columnspan=2, padx=10, pady=(0, 4), sticky="w")
 
     def _populate_calendars(items):
         if not cal_combo.winfo_exists():
@@ -705,7 +730,7 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
         activebackground=BG, activeforeground=TEXT,
         cursor="hand2", command=_on_gcal_toggled,
     )
-    cb_gcal.grid(row=29, column=0, columnspan=2, padx=10, pady=(4, 0), sticky="w")
+    cb_gcal.grid(row=30, column=0, columnspan=2, padx=10, pady=(4, 0), sticky="w")
 
     if settings.get("gcal_enabled"):
         _load_calendars()
@@ -743,6 +768,8 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
 
         hourly_rate = parse_hourly_rate(rate_var.get())
         selected_code = code_for_state_label(state_var.get())
+        old_scale = settings.get("ui_scale")
+        new_scale = clamp_ui_scale(scale_var.get() / 100)
 
         updates = {
             "autostart": new_autostart,
@@ -758,6 +785,7 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
             "show_weekend": show_weekend_var.get(),
             "always_on_top": always_on_top_var.get(),
             "minimize_to_tray": minimize_to_tray_var.get(),
+            "ui_scale": new_scale,
         }
         for key in WEEKDAY_KEYS:
             updates[f"default_start_{key}"] = start_vars[key].get()
@@ -774,9 +802,11 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
                 settings.set_synced("gcal_calendar_id", selected_cal_id)
         on_change()
         dialog.destroy()
+        if on_request_restart is not None and new_scale != old_scale:
+            on_request_restart()
 
     btn_frame = tk.Frame(dialog, bg=BG)
-    btn_frame.grid(row=32, column=0, columnspan=2, pady=12)
+    btn_frame.grid(row=33, column=0, columnspan=2, pady=12)
 
     secondary_button(
         btn_frame, "Kategorien verwalten",
