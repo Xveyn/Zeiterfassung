@@ -267,7 +267,7 @@ class App:
         ).pack(side=tk.RIGHT, padx=(0, 4))
         secondary_button(
             footer_frame, "Arbeitszeiten senden", self._send, padx=12,
-        ).pack(side=tk.RIGHT)
+        ).pack(side=tk.RIGHT, padx=(0, 4))
 
     def _navigate(self, direction):
         """Blättert die Ansicht um `direction` Einheiten (-1 zurück, +1 vor):
