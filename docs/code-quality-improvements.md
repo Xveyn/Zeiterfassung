@@ -6,10 +6,10 @@ ist stabil, das hier sind keine Bug-Reports.
 
 ## Duplikate (klein, hoher Effekt)
 
-- [ ] **`SYNCED_SETTING_KEYS` doppelt definiert**
-  `src/settings.py:8` und `src/sync.py:19`. Heute identisch, divergiert beim
-  nächsten Whitelist-Eintrag. In `settings.py` belassen, aus `sync.py` raus
-  und importieren.
+- [x] **`SYNCED_SETTING_KEYS` doppelt definiert** — erledigt (Issue #48)
+  In `settings.py` belassen, aus `sync.py` raus und importiert. Schutz-Test
+  `test_sync_reexports_settings_whitelist` erzwingt jetzt Identität (`is`)
+  statt nur Wertgleichheit.
 
 - [ ] **`_utc_now_iso()` dreifach kopiert**
   `src/storage.py:6`, `src/settings.py:102`, `src/sync.py:25`. Gehört in
