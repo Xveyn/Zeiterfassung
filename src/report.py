@@ -16,9 +16,20 @@ def _esc_multiline(text):
 
 COLUMN_LABELS = ["Datum", "Tag", "Kategorie", "Start", "Ende", "Stunden"]
 
+# Explizite Spaltenbreiten (Summe 100%) für die 6-spaltige Stundentabelle.
+# Browser layouten automatisch (E-Mail-HTML braucht keine Breiten), xhtml2pdf
+# dagegen kollabiert mit den colspan-Zeilen (KW-Header/Summen) die linken
+# Spalten ineinander. <colgroup>/<col width> ignoriert xhtml2pdf, und eine
+# width-Angabe nur am Header reicht nicht — die Breiten müssen an *jeder*
+# regulären 6-Spalten-Zelle (Header + Datenzeilen) stehen, damit ReportLab
+# trotz der SPAN-Zeilen ein konsistentes Raster bildet. Daher führt nur
+# PDF_STYLE Breiten, HTML_STYLE leere.
+_PDF_COL_WIDTHS = ["15%", "8%", "25%", "16%", "16%", "20%"]
+
 # Style-Dict pro Render-Ziel. Felder werden direkt als CSS-Strings in die
 # Inline-Styles der Zellen geschrieben.
 HTML_STYLE = {
+    "col_widths":  ["", "", "", "", "", ""],
     "table_extra": "border-radius:8px;overflow:hidden;",
     "th_row":      "background:#1e293b;",
     "th_cell":     "padding:10px 14px;text-align:left;color:#94a3b8;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;",
@@ -41,6 +52,7 @@ HTML_STYLE = {
 }
 
 PDF_STYLE = {
+    "col_widths":  _PDF_COL_WIDTHS,
     "table_extra": "",
     "th_row":      "background:#1e293b;",
     "th_cell":     "padding:8px 12px;text-align:left;color:#ffffff;font-size:11px;font-weight:600;text-transform:uppercase;",
@@ -143,6 +155,7 @@ def _week_block(iso_year, iso_week, week_entries, style):
     """Render einen Wochen-Block: KW-Header, je Slot eine Zeile, Tages-Subtotal
     bei >1 Slot, Wochensumme. Returns (rows_html, week_total)."""
     s = style
+    cw = [f"width:{w};" if w else "" for w in s["col_widths"]]
     rows = [
         f"<tr style='{s['kw_row']}'>"
         f"<td colspan='6' style='{s['kw_cell']}'>{get_week_label(iso_year, iso_week)}</td>"
@@ -166,12 +179,12 @@ def _week_block(iso_year, iso_week, week_entries, style):
             day_cell = weekday if sidx == 0 else ""
             rows.append(
                 f"<tr style='{row_bg}'>"
-                f"<td style='{td}{s['c_date']}'>{date_cell}</td>"
-                f"<td style='{td}{s['c_day']}'>{day_cell}</td>"
-                f"<td style='{td}{s['c_kat']}'>{_esc(slot.get('kategorie') or '')}</td>"
-                f"<td style='{td}{s['c_time']}'>{slot['start']}</td>"
-                f"<td style='{td}{s['c_time']}'>{slot['end']}</td>"
-                f"<td style='{td}{s['c_hours']}'>{hours}h</td>"
+                f"<td style='{td}{cw[0]}{s['c_date']}'>{date_cell}</td>"
+                f"<td style='{td}{cw[1]}{s['c_day']}'>{day_cell}</td>"
+                f"<td style='{td}{cw[2]}{s['c_kat']}'>{_esc(slot.get('kategorie') or '')}</td>"
+                f"<td style='{td}{cw[3]}{s['c_time']}'>{slot['start']}</td>"
+                f"<td style='{td}{cw[4]}{s['c_time']}'>{slot['end']}</td>"
+                f"<td style='{td}{cw[5]}{s['c_hours']}'>{hours}h</td>"
                 f"</tr>"
             )
         if len(slots) > 1:
@@ -205,7 +218,8 @@ def _build_table(groups, style):
     total = round(total, 2)
 
     th_cells = "".join(
-        f'<th style="{s["th_cell"]}">{label}</th>' for label in COLUMN_LABELS
+        f'<th style="{s["th_cell"]}{f"width:{w};" if w else ""}">{label}</th>'
+        for label, w in zip(COLUMN_LABELS, s["col_widths"])
     )
 
     table = (
