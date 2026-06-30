@@ -60,11 +60,26 @@ def build_menu_model(on_show, on_quit, actions):
     return entries
 
 
-class TrayIcon:
-    """Wrapper um pystray.Icon mit Tk-freundlicher Lifecycle-API.
+def _select_backend(system):
+    """Backend-Klasse nach Plattform. macOS lazy, damit PyObjC nicht in den
+    Linux/Windows-Importpfad gerät."""
+    if system == "Windows":
+        return _PystrayBackend
+    if system == "Darwin":
+        from src.tray_mac import MacTrayBackend
+        return MacTrayBackend
+    return None
 
-    Nutzung:
-        tray = TrayIcon(base_path, on_show=show_fn, on_quit=quit_fn)
+
+class _PystrayBackend:
+    """pystray-Backend (Windows). Tk-freundliche Lifecycle-API.
+
+    Wird von der TrayIcon-Fassade auf Windows gewählt (auf macOS läuft das
+    native MacTrayBackend, s. tray_mac.py). Body unverändert ggü. dem früheren
+    monolithischen TrayIcon.
+
+    Nutzung (intern, über die Fassade):
+        backend = _PystrayBackend(base_path, on_show=show_fn, on_quit=quit_fn)
         tray.start()
         ...
         tray.stop()
@@ -231,3 +246,37 @@ class TrayIcon:
             except Exception:
                 pass
             self._icon = None
+
+
+class TrayIcon:
+    """Plattform-Fassade: wählt per platform.system() das Backend
+    (_PystrayBackend auf Windows, MacTrayBackend auf macOS) und delegiert.
+    Öffentliche API (start/stop/notify) unverändert."""
+
+    def __init__(self, base_path, on_show, on_quit, actions=None):
+        self.base_path = base_path
+        self._on_show = on_show
+        self._on_quit = on_quit
+        self._actions = actions or []
+        self._backend = None
+
+    def start(self):
+        """Startet das plattformspezifische Backend. Wirft dessen Exception
+        durch (synchron) — Aufrufer (_apply_tray_setting) fängt und fällt auf
+        Tray-Verzicht zurück."""
+        backend_cls = _select_backend(platform.system())
+        if backend_cls is None:
+            raise RuntimeError("Tray auf dieser Plattform nicht unterstützt")
+        backend = backend_cls(
+            self.base_path, self._on_show, self._on_quit, self._actions)
+        backend.start()
+        self._backend = backend  # erst nach erfolgreichem start halten
+
+    def notify(self, message, title="Zeiterfassung"):
+        if self._backend is not None:
+            self._backend.notify(message, title)
+
+    def stop(self):
+        if self._backend is not None:
+            self._backend.stop()
+            self._backend = None

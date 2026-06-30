@@ -44,3 +44,45 @@ def test_build_menu_model_no_actions_single_separator():
     from src.tray import build_menu_model
     model = build_menu_model(lambda: None, lambda: None, [])
     assert [e.kind for e in model] == ["item", "separator", "item"]
+
+
+def test_select_backend_dispatch():
+    from src.tray import _select_backend, _PystrayBackend
+    from src.tray_mac import MacTrayBackend
+    assert _select_backend("Windows") is _PystrayBackend
+    assert _select_backend("Darwin") is MacTrayBackend
+    assert _select_backend("Linux") is None
+
+
+def test_facade_instantiates_and_delegates(monkeypatch):
+    """Fassade wählt das Backend, instanziiert mit denselben Args und delegiert
+    start/stop/notify — plattformunabhängig über ein Fake-Backend."""
+    from src import tray
+
+    seen = {}
+
+    class FakeBackend:
+        def __init__(self, base_path, on_show, on_quit, actions=None):
+            seen["init"] = (base_path, on_show, on_quit, actions)
+
+        def start(self):
+            seen["start"] = True
+
+        def stop(self):
+            seen["stop"] = True
+
+        def notify(self, message, title="Zeiterfassung"):
+            seen["notify"] = (message, title)
+
+    monkeypatch.setattr("src.tray._select_backend", lambda system: FakeBackend)
+
+    show, quit_ = (lambda: None), (lambda: None)
+    acts = [("Sync", lambda: None, None)]
+    icon = tray.TrayIcon("base", on_show=show, on_quit=quit_, actions=acts)
+    icon.start()
+    assert seen["init"] == ("base", show, quit_, acts)
+    assert seen["start"] is True
+    icon.notify("hallo")
+    assert seen["notify"] == ("hallo", "Zeiterfassung")
+    icon.stop()
+    assert seen["stop"] is True
