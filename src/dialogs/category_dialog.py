@@ -82,6 +82,36 @@ def collect_categories(rows):
     return categories, category_times
 
 
+def row_defaults_from_entry(entry):
+    """category_times[name]-Eintrag → Vorbelegungs-Strings einer Dialog-Zeile.
+
+    {mode, start, end, pause, days} mit Roh-Strings/STANDARD; days enthält ALLE 7
+    Tage (ungesetzt → STANDARD). Umkehrung von collect_categories pro Zeile.
+    Defensiv: Nicht-Dict/korrupt → allgemein, alles STANDARD.
+    """
+    if not isinstance(entry, dict):
+        return {"mode": "general", "start": STANDARD, "end": STANDARD,
+                "pause": STANDARD, "days": {}}
+
+    pause = entry.get("pause")
+    pause_str = str(pause) if pause not in (None, "") else STANDARD
+
+    if entry.get("mode") == "per_day":
+        raw_days = entry.get("days") if isinstance(entry.get("days"), dict) else {}
+        days = {}
+        for key in WEEKDAY_KEYS:
+            d = raw_days.get(key) if isinstance(raw_days.get(key), dict) else {}
+            days[key] = {"start": d.get("start") or STANDARD,
+                         "end": d.get("end") or STANDARD}
+        return {"mode": "per_day", "start": STANDARD, "end": STANDARD,
+                "pause": pause_str, "days": days}
+
+    return {"mode": "general",
+            "start": entry.get("start") or STANDARD,
+            "end": entry.get("end") or STANDARD,
+            "pause": pause_str, "days": {}}
+
+
 def open_category_dialog(parent, settings, on_change=None):
     categories = list(settings.get("categories") or [])
     category_times = dict(settings.get("category_times") or {})
