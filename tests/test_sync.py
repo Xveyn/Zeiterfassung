@@ -652,7 +652,7 @@ def test_merge_different_slots_conflict_candidates_carry_slots():
     assert cand_by_dev["B"]["slots"] == [_slot("09:00", "17:00", 30, "HO")]
 
 
-# --- Forward-Compat (>v3 abweisen) + Absorb/Migration älterer Docs (v1/v2) ---
+# --- Forward-Compat (>v4 abweisen) + Absorb/Migration älterer Docs (v1/v2) ---
 
 from src.sync import (
     NEWER_REMOTE_VERSION_MSG, SCHEMA_VERSION, _remote_is_newer, migrate_doc_to_current,
@@ -698,11 +698,12 @@ def test_migrate_doc_to_current_is_idempotent():
                             "device_id": "B", "deleted": False}},
           "settings": {}, "conflicts": [], "meta": {"gc_watermark": ""}}
     out = migrate_doc_to_current(v3)
+    assert out["schema_version"] == 4
     assert out["entries"]["D"]["slots"] == slots
 
 
 def _newer_remote_bytes():
-    """Remote-Doc eines NEUEREN Schemas (>v3), das dieser Client nicht versteht."""
+    """Remote-Doc eines NEUEREN Schemas (>v4), das dieser Client nicht versteht."""
     return _json.dumps({
         "schema_version": SCHEMA_VERSION + 1,
         "entries": {}, "settings": {}, "conflicts": [],

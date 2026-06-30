@@ -93,7 +93,7 @@ def _run_pull_in_background(storage, settings, conflicts_store, base, ui_callbac
             return
         # Älteres Remote (v1/v2) wird aufs aktuelle Schema migriert und normal
         # gemergt (absorb-and-upgrade). Dass ältere Geräte ein hochgezogenes
-        # v3-Doc nicht überschreiben, sichert deren Push-Guard (ab v1.15.2).
+        # v4-Doc nicht überschreiben, sichert deren Push-Guard (ab v1.15.2).
         remote_doc = sync.migrate_doc_to_current(remote_doc)
         local_doc = sync.build_local_doc(storage, settings, conflicts_store)
         merged = sync.merge(local_doc, remote_doc, settings.get("last_pull_at") or "")
