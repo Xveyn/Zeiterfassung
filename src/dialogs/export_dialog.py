@@ -59,7 +59,8 @@ def open_export_dialog(parent, storage, settings):
         try:
             pdf_bytes = generate_pdf(
                 date_from, date_to, entries,
-                name=settings.get("name"), categories=categories)
+                name=settings.get("name"), categories=categories,
+                category_breakdown=picker.get_category_breakdown())
         except Exception as e:
             logging.getLogger(__name__).exception("PDF-Erzeugung fehlgeschlagen")
             messagebox.showerror(
