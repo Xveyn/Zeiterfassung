@@ -21,7 +21,7 @@ import uuid
 from src.settings import SYNCED_SETTING_KEYS
 
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 
 NEWER_REMOTE_VERSION_MSG = (
@@ -285,14 +285,15 @@ def compact_local(storage, settings, conflicts_store, now):
     ])
 
 
-def migrate_doc_to_v3(remote_doc):
-    """Migriert ein Sync-Doc auf das aktuelle Schema (v3): flache Einträge
-    (start/end/pause) werden in eine Slot-Liste gewrappt. Idempotent — Einträge,
-    die bereits `slots` tragen, bleiben unangetastet; Tombstones (deleted=True)
-    bekommen eine leere Slot-Liste. settings/conflicts/meta bleiben unberührt.
+def migrate_doc_to_current(remote_doc):
+    """Migriert ein älteres Sync-Doc auf das aktuelle Schema (v4): flache Einträge
+    (start/end/pause) werden in eine Slot-Liste gewrappt. Idempotent — Einträge mit
+    `slots` bleiben unangetastet; Tombstones bekommen eine leere Slot-Liste.
+    settings/conflicts/meta bleiben unberührt (per_day-category_times ist additiv in
+    den Settings und braucht keine Doc-Migration).
 
-    Damit kann ein v3-Client ein älteres (v1/v2) Remote-Doc absorbieren und
-    hochziehen, statt es abzuweisen oder beim Push zu plätten."""
+    Damit absorbiert ein aktueller Client ein älteres (v1–v3) Remote-Doc und zieht es
+    hoch, statt es abzuweisen oder beim Push zu plätten."""
     entries = remote_doc.get("entries") or {}
     migrated = {}
     for date, entry in entries.items():

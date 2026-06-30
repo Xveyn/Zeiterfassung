@@ -132,8 +132,8 @@ def test_migrated_v2_entry_round_trips_through_v3_sync(tmp_path):
 
     # build_local_doc nach Migration -> v3-Doc mit slots
     doc = build_local_doc(old, old_settings, old_conflicts)
-    assert SCHEMA_VERSION == 3
-    assert doc["schema_version"] == 3
+    assert SCHEMA_VERSION == 4
+    assert doc["schema_version"] == 4
     assert doc["entries"]["2026-03-23"]["slots"] == [
         {"start": "08:00", "end": "16:30", "pause": 30, "kategorie": ""}
     ]

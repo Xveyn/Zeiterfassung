@@ -290,7 +290,7 @@ def test_build_local_doc_includes_storage_settings_conflicts(tmp_path):
     assert "2026-05-14" in doc["entries"]
     assert doc["settings"]["recipient"]["value"] == "a@b.de"
     assert doc["conflicts"][0]["id"] == "c-1"
-    assert doc["schema_version"] == 3
+    assert doc["schema_version"] == 4
 
 
 def test_round_trip_no_loss(tmp_path):
@@ -655,7 +655,7 @@ def test_merge_different_slots_conflict_candidates_carry_slots():
 # --- Forward-Compat (>v3 abweisen) + Absorb/Migration älterer Docs (v1/v2) ---
 
 from src.sync import (
-    NEWER_REMOTE_VERSION_MSG, SCHEMA_VERSION, _remote_is_newer, migrate_doc_to_v3,
+    NEWER_REMOTE_VERSION_MSG, SCHEMA_VERSION, _remote_is_newer, migrate_doc_to_current,
 )
 
 
@@ -667,7 +667,7 @@ def test_remote_is_newer():
     assert _remote_is_newer({"entries": {}}) is False
 
 
-def test_migrate_doc_to_v3_wraps_flat_entries():
+def test_migrate_doc_to_current_wraps_flat_entries():
     doc = {
         "schema_version": 2,
         "entries": {
@@ -681,8 +681,8 @@ def test_migrate_doc_to_v3_wraps_flat_entries():
         "settings": {"recipient": {"value": "x", "modified_at": "t", "device_id": "B"}},
         "conflicts": [], "meta": {"gc_watermark": "wm"},
     }
-    out = migrate_doc_to_v3(doc)
-    assert out["schema_version"] == 3
+    out = migrate_doc_to_current(doc)
+    assert out["schema_version"] == 4
     assert out["entries"]["2026-06-04"]["slots"] == [
         {"start": "08:00", "end": "16:00", "pause": 30, "kategorie": ""}]
     assert out["entries"]["2026-06-05"]["slots"] == []        # Tombstone → leer
@@ -691,13 +691,13 @@ def test_migrate_doc_to_v3_wraps_flat_entries():
     assert out["meta"] == {"gc_watermark": "wm"}
 
 
-def test_migrate_doc_to_v3_is_idempotent_on_v3():
+def test_migrate_doc_to_current_is_idempotent():
     slots = [{"start": "08:00", "end": "16:00", "pause": 0, "kategorie": "X"}]
     v3 = {"schema_version": 3,
           "entries": {"D": {"slots": slots, "modified_at": "t",
                             "device_id": "B", "deleted": False}},
           "settings": {}, "conflicts": [], "meta": {"gc_watermark": ""}}
-    out = migrate_doc_to_v3(v3)
+    out = migrate_doc_to_current(v3)
     assert out["entries"]["D"]["slots"] == slots
 
 
@@ -805,7 +805,7 @@ def test_run_push_absorbs_v2_remote_before_upload(tmp_path, monkeypatch):
     monkeypatch.setattr(drive, "upload", _fake_upload)
     res = main._run_push_blocking(storage, settings, conflicts, str(tmp_path))
     assert res.get("ok") is True
-    assert uploaded["doc"]["schema_version"] == 3
+    assert uploaded["doc"]["schema_version"] == 4
     assert set(uploaded["doc"]["entries"]) == {"2026-06-09", "2026-06-20"}
     assert "slots" in storage.get_all_raw()["2026-06-20"]
 
