@@ -47,6 +47,21 @@ Alternative: `src/version.py` auf die nächste Patch-Version bumpen und einen ne
 
 `master` ist protected: direkte Pushes erfordern Admin-Bypass. Im Normalfall über PR arbeiten. Für Notfall-Fixes am CI kann der Repo-Owner direkt pushen.
 
+## Plattformspezifische PRs — Pre-Release vorschlagen
+
+Entwickelt wird primär unter Windows; macOS und Linux (inkl. Desktop-Umgebungs-
+Spezialfälle wie KDE, siehe #42) sind vollwertige Zielplattformen, aber auf der
+Windows-Dev-Maschine nicht direkt verifizierbar. Betrifft ein PR Code, der sich
+nur auf macOS, Linux oder eine bestimmte Linux-Desktop-Umgebung auswirkt (z. B.
+`src/tray_mac.py`, plattformspezifische Zweige in `theme.py`/`grid_renderer.py`/
+`autostart.py`), soll vorgeschlagen werden, vor dem Merge einen Pre-Release zu
+triggern, damit die Änderung dort getestet werden kann — statt das erst beim
+nächsten regulären, für diese Plattform dann faktisch ungetesteten Release zu
+bemerken. Vorbild: das manuelle macOS-Gate in #96. PR-Plattform-Labels und der
+Pre-Release-Workflow selbst sind als #100 bzw. #99 vorgeschlagen, aber noch
+nicht umgesetzt — bis dahin gilt der Hinweis als Review-Empfehlung, nicht als
+automatisierter Check.
+
 ## Build
 
 ```
