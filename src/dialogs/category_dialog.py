@@ -33,14 +33,10 @@ def _clean_field(value):
 def collect_categories(rows):
     """Baut (categories, category_times) aus den Roh-Zeilen.
 
-    `rows` ist eine Liste von Dicts mit den Roh-Strings der Combos/Entries:
-    `{"name", "start", "end", "pause"}`.
-
-    - `categories`: Namen in Eingabereihenfolge, getrimmt, ohne Leere,
-      dedupliziert (erstes Vorkommen gewinnt).
-    - `category_times`: `{name: {start?, end?, pause?}}` nur für Namen mit
-      mindestens einem gesetzten (Nicht-Standard-)Feld. Leere/STANDARD-Felder
-      entfallen → Per-Feld-Fallback auf die globalen Standardzeiten.
+    rows: [{name, mode, start, end, pause, days}]. mode "per_day" → verschachtelter
+    Eintrag {mode, pause?, days:{tag:{start?,end?}}}; sonst flacher {start?,end?,pause?}.
+    STANDARD/leere Felder entfallen → Per-Feld-Fallback. Leerer Eintrag entfällt ganz.
+    Namen getrimmt, ohne Leere, dedupliziert (erstes Vorkommen gewinnt).
     """
     categories = []
     category_times = {}
@@ -49,18 +45,40 @@ def collect_categories(rows):
         if not name or name in categories:
             continue
         categories.append(name)
-        entry = {}
-        start = _clean_field(row.get("start"))
-        end = _clean_field(row.get("end"))
         pause = _clean_field(row.get("pause"))
-        if start is not None:
-            entry["start"] = start
-        if end is not None:
-            entry["end"] = end
-        if pause is not None:
-            entry["pause"] = int(pause)
-        if entry:
+
+        if row.get("mode") == "per_day":
+            raw_days = row.get("days") or {}
+            days = {}
+            for key in WEEKDAY_KEYS:
+                d = raw_days.get(key) or {}
+                start = _clean_field(d.get("start"))
+                end = _clean_field(d.get("end"))
+                day_entry = {}
+                if start is not None:
+                    day_entry["start"] = start
+                if end is not None:
+                    day_entry["end"] = end
+                if day_entry:
+                    days[key] = day_entry
+            if not days and pause is None:
+                continue  # leerer per_day-Eintrag → komplett global
+            entry = {"mode": "per_day", "days": days}
+            if pause is not None:
+                entry["pause"] = int(pause)
             category_times[name] = entry
+        else:
+            entry = {}
+            start = _clean_field(row.get("start"))
+            end = _clean_field(row.get("end"))
+            if start is not None:
+                entry["start"] = start
+            if end is not None:
+                entry["end"] = end
+            if pause is not None:
+                entry["pause"] = int(pause)
+            if entry:
+                category_times[name] = entry
     return categories, category_times
 
 
