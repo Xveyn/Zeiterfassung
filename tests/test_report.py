@@ -86,10 +86,22 @@ def test_category_summary_block():
     assert "4.0h" in html
 
 
-def test_category_summary_uncategorized_label():
+def test_category_summary_suppressed_when_only_uncategorized():
+    """Sind alle Slots ohne Kategorie, ist die Kategorie-Summentabelle
+    bedeutungslos (nur eine Zeile = Gesamtsumme) und wird weggelassen."""
     entries = {"2026-03-23": _e("08:00", "16:00")}  # kategorie ""
     html, _ = generate_report(datetime.date(2026, 3, 1), datetime.date(2026, 3, 31), entries)
+    assert "(ohne Kategorie)" not in html
+
+
+def test_category_summary_shown_when_mixed():
+    """Sobald mindestens eine echte Kategorie existiert, erscheint die Tabelle
+    inklusive der (ohne Kategorie)-Zeile für die unkategorisierten Slots."""
+    entries = {"2026-03-23": {"slots": [_slot("08:00", "12:00", 0, "Büro"),
+                                         _slot("13:00", "17:00", 0, "")]}}
+    html, _ = generate_report(datetime.date(2026, 3, 1), datetime.date(2026, 3, 31), entries)
     assert "(ohne Kategorie)" in html
+    assert "Büro" in html
 
 
 def test_category_filter_includes_only_selected():
@@ -309,6 +321,96 @@ def test_pdf_category_filter_applied():
 
     assert "Büro" in captured_html["html"]
     assert "HO" not in captured_html["html"]
+
+
+def test_category_breakdown_default_includes_summary():
+    """Default (category_breakdown nicht gesetzt) = aufgeschlüsselt: 'Büro'
+    erscheint zweimal — in der Tageszeile UND in der Kategorie-Summentabelle."""
+    entries = {"2026-03-23": _e("08:00", "16:00", 0, "Büro")}
+    html, _ = generate_report(datetime.date(2026, 3, 1), datetime.date(2026, 3, 31), entries)
+    assert html.count("Büro") == 2
+
+
+def test_category_breakdown_false_hides_summary_keeps_total():
+    """category_breakdown=False lässt die 'Summe je Kategorie'-Tabelle weg;
+    die Tagestabelle inkl. Gesamt bleibt unverändert."""
+    entries = {"2026-03-23": _e("08:00", "16:00", 0, "Büro")}
+    html, total = generate_report(
+        datetime.date(2026, 3, 1), datetime.date(2026, 3, 31), entries,
+        category_breakdown=False)
+    # Tagestabelle + Gesamt bleiben
+    assert "23.03.2026" in html
+    assert "Gesamt" in html
+    assert "8.0h" in html
+    assert total == 8.0
+    # 'Büro' nur noch in der Tageszeile, nicht mehr in einer Summentabelle
+    assert html.count("Büro") == 1
+
+
+def test_pdf_category_breakdown_false_hides_summary():
+    """generate_pdf respektiert category_breakdown=False."""
+    from src import report as report_mod
+    entries = {"2026-03-23": _e("08:00", "16:00", 0, "Büro")}
+    captured_html = {}
+
+    class FakePisa:
+        @staticmethod
+        def CreatePDF(html_str, dest):
+            captured_html["html"] = html_str
+            return MagicMock(err=0)
+
+    fake_xhtml2pdf = MagicMock()
+    fake_xhtml2pdf.pisa = FakePisa
+
+    with patch.dict("sys.modules", {"xhtml2pdf": fake_xhtml2pdf}):
+        report_mod.generate_pdf(
+            datetime.date(2026, 3, 1), datetime.date(2026, 3, 31), entries,
+            category_breakdown=False)
+
+    html = captured_html["html"]
+    assert html.count("Büro") == 1
+    assert "Gesamt" in html
+
+
+def test_pdf_table_defines_explicit_column_widths():
+    """xhtml2pdf berechnet Spaltenbreiten nicht wie ein Browser und kollabiert
+    bei width:100%-Tabellen mit colspan-Zeilen die linken Spalten ineinander.
+    Die Breiten (Summe 100%) müssen daher an *jeder* regulären 6-Spalten-Zelle
+    stehen — am Header UND an den Datenzeilen, sonst greift der Workaround
+    wegen der SPAN-Zeilen nicht."""
+    from src import report as report_mod
+    entries = {"2026-03-23": _e("08:00", "16:00")}
+    captured_html = {}
+
+    class FakePisa:
+        @staticmethod
+        def CreatePDF(html_str, dest):
+            captured_html["html"] = html_str
+            return MagicMock(err=0)
+
+    fake_xhtml2pdf = MagicMock()
+    fake_xhtml2pdf.pisa = FakePisa
+
+    with patch.dict("sys.modules", {"xhtml2pdf": fake_xhtml2pdf}):
+        report_mod.generate_pdf(datetime.date(2026, 3, 1), datetime.date(2026, 3, 31), entries)
+
+    html = captured_html["html"]
+    widths = ["15%", "8%", "25%", "16%", "16%", "20%"]
+    assert sum(int(w.rstrip("%")) for w in widths) == 100
+    for w in set(widths):
+        assert f"width:{w};" in html
+    # nicht nur am Header: die Datumsspalte (15%) taucht auch in der Datenzeile auf
+    assert html.count("width:15%;") >= 2
+
+
+def test_email_html_has_no_column_widths():
+    """Die E-Mail-HTML-Tabelle bleibt ohne feste Spaltenbreiten (Browser
+    layouten selbst) — der xhtml2pdf-Workaround darf nur das PDF betreffen.
+    (width:100% am <table> ist erlaubt, nur die Spaltenbreiten dürfen fehlen.)"""
+    entries = {"2026-03-23": _e("08:00", "16:00")}
+    html, _ = generate_report(datetime.date(2026, 3, 1), datetime.date(2026, 3, 31), entries)
+    for w in ["15%", "8%", "25%", "16%", "20%"]:
+        assert f"width:{w};" not in html
 
 
 from src.report import total_hours

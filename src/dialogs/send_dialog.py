@@ -112,6 +112,7 @@ def open_send_dialog(parent, storage, settings, base_path):
         # sich bei offenem Dialog geändert haben (Hintergrund-Drive-Sync).
         entries = storage.get_all()
         categories = picker.get_categories()
+        category_breakdown = picker.get_category_breakdown()
 
         html, total = generate_report(
             date_from, date_to, entries,
@@ -119,6 +120,7 @@ def open_send_dialog(parent, storage, settings, base_path):
             content=settings.get("mail_content"),
             closing=settings.get("mail_closing"),
             categories=categories,
+            category_breakdown=category_breakdown,
         )
 
         if html is None:
@@ -133,7 +135,8 @@ def open_send_dialog(parent, storage, settings, base_path):
 
         try:
             pdf_bytes = generate_pdf(date_from, date_to, entries, name=settings.get("name"),
-                                     categories=categories)
+                                     categories=categories,
+                                     category_breakdown=category_breakdown)
             service = get_gmail_service(
                 credentials_path, token_path,
                 sync_enabled=settings.get("sync_enabled"),
