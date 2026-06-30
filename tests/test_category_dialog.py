@@ -3,7 +3,7 @@ beiden persistierten Strukturen: die categories-Liste und das category_times-
 Dict. STANDARD/leere Felder entfallen → Per-Feld-Fallback auf global."""
 
 from src.dialogs.category_dialog import (
-    STANDARD, collect_categories, row_defaults_from_entry,
+    STANDARD, categories_losing_per_day, collect_categories, row_defaults_from_entry,
 )
 
 
@@ -155,3 +155,20 @@ def test_roundtrip_preserves_general_entry():
     e = {"start": "09:30", "end": "17:00", "pause": 30}
     _, times = collect_categories([{"name": "Office", **row_defaults_from_entry(e)}])
     assert times == {"Office": e}
+
+
+def test_losing_general_row_with_hidden_days():
+    rows = [_row("X", mode="general",
+                 days=_pd_days(mon=("09:00", "18:00")))]
+    assert categories_losing_per_day(rows) == ["X"]
+
+
+def test_not_losing_general_row_without_days():
+    rows = [_row("X", mode="general")]
+    assert categories_losing_per_day(rows) == []
+
+
+def test_not_losing_active_per_day_row():
+    rows = [_row("X", mode="per_day",
+                 days=_pd_days(mon=("09:00", "18:00")))]
+    assert categories_losing_per_day(rows) == []

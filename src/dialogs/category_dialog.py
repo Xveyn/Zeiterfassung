@@ -82,6 +82,24 @@ def collect_categories(rows):
     return categories, category_times
 
 
+def categories_losing_per_day(rows):
+    """Namen der Zeilen im Modus 'general', die noch >=1 gesetztes (Nicht-
+    STANDARD-)Tagesfeld in 'days' tragen — d.h. versteckte per_day-Daten, die ein
+    Save als allgemein verwerfen würde. Basis für den Downgrade-Confirm."""
+    losing = []
+    for row in rows:
+        name = (row.get("name") or "").strip()
+        if not name or row.get("mode") == "per_day":
+            continue
+        raw_days = row.get("days") or {}
+        for key in WEEKDAY_KEYS:
+            d = raw_days.get(key) or {}
+            if _clean_field(d.get("start")) is not None or _clean_field(d.get("end")) is not None:
+                losing.append(name)
+                break
+    return losing
+
+
 def row_defaults_from_entry(entry):
     """category_times[name]-Eintrag → Vorbelegungs-Strings einer Dialog-Zeile.
 
