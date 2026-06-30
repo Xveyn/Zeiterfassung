@@ -1,11 +1,12 @@
 # src/tray.py
-"""System-Tray-Icon (Windows Notification Area / macOS Menu Bar).
+"""System-Tray-Icon — Plattform-Fassade über zwei Backends.
 
-Bewusst minimal: pystray läuft in eigenem Daemon-Thread, UI-Aktionen werden
-via `root.after(0, ...)` auf den Tk-Thread marshallt. Auf Linux ist die
-Verfügbarkeit WM-abhängig — wenn pystray-Backend fehlschlägt, gilt das
-Feature als nicht verfügbar und der Caller fällt auf normales Schließverhalten
-zurück.
+`TrayIcon` wählt per platform.system(): Windows → `_PystrayBackend` (pystray im
+Daemon-Thread, UI-Aktionen via `root.after(0, …)` auf den Tk-Thread). macOS →
+`MacTrayBackend` (src/tray_mac.py): natives NSStatusItem SYNCHRON auf dem
+Main-Thread, KEIN Thread, keine zweite NSApplication (Fix #88). macOS ist bis zum
+manuellen Mac-Gate dormant (Opt-in `ZEIT_MACOS_TRAY=1`, s. is_supported). Linux
+hat kein Tray. `build_menu_model` ist die backend-agnostische, testbare Naht.
 """
 
 import logging

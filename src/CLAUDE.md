@@ -110,7 +110,8 @@ denselben OAuth-Token; Scope-Upgrade erzwingt frischen Consent.
 - `theme.py`/`tooltip.py` — UI-Hilfen (Farben/Fonts/themed Dialoge, `_hover`-Overlays).
 - `time_utils.py` — Stunden, KW-Labels, `format_iso_date`/`format_iso_datetime`.
 - `holidays_de.py`, `paths.py` (`get_base_path` Frozen-vs-Repo), `autostart.py`, `updater.py`
-  (GitHub-Releases, stdlib-only, 1×/Tag), `platform_open.py`, `logging_setup.py`, `tray.py`,
+  (GitHub-Releases, stdlib-only, 1×/Tag), `platform_open.py`, `logging_setup.py`,
+  `tray.py` (Fassade) + `tray_mac.py` (natives macOS-NSStatusItem-Backend, #88),
   `version.py` (einzige Versions-Quelle).
 
 ## Dialoge (`src/dialogs/`)
