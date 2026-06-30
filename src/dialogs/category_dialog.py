@@ -15,7 +15,7 @@ from src.theme import (
     BG, FONT, FONT_BOLD, PAUSE_VALUES, TEXT, TEXT_MUTED, TIME_VALUES,
     apply_app_icon, apply_dark_titlebar, attach_unfocus_on_click,
     center_dialog_on_parent, dark_combo, dark_entry, disable_min_max,
-    primary_button, secondary_button,
+    primary_button, secondary_button, themed_askyesno,
 )
 from src.time_utils import DAYS_DE
 
@@ -130,6 +130,14 @@ def row_defaults_from_entry(entry):
             "pause": pause_str, "days": {}}
 
 
+def _grid_all_standard(day_vars):
+    """True wenn alle 7 Tages-Start/Ende-Vars noch den STANDARD-Sentinel halten."""
+    return all(
+        v["start"].get() == STANDARD and v["end"].get() == STANDARD
+        for v in day_vars.values()
+    )
+
+
 def open_category_dialog(parent, settings, on_change=None):
     categories = list(settings.get("categories") or [])
     category_times = dict(settings.get("category_times") or {})
@@ -161,6 +169,8 @@ def open_category_dialog(parent, settings, on_change=None):
     head.pack(fill="x")
     tk.Label(head, text="Name", font=FONT, bg=BG, fg=TEXT_MUTED,
              width=15, anchor="w").pack(side=tk.LEFT, padx=2)
+    tk.Label(head, text="Modus", font=FONT, bg=BG, fg=TEXT_MUTED,
+             width=10, anchor="w").pack(side=tk.LEFT, padx=2)
     tk.Label(head, text="Start", font=FONT, bg=BG, fg=TEXT_MUTED,
              width=11, anchor="w").pack(side=tk.LEFT, padx=2)
     tk.Label(head, text="Ende", font=FONT, bg=BG, fg=TEXT_MUTED,
@@ -227,51 +237,139 @@ def open_category_dialog(parent, settings, on_change=None):
             std_row, "Pro Tag ▶", _toggle_daygrid, padx=8, pady=0)
         toggle_holder["btn"].pack(side=tk.LEFT, padx=2)
 
-    def add_row(name="", start=STANDARD, end=STANDARD, pause=STANDARD):
-        row = tk.Frame(rows_frame, bg=BG)
-        row.pack(fill="x", pady=2)
+    def add_row(name="", defaults=None):
+        if defaults is None:
+            defaults = row_defaults_from_entry({})
+
+        # Container hält row + day_frame als Geschwister (pack-Reihenfolge).
+        container = tk.Frame(rows_frame, bg=BG)
+        container.pack(fill="x", pady=2)
+        row = tk.Frame(container, bg=BG)
+        row.pack(fill="x")
+
+        # StringVars
         nv = tk.StringVar(value=name)
-        sv = tk.StringVar(value=start)
-        ev = tk.StringVar(value=end)
-        pv = tk.StringVar(value=pause)
+        mode_var = tk.StringVar()
+        start_var = tk.StringVar(value=defaults["start"])
+        end_var = tk.StringVar(value=defaults["end"])
+        pause_var = tk.StringVar(value=defaults["pause"])
+
+        # Name-Entry
         dark_entry(row, nv, width=15).pack(side=tk.LEFT, padx=2)
-        dark_combo(row, sv, [STANDARD, *TIME_VALUES], width=11).pack(side=tk.LEFT, padx=2)
-        tk.Label(row, text="–", font=FONT, bg=BG, fg=TEXT_MUTED).pack(side=tk.LEFT)
-        dark_combo(row, ev, [STANDARD, *TIME_VALUES], width=11).pack(side=tk.LEFT, padx=2)
-        dark_combo(row, pv, [STANDARD, *PAUSE_VALUES], width=11).pack(side=tk.LEFT, padx=2)
-        record = {"frame": row, "name": nv, "start": sv, "end": ev, "pause": pv}
+        # Modus-Combo
+        mode_combo = dark_combo(row, mode_var, ["Allgemein", "Tageweise"], width=10)
+        mode_combo.pack(side=tk.LEFT, padx=2)
+
+        # general_frame mit Start–Ende — Sichtbarkeit via _apply_mode
+        general_frame = tk.Frame(row, bg=BG)
+        dark_combo(general_frame, start_var,
+                   [STANDARD, *TIME_VALUES], width=11).pack(side=tk.LEFT, padx=2)
+        tk.Label(general_frame, text="–",
+                 font=FONT, bg=BG, fg=TEXT_MUTED).pack(side=tk.LEFT)
+        dark_combo(general_frame, end_var,
+                   [STANDARD, *TIME_VALUES], width=11).pack(side=tk.LEFT, padx=2)
+
+        # Pause-Combo (immer sichtbar, bleibt in row)
+        pause_combo = dark_combo(row, pause_var, [STANDARD, *PAUSE_VALUES], width=11)
+        pause_combo.pack(side=tk.LEFT, padx=2)
+
+        # 7-Tage-Grid — Sichtbarkeit via _apply_mode
+        day_vars = {}
+        day_frame = tk.Frame(container, bg=BG)
+        for i, (key, lbl) in enumerate(zip(WEEKDAY_KEYS, DAYS_DE)):
+            d = (defaults["days"] or {}).get(key) or {}
+            sv = tk.StringVar(value=d.get("start") or STANDARD)
+            ev = tk.StringVar(value=d.get("end") or STANDARD)
+            day_vars[key] = {"start": sv, "end": ev}
+            tk.Label(day_frame, text=lbl, font=FONT, bg=BG, fg=TEXT,
+                     width=4, anchor="w").grid(row=i, column=0,
+                                               padx=(16, 4), pady=1, sticky="w")
+            dark_combo(day_frame, sv, [STANDARD, *TIME_VALUES], width=11).grid(
+                row=i, column=1, padx=2, pady=1)
+            tk.Label(day_frame, text="–", font=FONT, bg=BG, fg=TEXT_MUTED).grid(
+                row=i, column=2, pady=1)
+            dark_combo(day_frame, ev, [STANDARD, *TIME_VALUES], width=11).grid(
+                row=i, column=3, padx=2, pady=1)
+
+        def _apply_mode(*_a):
+            if mode_var.get() == "Tageweise":
+                # Allgemeine Werte ins Grid spiegeln, falls Grid noch leer (STANDARD).
+                if _grid_all_standard(day_vars):
+                    for tag in WEEKDAY_KEYS:
+                        day_vars[tag]["start"].set(start_var.get())
+                        day_vars[tag]["end"].set(end_var.get())
+                general_frame.pack_forget()
+                day_frame.pack(after=row, anchor="w", pady=(0, 4))
+            else:
+                # Montags-Werte in general zurückschreiben, falls general noch STANDARD.
+                if start_var.get() == STANDARD:
+                    mon = day_vars["mon"]
+                    if mon["start"].get() != STANDARD:
+                        start_var.set(mon["start"].get())
+                    if mon["end"].get() != STANDARD:
+                        end_var.set(mon["end"].get())
+                day_frame.pack_forget()
+                general_frame.pack(in_=row, side=tk.LEFT,
+                                   padx=2, before=pause_combo)
+
+        record = {
+            "frame": row, "name": nv, "mode": mode_var,
+            "start": start_var, "end": end_var, "pause": pause_var,
+            "days": day_vars,
+        }
 
         def remove():
-            row.destroy()
+            container.destroy()
             rows.remove(record)
 
         secondary_button(row, "×", remove, padx=8, pady=0).pack(side=tk.LEFT, padx=2)
         rows.append(record)
 
+        # Initialen Modus setzen + Sichtbarkeit herstellen.
+        # <<ComboboxSelected>> feuert bei programmatischem .set() NICHT.
+        mode_var.set("Tageweise" if defaults["mode"] == "per_day" else "Allgemein")
+        _apply_mode()
+
+        mode_combo.bind("<<ComboboxSelected>>", _apply_mode)
+
     if categories:
         for c in categories:
-            t = category_times.get(c) or {}
-            p = t.get("pause")
-            add_row(
-                c,
-                t.get("start") or STANDARD,
-                t.get("end") or STANDARD,
-                str(p) if p not in (None, "") else STANDARD,
-            )
+            add_row(c, row_defaults_from_entry(category_times.get(c) or {}))
     else:
-        add_row()  # eine leere Startzeile
+        add_row("", row_defaults_from_entry({}))
 
     btns = tk.Frame(outer, bg=BG)
     btns.pack(fill="x", pady=(2, 8))
-    secondary_button(btns, "+ Kategorie", lambda: add_row()).pack(side=tk.LEFT, padx=2)
+    secondary_button(
+        btns, "+ Kategorie",
+        lambda: add_row("", row_defaults_from_entry({})),
+    ).pack(side=tk.LEFT, padx=2)
 
     def on_save():
-        raw = [{
-            "name": r["name"].get(),
-            "start": r["start"].get(),
-            "end": r["end"].get(),
-            "pause": r["pause"].get(),
-        } for r in rows]
+        raw = []
+        for r in rows:
+            raw.append({
+                "name": r["name"].get(),
+                "mode": "per_day" if r["mode"].get() == "Tageweise" else "general",
+                "start": r["start"].get(),
+                "end": r["end"].get(),
+                "pause": r["pause"].get(),
+                "days": {
+                    tag: {"start": v["start"].get(), "end": v["end"].get()}
+                    for tag, v in r["days"].items()
+                },
+            })
+
+        losing = categories_losing_per_day(raw)
+        if losing:
+            names = ", ".join(losing)
+            if not themed_askyesno(
+                dialog, "Tageszeiten verwerfen?",
+                f"Für {names} gehen die tageweise gesetzten Zeiten verloren, "
+                "wenn als „Allgemein“ gespeichert wird.\n\nTrotzdem speichern?",
+            ):
+                return
+
         cats, times = collect_categories(raw)
         settings.set_synced("categories", cats)
         settings.set_synced("category_times", times)
