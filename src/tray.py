@@ -10,18 +10,29 @@ zurück.
 
 import logging
 import os
+import platform
 import threading
+
+
+def _macos_tray_opt_in():
+    """macOS-Tray ist bis zum bestandenen Mac-Gate dormant: nur aktiv, wenn der
+    Tester ZEIT_MACOS_TRAY=1 setzt. Default-an-Flip = separater PR (s. Spec)."""
+    return os.environ.get("ZEIT_MACOS_TRAY") == "1"
 
 
 def is_supported():
     """Kann auf diesem System ein Tray-Icon gezeigt werden?
 
-    Conservative: True für Windows und macOS, False für Linux (uneinheitlich).
-    Aufrufer kann unabhängig davon `try/except` machen, falls pystray zur
-    Laufzeit doch fehlschlägt.
+    Windows → True. Linux → False (uneinheitlich). macOS → nur mit Opt-in
+    (dormant-Default, s. _macos_tray_opt_in). Aufrufer kann unabhängig davon
+    `try/except` machen, falls das Backend zur Laufzeit doch fehlschlägt.
     """
-    import platform
-    return platform.system() in ("Windows", "Darwin")
+    system = platform.system()
+    if system == "Windows":
+        return True
+    if system == "Darwin":
+        return _macos_tray_opt_in()
+    return False
 
 
 class TrayIcon:
