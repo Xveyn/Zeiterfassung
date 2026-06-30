@@ -15,10 +15,15 @@ from src.updater import pick_asset_url, today_iso
 
 
 class UpdateBanner:
-    def __init__(self, root, settings, get_anchor):
+    def __init__(self, root, settings, get_anchor, on_resize=lambda: None):
         self._root = root
         self._settings = settings
         self._get_anchor = get_anchor    # lambda: App.grid_container
+        # Wird beim Ein-/Ausblenden aufgerufen, damit das fixe Fenster seine
+        # Höhe an die geänderte Banner-Präsenz anpasst (sonst schneidet das
+        # nicht-resizable Fenster den Footer ab, #92). Default no-op hält den
+        # Banner unabhängig vom Renderer testbar.
+        self._on_resize = on_resize
         self._banner = None              # Frame oder None (None = nicht sichtbar)
 
     def handle_check_result(self, release, newer):
@@ -67,6 +72,12 @@ class UpdateBanner:
             label_padx=14, label_pady=2,
         ).pack(side=tk.RIGHT, padx=8, pady=4)
 
+        # Der Banner sitzt zwischen Header und Grid und braucht zusätzliche
+        # Höhe. Das Fenster ist fix (resizable(False, False)) und wächst nur
+        # über einen kontrollierten Geometry-Pin — den hier anstoßen, sonst
+        # läuft der Inhalt unten über und der Footer wird abgeschnitten (#92).
+        self._on_resize()
+
     def _open_download(self, release):
         url = pick_asset_url(
             release.assets, platform.system(), release.version,
@@ -78,3 +89,6 @@ class UpdateBanner:
         if self._banner is not None:
             self._banner.destroy()
             self._banner = None
+        # Höhe zurückpinnen (Gegenstück zu _show): das fixe Fenster soll wieder
+        # auf die Höhe ohne Banner schrumpfen.
+        self._on_resize()

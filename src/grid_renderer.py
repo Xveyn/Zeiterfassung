@@ -121,10 +121,24 @@ class GridRenderer:
                 new_inactive.columnconfigure(col, weight=1 if col < current_cols else 0)
             self._grid_frames[inactive_idx] = new_inactive
             self._grid_frames[self._active_grid_idx].lift()
-            self._root.update_idletasks()
-            if not self._suppress_geometry:
-                width = max(self._fixed_width or 0, self._root.winfo_reqwidth())
-                self._root.geometry(f"{width}x{self._root.winfo_reqheight()}")
+            self.repin_geometry()
+
+    def repin_geometry(self):
+        """Pinnt Fensterbreite (>= gemessenes Maximum) und -höhe (aktuelle
+        reqheight) neu auf die fixe Geometrie.
+
+        Aufrufer: der View-/Spalten-Wechsel in refresh() **und** das Ein-/
+        Ausblenden des Update-Banners (UpdateBanner._show/_dismiss über einen
+        injizierten Callback) — der ändert die nötige Höhe, ohne dass sich View
+        oder Spaltenzahl ändern, würde also sonst nicht nachgeführt und liefe
+        unter dem fixen Fenster über (#92). Das Fenster bleibt
+        resizable(False, False); gewachsen/geschrumpft wird nur kontrolliert
+        hier. Während der Vorab-Messung (measure_max_width) unterdrückt
+        _suppress_geometry den Resize."""
+        self._root.update_idletasks()
+        if not self._suppress_geometry:
+            width = max(self._fixed_width or 0, self._root.winfo_reqwidth())
+            self._root.geometry(f"{width}x{self._root.winfo_reqheight()}")
 
     def measure_max_width(self, view_mode: str, year: int, month: int,
                           iso_year: int, current_week: int):

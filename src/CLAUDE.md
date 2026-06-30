@@ -49,6 +49,10 @@ Rendering der Monats-/Wochenansicht inkl. Double-Buffer und Fenster-Geometrie.
   (`build_grid(parent)`); `header_label`/`footer_label` werden in `App._build_header`/
   `_build_footer` erzeugt und per `attach_labels(...)` nachgereicht (der Renderer beschreibt
   sie). `measure_max_width(...)` pinnt vor `mainloop()` die Fensterbreite (4-Kombi-Probing).
+- **Fenster-Geometrie:** `repin_geometry()` setzt Breite (≥ gemessenes Maximum) und Höhe
+  (aktuelle reqheight) neu auf das fixe Fenster. Genutzt vom View-/Spalten-Wechsel in
+  `refresh()` **und** extern vom `UpdateBanner` (als `on_resize`), dessen Ein-/Ausblenden
+  die nötige Höhe ändert, ohne View/Spalten zu wechseln. `resizable(False, False)` bleibt.
 - `_fmt_slot_line` ist `@staticmethod`; `App._delete_day` ruft es als
   `GridRenderer._fmt_slot_line(...)` (bleibt in App, nutzt aber den Renderer-Static).
 
@@ -75,6 +79,8 @@ Tests genutzt). Reine Formatier-Helfer `_status_text`/`_tray_toast` sind ohne Tk
 Banner über dem Kalender (anzeigen/Download/ausblenden). `handle_check_result(release, newer)`
 ist das `on_result` von `BackgroundTaskRunner.check_update`. Pack-Anker **lazy** über
 `get_anchor=lambda: App._renderer.grid_container` (Grid existiert erst nach dem Build).
+`on_resize` (= `App._renderer.repin_geometry`) wird in `_show`/`_dismiss` aufgerufen, damit
+das fixe Fenster auf die geänderte Banner-Höhe nachzieht (sonst Footer abgeschnitten, #92).
 
 ## Threading-Modell
 
