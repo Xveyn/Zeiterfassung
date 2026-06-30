@@ -430,7 +430,7 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
         "<ButtonPress-1>", lambda _e: scale_value_label.config(fg=ACCENT), add="+",
     )
     scale_widget.bind(
-        "<ButtonRelease-1>", lambda _e: scale_value_label.config(fg=TEXT), add="+",
+        "<ButtonRelease-1>", lambda _e: scale_value_label.config(fg=TEXT_MUTED), add="+",
     )
     scale_widget.pack(side=tk.LEFT)
     scale_value_label.pack(side=tk.LEFT, padx=(8, 0))
