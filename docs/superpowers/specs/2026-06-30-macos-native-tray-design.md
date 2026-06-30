@@ -24,12 +24,19 @@ pystray-Primärdoku (Issue #88), nicht lokal reproduziert.
 
 ## Ziel
 
-Das Minimize-to-Tray bleibt auf macOS **erhalten** (volle Plattform-Parität),
-ohne den Crash. Dazu wird auf macOS kein pystray-Daemon-Thread mehr gestartet,
-sondern ein natives `NSStatusItem` **synchron auf dem Main-Thread** an die von
-Tk getriebene `NSApplication` gehängt (keine zweite NSApp, kein zweiter Thread,
-kein zweiter Runloop). Damit ist die Zwei-Threads-eine-NSApp-Kollision per
-Konstruktion ausgeschlossen.
+Das Minimize-to-Tray soll auf macOS **erhalten** werden (volle Plattform-
+Parität), ohne den Crash. Dazu wird auf macOS kein pystray-Daemon-Thread mehr
+gestartet, sondern ein natives `NSStatusItem` **synchron auf dem Main-Thread** an
+die von Tk getriebene `NSApplication` gehängt (keine zweite NSApp, kein zweiter
+Thread, kein zweiter Runloop). Damit ist die Zwei-Threads-eine-NSApp-Kollision
+per Konstruktion ausgeschlossen.
+
+**Gestaged, weil ohne Mac nicht verifizierbar:** Das native Backend landet
+vollständig, wird aber in ausgelieferten Builds **dormant** gehalten (macOS-Tray
+default **aus** = interim Issue-Option 1, Crash sofort weg) und erst nach
+bestandenem manuellem Mac-Gate per Flip default-an. Siehe „Auslieferungs-Default
+& Rollout". So sagt der Merge ehrlich „Crash behoben", ohne einen unverifizierten
+nativen Pfad an alle Mac-Nutzer auszuliefern.
 
 **Windows bleibt unangetastet** — dort läuft weiter der bestehende
 pystray-Daemon-Thread-Pfad (verifiziert funktionierend, null Regressionsrisiko).
@@ -109,19 +116,46 @@ kein Entitlement), **alle** Fehler geschluckt, defensiv auf den Main-Thread
 dispatcht. Bleibt es auf neueren macOS still, funktioniert der Sync trotzdem —
 nur ohne Toast. Die einzige „blinde" Funktionalität ist damit kosmetisch.
 
-### Graceful Fallback
+### Fallback & Crash-Garantie (präzise gefasst)
 
-Wirft das native Setup **irgendeine** Exception, propagiert sie wie heute aus
-`start()`. `_apply_tray_setting` fängt das bereits, zeigt `themed_showerror` und
-schaltet `minimize_to_tray` ab. Kein Crash, schlimmstenfalls kein Tray.
+Der Python-Fallback deckt **nur synchron** geworfene Exceptions: wirft das native
+Setup (`statusItemWithLength_`, `setMenu_`, Image-Load …) synchron an der
+PyObjC-Bridge, propagiert das wie heute aus `start()` → `_apply_tray_setting`
+fängt es, zeigt `themed_showerror` und schaltet `minimize_to_tray` ab. Kein
+Crash, schlimmstenfalls kein Tray.
+
+**Was der Fallback NICHT deckt:** Eine Exception, die *innerhalb* von AppKits
+Event-Processing entsteht (Menü-Tracking, Lazy-Draw, Target/Action-Dispatch,
+Notify), läuft nicht durch einen Python-Frame → `-[NSApplication
+_crashOnException:]` → SIGTRAP, am `try/except` vorbei. Diese async-Crash-Fläche
+zerfällt in zwei Klassen:
+
+- **(i) Python-Exceptions in unseren Callbacks** (Action-Methoden,
+  `menuNeedsUpdate_`, Notify): **konstruktiv ausgeschlossen** — verbindliche
+  Implementierungsregel: *jeder* von AppKit aufgerufene Python-Callback umschließt
+  seinen gesamten Body mit einem restlosen `try/except` (swallow + log). Kein
+  Python-Throw darf je in einen ObjC-Frame zurück.
+- **(ii) AppKit-interne Exceptions** (Threading-/Runloop-Missbrauch): aus Python
+  **nicht** abfangbar (AppKit ist nicht exception-safe; einmal entrollt =
+  undefinierter Zustand). Nur auf einem Mac verifizierbar.
+
+**Garantie also präzise:** Klasse (i) ist by construction crash-frei; Klasse (ii)
+bleibt **unbewiesen bis zum Mac-Gate** — deshalb der dormant-Default (s.
+„Auslieferungs-Default & Rollout"). Kein unconditional „nie Crash".
 
 ## Betroffene Stellen
 
 1. **`src/tray.py` — Fassade + Backend-Dispatch.**
-   - `is_supported()` bleibt `Windows`/`Darwin` → True (Verhalten unverändert,
-     aber Darwin ist jetzt echt unterstützt).
+   - `is_supported()`: **Windows → True**, **Linux → False** (unverändert),
+     **macOS → False, solange der Opt-in-Schalter nicht gesetzt ist** (interim
+     dormant-Default, s. Rollout). Opt-in z. B. über Env-Var `ZEIT_MACOS_TRAY=1`
+     (oder verstecktes Setting), damit der Mac-Tester das native Backend
+     aktivieren kann, ohne es default an alle auszuliefern. Der spätere Flip nach
+     bestandenem Mac-Gate macht macOS unconditional True.
    - Reine Selektor-Funktion (z. B. `_select_backend(system)`), die das
-     Backend nach `platform.system()` wählt — als pure Funktion testbar.
+     Backend nach `platform.system()` wählt — als pure Funktion testbar. Wird
+     **unabhängig** von `is_supported()` getestet, damit der native Dispatch auch
+     bei dormantem Default in der CI exerciert wird.
    - `start()/stop()/notify()` delegieren an das aktive Backend. Windows-Pfad
      (pystray, Daemon-Thread, `_notify_with_icon`) wandert unverändert in die
      interne Windows-Backend-Einheit.
@@ -142,6 +176,9 @@ schaltet `minimize_to_tray` ab. Kein Crash, schlimmstenfalls kein Tray.
      Icon verschwindet/Crash).
    - `stop()`: `removeStatusItem_` + Referenzen lösen. Idempotent.
    - `notify()`: best-effort `NSUserNotification`, alle Fehler geschluckt.
+   - **Callback-Hülle:** jeder von AppKit aufgerufene Python-Callback (Action,
+     `menuNeedsUpdate_`, Notify) umschließt seinen Body restlos mit `try/except`
+     (swallow + log) — Klasse-(i)-Schutz, siehe „Fallback & Crash-Garantie".
 
 3. **`requirements.txt` — Dependency mit Plattform-Marker.**
    `pyobjc-framework-Cocoa>=10.0; sys_platform == "darwin"` (Meta-Paket: zieht
@@ -159,10 +196,14 @@ schaltet `minimize_to_tray` ab. Kein Crash, schlimmstenfalls kein Tray.
 
 5. **`.github/workflows/test.yml` — neuer Job `test-macos`.**
    `macos-latest`, Python 3.10, installiert `pytest` + `pyobjc-framework-Cocoa`
-   + die Google-Libs (Tests importieren `src.ui`), läuft `pytest tests/`.
-   Bestätigt pyobjc-Import, `src.tray_mac`-Import und Backend-Auswahl auf echtem
-   macOS — **nicht** die visuelle Sichtbarkeit/Interaktion des Icons. Separater
-   Job, damit der Linux-Pfad nicht an der macOS-Queue hängt.
+   + die Google-Libs (Tests importieren `src.ui`), läuft `pytest tests/`. Geht
+   über Import/Dispatch hinaus: ein **In-Process-Smoke** (s. Tests) konstruiert
+   das native Backend unter einer laufenden Tk-Root, ruft jeden Action-Callback
+   direkt auf, toggelt die Sichtbarkeit und baut wieder ab — fängt
+   Verdrahtungs-/Lifecycle-/Target-Action-Fehler und Klasse-(i)-Exceptions.
+   **Nicht** beweisbar: user-sichtbares Icon, echtes Menü-Öffnen per Klick und
+   Klasse-(ii)-Absenz (→ Mac-Gate). Separater Job, damit der Linux-Pfad nicht an
+   der macOS-Queue hängt.
 
 6. **`tray.py`-Docstrings + ggf. `CLAUDE.md`/`src/CLAUDE.md`.**
    Der Klassen-Docstring beschreibt aktuell das pystray-darwin-Snapshot-Verhalten
@@ -187,38 +228,74 @@ schaltet `minimize_to_tray` ab. Kein Crash, schlimmstenfalls kein Tray.
 
 Rot→grün-Naht (auf jeder Plattform lauffähig, sofern nicht anders vermerkt):
 
-1. `is_supported()` → True auf Darwin & Windows, False auf Linux
-   (`platform.system()` gemockt). Verhalten festgeschrieben.
+1. **`is_supported()`** (`platform.system()` + Opt-in-Schalter gemockt):
+   Windows → True; Linux → False; macOS **ohne** Opt-in → False (dormant-Default),
+   macOS **mit** Opt-in → True. Schreibt den Staging-Default fest.
 2. **Backend-Dispatch:** `_select_backend("Darwin")` → natives Backend,
-   `_select_backend("Windows")` → pystray-Backend.
+   `_select_backend("Windows")` → pystray-Backend. Unabhängig von `is_supported()`.
 3. **Bug-Guard:** auf macOS startet der Pfad **keinen** `threading.Thread` —
-   das native Backend ist thread-los. Encodiert den Fix, Regression-Guard gegen
-   Wieder-Einführung des Crashes.
+   das native Backend ist thread-los. Encodiert den Fix; muss gegen den alten
+   Code (Daemon-Thread) **rot** sein, gegen den neuen grün.
 4. **Menü-Modell:** aus Beispiel-`actions` ergibt sich die erwartete Struktur
    (Einträge, Reihenfolge, Separatoren, Sync-Eintrag als „dynamisch" markiert).
+5. **In-Process-Smoke (nur macOS, im `test-macos`-Job):** unter einer Tk-Root das
+   native Backend konstruieren, jeden Action-Callback direkt aufrufen,
+   Sichtbarkeit togglen, `stop()` — assertet **keine** Exception. Exerciert
+   Target/Action-Verdrahtung, Retain/Lifecycle und Klasse-(i)-Schutz. Skippt
+   sauber, falls der Runner keinen Status-Bar-Zugriff hat (statt falsch rot).
 
-Nicht unit-testbar (→ CI-Import + manueller Mac-Test):
-- Die nativen AppKit-Aufrufe (NSStatusItem erscheint, Menü öffnet, Klicks lösen
-  Callbacks, live-Sichtbarkeit, notify-Toast) und die Crash-Abwesenheit selbst.
+Nicht (auch nicht im macOS-Job) automatisiert testbar — nur **manuelles Mac-Gate**:
+- User-sichtbares Icon, Menü-Öffnen per echtem Klick, live-Sichtbarkeit visuell,
+  notify-Toast, und vor allem **Klasse-(ii)-Crash-Absenz** beim Google-Reconnect /
+  Sync-Aktivieren mit aktivem Tray.
+
+## Auslieferungs-Default & Rollout (Staging)
+
+Weil das Mac-Gate jetzt nicht fahrbar ist und Klasse-(ii)-Crashes nicht aus
+Python abfangbar sind, wird das native Backend **dormant** ausgeliefert:
+
+1. **Merge-Zustand (jetzt):** macOS-Tray **aus** by default (`is_supported()` →
+   False auf macOS ohne Opt-in). Effektiv interim Issue-Option 1 → der Crash ist
+   ab Merge weg. Bestehende Mac-Nutzer mit `minimize_to_tray=True` bekommen beim
+   nächsten Start die vorhandene „auf dieser Plattform nicht nutzbar"-Meldung und
+   das Feature wird abgeschaltet (kein Crash).
+2. **Verifikations-Zustand:** Der Mac-Tester setzt den Opt-in-Schalter
+   (`ZEIT_MACOS_TRAY=1`), baut/startet die Branch und fährt das Mac-Gate (s.
+   Verifikation). Das native Backend wird so exerciert, ohne es an Endnutzer
+   auszuliefern.
+3. **Flip (nach bestandenem Gate):** Ein separater, kleiner PR macht macOS in
+   `is_supported()` unconditional True (Default an). **Required Release-Gate:**
+   dieser Flip darf erst mergen, wenn das manuelle Mac-Gate dokumentiert grün ist.
+
+Damit liefert dieser Branch **Issue-Option 1 als sofortigen, sicheren Default**
+**und** das native Backend (Option 3) **fertig, aber gestaged** — die Crash-
+Behebung hängt nicht an einer unverifizierten Annahme.
 
 ## Verifikation / Übergabe
 
-- **CI (jetzt):** `test-macos`-Job bestätigt Build-/Import-/Dispatch-Korrektheit
-  auf macOS.
-- **Manueller Mac-Test (später, offen):** Tray-Icon sichtbar; Menü öffnet;
-  „Anzeigen"/„Beenden"/Quick-Actions funktionieren; **kein Crash** beim „Google
-  neu verbinden" und beim Sync-/Kalender-Aktivieren mit aktivem Minimize-to-Tray;
-  Sync-Eintrag erscheint/verschwindet mit `sync_enabled`. Bis dieser Test
-  gelaufen ist, gilt „funktioniert auf macOS" als **unverifiziert**.
+- **CI (jetzt):** `test-macos`-Job — Import, Dispatch und In-Process-Smoke (s.
+  Tests). Bestätigt Verdrahtung/Lifecycle/Klasse-(i), **nicht** Sichtbarkeit oder
+  Klasse-(ii)-Crash-Absenz.
+- **Manuelles Mac-Gate (REQUIRED, blockiert den Default-an-Flip):** Mit Opt-in
+  (`ZEIT_MACOS_TRAY=1`) auf einem Mac: Tray-Icon sichtbar; Menü öffnet per Klick;
+  „Anzeigen"/„Beenden"/Quick-Actions funktionieren; Sync-Eintrag erscheint/
+  verschwindet live mit `sync_enabled`; notify-Toast (falls Backend ihn zeigt);
+  und **kein Crash** beim „Google neu verbinden" sowie beim Sync-/Kalender-
+  Aktivieren mit aktivem Tray. Der `is_supported()`-Flip auf macOS-default-an darf
+  **erst mergen**, wenn dieses Gate dokumentiert grün ist. Bis dahin gilt
+  „funktioniert auf macOS" als **unverifiziert** — und wird default nicht
+  ausgeliefert.
 
 Übergabe (schwerer Loop):
-- **VERHALTEN:** macOS-Tray läuft nativ (NSStatusItem, Main-Thread) statt
-  pystray-Daemon-Thread; Windows/Linux unverändert.
-- **RISIKO:** Bricht es, dann am ehesten beim Mac-Test — entweder Tk-Runloop
-  serviced das Status-Item-Menü nicht (unbelegte Annahme, s. u.) oder PyInstaller
-  bündelt pyobjc nicht vollständig. Beides degradiert dank Fallback zu „kein
-  Tray", nicht zu Crash. Windows trägt null Risiko.
-- **TEST:** manuelle Mac-Checkliste oben.
+- **VERHALTEN:** Merge liefert macOS-Tray **default aus** (Crash weg, interim
+  Issue-Option 1) + das native NSStatusItem-Backend **dormant/opt-in**.
+  Windows/Linux unverändert. Default-an erst per separatem Flip nach Mac-Gate.
+- **RISIKO:** Der Default-Pfad (Tray aus) trägt **kein** Crash-Risiko. Im Opt-in/
+  Flip-Pfad bricht es am ehesten bei (ii) — Tk-Runloop serviced das Menü nicht /
+  AppKit-interne Exception — oder PyInstaller bündelt pyobjc unvollständig. (i)
+  ist konstruktiv abgefangen; (ii) ist genau das, was das Mac-Gate prüft. Windows
+  trägt null Risiko.
+- **TEST:** In-Process-Smoke (CI) + manuelles Mac-Gate (oben) vor dem Flip.
 
 ## Offene Annahme (irreduzibles Risiko)
 
@@ -227,8 +304,12 @@ gehängtes `NSStatusItem`-Menü ausreichend serviced (das Standalone-PyObjC-Must
 treibt seinen eigenen `AppHelper.runEventLoop()`, den wir bewusst **nicht**
 nutzen). Die PyObjC-API selbst (systemStatusBar, statusItemWithLength_, setMenu_,
 Main-Thread-/Retain-Pflicht, Target/Action) ist primärbelegt. Die Integration
-ist nur auf einem Mac final verifizierbar — bei Fehlschlag greift der Fallback,
-und der dokumentierte Rückfallweg ist Issue-Option 1 (Tray auf macOS deaktivieren).
+ist nur auf einem Mac final verifizierbar.
+
+**Wichtig:** Schlägt diese Annahme fehl, ist das **kein** ausgelieferter Crash —
+der dormant-Default (Tray aus) hält den unverifizierten Pfad von Endnutzern fern,
+bis das Mac-Gate ihn freigibt. Bestätigt sich die Annahme nicht, bleibt der
+dokumentierte Endzustand Issue-Option 1 (macOS-Tray aus), und der Flip entfällt.
 
 ## Bewusst nicht enthalten (YAGNI)
 
