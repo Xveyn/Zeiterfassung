@@ -135,6 +135,11 @@ def build_macos():
         "-D",
         "--icon", "assets/margenheld-icon.icns",
         "--osx-bundle-identifier", "com.margenheld.zeiterfassung",
+        # tray_mac.py importiert AppKit/Foundation lazy → explizit bündeln,
+        # sonst fehlt PyObjC im DMG und das native Tray fällt still aus (#88).
+        "--collect-all", "objc",
+        "--collect-all", "AppKit",
+        "--collect-all", "Foundation",
     ])
     subprocess.run(cmd, check=True)
     generate_third_party_notices()

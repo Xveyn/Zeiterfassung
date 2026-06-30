@@ -1,34 +1,86 @@
 # src/tray.py
-"""System-Tray-Icon (Windows Notification Area / macOS Menu Bar).
+"""System-Tray-Icon — Plattform-Fassade über zwei Backends.
 
-Bewusst minimal: pystray läuft in eigenem Daemon-Thread, UI-Aktionen werden
-via `root.after(0, ...)` auf den Tk-Thread marshallt. Auf Linux ist die
-Verfügbarkeit WM-abhängig — wenn pystray-Backend fehlschlägt, gilt das
-Feature als nicht verfügbar und der Caller fällt auf normales Schließverhalten
-zurück.
+`TrayIcon` wählt per platform.system(): Windows → `_PystrayBackend` (pystray im
+Daemon-Thread, UI-Aktionen via `root.after(0, …)` auf den Tk-Thread). macOS →
+`MacTrayBackend` (src/tray_mac.py): natives NSStatusItem SYNCHRON auf dem
+Main-Thread, KEIN Thread, keine zweite NSApplication (Fix #88). macOS ist bis zum
+manuellen Mac-Gate dormant (Opt-in `ZEIT_MACOS_TRAY=1`, s. is_supported). Linux
+hat kein Tray. `build_menu_model` ist die backend-agnostische, testbare Naht.
 """
 
 import logging
 import os
+import platform
 import threading
+from collections import namedtuple
+
+
+def _macos_tray_opt_in():
+    """macOS-Tray ist bis zum bestandenen Mac-Gate dormant: nur aktiv, wenn der
+    Tester ZEIT_MACOS_TRAY=1 setzt. Default-an-Flip = separater PR (s. Spec)."""
+    return os.environ.get("ZEIT_MACOS_TRAY") == "1"
 
 
 def is_supported():
     """Kann auf diesem System ein Tray-Icon gezeigt werden?
 
-    Conservative: True für Windows und macOS, False für Linux (uneinheitlich).
-    Aufrufer kann unabhängig davon `try/except` machen, falls pystray zur
-    Laufzeit doch fehlschlägt.
+    Windows → True. Linux → False (uneinheitlich). macOS → nur mit Opt-in
+    (dormant-Default, s. _macos_tray_opt_in). Aufrufer kann unabhängig davon
+    `try/except` machen, falls das Backend zur Laufzeit doch fehlschlägt.
     """
-    import platform
-    return platform.system() in ("Windows", "Darwin")
+    system = platform.system()
+    if system == "Windows":
+        return True
+    if system == "Darwin":
+        return _macos_tray_opt_in()
+    return False
 
 
-class TrayIcon:
-    """Wrapper um pystray.Icon mit Tk-freundlicher Lifecycle-API.
+MenuEntry = namedtuple("MenuEntry", ["kind", "label", "callback", "visible"])
 
-    Nutzung:
-        tray = TrayIcon(base_path, on_show=show_fn, on_quit=quit_fn)
+
+def build_menu_model(on_show, on_quit, actions):
+    """Backend-agnostisches Menü-Modell (pure, ohne AppKit/pystray) aus den
+    Tray-Aktionen. Speist den macOS-Renderer (src/tray_mac.py) und die Tests;
+    der Windows-Pfad baut sein pystray-Menü weiter inline.
+
+    `actions`: Liste (label, callback, visible). `callback` ist 0-arg und
+    marshallt selbst auf den Tk-Thread. `visible` ist None (immer sichtbar) oder
+    eine 0-arg-Callable → Bool (dynamische Sichtbarkeit).
+    """
+    entries = [
+        MenuEntry("item", "Anzeigen", on_show, None),
+        MenuEntry("separator", None, None, None),
+    ]
+    for label, callback, visible in actions:
+        entries.append(MenuEntry("item", label, callback, visible))
+    if actions:
+        entries.append(MenuEntry("separator", None, None, None))
+    entries.append(MenuEntry("item", "Beenden", on_quit, None))
+    return entries
+
+
+def _select_backend(system):
+    """Backend-Klasse nach Plattform. macOS lazy, damit PyObjC nicht in den
+    Linux/Windows-Importpfad gerät."""
+    if system == "Windows":
+        return _PystrayBackend
+    if system == "Darwin":
+        from src.tray_mac import MacTrayBackend
+        return MacTrayBackend
+    return None
+
+
+class _PystrayBackend:
+    """pystray-Backend (Windows). Tk-freundliche Lifecycle-API.
+
+    Wird von der TrayIcon-Fassade auf Windows gewählt (auf macOS läuft das
+    native MacTrayBackend, s. tray_mac.py). Body unverändert ggü. dem früheren
+    monolithischen TrayIcon.
+
+    Nutzung (intern, über die Fassade):
+        backend = _PystrayBackend(base_path, on_show=show_fn, on_quit=quit_fn)
         tray.start()
         ...
         tray.stop()
@@ -195,3 +247,37 @@ class TrayIcon:
             except Exception:
                 pass
             self._icon = None
+
+
+class TrayIcon:
+    """Plattform-Fassade: wählt per platform.system() das Backend
+    (_PystrayBackend auf Windows, MacTrayBackend auf macOS) und delegiert.
+    Öffentliche API (start/stop/notify) unverändert."""
+
+    def __init__(self, base_path, on_show, on_quit, actions=None):
+        self.base_path = base_path
+        self._on_show = on_show
+        self._on_quit = on_quit
+        self._actions = actions or []
+        self._backend = None
+
+    def start(self):
+        """Startet das plattformspezifische Backend. Wirft dessen Exception
+        durch (synchron) — Aufrufer (_apply_tray_setting) fängt und fällt auf
+        Tray-Verzicht zurück."""
+        backend_cls = _select_backend(platform.system())
+        if backend_cls is None:
+            raise RuntimeError("Tray auf dieser Plattform nicht unterstützt")
+        backend = backend_cls(
+            self.base_path, self._on_show, self._on_quit, self._actions)
+        backend.start()
+        self._backend = backend  # erst nach erfolgreichem start halten
+
+    def notify(self, message, title="Zeiterfassung"):
+        if self._backend is not None:
+            self._backend.notify(message, title)
+
+    def stop(self):
+        if self._backend is not None:
+            self._backend.stop()
+            self._backend = None
