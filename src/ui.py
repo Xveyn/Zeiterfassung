@@ -161,7 +161,8 @@ class App:
         )
         self._bg.fetch_sender_email()
         self._update_banner = UpdateBanner(
-            self.root, self.settings, lambda: self._renderer.grid_container)
+            self.root, self.settings, lambda: self._renderer.grid_container,
+            on_resize=self._renderer.repin_geometry)
         self._bg.check_update(on_result=self._update_banner.handle_check_result)
         self._bg.reconcile_on_start(on_ok=self._refresh)
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)

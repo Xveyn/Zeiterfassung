@@ -81,3 +81,32 @@ def test_open_download_falls_back_to_html_url(monkeypatch):
                      get_anchor=lambda: object())
     b._open_download(_release(html_url="https://example/r"))
     assert opened == ["https://example/r"]
+
+
+def test_show_triggers_resize(monkeypatch):
+    # Banner einblenden muss die Fenstergeometrie neu pinnen, sonst wächst das
+    # fixe Fenster (resizable(False, False)) nicht und der zuletzt gepackte
+    # Footer (Summen-Zeile) wird abgeschnitten (#92).
+    monkeypatch.setattr(ub.tk, "Frame", lambda *a, **k: MagicMock())
+    monkeypatch.setattr(ub.tk, "Label", lambda *a, **k: MagicMock())
+    monkeypatch.setattr(ub, "label_button", lambda *a, **k: MagicMock())
+    monkeypatch.setattr(ub, "attach_tooltip", lambda *a, **k: None)
+    resized = []
+    b = UpdateBanner(root=object(), settings=_FakeSettings(),
+                     get_anchor=lambda: object(),
+                     on_resize=lambda: resized.append(True))
+    b._show(_release())
+    assert resized == [True]
+
+
+def test_dismiss_triggers_resize():
+    # Banner ausblenden muss die Geometrie zurückpinnen, damit das Fenster
+    # wieder auf die Höhe ohne Banner schrumpft (Gegenstück zu _show).
+    resized = []
+    b = UpdateBanner(root=object(), settings=_FakeSettings(),
+                     get_anchor=lambda: object(),
+                     on_resize=lambda: resized.append(True))
+    b._banner = MagicMock()
+    b._dismiss("1.2.0")
+    assert b._banner is None
+    assert resized == [True]
