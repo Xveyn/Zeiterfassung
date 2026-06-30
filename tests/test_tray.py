@@ -21,9 +21,16 @@ def test_is_supported_staging(system, optin, expected, monkeypatch):
 
 def test_build_menu_model_structure():
     from src.tray import build_menu_model
-    show = lambda: None
-    quit_ = lambda: None
-    vis = lambda: True
+
+    def show():
+        return None
+
+    def quit_():
+        return None
+
+    def vis():
+        return True
+
     actions = [("Senden", lambda: None, None), ("Sync", lambda: None, vis)]
     model = build_menu_model(show, quit_, actions)
     assert [(e.kind, e.label) for e in model] == [
