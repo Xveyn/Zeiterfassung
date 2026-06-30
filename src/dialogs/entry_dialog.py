@@ -14,6 +14,19 @@ from src.theme import (
 from src.time_utils import validate_slots
 
 
+def reservation_block_visible(day, today, *, has_reservation=False):
+    """Ob der Reservierungs-Block im Tages-Dialog erscheint.
+
+    Regel: nur an heutigen/zukünftigen Tagen. An vergangenen Tagen wird KEIN
+    Block gezeigt — bewusst auch dann nicht, wenn dort bereits eine Reservierung
+    existiert (`has_reservation`): Per Linksklick lässt sich in der Vergangenheit
+    keine (zusätzliche) Reservierung anlegen, der Dialog zeigt dort nur die
+    Arbeitszeit. Eine alte Reservierung aufräumen läuft über den Rechtsklick im
+    Kalender. Reservierungen sind per Definition zukünftige Soll-Zeiten.
+    """
+    return day >= today
+
+
 def open_entry_dialog(parent, date_str, storage, settings, on_change,
                       reservation_store=None, trigger_reconcile=None):
     """Modaler Dialog zum Bearbeiten von Ist-Zeit und Reservierung eines Tages.
@@ -52,8 +65,8 @@ def open_entry_dialog(parent, date_str, storage, settings, on_change,
     existing_reservation = (
         reservation_store.get(date_str) if reservation_store is not None else None
     )
-    show_reservation = reservation_store is not None and (
-        day >= datetime.date.today() or existing_reservation is not None
+    show_reservation = reservation_store is not None and reservation_block_visible(
+        day, datetime.date.today(), has_reservation=existing_reservation is not None
     )
 
     categories = settings.get("categories") or []
