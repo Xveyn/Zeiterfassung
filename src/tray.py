@@ -12,6 +12,7 @@ import logging
 import os
 import platform
 import threading
+from collections import namedtuple
 
 
 def _macos_tray_opt_in():
@@ -33,6 +34,30 @@ def is_supported():
     if system == "Darwin":
         return _macos_tray_opt_in()
     return False
+
+
+MenuEntry = namedtuple("MenuEntry", ["kind", "label", "callback", "visible"])
+
+
+def build_menu_model(on_show, on_quit, actions):
+    """Backend-agnostisches Menü-Modell (pure, ohne AppKit/pystray) aus den
+    Tray-Aktionen. Speist den macOS-Renderer (src/tray_mac.py) und die Tests;
+    der Windows-Pfad baut sein pystray-Menü weiter inline.
+
+    `actions`: Liste (label, callback, visible). `callback` ist 0-arg und
+    marshallt selbst auf den Tk-Thread. `visible` ist None (immer sichtbar) oder
+    eine 0-arg-Callable → Bool (dynamische Sichtbarkeit).
+    """
+    entries = [
+        MenuEntry("item", "Anzeigen", on_show, None),
+        MenuEntry("separator", None, None, None),
+    ]
+    for label, callback, visible in actions:
+        entries.append(MenuEntry("item", label, callback, visible))
+    if actions:
+        entries.append(MenuEntry("separator", None, None, None))
+    entries.append(MenuEntry("item", "Beenden", on_quit, None))
+    return entries
 
 
 class TrayIcon:
