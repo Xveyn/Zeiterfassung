@@ -13,6 +13,7 @@ def _runner(**overrides):
         base_path=overrides.pop("base_path", "."),
         reservation_store=overrides.pop("reservation_store", None),
         reservations_active=overrides.pop("reservations_active", lambda: False),
+        storage=overrides.pop("storage", None),
     )
     kw.update(overrides)
     return BackgroundTaskRunner(**kw)
@@ -61,7 +62,7 @@ def test_check_update_skips_when_not_due(monkeypatch):
 def test_reconcile_on_start_skips_when_reservations_inactive():
     ran = {"n": 0}
     r = _runner(reservations_active=lambda: False)
-    r.reconcile_on_start(on_ok=lambda: ran.__setitem__("n", ran["n"] + 1))
+    r.reconcile_on_start(on_ok=lambda result: ran.__setitem__("n", ran["n"] + 1))
     import time
     time.sleep(0.2)
     assert ran["n"] == 0
@@ -81,3 +82,45 @@ def test_fetch_sender_email_noop_without_token(tmp_path):
     finally:
         bg.fetch_user_email = orig
     assert called["n"] == 0
+
+
+def test_reconcile_on_start_passes_storage_and_result_to_on_ok(monkeypatch):
+    import src.main as main_module
+
+    captured = {}
+
+    def fake_reconcile(reservation_store, settings, base_path, storage):
+        captured["storage"] = storage
+        return {"ok": True, "error": "", "tb": "", "limit_warnings": ["w"]}
+
+    monkeypatch.setattr(main_module, "run_calendar_reconcile", fake_reconcile)
+
+    received = {}
+    sentinel_storage = object()
+    r = _runner(reservations_active=lambda: True, storage=sentinel_storage)
+    r.reconcile_on_start(on_ok=lambda result: received.__setitem__("result", result))
+
+    import time
+    time.sleep(0.2)
+    assert captured["storage"] is sentinel_storage
+    assert received["result"]["limit_warnings"] == ["w"]
+
+
+def test_trigger_reconcile_passes_storage_through(monkeypatch):
+    import src.main as main_module
+
+    captured = {}
+
+    def fake_reconcile(reservation_store, settings, base_path, storage):
+        captured["storage"] = storage
+        return {"ok": True, "error": "", "tb": "", "limit_warnings": []}
+
+    monkeypatch.setattr(main_module, "run_calendar_reconcile", fake_reconcile)
+
+    done = threading.Event()
+    sentinel_storage = object()
+    r = _runner(reservations_active=lambda: True, storage=sentinel_storage)
+    r.trigger_reconcile(lambda result: done.set())
+
+    assert done.wait(timeout=5)
+    assert captured["storage"] is sentinel_storage

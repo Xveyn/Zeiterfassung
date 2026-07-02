@@ -11,10 +11,13 @@ except ImportError:
 
 
 def _format_version_label(version, channel, sha):
-    """Anzeige-Label für den Fenstertitel. Release → reine Version; jeder andere
+    """Anzeige-Label für den Fenstertitel. Release → reine Version; Pre-Release
+    (plattformübergreifender Test-Build) → '-pre'-Marker ohne SHA; jeder andere
     Kanal (dev/source) → '-dev'-Suffix, mit Kurz-SHA in Klammern falls vorhanden."""
     if channel == "release":
         return version
+    if channel == "prerelease":
+        return f"{version}-pre"
     if sha:
         return f"{version}-dev ({sha})"
     return f"{version}-dev"

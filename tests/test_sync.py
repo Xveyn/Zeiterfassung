@@ -290,7 +290,7 @@ def test_build_local_doc_includes_storage_settings_conflicts(tmp_path):
     assert "2026-05-14" in doc["entries"]
     assert doc["settings"]["recipient"]["value"] == "a@b.de"
     assert doc["conflicts"][0]["id"] == "c-1"
-    assert doc["schema_version"] == 3
+    assert doc["schema_version"] == 4
 
 
 def test_round_trip_no_loss(tmp_path):
@@ -307,6 +307,31 @@ def test_round_trip_no_loss(tmp_path):
 
     assert storage.get("2026-05-14") == {"slots": [_slot("08:00", "16:00", 30)]}
     assert settings.get("name") == "Max"
+
+
+def test_per_day_category_times_survives_sync_cycle(tmp_path):
+    """per_day category_times-Shape überlebt build→merge→apply unverändert (Datenintegrität)."""
+    per_day_value = {
+        "Büro": {
+            "mode": "per_day",
+            "pause": 30,
+            "days": {
+                "mon": {"start": "08:00", "end": "17:00"},
+                "fri": {"start": "09:00", "end": "15:00"},
+            },
+        }
+    }
+    storage = Storage(str(tmp_path / "z.json"), device_id="A")
+    settings = Settings(str(tmp_path / "s.json"))
+    settings.device_id_for_sync = "A"
+    settings.set_synced("category_times", per_day_value)
+    conflicts = ConflictsStore(str(tmp_path / "c.json"))
+
+    local = build_local_doc(storage, settings, conflicts)
+    merged = merge(local, _doc(), "2025-01-01T00:00:00Z")
+    apply_merged_doc(merged, storage, settings, conflicts)
+
+    assert settings.get("category_times") == per_day_value
 
 
 # --- Task 2.8: resolve_conflict ---
@@ -652,10 +677,10 @@ def test_merge_different_slots_conflict_candidates_carry_slots():
     assert cand_by_dev["B"]["slots"] == [_slot("09:00", "17:00", 30, "HO")]
 
 
-# --- Forward-Compat (>v3 abweisen) + Absorb/Migration älterer Docs (v1/v2) ---
+# --- Forward-Compat (>v4 abweisen) + Absorb/Migration älterer Docs (v1/v2) ---
 
 from src.sync import (
-    NEWER_REMOTE_VERSION_MSG, SCHEMA_VERSION, _remote_is_newer, migrate_doc_to_v3,
+    NEWER_REMOTE_VERSION_MSG, SCHEMA_VERSION, _remote_is_newer, migrate_doc_to_current,
 )
 
 
@@ -667,7 +692,7 @@ def test_remote_is_newer():
     assert _remote_is_newer({"entries": {}}) is False
 
 
-def test_migrate_doc_to_v3_wraps_flat_entries():
+def test_migrate_doc_to_current_wraps_flat_entries():
     doc = {
         "schema_version": 2,
         "entries": {
@@ -681,8 +706,8 @@ def test_migrate_doc_to_v3_wraps_flat_entries():
         "settings": {"recipient": {"value": "x", "modified_at": "t", "device_id": "B"}},
         "conflicts": [], "meta": {"gc_watermark": "wm"},
     }
-    out = migrate_doc_to_v3(doc)
-    assert out["schema_version"] == 3
+    out = migrate_doc_to_current(doc)
+    assert out["schema_version"] == 4
     assert out["entries"]["2026-06-04"]["slots"] == [
         {"start": "08:00", "end": "16:00", "pause": 30, "kategorie": ""}]
     assert out["entries"]["2026-06-05"]["slots"] == []        # Tombstone → leer
@@ -691,18 +716,19 @@ def test_migrate_doc_to_v3_wraps_flat_entries():
     assert out["meta"] == {"gc_watermark": "wm"}
 
 
-def test_migrate_doc_to_v3_is_idempotent_on_v3():
+def test_migrate_doc_to_current_is_idempotent():
     slots = [{"start": "08:00", "end": "16:00", "pause": 0, "kategorie": "X"}]
     v3 = {"schema_version": 3,
           "entries": {"D": {"slots": slots, "modified_at": "t",
                             "device_id": "B", "deleted": False}},
           "settings": {}, "conflicts": [], "meta": {"gc_watermark": ""}}
-    out = migrate_doc_to_v3(v3)
+    out = migrate_doc_to_current(v3)
+    assert out["schema_version"] == 4
     assert out["entries"]["D"]["slots"] == slots
 
 
 def _newer_remote_bytes():
-    """Remote-Doc eines NEUEREN Schemas (>v3), das dieser Client nicht versteht."""
+    """Remote-Doc eines NEUEREN Schemas (>v4), das dieser Client nicht versteht."""
     return _json.dumps({
         "schema_version": SCHEMA_VERSION + 1,
         "entries": {}, "settings": {}, "conflicts": [],
@@ -805,13 +831,13 @@ def test_run_push_absorbs_v2_remote_before_upload(tmp_path, monkeypatch):
     monkeypatch.setattr(drive, "upload", _fake_upload)
     res = main._run_push_blocking(storage, settings, conflicts, str(tmp_path))
     assert res.get("ok") is True
-    assert uploaded["doc"]["schema_version"] == 3
+    assert uploaded["doc"]["schema_version"] == 4
     assert set(uploaded["doc"]["entries"]) == {"2026-06-09", "2026-06-20"}
     assert "slots" in storage.get_all_raw()["2026-06-20"]
 
 
 def test_run_compaction_aborts_on_newer_remote(tmp_path, monkeypatch):
-    """Kompaktierung gegen ein neueres Schema (>v3): bricht freundlich ab."""
+    """Kompaktierung gegen ein neueres Schema (>v4): bricht freundlich ab."""
     import src.main as main
     storage = Storage(str(tmp_path / "z.json"), device_id="A")
     settings = Settings(str(tmp_path / "s.json"))

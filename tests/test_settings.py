@@ -506,6 +506,39 @@ def test_parse_hourly_rate_invalid_is_zero():
     assert parse_hourly_rate("12,5") == 0.0
 
 
+# --- Werkstudenten-Limit (Wochenstunden-Grenze für einen Zeitraum, #98) ---
+
+
+def test_werkstudent_limit_defaults(tmp_settings):
+    assert tmp_settings.get("werkstudent_limit_enabled") is False
+    assert tmp_settings.get("werkstudent_limit_start") == ""
+    assert tmp_settings.get("werkstudent_limit_end") == ""
+    assert tmp_settings.get("werkstudent_limit_max_hours") == 20.0
+
+
+def test_werkstudent_limit_keys_are_synced():
+    assert "werkstudent_limit_enabled" in SYNCED_SETTING_KEYS
+    assert "werkstudent_limit_start" in SYNCED_SETTING_KEYS
+    assert "werkstudent_limit_end" in SYNCED_SETTING_KEYS
+    assert "werkstudent_limit_max_hours" in SYNCED_SETTING_KEYS
+
+
+def test_werkstudent_limit_persists(tmp_path):
+    path = str(tmp_path / "settings.json")
+    s1 = Settings(path)
+    s1.set_many({
+        "werkstudent_limit_enabled": True,
+        "werkstudent_limit_start": "2026-04-01",
+        "werkstudent_limit_end": "2026-07-15",
+        "werkstudent_limit_max_hours": 18.0,
+    })
+    s2 = Settings(path)
+    assert s2.get("werkstudent_limit_enabled") is True
+    assert s2.get("werkstudent_limit_start") == "2026-04-01"
+    assert s2.get("werkstudent_limit_end") == "2026-07-15"
+    assert s2.get("werkstudent_limit_max_hours") == 18.0
+
+
 def test_split_synced_updates_partitions_by_whitelist():
     from src.settings import split_synced_updates
     updates = {
@@ -607,3 +640,13 @@ def test_clamp_ui_scale_invalid_falls_back_to_1():
     from src.settings import clamp_ui_scale
     assert clamp_ui_scale(None) == 1.0
     assert clamp_ui_scale("abc") == 1.0
+
+
+def test_per_day_category_times_roundtrips(tmp_path):
+    path = str(tmp_path / "settings.json")
+    s = Settings(path)
+    pd = {"Homeoffice": {"mode": "per_day", "pause": 0,
+                         "days": {"mon": {"start": "09:00", "end": "18:00"}}}}
+    s.set_synced("category_times", pd)
+    # frisch laden → verschachtelte Struktur kommt unverändert zurück (Dict-Passthrough)
+    assert Settings(path).get("category_times") == pd

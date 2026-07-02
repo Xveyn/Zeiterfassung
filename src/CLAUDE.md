@@ -96,7 +96,9 @@ gegen `TclError` abgesichert, falls das Fenster zwischenzeitlich zu ist). Keine 
 - `conflicts_store.py` — lokale Sync-Konfliktliste. `category_defaults.py` — Default-Kategorien.
 - `sync.py` — pure Sync-Logik (LWW-Merge, Konflikterkennung); importiert
   `SYNCED_SETTING_KEYS` aus `settings.py` (Single Source of Truth, nicht hier neu definieren).
-  `share.py` — Export/Import als Share-JSON.
+  `share.py` — Export/Import als Share-JSON. `weekly_limit.py` — pure Wochenstunden-Limit-Check
+  (Werkstudenten-Privileg, #98). Kein eigener Persistenz-Zustand, operiert auf
+  `Storage.get_all()`-Dicts und den `werkstudent_limit_*`-Settings-Keys.
 
 ## Google-Integration (alle Wrapper mit Lazy-Imports für CI ohne requirements.txt)
 

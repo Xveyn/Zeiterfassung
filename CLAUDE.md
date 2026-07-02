@@ -30,6 +30,26 @@ Ablauf vor dem Merge:
 
 Der Workflow pusht **nichts** nach `master`. Versionsbump gehört in den PR.
 
+### Pre-Releases (plattformübergreifende Test-Builds)
+
+Für plattformübergreifendes Testen vor einem echten Release gibt es Pre-Releases:
+Actions → Workflow **Release** → „Run workflow" mit gesetztem Häkchen
+**prerelease** (Branch egal, gebaut wird der gewählte Ref). Ablauf:
+
+- Baut dieselben drei Artefakte (Windows/macOS-arm/Linux) wie ein echtes Release,
+  aber gestempelt mit `CHANNEL=prerelease` → In-App-Titel zeigt `X.Y.Z-pre`.
+- Tag ist **fortlaufend** `vX.Y.Z-pre.N` (N automatisch hochgezählt je Zielversion,
+  aus `src/version.py`) — kollidiert nie mit dem späteren echten Tag `vX.Y.Z`.
+- GitHub-Release wird als **Pre-Release** markiert (`--prerelease`): der Auto-Updater
+  liest `/releases/latest` und **ignoriert** Pre-Releases → normale Nutzer bekommen
+  sie nicht als Update angeboten.
+- **Kein Versionsbump, kein CHANGELOG, kein Label** nötig. Die Release-Notes werden
+  wie beim echten Release automatisch aus den PRs generiert (`--generate-notes`),
+  kumulativ seit dem letzten **echten** Release.
+
+Manuelles „Run workflow" **ohne** das prerelease-Häkchen baut wie bisher ein echtes
+Voll-Release (Tag `vX.Y.Z`).
+
 ## Recovery bei teilweise fehlgeschlagenem Release
 
 Wenn der `publish`-Job nach dem Tag-Push fehlschlägt (z.B. `gh release create` Netzwerkproblem), blockiert der Pre-Check beim Re-Run die erneute Ausführung wegen "tag already exists". Ablauf:
@@ -176,6 +196,7 @@ Lokal: `pytest` aus dem Repo-Root. Alle Tests müssen vor dem PR-Merge grün sei
 - `src/share.py` — Export/Import von Arbeitszeiten als Share-JSON (Teilen per Mail-Anhang)
 - `src/reservations.py` — Reservierungen (zukünftige Soll-Zeiten, eigenes Konzept neben Ist-Zeiten)
 - `src/reservations_sync.py` — Abgleich der Reservierungen mit einem Google Kalender
+- `src/weekly_limit.py` — Wochenstunden-Limit für einen konfigurierbaren Zeitraum (Werkstudenten-Privileg, #98); pure Logik, zählt nur Ist-Zeiten (nicht Reservierungen)
 - `src/gcal.py` — Google-Calendar-API-Wrapper (lazy Imports wie `drive.py`, wegen CI ohne `requirements.txt`)
 - `src/tray.py` — Infobereich-Icon (Minimize-to-Tray); Plattform-Fassade über pystray (Windows) und `tray_mac.py` (macOS)
 - `src/tray_mac.py` — natives macOS-Tray (NSStatusItem, Main-Thread) als Backend von `tray.py`; macOS-Tray ist bis zum Mac-Gate dormant (Opt-in `ZEIT_MACOS_TRAY=1`, #88)

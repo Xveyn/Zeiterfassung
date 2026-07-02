@@ -10,7 +10,7 @@ from src.theme import FONT_FAMILY
 _HIDDEN_ROOT_STATES = ("iconic", "withdrawn")
 
 
-def _should_hide_tip(root_state, widget_rects, pointer):
+def _should_hide_tip(root_state, widget_rects, pointer, grab_active=False):
     """Reine Entscheidungslogik: soll das Tooltip geschlossen werden?
 
     root_state: Rückgabe von Tk `root.state()`
@@ -18,13 +18,20 @@ def _should_hide_tip(root_state, widget_rects, pointer):
     widget_rects: Liste (x, y, w, h) der noch lebenden getrackten Widgets in
         Screen-Koordinaten. Zerstörte Widgets sind hier bereits ausgelassen.
     pointer: (px, py) Mauszeiger in Screen-Koordinaten.
+    grab_active: True, wenn irgendein anderes Fenster der App gerade den
+        Tk-Grab hält (z.B. ein modaler Dialog, siehe `grab_current()`).
 
-    Schließen, wenn das Hauptfenster minimiert/weggeklappt ist ODER der Zeiger
-    über keinem der (noch existierenden) Widgets mehr steht. Letzteres deckt
-    sowohl das normale Verlassen als auch den Re-Render ab (leere Liste ->
-    schließen). Bewusst tk-frei gehalten, damit ohne Display testbar.
+    Schließen, wenn das Hauptfenster minimiert/weggeklappt ist, ein anderes
+    Fenster den Grab hält, ODER der Zeiger über keinem der (noch
+    existierenden) Widgets mehr steht. Der Grab-Fall greift, weil ein
+    Rechtsklick auf die Zelle direkt einen modalen Dialog öffnen kann, ohne
+    dass der Zeiger die Zelle verlässt (kein <Leave>) — grab_set() blockt nur
+    künftige Events, blendet das bereits sichtbare, -topmost Tooltip aber
+    nicht aus. Bewusst tk-frei gehalten, damit ohne Display testbar.
     """
     if root_state in _HIDDEN_ROOT_STATES:
+        return True
+    if grab_active:
         return True
     px, py = pointer
     for (x, y, w, h) in widget_rects:
@@ -167,8 +174,10 @@ class _Tooltip:
         und delegiert an die reine `_should_hide_tip`-Logik. Ist Tk-State nicht
         mehr lesbar (Widget weg), wird geschlossen."""
         try:
-            root_state = self._primary().winfo_toplevel().state()
-            pointer = self._primary().winfo_pointerxy()
+            primary = self._primary()
+            root_state = primary.winfo_toplevel().state()
+            pointer = primary.winfo_pointerxy()
+            grab_active = primary.grab_current() is not None
         except tk.TclError:
             return True
         rects = []
@@ -180,7 +189,7 @@ class _Tooltip:
                 )
             except tk.TclError:
                 continue
-        return _should_hide_tip(root_state, rects, pointer)
+        return _should_hide_tip(root_state, rects, pointer, grab_active)
 
     def _schedule_watchdog(self):
         try:

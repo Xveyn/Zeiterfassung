@@ -9,6 +9,8 @@ SYNCED_SETTING_KEYS = (
     "recipient", "name", "hourly_rate",
     "mail_subject", "mail_greeting", "mail_content", "mail_closing",
     "gcal_calendar_id", "categories", "category_times",
+    "werkstudent_limit_enabled", "werkstudent_limit_start",
+    "werkstudent_limit_end", "werkstudent_limit_max_hours",
 )
 
 DEFAULTS = {
@@ -54,6 +56,10 @@ DEFAULTS = {
     "categories": [],
     "category_times": {},
     "ui_scale": 1.0,
+    "werkstudent_limit_enabled": False,
+    "werkstudent_limit_start": "",
+    "werkstudent_limit_end": "",
+    "werkstudent_limit_max_hours": 20.0,
 }
 
 _COERCE_FAILED = object()

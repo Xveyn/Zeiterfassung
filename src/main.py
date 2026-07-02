@@ -20,6 +20,7 @@ from src.paths import get_base_path
 from src.reservations import ReservationStore
 from src.settings import Settings, clamp_ui_scale
 from src.storage import Storage
+from src.theme import init_fonts
 from src.ui import App
 from src.version import VERSION
 
@@ -93,8 +94,8 @@ def _run_pull_in_background(storage, settings, conflicts_store, base, ui_callbac
             return
         # Älteres Remote (v1/v2) wird aufs aktuelle Schema migriert und normal
         # gemergt (absorb-and-upgrade). Dass ältere Geräte ein hochgezogenes
-        # v3-Doc nicht überschreiben, sichert deren Push-Guard (ab v1.15.2).
-        remote_doc = sync.migrate_doc_to_v3(remote_doc)
+        # v4-Doc nicht überschreiben, sichert deren Push-Guard (ab v1.15.2).
+        remote_doc = sync.migrate_doc_to_current(remote_doc)
         local_doc = sync.build_local_doc(storage, settings, conflicts_store)
         merged = sync.merge(local_doc, remote_doc, settings.get("last_pull_at") or "")
         sync.apply_merged_doc(merged, storage, settings, conflicts_store)
@@ -147,7 +148,7 @@ def _run_push_blocking(storage, settings, conflicts_store, base, timeout_seconds
                 remote_doc = {"schema_version": 1, "entries": {}, "settings": {}, "conflicts": []}
             # Älteres Remote (v1/v2) absorbieren: aufs aktuelle Schema migrieren,
             # dann mergen — sonst gingen v2-only-Stände beim Upload verloren.
-            remote_doc = sync.migrate_doc_to_v3(remote_doc)
+            remote_doc = sync.migrate_doc_to_current(remote_doc)
             local_doc = sync.build_local_doc(storage, settings, conflicts_store)
             merged = sync.merge(local_doc, remote_doc, settings.get("last_pull_at") or "")
             sync.apply_merged_doc(merged, storage, settings, conflicts_store)
@@ -211,7 +212,7 @@ def _run_compaction_blocking(storage, settings, conflicts_store, base, timeout_s
                               "conflicts": [], "meta": {"gc_watermark": ""}}
 
             # Älteres Remote (v1/v2) absorbieren: aufs aktuelle Schema migrieren.
-            remote_doc = sync.migrate_doc_to_v3(remote_doc)
+            remote_doc = sync.migrate_doc_to_current(remote_doc)
             # 1) normaler Merge des frischen Remote-Stands
             now = sync._utc_now_iso()
             local_doc = sync.build_local_doc(storage, settings, conflicts_store)
@@ -238,21 +239,27 @@ def _run_compaction_blocking(storage, settings, conflicts_store, base, timeout_s
     return result
 
 
-def run_calendar_reconcile(reservation_store, settings, base):
+def run_calendar_reconcile(reservation_store, settings, base, storage):
     """Baut den Calendar-Service und fährt einen Reservierungs-Reconcile.
 
-    Liefert {"ok": bool, "error": str, "tb": str}. Wirft NICHT — der Caller
-    (UI-Thread) wertet das Dict aus. No-op, wenn gcal deaktiviert oder kein
-    Kalender gewählt ist.
+    Liefert {"ok": bool, "error": str, "tb": str, "limit_warnings": [...]}.
+    Wirft NICHT — der Caller (UI-Thread) wertet das Dict aus. No-op, wenn
+    gcal deaktiviert oder kein Kalender gewählt ist.
+
+    limit_warnings (#98): Werkstudenten-Wochenlimit-Ergebnis (siehe
+    weekly_limit.py) für die ISO-Wochen frisch importierter Reservierungs-
+    Slots — geprüft werden dabei ausschließlich bereits erfasste Ist-Zeiten
+    (storage), nicht die importierten Reservierungen selbst.
     """
     from src import gcal
     from src.reservations_sync import reconcile_reservations
+    from src.weekly_limit import check_dates_for_warnings
 
     if not settings.get("gcal_enabled"):
-        return {"ok": True, "error": "", "tb": ""}
+        return {"ok": True, "error": "", "tb": "", "limit_warnings": []}
     calendar_id = settings.get("gcal_calendar_id")
     if not calendar_id:
-        return {"ok": True, "error": "", "tb": ""}
+        return {"ok": True, "error": "", "tb": "", "limit_warnings": []}
 
     try:
         service = gcal.get_calendar_service(
@@ -260,22 +267,22 @@ def run_calendar_reconcile(reservation_store, settings, base):
             os.path.join(base, "token.json"),
             sync_enabled=settings.get("sync_enabled"),
         )
-        reconcile_reservations(service, calendar_id, reservation_store, settings)
-        return {"ok": True, "error": "", "tb": ""}
+        result = reconcile_reservations(service, calendar_id, reservation_store, settings)
+        limit_warnings = check_dates_for_warnings(
+            settings, storage.get_all(), result["imported_dates"])
+        return {"ok": True, "error": "", "tb": "", "limit_warnings": limit_warnings}
     except Exception as e:
         logging.getLogger(__name__).exception("Kalender-Reconcile fehlgeschlagen")
         return {"ok": False, "error": f"{type(e).__name__}: {e}",
-                "tb": traceback.format_exc()}
+                "tb": traceback.format_exc(), "limit_warnings": []}
 
 
 def _apply_ui_scaling(root, factor):
-    """Setzt tk-scaling einmalig auf System-DPI × Faktor. MUSS vor dem Aufbau
-    der App-Widgets laufen, damit measure_max_width die skalierten Fonts misst
-    und die Fenstergeometrie entsprechend pinnt. Bei Faktor 1.0 unverändert
-    (base × 1.0 == base)."""
-    f = clamp_ui_scale(factor)
-    base = float(root.tk.call("tk", "scaling"))
-    root.tk.call("tk", "scaling", base * f)
+    """Legt die per UI-Faktor skalierten App-Fonts an (ersetzt das frühere
+    `tk scaling`, das auf macOS/Aqua die Punkt-Fonts nicht skalierte → Slider dort
+    wirkungslos). MUSS vor dem Aufbau der App-Widgets laufen, damit
+    measure_max_width die skalierten Fonts misst und die Fenstergeometrie pinnt."""
+    init_fonts(root, clamp_ui_scale(factor))
 
 
 def main():

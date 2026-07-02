@@ -2,8 +2,9 @@ import os
 import platform
 import time
 import tkinter as tk
+from tkinter import font as tkfont
 from tkinter import ttk
-from typing import TypedDict
+from typing import Literal, TypedDict
 
 from src.paths import get_base_path
 
@@ -34,13 +35,72 @@ ENTRY_BG = "#1a3a5c"
 WEEKEND_ENTRY_BG = "#1a3050"
 WEEKEND_FG = "#6c6c80"
 
-FONT = (FONT_FAMILY, 10)
-FONT_SMALL = (FONT_FAMILY, 8)
-FONT_TINY = (FONT_FAMILY, 7)
-FONT_BOLD = (FONT_FAMILY, 10, "bold")
-FONT_HEADER = (FONT_FAMILY, 16, "bold")
-FONT_HEADER_SMALL = (FONT_FAMILY, 12, "bold")
-FONT_FOOTER = (FONT_FAMILY, 12, "bold")
+# Fonts als Tk *named fonts*: Die FONT*-Konstanten sind die NAMEN der named
+# fonts (keine Größen-Tupel). Alle Widgets binden font=FONT usw. als String; die
+# tatsächliche, per UI-Faktor skalierte Größe steckt im named font, den init_fonts
+# nach der Root-Erzeugung anlegt. So skaliert die UI plattformübergreifend über
+# echte Punktgrößen statt über `tk scaling` — das skaliert auf macOS/Aqua die
+# Punkt-Fonts NICHT (Ursache des macOS-Skalierungs-Bugs).
+FONT = "AppFont"
+FONT_SMALL = "AppFontSmall"
+FONT_TINY = "AppFontTiny"
+FONT_BOLD = "AppFontBold"
+FONT_HEADER = "AppFontHeader"
+FONT_HEADER_SMALL = "AppFontHeaderSmall"
+FONT_FOOTER = "AppFontFooter"
+
+# name → (Basis-Punktgröße, weight); die Größe wird in init_fonts × Faktor gesetzt.
+_APP_FONTS: dict[str, tuple[int, Literal["normal", "bold"]]] = {
+    FONT: (10, "normal"),
+    FONT_SMALL: (8, "normal"),
+    FONT_TINY: (7, "normal"),
+    FONT_BOLD: (10, "bold"),
+    FONT_HEADER: (16, "bold"),
+    FONT_HEADER_SMALL: (12, "bold"),
+    FONT_FOOTER: (12, "bold"),
+}
+
+# Standard-Tk-Fonts werden mitskaliert, damit Widgets ohne explizites font=…
+# (Default-Font) ebenfalls mitziehen — Parität zum früheren `tk scaling`.
+_STANDARD_FONTS = (
+    "TkDefaultFont", "TkTextFont", "TkFixedFont", "TkMenuFont",
+    "TkHeadingFont", "TkCaptionFont", "TkSmallCaptionFont",
+    "TkIconFont", "TkTooltipFont",
+)
+
+
+def scaled_size(base, scale):
+    """Skalierte Font-Größe: round(base × scale). Betrag min. 1 (nie 0 =
+    unsichtbar), Vorzeichen erhalten — Standard-Tk-Fonts tragen je nach Plattform
+    negative (Pixel-)Größen."""
+    scaled = round(base * scale)
+    if scaled == 0:
+        return -1 if base < 0 else 1
+    return scaled
+
+
+# Hält die erzeugten Font-Objekte prozessweit am Leben. ZWINGEND: ohne Referenz
+# löscht der GC via tkinter.font.Font.__del__ den named font sofort wieder
+# (`font delete`), und font=FONT wäre in den Widgets ein unbekannter Name.
+_APP_FONT_OBJECTS = []
+
+
+def init_fonts(root, scale):
+    """Legt die App-named-fonts an (Basisgröße × scale) und skaliert die
+    Standard-Tk-Fonts mit. MUSS nach der Root-Erzeugung und VOR dem Aufbau der
+    App-Widgets laufen, damit measure_max_width die skalierten Fonts misst und die
+    Fenstergeometrie korrekt pinnt. Ersetzt das frühere `tk scaling`, das auf
+    macOS/Aqua wirkungslos war (skaliert dort die Punkt-Fonts nicht)."""
+    for name, (size, weight) in _APP_FONTS.items():
+        _APP_FONT_OBJECTS.append(
+            tkfont.Font(root=root, name=name, family=FONT_FAMILY,
+                        size=scaled_size(size, scale), weight=weight))
+    for name in _STANDARD_FONTS:
+        try:
+            f = tkfont.nametofont(name)
+        except tk.TclError:
+            continue  # nicht jede Plattform/Tk-Build kennt jeden Standard-Font
+        f.configure(size=scaled_size(f.cget("size"), scale))
 
 # Hover colors (slightly lighter variants)
 CELL_BG_HOVER = "#1e2d52"
@@ -715,12 +775,16 @@ def _disable_min_max_now(window):
         pass
 
 
-def themed_askyesno(parent, title: str, message: str) -> bool:
+def themed_askyesno(parent, title: str, message: str, lock_ms: int = 0) -> bool:
     """Modaler Ja/Nein-Dialog im App-Theme. Drop-in für `messagebox.askyesno`.
 
     Eigener Toplevel statt der Tk-Messagebox, damit die DWM-Titelleiste
     (apply_dark_titlebar) und die Theme-Farben angewendet werden können —
     `tkinter.messagebox.*` ist eine Black-Box ohne Customization-Hooks.
+
+    lock_ms: optionaler kurzer Lock nach dem Öffnen, analog zu
+    `themed_ask_delete_choice` — verhindert versehentliches Sofort-Bestätigen
+    bei Lösch-Rückfragen (z.B. genau eine löschbare Einheit am Tag).
     """
     dialog = tk.Toplevel(parent)
     dialog.title(title)
@@ -732,6 +796,7 @@ def themed_askyesno(parent, title: str, message: str) -> bool:
     dialog.focus_set()
 
     result = {"value": False}
+    unlock = {"ready": lock_ms <= 0}
 
     tk.Label(
         dialog, text=message, font=FONT, bg=BG, fg=TEXT,
@@ -739,6 +804,8 @@ def themed_askyesno(parent, title: str, message: str) -> bool:
     ).pack(padx=24, pady=(20, 14))
 
     def click_yes():
+        if not unlock["ready"]:
+            return
         result["value"] = True
         dialog.destroy()
 
@@ -747,8 +814,17 @@ def themed_askyesno(parent, title: str, message: str) -> bool:
 
     btn_frame = tk.Frame(dialog, bg=BG)
     btn_frame.pack(pady=(0, 18))
-    primary_button(btn_frame, "Ja", click_yes).pack(side=tk.LEFT, padx=6)
+    yes_btn = primary_button(btn_frame, "Ja", click_yes)
+    yes_btn.pack(side=tk.LEFT, padx=6)
     secondary_button(btn_frame, "Nein", click_no).pack(side=tk.LEFT, padx=6)
+
+    if lock_ms > 0:
+        set_primary_button_enabled(yes_btn, False)
+
+        def _unlock():
+            unlock["ready"] = True
+            set_primary_button_enabled(yes_btn, True)
+        dialog.after(lock_ms, _unlock)
 
     dialog.bind("<Return>", lambda e: click_yes())
     dialog.bind("<Escape>", lambda e: click_no())
