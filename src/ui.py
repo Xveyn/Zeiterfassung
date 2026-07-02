@@ -430,7 +430,11 @@ class App:
 
     def _apply_reminder_setting(self):
         """Startet/stoppt den Reminder-Poll abhängig vom Setting. Braucht ein
-        laufendes Tray-Icon als Toast-Kanal — ohne Tray wird gestoppt."""
+        laufendes Tray-Icon als Toast-Kanal — ohne Tray wird gestoppt.
+
+        MUSS nach `_apply_tray_setting()` laufen (liest `self._tray`): erst wird
+        der Tray-Kanal (de)aktiviert, dann der Poll daran gekoppelt. Beide
+        Call-Sites (__init__, Settings-`_on_change`) halten diese Reihenfolge."""
         want = bool(self.settings.get("reminders_enabled")) and self._tray is not None
         if want:
             self._reminders.start()
