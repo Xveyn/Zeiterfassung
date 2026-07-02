@@ -650,3 +650,34 @@ def test_per_day_category_times_roundtrips(tmp_path):
     s.set_synced("category_times", pd)
     # frisch laden → verschachtelte Struktur kommt unverändert zurück (Dict-Passthrough)
     assert Settings(path).get("category_times") == pd
+
+
+# --- parse_reminder_minutes (Reservierungs-Erinnerungen) ---
+from src.settings import parse_reminder_minutes  # noqa: E402
+
+
+def test_parse_reminder_minutes_valid():
+    assert parse_reminder_minutes("15") == 15
+    assert parse_reminder_minutes("0") == 0
+    assert parse_reminder_minutes("120") == 120
+    assert parse_reminder_minutes(30) == 30
+
+
+def test_parse_reminder_minutes_out_of_range():
+    assert parse_reminder_minutes("121") is None
+    assert parse_reminder_minutes("-1") is None
+
+
+def test_parse_reminder_minutes_non_numeric():
+    assert parse_reminder_minutes("abc") is None
+    assert parse_reminder_minutes("") is None
+    assert parse_reminder_minutes("15.5") is None
+    assert parse_reminder_minutes(None) is None
+
+
+def test_reminder_defaults_present_and_device_local():
+    from src.settings import DEFAULTS, SYNCED_SETTING_KEYS
+    assert DEFAULTS["reminders_enabled"] is False
+    assert DEFAULTS["reminder_minutes_before"] == 15
+    assert "reminders_enabled" not in SYNCED_SETTING_KEYS
+    assert "reminder_minutes_before" not in SYNCED_SETTING_KEYS
