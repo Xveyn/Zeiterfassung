@@ -1,4 +1,6 @@
-from src.time_utils import format_iso_date, format_iso_datetime
+from src.time_utils import (
+    format_iso_date, format_iso_datetime, format_iso_weekday_date,
+)
 
 
 def test_format_iso_date_from_timestamp():
@@ -37,3 +39,22 @@ def test_format_iso_datetime_date_only_no_time():
 
 def test_format_iso_datetime_empty_uses_fallback():
     assert format_iso_datetime("", fallback="") == ""
+
+
+def test_format_iso_weekday_date_monday():
+    # 13.07.2026 ist ein Montag.
+    assert format_iso_weekday_date("2026-07-13") == "Montag - 13.07.2026"
+
+
+def test_format_iso_weekday_date_sunday_from_timestamp():
+    # 05.07.2026 ist ein Sonntag; Zeitstempel-Prefix wird akzeptiert.
+    assert format_iso_weekday_date("2026-07-05T09:00:00Z") == "Sonntag - 05.07.2026"
+
+
+def test_format_iso_weekday_date_empty_uses_fallback():
+    assert format_iso_weekday_date("", fallback="—") == "—"
+    assert format_iso_weekday_date(None, fallback="—") == "—"
+
+
+def test_format_iso_weekday_date_unparsable_falls_back_to_raw_prefix():
+    assert format_iso_weekday_date("2026-13-99") == "2026-13-99"
