@@ -83,11 +83,15 @@ unverändert wie bisher.
 
 ## Technik
 
-- **Notebook-Dark-Styling:** neuer Style-Block in `src/theme.py` analog
-  `apply_combobox_style` — `TNotebook` (Hintergrund BG, kein Rahmen) und
-  `TNotebook.Tab` (CELL_BG inaktiv, BG/ACCENT-freie Selected-Optik,
-  TEXT/TEXT_MUTED, kein Fokus-Punktrahmen via `focuscolor`). Aufruf aus
-  `settings_dialog`.
+- **Notebook-Dark-Styling:** neue Funktion `apply_notebook_style(dialog)` in
+  `src/theme.py` — `TNotebook` (Hintergrund BG, kein Rahmen) und
+  `TNotebook.Tab`: CELL_BG/TEXT_MUTED inaktiv, BG/TEXT selektiert (keine
+  ACCENT-Farbe — ACCENT ist der Fehler-/Lösch-Akzent), **Hover-State
+  `("active", CELL_BG_HOVER)` explizit mappen** (clam rendert sonst einen
+  hellen Default beim Hover), kein Fokus-Punktrahmen via `focuscolor`.
+  Wird in `settings_dialog` **nach** `apply_combobox_style` aufgerufen
+  (das setzt bereits `theme_use("clam")`; `apply_notebook_style` setzt
+  selbst kein Theme und dokumentiert diese Voraussetzung).
 - Jeder Tab ist ein `tk.Frame(bg=BG)` als Notebook-Child mit eigenem,
   lokal nummeriertem Grid; die bisherige globale Row-Nummerierung (0–36)
   entfällt. Der `label(...)`-Helper bekommt den Ziel-Frame als Parameter.
@@ -96,10 +100,13 @@ unverändert wie bisher.
   `_reconnect_google`, Kompaktierung, `refresh_status`) bleiben funktional
   unverändert — nur die Widget-Parents wechseln.
 - `save_settings` bleibt **eine** Funktion über alle Tabs und liest alle Vars
-  wie bisher. Bei Validierungsfehlern wird zusätzlich per
+  wie bisher. Bei **jedem** Abbruch-Fehlerpfad wird zusätzlich per
   `notebook.select(tab)` auf den Tab mit dem fehlerhaften Feld gewechselt,
-  bevor die Fehlermeldung erscheint (Standardzeiten/Werkstudenten-Limit →
-  „Arbeitszeit").
+  bevor die Fehlermeldung erscheint — konkret alle drei `return`-Pfade:
+  Standardzeiten ungültig → „Arbeitszeit", Werkstudenten-Limit-Zeitraum
+  ungültig → „Arbeitszeit", Autostart-Fehler → „App". Dafür hält der Dialog
+  ein Mapping Tab-Name → Tab-Frame. (`hourly_rate` hat keinen Fehlerpfad —
+  `parse_hourly_rate` fällt still auf `0.0` zurück.)
 - Keine Änderungen an `settings.py`, `sync.py`, `mail.py`, `drive.py`,
   `gcal.py`.
 
@@ -118,6 +125,21 @@ unverändert wie bisher.
 - Kein neuer CI-Test für die Widget-Struktur (Dialog braucht ein Display;
   CI hat keins).
 - Lokale Verifikation per Screenshot-Skript (Dialog mit Temp-Settings
-  rendern, alle 4 Tabs durchschalten, PNGs prüfen): Gesamthöhe ≤ 700 px
-  bei 100 % Skalierung, Buttons sichtbar, alle Widgets pro Tab vorhanden.
+  rendern, alle 4 Tabs durchschalten, PNGs prüfen), und zwar bei
+  **100 %, 150 % und 200 % Skalierung** — hohe Skalierung ist genau der
+  Fall, der das ursprüngliche Höhenproblem reproduziert. Kriterien:
+  - 100 %: Gesamthöhe ≤ 700 px, Buttons sichtbar, alle Widgets pro Tab da.
+  - 200 %: Dialog passt in eine 1080p-Arbeitsfläche (~1030 px nutzbar).
+    Falls der höchste Tab (voraussichtlich „Google" mit allen bedingten
+    Buttons) das reißt, bekommt **dieser Tab** einen Canvas+Scrollbar-
+    Fallback nach dem Vorbild `src/dialogs/import_dialog.py:445-485` —
+    nicht der ganze Dialog.
+  - Aktiver Tab muss auf einen Blick vom inaktiven unterscheidbar sein
+    (BG vs. CELL_BG + TEXT vs. TEXT_MUTED — im Screenshot explizit prüfen).
 - `pytest` + `ruff check .` müssen grün bleiben.
+- **Plattform-Hinweis:** `ttk.Notebook` unter forciertem clam rendert auf
+  macOS/Linux mit anderen Font-Metriken (Helvetica Neue / DejaVu Sans).
+  Im PR einen Pre-Release-Test gemäß Root-`CLAUDE.md` („Plattform-
+  spezifische PRs") vorschlagen, obwohl der Umbau alle Plattformen
+  betrifft — das Tab-Rendering ist auf der Windows-Maschine nicht
+  vollständig verifizierbar.
