@@ -211,6 +211,37 @@ def apply_combobox_style(dialog):
     )
 
 
+def apply_notebook_style(dialog):
+    """Dark-Styling für ttk.Notebook (Tab-Leiste + Inhaltsfläche).
+
+    MUSS nach apply_combobox_style laufen — das setzt global theme_use("clam");
+    diese Funktion setzt selbst KEIN Theme. Aktiver Tab bekommt BG (verschmilzt
+    mit der Inhaltsfläche), inaktive CELL_BG/TEXT_MUTED, Hover CELL_BG_HOVER.
+    bordercolor/lightcolor/darkcolor der Notebook-Fläche auf BG, sonst zeichnet
+    clam einen hellen 3D-Rand um den Inhalt, der aus dem Dark-Theme fällt.
+    focuscolor=BG unterdrückt den Punktrahmen um den Tab-Text bei Fokus.
+    ACCENT wird bewusst NICHT verwendet — das ist der rote Fehler-/Lösch-Akzent."""
+    style = ttk.Style(dialog)
+    style.configure(
+        "Dark.TNotebook",
+        background=BG, borderwidth=0, tabmargins=(6, 6, 6, 0),
+        bordercolor=BG, lightcolor=BG, darkcolor=BG,
+    )
+    style.configure(
+        "Dark.TNotebook.Tab",
+        background=CELL_BG, foreground=TEXT_MUTED,
+        bordercolor=BG, lightcolor=CELL_BG, darkcolor=CELL_BG,
+        padding=(14, 6), font=FONT, focuscolor=BG,
+    )
+    style.map(
+        "Dark.TNotebook.Tab",
+        background=[("selected", BG), ("active", CELL_BG_HOVER)],
+        foreground=[("selected", TEXT), ("active", TEXT)],
+        lightcolor=[("selected", BG)],
+        darkcolor=[("selected", BG)],
+    )
+
+
 def dark_entry(parent, textvariable, width=25, **kw):
     return tk.Entry(
         parent, textvariable=textvariable, width=width, font=FONT,
