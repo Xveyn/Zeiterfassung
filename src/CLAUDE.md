@@ -51,8 +51,10 @@ Rendering der Monats-/Wochenansicht inkl. Double-Buffer und Fenster-Geometrie.
   sie). `measure_max_width(...)` pinnt vor `mainloop()` die Fensterbreite (4-Kombi-Probing).
 - **Fenster-Geometrie:** `repin_geometry()` setzt Breite (≥ gemessenes Maximum) und Höhe
   (aktuelle reqheight) neu auf das fixe Fenster. Genutzt vom View-/Spalten-Wechsel in
-  `refresh()` **und** extern vom `UpdateBanner` (als `on_resize`), dessen Ein-/Ausblenden
-  die nötige Höhe ändert, ohne View/Spalten zu wechseln. `resizable(False, False)` bleibt.
+  `refresh()`, beim Wechsel der Footer-Reservierungsbreite (Stundenlohn zur Laufzeit
+  gesetzt/entfernt — `_update_footer` reserviert 16 vs. 40 Zeichen, s.u.) **und** extern vom
+  `UpdateBanner` (als `on_resize`), dessen Ein-/Ausblenden die nötige Höhe ändert, ohne
+  View/Spalten zu wechseln. `resizable(False, False)` bleibt.
 - `_fmt_slot_line` ist `@staticmethod`; `App._delete_day` ruft es als
   `GridRenderer._fmt_slot_line(...)` (bleibt in App, nutzt aber den Renderer-Static).
 
