@@ -34,7 +34,7 @@ def _adopt_remote(date, remotes, merged, imported_dates):
 
 
 def _merge_one_date(date, local, remotes, watermark, merged, plan, imported_dates):
-    """Mergt einen einzelnen Tag (Slot-Ebene). Mutiert `merged`/`plan`.
+    """Mergt einen einzelnen Tag (Slot-Ebene). Mutiert `merged`/`plan`/`imported_dates`.
 
     local   — Reservierungs-Record {slots, modified_at, deleted} oder None
     remotes — Liste geparster Kalender-Events dieses Tages (evtl. leer)

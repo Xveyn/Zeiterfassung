@@ -61,6 +61,14 @@ def test_check_week_limit_none_when_under_limit():
     assert check_week_limit(_settings(), all_entries, "2026-05-04") is None
 
 
+def test_check_week_limit_none_when_exactly_at_limit():
+    all_entries = {
+        "2026-05-04": _entry([_slot("08:00", "18:00")]),  # 10h
+        "2026-05-05": _entry([_slot("08:00", "18:00")]),  # 10h -> 20h total
+    }
+    assert check_week_limit(_settings(), all_entries, "2026-05-04") is None
+
+
 def test_check_week_limit_none_when_inactive():
     all_entries = {
         d: _entry([_slot("08:00", "18:00")])

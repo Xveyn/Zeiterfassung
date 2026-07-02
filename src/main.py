@@ -243,7 +243,7 @@ def run_calendar_reconcile(reservation_store, settings, base, storage):
     """Baut den Calendar-Service und fährt einen Reservierungs-Reconcile.
 
     Liefert {"ok": bool, "error": str, "tb": str, "limit_warnings": [...]}.
-    Wirkt NICHT — der Caller (UI-Thread) wertet das Dict aus. No-op, wenn
+    Wirft NICHT — der Caller (UI-Thread) wertet das Dict aus. No-op, wenn
     gcal deaktiviert oder kein Kalender gewählt ist.
 
     limit_warnings (#98): Werkstudenten-Wochenlimit-Ergebnis (siehe
