@@ -94,3 +94,11 @@ def test_multiple_widgets_pointer_over_second():
     # Geteiltes Tooltip (Frame + Children): Zeiger über irgendeinem -> offen.
     rects = [(0, 0, 100, 50), (200, 0, 100, 50)]
     assert _should_hide_tip("normal", rects, (250, 10)) is False
+
+
+def test_hide_when_grab_active_even_if_pointer_over_widget():
+    # Ein modaler Dialog (z.B. Löschen-Bestätigung) hält den Tk-Grab. Das
+    # Tooltip-Toplevel ist -topmost und bliebe sonst optisch über dem Dialog
+    # liegen, obwohl der Zeiger (mangels <Leave>) noch im Widget steht.
+    rects = [(0, 0, 100, 50)]
+    assert _should_hide_tip("normal", rects, (10, 10), grab_active=True) is True
