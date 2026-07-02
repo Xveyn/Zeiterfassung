@@ -23,3 +23,10 @@ def test_dev_without_sha_shows_only_dev():
 def test_source_channel_shows_dev_without_sha():
     # Start aus dem Quellcode (kein build_info) → 'source', kein SHA.
     assert _format_version_label("1.14.1", "source", "") == "1.14.1-dev"
+
+
+def test_prerelease_channel_shows_pre_marker():
+    # Pre-Release (plattformübergreifender Test-Build): eigener '-pre'-Marker,
+    # SHA wird wie beim Release nicht angehängt.
+    assert _format_version_label("1.16.1", "prerelease", "abc1234") == "1.16.1-pre"
+    assert _format_version_label("1.16.1", "prerelease", "") == "1.16.1-pre"

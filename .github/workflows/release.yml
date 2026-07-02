@@ -4,6 +4,11 @@ on:
   push:
     branches: [master]
   workflow_dispatch:
+    inputs:
+      prerelease:
+        description: "Pre-Release bauen (plattformübergreifender Test-Build, kein echtes Release)"
+        type: boolean
+        default: false
 
 jobs:
   pre-check:
@@ -14,6 +19,10 @@ jobs:
     outputs:
       version: ${{ steps.version.outputs.version }}
       should_release: ${{ steps.gate.outputs.should_release }}
+      is_prerelease: ${{ steps.gate.outputs.is_prerelease }}
+      tag: ${{ steps.tag.outputs.tag }}
+      title: ${{ steps.tag.outputs.title }}
+      notes_start: ${{ steps.tag.outputs.notes_start }}
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
@@ -30,18 +39,26 @@ jobs:
         shell: bash
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "Manueller Lauf → Release."
+            echo "Manueller Lauf → Release (prerelease=${{ inputs.prerelease }})."
             echo "should_release=true" >> "$GITHUB_OUTPUT"
+            if [ "${{ inputs.prerelease }}" = "true" ]; then
+              echo "is_prerelease=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "is_prerelease=false" >> "$GITHUB_OUTPUT"
+            fi
             exit 0
           fi
+          # Push-Events sind nie Pre-Release; Gate über das release:*-Label des PR.
           labels=$(gh api "repos/${{ github.repository }}/commits/${{ github.sha }}/pulls" \
             --jq '.[].labels[].name' 2>/dev/null || true)
           echo "Labels des zugehörigen PR: ${labels:-<keine>}"
           if echo "$labels" | grep -qE '^release:(major|minor|patch)$'; then
             echo "should_release=true" >> "$GITHUB_OUTPUT"
+            echo "is_prerelease=false" >> "$GITHUB_OUTPUT"
           else
             echo "Kein release:*-Label → übersprungen."
             echo "should_release=false" >> "$GITHUB_OUTPUT"
+            echo "is_prerelease=false" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Read version
@@ -53,15 +70,46 @@ jobs:
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
           echo "Releasing v${VERSION}"
 
-      - name: Fail if tag already exists
+      - name: Compute tag, title and notes-start
+        id: tag
         if: steps.gate.outputs.should_release == 'true'
         shell: bash
         run: |
+          VERSION="${{ steps.version.outputs.version }}"
           git fetch --tags
-          if git rev-parse "v${{ steps.version.outputs.version }}" >/dev/null 2>&1; then
-            echo "::error::Tag v${{ steps.version.outputs.version }} already exists. Bump src/version.py vor dem Merge."
-            exit 1
+          if [ "${{ steps.gate.outputs.is_prerelease }}" = "true" ]; then
+            # Fortlaufende Nummer je Zielversion: höchstes vorhandenes
+            # v<VERSION>-pre.N + 1 (Start bei 1). Kein Existenz-Abbruch — der
+            # Pre-Release-Tag darf mehrfach je Version entstehen.
+            max=0
+            for t in $(git tag -l "v${VERSION}-pre.*"); do
+              n="${t##*.}"
+              if echo "$n" | grep -qE '^[0-9]+$' && [ "$n" -gt "$max" ]; then
+                max="$n"
+              fi
+            done
+            N=$((max + 1))
+            TAG="v${VERSION}-pre.${N}"
+            TITLE="Zeiterfassung v${VERSION} - Pre-Release ${N}"
+          else
+            # Echtes Release: Tag darf noch nicht existieren (erzwingt Version-Bump).
+            TAG="v${VERSION}"
+            TITLE="Zeiterfassung v${VERSION}"
+            if git rev-parse "$TAG" >/dev/null 2>&1; then
+              echo "::error::Tag ${TAG} already exists. Bump src/version.py vor dem Merge."
+              exit 1
+            fi
           fi
+          # Release-Notes ab dem letzten ECHTEN Release (ohne -pre-Suffix): so
+          # bleiben Voll-Release-Notes vollständig (unbeeinflusst von zwischen-
+          # zeitlichen Pre-Releases) und Pre-Release-Notes kumulativ = alle PRs
+          # seit dem letzten Release. Leer beim allerersten Release → gh nutzt
+          # dann seine Auto-Erkennung.
+          NOTES_START=$(git tag -l 'v*' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -1)
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "title=${TITLE}" >> "$GITHUB_OUTPUT"
+          echo "notes_start=${NOTES_START}" >> "$GITHUB_OUTPUT"
+          echo "→ tag=${TAG} title='${TITLE}' notes_start='${NOTES_START:-<auto>}'"
 
   build-windows:
     needs: pre-check
@@ -80,6 +128,7 @@ jobs:
       - name: Build
         env:
           ZEIT_RELEASE: "1"
+          ZEIT_PRERELEASE: ${{ needs.pre-check.outputs.is_prerelease == 'true' && '1' || '' }}
         run: python build.py
       - uses: actions/upload-artifact@v7
         with:
@@ -102,6 +151,7 @@ jobs:
       - name: Build
         env:
           ZEIT_RELEASE: "1"
+          ZEIT_PRERELEASE: ${{ needs.pre-check.outputs.is_prerelease == 'true' && '1' || '' }}
         run: python build.py
       - uses: actions/upload-artifact@v7
         with:
@@ -131,6 +181,7 @@ jobs:
       - name: Build
         env:
           ZEIT_RELEASE: "1"
+          ZEIT_PRERELEASE: ${{ needs.pre-check.outputs.is_prerelease == 'true' && '1' || '' }}
         run: python build.py
       - uses: actions/upload-artifact@v7
         with:
@@ -176,14 +227,28 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           VERSION="${{ needs.pre-check.outputs.version }}"
+          TAG="${{ needs.pre-check.outputs.tag }}"
+          TITLE="${{ needs.pre-check.outputs.title }}"
+          NOTES_START="${{ needs.pre-check.outputs.notes_start }}"
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag "v${VERSION}"
-          git push origin "v${VERSION}"
-          gh release create "v${VERSION}" \
-            dist/Zeiterfassung_Setup.exe \
-            dist/Zeiterfassung-${VERSION}-arm64.dmg \
-            dist/Zeiterfassung-${VERSION}-x86_64.AppImage \
-            dist/SHA256SUMS \
-            --title "Zeiterfassung v${VERSION}" \
+          git tag "$TAG"
+          git push origin "$TAG"
+          # Artefaktnamen tragen die reine VERSION (build.py benennt sie unabhängig
+          # vom Pre-Release-Status) — der Tag/Titel kennzeichnet die Vorabversion.
+          args=(
+            "$TAG"
+            dist/Zeiterfassung_Setup.exe
+            "dist/Zeiterfassung-${VERSION}-arm64.dmg"
+            "dist/Zeiterfassung-${VERSION}-x86_64.AppImage"
+            dist/SHA256SUMS
+            --title "$TITLE"
             --generate-notes
+          )
+          if [ -n "$NOTES_START" ]; then
+            args+=(--notes-start-tag "$NOTES_START")
+          fi
+          if [ "${{ needs.pre-check.outputs.is_prerelease }}" = "true" ]; then
+            args+=(--prerelease)
+          fi
+          gh release create "${args[@]}"

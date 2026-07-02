@@ -230,11 +230,17 @@ def generate_build_info():
     Build erzeugt (gitignored) und von PyInstaller mitgebündelt — daher VOR dem
     eigentlichen Build aufrufen.
 
-    Nur der Release-Workflow setzt ZEIT_RELEASE=1 → CHANNEL='release'. Lokales
-    `python build.py` ohne Flag → 'dev' + Commit-Hash. Der Release-Tag vX.Y.Z
-    entsteht erst nach dem Build, taugt daher nicht zur Kanal-Erkennung — daher
-    das explizite Flag."""
-    channel = "release" if os.environ.get("ZEIT_RELEASE") == "1" else "dev"
+    Der Release-Workflow setzt ZEIT_RELEASE=1 → CHANNEL='release'; für einen
+    Pre-Release-Lauf zusätzlich ZEIT_PRERELEASE=1 → CHANNEL='prerelease' (Vorrang
+    vor 'release'). Lokales `python build.py` ohne Flag → 'dev' + Commit-Hash.
+    Der Release-Tag vX.Y.Z entsteht erst nach dem Build, taugt daher nicht zur
+    Kanal-Erkennung — daher die expliziten Flags."""
+    if os.environ.get("ZEIT_PRERELEASE") == "1":
+        channel = "prerelease"
+    elif os.environ.get("ZEIT_RELEASE") == "1":
+        channel = "release"
+    else:
+        channel = "dev"
 
     def _git(args):
         try:
