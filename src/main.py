@@ -93,8 +93,8 @@ def _run_pull_in_background(storage, settings, conflicts_store, base, ui_callbac
             return
         # Älteres Remote (v1/v2) wird aufs aktuelle Schema migriert und normal
         # gemergt (absorb-and-upgrade). Dass ältere Geräte ein hochgezogenes
-        # v3-Doc nicht überschreiben, sichert deren Push-Guard (ab v1.15.2).
-        remote_doc = sync.migrate_doc_to_v3(remote_doc)
+        # v4-Doc nicht überschreiben, sichert deren Push-Guard (ab v1.15.2).
+        remote_doc = sync.migrate_doc_to_current(remote_doc)
         local_doc = sync.build_local_doc(storage, settings, conflicts_store)
         merged = sync.merge(local_doc, remote_doc, settings.get("last_pull_at") or "")
         sync.apply_merged_doc(merged, storage, settings, conflicts_store)
@@ -147,7 +147,7 @@ def _run_push_blocking(storage, settings, conflicts_store, base, timeout_seconds
                 remote_doc = {"schema_version": 1, "entries": {}, "settings": {}, "conflicts": []}
             # Älteres Remote (v1/v2) absorbieren: aufs aktuelle Schema migrieren,
             # dann mergen — sonst gingen v2-only-Stände beim Upload verloren.
-            remote_doc = sync.migrate_doc_to_v3(remote_doc)
+            remote_doc = sync.migrate_doc_to_current(remote_doc)
             local_doc = sync.build_local_doc(storage, settings, conflicts_store)
             merged = sync.merge(local_doc, remote_doc, settings.get("last_pull_at") or "")
             sync.apply_merged_doc(merged, storage, settings, conflicts_store)
@@ -211,7 +211,7 @@ def _run_compaction_blocking(storage, settings, conflicts_store, base, timeout_s
                               "conflicts": [], "meta": {"gc_watermark": ""}}
 
             # Älteres Remote (v1/v2) absorbieren: aufs aktuelle Schema migrieren.
-            remote_doc = sync.migrate_doc_to_v3(remote_doc)
+            remote_doc = sync.migrate_doc_to_current(remote_doc)
             # 1) normaler Merge des frischen Remote-Stands
             now = sync._utc_now_iso()
             local_doc = sync.build_local_doc(storage, settings, conflicts_store)

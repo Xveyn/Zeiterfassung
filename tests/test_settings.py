@@ -607,3 +607,13 @@ def test_clamp_ui_scale_invalid_falls_back_to_1():
     from src.settings import clamp_ui_scale
     assert clamp_ui_scale(None) == 1.0
     assert clamp_ui_scale("abc") == 1.0
+
+
+def test_per_day_category_times_roundtrips(tmp_path):
+    path = str(tmp_path / "settings.json")
+    s = Settings(path)
+    pd = {"Homeoffice": {"mode": "per_day", "pause": 0,
+                         "days": {"mon": {"start": "09:00", "end": "18:00"}}}}
+    s.set_synced("category_times", pd)
+    # frisch laden → verschachtelte Struktur kommt unverändert zurück (Dict-Passthrough)
+    assert Settings(path).get("category_times") == pd

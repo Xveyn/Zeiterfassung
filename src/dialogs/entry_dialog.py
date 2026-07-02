@@ -121,7 +121,7 @@ def open_entry_dialog(parent, date_str, storage, settings, on_change,
 
         def on_cat_change(*_a):
             t_start, t_end, t_pause = resolve_slot_defaults(
-                category_times, kv.get().strip(),
+                category_times, kv.get().strip(), weekday_key,
                 default_start, default_end, default_pause,
             )
             t_pause = str(t_pause)
@@ -231,7 +231,7 @@ def open_entry_dialog(parent, date_str, storage, settings, on_change,
             def on_cat_change(*_a):
                 # Reservierungen haben keine Pause → nur Start/Ende anwenden.
                 t_start, t_end, _ = resolve_slot_defaults(
-                    category_times, kv.get().strip(),
+                    category_times, kv.get().strip(), weekday_key,
                     default_start, default_end, default_pause,
                 )
                 if sv.get() == base["start"]:
