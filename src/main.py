@@ -20,6 +20,7 @@ from src.paths import get_base_path
 from src.reservations import ReservationStore
 from src.settings import Settings, clamp_ui_scale
 from src.storage import Storage
+from src.theme import init_fonts
 from src.ui import App
 from src.version import VERSION
 
@@ -269,13 +270,11 @@ def run_calendar_reconcile(reservation_store, settings, base):
 
 
 def _apply_ui_scaling(root, factor):
-    """Setzt tk-scaling einmalig auf System-DPI × Faktor. MUSS vor dem Aufbau
-    der App-Widgets laufen, damit measure_max_width die skalierten Fonts misst
-    und die Fenstergeometrie entsprechend pinnt. Bei Faktor 1.0 unverändert
-    (base × 1.0 == base)."""
-    f = clamp_ui_scale(factor)
-    base = float(root.tk.call("tk", "scaling"))
-    root.tk.call("tk", "scaling", base * f)
+    """Legt die per UI-Faktor skalierten App-Fonts an (ersetzt das frühere
+    `tk scaling`, das auf macOS/Aqua die Punkt-Fonts nicht skalierte → Slider dort
+    wirkungslos). MUSS vor dem Aufbau der App-Widgets laufen, damit
+    measure_max_width die skalierten Fonts misst und die Fenstergeometrie pinnt."""
+    init_fonts(root, clamp_ui_scale(factor))
 
 
 def main():
