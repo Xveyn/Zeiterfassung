@@ -198,6 +198,7 @@ def open_category_dialog(parent, settings, on_change=None):
     std_row.pack(fill="x", pady=2)
     for text, w, fg in (
         ("Standard", 15, TEXT_MUTED),
+        ("", 10, TEXT_MUTED),  # Spacer für Modus-Spalte
         (std_start, 11, TEXT),
         (std_end, 13, TEXT),
         (std_pause, 11, TEXT),
@@ -291,7 +292,22 @@ def open_category_dialog(parent, settings, on_change=None):
             dark_combo(day_frame, ev, [STANDARD, *TIME_VALUES], width=11).grid(
                 row=i, column=3, padx=2, pady=1)
 
-        def _apply_mode(*_a):
+        # Toggle-Button für das Tages-Grid (analog zur Referenzzeile _toggle_daygrid).
+        # Anfangs nicht gepackt; _apply_mode steuert Sichtbarkeit.
+        row_toggle_holder = {}
+
+        def _toggle_day_row():
+            if day_frame.winfo_ismapped():
+                day_frame.pack_forget()
+                row_toggle_holder["btn"]._label.config(text="Pro Tag ▶")
+            else:
+                day_frame.pack(after=row, anchor="w", pady=(0, 4))
+                row_toggle_holder["btn"]._label.config(text="Pro Tag ▼")
+
+        row_toggle_holder["btn"] = secondary_button(
+            row, "Pro Tag ▶", _toggle_day_row, padx=8, pady=0)
+
+        def _apply_mode(*_a, expand=True):
             if mode_var.get() == "Tageweise":
                 # Allgemeine Werte ins Grid spiegeln, falls Grid noch leer (STANDARD).
                 if _grid_all_standard(day_vars):
@@ -299,7 +315,13 @@ def open_category_dialog(parent, settings, on_change=None):
                         day_vars[tag]["start"].set(start_var.get())
                         day_vars[tag]["end"].set(end_var.get())
                 general_frame.pack_forget()
-                day_frame.pack(after=row, anchor="w", pady=(0, 4))
+                row_toggle_holder["btn"].pack(side=tk.LEFT, padx=2, before=pause_combo)
+                if expand:
+                    day_frame.pack(after=row, anchor="w", pady=(0, 4))
+                    row_toggle_holder["btn"]._label.config(text="Pro Tag ▼")
+                else:
+                    day_frame.pack_forget()
+                    row_toggle_holder["btn"]._label.config(text="Pro Tag ▶")
             else:
                 # Montags-Werte in general zurückschreiben, falls general noch STANDARD.
                 if start_var.get() == STANDARD:
@@ -309,6 +331,7 @@ def open_category_dialog(parent, settings, on_change=None):
                     if mon["end"].get() != STANDARD:
                         end_var.set(mon["end"].get())
                 day_frame.pack_forget()
+                row_toggle_holder["btn"].pack_forget()
                 general_frame.pack(in_=row, side=tk.LEFT,
                                    padx=2, before=pause_combo)
 
@@ -327,8 +350,9 @@ def open_category_dialog(parent, settings, on_change=None):
 
         # Initialen Modus setzen + Sichtbarkeit herstellen.
         # <<ComboboxSelected>> feuert bei programmatischem .set() NICHT.
+        # expand=False: Tageweise-Grid beim Laden eingeklappt (Fenster kompakt).
         mode_var.set("Tageweise" if defaults["mode"] == "per_day" else "Allgemein")
-        _apply_mode()
+        _apply_mode(expand=False)
 
         mode_combo.bind("<<ComboboxSelected>>", _apply_mode)
 
