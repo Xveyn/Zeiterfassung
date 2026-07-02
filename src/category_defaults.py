@@ -1,10 +1,17 @@
 """Pure Logik für Per-Kategorie-Standardzeiten (Start/Ende/Pause).
 
-`category_times` ist ein Dict `{kategorie: {"start", "end", "pause"}}`, parallel
-zur `categories`-Liste in den Settings. Fehlt eine Kategorie oder ein einzelnes
-Feld (leer/None), gilt der globale Standardwert für genau dieses Feld — so
-bleiben die globalen Standardzeiten wirksam, wenn eine Kategorie nichts
-konfiguriert hat. Rein, ohne Tkinter/IO, daher direkt testbar.
+`category_times` ist ein Dict `{kategorie: <Wert>}`, parallel zur `categories`-Liste.
+`<Wert>` hat zwei Formen:
+
+- **Allgemein** (kein ``mode`` oder ``mode != "per_day"``):
+  ``{"start"?: str, "end"?: str, "pause"?: int}`` — ein Satz für alle Wochentage.
+
+- **Per-Wochentag** (``mode == "per_day"``):
+  ``{"mode": "per_day", "pause"?: int, "days": {<weekday>: {"start"?: str, "end"?: str}}}``
+
+In beiden Formen gilt: Fehlt die Kategorie, ein `days`-Eintrag oder ein einzelnes
+Feld (leer/None), greift der globale Standardwert für genau dieses Feld (Per-Feld-
+Fallback). Rein, ohne Tkinter/IO, daher direkt testbar.
 """
 
 

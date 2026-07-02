@@ -309,6 +309,31 @@ def test_round_trip_no_loss(tmp_path):
     assert settings.get("name") == "Max"
 
 
+def test_per_day_category_times_survives_sync_cycle(tmp_path):
+    """per_day category_times-Shape überlebt build→merge→apply unverändert (Datenintegrität)."""
+    per_day_value = {
+        "Büro": {
+            "mode": "per_day",
+            "pause": 30,
+            "days": {
+                "mon": {"start": "08:00", "end": "17:00"},
+                "fri": {"start": "09:00", "end": "15:00"},
+            },
+        }
+    }
+    storage = Storage(str(tmp_path / "z.json"), device_id="A")
+    settings = Settings(str(tmp_path / "s.json"))
+    settings.device_id_for_sync = "A"
+    settings.set_synced("category_times", per_day_value)
+    conflicts = ConflictsStore(str(tmp_path / "c.json"))
+
+    local = build_local_doc(storage, settings, conflicts)
+    merged = merge(local, _doc(), "2025-01-01T00:00:00Z")
+    apply_merged_doc(merged, storage, settings, conflicts)
+
+    assert settings.get("category_times") == per_day_value
+
+
 # --- Task 2.8: resolve_conflict ---
 
 def test_resolve_entry_conflict_updates_storage_and_marks_resolved(tmp_path):
@@ -812,7 +837,7 @@ def test_run_push_absorbs_v2_remote_before_upload(tmp_path, monkeypatch):
 
 
 def test_run_compaction_aborts_on_newer_remote(tmp_path, monkeypatch):
-    """Kompaktierung gegen ein neueres Schema (>v3): bricht freundlich ab."""
+    """Kompaktierung gegen ein neueres Schema (>v4): bricht freundlich ab."""
     import src.main as main
     storage = Storage(str(tmp_path / "z.json"), device_id="A")
     settings = Settings(str(tmp_path / "s.json"))
