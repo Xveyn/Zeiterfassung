@@ -21,12 +21,13 @@ log = logging.getLogger(__name__)
 
 class BackgroundTaskRunner:
     def __init__(self, marshal, settings, base_path, reservation_store,
-                 reservations_active):
+                 reservations_active, storage=None):
         self._marshal = marshal                          # App._marshal_to_ui
         self._settings = settings
         self._base_path = base_path
         self._reservation_store = reservation_store
         self._reservations_active = reservations_active  # callable -> bool
+        self._storage = storage
 
     def run(self, fn, on_done=None):
         """Fuehrt fn() in einem Daemon-Thread aus und liefert dessen Rueckgabe
@@ -127,18 +128,18 @@ class BackgroundTaskRunner:
     def reconcile_on_start(self, on_ok):
         """Gleicht beim Start die Reservierungen mit dem Google Kalender ab.
         Fehler werden STILL geloggt (Offline-Start nicht stoeren); bei Erfolg
-        on_ok() im UI-Thread."""
+        on_ok(result) im UI-Thread (result enthaelt u.a. limit_warnings, #98)."""
         if not self._reservations_active():
             return
 
         def fn():
             from src.main import run_calendar_reconcile  # lazy: Circular-Import-Schutz
             return run_calendar_reconcile(
-                self._reservation_store, self._settings, self._base_path)
+                self._reservation_store, self._settings, self._base_path, self._storage)
 
         def on_done(result):
             if result.get("ok"):
-                on_ok()
+                on_ok(result)
 
         self.run(fn, on_done)
 
@@ -152,6 +153,6 @@ class BackgroundTaskRunner:
         def fn():
             from src.main import run_calendar_reconcile  # lazy: Circular-Import-Schutz
             return run_calendar_reconcile(
-                self._reservation_store, self._settings, self._base_path)
+                self._reservation_store, self._settings, self._base_path, self._storage)
 
         self.run(fn, on_done)

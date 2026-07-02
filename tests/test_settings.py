@@ -506,6 +506,39 @@ def test_parse_hourly_rate_invalid_is_zero():
     assert parse_hourly_rate("12,5") == 0.0
 
 
+# --- Werkstudenten-Limit (Wochenstunden-Grenze für einen Zeitraum, #98) ---
+
+
+def test_werkstudent_limit_defaults(tmp_settings):
+    assert tmp_settings.get("werkstudent_limit_enabled") is False
+    assert tmp_settings.get("werkstudent_limit_start") == ""
+    assert tmp_settings.get("werkstudent_limit_end") == ""
+    assert tmp_settings.get("werkstudent_limit_max_hours") == 20.0
+
+
+def test_werkstudent_limit_keys_are_synced():
+    assert "werkstudent_limit_enabled" in SYNCED_SETTING_KEYS
+    assert "werkstudent_limit_start" in SYNCED_SETTING_KEYS
+    assert "werkstudent_limit_end" in SYNCED_SETTING_KEYS
+    assert "werkstudent_limit_max_hours" in SYNCED_SETTING_KEYS
+
+
+def test_werkstudent_limit_persists(tmp_path):
+    path = str(tmp_path / "settings.json")
+    s1 = Settings(path)
+    s1.set_many({
+        "werkstudent_limit_enabled": True,
+        "werkstudent_limit_start": "2026-04-01",
+        "werkstudent_limit_end": "2026-07-15",
+        "werkstudent_limit_max_hours": 18.0,
+    })
+    s2 = Settings(path)
+    assert s2.get("werkstudent_limit_enabled") is True
+    assert s2.get("werkstudent_limit_start") == "2026-04-01"
+    assert s2.get("werkstudent_limit_end") == "2026-07-15"
+    assert s2.get("werkstudent_limit_max_hours") == 18.0
+
+
 def test_split_synced_updates_partitions_by_whitelist():
     from src.settings import split_synced_updates
     updates = {

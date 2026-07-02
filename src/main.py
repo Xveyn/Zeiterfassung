@@ -239,21 +239,27 @@ def _run_compaction_blocking(storage, settings, conflicts_store, base, timeout_s
     return result
 
 
-def run_calendar_reconcile(reservation_store, settings, base):
+def run_calendar_reconcile(reservation_store, settings, base, storage):
     """Baut den Calendar-Service und fährt einen Reservierungs-Reconcile.
 
-    Liefert {"ok": bool, "error": str, "tb": str}. Wirft NICHT — der Caller
-    (UI-Thread) wertet das Dict aus. No-op, wenn gcal deaktiviert oder kein
-    Kalender gewählt ist.
+    Liefert {"ok": bool, "error": str, "tb": str, "limit_warnings": [...]}.
+    Wirft NICHT — der Caller (UI-Thread) wertet das Dict aus. No-op, wenn
+    gcal deaktiviert oder kein Kalender gewählt ist.
+
+    limit_warnings (#98): Werkstudenten-Wochenlimit-Ergebnis (siehe
+    weekly_limit.py) für die ISO-Wochen frisch importierter Reservierungs-
+    Slots — geprüft werden dabei ausschließlich bereits erfasste Ist-Zeiten
+    (storage), nicht die importierten Reservierungen selbst.
     """
     from src import gcal
     from src.reservations_sync import reconcile_reservations
+    from src.weekly_limit import check_dates_for_warnings
 
     if not settings.get("gcal_enabled"):
-        return {"ok": True, "error": "", "tb": ""}
+        return {"ok": True, "error": "", "tb": "", "limit_warnings": []}
     calendar_id = settings.get("gcal_calendar_id")
     if not calendar_id:
-        return {"ok": True, "error": "", "tb": ""}
+        return {"ok": True, "error": "", "tb": "", "limit_warnings": []}
 
     try:
         service = gcal.get_calendar_service(
@@ -261,12 +267,14 @@ def run_calendar_reconcile(reservation_store, settings, base):
             os.path.join(base, "token.json"),
             sync_enabled=settings.get("sync_enabled"),
         )
-        reconcile_reservations(service, calendar_id, reservation_store, settings)
-        return {"ok": True, "error": "", "tb": ""}
+        result = reconcile_reservations(service, calendar_id, reservation_store, settings)
+        limit_warnings = check_dates_for_warnings(
+            settings, storage.get_all(), result["imported_dates"])
+        return {"ok": True, "error": "", "tb": "", "limit_warnings": limit_warnings}
     except Exception as e:
         logging.getLogger(__name__).exception("Kalender-Reconcile fehlgeschlagen")
         return {"ok": False, "error": f"{type(e).__name__}: {e}",
-                "tb": traceback.format_exc()}
+                "tb": traceback.format_exc(), "limit_warnings": []}
 
 
 def _apply_ui_scaling(root, factor):

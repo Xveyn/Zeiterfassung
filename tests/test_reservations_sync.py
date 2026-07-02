@@ -27,6 +27,7 @@ def test_local_only_new_creates_event_per_slot():
         "date": "2026-06-01", "slot_index": 0, "start": "09:00", "end": "17:00",
         "kategorie": "Büro", "modified_at": "2026-05-20T10:00:00Z"}]
     assert "2026-06-01" in res["merged"]
+    assert res["imported_dates"] == []
 
 
 def test_local_only_stale_is_dropped():
@@ -50,6 +51,7 @@ def test_remote_only_is_imported_as_slots():
     slots = res["merged"]["2026-06-01"]["slots"]
     assert slots == [{"start": "09:00", "end": "17:00", "kategorie": "HO", "gcal_event_id": "ev1"}]
     assert res["plan"] == {"create": [], "update": [], "delete": []}
+    assert res["imported_dates"] == ["2026-06-01"]
 
 
 def test_remote_only_multiple_events_become_multiple_slots():
@@ -129,6 +131,7 @@ def test_remote_wins_adopts_remote_slots():
         "2026-05-19T00:00:00Z")
     assert res["merged"]["2026-06-01"]["slots"][0]["start"] == "09:00"
     assert res["plan"]["update"] == []
+    assert res["imported_dates"] == ["2026-06-01"]
 
 
 def test_tombstone_newer_deletes_all_events():
@@ -149,6 +152,7 @@ def test_tombstone_older_than_remote_is_dropped():
         "2026-05-19T00:00:00Z")
     assert res["plan"]["delete"] == []
     assert res["merged"]["2026-06-01"]["slots"][0]["start"] == "09:00"
+    assert res["imported_dates"] == ["2026-06-01"]
 
 
 def test_tombstone_without_remote_is_noop():
@@ -157,6 +161,17 @@ def test_tombstone_without_remote_is_noop():
         [], "2026-05-19T00:00:00Z")
     assert res["merged"] == {}
     assert res["plan"] == {"create": [], "update": [], "delete": []}
+
+
+def test_local_wins_has_no_imported_dates():
+    """Lokal gewinnt und pusht nur zu Google — kein Import, weil keine
+    Remote-Daten lokal übernommen wurden."""
+    res = merge_reservations(
+        {"2026-06-01": _local(slots=[_lslot(start="08:00", event_id="ev1")],
+                              modified_at="2026-05-21T10:00:00Z")},
+        [_remote(start="09:00", modified_at="2026-05-20T10:00:00Z", event_id="ev1")],
+        "2026-05-19T00:00:00Z")
+    assert res["imported_dates"] == []
 
 
 # --- reconcile (mit gemockten gcal-I/O) ---
@@ -234,3 +249,27 @@ def test_reconcile_preserves_concurrent_local_save(tmp_path, monkeypatch):
     reservations_sync.reconcile_reservations(object(), "cal-1", store, settings)
 
     assert store.get("2026-07-01") == {"slots": [{"start": "10:00", "end": "18:00", "kategorie": ""}]}
+
+
+def test_reconcile_returns_imported_dates(tmp_path, monkeypatch):
+    """AP-Werkstudentenlimit: reconcile_reservations meldet zurück, welche
+    Daten in diesem Lauf aus dem Kalender importiert wurden (#98)."""
+    from src import gcal, reservations_sync
+    from src.reservations import ReservationStore
+    from src.settings import Settings
+
+    store = ReservationStore(str(tmp_path / "res.json"))
+    settings = Settings(str(tmp_path / "set.json"))
+
+    monkeypatch.setattr(
+        gcal, "list_app_events",
+        lambda s, c: [{"date": "2026-06-01", "start": "09:00", "end": "17:00",
+                       "kategorie": "", "modified_at": "2026-05-20T10:00:00Z",
+                       "event_id": "ev1"}])
+    monkeypatch.setattr(gcal, "update_event", lambda *a: None)
+    monkeypatch.setattr(gcal, "delete_event", lambda *a: None)
+    monkeypatch.setattr(gcal, "create_event", lambda *a: "unused")
+
+    result = reservations_sync.reconcile_reservations(object(), "cal-1", store, settings)
+
+    assert result["imported_dates"] == ["2026-06-01"]

@@ -11,7 +11,8 @@ from src.theme import (
     disable_min_max, primary_button, secondary_button,
     set_primary_button_enabled, themed_askyesno, themed_showinfo,
 )
-from src.time_utils import format_iso_weekday_date, validate_slots
+from src.time_utils import format_iso_weekday_date, get_week_label, validate_slots
+from src.weekly_limit import check_week_limit
 
 # Kategorie am Slot: "" = keine Kategorie. Das Dropdown ist readonly (Anlegen/
 # Bearbeiten von Kategorien läuft über die Einstellungen, nicht per Freitext),
@@ -244,6 +245,28 @@ def open_entry_dialog(parent, date_str, storage, settings, on_change,
             ist_save_locked["value"] = False
             refresh_ist_save_state()  # Fehler → wieder freigeben
             return
+
+        # Werkstudenten-Wochenlimit: prüft die ISO-Woche MIT den neuen Slots
+        # (simulierter Post-Save-Stand), nicht den aktuellen Storage-Stand —
+        # sonst würde eine Verlängerung, die erst über das Limit treibt,
+        # nicht erkannt. Reine Warnung: der User kann trotzdem speichern.
+        simulated_entries = storage.get_all()
+        simulated_entries[date_str] = {"slots": slots}
+        overshoot = check_week_limit(settings, simulated_entries, date_str)
+        if overshoot is not None:
+            week_label = get_week_label(overshoot["iso_year"], overshoot["iso_week"])
+            confirm = themed_askyesno(
+                dialog, "Wochenlimit überschritten",
+                f"{week_label}: {overshoot['total_hours']:.2f}h Ist-Zeit "
+                f"überschreiten das konfigurierte Werkstudenten-Limit von "
+                f"{overshoot['limit_hours']:.2f}h/Woche.\n\n"
+                "Grobe Näherung, keine rechtliche Bewertung.\n\nTrotzdem speichern?",
+            )
+            if not confirm:
+                ist_save_locked["value"] = False
+                refresh_ist_save_state()  # Abbruch → wieder freigeben
+                return
+
         storage.save(date_str, slots)
         dialog.destroy()
         on_change()
