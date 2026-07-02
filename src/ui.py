@@ -212,7 +212,8 @@ class App:
         themed_showwarning(
             self.root, "Wochenlimit überschritten",
             "Der Kalender-Import betrifft Wochen über dem konfigurierten "
-            f"Werkstudenten-Limit:\n\n{format_limit_warnings(warnings)}",
+            f"Werkstudenten-Limit:\n\n{format_limit_warnings(warnings)}\n\n"
+            "Grobe Näherung, keine rechtliche Bewertung.",
         )
 
     def _build_header(self):

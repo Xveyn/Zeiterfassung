@@ -955,7 +955,8 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
                 themed_showwarning(
                     dialog, "Wochenlimit überschritten",
                     "Im konfigurierten Zeitraum liegen bereits erfasste Wochen über "
-                    f"dem Limit:\n\n{format_limit_warnings(period_warnings)}",
+                    f"dem Limit:\n\n{format_limit_warnings(period_warnings)}\n\n"
+                    "Grobe Näherung, keine rechtliche Bewertung.",
                 )
 
         on_change()

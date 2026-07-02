@@ -7,7 +7,22 @@ einer ISO-Woche das konfigurierte Limit überschreitet, wenn ein Datum in den
 konfigurierten Zeitraum fällt. Default ist das Limit deaktiviert
 (`werkstudent_limit_enabled=False`, siehe settings.py DEFAULTS) — bestehende
 Nutzer sehen ohne bewusste Aktivierung keinerlei Änderung im Verhalten.
-"""
+
+Bewusste Vereinfachung, kein Rechtsgutachten: Das tatsächliche Werkstudenten-
+privileg (Gemeinsames Rundschreiben GKV-Spitzenverband/DRV Bund/BA vom
+23.11.2016, Abschnitt 1.2.4) bewertet nicht rückwirkend aufsummierte
+Ist-Stunden pro Kalenderwoche, sondern die vereinbarte/regelmäßige
+Wochenarbeitszeit des Beschäftigungsverhältnisses — mit einer bis zu
+zweiwöchigen Übergangstoleranz am Rand von Vorlesungszeit/Semesterferien und
+einer separaten rollierenden 26-Wochen/Jahres-Zählung. Dieses Modul kennt
+beides nicht: eine ISO-Woche zählt hier immer vollständig (inkl. Tage
+außerhalb des konfigurierten Zeitraums), sobald ein Tag dieser Woche aktiv
+ist (siehe check_dates_for_warnings-Docstring); es gibt keine Toleranzzone
+und keinen Jahres-Rückblick. Die Warnung ist eine grobe Näherung/Erinnerung,
+keine rechtsverbindliche Aussage — für Grenzfälle bleibt eine echte Prüfung
+(z.B. durch die Krankenkasse) nötig. Ein Issue, das dieses Modul näher an die
+Rundschreiben-Logik heranführen würde, ist als optionale Idee im Repo
+vermerkt (#98-Nachfolge, aktuell unentschieden)."""
 
 import datetime
 

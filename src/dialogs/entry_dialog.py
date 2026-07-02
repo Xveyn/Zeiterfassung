@@ -259,7 +259,8 @@ def open_entry_dialog(parent, date_str, storage, settings, on_change,
                 dialog, "Wochenlimit überschritten",
                 f"{week_label}: {overshoot['total_hours']:.2f}h Ist-Zeit "
                 f"überschreiten das konfigurierte Werkstudenten-Limit von "
-                f"{overshoot['limit_hours']:.2f}h/Woche.\n\nTrotzdem speichern?",
+                f"{overshoot['limit_hours']:.2f}h/Woche.\n\n"
+                "Grobe Näherung, keine rechtliche Bewertung.\n\nTrotzdem speichern?",
             )
             if not confirm:
                 ist_save_locked["value"] = False
