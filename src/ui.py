@@ -16,6 +16,7 @@ from src.time_utils import (
 from src.version import VERSION, version_label
 
 from src.background_tasks import BackgroundTaskRunner
+from src.weekly_limit import format_limit_warnings
 from src.grid_renderer import GridRenderer
 from src.sync_orchestrator import _classify_sync_error, SyncOrchestrator
 from src.update_banner import UpdateBanner
@@ -25,6 +26,7 @@ from src.dialogs.settings_dialog import open_settings_dialog
 from src.theme import (
     BG, ACCENT, TEXT, TEXT_MUTED,
     FONT_HEADER, FONT_FOOTER, FONT_SMALL, apply_dark_titlebar, themed_askyesno, themed_ask_delete_choice, themed_showerror, themed_showinfo,
+    themed_showwarning,
     icon_button, secondary_button, set_toggle_active, toggle_button,
     _stray_click_suppressed,
 )
@@ -114,7 +116,7 @@ class App:
         self._tray = None
         self._bg = BackgroundTaskRunner(
             self._marshal_to_ui, self.settings, self.base_path,
-            self.reservation_store, self._reservations_active,
+            self.reservation_store, self._reservations_active, self.storage,
         )
         self._sync = SyncOrchestrator(
             self.root, self.storage, self.settings, self.conflicts_store,
@@ -164,7 +166,7 @@ class App:
             self.root, self.settings, lambda: self._renderer.grid_container,
             on_resize=self._renderer.repin_geometry)
         self._bg.check_update(on_result=self._update_banner.handle_check_result)
-        self._bg.reconcile_on_start(on_ok=self._refresh)
+        self._bg.reconcile_on_start(on_ok=self._on_reconcile_start_done)
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
 
     def _reservations_active(self):
@@ -198,6 +200,20 @@ class App:
                     "Der Abgleich wird beim nächsten Start erneut versucht.",
                 )
         self._refresh()
+        self._show_limit_warnings(result.get("limit_warnings"))
+
+    def _on_reconcile_start_done(self, result):
+        self._refresh()
+        self._show_limit_warnings(result.get("limit_warnings"))
+
+    def _show_limit_warnings(self, warnings):
+        if not warnings:
+            return
+        themed_showwarning(
+            self.root, "Wochenlimit überschritten",
+            "Der Kalender-Import betrifft Wochen über dem konfigurierten "
+            f"Werkstudenten-Limit:\n\n{format_limit_warnings(warnings)}",
+        )
 
     def _build_header(self):
         frame = tk.Frame(self.root, bg=BG)
