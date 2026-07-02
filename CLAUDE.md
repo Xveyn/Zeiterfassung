@@ -30,6 +30,26 @@ Ablauf vor dem Merge:
 
 Der Workflow pusht **nichts** nach `master`. Versionsbump gehört in den PR.
 
+### Pre-Releases (plattformübergreifende Test-Builds)
+
+Für plattformübergreifendes Testen vor einem echten Release gibt es Pre-Releases:
+Actions → Workflow **Release** → „Run workflow" mit gesetztem Häkchen
+**prerelease** (Branch egal, gebaut wird der gewählte Ref). Ablauf:
+
+- Baut dieselben drei Artefakte (Windows/macOS-arm/Linux) wie ein echtes Release,
+  aber gestempelt mit `CHANNEL=prerelease` → In-App-Titel zeigt `X.Y.Z-pre`.
+- Tag ist **fortlaufend** `vX.Y.Z-pre.N` (N automatisch hochgezählt je Zielversion,
+  aus `src/version.py`) — kollidiert nie mit dem späteren echten Tag `vX.Y.Z`.
+- GitHub-Release wird als **Pre-Release** markiert (`--prerelease`): der Auto-Updater
+  liest `/releases/latest` und **ignoriert** Pre-Releases → normale Nutzer bekommen
+  sie nicht als Update angeboten.
+- **Kein Versionsbump, kein CHANGELOG, kein Label** nötig. Die Release-Notes werden
+  wie beim echten Release automatisch aus den PRs generiert (`--generate-notes`),
+  kumulativ seit dem letzten **echten** Release.
+
+Manuelles „Run workflow" **ohne** das prerelease-Häkchen baut wie bisher ein echtes
+Voll-Release (Tag `vX.Y.Z`).
+
 ## Recovery bei teilweise fehlgeschlagenem Release
 
 Wenn der `publish`-Job nach dem Tag-Push fehlschlägt (z.B. `gh release create` Netzwerkproblem), blockiert der Pre-Check beim Re-Run die erneute Ausführung wegen "tag already exists". Ablauf:
