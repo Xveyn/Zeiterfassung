@@ -775,12 +775,16 @@ def _disable_min_max_now(window):
         pass
 
 
-def themed_askyesno(parent, title: str, message: str) -> bool:
+def themed_askyesno(parent, title: str, message: str, lock_ms: int = 0) -> bool:
     """Modaler Ja/Nein-Dialog im App-Theme. Drop-in für `messagebox.askyesno`.
 
     Eigener Toplevel statt der Tk-Messagebox, damit die DWM-Titelleiste
     (apply_dark_titlebar) und die Theme-Farben angewendet werden können —
     `tkinter.messagebox.*` ist eine Black-Box ohne Customization-Hooks.
+
+    lock_ms: optionaler kurzer Lock nach dem Öffnen, analog zu
+    `themed_ask_delete_choice` — verhindert versehentliches Sofort-Bestätigen
+    bei Lösch-Rückfragen (z.B. genau eine löschbare Einheit am Tag).
     """
     dialog = tk.Toplevel(parent)
     dialog.title(title)
@@ -792,6 +796,7 @@ def themed_askyesno(parent, title: str, message: str) -> bool:
     dialog.focus_set()
 
     result = {"value": False}
+    unlock = {"ready": lock_ms <= 0}
 
     tk.Label(
         dialog, text=message, font=FONT, bg=BG, fg=TEXT,
@@ -799,6 +804,8 @@ def themed_askyesno(parent, title: str, message: str) -> bool:
     ).pack(padx=24, pady=(20, 14))
 
     def click_yes():
+        if not unlock["ready"]:
+            return
         result["value"] = True
         dialog.destroy()
 
@@ -807,8 +814,17 @@ def themed_askyesno(parent, title: str, message: str) -> bool:
 
     btn_frame = tk.Frame(dialog, bg=BG)
     btn_frame.pack(pady=(0, 18))
-    primary_button(btn_frame, "Ja", click_yes).pack(side=tk.LEFT, padx=6)
+    yes_btn = primary_button(btn_frame, "Ja", click_yes)
+    yes_btn.pack(side=tk.LEFT, padx=6)
     secondary_button(btn_frame, "Nein", click_no).pack(side=tk.LEFT, padx=6)
+
+    if lock_ms > 0:
+        set_primary_button_enabled(yes_btn, False)
+
+        def _unlock():
+            unlock["ready"] = True
+            set_primary_button_enabled(yes_btn, True)
+        dialog.after(lock_ms, _unlock)
 
     dialog.bind("<Return>", lambda e: click_yes())
     dialog.bind("<Escape>", lambda e: click_no())

@@ -454,8 +454,11 @@ class App:
           → Ja/Nein-Abfrage.
         - Mehrere Einheiten (mehrere Slots und/oder Arbeitszeit + Reservierung)
           → Auswahl-Dialog: pro Slot bzw. pro Typ eine Checkbox, alle
-          vorausgewählt; der „Löschen"-Button ist nach dem Öffnen kurz gesperrt
-          (gegen versehentliches Sofort-Löschen).
+          vorausgewählt.
+
+        Beide Dialogvarianten sperren ihren Bestätigen-Button nach dem Öffnen
+        kurz (lock_ms=600, siehe theme.py) — gegen versehentliches Sofort-
+        Löschen, z.B. durch einen schnellen Doppel-Rechtsklick.
 
         Reservierungen werden nur berücksichtigt, wenn sie aktiv sind
         (_reservations_active); eine Reservierungs-Änderung stößt den Kalender-
@@ -495,7 +498,7 @@ class App:
         if len(options) == 1:
             kind = "Arbeitszeit" if options[0][0].startswith("entry") else "Reservierung"
             if not themed_askyesno(self.root, f"{kind} löschen",
-                                   f"{kind} für {date_de} löschen?"):
+                                   f"{kind} für {date_de} löschen?", lock_ms=600):
                 return
             selected = {options[0][0]}
         else:
