@@ -1,6 +1,10 @@
 import datetime
 
 DAYS_DE = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"]
+WEEKDAYS_DE_FULL = [
+    "Montag", "Dienstag", "Mittwoch", "Donnerstag",
+    "Freitag", "Samstag", "Sonntag",
+]
 MONTHS_DE = [
     "", "Januar", "Februar", "März", "April", "Mai", "Juni",
     "Juli", "August", "September", "Oktober", "November", "Dezember",
@@ -92,6 +96,20 @@ def format_iso_date(iso, fallback="—"):
         return datetime.date.fromisoformat(iso[:10]).strftime("%d.%m.%Y")
     except ValueError:
         return iso[:10]
+
+
+def format_iso_weekday_date(iso, fallback="—"):
+    """ISO-Datum oder -Zeitstempel → 'Wochentag - TT.MM.JJJJ' für die Anzeige
+    (z.B. 'Montag - 13.07.2026'). Leere oder unparsbare Werte liefern denselben
+    Fallback-Weg wie format_iso_date (fallback bzw. roher 10-Zeichen-Prefix).
+    """
+    if not iso or len(iso) < 10:
+        return fallback
+    try:
+        day = datetime.date.fromisoformat(iso[:10])
+    except ValueError:
+        return iso[:10]
+    return f"{WEEKDAYS_DE_FULL[day.weekday()]} - {day.strftime('%d.%m.%Y')}"
 
 
 def format_iso_datetime(iso, fallback="—"):
