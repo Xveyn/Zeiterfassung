@@ -14,7 +14,7 @@ from src.theme import (
     ACCENT, BG, CELL_BG, FONT, FONT_BOLD, FONT_SMALL,
     PAUSE_VALUES, STATUS_OK, TEXT, TEXT_MUTED, TIME_VALUES,
     apply_app_icon, apply_combobox_style, apply_dark_titlebar,
-    attach_unfocus_on_click,
+    apply_notebook_style, attach_unfocus_on_click,
     center_dialog_on_parent, disable_min_max,
     dark_combo, dark_entry, dark_text,
     primary_button, secondary_button,
@@ -31,11 +31,12 @@ from src.weekly_limit import format_limit_warnings, period_scan_needed, scan_per
 def open_settings_dialog(parent, settings, base_path, on_change, *,
                          conflicts_store=None, storage=None,
                          reservation_store=None, on_request_restart=None):
-    """Modal dialog for editing app settings.
+    """Modaler Dialog zum Bearbeiten der App-Einstellungen, aufgeteilt auf vier
+    Tabs (Arbeitszeit / Bericht & Mail / Google / App).
 
-    on_change is called after a successful save so the calendar can refresh.
-    conflicts_store and storage are optional; when provided, a Sync section
-    with a conflicts button is shown.
+    on_change wird nach erfolgreichem Speichern aufgerufen, damit der Kalender
+    sich aktualisiert. conflicts_store und storage sind optional; sind sie
+    gesetzt, erscheint im Google-Tab der Sync-Block mit Konflikte-Button.
     """
     dialog = tk.Toplevel(parent)
     dialog.title("Einstellungen")
@@ -48,63 +49,175 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
     apply_app_icon(dialog)
 
     apply_combobox_style(dialog)
+    apply_notebook_style(dialog)
 
     creds_path = os.path.join(base_path, "credentials.json")
 
-    def label(text, row, col=0, **grid_kw):
+    notebook = ttk.Notebook(dialog, style="Dark.TNotebook")
+    notebook.pack(fill="both", expand=True, padx=8, pady=(8, 0))
+
+    tab_work = tk.Frame(notebook, bg=BG)
+    tab_mail = tk.Frame(notebook, bg=BG)
+    tab_google = tk.Frame(notebook, bg=BG)
+    tab_app = tk.Frame(notebook, bg=BG)
+    notebook.add(tab_work, text="Arbeitszeit")
+    notebook.add(tab_mail, text="Bericht & Mail")
+    notebook.add(tab_google, text="Google")
+    notebook.add(tab_app, text="App")
+
+    def label(parent_frame, text, row, col=0, **grid_kw):
         kw: dict[str, Any] = dict(padx=10, pady=8, sticky="w")
         kw.update(grid_kw)
-        lbl = tk.Label(dialog, text=text, font=FONT, bg=BG, fg=TEXT)
+        lbl = tk.Label(parent_frame, text=text, font=FONT, bg=BG, fg=TEXT)
         lbl.grid(row=row, column=col, **kw)
         return lbl
 
-    def _section_header(title, row, top_pad=8):
-        """Klickbarer Section-Header mit ▶/▼-Toggle. Caller hängt jedes zur
-        Section gehörende Widget an `widgets` an. Beim Collapse merkt sich
-        der Toggle pro Widget, ob es im Grid lag — damit eine eingeklappt-
-        gestartete Sub-Section (z.B. Standardzeiten) beim Re-Expand nicht
-        versehentlich aufgeht.
+    def subheader(parent_frame, text, row, top_pad=16):
+        tk.Label(
+            parent_frame, text=f"— {text} —", font=FONT_BOLD,
+            bg=BG, fg=TEXT_MUTED,
+        ).grid(row=row, column=0, columnspan=2, padx=10, pady=(top_pad, 4))
 
-        Wir nutzen `winfo_manager()` statt `winfo_ismapped()`, weil letzteres
-        vor dem ersten Window-Mapping False liefert — beim initialen Toggle
-        (Default-Einklappen vor dem Anzeigen des Dialogs) würden sonst alle
-        Widgets als 'nicht sichtbar' eingestuft, kein grid_remove() ausgeführt,
-        und der User müsste zweimal klicken bis der Header-Text und der
-        Inhalt sync sind. `winfo_manager()` ist mapping-unabhängig."""
-        state = {"collapsed": False}
-        header = tk.Label(
-            dialog, text=f"— {title} — ▼", font=FONT_BOLD,
-            bg=BG, fg=TEXT_MUTED, cursor="hand2",
-        )
-        header.grid(row=row, column=0, columnspan=2, padx=10, pady=(top_pad, 4))
-        widgets: list[tk.Widget] = []
+    # ===================== Tab: Arbeitszeit =====================
+    label(tab_work, "Standardzeiten:", row=0, pady=(10, 4), sticky="nw")
+    times_frame = tk.Frame(tab_work, bg=BG)
+    times_frame.grid(row=0, column=1, padx=10, pady=(10, 4), sticky="w")
 
-        def toggle(_event=None):
-            if state["collapsed"]:
-                for w in widgets:
-                    if getattr(w, "_was_in_grid", True):
-                        w.grid()
-                header.config(text=f"— {title} — ▼")
-                state["collapsed"] = False
-            else:
-                for w in widgets:
-                    w._was_in_grid = (w.winfo_manager() == "grid")
-                    if w._was_in_grid:
-                        w.grid_remove()
-                header.config(text=f"— {title} — ▶")
-                state["collapsed"] = True
+    tk.Label(times_frame, text="Start", font=FONT_SMALL, bg=BG, fg=TEXT_MUTED).grid(
+        row=0, column=1, padx=2)
+    tk.Label(times_frame, text="Ende", font=FONT_SMALL, bg=BG, fg=TEXT_MUTED).grid(
+        row=0, column=2, padx=2)
 
-        header.bind("<Button-1>", toggle)
-        return header, widgets, toggle
+    start_vars = {}
+    end_vars = {}
+    for i, (key, lbl) in enumerate(zip(WEEKDAY_KEYS, DAYS_DE), start=1):
+        tk.Label(times_frame, text=lbl, font=FONT, bg=BG, fg=TEXT, width=3, anchor="w").grid(
+            row=i, column=0, padx=(0, 8), pady=2)
+        start_vars[key] = tk.StringVar(value=settings.get(f"default_start_{key}"))
+        dark_combo(times_frame, start_vars[key], TIME_VALUES).grid(
+            row=i, column=1, padx=2, pady=2)
+        end_vars[key] = tk.StringVar(value=settings.get(f"default_end_{key}"))
+        dark_combo(times_frame, end_vars[key], TIME_VALUES).grid(
+            row=i, column=2, padx=2, pady=2)
 
-    gmail_header, gmail_widgets, gmail_toggle = _section_header(
-        "Gmail-Zugangsdaten", row=0)
+    label(tab_work, "Standard-Pause (Min):", row=1)
+    pause_var = tk.StringVar(value=str(settings.get("default_pause")))
+    dark_combo(tab_work, pause_var, PAUSE_VALUES).grid(
+        row=1, column=1, padx=10, pady=8, sticky="w")
 
-    gmail_widgets.append(label("Datenordner:", row=1, pady=4))
+    subheader(tab_work, "Werkstudenten-Limit", row=2)
+    wsl_frame = tk.Frame(tab_work, bg=BG)
+    wsl_frame.grid(row=3, column=0, columnspan=2, padx=10, pady=(0, 4), sticky="we")
 
-    creds_row = tk.Frame(dialog, bg=BG)
+    wsl_enabled_var = tk.BooleanVar(value=settings.get("werkstudent_limit_enabled"))
+    tk.Checkbutton(
+        wsl_frame, text="Wochenstunden-Limit aktivieren", variable=wsl_enabled_var,
+        font=FONT, bg=BG, fg=TEXT, selectcolor=CELL_BG,
+        activebackground=BG, activeforeground=TEXT, cursor="hand2",
+    ).pack(anchor="w")
+
+    def _wsl_date_row(parent_frame, label_text, default_date):
+        row = tk.Frame(parent_frame, bg=BG)
+        row.pack(anchor="w", pady=(4, 0))
+        tk.Label(row, text=label_text, font=FONT, bg=BG, fg=TEXT).pack(
+            side=tk.LEFT, padx=(0, 5))
+        month_values = [str(m) for m in range(1, 13)]
+        year_values = [str(y) for y in range(2020, datetime.date.today().year + 3)]
+        day_var = tk.StringVar(value=str(default_date.day))
+        max_day = calendar.monthrange(default_date.year, default_date.month)[1]
+        day_cb = dark_combo(row, day_var, [str(d) for d in range(1, max_day + 1)], width=3)
+        day_cb.pack(side=tk.LEFT, padx=2)
+        tk.Label(row, text=".", font=FONT, bg=BG, fg=TEXT).pack(side=tk.LEFT)
+        month_var = tk.StringVar(value=str(default_date.month))
+        dark_combo(row, month_var, month_values, width=3).pack(side=tk.LEFT, padx=2)
+        tk.Label(row, text=".", font=FONT, bg=BG, fg=TEXT).pack(side=tk.LEFT)
+        year_var = tk.StringVar(value=str(default_date.year))
+        dark_combo(row, year_var, year_values, width=5).pack(side=tk.LEFT, padx=2)
+
+        def _update_days(*_a):
+            try:
+                m = int(month_var.get())
+                y = int(year_var.get())
+                md = calendar.monthrange(y, m)[1]
+            except (ValueError, KeyError):
+                md = 31
+            day_cb["values"] = [str(d) for d in range(1, md + 1)]
+            if int(day_var.get()) > md:
+                day_var.set(str(md))
+
+        month_var.trace_add("write", _update_days)
+        year_var.trace_add("write", _update_days)
+        return day_var, month_var, year_var
+
+    wsl_start_default = (
+        datetime.date.fromisoformat(settings.get("werkstudent_limit_start"))
+        if settings.get("werkstudent_limit_start") else datetime.date.today())
+    wsl_end_default = (
+        datetime.date.fromisoformat(settings.get("werkstudent_limit_end"))
+        if settings.get("werkstudent_limit_end") else datetime.date.today())
+    wsl_start_vars = _wsl_date_row(wsl_frame, "Zeitraum von:", wsl_start_default)
+    wsl_end_vars = _wsl_date_row(wsl_frame, "bis:", wsl_end_default)
+
+    wsl_hours_row = tk.Frame(wsl_frame, bg=BG)
+    wsl_hours_row.pack(anchor="w", pady=(4, 0))
+    tk.Label(wsl_hours_row, text="Limit (Stunden/Woche):", font=FONT, bg=BG, fg=TEXT).pack(
+        side=tk.LEFT, padx=(0, 5))
+    wsl_hours_var = tk.StringVar(value=str(settings.get("werkstudent_limit_max_hours")))
+    dark_entry(wsl_hours_row, wsl_hours_var, width=6).pack(side=tk.LEFT)
+
+    secondary_button(
+        tab_work, "Kategorien verwalten",
+        lambda: open_category_dialog(dialog, settings),
+    ).grid(row=4, column=0, columnspan=2, padx=10, pady=(12, 8), sticky="w")
+
+    # ===================== Tab: Bericht & Mail =====================
+    label(tab_mail, "Empfänger:", row=0, pady=(10, 8))
+    recipient_var = tk.StringVar(value=settings.get("recipient"))
+    dark_entry(tab_mail, recipient_var, width=25).grid(row=0, column=1, padx=10, pady=(10, 8))
+
+    label(tab_mail, "Name:", row=1)
+    name_var = tk.StringVar(value=settings.get("name"))
+    dark_entry(tab_mail, name_var, width=25).grid(row=1, column=1, padx=10, pady=8)
+
+    label(tab_mail, "Stundenlohn (€):", row=2)
+    rate_var = tk.StringVar(value=str(settings.get("hourly_rate") or ""))
+    dark_entry(tab_mail, rate_var, width=10).grid(row=2, column=1, padx=10, pady=8, sticky="w")
+    tk.Label(
+        tab_mail, text="(optional – nur für dich sichtbar)", font=FONT_SMALL,
+        bg=BG, fg=TEXT_MUTED,
+    ).grid(row=2, column=1, padx=(120, 10), pady=8, sticky="w")
+
+    subheader(tab_mail, "Mail-Vorlage", row=3)
+
+    label(tab_mail, "Betreff:", row=4, pady=4)
+    subject_var = tk.StringVar(value=settings.get("mail_subject"))
+    dark_entry(tab_mail, subject_var, width=35).grid(row=4, column=1, padx=10, pady=4)
+
+    label(tab_mail, "Anrede:", row=5, pady=4)
+    greeting_var = tk.StringVar(value=settings.get("mail_greeting"))
+    dark_entry(tab_mail, greeting_var, width=35).grid(row=5, column=1, padx=10, pady=4)
+
+    label(tab_mail, "Inhalt:", row=6, pady=4, sticky="nw")
+    content_text = dark_text(tab_mail, 35, 3)
+    content_text.grid(row=6, column=1, padx=10, pady=4)
+    content_text.insert("1.0", settings.get("mail_content"))
+
+    label(tab_mail, "Gruß:", row=7, pady=4, sticky="nw")
+    closing_text = dark_text(tab_mail, 35, 2)
+    closing_text.grid(row=7, column=1, padx=10, pady=4)
+    closing_text.insert("1.0", settings.get("mail_closing"))
+
+    tk.Label(
+        tab_mail, text="Platzhalter: {zeitraum}, {gesamt}", font=("Segoe UI", 8),
+        bg=BG, fg=TEXT_MUTED,
+    ).grid(row=8, column=0, columnspan=2, padx=10, pady=(0, 8))
+
+    # ===================== Tab: Google =====================
+    subheader(tab_google, "Google-Konto", row=0, top_pad=10)
+
+    label(tab_google, "Datenordner:", row=1, pady=4)
+    creds_row = tk.Frame(tab_google, bg=BG)
     creds_row.grid(row=1, column=1, padx=10, pady=4, sticky="w")
-    gmail_widgets.append(creds_row)
 
     def open_data_folder():
         try:
@@ -135,10 +248,9 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
 
     # Absender-Zeile: zeigt die authentifizierte E-Mail-Adresse, die ui.py
     # im Hintergrund über OAuth2-userinfo abruft und in settings cached.
-    gmail_widgets.append(label("Absender:", row=2, pady=(0, 4)))
-    sender_row = tk.Frame(dialog, bg=BG)
+    label(tab_google, "Absender:", row=2, pady=(0, 4))
+    sender_row = tk.Frame(tab_google, bg=BG)
     sender_row.grid(row=2, column=1, padx=10, pady=(0, 4), sticky="w")
-    gmail_widgets.append(sender_row)
     sender_label = tk.Label(
         sender_row,
         text=settings.get("sender_email") or "(noch nicht ermittelt)",
@@ -217,236 +329,11 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
     )
     sender_btn.pack(side=tk.LEFT, padx=(10, 0))
 
-    times_label = tk.Label(
-        dialog, text="Standardzeiten: ▶", font=FONT, bg=BG, fg=TEXT,
-        cursor="hand2",
-    )
-    times_label.grid(row=3, column=0, padx=10, pady=8, sticky="w")
-    gmail_widgets.append(times_label)
-
-    times_frame = tk.Frame(dialog, bg=BG)
-    times_frame.grid(row=3, column=1, rowspan=2, padx=10, pady=4, sticky="w")
-    times_frame.grid_remove()  # default eingeklappt — User klappt bei Bedarf auf
-    gmail_widgets.append(times_frame)
-
-    def toggle_times(_event=None):
-        if times_frame.winfo_ismapped():
-            times_frame.grid_remove()
-            times_label.config(text="Standardzeiten: ▶")
-        else:
-            times_frame.grid()
-            times_label.config(text="Standardzeiten: ▼")
-
-    times_label.bind("<Button-1>", toggle_times)
-
-    tk.Label(times_frame, text="Start", font=FONT_SMALL, bg=BG, fg=TEXT_MUTED).grid(
-        row=0, column=1, padx=2)
-    tk.Label(times_frame, text="Ende", font=FONT_SMALL, bg=BG, fg=TEXT_MUTED).grid(
-        row=0, column=2, padx=2)
-
-    start_vars = {}
-    end_vars = {}
-    for i, (key, lbl) in enumerate(zip(WEEKDAY_KEYS, DAYS_DE), start=1):
-        tk.Label(times_frame, text=lbl, font=FONT, bg=BG, fg=TEXT, width=3, anchor="w").grid(
-            row=i, column=0, padx=(0, 8), pady=2)
-        start_vars[key] = tk.StringVar(value=settings.get(f"default_start_{key}"))
-        dark_combo(times_frame, start_vars[key], TIME_VALUES).grid(
-            row=i, column=1, padx=2, pady=2)
-        end_vars[key] = tk.StringVar(value=settings.get(f"default_end_{key}"))
-        dark_combo(times_frame, end_vars[key], TIME_VALUES).grid(
-            row=i, column=2, padx=2, pady=2)
-
-    # Pause bleibt absichtlich global — Spec 2026-05-08, Out-of-Scope: Pause pro Wochentag.
-    gmail_widgets.append(label("Standard-Pause (Min):", row=5))
-    pause_var = tk.StringVar(value=str(settings.get("default_pause")))
-    pause_combo = dark_combo(dialog, pause_var, PAUSE_VALUES)
-    pause_combo.grid(row=5, column=1, padx=10, pady=8)
-    gmail_widgets.append(pause_combo)
-
-    gmail_widgets.append(label("Empfänger:", row=6))
-    recipient_var = tk.StringVar(value=settings.get("recipient"))
-    recipient_entry = dark_entry(dialog, recipient_var, width=25)
-    recipient_entry.grid(row=6, column=1, padx=10, pady=8)
-    gmail_widgets.append(recipient_entry)
-
-    gmail_widgets.append(label("Name:", row=8))
-    name_var = tk.StringVar(value=settings.get("name"))
-    name_entry = dark_entry(dialog, name_var, width=25)
-    name_entry.grid(row=8, column=1, padx=10, pady=8)
-    gmail_widgets.append(name_entry)
-
-    gmail_widgets.append(label("Stundenlohn (€):", row=9))
-    rate_var = tk.StringVar(value=str(settings.get("hourly_rate") or ""))
-    rate_entry = dark_entry(dialog, rate_var, width=10)
-    rate_entry.grid(row=9, column=1, padx=10, pady=8, sticky="w")
-    gmail_widgets.append(rate_entry)
-
-    rate_hint = tk.Label(
-        dialog, text="(optional – nur für dich sichtbar)", font=FONT_SMALL,
-        bg=BG, fg=TEXT_MUTED,
-    )
-    rate_hint.grid(row=9, column=1, padx=(120, 10), pady=8, sticky="w")
-    gmail_widgets.append(rate_hint)
-
-    gmail_widgets.append(label("Bundesland:", row=10))
-    state_labels = [lbl for _, lbl in STATES]
-    current_code = settings.get("state")
-    current_label = next(
-        (lbl for code, lbl in STATES if code == current_code),
-        STATES[0][1],
-    )
-    state_var = tk.StringVar(value=current_label)
-    state_combo = dark_combo(dialog, state_var, state_labels, width=22)
-    state_combo.grid(row=10, column=1, padx=10, pady=8)
-    gmail_widgets.append(state_combo)
-
-    mv_header, mv_widgets, mv_toggle = _section_header(
-        "Mail-Vorlage", row=11, top_pad=16)
-
-    mv_widgets.append(label("Betreff:", row=12, pady=4))
-    subject_var = tk.StringVar(value=settings.get("mail_subject"))
-    subject_entry = dark_entry(dialog, subject_var, width=35)
-    subject_entry.grid(row=12, column=1, padx=10, pady=4)
-    mv_widgets.append(subject_entry)
-
-    mv_widgets.append(label("Anrede:", row=13, pady=4))
-    greeting_var = tk.StringVar(value=settings.get("mail_greeting"))
-    greeting_entry = dark_entry(dialog, greeting_var, width=35)
-    greeting_entry.grid(row=13, column=1, padx=10, pady=4)
-    mv_widgets.append(greeting_entry)
-
-    mv_widgets.append(label("Inhalt:", row=14, pady=4, sticky="nw"))
-    content_text = dark_text(dialog, 35, 3)
-    content_text.grid(row=14, column=1, padx=10, pady=4)
-    content_text.insert("1.0", settings.get("mail_content"))
-    mv_widgets.append(content_text)
-
-    mv_widgets.append(label("Gruß:", row=15, pady=4, sticky="nw"))
-    closing_text = dark_text(dialog, 35, 2)
-    closing_text.grid(row=15, column=1, padx=10, pady=4)
-    closing_text.insert("1.0", settings.get("mail_closing"))
-    mv_widgets.append(closing_text)
-
-    placeholder_hint = tk.Label(
-        dialog, text="Platzhalter: {zeitraum}, {gesamt}", font=("Segoe UI", 8),
-        bg=BG, fg=TEXT_MUTED,
-    )
-    placeholder_hint.grid(row=16, column=0, columnspan=2, padx=10, pady=(0, 4))
-    mv_widgets.append(placeholder_hint)
-
-    # --- App-Einstellungen (gerätelokale UI-Optionen, einklappbar) ---
-    # Alle Member liegen in app_frame (einem einzigen Grid-Member der Section),
-    # damit der Collapse-Toggle nur diesen Frame ein-/ausblendet und die übrigen
-    # Dialog-Reihen (Synchronisation usw.) unberührt bleiben.
-    app_header, app_widgets, app_toggle = _section_header(
-        "App-Einstellungen", row=17, top_pad=16)
-    app_frame = tk.Frame(dialog, bg=BG)
-    app_frame.grid(row=18, column=0, columnspan=2, padx=10, pady=(0, 4),
-                   sticky="we")
-    app_widgets.append(app_frame)
-
-    show_weekend_var = tk.BooleanVar(value=settings.get("show_weekend"))
-    tk.Checkbutton(
-        app_frame, text="Wochenende (Sa/So) im Kalender anzeigen",
-        variable=show_weekend_var, font=FONT,
-        bg=BG, fg=TEXT, selectcolor=CELL_BG,
-        activebackground=BG, activeforeground=TEXT,
-        cursor="hand2",
-    ).pack(anchor="w")
-
-    autostart_var = tk.BooleanVar(value=settings.get("autostart"))
-    tk.Checkbutton(
-        app_frame, text="Autostart (minimiert bei Anmeldung)",
-        variable=autostart_var, font=FONT,
-        bg=BG, fg=TEXT, selectcolor=CELL_BG,
-        activebackground=BG, activeforeground=TEXT,
-        cursor="hand2",
-    ).pack(anchor="w")
-
-    always_on_top_var = tk.BooleanVar(value=settings.get("always_on_top"))
-    tk.Checkbutton(
-        app_frame, text="Immer im Vordergrund",
-        variable=always_on_top_var, font=FONT,
-        bg=BG, fg=TEXT, selectcolor=CELL_BG,
-        activebackground=BG, activeforeground=TEXT,
-        cursor="hand2",
-    ).pack(anchor="w")
-
-    minimize_to_tray_var = tk.BooleanVar(value=settings.get("minimize_to_tray"))
-    tk.Checkbutton(
-        app_frame, text="Beim Schließen in den Infobereich minimieren",
-        variable=minimize_to_tray_var, font=FONT,
-        bg=BG, fg=TEXT, selectcolor=CELL_BG,
-        activebackground=BG, activeforeground=TEXT,
-        cursor="hand2",
-    ).pack(anchor="w")
-
-    # --- Darstellung (UI-Skalierung, gerätelokal) ---
+    subheader(tab_google, "Synchronisation", row=3)
     tk.Label(
-        app_frame, text="— Darstellung —", font=FONT_BOLD,
-        bg=BG, fg=TEXT_MUTED,
-    ).pack(pady=(12, 4))
-    scale_row = tk.Frame(app_frame, bg=BG)
-    scale_row.pack(fill="x")
-    tk.Label(
-        scale_row, text="Skalierung:", font=FONT, bg=BG, fg=TEXT,
-    ).pack(side=tk.LEFT, padx=(0, 8))
-
-    # ttk.Scale statt klassischer tk.Scale: das clam-Theme ist via
-    # apply_combobox_style aktiv, klassische tk.Scale rendert unter Windows
-    # einen hellen System-Trough/-Regler, der nicht zum Dark-Theme passt.
-    # Wert wird in einem eigenen Label gezeigt (kein klobiger showvalue-Kasten);
-    # gerastert wird auf 5er-Schritte (= Faktor-Schritt 0.05) beim Anzeigen und
-    # beim Speichern, da ttk.Scale kein resolution kennt.
-    # Akzent analog zum Eingabefeld-Muster (theme.py dark_entry/dark_text):
-    # im Ruhezustand gedämpftes TEXT_MUTED, bei Aktivität (State "pressed") rot
-    # (ACCENT) als Fokus-Feedback. ACCENT ist der rote Fehler-/Lösch-Akzent und
-    # würde den Slider dauerhaft als Alarm-Element wirken lassen. Das
-    # Prozent-Label zieht über Press/Release-Bindings mit.
-    scale_style = ttk.Style(dialog)
-    scale_style.configure(
-        "Display.Horizontal.TScale",
-        background=TEXT_MUTED, troughcolor=CELL_BG,
-        bordercolor=CELL_BG, darkcolor=TEXT_MUTED, lightcolor=TEXT_MUTED,
-    )
-    scale_style.map(
-        "Display.Horizontal.TScale",
-        background=[("pressed", ACCENT)],
-        darkcolor=[("pressed", ACCENT)],
-        lightcolor=[("pressed", ACCENT)],
-    )
-    scale_var = tk.DoubleVar(value=round(settings.get("ui_scale") * 100))
-    scale_value_label = tk.Label(
-        scale_row, text=f"{round(scale_var.get() / 5) * 5} %", font=FONT,
-        bg=BG, fg=TEXT_MUTED, width=5, anchor="w",
-    )
-
-    def _on_scale(_raw):
-        scale_value_label.config(text=f"{round(scale_var.get() / 5) * 5} %")
-
-    scale_widget = ttk.Scale(
-        scale_row, from_=75, to=200, orient="horizontal",
-        variable=scale_var, command=_on_scale, length=200,
-        style="Display.Horizontal.TScale",
-    )
-    scale_widget.bind(
-        "<ButtonPress-1>", lambda _e: scale_value_label.config(fg=ACCENT), add="+",
-    )
-    scale_widget.bind(
-        "<ButtonRelease-1>", lambda _e: scale_value_label.config(fg=TEXT_MUTED), add="+",
-    )
-    scale_widget.pack(side=tk.LEFT)
-    scale_value_label.pack(side=tk.LEFT, padx=(8, 0))
-    tk.Label(
-        app_frame, text="Änderung startet die App neu.", font=FONT_SMALL,
-        bg=BG, fg=TEXT_MUTED,
-    ).pack(anchor="w", pady=(2, 0))
-
-    # --- Synchronisation (Multi-Device-Sync, Phase 4.6) ---
-    tk.Label(
-        dialog, text="— Synchronisation —", font=FONT_BOLD,
-        bg=BG, fg=TEXT_MUTED,
-    ).grid(row=22, column=0, columnspan=2, padx=10, pady=(16, 4))
+        tab_google, text="Diese Schalter wirken sofort (Anmeldung im Browser).",
+        font=FONT_SMALL, bg=BG, fg=TEXT_MUTED,
+    ).grid(row=4, column=0, columnspan=2, padx=10, pady=(0, 4), sticky="w")
 
     var_sync = tk.BooleanVar(value=settings.get("sync_enabled"))
 
@@ -498,28 +385,31 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
             on_change()
 
     cb_sync = tk.Checkbutton(
-        dialog, text="Mit Google Drive synchronisieren",
+        tab_google, text="Mit Google Drive synchronisieren",
         variable=var_sync, font=FONT,
         bg=BG, fg=TEXT, selectcolor=CELL_BG,
         activebackground=BG, activeforeground=TEXT,
         cursor="hand2",
         command=_on_sync_toggled,
     )
-    cb_sync.grid(row=23, column=0, columnspan=2, padx=10, pady=(4, 0), sticky="w")
+    cb_sync.grid(row=5, column=0, columnspan=2, padx=10, pady=(4, 0), sticky="w")
 
     device_id = settings.get("device_id") or "(noch nicht gesetzt)"
     device_id_short = device_id[:8] + "…" if len(device_id) > 8 else device_id
     tk.Label(
-        dialog, text=f"Geräte-ID: {device_id_short}", font=FONT_SMALL,
+        tab_google, text=f"Geräte-ID: {device_id_short}", font=FONT_SMALL,
         bg=BG, fg=TEXT_MUTED,
-    ).grid(row=24, column=0, columnspan=2, padx=10, pady=(2, 0), sticky="w")
+    ).grid(row=6, column=0, columnspan=2, padx=10, pady=(2, 0), sticky="w")
 
     last = format_iso_date(settings.get("last_pull_at"), fallback="noch nie")
     tk.Label(
-        dialog, text=f"Letzte Synchronisation: {last}", font=FONT_SMALL,
+        tab_google, text=f"Letzte Synchronisation: {last}", font=FONT_SMALL,
         bg=BG, fg=TEXT_MUTED,
-    ).grid(row=25, column=0, columnspan=2, padx=10, pady=(2, 4), sticky="w")
+    ).grid(row=7, column=0, columnspan=2, padx=10, pady=(2, 4), sticky="w")
 
+    # Ab hier wachsen im Google-Tab optionale Zeilen (Konflikte, Kompaktieren)
+    # dynamisch — deshalb eine laufende Row-Nummer statt fixer Konstanten.
+    next_google_row = 8
     unresolved = 0
     if conflicts_store is not None:
         unresolved = conflicts_store.count_unresolved()
@@ -529,11 +419,12 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
             ConflictsDialog(dialog, storage, settings, conflicts_store)
 
         secondary_button(
-            dialog,
+            tab_google,
             f"Konflikte ansehen ({unresolved})",
             _open_conflicts_dialog,
             padx=12, pady=2,
-        ).grid(row=26, column=0, columnspan=2, padx=10, pady=(0, 8), sticky="w")
+        ).grid(row=next_google_row, column=0, columnspan=2, padx=10, pady=(0, 8), sticky="w")
+        next_google_row += 1
 
     def _open_import_dialog():
         from src.dialogs.import_dialog import open_import_dialog
@@ -547,8 +438,9 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
             reservation_store=reservation_store,
         )
 
-    btn_row = tk.Frame(dialog, bg=BG)
-    btn_row.grid(row=27, column=0, columnspan=2, padx=10, pady=(4, 8), sticky="w")
+    btn_row = tk.Frame(tab_google, bg=BG)
+    btn_row.grid(row=next_google_row, column=0, columnspan=2, padx=10, pady=(4, 8), sticky="w")
+    next_google_row += 1
 
     # label_button liefert einen tk.Frame (keine -state-Option) — Doppelklick-
     # Schutz daher über ein Flag statt cb.config(state=...).
@@ -656,15 +548,13 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
             threading.Thread(target=_do, daemon=True).start()
 
         secondary_button(
-            dialog, "Sync-Daten kompaktieren", _on_compact_clicked,
+            tab_google, "Sync-Daten kompaktieren", _on_compact_clicked,
             padx=12, pady=2,
-        ).grid(row=28, column=0, columnspan=2, padx=10, pady=(0, 8), sticky="w")
+        ).grid(row=next_google_row, column=0, columnspan=2, padx=10, pady=(0, 8), sticky="w")
+        next_google_row += 1
 
-    # --- Google Kalender (Reservierungen) ---
-    tk.Label(
-        dialog, text="— Google Kalender —", font=FONT_BOLD,
-        bg=BG, fg=TEXT_MUTED,
-    ).grid(row=29, column=0, columnspan=2, padx=10, pady=(16, 4))
+    subheader(tab_google, "Google Kalender", row=next_google_row)
+    next_google_row += 1
 
     var_gcal = tk.BooleanVar(value=settings.get("gcal_enabled"))
     cb_gcal: tk.Checkbutton | None = None
@@ -674,13 +564,26 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
     cal_map: dict[str, str] = {}
     cal_var = tk.StringVar(value=settings.get("gcal_calendar_id") or "primary")
 
-    cal_combo = dark_combo(dialog, cal_var, [cal_var.get()], width=30)
-    cal_combo.grid(row=31, column=1, padx=10, pady=4, sticky="w")
-    tk.Label(dialog, text="Kalender:", font=FONT, bg=BG, fg=TEXT).grid(
-        row=31, column=0, padx=10, pady=4, sticky="w")
+    gcal_check_row = next_google_row
+    cal_label_row = next_google_row + 1
+    cal_status_row = next_google_row + 2
 
-    cal_status = tk.Label(dialog, text="", font=FONT_SMALL, bg=BG, fg=TEXT_MUTED)
-    cal_status.grid(row=32, column=0, columnspan=2, padx=10, pady=(0, 4), sticky="w")
+    cb_gcal = tk.Checkbutton(
+        tab_google, text="Reservierungen mit Google Kalender abgleichen",
+        variable=var_gcal, font=FONT,
+        bg=BG, fg=TEXT, selectcolor=CELL_BG,
+        activebackground=BG, activeforeground=TEXT,
+        cursor="hand2",
+    )
+    cb_gcal.grid(row=gcal_check_row, column=0, columnspan=2, padx=10, pady=(4, 0), sticky="w")
+
+    tk.Label(tab_google, text="Kalender:", font=FONT, bg=BG, fg=TEXT).grid(
+        row=cal_label_row, column=0, padx=10, pady=4, sticky="w")
+    cal_combo = dark_combo(tab_google, cal_var, [cal_var.get()], width=30)
+    cal_combo.grid(row=cal_label_row, column=1, padx=10, pady=4, sticky="w")
+
+    cal_status = tk.Label(tab_google, text="", font=FONT_SMALL, bg=BG, fg=TEXT_MUTED)
+    cal_status.grid(row=cal_status_row, column=0, columnspan=2, padx=10, pady=(0, 4), sticky="w")
 
     def _populate_calendars(items):
         if not cal_combo.winfo_exists():
@@ -773,85 +676,127 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
             settings.set("gcal_enabled", False)
             on_change()
 
-    cb_gcal = tk.Checkbutton(
-        dialog, text="Reservierungen mit Google Kalender abgleichen",
-        variable=var_gcal, font=FONT,
-        bg=BG, fg=TEXT, selectcolor=CELL_BG,
-        activebackground=BG, activeforeground=TEXT,
-        cursor="hand2", command=_on_gcal_toggled,
-    )
-    cb_gcal.grid(row=30, column=0, columnspan=2, padx=10, pady=(4, 0), sticky="w")
-
-    # --- Werkstudenten-Limit (Wochenstunden-Grenze für einen Zeitraum, #98) ---
-    wsl_header, wsl_widgets, wsl_toggle = _section_header(
-        "Werkstudenten-Limit", row=34, top_pad=16)
-    wsl_frame = tk.Frame(dialog, bg=BG)
-    wsl_frame.grid(row=35, column=0, columnspan=2, padx=10, pady=(0, 4), sticky="we")
-    wsl_widgets.append(wsl_frame)
-
-    wsl_enabled_var = tk.BooleanVar(value=settings.get("werkstudent_limit_enabled"))
-    tk.Checkbutton(
-        wsl_frame, text="Wochenstunden-Limit aktivieren", variable=wsl_enabled_var,
-        font=FONT, bg=BG, fg=TEXT, selectcolor=CELL_BG,
-        activebackground=BG, activeforeground=TEXT, cursor="hand2",
-    ).pack(anchor="w")
-
-    def _wsl_date_row(parent, label_text, default_date):
-        row = tk.Frame(parent, bg=BG)
-        row.pack(anchor="w", pady=(4, 0))
-        tk.Label(row, text=label_text, font=FONT, bg=BG, fg=TEXT).pack(
-            side=tk.LEFT, padx=(0, 5))
-        month_values = [str(m) for m in range(1, 13)]
-        year_values = [str(y) for y in range(2020, datetime.date.today().year + 3)]
-        day_var = tk.StringVar(value=str(default_date.day))
-        max_day = calendar.monthrange(default_date.year, default_date.month)[1]
-        day_cb = dark_combo(row, day_var, [str(d) for d in range(1, max_day + 1)], width=3)
-        day_cb.pack(side=tk.LEFT, padx=2)
-        tk.Label(row, text=".", font=FONT, bg=BG, fg=TEXT).pack(side=tk.LEFT)
-        month_var = tk.StringVar(value=str(default_date.month))
-        dark_combo(row, month_var, month_values, width=3).pack(side=tk.LEFT, padx=2)
-        tk.Label(row, text=".", font=FONT, bg=BG, fg=TEXT).pack(side=tk.LEFT)
-        year_var = tk.StringVar(value=str(default_date.year))
-        dark_combo(row, year_var, year_values, width=5).pack(side=tk.LEFT, padx=2)
-
-        def _update_days(*_a):
-            try:
-                m = int(month_var.get())
-                y = int(year_var.get())
-                md = calendar.monthrange(y, m)[1]
-            except (ValueError, KeyError):
-                md = 31
-            day_cb["values"] = [str(d) for d in range(1, md + 1)]
-            if int(day_var.get()) > md:
-                day_var.set(str(md))
-
-        month_var.trace_add("write", _update_days)
-        year_var.trace_add("write", _update_days)
-        return day_var, month_var, year_var
-
-    wsl_start_default = (
-        datetime.date.fromisoformat(settings.get("werkstudent_limit_start"))
-        if settings.get("werkstudent_limit_start") else datetime.date.today())
-    wsl_end_default = (
-        datetime.date.fromisoformat(settings.get("werkstudent_limit_end"))
-        if settings.get("werkstudent_limit_end") else datetime.date.today())
-    wsl_start_vars = _wsl_date_row(wsl_frame, "Zeitraum von:", wsl_start_default)
-    wsl_end_vars = _wsl_date_row(wsl_frame, "bis:", wsl_end_default)
-
-    wsl_hours_row = tk.Frame(wsl_frame, bg=BG)
-    wsl_hours_row.pack(anchor="w", pady=(4, 0))
-    tk.Label(wsl_hours_row, text="Limit (Stunden/Woche):", font=FONT, bg=BG, fg=TEXT).pack(
-        side=tk.LEFT, padx=(0, 5))
-    wsl_hours_var = tk.StringVar(value=str(settings.get("werkstudent_limit_max_hours")))
-    dark_entry(wsl_hours_row, wsl_hours_var, width=6).pack(side=tk.LEFT)
+    cb_gcal.config(command=_on_gcal_toggled)
 
     if settings.get("gcal_enabled"):
         _load_calendars()
+
+    # ===================== Tab: App =====================
+    label(tab_app, "Bundesland:", row=0, pady=(10, 8))
+    state_labels = [lbl for _, lbl in STATES]
+    current_code = settings.get("state")
+    current_label = next(
+        (lbl for code, lbl in STATES if code == current_code),
+        STATES[0][1],
+    )
+    state_var = tk.StringVar(value=current_label)
+    dark_combo(tab_app, state_var, state_labels, width=22).grid(
+        row=0, column=1, padx=10, pady=(10, 8), sticky="w")
+
+    # Gerätelokale UI-Optionen. Alle in app_frame (ein Grid-Member), damit die
+    # pack-Interna dieses Frames unberührt bleiben.
+    app_frame = tk.Frame(tab_app, bg=BG)
+    app_frame.grid(row=1, column=0, columnspan=2, padx=10, pady=(4, 4), sticky="we")
+
+    show_weekend_var = tk.BooleanVar(value=settings.get("show_weekend"))
+    tk.Checkbutton(
+        app_frame, text="Wochenende (Sa/So) im Kalender anzeigen",
+        variable=show_weekend_var, font=FONT,
+        bg=BG, fg=TEXT, selectcolor=CELL_BG,
+        activebackground=BG, activeforeground=TEXT,
+        cursor="hand2",
+    ).pack(anchor="w")
+
+    autostart_var = tk.BooleanVar(value=settings.get("autostart"))
+    tk.Checkbutton(
+        app_frame, text="Autostart (minimiert bei Anmeldung)",
+        variable=autostart_var, font=FONT,
+        bg=BG, fg=TEXT, selectcolor=CELL_BG,
+        activebackground=BG, activeforeground=TEXT,
+        cursor="hand2",
+    ).pack(anchor="w")
+
+    always_on_top_var = tk.BooleanVar(value=settings.get("always_on_top"))
+    tk.Checkbutton(
+        app_frame, text="Immer im Vordergrund",
+        variable=always_on_top_var, font=FONT,
+        bg=BG, fg=TEXT, selectcolor=CELL_BG,
+        activebackground=BG, activeforeground=TEXT,
+        cursor="hand2",
+    ).pack(anchor="w")
+
+    minimize_to_tray_var = tk.BooleanVar(value=settings.get("minimize_to_tray"))
+    tk.Checkbutton(
+        app_frame, text="Beim Schließen in den Infobereich minimieren",
+        variable=minimize_to_tray_var, font=FONT,
+        bg=BG, fg=TEXT, selectcolor=CELL_BG,
+        activebackground=BG, activeforeground=TEXT,
+        cursor="hand2",
+    ).pack(anchor="w")
+
+    # --- Darstellung (UI-Skalierung, gerätelokal) ---
+    tk.Label(
+        app_frame, text="— Darstellung —", font=FONT_BOLD,
+        bg=BG, fg=TEXT_MUTED,
+    ).pack(pady=(12, 4))
+    scale_row = tk.Frame(app_frame, bg=BG)
+    scale_row.pack(fill="x")
+    tk.Label(
+        scale_row, text="Skalierung:", font=FONT, bg=BG, fg=TEXT,
+    ).pack(side=tk.LEFT, padx=(0, 8))
+
+    # ttk.Scale statt klassischer tk.Scale: das clam-Theme ist via
+    # apply_combobox_style aktiv, klassische tk.Scale rendert unter Windows
+    # einen hellen System-Trough/-Regler. Wert in eigenem Label (kein
+    # showvalue-Kasten); auf 5er-Schritte gerastert (ttk.Scale kennt kein
+    # resolution). Akzent analog dark_entry: Ruhe TEXT_MUTED, Press ACCENT.
+    scale_style = ttk.Style(dialog)
+    scale_style.configure(
+        "Display.Horizontal.TScale",
+        background=TEXT_MUTED, troughcolor=CELL_BG,
+        bordercolor=CELL_BG, darkcolor=TEXT_MUTED, lightcolor=TEXT_MUTED,
+    )
+    scale_style.map(
+        "Display.Horizontal.TScale",
+        background=[("pressed", ACCENT)],
+        darkcolor=[("pressed", ACCENT)],
+        lightcolor=[("pressed", ACCENT)],
+    )
+    scale_var = tk.DoubleVar(value=round(settings.get("ui_scale") * 100))
+    scale_value_label = tk.Label(
+        scale_row, text=f"{round(scale_var.get() / 5) * 5} %", font=FONT,
+        bg=BG, fg=TEXT_MUTED, width=5, anchor="w",
+    )
+
+    def _on_scale(_raw):
+        scale_value_label.config(text=f"{round(scale_var.get() / 5) * 5} %")
+
+    scale_widget = ttk.Scale(
+        scale_row, from_=75, to=200, orient="horizontal",
+        variable=scale_var, command=_on_scale, length=200,
+        style="Display.Horizontal.TScale",
+    )
+    scale_widget.bind(
+        "<ButtonPress-1>", lambda _e: scale_value_label.config(fg=ACCENT), add="+",
+    )
+    scale_widget.bind(
+        "<ButtonRelease-1>", lambda _e: scale_value_label.config(fg=TEXT_MUTED), add="+",
+    )
+    scale_widget.pack(side=tk.LEFT)
+    scale_value_label.pack(side=tk.LEFT, padx=(8, 0))
+    tk.Label(
+        app_frame, text="Änderung startet die App neu.", font=FONT_SMALL,
+        bg=BG, fg=TEXT_MUTED,
+    ).pack(anchor="w", pady=(2, 0))
+
+    # ===================== Speichern / Buttons =====================
+    tabs = {"work": tab_work, "mail": tab_mail, "google": tab_google, "app": tab_app}
 
     def save_settings():
         for key, lbl in zip(WEEKDAY_KEYS, DAYS_DE):
             ok, msg = validate_entry(start_vars[key].get(), end_vars[key].get())
             if not ok:
+                notebook.select(tabs["work"])
                 themed_showerror(
                     dialog,
                     "Standard-Arbeitszeit ungültig",
@@ -870,6 +815,7 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
         if wsl_enabled_var.get():
             ok, msg = validate_period(wsl_start_iso, wsl_end_iso)
             if not ok:
+                notebook.select(tabs["work"])
                 themed_showerror(dialog, "Werkstudenten-Limit-Zeitraum ungültig", msg)
                 return
         old_wsl_max_hours = settings.get("werkstudent_limit_max_hours")
@@ -895,6 +841,7 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
                 else:
                     disable_autostart()
             except Exception as e:
+                notebook.select(tabs["app"])
                 themed_showerror(
                     dialog,
                     "Autostart-Fehler",
@@ -932,9 +879,8 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
             updates[f"default_end_{key}"] = end_vars[key].get()
         settings.apply_updates(updates)
         # Kalender-Auswahl: Klarname zurück auf ID mappen, als Sync-Setting
-        # speichern (reist über die Drive-Settings-Sync mit). Nur wenn die
-        # Kalenderliste schon geladen ist (cal_map gefüllt) — sonst würde ein
-        # vorschnelles "Speichern" fälschlich "primary" festschreiben.
+        # speichern. Nur wenn die Kalenderliste schon geladen ist (cal_map
+        # gefüllt) — sonst würde ein vorschnelles Speichern "primary" festschreiben.
         if settings.get("gcal_enabled") and cal_map:
             selected_cal_id = resolve_calendar_id(
                 cal_map, cal_var.get(), settings.get("gcal_calendar_id"))
@@ -952,6 +898,7 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
         if storage is not None and period_scan_needed(old_wsl, new_wsl):
             period_warnings = scan_period_for_warnings(settings, storage.get_all())
             if period_warnings:
+                notebook.select(tabs["work"])
                 themed_showwarning(
                     dialog, "Wochenlimit überschritten",
                     "Im konfigurierten Zeitraum liegen bereits erfasste Wochen über "
@@ -965,19 +912,10 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
             on_request_restart()
 
     btn_frame = tk.Frame(dialog, bg=BG)
-    btn_frame.grid(row=36, column=0, columnspan=2, pady=12)
-
-    secondary_button(
-        btn_frame, "Kategorien verwalten",
-        lambda: open_category_dialog(dialog, settings),
-    ).pack(side=tk.LEFT, padx=5)
+    btn_frame.pack(pady=12)
     primary_button(btn_frame, "Speichern", save_settings).pack(side=tk.LEFT, padx=5)
     secondary_button(btn_frame, "Abbrechen", dialog.destroy).pack(side=tk.LEFT, padx=5)
 
     attach_unfocus_on_click(dialog)
     dialog.bind("<Escape>", lambda _e: dialog.destroy())
-    # Mail-Vorlage default eingeklappt — spart Höhe, der Block wird selten
-    # geändert. Funktioniert vor dem Mapping, weil der Toggle-Helper
-    # winfo_manager() (mapping-unabhängig) statt winfo_ismapped() nutzt.
-    mv_toggle()
     center_dialog_on_parent(dialog, parent)
