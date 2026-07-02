@@ -23,16 +23,17 @@ def _slot_from_event(ev):
     }
 
 
-def _adopt_remote(date, remotes, merged):
+def _adopt_remote(date, remotes, merged, imported_dates):
     """Remote gewinnt: die Slots des Tages = die Remote-Events."""
     merged[date] = {
         "slots": [_slot_from_event(ev) for ev in remotes],
         "modified_at": max(ev["modified_at"] for ev in remotes),
         "deleted": False,
     }
+    imported_dates.add(date)
 
 
-def _merge_one_date(date, local, remotes, watermark, merged, plan):
+def _merge_one_date(date, local, remotes, watermark, merged, plan, imported_dates):
     """Mergt einen einzelnen Tag (Slot-Ebene). Mutiert `merged`/`plan`.
 
     local   — Reservierungs-Record {slots, modified_at, deleted} oder None
@@ -48,7 +49,7 @@ def _merge_one_date(date, local, remotes, watermark, merged, plan):
 
     # Fall 2: nur remote → als Slots übernehmen.
     if local is None:
-        _adopt_remote(date, remotes, merged)
+        _adopt_remote(date, remotes, merged, imported_dates)
         return
 
     # Fall 3: lokaler Tombstone.
@@ -62,7 +63,7 @@ def _merge_one_date(date, local, remotes, watermark, merged, plan):
             for ev in remotes:
                 plan["delete"].append({"event_id": ev["event_id"]})
             return  # Löschung gewinnt.
-        _adopt_remote(date, remotes, merged)  # Remote-Update jünger.
+        _adopt_remote(date, remotes, merged, imported_dates)  # Remote-Update jünger.
         return
 
     # Fall 4: lokal (echt), keine Remote-Events.
@@ -86,7 +87,7 @@ def _merge_one_date(date, local, remotes, watermark, merged, plan):
     # hat leere remotes abgefangen -> remote_mod nicht None.
     assert local_mod is not None and remote_mod is not None
     if remote_mod > local_mod:
-        _adopt_remote(date, remotes, merged)
+        _adopt_remote(date, remotes, merged, imported_dates)
         return
 
     # Lokal gewinnt (inkl. Gleichstand — App autoritativ): Slots ↔ Events über
@@ -134,9 +135,14 @@ def merge_reservations(local_raw, remote_events, watermark):
     watermark:     last_calendar_sync_at (ISO-String, "" beim Erststart)
 
     Liefert {"merged": {...}, "plan": {"create": [...], "update": [...],
-    "delete": [...]}}.
+    "delete": [...]}, "imported_dates": [...]}.
+    imported_dates: sortierte Liste der Daten, an denen Remote-Events lokal
+    übernommen wurden (echter Kalender-Import, siehe _adopt_remote) — für
+    den nachgelagerten Wochenlimit-Check (weekly_limit.py, #98). Lokal-
+    gewinnt-Fälle (pushen nur zu Google) zählen NICHT als Import.
     """
     plan = {"create": [], "update": [], "delete": []}
+    imported_dates = set()
 
     remote_by_date = {}
     for ev in remote_events:
@@ -146,9 +152,9 @@ def merge_reservations(local_raw, remote_events, watermark):
     for date in set(local_raw.keys()) | set(remote_by_date.keys()):
         _merge_one_date(
             date, local_raw.get(date), remote_by_date.get(date, []),
-            watermark, merged, plan,
+            watermark, merged, plan, imported_dates,
         )
-    return {"merged": merged, "plan": plan}
+    return {"merged": merged, "plan": plan, "imported_dates": sorted(imported_dates)}
 
 
 def reconcile_reservations(service, calendar_id, store, settings):
@@ -156,6 +162,10 @@ def reconcile_reservations(service, calendar_id, store, settings):
 
     Mutiert store und settings. Wirft bei Netz-/API-Fehlern weiter — der Caller
     entscheidet, ob still geloggt oder als Messagebox gezeigt wird.
+
+    Liefert {"imported_dates": [...]} — die Daten, an denen in diesem Lauf
+    Reservierungs-Slots aus dem Kalender importiert wurden (siehe
+    merge_reservations), für den nachgelagerten Wochenlimit-Check (#98).
     """
     from src import gcal
 
@@ -163,7 +173,7 @@ def reconcile_reservations(service, calendar_id, store, settings):
     local_snapshot = store.get_all_raw()
     remote_events = gcal.list_app_events(service, calendar_id)
     result = merge_reservations(local_snapshot, remote_events, watermark)
-    merged, plan = result["merged"], result["plan"]
+    merged, plan, imported_dates = result["merged"], result["plan"], result["imported_dates"]
 
     for item in plan["delete"]:
         gcal.delete_event(service, calendar_id, item["event_id"])
@@ -193,3 +203,4 @@ def reconcile_reservations(service, calendar_id, store, settings):
 
     store.apply_reconciled(merged)
     settings.set("last_calendar_sync_at", _utc_now_iso())
+    return {"imported_dates": imported_dates}
