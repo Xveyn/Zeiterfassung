@@ -12,9 +12,14 @@ Desktop-App zur Erfassung von Arbeitszeiten mit Kalenderansicht, PDF-Report und 
 - **Multi-Device-Sync** — Optionale Synchronisation von Zeiteinträgen und Mail-Vorlagen über Google Drive (`appDataFolder`), inklusive manueller Konflikt-Auflösung wenn dasselbe Datum offline auf mehreren Geräten bearbeitet wurde
 - **Teilen & Importieren** — Eigene Arbeitszeiten als JSON-Anhang per Mail an eine zweite Person teilen; der Empfänger importiert sie mit Zeitraum-Filter und drei Konflikt-Modi (alles importieren / alles lokal / pro Tag entscheiden)
 - **Reservierungen & Google-Kalender** — Zukünftige Arbeitszeiten pro Tag reservieren (eigenes Konzept neben den Ist-Zeiten, im Kalender als violetter Eck-Punkt markiert); optionaler Abgleich mit einem wählbaren Google Kalender
+- **Reservierungs-Erinnerungen** — Optionale Toast-Benachrichtigung, wenn ein für heute reservierter Slot fällig wird und noch keine Ist-Zeit erfasst ist (konfigurierbare Vorlaufzeit)
+- **PDF-Export** — Bericht für einen frei gewählten Zeitraum direkt als PDF lokal speichern (ohne Mail-Versand)
+- **Wochenstunden-Limit** — Optionales Werkstudenten-Limit über einen konfigurierbaren Zeitraum mit Warnung beim Überschreiten
+- **Kategorien** — Mehrere Zeitblöcke pro Tag mit eigenen Kategorien; Standard-Start/-Ende pro Kategorie, optional pro Wochentag; Kategorie-Aufschlüsselung im Bericht optional
+- **UI-Skalierung** — Stufenloser Skalierungsfaktor für die Oberfläche (gerätelokal)
 - **Zeitraumwahl** — Flexibler Datumsbereich für Reports
-- **Einstellungen** — E-Mail-Vorlagen mit Platzhaltern, Standardpause, Empfänger
-- **Autostart** — Optionaler minimierter Start bei Anmeldung (Windows, macOS, Linux)
+- **Einstellungen** — In Tabs gegliedert (Arbeitszeit / Bericht & Mail / Google / App); E-Mail-Vorlagen mit Platzhaltern, Standardpause, Empfänger
+- **Autostart & Einzelinstanz** — Optionaler minimierter Start bei Anmeldung (Windows, macOS, Linux); es läuft immer nur eine Instanz — ein zweiter Start holt das vorhandene Fenster nach vorn
 - **Update-Check** — Prüft beim Start einmal pro Tag auf neuere Releases und zeigt einen unaufdringlichen Banner mit Direkt-Download
 - **Dark Mode UI** — Modernes dunkles Design
 - **Cross-Platform-Installer** — Per PyInstaller gebaut, als Setup-Exe (Windows), DMG (macOS) und AppImage (Linux) paketierbar
@@ -30,7 +35,7 @@ Zeiterfassung/
 │   ├── background_tasks.py # Hintergrund-Worker + Thread-Mechanik (Token-Refresh, Update-Check, Reconcile)
 │   ├── sync_orchestrator.py # Drive-Sync-Steuerung (manuell/Tray/Pull/Quit, Fehler-Aufbereitung)
 │   ├── update_banner.py   # GitHub-Release-Hinweis-Banner
-│   ├── dialogs/           # Modal-Dialoge (entry, send, settings, share, import, conflicts, category)
+│   ├── dialogs/           # Modal-Dialoge (entry, send, export, settings, share, import, conflicts, category) + geteilter period_picker
 │   ├── storage.py         # JSON-Persistenz der Zeiteinträge
 │   ├── settings.py        # Einstellungen mit Standardwerten
 │   ├── category_defaults.py # Default-Kategorien für Zeit-Slots
@@ -42,10 +47,15 @@ Zeiterfassung/
 │   ├── share.py           # Export/Import von Arbeitszeiten als Share-JSON
 │   ├── reservations.py    # Reservierungen (zukünftige Soll-Zeiten)
 │   ├── reservations_sync.py # Abgleich der Reservierungen mit Google Kalender
+│   ├── reminders.py       # Fälligkeits-Logik für Reservierungs-Erinnerungen (Tk-frei)
+│   ├── reminder_scheduler.py # Periodischer Reminder-Poll → Toast über Tray
+│   ├── weekly_limit.py    # Wochenstunden-Limit (Werkstudenten-Privileg), pure Logik
 │   ├── gcal.py            # Google-Calendar-API-Wrapper
 │   ├── oauth_utils.py     # Gemeinsame OAuth-Token-Boilerplate (Persistenz, Scope-Upgrade) für mail/drive/gcal
-│   ├── tray.py            # Infobereich-Icon (Minimize-to-Tray)
-│   ├── autostart.py       # Plattformabhängiger Autostart (Windows/macOS/Linux)
+│   ├── tray.py            # Infobereich-Icon (Minimize-to-Tray); Plattform-Fassade
+│   ├── tray_mac.py        # Natives macOS-Tray-Backend (NSStatusItem, dormant/opt-in)
+│   ├── autostart.py       # Plattformabhängiger Autostart (Windows-Registry/macOS/Linux)
+│   ├── single_instance.py # Single-Instance-Guard (verhindert parallele Instanzen)
 │   ├── updater.py         # GitHub-Releases-Check (stdlib-only, gedrosselt 1×/Tag)
 │   ├── holidays_de.py     # Feiertags-Lookup (python-holidays)
 │   ├── time_utils.py      # Zeitberechnung und Validierung
@@ -339,7 +349,7 @@ Die App läuft auf **Windows, macOS und Linux**. Plattformspezifische Features w
 | Einstellungen & Vorlagen | ✓ | ✓ | ✓ |
 | Taskbar-Icon (AppUserModelID) | ✓ | — (nicht nötig) | — (nicht nötig) |
 | Window-Icon | ✓ (`.ico`) | ✓ (`.png` Fallback) | ✓ (`.png` Fallback) |
-| Autostart bei Anmeldung | ✓ (VBScript-Shortcut) | ✓ (LaunchAgent plist) | ✓ (`.desktop`-Datei) |
+| Autostart bei Anmeldung | ✓ (Registry HKCU Run) | ✓ (LaunchAgent plist) | ✓ (`.desktop`-Datei) |
 | Standalone-Binary (PyInstaller) | ✓ (`.exe`) | ✓ (`.app` Bundle) | ✓ (AppImage) |
 
 ## Tests

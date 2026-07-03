@@ -1,5 +1,69 @@
 # Changelog
 
+## 1.17.0 — 2026-07-03
+
+### Hinzugefügt
+- **PDF-Export**: Der Bericht für einen frei gewählten Zeitraum lässt sich jetzt
+  direkt als PDF lokal speichern — über den neuen „Export"-Eintrag im Footer und
+  im Tray-Menü, ohne Mail-Versand.
+- **Reservierungs-Erinnerungen**: Optionale Benachrichtigung (Toast), wenn ein für
+  heute reservierter Slot fällig wird und dafür noch keine Ist-Zeit erfasst ist —
+  mit einstellbarer Vorlaufzeit in Minuten. Das Infobereich-Icon läuft dafür auch
+  dann, wenn nur die Erinnerungen aktiv sind (nicht „in den Infobereich
+  minimieren").
+- **Wochenstunden-Limit** (Werkstudenten): In den Einstellungen lässt sich ein
+  maximales Wochenstunden-Kontingent für einen konfigurierbaren Zeitraum
+  hinterlegen. Beim Speichern einer Ist-Zeit und nach einem Google-Kalender-Abgleich
+  warnt die App, wenn eine Woche das Limit überschreitet (gezählt werden nur
+  Ist-Zeiten, keine Reservierungen).
+- **UI-Skalierung**: Ein Schieberegler in den Einstellungen skaliert die gesamte
+  Oberfläche stufenweise; die Änderung greift nach einem kurzen Neustart und wirkt
+  auf allen Plattformen (inklusive macOS). Der Faktor ist gerätelokal und wird
+  nicht synchronisiert.
+- **Kategorie-Standardzeiten pro Wochentag**: Die Standard-Start/-Endzeit einer
+  Kategorie lässt sich jetzt optional pro Wochentag (Mo–So) hinterlegen, umschaltbar
+  über einen Modus-Toggle im Kategorien-Dialog. Der Eintrags-Dialog zieht beim
+  Anlegen automatisch die passende Zeit für den jeweiligen Wochentag.
+- **Kategorie-Aufschlüsselung im Bericht optional**: Die „Summe je Kategorie" im
+  Bericht lässt sich beim Senden und Exportieren an- und abschalten; liegen nur
+  unkategorisierte Slots vor, entfällt die Tabelle automatisch.
+
+### Geändert
+- **Einstellungen in Reitern**: Der Einstellungen-Dialog ist in vier Tabs gegliedert
+  (Arbeitszeit / Bericht & Mail / Google / App) — statt einer einzigen langen Liste.
+- **Autostart & Einzelinstanz** (Windows): Der Autostart läuft jetzt über einen
+  Registry-Eintrag, den App und Installer gemeinsam nutzen — dadurch kann kein
+  doppelter Autostart-Eintrag mehr entstehen, der beim Hochfahren zwei Instanzen
+  parallel startete. Die Autostart-Checkbox in den Einstellungen zeigt jetzt den
+  tatsächlichen Zustand an, auch wenn er über den Installer gesetzt wurde. Eine
+  bestehende Alt-Verknüpfung im Autostart-Ordner wird beim ersten Start automatisch
+  übernommen. Zusätzlich läuft die App jetzt immer nur einmal: Ein zweiter Start
+  holt das vorhandene Fenster nach vorn, statt eine zweite Instanz zu öffnen.
+- **Arbeitszeit-Tooltip**: Der Hover-Tooltip im Kalender zeigt die erfasste
+  Arbeitszeit schon ab einem einzelnen Slot (vorher erst bei mehreren).
+
+### Behoben
+- Reservierungen lassen sich per Linksklick nicht mehr für bereits vergangene Tage
+  anlegen.
+- Bericht-PDF: Die Stundentabelle kollabiert die linken Spalten nicht mehr.
+- Update-Banner: Das Fenster wächst jetzt um die Banner-Höhe, sodass der Footer
+  sichtbar bleibt (vorher konnte er abgeschnitten werden).
+- Kleinere Dialog-Interaktionen: Die Löschen-Rückfrage ist auch bei nur einer
+  betroffenen Einheit einen kurzen Moment gesperrt (gegen versehentliches
+  Sofort-Bestätigen), und ein Zellen-Tooltip schließt jetzt zuverlässig, sobald
+  sich ein modaler Dialog darüber öffnet.
+
+### Intern
+- Natives macOS-Infobereich-Icon (NSStatusItem) als Backend vorbereitet — vorerst
+  ruhend und nur per Opt-in (`ZEIT_MACOS_TRAY=1`) aktivierbar, bis das macOS-Gate
+  durchlaufen ist; ein Main-Thread-Absturz des macOS-Trays wurde behoben.
+- Pre-Release-Builds: Der Release-Workflow kann jetzt plattformübergreifende
+  Test-Builds erzeugen (fortlaufender `-pre.N`-Tag, als Pre-Release markiert und vom
+  Auto-Updater ignoriert), um Änderungen vor einem echten Release auf allen
+  Plattformen zu testen.
+- `SYNCED_SETTING_KEYS` als Single Source of Truth in `settings.py`; die
+  Save-Pfad-Logik des Einstellungen-Dialogs ist headless testbar extrahiert.
+
 ## 1.16.1 — 2026-06-25
 
 ### Behoben

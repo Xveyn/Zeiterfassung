@@ -205,7 +205,8 @@ Lokal: `pytest` aus dem Repo-Root. Alle Tests müssen vor dem PR-Merge grün sei
 - `src/time_utils.py` — Stundenberechnung, KW-Labels
 - `src/holidays_de.py` — Feiertags-Lookup (über `holidays`-Lib)
 - `src/paths.py` — `get_base_path()` dispatched über `platform.system()` und Frozen- vs. Repo-Modus
-- `src/autostart.py` — plattformabhängiger Autostart (Windows-Shortcut / macOS-LaunchAgent / Linux `.desktop`)
+- `src/autostart.py` — plattformabhängiger Autostart (Windows-**Registry** HKCU Run, gleicher Wertname `Zeiterfassung` wie `installer.iss` → strukturell ein Eintrag; macOS-LaunchAgent / Linux `.desktop`). `is_autostart_enabled()` liest den echten Zustand, `migrate_legacy_autostart()` überführt Alt-Startup-Shortcuts frozen-gated in die Registry
+- `src/single_instance.py` — Tk-freier Single-Instance-Guard (pro-Nutzer-Localhost-Port, `acquire`/`serve`/`release`); verhindert parallele Instanzen und holt bei manuellem Zweitstart das vorhandene Fenster nach vorn (SHOW), beim Autostart-Doppelfeuer ohne Fenster-Pop (PING)
 - `src/updater.py` — GitHub-Releases-Check (stdlib-only, gedrosselt 1×/Tag)
 - `src/platform_open.py` — `os.startfile`/`open`/`xdg-open`-Wrapper
 - `src/logging_setup.py` — File-Logging + globaler Excepthook (Setup-Fehler sind **nicht-fatal**, siehe `main.py`)
