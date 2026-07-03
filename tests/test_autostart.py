@@ -4,11 +4,23 @@ import platform
 import plistlib
 import pytest
 from unittest.mock import patch, MagicMock
-from src.autostart import enable_autostart, disable_autostart, _get_startup_folder, _get_shortcut_path
+from src.autostart import enable_autostart, disable_autostart, migrate_legacy_autostart
 from src.autostart import (
     _macos_plist_path,
     _linux_desktop_path,
+    is_autostart_enabled,
+    _windows_run_command,
 )
+
+
+def test_windows_run_command_matches_installer_format():
+    cmd = _windows_run_command(r"C:\app\Zeiterfassung.exe", "--minimized")
+    assert cmd == r'"C:\app\Zeiterfassung.exe" --minimized'
+
+
+def test_windows_run_command_without_arguments():
+    cmd = _windows_run_command(r"C:\app\Zeiterfassung.exe", "")
+    assert cmd == r'"C:\app\Zeiterfassung.exe"'
 
 
 @pytest.fixture
@@ -20,41 +32,40 @@ def fake_startup(tmp_path, monkeypatch):
 
 @pytest.mark.skipif(platform.system() != "Windows", reason="Windows only")
 class TestWindowsAutostart:
+    @pytest.fixture
+    def temp_run_key(self, monkeypatch):
+        import winreg
+        subkey = r"Software\ZeiterfassungTest\Run"
+        monkeypatch.setattr("src.autostart._RUN_KEY_SUBKEY", subkey)
+        yield subkey
+        try:
+            winreg.DeleteKey(winreg.HKEY_CURRENT_USER, subkey)
+        except FileNotFoundError:
+            pass
 
-    def test_get_startup_folder_returns_existing_dir(self):
-        folder = _get_startup_folder()
-        assert os.path.isdir(folder)
+    def test_enable_writes_registry_value(self, temp_run_key, fake_startup):
+        import winreg
+        enable_autostart(r"C:\app\Zeiterfassung.exe", "--minimized")
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, temp_run_key) as key:
+            value, _typ = winreg.QueryValueEx(key, "Zeiterfassung")
+        assert value == r'"C:\app\Zeiterfassung.exe" --minimized'
 
-    def test_get_shortcut_path(self, fake_startup):
-        path = _get_shortcut_path()
-        assert path == str(fake_startup / "Zeiterfassung.lnk")
+    def test_disable_removes_registry_value(self, temp_run_key, fake_startup):
+        import winreg
+        enable_autostart(r"C:\app\Zeiterfassung.exe", "--minimized")
+        disable_autostart()
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, temp_run_key) as key:
+            with pytest.raises(FileNotFoundError):
+                winreg.QueryValueEx(key, "Zeiterfassung")
 
-    def test_enable_creates_shortcut(self, fake_startup):
-        with patch("src.autostart.subprocess.run") as mock_run:
-            mock_run.return_value = MagicMock(returncode=0)
-            enable_autostart(r"C:\app\Zeiterfassung.exe", "--minimized")
-            mock_run.assert_called_once()
-            args = mock_run.call_args[0][0]
-            assert args[0] == "cscript"
-            assert args[1] == "//nologo"
-            assert args[2].endswith(".vbs")
+    def test_disable_without_value_no_error(self, temp_run_key, fake_startup):
+        disable_autostart()  # kein Wert vorhanden → kein Fehler
 
-    def test_enable_cleans_up_vbs(self, fake_startup):
-        with patch("src.autostart.subprocess.run") as mock_run:
-            mock_run.return_value = MagicMock(returncode=0)
-            enable_autostart(r"C:\app\Zeiterfassung.exe", "--minimized")
-            vbs_path = mock_run.call_args[0][0][2]
-            assert not os.path.exists(vbs_path)
-
-    def test_disable_removes_shortcut(self, fake_startup):
+    def test_enable_removes_legacy_shortcut(self, temp_run_key, fake_startup):
         shortcut = fake_startup / "Zeiterfassung.lnk"
         shortcut.write_text("fake")
-        assert shortcut.exists()
-        disable_autostart()
+        enable_autostart(r"C:\app\Zeiterfassung.exe", "--minimized")
         assert not shortcut.exists()
-
-    def test_disable_no_shortcut_no_error(self, fake_startup):
-        disable_autostart()
 
 
 class TestMacOSAutostart:
@@ -174,3 +185,90 @@ class TestLinuxAutostart:
 
     def test_disable_tolerates_missing_file(self, fake_home):
         disable_autostart()
+
+
+class TestIsAutostartEnabled:
+    def test_linux_true_when_desktop_exists(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("HOME", str(tmp_path))
+        monkeypatch.setenv("USERPROFILE", str(tmp_path))
+        monkeypatch.delenv("HOMEDRIVE", raising=False)
+        monkeypatch.delenv("HOMEPATH", raising=False)
+        monkeypatch.setattr("src.autostart.platform.system", lambda: "Linux")
+        assert is_autostart_enabled() is False
+        enable_autostart("/opt/Zeiterfassung.AppImage", "--minimized")
+        assert is_autostart_enabled() is True
+
+    @pytest.mark.skipif(platform.system() != "Darwin", reason="macOS only")
+    def test_macos_true_when_plist_exists(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("HOME", str(tmp_path))
+        monkeypatch.setenv("USERPROFILE", str(tmp_path))
+        monkeypatch.delenv("HOMEDRIVE", raising=False)
+        monkeypatch.delenv("HOMEPATH", raising=False)
+        monkeypatch.setattr("src.autostart.platform.system", lambda: "Darwin")
+        (tmp_path / "Library" / "LaunchAgents").mkdir(parents=True)
+        assert is_autostart_enabled() is False
+
+    @pytest.mark.skipif(platform.system() != "Windows", reason="Windows only")
+    def test_windows_true_when_registry_value_exists(self, monkeypatch, tmp_path):
+        import winreg
+        subkey = r"Software\ZeiterfassungTest\Run2"
+        monkeypatch.setattr("src.autostart._RUN_KEY_SUBKEY", subkey)
+        monkeypatch.setattr("src.autostart._get_startup_folder", lambda: str(tmp_path))
+        assert is_autostart_enabled() is False
+        enable_autostart(r"C:\app\Zeiterfassung.exe", "--minimized")
+        try:
+            assert is_autostart_enabled() is True
+        finally:
+            winreg.DeleteKey(winreg.HKEY_CURRENT_USER, subkey)
+
+
+@pytest.mark.skipif(platform.system() != "Windows", reason="Windows only")
+class TestMigrateLegacyAutostart:
+    @pytest.fixture
+    def frozen_win(self, monkeypatch, tmp_path):
+        import winreg
+        subkey = r"Software\ZeiterfassungTest\RunMig"
+        monkeypatch.setattr("src.autostart._RUN_KEY_SUBKEY", subkey)
+        monkeypatch.setattr("src.autostart._get_startup_folder", lambda: str(tmp_path))
+        monkeypatch.setattr("src.autostart.sys.frozen", True, raising=False)
+        monkeypatch.setattr("src.autostart.sys.executable",
+                            str(tmp_path / "Zeiterfassung.exe"), raising=False)
+        yield tmp_path
+        try:
+            winreg.DeleteKey(winreg.HKEY_CURRENT_USER, subkey)
+        except FileNotFoundError:
+            pass
+
+    def test_state2_shortcut_only_writes_registry(self, frozen_win):
+        (frozen_win / "Zeiterfassung.lnk").write_text("fake")
+        migrate_legacy_autostart(str(frozen_win))
+        from src.autostart import _windows_registry_enabled
+        assert _windows_registry_enabled() is True
+        assert not (frozen_win / "Zeiterfassung.lnk").exists()
+
+    def test_state3_both_keeps_registry_drops_shortcut(self, frozen_win):
+        enable_autostart(str(frozen_win / "Zeiterfassung.exe"), "--minimized")
+        (frozen_win / "Zeiterfassung.lnk").write_text("fake")
+        migrate_legacy_autostart(str(frozen_win))
+        from src.autostart import _windows_registry_enabled
+        assert _windows_registry_enabled() is True
+        assert not (frozen_win / "Zeiterfassung.lnk").exists()
+
+    def test_state4_nothing_stays_nothing(self, frozen_win):
+        migrate_legacy_autostart(str(frozen_win))
+        from src.autostart import _windows_registry_enabled
+        assert _windows_registry_enabled() is False
+
+    def test_idempotent_second_run_noop(self, frozen_win):
+        (frozen_win / "Zeiterfassung.lnk").write_text("fake")
+        migrate_legacy_autostart(str(frozen_win))
+        migrate_legacy_autostart(str(frozen_win))  # kein Fehler, kein Shortcut mehr
+        assert not (frozen_win / "Zeiterfassung.lnk").exists()
+
+    def test_not_frozen_is_noop(self, frozen_win, monkeypatch):
+        monkeypatch.setattr("src.autostart.sys.frozen", False, raising=False)
+        (frozen_win / "Zeiterfassung.lnk").write_text("fake")
+        migrate_legacy_autostart(str(frozen_win))
+        from src.autostart import _windows_registry_enabled
+        assert _windows_registry_enabled() is False          # nichts geschrieben
+        assert (frozen_win / "Zeiterfassung.lnk").exists()   # Shortcut unangetastet

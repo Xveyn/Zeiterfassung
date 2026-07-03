@@ -8,7 +8,7 @@ import traceback
 from tkinter import messagebox, ttk
 from typing import Any
 
-from src.autostart import disable_autostart, enable_autostart, resolve_autostart_target
+from src.autostart import disable_autostart, enable_autostart, is_autostart_enabled, resolve_autostart_target
 from src.platform_open import open_folder
 from src.theme import (
     ACCENT, BG, CELL_BG, FONT, FONT_BOLD, FONT_SMALL,
@@ -710,7 +710,7 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
         cursor="hand2",
     ).pack(anchor="w")
 
-    autostart_var = tk.BooleanVar(value=settings.get("autostart"))
+    autostart_var = tk.BooleanVar(value=is_autostart_enabled())
     tk.Checkbutton(
         app_frame, text="Autostart (minimiert bei Anmeldung)",
         variable=autostart_var, font=FONT,
@@ -863,7 +863,7 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
         old_wsl_end = settings.get("werkstudent_limit_end")
 
         new_autostart = autostart_var.get()
-        old_autostart = settings.get("autostart")
+        old_autostart = is_autostart_enabled()
 
         # Autostart-Toggle muss vor dem Settings-Write passieren, weil
         # er failen kann und dann nichts persistiert werden soll.
