@@ -54,6 +54,7 @@ class GridRenderer:
         self._suppress_geometry = False
         self._last_refresh_view = None
         self._last_refresh_columns = None
+        self._last_footer_wide = None
         # Transienter Datum/View-Stand (von refresh gesetzt; Defaults nur
         # Platzhalter, refresh() ueberschreibt sie vor jedem Render).
         self._view_mode = "month"
@@ -121,6 +122,14 @@ class GridRenderer:
                 new_inactive.columnconfigure(col, weight=1 if col < current_cols else 0)
             self._grid_frames[inactive_idx] = new_inactive
             self._grid_frames[self._active_grid_idx].lift()
+
+        # Footer-Reservierung (s. _update_footer) wechselt die Breite, wenn der
+        # Stundenlohn zur Laufzeit gesetzt/entfernt wird — dann muss die fixe
+        # Fensterbreite nachziehen, auch ohne Spalten-/View-Wechsel, sonst würde
+        # die breitere Lohn-Variante unter dem fixen Fenster abgeschnitten.
+        footer_wide = (self._settings.get("hourly_rate") or 0) > 0
+        if view_changed or cols_changed or self._last_footer_wide != footer_wide:
+            self._last_footer_wide = footer_wide
             self.repin_geometry()
 
     def repin_geometry(self):
@@ -439,13 +448,23 @@ class GridRenderer:
     def _update_footer(self, total_hours):
         rate = self._settings.get("hourly_rate") or 0
         total_rounded = round(total_hours, 2)
+        # width fixiert die reqwidth des Labels → kein Pack-Reflow, wenn sich die
+        # Summe beim Monatswechsel ändert. Die Reservierung hängt am Stundenlohn:
+        # mit Lohn deckt width=40 die längste Variante ab
+        # ("Gesamt: 999.99h  —  99999.99 € brutto" ≈ 38 Zeichen); ohne Lohn zeigt
+        # der Footer nur "Gesamt: Xh" (≤ 16 Zeichen), dann genügt width=16 — sonst
+        # zöge die leere 40-Zeichen-Reservierung das Fenster unnötig breiter als
+        # das Kalender-Grid (der Footer packt fill=X unter der Root und geht so in
+        # deren reqwidth ein). refresh() pinnt die Breite neu, wenn der Lohn zur
+        # Laufzeit gesetzt/entfernt wird (Wechsel der Reservierungsbreite).
         if rate > 0:
             brutto = round(total_hours * rate, 2)
             self._footer_label.config(
-                text=f"Gesamt: {total_rounded}h  —  {brutto:.2f} € brutto"
+                text=f"Gesamt: {total_rounded}h  —  {brutto:.2f} € brutto",
+                width=40,
             )
         else:
-            self._footer_label.config(text=f"Gesamt: {total_rounded}h")
+            self._footer_label.config(text=f"Gesamt: {total_rounded}h", width=16)
 
     def _entry_hours(self, entry):
         return round(sum(

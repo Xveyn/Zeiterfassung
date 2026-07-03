@@ -270,12 +270,12 @@ class App:
         footer_frame = tk.Frame(self.root, bg=BG)
         footer_frame.pack(fill=tk.X, padx=10, pady=(0, 10))
 
-        # width fixiert reqwidth → kein Pack-Reflow, wenn sich die Stunden-/
-        # Brutto-Summe beim Monatswechsel ändert. 40 deckt die längste
-        # Variante ab ("Gesamt: 999.99h  —  99999.99 € brutto" ≈ 38 Zeichen).
+        # Die reqwidth-fixierende Label-Breite setzt GridRenderer._update_footer
+        # abhängig vom Stundenlohn (16 ohne, 40 mit — Details dort). Der
+        # Startwert 16 gilt bis zum ersten refresh (Vorab-Messung vor mainloop).
         self.footer_label = tk.Label(
             footer_frame, text="Gesamt: 0.0h", font=FONT_FOOTER,
-            bg=BG, fg=ACCENT, width=40,
+            bg=BG, fg=ACCENT, width=16,
         )
         self.footer_label.pack(side=tk.LEFT, expand=True)
 

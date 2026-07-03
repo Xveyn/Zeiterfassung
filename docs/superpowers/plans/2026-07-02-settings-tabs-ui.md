@@ -1,3 +1,133 @@
+# Settings-Dialog auf Tabs — Implementierungsplan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** Den in die Höhe gewachsenen, teils einklappbaren Settings-Dialog in einen `ttk.Notebook` mit 4 thematischen Tabs umbauen, sodass er die Fensterbreite nutzt und auf allen Skalierungsstufen (75–200 %) auf den Bildschirm passt.
+
+**Architecture:** Reiner Layout-/UX-Umbau von `open_settings_dialog`. Ein neuer Theme-Helfer `apply_notebook_style` liefert das Dark-Styling für das Notebook. Der Dialog bekommt statt einer globalen Grid-Reihe (0–36) vier `tk.Frame`-Tabs mit je lokalem Grid; jedes bestehende Widget/Callback wird unverändert in seinen Ziel-Tab umgehängt. `save_settings` bleibt eine Funktion über alle Tabs und springt bei Validierungsfehlern auf den betroffenen Tab. Keine Geschäftslogik, keine Settings-Keys, keine OAuth-/Sync-Pfade ändern sich.
+
+**Tech Stack:** Python 3, Tkinter/ttk (clam-Theme), Pillow (nur für die lokale Screenshot-Verifikation).
+
+**Referenz-Spec:** `docs/superpowers/specs/2026-07-02-settings-tabs-ui-design.md`
+
+## Global Constraints
+
+- Datumsformat: intern ISO (`YYYY-MM-DD`), in der UI deutsch über `src/time_utils.py::format_iso_date`. Hier nicht relevant (keine neuen datumsanzeigenden Stellen), aber bestehende `format_iso_date`-Nutzung in der Sync-Zeile bleibt.
+- Keine neuen Google-Imports auf Modulebene (CI installiert kein `requirements.txt`); die bestehenden Lazy-Imports in den Callbacks bleiben lazy.
+- Klick-Modell unangetastet — dieser Dialog hat keine Lösch-Pfade.
+- `pytest` **und** `ruff check .` müssen grün bleiben.
+- Dialog bleibt `resizable(False, False)`, modal (`grab_set`), Dark-Titlebar, zentriert auf Parent.
+- Öffentliche Signatur von `open_settings_dialog(parent, settings, base_path, on_change, *, conflicts_store=None, storage=None, reservation_store=None, on_request_restart=None)` bleibt **unverändert**; Rückgabewert bleibt `None` (Aufrufer `src/ui.py:343` wertet keinen aus).
+- Verifikation der UI läuft lokal per Screenshot-Harness (Windows-Dev-Maschine hat ein Display; CI nicht) — kein neuer CI-Test, der einen Tk-Root braucht.
+
+**Vorab lokal verifiziert** (Screenshot-Harness, identische Maschine/Fonts): Dialogmaße 443×573 px @100 %, 601×760 @150 %, 792×915 @200 %. Damit passt der Dialog auch @200 % in eine 1080p-Arbeitsfläche (~1030 px nutzbar) → **kein Scroll-Fallback nötig**. Der dichteste Tab ist „Google".
+
+---
+
+### Task 1: Theme-Helfer `apply_notebook_style`
+
+**Files:**
+- Modify: `src/theme.py` (neue Funktion direkt nach `apply_combobox_style`, vor `dark_entry` — nach Zeile 211)
+
+**Interfaces:**
+- Produces: `apply_notebook_style(dialog) -> None` — konfiguriert die ttk-Styles `Dark.TNotebook` und `Dark.TNotebook.Tab`. Setzt **kein** Theme (Voraussetzung: `apply_combobox_style` lief vorher und hat `theme_use("clam")` gesetzt). Nutzt die bereits in `theme.py` definierten Farben `BG`, `CELL_BG`, `CELL_BG_HOVER`, `TEXT`, `TEXT_MUTED`, `FONT`.
+
+- [ ] **Step 1: Funktion implementieren**
+
+In `src/theme.py` direkt nach dem Ende von `apply_combobox_style` (nach der `Vertical.TScrollbar`-`style.map`, Zeile 211) einfügen:
+
+```python
+def apply_notebook_style(dialog):
+    """Dark-Styling für ttk.Notebook (Tab-Leiste + Inhaltsfläche).
+
+    MUSS nach apply_combobox_style laufen — das setzt global theme_use("clam");
+    diese Funktion setzt selbst KEIN Theme. Aktiver Tab bekommt BG (verschmilzt
+    mit der Inhaltsfläche), inaktive CELL_BG/TEXT_MUTED, Hover CELL_BG_HOVER.
+    bordercolor/lightcolor/darkcolor der Notebook-Fläche auf BG, sonst zeichnet
+    clam einen hellen 3D-Rand um den Inhalt, der aus dem Dark-Theme fällt.
+    focuscolor=BG unterdrückt den Punktrahmen um den Tab-Text bei Fokus.
+    ACCENT wird bewusst NICHT verwendet — das ist der rote Fehler-/Lösch-Akzent."""
+    style = ttk.Style(dialog)
+    style.configure(
+        "Dark.TNotebook",
+        background=BG, borderwidth=0, tabmargins=(6, 6, 6, 0),
+        bordercolor=BG, lightcolor=BG, darkcolor=BG,
+    )
+    style.configure(
+        "Dark.TNotebook.Tab",
+        background=CELL_BG, foreground=TEXT_MUTED,
+        bordercolor=BG, lightcolor=CELL_BG, darkcolor=CELL_BG,
+        padding=(14, 6), font=FONT, focuscolor=BG,
+    )
+    style.map(
+        "Dark.TNotebook.Tab",
+        background=[("selected", BG), ("active", CELL_BG_HOVER)],
+        foreground=[("selected", TEXT), ("active", TEXT)],
+        lightcolor=[("selected", BG)],
+        darkcolor=[("selected", BG)],
+    )
+```
+
+- [ ] **Step 2: Smoke-Test lokal (Import + Style baut ohne Fehler)**
+
+Scratchpad-Datei `smoke_notebook.py` schreiben und ausführen:
+
+```python
+import tkinter as tk
+from tkinter import ttk
+from src.theme import apply_combobox_style, apply_notebook_style
+
+root = tk.Tk()
+root.withdraw()
+apply_combobox_style(root)
+apply_notebook_style(root)
+nb = ttk.Notebook(root, style="Dark.TNotebook")
+f = tk.Frame(nb)
+nb.add(f, text="Test")
+print("ok")
+root.destroy()
+```
+
+Run: `python smoke_notebook.py`
+Expected: Ausgabe `ok`, kein TclError.
+
+- [ ] **Step 3: Ruff**
+
+Run: `ruff check src/theme.py`
+Expected: keine Findings.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add src/theme.py
+git commit -m "feat(theme): apply_notebook_style — Dark-Styling für ttk.Notebook"
+```
+
+---
+
+### Task 2: `settings_dialog.py` auf Tabs umbauen
+
+**Files:**
+- Modify: `src/dialogs/settings_dialog.py` (Import-Zeile + kompletter Rewrite von `open_settings_dialog`)
+
+**Interfaces:**
+- Consumes: `apply_notebook_style` aus Task 1.
+- Produces: unveränderte öffentliche Signatur (s. Global Constraints), Rückgabe `None`.
+
+**Was sich strukturell ändert (Überblick, Details im Code unten):**
+- `apply_notebook_style` zusätzlich zum bestehenden `from src.theme import (...)` importieren.
+- Nach `apply_combobox_style(dialog)` folgt `apply_notebook_style(dialog)`.
+- Ein `ttk.Notebook` (gepackt) mit vier `tk.Frame`-Tabs (`tab_work`, `tab_mail`, `tab_google`, `tab_app`); darunter die Button-Zeile (gepackt). Der Dialog hat nur noch diese zwei direkten Kinder.
+- Der `label(...)`-Helfer bekommt den Ziel-Frame als **erstes** Argument. Neuer Helfer `subheader(frame, text, row, top_pad=16)` für die „— Titel —"-Zwischenüberschriften.
+- **Ersatzlos entfernt:** `_section_header` samt Collapse-/`_was_in_grid`-Logik, `times_label`/`toggle_times` (Standardzeiten sind dauerhaft sichtbar), der finale `mv_toggle()`-Aufruf, alle `*_widgets`/`*_toggle`-Variablen.
+- „Kategorien verwalten" wandert aus der Button-Zeile in den Tab „Arbeitszeit".
+- `save_settings` springt bei jedem der drei Abbruch-Pfade auf den zuständigen Tab: Standardzeit ungültig → `work`, WSL-Zeitraum ungültig → `work`, Autostart-Fehler → `app`. Die Wochenlimit-**Warnung** (kein Abbruch) springt ebenfalls auf `work`.
+
+- [ ] **Step 1: Datei komplett ersetzen**
+
+Kompletten Inhalt von `src/dialogs/settings_dialog.py` durch Folgendes ersetzen:
+
+```python
 import calendar
 import datetime
 import logging
@@ -919,3 +1049,123 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
     attach_unfocus_on_click(dialog)
     dialog.bind("<Escape>", lambda _e: dialog.destroy())
     center_dialog_on_parent(dialog, parent)
+```
+
+- [ ] **Step 2: Bestehende Tests laufen lassen (dürfen nicht brechen)**
+
+Run: `pytest -q`
+Expected: PASS — kein Test instanziert den Dialog; die aus dem Dialog extrahierte pure Logik (`code_for_state_label`, `parse_hourly_rate`, `resolve_calendar_id`) ist unverändert.
+
+- [ ] **Step 3: Ruff**
+
+Run: `ruff check .`
+Expected: keine Findings. (Insbesondere kein ungenutzter Import — `format_iso_date`, alle Theme-Symbole werden verwendet; `FONT_BOLD` in `subheader`/Darstellung.)
+
+- [ ] **Step 4: Screenshot-Verifikation @100/150/200 %**
+
+Scratchpad-Datei `verify_settings.py` schreiben (nutzt die ECHTEN Repo-Module) und ausführen:
+
+```python
+import os
+import tempfile
+import tkinter as tk
+from PIL import ImageGrab
+from src.settings import Settings
+from src.theme import init_fonts
+from src.dialogs.settings_dialog import open_settings_dialog
+
+OUT = os.path.dirname(os.path.abspath(__file__))
+
+
+def run_at(pct):
+    tmp = tempfile.mkdtemp()
+    st = Settings(os.path.join(tmp, "settings.json"))
+    st.set("ui_scale", pct / 100)
+    root = tk.Tk()
+    root.withdraw()
+    init_fonts(root, st.get("ui_scale"))
+    open_settings_dialog(root, st, tmp, lambda: None)
+    dialog = root.winfo_children()[0]
+    nb = [w for w in dialog.winfo_children() if w.winfo_class() == "TNotebook"][0]
+
+    def grab(name):
+        dialog.geometry("+0+0")
+        dialog.attributes("-topmost", True)
+        dialog.lift()
+        dialog.update_idletasks()
+        dialog.update()
+        x, y = dialog.winfo_rootx(), dialog.winfo_rooty()
+        w, h = dialog.winfo_width(), dialog.winfo_height()
+        sw, sh = dialog.winfo_screenwidth(), dialog.winfo_screenheight()
+        ImageGrab.grab(bbox=(x, y, min(x + w, sw), min(y + h, sh))).save(
+            os.path.join(OUT, name))
+        return w, h
+
+    def do():
+        for i, key in enumerate(("work", "mail", "google", "app")):
+            nb.select(i)
+            dialog.update_idletasks()
+            w, h = grab(f"v_{key}_{pct}.png")
+            print(f"{pct}% {key} {w}x{h}")
+        root.destroy()
+
+    root.after(500, do)
+    root.mainloop()
+
+
+for p in (100, 150, 200):
+    run_at(p)
+```
+
+Run: `python verify_settings.py`
+Expected: 12 PNGs. Prüfen (Read-Tool auf die PNGs):
+- **@100 %:** alle vier Tabs vollständig, Höhe ~570 px, Speichern/Abbrechen sichtbar.
+- **@200 %:** „Google"-Tab (dichtester) vollständig, Höhe ≤ ~1030 px, Buttons sichtbar, nichts abgeschnitten.
+- Aktiver Tab hebt sich klar vom inaktiven ab (heller Inhaltston vs. dunklere Reiter).
+- Kein heller 3D-Rand um die Inhaltsfläche.
+
+Falls @200 % der Google-Tab wider Erwarten überläuft: Canvas+Scrollbar-Fallback **nur für tab_google** nach Vorbild `src/dialogs/import_dialog.py:445-485` nachrüsten. (Vorab-Verifikation ergab 792×915 → nicht erwartet.)
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/dialogs/settings_dialog.py
+git commit -m "feat(settings): Dialog auf ttk.Notebook mit 4 Tabs umbauen
+
+- Arbeitszeit / Bericht & Mail / Google / App statt einer langen Spalte
+- Klapp-Sections (_section_header) entfernt, Standardzeiten dauerhaft sichtbar
+- Kategorien-Button in den Arbeitszeit-Tab
+- save_settings springt bei Validierungsfehlern auf den betroffenen Tab
+- passt @75-200 % auf den Bildschirm (443x573 @100, 792x915 @200)"
+```
+
+---
+
+### Task 3: Doku nachziehen
+
+**Files:**
+- Modify: `src/CLAUDE.md` (Dialoge-Abschnitt — kurzer Hinweis auf die Tab-Struktur)
+
+**Interfaces:** keine.
+
+- [ ] **Step 1: Dialog-Beschreibung ergänzen**
+
+In `src/CLAUDE.md` im Abschnitt „## Dialoge (`src/dialogs/`)" die `settings_dialog`-Nennung um den Zusatz ergänzen (im bestehenden Satz):
+
+> `settings_dialog` (4 Tabs über `ttk.Notebook`: Arbeitszeit / Bericht & Mail / Google / App; Dark-Styling via `theme.apply_notebook_style`)
+
+- [ ] **Step 2: Commit**
+
+```bash
+git add src/CLAUDE.md
+git commit -m "docs(src): Settings-Dialog-Tab-Struktur in der Architektur-Referenz vermerken"
+```
+
+---
+
+## Self-Review (durch den Plan-Autor bereits durchlaufen)
+
+- **Spec-Abdeckung:** 4-Tab-Aufteilung (Task 2), `apply_notebook_style` inkl. Hover + Rand-Abdunklung (Task 1), Entfall der Klapp-Mechanik (Task 2), Fehlerpfad→Tab für alle drei Abbrüche + Warnung (Task 2 `save_settings`), Skalierungs-Verifikation 100/150/200 % (Task 2 Step 4), Doku (Task 3). Kein offener Spec-Punkt.
+- **Platzhalter:** keine — vollständiger Dateiinhalt statt „analog zu…".
+- **Typ-/Namenskonsistenz:** `apply_notebook_style` identisch in Task 1 (Definition) und Task 2 (Import/Aufruf); Style-Namen `Dark.TNotebook`/`Dark.TNotebook.Tab` konsistent; `tabs`-Dict-Keys `work/mail/google/app` konsistent mit den `notebook.select(tabs[...])`-Aufrufen.
+- **Pre-Release-Hinweis (Root-CLAUDE.md):** Beim PR vorschlagen, einen Pre-Release zu triggern — `ttk.Notebook` unter clam rendert auf macOS/Linux mit anderen Font-Metriken; das Tab-Rendering ist auf der Windows-Dev-Maschine nicht vollständig verifizierbar.
