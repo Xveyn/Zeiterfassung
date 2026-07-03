@@ -37,12 +37,12 @@ class _Guard:
 
     def _try_bind(self):
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        if sys.platform == "win32":
-            # Windows: verhindert, dass ein zweiter Prozess denselben Port bindet.
-            sock.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
-        else:
-            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         try:
+            if sys.platform == "win32":
+                # Windows: verhindert, dass ein zweiter Prozess denselben Port bindet.
+                sock.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+            else:
+                sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             sock.bind(("127.0.0.1", self.port))
             sock.listen(5)
         except OSError:
@@ -65,6 +65,7 @@ class _Guard:
                 continue
             except OSError:
                 break
+            conn.settimeout(_ACK_TIMEOUT)
             with conn:
                 try:
                     data = conn.recv(32)

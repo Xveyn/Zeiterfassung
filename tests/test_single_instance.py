@@ -2,6 +2,7 @@
 import socket
 import sys
 import threading
+import time
 
 import pytest
 
@@ -63,6 +64,35 @@ def test_pending_show_before_serve_fires_on_serve(tmp_path):
         fired = threading.Event()
         g1.serve(lambda: fired.set())                        # gepuffertes SHOW feuert nach
         assert fired.wait(timeout=3.0) is True
+    finally:
+        g1.release()
+
+
+def test_silent_connection_does_not_wedge_listener(tmp_path):
+    base = str(tmp_path)
+    g1 = acquire(base, show_requested=True)
+    fired = threading.Event()
+    g1.serve(lambda: fired.set())
+    try:
+        # Ein Peer verbindet sich und hält die Verbindung offen, OHNE etwas zu senden.
+        port = _derive_port(base)
+        silent = socket.create_connection(("127.0.0.1", port), timeout=2.0)
+        try:
+            # Der Listener darf nicht dauerhaft wedgen: nach dem Timeout der stillen
+            # Verbindung muss ein echtes SHOW wieder bestätigt werden. Der erste
+            # Versuch überlappt zeitlich mit dem serverseitigen recv-Timeout-Fenster
+            # der stillen Verbindung (beide nutzen _ACK_TIMEOUT und starten praktisch
+            # gleichzeitig) und darf knapp scheitern — das ist ein Timing-Artefakt,
+            # kein Bug. Ohne Fix (Accept-Loop wedgt für immer) würde dagegen JEDER
+            # Versuch bis zum Ablauf des Deadline-Fensters scheitern.
+            deadline = time.monotonic() + 10.0
+            acked = False
+            while not acked and time.monotonic() < deadline:
+                acked = acquire(base, show_requested=True) is None
+            assert acked is True
+            assert fired.wait(timeout=3.0) is True
+        finally:
+            silent.close()
     finally:
         g1.release()
 
