@@ -114,10 +114,23 @@ denselben OAuth-Token; Scope-Upgrade erzwingt frischen Consent.
 - `report.py` — HTML-Mail + PDF (xhtml2pdf **lazy**), gruppiert pro ISO-KW.
 - `theme.py`/`tooltip.py` — UI-Hilfen (Farben/Fonts/themed Dialoge, `_hover`-Overlays).
 - `time_utils.py` — Stunden, KW-Labels, `format_iso_date`/`format_iso_datetime`.
-- `holidays_de.py`, `paths.py` (`get_base_path` Frozen-vs-Repo), `autostart.py`, `updater.py`
+- `holidays_de.py`, `paths.py` (`get_base_path` Frozen-vs-Repo), `updater.py`
   (GitHub-Releases, stdlib-only, 1×/Tag), `platform_open.py`, `logging_setup.py`,
-  `tray.py` (Fassade) + `tray_mac.py` (natives macOS-NSStatusItem-Backend, #88),
   `version.py` (einzige Versions-Quelle).
+- `autostart.py` — plattformabhängig (Windows-Registry HKCU Run / macOS-LaunchAgent / Linux-.desktop).
+  Windows-Backend nutzt den **Registry-Wert `Zeiterfassung`** (Wertname = `installer.iss` → strukturell
+  ein Eintrag); `import winreg` lazy (CI-Ubuntu). `is_autostart_enabled()` liest den echten Zustand
+  (Registry-Wert **oder** Alt-Startup-Shortcut als Fallback, falls Migration scheitert).
+  `migrate_legacy_autostart()` überführt Alt-Shortcuts in den Registry-Key, ist aber frozen-gated
+  (Repo-Modus: No-op, würde andernfalls python.exe+Repo ins Register schreiben und bestehende
+  Shortcuts beschädigen).
+- `single_instance.py` — Tk-freier Single-Instance-Guard. Erste Instanz leitet einen Port aus
+  `get_base_path()` ab und bindet einen Listener (`SO_EXCLUSIVEADDRUSE` Windows, `SO_REUSEADDR` Unix).
+  Folgeinstanzen melden sich per SHOW/PING-Protokoll und beenden sich. `main.py` ruft `acquire()`
+  vor dem Tk-Aufbau, `serve(show_fn)` danach. `App.restart_for_scaling` und `_quit_with_sync_push`
+  rufen `release()`. Blockiert den Start nie — ist der Port von Fremd-Software belegt (keine ZEIT-OK),
+  läuft die App ungeschützt weiter (geloggt, akzeptierter Degraded-Fall).
+- `tray.py` (Fassade) + `tray_mac.py` (natives macOS-NSStatusItem-Backend, #88).
 
 Das Tray-Icon läuft, sobald `minimize_to_tray` **oder** `reminders_enabled` aktiv ist (`ui.py::_apply_tray_setting`); bei nur `reminders_enabled` dient es ausschließlich als Toast-Kanal.
 
