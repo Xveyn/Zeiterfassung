@@ -22,7 +22,10 @@ from src.theme import (
 )
 from src.dialogs.category_dialog import open_category_dialog
 from src.holidays_de import STATES, code_for_state_label
-from src.settings import WEEKDAY_KEYS, clamp_ui_scale, parse_hourly_rate, resolve_calendar_id
+from src.settings import (
+    WEEKDAY_KEYS, clamp_ui_scale, parse_hourly_rate,
+    parse_reminder_minutes, resolve_calendar_id,
+)
 from src.time_utils import format_iso_date, validate_period
 from src.time_utils import DAYS_DE, validate_entry
 from src.weekly_limit import format_limit_warnings, period_scan_needed, scan_period_for_warnings
@@ -789,6 +792,37 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
         bg=BG, fg=TEXT_MUTED,
     ).pack(anchor="w", pady=(2, 0))
 
+    # --- Benachrichtigungen (Reservierungs-Erinnerungen, gerätelokal) ---
+    tk.Label(
+        app_frame, text="— Benachrichtigungen —", font=FONT_BOLD,
+        bg=BG, fg=TEXT_MUTED,
+    ).pack(pady=(12, 4))
+
+    reminders_enabled_var = tk.BooleanVar(value=settings.get("reminders_enabled"))
+    tk.Checkbutton(
+        app_frame, text="Erinnerungen als Toast anzeigen",
+        variable=reminders_enabled_var, font=FONT,
+        bg=BG, fg=TEXT, selectcolor=CELL_BG,
+        activebackground=BG, activeforeground=TEXT, cursor="hand2",
+    ).pack(anchor="w")
+
+    reminder_row = tk.Frame(app_frame, bg=BG)
+    reminder_row.pack(anchor="w", pady=(4, 0))
+    tk.Label(
+        reminder_row, text="Erinnerung Minuten vor Ende der Reservierung:",
+        font=FONT, bg=BG, fg=TEXT,
+    ).pack(side=tk.LEFT, padx=(0, 8))
+    reminder_minutes_var = tk.StringVar(
+        value=str(settings.get("reminder_minutes_before")))
+    dark_combo(
+        reminder_row, reminder_minutes_var,
+        [str(m) for m in range(0, 121, 5)], width=4,
+    ).pack(side=tk.LEFT)
+    tk.Label(
+        app_frame, text="Nur für Reservierungen mit Kategorie.", font=FONT_SMALL,
+        bg=BG, fg=TEXT_MUTED,
+    ).pack(anchor="w", pady=(2, 0))
+
     # ===================== Speichern / Buttons =====================
     tabs = {"work": tab_work, "mail": tab_mail, "google": tab_google, "app": tab_app}
 
@@ -849,6 +883,15 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
                 )
                 return
 
+        reminder_minutes = parse_reminder_minutes(reminder_minutes_var.get())
+        if reminder_minutes is None:
+            notebook.select(tabs["app"])
+            themed_showerror(
+                dialog, "Erinnerungszeit ungültig",
+                "Bitte eine ganze Zahl zwischen 0 und 120 Minuten angeben.",
+            )
+            return
+
         hourly_rate = parse_hourly_rate(rate_var.get())
         selected_code = code_for_state_label(state_var.get())
         old_scale = settings.get("ui_scale")
@@ -868,6 +911,8 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
             "show_weekend": show_weekend_var.get(),
             "always_on_top": always_on_top_var.get(),
             "minimize_to_tray": minimize_to_tray_var.get(),
+            "reminders_enabled": reminders_enabled_var.get(),
+            "reminder_minutes_before": reminder_minutes,
             "ui_scale": new_scale,
             "werkstudent_limit_enabled": wsl_enabled_var.get(),
             "werkstudent_limit_start": wsl_start_iso,

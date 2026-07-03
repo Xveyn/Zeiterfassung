@@ -101,6 +101,7 @@ gegen `TclError` abgesichert, falls das Fenster zwischenzeitlich zu ist). Keine 
   `share.py` — Export/Import als Share-JSON. `weekly_limit.py` — pure Wochenstunden-Limit-Check
   (Werkstudenten-Privileg, #98). Kein eigener Persistenz-Zustand, operiert auf
   `Storage.get_all()`-Dicts und den `werkstudent_limit_*`-Settings-Keys.
+  `reminders.py` — pure Fälligkeits-Logik für Reservierungs-Erinnerungen (Tk-frei, `now` als Parameter): pro heutigem reservierten Slot mit Kategorie ohne erfasste Ist-Zeit `upcoming` (N Min vor Ende) oder `missed` (nach Ende). Der `ReminderScheduler` (`reminder_scheduler.py`) pollt minütlich über `root.after` und schickt fällige Toasts über `App._tray`.
 
 ## Google-Integration (alle Wrapper mit Lazy-Imports für CI ohne requirements.txt)
 
@@ -117,6 +118,8 @@ denselben OAuth-Token; Scope-Upgrade erzwingt frischen Consent.
   (GitHub-Releases, stdlib-only, 1×/Tag), `platform_open.py`, `logging_setup.py`,
   `tray.py` (Fassade) + `tray_mac.py` (natives macOS-NSStatusItem-Backend, #88),
   `version.py` (einzige Versions-Quelle).
+
+Das Tray-Icon läuft, sobald `minimize_to_tray` **oder** `reminders_enabled` aktiv ist (`ui.py::_apply_tray_setting`); bei nur `reminders_enabled` dient es ausschließlich als Toast-Kanal.
 
 ## Dialoge (`src/dialogs/`)
 

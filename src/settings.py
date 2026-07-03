@@ -44,6 +44,8 @@ DEFAULTS = {
     "show_weekend": True,
     "always_on_top": False,
     "minimize_to_tray": False,
+    "reminders_enabled": False,
+    "reminder_minutes_before": 15,
     "sender_email": "",
     "sync_enabled": False,
     "device_id": "",
@@ -136,6 +138,20 @@ def parse_hourly_rate(raw):
         return float(raw)
     except ValueError:
         return 0.0
+
+
+def parse_reminder_minutes(raw):
+    """Parst die 'Minuten vor Ende'-Eingabe zu int in [0, 120]. Ungültig
+    (nicht-numerisch, negativ, > 120, Kommazahl) -> None. Der Dialog nutzt None
+    als Fehlersignal (anders als parse_hourly_rate, das tolerant auf 0.0 fällt —
+    hier ist eine bewusste Validierung gewünscht)."""
+    try:
+        value = int(str(raw).strip())
+    except (ValueError, TypeError, AttributeError):
+        return None
+    if 0 <= value <= 120:
+        return value
+    return None
 
 
 def split_synced_updates(updates):

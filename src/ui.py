@@ -20,6 +20,7 @@ from src.weekly_limit import format_limit_warnings
 from src.grid_renderer import GridRenderer
 from src.sync_orchestrator import _classify_sync_error, SyncOrchestrator
 from src.update_banner import UpdateBanner
+from src.reminder_scheduler import ReminderScheduler
 from src.dialogs.entry_dialog import open_entry_dialog
 from src.dialogs.send_dialog import open_send_dialog
 from src.dialogs.settings_dialog import open_settings_dialog
@@ -127,6 +128,10 @@ class App:
             self.conflicts_store, self._open_dialog, self._delete_day,
             self._reservations_active,
         )
+        self._reminders = ReminderScheduler(
+            self.root, self.settings, self.storage,
+            self.reservation_store, lambda: self._tray,
+        )
         self._build_header()
         self._renderer.build_grid(self.root)
         self._build_footer()
@@ -136,6 +141,7 @@ class App:
         self._sync.update_status_label()
         self._apply_always_on_top()
         self._apply_tray_setting()
+        self._apply_reminder_setting()
         self.root.bind("<Left>", lambda e: self._navigate(-1))
         self.root.bind("<Right>", lambda e: self._navigate(+1))
         # Tab schaltet zwischen Monat- und Wochenansicht. "break" verhindert
@@ -335,6 +341,7 @@ class App:
             self._sync.update_status_label()
             self._apply_always_on_top()
             self._apply_tray_setting()
+            self._apply_reminder_setting()
             # Nach jeder Settings-Speicherung den sender_email-Fetch nochmal
             # anstoßen. Damit erscheint die Absender-Adresse automatisch nach
             # Sync-Aktivierung (frischer Token mit userinfo.email-Scope), ohne
@@ -370,18 +377,22 @@ class App:
         """
         from src.tray import TrayIcon, is_supported
 
-        want_tray = bool(self.settings.get("minimize_to_tray"))
+        # Tray dient zweierlei: Minimize-to-Tray UND als Toast-Kanal für
+        # Reservierungs-Erinnerungen. Es läuft, sobald EINES aktiv ist.
+        want_tray = (bool(self.settings.get("minimize_to_tray"))
+                     or bool(self.settings.get("reminders_enabled")))
 
         if want_tray and self._tray is None:
             if not is_supported():
                 themed_showinfo(
                     self.root,
-                    "Infobereich-Icon",
-                    "Das Minimieren in den Infobereich ist auf dieser Plattform "
-                    "nicht zuverlässig nutzbar (typisch Linux). Option wurde "
-                    "wieder deaktiviert.",
+                    "Infobereich-Icon / Benachrichtigungen",
+                    "Infobereich-Icon und Toast-Benachrichtigungen sind auf "
+                    "dieser Plattform nicht zuverlässig nutzbar (typisch Linux). "
+                    "Die Optionen wurden wieder deaktiviert.",
                 )
                 self.settings.set("minimize_to_tray", False)
+                self.settings.set("reminders_enabled", False)
                 return
             tray = TrayIcon(
                 self.base_path,
@@ -409,12 +420,26 @@ class App:
                     f"Tray-Icon konnte nicht gestartet werden:\n\n{e}",
                 )
                 self.settings.set("minimize_to_tray", False)
+                self.settings.set("reminders_enabled", False)
                 return
             self._tray = tray
 
         elif not want_tray and self._tray is not None:
             self._tray.stop()
             self._tray = None
+
+    def _apply_reminder_setting(self):
+        """Startet/stoppt den Reminder-Poll abhängig vom Setting. Braucht ein
+        laufendes Tray-Icon als Toast-Kanal — ohne Tray wird gestoppt.
+
+        MUSS nach `_apply_tray_setting()` laufen (liest `self._tray`): erst wird
+        der Tray-Kanal (de)aktiviert, dann der Poll daran gekoppelt. Beide
+        Call-Sites (__init__, Settings-`_on_change`) halten diese Reihenfolge."""
+        want = bool(self.settings.get("reminders_enabled")) and self._tray is not None
+        if want:
+            self._reminders.start()
+        else:
+            self._reminders.stop()
 
     def _restore_from_tray(self):
         """Bringt das Fenster aus dem `withdraw()`-Zustand zurück."""
@@ -578,6 +603,7 @@ class App:
         self._sync.push_on_quit()
         if self._tray is not None:
             self._tray.stop()
+        self._reminders.stop()
         self.root.destroy()
 
     def restart_for_scaling(self):
@@ -603,4 +629,5 @@ class App:
             return
         if self._tray is not None:
             self._tray.stop()
+        self._reminders.stop()
         self.root.destroy()
