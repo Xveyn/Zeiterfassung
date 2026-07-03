@@ -4,7 +4,7 @@ import platform
 import plistlib
 import pytest
 from unittest.mock import patch, MagicMock
-from src.autostart import enable_autostart, disable_autostart
+from src.autostart import enable_autostart, disable_autostart, migrate_legacy_autostart
 from src.autostart import (
     _macos_plist_path,
     _linux_desktop_path,
@@ -220,3 +220,55 @@ class TestIsAutostartEnabled:
             assert is_autostart_enabled() is True
         finally:
             winreg.DeleteKey(winreg.HKEY_CURRENT_USER, subkey)
+
+
+@pytest.mark.skipif(platform.system() != "Windows", reason="Windows only")
+class TestMigrateLegacyAutostart:
+    @pytest.fixture
+    def frozen_win(self, monkeypatch, tmp_path):
+        import winreg
+        subkey = r"Software\ZeiterfassungTest\RunMig"
+        monkeypatch.setattr("src.autostart._RUN_KEY_SUBKEY", subkey)
+        monkeypatch.setattr("src.autostart._get_startup_folder", lambda: str(tmp_path))
+        monkeypatch.setattr("src.autostart.sys.frozen", True, raising=False)
+        monkeypatch.setattr("src.autostart.sys.executable",
+                            str(tmp_path / "Zeiterfassung.exe"), raising=False)
+        yield tmp_path
+        try:
+            winreg.DeleteKey(winreg.HKEY_CURRENT_USER, subkey)
+        except FileNotFoundError:
+            pass
+
+    def test_state2_shortcut_only_writes_registry(self, frozen_win):
+        (frozen_win / "Zeiterfassung.lnk").write_text("fake")
+        migrate_legacy_autostart(str(frozen_win))
+        from src.autostart import _windows_registry_enabled
+        assert _windows_registry_enabled() is True
+        assert not (frozen_win / "Zeiterfassung.lnk").exists()
+
+    def test_state3_both_keeps_registry_drops_shortcut(self, frozen_win):
+        enable_autostart(str(frozen_win / "Zeiterfassung.exe"), "--minimized")
+        (frozen_win / "Zeiterfassung.lnk").write_text("fake")
+        migrate_legacy_autostart(str(frozen_win))
+        from src.autostart import _windows_registry_enabled
+        assert _windows_registry_enabled() is True
+        assert not (frozen_win / "Zeiterfassung.lnk").exists()
+
+    def test_state4_nothing_stays_nothing(self, frozen_win):
+        migrate_legacy_autostart(str(frozen_win))
+        from src.autostart import _windows_registry_enabled
+        assert _windows_registry_enabled() is False
+
+    def test_idempotent_second_run_noop(self, frozen_win):
+        (frozen_win / "Zeiterfassung.lnk").write_text("fake")
+        migrate_legacy_autostart(str(frozen_win))
+        migrate_legacy_autostart(str(frozen_win))  # kein Fehler, kein Shortcut mehr
+        assert not (frozen_win / "Zeiterfassung.lnk").exists()
+
+    def test_not_frozen_is_noop(self, frozen_win, monkeypatch):
+        monkeypatch.setattr("src.autostart.sys.frozen", False, raising=False)
+        (frozen_win / "Zeiterfassung.lnk").write_text("fake")
+        migrate_legacy_autostart(str(frozen_win))
+        from src.autostart import _windows_registry_enabled
+        assert _windows_registry_enabled() is False          # nichts geschrieben
+        assert (frozen_win / "Zeiterfassung.lnk").exists()   # Shortcut unangetastet

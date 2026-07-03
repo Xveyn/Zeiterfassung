@@ -126,6 +126,25 @@ def is_autostart_enabled():
     return False
 
 
+def migrate_legacy_autostart(base_path):
+    """Überführt einen Alt-Startup-Shortcut in den Registry-Run-Key —
+    absichtserhaltend. Nur im Frozen-Windows-Build; sonst No-op (im Repo-Modus
+    würde der Registry-Wert auf python.exe+Repo zeigen und den installierten
+    Shortcut löschen — Selbstbeschädigung). Idempotent: ist der Shortcut weg,
+    tut jeder weitere Lauf nichts."""
+    if not getattr(sys, "frozen", False):
+        return
+    if platform.system() != "Windows":
+        return
+    if not os.path.exists(_get_shortcut_path()):
+        return
+    if not _windows_registry_enabled():
+        target, arguments = resolve_autostart_target(base_path)
+        _enable_windows(target, arguments)  # schreibt Registry + entfernt Shortcut
+        return
+    _remove_legacy_shortcut()
+
+
 def _enable_windows(target, arguments):
     import winreg
     command = _windows_run_command(target, arguments)
