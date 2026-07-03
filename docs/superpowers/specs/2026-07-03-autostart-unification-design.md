@@ -86,6 +86,16 @@ Die App baut denselben String: `f'"{target}" {arguments}'` (bzw. nur `f'"{target
 wenn `arguments` leer). In Frozen-Windows ist `target = sys.executable =
 {app}\Zeiterfassung.exe` → exakter Match, ein Eintrag.
 
+### Constraint: `import winreg` MUSS lazy sein
+
+`winreg` existiert nur auf Windows. Die CI läuft auf **Ubuntu** und importiert
+`autostart.py` über die Kette `tests → ui → settings_dialog → autostart`. Ein
+Modul-Level-`import winreg` würde damit **jeden** CI-Lauf rot machen (nicht nur die
+Autostart-Tests). Der Import muss daher **lazy in den Windows-Funktionen** stehen
+(`_enable_windows`, `_disable_windows`, `is_autostart_enabled`,
+`migrate_legacy_autostart`) — dieselbe Regel wie die bereits etablierten
+Lazy-Google-Imports (`drive.py`/`gcal.py`) für CI ohne `requirements.txt`.
+
 ---
 
 ## Abschnitt 2 — Migration der Bestandsnutzer (Windows)
@@ -101,15 +111,24 @@ kaputtmachen, daher **absichtserhaltende** Migration statt bloßem Aufräumen.
 | 4 — nichts              | —            | —        | nichts                            |
 
 Neue Funktion `migrate_legacy_autostart(base_path)` in `autostart.py`, aufgerufen
-beim App-Start in `main.py` (Windows-only, in `try/except` — nicht-fatal wie das
-übrige Startup-Setup):
+beim App-Start in `main.py` (Windows-only **und nur im Frozen-Build**, in
+`try/except` — nicht-fatal wie das übrige Startup-Setup):
 
 ```
+wenn nicht sys.frozen:  return          # Dev-Modus nie migrieren, s.u.
 wenn Legacy-Shortcut existiert:
     wenn Registry-Key fehlt:
         Registry-Key schreiben  (Absicht aus Zustand 2 retten)
     Legacy-Shortcut löschen
 ```
+
+**Warum `sys.frozen`-Gate (nicht nur das Shortcut-Gate):** Zeigt der Legacy-Shortcut
+auf die **installierte** Exe und man startet das **Repo** (`python -m src.main`),
+würde die Migration den Registry-Wert aus `resolve_autostart_target(repo)`
+schreiben — Autostart zeigte danach auf `python.exe + Repo` und der Shortcut zur
+installierten App wäre gelöscht. Die „Selbstheilung" würde auf der Dev-Maschine zur
+Selbstbeschädigung. Das `sys.frozen`-Gate schließt das aus; im echten
+Installationsbetrieb (frozen) greift die Migration wie gewollt.
 
 - **Idempotent über Shortcut-Präsenz**: nach dem ersten Lauf ist der Shortcut weg
   → jeder weitere Start ist ein No-op. Kein „migrated"-Flag nötig.
@@ -125,7 +144,10 @@ wenn Legacy-Shortcut existiert:
 
 Neue Funktion `is_autostart_enabled()` in `autostart.py`, plattform-dispatched,
 liest den **echten** Zustand:
-- Windows: Registry-Wert `Zeiterfassung` unter dem Run-Key vorhanden?
+- Windows: Registry-Wert `Zeiterfassung` unter dem Run-Key **oder** Legacy-Shortcut
+  vorhanden. Der Shortcut-Fallback ist die Absicherung für den Fall, dass die
+  Migration (Abschnitt 2) einmal excepted — sonst zeigte die Checkbox „aus", obwohl
+  der Shortcut noch autostartet (der ursprüngliche Lügen-Bug).
 - macOS: Plist-Datei vorhanden?
 - Linux: `.desktop`-Datei vorhanden?
 
@@ -144,6 +166,11 @@ Anzeigequelle**. `autostart` ist device-lokal und **nicht** in
 `SYNCED_SETTING_KEYS` — bleibt so (Autostart darf nicht zwischen Geräten
 synchronisiert werden).
 
+**Bekannter Zustand:** damit wird `settings["autostart"]` faktisch *write-only* —
+niemand liest es mehr (die Anzeige kommt aus `is_autostart_enabled()`). Bewusst so
+gewählt, um einen `settings.json`-Schema-Umbau zu vermeiden; das Feld bleibt als
+harmloser Altbestand stehen.
+
 ---
 
 ## Abschnitt 4 — Single-Instance-Guard
@@ -154,19 +181,45 @@ Modul `src/single_instance.py`, testbar wie `reminders.py`.
 
 ### Primitiv: TCP-Socket auf 127.0.0.1, pro Nutzer fester Port
 
-- Port `P = 20000 + (crc32(base_path) % 20000)`, abgeleitet aus dem
-  per-Nutzer-Datenverzeichnis (`get_base_path()`). Zwei Instanzen desselben
-  Nutzers → selber Port; verschiedene Windows-Nutzer → verschiedene `LOCALAPPDATA`
-  → verschiedene Ports (keine Kollision bei Fast User Switching). Reines
-  `socket`/`zlib`-stdlib, **auf allen drei Plattformen identisch** — kein
+- Port `P = 20000 + (crc32(norm(base_path)) % 12000)` → Range **20000–31999**,
+  abgeleitet aus dem per-Nutzer-Datenverzeichnis (`get_base_path()`). Zwei Instanzen
+  desselben Nutzers → selber Port; verschiedene Windows-Nutzer → verschiedene
+  `LOCALAPPDATA` → verschiedene Ports (keine Kollision bei Fast User Switching).
+  Reines `socket`/`zlib`-stdlib, **auf allen drei Plattformen identisch** — kein
   `fcntl`/`msvcrt`-Plattformzweig.
+  - **Range unter allen Ephemeral-Ports** (Finding): Linux vergibt ephemere
+    Client-Ports ab 32768; `20000–31999` liegt darunter, damit eine zufällige
+    ausgehende Verbindung nicht unseren Guard-Port belegt (was sonst zum
+    Degraded-Start führte).
+  - **`norm(base_path)` = `os.path.normcase(os.path.normpath(...))`** vor dem Hashen:
+    sonst ergäben Groß-/Kleinschreibungs- oder Trenner-Varianten desselben
+    Windows-Pfads verschiedene Ports und der Guard griffe nicht.
 - **Atomare Primar-Entscheidung durch den OS-Bind**: nur einer kann `P` binden.
   Das löst genau die Race, die den Bug ausmacht (zwei Autostart-Trigger feuern beim
-  Boot quasi gleichzeitig).
+  Boot quasi gleichzeitig). Diese Atomarität steht und fällt mit der richtigen
+  Socket-Option (s. u.) — auf Windows wäre sie mit `SO_REUSEADDR` **kaputt**.
+
+### Socket-Option (plattformabhängig — kritisch für die Atomarität)
+
+- **Windows: `SO_EXCLUSIVEADDRUSE`** (vor `bind` gesetzt). `SO_REUSEADDR` ist auf
+  Windows **falsch**: es erlaubt einem zweiten Socket, denselben Port zu binden — der
+  zweite Bind gelingt und das Verhalten aller Sockets auf dem Port ist danach
+  „indeterminate" (MS-Doku). Beim Boot-Doppelfeuer hielten sich dann **beide**
+  Instanzen für primär → der Guard wäre ausgerechnet auf der Zielplattform
+  wirkungslos. `SO_EXCLUSIVEADDRUSE` lässt den zweiten Bind mit `WSAEADDRINUSE`
+  fehlschlagen — genau die gewünschte atomare Entscheidung.
+- **POSIX (macOS/Linux): `SO_REUSEADDR`** — verhindert, dass ein Rebind kurz nach
+  einem Quit an TIME_WAIT-Resten scheitert. Auf POSIX ist die Semantik anders als auf
+  Windows und für Server üblich.
+- Der Windows-Nachteil (Bind kann nach sehr schnellem Quit+Restart an TIME_WAIT
+  scheitern) wird vom Degraded-Fallback aufgefangen: Bind scheitert → Connect findet
+  keinen Listener → kein `ZEIT-OK` → unguarded weiterstarten. Nutzer nie blockiert.
+- Quelle: [Using SO_REUSEADDR and SO_EXCLUSIVEADDRUSE](https://learn.microsoft.com/en-us/windows/win32/winsock/using-so-reuseaddr-and-so-exclusiveaddruse)
+  (MS Learn) — die Option muss **vor** `bind` gesetzt werden.
 
 ### Ablauf in `main.py`, *vor* dem Tk-Aufbau
 
-1. `bind()` auf `P` (mit `SO_REUSEADDR`):
+1. `bind()` auf `P` (Socket-Option je Plattform, s. o.):
    - **Erfolg → Primärinstanz.** `listen()` + Accept-Thread sofort starten (daemon).
      Normal weiterstarten.
    - **Fehlschlag (Port belegt) → Zweitinstanz.** Verbinden, Nachricht senden, dann
@@ -194,17 +247,41 @@ Modul `src/single_instance.py`, testbar wie `reminders.py`.
   bevor Tk gebaut wird (schneller, sauberer Exit).
 - Nach dem App-Bau `guard.serve(show_fn)`: ersetzt den Puffer-Callback; ein während
   des Baus eingetroffenes `SHOW` feuert dann nach.
-- Der gebundene Socket wird beim App-Quit geschlossen (Port freigeben);
-  `SO_REUSEADDR` vermeidet TIME_WAIT-Probleme beim Rebind.
+- Der gebundene Socket wird beim App-Quit geschlossen (Port freigeben; auf POSIX
+  hält `SO_REUSEADDR` den Rebind TIME_WAIT-frei).
+
+### Kritisch: Port-Freigabe beim UI-Skalierungs-Neustart (Finding)
+
+`App.restart_for_scaling()` (`ui.py`) spawnt **bewusst zuerst** den neuen Prozess und
+destroyt erst danach das alte Fenster (Fail-safe: schlägt `Popen` fehl, läuft die
+alte App intakt weiter). Ohne Gegenmaßnahme bräche der Guard diesen Pfad: die neue
+Instanz fände den Port noch vom sterbenden Alt-Prozess belegt → sendet `SHOW`
+(Relaunch läuft **ohne** `--minimized`) → beendet sich sofort; die alte Instanz
+destroyt sich Millisekunden später → **die App ist komplett weg**, obwohl der Nutzer
+nur die Skalierung ändern wollte.
+
+**Fix:** Der Guard bekommt eine öffentliche Methode `release()` (Listener stoppen +
+Socket schließen). `restart_for_scaling` ruft `guard.release()` **vor** `Popen` auf,
+sodass die neue Instanz sauber primär wird. Fail-safety bleibt erhalten: schlägt
+`Popen` fehl, läuft die alte App weiter — dann nur kurz unguarded (akzeptabel, der
+Guard ist Defense-in-depth, kein Sicherheitsmechanismus). Der Guard-Handle muss dazu
+von `main()` bis in die App reichbar sein (z. B. an `App` übergeben, analog zu
+`storage`/`settings`).
 
 ### Protokoll
 
 - Magic-Nachrichten (ASCII, feste Präfixe), z. B. `ZEIT-SHOW`, `ZEIT-PING`;
   Primärinstanz ackt mit `ZEIT-OK`.
-- Zweitinstanz sendet best-effort und beendet sich in **jedem** Fall, sobald der
-  Bind fehlschlug (der belegte Port ist der Beweis, dass eine Instanz läuft) — außer
-  der Occupant identifiziert sich nicht als unsere App (kein `ZEIT-OK`), dann
-  degradierter Weiterstart.
+- Verhalten der Zweitinstanz nach fehlgeschlagenem Bind, präzise nach Ack:
+  - **`ZEIT-OK` empfangen** (Occupant ist unsere App) → Zweitinstanz beendet sich
+    (`sys.exit(0)`); die Primärinstanz hat `SHOW`/`PING` bereits verarbeitet.
+  - **Kein/falsches Ack innerhalb des Timeouts** (Occupant ist fremde Software oder
+    ein wedged Prozess) → **degradierter Weiterstart** (unguarded), geloggt.
+- **Ack-Timeout großzügig (~2 s)**: Boot-Last kann die Accept-Verarbeitung der
+  Primärinstanz kurz verzögern. Weil der Accept-Thread schon vor dem UI-Bau ackt
+  (gepufferter Callback, s. „Fenster-Holen"), reichen 2 s auch unter Last
+  komfortabel — verhindert, dass die Zweitinstanz fälschlich in den Degraded-Pfad
+  fällt und doch startet.
 
 ---
 
@@ -255,11 +332,12 @@ Pre-Release-Gate nötig (anders als bei plattformspezifischen Änderungen).
 
 | Datei | Änderung |
 |-------|----------|
-| `src/autostart.py` | Windows-Backend Shortcut→Registry (`winreg`); neu `is_autostart_enabled()`, `migrate_legacy_autostart()` |
-| `src/single_instance.py` | **neu** — Tk-freier Guard (Socket, Port-Ableitung, Protokoll) |
-| `src/main.py` | Guard-`acquire` vor Tk-Bau; `migrate_legacy_autostart` beim Start; `guard.serve(show_fn)` nach App-Bau; Socket-Close bei Quit |
+| `src/autostart.py` | Windows-Backend Shortcut→Registry (`winreg` **lazy**, s. Abschnitt 1); neu `is_autostart_enabled()` (Registry **oder** Legacy-Shortcut), `migrate_legacy_autostart()` (frozen-only) |
+| `src/single_instance.py` | **neu** — Tk-freier Guard: Port-Ableitung (`norm(base)`, Range 20000–31999), plattformabhängige Socket-Option (`SO_EXCLUSIVEADDRUSE`/`SO_REUSEADDR`), Protokoll, `serve()`, `release()` |
+| `src/main.py` | Guard-`acquire` vor Tk-Bau; `migrate_legacy_autostart` beim Start; `guard.serve(show_fn)` nach App-Bau; Guard-Handle an `App` reichen; Socket-Close bei Quit |
+| `src/ui.py` | `restart_for_scaling`: `guard.release()` **vor** `Popen` (Finding 2); Guard-Handle in `App` aufnehmen |
 | `src/dialogs/settings_dialog.py` | Checkbox init + `old_autostart` aus `is_autostart_enabled()` |
-| `tests/test_autostart.py` | Windows-Klasse auf Registry umbauen; Tests für `is_autostart_enabled`, `migrate_legacy_autostart` |
+| `tests/test_autostart.py` | Windows-Klasse auf Registry umbauen; Tests für `is_autostart_enabled`, `migrate_legacy_autostart` (4 Zustände, frozen-Gate) |
 | `tests/test_single_instance.py` | **neu** |
 | `src/CLAUDE.md` | Guard-Modul + Autostart-Registry-Vertrag dokumentieren |
 
