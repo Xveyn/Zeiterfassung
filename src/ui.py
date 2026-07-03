@@ -54,10 +54,11 @@ def _delete_action(slots, selected, prefix):
 
 class App:
     def __init__(self, root, storage, settings, base_path=".", conflicts_store=None,
-                 reservation_store=None):
+                 reservation_store=None, single_instance=None):
         self.root = root
         self.storage = storage
         self.settings = settings
+        self._single_instance = single_instance
         self.base_path = base_path
         self.conflicts_store = conflicts_store
         self.reservation_store = reservation_store
@@ -604,6 +605,8 @@ class App:
         if self._tray is not None:
             self._tray.stop()
         self._reminders.stop()
+        if self._single_instance is not None:
+            self._single_instance.release()
         self.root.destroy()
 
     def restart_for_scaling(self):
@@ -616,6 +619,11 @@ class App:
         from src.main import relaunch_command
         cmd = relaunch_command(
             sys.argv, sys.executable, getattr(sys, "frozen", False))
+        if self._single_instance is not None:
+            self._single_instance.release()
+        # Port VOR dem Spawn freigeben, sonst fände die neue Instanz ihn noch
+        # belegt, schickte SHOW und beendete sich — die App verschwände beim
+        # bloßen Skalierungswechsel.
         try:
             subprocess.Popen(cmd)
         except Exception:

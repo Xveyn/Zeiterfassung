@@ -293,6 +293,25 @@ def main():
     except Exception:
         pass
 
+    from src import single_instance
+    from src.autostart import migrate_legacy_autostart
+
+    try:
+        migrate_legacy_autostart(base)
+    except Exception:
+        logging.getLogger(__name__).warning(
+            "Autostart-Migration fehlgeschlagen", exc_info=True)
+
+    guard = None
+    try:
+        guard = single_instance.acquire(base, show_requested="--minimized" not in sys.argv)
+        if guard is None:
+            return  # Eine Instanz läuft bereits; sie hat SHOW/PING erhalten.
+    except Exception:
+        logging.getLogger(__name__).warning(
+            "Single-Instance-Guard-Fehler — Start ohne Guard", exc_info=True)
+        guard = None
+
     settings = Settings(os.path.join(base, "settings.json"))
     device_id = _ensure_device_id(settings)
     settings.device_id_for_sync = device_id
@@ -306,10 +325,13 @@ def main():
     root = tk.Tk()
     _apply_ui_scaling(root, settings.get("ui_scale"))
     app = App(root, storage, settings, base_path=base, conflicts_store=conflicts_store,
-              reservation_store=reservation_store)
+              reservation_store=reservation_store, single_instance=guard)
 
     if "--minimized" in sys.argv:
         root.iconify()
+
+    if guard is not None:
+        guard.serve(lambda: app._marshal_to_ui(app._restore_from_tray))
 
     if settings.get("sync_enabled"):
         def _on_sync_done(ok, error, tb=""):
