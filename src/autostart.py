@@ -4,11 +4,39 @@ import platform
 import plistlib
 import subprocess
 import sys
-import tempfile
 
 
 SHORTCUT_NAME = "Zeiterfassung.lnk"
 MACOS_LABEL = "com.margenheld.zeiterfassung"
+
+_RUN_KEY_SUBKEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
+_RUN_VALUE_NAME = "Zeiterfassung"
+
+
+def _windows_run_command(target, arguments):
+    """Baut den HKCU-Run-Datenstring — identisch zum Installer-Format:
+    Exe in Anführungszeichen, dann (falls vorhanden) die Argumente."""
+    if arguments:
+        return f'"{target}" {arguments}'
+    return f'"{target}"'
+
+
+def _remove_legacy_shortcut():
+    """Entfernt den Alt-Startup-Shortcut, falls vorhanden (tolerant)."""
+    try:
+        os.remove(_get_shortcut_path())
+    except FileNotFoundError:
+        pass
+
+
+def _windows_registry_enabled():
+    import winreg
+    try:
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, _RUN_KEY_SUBKEY) as key:
+            winreg.QueryValueEx(key, _RUN_VALUE_NAME)
+        return True
+    except FileNotFoundError:
+        return False
 
 
 def resolve_autostart_target(base_path):
@@ -82,32 +110,40 @@ def disable_autostart():
         raise RuntimeError(f"Autostart not supported on {system}")
 
 
+def is_autostart_enabled():
+    """Echter Autostart-Zustand (nicht das gespeicherte Setting).
+
+    Windows: Registry-Run-Wert ODER Alt-Shortcut vorhanden (Shortcut-Fallback,
+    falls die Migration einmal fehlschlägt). macOS/Linux: Plist- bzw.
+    .desktop-Datei vorhanden."""
+    system = platform.system()
+    if system == "Windows":
+        return _windows_registry_enabled() or os.path.exists(_get_shortcut_path())
+    if system == "Darwin":
+        return os.path.exists(_macos_plist_path())
+    if system == "Linux":
+        return os.path.exists(_linux_desktop_path())
+    return False
+
+
 def _enable_windows(target, arguments):
-    shortcut_path = _get_shortcut_path()
-    working_dir = os.path.dirname(target)
-
-    vbs_content = f'''Set ws = CreateObject("WScript.Shell")
-Set sc = ws.CreateShortcut("{shortcut_path}")
-sc.TargetPath = "{target}"
-sc.Arguments = "{arguments}"
-sc.WorkingDirectory = "{working_dir}"
-sc.Save
-'''
-
-    fd, vbs_path = tempfile.mkstemp(suffix=".vbs")
-    try:
-        with os.fdopen(fd, "w") as f:
-            f.write(vbs_content)
-        subprocess.run(["cscript", "//nologo", vbs_path], check=True)
-    finally:
-        if os.path.exists(vbs_path):
-            os.remove(vbs_path)
+    import winreg
+    command = _windows_run_command(target, arguments)
+    with winreg.CreateKey(winreg.HKEY_CURRENT_USER, _RUN_KEY_SUBKEY) as key:
+        winreg.SetValueEx(key, _RUN_VALUE_NAME, 0, winreg.REG_SZ, command)
+    _remove_legacy_shortcut()
 
 
 def _disable_windows():
-    shortcut_path = _get_shortcut_path()
-    if os.path.exists(shortcut_path):
-        os.remove(shortcut_path)
+    import winreg
+    try:
+        with winreg.OpenKey(
+            winreg.HKEY_CURRENT_USER, _RUN_KEY_SUBKEY, 0, winreg.KEY_SET_VALUE
+        ) as key:
+            winreg.DeleteValue(key, _RUN_VALUE_NAME)
+    except FileNotFoundError:
+        pass
+    _remove_legacy_shortcut()
 
 
 def _enable_macos(target, arguments):
