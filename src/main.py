@@ -383,20 +383,31 @@ def main():
             "Single-Instance-Guard-Fehler — Start ohne Guard", exc_info=True)
         guard = None
 
-    settings = Settings(os.path.join(base, "settings.json"))
+    # Geteilter Daten-Lock über alle vier Stores (Audit H1/H2) + Sync-Guard.
+    # data_lock: RLock (reentrant — der Sync-Apply-Block ruft gelockte
+    # Store-Methoden). sync_guard: bewusst plain Lock, NIE RLock — er wird
+    # thread-übergreifend acquired/released (Lock erlaubt das, RLock nicht).
+    data_lock = threading.RLock()
+    sync_guard = threading.Lock()
+
+    settings = Settings(os.path.join(base, "settings.json"), lock=data_lock)
     device_id = _ensure_device_id(settings)
     settings.device_id_for_sync = device_id
 
-    storage = Storage(os.path.join(base, "zeiterfassung.json"), device_id=device_id)
+    storage = Storage(os.path.join(base, "zeiterfassung.json"),
+                      device_id=device_id, lock=data_lock)
 
-    conflicts_store = ConflictsStore(os.path.join(base, "conflicts.json"))
+    conflicts_store = ConflictsStore(os.path.join(base, "conflicts.json"),
+                                     lock=data_lock)
 
-    reservation_store = ReservationStore(os.path.join(base, "reservations.json"))
+    reservation_store = ReservationStore(os.path.join(base, "reservations.json"),
+                                         lock=data_lock)
 
     root = tk.Tk()
     _apply_ui_scaling(root, settings.get("ui_scale"))
     app = App(root, storage, settings, base_path=base, conflicts_store=conflicts_store,
-              reservation_store=reservation_store, single_instance=guard)
+              reservation_store=reservation_store, single_instance=guard,
+              data_lock=data_lock, sync_guard=sync_guard)
 
     if "--minimized" in sys.argv:
         root.iconify()
@@ -424,6 +435,7 @@ def main():
         threading.Thread(
             target=_run_pull_in_background,
             args=(storage, settings, conflicts_store, base, _on_sync_done),
+            kwargs={"data_lock": data_lock, "sync_guard": sync_guard},
             daemon=True,
         ).start()
 

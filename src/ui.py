@@ -54,7 +54,8 @@ def _delete_action(slots, selected, prefix):
 
 class App:
     def __init__(self, root, storage, settings, base_path=".", conflicts_store=None,
-                 reservation_store=None, single_instance=None):
+                 reservation_store=None, single_instance=None,
+                 data_lock=None, sync_guard=None):
         self.root = root
         self.storage = storage
         self.settings = settings
@@ -62,6 +63,8 @@ class App:
         self.base_path = base_path
         self.conflicts_store = conflicts_store
         self.reservation_store = reservation_store
+        self._data_lock = data_lock      # geteilter Store-RLock (Audit H1)
+        self._sync_guard = sync_guard    # Sync-Re-Entrancy-Guard (Audit H2)
         self.root.title(f"Zeiterfassung v{version_label()}")
         self.root.configure(bg=BG)
         apply_dark_titlebar(self.root)
@@ -119,10 +122,12 @@ class App:
         self._bg = BackgroundTaskRunner(
             self._marshal_to_ui, self.settings, self.base_path,
             self.reservation_store, self._reservations_active, self.storage,
+            data_lock=data_lock,
         )
         self._sync = SyncOrchestrator(
             self.root, self.storage, self.settings, self.conflicts_store,
             self.base_path, self._bg, self._refresh, lambda: self._tray,
+            data_lock=data_lock, sync_guard=sync_guard,
         )
         self._renderer = GridRenderer(
             self.root, self.storage, self.settings, self.reservation_store,
@@ -355,6 +360,8 @@ class App:
             storage=self.storage,
             reservation_store=self.reservation_store,
             on_request_restart=self.restart_for_scaling,
+            data_lock=self._data_lock,
+            sync_guard=self._sync_guard,
         )
 
     def _apply_always_on_top(self):
