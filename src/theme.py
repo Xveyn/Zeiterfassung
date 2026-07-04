@@ -871,14 +871,7 @@ def themed_askyesno(parent, title: str, message: str, lock_ms: int = 0) -> bool:
     `themed_ask_delete_choice` — verhindert versehentliches Sofort-Bestätigen
     bei Lösch-Rückfragen (z.B. genau eine löschbare Einheit am Tag).
     """
-    dialog = tk.Toplevel(parent)
-    dialog.title(title)
-    dialog.resizable(False, False)
-    dialog.configure(bg=BG)
-    apply_dark_titlebar(dialog)
-    disable_min_max(dialog)
-    apply_app_icon(dialog)
-    dialog.focus_set()
+    dialog = create_dialog(parent, title, modal=False, escape_closes=False)
 
     result = {"value": False}
     unlock = {"ready": lock_ms <= 0}
@@ -933,14 +926,7 @@ def themed_ask_delete_choice(parent, title: str, message: str, options, lock_ms:
     (gedämpfter Rotton, nicht klickbar) — so kann der Klick nicht versehentlich
     den Dialog schließen und auf einem Kalendertag dahinter landen.
     """
-    dialog = tk.Toplevel(parent)
-    dialog.title(title)
-    dialog.resizable(False, False)
-    dialog.configure(bg=BG)
-    apply_dark_titlebar(dialog)
-    disable_min_max(dialog)
-    apply_app_icon(dialog)
-    dialog.focus_set()
+    dialog = create_dialog(parent, title, modal=False, escape_closes=False)
 
     result: dict[str, set[str] | None] = {"value": None}
     # Optionaler kurzer Lock nach dem Öffnen: verhindert versehentliches
@@ -1018,14 +1004,7 @@ def _themed_ok_dialog(parent, title: str, message: str) -> None:
     Eigener Toplevel mit Dark-Theme-Farben und gebrandeter Titelleiste
     (`tkinter.messagebox.*` ist eine Black-Box ohne Customization-Hooks).
     """
-    dialog = tk.Toplevel(parent)
-    dialog.title(title)
-    dialog.resizable(False, False)
-    dialog.configure(bg=BG)
-    apply_dark_titlebar(dialog)
-    disable_min_max(dialog)
-    apply_app_icon(dialog)
-    dialog.focus_set()
+    dialog = create_dialog(parent, title, modal=False, escape_closes=False)
 
     tk.Label(
         dialog, text=message, font=FONT, bg=BG, fg=TEXT,
