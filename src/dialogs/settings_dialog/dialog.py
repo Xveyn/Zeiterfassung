@@ -8,7 +8,7 @@ from tkinter import messagebox, ttk
 from src.autostart import disable_autostart, enable_autostart, is_autostart_enabled, resolve_autostart_target
 from src.platform_open import open_folder
 from src.theme import (
-    ACCENT, BG, CELL_BG, FONT, FONT_BOLD, FONT_SMALL,
+    ACCENT, BG, CELL_BG, FONT, FONT_SMALL,
     STATUS_OK, TEXT, TEXT_MUTED,
     apply_combobox_style, apply_notebook_style, attach_unfocus_on_click,
     center_dialog_on_parent, create_dialog,
@@ -16,7 +16,7 @@ from src.theme import (
     primary_button, secondary_button,
     themed_askyesno, themed_showinfo, themed_showwarning, themed_showerror,
 )
-from src.holidays_de import STATES, code_for_state_label
+from src.holidays_de import code_for_state_label
 from src.settings import (
     WEEKDAY_KEYS, clamp_ui_scale, parse_hourly_rate,
     parse_reminder_minutes, resolve_calendar_id,
@@ -26,6 +26,7 @@ from src.time_utils import DAYS_DE, validate_entry
 from src.weekly_limit import format_limit_warnings, period_scan_needed, scan_period_for_warnings
 from src.dialogs.settings_dialog._shared import label, subheader
 from src.dialogs.settings_dialog.oauth_task import build_oauth_enable_task
+from src.dialogs.settings_dialog.tab_app import AppTab
 from src.dialogs.settings_dialog.tab_mail import MailTab
 from src.dialogs.settings_dialog.tab_work import WorkTab
 
@@ -513,146 +514,10 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
         _load_calendars()
 
     # ===================== Tab: App =====================
-    label(tab_app, "Bundesland:", row=0, pady=(10, 8))
-    state_labels = [lbl for _, lbl in STATES]
-    current_code = settings.get("state")
-    current_label = next(
-        (lbl for code, lbl in STATES if code == current_code),
-        STATES[0][1],
-    )
-    state_var = tk.StringVar(value=current_label)
-    dark_combo(tab_app, state_var, state_labels, width=22).grid(
-        row=0, column=1, padx=10, pady=(10, 8), sticky="w")
-
-    # Gerätelokale UI-Optionen. Alle in app_frame (ein Grid-Member), damit die
-    # pack-Interna dieses Frames unberührt bleiben.
-    app_frame = tk.Frame(tab_app, bg=BG)
-    app_frame.grid(row=1, column=0, columnspan=2, padx=10, pady=(4, 4), sticky="we")
-
-    show_weekend_var = tk.BooleanVar(value=settings.get("show_weekend"))
-    tk.Checkbutton(
-        app_frame, text="Wochenende (Sa/So) im Kalender anzeigen",
-        variable=show_weekend_var, font=FONT,
-        bg=BG, fg=TEXT, selectcolor=CELL_BG,
-        activebackground=BG, activeforeground=TEXT,
-        cursor="hand2",
-    ).pack(anchor="w")
-
-    autostart_var = tk.BooleanVar(value=is_autostart_enabled())
-    tk.Checkbutton(
-        app_frame, text="Autostart (minimiert bei Anmeldung)",
-        variable=autostart_var, font=FONT,
-        bg=BG, fg=TEXT, selectcolor=CELL_BG,
-        activebackground=BG, activeforeground=TEXT,
-        cursor="hand2",
-    ).pack(anchor="w")
-
-    always_on_top_var = tk.BooleanVar(value=settings.get("always_on_top"))
-    tk.Checkbutton(
-        app_frame, text="Immer im Vordergrund",
-        variable=always_on_top_var, font=FONT,
-        bg=BG, fg=TEXT, selectcolor=CELL_BG,
-        activebackground=BG, activeforeground=TEXT,
-        cursor="hand2",
-    ).pack(anchor="w")
-
-    minimize_to_tray_var = tk.BooleanVar(value=settings.get("minimize_to_tray"))
-    tk.Checkbutton(
-        app_frame, text="Beim Schließen in den Infobereich minimieren",
-        variable=minimize_to_tray_var, font=FONT,
-        bg=BG, fg=TEXT, selectcolor=CELL_BG,
-        activebackground=BG, activeforeground=TEXT,
-        cursor="hand2",
-    ).pack(anchor="w")
-
-    # --- Darstellung (UI-Skalierung, gerätelokal) ---
-    tk.Label(
-        app_frame, text="— Darstellung —", font=FONT_BOLD,
-        bg=BG, fg=TEXT_MUTED,
-    ).pack(pady=(12, 4))
-    scale_row = tk.Frame(app_frame, bg=BG)
-    scale_row.pack(fill="x")
-    tk.Label(
-        scale_row, text="Skalierung:", font=FONT, bg=BG, fg=TEXT,
-    ).pack(side=tk.LEFT, padx=(0, 8))
-
-    # ttk.Scale statt klassischer tk.Scale: das clam-Theme ist via
-    # apply_combobox_style aktiv, klassische tk.Scale rendert unter Windows
-    # einen hellen System-Trough/-Regler. Wert in eigenem Label (kein
-    # showvalue-Kasten); auf 5er-Schritte gerastert (ttk.Scale kennt kein
-    # resolution). Akzent analog dark_entry: Ruhe TEXT_MUTED, Press ACCENT.
-    scale_style = ttk.Style(dialog)
-    scale_style.configure(
-        "Display.Horizontal.TScale",
-        background=TEXT_MUTED, troughcolor=CELL_BG,
-        bordercolor=CELL_BG, darkcolor=TEXT_MUTED, lightcolor=TEXT_MUTED,
-    )
-    scale_style.map(
-        "Display.Horizontal.TScale",
-        background=[("pressed", ACCENT)],
-        darkcolor=[("pressed", ACCENT)],
-        lightcolor=[("pressed", ACCENT)],
-    )
-    scale_var = tk.DoubleVar(value=round(settings.get("ui_scale") * 100))
-    scale_value_label = tk.Label(
-        scale_row, text=f"{round(scale_var.get() / 5) * 5} %", font=FONT,
-        bg=BG, fg=TEXT_MUTED, width=5, anchor="w",
-    )
-
-    def _on_scale(_raw):
-        scale_value_label.config(text=f"{round(scale_var.get() / 5) * 5} %")
-
-    scale_widget = ttk.Scale(
-        scale_row, from_=75, to=200, orient="horizontal",
-        variable=scale_var, command=_on_scale, length=200,
-        style="Display.Horizontal.TScale",
-    )
-    scale_widget.bind(
-        "<ButtonPress-1>", lambda _e: scale_value_label.config(fg=ACCENT), add="+",
-    )
-    scale_widget.bind(
-        "<ButtonRelease-1>", lambda _e: scale_value_label.config(fg=TEXT_MUTED), add="+",
-    )
-    scale_widget.pack(side=tk.LEFT)
-    scale_value_label.pack(side=tk.LEFT, padx=(8, 0))
-    tk.Label(
-        app_frame, text="Änderung startet die App neu.", font=FONT_SMALL,
-        bg=BG, fg=TEXT_MUTED,
-    ).pack(anchor="w", pady=(2, 0))
-
-    # --- Benachrichtigungen (Reservierungs-Erinnerungen, gerätelokal) ---
-    tk.Label(
-        app_frame, text="— Benachrichtigungen —", font=FONT_BOLD,
-        bg=BG, fg=TEXT_MUTED,
-    ).pack(pady=(12, 4))
-
-    reminders_enabled_var = tk.BooleanVar(value=settings.get("reminders_enabled"))
-    tk.Checkbutton(
-        app_frame, text="Erinnerungen als Toast anzeigen",
-        variable=reminders_enabled_var, font=FONT,
-        bg=BG, fg=TEXT, selectcolor=CELL_BG,
-        activebackground=BG, activeforeground=TEXT, cursor="hand2",
-    ).pack(anchor="w")
-
-    reminder_row = tk.Frame(app_frame, bg=BG)
-    reminder_row.pack(anchor="w", pady=(4, 0))
-    tk.Label(
-        reminder_row, text="Erinnerung Minuten vor Ende der Reservierung:",
-        font=FONT, bg=BG, fg=TEXT,
-    ).pack(side=tk.LEFT, padx=(0, 8))
-    reminder_minutes_var = tk.StringVar(
-        value=str(settings.get("reminder_minutes_before")))
-    dark_combo(
-        reminder_row, reminder_minutes_var,
-        [str(m) for m in range(0, 121, 5)], width=4,
-    ).pack(side=tk.LEFT)
-    tk.Label(
-        app_frame, text="Nur für Reservierungen mit Kategorie.", font=FONT_SMALL,
-        bg=BG, fg=TEXT_MUTED,
-    ).pack(anchor="w", pady=(2, 0))
+    app = AppTab(tab_app, settings)
 
     # ===================== Speichern / Buttons =====================
-    tabs = {"work": work.frame, "mail": mail.frame, "google": tab_google, "app": tab_app}
+    tabs = {"work": work.frame, "mail": mail.frame, "google": tab_google, "app": app.frame}
 
     def save_settings():
         for key, lbl in zip(WEEKDAY_KEYS, DAYS_DE):
@@ -690,7 +555,7 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
         old_wsl_start = settings.get("werkstudent_limit_start")
         old_wsl_end = settings.get("werkstudent_limit_end")
 
-        new_autostart = autostart_var.get()
+        new_autostart = app.autostart_var.get()
         old_autostart = is_autostart_enabled()
 
         # Autostart-Toggle muss vor dem Settings-Write passieren, weil
@@ -711,7 +576,7 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
                 )
                 return
 
-        reminder_minutes = parse_reminder_minutes(reminder_minutes_var.get())
+        reminder_minutes = parse_reminder_minutes(app.reminder_minutes_var.get())
         if reminder_minutes is None:
             notebook.select(tabs["app"])
             themed_showerror(
@@ -721,9 +586,9 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
             return
 
         hourly_rate = parse_hourly_rate(mail.rate_var.get())
-        selected_code = code_for_state_label(state_var.get())
+        selected_code = code_for_state_label(app.state_var.get())
         old_scale = settings.get("ui_scale")
-        new_scale = clamp_ui_scale((round(scale_var.get() / 5) * 5) / 100)
+        new_scale = clamp_ui_scale((round(app.scale_var.get() / 5) * 5) / 100)
 
         updates = {
             "autostart": new_autostart,
@@ -736,10 +601,10 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
             "mail_closing": mail.closing_text.get("1.0", "end-1c"),
             "hourly_rate": hourly_rate,
             "state": selected_code,
-            "show_weekend": show_weekend_var.get(),
-            "always_on_top": always_on_top_var.get(),
-            "minimize_to_tray": minimize_to_tray_var.get(),
-            "reminders_enabled": reminders_enabled_var.get(),
+            "show_weekend": app.show_weekend_var.get(),
+            "always_on_top": app.always_on_top_var.get(),
+            "minimize_to_tray": app.minimize_to_tray_var.get(),
+            "reminders_enabled": app.reminders_enabled_var.get(),
             "reminder_minutes_before": reminder_minutes,
             "ui_scale": new_scale,
             "werkstudent_limit_enabled": work.wsl_enabled_var.get(),
