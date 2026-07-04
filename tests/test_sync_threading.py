@@ -237,6 +237,36 @@ def test_compaction_holds_data_lock_during_compact(tmp_path, monkeypatch):
     assert held == [True]
 
 
+def test_resolve_conflict_holds_data_lock_during_save_all(tmp_path):
+    """Whole-Branch-Review-Finding: resolve_conflict liest conflicts_store,
+    mutiert die Liste und schreibt sie zurück (save_all) — diese RMW-Spanne
+    muss unter dem geteilten Daten-Lock laufen, sonst kann ein Hintergrund-
+    Sync (apply_merged_doc) dazwischen schreiben und die frisch gemergte
+    Änderung verlieren."""
+    from src import sync
+    lock = threading.RLock()
+    storage, settings, conflicts = _stores(tmp_path, lock)
+    conflicts.save_all([{
+        "id": "c1", "kind": "entry", "key": "2026-01-01",
+        "candidates": [], "detected_at": "", "resolved": False,
+        "resolution": None, "resolved_at": None, "resolved_by": None,
+    }])
+    held = []
+    orig = conflicts.save_all
+
+    def spy(all_conflicts):
+        held.append(not _other_thread_can_acquire(lock))
+        return orig(all_conflicts)
+
+    conflicts.save_all = spy
+    chosen = {"slots": [{"start": "08:00", "end": "16:00", "pause": 0, "kategorie": ""}]}
+    sync.resolve_conflict("c1", chosen, conflicts, storage, settings,
+                           device_id="A", data_lock=lock)
+    assert held == [True]
+    assert storage.get("2026-01-01") == {"slots": chosen["slots"]}
+    assert conflicts.get_all()[0]["resolved"] is True
+
+
 def test_reconcile_holds_data_lock_during_rebase_and_apply(tmp_path, monkeypatch):
     """Der Reconcile-Rebase+Replace (reservations_sync) läuft unter dem
     geteilten Daten-Lock — kein UI-Save kann zwischen Rebase-Read und

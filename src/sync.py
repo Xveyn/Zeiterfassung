@@ -10,6 +10,7 @@ Doc-Struktur (Sync-File und Zwischenformate):
 }
 """
 
+import contextlib
 import datetime
 import uuid
 
@@ -332,29 +333,41 @@ def _remote_is_newer(remote_doc):
     return (remote_doc.get("schema_version") or 1) > SCHEMA_VERSION
 
 
-def resolve_conflict(conflict_id, chosen_value, conflicts_store, storage, settings, device_id):
+def resolve_conflict(conflict_id, chosen_value, conflicts_store, storage, settings, device_id,
+                      data_lock=None):
     """User hat einen Konflikt aufgelöst. chosen_value enthält den gewählten
     (oder manuell editierten) Wert. Für entries: {slots: [...]} (und
     optional deleted). Für settings: {value}.
     Schreibt den Wert in den entsprechenden Store und markiert den Konflikt
-    als resolved im ConflictsStore."""
-    all_conflicts = conflicts_store.get_all()
-    target = next((c for c in all_conflicts if c["id"] == conflict_id), None)
-    if target is None:
-        raise KeyError(f"Konflikt {conflict_id!r} nicht gefunden")
+    als resolved im ConflictsStore.
 
-    now = _utc_now_iso()
-    target["resolved"] = True
-    target["resolution"] = dict(chosen_value)
-    target["resolved_at"] = now
-    target["resolved_by"] = device_id
+    data_lock: geteilter Store-RLock (Whole-Branch-Review-Finding). Die
+    Read-Modify-Write-Spanne (get_all → mutieren → storage/settings-Write →
+    save_all) muss atomar gegen einen parallel laufenden Hintergrund-Sync
+    sein — dessen apply_merged_doc kann sonst zwischen dem Lesen und dem
+    Zurückschreiben in conflicts_store schreiben, wodurch der stale Snapshot
+    hier die frisch gemergte Änderung überschreibt/verliert. sync.py ist ein
+    pure Modul und darf nicht aus src.main importieren (Circular-Import) —
+    daher optionaler Parameter mit Default None + contextlib.nullcontext,
+    genau wie in reservations_sync.py."""
+    with (data_lock if data_lock is not None else contextlib.nullcontext()):
+        all_conflicts = conflicts_store.get_all()
+        target = next((c for c in all_conflicts if c["id"] == conflict_id), None)
+        if target is None:
+            raise KeyError(f"Konflikt {conflict_id!r} nicht gefunden")
 
-    if target["kind"] == "entry":
-        if chosen_value.get("deleted"):
-            storage.delete(target["key"])
-        else:
-            storage.save(target["key"], chosen_value.get("slots", []))
-    elif target["kind"] == "setting":
-        settings.set_synced(target["key"], chosen_value.get("value"))
+        now = _utc_now_iso()
+        target["resolved"] = True
+        target["resolution"] = dict(chosen_value)
+        target["resolved_at"] = now
+        target["resolved_by"] = device_id
 
-    conflicts_store.save_all(all_conflicts)
+        if target["kind"] == "entry":
+            if chosen_value.get("deleted"):
+                storage.delete(target["key"])
+            else:
+                storage.save(target["key"], chosen_value.get("slots", []))
+        elif target["kind"] == "setting":
+            settings.set_synced(target["key"], chosen_value.get("value"))
+
+        conflicts_store.save_all(all_conflicts)

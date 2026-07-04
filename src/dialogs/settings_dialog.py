@@ -422,7 +422,9 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
     if unresolved > 0:
         def _open_conflicts_dialog():
             from src.dialogs.conflicts_dialog import ConflictsDialog
-            ConflictsDialog(dialog, storage, settings, conflicts_store)
+            # data_lock durchgereicht bis zu sync.resolve_conflict
+            # (Review-Finding: RMW-Spanne muss atomar gegen Hintergrund-Sync sein).
+            ConflictsDialog(dialog, storage, settings, conflicts_store, data_lock=data_lock)
 
         secondary_button(
             tab_google,
