@@ -356,6 +356,7 @@ class App:
         open_settings_dialog(
             self.root, self.settings, self.base_path,
             on_change=_on_change,
+            runner=self._bg,
             conflicts_store=self.conflicts_store,
             storage=self.storage,
             reservation_store=self.reservation_store,

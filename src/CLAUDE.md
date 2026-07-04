@@ -89,7 +89,10 @@ das fixe Fenster auf die geänderte Banner-Höhe nachzieht (sonst Footer abgesch
 Genau ein Muster: Hintergrundarbeit über `BackgroundTaskRunner.run(fn, on_done)`; jede
 State-/Widget-Mutation aus einem Worker läuft über `App._marshal_to_ui` (`root.after(0, …)`,
 gegen `TclError` abgesichert, falls das Fenster zwischenzeitlich zu ist). Keine direkten
-`threading.Thread`-Aufrufe in `ui.py` mehr.
+`threading.Thread`-Aufrufe in `ui.py` **oder den Dialogen** mehr — auch `settings_dialog`
+routet seine Worker seit Audit H5 über einen injizierten `BackgroundTaskRunner`
+(`open_settings_dialog(..., runner=App._bg)`): Persistenz im Worker (überlebt
+Dialog-Close), UI-Feedback im `winfo_exists`-geschützten `on_done`.
 
 **Datenschicht-Locking (Audit H1/H2/M1):** Alle vier Stores
 (`storage`/`settings`/`conflicts_store`/`reservations`) teilen sich einen in
@@ -158,6 +161,11 @@ löschen — siehe Root-`CLAUDE.md`): `entry_dialog` (Tages-Dialog, rein zum Spe
 `settings_dialog` (4 Tabs über `ttk.Notebook`: Arbeitszeit / Bericht & Mail / Google / App; Dark-Styling via `theme.apply_notebook_style`), `share_dialog`, `import_dialog`, `category_dialog`,
 `conflicts_dialog`. `period_picker` ist kein Dialog, sondern der von
 `send_dialog` + `export_dialog` geteilte Zeitraum+Kategorie+Vorschau-Baustein.
+
+Alle Dialoge beziehen ihre Fenster-Chrome über `theme.create_dialog(...)`
+(Audit M13); Content-Styles (`apply_combobox_style`/`apply_notebook_style`/
+`attach_unfocus_on_click`) und `center_dialog_on_parent` ruft jeder Dialog
+selbst nach dem Aufbau.
 
 ## Wo gehört neuer Code hin?
 

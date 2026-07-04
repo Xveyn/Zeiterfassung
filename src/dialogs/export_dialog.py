@@ -8,9 +8,8 @@ from src.time_utils import validate_period
 from src.dialogs.period_picker import build_period_picker
 from src.theme import (
     BG,
-    apply_app_icon, apply_combobox_style, apply_dark_titlebar,
-    attach_unfocus_on_click, center_dialog_on_parent,
-    disable_min_max, primary_button, secondary_button,
+    apply_combobox_style, attach_unfocus_on_click, center_dialog_on_parent,
+    create_dialog, primary_button, secondary_button,
     set_primary_button_enabled, themed_showerror, themed_showinfo,
 )
 
@@ -18,18 +17,9 @@ from src.theme import (
 def open_export_dialog(parent, storage, settings):
     """Modal: Zeitraum + Kategorien wählen, daraus die PDF erzeugen und lokal
     über einen 'Speichern unter'-Dialog speichern. Kein Gmail nötig."""
-    dialog = tk.Toplevel(parent)
-    dialog.title("Als PDF exportieren")
-    dialog.resizable(False, False)
-    dialog.grab_set()
-    dialog.focus_set()
-    dialog.configure(bg=BG)
-    apply_dark_titlebar(dialog)
-    disable_min_max(dialog)
-    apply_app_icon(dialog)
+    dialog = create_dialog(parent, "Als PDF exportieren")
     apply_combobox_style(dialog)
     attach_unfocus_on_click(dialog)
-    dialog.bind("<Escape>", lambda _e: dialog.destroy())
 
     picker_frame, picker = build_period_picker(
         dialog, storage, settings, on_change=lambda: _refresh_export_btn())
