@@ -1050,3 +1050,25 @@ def icon_button(parent, text, command, fg=ACCENT, hover_fg=None):
         font=FONT_BOLD,
         width=3,
     )
+
+
+def set_icon_button_enabled(btn, enabled, *, fg=ACCENT):
+    """Pendant zu set_primary_button_enabled für `icon_button` (Header-⟳):
+    deaktiviert = gedämpfte Schrift (TEXT_MUTED) + Pfeil-Cursor, kein
+    Hover-Wechsel; aktiviert zurück auf `fg` (Default ACCENT wie icon_button).
+
+    Ein `icon_button` ist ein `_LabelButton` (Frame) und kennt KEIN `-state` —
+    `btn.config(state=...)` wirft `TclError`. Darum diese Optik-only-Variante.
+    Wie bei set_primary_button_enabled bleibt die `command`/on_click-Bindung
+    aktiv, der Callback muss bei disabled also selbst ein No-op machen."""
+    cursor = "hand2" if enabled else "arrow"
+    c = (
+        {"bg": CELL_BG, "fg": fg,
+         "hover_bg": ENTRY_BG, "hover_fg": fg}
+        if enabled else
+        {"bg": CELL_BG, "fg": TEXT_MUTED,
+         "hover_bg": CELL_BG, "hover_fg": TEXT_MUTED}
+    )
+    btn._colors = c
+    btn.config(bg=c["bg"], cursor=cursor)
+    btn._label.config(bg=c["bg"], fg=c["fg"], cursor=cursor)
