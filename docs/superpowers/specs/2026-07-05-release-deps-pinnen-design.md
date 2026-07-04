@@ -79,3 +79,15 @@ Alle Versionen sind **Python-3.10-tauglich** (CI-/Release-Python; per PyPI
   gewünscht ist.
 - Keine Änderung an `build.py`, `test.yml` oder Quellcode.
 - Kein Versionsbump / kein `release:*`-Label (reiner Infra-Fix).
+
+## Doku mitgepflegt
+
+- **README** (`#### Abhängigkeiten`): Tabelle vervollständigt — die vorher
+  fehlenden direkten Deps `holidays`, `pystray`, `Pillow`,
+  `pyobjc-framework-Cocoa` ergänzt (weiter ohne Versionsnummern, keine
+  Veralterung). Vorbestehender Mangel, beim Deps-PR mitgenommen.
+- **`CLAUDE.md`**: neue Sektion „Abhängigkeiten & Pinning" — hält die Konvention
+  fest (direkte Deps `==` + 3.10-Check, transitive floaten, `pip-licenses`-Pin,
+  PyInstaller nicht doppeln, Pre-Release vor Release-Build-Änderungen).
+- `src/CLAUDE.md` bewusst **unverändert** — reine Architektur-Referenz, Pinning
+  ist nicht ihr Thema.

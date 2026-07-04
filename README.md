@@ -150,6 +150,10 @@ python -m src.main
 | `google-api-python-client` | Gmail API Client |
 | `xhtml2pdf` | PDF-Generierung aus HTML |
 | `pyinstaller` | Paketierung als Standalone-Binary |
+| `holidays` | Feiertags-Lookup (deutsche Feiertage) |
+| `pystray` | Infobereich-Icon (Minimize-to-Tray) |
+| `Pillow` | Icon-/Bildverarbeitung (Tray-Icon) |
+| `pyobjc-framework-Cocoa` | Natives macOS-Tray (nur macOS) |
 
 ## Gmail API einrichten
 
