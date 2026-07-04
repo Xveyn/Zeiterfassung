@@ -101,3 +101,137 @@ def test_pull_without_lock_and_guard_still_works(tmp_path, monkeypatch):
         storage, settings, conflicts, str(tmp_path),
         lambda **kw: calls.append(kw))
     assert calls and calls[0]["ok"] is True
+
+
+def test_push_skipped_when_guard_held(tmp_path):
+    import src.main as main
+    lock = threading.RLock()
+    storage, settings, conflicts = _stores(tmp_path, lock)
+    guard = threading.Lock()
+    assert guard.acquire(blocking=False)
+    try:
+        res = main._run_push_blocking(
+            storage, settings, conflicts, str(tmp_path),
+            data_lock=lock, sync_guard=guard)
+    finally:
+        guard.release()
+    assert res == {"ok": False, "skipped": True}
+
+
+def test_push_holds_data_lock_during_apply(tmp_path, monkeypatch):
+    import src.main as main
+    from src import sync
+    lock = threading.RLock()
+    storage, settings, conflicts = _stores(tmp_path, lock)
+    _mock_drive_empty(monkeypatch)
+    held = []
+    orig = sync.apply_merged_doc
+
+    def spy(merged, storage_, settings_, conflicts_):
+        held.append(not _other_thread_can_acquire(lock))
+        return orig(merged, storage_, settings_, conflicts_)
+
+    monkeypatch.setattr(sync, "apply_merged_doc", spy)
+    res = main._run_push_blocking(
+        storage, settings, conflicts, str(tmp_path),
+        data_lock=lock, sync_guard=None)
+    assert res.get("ok") is True
+    assert held == [True]
+
+
+def test_push_uploads_without_holding_data_lock(tmp_path, monkeypatch):
+    """Spec-Invariante: der Daten-Lock wird NIE über den Netzwerk-Upload
+    gehalten — während drive.upload muss er aus fremdem Thread nehmbar sein."""
+    import src.main as main
+    from src import drive
+    lock = threading.RLock()
+    storage, settings, conflicts = _stores(tmp_path, lock)
+    monkeypatch.setattr(drive, "get_drive_service", lambda *a, **k: object())
+    monkeypatch.setattr(drive, "find_sync_file", lambda service: None)
+    lock_free = []
+
+    def fake_upload(service, content, file_id=None, expected_etag=None):
+        lock_free.append(_other_thread_can_acquire(lock))
+        return ("file-1", "etag-1")
+
+    monkeypatch.setattr(drive, "upload", fake_upload)
+    res = main._run_push_blocking(
+        storage, settings, conflicts, str(tmp_path),
+        data_lock=lock, sync_guard=None)
+    assert res.get("ok") is True
+    assert lock_free == [True]
+
+
+def test_push_guard_released_after_run(tmp_path, monkeypatch):
+    import src.main as main
+    lock = threading.RLock()
+    storage, settings, conflicts = _stores(tmp_path, lock)
+    _mock_drive_empty(monkeypatch)
+    guard = threading.Lock()
+    res = main._run_push_blocking(
+        storage, settings, conflicts, str(tmp_path),
+        data_lock=lock, sync_guard=guard)
+    assert res.get("ok") is True
+    assert guard.acquire(blocking=False)   # Guard nach dem Lauf wieder frei
+    guard.release()
+
+
+def test_push_guard_timeout_waits_for_running_sync(tmp_path, monkeypatch):
+    """Quit-Semantik: guard_timeout>0 wartet auf den laufenden Sync statt zu
+    skippen. Deterministischer Ausgang (großzügige Timeouts begrenzen nur die
+    Dauer im Fehlerfall, sie werden nicht asserted)."""
+    import src.main as main
+    lock = threading.RLock()
+    storage, settings, conflicts = _stores(tmp_path, lock)
+    _mock_drive_empty(monkeypatch)
+    guard = threading.Lock()
+    guard.acquire()   # "laufender Sync"
+    out = {}
+
+    def run_push():
+        out["res"] = main._run_push_blocking(
+            storage, settings, conflicts, str(tmp_path),
+            timeout_seconds=30, data_lock=lock, sync_guard=guard,
+            guard_timeout=30)
+
+    t = threading.Thread(target=run_push)
+    t.start()
+    guard.release()   # der "laufende Sync" endet — der wartende Push übernimmt
+    t.join()
+    assert out["res"].get("ok") is True
+
+
+def test_compaction_skipped_when_guard_held(tmp_path):
+    import src.main as main
+    lock = threading.RLock()
+    storage, settings, conflicts = _stores(tmp_path, lock)
+    guard = threading.Lock()
+    assert guard.acquire(blocking=False)
+    try:
+        res = main._run_compaction_blocking(
+            storage, settings, conflicts, str(tmp_path),
+            data_lock=lock, sync_guard=guard)
+    finally:
+        guard.release()
+    assert res == {"ok": False, "skipped": True}
+
+
+def test_compaction_holds_data_lock_during_compact(tmp_path, monkeypatch):
+    import src.main as main
+    from src import sync
+    lock = threading.RLock()
+    storage, settings, conflicts = _stores(tmp_path, lock)
+    _mock_drive_empty(monkeypatch)
+    held = []
+    orig = sync.compact_local
+
+    def spy(storage_, settings_, conflicts_, now):
+        held.append(not _other_thread_can_acquire(lock))
+        return orig(storage_, settings_, conflicts_, now)
+
+    monkeypatch.setattr(sync, "compact_local", spy)
+    res = main._run_compaction_blocking(
+        storage, settings, conflicts, str(tmp_path),
+        data_lock=lock, sync_guard=None)
+    assert res.get("ok") is True
+    assert held == [True]
