@@ -10,7 +10,7 @@
 
 ## Global Constraints
 
-- **Gate:** Implementierung startet erst, wenn PR #119 UND PR #121 in `master` sind und `master` in diesen Branch gemergt wurde (Task 0). Alle Zeilennummern gelten „Stand nach Master-Merge — vor dem Edit verifizieren".
+- **Basis:** Der Branch enthält #119 (accent-bar) und #121 (threading) bereits als lokale Merges (Controller, vor Task 1). Der zugehörige **Reihenfolge-Hinweis gehört in den PR-Body** („baut auf #119 und #121 auf — bitte in dieser Reihenfolge mergen"), nicht mehr als Ausführungs-Gate. Zeilennummern gelten „Stand nach den Merges — vor dem Edit verifizieren".
 - **Verhaltensgleichheit pro Migrationsstelle** ist das Review-Kriterium: settings und send:22 haben KEIN Escape-Bind; import:411 bleibt resizable und behält seine ungegatete `transient(parent)`-Zeile; theme-interne Dialoge grabben am ENDE (center → grab_set → wait_window) — nichts davon „reparieren".
 - `create_dialog` hat **keinen** transient-Param (transient setzt `center_dialog_on_parent`, gated auf sichtbaren Parent — Tray-Fall).
 - Button-Disable ist **Optik-only** (Muster `set_primary_button_enabled`): Callback muss bei disabled selbst No-op sein.
@@ -22,30 +22,18 @@
 
 ---
 
-### Task 0: Gate prüfen, master mergen, Baseline
+### Task 0: Basis verifizieren (Merges bereits erledigt)
 
-**Files:** keine Quell-Änderungen (ggf. Merge-Commit).
+**Files:** keine Änderungen — nur Verifikation.
 
 **Interfaces:**
-- Produces: Branch-Stand mit #119 (`_themed_ok_dialog` ohne accent-Param, `WARNING`-Konstante entfernt) und #121 (`conflicts_dialog` mit `data_lock`-Param) — die Basis aller Code-Zitate in Tasks 1–5.
+- Produces: bestätigter Branch-Stand mit #119 (`_themed_ok_dialog` ohne accent-Param, `WARNING`-Konstante entfernt) und #121 (`conflicts_dialog` mit `data_lock`-Param) — die Basis aller Code-Zitate in Tasks 1–5. Die Merges (`a8e4f11`, `1ace7fb`) hat der Controller vor Task 1 gesetzt.
 
-- [ ] **Step 1: Gate prüfen**
-
-Run: `gh pr view 119 --repo margenheld/Zeiterfassung --json state ; gh pr view 121 --repo margenheld/Zeiterfassung --json state`
-Expected: beide `"state": "MERGED"`. Wenn nicht: **STOPP** — Task nicht fortsetzen, Controller informieren (BLOCKED).
-
-- [ ] **Step 2: master in den Branch mergen**
-
-```powershell
-git checkout master ; git pull ; git checkout fix/dialog-theme-helper ; git merge master
-```
-Expected: Merge ohne Konflikte (Branch enthält bisher nur Docs).
-
-- [ ] **Step 3: Basis verifizieren**
+- [ ] **Step 1: Basis verifizieren**
 
 Run: `python -m pytest -q ; ruff check .`
-Expected: 0 failed (≥744 passed), „All checks passed".
-Zusätzlich prüfen (Read): `src/theme.py` enthält KEINE `WARNING`-Konstante mehr und `_themed_ok_dialog(parent, title, message)` hat keinen accent-Param (#119 da); `src/dialogs/conflicts_dialog.py::__init__` hat `data_lock=None` (#121 da).
+Expected: 0 failed (744 passed/3 skipped), „All checks passed".
+Zusätzlich prüfen (Grep/Read): `src/theme.py` enthält KEINE `WARNING`-Konstante mehr und `_themed_ok_dialog(parent, title, message)` hat keinen accent-Param (#119 da); `src/dialogs/conflicts_dialog.py::__init__` hat `data_lock=None` (#121 da). Wenn eine Prämisse fehlt: **STOPP** (BLOCKED).
 
 ---
 
@@ -526,10 +514,17 @@ git commit -m "docs: create_dialog als Dialog-Konvention in CLAUDE.md verankert"
 
 ## Abschluss
 
-Nach Task 5: finaler Whole-Branch-Review, dann Screenshot-Abnahme durch den
-Nutzer (conflicts vorher/nachher via `SendUserFile`), dann
+Nach Task 5: finaler Whole-Branch-Review (Review-Range **ab dem zweiten
+Merge-Commit** `1ace7fb..HEAD` — nur die H3/M13-Arbeit, nicht die
+gemergten #119/#121-Commits), dann Screenshot-Abnahme durch den Nutzer
+(conflicts vorher/nachher via `SendUserFile`), dann
 `superpowers:finishing-a-development-branch` — Branch nach `origin` (Fork),
 PR gegen `margenheld/Zeiterfassung` `master` (Memory `pr-workflow-upstream`),
-kein `release:*`-Label. PR-Text: H3/M13 referenzieren, Spec verlinken,
-Verhaltensgleichheits-Garantie + die eine bewusste Logik-Änderung
-(`_selected = None`) benennen.
+kein `release:*`-Label.
+
+**PR-Body Pflichtinhalt:** (1) Reihenfolge-Hinweis „baut auf #119 und #121
+auf — bitte erst diese beiden mergen; solange sie offen sind, zeigt dieser
+PR-Diff auch deren Commits, danach nur noch die Dialog-Theme-Arbeit"; (2)
+H3/M13 referenzieren, Spec verlinken; (3) Verhaltensgleichheits-Garantie
+der Migration + die eine bewusste Logik-Änderung (`_selected = None`)
+benennen.
