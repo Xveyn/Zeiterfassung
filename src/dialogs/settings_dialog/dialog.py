@@ -12,7 +12,7 @@ from src.theme import (
     STATUS_OK, TEXT, TEXT_MUTED,
     apply_combobox_style, apply_notebook_style, attach_unfocus_on_click,
     center_dialog_on_parent, create_dialog,
-    dark_combo, dark_entry, dark_text,
+    dark_combo,
     primary_button, secondary_button,
     themed_askyesno, themed_showinfo, themed_showwarning, themed_showerror,
 )
@@ -26,6 +26,7 @@ from src.time_utils import DAYS_DE, validate_entry
 from src.weekly_limit import format_limit_warnings, period_scan_needed, scan_period_for_warnings
 from src.dialogs.settings_dialog._shared import label, subheader
 from src.dialogs.settings_dialog.oauth_task import build_oauth_enable_task
+from src.dialogs.settings_dialog.tab_mail import MailTab
 from src.dialogs.settings_dialog.tab_work import WorkTab
 
 
@@ -67,46 +68,7 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
     work = WorkTab(tab_work, dialog, settings)
 
     # ===================== Tab: Bericht & Mail =====================
-    label(tab_mail, "Empfänger:", row=0, pady=(10, 8))
-    recipient_var = tk.StringVar(value=settings.get("recipient"))
-    dark_entry(tab_mail, recipient_var, width=25).grid(row=0, column=1, padx=10, pady=(10, 8))
-
-    label(tab_mail, "Name:", row=1)
-    name_var = tk.StringVar(value=settings.get("name"))
-    dark_entry(tab_mail, name_var, width=25).grid(row=1, column=1, padx=10, pady=8)
-
-    label(tab_mail, "Stundenlohn (€):", row=2)
-    rate_var = tk.StringVar(value=str(settings.get("hourly_rate") or ""))
-    dark_entry(tab_mail, rate_var, width=10).grid(row=2, column=1, padx=10, pady=8, sticky="w")
-    tk.Label(
-        tab_mail, text="(optional – nur für dich sichtbar)", font=FONT_SMALL,
-        bg=BG, fg=TEXT_MUTED,
-    ).grid(row=2, column=1, padx=(120, 10), pady=8, sticky="w")
-
-    subheader(tab_mail, "Mail-Vorlage", row=3)
-
-    label(tab_mail, "Betreff:", row=4, pady=4)
-    subject_var = tk.StringVar(value=settings.get("mail_subject"))
-    dark_entry(tab_mail, subject_var, width=35).grid(row=4, column=1, padx=10, pady=4)
-
-    label(tab_mail, "Anrede:", row=5, pady=4)
-    greeting_var = tk.StringVar(value=settings.get("mail_greeting"))
-    dark_entry(tab_mail, greeting_var, width=35).grid(row=5, column=1, padx=10, pady=4)
-
-    label(tab_mail, "Inhalt:", row=6, pady=4, sticky="nw")
-    content_text = dark_text(tab_mail, 35, 3)
-    content_text.grid(row=6, column=1, padx=10, pady=4)
-    content_text.insert("1.0", settings.get("mail_content"))
-
-    label(tab_mail, "Gruß:", row=7, pady=4, sticky="nw")
-    closing_text = dark_text(tab_mail, 35, 2)
-    closing_text.grid(row=7, column=1, padx=10, pady=4)
-    closing_text.insert("1.0", settings.get("mail_closing"))
-
-    tk.Label(
-        tab_mail, text="Platzhalter: {zeitraum}, {gesamt}", font=("Segoe UI", 8),
-        bg=BG, fg=TEXT_MUTED,
-    ).grid(row=8, column=0, columnspan=2, padx=10, pady=(0, 8))
+    mail = MailTab(tab_mail, settings)
 
     # ===================== Tab: Google =====================
     subheader(tab_google, "Google-Konto", row=0, top_pad=10)
@@ -690,7 +652,7 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
     ).pack(anchor="w", pady=(2, 0))
 
     # ===================== Speichern / Buttons =====================
-    tabs = {"work": work.frame, "mail": tab_mail, "google": tab_google, "app": tab_app}
+    tabs = {"work": work.frame, "mail": mail.frame, "google": tab_google, "app": tab_app}
 
     def save_settings():
         for key, lbl in zip(WEEKDAY_KEYS, DAYS_DE):
@@ -758,7 +720,7 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
             )
             return
 
-        hourly_rate = parse_hourly_rate(rate_var.get())
+        hourly_rate = parse_hourly_rate(mail.rate_var.get())
         selected_code = code_for_state_label(state_var.get())
         old_scale = settings.get("ui_scale")
         new_scale = clamp_ui_scale((round(scale_var.get() / 5) * 5) / 100)
@@ -766,12 +728,12 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
         updates = {
             "autostart": new_autostart,
             "default_pause": int(work.pause_var.get()),
-            "recipient": recipient_var.get(),
-            "name": name_var.get(),
-            "mail_subject": subject_var.get(),
-            "mail_greeting": greeting_var.get(),
-            "mail_content": content_text.get("1.0", "end-1c"),
-            "mail_closing": closing_text.get("1.0", "end-1c"),
+            "recipient": mail.recipient_var.get(),
+            "name": mail.name_var.get(),
+            "mail_subject": mail.subject_var.get(),
+            "mail_greeting": mail.greeting_var.get(),
+            "mail_content": mail.content_text.get("1.0", "end-1c"),
+            "mail_closing": mail.closing_text.get("1.0", "end-1c"),
             "hourly_rate": hourly_rate,
             "state": selected_code,
             "show_weekend": show_weekend_var.get(),
