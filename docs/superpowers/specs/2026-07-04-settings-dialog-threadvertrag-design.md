@@ -95,6 +95,14 @@ einem Dialog-Widget-Zugriff, der abbrechen könnte.
 
 Alle sechs `threading.Thread(...)`- und alle `dialog.after(0, …)`-Stellen im Dialog
 entfallen. `import threading` wird im Dialog überflüssig (prüfen und entfernen).
+**Nicht betroffen:** der periodische UI-Timer `dialog.after(500, refresh_status)`
+(Z. 242) — der läuft auf dem UI-Thread, verletzt keinen Thread-Vertrag und bleibt.
+
+**Akzeptierter Randfall (Bestandsverhalten):** Schließt der Nutzer den Dialog während
+eines laufenden OAuth-Flows und öffnet ihn sofort neu, liest der neue Dialog noch
+`sync_enabled/gcal_enabled = False` und erlaubt einen zweiten Flow. Das konnte der
+alte Code genauso; der zweite Flow nutzt das inzwischen gespeicherte Token (kein
+zweiter Browser-Consent) und die zweite Persistenz ist idempotent. Kein Fix nötig.
 
 ## Per-Worker-Umsetzung
 
@@ -147,9 +155,12 @@ def _on_sync_toggled():
 ### #6 Kalender aktivieren (`_on_gcal_toggled` / `_finish_gcal_oauth`)
 
 Analog zu #2. `fn` persistiert bei Erfolg `settings.set("gcal_enabled", True)`.
-`on_done` bei Erfolg: `on_change()` **und** `_load_calendars()` (beide root-/App-scoped
-bzw. selbst wieder ein `runner.run` — s. #5) **vor** der Dialog-Kosmetik `cb_gcal.config`.
-Fehlerpfad: `var_gcal.set(False)` + Messagebox, `winfo_exists`-geschützt.
+`on_done` bei Erfolg: **nur** `on_change()` ist root-scoped und läuft vor dem Guard.
+`_load_calendars()` ist dagegen **Dialog-Kosmetik** (setzt sofort
+`cal_status.config(...)` und populiert die Dialog-Combobox) und gehört **hinter**
+den `winfo_exists`-Guard — bei geschlossenem Dialog ist die Kalenderliste sinnlos
+und der Widget-Zugriff würde werfen. Fehlerpfad: `var_gcal.set(False)` + Messagebox,
+ebenfalls `winfo_exists`-geschützt.
 
 ### #4 Sync-Kompaktierung (`_on_compact_clicked` / `_show`)
 
@@ -188,11 +199,15 @@ modulweiten Builder** gelöst, z. B.
 
 ```python
 def build_oauth_enable_task(*, service_fn, settings, setting_key,
-                            checkbox, toggle_var, on_change, dialog):
+                            checkbox, toggle_var, on_change, dialog,
+                            error_title, on_success_dialog_ui=None):
     """Baut (fn, on_done) für einen OAuth-Aktivieren-Toggle: fn ruft service_fn()
     und persistiert setting_key=True bei Erfolg (überlebt Dialog-Close); on_done
-    ruft on_change() (root-scoped) und danach die winfo_exists-geschützte
-    Dialog-Kosmetik. Rückgabe: (fn, on_done) für runner.run(...)."""
+    ruft on_change() (root-scoped, vor dem Guard) und danach die winfo_exists-
+    geschützte Dialog-Kosmetik. on_success_dialog_ui (optional) läuft bei Erfolg
+    NACH dem Guard — #6 hängt hier _load_calendars ein (Dialog-Kosmetik, s.o.);
+    #2 lässt es weg. error_title ist der Messagebox-Titel des Fehlerpfads.
+    Rückgabe: (fn, on_done) für runner.run(...)."""
 ```
 
 Das entfernt zugleich die Duplikation zwischen #2 und #6. Der Builder ist ohne echten
@@ -205,7 +220,8 @@ ein Recorder-`on_change` und ein Fake-Service-Callable (Erfolg vs. Exception). A
 2. **Normalfall (Dialog offen):** Erfolg → Persist + `on_change` + `cb.config("normal")`.
 3. **Fehlerpfad:** OAuth wirft → **keine** Persistenz, `var.set(False)` + Fehler-Messagebox
    (bei offenem Dialog), sauberes Überspringen bei geschlossenem.
-4. **gcal analog** inkl. `_load_calendars`-Auslösung bei Erfolg.
+4. **gcal analog** inkl. `on_success_dialog_ui` (= `_load_calendars`): wird bei Erfolg
+   **und offenem Dialog** aufgerufen, bei geschlossenem übersprungen.
 
 Gesamtsuite muss grün bleiben (`pytest`), `ruff check .` sauber. Ein optionaler
 Tk-Smoke (echter Dialog, ein Toggle) ist Kür; primär die headless-Kontrakte.
