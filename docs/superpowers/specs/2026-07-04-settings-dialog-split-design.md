@@ -13,7 +13,7 @@ vollständig aus **einer** Funktion `open_settings_dialog` (Z. 75–977):
 |---|---|---|
 | Chrome + Notebook + `label`/`subheader`-Helfer | 75–121 | ~50 |
 | Tab Arbeitszeit (Wochentag-Zeiten, Pause, WSL) | 123–212 | ~90 |
-| Tab Bericht & Mail | 215–253 | ~40 |
+| Tab Bericht & Mail | 215–254 | ~40 |
 | Tab Google (Konto/Sync/Kalender, alle 6 H5-Worker) | 256–696 | **~440** |
 | Tab App (Bundesland, Checkboxen, Reminder, Skalierung) | 699–835 | ~140 |
 | `save_settings` (Cross-Tab-Validierung + Persist) | 840–968 | ~130 |

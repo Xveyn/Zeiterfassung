@@ -17,6 +17,7 @@
 - **Import-Stabilität:** `from src.dialogs.settings_dialog import open_settings_dialog` (ui.py) funktioniert nach jedem Task; `build_oauth_enable_task` bleibt aus dem Paket importierbar.
 - **Nach jedem Task grün:** `.venv/Scripts/python.exe -m pytest -q` → 750 passed / 3 skipped; `.venv/Scripts/python.exe -m ruff check .` → clean; Import-Smoke `.venv/Scripts/python.exe -c "import src.ui; print('ok')"`.
 - **Zeilennummern** in den Tasks beziehen sich auf `src/dialogs/settings_dialog.py` @ Branch-Start (Commit von H5, 977 Zeilen). Nach Task 1 heißt die Datei `src/dialogs/settings_dialog/dialog.py` und die Nummern verschieben sich um ~44 nach oben — **die Banner-Kommentare `# ===================== Tab: … =====================` sind die verlässlichen Anker**, immer zuerst den umgebenden Code verifizieren.
+- **Banner-Regel (einheitlich für Tasks 2–5):** Der Banner-Kommentar bleibt in `dialog.py` (über der Handle-Zuweisung); der Move-Range ist immer nur der **Content** darunter. Move-Ranges enden immer am Ende des letzten vollständigen **Statements** (mehrzeilige Aufrufe bis zur schließenden Klammer mitnehmen!) — die Verbatim-Technik hat keinen Puffer, ein abgeschnittenes Statement ist sofort ein SyntaxError in beiden Dateien.
 
 Design-Referenz: `docs/superpowers/specs/2026-07-04-settings-dialog-split-design.md`.
 
@@ -227,7 +228,7 @@ Hinweis: `_wsl_date_row` bleibt als verschachtelte Funktion im `__init__` (Move-
    | `wsl_hours_var` | `work.wsl_hours_var` |
    | `tabs = {"work": tab_work, …}` | `tabs = {"work": work.frame, …}` (übrige Einträge unverändert) |
 
-4. Import-Kopf von `dialog.py` trimmen: `calendar`, `open_category_dialog`, `PAUSE_VALUES`, `TIME_VALUES`, `dark_combo`*, `dark_entry`*, `DAYS_DE`* nur entfernen, wenn sie in `dialog.py` **nirgends mehr** vorkommen (`DAYS_DE` wird in `save_settings` Z. 841 weiter gebraucht → bleibt; `dark_combo`/`dark_entry` werden von Mail/Google/App-Blöcken noch gebraucht → bleiben vorerst). Verifikation per grep, nicht raten.
+4. Import-Kopf von `dialog.py` trimmen: `calendar`, `open_category_dialog`, `PAUSE_VALUES`, `TIME_VALUES`, **`Any` (`from typing import Any` — wurde nur vom gelöschten lokalen `label`-Helfer genutzt)**, `dark_combo`*, `dark_entry`*, `DAYS_DE`* nur entfernen, wenn sie in `dialog.py` **nirgends mehr** vorkommen (`DAYS_DE` wird in `save_settings` Z. 841 weiter gebraucht → bleibt; `dark_combo`/`dark_entry` werden von Mail/Google/App-Blöcken noch gebraucht → bleiben vorerst). Verifikation per grep, nicht raten.
 
 - [ ] **Step 4: Verifikation + grep**
 
@@ -260,7 +261,7 @@ git commit -m "refactor(settings): WorkTab + _shared-Helfer extrahiert (H4 Schri
 
 - [ ] **Step 1: `tab_mail.py` anlegen — Mail-Block verbatim verschieben**
 
-Block = Original-Z. 214–253 (Anker: Banner `# ===================== Tab: Bericht & Mail` bis zur Platzhalter-Hinweiszeile `…{zeitraum}, {gesamt}…` einschließlich). Einzige Änderung im Block: `tab_mail` → `frame`. Der hartkodierte Font `("Segoe UI", 8)` zieht **unverändert** mit (Audit-Randnotiz, bewusst kein Fix — Global Constraints).
+Block = Original-Z. **215–254** (Content unter dem Banner `# ===================== Tab: Bericht & Mail`; **Achtung Block-Ende:** die letzte Anweisung ist das mehrzeilige Platzhalter-`tk.Label(...)`, dessen schließendes `).grid(row=8, …)` auf **Z. 254** steht — bis dorthin mitnehmen, sonst SyntaxError in beiden Dateien). Einzige Änderung im Block: `tab_mail` → `frame`. Der hartkodierte Font `("Segoe UI", 8)` zieht **unverändert** mit (Audit-Randnotiz, bewusst kein Fix — Global Constraints).
 
 ```python
 # src/dialogs/settings_dialog/tab_mail.py
@@ -276,7 +277,7 @@ class MailTab:
     """Baut den Bericht-&-Mail-Tab; exponiert die Variablen für save_settings."""
 
     def __init__(self, frame, settings):
-        <verbatim verschobener Block Z. 214–253, tab_mail→frame>
+        <verbatim verschobener Block Z. 215–254, tab_mail→frame>
 
         self.frame = frame
         self.recipient_var = recipient_var
@@ -331,7 +332,7 @@ Expected: grün/clean/ok; grep-Treffer nur mit `mail.`-Präfix.
 
 - [ ] **Step 1: `tab_app.py` anlegen — App-Block verbatim verschieben**
 
-Block = Original-Z. 698–835 (Anker: Banner `# ===================== Tab: App` bis zur Hinweiszeile „Nur für Reservierungen mit Kategorie."). Änderungen im Block: `tab_app` → `frame`, und **eine** dokumentierte Äquivalenz-Anpassung: `ttk.Style(dialog)` (Original-Z. 767) → `ttk.Style(frame)` — ttk-Styles sind Interpreter-global, der Master dient nur der Interpreter-Bindung; `AppTab` braucht dadurch kein `dialog`-Handle (Spec-Festlegung).
+Block = Original-Z. **699–835** (Content unter dem Banner `# ===================== Tab: App`, Banner-Regel; Ende = Hinweiszeile „Nur für Reservierungen mit Kategorie." — das schließende `).pack(anchor="w", pady=(2, 0))` des mehrzeiligen `tk.Label` auf Z. 835 mitnehmen). Änderungen im Block: `tab_app` → `frame`, und **eine** dokumentierte Äquivalenz-Anpassung: `ttk.Style(dialog)` (Original-Z. 767) → `ttk.Style(frame)` — ttk-Styles sind Interpreter-global, der Master dient nur der Interpreter-Bindung; `AppTab` braucht dadurch kein `dialog`-Handle (Spec-Festlegung).
 
 ```python
 # src/dialogs/settings_dialog/tab_app.py
@@ -353,7 +354,7 @@ class AppTab:
     """Baut den App-Tab; exponiert die Variablen für save_settings."""
 
     def __init__(self, frame, settings):
-        <verbatim verschobener Block Z. 698–835, tab_app→frame,
+        <verbatim verschobener Block Z. 699–835, tab_app→frame,
          ttk.Style(dialog)→ttk.Style(frame)>
 
         self.frame = frame
@@ -409,7 +410,7 @@ Expected: grün/clean/ok; grep-Treffer nur mit `app.`-Präfix (plus die `is_auto
 
 - [ ] **Step 1: `tab_google.py` anlegen — Google-Block verbatim verschieben**
 
-Block = Original-Z. 256–696 (Anker: Banner `# ===================== Tab: Google` bis einschließlich `if settings.get("gcal_enabled"): _load_calendars()`). **Zusätzlich** wandert `creds_path = os.path.join(base_path, "credentials.json")` (Original-Z. 95) an den Anfang des `__init__` — es wird nur im Google-Block genutzt. Einzige Block-Änderung: `tab_google` → `frame`. Alle anderen Namen (`dialog`, `settings`, `base_path`, `on_change`, `runner`, `storage`, `conflicts_store`, `reservation_store`, `data_lock`, `sync_guard`) sind Konstruktor-Parameter mit **identischen Namen** — der verschobene Code referenziert sie unverändert.
+Block = Original-Z. **257–696** (Content unter dem Banner `# ===================== Tab: Google`, Banner-Regel; bis einschließlich `if settings.get("gcal_enabled"): _load_calendars()` Z. 695–696). **Zusätzlich** wandert `creds_path = os.path.join(base_path, "credentials.json")` (Original-Z. 95) an den Anfang des `__init__` — es wird nur im Google-Block genutzt. Einzige Block-Änderung: `tab_google` → `frame`. Alle anderen Namen (`dialog`, `settings`, `base_path`, `on_change`, `runner`, `storage`, `conflicts_store`, `reservation_store`, `data_lock`, `sync_guard`) sind Konstruktor-Parameter mit **identischen Namen** — der verschobene Code referenziert sie unverändert.
 
 ```python
 # src/dialogs/settings_dialog/tab_google.py
@@ -442,14 +443,14 @@ class GoogleTab:
                  data_lock, sync_guard):
         creds_path = os.path.join(base_path, "credentials.json")
 
-        <verbatim verschobener Block Z. 256–696, tab_google→frame>
+        <verbatim verschobener Block Z. 257–696, tab_google→frame>
 
         self.frame = frame
         self.cal_map = cal_map
         self.cal_var = cal_var
 ```
 
-(Die Lazy-Imports im Block — `from src.dialogs.conflicts_dialog import ConflictsDialog`, `from src.dialogs.import_dialog import open_import_dialog`, `from src import drive`, `from src import gcal`, `from src.main import _run_compaction_blocking`, `from src.sync import NEWER_REMOTE_VERSION_MSG` — bleiben lazy an Ort und Stelle; CI-Konvention.)
+(Die Lazy-Imports im Block — `from src.dialogs.conflicts_dialog import ConflictsDialog`, `from src.dialogs.import_dialog import open_import_dialog`, `from src.dialogs.send_dialog import show_missing_credentials_dialog`, `from src.mail import fetch_user_email, get_gmail_service`, `from src import drive`, `from src import gcal`, `from src.main import _run_compaction_blocking`, `from src.sync import NEWER_REMOTE_VERSION_MSG` — bleiben lazy an Ort und Stelle; CI-Konvention.)
 
 - [ ] **Step 2: `dialog.py` umbauen**
 
@@ -462,7 +463,7 @@ class GoogleTab:
    ```
    Import `from src.dialogs.settings_dialog.tab_google import GoogleTab`; die Zeile `creds_path = …` (jetzt ~Z. 51) in `dialog.py` **löschen**.
 2. Substitutionen: `cal_map` → `google.cal_map`, `cal_var` → `google.cal_var`, `tabs`-Eintrag `"google": tab_google` → `"google": google.frame`.
-3. Import-Kopf von `dialog.py` **grep-verifiziert** trimmen — voraussichtlich fallen jetzt: `logging`, `os`, `traceback`, `messagebox`, `open_folder`, `format_iso_date`, `build_oauth_enable_task`-Import, `ACCENT`, `CELL_BG`, `FONT_SMALL`, `STATUS_OK`, `TEXT_MUTED`, `dark_combo`, `dark_entry`, `themed_askyesno`, `themed_showinfo`, `label`/`subheader`-Import (kein Inline-Block mehr) u. a. Behalten sicher: `datetime`, `tk`, `ttk`, `create_dialog`-Familie, `primary_button`, `secondary_button`, `themed_showerror`, `themed_showwarning`, Autostart-Namen, Settings-/time_utils-/weekly_limit-Namen, `WEEKDAY_KEYS`, `DAYS_DE`, `code_for_state_label`. **Jede Streichung nur nach grep** `grep -n "<name>" src/dialogs/settings_dialog/dialog.py`.
+3. Import-Kopf von `dialog.py` **grep-verifiziert** trimmen — voraussichtlich fallen jetzt: `logging`, `os`, `traceback`, `messagebox`, `open_folder`, `format_iso_date`, `build_oauth_enable_task`-Import, `ACCENT`, `CELL_BG`, **`FONT`, `FONT_BOLD`, `TEXT`** (lebten nur in Tab-Blöcken bzw. den früheren `label`/`subheader`-Helfern), `FONT_SMALL`, `STATUS_OK`, `TEXT_MUTED`, `dark_combo`, `dark_entry`, `themed_askyesno`, `themed_showinfo`, `label`/`subheader`-Import (kein Inline-Block mehr). Behalten sicher: `datetime`, `tk`, `ttk`, `BG`, `create_dialog`-Familie, `primary_button`, `secondary_button`, `themed_showerror`, `themed_showwarning`, Autostart-Namen, Settings-/time_utils-/weekly_limit-Namen, `WEEKDAY_KEYS`, `DAYS_DE`, `code_for_state_label`. **Jede Streichung nur nach grep** `grep -n "<name>" src/dialogs/settings_dialog/dialog.py`; die Liste ist Erwartung, nicht abschließend — maßgeblich sind grep + ruff.
 
 - [ ] **Step 3: Verifikation + Commit**
 
