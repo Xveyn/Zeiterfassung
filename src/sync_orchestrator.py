@@ -7,6 +7,7 @@ Display zum Import nötig). `_run_push_blocking` wird LAZY in den Methoden aus
 src.sync_orchestrator).
 """
 
+import logging
 import tkinter as tk
 import traceback
 from tkinter import messagebox
@@ -107,7 +108,7 @@ class SyncOrchestrator:
     lazy über get_tray gelesen (einzige Quelle bleibt App._tray)."""
 
     def __init__(self, root, storage, settings, conflicts_store, base_path,
-                 runner, on_refresh, get_tray):
+                 runner, on_refresh, get_tray, data_lock=None, sync_guard=None):
         self._root = root
         self._storage = storage
         self._settings = settings
@@ -116,6 +117,8 @@ class SyncOrchestrator:
         self._runner = runner          # App._bg, hat .run(fn, on_done)
         self._on_refresh = on_refresh    # App._refresh
         self._get_tray = get_tray        # lambda: App._tray
+        self._data_lock = data_lock      # geteilter Store-RLock (Audit H1)
+        self._sync_guard = sync_guard    # Sync-Re-Entrancy-Guard (Audit H2)
         self._sync_button = None
         self._status_label = None
         self._next_button = None
@@ -130,11 +133,13 @@ class SyncOrchestrator:
             return self._conflicts_store.count_unresolved()
         return 0
 
-    def _push(self):
+    def _push(self, guard_timeout=0, timeout_seconds=15):
         from src.main import _run_push_blocking
         return _run_push_blocking(
             self._storage, self._settings, self._conflicts_store,
-            self._base_path, timeout_seconds=15,
+            self._base_path, timeout_seconds=timeout_seconds,
+            data_lock=self._data_lock, sync_guard=self._sync_guard,
+            guard_timeout=guard_timeout,
         )
 
     def on_pull_success(self):
@@ -172,9 +177,17 @@ class SyncOrchestrator:
                 "Synchronisation ist deaktiviert. In den Einstellungen aktivierbar.")
             return
         self._status_label.config(text="Synchronisiere…")
+        if self._sync_button is not None:
+            self._sync_button.config(state=tk.DISABLED)
         self._runner.run(self._push, self._on_manual_done)
 
     def _on_manual_done(self, result):
+        if self._sync_button is not None:
+            self._sync_button.config(state=tk.NORMAL)
+        if result.get("skipped"):
+            # Anderer Sync läuft bereits — dessen Callback aktualisiert die UI.
+            self.update_status_label()
+            return
         if not result.get("ok"):
             _show_sync_error(self._root, result.get("error", "?"),
                              result.get("tb", ""))
@@ -187,6 +200,8 @@ class SyncOrchestrator:
         self._runner.run(self._push, self._on_tray_done)
 
     def _on_tray_done(self, result):
+        if result.get("skipped"):
+            return  # anderer Sync läuft — kein Toast, nichts hat sich geändert
         self._on_refresh()
         self.update_status_label()
         tray = self._get_tray()
@@ -199,18 +214,20 @@ class SyncOrchestrator:
         )
 
     def push_on_quit(self):
-        """Blockierender Push beim Beenden (kurzes Timeout). Kein tray.stop()
-        (bleibt App-Lifecycle)."""
+        """Blockierender Push beim Beenden. Wartet per guard_timeout bis 5 s
+        auf einen laufenden Sync (Worst Case gesamt ~10 s mit Push-Timeout).
+        Kein tray.stop() (bleibt App-Lifecycle)."""
         if not self._settings.get("sync_enabled"):
             return
-        from src.main import _run_push_blocking
         try:
-            result = _run_push_blocking(
-                self._storage, self._settings, self._conflicts_store,
-                self._base_path, timeout_seconds=5,
-            )
+            result = self._push(guard_timeout=5, timeout_seconds=10)
         except Exception as e:
             result = {"ok": False, "error": e, "tb": traceback.format_exc()}
+        if result.get("skipped"):
+            logging.getLogger(__name__).warning(
+                "Quit-Push übersprungen — ein anderer Sync läuft noch; "
+                "lokale Daten syncen beim nächsten Start.")
+            return
         if not result.get("ok"):
             _show_sync_error(
                 self._root, result.get("error", "?"), result.get("tb", ""),

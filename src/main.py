@@ -1,4 +1,5 @@
 # src/main.py
+import contextlib
 import logging
 import os
 import sys
@@ -60,65 +61,28 @@ def _parse_remote_or_quarantine(content_bytes, file_id, on_corrupt):
         return {"schema_version": 1, "entries": {}, "settings": {}, "conflicts": []}
 
 
-def _run_pull_in_background(storage, settings, conflicts_store, base, ui_callback):
-    """Pull läuft in einem Thread; UI-Update über ui_callback (root.after)."""
+def _lock_ctx(lock):
+    """Context-Manager-Shim für den optionalen Daten-Lock: `with _lock_ctx(l)`
+    lockt, wenn ein Lock übergeben wurde, und ist sonst ein No-op (Tests,
+    Alt-Aufrufer). Hält den Sync-Apply-Block atomar gegen UI-Saves (Audit H1)."""
+    return lock if lock is not None else contextlib.nullcontext()
+
+
+def _run_pull_in_background(storage, settings, conflicts_store, base, ui_callback,
+                            data_lock=None, sync_guard=None):
+    """Pull läuft in einem Thread; UI-Update über ui_callback (root.after).
+
+    sync_guard (plain Lock, Re-Entrancy-Guard, Audit H2): läuft bereits ein
+    anderer Sync, wird der Pull still übersprungen — ohne ui_callback; der
+    laufende Sync meldet sein Ergebnis selbst. Release im finally DIESES
+    Threads (nach der letzten Store-Mutation), nie in UI-Callbacks.
+    data_lock (geteilter Store-RLock, Audit H1): klammert
+    Snapshot→Merge→Apply atomar gegen parallele UI-Saves. Wird NICHT über
+    den Download gehalten."""
     from src import drive, sync
+    if sync_guard is not None and not sync_guard.acquire(blocking=False):
+        return
     try:
-        service = drive.get_drive_service(
-            os.path.join(base, "credentials.json"),
-            os.path.join(base, "token.json"),
-            gcal_enabled=settings.get("gcal_enabled"),
-        )
-        file_id = drive.find_sync_file(service)
-        if file_id is None:
-            remote_doc = {"schema_version": 1, "entries": {}, "settings": {}, "conflicts": []}
-            etag = ""
-        else:
-            content, etag = drive.download(service, file_id)
-            def _quarantine(fid):
-                import datetime
-                stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-                try:
-                    service.files().update(
-                        fileId=fid,
-                        body={"name": f"zeiterfassung-sync.corrupt-{stamp}.json"},
-                    ).execute()
-                except Exception:
-                    logging.getLogger(__name__).warning(
-                        "Quarantine rename failed for %s", fid, exc_info=True)
-            remote_doc = _parse_remote_or_quarantine(content, file_id, _quarantine)
-        if sync._remote_is_newer(remote_doc):
-            # Neueres (zukünftiges) Schema: NICHT mergen/pushen — Pull sauber
-            # abbrechen, last_pull_at/etag unverändert lassen.
-            ui_callback(ok=False, error=sync.NEWER_REMOTE_VERSION_MSG, tb="")
-            return
-        # Älteres Remote (v1/v2) wird aufs aktuelle Schema migriert und normal
-        # gemergt (absorb-and-upgrade). Dass ältere Geräte ein hochgezogenes
-        # v4-Doc nicht überschreiben, sichert deren Push-Guard (ab v1.15.2).
-        remote_doc = sync.migrate_doc_to_current(remote_doc)
-        local_doc = sync.build_local_doc(storage, settings, conflicts_store)
-        merged = sync.merge(local_doc, remote_doc, settings.get("last_pull_at") or "")
-        sync.apply_merged_doc(merged, storage, settings, conflicts_store)
-        settings.set_many({
-            "last_pull_at": sync._utc_now_iso(),
-            "drive_etag": etag,
-        })
-        ui_callback(ok=True, error=None, tb="")
-    except Exception as e:
-        tb = traceback.format_exc()
-        logging.getLogger(__name__).exception("Sync pull failed")
-        ui_callback(ok=False, error=e, tb=tb)
-
-
-def _run_push_blocking(storage, settings, conflicts_store, base, timeout_seconds=5):
-    """Synchroner Push mit Timeout. Fehler werden geloggt, nicht angezeigt
-    (App schließt gerade)."""
-    import json
-    from src import drive, sync
-
-    result = {}
-
-    def _do():
         try:
             service = drive.get_drive_service(
                 os.path.join(base, "credentials.json"),
@@ -126,45 +90,132 @@ def _run_push_blocking(storage, settings, conflicts_store, base, timeout_seconds
                 gcal_enabled=settings.get("gcal_enabled"),
             )
             file_id = drive.find_sync_file(service)
-            # Push = download -> Guard -> Merge -> upload. drive.upload kennt
-            # kein File-level If-Match (ignoriert expected_etag), daher MUSS hier
-            # das frische Remote-Doc gelesen und gemergt werden — sonst
-            # überschreibt der Push fremde oder neuere Stände blind (Datenverlust
-            # bzw. Clobber eines neueren Schemas während eines Rollouts).
-            if file_id is not None:
-                remote_bytes, _etag = drive.download(service, file_id)
-                try:
-                    remote_doc = json.loads(remote_bytes)
-                except (json.JSONDecodeError, ValueError):
-                    remote_doc = {"schema_version": 1, "entries": {}, "settings": {}, "conflicts": []}
-                if sync._remote_is_newer(remote_doc):
-                    # Neueres Gerät hat das Remote-Doc fortgeschrieben: nicht
-                    # mergen/überschreiben — Push abbrechen, neuere Daten bleiben.
-                    result["ok"] = False
-                    result["error"] = sync.NEWER_REMOTE_VERSION_MSG
-                    result["tb"] = ""
-                    return
-            else:
+            if file_id is None:
                 remote_doc = {"schema_version": 1, "entries": {}, "settings": {}, "conflicts": []}
-            # Älteres Remote (v1/v2) absorbieren: aufs aktuelle Schema migrieren,
-            # dann mergen — sonst gingen v2-only-Stände beim Upload verloren.
+                etag = ""
+            else:
+                content, etag = drive.download(service, file_id)
+                def _quarantine(fid):
+                    import datetime
+                    stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+                    try:
+                        service.files().update(
+                            fileId=fid,
+                            body={"name": f"zeiterfassung-sync.corrupt-{stamp}.json"},
+                        ).execute()
+                    except Exception:
+                        logging.getLogger(__name__).warning(
+                            "Quarantine rename failed for %s", fid, exc_info=True)
+                remote_doc = _parse_remote_or_quarantine(content, file_id, _quarantine)
+            if sync._remote_is_newer(remote_doc):
+                # Neueres (zukünftiges) Schema: NICHT mergen/pushen — Pull sauber
+                # abbrechen, last_pull_at/etag unverändert lassen.
+                ui_callback(ok=False, error=sync.NEWER_REMOTE_VERSION_MSG, tb="")
+                return
+            # Älteres Remote (v1/v2) wird aufs aktuelle Schema migriert und normal
+            # gemergt (absorb-and-upgrade). Dass ältere Geräte ein hochgezogenes
+            # v4-Doc nicht überschreiben, sichert deren Push-Guard (ab v1.15.2).
             remote_doc = sync.migrate_doc_to_current(remote_doc)
-            local_doc = sync.build_local_doc(storage, settings, conflicts_store)
-            merged = sync.merge(local_doc, remote_doc, settings.get("last_pull_at") or "")
-            sync.apply_merged_doc(merged, storage, settings, conflicts_store)
-            doc = sync.build_local_doc(storage, settings, conflicts_store)
-            content = json.dumps(doc, ensure_ascii=False).encode("utf-8")
-            new_id, new_etag = drive.upload(service, content, file_id, expected_etag="")
-            settings.set_many({
-                "last_pull_at": sync._utc_now_iso(),
-                "drive_etag": new_etag,
-            })
-            result["ok"] = True
+            # Snapshot→Merge→Apply atomar: kein UI-Save kann zwischen
+            # build_local_doc und apply_merged_doc interleaven (Audit H1).
+            with _lock_ctx(data_lock):
+                local_doc = sync.build_local_doc(storage, settings, conflicts_store)
+                merged = sync.merge(local_doc, remote_doc, settings.get("last_pull_at") or "")
+                sync.apply_merged_doc(merged, storage, settings, conflicts_store)
+                settings.set_many({
+                    "last_pull_at": sync._utc_now_iso(),
+                    "drive_etag": etag,
+                })
+            ui_callback(ok=True, error=None, tb="")
         except Exception as e:
-            logging.getLogger(__name__).exception("Sync push failed: %s", e)
-            result["ok"] = False
-            result["error"] = str(e)
-            result["tb"] = traceback.format_exc()
+            tb = traceback.format_exc()
+            logging.getLogger(__name__).exception("Sync pull failed")
+            ui_callback(ok=False, error=e, tb=tb)
+    finally:
+        if sync_guard is not None:
+            sync_guard.release()
+
+
+def _run_push_blocking(storage, settings, conflicts_store, base, timeout_seconds=5,
+                       data_lock=None, sync_guard=None, guard_timeout=0):
+    """Synchroner Push mit Timeout. Fehler werden geloggt, nicht angezeigt
+    (App schließt gerade).
+
+    sync_guard/guard_timeout (Audit H2/M1): Re-Entrancy-Guard. guard_timeout=0
+    → non-blocking (zweiter Klick/Tray-Sync liefert {"skipped": True});
+    guard_timeout>0 → blockierend warten (Quit-Push wartet auf einen laufenden
+    Sync). Der Guard wird im INNEREN _do-Thread acquired UND im finally
+    released — erst nach der letzten Store-Mutation. Ein per Join-Timeout
+    „verwaister" Worker hält ihn dadurch bis zum echten Ende: er IST dann der
+    laufende Sync, statt parallel zu einem neuen zu schreiben.
+    data_lock (Audit H1): klammert Snapshot→Merge→Apply→Upload-Snapshot
+    atomar; der Upload selbst läuft OHNE Daten-Lock (nie Lock über Netz)."""
+    import json
+    from src import drive, sync
+
+    result = {}
+
+    def _do():
+        if sync_guard is not None:
+            got = (sync_guard.acquire(timeout=guard_timeout) if guard_timeout > 0
+                   else sync_guard.acquire(blocking=False))
+            if not got:
+                result["ok"] = False
+                result["skipped"] = True
+                return
+        try:
+            try:
+                service = drive.get_drive_service(
+                    os.path.join(base, "credentials.json"),
+                    os.path.join(base, "token.json"),
+                    gcal_enabled=settings.get("gcal_enabled"),
+                )
+                file_id = drive.find_sync_file(service)
+                # Push = download -> Guard -> Merge -> upload. drive.upload kennt
+                # kein File-level If-Match (ignoriert expected_etag), daher MUSS hier
+                # das frische Remote-Doc gelesen und gemergt werden — sonst
+                # überschreibt der Push fremde oder neuere Stände blind (Datenverlust
+                # bzw. Clobber eines neueren Schemas während eines Rollouts).
+                if file_id is not None:
+                    remote_bytes, _etag = drive.download(service, file_id)
+                    try:
+                        remote_doc = json.loads(remote_bytes)
+                    except (json.JSONDecodeError, ValueError):
+                        remote_doc = {"schema_version": 1, "entries": {}, "settings": {}, "conflicts": []}
+                    if sync._remote_is_newer(remote_doc):
+                        # Neueres Gerät hat das Remote-Doc fortgeschrieben: nicht
+                        # mergen/überschreiben — Push abbrechen, neuere Daten bleiben.
+                        result["ok"] = False
+                        result["error"] = sync.NEWER_REMOTE_VERSION_MSG
+                        result["tb"] = ""
+                        return
+                else:
+                    remote_doc = {"schema_version": 1, "entries": {}, "settings": {}, "conflicts": []}
+                # Älteres Remote (v1/v2) absorbieren: aufs aktuelle Schema migrieren,
+                # dann mergen — sonst gingen v2-only-Stände beim Upload verloren.
+                remote_doc = sync.migrate_doc_to_current(remote_doc)
+                # Snapshot→Merge→Apply→Upload-Snapshot atomar (Audit H1);
+                # der Upload danach läuft bewusst ungelockt.
+                with _lock_ctx(data_lock):
+                    local_doc = sync.build_local_doc(storage, settings, conflicts_store)
+                    merged = sync.merge(local_doc, remote_doc, settings.get("last_pull_at") or "")
+                    sync.apply_merged_doc(merged, storage, settings, conflicts_store)
+                    doc = sync.build_local_doc(storage, settings, conflicts_store)
+                    content = json.dumps(doc, ensure_ascii=False).encode("utf-8")
+                new_id, new_etag = drive.upload(service, content, file_id, expected_etag="")
+                settings.set_many({
+                    "last_pull_at": sync._utc_now_iso(),
+                    "drive_etag": new_etag,
+                })
+                result["ok"] = True
+            except Exception as e:
+                logging.getLogger(__name__).exception("Sync push failed: %s", e)
+                result["ok"] = False
+                result["error"] = str(e)
+                result["tb"] = traceback.format_exc()
+        finally:
+            if sync_guard is not None:
+                sync_guard.release()
 
     t = threading.Thread(target=_do, daemon=True)
     t.start()
@@ -174,7 +225,8 @@ def _run_push_blocking(storage, settings, conflicts_store, base, timeout_seconds
     return result
 
 
-def _run_compaction_blocking(storage, settings, conflicts_store, base, timeout_seconds=20):
+def _run_compaction_blocking(storage, settings, conflicts_store, base, timeout_seconds=20,
+                             data_lock=None, sync_guard=None):
     """User-ausgelöste Kompaktierung: frischer Pull → Alt-Client-Guard → Merge →
     Watermark setzen + lokal strippen → Push. Liefert
     {"ok": bool, "reason": str, "error": ..., "tb": ...}.
@@ -182,54 +234,70 @@ def _run_compaction_blocking(storage, settings, conflicts_store, base, timeout_s
     reason == "newer_version": ein neueres Gerät hat ein Schema geschrieben, das
     diese Version nicht versteht — Kompaktierung abgebrochen, kein Merge/Upload
     (sonst würde das neuere Doc überschrieben). Ältere Remote-Docs (v1/v2) werden
-    wie bei Pull/Push aufs aktuelle Schema migriert."""
+    wie bei Pull/Push aufs aktuelle Schema migriert.
+
+    sync_guard: non-blocking — läuft ein Sync, kommt {"skipped": True} zurück
+    (der Settings-Dialog zeigt dann einen Hinweis). Release im finally des
+    inneren _do-Threads. data_lock: klammert Merge/Apply/Kompaktierung atomar;
+    der Upload läuft ungelockt (Invarianten wie _run_push_blocking)."""
     import json
     from src import drive, sync
 
     result = {}
 
     def _do():
+        if sync_guard is not None and not sync_guard.acquire(blocking=False):
+            result["ok"] = False
+            result["skipped"] = True
+            return
         try:
-            service = drive.get_drive_service(
-                os.path.join(base, "credentials.json"),
-                os.path.join(base, "token.json"),
-                gcal_enabled=settings.get("gcal_enabled"),
-            )
-            file_id = drive.find_sync_file(service)
-            if file_id is not None:
-                content, _etag = drive.download(service, file_id)
-                try:
-                    remote_doc = json.loads(content)
-                except (json.JSONDecodeError, ValueError):
-                    remote_doc = {"schema_version": 1}
-                # Neueres Schema (>v3) auf dem FRISCH gepullten Doc: nicht
-                # mergen/überschreiben — Kompaktierung abbrechen.
-                if sync._remote_is_newer(remote_doc):
-                    result.update({"ok": False, "reason": "newer_version"})
-                    return
-            else:
-                remote_doc = {"schema_version": 2, "entries": {}, "settings": {},
-                              "conflicts": [], "meta": {"gc_watermark": ""}}
+            try:
+                service = drive.get_drive_service(
+                    os.path.join(base, "credentials.json"),
+                    os.path.join(base, "token.json"),
+                    gcal_enabled=settings.get("gcal_enabled"),
+                )
+                file_id = drive.find_sync_file(service)
+                if file_id is not None:
+                    content, _etag = drive.download(service, file_id)
+                    try:
+                        remote_doc = json.loads(content)
+                    except (json.JSONDecodeError, ValueError):
+                        remote_doc = {"schema_version": 1}
+                    # Neueres Schema (>v3) auf dem FRISCH gepullten Doc: nicht
+                    # mergen/überschreiben — Kompaktierung abbrechen.
+                    if sync._remote_is_newer(remote_doc):
+                        result.update({"ok": False, "reason": "newer_version"})
+                        return
+                else:
+                    remote_doc = {"schema_version": 2, "entries": {}, "settings": {},
+                                  "conflicts": [], "meta": {"gc_watermark": ""}}
 
-            # Älteres Remote (v1/v2) absorbieren: aufs aktuelle Schema migrieren.
-            remote_doc = sync.migrate_doc_to_current(remote_doc)
-            # 1) normaler Merge des frischen Remote-Stands
-            now = sync._utc_now_iso()
-            local_doc = sync.build_local_doc(storage, settings, conflicts_store)
-            merged = sync.merge(local_doc, remote_doc, settings.get("last_pull_at") or "")
-            sync.apply_merged_doc(merged, storage, settings, conflicts_store)
-            settings.set("last_pull_at", now)
-            # 2) Watermark setzen + lokal strippen
-            sync.compact_local(storage, settings, conflicts_store, now)
-            # 3) kompaktiertes Doc hochladen
-            doc = sync.build_local_doc(storage, settings, conflicts_store)
-            payload = json.dumps(doc, ensure_ascii=False).encode("utf-8")
-            new_id, new_etag = drive.upload(service, payload, file_id, expected_etag="")
-            settings.set("drive_etag", new_etag)
-            result.update({"ok": True})
-        except Exception as e:
-            logging.getLogger(__name__).exception("Kompaktierung fehlgeschlagen")
-            result.update({"ok": False, "error": str(e), "tb": traceback.format_exc()})
+                # Älteres Remote (v1/v2) absorbieren: aufs aktuelle Schema migrieren.
+                remote_doc = sync.migrate_doc_to_current(remote_doc)
+                now = sync._utc_now_iso()
+                # Merge + Apply + Watermark/Strippung + Upload-Snapshot atomar
+                # (Audit H1); der Upload danach läuft bewusst ungelockt.
+                with _lock_ctx(data_lock):
+                    # 1) normaler Merge des frischen Remote-Stands
+                    local_doc = sync.build_local_doc(storage, settings, conflicts_store)
+                    merged = sync.merge(local_doc, remote_doc, settings.get("last_pull_at") or "")
+                    sync.apply_merged_doc(merged, storage, settings, conflicts_store)
+                    settings.set("last_pull_at", now)
+                    # 2) Watermark setzen + lokal strippen
+                    sync.compact_local(storage, settings, conflicts_store, now)
+                    # 3) kompaktiertes Doc für den Upload snapshotten
+                    doc = sync.build_local_doc(storage, settings, conflicts_store)
+                    payload = json.dumps(doc, ensure_ascii=False).encode("utf-8")
+                new_id, new_etag = drive.upload(service, payload, file_id, expected_etag="")
+                settings.set("drive_etag", new_etag)
+                result.update({"ok": True})
+            except Exception as e:
+                logging.getLogger(__name__).exception("Kompaktierung fehlgeschlagen")
+                result.update({"ok": False, "error": str(e), "tb": traceback.format_exc()})
+        finally:
+            if sync_guard is not None:
+                sync_guard.release()
 
     t = threading.Thread(target=_do, daemon=True)
     t.start()
@@ -239,12 +307,14 @@ def _run_compaction_blocking(storage, settings, conflicts_store, base, timeout_s
     return result
 
 
-def run_calendar_reconcile(reservation_store, settings, base, storage):
+def run_calendar_reconcile(reservation_store, settings, base, storage, data_lock=None):
     """Baut den Calendar-Service und fährt einen Reservierungs-Reconcile.
 
     Liefert {"ok": bool, "error": str, "tb": str, "limit_warnings": [...]}.
     Wirft NICHT — der Caller (UI-Thread) wertet das Dict aus. No-op, wenn
     gcal deaktiviert oder kein Kalender gewählt ist.
+
+    data_lock wird an reconcile_reservations durchgereicht (Rebase+Apply atomar, Audit H1).
 
     limit_warnings (#98): Werkstudenten-Wochenlimit-Ergebnis (siehe
     weekly_limit.py) für die ISO-Wochen frisch importierter Reservierungs-
@@ -267,7 +337,8 @@ def run_calendar_reconcile(reservation_store, settings, base, storage):
             os.path.join(base, "token.json"),
             sync_enabled=settings.get("sync_enabled"),
         )
-        result = reconcile_reservations(service, calendar_id, reservation_store, settings)
+        result = reconcile_reservations(service, calendar_id, reservation_store,
+                                        settings, data_lock=data_lock)
         limit_warnings = check_dates_for_warnings(
             settings, storage.get_all(), result["imported_dates"])
         return {"ok": True, "error": "", "tb": "", "limit_warnings": limit_warnings}
@@ -312,20 +383,31 @@ def main():
             "Single-Instance-Guard-Fehler — Start ohne Guard", exc_info=True)
         guard = None
 
-    settings = Settings(os.path.join(base, "settings.json"))
+    # Geteilter Daten-Lock über alle vier Stores (Audit H1/H2) + Sync-Guard.
+    # data_lock: RLock (reentrant — der Sync-Apply-Block ruft gelockte
+    # Store-Methoden). sync_guard: bewusst plain Lock, NIE RLock — er wird
+    # thread-übergreifend acquired/released (Lock erlaubt das, RLock nicht).
+    data_lock = threading.RLock()
+    sync_guard = threading.Lock()
+
+    settings = Settings(os.path.join(base, "settings.json"), lock=data_lock)
     device_id = _ensure_device_id(settings)
     settings.device_id_for_sync = device_id
 
-    storage = Storage(os.path.join(base, "zeiterfassung.json"), device_id=device_id)
+    storage = Storage(os.path.join(base, "zeiterfassung.json"),
+                      device_id=device_id, lock=data_lock)
 
-    conflicts_store = ConflictsStore(os.path.join(base, "conflicts.json"))
+    conflicts_store = ConflictsStore(os.path.join(base, "conflicts.json"),
+                                     lock=data_lock)
 
-    reservation_store = ReservationStore(os.path.join(base, "reservations.json"))
+    reservation_store = ReservationStore(os.path.join(base, "reservations.json"),
+                                         lock=data_lock)
 
     root = tk.Tk()
     _apply_ui_scaling(root, settings.get("ui_scale"))
     app = App(root, storage, settings, base_path=base, conflicts_store=conflicts_store,
-              reservation_store=reservation_store, single_instance=guard)
+              reservation_store=reservation_store, single_instance=guard,
+              data_lock=data_lock, sync_guard=sync_guard)
 
     if "--minimized" in sys.argv:
         root.iconify()
@@ -353,6 +435,7 @@ def main():
         threading.Thread(
             target=_run_pull_in_background,
             args=(storage, settings, conflicts_store, base, _on_sync_done),
+            kwargs={"data_lock": data_lock, "sync_guard": sync_guard},
             daemon=True,
         ).start()
 

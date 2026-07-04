@@ -62,8 +62,22 @@ class _FakeLabel:
         self.text = text
 
 
+class _FakeButton:
+    """Fake für den Sync-Button: config(state=...) + winfo_ismapped für
+    update_status_label (meldet sich als bereits gepackt)."""
+    def __init__(self):
+        self.state = None
+
+    def config(self, state=None):
+        if state is not None:
+            self.state = state
+
+    def winfo_ismapped(self):
+        return True
+
+
 def _orch(sync_enabled=True, execute_runner=False, get_tray=lambda: None,
-          conflicts=0, on_refresh=None):
+          conflicts=0, on_refresh=None, data_lock=None, sync_guard=None):
     _vals = {"sync_enabled": sync_enabled, "last_pull_at": None}
     settings = MagicMock(get=lambda k, d=None: _vals.get(k, d))
     conflicts_store = MagicMock(count_unresolved=lambda: conflicts)
@@ -72,6 +86,7 @@ def _orch(sync_enabled=True, execute_runner=False, get_tray=lambda: None,
         root=object(), storage=object(), settings=settings,
         conflicts_store=conflicts_store, base_path=".", runner=runner,
         on_refresh=on_refresh or (lambda: None), get_tray=get_tray,
+        data_lock=data_lock, sync_guard=sync_guard,
     )
     return orch, runner
 
@@ -90,7 +105,7 @@ def test_on_sync_clicked_disabled_does_not_run(monkeypatch):
 def test_on_sync_clicked_enabled_sets_label_and_runs():
     orch, runner = _orch(sync_enabled=True, execute_runner=False)
     label = _FakeLabel()
-    orch.attach_widgets(sync_button=object(), status_label=label,
+    orch.attach_widgets(sync_button=_FakeButton(), status_label=label,
                         next_button=object())
     orch.on_sync_clicked()
     assert label.text == "Synchronisiere…"
@@ -116,3 +131,87 @@ def test_push_on_quit_disabled_is_noop():
     orch, _ = _orch(sync_enabled=False)
     # darf nicht werfen und nichts pushen (Guard greift vor dem Lazy-Import)
     orch.push_on_quit()
+
+
+def test_on_sync_clicked_disables_button():
+    orch, runner = _orch(sync_enabled=True, execute_runner=False)
+    label, button = _FakeLabel(), _FakeButton()
+    orch.attach_widgets(sync_button=button, status_label=label,
+                        next_button=object())
+    orch.on_sync_clicked()
+    assert button.state == "disabled"
+
+
+def test_on_manual_done_reenables_button():
+    orch, _ = _orch(sync_enabled=True)
+    label, button = _FakeLabel(), _FakeButton()
+    orch.attach_widgets(sync_button=button, status_label=label,
+                        next_button=object())
+    orch._on_manual_done({"ok": True})
+    assert button.state == "normal"
+
+
+def test_on_manual_done_skipped_shows_no_error(monkeypatch):
+    import src.sync_orchestrator as so
+    errors = []
+    monkeypatch.setattr(so, "_show_sync_error", lambda *a, **k: errors.append(a))
+    refreshed = []
+    orch, _ = _orch(sync_enabled=True, on_refresh=lambda: refreshed.append(1))
+    label, button = _FakeLabel(), _FakeButton()
+    orch.attach_widgets(sync_button=button, status_label=label,
+                        next_button=object())
+    orch._on_manual_done({"ok": False, "skipped": True})
+    assert errors == []          # kein Fehlerdialog — anderer Sync läuft nur
+    assert refreshed == []       # kein Refresh nötig, nichts hat sich geändert
+    assert button.state == "normal"
+
+
+def test_on_tray_done_skipped_no_toast():
+    tray = MagicMock()
+    orch, _ = _orch(get_tray=lambda: tray)
+    orch._on_tray_done({"ok": False, "skipped": True})
+    tray.notify.assert_not_called()
+
+
+def test_push_passes_lock_guard_and_timeouts(monkeypatch):
+    captured = {}
+
+    def fake(storage, settings, conflicts_store, base, timeout_seconds=5, **kw):
+        captured.update(kw)
+        captured["timeout_seconds"] = timeout_seconds
+        return {"ok": True}
+
+    monkeypatch.setattr("src.main._run_push_blocking", fake)
+    lock, guard = object(), object()
+    orch, _ = _orch(sync_enabled=True, data_lock=lock, sync_guard=guard)
+    orch._push()
+    assert captured["data_lock"] is lock
+    assert captured["sync_guard"] is guard
+    assert captured["guard_timeout"] == 0
+    assert captured["timeout_seconds"] == 15
+
+
+def test_push_on_quit_uses_guard_timeout(monkeypatch):
+    captured = {}
+
+    def fake(storage, settings, conflicts_store, base, timeout_seconds=5, **kw):
+        captured.update(kw)
+        captured["timeout_seconds"] = timeout_seconds
+        return {"ok": True}
+
+    monkeypatch.setattr("src.main._run_push_blocking", fake)
+    orch, _ = _orch(sync_enabled=True)
+    orch.push_on_quit()
+    assert captured["guard_timeout"] == 5
+    assert captured["timeout_seconds"] == 10
+
+
+def test_push_on_quit_skipped_logs_no_dialog(monkeypatch):
+    import src.sync_orchestrator as so
+    errors = []
+    monkeypatch.setattr(so, "_show_sync_error", lambda *a, **k: errors.append(a))
+    monkeypatch.setattr("src.main._run_push_blocking",
+                        lambda *a, **k: {"ok": False, "skipped": True})
+    orch, _ = _orch(sync_enabled=True)
+    orch.push_on_quit()
+    assert errors == []
