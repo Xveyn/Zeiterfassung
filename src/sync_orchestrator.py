@@ -13,7 +13,7 @@ import traceback
 from tkinter import messagebox
 
 from src.drive import DriveAuthError, DriveNetworkError
-from src.theme import themed_showinfo
+from src.theme import set_icon_button_enabled, themed_showinfo
 from src.time_utils import format_iso_date
 
 
@@ -122,6 +122,12 @@ class SyncOrchestrator:
         self._sync_button = None
         self._status_label = None
         self._next_button = None
+        # Re-Entrancy-Flag für den manuellen Sync-Button: der icon_button ist
+        # nur OPTISCH deaktivierbar (set_icon_button_enabled, kein echtes
+        # -state), die Klick-Bindung bleibt aktiv. Dieses Flag trägt daher den
+        # No-op bei bereits laufendem Manual-Sync (der sync_guard schützt die
+        # Daten zusätzlich engineseitig; hier geht es um Doppelklick-UX).
+        self._sync_in_progress = False
 
     def attach_widgets(self, sync_button, status_label, next_button):
         self._sync_button = sync_button
@@ -176,14 +182,18 @@ class SyncOrchestrator:
                 "Synchronisation",
                 "Synchronisation ist deaktiviert. In den Einstellungen aktivierbar.")
             return
+        if self._sync_in_progress:
+            return  # läuft bereits — Button ist nur optisch gedimmt
+        self._sync_in_progress = True
         self._status_label.config(text="Synchronisiere…")
         if self._sync_button is not None:
-            self._sync_button.config(state=tk.DISABLED)
+            set_icon_button_enabled(self._sync_button, False)
         self._runner.run(self._push, self._on_manual_done)
 
     def _on_manual_done(self, result):
+        self._sync_in_progress = False
         if self._sync_button is not None:
-            self._sync_button.config(state=tk.NORMAL)
+            set_icon_button_enabled(self._sync_button, True)
         if result.get("skipped"):
             # Anderer Sync läuft bereits — dessen Callback aktualisiert die UI.
             self.update_status_label()

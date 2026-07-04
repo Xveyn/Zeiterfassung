@@ -63,17 +63,22 @@ class _FakeLabel:
 
 
 class _FakeButton:
-    """Fake für den Sync-Button: config(state=...) + winfo_ismapped für
-    update_status_label (meldet sich als bereits gepackt)."""
-    def __init__(self):
-        self.state = None
-
-    def config(self, state=None):
-        if state is not None:
-            self.state = state
-
+    """Fake für den Sync-Button: winfo_ismapped für update_status_label
+    (meldet sich als bereits gepackt). Das optische Enable/Disable läuft über
+    theme.set_icon_button_enabled, das die Tests im Orchestrator-Namespace
+    monkeypatchen (der echte icon_button ist ein _LabelButton mit `_label`)."""
     def winfo_ismapped(self):
         return True
+
+
+def _patch_dim(monkeypatch):
+    """Ersetzt set_icon_button_enabled im Orchestrator durch einen Rekorder und
+    gibt die Aufrufliste [(button, enabled), ...] zurück."""
+    import src.sync_orchestrator as so
+    calls = []
+    monkeypatch.setattr(so, "set_icon_button_enabled",
+                        lambda btn, enabled, **k: calls.append((btn, enabled)))
+    return calls
 
 
 def _orch(sync_enabled=True, execute_runner=False, get_tray=lambda: None,
@@ -102,7 +107,8 @@ def test_on_sync_clicked_disabled_does_not_run(monkeypatch):
     assert shown  # Hinweis-Dialog gezeigt
 
 
-def test_on_sync_clicked_enabled_sets_label_and_runs():
+def test_on_sync_clicked_enabled_sets_label_and_runs(monkeypatch):
+    _patch_dim(monkeypatch)
     orch, runner = _orch(sync_enabled=True, execute_runner=False)
     label = _FakeLabel()
     orch.attach_widgets(sync_button=_FakeButton(), status_label=label,
@@ -133,26 +139,45 @@ def test_push_on_quit_disabled_is_noop():
     orch.push_on_quit()
 
 
-def test_on_sync_clicked_disables_button():
+def test_on_sync_clicked_dims_button(monkeypatch):
+    calls = _patch_dim(monkeypatch)
     orch, runner = _orch(sync_enabled=True, execute_runner=False)
     label, button = _FakeLabel(), _FakeButton()
     orch.attach_widgets(sync_button=button, status_label=label,
                         next_button=object())
     orch.on_sync_clicked()
-    assert button.state == "disabled"
+    assert calls == [(button, False)]   # optisch deaktiviert (kein -state!)
+    assert orch._sync_in_progress is True
 
 
-def test_on_manual_done_reenables_button():
+def test_on_manual_done_reenables_button(monkeypatch):
+    calls = _patch_dim(monkeypatch)
     orch, _ = _orch(sync_enabled=True)
     label, button = _FakeLabel(), _FakeButton()
     orch.attach_widgets(sync_button=button, status_label=label,
                         next_button=object())
     orch._on_manual_done({"ok": True})
-    assert button.state == "normal"
+    assert calls == [(button, True)]    # optisch wieder aktiv
+    assert orch._sync_in_progress is False
+
+
+def test_on_sync_clicked_reentrant_is_noop(monkeypatch):
+    # Der icon_button ist nur optisch deaktivierbar; das _sync_in_progress-Flag
+    # trägt den No-op. Runner führt NICHT aus -> _on_manual_done setzt das Flag
+    # nicht zurück, der zweite Klick muss folgenlos bleiben.
+    _patch_dim(monkeypatch)
+    orch, runner = _orch(sync_enabled=True, execute_runner=False)
+    label, button = _FakeLabel(), _FakeButton()
+    orch.attach_widgets(sync_button=button, status_label=label,
+                        next_button=object())
+    orch.on_sync_clicked()
+    orch.on_sync_clicked()              # zweiter Klick während laufendem Sync
+    assert len(runner.calls) == 1       # war ein No-op
 
 
 def test_on_manual_done_skipped_shows_no_error(monkeypatch):
     import src.sync_orchestrator as so
+    _patch_dim(monkeypatch)
     errors = []
     monkeypatch.setattr(so, "_show_sync_error", lambda *a, **k: errors.append(a))
     refreshed = []
@@ -163,7 +188,7 @@ def test_on_manual_done_skipped_shows_no_error(monkeypatch):
     orch._on_manual_done({"ok": False, "skipped": True})
     assert errors == []          # kein Fehlerdialog — anderer Sync läuft nur
     assert refreshed == []       # kein Refresh nötig, nichts hat sich geändert
-    assert button.state == "normal"
+    assert orch._sync_in_progress is False
 
 
 def test_on_tray_done_skipped_no_toast():
