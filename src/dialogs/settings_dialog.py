@@ -2,7 +2,6 @@ import calendar
 import datetime
 import logging
 import os
-import threading
 import tkinter as tk
 import traceback
 from tkinter import messagebox, ttk
@@ -310,7 +309,6 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
     def _refresh_sender():
         """OAuth-Flow + userinfo-Fetch im Thread, danach Label aktualisieren."""
         from src.dialogs.send_dialog import show_missing_credentials_dialog
-        from src.mail import fetch_user_email, get_gmail_service
 
         if not os.path.exists(creds_path):
             # Konsistent mit Senden/Teilen: freundlicher Hinweis + „Datenordner
@@ -320,9 +318,9 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
 
         _set_sender_btn_text("Verbinde…")
 
-        def _do():
+        def _fn():
+            from src.mail import fetch_user_email, get_gmail_service
             try:
-                # OAuth-Flow läuft, falls Token fehlt oder Scopes upgegradet werden müssen.
                 get_gmail_service(
                     os.path.join(base_path, "credentials.json"),
                     os.path.join(base_path, "token.json"),
@@ -335,33 +333,29 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
                     gcal_enabled=settings.get("gcal_enabled"),
                 )
             except Exception as e:
-                err = e
-                tb = traceback.format_exc()
-                dialog.after(0, lambda: _finish_refresh_error(err, tb))
+                return {"ok": False, "error": e, "tb": traceback.format_exc()}
+            if email:
+                settings.set("sender_email", email)   # Cache überlebt Close
+            return {"ok": True, "email": email}
+
+        def _on_done(res):
+            if not sender_label.winfo_exists():
                 return
-            dialog.after(0, lambda: _finish_refresh_ok(email))
+            _set_sender_btn_text("Aktualisieren")
+            if not res["ok"]:
+                messagebox.showerror(
+                    "Anmeldung fehlgeschlagen",
+                    "OAuth-Flow oder Userinfo-Aufruf fehlgeschlagen:\n\n"
+                    f"{res['error']}\n\n{res['tb']}",
+                    parent=dialog,
+                )
+                return
+            email = res["email"]
+            sender_label.config(
+                text=email if email
+                else "(nicht verfügbar — Scope fehlt evtl.)")
 
-        threading.Thread(target=_do, daemon=True).start()
-
-    def _finish_refresh_ok(email):
-        if not sender_label.winfo_exists():
-            return
-        _set_sender_btn_text("Aktualisieren")
-        if email:
-            settings.set("sender_email", email)
-            sender_label.config(text=email)
-        else:
-            sender_label.config(text="(nicht verfügbar — Scope fehlt evtl.)")
-
-    def _finish_refresh_error(err, tb):
-        if not sender_label.winfo_exists():
-            return
-        _set_sender_btn_text("Aktualisieren")
-        messagebox.showerror(
-            "Anmeldung fehlgeschlagen",
-            f"OAuth-Flow oder Userinfo-Aufruf fehlgeschlagen:\n\n{err}\n\n{tb}",
-            parent=dialog,
-        )
+        runner.run(_fn, _on_done)
 
     sender_btn = secondary_button(
         sender_row,
@@ -475,23 +469,6 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
     # Schutz daher über ein Flag statt cb.config(state=...).
     reconnect_busy = {"value": False}
 
-    def _finish_reconnect(err, tb):
-        reconnect_busy["value"] = False
-        if not dialog.winfo_exists():
-            return
-        if err is None:
-            themed_showinfo(
-                dialog, "Google neu verbunden",
-                "Die Google-Berechtigungen wurden erneuert. Die "
-                "Synchronisation sollte jetzt wieder funktionieren.",
-            )
-            return
-        messagebox.showerror(
-            "Google neu verbinden",
-            f"Die Neuverbindung ist fehlgeschlagen:\n\n{err}\n\n{tb}",
-            parent=dialog,
-        )
-
     def _reconnect_google():
         if reconnect_busy["value"]:
             return
@@ -504,20 +481,37 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
             return
         reconnect_busy["value"] = True
 
-        def _do():
-            err, tb = None, ""
+        def _fn():
+            from src import drive
             try:
-                from src import drive
                 drive.reconnect(
                     os.path.join(base_path, "credentials.json"),
                     os.path.join(base_path, "token.json"),
                     gcal_enabled=settings.get("gcal_enabled"),
                 )
             except Exception as e:
-                err, tb = e, traceback.format_exc()
-            dialog.after(0, lambda: _finish_reconnect(err, tb))
+                return {"ok": False, "error": e, "tb": traceback.format_exc()}
+            return {"ok": True}
 
-        threading.Thread(target=_do, daemon=True).start()
+        def _on_done(res):
+            reconnect_busy["value"] = False
+            if not dialog.winfo_exists():
+                return
+            if res["ok"]:
+                themed_showinfo(
+                    dialog, "Google neu verbunden",
+                    "Die Google-Berechtigungen wurden erneuert. Die "
+                    "Synchronisation sollte jetzt wieder funktionieren.",
+                )
+                return
+            messagebox.showerror(
+                "Google neu verbinden",
+                "Die Neuverbindung ist fehlgeschlagen:\n\n"
+                f"{res['error']}\n\n{res['tb']}",
+                parent=dialog,
+            )
+
+        runner.run(_fn, _on_done)
 
     reconnect_btn = secondary_button(
         btn_row, "Google neu verbinden", _reconnect_google, padx=12, pady=2)
@@ -576,14 +570,13 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
                         "Kompaktierung", "Sync-Daten wurden kompaktiert.",
                     )
 
-            def _do():
+            def _fn():
                 from src.main import _run_compaction_blocking
-                res = _run_compaction_blocking(
+                return _run_compaction_blocking(
                     storage, settings, conflicts_store, base_path,
                     data_lock=data_lock, sync_guard=sync_guard)
-                dialog.after(0, lambda: _show(res))
 
-            threading.Thread(target=_do, daemon=True).start()
+            runner.run(_fn, _show)
 
         secondary_button(
             tab_google, "Sync-Daten kompaktieren", _on_compact_clicked,
@@ -641,9 +634,9 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
     def _load_calendars():
         cal_status.config(text="Kalenderliste wird geladen…")
 
-        def _do():
+        def _fn():
+            from src import gcal
             try:
-                from src import gcal
                 service = gcal.get_calendar_service(
                     os.path.join(base_path, "credentials.json"),
                     os.path.join(base_path, "token.json"),
@@ -651,26 +644,24 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
                 )
                 items = gcal.list_calendars(service)
             except Exception as e:
-                tb = traceback.format_exc()
-                # e/tb als Default-Argumente binden: das Lambda läuft via
-                # dialog.after() VERZÖGERT — bis dahin hat Python die
-                # except-Variable `e` am Blockende gelöscht (impliziter del),
-                # ein freier Zugriff gäbe NameError.
-                dialog.after(
-                    0, lambda e=e, tb=tb: _load_calendars_error(e, tb))
+                return {"ok": False, "error": e, "tb": traceback.format_exc()}
+            return {"ok": True, "items": items}
+
+        def _on_done(res):
+            if not cal_status.winfo_exists():
                 return
-            dialog.after(0, lambda: _populate_calendars(items))
+            if not res["ok"]:
+                cal_status.config(text="Kalenderliste nicht verfügbar")
+                messagebox.showerror(
+                    "Google Kalender",
+                    "Kalenderliste konnte nicht geladen werden:\n\n"
+                    f"{res['error']}\n\n{res['tb']}",
+                    parent=dialog,
+                )
+                return
+            _populate_calendars(res["items"])
 
-        threading.Thread(target=_do, daemon=True).start()
-
-    def _load_calendars_error(err, tb):
-        if cal_status.winfo_exists():
-            cal_status.config(text="Kalenderliste nicht verfügbar")
-        messagebox.showerror(
-            "Google Kalender",
-            f"Kalenderliste konnte nicht geladen werden:\n\n{err}\n\n{tb}",
-            parent=dialog,
-        )
+        runner.run(_fn, _on_done)
 
     def _on_gcal_toggled():
         assert cb_gcal is not None
