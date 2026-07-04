@@ -91,6 +91,22 @@ State-/Widget-Mutation aus einem Worker läuft über `App._marshal_to_ui` (`root
 gegen `TclError` abgesichert, falls das Fenster zwischenzeitlich zu ist). Keine direkten
 `threading.Thread`-Aufrufe in `ui.py` mehr.
 
+**Datenschicht-Locking (Audit H1/H2/M1):** Alle vier Stores
+(`storage`/`settings`/`conflicts_store`/`reservations`) teilen sich einen in
+`main()` erzeugten `RLock` (Konstruktor-Param `lock=`; ohne Injektion legt
+jeder Store einen eigenen an — Tests bleiben unverändert). Die Sync-Flows
+(`_run_pull_in_background`/`_run_push_blocking`/`_run_compaction_blocking`/
+`reconcile_reservations`) klammern Snapshot→Merge→Apply mit diesem `data_lock`
+— **nie über Netzwerk-Calls**. Ein separater plain `threading.Lock`
+(`sync_guard`) serialisiert alle Drive-Sync-Einstiege (Startup-Pull, Manual-,
+Tray-, Quit-Push, Kompaktierung): non-blocking-skip mit
+`{"skipped": True}`-Result, nur der Quit-Push wartet (`guard_timeout=5`).
+Acquired UND released wird der Guard im innersten Worker-Thread (`finally`,
+nach der letzten Store-Mutation) — nie in UI-Callbacks, nie beim Join-Timeout;
+er MUSS plain `Lock` bleiben (cross-thread release). Neue Sync-Einstiege
+müssen beide Locks respektieren. Design:
+`docs/superpowers/specs/2026-07-04-datenschicht-threadsicherheit-design.md`.
+
 ## Daten- & Persistenz-Schicht
 
 - `storage.py` — Ist-Zeiten (JSON, Schlüssel = ISO-Datum). `reservations.py` — Reservierungen

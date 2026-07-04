@@ -33,11 +33,14 @@ def _fmt_setting_candidate(cand):
 
 
 class ConflictsDialog:
-    def __init__(self, parent, storage, settings, conflicts_store):
+    def __init__(self, parent, storage, settings, conflicts_store, data_lock=None):
         self.parent = parent
         self.storage = storage
         self.settings = settings
         self.conflicts_store = conflicts_store
+        # Geteilter Store-RLock (Review-Finding), durchgereicht bis zu
+        # sync.resolve_conflict — siehe dort für die Begründung.
+        self._data_lock = data_lock
         self._selected = None
 
         self.top = tk.Toplevel(parent)
@@ -113,7 +116,8 @@ class ConflictsDialog:
         device_id = self.settings.get("device_id") or ""
         try:
             sync.resolve_conflict(c["id"], chosen, self.conflicts_store,
-                                  self.storage, self.settings, device_id)
+                                  self.storage, self.settings, device_id,
+                                  data_lock=self._data_lock)
         except Exception as e:
             themed_showerror(self.top, "Konflikt-Resolution fehlgeschlagen", str(e))
             return
