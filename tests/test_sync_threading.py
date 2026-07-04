@@ -235,3 +235,26 @@ def test_compaction_holds_data_lock_during_compact(tmp_path, monkeypatch):
         data_lock=lock, sync_guard=None)
     assert res.get("ok") is True
     assert held == [True]
+
+
+def test_reconcile_holds_data_lock_during_rebase_and_apply(tmp_path, monkeypatch):
+    """Der Reconcile-Rebase+Replace (reservations_sync) läuft unter dem
+    geteilten Daten-Lock — kein UI-Save kann zwischen Rebase-Read und
+    apply_reconciled interleaven."""
+    from src.reservations import ReservationStore
+    from src import gcal
+    from src.reservations_sync import reconcile_reservations
+    lock = threading.RLock()
+    store = ReservationStore(str(tmp_path / "r.json"), lock=lock)
+    settings = Settings(str(tmp_path / "s.json"), lock=lock)
+    monkeypatch.setattr(gcal, "list_app_events", lambda service, cal: [])
+    held = []
+    orig = store.apply_reconciled
+
+    def spy(reconciled):
+        held.append(not _other_thread_can_acquire(lock))
+        return orig(reconciled)
+
+    store.apply_reconciled = spy
+    reconcile_reservations(object(), "cal-1", store, settings, data_lock=lock)
+    assert held == [True]

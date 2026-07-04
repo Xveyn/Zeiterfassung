@@ -307,12 +307,14 @@ def _run_compaction_blocking(storage, settings, conflicts_store, base, timeout_s
     return result
 
 
-def run_calendar_reconcile(reservation_store, settings, base, storage):
+def run_calendar_reconcile(reservation_store, settings, base, storage, data_lock=None):
     """Baut den Calendar-Service und fährt einen Reservierungs-Reconcile.
 
     Liefert {"ok": bool, "error": str, "tb": str, "limit_warnings": [...]}.
     Wirft NICHT — der Caller (UI-Thread) wertet das Dict aus. No-op, wenn
     gcal deaktiviert oder kein Kalender gewählt ist.
+
+    data_lock wird an reconcile_reservations durchgereicht (Rebase+Apply atomar, Audit H1).
 
     limit_warnings (#98): Werkstudenten-Wochenlimit-Ergebnis (siehe
     weekly_limit.py) für die ISO-Wochen frisch importierter Reservierungs-
@@ -335,7 +337,8 @@ def run_calendar_reconcile(reservation_store, settings, base, storage):
             os.path.join(base, "token.json"),
             sync_enabled=settings.get("sync_enabled"),
         )
-        result = reconcile_reservations(service, calendar_id, reservation_store, settings)
+        result = reconcile_reservations(service, calendar_id, reservation_store,
+                                        settings, data_lock=data_lock)
         limit_warnings = check_dates_for_warnings(
             settings, storage.get_all(), result["imported_dates"])
         return {"ok": True, "error": "", "tb": "", "limit_warnings": limit_warnings}
