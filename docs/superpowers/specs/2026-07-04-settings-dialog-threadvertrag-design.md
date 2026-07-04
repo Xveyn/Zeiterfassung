@@ -39,13 +39,16 @@ unterdrückten stderr — spurlos.
 | #2 | 378 | Drive-Sync aktivieren (OAuth) | **ja** `sync_enabled=True` | Crash → Persistenz verloren |
 | #6 | 681 | Kalender aktivieren (OAuth) | **ja** `gcal_enabled=True` | Guard-Skip → Persistenz verloren |
 | #4 | 556 | Sync-Kompaktierung | Nebeneffekt im Worker | korrekt (`winfo_exists`-Guard) |
-| #1 | 299 | Absender-Mail „Aktualisieren" | nein | UI-Display; Nebeneffekt überlebt im Worker |
+| #1 | 299 | Absender-Mail „Aktualisieren" | **ja** `sender_email` (Cache, low-harm) | `settings.set` hinter `winfo_exists`-Guard → bei Close übersprungen |
 | #3 | 490 | Google neu verbinden | nein | Token-Refresh überlebt; UI-Feedback verloren |
 | #5 | 634 | Kalenderliste laden | nein | Combobox-Populate |
 
-Nur #2/#6 verlieren echte Persistenz. Die anderen vier sind reines UI-Feedback bzw.
-haben ihren Nebeneffekt bereits im Worker (überlebt ohnehin) — sie werden **aus
-Konventionsgründen** mitmigriert, ihr Verhalten bleibt identisch.
+#2/#6 verlieren funktionale Persistenz (Feature-Enable). #1 verliert einen
+**Display-Cache** (`sender_email`) — low-harm, weil `ui.py` ihn nach jedem Speichern
+ohnehin neu holt (`_on_change` → `self._bg.fetch_sender_email()`), aber nach demselben
+Prinzip gehört `settings.set("sender_email", email)` in den Worker. #3/#5 persistieren
+nichts (Nebeneffekt bereits im Worker bzw. reines UI). Alle sechs werden migriert;
+Verhalten der nicht-funktionalen bleibt identisch.
 
 ## Entscheidungen (mit dem Nutzer abgestimmt)
 
@@ -170,11 +173,20 @@ bestehende `_show(res)` (bereits `winfo_exists`-korrekt), nur von `dialog.after`
 
 ### #1 Absender-Mail „Aktualisieren", #3 Google neu verbinden, #5 Kalenderliste laden
 
-Reine UI-Worker ohne persistierten Zustand. Umstellung von `threading.Thread` +
-`dialog.after` auf `runner.run(fn, on_done)`; die bestehenden `_finish_*`-Callbacks
-werden zu `on_done`, ihre Dialog-Widget-Zugriffe über `winfo_exists` geschützt (teils
-schon vorhanden, z. B. `_load_calendars_error` prüft `cal_status.winfo_exists()`).
-`reconnect_busy["value"] = False` im `on_done` von #3. Verhalten unverändert.
+Umstellung von `threading.Thread` + `dialog.after` auf `runner.run(fn, on_done)`; die
+bestehenden `_finish_*`-Callbacks werden zu `on_done`, ihre Dialog-Widget-Zugriffe über
+`winfo_exists` geschützt (teils schon vorhanden, z. B. `_load_calendars_error` prüft
+`cal_status.winfo_exists()`).
+
+- **#1** persistiert einen Display-Cache: `fetch_user_email` läuft im `fn`, und
+  `settings.set("sender_email", email)` wandert **in den Worker** (bei nicht-leerer
+  Mail), damit der Cache den Close überlebt. `on_done` setzt nur noch das Label
+  (`winfo_exists`-geschützt) bzw. zeigt die Fehler-Messagebox.
+- **#3** persistiert nichts (Token-Refresh im Worker). `reconnect_busy["value"] = False`
+  im `on_done` (plain dict, kein Tk — unbedingt), danach die `winfo_exists`-geschützte
+  Info-/Fehler-Messagebox.
+- **#5** reines Combobox-Populate; `_populate_calendars`/`_load_calendars_error` als
+  `on_done`, `winfo_exists`-geschützt.
 
 ## Betroffene Dateien
 
