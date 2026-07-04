@@ -33,13 +33,16 @@ from src.weekly_limit import format_limit_warnings, period_scan_needed, scan_per
 
 def open_settings_dialog(parent, settings, base_path, on_change, *,
                          conflicts_store=None, storage=None,
-                         reservation_store=None, on_request_restart=None):
+                         reservation_store=None, on_request_restart=None,
+                         data_lock=None, sync_guard=None):
     """Modaler Dialog zum Bearbeiten der App-Einstellungen, aufgeteilt auf vier
     Tabs (Arbeitszeit / Bericht & Mail / Google / App).
 
     on_change wird nach erfolgreichem Speichern aufgerufen, damit der Kalender
     sich aktualisiert. conflicts_store und storage sind optional; sind sie
     gesetzt, erscheint im Google-Tab der Sync-Block mit Konflikte-Button.
+    data_lock/sync_guard: geteilter Store-Lock + Sync-Guard für die Kompaktierung
+    (Audit H1/H2) — von App durchgereicht.
     """
     dialog = tk.Toplevel(parent)
     dialog.title("Einstellungen")
@@ -517,6 +520,14 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
             def _show(res):
                 if not dialog.winfo_exists():
                     return
+                if res.get("skipped"):
+                    themed_showinfo(
+                        dialog,
+                        "Kompaktierung",
+                        "Eine Synchronisation läuft gerade — bitte kurz "
+                        "warten und erneut versuchen.",
+                    )
+                    return
                 if res.get("reason") == "old_version":
                     themed_showwarning(
                         dialog,
@@ -545,7 +556,8 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
             def _do():
                 from src.main import _run_compaction_blocking
                 res = _run_compaction_blocking(
-                    storage, settings, conflicts_store, base_path)
+                    storage, settings, conflicts_store, base_path,
+                    data_lock=data_lock, sync_guard=sync_guard)
                 dialog.after(0, lambda: _show(res))
 
             threading.Thread(target=_do, daemon=True).start()
