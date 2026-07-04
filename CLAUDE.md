@@ -184,6 +184,12 @@ dialogspezifischen Stil-Extras (Farbakzente, abweichende Fonts o.ä.) ohne
 Rücksprache — das Theme bleibt bewusst einheitlich über alle Dialoge hinweg,
 nicht pro Dialog individualisiert.
 
+Neue Dialoge entstehen über `theme.create_dialog(parent, title, …)` —
+nicht über handgebaute `Toplevel`-Boilerplate; der Helfer setzt die
+komplette Fenster-Chrome (BG, dunkle Titelleiste, disable_min_max,
+App-Icon, modal/Escape) konventionskonform. `center_dialog_on_parent`
+nach dem Widget-Aufbau bleibt Aufgabe des Dialogs.
+
 ## Tests / CI
 
 `.github/workflows/test.yml` installiert gezielt nur die Pakete, die die Tests brauchen (`pytest`, `holidays==0.99`, `google-api-python-client`, `google-auth`, `google-auth-oauthlib`), **nicht** `requirements.txt`. Grund: `pycairo` (transitive Dep von `xhtml2pdf`) braucht Cairo-Systemheader auf Ubuntu und bricht sonst den CI-Build. Der Import von `xhtml2pdf` in `src/report.py::generate_pdf` ist lazy, daher laufen die Report-Tests ohne die Lib. `holidays` und die Google-Libs sind pure Python ohne C-Deps und problemlos installierbar — letztere sind nötig, weil Tests `src.ui` importieren (z.B. `tests/test_ui_delete.py`), dessen Importkette die Google-Wrapper zieht. Ein zweiter Job läuft `ruff check .` (Lint).

@@ -188,10 +188,11 @@ Code verifizieren, v. a. nach #119):
 | `theme.py` themed_askyesno / themed_ask_delete_choice / `_themed_ok_dialog` (3 Stellen) | `modal=False, escape_closes=False` (verifiziert an themed_askyesno, theme.py:820-866; die anderen beiden folgen demselben Aufbau — beim Migrieren gegenprüfen) | komplette Ende-Mechanik: `<Return>`→click_yes, `<Escape>`→click_no, `WM_DELETE_WINDOW`-Protocol, `center_dialog_on_parent → grab_set → wait_window`; Body/Buttons |
 
 Sonderfälle, die die Params erzwingen (keine stillen „Verbesserungen"):
-settings/send:22 haben heute **kein** Escape; import:411 hat heute **kein**
-`resizable(False, False)` und sein transient bleibt als explizite Zeile;
-die theme-internen Dialoge grabben am Ende. Wer beim Migrieren eine
-Abweichung „reparieren" will, tut das NICHT in diesem PR
+settings/send:22 binden Escape separat weiter unten (nicht in der
+Chrome-Präambel) → `escape_closes=False` vermeidet einen Doppel-Bind;
+import:411 hat heute **kein** `resizable(False, False)` und sein transient
+bleibt als explizite Zeile; die theme-internen Dialoge grabben am Ende. Wer
+beim Migrieren eine Abweichung „reparieren" will, tut das NICHT in diesem PR
 (Verhaltensgleichheit ist das Review-Kriterium).
 
 ### 5. Doku

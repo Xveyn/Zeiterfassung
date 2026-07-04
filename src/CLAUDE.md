@@ -159,6 +159,11 @@ löschen — siehe Root-`CLAUDE.md`): `entry_dialog` (Tages-Dialog, rein zum Spe
 `conflicts_dialog`. `period_picker` ist kein Dialog, sondern der von
 `send_dialog` + `export_dialog` geteilte Zeitraum+Kategorie+Vorschau-Baustein.
 
+Alle Dialoge beziehen ihre Fenster-Chrome über `theme.create_dialog(...)`
+(Audit M13); Content-Styles (`apply_combobox_style`/`apply_notebook_style`/
+`attach_unfocus_on_click`) und `center_dialog_on_parent` ruft jeder Dialog
+selbst nach dem Aufbau.
+
 ## Wo gehört neuer Code hin?
 
 - Rendering/Zell-Logik → `grid_renderer.py`. Neuer Hintergrund-Task → `background_tasks.py`
