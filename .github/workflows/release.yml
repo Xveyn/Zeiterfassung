@@ -121,7 +121,7 @@ jobs:
         with:
           python-version: '3.10'
       - name: Install dependencies
-        run: pip install -r requirements.txt pyinstaller pip-licenses
+        run: pip install -r requirements.txt pip-licenses==5.5.5
       - name: Install Inno Setup
         shell: powershell
         run: choco install innosetup -y --no-progress
@@ -145,7 +145,7 @@ jobs:
         with:
           python-version: '3.10'
       - name: Install dependencies
-        run: pip install -r requirements.txt pyinstaller pip-licenses
+        run: pip install -r requirements.txt pip-licenses==5.5.5
       - name: Install create-dmg
         run: brew install create-dmg
       - name: Build
@@ -177,7 +177,7 @@ jobs:
           chmod +x appimagetool
           sudo mv appimagetool /usr/local/bin/
       - name: Install Python dependencies
-        run: pip install -r requirements.txt pyinstaller pip-licenses
+        run: pip install -r requirements.txt pip-licenses==5.5.5
       - name: Build
         env:
           ZEIT_RELEASE: "1"
