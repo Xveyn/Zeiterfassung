@@ -368,6 +368,25 @@ def set_primary_button_enabled(btn, enabled):
     btn._label.config(bg=c["bg"], fg=c["fg"], cursor=cursor)
 
 
+def set_secondary_button_enabled(btn, enabled):
+    """Pendant zu set_primary_button_enabled für `secondary_button`:
+    deaktiviert = gedämpfte Schrift (TEXT_MUTED) + Pfeil-Cursor, kein
+    Hover-Wechsel. Mutiert `_colors` (Enter/Leave lesen frisch daraus).
+    Wichtig: nur die OPTIK — die `command`/on_click-Bindung bleibt aktiv,
+    daher muss der Callback selbst bei disabled ein No-op machen."""
+    cursor = "hand2" if enabled else "arrow"
+    c = (
+        {"bg": CELL_BG, "fg": TEXT,
+         "hover_bg": ENTRY_BG, "hover_fg": TEXT}
+        if enabled else
+        {"bg": CELL_BG, "fg": TEXT_MUTED,
+         "hover_bg": CELL_BG, "hover_fg": TEXT_MUTED}
+    )
+    btn._colors = c
+    btn.config(bg=c["bg"], cursor=cursor)
+    btn._label.config(bg=c["bg"], fg=c["fg"], cursor=cursor)
+
+
 def _toggle_colors(active) -> _ToggleColors:
     if active:
         # Aktive Toggle-Variante: kein Hover-Farbwechsel (würde wie "klickbar" aussehen)
@@ -801,6 +820,44 @@ def _disable_min_max_now(window):
             SWP_NOSIZE | SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED)
     except Exception:
         pass
+
+
+def create_dialog(parent, title, *, resizable=False, modal=True,
+                  escape_closes=True):
+    """Erzeugt einen konventionskonformen Dialog-Toplevel — DER Einstieg
+    für neue Dialoge (ersetzt die frühere 8-Zeilen-Chrome-Boilerplate).
+
+    Chrome in fester Reihenfolge: title → resizable(False, False) →
+    grab_set → focus_set → configure(bg=BG) → apply_dark_titlebar →
+    disable_min_max → apply_app_icon → <Escape>-Bind auf destroy.
+    focus_set() MUSS nach grab_set() laufen, sonst feuern Tastatur-
+    Bindungen (z.B. Escape) am Dialog nie.
+
+    resizable=True ruft resizable() bewusst NICHT auf (Tk-Default bleibt).
+    modal=False lässt grab_set() weg — für Dialoge, die wie die themed_*-
+    Familie am Ende selbst center→grab_set→wait_window fahren.
+    escape_closes=False lässt den Escape-Bind weg — für Dialoge ohne
+    Escape (Settings) oder mit eigener Escape-Semantik (themed_*).
+
+    KEIN transient-Param: transient setzt center_dialog_on_parent —
+    bewusst gated auf sichtbaren Parent (Tray-Fall, siehe dort).
+    Content-Styles (apply_combobox_style/apply_notebook_style/
+    attach_unfocus_on_click) und center_dialog_on_parent (braucht die
+    fertige Größe) bleiben beim Aufrufer."""
+    dialog = tk.Toplevel(parent)
+    dialog.title(title)
+    if not resizable:
+        dialog.resizable(False, False)
+    if modal:
+        dialog.grab_set()
+    dialog.focus_set()
+    dialog.configure(bg=BG)
+    apply_dark_titlebar(dialog)
+    disable_min_max(dialog)
+    apply_app_icon(dialog)
+    if escape_closes:
+        dialog.bind("<Escape>", lambda _e: dialog.destroy())
+    return dialog
 
 
 def themed_askyesno(parent, title: str, message: str, lock_ms: int = 0) -> bool:
