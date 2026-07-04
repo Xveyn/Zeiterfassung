@@ -74,7 +74,7 @@ def build_oauth_enable_task(*, service_fn, settings, setting_key, checkbox,
 
 
 def open_settings_dialog(parent, settings, base_path, on_change, *,
-                         conflicts_store=None, storage=None,
+                         runner, conflicts_store=None, storage=None,
                          reservation_store=None, on_request_restart=None,
                          data_lock=None, sync_guard=None):
     """Modaler Dialog zum Bearbeiten der App-Einstellungen, aufgeteilt auf vier
@@ -85,6 +85,8 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
     gesetzt, erscheint im Google-Tab der Sync-Block mit Konflikte-Button.
     data_lock/sync_guard: geteilter Store-Lock + Sync-Guard für die Kompaktierung
     (Audit H1/H2) — von App durchgereicht.
+    runner: der App-BackgroundTaskRunner (App._bg); alle Hintergrund-Worker des
+    Dialogs laufen über runner.run(fn, on_done) (Audit H5).
     """
     dialog = create_dialog(parent, "Einstellungen", escape_closes=False)
 
@@ -383,42 +385,27 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
     # narrowt den Typ für Pylance.
     cb_sync: tk.Checkbutton | None = None
 
-    def _finish_oauth(err, tb):
-        assert cb_sync is not None
-        cb_sync.config(state="normal")
-        if err is None:
-            settings.set("sync_enabled", True)
-            on_change()
-            return
-        messagebox.showerror(
-            "Synchronisation aktivieren",
-            f"OAuth-Flow fehlgeschlagen:\n\n{err}\n\n{tb}",
-            parent=dialog,
-        )
-        var_sync.set(False)
-
     def _on_sync_toggled():
         assert cb_sync is not None
         new_state = var_sync.get()
         if new_state and not settings.get("sync_enabled"):
             cb_sync.config(state="disabled")
 
-            def _do_oauth():
-                err = None
-                tb = ""
-                try:
-                    from src import drive
-                    drive.get_drive_service(
-                        os.path.join(base_path, "credentials.json"),
-                        os.path.join(base_path, "token.json"),
-                        gcal_enabled=settings.get("gcal_enabled"),
-                    )
-                except Exception as e:
-                    err = e
-                    tb = traceback.format_exc()
-                dialog.after(0, lambda: _finish_oauth(err, tb))
+            def _service():
+                from src import drive
+                drive.get_drive_service(
+                    os.path.join(base_path, "credentials.json"),
+                    os.path.join(base_path, "token.json"),
+                    gcal_enabled=settings.get("gcal_enabled"),
+                )
 
-            threading.Thread(target=_do_oauth, daemon=True).start()
+            fn, on_done = build_oauth_enable_task(
+                service_fn=_service, settings=settings,
+                setting_key="sync_enabled", checkbox=cb_sync,
+                toggle_var=var_sync, on_change=on_change, dialog=dialog,
+                error_title="Synchronisation aktivieren",
+            )
+            runner.run(fn, on_done)
             return
         if not new_state and settings.get("sync_enabled"):
             settings.set("sync_enabled", False)
@@ -685,43 +672,28 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
             parent=dialog,
         )
 
-    def _finish_gcal_oauth(err, tb):
-        assert cb_gcal is not None
-        if not cb_gcal.winfo_exists():
-            return  # Dialog wurde während des OAuth-Flows geschlossen.
-        cb_gcal.config(state="normal")
-        if err is None:
-            settings.set("gcal_enabled", True)
-            on_change()
-            _load_calendars()
-            return
-        messagebox.showerror(
-            "Google Kalender aktivieren",
-            f"OAuth-Flow fehlgeschlagen:\n\n{err}\n\n{tb}",
-            parent=dialog,
-        )
-        var_gcal.set(False)
-
     def _on_gcal_toggled():
         assert cb_gcal is not None
         new_state = var_gcal.get()
         if new_state and not settings.get("gcal_enabled"):
             cb_gcal.config(state="disabled")
 
-            def _do_oauth():
-                err, tb = None, ""
-                try:
-                    from src import gcal
-                    gcal.get_calendar_service(
-                        os.path.join(base_path, "credentials.json"),
-                        os.path.join(base_path, "token.json"),
-                        sync_enabled=settings.get("sync_enabled"),
-                    )
-                except Exception as e:
-                    err, tb = e, traceback.format_exc()
-                dialog.after(0, lambda: _finish_gcal_oauth(err, tb))
+            def _service():
+                from src import gcal
+                gcal.get_calendar_service(
+                    os.path.join(base_path, "credentials.json"),
+                    os.path.join(base_path, "token.json"),
+                    sync_enabled=settings.get("sync_enabled"),
+                )
 
-            threading.Thread(target=_do_oauth, daemon=True).start()
+            fn, on_done = build_oauth_enable_task(
+                service_fn=_service, settings=settings,
+                setting_key="gcal_enabled", checkbox=cb_gcal,
+                toggle_var=var_gcal, on_change=on_change, dialog=dialog,
+                error_title="Google Kalender aktivieren",
+                on_success_dialog_ui=_load_calendars,
+            )
+            runner.run(fn, on_done)
             return
         if not new_state and settings.get("gcal_enabled"):
             settings.set("gcal_enabled", False)
