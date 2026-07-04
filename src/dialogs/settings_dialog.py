@@ -13,9 +13,8 @@ from src.platform_open import open_folder
 from src.theme import (
     ACCENT, BG, CELL_BG, FONT, FONT_BOLD, FONT_SMALL,
     PAUSE_VALUES, STATUS_OK, TEXT, TEXT_MUTED, TIME_VALUES,
-    apply_app_icon, apply_combobox_style, apply_dark_titlebar,
-    apply_notebook_style, attach_unfocus_on_click,
-    center_dialog_on_parent, disable_min_max,
+    apply_combobox_style, apply_notebook_style, attach_unfocus_on_click,
+    center_dialog_on_parent, create_dialog,
     dark_combo, dark_entry, dark_text,
     primary_button, secondary_button,
     themed_askyesno, themed_showinfo, themed_showwarning, themed_showerror,
@@ -44,15 +43,7 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
     data_lock/sync_guard: geteilter Store-Lock + Sync-Guard für die Kompaktierung
     (Audit H1/H2) — von App durchgereicht.
     """
-    dialog = tk.Toplevel(parent)
-    dialog.title("Einstellungen")
-    dialog.resizable(False, False)
-    dialog.grab_set()
-    dialog.focus_set()
-    dialog.configure(bg=BG)
-    apply_dark_titlebar(dialog)
-    disable_min_max(dialog)
-    apply_app_icon(dialog)
+    dialog = create_dialog(parent, "Einstellungen", escape_closes=False)
 
     apply_combobox_style(dialog)
     apply_notebook_style(dialog)

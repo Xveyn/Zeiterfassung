@@ -13,9 +13,8 @@ import tkinter as tk
 from src.settings import WEEKDAY_KEYS
 from src.theme import (
     BG, FONT, FONT_BOLD, PAUSE_VALUES, TEXT, TEXT_MUTED, TIME_VALUES,
-    apply_app_icon, apply_dark_titlebar, attach_unfocus_on_click,
-    center_dialog_on_parent, dark_combo, dark_entry, disable_min_max,
-    primary_button, secondary_button, themed_askyesno,
+    attach_unfocus_on_click, center_dialog_on_parent, create_dialog,
+    dark_combo, dark_entry, primary_button, secondary_button, themed_askyesno,
 )
 from src.time_utils import DAYS_DE
 
@@ -142,17 +141,8 @@ def open_category_dialog(parent, settings, on_change=None):
     categories = list(settings.get("categories") or [])
     category_times = dict(settings.get("category_times") or {})
 
-    dialog = tk.Toplevel(parent)
-    dialog.title("Kategorien verwalten")
-    dialog.resizable(False, False)
-    dialog.grab_set()
-    dialog.focus_set()
-    dialog.configure(bg=BG)
-    apply_dark_titlebar(dialog)
-    disable_min_max(dialog)
-    apply_app_icon(dialog)
+    dialog = create_dialog(parent, "Kategorien verwalten")
     attach_unfocus_on_click(dialog)
-    dialog.bind("<Escape>", lambda _e: dialog.destroy())
 
     outer = tk.Frame(dialog, bg=BG)
     outer.pack(padx=12, pady=12)
