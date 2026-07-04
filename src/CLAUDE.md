@@ -158,7 +158,11 @@ Das Tray-Icon läuft, sobald `minimize_to_tray` **oder** `reminders_enabled` akt
 Modale Tk-Dialoge, von `App` geroutet (Klick-Modell: Linksklick = bearbeiten, Rechtsklick =
 löschen — siehe Root-`CLAUDE.md`): `entry_dialog` (Tages-Dialog, rein zum Speichern),
 `send_dialog`, `export_dialog` (Zeitraum-Modal → PDF lokal speichern),
-`settings_dialog` (4 Tabs über `ttk.Notebook`: Arbeitszeit / Bericht & Mail / Google / App; Dark-Styling via `theme.apply_notebook_style`), `share_dialog`, `import_dialog`, `category_dialog`,
+`settings_dialog/` (Paket, Audit H4: `dialog.py` trägt Chrome + zentrales,
+ablaufidentisches `save_settings`; je Tab eine Klasse in `tab_work/`
+`tab_mail`/`tab_google`/`tab_app`.py, die ihre Tk-Variablen als Attribute
+für `save_settings` exponiert; `oauth_task.py` = H5-OAuth-Toggle-Builder;
+Dark-Styling weiter via `theme.apply_notebook_style`), `share_dialog`, `import_dialog`, `category_dialog`,
 `conflicts_dialog`. `period_picker` ist kein Dialog, sondern der von
 `send_dialog` + `export_dialog` geteilte Zeitraum+Kategorie+Vorschau-Baustein.
 
