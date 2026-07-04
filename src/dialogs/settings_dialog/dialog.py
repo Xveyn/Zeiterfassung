@@ -1,24 +1,21 @@
-import calendar
 import datetime
 import logging
 import os
 import tkinter as tk
 import traceback
 from tkinter import messagebox, ttk
-from typing import Any
 
 from src.autostart import disable_autostart, enable_autostart, is_autostart_enabled, resolve_autostart_target
 from src.platform_open import open_folder
 from src.theme import (
     ACCENT, BG, CELL_BG, FONT, FONT_BOLD, FONT_SMALL,
-    PAUSE_VALUES, STATUS_OK, TEXT, TEXT_MUTED, TIME_VALUES,
+    STATUS_OK, TEXT, TEXT_MUTED,
     apply_combobox_style, apply_notebook_style, attach_unfocus_on_click,
     center_dialog_on_parent, create_dialog,
     dark_combo, dark_entry, dark_text,
     primary_button, secondary_button,
     themed_askyesno, themed_showinfo, themed_showwarning, themed_showerror,
 )
-from src.dialogs.category_dialog import open_category_dialog
 from src.holidays_de import STATES, code_for_state_label
 from src.settings import (
     WEEKDAY_KEYS, clamp_ui_scale, parse_hourly_rate,
@@ -27,7 +24,9 @@ from src.settings import (
 from src.time_utils import format_iso_date, validate_period
 from src.time_utils import DAYS_DE, validate_entry
 from src.weekly_limit import format_limit_warnings, period_scan_needed, scan_period_for_warnings
+from src.dialogs.settings_dialog._shared import label, subheader
 from src.dialogs.settings_dialog.oauth_task import build_oauth_enable_task
+from src.dialogs.settings_dialog.tab_work import WorkTab
 
 
 def open_settings_dialog(parent, settings, base_path, on_change, *,
@@ -64,110 +63,8 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
     notebook.add(tab_google, text="Google")
     notebook.add(tab_app, text="App")
 
-    def label(parent_frame, text, row, col=0, **grid_kw):
-        kw: dict[str, Any] = dict(padx=10, pady=8, sticky="w")
-        kw.update(grid_kw)
-        lbl = tk.Label(parent_frame, text=text, font=FONT, bg=BG, fg=TEXT)
-        lbl.grid(row=row, column=col, **kw)
-        return lbl
-
-    def subheader(parent_frame, text, row, top_pad=16):
-        tk.Label(
-            parent_frame, text=f"— {text} —", font=FONT_BOLD,
-            bg=BG, fg=TEXT_MUTED,
-        ).grid(row=row, column=0, columnspan=2, padx=10, pady=(top_pad, 4))
-
     # ===================== Tab: Arbeitszeit =====================
-    label(tab_work, "Standardzeiten:", row=0, pady=(10, 4), sticky="nw")
-    times_frame = tk.Frame(tab_work, bg=BG)
-    times_frame.grid(row=0, column=1, padx=10, pady=(10, 4), sticky="w")
-
-    tk.Label(times_frame, text="Start", font=FONT_SMALL, bg=BG, fg=TEXT_MUTED).grid(
-        row=0, column=1, padx=2)
-    tk.Label(times_frame, text="Ende", font=FONT_SMALL, bg=BG, fg=TEXT_MUTED).grid(
-        row=0, column=2, padx=2)
-
-    start_vars = {}
-    end_vars = {}
-    for i, (key, lbl) in enumerate(zip(WEEKDAY_KEYS, DAYS_DE), start=1):
-        tk.Label(times_frame, text=lbl, font=FONT, bg=BG, fg=TEXT, width=3, anchor="w").grid(
-            row=i, column=0, padx=(0, 8), pady=2)
-        start_vars[key] = tk.StringVar(value=settings.get(f"default_start_{key}"))
-        dark_combo(times_frame, start_vars[key], TIME_VALUES).grid(
-            row=i, column=1, padx=2, pady=2)
-        end_vars[key] = tk.StringVar(value=settings.get(f"default_end_{key}"))
-        dark_combo(times_frame, end_vars[key], TIME_VALUES).grid(
-            row=i, column=2, padx=2, pady=2)
-
-    label(tab_work, "Standard-Pause (Min):", row=1)
-    pause_var = tk.StringVar(value=str(settings.get("default_pause")))
-    dark_combo(tab_work, pause_var, PAUSE_VALUES).grid(
-        row=1, column=1, padx=10, pady=8, sticky="w")
-
-    subheader(tab_work, "Werkstudenten-Limit", row=2)
-    wsl_frame = tk.Frame(tab_work, bg=BG)
-    wsl_frame.grid(row=3, column=0, columnspan=2, padx=10, pady=(0, 4), sticky="we")
-
-    wsl_enabled_var = tk.BooleanVar(value=settings.get("werkstudent_limit_enabled"))
-    tk.Checkbutton(
-        wsl_frame, text="Wochenstunden-Limit aktivieren", variable=wsl_enabled_var,
-        font=FONT, bg=BG, fg=TEXT, selectcolor=CELL_BG,
-        activebackground=BG, activeforeground=TEXT, cursor="hand2",
-    ).pack(anchor="w")
-
-    def _wsl_date_row(parent_frame, label_text, default_date):
-        row = tk.Frame(parent_frame, bg=BG)
-        row.pack(anchor="w", pady=(4, 0))
-        tk.Label(row, text=label_text, font=FONT, bg=BG, fg=TEXT).pack(
-            side=tk.LEFT, padx=(0, 5))
-        month_values = [str(m) for m in range(1, 13)]
-        year_values = [str(y) for y in range(2020, datetime.date.today().year + 3)]
-        day_var = tk.StringVar(value=str(default_date.day))
-        max_day = calendar.monthrange(default_date.year, default_date.month)[1]
-        day_cb = dark_combo(row, day_var, [str(d) for d in range(1, max_day + 1)], width=3)
-        day_cb.pack(side=tk.LEFT, padx=2)
-        tk.Label(row, text=".", font=FONT, bg=BG, fg=TEXT).pack(side=tk.LEFT)
-        month_var = tk.StringVar(value=str(default_date.month))
-        dark_combo(row, month_var, month_values, width=3).pack(side=tk.LEFT, padx=2)
-        tk.Label(row, text=".", font=FONT, bg=BG, fg=TEXT).pack(side=tk.LEFT)
-        year_var = tk.StringVar(value=str(default_date.year))
-        dark_combo(row, year_var, year_values, width=5).pack(side=tk.LEFT, padx=2)
-
-        def _update_days(*_a):
-            try:
-                m = int(month_var.get())
-                y = int(year_var.get())
-                md = calendar.monthrange(y, m)[1]
-            except (ValueError, KeyError):
-                md = 31
-            day_cb["values"] = [str(d) for d in range(1, md + 1)]
-            if int(day_var.get()) > md:
-                day_var.set(str(md))
-
-        month_var.trace_add("write", _update_days)
-        year_var.trace_add("write", _update_days)
-        return day_var, month_var, year_var
-
-    wsl_start_default = (
-        datetime.date.fromisoformat(settings.get("werkstudent_limit_start"))
-        if settings.get("werkstudent_limit_start") else datetime.date.today())
-    wsl_end_default = (
-        datetime.date.fromisoformat(settings.get("werkstudent_limit_end"))
-        if settings.get("werkstudent_limit_end") else datetime.date.today())
-    wsl_start_vars = _wsl_date_row(wsl_frame, "Zeitraum von:", wsl_start_default)
-    wsl_end_vars = _wsl_date_row(wsl_frame, "bis:", wsl_end_default)
-
-    wsl_hours_row = tk.Frame(wsl_frame, bg=BG)
-    wsl_hours_row.pack(anchor="w", pady=(4, 0))
-    tk.Label(wsl_hours_row, text="Limit (Stunden/Woche):", font=FONT, bg=BG, fg=TEXT).pack(
-        side=tk.LEFT, padx=(0, 5))
-    wsl_hours_var = tk.StringVar(value=str(settings.get("werkstudent_limit_max_hours")))
-    dark_entry(wsl_hours_row, wsl_hours_var, width=6).pack(side=tk.LEFT)
-
-    secondary_button(
-        tab_work, "Kategorien verwalten",
-        lambda: open_category_dialog(dialog, settings),
-    ).grid(row=4, column=0, columnspan=2, padx=10, pady=(12, 8), sticky="w")
+    work = WorkTab(tab_work, dialog, settings)
 
     # ===================== Tab: Bericht & Mail =====================
     label(tab_mail, "Empfänger:", row=0, pady=(10, 8))
@@ -793,11 +690,11 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
     ).pack(anchor="w", pady=(2, 0))
 
     # ===================== Speichern / Buttons =====================
-    tabs = {"work": tab_work, "mail": tab_mail, "google": tab_google, "app": tab_app}
+    tabs = {"work": work.frame, "mail": tab_mail, "google": tab_google, "app": tab_app}
 
     def save_settings():
         for key, lbl in zip(WEEKDAY_KEYS, DAYS_DE):
-            ok, msg = validate_entry(start_vars[key].get(), end_vars[key].get())
+            ok, msg = validate_entry(work.start_vars[key].get(), work.end_vars[key].get())
             if not ok:
                 notebook.select(tabs["work"])
                 themed_showerror(
@@ -808,14 +705,14 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
                 return
 
         wsl_start_date = datetime.date(
-            int(wsl_start_vars[2].get()), int(wsl_start_vars[1].get()),
-            int(wsl_start_vars[0].get()))
+            int(work.wsl_start_vars[2].get()), int(work.wsl_start_vars[1].get()),
+            int(work.wsl_start_vars[0].get()))
         wsl_end_date = datetime.date(
-            int(wsl_end_vars[2].get()), int(wsl_end_vars[1].get()),
-            int(wsl_end_vars[0].get()))
+            int(work.wsl_end_vars[2].get()), int(work.wsl_end_vars[1].get()),
+            int(work.wsl_end_vars[0].get()))
         wsl_start_iso = wsl_start_date.isoformat()
         wsl_end_iso = wsl_end_date.isoformat()
-        if wsl_enabled_var.get():
+        if work.wsl_enabled_var.get():
             ok, msg = validate_period(wsl_start_iso, wsl_end_iso)
             if not ok:
                 notebook.select(tabs["work"])
@@ -823,7 +720,7 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
                 return
         old_wsl_max_hours = settings.get("werkstudent_limit_max_hours")
         try:
-            wsl_max_hours = float(wsl_hours_var.get())
+            wsl_max_hours = float(work.wsl_hours_var.get())
         except ValueError:
             wsl_max_hours = old_wsl_max_hours
 
@@ -868,7 +765,7 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
 
         updates = {
             "autostart": new_autostart,
-            "default_pause": int(pause_var.get()),
+            "default_pause": int(work.pause_var.get()),
             "recipient": recipient_var.get(),
             "name": name_var.get(),
             "mail_subject": subject_var.get(),
@@ -883,14 +780,14 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
             "reminders_enabled": reminders_enabled_var.get(),
             "reminder_minutes_before": reminder_minutes,
             "ui_scale": new_scale,
-            "werkstudent_limit_enabled": wsl_enabled_var.get(),
+            "werkstudent_limit_enabled": work.wsl_enabled_var.get(),
             "werkstudent_limit_start": wsl_start_iso,
             "werkstudent_limit_end": wsl_end_iso,
             "werkstudent_limit_max_hours": wsl_max_hours,
         }
         for key in WEEKDAY_KEYS:
-            updates[f"default_start_{key}"] = start_vars[key].get()
-            updates[f"default_end_{key}"] = end_vars[key].get()
+            updates[f"default_start_{key}"] = work.start_vars[key].get()
+            updates[f"default_end_{key}"] = work.end_vars[key].get()
         settings.apply_updates(updates)
         # Kalender-Auswahl: Klarname zurück auf ID mappen, als Sync-Setting
         # speichern. Nur wenn die Kalenderliste schon geladen ist (cal_map
@@ -906,7 +803,7 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
             "max_hours": old_wsl_max_hours,
         }
         new_wsl = {
-            "enabled": wsl_enabled_var.get(), "start": wsl_start_iso, "end": wsl_end_iso,
+            "enabled": work.wsl_enabled_var.get(), "start": wsl_start_iso, "end": wsl_end_iso,
             "max_hours": wsl_max_hours,
         }
         if storage is not None and period_scan_needed(old_wsl, new_wsl):
