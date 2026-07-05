@@ -64,8 +64,11 @@ def open_export_dialog(parent, storage, settings, runner):
             if not dialog.winfo_exists():
                 # Dialog geschlossen = Abbrechen -> Ergebnis verwerfen.
                 return
-            set_primary_button_enabled(export_btn, True)
             set_button_text(export_btn, "Exportieren")
+            # Nicht blind enablen: der Button-Zustand hängt an der
+            # Kategorie-Auswahl (kann während des Laufs geändert worden sein) —
+            # wie share_dialog über die Gate-Funktion re-syncen.
+            _refresh_export_btn()
 
             if not res["ok"]:
                 messagebox.showerror(
