@@ -5,13 +5,14 @@ import traceback
 from tkinter import messagebox
 
 from src.dialogs.period_picker import build_period_picker
-from src.mail import get_gmail_service, is_offline_error, send_email
+from src.dialogs.send_task import perform_send
 from src.platform_open import open_folder
-from src.report import default_pdf_filename, generate_pdf, generate_report
+from src.report import default_pdf_filename, generate_report
 from src.theme import (
     BG, FONT, TEXT,
     apply_combobox_style, attach_unfocus_on_click, center_dialog_on_parent,
     create_dialog, primary_button, secondary_button,
+    set_button_text, set_primary_button_enabled,
     themed_showerror, themed_showinfo,
 )
 from src.time_utils import validate_period
@@ -55,7 +56,7 @@ def show_missing_credentials_dialog(parent, base_path):
     center_dialog_on_parent(dialog, parent)
 
 
-def open_send_dialog(parent, storage, settings, base_path):
+def open_send_dialog(parent, storage, settings, base_path, runner):
     recipient = settings.get("recipient")
     if not recipient:
         themed_showinfo(
@@ -80,7 +81,11 @@ def open_send_dialog(parent, storage, settings, base_path):
     picker_frame, picker = build_period_picker(dialog, storage, settings)
     picker_frame.grid(row=0, column=0, sticky="w")
 
+    busy = {"running": False}
+
     def do_send():
+        if busy["running"]:
+            return
         date_from, date_to = picker.get_range()
         if date_from is None:
             themed_showerror(dialog, "Ungültiges Datum", "Bitte ein gültiges Datum eingeben.")
@@ -104,66 +109,59 @@ def open_send_dialog(parent, storage, settings, base_path):
             categories=categories,
             category_breakdown=category_breakdown,
         )
-
         if html is None:
             themed_showinfo(
-                dialog,
-                "Keine Einträge",
+                dialog, "Keine Einträge",
                 f"Keine Einträge für {date_from.strftime('%d.%m.%Y')} – {date_to.strftime('%d.%m.%Y')} vorhanden.",
             )
             return
 
         label = f"{date_from.strftime('%d.%m.%Y')} – {date_to.strftime('%d.%m.%Y')}"
+        subject = (
+            settings.get("mail_subject")
+            .replace("{zeitraum}", label)
+            .replace("{gesamt}", f"{total}h")
+        )
+        pdf_filename = default_pdf_filename(date_from, date_to)
 
-        try:
-            pdf_bytes = generate_pdf(date_from, date_to, entries, name=settings.get("name"),
-                                     categories=categories,
-                                     category_breakdown=category_breakdown)
-            service = get_gmail_service(
-                credentials_path, token_path,
+        busy["running"] = True
+        set_primary_button_enabled(send_btn, False)
+        set_button_text(send_btn, "Sende…")
+
+        def fn():
+            return perform_send(
+                date_from=date_from, date_to=date_to, entries=entries,
+                name=settings.get("name"), categories=categories,
+                category_breakdown=category_breakdown,
+                credentials_path=credentials_path, token_path=token_path,
+                recipient=recipient, subject=subject, html=html,
+                pdf_filename=pdf_filename,
                 sync_enabled=settings.get("sync_enabled"),
                 gcal_enabled=settings.get("gcal_enabled"),
+                settings=settings,
             )
-            subject = (
-                settings.get("mail_subject")
-                .replace("{zeitraum}", label)
-                .replace("{gesamt}", f"{total}h")
-            )
-            pdf_filename = default_pdf_filename(date_from, date_to)
-            send_email(service, recipient, subject, html,
-                       attachment_bytes=pdf_bytes,
-                       attachment_filename=pdf_filename,
-                       attachment_subtype="pdf")
-            # Nach erfolgreichem Send ist der Token frisch — gute Gelegenheit,
-            # die Absender-Adresse zu cachen.
-            try:
-                from src.mail import fetch_user_email
-                email = fetch_user_email(
-                    token_path,
-                    sync_enabled=settings.get("sync_enabled"),
-                    gcal_enabled=settings.get("gcal_enabled"),
+
+        def on_done(res):
+            if res["ok"]:
+                if dialog.winfo_exists():
+                    dialog.destroy()
+                themed_showinfo(
+                    parent, "Gesendet",
+                    f"Bericht für {label} wurde an {recipient} gesendet.",
                 )
-                if email and email != settings.get("sender_email"):
-                    settings.set("sender_email", email)
-            except Exception:
-                logging.getLogger(__name__).exception("sender_email fetch after send failed")
-            dialog.destroy()
-            themed_showinfo(
-                parent,
-                "Gesendet",
-                f"Bericht für {label} wurde an {recipient} gesendet.",
-            )
-        except FileNotFoundError as e:
-            themed_showerror(dialog, "Fehler", str(e))
-        except Exception as e:
-            # Trace landet immer im Logfile. Bei einem reinen Offline-Fehler
-            # zeigen wir dem Nutzer aber eine verständliche Meldung statt des
-            # kryptischen Tracebacks — das ist kein Bug, sondern fehlendes Netz.
-            logging.getLogger(__name__).exception("Senden fehlgeschlagen")
-            if is_offline_error(e):
+                return
+            busy["running"] = False
+            alive = dialog.winfo_exists()
+            target = dialog if alive else parent
+            if alive:
+                set_primary_button_enabled(send_btn, True)
+                set_button_text(send_btn, "Senden")
+            kind = res["kind"]
+            if kind == "filenotfound":
+                themed_showerror(target, "Fehler", str(res["error"]))
+            elif kind == "offline":
                 themed_showerror(
-                    dialog,
-                    "Keine Internetverbindung",
+                    target, "Keine Internetverbindung",
                     "Der Bericht konnte nicht gesendet werden, weil keine "
                     "Verbindung zum Internet besteht.\n\n"
                     "Bitte prüfe deine Internetverbindung und versuche es "
@@ -172,14 +170,17 @@ def open_send_dialog(parent, storage, settings, base_path):
             else:
                 messagebox.showerror(
                     "Senden fehlgeschlagen",
-                    f"{type(e).__name__}: {e}\n\n{traceback.format_exc()}",
-                    parent=dialog,
+                    f"{type(res['error']).__name__}: {res['error']}\n\n{res['tb']}",
+                    parent=target,
                 )
+
+        runner.run(fn, on_done)
 
     btn_frame = tk.Frame(dialog, bg=BG)
     btn_frame.grid(row=1, column=0, pady=12)
 
-    primary_button(btn_frame, "Senden", do_send).pack(side=tk.LEFT, padx=5)
+    send_btn = primary_button(btn_frame, "Senden", do_send)
+    send_btn.pack(side=tk.LEFT, padx=5)
     secondary_button(btn_frame, "Abbrechen", dialog.destroy).pack(side=tk.LEFT, padx=5)
 
     center_dialog_on_parent(dialog, parent)

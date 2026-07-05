@@ -576,7 +576,7 @@ class App:
         )
 
     def _send(self):
-        open_send_dialog(self.root, self.storage, self.settings, self.base_path)
+        open_send_dialog(self.root, self.storage, self.settings, self.base_path, self._bg)
 
     def _share(self):
         from src.dialogs.share_dialog import open_share_dialog
