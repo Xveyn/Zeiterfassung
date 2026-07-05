@@ -587,7 +587,7 @@ class App:
 
     def _export(self):
         from src.dialogs.export_dialog import open_export_dialog
-        open_export_dialog(self.root, self.storage, self.settings)
+        open_export_dialog(self.root, self.storage, self.settings, self._bg)
 
     def on_sync_pull_success(self):
         """Public-API für main.py: nach erfolgreichem Pull (UI-Thread)."""
