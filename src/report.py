@@ -330,7 +330,7 @@ def generate_pdf(date_from, date_to, all_entries, name="", categories=None,
     category_breakdown: True = "Summe je Kategorie"-Tabelle anhängen (Default);
     False = weglassen, nur das Gesamt der Tagestabelle.
     """
-    from xhtml2pdf import pisa
+    from xhtml2pdf import pisa  # pyright: ignore[reportMissingImports]  # lazy, nicht in CI-Test-Deps
 
     range_entries = _filter_entries(date_from, date_to, all_entries)
     if range_entries:

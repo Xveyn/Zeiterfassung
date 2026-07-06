@@ -32,3 +32,19 @@ jobs:
           python-version: '3.10'
       - run: pip install ruff==0.15.10
       - run: ruff check .
+
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.10'
+      # Gleiche Minimal-Deps wie der test-Job, damit unsere eigenen Typen
+      # (google-*, holidays, pytest) auflösen. Die plattform-optionalen
+      # Lazy-Imports (xhtml2pdf/Pillow/pystray/pyobjc) sind an der Import-Zeile
+      # per `# pyright: ignore[reportMissingImports]` entschärft — kein
+      # requirements.txt nötig (pycairo/pyobjc wären hier ohnehin nicht baubar).
+      # pyright pinnen: neuere Versionen ziehen strengere Checks nach.
+      - run: pip install pyright==1.1.411 pytest "holidays==0.99" google-api-python-client google-auth google-auth-oauthlib
+      - run: pyright
