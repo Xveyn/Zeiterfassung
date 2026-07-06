@@ -13,6 +13,12 @@ import uuid
 # userinfo.email automatisch 'openid' hinzu — die Lib wirft dann
 # "Scope has changed". Diese Env-Variable lockert den Check; muss VOR dem
 # Import von google_auth_oauthlib stehen (frühester Punkt: main.py).
+#
+# N15 (bewusste, eng begrenzte Sicherheits-Lockerung): entschärft NUR die
+# Client-seitige Scope-Gleichheitsprüfung von oauthlib. Welche Scopes tatsächlich
+# gewährt wurden, erzwingt weiterhin Google serverseitig; ein echter Scope-Upgrade
+# (fehlender Scope im Token) wird separat über discard_token_for_scope_upgrade
+# (oauth_utils.py) erkannt und per frischem Consent nachgeholt. Kein Blankoscheck.
 os.environ.setdefault("OAUTHLIB_RELAX_TOKEN_SCOPE", "1")
 
 from src.conflicts_store import ConflictsStore
@@ -79,7 +85,7 @@ def _run_pull_in_background(storage, settings, conflicts_store, base, ui_callbac
     data_lock (geteilter Store-RLock, Audit H1): klammert
     Snapshot→Merge→Apply atomar gegen parallele UI-Saves. Wird NICHT über
     den Download gehalten."""
-    from src import drive, sync
+    from src import drive, sync, sync_journal
     if sync_guard is not None and not sync_guard.acquire(blocking=False):
         return
     try:
@@ -116,12 +122,26 @@ def _run_pull_in_background(storage, settings, conflicts_store, base, ui_callbac
             # gemergt (absorb-and-upgrade). Dass ältere Geräte ein hochgezogenes
             # v4-Doc nicht überschreiben, sichert deren Push-Guard (ab v1.15.2).
             remote_doc = sync.migrate_doc_to_current(remote_doc)
+            ok, reason = sync.validate_remote_doc(remote_doc)
+            if not ok:
+                # Strukturell defektes Remote-Doc (fehlende Pflichtfelder etc.)
+                # wie korruptes JSON behandeln (Audit M5): quarantänen und leer
+                # weitermergen, damit der lokale Stand zur neuen Remote-Wahrheit
+                # wird — statt mitten im Merge mit KeyError/ValueError im
+                # generischen except zu landen.
+                logging.getLogger(__name__).warning(
+                    "Remote-Sync-Doc ungültig (%s) — quarantäniert, starte leer", reason)
+                if file_id is not None:
+                    _quarantine(file_id)
+                remote_doc = {"schema_version": 1, "entries": {}, "settings": {}, "conflicts": []}
             # Snapshot→Merge→Apply atomar: kein UI-Save kann zwischen
             # build_local_doc und apply_merged_doc interleaven (Audit H1).
             with _lock_ctx(data_lock):
                 local_doc = sync.build_local_doc(storage, settings, conflicts_store)
                 merged = sync.merge(local_doc, remote_doc, settings.get("last_pull_at") or "")
-                sync.apply_merged_doc(merged, storage, settings, conflicts_store)
+                sync_journal.apply_merged_doc_journaled(
+                    merged, storage, settings, conflicts_store,
+                    os.path.join(base, sync_journal.JOURNAL_FILENAME))
                 settings.set_many({
                     "last_pull_at": sync._utc_now_iso(),
                     "drive_etag": etag,
@@ -151,7 +171,7 @@ def _run_push_blocking(storage, settings, conflicts_store, base, timeout_seconds
     data_lock (Audit H1): klammert Snapshot→Merge→Apply→Upload-Snapshot
     atomar; der Upload selbst läuft OHNE Daten-Lock (nie Lock über Netz)."""
     import json
-    from src import drive, sync
+    from src import drive, sync, sync_journal
 
     result = {}
 
@@ -194,12 +214,23 @@ def _run_push_blocking(storage, settings, conflicts_store, base, timeout_seconds
                 # Älteres Remote (v1/v2) absorbieren: aufs aktuelle Schema migrieren,
                 # dann mergen — sonst gingen v2-only-Stände beim Upload verloren.
                 remote_doc = sync.migrate_doc_to_current(remote_doc)
+                ok, reason = sync.validate_remote_doc(remote_doc)
+                if not ok:
+                    # Defektes Remote wie korruptes JSON behandeln (Audit M5):
+                    # leer weitermergen, der lokale Stand wird beim Upload zur
+                    # neuen Remote-Wahrheit. (Der Push quarantänt nicht separat —
+                    # der Upload überschreibt das defekte Remote ohnehin.)
+                    logging.getLogger(__name__).warning(
+                        "Remote-Sync-Doc ungültig (%s) — ignoriert, lokaler Stand gewinnt", reason)
+                    remote_doc = {"schema_version": 1, "entries": {}, "settings": {}, "conflicts": []}
                 # Snapshot→Merge→Apply→Upload-Snapshot atomar (Audit H1);
                 # der Upload danach läuft bewusst ungelockt.
                 with _lock_ctx(data_lock):
                     local_doc = sync.build_local_doc(storage, settings, conflicts_store)
                     merged = sync.merge(local_doc, remote_doc, settings.get("last_pull_at") or "")
-                    sync.apply_merged_doc(merged, storage, settings, conflicts_store)
+                    sync_journal.apply_merged_doc_journaled(
+                        merged, storage, settings, conflicts_store,
+                        os.path.join(base, sync_journal.JOURNAL_FILENAME))
                     doc = sync.build_local_doc(storage, settings, conflicts_store)
                     content = json.dumps(doc, ensure_ascii=False).encode("utf-8")
                 new_id, new_etag = drive.upload(service, content, file_id, expected_etag="")
@@ -241,7 +272,7 @@ def _run_compaction_blocking(storage, settings, conflicts_store, base, timeout_s
     inneren _do-Threads. data_lock: klammert Merge/Apply/Kompaktierung atomar;
     der Upload läuft ungelockt (Invarianten wie _run_push_blocking)."""
     import json
-    from src import drive, sync
+    from src import drive, sync, sync_journal
 
     result = {}
 
@@ -275,6 +306,14 @@ def _run_compaction_blocking(storage, settings, conflicts_store, base, timeout_s
 
                 # Älteres Remote (v1/v2) absorbieren: aufs aktuelle Schema migrieren.
                 remote_doc = sync.migrate_doc_to_current(remote_doc)
+                ok, reason = sync.validate_remote_doc(remote_doc)
+                if not ok:
+                    # Defektes Remote wie korruptes JSON behandeln (Audit M5):
+                    # leer weitermergen; die Kompaktierung schreibt danach den
+                    # lokalen Stand als neue Remote-Wahrheit hoch.
+                    logging.getLogger(__name__).warning(
+                        "Remote-Sync-Doc ungültig (%s) — ignoriert, lokaler Stand gewinnt", reason)
+                    remote_doc = {"schema_version": 1, "entries": {}, "settings": {}, "conflicts": []}
                 now = sync._utc_now_iso()
                 # Merge + Apply + Watermark/Strippung + Upload-Snapshot atomar
                 # (Audit H1); der Upload danach läuft bewusst ungelockt.
@@ -282,7 +321,9 @@ def _run_compaction_blocking(storage, settings, conflicts_store, base, timeout_s
                     # 1) normaler Merge des frischen Remote-Stands
                     local_doc = sync.build_local_doc(storage, settings, conflicts_store)
                     merged = sync.merge(local_doc, remote_doc, settings.get("last_pull_at") or "")
-                    sync.apply_merged_doc(merged, storage, settings, conflicts_store)
+                    sync_journal.apply_merged_doc_journaled(
+                        merged, storage, settings, conflicts_store,
+                        os.path.join(base, sync_journal.JOURNAL_FILENAME))
                     settings.set("last_pull_at", now)
                     # 2) Watermark setzen + lokal strippen
                     sync.compact_local(storage, settings, conflicts_store, now)
@@ -362,6 +403,9 @@ def main():
         setup_logging(base)
         logging.getLogger(__name__).info("Zeiterfassung v%s gestartet", VERSION)
     except Exception:
+        # N13: bewusst still — schlägt das Logging-Setup selbst fehl, gibt es
+        # keinen Kanal, in den man den Fehler schreiben könnte (und --noconsole
+        # schluckt stderr). Setup-Fehler sind nicht-fatal, die App läuft weiter.
         pass
 
     from src import single_instance
@@ -402,6 +446,15 @@ def main():
 
     reservation_store = ReservationStore(os.path.join(base, "reservations.json"),
                                          lock=data_lock)
+
+    # M6: Ein unvollständig gebliebener Sync-Apply eines vorherigen Laufs
+    # (Crash zwischen den vier Store-Writes) wird jetzt idempotent nachgeholt —
+    # bevor irgendein Sync-Thread startet, hier noch single-threaded (kein
+    # data_lock nötig). Kein Journal → No-op.
+    from src import sync_journal
+    sync_journal.recover_pending_apply(
+        os.path.join(base, sync_journal.JOURNAL_FILENAME),
+        storage, settings, conflicts_store)
 
     root = tk.Tk()
     _apply_ui_scaling(root, settings.get("ui_scale"))

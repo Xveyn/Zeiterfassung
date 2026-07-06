@@ -45,6 +45,25 @@ def test_run_without_on_done_still_executes_fn():
     assert ran.wait(timeout=5)
 
 
+def test_run_swallows_and_logs_fn_exception(caplog):
+    # N19: wirft fn() unerwartet, darf der Worker nicht still sterben —
+    # der Fehler wird geloggt und on_done feuert NICHT (kein halber Zustand).
+    import logging
+    entered = threading.Event()
+    on_done_called = threading.Event()
+
+    def boom():
+        entered.set()
+        raise RuntimeError("kaputt")
+
+    with caplog.at_level(logging.ERROR):
+        _runner().run(boom, on_done=lambda _r: on_done_called.set())
+        assert entered.wait(timeout=5)          # fn lief
+        assert not on_done_called.wait(timeout=0.5)  # on_done NICHT gefeuert
+
+    assert any("Hintergrund-Task fehlgeschlagen" in r.message for r in caplog.records)
+
+
 def test_check_update_skips_when_not_due(monkeypatch):
     import src.background_tasks as bg
     monkeypatch.setattr(bg, "should_check_today", lambda v: False)

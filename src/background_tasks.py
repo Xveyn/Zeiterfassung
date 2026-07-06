@@ -34,7 +34,16 @@ class BackgroundTaskRunner:
         """Fuehrt fn() in einem Daemon-Thread aus und liefert dessen Rueckgabe
         via marshal an on_done auf dem UI-Thread."""
         def worker():
-            result = fn()
+            try:
+                result = fn()
+            except Exception:
+                # N19: Auffangnetz. Ohne dieses stirbt der Worker bei einem
+                # unerwarteten fn()-Fehler still (Daemon-Thread, kein
+                # threading.excepthook) und on_done feuert nie — ein Status-Label
+                # bliebe z.B. auf "Synchronisiere…" haengen. Die Aufrufer gaten
+                # ihre fn zwar selbst, der Runner verlaesst sich aber nicht darauf.
+                log.exception("Hintergrund-Task fehlgeschlagen")
+                return
             if on_done is not None:
                 # Lokale Bindung: Pyright traegt das None-Narrowing sonst nicht
                 # in die Closure (reportOptionalCall-FP).

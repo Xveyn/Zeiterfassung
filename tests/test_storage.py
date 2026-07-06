@@ -1,3 +1,4 @@
+import logging
 import os
 from unittest import mock
 
@@ -67,16 +68,32 @@ def test_save_with_pause(tmp_storage):
     assert tmp_storage.get("2026-03-23") == {"slots": [_slot("08:00", "16:30", 30)]}
 
 
-def test_corrupt_json_is_quarantined_and_starts_empty(tmp_path):
+def test_save_fsyncs_before_replace(tmp_path, monkeypatch):
+    # N1: _save_to_disk muss den Temp-File fsyncen, bevor os.replace ihn sichtbar
+    # macht (Durability). Wir prüfen, dass fsync tatsächlich aufgerufen wird.
+    import src.storage as storage_mod
+    fsync_calls = []
+    monkeypatch.setattr(storage_mod.os, "fsync", lambda fd: fsync_calls.append(fd))
+    s = Storage(str(tmp_path / "z.json"))
+
+    s.save("2026-05-14", [_slot("08:00", "16:00")])
+
+    assert fsync_calls, "os.fsync wurde beim Speichern nicht aufgerufen"
+
+
+def test_corrupt_json_is_quarantined_and_starts_empty(tmp_path, caplog):
     path = tmp_path / "test.json"
     path.write_text("{not valid json", encoding="utf-8")
 
-    storage = Storage(str(path))
+    with caplog.at_level(logging.WARNING):
+        storage = Storage(str(path))
 
     assert storage.get_all() == {}
     quarantined = list(tmp_path.glob("test.json.corrupt-*"))
     assert len(quarantined) == 1
     assert quarantined[0].read_text(encoding="utf-8") == "{not valid json"
+    # N4: Quarantäne wird jetzt geloggt, nicht mehr stumm.
+    assert any("Quarantäne" in r.message for r in caplog.records)
 
 
 def test_save_failure_keeps_original_file_intact(tmp_path):

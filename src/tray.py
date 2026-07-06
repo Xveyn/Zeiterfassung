@@ -245,7 +245,9 @@ class _PystrayBackend:
             try:
                 self._icon.stop()
             except Exception:
-                pass
+                # N13: Stop ist best-effort (Icon evtl. schon weg), aber nicht spurlos.
+                logging.getLogger(__name__).debug(
+                    "Tray-Icon stop() fehlgeschlagen", exc_info=True)
             self._icon = None
 
 
