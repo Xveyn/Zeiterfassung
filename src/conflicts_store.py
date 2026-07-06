@@ -1,14 +1,17 @@
 import datetime
 import json
 import os
+import threading
 
 
 class ConflictsStore:
     """JSON-Persistenz für die lokale Konflikt-Liste. Spiegelt die conflicts-Liste
     aus dem Sync-File, damit der ConflictsDialog ohne Netz funktioniert."""
 
-    def __init__(self, filepath="conflicts.json"):
+    def __init__(self, filepath="conflicts.json", lock=None):
         self.filepath = filepath
+        # Geteilter Daten-Lock (Audit H1/H2) — siehe storage.py.
+        self._lock = lock if lock is not None else threading.RLock()
         self._conflicts = []
         self._load()
 
@@ -37,11 +40,14 @@ class ConflictsStore:
             raise
 
     def get_all(self):
-        return list(self._conflicts)
+        with self._lock:
+            return list(self._conflicts)
 
     def save_all(self, conflicts):
-        self._conflicts = list(conflicts)
-        self._save_to_disk()
+        with self._lock:
+            self._conflicts = list(conflicts)
+            self._save_to_disk()
 
     def count_unresolved(self):
-        return sum(1 for c in self._conflicts if not c.get("resolved"))
+        with self._lock:
+            return sum(1 for c in self._conflicts if not c.get("resolved"))

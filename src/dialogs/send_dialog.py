@@ -10,24 +10,15 @@ from src.platform_open import open_folder
 from src.report import default_pdf_filename, generate_pdf, generate_report
 from src.theme import (
     BG, FONT, TEXT,
-    apply_app_icon, apply_combobox_style, apply_dark_titlebar,
-    attach_unfocus_on_click, center_dialog_on_parent,
-    disable_min_max, primary_button, secondary_button,
+    apply_combobox_style, attach_unfocus_on_click, center_dialog_on_parent,
+    create_dialog, primary_button, secondary_button,
     themed_showerror, themed_showinfo,
 )
 from src.time_utils import validate_period
 
 
 def show_missing_credentials_dialog(parent, base_path):
-    dialog = tk.Toplevel(parent)
-    dialog.title("Keine Zugangsdaten")
-    dialog.resizable(False, False)
-    dialog.grab_set()
-    dialog.focus_set()
-    dialog.configure(bg=BG)
-    apply_dark_titlebar(dialog)
-    disable_min_max(dialog)
-    apply_app_icon(dialog)
+    dialog = create_dialog(parent, "Keine Zugangsdaten", escape_closes=False)
 
     tk.Label(
         dialog,
@@ -81,19 +72,10 @@ def open_send_dialog(parent, storage, settings, base_path):
         show_missing_credentials_dialog(parent, base_path)
         return
 
-    dialog = tk.Toplevel(parent)
-    dialog.title("Zeitraum wählen")
-    dialog.resizable(False, False)
-    dialog.grab_set()
-    dialog.focus_set()
-    dialog.configure(bg=BG)
-    apply_dark_titlebar(dialog)
-    disable_min_max(dialog)
-    apply_app_icon(dialog)
+    dialog = create_dialog(parent, "Zeitraum wählen")
 
     apply_combobox_style(dialog)
     attach_unfocus_on_click(dialog)
-    dialog.bind("<Escape>", lambda _e: dialog.destroy())
 
     picker_frame, picker = build_period_picker(dialog, storage, settings)
     picker_frame.grid(row=0, column=0, sticky="w")

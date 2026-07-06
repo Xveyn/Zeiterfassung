@@ -6,9 +6,9 @@ from src.holidays_de import get_holidays
 from src.settings import WEEKDAY_KEYS
 from src.theme import (
     BG, FONT, FONT_BOLD, PAUSE_VALUES, STRAY_CLICK_GUARD_S, TEXT, TEXT_MUTED,
-    TIME_VALUES, apply_app_icon, apply_combobox_style, apply_dark_titlebar,
-    attach_unfocus_on_click, center_dialog_on_parent, dark_combo,
-    disable_min_max, primary_button, secondary_button,
+    TIME_VALUES, apply_combobox_style, attach_unfocus_on_click,
+    center_dialog_on_parent, create_dialog, dark_combo,
+    primary_button, secondary_button,
     set_primary_button_enabled, themed_askyesno, themed_showinfo,
 )
 from src.time_utils import format_iso_weekday_date, get_week_label, validate_slots
@@ -98,20 +98,9 @@ def open_entry_dialog(parent, date_str, storage, settings, on_change,
     default_end = settings.get(f"default_end_{weekday_key}")
     default_pause = settings.get("default_pause")
 
-    dialog = tk.Toplevel(parent)
-    dialog.title(format_iso_weekday_date(date_str))
-    dialog.resizable(False, False)
-    dialog.grab_set()
-    # focus_set() ist nach grab_set() Pflicht, sonst feuern Tastatur-Bindungen
-    # (z.B. Escape) am Dialog nie.
-    dialog.focus_set()
-    dialog.configure(bg=BG)
-    apply_dark_titlebar(dialog)
-    disable_min_max(dialog)
-    apply_app_icon(dialog)
+    dialog = create_dialog(parent, format_iso_weekday_date(date_str))
     apply_combobox_style(dialog)
     attach_unfocus_on_click(dialog)
-    dialog.bind("<Escape>", lambda _e: dialog.destroy())
 
     outer = tk.Frame(dialog, bg=BG)
     outer.pack(padx=12, pady=12)

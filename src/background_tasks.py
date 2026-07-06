@@ -21,13 +21,14 @@ log = logging.getLogger(__name__)
 
 class BackgroundTaskRunner:
     def __init__(self, marshal, settings, base_path, reservation_store,
-                 reservations_active, storage=None):
+                 reservations_active, storage=None, data_lock=None):
         self._marshal = marshal                          # App._marshal_to_ui
         self._settings = settings
         self._base_path = base_path
         self._reservation_store = reservation_store
         self._reservations_active = reservations_active  # callable -> bool
         self._storage = storage
+        self._data_lock = data_lock                      # geteilter Store-RLock
 
     def run(self, fn, on_done=None):
         """Fuehrt fn() in einem Daemon-Thread aus und liefert dessen Rueckgabe
@@ -135,7 +136,8 @@ class BackgroundTaskRunner:
         def fn():
             from src.main import run_calendar_reconcile  # lazy: Circular-Import-Schutz
             return run_calendar_reconcile(
-                self._reservation_store, self._settings, self._base_path, self._storage)
+                self._reservation_store, self._settings, self._base_path,
+                self._storage, data_lock=self._data_lock)
 
         def on_done(result):
             if result.get("ok"):
@@ -153,6 +155,7 @@ class BackgroundTaskRunner:
         def fn():
             from src.main import run_calendar_reconcile  # lazy: Circular-Import-Schutz
             return run_calendar_reconcile(
-                self._reservation_store, self._settings, self._base_path, self._storage)
+                self._reservation_store, self._settings, self._base_path,
+                self._storage, data_lock=self._data_lock)
 
         self.run(fn, on_done)

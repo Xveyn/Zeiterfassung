@@ -2,6 +2,7 @@ import datetime
 import json
 import logging
 import os
+import threading
 
 WEEKDAY_KEYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")  # Index = datetime.weekday()
 
@@ -183,8 +184,10 @@ def clamp_ui_scale(value):
 
 
 class Settings:
-    def __init__(self, filepath="settings.json"):
+    def __init__(self, filepath="settings.json", lock=None):
         self.filepath = filepath
+        # Geteilter Daten-Lock (Audit H1/H2) — siehe storage.py.
+        self._lock = lock if lock is not None else threading.RLock()
         self._data = dict(DEFAULTS)
         self._synced_meta = {}   # {key: {"modified_at": ..., "device_id": ...}}
         self.device_id_for_sync = ""  # wird von main.py auf settings.device_id gesetzt
@@ -256,7 +259,8 @@ class Settings:
             raise
 
     def get(self, key):
-        return self._data.get(key, DEFAULTS.get(key))
+        with self._lock:
+            return self._data.get(key, DEFAULTS.get(key))
 
     def set(self, key, value):
         self.set_many({key: value})
@@ -268,8 +272,9 @@ class Settings:
         """
         if not updates:
             return
-        self._data.update(updates)
-        self._save_to_disk()
+        with self._lock:
+            self._data.update(updates)
+            self._save_to_disk()
 
     def set_synced(self, key, value):
         """Setzt einen whitelisted Sync-Key und stempelt Per-Field-Metadaten.
@@ -277,12 +282,13 @@ class Settings:
         if key not in SYNCED_SETTING_KEYS:
             self.set(key, value)
             return
-        self._data[key] = value
-        self._synced_meta[key] = {
-            "modified_at": _utc_now_iso(),
-            "device_id": self.device_id_for_sync,
-        }
-        self._save_to_disk()
+        with self._lock:
+            self._data[key] = value
+            self._synced_meta[key] = {
+                "modified_at": _utc_now_iso(),
+                "device_id": self.device_id_for_sync,
+            }
+            self._save_to_disk()
 
     def apply_updates(self, updates):
         """Routet ein updates-Dict aus dem Settings-Dialog auf den korrekten
@@ -298,31 +304,33 @@ class Settings:
     def get_synced_doc(self):
         """{key: {value, modified_at, device_id}} — Eingabe für den Sync-Merge.
         Nur Keys mit vorhandener Metadaten-Spur werden zurückgegeben."""
-        doc = {}
-        for key in SYNCED_SETTING_KEYS:
-            meta = self._synced_meta.get(key)
-            if meta is None:
-                continue
-            doc[key] = {
-                "value": self._data.get(key, DEFAULTS.get(key)),
-                "modified_at": meta["modified_at"],
-                "device_id": meta["device_id"],
-            }
-        return doc
+        with self._lock:
+            doc = {}
+            for key in SYNCED_SETTING_KEYS:
+                meta = self._synced_meta.get(key)
+                if meta is None:
+                    continue
+                doc[key] = {
+                    "value": self._data.get(key, DEFAULTS.get(key)),
+                    "modified_at": meta["modified_at"],
+                    "device_id": meta["device_id"],
+                }
+            return doc
 
     def apply_synced(self, synced_doc):
         """Übernimmt das Merge-Ergebnis: schreibt value in _data und Meta in
         _synced_meta. Schreibt einmal auf Platte."""
         if not synced_doc:
             return
-        for key, payload in synced_doc.items():
-            if key not in SYNCED_SETTING_KEYS:
-                continue
-            if not isinstance(payload, dict) or "value" not in payload:
-                continue
-            self._data[key] = payload["value"]
-            self._synced_meta[key] = {
-                "modified_at": str(payload.get("modified_at", "")),
-                "device_id": str(payload.get("device_id", "")),
-            }
-        self._save_to_disk()
+        with self._lock:
+            for key, payload in synced_doc.items():
+                if key not in SYNCED_SETTING_KEYS:
+                    continue
+                if not isinstance(payload, dict) or "value" not in payload:
+                    continue
+                self._data[key] = payload["value"]
+                self._synced_meta[key] = {
+                    "modified_at": str(payload.get("modified_at", "")),
+                    "device_id": str(payload.get("device_id", "")),
+                }
+            self._save_to_disk()
