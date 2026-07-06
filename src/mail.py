@@ -274,6 +274,11 @@ def send_email(service, to, subject, html_body,
         attachment_filename = attachment_filename or pdf_filename
         attachment_subtype = "pdf"
 
+    # Header-Injection verhindern (Audit N11): CR/LF/NUL aus dem Empfänger
+    # strippen, bevor er in den To-Header wandert. Der Wert kommt aus den
+    # Settings — nur Selbst-Injection, aber die Invariante muss sauber sein.
+    to = to.replace("\r", "").replace("\n", "").replace("\x00", "")
+
     if attachment_bytes:
         message = MIMEMultipart()
         message["to"] = to

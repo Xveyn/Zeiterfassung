@@ -233,4 +233,4 @@ Lokal: `pytest` aus dem Repo-Root. Alle Tests müssen vor dem PR-Merge grün sei
 - `src/version.py` — Einzige Quelle für die App-Version (von Workflow & `installer.iss` gelesen)
 - `installer.iss` — Inno Setup Script, Version wird per `/DAppVer=...` vom Workflow übergeben
 
-Hinweis: Es gibt **keine** `Zeiterfassung.spec`-Datei (entgegen der README-Erwähnung) — Build läuft komplett über `build.py` mit expliziten PyInstaller-Args.
+Hinweis: Es gibt **keine** `Zeiterfassung.spec`-Datei — Build läuft komplett über `build.py` mit expliziten PyInstaller-Args.
