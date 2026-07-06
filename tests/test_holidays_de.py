@@ -1,6 +1,7 @@
+import time
 from datetime import date
 
-from src.holidays_de import STATES, get_holidays
+from src.holidays_de import STATES, _holidays_cached, get_holidays
 
 
 def test_states_list_starts_with_empty_option():
@@ -71,3 +72,46 @@ def test_code_for_state_label_empty_option_maps_to_empty_code():
 def test_code_for_state_label_unknown_label_is_empty():
     from src.holidays_de import code_for_state_label
     assert code_for_state_label("Atlantis") == ""
+
+
+# --- Resilienz gegen transiente FileNotFoundError (Issue #116, gettext-Race
+# im Onefile-Build beim Neustart für UI-Skalierung) ---
+
+
+def test_transient_failure_is_retried_and_succeeds(monkeypatch):
+    import holidays
+
+    _holidays_cached.cache_clear()
+    monkeypatch.setattr(time, "sleep", lambda s: None)
+
+    real_germany = holidays.Germany
+    calls = {"n": 0}
+
+    def flaky_germany(*args, **kwargs):
+        calls["n"] += 1
+        if calls["n"] < 3:
+            raise FileNotFoundError(
+                "No translation file found for domain: 'DE'")
+        return real_germany(*args, **kwargs)
+
+    monkeypatch.setattr(holidays, "Germany", flaky_germany)
+
+    h = get_holidays("BY", 2031)
+
+    assert calls["n"] == 3
+    assert date(2031, 10, 3) in h
+
+
+def test_persistent_failure_falls_back_to_empty_dict(monkeypatch):
+    import holidays
+
+    _holidays_cached.cache_clear()
+    monkeypatch.setattr(time, "sleep", lambda s: None)
+
+    def always_fails(*args, **kwargs):
+        raise FileNotFoundError(
+            "No translation file found for domain: 'DE'")
+
+    monkeypatch.setattr(holidays, "Germany", always_fails)
+
+    assert get_holidays("BY", 2032) == {}
