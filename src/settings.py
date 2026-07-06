@@ -273,6 +273,9 @@ class Settings:
         tmp = self.filepath + ".tmp"
         with open(tmp, "w", encoding="utf-8") as f:
             json.dump(payload, f, indent=2, ensure_ascii=False)
+            # N1: fsync vor os.replace (Durability bei Crash/Stromausfall).
+            f.flush()
+            os.fsync(f.fileno())
         try:
             os.replace(tmp, self.filepath)
         except OSError:

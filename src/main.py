@@ -13,6 +13,12 @@ import uuid
 # userinfo.email automatisch 'openid' hinzu — die Lib wirft dann
 # "Scope has changed". Diese Env-Variable lockert den Check; muss VOR dem
 # Import von google_auth_oauthlib stehen (frühester Punkt: main.py).
+#
+# N15 (bewusste, eng begrenzte Sicherheits-Lockerung): entschärft NUR die
+# Client-seitige Scope-Gleichheitsprüfung von oauthlib. Welche Scopes tatsächlich
+# gewährt wurden, erzwingt weiterhin Google serverseitig; ein echter Scope-Upgrade
+# (fehlender Scope im Token) wird separat über discard_token_for_scope_upgrade
+# (oauth_utils.py) erkannt und per frischem Consent nachgeholt. Kein Blankoscheck.
 os.environ.setdefault("OAUTHLIB_RELAX_TOKEN_SCOPE", "1")
 
 from src.conflicts_store import ConflictsStore
@@ -397,6 +403,9 @@ def main():
         setup_logging(base)
         logging.getLogger(__name__).info("Zeiterfassung v%s gestartet", VERSION)
     except Exception:
+        # N13: bewusst still — schlägt das Logging-Setup selbst fehl, gibt es
+        # keinen Kanal, in den man den Fehler schreiben könnte (und --noconsole
+        # schluckt stderr). Setup-Fehler sind nicht-fatal, die App läuft weiter.
         pass
 
     from src import single_instance

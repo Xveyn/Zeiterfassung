@@ -102,6 +102,13 @@ def _merge_one(local, remote, last_pull_at, equal_fn=_values_equal_entry, kind="
     local_changed = local["modified_at"] > last_pull_at
     remote_changed = remote["modified_at"] > last_pull_at
 
+    # N2 (LWW-Wanduhr-Abhängigkeit — bewusst festgehalten): `modified_at` ist eine
+    # Wanduhr-Zeit (_utc_now_iso, Sekunden-Auflösung, KEINE Millisekunden). Der
+    # Vergleich ist ein String-Vergleich der ISO-Timestamps. Das LWW-Ergebnis
+    # hängt damit an halbwegs synchronen Geräte-Uhren; eine stark falsch gehende
+    # Uhr kann Änderungen dauerhaft gewinnen/verlieren lassen. Bei exakt gleicher
+    # Sekunde bevorzugt `>=` deterministisch die REMOTE-Seite (arbiträr, aber
+    # stabil) — akzeptierter Trade-off für ein Ein-Nutzer-Multi-Device-Tool.
     winner = remote if remote["modified_at"] >= local["modified_at"] else local
 
     if local_changed and remote_changed:

@@ -103,6 +103,10 @@ class Storage:
         tmp = self.filepath + ".tmp"
         with open(tmp, "w", encoding="utf-8") as f:
             json.dump(self._data, f, indent=2, ensure_ascii=False)
+            # N1: fsync vor os.replace — sonst kann das Rename durabel sein, die
+            # Datenblöcke aber noch im OS-Cache (Stromausfall → leere/halbe Datei).
+            f.flush()
+            os.fsync(f.fileno())
         try:
             os.replace(tmp, self.filepath)
         except OSError:

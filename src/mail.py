@@ -82,7 +82,10 @@ def fetch_user_email(token_path="token.json", sync_enabled=False, gcal_enabled=F
                 _td = _json.load(f)
             log.info("fetch_user_email: granted scopes = %r", _td.get("scopes"))
         except Exception:
-            pass
+            # N13: reine Diagnose — Fehler darf den Flow nicht kippen, aber auch
+            # nicht spurlos verschwinden.
+            log.debug("fetch_user_email: granted-scopes-Diagnose fehlgeschlagen",
+                      exc_info=True)
     except Exception:
         log.exception("fetch_user_email: setup failed")
         return ""

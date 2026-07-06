@@ -79,6 +79,12 @@ class UpdateBanner:
         self._on_resize()
 
     def _open_download(self, release):
+        # M9 (bewusste Design-Grenze): Die App verifiziert das Update NICHT per
+        # Hash/Signatur — sie lädt und startet aber auch nichts selbst, sondern
+        # öffnet nur die Release-URL im Browser. Vertrauensanker ist damit TLS +
+        # GitHub (der Nutzer lädt/installiert manuell). Ein späterer In-App-
+        # Auto-Download OHNE Verifikation wäre eine echte Lücke — dann hier
+        # Signatur-/Hash-Prüfung ergänzen.
         url = pick_asset_url(
             release.assets, platform.system(), release.version,
         ) or release.html_url
