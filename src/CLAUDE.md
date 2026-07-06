@@ -54,7 +54,13 @@ Rendering der Monats-/Wochenansicht inkl. Double-Buffer und Fenster-Geometrie.
   `refresh()`, beim Wechsel der Footer-Reservierungsbreite (Stundenlohn zur Laufzeit
   gesetzt/entfernt — `_update_footer` reserviert 16 vs. 40 Zeichen, s.u.) **und** extern vom
   `UpdateBanner` (als `on_resize`), dessen Ein-/Ausblenden die nötige Höhe ändert, ohne
-  View/Spalten zu wechseln. `resizable(False, False)` bleibt.
+  View/Spalten zu wechseln. `resizable(False, False)` bleibt. Die **Breite ratcht**:
+  `_fixed_width` wächst mit der breitesten je angeforderten reqwidth mit, schrumpft aber nie
+  wieder — startet die App ohne Lohn (schmaler Footer, `measure_max_width` pinnt schmal) und
+  der Nutzer trägt später einen Lohn ein, wächst das Fenster einmalig auf die breite Variante
+  und bleibt dort. Ohne Ratchet spränge es bei jedem Lohn-Ein/Aus zwischen schmal und breit
+  (Test: `tests/test_grid_geometry.py`). Die Höhe ratcht bewusst nicht (Banner braucht beide
+  Richtungen).
 - `_fmt_slot_line` ist `@staticmethod`; `App._delete_day` ruft es als
   `GridRenderer._fmt_slot_line(...)` (bleibt in App, nutzt aber den Renderer-Static).
 
