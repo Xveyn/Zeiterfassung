@@ -3,8 +3,8 @@ headless (der Dialog selbst ist Tk-gebunden, M16)."""
 
 from unittest.mock import MagicMock
 
-import src.dialogs.settings_dialog as sd
-from src.dialogs.settings_dialog import build_oauth_enable_task
+import src.dialogs.settings_dialog.oauth_task as sd
+from src.dialogs.settings_dialog.oauth_task import build_oauth_enable_task
 
 
 class _FakeSettings:
