@@ -89,7 +89,26 @@ das fixe Fenster auf die geänderte Banner-Höhe nachzieht (sonst Footer abgesch
 Genau ein Muster: Hintergrundarbeit über `BackgroundTaskRunner.run(fn, on_done)`; jede
 State-/Widget-Mutation aus einem Worker läuft über `App._marshal_to_ui` (`root.after(0, …)`,
 gegen `TclError` abgesichert, falls das Fenster zwischenzeitlich zu ist). Keine direkten
-`threading.Thread`-Aufrufe in `ui.py` mehr.
+`threading.Thread`-Aufrufe in `ui.py` **oder den Dialogen** mehr — auch `settings_dialog`
+routet seine Worker seit Audit H5 über einen injizierten `BackgroundTaskRunner`
+(`open_settings_dialog(..., runner=App._bg)`): Persistenz im Worker (überlebt
+Dialog-Close), UI-Feedback im `winfo_exists`-geschützten `on_done`.
+
+**Datenschicht-Locking (Audit H1/H2/M1):** Alle vier Stores
+(`storage`/`settings`/`conflicts_store`/`reservations`) teilen sich einen in
+`main()` erzeugten `RLock` (Konstruktor-Param `lock=`; ohne Injektion legt
+jeder Store einen eigenen an — Tests bleiben unverändert). Die Sync-Flows
+(`_run_pull_in_background`/`_run_push_blocking`/`_run_compaction_blocking`/
+`reconcile_reservations`) klammern Snapshot→Merge→Apply mit diesem `data_lock`
+— **nie über Netzwerk-Calls**. Ein separater plain `threading.Lock`
+(`sync_guard`) serialisiert alle Drive-Sync-Einstiege (Startup-Pull, Manual-,
+Tray-, Quit-Push, Kompaktierung): non-blocking-skip mit
+`{"skipped": True}`-Result, nur der Quit-Push wartet (`guard_timeout=5`).
+Acquired UND released wird der Guard im innersten Worker-Thread (`finally`,
+nach der letzten Store-Mutation) — nie in UI-Callbacks, nie beim Join-Timeout;
+er MUSS plain `Lock` bleiben (cross-thread release). Neue Sync-Einstiege
+müssen beide Locks respektieren. Design:
+`docs/superpowers/specs/2026-07-04-datenschicht-threadsicherheit-design.md`.
 
 ## Daten- & Persistenz-Schicht
 
@@ -139,9 +158,18 @@ Das Tray-Icon läuft, sobald `minimize_to_tray` **oder** `reminders_enabled` akt
 Modale Tk-Dialoge, von `App` geroutet (Klick-Modell: Linksklick = bearbeiten, Rechtsklick =
 löschen — siehe Root-`CLAUDE.md`): `entry_dialog` (Tages-Dialog, rein zum Speichern),
 `send_dialog`, `export_dialog` (Zeitraum-Modal → PDF lokal speichern),
-`settings_dialog` (4 Tabs über `ttk.Notebook`: Arbeitszeit / Bericht & Mail / Google / App; Dark-Styling via `theme.apply_notebook_style`), `share_dialog`, `import_dialog`, `category_dialog`,
+`settings_dialog/` (Paket, Audit H4: `dialog.py` trägt Chrome + zentrales,
+ablaufidentisches `save_settings`; je Tab eine Klasse in `tab_work/`
+`tab_mail`/`tab_google`/`tab_app`.py, die ihre Tk-Variablen als Attribute
+für `save_settings` exponiert; `oauth_task.py` = H5-OAuth-Toggle-Builder;
+Dark-Styling weiter via `theme.apply_notebook_style`), `share_dialog`, `import_dialog`, `category_dialog`,
 `conflicts_dialog`. `period_picker` ist kein Dialog, sondern der von
 `send_dialog` + `export_dialog` geteilte Zeitraum+Kategorie+Vorschau-Baustein.
+
+Alle Dialoge beziehen ihre Fenster-Chrome über `theme.create_dialog(...)`
+(Audit M13); Content-Styles (`apply_combobox_style`/`apply_notebook_style`/
+`attach_unfocus_on_click`) und `center_dialog_on_parent` ruft jeder Dialog
+selbst nach dem Aufbau.
 
 ## Wo gehört neuer Code hin?
 

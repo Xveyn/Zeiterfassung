@@ -44,7 +44,7 @@ class MacTrayBackend:
         self._dynamic_items = []  # [(NSMenuItem, visible_callable)]
 
     def _load_image(self):
-        from AppKit import NSImage
+        from AppKit import NSImage  # pyright: ignore[reportMissingImports]  # pyobjc, nur macOS
         png = os.path.join(self.base_path, "assets", "margenheld-icon.png")
         if not os.path.exists(png):
             return None
@@ -54,10 +54,10 @@ class MacTrayBackend:
         return image
 
     def start(self):
-        from AppKit import (
+        from AppKit import (  # pyright: ignore[reportMissingImports]  # pyobjc, nur macOS
             NSStatusBar, NSMenu, NSMenuItem, NSVariableStatusItemLength,
         )
-        from Foundation import NSObject
+        from Foundation import NSObject  # pyright: ignore[reportMissingImports]  # pyobjc, nur macOS
 
         model = build_menu_model(self._on_show, self._on_quit, self._actions)
 
@@ -125,7 +125,7 @@ class MacTrayBackend:
         (sync_orchestrator._on_tray_done) ist ein on_done-Callback und läuft
         bereits über _marshal_to_ui auf dem Tk-/Main-Thread (verifiziert)."""
         try:
-            from Foundation import (
+            from Foundation import (  # pyright: ignore[reportMissingImports]  # pyobjc, nur macOS
                 NSUserNotification, NSUserNotificationCenter,
             )
             note = NSUserNotification.alloc().init()
@@ -140,7 +140,7 @@ class MacTrayBackend:
         """Entfernt das Status-Item und löst die Referenzen. Idempotent."""
         if self._status_item is not None:
             try:
-                from AppKit import NSStatusBar
+                from AppKit import NSStatusBar  # pyright: ignore[reportMissingImports]  # pyobjc, nur macOS
                 NSStatusBar.systemStatusBar().removeStatusItem_(
                     self._status_item)
             except Exception:

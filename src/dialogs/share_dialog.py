@@ -12,8 +12,7 @@ from src.mail import get_gmail_service, is_offline_error, send_email
 from src.share import build_share_doc, serialize_share_doc
 from src.theme import (
     BG, CELL_BG, FONT, TEXT,
-    apply_app_icon, apply_dark_titlebar, attach_unfocus_on_click,
-    center_dialog_on_parent, disable_min_max,
+    attach_unfocus_on_click, center_dialog_on_parent, create_dialog,
     dark_entry, primary_button, secondary_button,
     set_primary_button_enabled, themed_showerror, themed_showinfo,
 )
@@ -40,17 +39,8 @@ def open_share_dialog(parent, storage, settings, base_path, reservation_store=No
         )
         return
 
-    dialog = tk.Toplevel(parent)
-    dialog.title("Teilen")
-    dialog.resizable(False, False)
-    dialog.grab_set()
-    dialog.focus_set()
-    dialog.configure(bg=BG)
-    apply_dark_titlebar(dialog)
-    disable_min_max(dialog)
-    apply_app_icon(dialog)
+    dialog = create_dialog(parent, "Teilen")
     attach_unfocus_on_click(dialog)
-    dialog.bind("<Escape>", lambda _e: dialog.destroy())
 
     row = 0
     tk.Label(

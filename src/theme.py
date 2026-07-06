@@ -26,9 +26,6 @@ ACCENT_HOVER = "#c73550"
 # "nicht klickbar" erkennbar, behält aber den Rot-Charakter des Löschen-Buttons.
 ACCENT_DISABLED = "#5c2a37"
 STATUS_OK = "#4ade80"
-# Amber für Warn-Dialoge (dezenter Akzentbalken) — hebt Warnung von neutralem
-# Info ab, ohne den roten Fehler-/Lösch-Akzent (ACCENT) zu verwenden.
-WARNING = "#e8a13a"
 TEXT = "#e0e0e0"
 TEXT_MUTED = "#888888"
 ENTRY_BG = "#1a3a5c"
@@ -365,6 +362,25 @@ def set_primary_button_enabled(btn, enabled):
         if enabled else
         {"bg": ACCENT_DISABLED, "fg": TEXT_MUTED,
          "hover_bg": ACCENT_DISABLED, "hover_fg": TEXT_MUTED}
+    )
+    btn._colors = c
+    btn.config(bg=c["bg"], cursor=cursor)
+    btn._label.config(bg=c["bg"], fg=c["fg"], cursor=cursor)
+
+
+def set_secondary_button_enabled(btn, enabled):
+    """Pendant zu set_primary_button_enabled für `secondary_button`:
+    deaktiviert = gedämpfte Schrift (TEXT_MUTED) + Pfeil-Cursor, kein
+    Hover-Wechsel. Mutiert `_colors` (Enter/Leave lesen frisch daraus).
+    Wichtig: nur die OPTIK — die `command`/on_click-Bindung bleibt aktiv,
+    daher muss der Callback selbst bei disabled ein No-op machen."""
+    cursor = "hand2" if enabled else "arrow"
+    c = (
+        {"bg": CELL_BG, "fg": TEXT,
+         "hover_bg": ENTRY_BG, "hover_fg": TEXT}
+        if enabled else
+        {"bg": CELL_BG, "fg": TEXT_MUTED,
+         "hover_bg": CELL_BG, "hover_fg": TEXT_MUTED}
     )
     btn._colors = c
     btn.config(bg=c["bg"], cursor=cursor)
@@ -806,6 +822,44 @@ def _disable_min_max_now(window):
         pass
 
 
+def create_dialog(parent, title, *, resizable=False, modal=True,
+                  escape_closes=True):
+    """Erzeugt einen konventionskonformen Dialog-Toplevel — DER Einstieg
+    für neue Dialoge (ersetzt die frühere 8-Zeilen-Chrome-Boilerplate).
+
+    Chrome in fester Reihenfolge: title → resizable(False, False) →
+    grab_set → focus_set → configure(bg=BG) → apply_dark_titlebar →
+    disable_min_max → apply_app_icon → <Escape>-Bind auf destroy.
+    focus_set() MUSS nach grab_set() laufen, sonst feuern Tastatur-
+    Bindungen (z.B. Escape) am Dialog nie.
+
+    resizable=True ruft resizable() bewusst NICHT auf (Tk-Default bleibt).
+    modal=False lässt grab_set() weg — für Dialoge, die wie die themed_*-
+    Familie am Ende selbst center→grab_set→wait_window fahren.
+    escape_closes=False lässt den Escape-Bind weg — für Dialoge ohne
+    Escape (Settings) oder mit eigener Escape-Semantik (themed_*).
+
+    KEIN transient-Param: transient setzt center_dialog_on_parent —
+    bewusst gated auf sichtbaren Parent (Tray-Fall, siehe dort).
+    Content-Styles (apply_combobox_style/apply_notebook_style/
+    attach_unfocus_on_click) und center_dialog_on_parent (braucht die
+    fertige Größe) bleiben beim Aufrufer."""
+    dialog = tk.Toplevel(parent)
+    dialog.title(title)
+    if not resizable:
+        dialog.resizable(False, False)
+    if modal:
+        dialog.grab_set()
+    dialog.focus_set()
+    dialog.configure(bg=BG)
+    apply_dark_titlebar(dialog)
+    disable_min_max(dialog)
+    apply_app_icon(dialog)
+    if escape_closes:
+        dialog.bind("<Escape>", lambda _e: dialog.destroy())
+    return dialog
+
+
 def themed_askyesno(parent, title: str, message: str, lock_ms: int = 0) -> bool:
     """Modaler Ja/Nein-Dialog im App-Theme. Drop-in für `messagebox.askyesno`.
 
@@ -817,14 +871,7 @@ def themed_askyesno(parent, title: str, message: str, lock_ms: int = 0) -> bool:
     `themed_ask_delete_choice` — verhindert versehentliches Sofort-Bestätigen
     bei Lösch-Rückfragen (z.B. genau eine löschbare Einheit am Tag).
     """
-    dialog = tk.Toplevel(parent)
-    dialog.title(title)
-    dialog.resizable(False, False)
-    dialog.configure(bg=BG)
-    apply_dark_titlebar(dialog)
-    disable_min_max(dialog)
-    apply_app_icon(dialog)
-    dialog.focus_set()
+    dialog = create_dialog(parent, title, modal=False, escape_closes=False)
 
     result = {"value": False}
     unlock = {"ready": lock_ms <= 0}
@@ -879,14 +926,7 @@ def themed_ask_delete_choice(parent, title: str, message: str, options, lock_ms:
     (gedämpfter Rotton, nicht klickbar) — so kann der Klick nicht versehentlich
     den Dialog schließen und auf einem Kalendertag dahinter landen.
     """
-    dialog = tk.Toplevel(parent)
-    dialog.title(title)
-    dialog.resizable(False, False)
-    dialog.configure(bg=BG)
-    apply_dark_titlebar(dialog)
-    disable_min_max(dialog)
-    apply_app_icon(dialog)
-    dialog.focus_set()
+    dialog = create_dialog(parent, title, modal=False, escape_closes=False)
 
     result: dict[str, set[str] | None] = {"value": None}
     # Optionaler kurzer Lock nach dem Öffnen: verhindert versehentliches
@@ -958,27 +998,13 @@ def themed_ask_delete_choice(parent, title: str, message: str, options, lock_ms:
     return result["value"]
 
 
-def _themed_ok_dialog(parent, title: str, message: str, accent=None) -> None:
+def _themed_ok_dialog(parent, title: str, message: str) -> None:
     """Modaler OK-Dialog im App-Theme — Basis für info/warning/error.
 
     Eigener Toplevel mit Dark-Theme-Farben und gebrandeter Titelleiste
     (`tkinter.messagebox.*` ist eine Black-Box ohne Customization-Hooks).
-    `accent`: optionale Farbe für einen dezenten Balken am oberen Rand, der
-    Warnung (amber) bzw. Fehler (rot) vom neutralen Info-Dialog abhebt.
     """
-    dialog = tk.Toplevel(parent)
-    dialog.title(title)
-    dialog.resizable(False, False)
-    dialog.configure(bg=BG)
-    apply_dark_titlebar(dialog)
-    disable_min_max(dialog)
-    apply_app_icon(dialog)
-    dialog.focus_set()
-
-    if accent is not None:
-        bar = tk.Frame(dialog, bg=accent, height=4)
-        bar.pack(fill=tk.X)
-        bar.pack_propagate(False)
+    dialog = create_dialog(parent, title, modal=False, escape_closes=False)
 
     tk.Label(
         dialog, text=message, font=FONT, bg=BG, fg=TEXT,
@@ -1005,12 +1031,12 @@ def themed_showinfo(parent, title: str, message: str) -> None:
 
 def themed_showwarning(parent, title: str, message: str) -> None:
     """Modaler Warn-Dialog im App-Theme. Drop-in für `messagebox.showwarning`."""
-    _themed_ok_dialog(parent, title, message, accent=WARNING)
+    _themed_ok_dialog(parent, title, message)
 
 
 def themed_showerror(parent, title: str, message: str) -> None:
     """Modaler Fehler-Dialog im App-Theme. Drop-in für `messagebox.showerror`."""
-    _themed_ok_dialog(parent, title, message, accent=ACCENT)
+    _themed_ok_dialog(parent, title, message)
 
 
 def icon_button(parent, text, command, fg=ACCENT, hover_fg=None):
@@ -1024,3 +1050,25 @@ def icon_button(parent, text, command, fg=ACCENT, hover_fg=None):
         font=FONT_BOLD,
         width=3,
     )
+
+
+def set_icon_button_enabled(btn, enabled, *, fg=ACCENT):
+    """Pendant zu set_primary_button_enabled für `icon_button` (Header-⟳):
+    deaktiviert = gedämpfte Schrift (TEXT_MUTED) + Pfeil-Cursor, kein
+    Hover-Wechsel; aktiviert zurück auf `fg` (Default ACCENT wie icon_button).
+
+    Ein `icon_button` ist ein `_LabelButton` (Frame) und kennt KEIN `-state` —
+    `btn.config(state=...)` wirft `TclError`. Darum diese Optik-only-Variante.
+    Wie bei set_primary_button_enabled bleibt die `command`/on_click-Bindung
+    aktiv, der Callback muss bei disabled also selbst ein No-op machen."""
+    cursor = "hand2" if enabled else "arrow"
+    c = (
+        {"bg": CELL_BG, "fg": fg,
+         "hover_bg": ENTRY_BG, "hover_fg": fg}
+        if enabled else
+        {"bg": CELL_BG, "fg": TEXT_MUTED,
+         "hover_bg": CELL_BG, "hover_fg": TEXT_MUTED}
+    )
+    btn._colors = c
+    btn.config(bg=c["bg"], cursor=cursor)
+    btn._label.config(bg=c["bg"], fg=c["fg"], cursor=cursor)

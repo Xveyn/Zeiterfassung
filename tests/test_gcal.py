@@ -153,7 +153,7 @@ def test_delete_event_swallows_already_gone():
             class _E:
                 def delete(self, **kwargs):
                     class _Boom:
-                        def execute(self_):
+                        def execute(self_):  # pyright: ignore[reportSelfClsParameterName]  # self_ bewusst gegen Shadowing
                             err = Exception("gone")
                             err.resp = _GoneResp()
                             raise err
