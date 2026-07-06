@@ -576,18 +576,18 @@ class App:
         )
 
     def _send(self):
-        open_send_dialog(self.root, self.storage, self.settings, self.base_path)
+        open_send_dialog(self.root, self.storage, self.settings, self.base_path, self._bg)
 
     def _share(self):
         from src.dialogs.share_dialog import open_share_dialog
         open_share_dialog(
-            self.root, self.storage, self.settings, self.base_path,
+            self.root, self.storage, self.settings, self.base_path, self._bg,
             reservation_store=self.reservation_store,
         )
 
     def _export(self):
         from src.dialogs.export_dialog import open_export_dialog
-        open_export_dialog(self.root, self.storage, self.settings)
+        open_export_dialog(self.root, self.storage, self.settings, self._bg)
 
     def on_sync_pull_success(self):
         """Public-API für main.py: nach erfolgreichem Pull (UI-Thread)."""

@@ -1,24 +1,23 @@
 """Modal-Dialog „Teilen": baut Share-Doc für Arbeitszeiten und/oder
 Reservierungen, sendet per Gmail."""
 
-import logging
 import os
 import tkinter as tk
-import traceback
 from tkinter import messagebox
 
 from src.dialogs.send_dialog import show_missing_credentials_dialog
-from src.mail import get_gmail_service, is_offline_error, send_email
+from src.dialogs.share_task import perform_share
 from src.share import build_share_doc, serialize_share_doc
 from src.theme import (
     BG, CELL_BG, FONT, TEXT,
     attach_unfocus_on_click, center_dialog_on_parent, create_dialog,
     dark_entry, primary_button, secondary_button,
-    set_primary_button_enabled, themed_showerror, themed_showinfo,
+    set_button_text, set_primary_button_enabled,
+    themed_showerror, themed_showinfo,
 )
 
 
-def open_share_dialog(parent, storage, settings, base_path, reservation_store=None):
+def open_share_dialog(parent, storage, settings, base_path, runner, reservation_store=None):
     credentials_path = os.path.join(base_path, "credentials.json")
     token_path = os.path.join(base_path, "token.json")
 
@@ -129,7 +128,11 @@ def open_share_dialog(parent, storage, settings, base_path, reservation_store=No
     ).grid(row=row, column=0, columnspan=2, padx=20, pady=(0, 12), sticky="w")
     row += 1
 
+    busy = {"running": False}
+
     def do_send():
+        if busy["running"]:
+            return
         want_entries = include_entries_var.get()
         want_res = include_res_var.get()
         if not want_entries and not want_res:
@@ -148,64 +151,73 @@ def open_share_dialog(parent, storage, settings, base_path, reservation_store=No
             return
         sender_email = settings.get("sender_email") or ""
         display_name = settings.get("name") or sender_email or "anonym"
-        try:
-            doc = build_share_doc(
-                storage, sender_email,
-                reservation_store=reservation_store,
-                include_entries=want_entries,
-                include_reservations=want_res,
-                categories=_selected_categories(),
-            )
-            payload = serialize_share_doc(doc)
-            service = get_gmail_service(
-                credentials_path, token_path,
+
+        doc = build_share_doc(
+            storage, sender_email,
+            reservation_store=reservation_store,
+            include_entries=want_entries,
+            include_reservations=want_res,
+            categories=_selected_categories(),
+        )
+        payload = serialize_share_doc(doc)
+        parts = []
+        if want_entries:
+            parts.append("Arbeitszeiten")
+        if want_res:
+            parts.append("Reservierungen")
+        what = " und ".join(parts)
+        subject = f"{what} geteilt von {display_name}"
+        html = (
+            "<html><head><meta charset=\"utf-8\"></head><body>"
+            "<p>Hallo,</p>"
+            f"<p>im Anhang findest Du meine {what} als JSON-Datei.</p>"
+            "<p>Du kannst die Datei in der Zeiterfassung-App über "
+            "<em>Einstellungen → Daten importieren</em> einlesen. "
+            "Vor dem Import kannst Du einen Zeitraum auswählen und je "
+            "Datentyp festlegen, was bei Konflikten passieren soll.</p>"
+            f"<p>Viele Grüße<br/>{display_name}</p>"
+            "</body></html>"
+        )
+        filename = (
+            "zeiterfassung-share-"
+            f"{doc['exported_at'][:10].replace('-', '')}.json"
+        )
+
+        busy["running"] = True
+        set_primary_button_enabled(send_btn, False)
+        set_button_text(send_btn, "Teile…")
+
+        def fn():
+            return perform_share(
+                payload=payload, filename=filename,
+                credentials_path=credentials_path, token_path=token_path,
+                recipient=share_recipient, subject=subject, html=html,
                 sync_enabled=settings.get("sync_enabled"),
                 gcal_enabled=settings.get("gcal_enabled"),
+                save_default=save_default_var.get(), settings=settings,
             )
-            parts = []
-            if want_entries:
-                parts.append("Arbeitszeiten")
-            if want_res:
-                parts.append("Reservierungen")
-            what = " und ".join(parts)
-            subject = f"{what} geteilt von {display_name}"
-            html = (
-                "<html><head><meta charset=\"utf-8\"></head><body>"
-                "<p>Hallo,</p>"
-                f"<p>im Anhang findest Du meine {what} als JSON-Datei.</p>"
-                "<p>Du kannst die Datei in der Zeiterfassung-App über "
-                "<em>Einstellungen → Daten importieren</em> einlesen. "
-                "Vor dem Import kannst Du einen Zeitraum auswählen und je "
-                "Datentyp festlegen, was bei Konflikten passieren soll.</p>"
-                f"<p>Viele Grüße<br/>{display_name}</p>"
-                "</body></html>"
-            )
-            filename = (
-                "zeiterfassung-share-"
-                f"{doc['exported_at'][:10].replace('-', '')}.json"
-            )
-            send_email(
-                service, share_recipient, subject, html,
-                attachment_bytes=payload,
-                attachment_filename=filename,
-                attachment_subtype="json",
-            )
-            if save_default_var.get():
-                settings.set("share_recipient", share_recipient)
-            dialog.destroy()
-            themed_showinfo(
-                parent,
-                "Geteilt",
-                f"{what} wurden an {share_recipient} gesendet.",
-            )
-        except FileNotFoundError as e:
-            themed_showerror(dialog, "Fehler", str(e))
-        except Exception as e:
-            logging.getLogger(__name__).exception("Teilen fehlgeschlagen")
-            if is_offline_error(e):
+
+        def on_done(res):
+            if res["ok"]:
+                if dialog.winfo_exists():
+                    dialog.destroy()
+                themed_showinfo(
+                    parent, "Geteilt",
+                    f"{what} wurden an {share_recipient} gesendet.",
+                )
+                return
+            busy["running"] = False
+            alive = dialog.winfo_exists()
+            target = dialog if alive else parent
+            if alive:
+                set_button_text(send_btn, "Senden")
+                _refresh_send_btn()
+            kind = res["kind"]
+            if kind == "filenotfound":
+                themed_showerror(target, "Fehler", str(res["error"]))
+            elif kind == "offline":
                 themed_showerror(
-                    dialog,
-                    "Keine Internetverbindung",
+                    target, "Keine Internetverbindung",
                     "Die Daten konnten nicht gesendet werden, weil keine "
                     "Verbindung zum Internet besteht.\n\n"
                     "Bitte prüfe deine Internetverbindung und versuche es "
@@ -214,9 +226,11 @@ def open_share_dialog(parent, storage, settings, base_path, reservation_store=No
             else:
                 messagebox.showerror(
                     "Teilen fehlgeschlagen",
-                    f"{type(e).__name__}: {e}\n\n{traceback.format_exc()}",
-                    parent=dialog,
+                    f"{type(res['error']).__name__}: {res['error']}\n\n{res['tb']}",
+                    parent=target,
                 )
+
+        runner.run(fn, on_done)
 
     btn_frame = tk.Frame(dialog, bg=BG)
     btn_frame.grid(row=row, column=0, columnspan=2, pady=(0, 16))

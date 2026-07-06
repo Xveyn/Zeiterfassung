@@ -94,6 +94,14 @@ routet seine Worker seit Audit H5 über einen injizierten `BackgroundTaskRunner`
 (`open_settings_dialog(..., runner=App._bg)`): Persistenz im Worker (überlebt
 Dialog-Close), UI-Feedback im `winfo_exists`-geschützten `on_done`.
 
+Ebenso routen `send_dialog`/`share_dialog`/`export_dialog` ihre blockierenden
+Operationen (PDF-Erzeugung, `get_gmail_service` inkl. OAuth, `send_email`) über
+den injizierten `runner` (Audit M10): der blockierende Kern liegt Tk-frei in
+`send_task`/`share_task`/`export_task` (`perform_*`, getestet); die zwei
+Netz-Kerne teilen sich `mail_task.classify_mail_error`. `on_done` macht das
+`winfo_exists`-gegatete Feedback, Persistenz passiert im Worker (überlebt
+Dialog-Close), der Primär-Button ist während des Laufs deaktiviert.
+
 **Datenschicht-Locking (Audit H1/H2/M1):** Alle vier Stores
 (`storage`/`settings`/`conflicts_store`/`reservations`) teilen sich einen in
 `main()` erzeugten `RLock` (Konstruktor-Param `lock=`; ohne Injektion legt

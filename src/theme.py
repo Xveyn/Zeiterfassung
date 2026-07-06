@@ -368,6 +368,13 @@ def set_primary_button_enabled(btn, enabled):
     btn._label.config(bg=c["bg"], fg=c["fg"], cursor=cursor)
 
 
+def set_button_text(btn, text):
+    """Setzt den sichtbaren Text eines label_button-Konstrukts (primary_/
+    secondary_button). Kapselt den `_label`-Zugriff, damit Aufrufer nicht auf
+    das private Innen-Widget greifen (Audit N17)."""
+    btn._label.config(text=text)
+
+
 def set_secondary_button_enabled(btn, enabled):
     """Pendant zu set_primary_button_enabled für `secondary_button`:
     deaktiviert = gedämpfte Schrift (TEXT_MUTED) + Pfeil-Cursor, kein
