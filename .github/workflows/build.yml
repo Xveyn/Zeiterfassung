@@ -1,0 +1,126 @@
+name: Build
+
+# Manueller Test-Build eines beliebigen Branches OHNE Release (kein Tag, kein
+# Upload zu GitHub-Releases, kein Auto-Update-Effekt). Baut wie `build.py` die
+# reine App (PyInstaller-Ausgabe, ohne Installer-Pack-Schritt) und lädt sie als
+# Workflow-Artefakt hoch. Zweck: einen Branch in CI-identischer Umgebung
+# (Python 3.10 + gepinnte requirements.txt) bauen, ohne eine lokale venv zu
+# pflegen, die zur CI divergieren kann. Der Installer/Pack-Schritt (Inno Setup /
+# create-dmg / appimagetool) entfällt bewusst — `build.py` überspringt ihn
+# automatisch, wenn das jeweilige Pack-Tool fehlt, und lässt die reine
+# PyInstaller-Ausgabe stehen.
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Branch/Tag/SHA zum Bauen (leer = Branch, aus dem der Lauf startet)"
+        type: string
+        required: false
+        default: ""
+      windows:
+        description: "Windows bauen (.exe)"
+        type: boolean
+        default: true
+      macos:
+        description: "macOS bauen (.app)"
+        type: boolean
+        default: false
+      linux:
+        description: "Linux bauen (Binary)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  build-windows:
+    if: ${{ inputs.windows }}
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.10'
+      - name: Install dependencies
+        run: pip install -r requirements.txt pip-licenses==5.5.5
+      # Kein Inno Setup installiert → build.py überspringt den Installer-Schritt
+      # und lässt die reine dist/Zeiterfassung.exe (onefile) stehen.
+      - name: Build (PyInstaller, ohne Installer)
+        run: python build.py
+      - name: dist auflisten
+        shell: bash
+        run: ls -la dist/
+      - uses: actions/upload-artifact@v7
+        with:
+          name: zeiterfassung-windows-exe
+          path: dist/Zeiterfassung.exe
+          if-no-files-found: error
+          retention-days: 14
+
+  build-macos:
+    if: ${{ inputs.macos }}
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.10'
+      - name: Install dependencies
+        run: pip install -r requirements.txt pip-licenses==5.5.5
+      # Kein create-dmg installiert → build.py überspringt den DMG-Schritt und
+      # lässt das reine dist/Zeiterfassung.app (onedir-Bundle) stehen.
+      - name: Build (PyInstaller, ohne DMG)
+        run: python build.py
+      - name: dist auflisten
+        run: ls -la dist/
+      # Das .app-Bundle enthält Symlinks und Exec-Bits — ein nackter
+      # upload-artifact-Zip würde beides zerstören. tar bewahrt sie.
+      - name: App-Bundle packen (tar, bewahrt Symlinks/Exec-Bits)
+        run: tar -czf dist/Zeiterfassung-macos-app.tar.gz -C dist Zeiterfassung.app
+      - uses: actions/upload-artifact@v7
+        with:
+          name: zeiterfassung-macos-app
+          path: dist/Zeiterfassung-macos-app.tar.gz
+          if-no-files-found: error
+          retention-days: 14
+
+  build-linux:
+    if: ${{ inputs.linux }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.10'
+      # libcairo2-dev + pkg-config: pycairo (transitiv über xhtml2pdf) braucht die
+      # Cairo-Header beim pip-Build (sonst bricht die Installation). libfuse2 und
+      # appimagetool entfallen bewusst — kein AppImage-Pack.
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libcairo2-dev pkg-config
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt pip-licenses==5.5.5
+      # Kein appimagetool installiert → build.py überspringt den AppImage-Schritt
+      # und lässt das reine dist/Zeiterfassung (onefile-Binary) stehen.
+      - name: Build (PyInstaller, ohne AppImage)
+        run: python build.py
+      - name: dist auflisten
+        run: ls -la dist/
+      # Exec-Bit bewahren (upload-artifact-Zip würde es verlieren).
+      - name: Binary packen (tar, bewahrt Exec-Bit)
+        run: tar -czf dist/Zeiterfassung-linux.tar.gz -C dist Zeiterfassung
+      - uses: actions/upload-artifact@v7
+        with:
+          name: zeiterfassung-linux-bin
+          path: dist/Zeiterfassung-linux.tar.gz
+          if-no-files-found: error
+          retention-days: 14
