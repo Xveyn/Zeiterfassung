@@ -293,6 +293,44 @@ def test_get_scopes_without_gcal_has_no_calendar_scopes():
     assert not any("calendar" in s for s in scopes)
 
 
+def test_fetch_user_email_uses_tokeninfo_not_gmail_getprofile(tmp_path):
+    """Regression #136: fetch_user_email darf keinen Gmail-getProfile-Call machen.
+
+    Mit dem einzigen gewährten Gmail-Scope `gmail.send` wirft
+    `users().getProfile()` ein 403 insufficientPermissions (reiner Log-Noise) —
+    die E-Mail kommt stattdessen aus dem tokeninfo-Endpoint (userinfo.email).
+    Erwartet: es wird kein Gmail-Service gebaut, das Ergebnis stammt aus tokeninfo.
+    """
+    from src.mail import fetch_user_email
+
+    path = str(tmp_path / "token.json")
+    open(path, "w").close()
+
+    fake_creds = MagicMock()
+    fake_creds.valid = True
+    fake_creds.expired = False
+    fake_creds.token = "access-token"
+
+    class _Resp:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def read(self):
+            return b'{"email": "me@example.com"}'
+
+    with patch("google.oauth2.credentials.Credentials.from_authorized_user_file",
+               return_value=fake_creds), \
+         patch("googleapiclient.discovery.build") as mock_build, \
+         patch("urllib.request.urlopen", return_value=_Resp()):
+        result = fetch_user_email(path)
+
+    assert result == "me@example.com"
+    mock_build.assert_not_called()
+
+
 def _named_exc(name):
     """Erzeugt eine Exception-Klasse mit exakt diesem __name__ — simuliert
     bibliotheksspezifische Netzwerkfehler (httplib2, requests, google.auth)

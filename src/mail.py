@@ -41,10 +41,11 @@ SCOPES = [GMAIL_SEND_SCOPE]
 def fetch_user_email(token_path="token.json", sync_enabled=False, gcal_enabled=False):
     """Liest die E-Mail-Adresse des authentifizierten Users.
 
-    Versucht zuerst Gmail's `users().getProfile()` (klappt in der Praxis oft
-    auch mit `gmail.send`-Scope, obwohl die Doku read-Scopes verlangt), und
-    fällt sonst auf den `tokeninfo`-Endpoint zurück, der die E-Mail aus dem
-    Access-Token meldet wenn der `userinfo.email`-Scope authorisiert ist.
+    Nutzt den `tokeninfo`-Endpoint, der die E-Mail aus dem Access-Token meldet,
+    sofern der `userinfo.email`-Scope autorisiert ist. (Ein früher zuerst
+    versuchter Gmail-`users().getProfile()`-Call ist mit dem `gmail.send`-Scope
+    nicht erlaubt und warf jedes Mal nur ein 403 insufficientPermissions in den
+    Log — die E-Mail kommt ohnehin aus tokeninfo, siehe #136.)
 
     Liefert die E-Mail oder leeren String bei fehlendem/ungültigem Token
     oder Fehler. Diese Funktion soll im Hintergrundthread laufen, weil sie
@@ -86,18 +87,7 @@ def fetch_user_email(token_path="token.json", sync_enabled=False, gcal_enabled=F
         log.exception("fetch_user_email: setup failed")
         return ""
 
-    # Pfad 1: Gmail-API getProfile mit dem bereits autorisierten Service.
-    try:
-        from googleapiclient.discovery import build
-        service = build("gmail", "v1", credentials=creds)
-        profile = service.users().getProfile(userId="me").execute()
-        email = profile.get("emailAddress", "")
-        if email:
-            return email
-    except Exception:
-        pass
-
-    # Pfad 2: Tokeninfo — liest die E-Mail direkt aus dem Access-Token, sofern
+    # Tokeninfo — liest die E-Mail direkt aus dem Access-Token, sofern
     # userinfo.email-Scope autorisiert ist. Kein API-Auth nötig (Token kommt
     # als Query-Param), daher kein 401-Risiko.
     try:
