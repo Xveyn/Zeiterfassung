@@ -149,8 +149,12 @@ def _apply_placeholders(text, label, total):
 
 
 # _week_block / _build_table / _build_category_summary rendern Werte aus dem
-# Storage. start/end/Datum/KW sind strukturell auf [0-9:.-] beschränkt (kein
-# Escape nötig). `kategorie` ist FREIER Nutzertext → wird mit _esc() escaped.
+# Storage. Datum/KW werden intern erzeugt (strftime / get_week_label) und sind
+# vertrauenswürdig. start/end sind zwar über Entry-Dialog/Share/gcal auf
+# [0-9:.-] validiert, aber der Drive-Sync (sync.apply_merged_doc) schreibt
+# Remote-Slots ungeprüft in den Storage — ein manipuliertes Sync-Doc könnte rohes
+# HTML einschleusen (Audit M7). Deshalb werden start/end defensiv _esc()-t,
+# genau wie `kategorie` (freier Nutzertext).
 def _week_block(iso_year, iso_week, week_entries, style):
     """Render einen Wochen-Block: KW-Header, je Slot eine Zeile, Tages-Subtotal
     bei >1 Slot, Wochensumme. Returns (rows_html, week_total)."""
@@ -182,8 +186,8 @@ def _week_block(iso_year, iso_week, week_entries, style):
                 f"<td style='{td}{cw[0]}{s['c_date']}'>{date_cell}</td>"
                 f"<td style='{td}{cw[1]}{s['c_day']}'>{day_cell}</td>"
                 f"<td style='{td}{cw[2]}{s['c_kat']}'>{_esc(slot.get('kategorie') or '')}</td>"
-                f"<td style='{td}{cw[3]}{s['c_time']}'>{slot['start']}</td>"
-                f"<td style='{td}{cw[4]}{s['c_time']}'>{slot['end']}</td>"
+                f"<td style='{td}{cw[3]}{s['c_time']}'>{_esc(slot['start'])}</td>"
+                f"<td style='{td}{cw[4]}{s['c_time']}'>{_esc(slot['end'])}</td>"
                 f"<td style='{td}{cw[5]}{s['c_hours']}'>{hours}h</td>"
                 f"</tr>"
             )

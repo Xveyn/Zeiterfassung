@@ -254,6 +254,18 @@ def test_kategorie_is_escaped():
     assert "<b>Co</b>" not in html
 
 
+def test_slot_start_end_are_escaped():
+    """start/end sind normalerweise auf [0-9:.-] validiert, aber der Drive-Sync
+    schreibt Remote-Slots ungeprüft in den Storage (Audit M7). Ein
+    manipuliertes Sync-Doc darf kein rohes HTML in Mail/PDF einschleusen."""
+    entries = {"2026-03-23": _e("<script>alert(1)</script>", "16<b>:00</b>")}
+    html, _ = generate_report(datetime.date(2026, 3, 1), datetime.date(2026, 3, 31), entries)
+    assert "&lt;script&gt;alert(1)&lt;/script&gt;" in html
+    assert "16&lt;b&gt;:00&lt;/b&gt;" in html
+    assert "<script>alert(1)</script>" not in html
+    assert "<b>:00</b>" not in html
+
+
 def test_content_newline_becomes_br():
     entries = {"2026-03-23": _e("08:00", "16:00")}
     html, _ = generate_report(
