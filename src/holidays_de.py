@@ -1,3 +1,5 @@
+import logging
+import time
 from datetime import date
 from functools import lru_cache
 
@@ -34,8 +36,26 @@ def code_for_state_label(label: str) -> str:
 
 @lru_cache(maxsize=64)
 def _holidays_cached(state_code: str, year: int) -> dict[date, str]:
+    """Ruft holidays.Germany(..., language="de") auf. Im Onefile-Build kann die
+    de.mo-Übersetzungsdatei bei sehr schnell aufeinanderfolgenden Prozessstarts
+    (z.B. App-Neustart nach UI-Skalierungsänderung) transient noch nicht
+    sichtbar sein — gettext wirft dann FileNotFoundError statt still auf
+    Englisch zurückzufallen (Issue #116). Kurzer Retry deckt das ab; bleibt es
+    dabei, greift derselbe Silent-Empty-Fallback wie bei ungültigem
+    state_code, statt die App abstürzen zu lassen."""
     import holidays
-    return dict(holidays.Germany(subdiv=state_code, years=year, language="de"))
+    attempts = 3
+    for attempt in range(attempts):
+        try:
+            return dict(holidays.Germany(subdiv=state_code, years=year, language="de"))
+        except OSError:
+            if attempt == attempts - 1:
+                logging.getLogger(__name__).warning(
+                    "Feiertage für %s/%s nicht ladbar (Übersetzungsdatei "
+                    "transient nicht gefunden)", state_code, year, exc_info=True)
+                return {}
+            time.sleep(0.2)
+    return {}
 
 
 def get_holidays(state_code: str, year: int) -> dict[date, str]:
