@@ -2,7 +2,11 @@
 import tkinter as tk
 
 from src import sync
-from src.theme import apply_app_icon, themed_showerror
+from src.theme import (
+    ACCENT, BG, ENTRY_BG, FONT, FONT_BOLD, TEXT,
+    center_dialog_on_parent, create_dialog, secondary_button,
+    set_secondary_button_enabled, themed_showerror,
+)
 from src.time_utils import format_iso_datetime
 
 
@@ -33,51 +37,66 @@ def _fmt_setting_candidate(cand):
 
 
 class ConflictsDialog:
-    def __init__(self, parent, storage, settings, conflicts_store):
+    def __init__(self, parent, storage, settings, conflicts_store, data_lock=None):
         self.parent = parent
         self.storage = storage
         self.settings = settings
         self.conflicts_store = conflicts_store
+        # Geteilter Store-RLock (Review-Finding), durchgereicht bis zu
+        # sync.resolve_conflict — siehe dort für die Begründung.
+        self._data_lock = data_lock
         self._selected = None
 
-        self.top = tk.Toplevel(parent)
-        self.top.title("Konflikte auflösen")
-        self.top.transient(parent)
-        self.top.grab_set()
-        self.top.focus_set()
-        apply_app_icon(self.top)
-        self.top.bind("<Escape>", lambda _e: self.top.destroy())
+        # Chrome komplett über den Konventions-Helfer (Audit H3): bringt
+        # NEU dunkle Titelleiste, BG, disable_min_max, resizable(False).
+        # transient übernimmt center_dialog_on_parent (gated, Tray-sicher).
+        self.top = create_dialog(parent, "Konflikte auflösen")
 
         self._build()
         self._refresh_list()
+        center_dialog_on_parent(self.top, parent)
 
     def _build(self):
-        left = tk.Frame(self.top)
+        left = tk.Frame(self.top, bg=BG)
         left.pack(side="left", fill="y", padx=8, pady=8)
 
-        tk.Label(left, text="Offene Konflikte").pack(anchor="w")
-        self.listbox = tk.Listbox(left, width=40, height=15)
+        tk.Label(left, text="Offene Konflikte", font=FONT_BOLD,
+                 bg=BG, fg=TEXT).pack(anchor="w")
+        # Einzige Listbox der App: dunkel über die Palette (ENTRY_BG wie
+        # Eingabefelder, ACCENT-Selektion), flach ohne Fokusrahmen.
+        self.listbox = tk.Listbox(
+            left, width=40, height=15, font=FONT,
+            bg=ENTRY_BG, fg=TEXT,
+            selectbackground=ACCENT, selectforeground="#ffffff",
+            relief="flat", highlightthickness=0,
+        )
         self.listbox.pack(fill="y", expand=True)
         self.listbox.bind("<<ListboxSelect>>", lambda _e: self._on_select())
 
-        self.right = tk.Frame(self.top)
+        self.right = tk.Frame(self.top, bg=BG)
         self.right.pack(side="right", fill="both", expand=True, padx=8, pady=8)
 
         self.detail_label = tk.Label(self.right, text="Wähle einen Konflikt links.",
-                                      wraplength=400, justify="left")
+                                      wraplength=400, justify="left",
+                                      font=FONT, bg=BG, fg=TEXT)
         self.detail_label.pack(anchor="nw")
 
-        button_row = tk.Frame(self.right)
+        button_row = tk.Frame(self.right, bg=BG)
         button_row.pack(side="bottom", fill="x", pady=(8, 0))
-        self.btn_a = tk.Button(button_row, text="Version A übernehmen",
-                               command=lambda: self._resolve_with_candidate(0),
-                               state="disabled")
-        self.btn_b = tk.Button(button_row, text="Version B übernehmen",
-                               command=lambda: self._resolve_with_candidate(1),
-                               state="disabled")
+        self.btn_a = secondary_button(
+            button_row, "Version A übernehmen",
+            lambda: self._resolve_with_candidate(0))
+        self.btn_b = secondary_button(
+            button_row, "Version B übernehmen",
+            lambda: self._resolve_with_candidate(1))
         self.btn_a.pack(side="left", padx=4)
         self.btn_b.pack(side="left", padx=4)
-        tk.Button(button_row, text="Schließen", command=self.top.destroy).pack(side="right")
+        # Optik-only-Disable (Muster set_primary_button_enabled) — der
+        # No-op bei disabled läuft über den _selected-Guard im Callback.
+        set_secondary_button_enabled(self.btn_a, False)
+        set_secondary_button_enabled(self.btn_b, False)
+        secondary_button(button_row, "Schließen",
+                         self.top.destroy).pack(side="right")
 
     def _refresh_list(self):
         self.listbox.delete(0, "end")
@@ -97,8 +116,8 @@ class ConflictsDialog:
             cand_a = _fmt_setting_candidate(c["candidates"][0])
             cand_b = _fmt_setting_candidate(c["candidates"][1])
         self.detail_label.config(text=f"Konflikt für {c['key']}\n\nA: {cand_a}\n\nB: {cand_b}")
-        self.btn_a.config(state="normal")
-        self.btn_b.config(state="normal")
+        set_secondary_button_enabled(self.btn_a, True)
+        set_secondary_button_enabled(self.btn_b, True)
         self._selected = c
 
     def _resolve_with_candidate(self, idx):
@@ -113,11 +132,16 @@ class ConflictsDialog:
         device_id = self.settings.get("device_id") or ""
         try:
             sync.resolve_conflict(c["id"], chosen, self.conflicts_store,
-                                  self.storage, self.settings, device_id)
+                                  self.storage, self.settings, device_id,
+                                  data_lock=self._data_lock)
         except Exception as e:
             themed_showerror(self.top, "Konflikt-Resolution fehlgeschlagen", str(e))
             return
         self._refresh_list()
-        self.btn_a.config(state="disabled")
-        self.btn_b.config(state="disabled")
+        # Guard-Reset ist PFLICHT: die gedimmten Buttons sind Optik-only —
+        # ohne _selected=None würde ein Klick den alten Konflikt erneut
+        # auflösen (die frühere state="disabled"-Sperre entfällt).
+        self._selected = None
+        set_secondary_button_enabled(self.btn_a, False)
+        set_secondary_button_enabled(self.btn_b, False)
         self.detail_label.config(text="Konflikt aufgelöst. Wähle den nächsten.")

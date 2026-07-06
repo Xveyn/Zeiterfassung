@@ -20,9 +20,9 @@ from src.share import (
 from src.time_utils import format_iso_date
 from src.theme import (
     BG, CELL_BG, FONT, FONT_SMALL, TEXT, TEXT_MUTED,
-    apply_app_icon, apply_combobox_style, apply_dark_titlebar,
-    attach_unfocus_on_click, center_dialog_on_parent, disable_min_max,
-    dark_combo, primary_button, secondary_button, themed_showerror, themed_showinfo,
+    apply_combobox_style, attach_unfocus_on_click, center_dialog_on_parent,
+    create_dialog, dark_combo, primary_button, secondary_button,
+    themed_showerror, themed_showinfo,
 )
 
 
@@ -98,18 +98,9 @@ class _ImportSummaryDialog:
         if reservations:
             self.sections.append(self._make_section("reservations", "Reservierungen", reservations, False))
 
-        self.top = tk.Toplevel(parent)
-        self.top.title("Daten importieren")
-        self.top.resizable(False, False)
-        self.top.grab_set()
-        self.top.focus_set()
-        self.top.configure(bg=BG)
-        apply_dark_titlebar(self.top)
-        disable_min_max(self.top)
-        apply_app_icon(self.top)
+        self.top = create_dialog(parent, "Daten importieren")
         apply_combobox_style(self.top)
         attach_unfocus_on_click(self.top)
-        self.top.bind("<Escape>", lambda _e: self.top.destroy())
 
         self._build()
         center_dialog_on_parent(self.top, parent)
@@ -408,16 +399,11 @@ class _PerDayDialog:
         self.has_pause = has_pause
         self._result = None
 
-        self.top = tk.Toplevel(parent)
-        self.top.title(f"Pro Tag entscheiden — {type_label}")
+        self.top = create_dialog(parent, f"Pro Tag entscheiden — {type_label}",
+                                 resizable=True)
+        # Ungegatetes transient wie bisher (Verhaltensgleichheit; das
+        # gegatete transient kommt zusätzlich über center_dialog_on_parent).
         self.top.transient(parent)
-        self.top.grab_set()
-        self.top.focus_set()
-        self.top.configure(bg=BG)
-        apply_dark_titlebar(self.top)
-        disable_min_max(self.top)
-        apply_app_icon(self.top)
-        self.top.bind("<Escape>", lambda _e: self.top.destroy())
 
         self._build()
         center_dialog_on_parent(self.top, parent)

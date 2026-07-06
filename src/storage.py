@@ -1,6 +1,7 @@
 import datetime
 import json
 import os
+import threading
 
 
 def _utc_now_iso():
@@ -26,9 +27,14 @@ def _normalize_slot(slot):
 
 
 class Storage:
-    def __init__(self, filepath="zeiterfassung.json", device_id=""):
+    def __init__(self, filepath="zeiterfassung.json", device_id="", lock=None):
         self.filepath = filepath
         self.device_id = device_id
+        # Geteilter Daten-Lock (Audit H1/H2): main() injiziert EINEN RLock in
+        # alle vier Stores; ohne Injektion (Tests, Alt-Aufrufer) eigener Lock.
+        # _load()/Migration laufen vor dem Teilen (single-threaded Boot) —
+        # bewusst ungelockt.
+        self._lock = lock if lock is not None else threading.RLock()
         self._data = {}
         self._load()
 
@@ -105,57 +111,63 @@ class Storage:
 
     def get_all(self):
         """Liefert {date: {slots: [...]}} ohne Tombstones."""
-        return {
-            date: self._user_shape(entry)
-            for date, entry in self._data.items()
-            if not entry.get("deleted")
-        }
+        with self._lock:
+            return {
+                date: self._user_shape(entry)
+                for date, entry in self._data.items()
+                if not entry.get("deleted")
+            }
 
     def get_all_raw(self):
         """Liefert die kompletten Eintragsobjekte inkl. Metadaten und Tombstones.
         Nur für den Sync-Pfad."""
-        return dict(self._data)
+        with self._lock:
+            return dict(self._data)
 
     def get(self, date_str):
-        entry = self._data.get(date_str)
-        if entry is None or entry.get("deleted"):
-            return None
-        return self._user_shape(entry)
+        with self._lock:
+            entry = self._data.get(date_str)
+            if entry is None or entry.get("deleted"):
+                return None
+            return self._user_shape(entry)
 
     def save(self, date_str, slots):
-        self._data[date_str] = {
-            "slots": [_normalize_slot(s) for s in slots],
-            "modified_at": _utc_now_iso(),
-            "device_id": self.device_id,
-            "deleted": False,
-        }
-        self._save_to_disk()
+        with self._lock:
+            self._data[date_str] = {
+                "slots": [_normalize_slot(s) for s in slots],
+                "modified_at": _utc_now_iso(),
+                "device_id": self.device_id,
+                "deleted": False,
+            }
+            self._save_to_disk()
 
     def delete(self, date_str):
-        if date_str not in self._data:
-            return
-        # Tombstone: behält die Zeile mit deleted=true, damit der Sync ein
-        # Delete gegen ein veraltetes Save eines anderen Geräts durchsetzen kann.
-        self._data[date_str] = {
-            "slots": [],
-            "modified_at": _utc_now_iso(),
-            "device_id": self.device_id,
-            "deleted": True,
-        }
-        self._save_to_disk()
+        with self._lock:
+            if date_str not in self._data:
+                return
+            # Tombstone: behält die Zeile mit deleted=true, damit der Sync ein
+            # Delete gegen ein veraltetes Save eines anderen Geräts durchsetzen kann.
+            self._data[date_str] = {
+                "slots": [],
+                "modified_at": _utc_now_iso(),
+                "device_id": self.device_id,
+                "deleted": True,
+            }
+            self._save_to_disk()
 
     def apply_merge(self, merged_entries):
         """Ersetzt den kompletten Storage-Stand durch das Merge-Ergebnis.
         merged_entries: {date: {slots, modified_at, device_id, deleted}}.
         Wirft ValueError, wenn ein Eintrag Pflichtfelder vermissen lässt."""
-        for date, entry in merged_entries.items():
-            missing = _REQUIRED_ENTRY_KEYS - entry.keys()
-            if missing:
-                raise ValueError(
-                    f"apply_merge: entry {date!r} missing keys {sorted(missing)}"
-                )
-        self._data = dict(merged_entries)
-        self._save_to_disk()
+        with self._lock:
+            for date, entry in merged_entries.items():
+                missing = _REQUIRED_ENTRY_KEYS - entry.keys()
+                if missing:
+                    raise ValueError(
+                        f"apply_merge: entry {date!r} missing keys {sorted(missing)}"
+                    )
+            self._data = dict(merged_entries)
+            self._save_to_disk()
 
     def save_many(self, updates):
         """Mehrere Einträge in einem einzigen Disk-Write speichern.
@@ -168,12 +180,13 @@ class Storage:
         """
         if not updates:
             return
-        now = _utc_now_iso()
-        for date_str, payload in updates.items():
-            self._data[date_str] = {
-                "slots": [_normalize_slot(s) for s in payload.get("slots", [])],
-                "modified_at": now,
-                "device_id": self.device_id,
-                "deleted": False,
-            }
-        self._save_to_disk()
+        with self._lock:
+            now = _utc_now_iso()
+            for date_str, payload in updates.items():
+                self._data[date_str] = {
+                    "slots": [_normalize_slot(s) for s in payload.get("slots", [])],
+                    "modified_at": now,
+                    "device_id": self.device_id,
+                    "deleted": False,
+                }
+            self._save_to_disk()

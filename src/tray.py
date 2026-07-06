@@ -113,7 +113,7 @@ class _PystrayBackend:
         """Lädt das App-Icon als PIL-Bild. Fallback auf weiße Rechteck-Grafik,
         falls die PNG-Datei nicht da ist (sollte nicht passieren — assets sind
         in PyInstaller-Bundle mit drin)."""
-        from PIL import Image
+        from PIL import Image  # pyright: ignore[reportMissingImports]  # Pillow: nicht in CI-Test-Deps
         png = os.path.join(self.base_path, "assets", "margenheld-icon.png")
         if os.path.exists(png):
             return Image.open(png)
@@ -124,7 +124,7 @@ class _PystrayBackend:
         """Startet das Tray-Icon im Hintergrundthread. Wirft die zugrunde
         liegende Exception, wenn pystray das Backend nicht laden kann —
         Aufrufer muss das fangen und auf Tray-Verzicht zurückfallen."""
-        import pystray
+        import pystray  # pyright: ignore[reportMissingImports]  # nicht in CI-Test-Deps
 
         def _on_show_click(icon, item):
             self._on_show()
@@ -214,7 +214,7 @@ class _PystrayBackend:
         if platform.system() != "Windows":
             return False
         try:
-            from pystray._util import win32
+            from pystray._util import win32  # pyright: ignore[reportMissingImports]  # nicht in CI-Test-Deps
             handle = getattr(self._icon, "_icon_handle", None)
             # _message ist eine pystray-Interne (nicht im Type-Stub) — wie
             # _icon_handle per getattr holen: entfernt die Pylance-Warnung und

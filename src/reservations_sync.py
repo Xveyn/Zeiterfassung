@@ -8,6 +8,7 @@ Slots oder die Remote-Events gewinnen. `reconcile_reservations()` orchestriert
 pull → merge → push und schreibt neue event_ids pro Slot zurück.
 """
 
+import contextlib
 import datetime
 
 
@@ -157,11 +158,15 @@ def merge_reservations(local_raw, remote_events, watermark):
     return {"merged": merged, "plan": plan, "imported_dates": sorted(imported_dates)}
 
 
-def reconcile_reservations(service, calendar_id, store, settings):
+def reconcile_reservations(service, calendar_id, store, settings, data_lock=None):
     """Voller Kalender-Abgleich: pull → merge → push.
 
     Mutiert store und settings. Wirft bei Netz-/API-Fehlern weiter — der Caller
     entscheidet, ob still geloggt oder als Messagebox gezeigt wird.
+
+    data_lock: optionaler geteilter Store-Lock (Audit H1/H2, angrenzend) —
+    klammert Rebase → apply_reconciled → Watermark atomar gegen parallele
+    UI-Saves. Die gcal-Netzwerk-Calls davor laufen bewusst ungelockt.
 
     Liefert {"imported_dates": [...]} — die Daten, an denen in diesem Lauf
     Reservierungs-Slots aus dem Kalender importiert wurden (siehe
@@ -196,11 +201,14 @@ def reconcile_reservations(service, calendar_id, store, settings):
     # Rebase: Reservierungen, die seit dem Snapshot lokal gespeichert/geändert
     # wurden (paralleler Reconcile / User-Save während des Netzwerkteils),
     # dürfen nicht durch den apply_reconciled-Replace verloren gehen.
-    for date, entry in store.get_all_raw().items():
-        snap = local_snapshot.get(date)
-        if snap is None or entry.get("modified_at", "") > snap.get("modified_at", ""):
-            merged[date] = entry
+    # Rebase + Replace + Watermark laufen atomar unter dem Daten-Lock —
+    # zwischen Rebase-Read und Replace kann so kein weiterer Save landen.
+    with (data_lock if data_lock is not None else contextlib.nullcontext()):
+        for date, entry in store.get_all_raw().items():
+            snap = local_snapshot.get(date)
+            if snap is None or entry.get("modified_at", "") > snap.get("modified_at", ""):
+                merged[date] = entry
 
-    store.apply_reconciled(merged)
-    settings.set("last_calendar_sync_at", _utc_now_iso())
+        store.apply_reconciled(merged)
+        settings.set("last_calendar_sync_at", _utc_now_iso())
     return {"imported_dates": imported_dates}
