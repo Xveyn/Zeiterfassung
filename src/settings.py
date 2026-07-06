@@ -350,7 +350,23 @@ class Settings:
                     continue
                 if not isinstance(payload, dict) or "value" not in payload:
                     continue
-                self._data[key] = payload["value"]
+                value = payload["value"]
+                # Remote-Wert typprüfen wie beim lokalen _load (N5): ein
+                # korrumpiertes/böswilliges Sync-Doc darf z.B. hourly_rate
+                # nicht auf einen String setzen. Nicht castbar → überspringen
+                # (lokaler Wert bleibt), statt Garbage zu übernehmen.
+                if key in DEFAULTS:
+                    coerced = _coerce(value, DEFAULTS[key])
+                    if coerced is _COERCE_FAILED:
+                        logging.getLogger(__name__).warning(
+                            "Sync: Remote-Wert für %r (%r, Typ %s) ist nicht in "
+                            "Typ %s castbar — übersprungen",
+                            key, value, type(value).__name__,
+                            type(DEFAULTS[key]).__name__,
+                        )
+                        continue
+                    value = coerced
+                self._data[key] = value
                 self._synced_meta[key] = {
                     "modified_at": str(payload.get("modified_at", "")),
                     "device_id": str(payload.get("device_id", "")),

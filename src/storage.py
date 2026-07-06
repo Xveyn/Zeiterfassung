@@ -1,5 +1,6 @@
 import datetime
 import json
+import logging
 import os
 import threading
 
@@ -46,7 +47,13 @@ class Storage:
                 self._data = json.load(f)
         except (json.JSONDecodeError, ValueError):
             stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-            os.replace(self.filepath, f"{self.filepath}.corrupt-{stamp}")
+            target = f"{self.filepath}.corrupt-{stamp}"
+            os.replace(self.filepath, target)
+            logging.getLogger(__name__).warning(
+                "%s korrupt (JSON nicht parsebar) — nach %s in Quarantäne "
+                "verschoben, starte leer",
+                os.path.basename(self.filepath), os.path.basename(target),
+            )
             self._data = {}
             return
         self._migrate_legacy_entries()

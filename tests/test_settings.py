@@ -391,6 +391,33 @@ def test_apply_synced_overwrites_value_and_meta(tmp_path):
     assert s.get_synced_doc()["recipient"]["device_id"] == "other-dev"
 
 
+def test_apply_synced_skips_uncoercible_value(tmp_path):
+    """N5: ein Remote-Wert, der nicht in den erwarteten Typ castbar ist
+    (hier: hourly_rate als nicht-numerischer String), wird verworfen — der
+    lokale Wert bleibt, statt Garbage zu übernehmen."""
+    path = str(tmp_path / "settings.json")
+    s = Settings(path)
+    s.apply_synced({
+        "hourly_rate": {"value": "not-a-number", "modified_at": "2026-05-14T10:00:00Z",
+                        "device_id": "other-dev"},
+    })
+    assert s.get("hourly_rate") == 0.0            # Default unverändert
+    assert "hourly_rate" not in s.get_synced_doc()  # Meta nicht gestempelt
+
+
+def test_apply_synced_coerces_numeric_string(tmp_path):
+    """N5-Gegentest: ein castbarer Wert (Zahl als String) wird übernommen und
+    in den Zieltyp gecastet — Sync bleibt tolerant gegenüber JSON-Zahlformaten."""
+    path = str(tmp_path / "settings.json")
+    s = Settings(path)
+    s.apply_synced({
+        "hourly_rate": {"value": "15", "modified_at": "2026-05-14T10:00:00Z",
+                        "device_id": "other-dev"},
+    })
+    assert s.get("hourly_rate") == 15.0
+    assert isinstance(s.get("hourly_rate"), float)
+
+
 def test_get_synced_doc_empty_when_nothing_set(tmp_settings):
     assert tmp_settings.get_synced_doc() == {}
 

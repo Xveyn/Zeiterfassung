@@ -1,12 +1,14 @@
 """Sync-Engine: pure Funktionen ohne I/O. Drive-Calls leben in src/drive.py.
 
-Doc-Struktur (Sync-File und Zwischenformate):
+Doc-Struktur (Sync-File und Zwischenformate), Stand SCHEMA_VERSION = 4:
 {
-  "schema_version": 1,
-  "entries":   {date: {start, end, pause, modified_at, device_id, deleted}},
+  "schema_version": 4,
+  "entries":   {date: {slots: [{start, end, pause, kategorie}],
+                       modified_at, device_id, deleted}},
   "settings":  {key:  {value, modified_at, device_id}},
   "conflicts": [{id, kind, key, candidates, detected_at,
-                 resolved, resolution, resolved_at, resolved_by}]
+                 resolved, resolution, resolved_at, resolved_by}],
+  "meta":      {gc_watermark}
 }
 """
 

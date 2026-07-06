@@ -155,7 +155,13 @@ def validate_slots(slots, with_pause=True):
     with_pause=False (Reservierungen): das Pause-Feld wird ignoriert (als 0
     behandelt). Eine leere Liste ist gültig (ok, "")."""
     for s in slots:
-        pause = int(s.get("pause", 0)) if with_pause else 0
+        if with_pause:
+            try:
+                pause = int(s.get("pause", 0))
+            except (TypeError, ValueError):
+                return False, "Pause muss eine ganze Zahl (Minuten) sein."
+        else:
+            pause = 0
         ok, msg = validate_entry(s.get("start"), s.get("end"), pause_minutes=pause)
         if not ok:
             return False, msg
