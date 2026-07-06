@@ -171,6 +171,19 @@ Windows/Linux ist Löschen ausschließlich der Rechtsklick.
 Neue Lösch-/Rechtsklick-Stellen müssen dieses Modell einhalten (kein zweiter
 Lösch-Pfad im Linksklick-Dialog auf Win/Linux).
 
+## Dialog-Styling: ein gemeinsames Theme
+
+Alle Dialoge (modal wie nicht-modal) teilen sich dasselbe Dark-Theme aus
+`src/theme.py` — Drop-ins für die `tkinter.messagebox`-Familie
+(`themed_showinfo`/`themed_showwarning`/`themed_showerror`,
+`themed_askyesno`, `themed_ask_delete_choice`) sowie die Fenster-Chrome-
+Helfer (`apply_dark_titlebar`, `disable_min_max`, `apply_app_icon`,
+`center_dialog_on_parent`). Neue Dialoge nutzen diese Helfer statt
+`tkinter.messagebox`/eigenem Ad-hoc-Styling, und bekommen **keine**
+dialogspezifischen Stil-Extras (Farbakzente, abweichende Fonts o.ä.) ohne
+Rücksprache — das Theme bleibt bewusst einheitlich über alle Dialoge hinweg,
+nicht pro Dialog individualisiert.
+
 ## Tests / CI
 
 `.github/workflows/test.yml` installiert gezielt nur die Pakete, die die Tests brauchen (`pytest`, `holidays==0.99`, `google-api-python-client`, `google-auth`, `google-auth-oauthlib`), **nicht** `requirements.txt`. Grund: `pycairo` (transitive Dep von `xhtml2pdf`) braucht Cairo-Systemheader auf Ubuntu und bricht sonst den CI-Build. Der Import von `xhtml2pdf` in `src/report.py::generate_pdf` ist lazy, daher laufen die Report-Tests ohne die Lib. `holidays` und die Google-Libs sind pure Python ohne C-Deps und problemlos installierbar — letztere sind nötig, weil Tests `src.ui` importieren (z.B. `tests/test_ui_delete.py`), dessen Importkette die Google-Wrapper zieht. Ein zweiter Job läuft `ruff check .` (Lint).
