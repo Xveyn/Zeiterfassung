@@ -37,6 +37,49 @@ def test_corrupted_file(tmp_path):
     assert s.get("recipient") == ""
     assert s.get("default_pause") == 30
 
+
+def test_corrupt_json_is_quarantined(tmp_path):
+    # M4: korruptes settings.json wird nach .corrupt-<stamp> in Quarantäne
+    # verschoben (wie die anderen drei Stores), nicht kommentarlos verworfen.
+    path = tmp_path / "settings.json"
+    path.write_text("not json{{{", encoding="utf-8")
+
+    s = Settings(str(path))
+
+    assert s.get("default_pause") == 30
+    quarantined = list(tmp_path.glob("settings.json.corrupt-*"))
+    assert len(quarantined) == 1
+    assert quarantined[0].read_text(encoding="utf-8") == "not json{{{"
+    # Original ist weg → frisches Save legt es sauber neu an.
+    assert not path.exists()
+
+
+def test_non_dict_toplevel_is_quarantined(tmp_path):
+    # Gültiges JSON, aber falsches Toplevel (Liste) ist ebenso korrupt.
+    path = tmp_path / "settings.json"
+    path.write_text("[1, 2, 3]", encoding="utf-8")
+
+    s = Settings(str(path))
+
+    assert s.get("recipient") == ""
+    quarantined = list(tmp_path.glob("settings.json.corrupt-*"))
+    assert len(quarantined) == 1
+    assert quarantined[0].read_text(encoding="utf-8") == "[1, 2, 3]"
+
+
+def test_quarantine_rename_failure_falls_back_to_defaults(tmp_path):
+    # Schlägt der Quarantäne-Rename fehl (z.B. Windows-Filelock), darf der
+    # Boot nicht crashen — Defaults greifen, die Datei bleibt liegen.
+    path = tmp_path / "settings.json"
+    path.write_text("not json{{{", encoding="utf-8")
+
+    with patch("src.settings.os.replace", side_effect=OSError("locked")):
+        s = Settings(str(path))
+
+    assert s.get("default_pause") == 30
+    assert path.exists()
+    assert list(tmp_path.glob("settings.json.corrupt-*")) == []
+
 def test_recipient_default(tmp_settings):
     assert tmp_settings.get("recipient") == ""
 

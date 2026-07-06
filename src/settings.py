@@ -200,15 +200,14 @@ class Settings:
             with open(self.filepath, "r", encoding="utf-8") as f:
                 loaded = json.load(f)
         except (json.JSONDecodeError, ValueError):
+            self._quarantine_corrupt("JSON nicht parsebar")
             self._data = dict(DEFAULTS)
             return
 
         log = logging.getLogger(__name__)
         if not isinstance(loaded, dict):
-            log.warning(
-                "settings.json hat unerwartetes Toplevel-Format (%s), "
-                "verwerfe Inhalt und verwende Defaults",
-                type(loaded).__name__,
+            self._quarantine_corrupt(
+                f"unerwartetes Toplevel-Format ({type(loaded).__name__})"
             )
             self._data = dict(DEFAULTS)
             return
@@ -241,6 +240,29 @@ class Settings:
                 continue
             self._data[key] = coerced
         # Unbekannte Keys aus loaded werden ignoriert (nicht in _data übernommen).
+
+    def _quarantine_corrupt(self, reason):
+        """Verschiebt ein korruptes settings.json nach `.corrupt-<stamp>`
+        (wie storage/reservations/conflicts_store) und loggt das Ereignis,
+        statt es kommentarlos zu verwerfen (Audit M4/N4). Defaults setzt der
+        Aufrufer. Der Rename ist wie in `_save_to_disk` gegen `OSError`
+        abgesichert — schlägt er fehl, bleibt die Datei liegen und der Boot
+        läuft trotzdem mit Defaults weiter, statt zu crashen."""
+        stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+        target = f"{self.filepath}.corrupt-{stamp}"
+        log = logging.getLogger(__name__)
+        try:
+            os.replace(self.filepath, target)
+        except OSError:
+            log.warning(
+                "settings.json korrupt (%s); Quarantäne-Rename fehlgeschlagen "
+                "— verwende Defaults", reason, exc_info=True,
+            )
+            return
+        log.warning(
+            "settings.json korrupt (%s) — nach %s in Quarantäne verschoben, "
+            "verwende Defaults", reason, os.path.basename(target),
+        )
 
     def _save_to_disk(self):
         # Atomic write: temp file + replace, damit ein Crash mid-write
