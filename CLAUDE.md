@@ -102,6 +102,28 @@ python build.py
 
 Fehlt das Pack-Tool lokal, überspringt `build.py` den Pack-Schritt mit Warnung — der PyInstaller-Build läuft trotzdem durch. Das ist für Local-Dev gewollt.
 
+## Abhängigkeiten & Pinning
+
+Die **direkten** Abhängigkeiten in `requirements.txt` sind exakt (`==`) auf
+known-good Versionen gepinnt — für reproduzierbare Release-Builds (Audit M17).
+Jede gepinnte Version muss **Python 3.10** unterstützen (CI- und Release-Python;
+per PyPI `requires_python` prüfen). Beim Bump also die neue Version gegen 3.10
+gegenchecken, nicht blind auf „latest" gehen.
+
+**Transitive** Deps (u. a. `reportlab` via `xhtml2pdf`) sind bewusst **nicht**
+gepinnt — kein Lockfile, keine Hashes. Wer eine direkte Dep hinzufügt, pinnt sie
+`==` und ergänzt sie in der README-Abhängigkeiten-Tabelle.
+
+`release.yml` installiert `-r requirements.txt` plus das reine Build-Tooling
+`pip-licenses==5.5.5` (erzeugt `THIRD-PARTY-NOTICES.txt`). PyInstaller kommt
+gepinnt aus `requirements.txt` — **nicht** zusätzlich auf die Install-Zeile
+setzen (sonst floatet es wieder).
+
+**Änderungen an der Dependency-Auflösung des Release-Builds** (Pins, Install-
+Zeilen) sind auf der Windows-Dev-Maschine nur für Windows verifizierbar → vor
+dem nächsten echten Release einen **Pre-Release** über alle drei Plattformen
+bauen (siehe „Plattformspezifische PRs — Pre-Release vorschlagen").
+
 ## Installation & Daten
 
 Installierte App und Benutzerdaten liegen je nach Plattform:

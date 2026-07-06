@@ -1,8 +1,12 @@
-google-auth-oauthlib>=1.0.0
-google-api-python-client>=2.0.0
-xhtml2pdf>=0.2.11
-pyinstaller>=6.0.0
+# Direkte Abhängigkeiten, exakt gepinnt für reproduzierbare Release-Builds
+# (Audit M17). Known-good-Stände, alle Python-3.10-tauglich (CI/Release-Python).
+# Transitive Deps (u. a. reportlab via xhtml2pdf) sind bewusst NICHT gepinnt —
+# kein Lockfile/Hashes; siehe docs/superpowers/specs/2026-07-05-release-deps-pinnen-design.md
+google-auth-oauthlib==1.4.0
+google-api-python-client==2.196.0
+xhtml2pdf==0.2.17
+pyinstaller==6.20.0
 holidays==0.99
-pystray>=0.19.0,<0.20
-Pillow>=10.0.0
-pyobjc-framework-Cocoa>=10.0; sys_platform == "darwin"
+pystray==0.19.5
+Pillow==12.2.0
+pyobjc-framework-Cocoa==12.2.1; sys_platform == "darwin"
