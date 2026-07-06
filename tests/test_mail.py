@@ -232,28 +232,28 @@ def test_send_email_json_attachment_uses_subtype():
     assert "share.json" in raw
 
 
-def test_send_email_strips_newlines_from_recipient():
-    """Audit N11: CR/LF im Empfänger dürfen keine zusätzlichen Header injizieren."""
+def test_send_email_rejects_recipient_with_control_chars():
+    """Audit N11 / #133: CR/LF/NUL im Empfänger werden abgewiesen (ValueError),
+    statt still gestrippt und an eine vermurkste Adresse gesendet zu werden.
+
+    Verhindert Header-Injection UND stille Falschzustellung: ein gestripptes
+    "a@b\\nBcc: c" würde sonst an "a@bBcc: c" gehen, ohne dass der Nutzer es merkt.
+    """
     from unittest.mock import MagicMock
     from src.mail import send_email
 
     service = MagicMock()
-    service.users().messages().send().execute.return_value = {"id": "mid-2"}
 
-    send_email(
-        service,
-        "victim@example.com\r\nBcc: attacker@evil.com",
-        "Subj",
-        "<p>body</p>",
-    )
+    with pytest.raises(ValueError):
+        send_email(
+            service,
+            "victim@example.com\r\nBcc: attacker@evil.com",
+            "Subj",
+            "<p>body</p>",
+        )
 
-    call_kwargs = service.users().messages().send.call_args
-    body = call_kwargs.kwargs.get("body") or call_kwargs.args[-1]
-    import base64
-    raw = base64.urlsafe_b64decode(body["raw"]).decode()
-    # Kein injizierter Bcc-Header auf eigener Zeile
-    assert "\nBcc:" not in raw
-    assert "\rBcc:" not in raw
+    # Es darf nichts gesendet worden sein.
+    service.users().messages().send.assert_not_called()
 
 
 import platform  # noqa: E402

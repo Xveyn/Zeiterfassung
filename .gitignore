@@ -19,3 +19,5 @@ src/build_info.py
 .aider*
 credentials.lnk
 release-artifacts/
+# graphify knowledge-graph output (lokal via `graphify update .`, nicht committen)
+graphify-out/

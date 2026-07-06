@@ -264,10 +264,17 @@ def send_email(service, to, subject, html_body,
         attachment_filename = attachment_filename or pdf_filename
         attachment_subtype = "pdf"
 
-    # Header-Injection verhindern (Audit N11): CR/LF/NUL aus dem Empfänger
-    # strippen, bevor er in den To-Header wandert. Der Wert kommt aus den
-    # Settings — nur Selbst-Injection, aber die Invariante muss sauber sein.
-    to = to.replace("\r", "").replace("\n", "").replace("\x00", "")
+    # Header-Injection UND stille Falschzustellung verhindern (Audit N11 / #133):
+    # Steuerzeichen im Empfänger abweisen, statt sie still zu strippen — ein
+    # gestripptes "a@b\nBcc: c" würde sonst an die vermurkste Adresse "a@bBcc: c"
+    # gesendet, ohne dass der Nutzer es merkt. Der Wert kommt aus den Settings,
+    # der Fehler wird im Sende-Dialog sichtbar gemacht (classify_mail_error).
+    if "\r" in to or "\n" in to or "\x00" in to:
+        raise ValueError(
+            "Die Empfängeradresse enthält unzulässige Steuerzeichen "
+            "(Zeilenumbruch oder Nullbyte). Bitte korrigiere die Adresse "
+            "in den Einstellungen."
+        )
 
     if attachment_bytes:
         message = MIMEMultipart()
