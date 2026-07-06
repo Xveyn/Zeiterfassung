@@ -8,6 +8,8 @@ import os
 import stat
 from unittest.mock import MagicMock
 
+import pytest
+
 from src.oauth_utils import write_token, discard_token_for_scope_upgrade
 
 
@@ -58,6 +60,56 @@ def test_write_token_overwrites_existing(tmp_path):
 
     with open(path) as f:
         assert f.read() == "new"
+
+
+def test_write_token_retries_transient_permission_error(tmp_path, monkeypatch):
+    """Regression #135: ein transienter Windows-PermissionError (AV-Scan/offenes
+    Handle blockiert os.replace, WinError 5/32) wird per Retry überbrückt — der
+    Token landet trotzdem sauber auf der Platte."""
+    path = str(tmp_path / "token.json")
+    creds = MagicMock()
+    creds.to_json.return_value = '{"token": "abc"}'
+
+    real_replace = os.replace
+    calls = {"n": 0}
+
+    def flaky_replace(src, dst):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise PermissionError(13, "Zugriff verweigert")
+        return real_replace(src, dst)
+
+    monkeypatch.setattr("src.oauth_utils.os.replace", flaky_replace)
+    monkeypatch.setattr("time.sleep", lambda _s: None)
+
+    write_token(creds, path)
+
+    assert calls["n"] == 2  # ein Fehlschlag, dann Erfolg
+    with open(path) as f:
+        assert f.read() == '{"token": "abc"}'
+
+
+def test_write_token_reraises_persistent_permission_error(tmp_path, monkeypatch):
+    """Bleibt der PermissionError dauerhaft, werden alle Versuche ausgeschöpft
+    und der Fehler durchgereicht (nicht still verschluckt); keine Temp-Reste."""
+    path = str(tmp_path / "token.json")
+    creds = MagicMock()
+    creds.to_json.return_value = "{}"
+
+    calls = {"n": 0}
+
+    def always_fail(src, dst):
+        calls["n"] += 1
+        raise PermissionError(13, "Zugriff verweigert")
+
+    monkeypatch.setattr("src.oauth_utils.os.replace", always_fail)
+    monkeypatch.setattr("time.sleep", lambda _s: None)
+
+    with pytest.raises(PermissionError):
+        write_token(creds, path)
+
+    assert calls["n"] > 1  # es wurde wiederholt, nicht nur einmal versucht
+    assert os.listdir(str(tmp_path)) == []  # tmp aufgeräumt, kein token.json
 
 
 def _write_token_file(path, scopes):

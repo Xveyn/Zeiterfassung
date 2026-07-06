@@ -13,6 +13,7 @@ import json
 import os
 import stat
 import tempfile
+import time
 
 
 def write_token(creds, token_path):
@@ -37,7 +38,22 @@ def write_token(creds, token_path):
             os.chmod(tmp_path, stat.S_IRUSR | stat.S_IWUSR)  # 0o600
         except OSError:
             pass
-        os.replace(tmp_path, token_path)
+        # os.replace mit Retry gegen transiente Windows-PermissionError: ein
+        # Virenscanner, der die frisch erzeugte .token-*.tmp scannt, oder ein
+        # noch offenes Handle auf token.json blockiert den atomaren Rename kurz
+        # (WinError 5/32 -> beide PermissionError). Kurzer Backoff überbrückt das;
+        # bleibt es dabei, wird der Fehler durchgereicht (Issue #135, Muster wie
+        # #117). Gezielt PermissionError, damit echte Fehler (fehlende tmp,
+        # Zielverzeichnis) nicht maskiert werden.
+        attempts = 5
+        for attempt in range(attempts):
+            try:
+                os.replace(tmp_path, token_path)
+                break
+            except PermissionError:
+                if attempt == attempts - 1:
+                    raise
+                time.sleep(0.2)
     except BaseException:
         try:
             os.remove(tmp_path)
