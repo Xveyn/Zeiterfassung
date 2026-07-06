@@ -22,6 +22,11 @@ import uuid
 # stiller Datenverlust im Multi-Device-Sync (Issue #48). settings.py ist
 # stdlib-only und importiert sync.py nicht (kein Zyklus, CI-import-sicher).
 from src.settings import SYNCED_SETTING_KEYS
+# _REQUIRED_ENTRY_KEYS ist der Pflichtfeld-Vertrag, den storage.apply_merge
+# erzwingt — hier als Single Source of Truth importieren (nicht duplizieren),
+# damit validate_remote_doc nie gegen einen anderen Feldsatz prüft als der
+# Store später schreibt. storage.py importiert sync.py nicht (kein Zyklus).
+from src.storage import _REQUIRED_ENTRY_KEYS
 
 
 SCHEMA_VERSION = 4
@@ -321,6 +326,67 @@ def migrate_doc_to_current(remote_doc):
             "deleted": bool(entry.get("deleted", False)),
         }
     return {**remote_doc, "schema_version": SCHEMA_VERSION, "entries": migrated}
+
+
+def validate_remote_doc(doc):
+    """Prüft ein (bereits auf SCHEMA_VERSION migriertes) Remote-Doc auf die
+    strukturellen Invarianten, die `merge`/`apply_merged_doc` voraussetzen —
+    BEVOR ein `KeyError`/`ValueError` mitten im Merge landet (Audit M5).
+
+    Der Merge greift an mehreren Stellen ungeprüft zu: `entry["modified_at"]`
+    beim LWW-Vergleich (`_merge_one`), `conflict["id"]` bei der Union-by-ID,
+    und `storage.apply_merge` wirft `ValueError`, wenn einem Eintrag eines der
+    Pflichtfelder (`slots`/`modified_at`/`device_id`/`deleted`) fehlt. Ein
+    defektes/manipuliertes Remote-Doc landet sonst im generischen
+    `except Exception` als „unerwarteter Fehler".
+
+    Liefert `(True, "")` oder `(False, grund)`. Ein invalides Doc behandelt der
+    Aufrufer wie korruptes JSON: Remote-File quarantänen und leer weitermergen
+    (lokaler Stand wird zur neuen Remote-Wahrheit)."""
+    if not isinstance(doc, dict):
+        return False, "Doc ist kein Objekt"
+
+    entries = doc.get("entries", {})
+    if not isinstance(entries, dict):
+        return False, "entries ist kein Objekt"
+    for date, entry in entries.items():
+        if not isinstance(entry, dict):
+            return False, f"entry {date!r} ist kein Objekt"
+        missing = _REQUIRED_ENTRY_KEYS - entry.keys()
+        if missing:
+            return False, f"entry {date!r} fehlen Felder {sorted(missing)}"
+        if not isinstance(entry.get("modified_at"), str):
+            return False, f"entry {date!r}: modified_at ist kein String"
+        if not isinstance(entry.get("slots"), list):
+            return False, f"entry {date!r}: slots ist keine Liste"
+
+    settings = doc.get("settings", {})
+    if not isinstance(settings, dict):
+        return False, "settings ist kein Objekt"
+    for skey, payload in settings.items():
+        if not isinstance(payload, dict):
+            return False, f"setting {skey!r} ist kein Objekt"
+        if "value" not in payload:
+            return False, f"setting {skey!r} ohne value"
+        if not isinstance(payload.get("modified_at"), str):
+            return False, f"setting {skey!r}: modified_at ist kein String"
+
+    conflicts = doc.get("conflicts", [])
+    if not isinstance(conflicts, list):
+        return False, "conflicts ist keine Liste"
+    for c in conflicts:
+        if not isinstance(c, dict):
+            return False, "conflict ist kein Objekt"
+        if not isinstance(c.get("id"), str) or not c.get("id"):
+            return False, "conflict ohne gültige id"
+        if c.get("kind") not in ("entry", "setting"):
+            return False, "conflict mit ungültigem kind"
+        if "key" not in c:
+            return False, "conflict ohne key"
+        if not isinstance(c.get("candidates"), list):
+            return False, "conflict ohne candidates-Liste"
+
+    return True, ""
 
 
 def _remote_is_newer(remote_doc):

@@ -124,7 +124,20 @@ müssen beide Locks respektieren. Design:
   (zukünftige Soll-Zeiten, eigenes Konzept). `settings.py` — Einstellungen mit Defaults.
 - `conflicts_store.py` — lokale Sync-Konfliktliste. `category_defaults.py` — Default-Kategorien.
 - `sync.py` — pure Sync-Logik (LWW-Merge, Konflikterkennung); importiert
-  `SYNCED_SETTING_KEYS` aus `settings.py` (Single Source of Truth, nicht hier neu definieren).
+  `SYNCED_SETTING_KEYS` aus `settings.py` **und** `_REQUIRED_ENTRY_KEYS` aus `storage.py`
+  (beide Single Source of Truth, nicht hier neu definieren). `validate_remote_doc`
+  prüft ein migriertes Remote-Doc auf die Merge-Invarianten (Pflichtfelder,
+  `modified_at`-Typ), bevor ein `KeyError`/`ValueError` mitten im Merge landet
+  (Audit M5) — die Sync-Flows in `main.py` behandeln ein invalides Doc wie
+  korruptes JSON (quarantänen/leer weitermergen).
+- `sync_journal.py` — Crash-Recovery für `sync.apply_merged_doc` (Audit M6): dessen
+  vier Store-Writes sind einzeln atomar, die Sequenz nicht. `apply_merged_doc_journaled`
+  schreibt den `merged_doc` erst durable (`fsync`) in ein Write-Ahead-Journal
+  (`sync-apply.journal` im Base-Dir), dann die Stores, dann löscht es das Journal.
+  `main.py` ruft die drei Sync-Apply-Stellen (Pull/Push/Kompaktierung) darüber; beim
+  Start holt `recover_pending_apply` ein übriggebliebenes Journal idempotent nach
+  (alle vier Ops sind Full-Replace). **Kein** Sync-Doc-Feld — rein lokaler
+  Recovery-Zustand.
   `share.py` — Export/Import als Share-JSON. `weekly_limit.py` — pure Wochenstunden-Limit-Check
   (Werkstudenten-Privileg, #98). Kein eigener Persistenz-Zustand, operiert auf
   `Storage.get_all()`-Dicts und den `werkstudent_limit_*`-Settings-Keys.
