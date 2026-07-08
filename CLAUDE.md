@@ -102,6 +102,41 @@ python build.py
 
 Fehlt das Pack-Tool lokal, überspringt `build.py` den Pack-Schritt mit Warnung — der PyInstaller-Build läuft trotzdem durch. Das ist für Local-Dev gewollt.
 
+## Manueller CI-Build ohne Release (`build.yml`)
+
+Für einen reinen Test-Build eines Branches — **ohne** Tag, Release oder
+Auto-Update-Effekt — gibt es den Workflow **Build** (`.github/workflows/build.yml`):
+Actions → **Build** → „Run workflow". Er baut in **CI-identischer Umgebung**
+(Python 3.10 + gepinnte `requirements.txt`), sodass man einen Stand verifizieren
+kann, ohne eine lokale venv zu pflegen, die zur CI divergiert (Vorbild für das
+Divergenz-Problem: der lokale Frozen-Build scheiterte auf Python 3.13/3.14 an
+fehlenden gebündelten Datendateien — die CI auf 3.10 spiegelt die echte
+Release-Umgebung).
+
+- **Inputs:** `windows`/`macos`/`linux` als Häkchen (mindestens eins, maximal
+  alle; Default nur Windows) + optionaler `ref` (Branch/Tag/SHA; leer = der
+  Branch, aus dem der Lauf startet).
+- **Ausgabe = reine App** (kein Installer): `build.py` läuft ohne Inno Setup /
+  create-dmg / appimagetool, überspringt also den Pack-Schritt und lädt die
+  nackte PyInstaller-Ausgabe als **Workflow-Artefakt** hoch — Windows
+  `Zeiterfassung.exe`, macOS `Zeiterfassung.app` und Linux-Binary als `.tar.gz`
+  (tar bewahrt Symlinks/Exec-Bits, die ein Zip zerstören würde). `retention-days: 14`.
+- **Kanal-Stempel:** kein `ZEIT_RELEASE`/`ZEIT_PRERELEASE` → `build.py` stempelt
+  `CHANNEL=dev` + Commit-SHA; der In-App-Titel zeigt damit den exakt gebauten Commit.
+- **Abgrenzung zum (Pre-)Release:** `build.yml` erzeugt **keinen** Tag und
+  **kein** GitHub-Release. Wer testbare, installierbare Artefakte (Setup.exe/DMG/
+  AppImage) oder einen plattformübergreifenden Vorab-Stand für andere Nutzer will,
+  nimmt weiter den **Pre-Release** aus `release.yml` (s. „Release-Prozess").
+
+**Default-Branch-Eigenheit:** `workflow_dispatch` ist erst dispatchbar, wenn
+`build.yml` auf dem **Default-Branch** (`master`) liegt — vorher liefert
+`gh workflow run build.yml …` ein `HTTP 404: workflow not found on the default
+branch`, und der „Run workflow"-Knopf fehlt. Solange der Workflow nur auf einem
+Feature-Branch existiert, lässt er sich ausschließlich aus diesem Branch heraus
+starten (in der Actions-UI den Branch im „Run workflow"-Dropdown wählen). Der
+`ref`-Input entfaltet seinen Nutzen — einen *beliebigen* Branch bauen, der
+`build.yml` selbst nicht trägt — daher erst nach dem Merge nach `master`.
+
 ## Abhängigkeiten & Pinning
 
 Die **direkten** Abhängigkeiten in `requirements.txt` sind exakt (`==`) auf
