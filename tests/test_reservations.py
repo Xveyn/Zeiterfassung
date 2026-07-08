@@ -1,3 +1,4 @@
+import logging
 from unittest import mock
 
 import pytest
@@ -130,12 +131,15 @@ def test_apply_reconciled_rejects_missing_keys(store):
     assert store.get_all_raw() == {}
 
 
-def test_corrupt_json_is_quarantined_and_starts_empty(tmp_path):
+def test_corrupt_json_is_quarantined_and_starts_empty(tmp_path, caplog):
     path = tmp_path / "res.json"
     path.write_text("{not valid", encoding="utf-8")
-    store = ReservationStore(str(path))
+    with caplog.at_level(logging.WARNING):
+        store = ReservationStore(str(path))
     assert store.get_all() == {}
     assert len(list(tmp_path.glob("res.json.corrupt-*"))) == 1
+    # N4: Quarantäne wird jetzt geloggt, nicht mehr stumm.
+    assert any("Quarantäne" in r.message for r in caplog.records)
 
 
 def test_save_failure_keeps_original_intact(tmp_path):

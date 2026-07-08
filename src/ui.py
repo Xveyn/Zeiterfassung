@@ -637,6 +637,16 @@ class App:
         except Exception:
             logging.getLogger(__name__).exception(
                 "Neustart für UI-Skalierung fehlgeschlagen")
+            # N18: Popen ist fehlgeschlagen, der oben freigegebene Single-
+            # Instance-Guard würde sonst für den Rest der Session fehlen
+            # (ein manueller Zweitstart bliebe unbemerkt). Guard neu binden.
+            if self._single_instance is not None:
+                from src import single_instance
+                self._single_instance = single_instance.acquire(
+                    self.base_path, show_requested=False)
+                if self._single_instance is not None:
+                    self._single_instance.serve(
+                        lambda: self._marshal_to_ui(self._restore_from_tray))
             themed_showinfo(
                 self.root,
                 "Neustart nötig",

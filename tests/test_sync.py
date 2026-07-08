@@ -5,7 +5,10 @@ import pytest
 from src.conflicts_store import ConflictsStore
 from src.settings import Settings
 from src.storage import Storage
-from src.sync import _merge_one, apply_merged_doc, build_local_doc, merge, resolve_conflict
+from src.sync import (
+    _merge_one, apply_merged_doc, build_local_doc, merge, resolve_conflict,
+    validate_remote_doc,
+)
 
 
 def _e(start, end, pause, modified_at, device_id="d", deleted=False):
@@ -406,6 +409,111 @@ def test_main_pull_returns_doc_when_valid_json():
     raw = _json.dumps({"schema_version": 1, "entries": {"D": {}}, "settings": {}, "conflicts": []})
     doc = _parse_remote_or_quarantine(raw.encode(), "file-1", lambda fid: None)
     assert "D" in doc["entries"]
+
+
+# --- validate_remote_doc (Audit M5) ---
+
+def _valid_remote_doc():
+    return {
+        "schema_version": 4,
+        "entries": {"2026-05-14": _e("08:00", "16:00", 30, "2026-05-14T10:00:00Z")},
+        "settings": {"recipient": {"value": "a@b.de", "modified_at": "2026-05-14T10:00:00Z",
+                                   "device_id": "d"}},
+        "conflicts": [],
+        "meta": {"gc_watermark": ""},
+    }
+
+
+def test_validate_accepts_valid_doc():
+    ok, reason = validate_remote_doc(_valid_remote_doc())
+    assert ok is True
+    assert reason == ""
+
+
+def test_validate_accepts_empty_doc():
+    ok, _ = validate_remote_doc({"entries": {}, "settings": {}, "conflicts": []})
+    assert ok is True
+
+
+def test_validate_rejects_non_dict():
+    ok, reason = validate_remote_doc(["not", "a", "doc"])
+    assert ok is False
+
+
+def test_validate_rejects_entry_missing_modified_at():
+    # Genau der Fall, der merge()/_merge_one mit KeyError abstürzen ließ.
+    doc = _valid_remote_doc()
+    del doc["entries"]["2026-05-14"]["modified_at"]
+    ok, reason = validate_remote_doc(doc)
+    assert ok is False
+    assert "modified_at" in reason or "Felder" in reason
+
+
+def test_validate_rejects_entry_missing_required_key():
+    doc = _valid_remote_doc()
+    del doc["entries"]["2026-05-14"]["device_id"]  # apply_merge würde ValueError werfen
+    ok, reason = validate_remote_doc(doc)
+    assert ok is False
+
+
+def test_validate_rejects_entry_modified_at_not_string():
+    doc = _valid_remote_doc()
+    doc["entries"]["2026-05-14"]["modified_at"] = 12345
+    ok, _ = validate_remote_doc(doc)
+    assert ok is False
+
+
+def test_validate_rejects_setting_missing_value():
+    doc = _valid_remote_doc()
+    del doc["settings"]["recipient"]["value"]
+    ok, reason = validate_remote_doc(doc)
+    assert ok is False
+    assert "value" in reason
+
+
+def test_validate_rejects_setting_missing_modified_at():
+    doc = _valid_remote_doc()
+    del doc["settings"]["recipient"]["modified_at"]
+    ok, _ = validate_remote_doc(doc)
+    assert ok is False
+
+
+def test_validate_rejects_conflict_without_id():
+    doc = _valid_remote_doc()
+    doc["conflicts"] = [{"kind": "entry", "key": "2026-05-14", "candidates": []}]
+    ok, reason = validate_remote_doc(doc)
+    assert ok is False
+    assert "id" in reason
+
+
+def test_validate_rejects_conflict_bad_kind():
+    doc = _valid_remote_doc()
+    doc["conflicts"] = [{"id": "c1", "kind": "bogus", "key": "x", "candidates": []}]
+    ok, _ = validate_remote_doc(doc)
+    assert ok is False
+
+
+def test_validate_rejects_conflicts_not_a_list():
+    doc = _valid_remote_doc()
+    doc["conflicts"] = {"nope": True}
+    ok, _ = validate_remote_doc(doc)
+    assert ok is False
+
+
+def test_invalid_remote_doc_would_crash_merge_but_validate_catches_it():
+    # Regression-Beleg: ohne Validierung wirft merge() KeyError, sobald BEIDE
+    # Seiten denselben Tag haben (nur-Remote short-circuitet vor dem Zugriff).
+    doc = _valid_remote_doc()
+    del doc["entries"]["2026-05-14"]["modified_at"]
+    local = {
+        "schema_version": 4,
+        "entries": {"2026-05-14": _e("07:00", "15:00", 0, "2026-05-14T09:00:00Z")},
+        "settings": {}, "conflicts": [],
+    }
+    with pytest.raises(KeyError):
+        merge(local, doc, "")
+    ok, _ = validate_remote_doc(doc)
+    assert ok is False
 
 
 def test_resolve_nonexistent_conflict_raises(tmp_path):

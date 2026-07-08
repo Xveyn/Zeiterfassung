@@ -109,6 +109,20 @@ def test_validate_slots_without_pause_ignores_pause():
     assert ok is True
 
 
+def test_validate_slots_rejects_non_numeric_pause():
+    # N7: nicht-numerische Pause darf keinen ValueError durchreichen, sondern
+    # eine saubere Validierungsmeldung liefern.
+    ok, msg = validate_slots([_s("08:00", "16:00", "abc")])
+    assert ok is False
+    assert "Pause" in msg
+
+
+def test_validate_slots_non_numeric_pause_ignored_without_pause():
+    # with_pause=False: die kaputte Pause wird gar nicht erst geparst.
+    ok, _ = validate_slots([_s("08:00", "16:00", "abc")], with_pause=False)
+    assert ok is True
+
+
 def test_validate_period_from_after_to_is_invalid():
     import datetime
     from src.time_utils import validate_period

@@ -1,3 +1,4 @@
+import logging
 
 import pytest
 
@@ -23,13 +24,16 @@ def test_save_and_persist(tmp_path):
                               "resolved": False}]
 
 
-def test_corrupt_file_is_quarantined(tmp_path):
+def test_corrupt_file_is_quarantined(tmp_path, caplog):
     path = tmp_path / "conflicts.json"
     path.write_text("not json{{{", encoding="utf-8")
-    store = ConflictsStore(str(path))
+    with caplog.at_level(logging.WARNING):
+        store = ConflictsStore(str(path))
     assert store.get_all() == []
     quarantined = list(tmp_path.glob("conflicts.json.corrupt-*"))
     assert len(quarantined) == 1
+    # N4: Quarantäne wird jetzt geloggt, nicht mehr stumm.
+    assert any("Quarantäne" in r.message for r in caplog.records)
 
 
 def test_count_unresolved(tmp_conflicts):

@@ -110,10 +110,8 @@ HOLIDAY_BG = "#0f3a2a"
 HOLIDAY_BG_HOVER = "#15523a"
 HOLIDAY_ACCENT = "#4ade80"  # gleicher Grünton wie STATUS_OK
 
-# Reservation cell colors ("geplant"-Look — violetter Akzent, abgesetzt von
+# Reservation cell accent ("geplant"-Look — violetter Akzent, abgesetzt von
 # der roten Ist-Zeit-Zelle und der grünen Feiertagszelle)
-RESERVATION_BG = "#2a2150"
-RESERVATION_BG_HOVER = "#352a66"
 RESERVATION_ACCENT = "#a78bfa"
 
 # Rahmenfarbe für den heutigen Tag — blau, klar abgesetzt von rotem Eintrag,
@@ -252,16 +250,6 @@ def dark_combo(parent, textvariable, values, width=8, **kw):
     return ttk.Combobox(
         parent, textvariable=textvariable, values=values,
         width=width, font=FONT, style="Dark.TCombobox", state="readonly", **kw,
-    )
-
-
-def dark_combo_editable(parent, textvariable, values, width=14, **kw):
-    """Wie dark_combo, aber editierbar (state="normal") — Freitext plus
-    Vorschlagsliste. Für die Kategorie-Auswahl je Slot, deren Werte aus
-    settings['categories'] kommen, aber auch frei eingetippt werden dürfen."""
-    return ttk.Combobox(
-        parent, textvariable=textvariable, values=values,
-        width=width, font=FONT, style="Dark.TCombobox", state="normal", **kw,
     )
 
 

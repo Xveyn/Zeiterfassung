@@ -37,6 +37,49 @@ def test_corrupted_file(tmp_path):
     assert s.get("recipient") == ""
     assert s.get("default_pause") == 30
 
+
+def test_corrupt_json_is_quarantined(tmp_path):
+    # M4: korruptes settings.json wird nach .corrupt-<stamp> in Quarantäne
+    # verschoben (wie die anderen drei Stores), nicht kommentarlos verworfen.
+    path = tmp_path / "settings.json"
+    path.write_text("not json{{{", encoding="utf-8")
+
+    s = Settings(str(path))
+
+    assert s.get("default_pause") == 30
+    quarantined = list(tmp_path.glob("settings.json.corrupt-*"))
+    assert len(quarantined) == 1
+    assert quarantined[0].read_text(encoding="utf-8") == "not json{{{"
+    # Original ist weg → frisches Save legt es sauber neu an.
+    assert not path.exists()
+
+
+def test_non_dict_toplevel_is_quarantined(tmp_path):
+    # Gültiges JSON, aber falsches Toplevel (Liste) ist ebenso korrupt.
+    path = tmp_path / "settings.json"
+    path.write_text("[1, 2, 3]", encoding="utf-8")
+
+    s = Settings(str(path))
+
+    assert s.get("recipient") == ""
+    quarantined = list(tmp_path.glob("settings.json.corrupt-*"))
+    assert len(quarantined) == 1
+    assert quarantined[0].read_text(encoding="utf-8") == "[1, 2, 3]"
+
+
+def test_quarantine_rename_failure_falls_back_to_defaults(tmp_path):
+    # Schlägt der Quarantäne-Rename fehl (z.B. Windows-Filelock), darf der
+    # Boot nicht crashen — Defaults greifen, die Datei bleibt liegen.
+    path = tmp_path / "settings.json"
+    path.write_text("not json{{{", encoding="utf-8")
+
+    with patch("src.settings.os.replace", side_effect=OSError("locked")):
+        s = Settings(str(path))
+
+    assert s.get("default_pause") == 30
+    assert path.exists()
+    assert list(tmp_path.glob("settings.json.corrupt-*")) == []
+
 def test_recipient_default(tmp_settings):
     assert tmp_settings.get("recipient") == ""
 
@@ -346,6 +389,33 @@ def test_apply_synced_overwrites_value_and_meta(tmp_path):
     })
     assert s.get("recipient") == "remote@x.de"
     assert s.get_synced_doc()["recipient"]["device_id"] == "other-dev"
+
+
+def test_apply_synced_skips_uncoercible_value(tmp_path):
+    """N5: ein Remote-Wert, der nicht in den erwarteten Typ castbar ist
+    (hier: hourly_rate als nicht-numerischer String), wird verworfen — der
+    lokale Wert bleibt, statt Garbage zu übernehmen."""
+    path = str(tmp_path / "settings.json")
+    s = Settings(path)
+    s.apply_synced({
+        "hourly_rate": {"value": "not-a-number", "modified_at": "2026-05-14T10:00:00Z",
+                        "device_id": "other-dev"},
+    })
+    assert s.get("hourly_rate") == 0.0            # Default unverändert
+    assert "hourly_rate" not in s.get_synced_doc()  # Meta nicht gestempelt
+
+
+def test_apply_synced_coerces_numeric_string(tmp_path):
+    """N5-Gegentest: ein castbarer Wert (Zahl als String) wird übernommen und
+    in den Zieltyp gecastet — Sync bleibt tolerant gegenüber JSON-Zahlformaten."""
+    path = str(tmp_path / "settings.json")
+    s = Settings(path)
+    s.apply_synced({
+        "hourly_rate": {"value": "15", "modified_at": "2026-05-14T10:00:00Z",
+                        "device_id": "other-dev"},
+    })
+    assert s.get("hourly_rate") == 15.0
+    assert isinstance(s.get("hourly_rate"), float)
 
 
 def test_get_synced_doc_empty_when_nothing_set(tmp_settings):

@@ -1,5 +1,6 @@
 import datetime
 import json
+import logging
 import os
 import threading
 
@@ -23,7 +24,13 @@ class ConflictsStore:
                 data = json.load(f)
         except (json.JSONDecodeError, ValueError):
             stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-            os.replace(self.filepath, f"{self.filepath}.corrupt-{stamp}")
+            target = f"{self.filepath}.corrupt-{stamp}"
+            os.replace(self.filepath, target)
+            logging.getLogger(__name__).warning(
+                "%s korrupt (JSON nicht parsebar) — nach %s in Quarantäne "
+                "verschoben, starte leer",
+                os.path.basename(self.filepath), os.path.basename(target),
+            )
             return
         if isinstance(data, list):
             self._conflicts = data
@@ -32,6 +39,9 @@ class ConflictsStore:
         tmp = self.filepath + ".tmp"
         with open(tmp, "w", encoding="utf-8") as f:
             json.dump(self._conflicts, f, indent=2, ensure_ascii=False)
+            # N1: fsync vor os.replace (Durability bei Crash/Stromausfall).
+            f.flush()
+            os.fsync(f.fileno())
         try:
             os.replace(tmp, self.filepath)
         except OSError:
