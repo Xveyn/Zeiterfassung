@@ -143,10 +143,21 @@ class GridRenderer:
         unter dem fixen Fenster über (#92). Das Fenster bleibt
         resizable(False, False); gewachsen/geschrumpft wird nur kontrolliert
         hier. Während der Vorab-Messung (measure_max_width) unterdrückt
-        _suppress_geometry den Resize."""
+        _suppress_geometry den Resize.
+
+        Die Breite **ratcht**: _fixed_width wächst mit der breitesten je
+        angeforderten reqwidth mit, schrumpft aber nie wieder. Grund: der Footer
+        ist ohne Stundenlohn schmal (width=16) und mit Lohn breit (width=40,
+        s. _update_footer). Startet die App ohne Lohn, pinnt measure_max_width
+        die schmale Breite; trägt der Nutzer später einen Lohn ein, wächst das
+        Fenster hier einmalig auf die breite Variante. Ohne Ratchet würde es beim
+        Entfernen des Lohns wieder zurückschrumpfen und bei jedem Lohn-Ein/Aus
+        zwischen schmal und breit springen. Die Höhe ratcht bewusst NICHT (das
+        Update-Banner braucht sie in beide Richtungen)."""
         self._root.update_idletasks()
         if not self._suppress_geometry:
             width = max(self._fixed_width or 0, self._root.winfo_reqwidth())
+            self._fixed_width = width
             self._root.geometry(f"{width}x{self._root.winfo_reqheight()}")
 
     def measure_max_width(self, view_mode: str, year: int, month: int,
