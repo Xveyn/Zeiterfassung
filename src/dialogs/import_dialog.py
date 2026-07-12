@@ -2,13 +2,13 @@
 (Arbeitszeiten/Reservierungen) ein Abschnitt mit Master-Schalter, Zeitraum-
 Filter und Konflikt-Modi, optional Pro-Tag-Modal, atomarer Apply."""
 
-import calendar
 import datetime
 import logging
 import tkinter as tk
 import traceback
 from tkinter import filedialog, messagebox
 
+from src.dialogs.date_row import build_date_row
 from src.share import (
     ShareValidationError,
     apply_import,
@@ -21,7 +21,7 @@ from src.time_utils import format_iso_date
 from src.theme import (
     BG, CELL_BG, FONT, FONT_SMALL, TEXT, TEXT_MUTED,
     apply_combobox_style, attach_unfocus_on_click, center_dialog_on_parent,
-    create_dialog, dark_combo, primary_button, secondary_button,
+    create_dialog, primary_button, secondary_button,
     themed_showerror, themed_showinfo,
 )
 
@@ -149,11 +149,16 @@ class _ImportSummaryDialog:
         ).grid(row=row, column=0, columnspan=6, padx=10, pady=(4, 0), sticky="w")
         row += 1
 
-        self.from_day, self.from_month, self.from_year = self._build_date_row(
-            row, "Von:", self.file_min)
+        # Von/Bis über das gemeinsame Datums-Zeilen-Widget (Audit M14).
+        from_row = build_date_row(self.top, "Von:", self.file_min,
+                                  on_change=self._recompute_counts, label_width=4)
+        from_row.frame.grid(row=row, column=0, columnspan=6, sticky="w", padx=10, pady=4)
+        self.from_day, self.from_month, self.from_year = from_row.vars
         row += 1
-        self.to_day, self.to_month, self.to_year = self._build_date_row(
-            row, "Bis:", self.file_max)
+        to_row = build_date_row(self.top, "Bis:", self.file_max,
+                                on_change=self._recompute_counts, label_width=4)
+        to_row.frame.grid(row=row, column=0, columnspan=6, sticky="w", padx=10, pady=4)
+        self.to_day, self.to_month, self.to_year = to_row.vars
         row += 1
 
         tk.Label(
@@ -217,51 +222,6 @@ class _ImportSummaryDialog:
         secondary_button(btn_frame, "Abbrechen", self.top.destroy).pack(side=tk.LEFT, padx=5)
 
         self._on_toggle_section()  # ruft intern bereits _recompute_counts()
-
-    def _build_date_row(self, row, label_text, default_date):
-        tk.Label(self.top, text=label_text, font=FONT, bg=BG, fg=TEXT).grid(
-            row=row, column=0, padx=(10, 5), pady=4, sticky="w")
-
-        day_var = tk.StringVar(value=str(default_date.day))
-        max_day = calendar.monthrange(default_date.year, default_date.month)[1]
-        day_cb = dark_combo(self.top, day_var,
-                            [str(d) for d in range(1, max_day + 1)], width=3)
-        day_cb.grid(row=row, column=1, padx=2, pady=4)
-
-        tk.Label(self.top, text=".", font=FONT, bg=BG, fg=TEXT).grid(row=row, column=2)
-
-        month_var = tk.StringVar(value=str(default_date.month))
-        dark_combo(self.top, month_var,
-                   [str(m) for m in range(1, 13)], width=3).grid(
-            row=row, column=3, padx=2, pady=4)
-
-        tk.Label(self.top, text=".", font=FONT, bg=BG, fg=TEXT).grid(row=row, column=4)
-
-        year_var = tk.StringVar(value=str(default_date.year))
-        years = [str(y) for y in range(2020, datetime.date.today().year + 2)]
-        dark_combo(self.top, year_var, years, width=5).grid(
-            row=row, column=5, padx=(2, 10), pady=4)
-
-        def _on_change(*_):
-            try:
-                m = int(month_var.get())
-                y = int(year_var.get())
-                max_day = calendar.monthrange(y, m)[1]
-            except (ValueError, KeyError):
-                max_day = 31
-            day_cb["values"] = [str(d) for d in range(1, max_day + 1)]
-            try:
-                if int(day_var.get()) > max_day:
-                    day_var.set(str(max_day))
-            except ValueError:
-                pass
-            self._recompute_counts()
-
-        day_var.trace_add("write", _on_change)
-        month_var.trace_add("write", _on_change)
-        year_var.trace_add("write", _on_change)
-
-        return day_var, month_var, year_var
 
     def _get_range(self):
         try:
