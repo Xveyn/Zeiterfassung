@@ -18,7 +18,7 @@ from src.version import VERSION, version_label
 from src.background_tasks import BackgroundTaskRunner
 from src.weekly_limit import format_limit_warnings
 from src.grid_renderer import GridRenderer
-from src.sync_orchestrator import _classify_sync_error, SyncOrchestrator
+from src.sync_orchestrator import classify_sync_error, SyncOrchestrator
 from src.update_banner import UpdateBanner
 from src.reminder_scheduler import ReminderScheduler
 from src.dialogs.entry_dialog import open_entry_dialog
@@ -192,7 +192,7 @@ class App:
     def _on_reconcile_done(self, result):
         if not result.get("ok"):
             error = result.get("error", "?")
-            if _classify_sync_error(error) == "auth":
+            if classify_sync_error(error) == "auth":
                 themed_showinfo(
                     self.root,
                     "Google-Verbindung abgelaufen",

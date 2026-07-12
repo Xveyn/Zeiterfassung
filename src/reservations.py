@@ -18,10 +18,7 @@ import logging
 import os
 import threading
 
-
-def _utc_now_iso():
-    # Z-Suffix statt +00:00 — konsistent zu storage.py / sync.py.
-    return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+from src.time_utils import utc_now_iso
 
 
 _REQUIRED_RESERVATION_KEYS = frozenset({"slots", "modified_at", "deleted"})
@@ -79,7 +76,7 @@ class ReservationStore:
             datetime.datetime.fromtimestamp(mtime, datetime.timezone.utc)
             .strftime("%Y-%m-%dT%H:%M:%SZ")
             if mtime is not None
-            else _utc_now_iso()
+            else utc_now_iso()
         )
         for date, entry in list(self._data.items()):
             if not isinstance(entry, dict):
@@ -163,7 +160,7 @@ class ReservationStore:
                 new_slots.append(ns)
             self._data[date_str] = {
                 "slots": new_slots,
-                "modified_at": _utc_now_iso(),
+                "modified_at": utc_now_iso(),
                 "deleted": False,
             }
             self._save_to_disk()
@@ -176,7 +173,7 @@ class ReservationStore:
                 return
             self._data[date_str] = {
                 "slots": [],
-                "modified_at": _utc_now_iso(),
+                "modified_at": utc_now_iso(),
                 "deleted": True,
             }
             self._save_to_disk()

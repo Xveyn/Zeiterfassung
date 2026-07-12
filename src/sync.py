@@ -13,7 +13,6 @@ Doc-Struktur (Sync-File und Zwischenformate), Stand SCHEMA_VERSION = 4:
 """
 
 import contextlib
-import datetime
 import uuid
 
 # SYNCED_SETTING_KEYS lebt als Single Source of Truth in settings.py — hier nur
@@ -22,11 +21,12 @@ import uuid
 # stiller Datenverlust im Multi-Device-Sync (Issue #48). settings.py ist
 # stdlib-only und importiert sync.py nicht (kein Zyklus, CI-import-sicher).
 from src.settings import SYNCED_SETTING_KEYS
-# _REQUIRED_ENTRY_KEYS ist der Pflichtfeld-Vertrag, den storage.apply_merge
+from src.time_utils import utc_now_iso
+# REQUIRED_ENTRY_KEYS ist der Pflichtfeld-Vertrag, den storage.apply_merge
 # erzwingt — hier als Single Source of Truth importieren (nicht duplizieren),
 # damit validate_remote_doc nie gegen einen anderen Feldsatz prüft als der
 # Store später schreibt. storage.py importiert sync.py nicht (kein Zyklus).
-from src.storage import _REQUIRED_ENTRY_KEYS
+from src.storage import REQUIRED_ENTRY_KEYS
 
 
 SCHEMA_VERSION = 4
@@ -51,10 +51,6 @@ def _is_settled_entry(entry, watermark):
 def _is_settled_conflict(conflict, watermark):
     resolved_at = conflict.get("resolved_at") or ""
     return bool(conflict.get("resolved")) and resolved_at != "" and resolved_at < watermark
-
-
-def _utc_now_iso():
-    return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def _slots_signature(entry):
@@ -103,7 +99,7 @@ def _merge_one(local, remote, last_pull_at, equal_fn=_values_equal_entry, kind="
     remote_changed = remote["modified_at"] > last_pull_at
 
     # N2 (LWW-Wanduhr-Abhängigkeit — bewusst festgehalten): `modified_at` ist eine
-    # Wanduhr-Zeit (_utc_now_iso, Sekunden-Auflösung, KEINE Millisekunden). Der
+    # Wanduhr-Zeit (utc_now_iso, Sekunden-Auflösung, KEINE Millisekunden). Der
     # Vergleich ist ein String-Vergleich der ISO-Timestamps. Das LWW-Ergebnis
     # hängt damit an halbwegs synchronen Geräte-Uhren; eine stark falsch gehende
     # Uhr kann Änderungen dauerhaft gewinnen/verlieren lassen. Bei exakt gleicher
@@ -117,7 +113,7 @@ def _merge_one(local, remote, last_pull_at, equal_fn=_values_equal_entry, kind="
             "kind": kind,
             "key": key,
             "candidates": [_strip_for_candidate(local), _strip_for_candidate(remote)],
-            "detected_at": _utc_now_iso(),
+            "detected_at": utc_now_iso(),
             "resolved": False,
             "resolution": None,
             "resolved_at": None,
@@ -359,7 +355,7 @@ def validate_remote_doc(doc):
     for date, entry in entries.items():
         if not isinstance(entry, dict):
             return False, f"entry {date!r} ist kein Objekt"
-        missing = _REQUIRED_ENTRY_KEYS - entry.keys()
+        missing = REQUIRED_ENTRY_KEYS - entry.keys()
         if missing:
             return False, f"entry {date!r} fehlen Felder {sorted(missing)}"
         if not isinstance(entry.get("modified_at"), str):
@@ -396,7 +392,7 @@ def validate_remote_doc(doc):
     return True, ""
 
 
-def _remote_is_newer(remote_doc):
+def remote_is_newer(remote_doc):
     """True, wenn das Remote-Doc von einer NEUEREN App-Version stammt
     (schema_version > der hier verstandenen SCHEMA_VERSION).
 
@@ -431,7 +427,7 @@ def resolve_conflict(conflict_id, chosen_value, conflicts_store, storage, settin
         if target is None:
             raise KeyError(f"Konflikt {conflict_id!r} nicht gefunden")
 
-        now = _utc_now_iso()
+        now = utc_now_iso()
         target["resolved"] = True
         target["resolution"] = dict(chosen_value)
         target["resolved_at"] = now

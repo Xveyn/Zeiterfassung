@@ -4,6 +4,8 @@ import logging
 import os
 import threading
 
+from src.time_utils import utc_now_iso
+
 WEEKDAY_KEYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")  # Index = datetime.weekday()
 
 SYNCED_SETTING_KEYS = (
@@ -115,10 +117,6 @@ def _migrate_legacy_default_times(loaded):
             loaded[f"default_start_{day}"] = legacy_start
         if legacy_end is not None and f"default_end_{day}" not in loaded:
             loaded[f"default_end_{day}"] = legacy_end
-
-
-def _utc_now_iso():
-    return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 # --- Reine Helfer für den Settings-Dialog-Save-Pfad (ohne Tk, headless testbar,
@@ -310,7 +308,7 @@ class Settings:
         with self._lock:
             self._data[key] = value
             self._synced_meta[key] = {
-                "modified_at": _utc_now_iso(),
+                "modified_at": utc_now_iso(),
                 "device_id": self.device_id_for_sync,
             }
             self._save_to_disk()

@@ -54,7 +54,7 @@ def test_pull_skipped_when_guard_held(tmp_path):
     calls = []
     assert guard.acquire(blocking=False)
     try:
-        main._run_pull_in_background(
+        main.run_pull_in_background(
             storage, settings, conflicts, str(tmp_path),
             lambda **kw: calls.append(kw), data_lock=lock, sync_guard=guard)
     finally:
@@ -80,7 +80,7 @@ def test_pull_holds_data_lock_during_apply_and_releases_guard(tmp_path, monkeypa
 
     monkeypatch.setattr(sync, "apply_merged_doc", spy)
     calls = []
-    main._run_pull_in_background(
+    main.run_pull_in_background(
         storage, settings, conflicts, str(tmp_path),
         lambda **kw: calls.append(kw), data_lock=lock, sync_guard=guard)
     assert held == [True]                    # Apply lief unter dem Daten-Lock
@@ -97,7 +97,7 @@ def test_pull_without_lock_and_guard_still_works(tmp_path, monkeypatch):
     storage, settings, conflicts = _stores(tmp_path, lock)
     _mock_drive_empty(monkeypatch)
     calls = []
-    main._run_pull_in_background(
+    main.run_pull_in_background(
         storage, settings, conflicts, str(tmp_path),
         lambda **kw: calls.append(kw))
     assert calls and calls[0]["ok"] is True
@@ -110,7 +110,7 @@ def test_push_skipped_when_guard_held(tmp_path):
     guard = threading.Lock()
     assert guard.acquire(blocking=False)
     try:
-        res = main._run_push_blocking(
+        res = main.run_push_blocking(
             storage, settings, conflicts, str(tmp_path),
             data_lock=lock, sync_guard=guard)
     finally:
@@ -132,7 +132,7 @@ def test_push_holds_data_lock_during_apply(tmp_path, monkeypatch):
         return orig(merged, storage_, settings_, conflicts_)
 
     monkeypatch.setattr(sync, "apply_merged_doc", spy)
-    res = main._run_push_blocking(
+    res = main.run_push_blocking(
         storage, settings, conflicts, str(tmp_path),
         data_lock=lock, sync_guard=None)
     assert res.get("ok") is True
@@ -155,7 +155,7 @@ def test_push_uploads_without_holding_data_lock(tmp_path, monkeypatch):
         return ("file-1", "etag-1")
 
     monkeypatch.setattr(drive, "upload", fake_upload)
-    res = main._run_push_blocking(
+    res = main.run_push_blocking(
         storage, settings, conflicts, str(tmp_path),
         data_lock=lock, sync_guard=None)
     assert res.get("ok") is True
@@ -168,7 +168,7 @@ def test_push_guard_released_after_run(tmp_path, monkeypatch):
     storage, settings, conflicts = _stores(tmp_path, lock)
     _mock_drive_empty(monkeypatch)
     guard = threading.Lock()
-    res = main._run_push_blocking(
+    res = main.run_push_blocking(
         storage, settings, conflicts, str(tmp_path),
         data_lock=lock, sync_guard=guard)
     assert res.get("ok") is True
@@ -189,7 +189,7 @@ def test_push_guard_timeout_waits_for_running_sync(tmp_path, monkeypatch):
     out = {}
 
     def run_push():
-        out["res"] = main._run_push_blocking(
+        out["res"] = main.run_push_blocking(
             storage, settings, conflicts, str(tmp_path),
             timeout_seconds=30, data_lock=lock, sync_guard=guard,
             guard_timeout=30)

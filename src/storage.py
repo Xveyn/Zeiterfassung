@@ -4,13 +4,9 @@ import logging
 import os
 import threading
 
+from src.time_utils import utc_now_iso
 
-def _utc_now_iso():
-    # Z-Suffix statt +00:00 — kompatibel zu JS/Drive-Konventionen
-    return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-
-
-_REQUIRED_ENTRY_KEYS = frozenset({"slots", "modified_at", "device_id", "deleted"})
+REQUIRED_ENTRY_KEYS = frozenset({"slots", "modified_at", "device_id", "deleted"})
 
 
 def _normalize_slot(slot):
@@ -72,7 +68,7 @@ class Storage:
             datetime.datetime.fromtimestamp(mtime, datetime.timezone.utc)
             .strftime("%Y-%m-%dT%H:%M:%SZ")
             if mtime is not None
-            else _utc_now_iso()
+            else utc_now_iso()
         )
         for date, entry in list(self._data.items()):
             if not isinstance(entry, dict):
@@ -146,7 +142,7 @@ class Storage:
         with self._lock:
             self._data[date_str] = {
                 "slots": [_normalize_slot(s) for s in slots],
-                "modified_at": _utc_now_iso(),
+                "modified_at": utc_now_iso(),
                 "device_id": self.device_id,
                 "deleted": False,
             }
@@ -160,7 +156,7 @@ class Storage:
             # Delete gegen ein veraltetes Save eines anderen Geräts durchsetzen kann.
             self._data[date_str] = {
                 "slots": [],
-                "modified_at": _utc_now_iso(),
+                "modified_at": utc_now_iso(),
                 "device_id": self.device_id,
                 "deleted": True,
             }
@@ -172,7 +168,7 @@ class Storage:
         Wirft ValueError, wenn ein Eintrag Pflichtfelder vermissen lässt."""
         with self._lock:
             for date, entry in merged_entries.items():
-                missing = _REQUIRED_ENTRY_KEYS - entry.keys()
+                missing = REQUIRED_ENTRY_KEYS - entry.keys()
                 if missing:
                     raise ValueError(
                         f"apply_merge: entry {date!r} missing keys {sorted(missing)}"
@@ -192,7 +188,7 @@ class Storage:
         if not updates:
             return
         with self._lock:
-            now = _utc_now_iso()
+            now = utc_now_iso()
             for date_str, payload in updates.items():
                 self._data[date_str] = {
                     "slots": [_normalize_slot(s) for s in payload.get("slots", [])],
