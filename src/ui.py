@@ -69,54 +69,15 @@ class App:
         self.root.configure(bg=BG)
         apply_dark_titlebar(self.root)
 
-        # Set unique AppUserModelID so Windows shows our icon in taskbar.
-        # Die AUMID bleibt bewusst die stabile, namespaced ID — Windows knüpft
-        # Taskbar-Pins und Fenster-Gruppierung daran; ein Wechsel würde
-        # bestehende Pins beim Update lösen. Den lesbaren Absender-Namen für
-        # Toast-Benachrichtigungen (inkl. dynamischer Version) registrieren wir
-        # separat als DisplayName unter dem AUMID-Registry-Key — den greift
-        # Windows für die Toast-Attribution, ohne die AUMID selbst zu ändern.
-        app_aumid = "margenheld.zeiterfassung"
-        try:
-            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(app_aumid)
-        except Exception:
-            pass
-        try:
-            import winreg
-            with winreg.CreateKeyEx(
-                winreg.HKEY_CURRENT_USER,
-                rf"Software\Classes\AppUserModelId\{app_aumid}",
-            ) as _aumid_key:
-                winreg.SetValueEx(
-                    _aumid_key, "DisplayName", 0, winreg.REG_SZ,
-                    f"Zeiterfassung v{VERSION}",
-                )
-        except Exception:
-            pass
-
-        # Set window/taskbar icon
-        ico_path = os.path.join(base_path, "assets", "margenheld-icon.ico")
-        png_path = os.path.join(base_path, "assets", "margenheld-icon.png")
-        if platform.system() == "Windows" and os.path.exists(ico_path):
-            # default=ico_path → `wm iconbitmap -default` setzt das
-            # App-weite Default-Icon im Tk-Interpreter. Muss auf root
-            # gesetzt werden, damit künftige Toplevels (Settings, Entry,
-            # …) das Icon erben statt das Tk-Default-Feder-Icon zu zeigen.
-            self.root.iconbitmap(default=ico_path)
-        if os.path.exists(png_path):
-            icon = tk.PhotoImage(file=png_path)
-            self.root.iconphoto(True, icon)
-            self._icon_ref = icon
+        # Win32-Fenster-/Taskbar-Identität nur unter Windows (Audit N21) — die
+        # AUMID-/DisplayName-Registry-Schritte sind auf macOS/Linux ohnehin
+        # No-ops (ctypes.windll/winreg fehlen), das Gate macht das explizit.
+        if platform.system() == "Windows":
+            self._setup_windows_app_identity()
+        self._setup_window_icon(base_path)
 
         self.root.resizable(False, False)
-
-        today = datetime.date.today()
-        self.year = today.year
-        self.month = today.month
-        self.view_mode = "month"  # "month" or "week"
-        iso = today.isocalendar()
-        self.iso_year = iso[0]
-        self.current_week = iso[1]
+        self._init_view_state()
 
         self._tray = None
         self._bg = BackgroundTaskRunner(
@@ -180,6 +141,61 @@ class App:
         self._bg.check_update(on_result=self._update_banner.handle_check_result)
         self._bg.reconcile_on_start(on_ok=self._on_reconcile_start_done)
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
+
+    def _setup_windows_app_identity(self):
+        """Setzt die AppUserModelID und registriert den Toast-DisplayName
+        (Windows-only, aus __init__ extrahiert — Audit N21).
+
+        Die AUMID bleibt bewusst die stabile, namespaced ID — Windows knüpft
+        Taskbar-Pins und Fenster-Gruppierung daran; ein Wechsel würde
+        bestehende Pins beim Update lösen. Den lesbaren Absender-Namen für
+        Toast-Benachrichtigungen (inkl. dynamischer Version) registrieren wir
+        separat als DisplayName unter dem AUMID-Registry-Key — den greift
+        Windows für die Toast-Attribution, ohne die AUMID selbst zu ändern.
+        Jeder Schritt ist einzeln gegen Fehler abgesichert."""
+        app_aumid = "margenheld.zeiterfassung"
+        try:
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(app_aumid)
+        except Exception:
+            pass
+        try:
+            import winreg
+            with winreg.CreateKeyEx(
+                winreg.HKEY_CURRENT_USER,
+                rf"Software\Classes\AppUserModelId\{app_aumid}",
+            ) as _aumid_key:
+                winreg.SetValueEx(
+                    _aumid_key, "DisplayName", 0, winreg.REG_SZ,
+                    f"Zeiterfassung v{VERSION}",
+                )
+        except Exception:
+            pass
+
+    def _setup_window_icon(self, base_path):
+        """Setzt App-/Taskbar-Icon (aus __init__ extrahiert — Audit N21).
+
+        Unter Windows das .ico als Tk-Default (`wm iconbitmap -default`), damit
+        künftige Toplevels (Settings, Entry, …) es erben statt des Tk-Default-
+        Feder-Icons; zusätzlich das .png als iconphoto auf allen Plattformen."""
+        ico_path = os.path.join(base_path, "assets", "margenheld-icon.ico")
+        png_path = os.path.join(base_path, "assets", "margenheld-icon.png")
+        if platform.system() == "Windows" and os.path.exists(ico_path):
+            self.root.iconbitmap(default=ico_path)
+        if os.path.exists(png_path):
+            icon = tk.PhotoImage(file=png_path)
+            self.root.iconphoto(True, icon)
+            self._icon_ref = icon
+
+    def _init_view_state(self):
+        """Initialer Kalender-View-Zustand aus dem heutigen Datum (aus __init__
+        extrahiert — Audit N21): Jahr/Monat + Monatsansicht, ISO-Jahr/-Woche."""
+        today = datetime.date.today()
+        self.year = today.year
+        self.month = today.month
+        self.view_mode = "month"  # "month" or "week"
+        iso = today.isocalendar()
+        self.iso_year = iso[0]
+        self.current_week = iso[1]
 
     def _reservations_active(self):
         """True, wenn Reservierungen angezeigt/bearbeitet werden dürfen: ein
