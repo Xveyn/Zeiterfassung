@@ -1030,7 +1030,13 @@ def themed_showwarning(parent, title: str, message: str) -> None:
 
 
 def themed_showerror(parent, title: str, message: str) -> None:
-    """Modaler Fehler-Dialog im App-Theme. Drop-in für `messagebox.showerror`."""
+    """Modaler Fehler-Dialog im App-Theme. Drop-in für `messagebox.showerror`.
+
+    Für **bekannte, erwartete** Fehler (Validierung, „Keine Einträge" …). Für
+    **unerwartete** Fehler mit Traceback bleibt bewusst das rohe
+    `messagebox.showerror` — ein themed Toplevel könnte im gestörten Zustand
+    selbst scheitern und die Meldung verschlucken. Konvention siehe
+    CLAUDE.md, „UI-Fehler sichtbar machen" (Audit N14)."""
     _themed_ok_dialog(parent, title, message)
 
 
