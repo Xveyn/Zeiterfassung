@@ -249,9 +249,16 @@ nach dem Widget-Aufbau bleibt Aufgabe des Dialogs.
 
 ## Tests / CI
 
-`.github/workflows/test.yml` installiert gezielt nur die Pakete, die die Tests brauchen (`pytest`, `holidays==0.99`, `google-api-python-client`, `google-auth`, `google-auth-oauthlib`), **nicht** `requirements.txt`. Grund: `pycairo` (transitive Dep von `xhtml2pdf`) braucht Cairo-Systemheader auf Ubuntu und bricht sonst den CI-Build. Der Import von `xhtml2pdf` in `src/report.py::generate_pdf` ist lazy, daher laufen die Report-Tests ohne die Lib. `holidays` und die Google-Libs sind pure Python ohne C-Deps und problemlos installierbar — letztere sind nötig, weil Tests `src.ui` importieren (z.B. `tests/test_ui_delete.py`), dessen Importkette die Google-Wrapper zieht. Ein zweiter Job läuft `ruff check .` (Lint).
+`.github/workflows/test.yml` installiert gezielt nur die Pakete, die die Tests brauchen — gepinnt in **`requirements-test.txt`** (`pytest`, `holidays`, `google-api-python-client`, `google-auth`, `google-auth-oauthlib`), **nicht** `requirements.txt`. Grund: `pycairo` (transitive Dep von `xhtml2pdf`) braucht Cairo-Systemheader auf Ubuntu und bricht sonst den CI-Build. Der Import von `xhtml2pdf` in `src/report.py::generate_pdf` ist lazy, daher laufen die Report-Tests ohne die Lib. `holidays` und die Google-Libs sind pure Python ohne C-Deps und problemlos installierbar — letztere sind nötig, weil Tests `src.ui` importieren (z.B. `tests/test_ui_delete.py`), dessen Importkette die Google-Wrapper zieht.
 
-Lokal: `pytest` aus dem Repo-Root. Alle Tests müssen vor dem PR-Merge grün sein.
+Die Test-Deps sind **exakt gepinnt** (Audit N25) — beim Bump gegen Python 3.10 gegenchecken (alle rein-Python, daher auf jedem Matrix-Python installierbar). Jobs (alle mit `cache: pip` auf `requirements-test.txt`):
+
+- **test** — Matrix über **Python 3.10–3.13** (README: „3.10+"), `fail-fast: false`.
+- **coverage** — `pytest --cov=src` (ubuntu/3.10); Reporting, **kein** `fail_under`-Gate (Config: `pyproject.toml [tool.coverage]`, Audit N24).
+- **test-macos** / **test-windows** — Plattform-Verifikation (je 3.10; macOS zieht zusätzlich `pyobjc-framework-Cocoa`).
+- **lint** — `ruff check .`. **typecheck** — `pyright` (gepinnt `1.1.411`).
+
+Lokal: `pytest` aus dem Repo-Root (Coverage: `pytest --cov=src --cov-report=term-missing`). Alle Tests müssen vor dem PR-Merge grün sein.
 
 ## Struktur
 
