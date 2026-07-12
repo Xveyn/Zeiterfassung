@@ -30,7 +30,7 @@ class WorkTab:
 
         start_vars = {}
         end_vars = {}
-        for i, (key, lbl) in enumerate(zip(WEEKDAY_KEYS, DAYS_DE), start=1):
+        for i, (key, lbl) in enumerate(zip(WEEKDAY_KEYS, DAYS_DE, strict=False), start=1):
             tk.Label(times_frame, text=lbl, font=FONT, bg=BG, fg=TEXT, width=3, anchor="w").grid(
                 row=i, column=0, padx=(0, 8), pady=2)
             start_vars[key] = tk.StringVar(value=settings.get(f"default_start_{key}"))

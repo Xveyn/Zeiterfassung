@@ -1,3 +1,4 @@
+import contextlib
 import datetime
 import json
 import logging
@@ -300,6 +301,29 @@ class Settings:
         with self._lock:
             self._data.update(updates)
             self._save_to_disk()
+
+    @contextlib.contextmanager
+    def override_in_memory(self, key, value):
+        """Überschreibt `key` NUR im Speicher (kein Disk-Save) für die Dauer
+        des with-Blocks und stellt den vorherigen Zustand danach wieder her.
+
+        Für transiente Mess-/Pre-Warm-Szenarien (GridRenderer.measure_max_width
+        variiert show_weekend, um die maximale Fensterbreite zu proben), die
+        einen Setting kurzzeitig verstellen müssen, ohne settings.json zu
+        schreiben. Nicht für persistente Änderungen — dafür set()/set_many().
+        Kapselt den früher direkten Zugriff auf `_data` von außen (Audit M12)."""
+        with self._lock:
+            had_key = key in self._data
+            previous = self._data.get(key)
+            self._data[key] = value
+        try:
+            yield
+        finally:
+            with self._lock:
+                if had_key:
+                    self._data[key] = previous
+                else:
+                    self._data.pop(key, None)
 
     def set_synced(self, key, value):
         """Setzt einen whitelisted Sync-Key und stempelt Per-Field-Metadaten.

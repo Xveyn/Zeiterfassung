@@ -53,7 +53,8 @@ def _validate_time(date_str, label, value):
     try:
         datetime.time.fromisoformat(value)
     except ValueError:
-        raise ShareValidationError(f"Eintrag {date_str}: ungültige {label} {value!r}")
+        raise ShareValidationError(
+            f"Eintrag {date_str}: ungültige {label} {value!r}") from None
 
 
 def _validate_date_key(date_str):
@@ -62,7 +63,7 @@ def _validate_date_key(date_str):
     try:
         datetime.date.fromisoformat(date_str)
     except ValueError:
-        raise ShareValidationError(f"Ungültiges Datum: {date_str!r}")
+        raise ShareValidationError(f"Ungültiges Datum: {date_str!r}") from None
 
 
 def _check_keys(date_str, entry, expected_keys, label="Eintrag"):
@@ -159,7 +160,7 @@ def parse_share_doc(raw_bytes):
     try:
         doc = json.loads(raw_bytes)
     except (ValueError, TypeError) as e:
-        raise ShareValidationError(f"Datei ist kein gültiges JSON: {e}")
+        raise ShareValidationError(f"Datei ist kein gültiges JSON: {e}") from e
 
     if not isinstance(doc, dict):
         raise ShareValidationError("Datei-Inhalt ist kein JSON-Objekt.")

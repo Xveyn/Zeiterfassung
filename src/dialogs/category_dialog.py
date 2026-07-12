@@ -205,7 +205,7 @@ def open_category_dialog(parent, settings, on_change=None):
             row=0, column=1, padx=6)
         tk.Label(daygrid, text="Ende", font=FONT, bg=BG, fg=TEXT_MUTED).grid(
             row=0, column=2, padx=6)
-        for i, (key, lbl) in enumerate(zip(WEEKDAY_KEYS, DAYS_DE), start=1):
+        for i, (key, lbl) in enumerate(zip(WEEKDAY_KEYS, DAYS_DE, strict=False), start=1):
             tk.Label(daygrid, text=lbl, font=FONT, bg=BG, fg=TEXT,
                      width=4, anchor="w").grid(row=i, column=0, padx=(2, 8),
                                                pady=1, sticky="w")
@@ -267,7 +267,7 @@ def open_category_dialog(parent, settings, on_change=None):
         # 7-Tage-Grid — Sichtbarkeit via _apply_mode
         day_vars = {}
         day_frame = tk.Frame(container, bg=BG)
-        for i, (key, lbl) in enumerate(zip(WEEKDAY_KEYS, DAYS_DE)):
+        for i, (key, lbl) in enumerate(zip(WEEKDAY_KEYS, DAYS_DE, strict=False)):
             d = (defaults["days"] or {}).get(key) or {}
             sv = tk.StringVar(value=d.get("start") or STANDARD)
             ev = tk.StringVar(value=d.get("end") or STANDARD)

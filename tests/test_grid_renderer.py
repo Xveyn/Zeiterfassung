@@ -71,6 +71,27 @@ def test_tooltip_text_holiday_only_with_entry_or_reservation():
     assert GridRenderer._build_tooltip_text(None, None, "Neujahr") == ""
 
 
+def test_tooltip_text_folds_conflict_into_combined():
+    # M11: der Konflikt-Hinweis gehört in DENSELBEN Tooltip wie die
+    # Arbeitszeit-Details — nicht als zweiter attach_tooltip an dieselbe Zelle.
+    entry = {"slots": [{"start": "09:30", "end": "16:00", "kategorie": "Office"}]}
+    assert GridRenderer._build_tooltip_text(entry, None, None, has_conflict=True) == (
+        "Arbeitszeit:\n09:30-16:00  Office\nKonflikt — bitte auflösen")
+
+
+def test_tooltip_text_conflict_only_when_no_other_units():
+    # Konfliktzelle ohne Ist-Zeit/Reservierung: der Tooltip zeigt allein den
+    # Konflikt-Hinweis (früher der separate attach_tooltip-Pfad).
+    assert GridRenderer._build_tooltip_text(None, None, None, has_conflict=True) == (
+        "Konflikt — bitte auflösen")
+
+
+def test_tooltip_text_no_conflict_is_unchanged():
+    entry = {"slots": [{"start": "09:30", "end": "16:00"}]}
+    assert GridRenderer._build_tooltip_text(entry, None, None, has_conflict=False) == (
+        "Arbeitszeit:\n09:30-16:00")
+
+
 def test_truncate_clips_long_text():
     assert GridRenderer._truncate("Donnerstag", 5) == "Donn…"
 

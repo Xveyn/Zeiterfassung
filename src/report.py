@@ -3,7 +3,7 @@ import html
 import io
 from collections import OrderedDict
 
-from src.time_utils import DAYS_DE, calculate_hours, get_week_label
+from src.time_utils import DAYS_DE, calculate_hours, format_date, get_week_label
 
 
 def _esc(text):
@@ -170,7 +170,7 @@ def _week_block(iso_year, iso_week, week_entries, style):
     for idx, (date_str, entry) in enumerate(week_entries):
         dt = datetime.date.fromisoformat(date_str)
         weekday = DAYS_DE[dt.weekday()]
-        day_fmt = dt.strftime("%d.%m.%Y")
+        day_fmt = format_date(dt)
         row_bg = s["row_a"] if idx % 2 == 0 else s["row_b"]
         td = s["td_base"]
         slots = entry["slots"]
@@ -223,7 +223,7 @@ def _build_table(groups, style):
 
     th_cells = "".join(
         f'<th style="{s["th_cell"]}{f"width:{w};" if w else ""}">{label}</th>'
-        for label, w in zip(COLUMN_LABELS, s["col_widths"])
+        for label, w in zip(COLUMN_LABELS, s["col_widths"], strict=False)
     )
 
     table = (
@@ -296,7 +296,7 @@ def generate_report(date_from, date_to, all_entries, greeting="", content="",
     if not range_entries:
         return None, 0
 
-    label = f"{date_from.strftime('%d.%m.%Y')} – {date_to.strftime('%d.%m.%Y')}"
+    label = f"{format_date(date_from)} – {format_date(date_to)}"
     groups = _group_by_week(range_entries)
     table, total = _build_table(groups, HTML_STYLE)
     category_summary = (
@@ -342,7 +342,7 @@ def generate_pdf(date_from, date_to, all_entries, name="", categories=None,
     if not range_entries:
         return None
 
-    label = f"{date_from.strftime('%d.%m.%Y')} – {date_to.strftime('%d.%m.%Y')}"
+    label = f"{format_date(date_from)} – {format_date(date_to)}"
     groups = _group_by_week(range_entries)
     table, _ = _build_table(groups, PDF_STYLE)
     category_summary = (

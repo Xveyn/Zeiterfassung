@@ -1,14 +1,13 @@
 import pytest
 from unittest import mock
 
-from src.drive import DriveAuthError, DriveConflictError, DriveNetworkError
+from src.drive import DriveAuthError, DriveNetworkError
 from src.drive import SYNC_SCOPES, get_drive_service
 
 
 def test_exceptions_are_distinct():
     assert not issubclass(DriveAuthError, DriveNetworkError)
     assert not issubclass(DriveNetworkError, DriveAuthError)
-    assert not issubclass(DriveConflictError, DriveAuthError)
 
 
 def test_sync_scopes_includes_gmail_send_and_drive_appdata():
@@ -117,7 +116,7 @@ def test_download_returns_content_and_version():
 def test_upload_new_file_when_file_id_none():
     service = mock.MagicMock()
     service.files().create().execute.return_value = {"id": "new-id", "version": 1}
-    file_id, version = upload(service, b'{"x":1}', file_id=None, expected_etag="")
+    file_id, version = upload(service, b'{"x":1}', file_id=None)
     assert file_id == "new-id"
     assert version == "1"
 
@@ -125,20 +124,9 @@ def test_upload_new_file_when_file_id_none():
 def test_upload_existing_file_uses_update():
     service = mock.MagicMock()
     service.files().update().execute.return_value = {"id": "file-123", "version": 2}
-    file_id, version = upload(service, b'{"x":2}', file_id="file-123", expected_etag="")
+    file_id, version = upload(service, b'{"x":2}', file_id="file-123")
     assert file_id == "file-123"
     assert version == "2"
-
-
-def test_upload_412_response_raises_drive_conflict_error():
-    """Drive API v3 schickt normalerweise kein 412, aber die 412→DriveConflictError-
-    Mappung bleibt als defensiver Pfad bestehen."""
-    from googleapiclient.errors import HttpError
-    service = mock.MagicMock()
-    resp = mock.MagicMock(status=412, reason="Precondition Failed")
-    service.files().update().execute.side_effect = HttpError(resp, b"")
-    with pytest.raises(DriveConflictError):
-        upload(service, b'{"x":1}', file_id="file-1", expected_etag="")
 
 
 def test_find_sync_file_403_raises_drive_auth_error():
@@ -179,7 +167,7 @@ def test_upload_403_raises_drive_auth_error():
     resp = mock.MagicMock(status=403, reason="Forbidden")
     service.files().update().execute.side_effect = HttpError(resp, b"")
     with pytest.raises(DriveAuthError):
-        upload(service, b'{"x":1}', file_id="file-1", expected_etag="")
+        upload(service, b'{"x":1}', file_id="file-1")
 
 
 from src.drive import reconnect
