@@ -161,6 +161,7 @@ python -m src.main
 | `pystray` | Infobereich-Icon (Minimize-to-Tray) |
 | `Pillow` | Icon-/Bildverarbeitung (Tray-Icon) |
 | `pyobjc-framework-Cocoa` | Natives macOS-Tray (nur macOS) |
+| `Windows-Toasts` | Interaktive Toast-Buttons für Reservierungs-Erinnerungen (nur Windows) |
 
 ## Gmail API einrichten
 
