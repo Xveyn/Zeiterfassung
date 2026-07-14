@@ -84,27 +84,31 @@ Neue Fassaden-Methode `notify_action(message, title, action_label, on_action)`:
 - `on_action` ist 0-arg und **marshallt selbst** auf den Tk-Thread
   (`root.after(0, …)`), wie die bestehenden Tray-Actions und `on_show`/`on_quit`.
 
-### AUMID (Windows-Aktivierung)
+### AUMID (Windows-Aktivierung) — **bestehende Registrierung wiederverwenden**
 Damit `on_activated` zuverlässig feuert (v.a. nachdem der Toast ins Action Center
-wandert), braucht der Prozess einen **eigenen AUMID**:
-- **Laufzeit:** früh in `main.py` (Windows-Zweig) den Prozess-AUMID via
-  `ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("…")` setzen; den
-  gleichen String an den `InteractableWindowsToaster` übergeben.
-- **Installer:** denselben AUMID am Start-Menü-Shortcut in `installer.iss` setzen
-  (`AppUserModelID`).
-- **Abgrenzbar:** Der AUMID-/Installer-Teil ist ein diskretes, nur-Windows-
-  verifizierbares Stück. Er kann zeitlich vom App-Logik-Kern getrennt umgesetzt
-  werden, gehört aber in denselben PR, weil der Callback ohne ihn unzuverlässig ist.
+wandert), braucht der Prozess eine registrierte AUMID. **Die App macht das bereits:**
+`ui.py` (App.__init__) setzt die Prozess-AUMID `"margenheld.zeiterfassung"` via
+`SetCurrentProcessExplicitAppUserModelID` **und** legt den HKCU-Registry-Key
+`Software\Classes\AppUserModelId\margenheld.zeiterfassung` mit `DisplayName` an —
+exakt das, was `windows-toasts` (`register_hkey_aumid`) für die Action-Center-
+Aktivierung verlangt.
+- **Single Source:** Die Konstante `tray.AUMID = "margenheld.zeiterfassung"` wird
+  von `ui.py` (statt des bisherigen lokalen Literals) **und** vom
+  `InteractableWindowsToaster(applicationText, tray.AUMID)` genutzt.
+- **Keine** neue `main.py`-`SetCurrentProcess`-Zeile (würde die von `ui.py`
+  gesetzte AUMID nur doppeln/überschreiben) und **keine** `installer.iss`-Änderung
+  (die Laufzeit-Registrierung deckt die Aktivierung ab; ein Shortcut-`AppUserModelID`
+  wäre redundant und riskierte laut `ui.py`-Kommentar Taskbar-Pin-Bruch bei Änderung).
 
 ### Slot-Bauen — pur & Tk-frei
 Neue Funktion (in `reminders.py`, neben der Fälligkeitslogik):
 ```
 ist_slot_from_reservation(res_slot, category_times, weekday_key,
-                          g_start, g_end, g_pause) -> dict
+                          default_pause) -> dict
 ```
 - `start`/`end`/`kategorie` aus `res_slot`; `pause` = dritter Rückgabewert von
-  `resolve_slot_defaults(category_times, kategorie, weekday_key, g_start, g_end,
-  g_pause)` (nur die Pause wird übernommen, Start/Ende bleiben die der
+  `resolve_slot_defaults(category_times, kategorie, weekday_key, None, None,
+  default_pause)` (nur die Pause wird übernommen, Start/Ende bleiben die der
   Reservierung). Rückgabe `{start, end, pause, kategorie}`. Rein → Unit-Test.
 
 ### Scheduler-Verdrahtung (`src/reminder_scheduler.py`)

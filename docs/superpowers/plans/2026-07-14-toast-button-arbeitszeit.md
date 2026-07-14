@@ -25,9 +25,8 @@
 - `src/reminder_scheduler.py` — **Modify:** `notify_action` statt `notify`; `_make_log_action`/`_log_reservation`; Konstruktor um `data_lock`/`on_logged`.
 - `src/tray.py` — **Modify:** `AUMID`-Konstante; `notify_action` auf Fassade + `_PystrayBackend` (+ `_show_interactive_toast`, `_live_toasts`).
 - `src/tray_mac.py` — **Modify:** `notify_action` (delegiert an `notify`).
-- `src/ui.py` — **Modify:** `ReminderScheduler` mit `data_lock`/`on_logged` konstruieren.
-- `src/main.py` — **Modify:** Windows-AUMID via `SetCurrentProcessExplicitAppUserModelID`.
-- `requirements.txt`, `README.md`, `build.py`, `installer.iss` — **Modify:** Dependency + Build + Installer-AUMID.
+- `src/ui.py` — **Modify:** `ReminderScheduler` mit `data_lock`/`on_logged`/`marshal` konstruieren; AUMID-Literal auf `tray.AUMID` deduplizieren.
+- `requirements.txt`, `README.md`, `build.py` — **Modify:** Dependency + WinRT-Bündelung. (Keine `main.py`/`installer.iss`-Änderung — die AUMID-Registrierung in `ui.py` besteht bereits.)
 - Tests: `tests/test_reminders.py`, `tests/test_reminder_scheduler.py`, `tests/test_tray.py` — **Modify.**
 
 ---
@@ -190,13 +189,16 @@ Expected: FAIL (`AttributeError: '_PystrayBackend' object has no attribute 'noti
 
 - [ ] **Step 3: Implement in `src/tray.py`**
 
-Nahe dem Datei-Anfang (nach den Imports) die Konstante ergänzen:
+Nahe dem Datei-Anfang (nach den Imports) die Konstante ergänzen. **Wichtig:** exakt
+der String, den `ui.py` bereits als Prozess-AUMID setzt und als HKCU-Key
+registriert (kleingeschrieben, namespaced) — NICHT neu erfinden:
 
 ```python
-# App-User-Model-ID: nötig, damit interaktive Toast-Buttons (windows-toasts)
-# ihren on_activated-Callback zuverlässig auslösen. Gleicher String am Start-
-# Menü-Shortcut (installer.iss) und zur Laufzeit (main.py).
-AUMID = "Margenheld.Zeiterfassung"
+# App-User-Model-ID (Single Source). ui.py setzt sie bereits als Prozess-AUMID
+# und registriert den HKCU-Key Software\Classes\AppUserModelId\<AUMID> mit
+# DisplayName — genau das, was windows-toasts für die Action-Center-Aktivierung
+# des Toast-Buttons braucht. Der InteractableWindowsToaster nutzt dieselbe ID.
+AUMID = "margenheld.zeiterfassung"
 ```
 
 In `_PystrayBackend.__init__` die Toast-Referenzliste ergänzen (nach `self._thread = None`):
@@ -236,7 +238,12 @@ In `_PystrayBackend` (z.B. direkt nach `notify`) einfügen:
             toast = Toast()
             toast.text_fields = [message]
             toast.AddAction(ToastButton(action_label, "log"))
-            toast.on_activated = lambda _args: on_action()
+            # on_activated feuert AUCH bei Klick auf den Toast-Körper — nur der
+            # Button (arguments == "log") soll eintragen.
+            def _on_activated(args):
+                if getattr(args, "arguments", None) == "log":
+                    on_action()
+            toast.on_activated = _on_activated
             toaster.show_toast(toast)
             # Starke Refs halten, sonst GC → Callback tot. Auf die letzten paar
             # begrenzen, damit die Liste nicht unbegrenzt wächst.
@@ -295,9 +302,10 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 **Interfaces:**
 - Consumes: `ist_slot_from_reservation(...)` (Task 1), `TrayIcon.notify_action(...)` (Task 2), `src.settings.WEEKDAY_KEYS: tuple`.
 - Produces:
-  - `ReminderScheduler(root, settings, storage, reservation_store, get_tray, now_provider=…, data_lock=None, on_logged=None)`.
+  - `ReminderScheduler(root, settings, storage, reservation_store, get_tray, now_provider=…, data_lock=None, on_logged=None, marshal=None)`.
   - `ReminderScheduler._log_reservation(today: str, res_slot: dict)` — trägt den Ist-Slot ein und ruft `on_logged`.
   - `poll` ruft pro fälligem Reminder `tray.notify_action(text, "Zeiterfassung", "Arbeitszeit eintragen", on_action)`.
+  - `marshal` = `App._marshal_to_ui` (Tk-frei injiziert): schiebt den Button-Callback vom WinRT-Hintergrundthread zweifach-TclError-sicher auf den Tk-Thread. Default (Tests) `None` → `lambda fn: fn()` (inline).
 
 - [ ] **Step 1: Write/adjust the failing tests**
 
@@ -385,6 +393,24 @@ def test_log_reservation_appends_next_to_existing_ist_slot():
     sched._log_reservation(
         "2026-07-02", {"start": "13:00", "end": "17:00", "kategorie": "B"})
     assert len(sched._storage.get("2026-07-02")["slots"]) == 2
+
+
+def test_toast_button_callback_logs_end_to_end():
+    """poll -> notify_action -> Button-Callback (marshal default = inline) trägt
+    ein und ruft on_logged."""
+    tray = _FakeTray()
+    sched = _make(
+        {"2026-07-02": {"slots": [{"start": "09:00", "end": "17:00", "kategorie": "A"}]}},
+        {}, tray,
+    )
+    logged = []
+    sched._on_logged = lambda: logged.append(True)
+    sched.poll(_now(16, 50))
+    on_action = tray.calls[0][3]
+    on_action()  # marshal-Default führt inline aus
+    slots = sched._storage.get("2026-07-02")["slots"]
+    assert slots[-1] == {"start": "09:00", "end": "17:00", "pause": 30, "kategorie": "A"}
+    assert logged == [True]
 ```
 
 - [ ] **Step 2: Run tests to verify they fail**
@@ -403,11 +429,12 @@ from src import reminders
 from src.settings import WEEKDAY_KEYS
 ```
 
-Konstruktor um zwei Parameter erweitern und Felder setzen:
+Konstruktor um drei Parameter erweitern und Felder setzen:
 
 ```python
     def __init__(self, root, settings, storage, reservation_store, get_tray,
-                 now_provider=datetime.datetime.now, data_lock=None, on_logged=None):
+                 now_provider=datetime.datetime.now, data_lock=None,
+                 on_logged=None, marshal=None):
         self._root = root
         self._settings = settings
         self._storage = storage
@@ -419,6 +446,9 @@ Konstruktor um zwei Parameter erweitern und Felder setzen:
         self._fired_date = None
         self._data_lock = data_lock if data_lock is not None else contextlib.nullcontext()
         self._on_logged = on_logged
+        # marshal schiebt den WinRT-Callback TclError-sicher auf den Tk-Thread
+        # (= App._marshal_to_ui). Default (Tests): inline ausführen.
+        self._marshal = marshal if marshal is not None else (lambda fn: fn())
 ```
 
 Die `notify`-Schleife in `poll` ersetzen:
@@ -437,10 +467,12 @@ Zwei Methoden ergänzen (nach `poll`):
 
 ```python
     def _make_log_action(self, today, res_slot):
-        """0-arg-Callback für den Toast-Button. Läuft auf dem WinRT-Thread und
-        marshallt auf den Tk-Thread (root.after), wie die Tray-Actions."""
-        return lambda: self._root.after(
-            0, lambda: self._log_reservation(today, res_slot))
+        """0-arg-Callback für den Toast-Button. Läuft auf dem WinRT-Hintergrund-
+        thread und marshallt via self._marshal (= App._marshal_to_ui) TclError-
+        sicher auf den Tk-Thread — NICHT roh via root.after (das umginge den
+        doppelten TclError-Schutz, wenn das Fenster beim Klick schon zu ist)."""
+        return lambda: self._marshal(
+            lambda: self._log_reservation(today, res_slot))
 
     def _log_reservation(self, today, res_slot):
         """Trägt den Reservierungs-Slot als Ist-Zeit ein (an heutige Slots
@@ -478,13 +510,13 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 
 ---
 
-### Task 4: App-Verdrahtung (`data_lock` + `on_logged` injizieren)
+### Task 4: App-Verdrahtung (`data_lock` + `on_logged` + `marshal`; AUMID dedup)
 
 **Files:**
-- Modify: `src/ui.py` (ReminderScheduler-Konstruktion, ~Zeile 137–140)
+- Modify: `src/ui.py` (ReminderScheduler-Konstruktion, ~Zeile 137–140; AUMID-Literal ~Zeile 79)
 
 **Interfaces:**
-- Consumes: `ReminderScheduler(..., data_lock=…, on_logged=…)` (Task 3). `data_lock` ist der in `App.__init__` bereits vorhandene Parameter (wird an `_bg`/`_sync` gereicht). `on_logged=self._refresh`.
+- Consumes: `ReminderScheduler(..., data_lock=…, on_logged=…, marshal=…)` (Task 3). `data_lock` ist der in `App.__init__` bereits vorhandene Parameter (wird an `_bg`/`_sync` gereicht). `on_logged=self._refresh`, `marshal=self._marshal_to_ui`. `src.tray.AUMID` (Task 2).
 
 - [ ] **Step 1: Change the construction**
 
@@ -495,37 +527,52 @@ In `src/ui.py` die `ReminderScheduler`-Instanziierung ersetzen:
             self.root, self.settings, self.storage,
             self.reservation_store, lambda: self._tray,
             data_lock=data_lock, on_logged=self._refresh,
+            marshal=self._marshal_to_ui,
         )
 ```
 
-- [ ] **Step 2: Verify the suite still imports & passes**
+- [ ] **Step 2: AUMID-Literal auf die geteilte Konstante deduplizieren**
+
+In `src/ui.py` das lokale Literal (aktuell `app_aumid = "margenheld.zeiterfassung"`,
+~Zeile 79) durch einen Import der Single-Source-Konstante ersetzen, damit
+`ui.py` und der Toaster garantiert denselben String nutzen:
+
+```python
+        from src.tray import AUMID as app_aumid
+```
+
+(Der restliche AUMID-Block in `ui.py` — `SetCurrentProcessExplicitAppUserModelID(app_aumid)`
+und die HKCU-Registrierung — bleibt **unverändert**; er nutzt jetzt nur die
+importierte Konstante statt eines lokalen Literals.)
+
+- [ ] **Step 3: Verify the suite still imports & passes**
 
 Run: `pytest tests/ -q`
 Expected: PASS — insbesondere alle Tests, die `src.ui` importieren, laufen weiter (keine Signatur-/Importfehler).
 
-- [ ] **Step 3: Run lint + typecheck**
+- [ ] **Step 4: Run lint + typecheck**
 
 Run: `ruff check . ; pyright`
 Expected: keine neuen Fehler.
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
 git add src/ui.py
-git commit -m "feat(ui): ReminderScheduler mit data_lock + on_logged verdrahten
+git commit -m "feat(ui): ReminderScheduler mit data_lock + on_logged + marshal; AUMID dedup
 
 Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 ```
 
 ---
 
-### Task 5: Dependency, AUMID, Build & Installer (Windows-Integration)
+### Task 5: Dependency & Build (Windows-Integration)
 
 **Files:**
-- Modify: `requirements.txt`, `README.md`, `src/main.py`, `build.py`, `installer.iss`
+- Modify: `requirements.txt`, `README.md`, `build.py`
 
 **Interfaces:**
-- Consumes: `src.tray.AUMID` (Task 2).
+- Consumes: die bestehende AUMID-Registrierung in `ui.py` (Prozess-AUMID + HKCU-Key, unverändert) — **keine** neue `main.py`- oder `installer.iss`-Änderung nötig (s. Spec-Abschnitt „AUMID": die Laufzeit-Registrierung in `ui.py` deckt die Action-Center-Aktivierung ab; `windows-toasts` `register_hkey_aumid` macht dasselbe).
 - Hinweis: Dieser Task ist **nicht** CI-unit-testbar (WinRT + Frozen-Build) → Abnahme per lokalem/CI-Build + manueller Toast-Verifikation.
 
 - [ ] **Step 1: Dependency pinnen**
@@ -536,68 +583,46 @@ In `requirements.txt` nach der `pyobjc`-Zeile ergänzen:
 Windows-Toasts==1.3.1; sys_platform == "win32"
 ```
 
-Vor dem Commit verifizieren: PyPI `requires_python` von `Windows-Toasts==1.3.1` schließt **3.10** ein (tut es — 3.9–3.12). Falls eine neuere gepinnte Version gewählt wird, erneut gegen 3.10 prüfen.
+Vor dem Commit verifizieren: PyPI `requires_python` von `Windows-Toasts==1.3.1` schließt **3.10** ein (tut es — `>=3.9`, Classifier 3.9–3.12; zieht `winrt-runtime~=3.0` + `winrt-Windows.*`-Projektionen). Falls eine neuere gepinnte Version gewählt wird, erneut gegen 3.10 prüfen.
 
 - [ ] **Step 2: README-Abhängigkeitstabelle ergänzen**
 
 In `README.md` in der Abhängigkeiten-Tabelle (dort, wo `pyobjc-framework-Cocoa` als macOS-only geführt wird) eine Zeile für `Windows-Toasts` (Windows-only, „interaktive Toast-Buttons für Reservierungs-Erinnerungen") ergänzen. Analog formatieren wie die bestehenden Zeilen.
 
-- [ ] **Step 3: Laufzeit-AUMID in `src/main.py`**
+- [ ] **Step 3: Build — WinRT-Pakete bündeln (`build.py`)**
 
-Direkt **vor** `root = tk.Tk()` (aktuell Zeile 459) einfügen:
-
-```python
-    # Windows: expliziter AppUserModelID, damit interaktive Toast-Buttons
-    # (windows-toasts) ihren on_activated-Callback zuverlässig auslösen — auch
-    # nachdem der Toast ins Action Center gewandert ist. Best-effort.
-    if sys.platform == "win32":
-        try:
-            import ctypes
-            from src.tray import AUMID
-            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(AUMID)
-        except Exception:
-            logging.getLogger(__name__).debug(
-                "AUMID konnte nicht gesetzt werden", exc_info=True)
-```
-
-- [ ] **Step 4: Build — WinRT-Pakete bündeln (`build.py`)**
-
-Im **Windows**-Zweig `build_windows()` die `extra_args`-Liste um das WinRT-Collect ergänzen (NICHT in `_pyinstaller_common`, sonst versuchen macOS/Linux es auch):
+Im **Windows**-Zweig `build_windows()` die `extra_args`-Liste um die WinRT-Collects ergänzen (NICHT in `_pyinstaller_common`, sonst versuchen macOS/Linux es auch). `windows-toasts==1.3.1` zieht die modularen PyWinRT-Projektionspakete — jedes einzeln sammeln (`--collect-all winrt` allein greift über die Namespace-Paket-Grenzen **nicht** zuverlässig):
 
 ```python
     cmd = _pyinstaller_common([
         "--onefile",
         "--noconsole",
         "--icon", "assets/margenheld-icon.ico",
-        "--collect-all", "winrt",
+        "--collect-all", "windows_toasts",
+        "--collect-all", "winrt_runtime",
+        "--collect-all", "winrt.windows.data.xml.dom",
+        "--collect-all", "winrt.windows.foundation",
+        "--collect-all", "winrt.windows.foundation.collections",
+        "--collect-all", "winrt.windows.ui.notifications",
     ])
 ```
 
-**Verifizieren (empirisch):** `windows-toasts==1.3.1` zieht die `winrt-*`-Projektionspakete. Ob `--collect-all winrt` ausreicht oder einzelne `winrt-Windows-UI-Notifications`/`winrt-Windows-Foundation`-Pakete explizit gesammelt werden müssen, im Frozen-Build prüfen (Step 6). Bei fehlenden Modulen die konkreten Paketnamen als weitere `--collect-all`/`--hidden-import` ergänzen.
+**Verifizieren (empirisch, Step 4):** Zeigt der Frozen-Build einen `ModuleNotFoundError` für ein weiteres `winrt.*`-Submodul, dieses als zusätzliches `--collect-all` ergänzen (iterativ mit `--debug imports` nachziehen). Die `.pyd`-Binaries kommen nur über `--collect-all` mit (nicht über `--hidden-import`).
 
-- [ ] **Step 5: Installer-AUMID (`installer.iss`)**
+- [ ] **Step 4: Manuelle Verifikation (Windows)**
 
-In der `[Icons]`-Sektion an die Start-Menü- **und** Desktop-Verknüpfung `AppUserModelID` anhängen (gleicher String wie `src.tray.AUMID`):
-
-```
-Name: "{group}\Zeiterfassung"; Filename: "{app}\Zeiterfassung.exe"; IconFilename: "{app}\assets\margenheld-icon.ico"; AppUserModelID: "Margenheld.Zeiterfassung"
-Name: "{autodesktop}\Zeiterfassung"; Filename: "{app}\Zeiterfassung.exe"; IconFilename: "{app}\assets\margenheld-icon.ico"; Tasks: desktopicon; AppUserModelID: "Margenheld.Zeiterfassung"
-```
-
-- [ ] **Step 6: Manuelle Verifikation (Windows)**
-
-1. `pip install -r requirements.txt` (zieht `windows-toasts`).
+1. `pip install -r requirements.txt` (zieht `windows-toasts` + winrt).
 2. `python -m src.main` starten; in den Einstellungen `reminders_enabled` aktivieren.
 3. Für **heute** eine Reservierung mit Kategorie (ohne erfasste Ist-Zeit) anlegen, sodass ein `upcoming`- oder `missed`-Toast fällig wird.
-4. Toast erscheint mit Button **„Arbeitszeit eintragen"** → klicken.
-5. Prüfen: Der Tag hat jetzt eine Ist-Zeit mit den Reservierungs-Zeiten und der erwarteten Pause; der Kalender ist aktualisiert; kein erneuter Toast für dieselbe Kategorie.
+4. Toast erscheint mit Button **„Arbeitszeit eintragen"** → klicken (am **Live-Banner**; laut Recherche feuert der Callback dort in-process zuverlässig).
+5. Prüfen: Der Tag hat jetzt eine Ist-Zeit mit den Reservierungs-Zeiten und der erwarteten Pause; der Kalender ist aktualisiert; kein erneuter Toast für dieselbe Kategorie. Klick auf den Toast-**Körper** (nicht den Button) trägt **nichts** ein (arguments-Gate).
 6. Frozen-Build gegen die Bündelung testen: `python build.py` (oder Workflow **Build** → Windows-Artefakt), die entpackte `Zeiterfassung.exe` starten und Schritt 3–5 wiederholen — stellt sicher, dass die WinRT-Pakete korrekt gebündelt sind (kein `ModuleNotFoundError` beim Toast).
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
-git add requirements.txt README.md src/main.py build.py installer.iss
-git commit -m "build(win): windows-toasts + AUMID (Laufzeit + Installer) für Toast-Button
+git add requirements.txt README.md build.py
+git commit -m "build(win): windows-toasts + winrt bündeln für Toast-Button
 
 Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 ```
@@ -626,6 +651,8 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 
 ## Self-Review (durchgeführt)
 
-- **Spec-Coverage:** Dependency+CI (Task 5 + Global Constraints), Notify-Layer (Task 2), Slot-Bauen pur (Task 1), Scheduler-Verdrahtung (Task 3), App-Verdrahtung (Task 4), AUMID/Build/Installer (Task 5), Tests (Tasks 1–3), Doku (Task 6), Plattform-Hinweis/Pre-Release (Step-6-Verifikation + Global Constraints). Beide-Typen-Button & Pause-aus-Kategorie: Task 1 + Task 3. Kein-Dedup: bewusst nicht implementiert (Spec-Nicht-Ziel).
-- **Placeholder-Scan:** Die einzigen „verifizieren"-Stellen (Pin-Version, `--collect-all`-Ziel) sind explizite empirische Prüf-Schritte mit Default-Wert + Fallback-Anweisung, keine offenen TODOs.
-- **Typkonsistenz:** `notify_action(message, title, action_label, on_action)` identisch in Fassade/Backend/Fake-Tray/Aufrufer; `ist_slot_from_reservation(res_slot, category_times, weekday_key, default_pause)` identisch in Task 1 (Def) und Task 3 (Aufruf); `AUMID` in Task 2 (Def), Task 5 (Nutzung).
+- **Spec-Coverage:** Dependency+CI (Task 5 + Global Constraints), Notify-Layer (Task 2), Slot-Bauen pur (Task 1), Scheduler-Verdrahtung (Task 3), App-Verdrahtung + AUMID-Dedup (Task 4), Build/WinRT (Task 5), Tests (Tasks 1–3), Doku (Task 6), Plattform-Hinweis/Pre-Release (Task-5-Verifikation + Global Constraints). Beide-Typen-Button & Pause-aus-Kategorie: Task 1 + Task 3. Kein-Dedup: bewusst nicht implementiert (Spec-Nicht-Ziel).
+- **AUMID (Review-Fix F1):** Keine neue/zweite AUMID — `tray.AUMID = "margenheld.zeiterfassung"` ist Single Source, `ui.py` setzt Prozess-AUMID + HKCU-Key bereits (Task 4 dedupliziert nur das Literal). Keine `main.py`/`installer.iss`-Änderung.
+- **Marshalling (Review-Fix F2):** Button-Callback läuft auf WinRT-Thread → via injiziertes `marshal` (= `App._marshal_to_ui`, doppelter TclError-Schutz), nicht roh `root.after`.
+- **Placeholder-Scan:** Die einzigen „verifizieren"-Stellen (Pin-Version, WinRT-`--collect-all`-Vollständigkeit) sind explizite empirische Prüf-Schritte mit Default-Wert + Fallback-Anweisung, keine offenen TODOs.
+- **Typkonsistenz:** `notify_action(message, title, action_label, on_action)` identisch in Fassade/Backend/Fake-Tray/Aufrufer; `ist_slot_from_reservation(res_slot, category_times, weekday_key, default_pause)` identisch in Task 1 (Def) und Task 3 (Aufruf); `AUMID` in Task 2 (Def), Task 4 (Nutzung).
