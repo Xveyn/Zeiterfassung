@@ -81,6 +81,9 @@ def test_facade_instantiates_and_delegates(monkeypatch):
         def notify(self, message, title="Zeiterfassung"):
             seen["notify"] = (message, title)
 
+        def notify_action(self, message, title="Zeiterfassung", action_label="", on_action=None):
+            seen["notify_action"] = (message, title, action_label)
+
     monkeypatch.setattr("src.tray._select_backend", lambda system: FakeBackend)
 
     show, quit_ = (lambda: None), (lambda: None)
@@ -91,5 +94,29 @@ def test_facade_instantiates_and_delegates(monkeypatch):
     assert seen["start"] is True
     icon.notify("hallo")
     assert seen["notify"] == ("hallo", "Zeiterfassung")
+    icon.notify_action("m", "T", "Eintragen", lambda: None)
+    assert seen["notify_action"] == ("m", "T", "Eintragen")
     icon.stop()
     assert seen["stop"] is True
+
+
+def test_notify_action_falls_back_to_notify(monkeypatch):
+    from src.tray import _PystrayBackend
+    b = _PystrayBackend("base", on_show=lambda: None, on_quit=lambda: None)
+    calls = {}
+    monkeypatch.setattr(b, "_show_interactive_toast", lambda *a: False)
+    monkeypatch.setattr(
+        b, "notify", lambda m, t="Zeiterfassung": calls.__setitem__("notify", (m, t)))
+    b.notify_action("msg", "Titel", "Eintragen", lambda: None)
+    assert calls["notify"] == ("msg", "Titel")
+
+
+def test_notify_action_interactive_path_wins(monkeypatch):
+    from src.tray import _PystrayBackend
+    b = _PystrayBackend("base", on_show=lambda: None, on_quit=lambda: None)
+    calls = {"notify": 0}
+    monkeypatch.setattr(b, "_show_interactive_toast", lambda *a: True)
+    monkeypatch.setattr(
+        b, "notify", lambda m, t="Zeiterfassung": calls.__setitem__("notify", calls["notify"] + 1))
+    b.notify_action("msg", "Titel", "Eintragen", lambda: None)
+    assert calls["notify"] == 0  # interaktiver Pfad übernahm, kein Fallback
