@@ -223,7 +223,6 @@ class _PystrayBackend:
         on_activated-Callback läuft auf einem WinRT-Thread — on_action marshallt
         selbst auf den Tk-Thread (Aufrufer-Vertrag, s. ReminderScheduler). Jeder
         Fehler/fehlende Lib → False, Aufrufer fällt auf notify() zurück."""
-        import platform
         if platform.system() != "Windows":
             return False
         try:

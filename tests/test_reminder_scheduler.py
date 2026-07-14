@@ -132,7 +132,24 @@ def test_log_reservation_appends_next_to_existing_ist_slot():
     )
     sched._log_reservation(
         "2026-07-02", {"start": "13:00", "end": "17:00", "kategorie": "B"})
-    assert len(sched._storage.get("2026-07-02")["slots"]) == 2
+    slots = sched._storage.get("2026-07-02")["slots"]
+    assert slots[0] == {"start": "09:00", "end": "12:00", "pause": 0, "kategorie": "A"}
+    assert slots[1] == {"start": "13:00", "end": "17:00", "pause": 30, "kategorie": "B"}
+
+
+def test_log_reservation_swallows_and_logs_save_failure():
+    tray = _FakeTray()
+    sched = _make(
+        {"2026-07-02": {"slots": [{"start": "09:00", "end": "17:00", "kategorie": "A"}]}},
+        {}, tray,
+    )
+    def _boom(date_str, slots):
+        raise OSError("disk full")
+    sched._storage.save = _boom
+    logged = []
+    sched._on_logged = lambda: logged.append(True)
+    sched._log_reservation("2026-07-02", {"start": "09:00", "end": "17:00", "kategorie": "A"})
+    assert logged == []  # refresh skipped on failure, no exception propagated
 
 
 def test_toast_button_callback_logs_end_to_end():
