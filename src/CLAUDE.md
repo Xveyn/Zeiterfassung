@@ -147,7 +147,7 @@ müssen beide Locks respektieren. Design:
   `share.py` — Export/Import als Share-JSON. `weekly_limit.py` — pure Wochenstunden-Limit-Check
   (Werkstudenten-Privileg, #98). Kein eigener Persistenz-Zustand, operiert auf
   `Storage.get_all()`-Dicts und den `werkstudent_limit_*`-Settings-Keys.
-  `reminders.py` — pure Fälligkeits-Logik für Reservierungs-Erinnerungen (Tk-frei, `now` als Parameter): pro heutigem reservierten Slot mit Kategorie ohne erfasste Ist-Zeit `upcoming` (N Min vor Ende) oder `missed` (nach Ende). Der `ReminderScheduler` (`reminder_scheduler.py`) pollt minütlich über `root.after` und schickt fällige Toasts über `App._tray`.
+  `reminders.py` — pure Fälligkeits-Logik für Reservierungs-Erinnerungen (Tk-frei, `now` als Parameter): pro heutigem reservierten Slot mit Kategorie ohne erfasste Ist-Zeit `upcoming` (N Min vor Ende) oder `missed` (nach Ende). Der `ReminderScheduler` (`reminder_scheduler.py`) pollt minütlich über `root.after` und schickt fällige Toasts über `App._tray`; auf Windows via `tray.notify_action` mit „Arbeitszeit eintragen"-Button (WinRT, Fallback Plain-Toast), der den Slot als Ist-Zeit schreibt (`_log_reservation` → `ist_slot_from_reservation`, Pause aus Kategorie-Default).
 
 ## Google-Integration (alle Wrapper mit Lazy-Imports für CI ohne requirements.txt)
 
@@ -176,7 +176,7 @@ denselben OAuth-Token; Scope-Upgrade erzwingt frischen Consent.
   vor dem Tk-Aufbau, `serve(show_fn)` danach. `App.restart_for_scaling` und `_quit_with_sync_push`
   rufen `release()`. Blockiert den Start nie — ist der Port von Fremd-Software belegt (keine ZEIT-OK),
   läuft die App ungeschützt weiter (geloggt, akzeptierter Degraded-Fall).
-- `tray.py` (Fassade) + `tray_mac.py` (natives macOS-NSStatusItem-Backend, #88).
+- `tray.py` (Fassade; Seams: `notify`, `notify_action` für Windows-Interactive-Toasts) + `tray_mac.py` (natives macOS-NSStatusItem-Backend, #88).
 
 Das Tray-Icon läuft, sobald `minimize_to_tray` **oder** `reminders_enabled` aktiv ist (`ui.py::_apply_tray_setting`); bei nur `reminders_enabled` dient es ausschließlich als Toast-Kanal.
 
