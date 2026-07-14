@@ -10,6 +10,8 @@ upcoming-Fenster) plus das already_fired-Set beim Aufrufer.
 import datetime
 from collections import namedtuple
 
+from src.category_defaults import resolve_slot_defaults
+
 Reminder = namedtuple("Reminder", ["key", "kind", "kategorie", "end"])
 
 
@@ -60,3 +62,23 @@ def due_reminders(reserved_slots, logged_categories, now_dt,
         elif now_dt >= max(start, end - delta):
             out.append(Reminder(key, "upcoming", kategorie, slot.get("end")))
     return out
+
+
+def ist_slot_from_reservation(res_slot, category_times, weekday_key, default_pause):
+    """Baut aus einem Reservierungs-Slot (Soll) den Ist-Zeit-Slot fürs Eintragen.
+
+    start/end/kategorie stammen aus der Reservierung; die Pause wird aus dem
+    Per-Kategorie-Default abgeleitet (resolve_slot_defaults, Fallback
+    default_pause) — genau wie beim manuellen Anlegen im Tages-Dialog. Start/Ende
+    aus resolve_slot_defaults werden bewusst verworfen (die Reservierung ist die
+    Quelle der Zeiten).
+    """
+    kategorie = (res_slot.get("kategorie") or "").strip()
+    _, _, pause = resolve_slot_defaults(
+        category_times, kategorie, weekday_key, None, None, default_pause)
+    return {
+        "start": res_slot.get("start"),
+        "end": res_slot.get("end"),
+        "pause": pause,
+        "kategorie": kategorie,
+    }
