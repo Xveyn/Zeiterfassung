@@ -106,11 +106,15 @@ class ReminderScheduler:
         weekday_key = WEEKDAY_KEYS[datetime.date.fromisoformat(today).weekday()]
         ist_slot = reminders.ist_slot_from_reservation(
             res_slot, category_times, weekday_key, default_pause)
-        with self._data_lock:
-            entry = self._storage.get(today)
-            slots = list(entry.get("slots", [])) if entry else []
-            slots.append(ist_slot)
-            self._storage.save(today, slots)
+        try:
+            with self._data_lock:
+                entry = self._storage.get(today)
+                slots = list(entry.get("slots", [])) if entry else []
+                slots.append(ist_slot)
+                self._storage.save(today, slots)
+        except Exception:
+            log.exception("Arbeitszeit aus Toast-Button eintragen fehlgeschlagen")
+            return
         if self._on_logged is not None:
             self._on_logged()
 
