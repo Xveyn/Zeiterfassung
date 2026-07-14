@@ -76,7 +76,7 @@ class App:
         # Toast-Benachrichtigungen (inkl. dynamischer Version) registrieren wir
         # separat als DisplayName unter dem AUMID-Registry-Key — den greift
         # Windows für die Toast-Attribution, ohne die AUMID selbst zu ändern.
-        app_aumid = "margenheld.zeiterfassung"
+        from src.tray import AUMID as app_aumid
         try:
             ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(app_aumid)
         except Exception:
@@ -137,6 +137,8 @@ class App:
         self._reminders = ReminderScheduler(
             self.root, self.settings, self.storage,
             self.reservation_store, lambda: self._tray,
+            data_lock=data_lock, on_logged=self._refresh,
+            marshal=self._marshal_to_ui,
         )
         self._build_header()
         self._renderer.build_grid(self.root)
