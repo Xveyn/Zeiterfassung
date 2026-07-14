@@ -15,6 +15,12 @@ import platform
 import threading
 from collections import namedtuple
 
+# App-User-Model-ID (Single Source). ui.py setzt sie bereits als Prozess-AUMID
+# und registriert den HKCU-Key Software\Classes\AppUserModelId\<AUMID> mit
+# DisplayName — genau das, was windows-toasts für die Action-Center-Aktivierung
+# des Toast-Buttons braucht. Der InteractableWindowsToaster nutzt dieselbe ID.
+AUMID = "margenheld.zeiterfassung"
+
 
 def _macos_tray_opt_in():
     """macOS-Tray ist bis zum bestandenen Mac-Gate dormant: nur aktiv, wenn der
@@ -108,6 +114,7 @@ class _PystrayBackend:
         self._actions = actions or []
         self._icon = None
         self._thread = None
+        self._live_toasts = []  # starke Refs auf angezeigte interaktive Toasts (GC-Schutz)
 
     def _load_image(self):
         """Lädt das App-Icon als PIL-Bild. Fallback auf weiße Rechteck-Grafik,
@@ -199,6 +206,51 @@ class _PystrayBackend:
         except Exception:
             logging.getLogger(__name__).exception("Tray-Notify fehlgeschlagen")
 
+    def notify_action(self, message, title="Zeiterfassung", action_label="", on_action=None):
+        """Wie notify(), aber mit einem Aktions-Button auf dem Toast (Windows/WinRT).
+
+        Fällt bei Nicht-Windows, fehlender windows-toasts-Lib oder jedem Fehler
+        still auf den bestehenden Plain-Toast (notify) zurück."""
+        if action_label and on_action is not None and \
+                self._show_interactive_toast(message, title, action_label, on_action):
+            return
+        self.notify(message, title)
+
+    def _show_interactive_toast(self, message, title, action_label, on_action):
+        """Windows-only: interaktiver WinRT-Toast mit einem Button.
+
+        windows-toasts wird LAZY importiert (nicht in CI-Deps, wie pystray). Der
+        on_activated-Callback läuft auf einem WinRT-Thread — on_action marshallt
+        selbst auf den Tk-Thread (Aufrufer-Vertrag, s. ReminderScheduler). Jeder
+        Fehler/fehlende Lib → False, Aufrufer fällt auf notify() zurück."""
+        import platform
+        if platform.system() != "Windows":
+            return False
+        try:
+            from windows_toasts import (  # pyright: ignore[reportMissingImports]  # nicht in CI-Test-Deps
+                InteractableWindowsToaster, Toast, ToastButton,
+            )
+            toaster = InteractableWindowsToaster("Zeiterfassung", AUMID)
+            toast = Toast()
+            toast.text_fields = [message]
+            toast.AddAction(ToastButton(action_label, "log"))
+            # on_activated feuert AUCH bei Klick auf den Toast-Körper — nur der
+            # Button (arguments == "log") soll eintragen.
+            def _on_activated(args):
+                if getattr(args, "arguments", None) == "log":
+                    on_action()
+            toast.on_activated = _on_activated
+            toaster.show_toast(toast)
+            # Starke Refs halten, sonst GC → Callback tot. Auf die letzten paar
+            # begrenzen, damit die Liste nicht unbegrenzt wächst.
+            self._live_toasts.append((toaster, toast))
+            del self._live_toasts[:-8]
+            return True
+        except Exception:
+            logging.getLogger(__name__).exception(
+                "Interaktiver Toast fehlgeschlagen — Fallback auf notify()")
+            return False
+
     def _notify_with_icon(self, message, title):
         """Windows-only: Toast mit dem App-Icon als großem Balloon-Icon.
 
@@ -278,6 +330,10 @@ class TrayIcon:
     def notify(self, message, title="Zeiterfassung"):
         if self._backend is not None:
             self._backend.notify(message, title)
+
+    def notify_action(self, message, title="Zeiterfassung", action_label="", on_action=None):
+        if self._backend is not None:
+            self._backend.notify_action(message, title, action_label, on_action)
 
     def stop(self):
         if self._backend is not None:
