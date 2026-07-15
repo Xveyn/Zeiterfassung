@@ -91,18 +91,19 @@ def fetch_user_email(token_path="token.json", sync_enabled=False, gcal_enabled=F
         return ""
 
     # Tokeninfo — liest die E-Mail direkt aus dem Access-Token, sofern
-    # userinfo.email-Scope autorisiert ist. Kein API-Auth nötig (Token kommt
-    # als Query-Param), daher kein 401-Risiko.
+    # userinfo.email-Scope autorisiert ist. Token geht als POST-Body (nicht als
+    # URL-Query) → kein Token-Leak über URL-/Proxy-Logs (Audit N10). urllib
+    # setzt bei gesetztem data automatisch Content-Type:
+    # application/x-www-form-urlencoded.
     try:
         import json
         import urllib.parse
         import urllib.request
 
-        url = (
-            "https://oauth2.googleapis.com/tokeninfo?"
-            + urllib.parse.urlencode({"access_token": creds.token})
-        )
-        with urllib.request.urlopen(url, timeout=10) as resp:
+        body = urllib.parse.urlencode({"access_token": creds.token}).encode("ascii")
+        req = urllib.request.Request(
+            "https://oauth2.googleapis.com/tokeninfo", data=body, method="POST")
+        with urllib.request.urlopen(req, timeout=10) as resp:
             data = json.load(resp)
         log.info("fetch_user_email: tokeninfo response keys = %r", list(data.keys()))
         return (data.get("email") or "")

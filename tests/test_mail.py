@@ -366,3 +366,44 @@ def test_is_offline_error_false_for_genuine_errors():
     assert not is_offline_error(ValueError("ungültiges Datum"))
     assert not is_offline_error(RuntimeError("Gmail API: 403 insufficient scope"))
     assert not is_offline_error(None)
+
+
+def test_fetch_user_email_sends_token_in_post_body_not_url(tmp_path):
+    """N10: Der Access-Token darf nicht als URL-Query-Parameter gehen
+    (Leak-Risiko über URL-Logs), sondern im POST-Body."""
+    from src.mail import fetch_user_email
+
+    path = str(tmp_path / "token.json")
+    open(path, "w").close()
+
+    fake_creds = MagicMock()
+    fake_creds.valid = True
+    fake_creds.expired = False
+    fake_creds.token = "access-token-xyz"
+
+    captured = {}
+
+    class _Resp:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def read(self):
+            return b'{"email": "me@example.com"}'
+
+    def _fake_urlopen(req, timeout=None):
+        captured["req"] = req
+        return _Resp()
+
+    with patch("google.oauth2.credentials.Credentials.from_authorized_user_file",
+               return_value=fake_creds), \
+         patch("urllib.request.urlopen", _fake_urlopen):
+        result = fetch_user_email(path)
+
+    assert result == "me@example.com"
+    req = captured["req"]
+    assert req.get_method() == "POST"
+    assert "access-token-xyz" not in req.full_url     # nicht in der URL
+    assert b"access-token-xyz" in req.data            # sondern im Body
