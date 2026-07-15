@@ -74,7 +74,7 @@ class Storage:
             if mtime is not None
             else _utc_now_iso()
         )
-        for date, entry in list(self._data.items()):
+        for _date, entry in list(self._data.items()):
             if not isinstance(entry, dict):
                 continue
             # 1. Sync-Metadaten für ganz alte Einträge nachrüsten.

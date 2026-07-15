@@ -15,7 +15,7 @@ from src.theme import (
     set_button_text, set_primary_button_enabled,
     themed_showerror, themed_showinfo,
 )
-from src.time_utils import validate_period
+from src.time_utils import format_date, validate_period
 
 
 def show_missing_credentials_dialog(parent, base_path):
@@ -112,11 +112,11 @@ def open_send_dialog(parent, storage, settings, base_path, runner):
         if html is None:
             themed_showinfo(
                 dialog, "Keine Einträge",
-                f"Keine Einträge für {date_from.strftime('%d.%m.%Y')} – {date_to.strftime('%d.%m.%Y')} vorhanden.",
+                f"Keine Einträge für {format_date(date_from)} – {format_date(date_to)} vorhanden.",
             )
             return
 
-        label = f"{date_from.strftime('%d.%m.%Y')} – {date_to.strftime('%d.%m.%Y')}"
+        label = f"{format_date(date_from)} – {format_date(date_to)}"
         subject = (
             settings.get("mail_subject")
             .replace("{zeitraum}", label)

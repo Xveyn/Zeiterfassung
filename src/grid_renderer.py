@@ -164,26 +164,25 @@ class GridRenderer:
                           iso_year: int, current_week: int):
         """Pre-warm: rendert alle 4 (view × show_weekend)-Kombinationen einmal
         in den versteckten Backbuffer und merkt die maximale reqwidth intern
-        (self._fixed_width). show_weekend wird über _data temporär mutiert
-        (kein Disk-Save) und wiederhergestellt; _suppress_geometry verhindert
-        den Resize während der Messung. Läuft vor mainloop()."""
-        saved_weekend = self._settings.get("show_weekend")
+        (self._fixed_width). show_weekend wird über settings.override_in_memory
+        temporär verstellt (kein Disk-Save, danach wiederhergestellt);
+        _suppress_geometry verhindert den Resize während der Messung. Läuft vor
+        mainloop()."""
         max_w = 0
         self._suppress_geometry = True
         try:
             for view in ("month", "week"):
                 for weekend in (True, False):
-                    self._settings._data["show_weekend"] = weekend
-                    self._last_refresh_view = None
-                    self._last_refresh_columns = None
-                    self.refresh(view, year, month, iso_year, current_week)
-                    self._root.update_idletasks()
-                    w = self._root.winfo_reqwidth()
-                    if w > max_w:
-                        max_w = w
+                    with self._settings.override_in_memory("show_weekend", weekend):
+                        self._last_refresh_view = None
+                        self._last_refresh_columns = None
+                        self.refresh(view, year, month, iso_year, current_week)
+                        self._root.update_idletasks()
+                        w = self._root.winfo_reqwidth()
+                        if w > max_w:
+                            max_w = w
         finally:
             self._suppress_geometry = False
-            self._settings._data["show_weekend"] = saved_weekend
             self._last_refresh_view = None
             self._last_refresh_columns = None
         self._fixed_width = max_w
@@ -256,7 +255,7 @@ class GridRenderer:
         return f"{slot['start']}-{slot['end']}{kat}"
 
     @staticmethod
-    def _build_tooltip_text(entry, reservation, holiday_name):
+    def _build_tooltip_text(entry, reservation, holiday_name, has_conflict=False):
         """Baut den kombinierten Hover-Tooltip aus den vorhandenen Einheiten.
 
         Reine Funktion (Tk-frei, testbar): entscheidet, WELCHE Blöcke der
@@ -269,6 +268,12 @@ class GridRenderer:
         Der Feiertag kommt nur in den kombinierten Tooltip, wenn ohnehin ein
         Eintrag oder eine Reservierung vorhanden ist (sonst zeigt die Holiday-
         Zelle ihren Namen selbst).
+
+        has_conflict: ist der Tag ein ungelöster Sync-Konflikt, wird der
+        Konflikt-Hinweis in DENSELBEN Tooltip gefaltet (Audit M11) — früher
+        hängte der Konflikt-Zweig einen ZWEITEN attach_tooltip an dieselbe
+        Zelle, was den 'genau EIN Tooltip pro Zelle'-Invariant verletzte und
+        die Arbeitszeit-Details verdeckte.
         """
         parts = []
         if entry and entry.get("slots"):
@@ -284,6 +289,8 @@ class GridRenderer:
                     for s in reservation.get("slots", [])))
         if holiday_name and (reservation is not None or entry):
             parts.append(f"Feiertag: {holiday_name}")
+        if has_conflict:
+            parts.append("Konflikt — bitte auflösen")
         return "\n".join(parts)
 
     def _add_reservation_marker(self, cell):
@@ -400,16 +407,18 @@ class GridRenderer:
         # Reservierung ist ein reiner Overlay-Marker (Eck-Punkt) — sie ändert
         # den Zelltyp nicht. Genau EIN attach_tooltip pro Zelle (Mehrfachaufruf
         # erzeugt überlappende Tooltips); deshalb alle relevanten Infos
-        # (Arbeitszeit-Slots, Reservierung, Feiertag) in einen kombinierten
-        # Tooltip (Textaufbau in _build_tooltip_text). Ein Feiertag-OHNE-
-        # Eintrag/-Reservierung zeigt seinen Namen weiterhin als Zelltext
+        # (Arbeitszeit-Slots, Reservierung, Feiertag, Konflikt-Hinweis) in einen
+        # kombinierten Tooltip (Textaufbau in _build_tooltip_text). Ein Feiertag-
+        # OHNE-Eintrag/-Reservierung zeigt seinen Namen weiterhin als Zelltext
         # (Holiday-Zelle) bzw. eigenen Tooltip (name_tooltip) und kommt hier
         # NICHT rein.
+        has_conflict = bool(conflict_dates and date_str in conflict_dates)
         if reservation is not None:
             self._add_reservation_marker(cell)
         tip_text = self._build_tooltip_text(
             entry, reservation,
-            holidays_map[day_date] if is_holiday else None)
+            holidays_map[day_date] if is_holiday else None,
+            has_conflict=has_conflict)
         if tip_text:
             attach_tooltip(cell, tip_text)
 
@@ -427,9 +436,11 @@ class GridRenderer:
         if day_date == datetime.date.today():
             cell.configure(highlightbackground=TODAY_ACCENT, highlightthickness=2)
 
-        if conflict_dates and date_str in conflict_dates:
+        # Der Konflikt-Hinweis steckt bereits im kombinierten Tooltip oben
+        # (has_conflict → _build_tooltip_text, Audit M11); hier nur noch der
+        # orange Rand als visuelle Markierung, KEIN zweiter attach_tooltip.
+        if has_conflict:
             cell.configure(highlightbackground="orange", highlightthickness=2)
-            attach_tooltip(cell, "Konflikt — bitte auflösen")
 
         return cell
 

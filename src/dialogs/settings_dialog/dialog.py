@@ -74,7 +74,7 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
     tabs = {"work": work.frame, "mail": mail.frame, "google": google.frame, "app": app.frame}
 
     def save_settings():
-        for key, lbl in zip(WEEKDAY_KEYS, DAYS_DE):
+        for key, lbl in zip(WEEKDAY_KEYS, DAYS_DE, strict=False):
             ok, msg = validate_entry(work.start_vars[key].get(), work.end_vars[key].get())
             if not ok:
                 notebook.select(tabs["work"])

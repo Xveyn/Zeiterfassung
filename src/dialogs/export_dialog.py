@@ -2,7 +2,7 @@ import tkinter as tk
 from tkinter import filedialog, messagebox
 
 from src.report import default_pdf_filename
-from src.time_utils import validate_period
+from src.time_utils import format_date, validate_period
 from src.dialogs.period_picker import build_period_picker
 from src.dialogs.export_task import perform_export_pdf
 from src.theme import (
@@ -82,8 +82,8 @@ def open_export_dialog(parent, storage, settings, runner):
             if pdf_bytes is None:
                 themed_showinfo(
                     dialog, "Keine Einträge",
-                    f"Keine Einträge für {date_from.strftime('%d.%m.%Y')} – "
-                    f"{date_to.strftime('%d.%m.%Y')} vorhanden.",
+                    f"Keine Einträge für {format_date(date_from)} – "
+                    f"{format_date(date_to)} vorhanden.",
                 )
                 return
 

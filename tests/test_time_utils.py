@@ -1,6 +1,17 @@
+import datetime
+
 from src.time_utils import (
-    format_iso_date, format_iso_datetime, format_iso_weekday_date,
+    format_date, format_iso_date, format_iso_datetime, format_iso_weekday_date,
 )
+
+
+def test_format_date_from_date_object():
+    assert format_date(datetime.date(2026, 6, 2)) == "02.06.2026"
+
+
+def test_format_date_from_datetime_object():
+    # Nimmt auch datetime (Zeitanteil wird ignoriert) — deutsches TT.MM.JJJJ.
+    assert format_date(datetime.datetime(2026, 12, 5, 14, 30)) == "05.12.2026"
 
 
 def test_format_iso_date_from_timestamp():

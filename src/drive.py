@@ -23,10 +23,6 @@ class DriveNetworkError(Exception):
     """Netzwerkproblem oder Drive-API nicht erreichbar."""
 
 
-class DriveConflictError(Exception):
-    """ETag-Mismatch beim Upload — Remote wurde inzwischen verändert."""
-
-
 try:
     from google.auth.exceptions import RefreshError, TransportError
     from google.auth.transport.requests import Request
@@ -169,7 +165,7 @@ def download(service, file_id):
     return buf.getvalue(), str(meta.get("version", ""))
 
 
-def upload(service, content_bytes, file_id=None, expected_etag=None):
+def upload(service, content_bytes, file_id=None):
     """Uploadet `content_bytes` als Sync-Datei.
 
     - file_id=None  → neues File in appDataFolder anlegen
@@ -177,10 +173,11 @@ def upload(service, content_bytes, file_id=None, expected_etag=None):
 
     Drive API v3 kennt kein `etag`-Feld mehr und unterstützt kein
     granulares If-Match auf Datei-Updates ohne HTTP-Header-Tricks, die
-    googleapiclient nicht sauber freilegt. Die `expected_etag`-Signatur
-    bleibt aus Kompatibilitätsgründen erhalten, wird aber ignoriert.
-    Konflikt-Erkennung passiert pro-Eintrag über `modified_at` im
-    Sync-Doc-Merge, nicht auf File-Ebene.
+    googleapiclient nicht sauber freilegt. Es gibt daher bewusst KEIN
+    File-level Optimistic Locking hier — Konflikt-Erkennung passiert
+    stattdessen im Push-Flow (`main.py::_run_push_blocking`) doc-level über
+    `sync._remote_is_newer` und pro-Eintrag über `modified_at` im
+    Sync-Doc-Merge (Audit M2).
 
     Liefert (file_id, new_version_token).
     """
@@ -201,11 +198,4 @@ def upload(service, content_bytes, file_id=None, expected_etag=None):
         ).execute()
         return resp["id"], str(resp.get("version", ""))
     except HttpError as e:
-        # googleapiclient's HttpError trägt e.resp (httplib2.Response) — der
-        # Fallback oben aliased HttpError auf Exception, daher kennt Pylance
-        # das Attribut nicht statisch. getattr() umgeht das sauber.
-        resp_obj = getattr(e, "resp", None)
-        status = getattr(resp_obj, "status", None) if resp_obj is not None else None
-        if status == 412:
-            raise DriveConflictError(str(e)) from e
         raise _http_error_to_drive_error(e) from e

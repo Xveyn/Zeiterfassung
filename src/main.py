@@ -233,7 +233,7 @@ def _run_push_blocking(storage, settings, conflicts_store, base, timeout_seconds
                         os.path.join(base, sync_journal.JOURNAL_FILENAME))
                     doc = sync.build_local_doc(storage, settings, conflicts_store)
                     content = json.dumps(doc, ensure_ascii=False).encode("utf-8")
-                new_id, new_etag = drive.upload(service, content, file_id, expected_etag="")
+                new_id, new_etag = drive.upload(service, content, file_id)
                 settings.set_many({
                     "last_pull_at": sync._utc_now_iso(),
                     "drive_etag": new_etag,
@@ -330,7 +330,7 @@ def _run_compaction_blocking(storage, settings, conflicts_store, base, timeout_s
                     # 3) kompaktiertes Doc für den Upload snapshotten
                     doc = sync.build_local_doc(storage, settings, conflicts_store)
                     payload = json.dumps(doc, ensure_ascii=False).encode("utf-8")
-                new_id, new_etag = drive.upload(service, payload, file_id, expected_etag="")
+                new_id, new_etag = drive.upload(service, payload, file_id)
                 settings.set("drive_etag", new_etag)
                 result.update({"ok": True})
             except Exception as e:

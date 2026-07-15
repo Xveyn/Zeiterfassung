@@ -17,7 +17,7 @@ from src.share import (
     diff_share_against_local,
     parse_share_doc,
 )
-from src.time_utils import format_iso_date
+from src.time_utils import format_date, format_iso_date
 from src.theme import (
     BG, CELL_BG, FONT, FONT_SMALL, TEXT, TEXT_MUTED,
     apply_combobox_style, attach_unfocus_on_click, center_dialog_on_parent,
@@ -159,8 +159,8 @@ class _ImportSummaryDialog:
         tk.Label(
             self.top,
             text=f"Voller Bereich der Datei: "
-                 f"{self.file_min.strftime('%d.%m.%Y')} bis "
-                 f"{self.file_max.strftime('%d.%m.%Y')}",
+                 f"{format_date(self.file_min)} bis "
+                 f"{format_date(self.file_max)}",
             font=FONT_SMALL, bg=BG, fg=TEXT_MUTED,
         ).grid(row=row, column=0, columnspan=6, padx=10, pady=(0, 8), sticky="w")
         row += 1
