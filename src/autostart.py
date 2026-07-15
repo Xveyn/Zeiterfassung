@@ -198,10 +198,13 @@ def _disable_macos():
 def _exec_line(target, arguments):
     """Baut die Exec=-Zeile mit shell-korrektem Quoting (Audit N12): ein Pfad
     mit Leerzeichen o.ä. zerbricht die .desktop-Datei sonst. shlex.quote deckt
-    sich mit GLibs Exec-Parsing (g_shell_parse_argv). `arguments` ist ein
-    Whitespace-getrennter String einfacher Flags (heute "" oder "--minimized").
-    Werte ohne Sonderzeichen bleiben unverändert (shlex.quote quotet nur bei
-    Bedarf)."""
+    sich mit GLibs Exec-Parsing (g_shell_parse_argv). `arguments` ist
+    typischerweise ein Whitespace-getrennter String einfacher Flags (z.B. ""
+    oder "--minimized"); im Nicht-Frozen-Modus kann es zusätzlich einen
+    Skript-Pfad enthalten (resolve_autostart_target) — ein Leerzeichen darin
+    würde fälschlich als Token-Grenze behandelt (vorbestehendes Verhalten, nicht
+    durch diesen Fix eingeführt). Werte ohne Sonderzeichen bleiben unverändert
+    (shlex.quote quotet nur bei Bedarf)."""
     parts = [shlex.quote(target)]
     if arguments:
         parts.extend(shlex.quote(a) for a in arguments.split())
