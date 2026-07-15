@@ -24,6 +24,7 @@ class UpdatesTab:
         self.frame = frame
         self._settings = settings
         self._runner = runner
+        self._latest_release = None
         self._checked = False
         self._checking = False
 
@@ -40,7 +41,9 @@ class UpdatesTab:
         btn_row.grid(row=2, column=0, columnspan=2, padx=10, pady=4, sticky="w")
         self._check_btn = primary_button(btn_row, "Jetzt prüfen", self._check_now)
         self._check_btn.pack(side=tk.LEFT)
-        self._download_btn = secondary_button(btn_row, "Download", lambda: None)
+        self._download_btn = secondary_button(
+            btn_row, "Download", self._open_latest_download,
+        )
 
         freq_row = tk.Frame(frame, bg=BG)
         freq_row.grid(row=3, column=0, columnspan=2, padx=10, pady=(12, 4), sticky="w")
@@ -109,8 +112,8 @@ class UpdatesTab:
                 self._finish_checking()
                 self._status_label.config(text=f"Du hast die aktuelle Version ({VERSION}).")
                 return
+            self._latest_release = release
             self._status_label.config(text=f"Version {release.version} verfügbar")
-            self._download_btn.configure(command=lambda: self._open_download(release))
             self._download_btn.pack(side=tk.LEFT, padx=(8, 0))
             self._settings.set_many({
                 "dismissed_version": release.version,
@@ -131,6 +134,11 @@ class UpdatesTab:
             self._set_changelog(text or "Changelog konnte nicht geladen werden.")
 
         self._runner.run(fn, on_done)
+
+    def _open_latest_download(self):
+        if self._latest_release is None:
+            return
+        self._open_download(self._latest_release)
 
     def _open_download(self, release):
         url = pick_asset_url(

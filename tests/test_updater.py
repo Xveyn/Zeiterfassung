@@ -6,7 +6,7 @@ from unittest.mock import patch
 from urllib.error import HTTPError, URLError
 
 from src.updater import (
-    REPO, Asset, check_latest_release, frequency_for_label, is_newer,
+    Asset, check_latest_release, frequency_for_label, is_newer,
     pick_asset_url, should_check, today_iso, update_toast_text,
 )
 
