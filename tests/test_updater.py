@@ -5,7 +5,10 @@ from io import BytesIO
 from unittest.mock import patch
 from urllib.error import HTTPError, URLError
 
-from src.updater import Asset, check_latest_release, is_newer, pick_asset_url, should_check_today, today_iso
+from src.updater import (
+    Asset, check_latest_release, frequency_for_label, is_newer,
+    pick_asset_url, should_check, today_iso, update_toast_text,
+)
 
 
 class TestIsNewer:
@@ -32,21 +35,56 @@ class TestTodayIso:
         assert date.fromisoformat(result) == date.today()
 
 
-class TestShouldCheckToday:
-    def test_empty_string_returns_true(self):
-        assert should_check_today("", today=date(2026, 4, 28)) is True
+class TestShouldCheck:
+    def test_empty_string_daily_returns_true(self):
+        assert should_check("", "daily", today=date(2026, 4, 28)) is True
 
-    def test_none_returns_true(self):
-        assert should_check_today(None, today=date(2026, 4, 28)) is True
+    def test_none_daily_returns_true(self):
+        assert should_check(None, "daily", today=date(2026, 4, 28)) is True
 
-    def test_yesterday_returns_true(self):
-        assert should_check_today("2026-04-27", today=date(2026, 4, 28)) is True
+    def test_daily_yesterday_returns_true(self):
+        assert should_check("2026-04-27", "daily", today=date(2026, 4, 28)) is True
 
-    def test_today_returns_false(self):
-        assert should_check_today("2026-04-28", today=date(2026, 4, 28)) is False
+    def test_daily_today_returns_false(self):
+        assert should_check("2026-04-28", "daily", today=date(2026, 4, 28)) is False
 
-    def test_invalid_string_returns_true(self):
-        assert should_check_today("not-a-date", today=date(2026, 4, 28)) is True
+    def test_daily_invalid_string_returns_true(self):
+        assert should_check("not-a-date", "daily", today=date(2026, 4, 28)) is True
+
+    def test_weekly_six_days_ago_returns_false(self):
+        assert should_check("2026-04-22", "weekly", today=date(2026, 4, 28)) is False
+
+    def test_weekly_seven_days_ago_returns_true(self):
+        assert should_check("2026-04-21", "weekly", today=date(2026, 4, 28)) is True
+
+    def test_monthly_twenty_nine_days_ago_returns_false(self):
+        assert should_check("2026-03-31", "monthly", today=date(2026, 4, 29)) is False
+
+    def test_monthly_thirty_days_ago_returns_true(self):
+        assert should_check("2026-03-30", "monthly", today=date(2026, 4, 29)) is True
+
+    def test_never_returns_false_even_without_last_check(self):
+        assert should_check("", "never", today=date(2026, 4, 28)) is False
+
+    def test_never_returns_false_even_long_overdue(self):
+        assert should_check("2020-01-01", "never", today=date(2026, 4, 28)) is False
+
+
+class TestFrequencyForLabel:
+    def test_known_label_maps_to_value(self):
+        assert frequency_for_label("Wöchentlich") == "weekly"
+
+    def test_unknown_label_falls_back_to_daily(self):
+        assert frequency_for_label("Quatsch") == "daily"
+
+
+class TestUpdateToastText:
+    def test_contains_version_and_hint(self):
+        from src.updater import Release
+        release = Release(version="1.9.0", html_url="https://x", assets=())
+        text = update_toast_text(release)
+        assert "1.9.0" in text
+        assert "Updates" in text
 
 
 def _three_assets(version: str) -> list[Asset]:

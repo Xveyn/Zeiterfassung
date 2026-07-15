@@ -765,6 +765,14 @@ def test_send_reminder_defaults_present_and_device_local():
     assert "send_reminder_last_fired_month" not in SYNCED_SETTING_KEYS
 
 
+def test_update_tab_defaults_present_and_device_local():
+    from src.settings import DEFAULTS, SYNCED_SETTING_KEYS
+    assert DEFAULTS["update_check_frequency"] == "daily"
+    assert DEFAULTS["update_toast_shown_version"] == ""
+    assert "update_check_frequency" not in SYNCED_SETTING_KEYS
+    assert "update_toast_shown_version" not in SYNCED_SETTING_KEYS
+
+
 # --- override_in_memory (Audit M12) ---
 
 

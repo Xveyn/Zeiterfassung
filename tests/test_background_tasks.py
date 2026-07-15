@@ -66,16 +66,35 @@ def test_run_swallows_and_logs_fn_exception(caplog):
 
 def test_check_update_skips_when_not_due(monkeypatch):
     import src.background_tasks as bg
-    monkeypatch.setattr(bg, "should_check_today", lambda v: False)
+    monkeypatch.setattr(bg, "should_check", lambda last, freq: False)
     called = {"n": 0}
     monkeypatch.setattr(bg, "check_latest_release",
                         lambda repo: called.__setitem__("n", called["n"] + 1))
-    r = _runner(settings={"last_update_check_at": None})
-    # settings als dict -> .get reicht; should_check_today ist gepatcht
+    r = _runner(settings={
+        "last_update_check_at": None, "update_check_frequency": "daily",
+    })
     r.check_update(on_result=lambda rel, newer: None)
     import time
     time.sleep(0.2)
     assert called["n"] == 0
+
+
+def test_check_update_reads_frequency_from_settings(monkeypatch):
+    import src.background_tasks as bg
+    seen = {}
+
+    def fake_should_check(last, freq):
+        seen["frequency"] = freq
+        return False
+
+    monkeypatch.setattr(bg, "should_check", fake_should_check)
+    r = _runner(settings={
+        "last_update_check_at": None, "update_check_frequency": "weekly",
+    })
+    r.check_update(on_result=lambda rel, newer: None)
+    import time
+    time.sleep(0.2)
+    assert seen["frequency"] == "weekly"
 
 
 def test_reconcile_on_start_skips_when_reservations_inactive():

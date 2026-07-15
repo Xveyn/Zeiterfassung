@@ -3,6 +3,7 @@ import tkinter as tk
 from tkinter import ttk
 
 from src.autostart import disable_autostart, enable_autostart, is_autostart_enabled, resolve_autostart_target
+from src.updater import frequency_for_label
 from src.theme import (
     BG,
     apply_combobox_style, apply_notebook_style, attach_unfocus_on_click,
@@ -21,6 +22,7 @@ from src.weekly_limit import format_limit_warnings, period_scan_needed, scan_per
 from src.dialogs.settings_dialog.tab_app import AppTab
 from src.dialogs.settings_dialog.tab_google import GoogleTab
 from src.dialogs.settings_dialog.tab_mail import MailTab
+from src.dialogs.settings_dialog.tab_updates import UpdatesTab
 from src.dialogs.settings_dialog.tab_work import WorkTab
 
 
@@ -28,8 +30,8 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
                          runner, conflicts_store=None, storage=None,
                          reservation_store=None, on_request_restart=None,
                          data_lock=None, sync_guard=None):
-    """Modaler Dialog zum Bearbeiten der App-Einstellungen, aufgeteilt auf vier
-    Tabs (Arbeitszeit / Bericht & Mail / Google / App).
+    """Modaler Dialog zum Bearbeiten der App-Einstellungen, aufgeteilt auf fünf
+    Tabs (Arbeitszeit / Bericht & Mail / Google / App / Updates).
 
     on_change wird nach erfolgreichem Speichern aufgerufen, damit der Kalender
     sich aktualisiert. conflicts_store und storage sind optional; sind sie
@@ -51,10 +53,12 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
     tab_mail = tk.Frame(notebook, bg=BG)
     tab_google = tk.Frame(notebook, bg=BG)
     tab_app = tk.Frame(notebook, bg=BG)
+    tab_updates = tk.Frame(notebook, bg=BG)
     notebook.add(tab_work, text="Arbeitszeit")
     notebook.add(tab_mail, text="Bericht & Mail")
     notebook.add(tab_google, text="Google")
     notebook.add(tab_app, text="App")
+    notebook.add(tab_updates, text="Updates")
 
     # ===================== Tab: Arbeitszeit =====================
     work = WorkTab(tab_work, dialog, settings)
@@ -70,8 +74,23 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
     # ===================== Tab: App =====================
     app = AppTab(tab_app, settings)
 
+    # ===================== Tab: Updates =====================
+    updates_tab = UpdatesTab(tab_updates, settings, runner)
+
+    def _on_tab_changed(_event):
+        if notebook.select() == str(tab_updates):
+            updates_tab.on_tab_selected()
+
+    notebook.bind("<<NotebookTabChanged>>", _on_tab_changed)
+
     # ===================== Speichern / Buttons =====================
-    tabs = {"work": work.frame, "mail": mail.frame, "google": google.frame, "app": app.frame}
+    tabs = {
+        "work": work.frame,
+        "mail": mail.frame,
+        "google": google.frame,
+        "app": app.frame,
+        "updates": updates_tab.frame,
+    }
 
     def save_settings():
         for key, lbl in zip(WEEKDAY_KEYS, DAYS_DE, strict=False):
@@ -163,6 +182,7 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
             "send_reminder_enabled": app.send_reminder_enabled_var.get(),
             "send_reminder_day": int(app.send_reminder_day_var.get()),
             "send_reminder_time": app.send_reminder_time_var.get(),
+            "update_check_frequency": frequency_for_label(updates_tab.frequency_var.get()),
             "ui_scale": new_scale,
             "werkstudent_limit_enabled": work.wsl_enabled_var.get(),
             "werkstudent_limit_start": wsl_start_iso,

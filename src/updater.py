@@ -27,13 +27,36 @@ def today_iso() -> str:
     return date.today().isoformat()
 
 
-def should_check_today(last_check: str | None, today: date | None = None) -> bool:
-    """True, wenn der letzte Check vor dem heutigen Kalendertag lag.
+REPO = "MargenHeld/Zeiterfassung"
 
-    Drosselung pro Kalendertag (lokale Zeit), nicht pro 24-h-Fenster.
-    Bei leerem oder ungültigem `last_check` wird ebenfalls True geliefert,
-    damit ein einmal kaputter Wert nicht den Check für immer blockiert.
+FREQUENCY_OPTIONS: list[tuple[str, str]] = [
+    ("daily", "Täglich"),
+    ("weekly", "Wöchentlich"),
+    ("monthly", "Monatlich"),
+    ("never", "Nie"),
+]
+
+_FREQUENCY_INTERVAL_DAYS = {"daily": 1, "weekly": 7, "monthly": 30}
+
+
+def frequency_for_label(label: str) -> str:
+    """Mappt ein im Updates-Tab gewähltes Klartext-Label (z.B. 'Wöchentlich')
+    zurück auf den internen Frequency-Value ('weekly'). Unbekanntes Label
+    -> 'daily' (sicherer Default, analog holidays_de.code_for_state_label)."""
+    return next((value for value, lbl in FREQUENCY_OPTIONS if lbl == label), "daily")
+
+
+def should_check(last_check: str | None, frequency: str, today: date | None = None) -> bool:
+    """True, wenn laut `frequency` ein Update-Check fällig ist.
+
+    `frequency` in {"daily","weekly","monthly","never"} (siehe
+    FREQUENCY_OPTIONS). "never" -> immer False. Sonst True, wenn
+    `last_check` leer/ungültig ist ODER seit `last_check` mindestens das
+    Intervall in Tagen vergangen ist (lokale Kalendertage).
     """
+    if frequency == "never":
+        return False
+    interval_days = _FREQUENCY_INTERVAL_DAYS.get(frequency, 1)
     if not last_check:
         return True
     today = today or date.today()
@@ -41,7 +64,7 @@ def should_check_today(last_check: str | None, today: date | None = None) -> boo
         last = date.fromisoformat(last_check)
     except ValueError:
         return True
-    return last < today
+    return (today - last).days >= interval_days
 
 
 @dataclass(frozen=True)
@@ -55,6 +78,15 @@ class Release:
     version: str        # ohne v-Prefix, z.B. "1.9.0"
     html_url: str       # Release-Page auf GitHub
     assets: tuple[Asset, ...]
+
+
+def update_toast_text(release: "Release") -> str:
+    """Deutscher Toast-Text für ein gefundenes Update (kein Klick-Handler —
+    der Toast verweist auf den Updates-Tab)."""
+    return (
+        f"Version {release.version} verfügbar — "
+        "Details unter Einstellungen → Updates."
+    )
 
 
 def pick_asset_url(assets, system: str, latest_version: str) -> str | None:
