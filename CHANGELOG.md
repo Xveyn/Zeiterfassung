@@ -1,5 +1,62 @@
 # Changelog
 
+## 1.18.0 — 2026-07-15
+
+### Hinzugefügt
+- **Updates-Tab**: Der Einstellungen-Dialog hat jetzt einen fünften Tab
+  „Updates". Dort lässt sich der Update-Status manuell prüfen, die
+  Hintergrund-Häufigkeit auf täglich / wöchentlich / monatlich / nie stellen
+  und bei einer neueren Version direkt der passende Changelog-Abschnitt lesen.
+- **Monatliche Erinnerung „Arbeitszeiten verschicken"**: Optionaler Toast an
+  einem frei wählbaren Tag im Monat plus Uhrzeit. Kürzere Monate werden sauber
+  auf den letzten Tag geklemmt.
+
+### Geändert
+- **Update-Hinweise**: Läuft ein aktives Infobereich-Icon als Toast-Kanal,
+  erscheint ein einmaliger Toast statt eines dauerhaften Banners; ohne aktives
+  Tray bleibt das Banner der Fallback. Versionen, die bereits im Updates-Tab
+  gesehen wurden, nerven danach nicht noch einmal per Banner oder Toast.
+- **Einstellungen**: Der Tab-Satz ist um „Updates" erweitert; dort liegt jetzt
+  auch die konfigurierbare Update-Check-Häufigkeit.
+- **Senden / Teilen / Export**: Die längeren Mail-/PDF-Aktionen laufen jetzt
+  im Hintergrund, statt die Oberfläche währenddessen zu blockieren.
+
+### Behoben
+- **Updates-Tab**: Ohne verfügbares Update bleibt kein leeres Changelog-Feld
+  mehr sichtbar.
+- **Monatlicher Sende-Reminder**: Ungültige `HH:MM`-Werte im Setting werden
+  defensiv abgefangen, statt den Scheduler aus dem Tritt zu bringen.
+- **Bericht / Sicherheit**: Start- und Endwerte im Bericht werden korrekt
+  escaped, statt eingebettetes HTML ungefiltert zu übernehmen.
+- **Gmail-Start**: Der initiale Absender-/Profil-Check löst keinen
+  `403 insufficientPermissions` mehr aus, wenn nur die tatsächlich benötigten
+  Scopes vorliegen.
+- **Mail-Empfänger**: Adressen mit CR/LF-Steuerzeichen werden jetzt
+  zurückgewiesen, statt still bereinigt weiterzulaufen.
+- **Windows-Token-Persistenz**: Transiente `PermissionError` beim Schreiben von
+  `token.json` werden abgefangen und erneut versucht, statt den OAuth-Pfad
+  unnötig scheitern zu lassen.
+- **Fensterbreite**: Der Footer mit Stundenlohn lässt die Fensterbreite nicht
+  mehr sichtbar springen; die Breite wächst jetzt stabil auf den Maximalbedarf.
+- **Feiertags-Lookup**: Eine transiente `FileNotFoundError` im
+  Übersetzungs-Ladepfad wird defensiv abgefangen, statt den Feiertagsabruf zu
+  stören.
+- **Settings-/Sync-Robustheit**: Korruptes `settings.json` wird in Quarantäne
+  verschoben, und die Sync-Apply-Sequenz ist crash-sicherer bzw.
+  threadsicherer gegen gleichzeitige Datenzugriffe.
+- **Einzelinstanz / Sicherheit**: Der lokale SHOW/PING-Handshake der
+  Einzelinstanz ist jetzt per Shared Secret abgesichert.
+- **Google-Auth**: Der Token-Info-Check übermittelt das Access-Token jetzt per
+  POST-Body statt als URL-Query.
+- **Linux-Autostart**: Die `Exec=`-Zeile der `.desktop`-Datei wird
+  shell-korrekt gequotet.
+
+### Intern
+- `CHANGELOG.md` kann für eine neue Version jetzt zur Laufzeit direkt vom
+  GitHub-Tag geladen und abschnittsweise geparst werden.
+- Release-nahe Checks sind enger abgesichert: `ruff`/`pyright` decken den
+  neuen Updates-Tab samt UI-Routing mit ab.
+
 ## 1.17.0 — 2026-07-03
 
 ### Hinzugefügt

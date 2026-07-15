@@ -18,9 +18,9 @@ Desktop-App zur Erfassung von Arbeitszeiten mit Kalenderansicht, PDF-Report und 
 - **Kategorien** — Mehrere Zeitblöcke pro Tag mit eigenen Kategorien; Standard-Start/-Ende pro Kategorie, optional pro Wochentag; Kategorie-Aufschlüsselung im Bericht optional
 - **UI-Skalierung** — Stufenloser Skalierungsfaktor für die Oberfläche (gerätelokal)
 - **Zeitraumwahl** — Flexibler Datumsbereich für Reports
-- **Einstellungen** — In Tabs gegliedert (Arbeitszeit / Bericht & Mail / Google / App); E-Mail-Vorlagen mit Platzhaltern, Standardpause, Empfänger
+- **Einstellungen** — In Tabs gegliedert (Arbeitszeit / Bericht & Mail / Google / App / Updates); E-Mail-Vorlagen mit Platzhaltern, Standardpause, Empfänger und Update-Einstellungen
 - **Autostart & Einzelinstanz** — Optionaler minimierter Start bei Anmeldung (Windows, macOS, Linux); es läuft immer nur eine Instanz — ein zweiter Start holt das vorhandene Fenster nach vorn
-- **Update-Check** — Prüft beim Start einmal pro Tag auf neuere Releases und zeigt einen unaufdringlichen Banner mit Direkt-Download
+- **Update-Check** — Konfigurierbare Hintergrund-Prüfung auf neue Releases; neuer Updates-Tab mit manuellem Check, Changelog und Direkt-Download, bei aktivem Tray als einmaliger Toast statt Banner
 - **Dark Mode UI** — Modernes dunkles Design
 - **Cross-Platform-Installer** — Per PyInstaller gebaut, als Setup-Exe (Windows), DMG (macOS) und AppImage (Linux) paketierbar
 
@@ -56,7 +56,8 @@ Zeiterfassung/
 │   ├── tray_mac.py        # Natives macOS-Tray-Backend (NSStatusItem, dormant/opt-in)
 │   ├── autostart.py       # Plattformabhängiger Autostart (Windows-Registry/macOS/Linux)
 │   ├── single_instance.py # Single-Instance-Guard (verhindert parallele Instanzen)
-│   ├── updater.py         # GitHub-Releases-Check (stdlib-only, gedrosselt 1×/Tag)
+│   ├── updater.py         # GitHub-Releases-Check (stdlib-only, Frequenz konfigurierbar)
+│   ├── changelog.py       # Lädt/parst den Changelog-Abschnitt einer Release-Version
 │   ├── holidays_de.py     # Feiertags-Lookup (python-holidays)
 │   ├── time_utils.py      # Zeitberechnung und Validierung
 │   ├── logging_setup.py   # File-Logging + globaler Excepthook
@@ -268,7 +269,7 @@ Wiederhole Schritte 3-4 auf jedem weiteren Gerät mit demselben Google-Konto.
 ### Hinweise zum Sync
 
 - **Geräte-ID** — jede Installation generiert beim ersten Start eine eindeutige UUID. Im Konflikt-Dialog siehst du, von welchem Gerät die jeweilige Version kommt.
-- **Was synchronisiert wird:** Zeiteinträge + Mail-Vorlagen-Settings (Empfänger, Name, Stundensatz, Betreff, Begrüßung, Inhalt, Grußformel). Gerätespezifisches (Autostart, Standardzeiten pro Wochentag, Update-Check-Status) bleibt lokal.
+- **Was synchronisiert wird:** Zeiteinträge + Mail-Vorlagen-Settings (Empfänger, Name, Stundensatz, Betreff, Begrüßung, Inhalt, Grußformel). Gerätespezifisches (Autostart, Standardzeiten pro Wochentag, Update-Einstellungen/-Status) bleibt lokal.
 - **Wo die Sync-Datei liegt:** Im versteckten `appDataFolder` deines Google Drives — nicht über `drive.google.com` einsehbar, nur diese App kommt dran.
 - **Test-Modus:** Solange dein Cloud-Projekt im Test-Modus bleibt, müssen alle Nutzer (deine eigenen Geräte zählen mit deiner E-Mail) als Testnutzer eingetragen sein. Verifizierung durch Google ist für rein private Nutzung nicht nötig.
 - **Tombstones wachsen unbeschränkt** — gelöschte Einträge bleiben als Marker im Sync-File, damit Löschungen sich gegen veraltete Speicherungen anderer Geräte durchsetzen. Bei normalem Gebrauch unproblematisch über Jahre; siehe [`docs/known-limitations.md`](docs/known-limitations.md).
