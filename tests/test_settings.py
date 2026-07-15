@@ -753,6 +753,18 @@ def test_reminder_defaults_present_and_device_local():
     assert "reminder_minutes_before" not in SYNCED_SETTING_KEYS
 
 
+def test_send_reminder_defaults_present_and_device_local():
+    from src.settings import DEFAULTS, SYNCED_SETTING_KEYS
+    assert DEFAULTS["send_reminder_enabled"] is False
+    assert DEFAULTS["send_reminder_day"] == 1
+    assert DEFAULTS["send_reminder_time"] == "18:00"
+    assert DEFAULTS["send_reminder_last_fired_month"] == ""
+    assert "send_reminder_enabled" not in SYNCED_SETTING_KEYS
+    assert "send_reminder_day" not in SYNCED_SETTING_KEYS
+    assert "send_reminder_time" not in SYNCED_SETTING_KEYS
+    assert "send_reminder_last_fired_month" not in SYNCED_SETTING_KEYS
+
+
 # --- override_in_memory (Audit M12) ---
 
 
