@@ -787,16 +787,16 @@ def test_merge_different_slots_conflict_candidates_carry_slots():
 # --- Forward-Compat (>v4 abweisen) + Absorb/Migration älterer Docs (v1/v2) ---
 
 from src.sync import (
-    NEWER_REMOTE_VERSION_MSG, SCHEMA_VERSION, _remote_is_newer, migrate_doc_to_current,
+    NEWER_REMOTE_VERSION_MSG, SCHEMA_VERSION, remote_is_newer, migrate_doc_to_current,
 )
 
 
-def test_remote_is_newer():
-    assert _remote_is_newer({"schema_version": SCHEMA_VERSION + 1, "entries": {}}) is True
-    assert _remote_is_newer({"schema_version": 99, "entries": {}}) is True
-    assert _remote_is_newer({"schema_version": SCHEMA_VERSION, "entries": {}}) is False
-    assert _remote_is_newer({"schema_version": 2, "entries": {}}) is False  # älter → absorb
-    assert _remote_is_newer({"entries": {}}) is False
+def testremote_is_newer():
+    assert remote_is_newer({"schema_version": SCHEMA_VERSION + 1, "entries": {}}) is True
+    assert remote_is_newer({"schema_version": 99, "entries": {}}) is True
+    assert remote_is_newer({"schema_version": SCHEMA_VERSION, "entries": {}}) is False
+    assert remote_is_newer({"schema_version": 2, "entries": {}}) is False  # älter → absorb
+    assert remote_is_newer({"entries": {}}) is False
 
 
 def test_migrate_doc_to_current_wraps_flat_entries():
@@ -872,7 +872,7 @@ def test_run_pull_aborts_on_newer_remote(tmp_path, monkeypatch):
     def cb(ok, error, tb=""):
         received["ok"] = ok
         received["error"] = error
-    main._run_pull_in_background(storage, settings, conflicts, str(tmp_path), cb)
+    main.run_pull_in_background(storage, settings, conflicts, str(tmp_path), cb)
     assert received["ok"] is False
     assert str(received["error"]) == NEWER_REMOTE_VERSION_MSG
     assert storage.get_all_raw() == {}
@@ -893,7 +893,7 @@ def test_run_pull_absorbs_v2_remote(tmp_path, monkeypatch):
     def cb(ok, error, tb=""):
         received["ok"] = ok
         received["error"] = error
-    main._run_pull_in_background(storage, settings, conflicts, str(tmp_path), cb)
+    main.run_pull_in_background(storage, settings, conflicts, str(tmp_path), cb)
     assert received["ok"] is True
     assert storage.get_all_raw()["2026-06-20"]["slots"] == [
         {"start": "08:00", "end": "16:00", "pause": 30, "kategorie": ""}]
@@ -912,7 +912,7 @@ def test_run_push_aborts_on_newer_remote(tmp_path, monkeypatch):
     upload_calls = []
     monkeypatch.setattr(drive, "upload",
                         lambda *a, **k: (upload_calls.append(a), ("id", "etag"))[1])
-    res = main._run_push_blocking(storage, settings, conflicts, str(tmp_path))
+    res = main.run_push_blocking(storage, settings, conflicts, str(tmp_path))
     assert res.get("ok") is False
     assert str(res.get("error")) == NEWER_REMOTE_VERSION_MSG
     assert upload_calls == []
@@ -936,7 +936,7 @@ def test_run_push_absorbs_v2_remote_before_upload(tmp_path, monkeypatch):
         uploaded["doc"] = _json.loads(content)
         return ("file-1", "etag-new")
     monkeypatch.setattr(drive, "upload", _fake_upload)
-    res = main._run_push_blocking(storage, settings, conflicts, str(tmp_path))
+    res = main.run_push_blocking(storage, settings, conflicts, str(tmp_path))
     assert res.get("ok") is True
     assert uploaded["doc"]["schema_version"] == 4
     assert set(uploaded["doc"]["entries"]) == {"2026-06-09", "2026-06-20"}

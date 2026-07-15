@@ -11,6 +11,19 @@ MONTHS_DE = [
 ]
 
 
+def utc_now_iso():
+    """Aktueller UTC-Zeitstempel als ISO-String 'YYYY-MM-DDTHH:MM:SSZ'.
+
+    Z-Suffix statt +00:00 (JS/Drive-Konvention), Sekunden-Auflösung, kein
+    Millisekunden-Anteil. Single Source of Truth für alle Sync-/Persistenz-
+    Timestamps — war früher 6× privat als `_utc_now_iso` in
+    storage/reservations/reservations_sync/settings/share/sync dupliziert
+    (Audit N17). An dieser Sekunden-Auflösung + Wanduhr-Abhängigkeit hängt das
+    LWW-Tie-Break im Sync (vgl. sync.py), daher nicht ohne Bedacht ändern.
+    """
+    return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
 def parse_time(time_str):
     """Parse HH:MM string. Returns (hours, minutes) or None if invalid."""
     try:
@@ -68,14 +81,25 @@ def get_week_dates(iso_year, iso_week):
     return [monday + datetime.timedelta(days=i) for i in range(7)]
 
 
+def format_date(d):
+    """date/datetime → 'TT.MM.JJJJ' für die Anzeige (deutsches UI-Format).
+
+    Objekt-Pendant zu format_iso_date (das einen ISO-String erwartet):
+    zentralisiert das über Dialoge und Report verstreute
+    `d.strftime('%d.%m.%Y')` (Audit N20). ISO bleibt die Speicher-/interne
+    Quelle — dies ist reine Anzeige-Formatierung.
+    """
+    return d.strftime("%d.%m.%Y")
+
+
 def get_week_label(iso_year, iso_week):
     """Return display label like 'KW 14 · 30.03. – 05.04.2026'."""
     dates = get_week_dates(iso_year, iso_week)
     monday = dates[0]
     sunday = dates[6]
     if monday.year != sunday.year:
-        return f"KW {iso_week} · {monday.strftime('%d.%m.%Y')} – {sunday.strftime('%d.%m.%Y')}"
-    return f"KW {iso_week} · {monday.strftime('%d.%m.')} – {sunday.strftime('%d.%m.%Y')}"
+        return f"KW {iso_week} · {format_date(monday)} – {format_date(sunday)}"
+    return f"KW {iso_week} · {monday.strftime('%d.%m.')} – {format_date(sunday)}"
 
 
 def week_spans_months(iso_year, iso_week):
@@ -93,7 +117,7 @@ def format_iso_date(iso, fallback="—"):
     if not iso or len(iso) < 10:
         return fallback
     try:
-        return datetime.date.fromisoformat(iso[:10]).strftime("%d.%m.%Y")
+        return format_date(datetime.date.fromisoformat(iso[:10]))
     except ValueError:
         return iso[:10]
 
@@ -109,7 +133,7 @@ def format_iso_weekday_date(iso, fallback="—"):
         day = datetime.date.fromisoformat(iso[:10])
     except ValueError:
         return iso[:10]
-    return f"{WEEKDAYS_DE_FULL[day.weekday()]} - {day.strftime('%d.%m.%Y')}"
+    return f"{WEEKDAYS_DE_FULL[day.weekday()]} - {format_date(day)}"
 
 
 def format_iso_datetime(iso, fallback="—"):
@@ -142,7 +166,7 @@ def slots_overlap(slots):
             continue
         intervals.append((start[0] * 60 + start[1], end[0] * 60 + end[1]))
     intervals.sort()
-    for (_prev_start, prev_end), (next_start, _next_end) in zip(intervals, intervals[1:]):
+    for (_prev_start, prev_end), (next_start, _next_end) in zip(intervals, intervals[1:], strict=False):
         if next_start < prev_end:
             return True
     return False

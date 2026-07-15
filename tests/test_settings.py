@@ -751,3 +751,48 @@ def test_reminder_defaults_present_and_device_local():
     assert DEFAULTS["reminder_minutes_before"] == 15
     assert "reminders_enabled" not in SYNCED_SETTING_KEYS
     assert "reminder_minutes_before" not in SYNCED_SETTING_KEYS
+
+
+# --- override_in_memory (Audit M12) ---
+
+
+def test_override_in_memory_sets_value_during_block(tmp_settings):
+    tmp_settings.set("show_weekend", True)
+    with tmp_settings.override_in_memory("show_weekend", False):
+        assert tmp_settings.get("show_weekend") is False
+
+
+def test_override_in_memory_restores_previous_after_block(tmp_settings):
+    tmp_settings.set("show_weekend", True)
+    with tmp_settings.override_in_memory("show_weekend", False):
+        pass
+    assert tmp_settings.get("show_weekend") is True
+
+
+def test_override_in_memory_does_not_persist_to_disk(tmp_path):
+    """Kern der M12-Kapselung: der temporäre Override darf settings.json NICHT
+    anfassen — ein paralleler Reader (frischer Settings-Reload) sieht den alten
+    Wert, auch während der with-Block läuft."""
+    path = str(tmp_path / "settings.json")
+    s1 = Settings(path)
+    s1.set("show_weekend", True)
+    with s1.override_in_memory("show_weekend", False):
+        s2 = Settings(path)
+        assert s2.get("show_weekend") is True  # Disk unverändert
+
+
+def test_override_in_memory_restores_even_on_exception(tmp_settings):
+    tmp_settings.set("show_weekend", True)
+    with pytest.raises(RuntimeError):
+        with tmp_settings.override_in_memory("show_weekend", False):
+            raise RuntimeError("boom")
+    assert tmp_settings.get("show_weekend") is True
+
+
+def test_override_in_memory_removes_key_absent_before(tmp_settings):
+    """War der Key vorher nicht in _data (nur via DEFAULTS sichtbar), wird er
+    nach dem Block wieder entfernt statt auf dem Override-Wert kleben zu bleiben."""
+    assert "some_transient_key" not in tmp_settings._data
+    with tmp_settings.override_in_memory("some_transient_key", 42):
+        assert tmp_settings.get("some_transient_key") == 42
+    assert "some_transient_key" not in tmp_settings._data

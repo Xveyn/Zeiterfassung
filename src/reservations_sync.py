@@ -9,11 +9,8 @@ pull → merge → push und schreibt neue event_ids pro Slot zurück.
 """
 
 import contextlib
-import datetime
 
-
-def _utc_now_iso():
-    return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+from src.time_utils import utc_now_iso
 
 
 def _slot_from_event(ev):
@@ -210,5 +207,5 @@ def reconcile_reservations(service, calendar_id, store, settings, data_lock=None
                 merged[date] = entry
 
         store.apply_reconciled(merged)
-        settings.set("last_calendar_sync_at", _utc_now_iso())
+        settings.set("last_calendar_sync_at", utc_now_iso())
     return {"imported_dates": imported_dates}

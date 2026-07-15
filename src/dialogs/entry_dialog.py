@@ -11,7 +11,7 @@ from src.theme import (
     primary_button, secondary_button,
     set_primary_button_enabled, themed_askyesno, themed_showinfo,
 )
-from src.time_utils import format_iso_weekday_date, get_week_label, validate_slots
+from src.time_utils import format_date, format_iso_weekday_date, get_week_label, validate_slots
 from src.weekly_limit import check_week_limit
 
 # Kategorie am Slot: "" = keine Kategorie. Das Dropdown ist readonly (Anlegen/
@@ -76,7 +76,7 @@ def open_entry_dialog(parent, date_str, storage, settings, on_change,
         if state:
             feiertage = get_holidays(state, day.year)
             if day in feiertage:
-                date_de = day.strftime("%d.%m.%Y")
+                date_de = format_date(day)
                 confirm = themed_askyesno(
                     parent, "Feiertag",
                     f"Der {date_de} ist {feiertage[day]} (Feiertag).\n\n"

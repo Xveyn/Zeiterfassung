@@ -12,22 +12,27 @@ Eine gelöschte Reservierung bleibt als Tombstone (deleted=True, slots=[])
 erhalten, bis der Reconcile die zugehörigen Events entfernt hat.
 """
 
+from __future__ import annotations
+
 import datetime
 import json
 import logging
 import os
 import threading
+from typing import Any
 
+from src.time_utils import utc_now_iso
 
-def _utc_now_iso():
-    # Z-Suffix statt +00:00 — konsistent zu storage.py / sync.py.
-    return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-
+# JSON-getragene Records (Audit N8): ein Slot {start, end, kategorie,
+# gcal_event_id}; ein Reservierungs-Record {slots, modified_at, deleted};
+# der Store hält {ISO-Datum: Reservation}. Werte sind heterogen → Any.
+Slot = dict[str, Any]
+Reservation = dict[str, Any]
 
 _REQUIRED_RESERVATION_KEYS = frozenset({"slots", "modified_at", "deleted"})
 
 
-def _normalize_slot(slot):
+def _normalize_slot(slot: Slot) -> Slot:
     """Vervollständigt einen Reservierungs-Slot auf
     {start, end, kategorie, gcal_event_id}. Fehlende `kategorie` → "",
     fehlende `gcal_event_id` → None."""
@@ -40,14 +45,15 @@ def _normalize_slot(slot):
 
 
 class ReservationStore:
-    def __init__(self, filepath="reservations.json", lock=None):
+    def __init__(self, filepath: str = "reservations.json",
+                 lock: threading.RLock | None = None) -> None:
         self.filepath = filepath
         # Geteilter Daten-Lock (Audit H1/H2) — siehe storage.py.
         self._lock = lock if lock is not None else threading.RLock()
-        self._data = {}
+        self._data: dict[str, Reservation] = {}
         self._load()
 
-    def _load(self):
+    def _load(self) -> None:
         if not os.path.exists(self.filepath):
             return
         try:
@@ -66,7 +72,7 @@ class ReservationStore:
             return
         self._migrate_legacy_reservations()
 
-    def _migrate_legacy_reservations(self):
+    def _migrate_legacy_reservations(self) -> None:
         """Wrappt alte Ein-Reservierung-Tage in eine Slot-Liste. Idempotent:
         Einträge mit `slots` bleiben unangetastet. modified_at/deleted werden
         nur gesetzt, falls sie fehlen (alte Dateien tragen sie i.d.R. bereits);
@@ -79,9 +85,9 @@ class ReservationStore:
             datetime.datetime.fromtimestamp(mtime, datetime.timezone.utc)
             .strftime("%Y-%m-%dT%H:%M:%SZ")
             if mtime is not None
-            else _utc_now_iso()
+            else utc_now_iso()
         )
-        for date, entry in list(self._data.items()):
+        for _date, entry in list(self._data.items()):
             if not isinstance(entry, dict):
                 continue
             if "slots" in entry:
@@ -101,7 +107,7 @@ class ReservationStore:
             entry.setdefault("modified_at", fallback_modified_at)
             entry.setdefault("deleted", False)
 
-    def _save_to_disk(self):
+    def _save_to_disk(self) -> None:
         tmp = self.filepath + ".tmp"
         with open(tmp, "w", encoding="utf-8") as f:
             json.dump(self._data, f, indent=2, ensure_ascii=False)
@@ -116,14 +122,14 @@ class ReservationStore:
             raise
 
     @staticmethod
-    def _user_shape(entry):
+    def _user_shape(entry: Reservation) -> dict[str, Any]:
         """User-Shape: Slots ohne das interne Feld gcal_event_id."""
         return {"slots": [
             {"start": s.get("start"), "end": s.get("end"), "kategorie": s.get("kategorie", "")}
             for s in entry.get("slots", [])
         ]}
 
-    def get_all(self):
+    def get_all(self) -> dict[str, dict[str, Any]]:
         """{date: {slots: [...]}} ohne Tombstones — für die UI."""
         with self._lock:
             return {
@@ -132,20 +138,20 @@ class ReservationStore:
                 if not entry.get("deleted")
             }
 
-    def get_all_raw(self):
+    def get_all_raw(self) -> dict[str, Reservation]:
         """Komplette Objekte inkl. Metadaten, gcal_event_id und Tombstones —
         für den Reconcile."""
         with self._lock:
             return dict(self._data)
 
-    def get(self, date_str):
+    def get(self, date_str: str) -> dict[str, Any] | None:
         with self._lock:
             entry = self._data.get(date_str)
             if entry is None or entry.get("deleted"):
                 return None
             return self._user_shape(entry)
 
-    def save(self, date_str, slots):
+    def save(self, date_str: str, slots: list[Slot]) -> None:
         """Legt die Reservierungs-Slots eines Tages an oder überschreibt sie.
 
         Dialog-Edits liefern Slots OHNE gcal_event_id. Damit der Reconcile die
@@ -163,12 +169,12 @@ class ReservationStore:
                 new_slots.append(ns)
             self._data[date_str] = {
                 "slots": new_slots,
-                "modified_at": _utc_now_iso(),
+                "modified_at": utc_now_iso(),
                 "deleted": False,
             }
             self._save_to_disk()
 
-    def delete(self, date_str):
+    def delete(self, date_str: str) -> None:
         """Tombstone schreiben (slots=[]). Der Reconcile entfernt die
         zugehörigen Kalender-Events über den vollständigen Event-Pull (AP7)."""
         with self._lock:
@@ -176,12 +182,12 @@ class ReservationStore:
                 return
             self._data[date_str] = {
                 "slots": [],
-                "modified_at": _utc_now_iso(),
+                "modified_at": utc_now_iso(),
                 "deleted": True,
             }
             self._save_to_disk()
 
-    def apply_reconciled(self, reconciled):
+    def apply_reconciled(self, reconciled: dict[str, Reservation]) -> None:
         """Ersetzt den kompletten Stand durch das Reconcile-Ergebnis.
         Wirft ValueError, wenn ein Eintrag Pflichtfelder vermissen lässt —
         analog zu Storage.apply_merge."""

@@ -20,6 +20,8 @@ import datetime
 import json
 import re
 
+from src.time_utils import utc_now_iso
+
 
 SCHEMA_VERSION = 3
 KIND = "zeiterfassung-share"
@@ -33,10 +35,6 @@ _LEGACY_RESERVATION_KEYS = frozenset({"start", "end"})
 # v3-Slot-Keys:
 _ENTRY_SLOT_KEYS = frozenset({"start", "end", "pause", "kategorie"})
 _RESERVATION_SLOT_KEYS = frozenset({"start", "end", "kategorie"})
-
-
-def _utc_now_iso():
-    return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 class ShareValidationError(Exception):
@@ -53,7 +51,8 @@ def _validate_time(date_str, label, value):
     try:
         datetime.time.fromisoformat(value)
     except ValueError:
-        raise ShareValidationError(f"Eintrag {date_str}: ungültige {label} {value!r}")
+        raise ShareValidationError(
+            f"Eintrag {date_str}: ungültige {label} {value!r}") from None
 
 
 def _validate_date_key(date_str):
@@ -62,7 +61,7 @@ def _validate_date_key(date_str):
     try:
         datetime.date.fromisoformat(date_str)
     except ValueError:
-        raise ShareValidationError(f"Ungültiges Datum: {date_str!r}")
+        raise ShareValidationError(f"Ungültiges Datum: {date_str!r}") from None
 
 
 def _check_keys(date_str, entry, expected_keys, label="Eintrag"):
@@ -159,7 +158,7 @@ def parse_share_doc(raw_bytes):
     try:
         doc = json.loads(raw_bytes)
     except (ValueError, TypeError) as e:
-        raise ShareValidationError(f"Datei ist kein gültiges JSON: {e}")
+        raise ShareValidationError(f"Datei ist kein gültiges JSON: {e}") from e
 
     if not isinstance(doc, dict):
         raise ShareValidationError("Datei-Inhalt ist kein JSON-Objekt.")
@@ -244,7 +243,7 @@ def build_share_doc(storage, sender_email, *, reservation_store=None,
     doc = {
         "schema_version": SCHEMA_VERSION,
         "kind": KIND,
-        "exported_at": _utc_now_iso(),
+        "exported_at": utc_now_iso(),
         "exported_by": sender_email or "",
     }
     if include_entries:
