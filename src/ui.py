@@ -21,6 +21,7 @@ from src.grid_renderer import GridRenderer
 from src.sync_orchestrator import classify_sync_error, SyncOrchestrator
 from src.update_banner import UpdateBanner
 from src.reminder_scheduler import ReminderScheduler
+from src.send_reminder_scheduler import SendReminderScheduler
 from src.dialogs.entry_dialog import open_entry_dialog
 from src.dialogs.send_dialog import open_send_dialog
 from src.dialogs.settings_dialog import open_settings_dialog
@@ -99,6 +100,9 @@ class App:
             self.root, self.settings, self.storage,
             self.reservation_store, lambda: self._tray,
         )
+        self._send_reminders = SendReminderScheduler(
+            self.root, self.settings, lambda: self._tray,
+        )
         self._build_header()
         self._renderer.build_grid(self.root)
         self._build_footer()
@@ -109,6 +113,7 @@ class App:
         self._apply_always_on_top()
         self._apply_tray_setting()
         self._apply_reminder_setting()
+        self._apply_send_reminder_setting()
         self.root.bind("<Left>", lambda e: self._navigate(-1))
         self.root.bind("<Right>", lambda e: self._navigate(+1))
         # Tab schaltet zwischen Monat- und Wochenansicht. "break" verhindert
@@ -364,6 +369,7 @@ class App:
             self._apply_always_on_top()
             self._apply_tray_setting()
             self._apply_reminder_setting()
+            self._apply_send_reminder_setting()
             # Nach jeder Settings-Speicherung den sender_email-Fetch nochmal
             # anstoßen. Damit erscheint die Absender-Adresse automatisch nach
             # Sync-Aktivierung (frischer Token mit userinfo.email-Scope), ohne
@@ -402,10 +408,11 @@ class App:
         """
         from src.tray import TrayIcon, is_supported
 
-        # Tray dient zweierlei: Minimize-to-Tray UND als Toast-Kanal für
-        # Reservierungs-Erinnerungen. Es läuft, sobald EINES aktiv ist.
+        # Tray dient mehrerem: Minimize-to-Tray UND als Toast-Kanal für
+        # Reservierungs- und Sende-Erinnerungen. Es läuft, sobald EINES aktiv ist.
         want_tray = (bool(self.settings.get("minimize_to_tray"))
-                     or bool(self.settings.get("reminders_enabled")))
+                     or bool(self.settings.get("reminders_enabled"))
+                     or bool(self.settings.get("send_reminder_enabled")))
 
         if want_tray and self._tray is None:
             if not is_supported():
@@ -418,6 +425,7 @@ class App:
                 )
                 self.settings.set("minimize_to_tray", False)
                 self.settings.set("reminders_enabled", False)
+                self.settings.set("send_reminder_enabled", False)
                 return
             tray = TrayIcon(
                 self.base_path,
@@ -446,6 +454,7 @@ class App:
                 )
                 self.settings.set("minimize_to_tray", False)
                 self.settings.set("reminders_enabled", False)
+                self.settings.set("send_reminder_enabled", False)
                 return
             self._tray = tray
 
@@ -465,6 +474,19 @@ class App:
             self._reminders.start()
         else:
             self._reminders.stop()
+
+    def _apply_send_reminder_setting(self):
+        """Startet/stoppt den monatlichen Sende-Reminder-Poll abhängig vom
+        Setting. Braucht ein laufendes Tray-Icon als Toast-Kanal — ohne Tray
+        wird gestoppt.
+
+        MUSS nach `_apply_tray_setting()` laufen (liest `self._tray`), wie
+        `_apply_reminder_setting()`."""
+        want = bool(self.settings.get("send_reminder_enabled")) and self._tray is not None
+        if want:
+            self._send_reminders.start()
+        else:
+            self._send_reminders.stop()
 
     def _restore_from_tray(self):
         """Bringt das Fenster aus dem `withdraw()`-Zustand zurück."""
@@ -629,6 +651,7 @@ class App:
         if self._tray is not None:
             self._tray.stop()
         self._reminders.stop()
+        self._send_reminders.stop()
         if self._single_instance is not None:
             self._single_instance.release()
         self.root.destroy()
@@ -672,4 +695,5 @@ class App:
         if self._tray is not None:
             self._tray.stop()
         self._reminders.stop()
+        self._send_reminders.stop()
         self.root.destroy()

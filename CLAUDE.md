@@ -292,8 +292,8 @@ Lokal: `pytest` aus dem Repo-Root. Alle Tests müssen vor dem PR-Merge grün sei
 - `src/share.py` — Export/Import von Arbeitszeiten als Share-JSON (Teilen per Mail-Anhang)
 - `src/reservations.py` — Reservierungen (zukünftige Soll-Zeiten, eigenes Konzept neben Ist-Zeiten)
 - `src/reservations_sync.py` — Abgleich der Reservierungen mit einem Google Kalender
-- `src/reminders.py` — pure Fälligkeits-Logik für Reservierungs-Erinnerungen (Tk-frei)
-- `src/reminder_scheduler.py` — periodischer Reminder-Poll (root.after) → Toast über Tray
+- `src/reminders.py` — pure Fälligkeits-Logik für Reservierungs-Erinnerungen (Tk-frei); `src/reminder_scheduler.py` — periodischer Reminder-Poll (root.after) → Toast über Tray
+- `src/send_reminder.py` — pure Fälligkeits-Logik für den monatlichen Sende-Reminder (Tk-frei), Tag im Monat auf die tatsächliche Monatslänge geclamped; `src/send_reminder_scheduler.py` — periodischer Poll (root.after) → Toast über Tray, Fired-Zustand persistiert in Settings (einmal pro Monat, auch über Neustarts hinweg)
 - `src/weekly_limit.py` — Wochenstunden-Limit für einen konfigurierbaren Zeitraum (Werkstudenten-Privileg, #98); pure Logik, zählt nur Ist-Zeiten (nicht Reservierungen)
 - `src/gcal.py` — Google-Calendar-API-Wrapper (lazy Imports wie `drive.py`, wegen CI ohne `requirements.txt`)
 - `src/tray.py` — Infobereich-Icon (Minimize-to-Tray); Plattform-Fassade über pystray (Windows) und `tray_mac.py` (macOS)
