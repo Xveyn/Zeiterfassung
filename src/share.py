@@ -20,6 +20,8 @@ import datetime
 import json
 import re
 
+from src.time_utils import utc_now_iso
+
 
 SCHEMA_VERSION = 3
 KIND = "zeiterfassung-share"
@@ -33,10 +35,6 @@ _LEGACY_RESERVATION_KEYS = frozenset({"start", "end"})
 # v3-Slot-Keys:
 _ENTRY_SLOT_KEYS = frozenset({"start", "end", "pause", "kategorie"})
 _RESERVATION_SLOT_KEYS = frozenset({"start", "end", "kategorie"})
-
-
-def _utc_now_iso():
-    return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 class ShareValidationError(Exception):
@@ -245,7 +243,7 @@ def build_share_doc(storage, sender_email, *, reservation_store=None,
     doc = {
         "schema_version": SCHEMA_VERSION,
         "kind": KIND,
-        "exported_at": _utc_now_iso(),
+        "exported_at": utc_now_iso(),
         "exported_by": sender_email or "",
     }
     if include_entries:

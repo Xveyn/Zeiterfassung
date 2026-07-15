@@ -12,9 +12,11 @@ Doc-Struktur (Sync-File und Zwischenformate), Stand SCHEMA_VERSION = 4:
 }
 """
 
+from __future__ import annotations
+
 import contextlib
-import datetime
 import uuid
+from typing import TYPE_CHECKING, Any, Callable
 
 # SYNCED_SETTING_KEYS lebt als Single Source of Truth in settings.py — hier nur
 # importieren, NICHT erneut definieren. Eine zweite (divergierende) Definition
@@ -22,11 +24,26 @@ import uuid
 # stiller Datenverlust im Multi-Device-Sync (Issue #48). settings.py ist
 # stdlib-only und importiert sync.py nicht (kein Zyklus, CI-import-sicher).
 from src.settings import SYNCED_SETTING_KEYS
-# _REQUIRED_ENTRY_KEYS ist der Pflichtfeld-Vertrag, den storage.apply_merge
+from src.time_utils import utc_now_iso
+# REQUIRED_ENTRY_KEYS ist der Pflichtfeld-Vertrag, den storage.apply_merge
 # erzwingt — hier als Single Source of Truth importieren (nicht duplizieren),
 # damit validate_remote_doc nie gegen einen anderen Feldsatz prüft als der
 # Store später schreibt. storage.py importiert sync.py nicht (kein Zyklus).
-from src.storage import _REQUIRED_ENTRY_KEYS
+from src.storage import REQUIRED_ENTRY_KEYS
+
+if TYPE_CHECKING:
+    import threading
+
+    from src.conflicts_store import ConflictsStore
+    from src.settings import Settings
+    from src.storage import Storage
+
+# JSON-getragene Sync-Strukturen (Audit N8). Doc = ein komplettes Sync-Doc
+# ({schema_version, entries, settings, conflicts, meta}); Entry = ein
+# Eintrag-Record; Conflict = ein Konflikt-Record. Werte heterogen → Any.
+Doc = dict[str, Any]
+Entry = dict[str, Any]
+Conflict = dict[str, Any]
 
 
 SCHEMA_VERSION = 4
@@ -40,24 +57,20 @@ NEWER_REMOTE_VERSION_MSG = (
 )
 
 
-def _watermark_of(doc):
+def _watermark_of(doc: Doc) -> str:
     return ((doc.get("meta") or {}).get("gc_watermark") or "")
 
 
-def _is_settled_entry(entry, watermark):
+def _is_settled_entry(entry: Entry, watermark: str) -> bool:
     return bool(entry.get("deleted")) and (entry.get("modified_at") or "") < watermark
 
 
-def _is_settled_conflict(conflict, watermark):
+def _is_settled_conflict(conflict: Conflict, watermark: str) -> bool:
     resolved_at = conflict.get("resolved_at") or ""
     return bool(conflict.get("resolved")) and resolved_at != "" and resolved_at < watermark
 
 
-def _utc_now_iso():
-    return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-
-
-def _slots_signature(entry):
+def _slots_signature(entry: Entry) -> list[tuple[Any, ...]]:
     """Reihenfolge-normalisierte Signatur der Slot-Liste eines Eintrags,
     für den Gleichheitsvergleich im Merge. Sortiert nach den Slot-Feldern,
     damit eine reine Umordnung der Slots NICHT als Änderung zählt."""
@@ -67,16 +80,19 @@ def _slots_signature(entry):
     )
 
 
-def _values_equal_entry(a, b):
+def _values_equal_entry(a: Entry, b: Entry) -> bool:
     return (_slots_signature(a) == _slots_signature(b)
             and bool(a.get("deleted")) == bool(b.get("deleted")))
 
 
-def _values_equal_setting(a, b):
+def _values_equal_setting(a: dict[str, Any], b: dict[str, Any]) -> bool:
     return a.get("value") == b.get("value")
 
 
-def _merge_one(local, remote, last_pull_at, equal_fn=_values_equal_entry, kind="entry", key=None):
+def _merge_one(local: dict[str, Any] | None, remote: dict[str, Any] | None,
+               last_pull_at: str, equal_fn: Callable[[Any, Any], bool] = _values_equal_entry,
+               kind: str = "entry", key: str | None = None
+               ) -> tuple[dict[str, Any] | None, Conflict | None]:
     """LWW-Merge eines einzelnen Werts.
 
     Returns: (winner_dict, conflict_or_none)
@@ -103,7 +119,7 @@ def _merge_one(local, remote, last_pull_at, equal_fn=_values_equal_entry, kind="
     remote_changed = remote["modified_at"] > last_pull_at
 
     # N2 (LWW-Wanduhr-Abhängigkeit — bewusst festgehalten): `modified_at` ist eine
-    # Wanduhr-Zeit (_utc_now_iso, Sekunden-Auflösung, KEINE Millisekunden). Der
+    # Wanduhr-Zeit (utc_now_iso, Sekunden-Auflösung, KEINE Millisekunden). Der
     # Vergleich ist ein String-Vergleich der ISO-Timestamps. Das LWW-Ergebnis
     # hängt damit an halbwegs synchronen Geräte-Uhren; eine stark falsch gehende
     # Uhr kann Änderungen dauerhaft gewinnen/verlieren lassen. Bei exakt gleicher
@@ -117,7 +133,7 @@ def _merge_one(local, remote, last_pull_at, equal_fn=_values_equal_entry, kind="
             "kind": kind,
             "key": key,
             "candidates": [_strip_for_candidate(local), _strip_for_candidate(remote)],
-            "detected_at": _utc_now_iso(),
+            "detected_at": utc_now_iso(),
             "resolved": False,
             "resolution": None,
             "resolved_at": None,
@@ -127,12 +143,12 @@ def _merge_one(local, remote, last_pull_at, equal_fn=_values_equal_entry, kind="
     return (winner, None)
 
 
-def _strip_for_candidate(item):
+def _strip_for_candidate(item: dict[str, Any]) -> dict[str, Any]:
     """Reduziert ein Entry/Setting auf das, was im conflict.candidates landen soll."""
     return {k: v for k, v in item.items()}
 
 
-def _merge_conflict_pair(a, b):
+def _merge_conflict_pair(a: Conflict, b: Conflict) -> Conflict:
     """LWW auf resolved_at, resolved beats unresolved."""
     if a.get("resolved") and not b.get("resolved"):
         return a
@@ -143,7 +159,7 @@ def _merge_conflict_pair(a, b):
     return a  # beide unresolved — ID-Match heißt dasselbe Detection-Event
 
 
-def _equivalent_unresolved_exists(existing, new_conflict):
+def _equivalent_unresolved_exists(existing: list[Conflict], new_conflict: Conflict) -> bool:
     """Dedupe: existiert bereits ein unresolved Konflikt mit gleichem
     (kind, key, Kandidaten-Set)?"""
     if new_conflict.get("resolved"):
@@ -159,12 +175,12 @@ def _equivalent_unresolved_exists(existing, new_conflict):
     return False
 
 
-def _candidate_signatures(candidates):
+def _candidate_signatures(candidates: list[dict[str, Any]]) -> tuple[tuple[Any, Any], ...]:
     """Sortiertes Tuple aus (modified_at, device_id) — als Set-Vergleichsbasis."""
     return tuple(sorted((c.get("modified_at"), c.get("device_id")) for c in candidates))
 
 
-def merge(local, remote, last_pull_at):
+def merge(local: Doc, remote: Doc, last_pull_at: str) -> Doc:
     merged = {
         "schema_version": SCHEMA_VERSION,
         "entries": {},
@@ -265,7 +281,8 @@ def merge(local, remote, last_pull_at):
     return merged
 
 
-def build_local_doc(storage, settings, conflicts_store):
+def build_local_doc(storage: Storage, settings: Settings,
+                    conflicts_store: ConflictsStore) -> Doc:
     """Erzeugt das Sync-Doc-Format aus den lokalen Stores."""
     return {
         "schema_version": SCHEMA_VERSION,
@@ -276,7 +293,8 @@ def build_local_doc(storage, settings, conflicts_store):
     }
 
 
-def apply_merged_doc(merged_doc, storage, settings, conflicts_store):
+def apply_merged_doc(merged_doc: Doc, storage: Storage, settings: Settings,
+                     conflicts_store: ConflictsStore) -> None:
     """Schreibt das Merge-Ergebnis zurück in die lokalen Stores."""
     storage.apply_merge(merged_doc.get("entries", {}))
     settings.apply_synced(merged_doc.get("settings", {}))
@@ -284,7 +302,8 @@ def apply_merged_doc(merged_doc, storage, settings, conflicts_store):
     settings.set("gc_watermark", (merged_doc.get("meta") or {}).get("gc_watermark") or "")
 
 
-def compact_local(storage, settings, conflicts_store, now):
+def compact_local(storage: Storage, settings: Settings,
+                  conflicts_store: ConflictsStore, now: str) -> None:
     """Schreibt das gc_watermark lokal und strippt settled Tombstones aus
     Storage und ConflictsStore. Ein lokaler Schreibvorgang pro Store
     (Wiederverwendung von storage.apply_merge — Required-Key-Validator +
@@ -300,7 +319,7 @@ def compact_local(storage, settings, conflicts_store, now):
     ])
 
 
-def migrate_doc_to_current(remote_doc):
+def migrate_doc_to_current(remote_doc: Doc) -> Doc:
     """Migriert ein älteres Sync-Doc auf das aktuelle Schema (v4): flache Einträge
     (start/end/pause) werden in eine Slot-Liste gewrappt. Idempotent — Einträge mit
     `slots` bleiben unangetastet; Tombstones bekommen eine leere Slot-Liste.
@@ -335,7 +354,7 @@ def migrate_doc_to_current(remote_doc):
     return {**remote_doc, "schema_version": SCHEMA_VERSION, "entries": migrated}
 
 
-def validate_remote_doc(doc):
+def validate_remote_doc(doc: Any) -> tuple[bool, str]:
     """Prüft ein (bereits auf SCHEMA_VERSION migriertes) Remote-Doc auf die
     strukturellen Invarianten, die `merge`/`apply_merged_doc` voraussetzen —
     BEVOR ein `KeyError`/`ValueError` mitten im Merge landet (Audit M5).
@@ -359,7 +378,7 @@ def validate_remote_doc(doc):
     for date, entry in entries.items():
         if not isinstance(entry, dict):
             return False, f"entry {date!r} ist kein Objekt"
-        missing = _REQUIRED_ENTRY_KEYS - entry.keys()
+        missing = REQUIRED_ENTRY_KEYS - entry.keys()
         if missing:
             return False, f"entry {date!r} fehlen Felder {sorted(missing)}"
         if not isinstance(entry.get("modified_at"), str):
@@ -396,7 +415,7 @@ def validate_remote_doc(doc):
     return True, ""
 
 
-def _remote_is_newer(remote_doc):
+def remote_is_newer(remote_doc: Doc) -> bool:
     """True, wenn das Remote-Doc von einer NEUEREN App-Version stammt
     (schema_version > der hier verstandenen SCHEMA_VERSION).
 
@@ -408,8 +427,9 @@ def _remote_is_newer(remote_doc):
     return (remote_doc.get("schema_version") or 1) > SCHEMA_VERSION
 
 
-def resolve_conflict(conflict_id, chosen_value, conflicts_store, storage, settings, device_id,
-                      data_lock=None):
+def resolve_conflict(conflict_id: str, chosen_value: dict[str, Any],
+                     conflicts_store: ConflictsStore, storage: Storage, settings: Settings,
+                     device_id: str, data_lock: threading.RLock | None = None) -> None:
     """User hat einen Konflikt aufgelöst. chosen_value enthält den gewählten
     (oder manuell editierten) Wert. Für entries: {slots: [...]} (und
     optional deleted). Für settings: {value}.
@@ -431,7 +451,7 @@ def resolve_conflict(conflict_id, chosen_value, conflicts_store, storage, settin
         if target is None:
             raise KeyError(f"Konflikt {conflict_id!r} nicht gefunden")
 
-        now = _utc_now_iso()
+        now = utc_now_iso()
         target["resolved"] = True
         target["resolution"] = dict(chosen_value)
         target["resolved_at"] = now

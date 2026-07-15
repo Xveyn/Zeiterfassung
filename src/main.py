@@ -28,6 +28,7 @@ from src.reservations import ReservationStore
 from src.settings import Settings, clamp_ui_scale
 from src.storage import Storage
 from src.theme import init_fonts
+from src.time_utils import utc_now_iso
 from src.ui import App
 from src.version import VERSION
 
@@ -74,7 +75,7 @@ def _lock_ctx(lock):
     return lock if lock is not None else contextlib.nullcontext()
 
 
-def _run_pull_in_background(storage, settings, conflicts_store, base, ui_callback,
+def run_pull_in_background(storage, settings, conflicts_store, base, ui_callback,
                             data_lock=None, sync_guard=None):
     """Pull läuft in einem Thread; UI-Update über ui_callback (root.after).
 
@@ -113,7 +114,7 @@ def _run_pull_in_background(storage, settings, conflicts_store, base, ui_callbac
                         logging.getLogger(__name__).warning(
                             "Quarantine rename failed for %s", fid, exc_info=True)
                 remote_doc = _parse_remote_or_quarantine(content, file_id, _quarantine)
-            if sync._remote_is_newer(remote_doc):
+            if sync.remote_is_newer(remote_doc):
                 # Neueres (zukünftiges) Schema: NICHT mergen/pushen — Pull sauber
                 # abbrechen, last_pull_at/etag unverändert lassen.
                 ui_callback(ok=False, error=sync.NEWER_REMOTE_VERSION_MSG, tb="")
@@ -143,7 +144,7 @@ def _run_pull_in_background(storage, settings, conflicts_store, base, ui_callbac
                     merged, storage, settings, conflicts_store,
                     os.path.join(base, sync_journal.JOURNAL_FILENAME))
                 settings.set_many({
-                    "last_pull_at": sync._utc_now_iso(),
+                    "last_pull_at": utc_now_iso(),
                     "drive_etag": etag,
                 })
             ui_callback(ok=True, error=None, tb="")
@@ -156,7 +157,7 @@ def _run_pull_in_background(storage, settings, conflicts_store, base, ui_callbac
             sync_guard.release()
 
 
-def _run_push_blocking(storage, settings, conflicts_store, base, timeout_seconds=5,
+def run_push_blocking(storage, settings, conflicts_store, base, timeout_seconds=5,
                        data_lock=None, sync_guard=None, guard_timeout=0):
     """Synchroner Push mit Timeout. Fehler werden geloggt, nicht angezeigt
     (App schließt gerade).
@@ -202,7 +203,7 @@ def _run_push_blocking(storage, settings, conflicts_store, base, timeout_seconds
                         remote_doc = json.loads(remote_bytes)
                     except (json.JSONDecodeError, ValueError):
                         remote_doc = {"schema_version": 1, "entries": {}, "settings": {}, "conflicts": []}
-                    if sync._remote_is_newer(remote_doc):
+                    if sync.remote_is_newer(remote_doc):
                         # Neueres Gerät hat das Remote-Doc fortgeschrieben: nicht
                         # mergen/überschreiben — Push abbrechen, neuere Daten bleiben.
                         result["ok"] = False
@@ -235,7 +236,7 @@ def _run_push_blocking(storage, settings, conflicts_store, base, timeout_seconds
                     content = json.dumps(doc, ensure_ascii=False).encode("utf-8")
                 new_id, new_etag = drive.upload(service, content, file_id)
                 settings.set_many({
-                    "last_pull_at": sync._utc_now_iso(),
+                    "last_pull_at": utc_now_iso(),
                     "drive_etag": new_etag,
                 })
                 result["ok"] = True
@@ -270,7 +271,7 @@ def _run_compaction_blocking(storage, settings, conflicts_store, base, timeout_s
     sync_guard: non-blocking — läuft ein Sync, kommt {"skipped": True} zurück
     (der Settings-Dialog zeigt dann einen Hinweis). Release im finally des
     inneren _do-Threads. data_lock: klammert Merge/Apply/Kompaktierung atomar;
-    der Upload läuft ungelockt (Invarianten wie _run_push_blocking)."""
+    der Upload läuft ungelockt (Invarianten wie run_push_blocking)."""
     import json
     from src import drive, sync, sync_journal
 
@@ -297,7 +298,7 @@ def _run_compaction_blocking(storage, settings, conflicts_store, base, timeout_s
                         remote_doc = {"schema_version": 1}
                     # Neueres Schema (>v3) auf dem FRISCH gepullten Doc: nicht
                     # mergen/überschreiben — Kompaktierung abbrechen.
-                    if sync._remote_is_newer(remote_doc):
+                    if sync.remote_is_newer(remote_doc):
                         result.update({"ok": False, "reason": "newer_version"})
                         return
                 else:
@@ -314,7 +315,7 @@ def _run_compaction_blocking(storage, settings, conflicts_store, base, timeout_s
                     logging.getLogger(__name__).warning(
                         "Remote-Sync-Doc ungültig (%s) — ignoriert, lokaler Stand gewinnt", reason)
                     remote_doc = {"schema_version": 1, "entries": {}, "settings": {}, "conflicts": []}
-                now = sync._utc_now_iso()
+                now = utc_now_iso()
                 # Merge + Apply + Watermark/Strippung + Upload-Snapshot atomar
                 # (Audit H1); der Upload danach läuft bewusst ungelockt.
                 with _lock_ctx(data_lock):
@@ -486,7 +487,7 @@ def main():
                     pass
             root.after(0, apply)
         threading.Thread(
-            target=_run_pull_in_background,
+            target=run_pull_in_background,
             args=(storage, settings, conflicts_store, base, _on_sync_done),
             kwargs={"data_lock": data_lock, "sync_guard": sync_guard},
             daemon=True,

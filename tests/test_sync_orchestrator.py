@@ -206,7 +206,7 @@ def test_push_passes_lock_guard_and_timeouts(monkeypatch):
         captured["timeout_seconds"] = timeout_seconds
         return {"ok": True}
 
-    monkeypatch.setattr("src.main._run_push_blocking", fake)
+    monkeypatch.setattr("src.main.run_push_blocking", fake)
     lock, guard = object(), object()
     orch, _ = _orch(sync_enabled=True, data_lock=lock, sync_guard=guard)
     orch._push()
@@ -224,7 +224,7 @@ def test_push_on_quit_uses_guard_timeout(monkeypatch):
         captured["timeout_seconds"] = timeout_seconds
         return {"ok": True}
 
-    monkeypatch.setattr("src.main._run_push_blocking", fake)
+    monkeypatch.setattr("src.main.run_push_blocking", fake)
     orch, _ = _orch(sync_enabled=True)
     orch.push_on_quit()
     assert captured["guard_timeout"] == 5
@@ -235,7 +235,7 @@ def test_push_on_quit_skipped_logs_no_dialog(monkeypatch):
     import src.sync_orchestrator as so
     errors = []
     monkeypatch.setattr(so, "_show_sync_error", lambda *a, **k: errors.append(a))
-    monkeypatch.setattr("src.main._run_push_blocking",
+    monkeypatch.setattr("src.main.run_push_blocking",
                         lambda *a, **k: {"ok": False, "skipped": True})
     orch, _ = _orch(sync_enabled=True)
     orch.push_on_quit()

@@ -175,6 +175,25 @@ Installierte App und Benutzerdaten liegen je nach Plattform:
 
 `--noconsole` unterdrückt stderr. Fehler aus dem Sendepfad (Gmail, PDF-Erzeugung) **müssen** per `messagebox.showerror` mit `traceback.format_exc()` angezeigt werden — sonst klickt der Nutzer auf „Senden", nichts passiert, und es gibt keine Spur.
 
+### Bekannt-themed / unerwartet-nativ (bewusste Zweiteilung, Audit N14)
+
+Für Fehlerdialoge gilt eine bewusste Aufteilung:
+
+- **Bekannte, erwartete Fehler** (Validierung, „Keine Einträge", „Ungültiger
+  Zeitraum", ein gehandhabter Speicher-`OSError`) → die **themed** Drop-ins
+  aus `theme.py` (`themed_showerror`/`themed_showinfo`/…). Kurze, kuratierte
+  Meldung, konsistentes Dark-Theme.
+- **Unerwartete Fehler** (die generischen `except`-Zweige, die
+  `traceback.format_exc()` bzw. ein `result["tb"]` mitzeigen) →
+  **rohes `tkinter.messagebox.showerror`**. Bewusst nativ und nicht themed:
+  ein themed Dialog baut selbst Tk-Toplevels/Widgets auf und könnte im bereits
+  gestörten Zustand seinerseits scheitern und damit genau die Fehlermeldung
+  verschlucken, die er zeigen soll. Der native Dialog ist die robuste
+  Fallback-Schicht (siehe auch die `messagebox.showerror`-Pflicht oben).
+
+Neue Fehlerpfade dieser Konvention folgen: kuratierte Meldung → themed;
+Traceback-/Catch-all-Ausgabe → nativ.
+
 ## UTF-8 im Mail-Pipeline
 
 Damit Umlaute/ß nicht als Mojibake ankommen, gelten drei Pflichten:

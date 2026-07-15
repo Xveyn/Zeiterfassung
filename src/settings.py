@@ -1,9 +1,14 @@
+from __future__ import annotations
+
 import contextlib
 import datetime
 import json
 import logging
 import os
 import threading
+from typing import Any
+
+from src.time_utils import utc_now_iso
 
 WEEKDAY_KEYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")  # Index = datetime.weekday()
 
@@ -69,7 +74,7 @@ DEFAULTS = {
 _COERCE_FAILED = object()
 
 
-def _coerce(value, default):
+def _coerce(value: Any, default: Any) -> Any:
     """Versuche `value` in den Typ von `default` zu casten.
 
     Liefert den gecasteten Wert oder `_COERCE_FAILED`. bool ist Subklasse
@@ -93,7 +98,7 @@ def _coerce(value, default):
     return _COERCE_FAILED
 
 
-def _migrate_legacy_default_times(loaded):
+def _migrate_legacy_default_times(loaded: dict[str, Any]) -> None:
     """Spiegelt alte globale default_start/default_end auf Per-Tag-Keys.
 
     Modifiziert `loaded` in-place. Per-Tag-Keys haben Priorität — wenn ein
@@ -118,10 +123,6 @@ def _migrate_legacy_default_times(loaded):
             loaded[f"default_end_{day}"] = legacy_end
 
 
-def _utc_now_iso():
-    return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-
-
 # --- Reine Helfer für den Settings-Dialog-Save-Pfad (ohne Tk, headless testbar,
 # extrahiert aus settings_dialog.save_settings, Issue #51). settings.py bleibt
 # bewusst stdlib-only — kein holidays/google-Import (sync.py importiert dieses
@@ -129,7 +130,7 @@ def _utc_now_iso():
 # holidays_de.code_for_state_label, nicht hier.
 
 
-def parse_hourly_rate(raw):
+def parse_hourly_rate(raw: str | None) -> float:
     """Parst die Stundensatz-Eingabe (String) zu float. Leer/nur Whitespace oder
     ungültig → 0.0 (bewusst tolerant: der Dialog soll bei Tippfehlern nicht
     blocken). Komma-Dezimal wird nicht unterstützt (float() wirft → 0.0)."""
@@ -142,7 +143,7 @@ def parse_hourly_rate(raw):
         return 0.0
 
 
-def parse_reminder_minutes(raw):
+def parse_reminder_minutes(raw: Any) -> int | None:
     """Parst die 'Minuten vor Ende'-Eingabe zu int in [0, 120]. Ungültig
     (nicht-numerisch, negativ, > 120, Kommazahl) -> None. Der Dialog nutzt None
     als Fehlersignal (anders als parse_hourly_rate, das tolerant auf 0.0 fällt —
@@ -156,7 +157,7 @@ def parse_reminder_minutes(raw):
     return None
 
 
-def split_synced_updates(updates):
+def split_synced_updates(updates: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
     """Partitioniert ein updates-Dict in (synced, plain) anhand
     SYNCED_SETTING_KEYS. synced reist per Drive-Sync mit (set_synced), plain
     bleibt gerätelokal (set_many)."""
@@ -165,14 +166,14 @@ def split_synced_updates(updates):
     return synced, plain
 
 
-def resolve_calendar_id(cal_map, selected_label, current_id):
+def resolve_calendar_id(cal_map: dict[str, str], selected_label: str, current_id: str) -> str:
     """Mappt den im Dialog gewählten Kalender-Klarnamen über cal_map zurück auf
     die Kalender-ID. Unbekanntes Label → bisheriger Wert, ersatzweise
     "primary" (nie leer, damit der gcal-Abgleich einen gültigen Kalender hat)."""
     return cal_map.get(selected_label, current_id or "primary")
 
 
-def clamp_ui_scale(value):
+def clamp_ui_scale(value: Any) -> float:
     """Normalisiert den UI-Skalierungsfaktor defensiv: castet zu float und
     klemmt auf [0.75, 2.0]. Nicht-castbare Werte (None, Müll-String) → 1.0
     (Default). Schützt das tk-scaling vor korrupten settings.json-Werten und
@@ -185,16 +186,18 @@ def clamp_ui_scale(value):
 
 
 class Settings:
-    def __init__(self, filepath="settings.json", lock=None):
+    def __init__(self, filepath: str = "settings.json",
+                 lock: threading.RLock | None = None) -> None:
         self.filepath = filepath
         # Geteilter Daten-Lock (Audit H1/H2) — siehe storage.py.
         self._lock = lock if lock is not None else threading.RLock()
-        self._data = dict(DEFAULTS)
-        self._synced_meta = {}   # {key: {"modified_at": ..., "device_id": ...}}
+        self._data: dict[str, Any] = dict(DEFAULTS)
+        # {key: {"modified_at": ..., "device_id": ...}}
+        self._synced_meta: dict[str, dict[str, str]] = {}
         self.device_id_for_sync = ""  # wird von main.py auf settings.device_id gesetzt
         self._load()
 
-    def _load(self):
+    def _load(self) -> None:
         if not os.path.exists(self.filepath):
             return
         try:
@@ -242,7 +245,7 @@ class Settings:
             self._data[key] = coerced
         # Unbekannte Keys aus loaded werden ignoriert (nicht in _data übernommen).
 
-    def _quarantine_corrupt(self, reason):
+    def _quarantine_corrupt(self, reason: str) -> None:
         """Verschiebt ein korruptes settings.json nach `.corrupt-<stamp>`
         (wie storage/reservations/conflicts_store) und loggt das Ereignis,
         statt es kommentarlos zu verwerfen (Audit M4/N4). Defaults setzt der
@@ -265,7 +268,7 @@ class Settings:
             "verwende Defaults", reason, os.path.basename(target),
         )
 
-    def _save_to_disk(self):
+    def _save_to_disk(self) -> None:
         # Atomic write: temp file + replace, damit ein Crash mid-write
         # kein halb geschriebenes settings.json hinterlässt.
         payload = dict(self._data)
@@ -284,14 +287,14 @@ class Settings:
                 os.remove(tmp)
             raise
 
-    def get(self, key):
+    def get(self, key: str) -> Any:
         with self._lock:
             return self._data.get(key, DEFAULTS.get(key))
 
-    def set(self, key, value):
+    def set(self, key: str, value: Any) -> None:
         self.set_many({key: value})
 
-    def set_many(self, updates):
+    def set_many(self, updates: dict[str, Any]) -> None:
         """Mehrere Werte setzen, einmal auf Platte schreiben.
 
         Leeres Dict ist No-op (kein Disk-Roundtrip).
@@ -303,7 +306,7 @@ class Settings:
             self._save_to_disk()
 
     @contextlib.contextmanager
-    def override_in_memory(self, key, value):
+    def override_in_memory(self, key: str, value: Any):
         """Überschreibt `key` NUR im Speicher (kein Disk-Save) für die Dauer
         des with-Blocks und stellt den vorherigen Zustand danach wieder her.
 
@@ -325,7 +328,7 @@ class Settings:
                 else:
                     self._data.pop(key, None)
 
-    def set_synced(self, key, value):
+    def set_synced(self, key: str, value: Any) -> None:
         """Setzt einen whitelisted Sync-Key und stempelt Per-Field-Metadaten.
         Außerhalb der Whitelist verhält sich wie ein normales set()."""
         if key not in SYNCED_SETTING_KEYS:
@@ -334,12 +337,12 @@ class Settings:
         with self._lock:
             self._data[key] = value
             self._synced_meta[key] = {
-                "modified_at": _utc_now_iso(),
+                "modified_at": utc_now_iso(),
                 "device_id": self.device_id_for_sync,
             }
             self._save_to_disk()
 
-    def apply_updates(self, updates):
+    def apply_updates(self, updates: dict[str, Any]) -> None:
         """Routet ein updates-Dict aus dem Settings-Dialog auf den korrekten
         Persistenz-Pfad: Keys in SYNCED_SETTING_KEYS über set_synced (je ein
         Per-Field-Stempel + Disk-Write), der Rest in einem set_many. Single
@@ -350,7 +353,7 @@ class Settings:
         if plain:
             self.set_many(plain)
 
-    def get_synced_doc(self):
+    def get_synced_doc(self) -> dict[str, dict[str, Any]]:
         """{key: {value, modified_at, device_id}} — Eingabe für den Sync-Merge.
         Nur Keys mit vorhandener Metadaten-Spur werden zurückgegeben."""
         with self._lock:
@@ -366,7 +369,7 @@ class Settings:
                 }
             return doc
 
-    def apply_synced(self, synced_doc):
+    def apply_synced(self, synced_doc: dict[str, Any]) -> None:
         """Übernimmt das Merge-Ergebnis: schreibt value in _data und Meta in
         _synced_meta. Schreibt einmal auf Platte."""
         if not synced_doc:
