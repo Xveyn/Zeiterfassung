@@ -1,5 +1,42 @@
 # Changelog
 
+## 1.18.0 — 2026-07-15
+
+### Hinzugefügt
+- **Updates-Tab**: Der Einstellungen-Dialog hat jetzt einen fünften Tab
+  „Updates". Dort lässt sich der Update-Status manuell prüfen, die
+  Hintergrund-Häufigkeit auf täglich / wöchentlich / monatlich / nie stellen
+  und bei einer neueren Version direkt der passende Changelog-Abschnitt lesen.
+- **Monatliche Erinnerung „Arbeitszeiten verschicken"**: Optionaler Toast an
+  einem frei wählbaren Tag im Monat plus Uhrzeit. Kürzere Monate werden sauber
+  auf den letzten Tag geklemmt.
+
+### Geändert
+- **Update-Hinweise**: Läuft ein aktives Infobereich-Icon als Toast-Kanal,
+  erscheint ein einmaliger Toast statt eines dauerhaften Banners; ohne aktives
+  Tray bleibt das Banner der Fallback. Versionen, die bereits im Updates-Tab
+  gesehen wurden, nerven danach nicht noch einmal per Banner oder Toast.
+- **Einstellungen**: Der Tab-Satz ist um „Updates" erweitert; dort liegt jetzt
+  auch die konfigurierbare Update-Check-Häufigkeit.
+
+### Behoben
+- **Updates-Tab**: Ohne verfügbares Update bleibt kein leeres Changelog-Feld
+  mehr sichtbar.
+- **Monatlicher Sende-Reminder**: Ungültige `HH:MM`-Werte im Setting werden
+  defensiv abgefangen, statt den Scheduler aus dem Tritt zu bringen.
+- **Einzelinstanz / Sicherheit**: Der lokale SHOW/PING-Handshake der
+  Einzelinstanz ist jetzt per Shared Secret abgesichert.
+- **Google-Auth**: Der Token-Info-Check übermittelt das Access-Token jetzt per
+  POST-Body statt als URL-Query.
+- **Linux-Autostart**: Die `Exec=`-Zeile der `.desktop`-Datei wird
+  shell-korrekt gequotet.
+
+### Intern
+- `CHANGELOG.md` kann für eine neue Version jetzt zur Laufzeit direkt vom
+  GitHub-Tag geladen und abschnittsweise geparst werden.
+- Release-nahe Checks sind enger abgesichert: `ruff`/`pyright` decken den
+  neuen Updates-Tab samt UI-Routing mit ab.
+
 ## 1.17.0 — 2026-07-03
 
 ### Hinzugefügt
