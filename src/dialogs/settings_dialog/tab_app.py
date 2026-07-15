@@ -8,7 +8,7 @@ from src.dialogs.settings_dialog._shared import label
 from src.holidays_de import STATES
 from src.theme import (
     ACCENT, BG, CELL_BG, FONT, FONT_BOLD, FONT_SMALL, TEXT, TEXT_MUTED,
-    dark_combo,
+    TIME_VALUES, dark_combo,
 )
 
 
@@ -154,6 +154,38 @@ class AppTab:
             bg=BG, fg=TEXT_MUTED,
         ).pack(anchor="w", pady=(2, 0))
 
+        send_reminder_enabled_var = tk.BooleanVar(value=settings.get("send_reminder_enabled"))
+        tk.Checkbutton(
+            app_frame, text="Erinnerung zum Verschicken der Arbeitszeiten",
+            variable=send_reminder_enabled_var, font=FONT,
+            bg=BG, fg=TEXT, selectcolor=CELL_BG,
+            activebackground=BG, activeforeground=TEXT, cursor="hand2",
+        ).pack(anchor="w", pady=(8, 0))
+
+        send_reminder_row = tk.Frame(app_frame, bg=BG)
+        send_reminder_row.pack(anchor="w", pady=(4, 0))
+        tk.Label(
+            send_reminder_row, text="Tag im Monat:",
+            font=FONT, bg=BG, fg=TEXT,
+        ).pack(side=tk.LEFT, padx=(0, 8))
+        send_reminder_day_var = tk.StringVar(
+            value=str(settings.get("send_reminder_day")))
+        dark_combo(
+            send_reminder_row, send_reminder_day_var,
+            [str(d) for d in range(1, 32)], width=4,
+        ).pack(side=tk.LEFT, padx=(0, 8))
+        tk.Label(
+            send_reminder_row, text="um", font=FONT, bg=BG, fg=TEXT,
+        ).pack(side=tk.LEFT, padx=(0, 8))
+        send_reminder_time_var = tk.StringVar(value=settings.get("send_reminder_time"))
+        dark_combo(
+            send_reminder_row, send_reminder_time_var, TIME_VALUES, width=6,
+        ).pack(side=tk.LEFT)
+        tk.Label(
+            app_frame, text="Bei kürzeren Monaten wird auf den letzten Tag verschoben.",
+            font=FONT_SMALL, bg=BG, fg=TEXT_MUTED,
+        ).pack(anchor="w", pady=(2, 0))
+
         self.frame = frame
         self.state_var = state_var
         self.show_weekend_var = show_weekend_var
@@ -163,3 +195,6 @@ class AppTab:
         self.scale_var = scale_var
         self.reminders_enabled_var = reminders_enabled_var
         self.reminder_minutes_var = reminder_minutes_var
+        self.send_reminder_enabled_var = send_reminder_enabled_var
+        self.send_reminder_day_var = send_reminder_day_var
+        self.send_reminder_time_var = send_reminder_time_var
