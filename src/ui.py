@@ -20,6 +20,7 @@ from src.weekly_limit import format_limit_warnings
 from src.grid_renderer import GridRenderer
 from src.sync_orchestrator import classify_sync_error, SyncOrchestrator
 from src.update_banner import UpdateBanner
+from src.updater import today_iso, update_toast_text
 from src.reminder_scheduler import ReminderScheduler
 from src.send_reminder_scheduler import SendReminderScheduler
 from src.dialogs.entry_dialog import open_entry_dialog
@@ -51,6 +52,15 @@ def _delete_action(slots, selected, prefix):
     if not keep:
         return "delete", None
     return "save", keep
+
+
+def _route_update_notification(release, tray_active, toast_shown_version):
+    """Entscheidet zwischen Toast, Banner oder No-op für eine neue Version."""
+    if tray_active:
+        if release.version == toast_shown_version:
+            return "none", None
+        return "toast", update_toast_text(release)
+    return "banner", None
 
 
 class App:
@@ -143,7 +153,7 @@ class App:
         self._update_banner = UpdateBanner(
             self.root, self.settings, lambda: self._renderer.grid_container,
             on_resize=self._renderer.repin_geometry)
-        self._bg.check_update(on_result=self._update_banner.handle_check_result)
+        self._bg.check_update(on_result=self._on_update_check_result)
         self._bg.reconcile_on_start(on_ok=self._on_reconcile_start_done)
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
 
@@ -487,6 +497,22 @@ class App:
             self._send_reminders.start()
         else:
             self._send_reminders.stop()
+
+    def _on_update_check_result(self, release, newer):
+        """Verarbeitet das Ergebnis des Hintergrund-Update-Checks im UI-Thread."""
+        self.settings.set("last_update_check_at", today_iso())
+        if not newer:
+            return
+        action, text = _route_update_notification(
+            release,
+            self._tray is not None,
+            self.settings.get("update_toast_shown_version"),
+        )
+        if action == "toast":
+            self._tray.notify(text)
+            self.settings.set("update_toast_shown_version", release.version)
+        elif action == "banner":
+            self._update_banner.show_if_newer(release)
 
     def _restore_from_tray(self):
         """Bringt das Fenster aus dem `withdraw()`-Zustand zurück."""

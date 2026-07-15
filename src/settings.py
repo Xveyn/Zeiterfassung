@@ -34,6 +34,8 @@ DEFAULTS = {
     "state": "",
     "last_update_check_at": "",
     "dismissed_version": "",
+    "update_check_frequency": "daily",
+    "update_toast_shown_version": "",
     "default_start_mon": "08:00",
     "default_start_tue": "08:00",
     "default_start_wed": "08:00",

@@ -84,8 +84,10 @@ Tests genutzt). Reine Formatier-Helfer `_status_text`/`_tray_toast` sind ohne Tk
   für `main.py`). `tray.stop()`/`root.destroy()` bleiben in `App._quit_with_sync_push`.
 
 ### UpdateBanner (`update_banner.py`)
-Banner über dem Kalender (anzeigen/Download/ausblenden). `handle_check_result(release, newer)`
-ist das `on_result` von `BackgroundTaskRunner.check_update`. Pack-Anker **lazy** über
+Banner über dem Kalender (anzeigen/Download/ausblenden). `show_if_newer(release)` prüft nur
+`dismissed_version` und zeigt ggf. an; Persistenz von `last_update_check_at` und Toast-vs.-
+Banner-Routing liegen in `ui.py::_on_update_check_result` bzw.
+`_route_update_notification(...)`. Pack-Anker **lazy** über
 `get_anchor=lambda: App._renderer.grid_container` (Grid existiert erst nach dem Build).
 `on_resize` (= `App._renderer.repin_geometry`) wird in `_show`/`_dismiss` aufgerufen, damit
 das fixe Fenster auf die geänderte Banner-Höhe nachzieht (sonst Footer abgeschnitten, #92).
@@ -161,7 +163,8 @@ denselben OAuth-Token; Scope-Upgrade erzwingt frischen Consent.
 - `theme.py`/`tooltip.py` — UI-Hilfen (Farben/Fonts/themed Dialoge, `_hover`-Overlays).
 - `time_utils.py` — Stunden, KW-Labels, `format_iso_date`/`format_iso_datetime`.
 - `holidays_de.py`, `paths.py` (`get_base_path` Frozen-vs-Repo), `updater.py`
-  (GitHub-Releases, stdlib-only, 1×/Tag), `platform_open.py`, `logging_setup.py`,
+  (GitHub-Releases, stdlib-only, Frequenz über `update_check_frequency`), `changelog.py`
+  (lädt/parst den Changelog-Abschnitt einer Release-Version vom GitHub-Tag), `platform_open.py`, `logging_setup.py`,
   `version.py` (einzige Versions-Quelle).
 - `autostart.py` — plattformabhängig (Windows-Registry HKCU Run / macOS-LaunchAgent / Linux-.desktop).
   Windows-Backend nutzt den **Registry-Wert `Zeiterfassung`** (Wertname = `installer.iss` → strukturell
@@ -187,9 +190,11 @@ löschen — siehe Root-`CLAUDE.md`): `entry_dialog` (Tages-Dialog, rein zum Spe
 `send_dialog`, `export_dialog` (Zeitraum-Modal → PDF lokal speichern),
 `settings_dialog/` (Paket, Audit H4: `dialog.py` trägt Chrome + zentrales,
 ablaufidentisches `save_settings`; je Tab eine Klasse in `tab_work/`
-`tab_mail`/`tab_google`/`tab_app`.py, die ihre Tk-Variablen als Attribute
-für `save_settings` exponiert; `oauth_task.py` = H5-OAuth-Toggle-Builder;
-Dark-Styling weiter via `theme.apply_notebook_style`), `share_dialog`, `import_dialog`, `category_dialog`,
+`tab_mail`/`tab_google`/`tab_app`/`tab_updates`.py, die ihre Tk-Variablen als
+Attribute für `save_settings` exponiert; `tab_updates` startet seinen Live-Check
+bewusst erst per `<<NotebookTabChanged>>`, nicht schon beim Dialog-Öffnen;
+`oauth_task.py` = H5-OAuth-Toggle-Builder; Dark-Styling weiter via
+`theme.apply_notebook_style`), `share_dialog`, `import_dialog`, `category_dialog`,
 `conflicts_dialog`. `period_picker` ist kein Dialog, sondern der von
 `send_dialog` + `export_dialog` geteilte Zeitraum+Kategorie+Vorschau-Baustein.
 
