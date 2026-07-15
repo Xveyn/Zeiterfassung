@@ -2,6 +2,7 @@
 import os
 import platform
 import plistlib
+import shlex
 import subprocess
 import sys
 
@@ -194,11 +195,24 @@ def _disable_macos():
     os.remove(plist_path)
 
 
+def _exec_line(target, arguments):
+    """Baut die Exec=-Zeile mit shell-korrektem Quoting (Audit N12): ein Pfad
+    mit Leerzeichen o.ä. zerbricht die .desktop-Datei sonst. shlex.quote deckt
+    sich mit GLibs Exec-Parsing (g_shell_parse_argv). `arguments` ist ein
+    Whitespace-getrennter String einfacher Flags (heute "" oder "--minimized").
+    Werte ohne Sonderzeichen bleiben unverändert (shlex.quote quotet nur bei
+    Bedarf)."""
+    parts = [shlex.quote(target)]
+    if arguments:
+        parts.extend(shlex.quote(a) for a in arguments.split())
+    return " ".join(parts)
+
+
 def _enable_linux(target, arguments):
     desktop_path = _linux_desktop_path()
     os.makedirs(os.path.dirname(desktop_path), exist_ok=True)
 
-    exec_line = target if not arguments else f"{target} {arguments}"
+    exec_line = _exec_line(target, arguments)
     content = (
         "[Desktop Entry]\n"
         "Type=Application\n"

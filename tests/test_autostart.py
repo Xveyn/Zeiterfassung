@@ -175,6 +175,13 @@ class TestLinuxAutostart:
         content = open(_linux_desktop_path(), encoding="utf-8").read()
         assert "Exec=/opt/Zeiterfassung.AppImage\n" in content
 
+    def test_enable_quotes_path_with_spaces(self, fake_home):
+        enable_autostart("/opt/My Apps/Zeiterfassung.AppImage", "--minimized")
+        content = open(_linux_desktop_path(), encoding="utf-8").read()
+        # Pfad mit Leerzeichen MUSS gequotet sein, sonst zerbricht Exec nach
+        # der Desktop-Entry-/GLib-Tokenisierung. shlex.quote nutzt Single-Quotes.
+        assert "Exec='/opt/My Apps/Zeiterfassung.AppImage' --minimized" in content
+
     def test_disable_removes_desktop_file(self, fake_home):
         path = _linux_desktop_path()
         os.makedirs(os.path.dirname(path), exist_ok=True)
