@@ -2,7 +2,7 @@
 Pull-Callbacks, Status-Label, Quit-Push und die Fehler-Aufbereitung.
 
 `import tkinter`/`messagebox` auf Modulebene ist unkritisch (stdlib, kein
-Display zum Import nötig). `_run_push_blocking` wird LAZY in den Methoden aus
+Display zum Import nötig). `run_push_blocking` wird LAZY in den Methoden aus
 `src.main` importiert — sonst Circular-Import (src.main → src.ui →
 src.sync_orchestrator).
 """
@@ -17,7 +17,7 @@ from src.theme import set_icon_button_enabled, themed_showinfo
 from src.time_utils import format_iso_date
 
 
-def _classify_sync_error(error):
+def classify_sync_error(error):
     """Kategorisiert einen Google-Sync/Reconcile-Fehler als 'auth', 'network'
     oder 'unknown'. `error` kann eine Exception oder ein String sein (der
     Push-/Reconcile-Pfad liefert str(e), der Pull-Pfad das Exception-Objekt).
@@ -44,7 +44,7 @@ def _friendly_sync_message(error, tb=""):
     if str(error) == NEWER_REMOTE_VERSION_MSG:
         return ("Update erforderlich", NEWER_REMOTE_VERSION_MSG, True)
 
-    kind = _classify_sync_error(error)
+    kind = classify_sync_error(error)
 
     if kind == "auth":
         return (
@@ -140,8 +140,8 @@ class SyncOrchestrator:
         return 0
 
     def _push(self, guard_timeout=0, timeout_seconds=15):
-        from src.main import _run_push_blocking
-        return _run_push_blocking(
+        from src.main import run_push_blocking
+        return run_push_blocking(
             self._storage, self._settings, self._conflicts_store,
             self._base_path, timeout_seconds=timeout_seconds,
             data_lock=self._data_lock, sync_guard=self._sync_guard,

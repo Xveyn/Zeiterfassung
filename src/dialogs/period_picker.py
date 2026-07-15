@@ -2,8 +2,9 @@ import calendar
 import datetime
 import tkinter as tk
 
+from src.dialogs.date_row import build_date_row
 from src.report import total_hours
-from src.theme import BG, CELL_BG, FONT, TEXT, dark_combo
+from src.theme import BG, CELL_BG, FONT, TEXT
 
 
 def selected_category_filter(selected_map):
@@ -71,39 +72,20 @@ def build_period_picker(parent, storage, settings, on_change=None):
 
     today = datetime.date.today()
     from_default = _default_from_date(today)
-    month_values = [str(m) for m in range(1, 13)]
-    year_values = [str(y) for y in range(2020, today.year + 2)]
 
-    def update_day_values(day_cb, day_var, month_var, year_var):
-        try:
-            m = int(month_var.get())
-            y = int(year_var.get())
-            max_day = calendar.monthrange(y, m)[1]
-        except (ValueError, KeyError):
-            max_day = 31
-        day_cb["values"] = [str(d) for d in range(1, max_day + 1)]
-        if int(day_var.get()) > max_day:
-            day_var.set(str(max_day))
-
-    def build_date_row(row, label_text, default_date):
-        tk.Label(frame, text=label_text, font=FONT, bg=BG, fg=TEXT).grid(
-            row=row, column=0, padx=(10, 5), pady=8, sticky="w")
-        day_var = tk.StringVar(value=str(default_date.day))
-        max_day = calendar.monthrange(default_date.year, default_date.month)[1]
-        day_cb = dark_combo(frame, day_var, [str(d) for d in range(1, max_day + 1)], width=3)
-        day_cb.grid(row=row, column=1, padx=2, pady=8)
-        tk.Label(frame, text=".", font=FONT, bg=BG, fg=TEXT).grid(row=row, column=2)
-        month_var = tk.StringVar(value=str(default_date.month))
-        dark_combo(frame, month_var, month_values, width=3).grid(row=row, column=3, padx=2, pady=8)
-        tk.Label(frame, text=".", font=FONT, bg=BG, fg=TEXT).grid(row=row, column=4)
-        year_var = tk.StringVar(value=str(default_date.year))
-        dark_combo(frame, year_var, year_values, width=5).grid(row=row, column=5, padx=(2, 10), pady=8)
-        month_var.trace_add("write", lambda *_: update_day_values(day_cb, day_var, month_var, year_var))
-        year_var.trace_add("write", lambda *_: update_day_values(day_cb, day_var, month_var, year_var))
-        return day_var, month_var, year_var
-
-    from_vars = build_date_row(0, "Von:", from_default)
-    to_vars = build_date_row(1, "Bis:", today)
+    # Von/Bis über das gemeinsame Datums-Zeilen-Widget (Audit M14). Der
+    # on_change-Callback (Tag-Clamp + Vorschau) ist late-bound auf das weiter
+    # unten definierte _changed; er feuert erst bei Benutzer-Interaktion, also
+    # ist _changed dann längst gebunden. label_width=4 hält "Von:"/"Bis:"
+    # untereinander bündig.
+    from_row = build_date_row(frame, "Von:", from_default,
+                              on_change=lambda: _changed(), label_width=4)
+    to_row = build_date_row(frame, "Bis:", today,
+                            on_change=lambda: _changed(), label_width=4)
+    from_row.frame.grid(row=0, column=0, columnspan=6, sticky="w", padx=(10, 0), pady=8)
+    to_row.frame.grid(row=1, column=0, columnspan=6, sticky="w", padx=(10, 0), pady=8)
+    from_vars = from_row.vars
+    to_vars = to_row.vars
 
     # Kategorien aus Bestand UND Settings-Pickliste ("" = ohne Kategorie). Alle
     # default ausgewählt. Bewusst NICHT auf den Zeitraum eingeschränkt (vgl.
@@ -159,13 +141,13 @@ def build_period_picker(parent, storage, settings, on_change=None):
 
     def _changed(*_):
         # Benutzer-Änderung an Datum oder Kategorie: Vorschau aktualisieren und
-        # den Aufrufer benachrichtigen (Export-Button (de)aktivieren).
+        # den Aufrufer benachrichtigen (Export-Button (de)aktivieren). Die
+        # Datumszeilen rufen dies über ihren on_change (siehe build_date_row);
+        # die Kategorie-Checkboxen über command=_changed.
         _update_total()
         if on_change is not None:
             on_change()
 
-    for _v in (*from_vars, *to_vars):
-        _v.trace_add("write", _changed)
     _update_total()
 
     return frame, handle

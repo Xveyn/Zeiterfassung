@@ -11,6 +11,19 @@ MONTHS_DE = [
 ]
 
 
+def utc_now_iso():
+    """Aktueller UTC-Zeitstempel als ISO-String 'YYYY-MM-DDTHH:MM:SSZ'.
+
+    Z-Suffix statt +00:00 (JS/Drive-Konvention), Sekunden-Auflösung, kein
+    Millisekunden-Anteil. Single Source of Truth für alle Sync-/Persistenz-
+    Timestamps — war früher 6× privat als `_utc_now_iso` in
+    storage/reservations/reservations_sync/settings/share/sync dupliziert
+    (Audit N17). An dieser Sekunden-Auflösung + Wanduhr-Abhängigkeit hängt das
+    LWW-Tie-Break im Sync (vgl. sync.py), daher nicht ohne Bedacht ändern.
+    """
+    return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
 def parse_time(time_str):
     """Parse HH:MM string. Returns (hours, minutes) or None if invalid."""
     try:
