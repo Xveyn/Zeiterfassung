@@ -13,7 +13,7 @@
 - Changelog-Quelle: `CHANGELOG.md` wird zur Laufzeit vom GitHub-Tag `v{version}` per `raw.githubusercontent.com` geladen (stdlib `urllib`, kein Base64-Decoding).
 - Banner-vs-Toast-Gate: entscheidet sich an `App._tray is not None` zum Zeitpunkt des Check-Ergebnisses — nicht an reiner Plattform-Fähigkeit (`tray.is_supported()`).
 - Toast einmalig pro Version: neues Settings-Feld `update_toast_shown_version` verhindert wiederholtes Feuern durch den täglichen Hintergrund-Check.
-- Updates-Tab prüft **live** beim Öffnen (umgeht die Drosselung — explizite Nutzeraktion) + manueller „Jetzt prüfen"-Button. Kein Release-Snapshot wird über Neustarts hinweg in Settings zwischengespeichert.
+- Updates-Tab prüft **live**, sobald er erstmals ausgewählt wird (`<<NotebookTabChanged>>`, nicht beim bloßen Öffnen des Settings-Dialogs — sonst würde jedes Öffnen der Einstellungen still die „gesehen"-Markierung setzen, Review-Fund W3) + manueller „Jetzt prüfen"-Button mit Re-Entry-Guard. Kein Release-Snapshot wird über Neustarts hinweg in Settings zwischengespeichert.
 - Konfigurierbare Check-Häufigkeit: neues Settings-Feld `update_check_frequency` (`"daily"`/`"weekly"`/`"monthly"`/`"never"`, Default `"daily"` = heutiges Verhalten unverändert) steuert **nur** den Hintergrund-Check (Banner/Toast-Trigger), nicht den Tab-Live-Check.
 - Findet der Live-Check im Updates-Tab eine neuere Version, wird das sofort als `dismissed_version` **und** `update_toast_shown_version` vermerkt (direkter Settings-Write, nicht an den Save-Button gekoppelt) — kein doppeltes Nerven durch Banner/Toast für eine im Tab bereits gesehene Version.
 - `UpdateBanner.handle_check_result` (persistiert `last_update_check_at` UND entscheidet über Anzeige) wird aufgeteilt: Persistenz wandert zum Aufrufer in `ui.py`; `UpdateBanner` behält nur `show_if_newer(release)` (prüft `dismissed_version`, ruft `_show`).
@@ -302,7 +302,7 @@ Expected: FAIL — `ImportError: cannot import name 'REPO' from 'src.updater'`
 
 - [ ] **Step 3: Write the implementation**
 
-In `src/updater.py`, Zeile 20-22 (bestehende `should_check_today`-Funktion):
+In `src/updater.py`, Zeile 30-44 (bestehende `should_check_today`-Funktion):
 
 ```python
 def should_check_today(last_check: str | None, today: date | None = None) -> bool:
@@ -786,13 +786,46 @@ Create `tests/test_ui_update_routing.py`:
 
 ```python
 """Reine Routing-Entscheidung für Update-Benachrichtigungen (Toast vs.
-Banner vs. schon gesehen) — Tk-frei testbar wie _delete_action."""
-from src.ui import _route_update_notification
+Banner vs. schon gesehen) — Tk-frei testbar wie _delete_action — plus die
+Verdrahtung App._on_update_check_result gegen ein Duck-Typed-App-Double
+(kein echtes Tk nötig, die Methode greift nur auf self.settings/self._tray/
+self._update_banner zu)."""
+from unittest.mock import MagicMock
+
+from src.ui import App, _route_update_notification
 
 
 class _Rel:
     def __init__(self, version):
         self.version = version
+
+
+class _FakeSettings:
+    def __init__(self, data):
+        self._data = data
+
+    def get(self, key):
+        return self._data.get(key, "")
+
+    def set(self, key, value):
+        self._data[key] = value
+
+
+class _FakeApp:
+    """Duck-Typed Stand-in für App — trägt nur die drei Attribute, die
+    _on_update_check_result liest/schreibt."""
+    def __init__(self, tray, settings_data):
+        self.settings = _FakeSettings(settings_data)
+        self._tray = tray
+        self._update_banner = MagicMock()
+
+
+class _FakeTray:
+    def __init__(self):
+        self.messages = []
+
+    def notify(self, message, title="Zeiterfassung"):
+        self.messages.append(message)
 
 
 def test_tray_active_and_not_yet_shown_fires_toast():
@@ -822,6 +855,35 @@ def test_no_tray_routes_to_banner_even_if_already_toast_shown():
     # Toast-Tracking ist unabhängig vom Banner-eigenen dismissed_version.
     action, text = _route_update_notification(_Rel("1.9.0"), False, "1.9.0")
     assert action == "banner"
+
+
+def test_on_update_check_result_persists_check_date_even_when_not_newer(monkeypatch):
+    import src.ui as ui_module
+    monkeypatch.setattr(ui_module, "today_iso", lambda: "2026-07-15")
+    fake = _FakeApp(tray=None, settings_data={})
+    App._on_update_check_result(fake, _Rel("1.9.0"), False)
+    assert fake.settings.get("last_update_check_at") == "2026-07-15"
+    fake._update_banner.show_if_newer.assert_not_called()
+
+
+def test_on_update_check_result_tray_active_fires_toast_and_persists(monkeypatch):
+    import src.ui as ui_module
+    monkeypatch.setattr(ui_module, "today_iso", lambda: "2026-07-15")
+    tray = _FakeTray()
+    fake = _FakeApp(tray=tray, settings_data={"update_toast_shown_version": ""})
+    App._on_update_check_result(fake, _Rel("1.9.0"), True)
+    assert len(tray.messages) == 1 and "1.9.0" in tray.messages[0]
+    assert fake.settings.get("update_toast_shown_version") == "1.9.0"
+    fake._update_banner.show_if_newer.assert_not_called()
+
+
+def test_on_update_check_result_no_tray_routes_to_banner(monkeypatch):
+    import src.ui as ui_module
+    monkeypatch.setattr(ui_module, "today_iso", lambda: "2026-07-15")
+    fake = _FakeApp(tray=None, settings_data={"update_toast_shown_version": ""})
+    rel = _Rel("1.9.0")
+    App._on_update_check_result(fake, rel, True)
+    fake._update_banner.show_if_newer.assert_called_once_with(rel)
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
@@ -898,7 +960,7 @@ Und direkt nach `_apply_send_reminder_setting` (vor `def _restore_from_tray`) fo
 - [ ] **Step 4: Run tests to verify they pass**
 
 Run: `pytest tests/test_ui_update_routing.py -v`
-Expected: PASS — 5 passed
+Expected: PASS — 8 passed
 
 Run: `python -c "import src.ui"`
 Expected: kein Output, Exit-Code 0
@@ -930,10 +992,23 @@ EOF
 - Modify: `src/dialogs/settings_dialog/dialog.py`
 
 **Interfaces:**
-- Consumes: `src.changelog.fetch_changelog_entry` (Task 1); `src.updater.{REPO, FREQUENCY_OPTIONS, frequency_for_label, check_latest_release, is_newer, pick_asset_url}` (Task 2, teils bestehend); `src.version.VERSION`.
-- Produces: `UpdatesTab(frame, settings, runner)` exponiert `.frame` und `.frequency_var` (`tk.StringVar`, Werte aus `FREQUENCY_OPTIONS`-Labels) für `save_settings`.
+- Consumes: `src.changelog.fetch_changelog_entry` (Task 1); `src.updater.{REPO, FREQUENCY_OPTIONS, check_latest_release, is_newer, pick_asset_url}` (Task 2, teils bestehend); `src.updater.frequency_for_label` (Task 2, nur in `dialog.py` gebraucht — **nicht** in `tab_updates.py` importieren, dort ungenutzt); `src.version.VERSION`.
+- Produces: `UpdatesTab(frame, settings, runner)` exponiert `.frame`, `.frequency_var` (`tk.StringVar`, Werte aus `FREQUENCY_OPTIONS`-Labels) für `save_settings`, und `.on_tab_selected()` (löst den Live-Check aus, idempotent pro Dialog-Öffnung).
 
 Kein automatisierter Test (Tk-Widget-Code, Projekt-Konvention — wie die anderen `tab_*.py`). Verifikation über Import-Check + `ruff` + vollen `pytest`-Lauf.
+
+**Wichtig — Lazy-Check statt Eager-Check:** `dialog.py` baut alle Tabs beim
+Öffnen des Dialogs sofort auf (`WorkTab`/`MailTab`/`GoogleTab`/`AppTab` laufen
+alle in `__init__`, unabhängig davon, welcher Tab sichtbar ist). Würde
+`UpdatesTab.__init__` selbst sofort `_check_now()` aufrufen, liefe der
+Live-Check — und damit das sofortige „gesehen"-Markieren
+(`dismissed_version`/`update_toast_shown_version`) — bei **jedem** Öffnen der
+Einstellungen, auch wenn der Nutzer den Updates-Tab nie ansieht. Das würde
+Banner/Toast für die aktuell neueste Version stillschweigend unterdrücken,
+ohne dass der Nutzer je etwas gesehen hat. Deshalb: `UpdatesTab` baut nur die
+UI in `__init__` auf und ruft **nicht** selbst `_check_now()`; `dialog.py`
+löst den Check erst über `<<NotebookTabChanged>>` aus, wenn der Updates-Tab
+tatsächlich ausgewählt wird (Schritt 2).
 
 - [ ] **Step 1: `UpdatesTab` erstellen**
 
@@ -942,9 +1017,11 @@ Create `src/dialogs/settings_dialog/tab_updates.py`:
 ```python
 """Tab „Updates": Update-Status, Changelog der neuen Version, Check-Häufigkeit.
 
-Prüft beim Öffnen sofort live gegen GitHub (umgeht die Tagesdrosselung des
-Hintergrund-Checks — explizite Nutzeraktion). Findet der Live-Check eine
-neuere Version, gilt sie sofort als „gesehen" (dismissed_version UND
+Prüft live gegen GitHub, sobald der Tab erstmals ausgewählt wird (umgeht die
+Tagesdrosselung des Hintergrund-Checks — explizite Nutzeraktion; siehe
+`on_tab_selected`, aufgerufen von dialog.py's `<<NotebookTabChanged>>`-Bindung,
+NICHT automatisch beim Dialog-Öffnen). Findet der Live-Check eine neuere
+Version, gilt sie sofort als „gesehen" (dismissed_version UND
 update_toast_shown_version werden direkt gesetzt, unabhängig vom
 Save-Button) — kein doppeltes Nerven durch Banner/Toast danach.
 """
@@ -956,30 +1033,32 @@ import webbrowser
 from src.changelog import fetch_changelog_entry
 from src.dialogs.settings_dialog._shared import label
 from src.theme import (
-    BG, FONT, FONT_SMALL, TEXT, TEXT_MUTED,
+    BG, FONT, TEXT, TEXT_MUTED,
     dark_combo, dark_text, primary_button, secondary_button,
     set_button_text, set_primary_button_enabled,
 )
 from src.updater import (
-    FREQUENCY_OPTIONS, REPO, check_latest_release, frequency_for_label,
-    is_newer, pick_asset_url,
+    FREQUENCY_OPTIONS, REPO, check_latest_release, is_newer, pick_asset_url,
 )
 from src.version import VERSION
 
 
 class UpdatesTab:
-    """Baut den Updates-Tab; exponiert `frequency_var` für save_settings."""
+    """Baut den Updates-Tab; exponiert `frequency_var` für save_settings und
+    `on_tab_selected()` für die Lazy-Check-Bindung in dialog.py."""
 
     def __init__(self, frame, settings, runner):
         self.frame = frame
         self._settings = settings
         self._runner = runner
         self._latest_release = None
+        self._checked = False    # verhindert Mehrfach-Check bei Tab-Rückkehr
+        self._checking = False   # Re-Entry-Guard, solange ein Check läuft
 
         label(frame, f"Installierte Version: {VERSION}", row=0)
 
         self._status_label = tk.Label(
-            frame, text="Prüfe…", font=FONT, bg=BG, fg=TEXT_MUTED,
+            frame, text="", font=FONT, bg=BG, fg=TEXT_MUTED,
         )
         self._status_label.grid(row=1, column=0, columnspan=2, padx=10, pady=4, sticky="w")
 
@@ -1013,7 +1092,19 @@ class UpdatesTab:
         self._changelog_text.grid(row=5, column=0, columnspan=2, padx=10, pady=4)
         self._changelog_text.config(state="disabled")
 
+    def on_tab_selected(self):
+        """Von dialog.py bei `<<NotebookTabChanged>>` aufgerufen, wenn dieser
+        Tab sichtbar wird. Löst den Live-Check nur beim ERSTEN Sichtbarwerden
+        pro Dialog-Öffnung aus (kein Re-Check bei jedem Zurück-Klicken)."""
+        if self._checked:
+            return
+        self._checked = True
         self._check_now()
+
+    def _finish_checking(self):
+        self._checking = False
+        set_primary_button_enabled(self._check_btn, True)
+        set_button_text(self._check_btn, "Jetzt prüfen")
 
     def _set_changelog(self, text):
         self._changelog_text.config(state="normal")
@@ -1022,6 +1113,9 @@ class UpdatesTab:
         self._changelog_text.config(state="disabled")
 
     def _check_now(self):
+        if self._checking:
+            return
+        self._checking = True
         set_primary_button_enabled(self._check_btn, False)
         set_button_text(self._check_btn, "Prüfe…")
         self._status_label.config(text="Prüfe…")
@@ -1034,21 +1128,26 @@ class UpdatesTab:
         def on_done(release):
             if not self.frame.winfo_exists():
                 return
-            set_primary_button_enabled(self._check_btn, True)
-            set_button_text(self._check_btn, "Jetzt prüfen")
             if release is None:
+                self._finish_checking()
                 self._status_label.config(text="Prüfung fehlgeschlagen — keine Verbindung?")
                 return
             if not is_newer(VERSION, release.version):
+                self._finish_checking()
                 self._status_label.config(text=f"Du hast die aktuelle Version ({VERSION}).")
                 return
             self._latest_release = release
             self._status_label.config(text=f"Version {release.version} verfügbar")
             self._download_btn.configure(command=lambda: self._open_download(release))
             self._download_btn.pack(side=tk.LEFT, padx=(8, 0))
-            self._settings.set("dismissed_version", release.version)
-            self._settings.set("update_toast_shown_version", release.version)
+            self._settings.set_many({
+                "dismissed_version": release.version,
+                "update_toast_shown_version": release.version,
+            })
             self._fetch_changelog(release.version)
+            # _checking bleibt True, bis der Changelog-Fetch (unten) fertig ist —
+            # verhindert überlappende "Jetzt prüfen"-Klicks während der zweiten,
+            # verketteten Netzwerk-Anfrage.
 
         self._runner.run(fn, on_done)
 
@@ -1059,6 +1158,7 @@ class UpdatesTab:
         def on_done(text):
             if not self.frame.winfo_exists():
                 return
+            self._finish_checking()
             self._set_changelog(text or "Changelog konnte nicht geladen werden.")
 
         self._runner.run(fn, on_done)
@@ -1070,7 +1170,7 @@ class UpdatesTab:
         webbrowser.open(url)
 ```
 
-- [ ] **Step 2: Tab in `dialog.py` registrieren**
+- [ ] **Step 2: Tab in `dialog.py` registrieren + Lazy-Check verdrahten**
 
 In `src/dialogs/settings_dialog/dialog.py`, Zeile 20-24 (Import-Block) ändern von:
 
@@ -1141,6 +1241,15 @@ zu (Achtung: die Tab-Instanz **nicht** `updates` nennen — `save_settings` benu
     # ===================== Tab: Updates =====================
     updates_tab = UpdatesTab(tab_updates, settings, runner)
 
+    # Live-Check erst, wenn der Tab tatsächlich sichtbar wird (nicht beim
+    # bloßen Dialog-Öffnen) — sonst würde jedes Öffnen der Einstellungen
+    # still die "gesehen"-Markierung setzen, ohne dass der Nutzer den Tab
+    # je angesehen hat.
+    def _on_tab_changed(_event):
+        if notebook.select() == str(tab_updates):
+            updates_tab.on_tab_selected()
+    notebook.bind("<<NotebookTabChanged>>", _on_tab_changed)
+
     # ===================== Speichern / Buttons =====================
     tabs = {
         "work": work.frame, "mail": mail.frame, "google": google.frame,
@@ -1148,7 +1257,7 @@ zu (Achtung: die Tab-Instanz **nicht** `updates` nennen — `save_settings` benu
     }
 ```
 
-Zeile 162-165 (in `save_settings`, im `updates`-Dict) ändern von:
+Zeile 163-166 (in `save_settings`, im `updates`-Dict) ändern von:
 
 ```python
             "send_reminder_enabled": app.send_reminder_enabled_var.get(),
@@ -1173,7 +1282,7 @@ Run: `python -c "import src.dialogs.settings_dialog.tab_updates; import src.dial
 Expected: kein Output, Exit-Code 0
 
 Run: `ruff check src/dialogs/settings_dialog/tab_updates.py src/dialogs/settings_dialog/dialog.py`
-Expected: `All checks passed!`
+Expected: `All checks passed!` (achte insbesondere auf F401 — `tab_updates.py` importiert bewusst **kein** `FONT_SMALL` und **kein** `frequency_for_label`, beide werden dort nicht verwendet)
 
 Run: `pytest -q`
 Expected: alle Tests grün (keine Regressionen)
@@ -1185,11 +1294,13 @@ git add src/dialogs/settings_dialog/tab_updates.py src/dialogs/settings_dialog/d
 git commit -m "$(cat <<'EOF'
 feat(updates-tab): neuer Settings-Tab "Updates"
 
-Live-Check beim Öffnen + "Jetzt prüfen"-Button + Frequenz-Dropdown.
-Findet eine neuere Version, zeigt der Tab den geladenen Changelog-
-Abschnitt und markiert die Version sofort als gesehen (dismissed_version
-+ update_toast_shown_version), damit Banner/Toast danach nicht erneut
-für dieselbe Version feuern.
+Live-Check erst beim tatsächlichen Auswählen des Tabs (nicht beim bloßen
+Öffnen der Einstellungen) + "Jetzt prüfen"-Button mit Re-Entry-Guard +
+Frequenz-Dropdown. Findet der Check eine neuere Version, zeigt der Tab
+den geladenen Changelog-Abschnitt und markiert die Version sofort als
+gesehen (dismissed_version + update_toast_shown_version in einem
+Schreibvorgang), damit Banner/Toast danach nicht erneut für dieselbe
+Version feuern.
 EOF
 )"
 ```
@@ -1198,18 +1309,31 @@ EOF
 
 App starten: `python -m src.main`
 
-1. Einstellungen öffnen → neuer Tab „Updates" ganz rechts sichtbar.
-2. Tab zeigt kurz „Prüfe…", danach entweder „Du hast die aktuelle Version
-   (X.Y.Z)." oder eine neuere Version mit Download-Button + Changelog-Text.
-3. „Jetzt prüfen" erneut klicken → Ablauf wiederholt sich, Button ist
-   während des Laufs kurz deaktiviert („Prüfe…").
-4. Frequenz-Dropdown auf „Wöchentlich" stellen, Speichern, Einstellungen neu
+1. Einstellungen öffnen → neuer Tab „Updates" ganz rechts sichtbar, aber
+   noch **leer** (kein „Prüfe…", keine Statuszeile) — der Live-Check läuft
+   bewusst noch nicht, solange der Tab nicht angeklickt wurde. Auf einen
+   anderen Tab (z.B. „Arbeitszeit") wechseln, kurz warten, `settings.json`
+   inspizieren → `dismissed_version`/`update_toast_shown_version` dürfen
+   sich **nicht** geändert haben (Beleg für den Lazy-Fix aus dem Review).
+2. Jetzt „Updates" anklicken → zeigt kurz „Prüfe…", danach entweder „Du hast
+   die aktuelle Version (X.Y.Z)." oder eine neuere Version mit
+   Download-Button + Changelog-Text.
+3. Auf „Arbeitszeit" und zurück zu „Updates" wechseln → **kein** erneuter
+   Netzwerk-Check (Statuszeile bleibt stehen, kein zweites „Prüfe…").
+4. „Jetzt prüfen" mehrfach schnell hintereinander klicken → nur ein Ablauf
+   läuft (Button bleibt bis zum Ende durchgängig deaktiviert, kein
+   überlappender zweiter Lauf).
+5. Frequenz-Dropdown auf „Wöchentlich" stellen, Speichern, Einstellungen neu
    öffnen → Auswahl bleibt erhalten.
-5. Für den Chicken-and-egg-Test (siehe Spec): in `src/updater.py` `REPO`
-   testweise lokal auf `"MargenHeld/Zeiterfassung"` mit einem `VERSION`-Wert
-   in `src/version.py` unterhalb einer echten alten Tag-Version setzen (z.B.
-   `"1.0.0"`), App starten, Tab öffnen → sollte den echten Changelog-Abschnitt
-   von `v1.17.0` (oder der jeweils neuesten echten Version) laden und
+6. Wurde in Schritt 2 eine neuere Version gefunden: Einstellungen schließen,
+   App-Neustart erzwingen (oder `_apply_reminder_setting`-Pfad antriggern) —
+   der tägliche Hintergrund-Check darf für **dieselbe** Version **keinen**
+   Banner/Toast mehr zeigen (Beleg für Entscheidung 6 „gesehen = keine
+   erneute Nachricht").
+7. Für den Chicken-and-egg-Test (siehe Spec): in `src/version.py` `VERSION`
+   testweise unterhalb einer echten alten Tag-Version setzen (z.B.
+   `"1.0.0"`), App starten, Updates-Tab anklicken → sollte den echten
+   Changelog-Abschnitt der jeweils neuesten echten Version laden und
    anzeigen. Änderung an `version.py` danach wieder rückgängig machen, nicht
    committen.
 

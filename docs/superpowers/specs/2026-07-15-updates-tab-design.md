@@ -59,10 +59,15 @@ noch gezeigt, wenn kein aktiver Toast-Kanal (Tray) zur Verfügung steht — sons
 3. **Toast einmalig pro Version:** neues Settings-Feld
    `update_toast_shown_version` verhindert, dass der tägliche Hintergrund-Check
    denselben Toast wiederholt feuert.
-4. **Updates-Tab-Datenquelle:** Live-Check beim Öffnen des Tabs (umgeht die
-   Tagesdrosselung — explizite Nutzeraktion) + manueller „Jetzt
-   prüfen"-Button für erneute Checks. Kein separates Zwischenspeichern eines
-   Release-Snapshots in Settings nötig.
+4. **Updates-Tab-Datenquelle:** Live-Check, sobald der Tab erstmals
+   ausgewählt wird (`<<NotebookTabChanged>>`) — **nicht** beim bloßen Öffnen
+   des Settings-Dialogs, da alle Tabs dort eager gebaut werden und ein
+   Eager-Check sonst bei jedem Dialog-Öffnen still die „gesehen"-Markierung
+   setzen würde, ohne dass der Nutzer den Tab je gesehen hat (Präzisierung
+   nach kritischem Plan-Review) — umgeht die Tagesdrosselung (explizite
+   Nutzeraktion) + manueller „Jetzt prüfen"-Button mit Re-Entry-Guard für
+   erneute Checks. Kein separates Zwischenspeichern eines Release-Snapshots
+   in Settings nötig.
 5. **Konfigurierbare Check-Häufigkeit:** neues Settings-Feld
    `update_check_frequency` (`"daily"`/`"weekly"`/`"monthly"`/`"never"`,
    Default `"daily"` = heutiges Verhalten unverändert) steuert ausschließlich
