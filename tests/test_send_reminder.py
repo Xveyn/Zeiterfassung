@@ -20,6 +20,12 @@ def test_scheduled_datetime_invalid_time_returns_none():
     assert scheduled_datetime(2026, 7, 15, None) is None
 
 
+def test_scheduled_datetime_out_of_range_time_returns_none():
+    assert scheduled_datetime(2026, 7, 15, "25:00") is None
+    assert scheduled_datetime(2026, 7, 15, "18:60") is None
+    assert scheduled_datetime(2026, 7, 15, "18:-5") is None
+
+
 def test_is_due_before_scheduled_time():
     now = datetime.datetime(2026, 7, 15, 17, 59)
     assert is_due(now, 15, "18:00", "") is False

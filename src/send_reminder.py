@@ -27,9 +27,12 @@ def _parse_hhmm(value):
         return None
     try:
         hh, mm = value.split(":")
-        return int(hh), int(mm)
+        hh, mm = int(hh), int(mm)
     except (ValueError, TypeError):
         return None
+    if not (0 <= hh <= 23 and 0 <= mm <= 59):
+        return None
+    return hh, mm
 
 
 def is_due(now_dt, day, time_str, last_fired_month):
