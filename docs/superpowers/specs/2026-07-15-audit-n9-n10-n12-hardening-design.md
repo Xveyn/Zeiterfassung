@@ -50,11 +50,24 @@ jeweiligen Angriffs-/Fehlerfall abdecken.
 `settings.json`/`token.json`): 32 Zufallsbytes (`os.urandom(32)`), beim
 ersten `acquire()` erzeugt, falls nicht vorhanden oder falsch groß
 (korrupt/leer → neu erzeugen, kein Quarantäne-Mechanismus nötig, da die
-Datei kein Nutzdaten enthält). Atomar geschrieben (Temp+`os.replace`, wie
-`storage._save_to_disk`). Unter Unix zusätzlich `os.chmod(path, 0o600)`
-best-effort (in `try/except OSError: pass`, analog zum bestehenden
-Windows-No-Op-Muster in `oauth_utils.py`) — unter Windows kein Äquivalent
-(das wäre M8-Scope).
+Datei kein Nutzdaten enthält). Schreiben folgt exakt dem Muster von
+`oauth_utils.write_token` (mkstemp im selben Verzeichnis → schreiben →
+`os.chmod(tmp_path, stat.S_IRUSR | stat.S_IWUSR)` in `try/except OSError:
+pass` [Windows: chmod ist dort selbst ein OS-No-op, kein Extra-Code nötig
+— echtes Windows-ACL-Härten bliebe M8-Scope] → `os.replace` mit demselben
+Retry-Backoff gegen transiente `PermissionError` wie bei `token.json`,
+Issue #135). Zweitverwendung dieses Musters statt Neuerfindung.
+
+**Crash-Sicherheit (Modul-Invariante "blockiert den Start nie"):** Laden
+**und** Erzeugen des Secrets läuft in `acquire()` komplett in
+`try/except OSError`. Schlägt beides fehl (Verzeichnis nicht
+lesbar/schreibbar — in der Praxis nur denkbar, wenn `base_path` schon
+für `settings.json`/`storage.json` kaputt wäre, also ein ohnehin
+fataler Zustand für die App), wird eine Warnung geloggt und `secret =
+None` gesetzt. Mit `secret = None` überspringen `_Guard`/`_accept_loop`
+und `_notify_primary` den Secret-Vergleich vollständig — Fallback ist
+exakt das **alte, unauthentifizierte Protokoll** (Magic-Byte-Vergleich
+wie vor diesem Fix), nie eine Exception, die den Start abbricht.
 
 **Wire-Format:** Handshake-Payload wird `MAGIC (9 Byte) + Secret (32 Byte)`
 statt nur `MAGIC` (bisher `_MAGIC_SHOW`/`_MAGIC_PING`, je 9 Byte).
@@ -78,14 +91,14 @@ wird das Secret durchgereicht.
 `fetch_user_email` in `mail.py`: statt
 
 ```python
-url = "https://oauth2.googleapis.com/tokeninfo?" + urlencode({"access_token": creds.token})
+url = "https://oauth2.googleapis.com/tokeninfo?" + urllib.parse.urlencode({"access_token": creds.token})
 with urllib.request.urlopen(url, timeout=10) as resp:
 ```
 
 wird der Access-Token als POST-Body übertragen:
 
 ```python
-data = urlencode({"access_token": creds.token}).encode("ascii")
+data = urllib.parse.urlencode({"access_token": creds.token}).encode("ascii")
 req = urllib.request.Request(
     "https://oauth2.googleapis.com/tokeninfo", data=data, method="POST")
 with urllib.request.urlopen(req, timeout=10) as resp:
@@ -122,9 +135,13 @@ zum unquotierten String (`shlex.quote` quotet nur bei Bedarf).
 - **N9:** neuer Test in `tests/test_single_instance.py` — roher
   `socket.create_connection`, sendet nur `_MAGIC_SHOW` **ohne** Secret →
   erwartet **kein** `ZEIT-OK` in der Antwort und dass der `serve()`-
-  Callback nicht feuert. Bestehende Tests laufen unverändert (sie gehen
-  ausschließlich über `acquire`/`serve`/`release`, fassen das Wire-Format
-  nicht direkt an).
+  Callback nicht feuert. Zweiter neuer Test für die Crash-Sicherheit:
+  Secret-Datei-Pfad auf ein nicht schreibbares Verzeichnis zeigen lassen
+  (oder `os.replace`/`open` passend monkeypatchen, um `OSError` zu
+  erzwingen) → `acquire()` liefert trotzdem einen gebundenen Guard
+  zurück (kein Crash), altes Magic-only-Protokoll funktioniert weiter.
+  Bestehende Tests laufen unverändert (sie gehen ausschließlich über
+  `acquire`/`serve`/`release`, fassen das Wire-Format nicht direkt an).
 - **N10:** bestehender Test
   `test_fetch_user_email_uses_tokeninfo_not_gmail_getprofile` bleibt
   Kern-Test; Mock von `urllib.request.urlopen` ggf. um eine Prüfung
@@ -151,6 +168,12 @@ zum unquotierten String (`shlex.quote` quotet nur bei Bedarf).
 - **N9 Secret-Datei-Lebenszyklus:** die Datei wird nie rotiert/gelöscht
   (analog zu `token.json`). Kein Cleanup-Pfad in diesem PR — außerhalb
   des Scopes.
+- **N9 Fallback deaktiviert die Auth:** greift der Crash-Sicherheits-
+  Fallback (`secret = None`), ist der Handshake für diesen Lauf wieder
+  komplett unauthentifiziert — bewusst in Kauf genommen (siehe Design),
+  da die Alternative ein Startup-Crash wäre. Bleibt der Verzeichnis-
+  Fehler dauerhaft bestehen, bleibt N9 für die betroffene Installation
+  dauerhaft ungefixt, aber die App startet weiter.
 - **N12 Verifikationslücke:** `shlex.quote()`-Ausgabe ist POSIX-Shell-
   korrekt, aber die Desktop-Entry-Spec definiert formal eine eigene,
   leicht abweichende Quoting-Grammatik. In der Praxis parsen die
