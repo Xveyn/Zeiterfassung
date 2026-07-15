@@ -61,14 +61,16 @@ class UpdatesTab:
             [lbl for _, lbl in FREQUENCY_OPTIONS], width=14,
         ).pack(side=tk.LEFT)
 
-        tk.Label(
+        self._changelog_label = tk.Label(
             frame, text="Changelog:", font=FONT, bg=BG, fg=TEXT,
-        ).grid(row=4, column=0, padx=10, pady=(12, 4), sticky="nw")
+        )
+        self._changelog_label.grid(row=4, column=0, padx=10, pady=(12, 4), sticky="nw")
         self._changelog_text = dark_text(frame, 50, 12)
         self._changelog_text.grid(
             row=5, column=0, columnspan=2, padx=10, pady=4, sticky="we",
         )
         self._changelog_text.config(state="disabled")
+        self._set_changelog_visible(False)
 
     def on_tab_selected(self):
         """Löst den Live-Check nur beim ersten Sichtbarwerden des Tabs aus."""
@@ -88,14 +90,24 @@ class UpdatesTab:
         self._changelog_text.insert("1.0", text)
         self._changelog_text.config(state="disabled")
 
+    def _set_changelog_visible(self, visible):
+        if visible:
+            self._changelog_label.grid()
+            self._changelog_text.grid()
+            return
+        self._changelog_label.grid_remove()
+        self._changelog_text.grid_remove()
+
     def _check_now(self):
         if self._checking:
             return
         self._checking = True
+        self._latest_release = None
         set_primary_button_enabled(self._check_btn, False)
         set_button_text(self._check_btn, "Prüfe…")
         self._status_label.config(text="Prüfe…")
         self._download_btn.pack_forget()
+        self._set_changelog_visible(False)
         self._set_changelog("")
 
         def fn():
@@ -115,6 +127,7 @@ class UpdatesTab:
             self._latest_release = release
             self._status_label.config(text=f"Version {release.version} verfügbar")
             self._download_btn.pack(side=tk.LEFT, padx=(8, 0))
+            self._set_changelog_visible(True)
             self._settings.set_many({
                 "dismissed_version": release.version,
                 "update_toast_shown_version": release.version,
