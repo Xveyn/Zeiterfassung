@@ -7,12 +7,25 @@
 ## Problem
 
 - **N9** — `src/single_instance.py`s lokales SHOW/PING-Protokoll hat keine
-  Authentifizierung: jeder lokale Prozess, der den (deterministisch aus dem
-  Base-Path abgeleiteten) Port erreicht, kann `ZEIT-SHOW`/`ZEIT-PING`
-  senden und wird bedient. Realer Schaden ist begrenzt (Port-Squatting
-  degradiert bereits heute kontrolliert auf ungeschützten Start; ein
-  gefälschtes SHOW holt bestenfalls das Fenster nach vorne), aber das
-  Fehlen jeder Auth ist trotzdem ein offenes Finding.
+  Authentifizierung: jeder Prozess, der den (deterministisch aus dem
+  Base-Path abgeleiteten) 127.0.0.1-Port erreicht, kann `ZEIT-SHOW`/
+  `ZEIT-PING` senden und wird bedient.
+
+  **Ehrliches Bedrohungsmodell (bestimmt den Scope des Fixes):** Am
+  Handshake hängt **nichts Destruktives** — `ZEIT-SHOW` holt nur das
+  Fenster nach vorn (`_fire_show`), `ZEIT-PING` tut gar nichts. Das
+  Finding ist also ein Cross-User-**Nuisance**-Vektor, kein Daten-/
+  Integritätsrisiko. Ein Prozess **desselben Nutzers** kann die neue
+  Secret-Datei ohnehin lesen (gleiche Rechte wie `token.json`) und den
+  Fix trivial umgehen — er ist aber auch nie die Bedrohung (er kann
+  ohnehin alle Nutzerdaten lesen). Geschlossen wird **ausschließlich**
+  der Vektor „*anderer* lokaler Nutzer auf einer Mehrbenutzer-Maschine":
+  der erreicht zwar den Loopback-Port (127.0.0.1 ist nicht
+  nutzergetrennt), kann aber die `0600`-Secret-Datei nicht lesen. Auf
+  **Windows** fehlt die explizite ACL (das wäre M8) → der Schutz hängt
+  dort an der per-User-Isolation von `%LOCALAPPDATA%`. Der Fix ist damit
+  bewusst schmal; er schließt das offene Finding, ohne mehr zu
+  versprechen, als er hält.
 - **N10** — `src/mail.py::fetch_user_email` hängt den OAuth-Access-Token
   als Query-Parameter an die `tokeninfo`-URL. Der Endpoint unterstützt
   denselben Aufruf per POST-Body, was das Leck-Risiko über URL-Logging
@@ -65,20 +78,46 @@ lesbar/schreibbar — in der Praxis nur denkbar, wenn `base_path` schon
 für `settings.json`/`storage.json` kaputt wäre, also ein ohnehin
 fataler Zustand für die App), wird eine Warnung geloggt und `secret =
 None` gesetzt. Mit `secret = None` überspringen `_Guard`/`_accept_loop`
-und `_notify_primary` den Secret-Vergleich vollständig — Fallback ist
-exakt das **alte, unauthentifizierte Protokoll** (Magic-Byte-Vergleich
-wie vor diesem Fix), nie eine Exception, die den Start abbricht.
+und `_notify_primary` den Secret-Vergleich vollständig — Fallback ist das
+**alte, unauthentifizierte Protokoll** (Magic-Byte-Vergleich wie vor
+diesem Fix), nie eine Exception, die den Start abbricht.
+
+**Asymmetrie des Fallbacks (bewusst akzeptiert):** Der Fallback ist nur
+dann verhaltensgleich zum alten Protokoll, wenn die **Primär**-Instanz
+zurückfällt (ihr `_accept_loop` prüft dann nur `startswith(MAGIC)` und
+ignoriert das Secret des neuen Clients → akzeptiert, Zweitinstanz beendet
+sich). Fällt umgekehrt die **Zweit**-Instanz zurück (schickt nur MAGIC),
+während die Primäre ein echtes Secret erwartet, lehnt die Primäre ab
+(Secret-Mismatch) → die Zweitinstanz bekommt kein `ZEIT-OK` und läuft als
+degradierte Zweitinstanz weiter. Das ist **derselbe** Ausgang wie heute
+schon beim Fremd-Port-Squatter (Test
+`test_foreign_occupant_yields_degraded_primary`) und liegt damit im
+bestehenden Best-Effort-Vertrag des Moduls
+(„blockiert den Start nie, Guard ist best-effort") — es ist kein neuer
+Fehlerfall, nur einer, den der Secret-Fallback in einem seltenen
+Einzelfall auslösen kann. Voraussetzung ist ohnehin, dass die Secret-
+Datei für die Zweit-, aber nicht die Erstinstanz unlesbar ist — ein
+transienter, sehr seltener Zustand.
 
 **Wire-Format:** Handshake-Payload wird `MAGIC (9 Byte) + Secret (32 Byte)`
-statt nur `MAGIC` (bisher `_MAGIC_SHOW`/`_MAGIC_PING`, je 9 Byte).
-`_accept_loop` liest bis zu 64 Byte (Puffer-Marge), prüft das
-9-Byte-Magic-Präfix **und** vergleicht die folgenden 32 Bytes gegen das
-eigene Secret über `hmac.compare_digest` (zeitkonstant). Nur bei
-**beidem** Match → `ZEIT-OK`. Bei Magic- oder Secret-Mismatch: Verbindung
-ohne Antwort verwerfen (identischer Codepfad zum bestehenden
-„unbekannte/leere Daten"-Fall in `_accept_loop`) — der Aufrufer landet im
-bereits vorhandenen Degraded-Pfad („kein ZEIT-OK" → Start ohne Guard,
-geloggt).
+= **41 Byte fix** statt nur `MAGIC` (bisher `_MAGIC_SHOW`/`_MAGIC_PING`, je
+9 Byte). Weil damit eine **feste Länge** nötig wird (nicht mehr nur ein
+`startswith`-Präfix), muss `_accept_loop` **genau** die erwartete Länge
+lesen: eine kleine Read-Schleife (`recv` bis 41 Byte gesammelt **oder**
+`_ACK_TIMEOUT`/leerer recv → Verbindung verwerfen), nicht ein einzelnes
+`recv(64)`. Grund: TCP ist ein Stream; ein einzelnes `recv` darf legal
+weniger als 41 Byte liefern, und ein Teil-Read würde eine **legitime**
+Geschwister-Instanz fälschlich als Secret-Mismatch abweisen (→ degradierte
+Zweitinstanz). Auf Loopback mit 41 Byte ist das extrem selten, aber die
+feste Länge macht das korrekte Lesen zur Pflicht, nicht zur Kür.
+
+Danach: 9-Byte-Magic-Präfix prüfen **und** die 32 Secret-Bytes zeitkonstant
+über `hmac.compare_digest` gegen das eigene Secret vergleichen. Nur bei
+**beidem** Match → `ZEIT-OK`. Bei Magic- oder Secret-Mismatch (oder
+Timeout/Short-Read): Verbindung ohne Antwort verwerfen (identischer
+Codepfad zum bestehenden „unbekannte/leere Daten"-Fall in `_accept_loop`)
+— der Aufrufer landet im bereits vorhandenen Degraded-Pfad („kein ZEIT-OK"
+→ Start ohne Guard, geloggt).
 
 **API:** `acquire(base_path, show_requested)` lädt/erzeugt das Secret vor
 dem Bind-Versuch und reicht es an `_Guard.__init__` sowie
@@ -107,6 +146,13 @@ with urllib.request.urlopen(req, timeout=10) as resp:
 Rückgabewert-Handling (`json.load(resp)`, Fehlerpfad, Logging der
 Response-Keys) bleibt unverändert — reine Transport-Änderung.
 
+**Verifiziert (2026-07-15):** Der tokeninfo-Endpoint akzeptiert
+`access_token` per POST-Body mit `application/x-www-form-urlencoded`
+([Google OAuth2-Doku](https://developers.google.com/identity/protocols/oauth2),
+[REST-Beispiel](https://csdcorp.com/blog/coding/oauth2-get-a-token-via-rest-google-sign-in/)).
+`urllib.request` setzt den `Content-Type`-Header automatisch, sobald
+`data` gesetzt ist — kein manueller Header nötig.
+
 ### 3. N12 — shlex.quote() für Exec=
 
 `_enable_linux` in `autostart.py`: `target` und jedes (leerzeichen-
@@ -129,6 +175,13 @@ Basis der GNOME/KDE-Autostart-Tokenisierung — den `Exec`-Wert in der
 Praxis parst. Für Werte ohne Sonderzeichen (der heutige Normalfall:
 `/opt/Zeiterfassung.AppImage`, `--minimized`) ist die Ausgabe identisch
 zum unquotierten String (`shlex.quote` quotet nur bei Bedarf).
+
+`arguments.split()` nimmt an, dass `arguments` ein Whitespace-getrennter
+String einfacher Flags ist — das trifft für die heutige Aufrufseite zu
+(`arguments` ist immer `""` oder `"--minimized"`, gesetzt in
+`enable_autostart`). Ein Argument, das selbst ein Leerzeichen enthalten
+soll, ist damit nicht darstellbar; das ist aber auch heute schon so und
+kein Ziel dieses Fixes.
 
 ## Testing
 
