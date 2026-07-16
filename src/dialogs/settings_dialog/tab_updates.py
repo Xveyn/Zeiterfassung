@@ -4,15 +4,16 @@ import platform
 import tkinter as tk
 import webbrowser
 
-from src.changelog import fetch_changelog_entry
+from src.changelog import fetch_changelog_entry, parse_changelog_markdown
 from src.dialogs.settings_dialog._shared import label
 from src.theme import (
-    BG, FONT, TEXT, TEXT_MUTED,
+    BG, FONT, FONT_BOLD, TEXT, TEXT_MUTED,
     dark_combo, dark_text, primary_button, secondary_button,
     set_button_text, set_primary_button_enabled,
 )
 from src.updater import (
-    FREQUENCY_OPTIONS, REPO, check_latest_release, is_newer, pick_asset_url,
+    FREQUENCY_OPTIONS, REPO, check_latest_release, pick_asset_url,
+    resolve_check_result,
 )
 from src.version import VERSION
 
@@ -27,6 +28,13 @@ class UpdatesTab:
         self._latest_release = None
         self._checked = False
         self._checking = False
+
+        # Damit die Changelog-Box (unten) breiter als ihr Zeichen-`width` sein
+        # und sich mit gleichem Abstand links/rechts zentrieren kann, statt
+        # links angepinnt zu bleiben und den Rest der Notebook-Tab-Breite
+        # ungenutzt rechts stehen zu lassen.
+        frame.columnconfigure(0, weight=1)
+        frame.columnconfigure(1, weight=1)
 
         label(frame, f"Installierte Version: {VERSION}", row=0)
 
@@ -61,16 +69,22 @@ class UpdatesTab:
             [lbl for _, lbl in FREQUENCY_OPTIONS], width=14,
         ).pack(side=tk.LEFT)
 
+        # Label + Text bleiben immer gegridded (nie grid_remove()) — sonst
+        # verschwindet ihr Breitenbeitrag zum Notebook-Tab kurzzeitig während
+        # eines Checks (Text leer/gecleart ist ok, ungegridded lässt die
+        # ansonsten fixe Dialogbreite kurz einbrechen.
         self._changelog_label = tk.Label(
             frame, text="Changelog:", font=FONT, bg=BG, fg=TEXT,
         )
         self._changelog_label.grid(row=4, column=0, padx=10, pady=(12, 4), sticky="nw")
-        self._changelog_text = dark_text(frame, 50, 12)
+        self._changelog_text = dark_text(frame, 58, 12)
         self._changelog_text.grid(
-            row=5, column=0, columnspan=2, padx=10, pady=4, sticky="we",
+            row=5, column=0, columnspan=2, padx=10, pady=4,
         )
+        self._changelog_text.tag_configure("heading", font=FONT_BOLD)
+        self._changelog_text.tag_configure("bold", font=FONT_BOLD)
+        self._changelog_text.tag_configure("hanging_indent", lmargin1=0, lmargin2=20)
         self._changelog_text.config(state="disabled")
-        self._set_changelog_visible(False)
 
     def on_tab_selected(self):
         """Löst den Live-Check nur beim ersten Sichtbarwerden des Tabs aus."""
@@ -87,16 +101,20 @@ class UpdatesTab:
     def _set_changelog(self, text):
         self._changelog_text.config(state="normal")
         self._changelog_text.delete("1.0", "end")
-        self._changelog_text.insert("1.0", text)
+        for line in parse_changelog_markdown(text):
+            if line is None:
+                self._changelog_text.insert("end", "\n")
+                continue
+            line_start = self._changelog_text.index("end-1c")
+            for segment_text, tags in line["segments"]:
+                if tags:
+                    self._changelog_text.insert("end", segment_text, tags)
+                else:
+                    self._changelog_text.insert("end", segment_text)
+            if line["hanging_indent"]:
+                self._changelog_text.tag_add("hanging_indent", line_start, "end-1c")
+            self._changelog_text.insert("end", "\n")
         self._changelog_text.config(state="disabled")
-
-    def _set_changelog_visible(self, visible):
-        if visible:
-            self._changelog_label.grid()
-            self._changelog_text.grid()
-            return
-        self._changelog_label.grid_remove()
-        self._changelog_text.grid_remove()
 
     def _check_now(self):
         if self._checking:
@@ -107,7 +125,6 @@ class UpdatesTab:
         set_button_text(self._check_btn, "Prüfe…")
         self._status_label.config(text="Prüfe…")
         self._download_btn.pack_forget()
-        self._set_changelog_visible(False)
         self._set_changelog("")
 
         def fn():
@@ -116,23 +133,17 @@ class UpdatesTab:
         def on_done(release):
             if not self.frame.winfo_exists():
                 return
-            if release is None:
+            result = resolve_check_result(VERSION, release)
+            self._latest_release = result["latest_release"]
+            self._status_label.config(text=result["status_text"])
+            if result["show_download"]:
+                self._download_btn.pack(side=tk.LEFT, padx=(8, 0))
+            if result["persist"]:
+                self._settings.set_many(result["persist"])
+            if result["changelog_version"] is None:
                 self._finish_checking()
-                self._status_label.config(text="Prüfung fehlgeschlagen — keine Verbindung?")
                 return
-            if not is_newer(VERSION, release.version):
-                self._finish_checking()
-                self._status_label.config(text=f"Du hast die aktuelle Version ({VERSION}).")
-                return
-            self._latest_release = release
-            self._status_label.config(text=f"Version {release.version} verfügbar")
-            self._download_btn.pack(side=tk.LEFT, padx=(8, 0))
-            self._set_changelog_visible(True)
-            self._settings.set_many({
-                "dismissed_version": release.version,
-                "update_toast_shown_version": release.version,
-            })
-            self._fetch_changelog(release.version)
+            self._fetch_changelog(result["changelog_version"])
 
         self._runner.run(fn, on_done)
 

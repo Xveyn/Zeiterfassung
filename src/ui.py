@@ -116,7 +116,8 @@ class App:
         self._build_header()
         self._renderer.build_grid(self.root)
         self._build_footer()
-        self._renderer.attach_labels(self.header_label, self.footer_label)
+        self._renderer.attach_labels(
+            self.header_label, self.footer_label, self.header_width_spacer)
         self._sync.attach_widgets(
             self.sync_button, self.sync_status_label, self._next_button)
         self._sync.update_status_label()
@@ -286,6 +287,20 @@ class App:
         )
         self.btn_week.pack(side=tk.LEFT)
 
+        # header_width_spacer: unsichtbarer Platzhalter (kein Text, gleiche
+        # bg), der ANSTELLE von header_label im pack-Fluss steht — GridRenderer
+        # hält font/width synchron zum echten header_label (s. attach_labels/
+        # refresh dort). Grund: header_label selbst wird unten per `place`
+        # (nicht `pack`) absolut auf die Fensterbreite zentriert, damit es nie
+        # verrutscht, egal wie breit die rechte Sync-Button-Gruppe gerade ist
+        # (die darf während des Synchronisierens ruhig wandern). `place`-
+        # Kinder zählen aber nicht zur reqwidth des Frames — ohne diesen
+        # Platzhalter würde GridRenderer.measure_max_width() die von
+        # header_label benötigte Breite nicht mehr einrechnen und das fixe
+        # Fenster könnte zu schmal gepinnt werden (u.a. Sync-Button ohne Platz).
+        self.header_width_spacer = tk.Label(frame, text="", bg=BG, width=0)
+        self.header_width_spacer.pack(side=tk.LEFT, expand=True)
+
         # font und width werden in _refresh() je nach View gesetzt — fixe
         # width verhindert Pack-Reflow beim Text-Wechsel innerhalb derselben
         # View, und die Wochen-Variante braucht eine kleinere Schrift, weil
@@ -293,7 +308,7 @@ class App:
         self.header_label = tk.Label(
             frame, text="", bg=BG, fg="#ffffff",
         )
-        self.header_label.pack(side=tk.LEFT, expand=True)
+        self.header_label.place(relx=0.5, rely=0.5, anchor="center")
 
         icon_button(
             frame, "\u2699", self._open_settings,
@@ -628,6 +643,20 @@ class App:
         if _stray_click_suppressed(getattr(self.root, "_dialog_closed_at", 0),
                                    time.monotonic()):
             return  # Linksklick schlägt von einem eben geschlossenen Dialog durch (#44).
+        # Ein Tag mit ungelöstem Sync-Konflikt (Ist-Zeit zwischen zwei Geräten
+        # widersprüchlich) öffnet den ConflictsDialog statt des normalen
+        # Tages-Dialogs — die Ist-Zeit steht buchstäblich zur Debatte, sie vor
+        # der Auflösung normal zu editieren würde einen der beiden Kandidaten
+        # überschreiben. Gefiltert auf genau diesen Tag (filter_key), statt die
+        # volle Liste aller offenen Konflikte zu zeigen.
+        if self.conflicts_store is not None and date_str in self.conflicts_store.unresolved_entry_keys():
+            from src.dialogs.conflicts_dialog import ConflictsDialog
+            ConflictsDialog(
+                self.root, self.storage, self.settings, self.conflicts_store,
+                data_lock=self._data_lock, filter_key=date_str,
+                on_resolved=self._refresh,
+            )
+            return
         # Bei deaktiviertem Kalender-Sync KEIN reservation_store an den Dialog
         # geben — dann wird der Reservierungs-Block nicht angezeigt und ist per
         # Linksklick nicht setzbar (open_entry_dialog wertet None entsprechend).

@@ -50,6 +50,7 @@ class GridRenderer:
         self._grid_frame = None
         self._header_label = None
         self._footer_label = None
+        self._header_width_spacer = None
         self._fixed_width = None
         self._suppress_geometry = False
         self._last_refresh_view = None
@@ -82,9 +83,10 @@ class GridRenderer:
         self._active_grid_idx = 0
         self._grid_frame = self._grid_frames[0]
 
-    def attach_labels(self, header_label, footer_label):
+    def attach_labels(self, header_label, footer_label, header_width_spacer):
         self._header_label = header_label
         self._footer_label = footer_label
+        self._header_width_spacer = header_width_spacer
 
     def refresh(self, view_mode: str, year: int, month: int,
                 iso_year: int, current_week: int):
@@ -95,18 +97,24 @@ class GridRenderer:
         self._current_week = current_week
         if self._view_mode == "month":
             # FONT_HEADER (16pt) + width=16 — längste Variante "September 2026".
+            font, width = FONT_HEADER, 16
             self._header_label.config(
-                text=f"{MONTHS_DE[self._month]} {self._year}",
-                font=FONT_HEADER, width=16,
+                text=f"{MONTHS_DE[self._month]} {self._year}", font=font, width=width,
             )
             self._refresh_month()
         else:
             # FONT_HEADER_SMALL (12pt) + width=32 — KW-Variante mit Jahreswechsel.
+            font, width = FONT_HEADER_SMALL, 32
             self._header_label.config(
                 text=get_week_label(self._iso_year, self._current_week),
-                font=FONT_HEADER_SMALL, width=32,
+                font=font, width=width,
             )
             self._refresh_week()
+        # header_width_spacer steht (unsichtbar) an header_labels alter pack-
+        # Position, damit dessen Breitenbedarf weiter in die reqwidth des
+        # Frames eingeht — header_label selbst ist per `place` zentriert und
+        # zählt dafür nicht mehr mit (s. ui.py::_build_header).
+        self._header_width_spacer.config(font=font, width=width)
         current_cols = self._visible_day_count()
         view_changed = self._last_refresh_view != self._view_mode
         cols_changed = self._last_refresh_columns != current_cols
@@ -499,10 +507,7 @@ class GridRenderer:
         Konflikte vom Typ 'entry' vorliegen."""
         if not self._conflicts_store:
             return set()
-        return {
-            c["key"] for c in self._conflicts_store.get_all()
-            if c.get("kind") == "entry" and not c.get("resolved")
-        }
+        return self._conflicts_store.unresolved_entry_keys()
 
     def _cell_layout_metrics(self, frame):
         """Misst die natuerliche Pixelgroesse einer Standard-Tageszelle (Probe-

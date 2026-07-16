@@ -89,6 +89,40 @@ def update_toast_text(release: "Release") -> str:
     )
 
 
+def resolve_check_result(version: str, release: "Release | None") -> dict:
+    """Reine Entscheidungslogik für das Ergebnis eines Update-Checks:
+    ohne verfügbares Update wird trotzdem der Changelog der installierten
+    Version gezeigt, statt das Feld leer/versteckt zu lassen. Liefert alles,
+    was der Tk-Glue-Code (`tab_updates.py::_check_now`) an der UI anwenden
+    muss — Tk-frei, daher ohne Widgets testbar."""
+    if release is None:
+        return {
+            "status_text": "Prüfung fehlgeschlagen — keine Verbindung?",
+            "show_download": False,
+            "changelog_version": None,
+            "persist": None,
+            "latest_release": None,
+        }
+    if not is_newer(version, release.version):
+        return {
+            "status_text": f"Du hast die aktuelle Version ({version}).",
+            "show_download": False,
+            "changelog_version": version,
+            "persist": None,
+            "latest_release": None,
+        }
+    return {
+        "status_text": f"Version {release.version} verfügbar",
+        "show_download": True,
+        "changelog_version": release.version,
+        "persist": {
+            "dismissed_version": release.version,
+            "update_toast_shown_version": release.version,
+        },
+        "latest_release": release,
+    }
+
+
 def pick_asset_url(assets, system: str, latest_version: str) -> str | None:
     """Liefert die Download-URL für das Plattform-Asset oder None."""
     expected_name = {

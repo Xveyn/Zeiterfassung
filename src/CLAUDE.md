@@ -47,8 +47,16 @@ Rendering der Monats-/Wochenansicht inkl. Double-Buffer und Fenster-Geometrie.
   binden diese Callbacks, nicht App-Methoden direkt.
 - **Widgets:** der Renderer besitzt `grid_container` + die zwei Double-Buffer-Frames
   (`build_grid(parent)`); `header_label`/`footer_label` werden in `App._build_header`/
-  `_build_footer` erzeugt und per `attach_labels(...)` nachgereicht (der Renderer beschreibt
-  sie). `measure_max_width(...)` pinnt vor `mainloop()` die Fensterbreite (4-Kombi-Probing).
+  `_build_footer` erzeugt und per `attach_labels(header_label, footer_label,
+  header_width_spacer)` nachgereicht (der Renderer beschreibt sie). `header_label` selbst
+  hängt **nicht** im pack-Fluss von `header_frame`, sondern wird per `place(relx=0.5, …)`
+  absolut auf die Fensterbreite zentriert — sonst würde es je nach Breite der rechten
+  Sync-Button-Gruppe (Status-Text ändert sich laufend) sichtbar verrutschen. Damit
+  `header_label`s Breitenbedarf trotzdem in `measure_max_width` einfließt (place-Kinder
+  zählen nicht zur reqwidth), steht an seiner alten pack-Position ein unsichtbarer
+  `header_width_spacer`, dessen `font`/`width` `refresh()` synchron zum echten
+  `header_label` hält. `measure_max_width(...)` pinnt vor `mainloop()` die Fensterbreite
+  (4-Kombi-Probing).
 - **Fenster-Geometrie:** `repin_geometry()` setzt Breite (≥ gemessenes Maximum) und Höhe
   (aktuelle reqheight) neu auf das fixe Fenster. Genutzt vom View-/Spalten-Wechsel in
   `refresh()`, beim Wechsel der Footer-Reservierungsbreite (Stundenlohn zur Laufzeit
@@ -197,6 +205,21 @@ bewusst erst per `<<NotebookTabChanged>>`, nicht schon beim Dialog-Öffnen;
 `theme.apply_notebook_style`), `share_dialog`, `import_dialog`, `category_dialog`,
 `conflicts_dialog`. `period_picker` ist kein Dialog, sondern der von
 `send_dialog` + `export_dialog` geteilte Zeitraum+Kategorie+Vorschau-Baustein.
+
+`App._open_dialog` (Linksklick-Handler) prüft zuerst `conflicts_store.unresolved_entry_keys()`:
+liegt für den Tag ein ungelöster Sync-Konflikt (Ist-Zeit zwischen zwei Geräten
+widersprüchlich), öffnet sich `ConflictsDialog` mit `filter_key=date_str` statt des
+normalen `entry_dialog` — die Ist-Zeit steht buchstäblich zur Debatte, normales
+Editieren würde einen der beiden Kandidaten überschreiben. `filter_key` filtert
+`_unresolved` auf genau den einen Tag (nicht nur Vorselektion in der vollen Liste) und
+blendet die Listbox aus (`_build`: `self.right` nimmt die volle Dialogbreite) — nach dem
+Auflösen schließt sich der Dialog selbst, statt "wähle den nächsten" zu zeigen (es gibt
+in dieser gefilterten Ansicht keinen nächsten). Zweiter, weiterhin bestehender Einstieg:
+Einstellungen → Google-Tab → „Konflikte ansehen" (ungefiltert, volle Liste, auch
+`kind == "setting"`-Konflikte, die kein Kalendertag abbilden kann). `ConflictsDialog`
+nimmt optional `on_resolved` (von beiden
+Einstiegen auf `App._refresh`/`on_change` gesetzt) — ohne den Callback bliebe die
+Kalenderzelle hinter dem Dialog nach dem Auflösen auf dem alten Stand.
 
 Alle Dialoge beziehen ihre Fenster-Chrome über `theme.create_dialog(...)`
 (Audit M13); Content-Styles (`apply_combobox_style`/`apply_notebook_style`/

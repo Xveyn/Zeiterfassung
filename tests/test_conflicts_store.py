@@ -43,3 +43,16 @@ def test_count_unresolved(tmp_conflicts):
         {"id": "c-3", "resolved": False},
     ])
     assert tmp_conflicts.count_unresolved() == 2
+
+
+def test_unresolved_entry_keys_filters_kind_and_resolved(tmp_conflicts):
+    tmp_conflicts.save_all([
+        {"id": "c-1", "kind": "entry", "key": "2026-06-02", "resolved": False},
+        {"id": "c-2", "kind": "entry", "key": "2026-06-03", "resolved": True},
+        {"id": "c-3", "kind": "setting", "key": "hourly_rate", "resolved": False},
+    ])
+    assert tmp_conflicts.unresolved_entry_keys() == {"2026-06-02"}
+
+
+def test_unresolved_entry_keys_empty_when_none(tmp_conflicts):
+    assert tmp_conflicts.unresolved_entry_keys() == set()

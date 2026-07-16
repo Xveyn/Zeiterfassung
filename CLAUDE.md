@@ -266,6 +266,24 @@ komplette Fenster-Chrome (BG, dunkle Titelleiste, disable_min_max,
 App-Icon, modal/Escape) konventionskonform. `center_dialog_on_parent`
 nach dem Widget-Aufbau bleibt Aufgabe des Dialogs.
 
+**Bekannte, akzeptierte Einschränkung — kurzes Aufblitzen der hellen
+Windows-Titelleiste:** `apply_dark_titlebar`/`disable_min_max` sind bewusst
+per `window.after(100, …)` verzögert (s. Kommentar dort — frühere Tk-eigene
+Fenster-Property-Calls würden das DWM-Farb-Attribut sonst clobbern). In
+diesem ~100ms-Fenster rendert Windows die Titelleiste kurz im hellen
+Standard-Stil, bevor sie umgefärbt wird. Versuch, das Fenster bis dahin per
+`-alpha 0.0` unsichtbar zu halten (reine Compositing-Deckkraft statt
+`withdraw`/`deiconify`, um `grab_set()` nicht zu gefährden): macht auf
+diesem Windows/Tk-Gespann `center_dialog_on_parent` dauerhaft kaputt — ein
+frisch erzeugtes Toplevel, das direkt `-alpha 0.0` bekommt, ignoriert
+spätere `geometry()`-Aufrufe komplett (auch ein zweiter Zentrier-Aufruf
+nach dem Sichtbarmachen bringt die Position nicht zurück, Dialog landet bei
+`+0+0` bzw. einem falschen Offset). Tieferer Windows/DWM-Layered-Window-
+Effekt, kein einfacher Timing-Bug — daher bewusst nicht gefixt; das
+Flackern ist als Kompromiss akzeptiert. Vor einem neuen Versuch: das oben
+beschriebene Verhalten reproduzieren und gegenchecken, ob es (in einer
+neueren Tk/Python-Version) noch auftritt.
+
 ## Tests / CI
 
 `.github/workflows/test.yml` installiert gezielt nur die Pakete, die die Tests brauchen (`pytest`, `holidays==0.99`, `google-api-python-client`, `google-auth`, `google-auth-oauthlib`), **nicht** `requirements.txt`. Grund: `pycairo` (transitive Dep von `xhtml2pdf`) braucht Cairo-Systemheader auf Ubuntu und bricht sonst den CI-Build. Der Import von `xhtml2pdf` in `src/report.py::generate_pdf` ist lazy, daher laufen die Report-Tests ohne die Lib. `holidays` und die Google-Libs sind pure Python ohne C-Deps und problemlos installierbar — letztere sind nötig, weil Tests `src.ui` importieren (z.B. `tests/test_ui_delete.py`), dessen Importkette die Google-Wrapper zieht. Ein zweiter Job läuft `ruff check .` (Lint).
