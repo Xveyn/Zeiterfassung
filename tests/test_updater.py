@@ -6,8 +6,9 @@ from unittest.mock import patch
 from urllib.error import HTTPError, URLError
 
 from src.updater import (
-    Asset, check_latest_release, frequency_for_label, is_newer,
-    pick_asset_url, should_check, today_iso, update_toast_text,
+    Asset, Release, check_latest_release, frequency_for_label, is_newer,
+    pick_asset_url, resolve_check_result, should_check, today_iso,
+    update_toast_text,
 )
 
 
@@ -198,3 +199,38 @@ class TestCheckLatestRelease:
             release = check_latest_release("any/repo")
         assert release is not None
         assert release.version == "1.9.0"
+
+
+class TestResolveCheckResult:
+    def test_no_connection_returns_failure_status_without_changelog(self):
+        result = resolve_check_result("1.18.0", None)
+        assert result == {
+            "status_text": "Prüfung fehlgeschlagen — keine Verbindung?",
+            "show_download": False,
+            "changelog_version": None,
+            "persist": None,
+            "latest_release": None,
+        }
+
+    def test_current_version_shows_changelog_of_installed_version(self):
+        # Ohne verfügbares Update soll trotzdem der Changelog der
+        # installierten Version sichtbar sein (statt komplett ausgeblendet).
+        release = Release(version="1.18.0", html_url="https://x", assets=())
+        result = resolve_check_result("1.18.0", release)
+        assert result["status_text"] == "Du hast die aktuelle Version (1.18.0)."
+        assert result["show_download"] is False
+        assert result["changelog_version"] == "1.18.0"
+        assert result["persist"] is None
+        assert result["latest_release"] is None
+
+    def test_newer_release_shows_download_and_persists_dismissal(self):
+        release = Release(version="1.19.0", html_url="https://x", assets=())
+        result = resolve_check_result("1.18.0", release)
+        assert result["status_text"] == "Version 1.19.0 verfügbar"
+        assert result["show_download"] is True
+        assert result["changelog_version"] == "1.19.0"
+        assert result["persist"] == {
+            "dismissed_version": "1.19.0",
+            "update_toast_shown_version": "1.19.0",
+        }
+        assert result["latest_release"] is release
