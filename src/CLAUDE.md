@@ -194,6 +194,12 @@ denselben OAuth-Token; Scope-Upgrade erzwingt frischen Consent.
   bewusst bei der alten, in `settings.json` persistierten Zufalls-UUID (sonst hätte eine parallel zu
   einer echten Installation laufende Dev-Instanz auf demselben Rechner dieselbe device_id). Resolver
   liefern `None` statt zu werfen; `_ensure_device_id` fällt dann ebenfalls auf die Zufalls-UUID zurück.
+- `main.py::_hold_app_mutex` — hält einen benannten Win32-Mutex (`_APP_MUTEX_NAME`, nur installierte
+  Windows-Builds) für die Prozesslaufzeit; reiner Existenz-Marker für `installer.iss` (`AppMutex=`
+  dort muss exakt zum Namen hier passen). Setup erkennt darüber eine laufende Instanz und lässt den
+  User sie manuell schließen (Retry-Dialog), statt des Default-Wegs (`CloseApplications`/Restart
+  Manager), der bei aktivem Minimize-to-Tray scheitert (`App._on_close` behandelt das dabei
+  gesendete `WM_CLOSE` nur als Fenster-Verstecken).
 - `tray.py` (Fassade) + `tray_mac.py` (natives macOS-NSStatusItem-Backend, #88).
 
 Das Tray-Icon läuft, sobald `minimize_to_tray` **oder** `reminders_enabled` aktiv ist (`ui.py::_apply_tray_setting`); bei nur `reminders_enabled` dient es ausschließlich als Toast-Kanal.

@@ -327,6 +327,11 @@ Lokal: `pytest` aus dem Repo-Root. Alle Tests müssen vor dem PR-Merge grün sei
 - `src/logging_setup.py` — File-Logging + globaler Excepthook (Setup-Fehler sind **nicht-fatal**, siehe `main.py`)
 - `src/theme.py`, `src/tooltip.py` — UI-Hilfen
 - `src/version.py` — Einzige Quelle für die App-Version (von Workflow & `installer.iss` gelesen)
-- `installer.iss` — Inno Setup Script, Version wird per `/DAppVer=...` vom Workflow übergeben
+- `installer.iss` — Inno Setup Script, Version wird per `/DAppVer=...` vom Workflow übergeben.
+  `AppMutex=ZeiterfassungAppMutex` (muss exakt zu `main.py::_APP_MUTEX_NAME` passen) lässt Setup
+  eine laufende Instanz erkennen und den User per Retry-Dialog zum manuellen Schließen auffordern;
+  `CloseApplications=no` schaltet bewusst den Default-Weg (Restart Manager) ab, der bei aktivem
+  Minimize-to-Tray scheitert (`App._on_close` behandelt das dabei gesendete `WM_CLOSE` nur als
+  Fenster-Verstecken, der Prozess läuft weiter und blockiert die .exe-Datei)
 
 Hinweis: Es gibt **keine** `Zeiterfassung.spec`-Datei — Build läuft komplett über `build.py` mit expliziten PyInstaller-Args.

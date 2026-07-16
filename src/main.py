@@ -2,6 +2,7 @@
 import contextlib
 import logging
 import os
+import platform
 import sys
 import threading
 import tkinter as tk
@@ -32,6 +33,31 @@ from src.theme import init_fonts
 from src.time_utils import utc_now_iso
 from src.ui import App
 from src.version import VERSION
+
+# Muss exakt zum AppMutex-Wert in installer.iss passen. Der Installer prüft
+# beim Start, ob dieser Mutex existiert, und bittet den User, die App manuell
+# zu schließen, statt (wie der standardmäßige Restart-Manager-Weg,
+# CloseApplications) automatisch zu versuchen — Letzteres scheitert bei uns,
+# weil ein aktives Minimize-to-Tray den dabei gesendeten WM_CLOSE nur als
+# Fenster-Verstecken behandelt (App._on_close), der Prozess also weiterläuft
+# und die .exe-Datei blockiert bleibt.
+_APP_MUTEX_NAME = "ZeiterfassungAppMutex"
+
+
+def _hold_app_mutex():
+    """Hält für die Lebensdauer des Prozesses einen benannten Win32-Mutex
+    (nur installierte Windows-Builds) — reiner Existenz-Marker für
+    installer.iss (AppMutex, s. dort). Windows gibt den Handle beim
+    Prozessende automatisch frei (auch bei Crash), kein explizites Release
+    nötig; der Rückgabewert muss aber am Leben gehalten werden (sonst schließt
+    Python das Handle beim GC), s. Aufrufer in main()."""
+    if platform.system() != "Windows" or not getattr(sys, "frozen", False):
+        return None
+    try:
+        import ctypes
+        return ctypes.windll.kernel32.CreateMutexW(None, False, _APP_MUTEX_NAME)
+    except OSError:
+        return None
 
 
 def _ensure_device_id(settings) -> str:
@@ -445,6 +471,9 @@ def main():
         logging.getLogger(__name__).warning(
             "Single-Instance-Guard-Fehler — Start ohne Guard", exc_info=True)
         guard = None
+
+    # Referenz muss für die Prozesslaufzeit gehalten werden (s. _hold_app_mutex).
+    _app_mutex = _hold_app_mutex()  # noqa: F841
 
     # Geteilter Daten-Lock über alle vier Stores (Audit H1/H2) + Sync-Guard.
     # data_lock: RLock (reentrant — der Sync-Apply-Block ruft gelockte
