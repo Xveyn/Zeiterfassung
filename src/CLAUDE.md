@@ -187,6 +187,13 @@ denselben OAuth-Token; Scope-Upgrade erzwingt frischen Consent.
   vor dem Tk-Aufbau, `serve(show_fn)` danach. `App.restart_for_scaling` und `_quit_with_sync_push`
   rufen `release()`. Blockiert den Start nie — ist der Port von Fremd-Software belegt (keine ZEIT-OK),
   läuft die App ungeschützt weiter (geloggt, akzeptierter Degraded-Fall).
+- `device_id.py` — stabile, hardware-abgeleitete Geräte-ID (`derive_device_id()`, SHA-256 mit
+  App-Salt über Windows `MachineGuid`/macOS `IOPlatformUUID`/Linux `/etc/machine-id`) für installierte
+  Builds; übersteht damit eine Neuinstallation, anders als eine reine Zufalls-UUID. `main.py::
+  _ensure_device_id` nutzt das NUR bei `sys.frozen` — Repo-/Skript-Modus (`python -m src.main`) bleibt
+  bewusst bei der alten, in `settings.json` persistierten Zufalls-UUID (sonst hätte eine parallel zu
+  einer echten Installation laufende Dev-Instanz auf demselben Rechner dieselbe device_id). Resolver
+  liefern `None` statt zu werfen; `_ensure_device_id` fällt dann ebenfalls auf die Zufalls-UUID zurück.
 - `tray.py` (Fassade) + `tray_mac.py` (natives macOS-NSStatusItem-Backend, #88).
 
 Das Tray-Icon läuft, sobald `minimize_to_tray` **oder** `reminders_enabled` aktiv ist (`ui.py::_apply_tray_setting`); bei nur `reminders_enabled` dient es ausschließlich als Toast-Kanal.

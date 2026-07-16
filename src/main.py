@@ -22,6 +22,7 @@ import uuid
 os.environ.setdefault("OAUTHLIB_RELAX_TOKEN_SCOPE", "1")
 
 from src.conflicts_store import ConflictsStore
+from src.device_id import derive_device_id
 from src.logging_setup import setup_logging
 from src.paths import get_base_path
 from src.reservations import ReservationStore
@@ -34,10 +35,27 @@ from src.version import VERSION
 
 
 def _ensure_device_id(settings) -> str:
-    """Bei Erststart oder fehlendem device_id: UUID generieren und persistieren.
+    """Liefert die garantiert vorhandene Device-ID für den Sync.
 
-    Liefert die garantiert vorhandene Device-ID — spart dem Caller einen
-    zweiten settings.get()-Call (der Pylance-seitig wieder Optional wäre)."""
+    Installierte Builds (frozen): aus einer stabilen, pro OS-Installation
+    eindeutigen Hardware-ID abgeleitet (device_id.py) — übersteht damit eine
+    Neuinstallation der App, anders als eine rein in settings.json persistierte
+    Zufalls-UUID (die beim Reinstall verloren geht). Wird bei jedem Start neu
+    abgeleitet und persistiert (statt nur einmalig), damit die Anzeige in
+    Einstellungen → Google konsistent bleibt und ein späterer erfolgreicher
+    Resolve einen früheren Fallback-Wert wieder korrigiert.
+
+    Repo-/Skript-Modus (`python -m src.main`) UND der Fallback, falls die
+    Hardware-ID nicht lesbar ist (fehlende Berechtigung o.ä.): wie bisher eine
+    bei Erststart generierte, in settings.json persistierte Zufalls-UUID —
+    bewusst NICHT hardware-abgeleitet, sonst hätte eine parallel zu einer
+    echten Installation laufende Dev-Instanz auf demselben Rechner dieselbe
+    device_id (device_id.py hat die Begründung)."""
+    if getattr(sys, "frozen", False):
+        derived = derive_device_id()
+        if derived:
+            settings.set("device_id", derived)
+            return derived
     device_id = settings.get("device_id")
     if not device_id:
         device_id = str(uuid.uuid4())
