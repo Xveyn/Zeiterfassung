@@ -134,6 +134,12 @@ def find_sync_file(service):
         ).execute()
     except HttpError as e:
         raise _http_error_to_drive_error(e) from e
+    except (TransportError, TimeoutError) as e:
+        # Verbindungsabbruch/Timeout beim Request selbst — es gibt keine
+        # HTTP-Response, daher kein HttpError. Ohne diesen Fang landet der
+        # Fehler unklassifiziert im 'unknown'-Fall der UI (roher, unstyled
+        # Dialog statt der schon vorhandenen themed Netzwerk-Meldung).
+        raise DriveNetworkError(str(e)) from e
 
     files = result.get("files", [])
     if not files:
@@ -162,6 +168,8 @@ def download(service, file_id):
             _, done = downloader.next_chunk()
     except HttpError as e:
         raise _http_error_to_drive_error(e) from e
+    except (TransportError, TimeoutError) as e:
+        raise DriveNetworkError(str(e)) from e
     return buf.getvalue(), str(meta.get("version", ""))
 
 
@@ -199,3 +207,5 @@ def upload(service, content_bytes, file_id=None):
         return resp["id"], str(resp.get("version", ""))
     except HttpError as e:
         raise _http_error_to_drive_error(e) from e
+    except (TransportError, TimeoutError) as e:
+        raise DriveNetworkError(str(e)) from e
