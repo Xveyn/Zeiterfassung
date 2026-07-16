@@ -2,7 +2,10 @@
 Wochenlimit-Check für frisch importierte Reservierungs-Slots (#98).
 gcal ist komplett gemockt (kein echtes Netzwerk/OAuth)."""
 
-from src.main import run_calendar_reconcile
+import sys
+
+from src import main as main_module
+from src.main import _ensure_device_id, run_calendar_reconcile
 from src.reservations import ReservationStore
 from src.settings import Settings
 from src.storage import Storage
@@ -81,3 +84,74 @@ def test_imported_reservation_under_limit_no_warning(tmp_path, monkeypatch):
     result = run_calendar_reconcile(store, settings, str(tmp_path), storage)
 
     assert result["limit_warnings"] == []
+
+
+# --- _ensure_device_id: hardware-abgeleitet (frozen) vs. Zufalls-UUID -------
+# (Repo-/Skript-Modus, Fallback bei nicht lesbarer Hardware-ID)
+
+class TestEnsureDeviceId:
+    def test_not_frozen_generates_and_persists_random_uuid(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(sys, "frozen", False, raising=False)
+        settings = Settings(str(tmp_path / "settings.json"))
+
+        device_id = _ensure_device_id(settings)
+
+        assert device_id
+        assert settings.get("device_id") == device_id
+
+    def test_not_frozen_reuses_persisted_uuid_on_second_call(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(sys, "frozen", False, raising=False)
+        settings = Settings(str(tmp_path / "settings.json"))
+
+        first = _ensure_device_id(settings)
+        second = _ensure_device_id(settings)
+
+        assert first == second
+
+    def test_not_frozen_never_calls_derive_device_id(self, tmp_path, monkeypatch):
+        # Repo-/Skript-Modus darf NIE die hardware-abgeleitete ID nutzen —
+        # sonst hätte eine parallel zu einer echten Installation laufende
+        # Dev-Instanz auf demselben Rechner dieselbe device_id.
+        monkeypatch.setattr(sys, "frozen", False, raising=False)
+        monkeypatch.setattr(main_module, "derive_device_id",
+                            lambda: (_ for _ in ()).throw(AssertionError("must not be called")))
+        settings = Settings(str(tmp_path / "settings.json"))
+
+        _ensure_device_id(settings)  # darf nicht werfen
+
+    def test_frozen_uses_derived_hardware_id_and_persists_it(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(sys, "frozen", True, raising=False)
+        monkeypatch.setattr(main_module, "derive_device_id", lambda: "derived-abc123")
+        settings = Settings(str(tmp_path / "settings.json"))
+
+        device_id = _ensure_device_id(settings)
+
+        assert device_id == "derived-abc123"
+        assert settings.get("device_id") == "derived-abc123"
+
+    def test_frozen_falls_back_to_random_uuid_when_hardware_id_unavailable(
+            self, tmp_path, monkeypatch):
+        monkeypatch.setattr(sys, "frozen", True, raising=False)
+        monkeypatch.setattr(main_module, "derive_device_id", lambda: None)
+        settings = Settings(str(tmp_path / "settings.json"))
+
+        device_id = _ensure_device_id(settings)
+
+        assert device_id
+        assert settings.get("device_id") == device_id
+
+    def test_frozen_overwrites_stale_persisted_id_once_derivable_again(
+            self, tmp_path, monkeypatch):
+        # Simuliert: voriger Start konnte die Hardware-ID nicht lesen (Fallback
+        # auf Zufalls-UUID persistiert), dieser Start kann es wieder — die neue,
+        # stabile ID muss die veraltete Zufalls-UUID ersetzen, nicht dauerhaft
+        # bei ihr bleiben.
+        settings = Settings(str(tmp_path / "settings.json"))
+        settings.set("device_id", "stale-random-uuid")
+        monkeypatch.setattr(sys, "frozen", True, raising=False)
+        monkeypatch.setattr(main_module, "derive_device_id", lambda: "derived-abc123")
+
+        device_id = _ensure_device_id(settings)
+
+        assert device_id == "derived-abc123"
+        assert settings.get("device_id") == "derived-abc123"
