@@ -1,5 +1,30 @@
 # Changelog
 
+## 1.18.1 — 2026-07-16
+
+### Hinzugefügt
+- **Sync-Konflikte**: Linksklick auf einen Kalendertag mit ungelöstem Konflikt
+  öffnet jetzt direkt den Konflikt-Dialog, gefiltert auf genau diesen Tag —
+  vorher nur über Einstellungen → Google erreichbar.
+
+### Geändert
+- **Updates-Tab**: Der Changelog wird jetzt auch ohne verfügbares Update
+  angezeigt (für die installierte Version); Markdown wird lesbar formatiert
+  (fette Überschriften/Bullet-Titel) statt roh angezeigt.
+- **Tages-Dialog**: Arbeitszeit und Reservierung teilen sich jetzt einen
+  einzelnen „Speichern"-Button statt je einem eigenen. Das Kategorie-Dropdown
+  zeigt ein Sternchen, wenn die Slot-Zeiten manuell vom Kategorie-Standard
+  abweichen.
+
+### Behoben
+- **Header**: Die Monat/Jahr-Anzeige rutscht nicht mehr, wenn beim
+  Synchronisieren der Status-Text rechts wechselt.
+- **Drive-Sync**: Verbindungsabbrüche/Timeouts werden jetzt korrekt als
+  Netzwerkfehler erkannt und zeigen die passende „Keine Internetverbindung"-
+  Meldung statt eines rohen Fehlerdialogs.
+- **Sync-Konflikte**: Der Kalender aktualisiert sich jetzt sofort, nachdem ein
+  Konflikt aufgelöst wurde (vorher blieb die Zelle auf altem Stand).
+
 ## 1.18.0 — 2026-07-15
 
 ### Hinzugefügt
