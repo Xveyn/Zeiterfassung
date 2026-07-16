@@ -37,6 +37,17 @@ def category_to_display(value):
     return value if value else NO_CATEGORY_LABEL
 
 
+def suggest_ist_category(reservation_slots):
+    """Kategorie-Vorschlag für die neu vorbelegte Ist-Zeit-Zeile aus einer
+    bestehenden Reservierung (noch keine Ist-Zeit gespeichert). Nur bei GENAU
+    EINEM Reservierungs-Slot — bei mehreren wäre unklar, welcher Slot die
+    Kategorie der einen vorgeschlagenen Zeile bestimmen sollte (die
+    Zeit-Vorbelegung nimmt ohnehin nur den ersten Slot, s. open_entry_dialog)."""
+    if len(reservation_slots) != 1:
+        return ""
+    return reservation_slots[0].get("kategorie", "")
+
+
 def category_from_display(display):
     """Dropdown-Anzeige → gespeicherter Kategoriewert: '(ohne Kategorie)' → '',
     ein angehängtes Override-Sternchen ('Office*' → 'Office') wird mit
@@ -297,9 +308,11 @@ def open_entry_dialog(parent, date_str, storage, settings, on_change,
                         s.get("kategorie", ""), removable=False)
     elif existing_reservation and existing_reservation["slots"]:
         # Vorschlag aus der Reservierung (noch nicht als Ist-Zeit gespeichert)
-        # → entfernbar.
+        # → entfernbar. Kategorie wird mitvorgeschlagen (suggest_ist_category:
+        # nur bei genau einem Reservierungs-Slot).
         first = existing_reservation["slots"][0]
-        add_ist_row(first["start"], first["end"], default_pause, "")
+        add_ist_row(first["start"], first["end"], default_pause,
+                    suggest_ist_category(existing_reservation["slots"]))
 
     ist_btns = tk.Frame(outer, bg=BG)
     ist_btns.pack(fill="x", pady=(2, 8))
