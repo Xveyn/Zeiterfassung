@@ -727,7 +727,22 @@ class App:
         # belegt, schickte SHOW und beendete sich — die App verschwände beim
         # bloßen Skalierungswechsel.
         try:
-            subprocess.Popen(cmd)
+            env = os.environ.copy()
+            # PyInstaller-Onefile (≥6.10) behandelt einen per sys.executable
+            # gespawnten Kindprozess standardmäßig als Worker-Subprozess DER-
+            # SELBEN Instanz und lässt ihn das bereits entpackte _MEIPASS-
+            # Verzeichnis DES ALTEN Prozesses mitnutzen. Das räumt der alte
+            # Prozess aber auf, sobald er unten beendet wird — der neue
+            # Prozess bricht dann mit fehlenden Bundle-Dateien ab (z.B. "Tcl
+            # data directory ... not found", googleapiclient-Discovery-Docs
+            # nicht auffindbar → UnknownApiNameOrVersion). Ohne dieses Signal
+            # ist der Neustart also ein Wettlauf gegen die Temp-Aufräumung des
+            # alten Prozesses. PYINSTALLER_RESET_ENVIRONMENT=1 zwingt den
+            # neuen Prozess, sich frisch (in ein eigenes Verzeichnis) zu
+            # entpacken, statt zu erben — No-op im Repo-Modus (kein Bootloader
+            # liest die Variable dort).
+            env["PYINSTALLER_RESET_ENVIRONMENT"] = "1"
+            subprocess.Popen(cmd, env=env)
         except Exception:
             logging.getLogger(__name__).exception(
                 "Neustart für UI-Skalierung fehlgeschlagen")
