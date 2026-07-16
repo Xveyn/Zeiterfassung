@@ -14,6 +14,15 @@ SolidCompression=yes
 PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=dialog
 WizardStyle=modern
+; AppMutex-Wert muss exakt zu _APP_MUTEX_NAME in src/main.py passen. Setup
+; erkennt darüber eine laufende Instanz und bittet den User, sie manuell zu
+; schließen (Retry-Dialog) — statt des Default-Wegs (CloseApplications via
+; Restart Manager: WM_QUERYENDSESSION/WM_ENDSESSION/WM_CLOSE), der bei uns
+; scheitert: aktives Minimize-to-Tray behandelt das dabei gesendete WM_CLOSE
+; nur als Fenster-Verstecken (App._on_close), der Prozess läuft weiter und
+; blockiert die .exe-Datei.
+AppMutex=ZeiterfassungAppMutex
+CloseApplications=no
 
 [Languages]
 Name: "german"; MessagesFile: "compiler:Languages\German.isl"

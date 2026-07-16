@@ -2,10 +2,13 @@
 Wochenlimit-Check für frisch importierte Reservierungs-Slots (#98).
 gcal ist komplett gemockt (kein echtes Netzwerk/OAuth)."""
 
+import platform
 import sys
 
+import pytest
+
 from src import main as main_module
-from src.main import _ensure_device_id, run_calendar_reconcile
+from src.main import _ensure_device_id, _hold_app_mutex, run_calendar_reconcile
 from src.reservations import ReservationStore
 from src.settings import Settings
 from src.storage import Storage
@@ -155,3 +158,49 @@ class TestEnsureDeviceId:
 
         assert device_id == "derived-abc123"
         assert settings.get("device_id") == "derived-abc123"
+
+
+# --- _hold_app_mutex: AppMutex-Gegenstück für installer.iss -----------------
+# (nur installierte Windows-Builds — s. Modul-Docstring/installer.iss)
+
+class TestHoldAppMutex:
+    def test_none_on_non_windows_even_if_frozen(self, monkeypatch):
+        monkeypatch.setattr(main_module.platform, "system", lambda: "Darwin")
+        monkeypatch.setattr(sys, "frozen", True, raising=False)
+        assert _hold_app_mutex() is None
+
+    def test_none_when_windows_but_not_frozen(self, monkeypatch):
+        # Repo-/Skript-Modus (python -m src.main) — installer.iss betrifft nur
+        # die installierte .exe, der Mutex ist hier ohne Bedeutung.
+        monkeypatch.setattr(main_module.platform, "system", lambda: "Windows")
+        monkeypatch.setattr(sys, "frozen", False, raising=False)
+        assert _hold_app_mutex() is None
+
+    def test_none_when_neither_windows_nor_frozen(self, monkeypatch):
+        monkeypatch.setattr(main_module.platform, "system", lambda: "Linux")
+        monkeypatch.setattr(sys, "frozen", False, raising=False)
+        assert _hold_app_mutex() is None
+
+
+@pytest.mark.skipif(platform.system() != "Windows", reason="Windows only")
+class TestHoldAppMutexReal:
+    def test_creates_real_named_mutex_when_frozen(self, monkeypatch):
+        import ctypes
+
+        monkeypatch.setattr(sys, "frozen", True, raising=False)
+        handle = _hold_app_mutex()
+        try:
+            assert handle
+            # Zweiter Erwerb desselben Namens im selben Prozess liefert einen
+            # gültigen Handle UND ERROR_ALREADY_EXISTS (Windows-Doku zu
+            # CreateMutexW) — bestätigt, dass wirklich derselbe Named Mutex
+            # angesprochen wurde, nicht zufällig ein neuer.
+            second = ctypes.windll.kernel32.CreateMutexW(
+                None, False, main_module._APP_MUTEX_NAME)
+            try:
+                ERROR_ALREADY_EXISTS = 183
+                assert ctypes.windll.kernel32.GetLastError() == ERROR_ALREADY_EXISTS
+            finally:
+                ctypes.windll.kernel32.CloseHandle(second)
+        finally:
+            ctypes.windll.kernel32.CloseHandle(handle)
