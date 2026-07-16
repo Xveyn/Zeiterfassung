@@ -1,5 +1,29 @@
 # Changelog
 
+## 1.18.2 — 2026-07-16
+
+### Hinzugefügt
+- **Tages-Dialog**: Hat ein Tag noch keine Arbeitszeit, aber eine Reservierung
+  mit genau einem Slot und Kategorie, wird diese Kategorie jetzt bei der neu
+  vorgeschlagenen Arbeitszeit-Zeile mitvorbelegt (statt „ohne Kategorie").
+
+### Geändert
+- **Geräte-ID (Sync)**: Installierte Builds leiten die Geräte-ID jetzt aus
+  einer stabilen, pro Betriebssystem-Installation eindeutigen System-ID ab
+  (gehasht) — sie übersteht damit eine Neuinstallation der App, statt sich
+  bei jedem Reinstall neu zufällig zu vergeben.
+
+### Behoben
+- **UI-Skalierung**: Der Selbst-Neustart nach einer Skalierungsänderung
+  konnte in einem kaputten Zustand enden (u.a. „Tcl data directory not
+  found" bzw. Google-Drive-Fehler `UnknownApiNameOrVersion` bei jeder
+  Synchronisation), weil der neu gestartete Prozess das bereits vom alten
+  Prozess aufgeräumte Bundle-Verzeichnis weiterzunutzen versuchte.
+- **Installation**: Läuft beim Installieren/Aktualisieren unter Windows noch
+  eine ältere Instanz, konnte der Installer sie bisher nicht zuverlässig
+  schließen. Er bittet jetzt aktiv darum, die App manuell zu schließen
+  (Retry-Dialog), statt einen unzuverlässigen Automatik-Versuch zu machen.
+
 ## 1.18.1 — 2026-07-16
 
 ### Hinzugefügt
