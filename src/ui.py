@@ -643,6 +643,20 @@ class App:
         if _stray_click_suppressed(getattr(self.root, "_dialog_closed_at", 0),
                                    time.monotonic()):
             return  # Linksklick schlägt von einem eben geschlossenen Dialog durch (#44).
+        # Ein Tag mit ungelöstem Sync-Konflikt (Ist-Zeit zwischen zwei Geräten
+        # widersprüchlich) öffnet den ConflictsDialog statt des normalen
+        # Tages-Dialogs — die Ist-Zeit steht buchstäblich zur Debatte, sie vor
+        # der Auflösung normal zu editieren würde einen der beiden Kandidaten
+        # überschreiben. Gefiltert auf genau diesen Tag (filter_key), statt die
+        # volle Liste aller offenen Konflikte zu zeigen.
+        if self.conflicts_store is not None and date_str in self.conflicts_store.unresolved_entry_keys():
+            from src.dialogs.conflicts_dialog import ConflictsDialog
+            ConflictsDialog(
+                self.root, self.storage, self.settings, self.conflicts_store,
+                data_lock=self._data_lock, filter_key=date_str,
+                on_resolved=self._refresh,
+            )
+            return
         # Bei deaktiviertem Kalender-Sync KEIN reservation_store an den Dialog
         # geben — dann wird der Reservierungs-Block nicht angezeigt und ist per
         # Linksklick nicht setzbar (open_entry_dialog wertet None entsprechend).

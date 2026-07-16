@@ -212,7 +212,8 @@ class GoogleTab:
                 from src.dialogs.conflicts_dialog import ConflictsDialog
                 # data_lock durchgereicht bis zu sync.resolve_conflict
                 # (Review-Finding: RMW-Spanne muss atomar gegen Hintergrund-Sync sein).
-                ConflictsDialog(dialog, storage, settings, conflicts_store, data_lock=data_lock)
+                ConflictsDialog(dialog, storage, settings, conflicts_store,
+                               data_lock=data_lock, on_resolved=on_change)
 
             secondary_button(
                 frame,

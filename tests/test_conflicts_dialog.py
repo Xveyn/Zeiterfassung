@@ -53,20 +53,27 @@ def test_fmt_entry_candidate_deleted():
 # Tk-Root: sync.resolve_conflict wird gezählt, die Tk-berührenden Helfer sind
 # gemockt.
 
-def _dialog_stub(selected):
+def _dialog_stub(selected, filter_key=None):
     stub = types.SimpleNamespace(
         _selected=selected,
+        _filter_key=filter_key,
         _data_lock=None,
         settings=MagicMock(),
         storage=MagicMock(),
         conflicts_store=MagicMock(),
         top=MagicMock(),
+        listbox=MagicMock(),
         btn_a=MagicMock(),
         btn_b=MagicMock(),
         detail_label=MagicMock(),
         _refresh_list=MagicMock(),
+        _on_resolved=MagicMock(),
     )
     stub.settings.get.return_value = "devABCDEF"
+    # _refresh_list ruft self._on_select(idx) auf — die echte Implementierung
+    # binden, damit _selected/detail_label nach der Vorselektion prüfbar sind
+    # (nicht die _refresh_list-Mock-Konvention der Resolve-Tests oben).
+    stub._on_select = lambda idx=None: ConflictsDialog._on_select(stub, idx)
     return stub
 
 
@@ -85,6 +92,7 @@ def test_resolve_noop_when_nothing_selected(monkeypatch):
 
     assert calls == []
     stub._refresh_list.assert_not_called()
+    stub._on_resolved.assert_not_called()
 
 
 def test_resolve_resets_selected_after_success(monkeypatch):
@@ -101,6 +109,32 @@ def test_resolve_resets_selected_after_success(monkeypatch):
     stub._refresh_list.assert_called_once()
 
 
+def test_resolve_success_notifies_on_resolved(monkeypatch):
+    """Nach erfolgreichem Resolve muss der Kalender (App._refresh) Bescheid
+    bekommen — sonst zeigt die Zelle hinter dem Dialog weiter den alten
+    Konflikt-Hinweis/die alte Ist-Zeit."""
+    monkeypatch.setattr(conflicts_dialog.sync, "resolve_conflict",
+                        lambda *a, **k: None)
+    monkeypatch.setattr(conflicts_dialog, "set_secondary_button_enabled",
+                        lambda *a, **k: None)
+    stub = _dialog_stub(selected=_setting_conflict())
+
+    ConflictsDialog._resolve_with_candidate(stub, 0)
+
+    stub._on_resolved.assert_called_once_with()
+
+
+def test_resolve_failure_does_not_notify_on_resolved(monkeypatch):
+    monkeypatch.setattr(conflicts_dialog.sync, "resolve_conflict",
+                        lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom")))
+    monkeypatch.setattr(conflicts_dialog, "themed_showerror", lambda *a, **k: None)
+    stub = _dialog_stub(selected=_setting_conflict())
+
+    ConflictsDialog._resolve_with_candidate(stub, 0)
+
+    stub._on_resolved.assert_not_called()
+
+
 def test_second_resolve_is_noop(monkeypatch):
     calls = []
     monkeypatch.setattr(conflicts_dialog.sync, "resolve_conflict",
@@ -114,3 +148,77 @@ def test_second_resolve_is_noop(monkeypatch):
 
     assert len(calls) == 1
     stub._refresh_list.assert_called_once()
+
+
+def test_resolve_with_filter_key_closes_dialog_instead_of_refreshing(monkeypatch):
+    """Gefiltert (Linksklick auf einen Tag) gibt es nach dem Auflösen kein
+    'nächster Konflikt' in dieser Ansicht — der Dialog schließt sich selbst,
+    statt _refresh_list auf die jetzt leere/gefilterte Liste anzuwenden."""
+    monkeypatch.setattr(conflicts_dialog.sync, "resolve_conflict",
+                        lambda *a, **k: None)
+    stub = _dialog_stub(selected=_entry_conflict("2026-06-03", "c2"),
+                        filter_key="2026-06-03")
+
+    ConflictsDialog._resolve_with_candidate(stub, 0)
+
+    stub.top.destroy.assert_called_once_with()
+    stub._refresh_list.assert_not_called()
+    stub._on_resolved.assert_called_once_with()
+
+
+# --- Filtern per filter_key (Linksklick auf Konflikttag) --------------------
+# App._open_dialog öffnet den Dialog mit filter_key=date_str, statt die volle
+# Liste aller offenen Konflikte zu zeigen.
+
+def _entry_conflict(key, cid):
+    return {
+        "id": cid, "kind": "entry", "key": key,
+        "candidates": [_cand(slots=[{"start": "08:00", "end": "16:00",
+                                     "pause": 0, "kategorie": ""}]),
+                       _cand(slots=[{"start": "09:00", "end": "17:00",
+                                     "pause": 0, "kategorie": ""}])],
+    }
+
+
+def test_refresh_list_filters_to_matching_key(monkeypatch):
+    monkeypatch.setattr(conflicts_dialog, "set_secondary_button_enabled",
+                        lambda *a, **k: None)
+    stub = _dialog_stub(selected=None, filter_key="2026-06-03")
+    stub.conflicts_store.get_all.return_value = [
+        _entry_conflict("2026-06-02", "c1"),
+        _entry_conflict("2026-06-03", "c2"),
+    ]
+
+    ConflictsDialog._refresh_list(stub)
+
+    # Der nicht passende Konflikt (2026-06-02) ist komplett draußen, nicht nur
+    # unselektiert — die Listbox zeigt gefiltert nur den einen Tag.
+    assert [c["id"] for c in stub._unresolved] == ["c2"]
+    stub.listbox.selection_set.assert_called_once_with(0)
+    assert stub._selected["id"] == "c2"
+
+
+def test_refresh_list_without_filter_key_keeps_full_list():
+    stub = _dialog_stub(selected=None, filter_key=None)
+    stub.conflicts_store.get_all.return_value = [
+        _entry_conflict("2026-06-02", "c1"),
+        _entry_conflict("2026-06-03", "c2"),
+    ]
+
+    ConflictsDialog._refresh_list(stub)
+
+    assert len(stub._unresolved) == 2
+    stub.listbox.selection_set.assert_not_called()
+    assert stub._selected is None
+
+
+def test_refresh_list_filter_key_not_found_selects_nothing():
+    # z.B. weil der Konflikt zwischenzeitlich anders (Zweitgerät) aufgelöst wurde.
+    stub = _dialog_stub(selected=None, filter_key="2026-06-09")
+    stub.conflicts_store.get_all.return_value = [_entry_conflict("2026-06-02", "c1")]
+
+    ConflictsDialog._refresh_list(stub)
+
+    assert stub._unresolved == []
+    stub.listbox.selection_set.assert_not_called()
+    assert stub._selected is None

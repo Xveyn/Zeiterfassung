@@ -9,7 +9,13 @@ from src.grid_renderer import GridRenderer
 
 def _renderer(show_weekend=True, conflicts=None):
     settings = MagicMock(get=lambda k, d=None: {"show_weekend": show_weekend}.get(k, d))
-    cstore = MagicMock(get_all=lambda: conflicts) if conflicts is not None else None
+    cstore = MagicMock(
+        get_all=lambda: conflicts,
+        unresolved_entry_keys=lambda: {
+            c["key"] for c in conflicts
+            if c.get("kind") == "entry" and not c.get("resolved")
+        },
+    ) if conflicts is not None else None
     return GridRenderer(
         root=object(), storage=object(), settings=settings,
         reservation_store=None, conflicts_store=cstore,

@@ -507,10 +507,7 @@ class GridRenderer:
         Konflikte vom Typ 'entry' vorliegen."""
         if not self._conflicts_store:
             return set()
-        return {
-            c["key"] for c in self._conflicts_store.get_all()
-            if c.get("kind") == "entry" and not c.get("resolved")
-        }
+        return self._conflicts_store.unresolved_entry_keys()
 
     def _cell_layout_metrics(self, frame):
         """Misst die natuerliche Pixelgroesse einer Standard-Tageszelle (Probe-
