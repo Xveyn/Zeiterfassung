@@ -3,7 +3,7 @@ import datetime
 from src.dialogs.entry_dialog import (
     NO_CATEGORY_LABEL, category_choices, category_from_display,
     category_to_display, plan_entry_save, reservation_block_visible,
-    slot_category_display,
+    slot_category_display, suggest_ist_category,
 )
 
 
@@ -49,6 +49,35 @@ def test_category_from_display_strips_trailing_override_marker():
     assert category_from_display("Office*") == "Office"
     assert category_from_display("Office") == "Office"
     assert category_from_display(NO_CATEGORY_LABEL) == ""
+
+
+class TestSuggestIstCategory:
+    """Kategorie-Vorschlag für die neu vorbelegte Ist-Zeit-Zeile, wenn noch
+    keine Ist-Zeit existiert, aber eine Reservierung — nur bei GENAU EINEM
+    Reservierungs-Slot (bei mehreren wäre unklar, welcher Slot die Kategorie
+    der einen vorgeschlagenen Zeile bestimmen sollte)."""
+
+    def test_single_slot_with_category_is_suggested(self):
+        slots = [{"start": "09:30", "end": "17:00", "kategorie": "Office"}]
+        assert suggest_ist_category(slots) == "Office"
+
+    def test_single_slot_without_category_suggests_empty(self):
+        slots = [{"start": "09:30", "end": "17:00", "kategorie": ""}]
+        assert suggest_ist_category(slots) == ""
+
+    def test_single_slot_missing_kategorie_key_suggests_empty(self):
+        slots = [{"start": "09:30", "end": "17:00"}]
+        assert suggest_ist_category(slots) == ""
+
+    def test_multiple_slots_suggest_nothing_even_with_category(self):
+        slots = [
+            {"start": "08:00", "end": "12:00", "kategorie": "Office"},
+            {"start": "13:00", "end": "17:00", "kategorie": "Homeoffice"},
+        ]
+        assert suggest_ist_category(slots) == ""
+
+    def test_empty_slot_list_suggests_nothing(self):
+        assert suggest_ist_category([]) == ""
 
 
 class TestSlotCategoryDisplay:
