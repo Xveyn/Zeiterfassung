@@ -12,8 +12,8 @@ import tkinter as tk
 
 from src.time_utils import (
     DAYS_DE, MONTHS_DE,
-    calculate_hours, format_hours_hm, get_week_dates, get_week_label,
-    week_spans_months,
+    calculate_hours, format_hours_colon, format_hours_hm, get_week_dates,
+    get_week_label, week_spans_months,
 )
 from src.holidays_de import get_holidays
 from src.tooltip import attach_tooltip
@@ -519,7 +519,7 @@ class GridRenderer:
 
     @staticmethod
     def _fmt_cell_hours(entry):
-        """Zellzeile 'H,HH h · PM': gezählte Netto-Stunden des Tages + die
+        """Zellzeile 'H:MM h · PM': gezählte Netto-Stunden des Tages + die
         abgezogene Pause (Summe über alle Slots), "" ohne Slots.
 
         Die Zeit-Zeile darüber zeigt brutto start-end; ohne diese Zeile ist der
@@ -527,12 +527,17 @@ class GridRenderer:
         Pause steht bewusst mit dran, damit ein Tag mit abweichender Pause
         (z.B. P0 unter 6 h, keine Pflichtpause) als Absicht erkennbar ist statt
         wie ein Vertipper auszusehen.
+
+        H:MM statt Dezimalstunden, damit Zelle und Footer (format_hours_hm)
+        dieselbe Schreibweise sprechen — zwei Notationen fürs selbe im selben
+        Fenster lasen sich widersprüchlich. Kompaktform, weil die Zeile hier
+        mit 'HH:MM-HH:MM' um die Spaltenbreite konkurriert.
         """
         slots = entry.get("slots", [])
         if not slots:
             return ""
         pause = sum(int(s.get("pause", 0)) for s in slots)
-        return f"{GridRenderer._entry_hours(entry):.2f} h · P{pause}".replace(".", ",")
+        return f"{format_hours_colon(GridRenderer._entry_hours(entry))} h · P{pause}"
 
     def _dates_with_unresolved_conflicts(self):
         """Gibt die Menge der ISO-Datums-Strings zurück, für die ungelöste

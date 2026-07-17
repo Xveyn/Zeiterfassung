@@ -65,6 +65,19 @@ def format_hours_hm(hours):
     return f"{h} h {m} min"
 
 
+def format_hours_colon(hours):
+    """Dezimalstunden → kompaktes 'H:MM' für enge Stellen (Kalenderzelle).
+
+    Gleiche Minuten-Rundung wie format_hours_hm, nur kürzer geschrieben —
+    in der Zelle konkurriert die Zeile mit 'HH:MM-HH:MM' um die Spaltenbreite.
+    Füllt anders als format_hours_hm IMMER auf H:MM auf ('7:00', nicht '7'),
+    damit die Spalte nicht je nach Tag springt.
+    """
+    total_min = round(hours * 60)
+    h, m = divmod(total_min, 60)
+    return f"{h}:{m:02d}"
+
+
 def validate_entry(start_str, end_str, pause_minutes=0):
     """Validate a time entry. Returns (ok, error_message)."""
     start = parse_time(start_str)
