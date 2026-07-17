@@ -141,3 +141,27 @@ def test_dates_with_unresolved_conflicts_filters_entry_kind():
 
 def test_dates_with_unresolved_conflicts_none_store():
     assert _renderer()._dates_with_unresolved_conflicts() == set()
+
+
+def test_fmt_cell_hours_mit_pause():
+    entry = {"slots": [{"start": "09:10", "end": "14:50", "pause": 30}]}
+    assert GridRenderer._fmt_cell_hours(entry) == "5,17 h · P30"
+
+
+def test_fmt_cell_hours_pause_null_sichtbar():
+    # Der bewusste Pause-0-Tag (<6h, keine Pflichtpause) muss als P0 erkennbar
+    # sein, sonst sieht er wie ein Vertipper aus.
+    entry = {"slots": [{"start": "09:10", "end": "14:50", "pause": 0}]}
+    assert GridRenderer._fmt_cell_hours(entry) == "5,67 h · P0"
+
+
+def test_fmt_cell_hours_summiert_mehrere_slots():
+    entry = {"slots": [
+        {"start": "08:00", "end": "12:00", "pause": 15},
+        {"start": "13:00", "end": "17:00", "pause": 15},
+    ]}
+    assert GridRenderer._fmt_cell_hours(entry) == "7,50 h · P30"
+
+
+def test_fmt_cell_hours_ohne_slots():
+    assert GridRenderer._fmt_cell_hours({"slots": []}) == ""

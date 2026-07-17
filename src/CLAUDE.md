@@ -60,7 +60,7 @@ Rendering der Monats-/Wochenansicht inkl. Double-Buffer und Fenster-Geometrie.
 - **Fenster-Geometrie:** `repin_geometry()` setzt Breite (≥ gemessenes Maximum) und Höhe
   (aktuelle reqheight) neu auf das fixe Fenster. Genutzt vom View-/Spalten-Wechsel in
   `refresh()`, beim Wechsel der Footer-Reservierungsbreite (Stundenlohn zur Laufzeit
-  gesetzt/entfernt — `_update_footer` reserviert 16 vs. 40 Zeichen, s.u.) **und** extern vom
+  gesetzt/entfernt — `_update_footer` reserviert 20 vs. 42 Zeichen, s.u.) **und** extern vom
   `UpdateBanner` (als `on_resize`), dessen Ein-/Ausblenden die nötige Höhe ändert, ohne
   View/Spalten zu wechseln. `resizable(False, False)` bleibt. Die **Breite ratcht**:
   `_fixed_width` wächst mit der breitesten je angeforderten reqwidth mit, schrumpft aber nie
