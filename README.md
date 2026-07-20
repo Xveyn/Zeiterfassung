@@ -9,7 +9,7 @@ Desktop-App zur Erfassung von Arbeitszeiten mit Kalenderansicht, PDF-Report und 
 - **Kalenderansicht** — Monatsübersicht mit Tageseinträgen (Start, Ende, Pause)
 - **PDF-Report** — Automatische Generierung als druckfreundliches PDF
 - **E-Mail-Versand** — HTML-E-Mail mit PDF-Anhang über Gmail API (OAuth2)
-- **Multi-Device-Sync** — Optionale Synchronisation von Zeiteinträgen und Mail-Vorlagen über Google Drive (`appDataFolder`), inklusive manueller Konflikt-Auflösung wenn dasselbe Datum offline auf mehreren Geräten bearbeitet wurde
+- **Multi-Device-Sync** — Optionale Synchronisation von Zeiteinträgen und Mail-Vorlagen über Google Drive (`appDataFolder`), inklusive Konflikt-Auflösung wenn dasselbe Datum offline auf mehreren Geräten bearbeitet wurde — per Linksklick direkt auf den betroffenen Kalendertag oder gesammelt in den Einstellungen
 - **Teilen & Importieren** — Eigene Arbeitszeiten als JSON-Anhang per Mail an eine zweite Person teilen; der Empfänger importiert sie mit Zeitraum-Filter und drei Konflikt-Modi (alles importieren / alles lokal / pro Tag entscheiden)
 - **Reservierungen & Google-Kalender** — Zukünftige Arbeitszeiten pro Tag reservieren (eigenes Konzept neben den Ist-Zeiten, im Kalender als violetter Eck-Punkt markiert); optionaler Abgleich mit einem wählbaren Google Kalender
 - **Reservierungs-Erinnerungen** — Optionale Toast-Benachrichtigung, wenn ein für heute reservierter Slot fällig wird und noch keine Ist-Zeit erfasst ist (konfigurierbare Vorlaufzeit)
@@ -43,19 +43,24 @@ Zeiterfassung/
 │   ├── mail.py            # Gmail OAuth2-Authentifizierung & Versand
 │   ├── drive.py           # Google Drive API-Wrapper (Multi-Device-Sync)
 │   ├── sync.py            # Sync-Engine (pure Logik, LWW-Merge, Konflikterkennung)
+│   ├── sync_journal.py    # Crash-Recovery für den Sync-Apply (Write-Ahead-Journal)
 │   ├── conflicts_store.py # Lokale Persistenz der Konfliktliste
 │   ├── share.py           # Export/Import von Arbeitszeiten als Share-JSON
 │   ├── reservations.py    # Reservierungen (zukünftige Soll-Zeiten)
 │   ├── reservations_sync.py # Abgleich der Reservierungen mit Google Kalender
 │   ├── reminders.py       # Fälligkeits-Logik für Reservierungs-Erinnerungen (Tk-frei)
 │   ├── reminder_scheduler.py # Periodischer Reminder-Poll → Toast über Tray
+│   ├── send_reminder.py   # Fälligkeits-Logik für den monatlichen Sende-Reminder (Tk-frei)
+│   ├── send_reminder_scheduler.py # Periodischer Poll → Sende-Toast (1×/Monat, Zustand persistiert)
 │   ├── weekly_limit.py    # Wochenstunden-Limit (Werkstudenten-Privileg), pure Logik
+│   ├── pause_requirement.py # Pausenpflicht-Check nach § 4 ArbZG, pure Logik
 │   ├── gcal.py            # Google-Calendar-API-Wrapper
 │   ├── oauth_utils.py     # Gemeinsame OAuth-Token-Boilerplate (Persistenz, Scope-Upgrade) für mail/drive/gcal
 │   ├── tray.py            # Infobereich-Icon (Minimize-to-Tray); Plattform-Fassade
 │   ├── tray_mac.py        # Natives macOS-Tray-Backend (NSStatusItem, dormant/opt-in)
 │   ├── autostart.py       # Plattformabhängiger Autostart (Windows-Registry/macOS/Linux)
 │   ├── single_instance.py # Single-Instance-Guard (verhindert parallele Instanzen)
+│   ├── device_id.py       # Stabile, hardware-abgeleitete Geräte-ID für installierte Builds (Sync)
 │   ├── updater.py         # GitHub-Releases-Check (stdlib-only, Frequenz konfigurierbar)
 │   ├── changelog.py       # Lädt/parst den Changelog-Abschnitt einer Release-Version
 │   ├── holidays_de.py     # Feiertags-Lookup (python-holidays)

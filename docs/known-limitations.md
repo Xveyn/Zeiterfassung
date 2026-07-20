@@ -54,3 +54,18 @@ enthält (= eigenes Alt-Doc, kein fremdes aktives Gerät) — dann still nach v3
 migrieren/pushen. Alternativ die Meldung so umformulieren, dass sie den
 Einzelgerät-Fall mit abdeckt. Der Guard für echte Multi-Device-Fälle bleibt
 unangetastet.
+
+## Windows: kurzes Aufblitzen der hellen Titelleiste beim Öffnen von Dialogen
+
+`apply_dark_titlebar`/`disable_min_max` (`src/theme.py`) sind bewusst per
+`window.after(100, …)` verzögert — frühere Tk-eigene Fenster-Property-Calls
+würden das DWM-Farb-Attribut sonst clobbern. In diesem ~100ms-Fenster rendert
+Windows die Titelleiste kurz im hellen Standard-Stil, bevor sie umgefärbt
+wird.
+
+**Warum nicht gefixt:** Ein Versuch, das Fenster bis dahin per `-alpha 0.0`
+unsichtbar zu halten, macht `center_dialog_on_parent` auf diesem Windows/Tk-
+Gespann dauerhaft kaputt — ein frisch erzeugtes Toplevel, das direkt
+`-alpha 0.0` bekommt, ignoriert spätere `geometry()`-Aufrufe komplett (Dialog
+landet bei `+0+0`). Details/Reproduktion: [`CLAUDE.md`](../CLAUDE.md)
+(Abschnitt „Dialog-Styling"). Als Kompromiss akzeptiert.
