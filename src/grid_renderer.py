@@ -12,7 +12,8 @@ import tkinter as tk
 
 from src.time_utils import (
     DAYS_DE, MONTHS_DE,
-    calculate_hours, get_week_dates, get_week_label, week_spans_months,
+    calculate_hours, format_hours_colon, format_hours_hm, get_week_dates,
+    get_week_label, week_spans_months,
 )
 from src.holidays_de import get_holidays
 from src.tooltip import attach_tooltip
@@ -27,9 +28,12 @@ from src.theme import (
 )
 
 # Probe-Label-Geometrie zur Zellgrößen-Messung (aus ui.py übernommen).
+# HEIGHT=4: die Eintragszelle trägt drei Textzeilen (Tagnummer, brutto
+# start-end, Netto-Stunden) — bei 3 schnitt pack_propagate(False) die
+# Stunden-Zeile ab.
 PROBE_WIDTH_WIDE = 12
 PROBE_WIDTH_NARROW = 8
-PROBE_HEIGHT = 3
+PROBE_HEIGHT = 4
 
 
 class GridRenderer:
@@ -155,7 +159,7 @@ class GridRenderer:
 
         Die Breite **ratcht**: _fixed_width wächst mit der breitesten je
         angeforderten reqwidth mit, schrumpft aber nie wieder. Grund: der Footer
-        ist ohne Stundenlohn schmal (width=16) und mit Lohn breit (width=40,
+        ist ohne Stundenlohn schmal (width=20) und mit Lohn breit (width=42,
         s. _update_footer). Startet die App ohne Lohn, pinnt measure_max_width
         die schmale Breite; trägt der Nutzer später einen Lohn ein, wächst das
         Fenster hier einmalig auf die breite Variante. Ohne Ratchet würde es beim
@@ -247,12 +251,21 @@ class GridRenderer:
             cell, text=time_text,
             font=time_font, bg=bg, fg=TEXT_MUTED, cursor="hand2",
         )
-        time_lbl.pack(pady=(0, pad))
-        for w in (cell, day_lbl, time_lbl):
+        time_lbl.pack()
+        # Netto-Stunden unter der Brutto-Zeit: macht den Footer nachrechenbar.
+        # Gleiche Schrift wie die Zeit-Zeile, aber kräftigeres fg — die Stunden
+        # sind die Zahl, um die es geht, start-end ist der Beleg dazu.
+        hours_lbl = tk.Label(
+            cell, text=self._fmt_cell_hours(entry),
+            font=time_font, bg=bg, fg=TEXT, cursor="hand2",
+        )
+        hours_lbl.pack(pady=(0, pad))
+        labels = (day_lbl, time_lbl, hours_lbl)
+        for w in (cell, *labels):
             w.bind("<Button-1>", lambda e, d=date_str: self._on_cell_click(d))
             w.bind("<Button-3>", lambda e, d=date_str: self._on_cell_right_click(d))
-            w.bind("<Enter>", lambda e, c=cell, dl=day_lbl, tl=time_lbl, hb=hover_bg: self._hover(c, hb, dl, tl))
-            w.bind("<Leave>", lambda e, c=cell, dl=day_lbl, tl=time_lbl, ob=bg: self._hover(c, ob, dl, tl))
+            w.bind("<Enter>", lambda e, c=cell, ls=labels, hb=hover_bg: self._hover(c, hb, *ls))
+            w.bind("<Leave>", lambda e, c=cell, ls=labels, ob=bg: self._hover(c, ob, *ls))
         return cell
 
     @staticmethod
@@ -477,12 +490,13 @@ class GridRenderer:
 
     def _update_footer(self, total_hours):
         rate = self._settings.get("hourly_rate") or 0
-        total_rounded = round(total_hours, 2)
+        total_text = format_hours_hm(total_hours)
         # width fixiert die reqwidth des Labels → kein Pack-Reflow, wenn sich die
         # Summe beim Monatswechsel ändert. Die Reservierung hängt am Stundenlohn:
-        # mit Lohn deckt width=40 die längste Variante ab
-        # ("Gesamt: 999.99h  —  99999.99 € brutto" ≈ 38 Zeichen); ohne Lohn zeigt
-        # der Footer nur "Gesamt: Xh" (≤ 16 Zeichen), dann genügt width=16 — sonst
+        # mit Lohn deckt width=42 die längste Variante ab
+        # ("Gesamt: 999 h 50 min  —  99999.99 € brutto" ≈ 42 Zeichen); ohne Lohn
+        # zeigt der Footer nur "Gesamt: X h Y min" (≤ 20 Zeichen), dann genügt
+        # width=20 — sonst
         # zöge die leere 40-Zeichen-Reservierung das Fenster unnötig breiter als
         # das Kalender-Grid (der Footer packt fill=X unter der Root und geht so in
         # deren reqwidth ein). refresh() pinnt die Breite neu, wenn der Lohn zur
@@ -490,17 +504,40 @@ class GridRenderer:
         if rate > 0:
             brutto = round(total_hours * rate, 2)
             self._footer_label.config(
-                text=f"Gesamt: {total_rounded}h  —  {brutto:.2f} € brutto",
-                width=40,
+                text=f"Gesamt: {total_text}  —  {brutto:.2f} € brutto",
+                width=42,
             )
         else:
-            self._footer_label.config(text=f"Gesamt: {total_rounded}h", width=16)
+            self._footer_label.config(text=f"Gesamt: {total_text}", width=20)
 
-    def _entry_hours(self, entry):
+    @staticmethod
+    def _entry_hours(entry):
         return round(sum(
             calculate_hours(s["start"], s["end"], pause_minutes=s.get("pause", 0))
             for s in entry.get("slots", [])
         ), 2)
+
+    @staticmethod
+    def _fmt_cell_hours(entry):
+        """Zellzeile 'H:MM h · PM': gezählte Netto-Stunden des Tages + die
+        abgezogene Pause (Summe über alle Slots), "" ohne Slots.
+
+        Die Zeit-Zeile darüber zeigt brutto start-end; ohne diese Zeile ist der
+        Footer nicht nachrechenbar (die Pause ist unsichtbar abgezogen). Die
+        Pause steht bewusst mit dran, damit ein Tag mit abweichender Pause
+        (z.B. P0 unter 6 h, keine Pflichtpause) als Absicht erkennbar ist statt
+        wie ein Vertipper auszusehen.
+
+        H:MM statt Dezimalstunden, damit Zelle und Footer (format_hours_hm)
+        dieselbe Schreibweise sprechen — zwei Notationen fürs selbe im selben
+        Fenster lasen sich widersprüchlich. Kompaktform, weil die Zeile hier
+        mit 'HH:MM-HH:MM' um die Spaltenbreite konkurriert.
+        """
+        slots = entry.get("slots", [])
+        if not slots:
+            return ""
+        pause = sum(int(s.get("pause", 0)) for s in slots)
+        return f"{format_hours_colon(GridRenderer._entry_hours(entry))} h · P{pause}"
 
     def _dates_with_unresolved_conflicts(self):
         """Gibt die Menge der ISO-Datums-Strings zurück, für die ungelöste

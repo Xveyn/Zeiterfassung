@@ -1,7 +1,8 @@
 import datetime
 
 from src.time_utils import (
-    format_date, format_iso_date, format_iso_datetime, format_iso_weekday_date,
+    format_date, format_hours_colon, format_hours_hm, format_iso_date,
+    format_iso_datetime, format_iso_weekday_date,
 )
 
 
@@ -69,3 +70,42 @@ def test_format_iso_weekday_date_empty_uses_fallback():
 
 def test_format_iso_weekday_date_unparsable_falls_back_to_raw_prefix():
     assert format_iso_weekday_date("2026-13-99") == "2026-13-99"
+
+
+def test_format_hours_hm_stunden_und_minuten():
+    assert format_hours_hm(52.84) == "52 h 50 min"
+
+
+def test_format_hours_hm_volle_stunde_ohne_minuten():
+    assert format_hours_hm(7.0) == "7 h"
+
+
+def test_format_hours_hm_unter_einer_stunde():
+    assert format_hours_hm(0.5) == "30 min"
+
+
+def test_format_hours_hm_null():
+    assert format_hours_hm(0.0) == "0 h"
+
+
+def test_format_hours_hm_rundet_auf_ganze_minuten():
+    # 7.17h = 430.2 Min -> 430 Min, kein "7 h 10.2 min"
+    assert format_hours_hm(7.17) == "7 h 10 min"
+
+
+def test_format_hours_colon_stunden_und_minuten():
+    assert format_hours_colon(5.67) == "5:40"
+
+
+def test_format_hours_colon_volle_stunde_mit_nullminuten():
+    # Kompaktform fuellt anders als format_hours_hm immer auf H:MM auf —
+    # die Kachel-Spalte soll nicht je nach Tag springen.
+    assert format_hours_colon(7.0) == "7:00"
+
+
+def test_format_hours_colon_unter_einer_stunde():
+    assert format_hours_colon(0.5) == "0:30"
+
+
+def test_format_hours_colon_null():
+    assert format_hours_colon(0.0) == "0:00"

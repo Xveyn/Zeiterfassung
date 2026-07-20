@@ -47,6 +47,37 @@ def calculate_hours(start_str, end_str, pause_minutes=0):
     end_min = end[0] * 60 + end[1]
     return max(0.0, round((end_min - start_min - pause_minutes) / 60, 2))
 
+def format_hours_hm(hours):
+    """Dezimalstunden → 'H h M min' für die Anzeige.
+
+    Reine Anzeige-Formatierung; Dezimalstunden bleiben die interne Quelle
+    (calculate_hours). Grund: '52.84h' liest niemand als 52 h 50 min — die
+    Dezimalstelle ist der Verständnis-Killer im Footer. Auf ganze Minuten
+    gerundet, glatte Werte lassen den jeweils leeren Teil weg ('7 h',
+    '30 min'); 0 → '0 h'.
+    """
+    total_min = round(hours * 60)
+    h, m = divmod(total_min, 60)
+    if m == 0:
+        return f"{h} h"
+    if h == 0:
+        return f"{m} min"
+    return f"{h} h {m} min"
+
+
+def format_hours_colon(hours):
+    """Dezimalstunden → kompaktes 'H:MM' für enge Stellen (Kalenderzelle).
+
+    Gleiche Minuten-Rundung wie format_hours_hm, nur kürzer geschrieben —
+    in der Zelle konkurriert die Zeile mit 'HH:MM-HH:MM' um die Spaltenbreite.
+    Füllt anders als format_hours_hm IMMER auf H:MM auf ('7:00', nicht '7'),
+    damit die Spalte nicht je nach Tag springt.
+    """
+    total_min = round(hours * 60)
+    h, m = divmod(total_min, 60)
+    return f"{h}:{m:02d}"
+
+
 def validate_entry(start_str, end_str, pause_minutes=0):
     """Validate a time entry. Returns (ok, error_message)."""
     start = parse_time(start_str)

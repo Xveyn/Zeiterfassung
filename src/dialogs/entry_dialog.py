@@ -11,7 +11,11 @@ from src.theme import (
     primary_button, secondary_button,
     set_primary_button_enabled, themed_askyesno, themed_showinfo,
 )
-from src.time_utils import format_date, format_iso_weekday_date, get_week_label, validate_slots
+from src.pause_requirement import check_day_pause
+from src.time_utils import (
+    format_date, format_hours_hm, format_iso_weekday_date, get_week_label,
+    validate_slots,
+)
 from src.weekly_limit import check_week_limit
 
 # Kategorie am Slot: "" = keine Kategorie. Das Dropdown ist readonly (Anlegen/
@@ -450,6 +454,29 @@ def open_entry_dialog(parent, date_str, storage, settings, on_change,
                     f"{week_label}: {overshoot['total_hours']:.2f}h Ist-Zeit "
                     f"überschreiten das konfigurierte Werkstudenten-Limit von "
                     f"{overshoot['limit_hours']:.2f}h/Woche.\n\n"
+                    "Grobe Näherung, keine rechtliche Bewertung.\n\nTrotzdem speichern?",
+                )
+                if not confirm:
+                    save_locked["value"] = False
+                    refresh_save_state()  # Abbruch → wieder freigeben
+                    return
+
+            # Pausenpflicht (§4 ArbZG): zählt nur die eingetragenen
+            # pause-Felder der Zeitblöcke, keine Lücke ZWISCHEN zwei Blöcken
+            # desselben Tages — das steht bewusst mit im Warntext, sonst
+            # wirkt eine Warnung trotz real genommener Pause zwischen zwei
+            # Einträgen wie ein Bug. Reine Warnung: der User kann trotzdem
+            # speichern.
+            pause_violation = check_day_pause(settings, ist_slots)
+            if pause_violation is not None:
+                confirm = themed_askyesno(
+                    dialog, "Pausenpflicht unterschritten",
+                    f"{format_hours_hm(pause_violation['worked_hours'])} Arbeitszeit "
+                    f"mit nur {pause_violation['actual_pause_minutes']} min Pause "
+                    f"eingetragen — §4 ArbZG schreibt ab dieser Arbeitszeit mindestens "
+                    f"{pause_violation['required_pause_minutes']} min vor.\n\n"
+                    "Gezählt werden nur die eingetragenen Pause-Minuten der Zeitblöcke, "
+                    "keine Lücke zwischen mehreren Blöcken am selben Tag.\n\n"
                     "Grobe Näherung, keine rechtliche Bewertung.\n\nTrotzdem speichern?",
                 )
                 if not confirm:
