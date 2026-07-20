@@ -47,22 +47,43 @@ def calculate_hours(start_str, end_str, pause_minutes=0):
     end_min = end[0] * 60 + end[1]
     return max(0.0, round((end_min - start_min - pause_minutes) / 60, 2))
 
-def format_hours_hm(hours):
-    """Dezimalstunden → 'H h M min' für die Anzeige.
+def hours_to_minutes(hours):
+    """Dezimalstunden → ganze Minuten. DIE Anzeige-Auflösung.
 
-    Reine Anzeige-Formatierung; Dezimalstunden bleiben die interne Quelle
-    (calculate_hours). Grund: '52.84h' liest niemand als 52 h 50 min — die
-    Dezimalstelle ist der Verständnis-Killer im Footer. Auf ganze Minuten
-    gerundet, glatte Werte lassen den jeweils leeren Teil weg ('7 h',
-    '30 min'); 0 → '0 h'.
+    Einzige Stelle, an der Dezimalstunden auf Minuten gerundet werden. Wer
+    einen angezeigten Wert aufsummieren will, summiert diese Minuten — nicht
+    die Dezimalstunden. Grund: calculate_hours rundet bereits pro Slot auf 2
+    Dezimalstellen (0,01 h = 0,6 min, also gröber als eine Minute). Rundet
+    man solche Zwischenwerte an zwei Stellen unabhängig voneinander (Zelle
+    pro Tag, Footer über die Summe), laufen beide auseinander — bei einem
+    typischen Monat in ~83 % der Fälle um mindestens eine Minute.
     """
-    total_min = round(hours * 60)
+    return round(hours * 60)
+
+
+def format_minutes_hm(total_min):
+    """Ganze Minuten → 'H h M min'. Glatte Werte lassen den jeweils leeren
+    Teil weg ('7 h', '30 min'); 0 → '0 h'."""
     h, m = divmod(total_min, 60)
     if m == 0:
         return f"{h} h"
     if h == 0:
         return f"{m} min"
     return f"{h} h {m} min"
+
+
+def format_hours_hm(hours):
+    """Dezimalstunden → 'H h M min' für die Anzeige.
+
+    Reine Anzeige-Formatierung; Dezimalstunden bleiben die interne Quelle
+    (calculate_hours). Grund: '52.84h' liest niemand als 52 h 50 min — die
+    Dezimalstelle ist der Verständnis-Killer im Footer.
+
+    Für Summen über mehrere angezeigte Werte NICHT die Dezimalstunden
+    addieren und hier hineingeben, sondern hours_to_minutes je Posten
+    summieren und format_minutes_hm nutzen (s. dort).
+    """
+    return format_minutes_hm(hours_to_minutes(hours))
 
 
 def format_hours_colon(hours):
@@ -73,8 +94,7 @@ def format_hours_colon(hours):
     Füllt anders als format_hours_hm IMMER auf H:MM auf ('7:00', nicht '7'),
     damit die Spalte nicht je nach Tag springt.
     """
-    total_min = round(hours * 60)
-    h, m = divmod(total_min, 60)
+    h, m = divmod(hours_to_minutes(hours), 60)
     return f"{h}:{m:02d}"
 
 

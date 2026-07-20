@@ -214,6 +214,27 @@ Anzeige-Formatierung, ISO bleibt die Quelle). Neue datumsanzeigende
 UI-Stellen über diese Helfer formatieren, nicht roh `isoformat()`/`str()`
 ausgeben.
 
+## Stunden: intern dezimal, angezeigt in Minuten — Summen NUR über Minuten
+
+`calculate_hours` liefert **Dezimalstunden** und rundet dabei **pro Slot** auf
+2 Nachkommastellen. Das ist gröber als eine Minute (0,01 h = 0,6 min) — solche
+Werte sind als Zwischenergebnis brauchbar, als Grundlage einer *angezeigten
+Summe* aber nicht.
+
+Angezeigt wird **immer** über die Minuten-Auflösung: `hours_to_minutes` ist die
+einzige Stelle, an der Dezimalstunden auf Minuten gerundet werden;
+`format_minutes_hm` (`7 h 30 min`) und `format_hours_colon` (`7:30`) bauen
+darauf auf.
+
+**Die Regel:** Wer mehrere angezeigte Werte aufsummiert, summiert deren
+**Minuten** — niemals die Dezimalstunden, um erst am Ende zu runden. Sonst
+rundet man an zwei Stellen unabhängig voneinander, und die Summe weicht von
+dem ab, was der Nutzer in den Einzelposten sieht (bei einem typischen Monat in
+~83 % der Fälle um mindestens eine Minute; genau dieser Bug steckte im Footer,
+s. `GridRenderer._display_minutes`). Geldbeträge aus derselben Minuten-Summe
+ableiten, nicht aus den Dezimalstunden — sonst widersprechen sich Stunden- und
+Euro-Anzeige.
+
 ## Kalender-Interaktion: Linksklick speichert, Rechtsklick löscht
 
 Im Kalender gilt ein striktes Modell: **Linksklick** öffnet den Tages-Dialog
