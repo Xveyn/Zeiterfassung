@@ -12,7 +12,10 @@ from src.theme import (
     set_primary_button_enabled, themed_askyesno, themed_showinfo,
 )
 from src.pause_requirement import check_day_pause
-from src.time_utils import format_date, format_iso_weekday_date, get_week_label, validate_slots
+from src.time_utils import (
+    format_date, format_hours_hm, format_iso_weekday_date, get_week_label,
+    validate_slots,
+)
 from src.weekly_limit import check_week_limit
 
 # Kategorie am Slot: "" = keine Kategorie. Das Dropdown ist readonly (Anlegen/
@@ -468,10 +471,10 @@ def open_entry_dialog(parent, date_str, storage, settings, on_change,
             if pause_violation is not None:
                 confirm = themed_askyesno(
                     dialog, "Pausenpflicht unterschritten",
-                    f"{pause_violation['worked_hours']:.2f}h Arbeitszeit mit nur "
-                    f"{pause_violation['actual_pause_minutes']} Min Pause eingetragen — "
-                    f"§4 ArbZG schreibt ab dieser Arbeitszeit mindestens "
-                    f"{pause_violation['required_pause_minutes']} Min vor.\n\n"
+                    f"{format_hours_hm(pause_violation['worked_hours'])} Arbeitszeit "
+                    f"mit nur {pause_violation['actual_pause_minutes']} min Pause "
+                    f"eingetragen — §4 ArbZG schreibt ab dieser Arbeitszeit mindestens "
+                    f"{pause_violation['required_pause_minutes']} min vor.\n\n"
                     "Gezählt werden nur die eingetragenen Pause-Minuten der Zeitblöcke, "
                     "keine Lücke zwischen mehreren Blöcken am selben Tag.\n\n"
                     "Grobe Näherung, keine rechtliche Bewertung.\n\nTrotzdem speichern?",

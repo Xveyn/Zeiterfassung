@@ -12,11 +12,22 @@ das nicht stillschweigend zu falschen Warnungen führt, macht der
 aufrufende Dialog diese Einschränkung im Warntext transparent, statt sie zu
 verstecken.
 
-Schwellen fix nach § 4 ArbZG (gesetzlich vorgegeben, nicht konfigurierbar wie
-bei weekly_limit's Werkstudenten-Limit):
+Geprüft wird ausschließlich § 4 Satz 1 (Gesamtdauer der Pause). Die Schwellen
+sind gesetzlich vorgegeben, also anders als weekly_limit's Werkstudenten-Limit
+bewusst NICHT konfigurierbar:
 - Arbeitszeit > 6h bis 9h: mindestens 30 Minuten Pause
 - Arbeitszeit > 9h: mindestens 45 Minuten Pause insgesamt
 - Arbeitszeit <= 6h: keine Pflichtpause
+
+NICHT geprüft, weil dieses Datenmodell weder Lage noch Stückelung der Pause
+speichert (ein Slot trägt nur eine Minutenzahl):
+- Satz 2 (Pause aufteilbar in Abschnitte von je mindestens 15 Minuten): eine
+  eingetragene `pause: 30`, real genommen als 3x10 Minuten, gilt hier als
+  konform, wäre es aber nicht.
+- Satz 3 (nie länger als 6 Stunden am Stück ohne Pause): ein 10h-Slot mit
+  `pause: 45` besteht diesen Check auch dann, wenn die Pause am Ende lag.
+Ein grünes Ergebnis heißt also „Pausendauer reicht", nicht „gesetzeskonform".
+
 Quelle: https://www.gesetze-im-internet.de/arbzg/__4.html
 """
 

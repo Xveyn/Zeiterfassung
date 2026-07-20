@@ -1,4 +1,5 @@
 from src.pause_requirement import check_day_pause, required_pause_minutes
+from src.settings import DEFAULTS, SYNCED_SETTING_KEYS
 
 
 def _settings(enabled=True):
@@ -7,6 +8,18 @@ def _settings(enabled=True):
 
 def _slot(start, end, pause=0):
     return {"start": start, "end": end, "pause": pause}
+
+
+def test_default_is_opt_out_not_opt_in():
+    """Bewusste Entscheidung, kein Zufall: die Pausenpflicht betrifft
+    praktisch jeden Angestellten in DE, ist also anders als das
+    Werkstudenten-Limit (Opt-in, Default False) kein Sonderfall — Default
+    True, der Nutzer schaltet bei Bedarf ab."""
+    assert DEFAULTS["pause_warning_enabled"] is True
+
+
+def test_setting_travels_with_sync():
+    assert "pause_warning_enabled" in SYNCED_SETTING_KEYS
 
 
 def test_required_pause_minutes_none_up_to_six_hours():
