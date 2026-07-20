@@ -157,6 +157,14 @@ müssen beide Locks respektieren. Design:
   `share.py` — Export/Import als Share-JSON. `weekly_limit.py` — pure Wochenstunden-Limit-Check
   (Werkstudenten-Privileg, #98). Kein eigener Persistenz-Zustand, operiert auf
   `Storage.get_all()`-Dicts und den `werkstudent_limit_*`-Settings-Keys.
+  `pause_requirement.py` — pure Pausenpflicht-Check nach §4 ArbZG (30 Min ab
+  >6h, 45 Min ab >9h Netto-Arbeitszeit), analog `weekly_limit.py` aber ohne
+  Zeitraum-Konzept (die Pflicht gilt für jeden Tag einzeln). Zählt nur die
+  `pause`-Felder der Slots — eine Lücke zwischen zwei Slots desselben Tages
+  (z.B. Mittagspause per Kommen/Gehen) zählt nicht mit; `entry_dialog.py`
+  macht das im Warntext transparent. `pause_warning_enabled` ist Default
+  `True` (Opt-out), anders als das Werkstudenten-Limit (Opt-in) — die Pflicht
+  betrifft praktisch jeden Angestellten in DE, ist kein Sonderfall.
   `reminders.py` — pure Fälligkeits-Logik für Reservierungs-Erinnerungen (Tk-frei, `now` als Parameter): pro heutigem reservierten Slot mit Kategorie ohne erfasste Ist-Zeit `upcoming` (N Min vor Ende) oder `missed` (nach Ende). Der `ReminderScheduler` (`reminder_scheduler.py`) pollt minütlich über `root.after` und schickt fällige Toasts über `App._tray`. Analog dazu `send_reminder.py`/`send_reminder_scheduler.py`: ein einzelner Fällig-Zeitpunkt pro Monat (Tag + Uhrzeit, Tag auf die Monatslänge geclamped) statt Slot-Fenster; der Fired-Zustand wird bewusst **persistiert** (`settings.send_reminder_last_fired_month`, `"YYYY-MM"`) statt nur im Speicher gehalten wie beim Reservierungs-Reminder — verhindert wiederholte Toasts bei App-Neustarts im selben Monat.
 
 ## Google-Integration (alle Wrapper mit Lazy-Imports für CI ohne requirements.txt)
