@@ -43,13 +43,17 @@ Zeiterfassung/
 │   ├── mail.py            # Gmail OAuth2-Authentifizierung & Versand
 │   ├── drive.py           # Google Drive API-Wrapper (Multi-Device-Sync)
 │   ├── sync.py            # Sync-Engine (pure Logik, LWW-Merge, Konflikterkennung)
+│   ├── sync_journal.py    # Crash-Recovery für den Sync-Apply (Write-Ahead-Journal)
 │   ├── conflicts_store.py # Lokale Persistenz der Konfliktliste
 │   ├── share.py           # Export/Import von Arbeitszeiten als Share-JSON
 │   ├── reservations.py    # Reservierungen (zukünftige Soll-Zeiten)
 │   ├── reservations_sync.py # Abgleich der Reservierungen mit Google Kalender
 │   ├── reminders.py       # Fälligkeits-Logik für Reservierungs-Erinnerungen (Tk-frei)
 │   ├── reminder_scheduler.py # Periodischer Reminder-Poll → Toast über Tray
+│   ├── send_reminder.py   # Fälligkeits-Logik für den monatlichen Sende-Reminder (Tk-frei)
+│   ├── send_reminder_scheduler.py # Periodischer Poll → Sende-Toast (1×/Monat, Zustand persistiert)
 │   ├── weekly_limit.py    # Wochenstunden-Limit (Werkstudenten-Privileg), pure Logik
+│   ├── pause_requirement.py # Pausenpflicht-Check nach § 4 ArbZG, pure Logik
 │   ├── gcal.py            # Google-Calendar-API-Wrapper
 │   ├── oauth_utils.py     # Gemeinsame OAuth-Token-Boilerplate (Persistenz, Scope-Upgrade) für mail/drive/gcal
 │   ├── tray.py            # Infobereich-Icon (Minimize-to-Tray); Plattform-Fassade
