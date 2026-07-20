@@ -214,6 +214,27 @@ Anzeige-Formatierung, ISO bleibt die Quelle). Neue datumsanzeigende
 UI-Stellen über diese Helfer formatieren, nicht roh `isoformat()`/`str()`
 ausgeben.
 
+## Stunden: intern dezimal, angezeigt in Minuten — Summen NUR über Minuten
+
+`calculate_hours` liefert **Dezimalstunden** und rundet dabei **pro Slot** auf
+2 Nachkommastellen. Das ist gröber als eine Minute (0,01 h = 0,6 min) — solche
+Werte sind als Zwischenergebnis brauchbar, als Grundlage einer *angezeigten
+Summe* aber nicht.
+
+Angezeigt wird **immer** über die Minuten-Auflösung: `hours_to_minutes` ist die
+einzige Stelle, an der Dezimalstunden auf Minuten gerundet werden;
+`format_minutes_hm` (`7 h 30 min`) und `format_hours_colon` (`7:30`) bauen
+darauf auf.
+
+**Die Regel:** Wer mehrere angezeigte Werte aufsummiert, summiert deren
+**Minuten** — niemals die Dezimalstunden, um erst am Ende zu runden. Sonst
+rundet man an zwei Stellen unabhängig voneinander, und die Summe weicht von
+dem ab, was der Nutzer in den Einzelposten sieht (bei einem typischen Monat in
+~83 % der Fälle um mindestens eine Minute; genau dieser Bug steckte im Footer,
+s. `GridRenderer._display_minutes`). Geldbeträge aus derselben Minuten-Summe
+ableiten, nicht aus den Dezimalstunden — sonst widersprechen sich Stunden- und
+Euro-Anzeige.
+
 ## Kalender-Interaktion: Linksklick speichert, Rechtsklick löscht
 
 Im Kalender gilt ein striktes Modell: **Linksklick** öffnet den Tages-Dialog
@@ -313,6 +334,7 @@ Lokal: `pytest` aus dem Repo-Root. Alle Tests müssen vor dem PR-Merge grün sei
 - `src/reminders.py` — pure Fälligkeits-Logik für Reservierungs-Erinnerungen (Tk-frei); `src/reminder_scheduler.py` — periodischer Reminder-Poll (root.after) → Toast über Tray
 - `src/send_reminder.py` — pure Fälligkeits-Logik für den monatlichen Sende-Reminder (Tk-frei), Tag im Monat auf die tatsächliche Monatslänge geclamped; `src/send_reminder_scheduler.py` — periodischer Poll (root.after) → Toast über Tray, Fired-Zustand persistiert in Settings (einmal pro Monat, auch über Neustarts hinweg)
 - `src/weekly_limit.py` — Wochenstunden-Limit für einen konfigurierbaren Zeitraum (Werkstudenten-Privileg, #98); pure Logik, zählt nur Ist-Zeiten (nicht Reservierungen)
+- `src/pause_requirement.py` — Pausenpflicht-Warnung nach §4 ArbZG (30 Min ab >6h, 45 Min ab >9h Netto-Arbeitszeit); pure Logik, zählt nur die `pause`-Felder der Slots eines Tages (keine Lücken zwischen mehreren Slots); Default aktiv (`pause_warning_enabled`, im Gegensatz zum Werkstudenten-Limit kein Sonderfall-Opt-in, da die Pflicht für praktisch alle Angestellten in DE gilt)
 - `src/gcal.py` — Google-Calendar-API-Wrapper (lazy Imports wie `drive.py`, wegen CI ohne `requirements.txt`)
 - `src/tray.py` — Infobereich-Icon (Minimize-to-Tray); Plattform-Fassade über pystray (Windows) und `tray_mac.py` (macOS)
 - `src/tray_mac.py` — natives macOS-Tray (NSStatusItem, Main-Thread) als Backend von `tray.py`; macOS-Tray ist bis zum Mac-Gate dormant (Opt-in `ZEIT_MACOS_TRAY=1`, #88)

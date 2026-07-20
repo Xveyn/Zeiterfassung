@@ -18,6 +18,7 @@ SYNCED_SETTING_KEYS = (
     "gcal_calendar_id", "categories", "category_times",
     "werkstudent_limit_enabled", "werkstudent_limit_start",
     "werkstudent_limit_end", "werkstudent_limit_max_hours",
+    "pause_warning_enabled",
 )
 
 DEFAULTS = {
@@ -75,6 +76,7 @@ DEFAULTS = {
     "werkstudent_limit_start": "",
     "werkstudent_limit_end": "",
     "werkstudent_limit_max_hours": 20.0,
+    "pause_warning_enabled": True,
 }
 
 _COERCE_FAILED = object()

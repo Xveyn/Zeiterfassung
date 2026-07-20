@@ -188,6 +188,7 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
             "werkstudent_limit_start": wsl_start_iso,
             "werkstudent_limit_end": wsl_end_iso,
             "werkstudent_limit_max_hours": wsl_max_hours,
+            "pause_warning_enabled": work.pause_warning_var.get(),
         }
         for key in WEEKDAY_KEYS:
             updates[f"default_start_{key}"] = work.start_vars[key].get()
