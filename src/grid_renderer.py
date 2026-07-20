@@ -12,8 +12,8 @@ import tkinter as tk
 
 from src.time_utils import (
     DAYS_DE, MONTHS_DE,
-    calculate_hours, format_hours_colon, format_hours_hm, get_week_dates,
-    get_week_label, week_spans_months,
+    calculate_hours, format_hours_colon, format_minutes_hm, get_week_dates,
+    get_week_label, hours_to_minutes, week_spans_months,
 )
 from src.holidays_de import get_holidays
 from src.tooltip import attach_tooltip
@@ -488,9 +488,12 @@ class GridRenderer:
         self._active_grid_idx = 1 - self._active_grid_idx
         self._grid_frame = frame
 
-    def _update_footer(self, total_hours):
+    def _update_footer(self, total_minutes):
+        """Footer aus den ANGEZEIGTEN Minuten der Zellen, nicht aus der Summe
+        der Dezimalstunden — sonst weicht die Gesamtsumme von der Summe ab,
+        die der Nutzer in den Zellen sieht (s. hours_to_minutes)."""
         rate = self._settings.get("hourly_rate") or 0
-        total_text = format_hours_hm(total_hours)
+        total_text = format_minutes_hm(total_minutes)
         # width fixiert die reqwidth des Labels → kein Pack-Reflow, wenn sich die
         # Summe beim Monatswechsel ändert. Die Reservierung hängt am Stundenlohn:
         # mit Lohn deckt width=42 die längste Variante ab
@@ -502,13 +505,25 @@ class GridRenderer:
         # deren reqwidth ein). refresh() pinnt die Breite neu, wenn der Lohn zur
         # Laufzeit gesetzt/entfernt wird (Wechsel der Reservierungsbreite).
         if rate > 0:
-            brutto = round(total_hours * rate, 2)
+            # Geld aus DEMSELBEN Minutenwert wie die angezeigte Summe —
+            # sonst widersprächen sich Stunden- und Euro-Anzeige im selben
+            # Footer (Differenz sub-Cent, aber sichtbar inkonsistent).
+            brutto = round(total_minutes / 60 * rate, 2)
             self._footer_label.config(
                 text=f"Gesamt: {total_text}  —  {brutto:.2f} € brutto",
                 width=42,
             )
         else:
             self._footer_label.config(text=f"Gesamt: {total_text}", width=20)
+
+    @staticmethod
+    def _display_minutes(entry):
+        """Die Minuten, die die Zelle für diesen Tag ANZEIGT.
+
+        Der Footer summiert genau diese Werte auf — dadurch stimmt seine
+        Summe per Konstruktion mit dem überein, was in den Zellen steht.
+        """
+        return hours_to_minutes(GridRenderer._entry_hours(entry))
 
     @staticmethod
     def _entry_hours(entry):
@@ -575,7 +590,7 @@ class GridRenderer:
         entries = self._storage.get_all()
         reservations = (
             self._reservation_store.get_all() if self._reservations_active() else {})
-        total_hours = 0.0
+        total_minutes = 0
 
         state = self._settings.get("state")
         holidays_map = get_holidays(state, self._year) if state else {}
@@ -610,7 +625,7 @@ class GridRenderer:
                 day_date = datetime.date(self._year, self._month, day)
                 entry = entries.get(date_str)
                 if entry:
-                    total_hours += self._entry_hours(entry)
+                    total_minutes += self._display_minutes(entry)
 
                 cell = self._build_day_cell(
                     new_frame, date_str, str(day), day_date,
@@ -632,7 +647,7 @@ class GridRenderer:
             new_frame.rowconfigure(row, minsize=row_min_h)
 
         self._activate_grid(new_frame)
-        self._update_footer(total_hours)
+        self._update_footer(total_minutes)
 
     def _refresh_week(self):
         new_frame = self._get_inactive_grid()
@@ -642,7 +657,7 @@ class GridRenderer:
         entries = self._storage.get_all()
         reservations = (
             self._reservation_store.get_all() if self._reservations_active() else {})
-        total_hours = 0.0
+        total_minutes = 0
         spans = week_spans_months(self._iso_year, self._current_week)
         state = self._settings.get("state")
         holidays_map: dict[datetime.date, str] = {}
@@ -661,7 +676,7 @@ class GridRenderer:
             date_str = day_date.isoformat()
             entry = entries.get(date_str)
             if entry:
-                total_hours += self._entry_hours(entry)
+                total_minutes += self._display_minutes(entry)
             day_text = f"{day_date.day}.{day_date.month}." if spans else str(day_date.day)
 
             cell = self._build_day_cell(
@@ -683,7 +698,7 @@ class GridRenderer:
             cell.grid(row=1, column=col, sticky="nsew", padx=2, pady=2)
 
         self._activate_grid(new_frame)
-        self._update_footer(total_hours)
+        self._update_footer(total_minutes)
 
     @staticmethod
     def _truncate(text: str, max_len: int) -> str:
