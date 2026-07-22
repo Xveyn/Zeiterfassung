@@ -48,16 +48,21 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt pip-licenses==5.5.5
       # Kein Inno Setup installiert → build.py überspringt den Installer-Schritt
-      # und lässt die reine dist/Zeiterfassung.exe (onefile) stehen.
+      # und lässt den reinen dist/Zeiterfassung/-Ordner (onedir: Exe +
+      # _internal\, seit #118) stehen.
       - name: Build (PyInstaller, ohne Installer)
         run: python build.py
       - name: dist auflisten
         shell: bash
-        run: ls -la dist/
+        run: ls -la dist/ dist/Zeiterfassung/
+      # onedir-Ordner als Ganzes hochladen — upload-artifact zippt ihn. Unter
+      # Windows gibt es keine Symlinks/Exec-Bits zu bewahren (anders als bei den
+      # macOS-/Linux-Jobs), daher kein tar nötig; der Nutzer bekommt ein
+      # browsebares Zip mit Zeiterfassung.exe + _internal\.
       - uses: actions/upload-artifact@v7
         with:
-          name: zeiterfassung-windows-exe
-          path: dist/Zeiterfassung.exe
+          name: zeiterfassung-windows-app
+          path: dist/Zeiterfassung/
           if-no-files-found: error
           retention-days: 14
 
