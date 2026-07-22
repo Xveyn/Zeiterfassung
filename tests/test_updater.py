@@ -456,3 +456,18 @@ class TestPickAssetUrlForPrerelease:
         release = release_from_payload(PRERELEASE_PAYLOAD)
         url = pick_asset_url(release.assets, "Darwin", release.version)
         assert url == "https://example.com/pre-dmg"
+
+
+class TestUpdateToastTextForPrerelease:
+    def test_prerelease_toast_names_it_a_vorabversion(self):
+        release = Release(
+            version="1.19.0", html_url="https://x", assets=(),
+            release_id="1.19.0-pre.2", is_prerelease=True,
+        )
+        text = update_toast_text(release)
+        assert text.startswith("Vorabversion 1.19.0-pre.2 verfügbar")
+        assert "Einstellungen → Updates" in text
+
+    def test_real_release_toast_unchanged(self):
+        release = Release(version="1.19.0", html_url="https://x", assets=())
+        assert update_toast_text(release).startswith("Version 1.19.0 verfügbar")

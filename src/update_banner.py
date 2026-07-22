@@ -33,7 +33,7 @@ class UpdateBanner:
         installierte Version ist, und routet nur dann hierher, wenn kein
         aktiver Toast-Kanal verfügbar ist.
         """
-        if release.version == self._settings.get("dismissed_version"):
+        if release.release_id == self._settings.get("dismissed_version"):
             return
         self._show(release)
 
@@ -45,15 +45,16 @@ class UpdateBanner:
             before=self._get_anchor(), fill=tk.X, padx=10, pady=(5, 0),
         )
 
+        kind = "Vorabversion" if release.is_prerelease else "Version"
         tk.Label(
             self._banner,
-            text=f"Version {release.version} verfügbar",
+            text=f"{kind} {release.release_id} verfügbar",
             bg=ACCENT, fg="#ffffff", font=FONT_BOLD,
         ).pack(side=tk.LEFT, padx=10, pady=6)
 
         dismiss_btn = label_button(
             self._banner, "✕",
-            lambda: self._dismiss(release.version),
+            lambda: self._dismiss(release.release_id),
             bg=ACCENT, fg="#ffffff",
             hover_bg=ACCENT_HOVER, hover_fg="#ffffff",
             font=FONT_BOLD,

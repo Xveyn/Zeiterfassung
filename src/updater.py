@@ -97,8 +97,9 @@ class Release:
 def update_toast_text(release: "Release") -> str:
     """Deutscher Toast-Text für ein gefundenes Update (kein Klick-Handler —
     der Toast verweist auf den Updates-Tab)."""
+    kind = "Vorabversion" if release.is_prerelease else "Version"
     return (
-        f"Version {release.version} verfügbar — "
+        f"{kind} {release.release_id} verfügbar — "
         "Details unter Einstellungen → Updates."
     )
 
