@@ -1,5 +1,37 @@
 # Changelog
 
+## 1.19.0 — 2026-07-22
+
+### Hinzugefügt
+- **Stunden je Tag in der Kalenderzelle**: Jede Tageskachel zeigt jetzt zusätzlich
+  die Netto-Arbeitszeit und die abgezogene Pause (z.B. `7:30 h · P30`) — die
+  Brutto-Zeitspanne steht weiterhin darüber. Damit ist die Gesamtsumme im Footer
+  nachrechenbar, und ein Tag mit abweichender Pause ist als solcher erkennbar.
+- **Pausenpflicht-Warnung (§4 ArbZG)**: Beim Speichern der Arbeitszeit warnt die
+  App, wenn die eingetragene Pause die gesetzliche Mindestpause unterschreitet
+  (30 Min ab mehr als 6 h, 45 Min ab mehr als 9 h Netto-Arbeitszeit). Reine
+  Warnung — speichern lässt sich trotzdem. Standardmäßig aktiv, abschaltbar unter
+  Einstellungen → Arbeitszeit. Gezählt werden nur die eingetragenen Pause-Minuten
+  der Zeitblöcke, nicht die Lücke zwischen zwei Blöcken desselben Tages; der
+  Warntext sagt das dazu. Grobe Näherung, keine rechtliche Bewertung.
+
+### Geändert
+- **Eine Schreibweise für Stunden**: Kalenderzelle (`7:30 h`) und Footer
+  (`Gesamt: 52 h 50 min`) zeigen Stunden jetzt einheitlich in Stunden und Minuten
+  statt als Dezimalzahl (`52.84h`) — 0,84 h liest niemand als 50 Minuten.
+- **Einstellungen**: Das Feld `Name` heißt jetzt `Dein Name`. Direkt unter
+  `Empfänger` war nicht erkennbar, dass der eigene Name gemeint ist (der im
+  PDF-Bericht und beim Teilen erscheint).
+
+### Behoben
+- **Footer-Summe**: Die Gesamtsumme im Footer entspricht jetzt exakt der Summe der
+  in den Kacheln angezeigten Stunden. Vorher rundeten Zelle und Footer unabhängig
+  voneinander, wodurch die Summe bei einem typischen Monat in rund 83 % der Fälle
+  um mindestens eine Minute abwich (bei mehreren Zeitblöcken pro Tag bis zu fünf).
+  Der Bruttobetrag stammt jetzt aus derselben Minuten-Summe wie die Stunden-Anzeige.
+- **Tages-Dialog**: An einem Tag ohne Arbeitszeit und ohne Reservierung war der
+  Dialog deutlich schmaler als sonst und schnitt den Fenstertitel ab.
+
 ## 1.18.2 — 2026-07-16
 
 ### Hinzugefügt
