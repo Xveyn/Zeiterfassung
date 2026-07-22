@@ -335,7 +335,14 @@ neueren Tk/Python-Version) noch auftritt.
 
 Die Test-Deps sind **exakt gepinnt** (Audit N25) — beim Bump gegen Python 3.10 gegenchecken (alle rein-Python, daher auf jedem Matrix-Python installierbar). Jobs (alle mit `cache: pip` auf `requirements-test.txt`):
 
-- **test** — Matrix über **Python 3.10–3.13** (README: „3.10+"), `fail-fast: false`.
+- **test-matrix** — Matrix über **Python 3.10–3.13** (README: „3.10+"), `fail-fast: false`.
+- **test** — schlankes Sammel-Gate über `test-matrix`, das **nur** der Branch
+  Protection dient: ein Matrix-Job meldet seine Check-Contexts ausschließlich
+  mit Suffix (`test (3.10)` …), ein Context namens `test` entstünde nie mehr —
+  der Required Check bliebe ewig „pending" und jeder PR dauerhaft blockiert.
+  Nicht entfernen oder umbenennen, ohne die Required Checks mitzuziehen. Prüft
+  `needs.test-matrix.result` explizit unter `if: always()`, weil ein
+  übersprungener Required Check GitHub sonst als erfüllt gilt.
 - **coverage** — `pytest --cov=src` (ubuntu/3.10); Reporting, **kein** `fail_under`-Gate (Config: `pyproject.toml [tool.coverage]`, Audit N24).
 - **test-macos** / **test-windows** — Plattform-Verifikation (je 3.10; macOS zieht zusätzlich `pyobjc-framework-Cocoa`).
 - **lint** — `ruff check .`. **typecheck** — `pyright` (gepinnt `1.1.411`).
