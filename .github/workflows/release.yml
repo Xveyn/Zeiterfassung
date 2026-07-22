@@ -129,6 +129,7 @@ jobs:
         env:
           ZEIT_RELEASE: "1"
           ZEIT_PRERELEASE: ${{ needs.pre-check.outputs.is_prerelease == 'true' && '1' || '' }}
+          ZEIT_RELEASE_TAG: ${{ needs.pre-check.outputs.tag }}
         run: python build.py
       - uses: actions/upload-artifact@v7
         with:
@@ -152,6 +153,7 @@ jobs:
         env:
           ZEIT_RELEASE: "1"
           ZEIT_PRERELEASE: ${{ needs.pre-check.outputs.is_prerelease == 'true' && '1' || '' }}
+          ZEIT_RELEASE_TAG: ${{ needs.pre-check.outputs.tag }}
         run: python build.py
       - uses: actions/upload-artifact@v7
         with:
@@ -182,6 +184,7 @@ jobs:
         env:
           ZEIT_RELEASE: "1"
           ZEIT_PRERELEASE: ${{ needs.pre-check.outputs.is_prerelease == 'true' && '1' || '' }}
+          ZEIT_RELEASE_TAG: ${{ needs.pre-check.outputs.tag }}
         run: python build.py
       - uses: actions/upload-artifact@v7
         with:

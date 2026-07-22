@@ -4,7 +4,16 @@ Getestet wird die reine Label-Formatierung `_format_version_label`. Der Reader
 `version_label()` (liest das beim Build generierte build_info-Modul) und die
 Tk-Titelzeile sind Verdrahtung und werden manuell verifiziert.
 """
-from src.version import _format_version_label, base_version, parse_release_id, strip_tag_prefix
+from unittest.mock import patch
+
+from src.version import (
+    VERSION,
+    _format_version_label,
+    base_version,
+    installed_release_id,
+    parse_release_id,
+    strip_tag_prefix,
+)
 
 
 def test_release_channel_is_plain_version():
@@ -93,3 +102,57 @@ class TestStripTagPrefix:
 
     def test_none_becomes_empty(self):
         assert strip_tag_prefix(None) == ""
+
+
+class _FakeBuildInfo:
+    def __init__(self, channel="release", sha="abc1234", release_tag=None):
+        self.CHANNEL = channel
+        self.GIT_SHA = sha
+        if release_tag is not None:
+            self.RELEASE_TAG = release_tag
+
+
+class TestFormatVersionLabelWithStampedTag:
+    def test_prerelease_with_stamped_tag_shows_number(self):
+        assert _format_version_label(
+            "1.19.0", "prerelease", "abc1234", "1.19.0-pre.2",
+        ) == "1.19.0-pre.2"
+
+    def test_prerelease_without_stamped_tag_falls_back_to_plain_marker(self):
+        # Alt-Build ohne Stempel: heutiges Verhalten bleibt.
+        assert _format_version_label("1.19.0", "prerelease", "abc1234", "") == "1.19.0-pre"
+
+    def test_release_ignores_stamped_tag(self):
+        assert _format_version_label("1.19.0", "release", "", "1.19.0") == "1.19.0"
+
+
+class TestInstalledReleaseId:
+    def test_stamped_prerelease_tag_wins(self):
+        with patch("src.version._build_info",
+                   _FakeBuildInfo(channel="prerelease", release_tag="v1.19.0-pre.2")):
+            assert installed_release_id() == "1.19.0-pre.2"
+
+    def test_uppercase_v_prefix_is_stripped(self):
+        with patch("src.version._build_info",
+                   _FakeBuildInfo(channel="prerelease", release_tag="V1.19.0-pre.2")):
+            assert installed_release_id() == "1.19.0-pre.2"
+
+    def test_missing_attribute_falls_back_to_version(self):
+        # Alt-Build: build_info ohne RELEASE_TAG.
+        with patch("src.version._build_info", _FakeBuildInfo(channel="release")):
+            assert installed_release_id() == VERSION
+
+    def test_empty_tag_falls_back_to_version(self):
+        with patch("src.version._build_info",
+                   _FakeBuildInfo(channel="dev", release_tag="")):
+            assert installed_release_id() == VERSION
+
+    def test_unparsable_tag_falls_back_to_version(self):
+        with patch("src.version._build_info",
+                   _FakeBuildInfo(channel="release", release_tag="v-nightly")):
+            assert installed_release_id() == VERSION
+
+    def test_no_build_info_falls_back_to_version(self):
+        # Start aus dem Quellcode (python -m src.main).
+        with patch("src.version._build_info", None):
+            assert installed_release_id() == VERSION

@@ -52,17 +52,35 @@ except ImportError:
     _build_info = None
 
 
-def _format_version_label(version, channel, sha):
+def _format_version_label(version, channel, sha, release_id=""):
     """Anzeige-Label für den Fenstertitel. Release → reine Version; Pre-Release
-    (plattformübergreifender Test-Build) → '-pre'-Marker ohne SHA; jeder andere
-    Kanal (dev/source) → '-dev'-Suffix, mit Kurz-SHA in Klammern falls vorhanden."""
+    (plattformübergreifender Test-Build) → die gestempelte Kennung inkl. Nummer
+    ('1.19.0-pre.2'), ohne Stempel der alte '-pre'-Marker; jeder andere Kanal
+    (dev/source) → '-dev'-Suffix, mit Kurz-SHA in Klammern falls vorhanden."""
     if channel == "release":
         return version
     if channel == "prerelease":
-        return f"{version}-pre"
+        return release_id or f"{version}-pre"
     if sha:
         return f"{version}-dev ({sha})"
     return f"{version}-dev"
+
+
+def _stamped_release_id():
+    """Release-Kennung aus dem beim Build gestempelten Tag ('v1.19.0-pre.2'
+    -> '1.19.0-pre.2'). Leer, wenn kein Stempel existiert (Alt-Builds vor
+    diesem Feature, Dev-/Repo-Modus) oder der Tag nicht dem Muster folgt."""
+    raw = "" if _build_info is None else getattr(_build_info, "RELEASE_TAG", "")
+    release_id = strip_tag_prefix(raw)
+    return release_id if parse_release_id(release_id) is not None else ""
+
+
+def installed_release_id():
+    """Kennung des laufenden Builds für den Update-Vergleich. Ohne Stempel
+    gilt die reine VERSION (Rang 0) — für ein echtes Release ist das exakt
+    richtig, für einen Alt-Pre-Build die dokumentierte Grenze (er bekommt
+    einmalig auch seinen eigenen Build angeboten)."""
+    return _stamped_release_id() or VERSION
 
 
 def version_label():
@@ -73,4 +91,4 @@ def version_label():
     else:
         channel = getattr(_build_info, "CHANNEL", "dev")
         sha = getattr(_build_info, "GIT_SHA", "")
-    return _format_version_label(VERSION, channel, sha)
+    return _format_version_label(VERSION, channel, sha, _stamped_release_id())

@@ -233,14 +233,18 @@ def generate_build_info():
     Der Release-Workflow setzt ZEIT_RELEASE=1 → CHANNEL='release'; für einen
     Pre-Release-Lauf zusätzlich ZEIT_PRERELEASE=1 → CHANNEL='prerelease' (Vorrang
     vor 'release'). Lokales `python build.py` ohne Flag → 'dev' + Commit-Hash.
-    Der Release-Tag vX.Y.Z entsteht erst nach dem Build, taugt daher nicht zur
-    Kanal-Erkennung — daher die expliziten Flags."""
+    Der Release-Tag taugt nicht zur Kanal-Erkennung (er wird erst nach dem Build
+    gepusht) — daher die expliziten Flags. Für die Update-Prüfung reicht der
+    Workflow ihn aber als ZEIT_RELEASE_TAG durch (Job `pre-check` berechnet ihn
+    vor den Build-Jobs); ohne die Variable bleibt RELEASE_TAG leer."""
     if os.environ.get("ZEIT_PRERELEASE") == "1":
         channel = "prerelease"
     elif os.environ.get("ZEIT_RELEASE") == "1":
         channel = "release"
     else:
         channel = "dev"
+
+    release_tag = os.environ.get("ZEIT_RELEASE_TAG", "")
 
     def _git(args):
         try:
@@ -260,10 +264,11 @@ def generate_build_info():
             "# Generiert von build.py — NICHT committen (s. .gitignore).\n"
             f'CHANNEL = "{channel}"\n'
             f'GIT_SHA = "{sha}"\n'
+            f'RELEASE_TAG = "{release_tag}"\n'
             f"GIT_DIRTY = {dirty}\n"
             f'BUILD_TIME = "{build_time}"\n'
         )
-    print(f"build_info: CHANNEL={channel} SHA={sha or '-'} DIRTY={dirty}")
+    print(f"build_info: CHANNEL={channel} TAG={release_tag or '-'} SHA={sha or '-'} DIRTY={dirty}")
 
 
 def main():
