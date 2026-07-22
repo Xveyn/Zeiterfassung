@@ -765,8 +765,15 @@ git commit -m "feat(updater): Pre-Release-Kanal über /releases abfragen"
 ### Task 4: Ergebnis-Aufbereitung für Pre-Releases
 
 **Files:**
-- Modify: `src/updater.py:83-123` (`update_toast_text`, `resolve_check_result`)
+- Modify: `src/updater.py:92-123` (`resolve_check_result`)
 - Test: `tests/test_updater.py`
+
+**Bewusst NICHT in diesem Task:** `update_toast_text` bleibt hier unangetastet.
+Seine Umstellung auf `release_id`/`is_prerelease` würde die bestehenden
+Routing-Tests brechen (`tests/test_ui_update_routing.py::_Rel` hat nur
+`.version` und läuft über `_route_update_notification` durch
+`update_toast_text`) — der Fake wird erst in Task 7 ersetzt, also wandert die
+Toast-Umstellung dorthin. Sonst wäre Step 5 („Full suite grün") hier rot.
 
 **Interfaces:**
 - Consumes: `Release.release_id`/`is_prerelease`/`notes` (Task 3), `base_version` (Task 1)
@@ -863,43 +870,15 @@ class TestResolveCheckResult:
         assert result["changelog_version"] == "1.19.0"
 ```
 
-Und die bestehende Toast-Text-Erwartung erweitern — ans Ende der Datei:
-
-```python
-class TestUpdateToastTextForPrerelease:
-    def test_prerelease_toast_names_it_a_vorabversion(self):
-        release = Release(
-            version="1.19.0", html_url="https://x", assets=(),
-            release_id="1.19.0-pre.2", is_prerelease=True,
-        )
-        text = update_toast_text(release)
-        assert text.startswith("Vorabversion 1.19.0-pre.2 verfügbar")
-        assert "Einstellungen → Updates" in text
-
-    def test_real_release_toast_unchanged(self):
-        release = Release(version="1.19.0", html_url="https://x", assets=())
-        assert update_toast_text(release).startswith("Version 1.19.0 verfügbar")
-```
+(Die Toast-Text-Tests für Pre-Releases kommen in Task 7, zusammen mit der
+`update_toast_text`-Umstellung — Begründung im Task-Kopf.)
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `python -m pytest tests/test_updater.py -k "ResolveCheckResult or ToastText" -v`
+Run: `python -m pytest tests/test_updater.py -k ResolveCheckResult -v`
 Expected: FAIL — `KeyError: 'changelog_notes'` bzw. Status-Text-Assertions schlagen fehl
 
 - [ ] **Step 3: Implement in `src/updater.py`**
-
-`update_toast_text` ersetzen:
-
-```python
-def update_toast_text(release: "Release") -> str:
-    """Deutscher Toast-Text für ein gefundenes Update (kein Klick-Handler —
-    der Toast verweist auf den Updates-Tab)."""
-    kind = "Vorabversion" if release.is_prerelease else "Version"
-    return (
-        f"{kind} {release.release_id} verfügbar — "
-        "Details unter Einstellungen → Updates."
-    )
-```
 
 `resolve_check_result` ersetzen:
 
@@ -1326,18 +1305,43 @@ git commit -m "feat(updates): Opt-in für Pre-Releases im Updates-Tab"
 ### Task 7: Hintergrund-Check, Toast-Routing und Banner
 
 **Files:**
+- Modify: `src/updater.py:83-89` (`update_toast_text` — hierher verschoben aus Task 4, s. dessen Task-Kopf)
 - Modify: `src/background_tasks.py:16-17,113-138` (`check_update`)
 - Modify: `src/ui.py:57-63` (`_route_update_notification`), `:516-530` (`_on_update_check_result`)
 - Modify: `src/update_banner.py:29-52,92-93`
-- Test: `tests/test_background_tasks.py`, `tests/test_ui_update_routing.py`, `tests/test_update_banner.py`
+- Test: `tests/test_updater.py`, `tests/test_background_tasks.py`, `tests/test_ui_update_routing.py`, `tests/test_update_banner.py`
 
 **Interfaces:**
-- Consumes: `check_for_update` (Task 3), `installed_release_id` (Task 2), `Release.release_id`/`is_prerelease` (Task 3), `update_toast_text` (Task 4)
-- Produces: keine neuen öffentlichen Namen — `_route_update_notification` und `UpdateBanner` vergleichen ab jetzt `release_id`
+- Consumes: `check_for_update` (Task 3), `installed_release_id` (Task 2), `Release.release_id`/`is_prerelease` (Task 3)
+- Produces: `update_toast_text` unterscheidet Vorabversion/Version über `release_id`; `_route_update_notification` und `UpdateBanner` vergleichen ab jetzt `release_id`
 
 - [ ] **Step 1: Write the failing tests**
 
-In `tests/test_background_tasks.py` die beiden bestehenden `check_update`-Tests unverändert lassen und ergänzen:
+In `tests/test_background_tasks.py` muss der bestehende Test
+`test_check_update_skips_when_not_due` **umgestellt** werden: er patcht heute
+`bg.check_latest_release` — dieses Attribut existiert nach diesem Task nicht
+mehr im Modul, und `monkeypatch.setattr` auf ein fehlendes Attribut wirft
+`AttributeError` (der Test würde also nicht fehlschlagen, sondern beim Setup
+sterben). Ersetzen durch:
+
+```python
+def test_check_update_skips_when_not_due(monkeypatch):
+    import src.background_tasks as bg
+    monkeypatch.setattr(bg, "should_check", lambda last, freq: False)
+    called = {"n": 0}
+    monkeypatch.setattr(bg, "check_for_update",
+                        lambda repo, include: called.__setitem__("n", called["n"] + 1))
+    r = _runner(settings={
+        "last_update_check_at": None, "update_check_frequency": "daily",
+    })
+    r.check_update(on_result=lambda rel, newer: None)
+    import time
+    time.sleep(0.2)
+    assert called["n"] == 0
+```
+
+(`test_check_update_reads_frequency_from_settings` bleibt unverändert — es
+patcht nur `should_check`.) Dann ergänzen:
 
 ```python
 def test_check_update_uses_stable_channel_by_default(monkeypatch):
@@ -1475,14 +1479,45 @@ def test_show_if_newer_dismissed_prerelease_does_not_show():
     b._show.assert_not_called()
 ```
 
+Und in `tests/test_updater.py` ans Ende anhängen (aus Task 4 hierher verschoben):
+
+```python
+class TestUpdateToastTextForPrerelease:
+    def test_prerelease_toast_names_it_a_vorabversion(self):
+        release = Release(
+            version="1.19.0", html_url="https://x", assets=(),
+            release_id="1.19.0-pre.2", is_prerelease=True,
+        )
+        text = update_toast_text(release)
+        assert text.startswith("Vorabversion 1.19.0-pre.2 verfügbar")
+        assert "Einstellungen → Updates" in text
+
+    def test_real_release_toast_unchanged(self):
+        release = Release(version="1.19.0", html_url="https://x", assets=())
+        assert update_toast_text(release).startswith("Version 1.19.0 verfügbar")
+```
+
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `python -m pytest tests/test_background_tasks.py tests/test_ui_update_routing.py tests/test_update_banner.py -v`
-Expected: FAIL — `AttributeError: <module 'src.background_tasks'> does not have the attribute 'check_for_update'` und Assertion-Fehler in den Routing-Tests
+Run: `python -m pytest tests/test_updater.py tests/test_background_tasks.py tests/test_ui_update_routing.py tests/test_update_banner.py -v`
+Expected: FAIL — `AttributeError: <module 'src.background_tasks'> does not have the attribute 'check_for_update'`, Toast-Text-Assertions (`Vorabversion …`) und Assertion-Fehler in den Routing-Tests
 
-- [ ] **Step 3: Implement in `src/background_tasks.py`**
+- [ ] **Step 3: Implement in `src/updater.py` und `src/background_tasks.py`**
 
-Imports ersetzen:
+In `src/updater.py` `update_toast_text` ersetzen:
+
+```python
+def update_toast_text(release: "Release") -> str:
+    """Deutscher Toast-Text für ein gefundenes Update (kein Klick-Handler —
+    der Toast verweist auf den Updates-Tab)."""
+    kind = "Vorabversion" if release.is_prerelease else "Version"
+    return (
+        f"{kind} {release.release_id} verfügbar — "
+        "Details unter Einstellungen → Updates."
+    )
+```
+
+In `src/background_tasks.py` die Imports ersetzen:
 
 ```python
 from src.updater import REPO, check_for_update, is_newer, should_check
@@ -1581,7 +1616,7 @@ In `_show` das Label und den Dismiss-Handler ersetzen:
 
 - [ ] **Step 6: Run tests to verify they pass**
 
-Run: `python -m pytest tests/test_background_tasks.py tests/test_ui_update_routing.py tests/test_update_banner.py -v`
+Run: `python -m pytest tests/test_updater.py tests/test_background_tasks.py tests/test_ui_update_routing.py tests/test_update_banner.py -v`
 Expected: PASS
 
 - [ ] **Step 7: Full suite + lint**
@@ -1592,7 +1627,7 @@ Run: `ruff check .` → Expected: `All checks passed!`
 - [ ] **Step 8: Commit**
 
 ```bash
-git add src/background_tasks.py src/ui.py src/update_banner.py tests/test_background_tasks.py tests/test_ui_update_routing.py tests/test_update_banner.py
+git add src/updater.py src/background_tasks.py src/ui.py src/update_banner.py tests/test_updater.py tests/test_background_tasks.py tests/test_ui_update_routing.py tests/test_update_banner.py
 git commit -m "feat(updates): Hintergrund-Check und Benachrichtigungen kennen Pre-Releases"
 ```
 
@@ -1601,7 +1636,8 @@ git commit -m "feat(updates): Hintergrund-Check und Benachrichtigungen kennen Pr
 ### Task 8: Dokumentation
 
 **Files:**
-- Modify: `CLAUDE.md` (Abschnitt „Pre-Releases (plattformübergreifende Test-Builds)")
+- Modify: `CLAUDE.md` (Abschnitt „Pre-Releases (plattformübergreifende Test-Builds)" + Modul-Liste unter „Struktur")
+- Modify: `src/CLAUDE.md` (updater.py-Erwähnung im Infra-Absatz — der Datei-Kopf verlangt Pflege im selben PR)
 - Modify: `README.md` (Feature-Liste, Einstellungs-Tabelle)
 
 **Interfaces:**
@@ -1647,15 +1683,51 @@ In der Einstellungs-Tabelle nach der Zeile `| **Pausenpflicht-Warnung** | … |`
 | **Vorabversionen anbieten** | Auch Pre-Releases als Update anbieten und melden (Standard: aus, gerätelokal) |
 ```
 
-- [ ] **Step 3: Verify**
+- [ ] **Step 3: Modul-Listen nachziehen**
+
+Drei Zeilen behaupten sonst Veraltetes. In der Modul-Liste der Root-`CLAUDE.md`
+(Abschnitt „Struktur") in der `src/updater.py`-Zeile ersetzen:
+
+alt:
+```
+GitHub-Releases-Check (stdlib-only, Check-Häufigkeit über `update_check_frequency` konfigurierbar, Default 1×/Tag)
+```
+neu:
+```
+GitHub-Releases-Check (stdlib-only, Check-Häufigkeit über `update_check_frequency` konfigurierbar, Default 1×/Tag; Pre-Releases optional über `prerelease_updates_enabled`, s. Release-Prozess)
+```
+
+In der `src/version.py`-Zeile ersetzen:
+
+alt:
+```
+- `src/version.py` — Einzige Quelle für die App-Version (von Workflow & `installer.iss` gelesen)
+```
+neu:
+```
+- `src/version.py` — Einzige Quelle für die App-Version (von Workflow & `installer.iss` gelesen); ordnet Release-Kennungen (`parse_release_id`, `X.Y.Z[-pre.N]`) und kennt die Build-Identität (`installed_release_id` aus dem `RELEASE_TAG`-Stempel)
+```
+
+In `src/CLAUDE.md` (Abschnitt „Berichte & Plattform/Infra") ersetzen:
+
+alt:
+```
+(GitHub-Releases, stdlib-only, Frequenz über `update_check_frequency`)
+```
+neu:
+```
+(GitHub-Releases, stdlib-only, Frequenz über `update_check_frequency`, Pre-Release-Opt-in über `prerelease_updates_enabled`)
+```
+
+- [ ] **Step 4: Verify**
 
 Run: `python -m pytest -q` → Expected: alle grün (Doku-Änderung, nichts sollte sich bewegen)
 Run: `ruff check .` → Expected: `All checks passed!`
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
-git add CLAUDE.md README.md
+git add CLAUDE.md src/CLAUDE.md README.md
 git commit -m "docs: Pre-Release-Opt-in und Reihenfolge-Regel dokumentieren"
 ```
 
