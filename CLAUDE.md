@@ -32,14 +32,17 @@ Der Workflow pusht **nichts** nach `master`. Versionsbump gehört in den PR.
 
 ### Pre-Releases (plattformübergreifende Test-Builds)
 
-Für plattformübergreifendes Testen vor einem echten Release gibt es Pre-Releases:
+Für plattformübergreifendes Testen des Stands **nach** dem letzten echten Release gibt es Pre-Releases:
 Actions → Workflow **Release** → „Run workflow" mit gesetztem Häkchen
 **prerelease** (Branch egal, gebaut wird der gewählte Ref). Ablauf:
 
 - Baut dieselben drei Artefakte (Windows/macOS-arm/Linux) wie ein echtes Release,
-  aber gestempelt mit `CHANNEL=prerelease` → In-App-Titel zeigt `X.Y.Z-pre`.
+  aber gestempelt mit `CHANNEL=prerelease` → In-App-Titel zeigt `X.Y.Z-pre.N`
+  (Nummer aus dem Build-Stempel, s.u.).
 - Tag ist **fortlaufend** `vX.Y.Z-pre.N` (N automatisch hochgezählt je Zielversion,
-  aus `src/version.py`) — kollidiert nie mit dem späteren echten Tag `vX.Y.Z`.
+  aus `src/version.py`). Das echte `vX.Y.Z` existiert zu diesem Zeitpunkt bereits:
+  der Pre-Release trägt die Version des **letzten** Releases und enthält den Stand
+  danach (siehe Reihenfolge-Regel unten). Kollidieren kann er mit ihr nicht.
 - GitHub-Release wird als **Pre-Release** markiert (`--prerelease`): der Auto-Updater
   liest `/releases/latest` und **ignoriert** Pre-Releases → normale Nutzer bekommen
   sie nicht als Update angeboten.

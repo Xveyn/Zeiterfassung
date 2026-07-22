@@ -42,6 +42,7 @@ def strip_tag_prefix(tag):
     tag = (tag or "").strip()
     return tag[1:] if tag[:1] in ("v", "V") else tag
 
+
 # build_info wird beim Build von build.py generiert (gitignored) und von
 # PyInstaller mitgebündelt. Beim Start aus dem Quellcode existiert es nicht —
 # dann gilt Kanal "source". Der Import steht bewusst auf Modulebene (im

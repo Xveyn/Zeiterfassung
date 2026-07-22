@@ -90,8 +90,8 @@ class UpdateBanner:
         ) or release.html_url
         webbrowser.open(url)
 
-    def _dismiss(self, version):
-        self._settings.set("dismissed_version", version)
+    def _dismiss(self, release_id):
+        self._settings.set("dismissed_version", release_id)
         if self._banner is not None:
             self._banner.destroy()
             self._banner = None
