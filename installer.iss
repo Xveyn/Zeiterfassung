@@ -28,8 +28,13 @@ CloseApplications=no
 Name: "german"; MessagesFile: "compiler:Languages\German.isl"
 
 [Files]
-Source: "dist\Zeiterfassung.exe"; DestDir: "{app}"; Flags: ignoreversion
+; --onedir (#118): PyInstaller legt Exe + _internal\ in dist\Zeiterfassung\ ab.
+; Den ganzen Ordner rekursiv nach {app} spiegeln — die Exe landet weiterhin als
+; {app}\Zeiterfassung.exe, alle Icon-/Registry-/Run-Verweise unten bleiben gültig.
+Source: "dist\Zeiterfassung\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "dist\THIRD-PARTY-NOTICES.txt"; DestDir: "{app}"; Flags: ignoreversion
+; assets liegen bewusst separat unter {app}\assets — die App liest sie über
+; get_base_path()=dirname(exe), nicht aus dem gebündelten _internal\assets.
 Source: "assets\margenheld-icon.ico"; DestDir: "{app}\assets"; Flags: ignoreversion
 Source: "assets\margenheld-icon.png"; DestDir: "{app}\assets"; Flags: ignoreversion
 

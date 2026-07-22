@@ -114,6 +114,19 @@ python build.py
 
 `build.py` ist ein Plattform-Dispatcher und ruft PyInstaller je nach `platform.system()` unterschiedlich auf. Auf allen drei Plattformen sind `--collect-all xhtml2pdf --collect-all reportlab --collect-all holidays` zwingend — ohne sie schlagen PDF-Erzeugung bzw. Feiertags-Lookup im gebauten Artefakt stumm fehl.
 
+**Windows und macOS bauen `--onedir`, Linux `--onefile`.** Onefile entpackt bei
+jedem Start alle DLLs frisch in einen `_MEIxxxxxx`-Tempordner; dieses Zeitfenster
+war die Wurzel einer intermittierenden Fehlerklasse (Bootloader lädt
+`python310.dll` transient nicht → #118; `holidays` fand `de.mo` transient nicht →
+#116; der Skalierungs-Neustart musste den `_MEIPASS`-Erbgang per
+`PYINSTALLER_RESET_ENVIRONMENT` umgehen, siehe `ui.py`). Onedir legt Exe +
+`_internal\` einmalig entpackt ab — kein Extraktions-Race pro Start. `installer.iss`
+shippt entsprechend den ganzen `dist\Zeiterfassung\`-Ordner (nicht nur die Exe);
+die Exe bleibt `{app}\Zeiterfassung.exe`, `get_base_path()=dirname(exe)` und alle
+Autostart-/Single-Instance-Pfade bleiben damit unverändert. Linux bleibt onefile,
+weil die AppImage ohnehin selbst mountet (onefile darin wäre Doppelpackung) und
+`#118` Windows-spezifisch ist.
+
 ## Cross-Platform Builds
 
 `build.py` ist plattformabhängig:
