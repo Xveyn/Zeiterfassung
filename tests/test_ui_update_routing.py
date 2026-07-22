@@ -8,8 +8,10 @@ from src.ui import App, _route_update_notification
 
 
 class _Rel:
-    def __init__(self, version):
-        self.version = version
+    def __init__(self, release_id, is_prerelease=False):
+        self.release_id = release_id
+        self.version = release_id.split("-pre.")[0]
+        self.is_prerelease = is_prerelease
 
 
 class _FakeSettings:
@@ -99,3 +101,30 @@ def test_on_update_check_result_no_tray_routes_to_banner(monkeypatch):
     rel = _Rel("1.9.0")
     App._on_update_check_result(fake, rel, True)
     fake._update_banner.show_if_newer.assert_called_once_with(rel)
+
+
+def test_new_prerelease_number_fires_toast_again():
+    # pre.1 wurde bereits gemeldet, pre.2 ist ein neuer Build.
+    action, text = _route_update_notification(
+        _Rel("1.19.0-pre.2", is_prerelease=True), True, "1.19.0-pre.1",
+    )
+    assert action == "toast"
+    assert "Vorabversion 1.19.0-pre.2" in text
+
+
+def test_same_prerelease_number_does_nothing():
+    action, text = _route_update_notification(
+        _Rel("1.19.0-pre.2", is_prerelease=True), True, "1.19.0-pre.2",
+    )
+    assert action == "none"
+    assert text is None
+
+
+def test_on_update_check_result_persists_release_id_not_base_version(monkeypatch):
+    import src.ui as ui_module
+
+    monkeypatch.setattr(ui_module, "today_iso", lambda: "2026-07-22")
+    tray = _FakeTray()
+    fake = _FakeApp(tray=tray, settings_data={"update_toast_shown_version": ""})
+    App._on_update_check_result(fake, _Rel("1.19.0-pre.2", is_prerelease=True), True)
+    assert fake.settings.get("update_toast_shown_version") == "1.19.0-pre.2"

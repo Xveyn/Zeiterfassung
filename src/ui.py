@@ -55,9 +55,13 @@ def _delete_action(slots, selected, prefix):
 
 
 def _route_update_notification(release, tray_active, toast_shown_version):
-    """Entscheidet zwischen Toast, Banner oder No-op für eine neue Version."""
+    """Entscheidet zwischen Toast, Banner oder No-op für eine neue Version.
+
+    Verglichen wird die volle Kennung (`release_id`), nicht die Basisversion —
+    sonst würde ein zweiter Pre-Release derselben Version (pre.1 -> pre.2)
+    als "schon gemeldet" durchfallen."""
     if tray_active:
-        if release.version == toast_shown_version:
+        if release.release_id == toast_shown_version:
             return "none", None
         return "toast", update_toast_text(release)
     return "banner", None
@@ -525,7 +529,7 @@ class App:
         )
         if action == "toast":
             self._tray.notify(text)
-            self.settings.set("update_toast_shown_version", release.version)
+            self.settings.set("update_toast_shown_version", release.release_id)
         elif action == "banner":
             self._update_banner.show_if_newer(release)
 

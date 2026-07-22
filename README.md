@@ -21,7 +21,7 @@ Desktop-App zur Erfassung von Arbeitszeiten mit Kalenderansicht, PDF-Report und 
 - **Zeitraumwahl** — Flexibler Datumsbereich für Reports
 - **Einstellungen** — In Tabs gegliedert (Arbeitszeit / Bericht & Mail / Google / App / Updates); E-Mail-Vorlagen mit Platzhaltern, Standardpause, Empfänger und Update-Einstellungen
 - **Autostart & Einzelinstanz** — Optionaler minimierter Start bei Anmeldung (Windows, macOS, Linux); es läuft immer nur eine Instanz — ein zweiter Start holt das vorhandene Fenster nach vorn
-- **Update-Check** — Konfigurierbare Hintergrund-Prüfung auf neue Releases; neuer Updates-Tab mit manuellem Check, Changelog und Direkt-Download, bei aktivem Tray als einmaliger Toast statt Banner
+- **Update-Check** — Konfigurierbare Hintergrund-Prüfung auf neue Releases; Updates-Tab mit manuellem Check, Changelog und Direkt-Download, bei aktivem Tray als einmaliger Toast statt Banner. Optional lassen sich auch Vorabversionen (Pre-Releases) anbieten — Testbuilds vor dem echten Release
 - **Dark Mode UI** — Modernes dunkles Design
 - **Cross-Platform-Installer** — Per PyInstaller gebaut, als Setup-Exe (Windows), DMG (macOS) und AppImage (Linux) paketierbar
 
@@ -320,6 +320,7 @@ Reservierungen anlegen und den Abgleich über die App-Oberfläche aktivieren; be
 | **Dein Name** | Eigener vollständiger Name (erscheint im PDF-Bericht und beim Teilen) |
 | **Standard-Pause** | Standardmäßige Pausendauer in Minuten |
 | **Pausenpflicht-Warnung** | Warnen, wenn die Pause die Mindestpause nach § 4 ArbZG unterschreitet (Standard: an) |
+| **Vorabversionen anbieten** | Auch Pre-Releases als Update anbieten und melden (Standard: aus, gerätelokal) |
 | **Betreff** | E-Mail-Betreff mit Platzhaltern |
 | **Begrüßung** | Anrede im E-Mail-Text |
 | **Inhalt** | E-Mail-Body mit Platzhaltern |

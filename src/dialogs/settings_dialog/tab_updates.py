@@ -7,15 +7,15 @@ import webbrowser
 from src.changelog import fetch_changelog_entry, parse_changelog_markdown
 from src.dialogs.settings_dialog._shared import label
 from src.theme import (
-    BG, FONT, FONT_BOLD, TEXT, TEXT_MUTED,
+    BG, CELL_BG, FONT, FONT_BOLD, FONT_SMALL, TEXT, TEXT_MUTED,
     dark_combo, dark_text, primary_button, secondary_button,
     set_button_text, set_primary_button_enabled,
 )
 from src.updater import (
-    FREQUENCY_OPTIONS, REPO, check_latest_release, pick_asset_url,
+    FREQUENCY_OPTIONS, REPO, check_for_update, pick_asset_url,
     resolve_check_result,
 )
-from src.version import VERSION
+from src.version import installed_release_id
 
 
 class UpdatesTab:
@@ -36,7 +36,7 @@ class UpdatesTab:
         frame.columnconfigure(0, weight=1)
         frame.columnconfigure(1, weight=1)
 
-        label(frame, f"Installierte Version: {VERSION}", row=0)
+        label(frame, f"Installierte Version: {installed_release_id()}", row=0)
 
         self._status_label = tk.Label(
             frame, text="", font=FONT, bg=BG, fg=TEXT_MUTED,
@@ -69,6 +69,22 @@ class UpdatesTab:
             [lbl for _, lbl in FREQUENCY_OPTIONS], width=14,
         ).pack(side=tk.LEFT)
 
+        # Opt-in für Pre-Releases: ohne Häkchen verhält sich der Tab exakt wie
+        # bisher (nur echte Releases über /releases/latest).
+        self.prerelease_var = tk.BooleanVar(
+            value=settings.get("prerelease_updates_enabled"),
+        )
+        tk.Checkbutton(
+            frame, text="Auch Vorabversionen (Pre-Releases) anbieten",
+            variable=self.prerelease_var, font=FONT, bg=BG, fg=TEXT,
+            selectcolor=CELL_BG, activebackground=BG, activeforeground=TEXT,
+            cursor="hand2",
+        ).grid(row=4, column=0, columnspan=2, padx=10, pady=(8, 0), sticky="w")
+        tk.Label(
+            frame, text="Testbuilds vor dem echten Release — können Fehler enthalten.",
+            font=FONT_SMALL, bg=BG, fg=TEXT_MUTED,
+        ).grid(row=5, column=0, columnspan=2, padx=10, pady=(0, 4), sticky="w")
+
         # Label + Text bleiben immer gegridded (nie grid_remove()) — sonst
         # verschwindet ihr Breitenbeitrag zum Notebook-Tab kurzzeitig während
         # eines Checks (Text leer/gecleart ist ok, ungegridded lässt die
@@ -76,10 +92,10 @@ class UpdatesTab:
         self._changelog_label = tk.Label(
             frame, text="Changelog:", font=FONT, bg=BG, fg=TEXT,
         )
-        self._changelog_label.grid(row=4, column=0, padx=10, pady=(12, 4), sticky="nw")
+        self._changelog_label.grid(row=6, column=0, padx=10, pady=(12, 4), sticky="nw")
         self._changelog_text = dark_text(frame, 58, 12)
         self._changelog_text.grid(
-            row=5, column=0, columnspan=2, padx=10, pady=4,
+            row=7, column=0, columnspan=2, padx=10, pady=4,
         )
         self._changelog_text.tag_configure("heading", font=FONT_BOLD)
         self._changelog_text.tag_configure("bold", font=FONT_BOLD)
@@ -127,19 +143,33 @@ class UpdatesTab:
         self._download_btn.pack_forget()
         self._set_changelog("")
 
+        # Tk-Variable im UI-Thread lesen und als Wert in die Closure geben —
+        # nie aus dem Daemon-Thread. Bewusst der AKTUELLE Checkbox-Zustand,
+        # nicht der gespeicherte: sonst wirkt das Häkchen erst nach Speichern
+        # und erneutem Öffnen des Dialogs.
+        include_prereleases = bool(self.prerelease_var.get())
+
         def fn():
-            return check_latest_release(REPO)
+            return check_for_update(REPO, include_prereleases)
 
         def on_done(release):
             if not self.frame.winfo_exists():
                 return
-            result = resolve_check_result(VERSION, release)
+            result = resolve_check_result(installed_release_id(), release)
             self._latest_release = result["latest_release"]
             self._status_label.config(text=result["status_text"])
             if result["show_download"]:
                 self._download_btn.pack(side=tk.LEFT, padx=(8, 0))
             if result["persist"]:
                 self._settings.set_many(result["persist"])
+            if result["changelog_notes"] is not None:
+                # Pre-Release: die Notes liegen dem Payload bereits bei,
+                # kein zweiter Netzwerk-Call nötig.
+                self._finish_checking()
+                self._set_changelog(
+                    result["changelog_notes"] or "Changelog konnte nicht geladen werden.",
+                )
+                return
             if result["changelog_version"] is None:
                 self._finish_checking()
                 return

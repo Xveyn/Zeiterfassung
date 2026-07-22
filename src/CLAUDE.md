@@ -179,7 +179,7 @@ denselben OAuth-Token; Scope-Upgrade erzwingt frischen Consent.
 - `theme.py`/`tooltip.py` — UI-Hilfen (Farben/Fonts/themed Dialoge, `_hover`-Overlays).
 - `time_utils.py` — Stunden, KW-Labels, `format_iso_date`/`format_iso_datetime`.
 - `holidays_de.py`, `paths.py` (`get_base_path` Frozen-vs-Repo), `updater.py`
-  (GitHub-Releases, stdlib-only, Frequenz über `update_check_frequency`), `changelog.py`
+  (GitHub-Releases, stdlib-only, Frequenz über `update_check_frequency`, Pre-Release-Opt-in über `prerelease_updates_enabled`), `changelog.py`
   (lädt/parst den Changelog-Abschnitt einer Release-Version vom GitHub-Tag), `platform_open.py`, `logging_setup.py`,
   `version.py` (einzige Versions-Quelle).
 - `autostart.py` — plattformabhängig (Windows-Registry HKCU Run / macOS-LaunchAgent / Linux-.desktop).

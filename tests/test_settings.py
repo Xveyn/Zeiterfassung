@@ -816,3 +816,18 @@ def test_override_in_memory_removes_key_absent_before(tmp_settings):
     with tmp_settings.override_in_memory("some_transient_key", 42):
         assert tmp_settings.get("some_transient_key") == 42
     assert "some_transient_key" not in tmp_settings._data
+
+
+def test_prerelease_updates_disabled_by_default():
+    from src.settings import DEFAULTS
+
+    assert DEFAULTS["prerelease_updates_enabled"] is False
+
+
+def test_prerelease_updates_flag_is_device_local():
+    # Update-Einstellungen werden bewusst nicht synchronisiert: der Rechner,
+    # auf dem ein Testbuild geprüft wird, soll die anderen Geräte nicht in
+    # den Pre-Kanal ziehen.
+    from src.settings import SYNCED_SETTING_KEYS
+
+    assert "prerelease_updates_enabled" not in SYNCED_SETTING_KEYS

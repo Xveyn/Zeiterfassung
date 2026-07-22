@@ -15,6 +15,10 @@ from src.version import VERSION
 _RAW_URL = "https://raw.githubusercontent.com/{repo}/v{version}/CHANGELOG.md"
 _VERSION_HEADING = re.compile(r"^##\s+(\S+)\s", re.MULTILINE)
 _BOLD = re.compile(r"\*\*(.+?)\*\*")
+# Nur eine Versions-Überschrift ("## 1.18.0 — …") ist redundant zum Status-Text
+# darüber. Die Notes eines Pre-Releases beginnen mit "## What's Changed" — die
+# muss stehen bleiben.
+_VERSION_HEADING_LINE = re.compile(r"^##\s+\d+\.\d+\.\d+")
 
 
 def extract_version_section(changelog_text, version):
@@ -65,6 +69,10 @@ def parse_changelog_markdown(text):
     """Wandelt einen Changelog-Abschnitt (Markdown) in anzeigefertige Zeilen
     für ein Tk-Text-Widget um (Tk-frei/ohne UI testbar).
 
+    Verstanden werden beide Quellen: der kuratierte CHANGELOG.md-Abschnitt
+    (`### `-Überschriften, `- `-Bullets) und die von GitHub generierten
+    Release-Notes eines Pre-Releases (`## `-Überschriften, `* `-Bullets).
+
     CHANGELOG.md ist im Quelltext auf ~80 Spalten hart umgebrochen — roh in
     ein schmaleres Textfeld gekippt, wirkt das doppelt und falsch umgebrochen.
     Darum werden Fortsetzungszeilen eines Bullets/Absatzes hier zu einer
@@ -81,8 +89,8 @@ def parse_changelog_markdown(text):
     raw_lines = text.splitlines()
     # Die Versions-Überschrift ("## 1.18.0 — ...") ist redundant zum Status-
     # Text darüber (z.B. "Du hast die aktuelle Version …") und wird nicht
-    # mit angezeigt.
-    if raw_lines and raw_lines[0].startswith("## "):
+    # mit angezeigt. Andere "## "-Überschriften (GitHub-Notes) bleiben.
+    if raw_lines and _VERSION_HEADING_LINE.match(raw_lines[0]):
         raw_lines = raw_lines[1:]
 
     blocks = []
@@ -95,7 +103,10 @@ def parse_changelog_markdown(text):
         if line.startswith("### "):
             blocks.append(("heading", line[4:].strip()))
             continue
-        if line.startswith("- "):
+        if line.startswith("## "):
+            blocks.append(("heading", line[3:].strip()))
+            continue
+        if line.startswith("- ") or line.startswith("* "):
             blocks.append(("bullet", line[2:].strip()))
             continue
         # Fortsetzung einer hart umgebrochenen Bullet-/Textzeile.
