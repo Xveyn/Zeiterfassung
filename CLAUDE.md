@@ -43,6 +43,24 @@ Actions → Workflow **Release** → „Run workflow" mit gesetztem Häkchen
 - GitHub-Release wird als **Pre-Release** markiert (`--prerelease`): der Auto-Updater
   liest `/releases/latest` und **ignoriert** Pre-Releases → normale Nutzer bekommen
   sie nicht als Update angeboten.
+- **Opt-in im Updates-Tab:** Wer die Einstellung „Auch Vorabversionen
+  (Pre-Releases) anbieten" aktiviert, bekommt Pre-Releases im Updates-Tab
+  angezeigt und als Toast/Banner gemeldet (`updater.check_for_update` fragt
+  dann `/releases` statt `/releases/latest`). Die Einstellung ist gerätelokal
+  (nicht in `SYNCED_SETTING_KEYS`).
+- **Reihenfolge-Regel (wichtig):** Ein Pre-Release wird **immer nach** dem
+  gleichnamigen echten Release gebaut, aus neuerem Code. Die App ordnet
+  entsprechend `X.Y.Z < X.Y.Z-pre.1 < X.Y.Z-pre.2 < X.Y.Z+1`
+  (`version.parse_release_id`). Wer künftig erst `src/version.py` bumpt und
+  dann einen Pre-Release baut, dreht diese Annahme um — dann böte die App nach
+  dem echten Release weiter den älteren Pre an. In dem Fall die Ordnung in
+  `version.parse_release_id` mitändern.
+- **Build-Stempel:** `release.yml` reicht den berechneten Tag als
+  `ZEIT_RELEASE_TAG` an die Build-Jobs; `build.py` schreibt ihn als
+  `RELEASE_TAG` nach `src/build_info.py`. Daraus kennt die App ihre exakte
+  Identität (`version.installed_release_id()`) und zeigt im Titel
+  `X.Y.Z-pre.N` statt nur `X.Y.Z-pre`. Fehlt der Stempel (Alt-Build, Dev-Modus),
+  gilt die reine `VERSION`.
 - **Kein Versionsbump, kein CHANGELOG, kein Label** nötig. Die Release-Notes werden
   wie beim echten Release automatisch aus den PRs generiert (`--generate-notes`),
   kumulativ seit dem letzten **echten** Release.
@@ -344,11 +362,11 @@ Lokal: `pytest` aus dem Repo-Root. Alle Tests müssen vor dem PR-Merge grün sei
 - `src/autostart.py` — plattformabhängiger Autostart (Windows-**Registry** HKCU Run, gleicher Wertname `Zeiterfassung` wie `installer.iss` → strukturell ein Eintrag; macOS-LaunchAgent / Linux `.desktop`). `is_autostart_enabled()` liest den echten Zustand, `migrate_legacy_autostart()` überführt Alt-Startup-Shortcuts frozen-gated in die Registry
 - `src/single_instance.py` — Tk-freier Single-Instance-Guard (pro-Nutzer-Localhost-Port, `acquire`/`serve`/`release`); verhindert parallele Instanzen und holt bei manuellem Zweitstart das vorhandene Fenster nach vorn (SHOW), beim Autostart-Doppelfeuer ohne Fenster-Pop (PING)
 - `src/device_id.py` — stabile, hardware-abgeleitete Geräte-ID für den Sync (Windows `MachineGuid` / macOS `IOPlatformUUID` / Linux `/etc/machine-id`, SHA-256-gehasht); nur für installierte Builds (`main.py::_ensure_device_id`, gated auf `sys.frozen`) — Repo-/Skript-Modus bleibt bei der alten, in `settings.json` persistierten Zufalls-UUID, damit eine parallel laufende Dev-Instanz nie dieselbe device_id wie eine echte Installation auf demselben Rechner bekommt
-- `src/updater.py` — GitHub-Releases-Check (stdlib-only, Check-Häufigkeit über `update_check_frequency` konfigurierbar, Default 1×/Tag); `src/changelog.py` — lädt und parst den Changelog-Abschnitt einer Release-Version vom GitHub-Tag (stdlib-only)
+- `src/updater.py` — GitHub-Releases-Check (stdlib-only, Check-Häufigkeit über `update_check_frequency` konfigurierbar, Default 1×/Tag; Pre-Releases optional über `prerelease_updates_enabled`, s. Release-Prozess); `src/changelog.py` — lädt und parst den Changelog-Abschnitt einer Release-Version vom GitHub-Tag (stdlib-only)
 - `src/platform_open.py` — `os.startfile`/`open`/`xdg-open`-Wrapper
 - `src/logging_setup.py` — File-Logging + globaler Excepthook (Setup-Fehler sind **nicht-fatal**, siehe `main.py`)
 - `src/theme.py`, `src/tooltip.py` — UI-Hilfen
-- `src/version.py` — Einzige Quelle für die App-Version (von Workflow & `installer.iss` gelesen)
+- `src/version.py` — Einzige Quelle für die App-Version (von Workflow & `installer.iss` gelesen); ordnet Release-Kennungen (`parse_release_id`, `X.Y.Z[-pre.N]`) und kennt die Build-Identität (`installed_release_id` aus dem `RELEASE_TAG`-Stempel)
 - `installer.iss` — Inno Setup Script, Version wird per `/DAppVer=...` vom Workflow übergeben.
   `AppMutex=ZeiterfassungAppMutex` (muss exakt zu `main.py::_APP_MUTEX_NAME` passen) lässt Setup
   eine laufende Instanz erkennen und den User per Retry-Dialog zum manuellen Schließen auffordern;
