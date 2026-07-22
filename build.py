@@ -111,8 +111,17 @@ def _find_inno_compiler():
 
 def build_windows():
     print(f"Building Zeiterfassung v{VERSION} (Windows) ...")
+    # --onedir statt --onefile (#118): Onefile entpackt bei JEDEM Start alle
+    # DLLs frisch in einen _MEIxxxxxx-Tempordner. Dieses Zeitfenster ist die
+    # Wurzel einer ganzen Fehlerklasse — der Bootloader kann python310.dll
+    # transient nicht laden ("Failed to load Python DLL", #118), holidays fand
+    # de.mo transient nicht (#116), und der Skalierungs-Neustart musste den
+    # _MEIPASS-Erbgang per PYINSTALLER_RESET_ENVIRONMENT umgehen (ui.py). Onedir
+    # legt die Dateien einmalig entpackt ins Installationsverzeichnis
+    # (Exe + _internal/) — kein Extraktions-Race pro Start mehr. macOS baut
+    # ohnehin schon -D. installer.iss shippt entsprechend den ganzen Ordner.
     cmd = _pyinstaller_common([
-        "--onefile",
+        "--onedir",
         "--noconsole",
         "--icon", "assets/margenheld-icon.ico",
     ])
