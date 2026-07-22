@@ -70,3 +70,13 @@ class ConflictsStore:
     def count_unresolved(self) -> int:
         with self._lock:
             return sum(1 for c in self._conflicts if not c.get("resolved"))
+
+    def unresolved_entry_keys(self) -> set[str]:
+        """ISO-Datums-Keys aller ungelösten Konflikte vom Typ 'entry' — für
+        den Konflikt-Hinweis in der Kalenderzelle und das Linksklick-Routing
+        (App._open_dialog: Konflikttag → ConflictsDialog statt Tages-Dialog)."""
+        with self._lock:
+            return {
+                c["key"] for c in self._conflicts
+                if c.get("kind") == "entry" and not c.get("resolved")
+            }

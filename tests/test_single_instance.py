@@ -109,3 +109,44 @@ def test_foreign_occupant_yields_degraded_primary(tmp_path):
         assert g is not None and g.bound is False  # degradiert, aber Start läuft
     finally:
         squatter.close()
+
+
+def test_handshake_without_secret_is_rejected(tmp_path):
+    """N9: Ein Client, der das instance-secret NICHT kennt (nur das Magic
+    schickt), darf KEIN ZEIT-OK bekommen und den SHOW-Callback nicht auslösen."""
+    base = str(tmp_path)
+    g1 = acquire(base, show_requested=True)
+    fired = threading.Event()
+    g1.serve(lambda: fired.set())
+    try:
+        port = _derive_port(base)
+        with socket.create_connection(("127.0.0.1", port), timeout=5.0) as sock:
+            sock.sendall(b"ZEIT-SHOW")          # Magic ohne Secret
+            sock.settimeout(5.0)
+            try:
+                reply = sock.recv(16)
+            except socket.timeout:
+                reply = b""
+        assert reply != b"ZEIT-OK"
+        assert fired.wait(timeout=1.0) is False
+    finally:
+        g1.release()
+
+
+def test_secret_write_failure_yields_bound_unauth_guard(tmp_path, monkeypatch):
+    """N9-Crash-Sicherheit: scheitert das Schreiben des Secrets hart, darf
+    acquire() NICHT werfen — es liefert einen gebundenen Guard mit secret=None
+    (unauthentifizierter Fallback), die App startet also weiter."""
+    import src.single_instance as si
+
+    def _boom(*args, **kwargs):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(si, "_write_secret_atomic", _boom)
+    base = str(tmp_path)
+    g = acquire(base, show_requested=True)
+    try:
+        assert g is not None and g.bound is True
+        assert g.secret is None
+    finally:
+        g.release()

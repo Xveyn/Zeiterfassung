@@ -45,9 +45,16 @@ class WorkTab:
         dark_combo(frame, pause_var, PAUSE_VALUES).grid(
             row=1, column=1, padx=10, pady=8, sticky="w")
 
-        subheader(frame, "Werkstudenten-Limit", row=2)
+        pause_warning_var = tk.BooleanVar(value=settings.get("pause_warning_enabled"))
+        tk.Checkbutton(
+            frame, text="Warnen, wenn die Pausenpflicht (§4 ArbZG) unterschritten wird",
+            variable=pause_warning_var, font=FONT, bg=BG, fg=TEXT, selectcolor=CELL_BG,
+            activebackground=BG, activeforeground=TEXT, cursor="hand2",
+        ).grid(row=2, column=0, columnspan=2, padx=10, pady=(0, 8), sticky="w")
+
+        subheader(frame, "Werkstudenten-Limit", row=3)
         wsl_frame = tk.Frame(frame, bg=BG)
-        wsl_frame.grid(row=3, column=0, columnspan=2, padx=10, pady=(0, 4), sticky="we")
+        wsl_frame.grid(row=4, column=0, columnspan=2, padx=10, pady=(0, 4), sticky="we")
 
         wsl_enabled_var = tk.BooleanVar(value=settings.get("werkstudent_limit_enabled"))
         tk.Checkbutton(
@@ -82,12 +89,13 @@ class WorkTab:
         secondary_button(
             frame, "Kategorien verwalten",
             lambda: open_category_dialog(dialog, settings),
-        ).grid(row=4, column=0, columnspan=2, padx=10, pady=(12, 8), sticky="w")
+        ).grid(row=5, column=0, columnspan=2, padx=10, pady=(12, 8), sticky="w")
 
         self.frame = frame
         self.start_vars = start_vars
         self.end_vars = end_vars
         self.pause_var = pause_var
+        self.pause_warning_var = pause_warning_var
         self.wsl_enabled_var = wsl_enabled_var
         self.wsl_start_vars = wsl_start_vars
         self.wsl_end_vars = wsl_end_vars

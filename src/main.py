@@ -2,6 +2,7 @@
 import contextlib
 import logging
 import os
+import platform
 import sys
 import threading
 import tkinter as tk
@@ -22,6 +23,7 @@ import uuid
 os.environ.setdefault("OAUTHLIB_RELAX_TOKEN_SCOPE", "1")
 
 from src.conflicts_store import ConflictsStore
+from src.device_id import derive_device_id
 from src.logging_setup import setup_logging
 from src.paths import get_base_path
 from src.reservations import ReservationStore
@@ -32,12 +34,54 @@ from src.time_utils import utc_now_iso
 from src.ui import App
 from src.version import VERSION
 
+# Muss exakt zum AppMutex-Wert in installer.iss passen. Der Installer prüft
+# beim Start, ob dieser Mutex existiert, und bittet den User, die App manuell
+# zu schließen, statt (wie der standardmäßige Restart-Manager-Weg,
+# CloseApplications) automatisch zu versuchen — Letzteres scheitert bei uns,
+# weil ein aktives Minimize-to-Tray den dabei gesendeten WM_CLOSE nur als
+# Fenster-Verstecken behandelt (App._on_close), der Prozess also weiterläuft
+# und die .exe-Datei blockiert bleibt.
+_APP_MUTEX_NAME = "ZeiterfassungAppMutex"
+
+
+def _hold_app_mutex():
+    """Hält für die Lebensdauer des Prozesses einen benannten Win32-Mutex
+    (nur installierte Windows-Builds) — reiner Existenz-Marker für
+    installer.iss (AppMutex, s. dort). Windows gibt den Handle beim
+    Prozessende automatisch frei (auch bei Crash), kein explizites Release
+    nötig; der Rückgabewert muss aber am Leben gehalten werden (sonst schließt
+    Python das Handle beim GC), s. Aufrufer in main()."""
+    if platform.system() != "Windows" or not getattr(sys, "frozen", False):
+        return None
+    try:
+        import ctypes
+        return ctypes.windll.kernel32.CreateMutexW(None, False, _APP_MUTEX_NAME)
+    except OSError:
+        return None
+
 
 def _ensure_device_id(settings) -> str:
-    """Bei Erststart oder fehlendem device_id: UUID generieren und persistieren.
+    """Liefert die garantiert vorhandene Device-ID für den Sync.
 
-    Liefert die garantiert vorhandene Device-ID — spart dem Caller einen
-    zweiten settings.get()-Call (der Pylance-seitig wieder Optional wäre)."""
+    Installierte Builds (frozen): aus einer stabilen, pro OS-Installation
+    eindeutigen Hardware-ID abgeleitet (device_id.py) — übersteht damit eine
+    Neuinstallation der App, anders als eine rein in settings.json persistierte
+    Zufalls-UUID (die beim Reinstall verloren geht). Wird bei jedem Start neu
+    abgeleitet und persistiert (statt nur einmalig), damit die Anzeige in
+    Einstellungen → Google konsistent bleibt und ein späterer erfolgreicher
+    Resolve einen früheren Fallback-Wert wieder korrigiert.
+
+    Repo-/Skript-Modus (`python -m src.main`) UND der Fallback, falls die
+    Hardware-ID nicht lesbar ist (fehlende Berechtigung o.ä.): wie bisher eine
+    bei Erststart generierte, in settings.json persistierte Zufalls-UUID —
+    bewusst NICHT hardware-abgeleitet, sonst hätte eine parallel zu einer
+    echten Installation laufende Dev-Instanz auf demselben Rechner dieselbe
+    device_id (device_id.py hat die Begründung)."""
+    if getattr(sys, "frozen", False):
+        derived = derive_device_id()
+        if derived:
+            settings.set("device_id", derived)
+            return derived
     device_id = settings.get("device_id")
     if not device_id:
         device_id = str(uuid.uuid4())
@@ -427,6 +471,9 @@ def main():
         logging.getLogger(__name__).warning(
             "Single-Instance-Guard-Fehler — Start ohne Guard", exc_info=True)
         guard = None
+
+    # Referenz muss für die Prozesslaufzeit gehalten werden (s. _hold_app_mutex).
+    _app_mutex = _hold_app_mutex()  # noqa: F841
 
     # Geteilter Daten-Lock über alle vier Stores (Audit H1/H2) + Sync-Guard.
     # data_lock: RLock (reentrant — der Sync-Apply-Block ruft gelockte

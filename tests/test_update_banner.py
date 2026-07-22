@@ -1,4 +1,4 @@
-"""UpdateBanner: Entscheidungslogik (handle_check_result) und Download-URL-Wahl
+"""UpdateBanner: Entscheidungslogik (show_if_newer) und Download-URL-Wahl
 ohne Tk — _show wird gemockt, webbrowser/pick_asset_url gepatcht."""
 
 from unittest.mock import MagicMock
@@ -18,9 +18,12 @@ class _FakeSettings:
         self._d[key] = value
 
 
-def _release(version="1.2.0", html_url="https://example/r", assets=None):
+def _release(version="1.2.0", html_url="https://example/r", assets=None,
+             release_id=None, is_prerelease=False):
     r = MagicMock()
     r.version = version
+    r.release_id = release_id if release_id is not None else version
+    r.is_prerelease = is_prerelease
     r.html_url = html_url
     r.assets = assets if assets is not None else []
     return r
@@ -32,33 +35,16 @@ def _banner(settings):
     return b
 
 
-def test_handle_check_result_persists_check_date(monkeypatch):
-    monkeypatch.setattr(ub, "today_iso", lambda: "2026-06-23")
-    s = _FakeSettings()
-    b = _banner(s)
-    b.handle_check_result(_release(), newer=False)
-    assert s.get("last_update_check_at") == "2026-06-23"
-
-
-def test_handle_check_result_not_newer_does_not_show(monkeypatch):
-    monkeypatch.setattr(ub, "today_iso", lambda: "2026-06-23")
-    b = _banner(_FakeSettings())
-    b.handle_check_result(_release(), newer=False)
-    b._show.assert_not_called()
-
-
-def test_handle_check_result_dismissed_version_does_not_show(monkeypatch):
-    monkeypatch.setattr(ub, "today_iso", lambda: "2026-06-23")
+def test_show_if_newer_dismissed_version_does_not_show():
     b = _banner(_FakeSettings(dismissed_version="1.2.0"))
-    b.handle_check_result(_release(version="1.2.0"), newer=True)
+    b.show_if_newer(_release(version="1.2.0"))
     b._show.assert_not_called()
 
 
-def test_handle_check_result_new_version_shows(monkeypatch):
-    monkeypatch.setattr(ub, "today_iso", lambda: "2026-06-23")
+def test_show_if_newer_new_version_shows():
     b = _banner(_FakeSettings(dismissed_version="1.1.0"))
     rel = _release(version="1.2.0")
-    b.handle_check_result(rel, newer=True)
+    b.show_if_newer(rel)
     b._show.assert_called_once_with(rel)
 
 
@@ -110,3 +96,18 @@ def test_dismiss_triggers_resize():
     b._dismiss("1.2.0")
     assert b._banner is None
     assert resized == [True]
+
+
+def test_show_if_newer_compares_release_id_for_prereleases():
+    # pre.1 wurde ausgeblendet, pre.2 ist ein neuer Build -> anzeigen.
+    b = _banner(_FakeSettings(dismissed_version="1.2.0-pre.1"))
+    rel = _release(version="1.2.0", release_id="1.2.0-pre.2", is_prerelease=True)
+    b.show_if_newer(rel)
+    b._show.assert_called_once_with(rel)
+
+
+def test_show_if_newer_dismissed_prerelease_does_not_show():
+    b = _banner(_FakeSettings(dismissed_version="1.2.0-pre.2"))
+    rel = _release(version="1.2.0", release_id="1.2.0-pre.2", is_prerelease=True)
+    b.show_if_newer(rel)
+    b._show.assert_not_called()

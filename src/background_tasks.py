@@ -13,8 +13,8 @@ import threading
 import traceback
 
 from src.mail import fetch_user_email, refresh_token_if_needed, TokenAuthError, TokenNetworkError
-from src.updater import check_latest_release, is_newer, should_check_today
-from src.version import VERSION
+from src.updater import REPO, check_for_update, is_newer, should_check
+from src.version import installed_release_id
 
 log = logging.getLogger(__name__)
 
@@ -111,18 +111,23 @@ class BackgroundTaskRunner:
         self.run(fn, on_done)
 
     def check_update(self, on_result):
-        """Fragt 1x pro Kalendertag GitHub nach einer neueren Version. `is_newer`
-        wird bereits im Worker ausgewertet, damit on_result(release, newer) im
-        UI-Thread keine ungeschuetzte Logik mehr ausfuehrt. Fehler still."""
-        if not should_check_today(self._settings.get("last_update_check_at")):
+        """Fragt laut `update_check_frequency`-Setting nach einer neueren
+        Version (Default: 1x pro Kalendertag). Der Kanal haengt an
+        `prerelease_updates_enabled`: ohne Opt-in nur echte Releases.
+        `is_newer` wird bereits im Worker ausgewertet, damit
+        on_result(release, newer) im UI-Thread keine ungeschuetzte Logik mehr
+        ausfuehrt. Fehler still."""
+        frequency = self._settings.get("update_check_frequency")
+        if not should_check(self._settings.get("last_update_check_at"), frequency):
             return
+        include_prereleases = bool(self._settings.get("prerelease_updates_enabled"))
 
         def fn():
             try:
-                release = check_latest_release("MargenHeld/Zeiterfassung")
+                release = check_for_update(REPO, include_prereleases)
                 if release is None:
                     return None
-                return (release, is_newer(VERSION, release.version))
+                return (release, is_newer(installed_release_id(), release.release_id))
             except Exception:
                 log.exception("Update-Check fehlgeschlagen")
                 return None

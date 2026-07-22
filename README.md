@@ -6,21 +6,22 @@ Desktop-App zur Erfassung von Arbeitszeiten mit Kalenderansicht, PDF-Report und 
 
 ## Features
 
-- **Kalenderansicht** — Monatsübersicht mit Tageseinträgen (Start, Ende, Pause)
+- **Kalenderansicht** — Monatsübersicht mit Tageseinträgen (Start, Ende, Pause) und Netto-Stunden je Tag; Stunden durchgehend in Stunden/Minuten statt dezimal
 - **PDF-Report** — Automatische Generierung als druckfreundliches PDF
 - **E-Mail-Versand** — HTML-E-Mail mit PDF-Anhang über Gmail API (OAuth2)
-- **Multi-Device-Sync** — Optionale Synchronisation von Zeiteinträgen und Mail-Vorlagen über Google Drive (`appDataFolder`), inklusive manueller Konflikt-Auflösung wenn dasselbe Datum offline auf mehreren Geräten bearbeitet wurde
+- **Multi-Device-Sync** — Optionale Synchronisation von Zeiteinträgen und Mail-Vorlagen über Google Drive (`appDataFolder`), inklusive Konflikt-Auflösung wenn dasselbe Datum offline auf mehreren Geräten bearbeitet wurde — per Linksklick direkt auf den betroffenen Kalendertag oder gesammelt in den Einstellungen
 - **Teilen & Importieren** — Eigene Arbeitszeiten als JSON-Anhang per Mail an eine zweite Person teilen; der Empfänger importiert sie mit Zeitraum-Filter und drei Konflikt-Modi (alles importieren / alles lokal / pro Tag entscheiden)
 - **Reservierungen & Google-Kalender** — Zukünftige Arbeitszeiten pro Tag reservieren (eigenes Konzept neben den Ist-Zeiten, im Kalender als violetter Eck-Punkt markiert); optionaler Abgleich mit einem wählbaren Google Kalender
 - **Reservierungs-Erinnerungen** — Optionale Toast-Benachrichtigung, wenn ein für heute reservierter Slot fällig wird und noch keine Ist-Zeit erfasst ist (konfigurierbare Vorlaufzeit)
 - **PDF-Export** — Bericht für einen frei gewählten Zeitraum direkt als PDF lokal speichern (ohne Mail-Versand)
 - **Wochenstunden-Limit** — Optionales Werkstudenten-Limit über einen konfigurierbaren Zeitraum mit Warnung beim Überschreiten
+- **Pausenpflicht-Warnung** — Hinweis beim Speichern, wenn die eingetragene Pause die gesetzliche Mindestpause nach § 4 ArbZG unterschreitet (30 Min ab >6 h, 45 Min ab >9 h); standardmäßig aktiv, abschaltbar. Grobe Näherung, keine rechtliche Bewertung
 - **Kategorien** — Mehrere Zeitblöcke pro Tag mit eigenen Kategorien; Standard-Start/-Ende pro Kategorie, optional pro Wochentag; Kategorie-Aufschlüsselung im Bericht optional
 - **UI-Skalierung** — Stufenloser Skalierungsfaktor für die Oberfläche (gerätelokal)
 - **Zeitraumwahl** — Flexibler Datumsbereich für Reports
-- **Einstellungen** — In Tabs gegliedert (Arbeitszeit / Bericht & Mail / Google / App); E-Mail-Vorlagen mit Platzhaltern, Standardpause, Empfänger
+- **Einstellungen** — In Tabs gegliedert (Arbeitszeit / Bericht & Mail / Google / App / Updates); E-Mail-Vorlagen mit Platzhaltern, Standardpause, Empfänger und Update-Einstellungen
 - **Autostart & Einzelinstanz** — Optionaler minimierter Start bei Anmeldung (Windows, macOS, Linux); es läuft immer nur eine Instanz — ein zweiter Start holt das vorhandene Fenster nach vorn
-- **Update-Check** — Prüft beim Start einmal pro Tag auf neuere Releases und zeigt einen unaufdringlichen Banner mit Direkt-Download
+- **Update-Check** — Konfigurierbare Hintergrund-Prüfung auf neue Releases; Updates-Tab mit manuellem Check, Changelog und Direkt-Download, bei aktivem Tray als einmaliger Toast statt Banner. Optional lassen sich auch Vorabversionen (Pre-Releases) anbieten — Testbuilds vor dem echten Release
 - **Dark Mode UI** — Modernes dunkles Design
 - **Cross-Platform-Installer** — Per PyInstaller gebaut, als Setup-Exe (Windows), DMG (macOS) und AppImage (Linux) paketierbar
 
@@ -43,20 +44,26 @@ Zeiterfassung/
 │   ├── mail.py            # Gmail OAuth2-Authentifizierung & Versand
 │   ├── drive.py           # Google Drive API-Wrapper (Multi-Device-Sync)
 │   ├── sync.py            # Sync-Engine (pure Logik, LWW-Merge, Konflikterkennung)
+│   ├── sync_journal.py    # Crash-Recovery für den Sync-Apply (Write-Ahead-Journal)
 │   ├── conflicts_store.py # Lokale Persistenz der Konfliktliste
 │   ├── share.py           # Export/Import von Arbeitszeiten als Share-JSON
 │   ├── reservations.py    # Reservierungen (zukünftige Soll-Zeiten)
 │   ├── reservations_sync.py # Abgleich der Reservierungen mit Google Kalender
 │   ├── reminders.py       # Fälligkeits-Logik für Reservierungs-Erinnerungen (Tk-frei)
 │   ├── reminder_scheduler.py # Periodischer Reminder-Poll → Toast über Tray
+│   ├── send_reminder.py   # Fälligkeits-Logik für den monatlichen Sende-Reminder (Tk-frei)
+│   ├── send_reminder_scheduler.py # Periodischer Poll → Sende-Toast (1×/Monat, Zustand persistiert)
 │   ├── weekly_limit.py    # Wochenstunden-Limit (Werkstudenten-Privileg), pure Logik
+│   ├── pause_requirement.py # Pausenpflicht-Check nach § 4 ArbZG, pure Logik
 │   ├── gcal.py            # Google-Calendar-API-Wrapper
 │   ├── oauth_utils.py     # Gemeinsame OAuth-Token-Boilerplate (Persistenz, Scope-Upgrade) für mail/drive/gcal
 │   ├── tray.py            # Infobereich-Icon (Minimize-to-Tray); Plattform-Fassade
 │   ├── tray_mac.py        # Natives macOS-Tray-Backend (NSStatusItem, dormant/opt-in)
 │   ├── autostart.py       # Plattformabhängiger Autostart (Windows-Registry/macOS/Linux)
 │   ├── single_instance.py # Single-Instance-Guard (verhindert parallele Instanzen)
-│   ├── updater.py         # GitHub-Releases-Check (stdlib-only, gedrosselt 1×/Tag)
+│   ├── device_id.py       # Stabile, hardware-abgeleitete Geräte-ID für installierte Builds (Sync)
+│   ├── updater.py         # GitHub-Releases-Check (stdlib-only, Frequenz konfigurierbar)
+│   ├── changelog.py       # Lädt/parst den Changelog-Abschnitt einer Release-Version
 │   ├── holidays_de.py     # Feiertags-Lookup (python-holidays)
 │   ├── time_utils.py      # Zeitberechnung und Validierung
 │   ├── logging_setup.py   # File-Logging + globaler Excepthook
@@ -268,7 +275,7 @@ Wiederhole Schritte 3-4 auf jedem weiteren Gerät mit demselben Google-Konto.
 ### Hinweise zum Sync
 
 - **Geräte-ID** — jede Installation generiert beim ersten Start eine eindeutige UUID. Im Konflikt-Dialog siehst du, von welchem Gerät die jeweilige Version kommt.
-- **Was synchronisiert wird:** Zeiteinträge + Mail-Vorlagen-Settings (Empfänger, Name, Stundensatz, Betreff, Begrüßung, Inhalt, Grußformel). Gerätespezifisches (Autostart, Standardzeiten pro Wochentag, Update-Check-Status) bleibt lokal.
+- **Was synchronisiert wird:** Zeiteinträge + Mail-Vorlagen-Settings (Empfänger, Name, Stundensatz, Betreff, Begrüßung, Inhalt, Grußformel). Gerätespezifisches (Autostart, Standardzeiten pro Wochentag, Update-Einstellungen/-Status) bleibt lokal.
 - **Wo die Sync-Datei liegt:** Im versteckten `appDataFolder` deines Google Drives — nicht über `drive.google.com` einsehbar, nur diese App kommt dran.
 - **Test-Modus:** Solange dein Cloud-Projekt im Test-Modus bleibt, müssen alle Nutzer (deine eigenen Geräte zählen mit deiner E-Mail) als Testnutzer eingetragen sein. Verifizierung durch Google ist für rein private Nutzung nicht nötig.
 - **Tombstones wachsen unbeschränkt** — gelöschte Einträge bleiben als Marker im Sync-File, damit Löschungen sich gegen veraltete Speicherungen anderer Geräte durchsetzen. Bei normalem Gebrauch unproblematisch über Jahre; siehe [`docs/known-limitations.md`](docs/known-limitations.md).
@@ -310,8 +317,10 @@ Reservierungen anlegen und den Abgleich über die App-Oberfläche aktivieren; be
 |-------------|-------------|
 | **E-Mail** | Eigene Gmail-Adresse (Absender) |
 | **Empfänger** | E-Mail-Adresse für den Report |
-| **Name** | Vollständiger Name (erscheint im PDF) |
+| **Dein Name** | Eigener vollständiger Name (erscheint im PDF-Bericht und beim Teilen) |
 | **Standard-Pause** | Standardmäßige Pausendauer in Minuten |
+| **Pausenpflicht-Warnung** | Warnen, wenn die Pause die Mindestpause nach § 4 ArbZG unterschreitet (Standard: an) |
+| **Vorabversionen anbieten** | Auch Pre-Releases als Update anbieten und melden (Standard: aus, gerätelokal) |
 | **Betreff** | E-Mail-Betreff mit Platzhaltern |
 | **Begrüßung** | Anrede im E-Mail-Text |
 | **Inhalt** | E-Mail-Body mit Platzhaltern |

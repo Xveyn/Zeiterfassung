@@ -14,7 +14,7 @@ class MailTab:
         recipient_var = tk.StringVar(value=settings.get("recipient"))
         dark_entry(frame, recipient_var, width=25).grid(row=0, column=1, padx=10, pady=(10, 8))
 
-        label(frame, "Name:", row=1)
+        label(frame, "Dein Name:", row=1)
         name_var = tk.StringVar(value=settings.get("name"))
         dark_entry(frame, name_var, width=25).grid(row=1, column=1, padx=10, pady=8)
 

@@ -11,7 +11,7 @@ import webbrowser
 
 from src.theme import ACCENT, ACCENT_HOVER, FONT_BOLD, label_button
 from src.tooltip import attach_tooltip
-from src.updater import pick_asset_url, today_iso
+from src.updater import pick_asset_url
 
 
 class UpdateBanner:
@@ -26,15 +26,14 @@ class UpdateBanner:
         self._on_resize = on_resize
         self._banner = None              # Frame oder None (None = nicht sichtbar)
 
-    def handle_check_result(self, release, newer):
-        """Läuft im UI-Thread (on_result von BackgroundTaskRunner.check_update).
-        Persistiert den Check-Stand und zeigt ggf. den Banner. `newer` ist bereits
-        im Worker ausgewertet, damit hier keine ungeschützte Logik im Tk-Event-
-        Loop läuft."""
-        self._settings.set("last_update_check_at", today_iso())
-        if not newer:
-            return
-        if release.version == self._settings.get("dismissed_version"):
+    def show_if_newer(self, release):
+        """Zeigt den Banner, wenn `release` nicht bereits ausgeblendet wurde.
+
+        Der Aufrufer hat bereits geprüft, dass `release` neuer als die
+        installierte Version ist, und routet nur dann hierher, wenn kein
+        aktiver Toast-Kanal verfügbar ist.
+        """
+        if release.release_id == self._settings.get("dismissed_version"):
             return
         self._show(release)
 
@@ -46,15 +45,16 @@ class UpdateBanner:
             before=self._get_anchor(), fill=tk.X, padx=10, pady=(5, 0),
         )
 
+        kind = "Vorabversion" if release.is_prerelease else "Version"
         tk.Label(
             self._banner,
-            text=f"Version {release.version} verfügbar",
+            text=f"{kind} {release.release_id} verfügbar",
             bg=ACCENT, fg="#ffffff", font=FONT_BOLD,
         ).pack(side=tk.LEFT, padx=10, pady=6)
 
         dismiss_btn = label_button(
             self._banner, "✕",
-            lambda: self._dismiss(release.version),
+            lambda: self._dismiss(release.release_id),
             bg=ACCENT, fg="#ffffff",
             hover_bg=ACCENT_HOVER, hover_fg="#ffffff",
             font=FONT_BOLD,
@@ -90,8 +90,8 @@ class UpdateBanner:
         ) or release.html_url
         webbrowser.open(url)
 
-    def _dismiss(self, version):
-        self._settings.set("dismissed_version", version)
+    def _dismiss(self, release_id):
+        self._settings.set("dismissed_version", release_id)
         if self._banner is not None:
             self._banner.destroy()
             self._banner = None

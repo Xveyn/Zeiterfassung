@@ -8,6 +8,8 @@ token.json
 settings.json
 conflicts.json
 reservations.json*
+instance-secret
+.instance-secret-*.tmp
 logs/
 dist/
 build/

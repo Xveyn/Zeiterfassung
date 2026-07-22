@@ -32,17 +32,41 @@ Der Workflow pusht **nichts** nach `master`. Versionsbump gehört in den PR.
 
 ### Pre-Releases (plattformübergreifende Test-Builds)
 
-Für plattformübergreifendes Testen vor einem echten Release gibt es Pre-Releases:
+Für plattformübergreifendes Testen des Stands **nach** dem letzten echten Release gibt es Pre-Releases:
 Actions → Workflow **Release** → „Run workflow" mit gesetztem Häkchen
 **prerelease** (Branch egal, gebaut wird der gewählte Ref). Ablauf:
 
 - Baut dieselben drei Artefakte (Windows/macOS-arm/Linux) wie ein echtes Release,
-  aber gestempelt mit `CHANNEL=prerelease` → In-App-Titel zeigt `X.Y.Z-pre`.
+  aber gestempelt mit `CHANNEL=prerelease` → In-App-Titel zeigt `X.Y.Z-pre.N`
+  (Nummer aus dem Build-Stempel, s.u.).
 - Tag ist **fortlaufend** `vX.Y.Z-pre.N` (N automatisch hochgezählt je Zielversion,
-  aus `src/version.py`) — kollidiert nie mit dem späteren echten Tag `vX.Y.Z`.
+  aus `src/version.py`). Das echte `vX.Y.Z` existiert zu diesem Zeitpunkt bereits:
+  der Pre-Release trägt die Version des **letzten** Releases und enthält den Stand
+  danach (siehe Reihenfolge-Regel unten). Kollidieren kann er mit ihr nicht.
 - GitHub-Release wird als **Pre-Release** markiert (`--prerelease`): der Auto-Updater
   liest `/releases/latest` und **ignoriert** Pre-Releases → normale Nutzer bekommen
   sie nicht als Update angeboten.
+- **Opt-in im Updates-Tab:** Wer die Einstellung „Auch Vorabversionen
+  (Pre-Releases) anbieten" aktiviert, bekommt Pre-Releases im Updates-Tab
+  angezeigt und als Toast/Banner gemeldet (`updater.check_for_update` fragt
+  dann `/releases` statt `/releases/latest`). Die Einstellung ist gerätelokal
+  (nicht in `SYNCED_SETTING_KEYS`).
+- **Reihenfolge-Regel (wichtig, vom Workflow erzwungen):** Ein Pre-Release wird
+  **immer nach** dem gleichnamigen echten Release gebaut, aus neuerem Code. Die
+  App ordnet entsprechend `X.Y.Z < X.Y.Z-pre.1 < X.Y.Z-pre.2 < X.Y.Z+1`
+  (`version.parse_release_id`) — die Umkehrung der Semver-Regel, aber die Praxis
+  hier. Der `pre-check`-Job bricht deshalb ab, wenn `v<VERSION>` aus
+  `src/version.py` **noch nicht** existiert: erst `version.py` bumpen und dann
+  einen Pre-Release bauen würde die Annahme umdrehen — die App böte
+  Opt-in-Nutzern nach dem echten Release dauerhaft den älteren Pre an, ohne
+  Selbstheilung. Wer die Reihenfolge künftig bewusst ändert, muss beides
+  mitziehen: die Ordnung in `version.parse_release_id` **und** dieses Gate.
+- **Build-Stempel:** `release.yml` reicht den berechneten Tag als
+  `ZEIT_RELEASE_TAG` an die Build-Jobs; `build.py` schreibt ihn als
+  `RELEASE_TAG` nach `src/build_info.py`. Daraus kennt die App ihre exakte
+  Identität (`version.installed_release_id()`) und zeigt im Titel
+  `X.Y.Z-pre.N` statt nur `X.Y.Z-pre`. Fehlt der Stempel (Alt-Build, Dev-Modus),
+  gilt die reine `VERSION`.
 - **Kein Versionsbump, kein CHANGELOG, kein Label** nötig. Die Release-Notes werden
   wie beim echten Release automatisch aus den PRs generiert (`--generate-notes`),
   kumulativ seit dem letzten **echten** Release.
@@ -214,6 +238,27 @@ Anzeige-Formatierung, ISO bleibt die Quelle). Neue datumsanzeigende
 UI-Stellen über diese Helfer formatieren, nicht roh `isoformat()`/`str()`
 ausgeben.
 
+## Stunden: intern dezimal, angezeigt in Minuten — Summen NUR über Minuten
+
+`calculate_hours` liefert **Dezimalstunden** und rundet dabei **pro Slot** auf
+2 Nachkommastellen. Das ist gröber als eine Minute (0,01 h = 0,6 min) — solche
+Werte sind als Zwischenergebnis brauchbar, als Grundlage einer *angezeigten
+Summe* aber nicht.
+
+Angezeigt wird **immer** über die Minuten-Auflösung: `hours_to_minutes` ist die
+einzige Stelle, an der Dezimalstunden auf Minuten gerundet werden;
+`format_minutes_hm` (`7 h 30 min`) und `format_hours_colon` (`7:30`) bauen
+darauf auf.
+
+**Die Regel:** Wer mehrere angezeigte Werte aufsummiert, summiert deren
+**Minuten** — niemals die Dezimalstunden, um erst am Ende zu runden. Sonst
+rundet man an zwei Stellen unabhängig voneinander, und die Summe weicht von
+dem ab, was der Nutzer in den Einzelposten sieht (bei einem typischen Monat in
+~83 % der Fälle um mindestens eine Minute; genau dieser Bug steckte im Footer,
+s. `GridRenderer._display_minutes`). Geldbeträge aus derselben Minuten-Summe
+ableiten, nicht aus den Dezimalstunden — sonst widersprechen sich Stunden- und
+Euro-Anzeige.
+
 ## Kalender-Interaktion: Linksklick speichert, Rechtsklick löscht
 
 Im Kalender gilt ein striktes Modell: **Linksklick** öffnet den Tages-Dialog
@@ -266,6 +311,24 @@ komplette Fenster-Chrome (BG, dunkle Titelleiste, disable_min_max,
 App-Icon, modal/Escape) konventionskonform. `center_dialog_on_parent`
 nach dem Widget-Aufbau bleibt Aufgabe des Dialogs.
 
+**Bekannte, akzeptierte Einschränkung — kurzes Aufblitzen der hellen
+Windows-Titelleiste:** `apply_dark_titlebar`/`disable_min_max` sind bewusst
+per `window.after(100, …)` verzögert (s. Kommentar dort — frühere Tk-eigene
+Fenster-Property-Calls würden das DWM-Farb-Attribut sonst clobbern). In
+diesem ~100ms-Fenster rendert Windows die Titelleiste kurz im hellen
+Standard-Stil, bevor sie umgefärbt wird. Versuch, das Fenster bis dahin per
+`-alpha 0.0` unsichtbar zu halten (reine Compositing-Deckkraft statt
+`withdraw`/`deiconify`, um `grab_set()` nicht zu gefährden): macht auf
+diesem Windows/Tk-Gespann `center_dialog_on_parent` dauerhaft kaputt — ein
+frisch erzeugtes Toplevel, das direkt `-alpha 0.0` bekommt, ignoriert
+spätere `geometry()`-Aufrufe komplett (auch ein zweiter Zentrier-Aufruf
+nach dem Sichtbarmachen bringt die Position nicht zurück, Dialog landet bei
+`+0+0` bzw. einem falschen Offset). Tieferer Windows/DWM-Layered-Window-
+Effekt, kein einfacher Timing-Bug — daher bewusst nicht gefixt; das
+Flackern ist als Kompromiss akzeptiert. Vor einem neuen Versuch: das oben
+beschriebene Verhalten reproduzieren und gegenchecken, ob es (in einer
+neueren Tk/Python-Version) noch auftritt.
+
 ## Tests / CI
 
 `.github/workflows/test.yml` installiert gezielt nur die Pakete, die die Tests brauchen — gepinnt in **`requirements-test.txt`** (`pytest`, `holidays`, `google-api-python-client`, `google-auth`, `google-auth-oauthlib`), **nicht** `requirements.txt`. Grund: `pycairo` (transitive Dep von `xhtml2pdf`) braucht Cairo-Systemheader auf Ubuntu und bricht sonst den CI-Build. Der Import von `xhtml2pdf` in `src/report.py::generate_pdf` ist lazy, daher laufen die Report-Tests ohne die Lib. `holidays` und die Google-Libs sind pure Python ohne C-Deps und problemlos installierbar — letztere sind nötig, weil Tests `src.ui` importieren (z.B. `tests/test_ui_delete.py`), dessen Importkette die Google-Wrapper zieht.
@@ -299,9 +362,10 @@ Lokal: `pytest` aus dem Repo-Root (Coverage: `pytest --cov=src --cov-report=term
 - `src/share.py` — Export/Import von Arbeitszeiten als Share-JSON (Teilen per Mail-Anhang)
 - `src/reservations.py` — Reservierungen (zukünftige Soll-Zeiten, eigenes Konzept neben Ist-Zeiten)
 - `src/reservations_sync.py` — Abgleich der Reservierungen mit einem Google Kalender
-- `src/reminders.py` — pure Fälligkeits-Logik für Reservierungs-Erinnerungen (Tk-frei)
-- `src/reminder_scheduler.py` — periodischer Reminder-Poll (root.after) → Toast über Tray
+- `src/reminders.py` — pure Fälligkeits-Logik für Reservierungs-Erinnerungen (Tk-frei); `src/reminder_scheduler.py` — periodischer Reminder-Poll (root.after) → Toast über Tray
+- `src/send_reminder.py` — pure Fälligkeits-Logik für den monatlichen Sende-Reminder (Tk-frei), Tag im Monat auf die tatsächliche Monatslänge geclamped; `src/send_reminder_scheduler.py` — periodischer Poll (root.after) → Toast über Tray, Fired-Zustand persistiert in Settings (einmal pro Monat, auch über Neustarts hinweg)
 - `src/weekly_limit.py` — Wochenstunden-Limit für einen konfigurierbaren Zeitraum (Werkstudenten-Privileg, #98); pure Logik, zählt nur Ist-Zeiten (nicht Reservierungen)
+- `src/pause_requirement.py` — Pausenpflicht-Warnung nach §4 ArbZG (30 Min ab >6h, 45 Min ab >9h Netto-Arbeitszeit); pure Logik, zählt nur die `pause`-Felder der Slots eines Tages (keine Lücken zwischen mehreren Slots); Default aktiv (`pause_warning_enabled`, im Gegensatz zum Werkstudenten-Limit kein Sonderfall-Opt-in, da die Pflicht für praktisch alle Angestellten in DE gilt)
 - `src/gcal.py` — Google-Calendar-API-Wrapper (lazy Imports wie `drive.py`, wegen CI ohne `requirements.txt`)
 - `src/tray.py` — Infobereich-Icon (Minimize-to-Tray); Plattform-Fassade über pystray (Windows) und `tray_mac.py` (macOS)
 - `src/tray_mac.py` — natives macOS-Tray (NSStatusItem, Main-Thread) als Backend von `tray.py`; macOS-Tray ist bis zum Mac-Gate dormant (Opt-in `ZEIT_MACOS_TRAY=1`, #88)
@@ -310,11 +374,17 @@ Lokal: `pytest` aus dem Repo-Root (Coverage: `pytest --cov=src --cov-report=term
 - `src/paths.py` — `get_base_path()` dispatched über `platform.system()` und Frozen- vs. Repo-Modus
 - `src/autostart.py` — plattformabhängiger Autostart (Windows-**Registry** HKCU Run, gleicher Wertname `Zeiterfassung` wie `installer.iss` → strukturell ein Eintrag; macOS-LaunchAgent / Linux `.desktop`). `is_autostart_enabled()` liest den echten Zustand, `migrate_legacy_autostart()` überführt Alt-Startup-Shortcuts frozen-gated in die Registry
 - `src/single_instance.py` — Tk-freier Single-Instance-Guard (pro-Nutzer-Localhost-Port, `acquire`/`serve`/`release`); verhindert parallele Instanzen und holt bei manuellem Zweitstart das vorhandene Fenster nach vorn (SHOW), beim Autostart-Doppelfeuer ohne Fenster-Pop (PING)
-- `src/updater.py` — GitHub-Releases-Check (stdlib-only, gedrosselt 1×/Tag)
+- `src/device_id.py` — stabile, hardware-abgeleitete Geräte-ID für den Sync (Windows `MachineGuid` / macOS `IOPlatformUUID` / Linux `/etc/machine-id`, SHA-256-gehasht); nur für installierte Builds (`main.py::_ensure_device_id`, gated auf `sys.frozen`) — Repo-/Skript-Modus bleibt bei der alten, in `settings.json` persistierten Zufalls-UUID, damit eine parallel laufende Dev-Instanz nie dieselbe device_id wie eine echte Installation auf demselben Rechner bekommt
+- `src/updater.py` — GitHub-Releases-Check (stdlib-only, Check-Häufigkeit über `update_check_frequency` konfigurierbar, Default 1×/Tag; Pre-Releases optional über `prerelease_updates_enabled`, s. Release-Prozess); `src/changelog.py` — lädt und parst den Changelog-Abschnitt einer Release-Version vom GitHub-Tag (stdlib-only)
 - `src/platform_open.py` — `os.startfile`/`open`/`xdg-open`-Wrapper
 - `src/logging_setup.py` — File-Logging + globaler Excepthook (Setup-Fehler sind **nicht-fatal**, siehe `main.py`)
 - `src/theme.py`, `src/tooltip.py` — UI-Hilfen
-- `src/version.py` — Einzige Quelle für die App-Version (von Workflow & `installer.iss` gelesen)
-- `installer.iss` — Inno Setup Script, Version wird per `/DAppVer=...` vom Workflow übergeben
+- `src/version.py` — Einzige Quelle für die App-Version (von Workflow & `installer.iss` gelesen); ordnet Release-Kennungen (`parse_release_id`, `X.Y.Z[-pre.N]`) und kennt die Build-Identität (`installed_release_id` aus dem `RELEASE_TAG`-Stempel)
+- `installer.iss` — Inno Setup Script, Version wird per `/DAppVer=...` vom Workflow übergeben.
+  `AppMutex=ZeiterfassungAppMutex` (muss exakt zu `main.py::_APP_MUTEX_NAME` passen) lässt Setup
+  eine laufende Instanz erkennen und den User per Retry-Dialog zum manuellen Schließen auffordern;
+  `CloseApplications=no` schaltet bewusst den Default-Weg (Restart Manager) ab, der bei aktivem
+  Minimize-to-Tray scheitert (`App._on_close` behandelt das dabei gesendete `WM_CLOSE` nur als
+  Fenster-Verstecken, der Prozess läuft weiter und blockiert die .exe-Datei)
 
 Hinweis: Es gibt **keine** `Zeiterfassung.spec`-Datei — Build läuft komplett über `build.py` mit expliziten PyInstaller-Args.

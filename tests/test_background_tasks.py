@@ -66,16 +66,98 @@ def test_run_swallows_and_logs_fn_exception(caplog):
 
 def test_check_update_skips_when_not_due(monkeypatch):
     import src.background_tasks as bg
-    monkeypatch.setattr(bg, "should_check_today", lambda v: False)
+    monkeypatch.setattr(bg, "should_check", lambda last, freq: False)
     called = {"n": 0}
-    monkeypatch.setattr(bg, "check_latest_release",
-                        lambda repo: called.__setitem__("n", called["n"] + 1))
-    r = _runner(settings={"last_update_check_at": None})
-    # settings als dict -> .get reicht; should_check_today ist gepatcht
+    monkeypatch.setattr(bg, "check_for_update",
+                        lambda repo, include: called.__setitem__("n", called["n"] + 1))
+    r = _runner(settings={
+        "last_update_check_at": None, "update_check_frequency": "daily",
+    })
     r.check_update(on_result=lambda rel, newer: None)
     import time
     time.sleep(0.2)
     assert called["n"] == 0
+
+
+def test_check_update_reads_frequency_from_settings(monkeypatch):
+    import src.background_tasks as bg
+    seen = {}
+
+    def fake_should_check(last, freq):
+        seen["frequency"] = freq
+        return False
+
+    monkeypatch.setattr(bg, "should_check", fake_should_check)
+    r = _runner(settings={
+        "last_update_check_at": None, "update_check_frequency": "weekly",
+    })
+    r.check_update(on_result=lambda rel, newer: None)
+    import time
+    time.sleep(0.2)
+    assert seen["frequency"] == "weekly"
+
+
+def test_check_update_uses_stable_channel_by_default(monkeypatch):
+    import src.background_tasks as bg
+    seen = {}
+
+    def fake_check(repo, include):
+        seen["include"] = include
+        return None            # None, damit der Worker sauber abbricht
+
+    monkeypatch.setattr(bg, "should_check", lambda last, freq: True)
+    monkeypatch.setattr(bg, "check_for_update", fake_check)
+    r = _runner(settings={
+        "last_update_check_at": None, "update_check_frequency": "daily",
+        "prerelease_updates_enabled": False,
+    })
+    r.check_update(on_result=lambda rel, newer: None)
+    import time
+    time.sleep(0.2)
+    assert seen["include"] is False
+
+
+def test_check_update_passes_prerelease_flag_from_settings(monkeypatch):
+    import src.background_tasks as bg
+    seen = {}
+
+    def fake_check(repo, include):
+        seen["include"] = include
+        return None
+
+    monkeypatch.setattr(bg, "should_check", lambda last, freq: True)
+    monkeypatch.setattr(bg, "check_for_update", fake_check)
+    r = _runner(settings={
+        "last_update_check_at": None, "update_check_frequency": "daily",
+        "prerelease_updates_enabled": True,
+    })
+    r.check_update(on_result=lambda rel, newer: None)
+    import time
+    time.sleep(0.2)
+    assert seen["include"] is True
+
+
+def test_check_update_compares_against_installed_release_id(monkeypatch):
+    import src.background_tasks as bg
+    from src.updater import Release
+
+    release = Release(
+        version="1.19.0", html_url="x", assets=(),
+        release_id="1.19.0-pre.2", is_prerelease=True,
+    )
+    monkeypatch.setattr(bg, "should_check", lambda last, freq: True)
+    monkeypatch.setattr(bg, "check_for_update", lambda repo, include: release)
+    monkeypatch.setattr(bg, "installed_release_id", lambda: "1.19.0-pre.1")
+    got = {}
+    r = _runner(settings={
+        "last_update_check_at": None, "update_check_frequency": "daily",
+        "prerelease_updates_enabled": True,
+    })
+    r.check_update(on_result=lambda rel, newer: got.update(rel=rel, newer=newer))
+    import time
+    time.sleep(0.3)
+    assert got["newer"] is True
+    assert got["rel"] is release
 
 
 def test_reconcile_on_start_skips_when_reservations_inactive():

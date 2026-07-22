@@ -152,6 +152,30 @@ def test_find_sync_file_non_403_http_error_stays_network():
         find_sync_file(service)
 
 
+def test_find_sync_file_transport_error_raises_drive_network_error():
+    """Ein Verbindungsabbruch/Timeout beim eigentlichen API-Call kommt als
+    google.auth.exceptions.TransportError, NICHT als HttpError (es gibt ja
+    keine HTTP-Response) — muss trotzdem als DriveNetworkError klassifiziert
+    werden, sonst landet er unklassifiziert im 'unknown'-Fall der UI (nativer,
+    unstyled Dialog statt der bereits vorhandenen themed
+    'Keine Internetverbindung'-Meldung)."""
+    from google.auth.exceptions import TransportError
+    service = mock.MagicMock()
+    service.files().list().execute.side_effect = TransportError("Timeout")
+    with pytest.raises(DriveNetworkError):
+        find_sync_file(service)
+
+
+def test_find_sync_file_timeout_error_raises_drive_network_error():
+    """Ein rohes (Socket-)Timeout — TimeoutError ist seit Python 3.10 der
+    Basisklassen-Alias von socket.timeout — muss ebenfalls als
+    DriveNetworkError klassifiziert werden."""
+    service = mock.MagicMock()
+    service.files().list().execute.side_effect = TimeoutError("timed out")
+    with pytest.raises(DriveNetworkError):
+        find_sync_file(service)
+
+
 def test_download_403_raises_drive_auth_error():
     from googleapiclient.errors import HttpError
     service = mock.MagicMock()
@@ -161,12 +185,28 @@ def test_download_403_raises_drive_auth_error():
         download(service, "file-1")
 
 
+def test_download_transport_error_raises_drive_network_error():
+    from google.auth.exceptions import TransportError
+    service = mock.MagicMock()
+    service.files().get().execute.side_effect = TransportError("Timeout")
+    with pytest.raises(DriveNetworkError):
+        download(service, "file-1")
+
+
 def test_upload_403_raises_drive_auth_error():
     from googleapiclient.errors import HttpError
     service = mock.MagicMock()
     resp = mock.MagicMock(status=403, reason="Forbidden")
     service.files().update().execute.side_effect = HttpError(resp, b"")
     with pytest.raises(DriveAuthError):
+        upload(service, b'{"x":1}', file_id="file-1")
+
+
+def test_upload_transport_error_raises_drive_network_error():
+    from google.auth.exceptions import TransportError
+    service = mock.MagicMock()
+    service.files().update().execute.side_effect = TransportError("Timeout")
+    with pytest.raises(DriveNetworkError):
         upload(service, b'{"x":1}', file_id="file-1")
 
 

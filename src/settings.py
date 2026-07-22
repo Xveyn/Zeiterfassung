@@ -18,6 +18,7 @@ SYNCED_SETTING_KEYS = (
     "gcal_calendar_id", "categories", "category_times",
     "werkstudent_limit_enabled", "werkstudent_limit_start",
     "werkstudent_limit_end", "werkstudent_limit_max_hours",
+    "pause_warning_enabled",
 )
 
 DEFAULTS = {
@@ -34,6 +35,9 @@ DEFAULTS = {
     "state": "",
     "last_update_check_at": "",
     "dismissed_version": "",
+    "update_check_frequency": "daily",
+    "update_toast_shown_version": "",
+    "prerelease_updates_enabled": False,
     "default_start_mon": "08:00",
     "default_start_tue": "08:00",
     "default_start_wed": "08:00",
@@ -53,6 +57,10 @@ DEFAULTS = {
     "minimize_to_tray": False,
     "reminders_enabled": False,
     "reminder_minutes_before": 15,
+    "send_reminder_enabled": False,
+    "send_reminder_day": 1,
+    "send_reminder_time": "18:00",
+    "send_reminder_last_fired_month": "",
     "sender_email": "",
     "sync_enabled": False,
     "device_id": "",
@@ -69,6 +77,7 @@ DEFAULTS = {
     "werkstudent_limit_start": "",
     "werkstudent_limit_end": "",
     "werkstudent_limit_max_hours": 20.0,
+    "pause_warning_enabled": True,
 }
 
 _COERCE_FAILED = object()

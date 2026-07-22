@@ -11,7 +11,11 @@ from src.theme import (
     primary_button, secondary_button,
     set_primary_button_enabled, themed_askyesno, themed_showinfo,
 )
-from src.time_utils import format_date, format_iso_weekday_date, get_week_label, validate_slots
+from src.pause_requirement import check_day_pause
+from src.time_utils import (
+    format_date, format_hours_hm, format_iso_weekday_date, get_week_label,
+    validate_slots,
+)
 from src.weekly_limit import check_week_limit
 
 # Kategorie am Slot: "" = keine Kategorie. Das Dropdown ist readonly (Anlegen/
@@ -19,6 +23,11 @@ from src.weekly_limit import check_week_limit
 # darum wird "" als eigener Eintrag "(ohne Kategorie)" gezeigt und beim Speichern
 # wieder auf "" abgebildet. Label konsistent mit report.py/period_picker/share.
 NO_CATEGORY_LABEL = "(ohne Kategorie)"
+
+# Angehängt ans Kategorie-Label, wenn die Slot-Zeiten manuell von den für
+# diese Kategorie hinterlegten Standardzeiten abweichen (z.B. "Office*") —
+# reine Anzeige, s. slot_category_display/category_from_display.
+OVERRIDE_MARKER = "*"
 
 
 def category_choices(categories):
@@ -32,9 +41,82 @@ def category_to_display(value):
     return value if value else NO_CATEGORY_LABEL
 
 
+def suggest_ist_category(reservation_slots):
+    """Kategorie-Vorschlag für die neu vorbelegte Ist-Zeit-Zeile aus einer
+    bestehenden Reservierung (noch keine Ist-Zeit gespeichert). Nur bei GENAU
+    EINEM Reservierungs-Slot — bei mehreren wäre unklar, welcher Slot die
+    Kategorie der einen vorgeschlagenen Zeile bestimmen sollte (die
+    Zeit-Vorbelegung nimmt ohnehin nur den ersten Slot, s. open_entry_dialog)."""
+    if len(reservation_slots) != 1:
+        return ""
+    return reservation_slots[0].get("kategorie", "")
+
+
 def category_from_display(display):
-    """Dropdown-Anzeige → gespeicherter Kategoriewert ('(ohne Kategorie)' → '')."""
-    return "" if display == NO_CATEGORY_LABEL else display
+    """Dropdown-Anzeige → gespeicherter Kategoriewert: '(ohne Kategorie)' → '',
+    ein angehängtes Override-Sternchen ('Office*' → 'Office') wird mit
+    gestrippt — es ist reine Anzeige (s. slot_category_display) und darf nie
+    im persistierten Kategoriewert landen."""
+    if display == NO_CATEGORY_LABEL:
+        return ""
+    if display.endswith(OVERRIDE_MARKER):
+        return display[:-len(OVERRIDE_MARKER)]
+    return display
+
+
+def slot_category_display(kategorie, start, end, pause, category_times, weekday_key,
+                          default_start, default_end, default_pause):
+    """Anzeige-Label fürs Kategorie-Dropdown eines Slots: Kategorie-Name, mit
+    angehängtem `OVERRIDE_MARKER`, wenn Start/Ende (und bei Ist-Zeit-Slots
+    auch Pause) manuell von den für diese Kategorie hinterlegten Standard-
+    zeiten abweichen. `pause=None` für Reservierungs-Slots (keine Pause-
+    Komponente dort) — dann zählt nur Start/Ende für den Abgleich. Reine
+    Anzeige: der persistierte Kategoriewert bleibt der Klarname, ohne
+    Sternchen (s. category_from_display). Tk-frei, daher ohne UI testbar."""
+    if not kategorie:
+        return NO_CATEGORY_LABEL
+    t_start, t_end, t_pause = resolve_slot_defaults(
+        category_times, kategorie, weekday_key,
+        default_start, default_end, default_pause,
+    )
+    overridden = start != t_start or end != t_end
+    if pause is not None:
+        overridden = overridden or str(pause) != str(t_pause)
+    return kategorie + OVERRIDE_MARKER if overridden else kategorie
+
+
+def plan_entry_save(ist_slots, res_slots, show_reservation):
+    """Entscheidungslogik für den einen kombinierten Speichern-Button im
+    Tages-Dialog: validiert Ist-Zeit- und (falls sichtbar) Reservierungs-
+    Slots, bevor irgendetwas persistiert wird. Alles-oder-nichts — ist einer
+    der beiden Blöcke ungültig, wird auch der andere, gültige Block nicht
+    gespeichert (sonst müsste ein einzelner Klick teils leise scheitern,
+    teils leise gelingen). Tk-frei, daher ohne UI testbar.
+
+    Liefert `{"error": str|None, "save_ist": bool, "save_reservation": bool}`.
+    Ein leerer Slot-Block (Block ungenutzt oder nicht sichtbar) wird einfach
+    übersprungen, nicht als Fehler gewertet."""
+    if ist_slots:
+        ok, msg = validate_slots(ist_slots, with_pause=True)
+        if not ok:
+            return {
+                "error": f"Arbeitszeit: {msg}" if show_reservation else msg,
+                "save_ist": False,
+                "save_reservation": False,
+            }
+    if show_reservation and res_slots:
+        ok, msg = validate_slots(res_slots, with_pause=False)
+        if not ok:
+            return {
+                "error": f"Reservierung: {msg}",
+                "save_ist": False,
+                "save_reservation": False,
+            }
+    return {
+        "error": None,
+        "save_ist": bool(ist_slots),
+        "save_reservation": show_reservation and bool(res_slots),
+    }
 
 
 def reservation_block_visible(day, today, *, has_reservation=False):
@@ -55,11 +137,14 @@ def open_entry_dialog(parent, date_str, storage, settings, on_change,
     """Modaler Dialog zum Bearbeiten von Ist-Zeit und Reservierung eines Tages.
 
     Beide Blöcke führen eine Liste von Slot-Zeilen (Start/Ende/Pause/Kategorie
-    bzw. Start/Ende/Kategorie). Speichern sammelt die Zeilen, validiert sie
-    (validate_slots: pro Slot + Überlappungsfreiheit) und schreibt die Slot-
-    Liste. Entfernt man alle Zeilen eines Blocks und speichert, wird der Block
-    gelöscht — der Dialog hat keinen Lösch-Button (Löschen läuft im Kalender:
-    Rechtsklick auf Win/Linux, ✕-Button in der Zelle auf macOS).
+    bzw. Start/Ende/Kategorie) und teilen sich EINEN „Speichern"-Button unten
+    im Dialog (statt je einen eigenen): der sammelt und validiert beide
+    Blöcke (validate_slots: pro Slot + Überlappungsfreiheit) und schreibt sie
+    alles-oder-nichts — ist ein Block ungültig, wird auch der andere, gültige
+    Block nicht gespeichert (siehe `plan_entry_save`). Entfernt man alle
+    Zeilen eines Blocks und speichert, wird der Block gelöscht — der Dialog
+    hat keinen Lösch-Button (Löschen läuft im Kalender: Rechtsklick auf
+    Win/Linux, ✕-Button in der Zelle auf macOS).
 
     on_change wird nach erfolgreichem Speichern/Löschen aufgerufen.
     reservation_store / trigger_reconcile sind optional; ist der Tag
@@ -110,30 +195,34 @@ def open_entry_dialog(parent, date_str, storage, settings, on_change,
     ist_rows_frame = tk.Frame(outer, bg=BG)
     ist_rows_frame.pack(fill="x")
     ist_rows = []  # Liste von {frame, start, end, pause, kategorie}
-    ist_save_btn = None  # wird nach dem Button-Bau gesetzt (s. unten)
+    res_rows = []  # Liste von {frame, start, end, kategorie}; bleibt leer ohne Reservierungs-Block
+    save_btn = None  # wird nach dem Button-Bau gesetzt (s. unten) — EIN Button für beide Blöcke
     # "locked" = Button vorübergehend nicht klickbar: (1) kurzer Cooldown direkt
     # nach dem Öffnen (unten via dialog.after freigegeben), damit ein Doppelklick
     # auf die Kalenderzelle nicht durchschlägt und bei vorbefüllten Einträgen
     # sofort speichert; (2) während eines laufenden Speicherns. Flag statt
     # -state, weil label_button keine -state-Option hat und
     # set_primary_button_enabled nur die Optik ändert (blockt den Klick nicht).
-    ist_save_locked = {"value": True}
+    save_locked = {"value": True}
 
-    def refresh_ist_save_state():
-        # Einzige Stelle, die den Enabled-Zustand entscheidet: aktiv, wenn Slots
-        # vorhanden sind UND der Button nicht (Cooldown/Speichern) gesperrt ist.
-        if ist_save_btn is not None:
-            set_primary_button_enabled(
-                ist_save_btn, bool(ist_rows) and not ist_save_locked["value"])
+    def refresh_save_state():
+        # Einzige Stelle, die den Enabled-Zustand entscheidet: aktiv, wenn in
+        # mindestens einem der beiden Blöcke Slots vorhanden sind UND der
+        # Button nicht (Cooldown/Speichern) gesperrt ist.
+        if save_btn is not None:
+            has_content = bool(ist_rows) or (show_reservation and bool(res_rows))
+            set_primary_button_enabled(save_btn, has_content and not save_locked["value"])
 
-    def unlock_ist_save():
+    def unlock_save():
         # Ende des Öffnen-Cooldowns; Dialog kann zwischenzeitlich zu sein.
         if dialog.winfo_exists():
-            ist_save_locked["value"] = False
-            refresh_ist_save_state()
+            save_locked["value"] = False
+            refresh_save_state()
 
-    def add_ist_row(start, end, pause, kategorie, removable=True):
-        row = tk.Frame(ist_rows_frame, bg=BG)
+    def add_ist_row(start, end, pause, kategorie, removable=True, parent=None):
+        # parent nur für die Breiten-Probe unten (ungepackter Holder) — sonst
+        # landet die Zeile im sichtbaren Ist-Zeit-Block.
+        row = tk.Frame(parent if parent is not None else ist_rows_frame, bg=BG)
         row.pack(fill="x", pady=2)
         sv = tk.StringVar(value=start)
         ev = tk.StringVar(value=end)
@@ -152,6 +241,23 @@ def open_entry_dialog(parent, date_str, storage, settings, on_change,
         cat_combo.pack(side=tk.LEFT, padx=2)
         record = {"frame": row, "start": sv, "end": ev, "pause": pv, "kategorie": kv}
 
+        # Manuelles Anpassen der Zeit ändert NIE die zugeordnete Kategorie —
+        # nur das Anzeige-Label bekommt dann ein Override-Sternchen ("Office*",
+        # s. slot_category_display); rein optisch, kv bleibt die einzige
+        # Quelle für den beim Speichern persistierten Kategoriewert.
+        def refresh_cat_display(*_a):
+            kategorie = category_from_display(kv.get())
+            display = slot_category_display(
+                kategorie, sv.get(), ev.get(), pv.get(), category_times,
+                weekday_key, default_start, default_end, default_pause,
+            )
+            if kv.get() != display:
+                kv.set(display)
+
+        sv.trace_add("write", refresh_cat_display)
+        ev.trace_add("write", refresh_cat_display)
+        pv.trace_add("write", refresh_cat_display)
+
         def on_cat_change(*_a):
             t_start, t_end, t_pause = resolve_slot_defaults(
                 category_times, category_from_display(kv.get()), weekday_key,
@@ -168,13 +274,16 @@ def open_entry_dialog(parent, date_str, storage, settings, on_change,
                 pv.set(t_pause)
                 base["pause"] = t_pause
 
-        # Standardzeiten der Kategorie ziehen nur bei NEUEN (entfernbaren) Zeilen
-        # und nur bei echter Auswahl aus der Vorschlagsliste (<<ComboboxSelected>>)
-        # — nicht pro Tastendruck (Freitext würde sonst auf globale Defaults
-        # zurücksetzen) und nicht für bereits gespeicherte Slots (deren Zeiten
-        # sind bewusst gesetzt und bleiben unangetastet).
+        # Marker-Anzeige bei jeder Kategorie-Wahl neu berechnen (alle Zeilen);
+        # Standardzeiten der Kategorie ziehen nur bei NEUEN (entfernbaren)
+        # Zeilen und nur bei echter Auswahl aus der Vorschlagsliste
+        # (<<ComboboxSelected>>) — nicht pro Tastendruck (Freitext würde sonst
+        # auf globale Defaults zurücksetzen) und nicht für bereits gespeicherte
+        # Slots (deren Zeiten sind bewusst gesetzt und bleiben unangetastet).
+        cat_combo.bind("<<ComboboxSelected>>", refresh_cat_display, add="+")
         if removable:
-            cat_combo.bind("<<ComboboxSelected>>", on_cat_change)
+            cat_combo.bind("<<ComboboxSelected>>", on_cat_change, add="+")
+        refresh_cat_display()  # initialer Marker-Zustand beim Dialog-Öffnen
 
         def remove():
             row.destroy()
@@ -185,7 +294,7 @@ def open_entry_dialog(parent, date_str, storage, settings, on_change,
             # beim nächsten "+ Slot" wieder auf).
             if not ist_rows:
                 ist_rows_frame.configure(height=1)
-            refresh_ist_save_state()
+            refresh_save_state()
 
         # Bereits gespeicherte Slots tragen kein ×: Löschen läuft ausschließlich
         # über den Rechtsklick im Kalender (Design-Entscheidung — der Dialog
@@ -194,7 +303,7 @@ def open_entry_dialog(parent, date_str, storage, settings, on_change,
         if removable:
             secondary_button(row, "×", remove, padx=8, pady=0).pack(side=tk.LEFT, padx=2)
         ist_rows.append(record)
-        refresh_ist_save_state()
+        refresh_save_state()
 
     # Vorbelegung: vorhandene Ist-Slots → bestehende Reservierung (erste Slot-
     # Zeit). Gibt es weder Ist-Zeit noch Reservierung, bleibt der Block leer —
@@ -205,9 +314,11 @@ def open_entry_dialog(parent, date_str, storage, settings, on_change,
                         s.get("kategorie", ""), removable=False)
     elif existing_reservation and existing_reservation["slots"]:
         # Vorschlag aus der Reservierung (noch nicht als Ist-Zeit gespeichert)
-        # → entfernbar.
+        # → entfernbar. Kategorie wird mitvorgeschlagen (suggest_ist_category:
+        # nur bei genau einem Reservierungs-Slot).
         first = existing_reservation["slots"][0]
-        add_ist_row(first["start"], first["end"], default_pause, "")
+        add_ist_row(first["start"], first["end"], default_pause,
+                    suggest_ist_category(existing_reservation["slots"]))
 
     ist_btns = tk.Frame(outer, bg=BG)
     ist_btns.pack(fill="x", pady=(2, 8))
@@ -216,57 +327,6 @@ def open_entry_dialog(parent, date_str, storage, settings, on_change,
         lambda: add_ist_row(default_start, default_end, default_pause, ""),
     ).pack(side=tk.LEFT, padx=2)
 
-    def save_ist():
-        # Ohne Slot deaktiviert; während Cooldown/Speichern geblockt.
-        if not ist_rows or ist_save_locked["value"]:
-            return
-        ist_save_locked["value"] = True
-        refresh_ist_save_state()  # sofort sperren gegen Doppelklick
-        slots = [{
-            "start": r["start"].get(),
-            "end": r["end"].get(),
-            "pause": int(r["pause"].get() or 0),
-            "kategorie": category_from_display(r["kategorie"].get()),
-        } for r in ist_rows]
-        ok, msg = validate_slots(slots, with_pause=True)
-        if not ok:
-            themed_showinfo(dialog, "Hinweis", msg)
-            ist_save_locked["value"] = False
-            refresh_ist_save_state()  # Fehler → wieder freigeben
-            return
-
-        # Werkstudenten-Wochenlimit: prüft die ISO-Woche MIT den neuen Slots
-        # (simulierter Post-Save-Stand), nicht den aktuellen Storage-Stand —
-        # sonst würde eine Verlängerung, die erst über das Limit treibt,
-        # nicht erkannt. Reine Warnung: der User kann trotzdem speichern.
-        simulated_entries = storage.get_all()
-        simulated_entries[date_str] = {"slots": slots}
-        overshoot = check_week_limit(settings, simulated_entries, date_str)
-        if overshoot is not None:
-            week_label = get_week_label(overshoot["iso_year"], overshoot["iso_week"])
-            confirm = themed_askyesno(
-                dialog, "Wochenlimit überschritten",
-                f"{week_label}: {overshoot['total_hours']:.2f}h Ist-Zeit "
-                f"überschreiten das konfigurierte Werkstudenten-Limit von "
-                f"{overshoot['limit_hours']:.2f}h/Woche.\n\n"
-                "Grobe Näherung, keine rechtliche Bewertung.\n\nTrotzdem speichern?",
-            )
-            if not confirm:
-                ist_save_locked["value"] = False
-                refresh_ist_save_state()  # Abbruch → wieder freigeben
-                return
-
-        storage.save(date_str, slots)
-        dialog.destroy()
-        on_change()
-
-    ist_save = tk.Frame(outer, bg=BG)
-    ist_save.pack(fill="x")
-    ist_save_btn = primary_button(ist_save, "Speichern", save_ist)
-    ist_save_btn.pack(side=tk.LEFT, padx=2)
-    refresh_ist_save_state()  # startet gesperrt (Cooldown)
-    dialog.after(int(STRAY_CLICK_GUARD_S * 1000), unlock_ist_save)
-
     # ---------- Reservierung ----------
     if show_reservation:
         tk.Label(
@@ -274,19 +334,6 @@ def open_entry_dialog(parent, date_str, storage, settings, on_change,
         ).pack(anchor="w", pady=(12, 2))
         res_rows_frame = tk.Frame(outer, bg=BG)
         res_rows_frame.pack(fill="x")
-        res_rows = []  # Liste von {frame, start, end, kategorie}
-        res_save_btn = None  # wird nach dem Button-Bau gesetzt (s. unten)
-        res_save_locked = {"value": True}  # Cooldown + Speicher-Sperre (s. ist_save_locked)
-
-        def refresh_res_save_state():
-            if res_save_btn is not None:
-                set_primary_button_enabled(
-                    res_save_btn, bool(res_rows) and not res_save_locked["value"])
-
-        def unlock_res_save():
-            if dialog.winfo_exists():
-                res_save_locked["value"] = False
-                refresh_res_save_state()
 
         def add_res_row(start, end, kategorie, removable=True):
             row = tk.Frame(res_rows_frame, bg=BG)
@@ -302,6 +349,20 @@ def open_entry_dialog(parent, date_str, storage, settings, on_change,
             cat_combo.pack(side=tk.LEFT, padx=2)
             record = {"frame": row, "start": sv, "end": ev, "kategorie": kv}
 
+            # Manuelles Anpassen der Zeit ändert nie die Kategorie — nur das
+            # Anzeige-Label bekommt ein Override-Sternchen (s. add_ist_row).
+            def refresh_cat_display(*_a):
+                kategorie = category_from_display(kv.get())
+                display = slot_category_display(
+                    kategorie, sv.get(), ev.get(), None, category_times,
+                    weekday_key, default_start, default_end, default_pause,
+                )
+                if kv.get() != display:
+                    kv.set(display)
+
+            sv.trace_add("write", refresh_cat_display)
+            ev.trace_add("write", refresh_cat_display)
+
             def on_cat_change(*_a):
                 # Reservierungen haben keine Pause → nur Start/Ende anwenden.
                 t_start, t_end, _ = resolve_slot_defaults(
@@ -315,16 +376,20 @@ def open_entry_dialog(parent, date_str, storage, settings, on_change,
                     ev.set(t_end)
                     base["end"] = t_end
 
-            # Nur bei neuen Zeilen + echter Auswahl ziehen (siehe add_ist_row).
+            # Marker-Anzeige bei jeder Kategorie-Wahl neu berechnen (alle
+            # Zeilen); Standardzeiten ziehen nur bei neuen Zeilen + echter
+            # Auswahl (siehe add_ist_row).
+            cat_combo.bind("<<ComboboxSelected>>", refresh_cat_display, add="+")
             if removable:
-                cat_combo.bind("<<ComboboxSelected>>", on_cat_change)
+                cat_combo.bind("<<ComboboxSelected>>", on_cat_change, add="+")
+            refresh_cat_display()  # initialer Marker-Zustand beim Dialog-Öffnen
 
             def remove():
                 row.destroy()
                 res_rows.remove(record)
                 if not res_rows:
                     res_rows_frame.configure(height=1)
-                refresh_res_save_state()
+                refresh_save_state()
 
             # Gespeicherte Reservierungs-Slots tragen kein × (Löschen per
             # Rechtsklick im Kalender); nur neue, ungespeicherte Zeilen.
@@ -332,7 +397,7 @@ def open_entry_dialog(parent, date_str, storage, settings, on_change,
                 secondary_button(row, "×", remove, padx=8, pady=0).pack(
                     side=tk.LEFT, padx=2)
             res_rows.append(record)
-            refresh_res_save_state()
+            refresh_save_state()
 
         # Bestehende Reservierung → Zeilen. Sonst leer: nur der „+ Slot"-Button
         # (an der Stelle, wo sonst die Default-Zeile stünde), keine Vorbelegung.
@@ -348,35 +413,109 @@ def open_entry_dialog(parent, date_str, storage, settings, on_change,
             lambda: add_res_row(default_start, default_end, ""),
         ).pack(side=tk.LEFT, padx=2)
 
-        def save_reservation():
-            # Ohne Slot deaktiviert; während Cooldown/Speichern geblockt.
-            if not res_rows or res_save_locked["value"]:
-                return
-            res_save_locked["value"] = True
-            refresh_res_save_state()  # sofort sperren gegen Doppelklick
-            slots = [{
-                "start": r["start"].get(),
-                "end": r["end"].get(),
-                "kategorie": category_from_display(r["kategorie"].get()),
-            } for r in res_rows]
-            ok, msg = validate_slots(slots, with_pause=False)
-            if not ok:
-                themed_showinfo(dialog, "Hinweis", msg)
-                res_save_locked["value"] = False
-                refresh_res_save_state()  # Fehler → wieder freigeben
-                return
-            reservation_store.save(date_str, slots)
-            dialog.destroy()
-            on_change()
-            if trigger_reconcile is not None:
-                trigger_reconcile()
+    # ---------- Mindestbreite ohne Slot-Zeilen ----------
+    # Hat der Tag weder Ist-Zeit noch Reservierung, bestimmen nur die schmalen
+    # „+ Slot"-Buttons die Dialogbreite — das Fenster wird deutlich schmaler als
+    # derselbe Dialog mit einer Zeile und schneidet den Titel ab. Ein
+    # unsichtbarer Spacer hält die Breite, die eine Slot-Zeile hätte. Gemessen
+    # statt hart kodiert, weil die Zeilenbreite an Font/UI-Skalierung hängt; die
+    # Probe-Zeile entsteht in einem nie gepackten Holder, wird also nie sichtbar.
+    if not ist_rows and not res_rows:
+        holder = tk.Frame(outer, bg=BG)
+        add_ist_row(default_start, default_end, default_pause, "", parent=holder)
+        holder.update_idletasks()
+        row_width = holder.winfo_reqwidth()
+        holder.destroy()
+        ist_rows.clear()
+        tk.Frame(outer, bg=BG, height=1, width=row_width).pack()
 
-        res_save = tk.Frame(outer, bg=BG)
-        res_save.pack(fill="x")
-        res_save_btn = primary_button(res_save, "Reservierung speichern",
-                                      save_reservation)
-        res_save_btn.pack(side=tk.LEFT, padx=2)
-        refresh_res_save_state()  # startet gesperrt (Cooldown)
-        dialog.after(int(STRAY_CLICK_GUARD_S * 1000), unlock_res_save)
+    # ---------- Speichern (ein Button für beide Blöcke) ----------
+    def save_all():
+        # Ohne Inhalt deaktiviert; während Cooldown/Speichern geblockt.
+        if save_locked["value"]:
+            return
+        ist_slots = [{
+            "start": r["start"].get(),
+            "end": r["end"].get(),
+            "pause": int(r["pause"].get() or 0),
+            "kategorie": category_from_display(r["kategorie"].get()),
+        } for r in ist_rows]
+        res_slots = [{
+            "start": r["start"].get(),
+            "end": r["end"].get(),
+            "kategorie": category_from_display(r["kategorie"].get()),
+        } for r in res_rows]
+        if not ist_slots and not (show_reservation and res_slots):
+            return
+
+        plan = plan_entry_save(ist_slots, res_slots, show_reservation)
+        if plan["error"]:
+            themed_showinfo(dialog, "Hinweis", plan["error"])
+            return
+
+        save_locked["value"] = True
+        refresh_save_state()  # sofort sperren gegen Doppelklick
+
+        if plan["save_ist"]:
+            # Werkstudenten-Wochenlimit: prüft die ISO-Woche MIT den neuen
+            # Slots (simulierter Post-Save-Stand), nicht den aktuellen
+            # Storage-Stand — sonst würde eine Verlängerung, die erst über
+            # das Limit treibt, nicht erkannt. Reine Warnung: der User kann
+            # trotzdem speichern.
+            simulated_entries = storage.get_all()
+            simulated_entries[date_str] = {"slots": ist_slots}
+            overshoot = check_week_limit(settings, simulated_entries, date_str)
+            if overshoot is not None:
+                week_label = get_week_label(overshoot["iso_year"], overshoot["iso_week"])
+                confirm = themed_askyesno(
+                    dialog, "Wochenlimit überschritten",
+                    f"{week_label}: {overshoot['total_hours']:.2f}h Ist-Zeit "
+                    f"überschreiten das konfigurierte Werkstudenten-Limit von "
+                    f"{overshoot['limit_hours']:.2f}h/Woche.\n\n"
+                    "Grobe Näherung, keine rechtliche Bewertung.\n\nTrotzdem speichern?",
+                )
+                if not confirm:
+                    save_locked["value"] = False
+                    refresh_save_state()  # Abbruch → wieder freigeben
+                    return
+
+            # Pausenpflicht (§4 ArbZG): zählt nur die eingetragenen
+            # pause-Felder der Zeitblöcke, keine Lücke ZWISCHEN zwei Blöcken
+            # desselben Tages — das steht bewusst mit im Warntext, sonst
+            # wirkt eine Warnung trotz real genommener Pause zwischen zwei
+            # Einträgen wie ein Bug. Reine Warnung: der User kann trotzdem
+            # speichern.
+            pause_violation = check_day_pause(settings, ist_slots)
+            if pause_violation is not None:
+                confirm = themed_askyesno(
+                    dialog, "Pausenpflicht unterschritten",
+                    f"{format_hours_hm(pause_violation['worked_hours'])} Arbeitszeit "
+                    f"mit nur {pause_violation['actual_pause_minutes']} min Pause "
+                    f"eingetragen — §4 ArbZG schreibt ab dieser Arbeitszeit mindestens "
+                    f"{pause_violation['required_pause_minutes']} min vor.\n\n"
+                    "Gezählt werden nur die eingetragenen Pause-Minuten der Zeitblöcke, "
+                    "keine Lücke zwischen mehreren Blöcken am selben Tag.\n\n"
+                    "Grobe Näherung, keine rechtliche Bewertung.\n\nTrotzdem speichern?",
+                )
+                if not confirm:
+                    save_locked["value"] = False
+                    refresh_save_state()  # Abbruch → wieder freigeben
+                    return
+
+        if plan["save_ist"]:
+            storage.save(date_str, ist_slots)
+        if plan["save_reservation"]:
+            reservation_store.save(date_str, res_slots)
+        dialog.destroy()
+        on_change()
+        if plan["save_reservation"] and trigger_reconcile is not None:
+            trigger_reconcile()
+
+    save_frame = tk.Frame(outer, bg=BG)
+    save_frame.pack(fill="x", pady=(12, 0))
+    save_btn = primary_button(save_frame, "Speichern", save_all)
+    save_btn.pack(side=tk.LEFT, padx=2)
+    refresh_save_state()  # startet gesperrt (Cooldown)
+    dialog.after(int(STRAY_CLICK_GUARD_S * 1000), unlock_save)
 
     center_dialog_on_parent(dialog, parent)

@@ -47,12 +47,20 @@ Rendering der Monats-/Wochenansicht inkl. Double-Buffer und Fenster-Geometrie.
   binden diese Callbacks, nicht App-Methoden direkt.
 - **Widgets:** der Renderer besitzt `grid_container` + die zwei Double-Buffer-Frames
   (`build_grid(parent)`); `header_label`/`footer_label` werden in `App._build_header`/
-  `_build_footer` erzeugt und per `attach_labels(...)` nachgereicht (der Renderer beschreibt
-  sie). `measure_max_width(...)` pinnt vor `mainloop()` die Fensterbreite (4-Kombi-Probing).
+  `_build_footer` erzeugt und per `attach_labels(header_label, footer_label,
+  header_width_spacer)` nachgereicht (der Renderer beschreibt sie). `header_label` selbst
+  hängt **nicht** im pack-Fluss von `header_frame`, sondern wird per `place(relx=0.5, …)`
+  absolut auf die Fensterbreite zentriert — sonst würde es je nach Breite der rechten
+  Sync-Button-Gruppe (Status-Text ändert sich laufend) sichtbar verrutschen. Damit
+  `header_label`s Breitenbedarf trotzdem in `measure_max_width` einfließt (place-Kinder
+  zählen nicht zur reqwidth), steht an seiner alten pack-Position ein unsichtbarer
+  `header_width_spacer`, dessen `font`/`width` `refresh()` synchron zum echten
+  `header_label` hält. `measure_max_width(...)` pinnt vor `mainloop()` die Fensterbreite
+  (4-Kombi-Probing).
 - **Fenster-Geometrie:** `repin_geometry()` setzt Breite (≥ gemessenes Maximum) und Höhe
   (aktuelle reqheight) neu auf das fixe Fenster. Genutzt vom View-/Spalten-Wechsel in
   `refresh()`, beim Wechsel der Footer-Reservierungsbreite (Stundenlohn zur Laufzeit
-  gesetzt/entfernt — `_update_footer` reserviert 16 vs. 40 Zeichen, s.u.) **und** extern vom
+  gesetzt/entfernt — `_update_footer` reserviert 20 vs. 42 Zeichen, s.u.) **und** extern vom
   `UpdateBanner` (als `on_resize`), dessen Ein-/Ausblenden die nötige Höhe ändert, ohne
   View/Spalten zu wechseln. `resizable(False, False)` bleibt. Die **Breite ratcht**:
   `_fixed_width` wächst mit der breitesten je angeforderten reqwidth mit, schrumpft aber nie
@@ -84,8 +92,10 @@ Tests genutzt). Reine Formatier-Helfer `_status_text`/`_tray_toast` sind ohne Tk
   für `main.py`). `tray.stop()`/`root.destroy()` bleiben in `App._quit_with_sync_push`.
 
 ### UpdateBanner (`update_banner.py`)
-Banner über dem Kalender (anzeigen/Download/ausblenden). `handle_check_result(release, newer)`
-ist das `on_result` von `BackgroundTaskRunner.check_update`. Pack-Anker **lazy** über
+Banner über dem Kalender (anzeigen/Download/ausblenden). `show_if_newer(release)` prüft nur
+`dismissed_version` und zeigt ggf. an; Persistenz von `last_update_check_at` und Toast-vs.-
+Banner-Routing liegen in `ui.py::_on_update_check_result` bzw.
+`_route_update_notification(...)`. Pack-Anker **lazy** über
 `get_anchor=lambda: App._renderer.grid_container` (Grid existiert erst nach dem Build).
 `on_resize` (= `App._renderer.repin_geometry`) wird in `_show`/`_dismiss` aufgerufen, damit
 das fixe Fenster auf die geänderte Banner-Höhe nachzieht (sonst Footer abgeschnitten, #92).
@@ -147,7 +157,15 @@ müssen beide Locks respektieren. Design:
   `share.py` — Export/Import als Share-JSON. `weekly_limit.py` — pure Wochenstunden-Limit-Check
   (Werkstudenten-Privileg, #98). Kein eigener Persistenz-Zustand, operiert auf
   `Storage.get_all()`-Dicts und den `werkstudent_limit_*`-Settings-Keys.
-  `reminders.py` — pure Fälligkeits-Logik für Reservierungs-Erinnerungen (Tk-frei, `now` als Parameter): pro heutigem reservierten Slot mit Kategorie ohne erfasste Ist-Zeit `upcoming` (N Min vor Ende) oder `missed` (nach Ende). Der `ReminderScheduler` (`reminder_scheduler.py`) pollt minütlich über `root.after` und schickt fällige Toasts über `App._tray`.
+  `pause_requirement.py` — pure Pausenpflicht-Check nach §4 ArbZG (30 Min ab
+  >6h, 45 Min ab >9h Netto-Arbeitszeit), analog `weekly_limit.py` aber ohne
+  Zeitraum-Konzept (die Pflicht gilt für jeden Tag einzeln). Zählt nur die
+  `pause`-Felder der Slots — eine Lücke zwischen zwei Slots desselben Tages
+  (z.B. Mittagspause per Kommen/Gehen) zählt nicht mit; `entry_dialog.py`
+  macht das im Warntext transparent. `pause_warning_enabled` ist Default
+  `True` (Opt-out), anders als das Werkstudenten-Limit (Opt-in) — die Pflicht
+  betrifft praktisch jeden Angestellten in DE, ist kein Sonderfall.
+  `reminders.py` — pure Fälligkeits-Logik für Reservierungs-Erinnerungen (Tk-frei, `now` als Parameter): pro heutigem reservierten Slot mit Kategorie ohne erfasste Ist-Zeit `upcoming` (N Min vor Ende) oder `missed` (nach Ende). Der `ReminderScheduler` (`reminder_scheduler.py`) pollt minütlich über `root.after` und schickt fällige Toasts über `App._tray`. Analog dazu `send_reminder.py`/`send_reminder_scheduler.py`: ein einzelner Fällig-Zeitpunkt pro Monat (Tag + Uhrzeit, Tag auf die Monatslänge geclamped) statt Slot-Fenster; der Fired-Zustand wird bewusst **persistiert** (`settings.send_reminder_last_fired_month`, `"YYYY-MM"`) statt nur im Speicher gehalten wie beim Reservierungs-Reminder — verhindert wiederholte Toasts bei App-Neustarts im selben Monat.
 
 ## Google-Integration (alle Wrapper mit Lazy-Imports für CI ohne requirements.txt)
 
@@ -161,7 +179,8 @@ denselben OAuth-Token; Scope-Upgrade erzwingt frischen Consent.
 - `theme.py`/`tooltip.py` — UI-Hilfen (Farben/Fonts/themed Dialoge, `_hover`-Overlays).
 - `time_utils.py` — Stunden, KW-Labels, `format_iso_date`/`format_iso_datetime`.
 - `holidays_de.py`, `paths.py` (`get_base_path` Frozen-vs-Repo), `updater.py`
-  (GitHub-Releases, stdlib-only, 1×/Tag), `platform_open.py`, `logging_setup.py`,
+  (GitHub-Releases, stdlib-only, Frequenz über `update_check_frequency`, Pre-Release-Opt-in über `prerelease_updates_enabled`), `changelog.py`
+  (lädt/parst den Changelog-Abschnitt einer Release-Version vom GitHub-Tag), `platform_open.py`, `logging_setup.py`,
   `version.py` (einzige Versions-Quelle).
 - `autostart.py` — plattformabhängig (Windows-Registry HKCU Run / macOS-LaunchAgent / Linux-.desktop).
   Windows-Backend nutzt den **Registry-Wert `Zeiterfassung`** (Wertname = `installer.iss` → strukturell
@@ -176,6 +195,19 @@ denselben OAuth-Token; Scope-Upgrade erzwingt frischen Consent.
   vor dem Tk-Aufbau, `serve(show_fn)` danach. `App.restart_for_scaling` und `_quit_with_sync_push`
   rufen `release()`. Blockiert den Start nie — ist der Port von Fremd-Software belegt (keine ZEIT-OK),
   läuft die App ungeschützt weiter (geloggt, akzeptierter Degraded-Fall).
+- `device_id.py` — stabile, hardware-abgeleitete Geräte-ID (`derive_device_id()`, SHA-256 mit
+  App-Salt über Windows `MachineGuid`/macOS `IOPlatformUUID`/Linux `/etc/machine-id`) für installierte
+  Builds; übersteht damit eine Neuinstallation, anders als eine reine Zufalls-UUID. `main.py::
+  _ensure_device_id` nutzt das NUR bei `sys.frozen` — Repo-/Skript-Modus (`python -m src.main`) bleibt
+  bewusst bei der alten, in `settings.json` persistierten Zufalls-UUID (sonst hätte eine parallel zu
+  einer echten Installation laufende Dev-Instanz auf demselben Rechner dieselbe device_id). Resolver
+  liefern `None` statt zu werfen; `_ensure_device_id` fällt dann ebenfalls auf die Zufalls-UUID zurück.
+- `main.py::_hold_app_mutex` — hält einen benannten Win32-Mutex (`_APP_MUTEX_NAME`, nur installierte
+  Windows-Builds) für die Prozesslaufzeit; reiner Existenz-Marker für `installer.iss` (`AppMutex=`
+  dort muss exakt zum Namen hier passen). Setup erkennt darüber eine laufende Instanz und lässt den
+  User sie manuell schließen (Retry-Dialog), statt des Default-Wegs (`CloseApplications`/Restart
+  Manager), der bei aktivem Minimize-to-Tray scheitert (`App._on_close` behandelt das dabei
+  gesendete `WM_CLOSE` nur als Fenster-Verstecken).
 - `tray.py` (Fassade) + `tray_mac.py` (natives macOS-NSStatusItem-Backend, #88).
 
 Das Tray-Icon läuft, sobald `minimize_to_tray` **oder** `reminders_enabled` aktiv ist (`ui.py::_apply_tray_setting`); bei nur `reminders_enabled` dient es ausschließlich als Toast-Kanal.
@@ -187,11 +219,28 @@ löschen — siehe Root-`CLAUDE.md`): `entry_dialog` (Tages-Dialog, rein zum Spe
 `send_dialog`, `export_dialog` (Zeitraum-Modal → PDF lokal speichern),
 `settings_dialog/` (Paket, Audit H4: `dialog.py` trägt Chrome + zentrales,
 ablaufidentisches `save_settings`; je Tab eine Klasse in `tab_work/`
-`tab_mail`/`tab_google`/`tab_app`.py, die ihre Tk-Variablen als Attribute
-für `save_settings` exponiert; `oauth_task.py` = H5-OAuth-Toggle-Builder;
-Dark-Styling weiter via `theme.apply_notebook_style`), `share_dialog`, `import_dialog`, `category_dialog`,
+`tab_mail`/`tab_google`/`tab_app`/`tab_updates`.py, die ihre Tk-Variablen als
+Attribute für `save_settings` exponiert; `tab_updates` startet seinen Live-Check
+bewusst erst per `<<NotebookTabChanged>>`, nicht schon beim Dialog-Öffnen;
+`oauth_task.py` = H5-OAuth-Toggle-Builder; Dark-Styling weiter via
+`theme.apply_notebook_style`), `share_dialog`, `import_dialog`, `category_dialog`,
 `conflicts_dialog`. `period_picker` ist kein Dialog, sondern der von
 `send_dialog` + `export_dialog` geteilte Zeitraum+Kategorie+Vorschau-Baustein.
+
+`App._open_dialog` (Linksklick-Handler) prüft zuerst `conflicts_store.unresolved_entry_keys()`:
+liegt für den Tag ein ungelöster Sync-Konflikt (Ist-Zeit zwischen zwei Geräten
+widersprüchlich), öffnet sich `ConflictsDialog` mit `filter_key=date_str` statt des
+normalen `entry_dialog` — die Ist-Zeit steht buchstäblich zur Debatte, normales
+Editieren würde einen der beiden Kandidaten überschreiben. `filter_key` filtert
+`_unresolved` auf genau den einen Tag (nicht nur Vorselektion in der vollen Liste) und
+blendet die Listbox aus (`_build`: `self.right` nimmt die volle Dialogbreite) — nach dem
+Auflösen schließt sich der Dialog selbst, statt "wähle den nächsten" zu zeigen (es gibt
+in dieser gefilterten Ansicht keinen nächsten). Zweiter, weiterhin bestehender Einstieg:
+Einstellungen → Google-Tab → „Konflikte ansehen" (ungefiltert, volle Liste, auch
+`kind == "setting"`-Konflikte, die kein Kalendertag abbilden kann). `ConflictsDialog`
+nimmt optional `on_resolved` (von beiden
+Einstiegen auf `App._refresh`/`on_change` gesetzt) — ohne den Callback bliebe die
+Kalenderzelle hinter dem Dialog nach dem Auflösen auf dem alten Stand.
 
 Alle Dialoge beziehen ihre Fenster-Chrome über `theme.create_dialog(...)`
 (Audit M13); Content-Styles (`apply_combobox_style`/`apply_notebook_style`/

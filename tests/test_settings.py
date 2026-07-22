@@ -753,6 +753,26 @@ def test_reminder_defaults_present_and_device_local():
     assert "reminder_minutes_before" not in SYNCED_SETTING_KEYS
 
 
+def test_send_reminder_defaults_present_and_device_local():
+    from src.settings import DEFAULTS, SYNCED_SETTING_KEYS
+    assert DEFAULTS["send_reminder_enabled"] is False
+    assert DEFAULTS["send_reminder_day"] == 1
+    assert DEFAULTS["send_reminder_time"] == "18:00"
+    assert DEFAULTS["send_reminder_last_fired_month"] == ""
+    assert "send_reminder_enabled" not in SYNCED_SETTING_KEYS
+    assert "send_reminder_day" not in SYNCED_SETTING_KEYS
+    assert "send_reminder_time" not in SYNCED_SETTING_KEYS
+    assert "send_reminder_last_fired_month" not in SYNCED_SETTING_KEYS
+
+
+def test_update_tab_defaults_present_and_device_local():
+    from src.settings import DEFAULTS, SYNCED_SETTING_KEYS
+    assert DEFAULTS["update_check_frequency"] == "daily"
+    assert DEFAULTS["update_toast_shown_version"] == ""
+    assert "update_check_frequency" not in SYNCED_SETTING_KEYS
+    assert "update_toast_shown_version" not in SYNCED_SETTING_KEYS
+
+
 # --- override_in_memory (Audit M12) ---
 
 
@@ -796,3 +816,18 @@ def test_override_in_memory_removes_key_absent_before(tmp_settings):
     with tmp_settings.override_in_memory("some_transient_key", 42):
         assert tmp_settings.get("some_transient_key") == 42
     assert "some_transient_key" not in tmp_settings._data
+
+
+def test_prerelease_updates_disabled_by_default():
+    from src.settings import DEFAULTS
+
+    assert DEFAULTS["prerelease_updates_enabled"] is False
+
+
+def test_prerelease_updates_flag_is_device_local():
+    # Update-Einstellungen werden bewusst nicht synchronisiert: der Rechner,
+    # auf dem ein Testbuild geprüft wird, soll die anderen Geräte nicht in
+    # den Pre-Kanal ziehen.
+    from src.settings import SYNCED_SETTING_KEYS
+
+    assert "prerelease_updates_enabled" not in SYNCED_SETTING_KEYS

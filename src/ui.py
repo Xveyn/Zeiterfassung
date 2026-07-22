@@ -20,7 +20,9 @@ from src.weekly_limit import format_limit_warnings
 from src.grid_renderer import GridRenderer
 from src.sync_orchestrator import classify_sync_error, SyncOrchestrator
 from src.update_banner import UpdateBanner
+from src.updater import today_iso, update_toast_text
 from src.reminder_scheduler import ReminderScheduler
+from src.send_reminder_scheduler import SendReminderScheduler
 from src.dialogs.entry_dialog import open_entry_dialog
 from src.dialogs.send_dialog import open_send_dialog
 from src.dialogs.settings_dialog import open_settings_dialog
@@ -50,6 +52,19 @@ def _delete_action(slots, selected, prefix):
     if not keep:
         return "delete", None
     return "save", keep
+
+
+def _route_update_notification(release, tray_active, toast_shown_version):
+    """Entscheidet zwischen Toast, Banner oder No-op für eine neue Version.
+
+    Verglichen wird die volle Kennung (`release_id`), nicht die Basisversion —
+    sonst würde ein zweiter Pre-Release derselben Version (pre.1 -> pre.2)
+    als "schon gemeldet" durchfallen."""
+    if tray_active:
+        if release.release_id == toast_shown_version:
+            return "none", None
+        return "toast", update_toast_text(release)
+    return "banner", None
 
 
 class App:
@@ -99,16 +114,21 @@ class App:
             self.root, self.settings, self.storage,
             self.reservation_store, lambda: self._tray,
         )
+        self._send_reminders = SendReminderScheduler(
+            self.root, self.settings, lambda: self._tray,
+        )
         self._build_header()
         self._renderer.build_grid(self.root)
         self._build_footer()
-        self._renderer.attach_labels(self.header_label, self.footer_label)
+        self._renderer.attach_labels(
+            self.header_label, self.footer_label, self.header_width_spacer)
         self._sync.attach_widgets(
             self.sync_button, self.sync_status_label, self._next_button)
         self._sync.update_status_label()
         self._apply_always_on_top()
         self._apply_tray_setting()
         self._apply_reminder_setting()
+        self._apply_send_reminder_setting()
         self.root.bind("<Left>", lambda e: self._navigate(-1))
         self.root.bind("<Right>", lambda e: self._navigate(+1))
         # Tab schaltet zwischen Monat- und Wochenansicht. "break" verhindert
@@ -138,7 +158,7 @@ class App:
         self._update_banner = UpdateBanner(
             self.root, self.settings, lambda: self._renderer.grid_container,
             on_resize=self._renderer.repin_geometry)
-        self._bg.check_update(on_result=self._update_banner.handle_check_result)
+        self._bg.check_update(on_result=self._on_update_check_result)
         self._bg.reconcile_on_start(on_ok=self._on_reconcile_start_done)
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
 
@@ -271,6 +291,20 @@ class App:
         )
         self.btn_week.pack(side=tk.LEFT)
 
+        # header_width_spacer: unsichtbarer Platzhalter (kein Text, gleiche
+        # bg), der ANSTELLE von header_label im pack-Fluss steht — GridRenderer
+        # hält font/width synchron zum echten header_label (s. attach_labels/
+        # refresh dort). Grund: header_label selbst wird unten per `place`
+        # (nicht `pack`) absolut auf die Fensterbreite zentriert, damit es nie
+        # verrutscht, egal wie breit die rechte Sync-Button-Gruppe gerade ist
+        # (die darf während des Synchronisierens ruhig wandern). `place`-
+        # Kinder zählen aber nicht zur reqwidth des Frames — ohne diesen
+        # Platzhalter würde GridRenderer.measure_max_width() die von
+        # header_label benötigte Breite nicht mehr einrechnen und das fixe
+        # Fenster könnte zu schmal gepinnt werden (u.a. Sync-Button ohne Platz).
+        self.header_width_spacer = tk.Label(frame, text="", bg=BG, width=0)
+        self.header_width_spacer.pack(side=tk.LEFT, expand=True)
+
         # font und width werden in _refresh() je nach View gesetzt — fixe
         # width verhindert Pack-Reflow beim Text-Wechsel innerhalb derselben
         # View, und die Wochen-Variante braucht eine kleinere Schrift, weil
@@ -278,7 +312,7 @@ class App:
         self.header_label = tk.Label(
             frame, text="", bg=BG, fg="#ffffff",
         )
-        self.header_label.pack(side=tk.LEFT, expand=True)
+        self.header_label.place(relx=0.5, rely=0.5, anchor="center")
 
         icon_button(
             frame, "\u2699", self._open_settings,
@@ -364,6 +398,7 @@ class App:
             self._apply_always_on_top()
             self._apply_tray_setting()
             self._apply_reminder_setting()
+            self._apply_send_reminder_setting()
             # Nach jeder Settings-Speicherung den sender_email-Fetch nochmal
             # anstoßen. Damit erscheint die Absender-Adresse automatisch nach
             # Sync-Aktivierung (frischer Token mit userinfo.email-Scope), ohne
@@ -402,10 +437,11 @@ class App:
         """
         from src.tray import TrayIcon, is_supported
 
-        # Tray dient zweierlei: Minimize-to-Tray UND als Toast-Kanal für
-        # Reservierungs-Erinnerungen. Es läuft, sobald EINES aktiv ist.
+        # Tray dient mehrerem: Minimize-to-Tray UND als Toast-Kanal für
+        # Reservierungs- und Sende-Erinnerungen. Es läuft, sobald EINES aktiv ist.
         want_tray = (bool(self.settings.get("minimize_to_tray"))
-                     or bool(self.settings.get("reminders_enabled")))
+                     or bool(self.settings.get("reminders_enabled"))
+                     or bool(self.settings.get("send_reminder_enabled")))
 
         if want_tray and self._tray is None:
             if not is_supported():
@@ -418,6 +454,7 @@ class App:
                 )
                 self.settings.set("minimize_to_tray", False)
                 self.settings.set("reminders_enabled", False)
+                self.settings.set("send_reminder_enabled", False)
                 return
             tray = TrayIcon(
                 self.base_path,
@@ -446,6 +483,7 @@ class App:
                 )
                 self.settings.set("minimize_to_tray", False)
                 self.settings.set("reminders_enabled", False)
+                self.settings.set("send_reminder_enabled", False)
                 return
             self._tray = tray
 
@@ -465,6 +503,35 @@ class App:
             self._reminders.start()
         else:
             self._reminders.stop()
+
+    def _apply_send_reminder_setting(self):
+        """Startet/stoppt den monatlichen Sende-Reminder-Poll abhängig vom
+        Setting. Braucht ein laufendes Tray-Icon als Toast-Kanal — ohne Tray
+        wird gestoppt.
+
+        MUSS nach `_apply_tray_setting()` laufen (liest `self._tray`), wie
+        `_apply_reminder_setting()`."""
+        want = bool(self.settings.get("send_reminder_enabled")) and self._tray is not None
+        if want:
+            self._send_reminders.start()
+        else:
+            self._send_reminders.stop()
+
+    def _on_update_check_result(self, release, newer):
+        """Verarbeitet das Ergebnis des Hintergrund-Update-Checks im UI-Thread."""
+        self.settings.set("last_update_check_at", today_iso())
+        if not newer:
+            return
+        action, text = _route_update_notification(
+            release,
+            self._tray is not None,
+            self.settings.get("update_toast_shown_version"),
+        )
+        if action == "toast":
+            self._tray.notify(text)
+            self.settings.set("update_toast_shown_version", release.release_id)
+        elif action == "banner":
+            self._update_banner.show_if_newer(release)
 
     def _restore_from_tray(self):
         """Bringt das Fenster aus dem `withdraw()`-Zustand zurück."""
@@ -580,6 +647,20 @@ class App:
         if _stray_click_suppressed(getattr(self.root, "_dialog_closed_at", 0),
                                    time.monotonic()):
             return  # Linksklick schlägt von einem eben geschlossenen Dialog durch (#44).
+        # Ein Tag mit ungelöstem Sync-Konflikt (Ist-Zeit zwischen zwei Geräten
+        # widersprüchlich) öffnet den ConflictsDialog statt des normalen
+        # Tages-Dialogs — die Ist-Zeit steht buchstäblich zur Debatte, sie vor
+        # der Auflösung normal zu editieren würde einen der beiden Kandidaten
+        # überschreiben. Gefiltert auf genau diesen Tag (filter_key), statt die
+        # volle Liste aller offenen Konflikte zu zeigen.
+        if self.conflicts_store is not None and date_str in self.conflicts_store.unresolved_entry_keys():
+            from src.dialogs.conflicts_dialog import ConflictsDialog
+            ConflictsDialog(
+                self.root, self.storage, self.settings, self.conflicts_store,
+                data_lock=self._data_lock, filter_key=date_str,
+                on_resolved=self._refresh,
+            )
+            return
         # Bei deaktiviertem Kalender-Sync KEIN reservation_store an den Dialog
         # geben — dann wird der Reservierungs-Block nicht angezeigt und ist per
         # Linksklick nicht setzbar (open_entry_dialog wertet None entsprechend).
@@ -629,6 +710,7 @@ class App:
         if self._tray is not None:
             self._tray.stop()
         self._reminders.stop()
+        self._send_reminders.stop()
         if self._single_instance is not None:
             self._single_instance.release()
         self.root.destroy()
@@ -649,7 +731,22 @@ class App:
         # belegt, schickte SHOW und beendete sich — die App verschwände beim
         # bloßen Skalierungswechsel.
         try:
-            subprocess.Popen(cmd)
+            env = os.environ.copy()
+            # PyInstaller-Onefile (≥6.10) behandelt einen per sys.executable
+            # gespawnten Kindprozess standardmäßig als Worker-Subprozess DER-
+            # SELBEN Instanz und lässt ihn das bereits entpackte _MEIPASS-
+            # Verzeichnis DES ALTEN Prozesses mitnutzen. Das räumt der alte
+            # Prozess aber auf, sobald er unten beendet wird — der neue
+            # Prozess bricht dann mit fehlenden Bundle-Dateien ab (z.B. "Tcl
+            # data directory ... not found", googleapiclient-Discovery-Docs
+            # nicht auffindbar → UnknownApiNameOrVersion). Ohne dieses Signal
+            # ist der Neustart also ein Wettlauf gegen die Temp-Aufräumung des
+            # alten Prozesses. PYINSTALLER_RESET_ENVIRONMENT=1 zwingt den
+            # neuen Prozess, sich frisch (in ein eigenes Verzeichnis) zu
+            # entpacken, statt zu erben — No-op im Repo-Modus (kein Bootloader
+            # liest die Variable dort).
+            env["PYINSTALLER_RESET_ENVIRONMENT"] = "1"
+            subprocess.Popen(cmd, env=env)
         except Exception:
             logging.getLogger(__name__).exception(
                 "Neustart für UI-Skalierung fehlgeschlagen")
@@ -672,4 +769,5 @@ class App:
         if self._tray is not None:
             self._tray.stop()
         self._reminders.stop()
+        self._send_reminders.stop()
         self.root.destroy()

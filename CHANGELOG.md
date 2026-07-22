@@ -1,5 +1,143 @@
 # Changelog
 
+## 1.19.0 — 2026-07-22
+
+### Hinzugefügt
+- **Stunden je Tag in der Kalenderzelle**: Jede Tageskachel zeigt jetzt zusätzlich
+  die Netto-Arbeitszeit und die abgezogene Pause (z.B. `7:30 h · P30`) — die
+  Brutto-Zeitspanne steht weiterhin darüber. Damit ist die Gesamtsumme im Footer
+  nachrechenbar, und ein Tag mit abweichender Pause ist als solcher erkennbar.
+- **Pausenpflicht-Warnung (§4 ArbZG)**: Beim Speichern der Arbeitszeit warnt die
+  App, wenn die eingetragene Pause die gesetzliche Mindestpause unterschreitet
+  (30 Min ab mehr als 6 h, 45 Min ab mehr als 9 h Netto-Arbeitszeit). Reine
+  Warnung — speichern lässt sich trotzdem. Standardmäßig aktiv, abschaltbar unter
+  Einstellungen → Arbeitszeit. Gezählt werden nur die eingetragenen Pause-Minuten
+  der Zeitblöcke, nicht die Lücke zwischen zwei Blöcken desselben Tages; der
+  Warntext sagt das dazu. Grobe Näherung, keine rechtliche Bewertung.
+
+### Geändert
+- **Eine Schreibweise für Stunden**: Kalenderzelle (`7:30 h`) und Footer
+  (`Gesamt: 52 h 50 min`) zeigen Stunden jetzt einheitlich in Stunden und Minuten
+  statt als Dezimalzahl (`52.84h`) — 0,84 h liest niemand als 50 Minuten.
+- **Einstellungen**: Das Feld `Name` heißt jetzt `Dein Name`. Direkt unter
+  `Empfänger` war nicht erkennbar, dass der eigene Name gemeint ist (der im
+  PDF-Bericht und beim Teilen erscheint).
+
+### Behoben
+- **Footer-Summe**: Die Gesamtsumme im Footer entspricht jetzt exakt der Summe der
+  in den Kacheln angezeigten Stunden. Vorher rundeten Zelle und Footer unabhängig
+  voneinander, wodurch die Summe bei einem typischen Monat in rund 83 % der Fälle
+  um mindestens eine Minute abwich (bei mehreren Zeitblöcken pro Tag bis zu fünf).
+  Der Bruttobetrag stammt jetzt aus derselben Minuten-Summe wie die Stunden-Anzeige.
+- **Tages-Dialog**: An einem Tag ohne Arbeitszeit und ohne Reservierung war der
+  Dialog deutlich schmaler als sonst und schnitt den Fenstertitel ab.
+
+## 1.18.2 — 2026-07-16
+
+### Hinzugefügt
+- **Tages-Dialog**: Hat ein Tag noch keine Arbeitszeit, aber eine Reservierung
+  mit genau einem Slot und Kategorie, wird diese Kategorie jetzt bei der neu
+  vorgeschlagenen Arbeitszeit-Zeile mitvorbelegt (statt „ohne Kategorie").
+
+### Geändert
+- **Geräte-ID (Sync)**: Installierte Builds leiten die Geräte-ID jetzt aus
+  einer stabilen, pro Betriebssystem-Installation eindeutigen System-ID ab
+  (gehasht) — sie übersteht damit eine Neuinstallation der App, statt sich
+  bei jedem Reinstall neu zufällig zu vergeben.
+
+### Behoben
+- **UI-Skalierung**: Der Selbst-Neustart nach einer Skalierungsänderung
+  konnte in einem kaputten Zustand enden (u.a. „Tcl data directory not
+  found" bzw. Google-Drive-Fehler `UnknownApiNameOrVersion` bei jeder
+  Synchronisation), weil der neu gestartete Prozess das bereits vom alten
+  Prozess aufgeräumte Bundle-Verzeichnis weiterzunutzen versuchte.
+- **Installation**: Läuft beim Installieren/Aktualisieren unter Windows noch
+  eine ältere Instanz, konnte der Installer sie bisher nicht zuverlässig
+  schließen. Er bittet jetzt aktiv darum, die App manuell zu schließen
+  (Retry-Dialog), statt einen unzuverlässigen Automatik-Versuch zu machen.
+
+## 1.18.1 — 2026-07-16
+
+### Hinzugefügt
+- **Sync-Konflikte**: Linksklick auf einen Kalendertag mit ungelöstem Konflikt
+  öffnet jetzt direkt den Konflikt-Dialog, gefiltert auf genau diesen Tag —
+  vorher nur über Einstellungen → Google erreichbar.
+
+### Geändert
+- **Updates-Tab**: Der Changelog wird jetzt auch ohne verfügbares Update
+  angezeigt (für die installierte Version); Markdown wird lesbar formatiert
+  (fette Überschriften/Bullet-Titel) statt roh angezeigt.
+- **Tages-Dialog**: Arbeitszeit und Reservierung teilen sich jetzt einen
+  einzelnen „Speichern"-Button statt je einem eigenen. Das Kategorie-Dropdown
+  zeigt ein Sternchen, wenn die Slot-Zeiten manuell vom Kategorie-Standard
+  abweichen.
+
+### Behoben
+- **Header**: Die Monat/Jahr-Anzeige rutscht nicht mehr, wenn beim
+  Synchronisieren der Status-Text rechts wechselt.
+- **Drive-Sync**: Verbindungsabbrüche/Timeouts werden jetzt korrekt als
+  Netzwerkfehler erkannt und zeigen die passende „Keine Internetverbindung"-
+  Meldung statt eines rohen Fehlerdialogs.
+- **Sync-Konflikte**: Der Kalender aktualisiert sich jetzt sofort, nachdem ein
+  Konflikt aufgelöst wurde (vorher blieb die Zelle auf altem Stand).
+
+## 1.18.0 — 2026-07-15
+
+### Hinzugefügt
+- **Updates-Tab**: Der Einstellungen-Dialog hat jetzt einen fünften Tab
+  „Updates". Dort lässt sich der Update-Status manuell prüfen, die
+  Hintergrund-Häufigkeit auf täglich / wöchentlich / monatlich / nie stellen
+  und bei einer neueren Version direkt der passende Changelog-Abschnitt lesen.
+- **Monatliche Erinnerung „Arbeitszeiten verschicken"**: Optionaler Toast an
+  einem frei wählbaren Tag im Monat plus Uhrzeit. Kürzere Monate werden sauber
+  auf den letzten Tag geklemmt.
+
+### Geändert
+- **Update-Hinweise**: Läuft ein aktives Infobereich-Icon als Toast-Kanal,
+  erscheint ein einmaliger Toast statt eines dauerhaften Banners; ohne aktives
+  Tray bleibt das Banner der Fallback. Versionen, die bereits im Updates-Tab
+  gesehen wurden, nerven danach nicht noch einmal per Banner oder Toast.
+- **Einstellungen**: Der Tab-Satz ist um „Updates" erweitert; dort liegt jetzt
+  auch die konfigurierbare Update-Check-Häufigkeit.
+- **Senden / Teilen / Export**: Die längeren Mail-/PDF-Aktionen laufen jetzt
+  im Hintergrund, statt die Oberfläche währenddessen zu blockieren.
+
+### Behoben
+- **Updates-Tab**: Ohne verfügbares Update bleibt kein leeres Changelog-Feld
+  mehr sichtbar.
+- **Monatlicher Sende-Reminder**: Ungültige `HH:MM`-Werte im Setting werden
+  defensiv abgefangen, statt den Scheduler aus dem Tritt zu bringen.
+- **Bericht / Sicherheit**: Start- und Endwerte im Bericht werden korrekt
+  escaped, statt eingebettetes HTML ungefiltert zu übernehmen.
+- **Gmail-Start**: Der initiale Absender-/Profil-Check löst keinen
+  `403 insufficientPermissions` mehr aus, wenn nur die tatsächlich benötigten
+  Scopes vorliegen.
+- **Mail-Empfänger**: Adressen mit CR/LF-Steuerzeichen werden jetzt
+  zurückgewiesen, statt still bereinigt weiterzulaufen.
+- **Windows-Token-Persistenz**: Transiente `PermissionError` beim Schreiben von
+  `token.json` werden abgefangen und erneut versucht, statt den OAuth-Pfad
+  unnötig scheitern zu lassen.
+- **Fensterbreite**: Der Footer mit Stundenlohn lässt die Fensterbreite nicht
+  mehr sichtbar springen; die Breite wächst jetzt stabil auf den Maximalbedarf.
+- **Feiertags-Lookup**: Eine transiente `FileNotFoundError` im
+  Übersetzungs-Ladepfad wird defensiv abgefangen, statt den Feiertagsabruf zu
+  stören.
+- **Settings-/Sync-Robustheit**: Korruptes `settings.json` wird in Quarantäne
+  verschoben, und die Sync-Apply-Sequenz ist crash-sicherer bzw.
+  threadsicherer gegen gleichzeitige Datenzugriffe.
+- **Einzelinstanz / Sicherheit**: Der lokale SHOW/PING-Handshake der
+  Einzelinstanz ist jetzt per Shared Secret abgesichert.
+- **Google-Auth**: Der Token-Info-Check übermittelt das Access-Token jetzt per
+  POST-Body statt als URL-Query.
+- **Linux-Autostart**: Die `Exec=`-Zeile der `.desktop`-Datei wird
+  shell-korrekt gequotet.
+
+### Intern
+- `CHANGELOG.md` kann für eine neue Version jetzt zur Laufzeit direkt vom
+  GitHub-Tag geladen und abschnittsweise geparst werden.
+- Release-nahe Checks sind enger abgesichert: `ruff`/`pyright` decken den
+  neuen Updates-Tab samt UI-Routing mit ab.
+
 ## 1.17.0 — 2026-07-03
 
 ### Hinzugefügt
