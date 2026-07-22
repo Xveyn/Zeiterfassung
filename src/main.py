@@ -89,6 +89,27 @@ def _ensure_device_id(settings) -> str:
     return device_id
 
 
+def _sweep_orphan_tombstones(storage, reservation_store, settings) -> int:
+    """Verwirft beim Start Tombstones, die nie einen Abnehmer bekommen (N6).
+
+    Storage-Tombstones löst nur ein Drive-Sync ein, Reservierungs-Tombstones
+    nur ein Kalender-Reconcile. Ohne das jeweilige Feature bleibt jeder
+    gelöschte Tag als Zeile liegen — dauerhaft, weil der einzige GC-Pfad
+    (Kompaktierung) am Google-Tab hängt. Beide Aufrufe sind No-ops, sobald je
+    gesynct bzw. abgeglichen wurde; die Entscheidung darüber liegt in den
+    Fach-Modulen, nicht hier.
+
+    Liefert die Gesamtzahl verworfener Tombstones (für Tests/Logging)."""
+    from src import reservations_sync, sync
+    dropped = sync.drop_orphan_tombstones(storage, settings)
+    dropped += reservations_sync.drop_orphan_reservation_tombstones(
+        reservation_store, settings)
+    if dropped:
+        logging.getLogger(__name__).info(
+            "%d verwaiste Tombstone(s) verworfen (nie gesynct/abgeglichen)", dropped)
+    return dropped
+
+
 def relaunch_command(argv, executable, frozen):
     """Baut das Kommando, um die App neu zu starten (nach UI-Skalierungs-
     Änderung). Im Frozen-Build ist `executable` die App-Exe selbst; im
@@ -503,6 +524,11 @@ def main():
     sync_journal.recover_pending_apply(
         os.path.join(base, sync_journal.JOURNAL_FILENAME),
         storage, settings, conflicts_store)
+
+    # N6: Tombstones ohne Sync-/Kalender-Partner verwerfen. Hier, weil der
+    # Prozess noch single-threaded ist (kein data_lock nötig) und der Sweep
+    # vor dem ersten Rendern durch sein soll.
+    _sweep_orphan_tombstones(storage, reservation_store, settings)
 
     root = tk.Tk()
     _apply_ui_scaling(root, settings.get("ui_scale"))

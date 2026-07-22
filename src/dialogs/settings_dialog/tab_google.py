@@ -296,7 +296,16 @@ class GoogleTab:
                 btn_row, "Daten importieren", _open_import_dialog, padx=12, pady=2,
             ).pack(side=tk.LEFT, padx=(8, 0))
 
-        if settings.get("sync_enabled") and storage is not None and conflicts_store is not None:
+        # Nicht an sync_enabled hängen, sondern an "hat je gesynct" (Audit N6):
+        # wer den Sync abschaltet, behält seine Tombstones (das Remote kennt
+        # die gelöschten Tage weiter) — und braucht damit weiterhin einen Weg,
+        # sie loszuwerden. Die Kompaktierung ist ein voller Drive-Roundtrip
+        # (Pull → Merge → Watermark → Push) und bleibt auch dann die sichere
+        # Variante, weil sie alle Geräte über das gc_watermark einbezieht. Nie
+        # gesyncte Rechner brauchen den Knopf nicht: dort verwirft der
+        # Startup-Sweep (sync.drop_orphan_tombstones) die Tombstones ohnehin.
+        ever_synced = settings.get("sync_enabled") or settings.get("last_pull_at")
+        if ever_synced and storage is not None and conflicts_store is not None:
             def _on_compact_clicked():
                 confirmed = themed_askyesno(
                     dialog,
