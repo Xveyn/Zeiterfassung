@@ -78,6 +78,18 @@ jobs:
           VERSION="${{ steps.version.outputs.version }}"
           git fetch --tags
           if [ "${{ steps.gate.outputs.is_prerelease }}" = "true" ]; then
+            # Reihenfolge-Invariante (s. CLAUDE.md, Abschnitt Pre-Releases): ein
+            # Pre-Release trägt die Version des ZULETZT veröffentlichten Releases
+            # und enthält den Stand danach. Die App ordnet deshalb
+            # vX.Y.Z < vX.Y.Z-pre.N (version.parse_release_id). Entstünde ein
+            # Pre-Release VOR seinem echten Release (erst version.py bumpen, dann
+            # Pre bauen), böte die App Opt-in-Nutzern nach dessen Veröffentlichung
+            # dauerhaft den älteren Pre als Update an — ohne Selbstheilung.
+            # Darum hier hart abbrechen statt die Regel nur zu dokumentieren.
+            if ! git rev-parse "v${VERSION}" >/dev/null 2>&1; then
+              echo "::error::Tag v${VERSION} existiert noch nicht — ein Pre-Release wird immer NACH dem gleichnamigen echten Release gebaut (s. CLAUDE.md, Abschnitt Pre-Releases). Entweder src/version.py auf die zuletzt veröffentlichte Version zurücksetzen oder zuerst v${VERSION} releasen."
+              exit 1
+            fi
             # Fortlaufende Nummer je Zielversion: höchstes vorhandenes
             # v<VERSION>-pre.N + 1 (Start bei 1). Kein Existenz-Abbruch — der
             # Pre-Release-Tag darf mehrfach je Version entstehen.

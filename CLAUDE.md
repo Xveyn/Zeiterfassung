@@ -51,13 +51,16 @@ Actions → Workflow **Release** → „Run workflow" mit gesetztem Häkchen
   angezeigt und als Toast/Banner gemeldet (`updater.check_for_update` fragt
   dann `/releases` statt `/releases/latest`). Die Einstellung ist gerätelokal
   (nicht in `SYNCED_SETTING_KEYS`).
-- **Reihenfolge-Regel (wichtig):** Ein Pre-Release wird **immer nach** dem
-  gleichnamigen echten Release gebaut, aus neuerem Code. Die App ordnet
-  entsprechend `X.Y.Z < X.Y.Z-pre.1 < X.Y.Z-pre.2 < X.Y.Z+1`
-  (`version.parse_release_id`). Wer künftig erst `src/version.py` bumpt und
-  dann einen Pre-Release baut, dreht diese Annahme um — dann böte die App nach
-  dem echten Release weiter den älteren Pre an. In dem Fall die Ordnung in
-  `version.parse_release_id` mitändern.
+- **Reihenfolge-Regel (wichtig, vom Workflow erzwungen):** Ein Pre-Release wird
+  **immer nach** dem gleichnamigen echten Release gebaut, aus neuerem Code. Die
+  App ordnet entsprechend `X.Y.Z < X.Y.Z-pre.1 < X.Y.Z-pre.2 < X.Y.Z+1`
+  (`version.parse_release_id`) — die Umkehrung der Semver-Regel, aber die Praxis
+  hier. Der `pre-check`-Job bricht deshalb ab, wenn `v<VERSION>` aus
+  `src/version.py` **noch nicht** existiert: erst `version.py` bumpen und dann
+  einen Pre-Release bauen würde die Annahme umdrehen — die App böte
+  Opt-in-Nutzern nach dem echten Release dauerhaft den älteren Pre an, ohne
+  Selbstheilung. Wer die Reihenfolge künftig bewusst ändert, muss beides
+  mitziehen: die Ordnung in `version.parse_release_id` **und** dieses Gate.
 - **Build-Stempel:** `release.yml` reicht den berechneten Tag als
   `ZEIT_RELEASE_TAG` an die Build-Jobs; `build.py` schreibt ihn als
   `RELEASE_TAG` nach `src/build_info.py`. Daraus kennt die App ihre exakte
