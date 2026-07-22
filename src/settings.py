@@ -37,6 +37,7 @@ DEFAULTS = {
     "dismissed_version": "",
     "update_check_frequency": "daily",
     "update_toast_shown_version": "",
+    "prerelease_updates_enabled": False,
     "default_start_mon": "08:00",
     "default_start_tue": "08:00",
     "default_start_wed": "08:00",
