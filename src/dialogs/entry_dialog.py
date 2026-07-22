@@ -219,8 +219,10 @@ def open_entry_dialog(parent, date_str, storage, settings, on_change,
             save_locked["value"] = False
             refresh_save_state()
 
-    def add_ist_row(start, end, pause, kategorie, removable=True):
-        row = tk.Frame(ist_rows_frame, bg=BG)
+    def add_ist_row(start, end, pause, kategorie, removable=True, parent=None):
+        # parent nur für die Breiten-Probe unten (ungepackter Holder) — sonst
+        # landet die Zeile im sichtbaren Ist-Zeit-Block.
+        row = tk.Frame(parent if parent is not None else ist_rows_frame, bg=BG)
         row.pack(fill="x", pady=2)
         sv = tk.StringVar(value=start)
         ev = tk.StringVar(value=end)
@@ -410,6 +412,22 @@ def open_entry_dialog(parent, date_str, storage, settings, on_change,
             res_btns, "+ Slot",
             lambda: add_res_row(default_start, default_end, ""),
         ).pack(side=tk.LEFT, padx=2)
+
+    # ---------- Mindestbreite ohne Slot-Zeilen ----------
+    # Hat der Tag weder Ist-Zeit noch Reservierung, bestimmen nur die schmalen
+    # „+ Slot"-Buttons die Dialogbreite — das Fenster wird deutlich schmaler als
+    # derselbe Dialog mit einer Zeile und schneidet den Titel ab. Ein
+    # unsichtbarer Spacer hält die Breite, die eine Slot-Zeile hätte. Gemessen
+    # statt hart kodiert, weil die Zeilenbreite an Font/UI-Skalierung hängt; die
+    # Probe-Zeile entsteht in einem nie gepackten Holder, wird also nie sichtbar.
+    if not ist_rows and not res_rows:
+        holder = tk.Frame(outer, bg=BG)
+        add_ist_row(default_start, default_end, default_pause, "", parent=holder)
+        holder.update_idletasks()
+        row_width = holder.winfo_reqwidth()
+        holder.destroy()
+        ist_rows.clear()
+        tk.Frame(outer, bg=BG, height=1, width=row_width).pack()
 
     # ---------- Speichern (ein Button für beide Blöcke) ----------
     def save_all():
