@@ -149,3 +149,56 @@ class TestParseChangelogMarkdown:
             None,
             {"segments": [("• ", ()), ("b", ())], "hanging_indent": True},
         ]
+
+
+# Wie GitHub die Notes eines Pre-Releases liefert: ## -Überschrift,
+# * -Bullets, Full-Changelog-Zeile — und CRLF-Zeilenenden.
+GITHUB_NOTES_FIXTURE = (
+    "## What's Changed\r\n"
+    "* feat: Netto-Stunden je Tag by @margenheld in "
+    "https://github.com/MargenHeld/Zeiterfassung/pull/162\r\n"
+    "* fix: Footer-Rundung by @margenheld in "
+    "https://github.com/MargenHeld/Zeiterfassung/pull/163\r\n"
+    "\r\n"
+    "**Full Changelog**: "
+    "https://github.com/MargenHeld/Zeiterfassung/compare/v1.19.0...v1.19.0-pre.2\r\n"
+)
+
+
+def _plain(line):
+    return "".join(text for text, _tags in line["segments"])
+
+
+class TestParseGithubNotes:
+    def test_double_hash_heading_is_kept_and_styled(self):
+        lines = parse_changelog_markdown(GITHUB_NOTES_FIXTURE)
+        first = lines[0]
+        assert _plain(first) == "What's Changed"
+        assert first["segments"][0][1] == ("heading",)
+
+    def test_star_bullets_are_rendered_as_bullets(self):
+        lines = parse_changelog_markdown(GITHUB_NOTES_FIXTURE)
+        bullets = [ln for ln in lines if ln and ln["hanging_indent"]]
+        assert len(bullets) == 2
+        assert _plain(bullets[0]).startswith("• feat: Netto-Stunden je Tag")
+
+    def test_full_changelog_line_stays_text_with_bold_segment(self):
+        lines = parse_changelog_markdown(GITHUB_NOTES_FIXTURE)
+        last = [ln for ln in lines if ln][-1]
+        assert last["hanging_indent"] is False
+        assert ("Full Changelog", ("bold",)) in last["segments"]
+
+    def test_crlf_does_not_leak_into_output(self):
+        lines = parse_changelog_markdown(GITHUB_NOTES_FIXTURE)
+        assert not any("\r" in _plain(ln) for ln in lines if ln)
+
+
+class TestVersionHeadingStrippingIsScoped:
+    def test_changelog_version_heading_is_still_dropped(self):
+        section = extract_version_section(CHANGELOG_FIXTURE, "1.18.0")
+        lines = parse_changelog_markdown(section)
+        assert not any(_plain(ln).startswith("1.18.0") for ln in lines if ln)
+
+    def test_non_version_first_heading_is_not_dropped(self):
+        lines = parse_changelog_markdown("## What's Changed\n* etwas\n")
+        assert _plain(lines[0]) == "What's Changed"
