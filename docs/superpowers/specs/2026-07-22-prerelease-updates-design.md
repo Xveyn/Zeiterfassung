@@ -113,6 +113,10 @@ def base_version(release_id: str) -> str
 def is_newer(current: str, latest: str) -> bool
 # vergleicht über parse_release_id; nicht parsebar auf einer Seite -> False
 # (heute: ValueError). Beide Argumente sind release_ids.
+# Bewusste Verschärfung: das alte _to_tuple akzeptierte beliebig viele
+# Versions-Teile ("1.9" ging durch), neu ist exakt X.Y.Z[-pre.N] gültig.
+# Kein realer Aufrufer nutzt anderes (alle Tags sind dreiteilig) — keine
+# Kompatibilitäts-Shims dafür bauen.
 
 def release_from_payload(payload: dict) -> Release | None
 # ein API-Release-Objekt -> Release; None bei fehlendem tag_name/html_url
@@ -143,7 +147,8 @@ kaputtes JSON, unbekannte Struktur) → `None`, nie eine Exception nach außen.
 | Fall | `status_text` | Download | Changelog |
 |---|---|---|---|
 | `release is None` | „Prüfung fehlgeschlagen — keine Verbindung?" | nein | — |
-| nicht neuer | „Du hast die aktuelle Version (`installed_id`)." | nein | `changelog_version = base_version(installed_id)` |
+| nicht neuer, Angebot = eigener Pre-Build (`release.release_id == installed_id`, Pre) | „Du hast die aktuelle Version (`installed_id`)." | nein | `changelog_notes = release.notes` — der Tester sieht, was sein Build enthält; der CHANGELOG der Basisversion wäre exakt der Stand, den er nicht mehr hat |
+| nicht neuer, sonst | „Du hast die aktuelle Version (`installed_id`)." | nein | `changelog_version = base_version(installed_id)` |
 | neuer, echtes Release | „Version X.Y.Z verfügbar" | ja | `changelog_version = release.version` |
 | neuer, Pre-Release | „Vorabversion X.Y.Z-pre.N verfügbar" | ja | `changelog_notes = release.notes` |
 
@@ -196,10 +201,14 @@ Kanal unverändert.
   exponiert (wie `frequency_var`).
 - `_check_now` liest **den aktuellen Checkbox-Zustand**, nicht den
   gespeicherten Wert — sonst wirkt das Häkchen erst nach Speichern und
-  erneutem Öffnen des Dialogs.
+  erneutem Öffnen des Dialogs. Der Zustand wird dabei **im UI-Thread**
+  ausgewertet und als Wert in die Worker-Closure gegeben
+  (`include = self.prerelease_var.get()` vor `runner.run`) — eine Tk-Variable
+  darf nie aus dem Daemon-Thread gelesen werden.
 - Statustext/Download/Changelog folgen `resolve_check_result`: Liefert das
-  Ergebnis `changelog_notes`, wird der Text direkt gerendert; sonst wie bisher
-  `_fetch_changelog(changelog_version)` im Worker.
+  Ergebnis `changelog_notes`, wird der Text direkt gerendert (leerer `body`
+  → bestehender Fallback „Changelog konnte nicht geladen werden."); sonst wie
+  bisher `_fetch_changelog(changelog_version)` im Worker.
 - `_open_download` nutzt weiterhin `release.version` (Basisversion) für den
   Asset-Match — die Assets eines Pre-Releases heißen `Zeiterfassung-1.19.0-*`,
   `build.py` benennt sie unabhängig vom Kanal.
@@ -250,7 +259,7 @@ neuer Fehlerdialog.
 | `release_from_payload`: `release_id`, `version` (Basis), `is_prerelease`, `notes` | `tests/test_updater.py` |
 | `resolve_check_result` für alle vier Fälle der Tabelle oben | `tests/test_updater.py` |
 | `pick_asset_url` mit Pre-Release-Assets (Basisversion im Namen) | `tests/test_updater.py` |
-| GitHub-Notes-Markdown (`* `-Bullets, `## `-Heading, Full-Changelog-Zeile) | `tests/test_changelog.py` |
+| GitHub-Notes-Markdown (`* `-Bullets, `## `-Heading, Full-Changelog-Zeile; Fixture mit `\r\n`-Zeilenenden, wie die API sie liefert) | `tests/test_changelog.py` |
 | `installed_release_id`/`version_label` mit und ohne `RELEASE_TAG` | `tests/test_version_label.py` |
 | Kanal-Auswahl im Hintergrund-Check (Flag steuert den Fetch-Pfad) | `tests/test_background_tasks.py` |
 | Routing/Merker auf `release_id` (pre.1 → pre.2 meldet erneut) | `tests/test_ui_update_routing.py`, `tests/test_update_banner.py` |
@@ -277,5 +286,13 @@ echten Pre-Release-Lauf verifiziert (Titel zeigt `X.Y.Z-pre.N`).
   Angebot.
 - **Ein Pre-Nutzer bekommt das gleichnamige echte Release nicht angeboten** —
   nach der Ordnung ist sein Build neuer, und inhaltlich stimmt das.
-- **`per_page=10`** deckt die neuesten zehn Releases ab; die Liste ist absteigend
-  nach Erstellung sortiert, das Maximum liegt immer darin.
+- **Nur ein Angebots-Slot.** Ein Opt-in-Nutzer auf einer älteren Version
+  bekommt ausschließlich das Maximum angeboten — existieren `1.19.0` und
+  `1.19.0-pre.2`, sieht er nur pre.2, nie das echte 1.19.0 daneben. Für den
+  Zweck des Kanals (neuesten Build testen) gewollt; wer das echte Release
+  will, wählt das Häkchen ab und prüft erneut.
+- **`per_page=10`**: Wir maximieren selbst über die gelieferten Einträge und
+  verlassen uns nicht auf die API-Sortierung (die nach `created_at` sortiert,
+  nicht nach Publish-Datum). 10 Einträge entsprechen bei der Release-Kadenz
+  dieses Repos mehreren Wochen bis Monaten — dass das global neueste Release
+  außerhalb der ersten Seite liegt, ist praktisch ausgeschlossen.
