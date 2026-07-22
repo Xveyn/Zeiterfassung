@@ -28,6 +28,28 @@ class TestIsNewer:
     def test_higher_major_is_newer(self):
         assert is_newer("1.8.3", "2.0.0") is True
 
+    def test_prerelease_of_same_base_is_newer_than_release(self):
+        assert is_newer("1.18.2", "1.18.2-pre.1") is True
+
+    def test_release_is_not_newer_than_its_own_prerelease(self):
+        assert is_newer("1.18.2-pre.1", "1.18.2") is False
+
+    def test_higher_prerelease_number_is_newer(self):
+        assert is_newer("1.18.2-pre.1", "1.18.2-pre.2") is True
+
+    def test_same_prerelease_is_not_newer(self):
+        assert is_newer("1.18.2-pre.2", "1.18.2-pre.2") is False
+
+    def test_next_patch_is_newer_than_prerelease(self):
+        assert is_newer("1.18.2-pre.5", "1.18.3") is True
+
+    def test_unparsable_latest_is_not_newer(self):
+        # Kaputter Tag darf die Auswahl nicht sprengen — still ignorieren.
+        assert is_newer("1.18.2", "nightly") is False
+
+    def test_unparsable_current_is_not_newer(self):
+        assert is_newer("nightly", "1.18.2") is False
+
 
 class TestTodayIso:
     def test_returns_iso_date_string(self):

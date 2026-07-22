@@ -10,16 +10,21 @@ from datetime import date
 from urllib.error import URLError
 from urllib.request import Request, urlopen
 
-from src.version import VERSION
-
-
-def _to_tuple(version: str) -> tuple[int, ...]:
-    return tuple(int(part) for part in version.split("."))
+from src.version import VERSION, parse_release_id
 
 
 def is_newer(current: str, latest: str) -> bool:
-    """True, wenn `latest` strikt neuer ist als `current`. Beide ohne v-Prefix."""
-    return _to_tuple(latest) > _to_tuple(current)
+    """True, wenn `latest` strikt neuer ist als `current`. Beide sind
+    Release-Kennungen ohne v-Prefix ('1.19.0' oder '1.19.0-pre.2').
+
+    Ist eine Seite nicht parsebar, gilt "nicht neuer" — ein kaputter oder
+    fremder Tag im Release-Feed darf weder crashen noch ein Update auslösen.
+    """
+    current_key = parse_release_id(current)
+    latest_key = parse_release_id(latest)
+    if current_key is None or latest_key is None:
+        return False
+    return latest_key > current_key
 
 
 def today_iso() -> str:
