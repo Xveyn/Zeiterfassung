@@ -103,35 +103,49 @@ def update_toast_text(release: "Release") -> str:
     )
 
 
-def resolve_check_result(version: str, release: "Release | None") -> dict:
-    """Reine Entscheidungslogik für das Ergebnis eines Update-Checks:
-    ohne verfügbares Update wird trotzdem der Changelog der installierten
-    Version gezeigt, statt das Feld leer/versteckt zu lassen. Liefert alles,
-    was der Tk-Glue-Code (`tab_updates.py::_check_now`) an der UI anwenden
-    muss — Tk-frei, daher ohne Widgets testbar."""
+def resolve_check_result(installed_id: str, release: "Release | None") -> dict:
+    """Reine Entscheidungslogik für das Ergebnis eines Update-Checks.
+
+    `installed_id` ist die Kennung des laufenden Builds
+    (`version.installed_release_id()`), nicht bloß die Version.
+
+    Der Changelog kommt aus zwei Quellen: für echte Releases aus CHANGELOG.md
+    am Tag (`changelog_version` -> changelog.fetch_changelog_entry), für
+    Pre-Releases aus den Release-Notes der API (`changelog_notes`, liegt dem
+    Payload bereits bei). CHANGELOG.md kennt am Pre-Tag nur die zuletzt
+    veröffentlichte Version — also genau das, was der Nutzer schon hat.
+
+    Tk-frei, daher ohne Widgets testbar."""
     if release is None:
         return {
             "status_text": "Prüfung fehlgeschlagen — keine Verbindung?",
             "show_download": False,
             "changelog_version": None,
+            "changelog_notes": None,
             "persist": None,
             "latest_release": None,
         }
-    if not is_newer(version, release.version):
+    if not is_newer(installed_id, release.release_id):
+        # Läuft der Nutzer auf genau dem angebotenen Pre-Build, zeigen dessen
+        # Notes, was sein Testbuild enthält.
+        own_build = release.is_prerelease and release.release_id == installed_id
         return {
-            "status_text": f"Du hast die aktuelle Version ({version}).",
+            "status_text": f"Du hast die aktuelle Version ({installed_id}).",
             "show_download": False,
-            "changelog_version": version,
+            "changelog_version": None if own_build else base_version(installed_id),
+            "changelog_notes": release.notes if own_build else None,
             "persist": None,
             "latest_release": None,
         }
+    kind = "Vorabversion" if release.is_prerelease else "Version"
     return {
-        "status_text": f"Version {release.version} verfügbar",
+        "status_text": f"{kind} {release.release_id} verfügbar",
         "show_download": True,
-        "changelog_version": release.version,
+        "changelog_version": None if release.is_prerelease else release.version,
+        "changelog_notes": release.notes if release.is_prerelease else None,
         "persist": {
-            "dismissed_version": release.version,
-            "update_toast_shown_version": release.version,
+            "dismissed_version": release.release_id,
+            "update_toast_shown_version": release.release_id,
         },
         "latest_release": release,
     }

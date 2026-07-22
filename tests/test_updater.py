@@ -230,18 +230,18 @@ class TestResolveCheckResult:
             "status_text": "Prüfung fehlgeschlagen — keine Verbindung?",
             "show_download": False,
             "changelog_version": None,
+            "changelog_notes": None,
             "persist": None,
             "latest_release": None,
         }
 
     def test_current_version_shows_changelog_of_installed_version(self):
-        # Ohne verfügbares Update soll trotzdem der Changelog der
-        # installierten Version sichtbar sein (statt komplett ausgeblendet).
         release = Release(version="1.18.0", html_url="https://x", assets=())
         result = resolve_check_result("1.18.0", release)
         assert result["status_text"] == "Du hast die aktuelle Version (1.18.0)."
         assert result["show_download"] is False
         assert result["changelog_version"] == "1.18.0"
+        assert result["changelog_notes"] is None
         assert result["persist"] is None
         assert result["latest_release"] is None
 
@@ -251,11 +251,62 @@ class TestResolveCheckResult:
         assert result["status_text"] == "Version 1.19.0 verfügbar"
         assert result["show_download"] is True
         assert result["changelog_version"] == "1.19.0"
+        assert result["changelog_notes"] is None
         assert result["persist"] == {
             "dismissed_version": "1.19.0",
             "update_toast_shown_version": "1.19.0",
         }
         assert result["latest_release"] is release
+
+    def test_newer_prerelease_labels_status_and_uses_release_notes(self):
+        release = Release(
+            version="1.19.0", html_url="https://x", assets=(),
+            release_id="1.19.0-pre.2", is_prerelease=True, notes="## What's Changed",
+        )
+        result = resolve_check_result("1.19.0", release)
+        assert result["status_text"] == "Vorabversion 1.19.0-pre.2 verfügbar"
+        assert result["show_download"] is True
+        assert result["changelog_version"] is None
+        assert result["changelog_notes"] == "## What's Changed"
+        assert result["persist"] == {
+            "dismissed_version": "1.19.0-pre.2",
+            "update_toast_shown_version": "1.19.0-pre.2",
+        }
+        assert result["latest_release"] is release
+
+    def test_own_prerelease_build_shows_its_own_notes(self):
+        # Der Tester läuft auf genau diesem Build: der CHANGELOG der
+        # Basisversion wäre der Stand, den er NICHT mehr hat.
+        release = Release(
+            version="1.19.0", html_url="https://x", assets=(),
+            release_id="1.19.0-pre.2", is_prerelease=True, notes="## What's Changed",
+        )
+        result = resolve_check_result("1.19.0-pre.2", release)
+        assert result["status_text"] == "Du hast die aktuelle Version (1.19.0-pre.2)."
+        assert result["show_download"] is False
+        assert result["changelog_version"] is None
+        assert result["changelog_notes"] == "## What's Changed"
+        assert result["persist"] is None
+
+    def test_older_prerelease_than_installed_shows_installed_changelog(self):
+        # Pre-Nutzer auf pre.3 bekommt pre.2 angeboten (kann bei Alt-Builds
+        # passieren): kein Download, Changelog der eigenen Basisversion.
+        release = Release(
+            version="1.19.0", html_url="https://x", assets=(),
+            release_id="1.19.0-pre.2", is_prerelease=True, notes="## What's Changed",
+        )
+        result = resolve_check_result("1.19.0-pre.3", release)
+        assert result["show_download"] is False
+        assert result["changelog_version"] == "1.19.0"
+        assert result["changelog_notes"] is None
+
+    def test_prerelease_user_is_not_offered_the_plain_release(self):
+        # Nach der Ordnung ist der Pre-Build neuer als sein echtes Release.
+        release = Release(version="1.19.0", html_url="https://x", assets=())
+        result = resolve_check_result("1.19.0-pre.2", release)
+        assert result["status_text"] == "Du hast die aktuelle Version (1.19.0-pre.2)."
+        assert result["show_download"] is False
+        assert result["changelog_version"] == "1.19.0"
 
 
 PRERELEASE_PAYLOAD = {
