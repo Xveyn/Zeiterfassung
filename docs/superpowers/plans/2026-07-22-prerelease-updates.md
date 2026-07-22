@@ -34,6 +34,7 @@
 - Produces:
   - `src.version.parse_release_id(release_id: str) -> tuple[int, int, int, int] | None`
   - `src.version.base_version(release_id: str) -> str`
+  - `src.version.strip_tag_prefix(tag: str) -> str` — `"v1.19.0-pre.2"` → `"1.19.0-pre.2"`; die EINE Stelle, die das v-Prefix entfernt (Task 2 und 3 nutzen sie, statt die zwei Zeilen zu wiederholen)
   - `src.updater.is_newer(current: str, latest: str) -> bool` (Signatur unverändert, Semantik erweitert)
 
 - [ ] **Step 1: Write the failing tests**
@@ -88,7 +89,26 @@ class TestBaseVersion:
 
     def test_empty_stays_empty(self):
         assert base_version("") == ""
+
+
+class TestStripTagPrefix:
+    def test_strips_lowercase_v(self):
+        assert strip_tag_prefix("v1.19.0-pre.2") == "1.19.0-pre.2"
+
+    def test_strips_uppercase_v(self):
+        assert strip_tag_prefix("V1.19.0") == "1.19.0"
+
+    def test_without_prefix_unchanged(self):
+        assert strip_tag_prefix("1.19.0") == "1.19.0"
+
+    def test_surrounding_whitespace_is_removed(self):
+        assert strip_tag_prefix("  v1.19.0\n") == "1.19.0"
+
+    def test_none_becomes_empty(self):
+        assert strip_tag_prefix(None) == ""
 ```
+
+(Der Import oben in der Datei wird um `base_version, parse_release_id, strip_tag_prefix` erweitert.)
 
 In `tests/test_updater.py` innerhalb der bestehenden Klasse `TestIsNewer` ergänzen:
 
@@ -155,6 +175,16 @@ def base_version(release_id):
     eines Pre-Releases tragen die reine Version im Namen (build.py benennt sie
     unabhängig vom Kanal), darum braucht der Asset-Match diese Form."""
     return (release_id or "").split("-pre.")[0]
+
+
+def strip_tag_prefix(tag):
+    """Git-Tag -> Release-Kennung: 'v1.19.0-pre.2' -> '1.19.0-pre.2'.
+
+    Die eine Stelle, die das v-Prefix entfernt (updater.py und der
+    Build-Stempel nutzen sie). Sowohl 'v' als auch 'V' — Tags sind normiert,
+    defensiv ist billig."""
+    tag = (tag or "").strip()
+    return tag[1:] if tag[:1] in ("v", "V") else tag
 ```
 
 - [ ] **Step 4: Implement in `src/updater.py`**
@@ -310,11 +340,9 @@ def _stamped_release_id():
     """Release-Kennung aus dem beim Build gestempelten Tag ('v1.19.0-pre.2'
     -> '1.19.0-pre.2'). Leer, wenn kein Stempel existiert (Alt-Builds vor
     diesem Feature, Dev-/Repo-Modus) oder der Tag nicht dem Muster folgt."""
-    tag = "" if _build_info is None else getattr(_build_info, "RELEASE_TAG", "")
-    tag = (tag or "").strip()
-    if tag[:1] in ("v", "V"):
-        tag = tag[1:]
-    return tag if parse_release_id(tag) is not None else ""
+    raw = "" if _build_info is None else getattr(_build_info, "RELEASE_TAG", "")
+    release_id = strip_tag_prefix(raw)
+    return release_id if parse_release_id(release_id) is not None else ""
 
 
 def installed_release_id():
@@ -429,7 +457,7 @@ git commit -m "feat(build): Release-Tag als RELEASE_TAG in build_info stempeln"
 - Test: `tests/test_updater.py`
 
 **Interfaces:**
-- Consumes: `src.version.base_version`, `src.version.parse_release_id` (Task 1)
+- Consumes: `src.version.base_version`, `src.version.parse_release_id`, `src.version.strip_tag_prefix` (Task 1)
 - Produces:
   - `Release(version, html_url, assets, release_id="", is_prerelease=False, notes="")` — `release_id` fällt ohne Angabe auf `version` zurück
   - `src.updater.release_from_payload(payload: dict) -> Release | None`
@@ -611,7 +639,7 @@ Expected: FAIL — `ImportError: cannot import name 'check_for_update' from 'src
 Import-Zeile erweitern:
 
 ```python
-from src.version import VERSION, base_version, parse_release_id
+from src.version import VERSION, base_version, parse_release_id, strip_tag_prefix
 ```
 
 Die Dataclass `Release` ersetzen durch:
@@ -664,9 +692,7 @@ def release_from_payload(payload) -> Release | None:
     html_url = payload.get("html_url")
     if not tag or not html_url:
         return None
-    # Sowohl 'v' als auch 'V' strippen; Tags sind normiert, defensiv ist billig.
-    if tag[:1] in ("v", "V"):
-        tag = tag[1:]
+    tag = strip_tag_prefix(tag)
     raw_assets = payload.get("assets") or []
     assets = tuple(
         Asset(name=a["name"], url=a["browser_download_url"])
@@ -692,10 +718,7 @@ def select_newest_payload(payloads) -> dict | None:
     for payload in payloads or []:
         if not isinstance(payload, dict) or payload.get("draft"):
             continue
-        tag = payload.get("tag_name") or ""
-        if tag[:1] in ("v", "V"):
-            tag = tag[1:]
-        key = parse_release_id(tag)
+        key = parse_release_id(strip_tag_prefix(payload.get("tag_name")))
         if key is None:
             continue
         if best_key is None or key > best_key:
