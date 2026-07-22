@@ -76,7 +76,15 @@ Voll-Release (Tag `vX.Y.Z`).
 
 ## Recovery bei teilweise fehlgeschlagenem Release
 
-Wenn der `publish`-Job nach dem Tag-Push fehlschlägt (z.B. `gh release create` Netzwerkproblem), blockiert der Pre-Check beim Re-Run die erneute Ausführung wegen "tag already exists". Ablauf:
+Scheitert `gh release create` selbst (Netzwerkproblem, Rate-Limit), räumt der
+`publish`-Job seit Audit N26 **automatisch auf**: ein eventuell halb angelegtes
+Release wird entfernt, dann der bereits gepushte Tag gelöscht, dann bricht der
+Job ab. Ein „Re-run all jobs" läuft danach sauber durch — der Pre-Check findet
+keinen Tag mehr vor.
+
+Von Hand nachräumen muss man nur, wenn der Job **zwischen** Tag-Push und
+Rollback stirbt (Runner-Abbruch, Cancel, Timeout) — dann blockiert der
+Pre-Check den Re-Run wegen „tag already exists":
 
 1. Tag lokal und remote löschen:
    ```

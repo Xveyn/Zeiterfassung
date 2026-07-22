@@ -1,3 +1,4 @@
+import logging
 import pytest
 from unittest import mock
 
@@ -84,6 +85,99 @@ def test_find_sync_file_queries_appdatafolder():
     call_kwargs = service.files().list.call_args[1]
     assert call_kwargs.get("spaces") == "appDataFolder"
     assert "zeiterfassung-sync.json" in call_kwargs.get("q", "")
+
+
+def test_find_sync_file_requests_created_time():
+    """Ohne createdTime im fields-Parameter gäbe es kein Kriterium, um bei
+    Duplikaten deterministisch zu wählen (Audit M3)."""
+    service = mock.MagicMock()
+    service.files().list().execute.return_value = {"files": []}
+    find_sync_file(service)
+    assert "createdTime" in service.files().list.call_args[1].get("fields", "")
+
+
+def test_find_sync_file_duplicates_pick_oldest():
+    """Zwei Geräte können beim Erst-Setup gleichzeitig anlegen (Drive kennt
+    kein atomares create-if-not-exists). Alle Geräte müssen danach dieselbe
+    Datei wählen, sonst laufen die Stände auseinander (Audit M3)."""
+    service = mock.MagicMock()
+    service.files().list().execute.return_value = {
+        "files": [
+            {"id": "neu", "name": "zeiterfassung-sync.json",
+             "createdTime": "2026-07-04T10:00:00.000Z"},
+            {"id": "alt", "name": "zeiterfassung-sync.json",
+             "createdTime": "2026-07-04T09:59:58.000Z"},
+        ],
+    }
+    assert find_sync_file(service) == "alt"
+
+
+def test_find_sync_file_duplicates_are_order_independent():
+    """Die Drive-API garantiert ohne orderBy KEINE Sortierung — dasselbe Gerät
+    darf bei umgekehrter Reihenfolge nicht plötzlich die andere Datei nehmen
+    (sonst springen Einträge zwischen zwei Syncs hin und her)."""
+    files = [
+        {"id": "b", "name": "zeiterfassung-sync.json",
+         "createdTime": "2026-07-04T09:59:58.000Z"},
+        {"id": "a", "name": "zeiterfassung-sync.json",
+         "createdTime": "2026-07-04T10:00:00.000Z"},
+    ]
+    service = mock.MagicMock()
+    service.files().list().execute.return_value = {"files": list(files)}
+    first = find_sync_file(service)
+    service.files().list().execute.return_value = {"files": list(reversed(files))}
+    assert find_sync_file(service) == first == "b"
+
+
+def test_find_sync_file_duplicates_tie_break_on_id():
+    """Gleicher createdTime (Sekunden-Auflösung, echter Gleichstand möglich):
+    die id entscheidet — Hauptsache alle Geräte kommen zum selben Ergebnis."""
+    service = mock.MagicMock()
+    service.files().list().execute.return_value = {
+        "files": [
+            {"id": "zzz", "createdTime": "2026-07-04T10:00:00.000Z"},
+            {"id": "aaa", "createdTime": "2026-07-04T10:00:00.000Z"},
+        ],
+    }
+    assert find_sync_file(service) == "aaa"
+
+
+def test_find_sync_file_missing_created_time_sorts_last():
+    """Fehlt das Feld (liefert Drive nicht), darf so eine Datei nicht als
+    'ältestmöglich' gewinnen — ein echter Zeitstempel schlägt sie."""
+    service = mock.MagicMock()
+    service.files().list().execute.return_value = {
+        "files": [
+            {"id": "ohne"},
+            {"id": "mit", "createdTime": "2026-07-04T10:00:00.000Z"},
+        ],
+    }
+    assert find_sync_file(service) == "mit"
+
+
+def test_find_sync_file_duplicates_are_logged(caplog):
+    """Duplikate sind ein Setup-Unfall, den der Nutzer nicht sieht — er muss
+    wenigstens im Log stehen, sonst ist er nicht diagnostizierbar."""
+    service = mock.MagicMock()
+    service.files().list().execute.return_value = {
+        "files": [
+            {"id": "eins", "createdTime": "2026-07-04T10:00:00.000Z"},
+            {"id": "zwei", "createdTime": "2026-07-04T10:00:01.000Z"},
+        ],
+    }
+    with caplog.at_level(logging.WARNING, logger="src.drive"):
+        find_sync_file(service)
+    assert "eins" in caplog.text and "zwei" in caplog.text
+
+
+def test_find_sync_file_single_hit_does_not_warn(caplog):
+    service = mock.MagicMock()
+    service.files().list().execute.return_value = {
+        "files": [{"id": "nur-eine", "createdTime": "2026-07-04T10:00:00.000Z"}],
+    }
+    with caplog.at_level(logging.WARNING, logger="src.drive"):
+        assert find_sync_file(service) == "nur-eine"
+    assert caplog.text == ""
 
 
 

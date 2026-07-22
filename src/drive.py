@@ -6,6 +6,7 @@ Scope: drive.appdata (non-sensitive, per-app-isolated).
 """
 
 import io
+import logging
 import os
 
 from src.oauth_utils import write_token
@@ -122,14 +123,41 @@ def reconnect(credentials_path, token_path, gcal_enabled=False):
     return get_drive_service(credentials_path, token_path, gcal_enabled=gcal_enabled)
 
 
+def _dedupe_sort_key(f):
+    """Sortierschlüssel für mehrfach vorhandene Sync-Dateien: ältestes
+    createdTime gewinnt, bei Gleichstand die kleinere id.
+
+    Fehlt `createdTime` (Drive liefert das Feld nicht), rutscht die Datei ans
+    Ende — sonst gälte sie als "ältestmöglich" und schlüge jeden echten
+    Zeitstempel."""
+    created = f.get("createdTime")
+    return (created is None, created or "", f.get("id") or "")
+
+
 def find_sync_file(service):
     """Listet appDataFolder und sucht nach SYNC_FILENAME. Liefert file_id oder None.
+
+    Bei mehreren Treffern gewinnt deterministisch die ÄLTESTE Datei (Audit M3).
+    Zwei Geräte können beim Erst-Setup gleichzeitig anlegen — der
+    appDataFolder kennt kein atomares create-if-not-exists, die Race ist also
+    nicht verhinderbar, nur ihre Folge. Ohne feste Regel nähme jedes Gerät
+    irgendeinen Treffer: die Stände liefen auseinander (Split-Brain), und da
+    die Drive-API ohne `orderBy` KEINE Sortierung garantiert, könnte sogar
+    dasselbe Gerät zwischen zwei Syncs auf die jeweils andere Datei greifen —
+    Einträge verschwänden und tauchten wieder auf. Mit der Regel konvergieren
+    alle Geräte auf dieselbe Datei; die auseinandergelaufenen Stände führt der
+    LWW-Merge beim nächsten Push wieder zusammen (jedes Gerät hält seinen
+    Stand ja lokal).
+
+    Sortiert wird bewusst lokal statt per `orderBy` — das Ergebnis hängt dann
+    nicht vom Server-Verhalten ab und ist testbar.
+
     Wirft DriveNetworkError bei API-Fehlern."""
     try:
         result = service.files().list(
             spaces="appDataFolder",
             q=f"name = '{SYNC_FILENAME}'",
-            fields="files(id, name)",
+            fields="files(id, name, createdTime)",
             pageSize=10,
         ).execute()
     except HttpError as e:
@@ -144,7 +172,16 @@ def find_sync_file(service):
     files = result.get("files", [])
     if not files:
         return None
-    return files[0]["id"]
+    if len(files) > 1:
+        # Der Nutzer sieht davon nichts (appDataFolder ist im Drive-UI
+        # unsichtbar) — ohne Log wäre der Split-Brain nicht diagnostizierbar.
+        logging.getLogger(__name__).warning(
+            "Mehrere Sync-Dateien im appDataFolder (%d) — älteste gewinnt. "
+            "Kandidaten: %s",
+            len(files),
+            [(f.get("id"), f.get("createdTime")) for f in files],
+        )
+    return min(files, key=_dedupe_sort_key)["id"]
 
 
 def download(service, file_id):
