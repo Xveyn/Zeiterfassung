@@ -104,6 +104,25 @@ def update_toast_text(release: "Release") -> str:
     )
 
 
+def manual_check_toast_text(installed_id: str, release: "Release | None") -> str:
+    """Toast-Text für den manuell aus dem Tray angestoßenen Update-Check.
+
+    Anders als der Hintergrund-Check meldet sich der manuelle in **jedem** Fall:
+    der Nutzer hat aktiv gefragt, und bei versteckt laufender App ist der Toast
+    die einzige Antwortmöglichkeit — ohne Rückmeldung wirkte der Menüpunkt
+    kaputt.
+
+    Fallunterscheidung und Wortlaut kommen aus `resolve_check_result` (Single
+    Source of Truth, dieselben Texte wie im Updates-Tab); nur der Fund einer
+    neueren Version bekommt den toast-spezifischen Verweis auf den Tab.
+    """
+    result = resolve_check_result(installed_id, release)
+    found = result["latest_release"]
+    if found is not None:
+        return update_toast_text(found)
+    return result["status_text"]
+
+
 def resolve_check_result(installed_id: str, release: "Release | None") -> dict:
     """Reine Entscheidungslogik für das Ergebnis eines Update-Checks.
 

@@ -7,8 +7,9 @@ from urllib.error import HTTPError, URLError
 
 from src.updater import (
     Asset, Release, check_for_update, check_latest_release, frequency_for_label,
-    is_newer, pick_asset_url, release_from_payload, resolve_check_result,
-    select_newest_payload, should_check, today_iso, update_toast_text,
+    is_newer, manual_check_toast_text, pick_asset_url, release_from_payload,
+    resolve_check_result, select_newest_payload, should_check, today_iso,
+    update_toast_text,
 )
 
 
@@ -471,3 +472,30 @@ class TestUpdateToastTextForPrerelease:
     def test_real_release_toast_unchanged(self):
         release = Release(version="1.19.0", html_url="https://x", assets=())
         assert update_toast_text(release).startswith("Version 1.19.0 verfügbar")
+
+
+class TestManualCheckToastText:
+    """Der Tray-Menüpunkt „Nach Updates suchen" meldet sich in JEDEM Fall —
+    anders als der Hintergrund-Check, der bei „alles aktuell" schweigt. Bei
+    verstecktem Fenster ist der Toast die einzige Antwortmöglichkeit."""
+
+    def test_failed_fetch_says_so(self):
+        assert manual_check_toast_text("1.19.1", None) == (
+            "Prüfung fehlgeschlagen — keine Verbindung?")
+
+    def test_up_to_date_names_the_installed_build(self):
+        release = Release(version="1.19.1", html_url="https://x", assets=())
+        assert manual_check_toast_text("1.19.1", release) == (
+            "Du hast die aktuelle Version (1.19.1).")
+
+    def test_newer_release_points_at_the_updates_tab(self):
+        release = Release(version="1.20.0", html_url="https://x", assets=())
+        text = manual_check_toast_text("1.19.1", release)
+        assert text == update_toast_text(release)
+        assert "1.20.0" in text and "Einstellungen" in text
+
+    def test_newer_prerelease_is_labelled_as_such(self):
+        release = Release(version="1.19.1", html_url="https://x", assets=(),
+                          release_id="1.19.1-pre.1", is_prerelease=True)
+        assert manual_check_toast_text("1.19.1", release).startswith(
+            "Vorabversion 1.19.1-pre.1 verfügbar")

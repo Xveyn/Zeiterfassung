@@ -2,6 +2,7 @@
 Banner vs. schon gesehen) plus die Verdrahtung über App._on_update_check_result.
 """
 
+from types import MethodType
 from unittest.mock import MagicMock
 
 from src.ui import App, _route_update_notification
@@ -25,6 +26,24 @@ class _FakeSettings:
         self._data[key] = value
 
 
+class _FakeRunner:
+    """Stand-in für BackgroundTaskRunner: sammelt Jobs, `flush()` führt sie aus
+    wie der echte Runner (fn im Worker, on_done danach im UI-Thread)."""
+
+    def __init__(self):
+        self.jobs = []
+
+    def run(self, fn, on_done=None):
+        self.jobs.append((fn, on_done))
+
+    def flush(self):
+        jobs, self.jobs = self.jobs, []
+        for fn, on_done in jobs:
+            result = fn()
+            if on_done is not None:
+                on_done(result)
+
+
 class _FakeApp:
     """Duck-Typed Stand-in für App mit nur den gelesenen Attributen."""
 
@@ -32,6 +51,10 @@ class _FakeApp:
         self.settings = _FakeSettings(settings_data)
         self._tray = tray
         self._update_banner = MagicMock()
+        self._bg = _FakeRunner()
+        self._update_check_running = False
+        self.root = MagicMock()
+        self._sync = MagicMock()
 
 
 class _FakeTray:
@@ -128,3 +151,100 @@ def test_on_update_check_result_persists_release_id_not_base_version(monkeypatch
     fake = _FakeApp(tray=tray, settings_data={"update_toast_shown_version": ""})
     App._on_update_check_result(fake, _Rel("1.19.0-pre.2", is_prerelease=True), True)
     assert fake.settings.get("update_toast_shown_version") == "1.19.0-pre.2"
+
+
+# --- Tray-Menüpunkt „Nach Updates suchen" ---------------------------------
+
+def _tray_app(monkeypatch, release, installed="1.19.1", settings_data=None):
+    """App-Stand-in mit gestubbtem Update-Check. `release` ist das Ergebnis von
+    check_for_update — eine Release, None (kein Fund/kein Netz) oder eine
+    Exception-Instanz, die der Stub wirft."""
+    import src.ui as ui_module
+
+    monkeypatch.setattr(ui_module, "today_iso", lambda: "2026-07-27")
+    monkeypatch.setattr(ui_module, "installed_release_id", lambda: installed)
+
+    def fake_check(repo, include_prereleases, **kwargs):
+        if isinstance(release, Exception):
+            raise release
+        return release
+
+    monkeypatch.setattr(ui_module, "check_for_update", fake_check)
+    fake = _FakeApp(tray=_FakeTray(), settings_data=settings_data or {})
+    # Der Worker-Callback ist eine echte App-Methode: gebunden ans Fake-Objekt
+    # läuft im Test derselbe Code wie in der App.
+    fake._on_tray_check_update_result = MethodType(
+        App._on_tray_check_update_result, fake)
+    return fake
+
+
+def test_tray_menu_offers_update_check():
+    """Der Eintrag hängt in derselben actions-Liste wie die anderen
+    Tray-Aktionen — damit rendern ihn beide Backends (pystray/NSStatusItem)."""
+    fake = _FakeApp(tray=_FakeTray(), settings_data={})
+    labels = [label for label, _cb, _vis in App._tray_actions(fake)]
+    assert "Nach Updates suchen" in labels
+    entry = next(a for a in App._tray_actions(fake) if a[0] == "Nach Updates suchen")
+    assert entry[2] is None          # immer sichtbar, kein Settings-Gate
+    assert callable(entry[1])
+
+
+def test_tray_check_toasts_found_update_and_marks_it_shown(monkeypatch):
+    fake = _tray_app(monkeypatch, _Rel("1.20.0"),
+                     settings_data={"update_toast_shown_version": ""})
+
+    App._tray_check_update(fake)
+    fake._bg.flush()
+
+    assert len(fake._tray.messages) == 1
+    assert "1.20.0" in fake._tray.messages[0]
+    assert fake.settings.get("last_update_check_at") == "2026-07-27"
+    # Der Hintergrund-Check soll dieselbe Version nicht gleich nochmal toasten.
+    assert fake.settings.get("update_toast_shown_version") == "1.20.0"
+
+
+def test_tray_check_toasts_even_when_up_to_date(monkeypatch):
+    """Der bewusste Unterschied zum Hintergrund-Check: hier hat der Nutzer
+    gefragt, also bekommt er auch bei „nichts Neues" eine Antwort."""
+    fake = _tray_app(monkeypatch, _Rel("1.19.1"),
+                     settings_data={"update_toast_shown_version": ""})
+
+    App._tray_check_update(fake)
+    fake._bg.flush()
+
+    assert fake._tray.messages == ["Du hast die aktuelle Version (1.19.1)."]
+    assert fake.settings.get("update_toast_shown_version") == ""
+
+
+def test_tray_check_reports_failure_without_burning_the_check_date(monkeypatch):
+    """Eine gescheiterte Prüfung darf nicht als „heute schon geprüft" gelten —
+    sonst schweigt auch der Hintergrund-Check für den Rest des Tages."""
+    fake = _tray_app(monkeypatch, OSError("kein Netz"), settings_data={})
+
+    App._tray_check_update(fake)
+    fake._bg.flush()
+
+    assert fake._tray.messages == ["Prüfung fehlgeschlagen — keine Verbindung?"]
+    assert fake.settings.get("last_update_check_at") == ""
+
+
+def test_tray_check_ignores_second_click_while_running(monkeypatch):
+    fake = _tray_app(monkeypatch, _Rel("1.20.0"),
+                     settings_data={"update_toast_shown_version": ""})
+
+    App._tray_check_update(fake)
+    App._tray_check_update(fake)   # Doppelklick, während der erste läuft
+
+    assert len(fake._bg.jobs) == 1
+
+
+def test_tray_check_is_possible_again_after_a_failure(monkeypatch):
+    """Das Lauf-Flag muss auch im Fehlerfall wieder freigegeben werden, sonst
+    ist der Menüpunkt nach einem Netzausfall dauerhaft tot."""
+    fake = _tray_app(monkeypatch, OSError("kein Netz"), settings_data={})
+
+    App._tray_check_update(fake)
+    fake._bg.flush()
+    App._tray_check_update(fake)
+
+    assert len(fake._bg.jobs) == 1
