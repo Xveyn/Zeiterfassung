@@ -210,6 +210,10 @@ müssen beide Locks respektieren. Design:
 `gcal.py` (Calendar), `reservations_sync.py` (Abgleich Reservierungen ↔ Kalender). Alle teilen
 denselben OAuth-Token; Scope-Upgrade erzwingt frischen Consent.
 
+Geschrieben wird der Token ausschließlich über `oauth_utils.write_token`: Temp-Datei →
+Härtung → `os.replace` (mit `PermissionError`-Retry, #135). Zur Härtung siehe
+`secure_file` unten.
+
 `drive.find_sync_file` liefert bei mehreren Treffern deterministisch die
 **älteste** Datei (`createdTime`, Tie-Break `id`) — der appDataFolder kennt kein
 atomares create-if-not-exists, zwei Geräte können beim Erst-Setup also beide
@@ -235,6 +239,18 @@ muss sie deterministisch **und** über alle Geräte gleich halten.
   `migrate_legacy_autostart()` überführt Alt-Shortcuts in den Registry-Key, ist aber frozen-gated
   (Repo-Modus: No-op, würde andernfalls python.exe+Repo ins Register schreiben und bestehende
   Shortcuts beschädigen).
+- `secure_file.py` — Zugriffsschutz für die beiden lokal abgelegten Secrets: `token.json`
+  (`oauth_utils.write_token`) und `instance-secret` (`single_instance._write_secret_atomic`).
+  Beide Schreibpfade laufen Temp-Datei → `chmod 0600` → `harden_windows_acl` → `os.replace`.
+  Unter Windows ist chmod ein No-op, deshalb dort zusätzlich `icacls /inheritance:r
+  /grant:r <user>:(F)` (Audit M8): geerbte ACEs (u.a. SYSTEM, lokale Administratoren) raus,
+  genau ein Berechtigter bleibt. **Vollzugriff** statt R/W, weil das spätere `os.replace`
+  DELETE auf der Zieldatei braucht; **auf der Temp-Datei**, damit die Datei nie kurz mit
+  geerbten Rechten am Zielpfad liegt. Best-effort und nie fatal (fehlendes `icacls`, kein
+  benennbarer Principal → loggen und weiter): ungehärtet ist der Status quo, eine
+  gescheiterte Persistenz wäre eine Regression. Eigenes Modul, damit `single_instance`
+  nichts aus dem OAuth-Umfeld importieren muss (und keiner den privaten Namen des anderen
+  nutzt, Audit N17). Wer einen dritten Secret-Schreibpfad baut, ruft diesen Helfer mit auf.
 - `single_instance.py` — Tk-freier Single-Instance-Guard. Erste Instanz leitet einen Port aus
   `get_base_path()` ab und bindet einen Listener (`SO_EXCLUSIVEADDRUSE` Windows, `SO_REUSEADDR` Unix).
   Folgeinstanzen melden sich per SHOW/PING-Protokoll und beenden sich. `main.py` ruft `acquire()`
@@ -258,6 +274,14 @@ muss sie deterministisch **und** über alle Geräte gleich halten.
 
 Das Tray-Icon läuft, sobald `minimize_to_tray` **oder** `reminders_enabled` aktiv ist (`ui.py::_apply_tray_setting`); bei nur `reminders_enabled` dient es ausschließlich als Toast-Kanal.
 
+Die Menüeinträge kommen aus **`ui.py::App._tray_actions()`** — eine Liste `(label, callback,
+visible)`, die beide Backends rendern (pystray-Schleife bzw. `tray.build_menu_model`). Neue
+Einträge gehören dorthin, nicht in ein Backend. Die Callbacks laufen im Backend-Thread und
+marshallen selbst per `root.after(0, …)`. „Nach Updates suchen" (`_tray_check_update`) ist der
+einzige Eintrag mit eigenem Hintergrund-Job: er übergeht den Frequenz-Throttle des
+Hintergrund-Checks, meldet sein Ergebnis in **jedem** Fall als Toast (`updater.
+manual_check_toast_text`) und blockt über `_update_check_running` den Doppelklick.
+
 ## Dialoge (`src/dialogs/`)
 
 Modale Tk-Dialoge, von `App` geroutet (Klick-Modell: Linksklick = bearbeiten, Rechtsklick =
@@ -270,8 +294,26 @@ Attribute für `save_settings` exponiert; `tab_updates` startet seinen Live-Chec
 bewusst erst per `<<NotebookTabChanged>>`, nicht schon beim Dialog-Öffnen;
 `oauth_task.py` = H5-OAuth-Toggle-Builder; Dark-Styling weiter via
 `theme.apply_notebook_style`), `share_dialog`, `import_dialog`, `category_dialog`,
-`conflicts_dialog`. `period_picker` ist kein Dialog, sondern der von
+`conflicts_dialog`, `scopes_dialog`. `period_picker` ist kein Dialog, sondern der von
 `send_dialog` + `export_dialog` geteilte Zeitraum+Kategorie+Vorschau-Baustein.
+
+`scopes_dialog` zeigt read-only, welche OAuth-Scopes im `token.json` gewährt sind,
+bewertet gegen die aktuell gebrauchten (`mail.scope_overview`): ✓ genutzt, ○ gewährt
+aber Funktion aus, ✗ gebraucht aber fehlt. Bewusst ein Modal statt einer Liste im
+Google-Tab (der ist mit 480 px schon der größte im Notebook) — und es liest
+`token.json` beim Öffnen, ist also ohne Poll immer aktuell.
+
+Neben dem „Anzeigen"-Button steht die Kurzfassung aus `mail.scope_summary`:
+„n von m Berechtigungen" mit ✓ (alles Gebrauchte da) / ○ (Kern da, eine zuschaltbare
+Funktion wartet auf ihren Scope) / ✗ (Kern-Scope fehlt — schlägt jede vollständige
+Kür durch), plus „nicht angemeldet" bzw. „nicht lesbar" ohne verwertbares Token.
+Gezählt wird nur, was die **eingeschalteten** Funktionen brauchen: ungenutzte und
+unbekannte Scopes gehören nicht in den Nenner, sonst wüchse er mit jeder Altlast.
+Aktuell gehalten wird die Zeile vom **vorhandenen** 500ms-Poll der
+credentials.json-Zeile (`tab_google.refresh_scopes_status`), mit mtime/size-Cache
+auf `token.json` — so zieht sie sowohl nach einem Re-Consent als auch nach dem
+Umlegen der Sync-/Kalender-Schalter nach, ohne zweiten Timer und ohne die Datei
+zweimal pro Sekunde zu lesen.
 
 `App._open_dialog` (Linksklick-Handler) prüft zuerst `conflicts_store.unresolved_entry_keys()`:
 liegt für den Tag ein ungelöster Sync-Konflikt (Ist-Zeit zwischen zwei Geräten

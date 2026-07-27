@@ -30,8 +30,9 @@ Hilfreich für eine schnelle Einschätzung:
 - Schritte zur Reproduktion oder ein Proof of Concept
 - Falls vorhanden: ein Vorschlag zur Behebung
 
-Als privates Hobby-Projekt gibt es keine garantierten Reaktionszeiten. Eine erste
-Rückmeldung erfolgt in der Regel innerhalb weniger Tage. Bitte gib uns Gelegenheit,
+Zeiterfassung ist nebenbei als maßgeschneiderte Lösung für die eigene
+Arbeitszeiterfassung entstanden — garantierte Reaktionszeiten gibt es daher
+nicht. Eine erste Rückmeldung erfolgt in der Regel innerhalb weniger Tage. Bitte gib uns Gelegenheit,
 ein Problem zu beheben, bevor du Details öffentlich machst (Coordinated Disclosure).
 
 ## Sicherheitsrelevante Hinweise zur Nutzung
@@ -42,7 +43,9 @@ Risiko kennt, kann es vermeiden:
 - **`token.json`** enthält einen langlebigen OAuth-Refresh-Token mit laufendem Zugriff
   auf das verbundene Google-Konto (Gmail-Versand, Drive-Sync, ggf. Kalender). Unter
   macOS/Linux wird die Datei per `chmod 0600` nur für den eigenen Benutzer lesbar
-  gemacht; unter Windows schützt die ACL des Benutzerprofils. **Wer den Daten- bzw.
+  gemacht; unter Windows setzt die App per `icacls` eine explizite ACL (geerbte
+  Rechte entfernt, nur das eigene Benutzerkonto bleibt berechtigt). Beides ist
+  Zugriffsschutz auf Dateiebene, **keine** Verschlüsselung. **Wer den Daten- bzw.
   Installationsordner kopiert, sichert oder in die Cloud synchronisiert, nimmt diesen
   Token mit** — den Ordner entsprechend vertraulich behandeln.
 - **`credentials.json`** (OAuth-Client-Secret des eigenen Google-Cloud-Projekts) und

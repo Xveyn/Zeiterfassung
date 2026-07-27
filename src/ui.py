@@ -13,14 +13,17 @@ from src.time_utils import (
     format_iso_date, get_week_dates,
 )
 
-from src.version import VERSION, version_label
+from src.version import VERSION, installed_release_id, version_label
 
 from src.background_tasks import BackgroundTaskRunner
 from src.weekly_limit import format_limit_warnings
 from src.grid_renderer import GridRenderer
 from src.sync_orchestrator import classify_sync_error, SyncOrchestrator
 from src.update_banner import UpdateBanner
-from src.updater import today_iso, update_toast_text
+from src.updater import (
+    REPO, check_for_update, is_newer, manual_check_toast_text, today_iso,
+    update_toast_text,
+)
 from src.reminder_scheduler import ReminderScheduler
 from src.send_reminder_scheduler import SendReminderScheduler
 from src.dialogs.entry_dialog import open_entry_dialog
@@ -95,6 +98,10 @@ class App:
         self._init_view_state()
 
         self._tray = None
+        # Läuft gerade ein manueller Update-Check aus dem Tray? Blockt den
+        # zweiten Klick, damit ein Doppelklick nicht zwei Requests und zwei
+        # Toasts auslöst (siehe _tray_check_update).
+        self._update_check_running = False
         self._bg = BackgroundTaskRunner(
             self._marshal_to_ui, self.settings, self.base_path,
             self.reservation_store, self._reservations_active, self.storage,
@@ -460,17 +467,7 @@ class App:
                 self.base_path,
                 on_show=lambda: self.root.after(0, self._restore_from_tray),
                 on_quit=lambda: self.root.after(0, self._quit_with_sync_push),
-                actions=[
-                    ("Arbeitszeiten senden",
-                     lambda: self.root.after(0, self._send), None),
-                    ("Teilen",
-                     lambda: self.root.after(0, self._share), None),
-                    ("Export",
-                     lambda: self.root.after(0, self._export), None),
-                    ("Mit Google Drive synchronisieren",
-                     lambda: self.root.after(0, self._sync.tray_sync),
-                     lambda: bool(self.settings.get("sync_enabled"))),
-                ],
+                actions=self._tray_actions(),
             )
             try:
                 tray.start()
@@ -490,6 +487,70 @@ class App:
         elif not want_tray and self._tray is not None:
             self._tray.stop()
             self._tray = None
+
+    def _tray_actions(self):
+        """Die Quick-Actions des Tray-Menüs als (label, callback, visible).
+
+        Eigene Methode, damit das Menü ohne Tk/pystray testbar ist — gebaut
+        wird die Liste in `_apply_tray_setting`, gerendert von beiden Backends
+        (pystray auf Windows, NSStatusItem auf macOS über `build_menu_model`).
+        Die Callbacks laufen im Backend-Thread und marshallen deshalb selbst
+        per `root.after(0, …)` auf den Tk-Thread.
+        """
+        return [
+            ("Arbeitszeiten senden",
+             lambda: self.root.after(0, self._send), None),
+            ("Teilen",
+             lambda: self.root.after(0, self._share), None),
+            ("Export",
+             lambda: self.root.after(0, self._export), None),
+            ("Mit Google Drive synchronisieren",
+             lambda: self.root.after(0, self._sync.tray_sync),
+             lambda: bool(self.settings.get("sync_enabled"))),
+            ("Nach Updates suchen",
+             lambda: self.root.after(0, self._tray_check_update), None),
+        ]
+
+    def _tray_check_update(self):
+        """Manueller Update-Check aus dem Tray-Menü; Ergebnis kommt als Toast.
+
+        Übergeht bewusst den Frequenz-Throttle (`updater.should_check`) des
+        Hintergrund-Checks — manuell heißt manuell —, respektiert aber dessen
+        Kanal-Einstellung (`prerelease_updates_enabled`).
+        """
+        if self._tray is None or self._update_check_running:
+            return
+        self._update_check_running = True
+        include_prereleases = bool(self.settings.get("prerelease_updates_enabled"))
+
+        def fn():
+            try:
+                return check_for_update(REPO, include_prereleases)
+            except Exception:
+                logging.getLogger(__name__).exception(
+                    "Manueller Update-Check fehlgeschlagen")
+                return None
+
+        self._bg.run(fn, self._on_tray_check_update_result)
+
+    def _on_tray_check_update_result(self, release):
+        """Ergebnis des manuellen Checks im UI-Thread: immer ein Toast.
+
+        Das Lauf-Flag wird als Erstes freigegeben — auch im Fehlerfall, sonst
+        wäre der Menüpunkt nach einem Netzausfall dauerhaft tot.
+        """
+        self._update_check_running = False
+        installed = installed_release_id()
+        if release is not None:
+            # Nur eine erfolgreiche Abfrage zählt als „heute geprüft"; sonst
+            # schwiege nach einem Fehlversuch auch der Hintergrund-Check.
+            self.settings.set("last_update_check_at", today_iso())
+            if is_newer(installed, release.release_id):
+                # Der Hintergrund-Check soll dieselbe Version nicht gleich
+                # nochmal melden (_route_update_notification liest den Wert).
+                self.settings.set("update_toast_shown_version", release.release_id)
+        if self._tray is not None:
+            self._tray.notify(manual_check_toast_text(installed, release))
 
     def _apply_reminder_setting(self):
         """Startet/stoppt den Reminder-Poll abhängig vom Setting. Braucht ein

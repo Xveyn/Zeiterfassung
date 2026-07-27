@@ -109,9 +109,10 @@ nur auf macOS, Linux oder eine bestimmte Linux-Desktop-Umgebung auswirkt (z. B.
 `autostart.py`), soll vorgeschlagen werden, vor dem Merge einen Pre-Release zu
 triggern, damit die Änderung dort getestet werden kann — statt das erst beim
 nächsten regulären, für diese Plattform dann faktisch ungetesteten Release zu
-bemerken. Vorbild: das manuelle macOS-Gate in #96. PR-Plattform-Labels und der
-Pre-Release-Workflow selbst sind als #100 bzw. #99 vorgeschlagen, aber noch
-nicht umgesetzt — bis dahin gilt der Hinweis als Review-Empfehlung, nicht als
+bemerken. Vorbild: das manuelle macOS-Gate in #96. Der Pre-Release-Workflow
+selbst ist seit #99 umgesetzt (siehe „Pre-Releases" oben) — das Triggern ist
+also ein Handgriff. PR-Plattform-Labels sind als #100 weiterhin nur
+vorgeschlagen; bis dahin gilt der Hinweis als Review-Empfehlung, nicht als
 automatisierter Check.
 
 ## Build
@@ -403,6 +404,7 @@ Lokal: `pytest` aus dem Repo-Root (Coverage: `pytest --cov=src --cov-report=term
 - `src/holidays_de.py` — Feiertags-Lookup (über `holidays`-Lib)
 - `src/paths.py` — `get_base_path()` dispatched über `platform.system()` und Frozen- vs. Repo-Modus
 - `src/autostart.py` — plattformabhängiger Autostart (Windows-**Registry** HKCU Run, gleicher Wertname `Zeiterfassung` wie `installer.iss` → strukturell ein Eintrag; macOS-LaunchAgent / Linux `.desktop`). `is_autostart_enabled()` liest den echten Zustand, `migrate_legacy_autostart()` überführt Alt-Startup-Shortcuts frozen-gated in die Registry
+- `src/secure_file.py` — Zugriffsschutz für die lokal abgelegten Secrets (`token.json`, `instance-secret`): unter Windows `icacls`-ACL statt des dort wirkungslosen `chmod 0600` (Audit M8); best-effort, scheitert nie den Schreibvorgang
 - `src/single_instance.py` — Tk-freier Single-Instance-Guard (pro-Nutzer-Localhost-Port, `acquire`/`serve`/`release`); verhindert parallele Instanzen und holt bei manuellem Zweitstart das vorhandene Fenster nach vorn (SHOW), beim Autostart-Doppelfeuer ohne Fenster-Pop (PING)
 - `src/device_id.py` — stabile, hardware-abgeleitete Geräte-ID für den Sync (Windows `MachineGuid` / macOS `IOPlatformUUID` / Linux `/etc/machine-id`, SHA-256-gehasht); nur für installierte Builds (`main.py::_ensure_device_id`, gated auf `sys.frozen`) — Repo-/Skript-Modus bleibt bei der alten, in `settings.json` persistierten Zufalls-UUID, damit eine parallel laufende Dev-Instanz nie dieselbe device_id wie eine echte Installation auf demselben Rechner bekommt
 - `src/updater.py` — GitHub-Releases-Check (stdlib-only, Check-Häufigkeit über `update_check_frequency` konfigurierbar, Default 1×/Tag; Pre-Releases optional über `prerelease_updates_enabled`, s. Release-Prozess); `src/changelog.py` — lädt und parst den Changelog-Abschnitt einer Release-Version vom GitHub-Tag (stdlib-only)

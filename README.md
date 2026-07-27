@@ -21,7 +21,7 @@ Desktop-App zur Erfassung von Arbeitszeiten mit Kalenderansicht, PDF-Report und 
 - **Zeitraumwahl** — Flexibler Datumsbereich für Reports
 - **Einstellungen** — In Tabs gegliedert (Arbeitszeit / Bericht & Mail / Google / App / Updates); E-Mail-Vorlagen mit Platzhaltern, Standardpause, Empfänger und Update-Einstellungen
 - **Autostart & Einzelinstanz** — Optionaler minimierter Start bei Anmeldung (Windows, macOS, Linux); es läuft immer nur eine Instanz — ein zweiter Start holt das vorhandene Fenster nach vorn
-- **Update-Check** — Konfigurierbare Hintergrund-Prüfung auf neue Releases; Updates-Tab mit manuellem Check, Changelog und Direkt-Download, bei aktivem Tray als einmaliger Toast statt Banner. Optional lassen sich auch Vorabversionen (Pre-Releases) anbieten — Testbuilds vor dem echten Release
+- **Update-Check** — Konfigurierbare Hintergrund-Prüfung auf neue Releases; Updates-Tab mit manuellem Check, Changelog und Direkt-Download, bei aktivem Tray als einmaliger Toast statt Banner. Läuft die App im Infobereich, stößt **„Nach Updates suchen"** im Tray-Menü die Prüfung direkt an — das Ergebnis kommt als Toast, auch wenn alles aktuell ist. Optional lassen sich auch Vorabversionen (Pre-Releases) anbieten — Testbuilds vor dem echten Release
 - **Dark Mode UI** — Modernes dunkles Design
 - **Cross-Platform-Installer** — Per PyInstaller gebaut, als Setup-Exe (Windows), DMG (macOS) und AppImage (Linux) paketierbar
 
@@ -36,7 +36,7 @@ Zeiterfassung/
 │   ├── background_tasks.py # Hintergrund-Worker + Thread-Mechanik (Token-Refresh, Update-Check, Reconcile)
 │   ├── sync_orchestrator.py # Drive-Sync-Steuerung (manuell/Tray/Pull/Quit, Fehler-Aufbereitung)
 │   ├── update_banner.py   # GitHub-Release-Hinweis-Banner
-│   ├── dialogs/           # Modal-Dialoge (entry, send, export, settings, share, import, conflicts, category) + geteilter period_picker
+│   ├── dialogs/           # Modal-Dialoge (entry, send, export, settings, share, import, conflicts, category, scopes) + geteilter period_picker
 │   ├── storage.py         # JSON-Persistenz der Zeiteinträge
 │   ├── settings.py        # Einstellungen mit Standardwerten
 │   ├── category_defaults.py # Default-Kategorien für Zeit-Slots
@@ -45,6 +45,7 @@ Zeiterfassung/
 │   ├── drive.py           # Google Drive API-Wrapper (Multi-Device-Sync)
 │   ├── sync.py            # Sync-Engine (pure Logik, LWW-Merge, Konflikterkennung)
 │   ├── sync_journal.py    # Crash-Recovery für den Sync-Apply (Write-Ahead-Journal)
+│   ├── sync_history.py    # Persistenter „hat je gesynct/abgeglichen"-Marker (Tombstone-Schutz)
 │   ├── conflicts_store.py # Lokale Persistenz der Konfliktliste
 │   ├── share.py           # Export/Import von Arbeitszeiten als Share-JSON
 │   ├── reservations.py    # Reservierungen (zukünftige Soll-Zeiten)
@@ -60,6 +61,7 @@ Zeiterfassung/
 │   ├── tray.py            # Infobereich-Icon (Minimize-to-Tray); Plattform-Fassade
 │   ├── tray_mac.py        # Natives macOS-Tray-Backend (NSStatusItem, dormant/opt-in)
 │   ├── autostart.py       # Plattformabhängiger Autostart (Windows-Registry/macOS/Linux)
+│   ├── secure_file.py     # Zugriffsschutz für lokale Secrets (Windows-ACL via icacls)
 │   ├── single_instance.py # Single-Instance-Guard (verhindert parallele Instanzen)
 │   ├── device_id.py       # Stabile, hardware-abgeleitete Geräte-ID für installierte Builds (Sync)
 │   ├── updater.py         # GitHub-Releases-Check (stdlib-only, Frequenz konfigurierbar)
@@ -78,7 +80,9 @@ Zeiterfassung/
 ├── docs/                  # Setup-Anleitung, Specs/Plans, Known Limitations
 ├── build.py               # Plattform-Dispatcher für den PyInstaller-Build
 ├── installer.iss          # Inno Setup Script (Windows-Installer)
-├── requirements.txt       # Python-Abhängigkeiten
+├── requirements.txt       # Python-Abhängigkeiten (App-Laufzeit, exakt gepinnt)
+├── requirements-test.txt  # Test-/CI-Abhängigkeiten (pytest & Co., exakt gepinnt)
+├── pyproject.toml         # Konfiguration für ruff, pytest, coverage und pyright
 ├── settings.json          # Benutzereinstellungen (wird automatisch erstellt)
 └── zeiterfassung.json     # Gespeicherte Zeiteinträge (wird automatisch erstellt)
 ```
@@ -274,11 +278,11 @@ Wiederhole Schritte 3-4 auf jedem weiteren Gerät mit demselben Google-Konto.
 
 ### Hinweise zum Sync
 
-- **Geräte-ID** — jede Installation generiert beim ersten Start eine eindeutige UUID. Im Konflikt-Dialog siehst du, von welchem Gerät die jeweilige Version kommt.
+- **Geräte-ID** — jede Installation bekommt beim ersten Start eine eindeutige ID. Installierte Builds leiten sie aus einer stabilen System-ID des Rechners ab (gehasht, siehe `src/device_id.py`) — sie übersteht damit eine Neuinstallation der App; im Repo-/Skript-Modus bleibt es bei einer in `settings.json` gespeicherten Zufalls-UUID. Im Konflikt-Dialog siehst du, von welchem Gerät die jeweilige Version kommt.
 - **Was synchronisiert wird:** Zeiteinträge + Mail-Vorlagen-Settings (Empfänger, Name, Stundensatz, Betreff, Begrüßung, Inhalt, Grußformel). Gerätespezifisches (Autostart, Standardzeiten pro Wochentag, Update-Einstellungen/-Status) bleibt lokal.
 - **Wo die Sync-Datei liegt:** Im versteckten `appDataFolder` deines Google Drives — nicht über `drive.google.com` einsehbar, nur diese App kommt dran.
 - **Test-Modus:** Solange dein Cloud-Projekt im Test-Modus bleibt, müssen alle Nutzer (deine eigenen Geräte zählen mit deiner E-Mail) als Testnutzer eingetragen sein. Verifizierung durch Google ist für rein private Nutzung nicht nötig.
-- **Tombstones wachsen unbeschränkt** — gelöschte Einträge bleiben als Marker im Sync-File, damit Löschungen sich gegen veraltete Speicherungen anderer Geräte durchsetzen. Bei normalem Gebrauch unproblematisch über Jahre; siehe [`docs/known-limitations.md`](docs/known-limitations.md).
+- **Tombstones wachsen bei aktivem Sync** — gelöschte Einträge bleiben als Marker im Sync-File, damit Löschungen sich gegen veraltete Speicherungen anderer Geräte durchsetzen. Aufgeräumt werden sie erst durch die Aktion **„Sync-Daten kompaktieren"** (Einstellungen → Google); bei normalem Gebrauch ist das über Jahre unproblematisch. Auf Geräten, die **nie** gesynct haben, räumt die App diese Marker seit 1.19.1 beim Start automatisch weg. Details: [`docs/known-limitations.md`](docs/known-limitations.md).
 
 ## Google-Kalender für Reservierungen einrichten (optional)
 
@@ -327,6 +331,7 @@ Reservierungen anlegen und den Abgleich über die App-Oberfläche aktivieren; be
 | **Grußformel** | Abschluss der E-Mail (Zeilenumbrüche mit `\n`) |
 | **Autostart** | App minimiert bei Systemanmeldung starten (Windows/macOS/Linux) |
 | **Synchronisation** | Multi-Device-Sync via Google Drive aktivieren (siehe Abschnitt oben) |
+| **Berechtigungen** | Zeigt, welche Google-Berechtigungen (OAuth-Scopes) das Konto der App gewährt hat — inkl. solcher, die noch gewährt, aber zurzeit ungenutzt sind. Daneben steht auf einen Blick „n von m Berechtigungen": ✓ alles da, ○ eine zuschaltbare Funktion wartet noch auf ihre Freigabe, ✗ eine Grundberechtigung fehlt (dann klappt auch der Mail-Versand nicht) |
 
 ### Platzhalter in E-Mail-Vorlagen
 
@@ -349,7 +354,15 @@ python build.py
 | macOS | `brew install create-dmg` | `dist/Zeiterfassung-<ver>-<arch>.dmg` |
 | Linux | `apt install libfuse2` + `appimagetool` auf `$PATH` | `dist/Zeiterfassung-<ver>-<arch>.AppImage` |
 
-Fehlt das Pack-Tool, überspringt `build.py` den Pack-Schritt mit Warnung — der PyInstaller-Build läuft trotzdem durch.
+Fehlt das Pack-Tool, überspringt `build.py` den Pack-Schritt mit Warnung — der PyInstaller-Build läuft trotzdem durch. Die unverpackte Ausgabe liegt dann je nach Plattform als **Ordner** oder Einzeldatei in `dist/`:
+
+| Plattform | PyInstaller-Modus | Unverpackte Ausgabe |
+|-----------|-------------------|---------------------|
+| Windows | `--onedir` | `dist/Zeiterfassung/` (`Zeiterfassung.exe` + `_internal/`) |
+| macOS | `--onedir` | `dist/Zeiterfassung.app` |
+| Linux | `--onefile` | `dist/Zeiterfassung` (Einzeldatei) |
+
+Windows baut seit 1.19.1 `--onedir` statt `--onefile`: Onefile entpackte bei jedem Start alle DLLs frisch in einen Temp-Ordner, was gelegentlich zu „Failed to load Python DLL 'python310.dll'" führte. Der Installer liefert entsprechend den ganzen Ordner aus — der Installationspfad und die Lage der Benutzerdaten (neben der Exe) ändern sich dadurch nicht.
 
 ## Plattform-Kompatibilität
 
@@ -367,9 +380,14 @@ Die App läuft auf **Windows, macOS und Linux**. Plattformspezifische Features w
 
 ## Tests
 
+Die Tests brauchen eigene Abhängigkeiten (`pytest` & Co.) — sie stehen gepinnt in `requirements-test.txt`, nicht in `requirements.txt`:
+
 ```bash
-pytest tests/
+pip install -r requirements-test.txt
+pytest
 ```
+
+CI läuft dieselben Tests gegen Python 3.10–3.13 sowie zusätzlich auf Windows und macOS; dazu `ruff check .` (Lint) und `pyright` (Typen).
 
 ## Datenspeicherung
 
@@ -394,9 +412,12 @@ Speicherort je nach Plattform (siehe `src/paths.py`):
 > **Sicherheitshinweis:** `token.json` enthält im Klartext einen langlebigen
 > OAuth-Refresh-Token, der laufenden Zugriff auf dein Google-Konto (Gmail-Versand,
 > Drive-Sync, ggf. Kalender) gewährt. Unter macOS/Linux wird die Datei mit
-> `chmod 0600` nur für deinen Benutzer lesbar gemacht; unter Windows schützt sie
-> die ACL deines Benutzerprofils. **Wer den Daten-/Installationsordner kopiert,
-> sichert oder in die Cloud synchronisiert, nimmt diesen Token mit** — behandle
+> `chmod 0600` nur für deinen Benutzer lesbar gemacht; unter Windows setzt die App
+> per `icacls` eine eigene ACL auf die Datei — geerbte Rechte (SYSTEM, lokale
+> Administratoren) entfallen, Zugriff hat nur dein Benutzerkonto. Beides ist
+> Zugriffsschutz auf Dateiebene, keine Verschlüsselung. **Wer den Daten-/
+> Installationsordner kopiert, sichert oder in die Cloud synchronisiert, nimmt
+> diesen Token mit** — behandle
 > den Ordner entsprechend vertraulich und gib ihn nicht weiter. Bei Verdacht auf
 > Kompromittierung den Zugriff in den [Google-Kontoeinstellungen](https://myaccount.google.com/permissions)
 > entziehen und `token.json` löschen (die App startet beim nächsten Versand einen

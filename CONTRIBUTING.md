@@ -20,15 +20,29 @@ stehen im [README](README.md#aus-dem-source-code).
 
 ## Tests
 
+Die Test-Abhängigkeiten stehen gepinnt in `requirements-test.txt` (nicht in
+`requirements.txt` — dort liegen nur die App-Laufzeit-Deps):
+
 ```bash
+pip install -r requirements-test.txt
+
 pytest                                   # alle Tests
 pytest tests/test_storage.py             # eine Datei
 pytest tests/test_storage.py::test_name  # einzelner Test
 ```
 
+Coverage-Report lokal (braucht zusätzlich `pip install pytest-cov`):
+
+```bash
+pytest --cov=src --cov-report=term-missing
+```
+
 `pytest` ist das Gate: **alle Tests müssen grün sein, bevor ein PR gemerged wird.**
 Wer testbares Verhalten ändert (Feature wie Bugfix), schreibt einen passenden Test
 mit — bei Bugfixes idealerweise erst einen Test, der den Fehler reproduziert.
+
+In der CI läuft die Test-Suite gegen Python 3.10–3.13 sowie zusätzlich auf Windows
+und macOS; dazu kommen `ruff check .` (Lint) und `pyright` (Typen).
 
 ## Pull Requests
 
