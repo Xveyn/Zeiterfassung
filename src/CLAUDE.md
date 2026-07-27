@@ -1,4 +1,4 @@
-# src/ — Architektur & Aufbau
+﻿# src/ — Architektur & Aufbau
 
 Detail-Referenz zum inneren Aufbau von `src/`. Ergänzt die Modul-Liste und die
 Konventionen aus der Projekt-`CLAUDE.md` im Repo-Root (Datumsformat, Klick-Modell,
@@ -202,7 +202,7 @@ müssen beide Locks respektieren. Design:
   macht das im Warntext transparent. `pause_warning_enabled` ist Default
   `True` (Opt-out), anders als das Werkstudenten-Limit (Opt-in) — die Pflicht
   betrifft praktisch jeden Angestellten in DE, ist kein Sonderfall.
-  `reminders.py` — pure Fälligkeits-Logik für Reservierungs-Erinnerungen (Tk-frei, `now` als Parameter): pro heutigem reservierten Slot mit Kategorie ohne erfasste Ist-Zeit `upcoming` (N Min vor Ende) oder `missed` (nach Ende). Der `ReminderScheduler` (`reminder_scheduler.py`) pollt minütlich über `root.after` und schickt fällige Toasts über `App._tray`. Analog dazu `send_reminder.py`/`send_reminder_scheduler.py`: ein einzelner Fällig-Zeitpunkt pro Monat (Tag + Uhrzeit, Tag auf die Monatslänge geclamped) statt Slot-Fenster; der Fired-Zustand wird bewusst **persistiert** (`settings.send_reminder_last_fired_month`, `"YYYY-MM"`) statt nur im Speicher gehalten wie beim Reservierungs-Reminder — verhindert wiederholte Toasts bei App-Neustarts im selben Monat.
+  `reminders.py` — pure Fälligkeits-Logik für Reservierungs-Erinnerungen (Tk-frei, `now` als Parameter): pro heutigem reservierten Slot mit Kategorie ohne erfasste Ist-Zeit `upcoming` (N Min vor Ende) oder `missed` (nach Ende). Der `ReminderScheduler` (`reminder_scheduler.py`) pollt minütlich über `root.after` und schickt fällige Toasts über `App._tray`; auf Windows via `tray.notify_action` mit „Arbeitszeit eintragen"-Button (WinRT, Fallback Plain-Toast), der den Slot als Ist-Zeit schreibt (`_log_reservation` → `ist_slot_from_reservation`, Pause aus Kategorie-Default). Analog dazu `send_reminder.py`/`send_reminder_scheduler.py`: ein einzelner Fällig-Zeitpunkt pro Monat (Tag + Uhrzeit, Tag auf die Monatslänge geclamped) statt Slot-Fenster; der Fired-Zustand wird bewusst **persistiert** (`settings.send_reminder_last_fired_month`, `"YYYY-MM"`) statt nur im Speicher gehalten wie beim Reservierungs-Reminder — verhindert wiederholte Toasts bei App-Neustarts im selben Monat.
 
 ## Google-Integration (alle Wrapper mit Lazy-Imports für CI ohne requirements.txt)
 
@@ -270,7 +270,7 @@ muss sie deterministisch **und** über alle Geräte gleich halten.
   User sie manuell schließen (Retry-Dialog), statt des Default-Wegs (`CloseApplications`/Restart
   Manager), der bei aktivem Minimize-to-Tray scheitert (`App._on_close` behandelt das dabei
   gesendete `WM_CLOSE` nur als Fenster-Verstecken).
-- `tray.py` (Fassade) + `tray_mac.py` (natives macOS-NSStatusItem-Backend, #88).
+- `tray.py` (Fassade; Seams: `notify`, `notify_action` für Windows-Interactive-Toasts) + `tray_mac.py` (natives macOS-NSStatusItem-Backend, #88).
 
 Das Tray-Icon läuft, sobald `minimize_to_tray` **oder** `reminders_enabled` aktiv ist (`ui.py::_apply_tray_setting`); bei nur `reminders_enabled` dient es ausschließlich als Toast-Kanal.
 

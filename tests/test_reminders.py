@@ -1,6 +1,6 @@
 import datetime
 
-from src.reminders import Reminder, due_reminders
+from src.reminders import Reminder, due_reminders, ist_slot_from_reservation
 
 
 def _now(h, m):
@@ -60,3 +60,29 @@ def test_missed_takes_precedence_over_upcoming_window():
     # now == end -> missed (nicht upcoming), auch wenn end im [end-N,end)-Rand liegt.
     res = due_reminders([SLOT], set(), _now(17, 0), 15, set())
     assert len(res) == 1 and res[0].kind == "missed"
+
+
+def test_ist_slot_uses_reservation_times_and_default_pause():
+    slot = ist_slot_from_reservation(
+        {"start": "09:00", "end": "17:00", "kategorie": "A"}, {}, "thu", 30)
+    assert slot == {"start": "09:00", "end": "17:00", "pause": 30, "kategorie": "A"}
+
+
+def test_ist_slot_uses_category_pause_override():
+    slot = ist_slot_from_reservation(
+        {"start": "09:00", "end": "17:00", "kategorie": "A"},
+        {"A": {"pause": 45}}, "thu", 30)
+    assert slot["pause"] == 45
+
+
+def test_ist_slot_per_day_mode_pause_from_toplevel():
+    slot = ist_slot_from_reservation(
+        {"start": "09:00", "end": "17:00", "kategorie": "A"},
+        {"A": {"mode": "per_day", "pause": 15, "days": {}}}, "thu", 30)
+    assert slot["pause"] == 15
+
+
+def test_ist_slot_strips_category_whitespace():
+    slot = ist_slot_from_reservation(
+        {"start": "09:00", "end": "17:00", "kategorie": "  A  "}, {}, "thu", 30)
+    assert slot["kategorie"] == "A"

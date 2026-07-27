@@ -136,6 +136,10 @@ class MacTrayBackend:
         except Exception:
             logger.exception("macOS-Tray-Notify fehlgeschlagen (geschluckt)")
 
+    def notify_action(self, message, title="Zeiterfassung", action_label="", on_action=None):
+        """macOS kennt (noch) keine interaktiven Toast-Buttons — Plain-Toast."""
+        self.notify(message, title)
+
     def stop(self):
         """Entfernt das Status-Item und löst die Referenzen. Idempotent."""
         if self._status_item is not None:

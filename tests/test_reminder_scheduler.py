@@ -5,10 +5,14 @@ from src.reminder_scheduler import ReminderScheduler
 
 class _FakeTray:
     def __init__(self):
-        self.messages = []
+        self.calls = []  # (message, title, action_label, on_action)
 
-    def notify(self, message, title="Zeiterfassung"):
-        self.messages.append(message)
+    def notify_action(self, message, title, action_label, on_action):
+        self.calls.append((message, title, action_label, on_action))
+
+    @property
+    def messages(self):  # Rückwärtskompat für bestehende Asserts
+        return [c[0] for c in self.calls]
 
 
 class _FakeStore:
@@ -18,13 +22,20 @@ class _FakeStore:
     def get(self, date_str):
         return self._by_date.get(date_str)
 
+    def save(self, date_str, slots):
+        self._by_date[date_str] = {"slots": slots}
+
 
 def _now(h, m):
     return datetime.datetime(2026, 7, 2, h, m)
 
 
 def _make(reservation_by_date, entry_by_date, tray, minutes=15):
-    settings = {"reminder_minutes_before": minutes}
+    settings = {
+        "reminder_minutes_before": minutes,
+        "category_times": {},
+        "default_pause": 30,
+    }
     return ReminderScheduler(
         root=None,
         settings=type("S", (), {"get": staticmethod(lambda k: settings[k])})(),
@@ -80,3 +91,80 @@ def test_poll_clears_fired_on_date_change():
     other = datetime.datetime(2026, 7, 3, 8, 0)
     assert sched.poll(other) == []
     assert sched._fired_date == "2026-07-03"
+
+
+def test_poll_uses_notify_action_with_log_button():
+    tray = _FakeTray()
+    sched = _make(
+        {"2026-07-02": {"slots": [{"start": "09:00", "end": "17:00", "kategorie": "A"}]}},
+        {}, tray,
+    )
+    sched.poll(_now(16, 50))
+    assert len(tray.calls) == 1
+    message, title, label, on_action = tray.calls[0]
+    assert title == "Zeiterfassung"
+    assert label == "Arbeitszeit eintragen"
+    assert callable(on_action)
+
+
+def test_log_reservation_appends_ist_slot_and_refreshes():
+    tray = _FakeTray()
+    sched = _make(
+        {"2026-07-02": {"slots": [{"start": "09:00", "end": "17:00", "kategorie": "A"}]}},
+        {}, tray,
+    )
+    refreshed = []
+    sched._on_logged = lambda: refreshed.append(True)
+    sched._log_reservation(
+        "2026-07-02", {"start": "09:00", "end": "17:00", "kategorie": "A"})
+    entry = sched._storage.get("2026-07-02")
+    assert entry["slots"] == [
+        {"start": "09:00", "end": "17:00", "pause": 30, "kategorie": "A"}]
+    assert refreshed == [True]
+
+
+def test_log_reservation_appends_next_to_existing_ist_slot():
+    tray = _FakeTray()
+    sched = _make(
+        {"2026-07-02": {"slots": [{"start": "13:00", "end": "17:00", "kategorie": "B"}]}},
+        {"2026-07-02": {"slots": [{"start": "09:00", "end": "12:00", "pause": 0, "kategorie": "A"}]}},
+        tray,
+    )
+    sched._log_reservation(
+        "2026-07-02", {"start": "13:00", "end": "17:00", "kategorie": "B"})
+    slots = sched._storage.get("2026-07-02")["slots"]
+    assert slots[0] == {"start": "09:00", "end": "12:00", "pause": 0, "kategorie": "A"}
+    assert slots[1] == {"start": "13:00", "end": "17:00", "pause": 30, "kategorie": "B"}
+
+
+def test_log_reservation_swallows_and_logs_save_failure():
+    tray = _FakeTray()
+    sched = _make(
+        {"2026-07-02": {"slots": [{"start": "09:00", "end": "17:00", "kategorie": "A"}]}},
+        {}, tray,
+    )
+    def _boom(date_str, slots):
+        raise OSError("disk full")
+    sched._storage.save = _boom
+    logged = []
+    sched._on_logged = lambda: logged.append(True)
+    sched._log_reservation("2026-07-02", {"start": "09:00", "end": "17:00", "kategorie": "A"})
+    assert logged == []  # refresh skipped on failure, no exception propagated
+
+
+def test_toast_button_callback_logs_end_to_end():
+    """poll -> notify_action -> Button-Callback (marshal default = inline) trägt
+    ein und ruft on_logged."""
+    tray = _FakeTray()
+    sched = _make(
+        {"2026-07-02": {"slots": [{"start": "09:00", "end": "17:00", "kategorie": "A"}]}},
+        {}, tray,
+    )
+    logged = []
+    sched._on_logged = lambda: logged.append(True)
+    sched.poll(_now(16, 50))
+    on_action = tray.calls[0][3]
+    on_action()  # marshal-Default führt inline aus
+    slots = sched._storage.get("2026-07-02")["slots"]
+    assert slots[-1] == {"start": "09:00", "end": "17:00", "pause": 30, "kategorie": "A"}
+    assert logged == [True]

@@ -124,6 +124,12 @@ def build_windows():
         "--onedir",
         "--noconsole",
         "--icon", "assets/margenheld-icon.ico",
+        "--collect-all", "windows_toasts",
+        "--collect-all", "winrt_runtime",
+        "--collect-all", "winrt.windows.data.xml.dom",
+        "--collect-all", "winrt.windows.foundation",
+        "--collect-all", "winrt.windows.foundation.collections",
+        "--collect-all", "winrt.windows.ui.notifications",
     ])
     subprocess.run(cmd, check=True)
     generate_third_party_notices()
