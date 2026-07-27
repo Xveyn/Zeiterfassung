@@ -72,6 +72,12 @@ from src.mail import (  # noqa: E402
     TokenAuthError,
     TokenNetworkError,
     get_scopes,
+    scope_overview,
+    CALENDAR_EVENTS_SCOPE,
+    CALENDAR_LIST_SCOPE,
+    DRIVE_APPDATA_SCOPE,
+    GMAIL_SEND_SCOPE,
+    USERINFO_EMAIL_SCOPE,
 )
 
 
@@ -407,3 +413,70 @@ def test_fetch_user_email_sends_token_in_post_body_not_url(tmp_path):
     assert req.get_method() == "POST"
     assert "access-token-xyz" not in req.full_url     # nicht in der URL
     assert b"access-token-xyz" in req.data            # sondern im Body
+
+
+class TestScopeOverview:
+    """#120: bewertet die im Token gewährten Scopes gegen das, was die
+    aktuellen Einstellungen brauchen."""
+
+    def _all_granted(self):
+        return [GMAIL_SEND_SCOPE, USERINFO_EMAIL_SCOPE, DRIVE_APPDATA_SCOPE,
+                CALENDAR_EVENTS_SCOPE, CALENDAR_LIST_SCOPE]
+
+    def test_everything_granted_and_enabled_is_active(self):
+        entries, extras = scope_overview(
+            self._all_granted(), sync_enabled=True, gcal_enabled=True)
+        assert [e.status for e in entries] == ["active"] * 5
+        assert extras == []
+
+    def test_keeps_a_stable_order_core_drive_calendar(self):
+        entries, _ = scope_overview(
+            self._all_granted(), sync_enabled=True, gcal_enabled=True)
+        assert [e.scope for e in entries] == [
+            GMAIL_SEND_SCOPE, USERINFO_EMAIL_SCOPE, DRIVE_APPDATA_SCOPE,
+            CALENDAR_EVENTS_SCOPE, CALENDAR_LIST_SCOPE]
+
+    def test_granted_but_feature_switched_off_is_unused(self):
+        """Wer den Sync abschaltet, behält die Drive-Berechtigung im Token —
+        genau diese Diskrepanz soll sichtbar werden."""
+        entries, _ = scope_overview(
+            self._all_granted(), sync_enabled=False, gcal_enabled=False)
+        by_scope = {e.scope: e.status for e in entries}
+        assert by_scope[DRIVE_APPDATA_SCOPE] == "unused"
+        assert by_scope[CALENDAR_EVENTS_SCOPE] == "unused"
+        assert by_scope[GMAIL_SEND_SCOPE] == "active"
+
+    def test_needed_but_not_granted_is_missing(self):
+        entries, _ = scope_overview(
+            [GMAIL_SEND_SCOPE, USERINFO_EMAIL_SCOPE],
+            sync_enabled=True, gcal_enabled=False)
+        by_scope = {e.scope: e.status for e in entries}
+        assert by_scope[DRIVE_APPDATA_SCOPE] == "missing"
+
+    def test_neither_granted_nor_needed_is_omitted(self):
+        """Kalender nie eingeschaltet, nie gewährt → taucht gar nicht auf."""
+        entries, _ = scope_overview(
+            [GMAIL_SEND_SCOPE, USERINFO_EMAIL_SCOPE],
+            sync_enabled=False, gcal_enabled=False)
+        assert [e.scope for e in entries] == [GMAIL_SEND_SCOPE, USERINFO_EMAIL_SCOPE]
+
+    def test_unknown_scopes_land_in_extras(self):
+        """Altlast einer früheren Version oder manuell erteilt: anzeigen statt
+        verschweigen — aber ohne Zustandsbewertung."""
+        entries, extras = scope_overview(
+            [GMAIL_SEND_SCOPE, USERINFO_EMAIL_SCOPE, "https://example.test/auth/foo"],
+            sync_enabled=False, gcal_enabled=False)
+        assert extras == ["https://example.test/auth/foo"]
+        assert all(e.scope != "https://example.test/auth/foo" for e in entries)
+
+    def test_every_known_scope_has_a_label(self):
+        entries, _ = scope_overview(
+            self._all_granted(), sync_enabled=True, gcal_enabled=True)
+        assert all(e.label and e.label != e.scope for e in entries)
+
+    def test_none_granted_is_treated_as_nothing_granted(self):
+        """Defensiv: der Aufrufer fängt None ab, aber die Funktion darf daran
+        nicht scheitern."""
+        entries, extras = scope_overview(None, sync_enabled=False, gcal_enabled=False)
+        assert [e.status for e in entries] == ["missing", "missing"]
+        assert extras == []

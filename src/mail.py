@@ -2,6 +2,7 @@
 import base64
 import os
 import socket
+from collections import namedtuple
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.mime.application import MIMEApplication
@@ -31,6 +32,58 @@ def get_scopes(sync_enabled, gcal_enabled=False):
         scopes.append(CALENDAR_EVENTS_SCOPE)
         scopes.append(CALENDAR_LIST_SCOPE)
     return scopes
+
+
+ScopeStatus = namedtuple("ScopeStatus", ["scope", "label", "status"])
+
+SCOPE_LABELS = {
+    GMAIL_SEND_SCOPE: "E-Mail senden",
+    USERINFO_EMAIL_SCOPE: "Eigene E-Mail-Adresse lesen",
+    DRIVE_APPDATA_SCOPE: "Google Drive: App-Datenordner",
+    CALENDAR_EVENTS_SCOPE: "Google Kalender: Termine lesen und schreiben",
+    CALENDAR_LIST_SCOPE: "Google Kalender: Kalenderliste lesen",
+}
+
+# Anzeigereihenfolge: erst der Kern, dann die zuschaltbaren Features.
+_SCOPE_ORDER = [
+    GMAIL_SEND_SCOPE, USERINFO_EMAIL_SCOPE, DRIVE_APPDATA_SCOPE,
+    CALENDAR_EVENTS_SCOPE, CALENDAR_LIST_SCOPE,
+]
+
+
+def scope_overview(granted, sync_enabled, gcal_enabled):
+    """Bewertet die gewährten Scopes gegen die aktuell gebrauchten (#120).
+
+    `granted`: Scopes aus dem Token (`oauth_utils.read_granted_scopes`); `None`
+    wird wie „nichts gewährt" behandelt — die Unterscheidung „nicht lesbar"
+    trifft der Aufrufer, bevor er hier hereinkommt.
+
+    Liefert `(entries, extras)`:
+    - `entries`: `ScopeStatus` je bekanntem Scope in fester Reihenfolge, mit
+      `active` (gewährt und gebraucht), `unused` (gewährt, Funktion aus) oder
+      `missing` (gebraucht, fehlt — der nächste Zugriff erzwingt über
+      `oauth_utils.discard_token_for_scope_upgrade` einen frischen Consent).
+      Weder gewährt noch gebraucht → gar kein Eintrag, sonst stünde die Liste
+      voll mit Zeug, das den Nutzer nichts angeht.
+    - `extras`: gewährte Scopes, die diese App nicht kennt (Altlast, manuell
+      erteilt) — roh und sortiert, ohne Bewertung.
+    """
+    granted_set = set(granted or ())
+    needed = set(get_scopes(sync_enabled, gcal_enabled))
+    entries = []
+    for scope in _SCOPE_ORDER:
+        is_granted = scope in granted_set
+        is_needed = scope in needed
+        if not is_granted and not is_needed:
+            continue
+        if is_granted and is_needed:
+            status = "active"
+        elif is_granted:
+            status = "unused"
+        else:
+            status = "missing"
+        entries.append(ScopeStatus(scope, SCOPE_LABELS[scope], status))
+    return entries, sorted(granted_set - set(_SCOPE_ORDER))
 
 
 # Legacy: alte Callers benutzen weiter SCOPES (gmail-only). Neue Callers
