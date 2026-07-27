@@ -8,6 +8,7 @@ wieder, darf das Fenster NICHT zurueckschrumpfen — sonst springt die Breite be
 jedem Lohn-Ein/Aus. Tk-frei ueber ein gemocktes root."""
 
 from unittest.mock import MagicMock
+import tkinter
 
 from src.grid_renderer import GridRenderer
 
@@ -59,7 +60,7 @@ def test_repin_suppressed_during_measure_leaves_geometry_untouched():
 
 
 def _renderer_with_settings(**values):
-    """GridRenderer mit gestubbten Settings; nicht gesetzte Keys → Default."""
+    """GridRenderer mit gestubbten Settings; nicht gesetzte Keys → None."""
     root = MagicMock()
     root.winfo_reqwidth.return_value = 700
     root.winfo_reqheight.return_value = 400
@@ -84,3 +85,32 @@ def test_show_weekend_still_governs_when_workweek_only_is_off():
         show_weekend=True, workweek_only=False)._visible_day_count() == 7
     assert _renderer_with_settings(
         show_weekend=False, workweek_only=False)._visible_day_count() == 5
+
+
+def test_cell_metrics_respect_workweek_only():
+    """_cell_layout_metrics muss wide_cells aus _visible_day_count ableiten,
+    nicht show_weekend erneut lesen. Sonst haben 5-Spalten-Layouts die
+    Zell-Metriken für 7 Spalten (kleinere Schrift, gedrängter)."""
+    root = MagicMock()
+    root.winfo_reqwidth.return_value = 700
+    root.winfo_reqheight.return_value = 400
+    root.pack_slaves.return_value = []
+    settings = MagicMock(get=lambda k, d=None: {
+        "show_weekend": True,
+        "workweek_only": True,
+    }.get(k, d))
+    r = GridRenderer(
+        root=root, storage=object(), settings=settings,
+        reservation_store=None, conflicts_store=None,
+        on_cell_click=lambda d: None, on_cell_right_click=lambda d: None,
+        reservations_active=lambda: False,
+    )
+    # Mit Tk-Frame für die Probe-Messung
+    frame = tkinter.Frame()
+    cell_size, entry_font, holiday_font, wide_cells = r._cell_layout_metrics(frame)
+    frame.destroy()
+    # Bei workweek_only=True sind 5 Spalten sichtbar → wide_cells MUSS True sein
+    assert wide_cells is True, (
+        "workweek_only=True → 5 Spalten sichtbar → wide_cells=True "
+        "(nicht aus show_weekend=True ablesen)"
+    )
