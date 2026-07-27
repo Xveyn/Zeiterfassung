@@ -331,7 +331,7 @@ Reservierungen anlegen und den Abgleich über die App-Oberfläche aktivieren; be
 | **Grußformel** | Abschluss der E-Mail (Zeilenumbrüche mit `\n`) |
 | **Autostart** | App minimiert bei Systemanmeldung starten (Windows/macOS/Linux) |
 | **Synchronisation** | Multi-Device-Sync via Google Drive aktivieren (siehe Abschnitt oben) |
-| **Berechtigungen** | Zeigt, welche Google-Berechtigungen (OAuth-Scopes) das Konto der App gewährt hat — inkl. solcher, die noch gewährt, aber zurzeit ungenutzt sind |
+| **Berechtigungen** | Zeigt, welche Google-Berechtigungen (OAuth-Scopes) das Konto der App gewährt hat — inkl. solcher, die noch gewährt, aber zurzeit ungenutzt sind. Daneben steht auf einen Blick „n von m Berechtigungen": ✓ alles da, ○ eine zuschaltbare Funktion wartet noch auf ihre Freigabe, ✗ eine Grundberechtigung fehlt (dann klappt auch der Mail-Versand nicht) |
 
 ### Platzhalter in E-Mail-Vorlagen
 

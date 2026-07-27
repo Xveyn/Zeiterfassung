@@ -150,6 +150,61 @@ class GoogleTab:
             scopes_row, "Anzeigen", _open_scopes, padx=12, pady=2,
         ).pack(side=tk.LEFT)
 
+        scopes_status = tk.Label(scopes_row, text="", font=FONT_SMALL, bg=BG)
+        scopes_status.pack(side=tk.LEFT, padx=(10, 0))
+
+        # Zeichen + Farbe je Zustand aus mail.scope_summary — dieselbe Sprache
+        # wie die credentials.json-Zeile darüber (✓ grün / ✗ rot).
+        scope_marks = {
+            "ok": ("✓", STATUS_OK),
+            "partial": ("○", TEXT_MUTED),
+            "core_missing": ("✗", ACCENT),
+        }
+        # Cache, damit der 500ms-Poll token.json nur bei echter Änderung liest.
+        # Annotation, weil pyright den Literal sonst als dict[str, None] festnagelt.
+        scope_cache: dict[str, object] = {"stamp": None, "granted": None}
+
+        def refresh_scopes_status():
+            """Hält den Einzeiler neben „Anzeigen" aktuell.
+
+            Hängt am selben Poll wie die credentials.json-Zeile, statt einen
+            zweiten Timer aufzumachen: so zieht der Text sowohl nach einem
+            Re-Consent (token.json ändert sich) als auch nach dem Umlegen der
+            Sync-/Kalender-Schalter (Nenner ändert sich) nach.
+            """
+            from src.mail import scope_summary
+            from src.oauth_utils import read_granted_scopes
+
+            if not scopes_status.winfo_exists():
+                return
+            token_path = os.path.join(base_path, "token.json")
+            try:
+                st = os.stat(token_path)
+                stamp = (st.st_mtime, st.st_size)
+            except OSError:
+                stamp = None
+            if stamp != scope_cache["stamp"]:
+                scope_cache["stamp"] = stamp
+                scope_cache["granted"] = (
+                    read_granted_scopes(token_path) if stamp is not None else None)
+
+            granted = scope_cache["granted"]
+            if granted is None:
+                text = ("✗ nicht angemeldet" if stamp is None
+                        else "✗ Berechtigungen nicht lesbar")
+                scopes_status.config(text=text, fg=ACCENT)
+            else:
+                summary = scope_summary(
+                    granted,
+                    settings.get("sync_enabled"),
+                    settings.get("gcal_enabled"),
+                )
+                mark, color = scope_marks[summary.status]
+                scopes_status.config(text=f"{mark} {summary.text}", fg=color)
+            dialog.after(500, refresh_scopes_status)
+
+        refresh_scopes_status()
+
         subheader(frame, "Synchronisation", row=4)
         tk.Label(
             frame, text="Diese Schalter wirken sofort (Anmeldung im Browser).",

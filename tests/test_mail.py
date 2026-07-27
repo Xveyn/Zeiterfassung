@@ -73,6 +73,7 @@ from src.mail import (  # noqa: E402
     TokenNetworkError,
     get_scopes,
     scope_overview,
+    scope_summary,
     CALENDAR_EVENTS_SCOPE,
     CALENDAR_LIST_SCOPE,
     DRIVE_APPDATA_SCOPE,
@@ -493,3 +494,58 @@ class TestScopeOverview:
         """Fehlt ein Label, wirft scope_overview einen KeyError und der Dialog
         geht gar nicht erst auf."""
         assert set(_SCOPE_ORDER) == set(SCOPE_LABELS)
+
+
+class TestScopeSummary:
+    """Kurzfassung fürs Google-Tab: „n von m Berechtigungen" plus ein Zustand,
+    den der Tab in ✓/○/✗ übersetzt. Gezählt werden nur die aktuell GEBRAUCHTEN
+    Scopes — gewährte, aber ungenutzte gehören nicht in den Nenner."""
+
+    CORE = [GMAIL_SEND_SCOPE, USERINFO_EMAIL_SCOPE]
+    ALL = CORE + [DRIVE_APPDATA_SCOPE, CALENDAR_EVENTS_SCOPE, CALENDAR_LIST_SCOPE]
+
+    def test_all_needed_scopes_granted_is_ok(self):
+        summary = scope_summary(self.ALL, sync_enabled=True, gcal_enabled=True)
+        assert summary.text == "5 von 5 Berechtigungen"
+        assert summary.status == "ok"
+
+    def test_only_core_needed_and_granted_is_ok(self):
+        summary = scope_summary(self.CORE, sync_enabled=False, gcal_enabled=False)
+        assert summary.text == "2 von 2 Berechtigungen"
+        assert summary.status == "ok"
+
+    def test_unused_scopes_do_not_count_in_the_denominator(self):
+        """Sync aus, Drive-Scope liegt noch im Token: er ist weder gebraucht
+        noch fehlend — der Nenner bleibt bei den zwei Kern-Scopes."""
+        summary = scope_summary(self.ALL, sync_enabled=False, gcal_enabled=False)
+        assert summary.text == "2 von 2 Berechtigungen"
+        assert summary.status == "ok"
+
+    def test_missing_optional_scope_is_partial(self):
+        summary = scope_summary(self.CORE, sync_enabled=True, gcal_enabled=False)
+        assert summary.text == "2 von 3 Berechtigungen"
+        assert summary.status == "partial"
+
+    def test_missing_core_scope_outranks_a_complete_optional_set(self):
+        """Ohne gmail.send ist der Kern der App kaputt — das schlägt jede
+        vollständige Kür durch und muss als Fehler erscheinen, nicht als
+        „fast vollständig"."""
+        granted = [USERINFO_EMAIL_SCOPE, DRIVE_APPDATA_SCOPE]
+        summary = scope_summary(granted, sync_enabled=True, gcal_enabled=False)
+        assert summary.text == "2 von 3 Berechtigungen"
+        assert summary.status == "core_missing"
+
+    def test_nothing_granted_is_core_missing(self):
+        summary = scope_summary([], sync_enabled=False, gcal_enabled=False)
+        assert summary.text == "0 von 2 Berechtigungen"
+        assert summary.status == "core_missing"
+
+    def test_none_granted_behaves_like_nothing_granted(self):
+        summary = scope_summary(None, sync_enabled=False, gcal_enabled=False)
+        assert summary.status == "core_missing"
+
+    def test_unknown_extra_scopes_are_not_counted(self):
+        summary = scope_summary(self.CORE + ["https://example.test/auth/foo"],
+                                sync_enabled=False, gcal_enabled=False)
+        assert summary.text == "2 von 2 Berechtigungen"
+        assert summary.status == "ok"

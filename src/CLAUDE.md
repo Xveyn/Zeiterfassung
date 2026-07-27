@@ -303,6 +303,18 @@ aber Funktion aus, ✗ gebraucht aber fehlt. Bewusst ein Modal statt einer Liste
 Google-Tab (der ist mit 480 px schon der größte im Notebook) — und es liest
 `token.json` beim Öffnen, ist also ohne Poll immer aktuell.
 
+Neben dem „Anzeigen"-Button steht die Kurzfassung aus `mail.scope_summary`:
+„n von m Berechtigungen" mit ✓ (alles Gebrauchte da) / ○ (Kern da, eine zuschaltbare
+Funktion wartet auf ihren Scope) / ✗ (Kern-Scope fehlt — schlägt jede vollständige
+Kür durch), plus „nicht angemeldet" bzw. „nicht lesbar" ohne verwertbares Token.
+Gezählt wird nur, was die **eingeschalteten** Funktionen brauchen: ungenutzte und
+unbekannte Scopes gehören nicht in den Nenner, sonst wüchse er mit jeder Altlast.
+Aktuell gehalten wird die Zeile vom **vorhandenen** 500ms-Poll der
+credentials.json-Zeile (`tab_google.refresh_scopes_status`), mit mtime/size-Cache
+auf `token.json` — so zieht sie sowohl nach einem Re-Consent als auch nach dem
+Umlegen der Sync-/Kalender-Schalter nach, ohne zweiten Timer und ohne die Datei
+zweimal pro Sekunde zu lesen.
+
 `App._open_dialog` (Linksklick-Handler) prüft zuerst `conflicts_store.unresolved_entry_keys()`:
 liegt für den Tag ein ungelöster Sync-Konflikt (Ist-Zeit zwischen zwei Geräten
 widersprüchlich), öffnet sich `ConflictsDialog` mit `filter_key=date_str` statt des

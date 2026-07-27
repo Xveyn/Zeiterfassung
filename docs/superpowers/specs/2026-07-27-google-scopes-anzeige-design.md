@@ -29,9 +29,29 @@ wird nur nie angezeigt.
 
 ### Google-Tab
 
-Eine Zeile unter „Absender", noch unter dem Subheader „Google-Konto": ein
-`secondary_button` **„Berechtigungen anzeigen"**. Sonst ändert sich am Tab nichts;
-die nachfolgenden Zeilen laufen ohnehin über die fortlaufende `next_google_row`.
+Eine Zeile unter „Absender", noch unter dem Subheader „Google-Konto":
+`Berechtigungen: [Anzeigen]`. Sonst ändert sich am Tab nichts; die nachfolgenden
+Zeilen laufen ohnehin über die fortlaufende `next_google_row`.
+
+**Nachtrag (nach der ersten Sichtung ergänzt):** Neben dem Button steht ein
+Statustext in derselben Sprache wie die `credentials.json`-Zeile darüber —
+„n von m Berechtigungen" mit ✓ / ○ / ✗ aus `mail.scope_summary`:
+
+| Zeichen | Zustand | Bedeutung |
+|---|---|---|
+| ✓ grün | `ok` | alles Gebrauchte gewährt |
+| ○ gedämpft | `partial` | Kern da, eine zuschaltbare Funktion wartet auf ihren Scope |
+| ✗ rot | `core_missing` | ein Kern-Scope fehlt — auch der reine Mail-Versand geht nicht |
+
+Ohne verwertbares Token: „✗ nicht angemeldet" bzw. „✗ Berechtigungen nicht lesbar".
+
+Der Nenner zählt nur die **gebrauchten** Scopes: gewährte, aber ungenutzte
+(Funktion abgeschaltet) und unbekannte Extras gehören nicht hinein — sie fehlen
+ja nicht, und ein Nenner, der mit jeder Altlast wächst, wäre keine Aussage über
+die Funktionsfähigkeit. Aktuell gehalten wird die Zeile vom **vorhandenen**
+500-ms-Poll der `credentials.json`-Zeile, mit mtime/size-Cache auf `token.json`:
+kein zweiter Timer, und sie zieht sowohl nach einem Re-Consent als auch nach dem
+Umlegen der Sync-/Kalender-Schalter nach.
 
 ### Modal (`src/dialogs/scopes_dialog.py`)
 
