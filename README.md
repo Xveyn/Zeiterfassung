@@ -326,7 +326,7 @@ Reservierungen anlegen und den Abgleich über die App-Oberfläche aktivieren; be
 | **Dein Name** | Eigener vollständiger Name (erscheint im PDF-Bericht und beim Teilen) |
 | **Standard-Pause** | Standardmäßige Pausendauer in Minuten |
 | **Pausenpflicht-Warnung** | Warnen, wenn die Pause die Mindestpause nach § 4 ArbZG unterschreitet (Standard: an) |
-| **Nur Werktage** | Wochenende (Sa/So) überall ausblenden — Kalender, Standardzeiten und Bericht. Überstimmt „Wochenende im Kalender anzeigen"; Daten bleiben erhalten |
+| **Nur Werktage** | Wochenende (Sa/So) überall ausblenden — Kalender, Standardzeiten und Bericht. Überstimmt „Wochenende (Sa/So) im Kalender anzeigen"; Daten bleiben erhalten |
 | **Vorabversionen anbieten** | Auch Pre-Releases als Update anbieten und melden (Standard: aus, gerätelokal) |
 | **Betreff** | E-Mail-Betreff mit Platzhaltern |
 | **Begrüßung** | Anrede im E-Mail-Text |

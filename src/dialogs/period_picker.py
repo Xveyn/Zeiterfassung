@@ -90,7 +90,11 @@ def build_period_picker(parent, storage, settings, on_change=None):
 
     # Kategorien aus Bestand UND Settings-Pickliste ("" = ohne Kategorie). Alle
     # default ausgewählt. Bewusst NICHT auf den Zeitraum eingeschränkt (vgl.
-    # bisheriger send_dialog-Kommentar).
+    # bisheriger send_dialog-Kommentar). Seit dem Snapshot-Filter folgt sie
+    # aber dem gefilterten Bestand (all_entries, s.u.): im Nur-Werktage-Modus
+    # taucht eine Kategorie, die ausschließlich an Wochenenden benutzt wurde,
+    # in der Pickliste nicht mehr auf — gewollt, denn im Modus liefert sie
+    # ohnehin keine Einträge.
     # Zwei Sichten auf denselben Snapshot: die Vorschau rechnet mit den
     # gefilterten Daten, der Hinweis zählt auf den ungefilterten — sonst wäre
     # die Zahl, die er nennt, per Konstruktion immer 0.
@@ -141,12 +145,13 @@ def build_period_picker(parent, storage, settings, on_change=None):
     # verlöre jemand mit Alt-Daten stillschweigend Stunden aus dem Bericht.
     weekend_hint = tk.Label(frame, text="", font=FONT_SMALL, bg=BG, fg=TEXT_MUTED)
     weekend_hint.grid(row=5, column=0, columnspan=6, padx=10, pady=(0, 8), sticky="w")
+    weekend_hint.grid_remove()  # startet unsichtbar; ein leeres Label würde trotzdem eine Zeile beanspruchen
 
     def _update_total(*_):
         df, dt = handle.get_range()
         if df is None or dt is None or df > dt:
             total_label.config(text="Gesamtstunden: —")
-            weekend_hint.config(text="")
+            weekend_hint.grid_remove()
             return
         hours = total_hours(df, dt, all_entries, handle.get_categories())
         total_label.config(text=f"Gesamtstunden: {hours}h")
@@ -154,11 +159,13 @@ def build_period_picker(parent, storage, settings, on_change=None):
              if settings.get("workweek_only") else 0)
         if n == 1:
             weekend_hint.config(text="1 Wochenend-Eintrag im Zeitraum wird nicht berücksichtigt.")
+            weekend_hint.grid()
         elif n > 1:
             weekend_hint.config(
                 text=f"{n} Wochenend-Einträge im Zeitraum werden nicht berücksichtigt.")
+            weekend_hint.grid()
         else:
-            weekend_hint.config(text="")
+            weekend_hint.grid_remove()
 
     def _changed(*_):
         # Benutzer-Änderung an Datum oder Kategorie: Vorschau aktualisieren und

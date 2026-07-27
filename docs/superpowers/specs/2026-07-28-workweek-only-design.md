@@ -136,6 +136,13 @@ die es nicht sicher zuordnen kann.
 - **Keine Kalender-Interaktion für Wochenendtage**: sie werden nicht gerendert,
   also auch nicht anklickbar. Ein eigener Weg, sie doch zu erreichen, entsteht
   nicht.
+- **Reservierungen und ihre Erinnerungen** (`reminders.py`,
+  `reminder_scheduler.py`) bleiben unberührt — der Modus betrifft Ist-Zeiten
+  und den Bericht. Eine an einem Samstag reservierte Slot-Kategorie löst also
+  weiterhin einen Erinnerungs-Toast aus, obwohl die Zelle im Kalender nicht
+  gerendert wird. Der Effekt ist selbstlimitierend (nur an genau diesem
+  Datum) und existiert heute identisch bei `show_weekend=False` — keine
+  Regression dieses Features.
 
 ## Tests
 

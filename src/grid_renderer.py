@@ -213,6 +213,13 @@ class GridRenderer:
             return 5
         return 7 if self._settings.get("show_weekend") else 5
 
+    def _wide_cells(self):
+        """Breite Zellen, sobald nur 5 Spalten sichtbar sind (5 Spalten = mehr
+        Horizontalplatz je Spalte). Aus _visible_day_count abgeleitet, damit
+        workweek_only mitzieht — nicht show_weekend erneut lesen.
+        """
+        return self._visible_day_count() == 5
+
     def _build_grid_header(self, parent):
         n = self._visible_day_count()
         for col, day_name in enumerate(DAYS_DE[:n]):
@@ -575,9 +582,7 @@ class GridRenderer:
         (FONT statt FONT_SMALL), damit z.B. '09:30-17:00' bequem lesbar bleibt.
         Holiday-Zellen werden spaeter auf `cell_size` fixiert, damit lange
         Feiertagsnamen die Spalte nicht aufweiten (Header-Reflow/Flackern)."""
-        # wide_cells aus _visible_day_count ableiten (nicht show_weekend erneut lesen),
-        # damit workweek_only die Zell-Metriken richtig beeinflusst.
-        wide_cells = self._visible_day_count() == 5
+        wide_cells = self._wide_cells()
         probe_width = PROBE_WIDTH_WIDE if wide_cells else PROBE_WIDTH_NARROW
         entry_time_font = FONT if wide_cells else FONT_SMALL
         holiday_name_font = FONT if wide_cells else FONT_SMALL
