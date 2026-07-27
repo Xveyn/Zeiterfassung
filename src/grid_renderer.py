@@ -203,9 +203,14 @@ class GridRenderer:
     def _visible_day_count(self):
         """Sichtbare Wochentag-Spalten (5 bei show_weekend=False, sonst 7).
 
+        `workweek_only` überstimmt `show_weekend`: im Nur-Werktage-Modus sind
+        Sa/So immer aus (die Checkbox im App-Tab ist dann deaktiviert).
+
         Wird von _build_grid_header und den Refresh-Pfaden als einzige
         Quelle der Wahrheit konsultiert.
         """
+        if self._settings.get("workweek_only"):
+            return 5
         return 7 if self._settings.get("show_weekend") else 5
 
     def _build_grid_header(self, parent):

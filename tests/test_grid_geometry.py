@@ -53,3 +53,34 @@ def test_repin_suppressed_during_measure_leaves_geometry_untouched():
     r.repin_geometry()
     root.geometry.assert_not_called()
     assert r._fixed_width == 552  # kein Ratchet waehrend der Vorab-Messung
+
+
+# --- workweek_only: Nur-Werktage-Modus für Kalender-Spalten ---
+
+
+def _renderer_with_settings(**values):
+    """GridRenderer mit gestubbten Settings; nicht gesetzte Keys → Default."""
+    root = MagicMock()
+    root.winfo_reqwidth.return_value = 700
+    root.winfo_reqheight.return_value = 400
+    settings = MagicMock(get=lambda k, d=None: values.get(k, d))
+    return GridRenderer(
+        root=root, storage=object(), settings=settings,
+        reservation_store=None, conflicts_store=None,
+        on_cell_click=lambda d: None, on_cell_right_click=lambda d: None,
+        reservations_active=lambda: False,
+    )
+
+
+def test_workweek_only_hides_weekend_even_when_show_weekend_is_on():
+    """Der Nur-Werktage-Modus überstimmt den Kalender-Schalter — sonst stünde
+    im App-Tab ein Haken, der sichtbar nichts tut."""
+    r = _renderer_with_settings(show_weekend=True, workweek_only=True)
+    assert r._visible_day_count() == 5
+
+
+def test_show_weekend_still_governs_when_workweek_only_is_off():
+    assert _renderer_with_settings(
+        show_weekend=True, workweek_only=False)._visible_day_count() == 7
+    assert _renderer_with_settings(
+        show_weekend=False, workweek_only=False)._visible_day_count() == 5
