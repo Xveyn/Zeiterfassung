@@ -220,6 +220,20 @@ def test_discard_treats_missing_scopes_key_as_no_coverage(tmp_path):
     assert not os.path.exists(path)
 
 
+def test_discard_keeps_token_when_scopes_field_is_not_a_list(tmp_path):
+    """Ein `scopes`-Feld, das keine Liste ist, gilt als unbrauchbar (nicht als
+    „keine Scopes"): read_granted_scopes liefert None, und konservativ bleibt
+    der Token liegen, statt einen womöglich gültigen wegzuwerfen. Vor der
+    Umstellung auf read_granted_scopes wurde er hier gelöscht — die Änderung
+    ist beabsichtigt und wird hier festgehalten."""
+    path = str(tmp_path / "token.json")
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump({"token": "t", "scopes": "gmail.send"}, f)
+
+    assert discard_token_for_scope_upgrade(path, ["gmail.send"]) is False
+    assert os.path.exists(path)
+
+
 def test_read_granted_scopes_returns_the_list(tmp_path):
     path = str(tmp_path / "token.json")
     _write_token_file(path, ["a", "b"])

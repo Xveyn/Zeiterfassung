@@ -78,6 +78,8 @@ from src.mail import (  # noqa: E402
     DRIVE_APPDATA_SCOPE,
     GMAIL_SEND_SCOPE,
     USERINFO_EMAIL_SCOPE,
+    _SCOPE_ORDER,
+    SCOPE_LABELS,
 )
 
 
@@ -480,3 +482,14 @@ class TestScopeOverview:
         entries, extras = scope_overview(None, sync_enabled=False, gcal_enabled=False)
         assert [e.status for e in entries] == ["missing", "missing"]
         assert extras == []
+
+    def test_scope_order_covers_everything_get_scopes_can_request(self):
+        """Ein neuer Scope in get_scopes, der in _SCOPE_ORDER fehlt, würde in
+        der Übersicht unsichtbar — gerade im wichtigsten Fall „gebraucht, aber
+        nicht gewährt"."""
+        assert set(get_scopes(True, True)) <= set(_SCOPE_ORDER)
+
+    def test_every_ordered_scope_has_a_label(self):
+        """Fehlt ein Label, wirft scope_overview einen KeyError und der Dialog
+        geht gar nicht erst auf."""
+        assert set(_SCOPE_ORDER) == set(SCOPE_LABELS)
