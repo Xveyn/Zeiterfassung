@@ -138,11 +138,23 @@ class GoogleTab:
         )
         sender_btn.pack(side=tk.LEFT, padx=(10, 0))
 
-        subheader(frame, "Synchronisation", row=3)
+        label(frame, "Berechtigungen:", row=3, pady=(0, 4))
+        scopes_row = tk.Frame(frame, bg=BG)
+        scopes_row.grid(row=3, column=1, padx=10, pady=(0, 4), sticky="w")
+
+        def _open_scopes():
+            from src.dialogs.scopes_dialog import open_scopes_dialog
+            open_scopes_dialog(dialog, settings, base_path)
+
+        secondary_button(
+            scopes_row, "Anzeigen", _open_scopes, padx=12, pady=2,
+        ).pack(side=tk.LEFT)
+
+        subheader(frame, "Synchronisation", row=4)
         tk.Label(
             frame, text="Diese Schalter wirken sofort (Anmeldung im Browser).",
             font=FONT_SMALL, bg=BG, fg=TEXT_MUTED,
-        ).grid(row=4, column=0, columnspan=2, padx=10, pady=(0, 4), sticky="w")
+        ).grid(row=5, column=0, columnspan=2, padx=10, pady=(0, 4), sticky="w")
 
         var_sync = tk.BooleanVar(value=settings.get("sync_enabled"))
 
@@ -186,24 +198,24 @@ class GoogleTab:
             cursor="hand2",
             command=_on_sync_toggled,
         )
-        cb_sync.grid(row=5, column=0, columnspan=2, padx=10, pady=(4, 0), sticky="w")
+        cb_sync.grid(row=6, column=0, columnspan=2, padx=10, pady=(4, 0), sticky="w")
 
         device_id = settings.get("device_id") or "(noch nicht gesetzt)"
         device_id_short = device_id[:8] + "…" if len(device_id) > 8 else device_id
         tk.Label(
             frame, text=f"Geräte-ID: {device_id_short}", font=FONT_SMALL,
             bg=BG, fg=TEXT_MUTED,
-        ).grid(row=6, column=0, columnspan=2, padx=10, pady=(2, 0), sticky="w")
+        ).grid(row=7, column=0, columnspan=2, padx=10, pady=(2, 0), sticky="w")
 
         last = format_iso_date(settings.get("last_pull_at"), fallback="noch nie")
         tk.Label(
             frame, text=f"Letzte Synchronisation: {last}", font=FONT_SMALL,
             bg=BG, fg=TEXT_MUTED,
-        ).grid(row=7, column=0, columnspan=2, padx=10, pady=(2, 4), sticky="w")
+        ).grid(row=8, column=0, columnspan=2, padx=10, pady=(2, 4), sticky="w")
 
         # Ab hier wachsen im Google-Tab optionale Zeilen (Konflikte, Kompaktieren)
         # dynamisch — deshalb eine laufende Row-Nummer statt fixer Konstanten.
-        next_google_row = 8
+        next_google_row = 9
         unresolved = 0
         if conflicts_store is not None:
             unresolved = conflicts_store.count_unresolved()

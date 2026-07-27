@@ -36,7 +36,7 @@ Zeiterfassung/
 │   ├── background_tasks.py # Hintergrund-Worker + Thread-Mechanik (Token-Refresh, Update-Check, Reconcile)
 │   ├── sync_orchestrator.py # Drive-Sync-Steuerung (manuell/Tray/Pull/Quit, Fehler-Aufbereitung)
 │   ├── update_banner.py   # GitHub-Release-Hinweis-Banner
-│   ├── dialogs/           # Modal-Dialoge (entry, send, export, settings, share, import, conflicts, category) + geteilter period_picker
+│   ├── dialogs/           # Modal-Dialoge (entry, send, export, settings, share, import, conflicts, category, scopes) + geteilter period_picker
 │   ├── storage.py         # JSON-Persistenz der Zeiteinträge
 │   ├── settings.py        # Einstellungen mit Standardwerten
 │   ├── category_defaults.py # Default-Kategorien für Zeit-Slots
@@ -331,6 +331,7 @@ Reservierungen anlegen und den Abgleich über die App-Oberfläche aktivieren; be
 | **Grußformel** | Abschluss der E-Mail (Zeilenumbrüche mit `\n`) |
 | **Autostart** | App minimiert bei Systemanmeldung starten (Windows/macOS/Linux) |
 | **Synchronisation** | Multi-Device-Sync via Google Drive aktivieren (siehe Abschnitt oben) |
+| **Berechtigungen** | Zeigt, welche Google-Berechtigungen (OAuth-Scopes) das Konto der App gewährt hat — inkl. solcher, die noch gewährt, aber zurzeit ungenutzt sind |
 
 ### Platzhalter in E-Mail-Vorlagen
 

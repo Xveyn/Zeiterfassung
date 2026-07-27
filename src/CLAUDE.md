@@ -294,8 +294,14 @@ Attribute für `save_settings` exponiert; `tab_updates` startet seinen Live-Chec
 bewusst erst per `<<NotebookTabChanged>>`, nicht schon beim Dialog-Öffnen;
 `oauth_task.py` = H5-OAuth-Toggle-Builder; Dark-Styling weiter via
 `theme.apply_notebook_style`), `share_dialog`, `import_dialog`, `category_dialog`,
-`conflicts_dialog`. `period_picker` ist kein Dialog, sondern der von
+`conflicts_dialog`, `scopes_dialog`. `period_picker` ist kein Dialog, sondern der von
 `send_dialog` + `export_dialog` geteilte Zeitraum+Kategorie+Vorschau-Baustein.
+
+`scopes_dialog` zeigt read-only, welche OAuth-Scopes im `token.json` gewährt sind,
+bewertet gegen die aktuell gebrauchten (`mail.scope_overview`): ✓ genutzt, ○ gewährt
+aber Funktion aus, ✗ gebraucht aber fehlt. Bewusst ein Modal statt einer Liste im
+Google-Tab (der ist mit 480 px schon der größte im Notebook) — und es liest
+`token.json` beim Öffnen, ist also ohne Poll immer aktuell.
 
 `App._open_dialog` (Linksklick-Handler) prüft zuerst `conflicts_store.unresolved_entry_keys()`:
 liegt für den Tag ein ungelöster Sync-Konflikt (Ist-Zeit zwischen zwei Geräten
