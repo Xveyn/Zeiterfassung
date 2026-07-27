@@ -5,12 +5,43 @@ nur, wenn die gespeicherten Scopes die angeforderten nicht abdecken."""
 
 import json
 import os
+import platform
 import stat
+import subprocess
 from unittest.mock import MagicMock
 
 import pytest
 
 from src.oauth_utils import write_token, discard_token_for_scope_upgrade
+
+
+def _windows_env(monkeypatch, events, *, run=None, domain="MACHINE", user="sven"):
+    """Stellt eine Windows-Umgebung nach und protokolliert die Reihenfolge von
+    icacls-Aufruf und os.replace in `events`."""
+    def default_run(cmd, **kwargs):
+        return subprocess.CompletedProcess(cmd, 0, "", "")
+
+    def fake_run(cmd, **kwargs):
+        events.append(("icacls", list(cmd)))
+        return (run or default_run)(cmd, **kwargs)
+
+    real_replace = os.replace
+
+    def tracking_replace(src, dst):
+        events.append(("replace", src, dst))
+        return real_replace(src, dst)
+
+    monkeypatch.setattr(platform, "system", lambda: "Windows")
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    monkeypatch.setattr(os, "replace", tracking_replace)
+    if domain is None:
+        monkeypatch.delenv("USERDOMAIN", raising=False)
+    else:
+        monkeypatch.setenv("USERDOMAIN", domain)
+    if user is None:
+        monkeypatch.delenv("USERNAME", raising=False)
+    else:
+        monkeypatch.setenv("USERNAME", user)
 
 
 def test_write_token_writes_creds_json(tmp_path):
@@ -110,6 +141,112 @@ def test_write_token_reraises_persistent_permission_error(tmp_path, monkeypatch)
 
     assert calls["n"] > 1  # es wurde wiederholt, nicht nur einmal versucht
     assert os.listdir(str(tmp_path)) == []  # tmp aufgeräumt, kein token.json
+
+
+def test_write_token_hardens_acl_on_windows_before_replace(tmp_path, monkeypatch):
+    """Audit M8: chmod ist auf Windows ein No-op — dort bekommt die Datei
+    stattdessen eine explizite ACL nur für den aktuellen Benutzer (icacls,
+    Vererbung entfernt). Gehärtet wird die Temp-Datei VOR dem os.replace, damit
+    token.json nie kurzzeitig mit geerbten Rechten sichtbar ist."""
+    path = str(tmp_path / "token.json")
+    creds = MagicMock()
+    creds.to_json.return_value = "{}"
+    events = []
+    _windows_env(monkeypatch, events)
+
+    write_token(creds, path)
+
+    assert [e[0] for e in events] == ["icacls", "replace"]
+    argv = events[0][1]
+    assert argv[0] == "icacls"
+    assert argv[1].endswith(".tmp")  # die Temp-Datei, nicht das fertige token.json
+    assert "/inheritance:r" in argv  # geerbte ACEs (u.a. Administratoren) raus
+    assert "/grant:r" in argv
+    assert "MACHINE\\sven:(F)" in argv
+
+
+def test_write_token_grants_bare_username_without_userdomain(tmp_path, monkeypatch):
+    """Ohne USERDOMAIN (exotische Umgebung) bleibt der nackte Benutzername —
+    icacls löst den lokal auf, statt dass das Härten ganz ausfällt."""
+    path = str(tmp_path / "token.json")
+    creds = MagicMock()
+    creds.to_json.return_value = "{}"
+    events = []
+    _windows_env(monkeypatch, events, domain=None)
+
+    write_token(creds, path)
+
+    assert "sven:(F)" in events[0][1]
+
+
+def test_write_token_skips_hardening_without_username(tmp_path, monkeypatch):
+    """Ohne benennbaren Principal wird nicht geraten: kein icacls-Aufruf, und
+    der Token landet trotzdem auf der Platte (Persistenz geht vor Härtung)."""
+    path = str(tmp_path / "token.json")
+    creds = MagicMock()
+    creds.to_json.return_value = '{"token": "abc"}'
+    events = []
+    _windows_env(monkeypatch, events, domain=None, user=None)
+
+    write_token(creds, path)
+
+    assert [e[0] for e in events] == ["replace"]
+    with open(path) as f:
+        assert f.read() == '{"token": "abc"}'
+
+
+def test_write_token_does_not_call_icacls_off_windows(tmp_path, monkeypatch):
+    """Auf POSIX erledigt das chmod 0600 die Arbeit — kein icacls-Prozess."""
+    path = str(tmp_path / "token.json")
+    creds = MagicMock()
+    creds.to_json.return_value = "{}"
+    events = []
+    _windows_env(monkeypatch, events)
+    monkeypatch.setattr(platform, "system", lambda: "Linux")
+
+    write_token(creds, path)
+
+    assert [e[0] for e in events] == ["replace"]
+
+
+def test_write_token_survives_missing_icacls(tmp_path, monkeypatch):
+    """Fehlt icacls (abgespecktes Windows, PATH kaputt), darf die
+    Token-Persistenz nicht scheitern — Härtung ist Beiwerk, nicht Bedingung."""
+    path = str(tmp_path / "token.json")
+    creds = MagicMock()
+    creds.to_json.return_value = '{"token": "abc"}'
+
+    def boom(cmd, **kwargs):
+        raise FileNotFoundError(2, "icacls nicht gefunden")
+
+    events = []
+    _windows_env(monkeypatch, events, run=boom)
+
+    write_token(creds, path)
+
+    with open(path) as f:
+        assert f.read() == '{"token": "abc"}'
+
+
+def test_write_token_logs_warning_when_icacls_fails(tmp_path, monkeypatch, caplog):
+    """Ein icacls-Fehlschlag wird geloggt statt still verschluckt (N13-Muster) —
+    der Token wird trotzdem geschrieben."""
+    path = str(tmp_path / "token.json")
+    creds = MagicMock()
+    creds.to_json.return_value = "{}"
+
+    def failing(cmd, **kwargs):
+        return subprocess.CompletedProcess(cmd, 5, "", "Zugriff verweigert")
+
+    events = []
+    _windows_env(monkeypatch, events, run=failing)
+
+    with caplog.at_level("WARNING"):
+        write_token(creds, path)
+
+    assert os.path.exists(path)
+    assert any("icacls" in r.message.lower() or "acl" in r.message.lower()
+               for r in caplog.records), caplog.text
 
 
 def _write_token_file(path, scopes):

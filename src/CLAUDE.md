@@ -210,6 +210,16 @@ müssen beide Locks respektieren. Design:
 `gcal.py` (Calendar), `reservations_sync.py` (Abgleich Reservierungen ↔ Kalender). Alle teilen
 denselben OAuth-Token; Scope-Upgrade erzwingt frischen Consent.
 
+Geschrieben wird der Token ausschließlich über `oauth_utils.write_token`: Temp-Datei →
+Härtung → `os.replace` (mit `PermissionError`-Retry, #135). Die Härtung ist
+plattformabhängig — `chmod 0600` auf POSIX, `_harden_windows_acl` (`icacls
+/inheritance:r /grant:r <user>:(F)`) auf Windows, wo chmod ein No-op ist (Audit M8).
+Beides greift auf der **Temp-Datei**, damit `token.json` nie kurz mit geerbten Rechten
+am Zielpfad liegt; Vollzugriff statt R/W, weil `os.replace` DELETE auf der Zieldatei
+braucht. Die Härtung ist best-effort und nie fatal (fehlendes `icacls`, exotisches FS)
+— eine ungehärtete Datei ist der Status quo, eine gescheiterte Token-Persistenz wäre
+eine Regression. Wer einen zweiten Schreibpfad für Secrets baut, nutzt diesen Helfer.
+
 `drive.find_sync_file` liefert bei mehreren Treffern deterministisch die
 **älteste** Datei (`createdTime`, Tie-Break `id`) — der appDataFolder kennt kein
 atomares create-if-not-exists, zwei Geräte können beim Erst-Setup also beide
