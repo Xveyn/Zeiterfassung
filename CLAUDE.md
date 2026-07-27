@@ -109,9 +109,10 @@ nur auf macOS, Linux oder eine bestimmte Linux-Desktop-Umgebung auswirkt (z. B.
 `autostart.py`), soll vorgeschlagen werden, vor dem Merge einen Pre-Release zu
 triggern, damit die Änderung dort getestet werden kann — statt das erst beim
 nächsten regulären, für diese Plattform dann faktisch ungetesteten Release zu
-bemerken. Vorbild: das manuelle macOS-Gate in #96. PR-Plattform-Labels und der
-Pre-Release-Workflow selbst sind als #100 bzw. #99 vorgeschlagen, aber noch
-nicht umgesetzt — bis dahin gilt der Hinweis als Review-Empfehlung, nicht als
+bemerken. Vorbild: das manuelle macOS-Gate in #96. Der Pre-Release-Workflow
+selbst ist seit #99 umgesetzt (siehe „Pre-Releases" oben) — das Triggern ist
+also ein Handgriff. PR-Plattform-Labels sind als #100 weiterhin nur
+vorgeschlagen; bis dahin gilt der Hinweis als Review-Empfehlung, nicht als
 automatisierter Check.
 
 ## Build
