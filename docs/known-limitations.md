@@ -2,18 +2,45 @@
 
 Persistente, bewusst (noch) nicht umgesetzte Limitierungen. Wird ergänzt, wenn neue dazukommen.
 
-## Sync: Manuelle Tombstone-Kompaktierung
+## Sync: Tombstone-Kompaktierung ist manuell
 
-Mit dem Multi-Device-Sync-Feature (Design: [`superpowers/specs/2026-05-14-multi-device-sync-design.md`](superpowers/specs/2026-05-14-multi-device-sync-design.md)) entstehen zwei Arten von Tombstones:
+Mit dem Multi-Device-Sync-Feature (Design: [`superpowers/specs/2026-05-14-multi-device-sync-design.md`](superpowers/specs/2026-05-14-multi-device-sync-design.md)) entstehen drei Arten von Tombstones:
 
 - **Eintrags-Tombstones:** Gelöschte Tageseinträge bleiben als `{"deleted": true, "modified_at": ...}` im Sync-File, damit ein Delete sich gegen ein veraltetes Save eines anderen Geräts durchsetzt (Last-Write-Wins).
 - **Konflikt-Tombstones:** Aufgelöste Konflikte (`resolved: true`) bleiben in der `conflicts`-Liste, damit andere Geräte die Resolution propagieren bzw. nicht versehentlich denselben Konflikt erneut anlegen.
+- **Reservierungs-Tombstones:** Gelöschte Reservierungen bleiben als Marker liegen, bis der Kalender-Abgleich sie einlöst — sie steuern, dass das zugehörige Google-Kalender-Event beim nächsten Reconcile mit gelöscht wird (`reservations_sync._merge_one_date`, Fall 3).
 
 **Praktische Auswirkung:** Bei normalem Gebrauch ist das viele Jahre unproblematisch — Größenordnung Kilobyte pro Jahr.
 
+### Automatisch aufgeräumt: Geräte, die nie gesynct/abgeglichen haben
+
+Seit 1.19.1 (Audit N6) verwirft die App beim Start Tombstones, die nie einen
+Abnehmer bekommen können: `sync.drop_orphan_tombstones` (Eintrags-Tombstones)
+und `reservations_sync.drop_orphan_reservation_tombstones`
+(Reservierungs-Tombstones), gebündelt in `main._sweep_orphan_tombstones`. Ohne
+Drive-Sync bzw. Kalender-Abgleich gibt es niemanden, gegen den ein Tombstone je
+wirken könnte — und die Kompaktierung als einziger anderer GC-Pfad hängt am
+Google-Tab, ist ohne Sync also gar nicht erreichbar.
+
+Die Bedingung ist bewusst eng: Das jeweilige Feature muss **nie** aktiv gewesen
+sein (`never_synced` / `never_reconciled`), nicht bloß gerade aus. Wer den Sync
+abschaltet, dessen Remote kennt die gelöschten Tage weiter — fiele der Tombstone
+hier, kämen sie beim Wiedereinschalten zurück.
+
+Gegen einen Settings-Reset ist der Sweep zusätzlich abgesichert (Audit M4): ein
+korruptes `settings.json` setzt `Settings` auf Defaults zurück, ein tatsächlich
+gesyncter Rechner sähe dann wie „nie gesynct" aus und verlöre irreversibel seine
+Tombstones (Resurrection gelöschter Tage). Die dauerhafte Gegenprobe ist ein
+eigener, write-once geschriebener Marker neben den Nutzerdaten
+(`sync_history.json`) — ist er gesetzt, unterbleibt der jeweilige Sweep. Die
+Semantik ist durchgängig fail-safe: im Zweifel Tombstones behalten.
+
+**Für Geräte, die am Sync teilnehmen, ändert das nichts** — dort wachsen die
+Tombstones weiter, bis die Kompaktierung einmal ausgelöst wird.
+
 ### Manuelle Kompaktierung
 
-In den Einstellungen steht unter „Synchronisation" die Aktion **„Sync-Daten kompaktieren"**: Sie entfernt alle Eintrags- und Konflikt-Tombstones fleet-weit endgültig. Einmal ausführen genügt — alle anderen Geräte übernehmen die Bereinigung beim nächsten normalen Sync automatisch (über das `meta.gc_watermark`-Feld im Sync-Doc, Schema v2).
+In den Einstellungen steht im Tab **Google** die Aktion **„Sync-Daten kompaktieren"**: Sie entfernt alle Eintrags- und Konflikt-Tombstones fleet-weit endgültig. Einmal ausführen genügt — alle anderen Geräte übernehmen die Bereinigung beim nächsten normalen Sync automatisch (über das `meta.gc_watermark`-Feld im Sync-Doc, Schema v2).
 
 **Warum manuell statt automatisch:** In einem verteilten LWW-System ist sicheres automatisches GC ein bekannt hartes Problem. Sobald ein Tombstone weg ist, ist die Information „dieser Tag wurde gelöscht" verloren. Ein Gerät, das den Delete nie gesehen hat und noch einen lebenden Eintrag desselben Tages hält, würde ihn wieder auferstehen lassen (Resurrection). Die einzig vollständig sichere Vorbedingung — „alle Geräte haben den Tombstone gesehen" — lässt sich nicht zuverlässig automatisch ableiten. Die Kompaktierung wird daher zu einer bewussten, vom Nutzer ausgelösten Einmal-Aktion, die erfordert, dass alle Geräte aktuell und synchronisiert sind. Ausführliche Begründung: [`superpowers/specs/2026-06-09-tombstone-gc-design.md`](superpowers/specs/2026-06-09-tombstone-gc-design.md).
 
