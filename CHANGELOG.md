@@ -1,5 +1,29 @@
 # Changelog
 
+## 1.19.1 — 2026-07-27
+
+### Hinzugefügt
+- **Vorabversionen (Pre-Releases)**: Unter Einstellungen → Updates lässt sich jetzt
+  „Auch Vorabversionen (Pre-Releases) anbieten" aktivieren. Wer das einschaltet,
+  sieht Test-Builds des kommenden Stands im Updates-Tab und wird darauf
+  hingewiesen; normale Nutzer bekommen sie weiterhin nicht angeboten. Die
+  Einstellung gilt nur für dieses Gerät.
+
+### Behoben
+- **Windows-Start**: Die installierte Windows-App konnte beim Start gelegentlich
+  mit „Failed to load Python DLL 'python310.dll'" abbrechen. Das Zeitfenster, das
+  diesen Fehler auslöste, entfällt jetzt — die App entpackt sich nicht mehr bei
+  jedem Start neu, sondern liegt fertig im Installationsordner.
+- **Google-Drive-Sync**: Legten zwei Geräte beim Ersteinrichten gleichzeitig je
+  eine Sync-Datei an, konnten ihre Stände dauerhaft auseinanderlaufen oder
+  zwischen zwei Synchronisationen hin- und herspringen. Alle Geräte einigen sich
+  jetzt eindeutig auf dieselbe Datei.
+- **Gelöschte Tage**: Ohne aktivierten Sync bzw. Kalender-Abgleich sammelten sich
+  interne Lösch-Markierungen unbegrenzt in der Datendatei; sie werden jetzt beim
+  Start aufgeräumt. Zusätzlich abgesichert: ein beschädigtes Einstellungs-File
+  hätte einen bereits synchronisierten Rechner fälschlich aufräumen und gelöschte
+  Tage beim nächsten Sync zurückbringen können.
+
 ## 1.19.0 — 2026-07-22
 
 ### Hinzugefügt
