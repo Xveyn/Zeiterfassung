@@ -19,9 +19,16 @@ class WorkTab:
     save_settings in dialog.py liest (Vertrag siehe Spec H4)."""
 
     def __init__(self, frame, dialog, settings):
-        label(frame, "Standardzeiten:", row=0, pady=(10, 4), sticky="nw")
+        workweek_only_var = tk.BooleanVar(value=settings.get("workweek_only"))
+        tk.Checkbutton(
+            frame, text="Nur Werktage — Wochenende (Sa/So) komplett deaktivieren",
+            variable=workweek_only_var, font=FONT, bg=BG, fg=TEXT, selectcolor=CELL_BG,
+            activebackground=BG, activeforeground=TEXT, cursor="hand2",
+        ).grid(row=0, column=0, columnspan=2, padx=10, pady=(10, 0), sticky="w")
+
+        label(frame, "Standardzeiten:", row=1, pady=(10, 4), sticky="nw")
         times_frame = tk.Frame(frame, bg=BG)
-        times_frame.grid(row=0, column=1, padx=10, pady=(10, 4), sticky="w")
+        times_frame.grid(row=1, column=1, padx=10, pady=(10, 4), sticky="w")
 
         tk.Label(times_frame, text="Start", font=FONT_SMALL, bg=BG, fg=TEXT_MUTED).grid(
             row=0, column=1, padx=2)
@@ -30,31 +37,40 @@ class WorkTab:
 
         start_vars = {}
         end_vars = {}
-        for i, (key, lbl) in enumerate(zip(WEEKDAY_KEYS, DAYS_DE, strict=False), start=1):
-            tk.Label(times_frame, text=lbl, font=FONT, bg=BG, fg=TEXT, width=3, anchor="w").grid(
-                row=i, column=0, padx=(0, 8), pady=2)
+        # Die StringVars entstehen für ALLE sieben Tage, auch für die
+        # ausgeblendeten: save_settings schreibt unverändert alle Wochentage
+        # zurück, damit die Werte für Sa/So erhalten bleiben und sofort wieder
+        # da sind, wenn "Nur Werktage" zurückgenommen wird.
+        workweek_only = bool(settings.get("workweek_only"))
+        row = 0
+        for key, lbl in zip(WEEKDAY_KEYS, DAYS_DE, strict=False):
             start_vars[key] = tk.StringVar(value=settings.get(f"default_start_{key}"))
-            dark_combo(times_frame, start_vars[key], TIME_VALUES).grid(
-                row=i, column=1, padx=2, pady=2)
             end_vars[key] = tk.StringVar(value=settings.get(f"default_end_{key}"))
+            if workweek_only and key in ("sat", "sun"):
+                continue
+            row += 1
+            tk.Label(times_frame, text=lbl, font=FONT, bg=BG, fg=TEXT, width=3, anchor="w").grid(
+                row=row, column=0, padx=(0, 8), pady=2)
+            dark_combo(times_frame, start_vars[key], TIME_VALUES).grid(
+                row=row, column=1, padx=2, pady=2)
             dark_combo(times_frame, end_vars[key], TIME_VALUES).grid(
-                row=i, column=2, padx=2, pady=2)
+                row=row, column=2, padx=2, pady=2)
 
-        label(frame, "Standard-Pause (Min):", row=1)
+        label(frame, "Standard-Pause (Min):", row=2)
         pause_var = tk.StringVar(value=str(settings.get("default_pause")))
         dark_combo(frame, pause_var, PAUSE_VALUES).grid(
-            row=1, column=1, padx=10, pady=8, sticky="w")
+            row=2, column=1, padx=10, pady=8, sticky="w")
 
         pause_warning_var = tk.BooleanVar(value=settings.get("pause_warning_enabled"))
         tk.Checkbutton(
             frame, text="Warnen, wenn die Pausenpflicht (§4 ArbZG) unterschritten wird",
             variable=pause_warning_var, font=FONT, bg=BG, fg=TEXT, selectcolor=CELL_BG,
             activebackground=BG, activeforeground=TEXT, cursor="hand2",
-        ).grid(row=2, column=0, columnspan=2, padx=10, pady=(0, 8), sticky="w")
+        ).grid(row=3, column=0, columnspan=2, padx=10, pady=(0, 8), sticky="w")
 
-        subheader(frame, "Werkstudenten-Limit", row=3)
+        subheader(frame, "Werkstudenten-Limit", row=4)
         wsl_frame = tk.Frame(frame, bg=BG)
-        wsl_frame.grid(row=4, column=0, columnspan=2, padx=10, pady=(0, 4), sticky="we")
+        wsl_frame.grid(row=5, column=0, columnspan=2, padx=10, pady=(0, 4), sticky="we")
 
         wsl_enabled_var = tk.BooleanVar(value=settings.get("werkstudent_limit_enabled"))
         tk.Checkbutton(
@@ -89,7 +105,7 @@ class WorkTab:
         secondary_button(
             frame, "Kategorien verwalten",
             lambda: open_category_dialog(dialog, settings),
-        ).grid(row=5, column=0, columnspan=2, padx=10, pady=(12, 8), sticky="w")
+        ).grid(row=6, column=0, columnspan=2, padx=10, pady=(12, 8), sticky="w")
 
         self.frame = frame
         self.start_vars = start_vars
@@ -100,3 +116,4 @@ class WorkTab:
         self.wsl_start_vars = wsl_start_vars
         self.wsl_end_vars = wsl_end_vars
         self.wsl_hours_var = wsl_hours_var
+        self.workweek_only_var = workweek_only_var
