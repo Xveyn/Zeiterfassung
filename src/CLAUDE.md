@@ -146,6 +146,43 @@ müssen beide Locks respektieren. Design:
   `modified_at`-Typ), bevor ein `KeyError`/`ValueError` mitten im Merge landet
   (Audit M5) — die Sync-Flows in `main.py` behandeln ein invalides Doc wie
   korruptes JSON (quarantänen/leer weitermergen).
+
+  **Tombstone-Lebenszyklus (Audit N6).** Ein Tombstone (`deleted: True`) hat
+  genau einen Zweck: beim Merge ein veraltetes Save eines anderen Geräts zu
+  schlagen. Er wird auf drei Wegen wieder los — und nur auf diesen:
+  1. **Kompaktierung** (`compact_local` via `main._run_compaction_blocking`) —
+     setzt das `gc_watermark` und strippt settled Tombstones lokal wie remote.
+     Der einzige Weg für Geräte, die am Sync teilnehmen; der Button hängt
+     deshalb an „hat je gesynct", nicht an `sync_enabled` (sonst säßen
+     Abschalter dauerhaft auf ihren Tombstones).
+  2. **Reconcile** für Reservierungen (`reservations_sync._merge_one_date`,
+     Fall 3) — löst den Tombstone gegen die Kalender-Events ein.
+  3. **Startup-Sweep** (`sync.drop_orphan_tombstones` /
+     `reservations_sync.drop_orphan_reservation_tombstones`, gebündelt in
+     `main._sweep_orphan_tombstones`) — verwirft Tombstones auf Rechnern, die
+     **nie** gesynct/abgeglichen haben (`never_synced` / `never_reconciled`).
+     Dort gibt es keinen Partner, gegen den sie je wirken könnten.
+
+  Die Bedingung des Sweeps ist bewusst eng: Feature AUS reicht nicht, es muss
+  **nie an** gewesen sein. Wer den Sync abschaltet, dessen Remote kennt die
+  gelöschten Tage weiter — ein verworfener Tombstone hieße, dass sie beim
+  Wiedereinschalten zurückkommen. Wer einen vierten Weg baut, muss diese
+  Unterscheidung mitziehen.
+
+  „Nie gesynct/abgeglichen" leiten `never_synced`/`never_reconciled` aus
+  settings.json ab — das allein genügt dem Sweep aber **nicht**: ein korruptes
+  settings.json setzt `Settings` auf Defaults zurück (M4) und ließe einen
+  tatsächlich gesyncten Rechner wie jungfräulich aussehen (→ Resurrection).
+  Deshalb vetoed der persistente `sync_history`-Marker (eigene Datei
+  `sync_history.json`, übersteht einen settings.json-Reset) den jeweiligen
+  Sweep, sobald je gesynct/abgeglichen wurde. Der Marker wird genau dort
+  gesetzt, wo `last_pull_at`/`last_calendar_sync_at` gesetzt werden, und ist
+  fail-safe (unlesbar → als gesetzt behandeln). Ein neuer Sync/Reconcile-Pfad
+  muss ihn mitsetzen.
+- `sync_history.py` — persistenter „hat je gesynct/abgeglichen"-Marker
+  (`sync_history.json`, write-once, Tk-frei, fail-safe). Vetoed den
+  N6-Startup-Sweep, damit ein settings.json-Reset (M4) einen gesyncten Rechner
+  nicht wie jungfräulich aussehen lässt (s. Tombstone-Lebenszyklus oben).
 - `sync_journal.py` — Crash-Recovery für `sync.apply_merged_doc` (Audit M6): dessen
   vier Store-Writes sind einzeln atomar, die Sequenz nicht. `apply_merged_doc_journaled`
   schreibt den `merged_doc` erst durable (`fsync`) in ein Write-Ahead-Journal
@@ -172,6 +209,15 @@ müssen beide Locks respektieren. Design:
 `mail.py` (Gmail/OAuth, `token.json`/`credentials.json`), `drive.py` (Drive appDataFolder-Sync),
 `gcal.py` (Calendar), `reservations_sync.py` (Abgleich Reservierungen ↔ Kalender). Alle teilen
 denselben OAuth-Token; Scope-Upgrade erzwingt frischen Consent.
+
+`drive.find_sync_file` liefert bei mehreren Treffern deterministisch die
+**älteste** Datei (`createdTime`, Tie-Break `id`) — der appDataFolder kennt kein
+atomares create-if-not-exists, zwei Geräte können beim Erst-Setup also beide
+anlegen (Audit M3). Die Regel ist die einzige Klammer, die alle Geräte auf
+dieselbe Datei zwingt: ohne sie liefen die Stände auseinander, und da die
+Drive-API ohne `orderBy` keine Sortierung garantiert, könnte sogar dasselbe
+Gerät zwischen zwei Syncs die andere Datei erwischen. Wer die Auswahl anfasst,
+muss sie deterministisch **und** über alle Geräte gleich halten.
 
 ## Berichte & Plattform/Infra
 

@@ -19,6 +19,24 @@ select = ["E4", "E7", "E9", "F", "B"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 
+# Coverage-Reporting (Audit N24). Aktiv nur, wenn explizit mit `--cov`
+# aufgerufen (der coverage-CI-Job bzw. lokal `pytest --cov=src`); ein normaler
+# `pytest`-Lauf bleibt unverändert schnell.
+[tool.coverage.run]
+source = ["src"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+# BEWUSST kein fail_under-Gate: Coverage ist hier Reporting, kein harter
+# CI-Blocker. Die UI/Tk-Schicht ist absichtlich nur über extrahierte
+# Pure-Functions getestet (vgl. Audit M16) — ein Schwellwert-Gate färbte den
+# Build sonst dauerhaft rot. Der Report zeigt Lücken, erzwingt sie aber nicht.
+exclude_also = [
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+]
+
 [tool.pyright]
 # Wird sowohl von der Pyright-CLI als auch von Pylance (VS Code) gelesen —
 # eine einzige Quelle. Bewusst KEINE separate pyrightconfig.json, die wuerde

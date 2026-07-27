@@ -76,7 +76,15 @@ Voll-Release (Tag `vX.Y.Z`).
 
 ## Recovery bei teilweise fehlgeschlagenem Release
 
-Wenn der `publish`-Job nach dem Tag-Push fehlschlägt (z.B. `gh release create` Netzwerkproblem), blockiert der Pre-Check beim Re-Run die erneute Ausführung wegen "tag already exists". Ablauf:
+Scheitert `gh release create` selbst (Netzwerkproblem, Rate-Limit), räumt der
+`publish`-Job seit Audit N26 **automatisch auf**: ein eventuell halb angelegtes
+Release wird entfernt, dann der bereits gepushte Tag gelöscht, dann bricht der
+Job ab. Ein „Re-run all jobs" läuft danach sauber durch — der Pre-Check findet
+keinen Tag mehr vor.
+
+Von Hand nachräumen muss man nur, wenn der Job **zwischen** Tag-Push und
+Rollback stirbt (Runner-Abbruch, Cancel, Timeout) — dann blockiert der
+Pre-Check den Re-Run wegen „tag already exists":
 
 1. Tag lokal und remote löschen:
    ```
@@ -114,6 +122,19 @@ python build.py
 
 `build.py` ist ein Plattform-Dispatcher und ruft PyInstaller je nach `platform.system()` unterschiedlich auf. Auf allen drei Plattformen sind `--collect-all xhtml2pdf --collect-all reportlab --collect-all holidays` zwingend — ohne sie schlagen PDF-Erzeugung bzw. Feiertags-Lookup im gebauten Artefakt stumm fehl.
 
+**Windows und macOS bauen `--onedir`, Linux `--onefile`.** Onefile entpackt bei
+jedem Start alle DLLs frisch in einen `_MEIxxxxxx`-Tempordner; dieses Zeitfenster
+war die Wurzel einer intermittierenden Fehlerklasse (Bootloader lädt
+`python310.dll` transient nicht → #118; `holidays` fand `de.mo` transient nicht →
+#116; der Skalierungs-Neustart musste den `_MEIPASS`-Erbgang per
+`PYINSTALLER_RESET_ENVIRONMENT` umgehen, siehe `ui.py`). Onedir legt Exe +
+`_internal\` einmalig entpackt ab — kein Extraktions-Race pro Start. `installer.iss`
+shippt entsprechend den ganzen `dist\Zeiterfassung\`-Ordner (nicht nur die Exe);
+die Exe bleibt `{app}\Zeiterfassung.exe`, `get_base_path()=dirname(exe)` und alle
+Autostart-/Single-Instance-Pfade bleiben damit unverändert. Linux bleibt onefile,
+weil die AppImage ohnehin selbst mountet (onefile darin wäre Doppelpackung) und
+`#118` Windows-spezifisch ist.
+
 ## Cross-Platform Builds
 
 `build.py` ist plattformabhängig:
@@ -142,8 +163,9 @@ Release-Umgebung).
   Branch, aus dem der Lauf startet).
 - **Ausgabe = reine App** (kein Installer): `build.py` läuft ohne Inno Setup /
   create-dmg / appimagetool, überspringt also den Pack-Schritt und lädt die
-  nackte PyInstaller-Ausgabe als **Workflow-Artefakt** hoch — Windows
-  `Zeiterfassung.exe`, macOS `Zeiterfassung.app` und Linux-Binary als `.tar.gz`
+  nackte PyInstaller-Ausgabe als **Workflow-Artefakt** hoch — Windows den
+  `dist\Zeiterfassung\`-Ordner (onedir: Exe + `_internal\`, von `upload-artifact`
+  gezippt), macOS `Zeiterfassung.app` und Linux-Binary als `.tar.gz`
   (tar bewahrt Symlinks/Exec-Bits, die ein Zip zerstören würde). `retention-days: 14`.
 - **Kanal-Stempel:** kein `ZEIT_RELEASE`/`ZEIT_PRERELEASE` → `build.py` stempelt
   `CHANNEL=dev` + Commit-SHA; der In-App-Titel zeigt damit den exakt gebauten Commit.
@@ -331,9 +353,23 @@ neueren Tk/Python-Version) noch auftritt.
 
 ## Tests / CI
 
-`.github/workflows/test.yml` installiert gezielt nur die Pakete, die die Tests brauchen (`pytest`, `holidays==0.99`, `google-api-python-client`, `google-auth`, `google-auth-oauthlib`), **nicht** `requirements.txt`. Grund: `pycairo` (transitive Dep von `xhtml2pdf`) braucht Cairo-Systemheader auf Ubuntu und bricht sonst den CI-Build. Der Import von `xhtml2pdf` in `src/report.py::generate_pdf` ist lazy, daher laufen die Report-Tests ohne die Lib. `holidays` und die Google-Libs sind pure Python ohne C-Deps und problemlos installierbar — letztere sind nötig, weil Tests `src.ui` importieren (z.B. `tests/test_ui_delete.py`), dessen Importkette die Google-Wrapper zieht. Ein zweiter Job läuft `ruff check .` (Lint).
+`.github/workflows/test.yml` installiert gezielt nur die Pakete, die die Tests brauchen — gepinnt in **`requirements-test.txt`** (`pytest`, `holidays`, `google-api-python-client`, `google-auth`, `google-auth-oauthlib`), **nicht** `requirements.txt`. Grund: `pycairo` (transitive Dep von `xhtml2pdf`) braucht Cairo-Systemheader auf Ubuntu und bricht sonst den CI-Build. Der Import von `xhtml2pdf` in `src/report.py::generate_pdf` ist lazy, daher laufen die Report-Tests ohne die Lib. `holidays` und die Google-Libs sind pure Python ohne C-Deps und problemlos installierbar — letztere sind nötig, weil Tests `src.ui` importieren (z.B. `tests/test_ui_delete.py`), dessen Importkette die Google-Wrapper zieht.
 
-Lokal: `pytest` aus dem Repo-Root. Alle Tests müssen vor dem PR-Merge grün sein.
+Die Test-Deps sind **exakt gepinnt** (Audit N25) — beim Bump gegen Python 3.10 gegenchecken (alle rein-Python, daher auf jedem Matrix-Python installierbar). Jobs (alle mit `cache: pip` auf `requirements-test.txt`):
+
+- **test-matrix** — Matrix über **Python 3.10–3.13** (README: „3.10+"), `fail-fast: false`.
+- **test** — schlankes Sammel-Gate über `test-matrix`, das **nur** der Branch
+  Protection dient: ein Matrix-Job meldet seine Check-Contexts ausschließlich
+  mit Suffix (`test-matrix (3.10)` …), ein Context namens `test` entstünde nie mehr —
+  der Required Check bliebe ewig „pending" und jeder PR dauerhaft blockiert.
+  Nicht entfernen oder umbenennen, ohne die Required Checks mitzuziehen. Prüft
+  `needs.test-matrix.result` explizit unter `if: always()`, weil ein
+  übersprungener Required Check GitHub sonst als erfüllt gilt.
+- **coverage** — `pytest --cov=src` (ubuntu/3.10); Reporting, **kein** `fail_under`-Gate (Config: `pyproject.toml [tool.coverage]`, Audit N24).
+- **test-macos** / **test-windows** — Plattform-Verifikation (je 3.10; macOS zieht zusätzlich `pyobjc-framework-Cocoa`).
+- **lint** — `ruff check .`. **typecheck** — `pyright` (gepinnt `1.1.411`).
+
+Lokal: `pytest` aus dem Repo-Root (Coverage: `pytest --cov=src --cov-report=term-missing`). Alle Tests müssen vor dem PR-Merge grün sein.
 
 ## Struktur
 
@@ -351,6 +387,7 @@ Lokal: `pytest` aus dem Repo-Root. Alle Tests müssen vor dem PR-Merge grün sei
 - `src/drive.py` — Google-Drive-API-Wrapper für den Multi-Device-Sync (`appDataFolder`, Scope `drive.appdata`)
 - `src/sync.py` — Sync-Engine (pure Logik: LWW-Merge der Entries/Settings, Konflikterkennung); importiert `SYNCED_SETTING_KEYS` aus `settings.py` (Single Source of Truth, nicht hier neu definieren); `validate_remote_doc` prüft ein Remote-Doc auf die Merge-Invarianten vor dem Merge (Audit M5)
 - `src/sync_journal.py` — Crash-Recovery für `sync.apply_merged_doc` via Write-Ahead-Journal (`sync-apply.journal`); beim Start holt `recover_pending_apply` einen unvollständigen Apply idempotent nach (Audit M6)
+- `src/sync_history.py` — persistenter „hat je gesynct/abgeglichen"-Marker (`sync_history.json`, write-once, stdlib-only); vetoed den N6-Startup-Sweep gegen einen settings.json-Reset (M4), damit ein gesyncter Rechner nicht fälschlich seine Tombstones verliert (Resurrection)
 - `src/conflicts_store.py` — lokale JSON-Persistenz der Sync-Konfliktliste
 - `src/share.py` — Export/Import von Arbeitszeiten als Share-JSON (Teilen per Mail-Anhang)
 - `src/reservations.py` — Reservierungen (zukünftige Soll-Zeiten, eigenes Konzept neben Ist-Zeiten)

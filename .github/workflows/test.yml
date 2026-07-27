@@ -3,15 +3,63 @@ name: Tests
 on: [push, pull_request]
 
 jobs:
+  test-matrix:
+    # Audit N25: über alle unterstützten Python-Versionen testen (README: 3.10+),
+    # nicht nur 3.10. fail-fast=false, damit ein Ausreißer die anderen nicht
+    # abbricht. macOS/Windows verifizieren die Plattform (unten, je 3.10) —
+    # hier geht es um die Sprachversion.
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.10', '3.11', '3.12', '3.13']
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: requirements-test.txt
+      - run: pip install -r requirements-test.txt
+      - run: pytest tests/
+
   test:
+    # Sammel-Gate für die Branch Protection. Ein Matrix-Job meldet seine
+    # Check-Contexts NUR mit Suffix (`test-matrix (3.10)`, `test-matrix (3.11)`, …) — ein
+    # Context, der schlicht `test` heißt, entsteht dabei nie. Steht `test` als
+    # Required Check in der Branch Protection, wartet GitHub ewig darauf und
+    # der PR bleibt trotz grüner Matrix auf "blocked" hängen. Dieser Job
+    # meldet den Namen `test` unabhängig von der Matrix-Form weiter: künftige
+    # Änderungen an Achsen oder Python-Versionen ändern den Required-Check-
+    # Namen damit nicht mehr.
+    #
+    # `if: always()` ist Pflicht — ohne das würde der Job bei roter Matrix
+    # übersprungen statt zu scheitern, und ein übersprungener Required Check
+    # gilt GitHub als erfüllt. Deshalb wird `result` explizit geprüft, statt
+    # sich auf das implizite needs-Verhalten zu verlassen.
+    needs: test-matrix
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Matrix-Ergebnis prüfen
+        run: |
+          echo "test-matrix: ${{ needs.test-matrix.result }}"
+          [ "${{ needs.test-matrix.result }}" = "success" ]
+
+  coverage:
+    # Coverage-Report (Audit N24) — reines Reporting, KEIN fail_under-Gate
+    # (Config in pyproject.toml, [tool.coverage]). Ein Lauf auf ubuntu/3.10
+    # reicht; die Zahlen sind plattformunabhängig.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
         with:
           python-version: '3.10'
-      - run: pip install pytest "holidays==0.99" google-api-python-client google-auth google-auth-oauthlib
-      - run: pytest tests/
+          cache: pip
+          cache-dependency-path: requirements-test.txt
+      - run: pip install -r requirements-test.txt pytest-cov==7.1.0
+      - run: pytest --cov=src --cov-report=term-missing tests/
 
   test-macos:
     runs-on: macos-latest
@@ -20,7 +68,9 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: '3.10'
-      - run: pip install pytest "holidays==0.99" google-api-python-client google-auth google-auth-oauthlib pyobjc-framework-Cocoa
+          cache: pip
+          cache-dependency-path: requirements-test.txt
+      - run: pip install -r requirements-test.txt pyobjc-framework-Cocoa==12.2.1
       - run: pytest tests/
 
   test-windows:
@@ -30,7 +80,9 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: '3.10'
-      - run: pip install pytest "holidays==0.99" google-api-python-client google-auth google-auth-oauthlib
+          cache: pip
+          cache-dependency-path: requirements-test.txt
+      - run: pip install -r requirements-test.txt
       - run: pytest tests/
 
   lint:
@@ -40,6 +92,8 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: '3.10'
+          cache: pip
+          cache-dependency-path: requirements-test.txt
       - run: pip install ruff==0.15.10
       - run: ruff check .
 
@@ -50,11 +104,14 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: '3.10'
-      # Gleiche Minimal-Deps wie der test-Job, damit unsere eigenen Typen
-      # (google-*, holidays, pytest) auflösen. Die plattform-optionalen
-      # Lazy-Imports (xhtml2pdf/Pillow/pystray/pyobjc) sind an der Import-Zeile
-      # per `# pyright: ignore[reportMissingImports]` entschärft — kein
-      # requirements.txt nötig (pycairo/pyobjc wären hier ohnehin nicht baubar).
-      # pyright pinnen: neuere Versionen ziehen strengere Checks nach.
-      - run: pip install pyright==1.1.411 pytest "holidays==0.99" google-api-python-client google-auth google-auth-oauthlib
+          cache: pip
+          cache-dependency-path: requirements-test.txt
+      # Gleiche Minimal-Deps wie der test-matrix-Job (aus requirements-test.txt), damit
+      # unsere eigenen Typen (google-*, holidays, pytest) auflösen. Die
+      # plattform-optionalen Lazy-Imports (xhtml2pdf/Pillow/pystray/pyobjc) sind
+      # an der Import-Zeile per `# pyright: ignore[reportMissingImports]`
+      # entschärft — kein requirements.txt nötig (pycairo/pyobjc wären hier
+      # ohnehin nicht baubar). pyright pinnen: neuere Versionen ziehen strengere
+      # Checks nach.
+      - run: pip install -r requirements-test.txt pyright==1.1.411
       - run: pyright

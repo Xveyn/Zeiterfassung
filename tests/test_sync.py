@@ -19,8 +19,7 @@ def _e(start, end, pause, modified_at, device_id="d", deleted=False):
     }
 
 
-def _slot(start, end, pause=0, kategorie=""):
-    return {"start": start, "end": end, "pause": pause, "kategorie": kategorie}
+from tests.conftest import ist_slot as _slot  # geteilte Ist-Zeit-Factory (Audit N22)
 
 
 def test_merge_one_local_only_keeps_local():

@@ -155,6 +155,37 @@ def merge_reservations(local_raw, remote_events, watermark):
     return {"merged": merged, "plan": plan, "imported_dates": sorted(imported_dates)}
 
 
+def never_reconciled(settings):
+    """True, wenn dieser Rechner nie mit einem Google Kalender abgeglichen hat:
+    gcal ist aus UND es gab nie einen Reconcile."""
+    return (not settings.get("gcal_enabled")
+            and not (settings.get("last_calendar_sync_at") or ""))
+
+
+def drop_orphan_reservation_tombstones(store, settings):
+    """Verwirft Reservierungs-Tombstones ohne Kalender-Partner. Liefert die
+    Anzahl (0 = No-op).
+
+    Gegenstück zu sync.drop_orphan_tombstones (Audit N6). Ein Reservierungs-
+    Tombstone steuert genau eine Sache: dass der Reconcile das zugehörige
+    Kalender-Event löscht (`_merge_one_date`, Fall 3 — ohne Remote-Events
+    fällt er dort auch weg). Ohne gcal läuft dieser Reconcile nie, der
+    Tombstone bleibt also für immer liegen und wird nie eingelöst.
+
+    Eng bedingt wie beim Storage: gcal AUS reicht nicht — wer den Abgleich
+    abschaltet, dessen Kalender enthält die Events weiter, und der Tombstone
+    ist die einzige Spur, dass sie beim Wiedereinschalten weg müssen.
+    """
+    if not never_reconciled(settings):
+        return 0
+    raw = store.get_all_raw()
+    kept = {k: v for k, v in raw.items() if not v.get("deleted")}
+    dropped = len(raw) - len(kept)
+    if dropped:
+        store.apply_reconciled(kept)
+    return dropped
+
+
 def reconcile_reservations(service, calendar_id, store, settings, data_lock=None):
     """Voller Kalender-Abgleich: pull → merge → push.
 

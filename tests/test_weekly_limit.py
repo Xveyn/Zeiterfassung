@@ -21,8 +21,7 @@ def _entry(slots):
     return {"slots": slots}
 
 
-def _slot(start, end, pause=0, kategorie=""):
-    return {"start": start, "end": end, "pause": pause, "kategorie": kategorie}
+from tests.conftest import ist_slot as _slot  # geteilte Ist-Zeit-Factory (Audit N22)
 
 
 def test_is_limit_active_false_when_disabled():

@@ -744,7 +744,10 @@ class App:
             # alten Prozesses. PYINSTALLER_RESET_ENVIRONMENT=1 zwingt den
             # neuen Prozess, sich frisch (in ein eigenes Verzeichnis) zu
             # entpacken, statt zu erben — No-op im Repo-Modus (kein Bootloader
-            # liest die Variable dort).
+            # liest die Variable dort). Seit #118 auch No-op auf Windows/macOS
+            # (onedir → kein _MEIPASS-Extraktion); relevant bleibt der Reset nur
+            # noch für die Linux-AppImage (weiter onefile). Bewusst unbedingt
+            # gesetzt, damit der eine plattformübergreifende Pfad korrekt bleibt.
             env["PYINSTALLER_RESET_ENVIRONMENT"] = "1"
             subprocess.Popen(cmd, env=env)
         except Exception:

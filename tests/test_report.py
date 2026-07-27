@@ -9,8 +9,8 @@ def _e(start, end, pause=0, kategorie=""):
     return {"slots": [{"start": start, "end": end, "pause": pause, "kategorie": kategorie}]}
 
 
-def _slot(start, end, pause=0, kategorie=""):
-    return {"start": start, "end": end, "pause": pause, "kategorie": kategorie}
+# geteilte Ist-Zeit-Factory + xhtml2pdf-Fake (Audit N22)
+from tests.conftest import ist_slot as _slot, make_fake_xhtml2pdf
 
 
 def test_empty_entries():
@@ -294,16 +294,7 @@ def test_pdf_name_is_escaped():
     entries = {"2026-03-23": _e("08:00", "16:00")}
     captured_html = {}
 
-    class FakePisa:
-        @staticmethod
-        def CreatePDF(html_str, dest):
-            captured_html["html"] = html_str
-            return MagicMock(err=0)
-
-    fake_xhtml2pdf = MagicMock()
-    fake_xhtml2pdf.pisa = FakePisa
-
-    with patch.dict("sys.modules", {"xhtml2pdf": fake_xhtml2pdf}):
+    with patch.dict("sys.modules", {"xhtml2pdf": make_fake_xhtml2pdf(captured_html)}):
         report_mod.generate_pdf(
             datetime.date(2026, 3, 1), datetime.date(2026, 3, 31), entries, name="Müller & Co")
 
@@ -318,16 +309,7 @@ def test_pdf_category_filter_applied():
                                          {"start": "13:00", "end": "17:00", "pause": 0, "kategorie": "HO"}]}}
     captured_html = {}
 
-    class FakePisa:
-        @staticmethod
-        def CreatePDF(html_str, dest):
-            captured_html["html"] = html_str
-            return MagicMock(err=0)
-
-    fake_xhtml2pdf = MagicMock()
-    fake_xhtml2pdf.pisa = FakePisa
-
-    with patch.dict("sys.modules", {"xhtml2pdf": fake_xhtml2pdf}):
+    with patch.dict("sys.modules", {"xhtml2pdf": make_fake_xhtml2pdf(captured_html)}):
         report_mod.generate_pdf(
             datetime.date(2026, 3, 1), datetime.date(2026, 3, 31), entries, categories={"Büro"})
 
@@ -365,16 +347,7 @@ def test_pdf_category_breakdown_false_hides_summary():
     entries = {"2026-03-23": _e("08:00", "16:00", 0, "Büro")}
     captured_html = {}
 
-    class FakePisa:
-        @staticmethod
-        def CreatePDF(html_str, dest):
-            captured_html["html"] = html_str
-            return MagicMock(err=0)
-
-    fake_xhtml2pdf = MagicMock()
-    fake_xhtml2pdf.pisa = FakePisa
-
-    with patch.dict("sys.modules", {"xhtml2pdf": fake_xhtml2pdf}):
+    with patch.dict("sys.modules", {"xhtml2pdf": make_fake_xhtml2pdf(captured_html)}):
         report_mod.generate_pdf(
             datetime.date(2026, 3, 1), datetime.date(2026, 3, 31), entries,
             category_breakdown=False)
@@ -394,16 +367,7 @@ def test_pdf_table_defines_explicit_column_widths():
     entries = {"2026-03-23": _e("08:00", "16:00")}
     captured_html = {}
 
-    class FakePisa:
-        @staticmethod
-        def CreatePDF(html_str, dest):
-            captured_html["html"] = html_str
-            return MagicMock(err=0)
-
-    fake_xhtml2pdf = MagicMock()
-    fake_xhtml2pdf.pisa = FakePisa
-
-    with patch.dict("sys.modules", {"xhtml2pdf": fake_xhtml2pdf}):
+    with patch.dict("sys.modules", {"xhtml2pdf": make_fake_xhtml2pdf(captured_html)}):
         report_mod.generate_pdf(datetime.date(2026, 3, 1), datetime.date(2026, 3, 31), entries)
 
     html = captured_html["html"]

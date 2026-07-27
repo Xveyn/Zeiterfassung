@@ -147,6 +147,11 @@ jobs:
         with:
           name: windows
           path: dist/Zeiterfassung_Setup.exe
+          # build.py überspringt den Pack-Schritt mit einer Warnung, wenn das
+          # Pack-Tool fehlt (gewollt für Local-Dev) — im Release-Build wäre das
+          # ein stummer Totalausfall: leeres Artefakt, grüner Job, Fehler erst
+          # im publish beim sha256sum, ohne Hinweis auf die Plattform.
+          if-no-files-found: error
 
   build-macos-arm:
     needs: pre-check
@@ -171,6 +176,7 @@ jobs:
         with:
           name: macos-arm
           path: dist/Zeiterfassung-*-arm64.dmg
+          if-no-files-found: error
 
   build-linux:
     needs: pre-check
@@ -202,6 +208,7 @@ jobs:
         with:
           name: linux
           path: dist/Zeiterfassung-*-x86_64.AppImage
+          if-no-files-found: error
 
   publish:
     needs: [pre-check, build-windows, build-macos-arm, build-linux]
@@ -266,4 +273,18 @@ jobs:
           if [ "${{ needs.pre-check.outputs.is_prerelease }}" = "true" ]; then
             args+=(--prerelease)
           fi
-          gh release create "${args[@]}"
+          # Rollback: der Tag ist zu diesem Zeitpunkt schon gepusht. Scheitert
+          # `gh release create` (Netz, Rate-Limit), bliebe ein Tag ohne Release
+          # zurück — und der Pre-Check des nächsten Laufs bricht dann an
+          # "Tag already exists" ab, der Tag müsste von Hand gelöscht werden
+          # (CLAUDE.md, "Recovery bei teilweise fehlgeschlagenem Release").
+          # Erst ein eventuell halb angelegtes Release entfernen, dann den Tag:
+          # andersherum bliebe ein Release ohne Tag stehen. Beide Aufräum-
+          # schritte dürfen selbst scheitern, ohne die Fehlerursache zu
+          # verdecken — deshalb `|| true` und ein explizites exit 1.
+          if ! gh release create "${args[@]}"; then
+            echo "::error::gh release create fehlgeschlagen — rolle Tag $TAG zurück"
+            gh release delete "$TAG" --yes || true
+            git push origin ":refs/tags/$TAG" || true
+            exit 1
+          fi

@@ -1,0 +1,14 @@
+# Gepinnte Test-/CI-Abhängigkeiten (Audit N25) — known-good, für die Jobs in
+# .github/workflows/test.yml. NICHT die App-Laufzeit-Deps (die stehen in
+# requirements.txt). Alle rein-Python (keine C-Extensions), daher auf jedem
+# Matrix-Python (3.10–3.13) installierbar; ermöglicht zugleich pip-Caching.
+#
+# Die Google-Libs sind nötig, weil Tests src.ui importieren (Importkette zieht
+# die Google-Wrapper); holidays für die Feiertags-Tests. pyobjc (macOS-Job) und
+# pyright/ruff/pytest-cov (typecheck/lint/coverage-Jobs) werden im jeweiligen
+# Job zusätzlich installiert.
+pytest==9.0.3
+holidays==0.99
+google-api-python-client==2.196.0
+google-auth==2.55.0
+google-auth-oauthlib==1.4.0

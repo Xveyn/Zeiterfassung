@@ -319,6 +319,42 @@ def compact_local(storage: Storage, settings: Settings,
     ])
 
 
+def never_synced(settings: Settings) -> bool:
+    """True, wenn dieser Rechner nachweislich nie an einem Drive-Sync
+    teilgenommen hat: Sync ist aus UND es gab nie einen Pull."""
+    return not settings.get("sync_enabled") and not (settings.get("last_pull_at") or "")
+
+
+def drop_orphan_tombstones(storage: Storage, settings: Settings) -> int:
+    """Verwirft Tombstones ohne Sync-Partner. Liefert die Anzahl (0 = No-op).
+
+    Ein Tombstone hat genau einen Zweck: beim Merge ein veraltetes Save eines
+    anderen Geräts zu schlagen. Ohne Sync erfüllt er ihn nie und bleibt
+    trotzdem für immer liegen — jeder gelöschte Tag wächst die Datei um eine
+    Zeile, ohne dass es je einen GC-Pfad gäbe (Audit N6): die Kompaktierung
+    hängt am Google-Tab und ist ohne Sync gar nicht erreichbar.
+
+    Die Bedingung ist bewusst eng (`never_synced`): Sync AUS reicht nicht.
+    Wer den Sync abschaltet, dessen Remote kennt die gelöschten Tage weiter —
+    fiele der Tombstone hier, kämen sie beim Wiedereinschalten zurück. Für
+    diese Gruppe bleibt die Kompaktierung der richtige Weg, weil sie über das
+    gc_watermark alle Geräte einbezieht.
+
+    Kein Watermark, keine Alters-Schwelle: ohne Sync gibt es niemanden, mit
+    dem etwas abzustimmen wäre.
+    """
+    if not never_synced(settings):
+        return 0
+    raw = storage.get_all_raw()
+    kept = {k: v for k, v in raw.items() if not v.get("deleted")}
+    dropped = len(raw) - len(kept)
+    if dropped:
+        # apply_merge statt eigenem Write: Required-Key-Validator und
+        # Atomic-Write bleiben auf einem Pfad (wie in compact_local).
+        storage.apply_merge(kept)
+    return dropped
+
+
 def migrate_doc_to_current(remote_doc: Doc) -> Doc:
     """Migriert ein älteres Sync-Doc auf das aktuelle Schema (v4): flache Einträge
     (start/end/pause) werden in eine Slot-Liste gewrappt. Idempotent — Einträge mit
