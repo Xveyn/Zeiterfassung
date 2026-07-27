@@ -22,6 +22,7 @@ import uuid
 # (oauth_utils.py) erkannt und per frischem Consent nachgeholt. Kein Blankoscheck.
 os.environ.setdefault("OAUTHLIB_RELAX_TOKEN_SCOPE", "1")
 
+from src import sync_history
 from src.conflicts_store import ConflictsStore
 from src.device_id import derive_device_id
 from src.logging_setup import setup_logging
@@ -89,21 +90,30 @@ def _ensure_device_id(settings) -> str:
     return device_id
 
 
-def _sweep_orphan_tombstones(storage, reservation_store, settings) -> int:
+def _sweep_orphan_tombstones(storage, reservation_store, settings, base) -> int:
     """Verwirft beim Start Tombstones, die nie einen Abnehmer bekommen (N6).
 
     Storage-Tombstones löst nur ein Drive-Sync ein, Reservierungs-Tombstones
     nur ein Kalender-Reconcile. Ohne das jeweilige Feature bleibt jeder
     gelöschte Tag als Zeile liegen — dauerhaft, weil der einzige GC-Pfad
-    (Kompaktierung) am Google-Tab hängt. Beide Aufrufe sind No-ops, sobald je
-    gesynct bzw. abgeglichen wurde; die Entscheidung darüber liegt in den
-    Fach-Modulen, nicht hier.
+    (Kompaktierung) am Google-Tab hängt.
+
+    Ob je gesynct/abgeglichen wurde, entscheidet NICHT allein settings.json:
+    ein korruptes settings.json setzt `Settings` auf Defaults zurück (M4), ein
+    tatsächlich gesyncter Rechner sähe dann per `never_synced`/`never_reconciled`
+    wie 'nie gesynct' aus und verlöre hier irreversibel seine Tombstones
+    (Resurrection gelöschter Tage). Der persistente `sync_history`-Marker ist
+    die dauerhafte Gegenprobe: ist er gesetzt, unterbleibt der jeweilige Sweep
+    auch nach einem Settings-Reset (Fail-safe: im Zweifel behalten).
 
     Liefert die Gesamtzahl verworfener Tombstones (für Tests/Logging)."""
     from src import reservations_sync, sync
-    dropped = sync.drop_orphan_tombstones(storage, settings)
-    dropped += reservations_sync.drop_orphan_reservation_tombstones(
-        reservation_store, settings)
+    dropped = 0
+    if not sync_history.ever_synced(base):
+        dropped += sync.drop_orphan_tombstones(storage, settings)
+    if not sync_history.ever_reconciled(base):
+        dropped += reservations_sync.drop_orphan_reservation_tombstones(
+            reservation_store, settings)
     if dropped:
         logging.getLogger(__name__).info(
             "%d verwaiste Tombstone(s) verworfen (nie gesynct/abgeglichen)", dropped)
@@ -212,6 +222,7 @@ def run_pull_in_background(storage, settings, conflicts_store, base, ui_callback
                     "last_pull_at": utc_now_iso(),
                     "drive_etag": etag,
                 })
+                sync_history.mark_synced(base)
             ui_callback(ok=True, error=None, tb="")
         except Exception as e:
             tb = traceback.format_exc()
@@ -304,6 +315,7 @@ def run_push_blocking(storage, settings, conflicts_store, base, timeout_seconds=
                     "last_pull_at": utc_now_iso(),
                     "drive_etag": new_etag,
                 })
+                sync_history.mark_synced(base)
                 result["ok"] = True
             except Exception as e:
                 logging.getLogger(__name__).exception("Sync push failed: %s", e)
@@ -398,6 +410,7 @@ def _run_compaction_blocking(storage, settings, conflicts_store, base, timeout_s
                     payload = json.dumps(doc, ensure_ascii=False).encode("utf-8")
                 new_id, new_etag = drive.upload(service, payload, file_id)
                 settings.set("drive_etag", new_etag)
+                sync_history.mark_synced(base)
                 result.update({"ok": True})
             except Exception as e:
                 logging.getLogger(__name__).exception("Kompaktierung fehlgeschlagen")
@@ -446,6 +459,7 @@ def run_calendar_reconcile(reservation_store, settings, base, storage, data_lock
         )
         result = reconcile_reservations(service, calendar_id, reservation_store,
                                         settings, data_lock=data_lock)
+        sync_history.mark_reconciled(base)
         limit_warnings = check_dates_for_warnings(
             settings, storage.get_all(), result["imported_dates"])
         return {"ok": True, "error": "", "tb": "", "limit_warnings": limit_warnings}
@@ -527,8 +541,15 @@ def main():
 
     # N6: Tombstones ohne Sync-/Kalender-Partner verwerfen. Hier, weil der
     # Prozess noch single-threaded ist (kein data_lock nötig) und der Sweep
-    # vor dem ersten Rendern durch sein soll.
-    _sweep_orphan_tombstones(storage, reservation_store, settings)
+    # vor dem ersten Rendern durch sein soll. Nicht-fatal wie die übrigen
+    # Startschritte (setup_logging/migrate_legacy_autostart/single_instance):
+    # ein Schreibfehler (Platte voll o.ä.) darf den Start nicht verhindern —
+    # --noconsole schluckt stderr, ein Crash hier wäre spurlos.
+    try:
+        _sweep_orphan_tombstones(storage, reservation_store, settings, base)
+    except Exception:
+        logging.getLogger(__name__).exception(
+            "Tombstone-Sweep fehlgeschlagen (nicht-fatal)")
 
     root = tk.Tk()
     _apply_ui_scaling(root, settings.get("ui_scale"))

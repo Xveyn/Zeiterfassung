@@ -163,8 +163,9 @@ Release-Umgebung).
   Branch, aus dem der Lauf startet).
 - **Ausgabe = reine App** (kein Installer): `build.py` läuft ohne Inno Setup /
   create-dmg / appimagetool, überspringt also den Pack-Schritt und lädt die
-  nackte PyInstaller-Ausgabe als **Workflow-Artefakt** hoch — Windows
-  `Zeiterfassung.exe`, macOS `Zeiterfassung.app` und Linux-Binary als `.tar.gz`
+  nackte PyInstaller-Ausgabe als **Workflow-Artefakt** hoch — Windows den
+  `dist\Zeiterfassung\`-Ordner (onedir: Exe + `_internal\`, von `upload-artifact`
+  gezippt), macOS `Zeiterfassung.app` und Linux-Binary als `.tar.gz`
   (tar bewahrt Symlinks/Exec-Bits, die ein Zip zerstören würde). `retention-days: 14`.
 - **Kanal-Stempel:** kein `ZEIT_RELEASE`/`ZEIT_PRERELEASE` → `build.py` stempelt
   `CHANNEL=dev` + Commit-SHA; der In-App-Titel zeigt damit den exakt gebauten Commit.
@@ -359,7 +360,7 @@ Die Test-Deps sind **exakt gepinnt** (Audit N25) — beim Bump gegen Python 3.10
 - **test-matrix** — Matrix über **Python 3.10–3.13** (README: „3.10+"), `fail-fast: false`.
 - **test** — schlankes Sammel-Gate über `test-matrix`, das **nur** der Branch
   Protection dient: ein Matrix-Job meldet seine Check-Contexts ausschließlich
-  mit Suffix (`test (3.10)` …), ein Context namens `test` entstünde nie mehr —
+  mit Suffix (`test-matrix (3.10)` …), ein Context namens `test` entstünde nie mehr —
   der Required Check bliebe ewig „pending" und jeder PR dauerhaft blockiert.
   Nicht entfernen oder umbenennen, ohne die Required Checks mitzuziehen. Prüft
   `needs.test-matrix.result` explizit unter `if: always()`, weil ein
@@ -386,6 +387,7 @@ Lokal: `pytest` aus dem Repo-Root (Coverage: `pytest --cov=src --cov-report=term
 - `src/drive.py` — Google-Drive-API-Wrapper für den Multi-Device-Sync (`appDataFolder`, Scope `drive.appdata`)
 - `src/sync.py` — Sync-Engine (pure Logik: LWW-Merge der Entries/Settings, Konflikterkennung); importiert `SYNCED_SETTING_KEYS` aus `settings.py` (Single Source of Truth, nicht hier neu definieren); `validate_remote_doc` prüft ein Remote-Doc auf die Merge-Invarianten vor dem Merge (Audit M5)
 - `src/sync_journal.py` — Crash-Recovery für `sync.apply_merged_doc` via Write-Ahead-Journal (`sync-apply.journal`); beim Start holt `recover_pending_apply` einen unvollständigen Apply idempotent nach (Audit M6)
+- `src/sync_history.py` — persistenter „hat je gesynct/abgeglichen"-Marker (`sync_history.json`, write-once, stdlib-only); vetoed den N6-Startup-Sweep gegen einen settings.json-Reset (M4), damit ein gesyncter Rechner nicht fälschlich seine Tombstones verliert (Resurrection)
 - `src/conflicts_store.py` — lokale JSON-Persistenz der Sync-Konfliktliste
 - `src/share.py` — Export/Import von Arbeitszeiten als Share-JSON (Teilen per Mail-Anhang)
 - `src/reservations.py` — Reservierungen (zukünftige Soll-Zeiten, eigenes Konzept neben Ist-Zeiten)

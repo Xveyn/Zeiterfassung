@@ -46,9 +46,12 @@ def test_linux_stays_onefile(monkeypatch):
 
 
 def test_all_platforms_keep_mandatory_collect_all(monkeypatch):
-    """Die vier --collect-all sind auf jeder Plattform Pflicht (CLAUDE.md) —
-    ohne sie schlagen PDF/Feiertage im Artefakt stumm fehl. `--collect-all`
-    und der Paketname sind separate Listenelemente, daher Element-Test."""
+    """Vier --collect-all müssen auf jeder Plattform gebündelt sein. Drei macht
+    CLAUDE.md für PDF/Feiertage zur Pflicht (xhtml2pdf, reportlab, holidays) —
+    ohne sie schlagen PDF-Erzeugung bzw. Feiertags-Lookup im Artefakt stumm
+    fehl; pystray kommt fürs Tray/Minimize-to-Tray dazu (eigener Fehlermodus).
+    `--collect-all` und der Paketname sind separate Listenelemente, daher
+    Element-Test."""
     for build_fn in (build.build_windows, build.build_linux):
         cmd = _capture_pyinstaller_cmd(monkeypatch, build_fn)
         for pkg in ("xhtml2pdf", "reportlab", "holidays", "pystray"):

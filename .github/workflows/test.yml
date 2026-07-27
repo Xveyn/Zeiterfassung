@@ -25,7 +25,7 @@ jobs:
 
   test:
     # Sammel-Gate für die Branch Protection. Ein Matrix-Job meldet seine
-    # Check-Contexts NUR mit Suffix (`test (3.10)`, `test (3.11)`, …) — ein
+    # Check-Contexts NUR mit Suffix (`test-matrix (3.10)`, `test-matrix (3.11)`, …) — ein
     # Context, der schlicht `test` heißt, entsteht dabei nie. Steht `test` als
     # Required Check in der Branch Protection, wartet GitHub ewig darauf und
     # der PR bleibt trotz grüner Matrix auf "blocked" hängen. Dieser Job
@@ -106,7 +106,7 @@ jobs:
           python-version: '3.10'
           cache: pip
           cache-dependency-path: requirements-test.txt
-      # Gleiche Minimal-Deps wie der test-Job (aus requirements-test.txt), damit
+      # Gleiche Minimal-Deps wie der test-matrix-Job (aus requirements-test.txt), damit
       # unsere eigenen Typen (google-*, holidays, pytest) auflösen. Die
       # plattform-optionalen Lazy-Imports (xhtml2pdf/Pillow/pystray/pyobjc) sind
       # an der Import-Zeile per `# pyright: ignore[reportMissingImports]`

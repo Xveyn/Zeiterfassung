@@ -8,6 +8,7 @@ behält seine Tombstones — dort räumt ausschließlich die Kompaktierung auf
 """
 
 from src import main as main_module
+from src import sync_history
 from src.reservations import ReservationStore
 from src.reservations_sync import drop_orphan_reservation_tombstones
 from src.settings import Settings
@@ -122,7 +123,7 @@ def test_startup_sweep_covers_both_stores(tmp_path):
     rs = _reservations_with_tombstone(tmp_path)
     settings = _settings(tmp_path, sync_enabled=False, last_pull_at="",
                          gcal_enabled=False, last_calendar_sync_at="")
-    assert main_module._sweep_orphan_tombstones(st, rs, settings) == 2
+    assert main_module._sweep_orphan_tombstones(st, rs, settings, str(tmp_path)) == 2
     assert "2026-07-02" not in st.get_all_raw()
     assert "2026-07-03" not in rs.get_all_raw()
 
@@ -132,7 +133,7 @@ def test_startup_sweep_is_noop_for_synced_setup(tmp_path):
     rs = _reservations_with_tombstone(tmp_path)
     settings = _settings(tmp_path, sync_enabled=True, last_pull_at="",
                          gcal_enabled=True, last_calendar_sync_at="")
-    assert main_module._sweep_orphan_tombstones(st, rs, settings) == 0
+    assert main_module._sweep_orphan_tombstones(st, rs, settings, str(tmp_path)) == 0
     assert st.get_all_raw()["2026-07-02"]["deleted"] is True
     assert rs.get_all_raw()["2026-07-03"]["deleted"] is True
 
@@ -143,6 +144,36 @@ def test_startup_sweep_handles_stores_independently(tmp_path):
     rs = _reservations_with_tombstone(tmp_path)
     settings = _settings(tmp_path, sync_enabled=False, last_pull_at="",
                          gcal_enabled=True, last_calendar_sync_at="")
-    assert main_module._sweep_orphan_tombstones(st, rs, settings) == 1
+    assert main_module._sweep_orphan_tombstones(st, rs, settings, str(tmp_path)) == 1
     assert "2026-07-02" not in st.get_all_raw()
     assert rs.get_all_raw()["2026-07-03"]["deleted"] is True
+
+
+# --- F: persistenter Marker schlägt einen settings.json-Reset --------------
+
+def test_startup_sweep_skips_when_marker_present(tmp_path):
+    """Der F-Fall: settings.json wurde (z.B. per M4-Quarantäne) auf Defaults
+    zurückgesetzt und sieht wie 'nie gesynct/abgeglichen' aus. Der persistente
+    Marker beweist das Gegenteil — die Tombstones bleiben."""
+    st = _storage_with_tombstone(tmp_path)
+    rs = _reservations_with_tombstone(tmp_path)
+    settings = _settings(tmp_path, sync_enabled=False, last_pull_at="",
+                         gcal_enabled=False, last_calendar_sync_at="")
+    sync_history.mark_synced(str(tmp_path))
+    sync_history.mark_reconciled(str(tmp_path))
+    assert main_module._sweep_orphan_tombstones(st, rs, settings, str(tmp_path)) == 0
+    assert st.get_all_raw()["2026-07-02"]["deleted"] is True
+    assert rs.get_all_raw()["2026-07-03"]["deleted"] is True
+
+
+def test_startup_sweep_marker_gates_each_store(tmp_path):
+    """Marker nur für den Drive-Sync gesetzt: die Storage-Tombstones bleiben,
+    die Reservierungs-Tombstones (nie abgeglichen, kein Marker) fallen."""
+    st = _storage_with_tombstone(tmp_path)
+    rs = _reservations_with_tombstone(tmp_path)
+    settings = _settings(tmp_path, sync_enabled=False, last_pull_at="",
+                         gcal_enabled=False, last_calendar_sync_at="")
+    sync_history.mark_synced(str(tmp_path))
+    assert main_module._sweep_orphan_tombstones(st, rs, settings, str(tmp_path)) == 1
+    assert st.get_all_raw()["2026-07-02"]["deleted"] is True   # Marker -> behalten
+    assert "2026-07-03" not in rs.get_all_raw()                # kein Marker -> gefallen
