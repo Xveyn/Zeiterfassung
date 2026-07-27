@@ -16,6 +16,7 @@ Desktop-App zur Erfassung von Arbeitszeiten mit Kalenderansicht, PDF-Report und 
 - **PDF-Export** — Bericht für einen frei gewählten Zeitraum direkt als PDF lokal speichern (ohne Mail-Versand)
 - **Wochenstunden-Limit** — Optionales Werkstudenten-Limit über einen konfigurierbaren Zeitraum mit Warnung beim Überschreiten
 - **Pausenpflicht-Warnung** — Hinweis beim Speichern, wenn die eingetragene Pause die gesetzliche Mindestpause nach § 4 ArbZG unterschreitet (30 Min ab >6 h, 45 Min ab >9 h); standardmäßig aktiv, abschaltbar. Grobe Näherung, keine rechtliche Bewertung
+- **Nur Werktage** — Optional lässt sich das Wochenende komplett deaktivieren: Sa/So verschwinden aus Kalender, Standardzeiten, Bericht, Mailversand und PDF-Export. Vorhandene Wochenend-Einträge bleiben gespeichert und sind sofort wieder da, wenn die Einstellung zurückgenommen wird
 - **Kategorien** — Mehrere Zeitblöcke pro Tag mit eigenen Kategorien; Standard-Start/-Ende pro Kategorie, optional pro Wochentag; Kategorie-Aufschlüsselung im Bericht optional
 - **UI-Skalierung** — Stufenloser Skalierungsfaktor für die Oberfläche (gerätelokal)
 - **Zeitraumwahl** — Flexibler Datumsbereich für Reports
@@ -56,6 +57,7 @@ Zeiterfassung/
 │   ├── send_reminder_scheduler.py # Periodischer Poll → Sende-Toast (1×/Monat, Zustand persistiert)
 │   ├── weekly_limit.py    # Wochenstunden-Limit (Werkstudenten-Privileg), pure Logik
 │   ├── pause_requirement.py # Pausenpflicht-Check nach § 4 ArbZG, pure Logik
+│   ├── workweek.py        # Nur-Werktage-Modus (Sa/So ausblenden), pure Logik
 │   ├── gcal.py            # Google-Calendar-API-Wrapper
 │   ├── oauth_utils.py     # Gemeinsame OAuth-Token-Boilerplate (Persistenz, Scope-Upgrade) für mail/drive/gcal
 │   ├── tray.py            # Infobereich-Icon (Minimize-to-Tray); Plattform-Fassade
@@ -324,6 +326,7 @@ Reservierungen anlegen und den Abgleich über die App-Oberfläche aktivieren; be
 | **Dein Name** | Eigener vollständiger Name (erscheint im PDF-Bericht und beim Teilen) |
 | **Standard-Pause** | Standardmäßige Pausendauer in Minuten |
 | **Pausenpflicht-Warnung** | Warnen, wenn die Pause die Mindestpause nach § 4 ArbZG unterschreitet (Standard: an) |
+| **Nur Werktage** | Wochenende (Sa/So) überall ausblenden — Kalender, Standardzeiten und Bericht. Überstimmt „Wochenende im Kalender anzeigen"; Daten bleiben erhalten |
 | **Vorabversionen anbieten** | Auch Pre-Releases als Update anbieten und melden (Standard: aus, gerätelokal) |
 | **Betreff** | E-Mail-Betreff mit Platzhaltern |
 | **Begrüßung** | Anrede im E-Mail-Text |

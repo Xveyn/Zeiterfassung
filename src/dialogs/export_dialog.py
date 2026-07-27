@@ -1,6 +1,7 @@
 import tkinter as tk
 from tkinter import filedialog, messagebox
 
+from src import workweek
 from src.report import default_pdf_filename
 from src.time_utils import format_date, validate_period
 from src.dialogs.period_picker import build_period_picker
@@ -44,7 +45,7 @@ def open_export_dialog(parent, storage, settings, runner):
             return
 
         # Frisch lesen (Hintergrund-Drive-Sync könnte den Storage geändert haben).
-        entries = storage.get_all()
+        entries = workweek.filter_for_report(storage.get_all(), settings)
         categories = picker.get_categories()
         category_breakdown = picker.get_category_breakdown()
 

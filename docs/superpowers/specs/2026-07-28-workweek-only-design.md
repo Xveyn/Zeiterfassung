@@ -105,7 +105,7 @@ im gewählten Zeitraum Wochenend-Einträge liegen:
 
 ```
 Gesamtstunden: 41.5h
-3 Wochenend-Einträge werden nicht mitgesendet.
+3 Wochenend-Einträge im Zeitraum werden nicht berücksichtigt.
 ```
 
 Gezählt wird auf dem **ungefilterten** Snapshot, im selben `_update_total`-Lauf,
