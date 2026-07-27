@@ -19,6 +19,7 @@ SYNCED_SETTING_KEYS = (
     "werkstudent_limit_enabled", "werkstudent_limit_start",
     "werkstudent_limit_end", "werkstudent_limit_max_hours",
     "pause_warning_enabled",
+    "workweek_only",
 )
 
 DEFAULTS = {
@@ -53,6 +54,7 @@ DEFAULTS = {
     "default_end_sat": "16:00",
     "default_end_sun": "16:00",
     "show_weekend": True,
+    "workweek_only": False,
     "always_on_top": False,
     "minimize_to_tray": False,
     "reminders_enabled": False,

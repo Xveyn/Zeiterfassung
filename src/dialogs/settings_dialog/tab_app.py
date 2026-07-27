@@ -33,13 +33,23 @@ class AppTab:
         app_frame.grid(row=1, column=0, columnspan=2, padx=10, pady=(4, 4), sticky="we")
 
         show_weekend_var = tk.BooleanVar(value=settings.get("show_weekend"))
-        tk.Checkbutton(
+        weekend_cb = tk.Checkbutton(
             app_frame, text="Wochenende (Sa/So) im Kalender anzeigen",
             variable=show_weekend_var, font=FONT,
             bg=BG, fg=TEXT, selectcolor=CELL_BG,
             activebackground=BG, activeforeground=TEXT,
             cursor="hand2",
-        ).pack(anchor="w")
+        )
+        weekend_cb.pack(anchor="w")
+        if settings.get("workweek_only"):
+            # Sonst stünde hier ein Haken, der sichtbar nichts tut: der
+            # Nur-Werktage-Modus blendet Sa/So ohnehin aus.
+            weekend_cb.config(state="disabled")
+            tk.Label(
+                app_frame,
+                text="Durch „Nur Werktage\" (Arbeitszeit) überstimmt.",
+                font=FONT_SMALL, bg=BG, fg=TEXT_MUTED,
+            ).pack(anchor="w", padx=(24, 0))
 
         autostart_var = tk.BooleanVar(value=is_autostart_enabled())
         tk.Checkbutton(

@@ -2,9 +2,10 @@ import calendar
 import datetime
 import tkinter as tk
 
+from src import workweek
 from src.dialogs.date_row import build_date_row
 from src.report import total_hours
-from src.theme import BG, CELL_BG, FONT, TEXT
+from src.theme import BG, CELL_BG, FONT, FONT_SMALL, TEXT, TEXT_MUTED
 
 
 def selected_category_filter(selected_map):
@@ -89,8 +90,16 @@ def build_period_picker(parent, storage, settings, on_change=None):
 
     # Kategorien aus Bestand UND Settings-Pickliste ("" = ohne Kategorie). Alle
     # default ausgewählt. Bewusst NICHT auf den Zeitraum eingeschränkt (vgl.
-    # bisheriger send_dialog-Kommentar).
-    all_entries = storage.get_all()
+    # bisheriger send_dialog-Kommentar). Seit dem Snapshot-Filter folgt sie
+    # aber dem gefilterten Bestand (all_entries, s.u.): im Nur-Werktage-Modus
+    # taucht eine Kategorie, die ausschließlich an Wochenenden benutzt wurde,
+    # in der Pickliste nicht mehr auf — gewollt, denn im Modus liefert sie
+    # ohnehin keine Einträge.
+    # Zwei Sichten auf denselben Snapshot: die Vorschau rechnet mit den
+    # gefilterten Daten, der Hinweis zählt auf den ungefilterten — sonst wäre
+    # die Zahl, die er nennt, per Konstruktion immer 0.
+    all_entries_raw = storage.get_all()
+    all_entries = workweek.filter_for_report(all_entries_raw, settings)
     present_categories = sorted(
         {(s.get("kategorie") or "") for e in all_entries.values() for s in e["slots"]}
         | {c for c in (settings.get("categories") or [])},
@@ -131,13 +140,32 @@ def build_period_picker(parent, storage, settings, on_change=None):
     total_label = tk.Label(frame, text="", font=FONT, bg=BG, fg=TEXT)
     total_label.grid(row=4, column=0, columnspan=6, padx=10, pady=(0, 8), sticky="w")
 
+    # Gedämpfte Hinweiszeile: nur im Nur-Werktage-Modus und nur, wenn im
+    # gewählten Zeitraum tatsächlich Wochenend-Einträge liegen. Ohne sie
+    # verlöre jemand mit Alt-Daten stillschweigend Stunden aus dem Bericht.
+    weekend_hint = tk.Label(frame, text="", font=FONT_SMALL, bg=BG, fg=TEXT_MUTED)
+    weekend_hint.grid(row=5, column=0, columnspan=6, padx=10, pady=(0, 8), sticky="w")
+    weekend_hint.grid_remove()  # startet unsichtbar; ein leeres Label würde trotzdem eine Zeile beanspruchen
+
     def _update_total(*_):
         df, dt = handle.get_range()
         if df is None or dt is None or df > dt:
             total_label.config(text="Gesamtstunden: —")
+            weekend_hint.grid_remove()
             return
         hours = total_hours(df, dt, all_entries, handle.get_categories())
         total_label.config(text=f"Gesamtstunden: {hours}h")
+        n = (workweek.count_weekend_entries(all_entries_raw, df, dt)
+             if settings.get("workweek_only") else 0)
+        if n == 1:
+            weekend_hint.config(text="1 Wochenend-Eintrag im Zeitraum wird nicht berücksichtigt.")
+            weekend_hint.grid()
+        elif n > 1:
+            weekend_hint.config(
+                text=f"{n} Wochenend-Einträge im Zeitraum werden nicht berücksichtigt.")
+            weekend_hint.grid()
+        else:
+            weekend_hint.grid_remove()
 
     def _changed(*_):
         # Benutzer-Änderung an Datum oder Kategorie: Vorschau aktualisieren und

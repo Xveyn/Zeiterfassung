@@ -53,3 +53,51 @@ def test_repin_suppressed_during_measure_leaves_geometry_untouched():
     r.repin_geometry()
     root.geometry.assert_not_called()
     assert r._fixed_width == 552  # kein Ratchet waehrend der Vorab-Messung
+
+
+# --- workweek_only: Nur-Werktage-Modus für Kalender-Spalten ---
+
+
+def _renderer_with_settings(**values):
+    """GridRenderer mit gestubbten Settings; nicht gesetzte Keys → None."""
+    root = MagicMock()
+    root.winfo_reqwidth.return_value = 700
+    root.winfo_reqheight.return_value = 400
+    settings = MagicMock(get=lambda k, d=None: values.get(k, d))
+    return GridRenderer(
+        root=root, storage=object(), settings=settings,
+        reservation_store=None, conflicts_store=None,
+        on_cell_click=lambda d: None, on_cell_right_click=lambda d: None,
+        reservations_active=lambda: False,
+    )
+
+
+def test_workweek_only_hides_weekend_even_when_show_weekend_is_on():
+    """Der Nur-Werktage-Modus überstimmt den Kalender-Schalter — sonst stünde
+    im App-Tab ein Haken, der sichtbar nichts tut."""
+    r = _renderer_with_settings(show_weekend=True, workweek_only=True)
+    assert r._visible_day_count() == 5
+
+
+def test_show_weekend_still_governs_when_workweek_only_is_off():
+    assert _renderer_with_settings(
+        show_weekend=True, workweek_only=False)._visible_day_count() == 7
+    assert _renderer_with_settings(
+        show_weekend=False, workweek_only=False)._visible_day_count() == 5
+
+
+def test_wide_cells_respects_workweek_only():
+    """_wide_cells (von _cell_layout_metrics genutzt) muss aus
+    _visible_day_count ableiten, nicht show_weekend erneut lesen. Sonst haben
+    5-Spalten-Layouts die Zell-Metriken für 7 Spalten (kleinere Schrift,
+    gedrängter). Tk-frei: prüft direkt _wide_cells() statt die Probe-Messung
+    zu fahren (die braucht ein echtes Tk-Widget und bricht die CI ohne
+    Display, s. tests/test_grid_geometry.py Finding CRITICAL)."""
+    # workweek_only=True überstimmt show_weekend=True → 5 Spalten → wide_cells
+    assert _renderer_with_settings(
+        show_weekend=True, workweek_only=True)._wide_cells() is True
+    # Gegenprobe: workweek_only=False lässt show_weekend wieder entscheiden.
+    assert _renderer_with_settings(
+        show_weekend=True, workweek_only=False)._wide_cells() is False
+    assert _renderer_with_settings(
+        show_weekend=False, workweek_only=False)._wide_cells() is True

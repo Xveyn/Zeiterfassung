@@ -202,6 +202,18 @@ müssen beide Locks respektieren. Design:
   macht das im Warntext transparent. `pause_warning_enabled` ist Default
   `True` (Opt-out), anders als das Werkstudenten-Limit (Opt-in) — die Pflicht
   betrifft praktisch jeden Angestellten in DE, ist kein Sonderfall.
+  `workweek.py` — Nur-Werktage-Modus (`workweek_only`, synchronisiert). `is_weekend`
+  (unlesbarer Schlüssel → False, Filtern darf nichts verschlucken),
+  `filter_for_report` (inaktiv → dasselbe Dict, kein Kopieren) und
+  `count_weekend_entries` für die Hinweiszeile. Gefiltert wird am **Snapshot**
+  (`storage.get_all()` in send_dialog/export_dialog/period_picker), NICHT in
+  `report.py` — das bleibt settings-frei, und Mail-HTML, PDF und Vorschau sehen
+  dadurch automatisch dieselben Daten. Im Kalender überstimmt die Flag
+  `show_weekend` (`grid_renderer._visible_day_count`); in den Standardzeiten
+  entfallen die Sa/So-Zeilen, ihre `StringVar`s aber nicht — der Speicherpfad
+  schreibt weiter alle sieben Tage, damit die Werte erhalten bleiben. Bewusst
+  unberührt: Werkstudenten-Limit (zählt real geleistete Stunden), Teilen und
+  Kalender-Abgleich.
   `reminders.py` — pure Fälligkeits-Logik für Reservierungs-Erinnerungen (Tk-frei, `now` als Parameter): pro heutigem reservierten Slot mit Kategorie ohne erfasste Ist-Zeit `upcoming` (N Min vor Ende) oder `missed` (nach Ende). Der `ReminderScheduler` (`reminder_scheduler.py`) pollt minütlich über `root.after` und schickt fällige Toasts über `App._tray`; auf Windows via `tray.notify_action` mit „Arbeitszeit eintragen"-Button (WinRT, Fallback Plain-Toast), der den Slot als Ist-Zeit schreibt (`_log_reservation` → `ist_slot_from_reservation`, Pause aus Kategorie-Default). Analog dazu `send_reminder.py`/`send_reminder_scheduler.py`: ein einzelner Fällig-Zeitpunkt pro Monat (Tag + Uhrzeit, Tag auf die Monatslänge geclamped) statt Slot-Fenster; der Fired-Zustand wird bewusst **persistiert** (`settings.send_reminder_last_fired_month`, `"YYYY-MM"`) statt nur im Speicher gehalten wie beim Reservierungs-Reminder — verhindert wiederholte Toasts bei App-Neustarts im selben Monat.
 
 ## Google-Integration (alle Wrapper mit Lazy-Imports für CI ohne requirements.txt)

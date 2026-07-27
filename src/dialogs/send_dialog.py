@@ -4,6 +4,7 @@ import tkinter as tk
 import traceback
 from tkinter import messagebox
 
+from src import workweek
 from src.dialogs.period_picker import build_period_picker
 from src.dialogs.send_task import perform_send
 from src.platform_open import open_folder
@@ -97,7 +98,11 @@ def open_send_dialog(parent, storage, settings, base_path, runner):
 
         # Frisch lesen statt den Dialog-Snapshot zu senden — der Storage kann
         # sich bei offenem Dialog geändert haben (Hintergrund-Drive-Sync).
-        entries = storage.get_all()
+        # Nur-Werktage-Modus: Sa/So fliegen einmal am Snapshot raus — damit
+        # sehen Mail-HTML (generate_report) und PDF (generate_pdf im Worker)
+        # automatisch dieselben Daten, ohne dass report.py die Einstellung
+        # kennen muss.
+        entries = workweek.filter_for_report(storage.get_all(), settings)
         categories = picker.get_categories()
         category_breakdown = picker.get_category_breakdown()
 
