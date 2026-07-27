@@ -10,66 +10,12 @@ angefasst, was die aufrufende Seite ohnehin schon hält.
 """
 
 import json
-import logging
 import os
-import platform
 import stat
-import subprocess
 import tempfile
 import time
 
-_log = logging.getLogger(__name__)
-
-
-def _windows_principal():
-    """`DOMAIN\\user` für icacls, ersatzweise der nackte Benutzername.
-
-    `None`, wenn sich der Benutzer nicht aus der Umgebung benennen lässt — dann
-    wird nicht geraten (ein falscher Principal härtete entweder nichts oder
-    sperrte den eigenen Prozess aus).
-    """
-    user = os.environ.get("USERNAME")
-    if not user:
-        return None
-    domain = os.environ.get("USERDOMAIN")
-    return f"{domain}\\{user}" if domain else user
-
-
-def _harden_windows_acl(path):
-    """Beschränkt die ACL von `path` auf den aktuellen Benutzer (Audit M8).
-
-    `os.chmod` ist unter Windows ein No-op; der Refresh-Token wäre dort allein
-    durch die geerbten Rechte des Datenverzeichnisses geschützt — bei der
-    per-User-Installation zusätzlich für lokale Administratoren lesbar.
-    `icacls /inheritance:r /grant:r <user>:(F)` entfernt die geerbten ACEs und
-    lässt genau einen Berechtigten übrig. Vollzugriff (nicht nur R/W), weil das
-    spätere `os.replace` auf der Zieldatei DELETE braucht.
-
-    Best-effort und **nie** fatal: fehlt `icacls` oder scheitert es, wird
-    geloggt und weitergemacht — eine nicht gehärtete Token-Datei ist der Status
-    quo, eine fehlgeschlagene Token-Persistenz wäre eine Regression.
-    """
-    if platform.system() != "Windows":
-        return
-    principal = _windows_principal()
-    if not principal:
-        _log.warning("Token-ACL nicht gehärtet: kein Benutzername in der Umgebung")
-        return
-    try:
-        proc = subprocess.run(
-            ["icacls", path, "/inheritance:r", "/grant:r", f"{principal}:(F)"],
-            capture_output=True, text=True, timeout=15,
-            # Ohne das blitzt in den --noconsole-Builds ein Konsolenfenster auf.
-            # getattr, weil das Flag nur unter Windows existiert — die Tests
-            # patchen platform.system() auch auf Linux-CI auf "Windows".
-            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-        )
-    except (OSError, subprocess.SubprocessError):
-        _log.warning("Token-ACL nicht gehärtet: icacls nicht ausführbar", exc_info=True)
-        return
-    if proc.returncode != 0:
-        _log.warning("Token-ACL nicht gehärtet: icacls endete mit %s (%s)",
-                     proc.returncode, (proc.stderr or "").strip())
+from src.secure_file import harden_windows_acl
 
 
 def write_token(creds, token_path):
@@ -82,7 +28,7 @@ def write_token(creds, token_path):
     Die Permissions werden auf `0o600` gesetzt. Auf Windows ist das chmod ein
     No-op (keine POSIX-Permissions); `try/except OSError` deckt zusätzlich
     exotische Filesystems (sshfs, FAT32) ab, wo chmod fehlschlagen kann. Dort
-    übernimmt stattdessen `_harden_windows_acl` (Audit M8).
+    übernimmt stattdessen `secure_file.harden_windows_acl` (Audit M8).
 
     Beide Härtungen greifen auf der **Temp-Datei**, also vor dem `os.replace`:
     sonst gäbe es ein Fenster, in dem `token.json` bereits am Zielpfad steht,
@@ -99,7 +45,7 @@ def write_token(creds, token_path):
             os.chmod(tmp_path, stat.S_IRUSR | stat.S_IWUSR)  # 0o600
         except OSError:
             pass
-        _harden_windows_acl(tmp_path)
+        harden_windows_acl(tmp_path)
         # os.replace mit Retry gegen transiente Windows-PermissionError: ein
         # Virenscanner, der die frisch erzeugte .token-*.tmp scannt, oder ein
         # noch offenes Handle auf token.json blockiert den atomaren Rename kurz

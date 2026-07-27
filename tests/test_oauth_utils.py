@@ -15,9 +15,10 @@ import pytest
 from src.oauth_utils import write_token, discard_token_for_scope_upgrade
 
 
-def _windows_env(monkeypatch, events, *, run=None, domain="MACHINE", user="sven"):
+def _windows_env(monkeypatch, events, *, run=None):
     """Stellt eine Windows-Umgebung nach und protokolliert die Reihenfolge von
-    icacls-Aufruf und os.replace in `events`."""
+    icacls-Aufruf und os.replace in `events`. Das Verhalten von icacls selbst
+    (Principal-Ableitung, Fehlerpfade) prüft `tests/test_secure_file.py`."""
     def default_run(cmd, **kwargs):
         return subprocess.CompletedProcess(cmd, 0, "", "")
 
@@ -34,14 +35,8 @@ def _windows_env(monkeypatch, events, *, run=None, domain="MACHINE", user="sven"
     monkeypatch.setattr(platform, "system", lambda: "Windows")
     monkeypatch.setattr(subprocess, "run", fake_run)
     monkeypatch.setattr(os, "replace", tracking_replace)
-    if domain is None:
-        monkeypatch.delenv("USERDOMAIN", raising=False)
-    else:
-        monkeypatch.setenv("USERDOMAIN", domain)
-    if user is None:
-        monkeypatch.delenv("USERNAME", raising=False)
-    else:
-        monkeypatch.setenv("USERNAME", user)
+    monkeypatch.setenv("USERDOMAIN", "MACHINE")
+    monkeypatch.setenv("USERNAME", "sven")
 
 
 def test_write_token_writes_creds_json(tmp_path):
@@ -165,50 +160,6 @@ def test_write_token_hardens_acl_on_windows_before_replace(tmp_path, monkeypatch
     assert "MACHINE\\sven:(F)" in argv
 
 
-def test_write_token_grants_bare_username_without_userdomain(tmp_path, monkeypatch):
-    """Ohne USERDOMAIN (exotische Umgebung) bleibt der nackte Benutzername —
-    icacls löst den lokal auf, statt dass das Härten ganz ausfällt."""
-    path = str(tmp_path / "token.json")
-    creds = MagicMock()
-    creds.to_json.return_value = "{}"
-    events = []
-    _windows_env(monkeypatch, events, domain=None)
-
-    write_token(creds, path)
-
-    assert "sven:(F)" in events[0][1]
-
-
-def test_write_token_skips_hardening_without_username(tmp_path, monkeypatch):
-    """Ohne benennbaren Principal wird nicht geraten: kein icacls-Aufruf, und
-    der Token landet trotzdem auf der Platte (Persistenz geht vor Härtung)."""
-    path = str(tmp_path / "token.json")
-    creds = MagicMock()
-    creds.to_json.return_value = '{"token": "abc"}'
-    events = []
-    _windows_env(monkeypatch, events, domain=None, user=None)
-
-    write_token(creds, path)
-
-    assert [e[0] for e in events] == ["replace"]
-    with open(path) as f:
-        assert f.read() == '{"token": "abc"}'
-
-
-def test_write_token_does_not_call_icacls_off_windows(tmp_path, monkeypatch):
-    """Auf POSIX erledigt das chmod 0600 die Arbeit — kein icacls-Prozess."""
-    path = str(tmp_path / "token.json")
-    creds = MagicMock()
-    creds.to_json.return_value = "{}"
-    events = []
-    _windows_env(monkeypatch, events)
-    monkeypatch.setattr(platform, "system", lambda: "Linux")
-
-    write_token(creds, path)
-
-    assert [e[0] for e in events] == ["replace"]
-
-
 def test_write_token_survives_missing_icacls(tmp_path, monkeypatch):
     """Fehlt icacls (abgespecktes Windows, PATH kaputt), darf die
     Token-Persistenz nicht scheitern — Härtung ist Beiwerk, nicht Bedingung."""
@@ -226,27 +177,6 @@ def test_write_token_survives_missing_icacls(tmp_path, monkeypatch):
 
     with open(path) as f:
         assert f.read() == '{"token": "abc"}'
-
-
-def test_write_token_logs_warning_when_icacls_fails(tmp_path, monkeypatch, caplog):
-    """Ein icacls-Fehlschlag wird geloggt statt still verschluckt (N13-Muster) —
-    der Token wird trotzdem geschrieben."""
-    path = str(tmp_path / "token.json")
-    creds = MagicMock()
-    creds.to_json.return_value = "{}"
-
-    def failing(cmd, **kwargs):
-        return subprocess.CompletedProcess(cmd, 5, "", "Zugriff verweigert")
-
-    events = []
-    _windows_env(monkeypatch, events, run=failing)
-
-    with caplog.at_level("WARNING"):
-        write_token(creds, path)
-
-    assert os.path.exists(path)
-    assert any("icacls" in r.message.lower() or "acl" in r.message.lower()
-               for r in caplog.records), caplog.text
 
 
 def _write_token_file(path, scopes):

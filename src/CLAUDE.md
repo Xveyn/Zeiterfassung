@@ -211,14 +211,8 @@ müssen beide Locks respektieren. Design:
 denselben OAuth-Token; Scope-Upgrade erzwingt frischen Consent.
 
 Geschrieben wird der Token ausschließlich über `oauth_utils.write_token`: Temp-Datei →
-Härtung → `os.replace` (mit `PermissionError`-Retry, #135). Die Härtung ist
-plattformabhängig — `chmod 0600` auf POSIX, `_harden_windows_acl` (`icacls
-/inheritance:r /grant:r <user>:(F)`) auf Windows, wo chmod ein No-op ist (Audit M8).
-Beides greift auf der **Temp-Datei**, damit `token.json` nie kurz mit geerbten Rechten
-am Zielpfad liegt; Vollzugriff statt R/W, weil `os.replace` DELETE auf der Zieldatei
-braucht. Die Härtung ist best-effort und nie fatal (fehlendes `icacls`, exotisches FS)
-— eine ungehärtete Datei ist der Status quo, eine gescheiterte Token-Persistenz wäre
-eine Regression. Wer einen zweiten Schreibpfad für Secrets baut, nutzt diesen Helfer.
+Härtung → `os.replace` (mit `PermissionError`-Retry, #135). Zur Härtung siehe
+`secure_file` unten.
 
 `drive.find_sync_file` liefert bei mehreren Treffern deterministisch die
 **älteste** Datei (`createdTime`, Tie-Break `id`) — der appDataFolder kennt kein
@@ -245,6 +239,18 @@ muss sie deterministisch **und** über alle Geräte gleich halten.
   `migrate_legacy_autostart()` überführt Alt-Shortcuts in den Registry-Key, ist aber frozen-gated
   (Repo-Modus: No-op, würde andernfalls python.exe+Repo ins Register schreiben und bestehende
   Shortcuts beschädigen).
+- `secure_file.py` — Zugriffsschutz für die beiden lokal abgelegten Secrets: `token.json`
+  (`oauth_utils.write_token`) und `instance-secret` (`single_instance._write_secret_atomic`).
+  Beide Schreibpfade laufen Temp-Datei → `chmod 0600` → `harden_windows_acl` → `os.replace`.
+  Unter Windows ist chmod ein No-op, deshalb dort zusätzlich `icacls /inheritance:r
+  /grant:r <user>:(F)` (Audit M8): geerbte ACEs (u.a. SYSTEM, lokale Administratoren) raus,
+  genau ein Berechtigter bleibt. **Vollzugriff** statt R/W, weil das spätere `os.replace`
+  DELETE auf der Zieldatei braucht; **auf der Temp-Datei**, damit die Datei nie kurz mit
+  geerbten Rechten am Zielpfad liegt. Best-effort und nie fatal (fehlendes `icacls`, kein
+  benennbarer Principal → loggen und weiter): ungehärtet ist der Status quo, eine
+  gescheiterte Persistenz wäre eine Regression. Eigenes Modul, damit `single_instance`
+  nichts aus dem OAuth-Umfeld importieren muss (und keiner den privaten Namen des anderen
+  nutzt, Audit N17). Wer einen dritten Secret-Schreibpfad baut, ruft diesen Helfer mit auf.
 - `single_instance.py` — Tk-freier Single-Instance-Guard. Erste Instanz leitet einen Port aus
   `get_base_path()` ab und bindet einen Listener (`SO_EXCLUSIVEADDRUSE` Windows, `SO_REUSEADDR` Unix).
   Folgeinstanzen melden sich per SHOW/PING-Protokoll und beenden sich. `main.py` ruft `acquire()`

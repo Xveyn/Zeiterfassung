@@ -61,6 +61,7 @@ Zeiterfassung/
 │   ├── tray.py            # Infobereich-Icon (Minimize-to-Tray); Plattform-Fassade
 │   ├── tray_mac.py        # Natives macOS-Tray-Backend (NSStatusItem, dormant/opt-in)
 │   ├── autostart.py       # Plattformabhängiger Autostart (Windows-Registry/macOS/Linux)
+│   ├── secure_file.py     # Zugriffsschutz für lokale Secrets (Windows-ACL via icacls)
 │   ├── single_instance.py # Single-Instance-Guard (verhindert parallele Instanzen)
 │   ├── device_id.py       # Stabile, hardware-abgeleitete Geräte-ID für installierte Builds (Sync)
 │   ├── updater.py         # GitHub-Releases-Check (stdlib-only, Frequenz konfigurierbar)

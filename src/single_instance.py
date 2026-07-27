@@ -14,6 +14,8 @@ import threading
 import time
 import zlib
 
+from src.secure_file import harden_windows_acl
+
 _MAGIC_SHOW = b"ZEIT-SHOW"
 _MAGIC_PING = b"ZEIT-PING"
 _MAGIC_OK = b"ZEIT-OK"
@@ -34,7 +36,12 @@ def _derive_port(base_path):
 
 def _write_secret_atomic(path, secret):
     """Schreibt das Instanz-Secret atomar (Temp + os.replace) mit 0600 und
-    PermissionError-Retry — Muster aus oauth_utils.write_token (Issue #135)."""
+    PermissionError-Retry — Muster aus oauth_utils.write_token (Issue #135).
+
+    Unter Windows ist das chmod ein No-op, deshalb zusätzlich die ACL-Härtung
+    (Audit M8): wer das Secret lesen kann, kann den SHOW/PING-Handshake fälschen
+    und einer laufenden Instanz das Fenster nach vorn holen. Gehärtet wird die
+    Temp-Datei, bevor os.replace sie unter dem Zielnamen sichtbar macht."""
     directory = os.path.dirname(os.path.abspath(path))
     fd, tmp_path = tempfile.mkstemp(
         dir=directory, prefix=".instance-secret-", suffix=".tmp")
@@ -45,6 +52,7 @@ def _write_secret_atomic(path, secret):
             os.chmod(tmp_path, stat.S_IRUSR | stat.S_IWUSR)  # 0o600; Win: No-op
         except OSError:
             pass
+        harden_windows_acl(tmp_path)
         attempts = 5
         for attempt in range(attempts):
             try:

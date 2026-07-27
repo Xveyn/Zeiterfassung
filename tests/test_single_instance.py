@@ -1,4 +1,5 @@
 # tests/test_single_instance.py
+import os
 import socket
 import sys
 import threading
@@ -150,3 +151,30 @@ def test_secret_write_failure_yields_bound_unauth_guard(tmp_path, monkeypatch):
         assert g.secret is None
     finally:
         g.release()
+
+
+def test_secret_file_acl_hardened_before_replace(tmp_path, monkeypatch):
+    """Audit M8: das instance-secret ist unter Windows so schützenswert wie
+    token.json — wer es liest, kann den SHOW/PING-Handshake fälschen. Gehärtet
+    wird die Temp-Datei, bevor os.replace sie unter dem Zielnamen sichtbar
+    macht."""
+    import src.single_instance as si
+
+    events = []
+    monkeypatch.setattr(si, "harden_windows_acl",
+                        lambda p: events.append(("harden", p)))
+    real_replace = os.replace
+
+    def tracking_replace(src_path, dst_path):
+        events.append(("replace", src_path, dst_path))
+        return real_replace(src_path, dst_path)
+
+    monkeypatch.setattr(os, "replace", tracking_replace)
+    path = str(tmp_path / "instance-secret")
+
+    si._write_secret_atomic(path, b"s" * 32)
+
+    assert [e[0] for e in events] == ["harden", "replace"]
+    assert events[0][1].endswith(".tmp")
+    with open(path, "rb") as f:
+        assert f.read() == b"s" * 32
