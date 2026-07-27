@@ -87,6 +87,12 @@ def read_granted_scopes(token_path):
             data = json.load(f)
     except (OSError, ValueError):
         return None
+    # json.load wirft nicht ValueError für non-dict-Wurzeln — z.B. [] oder "x"
+    # sind syntaktisch gültig und zurückgegeben (plausibel bei
+    # Teilschreibvorgängen, Plattenfehlern oder manueller Bearbeitung).
+    # .get() wirft auf ihnen AttributeError; das konservativ abfangen.
+    if not isinstance(data, dict):
+        return None
     scopes = data.get("scopes")
     if scopes is None:
         return []

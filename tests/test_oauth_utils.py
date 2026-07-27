@@ -257,3 +257,15 @@ def test_read_granted_scopes_returns_none_for_non_list_scopes(tmp_path):
         json.dump({"token": "t", "scopes": "gmail.send"}, f)
 
     assert read_granted_scopes(path) is None
+
+
+def test_read_granted_scopes_returns_none_for_non_dict_root(tmp_path):
+    """Syntaktisch gültiges JSON mit Nicht-Objekt-Wurzel (z.B. [] oder "x" oder
+    123, plausibel bei Teilschreibvorgängen, Plattenfehlern oder manueller
+    Bearbeitung) würde einen AttributeError werfen bei .get(). Die Funktion
+    muss auf dict prüfen und konservativ None liefern."""
+    path = str(tmp_path / "token.json")
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump([], f)
+
+    assert read_granted_scopes(path) is None
