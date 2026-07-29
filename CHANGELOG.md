@@ -1,5 +1,36 @@
 # Changelog
 
+## 1.20.0 — 2026-07-29
+
+### Hinzugefügt
+- **Nur Werktage**: Wer nie am Wochenende arbeitet, kann Samstag und Sonntag
+  jetzt komplett abschalten (Einstellungen → Arbeitszeit). Sa/So verschwinden
+  damit aus dem Kalender, aus den Standardzeiten und aus jedem Bericht —
+  Vorschau, Mailversand und PDF-Export eingeschlossen. Bereits erfasste
+  Wochenend-Einträge bleiben gespeichert und sind sofort wieder da, wenn die
+  Einstellung zurückgenommen wird; enthält der gewählte Zeitraum solche
+  Einträge, weist ein Hinweis vor dem Senden darauf hin.
+- **Google-Berechtigungen einsehen**: Der Google-Tab zeigt jetzt, welche
+  Berechtigungen (OAuth-Scopes) das verbundene Konto der App tatsächlich
+  gewährt hat — auf einen Blick als „n von m Berechtigungen" (✓ alles da,
+  ○ eine zuschaltbare Funktion wartet noch auf ihre Freigabe, ✗ eine
+  Grundberechtigung fehlt) und ausführlich über **Anzeigen**. Damit ist ohne
+  Umweg über die Google-Kontoeinstellungen erkennbar, warum z.B. der
+  Kalender-Abgleich nicht anläuft.
+- **Nach Updates suchen im Infobereich**: Läuft die App minimiert im
+  Infobereich (Tray), stößt der neue Menüeintrag **„Nach Updates suchen"** die
+  Prüfung sofort an — unabhängig vom eingestellten Prüf-Intervall. Das Ergebnis
+  kommt in jedem Fall als Toast, auch wenn alles aktuell ist.
+
+### Geändert
+- **Zugriffsschutz unter Windows**: `token.json` (OAuth-Refresh-Token) und die
+  interne `instance-secret`-Datei bekommen unter Windows jetzt eine eigene
+  Dateiberechtigung — geerbte Rechte (u.a. SYSTEM und lokale Administratoren)
+  entfallen, Zugriff hat nur noch das eigene Benutzerkonto. Bisher blieb der
+  dort wirkungslose Unix-Schutz ohne Effekt. Weiterhin Zugriffsschutz auf
+  Dateiebene, keine Verschlüsselung — wer den Datenordner kopiert oder in die
+  Cloud synchronisiert, nimmt den Token weiterhin mit.
+
 ## 1.19.1 — 2026-07-27
 
 ### Hinzugefügt

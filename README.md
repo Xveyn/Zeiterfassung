@@ -79,7 +79,7 @@ Zeiterfassung/
 ├── tests/                 # pytest-Testdateien
 ├── assets/
 │   └── margenheld-icon    # App-Icon (.png + .ico + .icns)
-├── docs/                  # Setup-Anleitung, Specs/Plans, Known Limitations
+├── docs/                  # Specs/Plans, Known Limitations
 ├── build.py               # Plattform-Dispatcher für den PyInstaller-Build
 ├── installer.iss          # Inno Setup Script (Windows-Installer)
 ├── requirements.txt       # Python-Abhängigkeiten (App-Laufzeit, exakt gepinnt)
@@ -222,6 +222,7 @@ Die Scopes werden nicht hier, sondern unter **Data Access** vergeben — entwede
   - **Abhilfe:** Unter **Google Auth Platform → Zielgruppe / Audience** den Status auf **„In Produktion"** setzen. Dann bleibt der Refresh-Token langlebig. Für rein **private** Nutzung ist **keine** Google-Verifizierung nötig — die App bleibt „nicht verifiziert" (Warnscreen beim ersten Login, Limit 100 Nutzer), funktioniert aber dauerhaft ohne wöchentliche Neuanmeldung.
 - Im Test-Modus können sich nur eingetragene **Testnutzer** authentifizieren (deine eigene Gmail-Adresse zählt mit)
 - Innerhalb der Token-Gültigkeit wird der Access-Token automatisch erneuert; läuft der Refresh-Token ab, öffnet sich der Browser erneut
+- Welche Berechtigungen dein Konto der App tatsächlich gewährt hat, zeigt die App unter **Einstellungen → Google → Berechtigungen** — die Kontrolle nach dem Setup und nach jedem Zuschalten von Sync oder Kalender
 - `credentials.json` und `token.json` gehören **nicht** ins Repository
 
 ## Multi-Device-Sync einrichten (optional)
@@ -397,9 +398,11 @@ CI läuft dieselben Tests gegen Python 3.10–3.13 sowie zusätzlich auf Windows
 Alle Daten werden lokal als JSON gespeichert:
 
 - **zeiterfassung.json** — Zeiteinträge (Schlüssel: ISO-Datum `YYYY-MM-DD`)
+- **reservations.json** — Reservierungen, also zukünftige Soll-Zeiten (eigenes Konzept neben den Ist-Zeiten)
 - **settings.json** — Benutzereinstellungen
 - **token.json** — Gmail/Drive OAuth-Token (wird automatisch erneuert)
 - **conflicts.json** — Lokaler Spiegel der Sync-Konflikte (nur vorhanden bei aktivem Sync und mindestens einem registrierten Konflikt)
+- **sync_history.json** — Marker „wurde auf diesem Gerät je synchronisiert/abgeglichen"; schützt gelöschte Tage davor, nach einer beschädigten `settings.json` zurückzukehren
 
 Bei aktivem Sync liegt zusätzlich in deinem Google Drive eine versteckte Datei `zeiterfassung-sync.json` im `appDataFolder` — nicht über die Drive-Web-Oberfläche sichtbar, nur die App kommt dran.
 
