@@ -205,7 +205,14 @@ müssen beide Locks respektieren. Design:
   `workweek.py` — Nur-Werktage-Modus (`workweek_only`, synchronisiert). `is_weekend`
   (unlesbarer Schlüssel → False, Filtern darf nichts verschlucken),
   `filter_for_report` (inaktiv → dasselbe Dict, kein Kopieren) und
-  `count_weekend_entries` für die Hinweiszeile. Gefiltert wird am **Snapshot**
+  `count_weekend_entries` für die Hinweiszeile. Letzteres zählt auf dem
+  **ungefilterten** Snapshot (sonst wäre die Zahl per Konstruktion 0), dabei
+  aber **ohne** den Kategorie-Filter — anders als die Stundenvorschau eine
+  Zeile darüber, die mit `handle.get_categories()` rechnet
+  (`period_picker._update_total`). Wer alle Kategorien der Wochenend-Einträge
+  abwählt, bekommt die Einträge trotzdem gemeldet. Bekannte kosmetische
+  Ungenauigkeit, kein Datenfehler: der Bericht filtert unabhängig davon
+  korrekt. Gefiltert wird am **Snapshot**
   (`storage.get_all()` in send_dialog/export_dialog/period_picker), NICHT in
   `report.py` — das bleibt settings-frei, und Mail-HTML, PDF und Vorschau sehen
   dadurch automatisch dieselben Daten. Im Kalender überstimmt die Flag
@@ -263,6 +270,13 @@ muss sie deterministisch **und** über alle Geräte gleich halten.
   gescheiterte Persistenz wäre eine Regression. Eigenes Modul, damit `single_instance`
   nichts aus dem OAuth-Umfeld importieren muss (und keiner den privaten Namen des anderen
   nutzt, Audit N17). Wer einen dritten Secret-Schreibpfad baut, ruft diesen Helfer mit auf.
+  **Aufrufhäufigkeit:** der Helfer hängt an `write_token`, läuft also bei *jedem*
+  Token-Refresh in Mail-, Drive- und Kalender-Pfad — ein `icacls`-Subprozess pro
+  Refresh, nicht einmalig beim Anlegen. Unkritisch, weil alle diese Pfade in den
+  Worker-Threads des `BackgroundTaskRunner` laufen (die UI blockiert nicht) und der
+  Aufruf ein `timeout=15` trägt. Wissen fürs Debugging: liegen die Daten auf einem
+  hängenden Netzlaufwerk, verzögert sich der Token-Schreibvorgang um bis zu diese
+  15s pro Refresh. Wer den Helfer in einen UI-Thread-Pfad hängt, muss das prüfen.
 - `single_instance.py` — Tk-freier Single-Instance-Guard. Erste Instanz leitet einen Port aus
   `get_base_path()` ab und bindet einen Listener (`SO_EXCLUSIVEADDRUSE` Windows, `SO_REUSEADDR` Unix).
   Folgeinstanzen melden sich per SHOW/PING-Protokoll und beenden sich. `main.py` ruft `acquire()`
