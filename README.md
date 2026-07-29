@@ -45,6 +45,7 @@ Zeiterfassung/
 │   ├── drive.py           # Google Drive API-Wrapper (Multi-Device-Sync)
 │   ├── sync.py            # Sync-Engine (pure Logik, LWW-Merge, Konflikterkennung)
 │   ├── sync_journal.py    # Crash-Recovery für den Sync-Apply (Write-Ahead-Journal)
+│   ├── sync_history.py    # Persistenter „hat je gesynct/abgeglichen"-Marker (Tombstone-Schutz)
 │   ├── conflicts_store.py # Lokale Persistenz der Konfliktliste
 │   ├── share.py           # Export/Import von Arbeitszeiten als Share-JSON
 │   ├── reservations.py    # Reservierungen (zukünftige Soll-Zeiten)
@@ -78,7 +79,9 @@ Zeiterfassung/
 ├── docs/                  # Setup-Anleitung, Specs/Plans, Known Limitations
 ├── build.py               # Plattform-Dispatcher für den PyInstaller-Build
 ├── installer.iss          # Inno Setup Script (Windows-Installer)
-├── requirements.txt       # Python-Abhängigkeiten
+├── requirements.txt       # Python-Abhängigkeiten (App-Laufzeit, exakt gepinnt)
+├── requirements-test.txt  # Test-/CI-Abhängigkeiten (pytest & Co., exakt gepinnt)
+├── pyproject.toml         # Konfiguration für ruff, pytest, coverage und pyright
 ├── settings.json          # Benutzereinstellungen (wird automatisch erstellt)
 └── zeiterfassung.json     # Gespeicherte Zeiteinträge (wird automatisch erstellt)
 ```
@@ -274,11 +277,11 @@ Wiederhole Schritte 3-4 auf jedem weiteren Gerät mit demselben Google-Konto.
 
 ### Hinweise zum Sync
 
-- **Geräte-ID** — jede Installation generiert beim ersten Start eine eindeutige UUID. Im Konflikt-Dialog siehst du, von welchem Gerät die jeweilige Version kommt.
+- **Geräte-ID** — jede Installation bekommt beim ersten Start eine eindeutige ID. Installierte Builds leiten sie aus einer stabilen System-ID des Rechners ab (gehasht, siehe `src/device_id.py`) — sie übersteht damit eine Neuinstallation der App; im Repo-/Skript-Modus bleibt es bei einer in `settings.json` gespeicherten Zufalls-UUID. Im Konflikt-Dialog siehst du, von welchem Gerät die jeweilige Version kommt.
 - **Was synchronisiert wird:** Zeiteinträge + Mail-Vorlagen-Settings (Empfänger, Name, Stundensatz, Betreff, Begrüßung, Inhalt, Grußformel). Gerätespezifisches (Autostart, Standardzeiten pro Wochentag, Update-Einstellungen/-Status) bleibt lokal.
 - **Wo die Sync-Datei liegt:** Im versteckten `appDataFolder` deines Google Drives — nicht über `drive.google.com` einsehbar, nur diese App kommt dran.
 - **Test-Modus:** Solange dein Cloud-Projekt im Test-Modus bleibt, müssen alle Nutzer (deine eigenen Geräte zählen mit deiner E-Mail) als Testnutzer eingetragen sein. Verifizierung durch Google ist für rein private Nutzung nicht nötig.
-- **Tombstones wachsen unbeschränkt** — gelöschte Einträge bleiben als Marker im Sync-File, damit Löschungen sich gegen veraltete Speicherungen anderer Geräte durchsetzen. Bei normalem Gebrauch unproblematisch über Jahre; siehe [`docs/known-limitations.md`](docs/known-limitations.md).
+- **Tombstones wachsen bei aktivem Sync** — gelöschte Einträge bleiben als Marker im Sync-File, damit Löschungen sich gegen veraltete Speicherungen anderer Geräte durchsetzen. Aufgeräumt werden sie erst durch die Aktion **„Sync-Daten kompaktieren"** (Einstellungen → Google); bei normalem Gebrauch ist das über Jahre unproblematisch. Auf Geräten, die **nie** gesynct haben, räumt die App diese Marker seit 1.19.1 beim Start automatisch weg. Details: [`docs/known-limitations.md`](docs/known-limitations.md).
 
 ## Google-Kalender für Reservierungen einrichten (optional)
 
@@ -349,7 +352,15 @@ python build.py
 | macOS | `brew install create-dmg` | `dist/Zeiterfassung-<ver>-<arch>.dmg` |
 | Linux | `apt install libfuse2` + `appimagetool` auf `$PATH` | `dist/Zeiterfassung-<ver>-<arch>.AppImage` |
 
-Fehlt das Pack-Tool, überspringt `build.py` den Pack-Schritt mit Warnung — der PyInstaller-Build läuft trotzdem durch.
+Fehlt das Pack-Tool, überspringt `build.py` den Pack-Schritt mit Warnung — der PyInstaller-Build läuft trotzdem durch. Die unverpackte Ausgabe liegt dann je nach Plattform als **Ordner** oder Einzeldatei in `dist/`:
+
+| Plattform | PyInstaller-Modus | Unverpackte Ausgabe |
+|-----------|-------------------|---------------------|
+| Windows | `--onedir` | `dist/Zeiterfassung/` (`Zeiterfassung.exe` + `_internal/`) |
+| macOS | `--onedir` | `dist/Zeiterfassung.app` |
+| Linux | `--onefile` | `dist/Zeiterfassung` (Einzeldatei) |
+
+Windows baut seit 1.19.1 `--onedir` statt `--onefile`: Onefile entpackte bei jedem Start alle DLLs frisch in einen Temp-Ordner, was gelegentlich zu „Failed to load Python DLL 'python310.dll'" führte. Der Installer liefert entsprechend den ganzen Ordner aus — der Installationspfad und die Lage der Benutzerdaten (neben der Exe) ändern sich dadurch nicht.
 
 ## Plattform-Kompatibilität
 
@@ -367,9 +378,14 @@ Die App läuft auf **Windows, macOS und Linux**. Plattformspezifische Features w
 
 ## Tests
 
+Die Tests brauchen eigene Abhängigkeiten (`pytest` & Co.) — sie stehen gepinnt in `requirements-test.txt`, nicht in `requirements.txt`:
+
 ```bash
-pytest tests/
+pip install -r requirements-test.txt
+pytest
 ```
+
+CI läuft dieselben Tests gegen Python 3.10–3.13 sowie zusätzlich auf Windows und macOS; dazu `ruff check .` (Lint) und `pyright` (Typen).
 
 ## Datenspeicherung
 

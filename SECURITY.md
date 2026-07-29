@@ -30,8 +30,9 @@ Hilfreich für eine schnelle Einschätzung:
 - Schritte zur Reproduktion oder ein Proof of Concept
 - Falls vorhanden: ein Vorschlag zur Behebung
 
-Als privates Hobby-Projekt gibt es keine garantierten Reaktionszeiten. Eine erste
-Rückmeldung erfolgt in der Regel innerhalb weniger Tage. Bitte gib uns Gelegenheit,
+Zeiterfassung ist nebenbei als maßgeschneiderte Lösung für die eigene
+Arbeitszeiterfassung entstanden — garantierte Reaktionszeiten gibt es daher
+nicht. Eine erste Rückmeldung erfolgt in der Regel innerhalb weniger Tage. Bitte gib uns Gelegenheit,
 ein Problem zu beheben, bevor du Details öffentlich machst (Coordinated Disclosure).
 
 ## Sicherheitsrelevante Hinweise zur Nutzung
