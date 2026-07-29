@@ -138,11 +138,78 @@ class GoogleTab:
         )
         sender_btn.pack(side=tk.LEFT, padx=(10, 0))
 
-        subheader(frame, "Synchronisation", row=3)
+        label(frame, "Berechtigungen:", row=3, pady=(0, 4))
+        scopes_row = tk.Frame(frame, bg=BG)
+        scopes_row.grid(row=3, column=1, padx=10, pady=(0, 4), sticky="w")
+
+        def _open_scopes():
+            from src.dialogs.scopes_dialog import open_scopes_dialog
+            open_scopes_dialog(dialog, settings, base_path)
+
+        secondary_button(
+            scopes_row, "Anzeigen", _open_scopes, padx=12, pady=2,
+        ).pack(side=tk.LEFT)
+
+        scopes_status = tk.Label(scopes_row, text="", font=FONT_SMALL, bg=BG)
+        scopes_status.pack(side=tk.LEFT, padx=(10, 0))
+
+        # Zeichen + Farbe je Zustand aus mail.scope_summary — dieselbe Sprache
+        # wie die credentials.json-Zeile darüber (✓ grün / ✗ rot).
+        scope_marks = {
+            "ok": ("✓", STATUS_OK),
+            "partial": ("○", TEXT_MUTED),
+            "core_missing": ("✗", ACCENT),
+        }
+        # Cache, damit der 500ms-Poll token.json nur bei echter Änderung liest.
+        # Annotation, weil pyright den Literal sonst als dict[str, None] festnagelt.
+        scope_cache: dict[str, object] = {"stamp": None, "granted": None}
+
+        def refresh_scopes_status():
+            """Hält den Einzeiler neben „Anzeigen" aktuell.
+
+            Hängt am selben Poll wie die credentials.json-Zeile, statt einen
+            zweiten Timer aufzumachen: so zieht der Text sowohl nach einem
+            Re-Consent (token.json ändert sich) als auch nach dem Umlegen der
+            Sync-/Kalender-Schalter (Nenner ändert sich) nach.
+            """
+            from src.mail import scope_summary
+            from src.oauth_utils import read_granted_scopes
+
+            if not scopes_status.winfo_exists():
+                return
+            token_path = os.path.join(base_path, "token.json")
+            try:
+                st = os.stat(token_path)
+                stamp = (st.st_mtime, st.st_size)
+            except OSError:
+                stamp = None
+            if stamp != scope_cache["stamp"]:
+                scope_cache["stamp"] = stamp
+                scope_cache["granted"] = (
+                    read_granted_scopes(token_path) if stamp is not None else None)
+
+            granted = scope_cache["granted"]
+            if granted is None:
+                text = ("✗ nicht angemeldet" if stamp is None
+                        else "✗ Berechtigungen nicht lesbar")
+                scopes_status.config(text=text, fg=ACCENT)
+            else:
+                summary = scope_summary(
+                    granted,
+                    settings.get("sync_enabled"),
+                    settings.get("gcal_enabled"),
+                )
+                mark, color = scope_marks[summary.status]
+                scopes_status.config(text=f"{mark} {summary.text}", fg=color)
+            dialog.after(500, refresh_scopes_status)
+
+        refresh_scopes_status()
+
+        subheader(frame, "Synchronisation", row=4)
         tk.Label(
             frame, text="Diese Schalter wirken sofort (Anmeldung im Browser).",
             font=FONT_SMALL, bg=BG, fg=TEXT_MUTED,
-        ).grid(row=4, column=0, columnspan=2, padx=10, pady=(0, 4), sticky="w")
+        ).grid(row=5, column=0, columnspan=2, padx=10, pady=(0, 4), sticky="w")
 
         var_sync = tk.BooleanVar(value=settings.get("sync_enabled"))
 
@@ -186,24 +253,24 @@ class GoogleTab:
             cursor="hand2",
             command=_on_sync_toggled,
         )
-        cb_sync.grid(row=5, column=0, columnspan=2, padx=10, pady=(4, 0), sticky="w")
+        cb_sync.grid(row=6, column=0, columnspan=2, padx=10, pady=(4, 0), sticky="w")
 
         device_id = settings.get("device_id") or "(noch nicht gesetzt)"
         device_id_short = device_id[:8] + "…" if len(device_id) > 8 else device_id
         tk.Label(
             frame, text=f"Geräte-ID: {device_id_short}", font=FONT_SMALL,
             bg=BG, fg=TEXT_MUTED,
-        ).grid(row=6, column=0, columnspan=2, padx=10, pady=(2, 0), sticky="w")
+        ).grid(row=7, column=0, columnspan=2, padx=10, pady=(2, 0), sticky="w")
 
         last = format_iso_date(settings.get("last_pull_at"), fallback="noch nie")
         tk.Label(
             frame, text=f"Letzte Synchronisation: {last}", font=FONT_SMALL,
             bg=BG, fg=TEXT_MUTED,
-        ).grid(row=7, column=0, columnspan=2, padx=10, pady=(2, 4), sticky="w")
+        ).grid(row=8, column=0, columnspan=2, padx=10, pady=(2, 4), sticky="w")
 
         # Ab hier wachsen im Google-Tab optionale Zeilen (Konflikte, Kompaktieren)
         # dynamisch — deshalb eine laufende Row-Nummer statt fixer Konstanten.
-        next_google_row = 8
+        next_google_row = 9
         unresolved = 0
         if conflicts_store is not None:
             unresolved = conflicts_store.count_unresolved()

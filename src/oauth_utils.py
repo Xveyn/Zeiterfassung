@@ -70,6 +70,37 @@ def write_token(creds, token_path):
         raise
 
 
+def read_granted_scopes(token_path):
+    """Die im `token.json` tatsächlich gewährten OAuth-Scopes.
+
+    Liefert die Liste, oder `None`, wenn die Datei fehlt, nicht lesbar ist,
+    kaputtes JSON enthält oder ein `scopes`-Feld trägt, das keine Liste ist.
+    Eine leere Liste heißt dagegen: Datei war lesbar, es sind keine Scopes
+    vermerkt. Die Unterscheidung braucht die Anzeige im Google-Tab, um
+    „noch nicht angemeldet" von „nicht lesbar" zu trennen (#120).
+
+    Konservativ wie der ganze Token-Pfad: bei Zweifeln lieber `None` als eine
+    falsche Behauptung über die gewährten Rechte.
+    """
+    try:
+        with open(token_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except (OSError, ValueError):
+        return None
+    # json.load wirft nicht ValueError für non-dict-Wurzeln — z.B. [] oder "x"
+    # sind syntaktisch gültig und zurückgegeben (plausibel bei
+    # Teilschreibvorgängen, Plattenfehlern oder manueller Bearbeitung).
+    # .get() wirft auf ihnen AttributeError; das konservativ abfangen.
+    if not isinstance(data, dict):
+        return None
+    scopes = data.get("scopes")
+    if scopes is None:
+        return []
+    if not isinstance(scopes, list):
+        return None
+    return scopes
+
+
 def discard_token_for_scope_upgrade(token_path, scopes):
     """Erzwinge einen frischen OAuth-Flow, wenn der gespeicherte Token nicht
     alle angeforderten `scopes` abdeckt (typisch nach einem Feature-Update).
@@ -82,13 +113,13 @@ def discard_token_for_scope_upgrade(token_path, scopes):
     unangetastet, statt einen womöglich gültigen Token wegzuwerfen. Spiegelt
     das frühere `except Exception: pass` in den Wrappern.
     """
-    try:
-        with open(token_path, "r", encoding="utf-8") as f:
-            granted = set(json.load(f).get("scopes") or [])
-    except (OSError, ValueError):
+    granted = read_granted_scopes(token_path)
+    if granted is None:
+        # Nicht lesbar → konservativ: Token unangetastet lassen, statt einen
+        # womöglich gültigen wegzuwerfen.
         return False
 
-    if set(scopes).issubset(granted):
+    if set(scopes).issubset(set(granted)):
         return False
 
     try:

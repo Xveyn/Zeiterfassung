@@ -72,6 +72,15 @@ from src.mail import (  # noqa: E402
     TokenAuthError,
     TokenNetworkError,
     get_scopes,
+    scope_overview,
+    scope_summary,
+    CALENDAR_EVENTS_SCOPE,
+    CALENDAR_LIST_SCOPE,
+    DRIVE_APPDATA_SCOPE,
+    GMAIL_SEND_SCOPE,
+    USERINFO_EMAIL_SCOPE,
+    _SCOPE_ORDER,
+    SCOPE_LABELS,
 )
 
 
@@ -407,3 +416,136 @@ def test_fetch_user_email_sends_token_in_post_body_not_url(tmp_path):
     assert req.get_method() == "POST"
     assert "access-token-xyz" not in req.full_url     # nicht in der URL
     assert b"access-token-xyz" in req.data            # sondern im Body
+
+
+class TestScopeOverview:
+    """#120: bewertet die im Token gewährten Scopes gegen das, was die
+    aktuellen Einstellungen brauchen."""
+
+    def _all_granted(self):
+        return [GMAIL_SEND_SCOPE, USERINFO_EMAIL_SCOPE, DRIVE_APPDATA_SCOPE,
+                CALENDAR_EVENTS_SCOPE, CALENDAR_LIST_SCOPE]
+
+    def test_everything_granted_and_enabled_is_active(self):
+        entries, extras = scope_overview(
+            self._all_granted(), sync_enabled=True, gcal_enabled=True)
+        assert [e.status for e in entries] == ["active"] * 5
+        assert extras == []
+
+    def test_keeps_a_stable_order_core_drive_calendar(self):
+        entries, _ = scope_overview(
+            self._all_granted(), sync_enabled=True, gcal_enabled=True)
+        assert [e.scope for e in entries] == [
+            GMAIL_SEND_SCOPE, USERINFO_EMAIL_SCOPE, DRIVE_APPDATA_SCOPE,
+            CALENDAR_EVENTS_SCOPE, CALENDAR_LIST_SCOPE]
+
+    def test_granted_but_feature_switched_off_is_unused(self):
+        """Wer den Sync abschaltet, behält die Drive-Berechtigung im Token —
+        genau diese Diskrepanz soll sichtbar werden."""
+        entries, _ = scope_overview(
+            self._all_granted(), sync_enabled=False, gcal_enabled=False)
+        by_scope = {e.scope: e.status for e in entries}
+        assert by_scope[DRIVE_APPDATA_SCOPE] == "unused"
+        assert by_scope[CALENDAR_EVENTS_SCOPE] == "unused"
+        assert by_scope[GMAIL_SEND_SCOPE] == "active"
+
+    def test_needed_but_not_granted_is_missing(self):
+        entries, _ = scope_overview(
+            [GMAIL_SEND_SCOPE, USERINFO_EMAIL_SCOPE],
+            sync_enabled=True, gcal_enabled=False)
+        by_scope = {e.scope: e.status for e in entries}
+        assert by_scope[DRIVE_APPDATA_SCOPE] == "missing"
+
+    def test_neither_granted_nor_needed_is_omitted(self):
+        """Kalender nie eingeschaltet, nie gewährt → taucht gar nicht auf."""
+        entries, _ = scope_overview(
+            [GMAIL_SEND_SCOPE, USERINFO_EMAIL_SCOPE],
+            sync_enabled=False, gcal_enabled=False)
+        assert [e.scope for e in entries] == [GMAIL_SEND_SCOPE, USERINFO_EMAIL_SCOPE]
+
+    def test_unknown_scopes_land_in_extras(self):
+        """Altlast einer früheren Version oder manuell erteilt: anzeigen statt
+        verschweigen — aber ohne Zustandsbewertung."""
+        entries, extras = scope_overview(
+            [GMAIL_SEND_SCOPE, USERINFO_EMAIL_SCOPE, "https://example.test/auth/foo"],
+            sync_enabled=False, gcal_enabled=False)
+        assert extras == ["https://example.test/auth/foo"]
+        assert all(e.scope != "https://example.test/auth/foo" for e in entries)
+
+    def test_every_known_scope_has_a_label(self):
+        entries, _ = scope_overview(
+            self._all_granted(), sync_enabled=True, gcal_enabled=True)
+        assert all(e.label and e.label != e.scope for e in entries)
+
+    def test_none_granted_is_treated_as_nothing_granted(self):
+        """Defensiv: der Aufrufer fängt None ab, aber die Funktion darf daran
+        nicht scheitern."""
+        entries, extras = scope_overview(None, sync_enabled=False, gcal_enabled=False)
+        assert [e.status for e in entries] == ["missing", "missing"]
+        assert extras == []
+
+    def test_scope_order_covers_everything_get_scopes_can_request(self):
+        """Ein neuer Scope in get_scopes, der in _SCOPE_ORDER fehlt, würde in
+        der Übersicht unsichtbar — gerade im wichtigsten Fall „gebraucht, aber
+        nicht gewährt"."""
+        assert set(get_scopes(True, True)) <= set(_SCOPE_ORDER)
+
+    def test_every_ordered_scope_has_a_label(self):
+        """Fehlt ein Label, wirft scope_overview einen KeyError und der Dialog
+        geht gar nicht erst auf."""
+        assert set(_SCOPE_ORDER) == set(SCOPE_LABELS)
+
+
+class TestScopeSummary:
+    """Kurzfassung fürs Google-Tab: „n von m Berechtigungen" plus ein Zustand,
+    den der Tab in ✓/○/✗ übersetzt. Gezählt werden nur die aktuell GEBRAUCHTEN
+    Scopes — gewährte, aber ungenutzte gehören nicht in den Nenner."""
+
+    CORE = [GMAIL_SEND_SCOPE, USERINFO_EMAIL_SCOPE]
+    ALL = CORE + [DRIVE_APPDATA_SCOPE, CALENDAR_EVENTS_SCOPE, CALENDAR_LIST_SCOPE]
+
+    def test_all_needed_scopes_granted_is_ok(self):
+        summary = scope_summary(self.ALL, sync_enabled=True, gcal_enabled=True)
+        assert summary.text == "5 von 5 Berechtigungen"
+        assert summary.status == "ok"
+
+    def test_only_core_needed_and_granted_is_ok(self):
+        summary = scope_summary(self.CORE, sync_enabled=False, gcal_enabled=False)
+        assert summary.text == "2 von 2 Berechtigungen"
+        assert summary.status == "ok"
+
+    def test_unused_scopes_do_not_count_in_the_denominator(self):
+        """Sync aus, Drive-Scope liegt noch im Token: er ist weder gebraucht
+        noch fehlend — der Nenner bleibt bei den zwei Kern-Scopes."""
+        summary = scope_summary(self.ALL, sync_enabled=False, gcal_enabled=False)
+        assert summary.text == "2 von 2 Berechtigungen"
+        assert summary.status == "ok"
+
+    def test_missing_optional_scope_is_partial(self):
+        summary = scope_summary(self.CORE, sync_enabled=True, gcal_enabled=False)
+        assert summary.text == "2 von 3 Berechtigungen"
+        assert summary.status == "partial"
+
+    def test_missing_core_scope_outranks_a_complete_optional_set(self):
+        """Ohne gmail.send ist der Kern der App kaputt — das schlägt jede
+        vollständige Kür durch und muss als Fehler erscheinen, nicht als
+        „fast vollständig"."""
+        granted = [USERINFO_EMAIL_SCOPE, DRIVE_APPDATA_SCOPE]
+        summary = scope_summary(granted, sync_enabled=True, gcal_enabled=False)
+        assert summary.text == "2 von 3 Berechtigungen"
+        assert summary.status == "core_missing"
+
+    def test_nothing_granted_is_core_missing(self):
+        summary = scope_summary([], sync_enabled=False, gcal_enabled=False)
+        assert summary.text == "0 von 2 Berechtigungen"
+        assert summary.status == "core_missing"
+
+    def test_none_granted_behaves_like_nothing_granted(self):
+        summary = scope_summary(None, sync_enabled=False, gcal_enabled=False)
+        assert summary.status == "core_missing"
+
+    def test_unknown_extra_scopes_are_not_counted(self):
+        summary = scope_summary(self.CORE + ["https://example.test/auth/foo"],
+                                sync_enabled=False, gcal_enabled=False)
+        assert summary.text == "2 von 2 Berechtigungen"
+        assert summary.status == "ok"

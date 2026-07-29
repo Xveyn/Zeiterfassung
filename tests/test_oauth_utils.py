@@ -12,7 +12,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from src.oauth_utils import write_token, discard_token_for_scope_upgrade
+from src.oauth_utils import write_token, discard_token_for_scope_upgrade, read_granted_scopes
 
 
 def _windows_env(monkeypatch, events, *, run=None):
@@ -218,3 +218,68 @@ def test_discard_treats_missing_scopes_key_as_no_coverage(tmp_path):
 
     assert discard_token_for_scope_upgrade(path, ["a"]) is True
     assert not os.path.exists(path)
+
+
+def test_discard_keeps_token_when_scopes_field_is_not_a_list(tmp_path):
+    """Ein `scopes`-Feld, das keine Liste ist, gilt als unbrauchbar (nicht als
+    „keine Scopes"): read_granted_scopes liefert None, und konservativ bleibt
+    der Token liegen, statt einen womöglich gültigen wegzuwerfen. Vor der
+    Umstellung auf read_granted_scopes wurde er hier gelöscht — die Änderung
+    ist beabsichtigt und wird hier festgehalten."""
+    path = str(tmp_path / "token.json")
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump({"token": "t", "scopes": "gmail.send"}, f)
+
+    assert discard_token_for_scope_upgrade(path, ["gmail.send"]) is False
+    assert os.path.exists(path)
+
+
+def test_read_granted_scopes_returns_the_list(tmp_path):
+    path = str(tmp_path / "token.json")
+    _write_token_file(path, ["a", "b"])
+
+    assert read_granted_scopes(path) == ["a", "b"]
+
+
+def test_read_granted_scopes_returns_none_for_missing_file(tmp_path):
+    assert read_granted_scopes(str(tmp_path / "fehlt.json")) is None
+
+
+def test_read_granted_scopes_returns_none_for_broken_json(tmp_path):
+    path = str(tmp_path / "token.json")
+    with open(path, "w") as f:
+        f.write("not json")
+
+    assert read_granted_scopes(path) is None
+
+
+def test_read_granted_scopes_returns_empty_list_when_key_missing(tmp_path):
+    """Lesbare Datei ohne scopes-Key: leere Liste, NICHT None — der Aufrufer
+    unterscheidet „nichts gewährt" von „nicht lesbar"."""
+    path = str(tmp_path / "token.json")
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump({"token": "t"}, f)
+
+    assert read_granted_scopes(path) == []
+
+
+def test_read_granted_scopes_returns_none_for_non_list_scopes(tmp_path):
+    """Ein scopes-Feld, das keine Liste ist, ist unbrauchbar — nicht als
+    „keine Scopes" durchwinken."""
+    path = str(tmp_path / "token.json")
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump({"token": "t", "scopes": "gmail.send"}, f)
+
+    assert read_granted_scopes(path) is None
+
+
+def test_read_granted_scopes_returns_none_for_non_dict_root(tmp_path):
+    """Syntaktisch gültiges JSON mit Nicht-Objekt-Wurzel (z.B. [] oder "x" oder
+    123, plausibel bei Teilschreibvorgängen, Plattenfehlern oder manueller
+    Bearbeitung) würde einen AttributeError werfen bei .get(). Die Funktion
+    muss auf dict prüfen und konservativ None liefern."""
+    path = str(tmp_path / "token.json")
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump([], f)
+
+    assert read_granted_scopes(path) is None
