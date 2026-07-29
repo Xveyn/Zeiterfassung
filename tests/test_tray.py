@@ -4,18 +4,20 @@ import pytest
 from src import tray
 
 
-@pytest.mark.parametrize("system,optin,expected", [
-    ("Windows", None, True),
-    ("Linux", None, False),
-    ("Darwin", None, False),   # dormant-Default
-    ("Darwin", "1", True),     # opt-in für den Mac-Tester
+@pytest.mark.parametrize("system,mac_optin,linux_optin,expected", [
+    ("Windows", None, None, True),
+    ("Linux", None, None, False),    # dormant-Default
+    ("Linux", None, "1", True),      # opt-in für den Plasma-Tester
+    ("Darwin", None, None, False),   # dormant-Default
+    ("Darwin", "1", None, True),     # opt-in für den Mac-Tester
 ])
-def test_is_supported_staging(system, optin, expected, monkeypatch):
+def test_is_supported_staging(system, mac_optin, linux_optin, expected, monkeypatch):
     monkeypatch.setattr("src.tray.platform.system", lambda: system)
-    if optin is None:
-        monkeypatch.delenv("ZEIT_MACOS_TRAY", raising=False)
-    else:
-        monkeypatch.setenv("ZEIT_MACOS_TRAY", optin)
+    for var, value in (("ZEIT_MACOS_TRAY", mac_optin), ("ZEIT_LINUX_TRAY", linux_optin)):
+        if value is None:
+            monkeypatch.delenv(var, raising=False)
+        else:
+            monkeypatch.setenv(var, value)
     assert tray.is_supported() is expected
 
 
@@ -55,10 +57,12 @@ def test_build_menu_model_no_actions_single_separator():
 
 def test_select_backend_dispatch():
     from src.tray import _select_backend, _PystrayBackend
+    from src.tray_linux import LinuxTrayBackend
     from src.tray_mac import MacTrayBackend
     assert _select_backend("Windows") is _PystrayBackend
     assert _select_backend("Darwin") is MacTrayBackend
-    assert _select_backend("Linux") is None
+    assert _select_backend("Linux") is LinuxTrayBackend
+    assert _select_backend("Haiku") is None
 
 
 def test_facade_instantiates_and_delegates(monkeypatch):

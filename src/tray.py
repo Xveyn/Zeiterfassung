@@ -1,12 +1,14 @@
 # src/tray.py
-"""System-Tray-Icon — Plattform-Fassade über zwei Backends.
+"""System-Tray-Icon — Plattform-Fassade über drei Backends.
 
 `TrayIcon` wählt per platform.system(): Windows → `_PystrayBackend` (pystray im
 Daemon-Thread, UI-Aktionen via `root.after(0, …)` auf den Tk-Thread). macOS →
 `MacTrayBackend` (src/tray_mac.py): natives NSStatusItem SYNCHRON auf dem
-Main-Thread, KEIN Thread, keine zweite NSApplication (Fix #88). macOS ist bis zum
-manuellen Mac-Gate dormant (Opt-in `ZEIT_MACOS_TRAY=1`, s. is_supported). Linux
-hat kein Tray. `build_menu_model` ist die backend-agnostische, testbare Naht.
+Main-Thread, KEIN Thread, keine zweite NSApplication (Fix #88). Linux →
+`LinuxTrayBackend` (src/tray_linux.py): StatusNotifierItem über D-Bus, ohne GTK
+oder GObject-Introspection (#42). macOS und Linux sind bis zu ihrem manuellen
+Plattform-Gate dormant (Opt-in `ZEIT_MACOS_TRAY=1` bzw. `ZEIT_LINUX_TRAY=1`,
+s. is_supported). `build_menu_model` ist die backend-agnostische, testbare Naht.
 """
 
 import logging
@@ -22,11 +24,18 @@ def _macos_tray_opt_in():
     return os.environ.get("ZEIT_MACOS_TRAY") == "1"
 
 
+def _linux_tray_opt_in():
+    """Linux-Tray ist bis zum bestandenen Plasma-Gate dormant: nur aktiv, wenn
+    der Tester ZEIT_LINUX_TRAY=1 setzt (#42, analog macOS). Der Default-an-Flip
+    ersetzt diese Prüfung später durch „läuft ein StatusNotifierWatcher?"."""
+    return os.environ.get("ZEIT_LINUX_TRAY") == "1"
+
+
 def is_supported():
     """Kann auf diesem System ein Tray-Icon gezeigt werden?
 
-    Windows → True. Linux → False (uneinheitlich). macOS → nur mit Opt-in
-    (dormant-Default, s. _macos_tray_opt_in). Aufrufer kann unabhängig davon
+    Windows → True. macOS und Linux → nur mit Opt-in (dormant-Default, s.
+    _macos_tray_opt_in / _linux_tray_opt_in). Aufrufer kann unabhängig davon
     `try/except` machen, falls das Backend zur Laufzeit doch fehlschlägt.
     """
     system = platform.system()
@@ -34,6 +43,8 @@ def is_supported():
         return True
     if system == "Darwin":
         return _macos_tray_opt_in()
+    if system == "Linux":
+        return _linux_tray_opt_in()
     return False
 
 
@@ -62,13 +73,16 @@ def build_menu_model(on_show, on_quit, actions):
 
 
 def _select_backend(system):
-    """Backend-Klasse nach Plattform. macOS lazy, damit PyObjC nicht in den
-    Linux/Windows-Importpfad gerät."""
+    """Backend-Klasse nach Plattform. macOS und Linux lazy, damit PyObjC bzw.
+    dbus_fast nicht in den jeweils fremden Importpfad geraten."""
     if system == "Windows":
         return _PystrayBackend
     if system == "Darwin":
         from src.tray_mac import MacTrayBackend
         return MacTrayBackend
+    if system == "Linux":
+        from src.tray_linux import LinuxTrayBackend
+        return LinuxTrayBackend
     return None
 
 
@@ -98,7 +112,9 @@ class _PystrayBackend:
     dagegen nur EINMAL beim Tray-Start — dort ist `visible` ein Snapshot vom
     Start-Zeitpunkt. Für uns unkritisch: Bei verstecktem Fenster sind die
     Einstellungen nicht erreichbar, und das Icon wird ohnehin neu gebaut, wenn
-    der Minimieren-Schalter umgelegt wird. Linux hat kein Tray (is_supported()).
+    der Minimieren-Schalter umgelegt wird. Das Linux-Backend wertet `visible`
+    wie Windows LIVE aus (dbusmenu `AboutToShow` vor jedem Öffnen, s.
+    tray_linux.MenuState.refresh).
     """
 
     def __init__(self, base_path, on_show, on_quit, actions=None):
