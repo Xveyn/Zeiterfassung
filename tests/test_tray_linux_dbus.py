@@ -392,6 +392,32 @@ def test_item_reregisters_after_the_watcher_restarts(desktop):
         backend.stop()
 
 
+def test_reregistration_does_not_read_the_backend_attribute(desktop):
+    """Der Registrierungspfad muss die lokale `name`-Kopie benutzen, nicht
+    `self._name` — dieselbe Regel, die für den Abbau schon gilt
+    (Review-Finding 2). `stop()` setzt `self._name` nach einem Join-Timeout auf
+    None, während der Loop-Thread noch läuft; trifft das eine gerade laufende
+    Neuanmeldung, ginge sonst `body=[None]` bei Signatur "s" über den Draht
+    statt des Busnamens.
+
+    Der Test stellt genau diesen Zustand her: Attribut auf None, dann
+    plasmashell-Neustart simulieren. Die Anmeldung muss trotzdem den richtigen
+    Namen tragen. Läse der Pfad `self._name`, bräche er hier.
+    """
+    backend = _backend([])
+    backend.start()
+    try:
+        expected = desktop.watcher.registered[0]
+        backend._name = None            # simuliert das Nullen durch stop()
+        desktop.restart_watcher()
+        assert _wait_for(lambda: len(desktop.watcher.registered) == 2)
+        assert desktop.watcher.registered[1] == expected
+    finally:
+        # Räumt ebenfalls über die lokale Kopie ab — der Name muss trotz
+        # `_name is None` freigegeben werden.
+        backend.stop()
+
+
 def test_stop_releases_the_bus_name(desktop):
     backend = _backend([])
     backend.start()

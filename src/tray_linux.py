@@ -473,10 +473,16 @@ class LinuxTrayBackend:
             bus.export(MENU_PATH, menu)
 
             name = f"org.kde.StatusNotifierItem-{os.getpid()}-1"
+            # `self._name` ist reine Buchhaltung (Debugging/Introspektion) —
+            # GELESEN wird im ganzen Ablauf nur die lokale Kopie `name`. Grund
+            # ist derselbe wie beim Abbau unten (Review-Finding 2): stop() darf
+            # `self._name` nach einem Join-Timeout jederzeit auf None setzen,
+            # während dieser Coroutine-Rumpf noch läuft. Wer hier einen neuen
+            # Schritt einhängt, reicht `name` durch, statt `self._name` zu lesen.
             self._name = name
-            await self._own_name(bus)
-            await self._register(bus)
-            await self._watch_watcher(bus)
+            await self._own_name(bus, name)
+            await self._register(bus, name)
+            await self._watch_watcher(bus, name)
 
             ready.set_result(None)
             await self._stopping.wait()
@@ -502,7 +508,7 @@ class LinuxTrayBackend:
                     logger.exception("Busname konnte beim Abbau nicht freigegeben werden")
             bus.disconnect()
 
-    async def _own_name(self, bus):
+    async def _own_name(self, bus, name):
         """Busnamen belegen — und prüfen, dass er uns wirklich gehört.
 
         Ohne die Prüfung würden wir bei belegtem Namen (zweite Instanz, deren
@@ -512,24 +518,24 @@ class LinuxTrayBackend:
         """
         from dbus_fast import RequestNameReply  # pyright: ignore[reportMissingImports]  # dbus-fast: nur auf Linux installiert
 
-        reply = await bus.request_name(self._name)
+        reply = await bus.request_name(name)
         if reply is not RequestNameReply.PRIMARY_OWNER:
             raise RuntimeError(
-                f"Busname {self._name} ist bereits belegt (Antwort: {reply}) — "
+                f"Busname {name} ist bereits belegt (Antwort: {reply}) — "
                 "läuft die Zeiterfassung doppelt?")
 
-    async def _register(self, bus):
+    async def _register(self, bus, name):
         from dbus_fast import Message, MessageType  # pyright: ignore[reportMissingImports]  # dbus-fast: nur auf Linux installiert
 
         reply = await bus.call(Message(
             destination=WATCHER_NAME, path=WATCHER_PATH, interface=WATCHER_NAME,
-            member="RegisterStatusNotifierItem", signature="s", body=[self._name],
+            member="RegisterStatusNotifierItem", signature="s", body=[name],
         ))
         if reply is None or reply.message_type is MessageType.ERROR:
             detail = reply.body[0] if reply is not None and reply.body else "keine Antwort"
             raise RuntimeError(f"StatusNotifierWatcher lehnte die Registrierung ab: {detail}")
 
-    async def _watch_watcher(self, bus):
+    async def _watch_watcher(self, bus, name):
         """Nach einem plasmashell-Neustart neu anmelden — sonst ist das Icon weg
         und niemand kann sich erklären, warum."""
         introspection = await bus.introspect("org.freedesktop.DBus", "/org/freedesktop/DBus")
@@ -542,15 +548,17 @@ class LinuxTrayBackend:
         # sonst in einen AttributeError im Loop-Callback.
         loop = asyncio.get_running_loop()
 
-        def on_name_owner_changed(name, old_owner, new_owner):
-            if name == WATCHER_NAME and new_owner:
-                loop.create_task(self._reregister(bus))
+        # Der Signal-Parameter heißt bewusst `changed` statt `name`: `name` ist
+        # hier bereits UNSER Busname, den die Neuanmeldung braucht.
+        def on_name_owner_changed(changed, old_owner, new_owner):
+            if changed == WATCHER_NAME and new_owner:
+                loop.create_task(self._reregister(bus, name))
 
         dbus_iface.on_name_owner_changed(on_name_owner_changed)
 
-    async def _reregister(self, bus):
+    async def _reregister(self, bus, name):
         try:
-            await self._register(bus)
+            await self._register(bus, name)
         except Exception:
             logger.exception("Erneute Tray-Anmeldung nach Watcher-Neustart fehlgeschlagen")
 
@@ -566,17 +574,22 @@ class LinuxTrayBackend:
         if loop is None or bus is None:
             return
         try:
-            future = asyncio.run_coroutine_threadsafe(self._notify(message, title), loop)
+            # `bus` durchreichen statt `self._bus` in der Coroutine zu lesen:
+            # stop() nullt das Attribut, und zwischen der Prüfung oben und dem
+            # Lauf der Coroutine liegt ein Thread-Wechsel (gleiche Regel wie im
+            # Registrierungspfad).
+            future = asyncio.run_coroutine_threadsafe(
+                self._notify(bus, message, title), loop)
         except Exception:
             logger.exception("Linux-Tray-Notify konnte nicht eingereiht werden")
             return
         future.add_done_callback(_log_notify_failure)
 
-    async def _notify(self, message, title):
+    async def _notify(self, bus, message, title):
         from dbus_fast import Message  # pyright: ignore[reportMissingImports]  # dbus-fast: nur auf Linux installiert
 
         icon = os.path.join(self.base_path, "assets", "margenheld-icon.png")
-        await self._bus.call(Message(
+        await bus.call(Message(
             destination=NOTIFY_NAME, path=NOTIFY_PATH, interface=NOTIFY_NAME,
             member="Notify", signature="susssasa{sv}i",
             body=[

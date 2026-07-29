@@ -269,8 +269,9 @@ class _PystrayBackend:
 
 class TrayIcon:
     """Plattform-Fassade: wählt per platform.system() das Backend
-    (_PystrayBackend auf Windows, MacTrayBackend auf macOS) und delegiert.
-    Öffentliche API (start/stop/notify) unverändert."""
+    (_PystrayBackend auf Windows, MacTrayBackend auf macOS, LinuxTrayBackend
+    auf Linux — s. _select_backend) und delegiert. Öffentliche API
+    (start/stop/notify) unverändert."""
 
     def __init__(self, base_path, on_show, on_quit, actions=None):
         self.base_path = base_path

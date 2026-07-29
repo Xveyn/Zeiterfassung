@@ -437,10 +437,17 @@ class App:
     def _apply_tray_setting(self):
         """Startet oder stoppt das Tray-Icon abhängig vom Settings-Toggle.
 
-        Auf Linux unterstützen wir Tray bewusst nicht — pystray-Backend ist
-        je nach Desktop-Umgebung unzuverlässig. Wenn das Setup auf Win/macOS
-        fehlschlägt (z.B. fehlende Lib im Frozen-Build), wird ein Toast
-        gezeigt und das Feature deaktiviert.
+        Ob die Plattform überhaupt eines tragen kann, entscheidet allein
+        `tray.is_supported()`: Windows ja, macOS und Linux nur mit gesetzter
+        Opt-in-Env-Var, bis ihr jeweiliges manuelles Plattform-Gate grün ist
+        (#88 / #42). Sagt es nein, werden die drei Tray-abhängigen Optionen
+        mit einem Hinweis wieder abgeschaltet — das Tray ist nicht nur
+        Minimize-Ziel, sondern auch der einzige Toast-Kanal.
+
+        Scheitert der Start trotz `is_supported()` (fehlende Lib im
+        Frozen-Build, kein Session-Bus, kein StatusNotifierWatcher), wirft das
+        Backend synchron; das wird hier gefangen, angezeigt und führt zur
+        gleichen Abschaltung.
         """
         from src.tray import TrayIcon, is_supported
 
@@ -492,8 +499,9 @@ class App:
         """Die Quick-Actions des Tray-Menüs als (label, callback, visible).
 
         Eigene Methode, damit das Menü ohne Tk/pystray testbar ist — gebaut
-        wird die Liste in `_apply_tray_setting`, gerendert von beiden Backends
-        (pystray auf Windows, NSStatusItem auf macOS über `build_menu_model`).
+        wird die Liste in `_apply_tray_setting`, gerendert von allen drei
+        Backends (pystray auf Windows; NSStatusItem auf macOS und dbusmenu auf
+        Linux über `build_menu_model`).
         Die Callbacks laufen im Backend-Thread und marshallen deshalb selbst
         per `root.after(0, …)` auf den Tk-Thread.
         """
