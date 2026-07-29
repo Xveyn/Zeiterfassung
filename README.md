@@ -119,6 +119,13 @@ chmod +x Zeiterfassung-<ver>-x86_64.AppImage
 
 Voraussetzung: `libfuse2` installiert (`sudo apt install libfuse2` unter Debian/Ubuntu).
 
+Beim ersten Start legt die App einen Eintrag im Anwendungsmenü an
+(`~/.local/share/applications/Zeiterfassung.desktop`) und hält ihn danach
+automatisch aktuell. Dasselbe gilt für den Autostart, falls aktiviert: beide
+zeigen nach einem Update von selbst auf die neue AppImage — vorausgesetzt, du
+startest die neue Datei einmal. Ein Integrationswerkzeug wie `appimaged` wird
+nicht gebraucht.
+
 ### Aus dem Source-Code
 
 #### Voraussetzungen

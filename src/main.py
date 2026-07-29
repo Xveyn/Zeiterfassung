@@ -23,10 +23,12 @@ import uuid
 os.environ.setdefault("OAUTHLIB_RELAX_TOKEN_SCOPE", "1")
 
 from src import sync_history
+from src.autostart import refresh_linux_target
 from src.conflicts_store import ConflictsStore
+from src.desktop_entry import ensure_icon, write_menu_entry
 from src.device_id import derive_device_id
 from src.logging_setup import setup_logging
-from src.paths import get_base_path
+from src.paths import get_base_path, get_resource_path
 from src.reservations import ReservationStore
 from src.settings import Settings, clamp_ui_scale
 from src.storage import Storage
@@ -477,6 +479,35 @@ def _apply_ui_scaling(root, factor):
     init_fonts(root, clamp_ui_scale(factor))
 
 
+def _refresh_linux_integration(base):
+    """Linux-Desktop-Integration beim Start nachziehen (best-effort).
+
+    Zwei Selbstheilungen mit derselben Ursache: der Updater ersetzt die
+    AppImage nicht selbst, und ihr Dateiname trägt die Version. Beide Ziele
+    zeigen sonst nach einem Update auf die alte Datei.
+
+    Fehler sind hier NIE fatal — ein nicht geschriebener Menüeintrag ist der
+    Status quo, ein verhinderter Start wäre eine Regression (Muster wie beim
+    Logging-Setup in main()).
+    """
+    try:
+        refresh_linux_target(base)
+    except Exception:
+        logging.getLogger(__name__).warning(
+            "Autostart-Pfad konnte nicht nachgezogen werden", exc_info=True)
+
+    if platform.system() != "Linux" or not getattr(sys, "frozen", False):
+        return
+    appimage = os.environ.get("APPIMAGE")
+    if not appimage:
+        return
+    try:
+        write_menu_entry(appimage, ensure_icon(get_resource_path(), base))
+    except Exception:
+        logging.getLogger(__name__).warning(
+            "Menüeintrag konnte nicht geschrieben werden", exc_info=True)
+
+
 def main():
     base = get_base_path()
     try:
@@ -496,6 +527,8 @@ def main():
     except Exception:
         logging.getLogger(__name__).warning(
             "Autostart-Migration fehlgeschlagen", exc_info=True)
+
+    _refresh_linux_integration(base)
 
     guard = None
     try:

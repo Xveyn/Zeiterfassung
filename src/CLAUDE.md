@@ -251,6 +251,14 @@ muss sie deterministisch **und** über alle Geräte gleich halten.
   (GitHub-Releases, stdlib-only, Frequenz über `update_check_frequency`, Pre-Release-Opt-in über `prerelease_updates_enabled`), `changelog.py`
   (lädt/parst den Changelog-Abschnitt einer Release-Version vom GitHub-Tag), `platform_open.py`, `logging_setup.py`,
   `version.py` (einzige Versions-Quelle).
+  `get_resource_path()` ist das Gegenstück: gebündelte Programmdaten
+  (`sys._MEIPASS`), nicht Nutzerdaten. Icon-/Asset-Zugriffe gehen über diese
+  Funktion — über `get_base_path()` fanden sie auf Linux und macOS nichts.
+- `src/desktop_entry.py` — Freedesktop-`.desktop`-Dateien: Menüeintrag
+  (`~/.local/share/applications/`) und das gemeinsame `exec_line`-Quoting, das
+  `autostart.py` mitbenutzt. Besitzer des Formats (Audit N17). `ensure_icon`
+  legt eine persistente Icon-Kopie im Datenverzeichnis ab, weil `Icon=` den
+  AppImage-Mount überleben muss.
 - `autostart.py` — plattformabhängig (Windows-Registry HKCU Run / macOS-LaunchAgent / Linux-.desktop).
   Windows-Backend nutzt den **Registry-Wert `Zeiterfassung`** (Wertname = `installer.iss` → strukturell
   ein Eintrag); `import winreg` lazy (CI-Ubuntu). `is_autostart_enabled()` liest den echten Zustand

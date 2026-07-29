@@ -138,3 +138,16 @@ Dialog-Verdrahtung umbaut, verifiziert sie von Hand.
 engen `xvfb`-Ausschnitt vor. Beide sind mit dieser Entscheidung geschlossen —
 sie ist damit getroffen, nicht vertagt. Ältere Specs, die „Audit M16 offen"
 schreiben, sind an dieser Stelle überholt.
+
+## Linux: Reste nach dem Löschen der AppImage
+
+Löscht der Nutzer die AppImage, bleiben Menüeintrag und Autostart-Datei
+zurück und zeigen ins Leere. Die App kann nicht aufräumen, wenn sie nicht
+mehr startet, und das AppImage-Format kennt keinen Deinstallations-Hook.
+Gilt gleichermaßen für die zurückbleibenden Nutzerdaten inkl. `token.json` —
+das ist plattformübergreifend erfasst in
+[#183](https://github.com/margenheld/Zeiterfassung/issues/183).
+
+Der Autostart heilt außerdem erst, **nachdem** die neue AppImage einmal
+gestartet wurde. Wer die neue Version herunterlädt und nie öffnet, startet
+weiter die alte — ohne Hinweis.
