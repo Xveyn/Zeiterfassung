@@ -387,6 +387,7 @@ Die App läuft auf **Windows, macOS und Linux**. Plattformspezifische Features w
 | Taskbar-Icon (AppUserModelID) | ✓ | — (nicht nötig) | — (nicht nötig) |
 | Window-Icon | ✓ (`.ico`) | ✓ (`.png` Fallback) | ✓ (`.png` Fallback) |
 | Autostart bei Anmeldung | ✓ (Registry HKCU Run) | ✓ (LaunchAgent plist) | ✓ (`.desktop`-Datei) |
+| Eintrag im Anwendungsmenü | ✓ (Startmenü, vom Setup) | ✓ (`Zeiterfassung.app` in `/Applications`) | ✓ (`.desktop` in `~/.local/share/applications/`, von der App beim Start geschrieben) |
 | Infobereich-Icon (Tray) | ✓ (pystray) | ○ (NSStatusItem, Opt-in `ZEIT_MACOS_TRAY=1`) | ○ (StatusNotifierItem, Opt-in `ZEIT_LINUX_TRAY=1`) |
 | Standalone-Binary (PyInstaller) | ✓ (`.exe`) | ✓ (`.app` Bundle) | ✓ (AppImage) |
 
