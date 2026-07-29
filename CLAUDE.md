@@ -372,6 +372,22 @@ Die Test-Deps sind **exakt gepinnt** (Audit N25) — beim Bump gegen Python 3.10
 
 Lokal: `pytest` aus dem Repo-Root (Coverage: `pytest --cov=src --cov-report=term-missing`). Alle Tests müssen vor dem PR-Merge grün sein.
 
+### Getestet wird Logik, nicht UI (entschiedene Scope-Grenze)
+
+Tk-gebundener Code — Dialog-Aufbau, Grid-Rendering, Event-Bindings — wird
+**nicht** automatisiert getestet, auch nicht per `xvfb`. Die Gegenmaßnahme ist
+nicht der UI-Test, sondern der **Zuschnitt**: Verhalten wird konsequent Tk-frei
+in pure Module gezogen (`time_utils`, `sync`, `workweek`, `weekly_limit`,
+`pause_requirement`, `reminders`, `send_reminder`, `*_task`-Kerne der Dialoge)
+und dort getestet. Wer ein Feature baut, dessen Logik nur im Widget lebt, hat
+sie am falschen Ort — nicht einen fehlenden UI-Test.
+
+Das ist eine **getroffene Entscheidung**, kein Rückstand: Audit-Finding M16
+(#131) und dessen Verfeinerung #148 sind mit genau dieser Begründung
+geschlossen. Was das kostet und was stattdessen greift, steht in
+[`docs/known-limitations.md`](docs/known-limitations.md). Neue Specs müssen M16
+nicht mehr als „offen" führen — der Verweis lautet auf diese Grenze.
+
 ## Struktur
 
 > Detaillierte Architektur-Referenz (Schichten, App-Komponenten, Verträge,

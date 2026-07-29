@@ -2,7 +2,7 @@
 
 **Status:** Spec
 **Datum:** 2026-05-18
-**Verwandt:** [planned-features.md](../../../planned-features.md) (Abschnitt „Arbeitszeiten an andere Mail teilen + importieren"), [2026-05-14-multi-device-sync-design.md](2026-05-14-multi-device-sync-design.md)
+**Verwandt:** [2026-05-14-multi-device-sync-design.md](2026-05-14-multi-device-sync-design.md) (die ursprüngliche Ideenskizze stand in `planned-features.md`, die inzwischen entfernt wurde — Ideen liegen jetzt im Issue-Tracker)
 
 ## Problem
 
@@ -16,7 +16,7 @@ User möchten ihre Zeiterfassungs-Einträge an eine zweite Person (Lebenspartner
 - Defensive Validierung des Import-Files — defekte oder fremde Files dürfen den lokalen Bestand nicht beschädigen.
 
 **Out of scope (bewusst):**
-- Zeitraum-Filter beim Export (MVP: immer „alles"; Filter ist in planned-features.md als „Rest später" markiert). Empfänger kann beim Import filtern — das deckt die meisten Anwendungsfälle ab.
+- Zeitraum-Filter beim Export (MVP: immer „alles"; als späterer Wunsch festgehalten in #179). Empfänger kann beim Import filtern — das deckt die meisten Anwendungsfälle ab.
 - Settings-Übertragung — nur Entries werden geteilt.
 - Verschlüsselung/Signing des Anhangs (Vertrauen in Mail-Transport-TLS).
 - Automatischer Import beim Mail-Empfang.
