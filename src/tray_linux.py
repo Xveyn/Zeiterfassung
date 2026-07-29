@@ -19,10 +19,18 @@ Spec: docs/superpowers/specs/2026-07-29-linux-sni-tray-design.md
 import logging
 import os
 from collections import namedtuple
+from typing import Annotated
 
 from src.tray import build_menu_model  # noqa: F401  (ab Task 5 genutzt)
 
 logger = logging.getLogger(__name__)
+
+ITEM_PATH = "/StatusNotifierItem"
+MENU_PATH = "/MenuBar"
+WATCHER_NAME = "org.kde.StatusNotifierWatcher"
+WATCHER_PATH = "/StatusNotifierWatcher"
+NOTIFY_NAME = "org.freedesktop.Notifications"
+NOTIFY_PATH = "/org/freedesktop/Notifications"
 
 # dbusmenu-Property → D-Bus-Typ. Die pure Schicht liefert nackte Python-Werte,
 # der D-Bus-Adapter verpackt sie damit in Variants (eine Quelle für beide).
@@ -165,3 +173,200 @@ def icon_pixmaps(base_path, sizes=(32, 64, 128)):
             scaled = rgba.resize((size, size))
             pixmaps.append((size, size, argb32_from_rgba(scaled.tobytes())))
     return pixmaps
+
+
+def _safe(fn):
+    """0-arg-Callback aufrufen, ohne dass eine Exception in den D-Bus-Loop
+    zurückläuft (ein Wurf dort würde die Loop beenden — Icon stumm)."""
+    try:
+        fn()
+    except Exception:
+        logger.exception("Linux-Tray-Callback-Fehler (geschluckt)")
+
+
+def _make_interfaces(state, on_activate, pixmaps):
+    """Baut die beiden D-Bus-Objekte: SNI-Item und dbusmenu.
+
+    `dbus_fast` wird hier LAZY importiert und die Klassen werden IN der Funktion
+    definiert (sie erben von ServiceInterface) — dasselbe Muster wie das
+    NSObject-Delegate in `tray_mac.py`. So bleibt die Modulebene stdlib-only.
+
+    Die Methodennamen sind exakt die D-Bus-Member-Namen: dbus_fast leitet den
+    Namen 1:1 vom Funktionsnamen ab.
+    """
+    from dbus_fast import PropertyAccess, Variant  # pyright: ignore[reportMissingImports]  # dbus-fast: nur auf Linux installiert
+    from dbus_fast.annotations import (  # pyright: ignore[reportMissingImports]  # dbus-fast: nur auf Linux installiert
+        DBusBool, DBusInt32, DBusObjectPath, DBusSignature, DBusStr, DBusUInt32, DBusVariant,
+    )
+    from dbus_fast.service import (  # pyright: ignore[reportMissingImports]  # dbus-fast: nur auf Linux installiert
+        ServiceInterface, dbus_method, dbus_property, dbus_signal,
+    )
+
+    # Zusammengesetzte Signaturen stehen INLINE (siehe Annotations-Regel in den
+    # Global Constraints — ein selbstgebauter Alias wäre für pyright eine
+    # Variable im Typausdruck und damit ein Fehler). Der Python-Typ ist bewusst
+    # das lose `list`: dbus_fast liest ohnehin nur die DBusSignature, und
+    # Structs wie Multi-Out-Args sind auf dieser Ebene Listen.
+    def _variants(props):
+        return {key: Variant(PROP_SIGNATURES[key], value) for key, value in props.items()}
+
+    class _Item(ServiceInterface):
+        """org.kde.StatusNotifierItem — Icon und Klick-Verhalten."""
+
+        def __init__(self):
+            super().__init__("org.kde.StatusNotifierItem")
+
+        @dbus_property(PropertyAccess.READ)
+        def Category(self) -> DBusStr:
+            return "ApplicationStatus"
+
+        @dbus_property(PropertyAccess.READ)
+        def Id(self) -> DBusStr:
+            return "zeiterfassung"
+
+        @dbus_property(PropertyAccess.READ)
+        def Title(self) -> DBusStr:
+            return "Zeiterfassung"
+
+        @dbus_property(PropertyAccess.READ)
+        def Status(self) -> DBusStr:
+            return "Active"
+
+        @dbus_property(PropertyAccess.READ)
+        def WindowId(self) -> DBusInt32:
+            return 0
+
+        @dbus_property(PropertyAccess.READ)
+        def ItemIsMenu(self) -> DBusBool:
+            # False → Plasma schickt beim Linksklick Activate, statt nur das
+            # Menü zu öffnen. Das ist der Default-Klick, den pystrays
+            # appindicator-Backend prinzipbedingt nicht kann.
+            return False
+
+        @dbus_property(PropertyAccess.READ)
+        def Menu(self) -> DBusObjectPath:
+            return MENU_PATH
+
+        @dbus_property(PropertyAccess.READ)
+        def IconName(self) -> DBusStr:
+            # Leer: wir liefern Pixmaps statt eines Theme-Icons (die App ist
+            # nicht im Icon-Theme des Systems installiert).
+            return ""
+
+        @dbus_property(PropertyAccess.READ)
+        def IconPixmap(self) -> Annotated[list, DBusSignature("a(iiay)")]:
+            return [[width, height, data] for width, height, data in pixmaps]
+
+        @dbus_property(PropertyAccess.READ)
+        def ToolTip(self) -> Annotated[list, DBusSignature("(sa(iiay)ss)")]:
+            return ["", [], "Zeiterfassung", ""]
+
+        @dbus_method()
+        def Activate(self, x: DBusInt32, y: DBusInt32):
+            _safe(on_activate)
+
+        @dbus_method()
+        def SecondaryActivate(self, x: DBusInt32, y: DBusInt32):
+            pass
+
+        @dbus_method()
+        def ContextMenu(self, x: DBusInt32, y: DBusInt32):
+            # Der Host zeigt das dbusmenu selbst (Menu-Property ist gesetzt);
+            # die Methode existiert nur, damit niemand UnknownMethod sieht.
+            pass
+
+        @dbus_method()
+        def Scroll(self, delta: DBusInt32, orientation: DBusStr):
+            pass
+
+        @dbus_method()
+        def ProvideXdgActivationToken(self, token: DBusStr):
+            # Tk kann den Token nicht verwerten — unter Wayland darf der
+            # Compositor das Anheben deshalb verweigern (s. Spec).
+            pass
+
+    class _Menu(ServiceInterface):
+        """com.canonical.dbusmenu — dünne Hülle um MenuState."""
+
+        def __init__(self):
+            super().__init__("com.canonical.dbusmenu")
+
+        @dbus_property(PropertyAccess.READ)
+        def Version(self) -> DBusUInt32:
+            return 3
+
+        @dbus_property(PropertyAccess.READ)
+        def Status(self) -> DBusStr:
+            return "normal"
+
+        @dbus_property(PropertyAccess.READ)
+        def TextDirection(self) -> DBusStr:
+            return "ltr"
+
+        @dbus_property(PropertyAccess.READ)
+        def IconThemePath(self) -> Annotated[list, DBusSignature("as")]:
+            return []
+
+        @dbus_method()
+        def GetLayout(self, parentId: DBusInt32, recursionDepth: DBusInt32,
+                      propertyNames: Annotated[list, DBusSignature("as")],
+                      ) -> Annotated[list, DBusSignature("u(ia{sv}av)")]:
+            root_id, root_props, children = state.layout()
+            nodes = [
+                Variant("(ia{sv}av)", [child_id, _variants(props), []])
+                for child_id, props, _kids in children
+            ]
+            return [state.revision, [root_id, _variants(root_props), nodes]]
+
+        @dbus_method()
+        def GetGroupProperties(self,
+                               ids: Annotated[list, DBusSignature("ai")],
+                               propertyNames: Annotated[list, DBusSignature("as")],
+                               ) -> Annotated[list, DBusSignature("a(ia{sv})")]:
+            wanted = list(ids) if ids else state.ids()
+            return [[node_id, _variants(state.properties(node_id))] for node_id in wanted]
+
+        @dbus_method()
+        def GetProperty(self, id: DBusInt32, name: DBusStr) -> DBusVariant:
+            props = state.properties(id)
+            if name not in props:
+                return Variant("s", "")
+            return Variant(PROP_SIGNATURES[name], props[name])
+
+        @dbus_method()
+        def Event(self, id: DBusInt32, eventId: DBusStr, data: DBusVariant,
+                  timestamp: DBusUInt32):
+            if eventId == "clicked":
+                state.dispatch(id)
+
+        @dbus_method()
+        def EventGroup(self, events: Annotated[list, DBusSignature("a(isvu)")],
+                       ) -> Annotated[list, DBusSignature("ai")]:
+            for event in events:
+                if event[1] == "clicked":
+                    state.dispatch(event[0])
+            return []
+
+        @dbus_method()
+        def AboutToShow(self, id: DBusInt32) -> DBusBool:
+            # Plasma ruft das vor jedem Öffnen → hier wird `visible` live neu
+            # ausgewertet (Windows-Parität, kein Snapshot wie auf macOS).
+            if not state.refresh():
+                return False
+            self.LayoutUpdated(state.revision, 0)
+            return True
+
+        @dbus_method()
+        def AboutToShowGroup(self, ids: Annotated[list, DBusSignature("ai")],
+                             ) -> Annotated[list, DBusSignature("aiai")]:
+            if not state.refresh():
+                return [[], []]
+            self.LayoutUpdated(state.revision, 0)
+            return [list(ids), []]
+
+        @dbus_signal()
+        def LayoutUpdated(self, revision: DBusUInt32,
+                          parent: DBusInt32) -> Annotated[list, DBusSignature("ui")]:
+            return [revision, parent]
+
+    return _Item(), _Menu()
