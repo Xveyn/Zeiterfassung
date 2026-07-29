@@ -171,14 +171,26 @@ def _wait_for(predicate, timeout=5):
     return predicate()
 
 
-def _backend(clicked):
+def _backend(clicked, sync_visible=lambda: True):
     return LinuxTrayBackend(
         ".",
         on_show=lambda: clicked.append("show"),
         on_quit=lambda: clicked.append("quit"),
         actions=[("Senden", lambda: clicked.append("send"), None),
-                 ("Sync", lambda: clicked.append("sync"), lambda: True)],
+                 ("Sync", lambda: clicked.append("sync"), sync_visible)],
     )
+
+
+def _by_label(layout):
+    """Kinder eines GetLayout-Ergebnisses als `{label: (id, props)}`. Die Kinder
+    kommen als Variants `(ia{sv}av)` über den Draht, die Properties als Variants
+    darin — hier einmal ausgepackt, statt in jedem Test neu."""
+    entries = {}
+    for child in layout[2]:
+        node_id, props, _kids = child.value
+        if "label" in props:
+            entries[props["label"].value] = (node_id, props)
+    return entries
 
 
 async def _menu_proxy(bus, name):
@@ -249,6 +261,84 @@ def test_clicking_a_menu_entry_runs_its_callback(desktop):
         backend.stop()
 
 
+def test_visibility_is_reevaluated_on_every_open(desktop):
+    """Der Kern der Linux-Zusage: `visible` wird bei JEDEM Öffnen neu
+    ausgewertet (AboutToShow → refresh → Revision +1 → LayoutUpdated), statt
+    beim Start eingefroren zu werden. Damit verhält sich Linux LIVE wie
+    Windows, nicht als Snapshot wie macOS — und genau das ist nur über den
+    Draht belegbar."""
+    visible = {"sync": True}
+    backend = _backend([], sync_visible=lambda: visible["sync"])
+    backend.start()
+    try:
+        async def reopen_after_toggle():
+            bus = await MessageBus(bus_type=BusType.SESSION).connect()
+            menu = await _menu_proxy(bus, desktop.watcher.registered[0])
+
+            first_revision, layout = await menu.call_get_layout(0, -1, [])
+            assert _by_label(layout)["Sync"][1]["visible"].value is True
+
+            visible["sync"] = False
+            assert await menu.call_about_to_show(0) is True
+
+            revision, layout = await menu.call_get_layout(0, -1, [])
+            assert revision == first_revision + 1
+            assert _by_label(layout)["Sync"][1]["visible"].value is False
+
+            # Zweites Öffnen ohne Änderung: nichts neu zu laden, Revision bleibt.
+            assert await menu.call_about_to_show(0) is False
+            unchanged, _layout = await menu.call_get_layout(0, -1, [])
+            assert unchanged == revision
+
+            bus.disconnect()
+
+        desktop.run(reopen_after_toggle())
+    finally:
+        backend.stop()
+
+
+def test_the_remaining_dbusmenu_methods_answer_over_the_wire(desktop):
+    """GetGroupProperties, GetProperty, EventGroup und AboutToShowGroup werden
+    exportiert, aber von den übrigen Tests nie gerufen. Ihre Signaturen
+    (`a(ia{sv})`, `v`, `a(isvu)`→`ai`, `ai`→`aiai`) gehen hier einmal wirklich
+    über den Bus, statt nur beim Klassenaufbau geparst zu werden."""
+    clicked = []
+    visible = {"sync": True}
+    backend = _backend(clicked, sync_visible=lambda: visible["sync"])
+    backend.start()
+    try:
+        async def call_them():
+            bus = await MessageBus(bus_type=BusType.SESSION).connect()
+            menu = await _menu_proxy(bus, desktop.watcher.registered[0])
+            _revision, layout = await menu.call_get_layout(0, -1, [])
+            send_id, _props = _by_label(layout)["Senden"]
+
+            groups = await menu.call_get_group_properties([send_id], [])
+            assert [(node_id, props["label"].value) for node_id, props in groups] \
+                == [(send_id, "Senden")]
+
+            assert (await menu.call_get_property(send_id, "label")).value == "Senden"
+            assert (await menu.call_get_property(send_id, "enabled")).value is True
+            # Unbekannte Property: dokumentierter Fallback, kein D-Bus-Fehler.
+            assert (await menu.call_get_property(send_id, "kein-solches-feld")).value == ""
+
+            # Klick über EventGroup (statt Event) — dispatcht der Adapter hier
+            # nicht, bleibt `clicked` leer.
+            assert await menu.call_event_group(
+                [[send_id, "clicked", Variant("s", ""), 0]]) == []
+
+            assert await menu.call_about_to_show_group([0]) == [[], []]
+            visible["sync"] = False
+            assert await menu.call_about_to_show_group([0]) == [[0], []]
+
+            bus.disconnect()
+
+        desktop.run(call_them())
+        assert clicked == ["send"]
+    finally:
+        backend.stop()
+
+
 def test_left_click_activates_and_shows_the_window(desktop):
     clicked = []
     backend = _backend(clicked)
@@ -268,15 +358,20 @@ def test_left_click_activates_and_shows_the_window(desktop):
 
 
 def test_notify_reaches_the_notification_service(desktop):
+    """Titel BEWUSST ungleich dem App-Namen: `_notify` schickt an Position 0 den
+    hart kodierten "Zeiterfassung" und an Position 3 den Titel. Wäre der Titel
+    hier auch "Zeiterfassung", erzeugte eine Vertauschung der beiden Positionen
+    byte-gleich dasselbe Tupel — die Signatur-/Reihenfolge-Prüfung, für die
+    dieser Test existiert, liefe ins Leere."""
     backend = _backend([])
     backend.start()
     try:
-        backend.notify("Synchronisiert.", "Zeiterfassung")
+        backend.notify("Synchronisiert.", "Sync-Titel")
         # notify() ist bewusst fire-and-forget (es läuft auf dem Tk-Thread) —
         # also auf die Zustellung warten statt sofort zu prüfen.
         assert _wait_for(lambda: bool(desktop.notifications.messages))
         assert desktop.notifications.messages == [
-            ("Zeiterfassung", "Zeiterfassung", "Synchronisiert."),
+            ("Zeiterfassung", "Sync-Titel", "Synchronisiert."),
         ]
     finally:
         backend.stop()
