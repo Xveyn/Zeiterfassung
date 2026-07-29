@@ -170,9 +170,25 @@ from src.tray_linux import LinuxTrayBackend
 
 def test_backend_keeps_the_facade_constructor_signature():
     """Die Fassade instanziiert alle Backends gleich (tray.TrayIcon.start)."""
-    backend = LinuxTrayBackend("base", on_show=lambda: None,
+    backend = LinuxTrayBackend("res", on_show=lambda: None,
                                on_quit=lambda: None, actions=[])
-    assert backend.base_path == "base"
+    assert backend.resource_path == "res"
+
+
+def test_icon_pixmaps_takes_the_resource_path_not_the_data_dir(tmp_path):
+    """Regression für den Linux-Icon-Befund: gesucht wird unter dem
+    BUNDLE-Verzeichnis. Läge hier wieder get_base_path() an, fände die
+    AppImage nie ein Icon und das SNI-Item bliebe leer."""
+    pytest.importorskip("PIL")
+    from PIL import Image
+    bundle = tmp_path / "bundle" / "assets"
+    bundle.mkdir(parents=True)
+    Image.new("RGBA", (8, 8), (1, 2, 3, 4)).save(bundle / "margenheld-icon.png")
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+
+    assert icon_pixmaps(str(tmp_path / "bundle"), sizes=(8,)) != []
+    assert icon_pixmaps(str(data_dir), sizes=(8,)) == []
 
 
 def test_stop_without_start_is_a_noop():

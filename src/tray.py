@@ -94,7 +94,7 @@ class _PystrayBackend:
     monolithischen TrayIcon.
 
     Nutzung (intern, über die Fassade):
-        backend = _PystrayBackend(base_path, on_show=show_fn, on_quit=quit_fn)
+        backend = _PystrayBackend(resource_path, on_show=show_fn, on_quit=quit_fn)
         tray.start()
         ...
         tray.stop()
@@ -117,8 +117,8 @@ class _PystrayBackend:
     tray_linux.MenuState.refresh).
     """
 
-    def __init__(self, base_path, on_show, on_quit, actions=None):
-        self.base_path = base_path
+    def __init__(self, resource_path, on_show, on_quit, actions=None):
+        self.resource_path = resource_path
         self._on_show = on_show
         self._on_quit = on_quit
         self._actions = actions or []
@@ -130,7 +130,7 @@ class _PystrayBackend:
         falls die PNG-Datei nicht da ist (sollte nicht passieren — assets sind
         in PyInstaller-Bundle mit drin)."""
         from PIL import Image  # pyright: ignore[reportMissingImports]  # Pillow: nicht in CI-Test-Deps
-        png = os.path.join(self.base_path, "assets", "margenheld-icon.png")
+        png = os.path.join(self.resource_path, "assets", "margenheld-icon.png")
         if os.path.exists(png):
             return Image.open(png)
         # Last-resort 16x16 weißes Bild — Icon ist sichtbar aber unbranded.
@@ -273,8 +273,8 @@ class TrayIcon:
     auf Linux — s. _select_backend) und delegiert. Öffentliche API
     (start/stop/notify) unverändert."""
 
-    def __init__(self, base_path, on_show, on_quit, actions=None):
-        self.base_path = base_path
+    def __init__(self, resource_path, on_show, on_quit, actions=None):
+        self.resource_path = resource_path
         self._on_show = on_show
         self._on_quit = on_quit
         self._actions = actions or []
@@ -288,7 +288,7 @@ class TrayIcon:
         if backend_cls is None:
             raise RuntimeError("Tray auf dieser Plattform nicht unterstützt")
         backend = backend_cls(
-            self.base_path, self._on_show, self._on_quit, self._actions)
+            self.resource_path, self._on_show, self._on_quit, self._actions)
         backend.start()
         self._backend = backend  # erst nach erfolgreichem start halten
 

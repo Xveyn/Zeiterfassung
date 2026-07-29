@@ -73,8 +73,8 @@ def test_facade_instantiates_and_delegates(monkeypatch):
     seen = {}
 
     class FakeBackend:
-        def __init__(self, base_path, on_show, on_quit, actions=None):
-            seen["init"] = (base_path, on_show, on_quit, actions)
+        def __init__(self, resource_path, on_show, on_quit, actions=None):
+            seen["init"] = (resource_path, on_show, on_quit, actions)
 
         def start(self):
             seen["start"] = True

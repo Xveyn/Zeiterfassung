@@ -159,7 +159,7 @@ def argb32_from_rgba(rgba):
     return bytes(argb)
 
 
-def icon_pixmaps(base_path, sizes=(32, 64, 128)):
+def icon_pixmaps(resource_path, sizes=(32, 64, 128)):
     """`[(breite, höhe, argb32)]` aus `assets/margenheld-icon.png`.
 
     Mehrere Größen, damit der Host für seine Panel-Höhe die passende wählt.
@@ -167,7 +167,7 @@ def icon_pixmaps(base_path, sizes=(32, 64, 128)):
     Pillow, bleibt die Liste leer und das Item startet ohne eigenes Icon —
     besser als ein Tray, das gar nicht erst hochkommt.
     """
-    png = os.path.join(base_path, "assets", "margenheld-icon.png")
+    png = os.path.join(resource_path, "assets", "margenheld-icon.png")
     if not os.path.exists(png):
         logger.warning("Tray-Icon %s fehlt — Item startet ohne Pixmap", png)
         return []
@@ -411,8 +411,8 @@ class LinuxTrayBackend:
     START_TIMEOUT_S = 10
     SHUTDOWN_TIMEOUT_S = 5
 
-    def __init__(self, base_path, on_show, on_quit, actions=None):
-        self.base_path = base_path
+    def __init__(self, resource_path, on_show, on_quit, actions=None):
+        self.resource_path = resource_path
         self._on_show = on_show
         self._on_quit = on_quit
         self._actions = actions or []
@@ -468,7 +468,7 @@ class LinuxTrayBackend:
         name = None
         try:
             state = MenuState(build_menu_model(self._on_show, self._on_quit, self._actions))
-            item, menu = _make_interfaces(state, self._on_show, icon_pixmaps(self.base_path))
+            item, menu = _make_interfaces(state, self._on_show, icon_pixmaps(self.resource_path))
             bus.export(ITEM_PATH, item)
             bus.export(MENU_PATH, menu)
 
@@ -602,7 +602,7 @@ class LinuxTrayBackend:
     async def _notify(self, bus, message, title):
         from dbus_fast import Message  # pyright: ignore[reportMissingImports]  # dbus-fast: nur auf Linux installiert
 
-        icon = os.path.join(self.base_path, "assets", "margenheld-icon.png")
+        icon = os.path.join(self.resource_path, "assets", "margenheld-icon.png")
         await bus.call(Message(
             destination=NOTIFY_NAME, path=NOTIFY_PATH, interface=NOTIFY_NAME,
             member="Notify", signature="susssasa{sv}i",

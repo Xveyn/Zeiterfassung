@@ -18,6 +18,7 @@ from src.version import VERSION, installed_release_id, version_label
 from src.background_tasks import BackgroundTaskRunner
 from src.weekly_limit import format_limit_warnings
 from src.grid_renderer import GridRenderer
+from src.paths import get_resource_path
 from src.sync_orchestrator import classify_sync_error, SyncOrchestrator
 from src.update_banner import UpdateBanner
 from src.updater import (
@@ -92,7 +93,7 @@ class App:
         # No-ops (ctypes.windll/winreg fehlen), das Gate macht das explizit.
         if platform.system() == "Windows":
             self._setup_windows_app_identity()
-        self._setup_window_icon(base_path)
+        self._setup_window_icon(get_resource_path())
 
         self.root.resizable(False, False)
         self._init_view_state()
@@ -198,14 +199,14 @@ class App:
         except Exception:
             pass
 
-    def _setup_window_icon(self, base_path):
+    def _setup_window_icon(self, resource_path):
         """Setzt App-/Taskbar-Icon (aus __init__ extrahiert — Audit N21).
 
         Unter Windows das .ico als Tk-Default (`wm iconbitmap -default`), damit
         künftige Toplevels (Settings, Entry, …) es erben statt des Tk-Default-
         Feder-Icons; zusätzlich das .png als iconphoto auf allen Plattformen."""
-        ico_path = os.path.join(base_path, "assets", "margenheld-icon.ico")
-        png_path = os.path.join(base_path, "assets", "margenheld-icon.png")
+        ico_path = os.path.join(resource_path, "assets", "margenheld-icon.ico")
+        png_path = os.path.join(resource_path, "assets", "margenheld-icon.png")
         if platform.system() == "Windows" and os.path.exists(ico_path):
             self.root.iconbitmap(default=ico_path)
         if os.path.exists(png_path):
@@ -471,7 +472,7 @@ class App:
                 self.settings.set("send_reminder_enabled", False)
                 return
             tray = TrayIcon(
-                self.base_path,
+                get_resource_path(),
                 on_show=lambda: self.root.after(0, self._restore_from_tray),
                 on_quit=lambda: self.root.after(0, self._quit_with_sync_push),
                 actions=self._tray_actions(),
