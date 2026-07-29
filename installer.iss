@@ -33,8 +33,10 @@ Name: "german"; MessagesFile: "compiler:Languages\German.isl"
 ; {app}\Zeiterfassung.exe, alle Icon-/Registry-/Run-Verweise unten bleiben gültig.
 Source: "dist\Zeiterfassung\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "dist\THIRD-PARTY-NOTICES.txt"; DestDir: "{app}"; Flags: ignoreversion
-; assets liegen bewusst separat unter {app}\assets — die App liest sie über
-; get_base_path()=dirname(exe), nicht aus dem gebündelten _internal\assets.
+; Für Verknüpfungs-Icons erforderlich: die [Icons]-Sektion nutzt diese Datei als
+; IconFilename für Start-Menü und Desktop. Die App liest Assets seit dem Wechsel
+; zu get_resource_path() aus dem PyInstaller-Bundel (_internal\assets), nicht von
+; hier. Nicht löschen — die Verknüpfungen verlieren sonst ihr Icon.
 Source: "assets\margenheld-icon.ico"; DestDir: "{app}\assets"; Flags: ignoreversion
 Source: "assets\margenheld-icon.png"; DestDir: "{app}\assets"; Flags: ignoreversion
 
