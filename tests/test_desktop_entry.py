@@ -19,6 +19,7 @@ def fake_home(tmp_path, monkeypatch):
     monkeypatch.setenv("USERPROFILE", str(tmp_path))
     monkeypatch.delenv("HOMEDRIVE", raising=False)
     monkeypatch.delenv("HOMEPATH", raising=False)
+    monkeypatch.delenv("XDG_DATA_HOME", raising=False)
     return tmp_path
 
 
@@ -38,6 +39,16 @@ def test_exec_line_quotes_paths_with_spaces():
 def test_menu_entry_path_is_in_xdg_applications(fake_home):
     assert menu_entry_path() == os.path.join(
         str(fake_home), ".local", "share", "applications", "Zeiterfassung.desktop")
+
+
+def test_menu_entry_path_honours_xdg_data_home(fake_home, monkeypatch, tmp_path):
+    # Review-Finding 3 (2026-07-29): ohne diesen Abgleich schriebe die App an
+    # ~/.local/share/applications vorbei, wenn der Nutzer XDG_DATA_HOME
+    # gesetzt hat — der Eintrag entstünde, aber kein Menü fände ihn.
+    custom = tmp_path / "custom-data"
+    monkeypatch.setenv("XDG_DATA_HOME", str(custom))
+    assert menu_entry_path() == os.path.join(
+        str(custom), "applications", "Zeiterfassung.desktop")
 
 
 def test_write_menu_entry_creates_a_valid_entry(fake_home):

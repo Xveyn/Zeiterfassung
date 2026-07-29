@@ -175,10 +175,15 @@ def test_backend_keeps_the_facade_constructor_signature():
     assert backend.resource_path == "res"
 
 
-def test_icon_pixmaps_takes_the_resource_path_not_the_data_dir(tmp_path):
-    """Regression für den Linux-Icon-Befund: gesucht wird unter dem
-    BUNDLE-Verzeichnis. Läge hier wieder get_base_path() an, fände die
-    AppImage nie ein Icon und das SNI-Item bliebe leer."""
+def test_icon_pixmaps_returns_pixmaps_only_when_png_present(tmp_path):
+    """`icon_pixmaps` nimmt einen einzelnen Pfad entgegen — dieser Test prüft
+    nur "PNG vorhanden -> Pixmaps, PNG fehlt -> leere Liste", bereits
+    abgedeckt von `test_icon_pixmaps_reads_the_app_icon_in_requested_sizes`
+    und `test_icon_pixmaps_without_png_returns_empty_list` nebenan. Die
+    eigentliche Unterscheidung resource_path vs. get_base_path() (der
+    Linux-Icon-Befund) prüft `tests/test_paths.py::
+    test_is_not_the_data_dir_when_they_differ` — dort liegen beide Pfade
+    tatsächlich nebeneinander vor."""
     pytest.importorskip("PIL")
     from PIL import Image
     bundle = tmp_path / "bundle" / "assets"

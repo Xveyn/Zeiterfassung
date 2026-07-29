@@ -151,3 +151,10 @@ das ist plattformübergreifend erfasst in
 Der Autostart heilt außerdem erst, **nachdem** die neue AppImage einmal
 gestartet wurde. Wer die neue Version herunterlädt und nie öffnet, startet
 weiter die alte — ohne Hinweis.
+
+Ist zusätzlich `appimaged` oder AppImageLauncher installiert, schreibt eines
+dieser Tools beim ersten Start einen eigenen Menüeintrag
+(`appimagekit_<hash>-Zeiterfassung.desktop`) neben unserem eigenen. Ergebnis:
+zwei Einträge im Anwendungsmenü für dieselbe AppImage. Kein Datenverlust, rein
+kosmetisch — die App schreibt ihren eigenen Eintrag unabhängig davon, weil sie
+ohne eines dieser Tools sonst gar keinen bekäme.

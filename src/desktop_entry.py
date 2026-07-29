@@ -1,10 +1,13 @@
 # src/desktop_entry.py
-"""Freedesktop-`.desktop`-Dateien: Menüeintrag und das gemeinsame Format.
+"""Freedesktop-`.desktop`-Dateien: schreibt den Menüeintrag und besitzt die
+`Exec=`-Quoting-Regel.
 
-Besitzer des Formats — `autostart.py` schreibt seine Autostart-Datei über das
-`exec_line` von hier, statt eine zweite Quoting-Regel zu pflegen (Audit N17:
-kein Modul benutzt den privaten Namen eines anderen). Richtung stimmt so:
-Autostart ist ein Sonderfall einer .desktop-Datei, nicht umgekehrt.
+`autostart.py` schreibt weiterhin sein eigenes `[Desktop Entry]` — die beiden
+Dateien tragen unterschiedliche Keys, ein gemeinsamer Renderer lohnt sich
+nicht. Geteilt wird nur `exec_line` (Audit N17: kein Modul benutzt den
+privaten Namen eines anderen); `autostart.py` importiert es von hier statt
+eine zweite Quoting-Regel zu pflegen. Richtung stimmt so: Autostart ist ein
+Sonderfall des Exec-Quotings, nicht umgekehrt.
 
 Tk-frei und stdlib-only, damit ohne Display testbar.
 """
@@ -24,7 +27,20 @@ def exec_line(target, arguments):
     """Baut die `Exec=`-Zeile mit shell-korrektem Quoting (Audit N12): ein Pfad
     mit Leerzeichen o.ä. zerbricht die .desktop-Datei sonst. `shlex.quote`
     deckt sich mit GLibs Exec-Parsing (`g_shell_parse_argv`). Werte ohne
-    Sonderzeichen bleiben unverändert."""
+    Sonderzeichen bleiben unverändert.
+
+    `arguments` ist typischerweise ein Whitespace-getrennter String einfacher
+    Flags (z.B. "" oder "--minimized"); im Nicht-Frozen-Modus kann es
+    zusätzlich einen Skript-Pfad enthalten (`resolve_autostart_target`) — ein
+    Leerzeichen darin würde fälschlich als Token-Grenze behandelt.
+    Vorbestehendes Verhalten, nicht durch den Umzug hierher eingeführt.
+
+    Quotet NICHT `%`: in einer `.desktop`-`Exec=`-Zeile leitet `%` einen
+    Freedesktop-Feldcode ein (`%f`, `%u`, …), ein literales `%` müsste als
+    `%%` verdoppelt werden. `shlex.quote` kennt nur Shell-Metazeichen, keine
+    Freedesktop-Feldcodes — ein `%` im Pfad (z.B. einer AppImage) bliebe
+    unverändert und würde die Zeile verstümmeln. Bislang nicht behoben,
+    hier nur dokumentiert."""
     parts = [shlex.quote(target)]
     if arguments:
         parts.extend(shlex.quote(a) for a in arguments.split())
@@ -32,10 +48,17 @@ def exec_line(target, arguments):
 
 
 def menu_entry_path():
-    return os.path.join(
-        os.path.expanduser("~"),
-        ".local", "share", "applications", "Zeiterfassung.desktop",
+    """Zielpfad des Menüeintrags, `<XDG_DATA_HOME>/applications/Zeiterfassung.desktop`.
+
+    `XDG_DATA_HOME` respektiert, Fallback `~/.local/share` — spiegelt
+    `paths.get_base_path()`. Ohne diesen Fallback-Abgleich würde die Datei bei
+    gesetztem `XDG_DATA_HOME` an einem Ort geschrieben, den keine
+    Desktop-Umgebung durchsucht: sie entstünde, erschiene aber nie im Menü —
+    genau der Fehlerfall, den dieses Modul beheben soll."""
+    xdg = os.environ.get("XDG_DATA_HOME") or os.path.join(
+        os.path.expanduser("~"), ".local", "share"
     )
+    return os.path.join(xdg, "applications", "Zeiterfassung.desktop")
 
 
 def ensure_icon(resource_path, data_path):
@@ -68,7 +91,7 @@ def ensure_icon(resource_path, data_path):
 
 
 def write_menu_entry(target, icon_path):
-    """Schreibt `~/.local/share/applications/Zeiterfassung.desktop`.
+    """Schreibt den Menüeintrag nach `menu_entry_path()`.
 
     Wird bei jedem Start überschrieben, damit `Exec=` nach einem Update von
     selbst auf die neue AppImage zeigt — dieselbe Selbstheilung wie beim

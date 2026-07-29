@@ -23,7 +23,7 @@ import uuid
 os.environ.setdefault("OAUTHLIB_RELAX_TOKEN_SCOPE", "1")
 
 from src import sync_history
-from src.autostart import refresh_linux_target
+from src.autostart import migrate_legacy_autostart, refresh_linux_target
 from src.conflicts_store import ConflictsStore
 from src.desktop_entry import ensure_icon, write_menu_entry
 from src.device_id import derive_device_id
@@ -520,7 +520,6 @@ def main():
         pass
 
     from src import single_instance
-    from src.autostart import migrate_legacy_autostart
 
     try:
         migrate_legacy_autostart(base)

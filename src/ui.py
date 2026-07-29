@@ -210,9 +210,17 @@ class App:
         if platform.system() == "Windows" and os.path.exists(ico_path):
             self.root.iconbitmap(default=ico_path)
         if os.path.exists(png_path):
-            icon = tk.PhotoImage(file=png_path)
-            self.root.iconphoto(True, icon)
-            self._icon_ref = icon
+            # Seit dem Umstieg auf get_resource_path() (statt get_base_path())
+            # ist dieser Zweig auf macOS/Linux erstmals erreichbar — vorher
+            # zeigte os.path.exists(png_path) dort immer False. Ein fehlendes
+            # oder kaputtes PNG darf trotzdem nie den Start verhindern (analog
+            # theme.apply_app_icon): degradiert auf "kein Fenster-Icon".
+            try:
+                icon = tk.PhotoImage(file=png_path)
+                self.root.iconphoto(True, icon)
+                self._icon_ref = icon
+            except tk.TclError:
+                pass
 
     def _init_view_state(self):
         """Initialer Kalender-View-Zustand aus dem heutigen Datum (aus __init__

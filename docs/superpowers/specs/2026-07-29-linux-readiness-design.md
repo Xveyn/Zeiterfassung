@@ -38,8 +38,14 @@ weder Pixmap noch Theme-Namen, und Plasma bekäme nichts zu zeichnen. Das erste
 Kriterium des manuellen Gates („Icon erscheint im Systemabschnitt") würde
 fehlschlagen, mit der Ursache in `paths.py` statt in `tray_linux.py`.
 
-macOS ist von demselben Befund betroffen; dort ist der Tray dormant (#88),
-deshalb hat es bisher niemand gesehen.
+macOS ist von demselben Befund betroffen — aber anders als beim Linux-Tray
+nicht hinter einem dormanten Feature verborgen: der Tray dort ist dormant
+(#88), aber `theme.apply_app_icon` läuft auf macOS bei **jedem** Dialog und
+`ui._setup_window_icon` bei **jedem** Start, beide ohne Opt-in-Flag. Beide
+gingen bisher auf macOS ins Leere (leeres `get_base_path()`), weil sie nichts
+fanden — mit `get_resource_path()` finden sie ab sofort etwas und laden
+tatsächlich ein `PhotoImage`. Dass es bisher niemand gesehen hat, liegt daran,
+dass diese Änderung schlicht neu ist, nicht daran, dass der Pfad dormant wäre.
 
 ### 2. Autostart überlebt kein Update
 
@@ -223,6 +229,16 @@ echten Schreibzugriffe außerhalb von `tmp_path`:
 - **Windows-Regression (lokal prüfbar, wichtig):** die Umbenennung und
   `get_resource_path` fassen den Windows-Pfad an. Volle Suite plus ein
   In-Place-Build-Test, dass Tray-Icon und Fenster-Icon unverändert erscheinen.
+- **Manuelles Gate macOS (zusätzlich, nicht optional):** anders als der
+  Linux-Tray ist dieser Pfad auf macOS nicht hinter einem Opt-in-Flag
+  dormant — `theme.apply_app_icon` (jeder Dialog) und `ui._setup_window_icon`
+  (jeder Start) gehen mit `get_resource_path()` von "fand nichts" auf
+  "lädt tatsächlich ein PhotoImage", ohne dass ein Nutzer das aktivieren
+  müsste. Vor dem nächsten echten Release denselben Pre-Release bauen (s.
+  `CLAUDE.md`, „Plattformspezifische PRs — Pre-Release vorschlagen") und auf
+  macOS prüfen: App startet, Fenster-Icon erscheint, mindestens ein Dialog
+  (Einstellungen oder Tages-Dialog) öffnet fehlerfrei. Das ist die einzige
+  Prüfung, die diese Änderung auf macOS vor einem echten Release bekommt.
 - **Manuelles Gate (Debian 13 / Plasma 6), zusätzlich zu den Tray-Punkten:**
   Menüeintrag erscheint nach dem ersten Start; Start daraus funktioniert;
   Icon im Menü und im Tray sichtbar (belegt Befund 1 als behoben); Autostart
