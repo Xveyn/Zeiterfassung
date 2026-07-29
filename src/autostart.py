@@ -220,3 +220,33 @@ def _disable_linux():
             os.remove(desktop_path)
         except FileNotFoundError:
             pass
+
+
+def refresh_linux_target(base_path):
+    """Zieht die Autostart-Datei auf den aktuellen `$APPIMAGE`-Pfad nach.
+
+    Der Updater ersetzt die AppImage nie selbst (`update_banner._open_download`
+    öffnet nur den Browser), und die Assets tragen die Version im Dateinamen.
+    Ohne diesen Schritt zeigt `~/.config/autostart/Zeiterfassung.desktop` nach
+    jedem Update weiter auf die alte Datei — der Nutzer startet bei jeder
+    Anmeldung stillschweigend die Vorgängerversion.
+
+    Vier Gates, alle müssen zutreffen:
+    1. frozen — im Repo-Modus zeigte das Ziel sonst auf python.exe + Repo
+       (dieselbe Selbstbeschädigung, gegen die migrate_legacy_autostart
+       gegated ist).
+    2. Linux.
+    3. `$APPIMAGE` gesetzt — die nackte PyInstaller-Ausgabe hat das nicht.
+    4. Die Datei existiert bereits — wer keinen Autostart eingeschaltet hat,
+       bekommt hier auch keinen.
+    """
+    if not getattr(sys, "frozen", False):
+        return
+    if platform.system() != "Linux":
+        return
+    if not os.environ.get("APPIMAGE"):
+        return
+    if not os.path.exists(_linux_desktop_path()):
+        return
+    target, arguments = resolve_autostart_target(base_path)
+    _enable_linux(target, arguments)

@@ -279,3 +279,62 @@ class TestMigrateLegacyAutostart:
         from src.autostart import _windows_registry_enabled
         assert _windows_registry_enabled() is False          # nichts geschrieben
         assert (frozen_win / "Zeiterfassung.lnk").exists()   # Shortcut unangetastet
+
+
+class TestRefreshLinuxTarget:
+    """Nach einem Update liegt eine AppImage mit NEUEM Dateinamen auf der
+    Platte (updater.pick_asset_url liefert Zeiterfassung-<ver>-x86_64.AppImage,
+    und die App ersetzt sich nie selbst). Ohne Nachziehen startet bei jeder
+    Anmeldung stillschweigend die Vorgängerversion."""
+
+    @pytest.fixture
+    def frozen_linux(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("HOME", str(tmp_path))
+        monkeypatch.setenv("USERPROFILE", str(tmp_path))
+        monkeypatch.delenv("HOMEDRIVE", raising=False)
+        monkeypatch.delenv("HOMEPATH", raising=False)
+        monkeypatch.setattr("src.autostart.platform.system", lambda: "Linux")
+        monkeypatch.setattr("src.autostart.sys.frozen", True, raising=False)
+        monkeypatch.setenv("APPIMAGE", "/home/sven/Zeiterfassung-2.0.0.AppImage")
+        return tmp_path
+
+    def test_rewrites_a_stale_exec_line(self, frozen_linux):
+        from src.autostart import refresh_linux_target
+        enable_autostart("/home/sven/Zeiterfassung-1.0.0.AppImage", "--minimized")
+        refresh_linux_target(str(frozen_linux))
+        content = open(_linux_desktop_path(), encoding="utf-8").read()
+        assert "Exec=/home/sven/Zeiterfassung-2.0.0.AppImage --minimized" in content
+        assert "1.0.0" not in content
+
+    def test_noop_when_autostart_was_never_enabled(self, frozen_linux):
+        from src.autostart import refresh_linux_target
+        refresh_linux_target(str(frozen_linux))
+        assert not os.path.exists(_linux_desktop_path())
+
+    def test_noop_when_not_frozen(self, frozen_linux, monkeypatch):
+        """Im Repo-Modus zeigte das Ziel sonst auf python.exe + Repo — dieselbe
+        Selbstbeschädigung, gegen die migrate_legacy_autostart gegated ist."""
+        from src.autostart import refresh_linux_target
+        enable_autostart("/home/sven/Zeiterfassung-1.0.0.AppImage", "--minimized")
+        monkeypatch.setattr("src.autostart.sys.frozen", False, raising=False)
+        refresh_linux_target(str(frozen_linux))
+        content = open(_linux_desktop_path(), encoding="utf-8").read()
+        assert "1.0.0" in content
+
+    def test_noop_on_other_platforms(self, frozen_linux, monkeypatch):
+        from src.autostart import refresh_linux_target
+        enable_autostart("/home/sven/Zeiterfassung-1.0.0.AppImage", "--minimized")
+        monkeypatch.setattr("src.autostart.platform.system", lambda: "Windows")
+        refresh_linux_target(str(frozen_linux))
+        content = open(_linux_desktop_path(), encoding="utf-8").read()
+        assert "1.0.0" in content
+
+    def test_noop_without_appimage_env(self, frozen_linux, monkeypatch):
+        """Nackte PyInstaller-Ausgabe aus build.yml: kein stabiler Pfad, auf den
+        man zeigen könnte."""
+        from src.autostart import refresh_linux_target
+        enable_autostart("/home/sven/Zeiterfassung-1.0.0.AppImage", "--minimized")
+        monkeypatch.delenv("APPIMAGE", raising=False)
+        refresh_linux_target(str(frozen_linux))
+        content = open(_linux_desktop_path(), encoding="utf-8").read()
+        assert "1.0.0" in content
