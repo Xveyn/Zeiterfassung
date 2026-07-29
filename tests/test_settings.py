@@ -648,6 +648,19 @@ def test_apply_updates_no_plain_skips_set_many():
     settings.set_many.assert_not_called()
 
 
+# --- Nur-Werktage-Modus (workweek_only) ---
+
+
+def test_workweek_only_defaults_to_off(tmp_settings):
+    assert tmp_settings.get("workweek_only") is False
+
+
+def test_workweek_only_is_synced():
+    """Die Flag bestimmt den Berichtsinhalt — auf zwei Geräten unterschiedlich
+    eingestellt hieße: zwei verschiedene Berichte aus denselben Daten."""
+    assert "workweek_only" in SYNCED_SETTING_KEYS
+
+
 def test_apply_updates_persists_routing_on_real_settings(tmp_settings):
     # End-to-end gegen echte Settings: synced-Key bekommt Sync-Metadaten,
     # plain-Key nicht.
