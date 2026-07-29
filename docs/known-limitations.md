@@ -96,3 +96,41 @@ Gespann dauerhaft kaputt — ein frisch erzeugtes Toplevel, das direkt
 `-alpha 0.0` bekommt, ignoriert spätere `geometry()`-Aufrufe komplett (Dialog
 landet bei `+0+0`). Details/Reproduktion: [`CLAUDE.md`](../CLAUDE.md)
 (Abschnitt „Dialog-Styling"). Als Kompromiss akzeptiert.
+
+## Tests: die Tk-/UI-Schicht ist bewusst nicht automatisiert getestet
+
+Getestet wird **Logik, nicht UI**. Dialog-Aufbau, Grid-Rendering und
+Event-Bindings (auch das Rechtsklick-Löschmodell) haben keine automatisierten
+Tests — weder headless-simuliert noch per `xvfb` mit echtem Tk.
+
+**Warum:** Der Nutzen trägt die Kosten nicht. Widget-Tests sind die brüchigste
+Testsorte — sie brechen bei Layout-Umbauten, ohne dass ein Verhalten kaputt
+wäre, und erzeugen damit genau die Sorte Rot, die man wegklickt statt liest.
+Dazu käme dauerhaft ein `xvfb`-Pfad in der CI, den sonst nichts braucht. Und
+das, was wirklich nur auf der echten Plattform bricht — macOS-Sekundärklick
+(`<Button-2>`/Control-Klick, ✕-Delete-Gate), Linux/KDE-Tray (#42),
+Fenster-Chrome — deckt ein Linux-Framebuffer strukturell ohnehin nicht ab.
+
+**Was stattdessen greift** — das ist der eigentliche Punkt, nicht ein Verzicht
+ohne Ersatz:
+
+1. **Zuschnitt statt Testabdeckung.** Verhalten wird konsequent Tk-frei
+   herausgezogen und dort getestet: `time_utils`, `sync`, `workweek`,
+   `weekly_limit`, `pause_requirement`, `reminders`, `send_reminder`, die
+   `*_task`-Kerne der Dialoge. Die kritische Schicht (Persistenz/Sync/Report)
+   liegt damit bei ~90 % Abdeckung. Lebt Logik nur im Widget, ist sie am
+   falschen Ort — der Fix ist das Herausziehen, nicht ein UI-Test.
+2. **Plattform-Verifikation über den Pre-Release** (siehe `CLAUDE.md`,
+   „Plattformspezifische PRs"), weil dort echte Fenster auf echten Systemen
+   entstehen.
+
+**Was das kostet — offen benannt:** Reine Verdrahtungs- und Crash-Fehler
+(„Dialog wirft beim Öffnen", „Speichern liest die falsche Tk-Variable") fallen
+erst beim manuellen Test auf. Das ist der akzeptierte Preis; wer eine
+Dialog-Verdrahtung umbaut, verifiziert sie von Hand.
+
+**Herkunft:** Audit-Finding **M16** (#131) stellte die Grundsatzfrage
+(„schließen oder als akzeptierte Lücke dokumentieren"), **#148** schlug den
+engen `xvfb`-Ausschnitt vor. Beide sind mit dieser Entscheidung geschlossen —
+sie ist damit getroffen, nicht vertagt. Ältere Specs, die „Audit M16 offen"
+schreiben, sind an dieser Stelle überholt.
