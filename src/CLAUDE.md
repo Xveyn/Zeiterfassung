@@ -274,6 +274,14 @@ muss sie deterministisch **und** über alle Geräte gleich halten.
 
 Das Tray-Icon läuft, sobald `minimize_to_tray` **oder** `reminders_enabled` aktiv ist (`ui.py::_apply_tray_setting`); bei nur `reminders_enabled` dient es ausschließlich als Toast-Kanal.
 
+Die Menüeinträge kommen aus **`ui.py::App._tray_actions()`** — eine Liste `(label, callback,
+visible)`, die beide Backends rendern (pystray-Schleife bzw. `tray.build_menu_model`). Neue
+Einträge gehören dorthin, nicht in ein Backend. Die Callbacks laufen im Backend-Thread und
+marshallen selbst per `root.after(0, …)`. „Nach Updates suchen" (`_tray_check_update`) ist der
+einzige Eintrag mit eigenem Hintergrund-Job: er übergeht den Frequenz-Throttle des
+Hintergrund-Checks, meldet sein Ergebnis in **jedem** Fall als Toast (`updater.
+manual_check_toast_text`) und blockt über `_update_check_running` den Doppelklick.
+
 ## Dialoge (`src/dialogs/`)
 
 Modale Tk-Dialoge, von `App` geroutet (Klick-Modell: Linksklick = bearbeiten, Rechtsklick =
