@@ -147,3 +147,51 @@ def test_icon_pixmaps_reads_the_app_icon_in_requested_sizes():
     assert [(w, h) for w, h, _data in pixmaps] == [(16, 16), (32, 32)]
     assert len(pixmaps[0][2]) == 16 * 16 * 4
     assert len(pixmaps[1][2]) == 32 * 32 * 4
+
+
+from src.tray_linux import _safe
+
+
+def test_safe_swallows_a_throwing_callback():
+    def boom():
+        raise RuntimeError("kaputt")
+
+    _safe(boom)   # darf nicht durchschlagen
+
+
+def test_safe_runs_a_normal_callback():
+    calls = []
+    _safe(lambda: calls.append("ran"))
+    assert calls == ["ran"]
+
+
+from src.tray_linux import LinuxTrayBackend
+
+
+def test_backend_keeps_the_facade_constructor_signature():
+    """Die Fassade instanziiert alle Backends gleich (tray.TrayIcon.start)."""
+    backend = LinuxTrayBackend("base", on_show=lambda: None,
+                               on_quit=lambda: None, actions=[])
+    assert backend.base_path == "base"
+
+
+def test_stop_without_start_is_a_noop():
+    backend = LinuxTrayBackend("base", on_show=lambda: None, on_quit=lambda: None)
+    backend.stop()
+    backend.stop()   # idempotent, auch mehrfach
+
+
+def test_notify_without_start_is_a_noop():
+    backend = LinuxTrayBackend("base", on_show=lambda: None, on_quit=lambda: None)
+    backend.notify("hallo")   # darf nicht werfen
+
+
+def test_start_raises_when_no_session_bus_is_reachable(monkeypatch):
+    """Ohne Session-Bus muss start() SYNCHRON werfen — ui.py::_apply_tray_setting
+    fängt das, zeigt eine Meldung und schaltet die Optionen ab."""
+    pytest.importorskip("dbus_fast")
+    monkeypatch.setenv("DBUS_SESSION_BUS_ADDRESS", "unix:path=/nonexistent/zeit-test")
+    backend = LinuxTrayBackend(".", on_show=lambda: None, on_quit=lambda: None)
+    with pytest.raises(Exception):  # noqa: B017 — Verbindungsfehler ist je nach Umgebung ein anderer Typ, Test prüft nur "wirft synchron"
+        backend.start()
+    backend.stop()   # muss auch nach fehlgeschlagenem Start aufräumbar sein

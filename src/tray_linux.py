@@ -16,12 +16,15 @@ testbar; die D-Bus-Objekte sind nur die Hülle darum.
 Spec: docs/superpowers/specs/2026-07-29-linux-sni-tray-design.md
 """
 
+import asyncio
+import concurrent.futures
 import logging
 import os
+import threading
 from collections import namedtuple
 from typing import Annotated
 
-from src.tray import build_menu_model  # noqa: F401  (ab Task 5 genutzt)
+from src.tray import build_menu_model
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +37,13 @@ NOTIFY_PATH = "/org/freedesktop/Notifications"
 
 # dbusmenu-Property → D-Bus-Typ. Die pure Schicht liefert nackte Python-Werte,
 # der D-Bus-Adapter verpackt sie damit in Variants (eine Quelle für beide).
+#
+# Invariante: jeder Property-Key, den MenuState/build_menu_nodes in einem
+# Knoten-props-Dict erzeugt ("type", "label", "enabled", "visible", plus
+# "children-display" am Root), MUSS hier einen Eintrag haben — `_variants`
+# schlägt sonst mit `KeyError` zu, sobald der Adapter die Properties in
+# Variants verpackt. Wer in `build_menu_nodes`/`MenuState` einen neuen
+# Property-Key einführt, ergänzt ihn hier im selben Schritt.
 PROP_SIGNATURES = {
     "type": "s",
     "label": "s",
@@ -177,7 +187,11 @@ def icon_pixmaps(base_path, sizes=(32, 64, 128)):
 
 def _safe(fn):
     """0-arg-Callback aufrufen, ohne dass eine Exception in den D-Bus-Loop
-    zurückläuft (ein Wurf dort würde die Loop beenden — Icon stumm)."""
+    zurückläuft. dbus-fast wandelt einen Wurf im Methoden-Handler in eine
+    D-Bus-Fehlerantwort um — die Loop liefe weiter, aber der Host bekäme einen
+    Error statt einer Aktion (bzw. der Menü-Klick bräche sichtbar ab). Ein
+    geloggter, geschluckter Fehler ist besser als ein Nutzer, der vor einem
+    stumm hängenden Menüeintrag sitzt."""
     try:
         fn()
     except Exception:
@@ -370,3 +384,204 @@ def _make_interfaces(state, on_activate, pixmaps):
             return [revision, parent]
 
     return _Item(), _Menu()
+
+
+def _log_notify_failure(future):
+    """Done-Callback für den fire-and-forget-Toast: Fehler landen im Log statt
+    im Nichts — ohne dass der aufrufende Tk-Thread auf den Bus wartet."""
+    try:
+        future.result()
+    except Exception:
+        logger.exception("Linux-Tray-Notify fehlgeschlagen (geschluckt)")
+
+
+class LinuxTrayBackend:
+    """SNI-Backend: exportiert Item und Menü auf dem Session-Bus und meldet sich
+    beim StatusNotifierWatcher an.
+
+    Ein Daemon-Thread mit eigener Asyncio-Loop — dasselbe Muster, das pystray auf
+    Windows fährt. `start()` blockiert, bis Verbindung UND Registrierung stehen,
+    und wirft deren Fehler im Aufrufer-Thread durch: genau der Vertrag, den
+    `ui.py::_apply_tray_setting` erwartet.
+
+    Die Menü-Callbacks laufen im Loop-Thread und marshallen selbst per
+    `root.after(0, …)` auf den Tk-Thread (unverändertes Muster aus ui.py).
+    """
+
+    START_TIMEOUT_S = 10
+    SHUTDOWN_TIMEOUT_S = 5
+
+    def __init__(self, base_path, on_show, on_quit, actions=None):
+        self.base_path = base_path
+        self._on_show = on_show
+        self._on_quit = on_quit
+        self._actions = actions or []
+        self._thread = None
+        self._loop = None
+        self._bus = None
+        self._name = None
+        self._stopping = None   # asyncio.Event, im Loop-Thread erzeugt
+
+    def start(self):
+        """Startet Loop-Thread, exportiert die Objekte, registriert sich.
+        Wirft synchron, wenn kein Bus oder kein Watcher erreichbar ist."""
+        ready = concurrent.futures.Future()
+        self._thread = threading.Thread(target=self._run, args=(ready,), daemon=True)
+        self._thread.start()
+        try:
+            ready.result(timeout=self.START_TIMEOUT_S)
+        except concurrent.futures.TimeoutError as exc:
+            raise RuntimeError(
+                f"Kein StatusNotifierWatcher hat innerhalb von {self.START_TIMEOUT_S}s "
+                "geantwortet — läuft ein SNI-fähiger Desktop (KDE Plasma)?") from exc
+
+    def _run(self, ready):
+        loop = asyncio.new_event_loop()
+        self._loop = loop
+        asyncio.set_event_loop(loop)
+        try:
+            loop.run_until_complete(self._serve(ready))
+        except Exception as exc:
+            if not ready.done():
+                ready.set_exception(exc)
+            else:
+                logger.exception("Linux-Tray-Loop beendet sich mit Fehler")
+        finally:
+            loop.close()
+
+    async def _serve(self, ready):
+        from dbus_fast import BusType  # pyright: ignore[reportMissingImports]  # dbus-fast: nur auf Linux installiert
+        from dbus_fast.aio import MessageBus  # pyright: ignore[reportMissingImports]  # dbus-fast: nur auf Linux installiert
+
+        bus = await MessageBus(bus_type=BusType.SESSION).connect()
+        self._bus = bus
+        self._stopping = asyncio.Event()
+
+        state = MenuState(build_menu_model(self._on_show, self._on_quit, self._actions))
+        item, menu = _make_interfaces(state, self._on_show, icon_pixmaps(self.base_path))
+        bus.export(ITEM_PATH, item)
+        bus.export(MENU_PATH, menu)
+
+        self._name = f"org.kde.StatusNotifierItem-{os.getpid()}-1"
+        await self._own_name(bus)
+        await self._register(bus)
+        await self._watch_watcher(bus)
+
+        ready.set_result(None)
+        await self._stopping.wait()
+
+        # Abbau IM Loop-Thread, nicht in stop(): sonst müsste stop() auf eine
+        # Coroutine warten, deren Loop unmittelbar danach zumacht — das hing
+        # bis zum Timeout, ausgerechnet im Quit-Pfad.
+        if self._name:
+            await bus.release_name(self._name)
+        bus.disconnect()
+
+    async def _own_name(self, bus):
+        """Busnamen belegen — und prüfen, dass er uns wirklich gehört.
+
+        Ohne die Prüfung würden wir bei belegtem Namen (zweite Instanz, deren
+        Single-Instance-Guard degradiert ist) einen fremden Namen beim Watcher
+        anmelden: Plasma fragte dann die falsche Anwendung nach Icon und Menü,
+        und niemand sähe einen Fehler.
+        """
+        from dbus_fast import RequestNameReply  # pyright: ignore[reportMissingImports]  # dbus-fast: nur auf Linux installiert
+
+        reply = await bus.request_name(self._name)
+        if reply is not RequestNameReply.PRIMARY_OWNER:
+            raise RuntimeError(
+                f"Busname {self._name} ist bereits belegt (Antwort: {reply}) — "
+                "läuft die Zeiterfassung doppelt?")
+
+    async def _register(self, bus):
+        from dbus_fast import Message, MessageType  # pyright: ignore[reportMissingImports]  # dbus-fast: nur auf Linux installiert
+
+        reply = await bus.call(Message(
+            destination=WATCHER_NAME, path=WATCHER_PATH, interface=WATCHER_NAME,
+            member="RegisterStatusNotifierItem", signature="s", body=[self._name],
+        ))
+        if reply is None or reply.message_type is MessageType.ERROR:
+            detail = reply.body[0] if reply is not None and reply.body else "keine Antwort"
+            raise RuntimeError(f"StatusNotifierWatcher lehnte die Registrierung ab: {detail}")
+
+    async def _watch_watcher(self, bus):
+        """Nach einem plasmashell-Neustart neu anmelden — sonst ist das Icon weg
+        und niemand kann sich erklären, warum."""
+        introspection = await bus.introspect("org.freedesktop.DBus", "/org/freedesktop/DBus")
+        proxy = bus.get_proxy_object(
+            "org.freedesktop.DBus", "/org/freedesktop/DBus", introspection)
+        dbus_iface = proxy.get_interface("org.freedesktop.DBus")
+
+        # Loop LOKAL festhalten statt über self._loop: stop() setzt das Attribut
+        # auf None, und ein Signal, das genau währenddessen eintrudelt, liefe
+        # sonst in einen AttributeError im Loop-Callback.
+        loop = asyncio.get_running_loop()
+
+        def on_name_owner_changed(name, old_owner, new_owner):
+            if name == WATCHER_NAME and new_owner:
+                loop.create_task(self._reregister(bus))
+
+        dbus_iface.on_name_owner_changed(on_name_owner_changed)
+
+    async def _reregister(self, bus):
+        try:
+            await self._register(bus)
+        except Exception:
+            logger.exception("Erneute Tray-Anmeldung nach Watcher-Neustart fehlgeschlagen")
+
+    def notify(self, message, title="Zeiterfassung"):
+        """Toast über org.freedesktop.Notifications. Fehlertolerant wie auf den
+        anderen Plattformen — ein fehlender Toast darf nie den Sync stören.
+
+        Bewusst OHNE `.result()`: notify() läuft auf dem Tk-Thread (Aufrufer ist
+        `sync_orchestrator._on_tray_done` bzw. die Reminder-Scheduler). Ein
+        hängender Benachrichtigungsdienst würde die UI sonst einfrieren.
+        """
+        loop, bus = self._loop, self._bus
+        if loop is None or bus is None:
+            return
+        try:
+            future = asyncio.run_coroutine_threadsafe(self._notify(message, title), loop)
+        except Exception:
+            logger.exception("Linux-Tray-Notify konnte nicht eingereiht werden")
+            return
+        future.add_done_callback(_log_notify_failure)
+
+    async def _notify(self, message, title):
+        from dbus_fast import Message  # pyright: ignore[reportMissingImports]  # dbus-fast: nur auf Linux installiert
+
+        icon = os.path.join(self.base_path, "assets", "margenheld-icon.png")
+        await self._bus.call(Message(
+            destination=NOTIFY_NAME, path=NOTIFY_PATH, interface=NOTIFY_NAME,
+            member="Notify", signature="susssasa{sv}i",
+            body=[
+                "Zeiterfassung",
+                0,                      # replaces_id 0: Toasts überschreiben sich nicht
+                icon if os.path.exists(icon) else "",
+                title or "Zeiterfassung",
+                message,
+                [], {}, -1,
+            ],
+        ))
+
+    def stop(self):
+        """Signalisiert dem Loop-Thread das Ende und joint ihn. Idempotent.
+
+        Der eigentliche Abbau (release_name/disconnect) passiert im Loop-Thread
+        am Ende von `_serve` — hier wird nur das Event gesetzt (threadsafe über
+        `call_soon_threadsafe`, weil `asyncio.Event.set` es nicht ist).
+        """
+        loop, self._loop = self._loop, None
+        stopping = self._stopping
+        if loop is not None and stopping is not None and not loop.is_closed():
+            try:
+                loop.call_soon_threadsafe(stopping.set)
+            except RuntimeError:
+                # Loop war schon zu (z.B. nach fehlgeschlagenem start()).
+                logger.debug("Linux-Tray-Loop war beim Stoppen bereits beendet")
+        if self._thread is not None:
+            self._thread.join(timeout=self.SHUTDOWN_TIMEOUT_S)
+            self._thread = None
+        self._bus = None
+        self._name = None
+        self._stopping = None
