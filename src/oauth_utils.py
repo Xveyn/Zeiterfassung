@@ -15,6 +15,8 @@ import stat
 import tempfile
 import time
 
+from src.secure_file import harden_windows_acl
+
 
 def write_token(creds, token_path):
     """Persistiere Credentials atomar und setze restriktive Permissions.
@@ -25,7 +27,12 @@ def write_token(creds, token_path):
 
     Die Permissions werden auf `0o600` gesetzt. Auf Windows ist das chmod ein
     No-op (keine POSIX-Permissions); `try/except OSError` deckt zusätzlich
-    exotische Filesystems (sshfs, FAT32) ab, wo chmod fehlschlagen kann.
+    exotische Filesystems (sshfs, FAT32) ab, wo chmod fehlschlagen kann. Dort
+    übernimmt stattdessen `secure_file.harden_windows_acl` (Audit M8).
+
+    Beide Härtungen greifen auf der **Temp-Datei**, also vor dem `os.replace`:
+    sonst gäbe es ein Fenster, in dem `token.json` bereits am Zielpfad steht,
+    aber noch die geerbten Rechte trägt.
     """
     token_path = os.fspath(token_path)
     directory = os.path.dirname(os.path.abspath(token_path))
@@ -38,6 +45,7 @@ def write_token(creds, token_path):
             os.chmod(tmp_path, stat.S_IRUSR | stat.S_IWUSR)  # 0o600
         except OSError:
             pass
+        harden_windows_acl(tmp_path)
         # os.replace mit Retry gegen transiente Windows-PermissionError: ein
         # Virenscanner, der die frisch erzeugte .token-*.tmp scannt, oder ein
         # noch offenes Handle auf token.json blockiert den atomaren Rename kurz

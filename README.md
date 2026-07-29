@@ -61,6 +61,7 @@ Zeiterfassung/
 │   ├── tray.py            # Infobereich-Icon (Minimize-to-Tray); Plattform-Fassade
 │   ├── tray_mac.py        # Natives macOS-Tray-Backend (NSStatusItem, dormant/opt-in)
 │   ├── autostart.py       # Plattformabhängiger Autostart (Windows-Registry/macOS/Linux)
+│   ├── secure_file.py     # Zugriffsschutz für lokale Secrets (Windows-ACL via icacls)
 │   ├── single_instance.py # Single-Instance-Guard (verhindert parallele Instanzen)
 │   ├── device_id.py       # Stabile, hardware-abgeleitete Geräte-ID für installierte Builds (Sync)
 │   ├── updater.py         # GitHub-Releases-Check (stdlib-only, Frequenz konfigurierbar)
@@ -410,9 +411,12 @@ Speicherort je nach Plattform (siehe `src/paths.py`):
 > **Sicherheitshinweis:** `token.json` enthält im Klartext einen langlebigen
 > OAuth-Refresh-Token, der laufenden Zugriff auf dein Google-Konto (Gmail-Versand,
 > Drive-Sync, ggf. Kalender) gewährt. Unter macOS/Linux wird die Datei mit
-> `chmod 0600` nur für deinen Benutzer lesbar gemacht; unter Windows schützt sie
-> die ACL deines Benutzerprofils. **Wer den Daten-/Installationsordner kopiert,
-> sichert oder in die Cloud synchronisiert, nimmt diesen Token mit** — behandle
+> `chmod 0600` nur für deinen Benutzer lesbar gemacht; unter Windows setzt die App
+> per `icacls` eine eigene ACL auf die Datei — geerbte Rechte (SYSTEM, lokale
+> Administratoren) entfallen, Zugriff hat nur dein Benutzerkonto. Beides ist
+> Zugriffsschutz auf Dateiebene, keine Verschlüsselung. **Wer den Daten-/
+> Installationsordner kopiert, sichert oder in die Cloud synchronisiert, nimmt
+> diesen Token mit** — behandle
 > den Ordner entsprechend vertraulich und gib ihn nicht weiter. Bei Verdacht auf
 > Kompromittierung den Zugriff in den [Google-Kontoeinstellungen](https://myaccount.google.com/permissions)
 > entziehen und `token.json` löschen (die App startet beim nächsten Versand einen
