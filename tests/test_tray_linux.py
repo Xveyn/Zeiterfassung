@@ -1,3 +1,4 @@
+# tests/test_tray_linux.py
 """Pure Menü-/Icon-Logik des Linux-SNI-Backends (#42).
 
 Läuft auf JEDER Plattform: das Modul importiert dbus_fast und PIL nur lazy in
@@ -112,3 +113,37 @@ def test_throwing_callback_does_not_escape_dispatch():
     send_id = next(n.id for n in build_menu_nodes(model)
                    if n.props.get("label") == "Senden")
     assert state.dispatch(send_id) is True   # geschluckt, nicht geworfen
+
+
+import os
+
+import pytest
+
+from src.tray_linux import argb32_from_rgba, icon_pixmaps
+
+
+def test_argb32_reorders_one_pixel():
+    # RGBA (1,2,3,4) → ARGB (4,1,2,3): SNI erwartet ARGB32 in Network-Byte-Order.
+    assert argb32_from_rgba(bytes([1, 2, 3, 4])) == bytes([4, 1, 2, 3])
+
+
+def test_argb32_reorders_every_pixel_and_keeps_length():
+    rgba = bytes([1, 2, 3, 4, 10, 20, 30, 40])
+    assert argb32_from_rgba(rgba) == bytes([4, 1, 2, 3, 40, 10, 20, 30])
+    assert len(argb32_from_rgba(rgba)) == len(rgba)
+
+
+def test_icon_pixmaps_without_png_returns_empty_list(tmp_path):
+    # Kein Wurf: ein Item ohne Pixmap ist besser als gar kein Tray.
+    assert icon_pixmaps(str(tmp_path)) == []
+
+
+def test_icon_pixmaps_reads_the_app_icon_in_requested_sizes():
+    pytest.importorskip("PIL")  # nicht in requirements-test.txt
+    # Repo-Root aus __file__ ableiten statt "." — der Test darf nicht davon
+    # abhängen, aus welchem Verzeichnis pytest gestartet wurde.
+    repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    pixmaps = icon_pixmaps(repo_root, sizes=(16, 32))
+    assert [(w, h) for w, h, _data in pixmaps] == [(16, 16), (32, 32)]
+    assert len(pixmaps[0][2]) == 16 * 16 * 4
+    assert len(pixmaps[1][2]) == 32 * 32 * 4

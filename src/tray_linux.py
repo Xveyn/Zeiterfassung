@@ -1,3 +1,4 @@
+# src/tray_linux.py
 """Linux-Tray über StatusNotifierItem (SNI) — Backend für TrayIcon (#42).
 
 KDE Plasma implementiert SNI nativ; die Schnittstelle ist reines D-Bus. Dieses
@@ -16,6 +17,7 @@ Spec: docs/superpowers/specs/2026-07-29-linux-sni-tray-design.md
 """
 
 import logging
+import os
 from collections import namedtuple
 
 from src.tray import build_menu_model  # noqa: F401  (ab Task 5 genutzt)
@@ -126,3 +128,40 @@ class MenuState:
                     logger.exception("Tray-Menü-Callback warf (geschluckt)")
                 return True
         return False
+
+
+def argb32_from_rgba(rgba):
+    """RGBA-Bytes → ARGB32 in Network-Byte-Order, wie SNI es für `IconPixmap`
+    verlangt (`a(iiay)`). Pillow-frei und damit überall testbar."""
+    argb = bytearray(len(rgba))
+    argb[0::4] = rgba[3::4]   # A
+    argb[1::4] = rgba[0::4]   # R
+    argb[2::4] = rgba[1::4]   # G
+    argb[3::4] = rgba[2::4]   # B
+    return bytes(argb)
+
+
+def icon_pixmaps(base_path, sizes=(32, 64, 128)):
+    """`[(breite, höhe, argb32)]` aus `assets/margenheld-icon.png`.
+
+    Mehrere Größen, damit der Host für seine Panel-Höhe die passende wählt.
+    Pillow wird lazy importiert (wie im pystray-Backend). Fehlt die PNG oder
+    Pillow, bleibt die Liste leer und das Item startet ohne eigenes Icon —
+    besser als ein Tray, das gar nicht erst hochkommt.
+    """
+    png = os.path.join(base_path, "assets", "margenheld-icon.png")
+    if not os.path.exists(png):
+        logger.warning("Tray-Icon %s fehlt — Item startet ohne Pixmap", png)
+        return []
+    try:
+        from PIL import Image  # pyright: ignore[reportMissingImports]  # Pillow: nicht in CI-Test-Deps
+    except ImportError:
+        logger.warning("Pillow nicht verfügbar — Item startet ohne Pixmap")
+        return []
+    pixmaps = []
+    with Image.open(png) as image:
+        rgba = image.convert("RGBA")
+        for size in sizes:
+            scaled = rgba.resize((size, size))
+            pixmaps.append((size, size, argb32_from_rgba(scaled.tobytes())))
+    return pixmaps
