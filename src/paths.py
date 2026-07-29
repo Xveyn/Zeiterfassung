@@ -43,3 +43,30 @@ def get_base_path():
 
     os.makedirs(base, exist_ok=True)
     return base
+
+
+def get_resource_path():
+    """Verzeichnis der GEBÜNDELTEN Programmdaten (`assets/`) — read-only.
+
+    Frozen: `sys._MEIPASS` (PyInstaller; onefile = Temp-Extraktion, onedir =
+    `_internal/`). Script-Modus: Repo-Root. Fallback bei gesetztem
+    `sys.frozen` ohne `_MEIPASS`: das Verzeichnis der Exe.
+
+    ABGRENZUNG zu `get_base_path()` — das ist der ganze Zweck dieser Funktion:
+
+    - `get_base_path()` liefert NUTZERdaten: schreibbar, persistent,
+      plattformabhängig (`entries.json`, `settings.json`, `token.json`).
+    - `get_resource_path()` liefert PROGRAMMdaten: read-only, kommt mit dem
+      Build, verschwindet bei einer AppImage nach dem Beenden wieder.
+
+    Auf Windows fallen beide zufällig zusammen (Nutzerdaten liegen dort im
+    Installationsordner), auf macOS und Linux nie. Deshalb fand vorher jeder
+    Icon-Zugriff über `get_base_path()` auf diesen Plattformen nichts. Wer
+    eine mit dem Build ausgelieferte Datei sucht, nimmt diese Funktion.
+    """
+    if getattr(sys, "frozen", False):
+        meipass = getattr(sys, "_MEIPASS", None)
+        if meipass:
+            return meipass
+        return os.path.dirname(sys.executable)
+    return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
