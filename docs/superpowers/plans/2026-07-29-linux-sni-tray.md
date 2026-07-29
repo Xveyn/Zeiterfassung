@@ -18,6 +18,11 @@
 - **Kein Default-an-Flip.** `is_supported()` liefert auf Linux nur mit `ZEIT_LINUX_TRAY=1` True.
 - **Pin exakt:** `dbus-fast==5.0.22`, Marker `sys_platform == "linux"`, in `requirements.txt` **und** `requirements-test.txt`.
 - **Ruff-Regeln des Projekts:** `select = ["E4","E7","E9","F","B"]`. Bugbear ist aktiv — `raise X(...) from exc` innerhalb von `except`-Blöcken ist Pflicht (B904).
+- **Annotations-Regel für alle D-Bus-Member (bindend, empirisch geprüft):** `pyright` läuft im CI als Gate über `src` **und** `tests` (`pyproject.toml [tool.pyright] include`). Die in der dbus-fast-Doku gezeigten **String-Signaturen (`-> "s"`) sind damit unbrauchbar** — pyright meldet sie als undefinierte Namen (nachgestellt: zwei Methoden → vier Fehler). Verwendet werden deshalb:
+  - **importierte Aliase** aus `dbus_fast.annotations` für einfache Typen: `DBusStr` (`s`), `DBusBool` (`b`), `DBusInt32` (`i`), `DBusUInt32` (`u`), `DBusObjectPath` (`o`), `DBusVariant` (`v`), `DBusDict` (`a{sv}`);
+  - **inline `Annotated[list, DBusSignature("…")]`** für alles Zusammengesetzte (`as`, `ai`, `a(iiay)`, `(sa(iiay)ss)`, `u(ia{sv}av)`, `a(ia{sv})`, `a(isvu)`, `aiai`, `ui`).
+  **Keine selbstgebauten Alias-Variablen** (`DBusStrList = Annotated[...]`): pyright wertet die als „Variable not allowed in type expression" und wird rot. Importierte Aliase und inline-Ausdrücke sind beide sauber — beides ist gegen pyright 1.1.411 und gegen die Laufzeit (dbus-fast liest `__metadata__`) durchgespielt.
+  Der Python-Typ im `Annotated` ist bewusst das lose `list`: dbus-fast liest nur die Signatur, und Structs wie Multi-Out-Args sind auf dieser Ebene Listen (`service.py::_real_fn_result_to_body` akzeptiert Liste oder Tupel).
 - **Zeilenlänge** 100 (`pyproject.toml`), Formatierung sonst wie im Umfeld.
 - **Verifiziert wird lokal mit `pytest` aus dem Repo-Root.** Die D-Bus-Tasks brauchen Linux: lokal über Docker (Kommando in Task 7), sonst im CI-Linux-Job.
 
@@ -330,6 +335,8 @@ git commit -m "feat(tray): dbusmenu-Menüzustand für das Linux-SNI-Backend (#42
 Ans Ende von `tests/test_tray_linux.py`:
 
 ```python
+import os
+
 import pytest
 
 from src.tray_linux import argb32_from_rgba, icon_pixmaps
@@ -353,7 +360,10 @@ def test_icon_pixmaps_without_png_returns_empty_list(tmp_path):
 
 def test_icon_pixmaps_reads_the_app_icon_in_requested_sizes():
     pytest.importorskip("PIL")  # nicht in requirements-test.txt
-    pixmaps = icon_pixmaps(".", sizes=(16, 32))
+    # Repo-Root aus __file__ ableiten statt "." — der Test darf nicht davon
+    # abhängen, aus welchem Verzeichnis pytest gestartet wurde.
+    repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    pixmaps = icon_pixmaps(repo_root, sizes=(16, 32))
     assert [(w, h) for w, h, _data in pixmaps] == [(16, 16), (32, 32)]
     assert len(pixmaps[0][2]) == 16 * 16 * 4
     assert len(pixmaps[1][2]) == 32 * 32 * 4
@@ -576,7 +586,14 @@ Expected: FAIL — `ImportError: cannot import name 'MENU_PATH'` (bzw. Skip, wen
 
 - [ ] **Step 3: Write minimal implementation**
 
-In `src/tray_linux.py` direkt unter `logger = ...` die Konstanten ergänzen:
+In `src/tray_linux.py` den Import-Block um `Annotated` ergänzen (stdlib, darf auf
+Modulebene stehen — im Gegensatz zu `DBusSignature`):
+
+```python
+from typing import Annotated
+```
+
+Direkt unter `logger = ...` die Konstanten ergänzen:
 
 ```python
 ITEM_PATH = "/StatusNotifierItem"
@@ -609,9 +626,19 @@ def _make_interfaces(state, on_activate, pixmaps):
     Die Methodennamen sind exakt die D-Bus-Member-Namen: dbus_fast leitet den
     Namen 1:1 vom Funktionsnamen ab.
     """
-    from dbus_fast import PropertyAccess, Variant
-    from dbus_fast.service import ServiceInterface, dbus_method, dbus_property, dbus_signal
+    from dbus_fast import PropertyAccess, Variant  # pyright: ignore[reportMissingImports]  # dbus-fast: nur auf Linux installiert
+    from dbus_fast.annotations import (  # pyright: ignore[reportMissingImports]  # dbus-fast: nur auf Linux installiert
+        DBusBool, DBusInt32, DBusObjectPath, DBusSignature, DBusStr, DBusUInt32, DBusVariant,
+    )
+    from dbus_fast.service import (  # pyright: ignore[reportMissingImports]  # dbus-fast: nur auf Linux installiert
+        ServiceInterface, dbus_method, dbus_property, dbus_signal,
+    )
 
+    # Zusammengesetzte Signaturen stehen INLINE (siehe Annotations-Regel in den
+    # Global Constraints — ein selbstgebauter Alias wäre für pyright eine
+    # Variable im Typausdruck und damit ein Fehler). Der Python-Typ ist bewusst
+    # das lose `list`: dbus_fast liest ohnehin nur die DBusSignature, und
+    # Structs wie Multi-Out-Args sind auf dieser Ebene Listen.
     def _variants(props):
         return {key: Variant(PROP_SIGNATURES[key], value) for key, value in props.items()}
 
@@ -622,70 +649,70 @@ def _make_interfaces(state, on_activate, pixmaps):
             super().__init__("org.kde.StatusNotifierItem")
 
         @dbus_property(PropertyAccess.READ)
-        def Category(self) -> "s":
+        def Category(self) -> DBusStr:
             return "ApplicationStatus"
 
         @dbus_property(PropertyAccess.READ)
-        def Id(self) -> "s":
+        def Id(self) -> DBusStr:
             return "zeiterfassung"
 
         @dbus_property(PropertyAccess.READ)
-        def Title(self) -> "s":
+        def Title(self) -> DBusStr:
             return "Zeiterfassung"
 
         @dbus_property(PropertyAccess.READ)
-        def Status(self) -> "s":
+        def Status(self) -> DBusStr:
             return "Active"
 
         @dbus_property(PropertyAccess.READ)
-        def WindowId(self) -> "i":
+        def WindowId(self) -> DBusInt32:
             return 0
 
         @dbus_property(PropertyAccess.READ)
-        def ItemIsMenu(self) -> "b":
+        def ItemIsMenu(self) -> DBusBool:
             # False → Plasma schickt beim Linksklick Activate, statt nur das
             # Menü zu öffnen. Das ist der Default-Klick, den pystrays
             # appindicator-Backend prinzipbedingt nicht kann.
             return False
 
         @dbus_property(PropertyAccess.READ)
-        def Menu(self) -> "o":
+        def Menu(self) -> DBusObjectPath:
             return MENU_PATH
 
         @dbus_property(PropertyAccess.READ)
-        def IconName(self) -> "s":
+        def IconName(self) -> DBusStr:
             # Leer: wir liefern Pixmaps statt eines Theme-Icons (die App ist
             # nicht im Icon-Theme des Systems installiert).
             return ""
 
         @dbus_property(PropertyAccess.READ)
-        def IconPixmap(self) -> "a(iiay)":
+        def IconPixmap(self) -> Annotated[list, DBusSignature("a(iiay)")]:
             return [[width, height, data] for width, height, data in pixmaps]
 
         @dbus_property(PropertyAccess.READ)
-        def ToolTip(self) -> "(sa(iiay)ss)":
+        def ToolTip(self) -> Annotated[list, DBusSignature("(sa(iiay)ss)")]:
             return ["", [], "Zeiterfassung", ""]
 
         @dbus_method()
-        def Activate(self, x: "i", y: "i"):
+        def Activate(self, x: DBusInt32, y: DBusInt32):
             _safe(on_activate)
 
         @dbus_method()
-        def SecondaryActivate(self, x: "i", y: "i"):
+        def SecondaryActivate(self, x: DBusInt32, y: DBusInt32):
             pass
 
         @dbus_method()
-        def ContextMenu(self, x: "i", y: "i"):
+        def ContextMenu(self, x: DBusInt32, y: DBusInt32):
             # Der Host zeigt das dbusmenu selbst (Menu-Property ist gesetzt);
             # die Methode existiert nur, damit niemand UnknownMethod sieht.
             pass
 
         @dbus_method()
-        def Scroll(self, delta: "i", orientation: "s"):
+        def Scroll(self, delta: DBusInt32, orientation: DBusStr):
             pass
 
         @dbus_method()
-        def ProvideXdgActivationToken(self, token: "s"):
+        def ProvideXdgActivationToken(self, token: DBusStr):
             # Tk kann den Token nicht verwerten — unter Wayland darf der
             # Compositor das Anheben deshalb verweigern (s. Spec).
             pass
@@ -697,24 +724,25 @@ def _make_interfaces(state, on_activate, pixmaps):
             super().__init__("com.canonical.dbusmenu")
 
         @dbus_property(PropertyAccess.READ)
-        def Version(self) -> "u":
+        def Version(self) -> DBusUInt32:
             return 3
 
         @dbus_property(PropertyAccess.READ)
-        def Status(self) -> "s":
+        def Status(self) -> DBusStr:
             return "normal"
 
         @dbus_property(PropertyAccess.READ)
-        def TextDirection(self) -> "s":
+        def TextDirection(self) -> DBusStr:
             return "ltr"
 
         @dbus_property(PropertyAccess.READ)
-        def IconThemePath(self) -> "as":
+        def IconThemePath(self) -> Annotated[list, DBusSignature("as")]:
             return []
 
         @dbus_method()
-        def GetLayout(self, parentId: "i", recursionDepth: "i",
-                      propertyNames: "as") -> "u(ia{sv}av)":
+        def GetLayout(self, parentId: DBusInt32, recursionDepth: DBusInt32,
+                      propertyNames: Annotated[list, DBusSignature("as")],
+                      ) -> Annotated[list, DBusSignature("u(ia{sv}av)")]:
             root_id, root_props, children = state.layout()
             nodes = [
                 Variant("(ia{sv}av)", [child_id, _variants(props), []])
@@ -723,31 +751,36 @@ def _make_interfaces(state, on_activate, pixmaps):
             return [state.revision, [root_id, _variants(root_props), nodes]]
 
         @dbus_method()
-        def GetGroupProperties(self, ids: "ai", propertyNames: "as") -> "a(ia{sv})":
+        def GetGroupProperties(self,
+                               ids: Annotated[list, DBusSignature("ai")],
+                               propertyNames: Annotated[list, DBusSignature("as")],
+                               ) -> Annotated[list, DBusSignature("a(ia{sv})")]:
             wanted = list(ids) if ids else state.ids()
             return [[node_id, _variants(state.properties(node_id))] for node_id in wanted]
 
         @dbus_method()
-        def GetProperty(self, id: "i", name: "s") -> "v":
+        def GetProperty(self, id: DBusInt32, name: DBusStr) -> DBusVariant:
             props = state.properties(id)
             if name not in props:
                 return Variant("s", "")
             return Variant(PROP_SIGNATURES[name], props[name])
 
         @dbus_method()
-        def Event(self, id: "i", eventId: "s", data: "v", timestamp: "u"):
+        def Event(self, id: DBusInt32, eventId: DBusStr, data: DBusVariant,
+                  timestamp: DBusUInt32):
             if eventId == "clicked":
                 state.dispatch(id)
 
         @dbus_method()
-        def EventGroup(self, events: "a(isvu)") -> "ai":
+        def EventGroup(self, events: Annotated[list, DBusSignature("a(isvu)")],
+                       ) -> Annotated[list, DBusSignature("ai")]:
             for event in events:
                 if event[1] == "clicked":
                     state.dispatch(event[0])
             return []
 
         @dbus_method()
-        def AboutToShow(self, id: "i") -> "b":
+        def AboutToShow(self, id: DBusInt32) -> DBusBool:
             # Plasma ruft das vor jedem Öffnen → hier wird `visible` live neu
             # ausgewertet (Windows-Parität, kein Snapshot wie auf macOS).
             if not state.refresh():
@@ -756,18 +789,21 @@ def _make_interfaces(state, on_activate, pixmaps):
             return True
 
         @dbus_method()
-        def AboutToShowGroup(self, ids: "ai") -> "aiai":
+        def AboutToShowGroup(self, ids: Annotated[list, DBusSignature("ai")],
+                             ) -> Annotated[list, DBusSignature("aiai")]:
             if not state.refresh():
                 return [[], []]
             self.LayoutUpdated(state.revision, 0)
             return [list(ids), []]
 
         @dbus_signal()
-        def LayoutUpdated(self, revision: "u", parent: "i") -> "ui":
+        def LayoutUpdated(self, revision: DBusUInt32,
+                          parent: DBusInt32) -> Annotated[list, DBusSignature("ui")]:
             return [revision, parent]
 
     return _Item(), _Menu()
 ```
+
 
 - [ ] **Step 4: Run test to verify it passes**
 
@@ -915,8 +951,8 @@ class LinuxTrayBackend:
             loop.close()
 
     async def _serve(self, ready):
-        from dbus_fast import BusType
-        from dbus_fast.aio import MessageBus
+        from dbus_fast import BusType  # pyright: ignore[reportMissingImports]  # dbus-fast: nur auf Linux installiert
+        from dbus_fast.aio import MessageBus  # pyright: ignore[reportMissingImports]  # dbus-fast: nur auf Linux installiert
 
         bus = await MessageBus(bus_type=BusType.SESSION).connect()
         self._bus = bus
@@ -928,7 +964,7 @@ class LinuxTrayBackend:
         bus.export(MENU_PATH, menu)
 
         self._name = f"org.kde.StatusNotifierItem-{os.getpid()}-1"
-        await bus.request_name(self._name)
+        await self._own_name(bus)
         await self._register(bus)
         await self._watch_watcher(bus)
 
@@ -942,8 +978,24 @@ class LinuxTrayBackend:
             await bus.release_name(self._name)
         bus.disconnect()
 
+    async def _own_name(self, bus):
+        """Busnamen belegen — und prüfen, dass er uns wirklich gehört.
+
+        Ohne die Prüfung würden wir bei belegtem Namen (zweite Instanz, deren
+        Single-Instance-Guard degradiert ist) einen fremden Namen beim Watcher
+        anmelden: Plasma fragte dann die falsche Anwendung nach Icon und Menü,
+        und niemand sähe einen Fehler.
+        """
+        from dbus_fast import RequestNameReply  # pyright: ignore[reportMissingImports]  # dbus-fast: nur auf Linux installiert
+
+        reply = await bus.request_name(self._name)
+        if reply is not RequestNameReply.PRIMARY_OWNER:
+            raise RuntimeError(
+                f"Busname {self._name} ist bereits belegt (Antwort: {reply}) — "
+                "läuft die Zeiterfassung doppelt?")
+
     async def _register(self, bus):
-        from dbus_fast import Message, MessageType
+        from dbus_fast import Message, MessageType  # pyright: ignore[reportMissingImports]  # dbus-fast: nur auf Linux installiert
 
         reply = await bus.call(Message(
             destination=WATCHER_NAME, path=WATCHER_PATH, interface=WATCHER_NAME,
@@ -961,9 +1013,14 @@ class LinuxTrayBackend:
             "org.freedesktop.DBus", "/org/freedesktop/DBus", introspection)
         dbus_iface = proxy.get_interface("org.freedesktop.DBus")
 
+        # Loop LOKAL festhalten statt über self._loop: stop() setzt das Attribut
+        # auf None, und ein Signal, das genau währenddessen eintrudelt, liefe
+        # sonst in einen AttributeError im Loop-Callback.
+        loop = asyncio.get_running_loop()
+
         def on_name_owner_changed(name, old_owner, new_owner):
             if name == WATCHER_NAME and new_owner:
-                self._loop.create_task(self._reregister(bus))
+                loop.create_task(self._reregister(bus))
 
         dbus_iface.on_name_owner_changed(on_name_owner_changed)
 
@@ -992,7 +1049,7 @@ class LinuxTrayBackend:
         future.add_done_callback(_log_notify_failure)
 
     async def _notify(self, message, title):
-        from dbus_fast import Message
+        from dbus_fast import Message  # pyright: ignore[reportMissingImports]  # dbus-fast: nur auf Linux installiert
 
         icon = os.path.join(self.base_path, "assets", "margenheld-icon.png")
         await self._bus.call(Message(
@@ -1243,34 +1300,43 @@ if sys.platform != "linux":
 if shutil.which("dbus-daemon") is None:
     pytest.skip("dbus-daemon nicht installiert", allow_module_level=True)
 
-from dbus_fast import BusType, PropertyAccess, Variant
-from dbus_fast.aio import MessageBus
-from dbus_fast.service import ServiceInterface, dbus_method, dbus_property
+from typing import Annotated
+
+from dbus_fast import BusType, PropertyAccess, Variant  # pyright: ignore[reportMissingImports]  # dbus-fast: nur auf Linux installiert
+from dbus_fast.aio import MessageBus  # pyright: ignore[reportMissingImports]  # dbus-fast: nur auf Linux installiert
+from dbus_fast.annotations import (  # pyright: ignore[reportMissingImports]  # dbus-fast: nur auf Linux installiert
+    DBusBool, DBusDict, DBusInt32, DBusSignature, DBusStr, DBusUInt32,
+)
+from dbus_fast.service import ServiceInterface, dbus_method, dbus_property  # pyright: ignore[reportMissingImports]  # dbus-fast: nur auf Linux installiert
 
 from src.tray_linux import ITEM_PATH, MENU_PATH, LinuxTrayBackend
 
 
 class _FakeWatcher(ServiceInterface):
-    """Minimaler org.kde.StatusNotifierWatcher — merkt sich die Anmeldungen."""
+    """Minimaler org.kde.StatusNotifierWatcher — merkt sich die Anmeldungen.
+
+    Annotationen wie im Produktivcode über die dbus_fast-Aliase: pyright prüft
+    `tests` mit (pyproject.toml), String-Signaturen wären dort rot.
+    """
 
     def __init__(self):
         super().__init__("org.kde.StatusNotifierWatcher")
         self.registered = []
 
     @dbus_method()
-    def RegisterStatusNotifierItem(self, service: "s"):
+    def RegisterStatusNotifierItem(self, service: DBusStr):
         self.registered.append(service)
 
     @dbus_property(PropertyAccess.READ)
-    def IsStatusNotifierHostRegistered(self) -> "b":
+    def IsStatusNotifierHostRegistered(self) -> DBusBool:
         return True
 
     @dbus_property(PropertyAccess.READ)
-    def RegisteredStatusNotifierItems(self) -> "as":
+    def RegisteredStatusNotifierItems(self) -> Annotated[list, DBusSignature("as")]:
         return list(self.registered)
 
     @dbus_property(PropertyAccess.READ)
-    def ProtocolVersion(self) -> "i":
+    def ProtocolVersion(self) -> DBusInt32:
         return 0
 
 
@@ -1282,8 +1348,10 @@ class _FakeNotifications(ServiceInterface):
         self.messages = []
 
     @dbus_method()
-    def Notify(self, app_name: "s", replaces_id: "u", app_icon: "s", summary: "s",
-               body: "s", actions: "as", hints: "a{sv}", timeout: "i") -> "u":
+    def Notify(self, app_name: DBusStr, replaces_id: DBusUInt32, app_icon: DBusStr,
+               summary: DBusStr, body: DBusStr,
+               actions: Annotated[list, DBusSignature("as")],
+               hints: DBusDict, timeout: DBusInt32) -> DBusUInt32:
         self.messages.append((app_name, summary, body))
         return 1
 
