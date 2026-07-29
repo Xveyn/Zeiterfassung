@@ -296,7 +296,10 @@ muss sie deterministisch **und** über alle Geräte gleich halten.
   User sie manuell schließen (Retry-Dialog), statt des Default-Wegs (`CloseApplications`/Restart
   Manager), der bei aktivem Minimize-to-Tray scheitert (`App._on_close` behandelt das dabei
   gesendete `WM_CLOSE` nur als Fenster-Verstecken).
-- `tray.py` (Fassade) + `tray_mac.py` (natives macOS-NSStatusItem-Backend, #88).
+- `tray.py` (Fassade) + `tray_mac.py` (natives macOS-NSStatusItem-Backend, #88)
+  + `tray_linux.py` (StatusNotifierItem über D-Bus, #42). Beide Nicht-Windows-
+  Backends sind dormant hinter einer Opt-in-Env-Var, bis ihr manuelles
+  Plattform-Gate grün ist.
 
 Das Tray-Icon läuft, sobald `minimize_to_tray` **oder** `reminders_enabled` aktiv ist (`ui.py::_apply_tray_setting`); bei nur `reminders_enabled` dient es ausschließlich als Toast-Kanal.
 
@@ -307,6 +310,10 @@ marshallen selbst per `root.after(0, …)`. „Nach Updates suchen" (`_tray_chec
 einzige Eintrag mit eigenem Hintergrund-Job: er übergeht den Frequenz-Throttle des
 Hintergrund-Checks, meldet sein Ergebnis in **jedem** Fall als Toast (`updater.
 manual_check_toast_text`) und blockt über `_update_check_running` den Doppelklick.
+
+Die `visible`-Callable wird auf Windows und Linux LIVE ausgewertet (pystray baut
+das Popup neu, dbusmenu fragt vor jedem Öffnen `AboutToShow`), auf macOS ist sie
+ein Snapshot vom Tray-Start.
 
 ## Dialoge (`src/dialogs/`)
 

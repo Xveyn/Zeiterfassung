@@ -380,7 +380,14 @@ Die App läuft auf **Windows, macOS und Linux**. Plattformspezifische Features w
 | Taskbar-Icon (AppUserModelID) | ✓ | — (nicht nötig) | — (nicht nötig) |
 | Window-Icon | ✓ (`.ico`) | ✓ (`.png` Fallback) | ✓ (`.png` Fallback) |
 | Autostart bei Anmeldung | ✓ (Registry HKCU Run) | ✓ (LaunchAgent plist) | ✓ (`.desktop`-Datei) |
+| Infobereich-Icon (Tray) | ✓ (pystray) | ○ (NSStatusItem, Opt-in `ZEIT_MACOS_TRAY=1`) | ○ (StatusNotifierItem, Opt-in `ZEIT_LINUX_TRAY=1`) |
 | Standalone-Binary (PyInstaller) | ✓ (`.exe`) | ✓ (`.app` Bundle) | ✓ (AppImage) |
+
+○ = implementiert, aber bis zum manuellen Plattform-Test dormant. Das Linux-Tray
+spricht StatusNotifierItem über D-Bus (KDE Plasma, XFCE, GNOME mit
+AppIndicator-Extension); Desktops ohne StatusNotifierWatcher bekommen wie bisher
+kein Icon. Unter Wayland holt ein Klick das Fenster zurück, das Anheben in den
+Vordergrund darf der Compositor aber verweigern.
 
 ## Tests
 

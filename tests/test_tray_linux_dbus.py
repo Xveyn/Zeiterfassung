@@ -322,8 +322,9 @@ def test_the_remaining_dbusmenu_methods_answer_over_the_wire(desktop):
             # Unbekannte Property: dokumentierter Fallback, kein D-Bus-Fehler.
             assert (await menu.call_get_property(send_id, "kein-solches-feld")).value == ""
 
-            # Klick über EventGroup (statt Event) — dispatcht der Adapter hier
-            # nicht, bleibt `clicked` leer.
+            # Klick über EventGroup (statt Event) — der Adapter dispatcht genauso
+            # (die Assertion unten bestätigt `clicked == ["send"]`); die leere
+            # Rückgabe listet nur nicht gefundene IDs (hier keine).
             assert await menu.call_event_group(
                 [[send_id, "clicked", Variant("s", ""), 0]]) == []
 

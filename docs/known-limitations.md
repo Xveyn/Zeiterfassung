@@ -108,8 +108,12 @@ Testsorte — sie brechen bei Layout-Umbauten, ohne dass ein Verhalten kaputt
 wäre, und erzeugen damit genau die Sorte Rot, die man wegklickt statt liest.
 Dazu käme dauerhaft ein `xvfb`-Pfad in der CI, den sonst nichts braucht. Und
 das, was wirklich nur auf der echten Plattform bricht — macOS-Sekundärklick
-(`<Button-2>`/Control-Klick, ✕-Delete-Gate), Linux/KDE-Tray (#42),
-Fenster-Chrome — deckt ein Linux-Framebuffer strukturell ohnehin nicht ab.
+(`<Button-2>`/Control-Klick, ✕-Delete-Gate), Fenster-Chrome und die Darstellung
+des Linux-Trays in Plasma (#42) — deckt ein Linux-Framebuffer strukturell ohnehin
+nicht ab. Beim Linux-Tray zeigt sich dabei genau der Zuschnitt-Gedanke: die
+dbusmenu-Logik liegt D-Bus-frei in `tray_linux.MenuState` und wird überall
+getestet, die Wire-Ebene gegen einen echten `dbus-daemon` — offen bleibt nur,
+was Plasma daraus zeichnet.
 
 **Was stattdessen greift** — das ist der eigentliche Punkt, nicht ein Verzicht
 ohne Ersatz:
