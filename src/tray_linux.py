@@ -536,8 +536,22 @@ class LinuxTrayBackend:
             raise RuntimeError(f"StatusNotifierWatcher lehnte die Registrierung ab: {detail}")
 
     async def _watch_watcher(self, bus, name):
-        """Nach einem plasmashell-Neustart neu anmelden — sonst ist das Icon weg
-        und niemand kann sich erklären, warum."""
+        """Nach einem Neustart des WATCHERS neu anmelden — sonst ist das Icon
+        weg und niemand kann sich erklären, warum.
+
+        Watcher ≠ Panel: unter Plasma 6 gehört `org.kde.StatusNotifierWatcher`
+        dem `kded6`, während `plasmashell` nur den Host
+        (`org.kde.StatusNotifierHost-<pid>`) besitzt — auf dem Zielgerät per
+        `busctl --user list` verifiziert. Ein plasmashell-Neustart lässt den
+        Watcher-Namen also unberührt, dieses Abo feuert nicht, und das Icon
+        kommt trotzdem zurück: die Registrierung liegt weiter im Watcher, der
+        neue Host liest sie über `RegisteredStatusNotifierItems` wieder aus.
+
+        Das hier ist der Pfad für den Fall, dass der Watcher SELBST weg war.
+        Wer ihn von Hand auslösen will (Plasma 6):
+        `systemctl --user restart plasma-kded6.service`. `plasmashell --replace`
+        prüft ihn NICHT — der Test sähe grün aus, ohne diesen Code anzufassen.
+        """
         introspection = await bus.introspect("org.freedesktop.DBus", "/org/freedesktop/DBus")
         proxy = bus.get_proxy_object(
             "org.freedesktop.DBus", "/org/freedesktop/DBus", introspection)

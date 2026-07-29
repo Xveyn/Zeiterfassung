@@ -130,7 +130,9 @@ class _Desktop:
         return self.helper.run(coro, timeout)
 
     def restart_watcher(self):
-        """Simuliert einen plasmashell-Neustart: Name freigeben, neu belegen."""
+        """Simuliert einen Neustart des Watchers (Plasma 6: `kded6`, NICHT
+        plasmashell — s. `tray_linux._watch_watcher`): Name freigeben, neu
+        belegen."""
         async def restart():
             await self.bus.release_name("org.kde.StatusNotifierWatcher")
             new_bus = await MessageBus(bus_type=BusType.SESSION).connect()
@@ -379,8 +381,14 @@ def test_notify_reaches_the_notification_service(desktop):
 
 
 def test_item_reregisters_after_the_watcher_restarts(desktop):
-    """plasmashell-Neustart: der Watcher verschwindet und kommt wieder — das
-    Item muss sich von selbst neu anmelden, sonst ist das Icon dauerhaft weg."""
+    """Watcher-Neustart: der Watcher verschwindet und kommt wieder — das Item
+    muss sich von selbst neu anmelden, sonst ist das Icon dauerhaft weg.
+
+    Gemeint ist der Prozess, dem `org.kde.StatusNotifierWatcher` GEHÖRT (unter
+    Plasma 6 `kded6`), nicht plasmashell — das ist dort nur der Host. Der
+    Fake-Watcher gibt den Namen wirklich frei und belegt ihn neu, modelliert
+    also den richtigen Fall; nur die frühere Beschriftung war irreführend.
+    """
     backend = _backend([])
     backend.start()
     try:
@@ -401,7 +409,7 @@ def test_reregistration_does_not_read_the_backend_attribute(desktop):
     statt des Busnamens.
 
     Der Test stellt genau diesen Zustand her: Attribut auf None, dann
-    plasmashell-Neustart simulieren. Die Anmeldung muss trotzdem den richtigen
+    Watcher-Neustart simulieren. Die Anmeldung muss trotzdem den richtigen
     Namen tragen. Läse der Pfad `self._name`, bräche er hier.
     """
     backend = _backend([])

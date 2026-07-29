@@ -171,9 +171,17 @@ selbst per `root.after(0, …)` — unverändertes Muster.
 ### Watcher-Neustart
 
 Abo auf `NameOwnerChanged` für `org.kde.StatusNotifierWatcher`: taucht der Watcher neu
-auf (plasmashell-Neustart), registriert sich das Item neu. Bewusst über YAGNI hinaus —
-ohne das verschwindet das Icon nach jedem plasmashell-Neustart, und die Ursache ist von
-außen praktisch nicht zu erraten.
+auf, registriert sich das Item neu. Bewusst über YAGNI hinaus — ohne das verschwindet
+das Icon nach einem Watcher-Neustart, und die Ursache ist von außen praktisch nicht zu
+erraten.
+
+**Watcher ≠ Panel.** Unter Plasma 6 gehört der Watcher-Name dem `kded6`; `plasmashell`
+besitzt nur den Host `org.kde.StatusNotifierHost-<pid>`. Auf dem Zielgerät verifiziert
+(`busctl --user list`): Watcher bei PID 3184 = `kded6`, Host bei PID 3312 =
+`plasmashell`. Ein plasmashell-Neustart lässt den Watcher-Namen damit unberührt — dieses
+Abo feuert nicht, und das Icon kommt trotzdem zurück, weil die Registrierung im Watcher
+liegen bleibt und der neue Host sie über `RegisteredStatusNotifierItems` wieder ausliest.
+Der hier beschriebene Pfad greift nur, wenn der Watcher SELBST neu startet.
 
 ## Betroffene Stellen
 
@@ -266,7 +274,19 @@ Klick, Icon-Darstellung in der echten Panel-Größe, Toast-Optik, Verhalten unte
   Anzeigen / Senden / Teilen / Export / Sync / Beenden; der Sync-Eintrag erscheint und
   verschwindet mit `sync_enabled`; „Beenden" beendet sauber; Fenster schließen minimiert
   in den Systemabschnitt; ein Reservierungs-Reminder erscheint als Toast; nach einem
-  `plasmashell --replace` ist das Icon wieder da.
+  **Watcher**-Neustart (`systemctl --user restart plasma-kded6.service`) ist das Icon
+  wieder da.
+
+  Zum letzten Punkt: **nicht** `plasmashell --replace` nehmen. Das startet nur den Host
+  neu, nicht den Watcher (s. „Watcher-Neustart" oben) — der Schritt ginge grün durch,
+  ohne die Neuanmelde-Logik ein einziges Mal anzufassen, und sie ginge ungeprüft ins
+  Release.
+
+  Ebenfalls vorher wissen: die Zielsitzung ist **Wayland** (`loginctl show-session … -p
+  Type` → `wayland`). Beim Linksklick holt `Activate` das Fenster aus `withdraw()`, aber
+  KWin darf das Anheben verweigern, weil Tk den XDG-Activation-Token nicht verwerten kann.
+  Blinkt das Fenster in der Taskleiste, statt nach vorn zu springen, ist das der
+  dokumentierte Kompromiss und kein Fehlschlag des Gates.
 
 **Übergabe (schwerer Loop):**
 
