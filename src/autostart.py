@@ -2,9 +2,10 @@
 import os
 import platform
 import plistlib
-import shlex
 import subprocess
 import sys
+
+from src.desktop_entry import exec_line
 
 
 SHORTCUT_NAME = "Zeiterfassung.lnk"
@@ -195,32 +196,16 @@ def _disable_macos():
     os.remove(plist_path)
 
 
-def _exec_line(target, arguments):
-    """Baut die Exec=-Zeile mit shell-korrektem Quoting (Audit N12): ein Pfad
-    mit Leerzeichen o.ä. zerbricht die .desktop-Datei sonst. shlex.quote deckt
-    sich mit GLibs Exec-Parsing (g_shell_parse_argv). `arguments` ist
-    typischerweise ein Whitespace-getrennter String einfacher Flags (z.B. ""
-    oder "--minimized"); im Nicht-Frozen-Modus kann es zusätzlich einen
-    Skript-Pfad enthalten (resolve_autostart_target) — ein Leerzeichen darin
-    würde fälschlich als Token-Grenze behandelt (vorbestehendes Verhalten, nicht
-    durch diesen Fix eingeführt). Werte ohne Sonderzeichen bleiben unverändert
-    (shlex.quote quotet nur bei Bedarf)."""
-    parts = [shlex.quote(target)]
-    if arguments:
-        parts.extend(shlex.quote(a) for a in arguments.split())
-    return " ".join(parts)
-
-
 def _enable_linux(target, arguments):
     desktop_path = _linux_desktop_path()
     os.makedirs(os.path.dirname(desktop_path), exist_ok=True)
 
-    exec_line = _exec_line(target, arguments)
+    exec_content = exec_line(target, arguments)
     content = (
         "[Desktop Entry]\n"
         "Type=Application\n"
         "Name=Zeiterfassung\n"
-        f"Exec={exec_line}\n"
+        f"Exec={exec_content}\n"
         "Hidden=false\n"
         "X-GNOME-Autostart-enabled=true\n"
     )
