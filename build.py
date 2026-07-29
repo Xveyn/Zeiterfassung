@@ -186,6 +186,9 @@ def build_linux():
     print(f"Building Zeiterfassung v{VERSION} (Linux) ...")
     cmd = _pyinstaller_common([
         "--onefile",
+        # tray_linux.py importiert dbus_fast lazy → explizit bündeln, sonst
+        # fehlt es in der AppImage und das SNI-Tray startet nicht (#42).
+        "--collect-all", "dbus_fast",
     ])
     subprocess.run(cmd, check=True)
     generate_third_party_notices()

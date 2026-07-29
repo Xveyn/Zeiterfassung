@@ -9,4 +9,5 @@ pyinstaller==6.20.0
 holidays==0.99
 pystray==0.19.5
 Pillow==12.3.0
+dbus-fast==5.0.22; sys_platform == "linux"
 pyobjc-framework-Cocoa==12.2.1; sys_platform == "darwin"

@@ -12,3 +12,6 @@ holidays==0.99
 google-api-python-client==2.196.0
 google-auth==2.55.0
 google-auth-oauthlib==1.4.0
+# Nur für den Linux-Job: Integrationstest des SNI-Trays gegen einen echten
+# dbus-daemon (tests/test_tray_linux_dbus.py). Pure Python, keine C-Deps.
+dbus-fast==5.0.22; sys_platform == "linux"
