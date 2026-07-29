@@ -439,6 +439,16 @@ class LinuxTrayBackend:
         loop = asyncio.new_event_loop()
         self._loop = loop
         asyncio.set_event_loop(loop)
+        # Event HIER erzeugen, nicht erst in _serve nach dem Bus-Connect
+        # (Review-Finding 3): läuft start() in den START_TIMEOUT_S-Zweig,
+        # während _serve noch in connect() hängt, fände stop() sonst
+        # `_stopping is None` vor, könnte nichts signalisieren und würde
+        # Thread/Event trotzdem auf None zurücksetzen — ein späterer stop()
+        # erreicht den dann längst verwaisten Thread nie mehr. Mit dem Event
+        # schon jetzt kann stop() es jederzeit setzen; sobald _serve seinen
+        # Verbindungsaufbau irgendwann abschließt, läuft es direkt in ein
+        # bereits gesetztes `await self._stopping.wait()` und baut sofort ab.
+        self._stopping = asyncio.Event()
         try:
             loop.run_until_complete(self._serve(ready))
         except Exception as exc:
@@ -455,27 +465,42 @@ class LinuxTrayBackend:
 
         bus = await MessageBus(bus_type=BusType.SESSION).connect()
         self._bus = bus
-        self._stopping = asyncio.Event()
+        name = None
+        try:
+            state = MenuState(build_menu_model(self._on_show, self._on_quit, self._actions))
+            item, menu = _make_interfaces(state, self._on_show, icon_pixmaps(self.base_path))
+            bus.export(ITEM_PATH, item)
+            bus.export(MENU_PATH, menu)
 
-        state = MenuState(build_menu_model(self._on_show, self._on_quit, self._actions))
-        item, menu = _make_interfaces(state, self._on_show, icon_pixmaps(self.base_path))
-        bus.export(ITEM_PATH, item)
-        bus.export(MENU_PATH, menu)
+            name = f"org.kde.StatusNotifierItem-{os.getpid()}-1"
+            self._name = name
+            await self._own_name(bus)
+            await self._register(bus)
+            await self._watch_watcher(bus)
 
-        self._name = f"org.kde.StatusNotifierItem-{os.getpid()}-1"
-        await self._own_name(bus)
-        await self._register(bus)
-        await self._watch_watcher(bus)
-
-        ready.set_result(None)
-        await self._stopping.wait()
-
-        # Abbau IM Loop-Thread, nicht in stop(): sonst müsste stop() auf eine
-        # Coroutine warten, deren Loop unmittelbar danach zumacht — das hing
-        # bis zum Timeout, ausgerechnet im Quit-Pfad.
-        if self._name:
-            await bus.release_name(self._name)
-        bus.disconnect()
+            ready.set_result(None)
+            await self._stopping.wait()
+        finally:
+            # Abbau IM Loop-Thread, nicht in stop(): sonst müsste stop() auf
+            # eine Coroutine warten, deren Loop unmittelbar danach zumacht —
+            # das hing bis zum Timeout, ausgerechnet im Quit-Pfad.
+            #
+            # try/finally statt einer Anweisungsfolge NACH `await
+            # self._stopping.wait()` (Review-Finding 1): wirft `_own_name`
+            # oder `_register` (Name belegt, Watcher lehnt ab, o.ä.), lief der
+            # Abbau vorher nie — der Prozess hielt danach eine offene
+            # Session-Bus-Verbindung, die den Namen bereits besaß, und ein
+            # zweiter start()-Versuch bekam die irreführende Meldung „Busname
+            # … ist bereits belegt". `name` ist die lokal festgehaltene Kopie
+            # (Review-Finding 2), nicht `self._name`: stop() kann
+            # `self._name` nach einem Join-Timeout bereits auf None gesetzt
+            # haben, während dieser Abbau noch läuft.
+            if name:
+                try:
+                    await bus.release_name(name)
+                except Exception:
+                    logger.exception("Busname konnte beim Abbau nicht freigegeben werden")
+            bus.disconnect()
 
     async def _own_name(self, bus):
         """Busnamen belegen — und prüfen, dass er uns wirklich gehört.

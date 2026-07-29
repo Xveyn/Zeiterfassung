@@ -195,3 +195,53 @@ def test_start_raises_when_no_session_bus_is_reachable(monkeypatch):
     with pytest.raises(Exception):  # noqa: B017 — Verbindungsfehler ist je nach Umgebung ein anderer Typ, Test prüft nur "wirft synchron"
         backend.start()
     backend.stop()   # muss auch nach fehlgeschlagenem Start aufräumbar sein
+
+
+import asyncio
+
+
+def test_stop_reaps_a_thread_still_hanging_after_a_start_timeout(monkeypatch):
+    """Regression für Review-Finding 3: `_stopping` muss VOR `_serve` existieren
+    (jetzt in `_run` angelegt statt in `_serve` nach dem Bus-Connect). Sonst
+    fände ein stop() während eines Start-Timeouts kein Event zum
+    Signalisieren vor, verbuchte Thread/Event trotzdem als erledigt (auf
+    None) — ein späterer stop() hätte den tatsächlich noch laufenden Thread
+    nie mehr erreicht, weil ihm dafür schlicht das Mittel fehlte.
+
+    `_serve` wird durch eine Fake-Coroutine ersetzt, die absichtlich länger
+    braucht als `START_TIMEOUT_S` (simuliert ein hängendes `connect()`) — kein
+    `dbus_fast` nötig, läuft auf jeder Plattform. Existiert `self._stopping`
+    zu diesem Zeitpunkt NICHT (Bug), hat die Fake-Coroutine kein Mittel, um
+    von außen aufgeweckt zu werden, und bleibt bewusst lange hängen — genau
+    das reproduziert den gemeldeten Zustand statt ihn nur zu behaupten.
+    """
+
+    async def fake_serve(self, ready):
+        await asyncio.sleep(0.2)   # simuliert eine _serve, die länger als START_TIMEOUT_S braucht
+        stopping = self._stopping
+        if stopping is None:
+            # Ohne den Fix gibt es an dieser Stelle kein Event — die
+            # Coroutine hat keine Möglichkeit, von stop() erreicht zu werden,
+            # und hängt (hier absichtlich weit über SHUTDOWN_TIMEOUT_S
+            # hinaus) unsichtbar weiter.
+            await asyncio.sleep(10)
+            return
+        await stopping.wait()
+
+    monkeypatch.setattr(LinuxTrayBackend, "_serve", fake_serve)
+
+    backend = LinuxTrayBackend("base", on_show=lambda: None, on_quit=lambda: None)
+    backend.START_TIMEOUT_S = 0.05
+
+    # Anders als beim echten Bus-Fehlerpfad ist der Exception-Typ hier
+    # deterministisch: fake_serve löst `ready` erst nach 0.2s auf, also läuft
+    # start() immer in den START_TIMEOUT_S-Zweig (RuntimeError).
+    with pytest.raises(RuntimeError):
+        backend.start()
+
+    thread = backend._thread
+    assert thread is not None and thread.is_alive()
+
+    backend.stop()
+
+    assert not thread.is_alive()
