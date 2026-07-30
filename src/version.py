@@ -1,6 +1,6 @@
 import re
 
-VERSION = "1.20.0"
+VERSION = "1.17.0"
 
 # Kennung eines Releases: "1.19.0" (echtes Release) oder "1.19.0-pre.2"
 # (Pre-Release, s. .github/workflows/release.yml). Kein anderes Suffix ist
