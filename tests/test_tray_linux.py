@@ -185,7 +185,7 @@ def test_icon_pixmaps_returns_pixmaps_only_when_png_present(tmp_path):
     test_is_not_the_data_dir_when_they_differ` — dort liegen beide Pfade
     tatsächlich nebeneinander vor."""
     pytest.importorskip("PIL")
-    from PIL import Image
+    from PIL import Image  # pyright: ignore[reportMissingImports]  # Pillow: nicht in CI-Test-Deps
     bundle = tmp_path / "bundle" / "assets"
     bundle.mkdir(parents=True)
     Image.new("RGBA", (8, 8), (1, 2, 3, 4)).save(bundle / "margenheld-icon.png")
