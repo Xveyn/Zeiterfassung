@@ -2,7 +2,7 @@
 AppName=Zeiterfassung
 AppVersion={#AppVer}
 AppPublisher=Margenheld
-AppPublisherURL=https://github.com/margenheld/Zeiterfassung
+AppPublisherURL=https://github.com/Xveyn/Zeiterfassung
 DefaultDirName={autopf}\Zeiterfassung
 DefaultGroupName=Zeiterfassung
 UninstallDisplayIcon={app}\Zeiterfassung.exe

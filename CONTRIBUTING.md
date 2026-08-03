@@ -6,7 +6,7 @@ Bugfix, Feature oder Doku-Korrektur.
 ## Entwicklungsumgebung
 
 ```bash
-git clone https://github.com/margenheld/Zeiterfassung.git
+git clone https://github.com/Xveyn/Zeiterfassung.git
 cd Zeiterfassung
 pip install -r requirements.txt
 python -m src.main          # App aus dem Repo starten
