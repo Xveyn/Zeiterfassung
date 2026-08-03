@@ -19,7 +19,7 @@ Bitte melde Sicherheitslücken **nicht** über öffentliche GitHub-Issues.
 
 Meldungen laufen über die privaten
 [**Security Advisories**](https://github.com/Xveyn/Zeiterfassung/security/advisories/new)
-des Repositories → „Report a vulnerability".
+dieses Repositorys („Report a vulnerability").
 
 Hilfreich für eine schnelle Einschätzung:
 
