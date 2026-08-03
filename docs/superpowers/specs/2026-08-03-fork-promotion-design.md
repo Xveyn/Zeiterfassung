@@ -111,11 +111,16 @@ sobald dort welche entstehen. Ersetzen durch `margenheld/Zeiterfassung#NNN`;
 vollqualifizierte Refs rendern in **beiden** Repos korrekt, der Schritt ist im
 alten Repo also unschädlich.
 
-Betroffen sind 21 Vorkommen in drei Dateien:
+Betroffen sind 20 Vorkommen in drei Dateien:
 
-- `CLAUDE.md` — Zeilen 105, 112, 113, 114, 129, 130, 137, 386 (×2), 414, 418, 419
+- `CLAUDE.md` — Zeilen 105, 112, 113, 114, 129, 130, 386 (×2), 414, 418, 419
 - `src/CLAUDE.md` — Zeilen 101, 195, 233, 309, 310
 - `docs/known-limitations.md` — Zeilen 78, 112, 136, 137
+
+Ausgenommen: `` `#118` `` in `CLAUDE.md:137` steht in einem Code-Span, den
+GitHub nicht verlinkt — die Falle greift dort nicht, und vollqualifiziert wäre
+der Backtick-Text nur länger. `docs/known-limitations.md:149` ist bereits ein
+vollständiger Link und wird über die Doku-Tabelle oben mit umgestellt.
 
 `AUDIT-2026-07-04.md` ist untracked und enthält bereits vollqualifizierte Links —
 kein Handlungsbedarf.
