@@ -65,7 +65,7 @@ Run:
 grep -rn "MargenHeld" tests/
 ```
 
-Expected: Genau vier Treffer, alle in `html_url`-/`compare`-Strings von API-Fixtures — `tests/test_updater.py:154`, `tests/test_updater.py:315`, `tests/test_changelog.py:159-164`. Keiner davon importiert oder vergleicht `updater.REPO`. Tauchen andere Treffer auf, hier stoppen und melden.
+Expected: Genau sieben Treffer — `tests/test_changelog.py:69`, `tests/test_changelog.py:159`, `tests/test_changelog.py:161`, `tests/test_changelog.py:164`, `tests/test_updater.py:154`, `tests/test_updater.py:166`, `tests/test_updater.py:315`. Alle sind Fixture-URL-Strings (`html_url`-/`compare`-Felder) oder hartkodierte Parameter, die direkt an `check_latest_release`/`fetch_changelog_entry` übergeben werden. Keiner davon importiert oder vergleicht `updater.REPO`. Tauchen andere Treffer auf, hier stoppen und melden.
 
 - [ ] **Step 2: Konstante ändern**
 
@@ -339,11 +339,19 @@ längere Referenz unschön überläuft.
 
 Run:
 ```bash
-grep -nE "(^|[^/])#[0-9]{2,3}" CLAUDE.md src/CLAUDE.md docs/known-limitations.md
+grep -nP "(?<!Zeiterfassung)#[0-9]{2,3}" CLAUDE.md src/CLAUDE.md docs/known-limitations.md
 ```
 
 Expected: Genau ein Treffer — `` `#118` `` in `CLAUDE.md:137` (der bewusst
 ausgenommene Code-Span). Jeder weitere Treffer ist eine übersehene Referenz.
+
+(Das ursprünglich vorgesehene Muster `(^|[^/])#[0-9]{2,3}` taugte nicht: die
+qualifizierte Form ist `owner/Zeiterfassung#NNN` — unmittelbar vor der `#`
+steht das `g` aus „Zeiterfassung", kein `/`. `[^/]` matcht also auch jede
+bereits qualifizierte Referenz und lieferte alle 21 Vorkommen statt einem.
+Das neue Muster schließt stattdessen per Lookbehind exakt den Fall aus, der
+eine Referenz qualifiziert: unmittelbar `Zeiterfassung` davor. Das braucht
+`-P` (PCRE), `-E` kennt keine Lookbehinds.)
 
 - [ ] **Step 3: Commit**
 
