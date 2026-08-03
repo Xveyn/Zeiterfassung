@@ -101,15 +101,19 @@ installieren, damit die Umstellung greift.
 | `SECURITY.md:22` | Advisory-Link |
 | `SECURITY.md:24` | Zeile „Alternativ per E-Mail an **sven@margen-held.de**." **ersatzlos entfernen** |
 | `installer.iss:5` | `AppPublisherURL` |
-| `docs/known-limitations.md:149` | Issue-Link |
+| `docs/known-limitations.md:149` | Linktext auf `margenheld/Zeiterfassung#183` präzisieren — die URL bleibt unverändert, siehe unten |
 | `LICENSE` | Zeile `Copyright (c) 2026 Xveyn` **unter** der bestehenden MargenHeld-Zeile ergänzen; die bestehende bleibt unverändert stehen (MIT: „shall be included in all copies") |
 
 #### Issue-Referenzen vollqualifizieren
 
-Bloße `#NNN` verlinken im Fork auf dessen *eigene* Issues — semantisch falsch,
-sobald dort welche entstehen. Ersetzen durch `margenheld/Zeiterfassung#NNN`;
-vollqualifizierte Refs rendern in **beiden** Repos korrekt, der Schritt ist im
-alten Repo also unschädlich.
+Bloße `#NNN` liest ein Mensch im Fork als dessen *eigene* Issue-Nummer — GitHub
+selbst linkifiziert `#NNN` zwar nicht innerhalb von Markdown-Dateien im
+Repo-Baum (Autolinking gilt für Issue-/PR-/Discussion-Bodies, Kommentare,
+Commit-Messages und Release-Notes, nicht für aus dem Repo gerenderte
+`.md`-Dateien), aber sobald im Fork ein eigenes Issue entsteht, ist jede
+`#NNN`-Erwähnung für einen Leser mehrdeutig. Ersetzen durch
+`margenheld/Zeiterfassung#NNN`; vollqualifizierte Refs rendern in **beiden**
+Repos korrekt, der Schritt ist im alten Repo also unschädlich.
 
 Betroffen sind 20 Vorkommen in drei Dateien:
 
@@ -117,10 +121,14 @@ Betroffen sind 20 Vorkommen in drei Dateien:
 - `src/CLAUDE.md` — Zeilen 101, 195, 233, 309, 310
 - `docs/known-limitations.md` — Zeilen 78, 112, 136, 137
 
-Ausgenommen: `` `#118` `` in `CLAUDE.md:137` steht in einem Code-Span, den
-GitHub nicht verlinkt — die Falle greift dort nicht, und vollqualifiziert wäre
-der Backtick-Text nur länger. `docs/known-limitations.md:149` ist bereits ein
-vollständiger Link und wird über die Doku-Tabelle oben mit umgestellt.
+Ausgenommen: `` `#118` `` in `CLAUDE.md:137` steht in einem Code-Span, der die
+Fehlerklasse selbst benennt statt auf das Issue zu verweisen — vollqualifiziert
+wäre der Backtick-Text nur länger, ohne Mehrdeutigkeit zu entfernen.
+`docs/known-limitations.md:149` ist ebenfalls ausgenommen, aber aus einem
+anderen Grund: die URL bleibt auf `margenheld/Zeiterfassung/issues/183` stehen
+(Issue 183 existiert im alten Repo und wandert nicht mit), nur der Linktext
+wird laut Doku-Tabelle oben von `#183` auf `margenheld/Zeiterfassung#183`
+präzisiert — sonst läse er sich im Fork wie dessen eigenes Issue.
 
 `AUDIT-2026-07-04.md` ist untracked und enthält bereits vollqualifizierte Links —
 kein Handlungsbedarf.
@@ -211,8 +219,10 @@ Handarbeit auf GitHub, kein Code:
 - **`AppName=Zeiterfassung`** in `installer.iss` — dort ist **kein `AppId`**
   gesetzt, Inno leitet die AppId aus dem AppName ab. Daran hängt das
   Upgrade-in-place bestehender Windows-Installationen.
-  `AppPublisher`/`AppPublisherURL` sind dagegen gefahrlos änderbar (reine Anzeige
-  in „Apps & Features").
+  `AppPublisherURL` wird in diesem PR auf den Fork umgestellt (siehe
+  Doku-Tabelle oben, reine Anzeige in „Apps & Features");
+  `AppPublisher=Margenheld` bleibt dagegen unverändert stehen — eine sichtbare
+  Attributionsänderung ist eine eigene Entscheidung, nicht Teil dieser Brücke.
 - **`assets/margenheld-icon.*`** — referenziert in `build.py`, `installer.iss`,
   `src/theme.py`, `src/tray.py`, `src/tray_linux.py`, `src/tray_mac.py`,
   `src/desktop_entry.py` und mehreren Tests. Rein kosmetisch; falls überhaupt,

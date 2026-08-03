@@ -102,18 +102,19 @@ Alternative: `src/version.py` auf die nächste Patch-Version bumpen und einen ne
 ## Plattformspezifische PRs — Pre-Release vorschlagen
 
 Entwickelt wird primär unter Windows; macOS und Linux (inkl. Desktop-Umgebungs-
-Spezialfälle wie KDE, siehe margenheld/Zeiterfassung#42) sind vollwertige Zielplattformen, aber auf der
-Windows-Dev-Maschine nicht direkt verifizierbar. Betrifft ein PR Code, der sich
-nur auf macOS, Linux oder eine bestimmte Linux-Desktop-Umgebung auswirkt (z. B.
-`src/tray_mac.py`, plattformspezifische Zweige in `theme.py`/`grid_renderer.py`/
-`autostart.py`), soll vorgeschlagen werden, vor dem Merge einen Pre-Release zu
-triggern, damit die Änderung dort getestet werden kann — statt das erst beim
-nächsten regulären, für diese Plattform dann faktisch ungetesteten Release zu
-bemerken. Vorbild: das manuelle macOS-Gate in margenheld/Zeiterfassung#96. Der Pre-Release-Workflow
-selbst ist seit margenheld/Zeiterfassung#99 umgesetzt (siehe „Pre-Releases" oben) — das Triggern ist
-also ein Handgriff. PR-Plattform-Labels sind als margenheld/Zeiterfassung#100 weiterhin nur
-vorgeschlagen; bis dahin gilt der Hinweis als Review-Empfehlung, nicht als
-automatisierter Check.
+Spezialfälle wie KDE, siehe margenheld/Zeiterfassung#42) sind vollwertige
+Zielplattformen, aber auf der Windows-Dev-Maschine nicht direkt verifizierbar.
+Betrifft ein PR Code, der sich nur auf macOS, Linux oder eine bestimmte Linux-
+Desktop-Umgebung auswirkt (z. B. `src/tray_mac.py`, plattformspezifische Zweige
+in `theme.py`/`grid_renderer.py`/`autostart.py`), soll vorgeschlagen werden,
+vor dem Merge einen Pre-Release zu triggern, damit die Änderung dort getestet
+werden kann — statt das erst beim nächsten regulären, für diese Plattform dann
+faktisch ungetesteten Release zu bemerken. Vorbild: das manuelle macOS-Gate in
+margenheld/Zeiterfassung#96. Der Pre-Release-Workflow selbst ist seit
+margenheld/Zeiterfassung#99 umgesetzt (siehe „Pre-Releases" oben) — das
+Triggern ist also ein Handgriff. PR-Plattform-Labels sind als
+margenheld/Zeiterfassung#100 weiterhin nur vorgeschlagen; bis dahin gilt der
+Hinweis als Review-Empfehlung, nicht als automatisierter Check.
 
 ## Build
 
@@ -124,17 +125,18 @@ python build.py
 `build.py` ist ein Plattform-Dispatcher und ruft PyInstaller je nach `platform.system()` unterschiedlich auf. Auf allen drei Plattformen sind `--collect-all xhtml2pdf --collect-all reportlab --collect-all holidays` zwingend — ohne sie schlagen PDF-Erzeugung bzw. Feiertags-Lookup im gebauten Artefakt stumm fehl.
 
 **Windows und macOS bauen `--onedir`, Linux `--onefile`.** Onefile entpackt bei
-jedem Start alle DLLs frisch in einen `_MEIxxxxxx`-Tempordner; dieses Zeitfenster
-war die Wurzel einer intermittierenden Fehlerklasse (Bootloader lädt
-`python310.dll` transient nicht → margenheld/Zeiterfassung#118; `holidays` fand `de.mo` transient nicht →
-margenheld/Zeiterfassung#116; der Skalierungs-Neustart musste den `_MEIPASS`-Erbgang per
-`PYINSTALLER_RESET_ENVIRONMENT` umgehen, siehe `ui.py`). Onedir legt Exe +
-`_internal\` einmalig entpackt ab — kein Extraktions-Race pro Start. `installer.iss`
-shippt entsprechend den ganzen `dist\Zeiterfassung\`-Ordner (nicht nur die Exe);
-die Exe bleibt `{app}\Zeiterfassung.exe`, `get_base_path()=dirname(exe)` und alle
-Autostart-/Single-Instance-Pfade bleiben damit unverändert. Linux bleibt onefile,
-weil die AppImage ohnehin selbst mountet (onefile darin wäre Doppelpackung) und
-`#118` Windows-spezifisch ist.
+jedem Start alle DLLs frisch in einen `_MEIxxxxxx`-Tempordner; dieses
+Zeitfenster war die Wurzel einer intermittierenden Fehlerklasse (Bootloader
+lädt `python310.dll` transient nicht → margenheld/Zeiterfassung#118; `holidays`
+fand `de.mo` transient nicht → margenheld/Zeiterfassung#116; der Skalierungs-
+Neustart musste den `_MEIPASS`-Erbgang per `PYINSTALLER_RESET_ENVIRONMENT`
+umgehen, siehe `ui.py`). Onedir legt Exe + `_internal\` einmalig entpackt ab —
+kein Extraktions-Race pro Start. `installer.iss` shippt entsprechend den ganzen
+`dist\Zeiterfassung\`-Ordner (nicht nur die Exe); die Exe bleibt
+`{app}\Zeiterfassung.exe`, `get_base_path()=dirname(exe)` und alle
+Autostart-/Single-Instance-Pfade bleiben damit unverändert. Linux bleibt
+onefile, weil die AppImage ohnehin selbst mountet (onefile darin wäre
+Doppelpackung) und `#118` Windows-spezifisch ist.
 
 ## Cross-Platform Builds
 
@@ -390,8 +392,9 @@ und dort getestet. Wer ein Feature baut, dessen Logik nur im Widget lebt, hat
 sie am falschen Ort — nicht einen fehlenden UI-Test.
 
 Das ist eine **getroffene Entscheidung**, kein Rückstand: Audit-Finding M16
-(margenheld/Zeiterfassung#131) und dessen Verfeinerung margenheld/Zeiterfassung#148 sind mit genau dieser Begründung
-geschlossen. Was das kostet und was stattdessen greift, steht in
+(margenheld/Zeiterfassung#131) und dessen Verfeinerung
+margenheld/Zeiterfassung#148 sind mit genau dieser Begründung geschlossen. Was
+das kostet und was stattdessen greift, steht in
 [`docs/known-limitations.md`](docs/known-limitations.md). Neue Specs müssen M16
 nicht mehr als „offen" führen — der Verweis lautet auf diese Grenze.
 

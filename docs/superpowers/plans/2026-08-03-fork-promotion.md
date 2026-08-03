@@ -33,6 +33,14 @@ git fetch upstream
 git rebase upstream/master
 ```
 
+Das setzt voraus, dass der Upstream-PR #184 per Merge-Commit gemergt wurde (so
+verfährt `margenheld/Zeiterfassung` bisher — nachprüfbar über
+`git log upstream/master --merges`, das „Merge pull request #NNN from …"
+zeigt); dann spielt der Rebase nur die sieben eigenen Commits dieses Branches
+neu auf. Wurde #184 stattdessen **squash-gemergt**, spielt ein einfacher
+`git rebase upstream/master` sämtliche #184-Commits nochmal oben drauf — dann
+stattdessen `git rebase --onto upstream/master 25b28f7` verwenden.
+
 Der Branch enthält zu diesem Zeitpunkt genau zwei Doku-Commits (Spec und diesen Plan).
 
 ## File Structure
@@ -62,8 +70,12 @@ Der Branch enthält zu diesem Zeitpunkt genau zwei Doku-Commits (Spec und diesen
 
 Run:
 ```bash
-grep -rn "MargenHeld" tests/
+git grep -n "MargenHeld" -- tests/
 ```
+
+`git grep` durchsucht nur getrackte Dateien — ein `grep -rn` über `tests/`
+träfe nach jedem Testlauf zusätzlich `tests/__pycache__/*.pyc`
+(„Binary file … matches").
 
 Expected: Genau sieben Treffer — `tests/test_changelog.py:69`, `tests/test_changelog.py:159`, `tests/test_changelog.py:161`, `tests/test_changelog.py:164`, `tests/test_updater.py:154`, `tests/test_updater.py:166`, `tests/test_updater.py:315`. Alle sind Fixture-URL-Strings (`html_url`-/`compare`-Felder) oder hartkodierte Parameter, die direkt an `check_latest_release`/`fetch_changelog_entry` übergeben werden. Keiner davon importiert oder vergleicht `updater.REPO`. Tauchen andere Treffer auf, hier stoppen und melden.
 
@@ -166,7 +178,7 @@ Nachher:
 ```markdown
 Meldungen laufen über die privaten
 [**Security Advisories**](https://github.com/Xveyn/Zeiterfassung/security/advisories/new)
-des Repositories → „Report a vulnerability".
+dieses Repositorys („Report a vulnerability").
 ```
 
 Der Absatz davor („Bitte melde Sicherheitslücken **nicht** über öffentliche
@@ -294,10 +306,14 @@ git commit -m "docs(license): eigene Copyright-Zeile ergaenzen"
 **Interfaces:**
 - Consumes: nichts. Produces: nichts.
 
-Bloße `#NNN` verlinkt GitHub im Fork auf **dessen eigene** Issues — sobald dort
-Issue 42 entsteht, zeigt jede `#42`-Erwähnung auf das falsche Ticket.
-`margenheld/Zeiterfassung#42` rendert in beiden Repos korrekt, der Schritt ist im
-alten Repo also unschädlich.
+Bloße `#NNN` liest ein Mensch im Fork als dessen **eigene** Issue-Nummer — GitHub
+selbst linkifiziert `#NNN` zwar nicht innerhalb von Markdown-Dateien im
+Repo-Baum (Autolinking gilt für Issue-/PR-/Discussion-Bodies, Kommentare,
+Commit-Messages und Release-Notes, nicht für aus dem Repo gerenderte
+`.md`-Dateien), aber sobald im Fork Issue 42 entsteht, ist jede
+`#42`-Erwähnung für einen Leser mehrdeutig. `margenheld/Zeiterfassung#42`
+rendert in beiden Repos korrekt, der Schritt ist im alten Repo also
+unschädlich.
 
 **Präzise Ersetzungen** (jeweils nur das genannte Vorkommen in der genannten Zeile):
 
@@ -324,8 +340,9 @@ alten Repo also unschädlich.
 | `docs/known-limitations.md:137` | `**#148** schlug` | `**margenheld/Zeiterfassung#148** schlug` |
 
 **Ausdrücklich nicht ändern:** `` `#118` `` in `CLAUDE.md:137` steht in einem
-Code-Span. GitHub verlinkt darin nicht, die Falle greift dort also nicht — und
-vollqualifiziert würde der Backtick-Text nur länger.
+Code-Span, der die Fehlerklasse selbst benennt statt auf das Issue zu
+verweisen — vollqualifiziert würde der Backtick-Text nur länger, ohne
+Mehrdeutigkeit zu entfernen.
 
 - [ ] **Step 1: Ersetzungen vornehmen**
 
@@ -417,11 +434,14 @@ ist:
 Tippfehler in der Überschrift bliebe sonst bis nach dem Release unentdeckt:
 
 ```bash
-python -c "from src.changelog import extract_version_section; print(extract_version_section(open('CHANGELOG.md', encoding='utf-8').read(), '1.22.0')[:80])"
+python -c "from src.changelog import extract_version_section; print((extract_version_section(open('CHANGELOG.md', encoding='utf-8').read(), '1.22.0') or 'NICHT GEFUNDEN')[:80])"
 ```
 
-Expected: Die ersten Zeichen des neuen Abschnitts, beginnend mit `## 1.22.0`. Bei
-`None` stimmt die Überschrift nicht.
+Expected: Die ersten Zeichen des neuen Abschnitts, beginnend mit `## 1.22.0`.
+Stimmt die Überschrift nicht, liefert die Funktion `None` zurück — ohne den
+`or`-Fallback bricht der Aufruf mit `TypeError: 'NoneType' object is not
+subscriptable` ab, statt `None` auszugeben; mit dem Fallback erscheint
+stattdessen `NICHT GEFUNDEN`.
 
 - [ ] **Step 4: Commit**
 
@@ -453,7 +473,18 @@ Expected: unveränderte Fehler-/Warnungszahl gegenüber `master` (dieser PR fass
 
 - [ ] **Step 2: Diff gegenlesen**
 
-Run: `git diff upstream/master --stat`
+Run:
+```bash
+git fetch upstream
+git diff upstream/master --stat
+```
+
+Setzt voraus, dass der Rebase aus den Vorbedingungen bereits gelaufen ist. Ohne
+das vorangehende `git fetch upstream` — oder vor dem Rebase — zeigt der Diff
+gegen einen veralteten `upstream/master`-Stand zusätzlich die Dateien aus
+PR #184 (u. a. `src/autostart.py`), was der nächste Satz fälschlich als
+Constraints-Verstoß dieses PRs melden würde.
+
 Expected: genau diese Dateien — `CHANGELOG.md`, `CLAUDE.md`, `CONTRIBUTING.md`, `LICENSE`, `README.md`, `SECURITY.md`, `docs/known-limitations.md`, `docs/superpowers/plans/2026-08-03-fork-promotion.md`, `docs/superpowers/specs/2026-08-03-fork-promotion-design.md`, `installer.iss`, `src/CLAUDE.md`, `src/updater.py`, `src/version.py`.
 
 Taucht `build.py`, `src/autostart.py` oder eine `assets/`-Datei auf, ist etwas aus der Constraints-Liste angefasst worden — zurücknehmen.
@@ -497,18 +528,30 @@ Plan: `docs/superpowers/plans/2026-08-03-fork-promotion.md`
 
 ```bash
 gh pr create --repo margenheld/Zeiterfassung --base master \
+  --head Xveyn:chore/fork-promotion \
   --title "chore(release): v1.22.0 — Projekt zieht nach Xveyn/Zeiterfassung um" \
-  --body-file pr-body.md
+  --body-file pr-body.md \
+  --label "release:minor"
 ```
 
-- [ ] **Step 5: Label setzen — ohne das passiert nichts**
+`--repo` legt nur das Base-Repo fest; `--head` bleibt ohne diese Angabe der
+bloße Branch-Name, den `margenheld/Zeiterfassung` nicht kennt — der Branch
+liegt auf `origin` = `Xveyn/Zeiterfassung`. `gh pr create --help` dokumentiert
+`--head <user>:<branch>` genau für diesen Fall: einen Head-Branch aus einem
+fremden Repo (hier: dem eigenen Fork) auswählen.
+
+- [ ] **Step 5: Label gegenprüfen**
 
 ```bash
 gh pr edit <nr> --repo margenheld/Zeiterfassung --add-label "release:minor"
 ```
 
-`release.yml` triggert ausschließlich über das Label; ohne es wird der PR
-gemergt, aber kein Release gebaut und kein Tag gesetzt.
+Das Label wird bereits in Step 4 über `--label` gesetzt; dieser Aufruf ist die
+**Verifikation**, kein zweiter Setzversuch — `gh pr edit --add-label` ist
+idempotent, ein bereits gesetztes Label bleibt unverändert und der Aufruf
+schlägt nicht fehl. `release.yml` triggert ausschließlich über das Label; ohne
+es wird der PR gemergt, aber kein Release gebaut und kein Tag gesetzt — das
+ist wichtig genug, um es doppelt zu prüfen.
 
 - [ ] **Step 6: Nach dem Merge — Release verifizieren**
 
@@ -530,6 +573,13 @@ Reihenfolge ist bindend — Details und Begründungen in Phase 4 und 5 der Spec.
 - [ ] Erstes Fork-Release mit Version **> 1.22.0** bauen.
 - [ ] Altes Repo: README und Description auf „umgezogen nach …" (Direkt-Commit), Brücken-Release stehen lassen, **Repo-Namen dauerhaft belegt halten**.
 - [ ] **Erst ganz zuletzt** archivieren — read-only heißt, danach ist kein Hinweis-Release mehr möglich.
+- [ ] Kein Handlungsbedarf, nur zur Kenntnis: Zwischen dem Brücken-Merge und
+      dem ersten Fork-Release (> 1.22.0) zeigt das README-Release-Badge
+      (`img.shields.io/github/v/release/Xveyn/Zeiterfassung`) entweder das
+      veraltete `v1.17.0` oder — nach dem Aufräumen der Alt-Releases oben —
+      gar keine Version. Betrifft nur die Badge-Anzeige auf beiden
+      Repo-Startseiten, nicht den Updater; löst sich von selbst mit dem
+      ersten Fork-Release.
 
 ## Manuelle Verifikation nach dem Release
 
