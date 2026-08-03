@@ -32,7 +32,7 @@ def today_iso() -> str:
     return date.today().isoformat()
 
 
-REPO = "MargenHeld/Zeiterfassung"
+REPO = "Xveyn/Zeiterfassung"
 
 FREQUENCY_OPTIONS: list[tuple[str, str]] = [
     ("daily", "Täglich"),
