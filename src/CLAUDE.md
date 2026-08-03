@@ -98,7 +98,7 @@ Banner-Routing liegen in `ui.py::_on_update_check_result` bzw.
 `_route_update_notification(...)`. Pack-Anker **lazy** über
 `get_anchor=lambda: App._renderer.grid_container` (Grid existiert erst nach dem Build).
 `on_resize` (= `App._renderer.repin_geometry`) wird in `_show`/`_dismiss` aufgerufen, damit
-das fixe Fenster auf die geänderte Banner-Höhe nachzieht (sonst Footer abgeschnitten, #92).
+das fixe Fenster auf die geänderte Banner-Höhe nachzieht (sonst Footer abgeschnitten, margenheld/Zeiterfassung#92).
 
 ## Threading-Modell
 
@@ -209,7 +209,7 @@ müssen beide Locks respektieren. Design:
   (alle vier Ops sind Full-Replace). **Kein** Sync-Doc-Feld — rein lokaler
   Recovery-Zustand.
   `share.py` — Export/Import als Share-JSON. `weekly_limit.py` — pure Wochenstunden-Limit-Check
-  (Werkstudenten-Privileg, #98). Kein eigener Persistenz-Zustand, operiert auf
+  (Werkstudenten-Privileg, margenheld/Zeiterfassung#98). Kein eigener Persistenz-Zustand, operiert auf
   `Storage.get_all()`-Dicts und den `werkstudent_limit_*`-Settings-Keys.
   `pause_requirement.py` — pure Pausenpflicht-Check nach §4 ArbZG (30 Min ab
   >6h, 45 Min ab >9h Netto-Arbeitszeit), analog `weekly_limit.py` aber ohne
@@ -247,7 +247,7 @@ müssen beide Locks respektieren. Design:
 denselben OAuth-Token; Scope-Upgrade erzwingt frischen Consent.
 
 Geschrieben wird der Token ausschließlich über `oauth_utils.write_token`: Temp-Datei →
-Härtung → `os.replace` (mit `PermissionError`-Retry, #135). Zur Härtung siehe
+Härtung → `os.replace` (mit `PermissionError`-Retry, margenheld/Zeiterfassung#135). Zur Härtung siehe
 `secure_file` unten.
 
 `drive.find_sync_file` liefert bei mehreren Treffern deterministisch die
@@ -325,8 +325,8 @@ muss sie deterministisch **und** über alle Geräte gleich halten.
   User sie manuell schließen (Retry-Dialog), statt des Default-Wegs (`CloseApplications`/Restart
   Manager), der bei aktivem Minimize-to-Tray scheitert (`App._on_close` behandelt das dabei
   gesendete `WM_CLOSE` nur als Fenster-Verstecken).
-- `tray.py` (Fassade) + `tray_mac.py` (natives macOS-NSStatusItem-Backend, #88)
-  + `tray_linux.py` (StatusNotifierItem über D-Bus, #42). Beide Nicht-Windows-
+- `tray.py` (Fassade) + `tray_mac.py` (natives macOS-NSStatusItem-Backend, margenheld/Zeiterfassung#88)
+  + `tray_linux.py` (StatusNotifierItem über D-Bus, margenheld/Zeiterfassung#42). Beide Nicht-Windows-
   Backends sind dormant hinter einer Opt-in-Env-Var, bis ihr manuelles
   Plattform-Gate grün ist.
 

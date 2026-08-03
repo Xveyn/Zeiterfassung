@@ -102,16 +102,16 @@ Alternative: `src/version.py` auf die nächste Patch-Version bumpen und einen ne
 ## Plattformspezifische PRs — Pre-Release vorschlagen
 
 Entwickelt wird primär unter Windows; macOS und Linux (inkl. Desktop-Umgebungs-
-Spezialfälle wie KDE, siehe #42) sind vollwertige Zielplattformen, aber auf der
+Spezialfälle wie KDE, siehe margenheld/Zeiterfassung#42) sind vollwertige Zielplattformen, aber auf der
 Windows-Dev-Maschine nicht direkt verifizierbar. Betrifft ein PR Code, der sich
 nur auf macOS, Linux oder eine bestimmte Linux-Desktop-Umgebung auswirkt (z. B.
 `src/tray_mac.py`, plattformspezifische Zweige in `theme.py`/`grid_renderer.py`/
 `autostart.py`), soll vorgeschlagen werden, vor dem Merge einen Pre-Release zu
 triggern, damit die Änderung dort getestet werden kann — statt das erst beim
 nächsten regulären, für diese Plattform dann faktisch ungetesteten Release zu
-bemerken. Vorbild: das manuelle macOS-Gate in #96. Der Pre-Release-Workflow
-selbst ist seit #99 umgesetzt (siehe „Pre-Releases" oben) — das Triggern ist
-also ein Handgriff. PR-Plattform-Labels sind als #100 weiterhin nur
+bemerken. Vorbild: das manuelle macOS-Gate in margenheld/Zeiterfassung#96. Der Pre-Release-Workflow
+selbst ist seit margenheld/Zeiterfassung#99 umgesetzt (siehe „Pre-Releases" oben) — das Triggern ist
+also ein Handgriff. PR-Plattform-Labels sind als margenheld/Zeiterfassung#100 weiterhin nur
 vorgeschlagen; bis dahin gilt der Hinweis als Review-Empfehlung, nicht als
 automatisierter Check.
 
@@ -126,8 +126,8 @@ python build.py
 **Windows und macOS bauen `--onedir`, Linux `--onefile`.** Onefile entpackt bei
 jedem Start alle DLLs frisch in einen `_MEIxxxxxx`-Tempordner; dieses Zeitfenster
 war die Wurzel einer intermittierenden Fehlerklasse (Bootloader lädt
-`python310.dll` transient nicht → #118; `holidays` fand `de.mo` transient nicht →
-#116; der Skalierungs-Neustart musste den `_MEIPASS`-Erbgang per
+`python310.dll` transient nicht → margenheld/Zeiterfassung#118; `holidays` fand `de.mo` transient nicht →
+margenheld/Zeiterfassung#116; der Skalierungs-Neustart musste den `_MEIPASS`-Erbgang per
 `PYINSTALLER_RESET_ENVIRONMENT` umgehen, siehe `ui.py`). Onedir legt Exe +
 `_internal\` einmalig entpackt ab — kein Extraktions-Race pro Start. `installer.iss`
 shippt entsprechend den ganzen `dist\Zeiterfassung\`-Ordner (nicht nur die Exe);
@@ -390,7 +390,7 @@ und dort getestet. Wer ein Feature baut, dessen Logik nur im Widget lebt, hat
 sie am falschen Ort — nicht einen fehlenden UI-Test.
 
 Das ist eine **getroffene Entscheidung**, kein Rückstand: Audit-Finding M16
-(#131) und dessen Verfeinerung #148 sind mit genau dieser Begründung
+(margenheld/Zeiterfassung#131) und dessen Verfeinerung margenheld/Zeiterfassung#148 sind mit genau dieser Begründung
 geschlossen. Was das kostet und was stattdessen greift, steht in
 [`docs/known-limitations.md`](docs/known-limitations.md). Neue Specs müssen M16
 nicht mehr als „offen" führen — der Verweis lautet auf diese Grenze.
@@ -446,12 +446,12 @@ nicht mehr als „offen" führen — der Verweis lautet auf diese Grenze.
   Monat, auch über Neustarts), der tagesbezogene dedupliziert nur im Speicher
   (ein persistierter Marker würde `modified_at` der Reservierung anfassen und
   einen gcal-Push auslösen).
-- `src/weekly_limit.py` — Wochenstunden-Limit für einen konfigurierbaren Zeitraum (Werkstudenten-Privileg, #98); pure Logik, zählt nur Ist-Zeiten (nicht Reservierungen)
+- `src/weekly_limit.py` — Wochenstunden-Limit für einen konfigurierbaren Zeitraum (Werkstudenten-Privileg, margenheld/Zeiterfassung#98); pure Logik, zählt nur Ist-Zeiten (nicht Reservierungen)
 - `src/pause_requirement.py` — Pausenpflicht-Warnung nach §4 ArbZG (30 Min ab >6h, 45 Min ab >9h Netto-Arbeitszeit); pure Logik, zählt nur die `pause`-Felder der Slots eines Tages (keine Lücken zwischen mehreren Slots); Default aktiv (`pause_warning_enabled`, im Gegensatz zum Werkstudenten-Limit kein Sonderfall-Opt-in, da die Pflicht für praktisch alle Angestellten in DE gilt)
 - `src/gcal.py` — Google-Calendar-API-Wrapper (lazy Imports wie `drive.py`, wegen CI ohne `requirements.txt`)
 - `src/tray.py` — Infobereich-Icon (Minimize-to-Tray); Plattform-Fassade über pystray (Windows), `tray_mac.py` (macOS) und `tray_linux.py` (Linux)
-- `src/tray_mac.py` — natives macOS-Tray (NSStatusItem, Main-Thread) als Backend von `tray.py`; macOS-Tray ist bis zum Mac-Gate dormant (Opt-in `ZEIT_MACOS_TRAY=1`, #88)
-- `src/tray_linux.py` — Linux-Tray über StatusNotifierItem + `com.canonical.dbusmenu` (D-Bus via `dbus-fast`, kein GTK/GI); dormant bis zum Plasma-Gate (Opt-in `ZEIT_LINUX_TRAY=1`, #42). Menü-Logik D-Bus-frei in `MenuState`
+- `src/tray_mac.py` — natives macOS-Tray (NSStatusItem, Main-Thread) als Backend von `tray.py`; macOS-Tray ist bis zum Mac-Gate dormant (Opt-in `ZEIT_MACOS_TRAY=1`, margenheld/Zeiterfassung#88)
+- `src/tray_linux.py` — Linux-Tray über StatusNotifierItem + `com.canonical.dbusmenu` (D-Bus via `dbus-fast`, kein GTK/GI); dormant bis zum Plasma-Gate (Opt-in `ZEIT_LINUX_TRAY=1`, margenheld/Zeiterfassung#42). Menü-Logik D-Bus-frei in `MenuState`
 - `src/time_utils.py` — Stundenberechnung, KW-Labels
 - `src/holidays_de.py` — Feiertags-Lookup (über `holidays`-Lib)
 - `src/paths.py` — `get_base_path()` dispatched über `platform.system()` und Frozen- vs. Repo-Modus

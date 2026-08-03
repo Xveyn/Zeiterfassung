@@ -75,7 +75,7 @@ Start ist alles normal.
 fremder Daten. Nur die Meldung ist in diesem Einzelgerät-Fall einmalig
 irreführend.
 
-**Möglicher Fix (später, im Rahmen von PR #60):** Den Pull nicht pausieren,
+**Möglicher Fix (später, im Rahmen von PR margenheld/Zeiterfassung#60):** Den Pull nicht pausieren,
 wenn das pre-v3-Remote-Doc ausschließlich Einträge des **eigenen** `device_id`
 enthält (= eigenes Alt-Doc, kein fremdes aktives Gerät) — dann still nach v3
 migrieren/pushen. Alternativ die Meldung so umformulieren, dass sie den
@@ -109,7 +109,7 @@ wäre, und erzeugen damit genau die Sorte Rot, die man wegklickt statt liest.
 Dazu käme dauerhaft ein `xvfb`-Pfad in der CI, den sonst nichts braucht. Und
 das, was wirklich nur auf der echten Plattform bricht — macOS-Sekundärklick
 (`<Button-2>`/Control-Klick, ✕-Delete-Gate), Fenster-Chrome und die Darstellung
-des Linux-Trays in Plasma (#42) — deckt ein Linux-Framebuffer strukturell ohnehin
+des Linux-Trays in Plasma (margenheld/Zeiterfassung#42) — deckt ein Linux-Framebuffer strukturell ohnehin
 nicht ab. Beim Linux-Tray zeigt sich dabei genau der Zuschnitt-Gedanke: die
 dbusmenu-Logik liegt D-Bus-frei in `tray_linux.MenuState` und wird überall
 getestet, die Wire-Ebene gegen einen echten `dbus-daemon` — offen bleibt nur,
@@ -133,8 +133,8 @@ ohne Ersatz:
 erst beim manuellen Test auf. Das ist der akzeptierte Preis; wer eine
 Dialog-Verdrahtung umbaut, verifiziert sie von Hand.
 
-**Herkunft:** Audit-Finding **M16** (#131) stellte die Grundsatzfrage
-(„schließen oder als akzeptierte Lücke dokumentieren"), **#148** schlug den
+**Herkunft:** Audit-Finding **M16** (margenheld/Zeiterfassung#131) stellte die Grundsatzfrage
+(„schließen oder als akzeptierte Lücke dokumentieren"), **margenheld/Zeiterfassung#148** schlug den
 engen `xvfb`-Ausschnitt vor. Beide sind mit dieser Entscheidung geschlossen —
 sie ist damit getroffen, nicht vertagt. Ältere Specs, die „Audit M16 offen"
 schreiben, sind an dieser Stelle überholt.
