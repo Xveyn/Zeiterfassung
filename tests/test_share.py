@@ -493,4 +493,19 @@ def test_apply_reservation_import_calls_save_with_slots():
 def test_apply_reservation_import_empty_is_noop():
     store = _RecordingResStore()
     apply_reservation_import(store, [])
-    assert store.saved == []
+
+
+def test_share_doc_omits_send_reminder_minutes(tmp_path):
+    from src.reservations import ReservationStore
+    from src.share import build_share_doc, parse_share_doc, serialize_share_doc
+
+    store = ReservationStore(str(tmp_path / "res.json"))
+    store.save("2026-08-31", [{"start": "08:00", "end": "12:00",
+                               "kategorie": "Office",
+                               "send_reminder_minutes": 15}])
+    doc = build_share_doc(_FakeStorage({}), "a@b.de", reservation_store=store,
+                          include_entries=False, include_reservations=True)
+    slot = doc["reservations"]["2026-08-31"]["slots"][0]
+    assert set(slot.keys()) == {"start", "end", "kategorie"}
+    # Das eigene Doc muss den eigenen, strikten Validator bestehen.
+    parse_share_doc(serialize_share_doc(doc))

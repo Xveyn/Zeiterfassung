@@ -234,6 +234,24 @@ def _filter_records_by_category(records, categories):
     return out
 
 
+def _share_reservation_shape(records):
+    """Projiziert Reservierungs-Records auf die Share-Felder.
+
+    Der ReservationStore liefert in seiner User-Shape auch interne Felder wie
+    `send_reminder_minutes` (Erinnerungs-Marker, gerätelokal). Die gehören
+    nicht ins Share-Doc: _check_keys ist strikt, ein Empfänger würde die Datei
+    mit „unbekannte Felder" ablehnen.
+    """
+    return {
+        date_str: {"slots": [
+            {"start": s.get("start"), "end": s.get("end"),
+             "kategorie": s.get("kategorie", "")}
+            for s in record["slots"]
+        ]}
+        for date_str, record in records.items()
+    }
+
+
 def build_share_doc(storage, sender_email, *, reservation_store=None,
                     include_entries=True, include_reservations=False, categories=None):
     """Baut das v3-Share-Doc aus den Slot-Records von Storage/ReservationStore.
@@ -249,8 +267,9 @@ def build_share_doc(storage, sender_email, *, reservation_store=None,
     if include_entries:
         doc["entries"] = _filter_records_by_category(dict(storage.get_all()), categories)
     if include_reservations and reservation_store is not None:
-        doc["reservations"] = _filter_records_by_category(
-            dict(reservation_store.get_all()), categories)
+        doc["reservations"] = _share_reservation_shape(
+            _filter_records_by_category(
+                dict(reservation_store.get_all()), categories))
     return doc
 
 
