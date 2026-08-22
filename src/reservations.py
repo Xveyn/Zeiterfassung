@@ -6,8 +6,11 @@ Google Kalender abgeglichen — NICHT über die Drive-Multi-Device-Sync. Daher
 fehlt hier (anders als bei `Storage`) das `device_id`-Feld.
 
 Schema pro Tag (ISO-Datum als Schlüssel):
-    {slots: [{start, end, kategorie, gcal_event_id}], modified_at, deleted}
+    {slots: [{start, end, kategorie, gcal_event_id, send_reminder_minutes}], modified_at, deleted}
 `gcal_event_id` ist None, bis der Slot erstmals in den Kalender gepusht wurde.
+`send_reminder_minutes` ist None oder die Minuten vor Slot-Ende, zu denen an
+das Verschicken der Arbeitszeiten erinnert wird — höchstens ein Slot pro Tag
+trägt einen Wert.
 Eine gelöschte Reservierung bleibt als Tombstone (deleted=True, slots=[])
 erhalten, bis der Reconcile die zugehörigen Events entfernt hat.
 """
@@ -32,15 +35,30 @@ Reservation = dict[str, Any]
 _REQUIRED_RESERVATION_KEYS = frozenset({"slots", "modified_at", "deleted"})
 
 
+def _normalize_reminder_minutes(value: Any) -> int | None:
+    """Erinnerungs-Minuten am Reservierungs-Slot: int in [0, 120] oder None.
+
+    Alles andere (bool, String, Ausreißer) wird zu None — dieselbe Toleranz,
+    mit der der Store auch sonst korrupte Werte wegnormalisiert, statt beim
+    Laden zu werfen.
+    """
+    if isinstance(value, bool) or not isinstance(value, int):
+        return None
+    return value if 0 <= value <= 120 else None
+
+
 def _normalize_slot(slot: Slot) -> Slot:
     """Vervollständigt einen Reservierungs-Slot auf
-    {start, end, kategorie, gcal_event_id}. Fehlende `kategorie` → "",
-    fehlende `gcal_event_id` → None."""
+    {start, end, kategorie, gcal_event_id, send_reminder_minutes}. Fehlende
+    `kategorie` → "", fehlende `gcal_event_id` → None, fehlende/ungültige
+    `send_reminder_minutes` → None."""
     return {
         "start": slot.get("start"),
         "end": slot.get("end"),
         "kategorie": slot.get("kategorie", ""),
         "gcal_event_id": slot.get("gcal_event_id"),
+        "send_reminder_minutes": _normalize_reminder_minutes(
+            slot.get("send_reminder_minutes")),
     }
 
 
@@ -100,6 +118,7 @@ class ReservationStore:
                     "end": entry.get("end"),
                     "kategorie": "",
                     "gcal_event_id": entry.get("gcal_event_id"),
+                    "send_reminder_minutes": None,
                 }]
             entry.pop("start", None)
             entry.pop("end", None)
@@ -123,9 +142,18 @@ class ReservationStore:
 
     @staticmethod
     def _user_shape(entry: Reservation) -> dict[str, Any]:
-        """User-Shape: Slots ohne das interne Feld gcal_event_id."""
+        """User-Shape: Slots ohne das interne Feld gcal_event_id.
+
+        `send_reminder_minutes` ist dagegen Teil der User-Shape: der
+        Tages-Dialog zeigt es an, und der Teil-Lösch-Pfad in ui.py speichert
+        die verbleibenden Slots aus genau dieser Shape zurück — fehlte das
+        Feld hier, ginge die Markierung beim Löschen eines anderen Slots
+        verloren.
+        """
         return {"slots": [
-            {"start": s.get("start"), "end": s.get("end"), "kategorie": s.get("kategorie", "")}
+            {"start": s.get("start"), "end": s.get("end"),
+             "kategorie": s.get("kategorie", ""),
+             "send_reminder_minutes": s.get("send_reminder_minutes")}
             for s in entry.get("slots", [])
         ]}
 
