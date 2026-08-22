@@ -1,8 +1,11 @@
 from src.reservations_sync import merge_reservations
 
 
-def _lslot(start="09:00", end="17:00", kategorie="", event_id=None):
-    return {"start": start, "end": end, "kategorie": kategorie, "gcal_event_id": event_id}
+def _lslot(start="09:00", end="17:00", kategorie="", event_id=None,
+           send_reminder_minutes=None):
+    return {"start": start, "end": end, "kategorie": kategorie,
+            "gcal_event_id": event_id,
+            "send_reminder_minutes": send_reminder_minutes}
 
 
 def _local(slots=None, modified_at="2026-05-20T10:00:00Z", deleted=False):
@@ -49,7 +52,7 @@ def test_local_only_exactly_at_watermark_is_dropped():
 def test_remote_only_is_imported_as_slots():
     res = merge_reservations({}, [_remote(kategorie="HO")], "2026-05-19T00:00:00Z")
     slots = res["merged"]["2026-06-01"]["slots"]
-    assert slots == [{"start": "09:00", "end": "17:00", "kategorie": "HO", "gcal_event_id": "ev1"}]
+    assert slots == [{"start": "09:00", "end": "17:00", "kategorie": "HO", "gcal_event_id": "ev1", "send_reminder_minutes": None}]
     assert res["plan"] == {"create": [], "update": [], "delete": []}
     assert res["imported_dates"] == ["2026-06-01"]
 
@@ -273,3 +276,48 @@ def test_reconcile_returns_imported_dates(tmp_path, monkeypatch):
     result = reservations_sync.reconcile_reservations(object(), "cal-1", store, settings)
 
     assert result["imported_dates"] == ["2026-06-01"]
+
+
+def test_marker_survives_local_wins():
+    res = merge_reservations(
+        {"2026-06-01": _local(
+            slots=[_lslot(event_id="ev1", send_reminder_minutes=15)],
+            modified_at="2026-05-21T10:00:00Z")},
+        [_remote(event_id="ev1", modified_at="2026-05-20T10:00:00Z")],
+        "2026-05-19T00:00:00Z")
+    assert res["merged"]["2026-06-01"]["slots"][0]["send_reminder_minutes"] == 15
+
+
+def test_marker_follows_event_id_when_remote_wins():
+    """Google liefert die Events in beliebiger Reihenfolge — der Marker muss
+    dem richtigen Slot folgen, nicht der Position."""
+    res = merge_reservations(
+        {"2026-06-01": _local(
+            slots=[_lslot(start="08:00", end="12:00", event_id="ev1"),
+                   _lslot(start="13:00", end="17:00", event_id="ev2",
+                          send_reminder_minutes=15)],
+            modified_at="2026-05-20T10:00:00Z")},
+        [_remote(start="13:00", end="17:00", event_id="ev2",
+                 modified_at="2026-05-21T10:00:00Z"),
+         _remote(start="08:00", end="12:00", event_id="ev1",
+                 modified_at="2026-05-21T10:00:00Z")],
+        "2026-05-19T00:00:00Z")
+    slots = res["merged"]["2026-06-01"]["slots"]
+    assert slots[0]["start"] == "13:00" and slots[0]["send_reminder_minutes"] == 15
+    assert slots[1]["start"] == "08:00" and slots[1]["send_reminder_minutes"] is None
+
+
+def test_marker_dropped_when_event_id_has_no_local_partner():
+    res = merge_reservations(
+        {"2026-06-01": _local(
+            slots=[_lslot(event_id="ev1", send_reminder_minutes=15)],
+            modified_at="2026-05-20T10:00:00Z")},
+        [_remote(event_id="ev-neu", modified_at="2026-05-21T10:00:00Z")],
+        "2026-05-19T00:00:00Z")
+    slots = res["merged"]["2026-06-01"]["slots"]
+    assert slots[0]["send_reminder_minutes"] is None
+
+
+def test_remote_only_date_has_no_marker():
+    res = merge_reservations({}, [_remote(event_id="ev1")], "2026-05-19T00:00:00Z")
+    assert res["merged"]["2026-06-01"]["slots"][0]["send_reminder_minutes"] is None
