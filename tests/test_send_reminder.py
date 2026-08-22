@@ -208,3 +208,78 @@ def test_due_day_reminder_ignores_broken_values():
     assert due_day_reminder([{"start": "08:00", "end": "17:00",
                               "send_reminder_minutes": True}],
                             datetime.datetime(2026, 8, 31, 23, 0)) is None
+
+
+def test_marked_reminder_dates_collects_days_with_marker():
+    from src.send_reminder import marked_reminder_dates
+    raw = {
+        "2026-08-02": {"slots": [{"send_reminder_minutes": 15}],
+                       "modified_at": "x", "deleted": False},
+        "2026-08-10": {"slots": [{"send_reminder_minutes": None}],
+                       "modified_at": "x", "deleted": False},
+        "2026-09-05": {"slots": [{"send_reminder_minutes": None},
+                                 {"send_reminder_minutes": 30}],
+                       "modified_at": "x", "deleted": False},
+        "2026-09-20": {"slots": [{"send_reminder_minutes": 15}],
+                       "modified_at": "x", "deleted": True},
+    }
+    assert sorted(marked_reminder_dates(raw)) == [
+        datetime.date(2026, 8, 2), datetime.date(2026, 9, 5)]
+
+
+def test_marked_reminder_dates_ignores_broken_date_keys():
+    from src.send_reminder import marked_reminder_dates
+    raw = {"kein-datum": {"slots": [{"send_reminder_minutes": 15}],
+                          "modified_at": "x", "deleted": False}}
+    assert marked_reminder_dates(raw) == []
+
+
+def test_monthly_anchor_dates_covers_three_months():
+    from src.send_reminder import monthly_anchor_dates
+    dates = monthly_anchor_dates(datetime.date(2026, 9, 5), 23, "16:30")
+    assert dates == [datetime.date(2026, 9, 23), datetime.date(2026, 8, 23),
+                     datetime.date(2026, 7, 23)]
+
+
+def test_monthly_anchor_dates_crosses_year_boundary():
+    from src.send_reminder import monthly_anchor_dates
+    dates = monthly_anchor_dates(datetime.date(2026, 1, 10), 15, "16:30")
+    assert dates == [datetime.date(2026, 1, 15), datetime.date(2025, 12, 15),
+                     datetime.date(2025, 11, 15)]
+
+
+def test_previous_anchor_date_marked_only():
+    from src.send_reminder import previous_anchor_date
+    assert previous_anchor_date(
+        datetime.date(2026, 9, 5),
+        [datetime.date(2026, 8, 2), datetime.date(2026, 9, 5)],
+        [],
+    ) == datetime.date(2026, 8, 2)
+
+
+def test_previous_anchor_date_prefers_the_nearest():
+    from src.send_reminder import previous_anchor_date
+    assert previous_anchor_date(
+        datetime.date(2026, 9, 5),
+        [datetime.date(2026, 8, 2)],
+        [datetime.date(2026, 8, 23), datetime.date(2026, 9, 23)],
+    ) == datetime.date(2026, 8, 23)
+
+
+def test_previous_anchor_date_none_when_no_past_anchor():
+    from src.send_reminder import previous_anchor_date
+    assert previous_anchor_date(datetime.date(2026, 9, 5),
+                                [datetime.date(2026, 9, 5)], []) is None
+    assert previous_anchor_date(datetime.date(2026, 9, 5), [], []) is None
+
+
+def test_default_send_period_starts_day_after_anchor():
+    from src.send_reminder import default_send_period
+    assert default_send_period(
+        datetime.date(2026, 9, 5), [datetime.date(2026, 8, 2)], []
+    ) == (datetime.date(2026, 8, 3), datetime.date(2026, 9, 5))
+
+
+def test_default_send_period_none_without_anchor():
+    from src.send_reminder import default_send_period
+    assert default_send_period(datetime.date(2026, 9, 5), [], []) is None

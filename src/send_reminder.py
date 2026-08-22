@@ -162,3 +162,64 @@ def due_day_reminder(reserved_slots, now_dt):
             return DayReminder(slot.get("end"), minutes)
         return None
     return None
+
+
+def marked_reminder_dates(raw_reservations):
+    """Die Tage mit gesetztem Erinnerungs-Marker, aus get_all_raw().
+
+    Tombstones (`deleted`) zählen nicht, kaputte Datums-Keys werden
+    übersprungen (der Store normalisiert Keys nicht).
+    """
+    out = []
+    for date_str, entry in raw_reservations.items():
+        if entry.get("deleted"):
+            continue
+        if not any(s.get("send_reminder_minutes") is not None
+                   for s in entry.get("slots", [])):
+            continue
+        try:
+            out.append(datetime.date.fromisoformat(date_str))
+        except (ValueError, TypeError):
+            continue
+    return out
+
+
+def monthly_anchor_dates(today, day, time_str, shift_mode="none", state="",
+                         include_holidays=False, months_back=2):
+    """Die Monatstermine des laufenden und der `months_back` vorangehenden
+    Monate — inklusive Monatslängen-Clamp und Verschiebung.
+
+    Zwei Vormonate reichen für die Anker-Suche, weil ein näherer Anker jeden
+    älteren verdrängt.
+    """
+    out = []
+    year, month = today.year, today.month
+    for _ in range(months_back + 1):
+        free = free_dates_for_month(year, month, state, include_holidays)
+        due_at = scheduled_datetime(year, month, day, time_str, shift_mode, free)
+        if due_at is not None:
+            out.append(due_at.date())
+        month -= 1
+        if month == 0:
+            month, year = 12, year - 1
+    return out
+
+
+def previous_anchor_date(today, marked_dates, monthly_dates):
+    """Der jüngste Erinnerungs-Ankerpunkt echt VOR `today`, oder None.
+
+    `today` selbst zählt nicht: der Zeitraum soll bis heute reichen, nicht
+    bei heute beginnen.
+    """
+    candidates = [d for d in (*marked_dates, *monthly_dates) if d < today]
+    return max(candidates) if candidates else None
+
+
+def default_send_period(today, marked_dates, monthly_dates):
+    """(von, bis) für den Sende-Dialog: Tag NACH dem vorherigen Anker bis
+    heute (einschließlich). Kein Anker → None, der Aufrufer bleibt dann beim
+    bisherigen Default."""
+    anchor = previous_anchor_date(today, marked_dates, monthly_dates)
+    if anchor is None:
+        return None
+    return anchor + datetime.timedelta(days=1), today
