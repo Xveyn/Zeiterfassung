@@ -63,6 +63,16 @@ DEFAULTS = {
     "send_reminder_day": 1,
     "send_reminder_time": "18:00",
     "send_reminder_last_fired_month": "",
+    # Tagesbezogene Sende-Erinnerung (an Reservierungs-Slots gekoppelt) und
+    # Verschiebung des Monatstermins. Alle gerätelokal — bewusst NICHT in
+    # SYNCED_SETTING_KEYS, wie die übrigen Benachrichtigungs-Keys.
+    "send_reminder_reservations_enabled": False,
+    "send_reminder_default_minutes": 15,
+    # "none" | "backward" (vorziehen) | "forward" (nachziehen).
+    "send_reminder_weekend_shift": "none",
+    "send_reminder_shift_holidays": False,
+    "send_period_from_last_reminder": False,
+    "send_period_anchor_monthly": False,
     "sender_email": "",
     "sync_enabled": False,
     "device_id": "",
