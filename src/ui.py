@@ -124,6 +124,7 @@ class App:
         )
         self._send_reminders = SendReminderScheduler(
             self.root, self.settings, lambda: self._tray,
+            reservation_store=self.reservation_store,
         )
         self._build_header()
         self._renderer.build_grid(self.root)
