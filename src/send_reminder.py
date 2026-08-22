@@ -9,6 +9,7 @@ verschoben (shift_off_free_days).
 """
 import calendar
 import datetime
+from collections import namedtuple
 
 
 def scheduled_datetime(year, month, day, time_str,
@@ -120,3 +121,44 @@ def is_due(now_dt, day, time_str, last_fired_month,
     if due_at is None:
         return False
     return now_dt >= due_at
+
+
+DayReminder = namedtuple("DayReminder", ["end", "minutes"])
+
+
+def _parse_hhmm_on(date, value):
+    """'HH:MM' + date -> datetime; None/ungültig -> None."""
+    hh_mm = _parse_hhmm(value)
+    if hh_mm is None:
+        return None
+    hh, mm = hh_mm
+    return datetime.datetime(date.year, date.month, date.day, hh, mm)
+
+
+def due_day_reminder(reserved_slots, now_dt):
+    """Der fällige tagesbezogene Sende-Reminder für die heutigen
+    Reservierungs-Slots, oder None.
+
+    Sucht den ersten Slot mit gültigem `send_reminder_minutes` (Invariante:
+    höchstens einer pro Tag) und liefert ihn ab `now_dt >= end - minutes`.
+    Kein oberes Fenster: startet die App erst nach dem Zeitpunkt, wird der
+    Toast am selben Tag nachgeholt — ab dem Folgetag nicht mehr, weil der
+    Aufrufer nur die Slots von heute übergibt.
+
+    Ungültige Werte (kein parsebares Ende, Minuten außerhalb [0, 120] oder
+    kein echtes int) werden übersprungen, wie in reminders.due_reminders.
+    """
+    date = now_dt.date()
+    for slot in reserved_slots:
+        minutes = slot.get("send_reminder_minutes")
+        if isinstance(minutes, bool) or not isinstance(minutes, int):
+            continue
+        if not 0 <= minutes <= 120:
+            continue
+        end = _parse_hhmm_on(date, slot.get("end"))
+        if end is None:
+            continue
+        if now_dt >= end - datetime.timedelta(minutes=minutes):
+            return DayReminder(slot.get("end"), minutes)
+        return None
+    return None

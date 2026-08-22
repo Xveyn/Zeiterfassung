@@ -1,7 +1,7 @@
 import datetime
 
-from src.send_reminder import (free_dates_for_month, is_due, label_for_shift,
-scheduled_datetime, shift_for_label, shift_off_free_days)
+from src.send_reminder import (due_day_reminder, free_dates_for_month, is_due,
+label_for_shift, scheduled_datetime, shift_for_label, shift_off_free_days)
 
 
 def test_scheduled_datetime_clamps_day_31_in_february():
@@ -159,3 +159,52 @@ def test_shift_label_roundtrip():
         assert shift_for_label(label_for_shift(mode)) == mode
     assert shift_for_label("Unsinn") == "none"
     assert label_for_shift("Unsinn") == label_for_shift("none")
+
+
+def _res(end, minutes, start="08:00"):
+    return {"start": start, "end": end, "kategorie": "",
+            "send_reminder_minutes": minutes}
+
+
+def test_due_day_reminder_fires_n_minutes_before_end():
+    slots = [_res("17:00", 15)]
+    assert due_day_reminder(slots, datetime.datetime(2026, 8, 31, 16, 44)) is None
+    rem = due_day_reminder(slots, datetime.datetime(2026, 8, 31, 16, 45))
+    assert rem is not None and rem.end == "17:00" and rem.minutes == 15
+
+
+def test_due_day_reminder_is_caught_up_after_end():
+    """App startet erst um 18:00 — der Toast von 16:45 wird nachgeholt."""
+    rem = due_day_reminder([_res("17:00", 15)],
+                           datetime.datetime(2026, 8, 31, 18, 0))
+    assert rem is not None
+
+
+def test_due_day_reminder_zero_minutes_fires_at_end():
+    slots = [_res("17:00", 0)]
+    assert due_day_reminder(slots, datetime.datetime(2026, 8, 31, 16, 59)) is None
+    assert due_day_reminder(slots, datetime.datetime(2026, 8, 31, 17, 0)) is not None
+
+
+def test_due_day_reminder_without_marker_returns_none():
+    assert due_day_reminder([_res("17:00", None)],
+                            datetime.datetime(2026, 8, 31, 18, 0)) is None
+    assert due_day_reminder([], datetime.datetime(2026, 8, 31, 18, 0)) is None
+
+
+def test_due_day_reminder_picks_the_marked_slot():
+    slots = [_res("12:00", None, start="08:00"), _res("17:00", 30, start="13:00")]
+    rem = due_day_reminder(slots, datetime.datetime(2026, 8, 31, 16, 30))
+    assert rem is not None and rem.end == "17:00" and rem.minutes == 30
+
+
+def test_due_day_reminder_ignores_broken_values():
+    assert due_day_reminder([{"start": "08:00", "end": "kaputt",
+                              "send_reminder_minutes": 15}],
+                            datetime.datetime(2026, 8, 31, 23, 0)) is None
+    assert due_day_reminder([{"start": "08:00", "end": "17:00",
+                              "send_reminder_minutes": 999}],
+                            datetime.datetime(2026, 8, 31, 23, 0)) is None
+    assert due_day_reminder([{"start": "08:00", "end": "17:00",
+                              "send_reminder_minutes": True}],
+                            datetime.datetime(2026, 8, 31, 23, 0)) is None
