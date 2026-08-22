@@ -493,6 +493,7 @@ def test_apply_reservation_import_calls_save_with_slots():
 def test_apply_reservation_import_empty_is_noop():
     store = _RecordingResStore()
     apply_reservation_import(store, [])
+    assert store.saved == []
 
 
 def test_share_doc_omits_send_reminder_minutes(tmp_path):
