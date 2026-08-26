@@ -2,12 +2,15 @@ __pycache__/
 *.pyc
 *.pyo
 .pytest_cache/
+.coverage
 zeiterfassung.json
 credentials.json
 token.json
 settings.json
 conflicts.json
 reservations.json*
+sync_history.json
+sync-apply.journal
 instance-secret
 .instance-secret-*.tmp
 webhooks.json
