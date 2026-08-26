@@ -24,15 +24,16 @@ from src.dialogs.settings_dialog.tab_app import AppTab
 from src.dialogs.settings_dialog.tab_google import GoogleTab
 from src.dialogs.settings_dialog.tab_mail import MailTab
 from src.dialogs.settings_dialog.tab_updates import UpdatesTab
+from src.dialogs.settings_dialog.tab_webhooks import WebhooksTab
 from src.dialogs.settings_dialog.tab_work import WorkTab
 
 
 def open_settings_dialog(parent, settings, base_path, on_change, *,
                          runner, conflicts_store=None, storage=None,
                          reservation_store=None, on_request_restart=None,
-                         data_lock=None, sync_guard=None):
-    """Modaler Dialog zum Bearbeiten der App-Einstellungen, aufgeteilt auf fünf
-    Tabs (Arbeitszeit / Bericht & Mail / Google / App / Updates).
+                         data_lock=None, sync_guard=None, webhook_store=None):
+    """Modaler Dialog zum Bearbeiten der App-Einstellungen, aufgeteilt auf sechs
+    Tabs (Arbeitszeit / Bericht & Mail / Webhooks / Google / App / Updates).
 
     on_change wird nach erfolgreichem Speichern aufgerufen, damit der Kalender
     sich aktualisiert. conflicts_store und storage sind optional; sind sie
@@ -52,11 +53,13 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
 
     tab_work = tk.Frame(notebook, bg=BG)
     tab_mail = tk.Frame(notebook, bg=BG)
+    tab_webhooks = tk.Frame(notebook, bg=BG)
     tab_google = tk.Frame(notebook, bg=BG)
     tab_app = tk.Frame(notebook, bg=BG)
     tab_updates = tk.Frame(notebook, bg=BG)
     notebook.add(tab_work, text="Arbeitszeit")
     notebook.add(tab_mail, text="Bericht & Mail")
+    notebook.add(tab_webhooks, text="Webhooks")
     notebook.add(tab_google, text="Google")
     notebook.add(tab_app, text="App")
     notebook.add(tab_updates, text="Updates")
@@ -66,6 +69,9 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
 
     # ===================== Tab: Bericht & Mail =====================
     mail = MailTab(tab_mail, settings)
+
+    # ===================== Tab: Webhooks =====================
+    hooks = WebhooksTab(tab_webhooks, dialog, webhook_store, runner)
 
     # ===================== Tab: Google =====================
     google = GoogleTab(
@@ -88,6 +94,7 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
     tabs = {
         "work": work.frame,
         "mail": mail.frame,
+        "webhooks": hooks.frame,
         "google": google.frame,
         "app": app.frame,
         "updates": updates_tab.frame,
