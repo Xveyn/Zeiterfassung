@@ -5,6 +5,8 @@ ist die getestete Schicht des Features (siehe docs/known-limitations.md:
 getestet wird Logik, nicht UI).
 """
 
+import hashlib
+import hmac
 import ipaddress
 from urllib.parse import unquote, urlsplit
 
@@ -82,3 +84,50 @@ def validate_url(url):
             "Für Adressen außerhalb des lokalen Netzes ist https erforderlich."
         )
     return True, ""
+
+
+_CONTROL_CHARS = ("\r", "\n", "\x00")
+
+
+def _check_header_part(kind, value):
+    """Wirft ValueError, wenn `value` Steuerzeichen enthält.
+
+    Abweisen statt strippen: ein still bereinigtes "Bearer a\\nX-Foo: b"
+    ergäbe einen Request, den der Nutzer nie so gemeint hat, und der Fehler
+    fiele erst beim Empfänger auf (Muster wie mail.send_email, Audit N11).
+    """
+    if any(c in value for c in _CONTROL_CHARS):
+        raise ValueError(
+            f"Der {kind} enthält unzulässige Steuerzeichen "
+            "(Zeilenumbruch oder Nullbyte)."
+        )
+
+
+def sign_hmac(secret, body):
+    """HMAC-SHA256 über die rohen Body-Bytes, Hex, kleingeschrieben."""
+    return hmac.new(secret.encode("utf-8"), body, hashlib.sha256).hexdigest()
+
+
+def auth_headers(auth, body):
+    """Baut die Auth-Header für einen Webhook-Request.
+
+    `auth` ist das `auth`-Objekt aus webhooks.json. Signiert wird bei `hmac`
+    über die rohen Body-Bytes — exakt die Bytes, die über die Leitung gehen,
+    sonst kann der Empfänger nicht verifizieren.
+    """
+    mode = (auth or {}).get("mode", "none")
+    if mode == "none":
+        return {}
+    if mode == "header":
+        name = auth.get("header") or "Authorization"
+        value = auth.get("value") or ""
+        _check_header_part("Header-Name", name)
+        _check_header_part("Header-Wert", value)
+        return {name: value}
+    if mode == "hmac":
+        name = auth.get("header") or "X-Hub-Signature-256"
+        prefix = auth.get("prefix") or ""
+        _check_header_part("Header-Name", name)
+        _check_header_part("Signatur-Präfix", prefix)
+        return {name: prefix + sign_hmac(auth.get("secret") or "", body)}
+    raise ValueError(f"Unbekanntes Auth-Verfahren: {mode!r}")

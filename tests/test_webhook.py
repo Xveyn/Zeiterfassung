@@ -88,3 +88,71 @@ def test_userinfo_in_url_does_not_leak_into_host_check():
 
 def test_trailing_dot_host_still_private():
     assert validate_url("http://nas.local./hook") == (True, "")
+
+
+from src.webhook import auth_headers, sign_hmac
+
+
+def test_sign_hmac_matches_rfc4231_test_case_2():
+    """RFC 4231, Test Case 2 — veröffentlichter Vektor, kein selbstgerechnetes
+    Ergebnis (das wäre tautologisch)."""
+    digest = sign_hmac("Jefe", b"what do ya want for nothing?")
+    assert digest == (
+        "5bdcc146bf60754e6a042426089575c75a003f089d2739839dec58b964ec3843"
+    )
+
+
+def test_auth_none_sends_no_header():
+    assert auth_headers({"mode": "none"}, b"body") == {}
+
+
+def test_auth_header_mode_passes_value_through():
+    headers = auth_headers(
+        {"mode": "header", "header": "Authorization", "value": "Bearer abc123"},
+        b"body",
+    )
+    assert headers == {"Authorization": "Bearer abc123"}
+
+
+def test_auth_header_mode_supports_custom_header_name():
+    headers = auth_headers(
+        {"mode": "header", "header": "X-API-Key", "value": "k"}, b"body")
+    assert headers == {"X-API-Key": "k"}
+
+
+def test_auth_hmac_signs_body_with_prefix():
+    headers = auth_headers(
+        {"mode": "hmac", "header": "X-Hub-Signature-256",
+         "prefix": "sha256=", "secret": "Jefe"},
+        b"what do ya want for nothing?",
+    )
+    assert headers == {
+        "X-Hub-Signature-256":
+            "sha256=5bdcc146bf60754e6a042426089575c75a003f089d2739839dec58b964ec3843"
+    }
+
+
+def test_auth_hmac_prefix_may_be_empty():
+    headers = auth_headers(
+        {"mode": "hmac", "header": "X-Sig", "prefix": "", "secret": "Jefe"},
+        b"what do ya want for nothing?",
+    )
+    assert headers["X-Sig"].startswith("5bdcc146")
+
+
+@pytest.mark.parametrize("bad", ["a\rb", "a\nb", "a\x00b"])
+def test_control_characters_in_header_value_are_rejected(bad):
+    with pytest.raises(ValueError):
+        auth_headers({"mode": "header", "header": "Authorization", "value": bad},
+                     b"body")
+
+
+@pytest.mark.parametrize("bad", ["X\rY", "X\nY", "X\x00Y"])
+def test_control_characters_in_header_name_are_rejected(bad):
+    with pytest.raises(ValueError):
+        auth_headers({"mode": "header", "header": bad, "value": "v"}, b"body")
+
+
+def test_unknown_auth_mode_is_rejected():
+    with pytest.raises(ValueError):
+        auth_headers({"mode": "oauth"}, b"body")
