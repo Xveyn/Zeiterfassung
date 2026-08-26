@@ -187,13 +187,21 @@ Unterscheidung schon richtig (fängt dort nur `JSONDecodeError`/`ValueError`);
 `conflicts_store.py` nicht — das ist kein Vorbild.
 
 **Der Schreibvorgang gehört nicht in den UI-Thread.** `harden_windows_acl`
-startet einen `icacls`-Subprozess mit `timeout=15`, und der Store schreibt
-unter dem geteilten Daten-Lock. Ein hängendes Netzlaufwerk blockierte damit bis
-zu 15 Sekunden lang die Oberfläche **und** jeden anderen Store, inklusive eines
-laufenden Drive-Syncs. `src/CLAUDE.md` benennt genau diesen Fall („Wer den
-Helfer in einen UI-Thread-Pfad hängt, muss das prüfen"). Speichern und Löschen
-laufen deshalb über den `BackgroundTaskRunner`, wie jede andere blockierende
-Operation in den Dialogen.
+startet einen `icacls`-Subprozess mit `timeout=15`. Ein hängendes Netzlaufwerk
+blockierte damit bis zu 15 Sekunden lang die Oberfläche. `src/CLAUDE.md` benennt
+genau diesen Fall („Wer den Helfer in einen UI-Thread-Pfad hängt, muss das
+prüfen"). Speichern und Löschen laufen deshalb über den `BackgroundTaskRunner`,
+wie jede andere blockierende Operation in den Dialogen.
+
+Der `WebhookStore` bekommt dabei bewusst **nicht** den geteilten `data_lock`
+der übrigen Stores (`storage`/`settings`/`conflicts_store`/`reservations`),
+sondern legt sich einen eigenen an: Webhooks nehmen an keinem Sync-Flow teil
+(kein Snapshot→Merge→Apply, kein Sync-Doc, kein Journal) — es gibt also keine
+übergreifende Invariante mitzuziehen. Den Lock trotzdem zu teilen hätte nur
+einen Preis ohne Gegenwert gehabt: `save`/`delete` hielten ihn über den ganzen
+`icacls`-Aufruf (bis 15 s plus Retries), was jeden anderen Store und einen
+laufenden Drive-Sync blockiert hätte, ohne dass Webhooks von der Klammerung
+je profitieren.
 
 **Was das nicht leistet:** die Datei ist nicht verschlüsselt. Wer auf dem Rechner
 als derselbe Benutzer Code ausführt, liest die Secrets. Das ist dasselbe
@@ -602,11 +610,11 @@ Vertrag, was in `src/CLAUDE.md` festzuhalten ist.
 | `src/webhook_store.py` | neu | `WebhookStore`: Laden/Speichern/Quarantäne, gehärteter Schreibpfad, `lock=`-Parameter wie die übrigen Stores |
 | `src/webhook.py` | neu | pure Logik: `is_private_host`, `validate_url`, `validate_record`, `build_json_payload`, `build_body`, `auth_headers`, `sign_hmac`, `post`, `classify_error`, `perform_send` |
 | `src/dialogs/webhook_dialog.py` | neu | Anlegen/Bearbeiten eines Webhooks inkl. Test-Button |
-| `src/dialogs/settings_dialog/tab_webhook_store.py` | neu | Listen-Tab |
+| `src/dialogs/settings_dialog/tab_webhooks.py` | neu | Listen-Tab |
 | `src/dialogs/send_task.py` | geändert | Dispatcher; heutiger Gmail-Block wandert nach `_send_mail` |
 | `src/dialogs/send_dialog.py` | geändert | Ziel-Abschnitt, Empfänger-Check, Ergebnis-Anzeige, kanalunabhängige Leer-Prüfung |
 | `src/dialogs/settings_dialog/dialog.py` | geändert | sechster Tab |
-| `src/main.py` / `src/ui.py` | geändert | `WebhookStore` erzeugen und durchreichen (geteilter `data_lock`) |
+| `src/main.py` / `src/ui.py` | geändert | `WebhookStore` erzeugen und durchreichen (bewusst ohne den geteilten `data_lock` — eigener Lock, siehe Absatz oben) |
 | `src/report.py` | geändert | `_filter_entries` / `_apply_category_filter` werden öffentlich (`filter_period` / `filter_categories`) |
 
 **Warum `report.py` doch angefasst wird.** Die JSON-Payload muss auf exakt

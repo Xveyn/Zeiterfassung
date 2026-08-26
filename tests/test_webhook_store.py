@@ -221,7 +221,11 @@ def test_validate_record_requires_secret_for_auth_modes(auth):
 
 
 def test_uses_the_injected_lock(tmp_path):
-    """Alle Stores teilen sich den in main() erzeugten RLock (Audit H1/H2)."""
+    """Die Signatur ist einheitlich mit den übrigen Stores (`lock=`-Parameter,
+    Audit H1/H2) — ein injizierter Lock wird also übernommen. `main.py`
+    injiziert ihn für `WebhookStore` aber bewusst NICHT: Webhooks nehmen an
+    keinem Sync-Flow teil, es gibt also keine übergreifende Invariante mit den
+    anderen Stores zu wahren (siehe src/CLAUDE.md, Webhook-Store-Absatz)."""
     import threading
     lock = threading.RLock()
     store = WebhookStore(str(tmp_path / "webhooks.json"), lock=lock)

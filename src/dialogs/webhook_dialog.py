@@ -176,10 +176,9 @@ def open_webhook_dialog(parent, store, runner, record: dict | None = None, on_sa
         set_primary_button_enabled(save_btn, False)
 
         # Über den Runner, NICHT direkt: store.save startet einen
-        # icacls-Subprozess (timeout=15) und hält dabei den geteilten
-        # Daten-Lock. Im Tk-Callback blockierte ein hängendes Netzlaufwerk
-        # damit die Oberfläche UND jeden anderen Store, inklusive eines
-        # laufenden Drive-Syncs (src/CLAUDE.md, secure_file-Absatz).
+        # icacls-Subprozess (timeout=15). Im Tk-Callback blockierte ein
+        # hängendes Netzlaufwerk damit bis zu 15 s lang die Oberfläche
+        # (src/CLAUDE.md, secure_file-Absatz).
         def fn():
             try:
                 store.save(candidate)

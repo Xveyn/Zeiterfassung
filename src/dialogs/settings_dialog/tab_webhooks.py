@@ -88,7 +88,8 @@ class WebhooksTab:
             return
 
         # Wie beim Speichern über den Runner: delete schreibt die Datei neu
-        # (icacls-Subprozess unter dem geteilten Daten-Lock).
+        # (icacls-Subprozess, bis zu 15 s) — das gehört nicht in den
+        # Tk-Callback.
         def fn():
             try:
                 self._store.delete(record["id"])

@@ -110,7 +110,14 @@ class WebhookStore:
     def __init__(self, filepath: str = "webhooks.json",
                  lock: threading.RLock | None = None) -> None:
         self.filepath = filepath
-        # Geteilter Daten-Lock (Audit H1/H2) — siehe storage.py.
+        # Die Signatur ist einheitlich mit den übrigen Stores (`lock=`-
+        # Parameter wie storage.py, Audit H1/H2) — ein injizierter Lock wird
+        # also übernommen. `main.py` injiziert hier aber bewusst KEINEN: dieser
+        # Store bekommt nicht den geteilten Daten-Lock, sondern legt sich ohne
+        # Injektion seinen eigenen an. Webhooks nehmen an keinem Sync-Flow teil
+        # (kein Snapshot→Merge→Apply, kein Sync-Doc, kein Journal) — es gibt
+        # also keine übergreifende Invariante mit den anderen Stores zu
+        # wahren, siehe src/CLAUDE.md.
         self._lock = lock if lock is not None else threading.RLock()
         self._webhooks: list[Webhook] = []
         self._readonly = False
