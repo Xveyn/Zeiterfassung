@@ -4,7 +4,7 @@
 
 **Goal:** Der Zeiterfassungs-Bericht kann zusätzlich zur Gmail-Zustellung an mehrere benannte HTTP-Endpunkte gepostet werden — als JSON, als PDF oder beides, wahlweise ohne Auth, mit Header-Token oder HMAC-signiert.
 
-**Architecture:** Der bestehende Gmail-Pfad bleibt inhaltlich unverändert und bekommt einen Dispatcher davor: `send_task.perform_send` baut die Payloads einmal, feuert jeden Kanal unabhängig und sammelt ein Ergebnis pro Kanal. Die gesamte Webhook-Logik liegt Tk-frei in `src/webhook.py` (pure) und `src/webhooks.py` (Store), damit sie testbar ist; Tk-Code kommt nur in Sende-Dialog, Webhook-Dialog und Settings-Tab hinzu.
+**Architecture:** Der bestehende Gmail-Pfad bleibt inhaltlich unverändert und bekommt einen Dispatcher davor: `send_task.perform_send` baut die Payloads einmal, feuert jeden Kanal unabhängig und sammelt ein Ergebnis pro Kanal. Die gesamte Webhook-Logik liegt Tk-frei in `src/webhook.py` (pure) und `src/webhook_store.py` (Store), damit sie testbar ist; Tk-Code kommt nur in Sende-Dialog, Webhook-Dialog und Settings-Tab hinzu.
 
 **Tech Stack:** Python 3.10+, ausschließlich stdlib (`urllib`, `hmac`, `hashlib`, `ipaddress`, `uuid`, `json`, `tempfile`), Tkinter, pytest.
 
@@ -16,13 +16,16 @@ Diese Regeln gelten für **jede** Aufgabe unten und werden dort nicht wiederholt
 
 - **Keine neue Dependency.** `requirements.txt` und `requirements-test.txt` bleiben unangetastet. Alles Nötige ist stdlib. Grund: die Test-CI installiert `requirements.txt` bewusst nicht.
 - **Python 3.10 ist die Untergrenze.** Die CI-Matrix läuft 3.10–3.13; kein `match`, kein `X | Y` in `isinstance`, keine 3.11+-stdlib-API.
-- **Logik Tk-frei.** `src/webhook.py` und `src/webhooks.py` importieren **kein** `tkinter`. Tests gibt es nur für diese Module — Dialog-, Tab- und Widget-Code wird nicht automatisiert getestet (`docs/known-limitations.md`, entschiedene Scope-Grenze).
+- **Logik Tk-frei.** `src/webhook.py` und `src/webhook_store.py` importieren **kein** `tkinter`. Tests gibt es nur für diese Module — Dialog-, Tab- und Widget-Code wird nicht automatisiert getestet (`docs/known-limitations.md`, entschiedene Scope-Grenze).
 - **Alle UI-Texte auf Deutsch.**
 - **Datumsformat:** intern ISO (`YYYY-MM-DD`), in der UI deutsch über `time_utils.format_iso_date`.
 - **Summen über Minuten**, nie über Dezimalstunden (`CLAUDE.md`, Abschnitt „Stunden").
 - **Fehlerdialoge:** kuratierte Meldungen über `theme.themed_showerror`/`themed_showinfo`, Traceback-Ausgabe über rohes `tkinter.messagebox.showerror`.
 - **Secrets:** Jeder Schreibvorgang auf `webhooks.json` läuft Temp-Datei → `chmod 0600` → `secure_file.harden_windows_acl` → `os.replace`, und zwar in dieser Reihenfolge, mit der Härtung auf der **Temp-Datei**.
 - **Kein Webhook-Key in `SYNCED_SETTING_KEYS`.** Webhooks sind gerätelokal und tauchen im Sync-Doc nicht auf.
+- **Secrets nie ins Log.** Wird ein Webhook-Datensatz geloggt, dann nur `id` und `name` — nie das Objekt, nie `auth`. `logs/zeiterfassung.log` ist ungehärtet und genau die Datei, die Nutzer bei Problemen anhängen.
+- **Schreibende Store-Zugriffe laufen über `runner.run`**, nie direkt im Tk-Callback: `harden_windows_acl` startet einen `icacls`-Subprozess mit `timeout=15` und hält dabei den geteilten Daten-Lock. `src/CLAUDE.md` benennt genau diesen Fall.
+- **Fehlgeschlagene Schreibvorgänge werden angezeigt**, nie still verworfen — ein Dialog, der sich schließt, während auf Platte nichts steht, fällt erst nach dem Neustart auf.
 - **Vor jedem Commit:** `pytest`, `ruff check .` und `pyright` müssen grün sein.
 - **Commit-Messages** ohne `&&`-Verkettung ausführen (PowerShell 5.1); mehrzeilige Messages über `git commit -F <datei>`.
 
@@ -105,6 +108,38 @@ def test_missing_host_rejected():
 
 def test_ipv6_url_brackets_are_handled():
     assert validate_url("http://[::1]:8080/hook") == (True, "")
+
+
+def test_broken_ipv6_url_is_rejected_not_raised():
+    """urlsplit selbst wirft hier ValueError — validate_url muss das fangen,
+    sonst landet die Exception im Tk-Excepthook statt in einer Meldung."""
+    ok, msg = validate_url("http://[::1/hook")
+    assert ok is False
+    assert msg
+
+
+def test_percent_encoded_host_is_not_treated_as_private():
+    """urlsplit liefert '8%2e8%2e8%2e8' (kein Punkt → sähe wie ein
+    Single-Label aus), urllib dekodiert beim Request aber zu 8.8.8.8 und
+    schickt den Klartext-POST an eine öffentliche Adresse."""
+    ok, msg = validate_url("http://8%2e8%2e8%2e8/hook")
+    assert ok is False
+    assert msg
+
+
+def test_decimal_ip_notation_is_not_treated_as_private():
+    """http://2130706433/ ist punktlos, wird vom OS aber aufgelöst."""
+    ok, _ = validate_url("http://2130706433/hook")
+    assert ok is False
+
+
+def test_userinfo_in_url_does_not_leak_into_host_check():
+    ok, _ = validate_url("http://nas@8.8.8.8/hook")
+    assert ok is False
+
+
+def test_trailing_dot_host_still_private():
+    assert validate_url("http://nas.local./hook") == (True, "")
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
@@ -125,7 +160,7 @@ getestet wird Logik, nicht UI).
 """
 
 import ipaddress
-from urllib.parse import urlsplit
+from urllib.parse import unquote, urlsplit
 
 # Explizit ausgeschriebene Netzliste statt ip_address(...).is_private:
 # CPython hat die Einordnung von 100.64.0.0/10 (RFC 6598, CGNAT) zwischen
@@ -158,7 +193,13 @@ def is_private_host(host):
     """
     if not host:
         return False
-    host = host.strip().lower().rstrip(".")
+    # Vor der Prüfung dekodieren: urlsplit lässt Prozent-Kodierung im Host
+    # stehen ('8%2e8%2e8%2e8'), urllib löst sie beim Request aber auf
+    # (Request(...).host -> '8.8.8.8'). Ungeprüft sähe eine öffentliche IP
+    # damit wie ein punktloses Single-Label und also wie ein lokaler Name aus.
+    host = unquote(host.strip()).lower().rstrip(".")
+    if not host or "%" in host:
+        return False
     if host == "localhost":
         return True
     try:
@@ -167,21 +208,27 @@ def is_private_host(host):
         # Kein IP-Literal, also ein Name.
         if host.endswith(_PRIVATE_SUFFIXES):
             return True
+        if "." in host:
+            return False
         # Single-Label-Name (»nas«, »fritzbox«): nur im lokalen Netz auflösbar.
-        return "." not in host
+        # Rein numerisch ist es aber kein Name, sondern eine Dezimal-IP
+        # (http://2130706433/ -> 127.0.0.1) — die gehört nicht hierher.
+        return not host.isdigit()
     return any(ip in net for net in _PRIVATE_NETWORKS)
 
 
 def validate_url(url):
     """Prüft Schema und Host. Liefert (ok, deutsche Begründung)."""
-    parts = urlsplit((url or "").strip())
-    if parts.scheme not in ("http", "https"):
-        return False, "Die Adresse muss mit http:// oder https:// beginnen."
     try:
+        # urlsplit selbst wirft bei kaputten IPv6-Klammern ('http://[::1/x')
+        # — nicht erst .hostname. Der try muss deshalb hier stehen, sonst
+        # entkommt die Exception bis in den Tk-Excepthook.
+        parts = urlsplit((url or "").strip())
         host = parts.hostname
     except ValueError:
-        # z.B. kaputte IPv6-Klammern
-        host = None
+        return False, "Die Adresse ist nicht lesbar."
+    if parts.scheme not in ("http", "https"):
+        return False, "Die Adresse muss mit http:// oder https:// beginnen."
     if not host:
         return False, "Die Adresse enthält keinen Server-Namen."
     if parts.scheme == "http" and not is_private_host(host):
@@ -712,12 +759,17 @@ git commit -m "feat(webhook): JSON-Dokument und Request-Body"
 
 ---
 
-### Task 5: HTTP-POST, Redirect-Schutz, Fehlerklassifikation
+### Task 5: HTTP-POST ohne Redirects, Fehlerklassifikation
 
-Die Netz-Schicht. Zwei Details entscheiden hier über Sicherheit bzw. Verständlichkeit und sind der eigentliche Grund für diese Aufgabe:
+Die Netz-Schicht. Der Kern dieser Aufgabe ist eine Entscheidung, die gegen den ersten Reflex geht: **`urllib` darf keinen Redirect auflösen.** Wer stattdessen „folgen, aber absichern" baut, handelt sich drei Probleme ein — alle im echten `urllib`-Quelltext nachgelesen, nicht vermutet:
 
-1. **`urllib.error.HTTPError` erbt von `URLError`**, und `URLError` steht in `mail._OFFLINE_EXC_NAMES`. Würde man `mail_task.classify_mail_error` wiederverwenden, meldete ein sauberes HTTP 500 „keine Internetverbindung". `HTTPError` wird deshalb **vor** der Offline-Prüfung abgefangen.
-2. **Redirects dürfen das Schema nicht verschlechtern.** Ein `301` von https auf http lieferte sonst den Bearer-Token im Klartext aus und hebelte die URL-Regel aus Task 1 aus.
+1. **Der POST-Body geht verloren.** `HTTPRedirectHandler.redirect_request` erzeugt bei 301/302/303 auf einen POST eine neue `Request(newurl, method="GET", headers=newheaders, …)` — **ohne** `data`, und `Content-Type`/`Content-Length` sind aus `newheaders` herausgefiltert. Der Bericht käme nie an, der Endpunkt antwortete 200, und die App meldete „✓ gesendet". Ein stiller Datenverlust ist das schlechteste denkbare Ergebnis, und der Auslöser ist Alltag: jede trailing-slash- oder http→https-Kanonisierung.
+2. **Der Auth-Header reist zu einem fremden Host mit.** urllib kopiert alle übrigen Header hostunabhängig weiter und strippt `Authorization` bei Host-Wechsel **nicht** (anders als `requests`). Ein `Location: https://fremder.host/x` lieferte den Bearer-Token dorthin.
+3. **Die URL-Regel wäre umgangen.** Ein erlaubtes lokales `http://`-Ziel dürfte per `302` auf eine öffentliche `http://`-Adresse zeigen — Klartext ins Internet, obwohl die Prüfung beim Speichern grün war. Ein Guard, der nur `req.type == "https"` betrachtet, greift in genau diesem Fall **nie**.
+
+Deshalb: kein Redirect wird gefolgt, 3xx ist ein Fehler mit eigenem `kind` und der Bitte, die endgültige Adresse einzutragen. Ein Webhook-Ziel ist feste Konfiguration, kein Browsing.
+
+Zweiter Punkt, ebenfalls korrekturbedürftig gegenüber der ersten Fassung: `urllib.error.HTTPError` **erbt** zwar von `URLError`, aber `mail.is_offline_error` vergleicht über `type(exc).__name__` und nicht über `isinstance` — ein `HTTPError` heißt `"HTTPError"` und gilt dort **nicht** als offline (nachgemessen: `is_offline_error(HTTPError(500))` → `False`). Der eigene Klassifikator bleibt trotzdem richtig, aber aus dem anderen Grund: ohne HTTPError-Zweig käme jede HTTP-Fehlerantwort als *unerwarteter Fehler mit Traceback* beim Nutzer an statt als „Der Server hat mit 500 geantwortet".
 
 **Files:**
 - Modify: `src/webhook.py`
@@ -729,7 +781,7 @@ Die Netz-Schicht. Zwei Details entscheiden hier über Sicherheit bzw. Verständl
   - `REQUEST_TIMEOUT_S = 30`
   - `post(url: str, headers: dict, body: bytes, timeout: int = REQUEST_TIMEOUT_S) -> int` — liefert den HTTP-Status, wirft bei Fehlern
   - `classify_error(exc: BaseException) -> dict` — `{"ok": False, "kind": ..., "detail": str, "error": exc, "tb": str | None}`
-  - `_NoDowngradeRedirectHandler` (intern, aber im Test benannt)
+  - `_NoRedirectHandler` (intern, aber im Test benannt)
 
 - [ ] **Step 1: Write the failing test**
 
@@ -779,21 +831,42 @@ def test_post_sends_headers_and_body(monkeypatch):
     assert seen["timeout"] == 30
 
 
-def test_redirect_handler_allows_https_to_https():
-    handler = wh._NoDowngradeRedirectHandler()
-    req = urllib.request.Request("https://a.example/hook", data=b"{}")
-    new = handler.redirect_request(
-        req, io.BytesIO(b""), 301, "Moved", {}, "https://b.example/hook")
-    assert new is not None
-
-
-def test_redirect_handler_blocks_https_to_http():
-    """Sonst ginge der Bearer-Token im Klartext raus."""
-    handler = wh._NoDowngradeRedirectHandler()
+@pytest.mark.parametrize("code", [301, 302, 303, 307, 308])
+def test_no_redirect_is_ever_followed(code):
+    """Jeder Redirect endet als HTTPError. Würde urllib folgen, ginge bei
+    301/302/303 der POST-Body verloren (die Anfrage wird zu einem GET) und
+    der Auth-Header an einen womöglich fremden Host mit."""
+    handler = wh._NoRedirectHandler()
     req = urllib.request.Request("https://a.example/hook", data=b"{}")
     with pytest.raises(urllib.error.HTTPError):
         handler.redirect_request(
-            req, io.BytesIO(b""), 301, "Moved", {}, "http://b.example/hook")
+            req, io.BytesIO(b""), code, "Moved", {}, "https://b.example/hook")
+
+
+def test_redirect_is_blocked_even_to_the_same_host():
+    """Auch ein harmloser trailing-slash-Redirect zählt — sonst verschwände
+    der Body und die App meldete trotzdem Erfolg."""
+    handler = wh._NoRedirectHandler()
+    req = urllib.request.Request("https://a.example/hook", data=b"{}")
+    with pytest.raises(urllib.error.HTTPError):
+        handler.redirect_request(
+            req, io.BytesIO(b""), 301, "Moved", {}, "https://a.example/hook/")
+
+
+def test_opener_has_no_default_redirect_handler():
+    """Gegenprobe auf der echten Opener-Kette: der Default-Handler von urllib
+    darf nicht mehr drinhängen, sonst greift unser Ersatz gar nicht."""
+    opener = wh._build_opener()
+    handlers = [type(h).__name__ for h in opener.handlers]
+    assert "HTTPRedirectHandler" not in handlers
+    assert "_NoRedirectHandler" in handlers
+
+
+@pytest.mark.parametrize("code", [301, 302, 303, 307, 308])
+def test_classify_redirect_asks_for_the_final_url(code):
+    res = classify_error(_http_error(code))
+    assert res["kind"] == "redirect"
+    assert res["tb"] is None
 
 
 def _http_error(code, body=b""):
@@ -813,11 +886,12 @@ def test_classify_http_status_codes(code, kind):
     assert str(code) in res["detail"]
 
 
-def test_classify_http_error_is_not_mistaken_for_offline():
-    """HTTPError ist Unterklasse von URLError, und URLError gilt in mail.py als
-    Offline-Symptom. Ohne die explizite Vorab-Prüfung meldete ein 500 hier
-    „keine Internetverbindung"."""
-    assert classify_error(_http_error(500))["kind"] == "server"
+def test_http_error_is_a_server_answer_not_an_unexpected_crash():
+    """Ohne den HTTPError-Zweig fiele ein 500 in den generischen Ast und käme
+    mit Traceback als „unerwarteter Fehler" beim Nutzer an."""
+    res = classify_error(_http_error(500))
+    assert res["kind"] == "server"
+    assert res["tb"] is None
 
 
 def test_classify_server_error_includes_truncated_body():
@@ -862,31 +936,46 @@ _MAX_DETAIL_CHARS = 500
 USER_AGENT = f"Zeiterfassung/{VERSION}"
 
 
-class _NoDowngradeRedirectHandler(urllib.request.HTTPRedirectHandler):
-    """Folgt Redirects, aber nie von https auf http.
+class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """Folgt keinem Redirect — jedes 3xx wird zum HTTPError.
 
-    Ohne das könnte ein 301 den Auth-Header (Bearer-Token) im Klartext
-    ausliefern und die https-Pflicht aus validate_url aushebeln.
+    urllib würde bei 301/302/303 auf einen POST eine GET-Anfrage OHNE Body
+    bauen (`redirect_request` erzeugt `Request(newurl, method="GET", …)` ohne
+    `data`, Content-Type/-Length sind herausgefiltert). Der Bericht käme nie
+    an, der Endpunkt antwortete 200 — die App meldete Erfolg. Dazu reisen alle
+    übrigen Header hostunabhängig mit, `Authorization` inklusive.
+
+    Ein Webhook-Ziel ist feste Konfiguration: die endgültige Adresse gehört in
+    die Einstellungen, nicht in eine Weiterleitungskette.
+
+    Da diese Klasse von HTTPRedirectHandler erbt, ersetzt `build_opener` den
+    Default-Handler durch sie (statt beide einzuhängen).
     """
 
     def redirect_request(self, req, fp, code, msg, headers, newurl):
-        if req.type == "https" and urlsplit(newurl).scheme != "https":
-            raise urllib.error.HTTPError(
-                newurl, code,
-                "Weiterleitung von https auf http abgelehnt (der "
-                "Auth-Header ginge unverschlüsselt raus).",
-                headers, fp)
-        return super().redirect_request(req, fp, code, msg, headers, newurl)
+        raise urllib.error.HTTPError(
+            req.full_url, code,
+            "Der Endpunkt hat weitergeleitet — bitte die endgültige Adresse "
+            "eintragen.",
+            headers, fp)
+
+
+def _build_opener():
+    return urllib.request.build_opener(_NoRedirectHandler())
 
 
 def post(url, headers, body, timeout=REQUEST_TIMEOUT_S):
-    """POST an `url`. Liefert den HTTP-Status; wirft bei Fehlern."""
+    """POST an `url`. Liefert den HTTP-Status; wirft bei Fehlern.
+
+    `timeout` ist urllibs Socket-Timeout je Operation, kein Gesamt-Timeout:
+    ein tröpfelnder Server hält den Worker beliebig lange. Hinnehmbar, weil
+    der Aufruf im Worker-Thread liegt.
+    """
     req = urllib.request.Request(url, data=body, method="POST")
     for name, value in headers.items():
         req.add_header(name, value)
     req.add_header("User-Agent", USER_AGENT)
-    opener = urllib.request.build_opener(_NoDowngradeRedirectHandler())
-    with opener.open(req, timeout=timeout) as resp:
+    with _build_opener().open(req, timeout=timeout) as resp:
         resp.read(_MAX_RESPONSE_BYTES)
         return getattr(resp, "status", None) or resp.getcode()
 
@@ -903,14 +992,20 @@ def _response_snippet(exc):
 def classify_error(exc):
     """Mappt eine Versand-Exception auf ein Fehler-Result-Dict.
 
-    HTTPError wird bewusst ZUERST geprüft: es ist eine Unterklasse von
-    URLError, und URLError zählt in mail.is_offline_error als Offline-Symptom
-    — ein sauberes HTTP 500 würde sonst als „keine Internetverbindung"
-    gemeldet. Deshalb auch ein eigener Klassifikator statt
-    mail_task.classify_mail_error.
+    HTTPError wird ZUERST geprüft — sonst fiele jede HTTP-Fehlerantwort in den
+    generischen Zweig und käme als unerwarteter Fehler MIT Traceback beim
+    Nutzer an, statt als „Der Server hat mit 500 geantwortet". (Nicht, weil
+    is_offline_error sie schlucken würde: das vergleicht Typnamen, und
+    "HTTPError" steht nicht in _OFFLINE_EXC_NAMES — nachgemessen.)
     """
     if isinstance(exc, urllib.error.HTTPError):
         code = exc.code
+        if 300 <= code < 400:
+            # Kann nur von _NoRedirectHandler kommen; 307/308 wirft urllib bei
+            # POST ohnehin selbst. Der Body wäre bei einem gefolgten Redirect
+            # verloren gegangen — deshalb eigener kind statt "server".
+            return {"ok": False, "kind": "redirect",
+                    "detail": f"HTTP {code}", "error": exc, "tb": None}
         snippet = _response_snippet(exc)
         detail = f"HTTP {code}" + (f": {snippet}" if snippet else "")
         if code in (401, 403):
@@ -944,7 +1039,7 @@ git commit -m "feat(webhook): POST mit Redirect-Schutz und Fehlerklassifikation"
 
 ---
 
-### Task 6: `webhook.perform_send` — der Kern, der nie wirft
+### Task 6: `webhook.deliver` — der Kern, der nie wirft
 
 Setzt Task 1, 2, 4 und 5 zu einem Versand zusammen. Vertrag wie `send_task.perform_send` (Audit M10): **wirft nie**, liefert immer ein Result-Dict.
 
@@ -955,14 +1050,14 @@ Setzt Task 1, 2, 4 und 5 zu einem Versand zusammen. Vertrag wie `send_task.perfo
 **Interfaces:**
 - Consumes: `validate_url`, `auth_headers`, `build_body`, `post`, `classify_error`
 - Produces:
-  - `perform_send(record: dict, *, json_bytes: bytes | None, pdf_bytes: bytes | None, pdf_filename: str, boundary: str | None = None) -> dict` — `{"ok": True, "status": int}` oder das Fehler-Dict aus `classify_error`, ergänzt um `"kind": "config"` für ungültige Konfiguration
+  - `deliver(record: dict, *, json_bytes: bytes | None, pdf_bytes: bytes | None, pdf_filename: str, boundary: str | None = None) -> dict` — `{"ok": True, "status": int}` oder das Fehler-Dict aus `classify_error`, ergänzt um `"kind": "config"` für ungültige Konfiguration
 
 - [ ] **Step 1: Write the failing test**
 
 Anhängen an `tests/test_webhook.py`:
 
 ```python
-from src.webhook import perform_send
+from src.webhook import deliver
 
 
 def _record(**over):
@@ -975,7 +1070,7 @@ def _record(**over):
     return base
 
 
-def test_perform_send_posts_and_reports_status(monkeypatch):
+def test_deliver_posts_and_reports_status(monkeypatch):
     seen = {}
 
     def fake_post(url, headers, body, timeout=30):
@@ -983,73 +1078,73 @@ def test_perform_send_posts_and_reports_status(monkeypatch):
         return 204
 
     monkeypatch.setattr(wh, "post", fake_post)
-    res = perform_send(_record(), json_bytes=b'{"a":1}', pdf_bytes=None,
+    res = deliver(_record(), json_bytes=b'{"a":1}', pdf_bytes=None,
                        pdf_filename="r.pdf")
     assert res == {"ok": True, "status": 204}
     assert seen["headers"]["Content-Type"] == "application/json; charset=utf-8"
     assert seen["body"] == b'{"a":1}'
 
 
-def test_perform_send_adds_auth_header(monkeypatch):
+def test_deliver_adds_auth_header(monkeypatch):
     seen = {}
     monkeypatch.setattr(wh, "post",
                         lambda url, headers, body, timeout=30: seen.update(headers=headers) or 200)
-    perform_send(
+    deliver(
         _record(auth={"mode": "header", "header": "Authorization", "value": "Bearer t"}),
         json_bytes=b"{}", pdf_bytes=None, pdf_filename="r.pdf")
     assert seen["headers"]["Authorization"] == "Bearer t"
 
 
-def test_perform_send_rejects_http_to_public_host_before_posting(monkeypatch):
+def test_deliver_rejects_http_to_public_host_before_posting(monkeypatch):
     def boom(*a, **k):
         raise AssertionError("darf nicht gesendet werden")
 
     monkeypatch.setattr(wh, "post", boom)
-    res = perform_send(_record(url="http://erp.example.com/hook"),
+    res = deliver(_record(url="http://erp.example.com/hook"),
                        json_bytes=b"{}", pdf_bytes=None, pdf_filename="r.pdf")
     assert res["ok"] is False
     assert res["kind"] == "config"
     assert "https" in res["detail"]
 
 
-def test_perform_send_maps_http_error(monkeypatch):
+def test_deliver_maps_http_error(monkeypatch):
     def fake_post(*a, **k):
         raise _http_error(500, b"kaputt")
 
     monkeypatch.setattr(wh, "post", fake_post)
-    res = perform_send(_record(), json_bytes=b"{}", pdf_bytes=None,
+    res = deliver(_record(), json_bytes=b"{}", pdf_bytes=None,
                        pdf_filename="r.pdf")
     assert res["ok"] is False
     assert res["kind"] == "server"
 
 
-def test_perform_send_never_raises_on_unexpected_error(monkeypatch):
+def test_deliver_never_raises_on_unexpected_error(monkeypatch):
     def fake_post(*a, **k):
         raise RuntimeError("boom")
 
     monkeypatch.setattr(wh, "post", fake_post)
-    res = perform_send(_record(), json_bytes=b"{}", pdf_bytes=None,
+    res = deliver(_record(), json_bytes=b"{}", pdf_bytes=None,
                        pdf_filename="r.pdf")
     assert res["ok"] is False
     assert res["kind"] == "error"
     assert res["tb"]
 
 
-def test_perform_send_rejects_bad_auth_config_as_config_error(monkeypatch):
+def test_deliver_rejects_bad_auth_config_as_config_error(monkeypatch):
     monkeypatch.setattr(wh, "post", lambda *a, **k: 200)
-    res = perform_send(
+    res = deliver(
         _record(auth={"mode": "header", "header": "Authorization",
                       "value": "Bearer \nX-Evil: 1"}),
         json_bytes=b"{}", pdf_bytes=None, pdf_filename="r.pdf")
     assert res["kind"] == "config"
 
 
-def test_perform_send_signs_the_exact_body_sent(monkeypatch):
+def test_deliver_signs_the_exact_body_sent(monkeypatch):
     seen = {}
     monkeypatch.setattr(
         wh, "post",
         lambda url, headers, body, timeout=30: seen.update(headers=headers, body=body) or 200)
-    perform_send(
+    deliver(
         _record(auth={"mode": "hmac", "header": "X-Sig", "prefix": "",
                       "secret": "Jefe"}),
         json_bytes=b"what do ya want for nothing?", pdf_bytes=None,
@@ -1059,15 +1154,15 @@ def test_perform_send_signs_the_exact_body_sent(monkeypatch):
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `pytest tests/test_webhook.py -v -k perform_send`
-Expected: FAIL — `ImportError: cannot import name 'perform_send'`
+Run: `pytest tests/test_webhook.py -v -k deliver`
+Expected: FAIL — `ImportError: cannot import name 'deliver'`
 
 - [ ] **Step 3: Write minimal implementation**
 
 An `src/webhook.py` anhängen (oben ergänzen: `import logging`, `import uuid`; `log = logging.getLogger(__name__)`):
 
 ```python
-def perform_send(record, *, json_bytes, pdf_bytes, pdf_filename, boundary=None):
+def deliver(record, *, json_bytes, pdf_bytes, pdf_filename, boundary=None):
     """Sendet eine Payload an einen konfigurierten Webhook.
 
     Wirft nie — Fehler kommen als Result-Dict zurück (Vertrag wie
@@ -1097,7 +1192,7 @@ def perform_send(record, *, json_bytes, pdf_bytes, pdf_filename, boundary=None):
 
     try:
         status = post(record["url"], headers, body)
-    except Exception as e:  # noqa: BLE001 — bewusst alles, der Vertrag ist „wirft nie"
+    except Exception as e:  # bewusst alles: der Vertrag lautet „wirft nie"
         log.exception("Webhook-Versand an %r fehlgeschlagen", record.get("name"))
         return classify_error(e)
     return {"ok": True, "status": status}
@@ -1112,7 +1207,7 @@ Expected: PASS (alle Tests aus Task 1–6)
 
 ```
 git add src/webhook.py tests/test_webhook.py
-git commit -m "feat(webhook): perform_send als nie werfender Versand-Kern"
+git commit -m "feat(webhook): deliver als nie werfender Versand-Kern"
 ```
 
 ---
@@ -1122,8 +1217,15 @@ git commit -m "feat(webhook): perform_send als nie werfender Versand-Kern"
 Dritter Secret-Schreibpfad neben `token.json` und `instance-secret`. Deshalb Pflicht: `harden_windows_acl` auf der **Temp-Datei**, vor dem `os.replace`.
 
 **Files:**
-- Create: `src/webhooks.py`
-- Test: `tests/test_webhooks_store.py`
+- Create: `src/webhook_store.py`
+- Modify: `.gitignore`
+- Test: `tests/test_webhook_store.py`
+
+> **`.gitignore` gehört in diese Aufgabe, nicht in die Doku-Aufgabe am Ende.**
+> Ab hier legt der Store im Repo-Modus `webhooks.json` direkt neben den
+> Quellcode — mit Bearer-Token bzw. HMAC-Secret im Klartext. `.gitignore`
+> listet heute `token.json`, `settings.json`, `instance-secret` und
+> Verwandtes, aber nichts davon deckt die neue Datei ab.
 
 **Interfaces:**
 - Consumes: `webhook.validate_url` (Task 1)
@@ -1137,7 +1239,7 @@ Dritter Secret-Schreibpfad neben `token.json` und `instance-secret`. Deshalb Pfl
 
 - [ ] **Step 1: Write the failing test**
 
-`tests/test_webhooks_store.py`:
+`tests/test_webhook_store.py`:
 
 ```python
 """WebhookStore: gerätelokale, gehärtete Persistenz der Webhook-Liste."""
@@ -1146,8 +1248,8 @@ import json
 
 import pytest
 
-import src.webhooks as whs
-from src.webhooks import WebhookStore, new_id, validate_record
+import src.webhook_store as whs
+from src.webhook_store import WebhookStore, new_id, validate_record
 
 
 def _record(**over):
@@ -1196,11 +1298,78 @@ def test_enabled_skips_disabled(tmp_path):
     assert [w["id"] for w in store.enabled()] == ["a"]
 
 
-def test_get_all_returns_copies(tmp_path):
+def test_get_all_returns_deep_copies(tmp_path):
+    """Flache Kopien reichen nicht — `auth` und `payload` sind verschachtelt."""
     store = _store(tmp_path)
     store.save(_record())
-    store.get_all()[0]["name"] = "mutiert"
-    assert store.get_all()[0]["name"] == "Server"
+    got = store.get_all()[0]
+    got["name"] = "mutiert"
+    got["auth"]["mode"] = "hmac"
+    got["payload"]["pdf"] = True
+    fresh = store.get_all()[0]
+    assert fresh["name"] == "Server"
+    assert fresh["auth"]["mode"] == "none"
+    assert fresh["payload"]["pdf"] is False
+
+
+def test_unreadable_file_is_not_quarantined(tmp_path, monkeypatch):
+    """Ein gesperrtes File ist kein defektes File: umbenennen hieße, eine
+    intakte Konfiguration samt Secrets wegzuwerfen."""
+    path = tmp_path / "webhooks.json"
+    path.write_text(json.dumps({"schema_version": 1, "webhooks": []}),
+                    encoding="utf-8")
+    real_open = open
+
+    def boom(file, *a, **k):
+        if str(file) == str(path):
+            raise PermissionError("gesperrt")
+        return real_open(file, *a, **k)
+
+    monkeypatch.setattr("builtins.open", boom)
+    store = WebhookStore(str(path))
+    assert store.get_all() == []
+    assert path.exists()
+    assert not list(tmp_path.glob("webhooks.json.corrupt-*"))
+
+
+def test_unreadable_file_refuses_to_be_overwritten(tmp_path, monkeypatch):
+    path = tmp_path / "webhooks.json"
+    path.write_text("{}", encoding="utf-8")
+    real_open = open
+
+    def boom(file, *a, **k):
+        if str(file) == str(path):
+            raise PermissionError("gesperrt")
+        return real_open(file, *a, **k)
+
+    monkeypatch.setattr("builtins.open", boom)
+    store = WebhookStore(str(path))
+    monkeypatch.undo()
+    with pytest.raises(whs.WebhookStoreReadOnly):
+        store.save(_record())
+
+
+def test_failed_write_rolls_back_the_in_memory_list(tmp_path, monkeypatch):
+    """Sonst zeigte die Liste einen Eintrag, den es auf Platte nie gab."""
+    store = _store(tmp_path)
+    store.save(_record(id="a"))
+    monkeypatch.setattr(whs.WebhookStore, "_save_to_disk",
+                        lambda self: (_ for _ in ()).throw(OSError("voll")))
+    with pytest.raises(OSError):
+        store.save(_record(id="b", name="B"))
+    assert [w["id"] for w in store.get_all()] == ["a"]
+
+
+def test_record_with_unsafe_url_is_skipped_on_load(tmp_path):
+    """Sonst erschiene der Eintrag in der Ziel-Auswahl und scheiterte erst
+    beim Senden."""
+    path = tmp_path / "webhooks.json"
+    path.write_text(json.dumps({
+        "schema_version": 1,
+        "webhooks": [_record(id="unsicher", url="http://erp.example.com/x"),
+                     _record(id="gut")],
+    }), encoding="utf-8")
+    assert [w["id"] for w in WebhookStore(str(path)).get_all()] == ["gut"]
 
 
 def test_corrupt_file_is_quarantined(tmp_path, caplog):
@@ -1232,6 +1401,11 @@ def test_newer_schema_version_is_left_alone(tmp_path):
     path.write_text(original, encoding="utf-8")
     store = WebhookStore(str(path))
     assert store.get_all() == []
+    assert path.read_text(encoding="utf-8") == original
+    # Der eigentliche Schutz: ein Speichervorgang darf die Datei nicht
+    # anfassen — und muss das melden statt still zu verschlucken.
+    with pytest.raises(whs.WebhookStoreReadOnly):
+        store.save(_record())
     assert path.read_text(encoding="utf-8") == original
 
 
@@ -1304,12 +1478,12 @@ def test_creates_own_lock_without_injection(tmp_path):
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `pytest tests/test_webhooks_store.py -v`
-Expected: FAIL — `ModuleNotFoundError: No module named 'src.webhooks'`
+Run: `pytest tests/test_webhook_store.py -v`
+Expected: FAIL — `ModuleNotFoundError: No module named 'src.webhook_store'`
 
 - [ ] **Step 3: Write minimal implementation**
 
-`src/webhooks.py`:
+`src/webhook_store.py`:
 
 ```python
 """Gerätelokale Persistenz der Webhook-Konfiguration (Tk-frei, stdlib-only).
@@ -1325,6 +1499,7 @@ kein Secret im Sync-Doc landet.
 
 from __future__ import annotations
 
+import copy
 import datetime
 import json
 import logging
@@ -1332,6 +1507,7 @@ import os
 import stat
 import tempfile
 import threading
+import time
 import uuid
 from typing import Any
 
@@ -1346,6 +1522,12 @@ Webhook = dict[str, Any]
 
 _REQUIRED_KEYS = ("id", "name", "url", "enabled", "payload", "auth")
 _AUTH_MODES = ("none", "header", "hmac")
+
+
+class WebhookStoreReadOnly(Exception):
+    """Die Datei darf nicht überschrieben werden (neuere schema_version oder
+    beim Start nicht lesbar). Der Aufrufer zeigt das als themed Fehlerdialog —
+    ein still verworfener Speichervorgang wäre schlimmer als ein Fehler."""
 
 
 def new_id() -> str:
@@ -1364,7 +1546,12 @@ def _is_wellformed(record: Any) -> bool:
     if not isinstance(record.get("payload"), dict):
         return False
     auth = record.get("auth")
-    return isinstance(auth, dict) and auth.get("mode") in _AUTH_MODES
+    if not isinstance(auth, dict) or auth.get("mode") not in _AUTH_MODES:
+        return False
+    # URL mitprüfen: sonst erschiene ein Eintrag mit kaputter oder unsicherer
+    # Adresse in der Ziel-Auswahl und scheiterte erst beim Senden.
+    ok, _msg = validate_url(record.get("url", ""))
+    return ok
 
 
 def validate_record(record: Webhook, existing: list[Webhook]) -> tuple[bool, str]:
@@ -1423,7 +1610,18 @@ class WebhookStore:
         try:
             with open(self.filepath, "r", encoding="utf-8") as f:
                 data = json.load(f)
-        except (OSError, json.JSONDecodeError, ValueError):
+        except OSError:
+            # KEINE Quarantäne: ein kurzzeitig gesperrtes File (Virenscanner,
+            # Backup, Netzlaufwerk) ist kein defektes File. Umbenennen hieße
+            # hier, eine intakte Konfiguration samt Secrets wegzuwerfen — der
+            # nächste save() legte eine frische leere Datei an. settings.py
+            # macht diese Unterscheidung schon richtig; conflicts_store.py
+            # nicht, das ist kein Vorbild.
+            self._readonly = True
+            log.warning("webhooks.json nicht lesbar — starte ohne Webhooks, "
+                        "die Datei wird nicht überschrieben", exc_info=True)
+            return
+        except (json.JSONDecodeError, ValueError):
             self._quarantine("JSON nicht parsebar")
             return
         if not isinstance(data, dict):
@@ -1449,7 +1647,14 @@ class WebhookStore:
             if _is_wellformed(record):
                 self._webhooks.append(record)
             else:
-                log.warning("webhooks.json: Datensatz übersprungen (%r)", record)
+                # NIEMALS den Datensatz selbst loggen — er enthält das Token
+                # bzw. HMAC-Secret, und logs/zeiterfassung.log ist ungehärtet
+                # und genau die Datei, die Nutzer bei Problemen anhängen.
+                log.warning(
+                    "webhooks.json: Datensatz übersprungen (id=%r, name=%r)",
+                    (record or {}).get("id") if isinstance(record, dict) else None,
+                    (record or {}).get("name") if isinstance(record, dict) else None,
+                )
 
     def _quarantine(self, reason: str) -> None:
         """Verschiebt die kaputte Datei nach `.corrupt-<stamp>` statt sie
@@ -1475,9 +1680,13 @@ class WebhookStore:
         Rechte trägt.
         """
         if self._readonly:
-            log.warning("webhooks.json wird wegen neuerer schema_version "
-                        "nicht geschrieben.")
-            return
+            # Lautlos zurückkehren wäre die schlechteste Variante: der Dialog
+            # schlösse sich, die Liste zeigte den Eintrag (er steht in
+            # self._webhooks), auf Platte stünde nichts — auffallen würde es
+            # erst nach dem Neustart.
+            raise WebhookStoreReadOnly(
+                "Die Webhook-Datei stammt von einer neueren Version oder ist "
+                "nicht lesbar und wird deshalb nicht überschrieben.")
         payload = {"schema_version": SCHEMA_VERSION, "webhooks": self._webhooks}
         directory = os.path.dirname(os.path.abspath(self.filepath))
         fd, tmp_path = tempfile.mkstemp(
@@ -1492,7 +1701,19 @@ class WebhookStore:
             except OSError:
                 pass
             harden_windows_acl(tmp_path)
-            os.replace(tmp_path, self.filepath)
+            # Retry wie in oauth_utils.write_token (#135/#117): ein
+            # Virenscanner, der die frische Temp-Datei greift — die gerade per
+            # icacls neu ge-ACLt wurde —, blockiert den Rename kurzzeitig.
+            # Gezielt PermissionError, damit echte Fehler nicht maskiert werden.
+            attempts = 5
+            for attempt in range(attempts):
+                try:
+                    os.replace(tmp_path, self.filepath)
+                    break
+                except PermissionError:
+                    if attempt == attempts - 1:
+                        raise
+                    time.sleep(0.2)
         except BaseException:
             try:
                 os.remove(tmp_path)
@@ -1501,48 +1722,84 @@ class WebhookStore:
             raise
 
     def get_all(self) -> list[Webhook]:
+        # deepcopy, nicht dict(): `auth` und `payload` sind verschachtelt, eine
+        # flache Kopie ließe den Aufrufer den Store-Inhalt mutieren.
         with self._lock:
-            return [dict(w) for w in self._webhooks]
+            return copy.deepcopy(self._webhooks)
 
     def enabled(self) -> list[Webhook]:
         with self._lock:
-            return [dict(w) for w in self._webhooks if w.get("enabled")]
+            return copy.deepcopy(
+                [w for w in self._webhooks if w.get("enabled")])
 
     def get(self, webhook_id: str) -> Webhook | None:
         with self._lock:
             for w in self._webhooks:
                 if w.get("id") == webhook_id:
-                    return dict(w)
+                    return copy.deepcopy(w)
             return None
 
     def save(self, record: Webhook) -> None:
-        """Legt an oder ersetzt nach `id`."""
+        """Legt an oder ersetzt nach `id`.
+
+        Wirft `WebhookStoreReadOnly` oder `OSError`, wenn nicht geschrieben
+        werden konnte — der Aufrufer MUSS das anzeigen. Bei einem Fehler bleibt
+        der Speicherstand unverändert (Rollback), damit Liste und Platte nicht
+        auseinanderlaufen.
+
+        Blockierend (icacls-Subprozess, bis zu 15 s) — gehört in einen
+        Worker-Thread, nicht in einen Tk-Callback.
+        """
         with self._lock:
+            previous = copy.deepcopy(self._webhooks)
             for i, existing in enumerate(self._webhooks):
                 if existing.get("id") == record.get("id"):
-                    self._webhooks[i] = dict(record)
+                    self._webhooks[i] = copy.deepcopy(record)
                     break
             else:
-                self._webhooks.append(dict(record))
-            self._save_to_disk()
+                self._webhooks.append(copy.deepcopy(record))
+            try:
+                self._save_to_disk()
+            except BaseException:
+                self._webhooks = previous
+                raise
 
     def delete(self, webhook_id: str) -> None:
+        """Wie `save`: wirft bei Schreibfehlern und rollt dann zurück."""
         with self._lock:
+            previous = copy.deepcopy(self._webhooks)
             self._webhooks = [
                 w for w in self._webhooks if w.get("id") != webhook_id]
-            self._save_to_disk()
+            try:
+                self._save_to_disk()
+            except BaseException:
+                self._webhooks = previous
+                raise
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [ ] **Step 4: `.gitignore` ergänzen**
 
-Run: `pytest tests/test_webhooks_store.py -v`
+Ab jetzt entsteht beim Testen eine Datei mit Klartext-Secrets neben dem
+Quellcode. In `.gitignore`, direkt unter `instance-secret`:
+
+```
+webhooks.json
+webhooks.json.corrupt-*
+.webhooks-*.tmp
+```
+
+Gegenprobe: `git check-ignore -v webhooks.json` muss die neue Zeile melden.
+
+- [ ] **Step 5: Run test to verify it passes**
+
+Run: `pytest tests/test_webhook_store.py -v`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 6: Commit**
 
 ```
-git add src/webhooks.py tests/test_webhooks_store.py
-git commit -m "feat(webhooks): geraetelokaler, gehaerteter Store"
+git add src/webhook_store.py tests/test_webhook_store.py .gitignore
+git commit -m "feat(webhook-store): geraetelokaler, gehaerteter Store"
 ```
 
 ---
@@ -1559,7 +1816,7 @@ Der heutige Gmail-Block wandert unverändert nach `_send_mail`; `perform_send` b
 - Test: `tests/test_send_task_dispatch.py` (neu)
 
 **Interfaces:**
-- Consumes: `webhook.perform_send`, `webhook.build_json_payload` (Task 4/6)
+- Consumes: `webhook.deliver`, `webhook.build_json_payload` (Task 4/6)
 - Produces:
   - `perform_send(*, date_from, date_to, entries, name, categories, category_breakdown, send_mail: bool, mail: dict | None, webhooks: list[dict], pdf_filename, settings) -> dict`
     — `mail` ist `{"credentials_path", "token_path", "recipient", "subject", "html", "sync_enabled", "gcal_enabled"}`;
@@ -1644,7 +1901,7 @@ def test_mail_only_matches_previous_behaviour(monkeypatch):
 
 def test_webhook_result_is_reported_per_channel(monkeypatch):
     _patch_mail_ok(monkeypatch)
-    monkeypatch.setattr(st.webhook, "perform_send",
+    monkeypatch.setattr(st.webhook, "deliver",
                         lambda *a, **k: {"ok": True, "status": 200})
     res = perform_send(**_kwargs(webhooks=[_hook("Buchhaltung")]))
     assert [r["name"] for r in res["results"]] == ["to@example.com", "Buchhaltung"]
@@ -1654,7 +1911,7 @@ def test_webhook_result_is_reported_per_channel(monkeypatch):
 def test_failing_webhook_does_not_stop_mail(monkeypatch):
     _patch_mail_ok(monkeypatch)
     monkeypatch.setattr(
-        st.webhook, "perform_send",
+        st.webhook, "deliver",
         lambda *a, **k: {"ok": False, "kind": "server", "detail": "HTTP 500",
                          "error": None, "tb": None})
     res = perform_send(**_kwargs(webhooks=[_hook("Buchhaltung")]))
@@ -1671,7 +1928,7 @@ def test_failing_mail_does_not_stop_webhooks(monkeypatch):
         raise RuntimeError("gmail kaputt")
 
     monkeypatch.setattr(st, "get_gmail_service", boom)
-    monkeypatch.setattr(st.webhook, "perform_send",
+    monkeypatch.setattr(st.webhook, "deliver",
                         lambda *a, **k: {"ok": True, "status": 200})
     res = perform_send(**_kwargs(webhooks=[_hook("Buchhaltung")]))
     assert res["results"][0]["ok"] is False
@@ -1681,11 +1938,48 @@ def test_failing_mail_does_not_stop_webhooks(monkeypatch):
 def test_pdf_is_generated_once_for_all_channels(monkeypatch):
     calls = []
     _patch_mail_ok(monkeypatch, calls)
-    monkeypatch.setattr(st.webhook, "perform_send",
+    monkeypatch.setattr(st.webhook, "deliver",
                         lambda *a, **k: {"ok": True, "status": 200})
-    perform_send(**_kwargs(webhooks=[_hook("A", json_=False, pdf=True),
+    perform_send(**_kwargs(send_mail=False, mail=None,
+                           webhooks=[_hook("A", json_=False, pdf=True),
                                      _hook("B", json_=False, pdf=True)]))
     assert calls.count("pdf") == 1
+
+
+def test_broken_payload_build_never_escapes(monkeypatch):
+    """Entkäme die Exception, riefe BackgroundTaskRunner.run `on_done` nie und
+    der Sende-Dialog bliebe dauerhaft auf „Sende…" stehen — während die Mail
+    längst raus ist."""
+    _patch_mail_ok(monkeypatch)
+
+    def boom(*a, **k):
+        raise KeyError("slots")
+
+    monkeypatch.setattr(st.webhook, "build_json_payload", boom)
+    monkeypatch.setattr(st.webhook, "deliver",
+                        lambda *a, **k: {"ok": True, "status": 200})
+    res = perform_send(**_kwargs(webhooks=[_hook("A", json_=True, pdf=False)]))
+    mail_res, hook_res = res["results"]
+    assert mail_res["ok"] is True
+    assert hook_res["ok"] is False
+    assert hook_res["kind"] == "error"
+
+
+def test_broken_payload_build_leaves_pdf_only_webhooks_alone(monkeypatch):
+    def boom(*a, **k):
+        raise KeyError("slots")
+
+    monkeypatch.setattr(st, "generate_pdf", lambda *a, **k: b"PDF")
+    monkeypatch.setattr(st.webhook, "build_json_payload", boom)
+    monkeypatch.setattr(st.webhook, "deliver",
+                        lambda *a, **k: {"ok": True, "status": 200})
+    res = perform_send(**_kwargs(
+        send_mail=False, mail=None,
+        webhooks=[_hook("Json", json_=True, pdf=False),
+                  _hook("Pdf", json_=False, pdf=True)]))
+    by_name = {r["name"]: r for r in res["results"]}
+    assert by_name["Json"]["ok"] is False
+    assert by_name["Pdf"]["ok"] is True
 
 
 def test_pdf_is_not_generated_when_nobody_wants_it(monkeypatch):
@@ -1693,7 +1987,7 @@ def test_pdf_is_not_generated_when_nobody_wants_it(monkeypatch):
         raise AssertionError("generate_pdf darf nicht laufen")
 
     monkeypatch.setattr(st, "generate_pdf", boom)
-    monkeypatch.setattr(st.webhook, "perform_send",
+    monkeypatch.setattr(st.webhook, "deliver",
                         lambda *a, **k: {"ok": True, "status": 200})
     res = perform_send(**_kwargs(send_mail=False, mail=None,
                                  webhooks=[_hook("A", json_=True, pdf=False)]))
@@ -1706,7 +2000,7 @@ def test_unexpected_webhook_error_never_escapes(monkeypatch):
     def boom(*a, **k):
         raise RuntimeError("boom")
 
-    monkeypatch.setattr(st.webhook, "perform_send", boom)
+    monkeypatch.setattr(st.webhook, "deliver", boom)
     res = perform_send(**_kwargs(webhooks=[_hook("A")]))
     assert res["results"][1]["ok"] is False
     assert res["results"][1]["kind"] == "error"
@@ -1844,22 +2138,38 @@ def perform_send(*, date_from, date_to, entries, name, categories,
 
     json_bytes = None
     if needs_json(webhooks):
-        payload = webhook.build_json_payload(
-            date_from=date_from, date_to=date_to, entries=entries,
-            name=name, sender=settings.get("sender_email"),
-            categories=categories)
-        json_bytes = _json.dumps(
-            payload, ensure_ascii=False, sort_keys=True).encode("utf-8")
+        # MUSS abgesichert sein: entkommt hier eine Exception, fängt
+        # BackgroundTaskRunner.run sie ab und ruft `on_done` NIE — der
+        # Sende-Dialog bliebe mit „Sende…" dauerhaft stehen, während die Mail
+        # längst raus ist. Der Vertrag lautet „wirft nie", und der gilt für
+        # den ganzen Dispatcher, nicht nur für die Kanäle.
+        try:
+            payload = webhook.build_json_payload(
+                date_from=date_from, date_to=date_to, entries=entries,
+                name=name, sender=settings.get("sender_email"),
+                categories=categories)
+            json_bytes = _json.dumps(
+                payload, ensure_ascii=False, sort_keys=True).encode("utf-8")
+        except Exception as e:  # bewusst alles, s.o.
+            log.exception("JSON-Payload konnte nicht gebaut werden")
+            failure = {"ok": False, "kind": "error", "detail": str(e),
+                       "error": e, "tb": traceback.format_exc()}
+            for entry in [w for w in webhooks if w.get("json")]:
+                results.append({"channel": "webhook",
+                                "name": entry["record"].get("name", ""),
+                                **failure})
+            # Nur-PDF-Webhooks brauchen das Dokument nicht und laufen weiter.
+            webhooks = [w for w in webhooks if not w.get("json")]
 
     for entry in webhooks:
         record = entry["record"]
         try:
-            res = webhook.perform_send(
+            res = webhook.deliver(
                 record,
                 json_bytes=json_bytes if entry.get("json") else None,
                 pdf_bytes=pdf_bytes if entry.get("pdf") else None,
                 pdf_filename=pdf_filename)
-        except Exception as e:  # noqa: BLE001 — Vertrag: der Dispatcher wirft nie
+        except Exception as e:  # bewusst alles: der Dispatcher wirft nie
             log.exception("Webhook %r: unerwarteter Fehler",
                           record.get("name"))
             res = {"ok": False, "kind": "error", "detail": str(e),
@@ -1875,6 +2185,7 @@ _KIND_TEXTS = {
     "offline": "keine Internetverbindung",
     "auth": "Zugangsdaten wurden abgelehnt",
     "notfound": "Adresse nicht gefunden",
+    "redirect": "Weiterleitung — bitte die endgültige Adresse eintragen",
     "client": "Anfrage abgelehnt",
     "server": "Server-Fehler",
     "config": "Konfiguration ungültig",
@@ -1928,7 +2239,7 @@ Store erzeugen und dorthin reichen, wo er gebraucht wird. Kein neues Verhalten �
 
 - [ ] **Step 1: Write the implementation**
 
-In `src/main.py` neben den anderen Stores anlegen (Import ergänzen: `from src.webhooks import WebhookStore`):
+In `src/main.py` neben den anderen Stores anlegen (Import ergänzen: `from src.webhook_store import WebhookStore`):
 
 ```python
 webhook_store = WebhookStore(
@@ -1965,13 +2276,13 @@ git commit -m "feat(app): WebhookStore erzeugen und durchreichen"
 
 ### Task 10: Webhook-Dialog (Anlegen / Bearbeiten / Testen)
 
-Erster sichtbarer Teil. Reine Tk-Schicht — die Validierung kommt aus `webhooks.validate_record` (Task 7), der Testversand aus `webhook.perform_send` (Task 6).
+Erster sichtbarer Teil. Reine Tk-Schicht — die Validierung kommt aus `webhook_store.validate_record` (Task 7), der Testversand aus `webhook.deliver` (Task 6).
 
 **Files:**
 - Create: `src/dialogs/webhook_dialog.py`
 
 **Interfaces:**
-- Consumes: `webhooks.new_id`, `webhooks.validate_record`, `webhook.perform_send`, `theme.create_dialog`
+- Consumes: `webhook_store.new_id`, `webhook_store.validate_record`, `webhook.deliver`, `theme.create_dialog`
 - Produces: `open_webhook_dialog(parent, store, runner, record=None, on_saved=None) -> None` — `record=None` legt neu an
 
 - [ ] **Step 1: Write the implementation**
@@ -1985,20 +2296,21 @@ Erster sichtbarer Teil. Reine Tk-Schicht — die Validierung kommt aus `webhooks
 ```python
 """Anlegen und Bearbeiten eines Webhooks, inklusive Testversand.
 
-Reine Tk-Schicht: Validierung (webhooks.validate_record) und Versand
-(webhook.perform_send) liegen Tk-frei in den pure Modulen und sind dort
+Reine Tk-Schicht: Validierung (webhook_store.validate_record) und Versand
+(webhook.deliver) liegen Tk-frei in den pure Modulen und sind dort
 getestet.
 """
 
 import json
 import tkinter as tk
 
-from src import webhook, webhooks
+from src import webhook, webhook_store
 from src.theme import (
     BG, CELL_BG, FONT, FONT_SMALL, TEXT, TEXT_MUTED,
     apply_combobox_style, attach_unfocus_on_click, center_dialog_on_parent,
     create_dialog, dark_combo, dark_entry, primary_button, secondary_button,
-    set_secondary_button_enabled, themed_showerror, themed_showinfo,
+    set_primary_button_enabled, set_secondary_button_enabled,
+    themed_showerror, themed_showinfo,
 )
 
 AUTH_LABELS = [
@@ -2006,6 +2318,12 @@ AUTH_LABELS = [
     ("header", "Token im Header (Bearer / API-Key)"),
     ("hmac", "HMAC-Signatur (SHA-256)"),
 ]
+
+# Je Verfahren ein eigener Default. Ein gemeinsames, modusunabhängiges Feld
+# schickte eine HMAC-Signatur sonst als „Authorization: sha256=…" raus — der
+# Fallback in auth_headers greift nur bei LEEREM Feld, und der Nutzer hat es
+# ja nicht geleert.
+DEFAULT_HEADERS = {"header": "Authorization", "hmac": "X-Hub-Signature-256"}
 
 
 def _mode_for_label(label):
@@ -2019,7 +2337,7 @@ def _label_for_mode(mode):
 def open_webhook_dialog(parent, store, runner, record=None, on_saved=None):
     is_new = record is None
     record = dict(record or {
-        "id": webhooks.new_id(), "name": "", "url": "", "enabled": True,
+        "id": webhook_store.new_id(), "name": "", "url": "", "enabled": True,
         "payload": {"json": True, "pdf": False}, "auth": {"mode": "none"},
     })
     auth = dict(record.get("auth") or {"mode": "none"})
@@ -2035,10 +2353,15 @@ def open_webhook_dialog(parent, store, runner, record=None, on_saved=None):
     json_var = tk.BooleanVar(value=bool(record.get("payload", {}).get("json")))
     pdf_var = tk.BooleanVar(value=bool(record.get("payload", {}).get("pdf")))
     mode_var = tk.StringVar(value=_label_for_mode(auth.get("mode", "none")))
-    header_var = tk.StringVar(value=auth.get("header") or "Authorization")
-    value_var = tk.StringVar(value=auth.get("value") or "Bearer ")
+    header_var = tk.StringVar(
+        value=auth.get("header") or DEFAULT_HEADERS.get(auth.get("mode"), ""))
+    # Bewusst LEER statt "Bearer ": ein vorbelegter Präfix bestünde die
+    # Validierung ("Bearer ".strip() ist nicht leer) und ginge mit leerem
+    # Token raus — der Endpunkt antwortet 401 und der Nutzer sucht woanders.
+    value_var = tk.StringVar(value=auth.get("value", ""))
     prefix_var = tk.StringVar(value=auth.get("prefix", "sha256="))
     secret_var = tk.StringVar(value=auth.get("secret", ""))
+    busy = {"testing": False, "saving": False}
 
     def _label(text, row, **kw):
         opts = dict(padx=10, pady=6, sticky="w")
@@ -2080,6 +2403,11 @@ def open_webhook_dialog(parent, store, runner, record=None, on_saved=None):
         for child in auth_frame.winfo_children():
             child.destroy()
         mode = _mode_for_label(mode_var.get())
+        # Header-Default beim Moduswechsel nachziehen — aber nur, solange dort
+        # nichts Eigenes steht (leer oder der Default des anderen Verfahrens).
+        if mode in DEFAULT_HEADERS and \
+                header_var.get().strip() in ("", *DEFAULT_HEADERS.values()):
+            header_var.set(DEFAULT_HEADERS[mode])
         if mode == "none":
             tk.Label(auth_frame,
                      text="Der Endpunkt wird ohne zusätzlichen Header aufgerufen.",
@@ -2099,6 +2427,11 @@ def open_webhook_dialog(parent, store, runner, record=None, on_saved=None):
             if masked:
                 entry.config(show="•")
             entry.grid(row=i, column=1, padx=(8, 0), pady=4, sticky="w")
+        if mode == "header":
+            tk.Label(auth_frame,
+                     text="z. B.  Bearer dein-token  —  Präfix mit eintragen",
+                     font=FONT_SMALL, bg=BG, fg=TEXT_MUTED).grid(
+                row=len(rows), column=1, sticky="w", padx=(8, 0))
 
     mode_var.trace_add("write", _rebuild_auth_fields)
     _rebuild_auth_fields()
@@ -2122,25 +2455,59 @@ def open_webhook_dialog(parent, store, runner, record=None, on_saved=None):
 
     def _validated():
         candidate = _collect()
-        ok, msg = webhooks.validate_record(candidate, store.get_all())
+        ok, msg = webhook_store.validate_record(candidate, store.get_all())
         if not ok:
             themed_showerror(dialog, "Eingabe unvollständig", msg)
             return None
         return candidate
 
     def do_save():
+        if busy["saving"]:
+            return
         candidate = _validated()
         if candidate is None:
             return
-        store.save(candidate)
-        dialog.destroy()
-        if on_saved:
-            on_saved()
+        busy["saving"] = True
+        set_primary_button_enabled(save_btn, False)
+
+        # Über den Runner, NICHT direkt: store.save startet einen
+        # icacls-Subprozess (timeout=15) und hält dabei den geteilten
+        # Daten-Lock. Im Tk-Callback blockierte ein hängendes Netzlaufwerk
+        # damit die Oberfläche UND jeden anderen Store, inklusive eines
+        # laufenden Drive-Syncs (src/CLAUDE.md, secure_file-Absatz).
+        def fn():
+            try:
+                store.save(candidate)
+            except (webhook_store.WebhookStoreReadOnly, OSError) as e:
+                return {"ok": False, "error": e}
+            return {"ok": True}
+
+        def on_done(res):
+            if not dialog.winfo_exists():
+                return
+            if res["ok"]:
+                dialog.destroy()
+                if on_saved:
+                    on_saved()
+                return
+            busy["saving"] = False
+            set_primary_button_enabled(save_btn, True)
+            themed_showerror(
+                dialog, "Nicht gespeichert",
+                f"Der Webhook konnte nicht gespeichert werden:\n\n{res['error']}")
+
+        runner.run(fn, on_done)
 
     def do_test():
+        # Eigenes Flag nötig: set_secondary_button_enabled ändert laut seinem
+        # Docstring NUR die Optik, die command-Bindung bleibt aktiv. Ohne das
+        # löst ein Doppelklick zwei echte POSTs beim Empfänger aus.
+        if busy["testing"]:
+            return
         candidate = _validated()
         if candidate is None:
             return
+        busy["testing"] = True
         set_secondary_button_enabled(test_btn, False)
 
         sample = {
@@ -2154,7 +2521,7 @@ def open_webhook_dialog(parent, store, runner, record=None, on_saved=None):
         body = json.dumps(sample, ensure_ascii=False).encode("utf-8")
 
         def fn():
-            return webhook.perform_send(
+            return webhook.deliver(
                 candidate,
                 json_bytes=body if candidate["payload"]["json"] else None,
                 pdf_bytes=b"%PDF-1.4\n% Testversand\n"
@@ -2162,6 +2529,7 @@ def open_webhook_dialog(parent, store, runner, record=None, on_saved=None):
                 pdf_filename="Zeiterfassung_Test.pdf")
 
         def on_done(res):
+            busy["testing"] = False
             if not dialog.winfo_exists():
                 return
             set_secondary_button_enabled(test_btn, True)
@@ -2181,12 +2549,14 @@ def open_webhook_dialog(parent, store, runner, record=None, on_saved=None):
 
     btn_frame = tk.Frame(dialog, bg=BG)
     btn_frame.grid(row=5, column=0, columnspan=2, pady=14)
-    primary_button(btn_frame, "Speichern", do_save).pack(side=tk.LEFT, padx=5)
+    save_btn = primary_button(btn_frame, "Speichern", do_save)
+    save_btn.pack(side=tk.LEFT, padx=5)
     test_btn = secondary_button(btn_frame, "Testen", do_test)
     test_btn.pack(side=tk.LEFT, padx=5)
     secondary_button(btn_frame, "Abbrechen", dialog.destroy).pack(side=tk.LEFT, padx=5)
 
-    dialog.bind("<Escape>", lambda _e: dialog.destroy())
+    # Kein eigener <Escape>-Bind: create_dialog setzt ihn bereits
+    # (escape_closes=True ist der Default) — die Fenster-Chrome gehört dorthin.
     center_dialog_on_parent(dialog, parent)
 ```
 
@@ -2206,7 +2576,7 @@ git commit -m "feat(webhook-dialog): Anlegen, Bearbeiten und Testversand"
 ### Task 11: Settings-Tab „Webhooks"
 
 **Files:**
-- Create: `src/dialogs/settings_dialog/tab_webhooks.py`
+- Create: `src/dialogs/settings_dialog/tab_webhook_store.py`
 - Modify: `src/dialogs/settings_dialog/dialog.py` (Notebook + `tabs`-Dict)
 - Modify: `src/ui.py` (`open_settings_dialog(...)`-Aufruf um `webhook_store=` erweitern)
 
@@ -2221,7 +2591,7 @@ git commit -m "feat(webhook-dialog): Anlegen, Bearbeiten und Testversand"
 
 - [ ] **Step 1: Write the implementation**
 
-`src/dialogs/settings_dialog/tab_webhooks.py`:
+`src/dialogs/settings_dialog/tab_webhook_store.py`:
 
 ```python
 """Tab „Webhooks": Liste der konfigurierten HTTP-Ziele.
@@ -2234,10 +2604,11 @@ werden vom Unterdialog direkt gespeichert.
 import tkinter as tk
 from urllib.parse import urlsplit
 
+from src import webhook_store
 from src.dialogs.webhook_dialog import open_webhook_dialog
 from src.theme import (
-    BG, CELL_BG, FONT, FONT_SMALL, TEXT, TEXT_MUTED,
-    primary_button, secondary_button, themed_askyesno,
+    ACCENT, BG, ENTRY_BG, FONT, FONT_SMALL, TEXT, TEXT_MUTED,
+    primary_button, secondary_button, themed_askyesno, themed_showerror,
 )
 
 
@@ -2255,9 +2626,14 @@ class WebhooksTab:
             font=FONT_SMALL, bg=BG, fg=TEXT_MUTED, justify="left",
         ).grid(row=0, column=0, padx=10, pady=(10, 6), sticky="w")
 
+        # Dieselbe Palette wie die Listbox im ConflictsDialog (ENTRY_BG wie
+        # Eingabefelder, ACCENT-Selektion). Zwei Listboxen mit
+        # unterschiedlichem Styling wären ein dialogspezifisches Stil-Extra —
+        # CLAUDE.md verbietet das ohne Rücksprache. Der Kommentar „Einzige
+        # Listbox der App" in conflicts_dialog.py wird in Task 13 nachgezogen.
         self._listbox = tk.Listbox(
             frame, height=8, width=48, font=FONT,
-            bg=CELL_BG, fg=TEXT, selectbackground=TEXT_MUTED,
+            bg=ENTRY_BG, fg=TEXT, selectbackground=ACCENT,
             highlightthickness=0, borderwidth=0, activestyle="none",
         )
         self._listbox.grid(row=1, column=0, padx=10, pady=(0, 8), sticky="we")
@@ -2305,8 +2681,26 @@ class WebhooksTab:
                 self._dialog, "Webhook entfernen",
                 f"„{record.get('name', '')}“ wirklich entfernen?"):
             return
-        self._store.delete(record["id"])
-        self.refresh()
+
+        # Wie beim Speichern über den Runner: delete schreibt die Datei neu
+        # (icacls-Subprozess unter dem geteilten Daten-Lock).
+        def fn():
+            try:
+                self._store.delete(record["id"])
+            except (webhook_store.WebhookStoreReadOnly, OSError) as e:
+                return {"ok": False, "error": e}
+            return {"ok": True}
+
+        def on_done(res):
+            if not self._dialog.winfo_exists():
+                return
+            if not res["ok"]:
+                themed_showerror(
+                    self._dialog, "Nicht entfernt",
+                    f"Der Webhook konnte nicht entfernt werden:\n\n{res['error']}")
+            self.refresh()
+
+        self._runner.run(fn, on_done)
 ```
 
 In `src/dialogs/settings_dialog/dialog.py`:
@@ -2331,6 +2725,15 @@ hooks = WebhooksTab(tab_webhooks, dialog, webhook_store, runner)
 und in das `tabs`-Dict `"webhooks": hooks.frame` aufnehmen. In `save_settings`
 wird der Tab **nicht** angefasst.
 
+Den Docstring von `open_settings_dialog` mitziehen — er nennt heute
+„fünf Tabs (Arbeitszeit / Bericht & Mail / Google / App / Updates)"
+(`dialog.py:34-35`) und wäre sonst sofort falsch:
+
+```python
+    """Modaler Dialog zum Bearbeiten der App-Einstellungen, aufgeteilt auf sechs
+    Tabs (Arbeitszeit / Bericht & Mail / Webhooks / Google / App / Updates).
+```
+
 In `src/ui.py` beim Öffnen des Settings-Dialogs `webhook_store=self._webhook_store` mitgeben.
 
 - [ ] **Step 2: Verify manually**
@@ -2343,7 +2746,7 @@ In `src/ui.py` beim Öffnen des Settings-Dialogs `webhook_store=self._webhook_st
 - [ ] **Step 3: Commit**
 
 ```
-git add src/dialogs/settings_dialog/tab_webhooks.py src/dialogs/settings_dialog/dialog.py src/ui.py
+git add src/dialogs/settings_dialog/tab_webhook_store.py src/dialogs/settings_dialog/dialog.py src/ui.py
 git commit -m "feat(settings): Tab fuer Webhooks"
 ```
 
@@ -2351,10 +2754,12 @@ git commit -m "feat(settings): Tab fuer Webhooks"
 
 ### Task 12: Ziel-Auswahl und Ergebnis-Anzeige im Sende-Dialog
 
-Der letzte funktionale Baustein. Zwei Verhaltensänderungen im bestehenden Dialog, die leicht zu übersehen sind:
+Der letzte funktionale Baustein — und der mit den meisten Stolperstellen im Bestandscode. Vier davon vorweg, weil sie den Aufbau unten bestimmen:
 
-1. **Der Empfänger-Check darf nicht mehr blind abbrechen.** Heute beendet ein leerer `recipient` den Dialog, bevor er aufgeht. Mit konfigurierten Webhooks muss er stattdessen aufgehen — mit deaktivierter Mail-Zeile.
-2. **Die „Keine Einträge"-Prüfung wandert.** Sie fällt heute als Nebenwirkung davon an, dass `generate_report` `None` liefert. Ohne Mail-Kanal gäbe es dieses Signal nicht, und ein Webhook bekäme ein Dokument mit leerem `entries`.
+1. **Der Empfänger-Check darf nicht mehr blind abbrechen.** Heute beendet ein leerer `recipient` den Dialog, bevor er aufgeht. Mit konfigurierten Webhooks muss er stattdessen aufgehen — mit deaktivierter, **beschrifteter** Mail-Zeile: sonst steht dort eine tote Zeile mit Empfängeradresse und ohne Hinweis, warum sie tot ist. Insbesondere ersetzt ein einziger konfigurierter Webhook sonst den erklärenden `show_missing_credentials_dialog` mit „Datenordner öffnen" durch — nichts.
+2. **`credentials_path` wird im Bestand erst NACH dem Empfänger-Check definiert** (`send_dialog.py:101`). Die Zeile muss hochgezogen werden, sonst benutzt der neue Check eine noch nicht existierende Variable.
+3. **Die „Keine Einträge"-Prüfung wandert.** Sie fällt heute als Nebenwirkung davon an, dass `generate_report` `None` liefert. Ohne Mail-Kanal gäbe es dieses Signal nicht, und ein Webhook bekäme ein Dokument mit leerem `entries`.
+4. **`total` und `label` hängen an `generate_report`.** `send_dialog.py:160-166` berechnet unbedingt `label` und daraus `subject` mit `{gesamt}` → `f"{total}h"`. Wird `generate_report` bei reinem Webhook-Versand übersprungen, ist `total` undefiniert → `NameError` mitten im Tk-Callback. `label` wiederum braucht die Erfolgsmeldung **immer** und darf deshalb nicht in den Mail-Zweig rutschen.
 
 **Files:**
 - Modify: `src/dialogs/send_dialog.py`
@@ -2369,25 +2774,35 @@ Der letzte funktionale Baustein. Zwei Verhaltensänderungen im bestehenden Dialo
 In `src/dialogs/send_dialog.py`:
 
 1. Signatur um `webhook_store=None` erweitern.
-2. Den frühen Abbruch bei leerem Empfänger ersetzen:
+2. Den Kopf des Dialogs umbauen. **`credentials_path`/`token_path` zuerst** — im Bestand stehen sie hinter dem Empfänger-Check und wären hier sonst undefiniert:
 
 ```python
+    credentials_path = os.path.join(base_path, "credentials.json")
+    token_path = os.path.join(base_path, "token.json")
+
     hooks = webhook_store.enabled() if webhook_store else []
     recipient = settings.get("recipient")
-    if not recipient and not hooks:
-        themed_showinfo(
-            parent, "Kein Empfänger",
-            "Bitte zuerst einen Empfänger in den Einstellungen angeben.")
-        return
-```
+    have_credentials = os.path.exists(credentials_path)
+    mail_possible = bool(recipient) and have_credentials
 
-Der `credentials.json`-Check bleibt, wird aber ebenfalls nur wirksam, wenn Mail überhaupt möglich ist:
-
-```python
-    mail_possible = bool(recipient) and os.path.exists(credentials_path)
+    # Ohne jedes mögliche Ziel: wie bisher erklären und abbrechen.
     if not mail_possible and not hooks:
-        show_missing_credentials_dialog(parent, base_path)
+        if not recipient:
+            themed_showinfo(
+                parent, "Kein Empfänger",
+                "Bitte zuerst einen Empfänger in den Einstellungen angeben.")
+        else:
+            show_missing_credentials_dialog(parent, base_path)
         return
+
+    # Warum die Mail-Zeile ggf. tot ist — sonst steht dort die
+    # Empfängeradresse und nichts erklärt, warum sie nicht anwählbar ist.
+    if not recipient:
+        mail_label = "E-Mail (kein Empfänger eingetragen)"
+    elif not have_credentials:
+        mail_label = f"E-Mail an {recipient} (Zugangsdaten fehlen)"
+    else:
+        mail_label = f"E-Mail an {recipient}"
 ```
 
 3. Ziel-Block bauen (nur wenn `hooks` nicht leer ist — sonst bleibt der Dialog optisch identisch zu heute):
@@ -2400,25 +2815,39 @@ Der `credentials.json`-Check bleibt, wird aber ebenfalls nur wirksam, wenn Mail 
     mail_var = tk.BooleanVar(value=mail_possible)
     hook_vars = []
 
+    def _update_send_button():
+        """Kein Ziel angehakt → Senden ist nicht anwählbar.
+
+        Als `command` der Checkbuttons, nicht als trace_add: der Button wird
+        erst weiter unten erzeugt, und `command` feuert nur auf echte
+        Nutzer-Klicks — genau das, was hier gebraucht wird.
+        """
+        any_target = bool(mail_var.get()) or any(v.get() for _r, v, _f in hook_vars)
+        set_primary_button_enabled(send_btn, any_target)
+
     if hooks:
         targets = tk.LabelFrame(dialog, text="Ziele", font=FONT, bg=BG, fg=TEXT_MUTED)
         targets.grid(row=1, column=0, padx=10, pady=(4, 0), sticky="we")
 
         mail_cb = tk.Checkbutton(
-            targets, text=f"E-Mail an {recipient}" if recipient else "E-Mail (kein Empfänger)",
+            targets, text=mail_label,
             variable=mail_var, font=FONT, bg=BG, fg=TEXT, selectcolor=CELL_BG,
-            activebackground=BG, activeforeground=TEXT, cursor="hand2")
+            activebackground=BG, activeforeground=TEXT, cursor="hand2",
+            command=_update_send_button)
         mail_cb.grid(row=0, column=0, sticky="w", padx=6, pady=2)
         if not mail_possible:
             mail_var.set(False)
             mail_cb.config(state="disabled")
 
         for i, record in enumerate(hooks, start=1):
-            var = tk.BooleanVar(value=True)
+            # Vorbelegt ABGEHAKT: Mail bleibt der Standardweg, ein Versand an
+            # einen externen Endpunkt soll eine bewusste Entscheidung sein.
+            var = tk.BooleanVar(value=False)
             tk.Checkbutton(
                 targets, text=record.get("name", ""), variable=var, font=FONT,
                 bg=BG, fg=TEXT, selectcolor=CELL_BG, activebackground=BG,
                 activeforeground=TEXT, cursor="hand2",
+                command=_update_send_button,
             ).grid(row=i, column=0, sticky="w", padx=6, pady=2)
 
             payload = record.get("payload") or {}
@@ -2431,11 +2860,39 @@ Der `credentials.json`-Check bleibt, wird aber ebenfalls nur wirksam, wenn Mail 
 
 (Der Button-Frame rutscht dadurch von `row=1` auf `row=2`.)
 
-4. In `do_send` die Leer-Prüfung kanalunabhängig **vor** allem anderen machen:
+4. **Direkt nach dem Erzeugen von `send_btn`** einmal `_update_send_button()`
+aufrufen. Ohne das startet der Dialog mit aktivem Senden-Button, obwohl bei
+fehlender `credentials.json` gar kein Ziel angehakt ist (Webhooks sind
+vorbelegt abgehakt):
 
 ```python
-        from src.report import filter_categories, filter_period
+    send_btn = primary_button(btn_frame, "Senden", do_send)
+    send_btn.pack(side=tk.LEFT, padx=5)
+    secondary_button(btn_frame, "Abbrechen", dialog.destroy).pack(side=tk.LEFT, padx=5)
+    if hooks:
+        _update_send_button()
+```
 
+5. `do_send` neu ordnen. **Die Reihenfolge ist hier nicht beliebig** —
+`send_mail` und `selected_hooks` müssen stehen, bevor über `generate_report`
+entschieden wird:
+
+```python
+        # (a) Ziele einsammeln — zuerst, alles Weitere hängt davon ab.
+        selected_hooks = []
+        for record, var, fmt_var in hook_vars:
+            if not var.get():
+                continue
+            want_json, want_pdf = _FORMAT_BY_LABEL[fmt_var.get()]
+            selected_hooks.append(
+                {"record": record, "json": want_json, "pdf": want_pdf})
+        send_mail = bool(mail_var.get())
+        if not send_mail and not selected_hooks:
+            return  # Button ist in diesem Zustand deaktiviert; defensiv.
+
+        # (b) Leer-Prüfung kanalunabhängig. Bisher fiel sie als Nebenwirkung
+        # davon an, dass generate_report None liefert — ohne Mail-Kanal gäbe
+        # es dieses Signal nicht und ein Webhook bekäme ein leeres Dokument.
         ranged = filter_period(date_from, date_to, entries)
         if ranged is not None:
             ranged = filter_categories(ranged, categories)
@@ -2445,28 +2902,41 @@ Der `credentials.json`-Check bleibt, wird aber ebenfalls nur wirksam, wenn Mail 
                 f"Keine Einträge für {format_date(date_from)} – "
                 f"{format_date(date_to)} vorhanden.")
             return
+
+        # (c) label und pdf_filename IMMER — die Erfolgsmeldung braucht label
+        # auch beim reinen Webhook-Versand.
+        label = f"{format_date(date_from)} – {format_date(date_to)}"
+        pdf_filename = default_pdf_filename(date_from, date_to)
+
+        # (d) Mail-HTML, Betreff und `total` NUR im Mail-Fall. `total` kommt
+        # ausschließlich aus generate_report; unbedingt zu berechnen ergäbe
+        # beim reinen Webhook-Versand einen NameError im Tk-Callback.
+        html = subject = None
+        if send_mail:
+            html, total = generate_report(
+                date_from, date_to, entries,
+                greeting=settings.get("mail_greeting"),
+                content=settings.get("mail_content"),
+                closing=settings.get("mail_closing"),
+                categories=categories,
+                category_breakdown=category_breakdown,
+            )
+            if html is None:
+                # Sicherheitsnetz — (b) sollte das schon abgefangen haben.
+                themed_showinfo(
+                    dialog, "Keine Einträge",
+                    f"Keine Einträge für {label} vorhanden.")
+                return
+            subject = (
+                settings.get("mail_subject")
+                .replace("{zeitraum}", label)
+                .replace("{gesamt}", f"{total}h")
+            )
 ```
 
-Danach `generate_report` **nur** noch aufrufen, wenn Mail gewählt ist; sein
-`None`-Zweig bleibt als Sicherheitsnetz erhalten.
-
-5. Ziele einsammeln und an den Dispatcher geben:
+6. Den Worker starten:
 
 ```python
-        selected_hooks = []
-        for record, var, fmt_var in hook_vars:
-            if not var.get():
-                continue
-            want_json, want_pdf = _FORMAT_BY_LABEL[fmt_var.get()]
-            selected_hooks.append(
-                {"record": record, "json": want_json, "pdf": want_pdf})
-
-        send_mail = bool(mail_var.get())
-        if not send_mail and not selected_hooks:
-            themed_showerror(dialog, "Kein Ziel gewählt",
-                             "Bitte mindestens ein Ziel auswählen.")
-            return
-
         def fn():
             return perform_send(
                 date_from=date_from, date_to=date_to, entries=entries,
@@ -2484,7 +2954,10 @@ Danach `generate_report` **nur** noch aufrufen, wenn Mail gewählt ist; sein
                 pdf_filename=pdf_filename, settings=settings)
 ```
 
-6. `on_done` auf die Ergebnisliste umstellen:
+7. `on_done` auf die Ergebnisliste umstellen. **Bei genau einem Kanal bleibt es
+bei den bisherigen ausführlichen Meldungen** — der häufigste Fehlerfall
+überhaupt (kein Internet beim Mailversand) darf durch dieses Feature nicht
+schlechter erklärt sein als vorher:
 
 ```python
         def on_done(res):
@@ -2505,9 +2978,15 @@ Danach `generate_report` **nur** noch aufrufen, wenn Mail gewählt ist; sein
                 set_primary_button_enabled(send_btn, True)
                 set_button_text(send_btn, "Senden")
 
-            themed_showerror(
-                target, "Nicht alles konnte gesendet werden",
-                format_result_summary(results))
+            if len(results) == 1:
+                # Einzelkanal: die bestehende, ausführliche Formulierung
+                # behalten (Offline-Text mit Handlungsanweisung, bzw. der
+                # vollständige Pfad zur fehlenden credentials.json).
+                _show_single_failure(target, results[0])
+            else:
+                themed_showerror(
+                    target, "Nicht alles konnte gesendet werden",
+                    format_result_summary(results))
 
             # Unerwartete Fehler zusätzlich roh mit Traceback — themed Dialoge
             # bauen selbst Tk-Widgets auf und sind im gestörten Zustand die
@@ -2521,7 +3000,39 @@ Danach `generate_report` **nur** noch aufrufen, wenn Mail gewählt ist; sein
                         parent=target)
 ```
 
-7. Imports ergänzen: `CELL_BG`, `TEXT_MUTED`, `dark_combo` aus `src.theme`; `format_result_summary` aus `src.dialogs.send_task`.
+8. Den Einzelkanal-Helfer auf Modulebene von `send_dialog.py` ergänzen. Er
+trägt die heutigen Formulierungen — der `offline`-Zweig ist wortgleich der
+bestehende aus `send_dialog.py`:
+
+```python
+def _show_single_failure(target, res):
+    """Fehlermeldung, wenn genau ein Kanal beteiligt war.
+
+    Behält die ausführlichen Formulierungen von vor dem Multi-Kanal-Umbau.
+    `kind == "error"` bleibt außen vor: dafür kommt gleich danach der native
+    Traceback-Dialog, ein themed Kasten davor wäre nur ein zweiter Klick.
+    """
+    kind = res.get("kind")
+    if kind == "filenotfound":
+        themed_showerror(target, "Fehler", str(res["error"]))
+    elif kind == "offline":
+        themed_showerror(
+            target, "Keine Internetverbindung",
+            "Der Bericht konnte nicht gesendet werden, weil keine "
+            "Verbindung zum Internet besteht.\n\n"
+            "Bitte prüfe deine Internetverbindung und versuche es "
+            "dann erneut.",
+        )
+    elif kind != "error":
+        themed_showerror(
+            target, "Senden fehlgeschlagen", format_result_summary([res]))
+```
+
+9. Imports ergänzen: `CELL_BG`, `TEXT_MUTED`, `dark_combo` aus `src.theme`;
+`format_result_summary` aus `src.dialogs.send_task`;
+`filter_categories`/`filter_period` aus `src.report` (zu den dort bereits
+importierten `default_pdf_filename`/`generate_report`) — **oben in der
+Import-Sektion**, nicht als lokaler Import in `do_send`.
 
 In `src/ui.py` beim Aufruf `open_send_dialog(...)` ein `webhook_store=self._webhook_store` mitgeben.
 
@@ -2529,8 +3040,12 @@ In `src/ui.py` beim Aufruf `open_send_dialog(...)` ein `webhook_store=self._webh
 
 - `pytest -q`, `ruff check .`, `pyright` — alles grün.
 - `python -m src.main`, ohne konfigurierten Webhook: Sende-Dialog sieht aus wie zuvor, kein Ziel-Block.
-- Mit einem Webhook (Testendpunkt, z.B. `http://127.0.0.1:8000/hook` und ein `python -m http.server`-Ersatz, der POSTs annimmt): Ziel-Block erscheint, Format-Combobox ist vorbelegt, Versand meldet beide Kanäle.
+- Mit einem Webhook (Testendpunkt, z.B. `http://127.0.0.1:8000/hook` und ein kleiner `http.server`-Handler, der POSTs annimmt und den Body ausgibt): Ziel-Block erscheint, der Webhook ist **abgehakt** vorbelegt, Format-Combobox trägt die Konfiguration.
+- **Nur den Webhook anhaken, Mail abwählen** — und im Handler prüfen, dass der Body tatsächlich ankommt und das JSON den gewählten Zeitraum trägt. Das ist der Pfad, auf dem `total`/`label`/`generate_report` schiefgehen könnten.
+- **Alle Häkchen entfernen:** der Senden-Button wird deaktiviert.
 - Webhook auf eine tote Adresse zeigen lassen: Mail geht raus, Zusammenfassung zeigt ✓ für Mail und ✗ mit Begründung für den Webhook, der Dialog bleibt offen.
+- **Nur Mail, ohne Internetverbindung:** es erscheint weiterhin der ausführliche „Keine Internetverbindung"-Text, nicht die einzeilige Listen-Fassung.
+- **Redirect-Gegenprobe:** einen Testendpunkt einrichten, der mit `301` auf sich selbst mit Trailing Slash antwortet. Erwartet: klare Meldung „Weiterleitung — bitte die endgültige Adresse eintragen", **kein** gemeldeter Erfolg. Das ist der Fall, der ohne `_NoRedirectHandler` still einen leeren GET verschickt hätte.
 - Zeitraum ohne Einträge wählen: „Keine Einträge", auch wenn nur ein Webhook angehakt ist.
 
 - [ ] **Step 3: Commit**
@@ -2578,6 +3093,31 @@ bemerkt — die Adresse wäre dann nach der einmaligen Prüfung dauerhaft als
 Design: [`superpowers/specs/2026-08-26-webhook-versand-design.md`](superpowers/specs/2026-08-26-webhook-versand-design.md)
 ```
 
+Und ein zweiter Abschnitt zur Header-Schreibweise:
+
+```markdown
+## Webhooks: urllib normalisiert die Schreibweise der Header-Namen
+
+`urllib.request.Request.add_header` wendet `key.capitalize()` an,
+`AbstractHTTPHandler.do_open` anschließend `name.title()`. Ein als
+`X-API-Key` konfigurierter Header geht damit als `X-Api-Key` über die
+Leitung.
+
+HTTP-Header sind laut RFC case-insensitiv, das ist also regelkonform.
+Empfänger, die den Namen per exaktem String-Vergleich prüfen (etwa
+handgeschriebener Code in n8n oder Make), finden ihn trotzdem nicht.
+
+**Bewusst nicht umgangen:** Die Schreibweise zu erhalten hieße, an urllibs
+Header-Pfad vorbeizuschreiben — Eigenbau an einer Stelle, die sonst
+zuverlässig funktioniert. **Umgehung:** beim Empfänger case-insensitiv
+vergleichen, oder einen Header-Namen wählen, den `title()` unverändert
+lässt (`X-Api-Key`, `Authorization`, `X-Hub-Signature-256`).
+```
+
+Zusätzlich im bestehenden Abschnitt „Linux: Reste nach dem Löschen der
+AppImage" `webhooks.json` in der Aufzählung der zurückbleibenden Secrets
+ergänzen — dort steht heute nur `token.json`.
+
 - [ ] **Step 2: `CLAUDE.md` ergänzen**
 
 In der Modul-Liste, alphabetisch/thematisch passend neben `src/share.py`:
@@ -2591,7 +3131,7 @@ In der Modul-Liste, alphabetisch/thematisch passend neben `src/share.py`:
   `mail_task.classify_mail_error`, weil `urllib.error.HTTPError` von
   `URLError` erbt und dort als Offline-Symptom gilt — ein HTTP 500 würde sonst
   als „keine Internetverbindung" gemeldet.
-- `src/webhooks.py` — gerätelokaler Store der Webhook-Konfiguration
+- `src/webhook_store.py` — gerätelokaler Store der Webhook-Konfiguration
   (`webhooks.json`). Enthält Konfiguration **und** Secrets und wird deshalb wie
   `token.json` gehärtet geschrieben; reist bewusst **nicht** per Drive-Sync.
 ```
@@ -2600,24 +3140,34 @@ Beim Abschnitt „UTF-8 im Mail-Pipeline" bzw. in der Nähe der Versand-Beschrei
 
 - [ ] **Step 3: `src/CLAUDE.md` ergänzen**
 
-- In der Daten-/Persistenz-Schicht `webhooks.py` aufnehmen (gerätelokal, gehärtet, nicht im Sync-Doc).
+- In der Daten-/Persistenz-Schicht `webhook_store.py` aufnehmen (gerätelokal, gehärtet, nicht im Sync-Doc).
 - Im `secure_file.py`-Absatz „zwei lokal abgelegte Secrets" auf **drei** korrigieren und `webhooks.json` als dritten Schreibpfad nennen.
 - Im Threading-/Dialog-Absatz ergänzen, dass `send_dialog` seinen Worker über einen Dispatcher fährt, der pro Kanal ein Result liefert und nie wirft.
 - Bei den Dialogen `webhook_dialog` und den Tab `tab_webhooks` nennen — mit dem Hinweis, dass Letzterer als einziger Tab **keine** Variablen an `save_settings` exponiert.
 
-- [ ] **Step 4: `README.md` ergänzen**
+- [ ] **Step 4: Zwei veraltete Kommentare nachziehen**
+
+Beide werden durch dieses Feature falsch und stehen in keinem anderen Task:
+
+- `src/dialogs/conflicts_dialog.py:86` — „**Einzige Listbox der App**: dunkel
+  über die Palette (…)". Es sind ab jetzt zwei; der Zusatz nennt den
+  Webhooks-Tab als zweite, die dieselbe Palette benutzt.
+- `tests/test_store_locking.py` — der Modul-Docstring spricht von „den **vier**
+  Stores". Mit `WebhookStore` sind es fünf.
+
+- [ ] **Step 5: `README.md` ergänzen**
 
 Bei den Versandwegen einen Satz: der Bericht lässt sich zusätzlich zur E-Mail an konfigurierbare HTTP-Endpunkte senden (JSON und/oder PDF, optional mit Token oder HMAC-Signatur; gerätelokal konfiguriert).
 
-- [ ] **Step 5: Verify**
+- [ ] **Step 6: Verify**
 
 Run: `pytest -q ; ruff check .`
 Expected: PASS
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 7: Commit**
 
 ```
-git add CLAUDE.md src/CLAUDE.md docs/known-limitations.md README.md
+git add CLAUDE.md src/CLAUDE.md docs/known-limitations.md README.md src/dialogs/conflicts_dialog.py tests/test_store_locking.py
 git commit -m "docs: Webhook-Versand dokumentieren"
 ```
 

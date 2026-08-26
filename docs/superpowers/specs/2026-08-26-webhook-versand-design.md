@@ -68,11 +68,11 @@ Der Mailpfad wird nicht umgebaut, sondern bekommt einen Dispatcher davor:
 send_dialog                 (Tk)   Ziel-Auswahl, Ergebnis-Anzeige
    └─ send_task.perform_send       Dispatcher: Payload einmal bauen, Kanäle feuern
         ├─ _send_mail              der heutige Gmail-Block, unverändert
-        └─ webhook.perform_send    pro Webhook, Tk-frei, wirft nie
-             └─ webhook.post       urllib, kein Schema-Downgrade bei Redirects
+        └─ webhook.deliver         pro Webhook, Tk-frei, wirft nie
+             └─ webhook.post       urllib, folgt keinen Redirects
 
-webhooks.py   (Store)   webhooks.json, gehärtet wie token.json, gerätelokal
-webhook.py    (pure)    URL-Regel, Auth-Header, HMAC, Payload, POST, Fehler-Mapping
+webhook.py        (pure)   URL-Regel, Auth-Header, HMAC, Payload, POST, Fehler-Mapping
+webhook_store.py  (Store)  webhooks.json, gehärtet wie token.json, gerätelokal
 ```
 
 Bewusst **keine** generische Kanal-Abstraktion, in die auch Mail eingepasst
@@ -143,10 +143,57 @@ Der Schreibpfad ist derselbe wie bei `token.json` und `instance-secret`:
 Temp-Datei schreiben → chmod 0600 → secure_file.harden_windows_acl → os.replace
 ```
 
-Damit ist `webhooks.py` der dritte Secret-Schreibpfad, den `src/CLAUDE.md`
+Damit ist `webhook_store.py` der dritte Secret-Schreibpfad, den `src/CLAUDE.md`
 einfordert. `harden_windows_acl` bleibt best-effort und nie fatal — eine
 ungehärtete Datei ist der Status quo, ein gescheiterter Schreibvorgang wäre
 eine Regression.
+
+Der `os.replace` am Ende trägt dieselbe **Retry-Schleife wie
+`oauth_utils.write_token`** (fünf Versuche, 200 ms Abstand, nur bei
+`PermissionError`). Auf Windows ist genau das die dokumentierte Flake-Quelle
+(#135/#117): ein Virenscanner, der die frische Temp-Datei greift, blockiert
+den Rename kurz — und hier trifft er eine Datei, deren ACL gerade eben per
+`icacls` neu gesetzt wurde.
+
+**Drei Wege, auf denen ein Secret sonst nach draußen sickert**, und wie sie
+geschlossen werden:
+
+- **Git.** `.gitignore` bekommt `webhooks.json`, `webhooks.json.corrupt-*` und
+  `.webhooks-*.tmp`. Im Repo-Modus liegt die Datei neben dem Quellcode; ohne
+  Eintrag wandert sie beim nächsten `git add -A` ins Repository. Das gehört in
+  denselben Schritt wie der Store, nicht in die Doku-Aufräumaufgabe am Ende.
+- **Logfile.** Beim Überspringen eines defekten Datensatzes wird **niemals der
+  Datensatz selbst** geloggt, nur `id`/`name` und die fehlenden Schlüssel.
+  `logs/zeiterfassung.log` ist ungehärtet und genau die Datei, die Nutzer bei
+  Problemen anhängen.
+- **Fehlerdialog.** Der Traceback-Pfad zeigt keine Locals
+  (`logging_setup` nutzt `exc_info`), und die kuratierten Meldungen führen
+  Secrets nicht mit. Neue Fehlertexte dürfen das nicht ändern.
+
+**Schreibfehler dürfen nicht still bleiben.** `save`/`delete` melden einen
+gescheiterten Schreibvorgang an den Aufrufer, der ihn als themed Fehlerdialog
+zeigt (`CLAUDE.md` nennt den gehandhabten Speicher-`OSError` ausdrücklich als
+themed-Fall). Ein Dialog, der sich schließt und den Eintrag in der Liste zeigt,
+während auf Platte nichts steht, wäre die schlimmste Variante — der Nutzer
+merkt es erst nach dem Neustart.
+
+**Ein Lesefehler ist keine Korruption.** Quarantäne (Umbenennen nach
+`.corrupt-<stamp>`) gibt es **nur** bei kaputtem JSON oder falschem
+Toplevel-Format, nicht bei `OSError`. Ein kurzzeitig gesperrtes File
+(Virenscanner, Backup, Netzlaufwerk) würde sonst umbenannt, die App startete
+ohne Webhooks, der nächste Speichervorgang legte eine frische Datei an — und
+die Konfiguration samt Secrets wäre weg. `settings.py` macht diese
+Unterscheidung schon richtig (fängt dort nur `JSONDecodeError`/`ValueError`);
+`conflicts_store.py` nicht — das ist kein Vorbild.
+
+**Der Schreibvorgang gehört nicht in den UI-Thread.** `harden_windows_acl`
+startet einen `icacls`-Subprozess mit `timeout=15`, und der Store schreibt
+unter dem geteilten Daten-Lock. Ein hängendes Netzlaufwerk blockierte damit bis
+zu 15 Sekunden lang die Oberfläche **und** jeden anderen Store, inklusive eines
+laufenden Drive-Syncs. `src/CLAUDE.md` benennt genau diesen Fall („Wer den
+Helfer in einen UI-Thread-Pfad hängt, muss das prüfen"). Speichern und Löschen
+laufen deshalb über den `BackgroundTaskRunner`, wie jede andere blockierende
+Operation in den Dialogen.
 
 **Was das nicht leistet:** die Datei ist nicht verschlüsselt. Wer auf dem Rechner
 als derselbe Benutzer Code ausführt, liest die Secrets. Das ist dasselbe
@@ -180,6 +227,26 @@ versionsunabhängig und zugleich lesbar — sie ist genau die Tabelle oben.
 Der Rest ist die Suffix-Liste plus die Single-Label-Regel. Ein `ValueError`
 aus `ip_address` heißt schlicht „ist ein Name, keine IP" und führt in den
 Namens-Zweig.
+
+**Zwei Bypässe, die die Single-Label-Regel sonst öffnet** — beide nachgemessen:
+
+- **Prozent-kodierter Host.** `urlsplit("http://8%2e8%2e8%2e8/hook").hostname`
+  liefert `8%2e8%2e8%2e8`: kein gültiges IP-Literal, kein Punkt darin, also
+  „Single-Label" und damit privat. `urllib` dekodiert beim Request aber wieder
+  (`Request(...).host` → `8.8.8.8`) und schickt den Klartext-POST samt Token an
+  eine öffentliche Adresse.
+- **Dezimale IP-Notation.** `http://2130706433/` ist ebenfalls ein
+  punktloses Single-Label und wird vom Betriebssystem als `127.0.0.1`
+  aufgelöst. Hier zufällig harmlos, aber dieselbe Lücke.
+
+Der Host wird deshalb vor der Prüfung `unquote`d, und ein Host, der danach ein
+`%` enthält **oder** ein rein numerisches Single-Label ist, wird abgewiesen —
+nicht als „privat" durchgewinkt.
+
+Gegengeprüft und unproblematisch: `user@host` (`hostname` liefert nur den
+Host-Teil), abschließender Punkt, Groß-/Kleinschreibung, Punycode/Umlaut-Domains
+und IPv4-in-IPv6-Mapping (`::ffff:8.8.8.8` → öffentlich, also die sichere
+Richtung).
 
 Im erlaubten Fall passiert **nichts** — keine Warnung, kein Hinweistext, wie
 gewünscht. Im verbotenen Fall lehnt der Webhook-Dialog das Speichern ab:
@@ -299,44 +366,88 @@ Projekt für „ohne Kategorie".
 bewusst von `report.total_hours` ab, das Dezimalstunden summiert; jene Funktion
 bedient die Live-Vorschau und den `{gesamt}`-Platzhalter und bleibt unangetastet.
 
-**`share.py` wird dafür nicht angefasst.** Die Slot-Shape entsteht bereits in
-`storage._normalize_slot` (`{start, end, pause, kategorie}`, fehlende Felder auf
-`0`/`""` ergänzt), und `Storage.get_all()` liefert `{date: {slots: [...]}}` in
-frischen Kopien, ohne `modified_at`/`device_id`/`deleted`. Der Entries-Teil des
-Dokuments ist damit der gefilterte Snapshot, den der Sende-Dialog ohnehin schon
-in der Hand hält — es gibt nichts zu projizieren, und `share.build_share_doc`
-tut für Ist-Zeiten nichts anderes.
+**Die Slots werden explizit auf diese vier Felder projiziert**, statt den
+Storage-Snapshot durchzureichen. Das ist nicht überflüssig, auch wenn es beim
+ersten Hinsehen so aussieht: `storage._normalize_slot` läuft nur im
+**Schreibpfad** (`Storage.save`/`save_many`). `Storage._load` normalisiert
+Slots **nicht** — `_migrate_legacy_entries` rüstet nur Sync-Metadaten nach und
+wrappt Ein-Eintrag-Tage in eine Slot-Liste; ein bereits vorhandener
+`slots`-Eintrag bleibt unangetastet. Ein Slot, der aus einer von Hand
+bearbeiteten oder von einer neueren App-Version geschriebenen
+`zeiterfassung.json` stammt, trägt seine Zusatzfelder also bis in
+`Storage.get_all()` — und ohne Projektion bis ins Webhook-Dokument.
 
-Die Kopplung ist trotzdem real und gehört benannt: `storage._normalize_slot` ist
-der Ort, an dem diese Shape festgelegt wird. Wer sie dort ändert, ändert
-zugleich das Share-Format **und** die Webhook-Payload. Beide Wire-Formate tragen
-deshalb eine eigene `schema_version`, die dann hochzuziehen ist.
+Die Projektion ist damit die Stelle, an der das Wire-Format tatsächlich
+festgelegt wird. `share.py` wird dafür trotzdem nicht angefasst: dessen
+`_share_reservation_shape` projiziert Reservierungen, nicht Ist-Zeiten, und
+`build_share_doc` braucht einen Store, wo hier ein gefiltertes Dict vorliegt.
+
+Die Kopplung an das Share-Format bleibt real und gehört benannt: beide
+beschreiben dieselben vier Slot-Felder. Wer sie ändert, ändert beide
+Wire-Formate — die deshalb je eine eigene `schema_version` tragen.
 
 ## HTTP-Transport
 
-- **Timeout:** 30 s, fest. Der Aufruf läuft im Worker-Thread; die UI blockiert
-  nicht.
-- **Redirects:** werden gefolgt, aber ein eigener `HTTPRedirectHandler` bricht
-  ab, sobald das Ziel-Schema schlechter ist als das Ausgangs-Schema. Ohne das
-  könnte ein `301` von https auf http den Bearer-Token im Klartext ausliefern
-  und die URL-Regel aushebeln.
+- **Timeout:** 30 s, fest. Das ist urllibs Socket-Timeout je Operation, **kein**
+  Gesamt-Timeout: ein Server, der die Antwort langsam tröpfeln lässt, hält den
+  Worker beliebig lange. Hinnehmbar, weil der Aufruf im Worker-Thread liegt und
+  die UI nicht blockiert; ein echter Gesamt-Timeout bräuchte einen zweiten
+  Thread und ist die Komplexität hier nicht wert.
+- **Redirects werden NICHT gefolgt.** Ein 3xx gilt als Fehler mit eigenem
+  `kind` und der Meldung „Der Endpunkt hat weitergeleitet — bitte die
+  endgültige Adresse eintragen."
+
+  Das ist die wichtigste Transport-Entscheidung, und sie geht gegen den ersten
+  Reflex. `urllib` zu erlauben, Redirects zu folgen, hat drei Konsequenzen, die
+  alle schlecht sind:
+
+  1. **Der Body geht verloren.** `HTTPRedirectHandler.redirect_request` baut
+     bei 301/302/303 auf einen POST eine **GET**-Anfrage ohne `data` und ohne
+     `Content-Type`. Der Bericht käme nie an, der Endpunkt antwortete 200, und
+     die App meldete „✓ gesendet". Ein stiller Datenverlust ist das schlechteste
+     mögliche Ergebnis — schlimmer als jeder sichtbare Fehler. Und der Auslöser
+     ist alltäglich: jede trailing-slash- oder http→https-Kanonisierung.
+  2. **Der Auth-Header reist mit, auch zu einem fremden Host.** urllib kopiert
+     alle Header außer `Content-Length`/`Content-Type` ins Redirect-Ziel und
+     entfernt `Authorization` bei Host-Wechsel **nicht** (anders als
+     `requests`). Ein `Location: https://fremder.host/x` lieferte Bearer-Token
+     bzw. HMAC-Signatur dorthin aus.
+  3. **Die URL-Regel wäre umgangen.** Ein erlaubtes lokales `http://`-Ziel
+     dürfte per `302` auf eine öffentliche `http://`-Adresse weiterleiten — der
+     Verkehr ginge im Klartext ins Internet, obwohl die Prüfung beim Speichern
+     grün war.
+
+  Alle drei ließen sich mit einem eigenen Handler abfangen (Body mitnehmen,
+  Header bei Host-Wechsel strippen, jeden Hop erneut durch `validate_url`
+  schicken). Das wäre aber sicherheitskritischer Eigenbau an einer Stelle, an
+  der es eine triviale Alternative gibt: der Nutzer trägt die endgültige
+  Adresse ein. Ein Webhook-Ziel ist eine feste Konfiguration, kein Browsing.
+
+  307/308 sind hiervon nicht ausgenommen: `urllib` wirft dort ohnehin einen
+  `HTTPError`, weil es sie bei POST nicht automatisch auflöst.
 - **Antwort:** Body wird auf 8 KB begrenzt gelesen und für die Anzeige auf die
   ersten 500 Zeichen gekürzt. Ein Endpunkt, der bei einem Fehler eine
   HTML-Seite zurückgibt, soll den Fehlerdialog nicht sprengen.
+- **Header-Namen schreibt `urllib` um.** `Request.add_header` macht
+  `key.capitalize()`, `AbstractHTTPHandler.do_open` danach `name.title()`. Aus
+  `X-API-Key` wird auf der Leitung `X-Api-Key`. HTTP-Header sind
+  case-insensitiv, das ist also regelkonform — Empfänger mit exaktem
+  String-Vergleich (handgeschriebener n8n-Code o.ä.) scheitern trotzdem daran.
+  Bewusst nicht umgangen: das hieße, an urllibs Header-Pfad vorbeizuschreiben.
+  Gehört nach `docs/known-limitations.md`, damit der Fall bei einer
+  Support-Frage nicht neu erforscht werden muss.
 - **Keine neue Dependency:** `urllib`, `hmac`, `hashlib`, `ipaddress`, `uuid`,
   `json` — alles stdlib, alles in der Test-CI ohne `requirements.txt` verfügbar.
 
 ## Fehlerklassifikation
 
 Eigener Klassifikator in `webhook.py`, **nicht** `mail_task.classify_mail_error`.
-Grund: `urllib.error.HTTPError` ist eine Unterklasse von `URLError`, und
-`URLError` steht in `mail._OFFLINE_EXC_NAMES` — ein sauberes HTTP 500 würde dort
-als „keine Internetverbindung" durchgereicht. `HTTPError` wird deshalb explizit
-**vor** der Offline-Prüfung abgefangen.
+`HTTPError` wird dabei explizit **vor** der Offline-Prüfung abgefangen.
 
 | Ergebnis | `kind` | Meldung |
 |---|---|---|
 | 2xx | — (`ok: True`) | — |
+| 3xx | `redirect` | „Der Endpunkt hat weitergeleitet — bitte die endgültige Adresse eintragen." |
 | 401, 403 | `auth` | „Die Zugangsdaten wurden abgelehnt." |
 | 404 | `notfound` | „Die URL wurde nicht gefunden." |
 | übrige 4xx | `client` | Status + gekürzte Antwort |
@@ -344,8 +455,19 @@ als „keine Internetverbindung" durchgereicht. `HTTPError` wird deshalb explizi
 | Timeout, DNS, kein Netz | `offline` | die bestehende Offline-Formulierung |
 | alles andere | `error` | Traceback |
 
-3xx taucht nicht auf: entweder der Handler folgt dem Redirect, oder er bricht
-mit einem Schema-Downgrade-Fehler ab, der als `error` zählt.
+**Warum ein eigener Klassifikator — und warum nicht aus dem naheliegenden
+Grund.** `urllib.error.HTTPError` ist zwar eine Unterklasse von `URLError`, und
+`URLError` steht in `mail._OFFLINE_EXC_NAMES` — aber `mail.is_offline_error`
+vergleicht über `type(exc).__name__`, nicht über `isinstance`. Ein `HTTPError`
+heißt `"HTTPError"` und würde dort also **nicht** als offline gelten
+(nachgemessen: `is_offline_error(HTTPError(500))` → `False`). Der eigentliche
+Grund ist ein anderer: ohne die HTTPError-Behandlung fiele jede
+HTTP-Fehlerantwort in den generischen Zweig und käme als *unerwarteter Fehler
+mit Traceback* beim Nutzer an, statt als „Der Server hat mit 500 geantwortet".
+
+Die Reihenfolge (HTTPError zuerst) bleibt trotzdem Pflicht — verlässt man sich
+auf `isinstance`-Semantik, die `mail.py` heute zufällig nicht hat, kippt das
+Verhalten beim nächsten Umbau dort.
 
 ## Der Dispatcher
 
@@ -392,11 +514,22 @@ Ziele
   gebaut wird.
 - Die Combobox ist mit der Payload-Vorgabe des Webhooks vorbelegt und gilt nur
   für diesen einen Versand; sie schreibt nichts zurück in `webhooks.json`.
-- Kein Ziel angehakt → der Senden-Button ist deaktiviert.
+- **Webhooks sind vorbelegt abgehakt, nicht angehakt.** Mail bleibt der
+  Standardweg; ein Versand an einen externen Endpunkt soll eine bewusste
+  Entscheidung sein und nicht passieren, weil jemand den Zeitraum bestätigt hat.
+- Kein Ziel angehakt → der Senden-Button ist deaktiviert (nicht: Fehlermeldung
+  nach dem Klick). Die Ziel-Häkchen tragen dafür einen gemeinsamen
+  `trace_add`-Handler.
 - Der Empfänger-Check am Dialog-Anfang (`recipient` leer → Hinweis und
   Abbruch) greift nur noch, wenn Mail überhaupt ein mögliches Ziel ist. Ohne
   gesetzten Empfänger, aber mit konfiguriertem Webhook, öffnet der Dialog sich
   künftig mit abgehakter, deaktivierter Mail-Zeile statt gar nicht.
+- **Die deaktivierte Mail-Zeile sagt, warum sie deaktiviert ist** — „(kein
+  Empfänger)" bzw. „(Zugangsdaten fehlen)". Heute bekommt der Nutzer bei
+  fehlender `credentials.json` einen erklärenden Dialog mit „Datenordner
+  öffnen"; künftig genügte ein einziger konfigurierter Webhook, damit dieser
+  Dialog ausbleibt. Ohne Beschriftung stünde dort dann eine tote Zeile mit der
+  Empfängeradresse und ohne jeden Hinweis auf die Ursache.
 
 **Ergebnis-Anzeige:** alle Kanäle ok → eine themed Bestätigung, die sie
 auflistet. Mindestens ein Fehler → themed Zusammenfassung mit ✓/✗ und
@@ -404,12 +537,23 @@ kuratierter Begründung je Kanal; ist ein `kind == "error"` darunter, folgt
 zusätzlich der native `messagebox`-Dialog mit Traceback. Das hält die
 Zweiteilung aus `CLAUDE.md` ein (Kuratiertes themed, Traceback nativ).
 
+**Die Zusammenfassung darf die bestehenden Meldungen nicht verwässern.**
+Scheitert genau ein Kanal, bleibt es bei der heutigen ausführlichen Meldung —
+der Offline-Fall führt weiterhin seine vier Zeilen mit Handlungsanweisung, der
+`filenotfound`-Fall weiterhin den vollständigen Pfad zur fehlenden
+`credentials.json`. Erst wenn mehrere Kanäle beteiligt sind, tritt die
+Listen-Darstellung an ihre Stelle. Andernfalls wäre der häufigste Fehlerfall
+überhaupt — kein Internet beim Mailversand — nach diesem Feature schlechter
+erklärt als vorher.
+
 Der Dialog schließt sich wie heute bei vollem Erfolg und bleibt bei jedem
 Fehler offen, damit der Nutzer denselben Zeitraum erneut senden kann.
 
 ## UI: Einstellungen-Tab „Webhooks"
 
-Sechster Tab im Notebook, nach „Bericht & Mail":
+Neuer Tab im Notebook, **direkt nach „Bericht & Mail"** — also an dritter von
+dann sechs Positionen, nicht am Ende. Er gehört thematisch neben den
+Versandweg, nicht hinter die Update-Einstellungen:
 
 - Liste der konfigurierten Webhooks (Name, Ziel-Host, ✓/✗ für `enabled`).
 - Buttons **Hinzufügen / Bearbeiten / Entfernen**; Entfernen fragt über
@@ -421,8 +565,28 @@ Sechster Tab im Notebook, nach „Bericht & Mail":
 - **Testen**-Button im Unterdialog: schickt über den `runner` einen echten POST
   mit einem kleinen Beispiel-Dokument
   (`"kind": "zeiterfassung-report-test"`, ein Beispieltag) und zeigt Status
-  bzw. Fehler im selben Klassifikationsschema an. Während des Laufs ist der
-  Button deaktiviert; das Ergebnis kommt `winfo_exists`-gegatet zurück.
+  bzw. Fehler im selben Klassifikationsschema an. Das Ergebnis kommt
+  `winfo_exists`-gegatet zurück.
+
+  Der Button braucht ein eigenes Laufflag, nicht nur `set_secondary_button_enabled`:
+  dessen Docstring sagt ausdrücklich, dass er **nur die Optik** ändert und die
+  `command`-Bindung aktiv bleibt. Ohne Flag löst ein Doppelklick zwei echte
+  POSTs beim Empfänger aus. `send_dialog.do_send` macht es mit seinem
+  `busy`-Dict richtig — dasselbe Muster hier.
+
+**Zwei Vorbelegungs-Fallen im Auth-Block**, beide unscheinbar und beide mit
+echtem Folgeschaden:
+
+- Der Header-Name wird **je Verfahren** vorbelegt: `Authorization` für
+  Token, `X-Hub-Signature-256` für HMAC. Ein gemeinsames, modusunabhängiges
+  Feld führt sonst dazu, dass eine HMAC-Signatur als
+  `Authorization: sha256=…` rausgeht — der Fallback im Code greift nur bei
+  *leerem* Feld, und der Nutzer hat es ja nicht geleert.
+- Das Token-Feld startet **leer**, mit „Bearer …" als Hinweistext daneben —
+  nicht mit `"Bearer "` als Inhalt. Sonst besteht ein Webhook ohne Token die
+  Validierung (`"Bearer ".strip()` ist nicht leer), geht mit leerem Token raus
+  und wird vom Endpunkt mit 401 abgewiesen, während der Nutzer den Fehler
+  woanders sucht.
 
 **Webhooks laufen nicht über `save_settings`.** Sie haben ihren eigenen Store
 und werden vom Unterdialog direkt gespeichert. Der zentrale Settings-Save-Pfad
@@ -435,10 +599,10 @@ Vertrag, was in `src/CLAUDE.md` festzuhalten ist.
 
 | Datei | Art | Inhalt |
 |---|---|---|
-| `src/webhooks.py` | neu | `WebhookStore`: Laden/Speichern/Quarantäne, gehärteter Schreibpfad, `lock=`-Parameter wie die übrigen Stores |
+| `src/webhook_store.py` | neu | `WebhookStore`: Laden/Speichern/Quarantäne, gehärteter Schreibpfad, `lock=`-Parameter wie die übrigen Stores |
 | `src/webhook.py` | neu | pure Logik: `is_private_host`, `validate_url`, `validate_record`, `build_json_payload`, `build_body`, `auth_headers`, `sign_hmac`, `post`, `classify_error`, `perform_send` |
 | `src/dialogs/webhook_dialog.py` | neu | Anlegen/Bearbeiten eines Webhooks inkl. Test-Button |
-| `src/dialogs/settings_dialog/tab_webhooks.py` | neu | Listen-Tab |
+| `src/dialogs/settings_dialog/tab_webhook_store.py` | neu | Listen-Tab |
 | `src/dialogs/send_task.py` | geändert | Dispatcher; heutiger Gmail-Block wandert nach `_send_mail` |
 | `src/dialogs/send_dialog.py` | geändert | Ziel-Abschnitt, Empfänger-Check, Ergebnis-Anzeige, kanalunabhängige Leer-Prüfung |
 | `src/dialogs/settings_dialog/dialog.py` | geändert | sechster Tab |
@@ -466,7 +630,7 @@ Alles Tk-frei, nach der Projektgrenze „Getestet wird Logik, nicht UI":
   je Payload-Kombination; Multipart-Aufbau mit injizierter Boundary;
   Fehlerklassifikation inklusive der **HTTPError-vor-URLError-Falle** und des
   Schema-Downgrade-Abbruchs bei Redirects.
-- **`tests/test_webhooks_store.py`** — Laden, Speichern, Round-Trip; Quarantäne
+- **`tests/test_webhook_store.py`** — Laden, Speichern, Round-Trip; Quarantäne
   bei korrupter Datei; Überspringen einzelner defekter Datensätze; neuere
   `schema_version` wird nicht überschrieben; `harden_windows_acl` wird auf der
   **Temp-Datei** aufgerufen (gepatcht, wie in den bestehenden `secure_file`-Tests).
@@ -487,9 +651,9 @@ genannten pure Modulen.
 
 Im selben PR:
 
-- **`CLAUDE.md`** — `src/webhook.py`, `src/webhooks.py` in die Modul-Liste;
+- **`CLAUDE.md`** — `src/webhook.py`, `src/webhook_store.py` in die Modul-Liste;
   ein Absatz zum Webhook-Versand neben der Mail-Pipeline.
-- **`src/CLAUDE.md`** — `webhooks.py` in die Persistenz-Schicht; `secure_file`
+- **`src/CLAUDE.md`** — `webhook_store.py` in die Persistenz-Schicht; `secure_file`
   als **dritter** Schreibpfad; der neue Tab-ohne-`save_settings`-Vertrag; der
   Dispatcher-Vertrag von `send_task`.
 - **`docs/known-limitations.md`** — neuer Abschnitt *„Webhooks: Split-Horizon-DNS
