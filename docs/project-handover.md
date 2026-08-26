@@ -248,7 +248,7 @@ GitHub-Einstellungen aus Abschnitt 4 und das Brücken-Release selbst.
 
 ## Reihenfolge in einem Satz
 
-Account- und Domain-Zugänge sichern → Tags in den Fork pushen → Brücken-Release
-mit neuem `updater.REPO` **im alten Repo** → Fork aufsetzen (Branch Protection,
+Account- und Domain-Zugänge sichern → Tags in den Fork pushen →
+Brücken-Release `1.21.0` mit neuem `updater.REPO` **im alten Repo** → Fork aufsetzen (Branch Protection,
 Actions-Permissions, detach fork) → Doku-URLs und Issue-Referenzen → altes Repo
 als Archiv stehen und den Namen dauerhaft belegt lassen.
