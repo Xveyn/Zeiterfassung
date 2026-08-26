@@ -74,7 +74,7 @@ def _route_update_notification(release, tray_active, toast_shown_version):
 class App:
     def __init__(self, root, storage, settings, base_path=".", conflicts_store=None,
                  reservation_store=None, single_instance=None,
-                 data_lock=None, sync_guard=None):
+                 data_lock=None, sync_guard=None, webhook_store=None):
         self.root = root
         self.storage = storage
         self.settings = settings
@@ -84,6 +84,9 @@ class App:
         self.reservation_store = reservation_store
         self._data_lock = data_lock      # geteilter Store-RLock (Audit H1)
         self._sync_guard = sync_guard    # Sync-Re-Entrancy-Guard (Audit H2)
+        # Gerätelokale Webhook-Konfiguration; None bedeutet „Feature nicht
+        # verfügbar" und wird von den Dialogen wie eine leere Liste behandelt.
+        self._webhook_store = webhook_store
         self.root.title(f"Zeiterfassung v{version_label()}")
         self.root.configure(bg=BG)
         apply_dark_titlebar(self.root)
