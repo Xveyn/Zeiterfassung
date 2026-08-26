@@ -31,14 +31,15 @@ class WebhooksTab:
         ).grid(row=0, column=0, padx=10, pady=(10, 6), sticky="w")
 
         # Dieselbe Palette wie die Listbox im ConflictsDialog (ENTRY_BG wie
-        # Eingabefelder, ACCENT-Selektion). Zwei Listboxen mit
-        # unterschiedlichem Styling wären ein dialogspezifisches Stil-Extra —
-        # CLAUDE.md verbietet das ohne Rücksprache. Der Kommentar „Einzige
-        # Listbox der App" in conflicts_dialog.py wird in Task 13 nachgezogen.
+        # Eingabefelder, ACCENT-Selektion, `selectforeground`/`relief`
+        # ebenfalls identisch). Zwei Listboxen mit unterschiedlichem Styling
+        # wären ein dialogspezifisches Stil-Extra — CLAUDE.md verbietet das
+        # ohne Rücksprache.
         self._listbox = tk.Listbox(
             frame, height=8, width=48, font=FONT,
             bg=ENTRY_BG, fg=TEXT, selectbackground=ACCENT,
-            highlightthickness=0, borderwidth=0, activestyle="none",
+            selectforeground="#ffffff", relief="flat",
+            highlightthickness=0, activestyle="none",
         )
         self._listbox.grid(row=1, column=0, padx=10, pady=(0, 8), sticky="we")
         self._listbox.bind("<Double-Button-1>", lambda _e: self._edit())

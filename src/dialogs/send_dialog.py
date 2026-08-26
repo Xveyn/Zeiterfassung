@@ -308,10 +308,20 @@ def open_send_dialog(parent, storage, settings, base_path, runner,
             if all(r["ok"] for r in results):
                 if dialog.winfo_exists():
                     dialog.destroy()
-                themed_showinfo(
-                    parent, "Gesendet",
-                    f"Bericht für {label} gesendet:\n\n"
-                    + format_result_summary(results))
+                if len(results) == 1:
+                    # Der 95-%-Fall (nur Mail): ganzer Satz statt Listen-
+                    # Symbolik. Dieselbe Begründung wie bei den Fehlern —
+                    # ein Feature darf den häufigsten Pfad nicht schlechter
+                    # erklären als vorher.
+                    themed_showinfo(
+                        parent, "Gesendet",
+                        f"Bericht für {label} wurde an "
+                        f"{results[0]['name']} gesendet.")
+                else:
+                    themed_showinfo(
+                        parent, "Gesendet",
+                        f"Bericht für {label} gesendet:\n\n"
+                        + format_result_summary(results))
                 return
 
             busy["running"] = False
