@@ -17,16 +17,23 @@ from src.theme import (
 
 
 class WebhooksTab:
-    def __init__(self, frame, dialog, store, runner):
+    def __init__(self, frame, dialog, store, runner, parent=None):
         self.frame = frame
         self._dialog = dialog
+        # Fallback-Ziel für Fehlermeldungen, falls der Einstellungen-Dialog
+        # inzwischen geschlossen wurde (analog send_dialog.on_done). Ohne
+        # Injektion (ältere Aufrufer/Tests) fällt das auf `dialog` selbst
+        # zurück — dann bleibt das Verhalten wie zuvor.
+        self._parent = parent if parent is not None else dialog
         self._store = store
         self._runner = runner
 
         tk.Label(
             frame,
             text=("Der Bericht kann zusätzlich zur E-Mail an HTTP-Endpunkte "
-                  "gesendet werden.\nWebhooks gelten nur auf diesem Gerät."),
+                  "gesendet werden.\nWebhooks gelten nur auf diesem Gerät und "
+                  "werden sofort gespeichert — unabhängig vom „Abbrechen“ "
+                  "dieses Einstellungen-Dialogs."),
             font=FONT_SMALL, bg=BG, fg=TEXT_MUTED, justify="left",
         ).grid(row=0, column=0, padx=10, pady=(10, 6), sticky="w")
 
@@ -98,12 +105,17 @@ class WebhooksTab:
             return {"ok": True}
 
         def on_done(res):
-            if not self._dialog.winfo_exists():
-                return
+            alive = self._dialog.winfo_exists()
             if not res["ok"]:
+                # Ein Schreibfehler darf nie stillbleiben — auch wenn der
+                # Einstellungen-Dialog inzwischen geschlossen wurde. Dann auf
+                # `parent` zeigen statt den Fehler zu verschlucken (analog
+                # send_dialog.on_done).
+                target = self._dialog if alive else self._parent
                 themed_showerror(
-                    self._dialog, "Nicht entfernt",
+                    target, "Nicht entfernt",
                     f"Der Webhook konnte nicht entfernt werden:\n\n{res['error']}")
-            self.refresh()
+            if alive:
+                self.refresh()
 
         self._runner.run(fn, on_done)

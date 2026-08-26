@@ -187,17 +187,23 @@ def open_webhook_dialog(parent, store, runner, record: dict | None = None, on_sa
             return {"ok": True}
 
         def on_done(res):
-            if not dialog.winfo_exists():
-                return
+            alive = dialog.winfo_exists()
             if res["ok"]:
-                dialog.destroy()
+                if alive:
+                    dialog.destroy()
                 if on_saved:
                     on_saved()
                 return
-            busy["saving"] = False
-            set_primary_button_enabled(save_btn, True)
+            # Ein Schreibfehler darf nie stillbleiben — auch wenn der Dialog
+            # inzwischen geschlossen wurde (Nutzer hat ihn weggeklickt,
+            # während der Worker noch lief). Dann auf `parent` zeigen statt
+            # den Fehler zu verschlucken (analog send_dialog.on_done).
+            if alive:
+                busy["saving"] = False
+                set_primary_button_enabled(save_btn, True)
+            target = dialog if alive else parent
             themed_showerror(
-                dialog, "Nicht gespeichert",
+                target, "Nicht gespeichert",
                 f"Der Webhook konnte nicht gespeichert werden:\n\n{res['error']}")
 
         runner.run(fn, on_done)

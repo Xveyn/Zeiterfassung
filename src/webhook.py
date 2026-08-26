@@ -110,13 +110,17 @@ _CONTROL_CHARS = ("\r", "\n", "\x00")
 def _check_header_part(kind, value):
     """Wirft ValueError, wenn `value` Steuerzeichen enthält.
 
+    `kind` trägt den Artikel schon mit (»Der Header-Name«, »Das
+    Signatur-Präfix«) — die Genera sind unterschiedlich, ein fest
+    vorangestelltes »Der« wäre für »Präfix« falsch.
+
     Abweisen statt strippen: ein still bereinigtes "Bearer a\\nX-Foo: b"
     ergäbe einen Request, den der Nutzer nie so gemeint hat, und der Fehler
     fiele erst beim Empfänger auf (Muster wie mail.send_email, Audit N11).
     """
     if any(c in value for c in _CONTROL_CHARS):
         raise ValueError(
-            f"Der {kind} enthält unzulässige Steuerzeichen "
+            f"{kind} enthält unzulässige Steuerzeichen "
             "(Zeilenumbruch oder Nullbyte)."
         )
 
@@ -139,8 +143,8 @@ def auth_headers(auth, body):
     if mode == "header":
         name = auth.get("header") or "Authorization"
         value = auth.get("value") or ""
-        _check_header_part("Header-Name", name)
-        _check_header_part("Header-Wert", value)
+        _check_header_part("Der Header-Name", name)
+        _check_header_part("Der Header-Wert", value)
         return {name: value}
     if mode == "hmac":
         name = auth.get("header") or "X-Hub-Signature-256"
@@ -151,8 +155,8 @@ def auth_headers(auth, body):
         prefix = auth.get("prefix")
         if prefix is None:
             prefix = "sha256="
-        _check_header_part("Header-Name", name)
-        _check_header_part("Signatur-Präfix", prefix)
+        _check_header_part("Der Header-Name", name)
+        _check_header_part("Das Signatur-Präfix", prefix)
         return {name: prefix + sign_hmac(auth.get("secret") or "", body)}
     raise ValueError(f"Unbekanntes Auth-Verfahren: {mode!r}")
 
@@ -324,6 +328,17 @@ def _response_snippet(exc):
         raw = exc.read(_MAX_RESPONSE_BYTES)
     except Exception:
         return ""
+    finally:
+        # `exc` (der HTTPError) ist ein offener Dateizeiger auf die
+        # Fehlerantwort — anders als post()s Erfolgspfad läuft er nicht durch
+        # ein `with`. Ohne close() bliebe die Verbindung/der Socket hängen.
+        # Defensiv: ein scheiterndes close() darf den Klassifikator nicht
+        # kippen, der Body wurde oben ja schon gelesen (oder der Lesefehler
+        # bereits behandelt).
+        try:
+            exc.close()
+        except Exception:
+            pass
     text = raw.decode("utf-8", "replace").strip()
     return text[:_MAX_DETAIL_CHARS]
 

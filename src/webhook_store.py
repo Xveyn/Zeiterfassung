@@ -251,13 +251,6 @@ class WebhookStore:
             return copy.deepcopy(
                 [w for w in self._webhooks if w.get("enabled")])
 
-    def get(self, webhook_id: str) -> Webhook | None:
-        with self._lock:
-            for w in self._webhooks:
-                if w.get("id") == webhook_id:
-                    return copy.deepcopy(w)
-            return None
-
     def save(self, record: Webhook) -> None:
         """Legt an oder ersetzt nach `id`.
 

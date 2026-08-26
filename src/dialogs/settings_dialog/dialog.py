@@ -71,7 +71,7 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
     mail = MailTab(tab_mail, settings)
 
     # ===================== Tab: Webhooks =====================
-    hooks = WebhooksTab(tab_webhooks, dialog, webhook_store, runner)
+    hooks = WebhooksTab(tab_webhooks, dialog, webhook_store, runner, parent)
 
     # ===================== Tab: Google =====================
     google = GoogleTab(
