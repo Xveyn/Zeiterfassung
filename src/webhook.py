@@ -10,6 +10,9 @@ import hmac
 import ipaddress
 from urllib.parse import unquote, urlsplit
 
+from src.report import filter_categories, filter_period
+from src.time_utils import calculate_hours, hours_to_minutes, utc_now_iso
+
 # Explizit ausgeschriebene Netzliste statt ip_address(...).is_private:
 # CPython hat die Einordnung von 100.64.0.0/10 (RFC 6598, CGNAT) zwischen
 # 3.10 und 3.13 geändert. Die CI-Matrix deckt beide ab — mit is_private wäre
@@ -137,3 +140,87 @@ def auth_headers(auth, body):
         _check_header_part("Signatur-Präfix", prefix)
         return {name: prefix + sign_hmac(auth.get("secret") or "", body)}
     raise ValueError(f"Unbekanntes Auth-Verfahren: {mode!r}")
+
+
+PAYLOAD_SCHEMA_VERSION = 1
+PAYLOAD_KIND = "zeiterfassung-report"
+
+
+def total_minutes(entries):
+    """Summe der Arbeitsminuten über alle Slots.
+
+    Summiert wird über hours_to_minutes je Slot, NICHT über die
+    Dezimalstunden — calculate_hours rundet pro Slot auf 2 Nachkommastellen
+    (gröber als eine Minute), zweimal unabhängig zu runden ließe die Summe
+    von den Einzelposten abweichen (CLAUDE.md, Abschnitt „Stunden").
+    """
+    return sum(
+        hours_to_minutes(
+            calculate_hours(slot.get("start"), slot.get("end"), slot.get("pause", 0)))
+        for record in entries.values()
+        for slot in record.get("slots", [])
+    )
+
+
+def build_json_payload(*, date_from, date_to, entries, name, sender,
+                       categories, generated_at=None):
+    """Das JSON-Dokument für den Webhook.
+
+    `entries` ist der Snapshot aus `Storage.get_all()` (bereits durch
+    `workweek.filter_for_report` gelaufen); Zeitraum und Kategorien filtert
+    diese Funktion über dieselben Helfer wie Mail-HTML und PDF, damit alle
+    drei denselben Ausschnitt behaupten.
+
+    Eigenes `kind` statt `zeiterfassung-share`: das Dokument trägt
+    Report-Metadaten, die der Share-Validator als unbekannte Felder ablehnt.
+    Die Slot-Shape ist trotzdem identisch zu Share v3, damit ein Empfänger
+    seinen Parser wiederverwenden kann.
+    """
+    ranged = filter_period(date_from, date_to, entries) or {}
+    if ranged:
+        ranged = filter_categories(ranged, categories)
+    return {
+        "schema_version": PAYLOAD_SCHEMA_VERSION,
+        "kind": PAYLOAD_KIND,
+        "generated_at": generated_at or utc_now_iso(),
+        "sender": sender or "",
+        "name": name or "",
+        "period": {"from": date_from.isoformat(), "to": date_to.isoformat()},
+        "categories": list(categories) if categories is not None else None,
+        "total_minutes": total_minutes(ranged),
+        "entries": ranged,
+    }
+
+
+def build_body(*, json_bytes, pdf_bytes, pdf_filename, boundary):
+    """Wählt Content-Type und baut den Request-Body.
+
+    JSON allein → application/json, PDF allein → application/pdf,
+    beides → multipart/form-data mit den Teilen `data` und `report`.
+    Multipart statt base64-im-JSON: Empfänger wie n8n/Make erwarten es so,
+    und base64 bläht die Payload um ein Drittel auf.
+
+    `boundary` wird hereingereicht (statt hier gewürfelt), damit Tests
+    deterministisch bleiben.
+    """
+    if json_bytes is not None and pdf_bytes is None:
+        return "application/json; charset=utf-8", json_bytes
+    if pdf_bytes is not None and json_bytes is None:
+        return "application/pdf", pdf_bytes
+    if json_bytes is None and pdf_bytes is None:
+        raise ValueError("Weder JSON noch PDF zum Senden vorhanden.")
+
+    sep = f"--{boundary}\r\n".encode("latin-1")
+    parts = [
+        sep,
+        b'Content-Disposition: form-data; name="data"; filename="report.json"\r\n',
+        b"Content-Type: application/json; charset=utf-8\r\n\r\n",
+        json_bytes, b"\r\n",
+        sep,
+        f'Content-Disposition: form-data; name="report"; '
+        f'filename="{pdf_filename}"\r\n'.encode("utf-8"),
+        b"Content-Type: application/pdf\r\n\r\n",
+        pdf_bytes, b"\r\n",
+        f"--{boundary}--\r\n".encode("latin-1"),
+    ]
+    return f'multipart/form-data; boundary="{boundary}"', b"".join(parts)

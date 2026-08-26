@@ -166,3 +166,115 @@ def test_control_characters_in_header_name_are_rejected(bad):
 def test_unknown_auth_mode_is_rejected():
     with pytest.raises(ValueError):
         auth_headers({"mode": "oauth"}, b"body")
+
+
+import datetime
+import json
+
+from tests.conftest import ist_slot as _slot
+
+from src.webhook import build_body, build_json_payload, total_minutes
+
+
+def _entries():
+    return {
+        "2026-06-30": {"slots": [_slot("08:00", "16:00")]},          # außerhalb
+        "2026-07-01": {"slots": [_slot("08:00", "16:00", pause=30, kategorie="A")]},
+        "2026-07-02": {"slots": [_slot("09:00", "12:15", kategorie="B")]},
+    }
+
+
+def _payload(**over):
+    base = dict(
+        date_from=datetime.date(2026, 7, 1), date_to=datetime.date(2026, 7, 31),
+        entries=_entries(), name="Sven", sender="sven@example.com",
+        categories=None, generated_at="2026-08-26T09:14:00Z",
+    )
+    base.update(over)
+    return build_json_payload(**base)
+
+
+def test_payload_has_kind_and_version():
+    doc = _payload()
+    assert doc["kind"] == "zeiterfassung-report"
+    assert doc["schema_version"] == 1
+    assert doc["generated_at"] == "2026-08-26T09:14:00Z"
+    assert doc["sender"] == "sven@example.com"
+    assert doc["name"] == "Sven"
+    assert doc["period"] == {"from": "2026-07-01", "to": "2026-07-31"}
+
+
+def test_payload_drops_days_outside_the_period():
+    assert list(_payload()["entries"]) == ["2026-07-01", "2026-07-02"]
+
+
+def test_payload_slots_use_share_v3_shape():
+    slot = _payload()["entries"]["2026-07-01"]["slots"][0]
+    assert set(slot) == {"start", "end", "pause", "kategorie"}
+
+
+def test_payload_categories_none_when_unfiltered():
+    assert _payload()["categories"] is None
+
+
+def test_payload_applies_category_filter():
+    doc = _payload(categories=["A"])
+    assert list(doc["entries"]) == ["2026-07-01"]
+    assert doc["categories"] == ["A"]
+
+
+def test_payload_empty_period_yields_empty_entries():
+    doc = _payload(date_from=datetime.date(2030, 1, 1),
+                   date_to=datetime.date(2030, 1, 31))
+    assert doc["entries"] == {}
+    assert doc["total_minutes"] == 0
+
+
+def test_total_minutes_sums_minutes_not_decimal_hours():
+    """CLAUDE.md: angezeigte Summen laufen über hours_to_minutes, nie über
+    Dezimalstunden. 08:00-16:00 abzgl. 30 min = 450, 09:00-12:15 = 195."""
+    entries = {
+        "2026-07-01": {"slots": [_slot("08:00", "16:00", pause=30)]},
+        "2026-07-02": {"slots": [_slot("09:00", "12:15")]},
+    }
+    assert total_minutes(entries) == 645
+
+
+def test_body_json_only():
+    ct, body = build_body(json_bytes=b'{"a":1}', pdf_bytes=None,
+                          pdf_filename="r.pdf", boundary="B")
+    assert ct == "application/json; charset=utf-8"
+    assert body == b'{"a":1}'
+
+
+def test_body_pdf_only():
+    ct, body = build_body(json_bytes=None, pdf_bytes=b"%PDF-1.4",
+                          pdf_filename="r.pdf", boundary="B")
+    assert ct == "application/pdf"
+    assert body == b"%PDF-1.4"
+
+
+def test_body_multipart_contains_both_parts():
+    ct, body = build_body(json_bytes=b'{"a":1}', pdf_bytes=b"%PDF-1.4",
+                          pdf_filename="Zeiterfassung_20260701_20260731.pdf",
+                          boundary="BOUNDARY")
+    assert ct == 'multipart/form-data; boundary="BOUNDARY"'
+    text = body.decode("latin-1")
+    assert '--BOUNDARY\r\n' in text
+    assert 'name="data"' in text
+    assert "application/json" in text
+    assert 'name="report"' in text
+    assert 'filename="Zeiterfassung_20260701_20260731.pdf"' in text
+    assert "application/pdf" in text
+    assert text.endswith("--BOUNDARY--\r\n")
+    assert b"%PDF-1.4" in body
+
+
+def test_body_requires_at_least_one_payload():
+    with pytest.raises(ValueError):
+        build_body(json_bytes=None, pdf_bytes=None, pdf_filename="r.pdf",
+                   boundary="B")
+
+
+def test_payload_serializes_to_json():
+    json.dumps(_payload())  # wirft nicht
