@@ -112,6 +112,44 @@ class TestParseChangelogMarkdown:
         assert "1.18.0" not in rendered
         assert "##" not in rendered
 
+    def test_strips_html_comment_from_generated_notes(self):
+        """GitHub stellt generierten Release-Notes einen HTML-Kommentar voran,
+        sobald `.github/release.yml` existiert. Pre-Releases beziehen ihren
+        Changelog aus genau diesem Body (`updater.resolve_check_result`) — der
+        Kommentar landete damit roh im Updates-Tab.
+        """
+        notes = (
+            "<!-- Release notes generated using configuration in "
+            ".github/release.yml at v1.20.0-pre.2 -->\n"
+            "\n"
+            "## What's Changed\n"
+            "* docs: irgendwas by @wer in https://example.invalid/pull/1\n"
+        )
+        lines = parse_changelog_markdown(notes)
+        rendered = "".join(
+            seg_text
+            for line in lines if line
+            for seg_text, _tags in line["segments"]
+        )
+        assert "<!--" not in rendered
+        assert "release.yml" not in rendered
+        assert "What's Changed" in rendered
+        # Kein führender Absatzabstand da, wo der Kommentar stand.
+        assert lines and lines[0] is not None
+
+    def test_strips_multiline_html_comment(self):
+        """Ein Kommentar kann mehrzeilig sein — GitHub bricht ihn je nach
+        Taglänge um."""
+        notes = "<!-- erste Zeile\nzweite Zeile -->\n\n## Titel\n"
+        rendered = "".join(
+            seg_text
+            for line in parse_changelog_markdown(notes) if line
+            for seg_text, _tags in line["segments"]
+        )
+        assert "erste Zeile" not in rendered
+        assert "zweite Zeile" not in rendered
+        assert "Titel" in rendered
+
     def test_category_heading_becomes_heading_segment(self):
         lines = parse_changelog_markdown("### Hinzugefügt\n- x\n")
         assert lines[0]["segments"] == [("Hinzugefügt", ("heading",))]

@@ -12,6 +12,14 @@
 # beschreibt, den die Überschrift ohnehin nennt.
 #
 # Die übrigen PRs tragen keine Labels und bleiben unverändert gelistet.
+#
+# Nebenwirkung, die man kennen muss: Sobald diese Datei existiert, stellt GitHub
+# jedem generierten Release-Body einen Kommentar voran —
+#   <!-- Release notes generated using configuration in .github/release.yml at <tag> -->
+# Das lässt sich nicht abschalten. Für Pre-Releases IST dieser Body die
+# Changelog-Quelle der App (`updater.resolve_check_result`), der Kommentar stand
+# dadurch roh im Updates-Tab; `changelog.parse_changelog_markdown` filtert
+# HTML-Kommentare deshalb heraus. Wer den Anzeigepfad umbaut, muss das mitziehen.
 changelog:
   exclude:
     labels:
