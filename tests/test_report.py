@@ -440,3 +440,37 @@ def test_generate_pdf_returns_none_for_empty_range():
         result = report_mod.generate_pdf(
             datetime.date(2026, 3, 1), datetime.date(2026, 3, 31), {})
     assert result is None
+
+
+# --- Tests für die öffentlichen Filter-Funktionen (Task 3) ---
+
+from src.report import filter_categories, filter_period
+
+
+def test_filter_period_public_name_keeps_range_only():
+    entries = {
+        "2026-06-30": {"slots": [_slot("08:00", "16:00")]},
+        "2026-07-01": {"slots": [_slot("08:00", "16:00")]},
+        "2026-08-01": {"slots": [_slot("08:00", "16:00")]},
+    }
+    got = filter_period(datetime.date(2026, 7, 1), datetime.date(2026, 7, 31), entries)
+    assert list(got) == ["2026-07-01"]
+
+
+def test_filter_period_returns_none_when_empty():
+    assert filter_period(
+        datetime.date(2026, 7, 1), datetime.date(2026, 7, 31), {}) is None
+
+
+def test_filter_categories_none_returns_same_object():
+    entries = {"2026-07-01": {"slots": [_slot("08:00", "16:00")]}}
+    assert filter_categories(entries, None) is entries
+
+
+def test_filter_categories_drops_days_without_matching_slots():
+    entries = {
+        "2026-07-01": {"slots": [_slot("08:00", "16:00", kategorie="A")]},
+        "2026-07-02": {"slots": [_slot("08:00", "16:00", kategorie="B")]},
+    }
+    got = filter_categories(entries, ["A"])
+    assert list(got) == ["2026-07-01"]

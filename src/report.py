@@ -100,7 +100,11 @@ def _group_by_week(range_entries):
     return groups
 
 
-def _filter_entries(date_from, date_to, all_entries):
+def filter_period(date_from, date_to, all_entries):
+    """Einträge im Zeitraum [date_from, date_to], oder None wenn keiner drin
+    liegt. Öffentlich, weil neben Mail-HTML und PDF auch die Webhook-Payload
+    exakt denselben Ausschnitt braucht — zwei Filter-Implementierungen würden
+    beim nächsten Detail auseinanderlaufen."""
     from_str = date_from.isoformat()
     to_str = date_to.isoformat()
     range_entries = {
@@ -109,7 +113,7 @@ def _filter_entries(date_from, date_to, all_entries):
     return range_entries if range_entries else None
 
 
-def _apply_category_filter(entries, categories):
+def filter_categories(entries, categories):
     """categories=None → unverändert. Sonst werden je Tag nur Slots behalten,
     deren Kategorie (oder "" für ohne) in `categories` liegt; Tage ohne
     verbleibende Slots fallen weg. Liefert ein neues Dict."""
@@ -128,9 +132,9 @@ def total_hours(date_from, date_to, all_entries, categories=None):
     """Gesamtstunden im Zeitraum, gefiltert auf die gewählten Kategorien
     (None = alle). Pure Funktion für die Live-Vorschau im Sende-Dialog —
     summiert dieselben Slot-Stunden wie der Report. Leerer Bereich → 0.0."""
-    range_entries = _filter_entries(date_from, date_to, all_entries)
+    range_entries = filter_period(date_from, date_to, all_entries)
     if range_entries:
-        range_entries = _apply_category_filter(range_entries, categories)
+        range_entries = filter_categories(range_entries, categories)
     if not range_entries:
         return 0.0
     return round(sum(_entry_hours(e) for e in range_entries.values()), 2)
@@ -290,9 +294,9 @@ def generate_report(date_from, date_to, all_entries, greeting="", content="",
     bisheriges Verhalten); False = weglassen, nur das Gesamt der Tagestabelle.
     Returns (html, total) tuple, or (None, 0) if no entries.
     """
-    range_entries = _filter_entries(date_from, date_to, all_entries)
+    range_entries = filter_period(date_from, date_to, all_entries)
     if range_entries:
-        range_entries = _apply_category_filter(range_entries, categories)
+        range_entries = filter_categories(range_entries, categories)
     if not range_entries:
         return None, 0
 
@@ -336,9 +340,9 @@ def generate_pdf(date_from, date_to, all_entries, name="", categories=None,
     """
     from xhtml2pdf import pisa  # pyright: ignore[reportMissingImports]  # lazy, nicht in CI-Test-Deps
 
-    range_entries = _filter_entries(date_from, date_to, all_entries)
+    range_entries = filter_period(date_from, date_to, all_entries)
     if range_entries:
-        range_entries = _apply_category_filter(range_entries, categories)
+        range_entries = filter_categories(range_entries, categories)
     if not range_entries:
         return None
 
