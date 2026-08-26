@@ -458,3 +458,98 @@ def test_classify_unexpected_error_carries_traceback():
         res = classify_error(e)
     assert res["kind"] == "error"
     assert "RuntimeError" in res["tb"]
+
+
+from src.webhook import deliver
+
+
+def _record(**over):
+    base = {
+        "id": "abc", "name": "Server", "url": "https://example.com/hook",
+        "enabled": True, "payload": {"json": True, "pdf": False},
+        "auth": {"mode": "none"},
+    }
+    base.update(over)
+    return base
+
+
+def test_deliver_posts_and_reports_status(monkeypatch):
+    seen = {}
+
+    def fake_post(url, headers, body, timeout=30):
+        seen.update(url=url, headers=headers, body=body)
+        return 204
+
+    monkeypatch.setattr(wh, "post", fake_post)
+    res = deliver(_record(), json_bytes=b'{"a":1}', pdf_bytes=None,
+                       pdf_filename="r.pdf")
+    assert res == {"ok": True, "status": 204}
+    assert seen["headers"]["Content-Type"] == "application/json; charset=utf-8"
+    assert seen["body"] == b'{"a":1}'
+
+
+def test_deliver_adds_auth_header(monkeypatch):
+    seen = {}
+    monkeypatch.setattr(wh, "post",
+                        lambda url, headers, body, timeout=30: seen.update(headers=headers) or 200)
+    deliver(
+        _record(auth={"mode": "header", "header": "Authorization", "value": "Bearer t"}),
+        json_bytes=b"{}", pdf_bytes=None, pdf_filename="r.pdf")
+    assert seen["headers"]["Authorization"] == "Bearer t"
+
+
+def test_deliver_rejects_http_to_public_host_before_posting(monkeypatch):
+    def boom(*a, **k):
+        raise AssertionError("darf nicht gesendet werden")
+
+    monkeypatch.setattr(wh, "post", boom)
+    res = deliver(_record(url="http://erp.example.com/hook"),
+                       json_bytes=b"{}", pdf_bytes=None, pdf_filename="r.pdf")
+    assert res["ok"] is False
+    assert res["kind"] == "config"
+    assert "https" in res["detail"]
+
+
+def test_deliver_maps_http_error(monkeypatch):
+    def fake_post(*a, **k):
+        raise _http_error(500, b"kaputt")
+
+    monkeypatch.setattr(wh, "post", fake_post)
+    res = deliver(_record(), json_bytes=b"{}", pdf_bytes=None,
+                       pdf_filename="r.pdf")
+    assert res["ok"] is False
+    assert res["kind"] == "server"
+
+
+def test_deliver_never_raises_on_unexpected_error(monkeypatch):
+    def fake_post(*a, **k):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(wh, "post", fake_post)
+    res = deliver(_record(), json_bytes=b"{}", pdf_bytes=None,
+                       pdf_filename="r.pdf")
+    assert res["ok"] is False
+    assert res["kind"] == "error"
+    assert res["tb"]
+
+
+def test_deliver_rejects_bad_auth_config_as_config_error(monkeypatch):
+    monkeypatch.setattr(wh, "post", lambda *a, **k: 200)
+    res = deliver(
+        _record(auth={"mode": "header", "header": "Authorization",
+                      "value": "Bearer \nX-Evil: 1"}),
+        json_bytes=b"{}", pdf_bytes=None, pdf_filename="r.pdf")
+    assert res["kind"] == "config"
+
+
+def test_deliver_signs_the_exact_body_sent(monkeypatch):
+    seen = {}
+    monkeypatch.setattr(
+        wh, "post",
+        lambda url, headers, body, timeout=30: seen.update(headers=headers, body=body) or 200)
+    deliver(
+        _record(auth={"mode": "hmac", "header": "X-Sig", "prefix": "",
+                      "secret": "Jefe"}),
+        json_bytes=b"what do ya want for nothing?", pdf_bytes=None,
+        pdf_filename="r.pdf")
+    assert seen["headers"]["X-Sig"] == wh.sign_hmac("Jefe", seen["body"])

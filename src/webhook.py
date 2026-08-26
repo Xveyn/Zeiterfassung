@@ -8,15 +8,19 @@ getestet wird Logik, nicht UI).
 import hashlib
 import hmac
 import ipaddress
+import logging
 import traceback
 import urllib.error
 import urllib.request
+import uuid
 from urllib.parse import unquote, urlsplit
 
 from src.mail import is_offline_error
 from src.report import filter_categories, filter_period
 from src.time_utils import calculate_hours, hours_to_minutes, utc_now_iso
 from src.version import VERSION
+
+log = logging.getLogger(__name__)
 
 # Explizit ausgeschriebene Netzliste statt ip_address(...).is_private:
 # CPython hat die Einordnung von 100.64.0.0/10 (RFC 6598, CGNAT) zwischen
@@ -352,3 +356,39 @@ def classify_error(exc):
                 "error": exc, "tb": None}
     return {"ok": False, "kind": "error", "detail": str(exc),
             "error": exc, "tb": traceback.format_exc()}
+
+
+def deliver(record, *, json_bytes, pdf_bytes, pdf_filename, boundary=None):
+    """Sendet eine Payload an einen konfigurierten Webhook.
+
+    Wirft nie — Fehler kommen als Result-Dict zurück (Vertrag wie
+    send_task.perform_send, Audit M10). `kind == "config"` heißt: die
+    Konfiguration ist unbrauchbar, es wurde gar nicht erst gesendet.
+
+    Die URL wird hier erneut geprüft, obwohl der Dialog das beim Speichern
+    schon tut: eine von Hand editierte webhooks.json soll die https-Pflicht
+    nicht umgehen können.
+    """
+    try:
+        ok, msg = validate_url(record.get("url", ""))
+        if not ok:
+            return {"ok": False, "kind": "config", "detail": msg,
+                    "error": None, "tb": None}
+
+        content_type, body = build_body(
+            json_bytes=json_bytes, pdf_bytes=pdf_bytes,
+            pdf_filename=pdf_filename,
+            boundary=boundary or uuid.uuid4().hex)
+
+        headers = {"Content-Type": content_type}
+        headers.update(auth_headers(record.get("auth"), body))
+    except ValueError as e:
+        return {"ok": False, "kind": "config", "detail": str(e),
+                "error": e, "tb": None}
+
+    try:
+        status = post(record["url"], headers, body)
+    except Exception as e:  # bewusst alles: der Vertrag lautet „wirft nie"
+        log.exception("Webhook-Versand an %r fehlgeschlagen", record.get("name"))
+        return classify_error(e)
+    return {"ok": True, "status": status}
