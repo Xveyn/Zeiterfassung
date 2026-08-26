@@ -5,7 +5,7 @@
 Zeiterfassung ist ein kleines Desktop-Tool ohne Server-Komponente. Sicherheits-Fixes
 fließen ausschließlich in die **jeweils aktuelle Release-Version** ein. Ältere Versionen
 werden nicht rückwirkend gepatcht — bitte vor einer Meldung auf das
-[neueste Release](https://github.com/margenheld/Zeiterfassung/releases/latest)
+[neueste Release](https://github.com/Xveyn/Zeiterfassung/releases/latest)
 aktualisieren.
 
 | Version            | Unterstützt |
@@ -17,11 +17,9 @@ aktualisieren.
 
 Bitte melde Sicherheitslücken **nicht** über öffentliche GitHub-Issues.
 
-Bevorzugter Weg ist eine private Meldung über GitHub:
-
-1. [**Security Advisories**](https://github.com/margenheld/Zeiterfassung/security/advisories/new) → „Report a vulnerability"
-
-Alternativ per E-Mail an **sven@margen-held.de**.
+Meldungen laufen über die privaten
+[**Security Advisories**](https://github.com/Xveyn/Zeiterfassung/security/advisories/new)
+dieses Repositorys („Report a vulnerability").
 
 Hilfreich für eine schnelle Einschätzung:
 

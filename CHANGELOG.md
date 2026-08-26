@@ -1,5 +1,65 @@
 # Changelog
 
+## 1.21.0 — 2026-08-26
+
+> **Letztes Release aus diesem Repository.** Alle weiteren Versionen erscheinen
+> unter [Xveyn/Zeiterfassung](https://github.com/Xveyn/Zeiterfassung) — siehe
+> „Umzug des Repositorys“ unter *Geändert*.
+
+### Hinzugefügt
+- **Webhook-Versand**: Der Bericht lässt sich jetzt zusätzlich zur E-Mail an
+  eigene HTTP-Endpunkte schicken (Einstellungen → Webhooks). Pro Webhook
+  wählbar, ob JSON, PDF oder beides übertragen wird — im Sende-Dialog für
+  den einzelnen Versand übersteuerbar. Absicherung wahlweise über einen
+  Token-Header oder eine HMAC-SHA256-Signatur; ein Testversand prüft die
+  Konfiguration direkt im Dialog. Außerhalb des eigenen Netzwerks ist HTTPS
+  Pflicht, im Heimnetz sind auch `http://`-Adressen erlaubt. Mail und alle
+  ausgewählten Webhooks laufen unabhängig voneinander: schlägt ein Kanal
+  fehl, werden die übrigen trotzdem zugestellt und das Ergebnis pro Kanal
+  einzeln gemeldet. Die Konfiguration ist gerätelokal, wird also **nicht**
+  über Google Drive synchronisiert — sie enthält Zugangsdaten.
+- **Sende-Erinnerung an Reservierungen**: Die Erinnerung, die Arbeitszeiten zu
+  verschicken, läuft jetzt über zwei Kanäle. Neben dem monatlichen Termin
+  lässt sich sie an einen einzelnen Reservierungs-Slot hängen (Tages-Dialog):
+  die Erinnerung kommt dann, wenn dieser Slot ausläuft — praktisch für alle,
+  die ihre Zeiten zum Monatsende an einem konkreten Termin abrechnen. Der
+  monatliche Termin lässt sich zudem automatisch von Wochenenden und
+  Feiertagen weg verschieben (immer innerhalb desselben Monats).
+- **Zeitraum-Vorbelegung im Sende-Dialog**: Wird der Dialog nach einer
+  Erinnerung geöffnet, ist der Zeitraum bereits auf die Spanne seit der
+  letzten Erinnerung gesetzt, statt auf den laufenden Monat.
+
+### Geändert
+- **Umzug des Repositorys**: Die Entwicklung wird ab sofort unter
+  [Xveyn/Zeiterfassung](https://github.com/Xveyn/Zeiterfassung) fortgeführt.
+  **Diese Version ist die Brücke:** Ab 1.21.0 fragt der Update-Check das neue
+  Repository ab — einmalig auf 1.21.0 aktualisieren genügt, danach kommen
+  neue Versionen automatisch von dort. Wer auf einer älteren Version bleibt,
+  bekommt keine Update-Hinweise mehr und muss einmal von Hand wechseln. Das
+  alte Repository bleibt als Archiv erreichbar (Releases, Downloads,
+  Issue-Historie); Links in der Dokumentation und im Installer zeigen auf den
+  neuen Ort.
+- **Stundenlohn unter Arbeitszeit**: Das Feld lag bisher unter „Bericht &
+  Mail“, obwohl es die Arbeitszeit beschreibt und nicht den Bericht. Es steht
+  jetzt im Tab **Arbeitszeit**. Der gespeicherte Wert bleibt unverändert.
+
+### Behoben
+- **Changelog im Updates-Tab**: Bei Vorabversionen stand ein technischer
+  HTML-Kommentar von GitHub roh über dem Changelog-Text. Er wird jetzt
+  herausgefiltert.
+- **Release-Notes auf GitHub**: Die automatisch erzeugte Änderungsliste
+  führte den Release-PR selbst als Punkt auf, der nur die Versionsnummer
+  wiederholte. Er wird jetzt ausgelassen.
+- **Einstellungen-Dialog**: Der Dialog wurde durch den neuen Webhooks-Tab
+  breiter als nötig; die Breite entspricht wieder der der übrigen Tabs.
+
+### Intern
+- **Linux-Tray** (StatusNotifierItem über D-Bus) ist implementiert, bleibt
+  aber bis zum manuellen Plasma-Test hinter `ZEIT_LINUX_TRAY=1` deaktiviert —
+  keine sichtbare Änderung.
+- **`build.py` liegt jetzt unter `scripts/`**, zusammen mit dem lokalen
+  Webhook-Testempfänger. Aufruf: `python scripts/build.py`.
+
 ## 1.20.0 — 2026-07-29
 
 ### Hinzugefügt
