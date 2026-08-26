@@ -3307,15 +3307,54 @@ Beim Abschnitt „UTF-8 im Mail-Pipeline" bzw. in der Nähe der Versand-Beschrei
 - Im Threading-/Dialog-Absatz ergänzen, dass `send_dialog` seinen Worker über einen Dispatcher fährt, der pro Kanal ein Result liefert und nie wirft.
 - Bei den Dialogen `webhook_dialog` und den Tab `tab_webhooks` nennen — mit dem Hinweis, dass Letzterer als einziger Tab **keine** Variablen an `save_settings` exponiert.
 
-- [ ] **Step 4: Zwei veraltete Kommentare nachziehen**
+- [ ] **Step 4: Zwei veraltete Kommentare und zwei Inkonsistenzen nachziehen**
 
-Beide werden durch dieses Feature falsch und stehen in keinem anderen Task:
+Alle vier entstehen durch dieses Feature und stehen in keinem anderen Task.
+
+**Kommentare, die sonst falsch stehenbleiben:**
 
 - `src/dialogs/conflicts_dialog.py:86` — „**Einzige Listbox der App**: dunkel
   über die Palette (…)". Es sind ab jetzt zwei; der Zusatz nennt den
   Webhooks-Tab als zweite, die dieselbe Palette benutzt.
 - `tests/test_store_locking.py` — der Modul-Docstring spricht von „den **vier**
-  Stores". Mit `WebhookStore` sind es fünf.
+  Stores". Mit `WebhookStore` sind es fünf. **Ergänze dort auch den Grund**,
+  warum der fünfte Store den geteilten Lock bewusst *nicht* bekommt (Webhooks
+  nehmen an keinem Sync-Flow teil) — sonst liest sich seine Abwesenheit in
+  dieser Datei wie eine Lücke.
+
+**Zwei Inkonsistenzen aus den Reviews der Tasks 11 und 12:**
+
+- `src/dialogs/settings_dialog/tab_webhooks.py` — der Kommentar an der Listbox
+  behauptet „dieselbe Palette" wie `conflicts_dialog.py`, der Code lässt aber
+  `selectforeground="#ffffff"` weg und nutzt `borderwidth=0` statt
+  `relief="flat"`. Zieh den Code auf die Vorlage nach, damit der Kommentar
+  stimmt. Ein Kommentar, der etwas anderes behauptet als der Code, ist
+  schlechter als gar keiner — der nächste Leser glaubt ihm.
+- `src/dialogs/send_dialog.py` — die Erfolgsmeldung lautete vor diesem Feature
+  im reinen Mailfall „Bericht für {label} wurde an {recipient} gesendet." und
+  ist jetzt auch dort die Listen-Fassung. Behalte den vollständigen Satz für
+  den Einzelkanal-Fall, analog zur bereits umgesetzten Regel für Fehlschläge:
+
+  ```python
+            if all(r["ok"] for r in results):
+                if dialog.winfo_exists():
+                    dialog.destroy()
+                if len(results) == 1:
+                    # Der 95-%-Fall (nur Mail): ganzer Satz statt Listen-
+                    # Symbolik. Dieselbe Begründung wie bei den Fehlern —
+                    # ein Feature darf den häufigsten Pfad nicht schlechter
+                    # erklären als vorher.
+                    themed_showinfo(
+                        parent, "Gesendet",
+                        f"Bericht für {label} wurde an "
+                        f"{results[0]['name']} gesendet.")
+                else:
+                    themed_showinfo(
+                        parent, "Gesendet",
+                        f"Bericht für {label} gesendet:\n\n"
+                        + format_result_summary(results))
+                return
+  ```
 
 - [ ] **Step 5: `README.md` ergänzen**
 
