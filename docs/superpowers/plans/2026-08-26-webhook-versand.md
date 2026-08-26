@@ -2738,7 +2738,7 @@ git commit -m "feat(webhook-dialog): Anlegen, Bearbeiten und Testversand"
 ### Task 11: Settings-Tab „Webhooks"
 
 **Files:**
-- Create: `src/dialogs/settings_dialog/tab_webhook_store.py`
+- Create: `src/dialogs/settings_dialog/tab_webhooks.py`
 - Modify: `src/dialogs/settings_dialog/dialog.py` (Notebook + `tabs`-Dict)
 - Modify: `src/ui.py` (`open_settings_dialog(...)`-Aufruf um `webhook_store=` erweitern)
 
@@ -2753,7 +2753,7 @@ git commit -m "feat(webhook-dialog): Anlegen, Bearbeiten und Testversand"
 
 - [ ] **Step 1: Write the implementation**
 
-`src/dialogs/settings_dialog/tab_webhook_store.py`:
+`src/dialogs/settings_dialog/tab_webhooks.py`:
 
 ```python
 """Tab „Webhooks": Liste der konfigurierten HTTP-Ziele.
@@ -2908,7 +2908,7 @@ In `src/ui.py` beim Öffnen des Settings-Dialogs `webhook_store=self._webhook_st
 - [ ] **Step 3: Commit**
 
 ```
-git add src/dialogs/settings_dialog/tab_webhook_store.py src/dialogs/settings_dialog/dialog.py src/ui.py
+git add src/dialogs/settings_dialog/tab_webhooks.py src/dialogs/settings_dialog/dialog.py src/ui.py
 git commit -m "feat(settings): Tab fuer Webhooks"
 ```
 
