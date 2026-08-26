@@ -191,3 +191,16 @@ def test_summary_lists_every_channel():
     assert "Buchhaltung" in text
     assert "HTTP 500" in text
     assert "✓" in text and "✗" in text
+
+
+def test_perform_send_survives_send_mail_without_mail_data(monkeypatch):
+    """Der „wirft nie"-Vertrag gilt auch für diese Fehlbedienung: `mail` ist
+    als `dict | None` deklariert, also unabhängig von `send_mail` setzbar.
+    Entkäme hier ein TypeError, riefe BackgroundTaskRunner.run `on_done` nie
+    und der Sende-Dialog bliebe auf „Sende…" stehen."""
+    monkeypatch.setattr(st, "generate_pdf", lambda *a, **k: b"PDF")
+    monkeypatch.setattr(st.webhook, "deliver",
+                        lambda *a, **k: {"ok": True, "status": 200})
+    res = perform_send(**_kwargs(send_mail=True, mail=None,
+                                 webhooks=[_hook("A")]))
+    assert [r["name"] for r in res["results"]] == ["A"]

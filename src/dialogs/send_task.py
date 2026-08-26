@@ -69,6 +69,18 @@ def perform_send(*, date_from, date_to, entries, name, categories,
     """
     results = []
 
+    # `mail` ist als `dict | None` deklariert und damit unabhängig von
+    # `send_mail` setzbar. Ohne diese Normalisierung dereferenziert der
+    # Mail-Zweig unten `mail["recipient"]` außerhalb jedes try-Blocks und
+    # wirft — der Vertrag lautet aber „wirft nie", und ein Bruch heißt hier:
+    # BackgroundTaskRunner.run ruft `on_done` nie, der Sende-Dialog bleibt
+    # dauerhaft auf „Sende…" stehen, während die übrigen Kanäle schon
+    # gefeuert haben.
+    if send_mail and mail is None:
+        log.error("perform_send: send_mail=True ohne mail-Daten — "
+                  "Mail-Kanal wird übersprungen")
+        send_mail = False
+
     pdf_bytes = None
     if needs_pdf(send_mail, webhooks):
         try:
@@ -82,6 +94,9 @@ def perform_send(*, date_from, date_to, entries, name, categories,
             # Ohne PDF kann weder die Mail noch ein PDF-Webhook raus. Die
             # JSON-Webhooks laufen trotzdem weiter — sie brauchen sie nicht.
             if send_mail:
+                # Garantiert gesetzt: die Normalisierung oben hat send_mail
+                # auf False gezogen, wenn mail None war.
+                assert mail is not None
                 results.append({"channel": "mail",
                                 "name": mail["recipient"], **failure})
                 send_mail = False
@@ -92,6 +107,8 @@ def perform_send(*, date_from, date_to, entries, name, categories,
             webhooks = [w for w in webhooks if not w.get("pdf")]
 
     if send_mail:
+        # Garantiert gesetzt: dieselbe Normalisierung wie oben.
+        assert mail is not None
         res = _send_mail(mail=mail, pdf_bytes=pdf_bytes,
                          pdf_filename=pdf_filename, settings=settings)
         results.append({"channel": "mail", "name": mail["recipient"], **res})

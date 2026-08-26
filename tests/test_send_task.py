@@ -58,7 +58,8 @@ def test_perform_send_success_sends_and_caches_sender(monkeypatch):
     _patch_happy(monkeypatch, sent)
     s = _FakeSettings(sender_email="")
     res = perform_send(**_kwargs(settings=s))
-    assert res["results"][0]["ok"] is True
+    assert res["results"] == [
+        {"channel": "mail", "name": "to@example.com", "ok": True}]
     assert sent["to"] == "to@example.com"
     assert sent["bytes"] == b"PDF"
     assert sent["subtype"] == "pdf"
@@ -73,7 +74,8 @@ def test_perform_send_sender_cache_failure_is_swallowed(monkeypatch):
 
     monkeypatch.setattr(st, "fetch_user_email", boom)
     res = perform_send(**_kwargs())
-    assert res["results"][0]["ok"] is True
+    assert res["results"] == [
+        {"channel": "mail", "name": "to@example.com", "ok": True}]
 
 
 def test_perform_send_error_delegates_to_classifier(monkeypatch):
@@ -88,11 +90,11 @@ def test_perform_send_error_delegates_to_classifier(monkeypatch):
     monkeypatch.setattr(st, "classify_mail_error", lambda e: sentinel)
     res = perform_send(**_kwargs())
     # perform_send merged das Klassifikator-Ergebnis in ein neues
-    # {"channel", "name", ...}-Dict — keine Identität mehr, dafür bleiben
-    # dessen Inhalte (die Delegation an classify_mail_error) erhalten.
-    assert res["results"][0]["ok"] is False
-    assert res["results"][0]["kind"] == "error"
-    assert res["results"][0]["tb"] == "TB"
+    # {"channel", "name", ...}-Dict — keine Objekt-Identität mehr, dafür
+    # bleibt der vollständige Inhalt (die Delegation an classify_mail_error)
+    # erhalten und wird hier vollständig geprüft, nicht nur ein Bool.
+    assert res["results"] == [
+        {"channel": "mail", "name": "to@example.com", **sentinel}]
 
 
 def test_perform_send_missing_credentials_delegates_to_classifier(monkeypatch):
@@ -105,5 +107,5 @@ def test_perform_send_missing_credentials_delegates_to_classifier(monkeypatch):
     sentinel = {"ok": False, "kind": "filenotfound", "error": None, "tb": None}
     monkeypatch.setattr(st, "classify_mail_error", lambda e: sentinel)
     res = perform_send(**_kwargs())
-    assert res["results"][0]["ok"] is False
-    assert res["results"][0]["kind"] == "filenotfound"
+    assert res["results"] == [
+        {"channel": "mail", "name": "to@example.com", **sentinel}]
