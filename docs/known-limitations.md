@@ -162,10 +162,13 @@ ohne eines dieser Tools sonst gar keinen bekäme.
 ## Webhooks: Split-Horizon-DNS gilt als öffentliche Adresse
 
 Der Webhook-Versand erlaubt unverschlüsseltes `http://` nur für Adressen im
-lokalen Netz (Loopback, RFC 1918, CGNAT, Link-Local, IPv6-ULA, die Suffixe
-`.local`/`.lan`/`.home.arpa`/`.internal` und Single-Label-Namen). Für alles
-andere ist `https://` Pflicht — sonst gingen Arbeitszeiten und, je nach
-Konfiguration, ein Bearer-Token im Klartext durchs Netz.
+lokalen Netz: private IP-Literale (Loopback, RFC 1918, CGNAT, Link-Local,
+IPv6-ULA), den Hostnamen `localhost` selbst (eigener Sonderfall, geprüft
+**vor** der Suffix- und IP-Prüfung), die Suffixe
+`.local`/`.lan`/`.home.arpa`/`.internal`/`.localhost` sowie sonstige
+Single-Label-Namen. Für alles andere ist `https://` Pflicht — sonst gingen
+Arbeitszeiten und, je nach Konfiguration, ein Bearer-Token im Klartext durchs
+Netz.
 
 Entschieden wird **allein an der Adresse in der URL**, ohne DNS-Auflösung.
 Ein öffentlicher Name, der per Split-Horizon-DNS intern auf eine private
