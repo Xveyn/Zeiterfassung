@@ -81,7 +81,9 @@ Zeiterfassung/
 ├── assets/
 │   └── margenheld-icon    # App-Icon (.png + .ico + .icns)
 ├── docs/                  # Specs/Plans, Known Limitations
-├── build.py               # Plattform-Dispatcher für den PyInstaller-Build
+├── scripts/               # Entwickler-Skripte (nicht Teil der App)
+│   ├── build.py           # Plattform-Dispatcher für den PyInstaller-Build
+│   └── webhook_testserver.py  # lokaler Test-Empfänger für den Webhook-Versand
 ├── installer.iss          # Inno Setup Script (Windows-Installer)
 ├── requirements.txt       # Python-Abhängigkeiten (App-Laufzeit, exakt gepinnt)
 ├── requirements-test.txt  # Test-/CI-Abhängigkeiten (pytest & Co., exakt gepinnt)
@@ -355,10 +357,10 @@ Reservierungen anlegen und den Abgleich über die App-Oberfläche aktivieren; be
 ## Build
 
 ```bash
-python build.py
+python scripts/build.py
 ```
 
-`build.py` erkennt die Plattform via `platform.system()` und baut das passende Artefakt:
+`scripts/build.py` erkennt die Plattform via `platform.system()` und baut das passende Artefakt:
 
 | Plattform | Voraussetzung | Ausgabe |
 |-----------|---------------|---------|
@@ -366,7 +368,7 @@ python build.py
 | macOS | `brew install create-dmg` | `dist/Zeiterfassung-<ver>-<arch>.dmg` |
 | Linux | `apt install libfuse2` + `appimagetool` auf `$PATH` | `dist/Zeiterfassung-<ver>-<arch>.AppImage` |
 
-Fehlt das Pack-Tool, überspringt `build.py` den Pack-Schritt mit Warnung — der PyInstaller-Build läuft trotzdem durch. Die unverpackte Ausgabe liegt dann je nach Plattform als **Ordner** oder Einzeldatei in `dist/`:
+Fehlt das Pack-Tool, überspringt `scripts/build.py` den Pack-Schritt mit Warnung — der PyInstaller-Build läuft trotzdem durch. Die unverpackte Ausgabe liegt dann je nach Plattform als **Ordner** oder Einzeldatei in `dist/`:
 
 | Plattform | PyInstaller-Modus | Unverpackte Ausgabe |
 |-----------|-------------------|---------------------|
@@ -449,4 +451,4 @@ Speicherort je nach Plattform (siehe `src/paths.py`):
 
 Veröffentlicht unter der [MIT-Lizenz](LICENSE) — frei nutz-, änder- und weiterverbreitbar bei Erhalt des Copyright-Hinweises.
 
-Die App bündelt im Installer Drittanbieter-Bibliotheken mit eigenen Lizenzen (u.a. pystray unter LGPL-3.0 sowie die Google-API- und xhtml2pdf-Pakete unter Apache-2.0). Deren Lizenztexte gelten unverändert fort. `build.py` erzeugt dafür beim Bauen automatisch eine `THIRD-PARTY-NOTICES.txt` (via `pip-licenses`) und liefert sie in jedem Artefakt mit — im Windows-Setup und der AppImage neben der Anwendung, unter macOS in `Zeiterfassung.app/Contents/Resources/`.
+Die App bündelt im Installer Drittanbieter-Bibliotheken mit eigenen Lizenzen (u.a. pystray unter LGPL-3.0 sowie die Google-API- und xhtml2pdf-Pakete unter Apache-2.0). Deren Lizenztexte gelten unverändert fort. `scripts/build.py` erzeugt dafür beim Bauen automatisch eine `THIRD-PARTY-NOTICES.txt` (via `pip-licenses`) und liefert sie in jedem Artefakt mit — im Windows-Setup und der AppImage neben der Anwendung, unter macOS in `Zeiterfassung.app/Contents/Resources/`.

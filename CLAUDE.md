@@ -62,7 +62,7 @@ Actions → Workflow **Release** → „Run workflow" mit gesetztem Häkchen
   Selbstheilung. Wer die Reihenfolge künftig bewusst ändert, muss beides
   mitziehen: die Ordnung in `version.parse_release_id` **und** dieses Gate.
 - **Build-Stempel:** `release.yml` reicht den berechneten Tag als
-  `ZEIT_RELEASE_TAG` an die Build-Jobs; `build.py` schreibt ihn als
+  `ZEIT_RELEASE_TAG` an die Build-Jobs; `scripts/build.py` schreibt ihn als
   `RELEASE_TAG` nach `src/build_info.py`. Daraus kennt die App ihre exakte
   Identität (`version.installed_release_id()`) und zeigt im Titel
   `X.Y.Z-pre.N` statt nur `X.Y.Z-pre`. Fehlt der Stempel (Alt-Build, Dev-Modus),
@@ -118,10 +118,10 @@ automatisierter Check.
 ## Build
 
 ```
-python build.py
+python scripts/build.py
 ```
 
-`build.py` ist ein Plattform-Dispatcher und ruft PyInstaller je nach `platform.system()` unterschiedlich auf. Auf allen drei Plattformen sind `--collect-all xhtml2pdf --collect-all reportlab --collect-all holidays` zwingend — ohne sie schlagen PDF-Erzeugung bzw. Feiertags-Lookup im gebauten Artefakt stumm fehl.
+`scripts/build.py` ist ein Plattform-Dispatcher und ruft PyInstaller je nach `platform.system()` unterschiedlich auf. Auf allen drei Plattformen sind `--collect-all xhtml2pdf --collect-all reportlab --collect-all holidays` zwingend — ohne sie schlagen PDF-Erzeugung bzw. Feiertags-Lookup im gebauten Artefakt stumm fehl.
 
 **Windows und macOS bauen `--onedir`, Linux `--onefile`.** Onefile entpackt bei
 jedem Start alle DLLs frisch in einen `_MEIxxxxxx`-Tempordner; dieses Zeitfenster
@@ -138,7 +138,7 @@ weil die AppImage ohnehin selbst mountet (onefile darin wäre Doppelpackung) und
 
 ## Cross-Platform Builds
 
-`build.py` ist plattformabhängig:
+`scripts/build.py` ist plattformabhängig:
 
 | Plattform | Voraussetzung | Ausgabe |
 |-----------|---------------|---------|
@@ -146,7 +146,7 @@ weil die AppImage ohnehin selbst mountet (onefile darin wäre Doppelpackung) und
 | macOS | `brew install create-dmg` | `dist/Zeiterfassung-<ver>-arm64.dmg` (CI baut nur Apple Silicon; Intel-Runner `macos-13` hat de-facto unbrauchbare Queue-Zeiten) |
 | Linux | `apt install libfuse2` + `appimagetool` auf `$PATH` | `dist/Zeiterfassung-<ver>-<arch>.AppImage` |
 
-Fehlt das Pack-Tool lokal, überspringt `build.py` den Pack-Schritt mit Warnung — der PyInstaller-Build läuft trotzdem durch. Das ist für Local-Dev gewollt.
+Fehlt das Pack-Tool lokal, überspringt `scripts/build.py` den Pack-Schritt mit Warnung — der PyInstaller-Build läuft trotzdem durch. Das ist für Local-Dev gewollt.
 
 ## Manueller CI-Build ohne Release (`build.yml`)
 
@@ -162,13 +162,13 @@ Release-Umgebung).
 - **Inputs:** `windows`/`macos`/`linux` als Häkchen (mindestens eins, maximal
   alle; Default nur Windows) + optionaler `ref` (Branch/Tag/SHA; leer = der
   Branch, aus dem der Lauf startet).
-- **Ausgabe = reine App** (kein Installer): `build.py` läuft ohne Inno Setup /
+- **Ausgabe = reine App** (kein Installer): `scripts/build.py` läuft ohne Inno Setup /
   create-dmg / appimagetool, überspringt also den Pack-Schritt und lädt die
   nackte PyInstaller-Ausgabe als **Workflow-Artefakt** hoch — Windows den
   `dist\Zeiterfassung\`-Ordner (onedir: Exe + `_internal\`, von `upload-artifact`
   gezippt), macOS `Zeiterfassung.app` und Linux-Binary als `.tar.gz`
   (tar bewahrt Symlinks/Exec-Bits, die ein Zip zerstören würde). `retention-days: 14`.
-- **Kanal-Stempel:** kein `ZEIT_RELEASE`/`ZEIT_PRERELEASE` → `build.py` stempelt
+- **Kanal-Stempel:** kein `ZEIT_RELEASE`/`ZEIT_PRERELEASE` → `scripts/build.py` stempelt
   `CHANNEL=dev` + Commit-SHA; der In-App-Titel zeigt damit den exakt gebauten Commit.
 - **Abgrenzung zum (Pre-)Release:** `build.yml` erzeugt **keinen** Tag und
   **kein** GitHub-Release. Wer testbare, installierbare Artefakte (Setup.exe/DMG/
@@ -471,4 +471,22 @@ nicht mehr als „offen" führen — der Verweis lautet auf diese Grenze.
   Minimize-to-Tray scheitert (`App._on_close` behandelt das dabei gesendete `WM_CLOSE` nur als
   Fenster-Verstecken, der Prozess läuft weiter und blockiert die .exe-Datei)
 
-Hinweis: Es gibt **keine** `Zeiterfassung.spec`-Datei — Build läuft komplett über `build.py` mit expliziten PyInstaller-Args.
+Hinweis: Es gibt **keine** `Zeiterfassung.spec`-Datei — Build läuft komplett über `scripts/build.py` mit expliziten PyInstaller-Args.
+
+## `scripts/` — Entwickler-Werkzeuge
+
+Alles unter `scripts/` gehört **nicht** zur App: nichts davon wird gebündelt
+oder zur Laufzeit importiert. `scripts` ist bewusst **kein** Package — wer ein
+Skript von außen ansprechen muss (etwa `tests/test_build.py`), lädt es über
+seinen Pfad, nicht per Import.
+
+- `scripts/build.py` — der Build-Dispatcher (s.o.). Er gehört inhaltlich zum
+  Repo-Root: importiert aus `src/`, arbeitet mit Pfaden relativ zur Wurzel
+  (`dist/`, `assets/`, `installer.iss`, `src/build_info.py`). Ein Bootstrap am
+  Dateianfang legt deshalb das Root auf `sys.path` und wechselt dorthin —
+  ohne ihn scheitert schon `from src.version import VERSION`. Wer weitere
+  Skripte mit Root-Bezug hinzufügt, braucht denselben Bootstrap.
+- `scripts/webhook_testserver.py` — lokaler Test-Empfänger für den
+  Webhook-Versand: zeigt Content-Type, Auth-Header, HMAC-Prüfung und den Body
+  (JSON/PDF/multipart aufgetrennt), und kann Fehlerfälle simulieren
+  (`--status`, `--redirect`). Reine stdlib.
