@@ -28,13 +28,28 @@ class WebhooksTab:
         self._store = store
         self._runner = runner
 
+        # Verteilt überschüssige Breite an die Spalte, statt sie rechts liegen
+        # zu lassen: das Notebook ist so breit wie sein breitester Tab (App),
+        # dieser hier braucht weniger. Ohne das endete die Liste mitten im Tab
+        # und der Rest bliebe totes Feld. Auf die angeforderte Breite hat
+        # `weight` keinen Einfluss — nur auf den Überschuss.
+        frame.columnconfigure(0, weight=1)
+
+        # wraplength ist Pflicht, nicht Kosmetik: ohne sie wird das Label so
+        # breit wie seine längste Zeile und zieht den GANZEN Einstellungen-
+        # Dialog mit — das Notebook ist so breit wie sein breitester Tab.
+        # 380 ist der im Projekt übliche Wert (send_dialog, conflicts_dialog,
+        # die themed Message-Dialoge) und hält diesen Tab auf allen
+        # ui_scale-Stufen unter dem App-Tab, der die Dialogbreite bestimmt.
+        # Nachgemessen bei 0.75/1.0/1.25/1.5/2.0.
         tk.Label(
             frame,
             text=("Der Bericht kann zusätzlich zur E-Mail an HTTP-Endpunkte "
-                  "gesendet werden.\nWebhooks gelten nur auf diesem Gerät und "
+                  "gesendet werden. Webhooks gelten nur auf diesem Gerät und "
                   "werden sofort gespeichert — unabhängig vom „Abbrechen“ "
                   "dieses Einstellungen-Dialogs."),
             font=FONT_SMALL, bg=BG, fg=TEXT_MUTED, justify="left",
+            wraplength=380,
         ).grid(row=0, column=0, padx=10, pady=(10, 6), sticky="w")
 
         # Dieselbe Palette wie die Listbox im ConflictsDialog (ENTRY_BG wie
@@ -42,8 +57,12 @@ class WebhooksTab:
         # ebenfalls identisch). Zwei Listboxen mit unterschiedlichem Styling
         # wären ein dialogspezifisches Stil-Extra — CLAUDE.md verbietet das
         # ohne Rücksprache.
+        # width in Zeichen: bestimmt die MINDEST-Breite der Spalte. 48 zog den
+        # Dialog deutlich über die übrigen Tabs hinaus; 30 bleibt darunter,
+        # und `sticky="we"` lässt die Liste trotzdem die volle Tab-Breite
+        # einnehmen, die der Hinweistext vorgibt.
         self._listbox = tk.Listbox(
-            frame, height=8, width=48, font=FONT,
+            frame, height=8, width=30, font=FONT,
             bg=ENTRY_BG, fg=TEXT, selectbackground=ACCENT,
             selectforeground="#ffffff", relief="flat",
             highlightthickness=0, activestyle="none",
