@@ -369,6 +369,14 @@ def deliver(record, *, json_bytes, pdf_bytes, pdf_filename, boundary=None):
     schon tut: eine von Hand editierte webhooks.json soll die https-Pflicht
     nicht umgehen können.
     """
+    # Dieselbe Bedrohung wie bei der URL-Nachprüfung: eine von Hand editierte
+    # Datei kann jeden Typ enthalten. Ein Nicht-Dict würde unten schon am
+    # ersten .get() scheitern.
+    if not isinstance(record, dict):
+        return {"ok": False, "kind": "config",
+                "detail": "Der Webhook-Datensatz ist kein Objekt.",
+                "error": None, "tb": None}
+
     try:
         ok, msg = validate_url(record.get("url", ""))
         if not ok:
@@ -382,7 +390,14 @@ def deliver(record, *, json_bytes, pdf_bytes, pdf_filename, boundary=None):
 
         headers = {"Content-Type": content_type}
         headers.update(auth_headers(record.get("auth"), body))
-    except ValueError as e:
+    except (ValueError, TypeError, AttributeError, KeyError) as e:
+        # Nicht nur ValueError: die Felder des Datensatzes können jeden Typ
+        # tragen, wenn jemand webhooks.json von Hand editiert hat. Eine Zahl
+        # in `url` wirft AttributeError in validate_url (`.strip()`), ein
+        # String in `auth` ebenso in auth_headers (`.get()`), eine Zahl im
+        # Header-Namen einen TypeError in der Steuerzeichen-Prüfung. Alle drei
+        # sind derselbe Fall — unbrauchbare Konfiguration — und keiner davon
+        # darf den „wirft nie"-Vertrag brechen.
         return {"ok": False, "kind": "config", "detail": str(e),
                 "error": e, "tb": None}
 

@@ -542,6 +542,31 @@ def test_deliver_rejects_bad_auth_config_as_config_error(monkeypatch):
     assert res["kind"] == "config"
 
 
+@pytest.mark.parametrize("record,label", [
+    (None, "record ist None"),
+    ([], "record ist Liste"),
+    ({"url": 12345, "auth": {"mode": "none"}}, "url ist Zahl"),
+    ({"url": "https://a.example/h", "auth": "oops"}, "auth ist String"),
+    ({"url": "https://a.example/h",
+      "auth": {"mode": "header", "header": 123, "value": "x"}},
+     "Header-Name ist Zahl"),
+])
+def test_deliver_survives_malformed_records(monkeypatch, record, label):
+    """Der „wirft nie"-Vertrag gilt auch für Müll-Typen.
+
+    Genau die Bedrohung, die schon die URL-Nachprüfung begründet: eine von
+    Hand editierte webhooks.json kann in jedem Feld jeden Typ tragen. Ohne
+    diese Absicherung entkäme ein AttributeError/TypeError aus dem
+    Worker-Thread, `on_done` käme nie, und der Sende-Dialog bliebe dauerhaft
+    auf „Sende…" stehen.
+    """
+    monkeypatch.setattr(wh, "post", lambda *a, **k: 200)
+    res = deliver(record, json_bytes=b"{}", pdf_bytes=None,
+                  pdf_filename="r.pdf")
+    assert res["ok"] is False, label
+    assert res["kind"] == "config", label
+
+
 def test_deliver_signs_the_exact_body_sent(monkeypatch):
     seen = {}
     monkeypatch.setattr(
