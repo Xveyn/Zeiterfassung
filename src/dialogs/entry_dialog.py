@@ -132,6 +132,53 @@ def reservation_block_visible(day, today, *, has_reservation=False):
     return day >= today
 
 
+def reminder_block_visible(settings, show_reservation):
+    """Ob der Erinnerungs-Block im Tages-Dialog erscheint: nur wenn die
+    Sende-Erinnerung überhaupt an ist, die Kopplung an Reservierungen aktiviert
+    wurde und der Reservierungs-Block selbst sichtbar ist (der liefert die
+    Slots, an denen die Erinnerung hängt)."""
+    return bool(
+        show_reservation
+        and settings.get("send_reminder_enabled")
+        and settings.get("send_reminder_reservations_enabled")
+    )
+
+
+def reminder_slot_labels(rows):
+    """Anzeige-Labels der Reservierungs-Zeilen fürs Slot-Dropdown.
+
+    `rows`: Liste von {start, end, kategorie}. Die führende Nummer hält die
+    Labels eindeutig — zwei Zeilen dürfen dieselbe Zeit und Kategorie haben,
+    und der Dialog liest die Auswahl über den Listen-Index zurück.
+    """
+    out = []
+    for i, row in enumerate(rows):
+        kategorie = (row.get("kategorie") or "").strip()
+        label = f"{i + 1}. {row.get('start')}–{row.get('end')}"
+        out.append(f"{label}  {kategorie}" if kategorie else label)
+    return out
+
+
+def apply_reminder_to_slots(res_slots, slot_index, minutes, enabled):
+    """Setzt `send_reminder_minutes` am gewählten Slot und None an allen
+    anderen — die Invariante „höchstens ein markierter Slot pro Tag".
+
+    Mutiert `res_slots` in-place. enabled=False, ein Index außerhalb der Liste
+    oder ungültige Minuten → alle Slots None.
+    """
+    valid = (
+        enabled
+        and isinstance(slot_index, int)
+        and not isinstance(slot_index, bool)
+        and 0 <= slot_index < len(res_slots)
+        and isinstance(minutes, int)
+        and not isinstance(minutes, bool)
+        and 0 <= minutes <= 120
+    )
+    for i, slot in enumerate(res_slots):
+        slot["send_reminder_minutes"] = minutes if valid and i == slot_index else None
+
+
 def open_entry_dialog(parent, date_str, storage, settings, on_change,
                       reservation_store=None, trigger_reconcile=None):
     """Modaler Dialog zum Bearbeiten von Ist-Zeit und Reservierung eines Tages.

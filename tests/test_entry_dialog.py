@@ -192,3 +192,75 @@ class TestPlanEntrySave:
     def test_error_message_unprefixed_when_no_reservation_block(self):
         result = plan_entry_save([INVALID_SLOT], [], show_reservation=False)
         assert result["error"] == "Endzeit muss nach Startzeit liegen"
+
+
+def _rslot(start, end, minutes=None):
+    return {"start": start, "end": end, "kategorie": "",
+            "send_reminder_minutes": minutes}
+
+
+def test_apply_reminder_marks_only_the_chosen_slot():
+    from src.dialogs.entry_dialog import apply_reminder_to_slots
+
+    slots = [_rslot("08:00", "12:00", 30), _rslot("13:00", "17:00")]
+    apply_reminder_to_slots(slots, 1, 15, True)
+    assert [s["send_reminder_minutes"] for s in slots] == [None, 15]
+
+
+def test_apply_reminder_disabled_clears_all():
+    from src.dialogs.entry_dialog import apply_reminder_to_slots
+
+    slots = [_rslot("08:00", "12:00", 30), _rslot("13:00", "17:00")]
+    apply_reminder_to_slots(slots, 0, 15, False)
+    assert [s["send_reminder_minutes"] for s in slots] == [None, None]
+
+
+def test_apply_reminder_invalid_index_clears_all():
+    from src.dialogs.entry_dialog import apply_reminder_to_slots
+
+    slots = [_rslot("08:00", "12:00", 30)]
+    apply_reminder_to_slots(slots, 5, 15, True)
+    assert slots[0]["send_reminder_minutes"] is None
+    apply_reminder_to_slots(slots, None, 15, True)
+    assert slots[0]["send_reminder_minutes"] is None
+
+
+def test_apply_reminder_invalid_minutes_clears_all():
+    from src.dialogs.entry_dialog import apply_reminder_to_slots
+
+    slots = [_rslot("08:00", "12:00")]
+    apply_reminder_to_slots(slots, 0, None, True)
+    assert slots[0]["send_reminder_minutes"] is None
+
+
+def test_reminder_block_visible_needs_both_settings_and_reservation_block():
+    from src.dialogs.entry_dialog import reminder_block_visible
+
+    class _S:
+        def __init__(self, **kw):
+            self._d = kw
+
+        def get(self, key):
+            return self._d.get(key)
+
+    on = _S(send_reminder_enabled=True, send_reminder_reservations_enabled=True)
+    assert reminder_block_visible(on, True) is True
+    assert reminder_block_visible(on, False) is False
+    assert reminder_block_visible(
+        _S(send_reminder_enabled=False,
+           send_reminder_reservations_enabled=True), True) is False
+    assert reminder_block_visible(
+        _S(send_reminder_enabled=True,
+           send_reminder_reservations_enabled=False), True) is False
+
+
+def test_reminder_slot_labels_are_unique_and_ordered():
+    from src.dialogs.entry_dialog import reminder_slot_labels
+
+    rows = [{"start": "08:00", "end": "12:00", "kategorie": "Office"},
+            {"start": "08:00", "end": "12:00", "kategorie": "Office"},
+            {"start": "13:00", "end": "17:00", "kategorie": ""}]
+    labels = reminder_slot_labels(rows)
+    assert labels == ["1. 08:00–12:00  Office", "2. 08:00–12:00  Office",
+                      "3. 13:00–17:00"]
+    assert len(set(labels)) == 3
