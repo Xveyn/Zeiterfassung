@@ -213,6 +213,34 @@ def test_payload_slots_use_share_v3_shape():
     assert set(slot) == {"start", "end", "pause", "kategorie"}
 
 
+def test_payload_strips_unknown_slot_fields():
+    """Der Test oben allein wäre tautologisch: `ist_slot()` erzeugt genau die
+    vier Felder, die er prüft. Erst ein Slot MIT Fremdfeld beweist, dass
+    projiziert wird — und dieser Fall ist real, weil Storage._load Slots
+    nicht normalisiert (nur der Schreibpfad tut das)."""
+    entries = {"2026-07-01": {"slots": [
+        {"start": "08:00", "end": "16:00", "pause": 30, "kategorie": "A",
+         "gcal_event_id": "geheim", "interner_kram": 42},
+    ]}}
+    doc = _payload(entries=entries)
+    assert set(doc["entries"]["2026-07-01"]["slots"][0]) == {
+        "start", "end", "pause", "kategorie"}
+
+
+def test_payload_fills_missing_slot_fields_like_storage_does():
+    """Fehlende Felder bekommen dieselben Defaults wie in
+    storage._normalize_slot (pause 0, kategorie ""). Ein None in `pause`
+    würde total_minutes über calculate_hours in einen TypeError laufen
+    lassen — der Empfänger bekommt so ein formstabiles Dokument."""
+    entries = {"2026-07-01": {"slots": [{"start": "08:00", "end": "16:00"}]}}
+    doc = _payload(entries=entries)
+    slot = doc["entries"]["2026-07-01"]["slots"][0]
+    assert set(slot) == {"start", "end", "pause", "kategorie"}
+    assert slot["pause"] == 0
+    assert slot["kategorie"] == ""
+    assert doc["total_minutes"] == 480
+
+
 def test_payload_categories_none_when_unfiltered():
     assert _payload()["categories"] is None
 
@@ -230,7 +258,7 @@ def test_payload_empty_period_yields_empty_entries():
     assert doc["total_minutes"] == 0
 
 
-def test_total_minutes_sums_minutes_not_decimal_hours():
+def test_total_minutes_sums_glatte_werte():
     """CLAUDE.md: angezeigte Summen laufen über hours_to_minutes, nie über
     Dezimalstunden. 08:00-16:00 abzgl. 30 min = 450, 09:00-12:15 = 195."""
     entries = {
@@ -238,6 +266,27 @@ def test_total_minutes_sums_minutes_not_decimal_hours():
         "2026-07-02": {"slots": [_slot("09:00", "12:15")]},
     }
     assert total_minutes(entries) == 645
+
+
+def test_total_minutes_rundet_je_slot_nicht_erst_am_ende():
+    """Der eigentliche Beweis der Minuten-Regel aus CLAUDE.md.
+
+    Fünf Slots à 7 min: `calculate_hours` rundet jeden auf 0,12 h (7 min sind
+    0,1166… h). Je Slot auf Minuten gerundet und dann summiert ergibt 5 × 7 =
+    35. Erst die Dezimalstunden zu summieren (5 × 0,12 = 0,60 h) und dann zu
+    runden ergäbe 36 — eine Minute zu viel.
+
+    Mit glatten Werten wie 7,5 h liefern beide Reihenfolgen dasselbe; ein Test
+    nur damit wäre grün, auch wenn die Summierung falsch herum liefe.
+    """
+    entries = {
+        "2026-07-01": {"slots": [
+            _slot("08:00", "08:07"), _slot("09:00", "09:07"),
+            _slot("10:00", "10:07"), _slot("11:00", "11:07"),
+            _slot("12:00", "12:07"),
+        ]},
+    }
+    assert total_minutes(entries) == 35
 
 
 def test_body_json_only():
