@@ -89,12 +89,21 @@ die Asset-URL, ersatzweise auf `release.html_url`; installiert wird manuell
 **Melder**. Das heißt: die Migration kann nicht stillschweigend passieren, aber
 sie ist technisch simpel — es muss nur die *Meldung* beim Nutzer ankommen.
 
-- [ ] **Schritt 1 — Brücken-Release im ALTEN Repo.** Ein normales Release mit
-      genau einer funktionalen Änderung: `updater.REPO` zeigt auf
-      `Xveyn/Zeiterfassung`. Gebaut und veröffentlicht wird es noch im alten
-      Repo, die Assets liegen also dort. Regulärer Prozess: `src/version.py`
-      bumpen, CHANGELOG-Eintrag („Projekt umgezogen"), `release:patch`-Label,
+- [ ] **Schritt 1 — Brücken-Release im ALTEN Repo: `1.21.0`.** Gebaut und
+      veröffentlicht wird es noch hier, die Assets liegen also im alten Repo.
+      Es trägt zwei Dinge zugleich: die seit `1.20.0` aufgelaufenen Features
+      (u.a. den Webhook-Versand) **und** die Umstellung von `updater.REPO` auf
+      `Xveyn/Zeiterfassung`. Regulärer Prozess: `src/version.py` auf `1.21.0`,
+      CHANGELOG-Eintrag mit eigenem Absatz zum Umzug, `release:minor`-Label,
       mergen.
+
+      **Entschieden: die Brücke fährt mit, statt ein eigenes Patch-Release zu
+      bekommen.** Ein separates Release wäre sauberer trennbar, kostet aber
+      einen zweiten Durchlauf durch den ganzen Prozess (drei Plattform-Builds,
+      Tag, Assets) für eine einzige geänderte Konstante — und die Nutzer
+      müssten zweimal aktualisieren, statt einmal. Der Umzug bleibt trotzdem
+      sichtbar: er steht im CHANGELOG, in den Release-Notes und im
+      README-Banner.
 - [ ] **Schritt 2 — verteilen lassen.** Nutzer sehen die Meldung im
       Updates-Tab/Banner, laden aus dem alten Repo, installieren. Ab dann fragt
       ihre App das neue Repo.
@@ -106,7 +115,15 @@ sie ist technisch simpel — es muss nur die *Meldung* beim Nutzer ankommen.
 Daher:
 
 - [ ] Altes Repo **nicht löschen, nicht umbenennen**, Brücken-Release stehen
-      lassen. README und Repo-Description dort auf „umgezogen nach …" ändern.
+      lassen. Der README-Banner dazu liegt bereits im Fork-Promotion-PR; die
+      **Repo-Description** in den GitHub-Settings ist separat nachzuziehen (sie
+      steht in keiner Datei).
+- [ ] **Banner im neuen Repo** — aus der Gegenrichtung formuliert: dass das
+      Projekt bis `1.21.0` unter `margenheld/Zeiterfassung` lag und hier
+      fortgeführt wird, mit Verweis auf die dortigen Alt-Releases und die
+      Issue-Historie. Anders als der Banner im alten Repo darf dieser später
+      wieder verschwinden — der alte muss dauerhaft stehen bleiben, er ist die
+      Landekarte für alte Links.
 - [ ] **Archivieren erst ganz am Ende** — ein archiviertes Repo ist read-only,
       danach lässt sich dort kein weiteres Hinweis-Release mehr nachschieben.
 - [ ] Erwartungsmanagement: `should_check` throttelt den Update-Check (Default
