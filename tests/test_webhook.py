@@ -327,3 +327,134 @@ def test_body_requires_at_least_one_payload():
 
 def test_payload_serializes_to_json():
     json.dumps(_payload())  # wirft nicht
+
+
+import io
+import socket
+import urllib.error
+import urllib.request
+
+import src.webhook as wh
+from src.webhook import classify_error, post
+
+
+class _Resp(io.BytesIO):
+    def __init__(self, status=200, body=b"ok"):
+        super().__init__(body)
+        self.status = status
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+
+def test_post_sends_headers_and_body(monkeypatch):
+    seen = {}
+
+    def fake_open(self, req, timeout=None):
+        seen["url"] = req.full_url
+        seen["data"] = req.data
+        seen["ct"] = req.get_header("Content-type")
+        seen["auth"] = req.get_header("Authorization")
+        seen["timeout"] = timeout
+        return _Resp(202)
+
+    monkeypatch.setattr(urllib.request.OpenerDirector, "open", fake_open)
+    status = post("https://example.com/hook",
+                  {"Content-Type": "application/json", "Authorization": "Bearer x"},
+                  b"{}")
+    assert status == 202
+    assert seen["url"] == "https://example.com/hook"
+    assert seen["data"] == b"{}"
+    assert seen["auth"] == "Bearer x"
+    assert seen["timeout"] == 30
+
+
+@pytest.mark.parametrize("code", [301, 302, 303, 307, 308])
+def test_no_redirect_is_ever_followed(code):
+    """Jeder Redirect endet als HTTPError. Würde urllib folgen, ginge bei
+    301/302/303 der POST-Body verloren (die Anfrage wird zu einem GET) und
+    der Auth-Header an einen womöglich fremden Host mit."""
+    handler = wh._NoRedirectHandler()
+    req = urllib.request.Request("https://a.example/hook", data=b"{}")
+    with pytest.raises(urllib.error.HTTPError):
+        handler.redirect_request(
+            req, io.BytesIO(b""), code, "Moved", {}, "https://b.example/hook")
+
+
+def test_redirect_is_blocked_even_to_the_same_host():
+    """Auch ein harmloser trailing-slash-Redirect zählt — sonst verschwände
+    der Body und die App meldete trotzdem Erfolg."""
+    handler = wh._NoRedirectHandler()
+    req = urllib.request.Request("https://a.example/hook", data=b"{}")
+    with pytest.raises(urllib.error.HTTPError):
+        handler.redirect_request(
+            req, io.BytesIO(b""), 301, "Moved", {}, "https://a.example/hook/")
+
+
+def test_opener_has_no_default_redirect_handler():
+    """Gegenprobe auf der echten Opener-Kette: der Default-Handler von urllib
+    darf nicht mehr drinhängen, sonst greift unser Ersatz gar nicht."""
+    opener = wh._build_opener()
+    handlers = [type(h).__name__ for h in opener.handlers]
+    assert "HTTPRedirectHandler" not in handlers
+    assert "_NoRedirectHandler" in handlers
+
+
+@pytest.mark.parametrize("code", [301, 302, 303, 307, 308])
+def test_classify_redirect_asks_for_the_final_url(code):
+    res = classify_error(_http_error(code))
+    assert res["kind"] == "redirect"
+    assert res["tb"] is None
+
+
+def _http_error(code, body=b""):
+    return urllib.error.HTTPError(
+        "https://example.com/hook", code, "Err", {}, io.BytesIO(body))
+
+
+@pytest.mark.parametrize("code,kind", [
+    (401, "auth"), (403, "auth"), (404, "notfound"),
+    (400, "client"), (422, "client"),
+    (500, "server"), (503, "server"),
+])
+def test_classify_http_status_codes(code, kind):
+    res = classify_error(_http_error(code))
+    assert res["ok"] is False
+    assert res["kind"] == kind
+    assert str(code) in res["detail"]
+
+
+def test_http_error_is_a_server_answer_not_an_unexpected_crash():
+    """Ohne den HTTPError-Zweig fiele ein 500 in den generischen Ast und käme
+    mit Traceback als „unerwarteter Fehler" beim Nutzer an."""
+    res = classify_error(_http_error(500))
+    assert res["kind"] == "server"
+    assert res["tb"] is None
+
+
+def test_classify_server_error_includes_truncated_body():
+    res = classify_error(_http_error(500, b"x" * 2000))
+    assert "xxx" in res["detail"]
+    assert len(res["detail"]) < 700
+
+
+def test_classify_urlerror_is_offline():
+    res = classify_error(urllib.error.URLError(socket.gaierror("no dns")))
+    assert res["kind"] == "offline"
+    assert res["tb"] is None
+
+
+def test_classify_timeout_is_offline():
+    assert classify_error(TimeoutError("timed out"))["kind"] == "offline"
+
+
+def test_classify_unexpected_error_carries_traceback():
+    try:
+        raise RuntimeError("boom")
+    except RuntimeError as e:
+        res = classify_error(e)
+    assert res["kind"] == "error"
+    assert "RuntimeError" in res["tb"]

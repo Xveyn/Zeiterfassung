@@ -8,10 +8,15 @@ getestet wird Logik, nicht UI).
 import hashlib
 import hmac
 import ipaddress
+import traceback
+import urllib.error
+import urllib.request
 from urllib.parse import unquote, urlsplit
 
+from src.mail import is_offline_error
 from src.report import filter_categories, filter_period
 from src.time_utils import calculate_hours, hours_to_minutes, utc_now_iso
+from src.version import VERSION
 
 # Explizit ausgeschriebene Netzliste statt ip_address(...).is_private:
 # CPython hat die Einordnung von 100.64.0.0/10 (RFC 6598, CGNAT) zwischen
@@ -251,3 +256,99 @@ def build_body(*, json_bytes, pdf_bytes, pdf_filename, boundary):
         f"--{boundary}--\r\n".encode("latin-1"),
     ]
     return f'multipart/form-data; boundary="{boundary}"', b"".join(parts)
+
+
+REQUEST_TIMEOUT_S = 30
+_MAX_RESPONSE_BYTES = 8192
+_MAX_DETAIL_CHARS = 500
+
+USER_AGENT = f"Zeiterfassung/{VERSION}"
+
+
+class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """Folgt keinem Redirect — jedes 3xx wird zum HTTPError.
+
+    urllib würde bei 301/302/303 auf einen POST eine GET-Anfrage OHNE Body
+    bauen (`redirect_request` erzeugt `Request(newurl, method="GET", …)` ohne
+    `data`, Content-Type/-Length sind herausgefiltert). Der Bericht käme nie
+    an, der Endpunkt antwortete 200 — die App meldete Erfolg. Dazu reisen alle
+    übrigen Header hostunabhängig mit, `Authorization` inklusive.
+
+    Ein Webhook-Ziel ist feste Konfiguration: die endgültige Adresse gehört in
+    die Einstellungen, nicht in eine Weiterleitungskette.
+
+    Da diese Klasse von HTTPRedirectHandler erbt, ersetzt `build_opener` den
+    Default-Handler durch sie (statt beide einzuhängen).
+    """
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        raise urllib.error.HTTPError(
+            req.full_url, code,
+            "Der Endpunkt hat weitergeleitet — bitte die endgültige Adresse "
+            "eintragen.",
+            headers, fp)
+
+
+def _build_opener():
+    return urllib.request.build_opener(_NoRedirectHandler())
+
+
+def post(url, headers, body, timeout=REQUEST_TIMEOUT_S):
+    """POST an `url`. Liefert den HTTP-Status; wirft bei Fehlern.
+
+    `timeout` ist urllibs Socket-Timeout je Operation, kein Gesamt-Timeout:
+    ein tröpfelnder Server hält den Worker beliebig lange. Hinnehmbar, weil
+    der Aufruf im Worker-Thread liegt.
+    """
+    req = urllib.request.Request(url, data=body, method="POST")
+    for name, value in headers.items():
+        req.add_header(name, value)
+    req.add_header("User-Agent", USER_AGENT)
+    with _build_opener().open(req, timeout=timeout) as resp:
+        resp.read(_MAX_RESPONSE_BYTES)
+        return getattr(resp, "status", None) or resp.getcode()
+
+
+def _response_snippet(exc):
+    try:
+        raw = exc.read(_MAX_RESPONSE_BYTES)
+    except Exception:
+        return ""
+    text = raw.decode("utf-8", "replace").strip()
+    return text[:_MAX_DETAIL_CHARS]
+
+
+def classify_error(exc):
+    """Mappt eine Versand-Exception auf ein Fehler-Result-Dict.
+
+    HTTPError wird ZUERST geprüft — sonst fiele jede HTTP-Fehlerantwort in den
+    generischen Zweig und käme als unerwarteter Fehler MIT Traceback beim
+    Nutzer an, statt als „Der Server hat mit 500 geantwortet". (Nicht, weil
+    is_offline_error sie schlucken würde: das vergleicht Typnamen, und
+    "HTTPError" steht nicht in _OFFLINE_EXC_NAMES — nachgemessen.)
+    """
+    if isinstance(exc, urllib.error.HTTPError):
+        code = exc.code
+        if 300 <= code < 400:
+            # Kann nur von _NoRedirectHandler kommen; 307/308 wirft urllib bei
+            # POST ohnehin selbst. Der Body wäre bei einem gefolgten Redirect
+            # verloren gegangen — deshalb eigener kind statt "server".
+            return {"ok": False, "kind": "redirect",
+                    "detail": f"HTTP {code}", "error": exc, "tb": None}
+        snippet = _response_snippet(exc)
+        detail = f"HTTP {code}" + (f": {snippet}" if snippet else "")
+        if code in (401, 403):
+            kind = "auth"
+        elif code == 404:
+            kind = "notfound"
+        elif 400 <= code < 500:
+            kind = "client"
+        else:
+            kind = "server"
+        return {"ok": False, "kind": kind, "detail": detail,
+                "error": exc, "tb": None}
+    if is_offline_error(exc):
+        return {"ok": False, "kind": "offline", "detail": "",
+                "error": exc, "tb": None}
+    return {"ok": False, "kind": "error", "detail": str(exc),
+            "error": exc, "tb": traceback.format_exc()}
