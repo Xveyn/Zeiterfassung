@@ -248,6 +248,13 @@ Damit Umlaute/ß nicht als Mojibake ankommen, gelten drei Pflichten:
 - `MIMEText(html, "html", _charset="utf-8")`
 - Betreff: `Header(subject, "utf-8")`
 
+Diese drei Pflichten gelten nur für den Mail-Kanal — Webhooks transportieren
+das Berichts-JSON/PDF direkt, ohne HTML-Body. Beide Kanäle laufen über
+denselben Dispatcher: `src/dialogs/send_task.py::perform_send` feuert Mail
+und beliebig viele Webhooks unabhängig voneinander und liefert je Kanal ein
+Result-Dict zurück, statt zu werfen (siehe `src/CLAUDE.md`, Abschnitt
+„Threading-Modell").
+
 ## Datumsformat: intern ISO, in der UI deutsch
 
 Gespeichert und intern verarbeitet wird **immer ISO** (`YYYY-MM-DD`,
@@ -407,6 +414,19 @@ nicht mehr als „offen" führen — der Verweis lautet auf diese Grenze.
 - `src/sync_history.py` — persistenter „hat je gesynct/abgeglichen"-Marker (`sync_history.json`, write-once, stdlib-only); vetoed den N6-Startup-Sweep gegen einen settings.json-Reset (M4), damit ein gesyncter Rechner nicht fälschlich seine Tombstones verliert (Resurrection)
 - `src/conflicts_store.py` — lokale JSON-Persistenz der Sync-Konfliktliste
 - `src/share.py` — Export/Import von Arbeitszeiten als Share-JSON (Teilen per Mail-Anhang)
+- `src/webhook.py` — pure Logik des Webhook-Versands (Tk-frei, stdlib-only):
+  URL-Regel (https außerhalb des lokalen Netzes), Auth-Header, HMAC-Signatur,
+  JSON-Dokument (`kind: zeiterfassung-report`, Slot-Shape wie Share v3),
+  Request-Body (JSON / PDF / multipart), POST (folgt **keinem** Redirect) und
+  eigener Fehlerklassifikation. **Eigener** Klassifikator statt
+  `mail_task.classify_mail_error`: der kennt nur `filenotfound`/`offline`/
+  `error`, während der Webhook-Pfad `auth`/`notfound`/`redirect`/`client`/
+  `server` unterscheiden muss. Ohne den HTTPError-Zweig käme jede
+  HTTP-Fehlerantwort als *unerwarteter Fehler mit Traceback* beim Nutzer an
+  statt als „Der Server hat mit 500 geantwortet".
+- `src/webhook_store.py` — gerätelokaler Store der Webhook-Konfiguration
+  (`webhooks.json`). Enthält Konfiguration **und** Secrets und wird deshalb wie
+  `token.json` gehärtet geschrieben; reist bewusst **nicht** per Drive-Sync.
 - `src/reservations.py` — Reservierungen (zukünftige Soll-Zeiten, eigenes Konzept
   neben Ist-Zeiten). Slot-Schema `{start, end, kategorie, gcal_event_id,
   send_reminder_minutes}`; `send_reminder_minutes` markiert den Slot, an dem die

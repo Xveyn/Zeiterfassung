@@ -83,10 +83,12 @@ class ConflictsDialog:
         else:
             left = self.top
 
-        # Einzige Listbox der App: dunkel über die Palette (ENTRY_BG wie
-        # Eingabefelder, ACCENT-Selektion), flach ohne Fokusrahmen. Bleibt im
-        # gefilterten Fall ungepackt (unsichtbar) — _refresh_list/_on_select
-        # arbeiten unverändert auf ihr weiter, nur ohne UI dafür.
+        # Eine von zwei Listboxen der App (die andere: der Webhooks-Tab in
+        # den Einstellungen, `tab_webhooks.py`) — beide dunkel über dieselbe
+        # Palette (ENTRY_BG wie Eingabefelder, ACCENT-Selektion), flach ohne
+        # Fokusrahmen. Bleibt im gefilterten Fall ungepackt (unsichtbar) —
+        # _refresh_list/_on_select arbeiten unverändert auf ihr weiter, nur
+        # ohne UI dafür.
         self.listbox = tk.Listbox(
             left, width=40, height=15, font=FONT,
             bg=ENTRY_BG, fg=TEXT,

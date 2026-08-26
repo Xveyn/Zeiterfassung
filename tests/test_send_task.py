@@ -17,14 +17,22 @@ class _FakeSettings:
         self._d[k] = v
 
 
+def _mail(**over):
+    base = dict(
+        credentials_path="c.json", token_path="t.json",
+        recipient="to@example.com", subject="Subj", html="<p>x</p>",
+        sync_enabled=False, gcal_enabled=False,
+    )
+    base.update(over)
+    return base
+
+
 def _kwargs(**over):
     base = dict(
         date_from=None, date_to=None, entries={}, name="N",
         categories=None, category_breakdown=False,
-        credentials_path="c.json", token_path="t.json",
-        recipient="to@example.com", subject="Subj", html="<p>x</p>",
-        pdf_filename="r.pdf",
-        sync_enabled=False, gcal_enabled=False, settings=_FakeSettings(),
+        send_mail=True, mail=_mail(), webhooks=[],
+        pdf_filename="r.pdf", settings=_FakeSettings(),
     )
     base.update(over)
     return base
@@ -50,7 +58,8 @@ def test_perform_send_success_sends_and_caches_sender(monkeypatch):
     _patch_happy(monkeypatch, sent)
     s = _FakeSettings(sender_email="")
     res = perform_send(**_kwargs(settings=s))
-    assert res == {"ok": True}
+    assert res["results"] == [
+        {"channel": "mail", "name": "to@example.com", "ok": True}]
     assert sent["to"] == "to@example.com"
     assert sent["bytes"] == b"PDF"
     assert sent["subtype"] == "pdf"
@@ -65,7 +74,8 @@ def test_perform_send_sender_cache_failure_is_swallowed(monkeypatch):
 
     monkeypatch.setattr(st, "fetch_user_email", boom)
     res = perform_send(**_kwargs())
-    assert res == {"ok": True}
+    assert res["results"] == [
+        {"channel": "mail", "name": "to@example.com", "ok": True}]
 
 
 def test_perform_send_error_delegates_to_classifier(monkeypatch):
@@ -79,7 +89,12 @@ def test_perform_send_error_delegates_to_classifier(monkeypatch):
     sentinel = {"ok": False, "kind": "error", "error": None, "tb": "TB"}
     monkeypatch.setattr(st, "classify_mail_error", lambda e: sentinel)
     res = perform_send(**_kwargs())
-    assert res is sentinel
+    # perform_send merged das Klassifikator-Ergebnis in ein neues
+    # {"channel", "name", ...}-Dict — keine Objekt-Identität mehr, dafür
+    # bleibt der vollständige Inhalt (die Delegation an classify_mail_error)
+    # erhalten und wird hier vollständig geprüft, nicht nur ein Bool.
+    assert res["results"] == [
+        {"channel": "mail", "name": "to@example.com", **sentinel}]
 
 
 def test_perform_send_missing_credentials_delegates_to_classifier(monkeypatch):
@@ -92,4 +107,5 @@ def test_perform_send_missing_credentials_delegates_to_classifier(monkeypatch):
     sentinel = {"ok": False, "kind": "filenotfound", "error": None, "tb": None}
     monkeypatch.setattr(st, "classify_mail_error", lambda e: sentinel)
     res = perform_send(**_kwargs())
-    assert res is sentinel
+    assert res["results"] == [
+        {"channel": "mail", "name": "to@example.com", **sentinel}]

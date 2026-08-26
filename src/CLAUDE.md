@@ -117,6 +117,11 @@ den injizierten `runner` (Audit M10): der blockierende Kern liegt Tk-frei in
 Netz-Kerne teilen sich `mail_task.classify_mail_error`. `on_done` macht das
 `winfo_exists`-gegatete Feedback, Persistenz passiert im Worker (überlebt
 Dialog-Close), der Primär-Button ist während des Laufs deaktiviert.
+`send_task.perform_send` ist dabei ein **Dispatcher** über beliebig viele
+Kanäle (Mail + jeder ausgewählte Webhook): jeder Kanal läuft unabhängig,
+ein Fehler in einem bricht die übrigen nicht ab, und der Dispatcher liefert
+pro Kanal genau ein Result-Dict statt selbst zu werfen (Vertrag wie die
+einzelnen Kanäle, `webhook.deliver` eingeschlossen).
 
 **Datenschicht-Locking (Audit H1/H2/M1):** Alle vier Stores
 (`storage`/`settings`/`conflicts_store`/`reservations`) teilen sich einen in
@@ -139,6 +144,18 @@ müssen beide Locks respektieren. Design:
 - `storage.py` — Ist-Zeiten (JSON, Schlüssel = ISO-Datum). `reservations.py` — Reservierungen
   (zukünftige Soll-Zeiten, eigenes Konzept). `settings.py` — Einstellungen mit Defaults.
 - `conflicts_store.py` — lokale Sync-Konfliktliste. `category_defaults.py` — Default-Kategorien.
+- `webhook_store.py` — gerätelokaler Store der Webhook-Konfiguration
+  (`webhooks.json`). Bekommt bewusst **nicht** den geteilten `data_lock` aus
+  dem „Datenschicht-Locking"-Absatz oben, sondern legt sich einen eigenen an
+  (`main.py` instanziiert ihn ohne `lock=`): Webhooks nehmen an keinem
+  Sync-Flow teil (kein Snapshot→Merge→Apply, kein Journal, kein Feld im
+  Sync-Doc), es gibt also keine übergreifende Invariante mitzuziehen — und den
+  Lock trotzdem zu teilen hätte einen realen Preis, weil `save`/`delete` ihn
+  über den `icacls`-Subprozess (bis 15 s + Retries) halten und damit jeden
+  anderen Store blockierten. Details/Tests: `tests/test_store_locking.py`.
+  Enthält Konfiguration **und** Secrets, wird deshalb wie `token.json`
+  gehärtet geschrieben (`secure_file.harden_windows_acl`, s.u.) und steht
+  **nicht** im Sync-Doc.
 - `sync.py` — pure Sync-Logik (LWW-Merge, Konflikterkennung); importiert
   `SYNCED_SETTING_KEYS` aus `settings.py` **und** `_REQUIRED_ENTRY_KEYS` aus `storage.py`
   (beide Single Source of Truth, nicht hier neu definieren). `validate_remote_doc`
@@ -268,9 +285,11 @@ muss sie deterministisch **und** über alle Geräte gleich halten.
   `migrate_legacy_autostart()` überführt Alt-Shortcuts in den Registry-Key, ist aber frozen-gated
   (Repo-Modus: No-op, würde andernfalls python.exe+Repo ins Register schreiben und bestehende
   Shortcuts beschädigen).
-- `secure_file.py` — Zugriffsschutz für die beiden lokal abgelegten Secrets: `token.json`
-  (`oauth_utils.write_token`) und `instance-secret` (`single_instance._write_secret_atomic`).
-  Beide Schreibpfade laufen Temp-Datei → `chmod 0600` → `harden_windows_acl` → `os.replace`.
+- `secure_file.py` — Zugriffsschutz für die drei lokal abgelegten Secrets: `token.json`
+  (`oauth_utils.write_token`), `instance-secret` (`single_instance._write_secret_atomic`)
+  und `webhooks.json` (`webhook_store._save_to_disk`, dritter Schreibpfad — enthält
+  Auth-Token/HMAC-Secrets der konfigurierten Webhooks). Alle drei Schreibpfade laufen
+  Temp-Datei → `chmod 0600` → `harden_windows_acl` → `os.replace`.
   Unter Windows ist chmod ein No-op, deshalb dort zusätzlich `icacls /inheritance:r
   /grant:r <user>:(F)` (Audit M8): geerbte ACEs (u.a. SYSTEM, lokale Administratoren) raus,
   genau ein Berechtigter bleibt. **Vollzugriff** statt R/W, weil das spätere `os.replace`
@@ -279,7 +298,7 @@ muss sie deterministisch **und** über alle Geräte gleich halten.
   benennbarer Principal → loggen und weiter): ungehärtet ist der Status quo, eine
   gescheiterte Persistenz wäre eine Regression. Eigenes Modul, damit `single_instance`
   nichts aus dem OAuth-Umfeld importieren muss (und keiner den privaten Namen des anderen
-  nutzt, Audit N17). Wer einen dritten Secret-Schreibpfad baut, ruft diesen Helfer mit auf.
+  nutzt, Audit N17). Wer einen vierten Secret-Schreibpfad baut, ruft diesen Helfer mit auf.
   **Aufrufhäufigkeit:** der Helfer hängt an `write_token`, läuft also bei *jedem*
   Token-Refresh in Mail-, Drive- und Kalender-Pfad — ein `icacls`-Subprozess pro
   Refresh, nicht einmalig beim Anlegen. Unkritisch, weil alle diese Pfade in den
@@ -330,10 +349,14 @@ ein Snapshot vom Tray-Start.
 Modale Tk-Dialoge, von `App` geroutet (Klick-Modell: Linksklick = bearbeiten, Rechtsklick =
 löschen — siehe Root-`CLAUDE.md`): `entry_dialog` (Tages-Dialog, rein zum Speichern),
 `send_dialog`, `export_dialog` (Zeitraum-Modal → PDF lokal speichern),
+`webhook_dialog` (Anlegen/Bearbeiten eines Webhooks inkl. Testversand; Validierung
+über `webhook_store.validate_record`, Versand über `webhook.deliver`, beide Tk-frei),
 `settings_dialog/` (Paket, Audit H4: `dialog.py` trägt Chrome + zentrales,
 ablaufidentisches `save_settings`; je Tab eine Klasse in `tab_work/`
-`tab_mail`/`tab_google`/`tab_app`/`tab_updates`.py, die ihre Tk-Variablen als
-Attribute für `save_settings` exponiert; `tab_updates` startet seinen Live-Check
+`tab_mail`/`tab_google`/`tab_app`/`tab_updates`/`tab_webhooks`.py, die ihre Tk-Variablen
+als Attribute für `save_settings` exponiert — **außer** `tab_webhooks`: als einziger Tab
+exponiert er dafür **keine** Variablen, Webhooks liegen im eigenen `webhook_store` und
+werden vom `webhook_dialog` direkt gespeichert; `tab_updates` startet seinen Live-Check
 bewusst erst per `<<NotebookTabChanged>>`, nicht schon beim Dialog-Öffnen;
 `oauth_task.py` = H5-OAuth-Toggle-Builder; Dark-Styling weiter via
 `theme.apply_notebook_style`), `share_dialog`, `import_dialog`, `category_dialog`,

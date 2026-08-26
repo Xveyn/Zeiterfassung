@@ -144,8 +144,8 @@ schreiben, sind an dieser Stelle überholt.
 Löscht der Nutzer die AppImage, bleiben Menüeintrag und Autostart-Datei
 zurück und zeigen ins Leere. Die App kann nicht aufräumen, wenn sie nicht
 mehr startet, und das AppImage-Format kennt keinen Deinstallations-Hook.
-Gilt gleichermaßen für die zurückbleibenden Nutzerdaten inkl. `token.json` —
-das ist plattformübergreifend erfasst in
+Gilt gleichermaßen für die zurückbleibenden Nutzerdaten inkl. `token.json`
+und `webhooks.json` — das ist plattformübergreifend erfasst in
 [#183](https://github.com/margenheld/Zeiterfassung/issues/183).
 
 Der Autostart heilt außerdem erst, **nachdem** die neue AppImage einmal
@@ -158,3 +158,45 @@ dieser Tools beim ersten Start einen eigenen Menüeintrag
 zwei Einträge im Anwendungsmenü für dieselbe AppImage. Kein Datenverlust, rein
 kosmetisch — die App schreibt ihren eigenen Eintrag unabhängig davon, weil sie
 ohne eines dieser Tools sonst gar keinen bekäme.
+
+## Webhooks: Split-Horizon-DNS gilt als öffentliche Adresse
+
+Der Webhook-Versand erlaubt unverschlüsseltes `http://` nur für Adressen im
+lokalen Netz: private IP-Literale (Loopback, RFC 1918, CGNAT, Link-Local,
+IPv6-ULA), den Hostnamen `localhost` selbst (eigener Sonderfall, geprüft
+**vor** der Suffix- und IP-Prüfung), die Suffixe
+`.local`/`.lan`/`.home.arpa`/`.internal`/`.localhost` sowie sonstige
+Single-Label-Namen. Für alles andere ist `https://` Pflicht — sonst gingen
+Arbeitszeiten und, je nach Konfiguration, ein Bearer-Token im Klartext durchs
+Netz.
+
+Entschieden wird **allein an der Adresse in der URL**, ohne DNS-Auflösung.
+Ein öffentlicher Name, der per Split-Horizon-DNS intern auf eine private
+Adresse zeigt (`erp.firma.de` → `10.0.0.5`), gilt deshalb als öffentlich und
+verlangt https, obwohl der Verkehr das lokale Netz nie verlässt.
+
+**Warum nicht auflösen:** ein DNS-Lookup beim Speichern wäre langsam, offline
+unmöglich und könnte später still anders ausgehen, ohne dass die App es
+bemerkt — die Adresse wäre dann nach der einmaligen Prüfung dauerhaft als
+„privat" eingestuft, auch wenn sie längst nach außen zeigt.
+
+**Umgehung:** die interne Adresse direkt eintragen (`http://10.0.0.5/hook`).
+
+Design: [`superpowers/specs/2026-08-26-webhook-versand-design.md`](superpowers/specs/2026-08-26-webhook-versand-design.md)
+
+## Webhooks: urllib normalisiert die Schreibweise der Header-Namen
+
+`urllib.request.Request.add_header` wendet `key.capitalize()` an,
+`AbstractHTTPHandler.do_open` anschließend `name.title()`. Ein als
+`X-API-Key` konfigurierter Header geht damit als `X-Api-Key` über die
+Leitung.
+
+HTTP-Header sind laut RFC case-insensitiv, das ist also regelkonform.
+Empfänger, die den Namen per exaktem String-Vergleich prüfen (etwa
+handgeschriebener Code in n8n oder Make), finden ihn trotzdem nicht.
+
+**Bewusst nicht umgangen:** Die Schreibweise zu erhalten hieße, an urllibs
+Header-Pfad vorbeizuschreiben — Eigenbau an einer Stelle, die sonst
+zuverlässig funktioniert. **Umgehung:** beim Empfänger case-insensitiv
+vergleichen, oder einen Header-Namen wählen, den `title()` unverändert
+lässt (`X-Api-Key`, `Authorization`, `X-Hub-Signature-256`).

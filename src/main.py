@@ -36,6 +36,7 @@ from src.theme import init_fonts
 from src.time_utils import utc_now_iso
 from src.ui import App
 from src.version import VERSION
+from src.webhook_store import WebhookStore
 
 # Muss exakt zum AppMutex-Wert in installer.iss passen. Der Installer prüft
 # beim Start, ob dieser Mutex existiert, und bittet den User, die App manuell
@@ -562,6 +563,20 @@ def main():
     reservation_store = ReservationStore(os.path.join(base, "reservations.json"),
                                          lock=data_lock)
 
+    # BEWUSST OHNE den geteilten data_lock — der Store legt sich seinen eigenen an.
+    # Der geteilte Lock (Audit H1/H2) existiert, um Snapshot→Merge→Apply der
+    # SYNC-Flows über storage/settings/conflicts/reservations atomar zu klammern.
+    # Webhooks nehmen an keinem dieser Flows teil: sie sind gerätelokal, stehen
+    # nicht im Sync-Doc, nicht im Merge und nicht im Journal. Es gibt also keine
+    # übergreifende Invariante, die sie mitziehen müssten.
+    #
+    # Ihn trotzdem zu teilen hätte einen realen Preis: `save`/`delete` halten den
+    # Lock über den icacls-Subprozess (timeout=15) plus bis zu vier Retries à
+    # 200 ms. Auf einem hängenden Netzlaufwerk blockierte das Speichern eines
+    # Webhooks damit jeden anderen Store und einen laufenden Drive-Sync — für
+    # nichts.
+    webhook_store = WebhookStore(os.path.join(base, "webhooks.json"))
+
     # M6: Ein unvollständig gebliebener Sync-Apply eines vorherigen Laufs
     # (Crash zwischen den vier Store-Writes) wird jetzt idempotent nachgeholt —
     # bevor irgendein Sync-Thread startet, hier noch single-threaded (kein
@@ -587,7 +602,7 @@ def main():
     _apply_ui_scaling(root, settings.get("ui_scale"))
     app = App(root, storage, settings, base_path=base, conflicts_store=conflicts_store,
               reservation_store=reservation_store, single_instance=guard,
-              data_lock=data_lock, sync_guard=sync_guard)
+              data_lock=data_lock, sync_guard=sync_guard, webhook_store=webhook_store)
 
     if "--minimized" in sys.argv:
         root.iconify()
