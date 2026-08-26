@@ -136,7 +136,7 @@ kein Extraktions-Race pro Start. `installer.iss` shippt entsprechend den ganzen
 `{app}\Zeiterfassung.exe`, `get_base_path()=dirname(exe)` und alle
 Autostart-/Single-Instance-Pfade bleiben damit unverändert. Linux bleibt
 onefile, weil die AppImage ohnehin selbst mountet (onefile darin wäre
-Doppelpackung) und `#118` Windows-spezifisch ist.
+Doppelpackung) und margenheld/Zeiterfassung#118 Windows-spezifisch ist.
 
 ## Cross-Platform Builds
 
