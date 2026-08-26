@@ -59,7 +59,8 @@ class _PeriodPickerHandle:
         return bool(self._breakdown.get())
 
 
-def build_period_picker(parent, storage, settings, on_change=None):
+def build_period_picker(parent, storage, settings, on_change=None,
+                        from_default=None, to_default=None):
     """Baut Von/Bis-Datumszeilen + Kategorie-Checkboxen + Live-Stundenvorschau
     in einen eigenen Frame. Liefert (frame, handle). Der Frame wird vom
     Aufrufer ins Dialog-Layout gegridded; die Aktions-Buttons bleiben Sache
@@ -68,20 +69,24 @@ def build_period_picker(parent, storage, settings, on_change=None):
     on_change: optionaler Callback, der bei jeder Benutzer-Änderung an Datum
     oder Kategorie-Auswahl gefeuert wird (z.B. damit der Export-Dialog seinen
     Button (de)aktivieren kann). Wird beim initialen Aufbau NICHT gefeuert —
-    der Aufrufer setzt den Anfangszustand selbst."""
+    der Aufrufer setzt den Anfangszustand selbst.
+
+    from_default / to_default: optionale Vorbelegung der Datumszeilen. Ohne
+    sie gilt wie bisher „Vormonats-Pendant bis heute" (_default_from_date)."""
     frame = tk.Frame(parent, bg=BG)
 
     today = datetime.date.today()
-    from_default = _default_from_date(today)
+    from_value = from_default if from_default is not None else _default_from_date(today)
+    to_value = to_default if to_default is not None else today
 
     # Von/Bis über das gemeinsame Datums-Zeilen-Widget (Audit M14). Der
     # on_change-Callback (Tag-Clamp + Vorschau) ist late-bound auf das weiter
     # unten definierte _changed; er feuert erst bei Benutzer-Interaktion, also
     # ist _changed dann längst gebunden. label_width=4 hält "Von:"/"Bis:"
     # untereinander bündig.
-    from_row = build_date_row(frame, "Von:", from_default,
+    from_row = build_date_row(frame, "Von:", from_value,
                               on_change=lambda: _changed(), label_width=4)
-    to_row = build_date_row(frame, "Bis:", today,
+    to_row = build_date_row(frame, "Bis:", to_value,
                             on_change=lambda: _changed(), label_width=4)
     from_row.frame.grid(row=0, column=0, columnspan=6, sticky="w", padx=(10, 0), pady=8)
     to_row.frame.grid(row=1, column=0, columnspan=6, sticky="w", padx=(10, 0), pady=8)

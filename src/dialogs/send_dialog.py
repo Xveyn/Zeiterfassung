@@ -1,3 +1,4 @@
+import datetime
 import logging
 import os
 import tkinter as tk
@@ -57,7 +58,37 @@ def show_missing_credentials_dialog(parent, base_path):
     center_dialog_on_parent(dialog, parent)
 
 
-def open_send_dialog(parent, storage, settings, base_path, runner):
+def resolve_send_period(settings, reservation_store, today):
+    """Von/Bis-Vorbelegung für den Sende-Dialog, oder None.
+
+    None heißt „bisheriger Default" (Vormonats-Pendant im period_picker).
+    Ist die Option aus, gibt es keinen Store oder keinen zurückliegenden
+    Anker, bleibt es dabei. Monatstermine zählen nur mit, wenn sie
+    eingeschaltet sind — ein abgeschalteter Termin hat nie erinnert und darf
+    den Zeitraum nicht verkürzen.
+    """
+    from src import send_reminder
+
+    if not settings.get("send_period_from_last_reminder"):
+        return None
+    if reservation_store is None:
+        return None
+    marked = send_reminder.marked_reminder_dates(reservation_store.get_all_raw())
+    monthly = []
+    if settings.get("send_period_anchor_monthly") and settings.get("send_reminder_enabled"):
+        monthly = send_reminder.monthly_anchor_dates(
+            today,
+            settings.get("send_reminder_day"),
+            settings.get("send_reminder_time"),
+            settings.get("send_reminder_weekend_shift"),
+            settings.get("state"),
+            bool(settings.get("send_reminder_shift_holidays")),
+        )
+    return send_reminder.default_send_period(today, marked, monthly)
+
+
+def open_send_dialog(parent, storage, settings, base_path, runner,
+                     reservation_store=None):
     recipient = settings.get("recipient")
     if not recipient:
         themed_showinfo(
@@ -79,7 +110,12 @@ def open_send_dialog(parent, storage, settings, base_path, runner):
     apply_combobox_style(dialog)
     attach_unfocus_on_click(dialog)
 
-    picker_frame, picker = build_period_picker(dialog, storage, settings)
+    period = resolve_send_period(settings, reservation_store, datetime.date.today())
+    picker_frame, picker = build_period_picker(
+        dialog, storage, settings,
+        from_default=period[0] if period else None,
+        to_default=period[1] if period else None,
+    )
     picker_frame.grid(row=0, column=0, sticky="w")
 
     busy = {"running": False}

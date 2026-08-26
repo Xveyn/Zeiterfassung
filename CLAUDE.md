@@ -407,10 +407,25 @@ nicht mehr als „offen" führen — der Verweis lautet auf diese Grenze.
 - `src/sync_history.py` — persistenter „hat je gesynct/abgeglichen"-Marker (`sync_history.json`, write-once, stdlib-only); vetoed den N6-Startup-Sweep gegen einen settings.json-Reset (M4), damit ein gesyncter Rechner nicht fälschlich seine Tombstones verliert (Resurrection)
 - `src/conflicts_store.py` — lokale JSON-Persistenz der Sync-Konfliktliste
 - `src/share.py` — Export/Import von Arbeitszeiten als Share-JSON (Teilen per Mail-Anhang)
-- `src/reservations.py` — Reservierungen (zukünftige Soll-Zeiten, eigenes Konzept neben Ist-Zeiten)
+- `src/reservations.py` — Reservierungen (zukünftige Soll-Zeiten, eigenes Konzept
+  neben Ist-Zeiten). Slot-Schema `{start, end, kategorie, gcal_event_id,
+  send_reminder_minutes}`; `send_reminder_minutes` markiert den Slot, an dem die
+  Sende-Erinnerung hängt (höchstens einer pro Tag, gerätelokal — der Kalender
+  kennt das Feld nicht) und wird in `share.py` bewusst aus dem Share-Doc
+  projiziert, weil dessen Validator unbekannte Felder ablehnt.
 - `src/reservations_sync.py` — Abgleich der Reservierungen mit einem Google Kalender
 - `src/reminders.py` — pure Fälligkeits-Logik für Reservierungs-Erinnerungen (Tk-frei); `src/reminder_scheduler.py` — periodischer Reminder-Poll (root.after) → Toast über Tray
-- `src/send_reminder.py` — pure Fälligkeits-Logik für den monatlichen Sende-Reminder (Tk-frei), Tag im Monat auf die tatsächliche Monatslänge geclamped; `src/send_reminder_scheduler.py` — periodischer Poll (root.after) → Toast über Tray, Fired-Zustand persistiert in Settings (einmal pro Monat, auch über Neustarts hinweg)
+- `src/send_reminder.py` — pure Logik des Sende-Reminders (Tk-frei): monatlicher
+  Termin (Tag im Monat auf die Monatslänge geclamped, optional von Wochenenden/
+  Feiertagen weg verschoben — die Verschiebung bleibt immer im Zielmonat),
+  tagesbezogene Fälligkeit an einem markierten Reservierungs-Slot
+  (`due_day_reminder`) und die Anker-Suche für die Zeitraum-Vorbelegung
+  (`previous_anchor_date`/`default_send_period`); `src/send_reminder_scheduler.py`
+  — periodischer Poll (root.after) über beide Kanäle → Toast über Tray. Der
+  Monats-Kanal persistiert seinen Fired-Zustand in den Settings (einmal pro
+  Monat, auch über Neustarts), der tagesbezogene dedupliziert nur im Speicher
+  (ein persistierter Marker würde `modified_at` der Reservierung anfassen und
+  einen gcal-Push auslösen).
 - `src/weekly_limit.py` — Wochenstunden-Limit für einen konfigurierbaren Zeitraum (Werkstudenten-Privileg, #98); pure Logik, zählt nur Ist-Zeiten (nicht Reservierungen)
 - `src/pause_requirement.py` — Pausenpflicht-Warnung nach §4 ArbZG (30 Min ab >6h, 45 Min ab >9h Netto-Arbeitszeit); pure Logik, zählt nur die `pause`-Felder der Slots eines Tages (keine Lücken zwischen mehreren Slots); Default aktiv (`pause_warning_enabled`, im Gegensatz zum Werkstudenten-Limit kein Sonderfall-Opt-in, da die Pflicht für praktisch alle Angestellten in DE gilt)
 - `src/gcal.py` — Google-Calendar-API-Wrapper (lazy Imports wie `drive.py`, wegen CI ohne `requirements.txt`)

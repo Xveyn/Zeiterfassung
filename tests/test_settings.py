@@ -844,3 +844,24 @@ def test_prerelease_updates_flag_is_device_local():
     from src.settings import SYNCED_SETTING_KEYS
 
     assert "prerelease_updates_enabled" not in SYNCED_SETTING_KEYS
+
+
+def test_new_send_reminder_defaults(tmp_path):
+    s = Settings(str(tmp_path / "settings.json"))
+    assert s.get("send_reminder_reservations_enabled") is False
+    assert s.get("send_reminder_default_minutes") == 15
+    assert s.get("send_reminder_weekend_shift") == "none"
+    assert s.get("send_reminder_shift_holidays") is False
+    assert s.get("send_period_from_last_reminder") is False
+    assert s.get("send_period_anchor_monthly") is False
+
+
+def test_new_send_reminder_keys_are_device_local():
+    from src.settings import SYNCED_SETTING_KEYS
+    for key in ("send_reminder_reservations_enabled",
+                "send_reminder_default_minutes",
+                "send_reminder_weekend_shift",
+                "send_reminder_shift_holidays",
+                "send_period_from_last_reminder",
+                "send_period_anchor_monthly"):
+        assert key not in SYNCED_SETTING_KEYS

@@ -124,6 +124,7 @@ class App:
         )
         self._send_reminders = SendReminderScheduler(
             self.root, self.settings, lambda: self._tray,
+            reservation_store=self.reservation_store,
         )
         self._build_header()
         self._renderer.build_grid(self.root)
@@ -583,9 +584,11 @@ class App:
             self._reminders.stop()
 
     def _apply_send_reminder_setting(self):
-        """Startet/stoppt den monatlichen Sende-Reminder-Poll abhängig vom
-        Setting. Braucht ein laufendes Tray-Icon als Toast-Kanal — ohne Tray
-        wird gestoppt.
+        """Startet/stoppt den Sende-Reminder-Poll abhängig vom Setting.
+        `send_reminder_enabled` ist der Haupt-Schalter über BEIDE Kanäle des
+        Schedulers (monatlicher Termin und tagesbezogene Erinnerung) — wer ihn
+        ausschaltet, schaltet auch die Reservierungs-Erinnerung stumm. Braucht
+        ein laufendes Tray-Icon als Toast-Kanal — ohne Tray wird gestoppt.
 
         MUSS nach `_apply_tray_setting()` laufen (liest `self._tray`), wie
         `_apply_reminder_setting()`."""
@@ -751,7 +754,8 @@ class App:
         )
 
     def _send(self):
-        open_send_dialog(self.root, self.storage, self.settings, self.base_path, self._bg)
+        open_send_dialog(self.root, self.storage, self.settings, self.base_path,
+                         self._bg, reservation_store=self.reservation_store)
 
     def _share(self):
         from src.dialogs.share_dialog import open_share_dialog

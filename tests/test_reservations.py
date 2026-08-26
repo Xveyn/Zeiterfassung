@@ -10,14 +10,18 @@ def store(tmp_path):
     return ReservationStore(str(tmp_path / "res.json"))
 
 
-def _slot(start, end, kategorie="", gcal_event_id=None):
+def _slot(start, end, kategorie="", gcal_event_id=None, send_reminder_minutes=None):
     """Roh-Slot (inkl. gcal_event_id), wie er in get_all_raw erscheint."""
-    return {"start": start, "end": end, "kategorie": kategorie, "gcal_event_id": gcal_event_id}
+    return {"start": start, "end": end, "kategorie": kategorie,
+            "gcal_event_id": gcal_event_id,
+            "send_reminder_minutes": send_reminder_minutes}
 
 
 def _ushape(*slots):
     """Erwartete User-Shape: slots ohne gcal_event_id."""
-    return {"slots": [{"start": s["start"], "end": s["end"], "kategorie": s["kategorie"]}
+    return {"slots": [{"start": s["start"], "end": s["end"],
+                       "kategorie": s["kategorie"],
+                       "send_reminder_minutes": s.get("send_reminder_minutes")}
                       for s in slots]}
 
 
@@ -84,7 +88,7 @@ def test_slot_defaults_kategorie_and_event_id(store):
 
 def test_user_shape_excludes_event_id(store):
     store.save("2026-06-01", [_slot("09:00", "17:00", "Büro", "ev-1")])
-    assert store.get("2026-06-01") == {"slots": [{"start": "09:00", "end": "17:00", "kategorie": "Büro"}]}
+    assert store.get("2026-06-01") == {"slots": [{"start": "09:00", "end": "17:00", "kategorie": "Büro", "send_reminder_minutes": None}]}
 
 
 def test_delete_writes_empty_slots_tombstone(store):
@@ -152,3 +156,41 @@ def test_save_failure_keeps_original_intact(tmp_path):
             store.save("2026-06-02", [_slot("09:00", "17:00")])
     assert path.read_bytes() == original
     assert [p for p in tmp_path.iterdir() if p.suffix == ".tmp"] == []
+
+
+def test_send_reminder_minutes_survives_save_and_get(store):
+    store.save("2026-08-31", [
+        {"start": "08:00", "end": "12:00", "kategorie": "Office"},
+        {"start": "13:00", "end": "17:00", "kategorie": "Kunde",
+         "send_reminder_minutes": 15},
+    ])
+    slots = store.get("2026-08-31")["slots"]
+    assert slots[0]["send_reminder_minutes"] is None
+    assert slots[1]["send_reminder_minutes"] == 15
+    raw = store.get_all_raw()["2026-08-31"]["slots"]
+    assert raw[1]["send_reminder_minutes"] == 15
+
+
+def test_send_reminder_minutes_missing_key_becomes_none(store):
+    store.save("2026-08-31", [{"start": "08:00", "end": "12:00"}])
+    assert store.get("2026-08-31")["slots"][0]["send_reminder_minutes"] is None
+
+
+def test_send_reminder_minutes_out_of_range_or_wrong_type_becomes_none(store):
+    store.save("2026-08-31", [
+        {"start": "08:00", "end": "09:00", "send_reminder_minutes": 121},
+        {"start": "09:00", "end": "10:00", "send_reminder_minutes": -1},
+        {"start": "10:00", "end": "11:00", "send_reminder_minutes": "15"},
+        {"start": "11:00", "end": "12:00", "send_reminder_minutes": True},
+    ])
+    assert [s["send_reminder_minutes"] for s in store.get("2026-08-31")["slots"]] \
+        == [None, None, None, None]
+
+
+def test_send_reminder_minutes_not_carried_over_positionally(store):
+    """Anders als gcal_event_id wird der Marker NICHT vom Vorstand geerbt —
+    sonst könnte der Dialog ihn nie löschen."""
+    store.save("2026-08-31", [{"start": "08:00", "end": "12:00",
+                               "send_reminder_minutes": 15}])
+    store.save("2026-08-31", [{"start": "08:00", "end": "12:00"}])
+    assert store.get("2026-08-31")["slots"][0]["send_reminder_minutes"] is None

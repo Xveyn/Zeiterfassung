@@ -13,18 +13,45 @@ import contextlib
 from src.time_utils import utc_now_iso
 
 
-def _slot_from_event(ev):
-    """Reservierungs-Slot aus einem geparsten Kalender-Event."""
+def _slot_from_event(ev, reminder_minutes=None):
+    """Reservierungs-Slot aus einem geparsten Kalender-Event.
+
+    `reminder_minutes` kommt aus dem lokalen Slot mit derselben event_id — der
+    Kalender kennt das Feld nicht, es würde beim Remote-gewinnt-Merge sonst
+    verloren gehen.
+    """
     return {
         "start": ev["start"], "end": ev["end"],
         "kategorie": ev.get("kategorie", ""), "gcal_event_id": ev["event_id"],
+        "send_reminder_minutes": reminder_minutes,
     }
 
 
-def _adopt_remote(date, remotes, merged, imported_dates):
-    """Remote gewinnt: die Slots des Tages = die Remote-Events."""
+def _reminders_by_event_id(local):
+    """{event_id: send_reminder_minutes} aus den lokalen Slots.
+
+    Zuordnung über die Event-ID und NICHT über die Position: in _adopt_remote
+    entsteht die neue Slot-Liste in der Reihenfolge, in der Google die Events
+    liefert — die hat mit der lokalen Slot-Reihenfolge nichts zu tun.
+    """
+    if local is None:
+        return {}
+    out = {}
+    for slot in local.get("slots", []):
+        event_id = slot.get("gcal_event_id")
+        minutes = slot.get("send_reminder_minutes")
+        if event_id and minutes is not None:
+            out[event_id] = minutes
+    return out
+
+
+def _adopt_remote(date, remotes, merged, imported_dates, local=None):
+    """Remote gewinnt: die Slots des Tages = die Remote-Events. Ein lokal
+    gesetzter Erinnerungs-Marker wandert über die event_id mit."""
+    reminders = _reminders_by_event_id(local)
     merged[date] = {
-        "slots": [_slot_from_event(ev) for ev in remotes],
+        "slots": [_slot_from_event(ev, reminders.get(ev["event_id"]))
+                  for ev in remotes],
         "modified_at": max(ev["modified_at"] for ev in remotes),
         "deleted": False,
     }
@@ -61,7 +88,7 @@ def _merge_one_date(date, local, remotes, watermark, merged, plan, imported_date
             for ev in remotes:
                 plan["delete"].append({"event_id": ev["event_id"]})
             return  # Löschung gewinnt.
-        _adopt_remote(date, remotes, merged, imported_dates)  # Remote-Update jünger.
+        _adopt_remote(date, remotes, merged, imported_dates, local)  # Remote-Update jünger.
         return
 
     # Fall 4: lokal (echt), keine Remote-Events.
@@ -85,7 +112,7 @@ def _merge_one_date(date, local, remotes, watermark, merged, plan, imported_date
     # hat leere remotes abgefangen -> remote_mod nicht None.
     assert local_mod is not None and remote_mod is not None
     if remote_mod > local_mod:
-        _adopt_remote(date, remotes, merged, imported_dates)
+        _adopt_remote(date, remotes, merged, imported_dates, local)
         return
 
     # Lokal gewinnt (inkl. Gleichstand — App autoritativ): Slots ↔ Events über

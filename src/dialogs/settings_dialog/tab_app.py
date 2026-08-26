@@ -6,6 +6,7 @@ from tkinter import ttk
 from src.autostart import is_autostart_enabled
 from src.dialogs.settings_dialog._shared import label
 from src.holidays_de import STATES
+from src.send_reminder import SHIFT_LABELS, label_for_shift
 from src.theme import (
     ACCENT, BG, CELL_BG, FONT, FONT_BOLD, FONT_SMALL, TEXT, TEXT_MUTED,
     TIME_VALUES, dark_combo,
@@ -196,6 +197,86 @@ class AppTab:
             font=FONT_SMALL, bg=BG, fg=TEXT_MUTED,
         ).pack(anchor="w", pady=(2, 0))
 
+        # Der Settings-Dialog ist nicht scrollbar (create_dialog setzt
+        # resizable(False, False)) und der Notebook nimmt die Höhe des
+        # höchsten Tabs an — jede Zeile hier wächst also 1:1 in die
+        # Dialoghöhe. Die folgenden Optionen sind deshalb bewusst auf
+        # wenige, breite Zeilen gelegt statt auf je eine eigene.
+        shift_row = tk.Frame(app_frame, bg=BG)
+        shift_row.pack(anchor="w", pady=(2, 0))
+        tk.Label(
+            shift_row, text="Fällt er aufs Wochenende:",
+            font=FONT, bg=BG, fg=TEXT,
+        ).pack(side=tk.LEFT, padx=(0, 8))
+        send_reminder_shift_var = tk.StringVar(
+            value=label_for_shift(settings.get("send_reminder_weekend_shift")))
+        dark_combo(
+            shift_row, send_reminder_shift_var,
+            [SHIFT_LABELS[m] for m in ("none", "backward", "forward")],
+            width=18,
+        ).pack(side=tk.LEFT, padx=(0, 8))
+        send_reminder_shift_holidays_var = tk.BooleanVar(
+            value=settings.get("send_reminder_shift_holidays"))
+        tk.Checkbutton(
+            shift_row, text="auch Feiertage",
+            variable=send_reminder_shift_holidays_var, font=FONT,
+            bg=BG, fg=TEXT, selectcolor=CELL_BG,
+            activebackground=BG, activeforeground=TEXT, cursor="hand2",
+        ).pack(side=tk.LEFT)
+
+        # --- Tagesbezogene Erinnerung an Reservierungen ---
+        res_row = tk.Frame(app_frame, bg=BG)
+        res_row.pack(anchor="w", pady=(4, 0))
+        send_reminder_reservations_var = tk.BooleanVar(
+            value=settings.get("send_reminder_reservations_enabled"))
+        tk.Checkbutton(
+            res_row, text="Reservierungen",
+            variable=send_reminder_reservations_var, font=FONT,
+            bg=BG, fg=TEXT, selectcolor=CELL_BG,
+            activebackground=BG, activeforeground=TEXT, cursor="hand2",
+        ).pack(side=tk.LEFT, padx=(0, 12))
+        tk.Label(
+            res_row, text="Standard:", font=FONT, bg=BG, fg=TEXT,
+        ).pack(side=tk.LEFT, padx=(0, 8))
+        send_reminder_default_minutes_var = tk.StringVar(
+            value=str(settings.get("send_reminder_default_minutes")))
+        dark_combo(
+            res_row, send_reminder_default_minutes_var,
+            [str(m) for m in range(0, 121, 5)], width=4,
+        ).pack(side=tk.LEFT, padx=(0, 8))
+        tk.Label(
+            res_row, text="Minuten vor Ende", font=FONT, bg=BG, fg=TEXT,
+        ).pack(side=tk.LEFT)
+        # Ein Hinweis statt zweier Zeilen. Ohne Kalender-Abgleich zeigt die
+        # App gar keine Reservierungen (App._reservations_active) — der
+        # Schalter bliebe sonst wirkungslos, ohne dass man sieht warum.
+        res_hint = "Erinnerungs-Tage werden im Tages-Dialog gesetzt."
+        if not settings.get("gcal_enabled"):
+            res_hint = ("Erinnerungs-Tage im Tages-Dialog; nur mit Abgleich "
+                        "(Tab Google).")
+        tk.Label(
+            app_frame, text=res_hint, font=FONT_SMALL, bg=BG, fg=TEXT_MUTED,
+        ).pack(anchor="w", padx=(24, 0), pady=(2, 0))
+
+        period_row = tk.Frame(app_frame, bg=BG)
+        period_row.pack(anchor="w", pady=(4, 0))
+        send_period_from_last_var = tk.BooleanVar(
+            value=settings.get("send_period_from_last_reminder"))
+        tk.Checkbutton(
+            period_row, text="Zeitraum ab der letzten Erinnerung vorbelegen",
+            variable=send_period_from_last_var, font=FONT,
+            bg=BG, fg=TEXT, selectcolor=CELL_BG,
+            activebackground=BG, activeforeground=TEXT, cursor="hand2",
+        ).pack(side=tk.LEFT, padx=(0, 12))
+        send_period_anchor_monthly_var = tk.BooleanVar(
+            value=settings.get("send_period_anchor_monthly"))
+        tk.Checkbutton(
+            period_row, text="inkl. Monatstermine",
+            variable=send_period_anchor_monthly_var, font=FONT,
+            bg=BG, fg=TEXT, selectcolor=CELL_BG,
+            activebackground=BG, activeforeground=TEXT, cursor="hand2",
+        ).pack(side=tk.LEFT)
+
         self.frame = frame
         self.state_var = state_var
         self.show_weekend_var = show_weekend_var
@@ -208,3 +289,9 @@ class AppTab:
         self.send_reminder_enabled_var = send_reminder_enabled_var
         self.send_reminder_day_var = send_reminder_day_var
         self.send_reminder_time_var = send_reminder_time_var
+        self.send_reminder_shift_var = send_reminder_shift_var
+        self.send_reminder_shift_holidays_var = send_reminder_shift_holidays_var
+        self.send_reminder_reservations_var = send_reminder_reservations_var
+        self.send_reminder_default_minutes_var = send_reminder_default_minutes_var
+        self.send_period_from_last_var = send_period_from_last_var
+        self.send_period_anchor_monthly_var = send_period_anchor_monthly_var

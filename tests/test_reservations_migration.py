@@ -21,7 +21,7 @@ def test_legacy_reservation_wrapped_into_single_slot(tmp_path):
     store = ReservationStore(path)
     raw = store.get_all_raw()["2026-06-01"]
     assert raw["slots"] == [
-        {"start": "09:00", "end": "17:00", "kategorie": "", "gcal_event_id": "ev-1"}
+        {"start": "09:00", "end": "17:00", "kategorie": "", "gcal_event_id": "ev-1", "send_reminder_minutes": None}
     ]
     assert raw["modified_at"] == "2026-05-20T10:00:00Z"
     assert raw["deleted"] is False
@@ -53,7 +53,7 @@ def test_user_facing_get_all_after_migration(tmp_path):
     })
     store = ReservationStore(path)
     assert store.get_all() == {
-        "2026-06-01": {"slots": [{"start": "09:00", "end": "17:00", "kategorie": ""}]}
+        "2026-06-01": {"slots": [{"start": "09:00", "end": "17:00", "kategorie": "", "send_reminder_minutes": None}]}
     }
 
 
@@ -70,6 +70,6 @@ def test_reservation_migration_idempotent_after_persist(tmp_path):
     s2 = ReservationStore(path)
     raw = s2.get_all_raw()["2026-06-01"]
     assert raw["slots"] == [
-        {"start": "09:00", "end": "17:00", "kategorie": "", "gcal_event_id": "ev-1"}
+        {"start": "09:00", "end": "17:00", "kategorie": "", "gcal_event_id": "ev-1", "send_reminder_minutes": None}
     ]
     assert "slots" not in raw["slots"][0]
