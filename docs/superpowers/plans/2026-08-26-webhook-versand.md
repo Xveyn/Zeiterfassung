@@ -600,6 +600,34 @@ def test_payload_slots_use_share_v3_shape():
     assert set(slot) == {"start", "end", "pause", "kategorie"}
 
 
+def test_payload_strips_unknown_slot_fields():
+    """Der Test oben allein wäre tautologisch: `ist_slot()` erzeugt genau die
+    vier Felder, die er prüft. Erst ein Slot MIT Fremdfeld beweist, dass
+    projiziert wird — und dieser Fall ist real, weil Storage._load Slots
+    nicht normalisiert (nur der Schreibpfad tut das)."""
+    entries = {"2026-07-01": {"slots": [
+        {"start": "08:00", "end": "16:00", "pause": 30, "kategorie": "A",
+         "gcal_event_id": "geheim", "interner_kram": 42},
+    ]}}
+    doc = _payload(entries=entries)
+    assert set(doc["entries"]["2026-07-01"]["slots"][0]) == {
+        "start", "end", "pause", "kategorie"}
+
+
+def test_payload_fills_missing_slot_fields_like_storage_does():
+    """Fehlende Felder bekommen dieselben Defaults wie in
+    storage._normalize_slot (pause 0, kategorie ""). Ein None in `pause`
+    würde total_minutes über calculate_hours in einen TypeError laufen
+    lassen — der Empfänger bekommt so ein formstabiles Dokument."""
+    entries = {"2026-07-01": {"slots": [{"start": "08:00", "end": "16:00"}]}}
+    doc = _payload(entries=entries)
+    slot = doc["entries"]["2026-07-01"]["slots"][0]
+    assert set(slot) == {"start", "end", "pause", "kategorie"}
+    assert slot["pause"] == 0
+    assert slot["kategorie"] == ""
+    assert doc["total_minutes"] == 480
+
+
 def test_payload_categories_none_when_unfiltered():
     assert _payload()["categories"] is None
 
@@ -697,6 +725,32 @@ def total_minutes(entries):
     )
 
 
+def _project_slots(entries):
+    """Reduziert jeden Slot auf die vier Felder des Wire-Formats.
+
+    Sieht überflüssig aus, ist es aber nicht: `Storage._load` normalisiert
+    Slots NICHT — das tut nur der Schreibpfad (`Storage.save` über
+    `_normalize_slot`). Ein Slot aus einer von Hand bearbeiteten oder von
+    einer neueren App-Version geschriebenen zeiterfassung.json trägt seine
+    Zusatzfelder sonst bis ins Webhook-Dokument. Diese Projektion ist die
+    Stelle, an der das Wire-Format tatsächlich festgelegt wird.
+
+    Die Defaults sind dieselben wie in `storage._normalize_slot` (`pause` → 0,
+    `kategorie` → ""). Das ist keine Kosmetik: `total_minutes` rechnet auf
+    diesen Slots weiter, und ein `None` in `pause` liefe in
+    `calculate_hours` in einen TypeError.
+    """
+    return {
+        date_str: {"slots": [
+            {"start": slot.get("start"), "end": slot.get("end"),
+             "pause": slot.get("pause", 0) or 0,
+             "kategorie": slot.get("kategorie") or ""}
+            for slot in record.get("slots", [])
+        ]}
+        for date_str, record in entries.items()
+    }
+
+
 def build_json_payload(*, date_from, date_to, entries, name, sender,
                        categories, generated_at=None):
     """Das JSON-Dokument für den Webhook.
@@ -714,6 +768,7 @@ def build_json_payload(*, date_from, date_to, entries, name, sender,
     ranged = filter_period(date_from, date_to, entries) or {}
     if ranged:
         ranged = filter_categories(ranged, categories)
+    ranged = _project_slots(ranged)
     return {
         "schema_version": PAYLOAD_SCHEMA_VERSION,
         "kind": PAYLOAD_KIND,
