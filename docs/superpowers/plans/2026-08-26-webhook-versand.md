@@ -3288,11 +3288,13 @@ In der Modul-Liste, alphabetisch/thematisch passend neben `src/share.py`:
 - `src/webhook.py` — pure Logik des Webhook-Versands (Tk-frei, stdlib-only):
   URL-Regel (https außerhalb des lokalen Netzes), Auth-Header, HMAC-Signatur,
   JSON-Dokument (`kind: zeiterfassung-report`, Slot-Shape wie Share v3),
-  Request-Body (JSON / PDF / multipart), POST mit Redirect-Schema-Schutz und
+  Request-Body (JSON / PDF / multipart), POST (folgt **keinem** Redirect) und
   eigener Fehlerklassifikation. **Eigener** Klassifikator statt
-  `mail_task.classify_mail_error`, weil `urllib.error.HTTPError` von
-  `URLError` erbt und dort als Offline-Symptom gilt — ein HTTP 500 würde sonst
-  als „keine Internetverbindung" gemeldet.
+  `mail_task.classify_mail_error`: der kennt nur `filenotfound`/`offline`/
+  `error`, während der Webhook-Pfad `auth`/`notfound`/`redirect`/`client`/
+  `server` unterscheiden muss. Ohne den HTTPError-Zweig käme jede
+  HTTP-Fehlerantwort als *unerwarteter Fehler mit Traceback* beim Nutzer an
+  statt als „Der Server hat mit 500 geantwortet".
 - `src/webhook_store.py` — gerätelokaler Store der Webhook-Konfiguration
   (`webhooks.json`). Enthält Konfiguration **und** Secrets und wird deshalb wie
   `token.json` gehärtet geschrieben; reist bewusst **nicht** per Drive-Sync.
