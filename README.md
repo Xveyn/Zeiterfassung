@@ -1,5 +1,18 @@
 # Zeiterfassung
 
+> [!IMPORTANT]
+> **Dieses Projekt zieht nach [Xveyn/Zeiterfassung](https://github.com/Xveyn/Zeiterfassung) um.**
+>
+> **1.21.0 ist das letzte Release, das hier erscheint.** Alle weiteren
+> Versionen gibt es im neuen Repository.
+>
+> Ab 1.21.0 meldet die App Updates automatisch von dort — **einmalig auf
+> 1.21.0 aktualisieren genügt.** Wer auf einer älteren Version bleibt, bekommt
+> keine Update-Hinweise mehr.
+>
+> Dieses Repository bleibt als Archiv bestehen: ältere Releases, ihre Downloads
+> und die Issue-Historie sind hier weiterhin erreichbar.
+
 Desktop-App zur Erfassung von Arbeitszeiten mit Kalenderansicht, PDF-Report und automatischem Gmail-Versand.
 
 [![Release](https://img.shields.io/github/v/release/Xveyn/Zeiterfassung?label=Release&color=success&logo=github)](https://github.com/Xveyn/Zeiterfassung/releases/latest) ![Python](https://img.shields.io/badge/Python-3.10+-blue) ![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow)](LICENSE)
