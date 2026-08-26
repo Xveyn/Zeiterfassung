@@ -112,3 +112,12 @@ def test_success_without_on_success_ui(monkeypatch):
     on_done(fn())  # darf nicht werfen
     assert settings.sets == [("sync_enabled", True)]
     assert {"state": "normal"} in checkbox.config_calls
+
+
+def test_shift_labels_are_distinct_and_mapped():
+    from src.send_reminder import SHIFT_LABELS, label_for_shift, shift_for_label
+
+    assert set(SHIFT_LABELS) == {"none", "backward", "forward"}
+    assert len(set(SHIFT_LABELS.values())) == 3
+    for mode in SHIFT_LABELS:
+        assert shift_for_label(label_for_shift(mode)) == mode

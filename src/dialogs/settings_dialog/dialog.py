@@ -4,6 +4,7 @@ from tkinter import ttk
 
 from src.autostart import disable_autostart, enable_autostart, is_autostart_enabled, resolve_autostart_target
 from src.updater import frequency_for_label
+from src.send_reminder import shift_for_label
 from src.theme import (
     BG,
     apply_combobox_style, apply_notebook_style, attach_unfocus_on_click,
@@ -182,6 +183,14 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
             "send_reminder_enabled": app.send_reminder_enabled_var.get(),
             "send_reminder_day": int(app.send_reminder_day_var.get()),
             "send_reminder_time": app.send_reminder_time_var.get(),
+            "send_reminder_weekend_shift": shift_for_label(
+                app.send_reminder_shift_var.get()),
+            "send_reminder_shift_holidays": app.send_reminder_shift_holidays_var.get(),
+            "send_reminder_reservations_enabled": app.send_reminder_reservations_var.get(),
+            "send_reminder_default_minutes": int(
+                app.send_reminder_default_minutes_var.get()),
+            "send_period_from_last_reminder": app.send_period_from_last_var.get(),
+            "send_period_anchor_monthly": app.send_period_anchor_monthly_var.get(),
             "update_check_frequency": frequency_for_label(updates_tab.frequency_var.get()),
             "prerelease_updates_enabled": updates_tab.prerelease_var.get(),
             "ui_scale": new_scale,
