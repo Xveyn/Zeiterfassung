@@ -132,6 +132,16 @@ def test_auth_hmac_signs_body_with_prefix():
     }
 
 
+def test_auth_hmac_prefix_defaults_to_github_style():
+    """Fehlender prefix-Schlüssel → der dokumentierte Default, nicht „kein
+    Präfix". Empfänger im GitHub-Stil erwarten sha256=<hex>."""
+    headers = auth_headers(
+        {"mode": "hmac", "header": "X-Hub-Signature-256", "secret": "Jefe"},
+        b"what do ya want for nothing?",
+    )
+    assert headers["X-Hub-Signature-256"].startswith("sha256=")
+
+
 def test_auth_hmac_prefix_may_be_empty():
     headers = auth_headers(
         {"mode": "hmac", "header": "X-Sig", "prefix": "", "secret": "Jefe"},

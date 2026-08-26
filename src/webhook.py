@@ -126,7 +126,13 @@ def auth_headers(auth, body):
         return {name: value}
     if mode == "hmac":
         name = auth.get("header") or "X-Hub-Signature-256"
-        prefix = auth.get("prefix") or ""
+        # Fehlender Schlüssel → der dokumentierte Default sha256=; ein
+        # ausdrücklich leeres Präfix bleibt leer. Deshalb None-Prüfung statt
+        # `or ""` (schluckte den Default) und statt .get(key, default)
+        # (liefe bei einem None-Wert in die Konkatenation).
+        prefix = auth.get("prefix")
+        if prefix is None:
+            prefix = "sha256="
         _check_header_part("Header-Name", name)
         _check_header_part("Signatur-Präfix", prefix)
         return {name: prefix + sign_hmac(auth.get("secret") or "", body)}
