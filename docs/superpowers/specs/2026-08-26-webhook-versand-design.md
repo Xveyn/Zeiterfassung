@@ -236,7 +236,7 @@ Der Rest ist die Suffix-Liste plus die Single-Label-Regel. Ein `ValueError`
 aus `ip_address` heißt schlicht „ist ein Name, keine IP" und führt in den
 Namens-Zweig.
 
-**Zwei Bypässe, die die Single-Label-Regel sonst öffnet** — beide nachgemessen:
+**Drei Bypässe, die die Single-Label-Regel sonst öffnet** — alle nachgemessen:
 
 - **Prozent-kodierter Host.** `urlsplit("http://8%2e8%2e8%2e8/hook").hostname`
   liefert `8%2e8%2e8%2e8`: kein gültiges IP-Literal, kein Punkt darin, also
@@ -246,10 +246,21 @@ Namens-Zweig.
 - **Dezimale IP-Notation.** `http://2130706433/` ist ebenfalls ein
   punktloses Single-Label und wird vom Betriebssystem als `127.0.0.1`
   aufgelöst. Hier zufällig harmlos, aber dieselbe Lücke.
+- **Hexadezimale IP-Notation.** `http://0x08080808/` ist ebenfalls ein
+  punktloses Single-Label — und, anders als die Dezimalform, auch kein
+  `isdigit()`-Treffer (das `x` bricht die Prüfung), fiel also durch die
+  ursprüngliche Regel als „Single-Label" und damit privat durch. Das
+  Betriebssystem löst es trotzdem numerisch auf: `socket.inet_aton`
+  (WinSock wie glibc, per reinem lokalem Parse ohne Netzzugriff
+  nachgemessen) macht aus `0x08080808` `8.8.8.8` — ebenso aus der
+  großgeschriebenen Form `0X08080808`. Anders als beim Dezimalfall ist
+  das Ziel hier kein Zufallstreffer auf eine harmlose Loopback-Adresse,
+  sondern eine echte öffentliche IP.
 
 Der Host wird deshalb vor der Prüfung `unquote`d, und ein Host, der danach ein
-`%` enthält **oder** ein rein numerisches Single-Label ist, wird abgewiesen —
-nicht als „privat" durchgewinkt.
+`%` enthält **oder** eine der drei numerischen Notationen ist (Ziffernfolge
+— dezimal wie oktal, oder mit `0x`/`0X`-Präfix), wird abgewiesen — nicht als
+„privat" durchgewinkt.
 
 Gegengeprüft und unproblematisch: `user@host` (`hostname` liefert nur den
 Host-Teil), abschließender Punkt, Groß-/Kleinschreibung, Punycode/Umlaut-Domains
