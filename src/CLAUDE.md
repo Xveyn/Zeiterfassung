@@ -251,6 +251,16 @@ muss sie deterministisch **und** über alle Geräte gleich halten.
   (GitHub-Releases, stdlib-only, Frequenz über `update_check_frequency`, Pre-Release-Opt-in über `prerelease_updates_enabled`), `changelog.py`
   (lädt/parst den Changelog-Abschnitt einer Release-Version vom GitHub-Tag), `platform_open.py`, `logging_setup.py`,
   `version.py` (einzige Versions-Quelle).
+  `get_resource_path()` ist das Gegenstück: gebündelte Programmdaten
+  (`sys._MEIPASS`), nicht Nutzerdaten. Icon-/Asset-Zugriffe gehen über diese
+  Funktion — über `get_base_path()` fanden sie auf Linux und macOS nichts.
+- `src/desktop_entry.py` — Freedesktop-`.desktop`-Dateien: schreibt den
+  Menüeintrag (`$XDG_DATA_HOME/applications/`, Fallback `~/.local/share/…`)
+  und besitzt die `Exec=`-Quoting-Regel (`exec_line`, Audit N17), die
+  `autostart.py` mitbenutzt — `autostart.py` schreibt sein `[Desktop Entry]`
+  aber weiterhin selbst (andere Keys, kein gemeinsamer Renderer). `ensure_icon`
+  legt eine persistente Icon-Kopie im Datenverzeichnis ab, weil `Icon=` den
+  AppImage-Mount überleben muss.
 - `autostart.py` — plattformabhängig (Windows-Registry HKCU Run / macOS-LaunchAgent / Linux-.desktop).
   Windows-Backend nutzt den **Registry-Wert `Zeiterfassung`** (Wertname = `installer.iss` → strukturell
   ein Eintrag); `import winreg` lazy (CI-Ubuntu). `is_autostart_enabled()` liest den echten Zustand
@@ -296,7 +306,10 @@ muss sie deterministisch **und** über alle Geräte gleich halten.
   User sie manuell schließen (Retry-Dialog), statt des Default-Wegs (`CloseApplications`/Restart
   Manager), der bei aktivem Minimize-to-Tray scheitert (`App._on_close` behandelt das dabei
   gesendete `WM_CLOSE` nur als Fenster-Verstecken).
-- `tray.py` (Fassade) + `tray_mac.py` (natives macOS-NSStatusItem-Backend, #88).
+- `tray.py` (Fassade) + `tray_mac.py` (natives macOS-NSStatusItem-Backend, #88)
+  + `tray_linux.py` (StatusNotifierItem über D-Bus, #42). Beide Nicht-Windows-
+  Backends sind dormant hinter einer Opt-in-Env-Var, bis ihr manuelles
+  Plattform-Gate grün ist.
 
 Das Tray-Icon läuft, sobald `minimize_to_tray` **oder** `reminders_enabled` aktiv ist (`ui.py::_apply_tray_setting`); bei nur `reminders_enabled` dient es ausschließlich als Toast-Kanal.
 
@@ -307,6 +320,10 @@ marshallen selbst per `root.after(0, …)`. „Nach Updates suchen" (`_tray_chec
 einzige Eintrag mit eigenem Hintergrund-Job: er übergeht den Frequenz-Throttle des
 Hintergrund-Checks, meldet sein Ergebnis in **jedem** Fall als Toast (`updater.
 manual_check_toast_text`) und blockt über `_update_check_running` den Doppelklick.
+
+Die `visible`-Callable wird auf Windows und Linux LIVE ausgewertet (pystray baut
+das Popup neu, dbusmenu fragt vor jedem Öffnen `AboutToShow`), auf macOS ist sie
+ein Snapshot vom Tray-Start.
 
 ## Dialoge (`src/dialogs/`)
 

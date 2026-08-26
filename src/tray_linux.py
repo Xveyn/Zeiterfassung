@@ -1,0 +1,639 @@
+# src/tray_linux.py
+"""Linux-Tray über StatusNotifierItem (SNI) — Backend für TrayIcon (#42).
+
+KDE Plasma implementiert SNI nativ; die Schnittstelle ist reines D-Bus. Dieses
+Backend braucht deshalb WEDER GTK NOCH GObject-Introspection — anders als
+pystrays appindicator-Backend, das beides in die AppImage zwingen würde.
+
+Modulebene ist stdlib-only (plus src.tray): `dbus_fast` und `PIL` werden lazy in
+den Funktionen importiert, die ServiceInterface-Subklassen in `_make_interfaces`
+definiert. Grund: die CI importiert `src.ui → src.tray → src.tray_linux` auch auf
+Windows/macOS. Dasselbe Muster wie das NSObject-Delegate in `tray_mac.py`.
+
+Die Menü-Logik liegt in `MenuState` — D-Bus-frei und damit auf jeder Plattform
+testbar; die D-Bus-Objekte sind nur die Hülle darum.
+
+Spec: docs/superpowers/specs/2026-07-29-linux-sni-tray-design.md
+"""
+
+import asyncio
+import concurrent.futures
+import logging
+import os
+import threading
+from collections import namedtuple
+from typing import Annotated
+
+from src.tray import build_menu_model
+
+logger = logging.getLogger(__name__)
+
+ITEM_PATH = "/StatusNotifierItem"
+MENU_PATH = "/MenuBar"
+WATCHER_NAME = "org.kde.StatusNotifierWatcher"
+WATCHER_PATH = "/StatusNotifierWatcher"
+NOTIFY_NAME = "org.freedesktop.Notifications"
+NOTIFY_PATH = "/org/freedesktop/Notifications"
+
+# dbusmenu-Property → D-Bus-Typ. Die pure Schicht liefert nackte Python-Werte,
+# der D-Bus-Adapter verpackt sie damit in Variants (eine Quelle für beide).
+#
+# Invariante: jeder Property-Key, den MenuState/build_menu_nodes in einem
+# Knoten-props-Dict erzeugt ("type", "label", "enabled", "visible", plus
+# "children-display" am Root), MUSS hier einen Eintrag haben — `_variants`
+# schlägt sonst mit `KeyError` zu, sobald der Adapter die Properties in
+# Variants verpackt. Wer in `build_menu_nodes`/`MenuState` einen neuen
+# Property-Key einführt, ergänzt ihn hier im selben Schritt.
+PROP_SIGNATURES = {
+    "type": "s",
+    "label": "s",
+    "enabled": "b",
+    "visible": "b",
+    "children-display": "s",
+}
+
+MenuNode = namedtuple("MenuNode", ["id", "props", "callback", "visible"])
+
+
+def build_menu_nodes(model):
+    """Menü-Modell (`tray.build_menu_model`) → dbusmenu-Knoten.
+
+    IDs laufen ab 1, weil 0 in dbusmenu die Wurzel ist. `visible` bleibt die
+    Callable — ausgewertet wird sie erst in `MenuState`, bei jedem Öffnen.
+    """
+    nodes = []
+    for index, entry in enumerate(model, start=1):
+        if entry.kind == "separator":
+            nodes.append(MenuNode(index, {"type": "separator"}, None, None))
+        else:
+            nodes.append(MenuNode(
+                index,
+                {"type": "standard", "label": entry.label, "enabled": True},
+                entry.callback,
+                entry.visible,
+            ))
+    return nodes
+
+
+class MenuState:
+    """dbusmenu-Zustand ohne D-Bus: Knoten, Sichtbarkeit, Revision, Dispatch.
+
+    Der Host (Plasma) ruft vor jedem Öffnen `AboutToShow`; darauf werten wir die
+    `visible`-Callables neu aus. Ändert sich etwas, steigt die Revision und der
+    Host holt das Layout neu — Linux verhält sich damit LIVE wie Windows, nicht
+    als Snapshot wie macOS.
+    """
+
+    def __init__(self, model):
+        self._nodes = build_menu_nodes(model)
+        self._visibility = self._evaluate()
+        self.revision = 1
+
+    def _evaluate(self):
+        visibility = {}
+        for node in self._nodes:
+            if node.visible is None:
+                visibility[node.id] = True
+                continue
+            try:
+                visibility[node.id] = bool(node.visible())
+            except Exception:
+                # Lieber ein Eintrag zu viel als ein totes Menü.
+                logger.exception("Tray-Sichtbarkeit warf — Eintrag bleibt sichtbar")
+                visibility[node.id] = True
+        return visibility
+
+    def refresh(self):
+        """`visible`-Callables neu auswerten. True, wenn sich etwas geändert hat
+        (dann ist die Revision gestiegen und der Host muss neu laden)."""
+        current = self._evaluate()
+        if current == self._visibility:
+            return False
+        self._visibility = current
+        self.revision += 1
+        return True
+
+    def layout(self):
+        """`(root_id, root_props, children)` mit nackten Property-Dicts.
+        Kinder sind flach — wir haben keine Submenüs."""
+        children = [
+            (node.id, {**node.props, "visible": self._visibility[node.id]}, [])
+            for node in self._nodes
+        ]
+        return (0, {"children-display": "submenu"}, children)
+
+    def properties(self, node_id):
+        """Property-Dict eines Knotens (für GetGroupProperties/GetProperty)."""
+        for node in self._nodes:
+            if node.id == node_id:
+                return {**node.props, "visible": self._visibility[node.id]}
+        return {}
+
+    def ids(self):
+        return [node.id for node in self._nodes]
+
+    def dispatch(self, node_id):
+        """Callback des Knotens aufrufen. True, wenn es einen gab.
+
+        Exceptions werden geschluckt: der Callback läuft im D-Bus-Loop-Thread,
+        ein Wurf würde die Loop killen und das Icon stumm schalten.
+        """
+        for node in self._nodes:
+            if node.id == node_id and node.callback is not None:
+                try:
+                    node.callback()
+                except Exception:
+                    logger.exception("Tray-Menü-Callback warf (geschluckt)")
+                return True
+        return False
+
+
+def argb32_from_rgba(rgba):
+    """RGBA-Bytes → ARGB32 in Network-Byte-Order, wie SNI es für `IconPixmap`
+    verlangt (`a(iiay)`). Pillow-frei und damit überall testbar."""
+    argb = bytearray(len(rgba))
+    argb[0::4] = rgba[3::4]   # A
+    argb[1::4] = rgba[0::4]   # R
+    argb[2::4] = rgba[1::4]   # G
+    argb[3::4] = rgba[2::4]   # B
+    return bytes(argb)
+
+
+def icon_pixmaps(resource_path, sizes=(32, 64, 128)):
+    """`[(breite, höhe, argb32)]` aus `assets/margenheld-icon.png`.
+
+    Mehrere Größen, damit der Host für seine Panel-Höhe die passende wählt.
+    Pillow wird lazy importiert (wie im pystray-Backend). Fehlt die PNG oder
+    Pillow, bleibt die Liste leer und das Item startet ohne eigenes Icon —
+    besser als ein Tray, das gar nicht erst hochkommt.
+    """
+    png = os.path.join(resource_path, "assets", "margenheld-icon.png")
+    if not os.path.exists(png):
+        logger.warning("Tray-Icon %s fehlt — Item startet ohne Pixmap", png)
+        return []
+    try:
+        from PIL import Image  # pyright: ignore[reportMissingImports]  # Pillow: nicht in CI-Test-Deps
+    except ImportError:
+        logger.warning("Pillow nicht verfügbar — Item startet ohne Pixmap")
+        return []
+    pixmaps = []
+    with Image.open(png) as image:
+        rgba = image.convert("RGBA")
+        for size in sizes:
+            scaled = rgba.resize((size, size))
+            pixmaps.append((size, size, argb32_from_rgba(scaled.tobytes())))
+    return pixmaps
+
+
+def _safe(fn):
+    """0-arg-Callback aufrufen, ohne dass eine Exception in den D-Bus-Loop
+    zurückläuft. dbus-fast wandelt einen Wurf im Methoden-Handler in eine
+    D-Bus-Fehlerantwort um — die Loop liefe weiter, aber der Host bekäme einen
+    Error statt einer Aktion (bzw. der Menü-Klick bräche sichtbar ab). Ein
+    geloggter, geschluckter Fehler ist besser als ein Nutzer, der vor einem
+    stumm hängenden Menüeintrag sitzt."""
+    try:
+        fn()
+    except Exception:
+        logger.exception("Linux-Tray-Callback-Fehler (geschluckt)")
+
+
+def _make_interfaces(state, on_activate, pixmaps):
+    """Baut die beiden D-Bus-Objekte: SNI-Item und dbusmenu.
+
+    `dbus_fast` wird hier LAZY importiert und die Klassen werden IN der Funktion
+    definiert (sie erben von ServiceInterface) — dasselbe Muster wie das
+    NSObject-Delegate in `tray_mac.py`. So bleibt die Modulebene stdlib-only.
+
+    Die Methodennamen sind exakt die D-Bus-Member-Namen: dbus_fast leitet den
+    Namen 1:1 vom Funktionsnamen ab.
+    """
+    from dbus_fast import PropertyAccess, Variant  # pyright: ignore[reportMissingImports]  # dbus-fast: nur auf Linux installiert
+    from dbus_fast.annotations import (  # pyright: ignore[reportMissingImports]  # dbus-fast: nur auf Linux installiert
+        DBusBool, DBusInt32, DBusObjectPath, DBusSignature, DBusStr, DBusUInt32, DBusVariant,
+    )
+    from dbus_fast.service import (  # pyright: ignore[reportMissingImports]  # dbus-fast: nur auf Linux installiert
+        ServiceInterface, dbus_method, dbus_property, dbus_signal,
+    )
+
+    # Zusammengesetzte Signaturen stehen INLINE (siehe Annotations-Regel in den
+    # Global Constraints — ein selbstgebauter Alias wäre für pyright eine
+    # Variable im Typausdruck und damit ein Fehler). Der Python-Typ ist bewusst
+    # das lose `list`: dbus_fast liest ohnehin nur die DBusSignature, und
+    # Structs wie Multi-Out-Args sind auf dieser Ebene Listen.
+    def _variants(props):
+        return {key: Variant(PROP_SIGNATURES[key], value) for key, value in props.items()}
+
+    class _Item(ServiceInterface):
+        """org.kde.StatusNotifierItem — Icon und Klick-Verhalten."""
+
+        def __init__(self):
+            super().__init__("org.kde.StatusNotifierItem")
+
+        @dbus_property(PropertyAccess.READ)
+        def Category(self) -> DBusStr:
+            return "ApplicationStatus"
+
+        @dbus_property(PropertyAccess.READ)
+        def Id(self) -> DBusStr:
+            return "zeiterfassung"
+
+        @dbus_property(PropertyAccess.READ)
+        def Title(self) -> DBusStr:
+            return "Zeiterfassung"
+
+        @dbus_property(PropertyAccess.READ)
+        def Status(self) -> DBusStr:
+            return "Active"
+
+        @dbus_property(PropertyAccess.READ)
+        def WindowId(self) -> DBusInt32:
+            return 0
+
+        @dbus_property(PropertyAccess.READ)
+        def ItemIsMenu(self) -> DBusBool:
+            # False → Plasma schickt beim Linksklick Activate, statt nur das
+            # Menü zu öffnen. Das ist der Default-Klick, den pystrays
+            # appindicator-Backend prinzipbedingt nicht kann.
+            return False
+
+        @dbus_property(PropertyAccess.READ)
+        def Menu(self) -> DBusObjectPath:
+            return MENU_PATH
+
+        @dbus_property(PropertyAccess.READ)
+        def IconName(self) -> DBusStr:
+            # Leer: wir liefern Pixmaps statt eines Theme-Icons (die App ist
+            # nicht im Icon-Theme des Systems installiert).
+            return ""
+
+        @dbus_property(PropertyAccess.READ)
+        def IconPixmap(self) -> Annotated[list, DBusSignature("a(iiay)")]:
+            return [[width, height, data] for width, height, data in pixmaps]
+
+        @dbus_property(PropertyAccess.READ)
+        def ToolTip(self) -> Annotated[list, DBusSignature("(sa(iiay)ss)")]:
+            return ["", [], "Zeiterfassung", ""]
+
+        @dbus_method()
+        def Activate(self, x: DBusInt32, y: DBusInt32):
+            _safe(on_activate)
+
+        @dbus_method()
+        def SecondaryActivate(self, x: DBusInt32, y: DBusInt32):
+            pass
+
+        @dbus_method()
+        def ContextMenu(self, x: DBusInt32, y: DBusInt32):
+            # Der Host zeigt das dbusmenu selbst (Menu-Property ist gesetzt);
+            # die Methode existiert nur, damit niemand UnknownMethod sieht.
+            pass
+
+        @dbus_method()
+        def Scroll(self, delta: DBusInt32, orientation: DBusStr):
+            pass
+
+        @dbus_method()
+        def ProvideXdgActivationToken(self, token: DBusStr):
+            # Tk kann den Token nicht verwerten — unter Wayland darf der
+            # Compositor das Anheben deshalb verweigern (s. Spec).
+            pass
+
+    class _Menu(ServiceInterface):
+        """com.canonical.dbusmenu — dünne Hülle um MenuState."""
+
+        def __init__(self):
+            super().__init__("com.canonical.dbusmenu")
+
+        @dbus_property(PropertyAccess.READ)
+        def Version(self) -> DBusUInt32:
+            return 3
+
+        @dbus_property(PropertyAccess.READ)
+        def Status(self) -> DBusStr:
+            return "normal"
+
+        @dbus_property(PropertyAccess.READ)
+        def TextDirection(self) -> DBusStr:
+            return "ltr"
+
+        @dbus_property(PropertyAccess.READ)
+        def IconThemePath(self) -> Annotated[list, DBusSignature("as")]:
+            return []
+
+        @dbus_method()
+        def GetLayout(self, parentId: DBusInt32, recursionDepth: DBusInt32,
+                      propertyNames: Annotated[list, DBusSignature("as")],
+                      ) -> Annotated[list, DBusSignature("u(ia{sv}av)")]:
+            root_id, root_props, children = state.layout()
+            nodes = [
+                Variant("(ia{sv}av)", [child_id, _variants(props), []])
+                for child_id, props, _kids in children
+            ]
+            return [state.revision, [root_id, _variants(root_props), nodes]]
+
+        @dbus_method()
+        def GetGroupProperties(self,
+                               ids: Annotated[list, DBusSignature("ai")],
+                               propertyNames: Annotated[list, DBusSignature("as")],
+                               ) -> Annotated[list, DBusSignature("a(ia{sv})")]:
+            wanted = list(ids) if ids else state.ids()
+            return [[node_id, _variants(state.properties(node_id))] for node_id in wanted]
+
+        @dbus_method()
+        def GetProperty(self, id: DBusInt32, name: DBusStr) -> DBusVariant:
+            props = state.properties(id)
+            if name not in props:
+                return Variant("s", "")
+            return Variant(PROP_SIGNATURES[name], props[name])
+
+        @dbus_method()
+        def Event(self, id: DBusInt32, eventId: DBusStr, data: DBusVariant,
+                  timestamp: DBusUInt32):
+            if eventId == "clicked":
+                state.dispatch(id)
+
+        @dbus_method()
+        def EventGroup(self, events: Annotated[list, DBusSignature("a(isvu)")],
+                       ) -> Annotated[list, DBusSignature("ai")]:
+            for event in events:
+                if event[1] == "clicked":
+                    state.dispatch(event[0])
+            return []
+
+        @dbus_method()
+        def AboutToShow(self, id: DBusInt32) -> DBusBool:
+            # Plasma ruft das vor jedem Öffnen → hier wird `visible` live neu
+            # ausgewertet (Windows-Parität, kein Snapshot wie auf macOS).
+            if not state.refresh():
+                return False
+            self.LayoutUpdated(state.revision, 0)
+            return True
+
+        @dbus_method()
+        def AboutToShowGroup(self, ids: Annotated[list, DBusSignature("ai")],
+                             ) -> Annotated[list, DBusSignature("aiai")]:
+            if not state.refresh():
+                return [[], []]
+            self.LayoutUpdated(state.revision, 0)
+            return [list(ids), []]
+
+        @dbus_signal()
+        def LayoutUpdated(self, revision: DBusUInt32,
+                          parent: DBusInt32) -> Annotated[list, DBusSignature("ui")]:
+            return [revision, parent]
+
+    return _Item(), _Menu()
+
+
+def _log_notify_failure(future):
+    """Done-Callback für den fire-and-forget-Toast: Fehler landen im Log statt
+    im Nichts — ohne dass der aufrufende Tk-Thread auf den Bus wartet."""
+    try:
+        future.result()
+    except Exception:
+        logger.exception("Linux-Tray-Notify fehlgeschlagen (geschluckt)")
+
+
+class LinuxTrayBackend:
+    """SNI-Backend: exportiert Item und Menü auf dem Session-Bus und meldet sich
+    beim StatusNotifierWatcher an.
+
+    Ein Daemon-Thread mit eigener Asyncio-Loop — dasselbe Muster, das pystray auf
+    Windows fährt. `start()` blockiert, bis Verbindung UND Registrierung stehen,
+    und wirft deren Fehler im Aufrufer-Thread durch: genau der Vertrag, den
+    `ui.py::_apply_tray_setting` erwartet.
+
+    Die Menü-Callbacks laufen im Loop-Thread und marshallen selbst per
+    `root.after(0, …)` auf den Tk-Thread (unverändertes Muster aus ui.py).
+    """
+
+    START_TIMEOUT_S = 10
+    SHUTDOWN_TIMEOUT_S = 5
+
+    def __init__(self, resource_path, on_show, on_quit, actions=None):
+        self.resource_path = resource_path
+        self._on_show = on_show
+        self._on_quit = on_quit
+        self._actions = actions or []
+        self._thread = None
+        self._loop = None
+        self._bus = None
+        self._name = None
+        self._stopping = None   # asyncio.Event, im Loop-Thread erzeugt
+
+    def start(self):
+        """Startet Loop-Thread, exportiert die Objekte, registriert sich.
+        Wirft synchron, wenn kein Bus oder kein Watcher erreichbar ist."""
+        ready = concurrent.futures.Future()
+        self._thread = threading.Thread(target=self._run, args=(ready,), daemon=True)
+        self._thread.start()
+        try:
+            ready.result(timeout=self.START_TIMEOUT_S)
+        except concurrent.futures.TimeoutError as exc:
+            raise RuntimeError(
+                f"Kein StatusNotifierWatcher hat innerhalb von {self.START_TIMEOUT_S}s "
+                "geantwortet — läuft ein SNI-fähiger Desktop (KDE Plasma)?") from exc
+
+    def _run(self, ready):
+        loop = asyncio.new_event_loop()
+        self._loop = loop
+        asyncio.set_event_loop(loop)
+        # Event HIER erzeugen, nicht erst in _serve nach dem Bus-Connect
+        # (Review-Finding 3): läuft start() in den START_TIMEOUT_S-Zweig,
+        # während _serve noch in connect() hängt, fände stop() sonst
+        # `_stopping is None` vor, könnte nichts signalisieren und würde
+        # Thread/Event trotzdem auf None zurücksetzen — ein späterer stop()
+        # erreicht den dann längst verwaisten Thread nie mehr. Mit dem Event
+        # schon jetzt kann stop() es jederzeit setzen; sobald _serve seinen
+        # Verbindungsaufbau irgendwann abschließt, läuft es direkt in ein
+        # bereits gesetztes `await self._stopping.wait()` und baut sofort ab.
+        self._stopping = asyncio.Event()
+        try:
+            loop.run_until_complete(self._serve(ready))
+        except Exception as exc:
+            if not ready.done():
+                ready.set_exception(exc)
+            else:
+                logger.exception("Linux-Tray-Loop beendet sich mit Fehler")
+        finally:
+            loop.close()
+
+    async def _serve(self, ready):
+        from dbus_fast import BusType  # pyright: ignore[reportMissingImports]  # dbus-fast: nur auf Linux installiert
+        from dbus_fast.aio import MessageBus  # pyright: ignore[reportMissingImports]  # dbus-fast: nur auf Linux installiert
+
+        bus = await MessageBus(bus_type=BusType.SESSION).connect()
+        self._bus = bus
+        name = None
+        try:
+            state = MenuState(build_menu_model(self._on_show, self._on_quit, self._actions))
+            item, menu = _make_interfaces(state, self._on_show, icon_pixmaps(self.resource_path))
+            bus.export(ITEM_PATH, item)
+            bus.export(MENU_PATH, menu)
+
+            name = f"org.kde.StatusNotifierItem-{os.getpid()}-1"
+            # `self._name` ist reine Buchhaltung (Debugging/Introspektion) —
+            # GELESEN wird im ganzen Ablauf nur die lokale Kopie `name`. Grund
+            # ist derselbe wie beim Abbau unten (Review-Finding 2): stop() darf
+            # `self._name` nach einem Join-Timeout jederzeit auf None setzen,
+            # während dieser Coroutine-Rumpf noch läuft. Wer hier einen neuen
+            # Schritt einhängt, reicht `name` durch, statt `self._name` zu lesen.
+            self._name = name
+            await self._own_name(bus, name)
+            await self._register(bus, name)
+            await self._watch_watcher(bus, name)
+
+            ready.set_result(None)
+            await self._stopping.wait()
+        finally:
+            # Abbau IM Loop-Thread, nicht in stop(): sonst müsste stop() auf
+            # eine Coroutine warten, deren Loop unmittelbar danach zumacht —
+            # das hing bis zum Timeout, ausgerechnet im Quit-Pfad.
+            #
+            # try/finally statt einer Anweisungsfolge NACH `await
+            # self._stopping.wait()` (Review-Finding 1): wirft `_own_name`
+            # oder `_register` (Name belegt, Watcher lehnt ab, o.ä.), lief der
+            # Abbau vorher nie — der Prozess hielt danach eine offene
+            # Session-Bus-Verbindung, die den Namen bereits besaß, und ein
+            # zweiter start()-Versuch bekam die irreführende Meldung „Busname
+            # … ist bereits belegt". `name` ist die lokal festgehaltene Kopie
+            # (Review-Finding 2), nicht `self._name`: stop() kann
+            # `self._name` nach einem Join-Timeout bereits auf None gesetzt
+            # haben, während dieser Abbau noch läuft.
+            if name:
+                try:
+                    await bus.release_name(name)
+                except Exception:
+                    logger.exception("Busname konnte beim Abbau nicht freigegeben werden")
+            bus.disconnect()
+
+    async def _own_name(self, bus, name):
+        """Busnamen belegen — und prüfen, dass er uns wirklich gehört.
+
+        Ohne die Prüfung würden wir bei belegtem Namen (zweite Instanz, deren
+        Single-Instance-Guard degradiert ist) einen fremden Namen beim Watcher
+        anmelden: Plasma fragte dann die falsche Anwendung nach Icon und Menü,
+        und niemand sähe einen Fehler.
+        """
+        from dbus_fast import RequestNameReply  # pyright: ignore[reportMissingImports]  # dbus-fast: nur auf Linux installiert
+
+        reply = await bus.request_name(name)
+        if reply is not RequestNameReply.PRIMARY_OWNER:
+            raise RuntimeError(
+                f"Busname {name} ist bereits belegt (Antwort: {reply}) — "
+                "läuft die Zeiterfassung doppelt?")
+
+    async def _register(self, bus, name):
+        from dbus_fast import Message, MessageType  # pyright: ignore[reportMissingImports]  # dbus-fast: nur auf Linux installiert
+
+        reply = await bus.call(Message(
+            destination=WATCHER_NAME, path=WATCHER_PATH, interface=WATCHER_NAME,
+            member="RegisterStatusNotifierItem", signature="s", body=[name],
+        ))
+        if reply is None or reply.message_type is MessageType.ERROR:
+            detail = reply.body[0] if reply is not None and reply.body else "keine Antwort"
+            raise RuntimeError(f"StatusNotifierWatcher lehnte die Registrierung ab: {detail}")
+
+    async def _watch_watcher(self, bus, name):
+        """Nach einem Neustart des WATCHERS neu anmelden — sonst ist das Icon
+        weg und niemand kann sich erklären, warum.
+
+        Watcher ≠ Panel: unter Plasma 6 gehört `org.kde.StatusNotifierWatcher`
+        dem `kded6`, während `plasmashell` nur den Host
+        (`org.kde.StatusNotifierHost-<pid>`) besitzt — auf dem Zielgerät per
+        `busctl --user list` verifiziert. Ein plasmashell-Neustart lässt den
+        Watcher-Namen also unberührt, dieses Abo feuert nicht, und das Icon
+        kommt trotzdem zurück: die Registrierung liegt weiter im Watcher, der
+        neue Host liest sie über `RegisteredStatusNotifierItems` wieder aus.
+
+        Das hier ist der Pfad für den Fall, dass der Watcher SELBST weg war.
+        Wer ihn von Hand auslösen will (Plasma 6):
+        `systemctl --user restart plasma-kded6.service`. `plasmashell --replace`
+        prüft ihn NICHT — der Test sähe grün aus, ohne diesen Code anzufassen.
+        """
+        introspection = await bus.introspect("org.freedesktop.DBus", "/org/freedesktop/DBus")
+        proxy = bus.get_proxy_object(
+            "org.freedesktop.DBus", "/org/freedesktop/DBus", introspection)
+        dbus_iface = proxy.get_interface("org.freedesktop.DBus")
+
+        # Loop LOKAL festhalten statt über self._loop: stop() setzt das Attribut
+        # auf None, und ein Signal, das genau währenddessen eintrudelt, liefe
+        # sonst in einen AttributeError im Loop-Callback.
+        loop = asyncio.get_running_loop()
+
+        # Der Signal-Parameter heißt bewusst `changed` statt `name`: `name` ist
+        # hier bereits UNSER Busname, den die Neuanmeldung braucht.
+        def on_name_owner_changed(changed, old_owner, new_owner):
+            if changed == WATCHER_NAME and new_owner:
+                loop.create_task(self._reregister(bus, name))
+
+        dbus_iface.on_name_owner_changed(on_name_owner_changed)
+
+    async def _reregister(self, bus, name):
+        try:
+            await self._register(bus, name)
+        except Exception:
+            logger.exception("Erneute Tray-Anmeldung nach Watcher-Neustart fehlgeschlagen")
+
+    def notify(self, message, title="Zeiterfassung"):
+        """Toast über org.freedesktop.Notifications. Fehlertolerant wie auf den
+        anderen Plattformen — ein fehlender Toast darf nie den Sync stören.
+
+        Bewusst OHNE `.result()`: notify() läuft auf dem Tk-Thread (Aufrufer ist
+        `sync_orchestrator._on_tray_done` bzw. die Reminder-Scheduler). Ein
+        hängender Benachrichtigungsdienst würde die UI sonst einfrieren.
+        """
+        loop, bus = self._loop, self._bus
+        if loop is None or bus is None:
+            return
+        try:
+            # `bus` durchreichen statt `self._bus` in der Coroutine zu lesen:
+            # stop() nullt das Attribut, und zwischen der Prüfung oben und dem
+            # Lauf der Coroutine liegt ein Thread-Wechsel (gleiche Regel wie im
+            # Registrierungspfad).
+            future = asyncio.run_coroutine_threadsafe(
+                self._notify(bus, message, title), loop)
+        except Exception:
+            logger.exception("Linux-Tray-Notify konnte nicht eingereiht werden")
+            return
+        future.add_done_callback(_log_notify_failure)
+
+    async def _notify(self, bus, message, title):
+        from dbus_fast import Message  # pyright: ignore[reportMissingImports]  # dbus-fast: nur auf Linux installiert
+
+        icon = os.path.join(self.resource_path, "assets", "margenheld-icon.png")
+        await bus.call(Message(
+            destination=NOTIFY_NAME, path=NOTIFY_PATH, interface=NOTIFY_NAME,
+            member="Notify", signature="susssasa{sv}i",
+            body=[
+                "Zeiterfassung",
+                0,                      # replaces_id 0: Toasts überschreiben sich nicht
+                icon if os.path.exists(icon) else "",
+                title or "Zeiterfassung",
+                message,
+                [], {}, -1,
+            ],
+        ))
+
+    def stop(self):
+        """Signalisiert dem Loop-Thread das Ende und joint ihn. Idempotent.
+
+        Der eigentliche Abbau (release_name/disconnect) passiert im Loop-Thread
+        am Ende von `_serve` — hier wird nur das Event gesetzt (threadsafe über
+        `call_soon_threadsafe`, weil `asyncio.Event.set` es nicht ist).
+        """
+        loop, self._loop = self._loop, None
+        stopping = self._stopping
+        if loop is not None and stopping is not None and not loop.is_closed():
+            try:
+                loop.call_soon_threadsafe(stopping.set)
+            except RuntimeError:
+                # Loop war schon zu (z.B. nach fehlgeschlagenem start()).
+                logger.debug("Linux-Tray-Loop war beim Stoppen bereits beendet")
+        if self._thread is not None:
+            self._thread.join(timeout=self.SHUTDOWN_TIMEOUT_S)
+            self._thread = None
+        self._bus = None
+        self._name = None
+        self._stopping = None

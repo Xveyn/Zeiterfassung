@@ -21,6 +21,14 @@ jobs:
           cache: pip
           cache-dependency-path: requirements-test.txt
       - run: pip install -r requirements-test.txt
+      # Das Linux-SNI-Tray wird gegen einen ECHTEN dbus-daemon geprüft
+      # (tests/test_tray_linux_dbus.py) — die einzige Ebene, auf der sich die
+      # D-Bus-Signaturen überhaupt prüfen lassen (#42). Fehlt das Binary,
+      # skippen diese Tests STILL und der Build bliebe grün, obwohl das
+      # gesamte Wire-Level-Netz weg ist. Deshalb hier laut scheitern, statt
+      # sich stillschweigend auf das Runner-Image zu verlassen.
+      - name: dbus-daemon vorhanden (sonst skippen die SNI-Wire-Tests still)
+        run: dbus-daemon --version
       - run: pytest tests/
 
   test:

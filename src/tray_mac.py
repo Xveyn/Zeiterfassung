@@ -32,8 +32,8 @@ def _safe(fn):
 class MacTrayBackend:
     """NSStatusItem-Backend mit derselben Lifecycle-API wie _PystrayBackend."""
 
-    def __init__(self, base_path, on_show, on_quit, actions=None):
-        self.base_path = base_path
+    def __init__(self, resource_path, on_show, on_quit, actions=None):
+        self.resource_path = resource_path
         self._on_show = on_show
         self._on_quit = on_quit
         self._actions = actions or []
@@ -45,7 +45,7 @@ class MacTrayBackend:
 
     def _load_image(self):
         from AppKit import NSImage  # pyright: ignore[reportMissingImports]  # pyobjc, nur macOS
-        png = os.path.join(self.base_path, "assets", "margenheld-icon.png")
+        png = os.path.join(self.resource_path, "assets", "margenheld-icon.png")
         if not os.path.exists(png):
             return None
         image = NSImage.alloc().initByReferencingFile_(png)

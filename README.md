@@ -119,6 +119,13 @@ chmod +x Zeiterfassung-<ver>-x86_64.AppImage
 
 Voraussetzung: `libfuse2` installiert (`sudo apt install libfuse2` unter Debian/Ubuntu).
 
+Beim ersten Start legt die App einen Eintrag im Anwendungsmenü an
+(`~/.local/share/applications/Zeiterfassung.desktop`) und hält ihn danach
+automatisch aktuell. Dasselbe gilt für den Autostart, falls aktiviert: beide
+zeigen nach einem Update von selbst auf die neue AppImage — vorausgesetzt, du
+startest die neue Datei einmal. Ein Integrationswerkzeug wie `appimaged` wird
+nicht gebraucht.
+
 ### Aus dem Source-Code
 
 #### Voraussetzungen
@@ -380,7 +387,15 @@ Die App läuft auf **Windows, macOS und Linux**. Plattformspezifische Features w
 | Taskbar-Icon (AppUserModelID) | ✓ | — (nicht nötig) | — (nicht nötig) |
 | Window-Icon | ✓ (`.ico`) | ✓ (`.png` Fallback) | ✓ (`.png` Fallback) |
 | Autostart bei Anmeldung | ✓ (Registry HKCU Run) | ✓ (LaunchAgent plist) | ✓ (`.desktop`-Datei) |
+| Eintrag im Anwendungsmenü | ✓ (Startmenü, vom Setup) | ✓ (`Zeiterfassung.app` in `/Applications`) | ✓ (`.desktop` in `~/.local/share/applications/`, von der App beim Start geschrieben) |
+| Infobereich-Icon (Tray) | ✓ (pystray) | ○ (NSStatusItem, Opt-in `ZEIT_MACOS_TRAY=1`) | ○ (StatusNotifierItem, Opt-in `ZEIT_LINUX_TRAY=1`) |
 | Standalone-Binary (PyInstaller) | ✓ (`.exe`) | ✓ (`.app` Bundle) | ✓ (AppImage) |
+
+○ = implementiert, aber bis zum manuellen Plattform-Test dormant. Das Linux-Tray
+spricht StatusNotifierItem über D-Bus (KDE Plasma, XFCE, GNOME mit
+AppIndicator-Extension); Desktops ohne StatusNotifierWatcher bekommen wie bisher
+kein Icon. Unter Wayland holt ein Klick das Fenster zurück, das Anheben in den
+Vordergrund darf der Compositor aber verweigern.
 
 ## Tests
 

@@ -108,8 +108,12 @@ Testsorte — sie brechen bei Layout-Umbauten, ohne dass ein Verhalten kaputt
 wäre, und erzeugen damit genau die Sorte Rot, die man wegklickt statt liest.
 Dazu käme dauerhaft ein `xvfb`-Pfad in der CI, den sonst nichts braucht. Und
 das, was wirklich nur auf der echten Plattform bricht — macOS-Sekundärklick
-(`<Button-2>`/Control-Klick, ✕-Delete-Gate), Linux/KDE-Tray (#42),
-Fenster-Chrome — deckt ein Linux-Framebuffer strukturell ohnehin nicht ab.
+(`<Button-2>`/Control-Klick, ✕-Delete-Gate), Fenster-Chrome und die Darstellung
+des Linux-Trays in Plasma (#42) — deckt ein Linux-Framebuffer strukturell ohnehin
+nicht ab. Beim Linux-Tray zeigt sich dabei genau der Zuschnitt-Gedanke: die
+dbusmenu-Logik liegt D-Bus-frei in `tray_linux.MenuState` und wird überall
+getestet, die Wire-Ebene gegen einen echten `dbus-daemon` — offen bleibt nur,
+was Plasma daraus zeichnet.
 
 **Was stattdessen greift** — das ist der eigentliche Punkt, nicht ein Verzicht
 ohne Ersatz:
@@ -134,3 +138,23 @@ Dialog-Verdrahtung umbaut, verifiziert sie von Hand.
 engen `xvfb`-Ausschnitt vor. Beide sind mit dieser Entscheidung geschlossen —
 sie ist damit getroffen, nicht vertagt. Ältere Specs, die „Audit M16 offen"
 schreiben, sind an dieser Stelle überholt.
+
+## Linux: Reste nach dem Löschen der AppImage
+
+Löscht der Nutzer die AppImage, bleiben Menüeintrag und Autostart-Datei
+zurück und zeigen ins Leere. Die App kann nicht aufräumen, wenn sie nicht
+mehr startet, und das AppImage-Format kennt keinen Deinstallations-Hook.
+Gilt gleichermaßen für die zurückbleibenden Nutzerdaten inkl. `token.json` —
+das ist plattformübergreifend erfasst in
+[#183](https://github.com/margenheld/Zeiterfassung/issues/183).
+
+Der Autostart heilt außerdem erst, **nachdem** die neue AppImage einmal
+gestartet wurde. Wer die neue Version herunterlädt und nie öffnet, startet
+weiter die alte — ohne Hinweis.
+
+Ist zusätzlich `appimaged` oder AppImageLauncher installiert, schreibt eines
+dieser Tools beim ersten Start einen eigenen Menüeintrag
+(`appimagekit_<hash>-Zeiterfassung.desktop`) neben unserem eigenen. Ergebnis:
+zwei Einträge im Anwendungsmenü für dieselbe AppImage. Kein Datenverlust, rein
+kosmetisch — die App schreibt ihren eigenen Eintrag unabhängig davon, weil sie
+ohne eines dieser Tools sonst gar keinen bekäme.

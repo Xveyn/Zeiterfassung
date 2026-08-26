@@ -18,6 +18,7 @@ from src.version import VERSION, installed_release_id, version_label
 from src.background_tasks import BackgroundTaskRunner
 from src.weekly_limit import format_limit_warnings
 from src.grid_renderer import GridRenderer
+from src.paths import get_resource_path
 from src.sync_orchestrator import classify_sync_error, SyncOrchestrator
 from src.update_banner import UpdateBanner
 from src.updater import (
@@ -92,7 +93,7 @@ class App:
         # No-ops (ctypes.windll/winreg fehlen), das Gate macht das explizit.
         if platform.system() == "Windows":
             self._setup_windows_app_identity()
-        self._setup_window_icon(base_path)
+        self._setup_window_icon(get_resource_path())
 
         self.root.resizable(False, False)
         self._init_view_state()
@@ -198,20 +199,28 @@ class App:
         except Exception:
             pass
 
-    def _setup_window_icon(self, base_path):
+    def _setup_window_icon(self, resource_path):
         """Setzt App-/Taskbar-Icon (aus __init__ extrahiert — Audit N21).
 
         Unter Windows das .ico als Tk-Default (`wm iconbitmap -default`), damit
         künftige Toplevels (Settings, Entry, …) es erben statt des Tk-Default-
         Feder-Icons; zusätzlich das .png als iconphoto auf allen Plattformen."""
-        ico_path = os.path.join(base_path, "assets", "margenheld-icon.ico")
-        png_path = os.path.join(base_path, "assets", "margenheld-icon.png")
+        ico_path = os.path.join(resource_path, "assets", "margenheld-icon.ico")
+        png_path = os.path.join(resource_path, "assets", "margenheld-icon.png")
         if platform.system() == "Windows" and os.path.exists(ico_path):
             self.root.iconbitmap(default=ico_path)
         if os.path.exists(png_path):
-            icon = tk.PhotoImage(file=png_path)
-            self.root.iconphoto(True, icon)
-            self._icon_ref = icon
+            # Seit dem Umstieg auf get_resource_path() (statt get_base_path())
+            # ist dieser Zweig auf macOS/Linux erstmals erreichbar — vorher
+            # zeigte os.path.exists(png_path) dort immer False. Ein fehlendes
+            # oder kaputtes PNG darf trotzdem nie den Start verhindern (analog
+            # theme.apply_app_icon): degradiert auf "kein Fenster-Icon".
+            try:
+                icon = tk.PhotoImage(file=png_path)
+                self.root.iconphoto(True, icon)
+                self._icon_ref = icon
+            except tk.TclError:
+                pass
 
     def _init_view_state(self):
         """Initialer Kalender-View-Zustand aus dem heutigen Datum (aus __init__
@@ -437,10 +446,17 @@ class App:
     def _apply_tray_setting(self):
         """Startet oder stoppt das Tray-Icon abhängig vom Settings-Toggle.
 
-        Auf Linux unterstützen wir Tray bewusst nicht — pystray-Backend ist
-        je nach Desktop-Umgebung unzuverlässig. Wenn das Setup auf Win/macOS
-        fehlschlägt (z.B. fehlende Lib im Frozen-Build), wird ein Toast
-        gezeigt und das Feature deaktiviert.
+        Ob die Plattform überhaupt eines tragen kann, entscheidet allein
+        `tray.is_supported()`: Windows ja, macOS und Linux nur mit gesetzter
+        Opt-in-Env-Var, bis ihr jeweiliges manuelles Plattform-Gate grün ist
+        (#88 / #42). Sagt es nein, werden die drei Tray-abhängigen Optionen
+        mit einem Hinweis wieder abgeschaltet — das Tray ist nicht nur
+        Minimize-Ziel, sondern auch der einzige Toast-Kanal.
+
+        Scheitert der Start trotz `is_supported()` (fehlende Lib im
+        Frozen-Build, kein Session-Bus, kein StatusNotifierWatcher), wirft das
+        Backend synchron; das wird hier gefangen, angezeigt und führt zur
+        gleichen Abschaltung.
         """
         from src.tray import TrayIcon, is_supported
 
@@ -464,7 +480,7 @@ class App:
                 self.settings.set("send_reminder_enabled", False)
                 return
             tray = TrayIcon(
-                self.base_path,
+                get_resource_path(),
                 on_show=lambda: self.root.after(0, self._restore_from_tray),
                 on_quit=lambda: self.root.after(0, self._quit_with_sync_push),
                 actions=self._tray_actions(),
@@ -492,8 +508,9 @@ class App:
         """Die Quick-Actions des Tray-Menüs als (label, callback, visible).
 
         Eigene Methode, damit das Menü ohne Tk/pystray testbar ist — gebaut
-        wird die Liste in `_apply_tray_setting`, gerendert von beiden Backends
-        (pystray auf Windows, NSStatusItem auf macOS über `build_menu_model`).
+        wird die Liste in `_apply_tray_setting`, gerendert von allen drei
+        Backends (pystray auf Windows; NSStatusItem auf macOS und dbusmenu auf
+        Linux über `build_menu_model`).
         Die Callbacks laufen im Backend-Thread und marshallen deshalb selbst
         per `root.after(0, …)` auf den Tk-Thread.
         """

@@ -6,7 +6,7 @@ from tkinter import font as tkfont
 from tkinter import ttk
 from typing import Literal, TypedDict
 
-from src.paths import get_base_path
+from src.paths import get_resource_path
 
 _system = platform.system()
 if _system == "Darwin":
@@ -664,7 +664,7 @@ def apply_app_icon(window):
     if platform.system() == "Windows":
         return
     global _app_icon_ref
-    base = get_base_path()
+    base = get_resource_path()
     png_path = os.path.join(base, "assets", "margenheld-icon.png")
     if os.path.exists(png_path):
         try:

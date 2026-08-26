@@ -2,9 +2,10 @@
 import os
 import platform
 import plistlib
-import shlex
 import subprocess
 import sys
+
+from src.desktop_entry import exec_line
 
 
 SHORTCUT_NAME = "Zeiterfassung.lnk"
@@ -195,32 +196,16 @@ def _disable_macos():
     os.remove(plist_path)
 
 
-def _exec_line(target, arguments):
-    """Baut die Exec=-Zeile mit shell-korrektem Quoting (Audit N12): ein Pfad
-    mit Leerzeichen o.ä. zerbricht die .desktop-Datei sonst. shlex.quote deckt
-    sich mit GLibs Exec-Parsing (g_shell_parse_argv). `arguments` ist
-    typischerweise ein Whitespace-getrennter String einfacher Flags (z.B. ""
-    oder "--minimized"); im Nicht-Frozen-Modus kann es zusätzlich einen
-    Skript-Pfad enthalten (resolve_autostart_target) — ein Leerzeichen darin
-    würde fälschlich als Token-Grenze behandelt (vorbestehendes Verhalten, nicht
-    durch diesen Fix eingeführt). Werte ohne Sonderzeichen bleiben unverändert
-    (shlex.quote quotet nur bei Bedarf)."""
-    parts = [shlex.quote(target)]
-    if arguments:
-        parts.extend(shlex.quote(a) for a in arguments.split())
-    return " ".join(parts)
-
-
 def _enable_linux(target, arguments):
     desktop_path = _linux_desktop_path()
     os.makedirs(os.path.dirname(desktop_path), exist_ok=True)
 
-    exec_line = _exec_line(target, arguments)
+    exec_content = exec_line(target, arguments)
     content = (
         "[Desktop Entry]\n"
         "Type=Application\n"
         "Name=Zeiterfassung\n"
-        f"Exec={exec_line}\n"
+        f"Exec={exec_content}\n"
         "Hidden=false\n"
         "X-GNOME-Autostart-enabled=true\n"
     )
@@ -235,3 +220,33 @@ def _disable_linux():
             os.remove(desktop_path)
         except FileNotFoundError:
             pass
+
+
+def refresh_linux_target(base_path):
+    """Zieht die Autostart-Datei auf den aktuellen `$APPIMAGE`-Pfad nach.
+
+    Der Updater ersetzt die AppImage nie selbst (`update_banner._open_download`
+    öffnet nur den Browser), und die Assets tragen die Version im Dateinamen.
+    Ohne diesen Schritt zeigt `~/.config/autostart/Zeiterfassung.desktop` nach
+    jedem Update weiter auf die alte Datei — der Nutzer startet bei jeder
+    Anmeldung stillschweigend die Vorgängerversion.
+
+    Vier Gates, alle müssen zutreffen:
+    1. frozen — im Repo-Modus zeigte das Ziel sonst auf python.exe + Repo
+       (dieselbe Selbstbeschädigung, gegen die migrate_legacy_autostart
+       gegated ist).
+    2. Linux.
+    3. `$APPIMAGE` gesetzt — die nackte PyInstaller-Ausgabe hat das nicht.
+    4. Die Datei existiert bereits — wer keinen Autostart eingeschaltet hat,
+       bekommt hier auch keinen.
+    """
+    if not getattr(sys, "frozen", False):
+        return
+    if platform.system() != "Linux":
+        return
+    if not os.environ.get("APPIMAGE"):
+        return
+    if not os.path.exists(_linux_desktop_path()):
+        return
+    target, arguments = resolve_autostart_target(base_path)
+    _enable_linux(target, arguments)

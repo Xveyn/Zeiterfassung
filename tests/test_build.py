@@ -56,3 +56,17 @@ def test_all_platforms_keep_mandatory_collect_all(monkeypatch):
         cmd = _capture_pyinstaller_cmd(monkeypatch, build_fn)
         for pkg in ("xhtml2pdf", "reportlab", "holidays", "pystray"):
             assert pkg in cmd, f"{pkg} fehlt im {build_fn.__name__}-Kommando"
+
+
+def test_linux_bundles_dbus_fast(monkeypatch):
+    """Das SNI-Tray importiert dbus_fast lazy — ohne --collect-all fehlt es in
+    der AppImage und das Tray stirbt beim Start statt beim Build (#42)."""
+    cmd = _capture_pyinstaller_cmd(monkeypatch, build.build_linux)
+    assert "dbus_fast" in cmd
+
+
+def test_windows_does_not_bundle_dbus_fast(monkeypatch):
+    """dbus_fast ist Linux-only (Marker in requirements.txt) — auf Windows wäre
+    das --collect-all ein Build-Fehler."""
+    cmd = _capture_pyinstaller_cmd(monkeypatch, build.build_windows)
+    assert "dbus_fast" not in cmd
