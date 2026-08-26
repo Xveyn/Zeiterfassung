@@ -645,14 +645,34 @@ def test_payload_empty_period_yields_empty_entries():
     assert doc["total_minutes"] == 0
 
 
-def test_total_minutes_sums_minutes_not_decimal_hours():
-    """CLAUDE.md: angezeigte Summen laufen über hours_to_minutes, nie über
-    Dezimalstunden. 08:00-16:00 abzgl. 30 min = 450, 09:00-12:15 = 195."""
+def test_total_minutes_sums_glatte_werte():
+    """08:00-16:00 abzgl. 30 min = 450, 09:00-12:15 = 195."""
     entries = {
         "2026-07-01": {"slots": [_slot("08:00", "16:00", pause=30)]},
         "2026-07-02": {"slots": [_slot("09:00", "12:15")]},
     }
     assert total_minutes(entries) == 645
+
+
+def test_total_minutes_rundet_je_slot_nicht_erst_am_ende():
+    """Der eigentliche Beweis der Minuten-Regel aus CLAUDE.md.
+
+    Fünf Slots à 7 min: `calculate_hours` rundet jeden auf 0,12 h (7 min sind
+    0,1166… h). Je Slot auf Minuten gerundet und dann summiert ergibt 5 × 7 =
+    35. Erst die Dezimalstunden zu summieren (5 × 0,12 = 0,60 h) und dann zu
+    runden ergäbe 36 — eine Minute zu viel.
+
+    Mit glatten Werten wie 7,5 h liefern beide Reihenfolgen dasselbe; ein Test
+    nur damit wäre grün, auch wenn die Summierung falsch herum liefe.
+    """
+    entries = {
+        "2026-07-01": {"slots": [
+            _slot("08:00", "08:07"), _slot("09:00", "09:07"),
+            _slot("10:00", "10:07"), _slot("11:00", "11:07"),
+            _slot("12:00", "12:07"),
+        ]},
+    }
+    assert total_minutes(entries) == 35
 
 
 def test_body_json_only():
@@ -1210,6 +1230,31 @@ def test_deliver_rejects_bad_auth_config_as_config_error(monkeypatch):
     assert res["kind"] == "config"
 
 
+@pytest.mark.parametrize("record,label", [
+    (None, "record ist None"),
+    ([], "record ist Liste"),
+    ({"url": 12345, "auth": {"mode": "none"}}, "url ist Zahl"),
+    ({"url": "https://a.example/h", "auth": "oops"}, "auth ist String"),
+    ({"url": "https://a.example/h",
+      "auth": {"mode": "header", "header": 123, "value": "x"}},
+     "Header-Name ist Zahl"),
+])
+def test_deliver_survives_malformed_records(monkeypatch, record, label):
+    """Der „wirft nie"-Vertrag gilt auch für Müll-Typen.
+
+    Genau die Bedrohung, die schon die URL-Nachprüfung begründet: eine von
+    Hand editierte webhooks.json kann in jedem Feld jeden Typ tragen. Ohne
+    diese Absicherung entkäme ein AttributeError/TypeError aus dem
+    Worker-Thread, `on_done` käme nie, und der Sende-Dialog bliebe dauerhaft
+    auf „Sende…" stehen.
+    """
+    monkeypatch.setattr(wh, "post", lambda *a, **k: 200)
+    res = deliver(record, json_bytes=b"{}", pdf_bytes=None,
+                  pdf_filename="r.pdf")
+    assert res["ok"] is False, label
+    assert res["kind"] == "config", label
+
+
 def test_deliver_signs_the_exact_body_sent(monkeypatch):
     seen = {}
     monkeypatch.setattr(
@@ -1244,6 +1289,13 @@ def deliver(record, *, json_bytes, pdf_bytes, pdf_filename, boundary=None):
     schon tut: eine von Hand editierte webhooks.json soll die https-Pflicht
     nicht umgehen können.
     """
+    # Dieselbe Bedrohung wie bei der URL-Nachprüfung: eine von Hand editierte
+    # Datei kann jeden Typ enthalten. Ein Nicht-Dict würde unten schon am
+    # ersten .get() scheitern.
+    if not isinstance(record, dict):
+        return {"ok": False, "kind": "config",
+                "detail": "Der Webhook-Datensatz ist kein Objekt.",
+                "error": None, "tb": None}
     try:
         ok, msg = validate_url(record.get("url", ""))
         if not ok:
@@ -1257,7 +1309,14 @@ def deliver(record, *, json_bytes, pdf_bytes, pdf_filename, boundary=None):
 
         headers = {"Content-Type": content_type}
         headers.update(auth_headers(record.get("auth"), body))
-    except ValueError as e:
+    except (ValueError, TypeError, AttributeError, KeyError) as e:
+        # Nicht nur ValueError: die Felder des Datensatzes können jeden Typ
+        # tragen, wenn jemand webhooks.json von Hand editiert hat. Eine Zahl
+        # in `url` wirft AttributeError in validate_url (`.strip()`), ein
+        # String in `auth` ebenso in auth_headers (`.get()`), eine Zahl im
+        # Header-Namen einen TypeError in der Steuerzeichen-Prüfung. Alle drei
+        # sind derselbe Fall — unbrauchbare Konfiguration — und keiner davon
+        # darf den „wirft nie"-Vertrag brechen.
         return {"ok": False, "kind": "config", "detail": str(e),
                 "error": e, "tb": None}
 
