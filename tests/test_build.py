@@ -1,11 +1,23 @@
-"""Guards für die PyInstaller-Aufrufe in build.py.
+"""Guards für die PyInstaller-Aufrufe in scripts/build.py.
 
 Kein echter Build (das macht die CI) — nur die Kommandozeilen-Konstruktion,
 weil an einzelnen Flags eine ganze Fehlerklasse hängt (#118: onefile-Extraktions-
 Race). subprocess.run wird gemockt, PyInstaller läuft nie.
+
+Das Skript liegt in `scripts/` und ist damit kein importierbares Modul —
+`scripts` ist bewusst kein Package (dort liegen Werkzeuge, keine App-Teile).
+Deshalb wird es hier über seinen Pfad geladen statt per `import build`.
+Der Pfad wird vom Ort DIESER Datei abgeleitet, nicht vom Arbeitsverzeichnis,
+damit der Test unabhängig davon läuft, von wo pytest gestartet wurde.
 """
 
-import build
+import importlib.util
+import pathlib
+
+_BUILD_PY = pathlib.Path(__file__).resolve().parent.parent / "scripts" / "build.py"
+_spec = importlib.util.spec_from_file_location("_build_script", _BUILD_PY)
+build = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(build)
 
 
 def _capture_pyinstaller_cmd(monkeypatch, build_fn):

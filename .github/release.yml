@@ -1,0 +1,20 @@
+# Konfiguration der automatisch erzeugten Release-Notes.
+#
+# `release.yml` (Workflow) ruft `gh release create --generate-notes`; GitHub
+# baut daraus die „What's Changed"-Liste und liest dafür diese Datei aus dem
+# Repository (nicht aus dem Tag) — Änderungen wirken also erst, wenn sie auf
+# master liegen.
+#
+# Ausgeschlossen wird genau der Release-PR selbst: er trägt per Definition
+# eines der `release:*`-Labels (sie lösen den Workflow überhaupt erst aus,
+# siehe CLAUDE.md, Abschnitt Release-Prozess) und ist damit eindeutig
+# identifizierbar. In den Notes wäre er ein Punkt, der nur den Versionsbump
+# beschreibt, den die Überschrift ohnehin nennt.
+#
+# Die übrigen PRs tragen keine Labels und bleiben unverändert gelistet.
+changelog:
+  exclude:
+    labels:
+      - "release:major"
+      - "release:minor"
+      - "release:patch"
