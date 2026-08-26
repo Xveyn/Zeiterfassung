@@ -10,6 +10,9 @@ conflicts.json
 reservations.json*
 instance-secret
 .instance-secret-*.tmp
+webhooks.json
+webhooks.json.corrupt-*
+.webhooks-*.tmp
 logs/
 dist/
 build/
