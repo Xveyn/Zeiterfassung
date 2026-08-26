@@ -168,11 +168,18 @@ Entschieden wird **allein an der Adresse in der URL**, ohne DNS-Auflösung.
 | Einzelnes Label ohne Punkt (`nas`, `fritzbox`) | ja |
 | alles andere | **nein — https erzwungen** |
 
-Die IP-Fälle deckt `ipaddress.ip_address(host).is_private` vollständig ab
-(Loopback, RFC 1918, CGNAT, Link-Local und ULA sind dort alle als privat
-geführt); der Rest ist eine Suffix-Liste plus die Single-Label-Regel. Ein
-`ValueError` aus `ip_address` heißt schlicht „ist ein Name, keine IP" und führt
-in den Namens-Zweig.
+Die IP-Prüfung läuft über eine **explizit ausgeschriebene Netzliste**
+(`ipaddress.ip_network` je Eintrag der Tabelle oben), nicht über
+`ip_address(host).is_private`. Grund: `is_private` ist über die CI-Matrix
+hinweg nicht stabil — CPython hat die Einordnung des CGNAT-Bereichs
+`100.64.0.0/10` zwischen 3.10 und 3.13 geändert (RFC 6598 „Shared Address
+Space" gilt dem IANA-Registry nach nicht als privat). Ein Test darauf wäre
+auf 3.10 grün und auf 3.13 rot. Die eigene Liste macht die Regel
+versionsunabhängig und zugleich lesbar — sie ist genau die Tabelle oben.
+
+Der Rest ist die Suffix-Liste plus die Single-Label-Regel. Ein `ValueError`
+aus `ip_address` heißt schlicht „ist ein Name, keine IP" und führt in den
+Namens-Zweig.
 
 Im erlaubten Fall passiert **nichts** — keine Warnung, kein Hinweistext, wie
 gewünscht. Im verbotenen Fall lehnt der Webhook-Dialog das Speichern ab:
@@ -436,9 +443,18 @@ Vertrag, was in `src/CLAUDE.md` festzuhalten ist.
 | `src/dialogs/send_dialog.py` | geändert | Ziel-Abschnitt, Empfänger-Check, Ergebnis-Anzeige, kanalunabhängige Leer-Prüfung |
 | `src/dialogs/settings_dialog/dialog.py` | geändert | sechster Tab |
 | `src/main.py` / `src/ui.py` | geändert | `WebhookStore` erzeugen und durchreichen (geteilter `data_lock`) |
+| `src/report.py` | geändert | `_filter_entries` / `_apply_category_filter` werden öffentlich (`filter_period` / `filter_categories`) |
 
-`src/share.py`, `src/report.py`, `src/mail.py` und `src/storage.py` bleiben
-unangetastet.
+**Warum `report.py` doch angefasst wird.** Die JSON-Payload muss auf exakt
+denselben Zeitraum und dieselben Kategorien gefiltert sein wie PDF und
+Mail-HTML — sonst behaupten zwei Anhänge derselben Sendung unterschiedliche
+Zeiträume. Diese Filter liegen heute privat in `report.py` (je drei Call-Sites,
+ausschließlich dort). Sie in `webhook.py` nachzubauen wäre eine Dublette, die
+beim nächsten Filter-Detail auseinanderläuft; ein modulübergreifender Zugriff
+auf den privaten Namen ist im Projekt ausdrücklich unerwünscht (Audit N17).
+Also werden sie umbenannt und öffentlich, Verhalten unverändert.
+
+`src/share.py`, `src/mail.py` und `src/storage.py` bleiben unangetastet.
 
 ## Tests
 
