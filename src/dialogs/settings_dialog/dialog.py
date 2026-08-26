@@ -166,7 +166,7 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
             )
             return
 
-        hourly_rate = parse_hourly_rate(mail.rate_var.get())
+        hourly_rate = parse_hourly_rate(work.rate_var.get())
         selected_code = code_for_state_label(app.state_var.get())
         old_scale = settings.get("ui_scale")
         new_scale = clamp_ui_scale((round(app.scale_var.get() / 5) * 5) / 100)
