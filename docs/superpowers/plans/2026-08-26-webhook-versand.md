@@ -2156,7 +2156,16 @@ def test_summary_lists_every_channel():
     assert "✓" in text and "✗" in text
 ```
 
-Zusätzlich `tests/test_send_task.py` an die neue Signatur anpassen: `_kwargs()` dort um `send_mail=True`, `mail={...}` und `webhooks=[]` umbauen und die Assertions von `res == {"ok": True}` auf `res["results"][0]["ok"] is True` bzw. auf `res["results"][0]["kind"]` umstellen. Die inhaltlichen Zusicherungen (Empfänger, Anhang-Bytes, `attachment_subtype`, `sender_email`-Cache, Delegation an `classify_mail_error`) bleiben erhalten.
+Zusätzlich `tests/test_send_task.py` an die neue Signatur anpassen: `_kwargs()` dort um `send_mail=True`, `mail={...}` und `webhooks=[]` umbauen.
+
+**Bei den Assertions aufpassen — hier geht sonst still Prüfschärfe verloren.** Das bisherige `assert res == {"ok": True}` prüft die **vollständige** Rückgabe: dass genau ein Ergebnis da ist, mit den richtigen Feldern und ohne zusätzliche. Ein `assert res["results"][0]["ok"] is True` sieht aus wie dieselbe Prüfung, ist aber nur noch ein Bool-Vergleich — Kanal, Name und ein etwaiges `kind` blieben ungeprüft. Ersetze deshalb durch die **vollständige** Form:
+
+```python
+    assert res["results"] == [
+        {"channel": "mail", "name": "to@example.com", "ok": True}]
+```
+
+und in den Fehlerfällen entsprechend gegen das ganze erwartete Dict statt nur gegen `kind`. Die inhaltlichen Zusicherungen (Empfänger, Anhang-Bytes, `attachment_subtype`, `sender_email`-Cache, Delegation an `classify_mail_error`) bleiben damit erhalten.
 
 - [ ] **Step 2: Run test to verify it fails**
 
@@ -2238,6 +2247,18 @@ def perform_send(*, date_from, date_to, entries, name, categories,
     ggf. übersteuerte Format-Wahl.
     """
     results = []
+
+    # `mail` ist als `dict | None` deklariert und damit unabhängig von
+    # `send_mail` setzbar. Ohne diese Normalisierung dereferenziert der
+    # Mail-Zweig unten `mail["recipient"]` außerhalb jedes try-Blocks und
+    # wirft — der Vertrag lautet aber „wirft nie", und ein Bruch heißt hier:
+    # BackgroundTaskRunner.run ruft `on_done` nie, der Sende-Dialog bleibt
+    # dauerhaft auf „Sende…" stehen, während die übrigen Kanäle schon
+    # gefeuert haben.
+    if send_mail and mail is None:
+        log.error("perform_send: send_mail=True ohne mail-Daten — "
+                  "Mail-Kanal wird übersprungen")
+        send_mail = False
 
     pdf_bytes = None
     if needs_pdf(send_mail, webhooks):
