@@ -1,11 +1,13 @@
 import datetime
 import tkinter as tk
+from typing import Callable
 
 from src.category_defaults import resolve_slot_defaults
 from src.holidays_de import get_holidays
-from src.settings import WEEKDAY_KEYS
+from src.settings import WEEKDAY_KEYS, parse_reminder_minutes
 from src.theme import (
-    BG, FONT, FONT_BOLD, PAUSE_VALUES, STRAY_CLICK_GUARD_S, TEXT, TEXT_MUTED,
+    BG, CELL_BG, FONT, FONT_BOLD, FONT_SMALL, PAUSE_VALUES,
+    STRAY_CLICK_GUARD_S, TEXT, TEXT_MUTED,
     TIME_VALUES, apply_combobox_style, attach_unfocus_on_click,
     center_dialog_on_parent, create_dialog, dark_combo,
     primary_button, secondary_button,
@@ -243,6 +245,14 @@ def open_entry_dialog(parent, date_str, storage, settings, on_change,
     ist_rows_frame.pack(fill="x")
     ist_rows = []  # Liste von {frame, start, end, pause, kategorie}
     res_rows = []  # Liste von {frame, start, end, kategorie}; bleibt leer ohne Reservierungs-Block
+
+    # Late-bound: der Erinnerungs-Block wird erst nach den Reservierungs-Zeilen
+    # gebaut, muss aber von deren Änderungen erfahren.
+    notify_reminder_block: dict[str, Callable[[], None] | None] = {"fn": None}
+
+    def _reminder_changed(*_a):
+        if notify_reminder_block["fn"] is not None:
+            notify_reminder_block["fn"]()
     save_btn = None  # wird nach dem Button-Bau gesetzt (s. unten) — EIN Button für beide Blöcke
     # "locked" = Button vorübergehend nicht klickbar: (1) kurzer Cooldown direkt
     # nach dem Öffnen (unten via dialog.after freigegeben), damit ein Doppelklick
@@ -382,7 +392,8 @@ def open_entry_dialog(parent, date_str, storage, settings, on_change,
         res_rows_frame = tk.Frame(outer, bg=BG)
         res_rows_frame.pack(fill="x")
 
-        def add_res_row(start, end, kategorie, removable=True):
+        def add_res_row(start, end, kategorie, removable=True,
+                        send_reminder_minutes=None):
             row = tk.Frame(res_rows_frame, bg=BG)
             row.pack(fill="x", pady=2)
             sv = tk.StringVar(value=start)
@@ -394,7 +405,11 @@ def open_entry_dialog(parent, date_str, storage, settings, on_change,
             dark_combo(row, ev, TIME_VALUES, width=6).pack(side=tk.LEFT, padx=2)
             cat_combo = dark_combo(row, kv, category_choices(categories), width=18)
             cat_combo.pack(side=tk.LEFT, padx=2)
-            record = {"frame": row, "start": sv, "end": ev, "kategorie": kv}
+            record = {"frame": row, "start": sv, "end": ev, "kategorie": kv,
+                      # Nicht editierbar in der Zeile — nur mitgeführt, damit
+                      # ein bestehender Marker das Speichern überlebt, auch
+                      # wenn der Erinnerungs-Block gar nicht sichtbar ist.
+                      "send_reminder_minutes": send_reminder_minutes}
 
             # Manuelles Anpassen der Zeit ändert nie die Kategorie — nur das
             # Anzeige-Label bekommt ein Override-Sternchen (s. add_ist_row).
@@ -409,6 +424,8 @@ def open_entry_dialog(parent, date_str, storage, settings, on_change,
 
             sv.trace_add("write", refresh_cat_display)
             ev.trace_add("write", refresh_cat_display)
+            sv.trace_add("write", _reminder_changed)
+            ev.trace_add("write", _reminder_changed)
 
             def on_cat_change(*_a):
                 # Reservierungen haben keine Pause → nur Start/Ende anwenden.
@@ -430,6 +447,7 @@ def open_entry_dialog(parent, date_str, storage, settings, on_change,
             if removable:
                 cat_combo.bind("<<ComboboxSelected>>", on_cat_change, add="+")
             refresh_cat_display()  # initialer Marker-Zustand beim Dialog-Öffnen
+            cat_combo.bind("<<ComboboxSelected>>", _reminder_changed, add="+")
 
             def remove():
                 row.destroy()
@@ -437,6 +455,7 @@ def open_entry_dialog(parent, date_str, storage, settings, on_change,
                 if not res_rows:
                     res_rows_frame.configure(height=1)
                 refresh_save_state()
+                _reminder_changed()
 
             # Gespeicherte Reservierungs-Slots tragen kein × (Löschen per
             # Rechtsklick im Kalender); nur neue, ungespeicherte Zeilen.
@@ -445,13 +464,15 @@ def open_entry_dialog(parent, date_str, storage, settings, on_change,
                     side=tk.LEFT, padx=2)
             res_rows.append(record)
             refresh_save_state()
+            _reminder_changed()
 
         # Bestehende Reservierung → Zeilen. Sonst leer: nur der „+ Slot"-Button
         # (an der Stelle, wo sonst die Default-Zeile stünde), keine Vorbelegung.
         if existing_reservation and existing_reservation["slots"]:
             for s in existing_reservation["slots"]:
                 add_res_row(s["start"], s["end"], s.get("kategorie", ""),
-                            removable=False)
+                            removable=False,
+                            send_reminder_minutes=s.get("send_reminder_minutes"))
 
         res_btns = tk.Frame(outer, bg=BG)
         res_btns.pack(fill="x", pady=(2, 8))
@@ -459,6 +480,95 @@ def open_entry_dialog(parent, date_str, storage, settings, on_change,
             res_btns, "+ Slot",
             lambda: add_res_row(default_start, default_end, ""),
         ).pack(side=tk.LEFT, padx=2)
+
+    # ---------- Erinnerung an eine Reservierung ----------
+    # Bewusst auf Funktionsebene, NICHT im if show_reservation: — sonst waere
+    # reminder_ui undefiniert, wenn kein Reservierungs-Block gezeigt wird, und
+    # save_all liefe in einen NameError. reminder_block_visible verlangt
+    # show_reservation ohnehin.
+    reminder_ui = None
+    if reminder_block_visible(settings, show_reservation):
+        tk.Label(
+            outer, text="— Erinnerung —", font=FONT_BOLD, bg=BG, fg=TEXT_MUTED,
+        ).pack(anchor="w", pady=(12, 2))
+        rem_frame = tk.Frame(outer, bg=BG)
+        rem_frame.pack(fill="x")
+
+        marked = next(
+            (i for i, r in enumerate(res_rows)
+             if r["send_reminder_minutes"] is not None), None)
+        rem_enabled = tk.BooleanVar(value=marked is not None)
+        rem_slot = tk.StringVar()
+        rem_minutes = tk.StringVar(value=str(
+            res_rows[marked]["send_reminder_minutes"] if marked is not None
+            else settings.get("send_reminder_default_minutes")))
+        # Ausgewählter Slot als Index — die Labels ändern sich mit den Zeiten,
+        # der Index ist die stabile Auswahl.
+        rem_index = {"value": marked if marked is not None else None}
+
+        rem_cb = tk.Checkbutton(
+            rem_frame, text="Ans Verschicken der Arbeitszeiten erinnern",
+            variable=rem_enabled, font=FONT, bg=BG, fg=TEXT, selectcolor=CELL_BG,
+            activebackground=BG, activeforeground=TEXT, cursor="hand2",
+        )
+        rem_cb.pack(anchor="w")
+
+        rem_row = tk.Frame(rem_frame, bg=BG)
+        rem_row.pack(anchor="w", pady=(2, 0))
+        tk.Label(rem_row, text="Slot:", font=FONT, bg=BG, fg=TEXT).pack(
+            side=tk.LEFT, padx=(24, 8))
+        slot_combo = dark_combo(rem_row, rem_slot, [], width=26)
+        slot_combo.pack(side=tk.LEFT, padx=(0, 8))
+        dark_combo(rem_row, rem_minutes,
+                   [str(m) for m in range(0, 121, 5)], width=4).pack(side=tk.LEFT)
+        tk.Label(rem_row, text="Minuten vor Ende", font=FONT, bg=BG, fg=TEXT).pack(
+            side=tk.LEFT, padx=(8, 0))
+        rem_hint = tk.Label(
+            rem_frame, text="Erst eine Reservierung anlegen.",
+            font=FONT_SMALL, bg=BG, fg=TEXT_MUTED)
+
+        def on_slot_selected(*_a):
+            values = list(slot_combo.cget("values"))
+            if rem_slot.get() in values:
+                rem_index["value"] = values.index(rem_slot.get())
+
+        slot_combo.bind("<<ComboboxSelected>>", on_slot_selected, add="+")
+
+        def refresh_reminder_block(*_a):
+            """Hält Slot-Liste und Bedienbarkeit an den Reservierungs-Zeilen.
+
+            Wird bei jedem Hinzufügen/Entfernen einer Zeile und bei jeder
+            Zeit-/Kategorie-Änderung aufgerufen; die Auswahl bleibt über den
+            Index erhalten und wird auf die Listenlänge geklemmt.
+            """
+            rows = [{"start": r["start"].get(), "end": r["end"].get(),
+                     "kategorie": category_from_display(r["kategorie"].get())}
+                    for r in res_rows]
+            labels = reminder_slot_labels(rows)
+            slot_combo.config(values=labels)
+            if not labels:
+                rem_enabled.set(False)
+                rem_index["value"] = None
+                rem_slot.set("")
+                rem_cb.config(state="disabled")
+                slot_combo.config(state="disabled")
+                rem_hint.pack(anchor="w", padx=(24, 0))
+                return
+            rem_cb.config(state="normal")
+            slot_combo.config(state="readonly")
+            rem_hint.pack_forget()
+            index = rem_index["value"]
+            if index is None or index >= len(labels):
+                index = len(labels) - 1
+                rem_index["value"] = index
+            rem_slot.set(labels[index])
+
+        reminder_ui = {
+            "enabled": rem_enabled, "minutes": rem_minutes, "index": rem_index,
+            "refresh": refresh_reminder_block,
+        }
+        notify_reminder_block["fn"] = refresh_reminder_block
+        refresh_reminder_block()
 
     # ---------- Mindestbreite ohne Slot-Zeilen ----------
     # Hat der Tag weder Ist-Zeit noch Reservierung, bestimmen nur die schmalen
@@ -491,9 +601,20 @@ def open_entry_dialog(parent, date_str, storage, settings, on_change,
             "start": r["start"].get(),
             "end": r["end"].get(),
             "kategorie": category_from_display(r["kategorie"].get()),
+            "send_reminder_minutes": r["send_reminder_minutes"],
         } for r in res_rows]
         if not ist_slots and not (show_reservation and res_slots):
             return
+
+        if reminder_ui is not None:
+            # Nur bei sichtbarem Block anfassen: sonst blieben die aus dem
+            # Store mitgeführten Marker unangetastet, statt still gelöscht zu
+            # werden, wenn die Option abgeschaltet wurde.
+            apply_reminder_to_slots(
+                res_slots, reminder_ui["index"]["value"],
+                parse_reminder_minutes(reminder_ui["minutes"].get()),
+                bool(reminder_ui["enabled"].get()),
+            )
 
         plan = plan_entry_save(ist_slots, res_slots, show_reservation)
         if plan["error"]:
