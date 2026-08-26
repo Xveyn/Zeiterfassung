@@ -1,17 +1,15 @@
 # Zeiterfassung
 
-> [!IMPORTANT]
-> **Dieses Projekt zieht nach [Xveyn/Zeiterfassung](https://github.com/Xveyn/Zeiterfassung) um.**
+> [!NOTE]
+> **Hier wird die Zeiterfassung weiterentwickelt.** Bis einschließlich `1.21.0`
+> lag das Projekt unter
+> [margenheld/Zeiterfassung](https://github.com/margenheld/Zeiterfassung); dort
+> bleiben die älteren Releases samt Downloads und die Issue-Historie dauerhaft
+> erreichbar.
 >
-> **1.21.0 ist das letzte Release, das hier erscheint.** Alle weiteren
-> Versionen gibt es im neuen Repository.
->
-> Ab 1.21.0 meldet die App Updates automatisch von dort — **einmalig auf
-> 1.21.0 aktualisieren genügt.** Wer auf einer älteren Version bleibt, bekommt
-> keine Update-Hinweise mehr.
->
-> Dieses Repository bleibt als Archiv bestehen: ältere Releases, ihre Downloads
-> und die Issue-Historie sind hier weiterhin erreichbar.
+> **Wer noch eine Version vor `1.21.0` nutzt, aktualisiert einmalig über das
+> alte Repository** — ab `1.21.0` meldet die App neue Versionen automatisch von
+> hier. Neue Releases erscheinen ausschließlich in diesem Repository.
 
 Desktop-App zur Erfassung von Arbeitszeiten mit Kalenderansicht, PDF-Report und automatischem Gmail-Versand.
 
