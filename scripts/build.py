@@ -1,4 +1,4 @@
-# build.py
+# scripts/build.py
 import os
 import platform
 import shutil
@@ -6,7 +6,21 @@ import subprocess
 import sys
 from datetime import datetime, timezone
 
-from src.version import VERSION
+# Dieses Skript liegt in scripts/, gehört aber zum Repo-Root: es importiert aus
+# `src/` und arbeitet durchgehend mit Pfaden relativ zur Wurzel (`dist/`,
+# `assets/`, `installer.iss`, `src/build_info.py`). Beim Aufruf
+# `python scripts/build.py` steht aber `scripts/` auf sys.path[0] und das
+# Arbeitsverzeichnis ist das des Aufrufers — ohne diesen Bootstrap scheitert
+# schon der Import unten mit `ModuleNotFoundError: No module named 'src'`.
+#
+# Der `chdir` macht den Aufruf zusätzlich unabhängig davon, aus welchem
+# Verzeichnis gestartet wird; sonst liefe der Build je nach Aufrufort in
+# „dist not found" statt zu bauen.
+_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, _ROOT)
+os.chdir(_ROOT)
+
+from src.version import VERSION  # noqa: E402  (erst nach dem Bootstrap möglich)
 
 NOTICES_PATH = os.path.join("dist", "THIRD-PARTY-NOTICES.txt")
 

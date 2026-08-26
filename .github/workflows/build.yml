@@ -51,7 +51,7 @@ jobs:
       # und lässt den reinen dist/Zeiterfassung/-Ordner (onedir: Exe +
       # _internal\, seit #118) stehen.
       - name: Build (PyInstaller, ohne Installer)
-        run: python build.py
+        run: python scripts/build.py
       - name: dist auflisten
         shell: bash
         run: ls -la dist/ dist/Zeiterfassung/
@@ -81,7 +81,7 @@ jobs:
       # Kein create-dmg installiert → build.py überspringt den DMG-Schritt und
       # lässt das reine dist/Zeiterfassung.app (onedir-Bundle) stehen.
       - name: Build (PyInstaller, ohne DMG)
-        run: python build.py
+        run: python scripts/build.py
       - name: dist auflisten
         run: ls -la dist/
       # Das .app-Bundle enthält Symlinks und Exec-Bits — ein nackter
@@ -117,7 +117,7 @@ jobs:
       # Kein appimagetool installiert → build.py überspringt den AppImage-Schritt
       # und lässt das reine dist/Zeiterfassung (onefile-Binary) stehen.
       - name: Build (PyInstaller, ohne AppImage)
-        run: python build.py
+        run: python scripts/build.py
       - name: dist auflisten
         run: ls -la dist/
       # Exec-Bit bewahren (upload-artifact-Zip würde es verlieren).
