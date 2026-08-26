@@ -81,6 +81,15 @@ def test_decimal_ip_notation_is_not_treated_as_private():
     assert ok is False
 
 
+@pytest.mark.parametrize("host", ["0x08080808", "0X08080808"])
+def test_hex_ip_notation_is_not_treated_as_private(host):
+    """http://0x08080808/ ist wie die Dezimalnotation punktlos und wird von
+    glibc's inet_aton-Semantik zu 8.8.8.8 aufgelöst — derselbe Bypass wie bei
+    der Dezimalnotation, nur mit Hex-Präfix (auch großgeschrieben, 0X...)."""
+    ok, _ = validate_url(f"http://{host}/hook")
+    assert ok is False
+
+
 def test_userinfo_in_url_does_not_leak_into_host_check():
     ok, _ = validate_url("http://nas@8.8.8.8/hook")
     assert ok is False

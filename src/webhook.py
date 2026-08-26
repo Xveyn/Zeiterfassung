@@ -9,6 +9,7 @@ import hashlib
 import hmac
 import ipaddress
 import logging
+import re
 import traceback
 import urllib.error
 import urllib.request
@@ -71,9 +72,14 @@ def is_private_host(host):
         if "." in host:
             return False
         # Single-Label-Name (»nas«, »fritzbox«): nur im lokalen Netz auflösbar.
-        # Rein numerisch ist es aber kein Name, sondern eine Dezimal-IP
-        # (http://2130706433/ -> 127.0.0.1) — die gehört nicht hierher.
-        return not host.isdigit()
+        # Rein numerisch (dezimal ODER hex mit 0x/0X-Präfix) ist es aber kein
+        # Name, sondern eine numerische IP, die glibcs inet_aton-Semantik
+        # auflöst (http://2130706433/ -> 127.0.0.1, http://0x08080808/ ->
+        # 8.8.8.8) — die gehört nicht hierher. Oktale Schreibweisen
+        # (»017700000001«) sind bereits über isdigit() erfasst (nur Ziffern),
+        # gepunktete oktale/hex-Formen (»0177.0.0.1«) scheitern schon oben an
+        # der Punkt-Prüfung.
+        return not re.fullmatch(r"[0-9]+|0[xX][0-9a-fA-F]+", host)
     return any(ip in net for net in _PRIVATE_NETWORKS)
 
 
