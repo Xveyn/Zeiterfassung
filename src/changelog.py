@@ -19,6 +19,8 @@ _BOLD = re.compile(r"\*\*(.+?)\*\*")
 # darüber. Die Notes eines Pre-Releases beginnen mit "## What's Changed" — die
 # muss stehen bleiben.
 _VERSION_HEADING_LINE = re.compile(r"^##\s+\d+\.\d+\.\d+")
+# DOTALL, weil GitHub den Kommentar je nach Taglänge über mehrere Zeilen bricht.
+_HTML_COMMENT = re.compile(r"<!--.*?-->", re.DOTALL)
 
 
 def extract_version_section(changelog_text, version):
@@ -86,6 +88,16 @@ def parse_changelog_markdown(text):
     deren umgebrochene Folgezeilen unter dem Text (nicht unter dem `•`)
     einrücken sollen.
     """
+    # HTML-Kommentare raus. GitHub stellt generierten Release-Notes seit dem
+    # Anlegen von `.github/release.yml` einen Hinweis voran:
+    #   <!-- Release notes generated using configuration in
+    #        .github/release.yml at v1.20.0-pre.2 -->
+    # Für Pre-Releases IST dieser Body die Changelog-Quelle
+    # (updater.resolve_check_result) — ungefiltert stünde der Kommentar roh im
+    # Updates-Tab. Das abschließende strip() nimmt die Leerzeile mit, die er
+    # hinterlässt; sonst begänne die Anzeige mit einem Absatzabstand.
+    text = _HTML_COMMENT.sub("", text).strip()
+
     raw_lines = text.splitlines()
     # Die Versions-Überschrift ("## 1.18.0 — ...") ist redundant zum Status-
     # Text darüber (z.B. "Du hast die aktuelle Version …") und wird nicht
