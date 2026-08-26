@@ -10,6 +10,22 @@
 
 **Spec:** `docs/superpowers/specs/2026-08-03-fork-promotion-design.md`
 
+
+> **Stand 26.08.2026 — was seither anders entschieden wurde.** Dieses Dokument
+> hält den Planungsstand vom 03.08.2026 fest und wird nicht nachgeführt. Drei
+> Annahmen darin sind überholt:
+>
+> - **Zielversion ist `1.21.0`, nicht `1.22.0`.** PR #184 (Linux-SNI-Tray)
+>   wurde nicht einzeln released; sein Stand fährt zusammen mit dem
+>   Webhook-Versand, der Sende-Erinnerung und der Brücke in **einem**
+>   Abschlussrelease mit.
+> - **Der Umzugs-Banner steht doch in der `README.md` des alten Repos** und
+>   fährt in diesem PR mit — statt als Direkt-Commit nach dem Release.
+> - **`docs/project-handover.md` ist getrackt** (PR #189), nicht untracked.
+>
+> Der verbindliche, aktuelle Ablauf — inklusive der GitHub-Handarbeit nach
+> dem Release — steht in [`docs/project-handover.md`](../../project-handover.md).
+
 ## Global Constraints
 
 - Zielversion ist **`1.22.0`**, der PR trägt das Label **`release:minor`**.

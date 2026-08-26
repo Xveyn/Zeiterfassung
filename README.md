@@ -27,6 +27,7 @@ Desktop-App zur Erfassung von Arbeitszeiten mit Kalenderansicht, PDF-Report und 
 - **Teilen & Importieren** — Eigene Arbeitszeiten als JSON-Anhang per Mail an eine zweite Person teilen; der Empfänger importiert sie mit Zeitraum-Filter und drei Konflikt-Modi (alles importieren / alles lokal / pro Tag entscheiden)
 - **Reservierungen & Google-Kalender** — Zukünftige Arbeitszeiten pro Tag reservieren (eigenes Konzept neben den Ist-Zeiten, im Kalender als violetter Eck-Punkt markiert); optionaler Abgleich mit einem wählbaren Google Kalender
 - **Reservierungs-Erinnerungen** — Optionale Toast-Benachrichtigung, wenn ein für heute reservierter Slot fällig wird und noch keine Ist-Zeit erfasst ist (konfigurierbare Vorlaufzeit)
+- **Sende-Erinnerung** — Optionale Toast-Erinnerung, die Arbeitszeiten zu verschicken: monatlich an einem frei wählbaren Tag (auf Wunsch von Wochenenden und Feiertagen weg verschoben) und/oder tagesbezogen, wenn ein dafür markierter Reservierungs-Slot ausläuft. Der Sende-Dialog schlägt den Zeitraum seit der letzten Erinnerung vor
 - **PDF-Export** — Bericht für einen frei gewählten Zeitraum direkt als PDF lokal speichern (ohne Mail-Versand)
 - **Wochenstunden-Limit** — Optionales Werkstudenten-Limit über einen konfigurierbaren Zeitraum mit Warnung beim Überschreiten
 - **Pausenpflicht-Warnung** — Hinweis beim Speichern, wenn die eingetragene Pause die gesetzliche Mindestpause nach § 4 ArbZG unterschreitet (30 Min ab >6 h, 45 Min ab >9 h); standardmäßig aktiv, abschaltbar. Grobe Näherung, keine rechtliche Bewertung
@@ -34,7 +35,7 @@ Desktop-App zur Erfassung von Arbeitszeiten mit Kalenderansicht, PDF-Report und 
 - **Kategorien** — Mehrere Zeitblöcke pro Tag mit eigenen Kategorien; Standard-Start/-Ende pro Kategorie, optional pro Wochentag; Kategorie-Aufschlüsselung im Bericht optional
 - **UI-Skalierung** — Stufenloser Skalierungsfaktor für die Oberfläche (gerätelokal)
 - **Zeitraumwahl** — Flexibler Datumsbereich für Reports
-- **Einstellungen** — In Tabs gegliedert (Arbeitszeit / Bericht & Mail / Google / App / Updates); E-Mail-Vorlagen mit Platzhaltern, Standardpause, Empfänger und Update-Einstellungen
+- **Einstellungen** — In Tabs gegliedert (Arbeitszeit / Bericht & Mail / Google / App / Webhooks / Updates); E-Mail-Vorlagen mit Platzhaltern, Standardpause, Empfänger und Update-Einstellungen
 - **Autostart & Einzelinstanz** — Optionaler minimierter Start bei Anmeldung (Windows, macOS, Linux); es läuft immer nur eine Instanz — ein zweiter Start holt das vorhandene Fenster nach vorn
 - **Update-Check** — Konfigurierbare Hintergrund-Prüfung auf neue Releases; Updates-Tab mit manuellem Check, Changelog und Direkt-Download, bei aktivem Tray als einmaliger Toast statt Banner. Läuft die App im Infobereich, stößt **„Nach Updates suchen"** im Tray-Menü die Prüfung direkt an — das Ergebnis kommt als Toast, auch wenn alles aktuell ist. Optional lassen sich auch Vorabversionen (Pre-Releases) anbieten — Testbuilds vor dem echten Release
 - **Dark Mode UI** — Modernes dunkles Design
@@ -51,12 +52,14 @@ Zeiterfassung/
 │   ├── background_tasks.py # Hintergrund-Worker + Thread-Mechanik (Token-Refresh, Update-Check, Reconcile)
 │   ├── sync_orchestrator.py # Drive-Sync-Steuerung (manuell/Tray/Pull/Quit, Fehler-Aufbereitung)
 │   ├── update_banner.py   # GitHub-Release-Hinweis-Banner
-│   ├── dialogs/           # Modal-Dialoge (entry, send, export, settings, share, import, conflicts, category, scopes) + geteilter period_picker
+│   ├── dialogs/           # Modal-Dialoge (entry, send, export, settings, share, import, conflicts, category, scopes, webhook) + geteilter period_picker
 │   ├── storage.py         # JSON-Persistenz der Zeiteinträge
 │   ├── settings.py        # Einstellungen mit Standardwerten
 │   ├── category_defaults.py # Default-Kategorien für Zeit-Slots
 │   ├── report.py          # HTML- & PDF-Reportgenerierung
 │   ├── mail.py            # Gmail OAuth2-Authentifizierung & Versand
+│   ├── webhook.py         # Webhook-Versand (URL-Prüfung, Auth/HMAC, Payload, POST), pure Logik
+│   ├── webhook_store.py   # Gerätelokale Persistenz der Webhooks (gehärtet geschrieben, kein Sync)
 │   ├── drive.py           # Google Drive API-Wrapper (Multi-Device-Sync)
 │   ├── sync.py            # Sync-Engine (pure Logik, LWW-Merge, Konflikterkennung)
 │   ├── sync_journal.py    # Crash-Recovery für den Sync-Apply (Write-Ahead-Journal)
@@ -67,8 +70,8 @@ Zeiterfassung/
 │   ├── reservations_sync.py # Abgleich der Reservierungen mit Google Kalender
 │   ├── reminders.py       # Fälligkeits-Logik für Reservierungs-Erinnerungen (Tk-frei)
 │   ├── reminder_scheduler.py # Periodischer Reminder-Poll → Toast über Tray
-│   ├── send_reminder.py   # Fälligkeits-Logik für den monatlichen Sende-Reminder (Tk-frei)
-│   ├── send_reminder_scheduler.py # Periodischer Poll → Sende-Toast (1×/Monat, Zustand persistiert)
+│   ├── send_reminder.py   # Fälligkeits-Logik des Sende-Reminders: monatlich + am markierten Slot (Tk-frei)
+│   ├── send_reminder_scheduler.py # Periodischer Poll über beide Kanäle → Sende-Toast
 │   ├── weekly_limit.py    # Wochenstunden-Limit (Werkstudenten-Privileg), pure Logik
 │   ├── pause_requirement.py # Pausenpflicht-Check nach § 4 ArbZG, pure Logik
 │   ├── workweek.py        # Nur-Werktage-Modus (Sa/So ausblenden), pure Logik
@@ -76,7 +79,9 @@ Zeiterfassung/
 │   ├── oauth_utils.py     # Gemeinsame OAuth-Token-Boilerplate (Persistenz, Scope-Upgrade) für mail/drive/gcal
 │   ├── tray.py            # Infobereich-Icon (Minimize-to-Tray); Plattform-Fassade
 │   ├── tray_mac.py        # Natives macOS-Tray-Backend (NSStatusItem, dormant/opt-in)
+│   ├── tray_linux.py      # Linux-Tray-Backend (StatusNotifierItem über D-Bus, dormant/opt-in)
 │   ├── autostart.py       # Plattformabhängiger Autostart (Windows-Registry/macOS/Linux)
+│   ├── desktop_entry.py   # Freedesktop-.desktop-Eintrag + Icon-Kopie (Linux-Anwendungsmenü)
 │   ├── secure_file.py     # Zugriffsschutz für lokale Secrets (Windows-ACL via icacls)
 │   ├── single_instance.py # Single-Instance-Guard (verhindert parallele Instanzen)
 │   ├── device_id.py       # Stabile, hardware-abgeleitete Geräte-ID für installierte Builds (Sync)
