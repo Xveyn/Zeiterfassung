@@ -584,9 +584,11 @@ class App:
             self._reminders.stop()
 
     def _apply_send_reminder_setting(self):
-        """Startet/stoppt den monatlichen Sende-Reminder-Poll abhängig vom
-        Setting. Braucht ein laufendes Tray-Icon als Toast-Kanal — ohne Tray
-        wird gestoppt.
+        """Startet/stoppt den Sende-Reminder-Poll abhängig vom Setting.
+        `send_reminder_enabled` ist der Haupt-Schalter über BEIDE Kanäle des
+        Schedulers (monatlicher Termin und tagesbezogene Erinnerung) — wer ihn
+        ausschaltet, schaltet auch die Reservierungs-Erinnerung stumm. Braucht
+        ein laufendes Tray-Icon als Toast-Kanal — ohne Tray wird gestoppt.
 
         MUSS nach `_apply_tray_setting()` laufen (liest `self._tray`), wie
         `_apply_reminder_setting()`."""
