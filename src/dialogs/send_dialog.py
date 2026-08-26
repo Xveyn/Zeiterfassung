@@ -170,20 +170,32 @@ def open_send_dialog(parent, storage, settings, base_path, runner,
         set_button_text(send_btn, "Sende…")
 
         def fn():
+            # Minimal auf den Multi-Kanal-Dispatcher nachgezogen: eine spätere
+            # Aufgabe baut diesen Dialog um Ziel-Auswahl/Zusammenfassung
+            # herum vollständig um. Hier zählt nur, dass der bestehende
+            # Mailversand zwischen den Aufgaben lauffähig bleibt.
             return perform_send(
                 date_from=date_from, date_to=date_to, entries=entries,
                 name=settings.get("name"), categories=categories,
                 category_breakdown=category_breakdown,
-                credentials_path=credentials_path, token_path=token_path,
-                recipient=recipient, subject=subject, html=html,
+                send_mail=True,
+                mail={
+                    "credentials_path": credentials_path,
+                    "token_path": token_path,
+                    "recipient": recipient,
+                    "subject": subject,
+                    "html": html,
+                    "sync_enabled": settings.get("sync_enabled"),
+                    "gcal_enabled": settings.get("gcal_enabled"),
+                },
+                webhooks=[],
                 pdf_filename=pdf_filename,
-                sync_enabled=settings.get("sync_enabled"),
-                gcal_enabled=settings.get("gcal_enabled"),
                 settings=settings,
             )
 
         def on_done(res):
-            if res["ok"]:
+            mail_res = res["results"][0]
+            if mail_res["ok"]:
                 if dialog.winfo_exists():
                     dialog.destroy()
                 themed_showinfo(
@@ -197,9 +209,9 @@ def open_send_dialog(parent, storage, settings, base_path, runner,
             if alive:
                 set_primary_button_enabled(send_btn, True)
                 set_button_text(send_btn, "Senden")
-            kind = res["kind"]
+            kind = mail_res["kind"]
             if kind == "filenotfound":
-                themed_showerror(target, "Fehler", str(res["error"]))
+                themed_showerror(target, "Fehler", str(mail_res["error"]))
             elif kind == "offline":
                 themed_showerror(
                     target, "Keine Internetverbindung",
@@ -211,7 +223,7 @@ def open_send_dialog(parent, storage, settings, base_path, runner,
             else:
                 messagebox.showerror(
                     "Senden fehlgeschlagen",
-                    f"{type(res['error']).__name__}: {res['error']}\n\n{res['tb']}",
+                    f"{type(mail_res['error']).__name__}: {mail_res['error']}\n\n{mail_res['tb']}",
                     parent=target,
                 )
 
