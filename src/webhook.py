@@ -5,6 +5,9 @@ ist die getestete Schicht des Features (siehe docs/known-limitations.md:
 getestet wird Logik, nicht UI).
 """
 
+from __future__ import annotations
+
+import datetime
 import hashlib
 import hmac
 import ipaddress
@@ -14,6 +17,8 @@ import traceback
 import urllib.error
 import urllib.request
 import uuid
+from http.client import HTTPMessage
+from typing import IO, Any, NoReturn
 from urllib.parse import unquote, urlsplit
 
 from src.mail import is_offline_error
@@ -45,7 +50,7 @@ _PRIVATE_NETWORKS = tuple(
 _PRIVATE_SUFFIXES = (".local", ".lan", ".home.arpa", ".internal", ".localhost")
 
 
-def is_private_host(host):
+def is_private_host(host: str | None) -> bool:
     """True, wenn `host` im lokalen Netz liegt und http damit erlaubt ist.
 
     Rein syntaktisch, ohne DNS-Auflösung. Ein öffentlicher Name, der per
@@ -83,7 +88,7 @@ def is_private_host(host):
     return any(ip in net for net in _PRIVATE_NETWORKS)
 
 
-def validate_url(url):
+def validate_url(url: str | None) -> tuple[bool, str]:
     """Prüft Schema und Host. Liefert (ok, deutsche Begründung)."""
     try:
         # urlsplit selbst wirft bei kaputten IPv6-Klammern ('http://[::1/x')
@@ -107,7 +112,7 @@ def validate_url(url):
 _CONTROL_CHARS = ("\r", "\n", "\x00")
 
 
-def _check_header_part(kind, value):
+def _check_header_part(kind: str, value: str) -> None:
     """Wirft ValueError, wenn `value` Steuerzeichen enthält.
 
     `kind` trägt den Artikel schon mit (»Der Header-Name«, »Das
@@ -125,12 +130,12 @@ def _check_header_part(kind, value):
         )
 
 
-def sign_hmac(secret, body):
+def sign_hmac(secret: str, body: bytes) -> str:
     """HMAC-SHA256 über die rohen Body-Bytes, Hex, kleingeschrieben."""
     return hmac.new(secret.encode("utf-8"), body, hashlib.sha256).hexdigest()
 
 
-def auth_headers(auth, body):
+def auth_headers(auth: dict[str, Any] | None, body: bytes) -> dict[str, str]:
     """Baut die Auth-Header für einen Webhook-Request.
 
     `auth` ist das `auth`-Objekt aus webhooks.json. Signiert wird bei `hmac`
@@ -165,7 +170,7 @@ PAYLOAD_SCHEMA_VERSION = 1
 PAYLOAD_KIND = "zeiterfassung-report"
 
 
-def _project_slots(entries):
+def _project_slots(entries: dict[str, Any]) -> dict[str, Any]:
     """Reduziert jeden Slot auf die vier Felder des Wire-Formats.
 
     Sieht überflüssig aus, ist es aber nicht: `Storage._load` normalisiert
@@ -191,7 +196,7 @@ def _project_slots(entries):
     }
 
 
-def total_minutes(entries):
+def total_minutes(entries: dict[str, Any]) -> int:
     """Summe der Arbeitsminuten über alle Slots.
 
     Summiert wird über hours_to_minutes je Slot, NICHT über die
@@ -207,8 +212,10 @@ def total_minutes(entries):
     )
 
 
-def build_json_payload(*, date_from, date_to, entries, name, sender,
-                       categories, generated_at=None):
+def build_json_payload(*, date_from: datetime.date, date_to: datetime.date,
+                       entries: dict[str, Any], name: str | None,
+                       sender: str | None, categories: list[str] | None,
+                       generated_at: str | None = None) -> dict[str, Any]:
     """Das JSON-Dokument für den Webhook.
 
     `entries` ist der Snapshot aus `Storage.get_all()` (bereits durch
@@ -238,7 +245,8 @@ def build_json_payload(*, date_from, date_to, entries, name, sender,
     }
 
 
-def build_body(*, json_bytes, pdf_bytes, pdf_filename, boundary):
+def build_body(*, json_bytes: bytes | None, pdf_bytes: bytes | None,
+               pdf_filename: str, boundary: str) -> tuple[str, bytes]:
     """Wählt Content-Type und baut den Request-Body.
 
     JSON allein → application/json, PDF allein → application/pdf,
@@ -295,7 +303,9 @@ class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
     Default-Handler durch sie (statt beide einzuhängen).
     """
 
-    def redirect_request(self, req, fp, code, msg, headers, newurl):
+    def redirect_request(self, req: urllib.request.Request, fp: IO[bytes],
+                         code: int, msg: str, headers: HTTPMessage,
+                         newurl: str) -> NoReturn:
         raise urllib.error.HTTPError(
             req.full_url, code,
             "Der Endpunkt hat weitergeleitet — bitte die endgültige Adresse "
@@ -303,11 +313,12 @@ class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
             headers, fp)
 
 
-def _build_opener():
+def _build_opener() -> urllib.request.OpenerDirector:
     return urllib.request.build_opener(_NoRedirectHandler())
 
 
-def post(url, headers, body, timeout=REQUEST_TIMEOUT_S):
+def post(url: str, headers: dict[str, str], body: bytes,
+         timeout: float = REQUEST_TIMEOUT_S) -> int:
     """POST an `url`. Liefert den HTTP-Status; wirft bei Fehlern.
 
     `timeout` ist urllibs Socket-Timeout je Operation, kein Gesamt-Timeout:
@@ -323,7 +334,7 @@ def post(url, headers, body, timeout=REQUEST_TIMEOUT_S):
         return getattr(resp, "status", None) or resp.getcode()
 
 
-def _response_snippet(exc):
+def _response_snippet(exc: urllib.error.HTTPError) -> str:
     try:
         raw = exc.read(_MAX_RESPONSE_BYTES)
     except Exception:
@@ -343,7 +354,7 @@ def _response_snippet(exc):
     return text[:_MAX_DETAIL_CHARS]
 
 
-def classify_error(exc):
+def classify_error(exc: Exception) -> dict[str, Any]:
     """Mappt eine Versand-Exception auf ein Fehler-Result-Dict.
 
     HTTPError wird ZUERST geprüft — sonst fiele jede HTTP-Fehlerantwort in den
@@ -379,7 +390,8 @@ def classify_error(exc):
             "error": exc, "tb": traceback.format_exc()}
 
 
-def deliver(record, *, json_bytes, pdf_bytes, pdf_filename, boundary=None):
+def deliver(record: Any, *, json_bytes: bytes | None, pdf_bytes: bytes | None,
+            pdf_filename: str, boundary: str | None = None) -> dict[str, Any]:
     """Sendet eine Payload an einen konfigurierten Webhook.
 
     Wirft nie — Fehler kommen als Result-Dict zurück (Vertrag wie

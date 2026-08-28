@@ -26,6 +26,8 @@ import pytest
 # grün ist — und nur für Module ohne Tk-Import.
 ANNOTATED_MODULES = [
     "src/time_utils.py",
+    "src/webhook.py",
+    "src/share.py",
 ]
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent

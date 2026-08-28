@@ -16,11 +16,18 @@ reservations, alte Shape) werden beim Lesen weiterhin akzeptiert und in
 1-Slot-Listen (kategorie="") gewrappt (Abwärtskompatibilität).
 """
 
+from __future__ import annotations
+
 import datetime
 import json
 import re
+from typing import TYPE_CHECKING, Any, Callable, Collection
 
 from src.time_utils import utc_now_iso
+
+if TYPE_CHECKING:  # nur fuer die Signaturen — kein Import zur Laufzeit
+    from src.reservations import ReservationStore
+    from src.storage import Storage
 
 
 SCHEMA_VERSION = 3
@@ -40,12 +47,12 @@ _RESERVATION_SLOT_KEYS = frozenset({"start", "end", "kategorie"})
 class ShareValidationError(Exception):
     """Datei kann nicht importiert werden. `.reason` enthält den deutschen Grund."""
 
-    def __init__(self, reason):
+    def __init__(self, reason: str) -> None:
         super().__init__(reason)
         self.reason = reason
 
 
-def _validate_time(date_str, label, value):
+def _validate_time(date_str: str, label: str, value: Any) -> None:
     if not isinstance(value, str) or not _TIME_RE.match(value):
         raise ShareValidationError(f"Eintrag {date_str}: ungültige {label} {value!r}")
     try:
@@ -55,7 +62,7 @@ def _validate_time(date_str, label, value):
             f"Eintrag {date_str}: ungültige {label} {value!r}") from None
 
 
-def _validate_date_key(date_str):
+def _validate_date_key(date_str: Any) -> None:
     if not isinstance(date_str, str) or not _DATE_RE.match(date_str):
         raise ShareValidationError(f"Ungültiger Datums-Key: {date_str!r}")
     try:
@@ -64,7 +71,8 @@ def _validate_date_key(date_str):
         raise ShareValidationError(f"Ungültiges Datum: {date_str!r}") from None
 
 
-def _check_keys(date_str, entry, expected_keys, label="Eintrag"):
+def _check_keys(date_str: str, entry: Any, expected_keys: frozenset[str],
+                label: str = "Eintrag") -> None:
     if not isinstance(entry, dict):
         raise ShareValidationError(f"{label} {date_str} ist kein Objekt.")
     keys = set(entry.keys())
@@ -79,19 +87,19 @@ def _check_keys(date_str, entry, expected_keys, label="Eintrag"):
         raise ShareValidationError(f"{label} {date_str}: {'; '.join(parts)}")
 
 
-def _validate_pause(date_str, pause):
+def _validate_pause(date_str: str, pause: Any) -> None:
     if not isinstance(pause, int) or isinstance(pause, bool) or pause < 0:
         raise ShareValidationError(f"Eintrag {date_str}: ungültige Pause {pause!r}")
 
 
-def _validate_kategorie(date_str, kategorie):
+def _validate_kategorie(date_str: str, kategorie: Any) -> None:
     if not isinstance(kategorie, str):
         raise ShareValidationError(f"Eintrag {date_str}: ungültige Kategorie {kategorie!r}")
 
 
 # --- v1/v2 (alte Shape) ---
 
-def _validate_legacy_entries(entries):
+def _validate_legacy_entries(entries: dict[str, Any]) -> None:
     for date_str, entry in entries.items():
         _validate_date_key(date_str)
         _check_keys(date_str, entry, _LEGACY_ENTRY_KEYS)
@@ -100,7 +108,7 @@ def _validate_legacy_entries(entries):
         _validate_pause(date_str, entry["pause"])
 
 
-def _validate_legacy_reservations(reservations):
+def _validate_legacy_reservations(reservations: dict[str, Any]) -> None:
     for date_str, entry in reservations.items():
         _validate_date_key(date_str)
         _check_keys(date_str, entry, _LEGACY_RESERVATION_KEYS, label="Reservierung")
@@ -108,7 +116,7 @@ def _validate_legacy_reservations(reservations):
         _validate_time(date_str, "Endzeit", entry["end"])
 
 
-def _wrap_legacy_entries(entries):
+def _wrap_legacy_entries(entries: dict[str, Any]) -> dict[str, Any]:
     return {
         d: {"slots": [{"start": e["start"], "end": e["end"],
                        "pause": e["pause"], "kategorie": ""}]}
@@ -116,7 +124,7 @@ def _wrap_legacy_entries(entries):
     }
 
 
-def _wrap_legacy_reservations(reservations):
+def _wrap_legacy_reservations(reservations: dict[str, Any]) -> dict[str, Any]:
     return {
         d: {"slots": [{"start": r["start"], "end": r["end"], "kategorie": ""}]}
         for d, r in reservations.items()
@@ -125,7 +133,8 @@ def _wrap_legacy_reservations(reservations):
 
 # --- v3 (Slot-Shape) ---
 
-def _validate_slot_record(date_str, record, slot_keys, has_pause):
+def _validate_slot_record(date_str: str, record: Any, slot_keys: frozenset[str],
+                          has_pause: bool) -> None:
     if not isinstance(record, dict) or set(record.keys()) != {"slots"}:
         raise ShareValidationError(f"Eintrag {date_str}: erwartet {{\"slots\": [...]}}.")
     if not isinstance(record["slots"], list):
@@ -139,19 +148,19 @@ def _validate_slot_record(date_str, record, slot_keys, has_pause):
         _validate_kategorie(date_str, slot["kategorie"])
 
 
-def _validate_v3_entries(entries):
+def _validate_v3_entries(entries: dict[str, Any]) -> None:
     for date_str, record in entries.items():
         _validate_date_key(date_str)
         _validate_slot_record(date_str, record, _ENTRY_SLOT_KEYS, has_pause=True)
 
 
-def _validate_v3_reservations(reservations):
+def _validate_v3_reservations(reservations: dict[str, Any]) -> None:
     for date_str, record in reservations.items():
         _validate_date_key(date_str)
         _validate_slot_record(date_str, record, _RESERVATION_SLOT_KEYS, has_pause=False)
 
 
-def parse_share_doc(raw_bytes):
+def parse_share_doc(raw_bytes: bytes | str) -> dict[str, Any]:
     """Parst und validiert Share-File-Inhalt. Wirft ShareValidationError bei
     jeder Schema-Verletzung. Der zurückgegebene doc hat entries/reservations
     immer als Slot-Records (v1/v2 werden gewrappt)."""
@@ -220,7 +229,8 @@ def parse_share_doc(raw_bytes):
     return doc
 
 
-def filter_records_by_category(records, categories):
+def filter_records_by_category(records: dict[str, Any],
+                               categories: Collection[str] | None) -> dict[str, Any]:
     """categories=None → unverändert. Sonst je Tag nur Slots behalten, deren
     Kategorie (oder "") in `categories` liegt; leere Tage fallen weg.
 
@@ -239,7 +249,7 @@ def filter_records_by_category(records, categories):
     return out
 
 
-def _share_reservation_shape(records):
+def _share_reservation_shape(records: dict[str, Any]) -> dict[str, Any]:
     """Projiziert Reservierungs-Records auf die Share-Felder.
 
     Der ReservationStore liefert in seiner User-Shape auch interne Felder wie
@@ -257,7 +267,8 @@ def _share_reservation_shape(records):
     }
 
 
-def filter_records_by_range(records, date_from, date_to):
+def filter_records_by_range(records: dict[str, Any], date_from: datetime.date | None,
+                            date_to: datetime.date | None) -> dict[str, Any]:
     """Behaelt die Tage, deren ISO-Schluessel in [date_from, date_to] liegt.
 
     `None` je Seite = offene Grenze; beide `None` → unveraendert. Beide
@@ -285,9 +296,12 @@ def filter_records_by_range(records, date_from, date_to):
     return out
 
 
-def build_share_doc(storage, sender_email, *, reservation_store=None,
-                    include_entries=True, include_reservations=False, categories=None,
-                    date_from=None, date_to=None):
+def build_share_doc(storage: Storage, sender_email: str, *,
+                    reservation_store: ReservationStore | None = None,
+                    include_entries: bool = True, include_reservations: bool = False,
+                    categories: Collection[str] | None = None,
+                    date_from: datetime.date | None = None,
+                    date_to: datetime.date | None = None) -> dict[str, Any]:
     """Baut das v3-Share-Doc aus den Slot-Records von Storage/ReservationStore.
 
     include_entries / include_reservations steuern die Typen. categories=None →
@@ -301,7 +315,7 @@ def build_share_doc(storage, sender_email, *, reservation_store=None,
         "exported_by": sender_email or "",
     }
 
-    def _select(records):
+    def _select(records: dict[str, Any]) -> dict[str, Any]:
         # Datum zuerst: billiger Schluessel-Vergleich vor dem Slot-Filter.
         return filter_records_by_category(
             filter_records_by_range(dict(records), date_from, date_to), categories)
@@ -314,27 +328,31 @@ def build_share_doc(storage, sender_email, *, reservation_store=None,
     return doc
 
 
-def serialize_share_doc(doc):
+def serialize_share_doc(doc: dict[str, Any]) -> bytes:
     """Stabiles UTF-8-JSON, sortierte Keys (deterministisch für Tests)."""
     return json.dumps(doc, indent=2, ensure_ascii=False, sort_keys=True).encode("utf-8")
 
 
-def _slot_signature(slots, keys):
+def _slot_signature(slots: list[dict[str, Any]] | None,
+                    keys: tuple[str, ...]) -> list[tuple[Any, ...]]:
     """Reihenfolge-normalisierte Signatur einer Slot-Liste über `keys`."""
     return sorted(tuple(s.get(k) for k in keys) for s in (slots or []))
 
 
-def _entries_equal(a, b):
+def _entries_equal(a: dict[str, Any], b: dict[str, Any]) -> bool:
     return (_slot_signature(a.get("slots"), ("start", "end", "pause", "kategorie"))
             == _slot_signature(b.get("slots"), ("start", "end", "pause", "kategorie")))
 
 
-def _reservations_equal(a, b):
+def _reservations_equal(a: dict[str, Any], b: dict[str, Any]) -> bool:
     return (_slot_signature(a.get("slots"), ("start", "end", "kategorie"))
             == _slot_signature(b.get("slots"), ("start", "end", "kategorie")))
 
 
-def _diff_records(share_records, local_snapshot, equal_fn, date_from=None, date_to=None):
+def _diff_records(share_records: dict[str, Any], local_snapshot: dict[str, Any],
+                  equal_fn: Callable[[dict[str, Any], dict[str, Any]], bool],
+                  date_from: datetime.date | None = None,
+                  date_to: datetime.date | None = None) -> dict[str, Any]:
     """Typ-neutraler Diff zwischen Share-Records und lokalem Snapshot.
 
     share_records / local_snapshot: {date: record}.
@@ -375,21 +393,26 @@ def _diff_records(share_records, local_snapshot, equal_fn, date_from=None, date_
     }
 
 
-def diff_share_against_local(share_entries, storage, date_from=None, date_to=None):
+def diff_share_against_local(share_entries: dict[str, Any], storage: Storage,
+                             date_from: datetime.date | None = None,
+                             date_to: datetime.date | None = None) -> dict[str, Any]:
     """Arbeitszeiten-Diff (Wrapper, unverändertes Verhalten)."""
     return _diff_records(
         share_entries, storage.get_all(), _entries_equal, date_from, date_to)
 
 
-def diff_reservations_against_local(share_reservations, reservation_store,
-                                    date_from=None, date_to=None):
+def diff_reservations_against_local(share_reservations: dict[str, Any],
+                                    reservation_store: ReservationStore,
+                                    date_from: datetime.date | None = None,
+                                    date_to: datetime.date | None = None) -> dict[str, Any]:
     """Reservierungs-Diff gegen den ReservationStore-Snapshot ({date:{start,end}})."""
     return _diff_records(
         share_reservations, reservation_store.get_all(),
         _reservations_equal, date_from, date_to)
 
 
-def apply_reservation_import(reservation_store, decisions):
+def apply_reservation_import(reservation_store: ReservationStore,
+                             decisions: list[dict[str, Any]]) -> None:
     """Schreibt importierte Reservierungen (Slot-Records) in den Store.
 
     decisions: list of {"date": "YYYY-MM-DD", "entry": {"slots": [...]}}.
@@ -399,7 +422,7 @@ def apply_reservation_import(reservation_store, decisions):
         reservation_store.save(d["date"], d["entry"]["slots"])
 
 
-def apply_import(storage, decisions):
+def apply_import(storage: Storage, decisions: list[dict[str, Any]]) -> None:
     """Wendet Import-Decisions atomar an (ein save_many-Aufruf).
 
     decisions: list of {"date": "YYYY-MM-DD", "entry": {"slots": [...]}}.
