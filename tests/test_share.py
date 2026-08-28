@@ -12,6 +12,8 @@ from src.share import (
     build_share_doc,
     diff_reservations_against_local,
     diff_share_against_local,
+    filter_records_by_category,
+    filter_records_by_range,
     parse_share_doc,
     serialize_share_doc,
 )
@@ -333,6 +335,118 @@ def test_build_doc_category_filter_drops_empty_days():
     storage = _FakeStorage({"2026-05-14": _erec(_eslot("08:00", "12:00", 0, "Büro"))})
     doc = build_share_doc(storage, "a@b.de", categories={"Nichtvorhanden"})
     assert doc["entries"] == {}
+
+
+# --- Zeitraum-Filter beim Export (Xveyn/Zeiterfassung#48) ---
+
+
+def _days(*dates):
+    """Records mit je einem belanglosen Slot, damit nur die Schlüssel zählen."""
+    return {d: _erec(_eslot("08:00", "16:00", 0, "")) for d in dates}
+
+
+def test_filter_range_bounds_are_inclusive():
+    recs = _days("2026-05-13", "2026-05-14", "2026-05-15", "2026-05-16")
+    out = filter_records_by_range(recs, _dt.date(2026, 5, 14), _dt.date(2026, 5, 15))
+    assert sorted(out) == ["2026-05-14", "2026-05-15"]
+
+
+def test_filter_range_open_start_keeps_everything_up_to_end():
+    recs = _days("2026-05-13", "2026-05-14", "2026-05-15")
+    out = filter_records_by_range(recs, None, _dt.date(2026, 5, 14))
+    assert sorted(out) == ["2026-05-13", "2026-05-14"]
+
+
+def test_filter_range_open_end_keeps_everything_from_start():
+    recs = _days("2026-05-13", "2026-05-14", "2026-05-15")
+    out = filter_records_by_range(recs, _dt.date(2026, 5, 14), None)
+    assert sorted(out) == ["2026-05-14", "2026-05-15"]
+
+
+def test_filter_range_both_none_returns_unchanged():
+    recs = _days("2026-05-13", "2026-05-14")
+    assert filter_records_by_range(recs, None, None) == recs
+
+
+def test_filter_range_drops_unparsable_keys():
+    recs = dict(_days("2026-05-14"))
+    recs["kaputt"] = _erec(_eslot("08:00", "16:00", 0, ""))
+    out = filter_records_by_range(recs, _dt.date(2026, 5, 1), _dt.date(2026, 5, 31))
+    assert sorted(out) == ["2026-05-14"]
+
+
+def test_filter_range_inverted_range_yields_nothing():
+    recs = _days("2026-05-14")
+    assert filter_records_by_range(
+        recs, _dt.date(2026, 5, 20), _dt.date(2026, 5, 10)) == {}
+
+
+def test_build_doc_date_range_filters_entries():
+    storage = _FakeStorage(_days("2026-05-13", "2026-05-14", "2026-05-15"))
+    doc = build_share_doc(storage, "a@b.de",
+                          date_from=_dt.date(2026, 5, 14), date_to=_dt.date(2026, 5, 15))
+    assert sorted(doc["entries"]) == ["2026-05-14", "2026-05-15"]
+
+
+def test_build_doc_date_range_filters_reservations():
+    res = _FakeResStore({d: _erec(_rslot("09:00", "12:00", ""))
+                         for d in ("2026-05-13", "2026-05-14")})
+    doc = build_share_doc(_FakeStorage({}), "a@b.de", reservation_store=res,
+                          include_entries=False, include_reservations=True,
+                          date_from=_dt.date(2026, 5, 14), date_to=None)
+    assert sorted(doc["reservations"]) == ["2026-05-14"]
+
+
+def test_build_doc_date_range_and_category_filter_combine():
+    storage = _FakeStorage({
+        "2026-05-13": _erec(_eslot("08:00", "12:00", 0, "Büro")),
+        "2026-05-14": _erec(_eslot("08:00", "12:00", 0, "Büro"),
+                            _eslot("13:00", "17:00", 0, "HO")),
+        "2026-05-15": _erec(_eslot("08:00", "12:00", 0, "HO")),
+    })
+    doc = build_share_doc(storage, "a@b.de", categories={"Büro"},
+                          date_from=_dt.date(2026, 5, 14), date_to=_dt.date(2026, 5, 15))
+    # 13. fällt am Datum, 15. an der Kategorie, vom 14. bleibt nur der Büro-Slot.
+    assert doc["entries"] == {"2026-05-14": _erec(_eslot("08:00", "12:00", 0, "Büro"))}
+
+
+def test_build_doc_date_range_without_hits_yields_empty_dict():
+    storage = _FakeStorage(_days("2026-05-14"))
+    doc = build_share_doc(storage, "a@b.de",
+                          date_from=_dt.date(2026, 6, 1), date_to=_dt.date(2026, 6, 30))
+    assert doc["entries"] == {}
+
+
+def test_build_doc_range_may_empty_one_type_and_doc_stays_parsable():
+    """Der Dialog laesst zu, dass im Zeitraum nur einer der beiden Typen
+    Treffer hat (die Checkbox zeigt dann "(0 Tage)"). Das entstehende Doc mit
+    leerem Typ-Dict muss der Validator akzeptieren — sonst baute die UI ein
+    Dokument, das der Empfaenger nicht einlesen kann."""
+    storage = _FakeStorage(_days("2026-05-14"))
+    res = _FakeResStore({"2026-09-01": _erec(_rslot("09:00", "12:00", ""))})
+    doc = build_share_doc(storage, "a@b.de", reservation_store=res,
+                          include_entries=True, include_reservations=True,
+                          date_from=_dt.date(2026, 5, 1), date_to=_dt.date(2026, 5, 31))
+    assert doc["reservations"] == {}
+    parsed = parse_share_doc(serialize_share_doc(doc))
+    assert parsed["reservations"] == {}
+    assert sorted(parsed["entries"]) == ["2026-05-14"]
+
+
+def test_filter_by_category_is_public_and_drops_empty_days():
+    """`filter_records_by_category` ist oeffentlich, weil der Teilen-Dialog
+    seine Tages-Zahlen aus denselben Filtern zieht wie der Export."""
+    recs = {"2026-05-14": _erec(_eslot("08:00", "12:00", 0, "Büro")),
+            "2026-05-15": _erec(_eslot("08:00", "12:00", 0, "HO"))}
+    assert filter_records_by_category(recs, None) == recs
+    assert sorted(filter_records_by_category(recs, {"Büro"})) == ["2026-05-14"]
+    assert filter_records_by_category(recs, {"Weg"}) == {}
+
+
+def test_build_doc_without_range_is_unchanged():
+    """Rückwärtskompatibilität: ohne Zeitraum bleibt es der volle Bestand."""
+    recs = _days("2020-01-01", "2026-05-14")
+    assert build_share_doc(_FakeStorage(recs), "a@b.de")["entries"] == recs
 
 
 def test_round_trip_build_serialize_parse():
