@@ -2,10 +2,6 @@
 
 ## 1.21.0 — 2026-08-26
 
-> **Letztes Release aus diesem Repository.** Alle weiteren Versionen erscheinen
-> unter [Xveyn/Zeiterfassung](https://github.com/Xveyn/Zeiterfassung) — siehe
-> „Umzug des Repositorys“ unter *Geändert*.
-
 ### Hinzugefügt
 - **Webhook-Versand**: Der Bericht lässt sich jetzt zusätzlich zur E-Mail an
   eigene HTTP-Endpunkte schicken (Einstellungen → Webhooks). Pro Webhook

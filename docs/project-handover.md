@@ -1,5 +1,23 @@
 # Projekt-Übernahme — Fork-Promotion nach `Xveyn/Zeiterfassung`
 
+> [!NOTE]
+> **Der Umzug ist am 2026-08-26 vollzogen.** `Xveyn/Zeiterfassung` ist das
+> kanonische Repository (`fork: false`, kein `parent`), trägt alle 48 Tags, und
+> das Brücken-Release `v1.21.0` liegt in **beiden** Repos.
+> `margenheld/Zeiterfassung` ist Archiv — dort erscheint kein Release mehr.
+>
+> Dieses Dokument bleibt als **Protokoll** stehen: die Begründungen erklären
+> weiterhin, warum Dinge so sind, wie sie sind (Lizenz-Zeile, `AppId`,
+> `com.margenheld.*`, das dauerhaft belegte alte Repo). Abgehakt ist, was
+> nachprüfbar erledigt ist; die offenen Kreuze unten sind **echte Restarbeit**.
+>
+> Die drei Repo-Settings, die den Release-Prozess hier trugen, sind am
+> 2026-08-28 nachgezogen: die `release:*`-Labels angelegt, Actions →
+> Workflow permissions auf **Read and write**, und `master` ist protected
+> (Abschnitt 4). Damit ist der Release-Weg im neuen Repo erstmals vollständig.
+>
+> Zustand geprüft am 2026-08-28.
+
 Checkliste für den Umzug des Projekts weg von der **MargenHeld GmbH**.
 
 **Entschieden:** `Xveyn/Zeiterfassung` (bisher Fork) wird das neue Zuhause,
@@ -34,7 +52,7 @@ Nichts davon ist ein Hindernis, aber alles davon will bewusst entschieden sein:
 
 ## 1. Lizenz
 
-- [ ] **`LICENSE`: `Copyright (c) 2026 MargenHeld GmbH` bleibt stehen.**
+- [x] **`LICENSE`: `Copyright (c) 2026 MargenHeld GmbH` bleibt stehen.**
       MIT verlangt das ausdrücklich („shall be included in all copies").
       Eine eigene Zeile für die eigenen Beiträge *ergänzen* ist zulässig, die
       bestehende ersetzen nicht.
@@ -60,14 +78,17 @@ und damit der ganze Umzug.
 
 - [ ] **GitHub-Account/Org `margenheld`:** Hängen Login oder Recovery-Adresse an
       einem Firmenpostfach? Mit dessen Abschaltung ist der Zugang weg.
-- [ ] **Domain `margen-held.de`:** trägt die Security-Meldeadresse
+- [ ] **Domain `margen-held.de`:** trug die Security-Meldeadresse — aus
+      `SECURITY.md` inzwischen **ersatzlos entfernt**, Meldungen laufen nur noch
+      über die GitHub Security Advisories des neuen Repos. Offen bleibt der
+      organisatorische Teil:
       (`SECURITY.md:24`, `sven@margen-held.de`). Läuft die Domain aus und
       registriert sie jemand neu, empfängt dieser Passwort-Resets für jeden
       Account, der noch auf sie zeigt. → GitHub-Account auf eine private
       Adresse umstellen, 2FA-Recovery-Codes sichern.
-- [ ] **Alten Repo-Namen `margenheld/Zeiterfassung` dauerhaft belegt lassen** —
+- [ ] **Dauerauflage — alten Repo-Namen `margenheld/Zeiterfassung` belegt lassen** —
       siehe das Squatting-Risiko in Abschnitt 3.
-- [ ] `com.margenheld.zeiterfassung` verweist per Reverse-DNS-Konvention auf
+- [x] `com.margenheld.zeiterfassung` verweist per Reverse-DNS-Konvention auf
       eine Domain, die künftig nicht mehr uns gehört. Technisch folgenlos →
       **nicht jetzt anfassen**, sondern beim nächsten ohnehin breaking
       macOS-Change mitziehen (Begründung in Abschnitt 6).
@@ -89,7 +110,7 @@ die Asset-URL, ersatzweise auf `release.html_url`; installiert wird manuell
 **Melder**. Das heißt: die Migration kann nicht stillschweigend passieren, aber
 sie ist technisch simpel — es muss nur die *Meldung* beim Nutzer ankommen.
 
-- [ ] **Schritt 1 — Brücken-Release im ALTEN Repo: `1.21.0`.** Gebaut und
+- [x] **Schritt 1 — Brücken-Release im ALTEN Repo: `1.21.0`.** *(erledigt: `margenheld/Zeiterfassung` `v1.21.0`, 4 Assets, 2026-08-26.)* Gebaut und
       veröffentlicht wird es noch hier, die Assets liegen also im alten Repo.
       Es trägt zwei Dinge zugleich: die seit `1.20.0` aufgelaufenen Features
       (u.a. den Webhook-Versand) **und** die Umstellung von `updater.REPO` auf
@@ -104,7 +125,7 @@ sie ist technisch simpel — es muss nur die *Meldung* beim Nutzer ankommen.
       müssten zweimal aktualisieren, statt einmal. Der Umzug bleibt trotzdem
       sichtbar: er steht im CHANGELOG, in den Release-Notes und im
       README-Banner.
-- [ ] **Schritt 2 — verteilen lassen.** Nutzer sehen die Meldung im
+- [ ] **Schritt 2 — verteilen lassen.** *(läuft — nichts zu tun; endet erst, wenn niemand mehr auf einer Version < 1.21.0 sitzt.)* Nutzer sehen die Meldung im
       Updates-Tab/Banner, laden aus dem alten Repo, installieren. Ab dann fragt
       ihre App das neue Repo.
 - [ ] **Schritt 3 — alle weiteren Releases im neuen Repo**, mit **höherer**
@@ -114,11 +135,11 @@ sie ist technisch simpel — es muss nur die *Meldung* beim Nutzer ankommen.
 **Nachzügler:** Wer die Brücke nie installiert, hängt dauerhaft am alten Repo.
 Daher:
 
-- [ ] Altes Repo **nicht löschen, nicht umbenennen**, Brücken-Release stehen
+- [ ] **Dauerauflage —** altes Repo **nicht löschen, nicht umbenennen**, Brücken-Release stehen
       lassen. Der README-Banner dazu liegt bereits im Fork-Promotion-PR; die
       **Repo-Description** in den GitHub-Settings ist separat nachzuziehen (sie
       steht in keiner Datei).
-- [ ] **Banner im neuen Repo** — aus der Gegenrichtung formuliert: dass das
+- [x] **Banner im neuen Repo** — aus der Gegenrichtung formuliert: dass das
       Projekt bis `1.21.0` unter `margenheld/Zeiterfassung` lag und hier
       fortgeführt wird, mit Verweis auf die dortigen Alt-Releases und die
       Issue-Historie. Anders als der Banner im alten Repo darf dieser später
@@ -126,7 +147,7 @@ Daher:
       Landekarte für alte Links.
 - [ ] **Archivieren erst ganz am Ende** — ein archiviertes Repo ist read-only,
       danach lässt sich dort kein weiteres Hinweis-Release mehr nachschieben.
-- [ ] Erwartungsmanagement: `should_check` throttelt den Update-Check (Default
+- [x] Erwartungsmanagement: `should_check` throttelt den Update-Check (Default
       1×/Tag). Wer die App wochenlang nicht öffnet, sieht die Meldung
       entsprechend später. Kein Handlungsbedarf.
 
@@ -139,7 +160,9 @@ Der alte Name muss dauerhaft belegt bleiben.
 
 ## 4. Fork-spezifische GitHub-Arbeit
 
-- [ ] **Tags nachziehen.** Stand 2026-08-26: beide Seiten haben **46 Tags**, aber
+- [x] **Tags nachgezogen.** Stand 2026-08-28: `Xveyn` hat **48** Tags,
+      `margenheld` **47** — der neue Ort ist vollständig. Historischer Stand
+      2026-08-26: beide Seiten hatten **46 Tags**, aber
       nicht dieselben — dem Fork fehlt `v1.20.0-pre.2`, upstream fehlt
       `v1.17.0-pre.1`. `git push origin --tags` schließt die Lücke im Fork.
       Ohne die Tags scheitern zwei Dinge: (a) `src/changelog.py:15` lädt
@@ -148,28 +171,50 @@ Der alte Name muss dauerhaft belegt bleiben.
       verlangt für einen Pre-Release, dass `v<VERSION>` bereits existiert.
       **Vor jedem Umzugsschritt neu zählen** — die Zahl veraltet mit jedem
       Release.
-- [ ] **GitHub-Releases werden nicht mitgeforkt.** Ein Fork enthält die
+- [x] **Zur Kenntnis — GitHub-Releases werden nicht mitgeforkt.** Ein Fork enthält die
       Git-Historie, aber keine Release-Objekte und keine Assets. Alte
       Download-Links zeigen weiterhin ins alte Repo — funktioniert, solange es
       steht (siehe Abschnitt 3).
-- [ ] **Fork-Beziehung lösen** (GitHub-Support, „detach fork"). Bis dahin zielen
+- [x] **Fork-Beziehung gelöst** (`fork: false`, kein `parent` — geprüft
+      2026-08-28). Der lokale `upstream`-Remote wurde am selben Tag entfernt,
+      `master` trackt `origin`. Historische Begründung: bis dahin zielten
       neue PRs per Default auf das Upstream → Gefahr, versehentlich ins alte
       Repo zu mergen. Übergangsweise immer das Base-Repo prüfen bzw.
       `gh pr create --repo Xveyn/Zeiterfassung` verwenden.
-- [ ] **Issue-Nummern-Falle:** Alle `#NNN`-Referenzen in `CLAUDE.md`,
+- [x] **Issue-Nummern-Falle entschärft:** In `CLAUDE.md`, `src/CLAUDE.md` und
+      `docs/known-limitations.md` steht keine bloße `#NNN` mehr — alle Referenzen
+      sind vollqualifiziert und zeigen damit korrekt ins Archiv. **Offen ist nur
+      die Anschlußfrage,** ob sie stattdessen auf die am 2026-08-26 ins neue Repo
+      kopierten Issues zeigen sollen (Mapping alt→neu, z. B. `#42→#8`,
+      `#131→#40`, `#183→#50`). Ursprünglicher Wortlaut: Alle
+      `#NNN`-Referenzen in `CLAUDE.md`,
       `docs/known-limitations.md` und `AUDIT-2026-07-04.md` (#42, #96, #99,
       #118, #131, #148, #183 …) meinen das alte Repo. Im neuen Repo verlinkt
       GitHub `#42` auf dessen *eigenes* Issue 42 — semantisch falsch, sobald
       dort Issues entstehen. Gegenmaßnahme: bloße `#NNN` durch vollqualifizierte
       `margenheld/Zeiterfassung#42` ersetzen.
-- [ ] **Branch Protection im Fork neu einrichten**, insbesondere den Required
+- [x] **Branch Protection eingerichtet** (2026-08-28). `master` war bis dahin
+      **nicht** protected (`HTTP 404 Branch not protected`), obwohl `CLAUDE.md`
+      sie als gegeben beschreibt. Gesetzt sind jetzt die Required Checks
+      `test`, `lint`, `typecheck`, `test-macos`, `test-windows` — ohne `strict`
+      (ein PR muss nicht auf den aktuellen `master` nachgezogen werden),
+      ohne Review-Pflicht (Solo-Maintainer kann den eigenen PR nicht
+      approven), `enforce_admins: false` für den in `CLAUDE.md` beschriebenen
+      Admin-Bypass, Force-Push und Branch-Löschung blockiert. Weiterhin
+      maßgeblich ist der Required
       Check `test` (siehe `CLAUDE.md` → Tests/CI: ohne ihn bliebe der Check ewig
       „pending" und jeder PR dauerhaft blockiert).
-- [ ] **Actions → Workflow permissions = „Read and write"** prüfen. `release.yml`
+- [x] **Actions → Workflow permissions auf „Read and write"** (2026-08-28).
+      Stand bis dahin auf `read` — in dem Zustand wäre **jedes** Release
+      gescheitert. `release.yml`
       pusht Tags und legt Releases über `secrets.GITHUB_TOKEN` an; steht der
       Account-Default auf read-only, bricht **jedes** Release. Eigene Secrets
       sind keine zu retten — die Workflows nutzen ausschließlich `GITHUB_TOKEN`.
-- [ ] Stars, Watcher und Download-Zähler sind weg. Kosmetisch, aber bewusst
+- [x] **Labels `release:major|minor|patch` angelegt** (2026-08-28, Farben und
+      Beschreibungen identisch zum alten Repo). Sie fehlten hier; `release.yml`
+      triggert ausschließlich auf sie (siehe `CLAUDE.md` → Release-Prozeß) —
+      ohne sie wäre ein Release-PR durchgelaufen, ohne ein Release zu erzeugen.
+- [x] Zur Kenntnis — Stars, Watcher und Download-Zähler sind weg. Kosmetisch, aber bewusst
       entscheiden.
 
 ---
@@ -182,9 +227,9 @@ Der alte Name muss dauerhaft belegt bleiben.
 bereits installierten App fest eingebacken** — deshalb die Update-Brücke aus
 Abschnitt 3.
 
-- [ ] Konstante auf `Xveyn/Zeiterfassung` setzen. Sie muss im **Brücken-Release
+- [x] Konstante auf `Xveyn/Zeiterfassung` gesetzt (`src/updater.py:35`). Sie muss im **Brücken-Release
       des alten Repos** stecken, nicht erst im ersten Release des Forks.
-- [ ] `src/changelog.py:15` baut
+- [x] `src/changelog.py:15` baut
       `https://raw.githubusercontent.com/{repo}/v{version}/CHANGELOG.md` — der
       Grund, warum die Tags im Fork vollständig sein müssen (Abschnitt 4). Die
       `MargenHeld/…`-Vorkommen in `tests/test_changelog.py` sind reine
@@ -214,35 +259,39 @@ Abschnitt 3.
 
 ## 7. Textstellen nachziehen
 
-- [ ] `README.md:5` — Release- und Lizenz-Badges
-- [ ] `CONTRIBUTING.md:9` — clone-URL
-- [ ] `installer.iss:5` — `AppPublisherURL`
-- [ ] `SECURITY.md:22-24` — Advisory-Link **und Meldeadresse**
-      (`sven@margen-held.de` → neuer Verantwortlicher, siehe Abschnitt 2)
-- [ ] `docs/known-limitations.md:149` — Issue-Link
-- [ ] `AUDIT-2026-07-04.md` — PR-/Issue-Links (aktuell untracked)
-- [ ] bloße `#NNN` in `CLAUDE.md` und `docs/` qualifizieren (siehe Abschnitt 4)
+- [x] `README.md` — Release- und Lizenz-Badges zeigen auf `Xveyn`
+- [x] `CONTRIBUTING.md` — clone-URL
+- [x] `installer.iss:5` — `AppPublisherURL`
+- [x] `SECURITY.md` — Advisory-Link umgestellt, die Meldeadresse
+      `sven@margen-held.de` ist ersatzlos entfernt
+- [x] `docs/known-limitations.md` — Issue-Link vollqualifiziert
+- [x] bloße `#NNN` in `CLAUDE.md` und `docs/` qualifiziert (siehe Abschnitt 4)
+- [ ] `AUDIT-2026-07-04.md` — 59 bloße `#NNN`. Die Datei ist weiterhin
+      **untracked**, GitHub rendert sie also nirgends; erst beim Einchecken
+      relevant.
 
-Die Zeilennummern stimmen zum Stand 2026-08-26 und sollten vor dem Nachziehen
-kurz gegengeprüft werden.
+`AppPublisher=Margenheld` in `installer.iss:4` steht bewusst noch so da — reine
+Anzeige in „Apps & Features", Änderung gefahrlos, aber nicht Teil des Umzugs.
 
 ---
 
-## Stand der Vorbereitung
+## Was noch offen ist
 
-Ein Teil der Code- und Doku-Änderungen liegt bereits vor: der lokale Branch
-`chore/fork-promotion` stellt `updater.REPO` um, zieht die Repo-URLs in
-`README.md`/`CONTRIBUTING.md`/`installer.iss`/`SECURITY.md` nach, ergänzt die
-eigene Copyright-Zeile in `LICENSE` und qualifiziert die Issue-Referenzen —
-also die Abschnitte 5 und 7 sowie den ergänzenden Teil von Abschnitt 1.
+Der Code- und Doku-Teil (Abschnitte 1, 5, 7) ist mit dem Brücken-Release
+`1.21.0` ausgeliefert. Was bleibt, ist **kein Code**:
 
-Er zweigt allerdings von einem **57 Commits alten** Stand ab (vor dem
-Webhook-Versand und vor der Verschiebung nach `scripts/`) und braucht einen
-Rebase; Konflikte sind in `CLAUDE.md`, `README.md` und
-`docs/known-limitations.md` zu erwarten, weil beide Seiten dort gewachsen sind.
+Die drei GitHub-Settings aus Abschnitt 4 sind am 2026-08-28 erledigt. Was
+bleibt, ist organisatorisch:
 
-Nicht vorbereitet und rein organisatorisch: alles aus Abschnitt 2, die
-GitHub-Einstellungen aus Abschnitt 4 und das Brücken-Release selbst.
+| Offen | Abschnitt | Wirkung |
+|---|---|---|
+| Zugänge/Recovery des Accounts `margenheld` sichern | 2 | ohne sie kein Nachschieben im Archiv |
+| Repo-Description im alten Repo nachziehen | 3 | Kosmetik, aber Teil der Landekarte für alte Links |
+| `margenheld/Zeiterfassung` archivieren | 3 | **zuletzt** — danach read-only |
+| Issue-Referenzen auf die Kopien im neuen Repo umbiegen | 4 | offene Anschlußfrage, kein Fehler |
+
+Dauerauflagen (nie „erledigt"): den alten Repo-Namen belegt lassen und das
+Brücken-Release dort stehen lassen.
 
 ---
 
