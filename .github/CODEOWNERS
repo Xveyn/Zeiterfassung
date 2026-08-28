@@ -1,0 +1,16 @@
+# CODEOWNERS — Zuständigkeit für Reviews
+#
+# Wirkung: GitHub fragt die hier genannten Owner automatisch als Reviewer an,
+# sobald ein PR eine passende Datei anfasst. Reihenfolge zählt — der LETZTE
+# passende Eintrag gewinnt, nicht der spezifischste.
+#
+# WICHTIG — die Branch-Protection-Option "Require review from Code Owners"
+# ist auf `master` bewusst NICHT aktiviert. Solange das Projekt einen einzigen
+# Maintainer hat, würde sie jeden PR dauerhaft blockieren: GitHub fragt den
+# PR-Autor nie selbst als Reviewer an, und den eigenen PR kann man nicht
+# approven. Die Datei dokumentiert also Zuständigkeit und greift, sobald ein
+# Zweiter beiträgt oder ein PR aus einem Fork kommt — sie ist kein Gate.
+# Wer die Option später aktiviert, braucht vorher einen zweiten Reviewer.
+
+# Standard für alles, was hier nicht ausdrücklich anders geregelt ist.
+* @Xveyn
