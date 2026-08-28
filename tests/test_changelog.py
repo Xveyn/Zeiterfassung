@@ -303,3 +303,69 @@ def test_greater_than_inside_text_is_untouched():
     md = "* fix: handle > in input by @x\n"
     assert _texts(parse_changelog_markdown(md)) == [
         "• fix: handle > in input by @x"]
+
+
+# --- Markdown-Links (Nachbar von #60) ---
+
+
+def test_link_shows_only_its_text():
+    md = "Siehe [Xveyn/Zeiterfassung](https://github.com/Xveyn/Zeiterfassung) dort.\n"
+    assert _texts(parse_changelog_markdown(md)) == [
+        "Siehe Xveyn/Zeiterfassung dort."]
+
+
+def test_bold_inside_link_stays_bold():
+    """Die Link-Ersetzung muss VOR dem Fett-Split laufen — sonst laege die
+    Markierung quer ueber Segmentgrenzen."""
+    blocks = parse_changelog_markdown("[**Fett**](https://example.com) danach\n")
+    assert _texts(blocks) == ["Fett danach"]
+    assert blocks[0]["segments"][0] == ("Fett", ("bold",))
+
+
+def test_link_inside_bold_stays_bold():
+    blocks = parse_changelog_markdown("**[Text](https://example.com)** danach\n")
+    assert _texts(blocks) == ["Text danach"]
+    assert blocks[0]["segments"][0] == ("Text", ("bold",))
+
+
+def test_two_links_in_one_line():
+    md = "[eins](https://a.example) und [zwei](https://b.example)\n"
+    assert _texts(parse_changelog_markdown(md)) == ["eins und zwei"]
+
+
+def test_relative_link_target_is_dropped_too():
+    md = "Details: [`src/CLAUDE.md`](src/CLAUDE.md).\n"
+    assert _texts(parse_changelog_markdown(md)) == ["Details: `src/CLAUDE.md`."]
+
+
+def test_image_syntax_leaves_no_stray_bang():
+    md = "![Screenshot](assets/bild.png) danach\n"
+    assert _texts(parse_changelog_markdown(md)) == ["Screenshot danach"]
+
+
+def test_link_with_empty_target():
+    assert _texts(parse_changelog_markdown("[Text]() danach\n")) == ["Text danach"]
+
+
+def test_brackets_without_url_are_left_alone():
+    """`[...]` ohne folgende Klammern ist normaler Text, keine Link-Syntax."""
+    md = "Der Wert [optional] bleibt stehen.\n"
+    assert _texts(parse_changelog_markdown(md)) == [
+        "Der Wert [optional] bleibt stehen."]
+
+
+def test_bare_url_is_left_alone():
+    """Generierte Release-Notes tragen nackte URLs — die sollen bleiben."""
+    md = "* feat: X by @y in https://github.com/o/r/pull/1\n"
+    assert _texts(parse_changelog_markdown(md)) == [
+        "• feat: X by @y in https://github.com/o/r/pull/1"]
+
+
+def test_real_1_21_0_line_renders_clean():
+    """Regressionsfall aus dem ausgelieferten CHANGELOG-Abschnitt 1.21.0."""
+    md = ("> **Letztes Release aus diesem Repository.** Alle weiteren Versionen\n"
+          "> erscheinen unter [Xveyn/Zeiterfassung](https://github.com/Xveyn/Zeiterfassung)\n"
+          "> — siehe unten.\n")
+    assert _texts(parse_changelog_markdown(md)) == [
+        "Letztes Release aus diesem Repository. Alle weiteren Versionen "
+        "erscheinen unter Xveyn/Zeiterfassung — siehe unten."]

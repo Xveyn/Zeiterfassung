@@ -15,6 +15,12 @@ from src.version import VERSION
 _RAW_URL = "https://raw.githubusercontent.com/{repo}/v{version}/CHANGELOG.md"
 _VERSION_HEADING = re.compile(r"^##\s+(\S+)\s", re.MULTILINE)
 _BOLD = re.compile(r"\*\*(.+?)\*\*")
+# Markdown-Link bzw. -Bild: nur der Linktext wird angezeigt, das Ziel
+# faellt weg. Der Updates-Tab ist ein reines Text-Widget ohne Klick-Ziele,
+# und eine roh mitgezeigte URL wuerde im 58 Zeichen schmalen Feld nur
+# umbrechen. Das fuehrende `!?` nimmt die Bild-Syntax mit, sonst bliebe
+# ein verwaistes "!" stehen.
+_LINK = re.compile(r"!?\[([^\]]+)\]\([^)]*\)")
 # Nur eine Versions-Überschrift ("## 1.18.0 — …") ist redundant zum Status-Text
 # darüber. Die Notes eines Pre-Releases beginnen mit "## What's Changed" — die
 # muss stehen bleiben.
@@ -54,7 +60,14 @@ def fetch_changelog_entry(repo, version, timeout=5.0):
 
 def _split_bold(content):
     """Zerlegt `content` an `**bold**`-Markierungen in (Text, Tags)-Segmente
-    (Tags leer bei Normaltext, `("bold",)` innerhalb der Markierung)."""
+    (Tags leer bei Normaltext, `("bold",)` innerhalb der Markierung).
+
+    Links werden vorher auf ihren Text reduziert. Die Reihenfolge ist wichtig:
+    erst der Link, dann der Fett-Split. Andersherum laege eine Markierung wie
+    `[**Fett**](url)` quer ueber Segmentgrenzen und der Link-Rest bliebe roh
+    stehen. So funktionieren beide Verschachtelungen — `[**x**](url)` und
+    `**[x](url)**`."""
+    content = _LINK.sub(r"\1", content)
     segments = []
     pos = 0
     for m in _BOLD.finditer(content):
