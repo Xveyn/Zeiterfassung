@@ -457,6 +457,21 @@ git-Problem) endet im vollen Testlauf, nie im stillen Überspringen.
 Wer die Doku-Muster erweitert, prüft vorher: kann eine Datei unter dem neuen
 Muster jemals das Verhalten der App ändern? Dann gehört sie nicht dazu.
 
+### Typannotationen: Tk-freie Module vollständig, UI-Schicht bewusst nicht
+
+Die Tk-freien Module bekommen **vollständige** Annotationen (Rückgabetyp *und*
+alle Parameter); die Tk-/UI-Schicht bleibt bewusst unannotiert (Widgets werden
+mit `None` initialisiert und später gesetzt — s. die Pyright-Begründung in
+`pyproject.toml`). Festgenagelt wird das über eine Whitelist in
+**`tests/test_type_annotations.py`**: was einmal annotiert ist, bleibt es, und
+die Liste wächst pro PR mit (#72).
+
+Ein Linter-Gate ginge dafür **nicht**: `reportMissingParameterType` lässt sich
+nur global oder per `executionEnvironments` scharf schalten, und die sind
+verzeichnisgebunden — die Tk-freien Module liegen aber flach in `src/` neben
+`ui.py`/`theme/`. Ein Modul in die Whitelist einzutragen ist eine Zusage: die
+Annotationen müssen **richtig** sein, eine falsche ist schlimmer als keine.
+
 ### Getestet wird Logik, nicht UI (entschiedene Scope-Grenze)
 
 Tk-gebundener Code — Dialog-Aufbau, Grid-Rendering, Event-Bindings — wird

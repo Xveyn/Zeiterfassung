@@ -210,7 +210,10 @@ def open_send_dialog(parent, storage, settings, base_path, runner,
         if busy["running"]:
             return
         date_from, date_to = picker.get_range()
-        if date_from is None:
+        # get_range liefert entweder zwei Daten oder (None, None); beide zu
+        # prüfen kostet nichts und macht den Vertrag am Aufrufer sichtbar
+        # (sonst müsste der Leser die Korrelation im Picker nachschlagen).
+        if date_from is None or date_to is None:
             themed_showerror(dialog, "Ungültiges Datum", "Bitte ein gültiges Datum eingeben.")
             return
         ok, msg = validate_period(date_from, date_to)

@@ -241,7 +241,9 @@ def open_share_dialog(parent, storage, settings, base_path, runner, reservation_
         display_name = settings.get("name") or sender_email or "anonym"
 
         date_from, date_to = _current_range()
-        if date_from is None:
+        # _current_range liefert entweder zwei Daten oder (None, None); beide
+        # zu prüfen kostet nichts und macht den Vertrag am Aufrufer sichtbar.
+        if date_from is None or date_to is None:
             # Ungueltiger Zeitraum → "Senden" ist deaktiviert (s.u.). No-op.
             return
 
