@@ -367,6 +367,9 @@ neueren Tk/Python-Version) noch auftritt.
 
 Die Test-Deps sind **exakt gepinnt** (Audit N25) — beim Bump gegen Python 3.10 gegenchecken (alle rein-Python, daher auf jedem Matrix-Python installierbar). Jobs (alle mit `cache: pip` auf `requirements-test.txt`):
 
+- **changes** — Torwächter: ermittelt, ob der Lauf überhaupt Code betrifft.
+  Alle folgenden Jobs hängen per `if: needs.changes.outputs.code == 'true'`
+  daran (Details unten, „Doku-only-PRs überspringen die Tests").
 - **test-matrix** — Matrix über **Python 3.10–3.13** (README: „3.10+"), `fail-fast: false`.
 - **test** — schlankes Sammel-Gate über `test-matrix`, das **nur** der Branch
   Protection dient: ein Matrix-Job meldet seine Check-Contexts ausschließlich
@@ -380,6 +383,38 @@ Die Test-Deps sind **exakt gepinnt** (Audit N25) — beim Bump gegen Python 3.10
 - **lint** — `ruff check .`. **typecheck** — `pyright` (gepinnt `1.1.411`).
 
 Lokal: `pytest` aus dem Repo-Root (Coverage: `pytest --cov=src --cov-report=term-missing`). Alle Tests müssen vor dem PR-Merge grün sein.
+
+### Doku-only-PRs überspringen die Tests
+
+Ein PR, der ausschließlich Dokumentation anfasst, läuft ohne Test-Matrix
+durch. Entschieden wird das im Job **`changes`**: er diffed gegen den
+Base-Branch und setzt `code=true|false`; alle übrigen Jobs hängen per
+`if:` an diesem Output.
+
+Als Dokumentation gilt: `*.md` (überall), `docs/**`, `.superpowers/**`,
+`LICENSE`. **Alles andere ist Code** — insbesondere `.github/**`: eine
+Workflow-Änderung muss sich selbst testen.
+
+Zwei Dinge daran sind nicht verhandelbar:
+
+- **Kein `paths-ignore` am Trigger.** Startet ein Workflow wegen Path-Filtern
+  gar nicht erst, meldet er seine Check-Contexts **nie** — die Required Checks
+  bleiben ewig „pending" und der PR dauerhaft blockiert. Das ist dieselbe
+  Falle wie beim `test`-Sammel-Gate, nur aus der anderen Richtung. Ein per
+  `if:` **übersprungener** Job meldet dagegen „skipped", und das gilt der
+  Branch Protection als erfüllt. Deshalb läuft der Workflow immer, und die
+  Jobs schalten sich selbst ab.
+- **`changes` steht selbst in den Required Checks.** Fällt er aus, werden alle
+  abhängigen Jobs übersprungen — und übersprungen gilt als erfüllt. Ohne ihn
+  als eigenes Gate wäre ein PR in dem Fall grün, ohne dass je ein Test lief.
+
+Die Erkennung ist **fail-safe gebaut**: `code=true` ist die Vorgabe, `false`
+wird nur gesetzt, wenn das Diff sauber ermittelt wurde *und* ausschließlich
+Doku-Pfade enthält. Jeder Sonderfall (Push statt PR, fehlender Base-Ref,
+git-Problem) endet im vollen Testlauf, nie im stillen Überspringen.
+
+Wer die Doku-Muster erweitert, prüft vorher: kann eine Datei unter dem neuen
+Muster jemals das Verhalten der App ändern? Dann gehört sie nicht dazu.
 
 ### Getestet wird Logik, nicht UI (entschiedene Scope-Grenze)
 
