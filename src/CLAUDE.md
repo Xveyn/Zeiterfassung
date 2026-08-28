@@ -403,7 +403,15 @@ exponiert er dafür **keine** Variablen, Webhooks liegen im eigenen `webhook_sto
 werden vom `webhook_dialog` direkt gespeichert; `tab_updates` startet seinen Live-Check
 bewusst erst per `<<NotebookTabChanged>>`, nicht schon beim Dialog-Öffnen;
 `oauth_task.py` = H5-OAuth-Toggle-Builder; Dark-Styling weiter via
-`theme.apply_notebook_style`), `share_dialog`, `import_dialog`, `category_dialog`,
+`theme.apply_notebook_style`).
+`GoogleTab` ist seit R4-Stufe 1 (#51) in drei Sektionsmethoden gebaut —
+`_build_account_section` / `_build_sync_section` / `_build_calendar_section`, jede
+Interaktion eine eigene Methode statt einer Closure im Konstruktor. Geteilter
+Zustand liegt auf `self`; die Row-Nummern reicht `_build_sync_section` als
+Rückgabewert an die Kalender-Sektion weiter, weil Konflikt- und
+Kompaktier-Zeile nur unter Bedingungen erscheinen. Neue Interaktionen dort als
+Methode ergänzen, nicht als verschachtelte Funktion.
+Weitere Dialoge: `share_dialog`, `import_dialog`, `category_dialog`,
 `conflicts_dialog`, `scopes_dialog`. `period_picker` ist kein Dialog, sondern der von
 `send_dialog` + `export_dialog` geteilte Zeitraum+Kategorie+Vorschau-Baustein.
 
@@ -420,7 +428,7 @@ Kür durch), plus „nicht angemeldet" bzw. „nicht lesbar" ohne verwertbares T
 Gezählt wird nur, was die **eingeschalteten** Funktionen brauchen: ungenutzte und
 unbekannte Scopes gehören nicht in den Nenner, sonst wüchse er mit jeder Altlast.
 Aktuell gehalten wird die Zeile vom **vorhandenen** 500ms-Poll der
-credentials.json-Zeile (`tab_google.refresh_scopes_status`), mit mtime/size-Cache
+credentials.json-Zeile (`GoogleTab._refresh_scopes_status`), mit mtime/size-Cache
 auf `token.json` — so zieht sie sowohl nach einem Re-Consent als auch nach dem
 Umlegen der Sync-/Kalender-Schalter nach, ohne zweiten Timer und ohne die Datei
 zweimal pro Sekunde zu lesen.
