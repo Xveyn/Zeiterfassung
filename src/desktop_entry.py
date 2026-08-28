@@ -23,27 +23,46 @@ ICON_FILENAME = "icon.png"
 BUNDLED_ICON = os.path.join("assets", "margenheld-icon.png")
 
 
+def _quote_arg(value):
+    """Ein einzelnes Exec-Token: erst shell-quoten, dann `%` verdoppeln.
+
+    Zwei getrennte Ebenen, die nichts voneinander wissen:
+
+    1. **Shell-Quoting** gegen Leerzeichen o.ä. `shlex.quote` erzeugt einfache
+       Anführungszeichen. Das weicht von der Freedesktop-Spec ab (die verlangt
+       doppelte; das einfache ist dort ein *reserviertes* Zeichen und
+       ausdrücklich kein Quoting-Mechanismus), trägt aber auf beiden
+       Zielplattformen: GLibs `g_shell_parse_argv` und KDEs
+       `KShell::splitArgs` parsen beide POSIX-Shell-artig — KDE schreibt
+       einfach gequotete Exec-Zeilen sogar selbst (KDE-Bug 474758).
+    2. **Feldcode-Escaping.** `%` leitet in einer `Exec=`-Zeile einen
+       Freedesktop-Feldcode ein (`%f`, `%u`, …); die Spec verlangt für ein
+       literales `%` die Verdopplung zu `%%`. `shlex.quote` kennt nur
+       Shell-Metazeichen und lässt `%` unberührt — ein `%` im Pfad käme sonst
+       beim Launcher als Feldcode an. Bei `%f` ist das kein kosmetischer
+       Schaden: der Launcher ersetzt es (beim Autostart durch nichts), der
+       Pfad zerfällt und die App startet nicht.
+
+    Die Reihenfolge ist unkritisch (`shlex.quote` fügt kein `%` hinzu und
+    entfernt keins), das Escaping wirkt aber auch *innerhalb* der Quotes —
+    die Spec verlangt von Implementierungen ausdrücklich, „to undo quoting
+    before expanding field codes"."""
+    return shlex.quote(value).replace("%", "%%")
+
+
 def exec_line(target, arguments):
-    """Baut die `Exec=`-Zeile mit shell-korrektem Quoting (Audit N12): ein Pfad
-    mit Leerzeichen o.ä. zerbricht die .desktop-Datei sonst. `shlex.quote`
-    deckt sich mit GLibs Exec-Parsing (`g_shell_parse_argv`). Werte ohne
-    Sonderzeichen bleiben unverändert.
+    """Baut die `Exec=`-Zeile: shell-korrektes Quoting (Audit N12) plus
+    Feldcode-Escaping — beides in `_quote_arg`, dort steht die Begründung.
+    Werte ohne Sonderzeichen bleiben unverändert.
 
     `arguments` ist typischerweise ein Whitespace-getrennter String einfacher
     Flags (z.B. "" oder "--minimized"); im Nicht-Frozen-Modus kann es
     zusätzlich einen Skript-Pfad enthalten (`resolve_autostart_target`) — ein
     Leerzeichen darin würde fälschlich als Token-Grenze behandelt.
-    Vorbestehendes Verhalten, nicht durch den Umzug hierher eingeführt.
-
-    Quotet NICHT `%`: in einer `.desktop`-`Exec=`-Zeile leitet `%` einen
-    Freedesktop-Feldcode ein (`%f`, `%u`, …), ein literales `%` müsste als
-    `%%` verdoppelt werden. `shlex.quote` kennt nur Shell-Metazeichen, keine
-    Freedesktop-Feldcodes — ein `%` im Pfad (z.B. einer AppImage) bliebe
-    unverändert und würde die Zeile verstümmeln. Bislang nicht behoben,
-    hier nur dokumentiert."""
-    parts = [shlex.quote(target)]
+    Vorbestehendes Verhalten, nicht durch den Umzug hierher eingeführt."""
+    parts = [_quote_arg(target)]
     if arguments:
-        parts.extend(shlex.quote(a) for a in arguments.split())
+        parts.extend(_quote_arg(a) for a in arguments.split())
     return " ".join(parts)
 
 
