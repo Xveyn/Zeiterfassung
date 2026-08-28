@@ -13,7 +13,7 @@ import pytest
 pytest.importorskip("dbus_fast")
 
 from src.tray import build_menu_model
-from src.tray_linux import MENU_PATH, MenuState, _make_interfaces
+from src.tray.linux import MENU_PATH, MenuState, _make_interfaces
 
 
 def _interfaces(pixmaps=(), on_activate=lambda: None):

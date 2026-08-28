@@ -6,7 +6,7 @@ Funktionen, hier wird ausschließlich die D-Bus-freie Schicht geprüft.
 """
 
 from src.tray import build_menu_model
-from src.tray_linux import MenuState, build_menu_nodes
+from src.tray.linux import MenuState, build_menu_nodes
 
 
 def _model(sync_visible=True):
@@ -119,7 +119,7 @@ import os
 
 import pytest
 
-from src.tray_linux import argb32_from_rgba, icon_pixmaps
+from src.tray.linux import argb32_from_rgba, icon_pixmaps
 
 
 def test_argb32_reorders_one_pixel():
@@ -149,7 +149,7 @@ def test_icon_pixmaps_reads_the_app_icon_in_requested_sizes():
     assert len(pixmaps[1][2]) == 32 * 32 * 4
 
 
-from src.tray_linux import _safe
+from src.tray.linux import _safe
 
 
 def test_safe_swallows_a_throwing_callback():
@@ -165,7 +165,7 @@ def test_safe_runs_a_normal_callback():
     assert calls == ["ran"]
 
 
-from src.tray_linux import LinuxTrayBackend
+from src.tray.linux import LinuxTrayBackend
 
 
 def test_backend_keeps_the_facade_constructor_signature():

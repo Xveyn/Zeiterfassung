@@ -35,7 +35,7 @@ from dbus_fast.annotations import (  # pyright: ignore[reportMissingImports]  # 
 )
 from dbus_fast.service import ServiceInterface, dbus_method, dbus_property  # pyright: ignore[reportMissingImports]  # dbus-fast: nur auf Linux installiert
 
-from src.tray_linux import ITEM_PATH, MENU_PATH, LinuxTrayBackend
+from src.tray.linux import ITEM_PATH, MENU_PATH, LinuxTrayBackend
 
 
 class _FakeWatcher(ServiceInterface):

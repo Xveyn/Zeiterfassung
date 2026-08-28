@@ -8,7 +8,7 @@ import pytest
 def test_safe_swallows_callback_exceptions():
     """Klasse-(i)-Schutz: _safe lässt keine Python-Exception durch (läuft auf
     jeder Plattform — reines Python)."""
-    from src.tray_mac import _safe
+    from src.tray.mac import _safe
     calls = []
     _safe(lambda: calls.append("ok"))
     _safe(lambda: (_ for _ in ()).throw(ValueError("boom")))  # raises
@@ -26,7 +26,7 @@ def test_backend_keeps_the_facade_constructor_signature():
     macOS-CI-Job auf, weil der Smoke-Test darunter Darwin-gated ist und auf der
     Windows-Dev-Maschine übersprungen wird — obwohl der Konstruktor dort
     laufen KANN."""
-    from src.tray_mac import MacTrayBackend
+    from src.tray.mac import MacTrayBackend
     # Bewusst als KEYWORD — genau so brach der Smoke-Test darunter. Positional
     # gebaut würde dieser Test eine Umbenennung des Parameters durchlassen
     # (nachgewiesen per Mutationsprobe), und damit den Fehler wieder erst im
@@ -45,7 +45,7 @@ def test_native_backend_constructs_no_thread_and_tears_down():
     Thread, Menü gerendert, sauber abbauen. Skippt, wenn der Runner keinen
     Status-Bar-/Display-Zugriff hat (statt falsch rot)."""
     import tkinter
-    from src.tray_mac import MacTrayBackend
+    from src.tray.mac import MacTrayBackend
 
     try:
         root = tkinter.Tk()

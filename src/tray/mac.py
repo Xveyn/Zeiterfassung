@@ -1,4 +1,4 @@
-# src/tray_mac.py
+# src/tray/mac.py
 """Natives macOS-Tray (NSStatusItem) — Backend für TrayIcon (#88).
 
 Der frühere pystray-Daemon-Thread treibt auf macOS eine zweite NSApplication an
@@ -7,14 +7,14 @@ Backend hängt stattdessen ein NSStatusItem SYNCHRON auf dem Main-Thread an die
 geteilte NSApplication, die Tk ohnehin treibt — kein Thread, keine zweite NSApp.
 
 PyObjC wird LAZY in den Methoden importiert: Modulebene bleibt stdlib-only, damit
-src.ui → src.tray → (dispatch) src.tray_mac auf Linux/Windows importierbar bleibt
+src.ui → src.tray → (dispatch) src.tray.mac auf Linux/Windows importierbar bleibt
 (die CI importiert src.ui). Siehe Spec 2026-06-30-macos-native-tray-design.md.
 """
 
 import logging
 import os
 
-from src.tray import build_menu_model
+from src.tray.model import build_menu_model
 
 logger = logging.getLogger(__name__)
 
