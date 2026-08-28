@@ -187,10 +187,11 @@ def find_sync_file(service):
 def download(service, file_id):
     """Lädt die Sync-Datei herunter. Liefert (bytes, version_token).
 
-    version_token ist in Drive API v3 keine echte ETag mehr (das Feld wurde
-    in v3 entfernt), sondern die `version`-Nummer der Datei als String —
-    monoton steigend, eindeutig pro Modifikation. Wird nur informativ
-    zurückgegeben; aktuell ohne Optimistic-Lock-Verwendung beim Push.
+    version_token ist in Drive API v3 keine ETag (die File-Ressource hat kein
+    solches Feld), sondern die `version`-Nummer der Datei als String — monoton
+    steigend, aber laut Doku auch bei serverseitigen Änderungen ohne fremden
+    Push. Wird nur informativ zurückgegeben und **bewusst nicht** als
+    Optimistic-Lock-Anker benutzt; die Begründung steht bei `upload`.
 
     Wirft DriveNetworkError bei API-Fehlern."""
     if MediaIoBaseDownload is None:
@@ -216,13 +217,48 @@ def upload(service, content_bytes, file_id=None):
     - file_id=None  → neues File in appDataFolder anlegen
     - file_id gesetzt → update der bestehenden Datei
 
-    Drive API v3 kennt kein `etag`-Feld mehr und unterstützt kein
-    granulares If-Match auf Datei-Updates ohne HTTP-Header-Tricks, die
-    googleapiclient nicht sauber freilegt. Es gibt daher bewusst KEIN
-    File-level Optimistic Locking hier — Konflikt-Erkennung passiert
-    stattdessen im Push-Flow (`main.py::_run_push_blocking`) doc-level über
-    `sync._remote_is_newer` und pro-Eintrag über `modified_at` im
-    Sync-Doc-Merge (Audit M2).
+    Es gibt hier bewusst KEIN File-level Optimistic Locking — Konflikt-
+    Erkennung passiert stattdessen im Push-Flow (`main.py::run_push_blocking`)
+    doc-level über `sync.remote_is_newer` und pro-Eintrag über `modified_at`
+    im Sync-Doc-Merge (Audit M2, entschieden in Xveyn/Zeiterfassung#46).
+
+    Warum kein Locking (die Optionen sind geprüft, nicht übersehen):
+
+    - Die File-Ressource der Drive API v3 hat **kein `etag`-Feld** mehr, und
+      die v3-Referenz dokumentiert **keinen** Precondition-Mechanismus für
+      Datei-Updates. Auf undokumentiertes If-Match-Verhalten baut der Sync
+      nicht.
+    - `version` (der von `download`/`upload` gelieferte Token) taugt nicht als
+      Ersatz-Anker: laut Doku spiegelt er *„every change made to the file on
+      the server, even those not visible to the user"* — er steigt also auch
+      ohne fremden Push. Ein Retry-on-conflict darauf hätte False Positives.
+      Vor allem aber wäre ein Check-dann-Upload selbst nicht atomar: das
+      Fenster würde kleiner, nicht geschlossen. Eine verifizierte Heilung
+      (s.u.) gegen eine kleinere Restwahrscheinlichkeit zu tauschen, lohnt
+      nicht.
+    - Drive **Content Restrictions** (`contentRestrictions.readOnly`) sind
+      als Mutex ungeeignet und wären schlechter als der Status quo: Setzen
+      *„overwrites the existing one"* (kein atomares Test-and-Set, dasselbe
+      TOCTOU eine Ebene höher), und es gibt kein TTL/Lease — ein Absturz
+      zwischen Lock und Unlock ließe die Sync-Datei dauerhaft gesperrt
+      zurück (*„a new revision of the file may not be added"*). Aus einem
+      selbstheilenden Clobber würde ein nicht selbstheilender Ausfall.
+
+    Der akzeptierte Trade-off: Zwischen `download` und `upload` im Push liegt
+    ein TOCTOU-Fenster (der `data_lock` klammert bewusst keine Netzwerk-Calls),
+    in dem ein zweites Gerät hochladen kann — dessen Stand überschreibt unser
+    Upload dann. Das ist toleriert, weil der Merge LWW pro Eintrag über
+    `modified_at` ist: das geclobberte Gerät hat seine Einträge lokal weiter
+    mit dem neueren Stempel und gewinnt sie beim nächsten Push zurück. Das
+    `gc_watermark` wird als `max(local, remote)` gemergt, kann also nicht
+    zurückfallen; die Konfliktliste ist Union-by-ID.
+
+    **Grenze der Heilung:** Sie greift nur, solange beide Geräte weiter
+    syncen. Wird ein Gerät direkt nach einem Clobber nie wieder gesynct
+    (deinstalliert, Platte neu), ist sein letzter Push permanent verloren.
+    Bei einem sekundenbreiten Fenster und Solo-Nutzung ist das akzeptiert —
+    aber es ist der Grund, warum hier nicht pauschal „kein Datenverlust"
+    steht.
 
     Liefert (file_id, new_version_token).
     """
