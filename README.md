@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/margenheld-icon.png" alt="Zeiterfassung-Logo" width="140">
+</p>
+
 # Zeiterfassung
 
 > [!NOTE]
