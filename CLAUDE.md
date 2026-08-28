@@ -128,7 +128,7 @@ Spezialfälle wie KDE, siehe margenheld/Zeiterfassung#42) sind vollwertige
 Zielplattformen, aber auf der Windows-Dev-Maschine nicht direkt verifizierbar.
 Betrifft ein PR Code, der sich nur auf macOS, Linux oder eine bestimmte Linux-
 Desktop-Umgebung auswirkt (z. B. `src/tray_mac.py`, plattformspezifische Zweige
-in `theme.py`/`grid_renderer.py`/`autostart.py`), soll vorgeschlagen werden,
+in `theme/chrome.py`/`grid_renderer.py`/`autostart.py`), soll vorgeschlagen werden,
 vor dem Merge einen Pre-Release zu triggern, damit die Änderung dort getestet
 werden kann — statt das erst beim nächsten regulären, für diese Plattform dann
 faktisch ungetesteten Release zu bemerken. Vorbild: das manuelle macOS-Gate in
@@ -263,7 +263,7 @@ Für Fehlerdialoge gilt eine bewusste Aufteilung:
 
 - **Bekannte, erwartete Fehler** (Validierung, „Keine Einträge", „Ungültiger
   Zeitraum", ein gehandhabter Speicher-`OSError`) → die **themed** Drop-ins
-  aus `theme.py` (`themed_showerror`/`themed_showinfo`/…). Kurze, kuratierte
+  aus `theme/messagebox.py` (`themed_showerror`/`themed_showinfo`/…). Kurze, kuratierte
   Meldung, konsistentes Dark-Theme.
 - **Unerwartete Fehler** (die generischen `except`-Zweige, die
   `traceback.format_exc()` bzw. ein `result["tb"]` mitzeigen) →
@@ -350,7 +350,7 @@ erreichbar bleibt, zeigt die Tageszelle **dort** ein kleines ✕ oben links,
 sobald der Tag löschbare Einheiten hat (Ist-Zeit oder aktive Reservierung).
 Der ✕-Button löst denselben Lösch-Pfad wie der Rechtsklick aus
 (`App._delete_day` inkl. Bestätigung/Slot-Auswahl). Gesteuert über
-`_should_show_delete_button` (`theme.py`) + `App._add_delete_button` (`ui.py`).
+`_should_show_delete_button` (`theme/geometry.py`) + `App._add_delete_button` (`ui.py`).
 Der Tages-Dialog hat auf **allen** Plattformen keine Lösch-Buttons. Auf
 Windows/Linux ist Löschen ausschließlich der Rechtsklick.
 
@@ -360,7 +360,7 @@ Lösch-Pfad im Linksklick-Dialog auf Win/Linux).
 ## Dialog-Styling: ein gemeinsames Theme
 
 Alle Dialoge (modal wie nicht-modal) teilen sich dasselbe Dark-Theme aus
-`src/theme.py` — Drop-ins für die `tkinter.messagebox`-Familie
+`src/theme/` — Drop-ins für die `tkinter.messagebox`-Familie
 (`themed_showinfo`/`themed_showwarning`/`themed_showerror`,
 `themed_askyesno`, `themed_ask_delete_choice`) sowie die Fenster-Chrome-
 Helfer (`apply_dark_titlebar`, `disable_min_max`, `apply_app_icon`,
@@ -539,7 +539,8 @@ nicht mehr als „offen" führen — der Verweis lautet auf diese Grenze.
 - `src/updater.py` — GitHub-Releases-Check (stdlib-only, Check-Häufigkeit über `update_check_frequency` konfigurierbar, Default 1×/Tag; Pre-Releases optional über `prerelease_updates_enabled`, s. Release-Prozess); `src/changelog.py` — lädt und parst den Changelog-Abschnitt einer Release-Version vom GitHub-Tag (stdlib-only)
 - `src/platform_open.py` — `os.startfile`/`open`/`xdg-open`-Wrapper
 - `src/logging_setup.py` — File-Logging + globaler Excepthook (Setup-Fehler sind **nicht-fatal**, siehe `main.py`)
-- `src/theme.py`, `src/tooltip.py` — UI-Hilfen
+- `src/theme/` — Dark-Theme als Paket (R3): `palette` (Konstanten), `fonts` (benannte Tk-Fonts + Skalierung), `widgets` (Widget-Fabriken, ttk-Styles), `geometry` (Zentrierung + die Tk-freien Prädikate `_stray_click_suppressed`/`_should_show_delete_button`), `chrome` (Win32-Fensterchrome, `create_dialog`), `messagebox` (themed Drop-ins). `__init__.py` re-exportiert die Oberfläche — Aufrufer importieren unverändert `from src.theme import …`, nicht aus den Teilmodulen
+- `src/tooltip.py` — UI-Hilfe (`_hover`-Overlays)
 - `src/version.py` — Einzige Quelle für die App-Version (von Workflow & `installer.iss` gelesen); ordnet Release-Kennungen (`parse_release_id`, `X.Y.Z[-pre.N]`) und kennt die Build-Identität (`installed_release_id` aus dem `RELEASE_TAG`-Stempel)
 - `installer.iss` — Inno Setup Script, Version wird per `/DAppVer=...` vom Workflow übergeben.
   `AppMutex=ZeiterfassungAppMutex` (muss exakt zu `main.py::_APP_MUTEX_NAME` passen) lässt Setup
