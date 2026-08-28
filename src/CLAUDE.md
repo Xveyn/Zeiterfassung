@@ -411,6 +411,15 @@ Zustand liegt auf `self`; die Row-Nummern reicht `_build_sync_section` als
 Rückgabewert an die Kalender-Sektion weiter, weil Konflikt- und
 Kompaktier-Zeile nur unter Bedingungen erscheinen. Neue Interaktionen dort als
 Methode ergänzen, nicht als verschachtelte Funktion.
+Die blockierenden Kerne liegen seit Stufe 2 Tk-frei in
+`settings_dialog/google_tab_task.py` (Muster wie `send_task`/`share_task`, M10):
+`fetch_sender_email` / `load_calendars` / `reconnect_drive` liefern ein
+Result-Dict und **werfen nie**; `open_drive_service` / `open_calendar_service`
+sind die `service_fn`-Einstiege für `oauth_task.build_oauth_enable_task` und
+**werfen** bewusst (der Builder fängt selbst und dreht den Toggle zurück). Im
+Tab bleibt `runner.run(fn, on_done)` plus die Widget-Kosmetik im `on_done`.
+Getestet in `tests/test_google_tab_task.py` — die erste echte Abdeckung des
+Tabs. Neue Netz-/OAuth-Arbeit des Tabs gehört dorthin, nicht in eine Closure.
 Weitere Dialoge: `share_dialog`, `import_dialog`, `category_dialog`,
 `conflicts_dialog`, `scopes_dialog`. `period_picker` ist kein Dialog, sondern der von
 `send_dialog` + `export_dialog` geteilte Zeitraum+Kategorie+Vorschau-Baustein.
