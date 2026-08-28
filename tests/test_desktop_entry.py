@@ -36,6 +36,39 @@ def test_exec_line_quotes_paths_with_spaces():
     assert exec_line("/opt/My Apps/Z.AppImage", "") == "'/opt/My Apps/Z.AppImage'"
 
 
+def test_exec_line_escapes_literal_percent():
+    """Freedesktop: „Literal percentage characters must be escaped as %%."
+
+    Unescaped bleibt `%_` ein (undefinierter) Feldcode — der Launcher frisst
+    ihn, der Pfad zerfaellt und die App startet nicht."""
+    assert exec_line("/opt/100%_backup/Z.AppImage", "") == "/opt/100%%_backup/Z.AppImage"
+
+
+def test_exec_line_escapes_percent_that_forms_a_real_field_code():
+    """Der scharfe Fall: `%f` ist ein DEFINIERTER Feldcode. Unescaped ersetzt
+    ihn der Launcher (beim Autostart durch nichts) und der Pfad ist zerstoert."""
+    assert exec_line("/home/u/%f/Z.AppImage", "") == "/home/u/%%f/Z.AppImage"
+
+
+def test_exec_line_escapes_percent_inside_a_quoted_path():
+    """Leerzeichen UND Prozent: die Spec verlangt, dass Implementierungen erst
+    das Quoting aufloesen und dann Feldcodes expandieren — `%%` wirkt also auch
+    innerhalb der Quotes."""
+    assert exec_line("/opt/My 100%/Z.AppImage", "") == "'/opt/My 100%%/Z.AppImage'"
+
+
+def test_exec_line_escapes_percent_in_arguments():
+    assert exec_line("/opt/Z.AppImage", "--tag=50%") == "/opt/Z.AppImage --tag=50%%"
+
+
+def test_write_menu_entry_escapes_percent_in_exec(fake_home):
+    """Der Menueintrag teilt sich die Regel mit dem Autostart — beide Schreib-
+    pfade muessen escapen, nicht nur einer."""
+    write_menu_entry("/opt/100%_backup/Z.AppImage", None)
+    content = open(menu_entry_path(), encoding="utf-8").read()
+    assert "Exec=/opt/100%%_backup/Z.AppImage" in content
+
+
 def test_menu_entry_path_is_in_xdg_applications(fake_home):
     assert menu_entry_path() == os.path.join(
         str(fake_home), ".local", "share", "applications", "Zeiterfassung.desktop")
