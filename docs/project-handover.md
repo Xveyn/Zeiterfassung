@@ -250,7 +250,7 @@ Abschnitt 3.
   `AppPublisher`/`AppPublisherURL` (Zeile 4–5) sind dagegen gefahrlos änderbar —
   reine Anzeige in „Apps & Features".
 - **`assets/margenheld-icon.*`** — referenziert in `scripts/build.py`, `installer.iss`,
-  `src/theme/`, `src/tray.py`, `src/tray_linux.py`, `src/tray_mac.py`,
+  `src/theme/`, `src/tray/`,
   `src/desktop_entry.py` und Tests. Rein kosmetisch; falls umbenennen, dann als
   eigener PR, nicht nebenbei. Die Linux-`.desktop`-Seite ist bereits neutral
   (`icon.png` / `Zeiterfassung.desktop`).

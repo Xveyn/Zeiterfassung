@@ -127,7 +127,7 @@ Entwickelt wird primär unter Windows; macOS und Linux (inkl. Desktop-Umgebungs-
 Spezialfälle wie KDE, siehe margenheld/Zeiterfassung#42) sind vollwertige
 Zielplattformen, aber auf der Windows-Dev-Maschine nicht direkt verifizierbar.
 Betrifft ein PR Code, der sich nur auf macOS, Linux oder eine bestimmte Linux-
-Desktop-Umgebung auswirkt (z. B. `src/tray_mac.py`, plattformspezifische Zweige
+Desktop-Umgebung auswirkt (z. B. `src/tray/mac.py`, plattformspezifische Zweige
 in `theme/chrome.py`/`grid_renderer.py`/`autostart.py`), soll vorgeschlagen werden,
 vor dem Merge einen Pre-Release zu triggern, damit die Änderung dort getestet
 werden kann — statt das erst beim nächsten regulären, für diese Plattform dann
@@ -530,9 +530,9 @@ nicht mehr als „offen" führen — der Verweis lautet auf diese Grenze.
 - `src/weekly_limit.py` — Wochenstunden-Limit für einen konfigurierbaren Zeitraum (Werkstudenten-Privileg, margenheld/Zeiterfassung#98); pure Logik, zählt nur Ist-Zeiten (nicht Reservierungen)
 - `src/pause_requirement.py` — Pausenpflicht-Warnung nach §4 ArbZG (30 Min ab >6h, 45 Min ab >9h Netto-Arbeitszeit); pure Logik, zählt nur die `pause`-Felder der Slots eines Tages (keine Lücken zwischen mehreren Slots); Default aktiv (`pause_warning_enabled`, im Gegensatz zum Werkstudenten-Limit kein Sonderfall-Opt-in, da die Pflicht für praktisch alle Angestellten in DE gilt)
 - `src/gcal.py` — Google-Calendar-API-Wrapper (lazy Imports wie `drive.py`, wegen CI ohne `requirements.txt`)
-- `src/tray.py` — Infobereich-Icon (Minimize-to-Tray); Plattform-Fassade über pystray (Windows), `tray_mac.py` (macOS) und `tray_linux.py` (Linux)
-- `src/tray_mac.py` — natives macOS-Tray (NSStatusItem, Main-Thread) als Backend von `tray.py`; macOS-Tray ist bis zum Mac-Gate dormant (Opt-in `ZEIT_MACOS_TRAY=1`, margenheld/Zeiterfassung#88)
-- `src/tray_linux.py` — Linux-Tray über StatusNotifierItem + `com.canonical.dbusmenu` (D-Bus via `dbus-fast`, kein GTK/GI); dormant bis zum Plasma-Gate (Opt-in `ZEIT_LINUX_TRAY=1`, margenheld/Zeiterfassung#42). Menü-Logik D-Bus-frei in `MenuState`
+- `src/tray/` — Infobereich-Icon (Minimize-to-Tray) als Paket (R7): `__init__.py` ist die Plattform-Fassade (`TrayIcon`, `is_supported`, Opt-in-Gates) und behält den Importpfad `src.tray`; `model.py` das backend-agnostische Menü-Modell; je ein Backend in `windows.py` (pystray), `mac.py`, `linux.py`. Die Backends werden **nur lazy** in `_select_backend` geladen, damit `src.ui → src.tray` auf jeder Plattform importierbar bleibt
+- `src/tray/mac.py` — natives macOS-Tray (NSStatusItem, Main-Thread); dormant bis zum Mac-Gate (Opt-in `ZEIT_MACOS_TRAY=1`, margenheld/Zeiterfassung#88)
+- `src/tray/linux.py` — Linux-Tray über StatusNotifierItem + `com.canonical.dbusmenu` (D-Bus via `dbus-fast`, kein GTK/GI); dormant bis zum Plasma-Gate (Opt-in `ZEIT_LINUX_TRAY=1`, margenheld/Zeiterfassung#42). Menü-Logik D-Bus-frei in `MenuState`
 - `src/time_utils.py` — Stundenberechnung, KW-Labels
 - `src/holidays_de.py` — Feiertags-Lookup (über `holidays`-Lib)
 - `src/paths.py` — `get_base_path()` dispatched über `platform.system()` und Frozen- vs. Repo-Modus; `relaunch_command()` baut das Neustart-Kommando (Exe im Frozen-Build, `python -m src.main` im Repo)

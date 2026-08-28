@@ -112,7 +112,7 @@ das, was wirklich nur auf der echten Plattform bricht — macOS-Sekundärklick
 des Linux-Trays in Plasma (margenheld/Zeiterfassung#42) — deckt ein
 Linux-Framebuffer strukturell ohnehin nicht ab. Beim Linux-Tray zeigt sich
 dabei genau der Zuschnitt-Gedanke: die dbusmenu-Logik liegt D-Bus-frei in
-`tray_linux.MenuState` und wird überall getestet, die Wire-Ebene gegen einen
+`tray.linux.MenuState` und wird überall getestet, die Wire-Ebene gegen einen
 echten `dbus-daemon` — offen bleibt nur, was Plasma daraus zeichnet.
 
 **Was stattdessen greift** — das ist der eigentliche Punkt, nicht ein Verzicht

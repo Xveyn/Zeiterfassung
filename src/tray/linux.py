@@ -1,4 +1,4 @@
-# src/tray_linux.py
+# src/tray/linux.py
 """Linux-Tray über StatusNotifierItem (SNI) — Backend für TrayIcon (#42).
 
 KDE Plasma implementiert SNI nativ; die Schnittstelle ist reines D-Bus. Dieses
@@ -7,8 +7,8 @@ pystrays appindicator-Backend, das beides in die AppImage zwingen würde.
 
 Modulebene ist stdlib-only (plus src.tray): `dbus_fast` und `PIL` werden lazy in
 den Funktionen importiert, die ServiceInterface-Subklassen in `_make_interfaces`
-definiert. Grund: die CI importiert `src.ui → src.tray → src.tray_linux` auch auf
-Windows/macOS. Dasselbe Muster wie das NSObject-Delegate in `tray_mac.py`.
+definiert. Grund: die CI importiert `src.ui → src.tray → src.tray.linux` auch auf
+Windows/macOS. Dasselbe Muster wie das NSObject-Delegate in `tray/mac.py`.
 
 Die Menü-Logik liegt in `MenuState` — D-Bus-frei und damit auf jeder Plattform
 testbar; die D-Bus-Objekte sind nur die Hülle darum.
@@ -24,7 +24,7 @@ import threading
 from collections import namedtuple
 from typing import Annotated
 
-from src.tray import build_menu_model
+from src.tray.model import build_menu_model
 
 logger = logging.getLogger(__name__)
 
@@ -203,7 +203,7 @@ def _make_interfaces(state, on_activate, pixmaps):
 
     `dbus_fast` wird hier LAZY importiert und die Klassen werden IN der Funktion
     definiert (sie erben von ServiceInterface) — dasselbe Muster wie das
-    NSObject-Delegate in `tray_mac.py`. So bleibt die Modulebene stdlib-only.
+    NSObject-Delegate in `tray/mac.py`. So bleibt die Modulebene stdlib-only.
 
     Die Methodennamen sind exakt die D-Bus-Member-Namen: dbus_fast leitet den
     Namen 1:1 vom Funktionsnamen ab.

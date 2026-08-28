@@ -369,10 +369,19 @@ muss sie deterministisch **und** über alle Geräte gleich halten.
   User sie manuell schließen (Retry-Dialog), statt des Default-Wegs (`CloseApplications`/Restart
   Manager), der bei aktivem Minimize-to-Tray scheitert (`App._on_close` behandelt das dabei
   gesendete `WM_CLOSE` nur als Fenster-Verstecken).
-- `tray.py` (Fassade) + `tray_mac.py` (natives macOS-NSStatusItem-Backend, margenheld/Zeiterfassung#88)
-  + `tray_linux.py` (StatusNotifierItem über D-Bus, margenheld/Zeiterfassung#42). Beide Nicht-Windows-
-  Backends sind dormant hinter einer Opt-in-Env-Var, bis ihr manuelles
-  Plattform-Gate grün ist.
+- `tray/` — Paket seit R7 (#51), Importpfad bleibt `src.tray`: `__init__.py` ist die
+  Fassade (`TrayIcon`, `is_supported`, die beiden Opt-in-Gates, `_select_backend`),
+  `model.py` das backend-agnostische Menü-Modell (`build_menu_model` — die testbare
+  Naht), und je ein Backend in `windows.py` (pystray), `mac.py` (natives
+  NSStatusItem, margenheld/Zeiterfassung#88) und `linux.py` (StatusNotifierItem über
+  D-Bus, margenheld/Zeiterfassung#42). Vorher lag der Windows-Backend in der Fassade,
+  während die anderen beiden eigene Module hatten.
+  **Zwei Regeln, die den Schnitt tragen:** `__init__` lädt mac/linux ausschließlich
+  **lazy** in `_select_backend` (sonst zöge `src.ui → src.tray` PyObjC bzw. dbus_fast
+  auf die falsche Plattform), und die Backends importieren `build_menu_model` aus
+  `tray/model.py`, **nicht** aus dem Paket-`__init__` — so zeigt jede Kante nach unten.
+  Beide Nicht-Windows-Backends sind dormant hinter einer Opt-in-Env-Var, bis ihr
+  manuelles Plattform-Gate grün ist.
 
 Das Tray-Icon läuft, sobald `minimize_to_tray` **oder** `reminders_enabled` aktiv ist (`ui.py::_apply_tray_setting`); bei nur `reminders_enabled` dient es ausschließlich als Toast-Kanal.
 

@@ -57,8 +57,8 @@ def test_build_menu_model_no_actions_single_separator():
 
 def test_select_backend_dispatch():
     from src.tray import _select_backend, _PystrayBackend
-    from src.tray_linux import LinuxTrayBackend
-    from src.tray_mac import MacTrayBackend
+    from src.tray.linux import LinuxTrayBackend
+    from src.tray.mac import MacTrayBackend
     assert _select_backend("Windows") is _PystrayBackend
     assert _select_backend("Darwin") is MacTrayBackend
     assert _select_backend("Linux") is LinuxTrayBackend

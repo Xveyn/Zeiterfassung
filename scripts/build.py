@@ -158,7 +158,7 @@ def build_macos():
         "-D",
         "--icon", "assets/margenheld-icon.icns",
         "--osx-bundle-identifier", "com.margenheld.zeiterfassung",
-        # tray_mac.py importiert AppKit/Foundation lazy → explizit bündeln,
+        # tray/mac.py importiert AppKit/Foundation lazy → explizit bündeln,
         # sonst fehlt PyObjC im DMG und das native Tray fällt still aus (#88).
         "--collect-all", "objc",
         "--collect-all", "AppKit",
@@ -200,7 +200,7 @@ def build_linux():
     print(f"Building Zeiterfassung v{VERSION} (Linux) ...")
     cmd = _pyinstaller_common([
         "--onefile",
-        # tray_linux.py importiert dbus_fast lazy → explizit bündeln, sonst
+        # tray/linux.py importiert dbus_fast lazy → explizit bündeln, sonst
         # fehlt es in der AppImage und das SNI-Tray startet nicht (#42).
         "--collect-all", "dbus_fast",
     ])
