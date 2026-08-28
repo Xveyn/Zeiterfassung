@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import re
 
 VERSION = "1.21.1"
@@ -8,7 +10,7 @@ VERSION = "1.21.1"
 _RELEASE_ID = re.compile(r"^(\d+)\.(\d+)\.(\d+)(?:-pre\.(\d+))?$")
 
 
-def parse_release_id(release_id):
+def parse_release_id(release_id: str | None) -> tuple[int, int, int, int] | None:
     """Vergleichsschlüssel `(major, minor, patch, pre_rank)` einer Release-
     Kennung (ohne v-Prefix), oder None wenn sie nicht dem Muster folgt.
 
@@ -26,14 +28,14 @@ def parse_release_id(release_id):
     return (int(major), int(minor), int(patch), int(pre) if pre else 0)
 
 
-def base_version(release_id):
+def base_version(release_id: str | None) -> str:
     """Basisversion einer Kennung: '1.19.0-pre.2' -> '1.19.0'. Die Artefakte
     eines Pre-Releases tragen die reine Version im Namen (build.py benennt sie
     unabhängig vom Kanal), darum braucht der Asset-Match diese Form."""
     return (release_id or "").split("-pre.")[0]
 
 
-def strip_tag_prefix(tag):
+def strip_tag_prefix(tag: str | None) -> str:
     """Git-Tag -> Release-Kennung: 'v1.19.0-pre.2' -> '1.19.0-pre.2'.
 
     Die eine Stelle, die das v-Prefix entfernt (updater.py und der
@@ -53,7 +55,8 @@ except ImportError:
     _build_info = None
 
 
-def _format_version_label(version, channel, sha, release_id=""):
+def _format_version_label(version: str, channel: str, sha: str,
+                          release_id: str = "") -> str:
     """Anzeige-Label für den Fenstertitel. Release → reine Version; Pre-Release
     (plattformübergreifender Test-Build) → die gestempelte Kennung inkl. Nummer
     ('1.19.0-pre.2'), ohne Stempel der alte '-pre'-Marker; jeder andere Kanal
@@ -67,7 +70,7 @@ def _format_version_label(version, channel, sha, release_id=""):
     return f"{version}-dev"
 
 
-def _stamped_release_id():
+def _stamped_release_id() -> str:
     """Release-Kennung aus dem beim Build gestempelten Tag ('v1.19.0-pre.2'
     -> '1.19.0-pre.2'). Leer, wenn kein Stempel existiert (Alt-Builds vor
     diesem Feature, Dev-/Repo-Modus) oder der Tag nicht dem Muster folgt."""
@@ -76,7 +79,7 @@ def _stamped_release_id():
     return release_id if parse_release_id(release_id) is not None else ""
 
 
-def installed_release_id():
+def installed_release_id() -> str:
     """Kennung des laufenden Builds für den Update-Vergleich. Ohne Stempel
     gilt die reine VERSION (Rang 0) — für ein echtes Release ist das exakt
     richtig, für einen Alt-Pre-Build die dokumentierte Grenze (er bekommt
@@ -84,7 +87,7 @@ def installed_release_id():
     return _stamped_release_id() or VERSION
 
 
-def version_label():
+def version_label() -> str:
     """Versions-Label inkl. Kanal-Marker für die Titelzeile. Liest den beim Build
     gestempelten Kanal; fehlt build_info (Quellcode-Start), gilt 'source'."""
     if _build_info is None:

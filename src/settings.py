@@ -6,7 +6,7 @@ import json
 import logging
 import os
 import threading
-from typing import Any, Protocol
+from typing import Any, Iterator, Protocol
 
 from src.json_store import atomic_write_json
 from src.time_utils import utc_now_iso
@@ -147,7 +147,7 @@ def _migrate_legacy_default_times(loaded: dict[str, Any]) -> None:
     ignoriert, damit `_coerce` nichts in die Per-Tag-Keys gespiegelt bekommt,
     was es dort nicht haben will.
     """
-    def _legacy(key):
+    def _legacy(key: str) -> str | None:
         value = loaded.get(key)
         return value if isinstance(value, str) and value else None
 
@@ -336,7 +336,7 @@ class Settings:
             self._save_to_disk()
 
     @contextlib.contextmanager
-    def override_in_memory(self, key: str, value: Any):
+    def override_in_memory(self, key: str, value: Any) -> Iterator[None]:
         """Überschreibt `key` NUR im Speicher (kein Disk-Save) für die Dauer
         des with-Blocks und stellt den vorherigen Zustand danach wieder her.
 

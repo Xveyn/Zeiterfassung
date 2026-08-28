@@ -1,4 +1,6 @@
 # src/autostart.py
+from __future__ import annotations
+
 import os
 import platform
 import plistlib
@@ -15,7 +17,7 @@ _RUN_KEY_SUBKEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
 _RUN_VALUE_NAME = "Zeiterfassung"
 
 
-def _windows_run_command(target, arguments):
+def _windows_run_command(target: str, arguments: str) -> str:
     """Baut den HKCU-Run-Datenstring — identisch zum Installer-Format:
     Exe in Anführungszeichen, dann (falls vorhanden) die Argumente."""
     if arguments:
@@ -23,7 +25,7 @@ def _windows_run_command(target, arguments):
     return f'"{target}"'
 
 
-def _remove_legacy_shortcut():
+def _remove_legacy_shortcut() -> None:
     """Entfernt den Alt-Startup-Shortcut, falls vorhanden (tolerant)."""
     try:
         os.remove(_get_shortcut_path())
@@ -31,7 +33,7 @@ def _remove_legacy_shortcut():
         pass
 
 
-def _windows_registry_enabled():
+def _windows_registry_enabled() -> bool:
     import winreg
     try:
         with winreg.OpenKey(winreg.HKEY_CURRENT_USER, _RUN_KEY_SUBKEY) as key:
@@ -41,7 +43,7 @@ def _windows_registry_enabled():
         return False
 
 
-def resolve_autostart_target(base_path):
+def resolve_autostart_target(base_path: str) -> tuple[str, str]:
     """Return (target, arguments) for the current runtime/platform.
 
     Frozen Windows/macOS: the executable itself.
@@ -58,32 +60,32 @@ def resolve_autostart_target(base_path):
     return sys.executable, f"{main_py} --minimized"
 
 
-def _get_startup_folder():
+def _get_startup_folder() -> str:
     return os.path.join(
         os.environ["APPDATA"],
         "Microsoft", "Windows", "Start Menu", "Programs", "Startup",
     )
 
 
-def _get_shortcut_path():
+def _get_shortcut_path() -> str:
     return os.path.join(_get_startup_folder(), SHORTCUT_NAME)
 
 
-def _macos_plist_path():
+def _macos_plist_path() -> str:
     return os.path.join(
         os.path.expanduser("~"),
         "Library", "LaunchAgents", f"{MACOS_LABEL}.plist",
     )
 
 
-def _linux_desktop_path():
+def _linux_desktop_path() -> str:
     return os.path.join(
         os.path.expanduser("~"),
         ".config", "autostart", "Zeiterfassung.desktop",
     )
 
 
-def enable_autostart(target, arguments=""):
+def enable_autostart(target: str, arguments: str = "") -> None:
     """Enable autostart on the current platform.
 
     target: path to executable (Windows .exe, macOS .app binary, Linux AppImage/binary)
@@ -100,7 +102,7 @@ def enable_autostart(target, arguments=""):
         raise RuntimeError(f"Autostart not supported on {system}")
 
 
-def disable_autostart():
+def disable_autostart() -> None:
     system = platform.system()
     if system == "Windows":
         _disable_windows()
@@ -112,7 +114,7 @@ def disable_autostart():
         raise RuntimeError(f"Autostart not supported on {system}")
 
 
-def is_autostart_enabled():
+def is_autostart_enabled() -> bool:
     """Echter Autostart-Zustand (nicht das gespeicherte Setting).
 
     Windows: Registry-Run-Wert ODER Alt-Shortcut vorhanden (Shortcut-Fallback,
@@ -128,7 +130,7 @@ def is_autostart_enabled():
     return False
 
 
-def migrate_legacy_autostart(base_path):
+def migrate_legacy_autostart(base_path: str) -> None:
     """Überführt einen Alt-Startup-Shortcut in den Registry-Run-Key —
     absichtserhaltend. Nur im Frozen-Windows-Build; sonst No-op (im Repo-Modus
     würde der Registry-Wert auf python.exe+Repo zeigen und den installierten
@@ -147,7 +149,7 @@ def migrate_legacy_autostart(base_path):
     _remove_legacy_shortcut()
 
 
-def _enable_windows(target, arguments):
+def _enable_windows(target: str, arguments: str) -> None:
     import winreg
     command = _windows_run_command(target, arguments)
     with winreg.CreateKey(winreg.HKEY_CURRENT_USER, _RUN_KEY_SUBKEY) as key:
@@ -155,7 +157,7 @@ def _enable_windows(target, arguments):
     _remove_legacy_shortcut()
 
 
-def _disable_windows():
+def _disable_windows() -> None:
     import winreg
     try:
         with winreg.OpenKey(
@@ -167,7 +169,7 @@ def _disable_windows():
     _remove_legacy_shortcut()
 
 
-def _enable_macos(target, arguments):
+def _enable_macos(target: str, arguments: str) -> None:
     plist_path = _macos_plist_path()
     os.makedirs(os.path.dirname(plist_path), exist_ok=True)
 
@@ -188,7 +190,7 @@ def _enable_macos(target, arguments):
     subprocess.run(["launchctl", "load", "-w", plist_path], check=True)
 
 
-def _disable_macos():
+def _disable_macos() -> None:
     plist_path = _macos_plist_path()
     if not os.path.exists(plist_path):
         return
@@ -196,7 +198,7 @@ def _disable_macos():
     os.remove(plist_path)
 
 
-def _enable_linux(target, arguments):
+def _enable_linux(target: str, arguments: str) -> None:
     desktop_path = _linux_desktop_path()
     os.makedirs(os.path.dirname(desktop_path), exist_ok=True)
 
@@ -213,7 +215,7 @@ def _enable_linux(target, arguments):
         f.write(content)
 
 
-def _disable_linux():
+def _disable_linux() -> None:
     desktop_path = _linux_desktop_path()
     if os.path.exists(desktop_path):
         try:
@@ -222,7 +224,7 @@ def _disable_linux():
             pass
 
 
-def refresh_linux_target(base_path):
+def refresh_linux_target(base_path: str) -> None:
     """Zieht die Autostart-Datei auf den aktuellen `$APPIMAGE`-Pfad nach.
 
     Der Updater ersetzt die AppImage nie selbst (`update_banner._open_download`

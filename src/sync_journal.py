@@ -23,17 +23,25 @@ Damit ist der Apply effektiv atomar: entweder das Journal ist weg (vollständig
 angewandt) oder es existiert (wird beim nächsten Start vollständig nachgeholt).
 """
 
+from __future__ import annotations
+
 import json
+from typing import TYPE_CHECKING, Any
 import logging
 import os
 import tempfile
 
 from src import sync
 
+if TYPE_CHECKING:  # nur fuer die Signaturen
+    from src.conflicts_store import ConflictsStore
+    from src.settings import Settings
+    from src.storage import Storage
+
 JOURNAL_FILENAME = "sync-apply.journal"
 
 
-def _atomic_write_json(path, obj):
+def _atomic_write_json(path: str, obj: Any) -> None:
     """Schreibt `obj` als JSON atomar + durable (fsync vor replace). Ohne den
     fsync könnte das Rename durabel sein, der Inhalt aber noch im OS-Cache —
     dann wäre das Journal beim Recovery leer/kurz (der Fall, gegen den es
@@ -55,8 +63,10 @@ def _atomic_write_json(path, obj):
         raise
 
 
-def apply_merged_doc_journaled(merged_doc, storage, settings, conflicts_store,
-                               journal_path):
+def apply_merged_doc_journaled(merged_doc: dict[str, Any], storage: Storage,
+                               settings: Settings,
+                               conflicts_store: ConflictsStore,
+                               journal_path: str) -> None:
     """Wie `sync.apply_merged_doc`, aber crash-sicher über ein Journal (M6):
     merged_doc erst durable auf Platte, dann die vier Store-Writes, dann Journal
     löschen. Stürzt der Prozess dazwischen ab, holt `recover_pending_apply` den
@@ -69,7 +79,8 @@ def apply_merged_doc_journaled(merged_doc, storage, settings, conflicts_store,
         pass
 
 
-def recover_pending_apply(journal_path, storage, settings, conflicts_store):
+def recover_pending_apply(journal_path: str, storage: Storage, settings: Settings,
+                          conflicts_store: ConflictsStore) -> bool:
     """Beim App-Start (vor dem Start der Sync-Threads, single-threaded → kein
     Lock nötig) aufrufen: existiert ein Journal, war der letzte Apply
     unvollständig → idempotent wiederholen.
@@ -96,7 +107,7 @@ def recover_pending_apply(journal_path, storage, settings, conflicts_store):
     return True
 
 
-def _remove_quietly(path):
+def _remove_quietly(path: str) -> None:
     try:
         os.remove(path)
     except OSError:

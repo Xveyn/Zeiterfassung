@@ -1,10 +1,12 @@
 # src/paths.py
+from __future__ import annotations
+
 import os
 import platform
 import sys
 
 
-def get_base_path():
+def get_base_path() -> str:
     """Return the directory where data files should be stored.
 
     Script mode: repo root (parent of src/).
@@ -45,7 +47,7 @@ def get_base_path():
     return base
 
 
-def get_resource_path():
+def get_resource_path() -> str:
     """Verzeichnis der GEBÜNDELTEN Programmdaten (`assets/`) — read-only.
 
     Frozen: `sys._MEIPASS` (PyInstaller; onefile = Temp-Extraktion, onedir =
@@ -72,7 +74,8 @@ def get_resource_path():
     return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
-def relaunch_command(argv, executable, frozen):
+def relaunch_command(argv: list[str], executable: str,
+                     frozen: bool) -> list[str]:
     """Baut das Kommando, um die App neu zu starten (nach UI-Skalierungs-
     Änderung). Im Frozen-Build ist `executable` die App-Exe selbst; im
     Repo-Modus wird `python -m src.main` aufgerufen. `--minimized` wird

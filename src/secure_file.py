@@ -16,6 +16,8 @@ müssen, und private Namen modulübergreifend zu nutzen ist im Projekt
 ausdrücklich unerwünscht (Audit N17).
 """
 
+from __future__ import annotations
+
 import logging
 import os
 import platform
@@ -24,7 +26,7 @@ import subprocess
 _log = logging.getLogger(__name__)
 
 
-def _windows_principal():
+def _windows_principal() -> str | None:
     """`DOMAIN\\user` für icacls, ersatzweise der nackte Benutzername.
 
     `None`, wenn sich der Benutzer nicht aus der Umgebung benennen lässt — dann
@@ -38,7 +40,7 @@ def _windows_principal():
     return f"{domain}\\{user}" if domain else user
 
 
-def harden_windows_acl(path):
+def harden_windows_acl(path: str) -> None:
     """Beschränkt die ACL von `path` unter Windows auf den aktuellen Benutzer.
 
     `icacls /inheritance:r /grant:r <user>:(F)` entfernt die geerbten ACEs (bei

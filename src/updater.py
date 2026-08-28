@@ -6,6 +6,7 @@ Keine Tk-Imports; UI-Layer ruft die Funktionen aus einem Worker-Thread.
 
 import json
 from dataclasses import dataclass
+from typing import Any
 from datetime import date
 from urllib.error import URLError
 from urllib.request import Request, urlopen
@@ -87,7 +88,7 @@ class Release:
     is_prerelease: bool = False
     notes: str = ""         # API-`body`; bei Pre-Releases die einzige Inhaltsquelle
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         # Ohne explizite Kennung IST die Version die Kennung (echtes Release,
         # Alt-Konstruktionen). frozen=True erlaubt kein normales Setzen.
         if not self.release_id:
@@ -171,7 +172,7 @@ def resolve_check_result(installed_id: str, release: "Release | None") -> dict:
     }
 
 
-def pick_asset_url(assets, system: str, latest_version: str) -> str | None:
+def pick_asset_url(assets: Any, system: str, latest_version: str) -> str | None:
     """Liefert die Download-URL für das Plattform-Asset oder None."""
     expected_name = {
         "Windows": "Zeiterfassung_Setup.exe",
@@ -193,7 +194,7 @@ _API_ROOT = "https://api.github.com/repos"
 _FETCH_ERRORS = (URLError, OSError, json.JSONDecodeError, TypeError, KeyError, AttributeError)
 
 
-def _fetch_json(url: str, timeout: float):
+def _fetch_json(url: str, timeout: float) -> Any:
     request = Request(
         url,
         headers={
@@ -205,7 +206,7 @@ def _fetch_json(url: str, timeout: float):
         return json.loads(response.read().decode("utf-8"))
 
 
-def release_from_payload(payload) -> Release | None:
+def release_from_payload(payload: Any) -> Release | None:
     """Ein Release-Objekt der GitHub-API -> Release. None, wenn Tag oder
     html_url fehlen. Tk-frei und ohne Netzwerk testbar."""
     if not isinstance(payload, dict):
@@ -231,7 +232,7 @@ def release_from_payload(payload) -> Release | None:
     )
 
 
-def select_newest_payload(payloads) -> dict | None:
+def select_newest_payload(payloads: Any) -> dict | None:
     """Wählt aus einer /releases-Liste den Eintrag mit der höchsten Kennung.
     Drafts und Einträge mit unparsebarem Tag werden übersprungen. Wir
     maximieren selbst statt uns auf die API-Sortierung zu verlassen (die nach
