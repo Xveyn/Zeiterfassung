@@ -234,8 +234,9 @@ Zeiterfassung/
 ├── requirements.txt       # Python-Abhängigkeiten (App-Laufzeit, exakt gepinnt)
 ├── requirements-test.txt  # Test-/CI-Abhängigkeiten (pytest & Co., exakt gepinnt)
 ├── pyproject.toml         # Konfiguration für ruff, pytest, coverage und pyright
-├── settings.json          # Benutzereinstellungen (wird automatisch erstellt)
-└── zeiterfassung.json     # Gespeicherte Zeiteinträge (wird automatisch erstellt)
+└── (Laufzeitdaten)        # settings.json, zeiterfassung.json u.a. entstehen im
+                           # Repo-Modus hier — vollständige Liste im Abschnitt
+                           # „Datenspeicherung"
 ```
 
 </details>
@@ -475,14 +476,25 @@ CI läuft dieselben Tests gegen Python 3.10–3.13 sowie zusätzlich auf Windows
 
 ## Datenspeicherung
 
-Alle Daten werden lokal als JSON gespeichert:
+Alle Daten liegen lokal in einem Ordner (Pfad je nach Plattform, siehe unten).
+Das meiste sind JSON-Dateien — `instance-secret` und das Protokoll sind es nicht.
+
+**Deine Daten:**
 
 - **zeiterfassung.json** — Zeiteinträge (Schlüssel: ISO-Datum `YYYY-MM-DD`)
 - **reservations.json** — Reservierungen, also zukünftige Soll-Zeiten (eigenes Konzept neben den Ist-Zeiten)
 - **settings.json** — Benutzereinstellungen
-- **token.json** — Gmail/Drive OAuth-Token (wird automatisch erneuert)
 - **conflicts.json** — Lokaler Spiegel der Sync-Konflikte (nur vorhanden bei aktivem Sync und mindestens einem registrierten Konflikt)
 - **sync_history.json** — Marker „wurde auf diesem Gerät je synchronisiert/abgeglichen"; schützt gelöschte Tage davor, nach einer beschädigten `settings.json` zurückzukehren
+- **sync-apply.journal** — Write-Ahead-Journal des Sync-Abgleichs; existiert nur währenddessen. Stürzt die App mittendrin ab, holt der nächste Start den Abgleich darüber nach
+- **logs/zeiterfassung.log** — Protokoll
+
+**Zugangsdaten** (siehe Sicherheitshinweis unten):
+
+- **credentials.json** — dein OAuth-Client aus der Google Cloud Console; legst du selbst dort ab (siehe Gmail-Einrichtung oben)
+- **token.json** — OAuth-Token für Gmail, Drive und ggf. Kalender (wird automatisch erneuert)
+- **webhooks.json** — Webhook-Konfiguration **inklusive** Zugangstoken bzw. HMAC-Schlüssel. Gerätelokal: reist bewusst **nicht** über den Drive-Sync mit
+- **instance-secret** — schützt den lokalen Kanal, über den eine zweite Instanz das vorhandene Fenster nach vorn holt
 
 Bei aktivem Sync liegt zusätzlich in deinem Google Drive eine versteckte Datei `zeiterfassung-sync.json` im `appDataFolder` — nicht über die Drive-Web-Oberfläche sichtbar, nur die App kommt dran.
 
@@ -495,19 +507,31 @@ Speicherort je nach Plattform (siehe `src/paths.py`):
 | Linux (AppImage) | `$XDG_DATA_HOME/Zeiterfassung/` (Fallback `~/.local/share/Zeiterfassung/`) |
 | Entwicklung (Source) | Projekt-Root |
 
-> **Sicherheitshinweis:** `token.json` enthält im Klartext einen langlebigen
-> OAuth-Refresh-Token, der laufenden Zugriff auf dein Google-Konto (Gmail-Versand,
-> Drive-Sync, ggf. Kalender) gewährt. Unter macOS/Linux wird die Datei mit
-> `chmod 0600` nur für deinen Benutzer lesbar gemacht; unter Windows setzt die App
-> per `icacls` eine eigene ACL auf die Datei — geerbte Rechte (SYSTEM, lokale
-> Administratoren) entfallen, Zugriff hat nur dein Benutzerkonto. Beides ist
-> Zugriffsschutz auf Dateiebene, keine Verschlüsselung. **Wer den Daten-/
-> Installationsordner kopiert, sichert oder in die Cloud synchronisiert, nimmt
-> diesen Token mit** — behandle
-> den Ordner entsprechend vertraulich und gib ihn nicht weiter. Bei Verdacht auf
-> Kompromittierung den Zugriff in den [Google-Kontoeinstellungen](https://myaccount.google.com/permissions)
-> entziehen und `token.json` löschen (die App startet beim nächsten Versand einen
-> neuen Anmelde-Flow).
+> **Sicherheitshinweis:** Drei Dateien im Datenordner sind Geheimnisse, keine
+> Nutzerdaten. `token.json` enthält im Klartext einen langlebigen
+> OAuth-Refresh-Token, der laufenden Zugriff auf dein Google-Konto
+> (Gmail-Versand, Drive-Sync, ggf. Kalender) gewährt. `webhooks.json` enthält
+> die Zugangstoken bzw. HMAC-Schlüssel deiner Webhook-Ziele. `instance-secret`
+> schützt den lokalen Single-Instance-Kanal.
+>
+> Alle drei werden gleich behandelt: unter macOS/Linux per `chmod 0600` nur für
+> deinen Benutzer lesbar; unter Windows setzt die App per `icacls` eine eigene
+> ACL — geerbte Rechte (SYSTEM, lokale Administratoren) entfallen, Zugriff hat
+> nur dein Benutzerkonto. Beides ist Zugriffsschutz auf Dateiebene, keine
+> Verschlüsselung. **Wer den Daten-/Installationsordner kopiert, sichert oder in
+> die Cloud synchronisiert, nimmt sie mit** — behandle den Ordner entsprechend
+> vertraulich und gib ihn nicht weiter. Für `credentials.json` gilt dasselbe
+> Weitergabe-Verbot; sie gewährt für sich genommen aber keinen Zugriff auf dein
+> Konto und wird deshalb nicht gehärtet.
+>
+> Bei Verdacht auf Kompromittierung: den Zugriff in den
+> [Google-Kontoeinstellungen](https://myaccount.google.com/permissions) entziehen
+> und `token.json` löschen (die App startet beim nächsten Versand einen neuen
+> Anmelde-Flow); Webhook-Secrets beim jeweiligen Zielsystem neu vergeben.
+>
+> Die Windows-Deinstallation entfernt diese Dateien automatisch. Das beendet
+> den Zugriff auf diesem Rechner — die erteilte Freigabe im Google-Konto bleibt
+> bestehen, bis du sie dort zurückziehst.
 
 ## Lizenz
 
