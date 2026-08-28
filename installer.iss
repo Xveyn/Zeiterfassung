@@ -52,5 +52,97 @@ Name: "autostart"; Description: "Mit Windows starten (minimiert)"; GroupDescript
 [Registry]
 Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "Zeiterfassung"; ValueData: """{app}\Zeiterfassung.exe"" --minimized"; Flags: uninsdeletevalue; Tasks: autostart
 
+[UninstallDelete]
+; Der Uninstaller entfernt von sich aus NUR, was das Setup installiert hat.
+; Alles, was die App zur Laufzeit in {app} anlegt, bliebe liegen — darunter
+; token.json mit einem langlebigen OAuth-Refresh-Token (Gmail-Versand,
+; Drive-Sync, ggf. Kalender). Wer die App entfernt, erwartet zu Recht, dass
+; dieser Zugriff endet. Diese vier Dateien sind Zugangsdaten, keine
+; Nutzerdaten — sie verschwinden deshalb immer und ohne Rückfrage.
+;
+; Bewusst explizite Namen statt eines Wildcards: die Inno-Doku warnt
+; ausdrücklich davor, den {app}-Ordner pauschal leerzuräumen (der Nutzer könnte
+; dort eigene Dateien abgelegt haben, und bei einer versehentlichen
+; Installation in ein Systemverzeichnis wäre es fatal).
+Type: files; Name: "{app}\token.json"
+Type: files; Name: "{app}\instance-secret"
+Type: files; Name: "{app}\webhooks.json"
+Type: files; Name: "{app}\credentials.json"
+
+
 [Run]
 Filename: "{app}\Zeiterfassung.exe"; Description: "Zeiterfassung jetzt starten"; Flags: nowait postinstall skipifsilent
+
+[Code]
+// --- Deinstallation aufräumen (#50) ------------------------------------------
+// Zwei Dinge, die [UninstallDelete] oben nicht kann: den Autostart-Wert aus der
+// Registry entfernen und die Nutzerdaten nur nach Rückfrage löschen.
+
+const
+  RunKey = 'Software\Microsoft\Windows\CurrentVersion\Run';
+  RunValue = 'Zeiterfassung';
+
+var
+  HadToken: Boolean;
+
+procedure DeleteUserData();
+begin
+  DeleteFile(ExpandConstant('{app}\zeiterfassung.json'));
+  DeleteFile(ExpandConstant('{app}\reservations.json'));
+  DeleteFile(ExpandConstant('{app}\settings.json'));
+  DeleteFile(ExpandConstant('{app}\conflicts.json'));
+  DeleteFile(ExpandConstant('{app}\sync_history.json'));
+  DeleteFile(ExpandConstant('{app}\sync-apply.journal'));
+  DelTree(ExpandConstant('{app}\logs'), True, True, True);
+end;
+
+procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+begin
+  if CurUninstallStep = usUninstall then
+  begin
+    // usUninstall feuert, BEVOR die Dateien entfernt werden — hier ist die
+    // token.json also noch da und die Frage nach den Nutzerdaten kann noch
+    // wirken, bevor der Ordner abgeräumt wird.
+    HadToken := FileExists(ExpandConstant('{app}\token.json'));
+
+    // Bedingungslos, unabhängig vom Setup-Task. Der [Registry]-Eintrag trägt
+    // zwar uninsdeletevalue, hängt aber an "Tasks: autostart": wer den Task
+    // beim Setup NICHT wählt und den Autostart später in den App-Einstellungen
+    // einschaltet, schreibt denselben Wertnamen über autostart._enable_windows
+    // per winreg — davon hat der Uninstaller keine Aufzeichnung. Der Eintrag
+    // blieb dann stehen und zeigte auf eine gelöschte Exe.
+    RegDeleteValue(HKEY_CURRENT_USER, RunKey, RunValue);
+
+    // Nutzerdaten nur auf Nachfrage: erfasste Arbeitszeiten sind Monate an
+    // Arbeit, die niemand ungefragt verlieren soll. Im Silent-Uninstall wird
+    // nicht gefragt und folglich nichts gelöscht — die konservative Variante.
+    if not UninstallSilent then
+      if MsgBox('Sollen auch die erfassten Arbeitszeiten und die Einstellungen gelöscht werden?'#13#10#13#10 +
+                'Nein: die Daten bleiben erhalten und werden von einer Neuinstallation wiedergefunden.',
+                mbConfirmation, MB_YESNO) = IDYES then
+        DeleteUserData();
+  end;
+
+  if CurUninstallStep = usPostUninstall then
+  begin
+    // Hier statt per "Type: dirifempty" in [UninstallDelete]: dieser Schritt
+    // läuft nachweislich nach der gesamten Log-Verarbeitung — die Reihenfolge
+    // INNERHALB von [UninstallDelete] ist dagegen nicht dokumentiert, und der
+    // Ordner wäre beim regulären Entfernen ohnehin noch nicht leer gewesen.
+    // RemoveDir entfernt ihn nur, wenn er leer ist: wer seine Daten behalten
+    // hat, behält auch den Ordner.
+    RemoveDir(ExpandConstant('{app}'));
+
+    // Nur wer je ein Google-Konto verbunden hatte, bekommt den Hinweis.
+    // Das Löschen der token.json beendet den Zugriff auf DIESEM Rechner; die
+    // erteilte Freigabe im Google-Konto bleibt bestehen, bis sie dort
+    // zurückgezogen wird. Ohne den Hinweis wiegt sich der Nutzer in einer
+    // Sicherheit, die er nicht hat.
+    if HadToken and (not UninstallSilent) then
+      MsgBox('Die gespeicherte Google-Anmeldung wurde von diesem Rechner entfernt.'#13#10#13#10 +
+             'Die Freigabe im Google-Konto selbst bleibt bestehen. Zurückziehen lässt '#13#10 +
+             'sie sich unter:'#13#10#13#10 +
+             'https://myaccount.google.com/permissions',
+             mbInformation, MB_OK);
+  end;
+end;
