@@ -1,4 +1,19 @@
+from __future__ import annotations
+
 import datetime
+from typing import Any, TypeVar
+
+# Slot-Dicts kommen aus storage/reservations. Der Typ wird hier lokal
+# geschrieben statt importiert: `storage.py` importiert `time_utils`, ein
+# Import zurück wäre ein Zyklus. Werte sind heterogen (str/int) → Any (N8).
+Slot = dict[str, Any]
+
+# validate_period wird real mit BEIDEN Typen aufgerufen: mit `datetime.date`
+# aus den Zeitraum-Pickern (send/export) und mit ISO-Strings aus dem
+# Settings-Dialog. Beides funktioniert, weil `>` innerhalb eines Typs
+# konsistent vergleicht — gemischt wäre es ein TypeError. Der constrained
+# TypeVar hält genau das fest: beide Argumente, aber derselbe Typ.
+_DateLike = TypeVar("_DateLike", datetime.date, str)
 
 DAYS_DE = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"]
 WEEKDAYS_DE_FULL = [
@@ -11,7 +26,7 @@ MONTHS_DE = [
 ]
 
 
-def utc_now_iso():
+def utc_now_iso() -> str:
     """Aktueller UTC-Zeitstempel als ISO-String 'YYYY-MM-DDTHH:MM:SSZ'.
 
     Z-Suffix statt +00:00 (JS/Drive-Konvention), Sekunden-Auflösung, kein
@@ -24,7 +39,7 @@ def utc_now_iso():
     return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def parse_time(time_str):
+def parse_time(time_str: str | None) -> tuple[int, int] | None:
     """Parse HH:MM string. Returns (hours, minutes) or None if invalid."""
     try:
         parts = time_str.split(":")
@@ -37,7 +52,8 @@ def parse_time(time_str):
     except (ValueError, AttributeError):
         return None
 
-def calculate_hours(start_str, end_str, pause_minutes=0):
+def calculate_hours(start_str: str | None, end_str: str | None,
+                    pause_minutes: int = 0) -> float:
     """Calculate decimal hours between two HH:MM strings, minus pause."""
     start = parse_time(start_str)
     end = parse_time(end_str)
@@ -47,7 +63,7 @@ def calculate_hours(start_str, end_str, pause_minutes=0):
     end_min = end[0] * 60 + end[1]
     return max(0.0, round((end_min - start_min - pause_minutes) / 60, 2))
 
-def hours_to_minutes(hours):
+def hours_to_minutes(hours: float) -> int:
     """Dezimalstunden → ganze Minuten. DIE Anzeige-Auflösung.
 
     Einzige Stelle, an der Dezimalstunden auf Minuten gerundet werden. Wer
@@ -61,7 +77,7 @@ def hours_to_minutes(hours):
     return round(hours * 60)
 
 
-def format_minutes_hm(total_min):
+def format_minutes_hm(total_min: int) -> str:
     """Ganze Minuten → 'H h M min'. Glatte Werte lassen den jeweils leeren
     Teil weg ('7 h', '30 min'); 0 → '0 h'."""
     h, m = divmod(total_min, 60)
@@ -72,7 +88,7 @@ def format_minutes_hm(total_min):
     return f"{h} h {m} min"
 
 
-def format_hours_hm(hours):
+def format_hours_hm(hours: float) -> str:
     """Dezimalstunden → 'H h M min' für die Anzeige.
 
     Reine Anzeige-Formatierung; Dezimalstunden bleiben die interne Quelle
@@ -86,7 +102,7 @@ def format_hours_hm(hours):
     return format_minutes_hm(hours_to_minutes(hours))
 
 
-def format_hours_colon(hours):
+def format_hours_colon(hours: float) -> str:
     """Dezimalstunden → kompaktes 'H:MM' für enge Stellen (Kalenderzelle).
 
     Gleiche Minuten-Rundung wie format_hours_hm, nur kürzer geschrieben —
@@ -98,7 +114,8 @@ def format_hours_colon(hours):
     return f"{h}:{m:02d}"
 
 
-def validate_entry(start_str, end_str, pause_minutes=0):
+def validate_entry(start_str: str | None, end_str: str | None,
+                   pause_minutes: int = 0) -> tuple[bool, str]:
     """Validate a time entry. Returns (ok, error_message)."""
     start = parse_time(start_str)
     if start is None:
@@ -118,7 +135,7 @@ def validate_entry(start_str, end_str, pause_minutes=0):
     return True, ""
 
 
-def validate_period(date_from, date_to):
+def validate_period(date_from: _DateLike, date_to: _DateLike) -> tuple[bool, str]:
     """Validiert einen Datums-Zeitraum für Bericht/Export. Liefert
     (ok, fehlermeldung). von > bis ist ungültig; von == bis ist erlaubt
     (Ein-Tages-Bericht)."""
@@ -126,13 +143,13 @@ def validate_period(date_from, date_to):
         return False, "Das Von-Datum muss vor dem Bis-Datum liegen."
     return True, ""
 
-def get_week_dates(iso_year, iso_week):
+def get_week_dates(iso_year: int, iso_week: int) -> list[datetime.date]:
     """Return list of 7 datetime.date objects (Mon-Sun) for the given ISO week."""
     monday = datetime.date.fromisocalendar(iso_year, iso_week, 1)
     return [monday + datetime.timedelta(days=i) for i in range(7)]
 
 
-def format_date(d):
+def format_date(d: datetime.date) -> str:
     """date/datetime → 'TT.MM.JJJJ' für die Anzeige (deutsches UI-Format).
 
     Objekt-Pendant zu format_iso_date (das einen ISO-String erwartet):
@@ -143,7 +160,7 @@ def format_date(d):
     return d.strftime("%d.%m.%Y")
 
 
-def get_week_label(iso_year, iso_week):
+def get_week_label(iso_year: int, iso_week: int) -> str:
     """Return display label like 'KW 14 · 30.03. – 05.04.2026'."""
     dates = get_week_dates(iso_year, iso_week)
     monday = dates[0]
@@ -153,13 +170,13 @@ def get_week_label(iso_year, iso_week):
     return f"KW {iso_week} · {monday.strftime('%d.%m.')} – {format_date(sunday)}"
 
 
-def week_spans_months(iso_year, iso_week):
+def week_spans_months(iso_year: int, iso_week: int) -> bool:
     """Return True if the week spans two different months."""
     dates = get_week_dates(iso_year, iso_week)
     return dates[0].month != dates[6].month
 
 
-def format_iso_date(iso, fallback="—"):
+def format_iso_date(iso: str | None, fallback: str = "—") -> str:
     """ISO-Datum oder -Zeitstempel → 'TT.MM.JJJJ' für die Anzeige.
 
     Akzeptiert sowohl reine Daten ('2026-06-02') als auch Zeitstempel
@@ -173,7 +190,7 @@ def format_iso_date(iso, fallback="—"):
         return iso[:10]
 
 
-def format_iso_weekday_date(iso, fallback="—"):
+def format_iso_weekday_date(iso: str | None, fallback: str = "—") -> str:
     """ISO-Datum oder -Zeitstempel → 'Wochentag - TT.MM.JJJJ' für die Anzeige
     (z.B. 'Montag - 13.07.2026'). Leere oder unparsbare Werte liefern denselben
     Fallback-Weg wie format_iso_date (fallback bzw. roher 10-Zeichen-Prefix).
@@ -187,7 +204,7 @@ def format_iso_weekday_date(iso, fallback="—"):
     return f"{WEEKDAYS_DE_FULL[day.weekday()]} - {format_date(day)}"
 
 
-def format_iso_datetime(iso, fallback="—"):
+def format_iso_datetime(iso: str | None, fallback: str = "—") -> str:
     """ISO-Zeitstempel → 'TT.MM.JJJJ HH:MM' für die Anzeige.
 
     Die Uhrzeit wird unverändert aus dem String übernommen (keine
@@ -202,7 +219,7 @@ def format_iso_datetime(iso, fallback="—"):
     return date_part
 
 
-def slots_overlap(slots):
+def slots_overlap(slots: list[Slot]) -> bool:
     """True, wenn sich zwei Slots zeitlich überlappen.
 
     `slots`: Liste von Dicts mit 'start'/'end' (HH:MM). Slots mit unparsbarer
@@ -223,7 +240,7 @@ def slots_overlap(slots):
     return False
 
 
-def validate_slots(slots, with_pause=True):
+def validate_slots(slots: list[Slot], with_pause: bool = True) -> tuple[bool, str]:
     """Validiert eine Slot-Liste: jeden Slot einzeln (validate_entry) und die
     zeitliche Überlappungsfreiheit. Liefert (ok, fehlermeldung).
 
