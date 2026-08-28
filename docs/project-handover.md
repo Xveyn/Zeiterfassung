@@ -11,12 +11,10 @@
 > `com.margenheld.*`, das dauerhaft belegte alte Repo). Abgehakt ist, was
 > nachprüfbar erledigt ist; die offenen Kreuze unten sind **echte Restarbeit**.
 >
-> **Blockiert aktuell jedes Release im neuen Repo** (beides Repo-Settings,
-> nicht im Code behebbar):
-> 1. Die Labels `release:major|minor|patch` existieren in `Xveyn/Zeiterfassung`
->    noch nicht — `release.yml` triggert darauf (Abschnitt 4).
-> 2. Actions → Workflow permissions steht auf **`read`**; `release.yml` braucht
->    **Read and write**, um Tags zu pushen und Releases anzulegen (Abschnitt 4).
+> Die drei Repo-Settings, die den Release-Prozess hier trugen, sind am
+> 2026-08-28 nachgezogen: die `release:*`-Labels angelegt, Actions →
+> Workflow permissions auf **Read and write**, und `master` ist protected
+> (Abschnitt 4). Damit ist der Release-Weg im neuen Repo erstmals vollständig.
 >
 > Zustand geprüft am 2026-08-28.
 
@@ -195,22 +193,27 @@ Der alte Name muss dauerhaft belegt bleiben.
       GitHub `#42` auf dessen *eigenes* Issue 42 — semantisch falsch, sobald
       dort Issues entstehen. Gegenmaßnahme: bloße `#NNN` durch vollqualifizierte
       `margenheld/Zeiterfassung#42` ersetzen.
-- [ ] **OFFEN — Branch Protection im neuen Repo einrichten.** Geprüft
-      2026-08-28: `master` ist dort **nicht** protected (`HTTP 404 Branch not
-      protected`), obwohl `CLAUDE.md` sie als gegeben beschreibt. Einrichten,
-      insbesondere den Required
+- [x] **Branch Protection eingerichtet** (2026-08-28). `master` war bis dahin
+      **nicht** protected (`HTTP 404 Branch not protected`), obwohl `CLAUDE.md`
+      sie als gegeben beschreibt. Gesetzt sind jetzt die Required Checks
+      `test`, `lint`, `typecheck`, `test-macos`, `test-windows` — ohne `strict`
+      (ein PR muss nicht auf den aktuellen `master` nachgezogen werden),
+      ohne Review-Pflicht (Solo-Maintainer kann den eigenen PR nicht
+      approven), `enforce_admins: false` für den in `CLAUDE.md` beschriebenen
+      Admin-Bypass, Force-Push und Branch-Löschung blockiert. Weiterhin
+      maßgeblich ist der Required
       Check `test` (siehe `CLAUDE.md` → Tests/CI: ohne ihn bliebe der Check ewig
       „pending" und jeder PR dauerhaft blockiert).
-- [ ] **OFFEN, releaseblockierend — Actions → Workflow permissions.** Geprüft
-      2026-08-28: steht in `Xveyn/Zeiterfassung` auf **`read`** und muß auf
-      **„Read and write"**. `release.yml`
+- [x] **Actions → Workflow permissions auf „Read and write"** (2026-08-28).
+      Stand bis dahin auf `read` — in dem Zustand wäre **jedes** Release
+      gescheitert. `release.yml`
       pusht Tags und legt Releases über `secrets.GITHUB_TOKEN` an; steht der
       Account-Default auf read-only, bricht **jedes** Release. Eigene Secrets
       sind keine zu retten — die Workflows nutzen ausschließlich `GITHUB_TOKEN`.
-- [ ] **OFFEN, releaseblockierend — Labels `release:major|minor|patch` anlegen.**
-      Sie existieren im neuen Repo nicht; `release.yml` triggert ausschließlich
-      auf sie (siehe `CLAUDE.md` → Release-Prozeß). Ohne sie läuft ein
-      Release-PR durch, ohne ein Release zu erzeugen.
+- [x] **Labels `release:major|minor|patch` angelegt** (2026-08-28, Farben und
+      Beschreibungen identisch zum alten Repo). Sie fehlten hier; `release.yml`
+      triggert ausschließlich auf sie (siehe `CLAUDE.md` → Release-Prozeß) —
+      ohne sie wäre ein Release-PR durchgelaufen, ohne ein Release zu erzeugen.
 - [x] Zur Kenntnis — Stars, Watcher und Download-Zähler sind weg. Kosmetisch, aber bewusst
       entscheiden.
 
@@ -277,11 +280,11 @@ Anzeige in „Apps & Features", Änderung gefahrlos, aber nicht Teil des Umzugs.
 Der Code- und Doku-Teil (Abschnitte 1, 5, 7) ist mit dem Brücken-Release
 `1.21.0` ausgeliefert. Was bleibt, ist **kein Code**:
 
+Die drei GitHub-Settings aus Abschnitt 4 sind am 2026-08-28 erledigt. Was
+bleibt, ist organisatorisch:
+
 | Offen | Abschnitt | Wirkung |
 |---|---|---|
-| Labels `release:*` im neuen Repo anlegen | 4 | **blockiert jedes Release** |
-| Actions-Workflow-Permissions auf „Read and write" | 4 | **blockiert jedes Release** |
-| Branch Protection auf `master` (Required Check `test`) | 4 | PRs laufen ungesichert nach `master` |
 | Zugänge/Recovery des Accounts `margenheld` sichern | 2 | ohne sie kein Nachschieben im Archiv |
 | Repo-Description im alten Repo nachziehen | 3 | Kosmetik, aber Teil der Landekarte für alte Links |
 | `margenheld/Zeiterfassung` archivieren | 3 | **zuletzt** — danach read-only |
