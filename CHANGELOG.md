@@ -1,5 +1,32 @@
 # Changelog
 
+## 1.21.1 — 2026-08-28
+
+**Erstes Release aus diesem Repository.** An der App selbst hat sich gegenüber
+1.21.0 nichts geändert — wer 1.21.0 nutzt, muss nicht aktualisieren. Der
+Release existiert, um den Veröffentlichungsweg am neuen Ort einmal
+vollständig zu durchlaufen.
+
+### Intern
+- **Release-Prozess im neuen Repository hergestellt**: Die Labels
+  `release:major|minor|patch` fehlten hier — ohne sie wäre ein Release-PR
+  durchgelaufen, ohne ein Release zu erzeugen. Zusätzlich standen die
+  Actions-Workflow-Permissions auf `read`, womit das Tag-Push und das Anlegen
+  des Releases gescheitert wären, und `master` war nicht geschützt.
+- **Doku-only-PRs überspringen die Test-Jobs**: Ein neuer Torwächter-Job
+  ermittelt, ob eine Änderung überhaupt Code betrifft; ist sie reine
+  Dokumentation, entfällt die Test-Matrix. Bewusst über `if:`-Bedingungen
+  statt `paths-ignore`, weil ein gar nicht gestarteter Workflow seine
+  Required Checks nie meldet und den PR dauerhaft blockieren würde.
+- **`CODEOWNERS`** angelegt — dokumentiert Zuständigkeit, ohne die
+  Review-Pflicht zu aktivieren.
+- **Umzugs-Dokumentation abgeschlossen**: Der Hinweis unter 1.21.0 war aus der
+  Perspektive des alten Repositorys geschrieben und behauptete hier gelesen,
+  dieses Repository sei aufgegeben. `docs/project-handover.md` führt den
+  Umzug jetzt als vollzogen und benennt die verbliebene, rein organisatorische
+  Restarbeit.
+- **README** mit Screenshots der App.
+
 ## 1.21.0 — 2026-08-26
 
 ### Hinzugefügt
