@@ -1,8 +1,7 @@
-<p align="center">
-  <img src="assets/margenheld-icon.png" alt="Zeiterfassung-Logo" width="140">
-</p>
-
-# Zeiterfassung
+<h1>
+  <img src="assets/margenheld-icon.png" alt="" height="44" align="middle">
+  Zeiterfassung
+</h1>
 
 > [!NOTE]
 > **Hier wird die Zeiterfassung weiterentwickelt.** Bis einschließlich `1.21.0`
