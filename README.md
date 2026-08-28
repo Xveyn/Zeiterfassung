@@ -1,5 +1,5 @@
 <h1>
-  <img src="assets/margenheld-icon.png" alt="" height="32" align="middle">
+  <img src="assets/margenheld-icon.png" alt="" height="28" align="bottom">
   Zeiterfassung
 </h1>
 
