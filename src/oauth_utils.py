@@ -9,7 +9,10 @@ Lazy-Import-Konvention der Wrapper erhalten (CI installiert kein
 angefasst, was die aufrufende Seite ohnehin schon hält.
 """
 
+from __future__ import annotations
+
 import json
+from typing import Any, Collection
 import os
 import stat
 import tempfile
@@ -18,7 +21,7 @@ import time
 from src.secure_file import harden_windows_acl
 
 
-def write_token(creds, token_path):
+def write_token(creds: Any, token_path: str) -> None:
     """Persistiere Credentials atomar und setze restriktive Permissions.
 
     Geschrieben wird in eine Temp-Datei im selben Verzeichnis, dann via
@@ -70,7 +73,7 @@ def write_token(creds, token_path):
         raise
 
 
-def read_granted_scopes(token_path):
+def read_granted_scopes(token_path: str) -> list[str] | None:
     """Die im `token.json` tatsächlich gewährten OAuth-Scopes.
 
     Liefert die Liste, oder `None`, wenn die Datei fehlt, nicht lesbar ist,
@@ -101,7 +104,8 @@ def read_granted_scopes(token_path):
     return scopes
 
 
-def discard_token_for_scope_upgrade(token_path, scopes):
+def discard_token_for_scope_upgrade(token_path: str,
+                                    scopes: Collection[str]) -> bool:
     """Erzwinge einen frischen OAuth-Flow, wenn der gespeicherte Token nicht
     alle angeforderten `scopes` abdeckt (typisch nach einem Feature-Update).
 

@@ -3,7 +3,10 @@
 abgeleiteten Localhost-Port; Folgeinstanzen melden sich per Socket und beenden
 sich. Blockiert den Start nie — jeder Fehlerpfad endet im (ggf. ungeschützten)
 Weiterlauf."""
+from __future__ import annotations
+
 import hmac
+from typing import Callable
 import logging
 import os
 import socket
@@ -29,12 +32,12 @@ _PORT_SPAN = 12000          # Range 20000–31999, unter allen Ephemeral-Ranges
 _log = logging.getLogger(__name__)
 
 
-def _derive_port(base_path):
+def _derive_port(base_path: str) -> int:
     norm = os.path.normcase(os.path.normpath(base_path))
     return _PORT_BASE + (zlib.crc32(norm.encode("utf-8")) % _PORT_SPAN)
 
 
-def _write_secret_atomic(path, secret):
+def _write_secret_atomic(path: str, secret: bytes) -> None:
     """Schreibt das Instanz-Secret atomar (Temp + os.replace) mit 0600 und
     PermissionError-Retry — Muster aus oauth_utils.write_token (Issue #135).
 
@@ -70,7 +73,7 @@ def _write_secret_atomic(path, secret):
         raise
 
 
-def _load_or_create_secret(base_path):
+def _load_or_create_secret(base_path: str) -> bytes | None:
     """Lädt das 32-Byte-Instanz-Secret aus <base_path>/instance-secret oder
     erzeugt es beim ersten Start. Liefert 32 Bytes — oder None, wenn Lesen ODER
     Schreiben an einem OSError scheitert. None heißt: Handshake läuft
@@ -100,7 +103,7 @@ def _load_or_create_secret(base_path):
         return None
 
 
-def _recv_exactly(conn, n):
+def _recv_exactly(conn: socket.socket, n: int) -> bytes:
     """Liest genau n Bytes. Bei Timeout, geschlossener Verbindung oder
     Short-Read → b'' (Aufrufer verwirft die Verbindung). TCP ist ein Stream:
     ein einzelnes recv darf legal weniger als n Bytes liefern."""
@@ -117,7 +120,7 @@ def _recv_exactly(conn, n):
 
 
 class _Guard:
-    def __init__(self, port, secret):
+    def __init__(self, port: int, secret: bytes | None) -> None:
         self.port = port
         self.secret = secret        # bytes(32) oder None (unauth. Fallback)
         self.bound = False
@@ -127,7 +130,7 @@ class _Guard:
         self._pending_show = False
         self._stop = False
 
-    def _try_bind(self):
+    def _try_bind(self) -> bool:
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         try:
             if sys.platform == "win32":
@@ -146,7 +149,7 @@ class _Guard:
         threading.Thread(target=self._accept_loop, daemon=True).start()
         return True
 
-    def _accept_loop(self):
+    def _accept_loop(self) -> None:
         while not self._stop:
             sock = self._sock
             if sock is None:            # release() lief parallel → sauber raus
@@ -159,7 +162,7 @@ class _Guard:
                 break
             self._handle_conn(conn)
 
-    def _handle_conn(self, conn):
+    def _handle_conn(self, conn: socket.socket) -> None:
         conn.settimeout(_ACK_TIMEOUT)
         with conn:
             try:
@@ -182,7 +185,7 @@ class _Guard:
             except OSError:
                 pass
 
-    def _fire_show(self):
+    def _fire_show(self) -> None:
         with self._lock:
             fn = self._show_fn
             if fn is None:
@@ -190,7 +193,7 @@ class _Guard:
                 return
         fn()
 
-    def serve(self, show_fn):
+    def serve(self, show_fn: Callable[[], None]) -> None:
         """Registriert den Fenster-Holen-Callback. Ein vor serve() eingetroffenes
         SHOW feuert jetzt nach."""
         with self._lock:
@@ -200,7 +203,7 @@ class _Guard:
         if pending:
             show_fn()
 
-    def release(self):
+    def release(self) -> None:
         """Listener stoppen und Port freigeben (No-op wenn nie gebunden)."""
         self._stop = True
         if self._sock is not None:
@@ -212,7 +215,8 @@ class _Guard:
         self.bound = False
 
 
-def _notify_primary(port, show_requested, secret):
+def _notify_primary(port: int, show_requested: bool,
+                    secret: bytes | None) -> bool:
     """Meldet sich bei der laufenden Instanz. True nur, wenn sie sich per
     ZEIT-OK als unsere App bestätigt. Das Secret authentifiziert uns gegenüber
     dem Primary; None → altes Protokoll (nur Magic)."""
@@ -227,7 +231,7 @@ def _notify_primary(port, show_requested, secret):
         return False
 
 
-def acquire(base_path, show_requested):
+def acquire(base_path: str, show_requested: bool) -> _Guard | None:
     """Erstinstanz → gebundener _Guard. Läuft schon eine (bestätigt per ZEIT-OK)
     → None (Aufrufer beendet sich). Port von Fremd-Software belegt → degradierter
     (ungebundener) _Guard, damit der Start nie blockiert."""

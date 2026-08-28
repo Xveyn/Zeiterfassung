@@ -34,6 +34,30 @@ ANNOTATED_MODULES = [
     "src/weekly_limit.py",
     "src/send_reminder.py",
     "src/report.py",
+    # Infra-/Plattform-Schicht
+    "src/paths.py",
+    "src/version.py",
+    "src/device_id.py",
+    "src/secure_file.py",
+    "src/updater.py",
+    "src/changelog.py",
+    "src/desktop_entry.py",
+    "src/oauth_utils.py",
+    "src/sync_journal.py",
+    "src/autostart.py",
+    "src/single_instance.py",
+    # Bereits vor #72 vollstaendig annotiert — hier gelistet, damit sie
+    # nicht unbemerkt zurueckfallen koennen.
+    "src/storage.py",
+    "src/settings.py",
+    "src/reservations.py",
+    "src/conflicts_store.py",
+    "src/sync.py",
+    "src/sync_history.py",
+    "src/json_store.py",
+    "src/webhook_store.py",
+    "src/holidays_de.py",
+    "src/platform_open.py",
 ]
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent

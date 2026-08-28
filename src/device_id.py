@@ -20,6 +20,8 @@ dann auf die bisherige, in settings.json persistierte Zufalls-UUID zurück,
 statt die App scheitern zu lassen.
 """
 
+from __future__ import annotations
+
 import hashlib
 import platform
 import re
@@ -28,7 +30,7 @@ import subprocess
 _SALT = "zeiterfassung"
 
 
-def _windows_machine_guid():
+def _windows_machine_guid() -> str | None:
     import winreg
     try:
         with winreg.OpenKey(
@@ -41,7 +43,7 @@ def _windows_machine_guid():
         return None
 
 
-def _macos_platform_uuid():
+def _macos_platform_uuid() -> str | None:
     try:
         result = subprocess.run(
             ["ioreg", "-rd1", "-c", "IOPlatformExpertDevice"],
@@ -53,7 +55,9 @@ def _macos_platform_uuid():
     return match.group(1) if match else None
 
 
-def _linux_machine_id(paths=("/etc/machine-id", "/var/lib/dbus/machine-id")):
+def _linux_machine_id(
+    paths: tuple[str, ...] = ("/etc/machine-id", "/var/lib/dbus/machine-id"),
+) -> str | None:
     # systemd schreibt /etc/machine-id; ältere/dbus-only-Systeme haben nur den
     # zweiten Pfad. Beide sind stabil pro OS-Installation. `paths` als
     # Parameter (statt hartkodiert) macht die Funktion ohne Filesystem-Mocking
@@ -69,7 +73,7 @@ def _linux_machine_id(paths=("/etc/machine-id", "/var/lib/dbus/machine-id")):
     return None
 
 
-def stable_hardware_id():
+def stable_hardware_id() -> str | None:
     """Rohe, plattformspezifische System-ID, oder `None` (nicht lesbar oder
     unbekannte Plattform). Ruft die Resolver über ihren Modulnamen auf (statt
     über ein bei Modul-Import gebautes Dict) — Tests monkeypatchen einzelne
@@ -85,7 +89,7 @@ def stable_hardware_id():
     return None
 
 
-def derive_device_id():
+def derive_device_id() -> str | None:
     """Gehashte, stabile device_id aus der System-ID, oder `None`, wenn diese
     nicht ermittelbar ist."""
     raw = stable_hardware_id()

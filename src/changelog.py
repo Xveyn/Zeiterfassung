@@ -6,7 +6,10 @@ noch nicht heruntergeladenen Version gibt es dort nicht. Dieses Modul lädt
 die Datei zur Laufzeit vom GitHub-Tag der Zielversion und extrahiert nur
 deren Abschnitt.
 """
+from __future__ import annotations
+
 import re
+from typing import Any
 from urllib.error import URLError
 from urllib.request import Request, urlopen
 
@@ -29,7 +32,7 @@ _VERSION_HEADING_LINE = re.compile(r"^##\s+\d+\.\d+\.\d+")
 _HTML_COMMENT = re.compile(r"<!--.*?-->", re.DOTALL)
 
 
-def extract_version_section(changelog_text, version):
+def extract_version_section(changelog_text: str, version: str) -> str | None:
     """Extrahiert den Abschnitt zu `version` aus dem vollen CHANGELOG.md-Text:
     von der Zeile '## {version} ...' bis zur nächsten '## '-Überschrift oder
     zum Dateiende. None, wenn `version` nicht als Überschrift vorkommt."""
@@ -43,7 +46,8 @@ def extract_version_section(changelog_text, version):
     return None
 
 
-def fetch_changelog_entry(repo, version, timeout=5.0):
+def fetch_changelog_entry(repo: str, version: str,
+                          timeout: float = 5.0) -> str | None:
     """Lädt CHANGELOG.md vom Release-Tag `v{version}` und liefert den
     Abschnitt dieser Version. None bei jedem Fehler (Netzwerk, HTTP-Fehler,
     Decode-Fehler, Version nicht im Text gefunden) — nie eine Exception nach
@@ -58,7 +62,7 @@ def fetch_changelog_entry(repo, version, timeout=5.0):
     return extract_version_section(text, version)
 
 
-def _split_bold(content):
+def _split_bold(content: str) -> list[tuple[str, tuple[str, ...]]]:
     """Zerlegt `content` an `**bold**`-Markierungen in (Text, Tags)-Segmente
     (Tags leer bei Normaltext, `("bold",)` innerhalb der Markierung).
 
@@ -80,7 +84,7 @@ def _split_bold(content):
     return segments
 
 
-def parse_changelog_markdown(text):
+def parse_changelog_markdown(text: str) -> list[dict[str, Any]]:
     """Wandelt einen Changelog-Abschnitt (Markdown) in anzeigefertige Zeilen
     für ein Tk-Text-Widget um (Tk-frei/ohne UI testbar).
 

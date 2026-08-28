@@ -12,6 +12,8 @@ Sonderfall des Exec-Quotings, nicht umgekehrt.
 Tk-frei und stdlib-only, damit ohne Display testbar.
 """
 
+from __future__ import annotations
+
 import logging
 import os
 import shlex
@@ -23,7 +25,7 @@ ICON_FILENAME = "icon.png"
 BUNDLED_ICON = os.path.join("assets", "margenheld-icon.png")
 
 
-def _quote_arg(value):
+def _quote_arg(value: str) -> str:
     """Ein einzelnes Exec-Token: erst shell-quoten, dann `%` verdoppeln.
 
     Zwei getrennte Ebenen, die nichts voneinander wissen:
@@ -50,7 +52,7 @@ def _quote_arg(value):
     return shlex.quote(value).replace("%", "%%")
 
 
-def exec_line(target, arguments):
+def exec_line(target: str, arguments: str) -> str:
     """Baut die `Exec=`-Zeile: shell-korrektes Quoting (Audit N12) plus
     Feldcode-Escaping — beides in `_quote_arg`, dort steht die Begründung.
     Werte ohne Sonderzeichen bleiben unverändert.
@@ -66,7 +68,7 @@ def exec_line(target, arguments):
     return " ".join(parts)
 
 
-def menu_entry_path():
+def menu_entry_path() -> str:
     """Zielpfad des Menüeintrags, `<XDG_DATA_HOME>/applications/Zeiterfassung.desktop`.
 
     `XDG_DATA_HOME` respektiert, Fallback `~/.local/share` — spiegelt
@@ -80,7 +82,7 @@ def menu_entry_path():
     return os.path.join(xdg, "applications", "Zeiterfassung.desktop")
 
 
-def ensure_icon(resource_path, data_path):
+def ensure_icon(resource_path: str, data_path: str) -> str | None:
     """Kopiert das gebündelte PNG einmalig ins Datenverzeichnis und liefert den
     Zielpfad (oder `None`).
 
@@ -109,7 +111,7 @@ def ensure_icon(resource_path, data_path):
         return None
 
 
-def write_menu_entry(target, icon_path):
+def write_menu_entry(target: str, icon_path: str | None) -> None:
     """Schreibt den Menüeintrag nach `menu_entry_path()`.
 
     Wird bei jedem Start überschrieben, damit `Exec=` nach einem Update von
