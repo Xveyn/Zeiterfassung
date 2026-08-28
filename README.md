@@ -1,4 +1,7 @@
-# Zeiterfassung
+<h1>
+  <img src="assets/margenheld-icon.png" alt="" height="32" align="bottom">
+  Zeiterfassung
+</h1>
 
 > [!NOTE]
 > **Hier wird die Zeiterfassung weiterentwickelt.** Bis einschließlich `1.21.0`
@@ -15,31 +18,158 @@ Desktop-App zur Erfassung von Arbeitszeiten mit Kalenderansicht, PDF-Report und 
 
 [![Release](https://img.shields.io/github/v/release/Xveyn/Zeiterfassung?label=Release&color=success&logo=github)](https://github.com/Xveyn/Zeiterfassung/releases/latest) ![Python](https://img.shields.io/badge/Python-3.10+-blue) ![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow)](LICENSE)
 
+![Monatsansicht der Zeiterfassung mit erfassten Arbeitszeiten](docs/screenshots/kalender-v1.21.0.png)
+
+<sub>Alle Screenshots stammen aus Version 1.21.0 — die Version steht im Dateinamen (`…-v1.21.0.png`), siehe [`docs/screenshots/`](docs/screenshots/).</sub>
+
+## Inhalt
+
+[Features](#features) · [Installation](#installation) · [Projektstruktur](#projektstruktur) ·
+[Gmail API](#gmail-api-einrichten) · [Multi-Device-Sync](#multi-device-sync-einrichten-optional) ·
+[Google-Kalender](#google-kalender-für-reservierungen-einrichten-optional) ·
+[Einstellungen](#einstellungen) · [Build](#build) ·
+[Plattform-Kompatibilität](#plattform-kompatibilität) · [Tests](#tests) ·
+[Datenspeicherung](#datenspeicherung) · [Lizenz](#lizenz)
+
 ## Features
 
-- **Kalenderansicht** — Monatsübersicht mit Tageseinträgen (Start, Ende, Pause) und Netto-Stunden je Tag; Stunden durchgehend in Stunden/Minuten statt dezimal
-- **PDF-Report** — Automatische Generierung als druckfreundliches PDF
-- **E-Mail-Versand** — HTML-E-Mail mit PDF-Anhang über Gmail API (OAuth2)
-- **Webhook-Versand** — Der Bericht lässt sich zusätzlich zur E-Mail an konfigurierbare HTTP-Endpunkte senden (JSON und/oder PDF, optional mit Token oder HMAC-Signatur); gerätelokal konfiguriert
-- **Multi-Device-Sync** — Optionale Synchronisation von Zeiteinträgen und Mail-Vorlagen über Google Drive (`appDataFolder`), inklusive Konflikt-Auflösung wenn dasselbe Datum offline auf mehreren Geräten bearbeitet wurde — per Linksklick direkt auf den betroffenen Kalendertag oder gesammelt in den Einstellungen
-- **Teilen & Importieren** — Eigene Arbeitszeiten als JSON-Anhang per Mail an eine zweite Person teilen; der Empfänger importiert sie mit Zeitraum-Filter und drei Konflikt-Modi (alles importieren / alles lokal / pro Tag entscheiden)
+### Zeiten erfassen
+
+- **Kalenderansicht** — Monats- und Wochenansicht mit Tageseinträgen (Start, Ende, Pause) und Netto-Stunden je Tag; Stunden durchgehend in Stunden/Minuten statt dezimal
+- **Kategorien** — Mehrere Zeitblöcke pro Tag mit eigenen Kategorien; Standard-Start/-Ende pro Kategorie, optional pro Wochentag
 - **Reservierungen & Google-Kalender** — Zukünftige Arbeitszeiten pro Tag reservieren (eigenes Konzept neben den Ist-Zeiten, im Kalender als violetter Eck-Punkt markiert); optionaler Abgleich mit einem wählbaren Google Kalender
 - **Reservierungs-Erinnerungen** — Optionale Toast-Benachrichtigung, wenn ein für heute reservierter Slot fällig wird und noch keine Ist-Zeit erfasst ist (konfigurierbare Vorlaufzeit)
-- **Sende-Erinnerung** — Optionale Toast-Erinnerung, die Arbeitszeiten zu verschicken: monatlich an einem frei wählbaren Tag (auf Wunsch von Wochenenden und Feiertagen weg verschoben) und/oder tagesbezogen, wenn ein dafür markierter Reservierungs-Slot ausläuft. Der Sende-Dialog schlägt den Zeitraum seit der letzten Erinnerung vor
-- **PDF-Export** — Bericht für einen frei gewählten Zeitraum direkt als PDF lokal speichern (ohne Mail-Versand)
+- **Feiertage** — Feiertage des gewählten Bundeslands sind im Kalender markiert und werden beim Anlegen eines Eintrags nachgefragt
+- **Nur Werktage** — Optional lässt sich das Wochenende komplett deaktivieren: Sa/So verschwinden aus Kalender, Standardzeiten, Bericht, Mailversand und PDF-Export. Vorhandene Wochenend-Einträge bleiben gespeichert und sind sofort wieder da, wenn die Einstellung zurückgenommen wird
 - **Wochenstunden-Limit** — Optionales Werkstudenten-Limit über einen konfigurierbaren Zeitraum mit Warnung beim Überschreiten
 - **Pausenpflicht-Warnung** — Hinweis beim Speichern, wenn die eingetragene Pause die gesetzliche Mindestpause nach § 4 ArbZG unterschreitet (30 Min ab >6 h, 45 Min ab >9 h); standardmäßig aktiv, abschaltbar. Grobe Näherung, keine rechtliche Bewertung
-- **Nur Werktage** — Optional lässt sich das Wochenende komplett deaktivieren: Sa/So verschwinden aus Kalender, Standardzeiten, Bericht, Mailversand und PDF-Export. Vorhandene Wochenend-Einträge bleiben gespeichert und sind sofort wieder da, wenn die Einstellung zurückgenommen wird
-- **Kategorien** — Mehrere Zeitblöcke pro Tag mit eigenen Kategorien; Standard-Start/-Ende pro Kategorie, optional pro Wochentag; Kategorie-Aufschlüsselung im Bericht optional
-- **UI-Skalierung** — Stufenloser Skalierungsfaktor für die Oberfläche (gerätelokal)
-- **Zeitraumwahl** — Flexibler Datumsbereich für Reports
+
+![Tages-Dialog mit Arbeitszeit, Reservierung und Erinnerung](docs/screenshots/tagesdialog-v1.21.0.png)
+
+*Ein Tag im Detail: erfasste Ist-Zeit, geplante Reservierung und die Erinnerung ans Verschicken. Linksklick auf einen Kalendertag öffnet den Dialog; gelöscht wird im Kalender selbst (Rechtsklick, unter macOS über das ✕ in der Tageszelle).*
+
+### Berichten & verschicken
+
+- **PDF-Report** — Automatische Generierung als druckfreundliches PDF, gruppiert pro ISO-Kalenderwoche; Kategorie-Aufschlüsselung optional
+- **E-Mail-Versand** — HTML-E-Mail mit PDF-Anhang über Gmail API (OAuth2)
+- **Webhook-Versand** — Der Bericht lässt sich zusätzlich zur E-Mail an konfigurierbare HTTP-Endpunkte senden (JSON und/oder PDF, optional mit Token oder HMAC-Signatur); gerätelokal konfiguriert
+- **PDF-Export** — Bericht für einen frei gewählten Zeitraum direkt als PDF lokal speichern (ohne Mail-Versand)
+- **Zeitraumwahl** — Flexibler Datumsbereich für Reports, mit Filter auf einzelne Kategorien
+- **Sende-Erinnerung** — Optionale Toast-Erinnerung, die Arbeitszeiten zu verschicken: monatlich an einem frei wählbaren Tag (auf Wunsch von Wochenenden und Feiertagen weg verschoben) und/oder tagesbezogen, wenn ein dafür markierter Reservierungs-Slot ausläuft. Der Sende-Dialog schlägt den Zeitraum seit der letzten Erinnerung vor
+- **Teilen & Importieren** — Eigene Arbeitszeiten als JSON-Anhang per Mail an eine zweite Person teilen; der Empfänger importiert sie mit Zeitraum-Filter und drei Konflikt-Modi (alles importieren / alles lokal / pro Tag entscheiden)
+
+![Sende-Dialog mit Zeitraum- und Kategorieauswahl](docs/screenshots/senden-v1.21.0.png)
+
+*Der Sende-Dialog: Zeitraum, Kategorie-Filter und die Gesamtstunden vor dem Absenden.*
+
+![Erzeugter PDF-Bericht](docs/screenshots/bericht-v1.21.0.png)
+
+*Der erzeugte PDF-Bericht — pro ISO-Kalenderwoche gruppiert, mit Tages- und Wochensummen.*
+
+### App & Umgebung
+
+- **Multi-Device-Sync** — Optionale Synchronisation von Zeiteinträgen und Mail-Vorlagen über Google Drive (`appDataFolder`), inklusive Konflikt-Auflösung wenn dasselbe Datum offline auf mehreren Geräten bearbeitet wurde — per Linksklick direkt auf den betroffenen Kalendertag oder gesammelt in den Einstellungen
 - **Einstellungen** — In Tabs gegliedert (Arbeitszeit / Bericht & Mail / Google / App / Webhooks / Updates); E-Mail-Vorlagen mit Platzhaltern, Standardpause, Empfänger und Update-Einstellungen
 - **Autostart & Einzelinstanz** — Optionaler minimierter Start bei Anmeldung (Windows, macOS, Linux); es läuft immer nur eine Instanz — ein zweiter Start holt das vorhandene Fenster nach vorn
 - **Update-Check** — Konfigurierbare Hintergrund-Prüfung auf neue Releases; Updates-Tab mit manuellem Check, Changelog und Direkt-Download, bei aktivem Tray als einmaliger Toast statt Banner. Läuft die App im Infobereich, stößt **„Nach Updates suchen"** im Tray-Menü die Prüfung direkt an — das Ergebnis kommt als Toast, auch wenn alles aktuell ist. Optional lassen sich auch Vorabversionen (Pre-Releases) anbieten — Testbuilds vor dem echten Release
-- **Dark Mode UI** — Modernes dunkles Design
+- **Dark Mode UI** — Modernes dunkles Design, für alle Dialoge einheitlich
+- **UI-Skalierung** — Stufenloser Skalierungsfaktor für die Oberfläche (gerätelokal)
 - **Cross-Platform-Installer** — Per PyInstaller gebaut, als Setup-Exe (Windows), DMG (macOS) und AppImage (Linux) paketierbar
 
+![Einstellungs-Dialog, Tab Arbeitszeit](docs/screenshots/einstellungen-v1.21.0.png)
+
+*Die Einstellungen, hier der Tab „Arbeitszeit" mit Standardzeiten, Pausenpflicht und Werkstudenten-Limit.*
+
+## Installation
+
+### Fertige Releases
+
+Vorgefertigte Installer für alle drei Plattformen gibt es unter [Releases](../../releases):
+
+**Windows**
+Lade `Zeiterfassung_Setup.exe` und führe den Installer aus. App installiert nach `%LOCALAPPDATA%\Programs\Zeiterfassung\`.
+
+**macOS** (Apple Silicon)
+Lade `Zeiterfassung-<ver>-arm64.dmg` herunter. Öffne das DMG und ziehe die App in den Applications-Ordner. Beim ersten Start: Rechtsklick auf die App → „Öffnen" (Gatekeeper-Warnung bestätigen), oder im Terminal:
+
+```bash
+xattr -dr com.apple.quarantine /Applications/Zeiterfassung.app
+```
+
+Der Build ist nicht signiert — dieser Schritt ist einmalig nötig.
+
+**Linux**
+Lade `Zeiterfassung-<ver>-x86_64.AppImage` herunter:
+
+```bash
+chmod +x Zeiterfassung-<ver>-x86_64.AppImage
+./Zeiterfassung-<ver>-x86_64.AppImage
+```
+
+Voraussetzung: `libfuse2` installiert (`sudo apt install libfuse2` unter Debian/Ubuntu).
+
+Beim ersten Start legt die App einen Eintrag im Anwendungsmenü an
+(`~/.local/share/applications/Zeiterfassung.desktop`) und hält ihn danach
+automatisch aktuell. Dasselbe gilt für den Autostart, falls aktiviert: beide
+zeigen nach einem Update von selbst auf die neue AppImage — vorausgesetzt, du
+startest die neue Datei einmal. Ein Integrationswerkzeug wie `appimaged` wird
+nicht gebraucht.
+
+### Aus dem Source-Code
+
+#### Voraussetzungen
+
+- Python 3.10+
+- Windows 10/11, macOS 12+ oder Linux (mit Tkinter)
+
+#### Linux: Tkinter installieren
+
+Tkinter ist unter Linux nicht immer vorinstalliert:
+
+```bash
+# Debian / Ubuntu
+sudo apt install python3-tk
+
+# Fedora
+sudo dnf install python3-tkinter
+
+# Arch
+sudo pacman -S tk
+```
+
+#### Setup
+
+```bash
+# Repository klonen
+git clone https://github.com/Xveyn/Zeiterfassung.git
+cd Zeiterfassung
+
+# Abhängigkeiten installieren
+pip install -r requirements.txt
+
+# App starten
+python -m src.main
+```
+
+#### Abhängigkeiten
+
+| Paket | Zweck |
+|-------|-------|
+| `google-auth-oauthlib` | OAuth2-Authentifizierung für Gmail |
+| `google-api-python-client` | Gmail API Client |
+| `xhtml2pdf` | PDF-Generierung aus HTML |
+| `pyinstaller` | Paketierung als Standalone-Binary |
+| `holidays` | Feiertags-Lookup (deutsche Feiertage) |
+| `pystray` | Infobereich-Icon (Minimize-to-Tray) |
+| `Pillow` | Icon-/Bildverarbeitung (Tray-Icon) |
+| `pyobjc-framework-Cocoa` | Natives macOS-Tray (nur macOS) |
+
 ## Projektstruktur
+
+> Detaillierte Architektur — die `App`-Komponenten (`GridRenderer`, `BackgroundTaskRunner`, `SyncOrchestrator`, `UpdateBanner`), ihre Verträge und das Threading-Modell: [`src/CLAUDE.md`](src/CLAUDE.md).
+
+<details>
+<summary>Verzeichnisbaum mit Kurzbeschreibung je Modul</summary>
 
 ```
 Zeiterfassung/
@@ -108,91 +238,7 @@ Zeiterfassung/
 └── zeiterfassung.json     # Gespeicherte Zeiteinträge (wird automatisch erstellt)
 ```
 
-> Detaillierte Architektur — die `App`-Komponenten (`GridRenderer`, `BackgroundTaskRunner`, `SyncOrchestrator`, `UpdateBanner`), ihre Verträge und das Threading-Modell: [`src/CLAUDE.md`](src/CLAUDE.md).
-
-## Installation
-
-### Fertige Releases
-
-Vorgefertigte Installer für alle drei Plattformen gibt es unter [Releases](../../releases):
-
-**Windows**
-Lade `Zeiterfassung_Setup.exe` und führe den Installer aus. App installiert nach `%LOCALAPPDATA%\Programs\Zeiterfassung\`.
-
-**macOS** (Apple Silicon)
-Lade `Zeiterfassung-<ver>-arm64.dmg` herunter. Öffne das DMG und ziehe die App in den Applications-Ordner. Beim ersten Start: Rechtsklick auf die App → „Öffnen" (Gatekeeper-Warnung bestätigen), oder im Terminal:
-
-```bash
-xattr -dr com.apple.quarantine /Applications/Zeiterfassung.app
-```
-
-Der Build ist nicht signiert — dieser Schritt ist einmalig nötig.
-
-**Linux**
-Lade `Zeiterfassung-<ver>-x86_64.AppImage` herunter:
-
-```bash
-chmod +x Zeiterfassung-<ver>-x86_64.AppImage
-./Zeiterfassung-<ver>-x86_64.AppImage
-```
-
-Voraussetzung: `libfuse2` installiert (`sudo apt install libfuse2` unter Debian/Ubuntu).
-
-Beim ersten Start legt die App einen Eintrag im Anwendungsmenü an
-(`~/.local/share/applications/Zeiterfassung.desktop`) und hält ihn danach
-automatisch aktuell. Dasselbe gilt für den Autostart, falls aktiviert: beide
-zeigen nach einem Update von selbst auf die neue AppImage — vorausgesetzt, du
-startest die neue Datei einmal. Ein Integrationswerkzeug wie `appimaged` wird
-nicht gebraucht.
-
-### Aus dem Source-Code
-
-#### Voraussetzungen
-
-- Python 3.10+
-- Windows 10/11, macOS 12+ oder Linux (mit Tkinter)
-
-#### Linux: Tkinter installieren
-
-Tkinter ist unter Linux nicht immer vorinstalliert:
-
-```bash
-# Debian / Ubuntu
-sudo apt install python3-tk
-
-# Fedora
-sudo dnf install python3-tkinter
-
-# Arch
-sudo pacman -S tk
-```
-
-#### Setup
-
-```bash
-# Repository klonen
-git clone <repo-url>
-cd Zeiterfassung
-
-# Abhängigkeiten installieren
-pip install -r requirements.txt
-
-# App starten
-python -m src.main
-```
-
-#### Abhängigkeiten
-
-| Paket | Zweck |
-|-------|-------|
-| `google-auth-oauthlib` | OAuth2-Authentifizierung für Gmail |
-| `google-api-python-client` | Gmail API Client |
-| `xhtml2pdf` | PDF-Generierung aus HTML |
-| `pyinstaller` | Paketierung als Standalone-Binary |
-| `holidays` | Feiertags-Lookup (deutsche Feiertage) |
-| `pystray` | Infobereich-Icon (Minimize-to-Tray) |
-| `Pillow` | Icon-/Bildverarbeitung (Tray-Icon) |
-| `pyobjc-framework-Cocoa` | Natives macOS-Tray (nur macOS) |
+</details>
 
 ## Gmail API einrichten
 
