@@ -33,6 +33,7 @@ ANNOTATED_MODULES = [
     "src/pause_requirement.py",
     "src/weekly_limit.py",
     "src/send_reminder.py",
+    "src/report.py",
 ]
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent

@@ -1,18 +1,26 @@
+from __future__ import annotations
+
 import datetime
 import html
 import io
 from collections import OrderedDict
+from typing import Any, Collection
 
 from src.time_utils import DAYS_DE, calculate_hours, format_date, get_week_label
 
 
-def _esc(text):
+def _esc(text: str | None) -> str:
     return html.escape(text or "", quote=True)
 
 
-def _esc_multiline(text):
+def _esc_multiline(text: str | None) -> str:
     return _esc(text).replace("\n", "<br>")
 
+
+# Die Wochen-Gruppierung reist durch drei Funktionen (_group_by_week ->
+# _build_table -> _week_block); als Alias steht die Form einmal statt dreimal.
+WeekEntries = list[tuple[str, dict[str, Any]]]
+WeekGroups = OrderedDict[tuple[int, int], WeekEntries]
 
 COLUMN_LABELS = ["Datum", "Tag", "Kategorie", "Start", "Ende", "Stunden"]
 
@@ -75,16 +83,16 @@ PDF_STYLE = {
 }
 
 
-def _slot_hours(slot):
+def _slot_hours(slot: dict[str, Any]) -> float:
     return round(calculate_hours(slot["start"], slot["end"], pause_minutes=slot.get("pause", 0)), 2)
 
 
-def _entry_hours(entry):
+def _entry_hours(entry: dict[str, Any]) -> float:
     """Summe der Stunden über alle Slots eines Tages."""
     return round(sum(_slot_hours(s) for s in entry.get("slots", [])), 2)
 
 
-def _group_by_week(range_entries):
+def _group_by_week(range_entries: dict[str, Any]) -> WeekGroups:
     """Group entries by ISO week, chronologically.
 
     Returns OrderedDict keyed by (iso_year, iso_week), value is list of
@@ -100,7 +108,8 @@ def _group_by_week(range_entries):
     return groups
 
 
-def filter_period(date_from, date_to, all_entries):
+def filter_period(date_from: datetime.date, date_to: datetime.date,
+                  all_entries: dict[str, Any]) -> dict[str, Any] | None:
     """Einträge im Zeitraum [date_from, date_to], oder None wenn keiner drin
     liegt. Öffentlich, weil neben Mail-HTML und PDF auch die Webhook-Payload
     exakt denselben Ausschnitt braucht — zwei Filter-Implementierungen würden
@@ -113,7 +122,8 @@ def filter_period(date_from, date_to, all_entries):
     return range_entries if range_entries else None
 
 
-def filter_categories(entries, categories):
+def filter_categories(entries: dict[str, Any],
+                      categories: Collection[str] | None) -> dict[str, Any]:
     """categories=None → unverändert. Sonst werden je Tag nur Slots behalten,
     deren Kategorie (oder "" für ohne) in `categories` liegt; Tage ohne
     verbleibende Slots fallen weg. Liefert ein neues Dict."""
@@ -128,7 +138,9 @@ def filter_categories(entries, categories):
     return out
 
 
-def total_hours(date_from, date_to, all_entries, categories=None):
+def total_hours(date_from: datetime.date, date_to: datetime.date,
+                all_entries: dict[str, Any],
+                categories: Collection[str] | None = None) -> float:
     """Gesamtstunden im Zeitraum, gefiltert auf die gewählten Kategorien
     (None = alle). Pure Funktion für die Live-Vorschau im Sende-Dialog —
     summiert dieselben Slot-Stunden wie der Report. Leerer Bereich → 0.0."""
@@ -140,7 +152,7 @@ def total_hours(date_from, date_to, all_entries, categories=None):
     return round(sum(_entry_hours(e) for e in range_entries.values()), 2)
 
 
-def default_pdf_filename(date_from, date_to):
+def default_pdf_filename(date_from: datetime.date, date_to: datetime.date) -> str:
     """Default-Dateiname für den PDF-Bericht: Zeiterfassung_<VON>_<BIS>.pdf
     mit Datums-Stempeln im Format YYYYMMDD (z.B.
     Zeiterfassung_20260301_20260331.pdf). Genutzt vom Senden- (Mail-Anhang)
@@ -148,7 +160,7 @@ def default_pdf_filename(date_from, date_to):
     return f"Zeiterfassung_{date_from:%Y%m%d}_{date_to:%Y%m%d}.pdf"
 
 
-def _apply_placeholders(text, label, total):
+def _apply_placeholders(text: str, label: str, total: float) -> str:
     return text.replace("{zeitraum}", _esc(label)).replace("{gesamt}", _esc(f"{total}h"))
 
 
@@ -159,7 +171,8 @@ def _apply_placeholders(text, label, total):
 # Remote-Slots ungeprüft in den Storage — ein manipuliertes Sync-Doc könnte rohes
 # HTML einschleusen (Audit M7). Deshalb werden start/end defensiv _esc()-t,
 # genau wie `kategorie` (freier Nutzertext).
-def _week_block(iso_year, iso_week, week_entries, style):
+def _week_block(iso_year: int, iso_week: int, week_entries: WeekEntries,
+                style: dict[str, Any]) -> tuple[str, float]:
     """Render einen Wochen-Block: KW-Header, je Slot eine Zeile, Tages-Subtotal
     bei >1 Slot, Wochensumme. Returns (rows_html, week_total)."""
     s = style
@@ -214,7 +227,7 @@ def _week_block(iso_year, iso_week, week_entries, style):
     return "\n".join(rows), week_total
 
 
-def _build_table(groups, style):
+def _build_table(groups: WeekGroups, style: dict[str, Any]) -> tuple[str, float]:
     """Bauen die komplette Stundentabelle. Returns (table_html, total)."""
     s = style
     week_blocks = []
@@ -243,7 +256,8 @@ def _build_table(groups, style):
     return table, total
 
 
-def _build_category_summary(range_entries, style):
+def _build_category_summary(range_entries: dict[str, Any],
+                            style: dict[str, Any]) -> str:
     """„Summe je Kategorie"-Tabelle über den (gefilterten) Zeitraum. Leerer
     String ('' = keine Kategorie) wird als '(ohne Kategorie)' ans Ende
     sortiert. Liefert '' wenn keine Slots vorhanden — oder wenn alle Slots
@@ -284,8 +298,11 @@ def _build_category_summary(range_entries, style):
     )
 
 
-def generate_report(date_from, date_to, all_entries, greeting="", content="",
-                    closing="", categories=None, category_breakdown=True):
+def generate_report(date_from: datetime.date, date_to: datetime.date,
+                    all_entries: dict[str, Any], greeting: str = "",
+                    content: str = "", closing: str = "",
+                    categories: Collection[str] | None = None,
+                    category_breakdown: bool = True) -> tuple[str | None, float]:
     """Generate an HTML email report with greeting, content, table, category
     summary, and closing.
 
@@ -331,8 +348,10 @@ def generate_report(date_from, date_to, all_entries, greeting="", content="",
     return html_out, total
 
 
-def generate_pdf(date_from, date_to, all_entries, name="", categories=None,
-                 category_breakdown=True):
+def generate_pdf(date_from: datetime.date, date_to: datetime.date,
+                 all_entries: dict[str, Any], name: str = "",
+                 categories: Collection[str] | None = None,
+                 category_breakdown: bool = True) -> bytes | None:
     """Generate a PDF of the time tracking table. Returns PDF bytes, or None if no entries.
 
     category_breakdown: True = "Summe je Kategorie"-Tabelle anhängen (Default);
