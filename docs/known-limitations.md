@@ -201,3 +201,5 @@ Header-Pfad vorbeizuschreiben — Eigenbau an einer Stelle, die sonst
 zuverlässig funktioniert. **Umgehung:** beim Empfänger case-insensitiv
 vergleichen, oder einen Header-Namen wählen, den `title()` unverändert
 lässt (`X-Api-Key`, `Authorization`, `X-Hub-Signature-256`).
+
+<!-- Wegwerf-Zeile zur CI-Verifikation, wird nicht gemergt. -->
