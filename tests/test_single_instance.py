@@ -7,7 +7,35 @@ import time
 
 import pytest
 
-from src.single_instance import _derive_port, acquire
+from src.single_instance import _SECRET_LEN, _derive_port, acquire
+
+def _wait_for_calls(calls, expected, timeout=3.0):
+    """Wartet, bis der SHOW-Callback mindestens `expected`-mal lief."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if len(calls) >= expected:
+            return True
+        time.sleep(0.005)
+    return len(calls) >= expected
+
+
+@pytest.fixture
+def fast_ack(monkeypatch):
+    """Drückt `_ACK_TIMEOUT` für die Tests, deren Laufzeit an genau diesem
+    Timeout hängt (Squatter antwortet nie, stiller Peer sendet nie, Handshake
+    ohne Secret läuft ins serverseitige recv-Timeout).
+
+    Geprüft wird dort *was bei Timeout passiert*, nicht *wie lange er dauert* —
+    die Abdeckung bleibt also identisch. Das Modul liest die Konstante bei
+    jedem Aufruf aus dem Modul-Namespace (`_handle_conn`, `_notify_primary`),
+    deshalb greift das Monkeypatching auch im schon laufenden Accept-Thread.
+
+    0,5 s statt noch kleiner: in denselben Tests muss ein *echter*
+    Localhost-Roundtrip zuverlässig hineinpassen (der SHOW-Versuch in
+    `test_silent_connection_does_not_wedge_listener`). Ein Loopback-Roundtrip
+    liegt bei <1 ms, 0,5 s lässt also auch unter CI-Last reichlich Luft."""
+    import src.single_instance as si
+    monkeypatch.setattr(si, "_ACK_TIMEOUT", 0.5)
 
 
 def test_derive_port_deterministic_and_in_range():
@@ -40,19 +68,29 @@ def test_first_acquire_is_primary_second_exits(tmp_path):
 
 
 def test_show_fires_callback_ping_does_not(tmp_path):
+    """SHOW holt das Fenster nach vorn, PING nicht.
+
+    „PING feuert NICHT" wird über eine **Barriere** bewiesen statt über eine
+    Wartezeit: `_accept_loop` behandelt Verbindungen sequenziell (`_handle_conn`
+    läuft inline, nicht in einem Thread), ein danach abgeschicktes SHOW kommt
+    also erst dran, wenn das PING fertig behandelt ist. Lief der Callback bis
+    dahin genau zweimal — die beiden SHOWs —, hat das PING ihn nicht ausgelöst.
+
+    Das ist stärker als das frühere `wait(timeout=…) is False`: keine
+    Timing-Annahme, kein Sleep, und ein verspätet feuerndes PING fällt auf,
+    statt durch ein zu kurzes Fenster zu rutschen."""
     base = str(tmp_path)
     g1 = acquire(base, show_requested=True)
-    fired = threading.Event()
-    g1.serve(lambda: fired.set())
+    calls = []
+    g1.serve(lambda: calls.append(1))
     try:
-        # SHOW → Callback feuert
-        assert acquire(base, show_requested=True) is None
-        assert fired.wait(timeout=3.0) is True
+        assert acquire(base, show_requested=True) is None       # SHOW
+        assert _wait_for_calls(calls, 1) is True
 
-        # PING → Callback feuert NICHT
-        fired.clear()
-        assert acquire(base, show_requested=False) is None
-        assert fired.wait(timeout=1.0) is False
+        assert acquire(base, show_requested=False) is None      # PING
+        assert acquire(base, show_requested=True) is None       # Barriere-SHOW
+        assert _wait_for_calls(calls, 2) is True
+        assert len(calls) == 2       # das PING hat nicht gefeuert
     finally:
         g1.release()
 
@@ -69,7 +107,7 @@ def test_pending_show_before_serve_fires_on_serve(tmp_path):
         g1.release()
 
 
-def test_silent_connection_does_not_wedge_listener(tmp_path):
+def test_silent_connection_does_not_wedge_listener(tmp_path, fast_ack):
     base = str(tmp_path)
     g1 = acquire(base, show_requested=True)
     fired = threading.Event()
@@ -98,7 +136,7 @@ def test_silent_connection_does_not_wedge_listener(tmp_path):
         g1.release()
 
 
-def test_foreign_occupant_yields_degraded_primary(tmp_path):
+def test_foreign_occupant_yields_degraded_primary(tmp_path, fast_ack):
     base = str(tmp_path)
     port = _derive_port(base)
     squatter = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -112,13 +150,13 @@ def test_foreign_occupant_yields_degraded_primary(tmp_path):
         squatter.close()
 
 
-def test_handshake_without_secret_is_rejected(tmp_path):
+def test_handshake_without_secret_is_rejected(tmp_path, fast_ack):
     """N9: Ein Client, der das instance-secret NICHT kennt (nur das Magic
     schickt), darf KEIN ZEIT-OK bekommen und den SHOW-Callback nicht auslösen."""
     base = str(tmp_path)
     g1 = acquire(base, show_requested=True)
-    fired = threading.Event()
-    g1.serve(lambda: fired.set())
+    calls = []
+    g1.serve(lambda: calls.append(1))
     try:
         port = _derive_port(base)
         with socket.create_connection(("127.0.0.1", port), timeout=5.0) as sock:
@@ -129,7 +167,49 @@ def test_handshake_without_secret_is_rejected(tmp_path):
             except socket.timeout:
                 reply = b""
         assert reply != b"ZEIT-OK"
-        assert fired.wait(timeout=1.0) is False
+        # Barriere (wie im PING-Test): ein legitimes SHOW muss danach genau
+        # EINMAL gefeuert haben. Wäre der unauthentifizierte Versuch
+        # durchgekommen, stünde hier 2.
+        assert acquire(base, show_requested=True) is None
+        assert _wait_for_calls(calls, 1) is True
+        assert len(calls) == 1
+    finally:
+        g1.release()
+
+
+def test_handshake_with_wrong_secret_is_rejected(tmp_path, fast_ack):
+    """N9, der eigentliche Kern: ein Client mit FALSCHEM Secret bekommt kein
+    ZEIT-OK und loest den SHOW-Callback nicht aus.
+
+    Abgrenzung zum Test darueber: der schickt nur das Magic (9 Bytes) und
+    landet damit schon im Short-Read-Zweig von `_recv_exactly` (liefert `b""`)
+    — das Magic passt dann nie, die Verbindung wird verworfen, bevor
+    Laengenpruefung oder `hmac.compare_digest` ueberhaupt greifen. Erst volle
+    41 Bytes mit falschem Secret pruefen die Authentifizierung selbst.
+
+    Ohne diesen Fall blieb die `compare_digest`-Zeile ungetestet: per
+    Mutationstest verifiziert — sie durch `if False` zu ersetzen liess die
+    komplette Datei gruen."""
+    base = str(tmp_path)
+    g1 = acquire(base, show_requested=True)
+    calls = []
+    g1.serve(lambda: calls.append(1))
+    try:
+        wrong = b"x" * _SECRET_LEN
+        assert g1.secret is not None and wrong != g1.secret
+        port = _derive_port(base)
+        with socket.create_connection(("127.0.0.1", port), timeout=5.0) as sock:
+            sock.sendall(b"ZEIT-SHOW" + wrong)   # volle Laenge, falsches Secret
+            sock.settimeout(5.0)
+            try:
+                reply = sock.recv(16)
+            except socket.timeout:
+                reply = b""
+        assert reply != b"ZEIT-OK"
+        # Barriere wie oben: ein legitimes SHOW feuert danach genau EINMAL.
+        assert acquire(base, show_requested=True) is None
+        assert _wait_for_calls(calls, 1) is True
+        assert len(calls) == 1
     finally:
         g1.release()
 
