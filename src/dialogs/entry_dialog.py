@@ -2,13 +2,16 @@ import datetime
 import tkinter as tk
 from typing import Callable
 
-from src.category_defaults import resolve_slot_defaults
+from src.dialogs.slot_rows import (
+    NO_CATEGORY_LABEL, OVERRIDE_MARKER, SlotRowList, category_choices,
+    category_from_display, category_to_display, slot_category_display,
+)
 from src.holidays_de import get_holidays
 from src.settings import WEEKDAY_KEYS, parse_reminder_minutes
 from src.theme import (
-    BG, CELL_BG, FONT, FONT_BOLD, FONT_SMALL, PAUSE_VALUES,
+    BG, CELL_BG, FONT, FONT_BOLD, FONT_SMALL,
     STRAY_CLICK_GUARD_S, TEXT, TEXT_MUTED,
-    TIME_VALUES, apply_combobox_style, attach_unfocus_on_click,
+    apply_combobox_style, attach_unfocus_on_click,
     center_dialog_on_parent, create_dialog, dark_combo,
     primary_button, secondary_button,
     set_primary_button_enabled, themed_askyesno, themed_showinfo,
@@ -20,27 +23,17 @@ from src.time_utils import (
 )
 from src.weekly_limit import check_week_limit
 
-# Kategorie am Slot: "" = keine Kategorie. Das Dropdown ist readonly (Anlegen/
-# Bearbeiten von Kategorien läuft über die Einstellungen, nicht per Freitext),
-# darum wird "" als eigener Eintrag "(ohne Kategorie)" gezeigt und beim Speichern
-# wieder auf "" abgebildet. Label konsistent mit report.py/period_picker/share.
-NO_CATEGORY_LABEL = "(ohne Kategorie)"
-
-# Angehängt ans Kategorie-Label, wenn die Slot-Zeiten manuell von den für
-# diese Kategorie hinterlegten Standardzeiten abweichen (z.B. "Office*") —
-# reine Anzeige, s. slot_category_display/category_from_display.
-OVERRIDE_MARKER = "*"
-
-
-def category_choices(categories):
-    """Werte fürs readonly-Kategorie-Dropdown: '(ohne Kategorie)' zuerst, dann
-    die in den Einstellungen gepflegten Kategorien."""
-    return [NO_CATEGORY_LABEL, *categories]
-
-
-def category_to_display(value):
-    """Gespeicherter Kategoriewert ('' = keine) → Dropdown-Anzeige."""
-    return value if value else NO_CATEGORY_LABEL
+# NO_CATEGORY_LABEL/OVERRIDE_MARKER und die category_*-Helfer leben seit R5 in
+# `slot_rows.py` (dort steht die Zeile, die sie anzeigt) und werden hier
+# re-exportiert: sie gehören zur Oberfläche dieses Moduls und werden von
+# `tests/test_entry_dialog.py` sowie unten in `save_all` genutzt.
+__all__ = [
+    "NO_CATEGORY_LABEL", "OVERRIDE_MARKER", "category_choices",
+    "category_from_display", "category_to_display", "slot_category_display",
+    "open_entry_dialog", "plan_entry_save", "reminder_block_visible",
+    "reminder_slot_labels", "apply_reminder_to_slots",
+    "reservation_block_visible", "suggest_ist_category",
+]
 
 
 def suggest_ist_category(reservation_slots):
@@ -52,39 +45,6 @@ def suggest_ist_category(reservation_slots):
     if len(reservation_slots) != 1:
         return ""
     return reservation_slots[0].get("kategorie", "")
-
-
-def category_from_display(display):
-    """Dropdown-Anzeige → gespeicherter Kategoriewert: '(ohne Kategorie)' → '',
-    ein angehängtes Override-Sternchen ('Office*' → 'Office') wird mit
-    gestrippt — es ist reine Anzeige (s. slot_category_display) und darf nie
-    im persistierten Kategoriewert landen."""
-    if display == NO_CATEGORY_LABEL:
-        return ""
-    if display.endswith(OVERRIDE_MARKER):
-        return display[:-len(OVERRIDE_MARKER)]
-    return display
-
-
-def slot_category_display(kategorie, start, end, pause, category_times, weekday_key,
-                          default_start, default_end, default_pause):
-    """Anzeige-Label fürs Kategorie-Dropdown eines Slots: Kategorie-Name, mit
-    angehängtem `OVERRIDE_MARKER`, wenn Start/Ende (und bei Ist-Zeit-Slots
-    auch Pause) manuell von den für diese Kategorie hinterlegten Standard-
-    zeiten abweichen. `pause=None` für Reservierungs-Slots (keine Pause-
-    Komponente dort) — dann zählt nur Start/Ende für den Abgleich. Reine
-    Anzeige: der persistierte Kategoriewert bleibt der Klarname, ohne
-    Sternchen (s. category_from_display). Tk-frei, daher ohne UI testbar."""
-    if not kategorie:
-        return NO_CATEGORY_LABEL
-    t_start, t_end, t_pause = resolve_slot_defaults(
-        category_times, kategorie, weekday_key,
-        default_start, default_end, default_pause,
-    )
-    overridden = start != t_start or end != t_end
-    if pause is not None:
-        overridden = overridden or str(pause) != str(t_pause)
-    return kategorie + OVERRIDE_MARKER if overridden else kategorie
 
 
 def plan_entry_save(ist_slots, res_slots, show_reservation):
@@ -243,7 +203,6 @@ def open_entry_dialog(parent, date_str, storage, settings, on_change,
     tk.Label(outer, text="Arbeitszeit", font=FONT_BOLD, bg=BG, fg=TEXT).pack(anchor="w")
     ist_rows_frame = tk.Frame(outer, bg=BG)
     ist_rows_frame.pack(fill="x")
-    ist_rows = []  # Liste von {frame, start, end, pause, kategorie}
     res_rows = []  # Liste von {frame, start, end, kategorie}; bleibt leer ohne Reservierungs-Block
 
     # Late-bound: der Erinnerungs-Block wird erst nach den Reservierungs-Zeilen
@@ -276,91 +235,20 @@ def open_entry_dialog(parent, date_str, storage, settings, on_change,
             save_locked["value"] = False
             refresh_save_state()
 
+    ist_list = SlotRowList(
+        ist_rows_frame, with_pause=True, categories=categories,
+        category_times=category_times, weekday_key=weekday_key,
+        default_start=default_start, default_end=default_end,
+        default_pause=default_pause,
+        on_rows_changed=refresh_save_state,
+    )
+    ist_rows = ist_list.rows  # Liste von {frame, start, end, pause, kategorie}
+
     def add_ist_row(start, end, pause, kategorie, removable=True, parent=None):
         # parent nur für die Breiten-Probe unten (ungepackter Holder) — sonst
         # landet die Zeile im sichtbaren Ist-Zeit-Block.
-        row = tk.Frame(parent if parent is not None else ist_rows_frame, bg=BG)
-        row.pack(fill="x", pady=2)
-        sv = tk.StringVar(value=start)
-        ev = tk.StringVar(value=end)
-        pv = tk.StringVar(value=str(pause))
-        kv = tk.StringVar(value=category_to_display(kategorie))
-        # Basis = die Werte, mit denen die Zeile angelegt wurde. Wählt man für
-        # eine NEUE Zeile eine Kategorie, überschreibt das ein Feld NUR, solange
-        # es noch der Basis entspricht (= nicht manuell geändert), und zieht die
-        # Basis nach.
-        base = {"start": start, "end": end, "pause": str(pause)}
-        dark_combo(row, sv, TIME_VALUES, width=6).pack(side=tk.LEFT, padx=2)
-        tk.Label(row, text="–", font=FONT, bg=BG, fg=TEXT_MUTED).pack(side=tk.LEFT)
-        dark_combo(row, ev, TIME_VALUES, width=6).pack(side=tk.LEFT, padx=2)
-        dark_combo(row, pv, PAUSE_VALUES, width=4).pack(side=tk.LEFT, padx=2)
-        cat_combo = dark_combo(row, kv, category_choices(categories), width=18)
-        cat_combo.pack(side=tk.LEFT, padx=2)
-        record = {"frame": row, "start": sv, "end": ev, "pause": pv, "kategorie": kv}
-
-        # Manuelles Anpassen der Zeit ändert NIE die zugeordnete Kategorie —
-        # nur das Anzeige-Label bekommt dann ein Override-Sternchen ("Office*",
-        # s. slot_category_display); rein optisch, kv bleibt die einzige
-        # Quelle für den beim Speichern persistierten Kategoriewert.
-        def refresh_cat_display(*_a):
-            kategorie = category_from_display(kv.get())
-            display = slot_category_display(
-                kategorie, sv.get(), ev.get(), pv.get(), category_times,
-                weekday_key, default_start, default_end, default_pause,
-            )
-            if kv.get() != display:
-                kv.set(display)
-
-        sv.trace_add("write", refresh_cat_display)
-        ev.trace_add("write", refresh_cat_display)
-        pv.trace_add("write", refresh_cat_display)
-
-        def on_cat_change(*_a):
-            t_start, t_end, t_pause = resolve_slot_defaults(
-                category_times, category_from_display(kv.get()), weekday_key,
-                default_start, default_end, default_pause,
-            )
-            t_pause = str(t_pause)
-            if sv.get() == base["start"]:
-                sv.set(t_start)
-                base["start"] = t_start
-            if ev.get() == base["end"]:
-                ev.set(t_end)
-                base["end"] = t_end
-            if pv.get() == base["pause"]:
-                pv.set(t_pause)
-                base["pause"] = t_pause
-
-        # Marker-Anzeige bei jeder Kategorie-Wahl neu berechnen (alle Zeilen);
-        # Standardzeiten der Kategorie ziehen nur bei NEUEN (entfernbaren)
-        # Zeilen und nur bei echter Auswahl aus der Vorschlagsliste
-        # (<<ComboboxSelected>>) — nicht pro Tastendruck (Freitext würde sonst
-        # auf globale Defaults zurücksetzen) und nicht für bereits gespeicherte
-        # Slots (deren Zeiten sind bewusst gesetzt und bleiben unangetastet).
-        cat_combo.bind("<<ComboboxSelected>>", refresh_cat_display, add="+")
-        if removable:
-            cat_combo.bind("<<ComboboxSelected>>", on_cat_change, add="+")
-        refresh_cat_display()  # initialer Marker-Zustand beim Dialog-Öffnen
-
-        def remove():
-            row.destroy()
-            ist_rows.remove(record)
-            # Ein leeres Tk-Frame behält sonst die Höhe seiner letzten Zeile als
-            # Lücke — beim Entfernen der letzten Zeile explizit kollabieren,
-            # damit der Dialog passend schrumpft (pack_propagate baut die Höhe
-            # beim nächsten "+ Slot" wieder auf).
-            if not ist_rows:
-                ist_rows_frame.configure(height=1)
-            refresh_save_state()
-
-        # Bereits gespeicherte Slots tragen kein ×: Löschen läuft ausschließlich
-        # über den Rechtsklick im Kalender (Design-Entscheidung — der Dialog
-        # speichert nur). Das × erscheint nur an neu hinzugefügten, noch nicht
-        # persistierten Zeilen.
-        if removable:
-            secondary_button(row, "×", remove, padx=8, pady=0).pack(side=tk.LEFT, padx=2)
-        ist_rows.append(record)
-        refresh_save_state()
+        ist_list.add(start, end, kategorie, pause=pause,
+                     removable=removable, parent=parent)
 
     # Vorbelegung: vorhandene Ist-Slots → bestehende Reservierung (erste Slot-
     # Zeit). Gibt es weder Ist-Zeit noch Reservierung, bleibt der Block leer —
@@ -392,79 +280,30 @@ def open_entry_dialog(parent, date_str, storage, settings, on_change,
         res_rows_frame = tk.Frame(outer, bg=BG)
         res_rows_frame.pack(fill="x")
 
-        def add_res_row(start, end, kategorie, removable=True,
-                        send_reminder_minutes=None):
-            row = tk.Frame(res_rows_frame, bg=BG)
-            row.pack(fill="x", pady=2)
-            sv = tk.StringVar(value=start)
-            ev = tk.StringVar(value=end)
-            kv = tk.StringVar(value=category_to_display(kategorie))
-            base = {"start": start, "end": end}
-            dark_combo(row, sv, TIME_VALUES, width=6).pack(side=tk.LEFT, padx=2)
-            tk.Label(row, text="–", font=FONT, bg=BG, fg=TEXT_MUTED).pack(side=tk.LEFT)
-            dark_combo(row, ev, TIME_VALUES, width=6).pack(side=tk.LEFT, padx=2)
-            cat_combo = dark_combo(row, kv, category_choices(categories), width=18)
-            cat_combo.pack(side=tk.LEFT, padx=2)
-            record = {"frame": row, "start": sv, "end": ev, "kategorie": kv,
-                      # Nicht editierbar in der Zeile — nur mitgeführt, damit
-                      # ein bestehender Marker das Speichern überlebt, auch
-                      # wenn der Erinnerungs-Block gar nicht sichtbar ist.
-                      "send_reminder_minutes": send_reminder_minutes}
-
-            # Manuelles Anpassen der Zeit ändert nie die Kategorie — nur das
-            # Anzeige-Label bekommt ein Override-Sternchen (s. add_ist_row).
-            def refresh_cat_display(*_a):
-                kategorie = category_from_display(kv.get())
-                display = slot_category_display(
-                    kategorie, sv.get(), ev.get(), None, category_times,
-                    weekday_key, default_start, default_end, default_pause,
-                )
-                if kv.get() != display:
-                    kv.set(display)
-
-            sv.trace_add("write", refresh_cat_display)
-            ev.trace_add("write", refresh_cat_display)
-            sv.trace_add("write", _reminder_changed)
-            ev.trace_add("write", _reminder_changed)
-
-            def on_cat_change(*_a):
-                # Reservierungen haben keine Pause → nur Start/Ende anwenden.
-                t_start, t_end, _ = resolve_slot_defaults(
-                    category_times, category_from_display(kv.get()), weekday_key,
-                    default_start, default_end, default_pause,
-                )
-                if sv.get() == base["start"]:
-                    sv.set(t_start)
-                    base["start"] = t_start
-                if ev.get() == base["end"]:
-                    ev.set(t_end)
-                    base["end"] = t_end
-
-            # Marker-Anzeige bei jeder Kategorie-Wahl neu berechnen (alle
-            # Zeilen); Standardzeiten ziehen nur bei neuen Zeilen + echter
-            # Auswahl (siehe add_ist_row).
-            cat_combo.bind("<<ComboboxSelected>>", refresh_cat_display, add="+")
-            if removable:
-                cat_combo.bind("<<ComboboxSelected>>", on_cat_change, add="+")
-            refresh_cat_display()  # initialer Marker-Zustand beim Dialog-Öffnen
-            cat_combo.bind("<<ComboboxSelected>>", _reminder_changed, add="+")
-
-            def remove():
-                row.destroy()
-                res_rows.remove(record)
-                if not res_rows:
-                    res_rows_frame.configure(height=1)
-                refresh_save_state()
-                _reminder_changed()
-
-            # Gespeicherte Reservierungs-Slots tragen kein × (Löschen per
-            # Rechtsklick im Kalender); nur neue, ungespeicherte Zeilen.
-            if removable:
-                secondary_button(row, "×", remove, padx=8, pady=0).pack(
-                    side=tk.LEFT, padx=2)
-            res_rows.append(record)
+        # Jede Zeilenänderung im Reservierungs-Block betrifft auch den
+        # Erinnerungs-Block darunter (Slot-Auswahl/Labels), nicht nur den
+        # Speichern-Button.
+        def _res_rows_changed():
             refresh_save_state()
             _reminder_changed()
+
+        res_list = SlotRowList(
+            res_rows_frame, with_pause=False, categories=categories,
+            category_times=category_times, weekday_key=weekday_key,
+            default_start=default_start, default_end=default_end,
+            default_pause=default_pause,
+            on_rows_changed=_res_rows_changed,
+            on_value_changed=_reminder_changed,
+        )
+        res_rows = res_list.rows  # ersetzt die leere Liste von oben
+
+        def add_res_row(start, end, kategorie, removable=True,
+                        send_reminder_minutes=None):
+            # send_reminder_minutes ist in der Zeile nicht editierbar — nur
+            # mitgeführt, damit ein bestehender Marker das Speichern überlebt,
+            # auch wenn der Erinnerungs-Block gar nicht sichtbar ist.
+            res_list.add(start, end, kategorie, removable=removable,
+                         extra={"send_reminder_minutes": send_reminder_minutes})
 
         # Bestehende Reservierung → Zeilen. Sonst leer: nur der „+ Slot"-Button
         # (an der Stelle, wo sonst die Default-Zeile stünde), keine Vorbelegung.

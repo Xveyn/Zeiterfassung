@@ -391,7 +391,11 @@ ein Snapshot vom Tray-Start.
 ## Dialoge (`src/dialogs/`)
 
 Modale Tk-Dialoge, von `App` geroutet (Klick-Modell: Linksklick = bearbeiten, Rechtsklick =
-löschen — siehe Root-`CLAUDE.md`): `entry_dialog` (Tages-Dialog, rein zum Speichern),
+löschen — siehe Root-`CLAUDE.md`): `entry_dialog` (Tages-Dialog, rein zum Speichern;
+die Slot-Zeilen beider Blöcke baut seit R5 `slot_rows.SlotRowList` — Ist-Zeit mit,
+Reservierung ohne Pause-Spalte, `on_value_changed` hängt den Erinnerungs-Block an
+Zeit-/Kategorieänderungen. Dort liegen auch die Tk-freien Anzeige-Helfer
+`category_*`/`slot_category_display`, die `entry_dialog` re-exportiert),
 `send_dialog`, `export_dialog` (Zeitraum-Modal → PDF lokal speichern),
 `webhook_dialog` (Anlegen/Bearbeiten eines Webhooks inkl. Testversand; Validierung
 über `webhook_store.validate_record`, Versand über `webhook.deliver`, beide Tk-frei),
