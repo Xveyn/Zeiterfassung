@@ -87,7 +87,7 @@ Drive-Sync: manueller Sync, Tray-Sync, Pull-Callbacks, Status-Label, Quit-Push, 
 Aufbereitung (`_classify_sync_error`/`_friendly_sync_message`/`_show_sync_error` — auch von
 Tests genutzt). Reine Formatier-Helfer `_status_text`/`_tray_toast` sind ohne Tk testbar.
 - Header-Widgets per `attach_widgets(...)`; Tray **lazy** über `get_tray=lambda: App._tray`
-  (einzige Quelle bleibt `App._tray`); `_run_push_blocking` lazy aus `src.main`.
+  (einzige Quelle bleibt `App._tray`); `run_push_blocking` lazy aus `src.main`.
 - `App.on_sync_pull_success`/`on_sync_pull_error` bleiben als dünne Delegatoren (Public-API
   für `main.py`). `tray.stop()`/`root.destroy()` bleiben in `App._quit_with_sync_push`.
 
@@ -127,7 +127,7 @@ einzelnen Kanäle, `webhook.deliver` eingeschlossen).
 (`storage`/`settings`/`conflicts_store`/`reservations`) teilen sich einen in
 `main()` erzeugten `RLock` (Konstruktor-Param `lock=`; ohne Injektion legt
 jeder Store einen eigenen an — Tests bleiben unverändert). Die Sync-Flows
-(`_run_pull_in_background`/`_run_push_blocking`/`_run_compaction_blocking`/
+(`_run_pull_in_background`/`run_push_blocking`/`_run_compaction_blocking`/
 `reconcile_reservations`) klammern Snapshot→Merge→Apply mit diesem `data_lock`
 — **nie über Netzwerk-Calls**. Ein separater plain `threading.Lock`
 (`sync_guard`) serialisiert alle Drive-Sync-Einstiege (Startup-Pull, Manual-,
@@ -138,6 +138,15 @@ nach der letzten Store-Mutation) — nie in UI-Callbacks, nie beim Join-Timeout;
 er MUSS plain `Lock` bleiben (cross-thread release). Neue Sync-Einstiege
 müssen beide Locks respektieren. Design:
 `docs/superpowers/specs/2026-07-04-datenschicht-threadsicherheit-design.md`.
+
+Dass der `data_lock` nicht über die Netzwerk-Calls reicht, lässt im Push ein
+TOCTOU-Fenster zwischen `drive.download` und `drive.upload` offen: ein zweites
+Gerät kann dazwischen hochladen, unser Upload überschreibt dessen Stand. Das
+ist ein **bewusst akzeptierter Trade-off** (Audit M2, Xveyn/Zeiterfassung#46),
+kein offener Punkt — File-level Optimistic Locking, ein `version`-basiertes
+Retry-on-conflict und Drive Content Restrictions sind geprüft und verworfen.
+Begründung und die Grenze der LWW-Heilung stehen im Docstring von
+`drive.py::upload`; wer das Fenster erneut angehen will, fängt dort an.
 
 ## Daten- & Persistenz-Schicht
 
