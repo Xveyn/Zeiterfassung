@@ -3,11 +3,70 @@ name: Tests
 on: [push, pull_request]
 
 jobs:
+  changes:
+    # Ermittelt, ob dieser Lauf überhaupt Code betrifft. Ein PR, der nur
+    # Dokumentation anfasst, soll die Test-Matrix nicht durchlaufen müssen.
+    #
+    # WICHTIG — warum KEIN `paths-ignore` am Trigger: ein Workflow, der wegen
+    # Path-Filtern gar nicht erst startet, meldet seine Check-Contexts NIE.
+    # Stehen sie als Required Checks in der Branch Protection, wartet GitHub
+    # ewig darauf und der PR bleibt dauerhaft „blocked" — dieselbe Falle wie
+    # beim `test`-Sammel-Gate unten, nur aus der anderen Richtung. Ein per
+    # `if:` ÜBERSPRUNGENER Job meldet dagegen das Ergebnis „skipped", und das
+    # gilt der Branch Protection als erfüllt. Deshalb läuft der Workflow
+    # immer, und die Jobs schalten sich selbst ab.
+    #
+    # Dieser Job gehört deshalb SELBST in die Required Checks: fällt er aus,
+    # werden alle abhängigen Jobs übersprungen — und „übersprungen" gilt als
+    # erfüllt. Ohne ihn als Gate wäre ein PR dann grün, ohne dass je ein Test
+    # gelaufen ist.
+    runs-on: ubuntu-latest
+    outputs:
+      code: ${{ steps.detect.outputs.code }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          # Für den Diff gegen den Base-Branch. Das Repo ist klein, die
+          # vollständige Historie kostet hier nichts.
+          fetch-depth: 0
+      - id: detect
+        name: Betrifft die Änderung Code?
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          # Fail-safe by construction: `true` ist die Vorgabe, `false` wird
+          # NUR gesetzt, wenn das Diff sauber ermittelt wurde UND
+          # ausschließlich Doku-Pfade enthält. Jeder Sonderfall (Push statt
+          # PR, fehlender Base-Ref, git-Problem, leeres Diff) endet damit im
+          # vollen Testlauf, nie im stillen Überspringen.
+          code=true
+          if [ "$EVENT" = "pull_request" ] && [ -n "$BASE_REF" ]; then
+            if files=$(git diff --name-only "origin/$BASE_REF...HEAD") && [ -n "$files" ]; then
+              echo "Geänderte Dateien:"
+              echo "$files" | sed 's/^/  /'
+              # Alles, was NICHT auf ein Doku-Muster passt, ist Code.
+              # `.github/` ist bewusst Code: eine Workflow-Änderung muss sich
+              # selbst testen.
+              if ! echo "$files" | grep -qvE '(^|/)[^/]+\.md$|^docs/|^\.superpowers/|^LICENSE$'; then
+                code=false
+              fi
+            fi
+          fi
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          if [ "$code" = "true" ]; then
+            echo "→ Code betroffen: Tests laufen."
+          else
+            echo "→ Nur Dokumentation: Test-Jobs werden übersprungen."
+          fi
+
   test-matrix:
     # Audit N25: über alle unterstützten Python-Versionen testen (README: 3.10+),
     # nicht nur 3.10. fail-fast=false, damit ein Ausreißer die anderen nicht
     # abbricht. macOS/Windows verifizieren die Plattform (unten, je 3.10) —
     # hier geht es um die Sprachversion.
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -41,12 +100,19 @@ jobs:
     # Änderungen an Achsen oder Python-Versionen ändern den Required-Check-
     # Namen damit nicht mehr.
     #
-    # `if: always()` ist Pflicht — ohne das würde der Job bei roter Matrix
+    # `always()` ist Pflicht — ohne das würde der Job bei roter Matrix
     # übersprungen statt zu scheitern, und ein übersprungener Required Check
     # gilt GitHub als erfüllt. Deshalb wird `result` explizit geprüft, statt
     # sich auf das implizite needs-Verhalten zu verlassen.
-    needs: test-matrix
-    if: always()
+    #
+    # Der Zusatz `needs.changes.outputs.code == 'true'` ist die EINZIGE
+    # Ausnahme davon: bei einem Doku-only-PR soll dieser Job bewusst
+    # übersprungen werden und damit als erfüllt gelten. Fällt der
+    # `changes`-Job aus, ist der Output leer, die Bedingung also falsch und
+    # der Job wird ebenfalls übersprungen — genau deshalb steht `changes`
+    # selbst mit in den Required Checks.
+    needs: [changes, test-matrix]
+    if: always() && needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Matrix-Ergebnis prüfen
@@ -58,6 +124,8 @@ jobs:
     # Coverage-Report (Audit N24) — reines Reporting, KEIN fail_under-Gate
     # (Config in pyproject.toml, [tool.coverage]). Ein Lauf auf ubuntu/3.10
     # reicht; die Zahlen sind plattformunabhängig.
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -70,6 +138,8 @@ jobs:
       - run: pytest --cov=src --cov-report=term-missing tests/
 
   test-macos:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v6
@@ -82,6 +152,8 @@ jobs:
       - run: pytest tests/
 
   test-windows:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v6
@@ -94,6 +166,8 @@ jobs:
       - run: pytest tests/
 
   lint:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -106,6 +180,8 @@ jobs:
       - run: ruff check .
 
   typecheck:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
