@@ -84,7 +84,7 @@ Multi-Device-Fälle bleibt unangetastet.
 
 ## Windows: kurzes Aufblitzen der hellen Titelleiste beim Öffnen von Dialogen
 
-`apply_dark_titlebar`/`disable_min_max` (`src/theme.py`) sind bewusst per
+`apply_dark_titlebar`/`disable_min_max` (`src/theme/chrome.py`) sind bewusst per
 `window.after(100, …)` verzögert — frühere Tk-eigene Fenster-Property-Calls
 würden das DWM-Farb-Attribut sonst clobbern. In diesem ~100ms-Fenster rendert
 Windows die Titelleiste kurz im hellen Standard-Stil, bevor sie umgefärbt

@@ -296,7 +296,17 @@ muss sie deterministisch **und** über alle Geräte gleich halten.
 ## Berichte & Plattform/Infra
 
 - `report.py` — HTML-Mail + PDF (xhtml2pdf **lazy**), gruppiert pro ISO-KW.
-- `theme.py`/`tooltip.py` — UI-Hilfen (Farben/Fonts/themed Dialoge, `_hover`-Overlays).
+- `theme/` — Dark-Theme als Paket (R3, vorher eine 1075-Zeilen-Datei): `palette`
+  (Konstanten, hängt an nichts) → `fonts` (benannte Tk-Fonts, `init_fonts`/`scaled_size`)
+  → `widgets` (Widget-Fabriken, ttk-Styles); daneben `geometry`
+  (`center_dialog_on_parent` + die Tk-freien Prädikate `_stray_click_suppressed`/
+  `_should_show_delete_button`), `chrome` (Win32-Fensterchrome, `create_dialog`) und
+  `messagebox` (themed Drop-ins, nutzt chrome/widgets/geometry). Die Schichtung ist
+  zyklenfrei und in genau dieser Reihenfolge importierbar.
+  **Importiert wird weiterhin `from src.theme import …`**, nicht aus den Teilmodulen —
+  `__init__.py` re-exportiert die Oberfläche. Wer etwas ergänzt, legt es ins passende
+  Teilmodul und trägt es dort nach.
+- `tooltip.py` — UI-Hilfe (`_hover`-Overlays).
 - `time_utils.py` — Stunden, KW-Labels, `format_iso_date`/`format_iso_datetime`.
 - `holidays_de.py`, `paths.py` (`get_base_path` Frozen-vs-Repo), `updater.py`
   (GitHub-Releases, stdlib-only, Frequenz über `update_check_frequency`, Pre-Release-Opt-in über `prerelease_updates_enabled`), `changelog.py`
