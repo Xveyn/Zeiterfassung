@@ -152,6 +152,20 @@ Begründung und die Grenze der LWW-Heilung stehen im Docstring von
 
 ## Daten- & Persistenz-Schicht
 
+- `json_store.py` — **die gemeinsame Mechanik, und der einzige Ort für zwei Regeln** (R2):
+  `atomic_write_json(path, obj)` (Temp → `flush`+`fsync` → `os.replace`, Temp-Cleanup und
+  `OSError` weiterreichen, wenn das Rename scheitert = **N1**) und
+  `load_json_or_quarantine(path)` → Objekt oder `None`, wobei eine unparsebare Datei nach
+  `<name>.corrupt-<stamp>` verschoben und geloggt wird (**N4**). Genutzt von `storage`,
+  `reservations`, `conflicts_store` (beide Helfer) und `settings` (nur der Schreib-Helfer).
+  Wer einen neuen JSON-Store baut, nimmt diese beiden Funktionen — nicht die Mechanik
+  erneut abschreiben.
+  **Bewusst eigen geblieben:** `settings._quarantine_corrupt` und
+  `webhook_store._quarantine` (beide greifen auch bei nicht-Dict-Toplevel, tragen einen
+  Grund in der Meldung und **schlucken** einen gescheiterten Rename, damit der Start
+  weiterläuft); `sync_journal._atomic_write_json` (schreibt über `tempfile.mkstemp` und ist
+  die Crash-Recovery-Schicht selbst); die Secret-Schreiber `webhook_store`/`oauth_utils`/
+  `single_instance` (brauchen zusätzlich ACL-Härtung + Rename-Retry, s. `secure_file.py`).
 - `storage.py` — Ist-Zeiten (JSON, Schlüssel = ISO-Datum). `reservations.py` — Reservierungen
   (zukünftige Soll-Zeiten, eigenes Konzept). `settings.py` — Einstellungen mit Defaults.
 - `conflicts_store.py` — lokale Sync-Konfliktliste. `category_defaults.py` — Default-Kategorien.
