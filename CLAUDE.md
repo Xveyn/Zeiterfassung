@@ -99,6 +99,28 @@ Alternative: `src/version.py` auf die nächste Patch-Version bumpen und einen ne
 
 `master` ist protected: direkte Pushes erfordern Admin-Bypass. Im Normalfall über PR arbeiten. Für Notfall-Fixes am CI kann der Repo-Owner direkt pushen.
 
+Durchgesetzt wird das über das **Ruleset „Protect master"**, nicht über die
+klassische Branch Protection — die ist bewusst entfernt, damit es nur **eine**
+Stelle gibt. Wer den Schutz prüfen will, schaut also unter Settings → Rules,
+nicht unter Settings → Branches; die REST-Route
+`branches/master/protection` liefert entsprechend `404 Branch not protected`,
+obwohl der Branch geschützt ist. Was tatsächlich greift, zeigt
+`gh api repos/Xveyn/Zeiterfassung/rules/branches/master`.
+
+Das Ruleset erzwingt: kein Löschen, kein Force-Push, PR-Pflicht (0 Reviews —
+ein Solo-Maintainer kann den eigenen PR nicht approven) und diese Required
+Checks:
+
+    changes, test, lint, typecheck, test-macos, test-windows
+
+**Keine `test-matrix (…)`-Contexts in die Liste aufnehmen.** Sie standen dort
+bis 2026-08-28 und sind genau die Falle, gegen die der `test`-Sammel-Job
+existiert (siehe Tests/CI): ein Matrix-Job meldet seine Contexts nur mit
+Suffix, und der Suffix hängt an der Matrix. Wer Python 3.10 herausnimmt oder
+3.14 ergänzt, hinterlässt einen Required Check, der nie wieder gemeldet wird —
+und blockiert damit **jeden** PR dauerhaft. `test` deckt die ganze Matrix ab
+und ist gegen solche Änderungen stabil.
+
 ## Plattformspezifische PRs — Pre-Release vorschlagen
 
 Entwickelt wird primär unter Windows; macOS und Linux (inkl. Desktop-Umgebungs-
