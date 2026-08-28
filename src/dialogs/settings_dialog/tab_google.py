@@ -11,6 +11,7 @@ from tkinter import messagebox
 from src.dialogs.settings_dialog._shared import label, subheader
 from src.dialogs.settings_dialog.oauth_task import build_oauth_enable_task
 from src.platform_open import open_folder
+from src.sync_runtime import run_compaction_blocking
 from src.theme import (
     ACCENT, BG, CELL_BG, FONT, FONT_SMALL, STATUS_OK, TEXT, TEXT_MUTED,
     dark_combo, secondary_button, themed_askyesno, themed_showerror,
@@ -421,8 +422,7 @@ class GoogleTab:
                         )
 
                 def _fn():
-                    from src.main import _run_compaction_blocking
-                    return _run_compaction_blocking(
+                    return run_compaction_blocking(
                         storage, settings, conflicts_store, base_path,
                         data_lock=data_lock, sync_guard=sync_guard)
 

@@ -8,7 +8,8 @@ import sys
 import pytest
 
 from src import main as main_module
-from src.main import _ensure_device_id, _hold_app_mutex, run_calendar_reconcile
+from src.main import _ensure_device_id, _hold_app_mutex
+from src.sync_runtime import run_calendar_reconcile
 from src.reservations import ReservationStore
 from src.settings import Settings
 from src.storage import Storage

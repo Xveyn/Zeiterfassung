@@ -1,10 +1,10 @@
 """Hintergrund-Tasks der App (Token-Refresh, Sender-Email, Update-Check,
 Kalender-Reconcile) und die gemeinsame Thread-Mechanik.
 
-Tk-frei und ohne Google-Imports auf Modulebene: `run_calendar_reconcile`
-wird lazy in der Methode importiert (Circular-Import-Schutz — src.main zieht
-App aus src.ui). UI-Arbeit (Dialoge, Banner, Refresh) macht die Klasse nicht
-selbst, sondern liefert Ergebnisse ueber `marshal` an Callbacks der App.
+Tk-frei und ohne Google-Imports auf Modulebene: `run_calendar_reconcile` kommt
+aus `src.sync_runtime`, das seine Google-Wrapper selbst lazy zieht. UI-Arbeit
+(Dialoge, Banner, Refresh) macht die Klasse nicht selbst, sondern liefert
+Ergebnisse ueber `marshal` an Callbacks der App.
 """
 
 import logging
@@ -13,6 +13,7 @@ import threading
 import traceback
 
 from src.mail import fetch_user_email, refresh_token_if_needed, TokenAuthError, TokenNetworkError
+from src.sync_runtime import run_calendar_reconcile
 from src.updater import REPO, check_for_update, is_newer, should_check
 from src.version import installed_release_id
 
@@ -148,7 +149,6 @@ class BackgroundTaskRunner:
             return
 
         def fn():
-            from src.main import run_calendar_reconcile  # lazy: Circular-Import-Schutz
             return run_calendar_reconcile(
                 self._reservation_store, self._settings, self._base_path,
                 self._storage, data_lock=self._data_lock)
@@ -167,7 +167,6 @@ class BackgroundTaskRunner:
             return
 
         def fn():
-            from src.main import run_calendar_reconcile  # lazy: Circular-Import-Schutz
             return run_calendar_reconcile(
                 self._reservation_store, self._settings, self._base_path,
                 self._storage, data_lock=self._data_lock)

@@ -1,4 +1,4 @@
-from src.main import relaunch_command
+from src.paths import relaunch_command
 
 
 def test_relaunch_command_frozen_uses_executable_directly():

@@ -186,7 +186,7 @@ def test_fetch_sender_email_noop_without_token(tmp_path):
 
 
 def test_reconcile_on_start_passes_storage_and_result_to_on_ok(monkeypatch):
-    import src.main as main_module
+    import src.background_tasks as bt_module
 
     captured = {}
 
@@ -194,7 +194,7 @@ def test_reconcile_on_start_passes_storage_and_result_to_on_ok(monkeypatch):
         captured["storage"] = storage
         return {"ok": True, "error": "", "tb": "", "limit_warnings": ["w"]}
 
-    monkeypatch.setattr(main_module, "run_calendar_reconcile", fake_reconcile)
+    monkeypatch.setattr(bt_module, "run_calendar_reconcile", fake_reconcile)
 
     received = {}
     sentinel_storage = object()
@@ -208,7 +208,7 @@ def test_reconcile_on_start_passes_storage_and_result_to_on_ok(monkeypatch):
 
 
 def test_trigger_reconcile_passes_storage_through(monkeypatch):
-    import src.main as main_module
+    import src.background_tasks as bt_module
 
     captured = {}
 
@@ -216,7 +216,7 @@ def test_trigger_reconcile_passes_storage_through(monkeypatch):
         captured["storage"] = storage
         return {"ok": True, "error": "", "tb": "", "limit_warnings": []}
 
-    monkeypatch.setattr(main_module, "run_calendar_reconcile", fake_reconcile)
+    monkeypatch.setattr(bt_module, "run_calendar_reconcile", fake_reconcile)
 
     done = threading.Event()
     sentinel_storage = object()

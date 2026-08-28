@@ -13,8 +13,9 @@ UTF-8-Mail-Pipeline, Lazy-Google-Imports für CI) — die gelten hier weiter und
 ## Schichten-Überblick
 
 ```
-main.py  ── Einstiegspunkt: Tk-Root + Storage/Settings/App, --minimized, Sync-Pull-Thread
-   │
+main.py  ── Einstiegspunkt (nur Bootstrap): Tk-Root + Storage/Settings/App,
+   │         --minimized, startet den Sync-Pull-Thread
+   │            └─ sync_runtime.py — Pull/Push/Kompaktierung/Reconcile (die Flows selbst)
    ▼
 ui.py::App  ── schlanker KOORDINATOR (kein God-Object mehr)
    ├─ besitzt: Datum/View-State (year/month/view_mode/iso_year/current_week),
@@ -87,7 +88,8 @@ Drive-Sync: manueller Sync, Tray-Sync, Pull-Callbacks, Status-Label, Quit-Push, 
 Aufbereitung (`_classify_sync_error`/`_friendly_sync_message`/`_show_sync_error` — auch von
 Tests genutzt). Reine Formatier-Helfer `_status_text`/`_tray_toast` sind ohne Tk testbar.
 - Header-Widgets per `attach_widgets(...)`; Tray **lazy** über `get_tray=lambda: App._tray`
-  (einzige Quelle bleibt `App._tray`); `run_push_blocking` lazy aus `src.main`.
+  (einzige Quelle bleibt `App._tray`); `run_push_blocking` kommt aus `src.sync_runtime`
+  (seit R1 ein normaler Top-Level-Import — vorher lazy aus `src.main`).
 - `App.on_sync_pull_success`/`on_sync_pull_error` bleiben als dünne Delegatoren (Public-API
   für `main.py`). `tray.stop()`/`root.destroy()` bleiben in `App._quit_with_sync_push`.
 
@@ -170,7 +172,7 @@ Begründung und die Grenze der LWW-Heilung stehen im Docstring von
   (beide Single Source of Truth, nicht hier neu definieren). `validate_remote_doc`
   prüft ein migriertes Remote-Doc auf die Merge-Invarianten (Pflichtfelder,
   `modified_at`-Typ), bevor ein `KeyError`/`ValueError` mitten im Merge landet
-  (Audit M5) — die Sync-Flows in `main.py` behandeln ein invalides Doc wie
+  (Audit M5) — die Sync-Flows in `sync_runtime.py` behandeln ein invalides Doc wie
   korruptes JSON (quarantänen/leer weitermergen).
 
   **Tombstone-Lebenszyklus (Audit N6).** Ein Tombstone (`deleted: True`) hat
@@ -205,6 +207,15 @@ Begründung und die Grenze der LWW-Heilung stehen im Docstring von
   gesetzt, wo `last_pull_at`/`last_calendar_sync_at` gesetzt werden, und ist
   fail-safe (unlesbar → als gesetzt behandeln). Ein neuer Sync/Reconcile-Pfad
   muss ihn mitsetzen.
+- `sync_runtime.py` — die **Flows** über `sync.py` (die Engine): `run_pull_in_background`
+  (Thread + `ui_callback`), `run_push_blocking`, `run_compaction_blocking` und
+  `run_calendar_reconcile`, dazu die Helfer `_parse_remote_or_quarantine`/`_lock_ctx`.
+  Bis R1 (#49/#51) lagen sie in `main.py` — vier Module importierten deshalb lazy
+  zurück nach `src.main` („Circular-Import-Schutz"). Jetzt normale Top-Level-Importe;
+  `main.py` ist wieder reiner Bootstrap. Die Google-Wrapper zieht das Modul **lazy in
+  den Funktionen** (CI ohne `requirements.txt`), die Lock-Invarianten H1/H2 stehen in
+  den jeweiligen Docstrings. Aufrufer: `main.py` (Startup-Pull), `sync_orchestrator.py`
+  (Push), `background_tasks.py` (Reconcile), `tab_google.py` (Kompaktierung).
 - `sync_history.py` — persistenter „hat je gesynct/abgeglichen"-Marker
   (`sync_history.json`, write-once, Tk-frei, fail-safe). Vetoed den
   N6-Startup-Sweep, damit ein settings.json-Reset (M4) einen gesyncten Rechner
@@ -213,7 +224,7 @@ Begründung und die Grenze der LWW-Heilung stehen im Docstring von
   vier Store-Writes sind einzeln atomar, die Sequenz nicht. `apply_merged_doc_journaled`
   schreibt den `merged_doc` erst durable (`fsync`) in ein Write-Ahead-Journal
   (`sync-apply.journal` im Base-Dir), dann die Stores, dann löscht es das Journal.
-  `main.py` ruft die drei Sync-Apply-Stellen (Pull/Push/Kompaktierung) darüber; beim
+  `sync_runtime.py` ruft die drei Sync-Apply-Stellen (Pull/Push/Kompaktierung) darüber; beim
   Start holt `recover_pending_apply` ein übriggebliebenes Journal idempotent nach
   (alle vier Ops sind Full-Replace). **Kein** Sync-Doc-Feld — rein lokaler
   Recovery-Zustand.
@@ -413,8 +424,14 @@ selbst nach dem Aufbau.
 ## Wo gehört neuer Code hin?
 
 - Rendering/Zell-Logik → `grid_renderer.py`. Neuer Hintergrund-Task → `background_tasks.py`
-  (über `run()`). Sync-Verhalten → `sync_orchestrator.py`. Reine Persistenz/Logik → der
-  passende Store bzw. `sync.py`/`share.py` (Tk-frei, gut testbar).
+  (über `run()`). Sync-**Bedienung** (Buttons, Status, Fehlermeldungen) → `sync_orchestrator.py`,
+  ein neuer Sync-/Reconcile-**Flow** (Drive/Kalender sprechen, mergen, hochladen) →
+  `sync_runtime.py`. Reine Persistenz/Logik → der passende Store bzw. `sync.py`/`share.py`
+  (Tk-frei, gut testbar).
+- **Nicht** nach `main.py`: der Einstiegspunkt ist Bootstrap (Stores bauen, Wiring,
+  `_hold_app_mutex`/`_ensure_device_id`/`_sweep_orphan_tombstones`/`_refresh_linux_integration`).
+  Wer dort Fachlogik ablegt, erzeugt wieder den Zyklus, den R1 aufgelöst hat — Symptom ist
+  ein `from src.main import …` mitten in einer Funktion.
 - In `App` (ui.py) bleibt nur Koordination: Datum/View-State, Chrome-Aufbau, Dialog-Routing,
   Navigation, das `_marshal_to_ui`/`_refresh`-Glue. Wächst eine Verantwortlichkeit dort, ist
   das das Signal für die nächste Komponente — und für ein Update dieser Datei.

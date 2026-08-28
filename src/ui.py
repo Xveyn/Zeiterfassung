@@ -18,7 +18,7 @@ from src.version import VERSION, installed_release_id, version_label
 from src.background_tasks import BackgroundTaskRunner
 from src.weekly_limit import format_limit_warnings
 from src.grid_renderer import GridRenderer
-from src.paths import get_resource_path
+from src.paths import get_resource_path, relaunch_command
 from src.sync_orchestrator import classify_sync_error, SyncOrchestrator
 from src.update_banner import UpdateBanner
 from src.updater import (
@@ -809,7 +809,6 @@ class App:
         bleibt die laufende App vollständig intakt (Tray läuft, Fenster offen)
         und der Nutzer bekommt einen Hinweis. Kein Sync-Push: der Faktor ist
         lokal, ein 5-s-Push würde den Neustart nur verzögern."""
-        from src.main import relaunch_command
         cmd = relaunch_command(
             sys.argv, sys.executable, getattr(sys, "frozen", False))
         if self._single_instance is not None:

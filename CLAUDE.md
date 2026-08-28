@@ -476,7 +476,7 @@ nicht mehr als „offen" führen — der Verweis lautet auf diese Grenze.
 > Threading-Modell): **`src/CLAUDE.md`** — bei Verantwortlichkeits-Änderungen
 > mitpflegen.
 
-- `src/main.py` — Einstiegspunkt; baut `Tk`-Root, instanziert `Storage`/`Settings`/`App`, behandelt `--minimized`
+- `src/main.py` — Einstiegspunkt, **reiner Bootstrap**; baut `Tk`-Root, instanziert `Storage`/`Settings`/`App`, behandelt `--minimized`. Fachliche Sync-Flows gehören nach `sync_runtime.py` (R1, margenheld/Zeiterfassung#181 bzw. Xveyn#49)
 - `src/ui.py` — Tkinter-GUI; `App` ist schlanker Koordinator über `GridRenderer`/`BackgroundTaskRunner`/`SyncOrchestrator`/`UpdateBanner` (siehe `src/CLAUDE.md`)
 - `src/dialogs/` — Modal-Dialoge (`entry_dialog`, `send_dialog`, `settings_dialog`)
 - `src/storage.py` — JSON-Persistenz der Zeiteinträge (Schlüssel: ISO-Datum)
@@ -485,6 +485,7 @@ nicht mehr als „offen" führen — der Verweis lautet auf diese Grenze.
 - `src/mail.py` — Gmail-API-Wrapper (OAuth2, `token.json` / `credentials.json`)
 - `src/drive.py` — Google-Drive-API-Wrapper für den Multi-Device-Sync (`appDataFolder`, Scope `drive.appdata`)
 - `src/sync.py` — Sync-Engine (pure Logik: LWW-Merge der Entries/Settings, Konflikterkennung); importiert `SYNCED_SETTING_KEYS` aus `settings.py` (Single Source of Truth, nicht hier neu definieren); `validate_remote_doc` prüft ein Remote-Doc auf die Merge-Invarianten vor dem Merge (Audit M5)
+- `src/sync_runtime.py` — Sync-/Kompaktierungs-/Reconcile-**Runtime**: `run_pull_in_background`, `run_push_blocking`, `run_compaction_blocking`, `run_calendar_reconcile`. Die Flows über der Engine `sync.py`; Google-Wrapper lazy in den Funktionen (CI). Aufrufer: `main.py`, `sync_orchestrator.py`, `background_tasks.py`, `tab_google.py`
 - `src/sync_journal.py` — Crash-Recovery für `sync.apply_merged_doc` via Write-Ahead-Journal (`sync-apply.journal`); beim Start holt `recover_pending_apply` einen unvollständigen Apply idempotent nach (Audit M6)
 - `src/sync_history.py` — persistenter „hat je gesynct/abgeglichen"-Marker (`sync_history.json`, write-once, stdlib-only); vetoed den N6-Startup-Sweep gegen einen settings.json-Reset (M4), damit ein gesyncter Rechner nicht fälschlich seine Tombstones verliert (Resurrection)
 - `src/conflicts_store.py` — lokale JSON-Persistenz der Sync-Konfliktliste
@@ -529,7 +530,7 @@ nicht mehr als „offen" führen — der Verweis lautet auf diese Grenze.
 - `src/tray_linux.py` — Linux-Tray über StatusNotifierItem + `com.canonical.dbusmenu` (D-Bus via `dbus-fast`, kein GTK/GI); dormant bis zum Plasma-Gate (Opt-in `ZEIT_LINUX_TRAY=1`, margenheld/Zeiterfassung#42). Menü-Logik D-Bus-frei in `MenuState`
 - `src/time_utils.py` — Stundenberechnung, KW-Labels
 - `src/holidays_de.py` — Feiertags-Lookup (über `holidays`-Lib)
-- `src/paths.py` — `get_base_path()` dispatched über `platform.system()` und Frozen- vs. Repo-Modus
+- `src/paths.py` — `get_base_path()` dispatched über `platform.system()` und Frozen- vs. Repo-Modus; `relaunch_command()` baut das Neustart-Kommando (Exe im Frozen-Build, `python -m src.main` im Repo)
 - `src/autostart.py` — plattformabhängiger Autostart (Windows-**Registry** HKCU Run, gleicher Wertname `Zeiterfassung` wie `installer.iss` → strukturell ein Eintrag; macOS-LaunchAgent / Linux `.desktop`). `is_autostart_enabled()` liest den echten Zustand, `migrate_legacy_autostart()` überführt Alt-Startup-Shortcuts frozen-gated in die Registry
 - `src/secure_file.py` — Zugriffsschutz für die lokal abgelegten Secrets (`token.json`, `instance-secret`): unter Windows `icacls`-ACL statt des dort wirkungslosen `chmod 0600` (Audit M8); best-effort, scheitert nie den Schreibvorgang
 - `src/single_instance.py` — Tk-freier Single-Instance-Guard (pro-Nutzer-Localhost-Port, `acquire`/`serve`/`release`); verhindert parallele Instanzen und holt bei manuellem Zweitstart das vorhandene Fenster nach vorn (SHOW), beim Autostart-Doppelfeuer ohne Fenster-Pop (PING)

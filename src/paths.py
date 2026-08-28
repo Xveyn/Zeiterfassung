@@ -70,3 +70,15 @@ def get_resource_path():
             return meipass
         return os.path.dirname(sys.executable)
     return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+def relaunch_command(argv, executable, frozen):
+    """Baut das Kommando, um die App neu zu starten (nach UI-Skalierungs-
+    Änderung). Im Frozen-Build ist `executable` die App-Exe selbst; im
+    Repo-Modus wird `python -m src.main` aufgerufen. `--minimized` wird
+    entfernt, weil der Nutzer nach einer interaktiven Skalierungsänderung das
+    Fenster sehen will, nicht ein erneut minimiertes."""
+    rest = [a for a in argv[1:] if a != "--minimized"]
+    if frozen:
+        return [executable] + rest
+    return [executable, "-m", "src.main"] + rest

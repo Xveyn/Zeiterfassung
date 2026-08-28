@@ -2,9 +2,9 @@
 Pull-Callbacks, Status-Label, Quit-Push und die Fehler-Aufbereitung.
 
 `import tkinter`/`messagebox` auf Modulebene ist unkritisch (stdlib, kein
-Display zum Import nötig). `run_push_blocking` wird LAZY in den Methoden aus
-`src.main` importiert — sonst Circular-Import (src.main → src.ui →
-src.sync_orchestrator).
+Display zum Import nötig). `run_push_blocking` kommt aus `src.sync_runtime`
+— früher aus `src.main`, was nur lazy ging (Circular-Import: src.main →
+src.ui → src.sync_orchestrator).
 """
 
 import logging
@@ -13,6 +13,7 @@ import traceback
 from tkinter import messagebox
 
 from src.drive import DriveAuthError, DriveNetworkError
+from src.sync_runtime import run_push_blocking
 from src.theme import set_icon_button_enabled, themed_showinfo
 from src.time_utils import format_iso_date
 
@@ -140,7 +141,6 @@ class SyncOrchestrator:
         return 0
 
     def _push(self, guard_timeout=0, timeout_seconds=15):
-        from src.main import run_push_blocking
         return run_push_blocking(
             self._storage, self._settings, self._conflicts_store,
             self._base_path, timeout_seconds=timeout_seconds,
