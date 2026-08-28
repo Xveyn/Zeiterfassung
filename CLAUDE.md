@@ -185,8 +185,19 @@ Release-Umgebung).
 
 - **Inputs:** `windows`/`macos`/`linux` als Häkchen (mindestens eins, maximal
   alle; Default nur Windows) + optionaler `ref` (Branch/Tag/SHA; leer = der
-  Branch, aus dem der Lauf startet).
-- **Ausgabe = reine App** (kein Installer): `scripts/build.py` läuft ohne Inno Setup /
+  Branch, aus dem der Lauf startet) + `installer` (s.u.).
+- **`installer`-Häkchen (nur Windows):** installiert Inno Setup im Job, sodass
+  derselbe `build.py`-Aufruf zusätzlich `Zeiterfassung_Setup.exe` erzeugt und
+  als eigenes Artefakt (`zeiterfassung-windows-setup`) hochlädt. Gedacht für
+  Änderungen an `installer.iss` — die lassen sich sonst nirgends prüfen: lokal
+  fehlt Inno meist, und ein Release nur zum Testen des Uninstallers wäre grob
+  unverhältnismäßig. Das Setup liegt bewusst in einem **eigenen** Artefakt, damit
+  die App auch dann herunterladbar bleibt, wenn der Pack-Schritt scheitert; sein
+  `if-no-files-found: error` ist Absicht — wurde das Häkchen gesetzt und fehlt die
+  Datei, hat `build.py` den Schritt still übersprungen, und das soll auffallen.
+  macOS/Linux bleiben ohne Pack-Schritt (`create-dmg`/`appimagetool` sind nicht
+  installiert); wer DMG oder AppImage testen will, nimmt den Pre-Release.
+- **Ausgabe sonst = reine App** (kein Installer): `scripts/build.py` läuft ohne
   create-dmg / appimagetool, überspringt also den Pack-Schritt und lädt die
   nackte PyInstaller-Ausgabe als **Workflow-Artefakt** hoch — Windows den
   `dist\Zeiterfassung\`-Ordner (onedir: Exe + `_internal\`, von `upload-artifact`

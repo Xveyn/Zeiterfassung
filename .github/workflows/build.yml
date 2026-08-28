@@ -2,8 +2,11 @@ name: Build
 
 # Manueller Test-Build eines beliebigen Branches OHNE Release (kein Tag, kein
 # Upload zu GitHub-Releases, kein Auto-Update-Effekt). Baut wie `build.py` die
-# reine App (PyInstaller-Ausgabe, ohne Installer-Pack-Schritt) und lädt sie als
-# Workflow-Artefakt hoch. Zweck: einen Branch in CI-identischer Umgebung
+# reine App (PyInstaller-Ausgabe) und lädt sie als Workflow-Artefakt hoch.
+# Optional (`installer`-Häkchen) zusätzlich das Windows-Setup — für Änderungen
+# an `installer.iss`, die sich sonst nirgends prüfen lassen: lokal fehlt Inno
+# in der Regel, und ein Release nur zum Testen des Uninstallers wäre grob
+# unverhältnismäßig. Zweck: einen Branch in CI-identischer Umgebung
 # (Python 3.10 + gepinnte requirements.txt) bauen, ohne eine lokale venv zu
 # pflegen, die zur CI divergieren kann. Der Installer/Pack-Schritt (Inno Setup /
 # create-dmg / appimagetool) entfällt bewusst — `build.py` überspringt ihn
@@ -30,6 +33,10 @@ on:
         description: "Linux bauen (Binary)"
         type: boolean
         default: false
+      installer:
+        description: "Windows: zusätzlich das Setup.exe bauen (braucht Inno Setup)"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -47,10 +54,16 @@ jobs:
           python-version: '3.10'
       - name: Install dependencies
         run: pip install -r requirements.txt pip-licenses==5.5.5
-      # Kein Inno Setup installiert → build.py überspringt den Installer-Schritt
-      # und lässt den reinen dist/Zeiterfassung/-Ordner (onedir: Exe +
-      # _internal\, seit #118) stehen.
-      - name: Build (PyInstaller, ohne Installer)
+      # Ohne Inno Setup überspringt build.py den Installer-Schritt und lässt den
+      # reinen dist/Zeiterfassung/-Ordner (onedir: Exe + _internal\, seit #118)
+      # stehen. Ist es installiert, erzeugt derselbe Aufruf zusätzlich das
+      # Setup.exe — build.py findet den Compiler über PATH bzw. die
+      # Standardpfade (scripts/build.py::_find_inno_compiler), und Chocolatey
+      # legt ihn nach %ProgramFiles(x86)%\Inno Setup 6 ab.
+      - name: Install Inno Setup
+        if: ${{ inputs.installer }}
+        run: choco install innosetup -y --no-progress
+      - name: Build (PyInstaller${{ inputs.installer && ' + Installer' || ', ohne Installer' }})
         run: python scripts/build.py
       - name: dist auflisten
         shell: bash
@@ -63,6 +76,18 @@ jobs:
         with:
           name: zeiterfassung-windows-app
           path: dist/Zeiterfassung/
+          if-no-files-found: error
+          retention-days: 14
+      # Eigenes Artefakt statt eines zweiten Pfads im obigen Upload: so bleibt
+      # die App auch dann herunterladbar, wenn der Installer-Schritt scheitert.
+      # `if-no-files-found: error` ist hier Absicht — wurde das Häkchen gesetzt
+      # und fehlt die Datei trotzdem, hat build.py den Pack-Schritt still
+      # übersprungen; das soll auffallen und nicht als grüner Lauf durchgehen.
+      - uses: actions/upload-artifact@v7
+        if: ${{ inputs.installer }}
+        with:
+          name: zeiterfassung-windows-setup
+          path: dist/Zeiterfassung_Setup.exe
           if-no-files-found: error
           retention-days: 14
 
