@@ -18,7 +18,9 @@ Desktop-App zur Erfassung von Arbeitszeiten mit Kalenderansicht, PDF-Report und 
 
 [![Release](https://img.shields.io/github/v/release/Xveyn/Zeiterfassung?label=Release&color=success&logo=github)](https://github.com/Xveyn/Zeiterfassung/releases/latest) ![Python](https://img.shields.io/badge/Python-3.10+-blue) ![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow)](LICENSE)
 
-![Monatsansicht der Zeiterfassung mit erfassten Arbeitszeiten](docs/screenshots/kalender.png)
+![Monatsansicht der Zeiterfassung mit erfassten Arbeitszeiten](docs/screenshots/kalender-v1.21.0.png)
+
+<sub>Alle Screenshots stammen aus Version 1.21.0 — die Version steht im Dateinamen (`…-v1.21.0.png`), siehe [`docs/screenshots/`](docs/screenshots/).</sub>
 
 ## Inhalt
 
@@ -42,7 +44,7 @@ Desktop-App zur Erfassung von Arbeitszeiten mit Kalenderansicht, PDF-Report und 
 - **Wochenstunden-Limit** — Optionales Werkstudenten-Limit über einen konfigurierbaren Zeitraum mit Warnung beim Überschreiten
 - **Pausenpflicht-Warnung** — Hinweis beim Speichern, wenn die eingetragene Pause die gesetzliche Mindestpause nach § 4 ArbZG unterschreitet (30 Min ab >6 h, 45 Min ab >9 h); standardmäßig aktiv, abschaltbar. Grobe Näherung, keine rechtliche Bewertung
 
-![Tages-Dialog mit Arbeitszeit, Reservierung und Erinnerung](docs/screenshots/tagesdialog.png)
+![Tages-Dialog mit Arbeitszeit, Reservierung und Erinnerung](docs/screenshots/tagesdialog-v1.21.0.png)
 
 *Ein Tag im Detail: erfasste Ist-Zeit, geplante Reservierung und die Erinnerung ans Verschicken. Linksklick auf einen Kalendertag öffnet den Dialog; gelöscht wird im Kalender selbst (Rechtsklick, unter macOS über das ✕ in der Tageszelle).*
 
@@ -56,11 +58,11 @@ Desktop-App zur Erfassung von Arbeitszeiten mit Kalenderansicht, PDF-Report und 
 - **Sende-Erinnerung** — Optionale Toast-Erinnerung, die Arbeitszeiten zu verschicken: monatlich an einem frei wählbaren Tag (auf Wunsch von Wochenenden und Feiertagen weg verschoben) und/oder tagesbezogen, wenn ein dafür markierter Reservierungs-Slot ausläuft. Der Sende-Dialog schlägt den Zeitraum seit der letzten Erinnerung vor
 - **Teilen & Importieren** — Eigene Arbeitszeiten als JSON-Anhang per Mail an eine zweite Person teilen; der Empfänger importiert sie mit Zeitraum-Filter und drei Konflikt-Modi (alles importieren / alles lokal / pro Tag entscheiden)
 
-![Sende-Dialog mit Zeitraum- und Kategorieauswahl](docs/screenshots/senden.png)
+![Sende-Dialog mit Zeitraum- und Kategorieauswahl](docs/screenshots/senden-v1.21.0.png)
 
 *Der Sende-Dialog: Zeitraum, Kategorie-Filter und die Gesamtstunden vor dem Absenden.*
 
-![Erzeugter PDF-Bericht](docs/screenshots/bericht.png)
+![Erzeugter PDF-Bericht](docs/screenshots/bericht-v1.21.0.png)
 
 *Der erzeugte PDF-Bericht — pro ISO-Kalenderwoche gruppiert, mit Tages- und Wochensummen.*
 
@@ -74,7 +76,7 @@ Desktop-App zur Erfassung von Arbeitszeiten mit Kalenderansicht, PDF-Report und 
 - **UI-Skalierung** — Stufenloser Skalierungsfaktor für die Oberfläche (gerätelokal)
 - **Cross-Platform-Installer** — Per PyInstaller gebaut, als Setup-Exe (Windows), DMG (macOS) und AppImage (Linux) paketierbar
 
-![Einstellungs-Dialog, Tab Arbeitszeit](docs/screenshots/einstellungen.png)
+![Einstellungs-Dialog, Tab Arbeitszeit](docs/screenshots/einstellungen-v1.21.0.png)
 
 *Die Einstellungen, hier der Tab „Arbeitszeit" mit Standardzeiten, Pausenpflicht und Werkstudenten-Limit.*
 
