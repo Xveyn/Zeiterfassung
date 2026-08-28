@@ -16,7 +16,8 @@ from src.share import (
 from src.time_utils import format_date
 from src.theme import (
     BG, CELL_BG, FONT, TEXT,
-    attach_unfocus_on_click, center_dialog_on_parent, create_dialog,
+    apply_combobox_style, attach_unfocus_on_click, center_dialog_on_parent,
+    create_dialog,
     dark_entry, primary_button, secondary_button,
     set_button_text, set_primary_button_enabled,
     themed_showerror, themed_showinfo,
@@ -45,6 +46,10 @@ def open_share_dialog(parent, storage, settings, base_path, runner, reservation_
         return
 
     dialog = create_dialog(parent, "Teilen")
+    # Pflicht, seit der Dialog Comboboxen hat (Zeitraum): ohne das rendern sie
+    # im hellen ttk-Standard statt im Dark-Theme. Genauso in export_dialog,
+    # send_dialog, entry_dialog, import_dialog, webhook_dialog.
+    apply_combobox_style(dialog)
     attach_unfocus_on_click(dialog)
 
     row = 0
@@ -105,13 +110,21 @@ def open_share_dialog(parent, storage, settings, base_path, runner, reservation_
     # Bestand waere die Vorbelegung sonst nicht aus der Liste waehlbar.
     year_from = min(2020, earliest.year)
 
+    # Aufbau wie der Kategorie-Block darunter: Beschriftung in Spalte 0,
+    # Inhalt als eigener Frame in Spalte 1. So haengen Datumsfelder,
+    # Kategorie-Checkboxen und Empfaenger-Feld an derselben Kante.
+    # label_width=10 ist kein Zufallswert: es ist die Breite von
+    # "Kategorien:"/"Empfaenger:" darunter. Damit stehen die Datumsfelder auf
+    # derselben Kante wie die Kategorie-Checkboxen und das Empfaenger-Feld —
+    # der Dialog behaelt seine zwei Spalten (Beschriftung | Inhalt), statt eine
+    # dritte Ausrichtungslinie einzufuehren.
     from_row = build_date_row(dialog, "Von:", earliest, on_change=lambda: _refresh(),
-                              year_from=year_from, label_width=4)
+                              year_from=year_from, label_width=10)
     to_row = build_date_row(dialog, "Bis:", latest, on_change=lambda: _refresh(),
-                            year_from=year_from, label_width=4)
+                            year_from=year_from, label_width=10)
     from_row.frame.grid(row=row, column=0, columnspan=2, padx=20, pady=(4, 0), sticky="w")
     row += 1
-    to_row.frame.grid(row=row, column=0, columnspan=2, padx=20, pady=(4, 12), sticky="w")
+    to_row.frame.grid(row=row, column=0, columnspan=2, padx=20, pady=(4, 8), sticky="w")
     row += 1
 
     def _current_range():
