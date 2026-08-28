@@ -7,13 +7,16 @@ Kategorie am Tag noch nicht als Ist-Zeit erfasst wurde. Pro Slot feuert genau
 einer der beiden Typen — garantiert durch die Zeit-Reihenfolge (missed vor dem
 upcoming-Fenster) plus das already_fired-Set beim Aufrufer.
 """
+from __future__ import annotations
+
 import datetime
 from collections import namedtuple
+from typing import Any, Iterable
 
 Reminder = namedtuple("Reminder", ["key", "kind", "kategorie", "end"])
 
 
-def _parse_hhmm(date, value):
+def _parse_hhmm(date: datetime.date, value: Any) -> datetime.datetime | None:
     """'HH:MM' + date -> datetime; None/ungültig -> None."""
     if not isinstance(value, str):
         return None
@@ -24,8 +27,10 @@ def _parse_hhmm(date, value):
         return None
 
 
-def due_reminders(reserved_slots, logged_categories, now_dt,
-                  minutes_before, already_fired):
+def due_reminders(reserved_slots: Iterable[dict[str, Any]],
+                  logged_categories: set[str], now_dt: datetime.datetime,
+                  minutes_before: int,
+                  already_fired: set[tuple[Any, ...]]) -> list[Reminder]:
     """Liefert die fälligen Reminder für die heutigen reservierten Slots.
 
     reserved_slots: Iterable von {start, end, kategorie}.

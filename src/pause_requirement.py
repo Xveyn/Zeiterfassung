@@ -31,13 +31,20 @@ Ein grünes Ergebnis heißt also „Pausendauer reicht", nicht „gesetzeskonfor
 Quelle: https://www.gesetze-im-internet.de/arbzg/__4.html
 """
 
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any
+
 from src.time_utils import calculate_hours
+
+if TYPE_CHECKING:  # nur fuer die Signaturen
+    from src.settings import SettingsLike
 
 REQUIRED_PAUSE_OVER_6H = 30
 REQUIRED_PAUSE_OVER_9H = 45
 
 
-def required_pause_minutes(worked_hours):
+def required_pause_minutes(worked_hours: float) -> int:
     """Gesetzliche Mindestpause (Minuten) für `worked_hours` Netto-Arbeitszeit.
     0, wenn keine Pflichtpause greift (<=6h)."""
     if worked_hours > 9:
@@ -47,7 +54,8 @@ def required_pause_minutes(worked_hours):
     return 0
 
 
-def check_day_pause(settings, ist_slots):
+def check_day_pause(settings: SettingsLike,
+                    ist_slots: list[dict[str, Any]]) -> dict[str, Any] | None:
     """Prüft, ob die in `ist_slots` eingetragene Pause (Summe der
     `pause`-Felder) die gesetzliche Mindestpause für die Netto-Arbeitszeit
     des Tages unterschreitet.
