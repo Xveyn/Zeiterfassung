@@ -108,6 +108,21 @@ def parse_changelog_markdown(text):
     blocks = []
     for raw in raw_lines:
         line = raw.strip()
+        # Blockquote-Marker abstreifen, BEVOR klassifiziert wird. Die
+        # Reihenfolge ist der ganze Punkt:
+        #   - vor dem Leerzeilen-Zweig, damit eine Zeile aus nur ">" (der
+        #     Absatztrenner innerhalb eines Zitats) zur Absatzluecke wird und
+        #     nicht als Textblock mit Inhalt ">" durchrutscht;
+        #   - vor den Ueberschrift-/Bullet-Zweigen, damit "> ### Titel" und
+        #     "> - Punkt" als solche erkannt werden.
+        # Ohne den Strip landete der Marker im Text — und weil hart
+        # umgebrochene Fortsetzungszeilen unten zu EINER logischen Zeile
+        # zusammengefuehrt werden, standen die ">" der Folgezeilen mitten im
+        # Satz. `while` statt `if` wegen verschachtelter Zitate (">>").
+        # Nur der Zeilenanfang zaehlt: ein ">" im Fliesstext (etwa in einem
+        # generierten PR-Titel) bleibt unberuehrt.
+        while line.startswith(">"):
+            line = line[1:].lstrip()
         if not line:
             if blocks and blocks[-1][0] != "blank":
                 blocks.append(("blank", ""))

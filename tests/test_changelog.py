@@ -240,3 +240,66 @@ class TestVersionHeadingStrippingIsScoped:
     def test_non_version_first_heading_is_not_dropped(self):
         lines = parse_changelog_markdown("## What's Changed\n* etwas\n")
         assert _plain(lines[0]) == "What's Changed"
+
+
+# --- Blockquotes (Xveyn/Zeiterfassung#60) ---
+
+
+def _texts(blocks):
+    """Sichtbarer Text je Zeile; None bleibt als Absatzlücke stehen."""
+    return [None if b is None else "".join(t for t, _ in b["segments"])
+            for b in blocks]
+
+
+def _tags(blocks):
+    return [None if b is None else [tags for _, tags in b["segments"]]
+            for b in blocks]
+
+
+def test_blockquote_multiline_drops_markers():
+    """Der Fehler aus #60: hart umgebrochene Zitatzeilen werden zu einer
+    logischen Zeile zusammengeführt — ohne Marker-Strip landeten die '>' der
+    Folgezeilen mitten im Satz."""
+    md = "### Test\n\n> **Fett.** Erste Zeile,\n> zweite Zeile,\n> dritte Zeile.\n"
+    assert _texts(parse_changelog_markdown(md)) == [
+        "Test", None, "Fett. Erste Zeile, zweite Zeile, dritte Zeile."]
+
+
+def test_blockquote_keeps_bold_tagging():
+    blocks = parse_changelog_markdown("> **Fett.** Rest.\n")
+    assert ("bold",) in _tags(blocks)[0]
+
+
+def test_blockquote_bullets_are_recognised_as_bullets():
+    md = "> - erster\n> - zweiter\n"
+    assert _texts(parse_changelog_markdown(md)) == ["• erster", "• zweiter"]
+
+
+def test_blockquote_heading_is_recognised_as_heading():
+    blocks = parse_changelog_markdown("> ### Titel\n> Text.\n")
+    assert _texts(blocks) == ["Titel", "Text."]
+    assert _tags(blocks)[0] == [("heading",)]
+
+
+def test_bare_quote_marker_is_a_paragraph_break():
+    """Eine Zeile mit nur '>' trennt im Markdown zwei Zitat-Absätze — sie darf
+    nicht als Textblock mit Inhalt '>' durchrutschen."""
+    md = "> erster Absatz\n>\n> zweiter Absatz\n"
+    assert _texts(parse_changelog_markdown(md)) == [
+        "erster Absatz", None, "zweiter Absatz"]
+
+
+def test_nested_quote_markers_are_all_removed():
+    assert _texts(parse_changelog_markdown(">> tief\n")) == ["tief"]
+
+
+def test_quote_marker_without_space_is_stripped():
+    assert _texts(parse_changelog_markdown(">direkt\n")) == ["direkt"]
+
+
+def test_greater_than_inside_text_is_untouched():
+    """Gegenprobe: nur ein '>' am ZEILENANFANG ist Syntax. In generierten
+    Release-Notes steht es auch mal mitten im PR-Titel."""
+    md = "* fix: handle > in input by @x\n"
+    assert _texts(parse_changelog_markdown(md)) == [
+        "• fix: handle > in input by @x"]
