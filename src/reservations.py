@@ -18,12 +18,11 @@ erhalten, bis der Reconcile die zugehörigen Events entfernt hat.
 from __future__ import annotations
 
 import datetime
-import json
-import logging
 import os
 import threading
 from typing import Any
 
+from src.json_store import atomic_write_json, load_json_or_quarantine
 from src.time_utils import utc_now_iso
 
 # JSON-getragene Records (Audit N8): ein Slot {start, end, kategorie,
@@ -72,22 +71,11 @@ class ReservationStore:
         self._load()
 
     def _load(self) -> None:
-        if not os.path.exists(self.filepath):
-            return
-        try:
-            with open(self.filepath, "r", encoding="utf-8") as f:
-                self._data = json.load(f)
-        except (json.JSONDecodeError, ValueError):
-            stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-            target = f"{self.filepath}.corrupt-{stamp}"
-            os.replace(self.filepath, target)
-            logging.getLogger(__name__).warning(
-                "%s korrupt (JSON nicht parsebar) — nach %s in Quarantäne "
-                "verschoben, starte leer",
-                os.path.basename(self.filepath), os.path.basename(target),
-            )
+        data = load_json_or_quarantine(self.filepath)
+        if data is None:  # nicht vorhanden oder korrupt (dann quarantäniert)
             self._data = {}
             return
+        self._data = data
         self._migrate_legacy_reservations()
 
     def _migrate_legacy_reservations(self) -> None:
@@ -127,18 +115,7 @@ class ReservationStore:
             entry.setdefault("deleted", False)
 
     def _save_to_disk(self) -> None:
-        tmp = self.filepath + ".tmp"
-        with open(tmp, "w", encoding="utf-8") as f:
-            json.dump(self._data, f, indent=2, ensure_ascii=False)
-            # N1: fsync vor os.replace (Durability bei Crash/Stromausfall).
-            f.flush()
-            os.fsync(f.fileno())
-        try:
-            os.replace(tmp, self.filepath)
-        except OSError:
-            if os.path.exists(tmp):
-                os.remove(tmp)
-            raise
+        atomic_write_json(self.filepath, self._data)
 
     @staticmethod
     def _user_shape(entry: Reservation) -> dict[str, Any]:

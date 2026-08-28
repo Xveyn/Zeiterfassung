@@ -1,11 +1,9 @@
 from __future__ import annotations
 
-import datetime
-import json
-import logging
-import os
 import threading
 from typing import Any
+
+from src.json_store import atomic_write_json, load_json_or_quarantine
 
 # Ein Konflikt-Record, wie er in conflicts.json / im Sync-Doc liegt
 # (id, kind, key, candidates, detected_at, resolved, resolution, …). Die
@@ -26,37 +24,14 @@ class ConflictsStore:
         self._load()
 
     def _load(self) -> None:
-        if not os.path.exists(self.filepath):
-            return
-        try:
-            with open(self.filepath, "r", encoding="utf-8") as f:
-                data = json.load(f)
-        except (json.JSONDecodeError, ValueError):
-            stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-            target = f"{self.filepath}.corrupt-{stamp}"
-            os.replace(self.filepath, target)
-            logging.getLogger(__name__).warning(
-                "%s korrupt (JSON nicht parsebar) — nach %s in Quarantäne "
-                "verschoben, starte leer",
-                os.path.basename(self.filepath), os.path.basename(target),
-            )
-            return
+        data = load_json_or_quarantine(self.filepath)
+        # Kein isinstance-Treffer (fehlend, korrupt, kein Array) → leere Liste
+        # aus __init__ bleibt stehen.
         if isinstance(data, list):
             self._conflicts = data
 
     def _save_to_disk(self) -> None:
-        tmp = self.filepath + ".tmp"
-        with open(tmp, "w", encoding="utf-8") as f:
-            json.dump(self._conflicts, f, indent=2, ensure_ascii=False)
-            # N1: fsync vor os.replace (Durability bei Crash/Stromausfall).
-            f.flush()
-            os.fsync(f.fileno())
-        try:
-            os.replace(tmp, self.filepath)
-        except OSError:
-            if os.path.exists(tmp):
-                os.remove(tmp)
-            raise
+        atomic_write_json(self.filepath, self._conflicts)
 
     def get_all(self) -> list[Conflict]:
         with self._lock:

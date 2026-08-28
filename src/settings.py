@@ -8,6 +8,7 @@ import os
 import threading
 from typing import Any
 
+from src.json_store import atomic_write_json
 from src.time_utils import utc_now_iso
 
 WEEKDAY_KEYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")  # Index = datetime.weekday()
@@ -268,11 +269,15 @@ class Settings:
 
     def _quarantine_corrupt(self, reason: str) -> None:
         """Verschiebt ein korruptes settings.json nach `.corrupt-<stamp>`
-        (wie storage/reservations/conflicts_store) und loggt das Ereignis,
-        statt es kommentarlos zu verwerfen (Audit M4/N4). Defaults setzt der
-        Aufrufer. Der Rename ist wie in `_save_to_disk` gegen `OSError`
-        abgesichert — schlägt er fehl, bleibt die Datei liegen und der Boot
-        läuft trotzdem mit Defaults weiter, statt zu crashen."""
+        und loggt das Ereignis, statt es kommentarlos zu verwerfen (Audit
+        M4/N4). Defaults setzt der Aufrufer.
+
+        BEWUSST eigen statt `json_store.quarantine_corrupt` (R2): diese
+        Variante greift auch bei einem nicht-Dict-Toplevel (nicht nur bei
+        Parse-Fehlern), trägt den Grund in der Meldung — und vor allem
+        **schluckt** sie einen fehlgeschlagenen Rename: die Settings werden
+        beim Start gelesen, ein `OSError` hier würde den Start verhindern.
+        Die Stores lassen ihn dagegen bewusst hochlaufen."""
         stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
         target = f"{self.filepath}.corrupt-{stamp}"
         log = logging.getLogger(__name__)
@@ -290,23 +295,10 @@ class Settings:
         )
 
     def _save_to_disk(self) -> None:
-        # Atomic write: temp file + replace, damit ein Crash mid-write
-        # kein halb geschriebenes settings.json hinterlässt.
         payload = dict(self._data)
         if self._synced_meta:
             payload["_synced_meta"] = self._synced_meta
-        tmp = self.filepath + ".tmp"
-        with open(tmp, "w", encoding="utf-8") as f:
-            json.dump(payload, f, indent=2, ensure_ascii=False)
-            # N1: fsync vor os.replace (Durability bei Crash/Stromausfall).
-            f.flush()
-            os.fsync(f.fileno())
-        try:
-            os.replace(tmp, self.filepath)
-        except OSError:
-            if os.path.exists(tmp):
-                os.remove(tmp)
-            raise
+        atomic_write_json(self.filepath, payload)
 
     def get(self, key: str) -> Any:
         with self._lock:
