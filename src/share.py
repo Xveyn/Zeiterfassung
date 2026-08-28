@@ -220,9 +220,14 @@ def parse_share_doc(raw_bytes):
     return doc
 
 
-def _filter_records_by_category(records, categories):
+def filter_records_by_category(records, categories):
     """categories=None → unverändert. Sonst je Tag nur Slots behalten, deren
-    Kategorie (oder "") in `categories` liegt; leere Tage fallen weg."""
+    Kategorie (oder "") in `categories` liegt; leere Tage fallen weg.
+
+    Öffentlich aus demselben Grund wie `filter_records_by_range`: der
+    Teilen-Dialog zeigt neben jeder Checkbox die Zahl der Tage, die
+    tatsächlich rausgehen — diese Zahl und der Export müssen aus denselben
+    beiden Filtern kommen, nicht aus einer Nachbildung im Dialog."""
     if categories is None:
         return records
     cats = set(categories)
@@ -252,24 +257,60 @@ def _share_reservation_shape(records):
     }
 
 
+def filter_records_by_range(records, date_from, date_to):
+    """Behaelt die Tage, deren ISO-Schluessel in [date_from, date_to] liegt.
+
+    `None` je Seite = offene Grenze; beide `None` → unveraendert. Beide
+    Grenzen sind inklusiv. Nicht parsebare Schluessel fallen weg — dieselbe
+    defensive Haltung wie in `_diff_records`: ein kaputter Key darf den Export
+    nicht sprengen, gehoert aber auch in keinen datierten Ausschnitt.
+
+    Oeffentlich, weil der Teilen-Dialog dieselbe Auswahl fuer seine
+    Live-Anzeige braucht ("Arbeitszeiten (N Tage)") — die angezeigte Zahl und
+    der tatsaechliche Export sollen aus derselben Funktion kommen.
+    """
+    if date_from is None and date_to is None:
+        return records
+    out = {}
+    for date_str, record in records.items():
+        try:
+            d = datetime.date.fromisoformat(date_str)
+        except ValueError:
+            continue
+        if date_from is not None and d < date_from:
+            continue
+        if date_to is not None and d > date_to:
+            continue
+        out[date_str] = record
+    return out
+
+
 def build_share_doc(storage, sender_email, *, reservation_store=None,
-                    include_entries=True, include_reservations=False, categories=None):
+                    include_entries=True, include_reservations=False, categories=None,
+                    date_from=None, date_to=None):
     """Baut das v3-Share-Doc aus den Slot-Records von Storage/ReservationStore.
 
     include_entries / include_reservations steuern die Typen. categories=None →
-    alle; sonst werden Slots auf die Kategorie-Menge gefiltert ('' = ohne)."""
+    alle; sonst werden Slots auf die Kategorie-Menge gefiltert ('' = ohne).
+    date_from / date_to grenzen auf einen Zeitraum ein (inklusiv, `None` =
+    offene Grenze); ohne sie geht wie bisher der komplette Bestand raus."""
     doc = {
         "schema_version": SCHEMA_VERSION,
         "kind": KIND,
         "exported_at": utc_now_iso(),
         "exported_by": sender_email or "",
     }
+
+    def _select(records):
+        # Datum zuerst: billiger Schluessel-Vergleich vor dem Slot-Filter.
+        return filter_records_by_category(
+            filter_records_by_range(dict(records), date_from, date_to), categories)
+
     if include_entries:
-        doc["entries"] = _filter_records_by_category(dict(storage.get_all()), categories)
+        doc["entries"] = _select(storage.get_all())
     if include_reservations and reservation_store is not None:
         doc["reservations"] = _share_reservation_shape(
-            _filter_records_by_category(
-                dict(reservation_store.get_all()), categories))
+            _select(reservation_store.get_all()))
     return doc
 
 
