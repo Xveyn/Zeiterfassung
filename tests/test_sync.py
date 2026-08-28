@@ -392,7 +392,7 @@ def test_main_pull_quarantines_corrupt_remote():
     und der Pull behandelt sie als 'leer'.
     Wir testen das auf der Sync-Engine-Ebene: parse_remote_or_quarantine sollte
     bei kaputtem Inhalt ein leeres Doc zurückgeben und einen Callback aufrufen."""
-    from src.main import _parse_remote_or_quarantine
+    from src.sync_runtime import _parse_remote_or_quarantine
 
     quarantined = []
     def fake_quarantine(file_id):
@@ -404,7 +404,7 @@ def test_main_pull_quarantines_corrupt_remote():
 
 
 def test_main_pull_returns_doc_when_valid_json():
-    from src.main import _parse_remote_or_quarantine
+    from src.sync_runtime import _parse_remote_or_quarantine
     raw = _json.dumps({"schema_version": 1, "entries": {"D": {}}, "settings": {}, "conflicts": []})
     doc = _parse_remote_or_quarantine(raw.encode(), "file-1", lambda fid: None)
     assert "D" in doc["entries"]
@@ -861,7 +861,7 @@ def _mock_drive(monkeypatch, remote_bytes):
 
 def test_run_pull_aborts_on_newer_remote(tmp_path, monkeypatch):
     """Pull gegen ein neueres Schema (>v3): Abbruch, nichts angewendet."""
-    import src.main as main
+    import src.sync_runtime as sync_runtime
     storage = Storage(str(tmp_path / "z.json"), device_id="A")
     settings = Settings(str(tmp_path / "s.json"))
     settings.device_id_for_sync = "A"
@@ -872,7 +872,7 @@ def test_run_pull_aborts_on_newer_remote(tmp_path, monkeypatch):
     def cb(ok, error, tb=""):
         received["ok"] = ok
         received["error"] = error
-    main.run_pull_in_background(storage, settings, conflicts, str(tmp_path), cb)
+    sync_runtime.run_pull_in_background(storage, settings, conflicts, str(tmp_path), cb)
     assert received["ok"] is False
     assert str(received["error"]) == NEWER_REMOTE_VERSION_MSG
     assert storage.get_all_raw() == {}
@@ -881,7 +881,7 @@ def test_run_pull_aborts_on_newer_remote(tmp_path, monkeypatch):
 
 def test_run_pull_absorbs_v2_remote(tmp_path, monkeypatch):
     """Pull gegen ein älteres v2-Remote: migriert + gemergt (nicht abgewiesen)."""
-    import src.main as main
+    import src.sync_runtime as sync_runtime
     storage = Storage(str(tmp_path / "z.json"), device_id="A")
     settings = Settings(str(tmp_path / "s.json"))
     settings.device_id_for_sync = "A"
@@ -893,7 +893,7 @@ def test_run_pull_absorbs_v2_remote(tmp_path, monkeypatch):
     def cb(ok, error, tb=""):
         received["ok"] = ok
         received["error"] = error
-    main.run_pull_in_background(storage, settings, conflicts, str(tmp_path), cb)
+    sync_runtime.run_pull_in_background(storage, settings, conflicts, str(tmp_path), cb)
     assert received["ok"] is True
     assert storage.get_all_raw()["2026-06-20"]["slots"] == [
         {"start": "08:00", "end": "16:00", "pause": 30, "kategorie": ""}]
@@ -901,7 +901,7 @@ def test_run_pull_absorbs_v2_remote(tmp_path, monkeypatch):
 
 def test_run_push_aborts_on_newer_remote(tmp_path, monkeypatch):
     """Push gegen ein neueres Schema (>v3): Abbruch, kein Upload, lokal unverändert."""
-    import src.main as main
+    import src.sync_runtime as sync_runtime
     storage = Storage(str(tmp_path / "z.json"), device_id="A")
     storage.save("2026-06-09", [_slot("09:00", "17:00")])
     before = storage.get_all_raw()
@@ -912,7 +912,7 @@ def test_run_push_aborts_on_newer_remote(tmp_path, monkeypatch):
     upload_calls = []
     monkeypatch.setattr(drive, "upload",
                         lambda *a, **k: (upload_calls.append(a), ("id", "etag"))[1])
-    res = main.run_push_blocking(storage, settings, conflicts, str(tmp_path))
+    res = sync_runtime.run_push_blocking(storage, settings, conflicts, str(tmp_path))
     assert res.get("ok") is False
     assert str(res.get("error")) == NEWER_REMOTE_VERSION_MSG
     assert upload_calls == []
@@ -922,7 +922,7 @@ def test_run_push_aborts_on_newer_remote(tmp_path, monkeypatch):
 def test_run_push_absorbs_v2_remote_before_upload(tmp_path, monkeypatch):
     """Push gegen ein v2-Remote: migriert + merged, lädt die Vereinigung als v3
     hoch — fremde v2-Einträge gehen nicht verloren."""
-    import src.main as main
+    import src.sync_runtime as sync_runtime
     storage = Storage(str(tmp_path / "z.json"), device_id="A")
     storage.save("2026-06-09", [_slot("09:00", "17:00")])   # lokal A
     settings = Settings(str(tmp_path / "s.json"))
@@ -936,7 +936,7 @@ def test_run_push_absorbs_v2_remote_before_upload(tmp_path, monkeypatch):
         uploaded["doc"] = _json.loads(content)
         return ("file-1", "etag-new")
     monkeypatch.setattr(drive, "upload", _fake_upload)
-    res = main.run_push_blocking(storage, settings, conflicts, str(tmp_path))
+    res = sync_runtime.run_push_blocking(storage, settings, conflicts, str(tmp_path))
     assert res.get("ok") is True
     assert uploaded["doc"]["schema_version"] == 4
     assert set(uploaded["doc"]["entries"]) == {"2026-06-09", "2026-06-20"}
@@ -945,7 +945,7 @@ def test_run_push_absorbs_v2_remote_before_upload(tmp_path, monkeypatch):
 
 def test_run_compaction_aborts_on_newer_remote(tmp_path, monkeypatch):
     """Kompaktierung gegen ein neueres Schema (>v4): bricht freundlich ab."""
-    import src.main as main
+    import src.sync_runtime as sync_runtime
     storage = Storage(str(tmp_path / "z.json"), device_id="A")
     settings = Settings(str(tmp_path / "s.json"))
     settings.device_id_for_sync = "A"
@@ -954,7 +954,7 @@ def test_run_compaction_aborts_on_newer_remote(tmp_path, monkeypatch):
     upload_calls = []
     monkeypatch.setattr(drive, "upload",
                         lambda *a, **k: (upload_calls.append(a), ("id", "etag"))[1])
-    res = main._run_compaction_blocking(storage, settings, conflicts, str(tmp_path))
+    res = sync_runtime.run_compaction_blocking(storage, settings, conflicts, str(tmp_path))
     assert res.get("ok") is False
     assert res.get("reason") == "newer_version"
     assert upload_calls == []
