@@ -387,9 +387,13 @@ Lokal: `pytest` aus dem Repo-Root (Coverage: `pytest --cov=src --cov-report=term
 ### Doku-only-PRs überspringen die Tests
 
 Ein PR, der ausschließlich Dokumentation anfasst, läuft ohne Test-Matrix
-durch. Entschieden wird das im Job **`changes`**: er diffed gegen den
-Base-Branch und setzt `code=true|false`; alle übrigen Jobs hängen per
-`if:` an diesem Output.
+durch. Entschieden wird das im Job **`changes`**: er ermittelt die geänderten
+Dateien und setzt `code=true|false`; alle übrigen Jobs hängen per `if:` an
+diesem Output. Der Vergleichsbereich hängt am Event — bei `pull_request` die
+Netto-Änderung gegen den Base-Branch, bei `push` der Bereich seit
+`github.event.before`. Beide Wege sind nötig: der Workflow läuft auf
+`[push, pull_request]`, ein Doku-Commit auf einem Feature-Branch zöge sonst
+über den Push-Lauf weiterhin die volle Matrix.
 
 Als Dokumentation gilt: `*.md` (überall), `docs/**`, `.superpowers/**`,
 `LICENSE`. **Alles andere ist Code** — insbesondere `.github/**`: eine

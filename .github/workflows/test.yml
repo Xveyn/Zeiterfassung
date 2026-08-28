@@ -34,6 +34,7 @@ jobs:
         env:
           BASE_REF: ${{ github.base_ref }}
           EVENT: ${{ github.event_name }}
+          BEFORE: ${{ github.event.before }}
         run: |
           # Fail-safe by construction: `true` ist die Vorgabe, `false` wird
           # NUR gesetzt, wenn das Diff sauber ermittelt wurde UND
@@ -41,8 +42,19 @@ jobs:
           # PR, fehlender Base-Ref, git-Problem, leeres Diff) endet damit im
           # vollen Testlauf, nie im stillen Überspringen.
           code=true
+          range=
+          ZERO=0000000000000000000000000000000000000000
           if [ "$EVENT" = "pull_request" ] && [ -n "$BASE_REF" ]; then
-            if files=$(git diff --name-only "origin/$BASE_REF...HEAD") && [ -n "$files" ]; then
+            # Netto-Aenderung des PR gegenueber dem Base-Branch.
+            range="origin/$BASE_REF...HEAD"
+          elif [ "$EVENT" = "push" ] && [ -n "$BEFORE" ] && [ "$BEFORE" != "$ZERO" ]; then
+            # Neuer Branch (BEFORE = lauter Nullen) und force-push, dessen
+            # Vorgaenger-Objekt nicht mehr existiert, fallen hier heraus bzw.
+            # scheitern unten am git-Aufruf -- beides endet in code=true.
+            range="$BEFORE..HEAD"
+          fi
+          if [ -n "$range" ]; then
+            if files=$(git diff --name-only "$range") && [ -n "$files" ]; then
               echo "Geänderte Dateien:"
               echo "$files" | sed 's/^/  /'
               # Alles, was NICHT auf ein Doku-Muster passt, ist Code.
