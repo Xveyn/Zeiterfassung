@@ -9,6 +9,10 @@ import traceback
 from tkinter import messagebox
 
 from src.dialogs.settings_dialog._shared import label, subheader
+from src.dialogs.settings_dialog.google_tab_task import (
+    fetch_sender_email, load_calendars, open_calendar_service,
+    open_drive_service, reconnect_drive,
+)
 from src.dialogs.settings_dialog.oauth_task import build_oauth_enable_task
 from src.platform_open import open_folder
 from src.sync_runtime import run_compaction_blocking
@@ -162,26 +166,6 @@ class GoogleTab:
 
         self._set_sender_btn_text("Verbinde…")
 
-        def _fn():
-            from src.mail import fetch_user_email, get_gmail_service
-            try:
-                get_gmail_service(
-                    os.path.join(base_path, "credentials.json"),
-                    os.path.join(base_path, "token.json"),
-                    sync_enabled=settings.get("sync_enabled"),
-                    gcal_enabled=settings.get("gcal_enabled"),
-                )
-                email = fetch_user_email(
-                    os.path.join(base_path, "token.json"),
-                    sync_enabled=settings.get("sync_enabled"),
-                    gcal_enabled=settings.get("gcal_enabled"),
-                )
-            except Exception as e:
-                return {"ok": False, "error": e, "tb": traceback.format_exc()}
-            if email:
-                settings.set("sender_email", email)   # Cache überlebt Close
-            return {"ok": True, "email": email}
-
         def _on_done(res):
             if not self._sender_label.winfo_exists():
                 return
@@ -199,7 +183,7 @@ class GoogleTab:
                 text=email if email
                 else "(nicht verfügbar — Scope fehlt evtl.)")
 
-        self._runner.run(_fn, _on_done)
+        self._runner.run(lambda: fetch_sender_email(settings, base_path), _on_done)
 
     def _open_scopes(self):
         from src.dialogs.scopes_dialog import open_scopes_dialog
@@ -332,16 +316,9 @@ class GoogleTab:
         if new_state and not settings.get("sync_enabled"):
             self._cb_sync.config(state="disabled")
 
-            def _service():
-                from src import drive
-                drive.get_drive_service(
-                    os.path.join(base_path, "credentials.json"),
-                    os.path.join(base_path, "token.json"),
-                    gcal_enabled=settings.get("gcal_enabled"),
-                )
-
             fn, on_done = build_oauth_enable_task(
-                service_fn=_service, settings=settings,
+                service_fn=lambda: open_drive_service(settings, base_path),
+                settings=settings,
                 setting_key="sync_enabled", checkbox=self._cb_sync,
                 toggle_var=self._var_sync, on_change=self._on_change,
                 dialog=self._dialog,
@@ -387,18 +364,6 @@ class GoogleTab:
             return
         self._reconnect_busy = True
 
-        def _fn():
-            from src import drive
-            try:
-                drive.reconnect(
-                    os.path.join(base_path, "credentials.json"),
-                    os.path.join(base_path, "token.json"),
-                    gcal_enabled=settings.get("gcal_enabled"),
-                )
-            except Exception as e:
-                return {"ok": False, "error": e, "tb": traceback.format_exc()}
-            return {"ok": True}
-
         def _on_done(res):
             self._reconnect_busy = False
             if not dialog.winfo_exists():
@@ -417,7 +382,7 @@ class GoogleTab:
                 parent=dialog,
             )
 
-        self._runner.run(_fn, _on_done)
+        self._runner.run(lambda: reconnect_drive(settings, base_path), _on_done)
 
     def _on_compact_clicked(self):
         dialog = self._dialog
@@ -538,19 +503,6 @@ class GoogleTab:
 
         self._cal_status.config(text="Kalenderliste wird geladen…")
 
-        def _fn():
-            from src import gcal
-            try:
-                service = gcal.get_calendar_service(
-                    os.path.join(base_path, "credentials.json"),
-                    os.path.join(base_path, "token.json"),
-                    sync_enabled=settings.get("sync_enabled"),
-                )
-                items = gcal.list_calendars(service)
-            except Exception as e:
-                return {"ok": False, "error": e, "tb": traceback.format_exc()}
-            return {"ok": True, "items": items}
-
         def _on_done(res):
             if not self._cal_status.winfo_exists():
                 return
@@ -565,7 +517,7 @@ class GoogleTab:
                 return
             self._populate_calendars(res["items"])
 
-        self._runner.run(_fn, _on_done)
+        self._runner.run(lambda: load_calendars(settings, base_path), _on_done)
 
     def _on_gcal_toggled(self):
         settings, base_path = self._settings, self._base_path
@@ -573,16 +525,9 @@ class GoogleTab:
         if new_state and not settings.get("gcal_enabled"):
             self._cb_gcal.config(state="disabled")
 
-            def _service():
-                from src import gcal
-                gcal.get_calendar_service(
-                    os.path.join(base_path, "credentials.json"),
-                    os.path.join(base_path, "token.json"),
-                    sync_enabled=settings.get("sync_enabled"),
-                )
-
             fn, on_done = build_oauth_enable_task(
-                service_fn=_service, settings=settings,
+                service_fn=lambda: open_calendar_service(settings, base_path),
+                settings=settings,
                 setting_key="gcal_enabled", checkbox=self._cb_gcal,
                 toggle_var=self._var_gcal, on_change=self._on_change,
                 dialog=self._dialog,
