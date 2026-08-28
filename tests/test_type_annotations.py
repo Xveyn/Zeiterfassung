@@ -28,6 +28,11 @@ ANNOTATED_MODULES = [
     "src/time_utils.py",
     "src/webhook.py",
     "src/share.py",
+    "src/workweek.py",
+    "src/reminders.py",
+    "src/pause_requirement.py",
+    "src/weekly_limit.py",
+    "src/send_reminder.py",
 ]
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent

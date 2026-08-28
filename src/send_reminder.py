@@ -7,13 +7,18 @@ aktuellen Monat noch nicht gefeuert wurde. Tage jenseits der Monatslänge
 der Termin zusätzlich von arbeitsfreien Tagen (Wochenende/Feiertage) weg
 verschoben (shift_off_free_days).
 """
+from __future__ import annotations
+
 import calendar
 import datetime
 from collections import namedtuple
+from typing import Any, Collection, Iterable
 
 
-def scheduled_datetime(year, month, day, time_str,
-                       shift_mode="none", free_dates=None):
+def scheduled_datetime(year: int, month: int, day: int, time_str: Any,
+                       shift_mode: str = "none",
+                       free_dates: Collection[datetime.date] | None = None,
+                       ) -> datetime.datetime | None:
     """Fällig-Zeitpunkt für (year, month); `day` wird auf die tatsächliche
     Monatslänge geclamped (Tag 31 im Februar -> 28./29., im April -> 30.).
     Danach wird optional von arbeitsfreien Tagen weg verschoben
@@ -30,7 +35,7 @@ def scheduled_datetime(year, month, day, time_str,
     return datetime.datetime(target.year, target.month, target.day, hh, mm)
 
 
-def _parse_hhmm(value):
+def _parse_hhmm(value: Any) -> tuple[int, int] | None:
     if not isinstance(value, str):
         return None
     try:
@@ -50,12 +55,12 @@ SHIFT_LABELS = {
 }
 
 
-def label_for_shift(mode):
+def label_for_shift(mode: str) -> str:
     """Enum-Wert → Klartext fürs Dropdown. Unbekannt → Label von 'none'."""
     return SHIFT_LABELS.get(mode, SHIFT_LABELS["none"])
 
 
-def shift_for_label(label):
+def shift_for_label(label: str) -> str:
     """Klartext aus dem Dropdown → Enum-Wert. Unbekannt → 'none'."""
     for mode, text in SHIFT_LABELS.items():
         if text == label:
@@ -63,7 +68,8 @@ def shift_for_label(label):
     return "none"
 
 
-def shift_off_free_days(date, mode, free_dates):
+def shift_off_free_days(date: datetime.date, mode: str,
+                        free_dates: Collection[datetime.date]) -> datetime.date:
     """Verschiebt `date` weg von arbeitsfreien Tagen, ohne den Monat zu
     verlassen.
 
@@ -89,7 +95,8 @@ def shift_off_free_days(date, mode, free_dates):
     return date
 
 
-def free_dates_for_month(year, month, state="", include_holidays=False):
+def free_dates_for_month(year: int, month: int, state: str = "",
+                         include_holidays: bool = False) -> set[datetime.date]:
     """Arbeitsfreie Tage des Monats: immer Sa/So, optional die Feiertage des
     Bundeslands.
 
@@ -108,8 +115,9 @@ def free_dates_for_month(year, month, state="", include_holidays=False):
     return free
 
 
-def is_due(now_dt, day, time_str, last_fired_month,
-           shift_mode="none", free_dates=None):
+def is_due(now_dt: datetime.datetime, day: int, time_str: Any,
+           last_fired_month: str | None, shift_mode: str = "none",
+           free_dates: Collection[datetime.date] | None = None) -> bool:
     """True, wenn `now_dt` den Fällig-Zeitpunkt des aktuellen Monats erreicht
     hat und dieser Monat (`'YYYY-MM'`) noch nicht in `last_fired_month`
     steht. shift_mode/free_dates werden an scheduled_datetime durchgereicht."""
@@ -126,7 +134,7 @@ def is_due(now_dt, day, time_str, last_fired_month,
 DayReminder = namedtuple("DayReminder", ["end", "minutes"])
 
 
-def _parse_hhmm_on(date, value):
+def _parse_hhmm_on(date: datetime.date, value: Any) -> datetime.datetime | None:
     """'HH:MM' + date -> datetime; None/ungültig -> None."""
     hh_mm = _parse_hhmm(value)
     if hh_mm is None:
@@ -135,7 +143,8 @@ def _parse_hhmm_on(date, value):
     return datetime.datetime(date.year, date.month, date.day, hh, mm)
 
 
-def due_day_reminder(reserved_slots, now_dt):
+def due_day_reminder(reserved_slots: Iterable[dict[str, Any]],
+                     now_dt: datetime.datetime) -> DayReminder | None:
     """Der fällige tagesbezogene Sende-Reminder für die heutigen
     Reservierungs-Slots, oder None.
 
@@ -164,7 +173,7 @@ def due_day_reminder(reserved_slots, now_dt):
     return None
 
 
-def marked_reminder_dates(raw_reservations):
+def marked_reminder_dates(raw_reservations: dict[str, Any]) -> list[datetime.date]:
     """Die Tage mit gesetztem Erinnerungs-Marker, aus get_all_raw().
 
     Tombstones (`deleted`) zählen nicht, kaputte Datums-Keys werden
@@ -184,8 +193,10 @@ def marked_reminder_dates(raw_reservations):
     return out
 
 
-def monthly_anchor_dates(today, day, time_str, shift_mode="none", state="",
-                         include_holidays=False, months_back=2):
+def monthly_anchor_dates(today: datetime.date, day: int, time_str: Any,
+                         shift_mode: str = "none", state: str = "",
+                         include_holidays: bool = False,
+                         months_back: int = 2) -> list[datetime.date]:
     """Die Monatstermine des laufenden und der `months_back` vorangehenden
     Monate — inklusive Monatslängen-Clamp und Verschiebung.
 
@@ -205,7 +216,10 @@ def monthly_anchor_dates(today, day, time_str, shift_mode="none", state="",
     return out
 
 
-def previous_anchor_date(today, marked_dates, monthly_dates):
+def previous_anchor_date(today: datetime.date,
+                         marked_dates: Iterable[datetime.date],
+                         monthly_dates: Iterable[datetime.date],
+                         ) -> datetime.date | None:
     """Der jüngste Erinnerungs-Ankerpunkt echt VOR `today`, oder None.
 
     `today` selbst zählt nicht: der Zeitraum soll bis heute reichen, nicht
@@ -215,7 +229,10 @@ def previous_anchor_date(today, marked_dates, monthly_dates):
     return max(candidates) if candidates else None
 
 
-def default_send_period(today, marked_dates, monthly_dates):
+def default_send_period(today: datetime.date,
+                        marked_dates: Iterable[datetime.date],
+                        monthly_dates: Iterable[datetime.date],
+                        ) -> tuple[datetime.date, datetime.date] | None:
     """(von, bis) für den Sende-Dialog: Tag NACH dem vorherigen Anker bis
     heute (einschließlich). Kein Anker → None, der Aufrufer bleibt dann beim
     bisherigen Default."""

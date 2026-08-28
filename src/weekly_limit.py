@@ -24,12 +24,18 @@ keine rechtsverbindliche Aussage — für Grenzfälle bleibt eine echte Prüfung
 Rundschreiben-Logik heranführen würde, ist als optionale Idee im Repo
 vermerkt (#98-Nachfolge, aktuell unentschieden)."""
 
+from __future__ import annotations
+
 import datetime
+from typing import TYPE_CHECKING, Any, Iterable
 
 from src.time_utils import calculate_hours, get_week_dates, get_week_label
 
+if TYPE_CHECKING:  # nur fuer die Signaturen
+    from src.settings import SettingsLike
 
-def is_limit_active(settings, date_str):
+
+def is_limit_active(settings: SettingsLike, date_str: str) -> bool:
     """True, wenn das Werkstudenten-Limit aktiv ist UND date_str (ISO) im
     konfigurierten Zeitraum liegt. Deaktiviertes Limit oder leerer/fehlender
     Zeitraum -> False."""
@@ -42,7 +48,7 @@ def is_limit_active(settings, date_str):
     return start <= date_str <= end
 
 
-def week_ist_hours(all_entries, iso_year, iso_week):
+def week_ist_hours(all_entries: dict[str, Any], iso_year: int, iso_week: int) -> float:
     """Summe der Ist-Stunden (alle Kategorien) einer ISO-Woche.
 
     all_entries: {date_str: {slots: [...]}} wie von Storage.get_all()."""
@@ -57,7 +63,8 @@ def week_ist_hours(all_entries, iso_year, iso_week):
     return round(total, 2)
 
 
-def check_week_limit(settings, all_entries, date_str):
+def check_week_limit(settings: SettingsLike, all_entries: dict[str, Any],
+                     date_str: str) -> dict[str, Any] | None:
     """Prüft, ob date_str im konfigurierten Werkstudenten-Zeitraum liegt und
     die Ist-Stunden-Summe der zugehörigen ISO-Woche das Limit überschreitet.
 
@@ -78,7 +85,8 @@ def check_week_limit(settings, all_entries, date_str):
     }
 
 
-def check_dates_for_warnings(settings, all_entries, date_strs):
+def check_dates_for_warnings(settings: SettingsLike, all_entries: dict[str, Any],
+                             date_strs: Iterable[str]) -> list[dict[str, Any]]:
     """Prüft eine Menge von Daten (z.B. neu importierte Reservierungs-Slots)
     auf Wochenlimit-Überschreitung. Dedupliziert nach ISO-Woche (ein Datum
     pro Woche reicht für den Check). Liefert eine Liste von
@@ -107,7 +115,8 @@ def check_dates_for_warnings(settings, all_entries, date_strs):
     return warnings
 
 
-def scan_period_for_warnings(settings, all_entries):
+def scan_period_for_warnings(settings: SettingsLike,
+                             all_entries: dict[str, Any]) -> list[dict[str, Any]]:
     """Scannt den kompletten konfigurierten Werkstudenten-Zeitraum (falls
     aktiv) Woche für Woche auf Limit-Überschreitung. Liefert eine Liste von
     Überschreitungs-Dicts (siehe check_week_limit), eine pro überschrittener
@@ -131,7 +140,7 @@ def scan_period_for_warnings(settings, all_entries):
     return check_dates_for_warnings(settings, all_entries, dates)
 
 
-def format_limit_warnings(warnings):
+def format_limit_warnings(warnings: Iterable[dict[str, Any]]) -> str:
     """Formatiert eine Liste von Überschreitungs-Dicts (siehe
     check_week_limit) zu einem mehrzeiligen Anzeige-Text für einen
     Warn-Dialog."""
@@ -142,7 +151,7 @@ def format_limit_warnings(warnings):
     )
 
 
-def period_scan_needed(old, new):
+def period_scan_needed(old: dict[str, Any], new: dict[str, Any]) -> bool:
     """Entscheidet, ob ein voller Zeitraum-Scan (scan_period_for_warnings)
     nötig ist, wenn sich die Werkstudenten-Limit-Settings von old nach new
     ändern. old/new: Dicts {"enabled", "start", "end", "max_hours"}.

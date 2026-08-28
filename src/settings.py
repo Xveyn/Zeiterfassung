@@ -6,10 +6,27 @@ import json
 import logging
 import os
 import threading
-from typing import Any
+from typing import Any, Protocol
 
 from src.json_store import atomic_write_json
 from src.time_utils import utc_now_iso
+
+
+class SettingsLike(Protocol):
+    """Minimalvertrag der Settings für die reinen Regel-Module.
+
+    `workweek`, `weekly_limit` und `pause_requirement` brauchen von den
+    Settings ausschließlich `get(key)` — und ihre Tests reichen dafür ein
+    schlichtes `dict` herein, was die Docstrings dort auch ausdrücklich
+    zulassen („Settings-artiges Dict/Objekt"). Ein `Settings`-Typ in diesen
+    Signaturen wäre also eine Zusage, die auf der Aufruferseite niemand hält.
+
+    `key` ist positionsgebunden (`/`): `dict.get` nimmt seinen Schlüssel nur
+    positional, ohne das Slash wäre ein einfaches dict nicht zuweisbar.
+    """
+
+    def get(self, key: str, /) -> Any: ...
+
 
 WEEKDAY_KEYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")  # Index = datetime.weekday()
 

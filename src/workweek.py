@@ -9,10 +9,16 @@ Bewusst nicht hier: das Werkstudenten-Limit (zählt real geleistete Stunden,
 auch am Wochenende), das Teilen von Rohdaten und der Kalender-Abgleich.
 """
 
+from __future__ import annotations
+
 import datetime
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:  # nur fuer die Signaturen
+    from src.settings import SettingsLike
 
 
-def is_weekend(date_str):
+def is_weekend(date_str: str) -> bool:
     """Ist der ISO-Datumsschlüssel ein Samstag oder Sonntag?
 
     Ein unlesbarer Schlüssel gilt als **nicht** Wochenende: Filtern darf nie
@@ -24,7 +30,8 @@ def is_weekend(date_str):
         return False
 
 
-def filter_for_report(entries, settings):
+def filter_for_report(entries: dict[str, Any],
+                      settings: SettingsLike) -> dict[str, Any]:
     """`entries` ohne Wochenendtage — wenn `workweek_only` aktiv ist.
 
     Bei inaktiver Einstellung wird das Eingabe-Dict unverändert
@@ -40,7 +47,8 @@ def filter_for_report(entries, settings):
     return {k: v for k, v in entries.items() if not is_weekend(k)}
 
 
-def count_weekend_entries(entries, date_from, date_to):
+def count_weekend_entries(entries: dict[str, Any], date_from: datetime.date,
+                          date_to: datetime.date) -> int:
     """Anzahl der Wochenend-Tage mit Eintrag im Zeitraum (Grenzen inklusive).
 
     Für die Hinweiszeile im Sende-/Export-Dialog — gezählt wird deshalb auf dem
