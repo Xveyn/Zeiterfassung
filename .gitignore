@@ -9,6 +9,7 @@ token.json
 settings.json
 conflicts.json
 reservations.json*
+vacations.json*
 sync_history.json
 sync-apply.journal
 instance-secret

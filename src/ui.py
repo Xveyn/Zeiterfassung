@@ -75,7 +75,8 @@ def _route_update_notification(release, tray_active, toast_shown_version):
 class App:
     def __init__(self, root, storage, settings, base_path=".", conflicts_store=None,
                  reservation_store=None, single_instance=None,
-                 data_lock=None, sync_guard=None, webhook_store=None):
+                 data_lock=None, sync_guard=None, webhook_store=None,
+                 vacation_store=None):
         self.root = root
         self.storage = storage
         self.settings = settings
@@ -83,6 +84,7 @@ class App:
         self.base_path = base_path
         self.conflicts_store = conflicts_store
         self.reservation_store = reservation_store
+        self.vacation_store = vacation_store
         self._data_lock = data_lock      # geteilter Store-RLock (Audit H1)
         self._sync_guard = sync_guard    # Sync-Re-Entrancy-Guard (Audit H2)
         # Gerätelokale Webhook-Konfiguration; None bedeutet „Feature nicht
