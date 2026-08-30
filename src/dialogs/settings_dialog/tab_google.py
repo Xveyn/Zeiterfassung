@@ -22,7 +22,6 @@ from src.theme import (
     dark_combo, dark_entry, secondary_button, themed_askyesno, themed_showerror,
     themed_showinfo, themed_showwarning,
 )
-from src.tooltip import attach_tooltip
 from src.time_utils import format_iso_date
 
 # Zeichen + Farbe je Zustand aus mail.scope_summary — dieselbe Sprache
@@ -272,28 +271,33 @@ class GoogleTab:
                 lambda proposed: len(proposed) <= MAX_NAME_LENGTH), "%P"),
         )
         entry.pack(side=tk.LEFT, padx=(6, 0))
-        attach_tooltip(
-            entry,
-            "Name dieses Geräts. Andere Geräte zeigen ihn beim Auflösen\n"
-            "von Sync-Konflikten statt der Geräte-ID an.",
-        )
+        # Bewusst KEIN Tooltip (Konvention „Tooltips" in CLAUDE.md): Dialoge
+        # bekommen keine flächendeckenden, und ein Hover-Text an einem
+        # Eingabefeld bliebe die ganze Tippdauer offen — er verdeckte dabei
+        # genau die beiden Zeilen darunter, weil `_Tooltip` starr unter dem
+        # Widget aufpoppt und keinen Auto-Hide-Timeout kennt. Was nicht
+        # selbsterklärend ist, steht deshalb als Hinweiszeile da.
+        tk.Label(
+            frame, text="Wird anderen Geräten bei Sync-Konflikten angezeigt.",
+            font=FONT_SMALL, bg=BG, fg=TEXT_MUTED,
+        ).grid(row=8, column=0, columnspan=2, padx=10, pady=(2, 0), sticky="w")
 
         device_id = settings.get("device_id") or "(noch nicht gesetzt)"
         device_id_short = device_id[:8] + "…" if len(device_id) > 8 else device_id
         tk.Label(
             frame, text=f"Geräte-ID: {device_id_short}", font=FONT_SMALL,
             bg=BG, fg=TEXT_MUTED,
-        ).grid(row=8, column=0, columnspan=2, padx=10, pady=(2, 0), sticky="w")
+        ).grid(row=9, column=0, columnspan=2, padx=10, pady=(2, 0), sticky="w")
 
         last = format_iso_date(settings.get("last_pull_at"), fallback="noch nie")
         tk.Label(
             frame, text=f"Letzte Synchronisation: {last}", font=FONT_SMALL,
             bg=BG, fg=TEXT_MUTED,
-        ).grid(row=9, column=0, columnspan=2, padx=10, pady=(2, 4), sticky="w")
+        ).grid(row=10, column=0, columnspan=2, padx=10, pady=(2, 4), sticky="w")
 
         # Ab hier wachsen im Google-Tab optionale Zeilen (Konflikte, Kompaktieren)
         # dynamisch — deshalb eine laufende Row-Nummer statt fixer Konstanten.
-        next_google_row = 10
+        next_google_row = 11
         unresolved = 0
         if self._conflicts_store is not None:
             unresolved = self._conflicts_store.count_unresolved()
