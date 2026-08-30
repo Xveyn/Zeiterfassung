@@ -33,6 +33,9 @@ Aus dem Brainstorming, als Kurzreferenz für alles Folgende:
 | Sync | gerätelokal, **kein** Drive-Sync, **kein** Share-Doc |
 | Google Kalender | ja, Einwegs-Push, nur bei aktiviertem `gcal_enabled` |
 | Kalender-Footer | unverändert |
+| Reiner Urlaubsmonat | erzeugt einen Bericht (Leer-Prüfung zählt Urlaub mit) |
+| Bericht-Summen | `_build_table` wird auf Minuten umgestellt (Altlast-Fix, Voraussetzung) |
+| Tombstones | nur für Perioden mit Kalender-Event |
 
 ## Status quo
 
@@ -144,9 +147,13 @@ Tage nicht abbildbar wären. Die Tagesminuten liegen in ihr:
   nicht die Von-Bis-Kombination — sonst änderte sich beim Verschieben des
   Zeitraums die Identität und der gcal-Bezug risse ab.
 - Perioden überschneiden sich nicht (siehe `periods_overlap`).
-- Eine gelöschte Periode bleibt als Tombstone (`deleted: true`, `days: {}`)
-  erhalten, bis der gcal-Reconcile ihr Event entfernt hat — exakt die
-  Begründung aus `reservations.py`.
+- Eine gelöschte Periode bleibt **nur dann** als Tombstone (`deleted: true`,
+  `days: {}`) erhalten, wenn sie ein Kalender-Event trägt; sonst wird ihr
+  Record direkt entfernt. Anders als bei `reservations.py` — die sind per
+  Definition an den Kalender gekoppelt, Urlaub ist es bewusst nicht. Ein
+  bedingungsloser Tombstone wäre auf jedem Rechner ohne Google unsterblich,
+  weil ihn kein Pfad je einlöste (`src/CLAUDE.md` verlangt für jeden neuen
+  Tombstone-Erzeuger genau diese Unterscheidung).
 
 **Warum abweichend vom Issue:** #88 empfiehlt „auf Tage expandiert speichern"
 (`{ISO: Record}`). Das trug, solange der Urlaub keine Identität hatte. Mit
@@ -358,10 +365,22 @@ Aufbau nach `category_dialog.py`: `create_dialog`, Liste der Perioden
   `expand_days`; „Gesamtstunden" verteilt über `apportion_minutes` auf die
   Arbeitstage der Periode (Wochenende/Feiertag bleiben 0). Beide schreiben in
   **dieselbe** Tagesliste — der Store sieht nie eine Gesamtzahl.
-- **Tagesliste** ist eingeklappt (die aufgeklappte Variante scrollt), zeigt
-  jeden Tag mit deutschem Datum, Wochentag und ggf. Feiertagsnamen. Eine
-  Änderung im Sammelfeld überschreibt die Liste; eine Änderung in der Liste
-  lässt das Sammelfeld unangetastet und aktualisiert nur die Summe.
+- **Tagesliste** ist eingeklappt; aufgeklappt liegt sie in einem
+  Canvas+Scrollbar-Container (Muster aus `import_dialog.py:391`) — ein
+  dreiwöchiger Urlaub sind 21 Zeilen, und `create_dialog` setzt
+  `resizable(False, False)`. Sie zeigt jeden Tag mit deutschem Datum,
+  Wochentag und ggf. Feiertagsnamen.
+- **Überschreibungen überleben eine Zeitraum-Änderung.** Nur eine Änderung am
+  Sammelwert oder am Modus setzt alle Tage neu — dort ist das die Absicht.
+  Verlängert der Nutzer den Zeitraum, bleiben die gesetzten Tageswerte
+  stehen; es fallen nur die weg, die nicht mehr im Bereich liegen. Sonst
+  setzte das Verschieben eines Bis-Datums einen gespeicherten
+  6-Stunden-Urlaub stillschweigend auf den Sammelwert zurück.
+- **Ohne gesetztes Bundesland** (`settings["state"] == ""`, der Default eines
+  frischen Nutzers) kennt `holidays_de` keine Feiertage — der 25./26.12. trüge
+  dann volle Stunden. Der Dialog weist darauf hin. Die `days` werden einmalig
+  beim Anlegen berechnet; ein späterer Bundesland-Wechsel korrigiert
+  bestehende Perioden nicht.
 - **Live-Summe** unten, über `format_minutes_hm`.
 - **Speichern** prüft in dieser Reihenfolge: Von ≤ Bis → Name nicht leer →
   `periods_overlap` → Minuten ≥ 0. Jeder Fehler ist ein **bekannter,
@@ -381,6 +400,12 @@ der Wert auf die Arbeitstage verteilt wird.
 Vorbelegung des Sammelfelds. **Nicht** in `SYNCED_SETTING_KEYS` — genau wie
 `default_pause` und die Wochenplan-Zeiten, die dort ebenfalls nicht stehen;
 den Store synchronisiert diese Ausbaustufe ohnehin nicht.
+
+Der Dialog **schreibt** sie beim Speichern zurück (nur im `per_day`-Modus) —
+eine Einstellung, die nirgends gesetzt werden kann, wäre nur per Hand-Edit der
+`settings.json` änderbar und damit tot. Beim **Bearbeiten** einer bestehenden
+Periode kommt der Sammelwert dagegen aus der Periode selbst (häufigster
+Nicht-Null-Tageswert), nicht aus dieser Einstellung.
 
 ---
 
@@ -454,10 +479,26 @@ export_dialog.py:53  ─┴→ picker.get_show_vacation()
 über `vacation_store.day_minutes()` gezogen), nicht den Store. Damit bleibt
 das Threading-Modell unverändert: kein Store-Zugriff im Worker.
 
+### Voraussetzung: `_build_table` rechnet in Minuten
+
+`report._build_table` summiert heute **Dezimalstunden** (`total += week_total`)
+— ein Verstoß gegen die Minuten-Regel, der schon vor #88 im Repo steckt und
+erst auffällt, wenn eine zweite Zahl dazukommt, die sich mit der ersten
+addieren soll. Ohne die Umstellung stünden auf der Abrechnungsseite drei
+Zahlen, die nicht aufgehen: gemessen über 3000 simulierte Monate weichen die
+Gesamtminuten in **47 %** der Fälle ab, die angezeigten Zeilen addieren sich
+in **65,8 %** nicht.
+
+`_week_block`, `_build_table` und `total_hours` führen ihre Summen deshalb
+als ganze Minuten und konvertieren erst zur Anzeige (`_minutes_as_hours`).
+Bestehende Berichte ändern sich dadurch um bis zu 0,01 h. Das ist eine
+Altlast-Reparatur, kein Urlaubs-Feature — sie bekommt einen eigenen Commit
+(`fix(report):`).
+
 ### Ausgabe
 
-`report.py` bekommt `_build_vacation_summary(vacation_days, date_from,
-date_to, style)` — denselben Zuschnitt wie `_build_category_summary`, damit
+`report.py` bekommt `_build_vacation_summary(vacation_days, work_minutes,
+style)` — denselben Zuschnitt wie `_build_category_summary`, damit
 Mail-HTML und PDF sich denselben Baustein teilen und nicht auseinanderlaufen
 können. Gefiltert wird mit `filter_period` über die flachen ISO-Keys:
 
@@ -485,9 +526,22 @@ Drei Festlegungen dazu:
   „Urlaub" und der Zeitraum. Angezeigt werden nur die Tage im
   Berichtszeitraum: eine Periode, die über die Grenze ragt, erscheint mit
   ihrem anteiligen Zeitraum und dessen Minuten.
+- **Je zusammenhängendem Block eine Zeile.** Zwei getrennte Urlaube im
+  Berichtszeitraum ergeben zwei Zeilen. Eine einzige Zeile über `min`..`max`
+  behauptete sonst 20 zusammenhängende Urlaubstage, wo zwei mal fünf waren —
+  auf einem Dokument an den Arbeitgeber eine Falschaussage. Die 0-Minuten-Tage
+  einer Periode (Wochenende, Feiertag) halten einen Block zusammen, sonst
+  zerfiele jeder Zwei-Wochen-Urlaub in drei Zeilen.
 - **Ohne Urlaub im Zeitraum ist die Ausgabe bitgleich zu heute** — keine
   Zeile, keine Trennlinie, kein geänderter Wert. Das gilt auch bei gesetztem
   Häkchen.
+- **Ein reiner Urlaubsmonat erzeugt einen Bericht.** Die Leer-Prüfung greift
+  nur ohne Ist-Zeit **und** ohne bezahlte Urlaubsminute — in
+  `generate_report`, `generate_pdf` und der kanalunabhängigen Vorprüfung des
+  Sende-Dialogs (`send_dialog.py:249`). Ohne das wäre das Häkchen sichtbar,
+  aber im vollen Urlaubsmonat wirkungslos: genau der Fall, den der
+  Stundenlohn-Nutzer abrechnen will. Die Stundentabelle entfällt dann (sie
+  bestünde nur aus Kopfzeile und „Gesamt 0h").
 
 `generate_report` / `generate_pdf` bekommen dafür
 `vacation_days: dict[str, int] | None = None`. Der Rückgabewert von
@@ -517,8 +571,16 @@ unverändert weiterläuft.
   nicht. Kein Code-Change, kein Test-Change.
 - **`pause_requirement`** prüft die `pause`-Felder vorhandener Slots. Ein
   Urlaubstag hat keine Slots. Ebenfalls unberührt.
-- **`workweek.filter_for_report`** filtert Wochenend-Einträge. Urlaubstage am
-  Wochenende tragen 0 Minuten und fallen damit ohnehin nicht ins Gewicht.
+- **`weekly_limit`/`pause_requirement`** bleiben unangetastet — siehe oben.
+
+Eine Ausnahme dagegen bei **`workweek.filter_for_report`**: der
+Urlaubs-Snapshot läuft durch **denselben** Filter wie die Einträge. Die
+Annahme „Wochenendtage tragen ohnehin 0 Minuten" gilt nur für `expand_days` —
+über die Tagesliste im Dialog kann der Nutzer einem Samstag sehr wohl Stunden
+geben. Ohne die Filterung zählte dieser Samstag in „Zu vergüten gesamt" mit,
+obwohl er im `workweek_only`-Modus im Kalender unsichtbar und aus der
+Stundentabelle gestrichen ist. `filter_for_report` filtert rein über die
+ISO-Schlüssel und ist deshalb ohne Änderung wiederverwendbar.
 - **Kalender-Footer**, `share.py`, `sync.py`.
 
 ---
@@ -558,8 +620,9 @@ Funktionen behalten ihre lazy Imports):
 
 ### Abgleich
 
-`reconcile_vacations(service, calendar_id, store, settings, data_lock=None)`
-— **Einwegs-Push**, die App ist die Quelle:
+`reconcile_vacations(service, calendar_id, store, data_lock=None)`
+— **Einwegs-Push**, die App ist die Quelle (kein `settings`-Parameter: es gibt
+kein Watermark zu führen):
 
 1. App-Urlaubsevents listen.
 2. Events ohne lebende lokale Periode löschen (inkl. der Events zu
@@ -574,10 +637,22 @@ update, delete}`) ist **Tk- und Google-frei** und wird direkt getestet — wie
 aus `reconcile_reservations`).
 
 **Bewusst kein Import aus dem Kalender.** Nur App-Events tragen den Marker,
-ein manuell angelegter Urlaubstermin würde also ohnehin nie erkannt. Der
-einzige Verlust ist: wer das Event in Google verschiebt, bekommt es beim
-nächsten Abgleich zurückgesetzt. Das ist als möglicher späterer Schritt im
-Issue zu vermerken, nicht in dieser Stufe zu bauen.
+ein manuell angelegter Urlaubstermin würde also ohnehin nie erkannt. Wer das
+Event in Google verschiebt, bekommt es beim nächsten Abgleich zurückgesetzt —
+dafür vergleicht der Plan **Zeitraum und Zeitstempel**, nicht nur den
+Zeitstempel: Google fasst die private `modified_at` beim Verschieben nicht an,
+ein reiner Zeitstempel-Vergleich sähe den Unterschied also nie. (Derselbe
+Vergleich deckt ab, dass `utc_now_iso` nur Sekundenauflösung hat.) Die
+Google-Änderung zu *übernehmen* statt zu überschreiben ist ein möglicher
+späterer Schritt.
+
+**Der Push hängt hinter `sync_history.mark_reconciled` und in einem eigenen
+`try/except`.** Läge er im gemeinsamen Fehlerraum des Reservierungs-Reconcile,
+risse ein scheiternder Push einen bereits gelungenen Abgleich mit: der
+„hat je abgeglichen"-Marker bliebe ungesetzt, und genau der vetot den
+N6-Startup-Sweep gegen einen `settings.json`-Reset (M4) — Folge wäre die
+Tombstone-Resurrection, gegen die `sync_history.py` überhaupt existiert.
+Zusätzlich gingen die Werkstudenten-Warnungen (#98) verloren.
 
 ### Gate
 
