@@ -7,10 +7,12 @@ und `entry_dialog.py` (M16).
 
 import datetime
 import tkinter as tk
+from tkinter import ttk
 
 from src.holidays_de import get_holidays
 from src.theme import (
     BG, CELL_BG, FONT, FONT_BOLD, FONT_SMALL, TEXT, TEXT_MUTED,
+    apply_combobox_style,
     center_dialog_on_parent, create_dialog, dark_entry, primary_button,
     secondary_button, set_button_text, themed_askyesno, themed_showerror,
 )
@@ -192,6 +194,9 @@ def _open_edit_dialog(parent, vacation_store, settings, period_id, on_saved):
     existing = vacation_store.get(period_id) if period_id else None
     title = "Urlaub bearbeiten" if existing else "Urlaub eintragen"
     dialog = create_dialog(parent, title)
+    # Registriert die ttk-Styles des Dark-Themes — Dark.TCombobox fuer die
+    # Von/Bis-Zeilen UND Vertical.TScrollbar fuer die Tagesliste unten.
+    apply_combobox_style(dialog)
     state = settings.get("state") or ""
 
     today = datetime.date.today()
@@ -270,7 +275,13 @@ def _open_edit_dialog(parent, vacation_store, settings, period_id, on_saved):
     # dem Bildschirm, und `create_dialog` setzt resizable(False, False).
     day_scroll = tk.Frame(dialog, bg=BG)
     day_canvas = tk.Canvas(day_scroll, bg=BG, highlightthickness=0, height=220)
-    day_bar = tk.Scrollbar(day_scroll, orient="vertical", command=day_canvas.yview)
+    # ttk.Scrollbar, NICHT tk.Scrollbar: die Legacy-Scrollbar kennt keine
+    # ttk-Styles und bleibt im hellen Systemlook stehen, mitten im dunklen
+    # Dialog. Vertical.TScrollbar ist in theme/widgets.py bereits dunkel
+    # konfiguriert (dort fuer das Combobox-Popdown).
+    day_bar = ttk.Scrollbar(day_scroll, orient="vertical",
+                            command=day_canvas.yview,
+                            style="Vertical.TScrollbar")
     day_canvas.configure(yscrollcommand=day_bar.set)
     day_canvas.pack(side="left", fill="both", expand=True)
     day_bar.pack(side="right", fill="y")
