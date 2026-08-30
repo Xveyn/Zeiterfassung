@@ -539,3 +539,131 @@ def test_category_summary_agrees_with_grand_total_over_minutes():
     # (Wochensumme); dazu Gesamt-Zeile der Stundentabelle UND Kategorie-Zeile
     # "A" — alle vier zeigen denselben, minutenbasierten Wert.
     assert html.count("0.25h") == 4
+
+
+def test_report_without_vacation_days_is_unchanged():
+    entries = {"2026-07-01": {"slots": [_slot("08:00", "16:00", pause=30)]}}
+    ohne, _ = generate_report(
+        datetime.date(2026, 7, 1), datetime.date(2026, 7, 31), entries)
+    mit_leer, _ = generate_report(
+        datetime.date(2026, 7, 1), datetime.date(2026, 7, 31), entries,
+        vacation_days={})
+    assert ohne == mit_leer
+    assert "Urlaub" not in ohne
+
+
+def test_report_without_vacation_in_period_is_unchanged():
+    entries = {"2026-07-01": {"slots": [_slot("08:00", "16:00", pause=30)]}}
+    ohne, _ = generate_report(
+        datetime.date(2026, 7, 1), datetime.date(2026, 7, 31), entries)
+    mit, _ = generate_report(
+        datetime.date(2026, 7, 1), datetime.date(2026, 7, 31), entries,
+        vacation_days={"2026-09-01": 480})
+    assert ohne == mit
+
+
+def test_report_shows_vacation_block():
+    entries = {"2026-07-01": {"slots": [_slot("08:00", "16:00", pause=30)]}}
+    html, total = generate_report(
+        datetime.date(2026, 7, 1), datetime.date(2026, 7, 31), entries,
+        vacation_days={"2026-07-06": 480, "2026-07-07": 480})
+    assert "Urlaub" in html
+    assert "16.0h" in html        # 2 × 8 h Urlaub
+    assert "Zu vergüten gesamt" in html
+    # „Gesamt" bleibt reine Ist-Zeit: 08:00–16:00 minus 30 min = 7,5 h.
+    assert total == 7.5
+
+
+def test_report_vacation_only_counts_days_in_period():
+    entries = {"2026-12-28": {"slots": [_slot("08:00", "16:00", pause=30)]}}
+    html, _ = generate_report(
+        datetime.date(2026, 12, 1), datetime.date(2026, 12, 31), entries,
+        vacation_days={
+            "2026-12-28": 480, "2026-12-29": 480, "2026-12-30": 480,
+            "2026-12-31": 240, "2027-01-04": 480,
+        })
+    # Dezember-Anteil: 480+480+480+240 = 1680 min = 28 h. Der Januar-Tag
+    # zählt hier nicht mit.
+    assert "28.0h" in html
+    assert "36.0h" not in html
+
+
+def test_report_zero_minute_vacation_days_are_not_listed():
+    # Wochenend-/Feiertagstage einer Periode tragen 0 und ergeben keinen
+    # Urlaubs-Block, wenn sie die einzigen im Zeitraum sind.
+    entries = {"2026-07-01": {"slots": [_slot("08:00", "16:00", pause=30)]}}
+    html, _ = generate_report(
+        datetime.date(2026, 7, 1), datetime.date(2026, 7, 31), entries,
+        vacation_days={"2026-07-04": 0, "2026-07-05": 0})
+    assert "Zu vergüten gesamt" not in html
+
+
+def test_report_billing_total_sums_over_minutes():
+    entries = {"2026-07-01": {"slots": [_slot("08:00", "16:00", pause=30)]}}
+    html, _ = generate_report(
+        datetime.date(2026, 7, 1), datetime.date(2026, 7, 31), entries,
+        vacation_days={"2026-07-06": 450})
+    # 7,5 h Ist + 7,5 h Urlaub = 15 h.
+    assert "15.0h" in html
+
+
+def test_pdf_contains_the_same_vacation_block():
+    from src import report as report_mod
+    entries = {"2026-07-01": {"slots": [_slot("08:00", "16:00", pause=30)]}}
+    captured = {}
+    with patch.dict("sys.modules",
+                    {"xhtml2pdf": make_fake_xhtml2pdf(captured)}):
+        report_mod.generate_pdf(
+            datetime.date(2026, 7, 1), datetime.date(2026, 7, 31), entries,
+            vacation_days={"2026-07-06": 480})
+    assert "Urlaub" in captured["html"]
+    assert "Zu vergüten gesamt" in captured["html"]
+
+
+def test_two_separate_vacations_are_not_merged_into_one_span():
+    """Zwei getrennte Perioden im Zeitraum ergeben ZWEI Zeilen. Eine einzige
+    Zeile „05.07. – 24.07." behauptete 20 zusammenhängende Urlaubstage — auf
+    einem Dokument an den Arbeitgeber eine Falschaussage."""
+    entries = {"2026-07-01": {"slots": [_slot("08:00", "16:00", pause=30)]}}
+    html, _ = generate_report(
+        datetime.date(2026, 7, 1), datetime.date(2026, 7, 31), entries,
+        vacation_days={
+            "2026-07-06": 480, "2026-07-07": 480,
+            "2026-07-20": 480, "2026-07-21": 480,
+        })
+    assert "06.07.2026 – 07.07.2026" in html
+    assert "20.07.2026 – 21.07.2026" in html
+    assert "06.07.2026 – 21.07.2026" not in html
+
+
+def test_weekend_gap_inside_one_period_does_not_split_the_row():
+    """Die 0-Minuten-Tage einer Periode (Wochenende) dürfen den Block nicht
+    zerreißen — sonst zerfiele jeder Zwei-Wochen-Urlaub in drei Zeilen."""
+    entries = {"2026-07-01": {"slots": [_slot("08:00", "16:00", pause=30)]}}
+    html, _ = generate_report(
+        datetime.date(2026, 7, 1), datetime.date(2026, 7, 31), entries,
+        vacation_days={
+            "2026-07-02": 480, "2026-07-03": 480,
+            "2026-07-04": 0, "2026-07-05": 0,
+            "2026-07-06": 480,
+        })
+    assert "02.07.2026 – 06.07.2026" in html
+
+
+def test_vacation_only_period_still_produces_a_report():
+    """Ein voller Urlaubsmonat ohne erfasste Ist-Zeit muss sendbar sein —
+    für den Stundenlohn-Fall ist genau das die Abrechnung."""
+    html, total = generate_report(
+        datetime.date(2026, 7, 1), datetime.date(2026, 7, 31), {},
+        vacation_days={"2026-07-06": 480, "2026-07-07": 480})
+    assert html is not None
+    assert "Zu vergüten gesamt" in html
+    assert "16.0h" in html
+    assert total == 0.0          # „Gesamt" bleibt reine Ist-Zeit
+
+
+def test_still_no_report_without_entries_and_without_vacation():
+    html, total = generate_report(
+        datetime.date(2026, 7, 1), datetime.date(2026, 7, 31), {})
+    assert html is None
+    assert total == 0

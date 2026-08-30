@@ -310,33 +310,139 @@ def _build_category_summary(range_entries: dict[str, Any],
     )
 
 
+def _vacation_runs(vacation_days: dict[str, int]) -> list[tuple[str, str, int]]:
+    """Zerlegt die Urlaubstage in zusammenhängende Blöcke.
+
+    Liefert [(von, bis, minuten)] je Block, chronologisch. Ein Block bricht
+    nur bei einer echten Kalenderlücke ab — die 0-Minuten-Tage einer Periode
+    (Wochenende, Feiertag) halten ihn zusammen, sonst zerfiele jeder
+    Zwei-Wochen-Urlaub in drei Zeilen.
+
+    Getrennte Perioden ergeben getrennte Blöcke: eine einzige Zeile über
+    min..max behauptete sonst 20 zusammenhängende Urlaubstage, wo zwei mal
+    fünf waren — auf einem Dokument an den Arbeitgeber eine Falschaussage.
+
+    Blöcke ohne eine einzige bezahlte Minute (nur Wochenende im Zeitraum)
+    fallen weg.
+    """
+    if not vacation_days:
+        return []
+    runs: list[tuple[str, str, int]] = []
+    days = sorted(vacation_days)
+    start = days[0]
+    prev = datetime.date.fromisoformat(start)
+    minutes = vacation_days[start]
+    for day in days[1:]:
+        current = datetime.date.fromisoformat(day)
+        if (current - prev).days > 1:
+            if minutes:
+                runs.append((start, prev.isoformat(), minutes))
+            start, minutes = day, 0
+        minutes += vacation_days[day]
+        prev = current
+    if minutes:
+        runs.append((start, prev.isoformat(), minutes))
+    return runs
+
+
+def _build_vacation_summary(vacation_days: dict[str, int],
+                            work_minutes: int,
+                            style: dict[str, Any]) -> str:
+    """„Urlaub"-Block unter der Stundentabelle, plus die Zeile „Zu vergüten
+    gesamt".
+
+    `vacation_days` ist bereits auf den Berichtszeitraum gefiltert
+    ({ISO: minutes}). Je zusammenhängendem Block eine Zeile; liegt im Zeitraum
+    keine einzige bezahlte Urlaubsminute, entsteht kein Block.
+
+    Der Periodenname taucht bewusst NICHT auf: er ist gerätelokal, im Bericht
+    heißt es schlicht „Urlaub" plus Zeitraum.
+
+    Gerechnet wird durchgehend in Minuten (CLAUDE.md) — `work_minutes` kommt
+    aus `_build_table` und damit aus derselben Auflösung, sodass die drei
+    Zahlen auf der Seite aufgehen.
+    """
+    runs = _vacation_runs(vacation_days)
+    if not runs:
+        return ""
+
+    s = style
+    td = s["td_base"]
+    vacation_minutes = sum(m for _, _, m in runs)
+
+    rows = []
+    for idx, (start, end, minutes) in enumerate(runs):
+        label = (f"{format_date(datetime.date.fromisoformat(start))} – "
+                 f"{format_date(datetime.date.fromisoformat(end))}")
+        row_bg = s["row_a"] if idx % 2 == 0 else s["row_b"]
+        rows.append(
+            f"<tr style='{row_bg}'>"
+            f"<td style='{td}{s['c_day']}'>{_esc(label)}</td>"
+            f"<td style='{td}{s['c_hours']}'>{_minutes_as_hours(minutes)}h</td>"
+            f"</tr>"
+        )
+
+    return (
+        f'<table style="border-collapse:collapse;width:100%;margin-top:16px;{s["table_extra"]}">'
+        f'<tr style="{s["th_row"]}">'
+        f'<th style="{s["th_cell"]}">Urlaub</th>'
+        f'<th style="{s["th_cell"]}">Stunden</th>'
+        f'</tr>'
+        f'{"".join(rows)}'
+        f'<tr style="{s["total_row"]}">'
+        f'<td style="{s["total_lbl"]}">Zu vergüten gesamt</td>'
+        f'<td style="{s["total_hrs"]}">'
+        f'{_minutes_as_hours(work_minutes + vacation_minutes)}h</td>'
+        f'</tr>'
+        f'</table>'
+    )
+
+
 def generate_report(date_from: datetime.date, date_to: datetime.date,
                     all_entries: dict[str, Any], greeting: str = "",
                     content: str = "", closing: str = "",
                     categories: Collection[str] | None = None,
-                    category_breakdown: bool = True) -> tuple[str | None, float]:
+                    category_breakdown: bool = True,
+                    vacation_days: dict[str, int] | None = None
+                    ) -> tuple[str | None, float]:
     """Generate an HTML email report with greeting, content, table, category
     summary, and closing.
 
     categories: None = alle; sonst Menge von Kategorie-Strings ('' = ohne).
     category_breakdown: True = "Summe je Kategorie"-Tabelle anhängen (Default,
     bisheriges Verhalten); False = weglassen, nur das Gesamt der Tagestabelle.
+    vacation_days: {ISO: minutes} der Urlaubstage (bereits Snapshot des
+    Stores, ungefiltert) oder None. Liegt im Zeitraum kein Urlaubstag mit
+    Minuten, ist die Ausgabe bitgleich zur Variante ohne den Parameter.
+    Der zurückgegebene `total` bleibt in JEDEM Fall die reine Ist-Zeit.
     Returns (html, total) tuple, or (None, 0) if no entries.
     """
     range_entries = filter_period(date_from, date_to, all_entries)
     if range_entries:
         range_entries = filter_categories(range_entries, categories)
-    if not range_entries:
+    vacation_in_range = filter_period(date_from, date_to, vacation_days or {}) or {}
+
+    # Leer ist der Bericht nur ohne Ist-Zeit UND ohne bezahlte Urlaubsminute.
+    # Ein voller Urlaubsmonat ohne erfasste Arbeitszeit ist für den
+    # Stundenlohn-Fall genau die Abrechnung, um die es geht.
+    if not range_entries and not any(vacation_in_range.values()):
         return None, 0
 
     label = f"{format_date(date_from)} – {format_date(date_to)}"
-    groups = _group_by_week(range_entries)
-    table, total_minutes = _build_table(groups, HTML_STYLE)
+    if range_entries:
+        groups = _group_by_week(range_entries)
+        table, total_minutes = _build_table(groups, HTML_STYLE)
+        category_summary = (
+            _build_category_summary(range_entries, HTML_STYLE)
+            if category_breakdown else ""
+        )
+    else:
+        # Kein Ist-Zeit-Block: die leere Stundentabelle bestünde nur aus
+        # Kopfzeile und „Gesamt 0h" und sagte nichts aus.
+        table, total_minutes, category_summary = "", 0, ""
     total = _minutes_as_hours(total_minutes)
-    category_summary = (
-        _build_category_summary(range_entries, HTML_STYLE)
-        if category_breakdown else ""
-    )
+    vacation_summary = _build_vacation_summary(
+        vacation_in_range, total_minutes, HTML_STYLE)
 
     greeting_filled = _apply_placeholders(_esc_multiline(greeting), label, total)
     content_filled = _apply_placeholders(_esc_multiline(content), label, total)
@@ -354,6 +460,7 @@ def generate_report(date_from: datetime.date, date_to: datetime.date,
 {content_html}
 {table}
 {category_summary}
+{vacation_summary}
 {closing_html}
 </div>
 </body></html>"""
@@ -364,27 +471,43 @@ def generate_report(date_from: datetime.date, date_to: datetime.date,
 def generate_pdf(date_from: datetime.date, date_to: datetime.date,
                  all_entries: dict[str, Any], name: str = "",
                  categories: Collection[str] | None = None,
-                 category_breakdown: bool = True) -> bytes | None:
+                 category_breakdown: bool = True,
+                 vacation_days: dict[str, int] | None = None) -> bytes | None:
     """Generate a PDF of the time tracking table. Returns PDF bytes, or None if no entries.
 
     category_breakdown: True = "Summe je Kategorie"-Tabelle anhängen (Default);
     False = weglassen, nur das Gesamt der Tagestabelle.
+    vacation_days: {ISO: minutes} der Urlaubstage (bereits Snapshot des
+    Stores, ungefiltert) oder None. Liegt im Zeitraum kein Urlaubstag mit
+    Minuten, ist die Ausgabe bitgleich zur Variante ohne den Parameter.
     """
     from xhtml2pdf import pisa  # pyright: ignore[reportMissingImports]  # lazy, nicht in CI-Test-Deps
 
     range_entries = filter_period(date_from, date_to, all_entries)
     if range_entries:
         range_entries = filter_categories(range_entries, categories)
-    if not range_entries:
+    vacation_in_range = filter_period(date_from, date_to, vacation_days or {}) or {}
+
+    # Leer ist der Bericht nur ohne Ist-Zeit UND ohne bezahlte Urlaubsminute.
+    # Ein voller Urlaubsmonat ohne erfasste Arbeitszeit ist für den
+    # Stundenlohn-Fall genau die Abrechnung, um die es geht.
+    if not range_entries and not any(vacation_in_range.values()):
         return None
 
     label = f"{format_date(date_from)} – {format_date(date_to)}"
-    groups = _group_by_week(range_entries)
-    table, _ = _build_table(groups, PDF_STYLE)
-    category_summary = (
-        _build_category_summary(range_entries, PDF_STYLE)
-        if category_breakdown else ""
-    )
+    if range_entries:
+        groups = _group_by_week(range_entries)
+        table, total_minutes = _build_table(groups, PDF_STYLE)
+        category_summary = (
+            _build_category_summary(range_entries, PDF_STYLE)
+            if category_breakdown else ""
+        )
+    else:
+        # Kein Ist-Zeit-Block: die leere Stundentabelle bestünde nur aus
+        # Kopfzeile und „Gesamt 0h" und sagte nichts aus.
+        table, total_minutes, category_summary = "", 0, ""
+    vacation_summary = _build_vacation_summary(
+        vacation_in_range, total_minutes, PDF_STYLE)
 
     name_html = (
         f"<p style='color:#111827;font-size:13px;margin:0 0 2px 0;font-weight:600;'>{_esc(name)}</p>"
@@ -398,6 +521,7 @@ def generate_pdf(date_from: datetime.date, date_to: datetime.date,
 <p style="color:#4b5563;font-size:12px;margin:0 0 16px 0;">{_esc(label)}</p>
 {table}
 {category_summary}
+{vacation_summary}
 </body></html>"""
 
     buffer = io.BytesIO()
