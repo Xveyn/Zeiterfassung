@@ -517,3 +517,25 @@ def test_total_hours_preview_matches_the_report():
     assert total_hours(
         datetime.date(2026, 7, 1), datetime.date(2026, 7, 31),
         entries) == report_total
+
+
+def test_category_summary_agrees_with_grand_total_over_minutes():
+    """Gesamt der Stundentabelle und Summe der Kategorien-Aufschlüsselung
+    stehen im selben Bericht nebeneinander und müssen für dieselben Einträge
+    exakt übereinstimmen. Drei 5-Minuten-Slots derselben Kategorie: über
+    Dezimalstunden ergäbe 'A' 0.24h während das Gesamt (bereits minutenbasiert)
+    0.25h zeigt — ein Rückfall auf Dezimalstunden in der Kategorie-Summe
+    lässt diesen Test rot werden."""
+    entries = {"2026-07-01": {"slots": [
+        _slot("08:00", "08:05", kategorie="A"),
+        _slot("09:00", "09:05", kategorie="A"),
+        _slot("10:00", "10:05", kategorie="A"),
+    ]}}
+    html, total = generate_report(
+        datetime.date(2026, 7, 1), datetime.date(2026, 7, 31), entries)
+    assert total == 0.25
+    assert "0.24h" not in html
+    # Alle drei Slots liegen auf einem Tag (Tages-Subtotal) in einer Woche
+    # (Wochensumme); dazu Gesamt-Zeile der Stundentabelle UND Kategorie-Zeile
+    # "A" — alle vier zeigen denselben, minutenbasierten Wert.
+    assert html.count("0.25h") == 4

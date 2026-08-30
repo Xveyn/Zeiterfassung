@@ -268,13 +268,18 @@ def _build_category_summary(range_entries: dict[str, Any],
     """„Summe je Kategorie"-Tabelle über den (gefilterten) Zeitraum. Leerer
     String ('' = keine Kategorie) wird als '(ohne Kategorie)' ans Ende
     sortiert. Liefert '' wenn keine Slots vorhanden — oder wenn alle Slots
-    unkategorisiert sind (dann wäre die Tabelle nur die Gesamtsumme)."""
+    unkategorisiert sind (dann wäre die Tabelle nur die Gesamtsumme).
+
+    Summiert wird über MINUTEN (hours_to_minutes je Slot), nicht über
+    Dezimalstunden — sonst weicht die Kategorien-Summe von der Gesamtsumme
+    der Stundentabelle ab, obwohl beide Zahlen im selben Bericht stehen
+    (CLAUDE.md)."""
     s = style
-    totals = {}
+    totals: dict[str, int] = {}
     for entry in range_entries.values():
         for slot in entry["slots"]:
             kat = slot.get("kategorie") or ""
-            totals[kat] = totals.get(kat, 0.0) + _slot_hours(slot)
+            totals[kat] = totals.get(kat, 0) + hours_to_minutes(_slot_hours(slot))
     # Keine Slots, oder ausschließlich unkategorisierte: die Tabelle bestünde
     # dann nur aus der "(ohne Kategorie)"-Zeile = exakt die ohnehin gezeigte
     # Gesamtsumme. Weglassen, statt eine leere Pseudo-Aufschlüsselung zu zeigen.
@@ -285,7 +290,7 @@ def _build_category_summary(range_entries: dict[str, Any],
     rows = []
     for idx, kat in enumerate(sorted(totals, key=lambda k: (k == "", k.lower()))):
         label = kat if kat else "(ohne Kategorie)"
-        hours = round(totals[kat], 2)
+        hours = _minutes_as_hours(totals[kat])
         row_bg = s["row_a"] if idx % 2 == 0 else s["row_b"]
         rows.append(
             f"<tr style='{row_bg}'>"
