@@ -113,6 +113,7 @@ class App:
             self._marshal_to_ui, self.settings, self.base_path,
             self.reservation_store, self._reservations_active, self.storage,
             data_lock=data_lock,
+            vacation_store=self.vacation_store,
         )
         self._sync = SyncOrchestrator(
             self.root, self.storage, self.settings, self.conflicts_store,
@@ -256,7 +257,7 @@ class App:
                 themed_showinfo(
                     self.root,
                     "Google-Verbindung abgelaufen",
-                    "Die Reservierung wurde lokal gespeichert. Der "
+                    "Die Änderung wurde lokal gespeichert. Der "
                     "Kalender-Abgleich ist fehlgeschlagen, weil die Verbindung "
                     "zu Google abgelaufen oder widerrufen wurde.\n\nBitte "
                     "verbinde die App in den Einstellungen neu (Google-Kalender "
@@ -266,7 +267,7 @@ class App:
             else:
                 messagebox.showerror(
                     "Google-Kalender-Abgleich fehlgeschlagen",
-                    f"Die Reservierung wurde lokal gespeichert, der Kalender-Abgleich "
+                    f"Die Änderung wurde lokal gespeichert, der Kalender-Abgleich "
                     f"ist aber fehlgeschlagen:\n\n{error}\n\n"
                     f"{result.get('tb', '')}\n\n"
                     "Der Abgleich wird beim nächsten Start erneut versucht.",
@@ -479,8 +480,12 @@ class App:
         )
 
     def _on_vacation_change(self):
-        """Nach einer Urlaubsänderung den Kalender neu zeichnen."""
+        """Nach einer Urlaubsänderung den Kalender neu zeichnen und den
+        Google-Kalender-Push anstoßen. `trigger_reconcile` selbst gatet auf
+        `_reservations_active` (== gcal_enabled, reservation_store ist immer
+        gesetzt) — ohne Kalender-Sync also ein No-op."""
         self._refresh()
+        self._bg.trigger_reconcile(self._on_reconcile_done)
 
     def _apply_always_on_top(self):
         """Tk-übergreifender Topmost-Toggle. Funktioniert auf Windows, macOS
@@ -798,11 +803,16 @@ class App:
         elif res_action == "save":
             self.reservation_store.save(date_str, res_keep)
 
+        vacation_touched = False
         if vacation is not None and f"vacation:{vacation['id']}" in selected:
+            # Nur ein Abgleich nötig, wenn draußen ein Event hing — ohne
+            # gcal_event_id gibt es dort nichts aufzuräumen (VacationStore.delete
+            # entfernt den Record dann direkt, ohne Tombstone).
+            vacation_touched = bool(vacation.get("gcal_event_id"))
             self.vacation_store.delete(vacation["id"])
 
         self._refresh()
-        if res_touched:
+        if res_touched or vacation_touched:
             self._bg.trigger_reconcile(self._on_reconcile_done)
 
     def _open_dialog(self, date_str):

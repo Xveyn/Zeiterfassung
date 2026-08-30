@@ -19,6 +19,18 @@ APP_MARKER_VALUE = "reservation"
 EVENT_SUMMARY = "Arbeitszeit (reserviert)"
 EVENT_DESCRIPTION = "Von der Zeiterfassung verwaltete Reservierung."
 
+# Zweiter Marker-Wert für Urlaubs-Events. ZWINGEND verschieden von
+# APP_MARKER_VALUE: `list_app_events` filtert serverseitig auf
+# `zeiterfassung=reservation` und bekommt Urlaubs-Events damit gar nicht
+# erst zurück — der Reservierungs-Reconcile kann sie also weder adoptieren
+# noch als verwaiste App-Events löschen. Mit demselben Wert hinge das
+# Verhalten daran, dass `parse_event` für Ganztags-Events None liefert; ein
+# Detail, das jederzeit kippen könnte.
+APP_MARKER_VALUE_VACATION = "vacation"
+
+VACATION_SUMMARY = "Urlaub"
+VACATION_DESCRIPTION = "Von der Zeiterfassung verwalteter Urlaub."
+
 
 def event_payload(date_str, start, end, kategorie, modified_at):
     """Baut den Calendar-API-Event-Body aus einem Reservierungs-Slot.
@@ -193,3 +205,96 @@ def delete_event(service, calendar_id, event_id):
         if status in (404, 410):
             return
         raise
+
+
+def vacation_event_payload(period_id, date_from, date_to, modified_at):
+    """Ganztags-Event-Body für eine Urlaubsperiode.
+
+    `end.date` ist bei der Calendar-API EXKLUSIV — ein Urlaub bis zum 03.
+    endet im Event am 04., sonst fehlte der letzte Tag. Der lokale Name der
+    Periode geht bewusst NICHT mit: er ist gerätelokal, im Kalender steht
+    schlicht „Urlaub".
+    """
+    end_exclusive = (datetime.date.fromisoformat(date_to)
+                     + datetime.timedelta(days=1))
+    return {
+        "summary": VACATION_SUMMARY,
+        "description": VACATION_DESCRIPTION,
+        "start": {"date": date_from},
+        "end": {"date": end_exclusive.isoformat()},
+        "extendedProperties": {
+            "private": {
+                APP_MARKER_KEY: APP_MARKER_VALUE_VACATION,
+                "period_id": period_id,
+                "modified_at": modified_at,
+            },
+        },
+    }
+
+
+def parse_vacation_event(event):
+    """Calendar-Event → {period_id, event_id, modified_at, from, to} oder
+    None, wenn es nicht den Urlaubs-Marker trägt.
+
+    `from`/`to` werden zurückgerechnet (end.date ist exklusiv), damit
+    plan_vacation_sync eine Verschiebung im Google-Kalender erkennt: deren
+    private modified_at bleibt unverändert, ein reiner Zeitstempel-Vergleich
+    sähe den Unterschied also nie.
+    """
+    private = (event.get("extendedProperties") or {}).get("private") or {}
+    if private.get(APP_MARKER_KEY) != APP_MARKER_VALUE_VACATION:
+        return None
+    start = (event.get("start") or {}).get("date")
+    end = (event.get("end") or {}).get("date")
+    to = None
+    if end:
+        to = (datetime.date.fromisoformat(end)
+              - datetime.timedelta(days=1)).isoformat()
+    return {
+        "period_id": private.get("period_id", ""),
+        "event_id": event.get("id", ""),
+        "modified_at": private.get("modified_at", ""),
+        "from": start,
+        "to": to,
+    }
+
+
+def list_app_vacations(service, calendar_id):
+    """Alle von der App angelegten Urlaubs-Events. Serverseitiger Filter über
+    den Urlaubs-Marker — Reservierungs-Events und manuelle Termine bleiben
+    unangetastet."""
+    events = []
+    page_token = None
+    while True:
+        resp = service.events().list(
+            calendarId=calendar_id,
+            privateExtendedProperty=f"{APP_MARKER_KEY}={APP_MARKER_VALUE_VACATION}",
+            singleEvents=True,
+            maxResults=2500,
+            pageToken=page_token,
+        ).execute()
+        for ev in resp.get("items", []):
+            parsed = parse_vacation_event(ev)
+            if parsed is not None:
+                events.append(parsed)
+        page_token = resp.get("nextPageToken")
+        if not page_token:
+            break
+    return events
+
+
+def create_vacation_event(service, calendar_id, period_id, date_from, date_to,
+                          modified_at):
+    """Legt ein Urlaubs-Event an und liefert dessen event_id."""
+    body = vacation_event_payload(period_id, date_from, date_to, modified_at)
+    created = service.events().insert(calendarId=calendar_id, body=body).execute()
+    return created["id"]
+
+
+def update_vacation_event(service, calendar_id, event_id, period_id, date_from,
+                          date_to, modified_at):
+    """Überschreibt ein bestehendes Urlaubs-Event."""
+    body = vacation_event_payload(period_id, date_from, date_to, modified_at)
+    service.events().update(
+        calendarId=calendar_id, eventId=event_id, body=body,
+    ).execute()
