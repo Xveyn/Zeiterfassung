@@ -1,20 +1,21 @@
 """Crash-Recovery für `sync.apply_merged_doc` (Audit M6).
 
-`apply_merged_doc` schreibt das Merge-Ergebnis in **vier** separate Stores
-nacheinander (storage, settings-synced, conflicts, gc_watermark). Jeder einzelne
+`apply_merged_doc` schreibt das Merge-Ergebnis in mehrere separate Stores
+nacheinander (storage, settings-synced, conflicts, Geraete-Registry,
+gc_watermark). Jeder einzelne
 Write ist atomar (`.tmp` + `os.replace`), die **Sequenz** ist es nicht: stürzt der
 Prozess zwischen zwei Writes ab (Stromausfall, Kill), bleiben die Stores
 inkonsistent — z. B. Storage-Tombstones gestrippt, aber das gc_watermark noch alt.
 
-Dieses Modul klammert die vier Writes in ein **Write-Ahead-Journal**:
+Dieses Modul klammert diese Writes in ein **Write-Ahead-Journal**:
 
 1. Der komplette `merged_doc` wird zuerst atomar + `fsync` in eine Journal-Datei
    geschrieben (durable, bevor irgendein Store angefasst wird).
-2. `sync.apply_merged_doc` schreibt die vier Stores.
+2. `sync.apply_merged_doc` schreibt die Stores.
 3. Das Journal wird gelöscht.
 
 Existiert beim App-Start noch ein Journal, war der letzte Apply unvollständig →
-er wird **idempotent** wiederholt. Das ist gefahrlos, weil alle vier Store-Ops
+er wird **idempotent** wiederholt. Das ist gefahrlos, weil alle Store-Ops
 Full-Replace sind (`storage.apply_merge`/`conflicts_store.save_all` ersetzen den
 kompletten Stand, `settings.apply_synced`/`set` sind für gleiche Eingabe
 idempotent) — die Wiederholung reproduziert exakt denselben Endzustand.
@@ -68,7 +69,7 @@ def apply_merged_doc_journaled(merged_doc: dict[str, Any], storage: Storage,
                                conflicts_store: ConflictsStore,
                                journal_path: str) -> None:
     """Wie `sync.apply_merged_doc`, aber crash-sicher über ein Journal (M6):
-    merged_doc erst durable auf Platte, dann die vier Store-Writes, dann Journal
+    merged_doc erst durable auf Platte, dann die Store-Writes, dann Journal
     löschen. Stürzt der Prozess dazwischen ab, holt `recover_pending_apply` den
     Apply beim nächsten Start nach."""
     _atomic_write_json(journal_path, merged_doc)

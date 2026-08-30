@@ -8,8 +8,23 @@ Doc-Struktur (Sync-File und Zwischenformate), Stand SCHEMA_VERSION = 4:
   "settings":  {key:  {value, modified_at, device_id}},
   "conflicts": [{id, kind, key, candidates, detected_at,
                  resolved, resolution, resolved_at, resolved_by}],
+  "devices":   {device_id: {name, updated_at}},   # optional, s.u.
   "meta":      {gc_watermark}
 }
+
+`devices` ist die Geräte-Registry (s. `devices.py`): sie übersetzt die
+`device_id` in einen lesbaren Namen für die Anzeige (Konfliktdialog). Sie ist
+bewusst **additiv ohne Schema-Bump** — SCHEMA_VERSION bleibt 4. Eine 5 würde
+über `remote_is_newer` den Sync jedes älteren Geräts dauerhaft pausieren, und
+das wäre für ein reines Anzeigefeld völlig unverhältnismäßig. Konsequenzen:
+
+* Ältere Clients ignorieren das Feld (ihr `validate_remote_doc` prüft nur
+  entries/settings/conflicts) und lassen es beim eigenen Push fallen, weil ihr
+  `merge` feste Keys baut. Jedes neuere Gerät trägt sich beim nächsten Push
+  wieder ein — der Verlust heilt sich selbst.
+* Fehlt oder bricht das Feld, fällt die Anzeige auf die gekürzte `device_id`
+  zurück: exakt das Verhalten von vor diesem Feature. Ein kaputtes `devices`
+  ist deshalb **kein** Validierungsfehler — es wird verworfen, nicht das Doc.
 """
 
 from __future__ import annotations
@@ -25,6 +40,9 @@ from typing import TYPE_CHECKING, Any, Callable
 # stdlib-only und importiert sync.py nicht (kein Zyklus, CI-import-sicher).
 from src.settings import SYNCED_SETTING_KEYS
 from src.time_utils import utc_now_iso
+# Registry-Logik (Sanitizing, LWW, eigener Eintrag) liegt Tk- und I/O-frei in
+# devices.py — hier nur angewandt.
+from src.devices import merge_registries, sanitize_registry, with_own_entry
 # REQUIRED_ENTRY_KEYS ist der Pflichtfeld-Vertrag, den storage.apply_merge
 # erzwingt — hier als Single Source of Truth importieren (nicht duplizieren),
 # damit validate_remote_doc nie gegen einen anderen Feldsatz prüft als der
@@ -186,6 +204,9 @@ def merge(local: Doc, remote: Doc, last_pull_at: str) -> Doc:
         "entries": {},
         "settings": {},
         "conflicts": [],
+        # Reine Anzeige-Daten, unabhängig von Entries/Settings: Union beider
+        # Seiten, je Gerät gewinnt der neuere Stempel.
+        "devices": merge_registries(local.get("devices"), remote.get("devices")),
         "meta": {"gc_watermark": ""},
     }
     watermark = max(_watermark_of(local), _watermark_of(remote))
@@ -289,6 +310,14 @@ def build_local_doc(storage: Storage, settings: Settings,
         "entries": storage.get_all_raw(),
         "settings": settings.get_synced_doc(),
         "conflicts": conflicts_store.get_all(),
+        # Der lokale Spiegel reist wieder mit hoch (sonst verlöre jeder Push die
+        # Namen der anderen Geräte); der eigene Eintrag wird darin gesetzt.
+        "devices": with_own_entry(
+            settings.get("known_devices"),
+            settings.device_id_for_sync or (settings.get("device_id") or ""),
+            settings.get("device_name") or "",
+            utc_now_iso(),
+        ),
         "meta": {"gc_watermark": settings.get("gc_watermark") or ""},
     }
 
@@ -299,6 +328,12 @@ def apply_merged_doc(merged_doc: Doc, storage: Storage, settings: Settings,
     storage.apply_merge(merged_doc.get("entries", {}))
     settings.apply_synced(merged_doc.get("settings", {}))
     conflicts_store.save_all(merged_doc.get("conflicts", []))
+    # Nur schreiben, wenn das Doc die Registry überhaupt führt: ein älterer
+    # Client liefert sie nicht mit, und der lokale Spiegel darf davon nicht
+    # leergeräumt werden (sonst wäre nach jedem Sync mit einem alten Gerät
+    # jeder Name weg).
+    if "devices" in merged_doc:
+        settings.set("known_devices", sanitize_registry(merged_doc.get("devices")))
     settings.set("gc_watermark", (merged_doc.get("meta") or {}).get("gc_watermark") or "")
 
 

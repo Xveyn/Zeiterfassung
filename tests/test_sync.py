@@ -959,3 +959,140 @@ def test_run_compaction_aborts_on_newer_remote(tmp_path, monkeypatch):
     assert res.get("reason") == "newer_version"
     assert upload_calls == []
     assert storage.get_all_raw() == {}
+
+
+# --- Geräte-Registry (devices) ---
+#
+# Additiv und OHNE Schema-Bump: SCHEMA_VERSION bleibt 4, damit ältere Clients
+# das Doc weiter annehmen (eine 5 würde ihren Sync über `remote_is_newer`
+# dauerhaft pausieren). Ein Doc ohne `devices` ist deshalb der Normalfall,
+# nicht der Fehlerfall.
+
+def _named_settings(tmp_path, device_id="A", name="Laptop Arbeit", filename="s.json"):
+    settings = Settings(str(tmp_path / filename))
+    settings.device_id_for_sync = device_id
+    settings.set("device_id", device_id)
+    settings.set("device_name", name)
+    return settings
+
+
+def test_build_local_doc_includes_own_device_entry(tmp_path):
+    storage = Storage(str(tmp_path / "z.json"), device_id="A")
+    conflicts = ConflictsStore(str(tmp_path / "c.json"))
+    doc = build_local_doc(storage, _named_settings(tmp_path), conflicts)
+    assert doc["devices"]["A"]["name"] == "Laptop Arbeit"
+    assert doc["devices"]["A"]["updated_at"]
+
+
+def test_build_local_doc_without_device_name_has_empty_registry(tmp_path):
+    storage = Storage(str(tmp_path / "z.json"), device_id="A")
+    conflicts = ConflictsStore(str(tmp_path / "c.json"))
+    doc = build_local_doc(storage, _named_settings(tmp_path, name=""), conflicts)
+    assert doc["devices"] == {}
+
+
+def test_build_local_doc_carries_known_devices_forward(tmp_path):
+    """Der lokale Spiegel reist wieder mit hoch — sonst verlöre jeder Push die
+    Namen der anderen Geräte."""
+    storage = Storage(str(tmp_path / "z.json"), device_id="A")
+    conflicts = ConflictsStore(str(tmp_path / "c.json"))
+    settings = _named_settings(tmp_path)
+    settings.set("known_devices", {"B": {"name": "Büro-PC", "updated_at": "2026-07-01T00:00:00Z"}})
+    doc = build_local_doc(storage, settings, conflicts)
+    assert doc["devices"]["B"]["name"] == "Büro-PC"
+    assert doc["devices"]["A"]["name"] == "Laptop Arbeit"
+
+
+def test_build_local_doc_keeps_own_timestamp_across_pushes(tmp_path):
+    storage = Storage(str(tmp_path / "z.json"), device_id="A")
+    conflicts = ConflictsStore(str(tmp_path / "c.json"))
+    settings = _named_settings(tmp_path)
+    settings.set("known_devices", {"A": {"name": "Laptop Arbeit", "updated_at": "2026-07-01T00:00:00Z"}})
+    doc = build_local_doc(storage, settings, conflicts)
+    assert doc["devices"]["A"]["updated_at"] == "2026-07-01T00:00:00Z"
+
+
+def test_merge_unions_device_registries():
+    local = _doc()
+    local["devices"] = {"A": {"name": "Laptop", "updated_at": "2026-07-01T00:00:00Z"}}
+    remote = _doc()
+    remote["devices"] = {"B": {"name": "Büro-PC", "updated_at": "2026-07-01T00:00:00Z"}}
+    merged = merge(local, remote, "2026-06-01T00:00:00Z")
+    assert set(merged["devices"]) == {"A", "B"}
+
+
+def test_merge_prefers_newer_device_name():
+    local = _doc()
+    local["devices"] = {"A": {"name": "Alter Name", "updated_at": "2026-07-01T00:00:00Z"}}
+    remote = _doc()
+    remote["devices"] = {"A": {"name": "Neuer Name", "updated_at": "2026-07-09T00:00:00Z"}}
+    merged = merge(local, remote, "2026-06-01T00:00:00Z")
+    assert merged["devices"]["A"]["name"] == "Neuer Name"
+
+
+def test_merge_without_devices_yields_empty_registry():
+    """Remote-Doc einer älteren App-Version: kein `devices`-Feld, kein Fehler."""
+    merged = merge(_doc(), _doc(), "2026-06-01T00:00:00Z")
+    assert merged["devices"] == {}
+
+
+def test_merge_survives_broken_devices_field():
+    local = _doc()
+    local["devices"] = "kaputt"
+    remote = _doc()
+    remote["devices"] = [{"name": "nope"}]
+    merged = merge(local, remote, "2026-06-01T00:00:00Z")
+    assert merged["devices"] == {}
+
+
+def test_apply_merged_doc_persists_device_registry(tmp_path):
+    storage = Storage(str(tmp_path / "z.json"), device_id="A")
+    settings = Settings(str(tmp_path / "s.json"))
+    conflicts = ConflictsStore(str(tmp_path / "c.json"))
+    merged = _doc()
+    merged["devices"] = {"B": {"name": "Büro-PC", "updated_at": "2026-07-01T00:00:00Z"}}
+    apply_merged_doc(merged, storage, settings, conflicts)
+    assert settings.get("known_devices") == {
+        "B": {"name": "Büro-PC", "updated_at": "2026-07-01T00:00:00Z"},
+    }
+
+
+def test_apply_merged_doc_without_devices_keeps_local_mirror(tmp_path):
+    """Ein alter Client droppt `devices` beim Push. Der Spiegel darf davon
+    nicht leergeräumt werden — sonst wäre nach jedem Sync mit einem alten
+    Gerät jeder Name weg."""
+    storage = Storage(str(tmp_path / "z.json"), device_id="A")
+    settings = Settings(str(tmp_path / "s.json"))
+    settings.set("known_devices", {"B": {"name": "Büro-PC", "updated_at": "2026-07-01T00:00:00Z"}})
+    conflicts = ConflictsStore(str(tmp_path / "c.json"))
+    apply_merged_doc(_doc(), storage, settings, conflicts)
+    assert settings.get("known_devices")["B"]["name"] == "Büro-PC"
+
+
+def test_validate_remote_doc_accepts_broken_devices():
+    """Ein Anzeige-Detail darf das ganze Remote-Doc nicht in Quarantäne
+    schicken — kaputte Registry wird verworfen, nicht das Doc."""
+    doc = _doc()
+    doc["devices"] = "kaputt"
+    ok, reason = validate_remote_doc(doc)
+    assert ok, reason
+
+
+def test_device_registry_round_trip(tmp_path):
+    """Zwei Geräte, ein Sync: A lernt den Namen von B."""
+    storage_a = Storage(str(tmp_path / "za.json"), device_id="A")
+    conflicts_a = ConflictsStore(str(tmp_path / "ca.json"))
+    settings_a = _named_settings(tmp_path, "A", "Laptop Arbeit", "sa.json")
+
+    storage_b = Storage(str(tmp_path / "zb.json"), device_id="B")
+    conflicts_b = ConflictsStore(str(tmp_path / "cb.json"))
+    settings_b = _named_settings(tmp_path, "B", "Büro-PC", "sb.json")
+
+    remote = build_local_doc(storage_b, settings_b, conflicts_b)
+    local = build_local_doc(storage_a, settings_a, conflicts_a)
+    merged = merge(local, remote, "")
+    apply_merged_doc(merged, storage_a, settings_a, conflicts_a)
+
+    known = settings_a.get("known_devices")
+    assert known["B"]["name"] == "Büro-PC"
+    assert known["A"]["name"] == "Laptop Arbeit"

@@ -3,7 +3,7 @@ from unittest.mock import MagicMock
 
 from src.dialogs import conflicts_dialog
 from src.dialogs.conflicts_dialog import (
-    ConflictsDialog, _entry_chosen, _fmt_entry_candidate,
+    ConflictsDialog, _entry_chosen, _fmt_entry_candidate, _fmt_setting_candidate,
 )
 
 
@@ -35,14 +35,43 @@ def test_entry_chosen_deleted_candidate():
 def test_fmt_entry_candidate_lists_slots():
     cand = _cand(slots=[{"start": "08:00", "end": "12:00", "pause": 0, "kategorie": "Büro"},
                         {"start": "13:00", "end": "17:00", "pause": 30, "kategorie": ""}])
-    text = _fmt_entry_candidate(cand)
+    text = _fmt_entry_candidate(cand, {})
     assert "08:00—12:00" in text
     assert "Büro" in text
     assert "13:00—17:00" in text
 
 
 def test_fmt_entry_candidate_deleted():
-    assert "GELÖSCHT" in _fmt_entry_candidate(_cand(slots=[], deleted=True))
+    assert "GELÖSCHT" in _fmt_entry_candidate(_cand(slots=[], deleted=True), {})
+
+
+# --- Gerätename statt nackter ID (Registry aus dem Sync-Doc) ----------------
+
+_REGISTRY = {"devABCDEF12": {"name": "Laptop Arbeit", "updated_at": "2026-05-01T00:00:00Z"}}
+
+
+def test_fmt_entry_candidate_shows_device_name():
+    text = _fmt_entry_candidate(_cand(slots=[], device_id="devABCDEF12"), _REGISTRY)
+    assert "Laptop Arbeit" in text
+    assert "devABCDE…" in text
+
+
+def test_fmt_entry_candidate_falls_back_to_short_id():
+    """Unbekanntes Gerät (nie gepusht, alter Stand): exakt wie vor dem Feature."""
+    text = _fmt_entry_candidate(_cand(slots=[], device_id="fremdes-geraet"), _REGISTRY)
+    assert "fremdes-…" in text
+    assert "·" not in text
+
+
+def test_fmt_deleted_candidate_shows_device_name():
+    cand = _cand(slots=[], deleted=True, device_id="devABCDEF12")
+    assert "Laptop Arbeit" in _fmt_entry_candidate(cand, _REGISTRY)
+
+
+def test_fmt_setting_candidate_shows_device_name():
+    cand = {"value": "a@b.de", "modified_at": "2026-05-20T10:00:00Z",
+            "device_id": "devABCDEF12"}
+    assert "Laptop Arbeit" in _fmt_setting_candidate(cand, _REGISTRY)
 
 
 # --- Doppel-Resolve-Guard (Follow-up #134 / Audit H3) -----------------------
