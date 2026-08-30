@@ -536,11 +536,13 @@ class GridRenderer:
             attach_tooltip(cell, tip_text)
 
         # macOS-only Lösch-Button (✕) oben links, sobald der Tag löschbare
-        # Einheiten hat (Ist-Zeit ODER aktive Reservierung). reservation wird
-        # nur bei aktivem Kalender-Sync übergeben (vgl. _add_reservation_marker),
-        # daher deckt `reservation is not None` die aktive Reservierung ab.
+        # Einheiten hat (Ist-Zeit, aktive Reservierung ODER Urlaub). reservation
+        # wird nur bei aktivem Kalender-Sync übergeben (vgl.
+        # _add_reservation_marker), daher deckt `reservation is not None` die
+        # aktive Reservierung ab.
         if _should_show_delete_button(
-            platform.system() == "Darwin", bool(entry), reservation is not None
+            platform.system() == "Darwin", bool(entry), reservation is not None,
+            vacation is not None,
         ):
             self._add_delete_button(cell, date_str)
 

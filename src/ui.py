@@ -713,9 +713,13 @@ class App:
             self.reservation_store.get(date_str)
             if self._reservations_active() else None
         )
+        vacation = (
+            self.vacation_store.period_for_date(date_str)
+            if self.vacation_store is not None else None
+        )
         entry_slots = entry["slots"] if entry else []
         res_slots = reservation["slots"] if reservation else []
-        if not entry_slots and not res_slots:
+        if not entry_slots and not res_slots and vacation is None:
             return
 
         date_de = format_iso_date(date_str)
@@ -735,13 +739,38 @@ class App:
             else:
                 for i, s in enumerate(res_slots):
                     options.append((f"reservation:{i}", f"Reservierung  {GridRenderer._fmt_slot_line(s)}"))
+        if vacation is not None:
+            # Gelöscht wird IMMER die ganze Periode. Einzelne Tage aus der
+            # Mitte herauszubrechen würde den Zeitraum zerreißen und die
+            # days-Invariante (lückenlos von from bis to) verletzen; wer das
+            # will, bearbeitet die Periode im Verwaltungs-Dialog.
+            spanne = (f"{format_iso_date(vacation['from'])} – "
+                      f"{format_iso_date(vacation['to'])}")
+            options.append((
+                f"vacation:{vacation['id']}",
+                f"Urlaub „{vacation['name']}“ ({spanne})",
+            ))
 
         if len(options) == 1:
-            kind = "Arbeitszeit" if options[0][0].startswith("entry") else "Reservierung"
-            if not themed_askyesno(self.root, f"{kind} löschen",
-                                   f"{kind} für {date_de} löschen?", lock_ms=600):
+            key = options[0][0]
+            if key.startswith("entry"):
+                kind, frage = "Arbeitszeit", f"Arbeitszeit für {date_de} löschen?"
+            elif key.startswith("reservation"):
+                kind, frage = "Reservierung", f"Reservierung für {date_de} löschen?"
+            else:
+                # Bei genau einer Option, die weder "entry" noch "reservation"
+                # ist, muss es die (einzige weitere Quelle von) options der
+                # Urlaubszweig sein — vacation ist dann zwangsläufig gesetzt.
+                # assert statt weiterer Verzweigung: narrowed für pyright,
+                # ohne das Verhalten zu ändern.
+                assert vacation is not None
+                kind = "Urlaub"
+                frage = (f"Urlaub „{vacation['name']}“ "
+                         f"({format_iso_date(vacation['from'])} – "
+                         f"{format_iso_date(vacation['to'])}) komplett löschen?")
+            if not themed_askyesno(self.root, f"{kind} löschen", frage, lock_ms=600):
                 return
-            selected = {options[0][0]}
+            selected = {key}
         else:
             selected = themed_ask_delete_choice(
                 self.root, "Löschen", f"Was für den {date_de} löschen?",
@@ -762,6 +791,9 @@ class App:
             self.reservation_store.delete(date_str)
         elif res_action == "save":
             self.reservation_store.save(date_str, res_keep)
+
+        if vacation is not None and f"vacation:{vacation['id']}" in selected:
+            self.vacation_store.delete(vacation["id"])
 
         self._refresh()
         if res_touched:
