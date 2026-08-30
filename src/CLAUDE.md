@@ -80,8 +80,10 @@ Thread-Mechanik **und** die proaktiven Startup-Tasks.
   **UI-Thread**. Auch `SyncOrchestrator` nutzt `run()` — es gibt nur dieses eine Muster.
 - Eigene Tasks: `refresh_token`, `fetch_sender_email`, `check_update`, `reconcile_on_start`,
   `trigger_reconcile`. UI-Arbeit (Dialoge/Banner/Refresh) bleibt in App und kommt als Callback.
-- Tk-frei, keine Google-Imports auf Modulebene; `run_calendar_reconcile` wird **lazy in der
-  Methode** aus `src.main` importiert (Circular-Import-Schutz: `main → ui → background_tasks`).
+- Tk-frei, keine Google-Imports auf Modulebene; `run_calendar_reconcile` kommt
+  seit R1 als normaler **Top-Level-Import aus `src.sync_runtime`**
+  (`background_tasks.py:16`) — vorher lag es in `src.main` und musste wegen
+  des damaligen Circular-Import-Risikos lazy importiert werden.
 
 ### SyncOrchestrator (`sync_orchestrator.py`)
 Drive-Sync: manueller Sync, Tray-Sync, Pull-Callbacks, Status-Label, Quit-Push, Fehler-
@@ -125,10 +127,12 @@ ein Fehler in einem bricht die übrigen nicht ab, und der Dispatcher liefert
 pro Kanal genau ein Result-Dict statt selbst zu werfen (Vertrag wie die
 einzelnen Kanäle, `webhook.deliver` eingeschlossen).
 
-**Datenschicht-Locking (Audit H1/H2/M1):** Alle vier Stores
-(`storage`/`settings`/`conflicts_store`/`reservations`) teilen sich einen in
-`main()` erzeugten `RLock` (Konstruktor-Param `lock=`; ohne Injektion legt
-jeder Store einen eigenen an — Tests bleiben unverändert). Die Sync-Flows
+**Datenschicht-Locking (Audit H1/H2/M1):** Fünf der sechs Stores
+(`storage`/`settings`/`conflicts_store`/`reservations`/`vacations`) teilen
+sich einen in `main()` erzeugten `RLock` (Konstruktor-Param `lock=`; ohne
+Injektion legt jeder Store einen eigenen an — Tests bleiben unverändert); nur
+`webhook_store` bringt bewusst seinen eigenen mit (s. „Daten- &
+Persistenz-Schicht" unten). Die Sync-Flows
 (`_run_pull_in_background`/`run_push_blocking`/`_run_compaction_blocking`/
 `reconcile_reservations`) klammern Snapshot→Merge→Apply mit diesem `data_lock`
 — **nie über Netzwerk-Calls**. Ein separater plain `threading.Lock`
@@ -149,6 +153,12 @@ kein offener Punkt — File-level Optimistic Locking, ein `version`-basiertes
 Retry-on-conflict und Drive Content Restrictions sind geprüft und verworfen.
 Begründung und die Grenze der LWW-Heilung stehen im Docstring von
 `drive.py::upload`; wer das Fenster erneut angehen will, fängt dort an.
+
+**Urlaub reist als Snapshot, nicht als Store.** `send_task.perform_send` und
+`export_task.perform_export_pdf` bekommen `vacation_days` als fertiges
+`{ISO: minutes}`-Dict, das der Dialog-Thread über
+`VacationStore.day_minutes()` gezogen hat. Die Worker greifen nie selbst auf
+den Store zu — dieselbe Regel wie beim Entries-Snapshot.
 
 ## Daten- & Persistenz-Schicht
 
@@ -181,6 +191,21 @@ Begründung und die Grenze der LWW-Heilung stehen im Docstring von
   Enthält Konfiguration **und** Secrets, wird deshalb wie `token.json`
   gehärtet geschrieben (`secure_file.harden_windows_acl`, s.u.) und steht
   **nicht** im Sync-Doc.
+
+  `VacationStore` (`vacations.json`) hängt am geteilten `data_lock` wie
+  `Storage`, `Settings`, `ConflictsStore` und `ReservationStore` — anders als
+  `WebhookStore`, der bewusst seinen eigenen mitbringt. Er ist gerätelokal:
+  kein `device_id`-Feld, kein Zweig im Sync-Doc, kein Eintrag im Share-Doc.
+
+  **Tombstones nur mit Kalender-Event.** `VacationStore.delete` entfernt den
+  Record direkt, wenn er keine `gcal_event_id` trägt — nur mit Event gibt es
+  draußen etwas aufzuräumen, und nur dann kann `reconcile_vacations` den
+  Tombstone einlösen. Ein bedingungsloser Tombstone (wie bei den
+  Reservierungen, die per Definition am Kalender hängen) wäre auf jedem Rechner
+  ohne Google unsterblich. Rest-Risiko: wurde eine Periode gepusht und der
+  Kalender-Sync danach abgeschaltet, bleibt ihr Tombstone liegen, bis der Sync
+  wieder läuft — bewusst akzeptiert, statt dafür einen vierten Startup-Sweep zu
+  bauen.
 - `sync.py` — pure Sync-Logik (LWW-Merge, Konflikterkennung); importiert
   `SYNCED_SETTING_KEYS` aus `settings.py` **und** `_REQUIRED_ENTRY_KEYS` aus `storage.py`
   (beide Single Source of Truth, nicht hier neu definieren). `validate_remote_doc`
@@ -277,7 +302,8 @@ Begründung und die Grenze der LWW-Heilung stehen im Docstring von
 ## Google-Integration (alle Wrapper mit Lazy-Imports für CI ohne requirements.txt)
 
 `mail.py` (Gmail/OAuth, `token.json`/`credentials.json`), `drive.py` (Drive appDataFolder-Sync),
-`gcal.py` (Calendar), `reservations_sync.py` (Abgleich Reservierungen ↔ Kalender). Alle teilen
+`gcal.py` (Calendar), `reservations_sync.py` (Abgleich Reservierungen ↔ Kalender),
+`vacations_sync.py` (Einwegs-Push der Urlaubsperioden). Alle teilen
 denselben OAuth-Token; Scope-Upgrade erzwingt frischen Consent.
 
 Geschrieben wird der Token ausschließlich über `oauth_utils.write_token`: Temp-Datei →
@@ -292,6 +318,16 @@ dieselbe Datei zwingt: ohne sie liefen die Stände auseinander, und da die
 Drive-API ohne `orderBy` keine Sortierung garantiert, könnte sogar dasselbe
 Gerät zwischen zwei Syncs die andere Datei erwischen. Wer die Auswahl anfasst,
 muss sie deterministisch **und** über alle Geräte gleich halten.
+
+**Zwei Marker-Werte unter demselben Schlüssel.** `gcal.APP_MARKER_KEY`
+(`zeiterfassung`) trägt entweder `reservation` oder `vacation`.
+`list_app_events` und `list_app_vacations` filtern **serverseitig** auf ihren
+Wert und bekommen die Events des jeweils anderen gar nicht erst zurück — der
+Reservierungs-Reconcile kann Urlaubs-Events also weder adoptieren noch als
+verwaiste App-Events löschen. Mit einem gemeinsamen Wert hinge das daran, dass
+`parse_event` für Ganztags-Events `None` liefert; ein Detail, das jederzeit
+kippen könnte. Wer einen dritten Event-Typ ergänzt, vergibt einen dritten
+Wert.
 
 ## Berichte & Plattform/Infra
 

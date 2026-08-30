@@ -1,14 +1,18 @@
-"""Threadsicherheit von vier der fünf Stores: geteilter injizierter RLock
+"""Threadsicherheit von vier der sechs Stores: geteilter injizierter RLock
 (Audit H1/H2).
 
-Der fünfte Store, `WebhookStore`, bekommt den geteilten Lock bewusst NICHT
-und taucht deshalb hier nicht auf: Webhooks nehmen an keinem Sync-Flow teil
-(kein Snapshot→Merge→Apply, kein Journal, kein Feld im Sync-Doc) — es gibt
-also keine übergreifende Invariante mitzuziehen. Ihn trotzdem zu teilen hätte
+`WebhookStore` bekommt den geteilten Lock bewusst NICHT und taucht deshalb
+hier nicht auf: Webhooks nehmen an keinem Sync-Flow teil (kein
+Snapshot→Merge→Apply, kein Journal, kein Feld im Sync-Doc) — es gibt also
+keine übergreifende Invariante mitzuziehen. Ihn trotzdem zu teilen hätte
 zudem einen realen Preis gehabt: `save`/`delete` halten ihn über den
 `icacls`-Subprozess (bis 15 s + Retries), das blockierte sonst jeden anderen
 Store für nichts. `WebhookStore` legt sich stattdessen einen eigenen RLock an
 (siehe `main.py` und `src/CLAUDE.md`, Abschnitt „Daten- & Persistenz-Schicht").
+
+`VacationStore` teilt sich den `data_lock` ebenfalls — fünfter der sechs
+Stores insgesamt —, hat aber (noch) keinen eigenen Locking-Test in dieser
+Suite.
 
 Kein Sleep/Timing — Lock-Besitz wird über einen Probe-Thread geprüft
 (non-blocking acquire aus fremdem Thread), Robustheit über einen Stresstest,

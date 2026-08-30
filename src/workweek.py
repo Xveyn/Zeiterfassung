@@ -32,15 +32,19 @@ def is_weekend(date_str: str) -> bool:
 
 def filter_for_report(entries: dict[str, Any],
                       settings: SettingsLike) -> dict[str, Any]:
-    """`entries` ohne Wochenendtage — wenn `workweek_only` aktiv ist.
+    """Ein ISO-Datum-keyed Dict ohne Wochenendtage — wenn `workweek_only`
+    aktiv ist. Gefiltert wird rein über den Schlüssel (`is_weekend`); die
+    Werte bleiben unangesehen, deshalb bedient dieselbe Funktion sowohl den
+    Entries-Snapshot (`storage.get_all()`) als auch, seit dem Urlaubs-Feature,
+    den `{ISO: minutes}`-Snapshot von `VacationStore.day_minutes()`.
 
     Bei inaktiver Einstellung wird das Eingabe-Dict unverändert
     zurückgegeben (nicht kopiert); sonst entsteht ein neues Dict, das Original
     bleibt unangetastet.
 
-    Angewendet wird das am Snapshot (`storage.get_all()`) der Dialoge, nicht in
-    `report.py` — so bleibt der Report settings-frei, und Mail-HTML, PDF und
-    Stunden-Vorschau sehen automatisch dieselben Daten.
+    Angewendet wird das am Snapshot der Dialoge, nicht in `report.py` — so
+    bleibt der Report settings-frei, und Mail-HTML, PDF und Stunden-Vorschau
+    sehen automatisch dieselben Daten.
     """
     if not settings.get("workweek_only"):
         return entries
