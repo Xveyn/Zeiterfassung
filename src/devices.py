@@ -90,7 +90,10 @@ def device_label(device_id: Any, registry: Any) -> str:
     """„Laptop Arbeit · 6800a51a…" — oder nur die gekürzte ID, wenn zu dieser
     `device_id` kein (brauchbarer) Name bekannt ist."""
     short = short_device_id(device_id)
-    if not isinstance(registry, dict):
+    # Die device_id kommt aus einem Konflikt-Kandidaten des Remote-Docs, dessen
+    # Form vor der Anzeige niemand prüft: ein Nicht-String (Liste/Dict) wäre
+    # nicht mal als dict-Key zulässig und risse `registry.get` mit TypeError um.
+    if not isinstance(device_id, str) or not isinstance(registry, dict):
         return short
     entry = registry.get(device_id)
     if not isinstance(entry, dict):
@@ -105,7 +108,12 @@ def sanitize_registry(raw: Any, max_devices: int = MAX_DEVICES) -> dict[str, dic
     Verworfen wird alles, was nicht `{str: {"name": str, "updated_at": str}}`
     ist — inklusive unbekannter Felder, die sonst über den lokalen Spiegel
     wieder mit hochgeladen würden. Bei mehr als `max_devices` Einträgen
-    gewinnen die zuletzt aktualisierten."""
+    gewinnen die zuletzt aktualisierten.
+
+    Ein **leerer Name bleibt erhalten**: er ist der Grabstein eines gelöschten
+    Namens (s. `with_own_entry`). Würde er hier wegfallen, käme das Leeren nie
+    bei den anderen Geräten an — `merge_registries` ist eine Union, und eine
+    Abwesenheit schlägt darin keine vorhandene ältere Kopie."""
     if not isinstance(raw, dict):
         return {}
     clean: dict[str, dict[str, str]] = {}
@@ -114,12 +122,9 @@ def sanitize_registry(raw: Any, max_devices: int = MAX_DEVICES) -> dict[str, dic
             continue
         if not isinstance(entry, dict):
             continue
-        name = sanitize_device_name(entry.get("name"))
-        if not name:
-            continue
         updated_at = entry.get("updated_at")
         clean[device_id] = {
-            "name": name,
+            "name": sanitize_device_name(entry.get("name")),
             "updated_at": updated_at if isinstance(updated_at, str) else "",
         }
     if len(clean) <= max_devices:
@@ -143,27 +148,35 @@ def merge_registries(local: Any, remote: Any,
     return sanitize_registry(merged, max_devices=max_devices)
 
 
-def with_own_entry(registry: Any, device_id: str, name: str,
-                   updated_at: str) -> dict[str, dict[str, str]]:
+def with_own_entry(registry: Any, device_id: str, name: str, updated_at: str,
+                   max_devices: int = MAX_DEVICES) -> dict[str, dict[str, str]]:
     """Setzt den eigenen Eintrag in einer Kopie der Registry.
 
     Der eigene Name gewinnt hier **immer** — anders als in `merge_registries`
     ohne Zeitstempel-Vergleich: über den Namen dieses Geräts entscheidet
-    dieses Gerät. Ein geleerter Name entfernt den Eintrag, sonst bliebe der
-    alte für immer stehen.
+    dieses Gerät.
+
+    Ein **geleerter Name wird zum Grabstein** (`name: ""` mit frischem
+    Stempel), nicht zu einer Abwesenheit. Der Unterschied ist nicht kosmetisch:
+    `merge_registries` ist eine Union, in der ein fehlender Eintrag gegen die
+    vorhandene Kopie eines anderen Geräts verliert — der gelöschte Name käme
+    beim nächsten fremden Push global zurück. Ein Gerät ohne je gesetzten Namen
+    bekommt keinen Grabstein; der wäre nur Rauschen und zählte gegen
+    `max_devices`.
 
     `updated_at` greift nur, wenn sich der Name tatsächlich geändert hat —
     sonst trüge jeder Push einen frischen Stempel und das Sync-Doc wiche bei
     jedem Lauf ab, ohne dass sich etwas geändert hat."""
-    merged = sanitize_registry(registry)
+    merged = sanitize_registry(registry, max_devices=max_devices)
     if not device_id:
         return merged
     clean_name = sanitize_device_name(name)
-    if not clean_name:
-        merged.pop(device_id, None)
-        return merged
     current = merged.get(device_id)
     if current is not None and current["name"] == clean_name:
         return merged
+    if current is None and not clean_name:
+        return merged
     merged[device_id] = {"name": clean_name, "updated_at": updated_at}
-    return merged
+    # Der eigene Eintrag darf den Deckel nicht sprengen: das hochgeladene Doc
+    # ist die Stelle, an der er gelten muss.
+    return sanitize_registry(merged, max_devices=max_devices)

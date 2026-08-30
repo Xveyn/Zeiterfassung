@@ -6,6 +6,7 @@ import sys
 import threading
 import tkinter as tk
 import uuid
+from typing import Any
 
 # OAuthlib bricht den Flow ab, wenn die zurückgegebenen Scopes nicht exakt mit
 # den angeforderten matchen. Google fügt aber bei Identity-Scopes wie
@@ -102,9 +103,10 @@ def _ensure_device_name(settings) -> str:
     nicht wieder unterschieben. Ein leerer Name ist ein gültiger Zustand, kein
     fehlender Wert."""
     if not settings.get("device_name_initialized"):
+        updates: dict[str, Any] = {"device_name_initialized": True}
         if not (settings.get("device_name") or ""):
-            settings.set("device_name", default_device_name())
-        settings.set("device_name_initialized", True)
+            updates["device_name"] = default_device_name()
+        settings.set_many(updates)
     return settings.get("device_name") or ""
 
 

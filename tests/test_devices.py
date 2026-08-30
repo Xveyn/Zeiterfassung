@@ -60,6 +60,9 @@ class TestDefaultDeviceName:
         assert devices.default_device_name(hostname=lambda: "LOCALHOST.localdomain") == ""
 
 
+_REGISTRY_FOR_UNHASHABLE = {"dev1": {"name": "Laptop", "updated_at": ""}}
+
+
 class TestDeviceLabel:
     REGISTRY = {"6800a51a9f3c4d2e": {"name": "Laptop Arbeit", "updated_at": "2026-07-02T19:10:00Z"}}
 
@@ -80,6 +83,12 @@ class TestDeviceLabel:
         assert devices.device_label("", {}) == "?"
         assert devices.device_label(None, {}) == "?"
 
+    def test_unhashable_id_does_not_raise(self):
+        """Die device_id stammt aus einem Konflikt-Kandidaten des Remote-Docs;
+        dessen Form prüft niemand vor der Anzeige."""
+        assert devices.device_label(["a", "b"], _REGISTRY_FOR_UNHASHABLE) == "?"
+        assert devices.device_label({"a": 1}, _REGISTRY_FOR_UNHASHABLE) == "?"
+
     def test_registry_name_is_sanitized(self):
         """Der Name stammt aus dem Remote-Doc und landet in einem Tk-Label."""
         registry = {"6800a51a9f3c4d2e": {"name": "A" * 200, "updated_at": ""}}
@@ -98,9 +107,14 @@ class TestSanitizeRegistry:
             "dev1": {"name": "Laptop", "updated_at": "2026-07-02T19:10:00Z"},
         }
 
-    def test_drops_entries_without_usable_name(self):
+    def test_keeps_empty_name_as_tombstone(self):
+        """Ein leerer Name ist der Grabstein eines gelöschten Namens und muss
+        die Registry passieren — sonst propagiert das Leeren nie zu den anderen
+        Geräten (die Union hätte keinen Löschmarker, ihre alte Kopie gewänne)."""
         raw = {"dev1": {"name": "   ", "updated_at": "2026-07-02T19:10:00Z"}}
-        assert devices.sanitize_registry(raw) == {}
+        assert devices.sanitize_registry(raw) == {
+            "dev1": {"name": "", "updated_at": "2026-07-02T19:10:00Z"},
+        }
 
     def test_drops_non_dict_entries(self):
         raw = {"dev1": "nope", "dev2": {"name": "Laptop", "updated_at": "2026-07-02T19:10:00Z"}}
@@ -208,12 +222,41 @@ class TestWithOwnEntry:
         result = devices.with_own_entry(registry, "dev1", "Laptop", "2026-07-05T00:00:00Z")
         assert set(result) == {"dev1", "dev2"}
 
-    def test_without_name_removes_own_entry(self):
-        """Wer seinen Namen leert, verschwindet beim nächsten Push aus der
-        Registry — sonst bliebe der alte Name für immer stehen."""
+    def test_cleared_name_becomes_a_tombstone(self):
+        """Wer seinen Namen leert, hinterlässt einen leeren Eintrag mit frischem
+        Stempel — nur so schlägt das Leeren beim Merge die alte Kopie der
+        anderen Geräte. Ein entfernter Eintrag täte das nicht: die Union kennt
+        keine Abwesenheit."""
         registry = {"dev1": {"name": "Laptop", "updated_at": "2026-07-01T00:00:00Z"}}
         result = devices.with_own_entry(registry, "dev1", "", "2026-07-05T00:00:00Z")
-        assert "dev1" not in result
+        assert result["dev1"] == {"name": "", "updated_at": "2026-07-05T00:00:00Z"}
+
+    def test_never_named_device_gets_no_tombstone(self):
+        """Ein Gerät ohne je gesetzten Namen braucht keinen Grabstein — der
+        wäre reines Rauschen im Doc und zählte gegen MAX_DEVICES."""
+        result = devices.with_own_entry({}, "dev1", "", "2026-07-05T00:00:00Z")
+        assert result == {}
+
+    def test_tombstone_is_not_restamped(self):
+        registry = {"dev1": {"name": "", "updated_at": "2026-07-01T00:00:00Z"}}
+        result = devices.with_own_entry(registry, "dev1", "", "2026-07-05T00:00:00Z")
+        assert result["dev1"]["updated_at"] == "2026-07-01T00:00:00Z"
+
+    def test_tombstone_wins_over_older_name_in_merge(self):
+        local = {"dev1": {"name": "", "updated_at": "2026-07-05T00:00:00Z"}}
+        remote = {"dev1": {"name": "Laptop", "updated_at": "2026-07-01T00:00:00Z"}}
+        assert devices.merge_registries(local, remote)["dev1"]["name"] == ""
+
+    def test_own_entry_respects_the_size_cap(self):
+        """Der eigene Eintrag darf den Deckel nicht sprengen — das hochgeladene
+        Doc ist die Stelle, an der er gelten muss."""
+        registry = {
+            f"dev{i:03d}": {"name": f"Gerät {i}", "updated_at": f"2026-07-{i % 28 + 1:02d}T00:00:00Z"}
+            for i in range(devices.MAX_DEVICES + 10)
+        }
+        result = devices.with_own_entry(registry, "eigen", "Laptop", "2099-01-01T00:00:00Z")
+        assert len(result) == devices.MAX_DEVICES
+        assert result["eigen"]["name"] == "Laptop"
 
     def test_without_device_id_changes_nothing(self):
         registry = {"dev2": {"name": "PC", "updated_at": "2026-07-01T00:00:00Z"}}

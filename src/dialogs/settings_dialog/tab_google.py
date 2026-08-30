@@ -8,6 +8,7 @@ import tkinter as tk
 import traceback
 from tkinter import messagebox
 
+from src.devices import MAX_NAME_LENGTH
 from src.dialogs.settings_dialog._shared import label, subheader
 from src.dialogs.settings_dialog.google_tab_task import (
     fetch_sender_email, load_calendars, open_calendar_service,
@@ -262,6 +263,14 @@ class GoogleTab:
         ).pack(side=tk.LEFT)
         self.device_name_var = tk.StringVar(value=settings.get("device_name") or "")
         entry = dark_entry(device_row, self.device_name_var, width=24)
+        # Die Länge deckelt beim Speichern ohnehin `sanitize_device_name`; hier
+        # sichtbar machen, statt den Namen still zu kürzen (der Dialog schließt
+        # beim Speichern, das Ergebnis sähe man erst beim nächsten Öffnen).
+        entry.config(
+            validate="key",
+            validatecommand=(frame.register(
+                lambda proposed: len(proposed) <= MAX_NAME_LENGTH), "%P"),
+        )
         entry.pack(side=tk.LEFT, padx=(6, 0))
         attach_tooltip(
             entry,

@@ -2,7 +2,9 @@ import json as _json
 
 import pytest
 
+from src import sync
 from src.conflicts_store import ConflictsStore
+from src.devices import device_label
 from src.settings import Settings
 from src.storage import Storage
 from src.sync import (
@@ -1096,3 +1098,47 @@ def test_device_registry_round_trip(tmp_path):
     known = settings_a.get("known_devices")
     assert known["B"]["name"] == "Büro-PC"
     assert known["A"]["name"] == "Laptop Arbeit"
+
+
+def test_cleared_device_name_does_not_come_back(tmp_path, monkeypatch):
+    """A leert seinen Namen, B pusht danach: der alte Name darf nicht global
+    zurückkommen. Die Union kennt keine Abwesenheit — das Leeren trägt deshalb
+    einen Grabstein, der die ältere Kopie auf B schlägt.
+
+    Die Zeit wird hereingereicht, weil `utc_now_iso` nur Sekunden auflöst: alle
+    Schritte fielen sonst in dieselbe Sekunde, und bei Gleichstand gewinnt (wie
+    überall im Merge) die lokale Seite — der Test prüfte dann die Uhr statt der
+    Propagierung."""
+    clock = iter(["2026-07-02T10:00:00Z", "2026-07-02T10:00:01Z",
+                  "2026-07-05T12:00:00Z", "2026-07-05T12:00:01Z"])
+    monkeypatch.setattr(sync, "utc_now_iso", lambda: next(clock))
+
+    storage_a = Storage(str(tmp_path / "za.json"), device_id="A")
+    conflicts_a = ConflictsStore(str(tmp_path / "ca.json"))
+    settings_a = _named_settings(tmp_path, "A", "Laptop Arbeit", "sa.json")
+
+    storage_b = Storage(str(tmp_path / "zb.json"), device_id="B")
+    conflicts_b = ConflictsStore(str(tmp_path / "cb.json"))
+    settings_b = _named_settings(tmp_path, "B", "Büro-PC", "sb.json")
+
+    # Erster Austausch: beide kennen sich.
+    remote = sync.merge(build_local_doc(storage_a, settings_a, conflicts_a),
+                        build_local_doc(storage_b, settings_b, conflicts_b), "")
+    apply_merged_doc(remote, storage_a, settings_a, conflicts_a)
+    apply_merged_doc(remote, storage_b, settings_b, conflicts_b)
+    assert settings_b.get("known_devices")["A"]["name"] == "Laptop Arbeit"
+
+    # A leert seinen Namen und pusht.
+    settings_a.set("device_name", "")
+    local_a = build_local_doc(storage_a, settings_a, conflicts_a)
+    remote = sync.merge(local_a, remote, "")
+    apply_merged_doc(remote, storage_a, settings_a, conflicts_a)
+    assert settings_a.get("known_devices")["A"]["name"] == ""
+
+    # B pullt/pusht danach — mit seiner noch alten Kopie von A.
+    local_b = build_local_doc(storage_b, settings_b, conflicts_b)
+    remote = sync.merge(local_b, remote, "")
+    apply_merged_doc(remote, storage_b, settings_b, conflicts_b)
+
+    assert settings_b.get("known_devices")["A"]["name"] == ""
+    assert device_label("A", settings_b.get("known_devices")) == "A"

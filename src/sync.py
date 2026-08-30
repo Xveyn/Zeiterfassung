@@ -328,13 +328,17 @@ def apply_merged_doc(merged_doc: Doc, storage: Storage, settings: Settings,
     storage.apply_merge(merged_doc.get("entries", {}))
     settings.apply_synced(merged_doc.get("settings", {}))
     conflicts_store.save_all(merged_doc.get("conflicts", []))
-    # Nur schreiben, wenn das Doc die Registry überhaupt führt: ein älterer
-    # Client liefert sie nicht mit, und der lokale Spiegel darf davon nicht
-    # leergeräumt werden (sonst wäre nach jedem Sync mit einem alten Gerät
-    # jeder Name weg).
+    # Ein set_many statt zweier set-Aufrufe: jedes set schreibt settings.json
+    # komplett neu (atomic write + fsync), und diese Funktion läuft bei jedem
+    # Pull, Push und jeder Kompaktierung.
+    updates = {"gc_watermark": (merged_doc.get("meta") or {}).get("gc_watermark") or ""}
+    # Die Registry nur schreiben, wenn das Doc sie überhaupt führt, sonst
+    # räumte sie ein Doc ohne den Key leer. Aus `merge` kommt er immer mit —
+    # der Fall greift für ein Journal, das ein älterer Stand hinterlassen hat
+    # (`sync_journal.recover_pending_apply`), und für direkte Aufrufer.
     if "devices" in merged_doc:
-        settings.set("known_devices", sanitize_registry(merged_doc.get("devices")))
-    settings.set("gc_watermark", (merged_doc.get("meta") or {}).get("gc_watermark") or "")
+        updates["known_devices"] = sanitize_registry(merged_doc.get("devices"))
+    settings.set_many(updates)
 
 
 def compact_local(storage: Storage, settings: Settings,

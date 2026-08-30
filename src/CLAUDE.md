@@ -196,6 +196,15 @@ Begründung und die Grenze der LWW-Heilung stehen im Docstring von
   werden. Das Feld ist bewusst **additiv ohne Schema-Bump** (SCHEMA_VERSION
   bleibt 4, s. Docstring in `sync.py`); alles hier behandelt seine Eingabe als
   Fremddaten, und jeder Ausfall endet in der gekürzten ID statt in einem Fehler.
+
+  **Zwei Eigenheiten, die man kennen muss:** Ein geleerter Name wird zum
+  **Grabstein** (`name: ""` mit frischem Stempel) statt zu einer Abwesenheit —
+  die Union kennt keine Abwesenheit, ein entfernter Eintrag verlöre gegen die
+  ältere Kopie eines anderen Geräts und der gelöschte Name käme global zurück.
+  Und die Registry hat **keinen GC-Pfad**: weder `compact_local` noch der
+  Tombstone-Lebenszyklus fassen `devices` an (es gibt nichts abzugleichen), sie
+  ist additiv bis `MAX_DEVICES` und wirft dann die ältesten Einträge weg. Wer
+  hier einen GC sucht: es gibt bewusst keinen.
 - `sync.py` — pure Sync-Logik (LWW-Merge, Konflikterkennung); importiert
   `SYNCED_SETTING_KEYS` aus `settings.py` **und** `_REQUIRED_ENTRY_KEYS` aus `storage.py`
   (beide Single Source of Truth, nicht hier neu definieren). `validate_remote_doc`
