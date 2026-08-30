@@ -6,7 +6,7 @@ import io
 from collections import OrderedDict
 from typing import Any, Collection
 
-from src.time_utils import DAYS_DE, calculate_hours, format_date, get_week_label
+from src.time_utils import DAYS_DE, calculate_hours, format_date, get_week_label, hours_to_minutes
 
 
 def _esc(text: str | None) -> str:
@@ -87,9 +87,10 @@ def _slot_hours(slot: dict[str, Any]) -> float:
     return round(calculate_hours(slot["start"], slot["end"], pause_minutes=slot.get("pause", 0)), 2)
 
 
-def _entry_hours(entry: dict[str, Any]) -> float:
-    """Summe der Stunden über alle Slots eines Tages."""
-    return round(sum(_slot_hours(s) for s in entry.get("slots", [])), 2)
+def _minutes_as_hours(minutes: int) -> float:
+    """Minuten → Dezimalstunden für die Anzeige. Gerundet wird ERST hier,
+    nachdem in Minuten summiert wurde (CLAUDE.md: Summen über Minuten)."""
+    return round(minutes / 60, 2)
 
 
 def _group_by_week(range_entries: dict[str, Any]) -> WeekGroups:
@@ -142,14 +143,17 @@ def total_hours(date_from: datetime.date, date_to: datetime.date,
                 all_entries: dict[str, Any],
                 categories: Collection[str] | None = None) -> float:
     """Gesamtstunden im Zeitraum, gefiltert auf die gewählten Kategorien
-    (None = alle). Pure Funktion für die Live-Vorschau im Sende-Dialog —
-    summiert dieselben Slot-Stunden wie der Report. Leerer Bereich → 0.0."""
+    (None = alle). Summiert über Minuten je Slot — dieselbe Rechnung wie
+    _build_table, damit Vorschau und Bericht nie auseinanderlaufen. Leerer
+    Bereich → 0.0."""
     range_entries = filter_period(date_from, date_to, all_entries)
     if range_entries:
         range_entries = filter_categories(range_entries, categories)
     if not range_entries:
         return 0.0
-    return round(sum(_entry_hours(e) for e in range_entries.values()), 2)
+    return _minutes_as_hours(sum(
+        hours_to_minutes(_slot_hours(s))
+        for e in range_entries.values() for s in e["slots"]))
 
 
 def default_pdf_filename(date_from: datetime.date, date_to: datetime.date) -> str:
@@ -172,9 +176,14 @@ def _apply_placeholders(text: str, label: str, total: float) -> str:
 # HTML einschleusen (Audit M7). Deshalb werden start/end defensiv _esc()-t,
 # genau wie `kategorie` (freier Nutzertext).
 def _week_block(iso_year: int, iso_week: int, week_entries: WeekEntries,
-                style: dict[str, Any]) -> tuple[str, float]:
+                style: dict[str, Any]) -> tuple[str, int]:
     """Render einen Wochen-Block: KW-Header, je Slot eine Zeile, Tages-Subtotal
-    bei >1 Slot, Wochensumme. Returns (rows_html, week_total)."""
+    bei >1 Slot, Wochensumme. Returns (rows_html, week_minutes).
+
+    Summiert wird über MINUTEN (hours_to_minutes je Slot), nicht über
+    Dezimalstunden — sonst weicht die ausgewiesene Summe von der Summe der
+    angezeigten Einzelwerte ab (CLAUDE.md). Die Slot-Zeile selbst zeigt
+    weiterhin ihre eigenen Dezimalstunden, sie ist keine Summe."""
     s = style
     cw = [f"width:{w};" if w else "" for w in s["col_widths"]]
     rows = [
@@ -183,7 +192,7 @@ def _week_block(iso_year: int, iso_week: int, week_entries: WeekEntries,
         f"</tr>"
     ]
 
-    week_total = 0.0
+    week_minutes = 0
     for idx, (date_str, entry) in enumerate(week_entries):
         dt = datetime.date.fromisoformat(date_str)
         weekday = DAYS_DE[dt.weekday()]
@@ -191,11 +200,12 @@ def _week_block(iso_year: int, iso_week: int, week_entries: WeekEntries,
         row_bg = s["row_a"] if idx % 2 == 0 else s["row_b"]
         td = s["td_base"]
         slots = entry["slots"]
-        day_total = 0.0
+        day_minutes = 0
         for sidx, slot in enumerate(slots):
             hours = _slot_hours(slot)
-            day_total += hours
-            week_total += hours
+            minutes = hours_to_minutes(hours)
+            day_minutes += minutes
+            week_minutes += minutes
             date_cell = day_fmt if sidx == 0 else ""
             day_cell = weekday if sidx == 0 else ""
             rows.append(
@@ -209,34 +219,31 @@ def _week_block(iso_year: int, iso_week: int, week_entries: WeekEntries,
                 f"</tr>"
             )
         if len(slots) > 1:
-            day_total = round(day_total, 2)
             rows.append(
                 f"<tr style='{row_bg}'>"
                 f"<td colspan='5' style='{td}{s['c_day']}'>Summe {day_fmt}</td>"
-                f"<td style='{td}{s['c_hours']}'>{day_total}h</td>"
+                f"<td style='{td}{s['c_hours']}'>{_minutes_as_hours(day_minutes)}h</td>"
                 f"</tr>"
             )
 
-    week_total = round(week_total, 2)
     rows.append(
         f"<tr style='{s['sum_row']}'>"
         f"<td colspan='5' style='{s['sum_lbl']}'>Summe KW {iso_week}</td>"
-        f"<td style='{s['sum_hrs']}'>{week_total}h</td>"
+        f"<td style='{s['sum_hrs']}'>{_minutes_as_hours(week_minutes)}h</td>"
         f"</tr>"
     )
-    return "\n".join(rows), week_total
+    return "\n".join(rows), week_minutes
 
 
-def _build_table(groups: WeekGroups, style: dict[str, Any]) -> tuple[str, float]:
-    """Bauen die komplette Stundentabelle. Returns (table_html, total)."""
+def _build_table(groups: WeekGroups, style: dict[str, Any]) -> tuple[str, int]:
+    """Bauen die komplette Stundentabelle. Returns (table_html, total_minutes)."""
     s = style
     week_blocks = []
-    total = 0.0
+    total_minutes = 0
     for (iso_year, iso_week), week_entries in groups.items():
-        block_html, week_total = _week_block(iso_year, iso_week, week_entries, s)
+        block_html, week_minutes = _week_block(iso_year, iso_week, week_entries, s)
         week_blocks.append(block_html)
-        total += week_total
-    total = round(total, 2)
+        total_minutes += week_minutes
 
     th_cells = "".join(
         f'<th style="{s["th_cell"]}{f"width:{w};" if w else ""}">{label}</th>'
@@ -249,11 +256,11 @@ def _build_table(groups: WeekGroups, style: dict[str, Any]) -> tuple[str, float]
         f'{"".join(week_blocks)}'
         f'<tr style="{s["total_row"]}">'
         f'<td colspan="5" style="{s["total_lbl"]}">Gesamt</td>'
-        f'<td style="{s["total_hrs"]}">{total}h</td>'
+        f'<td style="{s["total_hrs"]}">{_minutes_as_hours(total_minutes)}h</td>'
         f'</tr>'
         f'</table>'
     )
-    return table, total
+    return table, total_minutes
 
 
 def _build_category_summary(range_entries: dict[str, Any],
@@ -319,7 +326,8 @@ def generate_report(date_from: datetime.date, date_to: datetime.date,
 
     label = f"{format_date(date_from)} – {format_date(date_to)}"
     groups = _group_by_week(range_entries)
-    table, total = _build_table(groups, HTML_STYLE)
+    table, total_minutes = _build_table(groups, HTML_STYLE)
+    total = _minutes_as_hours(total_minutes)
     category_summary = (
         _build_category_summary(range_entries, HTML_STYLE)
         if category_breakdown else ""

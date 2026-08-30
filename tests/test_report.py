@@ -474,3 +474,46 @@ def test_filter_categories_drops_days_without_matching_slots():
     }
     got = filter_categories(entries, ["A"])
     assert list(got) == ["2026-07-01"]
+
+
+# --- Task 7: Summen über Minuten, nicht Dezimalstunden ---
+
+
+def test_total_sums_minutes_not_decimal_hours():
+    """Drei 5-Minuten-Slots: je 0,08 h gerundet. Über Dezimalstunden ergibt
+    das 0,24 h, über Minuten 3 × 5 min = 15 min = 0,25 h. CLAUDE.md schreibt
+    den Minuten-Weg vor — er ist auch der ehrliche: der Nutzer hat 15 Minuten
+    gearbeitet."""
+    entries = {"2026-07-01": {"slots": [
+        _slot("08:00", "08:05"), _slot("09:00", "09:05"),
+        _slot("10:00", "10:05"),
+    ]}}
+    _, total = generate_report(
+        datetime.date(2026, 7, 1), datetime.date(2026, 7, 31), entries)
+    assert total == 0.25
+
+
+def test_week_and_grand_total_agree_over_minutes():
+    """Wochensumme und Gesamt entstehen aus derselben Minutenrechnung."""
+    entries = {
+        "2026-07-01": {"slots": [_slot("08:00", "08:05")]},
+        "2026-07-02": {"slots": [_slot("08:00", "08:05")]},
+    }
+    html, total = generate_report(
+        datetime.date(2026, 7, 1), datetime.date(2026, 7, 31), entries)
+    assert total == 0.17          # 10 min
+    assert "0.17h" in html
+
+
+def test_total_hours_preview_matches_the_report():
+    """Die Live-Vorschau im period_picker muss dieselbe Zahl nennen wie der
+    Bericht — sonst widersprechen sich Dialog und Ausgabe."""
+    entries = {"2026-07-01": {"slots": [
+        _slot("08:00", "08:05"), _slot("09:00", "09:05"),
+        _slot("10:00", "10:05"),
+    ]}}
+    _, report_total = generate_report(
+        datetime.date(2026, 7, 1), datetime.date(2026, 7, 31), entries)
+    assert total_hours(
+        datetime.date(2026, 7, 1), datetime.date(2026, 7, 31),
+        entries) == report_total
