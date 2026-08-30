@@ -3,6 +3,11 @@
 Danke für dein Interesse an Zeiterfassung! Beiträge sind willkommen — egal ob
 Bugfix, Feature oder Doku-Korrektur.
 
+Für Fehler und Wünsche gibt es [Issue-Formulare](https://github.com/Xveyn/Zeiterfassung/issues/new/choose);
+Fragen und unfertige Ideen passen besser in die
+[Discussions](https://github.com/Xveyn/Zeiterfassung/discussions). Für den Umgang
+miteinander gilt der [Verhaltenskodex](CODE_OF_CONDUCT.md).
+
 ## Entwicklungsumgebung
 
 ```bash

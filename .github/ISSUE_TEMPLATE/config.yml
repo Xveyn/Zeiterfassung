@@ -5,6 +5,9 @@ contact_links:
   - name: Sicherheitslücke melden
     url: https://github.com/Xveyn/Zeiterfassung/security/advisories/new
     about: Bitte nicht über ein öffentliches Issue, sondern über ein privates Security Advisory (siehe SECURITY.md).
+  - name: Frage stellen oder Idee diskutieren
+    url: https://github.com/Xveyn/Zeiterfassung/discussions
+    about: Fragen zur Nutzung und noch unfertige Ideen gehören in die Discussions — Issues sind für konkrete Fehler und Wünsche.
   - name: Einrichtung und Nutzung
     url: https://github.com/Xveyn/Zeiterfassung#readme
     about: README und docs/gmail-setup.md erklären Installation, Gmail-Zugang, Sync und wo die Daten liegen.
