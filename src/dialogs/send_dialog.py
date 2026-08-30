@@ -89,6 +89,28 @@ def resolve_send_period(settings, reservation_store, today):
     return send_reminder.default_send_period(today, marked, monthly)
 
 
+def period_has_no_content(ranged, vacation_days, date_from, date_to):
+    """True, wenn im gewählten Zeitraum weder Einträge noch Urlaub liegen.
+
+    Kanalunabhängig (seit dem Multi-Kanal-Umbau, M10): Mail und PDF filtern
+    `vacation_days` selbst intern (`generate_report`/`generate_pdf`) und
+    wären mit dem ungefilterten Snapshot allein unkritisch — der
+    JSON-Webhook-Pfad hat diese eingebaute Sicherung aber nicht und würde
+    sonst ein leeres, aber valides Dokument als Erfolg verschicken. Deshalb
+    hier explizit derselbe zeitraum-Filter wie in `generate_report` intern,
+    bevor irgendein Kanal feuert.
+
+    `ranged` ist bereits zeitraum- **und** kategoriegefiltert; `vacation_days`
+    dagegen ist der rohe (nur workweek-gefilterte) {ISO: minutes}-Snapshot —
+    er läuft hier durch denselben `filter_period` wie die Entries, damit
+    diese Prüfung exakt denselben Ausschnitt beurteilt wie der Report.
+    """
+    vacation_in_range = (
+        filter_period(date_from, date_to, vacation_days) or {}
+    ) if vacation_days else {}
+    return not ranged and not any(vacation_in_range.values())
+
+
 def _show_single_failure(target, res):
     """Fehlermeldung, wenn genau ein Kanal beteiligt war.
 
@@ -260,7 +282,7 @@ def open_send_dialog(parent, storage, settings, base_path, runner,
         ranged = filter_period(date_from, date_to, entries)
         if ranged is not None:
             ranged = filter_categories(ranged, categories)
-        if not ranged and not any(vacation_days.values() if vacation_days else []):
+        if period_has_no_content(ranged, vacation_days, date_from, date_to):
             themed_showinfo(
                 dialog, "Keine Einträge",
                 f"Keine Einträge für {format_date(date_from)} – "
