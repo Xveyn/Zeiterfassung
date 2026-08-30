@@ -30,6 +30,7 @@ from src.send_reminder_scheduler import SendReminderScheduler
 from src.dialogs.entry_dialog import open_entry_dialog
 from src.dialogs.send_dialog import open_send_dialog
 from src.dialogs.settings_dialog import open_settings_dialog
+from src.tooltip import attach_tooltip
 from src.theme import (
     BG, ACCENT, TEXT, TEXT_MUTED,
     FONT_HEADER, FONT_FOOTER, FONT_SMALL, apply_dark_titlebar, themed_askyesno, themed_ask_delete_choice, themed_showerror, themed_showinfo,
@@ -296,7 +297,16 @@ class App:
         # die Reihenh\u00f6he folgt sonst dem gr\u00f6\u00dften Kind.
         tk.Label(frame, text="", font=FONT_HEADER, bg=BG, width=0).pack(side=tk.LEFT)
 
-        icon_button(frame, "\u2039", lambda: self._navigate(-1)).pack(side=tk.LEFT)
+        prev_button = icon_button(frame, "\u2039", lambda: self._navigate(-1))
+        prev_button.pack(side=tk.LEFT)
+        # Callable statt festem Text: derselbe Button blättert im Monatsmodus
+        # Monate und im Wochenmodus Wochen (s. _navigate) — der Text entsteht
+        # daher erst beim Hovern.
+        attach_tooltip(
+            prev_button,
+            lambda: "Vorheriger Monat" if self.view_mode == "month"
+            else "Vorherige Woche",
+        )
 
         toggle_frame = tk.Frame(frame, bg=BG)
         toggle_frame.pack(side=tk.LEFT, padx=10)
@@ -334,18 +344,26 @@ class App:
         )
         self.header_label.place(relx=0.5, rely=0.5, anchor="center")
 
-        icon_button(
+        settings_button = icon_button(
             frame, "\u2699", self._open_settings,
             fg=TEXT_MUTED, hover_fg=TEXT,
-        ).pack(side=tk.RIGHT)
+        )
+        settings_button.pack(side=tk.RIGHT)
+        attach_tooltip(settings_button, "Einstellungen")
 
         self._next_button = icon_button(frame, "\u203a", lambda: self._navigate(+1))
         self._next_button.pack(side=tk.RIGHT, padx=(0, 5))
+        attach_tooltip(
+            self._next_button,
+            lambda: "Nächster Monat" if self.view_mode == "month"
+            else "Nächste Woche",
+        )
 
         # --- Sync-Button und Status (Multi-Device-Sync) ---
         # Widgets werden erzeugt, aber nur gepackt wenn sync_enabled. Sync
         # ist opt-in; bei deaktiviertem Sync soll der Header unver\u00e4ndert wirken.
         self.sync_button = icon_button(frame, "\u27f3", self._sync.on_sync_clicked)
+        attach_tooltip(self.sync_button, "Jetzt mit Google Drive synchronisieren")
         self.sync_status_label = tk.Label(frame, text="", bg=BG, fg=TEXT_MUTED, font=FONT_SMALL)
 
     def _build_footer(self):
@@ -361,15 +379,33 @@ class App:
         )
         self.footer_label.pack(side=tk.LEFT, expand=True)
 
-        secondary_button(
+        share_button = secondary_button(
             footer_frame, "Teilen", self._share, padx=12,
-        ).pack(side=tk.RIGHT, padx=(0, 4))
-        secondary_button(
+        )
+        share_button.pack(side=tk.RIGHT, padx=(0, 4))
+        attach_tooltip(
+            share_button,
+            "Arbeitszeiten und Reservierungen per Mail an ein anderes "
+            "Gerät schicken",
+        )
+
+        export_button = secondary_button(
             footer_frame, "Export", self._export, padx=12,
-        ).pack(side=tk.RIGHT, padx=(0, 4))
-        secondary_button(
+        )
+        export_button.pack(side=tk.RIGHT, padx=(0, 4))
+        attach_tooltip(
+            export_button,
+            "Bericht für einen Zeitraum als PDF-Datei speichern",
+        )
+
+        send_button = secondary_button(
             footer_frame, "Arbeitszeiten senden", self._send, padx=12,
-        ).pack(side=tk.RIGHT, padx=(0, 4))
+        )
+        send_button.pack(side=tk.RIGHT, padx=(0, 4))
+        attach_tooltip(
+            send_button,
+            "Bericht für einen Zeitraum per Mail oder Webhook versenden",
+        )
 
     def _navigate(self, direction):
         """Blättert die Ansicht um `direction` Einheiten (-1 zurück, +1 vor):

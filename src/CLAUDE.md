@@ -306,7 +306,13 @@ muss sie deterministisch **und** über alle Geräte gleich halten.
   **Importiert wird weiterhin `from src.theme import …`**, nicht aus den Teilmodulen —
   `__init__.py` re-exportiert die Oberfläche. Wer etwas ergänzt, legt es ins passende
   Teilmodul und trägt es dort nach.
-- `tooltip.py` — UI-Hilfe (`_hover`-Overlays).
+- `tooltip.py` — Hover-Tooltips (`attach_tooltip`). Ein Aufruf bindet **einen**
+  Tooltip an ein Widget oder eine Widget-Gruppe; `text` darf ein
+  `Callable[[], str]` sein, das erst beim Anzeigen ausgewertet wird
+  (`_resolve_text`) — so hängen die Header-Pfeile ihren Text an die aktuelle
+  Ansicht. Die Sichtbarkeits-Entscheidung liegt Tk-frei in
+  `_should_hide_tip` (minimiert/withdrawn, fremder Grab, Zeiger draußen).
+  Konvention, wo Tooltips hingehören: Root-`CLAUDE.md`, Abschnitt „Tooltips".
 - `time_utils.py` — Stunden, KW-Labels, `format_iso_date`/`format_iso_datetime`.
 - `holidays_de.py`, `paths.py` (`get_base_path` Frozen-vs-Repo), `updater.py`
   (GitHub-Releases, stdlib-only, Frequenz über `update_check_frequency`, Pre-Release-Opt-in über `prerelease_updates_enabled`), `changelog.py`

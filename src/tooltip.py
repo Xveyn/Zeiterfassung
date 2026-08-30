@@ -1,6 +1,12 @@
 import tkinter as tk
+from typing import Callable, Optional, Union
 
 from src.theme import FONT_FAMILY
+
+# Ein Tooltip-Text ist entweder fix oder wird beim Anzeigen berechnet.
+# Dynamisch braucht es z.B. die Header-Pfeile: dieselben Buttons blättern
+# im Monatsmodus Monate und im Wochenmodus Wochen.
+TooltipText = Union[str, Callable[[], str]]
 
 # Window-Manager-Zustände, in denen das Hauptfenster nicht sichtbar ist:
 # 'iconic' = minimiert (auch via root.iconify() / Win+M), 'withdrawn' = per
@@ -38,6 +44,20 @@ def _should_hide_tip(root_state, widget_rects, pointer, grab_active=False):
         if x <= px < x + w and y <= py < y + h:
             return False
     return True
+
+
+def _resolve_text(text: Optional[TooltipText]) -> str:
+    """Löst einen Tooltip-Text zum Anzeige-Zeitpunkt auf.
+
+    Ein String kommt unverändert zurück; ein Callable wird jetzt gerufen,
+    damit der Text den aktuellen Zustand widerspiegelt statt den beim
+    Anhängen. `None`/leer ergibt "" — und leerer Text unterdrückt in
+    `_show` die Anzeige. Bewusst tk-frei gehalten, damit ohne Display
+    testbar.
+    """
+    if callable(text):
+        text = text()
+    return "" if text is None else str(text)
 
 
 # Genau ein Tooltip darf gleichzeitig sichtbar sein (#66). Die Instanzen kennen
@@ -87,7 +107,7 @@ class _Tooltip:
     _CLOSE_DELAY_MS = 80
     _WATCHDOG_MS = 200
 
-    def __init__(self, widgets, text: str):
+    def __init__(self, widgets, text: TooltipText):
         self.widgets = tuple(widgets)
         self.text = text
         self.tip: tk.Toplevel | None = None
@@ -105,7 +125,10 @@ class _Tooltip:
         if self._close_after_id is not None:
             self._cancel(self._close_after_id)
             self._close_after_id = None
-        if self.tip is not None or not self.text:
+        if self.tip is not None:
+            return
+        text = _resolve_text(self.text)
+        if not text:
             return
         # Positioniere relativ zum ersten (typisch äußersten) Widget — stabile
         # Tooltip-Position auch wenn der Mauszeiger zwischen Children wandert.
@@ -124,7 +147,7 @@ class _Tooltip:
             pass
         tk.Label(
             self.tip,
-            text=self.text,
+            text=text,
             background="#1e293b",
             foreground="#e0e0e0",
             relief="solid",
@@ -221,13 +244,18 @@ class _Tooltip:
         _clear_active_tip(self)
 
 
-def attach_tooltip(widget_or_widgets, text: str) -> None:
+def attach_tooltip(widget_or_widgets, text: TooltipText) -> None:
     """Bindet ein Tooltip an ein Widget oder eine Gruppe von Widgets.
 
     Bei einer Gruppe (Tuple/Liste) gibt es genau einen geteilten Tooltip —
     nützlich für Container + Child-Labels, die als ein logisches Element
     fungieren. Mehrfachaufruf mit demselben Widget erzeugt allerdings mehrere
     unabhängige Tooltips; Aufrufer ist dafür verantwortlich, das zu vermeiden.
+
+    `text` darf statt eines Strings ein Callable sein: es wird bei jedem
+    Anzeigen neu gerufen (s. `_resolve_text`). Das ist der Weg für Texte,
+    die vom aktuellen Zustand abhängen — etwa die Header-Pfeile, deren
+    Beschriftung zwischen Monats- und Wochenansicht wechselt.
     """
     if isinstance(widget_or_widgets, tk.Misc):
         widgets = (widget_or_widgets,)
