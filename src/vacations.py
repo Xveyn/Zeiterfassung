@@ -288,5 +288,5 @@ class VacationStore:
                 if period.get("deleted"):
                     continue
                 if date_str in period.get("days", {}):
-                    return {**period, "id": pid}
+                    return {**self._copy(period), "id": pid}
             return None

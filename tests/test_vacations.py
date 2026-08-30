@@ -168,12 +168,29 @@ def test_overlap_error_names_the_way_out(store):
                    _days(("2026-07-14", 480)))
 
 
-def test_returned_records_do_not_share_the_days_dict(store):
+def _period_via(store, reader, pid, date_str):
+    """Holt denselben Record über einen der vier Leser — für die
+    parametrisierte Isolations-Prüfung unten."""
+    if reader == "get":
+        return store.get(pid)
+    if reader == "get_all":
+        return store.get_all()[pid]
+    if reader == "get_all_raw":
+        return store.get_all_raw()[pid]
+    if reader == "period_for_date":
+        return store.period_for_date(date_str)
+    raise ValueError(reader)
+
+
+@pytest.mark.parametrize(
+    "reader", ["get", "get_all", "get_all_raw", "period_for_date"])
+def test_returned_records_do_not_share_the_days_dict(store, reader):
     """Der Dialog bearbeitet `days` des zurückgegebenen Records — das darf
-    nicht am Store vorbei in den Speicher schreiben."""
+    bei KEINEM der vier Leser am Store vorbei in den Speicher schreiben.
+    Ein künftig vergessenes `_copy` in einem der vier fliegt hier auf."""
     pid = store.save(None, "Sommer", "2026-07-01", "2026-07-01",
                      _days(("2026-07-01", 480)))
-    period = store.get(pid)
+    period = _period_via(store, reader, pid, "2026-07-01")
     period["days"]["2026-07-01"] = 0
     assert store.get(pid)["days"]["2026-07-01"] == 480
     assert store.day_minutes()["2026-07-01"] == 480
