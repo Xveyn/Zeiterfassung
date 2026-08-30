@@ -2,6 +2,16 @@ name: Tests
 
 on: [push, pull_request]
 
+# Vorgabe für ALLE Jobs unten. Ohne diesen Block erben sie die
+# Repo-Einstellung, und die steht hier auf `write` — jeder Test-, Lint- und
+# Typecheck-Lauf hätte damit einen GITHUB_TOKEN, der nach master pushen
+# könnte. Gebraucht wird das von keinem Job dieser Datei: sie klonen,
+# installieren `requirements-test.txt` und führen Tests aus. Wer hier je einen
+# Job ergänzt, der mehr braucht (etwa einen Kommentar an einen PR), gibt ihm
+# einen eigenen Block auf Job-Ebene, statt diese Vorgabe aufzuweichen.
+permissions:
+  contents: read
+
 jobs:
   changes:
     # Ermittelt, ob dieser Lauf überhaupt Code betrifft. Ein PR, der nur
