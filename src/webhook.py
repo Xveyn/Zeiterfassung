@@ -166,7 +166,7 @@ def auth_headers(auth: dict[str, Any] | None, body: bytes) -> dict[str, str]:
     raise ValueError(f"Unbekanntes Auth-Verfahren: {mode!r}")
 
 
-PAYLOAD_SCHEMA_VERSION = 1
+PAYLOAD_SCHEMA_VERSION = 2
 PAYLOAD_KIND = "zeiterfassung-report"
 
 
@@ -215,13 +215,21 @@ def total_minutes(entries: dict[str, Any]) -> int:
 def build_json_payload(*, date_from: datetime.date, date_to: datetime.date,
                        entries: dict[str, Any], name: str | None,
                        sender: str | None, categories: list[str] | None,
-                       generated_at: str | None = None) -> dict[str, Any]:
+                       generated_at: str | None = None,
+                       vacation_days: dict[str, int] | None = None
+                       ) -> dict[str, Any]:
     """Das JSON-Dokument für den Webhook.
 
     `entries` ist der Snapshot aus `Storage.get_all()` (bereits durch
     `workweek.filter_for_report` gelaufen); Zeitraum und Kategorien filtert
     diese Funktion über dieselben Helfer wie Mail-HTML und PDF, damit alle
     drei denselben Ausschnitt behaupten.
+
+    `vacation_days` ist der {ISO: minutes}-Snapshot des Urlaubs-Stores oder
+    None (Häkchen nicht gesetzt). Er läuft durch DENSELBEN `filter_period`
+    wie die Entries — die drei Ausgabewege (Mail-HTML, PDF, Webhook) sollen
+    denselben Ausschnitt behaupten. Ohne Urlaub bleiben die Felder
+    null/0, damit ein bestehender Empfänger unverändert weiterläuft.
 
     Eigenes `kind` statt `zeiterfassung-share`: das Dokument trägt
     Report-Metadaten, die der Share-Validator als unbekannte Felder ablehnt.
@@ -232,6 +240,10 @@ def build_json_payload(*, date_from: datetime.date, date_to: datetime.date,
     if ranged:
         ranged = filter_categories(ranged, categories)
     ranged = _project_slots(ranged)
+    vacation_ranged = (
+        filter_period(date_from, date_to, vacation_days) or {}
+        if vacation_days is not None else None
+    )
     return {
         "schema_version": PAYLOAD_SCHEMA_VERSION,
         "kind": PAYLOAD_KIND,
@@ -242,6 +254,8 @@ def build_json_payload(*, date_from: datetime.date, date_to: datetime.date,
         "categories": list(categories) if categories is not None else None,
         "total_minutes": total_minutes(ranged),
         "entries": ranged,
+        "vacation": vacation_ranged,
+        "vacation_minutes": sum(vacation_ranged.values()) if vacation_ranged else 0,
     }
 
 

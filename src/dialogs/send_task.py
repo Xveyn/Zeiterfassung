@@ -125,7 +125,7 @@ def perform_send(*, date_from, date_to, entries, name, categories,
             payload = webhook.build_json_payload(
                 date_from=date_from, date_to=date_to, entries=entries,
                 name=name, sender=settings.get("sender_email"),
-                categories=categories)
+                categories=categories, vacation_days=vacation_days)
             json_bytes = _json.dumps(
                 payload, ensure_ascii=False, sort_keys=True).encode("utf-8")
         except Exception as e:  # bewusst alles, s.o.
