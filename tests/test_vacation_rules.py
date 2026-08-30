@@ -124,3 +124,22 @@ def test_total_minutes_sums_over_minutes():
 
 def test_total_minutes_empty():
     assert total_minutes({}) == 0
+
+
+def test_period_for_day_finds_the_covering_period():
+    from src.vacations import period_for_day
+    periods = {"a1": {**_period("Sommer", "2026-07-01", "2026-07-02"),
+                      "days": {"2026-07-01": 480, "2026-07-02": 0}}}
+    hit = period_for_day(periods, "2026-07-02")
+    assert hit["name"] == "Sommer"
+    assert hit["id"] == "a1"
+    assert period_for_day(periods, "2026-07-03") is None
+
+
+def test_period_for_day_returns_a_detached_days_copy():
+    from src.vacations import period_for_day
+    periods = {"a1": {**_period("Sommer", "2026-07-01", "2026-07-01"),
+                      "days": {"2026-07-01": 480}}}
+    hit = period_for_day(periods, "2026-07-01")
+    hit["days"]["2026-07-01"] = 0
+    assert periods["a1"]["days"]["2026-07-01"] == 480

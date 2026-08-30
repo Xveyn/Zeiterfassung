@@ -111,6 +111,19 @@ def total_minutes(day_minutes: dict[str, int]) -> int:
     return sum(day_minutes.values())
 
 
+def period_for_day(periods: dict[str, Vacation], date_str: str) -> Vacation | None:
+    """Die Periode, die diesen Tag abdeckt, um ihre `id` ergänzt — oder None.
+
+    Perioden überschneiden sich nicht (siehe VacationStore.save), es kann also
+    höchstens eine sein. Tombstones tragen ein leeres `days` und matchen daher
+    nie.
+    """
+    for pid, period in periods.items():
+        if date_str in period.get("days", {}):
+            return {**period, "id": pid, "days": dict(period["days"])}
+    return None
+
+
 _REQUIRED_VACATION_KEYS = frozenset(
     {"name", "from", "to", "days", "gcal_event_id", "modified_at", "deleted"})
 
@@ -284,9 +297,6 @@ class VacationStore:
         None. Perioden überschneiden sich nicht (siehe `save`), es kann also
         höchstens eine sein."""
         with self._lock:
-            for pid, period in self._data.items():
-                if period.get("deleted"):
-                    continue
-                if date_str in period.get("days", {}):
-                    return {**self._copy(period), "id": pid}
-            return None
+            return period_for_day(
+                {pid: p for pid, p in self._data.items() if not p.get("deleted")},
+                date_str)

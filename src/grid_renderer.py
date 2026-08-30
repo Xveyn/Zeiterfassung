@@ -12,16 +12,18 @@ import tkinter as tk
 
 from src.time_utils import (
     DAYS_DE, MONTHS_DE,
-    calculate_hours, format_hours_colon, format_minutes_hm, get_week_dates,
-    get_week_label, hours_to_minutes, week_spans_months,
+    calculate_hours, format_hours_colon, format_iso_date, format_minutes_hm,
+    get_week_dates, get_week_label, hours_to_minutes, week_spans_months,
 )
 from src.holidays_de import get_holidays
 from src.tooltip import attach_tooltip
+from src.vacations import period_for_day
 from src.theme import (
     BG, CELL_BG, WEEKEND_BG, ACCENT, TEXT, TEXT_MUTED,
     ENTRY_BG, WEEKEND_ENTRY_BG, WEEKEND_FG,
     HOLIDAY_BG, HOLIDAY_BG_HOVER, HOLIDAY_ACCENT,
     RESERVATION_ACCENT, TODAY_ACCENT,
+    VACATION_BG, VACATION_BG_HOVER, VACATION_ACCENT,
     CELL_BG_HOVER, WEEKEND_BG_HOVER, ENTRY_BG_HOVER, WEEKEND_ENTRY_BG_HOVER,
     FONT, FONT_BOLD, FONT_TINY, FONT_SMALL, FONT_HEADER, FONT_HEADER_SMALL,
     _should_show_delete_button,
@@ -38,7 +40,8 @@ PROBE_HEIGHT = 4
 
 class GridRenderer:
     def __init__(self, root, storage, settings, reservation_store, conflicts_store,
-                 on_cell_click, on_cell_right_click, reservations_active):
+                 on_cell_click, on_cell_right_click, reservations_active,
+                 vacation_store=None):
         self._root = root
         self._storage = storage
         self._settings = settings
@@ -47,6 +50,7 @@ class GridRenderer:
         self._on_cell_click = on_cell_click            # (date_str) -> None
         self._on_cell_right_click = on_cell_right_click  # (date_str) -> None
         self._reservations_active = reservations_active  # () -> bool
+        self._vacation_store = vacation_store
         # Rendering-State:
         self.grid_container = None
         self._grid_frames = []
@@ -229,9 +233,15 @@ class GridRenderer:
             ).grid(row=0, column=col, sticky="nsew", padx=2, pady=2)
 
     def _build_entry_cell(self, parent, date_str, day_text, entry, is_weekend, pad,
-                          cell_size=None, time_font=FONT_TINY):
-        bg = WEEKEND_ENTRY_BG if is_weekend else ENTRY_BG
-        hover_bg = WEEKEND_ENTRY_BG_HOVER if is_weekend else ENTRY_BG_HOVER
+                          cell_size=None, time_font=FONT_TINY, bg=None, hover_bg=None):
+        # bg/hover_bg übersteuern die Wochenend-Ableitung: ein Urlaubstag MIT
+        # erfasster Ist-Zeit („halber Urlaubstag") behält Zeit- und
+        # Stundenzeile, wechselt aber den Untergrund. Ohne Übersteuerung
+        # verhält sich die Zelle exakt wie bisher.
+        if bg is None:
+            bg = WEEKEND_ENTRY_BG if is_weekend else ENTRY_BG
+        if hover_bg is None:
+            hover_bg = WEEKEND_ENTRY_BG_HOVER if is_weekend else ENTRY_BG_HOVER
         cell = tk.Frame(
             parent, bg=bg, relief=tk.SOLID,
             highlightbackground=ACCENT, highlightthickness=1, cursor="hand2",
@@ -280,6 +290,48 @@ class GridRenderer:
             w.bind("<Leave>", lambda e, c=cell, ls=labels, ob=bg: self._hover(c, ob, *ls))
         return cell
 
+    def _build_vacation_cell(self, parent, date_str, day_text, minutes, pad,
+                             cell_size, time_font=FONT_TINY):
+        """Urlaubstag ohne erfasste Ist-Zeit: Tagnummer, „Urlaub" und die
+        Stundenzeile nur, wenn der Tag Minuten trägt. Wochenend- und
+        Feiertags-Tage einer Periode stehen mit 0 Minuten im Store — sie
+        werden eingefärbt (der Zeitraum bleibt als Block sichtbar), zeigen
+        aber keine Dauer.
+
+        Stundenformat H:MM wie in _fmt_cell_hours — dort ist begründet, warum
+        die Zelle NICHT `format_minutes_hm` spricht: zwei Notationen fürs
+        selbe im selben Fenster lasen sich widersprüchlich, und „7 h 30 min"
+        sind 10 Zeichen in einer auf 8 fixierten Zelle. Der Tooltip darf
+        `format_minutes_hm` behalten — dort ist Platz.
+        """
+        bg, hover_bg = VACATION_BG, VACATION_BG_HOVER
+        cell = tk.Frame(
+            parent, bg=bg, relief=tk.SOLID,
+            highlightbackground=VACATION_ACCENT, highlightthickness=1,
+            cursor="hand2",
+        )
+        if cell_size is not None:
+            cell.config(width=cell_size[0], height=cell_size[1])
+            cell.pack_propagate(False)
+        day_lbl = tk.Label(cell, text=day_text, font=FONT, bg=bg, fg=TEXT,
+                           cursor="hand2")
+        day_lbl.pack(pady=(pad, 0))
+        name_lbl = tk.Label(cell, text="Urlaub", font=time_font, bg=bg,
+                            fg=VACATION_ACCENT, cursor="hand2")
+        name_lbl.pack()
+        hours_lbl = tk.Label(
+            cell,
+            text=f"{format_hours_colon(minutes / 60)} h" if minutes else "",
+            font=time_font, bg=bg, fg=TEXT, cursor="hand2")
+        hours_lbl.pack(pady=(0, pad))
+        labels = (day_lbl, name_lbl, hours_lbl)
+        for w in (cell, *labels):
+            w.bind("<Button-1>", lambda e, d=date_str: self._on_cell_click(d))
+            w.bind("<Button-3>", lambda e, d=date_str: self._on_cell_right_click(d))
+            w.bind("<Enter>", lambda e, c=cell, ls=labels, hb=hover_bg: self._hover(c, hb, *ls))
+            w.bind("<Leave>", lambda e, c=cell, ls=labels, ob=bg: self._hover(c, ob, *ls))
+        return cell
+
     @staticmethod
     def _fmt_slot_line(slot):
         """Eine Tooltip-Zeile für einen Slot: 'HH:MM-HH:MM  Kategorie'
@@ -288,25 +340,28 @@ class GridRenderer:
         return f"{slot['start']}-{slot['end']}{kat}"
 
     @staticmethod
-    def _build_tooltip_text(entry, reservation, holiday_name, has_conflict=False):
+    def _build_tooltip_text(entry, reservation, holiday_name, has_conflict=False,
+                            vacation=None, vacation_minutes=0):
         """Baut den kombinierten Hover-Tooltip aus den vorhandenen Einheiten.
 
         Reine Funktion (Tk-frei, testbar): entscheidet, WELCHE Blöcke der
         Tooltip enthält und in welcher Reihenfolge. Gibt "" zurück, wenn nichts
-        anzuzeigen ist. Die Zelle zeigt nur Tagnummer + erste Slot-Zeit; der
-        Arbeitszeit-Block erscheint deshalb schon ab EINEM Slot, damit beim
-        Hovern die Kategorie ('Office') sichtbar wird.
+        anzuzeigen ist.
+
+        vacation: die Urlaubsperiode dieses Tages (mit `name`/`from`/`to`) oder
+        None; vacation_minutes die Minuten DIESES Tages — Wochenend- und
+        Feiertags-Tage einer Periode tragen 0 und zeigen dann keine Dauer.
+        Der Periodenname steht bewusst nur hier und im Verwaltungs-Dialog:
+        im Bericht heißt es schlicht „Urlaub".
 
         holiday_name: Feiertagsname, falls der Tag ein Feiertag ist, sonst None.
-        Der Feiertag kommt nur in den kombinierten Tooltip, wenn ohnehin ein
-        Eintrag oder eine Reservierung vorhanden ist (sonst zeigt die Holiday-
-        Zelle ihren Namen selbst).
+        Er kommt in den kombinierten Tooltip, sobald ohnehin ein Eintrag, eine
+        Reservierung ODER ein Urlaub vorliegt — in all diesen Fällen zeigt die
+        Zelle den Namen nicht mehr selbst als Zelltext.
 
-        has_conflict: ist der Tag ein ungelöster Sync-Konflikt, wird der
-        Konflikt-Hinweis in DENSELBEN Tooltip gefaltet (Audit M11) — früher
-        hängte der Konflikt-Zweig einen ZWEITEN attach_tooltip an dieselbe
-        Zelle, was den 'genau EIN Tooltip pro Zelle'-Invariant verletzte und
-        die Arbeitszeit-Details verdeckte.
+        has_conflict: der Konflikt-Hinweis wird in DENSELBEN Tooltip gefaltet
+        (Audit M11) — ein zweiter attach_tooltip am selben Widget verletzte den
+        'genau EIN Tooltip pro Zelle'-Invariant.
         """
         parts = []
         if entry and entry.get("slots"):
@@ -320,7 +375,14 @@ class GridRenderer:
                 + "\n".join(
                     GridRenderer._fmt_slot_line(s)
                     for s in reservation.get("slots", [])))
-        if holiday_name and (reservation is not None or entry):
+        if vacation is not None:
+            span = (f"{format_iso_date(vacation.get('from'))} – "
+                    f"{format_iso_date(vacation.get('to'))}")
+            if vacation_minutes:
+                span += f"  ·  {format_minutes_hm(vacation_minutes)}"
+            parts.append(f"Urlaub: {vacation.get('name', '')}\n{span}")
+        if holiday_name and (reservation is not None or entry
+                             or vacation is not None):
             parts.append(f"Feiertag: {holiday_name}")
         if has_conflict:
             parts.append("Konflikt — bitte auflösen")
@@ -404,19 +466,36 @@ class GridRenderer:
                         entry, holidays_map, pad,
                         holiday_max_len, cell_size, conflict_dates=None,
                         entry_time_font=FONT_TINY, holiday_name_font=FONT_SMALL,
-                        reservation=None):
-        """Dispatcht auf Entry-, Holiday- oder Empty-Zelle.
+                        reservation=None, vacation=None):
+        """Dispatcht auf Vacation-, Entry-, Holiday- oder Empty-Zelle.
 
-        reservation: optionales {start, end} für den Tag. Eine Reservierung
-        ändert den Zelltyp NICHT — sie wird ausschließlich als kleiner
-        violetter Eck-Punkt (plus Tooltip) auf die ohnehin gebaute Zelle
-        gelegt. Ein Tag mit nur einer Reservierung sieht also aus wie ein
-        leerer Tag (bzw. Feiertag) mit Punkt.
+        vacation: die Urlaubsperiode dieses Tages oder None. Urlaub GEWINNT —
+        er färbt die Zelle auch über Feiertag und Wochenende hinweg, damit der
+        Zeitraum im Kalender ein durchgehender Block bleibt. Der Feiertagsname
+        geht dabei nicht verloren: er wandert in den kombinierten Tooltip.
+        Liegt am selben Tag Ist-Zeit vor („halber Urlaubstag"), wird weiterhin
+        die Eintragszelle gebaut — nur mit dem Urlaubs-Untergrund. Der Inhalt
+        (Zeiten, Stunden) bleibt sichtbar.
+
+        reservation: optionales {slots} für den Tag. Eine Reservierung ändert
+        den Zelltyp NICHT — sie wird ausschließlich als kleiner violetter
+        Eck-Punkt (plus Tooltip) auf die ohnehin gebaute Zelle gelegt.
         """
         is_holiday = day_date in holidays_map
+        # Minuten aus der Periode selbst — sie bringt ihre `days` mit, eine
+        # zweite Store-Sicht wäre eine zweite Quelle für dieselbe Zahl.
+        vacation_minutes = (
+            vacation.get("days", {}).get(date_str, 0) if vacation else 0)
         if entry:
             cell = self._build_entry_cell(
                 parent, date_str, day_text, entry, is_weekend, pad,
+                cell_size=cell_size, time_font=entry_time_font,
+                bg=VACATION_BG if vacation is not None else None,
+                hover_bg=VACATION_BG_HOVER if vacation is not None else None,
+            )
+        elif vacation is not None:
+            cell = self._build_vacation_cell(
+                parent, date_str, day_text, vacation_minutes, pad,
                 cell_size=cell_size, time_font=entry_time_font,
             )
         elif is_holiday:
@@ -440,18 +519,19 @@ class GridRenderer:
         # Reservierung ist ein reiner Overlay-Marker (Eck-Punkt) — sie ändert
         # den Zelltyp nicht. Genau EIN attach_tooltip pro Zelle (Mehrfachaufruf
         # erzeugt überlappende Tooltips); deshalb alle relevanten Infos
-        # (Arbeitszeit-Slots, Reservierung, Feiertag, Konflikt-Hinweis) in einen
-        # kombinierten Tooltip (Textaufbau in _build_tooltip_text). Ein Feiertag-
-        # OHNE-Eintrag/-Reservierung zeigt seinen Namen weiterhin als Zelltext
-        # (Holiday-Zelle) bzw. eigenen Tooltip (name_tooltip) und kommt hier
-        # NICHT rein.
+        # (Arbeitszeit-Slots, Reservierung, Urlaub, Feiertag, Konflikt-Hinweis)
+        # in einen kombinierten Tooltip (Textaufbau in _build_tooltip_text). Ein
+        # Feiertag OHNE Eintrag/Reservierung/Urlaub zeigt seinen Namen weiterhin
+        # als Zelltext (Holiday-Zelle) bzw. eigenen Tooltip (name_tooltip) und
+        # kommt hier NICHT rein.
         has_conflict = bool(conflict_dates and date_str in conflict_dates)
         if reservation is not None:
             self._add_reservation_marker(cell)
         tip_text = self._build_tooltip_text(
             entry, reservation,
             holidays_map[day_date] if is_holiday else None,
-            has_conflict=has_conflict)
+            has_conflict=has_conflict,
+            vacation=vacation, vacation_minutes=vacation_minutes)
         if tip_text:
             attach_tooltip(cell, tip_text)
 
@@ -602,6 +682,8 @@ class GridRenderer:
         entries = self._storage.get_all()
         reservations = (
             self._reservation_store.get_all() if self._reservations_active() else {})
+        vacation_periods = (
+            self._vacation_store.get_all() if self._vacation_store else {})
         total_minutes = 0
 
         state = self._settings.get("state")
@@ -651,6 +733,7 @@ class GridRenderer:
                     entry_time_font=entry_time_font,
                     holiday_name_font=holiday_name_font,
                     reservation=reservations.get(date_str),
+                    vacation=period_for_day(vacation_periods, date_str),
                 )
                 cell.grid(row=row, column=col, sticky="nsew", padx=2, pady=2)
 
@@ -669,6 +752,8 @@ class GridRenderer:
         entries = self._storage.get_all()
         reservations = (
             self._reservation_store.get_all() if self._reservations_active() else {})
+        vacation_periods = (
+            self._vacation_store.get_all() if self._vacation_store else {})
         total_minutes = 0
         spans = week_spans_months(self._iso_year, self._current_week)
         state = self._settings.get("state")
@@ -706,6 +791,7 @@ class GridRenderer:
                 entry_time_font=entry_time_font,
                 holiday_name_font=holiday_name_font,
                 reservation=reservations.get(date_str),
+                vacation=period_for_day(vacation_periods, date_str),
             )
             cell.grid(row=1, column=col, sticky="nsew", padx=2, pady=2)
 

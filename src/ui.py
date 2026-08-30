@@ -123,6 +123,7 @@ class App:
             self.root, self.storage, self.settings, self.reservation_store,
             self.conflicts_store, self._open_dialog, self._delete_day,
             self._reservations_active,
+            vacation_store=self.vacation_store,
         )
         self._reminders = ReminderScheduler(
             self.root, self.settings, self.storage,
