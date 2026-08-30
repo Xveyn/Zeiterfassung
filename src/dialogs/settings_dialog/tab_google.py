@@ -8,6 +8,7 @@ import tkinter as tk
 import traceback
 from tkinter import messagebox
 
+from src.devices import MAX_NAME_LENGTH
 from src.dialogs.settings_dialog._shared import label, subheader
 from src.dialogs.settings_dialog.google_tab_task import (
     fetch_sender_email, load_calendars, open_calendar_service,
@@ -18,9 +19,10 @@ from src.platform_open import open_folder
 from src.sync_runtime import run_compaction_blocking
 from src.theme import (
     ACCENT, BG, CELL_BG, FONT, FONT_SMALL, STATUS_OK, TEXT, TEXT_MUTED,
-    dark_combo, secondary_button, themed_askyesno, themed_showerror,
+    dark_combo, dark_entry, secondary_button, themed_askyesno, themed_showerror,
     themed_showinfo, themed_showwarning,
 )
+from src.tooltip import attach_tooltip
 from src.time_utils import format_iso_date
 
 # Zeichen + Farbe je Zustand aus mail.scope_summary — dieselbe Sprache
@@ -251,22 +253,47 @@ class GoogleTab:
         )
         self._cb_sync.grid(row=6, column=0, columnspan=2, padx=10, pady=(4, 0), sticky="w")
 
+        # Gerätename: reist über die Sync-Registry mit und macht die
+        # Geräte-ID im Konfliktdialog lesbar (s. devices.py). Leer lassen ist
+        # erlaubt — dann zeigt der Dialog weiter nur die gekürzte ID.
+        device_row = tk.Frame(frame, bg=BG)
+        device_row.grid(row=7, column=0, columnspan=2, padx=10, pady=(6, 0), sticky="w")
+        tk.Label(
+            device_row, text="Gerät:", font=FONT_SMALL, bg=BG, fg=TEXT_MUTED,
+        ).pack(side=tk.LEFT)
+        self.device_name_var = tk.StringVar(value=settings.get("device_name") or "")
+        entry = dark_entry(device_row, self.device_name_var, width=24)
+        # Die Länge deckelt beim Speichern ohnehin `sanitize_device_name`; hier
+        # sichtbar machen, statt den Namen still zu kürzen (der Dialog schließt
+        # beim Speichern, das Ergebnis sähe man erst beim nächsten Öffnen).
+        entry.config(
+            validate="key",
+            validatecommand=(frame.register(
+                lambda proposed: len(proposed) <= MAX_NAME_LENGTH), "%P"),
+        )
+        entry.pack(side=tk.LEFT, padx=(6, 0))
+        attach_tooltip(
+            entry,
+            "Name dieses Geräts. Andere Geräte zeigen ihn beim Auflösen\n"
+            "von Sync-Konflikten statt der Geräte-ID an.",
+        )
+
         device_id = settings.get("device_id") or "(noch nicht gesetzt)"
         device_id_short = device_id[:8] + "…" if len(device_id) > 8 else device_id
         tk.Label(
             frame, text=f"Geräte-ID: {device_id_short}", font=FONT_SMALL,
             bg=BG, fg=TEXT_MUTED,
-        ).grid(row=7, column=0, columnspan=2, padx=10, pady=(2, 0), sticky="w")
+        ).grid(row=8, column=0, columnspan=2, padx=10, pady=(2, 0), sticky="w")
 
         last = format_iso_date(settings.get("last_pull_at"), fallback="noch nie")
         tk.Label(
             frame, text=f"Letzte Synchronisation: {last}", font=FONT_SMALL,
             bg=BG, fg=TEXT_MUTED,
-        ).grid(row=8, column=0, columnspan=2, padx=10, pady=(2, 4), sticky="w")
+        ).grid(row=9, column=0, columnspan=2, padx=10, pady=(2, 4), sticky="w")
 
         # Ab hier wachsen im Google-Tab optionale Zeilen (Konflikte, Kompaktieren)
         # dynamisch — deshalb eine laufende Row-Nummer statt fixer Konstanten.
-        next_google_row = 9
+        next_google_row = 10
         unresolved = 0
         if self._conflicts_store is not None:
             unresolved = self._conflicts_store.count_unresolved()

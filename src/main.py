@@ -6,6 +6,7 @@ import sys
 import threading
 import tkinter as tk
 import uuid
+from typing import Any
 
 # OAuthlib bricht den Flow ab, wenn die zurückgegebenen Scopes nicht exakt mit
 # den angeforderten matchen. Google fügt aber bei Identity-Scopes wie
@@ -25,6 +26,7 @@ from src.autostart import migrate_legacy_autostart, refresh_linux_target
 from src.conflicts_store import ConflictsStore
 from src.desktop_entry import ensure_icon, write_menu_entry
 from src.device_id import derive_device_id
+from src.devices import default_device_name
 from src.logging_setup import setup_logging
 from src.paths import get_base_path, get_resource_path
 from src.reservations import ReservationStore
@@ -89,6 +91,23 @@ def _ensure_device_id(settings) -> str:
         device_id = str(uuid.uuid4())
         settings.set("device_id", device_id)
     return device_id
+
+
+def _ensure_device_name(settings) -> str:
+    """Liefert den Anzeigenamen dieses Geräts und belegt ihn beim allerersten
+    Start aus dem Hostnamen vor (s. `devices.default_device_name`).
+
+    Die Vorbelegung läuft **genau einmal**, gemerkt über
+    `device_name_initialized`: wer den Namen im Einstellungen-Dialog bewusst
+    leert, will die Geräte-ID sehen — ein Neustart darf ihm den Hostnamen
+    nicht wieder unterschieben. Ein leerer Name ist ein gültiger Zustand, kein
+    fehlender Wert."""
+    if not settings.get("device_name_initialized"):
+        updates: dict[str, Any] = {"device_name_initialized": True}
+        if not (settings.get("device_name") or ""):
+            updates["device_name"] = default_device_name()
+        settings.set_many(updates)
+    return settings.get("device_name") or ""
 
 
 def _sweep_orphan_tombstones(storage, reservation_store, settings, base) -> int:
@@ -202,6 +221,7 @@ def main():
     settings = Settings(os.path.join(base, "settings.json"), lock=data_lock)
     device_id = _ensure_device_id(settings)
     settings.device_id_for_sync = device_id
+    _ensure_device_name(settings)
 
     storage = Storage(os.path.join(base, "zeiterfassung.json"),
                       device_id=device_id, lock=data_lock)
@@ -227,7 +247,7 @@ def main():
     webhook_store = WebhookStore(os.path.join(base, "webhooks.json"))
 
     # M6: Ein unvollständig gebliebener Sync-Apply eines vorherigen Laufs
-    # (Crash zwischen den vier Store-Writes) wird jetzt idempotent nachgeholt —
+    # (Crash zwischen den Store-Writes) wird jetzt idempotent nachgeholt —
     # bevor irgendein Sync-Thread startet, hier noch single-threaded (kein
     # data_lock nötig). Kein Journal → No-op.
     from src import sync_journal

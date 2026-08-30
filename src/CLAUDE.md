@@ -181,6 +181,30 @@ Begründung und die Grenze der LWW-Heilung stehen im Docstring von
   Enthält Konfiguration **und** Secrets, wird deshalb wie `token.json`
   gehärtet geschrieben (`secure_file.harden_windows_acl`, s.u.) und steht
   **nicht** im Sync-Doc.
+- `devices.py` — **Geräte-Registry** für die Anzeige: `{device_id: {name, updated_at}}`,
+  im Sync-Doc unter `devices`. Übersetzt die `device_id` in einen lesbaren Namen
+  (Konfliktdialog, `_fmt_*_candidate`). Tk- und I/O-frei; der eigene Name steht
+  gerätelokal in `settings.device_name`, der Spiegel der anderen in
+  `settings.known_devices` — **nicht** in `SYNCED_SETTING_KEYS` (ein
+  synchronisierter Key wäre ein einziger globaler Wert, die Geräte würden ihn
+  sich gegenseitig überschreiben; deshalb die Registry mit `device_id` als
+  Schlüssel). `build_local_doc` setzt darin den eigenen Eintrag
+  (`with_own_entry`, neuer Zeitstempel nur bei echter Namensänderung),
+  `merge` vereinigt beide Seiten per LWW, `apply_merged_doc` schreibt den
+  Spiegel zurück — aber **nur, wenn das Doc den Key führt**: ein älterer
+  Client liefert ihn nicht mit, und der Spiegel darf davon nicht leergeräumt
+  werden. Das Feld ist bewusst **additiv ohne Schema-Bump** (SCHEMA_VERSION
+  bleibt 4, s. Docstring in `sync.py`); alles hier behandelt seine Eingabe als
+  Fremddaten, und jeder Ausfall endet in der gekürzten ID statt in einem Fehler.
+
+  **Zwei Eigenheiten, die man kennen muss:** Ein geleerter Name wird zum
+  **Grabstein** (`name: ""` mit frischem Stempel) statt zu einer Abwesenheit —
+  die Union kennt keine Abwesenheit, ein entfernter Eintrag verlöre gegen die
+  ältere Kopie eines anderen Geräts und der gelöschte Name käme global zurück.
+  Und die Registry hat **keinen GC-Pfad**: weder `compact_local` noch der
+  Tombstone-Lebenszyklus fassen `devices` an (es gibt nichts abzugleichen), sie
+  ist additiv bis `MAX_DEVICES` und wirft dann die ältesten Einträge weg. Wer
+  hier einen GC sucht: es gibt bewusst keinen.
 - `sync.py` — pure Sync-Logik (LWW-Merge, Konflikterkennung); importiert
   `SYNCED_SETTING_KEYS` aus `settings.py` **und** `_REQUIRED_ENTRY_KEYS` aus `storage.py`
   (beide Single Source of Truth, nicht hier neu definieren). `validate_remote_doc`
@@ -235,12 +259,12 @@ Begründung und die Grenze der LWW-Heilung stehen im Docstring von
   N6-Startup-Sweep, damit ein settings.json-Reset (M4) einen gesyncten Rechner
   nicht wie jungfräulich aussehen lässt (s. Tombstone-Lebenszyklus oben).
 - `sync_journal.py` — Crash-Recovery für `sync.apply_merged_doc` (Audit M6): dessen
-  vier Store-Writes sind einzeln atomar, die Sequenz nicht. `apply_merged_doc_journaled`
+  Store-Writes sind einzeln atomar, die Sequenz nicht. `apply_merged_doc_journaled`
   schreibt den `merged_doc` erst durable (`fsync`) in ein Write-Ahead-Journal
   (`sync-apply.journal` im Base-Dir), dann die Stores, dann löscht es das Journal.
   `sync_runtime.py` ruft die drei Sync-Apply-Stellen (Pull/Push/Kompaktierung) darüber; beim
   Start holt `recover_pending_apply` ein übriggebliebenes Journal idempotent nach
-  (alle vier Ops sind Full-Replace). **Kein** Sync-Doc-Feld — rein lokaler
+  (alle Ops sind Full-Replace). **Kein** Sync-Doc-Feld — rein lokaler
   Recovery-Zustand.
   `share.py` — Export/Import als Share-JSON. `weekly_limit.py` — pure Wochenstunden-Limit-Check
   (Werkstudenten-Privileg, margenheld/Zeiterfassung#98). Kein eigener Persistenz-Zustand, operiert auf
