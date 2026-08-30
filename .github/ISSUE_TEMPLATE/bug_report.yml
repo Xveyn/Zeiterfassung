@@ -1,0 +1,103 @@
+name: Fehler melden
+description: Etwas funktioniert nicht wie erwartet
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Danke für die Meldung! **Sicherheitslücken bitte nicht hier**, sondern über
+        ein [privates Security Advisory](https://github.com/Xveyn/Zeiterfassung/security/advisories/new)
+        melden (siehe [SECURITY.md](https://github.com/Xveyn/Zeiterfassung/blob/master/SECURITY.md)).
+
+  - type: checkboxes
+    id: vorab
+    attributes:
+      label: Vorab
+      options:
+        - label: Ich habe die [vorhandenen Issues](https://github.com/Xveyn/Zeiterfassung/issues?q=is%3Aissue) nach demselben Fehler durchsucht.
+          required: true
+        - label: Der Fehler tritt in der [neuesten Version](https://github.com/Xveyn/Zeiterfassung/releases/latest) auf.
+          required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Steht in der Titelleiste der App (z. B. `1.21.0` oder `1.21.0-pre.2`).
+      placeholder: "1.21.0"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: plattform
+    attributes:
+      label: Plattform
+      options:
+        - Windows
+        - macOS
+        - Linux
+    validations:
+      required: true
+
+  - type: input
+    id: umgebung
+    attributes:
+      label: Betriebssystem-Version bzw. Desktop-Umgebung
+      description: Unter Linux bitte auch die Desktop-Umgebung angeben (KDE Plasma, GNOME, XFCE …) — dort hängen Tray- und Autostart-Verhalten daran.
+      placeholder: "Windows 11 23H2 / macOS 15.1 / Ubuntu 24.04 mit KDE Plasma (Wayland)"
+    validations:
+      required: false
+
+  - type: dropdown
+    id: installation
+    attributes:
+      label: Installationsart
+      options:
+        - Windows-Installer (Setup.exe)
+        - macOS-DMG
+        - Linux-AppImage
+        - Aus dem Quellcode (python -m src.main)
+    validations:
+      required: true
+
+  - type: textarea
+    id: beschreibung
+    attributes:
+      label: Was passiert?
+      description: Was hast du beobachtet — und was hättest du stattdessen erwartet?
+    validations:
+      required: true
+
+  - type: textarea
+    id: schritte
+    attributes:
+      label: Schritte zur Reproduktion
+      placeholder: |
+        1. Kalendertag anklicken
+        2. Zweiten Slot über „+ Slot" hinzufügen
+        3. Speichern
+        4. Fehler: …
+    validations:
+      required: true
+
+  - type: textarea
+    id: log
+    attributes:
+      label: Auszug aus dem Protokoll
+      description: |
+        `logs/zeiterfassung.log` im Datenordner (Windows: neben der Exe, macOS:
+        `~/Library/Application Support/Zeiterfassung/`, Linux:
+        `~/.local/share/Zeiterfassung/`). Bitte nur die passenden Zeilen bzw. den
+        Traceback — und vorher auf Mail-Adressen oder andere persönliche Daten schauen.
+      render: text
+    validations:
+      required: false
+
+  - type: textarea
+    id: sonstiges
+    attributes:
+      label: Sonstiges
+      description: Screenshots, Besonderheiten der Einrichtung (Sync aktiv, Kalender-Abgleich, Webhooks), alles was sonst hilft.
+    validations:
+      required: false

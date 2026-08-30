@@ -1,0 +1,10 @@
+# Leere Issues bleiben bewusst erlaubt: der Maintainer legt seine eigenen
+# Aufgaben-Issues formlos an — die Formulare oben sind für Meldungen von außen.
+blank_issues_enabled: true
+contact_links:
+  - name: Sicherheitslücke melden
+    url: https://github.com/Xveyn/Zeiterfassung/security/advisories/new
+    about: Bitte nicht über ein öffentliches Issue, sondern über ein privates Security Advisory (siehe SECURITY.md).
+  - name: Einrichtung und Nutzung
+    url: https://github.com/Xveyn/Zeiterfassung#readme
+    about: README und docs/gmail-setup.md erklären Installation, Gmail-Zugang, Sync und wo die Daten liegen.
