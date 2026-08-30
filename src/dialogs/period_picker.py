@@ -4,7 +4,7 @@ import tkinter as tk
 
 from src import workweek
 from src.dialogs.date_row import build_date_row
-from src.report import total_hours
+from src.report import filter_period, total_hours
 from src.theme import BG, CELL_BG, FONT, FONT_SMALL, TEXT, TEXT_MUTED
 
 
@@ -35,11 +35,13 @@ class _PeriodPickerHandle:
     """Lese-Schnittstelle auf die Picker-Widgets, ohne dass der Aufrufer die
     Tk-Vars kennt."""
 
-    def __init__(self, from_vars, to_vars, category_vars, breakdown_var):
+    def __init__(self, from_vars, to_vars, category_vars, breakdown_var,
+                vacation_var=None):
         self._from = from_vars        # (day_var, month_var, year_var)
         self._to = to_vars            # (day_var, month_var, year_var)
         self._cats = category_vars    # {kategorie: BooleanVar}
         self._breakdown = breakdown_var  # BooleanVar
+        self._vacation = vacation_var    # BooleanVar oder None
 
     def get_range(self):
         try:
@@ -58,9 +60,15 @@ class _PeriodPickerHandle:
         """True = "Summe je Kategorie"-Tabelle in den Bericht aufnehmen."""
         return bool(self._breakdown.get())
 
+    def get_show_vacation(self):
+        """True = Urlaubs-Block in den Bericht aufnehmen. False, wenn der
+        Schalter gar nicht gebaut wurde (kein Urlaub vorhanden)."""
+        return bool(self._vacation.get()) if self._vacation is not None else False
+
 
 def build_period_picker(parent, storage, settings, on_change=None,
-                        from_default=None, to_default=None):
+                        from_default=None, to_default=None,
+                        vacation_store=None):
     """Baut Von/Bis-Datumszeilen + Kategorie-Checkboxen + Live-Stundenvorschau
     in einen eigenen Frame. Liefert (frame, handle). Der Frame wird vom
     Aufrufer ins Dialog-Layout gegridded; die Aktions-Buttons bleiben Sache
@@ -72,7 +80,10 @@ def build_period_picker(parent, storage, settings, on_change=None,
     der Aufrufer setzt den Anfangszustand selbst.
 
     from_default / to_default: optionale Vorbelegung der Datumszeilen. Ohne
-    sie gilt wie bisher „Vormonats-Pendant bis heute" (_default_from_date)."""
+    sie gilt wie bisher „Vormonats-Pendant bis heute" (_default_from_date).
+
+    vacation_store: optionaler Urlaubs-Store. Ohne ihn (oder ohne Urlaub im
+    Bestand) wird der „Urlaub ausweisen"-Schalter gar nicht gebaut."""
     frame = tk.Frame(parent, bg=BG)
 
     today = datetime.date.today()
@@ -139,17 +150,33 @@ def build_period_picker(parent, storage, settings, on_change=None,
         highlightthickness=0, bd=0, anchor="w",
     ).grid(row=3, column=0, columnspan=6, padx=10, pady=(0, 4), sticky="w")
 
-    handle = _PeriodPickerHandle(from_vars, to_vars, category_vars, breakdown_var)
+    # Schalter: Urlaub im Bericht ausweisen. Wird NUR gebaut, wenn überhaupt
+    # Urlaub existiert — ein Schalter für ein ungenutztes Feature ist Rauschen.
+    # Default aus, wie die Kategorie-Aufschlüsselung.
+    vacation_days = vacation_store.day_minutes() if vacation_store else {}
+    vacation_var = None
+    if any(vacation_days.values()):
+        vacation_var = tk.BooleanVar(value=False)
+        tk.Checkbutton(
+            frame, text="Urlaub ausweisen", variable=vacation_var,
+            command=lambda: _changed(),
+            font=FONT, bg=BG, fg=TEXT, selectcolor=CELL_BG,
+            activebackground=BG, activeforeground=TEXT,
+            highlightthickness=0, bd=0, anchor="w",
+        ).grid(row=4, column=0, columnspan=6, padx=10, pady=(0, 4), sticky="w")
+
+    handle = _PeriodPickerHandle(
+        from_vars, to_vars, category_vars, breakdown_var, vacation_var)
 
     # Live-Vorschau (Gesamtstunden über den Build-Zeit-Snapshot all_entries).
     total_label = tk.Label(frame, text="", font=FONT, bg=BG, fg=TEXT)
-    total_label.grid(row=4, column=0, columnspan=6, padx=10, pady=(0, 8), sticky="w")
+    total_label.grid(row=5, column=0, columnspan=6, padx=10, pady=(0, 8), sticky="w")
 
     # Gedämpfte Hinweiszeile: nur im Nur-Werktage-Modus und nur, wenn im
     # gewählten Zeitraum tatsächlich Wochenend-Einträge liegen. Ohne sie
     # verlöre jemand mit Alt-Daten stillschweigend Stunden aus dem Bericht.
     weekend_hint = tk.Label(frame, text="", font=FONT_SMALL, bg=BG, fg=TEXT_MUTED)
-    weekend_hint.grid(row=5, column=0, columnspan=6, padx=10, pady=(0, 8), sticky="w")
+    weekend_hint.grid(row=6, column=0, columnspan=6, padx=10, pady=(0, 8), sticky="w")
     weekend_hint.grid_remove()  # startet unsichtbar; ein leeres Label würde trotzdem eine Zeile beanspruchen
 
     def _update_total(*_):
@@ -159,7 +186,13 @@ def build_period_picker(parent, storage, settings, on_change=None,
             weekend_hint.grid_remove()
             return
         hours = total_hours(df, dt, all_entries, handle.get_categories())
-        total_label.config(text=f"Gesamtstunden: {hours}h")
+        text = f"Gesamtstunden: {hours}h"
+        if handle.get_show_vacation():
+            in_range = filter_period(df, dt, vacation_days) or {}
+            urlaub = round(sum(in_range.values()) / 60, 2)
+            if urlaub:
+                text += f"  (+ {urlaub}h Urlaub)"
+        total_label.config(text=text)
         n = (workweek.count_weekend_entries(all_entries_raw, df, dt)
              if settings.get("workweek_only") else 0)
         if n == 1:

@@ -106,3 +106,16 @@ def test_resolve_send_period_no_anchor_before_today_is_none():
     assert resolve_send_period(
         _S(send_period_from_last_reminder=True, send_period_anchor_monthly=False),
         _Empty(), datetime.date(2026, 9, 5)) is None
+
+
+def test_vacation_snapshot_honours_workweek_only():
+    """Ein Urlaubs-Samstag mit Stunden darf im Nur-Werktage-Modus nicht in
+    'Zu vergüten gesamt' zählen — er ist im Kalender unsichtbar und aus der
+    Stundentabelle gestrichen."""
+    from src import workweek
+
+    snapshot = {"2026-07-03": 480, "2026-07-04": 480}   # Fr, Sa
+    assert workweek.filter_for_report(snapshot, {"workweek_only": True}) == {
+        "2026-07-03": 480}
+    assert workweek.filter_for_report(
+        snapshot, {"workweek_only": False}) == snapshot

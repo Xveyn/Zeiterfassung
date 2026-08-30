@@ -118,7 +118,8 @@ _FORMAT_BY_LABEL = {v: k for k, v in FORMAT_LABELS.items()}
 
 
 def open_send_dialog(parent, storage, settings, base_path, runner,
-                     reservation_store=None, webhook_store=None):
+                     reservation_store=None, webhook_store=None,
+                     vacation_store=None):
     credentials_path = os.path.join(base_path, "credentials.json")
     token_path = os.path.join(base_path, "token.json")
 
@@ -156,6 +157,7 @@ def open_send_dialog(parent, storage, settings, base_path, runner,
         dialog, storage, settings,
         from_default=period[0] if period else None,
         to_default=period[1] if period else None,
+        vacation_store=vacation_store,
     )
     picker_frame.grid(row=0, column=0, sticky="w")
 
@@ -231,6 +233,15 @@ def open_send_dialog(parent, storage, settings, base_path, runner,
         categories = picker.get_categories()
         category_breakdown = picker.get_category_breakdown()
 
+        # Urlaubs-Snapshot läuft durch denselben Wochentags-Filter wie die
+        # Einträge — sonst zählte ein Urlaubs-Samstag mit Stunden im
+        # Nur-Werktage-Modus mit, obwohl er im Kalender unsichtbar ist.
+        show_vacation = picker.get_show_vacation()
+        vacation_days = None
+        if show_vacation and vacation_store is not None:
+            vacation_days = workweek.filter_for_report(
+                vacation_store.day_minutes(), settings)
+
         # (a) Ziele einsammeln — zuerst, alles Weitere hängt davon ab.
         selected_hooks = []
         for record, var, fmt_var in hook_vars:
@@ -249,7 +260,7 @@ def open_send_dialog(parent, storage, settings, base_path, runner,
         ranged = filter_period(date_from, date_to, entries)
         if ranged is not None:
             ranged = filter_categories(ranged, categories)
-        if not ranged:
+        if not ranged and not any(vacation_days.values() if vacation_days else []):
             themed_showinfo(
                 dialog, "Keine Einträge",
                 f"Keine Einträge für {format_date(date_from)} – "
@@ -273,6 +284,7 @@ def open_send_dialog(parent, storage, settings, base_path, runner,
                 closing=settings.get("mail_closing"),
                 categories=categories,
                 category_breakdown=category_breakdown,
+                vacation_days=vacation_days,
             )
             if html is None:
                 # Sicherheitsnetz — (b) sollte das schon abgefangen haben.
@@ -295,6 +307,7 @@ def open_send_dialog(parent, storage, settings, base_path, runner,
                 date_from=date_from, date_to=date_to, entries=entries,
                 name=settings.get("name"), categories=categories,
                 category_breakdown=category_breakdown,
+                vacation_days=vacation_days,
                 send_mail=send_mail,
                 mail={
                     "credentials_path": credentials_path,
