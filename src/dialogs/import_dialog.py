@@ -5,6 +5,7 @@ Filter und Konflikt-Modi, optional Pro-Tag-Modal, atomarer Apply."""
 import datetime
 import logging
 import tkinter as tk
+from tkinter import ttk
 import traceback
 from tkinter import filedialog, messagebox
 
@@ -389,7 +390,13 @@ class _PerDayDialog:
         ).pack(padx=10, pady=(10, 4), anchor="w")
 
         canvas = tk.Canvas(self.top, bg=BG, highlightthickness=0, height=320)
-        scrollbar = tk.Scrollbar(self.top, orient="vertical", command=canvas.yview)
+        # ttk.Scrollbar, NICHT tk.Scrollbar: die Legacy-Scrollbar kennt keine
+        # ttk-Styles und bliebe im hellen Systemlook stehen. Der Dialog ruft
+        # oben bereits apply_combobox_style, das Vertical.TScrollbar dunkel
+        # konfiguriert.
+        scrollbar = ttk.Scrollbar(self.top, orient="vertical",
+                                  command=canvas.yview,
+                                  style="Vertical.TScrollbar")
         canvas.configure(yscrollcommand=scrollbar.set)
         canvas.pack(side="left", fill="both", expand=True, padx=(10, 0))
         scrollbar.pack(side="right", fill="y")
