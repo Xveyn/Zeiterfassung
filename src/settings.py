@@ -108,6 +108,11 @@ DEFAULTS = {
     "werkstudent_limit_end": "",
     "werkstudent_limit_max_hours": 20.0,
     "pause_warning_enabled": True,
+    # Vorbelegung des Sammelfelds im Urlaubs-Dialog. Bewusst NICHT in
+    # SYNCED_SETTING_KEYS — wie default_pause und die Wochenplan-Zeiten, die
+    # dort ebenfalls nicht stehen; der Urlaubs-Store synchronisiert ohnehin
+    # nicht.
+    "vacation_hours_per_day": 8.0,
 }
 
 _COERCE_FAILED = object()

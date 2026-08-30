@@ -6,6 +6,7 @@ import tkinter as tk
 from src.dialogs.category_dialog import open_category_dialog
 from src.dialogs.date_row import build_date_row
 from src.dialogs.settings_dialog._shared import label, subheader
+from src.dialogs.vacation_dialog import open_vacation_dialog
 from src.settings import WEEKDAY_KEYS
 from src.theme import (
     BG, CELL_BG, FONT, FONT_SMALL, PAUSE_VALUES, TEXT, TEXT_MUTED,
@@ -18,7 +19,8 @@ class WorkTab:
     """Baut den Arbeitszeit-Tab; exponiert die Tk-Variablen, die
     save_settings in dialog.py liest (Vertrag siehe Spec H4)."""
 
-    def __init__(self, frame, dialog, settings):
+    def __init__(self, frame, dialog, settings, vacation_store=None,
+                 on_vacation_change=None):
         workweek_only_var = tk.BooleanVar(value=settings.get("workweek_only"))
         tk.Checkbutton(
             frame, text="Nur Werktage — Wochenende (Sa/So) komplett deaktivieren",
@@ -119,6 +121,13 @@ class WorkTab:
             frame, "Kategorien verwalten",
             lambda: open_category_dialog(dialog, settings),
         ).grid(row=7, column=0, columnspan=2, padx=10, pady=(12, 8), sticky="w")
+
+        if vacation_store is not None:
+            secondary_button(
+                frame, "Urlaub verwalten",
+                lambda: open_vacation_dialog(
+                    dialog, vacation_store, settings, on_vacation_change),
+            ).grid(row=8, column=0, columnspan=2, padx=10, pady=(0, 8), sticky="w")
 
         self.frame = frame
         self.start_vars = start_vars

@@ -474,7 +474,13 @@ class App:
             data_lock=self._data_lock,
             sync_guard=self._sync_guard,
             webhook_store=self._webhook_store,
+            vacation_store=self.vacation_store,
+            on_vacation_change=self._on_vacation_change,
         )
+
+    def _on_vacation_change(self):
+        """Nach einer Urlaubsänderung den Kalender neu zeichnen."""
+        self._refresh()
 
     def _apply_always_on_top(self):
         """Tk-übergreifender Topmost-Toggle. Funktioniert auf Windows, macOS
