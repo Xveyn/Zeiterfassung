@@ -2,7 +2,7 @@
 import tkinter as tk  # noqa: F401 — Import-Smoke wie test_logging_setup; CI hat tkinter
 
 import src.tooltip as tooltip
-from src.tooltip import _should_hide_tip
+from src.tooltip import _resolve_text, _should_hide_tip
 
 
 class _FakeTip:
@@ -102,3 +102,31 @@ def test_hide_when_grab_active_even_if_pointer_over_widget():
     # liegen, obwohl der Zeiger (mangels <Leave>) noch im Widget steht.
     rects = [(0, 0, 100, 50)]
     assert _should_hide_tip("normal", rects, (10, 10), grab_active=True) is True
+
+
+def test_resolve_text_returns_plain_string_unchanged():
+    assert _resolve_text("Einstellungen") == "Einstellungen"
+
+
+def test_resolve_text_calls_callable_at_display_time():
+    # Kern der dynamischen Variante: die Pfeil-Buttons blättern je nach
+    # Ansicht Monate oder Wochen — der Text muss beim Anzeigen entstehen,
+    # nicht beim Anhängen.
+    view = {"mode": "month"}
+
+    def label():
+        return "Vorheriger Monat" if view["mode"] == "month" else "Vorherige Woche"
+
+    assert _resolve_text(label) == "Vorheriger Monat"
+    view["mode"] = "week"
+    assert _resolve_text(label) == "Vorherige Woche"
+
+
+def test_resolve_text_of_none_is_empty_string():
+    # Leerer Text unterdrückt die Anzeige (siehe _show) — None darf dabei
+    # nicht durchschlagen und ein "None"-Popup erzeugen.
+    assert _resolve_text(None) == ""
+
+
+def test_resolve_text_stringifies_callable_result():
+    assert _resolve_text(lambda: "") == ""

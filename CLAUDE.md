@@ -398,6 +398,37 @@ Flackern ist als Kompromiss akzeptiert. Vor einem neuen Versuch: das oben
 beschriebene Verhalten reproduzieren und gegenchecken, ob es (in einer
 neueren Tk/Python-Version) noch auftritt.
 
+## Tooltips: alle Buttons des Hauptfensters, sonst nach Bedarf
+
+Jeder Button im **Hauptfenster** trägt einen Hover-Tooltip über
+`src/tooltip.py::attach_tooltip` — die vier Header-Icons (`‹`, `›`, `⟳`, `⚙`)
+und die drei Footer-Buttons („Arbeitszeiten senden", „Export", „Teilen").
+Bei icon-only Buttons ist das die einzige Beschriftung, die es gibt; bei den
+Footer-Buttons sagt der Tooltip, *was* der Klick auslöst, nicht bloß wie der
+Button heißt.
+
+**Bewusst ohne Tooltip:** der Monat/Woche-Umschalter. Er ist beschriftet, sein
+aktiver Zustand ist eingefärbt, und der Text würde nur die Beschriftung
+wiederholen.
+
+**Dialoge bekommen keine flächendeckenden Tooltips.** Dort erklärt der
+Dialogtext den Kontext; ein Tooltip an „Speichern"/„Abbrechen" wäre Rauschen.
+Einzelne Dialog-Elemente dürfen einen bekommen, wenn ohne ihn etwas unklar
+bleibt (Vorbild: das ✕ im Update-Banner, `update_banner.py`).
+
+Zwei Regeln beim Ergänzen:
+
+- **Genau ein `attach_tooltip` pro Widget.** Mehrfachaufruf erzeugt mehrere
+  unabhängige Tooltip-Instanzen am selben Widget, die sich gegenseitig
+  überlagern (dokumentiert in `attach_tooltip`; die Kalenderzellen halten das
+  in `grid_renderer.py` mit einem einzigen kombinierten Text ein). Gehören
+  Container und Kind-Label als ein Element zusammen, kommen sie als Gruppe in
+  **einen** Aufruf.
+- **Zustandsabhängiger Text wird als Callable übergeben**, nicht nachgepflegt.
+  `attach_tooltip` akzeptiert für `text` ein `Callable[[], str]` und wertet es
+  bei jedem Anzeigen aus. So machen es die Header-Pfeile: derselbe Button
+  blättert im Monatsmodus Monate und im Wochenmodus Wochen.
+
 ## Tests / CI
 
 `.github/workflows/test.yml` installiert gezielt nur die Pakete, die die Tests brauchen — gepinnt in **`requirements-test.txt`** (`pytest`, `holidays`, `google-api-python-client`, `google-auth`, `google-auth-oauthlib`), **nicht** `requirements.txt`. Grund: `pycairo` (transitive Dep von `xhtml2pdf`) braucht Cairo-Systemheader auf Ubuntu und bricht sonst den CI-Build. Der Import von `xhtml2pdf` in `src/report.py::generate_pdf` ist lazy, daher laufen die Report-Tests ohne die Lib. `holidays` und die Google-Libs sind pure Python ohne C-Deps und problemlos installierbar — letztere sind nötig, weil Tests `src.ui` importieren (z.B. `tests/test_ui_delete.py`), dessen Importkette die Google-Wrapper zieht.
