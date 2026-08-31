@@ -12,7 +12,7 @@ from tkinter import ttk
 
 from src.holidays_de import get_holidays
 from src.theme import (
-    BG, CELL_BG, FONT, FONT_BOLD, FONT_SMALL, TEXT, TEXT_MUTED,
+    ACCENT, BG, CELL_BG, FONT, FONT_BOLD, FONT_SMALL, TEXT, TEXT_MUTED,
     apply_combobox_style,
     center_dialog_on_parent, create_dialog, dark_entry, primary_button,
     secondary_button, set_button_text, themed_askyesno, themed_showerror,
@@ -182,11 +182,20 @@ def open_vacation_dialog(parent, vacation_store, settings, on_change=None,
     tk.Label(dialog, text="Urlaubszeiträume", font=FONT_BOLD, bg=BG,
              fg=TEXT).pack(anchor="w", padx=12, pady=(12, 4))
 
+    # selectbackground=ACCENT wie in conflicts_dialog.py und tab_webhooks.py.
+    # Stand hier auf CELL_BG, also auf der Hintergrundfarbe der Liste: die
+    # Auswahl war damit unsichtbar, und weil „Bearbeiten"/„Löschen" ohne
+    # Auswahl mit einer Fehlermeldung abbrechen, sah die Liste aus, als ließe
+    # sich gar nichts auswählen.
     listbox = tk.Listbox(
-        dialog, font=FONT, bg=CELL_BG, fg=TEXT, selectbackground=CELL_BG,
-        selectforeground=TEXT, highlightthickness=0, relief=tk.FLAT,
+        dialog, font=FONT, bg=CELL_BG, fg=TEXT, selectbackground=ACCENT,
+        selectforeground="#ffffff", highlightthickness=0, relief=tk.FLAT,
         width=52, height=10, activestyle="none",
     )
+    # Doppelklick öffnet den Bearbeiten-Dialog, wie in der Webhook-Liste
+    # (tab_webhooks.py) — dieselbe Bauform aus Liste plus Neu/Bearbeiten/
+    # Löschen, also derselbe kurze Weg.
+    listbox.bind("<Double-Button-1>", lambda e: _edit())
     listbox.pack(fill=tk.BOTH, expand=True, padx=12)
 
     hint = tk.Label(
