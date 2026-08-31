@@ -84,3 +84,89 @@ def test_perform_share_missing_credentials_delegates_to_classifier(monkeypatch):
     monkeypatch.setattr(st, "classify_mail_error", lambda e: sentinel)
     res = perform_share(**_kwargs())
     assert res is sentinel
+
+
+def _account(**over):
+    base = {
+        "id": "rec-1", "name": "Firma", "enabled": True,
+        "host": "mail.example.com", "port": 587, "security": "starttls",
+        "username": "user@example.com", "from_addr": "user@example.com",
+        "recipient": "buchhaltung@example.com",
+        "password_location": "keyring",
+    }
+    base.update(over)
+    return base
+
+
+def _must_not_run(*args, **kwargs):
+    raise AssertionError("Der Gmail-Pfad darf beim SMTP-Versand nicht laufen.")
+
+
+def test_share_over_smtp_uses_the_account(monkeypatch):
+    sent = []
+    monkeypatch.setattr(st, "get_gmail_service", _must_not_run)
+    monkeypatch.setattr(st.keyring_store, "get_secret", lambda record: "geheim")
+    monkeypatch.setattr(st.smtp, "send",
+                        lambda record, password, **kw: sent.append((record, kw)))
+
+    res = perform_share(**_kwargs(transport=_account()))
+
+    assert res == {"ok": True}
+    record, kw = sent[0]
+    assert record["name"] == "Firma"
+    assert kw["attachment_subtype"] == "json"
+    assert kw["attachment_filename"] == "share.json"
+
+
+def test_share_over_smtp_sends_to_the_dialog_recipient(monkeypatch):
+    """Der Teilen-Dialog fragt nach einer Adresse; das recipient-Feld des
+    Kontos ist semantisch etwas anderes (wohin dieses Konto den BERICHT
+    schickt). Ein sichtbares, ausgefuelltes Feld, das ignoriert wird, waere
+    eine Falle: das Share-JSON ginge an jemand anderen als angezeigt."""
+    sent = {}
+    monkeypatch.setattr(st.keyring_store, "get_secret", lambda record: "geheim")
+    monkeypatch.setattr(st.smtp, "send",
+                        lambda record, password, **kw: sent.update(kw))
+
+    perform_share(**_kwargs(recipient="kollege@example.com",
+                            transport=_account()))
+
+    assert sent["to"] == "kollege@example.com"
+
+
+def test_share_over_smtp_classifies_errors(monkeypatch):
+    import smtplib
+
+    monkeypatch.setattr(st.keyring_store, "get_secret", lambda record: "geheim")
+
+    def boom(record, password, **kw):
+        raise smtplib.SMTPAuthenticationError(535, b"nope")
+
+    monkeypatch.setattr(st.smtp, "send", boom)
+
+    res = perform_share(**_kwargs(transport=_account()))
+    assert res["ok"] is False
+    assert res["kind"] == "auth"
+    assert res["tb"] is None
+
+
+def test_share_over_smtp_saves_the_default_recipient(monkeypatch):
+    """save_default gehoert zum Eingabefeld, nicht zum Transport — es muss
+    auch ueber SMTP greifen."""
+    monkeypatch.setattr(st.keyring_store, "get_secret", lambda record: "geheim")
+    monkeypatch.setattr(st.smtp, "send", lambda *a, **k: None)
+    settings = _FakeSettings()
+
+    perform_share(**_kwargs(transport=_account(), save_default=True,
+                            settings=settings))
+
+    assert settings.sets == [("share_recipient", "to@example.com")]
+
+
+def test_share_without_transport_still_uses_gmail(monkeypatch):
+    """Bestandsverhalten: transport=None ist der Gmail-Weg."""
+    sent = {}
+    _patch_happy(monkeypatch, sent)
+    res = perform_share(**_kwargs())
+    assert res == {"ok": True}
+    assert sent["to"] == "to@example.com"
