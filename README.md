@@ -33,7 +33,7 @@ Desktop-App zur Erfassung von Arbeitszeiten mit Kalenderansicht, PDF-Report und 
 
 ## Features
 
-<sub>Diese Seite beschreibt den Stand auf `master`. Zeilen mit *(ab X.Y.Z)* sind fertig, aber noch in **keinem** Release enthalten — was die installierte Version kann, steht im [CHANGELOG](CHANGELOG.md).</sub>
+<sub>Diese Seite beschreibt den Stand auf `master`. *(ab X.Y.Z)* nennt die Version, mit der ein Feature erscheint — liegt sie über dem [neuesten Release](https://github.com/Xveyn/Zeiterfassung/releases/latest), ist es fertig, aber noch nicht ausgeliefert. Was die installierte Version kann, steht im [CHANGELOG](CHANGELOG.md).</sub>
 
 ### Zeiten erfassen
 

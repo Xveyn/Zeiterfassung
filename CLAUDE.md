@@ -48,8 +48,11 @@ erscheinen wird:
 
 Der Marker muss beim Release **nicht** entfernt werden: „ab 1.22.0" liest
 sich davor wie danach richtig, und die README trägt an zwei älteren Stellen
-schon dasselbe Muster als „seit 1.19.1". Wer aufräumen will, kann ihn nach
-ein paar Releases streichen — Pflicht ist es nicht.
+schon dasselbe Muster als „seit 1.19.1". Genau deshalb erklärt die Zeile
+unter „Features" den Marker als Versionsangabe und nicht als
+„unveröffentlicht" — sonst müsste sie mit jedem Release nachgezogen werden.
+Wer aufräumen will, kann alte Marker nach ein paar Releases streichen —
+Pflicht ist es nicht.
 
 Bewusst **kein** eigener `releases`-Default-Branch, obwohl das dasselbe
 Problem löst: GitHub setzt die Base neuer PRs (und `gh pr create` ohne

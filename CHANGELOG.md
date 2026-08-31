@@ -1,5 +1,81 @@
 # Changelog
 
+## 1.22.0 — 2026-08-31
+
+### Hinzugefügt
+- **Urlaub**: Urlaubszeiträume lassen sich als Einheit eintragen
+  (Einstellungen → Arbeitszeit → „Urlaub verwalten“) — mit Namen, Von/Bis und
+  wahlweise Stunden pro Tag oder einer Gesamtstundenzahl, die auf die
+  Arbeitstage verteilt wird. Einzelne Tage sind nachträglich anpassbar, etwa
+  für einen halben Urlaubstag. Wochenenden und Feiertage des gewählten
+  Bundeslands bekommen automatisch 0 Stunden, bleiben aber Teil des
+  Zeitraums: im Kalender ist der Urlaub ein durchgehender türkiser Block, der
+  auch über Feiertag und Wochenende hinweg zusammenhält. Urlaub und
+  Arbeitszeit schließen sich am selben Tag aus — ein Urlaubstag nimmt keine
+  Arbeitszeit an, und ein Urlaub lässt sich nicht über bereits erfasste Tage
+  legen. Gelöscht wird immer die ganze Periode, per Rechtsklick im Kalender
+  oder im Verwaltungs-Dialog. Der Urlaub bleibt auf diesem Gerät: er wird
+  **nicht** über Google Drive synchronisiert.
+- **Urlaub im Bericht**: Sende- und Export-Dialog haben ein Häkchen „Urlaub
+  ausweisen“. Ist es gesetzt, bekommt der Bericht — E-Mail, PDF und
+  Webhook-JSON — einen eigenen Urlaubs-Block je zusammenhängendem Zeitraum
+  plus die Zeile **„Zu vergüten gesamt“**. „Gesamt“ bleibt unverändert die
+  reine Arbeitszeit: es kommt eine Zahl dazu, es wird keine umgedeutet. Ohne
+  das Häkchen sieht der Bericht aus wie bisher. Ein Monat, in dem nur Urlaub
+  liegt, ergibt jetzt ebenfalls einen Bericht.
+- **Urlaub im Google-Kalender**: Bei aktivem Kalender-Abgleich landen die
+  Zeiträume zusätzlich als Ganztags-Termine im gewählten Kalender —
+  abschaltbar im Dialog „Urlaub verwalten“. Wer den Schalter ausmacht, wird
+  gefragt, ob die bereits eingetragenen Termine wieder entfernt werden
+  sollen. Der Urlaub selbst funktioniert auch ganz ohne Google.
+- **Lesbare Gerätenamen im Sync**: Der Konflikt-Dialog zeigt statt der
+  gekürzten Geräte-ID einen Namen („Laptop Arbeit · 6800a51a…“). Er wird beim
+  ersten Start aus dem Hostnamen vorbelegt, ist unter Einstellungen → Google
+  änderbar und reist über die Sync-Datei zu den anderen Geräten. Das Feld
+  darf leer bleiben — dann steht dort weiterhin nur die gekürzte ID.
+- **Tooltips an allen Buttons des Hauptfensters**: Die vier Header-Icons
+  (‹ › ⟳ ⚙) waren unbeschriftet; was sie tun, war nur durch Ausprobieren
+  herauszufinden. Sie haben jetzt einen Hover-Tooltip, ebenso die drei
+  Footer-Buttons — dort sagt er, was der Klick auslöst, statt den
+  Button-Text zu wiederholen.
+- **Zeitraum-Filter beim Teilen**: Der Teilen-Dialog exportierte bisher immer
+  den kompletten Bestand; einen Zeitraum wählte erst der Empfänger beim
+  Import. Jetzt lässt er sich schon beim Versand eingrenzen. Vorbelegt ist
+  der gesamte Bestand, ein unveränderter Klick auf „Senden“ verschickt also
+  dasselbe wie bisher.
+
+### Behoben
+- **Summen im Bericht**: Wochen-, Tages- und Kategoriesummen wurden über
+  gerundete Dezimalstunden gebildet und konnten dadurch um einige Minuten von
+  der Summe der angezeigten Einzelwerte abweichen. Gerechnet wird jetzt
+  durchgehend in Minuten, gerundet erst bei der Anzeige.
+- **Deinstallation unter Windows ließ Zugangsdaten zurück**: Der Uninstaller
+  entfernte nur, was das Setup installiert hatte — `token.json` mit dem
+  langlebigen OAuth-Token blieb liegen, ebenso `credentials.json`,
+  `webhooks.json` und `instance-secret`. Wer die App entfernt, darf erwarten,
+  dass dieser Zugriff endet; das tut er jetzt.
+- **Linux: Menüeintrag und Autostart bei „%“ im Pfad**: In einer
+  `.desktop`-Datei leitet `%` einen Feldcode ein. Lag die AppImage in einem
+  Pfad mit `%`, zerfiel die Startzeile und die App startete nicht — ohne
+  jede Fehlermeldung. Das Zeichen wird jetzt korrekt verdoppelt.
+- **Changelog im Updates-Tab**: Markdown-Links standen roh mit Klammern und
+  URL im Text; gezeigt wird jetzt nur der Linktext. Zitatblöcke behielten
+  ihre `>`-Marker, die nach dem Zeilenumbruch mitten im Satz landeten.
+- **Helle Scrollleiste im Import-Dialog**: Sie stand im hellen Systemlook
+  mitten im dunklen Fenster.
+
+### Intern
+- **Große Aufräumrunde ohne sichtbare Änderung** (R1–R7): Die Sync-Runtime
+  ist aus `main.py` heraus, die gemeinsame JSON-Persistenz der Stores steckt
+  in einem Modul, `theme.py` (1075 Zeilen) und die Tray-Module sind Pakete,
+  der Google-Tab und die Slot-Zeilen des Tages-Dialogs sind entflochten.
+- **Typannotationen abgeschlossen** für die Tk-freien Module, abgesichert
+  durch einen Schutztest, der Rückschritte verhindert.
+- **Repo-Hygiene**: Die Workflow-Tokens sind explizit auf Lesezugriff
+  begrenzt, es gibt Issue-Formulare, ein PR-Template und einen
+  Verhaltenskodex, und der manuelle Build-Workflow kann auf Wunsch das
+  Windows-Setup miterzeugen.
+
 ## 1.21.1 — 2026-08-28
 
 **Erstes Release aus diesem Repository.** An der App selbst hat sich gegenüber
