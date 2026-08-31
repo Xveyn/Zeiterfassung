@@ -3,6 +3,7 @@ import tkinter as tk
 from tkinter import ttk
 
 from src.autostart import disable_autostart, enable_autostart, is_autostart_enabled, resolve_autostart_target
+from src.devices import sanitize_device_name
 from src.updater import frequency_for_label
 from src.send_reminder import shift_for_label
 from src.theme import (
@@ -210,6 +211,9 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
             "werkstudent_limit_max_hours": wsl_max_hours,
             "pause_warning_enabled": work.pause_warning_var.get(),
             "workweek_only": work.workweek_only_var.get(),
+            # Am Rand saniert (Länge, Steuerzeichen): der Name reist über die
+            # Sync-Registry zu anderen Geräten und landet dort in einem Label.
+            "device_name": sanitize_device_name(google.device_name_var.get()),
         }
         for key in WEEKDAY_KEYS:
             updates[f"default_start_{key}"] = work.start_vars[key].get()

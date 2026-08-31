@@ -94,6 +94,17 @@ DEFAULTS = {
     "sender_email": "",
     "sync_enabled": False,
     "device_id": "",
+    # Lesbarer Name dieses Geräts + Spiegel der Namen aller bekannten Geräte
+    # ({device_id: {name, updated_at}}, s. devices.py). Beide bewusst NICHT in
+    # SYNCED_SETTING_KEYS: ein synchronisierter Key wäre ein einziger globaler
+    # Wert, die Geräte würden sich gegenseitig den Namen überschreiben. Der
+    # Transport läuft stattdessen über die Registry im Sync-Doc.
+    "device_name": "",
+    "known_devices": {},
+    # Merker für die einmalige Hostnamen-Vorbelegung (main._ensure_device_name):
+    # ein leerer device_name ist ein gültiger Zustand ("zeig mir die ID"), kein
+    # fehlender Wert — ohne diesen Merker wäre beides nicht unterscheidbar.
+    "device_name_initialized": False,
     "last_pull_at": "",
     "drive_etag": "",
     "gc_watermark": "",

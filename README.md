@@ -213,6 +213,7 @@ Zeiterfassung/
 │   ├── secure_file.py     # Zugriffsschutz für lokale Secrets (Windows-ACL via icacls)
 │   ├── single_instance.py # Single-Instance-Guard (verhindert parallele Instanzen)
 │   ├── device_id.py       # Stabile, hardware-abgeleitete Geräte-ID für installierte Builds (Sync)
+│   ├── devices.py         # Lesbare Gerätenamen (Registry im Sync-Doc) für den Konflikt-Dialog
 │   ├── updater.py         # GitHub-Releases-Check (stdlib-only, Frequenz konfigurierbar)
 │   ├── changelog.py       # Lädt/parst den Changelog-Abschnitt einer Release-Version
 │   ├── holidays_de.py     # Feiertags-Lookup (python-holidays)
@@ -355,6 +356,7 @@ Wiederhole Schritte 3-4 auf jedem weiteren Gerät mit demselben Google-Konto.
 ### Hinweise zum Sync
 
 - **Geräte-ID** — jede Installation bekommt beim ersten Start eine eindeutige ID. Installierte Builds leiten sie aus einer stabilen System-ID des Rechners ab (gehasht, siehe `src/device_id.py`) — sie übersteht damit eine Neuinstallation der App; im Repo-/Skript-Modus bleibt es bei einer in `settings.json` gespeicherten Zufalls-UUID. Im Konflikt-Dialog siehst du, von welchem Gerät die jeweilige Version kommt.
+- **Gerätename** — weil die Geräte-ID nur ein Hex-Wert ist, trägt jedes Gerät zusätzlich einen lesbaren Namen (Einstellungen → Google, beim ersten Start aus dem Hostnamen vorbelegt). Er reist über die Sync-Datei mit, sodass der Konflikt-Dialog „Laptop Arbeit · 6800a51a…" statt nur der ID zeigt. Das Feld darf leer bleiben — dann steht dort weiter nur die gekürzte ID; dasselbe gilt für Geräte, die seit dem Update noch nicht gesynct haben.
 - **Was synchronisiert wird:** Zeiteinträge + Mail-Vorlagen-Settings (Empfänger, Name, Stundensatz, Betreff, Begrüßung, Inhalt, Grußformel). Gerätespezifisches (Autostart, Standardzeiten pro Wochentag, Update-Einstellungen/-Status) bleibt lokal.
 - **Wo die Sync-Datei liegt:** Im versteckten `appDataFolder` deines Google Drives — nicht über `drive.google.com` einsehbar, nur diese App kommt dran.
 - **Test-Modus:** Solange dein Cloud-Projekt im Test-Modus bleibt, müssen alle Nutzer (deine eigenen Geräte zählen mit deiner E-Mail) als Testnutzer eingetragen sein. Verifizierung durch Google ist für rein private Nutzung nicht nötig.

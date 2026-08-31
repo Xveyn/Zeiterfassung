@@ -10,6 +10,14 @@ on:
         type: boolean
         default: false
 
+# Vorgabe für alle Jobs, die keinen eigenen Block haben — das sind die drei
+# build-Jobs, die nur klonen, bauen und ein Artefakt hochladen. `pre-check`
+# und `publish` setzen eigene `permissions:` und überschreiben diese Vorgabe
+# damit; `publish` behält insbesondere sein `contents: write` für Tag-Push
+# und Release-Anlage.
+permissions:
+  contents: read
+
 jobs:
   pre-check:
     runs-on: ubuntu-latest

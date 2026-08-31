@@ -2,6 +2,7 @@
 import tkinter as tk
 
 from src import sync
+from src.devices import device_label
 from src.theme import (
     ACCENT, BG, ENTRY_BG, FONT, FONT_BOLD, TEXT,
     center_dialog_on_parent, create_dialog, secondary_button,
@@ -21,19 +22,22 @@ def _entry_chosen(cand):
     return {"slots": cand.get("slots", []), "deleted": cand.get("deleted", False)}
 
 
-def _fmt_entry_candidate(cand):
+def _fmt_entry_candidate(cand, registry):
+    """`registry` ist die Geräte-Registry (s. devices.py) — ohne Treffer bleibt
+    es bei der gekürzten ID wie vor dem Gerätenamen-Feature."""
     when = format_iso_datetime(cand.get("modified_at", ""), fallback="")
-    dev = cand.get("device_id", "?")[:8]
+    dev = device_label(cand.get("device_id"), registry)
     if cand.get("deleted"):
-        return f"GELÖSCHT (von {dev}…, {when})"
+        return f"GELÖSCHT (von {dev}, {when})"
     slots = cand.get("slots", [])
     body = ", ".join(_fmt_slot(s) for s in slots) if slots else "(leer)"
-    return f"{body} (von {dev}…, {when})"
+    return f"{body} (von {dev}, {when})"
 
 
-def _fmt_setting_candidate(cand):
+def _fmt_setting_candidate(cand, registry):
     when = format_iso_datetime(cand.get("modified_at", ""), fallback="")
-    return f"{cand.get('value', '')!r} (von {cand.get('device_id', '?')[:8]}…, {when})"
+    dev = device_label(cand.get("device_id"), registry)
+    return f"{cand.get('value', '')!r} (von {dev}, {when})"
 
 
 class ConflictsDialog:
@@ -146,12 +150,13 @@ class ConflictsDialog:
                 return
             idx = sel[0]
         c = self._unresolved[idx]
+        registry = self.settings.get("known_devices")
         if c["kind"] == "entry":
-            cand_a = _fmt_entry_candidate(c["candidates"][0])
-            cand_b = _fmt_entry_candidate(c["candidates"][1])
+            cand_a = _fmt_entry_candidate(c["candidates"][0], registry)
+            cand_b = _fmt_entry_candidate(c["candidates"][1], registry)
         else:
-            cand_a = _fmt_setting_candidate(c["candidates"][0])
-            cand_b = _fmt_setting_candidate(c["candidates"][1])
+            cand_a = _fmt_setting_candidate(c["candidates"][0], registry)
+            cand_b = _fmt_setting_candidate(c["candidates"][1], registry)
         self.detail_label.config(text=f"Konflikt für {c['key']}\n\nA: {cand_a}\n\nB: {cand_b}")
         set_secondary_button_enabled(self.btn_a, True)
         set_secondary_button_enabled(self.btn_b, True)

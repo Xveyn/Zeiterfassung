@@ -190,6 +190,7 @@ class Empfaenger(BaseHTTPRequestHandler):
 
     def _antworte(self) -> None:
         if self.redirect:
+            # py/http-response-splitting: harmlos — parse_request kappt \r\n, self.path trägt nie CRLF.
             ziel = self.path.rstrip("/") + "/"
             print(f"\n  -> antworte mit 301 auf {ziel}")
             print("     Erwartung in der App: KEIN Erfolg, sondern der Hinweis,")

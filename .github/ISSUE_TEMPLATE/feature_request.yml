@@ -1,0 +1,91 @@
+name: Feature-Wunsch
+description: Eine neue Funktion oder eine Verbesserung vorschlagen
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Danke für den Vorschlag! Je klarer das **Problem** beschrieben ist, desto
+        eher findet sich eine Lösung, die zur App passt — auch eine andere als die
+        vorgeschlagene.
+
+  - type: checkboxes
+    id: vorab
+    attributes:
+      label: Vorab
+      options:
+        - label: Ich habe die [vorhandenen Issues](https://github.com/Xveyn/Zeiterfassung/issues?q=is%3Aissue) nach einem ähnlichen Wunsch durchsucht.
+          required: true
+        - label: Ich nutze die [neueste Version](https://github.com/Xveyn/Zeiterfassung/releases/latest) — die Funktion fehlt dort noch.
+          required: false
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem oder Motivation
+      description: Welche Situation ist heute umständlich, fehleranfällig oder gar nicht möglich?
+      placeholder: |
+        Wenn ich am Monatsende die Zeiten verschicke, muss ich …
+    validations:
+      required: true
+
+  - type: textarea
+    id: vorschlag
+    attributes:
+      label: Wunsch
+      description: Was soll die App künftig tun? Gern konkret bis hin zu Bedienung und Ort in der Oberfläche.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: bereich
+    attributes:
+      label: Betroffener Bereich
+      description: Mehrfachauswahl möglich.
+      multiple: true
+      options:
+        - Kalender / Zeiten erfassen
+        - Reservierungen und Erinnerungen
+        - Senden (Mail, PDF-Bericht)
+        - Webhooks
+        - Export / Teilen (Import)
+        - Sync über Google Drive
+        - Abgleich mit Google Kalender
+        - Einstellungen
+        - Infobereich (Tray) / Autostart
+        - Updates
+        - Oberfläche / Theme
+        - Sonstiges
+    validations:
+      required: true
+
+  - type: dropdown
+    id: plattform
+    attributes:
+      label: Plattform
+      description: Auf welcher Plattform ist der Wunsch relevant? Mehrfachauswahl möglich.
+      multiple: true
+      options:
+        - Windows
+        - macOS
+        - Linux
+        - Plattformunabhängig
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternativen
+    attributes:
+      label: Alternativen oder Workarounds
+      description: Wie behilfst du dir aktuell? Welche anderen Lösungen hast du erwogen?
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: mitarbeit
+    attributes:
+      label: Mitarbeit
+      options:
+        - label: Ich würde das selbst umsetzen und einen Pull Request öffnen (siehe [CONTRIBUTING.md](https://github.com/Xveyn/Zeiterfassung/blob/master/CONTRIBUTING.md)).
+          required: false

@@ -3,6 +3,7 @@ Wochenlimit-Check für frisch importierte Reservierungs-Slots (#98).
 gcal ist komplett gemockt (kein echtes Netzwerk/OAuth)."""
 
 import platform
+import socket
 import sys
 
 import pytest
@@ -88,6 +89,53 @@ def test_imported_reservation_under_limit_no_warning(tmp_path, monkeypatch):
     result = run_calendar_reconcile(store, settings, str(tmp_path), storage)
 
     assert result["limit_warnings"] == []
+
+
+# --- _ensure_device_name: einmalige Vorbelegung aus dem Hostnamen -----------
+
+class TestEnsureDeviceName:
+    def test_prefills_from_hostname_on_first_start(self, tmp_path, monkeypatch):
+        settings = Settings(str(tmp_path / "settings.json"))
+        monkeypatch.setattr(socket, "gethostname", lambda: "Sven-PC")
+
+        assert main_module._ensure_device_name(settings) == "Sven-PC"
+        assert settings.get("device_name") == "Sven-PC"
+
+    def test_does_not_overwrite_a_chosen_name(self, tmp_path, monkeypatch):
+        """Der Nutzer hat das Gerät benannt — kein Start darf das überschreiben."""
+        settings = Settings(str(tmp_path / "settings.json"))
+        settings.set("device_name", "Laptop Arbeit")
+        monkeypatch.setattr(socket, "gethostname", lambda: "Sven-PC")
+
+        assert main_module._ensure_device_name(settings) == "Laptop Arbeit"
+        assert settings.get("device_name") == "Laptop Arbeit"
+
+    def test_does_not_refill_a_cleared_name(self, tmp_path, monkeypatch):
+        """Wer den Namen bewusst leert, will die ID sehen — die Vorbelegung
+        läuft deshalb genau einmal, gemerkt über device_name_initialized."""
+        settings = Settings(str(tmp_path / "settings.json"))
+        monkeypatch.setattr(socket, "gethostname", lambda: "Sven-PC")
+        main_module._ensure_device_name(settings)
+        settings.set("device_name", "")
+
+        assert main_module._ensure_device_name(settings) == ""
+        assert settings.get("device_name") == ""
+
+    def test_unusable_hostname_leaves_name_empty(self, tmp_path, monkeypatch):
+        settings = Settings(str(tmp_path / "settings.json"))
+        monkeypatch.setattr(socket, "gethostname", lambda: "localhost")
+
+        assert main_module._ensure_device_name(settings) == ""
+        assert settings.get("device_name") == ""
+
+    def test_hostname_failure_is_not_fatal(self, tmp_path, monkeypatch):
+        def _raise():
+            raise OSError("no hostname")
+
+        settings = Settings(str(tmp_path / "settings.json"))
+        monkeypatch.setattr(socket, "gethostname", _raise)
+
+        assert main_module._ensure_device_name(settings) == ""
 
 
 # --- _ensure_device_id: hardware-abgeleitet (frozen) vs. Zufalls-UUID -------
