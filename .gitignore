@@ -17,6 +17,9 @@ instance-secret
 webhooks.json
 webhooks.json.corrupt-*
 .webhooks-*.tmp
+smtp.json
+smtp.json.corrupt-*
+.smtp-*.tmp
 logs/
 dist/
 build/

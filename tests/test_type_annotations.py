@@ -58,6 +58,7 @@ ANNOTATED_MODULES = [
     "src/vacations.py",
     "src/vacations_sync.py",
     "src/conflicts_store.py",
+    "src/smtp_store.py",
     "src/sync.py",
     "src/sync_history.py",
     "src/json_store.py",
