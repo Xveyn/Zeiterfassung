@@ -21,7 +21,7 @@ from src.time_utils import (
     format_iso_date, format_iso_weekday_date, format_minutes_hm,
 )
 from src.dialogs.date_row import build_date_row
-from src.vacations import apportion_minutes, expand_days
+from src.vacations import apportion_minutes, conflicting_days, expand_days
 
 log = logging.getLogger(__name__)
 
@@ -107,6 +107,19 @@ def plan_vacation_save(name, date_from, date_to, mode, value, overrides, state):
     return {"error": None, "days": days}
 
 
+def _format_day_list(days, limit=8):
+    """Die kollidierenden Tage als deutsche Datumsliste, ab `limit` gekürzt.
+
+    Ein dreiwöchiger Urlaub über einem vollen Monat Arbeitszeit ergäbe sonst
+    eine Fehlermeldung, die aus dem Bildschirm läuft.
+    """
+    shown = [format_iso_date(d) for d in days[:limit]]
+    rest = len(days) - len(shown)
+    if rest > 0:
+        shown.append(f"… und {rest} weitere")
+    return "\n".join(shown)
+
+
 def _period_line(period):
     """Eine Zeile der Übersicht: Name, Zeitraum, Gesamtstunden."""
     total = sum(period.get("days", {}).values())
@@ -116,8 +129,13 @@ def _period_line(period):
             f"{format_minutes_hm(total)}")
 
 
-def open_vacation_dialog(parent, vacation_store, settings, on_change=None):
-    """Übersicht aller Urlaubsperioden mit Neu / Bearbeiten / Löschen."""
+def open_vacation_dialog(parent, vacation_store, settings, on_change=None,
+                         storage=None, reservation_store=None):
+    """Übersicht aller Urlaubsperioden mit Neu / Bearbeiten / Löschen.
+
+    storage/reservation_store dienen allein der Kollisionsprüfung beim
+    Speichern (s. `_open_edit_dialog`); ohne sie wird nicht geprüft.
+    """
     dialog = create_dialog(parent, "Urlaub verwalten")
 
     tk.Label(dialog, text="Urlaubszeiträume", font=FONT_BOLD, bg=BG,
@@ -156,7 +174,8 @@ def open_vacation_dialog(parent, vacation_store, settings, on_change=None):
             on_change()
 
     def _new():
-        _open_edit_dialog(dialog, vacation_store, settings, None, _changed)
+        _open_edit_dialog(dialog, vacation_store, settings, None, _changed,
+                          storage, reservation_store)
 
     def _edit():
         pid = _selected_id()
@@ -164,7 +183,8 @@ def open_vacation_dialog(parent, vacation_store, settings, on_change=None):
             themed_showerror(dialog, "Kein Urlaub gewählt",
                              "Bitte zuerst einen Urlaubszeitraum auswählen.")
             return
-        _open_edit_dialog(dialog, vacation_store, settings, pid, _changed)
+        _open_edit_dialog(dialog, vacation_store, settings, pid, _changed,
+                          storage, reservation_store)
 
     def _delete():
         pid = _selected_id()
@@ -197,7 +217,8 @@ def open_vacation_dialog(parent, vacation_store, settings, on_change=None):
     center_dialog_on_parent(dialog, parent)
 
 
-def _open_edit_dialog(parent, vacation_store, settings, period_id, on_saved):
+def _open_edit_dialog(parent, vacation_store, settings, period_id, on_saved,
+                      storage=None, reservation_store=None):
     """Anlegen bzw. Bearbeiten einer Periode: Name, Von/Bis, Stunden-Modus und
     die aufklappbare Tagesliste."""
     existing = vacation_store.get(period_id) if period_id else None
@@ -400,10 +421,39 @@ def _open_edit_dialog(parent, vacation_store, settings, period_id, on_saved):
             day_scroll.pack_forget()
             set_button_text(toggle, "▸ Einzelne Tage anpassen")
 
+    def _blocking_days(days):
+        """Tage der geplanten Periode, an denen schon Ist-Zeit oder eine
+        Reservierung liegt (Regel in `vacations.conflicting_days`).
+
+        Reservierungen zählen NUR bei aktivem Kalender-Sync — ohne ihn zeigt
+        der Kalender sie gar nicht an und der Rechtsklick löscht sie nicht
+        (vgl. `ui.App._reservations_active`). Eine Sperre wegen einer
+        unsichtbaren, nicht löschbaren Reservierung wäre eine Sackgasse.
+        """
+        entry_dates = (
+            [d for d, e in storage.get_all().items() if e.get("slots")]
+            if storage is not None else [])
+        reservation_dates = (
+            [d for d, r in reservation_store.get_all().items() if r.get("slots")]
+            if reservation_store is not None and settings.get("gcal_enabled")
+            else [])
+        return conflicting_days(days, entry_dates, reservation_dates)
+
     def _save():
         plan = _current_plan()
         if plan["error"]:
             themed_showerror(dialog, "Urlaub nicht gespeichert", plan["error"])
+            return
+        blocked = _blocking_days(plan["days"])
+        if blocked:
+            themed_showerror(
+                dialog, "Urlaub nicht gespeichert",
+                "An diesen Tagen ist bereits Arbeitszeit oder eine "
+                "Reservierung erfasst:\n\n"
+                + _format_day_list(blocked)
+                + "\n\nUrlaub und Arbeitszeit schließen sich am selben Tag "
+                  "aus. Lösche zuerst die Einträge (Rechtsklick im Kalender) "
+                  "oder wähle einen anderen Zeitraum.")
             return
         df, dt = _range()
         try:

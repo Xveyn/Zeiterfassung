@@ -23,7 +23,7 @@ from __future__ import annotations
 import datetime
 import secrets
 import threading
-from typing import Any
+from typing import Any, Collection
 
 from src.holidays_de import get_holidays
 from src.json_store import atomic_write_json, load_json_or_quarantine
@@ -104,6 +104,28 @@ def periods_overlap(periods: dict[str, Vacation], period_id: str | None,
         if period.get("from", "") <= date_to and date_from <= period.get("to", ""):
             return period.get("name", "")
     return None
+
+
+def conflicting_days(days: dict[str, int], entry_dates: Collection[str],
+                     reservation_dates: Collection[str]) -> list[str]:
+    """Die Tage einer Periode, an denen bereits Ist-Zeit oder eine
+    Reservierung liegt. Sortiert, jeder Tag höchstens einmal.
+
+    Urlaub und Arbeitszeit schließen sich am selben Tag aus: eine Zahl kann
+    nicht gleichzeitig „an diesem Tag nicht gearbeitet, aber bezahlt“ und
+    „an diesem Tag gearbeitet“ bedeuten — im Bericht landeten sonst beide
+    nebeneinander in „Zu vergüten gesamt“, ein Kalendertag käme also auf mehr
+    Stunden, als er hat.
+
+    Gezählt werden NUR Tage mit Urlaubsstunden. Wochenenden und Feiertage
+    stehen mit 0 Minuten in der Periode — sie halten den Zeitraum als Block
+    zusammen, sind aber kein Urlaubstag. Wer am Samstag mitten im Urlaub
+    arbeitet, soll den Urlaub trotzdem über dieses Wochenende legen können;
+    `ui.App._open_dialog` gibt denselben Tagen aus demselben Grund den
+    Tages-Dialog frei.
+    """
+    blocked = set(entry_dates) | set(reservation_dates)
+    return sorted(d for d, minutes in days.items() if minutes and d in blocked)
 
 
 def total_minutes(day_minutes: dict[str, int]) -> int:

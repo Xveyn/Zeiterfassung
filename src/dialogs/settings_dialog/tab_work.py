@@ -20,7 +20,8 @@ class WorkTab:
     save_settings in dialog.py liest (Vertrag siehe Spec H4)."""
 
     def __init__(self, frame, dialog, settings, vacation_store=None,
-                 on_vacation_change=None):
+                 on_vacation_change=None, storage=None,
+                 reservation_store=None):
         workweek_only_var = tk.BooleanVar(value=settings.get("workweek_only"))
         tk.Checkbutton(
             frame, text="Nur Werktage — Wochenende (Sa/So) komplett deaktivieren",
@@ -125,8 +126,12 @@ class WorkTab:
         if vacation_store is not None:
             secondary_button(
                 frame, "Urlaub verwalten",
+                # storage/reservation_store nur für die Kollisionsprüfung
+                # beim Speichern: Urlaub und Arbeitszeit schließen sich am
+                # selben Tag aus.
                 lambda: open_vacation_dialog(
-                    dialog, vacation_store, settings, on_vacation_change),
+                    dialog, vacation_store, settings, on_vacation_change,
+                    storage, reservation_store),
             ).grid(row=8, column=0, columnspan=2, padx=10, pady=(0, 8), sticky="w")
 
         self.frame = frame

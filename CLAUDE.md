@@ -372,14 +372,26 @@ Lösch-Pfad im Linksklick-Dialog auf Win/Linux).
 
 Urlaub ist ein Zeitraum A–B, kein Tag. Gespeichert wird er trotzdem
 tagesgenau: die **Periode** trägt die Identität (Name, Kalender-Event,
-Löschen als Einheit), die **Tagesminuten** liegen in ihr. Daraus folgen drei
+Löschen als Einheit), die **Tagesminuten** liegen in ihr. Daraus folgen vier
 Regeln:
 
 - **Urlaub gewinnt im Kalender** — er färbt die Zelle auch über Feiertag und
   Wochenende hinweg, damit der Zeitraum ein durchgehender Block bleibt. Der
   Feiertagsname geht nicht verloren, er wandert in den kombinierten Tooltip.
-  Liegt am selben Tag Ist-Zeit vor (halber Urlaubstag), bleibt die
-  Eintragszelle mit Zeiten und Stunden stehen — nur der Untergrund wechselt.
+- **Urlaub und Arbeitszeit schließen sich am selben Tag aus.** Trägt ein Tag
+  Urlaubsstunden, öffnet der Tages-Dialog gar nicht erst
+  (`ui.App._open_dialog`), und ein Urlaub lässt sich nicht über Tage legen,
+  an denen bereits Ist-Zeit oder eine aktive Reservierung liegt
+  (`vacations.conflicting_days`, geprüft in `vacation_dialog._save`). Der
+  Grund ist eine Zahl, keine Ästhetik: beide Werte landeten im Bericht
+  nebeneinander in „Zu vergüten gesamt", ein Kalendertag käme also auf mehr
+  Stunden, als er hat. **Ausgenommen sind die 0-Minuten-Tage** einer Periode
+  (Wochenende, Feiertag): sie halten den Zeitraum als Block zusammen, sind
+  aber kein Urlaubstag — wer am Samstag mitten im Urlaub arbeitet, darf das
+  erfassen. Beide Sperren prüfen deshalb auf `minutes > 0`, nicht auf
+  „Tag liegt in einer Periode". Alt-Daten, die den Zustand bereits tragen,
+  räumt die Sperre nicht auf (Xveyn#97) — deshalb baut `grid_renderer` die
+  Eintragszelle auf Urlaubs-Untergrund weiterhin.
 - **Gelöscht wird immer die ganze Periode.** Einzelne Tage aus der Mitte
   herauszubrechen würde die `days`-Invariante (lückenlos von `from` bis `to`)
   verletzen; Korrekturen laufen über den Verwaltungs-Dialog.
@@ -632,7 +644,7 @@ nicht mehr als „offen" führen — der Verweis lautet auf diese Grenze.
   deleted}}`), die Tagesminuten liegen in ihr; `days` deckt jeden Kalendertag
   von `from` bis `to` lückenlos ab, Wochenenden und Feiertage mit 0. Enthält
   auch die reinen Regeln (`expand_days`, `apportion_minutes`,
-  `periods_overlap`). Gerätelokal — reist **nicht** per Drive-Sync und steht
+  `periods_overlap`, `conflicting_days`). Gerätelokal — reist **nicht** per Drive-Sync und steht
   **nicht** im Share-Doc.
 - `src/vacations_sync.py` — Einwegs-Push der Urlaubsperioden als
   Ganztags-Events in den Google Kalender. Eigener Marker-Wert

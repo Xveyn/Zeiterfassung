@@ -234,9 +234,11 @@ class GridRenderer:
 
     def _build_entry_cell(self, parent, date_str, day_text, entry, is_weekend, pad,
                           cell_size=None, time_font=FONT_TINY, bg=None, hover_bg=None):
-        # bg/hover_bg übersteuern die Wochenend-Ableitung: ein Urlaubstag MIT
-        # erfasster Ist-Zeit („halber Urlaubstag") behält Zeit- und
-        # Stundenzeile, wechselt aber den Untergrund. Ohne Übersteuerung
+        # bg/hover_bg übersteuern die Wochenend-Ableitung: ein Tag mit
+        # Ist-Zeit UND Urlaub behält Zeit- und Stundenzeile, wechselt aber den
+        # Untergrund. Neu entstehen kann dieser Zustand nicht mehr (Urlaub und
+        # Arbeitszeit schließen sich am selben Tag aus, s. CLAUDE.md); der
+        # Zweig deckt Alt-Daten ab, die ihn schon tragen. Ohne Übersteuerung
         # verhält sich die Zelle exakt wie bisher.
         if bg is None:
             bg = WEEKEND_ENTRY_BG if is_weekend else ENTRY_BG
@@ -473,9 +475,10 @@ class GridRenderer:
         er färbt die Zelle auch über Feiertag und Wochenende hinweg, damit der
         Zeitraum im Kalender ein durchgehender Block bleibt. Der Feiertagsname
         geht dabei nicht verloren: er wandert in den kombinierten Tooltip.
-        Liegt am selben Tag Ist-Zeit vor („halber Urlaubstag"), wird weiterhin
-        die Eintragszelle gebaut — nur mit dem Urlaubs-Untergrund. Der Inhalt
-        (Zeiten, Stunden) bleibt sichtbar.
+        Liegt am selben Tag Ist-Zeit vor, wird weiterhin die Eintragszelle
+        gebaut — nur mit dem Urlaubs-Untergrund. Neue solche Tage entstehen
+        nicht mehr (Urlaub und Arbeitszeit schließen sich aus, s. CLAUDE.md),
+        Alt-Daten bleiben so aber lesbar statt unsichtbar.
 
         reservation: optionales {slots} für den Tag. Eine Reservierung ändert
         den Zelltyp NICHT — sie wird ausschließlich als kleiner violetter

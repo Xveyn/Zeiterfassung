@@ -833,6 +833,28 @@ class App:
                 on_resolved=self._refresh,
             )
             return
+        # Urlaub und Arbeitszeit schließen sich am selben Tag aus: trägt der
+        # Tag Urlaubsstunden, öffnet der Tages-Dialog gar nicht erst. Sonst
+        # stünden im Bericht beide Zahlen nebeneinander in „Zu vergüten
+        # gesamt“ und ein Kalendertag käme auf mehr Stunden, als er hat.
+        # Gegenstück beim Anlegen: `vacations.conflicting_days`.
+        #
+        # Nur Tage MIT Stunden: Wochenenden und Feiertage stehen mit 0 Minuten
+        # in der Periode, halten also nur den Zeitraum zusammen und sind kein
+        # Urlaubstag — wer am Samstag mitten im Urlaub arbeitet, darf das
+        # erfassen. Löschen bleibt über den Rechtsklick erreichbar, der
+        # Urlaubstag ist damit keine Sackgasse.
+        vacation = (self.vacation_store.period_for_date(date_str)
+                    if self.vacation_store is not None else None)
+        if vacation is not None and vacation.get("days", {}).get(date_str, 0):
+            themed_showinfo(
+                self.root, "Urlaub an diesem Tag",
+                f"Für den {format_iso_date(date_str)} ist Urlaub eingetragen "
+                f"(„{vacation.get('name', '')}“). An einem Urlaubstag lässt "
+                f"sich keine Arbeitszeit erfassen.\n\nSoll hier doch "
+                f"gearbeitet werden, lösche den Urlaub zuerst per Rechtsklick "
+                f"auf den Tag.")
+            return
         # Bei deaktiviertem Kalender-Sync KEIN reservation_store an den Dialog
         # geben — dann wird der Reservierungs-Block nicht angezeigt und ist per
         # Linksklick nicht setzbar (open_entry_dialog wertet None entsprechend).

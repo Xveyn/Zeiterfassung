@@ -3,7 +3,8 @@
 import pytest
 
 from src.vacations import (
-    apportion_minutes, expand_days, periods_overlap, total_minutes,
+    apportion_minutes, conflicting_days, expand_days, periods_overlap,
+    total_minutes,
 )
 
 
@@ -143,3 +144,36 @@ def test_period_for_day_returns_a_detached_days_copy():
     hit = period_for_day(periods, "2026-07-01")
     hit["days"]["2026-07-01"] = 0
     assert periods["a1"]["days"]["2026-07-01"] == 480
+
+
+# ---------------------------------------------------------- conflicting_days
+
+def test_conflicting_days_finds_a_day_with_recorded_time():
+    days = {"2026-04-13": 480, "2026-04-14": 480}
+    assert conflicting_days(days, ["2026-04-14"], []) == ["2026-04-14"]
+
+
+def test_conflicting_days_finds_a_day_with_a_reservation():
+    days = {"2026-04-13": 480, "2026-04-14": 480}
+    assert conflicting_days(days, [], ["2026-04-13"]) == ["2026-04-13"]
+
+
+def test_conflicting_days_is_empty_without_overlap():
+    days = {"2026-04-13": 480, "2026-04-14": 480}
+    assert conflicting_days(days, ["2026-04-20"], ["2026-04-21"]) == []
+
+
+def test_conflicting_days_ignores_days_without_vacation_hours():
+    # Sa/So und Feiertage stehen mit 0 Minuten in der Periode: sie halten den
+    # Zeitraum zusammen, sind aber KEIN Urlaubstag. Wer am Samstag mitten im
+    # Urlaub arbeitet, soll den Urlaub trotzdem darueber legen koennen.
+    days = {"2026-04-17": 480, "2026-04-18": 0, "2026-04-19": 0}
+    assert conflicting_days(days, ["2026-04-18"], ["2026-04-19"]) == []
+
+
+def test_conflicting_days_reports_sorted_and_deduplicated():
+    days = {"2026-04-13": 480, "2026-04-14": 480, "2026-04-15": 480}
+    # 2026-04-14 traegt Ist-Zeit UND Reservierung — trotzdem nur einmal.
+    assert conflicting_days(
+        days, ["2026-04-15", "2026-04-14"], ["2026-04-14", "2026-04-13"]
+    ) == ["2026-04-13", "2026-04-14", "2026-04-15"]

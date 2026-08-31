@@ -266,9 +266,13 @@ Urlaub, keine Ist-Zeit    Halber Urlaubstag         Urlaub am Feiertag
   Tage — Wochenende, Feiertag — zeigen nur „Urlaub").
 - **Urlaub mit Ist-Zeit** → die Eintragszelle wird wie heute gebaut, aber mit
   `VACATION_BG`/`VACATION_BG_HOVER` statt `ENTRY_BG`. Zeit- und Stundenzeile
-  bleiben sichtbar. Der halbe Urlaubstag ist damit ohne Sonderfall im
-  Dispatch abgedeckt: `_build_entry_cell` bekommt die Hintergrundfarben als
+  bleiben sichtbar. `_build_entry_cell` bekommt die Hintergrundfarben als
   Parameter, statt sie selbst aus `is_weekend` abzuleiten.
+
+  **Nachtrag:** Dieser Zustand kann seit der Kollisionssperre nicht mehr neu
+  entstehen — Urlaub und Arbeitszeit schließen sich am selben Tag aus (Regel
+  und Begründung in `CLAUDE.md`, Abschnitt „Urlaub"). Der Zweig bleibt für
+  Alt-Daten, die ihn schon tragen, damit sie sichtbar und korrigierbar sind.
 - **Urlaub am Feiertag / am Wochenende** → Urlaubszelle. Der Feiertagsname
   wandert in den Tooltip (siehe unten), die Wochenend-Einfärbung entfällt.
 
