@@ -25,6 +25,13 @@ from src.vacations import apportion_minutes, conflicting_days, expand_days
 
 log = logging.getLogger(__name__)
 
+# Obergrenze je Urlaubstag. 24 h ist die einzige Grenze, die sich nicht
+# diskutieren lässt — ein Kalendertag hat nicht mehr. Alles darunter wäre
+# erfundene Policy: 10-Stunden-Tage gibt es, und ein Urlaubstag darf so lang
+# sein wie der Arbeitstag, den er ersetzt.
+MAX_HOURS_PER_DAY = 24
+MAX_MINUTES_PER_DAY = MAX_HOURS_PER_DAY * 60
+
 
 def _hours_to_minutes_exact(hours: float) -> int:
     """Eingegebene Stunden → Minuten. Anders als `time_utils.hours_to_minutes`
@@ -64,7 +71,13 @@ def plan_vacation_save(name, date_from, date_to, mode, value, overrides, state):
     """Baut die Tagesminuten einer Urlaubsperiode aus der Dialog-Eingabe.
 
     mode: "per_day" (value = Stunden je Arbeitstag) oder "total" (value =
-    Gesamtstunden, die auf die Arbeitstage verteilt werden).
+    Gesamtstunden, die auf die Arbeitstage verteilt werden). `value` ist None,
+    wenn im Stundenfeld keine Zahl steht.
+
+    Kein Tag darf über MAX_HOURS_PER_DAY liegen. Geprüft wird das an allen
+    drei Eingabewegen — Sammelwert, verteilte Gesamtstunden und den Overrides
+    der Tagesliste; jeder für sich kann die Grenze reißen, und ohne die
+    Prüfung landeten 48 h/Tag unbeanstandet im Store und im Bericht.
     overrides: {ISO: minutes} aus der aufgeklappten Tagesliste; sie gewinnen
     über den berechneten Wert. Tage außerhalb des Zeitraums werden ignoriert.
     state: Bundesland-Code für die Feiertagsliste.
@@ -76,6 +89,9 @@ def plan_vacation_save(name, date_from, date_to, mode, value, overrides, state):
         return {"error": "Bitte einen Namen für den Urlaub eingeben.", "days": {}}
     if date_to < date_from:
         return {"error": "Das Bis-Datum liegt vor dem Von-Datum.", "days": {}}
+    if value is None:
+        return {"error": "Bitte eine Zahl in das Stundenfeld eingeben.",
+                "days": {}}
     if value < 0:
         return {"error": "Die Stundenzahl darf nicht negativ sein.", "days": {}}
 
@@ -91,6 +107,13 @@ def plan_vacation_save(name, date_from, date_to, mode, value, overrides, state):
                 "days": {},
             }
         parts = apportion_minutes(_hours_to_minutes_exact(value), len(workdays))
+        if parts and max(parts) > MAX_MINUTES_PER_DAY:
+            return {
+                "error": (f"Die Gesamtstunden ergeben mehr als "
+                          f"{MAX_HOURS_PER_DAY} Stunden pro Arbeitstag "
+                          f"({len(workdays)} Arbeitstage im Zeitraum)."),
+                "days": {},
+            }
         days = {d: 0 for d in skeleton}
         # strict=True: die Längen sind per Konstruktion gleich, und `ruff` hat
         # B905 scharf (select enthält "B") — ein zip() ohne strict= macht den
@@ -98,11 +121,29 @@ def plan_vacation_save(name, date_from, date_to, mode, value, overrides, state):
         for day, minutes in zip(sorted(workdays), parts, strict=True):
             days[day] = minutes
     else:
-        days = expand_days(date_from, date_to, _hours_to_minutes_exact(value), state)
+        minutes_per_day = _hours_to_minutes_exact(value)
+        if minutes_per_day > MAX_MINUTES_PER_DAY:
+            return {
+                "error": (f"Mehr als {MAX_HOURS_PER_DAY} Stunden pro Tag gibt "
+                          f"es nicht."),
+                "days": {},
+            }
+        days = expand_days(date_from, date_to, minutes_per_day, state)
 
     for day, minutes in overrides.items():
         if day in days:
             days[day] = max(0, int(minutes))
+
+    # Nach den Overrides erneut: die Grenze oben deckt nur den Sammelwert ab,
+    # ein einzelner Tag aus der Tagesliste kann sie danach immer noch reißen.
+    over = sorted(d for d, m in days.items() if m > MAX_MINUTES_PER_DAY)
+    if over:
+        return {
+            "error": (f"Für diese Tage sind mehr als {MAX_HOURS_PER_DAY} "
+                      f"Stunden eingetragen:" + chr(10) + chr(10)
+                      + _format_day_list(over)),
+            "days": {},
+        }
 
     return {"error": None, "days": days}
 
@@ -334,10 +375,15 @@ def _open_edit_dialog(parent, vacation_store, settings, period_id, on_saved,
         return df, dt
 
     def _value():
+        """Der Sammelwert als Zahl, oder None bei Buchstabensalat im Feld.
+
+        None statt eines Sentinel-Werts wie -1: der ergäbe die Meldung „darf
+        nicht negativ sein“ für eine Eingabe, die gar keine Zahl ist.
+        """
         try:
             return float((value_var.get() or "0").replace(",", "."))
         except ValueError:
-            return -1.0
+            return None
 
     def _current_plan():
         df, dt = _range()
@@ -402,8 +448,14 @@ def _open_edit_dialog(parent, vacation_store, settings, period_id, on_saved,
         if drop_overrides:
             overrides.clear()
         plan = _current_plan()
-        for day in [d for d in overrides if d not in plan["days"]]:
-            del overrides[day]
+        # Aussortiert wird nur bei GÜLTIGEM Plan. Ein Fehler liefert ein leeres
+        # `days` — daran gemessen läge jede Überschreibung außerhalb des
+        # Zeitraums und flöge raus. Wer „48" ins Stundenfeld tippt und danach
+        # das Bis-Datum korrigiert, verlöre so alle von Hand gesetzten Tage,
+        # obwohl er nur einen Tippfehler behoben hat.
+        if plan["error"] is None:
+            for day in [d for d in overrides if d not in plan["days"]]:
+                del overrides[day]
         if expanded["on"]:
             _rebuild_day_rows(plan["days"])
         _update_total()
@@ -479,9 +531,10 @@ def _open_edit_dialog(parent, vacation_store, settings, period_id, on_saved,
         # obwohl sie es wurde — und ein zweiter Speichern-Klick liefe beim
         # Neuanlegen in die Überschneidungsprüfung mit der eben erzeugten
         # Periode. Scheitert nur die Vorbelegung, ist das folgenlos.
-        if mode_var.get() == "per_day" and _value() > 0:
+        value = _value()
+        if mode_var.get() == "per_day" and value is not None and value > 0:
             try:
-                settings.set("vacation_hours_per_day", _value())
+                settings.set("vacation_hours_per_day", value)
             except OSError:
                 log.exception(
                     "Vorbelegung vacation_hours_per_day nicht gespeichert")

@@ -122,3 +122,42 @@ def test_format_day_list_truncates_long_lists():
 
 def test_format_day_list_without_truncation_has_no_suffix():
     assert "weitere" not in _format_day_list(["2026-07-01"], limit=3)
+
+
+# --------------------------------------------------- Obergrenze / Zahleneingabe
+
+def test_plan_rejects_more_than_24_hours_per_day():
+    result = plan_vacation_save("Test", "2026-09-01", "2026-09-30",
+                                "per_day", 48.0, {}, "")
+    assert result["error"] == "Mehr als 24 Stunden pro Tag gibt es nicht."
+    assert result["days"] == {}
+
+
+def test_plan_accepts_exactly_24_hours_per_day():
+    result = plan_vacation_save("Test", "2026-09-01", "2026-09-02",
+                                "per_day", 24.0, {}, "")
+    assert result["error"] is None
+    assert result["days"]["2026-09-01"] == 1440
+
+
+def test_plan_rejects_total_that_exceeds_24_hours_per_workday():
+    # 01.-30.09.2026 hat 22 Arbeitstage; 1056 h waeren 48 h pro Tag.
+    result = plan_vacation_save("Test", "2026-09-01", "2026-09-30",
+                                "total", 1056.0, {}, "")
+    assert "22 Arbeitstage" in result["error"]
+    assert "24 Stunden pro Arbeitstag" in result["error"]
+    assert result["days"] == {}
+
+
+def test_plan_rejects_an_override_above_24_hours():
+    result = plan_vacation_save("Test", "2026-09-01", "2026-09-03",
+                                "per_day", 8.0, {"2026-09-02": 1500}, "")
+    assert "02.09.2026" in result["error"]
+    assert result["days"] == {}
+
+
+def test_plan_rejects_a_non_numeric_value():
+    result = plan_vacation_save("Test", "2026-09-01", "2026-09-03",
+                                "per_day", None, {}, "")
+    assert result["error"] == "Bitte eine Zahl in das Stundenfeld eingeben."
+    assert result["days"] == {}
