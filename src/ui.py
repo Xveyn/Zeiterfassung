@@ -76,7 +76,7 @@ class App:
     def __init__(self, root, storage, settings, base_path=".", conflicts_store=None,
                  reservation_store=None, single_instance=None,
                  data_lock=None, sync_guard=None, webhook_store=None,
-                 vacation_store=None):
+                 vacation_store=None, smtp_store=None):
         self.root = root
         self.storage = storage
         self.settings = settings
@@ -90,6 +90,9 @@ class App:
         # Gerätelokale Webhook-Konfiguration; None bedeutet „Feature nicht
         # verfügbar" und wird von den Dialogen wie eine leere Liste behandelt.
         self._webhook_store = webhook_store
+        # Gerätelokale SMTP-Konten; None bedeutet ebenso „Feature nicht
+        # verfügbar" (wie beim webhook_store).
+        self._smtp_store = smtp_store
         self.root.title(f"Zeiterfassung v{version_label()}")
         self.root.configure(bg=BG)
         apply_dark_titlebar(self.root)
@@ -477,6 +480,7 @@ class App:
             webhook_store=self._webhook_store,
             vacation_store=self.vacation_store,
             on_vacation_change=self._on_vacation_change,
+            smtp_store=self._smtp_store,
         )
 
     def _on_vacation_change(self):
@@ -870,13 +874,15 @@ class App:
         open_send_dialog(self.root, self.storage, self.settings, self.base_path,
                          self._bg, reservation_store=self.reservation_store,
                          webhook_store=self._webhook_store,
-                         vacation_store=self.vacation_store)
+                         vacation_store=self.vacation_store,
+                         smtp_store=self._smtp_store)
 
     def _share(self):
         from src.dialogs.share_dialog import open_share_dialog
         open_share_dialog(
             self.root, self.storage, self.settings, self.base_path, self._bg,
             reservation_store=self.reservation_store,
+            smtp_store=self._smtp_store,
         )
 
     def _export(self):

@@ -28,10 +28,13 @@ def show_missing_credentials_dialog(parent, base_path):
     tk.Label(
         dialog,
         text=(
-            "credentials.json nicht gefunden.\n\n"
-            "Bitte erstelle ein Google Cloud Projekt mit Gmail API "
-            "und lade die OAuth2 Client-ID als credentials.json in "
-            "den Datenordner."
+            "credentials.json nicht gefunden unter:\n"
+            f"{base_path}\n\n"
+            "Für den Versand über Gmail wird ein Google Cloud Projekt mit "
+            "aktivierter Gmail API benötigt; lade die OAuth2 Client-ID als "
+            "credentials.json in den Datenordner.\n\n"
+            "Alternativ kannst Du unter Einstellungen → SMTP ein eigenes "
+            "Mail-Konto einrichten — dann wird kein Google-Konto benötigt."
         ),
         font=FONT, bg=BG, fg=TEXT,
         wraplength=380, justify="left",
@@ -141,21 +144,25 @@ _FORMAT_BY_LABEL = {v: k for k, v in FORMAT_LABELS.items()}
 
 def open_send_dialog(parent, storage, settings, base_path, runner,
                      reservation_store=None, webhook_store=None,
-                     vacation_store=None):
+                     vacation_store=None, smtp_store=None):
     credentials_path = os.path.join(base_path, "credentials.json")
     token_path = os.path.join(base_path, "token.json")
 
     hooks = webhook_store.enabled() if webhook_store else []
+    accounts = smtp_store.enabled() if smtp_store else []
     recipient = settings.get("recipient")
     have_credentials = os.path.exists(credentials_path)
     mail_possible = bool(recipient) and have_credentials
 
-    # Ohne jedes mögliche Ziel: wie bisher erklären und abbrechen.
-    if not mail_possible and not hooks:
+    # Ohne jedes mögliche Ziel: erklären und abbrechen. Beide Texte nennen
+    # beide Mailwege — sonst schicken sie jemanden ins Google-Cloud-Setup, der
+    # es gar nicht braucht.
+    if not mail_possible and not accounts and not hooks:
         if not recipient:
             themed_showinfo(
                 parent, "Kein Empfänger",
-                "Bitte zuerst einen Empfänger in den Einstellungen angeben.")
+                "Bitte zuerst einen Empfänger in den Einstellungen angeben "
+                "oder unter „SMTP“ ein Mail-Konto einrichten.")
         else:
             show_missing_credentials_dialog(parent, base_path)
         return
@@ -184,6 +191,7 @@ def open_send_dialog(parent, storage, settings, base_path, runner,
     picker_frame.grid(row=0, column=0, sticky="w")
 
     mail_var = tk.BooleanVar(value=mail_possible)
+    smtp_vars = []
     hook_vars = []
 
     def _update_send_button():
@@ -193,10 +201,12 @@ def open_send_dialog(parent, storage, settings, base_path, runner,
         erst weiter unten erzeugt, und `command` feuert nur auf echte
         Nutzer-Klicks — genau das, was hier gebraucht wird.
         """
-        any_target = bool(mail_var.get()) or any(v.get() for _r, v, _f in hook_vars)
+        any_target = (bool(mail_var.get())
+                      or any(v.get() for _r, v in smtp_vars)
+                      or any(v.get() for _r, v, _f in hook_vars))
         set_primary_button_enabled(send_btn, any_target)
 
-    if hooks:
+    if hooks or accounts:
         targets = tk.LabelFrame(dialog, text="Ziele", font=FONT, bg=BG, fg=TEXT_MUTED)
         targets.grid(row=1, column=0, padx=10, pady=(4, 0), sticky="we")
 
@@ -210,7 +220,22 @@ def open_send_dialog(parent, storage, settings, base_path, runner,
             mail_var.set(False)
             mail_cb.config(state="disabled")
 
-        for i, record in enumerate(hooks, start=1):
+        target_row = 1
+        for record in accounts:
+            # Vorbelegt angehakt, wenn es KEINEN Gmail-Weg gibt: dann ist SMTP
+            # der Standardweg und nicht die Ausnahme.
+            var = tk.BooleanVar(value=not mail_possible)
+            tk.Checkbutton(
+                targets,
+                text=f"{record.get('name', '')} → {record.get('recipient', '')}",
+                variable=var, font=FONT, bg=BG, fg=TEXT, selectcolor=CELL_BG,
+                activebackground=BG, activeforeground=TEXT, cursor="hand2",
+                command=_update_send_button,
+            ).grid(row=target_row, column=0, sticky="w", padx=6, pady=2)
+            smtp_vars.append((record, var))
+            target_row += 1
+
+        for record in hooks:
             # Vorbelegt ABGEHAKT: Mail bleibt der Standardweg, ein Versand an
             # einen externen Endpunkt soll eine bewusste Entscheidung sein.
             var = tk.BooleanVar(value=False)
@@ -219,14 +244,15 @@ def open_send_dialog(parent, storage, settings, base_path, runner,
                 bg=BG, fg=TEXT, selectcolor=CELL_BG, activebackground=BG,
                 activeforeground=TEXT, cursor="hand2",
                 command=_update_send_button,
-            ).grid(row=i, column=0, sticky="w", padx=6, pady=2)
+            ).grid(row=target_row, column=0, sticky="w", padx=6, pady=2)
 
             payload = record.get("payload") or {}
             current = (bool(payload.get("json")), bool(payload.get("pdf")))
             fmt_var = tk.StringVar(value=FORMAT_LABELS.get(current, "JSON"))
             dark_combo(targets, fmt_var, list(_FORMAT_BY_LABEL), width=12).grid(
-                row=i, column=1, sticky="w", padx=(12, 6), pady=2)
+                row=target_row, column=1, sticky="w", padx=(12, 6), pady=2)
             hook_vars.append((record, var, fmt_var))
+            target_row += 1
 
     busy = {"running": False}
 
@@ -272,8 +298,9 @@ def open_send_dialog(parent, storage, settings, base_path, runner,
             want_json, want_pdf = _FORMAT_BY_LABEL[fmt_var.get()]
             selected_hooks.append(
                 {"record": record, "json": want_json, "pdf": want_pdf})
+        selected_accounts = [r for r, v in smtp_vars if v.get()]
         send_mail = bool(mail_var.get())
-        if not send_mail and not selected_hooks:
+        if not send_mail and not selected_accounts and not selected_hooks:
             return  # Button ist in diesem Zustand deaktiviert; defensiv.
 
         # (b) Leer-Prüfung kanalunabhängig. Bisher fiel sie als Nebenwirkung
@@ -294,11 +321,11 @@ def open_send_dialog(parent, storage, settings, base_path, runner,
         label = f"{format_date(date_from)} – {format_date(date_to)}"
         pdf_filename = default_pdf_filename(date_from, date_to)
 
-        # (d) Mail-HTML, Betreff und `total` NUR im Mail-Fall. `total` kommt
-        # ausschließlich aus generate_report; unbedingt zu berechnen ergäbe
-        # beim reinen Webhook-Versand einen NameError im Tk-Callback.
+        # (d) Mail-HTML und Betreff für die Mail-Kanäle — Gmail wie SMTP. Beim
+        # reinen Webhook-Versand bleiben sie None: `total` kommt nur aus
+        # generate_report, unbedingt zu berechnen ergäbe dort einen NameError.
         html = subject = None
-        if send_mail:
+        if send_mail or selected_accounts:
             html, total = generate_report(
                 date_from, date_to, entries,
                 greeting=settings.get("mail_greeting"),
@@ -337,7 +364,8 @@ def open_send_dialog(parent, storage, settings, base_path, runner,
                     "recipient": recipient, "subject": subject, "html": html,
                     "sync_enabled": settings.get("sync_enabled"),
                     "gcal_enabled": settings.get("gcal_enabled"),
-                } if send_mail else None,
+                } if (send_mail or selected_accounts) else None,
+                smtp_accounts=selected_accounts,
                 webhooks=selected_hooks,
                 pdf_filename=pdf_filename, settings=settings)
 
@@ -394,12 +422,12 @@ def open_send_dialog(parent, storage, settings, base_path, runner,
         runner.run(fn, on_done)
 
     btn_frame = tk.Frame(dialog, bg=BG)
-    btn_frame.grid(row=2 if hooks else 1, column=0, pady=12)
+    btn_frame.grid(row=2 if (hooks or accounts) else 1, column=0, pady=12)
 
     send_btn = primary_button(btn_frame, "Senden", do_send)
     send_btn.pack(side=tk.LEFT, padx=5)
     secondary_button(btn_frame, "Abbrechen", dialog.destroy).pack(side=tk.LEFT, padx=5)
-    if hooks:
+    if hooks or accounts:
         _update_send_button()
 
     center_dialog_on_parent(dialog, parent)

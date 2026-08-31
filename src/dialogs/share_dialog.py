@@ -24,7 +24,8 @@ from src.theme import (
 )
 
 
-def open_share_dialog(parent, storage, settings, base_path, runner, reservation_store=None):
+def open_share_dialog(parent, storage, settings, base_path, runner, reservation_store=None,
+                      smtp_store=None):
     credentials_path = os.path.join(base_path, "credentials.json")
     token_path = os.path.join(base_path, "token.json")
 
