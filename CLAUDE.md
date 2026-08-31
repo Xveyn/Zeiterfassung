@@ -30,6 +30,36 @@ Ablauf vor dem Merge:
 
 Der Workflow pusht **nichts** nach `master`. Versionsbump gehört in den PR.
 
+### README-Zeilen für Unveröffentlichtes markieren
+
+`master` ist der Default-Branch, die README ist damit **die Startseite des
+Repositories** — und sie beschreibt den Stand von `master`, nicht den des
+letzten Releases. Zwischen dem Merge eines Features und seinem Release liest
+dort also jeder von etwas, das er nach dem Download nicht findet (beim Urlaub
+waren das rund 50 README-Zeilen über 87 Commits hinweg).
+
+Deshalb: **Wer die README um ein Feature ergänzt, das noch nicht released
+ist, hängt `*(ab X.Y.Z)*` an den fetten Namen** — die Version, mit der es
+erscheinen wird:
+
+```markdown
+- **Urlaub** *(ab 1.22.0)* — Urlaubszeiträume als Einheit eintragen …
+```
+
+Der Marker muss beim Release **nicht** entfernt werden: „ab 1.22.0" liest
+sich davor wie danach richtig, und die README trägt an zwei älteren Stellen
+schon dasselbe Muster als „seit 1.19.1". Wer aufräumen will, kann ihn nach
+ein paar Releases streichen — Pflicht ist es nicht.
+
+Bewusst **kein** eigener `releases`-Default-Branch, obwohl das dasselbe
+Problem löst: GitHub setzt die Base neuer PRs (und `gh pr create` ohne
+`--base`) auf den Default-Branch, ein übersehener Feature-PR landete also
+direkt im Release-Branch und hebelte genau die Regel aus, für die er
+existiert. Dazu käme eine zweite Ruleset-Stelle (s. „Branch Protection": es
+soll genau **eine** geben), und `workflow_dispatch` hängt am Default-Branch —
+ein neuer Workflow wäre erst nach dem nächsten Release-Merge über „Run
+workflow" erreichbar, also ausgerechnet `build.yml` und der Pre-Release.
+
 ### Pre-Releases (plattformübergreifende Test-Builds)
 
 Für plattformübergreifendes Testen des Stands **nach** dem letzten echten Release gibt es Pre-Releases:
