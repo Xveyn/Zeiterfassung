@@ -111,6 +111,12 @@ def test_ssl_connection_uses_smtp_ssl_without_starttls(fake_smtp):
     server = fake_smtp["ssl"]
     assert server.port == 465
     assert server.context is not None
+    # Dieselben Assertions wie test_starttls_gets_a_verifying_context: sonst
+    # käme eine Regression, die nur den SMTP_SSL-Pfad mit einem ungeprüften
+    # Kontext versieht, durch — "ist nicht None" allein deckt fehlende
+    # Hostname-/Zertifikatsprüfung nicht ab.
+    assert server.context.check_hostname is True
+    assert server.context.verify_mode == ssl.CERT_REQUIRED
     assert "plain" not in fake_smtp
 
 
