@@ -74,6 +74,11 @@ ist protected — Merge erfolgt über PR.
 - **Sichtbare Fehler:** Fehler im Sendepfad (Gmail, PDF) müssen per
   `messagebox.showerror` mit `traceback.format_exc()` angezeigt werden — `--noconsole`
   im Build unterdrückt sonst jede Spur.
+- **README-Zeilen für Unveröffentlichtes markieren:** Die README beschreibt den
+  Stand von `master`, nicht den des letzten Releases. Wer ein Feature dort
+  einträgt, das noch nicht released ist, hängt `*(ab X.Y.Z)*` an den fetten
+  Namen — sonst liest die Startseite des Repositories von etwas, das es im
+  Download noch nicht gibt.
 - Weitere Details (UTF-8 in der Mail-Pipeline, Build, CI-Eigenheiten) stehen in
   [`CLAUDE.md`](CLAUDE.md).
 
