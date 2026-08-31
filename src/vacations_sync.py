@@ -89,6 +89,43 @@ def plan_vacation_sync(local_raw: dict[str, Vacation],
     return {"create": create, "update": update, "delete": delete}
 
 
+def purge_vacation_events(service: Any, calendar_id: str,
+                          store: VacationStore,
+                          data_lock: threading.RLock | None = None) -> None:
+    """Entfernt ALLE von der App angelegten Urlaubs-Events aus dem Kalender
+    und vergisst ihre IDs lokal.
+
+    Der Gegenweg zu `reconcile_vacations`, gefahren beim Abschalten von
+    `vacation_gcal_enabled`: ohne ihn bliebe jeder bereits gepushte Zeitraum
+    für immer im Kalender stehen — die App fasst ihn danach nie wieder an,
+    weil der Push abgeschaltet ist. Der Schalter wäre damit eine Einbahn-
+    straße.
+
+    Das Leeren der `gcal_event_id` ist der zweite, weniger offensichtliche
+    Teil: bliebe sie stehen, hielte `plan_vacation_sync` die Periode beim
+    späteren Wiedereinschalten für bereits gepusht, fände remote aber nichts
+    und legte kein Event mehr an. Tombstones, deren Event weg ist, haben
+    nichts mehr einzulösen und verschwinden endgültig — dieselbe Regel wie
+    am Ende von `reconcile_vacations`.
+
+    Der lokale Urlaub selbst bleibt unangetastet; entfernt wird nur, was
+    draußen im Kalender liegt.
+    """
+    from src import gcal
+
+    for event in gcal.list_app_vacations(service, calendar_id):
+        gcal.delete_event(service, calendar_id, event["event_id"])
+
+    with (data_lock if data_lock is not None else contextlib.nullcontext()):
+        merged = store.get_all_raw()
+        for pid, period in list(merged.items()):
+            if period.get("deleted"):
+                merged.pop(pid)
+            else:
+                period["gcal_event_id"] = None
+        store.apply_reconciled(merged)
+
+
 def reconcile_vacations(service: Any, calendar_id: str, store: VacationStore,
                         data_lock: threading.RLock | None = None) -> None:
     """Voller Push: listen → planen → ausführen → Ergebnis zurückschreiben.

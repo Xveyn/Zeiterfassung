@@ -428,10 +428,23 @@ Folge zweier verschiedener Fragen.
 
 Der Google-Kalender-Push ist ein **Zusatz**, keine Voraussetzung: anders als
 Reservierungen ist Urlaub **nicht** an `gcal_enabled` gekoppelt. Für den
-**Push** selbst gelten dagegen drei Bedingungen: `gcal_enabled`, ein gewählter
-Kalender **und** ein vorhandener `reservation_store` — `_reservations_active`
+**Push** selbst gelten dagegen vier Bedingungen: `gcal_enabled`, ein gewählter
+Kalender, ein vorhandener `reservation_store` — `_reservations_active`
 (`ui.py:245`) prüft beides, und `trigger_reconcile`/`reconcile_on_start`
-kehren sonst früh zurück.
+kehren sonst früh zurück — **und** der eigene Schalter
+`vacation_gcal_enabled`.
+
+**Der Schalter ist umkehrbar, und das ist die eigentliche Arbeit daran.** Er
+sitzt im Dialog „Urlaub verwalten" und wird nur gebaut, wenn der Kalender
+überhaupt nutzbar ist (aktiviert **und** einer gewählt). Einschalten stößt den
+normalen Abgleich an. Ausschalten fragt, ob die bereits eingetragenen Termine
+weg sollen, und fährt dann `vacations_sync.purge_vacation_events` über
+`BackgroundTaskRunner.purge_vacations` — ohne diesen Weg blieben gepushte
+Zeiträume für immer im Kalender stehen, weil die App sie bei abgeschaltetem
+Push nie wieder anfasst. Gefragt wird nur, wenn lokal überhaupt eine
+`gcal_event_id` steht; das kostet keinen Netzaufruf. Der Aufräum-Lauf leert
+diese IDs, sonst hielte `plan_vacation_sync` die Perioden beim späteren
+Wiedereinschalten für bereits gepusht und legte keine Events mehr an.
 
 ## Dialog-Styling: ein gemeinsames Theme
 
@@ -608,7 +621,7 @@ nicht mehr als „offen" führen — der Verweis lautet auf diese Grenze.
 - `src/mail.py` — Gmail-API-Wrapper (OAuth2, `token.json` / `credentials.json`)
 - `src/drive.py` — Google-Drive-API-Wrapper für den Multi-Device-Sync (`appDataFolder`, Scope `drive.appdata`)
 - `src/sync.py` — Sync-Engine (pure Logik: LWW-Merge der Entries/Settings, Konflikterkennung); importiert `SYNCED_SETTING_KEYS` aus `settings.py` (Single Source of Truth, nicht hier neu definieren); `validate_remote_doc` prüft ein Remote-Doc auf die Merge-Invarianten vor dem Merge (Audit M5)
-- `src/sync_runtime.py` — Sync-/Kompaktierungs-/Reconcile-**Runtime**: `run_pull_in_background`, `run_push_blocking`, `run_compaction_blocking`, `run_calendar_reconcile`. Die Flows über der Engine `sync.py`; Google-Wrapper lazy in den Funktionen (CI). Aufrufer: `main.py`, `sync_orchestrator.py`, `background_tasks.py`, `tab_google.py`
+- `src/sync_runtime.py` — Sync-/Kompaktierungs-/Reconcile-**Runtime**: `run_pull_in_background`, `run_push_blocking`, `run_compaction_blocking`, `run_calendar_reconcile`, `run_vacation_purge`. Die Flows über der Engine `sync.py`; Google-Wrapper lazy in den Funktionen (CI). Aufrufer: `main.py`, `sync_orchestrator.py`, `background_tasks.py`, `tab_google.py`
 - `src/sync_journal.py` — Crash-Recovery für `sync.apply_merged_doc` via Write-Ahead-Journal (`sync-apply.journal`); beim Start holt `recover_pending_apply` einen unvollständigen Apply idempotent nach (Audit M6)
 - `src/sync_history.py` — persistenter „hat je gesynct/abgeglichen"-Marker (`sync_history.json`, write-once, stdlib-only); vetoed den N6-Startup-Sweep gegen einen settings.json-Reset (M4), damit ein gesyncter Rechner nicht fälschlich seine Tombstones verliert (Resurrection)
 - `src/conflicts_store.py` — lokale JSON-Persistenz der Sync-Konfliktliste
@@ -649,7 +662,9 @@ nicht mehr als „offen" führen — der Verweis lautet auf diese Grenze.
 - `src/vacations_sync.py` — Einwegs-Push der Urlaubsperioden als
   Ganztags-Events in den Google Kalender. Eigener Marker-Wert
   (`zeiterfassung=vacation`), damit der Reservierungs-Reconcile die Events
-  serverseitig gar nicht erst sieht
+  serverseitig gar nicht erst sieht. `purge_vacation_events` ist der Weg
+  zurück: alle App-Urlaubs-Events löschen und die `gcal_event_id` lokal
+  leeren, wenn `vacation_gcal_enabled` abgeschaltet wird
 - `src/dialogs/vacation_dialog.py` — Verwaltung der Perioden (Einstieg:
   Einstellungen → Arbeitszeit → „Urlaub verwalten")
 - `src/reminders.py` — pure Fälligkeits-Logik für Reservierungs-Erinnerungen (Tk-frei); `src/reminder_scheduler.py` — periodischer Reminder-Poll (root.after) → Toast über Tray

@@ -13,7 +13,7 @@ import threading
 import traceback
 
 from src.mail import fetch_user_email, refresh_token_if_needed, TokenAuthError, TokenNetworkError
-from src.sync_runtime import run_calendar_reconcile
+from src.sync_runtime import run_calendar_reconcile, run_vacation_purge
 from src.updater import REPO, check_for_update, is_newer, should_check
 from src.version import installed_release_id
 
@@ -164,6 +164,23 @@ class BackgroundTaskRunner:
         def on_done(result):
             if result.get("ok"):
                 on_ok(result)
+
+        self.run(fn, on_done)
+
+    def purge_vacations(self, on_done):
+        """Räumt die Urlaubs-Events aus dem Kalender — Gegenstück zum
+        Abschalten von `vacation_gcal_enabled` im Urlaubs-Dialog.
+
+        Bewusst NICHT an `_reservations_active` gehängt wie
+        `trigger_reconcile`: dort ist die Frage „soll ich pushen", hier „ist
+        draußen etwas von mir liegengeblieben". Die Bedingungen prüft
+        `run_vacation_purge` selbst und meldet ohne aktiven Kalender einen
+        stillen Erfolg.
+        """
+        def fn():
+            return run_vacation_purge(
+                self._settings, self._base_path, self._vacation_store,
+                data_lock=self._data_lock)
 
         self.run(fn, on_done)
 
