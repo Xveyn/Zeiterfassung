@@ -70,7 +70,7 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
 
     # ===================== Tab: Arbeitszeit =====================
     work = WorkTab(tab_work, dialog, settings, vacation_store,
-                   on_vacation_change, storage, reservation_store)
+                   on_vacation_change, storage, reservation_store, runner)
 
     # ===================== Tab: Bericht & Mail =====================
     mail = MailTab(tab_mail, settings)

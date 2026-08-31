@@ -1,7 +1,9 @@
 """Plan-Logik des Urlaubs-Push (Tk- und Google-frei)."""
 
+from src import gcal
 from src.gcal import vacation_event_payload
-from src.vacations_sync import plan_vacation_sync
+from src.vacations import VacationStore
+from src.vacations_sync import plan_vacation_sync, purge_vacation_events
 
 
 def _period(name="Sommer", date_from="2026-07-01", date_to="2026-07-03",
@@ -114,3 +116,64 @@ def test_payload_does_not_carry_the_local_name():
     body = vacation_event_payload("a", "2026-07-01", "2026-07-03",
                                   "2026-08-30T10:00:00Z")
     assert body["summary"] == "Urlaub"
+
+
+# ------------------------------------------------------ purge_vacation_events
+
+def _seeded_store(tmp_path, records):
+    store = VacationStore(str(tmp_path / "vacations.json"))
+    store.apply_reconciled(records)
+    return store
+
+
+def _fake_gcal(monkeypatch, remote_events, deleted):
+    monkeypatch.setattr(gcal, "list_app_vacations",
+                        lambda service, calendar_id: list(remote_events))
+    monkeypatch.setattr(gcal, "delete_event",
+                        lambda service, calendar_id, event_id:
+                        deleted.append(event_id))
+
+
+def test_purge_deletes_every_app_event(monkeypatch, tmp_path):
+    store = _seeded_store(tmp_path, {"a": _period(event_id="evt-1")})
+    deleted = []
+    _fake_gcal(monkeypatch, [_remote("a")], deleted)
+
+    purge_vacation_events(object(), "cal", store)
+
+    assert deleted == ["evt-1"]
+
+
+def test_purge_clears_the_local_event_ids(monkeypatch, tmp_path):
+    """Ohne das Leeren legte ein spaeteres Wiedereinschalten kein Event mehr
+    an: plan_vacation_sync haelt eine Periode mit gcal_event_id fuer bereits
+    gepusht und findet remote nichts, was sie aktualisieren koennte."""
+    store = _seeded_store(tmp_path, {"a": _period(event_id="evt-1")})
+    _fake_gcal(monkeypatch, [_remote("a")], [])
+
+    purge_vacation_events(object(), "cal", store)
+
+    assert store.get_all_raw()["a"]["gcal_event_id"] is None
+
+
+def test_purge_drops_tombstones_whose_event_is_gone(monkeypatch, tmp_path):
+    store = _seeded_store(tmp_path, {
+        "lebend": _period(event_id="evt-1"),
+        "grabstein": _period(event_id="evt-2", deleted=True),
+    })
+    _fake_gcal(monkeypatch, [_remote("lebend"), _remote("grabstein", "evt-2")], [])
+
+    purge_vacation_events(object(), "cal", store)
+
+    assert list(store.get_all_raw()) == ["lebend"]
+
+
+def test_purge_without_remote_events_leaves_the_store_alone(monkeypatch, tmp_path):
+    store = _seeded_store(tmp_path, {"a": _period()})
+    deleted = []
+    _fake_gcal(monkeypatch, [], deleted)
+
+    purge_vacation_events(object(), "cal", store)
+
+    assert deleted == []
+    assert store.get_all_raw()["a"]["gcal_event_id"] is None

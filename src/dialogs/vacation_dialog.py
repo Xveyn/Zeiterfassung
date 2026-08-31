@@ -140,7 +140,7 @@ def plan_vacation_save(name, date_from, date_to, mode, value, overrides, state):
     if over:
         return {
             "error": (f"Für diese Tage sind mehr als {MAX_HOURS_PER_DAY} "
-                      f"Stunden eingetragen:" + chr(10) + chr(10)
+                      f"Stunden eingetragen:\n\n"
                       + _format_day_list(over)),
             "days": {},
         }
@@ -171,16 +171,36 @@ def _period_line(period):
 
 
 def open_vacation_dialog(parent, vacation_store, settings, on_change=None,
-                         storage=None, reservation_store=None):
+                         storage=None, reservation_store=None, runner=None):
     """Übersicht aller Urlaubsperioden mit Neu / Bearbeiten / Löschen.
 
     storage/reservation_store dienen allein der Kollisionsprüfung beim
     Speichern (s. `_open_edit_dialog`); ohne sie wird nicht geprüft.
+
+    runner: der BackgroundTaskRunner der App. Nur für den Kalender-Schalter —
+    das Aufräumen beim Abschalten listet und löscht über das Netz und läuft
+    deshalb über `runner.purge_vacations` (Audit H5), nicht im UI-Thread.
     """
     dialog = create_dialog(parent, "Urlaub verwalten")
 
     tk.Label(dialog, text="Urlaubszeiträume", font=FONT_BOLD, bg=BG,
              fg=TEXT).pack(anchor="w", padx=12, pady=(12, 4))
+
+    # Kalender-Schalter. Gebaut NUR bei nutzbarem Kalender (aktiviert und
+    # einer gewählt) — ohne den gibt es nichts zu schalten, und ein Schalter
+    # für ein unerreichbares Feature ist Rauschen (dieselbe Regel wie beim
+    # „Urlaub ausweisen"-Häkchen im period_picker).
+    gcal_ready = bool(settings.get("gcal_enabled")
+                      and settings.get("gcal_calendar_id"))
+    if gcal_ready:
+        push_var = tk.BooleanVar(value=bool(settings.get("vacation_gcal_enabled")))
+        tk.Checkbutton(
+            dialog, text="In den Google-Kalender eintragen",
+            variable=push_var, command=lambda: _toggle_push(),
+            font=FONT, bg=BG, fg=TEXT, selectcolor=CELL_BG,
+            activebackground=BG, activeforeground=TEXT,
+            highlightthickness=0, bd=0, anchor="w",
+        ).pack(anchor="w", padx=12, pady=(0, 6))
 
     # selectbackground=ACCENT wie in conflicts_dialog.py und tab_webhooks.py.
     # Stand hier auf CELL_BG, also auf der Hintergrundfarbe der Liste: die
@@ -222,6 +242,53 @@ def open_vacation_dialog(parent, vacation_store, settings, on_change=None,
         _reload()
         if on_change is not None:
             on_change()
+
+    def _toggle_push():
+        """Schaltet den Kalender-Push um.
+
+        Einschalten stößt über `on_change` den normalen Abgleich an, der die
+        fehlenden Events anlegt. Ausschalten fragt, ob die bereits
+        eingetragenen Termine weg sollen — und zwar NUR, wenn überhaupt
+        welche draußen liegen; das steht lokal in den `gcal_event_id` der
+        Perioden, kostet also keinen Netzaufruf. „Nein" lässt sie stehen,
+        die App fasst sie danach nicht mehr an.
+        """
+        enabled = bool(push_var.get())
+        try:
+            settings.set("vacation_gcal_enabled", enabled)
+        except OSError as e:
+            push_var.set(not enabled)   # Anzeige und Zustand nicht auseinanderlaufen lassen
+            themed_showerror(
+                dialog, "Einstellung nicht gespeichert",
+                f"Die Einstellungen konnten nicht geschrieben werden:\n\n{e}")
+            return
+
+        if enabled:
+            if on_change is not None:
+                on_change()
+            return
+
+        pushed = any(p.get("gcal_event_id")
+                     for p in vacation_store.get_all_raw().values())
+        if not pushed or runner is None:
+            return
+        if not themed_askyesno(
+                dialog, "Urlaubstermine entfernen?",
+                "Die bereits im Kalender eingetragenen Urlaubstermine "
+                "entfernen?\n\n„Nein“ lässt sie stehen — "
+                "die App fasst sie danach nicht mehr an.", lock_ms=600):
+            return
+
+        def _on_purged(result):
+            if not result.get("ok"):
+                themed_showerror(
+                    dialog, "Urlaubstermine nicht entfernt",
+                    "Die Termine konnten nicht aus dem Kalender entfernt "
+                    "werden:\n\n" + result.get("error", "")
+                    + "\n\nDer Push ist trotzdem abgeschaltet; "
+                    "die Termine stehen noch im Kalender.")
+
+        runner.purge_vacations(_on_purged)
 
     def _new():
         _open_edit_dialog(dialog, vacation_store, settings, None, _changed,

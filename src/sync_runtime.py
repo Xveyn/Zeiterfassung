@@ -325,6 +325,42 @@ def run_compaction_blocking(storage, settings, conflicts_store, base, timeout_se
     return result
 
 
+def run_vacation_purge(settings, base, vacation_store, data_lock=None):
+    """Räumt die Urlaubs-Events der App aus dem Kalender — der Weg zurück,
+    wenn `vacation_gcal_enabled` abgeschaltet wird.
+
+    Liefert {"ok": bool, "error": str, "tb": str} und wirft nie; der Aufrufer
+    (`vacation_dialog`) entscheidet, ob er den Fehler zeigt. Ohne aktiven
+    Kalender gibt es nichts aufzuräumen — dann ist der Lauf ein stiller
+    Erfolg, nicht etwa ein Fehler: es kann in dem Fall auch nie etwas
+    gepusht worden sein.
+
+    Läuft über `runner.run` in einem Hintergrund-Thread (Audit H5) — der
+    Aufräum-Lauf listet und löscht über das Netz und darf die UI nicht
+    blockieren.
+    """
+    from src import gcal
+    from src.vacations_sync import purge_vacation_events
+
+    calendar_id = settings.get("gcal_calendar_id")
+    if (vacation_store is None or not settings.get("gcal_enabled")
+            or not calendar_id):
+        return {"ok": True, "error": "", "tb": ""}
+
+    try:
+        service = gcal.get_calendar_service(
+            os.path.join(base, "credentials.json"),
+            os.path.join(base, "token.json"),
+            sync_enabled=settings.get("sync_enabled"),
+        )
+        purge_vacation_events(service, calendar_id, vacation_store,
+                              data_lock=data_lock)
+        return {"ok": True, "error": "", "tb": ""}
+    except Exception as e:
+        logging.getLogger(__name__).exception("Urlaubs-Aufräumen fehlgeschlagen")
+        return {"ok": False, "error": str(e), "tb": traceback.format_exc()}
+
+
 def run_calendar_reconcile(reservation_store, settings, base, storage,
                            data_lock=None, vacation_store=None):
     """Baut den Calendar-Service und fährt einen Reservierungs-Reconcile.
@@ -341,10 +377,12 @@ def run_calendar_reconcile(reservation_store, settings, base, storage,
     (storage), nicht die importierten Reservierungen selbst.
 
     vacation_store (optional, Default None → kein Push): pusht im Anschluss
-    die Urlaubsperioden als Ganztags-Events. Läuft NACH `mark_reconciled` und
-    in einem eigenen try/except — additiv, darf einen bereits gelungenen
-    Reservierungs-Abgleich nicht mitreißen (s. reconcile_vacations-Aufruf
-    unten).
+    die Urlaubsperioden als Ganztags-Events, sofern
+    `settings["vacation_gcal_enabled"]` gesetzt ist. Läuft NACH
+    `mark_reconciled` und in einem eigenen try/except — additiv, darf einen
+    bereits gelungenen Reservierungs-Abgleich nicht mitreißen (s.
+    reconcile_vacations-Aufruf unten). Das Gegenstück zum Abschalten des
+    Schalters ist `run_vacation_purge`.
     """
     from src import gcal
     from src.reservations_sync import reconcile_reservations
@@ -376,7 +414,8 @@ def run_calendar_reconcile(reservation_store, settings, base, storage,
         # N6-Startup-Sweep gegen einen settings.json-Reset (M4) — Folge wäre
         # die Tombstone-Resurrection, gegen die sync_history.py existiert.
         # Zusätzlich gingen die Werkstudenten-Warnungen (#98) verloren.
-        if vacation_store is not None:
+        if (vacation_store is not None
+                and settings.get("vacation_gcal_enabled")):
             try:
                 reconcile_vacations(service, calendar_id, vacation_store,
                                     data_lock=data_lock)

@@ -124,6 +124,13 @@ DEFAULTS = {
     # dort ebenfalls nicht stehen; der Urlaubs-Store synchronisiert ohnehin
     # nicht.
     "vacation_hours_per_day": 8.0,
+    # Urlaub als Ganztags-Events in den Google-Kalender pushen. Default an:
+    # wer den Kalender-Abgleich einschaltet, bekommt seine App-Daten dort —
+    # so lief der Push, seit es ihn gibt. Der Schalter existiert für den
+    # umgekehrten Fall (Reservierungen ja, Urlaub nein). Wie
+    # vacation_hours_per_day bewusst NICHT in SYNCED_SETTING_KEYS: der
+    # Urlaubs-Store selbst reist auch nicht mit.
+    "vacation_gcal_enabled": True,
 }
 
 _COERCE_FAILED = object()

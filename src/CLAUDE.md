@@ -271,8 +271,10 @@ den Store zu — dieselbe Regel wie beim Entries-Snapshot.
   fail-safe (unlesbar → als gesetzt behandeln). Ein neuer Sync/Reconcile-Pfad
   muss ihn mitsetzen.
 - `sync_runtime.py` — die **Flows** über `sync.py` (die Engine): `run_pull_in_background`
-  (Thread + `ui_callback`), `run_push_blocking`, `run_compaction_blocking` und
-  `run_calendar_reconcile`, dazu die Helfer `_parse_remote_or_quarantine`/`_lock_ctx`.
+  (Thread + `ui_callback`), `run_push_blocking`, `run_compaction_blocking`,
+  `run_calendar_reconcile` und `run_vacation_purge` (der Weg zurück, wenn der
+  Urlaubs-Push abgeschaltet wird), dazu die Helfer
+  `_parse_remote_or_quarantine`/`_lock_ctx`.
   Bis R1 (#49/#51) lagen sie in `main.py` — vier Module importierten deshalb lazy
   zurück nach `src.main` („Circular-Import-Schutz"). Jetzt normale Top-Level-Importe;
   `main.py` ist wieder reiner Bootstrap. Die Google-Wrapper zieht das Modul **lazy in
