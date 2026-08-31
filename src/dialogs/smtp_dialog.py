@@ -15,7 +15,7 @@ from src.theme import (
     apply_combobox_style, attach_unfocus_on_click, center_dialog_on_parent,
     create_dialog, dark_combo, dark_entry, primary_button, secondary_button,
     set_primary_button_enabled, set_secondary_button_enabled,
-    themed_showerror, themed_showinfo,
+    themed_askyesno, themed_showerror, themed_showinfo,
 )
 
 SECURITY_LABELS = [
@@ -85,10 +85,10 @@ def open_smtp_dialog(parent, store, runner, record: dict | None = None,
             row=row, column=0, **opts)
 
     row = 0
-    for text, var, _masked in (
-        ("Name:", name_var, False),
-        ("Server:", host_var, False),
-        ("Port:", port_var, False),
+    for text, var in (
+        ("Name:", name_var),
+        ("Server:", host_var),
+        ("Port:", port_var),
     ):
         _label(text, row, pady=(14, 6) if row == 0 else 6)
         dark_entry(dialog, var, width=32).grid(
@@ -176,6 +176,19 @@ def open_smtp_dialog(parent, store, runner, record: dict | None = None,
             themed_showerror(dialog, "Eingabe unvollständig",
                              "Bitte ein Passwort angeben.")
             return None
+        # "Keine Verschlüsselung" + Benutzer/Passwort heißt: AUTH PLAIN geht
+        # ab jetzt bei JEDEM Versand im Klartext über die Leitung — dauerhaft
+        # und unbemerkt, wenn STARTTLS nur mal nicht zum Laufen kam und der
+        # Nutzer auf diesen Modus ausgewichen ist. validate_record prüft das
+        # nicht (der Modus ist als "internes Relay ohne Auth" ausdrücklich
+        # erlaubt) — die Rückfrage lässt die Entscheidung beim Nutzer, statt
+        # den Modus zu sperren.
+        if candidate["security"] == "none" and candidate["username"]:
+            if not themed_askyesno(
+                    dialog, "Unverschlüsselte Anmeldung",
+                    "Ohne Verschlüsselung werden Benutzername und Passwort "
+                    "im Klartext übertragen. Konto trotzdem so speichern?"):
+                return None
         return candidate
 
     def do_save():
@@ -256,6 +269,17 @@ def open_smtp_dialog(parent, store, runner, record: dict | None = None,
             password = typed_password
             if not password and stored is not None:
                 password = keyring_store.get_secret(stored)
+                if password is None:
+                    # `None` heißt: der Schlüsselbund hat NICHT geantwortet
+                    # (Timeout/Fehler) und es gibt keine lokale Fallback-Kopie
+                    # — anders als ein tatsächlich leeres Passwort. Ohne diese
+                    # Prüfung testete die Verbindung mit "" statt mit dem
+                    # echten Passwort und meldete fälschlich "Zugangsdaten
+                    # wurden abgelehnt".
+                    return {
+                        "ok": False, "kind": "keyring",
+                        "detail": "Das Passwort konnte nicht aus dem "
+                                  "Schlüsselbund gelesen werden."}
             try:
                 smtp.test_connection(candidate, password)
             except Exception as e:
