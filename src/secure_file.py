@@ -1,19 +1,20 @@
 # src/secure_file.py
 """Zugriffsschutz für lokal abgelegte Secrets (Audit M8).
 
-Die App schreibt drei sensible Dateien neben die Nutzerdaten: `token.json`
+Die App schreibt vier sensible Dateien neben die Nutzerdaten: `token.json`
 (OAuth-Refresh-Token, `oauth_utils.write_token`), `instance-secret`
-(Shared Secret des Single-Instance-Handshakes, `single_instance`) und
+(Shared Secret des Single-Instance-Handshakes, `single_instance`),
 `webhooks.json` (Webhook-Konfiguration inkl. Auth-Token/HMAC-Secrets,
-`webhook_store`). Alle drei werden atomar über Temp-Datei + `os.replace`
-geschrieben und mit `chmod 0600` abgesichert — unter Windows ist das chmod
-allerdings ein No-op.
+`webhook_store`) und `smtp.json` (SMTP-Kontokonfiguration inkl. Passwort im
+Datei-Fallback ohne Schlüsselbund, `smtp_store`). Alle vier werden atomar
+über Temp-Datei + `os.replace` geschrieben und mit `chmod 0600` abgesichert —
+unter Windows ist das chmod allerdings ein No-op.
 
 Dieses Modul liefert das Windows-Gegenstück. Es ist bewusst ein eigenes,
 stdlib-only Modul und hängt an keinem der Aufrufer: `oauth_utils`,
-`single_instance` und `webhook_store` sollen nichts voneinander importieren
-müssen, und private Namen modulübergreifend zu nutzen ist im Projekt
-ausdrücklich unerwünscht (Audit N17).
+`single_instance`, `webhook_store` und `smtp_store` sollen nichts
+voneinander importieren müssen, und private Namen modulübergreifend zu
+nutzen ist im Projekt ausdrücklich unerwünscht (Audit N17).
 """
 
 from __future__ import annotations

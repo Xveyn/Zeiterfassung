@@ -245,8 +245,8 @@ bauen (siehe „Plattformspezifische PRs — Pre-Release vorschlagen").
 
 Installierte App und Benutzerdaten liegen je nach Plattform:
 
-| Plattform | Installation | Benutzerdaten (Entries, Settings, `token.json`, `credentials.json`) |
-|-----------|--------------|--------------------------------------------------------------------|
+| Plattform | Installation | Benutzerdaten (Entries, Settings, `token.json`, `credentials.json`, `smtp.json`) |
+|-----------|--------------|-----------------------------------------------------------------------------------|
 | Windows | `%LOCALAPPDATA%\Programs\Zeiterfassung\` | Gleiches Verzeichnis wie die Exe |
 | macOS | `/Applications/Zeiterfassung.app` | `~/Library/Application Support/Zeiterfassung/` |
 | Linux | Beliebige AppImage-Datei | `$XDG_DATA_HOME/Zeiterfassung/` (Fallback `~/.local/share/Zeiterfassung/`) |
@@ -283,12 +283,22 @@ Damit Umlaute/ß nicht als Mojibake ankommen, gelten drei Pflichten:
 - `MIMEText(html, "html", _charset="utf-8")`
 - Betreff: `Header(subject, "utf-8")`
 
-Diese drei Pflichten gelten nur für den Mail-Kanal — Webhooks transportieren
-das Berichts-JSON/PDF direkt, ohne HTML-Body. Beide Kanäle laufen über
-denselben Dispatcher: `src/dialogs/send_task.py::perform_send` feuert Mail
-und beliebig viele Webhooks unabhängig voneinander und liefert je Kanal ein
-Result-Dict zurück, statt zu werfen (siehe `src/CLAUDE.md`, Abschnitt
-„Threading-Modell").
+Die letzten beiden liegen seit dem SMTP-Feature gebündelt in
+`src/mime_message.py::build_message` — **einmal**, für **beide** Mailwege
+(Gmail-API und SMTP bauen ihre Nachricht beide darüber). Die erste Pflicht
+(`<meta charset="utf-8">`) liegt weiterhin bei den HTML-Erzeugern selbst
+(`report.py`, `share_dialog.py`) und ist damit **nicht** an derselben Stelle
+gebündelt wie die anderen beiden — ein künftiger Mail-Kanal, der sein HTML
+selbst baut, kann diese dritte Pflicht also weiterhin still verletzen, ohne
+dass `mime_message.py` das verhindert.
+
+Diese drei Pflichten gelten nur für den Mail-Kanal (jetzt Gmail **und**
+SMTP) — Webhooks transportieren das Berichts-JSON/PDF direkt, ohne
+HTML-Body. Alle Kanäle laufen über denselben Dispatcher:
+`src/dialogs/send_task.py::perform_send` feuert Gmail, beliebig viele
+SMTP-Konten und beliebig viele Webhooks unabhängig voneinander und liefert
+je Kanal ein Result-Dict zurück, statt zu werfen (siehe `src/CLAUDE.md`,
+Abschnitt „Threading-Modell").
 
 ## Datumsformat: intern ISO, in der UI deutsch
 
@@ -644,6 +654,29 @@ nicht mehr als „offen" führen — der Verweis lautet auf diese Grenze.
 - `src/webhook_store.py` — gerätelokaler Store der Webhook-Konfiguration
   (`webhooks.json`). Enthält Konfiguration **und** Secrets und wird deshalb wie
   `token.json` gehärtet geschrieben; reist bewusst **nicht** per Drive-Sync.
+- `src/mime_message.py` — Aufbau der Mail-Nachricht, gemeinsam für Gmail-API
+  und SMTP. Hier liegen **zwei der drei** UTF-8-Pflichten (MIMEText-Charset,
+  Betreff-Header) und die Steuerzeichen-Abwehr gegen Header-Injection
+  (Audit N11) — jeweils genau einmal; `mail.send_email` und `smtp.send` bauen
+  ihre Nachricht beide hierüber
+- `src/smtp.py` — SMTP-Versand (`smtplib`/`ssl`), Verbindungstest ohne Mail
+  und **eigene** Fehlerklassifikation (`auth`/`recipient`/`tls`/`server`/
+  `offline`). Eigener Klassifikator wie bei `webhook.py`: die drei Kinds aus
+  `mail_task` würden jede Serverantwort zu „unerwarteter Fehler mit
+  Traceback" verschmelzen. TLS immer mit Zertifikatsprüfung, und
+  **fail-closed**: ein unbekannter `security`-Wert wirft, statt still
+  unverschlüsselt zu verbinden
+- `src/smtp_store.py` — gerätelokaler Store der SMTP-Konten (`smtp.json`),
+  Mechanik wie `webhook_store.py`; prüft `security` schon beim Laden. Reist
+  **nicht** per Drive-Sync. Fasst den Schlüsselbund nicht an — das Secret
+  eines gelöschten Kontos räumt der Aufrufer ab
+- `src/keyring_store.py` — Passwörter im OS-Schlüsselbund, mit Datei-Fallback
+  wenn keiner verfügbar ist. `import keyring` lazy in den Funktionen (CI),
+  und **jeder Zugriff hinter einem 5-s-Watchdog**: `keyring` ruft auf Linux
+  `collection.unlock()` ohne Timeout, und ein hängender Worker bedeutet, dass
+  `BackgroundTaskRunner` `on_done` nie ruft
+- `src/dialogs/smtp_dialog.py` — Anlegen/Bearbeiten eines SMTP-Kontos inkl.
+  Verbindungstest
 - `src/reservations.py` — Reservierungen (zukünftige Soll-Zeiten, eigenes Konzept
   neben Ist-Zeiten). Slot-Schema `{start, end, kategorie, gcal_event_id,
   send_reminder_minutes}`; `send_reminder_minutes` markiert den Slot, an dem die

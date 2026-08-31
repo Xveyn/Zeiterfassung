@@ -117,21 +117,26 @@ Dialog-Close), UI-Feedback im `winfo_exists`-geschützten `on_done`.
 Ebenso routen `send_dialog`/`share_dialog`/`export_dialog` ihre blockierenden
 Operationen (PDF-Erzeugung, `get_gmail_service` inkl. OAuth, `send_email`) über
 den injizierten `runner` (Audit M10): der blockierende Kern liegt Tk-frei in
-`send_task`/`share_task`/`export_task` (`perform_*`, getestet); die zwei
-Netz-Kerne teilen sich `mail_task.classify_mail_error`. `on_done` macht das
+`send_task`/`share_task`/`export_task` (`perform_*`, getestet); die
+Netz-Kerne teilen sich `mail_task.classify_mail_error`, `share_task` nutzt
+zusätzlich `smtp.classify_smtp_error` für den SMTP-Kanal. `on_done` macht das
 `winfo_exists`-gegatete Feedback, Persistenz passiert im Worker (überlebt
 Dialog-Close), der Primär-Button ist während des Laufs deaktiviert.
-`send_task.perform_send` ist dabei ein **Dispatcher** über beliebig viele
-Kanäle (Mail + jeder ausgewählte Webhook): jeder Kanal läuft unabhängig,
-ein Fehler in einem bricht die übrigen nicht ab, und der Dispatcher liefert
-pro Kanal genau ein Result-Dict statt selbst zu werfen (Vertrag wie die
-einzelnen Kanäle, `webhook.deliver` eingeschlossen).
+`send_task.perform_send` ist dabei ein **Dispatcher** über drei Kanaltypen
+(Gmail + n konfigurierte SMTP-Konten + n ausgewählte Webhooks): jeder Kanal
+läuft unabhängig, ein Fehler in einem bricht die übrigen nicht ab, und der
+Dispatcher liefert pro Kanal genau ein Result-Dict statt selbst zu werfen
+(Vertrag wie die einzelnen Kanäle, `webhook.deliver` eingeschlossen). Der
+Schlüsselbund-Zugriff für ein SMTP-Passwort passiert dabei **immer im
+Worker**, nie im Tk-Callback, und immer hinter dem 5-s-Watchdog aus
+`keyring_store.py` — sonst könnte ein hängender `keyring`-Call auf Linux den
+gesamten Sendevorgang blockieren, ohne dass `on_done` je feuert.
 
-**Datenschicht-Locking (Audit H1/H2/M1):** Fünf der sechs Stores
+**Datenschicht-Locking (Audit H1/H2/M1):** Fünf der sieben Stores
 (`storage`/`settings`/`conflicts_store`/`reservations`/`vacations`) teilen
 sich einen in `main()` erzeugten `RLock` (Konstruktor-Param `lock=`; ohne
 Injektion legt jeder Store einen eigenen an — Tests bleiben unverändert); nur
-`webhook_store` bringt bewusst seinen eigenen mit (s. „Daten- &
+`webhook_store` und `smtp_store` bringen bewusst ihren eigenen mit (s. „Daten- &
 Persistenz-Schicht" unten). Die Sync-Flows
 (`_run_pull_in_background`/`run_push_blocking`/`_run_compaction_blocking`/
 `reconcile_reservations`) klammern Snapshot→Merge→Apply mit diesem `data_lock`
@@ -174,8 +179,9 @@ den Store zu — dieselbe Regel wie beim Entries-Snapshot.
   `webhook_store._quarantine` (beide greifen auch bei nicht-Dict-Toplevel, tragen einen
   Grund in der Meldung und **schlucken** einen gescheiterten Rename, damit der Start
   weiterläuft); `sync_journal._atomic_write_json` (schreibt über `tempfile.mkstemp` und ist
-  die Crash-Recovery-Schicht selbst); die Secret-Schreiber `webhook_store`/`oauth_utils`/
-  `single_instance` (brauchen zusätzlich ACL-Härtung + Rename-Retry, s. `secure_file.py`).
+  die Crash-Recovery-Schicht selbst); die Secret-Schreiber `webhook_store`/`smtp_store`/
+  `oauth_utils`/`single_instance` (brauchen zusätzlich ACL-Härtung + Rename-Retry, s.
+  `secure_file.py`).
 - `storage.py` — Ist-Zeiten (JSON, Schlüssel = ISO-Datum). `reservations.py` — Reservierungen
   (zukünftige Soll-Zeiten, eigenes Konzept). `settings.py` — Einstellungen mit Defaults.
 - `conflicts_store.py` — lokale Sync-Konfliktliste. `category_defaults.py` — Default-Kategorien.
@@ -191,6 +197,14 @@ den Store zu — dieselbe Regel wie beim Entries-Snapshot.
   Enthält Konfiguration **und** Secrets, wird deshalb wie `token.json`
   gehärtet geschrieben (`secure_file.harden_windows_acl`, s.u.) und steht
   **nicht** im Sync-Doc.
+
+  `smtp_store.py` — gerätelokaler Store der SMTP-Konten (`smtp.json`).
+  Bringt aus derselben Begründung wie `WebhookStore` einen eigenen Lock mit
+  (kein Sync-Flow, `save`/`delete` halten ihren Lock über den
+  `icacls`-Subprozess) statt den geteilten `data_lock` zu nutzen. Enthält
+  Konfiguration, aber **nicht** das Passwort — das liegt im Schlüsselbund
+  (`keyring_store.py`) oder, nur als Fallback, im Klartext in `smtp.json`
+  selbst; auch dann wird die Datei gehärtet geschrieben.
 
   `VacationStore` (`vacations.json`) hängt am geteilten `data_lock` wie
   `Storage`, `Settings`, `ConflictsStore` und `ReservationStore` — anders als
@@ -397,10 +411,12 @@ Wert.
   `migrate_legacy_autostart()` überführt Alt-Shortcuts in den Registry-Key, ist aber frozen-gated
   (Repo-Modus: No-op, würde andernfalls python.exe+Repo ins Register schreiben und bestehende
   Shortcuts beschädigen).
-- `secure_file.py` — Zugriffsschutz für die drei lokal abgelegten Secrets: `token.json`
-  (`oauth_utils.write_token`), `instance-secret` (`single_instance._write_secret_atomic`)
-  und `webhooks.json` (`webhook_store._save_to_disk`, dritter Schreibpfad — enthält
-  Auth-Token/HMAC-Secrets der konfigurierten Webhooks). Alle drei Schreibpfade laufen
+- `secure_file.py` — Zugriffsschutz für die vier lokal abgelegten Secrets: `token.json`
+  (`oauth_utils.write_token`), `instance-secret` (`single_instance._write_secret_atomic`),
+  `webhooks.json` (`webhook_store._save_to_disk`, dritter Schreibpfad — enthält
+  Auth-Token/HMAC-Secrets der konfigurierten Webhooks) und `smtp.json`
+  (`smtp_store._save_to_disk`, vierter Schreibpfad — enthält, nur ohne Schlüsselbund,
+  das SMTP-Passwort im Klartext). Alle vier Schreibpfade laufen
   Temp-Datei → `chmod 0600` → `harden_windows_acl` → `os.replace`.
   Unter Windows ist chmod ein No-op, deshalb dort zusätzlich `icacls /inheritance:r
   /grant:r <user>:(F)` (Audit M8): geerbte ACEs (u.a. SYSTEM, lokale Administratoren) raus,
@@ -410,7 +426,7 @@ Wert.
   benennbarer Principal → loggen und weiter): ungehärtet ist der Status quo, eine
   gescheiterte Persistenz wäre eine Regression. Eigenes Modul, damit `single_instance`
   nichts aus dem OAuth-Umfeld importieren muss (und keiner den privaten Namen des anderen
-  nutzt, Audit N17). Wer einen vierten Secret-Schreibpfad baut, ruft diesen Helfer mit auf.
+  nutzt, Audit N17). Wer einen fünften Secret-Schreibpfad baut, ruft diesen Helfer mit auf.
   **Aufrufhäufigkeit:** der Helfer hängt an `write_token`, läuft also bei *jedem*
   Token-Refresh in Mail-, Drive- und Kalender-Pfad — ein `icacls`-Subprozess pro
   Refresh, nicht einmalig beim Anlegen. Unkritisch, weil alle diese Pfade in den
@@ -476,12 +492,17 @@ Zeit-/Kategorieänderungen. Dort liegen auch die Tk-freien Anzeige-Helfer
 `send_dialog`, `export_dialog` (Zeitraum-Modal → PDF lokal speichern),
 `webhook_dialog` (Anlegen/Bearbeiten eines Webhooks inkl. Testversand; Validierung
 über `webhook_store.validate_record`, Versand über `webhook.deliver`, beide Tk-frei),
+`smtp_dialog` (Anlegen/Bearbeiten eines SMTP-Kontos inkl. Verbindungstest; Validierung
+über `smtp_store.validate_record`, Verbindungstest über `smtp.test_connection`, beide
+Tk-frei; das Passwort geht über `keyring_store` in den Schlüsselbund bzw. bei fehlendem
+Schlüsselbund unverändert in den Datensatz für `smtp_store`),
 `settings_dialog/` (Paket, Audit H4: `dialog.py` trägt Chrome + zentrales,
 ablaufidentisches `save_settings`; je Tab eine Klasse in `tab_work/`
-`tab_mail`/`tab_google`/`tab_app`/`tab_updates`/`tab_webhooks`.py, die ihre Tk-Variablen
-als Attribute für `save_settings` exponiert — **außer** `tab_webhooks`: als einziger Tab
-exponiert er dafür **keine** Variablen, Webhooks liegen im eigenen `webhook_store` und
-werden vom `webhook_dialog` direkt gespeichert; `tab_updates` startet seinen Live-Check
+`tab_mail`/`tab_google`/`tab_app`/`tab_updates`/`tab_webhooks`/`tab_smtp`.py, die ihre
+Tk-Variablen als Attribute für `save_settings` exponiert — **außer** `tab_webhooks` und
+`tab_smtp`: beide exponieren dafür **keine** Variablen, Webhooks bzw. SMTP-Konten liegen
+im jeweils eigenen Store und werden vom `webhook_dialog` bzw. `smtp_dialog` direkt
+gespeichert; `tab_updates` startet seinen Live-Check
 bewusst erst per `<<NotebookTabChanged>>`, nicht schon beim Dialog-Öffnen;
 `oauth_task.py` = H5-OAuth-Toggle-Builder; Dark-Styling weiter via
 `theme.apply_notebook_style`).

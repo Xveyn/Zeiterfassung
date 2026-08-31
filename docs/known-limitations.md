@@ -201,3 +201,38 @@ Header-Pfad vorbeizuschreiben — Eigenbau an einer Stelle, die sonst
 zuverlässig funktioniert. **Umgehung:** beim Empfänger case-insensitiv
 vergleichen, oder einen Header-Namen wählen, den `title()` unverändert
 lässt (`X-Api-Key`, `Authorization`, `X-Hub-Signature-256`).
+
+## SMTP: keine Microsoft-Konten
+
+Der SMTP-Versand meldet sich mit Benutzer und Passwort an. Microsoft hat das
+für Outlook.com und Microsoft 365 2026 abgeschaltet (Ablehnung ab März,
+endgültig zum 30.04.2026) — auch App-Passwörter greifen dort nicht mehr, SMTP
+läuft nur noch über OAuth2. Ein Microsoft-Postfach lässt sich deshalb nicht
+als SMTP-Konto einrichten; wer eines nutzen will, geht über die Gmail-API
+oder einen anderen Anbieter.
+
+Ein eigener OAuth2-Flow für SMTP (XOAUTH2) würde das lösen, wäre aber ein
+zweiter vollständiger Auth-Flow neben dem bestehenden — bewusst nicht gebaut.
+
+## SMTP-Konten sind gerätelokal
+
+Wie Webhooks und Urlaub reisen SMTP-Konten nicht per Drive-Sync: sie enthalten
+Zugangsdaten, und die haben im Sync-Doc nichts verloren. Auf einem zweiten
+Gerät müssen die Konten deshalb neu eingerichtet werden.
+
+## macOS fragt nach jedem App-Update erneut nach dem Schlüsselbund
+
+Auf macOS hängt die Zugriffsberechtigung eines Keychain-Eintrags am
+*Designated Requirement* des zugreifenden Programms. PyInstaller signiert die
+`.app` per Default ad-hoc, und dabei ist dieses Requirement der `cdhash` —
+der sich mit **jedem** Build ändert. „Immer erlauben" gilt deshalb nur für
+genau den Build, für den es geklickt wurde; nach einem Update fragt macOS
+erneut. Das ließe sich nur mit einer echten Developer-ID-Signatur beheben.
+
+Zusätzlich schreibt `keyring` ein geändertes Passwort als Löschen-und-neu-
+Anlegen statt als Update und verwirft dabei die Berechtigung — auch ohne
+Update erscheint der Dialog also nach jeder Passwortänderung einmal wieder.
+
+Der Versand selbst ist davon nicht betroffen: wer den Dialog bestätigt, sendet
+normal weiter; wer ihn abbricht, bekommt eine Fehlermeldung statt eines
+stillen Fehlschlags.
