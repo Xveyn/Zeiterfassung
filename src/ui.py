@@ -348,6 +348,33 @@ class App:
         )
         self.header_label.place(relx=0.5, rely=0.5, anchor="center")
 
+        # Toggle-Gruppe über das Label heben (#94). Das Label liegt per
+        # `place` über der vollen Fensterbreite und wird als letztes erzeugt,
+        # steht also oben in der Stacking-Order — in der Wochenansicht
+        # übermalte sein leerer Rand (fixe Zeichen-Breite, s.o.: Box 326 px,
+        # Text nur ~236 px) die rechten 28 px des „Woche"-Toggles, sichtbar
+        # blieb ein „W". Nur ohne Sync sichtbar: mit Sync-Button und
+        # Status-Label ist das Fenster breiter, das zentrierte Label rutscht
+        # nach rechts.
+        #
+        # NICHT umgekehrt per header_label.lower(): das Label fiele damit auch
+        # unter den header_width_spacer, und dessen `bg` verdeckt dann den
+        # Titel vollständig (nachgestellt — der Header war danach leer).
+        toggle_frame.lift()
+
+        # Die zweite Hälfte von #94 — den Spacer auf den echten Textbedarf
+        # verkleinern, damit measure_max_width das Fenster nicht ~60 px zu
+        # breit pinnt — geht mit DIESER Zentrierung nicht: fensterzentriert
+        # braucht der Titel mindestens 2×(Ende der Toggle-Gruppe) + Textbreite,
+        # bei Scale 1.0 also ~518 px (2×141 + 236 für das längste KW-Label
+        # „KW 53 · 28.12.2026 – 03.01.2027"). Schrumpft das Fenster auf die
+        # vom Grid/Footer bestimmten ~490 px, kollidiert nicht mehr der leere
+        # Rand, sondern der Text selbst mit dem Toggle. Wer die Breite holen
+        # will, stellt also zuerst die Zentrierung auf den freien Bereich
+        # zwischen Toggle- und Sync-Gruppe um (gemessen 336 px, reicht auch
+        # bei 490 px Fenster) — und nimmt dafür in Kauf, dass der Titel
+        # versetzt, sobald die Sync-Widgets rechts erscheinen.
+
         settings_button = icon_button(
             frame, "\u2699", self._open_settings,
             fg=TEXT_MUTED, hover_fg=TEXT,
