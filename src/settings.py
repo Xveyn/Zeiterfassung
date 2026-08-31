@@ -131,6 +131,11 @@ DEFAULTS = {
     # vacation_hours_per_day bewusst NICHT in SYNCED_SETTING_KEYS: der
     # Urlaubs-Store selbst reist auch nicht mit.
     "vacation_gcal_enabled": True,
+    # Stundenzeile in der Urlaubszelle des Kalenders. Default an: so sah die
+    # Zelle aus, seit es Urlaub gibt — der Schalter ist das Opt-out für die
+    # ruhigere Ansicht. Reine Anzeige und deshalb wie die übrigen
+    # Urlaubs-Keys NICHT in SYNCED_SETTING_KEYS.
+    "vacation_show_hours": True,
 }
 
 _COERCE_FAILED = object()

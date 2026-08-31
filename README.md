@@ -33,13 +33,15 @@ Desktop-App zur Erfassung von Arbeitszeiten mit Kalenderansicht, PDF-Report und 
 
 ## Features
 
+<sub>Diese Seite beschreibt den Stand auf `master`. *(ab X.Y.Z)* nennt die Version, mit der ein Feature erscheint — liegt sie über dem [neuesten Release](https://github.com/Xveyn/Zeiterfassung/releases/latest), ist es fertig, aber noch nicht ausgeliefert. Was die installierte Version kann, steht im [CHANGELOG](CHANGELOG.md).</sub>
+
 ### Zeiten erfassen
 
 - **Kalenderansicht** — Monats- und Wochenansicht mit Tageseinträgen (Start, Ende, Pause) und Netto-Stunden je Tag; Stunden durchgehend in Stunden/Minuten statt dezimal
 - **Kategorien** — Mehrere Zeitblöcke pro Tag mit eigenen Kategorien; Standard-Start/-Ende pro Kategorie, optional pro Wochentag
 - **Reservierungen & Google-Kalender** — Zukünftige Arbeitszeiten pro Tag reservieren (eigenes Konzept neben den Ist-Zeiten, im Kalender als violetter Eck-Punkt markiert); optionaler Abgleich mit einem wählbaren Google Kalender
 - **Reservierungs-Erinnerungen** — Optionale Toast-Benachrichtigung, wenn ein für heute reservierter Slot fällig wird und noch keine Ist-Zeit erfasst ist (konfigurierbare Vorlaufzeit)
-- **Urlaub** — Urlaubszeiträume als Einheit eintragen (Name, Von/Bis, Stunden pro Tag oder Gesamtstunden auf die Arbeitstage verteilt); im Kalender ein durchgehender türkiser Block über Wochenenden und Feiertage hinweg, einzelne Tage nachträglich anpassbar (halbe Urlaubstage). Urlaub und Arbeitszeit schließen sich am selben Tag aus — ein Urlaubstag nimmt keine Arbeitszeit an, und ein Urlaub lässt sich nicht über bereits erfasste Tage legen. Optional als Ganztags-Termine im Google Kalender — im Dialog „Urlaub verwalten" ein- und ausschaltbar; beim Ausschalten räumt die App ihre Termine auf Wunsch wieder weg. Gerätelokal — Urlaub reist **nicht** über den Drive-Sync mit
+- **Urlaub** *(ab 1.22.0)* — Urlaubszeiträume als Einheit eintragen (Name, Von/Bis, Stunden pro Tag oder Gesamtstunden auf die Arbeitstage verteilt); im Kalender ein durchgehender türkiser Block über Wochenenden und Feiertage hinweg, einzelne Tage nachträglich anpassbar (halbe Urlaubstage). Urlaub und Arbeitszeit schließen sich am selben Tag aus — ein Urlaubstag nimmt keine Arbeitszeit an, und ein Urlaub lässt sich nicht über bereits erfasste Tage legen. Die Stundenzeile in der Kalenderzelle („4:00 h") lässt sich im Dialog „Urlaub verwalten" abschalten *(ab 1.23.0)* — der Zeitraum bleibt dann als Block mit „Urlaub" stehen, die Stunden stehen weiterhin im Tooltip. Optional als Ganztags-Termine im Google Kalender — im Dialog „Urlaub verwalten" ein- und ausschaltbar; beim Ausschalten räumt die App ihre Termine auf Wunsch wieder weg. Gerätelokal — Urlaub reist **nicht** über den Drive-Sync mit
 - **Feiertage** — Feiertage des gewählten Bundeslands sind im Kalender markiert und werden beim Anlegen eines Eintrags nachgefragt
 - **Nur Werktage** — Optional lässt sich das Wochenende komplett deaktivieren: Sa/So verschwinden aus Kalender, Standardzeiten, Bericht, Mailversand und PDF-Export. Vorhandene Wochenend-Einträge bleiben gespeichert und sind sofort wieder da, wenn die Einstellung zurückgenommen wird
 - **Wochenstunden-Limit** — Optionales Werkstudenten-Limit über einen konfigurierbaren Zeitraum mit Warnung beim Überschreiten
@@ -56,7 +58,7 @@ Desktop-App zur Erfassung von Arbeitszeiten mit Kalenderansicht, PDF-Report und 
 - **SMTP-Versand** *(ab 1.23.0)* — Berichte über einen eigenen Mail-Server statt über die Gmail-API verschicken; mehrere Konten mit je eigenem Empfänger möglich
 - **Webhook-Versand** — Der Bericht lässt sich zusätzlich zur E-Mail an konfigurierbare HTTP-Endpunkte senden (JSON und/oder PDF, optional mit Token oder HMAC-Signatur); gerätelokal konfiguriert
 - **PDF-Export** — Bericht für einen frei gewählten Zeitraum direkt als PDF lokal speichern (ohne Mail-Versand)
-- **Urlaub im Bericht** — Optionales Häkchen „Urlaub ausweisen“: der Bericht bekommt einen eigenen Urlaubs-Block je Zeitraum und die Zeile „Zu vergüten gesamt“. „Gesamt“ bleibt die reine Ist-Zeit
+- **Urlaub im Bericht** *(ab 1.22.0)* — Optionales Häkchen „Urlaub ausweisen“: der Bericht bekommt einen eigenen Urlaubs-Block je Zeitraum und die Zeile „Zu vergüten gesamt“. „Gesamt“ bleibt die reine Ist-Zeit
 - **Zeitraumwahl** — Flexibler Datumsbereich für Reports, mit Filter auf einzelne Kategorien
 - **Sende-Erinnerung** — Optionale Toast-Erinnerung, die Arbeitszeiten zu verschicken: monatlich an einem frei wählbaren Tag (auf Wunsch von Wochenenden und Feiertagen weg verschoben) und/oder tagesbezogen, wenn ein dafür markierter Reservierungs-Slot ausläuft. Der Sende-Dialog schlägt den Zeitraum seit der letzten Erinnerung vor
 - **Teilen & Importieren** — Eigene Arbeitszeiten als JSON-Anhang per Mail an eine zweite Person teilen; der Empfänger importiert sie mit Zeitraum-Filter und drei Konflikt-Modi (alles importieren / alles lokal / pro Tag entscheiden)
@@ -402,7 +404,7 @@ Wiederhole Schritte 3-4 auf jedem weiteren Gerät mit demselben Google-Konto.
 ### Hinweise zum Sync
 
 - **Geräte-ID** — jede Installation bekommt beim ersten Start eine eindeutige ID. Installierte Builds leiten sie aus einer stabilen System-ID des Rechners ab (gehasht, siehe `src/device_id.py`) — sie übersteht damit eine Neuinstallation der App; im Repo-/Skript-Modus bleibt es bei einer in `settings.json` gespeicherten Zufalls-UUID. Im Konflikt-Dialog siehst du, von welchem Gerät die jeweilige Version kommt.
-- **Gerätename** — weil die Geräte-ID nur ein Hex-Wert ist, trägt jedes Gerät zusätzlich einen lesbaren Namen (Einstellungen → Google, beim ersten Start aus dem Hostnamen vorbelegt). Er reist über die Sync-Datei mit, sodass der Konflikt-Dialog „Laptop Arbeit · 6800a51a…" statt nur der ID zeigt. Das Feld darf leer bleiben — dann steht dort weiter nur die gekürzte ID; dasselbe gilt für Geräte, die seit dem Update noch nicht gesynct haben.
+- **Gerätename** *(ab 1.22.0)* — weil die Geräte-ID nur ein Hex-Wert ist, trägt jedes Gerät zusätzlich einen lesbaren Namen (Einstellungen → Google, beim ersten Start aus dem Hostnamen vorbelegt). Er reist über die Sync-Datei mit, sodass der Konflikt-Dialog „Laptop Arbeit · 6800a51a…" statt nur der ID zeigt. Das Feld darf leer bleiben — dann steht dort weiter nur die gekürzte ID; dasselbe gilt für Geräte, die seit dem Update noch nicht gesynct haben.
 - **Was synchronisiert wird:** Zeiteinträge + Mail-Vorlagen-Settings (Empfänger, Name, Stundensatz, Betreff, Begrüßung, Inhalt, Grußformel). Gerätespezifisches (Autostart, Standardzeiten pro Wochentag, Update-Einstellungen/-Status) bleibt lokal.
 - **Wo die Sync-Datei liegt:** Im versteckten `appDataFolder` deines Google Drives — nicht über `drive.google.com` einsehbar, nur diese App kommt dran.
 - **Test-Modus:** Solange dein Cloud-Projekt im Test-Modus bleibt, müssen alle Nutzer (deine eigenen Geräte zählen mit deiner E-Mail) als Testnutzer eingetragen sein. Verifizierung durch Google ist für rein private Nutzung nicht nötig.
@@ -531,7 +533,7 @@ Das meiste sind JSON-Dateien — `instance-secret` und das Protokoll sind es nic
 
 - **zeiterfassung.json** — Zeiteinträge (Schlüssel: ISO-Datum `YYYY-MM-DD`)
 - **reservations.json** — Reservierungen, also zukünftige Soll-Zeiten (eigenes Konzept neben den Ist-Zeiten)
-- **vacations.json** — Urlaubszeiträume. Gerätelokal: reist bewusst **nicht** über den Drive-Sync mit
+- **vacations.json** *(ab 1.22.0)* — Urlaubszeiträume. Gerätelokal: reist bewusst **nicht** über den Drive-Sync mit
 - **settings.json** — Benutzereinstellungen
 - **conflicts.json** — Lokaler Spiegel der Sync-Konflikte (nur vorhanden bei aktivem Sync und mindestens einem registrierten Konflikt)
 - **sync_history.json** — Marker „wurde auf diesem Gerät je synchronisiert/abgeglichen"; schützt gelöschte Tage davor, nach einer beschädigten `settings.json` zurückzukehren

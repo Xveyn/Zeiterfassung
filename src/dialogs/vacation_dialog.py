@@ -171,7 +171,8 @@ def _period_line(period):
 
 
 def open_vacation_dialog(parent, vacation_store, settings, on_change=None,
-                         storage=None, reservation_store=None, runner=None):
+                         storage=None, reservation_store=None, runner=None,
+                         on_display_change=None):
     """Übersicht aller Urlaubsperioden mit Neu / Bearbeiten / Löschen.
 
     storage/reservation_store dienen allein der Kollisionsprüfung beim
@@ -180,6 +181,12 @@ def open_vacation_dialog(parent, vacation_store, settings, on_change=None,
     runner: der BackgroundTaskRunner der App. Nur für den Kalender-Schalter —
     das Aufräumen beim Abschalten listet und löscht über das Netz und läuft
     deshalb über `runner.purge_vacations` (Audit H5), nicht im UI-Thread.
+
+    on_change vs. on_display_change: `on_change` meldet eine Änderung an den
+    Urlaubs*daten* und stößt neben dem Neuzeichnen auch den Kalender-Abgleich
+    an. Der Anzeige-Schalter ändert keine Daten — er hängt deshalb an
+    `on_display_change` (nur neu zeichnen), sonst löste ein Häkchen für eine
+    Textzeile einen Netz-Reconcile aus.
     """
     dialog = create_dialog(parent, "Urlaub verwalten")
 
@@ -200,7 +207,19 @@ def open_vacation_dialog(parent, vacation_store, settings, on_change=None,
             font=FONT, bg=BG, fg=TEXT, selectcolor=CELL_BG,
             activebackground=BG, activeforeground=TEXT,
             highlightthickness=0, bd=0, anchor="w",
-        ).pack(anchor="w", padx=12, pady=(0, 6))
+        ).pack(anchor="w", padx=12, pady=(0, 2))
+
+    # Anzeige-Schalter für die Stundenzeile der Urlaubszelle im Kalender.
+    # Anders als der Kalender-Schalter darüber immer gebaut: er hängt an
+    # nichts Externem, und die Zelle gibt es, sobald ein Urlaub existiert.
+    show_hours_var = tk.BooleanVar(value=bool(settings.get("vacation_show_hours")))
+    tk.Checkbutton(
+        dialog, text="Stunden an Urlaubstagen im Kalender anzeigen",
+        variable=show_hours_var, command=lambda: _toggle_show_hours(),
+        font=FONT, bg=BG, fg=TEXT, selectcolor=CELL_BG,
+        activebackground=BG, activeforeground=TEXT,
+        highlightthickness=0, bd=0, anchor="w",
+    ).pack(anchor="w", padx=12, pady=(0, 6))
 
     # selectbackground=ACCENT wie in conflicts_dialog.py und tab_webhooks.py.
     # Stand hier auf CELL_BG, also auf der Hintergrundfarbe der Liste: die
@@ -242,6 +261,26 @@ def open_vacation_dialog(parent, vacation_store, settings, on_change=None,
         _reload()
         if on_change is not None:
             on_change()
+
+    def _toggle_show_hours():
+        """Blendet die Stundenzeile in der Urlaubszelle ein/aus.
+
+        Reine Anzeige — kein Kalender-Abgleich, nur ein Neuzeichnen über
+        `on_display_change`. Schlägt das Schreiben fehl, wandert das Häkchen
+        zurück, damit Anzeige und Zustand nicht auseinanderlaufen (wie in
+        `_toggle_push`).
+        """
+        enabled = bool(show_hours_var.get())
+        try:
+            settings.set("vacation_show_hours", enabled)
+        except OSError as e:
+            show_hours_var.set(not enabled)
+            themed_showerror(
+                dialog, "Einstellung nicht gespeichert",
+                f"Die Einstellungen konnten nicht geschrieben werden:\n\n{e}")
+            return
+        if on_display_change is not None:
+            on_display_change()
 
     def _toggle_push():
         """Schaltet den Kalender-Push um.
