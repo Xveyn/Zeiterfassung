@@ -207,17 +207,32 @@ def open_share_dialog(parent, storage, settings, base_path, runner, reservation_
     transport_labels = (["Gmail"] if gmail_possible else []) + \
         [a.get("name", "") for a in accounts]
     transport_var = tk.StringVar(value=transport_labels[0])
+    transport_combo = None
     if len(transport_labels) > 1:
         tk.Label(dialog, text="Versand über:", font=FONT, bg=BG, fg=TEXT).grid(
             row=row, column=0, padx=(20, 6), pady=(0, 4), sticky="w")
-        dark_combo(dialog, transport_var, transport_labels, width=24).grid(
-            row=row, column=1, padx=(0, 20), pady=(0, 4), sticky="w")
+        transport_combo = dark_combo(dialog, transport_var, transport_labels, width=24)
+        transport_combo.grid(row=row, column=1, padx=(0, 20), pady=(0, 4), sticky="w")
         row += 1
 
     def _chosen_transport():
-        """Das gewählte SMTP-Konto, oder None für den Gmail-Weg."""
-        return next(
-            (a for a in accounts if a.get("name") == transport_var.get()), None)
+        """Das gewählte SMTP-Konto, oder None für den Gmail-Weg.
+
+        Über den INDEX aufgelöst, nicht über den angezeigten Namen: heißt ein
+        SMTP-Konto wörtlich "Gmail", erscheint das Label zweimal in
+        `transport_labels`, und eine Namens-Suche fände in beiden Fällen den
+        ersten Treffer — verschickt würde dann über einen anderen Weg als
+        angezeigt. Position 0 ist Gmail, sofern `gmail_possible`; sonst
+        verschiebt sich der Offset in `accounts` um eins.
+        """
+        index = transport_combo.current() if transport_combo is not None else 0
+        if gmail_possible:
+            if index == 0:
+                return None
+            index -= 1
+        if 0 <= index < len(accounts):
+            return accounts[index]
+        return None
 
     tk.Label(
         dialog, text="Empfänger:", font=FONT, bg=BG, fg=TEXT,
