@@ -231,6 +231,13 @@ gegenchecken, nicht blind auf „latest" gehen.
 gepinnt — kein Lockfile, keine Hashes. Wer eine direkte Dep hinzufügt, pinnt sie
 `==` und ergänzt sie in der README-Abhängigkeiten-Tabelle.
 
+Bewusste Ausnahme von dieser Regel: `jaraco.functools`/`jaraco.context`/
+`importlib_metadata` (Transitive von `keyring`) sind einzeln gepinnt — sie
+fordern in ihren aktuellen Versionen bereits Python ≥3.10 und damit ohne
+Puffer genau unser CI-/Release-Python; Begründung im Kommentar über den drei
+Zeilen in `requirements.txt`. Kein Freibrief, weitere Transitive zu pinnen —
+nur diese drei tragen dasselbe Risiko.
+
 `release.yml` installiert `-r requirements.txt` plus das reine Build-Tooling
 `pip-licenses==5.5.5` (erzeugt `THIRD-PARTY-NOTICES.txt`). PyInstaller kommt
 gepinnt aus `requirements.txt` — **nicht** zusätzlich auf die Install-Zeile
@@ -672,9 +679,11 @@ nicht mehr als „offen" führen — der Verweis lautet auf diese Grenze.
   eines gelöschten Kontos räumt der Aufrufer ab
 - `src/keyring_store.py` — Passwörter im OS-Schlüsselbund, mit Datei-Fallback
   wenn keiner verfügbar ist. `import keyring` lazy in den Funktionen (CI),
-  und **jeder Zugriff hinter einem 5-s-Watchdog**: `keyring` ruft auf Linux
+  und **jeder Zugriff hinter einem 30-s-Watchdog**: `keyring` ruft auf Linux
   `collection.unlock()` ohne Timeout, und ein hängender Worker bedeutet, dass
-  `BackgroundTaskRunner` `on_done` nie ruft
+  `BackgroundTaskRunner` `on_done` nie ruft. `get_secret` liefert `None`, wenn
+  sich das Vorhandensein eines Passworts nicht ermitteln ließ (Timeout/Fehler
+  ohne lokale Fallback-Kopie) — Aufrufer dürfen sich damit nicht anmelden
 - `src/dialogs/smtp_dialog.py` — Anlegen/Bearbeiten eines SMTP-Kontos inkl.
   Verbindungstest
 - `src/reservations.py` — Reservierungen (zukünftige Soll-Zeiten, eigenes Konzept
@@ -722,7 +731,7 @@ nicht mehr als „offen" führen — der Verweis lautet auf diese Grenze.
 - `src/holidays_de.py` — Feiertags-Lookup (über `holidays`-Lib)
 - `src/paths.py` — `get_base_path()` dispatched über `platform.system()` und Frozen- vs. Repo-Modus; `relaunch_command()` baut das Neustart-Kommando (Exe im Frozen-Build, `python -m src.main` im Repo)
 - `src/autostart.py` — plattformabhängiger Autostart (Windows-**Registry** HKCU Run, gleicher Wertname `Zeiterfassung` wie `installer.iss` → strukturell ein Eintrag; macOS-LaunchAgent / Linux `.desktop`). `is_autostart_enabled()` liest den echten Zustand, `migrate_legacy_autostart()` überführt Alt-Startup-Shortcuts frozen-gated in die Registry
-- `src/secure_file.py` — Zugriffsschutz für die lokal abgelegten Secrets (`token.json`, `instance-secret`): unter Windows `icacls`-ACL statt des dort wirkungslosen `chmod 0600` (Audit M8); best-effort, scheitert nie den Schreibvorgang
+- `src/secure_file.py` — Zugriffsschutz für die lokal abgelegten Secrets (`token.json`, `instance-secret`, `webhooks.json`, `smtp.json`): unter Windows `icacls`-ACL statt des dort wirkungslosen `chmod 0600` (Audit M8); best-effort, scheitert nie den Schreibvorgang
 - `src/single_instance.py` — Tk-freier Single-Instance-Guard (pro-Nutzer-Localhost-Port, `acquire`/`serve`/`release`); verhindert parallele Instanzen und holt bei manuellem Zweitstart das vorhandene Fenster nach vorn (SHOW), beim Autostart-Doppelfeuer ohne Fenster-Pop (PING)
 - `src/devices.py` — lesbare **Gerätenamen** für die Sync-Anzeige (Konfliktdialog): Ableitung aus dem Hostnamen, Sanitizing (Fremddaten!) und die Registry `{device_id: {name, updated_at}}`, die im Sync-Doc unter `devices` mitreist. Bewusst **ohne** Schema-Bump additiv — `SCHEMA_VERSION` bleibt 4, sonst pausierte `remote_is_newer` den Sync jedes älteren Geräts wegen eines Anzeigefelds. Fehlt oder bricht die Registry, zeigt der Dialog die gekürzte ID wie zuvor. Der eigene Name ist **kein** synchronisierter Setting-Key (der wäre ein einziger globaler Wert, die Geräte würden ihn sich gegenseitig überschreiben) — er lebt gerätelokal in `device_name`, der Spiegel der anderen in `known_devices`
 - `src/device_id.py` — stabile, hardware-abgeleitete Geräte-ID für den Sync (Windows `MachineGuid` / macOS `IOPlatformUUID` / Linux `/etc/machine-id`, SHA-256-gehasht); nur für installierte Builds (`main.py::_ensure_device_id`, gated auf `sys.frozen`) — Repo-/Skript-Modus bleibt bei der alten, in `settings.json` persistierten Zufalls-UUID, damit eine parallel laufende Dev-Instanz nie dieselbe device_id wie eine echte Installation auf demselben Rechner bekommt

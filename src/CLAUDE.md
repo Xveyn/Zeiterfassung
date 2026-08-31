@@ -118,8 +118,9 @@ Ebenso routen `send_dialog`/`share_dialog`/`export_dialog` ihre blockierenden
 Operationen (PDF-Erzeugung, `get_gmail_service` inkl. OAuth, `send_email`) über
 den injizierten `runner` (Audit M10): der blockierende Kern liegt Tk-frei in
 `send_task`/`share_task`/`export_task` (`perform_*`, getestet); die
-Netz-Kerne teilen sich `mail_task.classify_mail_error`, `share_task` nutzt
-zusätzlich `smtp.classify_smtp_error` für den SMTP-Kanal. `on_done` macht das
+Netz-Kerne teilen sich `mail_task.classify_mail_error`, `send_task` und
+`share_task` nutzen für den SMTP-Kanal zusätzlich `smtp.classify_smtp_error`
+(`smtp_dialog.do_test` ebenso, für den Verbindungstest). `on_done` macht das
 `winfo_exists`-gegatete Feedback, Persistenz passiert im Worker (überlebt
 Dialog-Close), der Primär-Button ist während des Laufs deaktiviert.
 `send_task.perform_send` ist dabei ein **Dispatcher** über drei Kanaltypen
@@ -128,9 +129,13 @@ läuft unabhängig, ein Fehler in einem bricht die übrigen nicht ab, und der
 Dispatcher liefert pro Kanal genau ein Result-Dict statt selbst zu werfen
 (Vertrag wie die einzelnen Kanäle, `webhook.deliver` eingeschlossen). Der
 Schlüsselbund-Zugriff für ein SMTP-Passwort passiert dabei **immer im
-Worker**, nie im Tk-Callback, und immer hinter dem 5-s-Watchdog aus
+Worker**, nie im Tk-Callback, und immer hinter dem 30-s-Watchdog aus
 `keyring_store.py` — sonst könnte ein hängender `keyring`-Call auf Linux den
-gesamten Sendevorgang blockieren, ohne dass `on_done` je feuert.
+gesamten Sendevorgang blockieren, ohne dass `on_done` je feuert. `get_secret`
+liefert `None`, wenn sich nicht ermitteln ließ, ob ein Passwort existiert
+(Timeout/Fehler ohne lokale Fallback-Kopie) — alle drei Aufrufer (`send_task`,
+`share_task`, `smtp_dialog.do_test`) melden das als eigenen Fehlerfall statt
+sich mit leerem Passwort anzumelden.
 
 **Datenschicht-Locking (Audit H1/H2/M1):** Fünf der sieben Stores
 (`storage`/`settings`/`conflicts_store`/`reservations`/`vacations`) teilen
