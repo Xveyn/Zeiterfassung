@@ -7,6 +7,7 @@ statt das echte Backend des Testrechners anzufassen — ein Test darf keine
 Einträge im Windows-Anmeldeinformationsmanager hinterlassen.
 """
 
+import logging
 import sys
 import threading
 import types
@@ -213,3 +214,31 @@ def test_persist_password_does_not_mutate_its_input(fake_keyring):
     candidate = _record()
     keyring_store.persist_password(candidate, "neu")
     assert candidate == _record()
+
+
+# --- Kein Record-Wert im Log ---------------------------------------------
+
+def test_delete_secret_does_not_log_the_record_id(fake_keyring, caplog):
+    """Die id stammt aus einem Record, der im Datei-Fallback das
+    Klartext-Passwort traegt. Ein Feld aus so einem Dict gehoert nicht ins
+    Log — `logs/zeiterfassung.log` ist ungehaertet und genau die Datei, die
+    Nutzer bei Problemen anhaengen. Die Meldung bleibt ohne die id
+    aussagekraeftig."""
+    fake_keyring(working=False)
+    with caplog.at_level(logging.DEBUG, logger="src.keyring_store"):
+        keyring_store.delete_secret("rec-4711-abcdef")
+    assert "rec-4711-abcdef" not in caplog.text
+
+
+def test_delete_secret_timeout_does_not_log_the_record_id(
+        fake_keyring, caplog, monkeypatch):
+    """Derselbe Grund im Timeout-Zweig."""
+    gate = threading.Event()
+    fake_keyring(block=gate)
+    monkeypatch.setattr(keyring_store, "WATCHDOG_TIMEOUT", 0.05)
+    try:
+        with caplog.at_level(logging.DEBUG, logger="src.keyring_store"):
+            keyring_store.delete_secret("rec-4711-abcdef")
+    finally:
+        gate.set()
+    assert "rec-4711-abcdef" not in caplog.text

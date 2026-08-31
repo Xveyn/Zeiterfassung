@@ -164,12 +164,17 @@ def delete_secret(record_id: str) -> None:
     try:
         ok, _ = _call_guarded(work)
     except Exception:
-        log.debug("Secret %r nicht gelöscht (kein Schlüsselbund oder kein "
-                  "Eintrag)", record_id, exc_info=True)
+        # Bewusst OHNE die record_id: sie wird aus einem Datensatz gelesen,
+        # der im Datei-Fallback das Klartext-Passwort trägt. Ein Feld aus
+        # so einem Dict gehört nicht ins Log — logs/zeiterfassung.log ist
+        # ungehärtet und genau die Datei, die Nutzer bei Problemen anhängen.
+        # (CodeQL flaggt den Zugriff entsprechend, py/clear-text-logging.)
+        log.debug("Ein Secret ließ sich nicht löschen (kein Schlüsselbund "
+                  "oder kein Eintrag)", exc_info=True)
         return
     if not ok:
-        log.warning("Schlüsselbund antwortet nicht — Secret %r blieb stehen",
-                    record_id)
+        # Ebenfalls ohne die record_id, s. o.
+        log.warning("Schlüsselbund antwortet nicht — ein Secret blieb stehen")
 
 
 def persist_password(candidate: dict[str, Any], typed: str,
