@@ -204,3 +204,116 @@ def test_perform_send_survives_send_mail_without_mail_data(monkeypatch):
     res = perform_send(**_kwargs(send_mail=True, mail=None,
                                  webhooks=[_hook("A")]))
     assert [r["name"] for r in res["results"]] == ["A"]
+
+
+def _account(**over):
+    base = {
+        "id": "rec-1", "name": "Firma", "enabled": True,
+        "host": "mail.example.com", "port": 587, "security": "starttls",
+        "username": "user@example.com", "from_addr": "user@example.com",
+        "recipient": "buchhaltung@example.com",
+        "password_location": "keyring",
+    }
+    base.update(over)
+    return base
+
+
+def test_smtp_account_is_sent_with_pdf(monkeypatch):
+    sent = []
+    monkeypatch.setattr(st, "generate_pdf", lambda *a, **k: b"PDF")
+    monkeypatch.setattr(st.keyring_store, "get_secret", lambda record: "geheim")
+    monkeypatch.setattr(st.smtp, "send",
+                        lambda record, password, **kw: sent.append((record, password, kw)))
+
+    res = perform_send(**_kwargs(send_mail=False, smtp_accounts=[_account()]))
+
+    assert [r["ok"] for r in res["results"]] == [True]
+    assert res["results"][0]["channel"] == "smtp"
+    record, password, kw = sent[0]
+    assert password == "geheim"
+    assert kw["attachment_bytes"] == b"PDF"
+    assert kw["attachment_filename"] == "r.pdf"
+    assert kw["subject"] == "Subj"
+
+
+def test_smtp_result_name_shows_the_recipient(monkeypatch):
+    """Bei genau einem Ergebnis meldet der Dialog „wurde an {name} gesendet" —
+    dort stand bisher immer eine Adresse, nie ein Kontoname."""
+    monkeypatch.setattr(st, "generate_pdf", lambda *a, **k: b"PDF")
+    monkeypatch.setattr(st.keyring_store, "get_secret", lambda record: "geheim")
+    monkeypatch.setattr(st.smtp, "send", lambda *a, **k: None)
+
+    res = perform_send(**_kwargs(send_mail=False, smtp_accounts=[_account()]))
+    assert res["results"][0]["name"] == "Firma (buchhaltung@example.com)"
+
+
+def test_smtp_failure_does_not_stop_the_other_channels(monkeypatch):
+    import smtplib
+
+    _patch_mail_ok(monkeypatch)
+    monkeypatch.setattr(st.keyring_store, "get_secret", lambda record: "geheim")
+
+    def boom(record, password, **kw):
+        raise smtplib.SMTPAuthenticationError(535, b"nope")
+
+    monkeypatch.setattr(st.smtp, "send", boom)
+
+    res = perform_send(**_kwargs(smtp_accounts=[_account()]))
+
+    by_channel = {r["channel"]: r for r in res["results"]}
+    assert by_channel["mail"]["ok"] is True
+    assert by_channel["smtp"]["ok"] is False
+    assert by_channel["smtp"]["kind"] == "auth"
+
+
+def test_pdf_failure_takes_smtp_down_but_json_webhooks_survive(monkeypatch):
+    """SMTP haengt die PDF an wie der Mail-Kanal — ohne sie kann es nicht
+    senden. JSON-Webhooks brauchen sie nicht und laufen weiter."""
+    def boom(*a, **k):
+        raise RuntimeError("kaputt")
+
+    monkeypatch.setattr(st, "generate_pdf", boom)
+    monkeypatch.setattr(st.webhook, "build_json_payload", lambda **k: {"x": 1})
+    monkeypatch.setattr(st.webhook, "deliver",
+                        lambda *a, **k: {"ok": True, "status": 200})
+
+    res = perform_send(**_kwargs(
+        send_mail=False, webhooks=[_hook()], smtp_accounts=[_account()]))
+
+    by_channel = {r["channel"]: r for r in res["results"]}
+    assert by_channel["smtp"]["ok"] is False
+    assert by_channel["webhook"]["ok"] is True
+
+
+def test_smtp_without_mail_data_fails_instead_of_sending_an_empty_mail(monkeypatch):
+    """Der Dialog liefert Betreff und HTML, sobald Konten gewaehlt sind. Faellt
+    das je aus (direkter Aufruf, uebersehener Zweig beim Refactor), darf der
+    Dispatcher NICHT still eine Mail mit leerem Betreff und leerem Body
+    verschicken — und ein mail["subject"] waere ein KeyError ausserhalb jedes
+    try: der Runner schluckt ihn, on_done feuert nie, der Dialog steht
+    dauerhaft auf „Sende…"."""
+    sent = []
+    monkeypatch.setattr(st, "generate_pdf", lambda *a, **k: b"PDF")
+    monkeypatch.setattr(st.keyring_store, "get_secret", lambda record: "geheim")
+    monkeypatch.setattr(st.smtp, "send", lambda *a, **k: sent.append(1))
+
+    res = perform_send(**_kwargs(
+        send_mail=False, mail=None, smtp_accounts=[_account()]))
+
+    assert sent == []
+    assert [r["ok"] for r in res["results"]] == [False]
+    assert res["results"][0]["channel"] == "smtp"
+
+
+def test_smtp_accounts_default_to_empty(monkeypatch):
+    """Bestandsaufrufer ohne den neuen Parameter laufen unveraendert."""
+    _patch_mail_ok(monkeypatch)
+    res = perform_send(**_kwargs())
+    assert [r["channel"] for r in res["results"]] == ["mail"]
+
+
+def test_kind_texts_cover_the_new_smtp_kinds():
+    """Sonst stuende im Ergebnis-Dialog nur „Fehler"."""
+    from src.dialogs.send_task import _KIND_TEXTS
+    assert "recipient" in _KIND_TEXTS
+    assert "tls" in _KIND_TEXTS
