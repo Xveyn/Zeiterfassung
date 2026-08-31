@@ -27,6 +27,7 @@ import pytest
 ANNOTATED_MODULES = [
     "src/time_utils.py",
     "src/webhook.py",
+    "src/smtp.py",
     "src/share.py",
     "src/workweek.py",
     "src/reminders.py",
