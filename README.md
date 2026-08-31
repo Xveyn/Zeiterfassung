@@ -162,6 +162,7 @@ python -m src.main
 | `xhtml2pdf` | PDF-Generierung aus HTML |
 | `pyinstaller` | Paketierung als Standalone-Binary |
 | `holidays` | Feiertags-Lookup (deutsche Feiertage) |
+| `keyring` | SMTP-Passwörter im Schlüsselbund des Betriebssystems |
 | `pystray` | Infobereich-Icon (Minimize-to-Tray) |
 | `Pillow` | Icon-/Bildverarbeitung (Tray-Icon) |
 | `pyobjc-framework-Cocoa` | Natives macOS-Tray (nur macOS) |

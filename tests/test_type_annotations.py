@@ -41,6 +41,7 @@ ANNOTATED_MODULES = [
     "src/device_id.py",
     "src/devices.py",
     "src/secure_file.py",
+    "src/keyring_store.py",
     "src/updater.py",
     "src/changelog.py",
     "src/desktop_entry.py",
