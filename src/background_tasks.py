@@ -22,7 +22,8 @@ log = logging.getLogger(__name__)
 
 class BackgroundTaskRunner:
     def __init__(self, marshal, settings, base_path, reservation_store,
-                 reservations_active, storage=None, data_lock=None):
+                 reservations_active, storage=None, data_lock=None,
+                 vacation_store=None):
         self._marshal = marshal                          # App._marshal_to_ui
         self._settings = settings
         self._base_path = base_path
@@ -30,6 +31,12 @@ class BackgroundTaskRunner:
         self._reservations_active = reservations_active  # callable -> bool
         self._storage = storage
         self._data_lock = data_lock                      # geteilter Store-RLock
+        # vacation_store: letzter Parameter mit Default — ui.py:112-113 ruft
+        # den Konstruktor POSITIONAL auf. Ein Einfügen "neben reservation_store"
+        # würde die nachfolgenden Positional-Args (reservations_active, storage)
+        # stumm verschieben; kein Test fängt das ab, weil test_background_tasks.py
+        # per **kw konstruiert (s. Docstring von run_calendar_reconcile).
+        self._vacation_store = vacation_store
 
     def run(self, fn, on_done=None):
         """Fuehrt fn() in einem Daemon-Thread aus und liefert dessen Rueckgabe
@@ -151,7 +158,8 @@ class BackgroundTaskRunner:
         def fn():
             return run_calendar_reconcile(
                 self._reservation_store, self._settings, self._base_path,
-                self._storage, data_lock=self._data_lock)
+                self._storage, data_lock=self._data_lock,
+                vacation_store=self._vacation_store)
 
         def on_done(result):
             if result.get("ok"):
@@ -160,15 +168,16 @@ class BackgroundTaskRunner:
         self.run(fn, on_done)
 
     def trigger_reconcile(self, on_done):
-        """Stoesst nach einer Reservierungsaenderung den Abgleich an. Das
-        Ergebnis geht IMMER an on_done(result) (User hat aktiv gespeichert und
-        erwartet Feedback)."""
+        """Stoesst nach einer Reservierungs- oder Urlaubsaenderung den
+        Abgleich an. Das Ergebnis geht IMMER an on_done(result) (User hat
+        aktiv gespeichert und erwartet Feedback)."""
         if not self._reservations_active():
             return
 
         def fn():
             return run_calendar_reconcile(
                 self._reservation_store, self._settings, self._base_path,
-                self._storage, data_lock=self._data_lock)
+                self._storage, data_lock=self._data_lock,
+                vacation_store=self._vacation_store)
 
         self.run(fn, on_done)

@@ -33,3 +33,30 @@ def test_perform_export_error_sets_traceback(monkeypatch):
     res = perform_export_pdf(**_kwargs())
     assert res["ok"] is False
     assert "boom" in res["tb"]
+
+
+def test_perform_export_passes_vacation_days_through(monkeypatch):
+    """Der Worker reicht den Snapshot unverändert an generate_pdf durch — er
+    filtert selbst nichts, das macht der Report (gleicher Ausschnitt wie
+    Mail-HTML und Webhook)."""
+    captured = {}
+
+    def fake_generate_pdf(*args, **kwargs):
+        captured.update(kwargs)
+        return b"PDF"
+
+    monkeypatch.setattr(st, "generate_pdf", fake_generate_pdf)
+    perform_export_pdf(**_kwargs(vacation_days={"2026-07-06": 480}))
+    assert captured["vacation_days"] == {"2026-07-06": 480}
+
+
+def test_perform_export_without_vacation_passes_none(monkeypatch):
+    captured = {}
+
+    def fake_generate_pdf(*args, **kwargs):
+        captured.update(kwargs)
+        return b"PDF"
+
+    monkeypatch.setattr(st, "generate_pdf", fake_generate_pdf)
+    perform_export_pdf(**_kwargs())          # ohne vacation_days -> Default
+    assert captured["vacation_days"] is None

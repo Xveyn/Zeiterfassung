@@ -14,7 +14,7 @@ from src.theme import (
 )
 
 
-def open_export_dialog(parent, storage, settings, runner):
+def open_export_dialog(parent, storage, settings, runner, vacation_store=None):
     """Modal: Zeitraum + Kategorien wählen, daraus die PDF erzeugen und lokal
     über einen 'Speichern unter'-Dialog speichern. Kein Gmail nötig."""
     dialog = create_dialog(parent, "Als PDF exportieren")
@@ -22,7 +22,8 @@ def open_export_dialog(parent, storage, settings, runner):
     attach_unfocus_on_click(dialog)
 
     picker_frame, picker = build_period_picker(
-        dialog, storage, settings, on_change=lambda: _refresh_export_btn())
+        dialog, storage, settings, on_change=lambda: _refresh_export_btn(),
+        vacation_store=vacation_store)
     picker_frame.grid(row=0, column=0, sticky="w")
 
     busy = {"running": False}
@@ -52,6 +53,15 @@ def open_export_dialog(parent, storage, settings, runner):
         categories = picker.get_categories()
         category_breakdown = picker.get_category_breakdown()
 
+        # Urlaubs-Snapshot läuft durch denselben Wochentags-Filter wie die
+        # Einträge — sonst zählte ein Urlaubs-Samstag mit Stunden im
+        # Nur-Werktage-Modus mit, obwohl er im Kalender unsichtbar ist.
+        show_vacation = picker.get_show_vacation()
+        vacation_days = None
+        if show_vacation and vacation_store is not None:
+            vacation_days = workweek.filter_for_report(
+                vacation_store.day_minutes(), settings)
+
         busy["running"] = True
         set_primary_button_enabled(export_btn, False)
         set_button_text(export_btn, "Erzeuge…")
@@ -61,6 +71,7 @@ def open_export_dialog(parent, storage, settings, runner):
                 date_from=date_from, date_to=date_to, entries=entries,
                 name=settings.get("name"), categories=categories,
                 category_breakdown=category_breakdown,
+                vacation_days=vacation_days,
             )
 
         def on_done(res):

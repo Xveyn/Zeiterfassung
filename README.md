@@ -39,6 +39,7 @@ Desktop-App zur Erfassung von Arbeitszeiten mit Kalenderansicht, PDF-Report und 
 - **Kategorien** — Mehrere Zeitblöcke pro Tag mit eigenen Kategorien; Standard-Start/-Ende pro Kategorie, optional pro Wochentag
 - **Reservierungen & Google-Kalender** — Zukünftige Arbeitszeiten pro Tag reservieren (eigenes Konzept neben den Ist-Zeiten, im Kalender als violetter Eck-Punkt markiert); optionaler Abgleich mit einem wählbaren Google Kalender
 - **Reservierungs-Erinnerungen** — Optionale Toast-Benachrichtigung, wenn ein für heute reservierter Slot fällig wird und noch keine Ist-Zeit erfasst ist (konfigurierbare Vorlaufzeit)
+- **Urlaub** — Urlaubszeiträume als Einheit eintragen (Name, Von/Bis, Stunden pro Tag oder Gesamtstunden auf die Arbeitstage verteilt); im Kalender ein durchgehender türkiser Block über Wochenenden und Feiertage hinweg, einzelne Tage nachträglich anpassbar (halbe Urlaubstage). Urlaub und Arbeitszeit schließen sich am selben Tag aus — ein Urlaubstag nimmt keine Arbeitszeit an, und ein Urlaub lässt sich nicht über bereits erfasste Tage legen. Optional als Ganztags-Termine im Google Kalender. Gerätelokal — Urlaub reist **nicht** über den Drive-Sync mit
 - **Feiertage** — Feiertage des gewählten Bundeslands sind im Kalender markiert und werden beim Anlegen eines Eintrags nachgefragt
 - **Nur Werktage** — Optional lässt sich das Wochenende komplett deaktivieren: Sa/So verschwinden aus Kalender, Standardzeiten, Bericht, Mailversand und PDF-Export. Vorhandene Wochenend-Einträge bleiben gespeichert und sind sofort wieder da, wenn die Einstellung zurückgenommen wird
 - **Wochenstunden-Limit** — Optionales Werkstudenten-Limit über einen konfigurierbaren Zeitraum mit Warnung beim Überschreiten
@@ -54,6 +55,7 @@ Desktop-App zur Erfassung von Arbeitszeiten mit Kalenderansicht, PDF-Report und 
 - **E-Mail-Versand** — HTML-E-Mail mit PDF-Anhang über Gmail API (OAuth2)
 - **Webhook-Versand** — Der Bericht lässt sich zusätzlich zur E-Mail an konfigurierbare HTTP-Endpunkte senden (JSON und/oder PDF, optional mit Token oder HMAC-Signatur); gerätelokal konfiguriert
 - **PDF-Export** — Bericht für einen frei gewählten Zeitraum direkt als PDF lokal speichern (ohne Mail-Versand)
+- **Urlaub im Bericht** — Optionales Häkchen „Urlaub ausweisen“: der Bericht bekommt einen eigenen Urlaubs-Block je Zeitraum und die Zeile „Zu vergüten gesamt“. „Gesamt“ bleibt die reine Ist-Zeit
 - **Zeitraumwahl** — Flexibler Datumsbereich für Reports, mit Filter auf einzelne Kategorien
 - **Sende-Erinnerung** — Optionale Toast-Erinnerung, die Arbeitszeiten zu verschicken: monatlich an einem frei wählbaren Tag (auf Wunsch von Wochenenden und Feiertagen weg verschoben) und/oder tagesbezogen, wenn ein dafür markierter Reservierungs-Slot ausläuft. Der Sende-Dialog schlägt den Zeitraum seit der letzten Erinnerung vor
 - **Teilen & Importieren** — Eigene Arbeitszeiten als JSON-Anhang per Mail an eine zweite Person teilen; der Empfänger importiert sie mit Zeitraum-Filter und drei Konflikt-Modi (alles importieren / alles lokal / pro Tag entscheiden)
@@ -180,7 +182,7 @@ Zeiterfassung/
 │   ├── background_tasks.py # Hintergrund-Worker + Thread-Mechanik (Token-Refresh, Update-Check, Reconcile)
 │   ├── sync_orchestrator.py # Drive-Sync-Steuerung (manuell/Tray/Pull/Quit, Fehler-Aufbereitung)
 │   ├── update_banner.py   # GitHub-Release-Hinweis-Banner
-│   ├── dialogs/           # Modal-Dialoge (entry, send, export, settings, share, import, conflicts, category, scopes, webhook) + geteilter period_picker
+│   ├── dialogs/           # Modal-Dialoge (entry, send, export, settings, share, import, conflicts, category, scopes, webhook, vacation) + geteilter period_picker
 │   ├── storage.py         # JSON-Persistenz der Zeiteinträge
 │   ├── settings.py        # Einstellungen mit Standardwerten
 │   ├── category_defaults.py # Default-Kategorien für Zeit-Slots
@@ -196,6 +198,8 @@ Zeiterfassung/
 │   ├── share.py           # Export/Import von Arbeitszeiten als Share-JSON
 │   ├── reservations.py    # Reservierungen (zukünftige Soll-Zeiten)
 │   ├── reservations_sync.py # Abgleich der Reservierungen mit Google Kalender
+│   ├── vacations.py       # Urlaubsperioden (Regeln + Persistenz, gerätelokal)
+│   ├── vacations_sync.py  # Einwegs-Push der Urlaubsperioden in den Google Kalender
 │   ├── reminders.py       # Fälligkeits-Logik für Reservierungs-Erinnerungen (Tk-frei)
 │   ├── reminder_scheduler.py # Periodischer Reminder-Poll → Toast über Tray
 │   ├── send_reminder.py   # Fälligkeits-Logik des Sende-Reminders: monatlich + am markierten Slot (Tk-frei)
@@ -485,6 +489,7 @@ Das meiste sind JSON-Dateien — `instance-secret` und das Protokoll sind es nic
 
 - **zeiterfassung.json** — Zeiteinträge (Schlüssel: ISO-Datum `YYYY-MM-DD`)
 - **reservations.json** — Reservierungen, also zukünftige Soll-Zeiten (eigenes Konzept neben den Ist-Zeiten)
+- **vacations.json** — Urlaubszeiträume. Gerätelokal: reist bewusst **nicht** über den Drive-Sync mit
 - **settings.json** — Benutzereinstellungen
 - **conflicts.json** — Lokaler Spiegel der Sync-Konflikte (nur vorhanden bei aktivem Sync und mindestens einem registrierten Konflikt)
 - **sync_history.json** — Marker „wurde auf diesem Gerät je synchronisiert/abgeglichen"; schützt gelöschte Tage davor, nach einer beschädigten `settings.json` zurückzukehren

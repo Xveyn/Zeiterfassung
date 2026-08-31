@@ -233,3 +233,51 @@ def test_footer_with_hourly_rate_derives_money_from_same_total():
     text = _rendered_footer(r, 90)  # 1 h 30 min
     assert "Gesamt: 1 h 30 min" in text
     assert "30.00 € brutto" in text  # 1.5h * 20.00
+
+
+def _vacation(name="Sommerurlaub", date_from="2026-07-01", date_to="2026-07-14"):
+    return {"id": "a1b2", "name": name, "from": date_from, "to": date_to,
+            "days": {}, "gcal_event_id": None,
+            "modified_at": "2026-08-30T10:00:00Z", "deleted": False}
+
+
+def test_tooltip_shows_vacation_with_name_and_range():
+    assert GridRenderer._build_tooltip_text(
+        None, None, None, vacation=_vacation(), vacation_minutes=480) == (
+        "Urlaub: Sommerurlaub\n01.07.2026 – 14.07.2026  ·  8 h"
+    )
+
+
+def test_tooltip_vacation_without_hours_omits_duration():
+    # Wochenend-/Feiertags-Tage einer Periode tragen 0 Minuten.
+    assert GridRenderer._build_tooltip_text(
+        None, None, None, vacation=_vacation(), vacation_minutes=0) == (
+        "Urlaub: Sommerurlaub\n01.07.2026 – 14.07.2026"
+    )
+
+
+def test_tooltip_shows_holiday_name_when_only_vacation_present():
+    # Bei Urlaub baut der Dispatch KEINE Holiday-Zelle mehr, die den Namen
+    # selbst zeigen könnte — er muss also in den kombinierten Tooltip.
+    text = GridRenderer._build_tooltip_text(
+        None, None, "Neujahr", vacation=_vacation(), vacation_minutes=0)
+    assert text.endswith("Feiertag: Neujahr")
+
+
+def test_tooltip_holiday_alone_still_has_no_tooltip():
+    assert GridRenderer._build_tooltip_text(None, None, "Neujahr") == ""
+
+
+def test_tooltip_combines_all_units_in_order():
+    entry = {"slots": [{"start": "08:00", "end": "12:00", "kategorie": "Büro"}]}
+    reservation = {"slots": [{"start": "13:00", "end": "17:00", "kategorie": ""}]}
+    text = GridRenderer._build_tooltip_text(
+        entry, reservation, "Neujahr", has_conflict=True,
+        vacation=_vacation(), vacation_minutes=240)
+    blocks = text.split("\n")
+    assert blocks[0] == "Arbeitszeit:"
+    assert "Reservierung:" in text
+    assert text.index("Arbeitszeit:") < text.index("Reservierung:")
+    assert text.index("Reservierung:") < text.index("Urlaub:")
+    assert text.index("Urlaub:") < text.index("Feiertag: Neujahr")
+    assert text.endswith("Konflikt — bitte auflösen")

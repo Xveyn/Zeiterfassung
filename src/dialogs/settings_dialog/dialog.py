@@ -32,7 +32,8 @@ from src.dialogs.settings_dialog.tab_work import WorkTab
 def open_settings_dialog(parent, settings, base_path, on_change, *,
                          runner, conflicts_store=None, storage=None,
                          reservation_store=None, on_request_restart=None,
-                         data_lock=None, sync_guard=None, webhook_store=None):
+                         data_lock=None, sync_guard=None, webhook_store=None,
+                         vacation_store=None, on_vacation_change=None):
     """Modaler Dialog zum Bearbeiten der App-Einstellungen, aufgeteilt auf sechs
     Tabs (Arbeitszeit / Bericht & Mail / Webhooks / Google / App / Updates).
 
@@ -43,6 +44,8 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
     (Audit H1/H2) — von App durchgereicht.
     runner: der App-BackgroundTaskRunner (App._bg); alle Hintergrund-Worker des
     Dialogs laufen über runner.run(fn, on_done) (Audit H5).
+    vacation_store/on_vacation_change: optional; sind sie gesetzt, erscheint
+    im Arbeitszeit-Tab der „Urlaub verwalten"-Button.
     """
     dialog = create_dialog(parent, "Einstellungen", escape_closes=False)
 
@@ -66,7 +69,8 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
     notebook.add(tab_updates, text="Updates")
 
     # ===================== Tab: Arbeitszeit =====================
-    work = WorkTab(tab_work, dialog, settings)
+    work = WorkTab(tab_work, dialog, settings, vacation_store,
+                   on_vacation_change, storage, reservation_store)
 
     # ===================== Tab: Bericht & Mail =====================
     mail = MailTab(tab_mail, settings)

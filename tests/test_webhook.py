@@ -206,7 +206,7 @@ def _payload(**over):
 def test_payload_has_kind_and_version():
     doc = _payload()
     assert doc["kind"] == "zeiterfassung-report"
-    assert doc["schema_version"] == 1
+    assert doc["schema_version"] == 2
     assert doc["generated_at"] == "2026-08-26T09:14:00Z"
     assert doc["sender"] == "sven@example.com"
     assert doc["name"] == "Sven"
@@ -587,3 +587,41 @@ def test_deliver_signs_the_exact_body_sent(monkeypatch):
         json_bytes=b"what do ya want for nothing?", pdf_bytes=None,
         pdf_filename="r.pdf")
     assert seen["headers"]["X-Sig"] == wh.sign_hmac("Jefe", seen["body"])
+
+
+def test_payload_without_vacation_has_null_fields():
+    payload = build_json_payload(
+        date_from=datetime.date(2026, 7, 1), date_to=datetime.date(2026, 7, 31),
+        entries={}, name="", sender="", categories=None,
+        generated_at="2026-08-30T10:00:00Z")
+    assert payload["vacation"] is None
+    assert payload["vacation_minutes"] == 0
+
+
+def test_payload_carries_vacation_days_in_period():
+    payload = build_json_payload(
+        date_from=datetime.date(2026, 12, 1), date_to=datetime.date(2026, 12, 31),
+        entries={}, name="", sender="", categories=None,
+        generated_at="2026-08-30T10:00:00Z",
+        vacation_days={
+            "2026-12-28": 480, "2026-12-29": 480, "2026-12-30": 480,
+            "2026-12-31": 240, "2027-01-04": 480,
+        })
+    assert payload["vacation"] == {
+        "2026-12-28": 480, "2026-12-29": 480,
+        "2026-12-30": 480, "2026-12-31": 240,
+    }
+    assert payload["vacation_minutes"] == 1680
+
+
+def test_payload_vacation_matches_report_slice():
+    """Webhook und Report müssen exakt denselben Ausschnitt behaupten —
+    beide gehen über filter_period."""
+    from src.report import filter_period
+    snapshot = {"2026-12-31": 240, "2027-01-04": 480}
+    payload = build_json_payload(
+        date_from=datetime.date(2026, 12, 1), date_to=datetime.date(2026, 12, 31),
+        entries={}, name="", sender="", categories=None,
+        vacation_days=snapshot)
+    assert payload["vacation"] == filter_period(
+        datetime.date(2026, 12, 1), datetime.date(2026, 12, 31), snapshot)

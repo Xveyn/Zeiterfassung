@@ -6,7 +6,7 @@ import io
 from collections import OrderedDict
 from typing import Any, Collection
 
-from src.time_utils import DAYS_DE, calculate_hours, format_date, get_week_label
+from src.time_utils import DAYS_DE, calculate_hours, format_date, get_week_label, hours_to_minutes
 
 
 def _esc(text: str | None) -> str:
@@ -87,9 +87,10 @@ def _slot_hours(slot: dict[str, Any]) -> float:
     return round(calculate_hours(slot["start"], slot["end"], pause_minutes=slot.get("pause", 0)), 2)
 
 
-def _entry_hours(entry: dict[str, Any]) -> float:
-    """Summe der Stunden über alle Slots eines Tages."""
-    return round(sum(_slot_hours(s) for s in entry.get("slots", [])), 2)
+def _minutes_as_hours(minutes: int) -> float:
+    """Minuten → Dezimalstunden für die Anzeige. Gerundet wird ERST hier,
+    nachdem in Minuten summiert wurde (CLAUDE.md: Summen über Minuten)."""
+    return round(minutes / 60, 2)
 
 
 def _group_by_week(range_entries: dict[str, Any]) -> WeekGroups:
@@ -142,14 +143,17 @@ def total_hours(date_from: datetime.date, date_to: datetime.date,
                 all_entries: dict[str, Any],
                 categories: Collection[str] | None = None) -> float:
     """Gesamtstunden im Zeitraum, gefiltert auf die gewählten Kategorien
-    (None = alle). Pure Funktion für die Live-Vorschau im Sende-Dialog —
-    summiert dieselben Slot-Stunden wie der Report. Leerer Bereich → 0.0."""
+    (None = alle). Summiert über Minuten je Slot — dieselbe Rechnung wie
+    _build_table, damit Vorschau und Bericht nie auseinanderlaufen. Leerer
+    Bereich → 0.0."""
     range_entries = filter_period(date_from, date_to, all_entries)
     if range_entries:
         range_entries = filter_categories(range_entries, categories)
     if not range_entries:
         return 0.0
-    return round(sum(_entry_hours(e) for e in range_entries.values()), 2)
+    return _minutes_as_hours(sum(
+        hours_to_minutes(_slot_hours(s))
+        for e in range_entries.values() for s in e["slots"]))
 
 
 def default_pdf_filename(date_from: datetime.date, date_to: datetime.date) -> str:
@@ -172,9 +176,14 @@ def _apply_placeholders(text: str, label: str, total: float) -> str:
 # HTML einschleusen (Audit M7). Deshalb werden start/end defensiv _esc()-t,
 # genau wie `kategorie` (freier Nutzertext).
 def _week_block(iso_year: int, iso_week: int, week_entries: WeekEntries,
-                style: dict[str, Any]) -> tuple[str, float]:
+                style: dict[str, Any]) -> tuple[str, int]:
     """Render einen Wochen-Block: KW-Header, je Slot eine Zeile, Tages-Subtotal
-    bei >1 Slot, Wochensumme. Returns (rows_html, week_total)."""
+    bei >1 Slot, Wochensumme. Returns (rows_html, week_minutes).
+
+    Summiert wird über MINUTEN (hours_to_minutes je Slot), nicht über
+    Dezimalstunden — sonst weicht die ausgewiesene Summe von der Summe der
+    angezeigten Einzelwerte ab (CLAUDE.md). Die Slot-Zeile selbst zeigt
+    weiterhin ihre eigenen Dezimalstunden, sie ist keine Summe."""
     s = style
     cw = [f"width:{w};" if w else "" for w in s["col_widths"]]
     rows = [
@@ -183,7 +192,7 @@ def _week_block(iso_year: int, iso_week: int, week_entries: WeekEntries,
         f"</tr>"
     ]
 
-    week_total = 0.0
+    week_minutes = 0
     for idx, (date_str, entry) in enumerate(week_entries):
         dt = datetime.date.fromisoformat(date_str)
         weekday = DAYS_DE[dt.weekday()]
@@ -191,11 +200,12 @@ def _week_block(iso_year: int, iso_week: int, week_entries: WeekEntries,
         row_bg = s["row_a"] if idx % 2 == 0 else s["row_b"]
         td = s["td_base"]
         slots = entry["slots"]
-        day_total = 0.0
+        day_minutes = 0
         for sidx, slot in enumerate(slots):
             hours = _slot_hours(slot)
-            day_total += hours
-            week_total += hours
+            minutes = hours_to_minutes(hours)
+            day_minutes += minutes
+            week_minutes += minutes
             date_cell = day_fmt if sidx == 0 else ""
             day_cell = weekday if sidx == 0 else ""
             rows.append(
@@ -209,34 +219,31 @@ def _week_block(iso_year: int, iso_week: int, week_entries: WeekEntries,
                 f"</tr>"
             )
         if len(slots) > 1:
-            day_total = round(day_total, 2)
             rows.append(
                 f"<tr style='{row_bg}'>"
                 f"<td colspan='5' style='{td}{s['c_day']}'>Summe {day_fmt}</td>"
-                f"<td style='{td}{s['c_hours']}'>{day_total}h</td>"
+                f"<td style='{td}{s['c_hours']}'>{_minutes_as_hours(day_minutes)}h</td>"
                 f"</tr>"
             )
 
-    week_total = round(week_total, 2)
     rows.append(
         f"<tr style='{s['sum_row']}'>"
         f"<td colspan='5' style='{s['sum_lbl']}'>Summe KW {iso_week}</td>"
-        f"<td style='{s['sum_hrs']}'>{week_total}h</td>"
+        f"<td style='{s['sum_hrs']}'>{_minutes_as_hours(week_minutes)}h</td>"
         f"</tr>"
     )
-    return "\n".join(rows), week_total
+    return "\n".join(rows), week_minutes
 
 
-def _build_table(groups: WeekGroups, style: dict[str, Any]) -> tuple[str, float]:
-    """Bauen die komplette Stundentabelle. Returns (table_html, total)."""
+def _build_table(groups: WeekGroups, style: dict[str, Any]) -> tuple[str, int]:
+    """Bauen die komplette Stundentabelle. Returns (table_html, total_minutes)."""
     s = style
     week_blocks = []
-    total = 0.0
+    total_minutes = 0
     for (iso_year, iso_week), week_entries in groups.items():
-        block_html, week_total = _week_block(iso_year, iso_week, week_entries, s)
+        block_html, week_minutes = _week_block(iso_year, iso_week, week_entries, s)
         week_blocks.append(block_html)
-        total += week_total
-    total = round(total, 2)
+        total_minutes += week_minutes
 
     th_cells = "".join(
         f'<th style="{s["th_cell"]}{f"width:{w};" if w else ""}">{label}</th>'
@@ -249,11 +256,11 @@ def _build_table(groups: WeekGroups, style: dict[str, Any]) -> tuple[str, float]
         f'{"".join(week_blocks)}'
         f'<tr style="{s["total_row"]}">'
         f'<td colspan="5" style="{s["total_lbl"]}">Gesamt</td>'
-        f'<td style="{s["total_hrs"]}">{total}h</td>'
+        f'<td style="{s["total_hrs"]}">{_minutes_as_hours(total_minutes)}h</td>'
         f'</tr>'
         f'</table>'
     )
-    return table, total
+    return table, total_minutes
 
 
 def _build_category_summary(range_entries: dict[str, Any],
@@ -261,13 +268,18 @@ def _build_category_summary(range_entries: dict[str, Any],
     """„Summe je Kategorie"-Tabelle über den (gefilterten) Zeitraum. Leerer
     String ('' = keine Kategorie) wird als '(ohne Kategorie)' ans Ende
     sortiert. Liefert '' wenn keine Slots vorhanden — oder wenn alle Slots
-    unkategorisiert sind (dann wäre die Tabelle nur die Gesamtsumme)."""
+    unkategorisiert sind (dann wäre die Tabelle nur die Gesamtsumme).
+
+    Summiert wird über MINUTEN (hours_to_minutes je Slot), nicht über
+    Dezimalstunden — sonst weicht die Kategorien-Summe von der Gesamtsumme
+    der Stundentabelle ab, obwohl beide Zahlen im selben Bericht stehen
+    (CLAUDE.md)."""
     s = style
-    totals = {}
+    totals: dict[str, int] = {}
     for entry in range_entries.values():
         for slot in entry["slots"]:
             kat = slot.get("kategorie") or ""
-            totals[kat] = totals.get(kat, 0.0) + _slot_hours(slot)
+            totals[kat] = totals.get(kat, 0) + hours_to_minutes(_slot_hours(slot))
     # Keine Slots, oder ausschließlich unkategorisierte: die Tabelle bestünde
     # dann nur aus der "(ohne Kategorie)"-Zeile = exakt die ohnehin gezeigte
     # Gesamtsumme. Weglassen, statt eine leere Pseudo-Aufschlüsselung zu zeigen.
@@ -278,7 +290,7 @@ def _build_category_summary(range_entries: dict[str, Any],
     rows = []
     for idx, kat in enumerate(sorted(totals, key=lambda k: (k == "", k.lower()))):
         label = kat if kat else "(ohne Kategorie)"
-        hours = round(totals[kat], 2)
+        hours = _minutes_as_hours(totals[kat])
         row_bg = s["row_a"] if idx % 2 == 0 else s["row_b"]
         rows.append(
             f"<tr style='{row_bg}'>"
@@ -298,32 +310,139 @@ def _build_category_summary(range_entries: dict[str, Any],
     )
 
 
+def _vacation_runs(vacation_days: dict[str, int]) -> list[tuple[str, str, int]]:
+    """Zerlegt die Urlaubstage in zusammenhängende Blöcke.
+
+    Liefert [(von, bis, minuten)] je Block, chronologisch. Ein Block bricht
+    nur bei einer echten Kalenderlücke ab — die 0-Minuten-Tage einer Periode
+    (Wochenende, Feiertag) halten ihn zusammen, sonst zerfiele jeder
+    Zwei-Wochen-Urlaub in drei Zeilen.
+
+    Getrennte Perioden ergeben getrennte Blöcke: eine einzige Zeile über
+    min..max behauptete sonst 20 zusammenhängende Urlaubstage, wo zwei mal
+    fünf waren — auf einem Dokument an den Arbeitgeber eine Falschaussage.
+
+    Blöcke ohne eine einzige bezahlte Minute (nur Wochenende im Zeitraum)
+    fallen weg.
+    """
+    if not vacation_days:
+        return []
+    runs: list[tuple[str, str, int]] = []
+    days = sorted(vacation_days)
+    start = days[0]
+    prev = datetime.date.fromisoformat(start)
+    minutes = vacation_days[start]
+    for day in days[1:]:
+        current = datetime.date.fromisoformat(day)
+        if (current - prev).days > 1:
+            if minutes:
+                runs.append((start, prev.isoformat(), minutes))
+            start, minutes = day, 0
+        minutes += vacation_days[day]
+        prev = current
+    if minutes:
+        runs.append((start, prev.isoformat(), minutes))
+    return runs
+
+
+def _build_vacation_summary(vacation_days: dict[str, int],
+                            work_minutes: int,
+                            style: dict[str, Any]) -> str:
+    """„Urlaub"-Block unter der Stundentabelle, plus die Zeile „Zu vergüten
+    gesamt".
+
+    `vacation_days` ist bereits auf den Berichtszeitraum gefiltert
+    ({ISO: minutes}). Je zusammenhängendem Block eine Zeile; liegt im Zeitraum
+    keine einzige bezahlte Urlaubsminute, entsteht kein Block.
+
+    Der Periodenname taucht bewusst NICHT auf: er ist gerätelokal, im Bericht
+    heißt es schlicht „Urlaub" plus Zeitraum.
+
+    Gerechnet wird durchgehend in Minuten (CLAUDE.md) — `work_minutes` kommt
+    aus `_build_table` und damit aus derselben Auflösung, sodass die drei
+    Zahlen auf der Seite aufgehen.
+    """
+    runs = _vacation_runs(vacation_days)
+    if not runs:
+        return ""
+
+    s = style
+    td = s["td_base"]
+    vacation_minutes = sum(m for _, _, m in runs)
+
+    rows = []
+    for idx, (start, end, minutes) in enumerate(runs):
+        label = (f"{format_date(datetime.date.fromisoformat(start))} – "
+                 f"{format_date(datetime.date.fromisoformat(end))}")
+        row_bg = s["row_a"] if idx % 2 == 0 else s["row_b"]
+        rows.append(
+            f"<tr style='{row_bg}'>"
+            f"<td style='{td}{s['c_day']}'>{_esc(label)}</td>"
+            f"<td style='{td}{s['c_hours']}'>{_minutes_as_hours(minutes)}h</td>"
+            f"</tr>"
+        )
+
+    return (
+        f'<table style="border-collapse:collapse;width:100%;margin-top:16px;{s["table_extra"]}">'
+        f'<tr style="{s["th_row"]}">'
+        f'<th style="{s["th_cell"]}">Urlaub</th>'
+        f'<th style="{s["th_cell"]}">Stunden</th>'
+        f'</tr>'
+        f'{"".join(rows)}'
+        f'<tr style="{s["total_row"]}">'
+        f'<td style="{s["total_lbl"]}">Zu vergüten gesamt</td>'
+        f'<td style="{s["total_hrs"]}">'
+        f'{_minutes_as_hours(work_minutes + vacation_minutes)}h</td>'
+        f'</tr>'
+        f'</table>'
+    )
+
+
 def generate_report(date_from: datetime.date, date_to: datetime.date,
                     all_entries: dict[str, Any], greeting: str = "",
                     content: str = "", closing: str = "",
                     categories: Collection[str] | None = None,
-                    category_breakdown: bool = True) -> tuple[str | None, float]:
+                    category_breakdown: bool = True,
+                    vacation_days: dict[str, int] | None = None
+                    ) -> tuple[str | None, float]:
     """Generate an HTML email report with greeting, content, table, category
     summary, and closing.
 
     categories: None = alle; sonst Menge von Kategorie-Strings ('' = ohne).
     category_breakdown: True = "Summe je Kategorie"-Tabelle anhängen (Default,
     bisheriges Verhalten); False = weglassen, nur das Gesamt der Tagestabelle.
+    vacation_days: {ISO: minutes} der Urlaubstage (bereits Snapshot des
+    Stores, ungefiltert) oder None. Liegt im Zeitraum kein Urlaubstag mit
+    Minuten, ist die Ausgabe bitgleich zur Variante ohne den Parameter.
+    Der zurückgegebene `total` bleibt in JEDEM Fall die reine Ist-Zeit.
     Returns (html, total) tuple, or (None, 0) if no entries.
     """
     range_entries = filter_period(date_from, date_to, all_entries)
     if range_entries:
         range_entries = filter_categories(range_entries, categories)
-    if not range_entries:
+    vacation_in_range = filter_period(date_from, date_to, vacation_days or {}) or {}
+
+    # Leer ist der Bericht nur ohne Ist-Zeit UND ohne bezahlte Urlaubsminute.
+    # Ein voller Urlaubsmonat ohne erfasste Arbeitszeit ist für den
+    # Stundenlohn-Fall genau die Abrechnung, um die es geht.
+    if not range_entries and not any(vacation_in_range.values()):
         return None, 0
 
     label = f"{format_date(date_from)} – {format_date(date_to)}"
-    groups = _group_by_week(range_entries)
-    table, total = _build_table(groups, HTML_STYLE)
-    category_summary = (
-        _build_category_summary(range_entries, HTML_STYLE)
-        if category_breakdown else ""
-    )
+    if range_entries:
+        groups = _group_by_week(range_entries)
+        table, total_minutes = _build_table(groups, HTML_STYLE)
+        category_summary = (
+            _build_category_summary(range_entries, HTML_STYLE)
+            if category_breakdown else ""
+        )
+    else:
+        # Kein Ist-Zeit-Block: die leere Stundentabelle bestünde nur aus
+        # Kopfzeile und „Gesamt 0h" und sagte nichts aus.
+        table, total_minutes, category_summary = "", 0, ""
+    total = _minutes_as_hours(total_minutes)
+    vacation_summary = _build_vacation_summary(
+        vacation_in_range, total_minutes, HTML_STYLE)
 
     greeting_filled = _apply_placeholders(_esc_multiline(greeting), label, total)
     content_filled = _apply_placeholders(_esc_multiline(content), label, total)
@@ -341,6 +460,7 @@ def generate_report(date_from: datetime.date, date_to: datetime.date,
 {content_html}
 {table}
 {category_summary}
+{vacation_summary}
 {closing_html}
 </div>
 </body></html>"""
@@ -351,27 +471,43 @@ def generate_report(date_from: datetime.date, date_to: datetime.date,
 def generate_pdf(date_from: datetime.date, date_to: datetime.date,
                  all_entries: dict[str, Any], name: str = "",
                  categories: Collection[str] | None = None,
-                 category_breakdown: bool = True) -> bytes | None:
+                 category_breakdown: bool = True,
+                 vacation_days: dict[str, int] | None = None) -> bytes | None:
     """Generate a PDF of the time tracking table. Returns PDF bytes, or None if no entries.
 
     category_breakdown: True = "Summe je Kategorie"-Tabelle anhängen (Default);
     False = weglassen, nur das Gesamt der Tagestabelle.
+    vacation_days: {ISO: minutes} der Urlaubstage (bereits Snapshot des
+    Stores, ungefiltert) oder None. Liegt im Zeitraum kein Urlaubstag mit
+    Minuten, ist die Ausgabe bitgleich zur Variante ohne den Parameter.
     """
     from xhtml2pdf import pisa  # pyright: ignore[reportMissingImports]  # lazy, nicht in CI-Test-Deps
 
     range_entries = filter_period(date_from, date_to, all_entries)
     if range_entries:
         range_entries = filter_categories(range_entries, categories)
-    if not range_entries:
+    vacation_in_range = filter_period(date_from, date_to, vacation_days or {}) or {}
+
+    # Leer ist der Bericht nur ohne Ist-Zeit UND ohne bezahlte Urlaubsminute.
+    # Ein voller Urlaubsmonat ohne erfasste Arbeitszeit ist für den
+    # Stundenlohn-Fall genau die Abrechnung, um die es geht.
+    if not range_entries and not any(vacation_in_range.values()):
         return None
 
     label = f"{format_date(date_from)} – {format_date(date_to)}"
-    groups = _group_by_week(range_entries)
-    table, _ = _build_table(groups, PDF_STYLE)
-    category_summary = (
-        _build_category_summary(range_entries, PDF_STYLE)
-        if category_breakdown else ""
-    )
+    if range_entries:
+        groups = _group_by_week(range_entries)
+        table, total_minutes = _build_table(groups, PDF_STYLE)
+        category_summary = (
+            _build_category_summary(range_entries, PDF_STYLE)
+            if category_breakdown else ""
+        )
+    else:
+        # Kein Ist-Zeit-Block: die leere Stundentabelle bestünde nur aus
+        # Kopfzeile und „Gesamt 0h" und sagte nichts aus.
+        table, total_minutes, category_summary = "", 0, ""
+    vacation_summary = _build_vacation_summary(
+        vacation_in_range, total_minutes, PDF_STYLE)
 
     name_html = (
         f"<p style='color:#111827;font-size:13px;margin:0 0 2px 0;font-weight:600;'>{_esc(name)}</p>"
@@ -385,6 +521,7 @@ def generate_pdf(date_from: datetime.date, date_to: datetime.date,
 <p style="color:#4b5563;font-size:12px;margin:0 0 16px 0;">{_esc(label)}</p>
 {table}
 {category_summary}
+{vacation_summary}
 </body></html>"""
 
     buffer = io.BytesIO()

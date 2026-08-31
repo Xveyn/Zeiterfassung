@@ -32,6 +32,7 @@ from src.paths import get_base_path, get_resource_path
 from src.reservations import ReservationStore
 from src.settings import Settings, clamp_ui_scale
 from src.storage import Storage
+from src.vacations import VacationStore
 from src.sync_runtime import run_pull_in_background
 from src.theme import init_fonts
 from src.ui import App
@@ -232,6 +233,15 @@ def main():
     reservation_store = ReservationStore(os.path.join(base, "reservations.json"),
                                          lock=data_lock)
 
+    # Urlaubsperioden. Am geteilten data_lock, weil reconcile_vacations
+    # Snapshot → Apply unter demselben Lock klammert (Audit H1/H2) — anders
+    # als webhook_store, der keinen Sync-Flow hat und sich deshalb bewusst
+    # einen eigenen anlegt. Der Store reist NICHT per Drive-Sync und ist
+    # bewusst NICHT an gcal_enabled gekoppelt: Urlaub funktioniert ohne
+    # Google, nur der Kalender-Push nicht.
+    vacation_store = VacationStore(os.path.join(base, "vacations.json"),
+                                   lock=data_lock)
+
     # BEWUSST OHNE den geteilten data_lock — der Store legt sich seinen eigenen an.
     # Der geteilte Lock (Audit H1/H2) existiert, um Snapshot→Merge→Apply der
     # SYNC-Flows über storage/settings/conflicts/reservations atomar zu klammern.
@@ -271,7 +281,8 @@ def main():
     _apply_ui_scaling(root, settings.get("ui_scale"))
     app = App(root, storage, settings, base_path=base, conflicts_store=conflicts_store,
               reservation_store=reservation_store, single_instance=guard,
-              data_lock=data_lock, sync_guard=sync_guard, webhook_store=webhook_store)
+              data_lock=data_lock, sync_guard=sync_guard, webhook_store=webhook_store,
+              vacation_store=vacation_store)
 
     if "--minimized" in sys.argv:
         root.iconify()

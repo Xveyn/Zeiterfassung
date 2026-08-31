@@ -36,6 +36,12 @@ HOLIDAY_ACCENT = "#4ade80"  # gleicher Grünton wie STATUS_OK
 # der roten Ist-Zeit-Zelle und der grünen Feiertagszelle)
 RESERVATION_ACCENT = "#a78bfa"
 
+# Urlaubszelle — türkis, klar abgesetzt von rotem Eintrag, grünem Feiertag,
+# violetter Reservierung, blauem Heute-Rahmen und orangem Konflikt-Rand.
+VACATION_BG = "#134e4a"
+VACATION_BG_HOVER = "#176b64"
+VACATION_ACCENT = "#2dd4bf"
+
 # Rahmenfarbe für den heutigen Tag — blau, klar abgesetzt von rotem Eintrag,
 # grünem Feiertag, violetter Reservierung und orangem Konflikt-Rand.
 TODAY_ACCENT = "#38bdf8"

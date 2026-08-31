@@ -106,3 +106,43 @@ def test_resolve_send_period_no_anchor_before_today_is_none():
     assert resolve_send_period(
         _S(send_period_from_last_reminder=True, send_period_anchor_monthly=False),
         _Empty(), datetime.date(2026, 9, 5)) is None
+
+
+def test_vacation_snapshot_honours_workweek_only():
+    """Ein Urlaubs-Samstag mit Stunden darf im Nur-Werktage-Modus nicht in
+    'Zu vergüten gesamt' zählen — er ist im Kalender unsichtbar und aus der
+    Stundentabelle gestrichen."""
+    from src import workweek
+
+    snapshot = {"2026-07-03": 480, "2026-07-04": 480}   # Fr, Sa
+    assert workweek.filter_for_report(snapshot, {"workweek_only": True}) == {
+        "2026-07-03": 480}
+    assert workweek.filter_for_report(
+        snapshot, {"workweek_only": False}) == snapshot
+
+
+def test_period_has_no_content_blocks_when_vacation_is_outside_range():
+    """Urlaub existiert nur im Januar, gewählter Zeitraum ist März: weder
+    Einträge noch Urlaub liegen IM Zeitraum -> die Leer-Prüfung muss blocken.
+    Der ungefilterte Store-weite Snapshot allein (vacation_days nicht leer)
+    darf die Prüfung nicht durchwinken — sonst verschickt ein JSON-Webhook
+    ein leeres, aber valides Dokument als vermeintlichen Erfolg."""
+    from src.dialogs.send_dialog import period_has_no_content
+
+    vacation_days = {"2026-01-10": 480, "2026-01-11": 480}
+    assert period_has_no_content(
+        ranged=None, vacation_days=vacation_days,
+        date_from=datetime.date(2026, 3, 1), date_to=datetime.date(2026, 3, 31),
+    ) is True
+
+
+def test_period_has_no_content_does_not_block_vacation_in_range():
+    """Der reine Urlaubsmonat aus Task 8 muss weiter sendbar bleiben: Urlaub
+    liegt IM gewählten Zeitraum, es gibt keine Einträge -> nicht blocken."""
+    from src.dialogs.send_dialog import period_has_no_content
+
+    vacation_days = {"2026-03-10": 480, "2026-03-11": 480}
+    assert period_has_no_content(
+        ranged=None, vacation_days=vacation_days,
+        date_from=datetime.date(2026, 3, 1), date_to=datetime.date(2026, 3, 31),
+    ) is False

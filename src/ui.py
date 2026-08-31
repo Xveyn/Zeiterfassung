@@ -75,7 +75,8 @@ def _route_update_notification(release, tray_active, toast_shown_version):
 class App:
     def __init__(self, root, storage, settings, base_path=".", conflicts_store=None,
                  reservation_store=None, single_instance=None,
-                 data_lock=None, sync_guard=None, webhook_store=None):
+                 data_lock=None, sync_guard=None, webhook_store=None,
+                 vacation_store=None):
         self.root = root
         self.storage = storage
         self.settings = settings
@@ -83,6 +84,7 @@ class App:
         self.base_path = base_path
         self.conflicts_store = conflicts_store
         self.reservation_store = reservation_store
+        self.vacation_store = vacation_store
         self._data_lock = data_lock      # geteilter Store-RLock (Audit H1)
         self._sync_guard = sync_guard    # Sync-Re-Entrancy-Guard (Audit H2)
         # Gerätelokale Webhook-Konfiguration; None bedeutet „Feature nicht
@@ -111,6 +113,7 @@ class App:
             self._marshal_to_ui, self.settings, self.base_path,
             self.reservation_store, self._reservations_active, self.storage,
             data_lock=data_lock,
+            vacation_store=self.vacation_store,
         )
         self._sync = SyncOrchestrator(
             self.root, self.storage, self.settings, self.conflicts_store,
@@ -121,6 +124,7 @@ class App:
             self.root, self.storage, self.settings, self.reservation_store,
             self.conflicts_store, self._open_dialog, self._delete_day,
             self._reservations_active,
+            vacation_store=self.vacation_store,
         )
         self._reminders = ReminderScheduler(
             self.root, self.settings, self.storage,
@@ -253,7 +257,7 @@ class App:
                 themed_showinfo(
                     self.root,
                     "Google-Verbindung abgelaufen",
-                    "Die Reservierung wurde lokal gespeichert. Der "
+                    "Die Änderung wurde lokal gespeichert. Der "
                     "Kalender-Abgleich ist fehlgeschlagen, weil die Verbindung "
                     "zu Google abgelaufen oder widerrufen wurde.\n\nBitte "
                     "verbinde die App in den Einstellungen neu (Google-Kalender "
@@ -263,7 +267,7 @@ class App:
             else:
                 messagebox.showerror(
                     "Google-Kalender-Abgleich fehlgeschlagen",
-                    f"Die Reservierung wurde lokal gespeichert, der Kalender-Abgleich "
+                    f"Die Änderung wurde lokal gespeichert, der Kalender-Abgleich "
                     f"ist aber fehlgeschlagen:\n\n{error}\n\n"
                     f"{result.get('tb', '')}\n\n"
                     "Der Abgleich wird beim nächsten Start erneut versucht.",
@@ -471,7 +475,17 @@ class App:
             data_lock=self._data_lock,
             sync_guard=self._sync_guard,
             webhook_store=self._webhook_store,
+            vacation_store=self.vacation_store,
+            on_vacation_change=self._on_vacation_change,
         )
+
+    def _on_vacation_change(self):
+        """Nach einer Urlaubsänderung den Kalender neu zeichnen und den
+        Google-Kalender-Push anstoßen. `trigger_reconcile` selbst gatet auf
+        `_reservations_active` (== gcal_enabled, reservation_store ist immer
+        gesetzt) — ohne Kalender-Sync also ein No-op."""
+        self._refresh()
+        self._bg.trigger_reconcile(self._on_reconcile_done)
 
     def _apply_always_on_top(self):
         """Tk-übergreifender Topmost-Toggle. Funktioniert auf Windows, macOS
@@ -710,9 +724,13 @@ class App:
             self.reservation_store.get(date_str)
             if self._reservations_active() else None
         )
+        vacation = (
+            self.vacation_store.period_for_date(date_str)
+            if self.vacation_store is not None else None
+        )
         entry_slots = entry["slots"] if entry else []
         res_slots = reservation["slots"] if reservation else []
-        if not entry_slots and not res_slots:
+        if not entry_slots and not res_slots and vacation is None:
             return
 
         date_de = format_iso_date(date_str)
@@ -732,13 +750,38 @@ class App:
             else:
                 for i, s in enumerate(res_slots):
                     options.append((f"reservation:{i}", f"Reservierung  {GridRenderer._fmt_slot_line(s)}"))
+        if vacation is not None:
+            # Gelöscht wird IMMER die ganze Periode. Einzelne Tage aus der
+            # Mitte herauszubrechen würde den Zeitraum zerreißen und die
+            # days-Invariante (lückenlos von from bis to) verletzen; wer das
+            # will, bearbeitet die Periode im Verwaltungs-Dialog.
+            spanne = (f"{format_iso_date(vacation['from'])} – "
+                      f"{format_iso_date(vacation['to'])}")
+            options.append((
+                f"vacation:{vacation['id']}",
+                f"Urlaub „{vacation['name']}“ ({spanne})",
+            ))
 
         if len(options) == 1:
-            kind = "Arbeitszeit" if options[0][0].startswith("entry") else "Reservierung"
-            if not themed_askyesno(self.root, f"{kind} löschen",
-                                   f"{kind} für {date_de} löschen?", lock_ms=600):
+            key = options[0][0]
+            if key.startswith("entry"):
+                kind, frage = "Arbeitszeit", f"Arbeitszeit für {date_de} löschen?"
+            elif key.startswith("reservation"):
+                kind, frage = "Reservierung", f"Reservierung für {date_de} löschen?"
+            else:
+                # Bei genau einer Option, die weder "entry" noch "reservation"
+                # ist, muss es die (einzige weitere Quelle von) options der
+                # Urlaubszweig sein — vacation ist dann zwangsläufig gesetzt.
+                # assert statt weiterer Verzweigung: narrowed für pyright,
+                # ohne das Verhalten zu ändern.
+                assert vacation is not None
+                kind = "Urlaub"
+                frage = (f"Urlaub „{vacation['name']}“ "
+                         f"({format_iso_date(vacation['from'])} – "
+                         f"{format_iso_date(vacation['to'])}) komplett löschen?")
+            if not themed_askyesno(self.root, f"{kind} löschen", frage, lock_ms=600):
                 return
-            selected = {options[0][0]}
+            selected = {key}
         else:
             selected = themed_ask_delete_choice(
                 self.root, "Löschen", f"Was für den {date_de} löschen?",
@@ -760,8 +803,16 @@ class App:
         elif res_action == "save":
             self.reservation_store.save(date_str, res_keep)
 
+        vacation_touched = False
+        if vacation is not None and f"vacation:{vacation['id']}" in selected:
+            # Nur ein Abgleich nötig, wenn draußen ein Event hing — ohne
+            # gcal_event_id gibt es dort nichts aufzuräumen (VacationStore.delete
+            # entfernt den Record dann direkt, ohne Tombstone).
+            vacation_touched = bool(vacation.get("gcal_event_id"))
+            self.vacation_store.delete(vacation["id"])
+
         self._refresh()
-        if res_touched:
+        if res_touched or vacation_touched:
             self._bg.trigger_reconcile(self._on_reconcile_done)
 
     def _open_dialog(self, date_str):
@@ -782,6 +833,28 @@ class App:
                 on_resolved=self._refresh,
             )
             return
+        # Urlaub und Arbeitszeit schließen sich am selben Tag aus: trägt der
+        # Tag Urlaubsstunden, öffnet der Tages-Dialog gar nicht erst. Sonst
+        # stünden im Bericht beide Zahlen nebeneinander in „Zu vergüten
+        # gesamt“ und ein Kalendertag käme auf mehr Stunden, als er hat.
+        # Gegenstück beim Anlegen: `vacations.conflicting_days`.
+        #
+        # Nur Tage MIT Stunden: Wochenenden und Feiertage stehen mit 0 Minuten
+        # in der Periode, halten also nur den Zeitraum zusammen und sind kein
+        # Urlaubstag — wer am Samstag mitten im Urlaub arbeitet, darf das
+        # erfassen. Löschen bleibt über den Rechtsklick erreichbar, der
+        # Urlaubstag ist damit keine Sackgasse.
+        vacation = (self.vacation_store.period_for_date(date_str)
+                    if self.vacation_store is not None else None)
+        if vacation is not None and vacation.get("days", {}).get(date_str, 0):
+            themed_showinfo(
+                self.root, "Urlaub an diesem Tag",
+                f"Für den {format_iso_date(date_str)} ist Urlaub eingetragen "
+                f"(„{vacation.get('name', '')}“). An einem Urlaubstag lässt "
+                f"sich keine Arbeitszeit erfassen.\n\nSoll hier doch "
+                f"gearbeitet werden, lösche den Urlaub zuerst per Rechtsklick "
+                f"auf den Tag.")
+            return
         # Bei deaktiviertem Kalender-Sync KEIN reservation_store an den Dialog
         # geben — dann wird der Reservierungs-Block nicht angezeigt und ist per
         # Linksklick nicht setzbar (open_entry_dialog wertet None entsprechend).
@@ -796,7 +869,8 @@ class App:
     def _send(self):
         open_send_dialog(self.root, self.storage, self.settings, self.base_path,
                          self._bg, reservation_store=self.reservation_store,
-                         webhook_store=self._webhook_store)
+                         webhook_store=self._webhook_store,
+                         vacation_store=self.vacation_store)
 
     def _share(self):
         from src.dialogs.share_dialog import open_share_dialog
@@ -807,7 +881,8 @@ class App:
 
     def _export(self):
         from src.dialogs.export_dialog import open_export_dialog
-        open_export_dialog(self.root, self.storage, self.settings, self._bg)
+        open_export_dialog(self.root, self.storage, self.settings, self._bg,
+                           vacation_store=self.vacation_store)
 
     def on_sync_pull_success(self):
         """Public-API für main.py: nach erfolgreichem Pull (UI-Thread)."""

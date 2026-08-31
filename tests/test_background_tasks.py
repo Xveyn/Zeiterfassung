@@ -190,7 +190,8 @@ def test_reconcile_on_start_passes_storage_and_result_to_on_ok(monkeypatch):
 
     captured = {}
 
-    def fake_reconcile(reservation_store, settings, base_path, storage, data_lock=None):
+    def fake_reconcile(reservation_store, settings, base_path, storage, data_lock=None,
+                       vacation_store=None):
         captured["storage"] = storage
         return {"ok": True, "error": "", "tb": "", "limit_warnings": ["w"]}
 
@@ -212,7 +213,8 @@ def test_trigger_reconcile_passes_storage_through(monkeypatch):
 
     captured = {}
 
-    def fake_reconcile(reservation_store, settings, base_path, storage, data_lock=None):
+    def fake_reconcile(reservation_store, settings, base_path, storage, data_lock=None,
+                       vacation_store=None):
         captured["storage"] = storage
         return {"ok": True, "error": "", "tb": "", "limit_warnings": []}
 

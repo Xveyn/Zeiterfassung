@@ -1,3 +1,5 @@
+from unittest.mock import MagicMock
+
 from src import gcal
 
 
@@ -161,3 +163,27 @@ def test_delete_event_swallows_already_gone():
             return _E()
 
     gcal.delete_event(_GoneService(), "cal-1", "ev-x")
+
+
+def test_list_app_vacations_filters_on_the_vacation_marker():
+    """Der serverseitige Filter ist die Trennung: bekäme der Reservierungs-
+    Pull Urlaubs-Events zurück, könnte sein Reconcile sie als verwaiste
+    App-Events löschen."""
+    service = MagicMock()
+    service.events.return_value.list.return_value.execute.return_value = {
+        "items": [], "nextPageToken": None}
+    gcal.list_app_vacations(service, "cal-1")
+    kwargs = service.events.return_value.list.call_args.kwargs
+    assert kwargs["privateExtendedProperty"] == "zeiterfassung=vacation"
+
+
+def test_reservation_parser_rejects_a_vacation_event():
+    ev = {**gcal.vacation_event_payload("a", "2026-07-01", "2026-07-03",
+                                        "2026-08-30T10:00:00Z"), "id": "x"}
+    assert gcal.parse_event(ev) is None
+
+
+def test_vacation_parser_rejects_a_reservation_event():
+    ev = {**gcal.event_payload("2026-07-01", "08:00", "16:00", "",
+                               "2026-08-30T10:00:00Z"), "id": "x"}
+    assert gcal.parse_vacation_event(ev) is None

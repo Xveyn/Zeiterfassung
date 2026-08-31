@@ -324,6 +324,13 @@ s. `GridRenderer._display_minutes`). Geldbeträge aus derselben Minuten-Summe
 ableiten, nicht aus den Dezimalstunden — sonst widersprechen sich Stunden- und
 Euro-Anzeige.
 
+`src/report.py` hält sich seit der Urlaubs-Erweiterung durchgehend daran:
+`_week_block`, `_build_table`, `total_hours` und `_build_category_summary`
+führen ihre Summen als ganze Minuten und wandeln erst über `_minutes_as_hours`
+zur Anzeige um — vorher summierte `_build_table` Dezimalstunden. Erst dadurch
+addieren sich Arbeitszeit, Urlaub und „Zu vergüten gesamt" auf derselben
+Berichtsseite exakt (s. „Urlaub: Periode als Einheit, Stunden pro Tag" unten).
+
 ## Kalender-Interaktion: Linksklick speichert, Rechtsklick löscht
 
 Im Kalender gilt ein striktes Modell: **Linksklick** öffnet den Tages-Dialog
@@ -360,6 +367,71 @@ Windows/Linux ist Löschen ausschließlich der Rechtsklick.
 
 Neue Lösch-/Rechtsklick-Stellen müssen dieses Modell einhalten (kein zweiter
 Lösch-Pfad im Linksklick-Dialog auf Win/Linux).
+
+## Urlaub: Periode als Einheit, Stunden pro Tag
+
+Urlaub ist ein Zeitraum A–B, kein Tag. Gespeichert wird er trotzdem
+tagesgenau: die **Periode** trägt die Identität (Name, Kalender-Event,
+Löschen als Einheit), die **Tagesminuten** liegen in ihr. Daraus folgen vier
+Regeln:
+
+- **Urlaub gewinnt im Kalender** — er färbt die Zelle auch über Feiertag und
+  Wochenende hinweg, damit der Zeitraum ein durchgehender Block bleibt. Der
+  Feiertagsname geht nicht verloren, er wandert in den kombinierten Tooltip.
+- **Urlaub und Arbeitszeit schließen sich am selben Tag aus.** Trägt ein Tag
+  Urlaubsstunden, öffnet der Tages-Dialog gar nicht erst
+  (`ui.App._open_dialog`), und ein Urlaub lässt sich nicht über Tage legen,
+  an denen bereits Ist-Zeit oder eine aktive Reservierung liegt
+  (`vacations.conflicting_days`, geprüft in `vacation_dialog._save`). Der
+  Grund ist eine Zahl, keine Ästhetik: beide Werte landeten im Bericht
+  nebeneinander in „Zu vergüten gesamt", ein Kalendertag käme also auf mehr
+  Stunden, als er hat. **Ausgenommen sind die 0-Minuten-Tage** einer Periode
+  (Wochenende, Feiertag): sie halten den Zeitraum als Block zusammen, sind
+  aber kein Urlaubstag — wer am Samstag mitten im Urlaub arbeitet, darf das
+  erfassen. Beide Sperren prüfen deshalb auf `minutes > 0`, nicht auf
+  „Tag liegt in einer Periode". Alt-Daten, die den Zustand bereits tragen,
+  räumt die Sperre nicht auf (Xveyn#97) — deshalb baut `grid_renderer` die
+  Eintragszelle auf Urlaubs-Untergrund weiterhin.
+- **Gelöscht wird immer die ganze Periode.** Einzelne Tage aus der Mitte
+  herauszubrechen würde die `days`-Invariante (lückenlos von `from` bis `to`)
+  verletzen; Korrekturen laufen über den Verwaltungs-Dialog.
+- **Gerechnet wird in Minuten.** Eine im Dialog eingegebene Gesamtstundenzahl
+  wird **einmalig beim Anlegen** über `apportion_minutes` auf die Arbeitstage
+  verteilt; der Store hält nie eine Gesamtzahl. Damit schneidet ein Bericht
+  über den Monatswechsel exakt — ohne anteilige Rundung.
+
+Im Bericht bleibt **„Gesamt" reine Ist-Zeit**. Die abrechnungsrelevante Zahl
+kommt als zusätzliche Zeile „Zu vergüten gesamt" dazu, statt eine bestehende
+je nach Häkchen umzudeuten. Ohne Urlaub im Zeitraum ist die Ausgabe bitgleich
+zu vorher.
+
+`weekly_limit` (Werkstudenten-Limit) und `pause_requirement` sehen den Urlaub
+per Konstruktion nicht: er liegt in einem eigenen Store und trägt keine Slots.
+Das ist Absicht, und der Grund ist inhaltlich: **Urlaub ist keine geleistete
+Arbeitszeit.** Das 20-Stunden-Privileg begrenzt geleistete Stunden — würden
+Urlaubsstunden mitzählen, schlüge die Warnung in einer Urlaubswoche an, in der
+gar nicht gearbeitet wurde. Dass „Zu vergüten gesamt" die Grenze überschreiten
+kann, während das Limit schweigt, ist damit kein Widerspruch, sondern die
+Folge zweier verschiedener Fragen.
+
+**Zwei bekannte Grenzen, die man kennen muss:**
+
+- **Ohne gesetztes Bundesland** (`settings["state"] == ""`, der Default eines
+  frischen Nutzers) kennt `holidays_de` keine Feiertage — ein Weihnachtsurlaub
+  trägt dann für den 25./26.12. volle Stunden. Der Anlege-Dialog weist darauf
+  hin; die `days` werden **einmalig beim Anlegen** berechnet, ein späterer
+  Bundesland-Wechsel korrigiert bestehende Perioden also nicht.
+- **Urlaub ist gerätelokal.** Bei aktivem Drive-Sync zeigen zwei Geräte
+  identische Ist-Zeiten, aber jedes nur seinen eigenen Urlaub. Derselbe Monat,
+  vom Laptop statt vom Desktop gesendet, weist deshalb ein anderes „Zu
+  vergüten gesamt" aus.
+
+Der Google-Kalender-Push ist ein **Zusatz**, keine Voraussetzung: anders als
+Reservierungen ist Urlaub **nicht** an `gcal_enabled` gekoppelt. Für den
+**Push** selbst gelten dagegen drei Bedingungen: `gcal_enabled`, ein gewählter
+Kalender **und** ein vorhandener `reservation_store` — `_reservations_active`
+(`ui.py:245`) prüft beides, und `trigger_reconcile`/`reconcile_on_start`
+kehren sonst früh zurück.
 
 ## Dialog-Styling: ein gemeinsames Theme
 
@@ -550,7 +622,12 @@ nicht mehr als „offen" führen — der Verweis lautet auf diese Grenze.
   `error`, während der Webhook-Pfad `auth`/`notfound`/`redirect`/`client`/
   `server` unterscheiden muss. Ohne den HTTPError-Zweig käme jede
   HTTP-Fehlerantwort als *unerwarteter Fehler mit Traceback* beim Nutzer an
-  statt als „Der Server hat mit 500 geantwortet".
+  statt als „Der Server hat mit 500 geantwortet". `PAYLOAD_SCHEMA_VERSION`
+  steht seit dem Urlaubs-Feature auf `2`: das Dokument trägt zusätzlich
+  `vacation` (`{ISO: minutes}` der Urlaubstage im Berichtszeitraum, oder
+  `null` ohne Häkchen) und `vacation_minutes` (Summe daraus, `0` ohne
+  Urlaub) — ohne gesetztes Häkchen bleiben beide Felder auf ihrem Leerwert,
+  ein bestehender Empfänger läuft also unverändert weiter.
 - `src/webhook_store.py` — gerätelokaler Store der Webhook-Konfiguration
   (`webhooks.json`). Enthält Konfiguration **und** Secrets und wird deshalb wie
   `token.json` gehärtet geschrieben; reist bewusst **nicht** per Drive-Sync.
@@ -561,6 +638,20 @@ nicht mehr als „offen" führen — der Verweis lautet auf diese Grenze.
   kennt das Feld nicht) und wird in `share.py` bewusst aus dem Share-Doc
   projiziert, weil dessen Validator unbekannte Felder ablehnt.
 - `src/reservations_sync.py` — Abgleich der Reservierungen mit einem Google Kalender
+- `src/vacations.py` — Urlaubsperioden (eigenes Konzept neben Ist-Zeiten und
+  Reservierungen). Die **Periode** ist der Record mit Identität
+  (`{id: {name, from, to, days: {ISO: minutes}, gcal_event_id, modified_at,
+  deleted}}`), die Tagesminuten liegen in ihr; `days` deckt jeden Kalendertag
+  von `from` bis `to` lückenlos ab, Wochenenden und Feiertage mit 0. Enthält
+  auch die reinen Regeln (`expand_days`, `apportion_minutes`,
+  `periods_overlap`, `conflicting_days`). Gerätelokal — reist **nicht** per Drive-Sync und steht
+  **nicht** im Share-Doc.
+- `src/vacations_sync.py` — Einwegs-Push der Urlaubsperioden als
+  Ganztags-Events in den Google Kalender. Eigener Marker-Wert
+  (`zeiterfassung=vacation`), damit der Reservierungs-Reconcile die Events
+  serverseitig gar nicht erst sieht
+- `src/dialogs/vacation_dialog.py` — Verwaltung der Perioden (Einstieg:
+  Einstellungen → Arbeitszeit → „Urlaub verwalten")
 - `src/reminders.py` — pure Fälligkeits-Logik für Reservierungs-Erinnerungen (Tk-frei); `src/reminder_scheduler.py` — periodischer Reminder-Poll (root.after) → Toast über Tray
 - `src/send_reminder.py` — pure Logik des Sende-Reminders (Tk-frei): monatlicher
   Termin (Tag im Monat auf die Monatslänge geclamped, optional von Wochenenden/

@@ -325,7 +325,8 @@ def run_compaction_blocking(storage, settings, conflicts_store, base, timeout_se
     return result
 
 
-def run_calendar_reconcile(reservation_store, settings, base, storage, data_lock=None):
+def run_calendar_reconcile(reservation_store, settings, base, storage,
+                           data_lock=None, vacation_store=None):
     """Baut den Calendar-Service und fährt einen Reservierungs-Reconcile.
 
     Liefert {"ok": bool, "error": str, "tb": str, "limit_warnings": [...]}.
@@ -338,9 +339,16 @@ def run_calendar_reconcile(reservation_store, settings, base, storage, data_lock
     weekly_limit.py) für die ISO-Wochen frisch importierter Reservierungs-
     Slots — geprüft werden dabei ausschließlich bereits erfasste Ist-Zeiten
     (storage), nicht die importierten Reservierungen selbst.
+
+    vacation_store (optional, Default None → kein Push): pusht im Anschluss
+    die Urlaubsperioden als Ganztags-Events. Läuft NACH `mark_reconciled` und
+    in einem eigenen try/except — additiv, darf einen bereits gelungenen
+    Reservierungs-Abgleich nicht mitreißen (s. reconcile_vacations-Aufruf
+    unten).
     """
     from src import gcal
     from src.reservations_sync import reconcile_reservations
+    from src.vacations_sync import reconcile_vacations
     from src.weekly_limit import check_dates_for_warnings
 
     if not settings.get("gcal_enabled"):
@@ -360,6 +368,21 @@ def run_calendar_reconcile(reservation_store, settings, base, storage, data_lock
         sync_history.mark_reconciled(base)
         limit_warnings = check_dates_for_warnings(
             settings, storage.get_all(), result["imported_dates"])
+        # Urlaubs-Push zuletzt und bewusst NICHT-FATAL: derselbe Service,
+        # dasselbe gcal_enabled-Gate, derselbe data_lock — aber ein eigener
+        # Fehlerraum. Läge er im gemeinsamen try, risse ein scheiternder Push
+        # (API-Problem) einen erfolgreichen Reservierungs-Abgleich mit: der
+        # sync_history-Marker bliebe ungesetzt, und genau der vetot den
+        # N6-Startup-Sweep gegen einen settings.json-Reset (M4) — Folge wäre
+        # die Tombstone-Resurrection, gegen die sync_history.py existiert.
+        # Zusätzlich gingen die Werkstudenten-Warnungen (#98) verloren.
+        if vacation_store is not None:
+            try:
+                reconcile_vacations(service, calendar_id, vacation_store,
+                                    data_lock=data_lock)
+            except Exception:
+                logging.getLogger(__name__).exception(
+                    "Urlaubs-Push fehlgeschlagen (nicht-fatal)")
         return {"ok": True, "error": "", "tb": "", "limit_warnings": limit_warnings}
     except Exception as e:
         logging.getLogger(__name__).exception("Kalender-Reconcile fehlgeschlagen")

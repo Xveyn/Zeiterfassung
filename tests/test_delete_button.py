@@ -27,3 +27,17 @@ def test_macos_with_reservation_only_shows():
 
 def test_macos_with_both_shows():
     assert _should_show_delete_button(True, True, True) is True
+
+
+def test_delete_button_shown_for_vacation_only_day():
+    # Ein reiner Urlaubstag ist löschbar (die ganze Periode) — auf macOS
+    # braucht er daher das ✕, weil <Button-3> dort unzuverlässig ist.
+    assert _should_show_delete_button(True, False, False, True) is True
+
+
+def test_delete_button_hidden_without_any_unit():
+    assert _should_show_delete_button(True, False, False, False) is False
+
+
+def test_delete_button_stays_windows_only_negative_for_vacation():
+    assert _should_show_delete_button(False, False, False, True) is False
