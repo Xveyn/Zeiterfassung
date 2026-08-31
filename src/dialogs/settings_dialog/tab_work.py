@@ -21,7 +21,8 @@ class WorkTab:
 
     def __init__(self, frame, dialog, settings, vacation_store=None,
                  on_vacation_change=None, storage=None,
-                 reservation_store=None, runner=None):
+                 reservation_store=None, runner=None,
+                 on_vacation_display_change=None):
         workweek_only_var = tk.BooleanVar(value=settings.get("workweek_only"))
         tk.Checkbutton(
             frame, text="Nur Werktage — Wochenende (Sa/So) komplett deaktivieren",
@@ -133,7 +134,8 @@ class WorkTab:
                 # Abschalten über runner.purge_vacations auf (Audit H5).
                 lambda: open_vacation_dialog(
                     dialog, vacation_store, settings, on_vacation_change,
-                    storage, reservation_store, runner),
+                    storage, reservation_store, runner,
+                    on_display_change=on_vacation_display_change),
             ).grid(row=8, column=0, columnspan=2, padx=10, pady=(0, 8), sticky="w")
 
         self.frame = frame

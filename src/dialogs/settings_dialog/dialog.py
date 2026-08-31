@@ -33,7 +33,8 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
                          runner, conflicts_store=None, storage=None,
                          reservation_store=None, on_request_restart=None,
                          data_lock=None, sync_guard=None, webhook_store=None,
-                         vacation_store=None, on_vacation_change=None):
+                         vacation_store=None, on_vacation_change=None,
+                         on_vacation_display_change=None):
     """Modaler Dialog zum Bearbeiten der App-Einstellungen, aufgeteilt auf sechs
     Tabs (Arbeitszeit / Bericht & Mail / Webhooks / Google / App / Updates).
 
@@ -46,6 +47,9 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
     Dialogs laufen über runner.run(fn, on_done) (Audit H5).
     vacation_store/on_vacation_change: optional; sind sie gesetzt, erscheint
     im Arbeitszeit-Tab der „Urlaub verwalten"-Button.
+    on_vacation_display_change: reines Neuzeichnen des Kalenders für die
+    Anzeige-Schalter jenes Dialogs — ohne den Kalender-Abgleich, den
+    on_vacation_change mitbringt.
     """
     dialog = create_dialog(parent, "Einstellungen", escape_closes=False)
 
@@ -70,7 +74,8 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
 
     # ===================== Tab: Arbeitszeit =====================
     work = WorkTab(tab_work, dialog, settings, vacation_store,
-                   on_vacation_change, storage, reservation_store, runner)
+                   on_vacation_change, storage, reservation_store, runner,
+                   on_vacation_display_change)
 
     # ===================== Tab: Bericht & Mail =====================
     mail = MailTab(tab_mail, settings)
