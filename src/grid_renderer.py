@@ -295,10 +295,10 @@ class GridRenderer:
     def _build_vacation_cell(self, parent, date_str, day_text, minutes, pad,
                              cell_size, time_font=FONT_TINY):
         """Urlaubstag ohne erfasste Ist-Zeit: Tagnummer, „Urlaub" und die
-        Stundenzeile nur, wenn der Tag Minuten trägt. Wochenend- und
-        Feiertags-Tage einer Periode stehen mit 0 Minuten im Store — sie
-        werden eingefärbt (der Zeitraum bleibt als Block sichtbar), zeigen
-        aber keine Dauer.
+        Stundenzeile nur, wenn der Tag Minuten trägt und `vacation_show_hours`
+        gesetzt ist. Wochenend- und Feiertags-Tage einer Periode stehen mit
+        0 Minuten im Store — sie werden eingefärbt (der Zeitraum bleibt als
+        Block sichtbar), zeigen aber keine Dauer.
 
         Stundenformat H:MM wie in _fmt_cell_hours — dort ist begründet, warum
         die Zelle NICHT `format_minutes_hm` spricht: zwei Notationen fürs
@@ -321,9 +321,16 @@ class GridRenderer:
         name_lbl = tk.Label(cell, text="Urlaub", font=time_font, bg=bg,
                             fg=VACATION_ACCENT, cursor="hand2")
         name_lbl.pack()
+        # Die Stundenzeile ist abschaltbar (`vacation_show_hours`, Schalter im
+        # Dialog „Urlaub verwalten"). Abgeschaltet bleibt das Label leer
+        # stehen, statt zu entfallen: die Zelle behält damit ihre drei Zeilen
+        # und ihre Höhe — dieselbe Bauform wie beim 0-Minuten-Tag, sonst
+        # sprängen Urlaubs- und Arbeitstage im selben Raster verschieden hoch.
+        show_hours = self._settings.get("vacation_show_hours")
         hours_lbl = tk.Label(
             cell,
-            text=f"{format_hours_colon(minutes / 60)} h" if minutes else "",
+            text=(f"{format_hours_colon(minutes / 60)} h"
+                  if minutes and show_hours else ""),
             font=time_font, bg=bg, fg=TEXT, cursor="hand2")
         hours_lbl.pack(pady=(0, pad))
         labels = (day_lbl, name_lbl, hours_lbl)

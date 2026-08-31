@@ -477,6 +477,7 @@ class App:
             webhook_store=self._webhook_store,
             vacation_store=self.vacation_store,
             on_vacation_change=self._on_vacation_change,
+            on_vacation_display_change=self._refresh,
         )
 
     def _on_vacation_change(self):
