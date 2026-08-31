@@ -18,7 +18,7 @@ from src.theme import (
     BG, CELL_BG, FONT, TEXT,
     apply_combobox_style, attach_unfocus_on_click, center_dialog_on_parent,
     create_dialog,
-    dark_entry, primary_button, secondary_button,
+    dark_combo, dark_entry, primary_button, secondary_button,
     set_button_text, set_primary_button_enabled,
     themed_showerror, themed_showinfo,
 )
@@ -29,7 +29,13 @@ def open_share_dialog(parent, storage, settings, base_path, runner, reservation_
     credentials_path = os.path.join(base_path, "credentials.json")
     token_path = os.path.join(base_path, "token.json")
 
-    if not os.path.exists(credentials_path):
+    accounts = smtp_store.enabled() if smtp_store else []
+    gmail_possible = os.path.exists(credentials_path)
+
+    # Nicht mehr „credentials.json muss da sein", sondern „irgendein Mailweg
+    # muss da sein". Sonst bleibt Teilen für alle unerreichbar, die genau
+    # deshalb SMTP eingerichtet haben.
+    if not gmail_possible and not accounts:
         show_missing_credentials_dialog(parent, base_path)
         return
 
@@ -198,6 +204,21 @@ def open_share_dialog(parent, storage, settings, base_path, runner, reservation_
 
         return _n(entries), _n(reservations)
 
+    transport_labels = (["Gmail"] if gmail_possible else []) + \
+        [a.get("name", "") for a in accounts]
+    transport_var = tk.StringVar(value=transport_labels[0])
+    if len(transport_labels) > 1:
+        tk.Label(dialog, text="Versand über:", font=FONT, bg=BG, fg=TEXT).grid(
+            row=row, column=0, padx=(20, 6), pady=(0, 4), sticky="w")
+        dark_combo(dialog, transport_var, transport_labels, width=24).grid(
+            row=row, column=1, padx=(0, 20), pady=(0, 4), sticky="w")
+        row += 1
+
+    def _chosen_transport():
+        """Das gewählte SMTP-Konto, oder None für den Gmail-Weg."""
+        return next(
+            (a for a in accounts if a.get("name") == transport_var.get()), None)
+
     tk.Label(
         dialog, text="Empfänger:", font=FONT, bg=BG, fg=TEXT,
     ).grid(row=row, column=0, padx=(20, 6), pady=(0, 4), sticky="w")
@@ -295,6 +316,7 @@ def open_share_dialog(parent, storage, settings, base_path, runner, reservation_
                 sync_enabled=settings.get("sync_enabled"),
                 gcal_enabled=settings.get("gcal_enabled"),
                 save_default=save_default_var.get(), settings=settings,
+                transport=_chosen_transport(),
             )
 
         def on_done(res):
@@ -323,12 +345,24 @@ def open_share_dialog(parent, storage, settings, base_path, runner, reservation_
                     "Bitte prüfe deine Internetverbindung und versuche es "
                     "dann erneut.",
                 )
-            else:
+            elif res.get("tb"):
+                # Nur der Catch-all-Zweig ist nativ: ein themed Dialog baut
+                # selbst Tk-Widgets auf und ist im gestörten Zustand die
+                # unzuverlässigere Schicht (CLAUDE.md, Audit N14).
                 messagebox.showerror(
                     "Teilen fehlgeschlagen",
                     f"{type(res['error']).__name__}: {res['error']}\n\n{res['tb']}",
                     parent=target,
                 )
+            else:
+                # Erwartete SMTP-Fehler (auth/recipient/tls/server): kuratierte
+                # Meldung samt Serverantwort, themed.
+                from src.dialogs.send_task import format_result_summary
+                themed_showerror(
+                    target, "Teilen fehlgeschlagen",
+                    format_result_summary([{
+                        "name": share_recipient, "ok": False,
+                        "kind": kind, "detail": res.get("detail")}]))
 
         runner.run(fn, on_done)
 
