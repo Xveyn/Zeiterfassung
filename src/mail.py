@@ -3,11 +3,8 @@ import base64
 import os
 import socket
 from collections import namedtuple
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
-from email.mime.application import MIMEApplication
-from email.header import Header
 
+from src.mime_message import build_message
 from src.oauth_utils import discard_token_for_scope_upgrade, write_token
 
 GMAIL_SEND_SCOPE = "https://www.googleapis.com/auth/gmail.send"
@@ -355,34 +352,15 @@ def send_email(service, to, subject, html_body,
         attachment_filename = attachment_filename or pdf_filename
         attachment_subtype = "pdf"
 
-    # Header-Injection UND stille Falschzustellung verhindern (Audit N11 / #133):
-    # Steuerzeichen im Empfänger abweisen, statt sie still zu strippen — ein
-    # gestripptes "a@b\nBcc: c" würde sonst an die vermurkste Adresse "a@bBcc: c"
-    # gesendet, ohne dass der Nutzer es merkt. Der Wert kommt aus den Settings,
-    # der Fehler wird im Sende-Dialog sichtbar gemacht (classify_mail_error).
-    if "\r" in to or "\n" in to or "\x00" in to:
-        raise ValueError(
-            "Die Empfängeradresse enthält unzulässige Steuerzeichen "
-            "(Zeilenumbruch oder Nullbyte). Bitte korrigiere die Adresse "
-            "in den Einstellungen."
-        )
-
-    if attachment_bytes:
-        message = MIMEMultipart()
-        message["to"] = to
-        message["subject"] = Header(subject, "utf-8")  # pyright: ignore[reportArgumentType]
-        message.attach(MIMEText(html_body, "html", _charset="utf-8"))
-
-        attachment = MIMEApplication(attachment_bytes, _subtype=attachment_subtype)
-        attachment.add_header(
-            "Content-Disposition", "attachment",
-            filename=attachment_filename or f"attachment.{attachment_subtype}",
-        )
-        message.attach(attachment)
-    else:
-        message = MIMEText(html_body, "html", _charset="utf-8")
-        message["to"] = to
-        message["subject"] = Header(subject, "utf-8")  # pyright: ignore[reportArgumentType]
+    # Der MIME-Bau inklusive UTF-8-Pflichten und Steuerzeichen-Abwehr liegt in
+    # src/mime_message.py — dieselbe Nachricht baut der SMTP-Pfad. Kein `from`:
+    # die Gmail-API setzt den authentifizierten Nutzer als Absender.
+    message = build_message(
+        to=to, subject=subject, html_body=html_body,
+        attachment_bytes=attachment_bytes,
+        attachment_filename=attachment_filename,
+        attachment_subtype=attachment_subtype,
+    )
 
     raw = base64.urlsafe_b64encode(message.as_bytes()).decode()
     body = {"raw": raw}

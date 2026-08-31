@@ -34,6 +34,7 @@ ANNOTATED_MODULES = [
     "src/weekly_limit.py",
     "src/send_reminder.py",
     "src/report.py",
+    "src/mime_message.py",
     # Infra-/Plattform-Schicht
     "src/paths.py",
     "src/version.py",
