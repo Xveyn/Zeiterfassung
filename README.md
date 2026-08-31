@@ -53,7 +53,7 @@ Desktop-App zur Erfassung von Arbeitszeiten mit Kalenderansicht, PDF-Report und 
 
 - **PDF-Report** — Automatische Generierung als druckfreundliches PDF, gruppiert pro ISO-Kalenderwoche; Kategorie-Aufschlüsselung optional
 - **E-Mail-Versand** — HTML-E-Mail mit PDF-Anhang über Gmail API (OAuth2)
-- **SMTP-Versand** *(ab X.Y.Z)* — Berichte über einen eigenen Mail-Server statt über die Gmail-API verschicken; mehrere Konten mit je eigenem Empfänger möglich
+- **SMTP-Versand** *(ab 1.23.0)* — Berichte über einen eigenen Mail-Server statt über die Gmail-API verschicken; mehrere Konten mit je eigenem Empfänger möglich
 - **Webhook-Versand** — Der Bericht lässt sich zusätzlich zur E-Mail an konfigurierbare HTTP-Endpunkte senden (JSON und/oder PDF, optional mit Token oder HMAC-Signatur); gerätelokal konfiguriert
 - **PDF-Export** — Bericht für einen frei gewählten Zeitraum direkt als PDF lokal speichern (ohne Mail-Versand)
 - **Urlaub im Bericht** — Optionales Häkchen „Urlaub ausweisen“: der Bericht bekommt einen eigenen Urlaubs-Block je Zeitraum und die Zeile „Zu vergüten gesamt“. „Gesamt“ bleibt die reine Ist-Zeit

@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.23.0 — 2026-08-31
+
+### Hinzugefügt
+- **SMTP-Versand**: Berichte lassen sich jetzt zusätzlich zur Gmail-API über
+  einen eigenen Mail-Server verschicken (Einstellungen → SMTP). Mehrere
+  Konten mit je eigenem Empfänger sind möglich, jedes einzeln aktivierbar;
+  ein „Verbindung testen"-Button prüft Server und Zugangsdaten direkt im
+  Dialog, ohne eine Mail zu verschicken. Passwörter liegen im Schlüsselbund
+  des Betriebssystems; steht keiner zur Verfügung, fällt die App auf eine
+  lokal gehärtet geschriebene Datei zurück. Auch der Teilen-Dialog kann
+  wahlweise über ein SMTP-Konto statt über Gmail versenden. Gmail muss
+  dadurch nicht mehr zwingend eingerichtet sein — wer ausschließlich SMTP
+  nutzt, kommt ohne `credentials.json` aus.
+
 ## 1.21.1 — 2026-08-28
 
 **Erstes Release aus diesem Repository.** An der App selbst hat sich gegenüber
