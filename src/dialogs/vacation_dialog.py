@@ -6,6 +6,7 @@ und `entry_dialog.py` (M16).
 """
 
 import datetime
+import logging
 import tkinter as tk
 from tkinter import ttk
 
@@ -21,6 +22,8 @@ from src.time_utils import (
 )
 from src.dialogs.date_row import build_date_row
 from src.vacations import apportion_minutes, expand_days
+
+log = logging.getLogger(__name__)
 
 
 def _hours_to_minutes_exact(hours: float) -> int:
@@ -170,6 +173,12 @@ def open_vacation_dialog(parent, vacation_store, settings, on_change=None):
                              "Bitte zuerst einen Urlaubszeitraum auswählen.")
             return
         period = vacation_store.get(pid)
+        if period is None:
+            # Die Liste ist nur ein Abbild des Stores; ist die Periode
+            # zwischenzeitlich weg (Rechtsklick im Kalender, während der
+            # Dialog offen steht), neu einlesen statt auf None zuzugreifen.
+            _changed()
+            return
         if not themed_askyesno(
                 dialog, "Urlaub löschen",
                 f"Urlaub „{period['name']}“ komplett löschen?", lock_ms=600):
@@ -400,12 +409,6 @@ def _open_edit_dialog(parent, vacation_store, settings, period_id, on_saved):
         try:
             vacation_store.save(period_id, name_var.get().strip(),
                                 df.isoformat(), dt.isoformat(), plan["days"])
-            # Sammelwert als Vorbelegung für den nächsten Urlaub merken —
-            # sonst wäre die Einstellung nur per Hand-Edit der settings.json
-            # änderbar und damit tot. Nur im per_day-Modus: im total-Modus
-            # ist der eingegebene Wert eine Gesamtsumme, keine Tageslänge.
-            if mode_var.get() == "per_day" and _value() > 0:
-                settings.set("vacation_hours_per_day", _value())
         except ValueError as e:
             # Überschneidung mit einer anderen Periode — bekannter Fehler.
             themed_showerror(dialog, "Urlaub nicht gespeichert", str(e))
@@ -415,6 +418,23 @@ def _open_edit_dialog(parent, vacation_store, settings, period_id, on_saved):
                 dialog, "Urlaub nicht gespeichert",
                 f"Die Urlaubsdatei konnte nicht geschrieben werden:\n\n{e}")
             return
+        # Sammelwert als Vorbelegung für den nächsten Urlaub merken — sonst
+        # wäre die Einstellung nur per Hand-Edit der settings.json änderbar
+        # und damit tot. Nur im per_day-Modus: im total-Modus ist der
+        # eingegebene Wert eine Gesamtsumme, keine Tageslänge.
+        #
+        # BEWUSST hinter dem try des Stores: der Urlaub ist hier bereits
+        # gespeichert. Läge das settings.set im selben try, meldete ein
+        # OSError daraus „Die Urlaubsdatei konnte nicht geschrieben werden“,
+        # obwohl sie es wurde — und ein zweiter Speichern-Klick liefe beim
+        # Neuanlegen in die Überschneidungsprüfung mit der eben erzeugten
+        # Periode. Scheitert nur die Vorbelegung, ist das folgenlos.
+        if mode_var.get() == "per_day" and _value() > 0:
+            try:
+                settings.set("vacation_hours_per_day", _value())
+            except OSError:
+                log.exception(
+                    "Vorbelegung vacation_hours_per_day nicht gespeichert")
         dialog.destroy()
         on_saved()
 

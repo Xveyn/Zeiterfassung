@@ -93,9 +93,8 @@ def reconcile_vacations(service: Any, calendar_id: str, store: VacationStore,
                         data_lock: threading.RLock | None = None) -> None:
     """Voller Push: listen → planen → ausführen → Ergebnis zurückschreiben.
 
-    Ohne `settings`-Parameter (die Spec nennt einen): es gibt kein Watermark
-    zu führen — der Push liest den vollen Stand und vergleicht gegen die
-    Events. Die Spec ist entsprechend nachzuziehen.
+    Ohne `settings`-Parameter: es gibt kein Watermark zu führen — der Push
+    liest den vollen Stand und vergleicht gegen die Events.
 
     Wirft bei Netz-/API-Fehlern weiter — der Caller entscheidet, ob still
     geloggt oder gezeigt wird. Der lokale Store bleibt bei einem Fehler

@@ -153,7 +153,13 @@ def build_period_picker(parent, storage, settings, on_change=None,
     # Schalter: Urlaub im Bericht ausweisen. Wird NUR gebaut, wenn überhaupt
     # Urlaub existiert — ein Schalter für ein ungenutztes Feature ist Rauschen.
     # Default aus, wie die Kategorie-Aufschlüsselung.
-    vacation_days = vacation_store.day_minutes() if vacation_store else {}
+    # Durch DENSELBEN Wochentags-Filter wie all_entries (s.o.) und wie der
+    # Urlaubs-Snapshot in send_dialog/export_dialog. Ein Urlaubstag am
+    # Wochenende kann Minuten tragen (die Tagesliste im Urlaubs-Dialog erlaubt
+    # Overrides auf Sa/So) — ungefiltert wiese die Vorschau im Nur-Werktage-
+    # Modus mehr Urlaubsstunden aus, als der erzeugte Bericht enthält.
+    vacation_days = workweek.filter_for_report(
+        vacation_store.day_minutes(), settings) if vacation_store else {}
     vacation_var = None
     if any(vacation_days.values()):
         vacation_var = tk.BooleanVar(value=False)
