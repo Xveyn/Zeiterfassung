@@ -266,6 +266,27 @@ def test_smtp_failure_does_not_stop_the_other_channels(monkeypatch):
     assert by_channel["smtp"]["kind"] == "auth"
 
 
+def test_smtp_never_logs_in_with_an_empty_password_when_keyring_is_unavailable(
+        monkeypatch):
+    """F1: `get_secret` signalisiert ein nicht lesbares Passwort über `None`.
+    Der Dispatcher darf smtp.send dann NICHT mit einem leeren Passwort
+    aufrufen (der Server antwortete 535, und der Nutzer suchte das Problem
+    beim Passwort statt beim Schlüsselbund) — sondern muss ein Failure-Result
+    melden."""
+    sent = []
+    _patch_mail_ok(monkeypatch)
+    monkeypatch.setattr(st.keyring_store, "get_secret", lambda record: None)
+    monkeypatch.setattr(st.smtp, "send", lambda *a, **k: sent.append(1))
+
+    res = perform_send(**_kwargs(smtp_accounts=[_account()]))
+
+    assert sent == []
+    by_channel = {r["channel"]: r for r in res["results"]}
+    assert by_channel["mail"]["ok"] is True
+    assert by_channel["smtp"]["ok"] is False
+    assert by_channel["smtp"]["kind"] == "keyring"
+
+
 def test_pdf_failure_takes_smtp_down_but_json_webhooks_survive(monkeypatch):
     """SMTP haengt die PDF an wie der Mail-Kanal — ohne sie kann es nicht
     senden. JSON-Webhooks brauchen sie nicht und laufen weiter."""
@@ -317,3 +338,4 @@ def test_kind_texts_cover_the_new_smtp_kinds():
     from src.dialogs.send_task import _KIND_TEXTS
     assert "recipient" in _KIND_TEXTS
     assert "tls" in _KIND_TEXTS
+    assert "keyring" in _KIND_TEXTS

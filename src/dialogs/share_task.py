@@ -60,8 +60,20 @@ def _share_via_gmail(*, payload, filename, credentials_path, token_path,
 
 
 def _share_via_smtp(*, record, payload, filename, recipient, subject, html):
+    password = keyring_store.get_secret(record)
+    if password is None:
+        # s. send_task._send_smtp: `None` heißt, der Schlüsselbund hat NICHT
+        # geantwortet (Timeout/Fehler) und es gibt keine lokale Fallback-
+        # Kopie — nicht dasselbe wie ein tatsächlich leeres Passwort. Ohne
+        # diese Unterscheidung meldete sich smtp.send mit "" an, der Server
+        # antwortete 535, und der Nutzer suchte beim Passwort statt beim
+        # Schlüsselbund.
+        log.warning("Teilen über SMTP-Konto %r: Passwort nicht aus dem "
+                    "Schlüsselbund lesbar", record.get("name"))
+        return {"ok": False, "kind": "keyring", "error": None, "tb": None,
+                "detail": "Das Passwort konnte nicht aus dem Schlüsselbund "
+                          "gelesen werden."}
     try:
-        password = keyring_store.get_secret(record)
         smtp.send(record, password, subject=subject, html=html, to=recipient,
                   attachment_bytes=payload,
                   attachment_filename=filename,

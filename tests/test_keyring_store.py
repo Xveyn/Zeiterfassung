@@ -97,6 +97,15 @@ def test_get_secret_returns_empty_string_when_nothing_is_stored(fake_keyring):
     assert keyring_store.get_secret(_record(id="unbekannt")) == ""
 
 
+def test_get_secret_returns_none_when_the_backend_is_unavailable_without_fallback(
+        monkeypatch):
+    """F1: `None` muss sich von einem tatsächlich leeren Passwort ("")
+    unterscheiden lassen — sonst meldet sich der Aufrufer mit einem leeren
+    Passwort beim Server an, statt das fehlende Secret zu melden."""
+    monkeypatch.setitem(sys.modules, "keyring", None)
+    assert keyring_store.get_secret(_record()) is None
+
+
 def test_delete_secret_removes_the_entry(fake_keyring):
     """Ohne das bliebe das Secret nach dem Löschen des Kontos verwaist."""
     fake = fake_keyring()
@@ -143,6 +152,22 @@ def test_delete_secret_gives_up_when_the_keyring_blocks(fake_keyring, monkeypatc
     monkeypatch.setattr(keyring_store, "WATCHDOG_TIMEOUT", 0.05)
     try:
         keyring_store.delete_secret("rec-1")   # kehrt zurück, statt zu hängen
+    finally:
+        gate.set()
+
+
+def test_get_secret_signals_unavailable_on_timeout_without_fallback(
+        fake_keyring, monkeypatch):
+    """F1: ohne lokale Fallback-Kopie muss der Timeout-Fall als `None`
+    erkennbar sein — die bisherige stille Degradierung auf "" ließ den
+    Aufrufer sich mit einem leeren Passwort anmelden, der Server antwortete
+    535, und der Nutzer suchte das Problem beim Passwort statt beim
+    Schlüsselbund."""
+    gate = threading.Event()
+    fake_keyring(block=gate)
+    monkeypatch.setattr(keyring_store, "WATCHDOG_TIMEOUT", 0.05)
+    try:
+        assert keyring_store.get_secret(_record()) is None
     finally:
         gate.set()
 

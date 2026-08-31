@@ -134,6 +134,22 @@ def test_share_over_smtp_sends_to_the_dialog_recipient(monkeypatch):
     assert sent["to"] == "kollege@example.com"
 
 
+def test_share_over_smtp_fails_instead_of_logging_in_with_an_empty_password(
+        monkeypatch):
+    """F1: `get_secret` signalisiert ein nicht lesbares Passwort über `None`.
+    perform_share darf smtp.send dann NICHT mit einem leeren Passwort
+    aufrufen, sondern muss ein Failure-Result liefern."""
+    sent = []
+    monkeypatch.setattr(st.keyring_store, "get_secret", lambda record: None)
+    monkeypatch.setattr(st.smtp, "send", lambda *a, **k: sent.append(1))
+
+    res = perform_share(**_kwargs(transport=_account()))
+
+    assert sent == []
+    assert res["ok"] is False
+    assert res["kind"] == "keyring"
+
+
 def test_share_over_smtp_classifies_errors(monkeypatch):
     import smtplib
 

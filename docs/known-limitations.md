@@ -233,6 +233,13 @@ Zusätzlich schreibt `keyring` ein geändertes Passwort als Löschen-und-neu-
 Anlegen statt als Update und verwirft dabei die Berechtigung — auch ohne
 Update erscheint der Dialog also nach jeder Passwortänderung einmal wieder.
 
-Der Versand selbst ist davon nicht betroffen: wer den Dialog bestätigt, sendet
-normal weiter; wer ihn abbricht, bekommt eine Fehlermeldung statt eines
-stillen Fehlschlags.
+Der Zugriff läuft hinter einem 30-Sekunden-Watchdog (`keyring_store.py`) —
+genug, um den Dialog in Ruhe zu lesen und das Anmeldepasswort zu tippen. Wer
+innerhalb dieser Zeit bestätigt, sendet normal weiter; wer ihn abbricht,
+bekommt eine Fehlermeldung statt eines stillen Fehlschlags. Antwortet der
+Schlüsselbund auch nach 30 Sekunden nicht — der Dialog blieb unbeantwortet,
+oder der Prompt kam aus einem anderen Grund gar nicht erst —, meldet die App
+das ausdrücklich als „Passwort konnte nicht aus dem Schlüsselbund gelesen
+werden" statt sich mit einem leeren Passwort anzumelden: eine leere Anmeldung
+würde der Server mit „Zugangsdaten abgelehnt" quittieren, und der Nutzer
+suchte das Problem beim Passwort statt beim Schlüsselbund.

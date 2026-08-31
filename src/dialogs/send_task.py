@@ -79,8 +79,21 @@ def _send_smtp(*, record, subject, html, pdf_bytes, pdf_filename):
     Linux blockieren, und `keyring_store` bringt dafür seinen eigenen Watchdog
     mit. Im Tk-Callback fröre das die Oberfläche ein.
     """
+    password = keyring_store.get_secret(record)
+    if password is None:
+        # `None` heißt: der Schlüsselbund hat NICHT geantwortet (Timeout oder
+        # Fehler) und es gibt keine lokale Fallback-Kopie — anders als ein
+        # tatsächlich leeres Passwort (`""`), das ein gültiger Zustand beim
+        # Datei-Fallback ist. Ohne diese Unterscheidung würde smtp.send sich
+        # mit einem leeren Passwort anmelden, der Server mit 535 antworten,
+        # und der Nutzer bei den Zugangsdaten suchen, obwohl der Schlüsselbund
+        # das Problem war.
+        log.warning("SMTP-Versand über %r: Passwort nicht aus dem "
+                    "Schlüsselbund lesbar", record.get("name"))
+        return {"ok": False, "kind": "keyring", "error": None, "tb": None,
+                "detail": "Das Passwort konnte nicht aus dem Schlüsselbund "
+                          "gelesen werden."}
     try:
-        password = keyring_store.get_secret(record)
         smtp.send(record, password, subject=subject, html=html,
                   attachment_bytes=pdf_bytes,
                   attachment_filename=pdf_filename,
@@ -147,13 +160,17 @@ def perform_send(*, date_from, date_to, entries, name, categories,
                        "error": e, "tb": traceback.format_exc()}
             # Ohne PDF kann weder die Mail noch ein PDF-Webhook raus. Die
             # JSON-Webhooks laufen trotzdem weiter — sie brauchen sie nicht.
-            if send_mail:
-                # Garantiert gesetzt: die Normalisierung oben hat send_mail
-                # auf False gezogen, wenn mail None war.
-                assert mail is not None
+            if send_mail and mail is not None:
+                # mail ist hier garantiert gesetzt: die Normalisierung oben
+                # hat send_mail auf False gezogen, wenn mail None war. Kein
+                # `assert` dafür (verschwindet unter `python -O`, und dieser
+                # Worker läuft in einem Daemon-Thread ohne Netz, in dem das
+                # niemand bemerkt) — ein `if`, das den unerreichbaren Fall
+                # defensiv überspringt, trägt denselben Vertrag ohne diese
+                # Ausnahme.
                 results.append({"channel": "mail",
                                 "name": mail["recipient"], **failure})
-                send_mail = False
+            send_mail = False
             # SMTP hängt die PDF an wie der Mail-Kanal — ohne sie kann kein
             # Konto senden.
             for record in smtp_accounts:
@@ -166,17 +183,22 @@ def perform_send(*, date_from, date_to, entries, name, categories,
                                 **failure})
             webhooks = [w for w in webhooks if not w.get("pdf")]
 
-    if send_mail:
-        # Garantiert gesetzt: dieselbe Normalisierung wie oben.
-        assert mail is not None
+    if send_mail and mail is not None:
+        # mail ist hier garantiert gesetzt: dieselbe Normalisierung wie oben.
+        # Kein `assert` (s. Begründung oben) — der unerreichbare Fall wird
+        # defensiv übersprungen statt unter `python -O` lautlos zu verschwinden.
         res = _send_mail(mail=mail, pdf_bytes=pdf_bytes,
                          pdf_filename=pdf_filename, settings=settings)
         results.append({"channel": "mail", "name": mail["recipient"], **res})
 
     for record in smtp_accounts:
-        # mail ist hier garantiert vollständig — die Normalisierung oben hat
-        # smtp_accounts sonst geleert.
-        assert mail is not None
+        if mail is None:
+            # Unerreichbar: die Normalisierung oben leert smtp_accounts,
+            # sobald mail unvollständig ist. Kein `assert` — der Vertrag
+            # dieser Funktion lautet "wirft nie", und ein `assert`
+            # verschwindet unter `python -O`; ein `if ... continue` behält
+            # dieselbe Aussage ohne diese Ausnahme.
+            continue
         res = _send_smtp(record=record, subject=mail["subject"],
                          html=mail["html"], pdf_bytes=pdf_bytes,
                          pdf_filename=pdf_filename)
@@ -238,6 +260,7 @@ _KIND_TEXTS = {
     "client": "Anfrage abgelehnt",
     "server": "Server-Fehler",
     "config": "Konfiguration ungültig",
+    "keyring": "Schlüsselbund nicht erreichbar",
     "error": "unerwarteter Fehler",
 }
 

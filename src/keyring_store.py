@@ -32,9 +32,14 @@ log = logging.getLogger(__name__)
 
 SERVICE = "Zeiterfassung"
 
-# Großzügig genug für einen echten Keychain-Prompt auf einem trägen System,
-# kurz genug, dass ein hängender Schlüsselbund den Versand nicht auffrisst.
-WATCHDOG_TIMEOUT = 5.0
+# Der Watchdog schützt gegen ein BLOCKIERENDES `collection.unlock()` ohne
+# Prompt (s. Docstring oben) — nicht gegen einen langsamen Menschen. Bei
+# einem echten Keychain-Prompt wartet man auf jemanden, der einen Dialog
+# liest und sein Anmeldepasswort tippt; 5s reichen dafür nicht annähernd
+# (macOS nach einem App-Update: ad-hoc-Signatur, geänderter cdhash, der
+# Prompt kommt erneut). Die Wartezeit sitzt ohnehin im Worker-Thread, nicht
+# im UI — ein längerer Timeout kostet hier nichts außer Geduld.
+WATCHDOG_TIMEOUT = 30.0
 
 
 def _call_guarded(work: Callable[[], Any]) -> tuple[bool, Any]:
@@ -52,6 +57,15 @@ def _call_guarded(work: Callable[[], Any]) -> tuple[bool, Any]:
         try:
             box["value"] = work()
         except BaseException as exc:  # bewusst alles — wird unten weitergereicht
+            # Asymmetrisch zu den drei öffentlichen Funktionen (die fangen nur
+            # `Exception`): das ist Absicht, nicht ein übersehener Fall. Hier
+            # muss JEDE Exception aus dem Sekundär-Thread eingefangen werden,
+            # sonst entkäme sie unbehandelt aus einem Thread ohne eigenen
+            # Excepthook. Der Aufrufer (set_secret/get_secret/delete_secret)
+            # fängt dagegen bewusst nur `Exception` und lässt
+            # KeyboardInterrupt/SystemExit durch — die sollen nicht als "kein
+            # Schlüsselbund verfügbar" verschluckt werden, sondern die App wie
+            # gewohnt beenden.
             box["error"] = exc
 
     thread = threading.Thread(target=runner, daemon=True,
@@ -92,12 +106,25 @@ def set_secret(record_id: str, password: str) -> str:
     return "keyring"
 
 
-def get_secret(record: dict[str, Any]) -> str:
+def get_secret(record: dict[str, Any]) -> str | None:
     """Liest das Passwort zu `record`.
 
     Steht `password_location` auf `"file"`, wird der Schlüsselbund gar nicht
     erst gefragt — das spart auf Linux einen D-Bus-Roundtrip, der ohnehin
-    nichts liefern würde.
+    nichts liefern würde. Für diesen Fall ist eine leere Zurückgabe ein
+    gültiger Zustand (Relay ohne Auth) und liefert immer `str`, nie `None`.
+
+    Für den Schlüsselbund-Fall liefert die Funktion **`None`**, wenn sich
+    NICHT ermitteln ließ, ob ein Passwort existiert (Timeout oder eine
+    Exception aus `work`) UND `record` keine lokale Fallback-Kopie trägt.
+    Das ist bewusst von einem tatsächlich leeren Passwort unterschieden
+    (`""`, wenn der Schlüsselbund erfolgreich geantwortet und „nichts
+    gespeichert" gesagt hat): ein Aufrufer, der `None` mit `""` verwechselt,
+    meldet sich sonst mit einem leeren Passwort beim Server an — der Server
+    antwortet 535, und der Nutzer sucht beim Passwort, obwohl der
+    Schlüsselbund das Problem war (genau der Fehler, der `WATCHDOG_TIMEOUT`
+    beim Hochsetzen abgefangen werden sollte, aber allein nicht abfängt).
+    Jeder Aufrufer MUSS `None` prüfen und darf sich damit nicht anmelden.
     """
     if record.get("password_location") == "file":
         return record.get("password") or ""
@@ -112,11 +139,11 @@ def get_secret(record: dict[str, Any]) -> str:
     except Exception:
         log.warning("Schlüsselbund nicht lesbar — greife auf die lokal "
                     "abgelegte Kopie zurück, falls vorhanden", exc_info=True)
-        return record.get("password") or ""
+        return record.get("password") or None
     if not ok:
         log.warning("Schlüsselbund antwortet nicht (Timeout nach %.1fs)",
                     WATCHDOG_TIMEOUT)
-        return record.get("password") or ""
+        return record.get("password") or None
     if stored:
         return str(stored)
     return record.get("password") or ""
