@@ -176,26 +176,41 @@ def open_smtp_dialog(parent, store, runner, record: dict | None = None,
             themed_showerror(dialog, "Eingabe unvollständig",
                              "Bitte ein Passwort angeben.")
             return None
-        # "Keine Verschlüsselung" + Benutzer/Passwort heißt: AUTH PLAIN geht
-        # ab jetzt bei JEDEM Versand im Klartext über die Leitung — dauerhaft
-        # und unbemerkt, wenn STARTTLS nur mal nicht zum Laufen kam und der
-        # Nutzer auf diesen Modus ausgewichen ist. validate_record prüft das
-        # nicht (der Modus ist als "internes Relay ohne Auth" ausdrücklich
-        # erlaubt) — die Rückfrage lässt die Entscheidung beim Nutzer, statt
-        # den Modus zu sperren.
-        if candidate["security"] == "none" and candidate["username"]:
-            if not themed_askyesno(
-                    dialog, "Unverschlüsselte Anmeldung",
-                    "Ohne Verschlüsselung werden Benutzername und Passwort "
-                    "im Klartext übertragen. Konto trotzdem so speichern?"):
-                return None
         return candidate
+
+    def _plaintext_confirmed(candidate):
+        """Rückfrage vor dem SPEICHERN eines Kontos ohne Verschlüsselung.
+
+        "Keine Verschlüsselung" + Benutzer/Passwort heißt: AUTH PLAIN geht ab
+        jetzt bei JEDEM Versand im Klartext über die Leitung — dauerhaft und
+        unbemerkt, wenn STARTTLS nur mal nicht zum Laufen kam und der Nutzer
+        auf diesen Modus ausgewichen ist. `validate_record` prüft das nicht
+        (der Modus ist als "internes Relay ohne Auth" ausdrücklich erlaubt) —
+        die Rückfrage lässt die Entscheidung beim Nutzer, statt den Modus zu
+        sperren.
+
+        Bewusst NICHT in `_validated()`: die teilen sich "Speichern" und
+        "Verbindung testen", und beim Testen fragte der Dialog dann
+        "Konto trotzdem so speichern?", obwohl nichts gespeichert wird —
+        eine Frage nach einer Folge, die der Klick gar nicht hat. Der Test
+        selbst schickt das Passwort zwar auch einmal im Klartext, aber
+        einmalig und auf ausdrücklichen Klick; die dauerhafte Entscheidung
+        fällt beim Speichern, und dort steht die Rückfrage weiterhin.
+        """
+        if candidate["security"] != "none" or not candidate["username"]:
+            return True
+        return themed_askyesno(
+            dialog, "Unverschlüsselte Anmeldung",
+            "Ohne Verschlüsselung werden Benutzername und Passwort "
+            "im Klartext übertragen. Konto trotzdem so speichern?")
 
     def do_save():
         if busy["saving"]:
             return
         candidate = _validated()
         if candidate is None:
+            return
+        if not _plaintext_confirmed(candidate):
             return
         password = password_var.get()
         busy["saving"] = True
