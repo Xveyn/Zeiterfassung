@@ -13,8 +13,9 @@ from src.changelog import (
 )
 from src.dialogs.settings_dialog._shared import label
 from src.self_update import (
-    UpdateBlocked, apply_linux, apply_windows, download_and_verify_update,
-    download_dest, plan_update, supports_self_update, verify_file,
+    UpdateBlocked, apply_linux, apply_windows, discard_download,
+    download_and_verify_update, download_dest, plan_update,
+    supports_self_update, verify_file,
 )
 from src.theme import (
     BG, CELL_BG, FONT, FONT_BOLD, FONT_SMALL, TEXT, TEXT_MUTED,
@@ -360,9 +361,22 @@ class UpdatesTab:
             return download_and_verify_update(plan, local, on_progress=report)
 
         def done(result):
-            if not self.frame.winfo_exists():
-                return
+            # `alive` statt eines fruehen `return`: der Runner ist `App._bg`
+            # und ueberlebt den Dialog — ein ~65-MB-Download laeuft nach dem
+            # Schliessen des Einstellungen-Dialogs fertig, und bei auto=True
+            # ist genau das der Normalfall (niemand sieht ihn). Ein Guard
+            # ganz oben liesse die fertig GEPRUEFTE Datei dann weder
+            # persistiert noch geloescht zurueck; seit `download_dest` jedem
+            # Lauf einen eigenen Namen gibt, raeumt sie auch kein spaeterer
+            # Lauf mehr weg. Also: Widget-Zugriffe gaten, Ergebnis nicht.
+            alive = bool(self.frame.winfo_exists())
             if isinstance(result, str):
+                # Fehlerfall: `download_and_verify_update` hat seine Datei
+                # bereits selbst weggeraeumt, hier bleibt nur die UI.
+                if not alive:
+                    logging.getLogger(__name__).info(
+                        "Update abgebrochen (Dialog bereits zu): %s", result)
+                    return
                 if auto:
                     # Kein Popup fuer einen Vorgang, den der Nutzer nicht
                     # ausgeloest hat — nur zuruecksetzen und loggen. Der
@@ -376,15 +390,37 @@ class UpdatesTab:
                 self._fail_update(result)
                 return
             if auto:
+                # ZUERST persistieren, auch ohne Dialog: die Datei ist
+                # geprueft, und sie beim naechsten Beenden anzuwenden ist
+                # genau das gewuenschte Verhalten — der geschlossene Dialog
+                # aendert daran nichts. Verwerfen waere die schlechtere
+                # Antwort: der Nutzer haette die ~65 MB umsonst geladen.
                 self._settings.set_many({
                     "pending_update_path": result.path,
                     "pending_update_sha256": result.sha256,
                 })
+                if not alive:
+                    logging.getLogger(__name__).info(
+                        "Automatisches Update vorbereitet (Dialog bereits "
+                        "zu) — wird beim Beenden installiert")
+                    return
                 self._updating = False
                 set_primary_button_enabled(self._check_btn, True)
                 set_secondary_button_enabled(self._download_btn, True)
                 self._status_label.config(
                     text="Update bereit — wird beim Beenden installiert")
+                return
+            if not alive:
+                # Der manuelle Weg installiert SOFORT und beendet die App
+                # dabei (`_apply`). Das hinter dem Ruecken eines Nutzers zu
+                # tun, der den Dialog gerade zugemacht hat, waere das
+                # Gegenteil der Zusage „nie mitten in der Arbeit" — und
+                # `_apply` fasst ohnehin tote Widgets an. Also verwerfen; ein
+                # erneuter Klick laedt neu.
+                logging.getLogger(__name__).info(
+                    "Update verworfen: der Dialog wurde waehrend des "
+                    "Downloads geschlossen")
+                discard_download(result.path)
                 return
             self._status_label.config(text="Installiere …")
             self._apply(plan, result.path, result.sha256)
@@ -427,10 +463,7 @@ class UpdatesTab:
         Zeitfenster, nicht darin.
         """
         if not os.path.exists(local) or not verify_file(local, expected_sha256):
-            try:
-                os.remove(local)
-            except OSError:
-                pass  # nichts (mehr) da oder nicht entfernbar — beides in Ordnung
+            discard_download(local)
             self._fail_update(
                 "Die geladene Datei ist nicht mehr vorhanden oder wurde "
                 "zwischenzeitlich veraendert. Bitte erneut versuchen.")
@@ -447,16 +480,19 @@ class UpdatesTab:
             # still vorbereitete Datei ist eine ANDERE als die eben geladene
             # und wuerde sonst als ~65-MB-Leiche liegen bleiben, weil sie
             # kein spaeterer Lauf mehr ueberschreibt.
-            try:
-                os.remove(pending)
-            except OSError:
-                pass  # nichts (mehr) da oder nicht entfernbar — beides in Ordnung
+            discard_download(pending)
         self._settings.set_many({"pending_update_path": "",
                                  "pending_update_sha256": ""})
         if platform.system() == "Windows":
             # restart=True: der Nutzer hat eben geklickt und will
             # weiterarbeiten (Gegenstueck: der Beenden-Weg in ui.py).
             if not apply_windows(plan.target, local, os.getpid(), True):
+                # Wie im apply_linux-Zweig unten: pending_update_* ist zwei
+                # Zeilen weiter oben geleert, es gibt danach KEINE Referenz
+                # mehr auf diese Datei — ohne Aufraeumen bleiben ~65 MB
+                # dauerhaft im %TEMP% (die Zusage steht im Docstring von
+                # `download_dest`).
+                discard_download(local)
                 self._fail_update("Der Update-Helfer ließ sich nicht starten.")
                 return
             self.frame.winfo_toplevel().quit()
@@ -468,10 +504,7 @@ class UpdatesTab:
             # liegen — halbe/nicht-uebernommene Downloads bleiben in diesem
             # Projekt an keiner Stelle bewusst zurueck (s. download_to,
             # verify_file oben).
-            try:
-                os.remove(local)
-            except OSError:
-                pass  # nichts angelegt oder schon weg — beides in Ordnung
+            discard_download(local)
             self._fail_update(error)
             return
         os.execv(plan.target, [plan.target])

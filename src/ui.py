@@ -21,8 +21,9 @@ from src.weekly_limit import format_limit_warnings
 from src.grid_renderer import GridRenderer
 from src.paths import get_resource_path, relaunch_command
 from src.self_update import (
-    UpdateBlocked, apply_linux, apply_windows, download_and_verify_update,
-    download_dest, plan_update, supports_self_update, verify_file,
+    UpdateBlocked, apply_linux, apply_windows, discard_download,
+    download_and_verify_update, download_dest, plan_update,
+    supports_self_update, verify_file,
 )
 from src.sync_orchestrator import classify_sync_error, SyncOrchestrator
 from src.update_banner import UpdateBanner
@@ -75,21 +76,6 @@ def _route_update_notification(release, tray_active, toast_shown_version):
             return "none", None
         return "toast", update_toast_text(release)
     return "banner", None
-
-
-def _discard_update_file(path):
-    """Raeumt eine nicht (mehr) verwendbare Update-Datei weg (best-effort).
-
-    Jeder Fehlerpfad in `App._apply_pending_update` ruft das: seit jeder
-    Download-Lauf einen eigenen Namen traegt (`self_update.download_dest`),
-    ueberschreibt kein spaeterer Lauf mehr eine liegengebliebene Datei — aus
-    jedem Fehlschlag wuerden sonst dauerhaft ~65 MB neben der AppImage bzw.
-    im %TEMP%. Dieselbe Aufraeum-Regel wie in `self_update.download_to`.
-    """
-    try:
-        os.remove(path)
-    except OSError:
-        pass  # nichts (mehr) da oder nicht entfernbar — beides in Ordnung
 
 
 class App:
@@ -1089,7 +1075,7 @@ class App:
             logging.getLogger(__name__).info(
                 "Vorbereitetes Update verworfen (Datei fehlt oder Hash "
                 "stimmt nicht)")
-            _discard_update_file(path)
+            discard_download(path)
             return
 
         if platform.system() == "Windows":
@@ -1100,20 +1086,20 @@ class App:
             if not apply_windows(sys.executable, path, os.getpid(), False):
                 # apply_windows hat den Grund bereits geloggt; die Datei
                 # bleibt sonst als Leiche im %TEMP%.
-                _discard_update_file(path)
+                discard_download(path)
             return
         appimage = os.environ.get("APPIMAGE", "")
         if not appimage:
             logging.getLogger(__name__).info(
                 "Vorbereitetes Update nicht angewendet: $APPIMAGE ist nicht "
                 "gesetzt")
-            _discard_update_file(path)
+            discard_download(path)
             return
         error = apply_linux(appimage, path)
         if error is not None:
             logging.getLogger(__name__).warning(
                 "Vorbereitetes Update nicht angewendet: %s", error)
-            _discard_update_file(path)
+            discard_download(path)
 
     def restart_for_scaling(self):
         """Startet die App neu, damit eine geänderte UI-Skalierung greift

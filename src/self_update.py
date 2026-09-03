@@ -334,6 +334,25 @@ def download_dest(system: str, asset_name: str, target: str,
     return os.path.join(tempdir, f"{stem}-{token}{ext}")
 
 
+def discard_download(path: str) -> None:
+    """Räumt eine nicht (mehr) verwendbare Update-Datei weg (best-effort).
+
+    **Die eine Stelle für die Zusage aus `download_dest`:** seit jeder
+    Download-Lauf einen eigenen Namen trägt, überschreibt kein späterer Lauf
+    mehr eine liegengebliebene Datei — aus jedem Fehlerpfad, der nicht
+    aufräumt, werden dauerhaft ~65 MB im %TEMP% bzw. neben der AppImage.
+    Aufrufer sind `UpdatesTab._apply`/`_start_self_update` und
+    `App._apply_pending_update`; dieselbe Aufräum-Regel wie in `download_to`.
+
+    Bestes Bemühen: ein Fehlschlag beim Aufräumen darf nie die eigentliche
+    Fehlerbehandlung stören.
+    """
+    try:
+        os.remove(path)
+    except OSError:
+        pass  # nichts (mehr) da oder nicht entfernbar — beides in Ordnung
+
+
 def apply_linux(appimage: str, downloaded: str) -> str | None:
     """Ersetzt die laufende AppImage durch die geladene Datei.
 

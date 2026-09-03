@@ -180,3 +180,32 @@ def test_apply_removes_a_differently_named_pending_download(monkeypatch, tmp_pat
     assert apply_windows_calls, "das eben geladene Update wird angewendet"
     assert not pending.exists(), "die ueberholte Datei bleibt sonst liegen"
     assert local.exists(), "die eben geladene Datei darf NICHT geloescht werden"
+
+
+def test_apply_removes_the_download_when_the_helper_cannot_be_started(
+        monkeypatch, tmp_path):
+    """L1: `pending_update_*` ist beim Erreichen dieses Zweigs bereits
+    geleert — es gibt danach keine Referenz mehr auf die Datei. Ohne
+    Aufraeumen bleiben ~65 MB dauerhaft im %TEMP%; genau das sagt der
+    Docstring von `download_dest` zu (und die beiden anderen Fehlerzweige
+    dieser Funktion halten es ein)."""
+    monkeypatch.setattr(platform, "system", lambda: "Windows")
+    _patch_widget_calls(monkeypatch)
+    monkeypatch.setattr(tab_updates_module, "apply_windows",
+                        lambda *a, **k: False)
+    errors = []
+    monkeypatch.setattr(tab_updates_module, "themed_showerror",
+                        lambda parent, title, message: errors.append(message))
+
+    content = b"echtes, unveraendertes Update"
+    digest = hashlib.sha256(content).hexdigest()
+    local = tmp_path / "Zeiterfassung_Setup-1-aaaa.exe"
+    local.write_bytes(content)
+
+    fake = _fake_tab()
+    fake._apply(_FakePlan(), str(local), digest)
+
+    assert errors, "der Nutzer bekommt weiterhin eine Fehlermeldung"
+    assert not local.exists(), (
+        "die Datei bleibt sonst dauerhaft liegen — niemand kennt ihren "
+        "Pfad noch")
