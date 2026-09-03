@@ -21,6 +21,7 @@ import http.client
 import logging
 import os
 import posixpath
+import uuid
 from dataclasses import dataclass
 from typing import Any, Callable
 from urllib.error import URLError
@@ -193,9 +194,12 @@ def plan_update(release: Any, system: str, machine: str, frozen: bool,
 
     asset_url = pick_asset_url(release.assets, system, release.version, machine)
     if asset_url is None:
+        # Bewusst OHNE das Wort „Architektur": `pick_asset_url` prüft sie nur
+        # auf macOS und Linux. Unter Windows heißt `None` schlicht „das Asset
+        # fehlt in diesem Release" — dieser Text ist in beiden Fällen wahr.
         return UpdateBlocked(
-            "Für die Architektur dieses Rechners gibt es in diesem Release "
-            "keine passende Datei.")
+            "Für diesen Rechner gibt es in diesem Release keine passende "
+            "Datei.")
 
     sums_url = next(
         (a.url for a in release.assets if a.name == SUMS_ASSET_NAME), None)
@@ -281,23 +285,53 @@ def download_to(url: str, dest: str,
 _BACKUP_SUFFIX = ".old"
 
 
-def linux_apply_paths(appimage: str) -> tuple[str, str]:
-    """(Temp-Pfad für den Download, Backup-Pfad der laufenden Datei).
+def linux_backup_path(appimage: str) -> str:
+    """Backup-Pfad der laufenden AppImage (`<name>.old`).
 
-    Beide liegen NEBEN der AppImage, nicht in /tmp: `os.replace` ist nur
-    innerhalb desselben Dateisystems atomar, und /tmp ist auf vielen Systemen
-    ein eigenes (tmpfs).
-
-    Bewusst `posixpath` statt `os.path`: `$APPIMAGE` ist immer ein
-    POSIX-Pfad (die Funktion läuft nur auf echtem Linux, s. `apply_linux`),
-    und die Unit-Tests laufen auch auf der Windows-Entwicklungsmaschine —
-    dort würde `os.path.join` mit `\\` verketten und einen Pfad liefern, der
-    mit keinem realen Linux-Pfad mehr übereinstimmt.
+    Liegt NEBEN der AppImage, nicht in /tmp: `os.replace` ist nur innerhalb
+    desselben Dateisystems atomar, und /tmp ist auf vielen Systemen ein
+    eigenes (tmpfs).
     """
-    directory = posixpath.dirname(appimage) or "."
-    name = posixpath.basename(appimage)
-    return (posixpath.join(directory, f".{name}.update-{os.getpid()}"),
-            appimage + _BACKUP_SUFFIX)
+    return appimage + _BACKUP_SUFFIX
+
+
+def download_dest(system: str, asset_name: str, target: str,
+                  tempdir: str) -> str:
+    """Zielpfad für EINEN Download-Lauf — pro Aufruf ein anderer.
+
+    **Die Eindeutigkeit ist der ganze Zweck dieser Funktion.** Es gibt zwei
+    Wege, die laden: den Ein-Klick-Weg im Updates-Tab und den stillen
+    Automatik-Pfad in `ui.py`. Bauten beide denselben Namen (fester
+    Asset-Name im %TEMP% bzw. derselbe PID-Name neben der AppImage), könnten
+    sie sich begegnen: zwei Threads schreiben truncierend in dieselbe Datei,
+    und der Sofort-Weg beendet den Prozess unmittelbar nach seiner
+    Hash-Prüfung — der andere Thread stirbt dabei mitten im Schreiben und
+    kann die eben geprüfte Datei noch anschneiden. Eine weitere Prüfung
+    könnte das nicht schließen (sie läge wieder VOR dem Zeitfenster); ein
+    eigener Name pro Lauf lässt die Rennklasse gar nicht erst entstehen.
+
+    Der Preis sind mehr Leichen: jeder Fehlerpfad muss seine Datei selbst
+    wegräumen (`download_and_verify_update`, `UpdatesTab._apply`,
+    `App._apply_pending_update`) — es gibt keinen festen Namen mehr, den ein
+    späterer Lauf überschriebe.
+
+    `target` ist `plan.target` (Linux: `$APPIMAGE`), `tempdir` der
+    Temp-Ordner des Systems (nur Windows relevant). Bewusst `posixpath` für
+    den Linux-Zweig: `$APPIMAGE` ist immer ein POSIX-Pfad, und die
+    Unit-Tests laufen auch auf der Windows-Entwicklungsmaschine — dort würde
+    `os.path.join` mit `\\` verketten und einen Pfad liefern, der mit keinem
+    realen Linux-Pfad mehr übereinstimmt.
+    """
+    token = f"{os.getpid()}-{uuid.uuid4().hex[:8]}"
+    if system == "Linux":
+        # NEBEN die AppImage, nicht nach /tmp (s. `linux_backup_path`), und
+        # versteckt (führender Punkt), damit ein abgebrochener Lauf im
+        # Dateimanager nicht wie ein zweites Programm aussieht.
+        directory = posixpath.dirname(target) or "."
+        name = posixpath.basename(target)
+        return posixpath.join(directory, f".{name}.update-{token}")
+    stem, ext = os.path.splitext(asset_name)
+    return os.path.join(tempdir, f"{stem}-{token}{ext}")
 
 
 def apply_linux(appimage: str, downloaded: str) -> str | None:
@@ -316,7 +350,7 @@ def apply_linux(appimage: str, downloaded: str) -> str | None:
     """
     import stat
 
-    _tmp, backup = linux_apply_paths(appimage)
+    backup = linux_backup_path(appimage)
     try:
         mode = os.stat(downloaded).st_mode
         os.chmod(downloaded, mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
@@ -356,7 +390,7 @@ def sweep_appimage_backup(appimage: str) -> bool:
 
 
 def windows_helper_script(pid: int, setup_path: str, exe_path: str,
-                          log_path: str) -> str:
+                          log_path: str, restart: bool) -> str:
     """Das Batch-Skript, das die App nach dem Beenden aktualisiert.
 
     Drei Schritte, und die Reihenfolge ist der ganze Punkt:
@@ -366,17 +400,30 @@ def windows_helper_script(pid: int, setup_path: str, exe_path: str,
          Fortschrittsfenster ist das einzige Signal, dass etwas passiert) und
          OHNE `/SUPPRESSMSGBOXES` (macht „Abort" zur Standardantwort und
          verschluckte echte Fehler)
-      3. die App wieder starten — der `[Run]`-Eintrag in `installer.iss`
-         trägt `skipifsilent` und feuert im stillen Lauf nicht
+      3. die App wieder starten, aber NUR mit `restart=True` — der
+         `[Run]`-Eintrag in `installer.iss` trägt `skipifsilent` und feuert im
+         stillen Lauf nicht, der Start hinge also allein an dieser Zeile.
+
+    **Die zwei Fälle von `restart`:**
+
+    - `True` — der **Sofort-Weg** (`UpdatesTab._apply`): der Nutzer hat eben
+      „Update installieren" geklickt und will danach weiterarbeiten. Ohne
+      Neustart verschwände die App unter seinen Händen.
+    - `False` — der **Beenden-Weg** (`ui.App._apply_pending_update`, das
+      still vorbereitete Automatik-Update): wer die App beendet, will sie
+      beendet haben. Sie eine Minute später unaufgefordert wieder auf dem
+      Bildschirm zu haben, wäre das Gegenteil der Zusage „nie mitten in der
+      Arbeit". Linux verhält sich dort schon so — der Beenden-Pfad ersetzt
+      nur die AppImage und `exec`t sich NICHT neu.
 
     Der Exit-Code des Installers landet im Log neben der App: scheitert der
-    Lauf, ist das die einzige Spur. Gestartet wird die App danach in JEDEM
-    Fall — auch nach einem Fehlschlag ist eine laufende alte Version besser
-    als gar keine.
+    Lauf, ist das die einzige Spur. Im Sofort-Weg wird die App danach in
+    JEDEM Fall gestartet — auch nach einem Fehlschlag ist eine laufende alte
+    Version besser als gar keine.
 
     Alle Pfade sind gequotet: `D:\\Programme (x86)\\…` ist hier der Normalfall.
     """
-    return "\n".join([
+    lines = [
         "@echo off",
         "setlocal",
         f"set TRIES={_WAIT_TRIES}",
@@ -390,10 +437,12 @@ def windows_helper_script(pid: int, setup_path: str, exe_path: str,
         ":install",
         f'"{setup_path}" /SILENT /NORESTART',
         f'echo Installer beendet mit %ERRORLEVEL% > "{log_path}"',
-        f'start "" "{exe_path}"',
-        f'del "{setup_path}" >nul 2>&1',
-        "",
-    ])
+    ]
+    if restart:
+        lines.append(f'start "" "{exe_path}"')
+    lines.append(f'del "{setup_path}" >nul 2>&1')
+    lines.append("")
+    return "\n".join(lines)
 
 
 def _delete_leftover_script(path: str) -> None:
@@ -410,7 +459,8 @@ def _delete_leftover_script(path: str) -> None:
         pass  # nichts angelegt oder schon weg — beides in Ordnung
 
 
-def apply_windows(exe_path: str, setup_path: str, pid: int) -> bool:
+def apply_windows(exe_path: str, setup_path: str, pid: int,
+                  restart: bool) -> bool:
     """Schreibt den Helfer nach %TEMP% und startet ihn abgekoppelt.
 
     Der Aufrufer beendet die App unmittelbar danach — der Helfer wartet auf
@@ -418,9 +468,20 @@ def apply_windows(exe_path: str, setup_path: str, pid: int) -> bool:
     das Ende der App überlebt; `CREATE_NO_WINDOW` hält das Konsolenfenster
     unsichtbar.
 
+    `restart` reicht die Entscheidung an `windows_helper_script` durch:
+    `True` für den Sofort-Weg (der Nutzer arbeitet weiter), `False` für das
+    Anwenden beim Beenden (die App bleibt zu) — Begründung dort.
+
     Das Batch-Skript wird in der OEM-Codepage geschrieben (Windows-spezifisch),
     damit Umlaute und andere Nicht-ASCII-Zeichen in Pfaden korrekt erhalten
     bleiben. Linux hat keinen OEM-Codec — dort setzen wir UTF-8 (fallback).
+
+    **Wirft nie.** `False` ist die einzige Art, wie ein Fehlschlag hier nach
+    außen dringt — der Aufrufer beim Beenden (`ui.App._apply_pending_update`)
+    steht mitten im Herunterfahren, und eine Exception aus dieser Funktion
+    hielte die App offen. Deshalb liegt AUCH das Anlegen der Temp-Datei im
+    `try`: ein volles oder nicht beschreibbares %TEMP% wirft `OSError` schon
+    dort.
     """
     import subprocess
     import tempfile
@@ -438,12 +499,14 @@ def apply_windows(exe_path: str, setup_path: str, pid: int) -> bool:
         # OEM-Codec nicht verfügbar (z.B. Linux)
         pass
 
-    handle = tempfile.NamedTemporaryFile(
-        "w", suffix=".cmd", delete=False, encoding=encoding, errors="strict")
+    handle = None
     try:
+        handle = tempfile.NamedTemporaryFile(
+            "w", suffix=".cmd", delete=False, encoding=encoding,
+            errors="strict")
         with handle:
             handle.write(windows_helper_script(
-                pid, setup_path, exe_path, log_path))
+                pid, setup_path, exe_path, log_path, restart))
         # Prozess-Flags: CREATE_NEW_PROCESS_GROUP entkoppelt den Helfer,
         # damit er das Ende der App überlebt. CREATE_NO_WINDOW hält die
         # Konsole unsichtbar.
@@ -459,10 +522,14 @@ def apply_windows(exe_path: str, setup_path: str, pid: int) -> bool:
             close_fds=True)
         return True
     except OSError as exc:
+        # Deckt beides ab: ein %TEMP%, in das sich nichts schreiben lässt
+        # (NamedTemporaryFile), und ein fehlgeschlagenes Popen.
         log.warning("Update-Helfer konnte nicht gestartet werden: %s", exc)
-        _delete_leftover_script(handle.name)
+        if handle is not None:
+            _delete_leftover_script(handle.name)
         return False
     except UnicodeEncodeError as exc:
         log.warning("Update-Helfer: Zeichen in Pfaden lassen sich nicht kodieren: %s", exc)
-        _delete_leftover_script(handle.name)
+        if handle is not None:
+            _delete_leftover_script(handle.name)
         return False

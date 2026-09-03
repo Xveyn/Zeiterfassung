@@ -121,7 +121,10 @@ def test_apply_installs_on_windows_when_hash_still_matches(monkeypatch, tmp_path
     fake = _fake_tab()
     fake._apply(plan, str(local), digest)
 
-    assert apply_windows_calls == [(plan.target, str(local), os.getpid())]
+    # restart=True: der Sofort-Weg startet die App wieder, weil der Nutzer
+    # eben geklickt hat und weiterarbeiten will (Gegenstueck: der
+    # Beenden-Weg in ui.py, der mit False anwendet).
+    assert apply_windows_calls == [(plan.target, str(local), os.getpid(), True)]
     # pending_update_* wird beim Sofort-Anwenden geleert (bestehendes
     # Verhalten, unveraendert durch diesen Fix).
     assert fake._settings.set_many_calls == [
@@ -149,3 +152,31 @@ def test_apply_installs_on_linux_when_hash_still_matches(monkeypatch, tmp_path):
 
     assert apply_linux_calls == [(plan.target, str(local))]
     assert execv_calls == [(plan.target, [plan.target])]
+
+
+def test_apply_removes_a_differently_named_pending_download(monkeypatch, tmp_path):
+    """Seit jeder Lauf einen eigenen Zielnamen traegt (F1), ist die still
+    vorbereitete Datei eine ANDERE als die eben geladene. Der Sofort-Weg
+    gewinnt gegen „beim Beenden" — die vorbereitete Datei wuerde sonst als
+    ~65-MB-Leiche liegen bleiben, weil kein spaeterer Lauf sie mehr
+    ueberschreibt."""
+    monkeypatch.setattr(platform, "system", lambda: "Windows")
+    apply_windows_calls = []
+    _patch_widget_calls(monkeypatch, apply_windows_calls=apply_windows_calls)
+
+    content = b"echtes, unveraendertes Update"
+    digest = hashlib.sha256(content).hexdigest()
+    local = tmp_path / "Zeiterfassung_Setup-1-aaaa.exe"
+    local.write_bytes(content)
+    pending = tmp_path / "Zeiterfassung_Setup-1-bbbb.exe"
+    pending.write_bytes(b"still vorbereitet, jetzt ueberholt")
+
+    fake = _fake_tab()
+    fake._settings = _FakeSettings({"pending_update_path": str(pending),
+                                    "pending_update_sha256": "cd" * 32})
+
+    fake._apply(_FakePlan(), str(local), digest)
+
+    assert apply_windows_calls, "das eben geladene Update wird angewendet"
+    assert not pending.exists(), "die ueberholte Datei bleibt sonst liegen"
+    assert local.exists(), "die eben geladene Datei darf NICHT geloescht werden"

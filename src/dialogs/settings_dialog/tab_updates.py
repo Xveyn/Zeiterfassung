@@ -14,7 +14,7 @@ from src.changelog import (
 from src.dialogs.settings_dialog._shared import label
 from src.self_update import (
     UpdateBlocked, apply_linux, apply_windows, download_and_verify_update,
-    linux_apply_paths, plan_update, supports_self_update, verify_file,
+    download_dest, plan_update, supports_self_update, verify_file,
 )
 from src.theme import (
     BG, CELL_BG, FONT, FONT_BOLD, FONT_SMALL, TEXT, TEXT_MUTED,
@@ -280,6 +280,17 @@ class UpdatesTab:
             return
         if not bool(self._settings.get("auto_update_enabled")):
             return
+        if self._settings.get("pending_update_path"):
+            # Es liegt schon eine geprüfte, noch nicht angewendete Datei —
+            # nicht erneut laden. Ohne diesen Guard laedt jedes Oeffnen des
+            # Updates-Tabs dieselben ~65 MB neu, solange der Nutzer die App
+            # nicht beendet hat. Dieselbe Regel wie in
+            # `ui.App._maybe_auto_update`; den Banner frischt hier niemand
+            # auf, weil der Tab ihn nicht besitzt.
+            logging.getLogger(__name__).info(
+                "Automatisches Update: bereits vorbereitete Datei, "
+                "kein erneuter Download")
+            return
         self._start_self_update(release, auto=True)
 
     def _start_self_update(self, release, auto=False):
@@ -315,13 +326,11 @@ class UpdatesTab:
         set_secondary_button_enabled(self._download_btn, False)
         self._updating = True
 
-        if platform.system() == "Windows":
-            local = os.path.join(tempfile.gettempdir(), plan.asset_name)
-        else:
-            # NEBEN die AppImage, nicht nach /tmp: `os.replace` ist nur
-            # innerhalb desselben Dateisystems atomar, und /tmp ist auf vielen
-            # Systemen ein eigenes (tmpfs).
-            local = linux_apply_paths(plan.target)[0]
+        # Pro Lauf ein eigener Zielname (s. `download_dest`): der stille
+        # Automatik-Download in `ui.py` baut seinen Pfad ueber dieselbe
+        # Funktion und kann uns damit nicht mehr in die Datei schreiben.
+        local = download_dest(platform.system(), plan.asset_name, plan.target,
+                              tempfile.gettempdir())
 
         def report(text):
             # Aus dem Worker-Thread: nie direkt ans Widget. Analog
@@ -403,20 +412,19 @@ class UpdatesTab:
 
         Erneut geprueft wird hier bewusst, UNMITTELBAR bevor installiert
         wird — dieselbe Pruefung wie in `ui.App._apply_pending_update`, aus
-        demselben Grund: zwischen dem Download-Ende und diesem Aufruf koennen
-        (wenn auch nur kurz) andere Vorgaenge auf denselben Pfad zugreifen.
-        Besonders wichtig unter Windows: `apply_windows` startet den Helfer
-        NUR ab und beendet diesen Prozess sofort danach — installiert wird
-        asynchron, NACHDEM die App schon weg ist. Laeuft zu diesem Zeitpunkt
-        noch ein stiller Automatik-Download auf denselben Zielpfad (Windows:
-        fester Dateiname im Temp; Linux: derselbe PID-Name, weil es derselbe
-        Prozess ist), wird dessen Thread beim Prozessende abrupt gekillt —
-        zurueck bliebe womoeglich eine halb geschriebene Datei, die der
-        Installer sonst UNGEPRUEFT ausfuehren wuerde. Das widerspraeche M9
-        ("installiert wird nur, was geprueft ist"). Ohne diese zweite Pruefung
-        waere die Kombination aus Sofort-Installieren und stillem Automatik-
-        Download also die einzige Stelle im Ablauf, an der eine ungeprüfte
-        Datei durchrutschen könnte.
+        demselben Grund: unter Windows startet `apply_windows` den Helfer nur
+        ab und beendet diesen Prozess sofort danach, installiert wird also
+        asynchron, NACHDEM die App schon weg ist. Was zwischen Download-Ende
+        und diesem Aufruf mit der Datei passiert ist (Aufraeum-Tool,
+        Virenscanner, jemand mit einem Editor), sieht sonst niemand mehr —
+        und M9 verlangt, dass nur installiert wird, was geprueft ist.
+
+        Was diese Pruefung ausdruecklich NICHT mehr abzuwehren hat, ist ein
+        zeitgleicher stiller Automatik-Download: seit `download_dest` jedem
+        Lauf einen eigenen Zielnamen gibt, koennen sich die beiden Wege gar
+        nicht mehr in derselben Datei begegnen. Eine Pruefung haette dieses
+        Rennen ohnehin nie schliessen koennen — sie liegt VOR dem
+        Zeitfenster, nicht darin.
         """
         if not os.path.exists(local) or not verify_file(local, expected_sha256):
             try:
@@ -433,10 +441,22 @@ class UpdatesTab:
         # Aufraeumen wuerde ui.App._apply_pending_update beim naechsten
         # regulaeren Beenden dieselbe, laengst installierte Datei erneut
         # anzuwenden versuchen.
+        pending = self._settings.get("pending_update_path")
+        if pending and pending != local:
+            # Seit `download_dest` traegt jeder Lauf einen eigenen Namen: die
+            # still vorbereitete Datei ist eine ANDERE als die eben geladene
+            # und wuerde sonst als ~65-MB-Leiche liegen bleiben, weil sie
+            # kein spaeterer Lauf mehr ueberschreibt.
+            try:
+                os.remove(pending)
+            except OSError:
+                pass  # nichts (mehr) da oder nicht entfernbar — beides in Ordnung
         self._settings.set_many({"pending_update_path": "",
                                  "pending_update_sha256": ""})
         if platform.system() == "Windows":
-            if not apply_windows(plan.target, local, os.getpid()):
+            # restart=True: der Nutzer hat eben geklickt und will
+            # weiterarbeiten (Gegenstueck: der Beenden-Weg in ui.py).
+            if not apply_windows(plan.target, local, os.getpid(), True):
                 self._fail_update("Der Update-Helfer ließ sich nicht starten.")
                 return
             self.frame.winfo_toplevel().quit()

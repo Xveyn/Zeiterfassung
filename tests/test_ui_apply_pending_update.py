@@ -93,7 +93,7 @@ def test_apply_pending_update_applies_on_windows_with_verified_file(monkeypatch,
     calls = []
     monkeypatch.setattr(
         "src.ui.apply_windows",
-        lambda exe, setup, pid: calls.append((exe, setup, pid)) or True,
+        lambda exe, setup, pid, restart: calls.append((exe, setup, pid, restart)) or True,
     )
     monkeypatch.setattr(
         "src.ui.apply_linux",
@@ -102,7 +102,7 @@ def test_apply_pending_update_applies_on_windows_with_verified_file(monkeypatch,
 
     App._apply_pending_update(fake, str(path))
 
-    assert calls == [(sys.executable, str(path), os.getpid())]
+    assert calls == [(sys.executable, str(path), os.getpid(), False)]
 
 
 def test_apply_pending_update_applies_on_linux_with_appimage_env(monkeypatch, tmp_path):
@@ -154,3 +154,88 @@ def test_apply_pending_update_does_nothing_on_linux_without_appimage_env(monkeyp
     App._apply_pending_update(fake, str(path))
 
     assert calls == []
+
+
+# --- Aufraeumen der geladenen Datei (Abschluss-Review F6/F7) ----------------
+#
+# Seit jeder Download-Lauf einen eigenen Namen traegt
+# (`self_update.download_dest`), ueberschreibt kein spaeterer Lauf mehr eine
+# liegengebliebene Datei — jeder Fehlerpfad muss selbst aufraeumen, sonst
+# sammeln sich ~65-MB-Leichen. `sweep_appimage_backup` raeumt nur `.old`.
+
+
+def test_apply_pending_update_deletes_the_file_when_hash_no_longer_matches(
+        monkeypatch, tmp_path):
+    path = tmp_path / "setup.exe"
+    path.write_bytes(b"vermeintliches Update")
+    fake = _FakeApp({"pending_update_path": str(path),
+                     "pending_update_sha256": "0" * 64})
+    monkeypatch.setattr("src.ui.apply_windows", lambda *a, **k: True)
+    monkeypatch.setattr("src.ui.apply_linux", lambda *a, **k: None)
+
+    App._apply_pending_update(fake, str(path))
+
+    assert not path.exists(), "die verworfene Datei bleibt sonst dauerhaft liegen"
+
+
+def test_apply_pending_update_deletes_the_file_when_apply_linux_fails(
+        monkeypatch, tmp_path, caplog):
+    """Beim Beenden darf KEINE Meldung erscheinen (die App macht zu) — der
+    Fehlertext von `apply_linux` gehoert aber ins Log, und die geladene
+    Datei weg."""
+    import hashlib
+    import logging
+
+    path = tmp_path / "app.AppImage"
+    content = b"echtes Update"
+    path.write_bytes(content)
+    fake = _FakeApp({"pending_update_path": str(path),
+                     "pending_update_sha256": hashlib.sha256(content).hexdigest()})
+
+    monkeypatch.setattr(platform, "system", lambda: "Linux")
+    monkeypatch.setenv("APPIMAGE", "/pfad/zur/app.AppImage")
+    monkeypatch.setattr(
+        "src.ui.apply_linux",
+        lambda appimage, downloaded: "Die alte AppImage ließ sich nicht sichern: nope")
+
+    with caplog.at_level(logging.WARNING, logger="src.ui"):
+        App._apply_pending_update(fake, str(path))
+
+    assert not path.exists(), "die nicht uebernommene Datei bleibt sonst liegen"
+    assert "nicht sichern" in caplog.text, (
+        "der Fehlertext von apply_linux darf nicht verworfen werden")
+
+
+def test_apply_pending_update_deletes_the_file_when_apply_windows_fails(
+        monkeypatch, tmp_path):
+    import hashlib
+
+    path = tmp_path / "setup.exe"
+    content = b"echtes Update"
+    path.write_bytes(content)
+    fake = _FakeApp({"pending_update_path": str(path),
+                     "pending_update_sha256": hashlib.sha256(content).hexdigest()})
+
+    monkeypatch.setattr(platform, "system", lambda: "Windows")
+    monkeypatch.setattr("src.ui.apply_windows", lambda *a, **k: False)
+
+    App._apply_pending_update(fake, str(path))
+
+    assert not path.exists()
+
+
+def test_quit_with_sync_push_destroys_the_window_even_if_applying_raises(monkeypatch):
+    """F3-Zusage: NICHTS zwischen dem Anwenden und `root.destroy()` darf das
+    Beenden aufhalten. Bleibt wider Erwarten doch eine Exception uebrig,
+    wird sie geloggt — das Fenster geht trotzdem zu."""
+    from unittest.mock import MagicMock
+
+    fake = MagicMock()
+    fake.settings = _FakeSettings({"pending_update_path": r"C:\Temp\setup.exe"})
+    fake._single_instance = None
+    fake._apply_pending_update = MagicMock(
+        side_effect=OSError("kein Platz mehr in %TEMP%"))
+
+    App._quit_with_sync_push(fake)
+
+    fake.root.destroy.assert_called_once_with()

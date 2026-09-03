@@ -22,7 +22,7 @@ from src.grid_renderer import GridRenderer
 from src.paths import get_resource_path, relaunch_command
 from src.self_update import (
     UpdateBlocked, apply_linux, apply_windows, download_and_verify_update,
-    linux_apply_paths, plan_update, supports_self_update, verify_file,
+    download_dest, plan_update, supports_self_update, verify_file,
 )
 from src.sync_orchestrator import classify_sync_error, SyncOrchestrator
 from src.update_banner import UpdateBanner
@@ -75,6 +75,21 @@ def _route_update_notification(release, tray_active, toast_shown_version):
             return "none", None
         return "toast", update_toast_text(release)
     return "banner", None
+
+
+def _discard_update_file(path):
+    """Raeumt eine nicht (mehr) verwendbare Update-Datei weg (best-effort).
+
+    Jeder Fehlerpfad in `App._apply_pending_update` ruft das: seit jeder
+    Download-Lauf einen eigenen Namen traegt (`self_update.download_dest`),
+    ueberschreibt kein spaeterer Lauf mehr eine liegengebliebene Datei — aus
+    jedem Fehlschlag wuerden sonst dauerhaft ~65 MB neben der AppImage bzw.
+    im %TEMP%. Dieselbe Aufraeum-Regel wie in `self_update.download_to`.
+    """
+    try:
+        os.remove(path)
+    except OSError:
+        pass  # nichts (mehr) da oder nicht entfernbar — beides in Ordnung
 
 
 class App:
@@ -760,12 +775,12 @@ class App:
                 "Automatisches Update nicht moeglich: %s", plan.reason)
             return
 
-        if platform.system() == "Windows":
-            local = os.path.join(tempfile.gettempdir(), plan.asset_name)
-        else:
-            # NEBEN die AppImage, nicht nach /tmp: `os.replace` ist nur
-            # innerhalb desselben Dateisystems atomar (vgl. tab_updates.py).
-            local = linux_apply_paths(plan.target)[0]
+        # Pro Lauf ein eigener Zielname (s. `self_update.download_dest`):
+        # derselbe Aufruf wie im Updates-Tab, damit ein dort gestarteter
+        # manueller Download und dieser stille Lauf sich nicht mehr in
+        # derselben Datei begegnen koennen.
+        local = download_dest(platform.system(), plan.asset_name, plan.target,
+                              tempfile.gettempdir())
 
         self._auto_update_running = True
 
@@ -1036,7 +1051,19 @@ class App:
         # Neustart nach dem Update entfaellt.
         pending = self.settings.get("pending_update_path")
         if pending:
-            self._apply_pending_update(pending)
+            try:
+                self._apply_pending_update(pending)
+            except Exception:
+                # Zweiter Gurt zur Zusage im Docstring von
+                # `_apply_pending_update`: NICHTS darf zwischen hier und
+                # `root.destroy()` das Beenden aufhalten. Die gerufenen
+                # Funktionen sind selbst auf "wirft nie" gebaut — bleibt
+                # trotzdem etwas durch (ein Settings-Schreibfehler, ein
+                # Plattform-Aufruf, den niemand vorhergesehen hat), landet
+                # der Nutzer sonst vor einem Fehler-Popup mit einem Fenster,
+                # das nicht mehr zugeht. Geloggt statt geschluckt.
+                logging.getLogger(__name__).exception(
+                    "Vorbereitetes Update konnte nicht angewendet werden")
         self.root.destroy()
 
     def _apply_pending_update(self, path):
@@ -1046,7 +1073,14 @@ class App:
         koennen Stunden liegen, und Aufraeum-Tools leeren %TEMP%. Fehlt die
         Datei oder stimmt ihr Hash nicht mehr, faellt der Vorgang still aus —
         der naechste Update-Check beginnt von vorn. Ein Fehlschlag hier darf
-        das Beenden NIE aufhalten.
+        das Beenden NIE aufhalten (der Aufrufer sichert das zusaetzlich ab).
+
+        Gemeldet wird hier NICHTS: die App macht gerade zu, ein Dialog haette
+        kein Gegenueber mehr. Jeder Fehlerpfad geht ins Log — und raeumt
+        seine Datei weg. Seit `download_dest` jedem Download-Lauf einen
+        eigenen Namen gibt, ueberschreibt sie kein spaeterer Lauf mehr; wer
+        sie hier liegen laesst, laesst dauerhaft ~65 MB liegen
+        (`sweep_appimage_backup` raeumt nur `.old`).
         """
         expected = self.settings.get("pending_update_sha256")
         self.settings.set_many({"pending_update_path": "",
@@ -1055,14 +1089,31 @@ class App:
             logging.getLogger(__name__).info(
                 "Vorbereitetes Update verworfen (Datei fehlt oder Hash "
                 "stimmt nicht)")
+            _discard_update_file(path)
             return
 
         if platform.system() == "Windows":
-            apply_windows(sys.executable, path, os.getpid())
+            # restart=False: wer beendet, will beendet haben — der Helfer
+            # installiert, startet die App aber NICHT wieder (Gegenstueck:
+            # der Sofort-Weg im Updates-Tab). Linux verhaelt sich unten
+            # schon so: `apply_linux` ersetzt nur, ohne `os.execv`.
+            if not apply_windows(sys.executable, path, os.getpid(), False):
+                # apply_windows hat den Grund bereits geloggt; die Datei
+                # bleibt sonst als Leiche im %TEMP%.
+                _discard_update_file(path)
             return
         appimage = os.environ.get("APPIMAGE", "")
-        if appimage:
-            apply_linux(appimage, path)
+        if not appimage:
+            logging.getLogger(__name__).info(
+                "Vorbereitetes Update nicht angewendet: $APPIMAGE ist nicht "
+                "gesetzt")
+            _discard_update_file(path)
+            return
+        error = apply_linux(appimage, path)
+        if error is not None:
+            logging.getLogger(__name__).warning(
+                "Vorbereitetes Update nicht angewendet: %s", error)
+            _discard_update_file(path)
 
     def restart_for_scaling(self):
         """Startet die App neu, damit eine geänderte UI-Skalierung greift

@@ -131,7 +131,7 @@ def test_plan_update_blocks_when_architecture_does_not_match():
     blocked = plan_update(_release(), "Linux", "aarch64", True,
                           "/home/u/Z.AppImage", "/tmp/x")
     assert isinstance(blocked, UpdateBlocked)
-    assert "Architektur" in blocked.reason
+    assert "keine passende Datei" in blocked.reason
 
 
 def test_plan_update_blocks_without_a_sums_asset():
@@ -436,7 +436,8 @@ def test_windows_helper_script_quotes_every_path():
         4711,
         r"C:\Temp\Zeiterfassung_Setup.exe",
         r"D:\Programme (x86)\Zeiterfassung\Zeiterfassung.exe",
-        r"C:\Temp\update.log")
+        r"C:\Temp\update.log",
+        True)
     # Pfade mit Leerzeichen und Klammern sind hier der NORMALFALL.
     assert '"D:\\Programme (x86)\\Zeiterfassung\\Zeiterfassung.exe"' in script
     assert '"C:\\Temp\\Zeiterfassung_Setup.exe"' in script
@@ -445,7 +446,7 @@ def test_windows_helper_script_quotes_every_path():
 
 def test_windows_helper_script_waits_then_installs_then_starts():
     from src.self_update import windows_helper_script
-    script = windows_helper_script(1, "s.exe", "z.exe", "l.log")
+    script = windows_helper_script(1, "s.exe", "z.exe", "l.log", True)
     wait_at = script.index("tasklist")
     install_at = script.index("/SILENT")
     start_at = script.rindex("start ")
@@ -454,7 +455,7 @@ def test_windows_helper_script_waits_then_installs_then_starts():
 
 def test_windows_helper_script_uses_neither_verysilent_nor_suppressmsgboxes():
     from src.self_update import windows_helper_script
-    script = windows_helper_script(1, "s.exe", "z.exe", "l.log")
+    script = windows_helper_script(1, "s.exe", "z.exe", "l.log", True)
     assert "/SILENT" in script
     assert "/VERYSILENT" not in script       # Fortschritt soll sichtbar sein
     assert "/SUPPRESSMSGBOXES" not in script  # echte Fehler sollen auffallen
@@ -463,9 +464,49 @@ def test_windows_helper_script_uses_neither_verysilent_nor_suppressmsgboxes():
 
 def test_windows_helper_script_has_a_wait_timeout():
     from src.self_update import windows_helper_script
-    script = windows_helper_script(1, "s.exe", "z.exe", "l.log")
+    script = windows_helper_script(1, "s.exe", "z.exe", "l.log", True)
     # Ohne Obergrenze liefe der Helfer ewig, falls die PID nie verschwindet.
     assert "TRIES" in script
+
+
+def test_windows_helper_script_omits_the_start_when_restart_is_false():
+    """Der Beenden-Weg (`ui.App._apply_pending_update`) darf die App NICHT
+    wieder starten: wer beendet, will beendet haben. Installiert und
+    aufgeraeumt wird trotzdem."""
+    from src.self_update import windows_helper_script
+    script = windows_helper_script(1, "s.exe", "z.exe", "l.log", restart=False)
+    assert "start " not in script, script
+    assert "/SILENT" in script      # installiert wird sehr wohl
+    assert "del " in script         # und die Setup.exe wird aufgeraeumt
+
+
+def test_apply_windows_writes_the_restart_flag_into_the_script(tmp_path):
+    """Der Schalter muss bis in die geschriebene Datei durchschlagen — ein
+    `restart`-Parameter, den `apply_windows` nicht weiterreicht, waere
+    wirkungslos."""
+    with patch("subprocess.Popen") as mock_popen:
+        assert apply_windows(str(tmp_path / "Zeiterfassung.exe"),
+                             str(tmp_path / "Setup.exe"), 4711,
+                             False) is True
+    script_path = mock_popen.call_args[0][0][2]
+    try:
+        with open(script_path, "r", encoding="utf-8", errors="replace") as handle:
+            written = handle.read()
+    finally:
+        os.remove(script_path)
+    assert "start " not in written, written
+
+
+def test_apply_windows_returns_false_when_the_temp_file_cannot_be_created(monkeypatch):
+    """Ein volles oder nicht beschreibbares %TEMP% darf NICHT als Exception
+    entkommen: `App._apply_pending_update` laeuft mitten im Beenden, eine
+    Exception hier liesse das Fenster mit einem Fehler-Popup offen stehen."""
+    def boom(*args, **kwargs):
+        raise OSError("No space left on device")
+
+    monkeypatch.setattr(tempfile, "NamedTemporaryFile", boom)
+
+    assert apply_windows("C:/Apps/Z.exe", "C:/Temp/Setup.exe", 4711, True) is False
 
 
 def test_apply_windows_preserves_umlauts_on_disk(tmp_path):
@@ -489,7 +530,7 @@ def test_apply_windows_preserves_umlauts_on_disk(tmp_path):
     setup_path = str(tmp_path / "Zeiterfassung_Setup.exe")
 
     with patch("subprocess.Popen") as mock_popen:
-        result = apply_windows(exe_path, setup_path, 4711)
+        result = apply_windows(exe_path, setup_path, 4711, True)
 
     assert result is True
     script_path = mock_popen.call_args[0][0][2]
@@ -516,7 +557,7 @@ def test_apply_windows_deletes_leftover_script_on_popen_failure(tmp_path, monkey
     setup_path = str(tmp_path / "Zeiterfassung_Setup.exe")
 
     with patch("subprocess.Popen", side_effect=OSError("kein cmd.exe gefunden")):
-        result = apply_windows(exe_path, setup_path, 4711)
+        result = apply_windows(exe_path, setup_path, 4711, True)
 
     assert result is False
     leftover = list(tmp_path.glob("*.cmd"))
@@ -535,42 +576,47 @@ def test_apply_windows_deletes_leftover_script_on_encoding_error(tmp_path, monke
     exe_path = str(tmp_path / "中文_Zeiterfassung.exe")
     setup_path = str(tmp_path / "Zeiterfassung_Setup.exe")
 
-    result = apply_windows(exe_path, setup_path, 4711)
+    result = apply_windows(exe_path, setup_path, 4711, True)
 
     assert result is False
     leftover = list(tmp_path.glob("*.cmd"))
     assert leftover == [], f"Halbe .cmd-Datei bleibt liegen: {leftover}"
 
 
-def test_apply_windows_encoding_error_returns_false(tmp_path):
-    """Zeichen außerhalb der Codepage führen zu Fehler-Logging, nicht zu crash.
-
-    Mit errors="strict" (nicht "replace") wirft UnicodeEncodeError bei
-    un-kodierbaren Zeichen. apply_windows fängt das, loggt und gibt False zurück,
-    damit der Aufrufer eine Meldung zeigen kann.
-    """
-    # Windows: OEM-Codec testen. Linux: skipzen.
-    if sys.platform != "win32":
-        pytest.skip("OEM-Codec nur auf Windows verfügbar")
-
-    # Ein Zeichen, das OEM-850 nicht kodieren kann (z.B. chinesisches Zeichen)
-    exe_with_impossible_char = str(tmp_path / "中文_Zeiterfassung.exe")
-    setup = str(tmp_path / "setup.exe")
-
-    # apply_windows sollte False liefern, weil der Umlaut nicht kodierbar ist
-    result = apply_windows(exe_with_impossible_char, setup, 1234)
-
-    # Falsch würde sein: Exception, crash, True (silent fail), oder Datei mit Datenverlust
-    # Richtig: False, weil UnicodeEncodeError gefangen und geloggt
-    assert result is False, "apply_windows sollte False liefern bei Kodierfehler"
+def test_linux_backup_path_is_the_old_sibling():
+    from src.self_update import linux_backup_path
+    assert (linux_backup_path("/home/u/Apps/Zeiterfassung.AppImage")
+            == "/home/u/Apps/Zeiterfassung.AppImage.old")
 
 
-def test_linux_apply_paths_are_siblings_of_the_appimage():
-    from src.self_update import linux_apply_paths
-    tmp, backup = linux_apply_paths("/home/u/Apps/Zeiterfassung.AppImage")
-    assert tmp.startswith("/home/u/Apps/")
-    assert backup == "/home/u/Apps/Zeiterfassung.AppImage.old"
-    assert tmp != backup
+def test_download_dest_on_linux_is_a_hidden_sibling_of_the_appimage():
+    from src.self_update import download_dest
+    dest = download_dest("Linux", "Zeiterfassung-1.2.3-x86_64.AppImage",
+                         "/home/u/Apps/Zeiterfassung.AppImage", "/tmp")
+    assert dest.startswith("/home/u/Apps/."), dest
+    assert not dest.startswith("/tmp"), (
+        "NEBEN die AppImage, nicht nach /tmp — os.replace ist nur innerhalb "
+        "desselben Dateisystems atomar")
+
+
+def test_download_dest_is_unique_per_call_on_linux():
+    """Kern von F1: zwei Download-Laeufe duerfen sich NIE denselben Zielpfad
+    teilen — sonst schreiben zwei Threads truncierend in dieselbe Datei, und
+    der Sofort-Weg beendet den Prozess mitten hinein."""
+    from src.self_update import download_dest
+    args = ("Linux", "Zeiterfassung-1.2.3-x86_64.AppImage",
+            "/home/u/Apps/Zeiterfassung.AppImage", "/tmp")
+    assert download_dest(*args) != download_dest(*args)
+
+
+def test_download_dest_is_unique_per_call_on_windows():
+    from src.self_update import download_dest
+    args = ("Windows", "Zeiterfassung_Setup.exe", r"C:\Apps\Z.exe", r"C:\Temp")
+    first, second = download_dest(*args), download_dest(*args)
+    assert first != second
+    assert first.endswith(".exe") and second.endswith(".exe"), (
+        "Der Installer wird als .exe gestartet — die Endung muss bleiben")
+    assert first.startswith(r"C:\Temp"), first
 
 
 def test_apply_linux_replaces_the_file_and_keeps_a_backup(tmp_path):

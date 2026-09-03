@@ -371,11 +371,11 @@ def test_maybe_auto_update_downloads_and_persists_pending_update_on_success(monk
                       sums_url="https://x/sums", target=r"C:\Apps\Z.exe")
     monkeypatch.setattr(ui_module, "plan_update", lambda *a, **k: plan)
     # Der tatsaechliche Zielpfad (local) wird von _maybe_auto_update selbst
-    # aus tempfile.gettempdir() + plan.asset_name gebaut (wie im Updates-Tab) —
-    # NICHT aus downloaded.path, das ist nur das Ergebnis der (gemockten)
-    # download_and_verify_update.
-    expected_local = os.path.join(tempfile.gettempdir(), plan.asset_name)
-    downloaded = DownloadedUpdate(path=expected_local, sha256="ab" * 32)
+    # ueber `self_update.download_dest` gebaut (wie im Updates-Tab) — NICHT
+    # aus downloaded.path, das ist nur das Ergebnis der (gemockten)
+    # download_and_verify_update. Der Name ist pro Lauf eindeutig, deshalb
+    # wird er hier nicht vorhergesagt, sondern abgefangen und geprueft.
+    downloaded = DownloadedUpdate(path="egal", sha256="ab" * 32)
     calls = []
     monkeypatch.setattr(
         ui_module, "download_and_verify_update",
@@ -387,7 +387,14 @@ def test_maybe_auto_update_downloads_and_persists_pending_update_on_success(monk
     App._maybe_auto_update(fake, rel)
     fake._bg.flush()
 
-    assert calls == [(plan, expected_local)]
+    assert len(calls) == 1
+    used_plan, used_dest = calls[0]
+    assert used_plan is plan
+    assert used_dest.startswith(tempfile.gettempdir())
+    assert used_dest.endswith(".exe")
+    assert used_dest != os.path.join(tempfile.gettempdir(), plan.asset_name), (
+        "Der Zielname muss pro Lauf eindeutig sein — ein fester Name laesst "
+        "zwei parallele Downloads in dieselbe Datei schreiben (F1)")
     assert fake.settings.get("pending_update_path") == downloaded.path
     assert fake.settings.get("pending_update_sha256") == downloaded.sha256
     assert fake._auto_update_running is False
