@@ -800,3 +800,19 @@ seinen Pfad, nicht per Import.
   Webhook-Versand: zeigt Content-Type, Auth-Header, HMAC-Prüfung und den Body
   (JSON/PDF/multipart aufgetrennt), und kann Fehlerfälle simulieren
   (`--status`, `--redirect`). Reine stdlib.
+- `scripts/smtp_testserver.py` — lokaler Test-Mailserver für den
+  SMTP-Versand: zeigt Umschlag, Kopfzeilen (Betreff roh **und** dekodiert),
+  die MIME-Teile einzeln und den PDF-Anhang, und löst über je einen Schalter
+  **jeden** Zweig von `smtp.classify_smtp_error` aus (`--reject-auth`,
+  `--no-auth`, `--no-starttls`, `--reject-sender`, `--reject-recipient`,
+  `--status`, `--hang`). Reine stdlib; nur `--security starttls|ssl` braucht
+  `cryptography` für das selbst erzeugte Zertifikat.
+
+  **Zu TLS gehört ein Handgriff:** `smtp._tls_context()` prüft voll und hat
+  bewusst keinen Schalter dagegen, ein selbstsigniertes Zertifikat wird also
+  abgelehnt. Der Server druckt beim Start die Zeile, mit der die App es
+  akzeptiert (`SSL_CERT_FILE=<pfad> python -m src.main`) — die Variable
+  **ergänzt** den System-Zertifikatsspeicher, sie ersetzt ihn nicht, Drive-Sync
+  und Update-Prüfung laufen also weiter. Wer den Weg abkürzen will, testet mit
+  `--security none`: Versand, MIME-Aufbau und alle Fehlercodes gehen auch
+  unverschlüsselt durch.

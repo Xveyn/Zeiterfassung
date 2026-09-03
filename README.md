@@ -242,7 +242,8 @@ Zeiterfassung/
 ├── docs/                  # Specs/Plans, Known Limitations
 ├── scripts/               # Entwickler-Skripte (nicht Teil der App)
 │   ├── build.py           # Plattform-Dispatcher für den PyInstaller-Build
-│   └── webhook_testserver.py  # lokaler Test-Empfänger für den Webhook-Versand
+│   ├── webhook_testserver.py  # lokaler Test-Empfänger für den Webhook-Versand
+│   └── smtp_testserver.py     # lokaler Test-Mailserver für den SMTP-Versand
 ├── installer.iss          # Inno Setup Script (Windows-Installer)
 ├── requirements.txt       # Python-Abhängigkeiten (App-Laufzeit, exakt gepinnt)
 ├── requirements-test.txt  # Test-/CI-Abhängigkeiten (pytest & Co., exakt gepinnt)
