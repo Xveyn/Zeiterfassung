@@ -8,6 +8,7 @@ import os
 import platform
 import subprocess
 import sys
+import tempfile
 import time
 from src.time_utils import (
     format_iso_date, get_week_dates,
@@ -19,6 +20,10 @@ from src.background_tasks import BackgroundTaskRunner
 from src.weekly_limit import format_limit_warnings
 from src.grid_renderer import GridRenderer
 from src.paths import get_resource_path, relaunch_command
+from src.self_update import (
+    UpdateBlocked, apply_linux, apply_windows, download_and_verify_update,
+    linux_apply_paths, plan_update, supports_self_update, verify_file,
+)
 from src.sync_orchestrator import classify_sync_error, SyncOrchestrator
 from src.update_banner import UpdateBanner
 from src.updater import (
@@ -175,6 +180,11 @@ class App:
             ),
         )
         self._bg.fetch_sender_email()
+        # Guard gegen zwei ueberlappende stille Downloads desselben
+        # periodischen Checks (s. _maybe_auto_update) — nicht gegen einen
+        # zeitgleich im Updates-Tab laufenden manuellen Download; der
+        # pending_update_path-Check dort deckt den ueblichen Ueberschneidungsfall ab.
+        self._auto_update_running = False
         self._update_banner = UpdateBanner(
             self.root, self.settings, lambda: self._renderer.grid_container,
             on_resize=self._renderer.repin_geometry,
@@ -705,6 +715,76 @@ class App:
             self.settings.set("update_toast_shown_version", release.release_id)
         elif action == "banner":
             self._update_banner.show_if_newer(release)
+        # Derselbe Check, der den Nutzer ueber Toast/Banner informiert, loest
+        # bei aktivem Automatik-Schalter zusaetzlich den stillen Hintergrund-
+        # Download aus — kein eigener Timer (Design-Regel 1: "vorhandener
+        # Update-Check"). Laeuft unabhaengig von der toast/banner-Routing-
+        # Entscheidung oben, deshalb hier und nicht in einem der beiden Zweige.
+        self._maybe_auto_update(release)
+
+    def _maybe_auto_update(self, release):
+        """Laedt und prueft `release` still im Hintergrund, wenn der
+        Automatik-Schalter an ist — dieselbe Funktion wie der Ein-Klick-Weg
+        im Updates-Tab (`self_update.download_and_verify_update`), damit
+        beide Pfade nicht auseinanderlaufen (vgl. Task 8: der Banner
+        delegiert aus demselben Grund an den Updates-Tab statt einen
+        zweiten Ablauf zu bauen).
+
+        Angewendet wird NICHT hier, sondern erst beim naechsten Beenden
+        (`_apply_pending_update`) — der Nutzer verliert so nie einen
+        angefangenen Eintrag. Der Ablauf ist bewusst UNBEOBACHTET: kein
+        Dialog, kein Fortschritt, ein Fehlschlag geht nur ins Log — der
+        naechste Check (dieselbe Haeufigkeit wie bisher) versucht es erneut.
+        """
+        if not bool(self.settings.get("auto_update_enabled")):
+            return
+        if not supports_self_update(platform.system(), getattr(sys, "frozen", False)):
+            return
+        if self.settings.get("pending_update_path"):
+            # Es liegt schon eine geprüfte, noch nicht angewendete Datei —
+            # nicht erneut laden (sonst laedt jeder taegliche Check dieselbe
+            # ~65 MB neu, solange der Nutzer nicht beendet). Nur die
+            # Sichtbarkeit auffrischen (Design-Regel 3: "sichtbar bleibt es
+            # trotzdem"), z.B. nach einem Neustart der App.
+            self._update_banner.show_ready_to_install(release)
+            return
+        if self._auto_update_running:
+            return
+
+        plan = plan_update(
+            release, platform.system(), platform.machine(),
+            getattr(sys, "frozen", False),
+            os.environ.get("APPIMAGE", ""), sys.executable)
+        if isinstance(plan, UpdateBlocked):
+            logging.getLogger(__name__).info(
+                "Automatisches Update nicht moeglich: %s", plan.reason)
+            return
+
+        if platform.system() == "Windows":
+            local = os.path.join(tempfile.gettempdir(), plan.asset_name)
+        else:
+            # NEBEN die AppImage, nicht nach /tmp: `os.replace` ist nur
+            # innerhalb desselben Dateisystems atomar (vgl. tab_updates.py).
+            local = linux_apply_paths(plan.target)[0]
+
+        self._auto_update_running = True
+
+        def work():
+            return download_and_verify_update(plan, local)
+
+        def done(result):
+            self._auto_update_running = False
+            if isinstance(result, str):
+                logging.getLogger(__name__).info(
+                    "Automatisches Update abgebrochen: %s", result)
+                return
+            self.settings.set_many({
+                "pending_update_path": result.path,
+                "pending_update_sha256": result.sha256,
+            })
+            self._update_banner.show_ready_to_install(release)
+
+        self._bg.run(work, done)
 
     def _restore_from_tray(self):
         """Bringt das Fenster aus dem `withdraw()`-Zustand zurück."""
@@ -968,8 +1048,6 @@ class App:
         der naechste Update-Check beginnt von vorn. Ein Fehlschlag hier darf
         das Beenden NIE aufhalten.
         """
-        from src.self_update import apply_linux, apply_windows, verify_file
-
         expected = self.settings.get("pending_update_sha256")
         self.settings.set_many({"pending_update_path": "",
                                 "pending_update_sha256": ""})

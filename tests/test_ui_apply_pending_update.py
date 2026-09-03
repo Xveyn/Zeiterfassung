@@ -46,9 +46,9 @@ def test_apply_pending_update_skips_silently_when_file_missing(monkeypatch, tmp_
     fake = _FakeApp({"pending_update_path": path, "pending_update_sha256": "deadbeef"})
 
     calls = []
-    monkeypatch.setattr("src.self_update.apply_windows",
+    monkeypatch.setattr("src.ui.apply_windows",
                         lambda *a, **k: calls.append(("windows", a)))
-    monkeypatch.setattr("src.self_update.apply_linux",
+    monkeypatch.setattr("src.ui.apply_linux",
                         lambda *a, **k: calls.append(("linux", a)))
 
     App._apply_pending_update(fake, path)
@@ -66,9 +66,9 @@ def test_apply_pending_update_skips_when_hash_no_longer_matches(monkeypatch, tmp
                      "pending_update_sha256": "0" * 64})
 
     calls = []
-    monkeypatch.setattr("src.self_update.apply_windows",
+    monkeypatch.setattr("src.ui.apply_windows",
                         lambda *a, **k: calls.append(("windows", a)))
-    monkeypatch.setattr("src.self_update.apply_linux",
+    monkeypatch.setattr("src.ui.apply_linux",
                         lambda *a, **k: calls.append(("linux", a)))
 
     App._apply_pending_update(fake, str(path))
@@ -92,11 +92,11 @@ def test_apply_pending_update_applies_on_windows_with_verified_file(monkeypatch,
     monkeypatch.setattr(platform, "system", lambda: "Windows")
     calls = []
     monkeypatch.setattr(
-        "src.self_update.apply_windows",
+        "src.ui.apply_windows",
         lambda exe, setup, pid: calls.append((exe, setup, pid)) or True,
     )
     monkeypatch.setattr(
-        "src.self_update.apply_linux",
+        "src.ui.apply_linux",
         lambda *a, **k: (_ for _ in ()).throw(AssertionError("apply_linux nicht erwartet")),
     )
 
@@ -119,11 +119,11 @@ def test_apply_pending_update_applies_on_linux_with_appimage_env(monkeypatch, tm
     monkeypatch.setenv("APPIMAGE", "/pfad/zur/app.AppImage")
     calls = []
     monkeypatch.setattr(
-        "src.self_update.apply_linux",
+        "src.ui.apply_linux",
         lambda appimage, downloaded: calls.append((appimage, downloaded)),
     )
     monkeypatch.setattr(
-        "src.self_update.apply_windows",
+        "src.ui.apply_windows",
         lambda *a, **k: (_ for _ in ()).throw(AssertionError("apply_windows nicht erwartet")),
     )
 
@@ -149,7 +149,7 @@ def test_apply_pending_update_does_nothing_on_linux_without_appimage_env(monkeyp
     monkeypatch.delenv("APPIMAGE", raising=False)
     calls = []
     monkeypatch.setattr(
-        "src.self_update.apply_linux", lambda *a, **k: calls.append(a))
+        "src.ui.apply_linux", lambda *a, **k: calls.append(a))
 
     App._apply_pending_update(fake, str(path))
 

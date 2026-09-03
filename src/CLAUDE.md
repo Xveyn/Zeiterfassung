@@ -112,6 +112,18 @@ Browser-Download aus `_open_download`. `open_settings_dialog(...,
 initial_tab=...)` ist der dafür ergänzte, sonst unveränderte Default-Pfad
 (`dialog.py`).
 
+**Zweiter Banner-Zustand seit dem Automatik-Schalter (Task 9):**
+`show_ready_to_install(release)` zeigt (oder aktualisiert) den Banner mit
+„Update bereit — wird beim Beenden installiert" statt „Version X verfügbar" —
+ohne Install-/Download-Button, es gibt nichts mehr zu klicken. Anders als
+`show_if_newer` ignoriert er bewusst `dismissed_version` (ein bereits
+geladenes, gleich automatisch installiertes Update ist wichtiger als eine
+zuvor weggeklickte Verfügbarkeits-Meldung). Aufrufer ist ausschließlich
+`App._maybe_auto_update` in `ui.py` — der Banner importiert `src.ui`
+weiterhin nicht, das Signal kommt als normaler Methodenaufruf auf die
+bestehende Instanz, kein neuer Callback-Parameter nötig. `_show(release,
+ready_to_install)` ist die gemeinsame Bau-Methode beider Zustände.
+
 ## Threading-Modell
 
 Genau ein Muster: Hintergrundarbeit über `BackgroundTaskRunner.run(fn, on_done)`; jede

@@ -97,6 +97,70 @@ class UpdateBlocked:
     reason: str
 
 
+@dataclass(frozen=True)
+class DownloadedUpdate:
+    """Ergebnis eines erfolgreichen `download_and_verify_update`-Laufs.
+
+    `sha256` wird separat mitgegeben (statt den Aufrufer die Prüfsummen-Datei
+    ein zweites Mal laden zu lassen): der stille Automatik-Pfad in `ui.py`
+    braucht ihn, um ihn als `pending_update_sha256` zu persistieren."""
+
+    path: str
+    sha256: str
+
+
+def download_and_verify_update(
+        plan: UpdatePlan, dest: str,
+        on_progress: Callable[[str], None] | None = None) -> DownloadedUpdate | str:
+    """Lädt und prüft ein Update — der gemeinsame Kern für BEIDE Aufrufer:
+    den Ein-Klick-Weg im Updates-Tab (mit Fortschrittsanzeige) und den
+    stillen Automatik-Pfad (`ui.py`, ohne UI, `on_progress=None`).
+
+    Absichtlich EINE Funktion statt zwei ähnlicher Implementierungen (Task 8
+    hat aus demselben Grund den Banner an den Updates-Tab delegieren lassen,
+    statt einen zweiten Update-Ablauf zu bauen): zwei Stellen, die dasselbe
+    tun, laufen früher oder später auseinander.
+
+    Holt zuerst `SHA256SUMS`, lädt dann `plan.asset_url` nach `dest` und
+    verifiziert das Ergebnis gegen den erwarteten Hash. `on_progress(text)`
+    bekommt fertig formatierte, deutschsprachige Fortschrittstexte ("Lade …
+    42 %", "Prüfe Prüfsumme …") — beide Aufrufer zeigen so denselben Text,
+    ohne die Formatierung zu duplizieren; der stille Pfad lässt den Parameter
+    einfach weg.
+
+    Liefert ein `DownloadedUpdate` bei Erfolg, sonst einen anzeigbaren
+    Fehlertext. Bei jedem Fehlschlag bleibt keine (halbe oder falsch
+    geprüfte) Datei unter `dest` liegen: `download_to` räumt seinen eigenen
+    Fehlerfall selbst auf, ein Hash-Mismatch wird hier zusätzlich entfernt.
+    """
+    sums_text = fetch_text(plan.sums_url)
+    if sums_text is None:
+        return "Die Prüfsummen ließen sich nicht laden."
+    expected = parse_sha256sums(sums_text).get(plan.asset_name)
+    if not expected:
+        return "Für diese Datei steht keine Prüfsumme im Release."
+
+    def progress(done: int, total: int) -> None:
+        if on_progress is None:
+            return
+        pct = f"{done * 100 // total} %" if total else f"{done // 1024} KB"
+        on_progress(f"Lade {plan.asset_name} … {pct}")
+
+    if not download_to(plan.asset_url, dest, on_progress=progress):
+        return "Der Download ist fehlgeschlagen."
+
+    if on_progress is not None:
+        on_progress("Prüfe Prüfsumme …")
+    if not verify_file(dest, expected):
+        try:
+            os.remove(dest)
+        except OSError:
+            pass  # Löschen ist best-effort; die Datei wird nicht benutzt
+        return ("Die Prüfsumme der geladenen Datei stimmt nicht. "
+                "Die Datei wurde verworfen.")
+    return DownloadedUpdate(path=dest, sha256=expected)
+
+
 def supports_self_update(system: str, frozen: bool) -> bool:
     """Kann sich die App auf dieser Plattform selbst aktualisieren?
 

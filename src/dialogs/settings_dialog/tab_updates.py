@@ -13,9 +13,8 @@ from src.changelog import (
 )
 from src.dialogs.settings_dialog._shared import label
 from src.self_update import (
-    UpdateBlocked, apply_linux, apply_windows, download_to, fetch_text,
-    linux_apply_paths, parse_sha256sums, plan_update, supports_self_update,
-    verify_file,
+    UpdateBlocked, apply_linux, apply_windows, download_and_verify_update,
+    linux_apply_paths, plan_update, supports_self_update,
 )
 from src.theme import (
     BG, CELL_BG, FONT, FONT_BOLD, FONT_SMALL, TEXT, TEXT_MUTED,
@@ -345,41 +344,16 @@ class UpdatesTab:
             except tk.TclError:
                 pass  # Dialog schon zu, das Einplanen selbst hat kein Ziel mehr
 
-        # Traegt den geprueften Hash aus work() in done() (anderer Thread) —
-        # gebraucht nur im auto-Zweig, um ihn als pending_update_sha256 zu
-        # persistieren (verify_file selbst braucht ihn nur lokal).
-        verified_hash = {}
-
+        # Laden+Pruefen ist gemeinsamer Kern mit dem stillen Automatik-Pfad
+        # in ui.py (`App._maybe_auto_update`) — beide rufen dieselbe Funktion
+        # in self_update.py, damit die beiden Ablaeufe nicht auseinanderlaufen.
         def work():
-            sums_text = fetch_text(plan.sums_url)
-            if sums_text is None:
-                return "Die Prüfsummen ließen sich nicht laden."
-            expected = parse_sha256sums(sums_text).get(plan.asset_name)
-            if not expected:
-                return "Für diese Datei steht keine Prüfsumme im Release."
+            return download_and_verify_update(plan, local, on_progress=report)
 
-            def progress(done, total):
-                pct = f"{done * 100 // total} %" if total else f"{done // 1024} KB"
-                report(f"Lade {plan.asset_name} … {pct}")
-
-            if not download_to(plan.asset_url, local, on_progress=progress):
-                return "Der Download ist fehlgeschlagen."
-
-            report("Prüfe Prüfsumme …")
-            if not verify_file(local, expected):
-                try:
-                    os.remove(local)
-                except OSError:
-                    pass  # Loeschen ist best-effort; die Datei wird nicht benutzt
-                return ("Die Prüfsumme der geladenen Datei stimmt nicht. "
-                        "Die Datei wurde verworfen.")
-            verified_hash["value"] = expected
-            return None
-
-        def done(error):
+        def done(result):
             if not self.frame.winfo_exists():
                 return
-            if error is not None:
+            if isinstance(result, str):
                 if auto:
                     # Kein Popup fuer einen Vorgang, den der Nutzer nicht
                     # ausgeloest hat — nur zuruecksetzen und loggen. Der
@@ -388,14 +362,14 @@ class UpdatesTab:
                     set_primary_button_enabled(self._check_btn, True)
                     set_secondary_button_enabled(self._download_btn, True)
                     logging.getLogger(__name__).info(
-                        "Automatisches Update abgebrochen: %s", error)
+                        "Automatisches Update abgebrochen: %s", result)
                     return
-                self._fail_update(error)
+                self._fail_update(result)
                 return
             if auto:
                 self._settings.set_many({
-                    "pending_update_path": local,
-                    "pending_update_sha256": verified_hash["value"],
+                    "pending_update_path": result.path,
+                    "pending_update_sha256": result.sha256,
                 })
                 self._updating = False
                 set_primary_button_enabled(self._check_btn, True)
@@ -404,7 +378,7 @@ class UpdatesTab:
                     text="Update bereit — wird beim Beenden installiert")
                 return
             self._status_label.config(text="Installiere …")
-            self._apply(plan, local)
+            self._apply(plan, result.path)
 
         self._runner.run(work, done)
 

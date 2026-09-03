@@ -45,7 +45,7 @@ def test_show_if_newer_new_version_shows():
     b = _banner(_FakeSettings(dismissed_version="1.1.0"))
     rel = _release(version="1.2.0")
     b.show_if_newer(rel)
-    b._show.assert_called_once_with(rel)
+    b._show.assert_called_once_with(rel, ready_to_install=False)
 
 
 def test_open_download_uses_asset_url(monkeypatch):
@@ -81,7 +81,7 @@ def test_show_triggers_resize(monkeypatch):
     b = UpdateBanner(root=object(), settings=_FakeSettings(),
                      get_anchor=lambda: object(),
                      on_resize=lambda: resized.append(True))
-    b._show(_release())
+    b._show(_release(), ready_to_install=False)
     assert resized == [True]
 
 
@@ -103,7 +103,7 @@ def test_show_if_newer_compares_release_id_for_prereleases():
     b = _banner(_FakeSettings(dismissed_version="1.2.0-pre.1"))
     rel = _release(version="1.2.0", release_id="1.2.0-pre.2", is_prerelease=True)
     b.show_if_newer(rel)
-    b._show.assert_called_once_with(rel)
+    b._show.assert_called_once_with(rel, ready_to_install=False)
 
 
 def test_show_if_newer_dismissed_prerelease_does_not_show():
@@ -172,6 +172,81 @@ def test_show_button_label_reflects_self_update_capability(monkeypatch):
     b = UpdateBanner(root=object(), settings=_FakeSettings(),
                      get_anchor=lambda: object())
     b._can_self_update = True
-    b._show(_release())
+    b._show(_release(), ready_to_install=False)
     assert ub._LABEL_INSTALL in captured
     assert ub._LABEL_DOWNLOAD not in captured
+
+
+# --- show_ready_to_install (Task 9, Nachtrag: Automatik-Pfad) -------------
+
+
+def _patch_widgets(monkeypatch, captured_labels=None, captured_buttons=None):
+    """Gemeinsames Tk-Mocking fuer die show_ready_to_install-Tests."""
+    monkeypatch.setattr(ub.tk, "Frame", lambda *a, **k: MagicMock())
+
+    def _fake_label(parent, text, **k):
+        if captured_labels is not None:
+            captured_labels.append(text)
+        return MagicMock()
+
+    monkeypatch.setattr(ub.tk, "Label", _fake_label)
+
+    def _fake_label_button(parent, text, *a, **k):
+        if captured_buttons is not None:
+            captured_buttons.append(text)
+        return MagicMock()
+
+    monkeypatch.setattr(ub, "label_button", _fake_label_button)
+    monkeypatch.setattr(ub, "attach_tooltip", lambda *a, **k: None)
+
+
+def test_show_ready_to_install_ignores_dismissed_version(monkeypatch):
+    # Ein Update, das gleich automatisch installiert wird, ist wichtiger als
+    # eine zuvor weggeklickte Verfuegbarkeits-Meldung (Design-Regel 3).
+    labels = []
+    _patch_widgets(monkeypatch, captured_labels=labels)
+    rel = _release(version="1.2.0")
+    b = UpdateBanner(root=object(), settings=_FakeSettings(dismissed_version="1.2.0"),
+                     get_anchor=lambda: object())
+    b.show_ready_to_install(rel)
+    assert b._banner is not None
+    assert any("Update bereit" in text for text in labels)
+
+
+def test_show_ready_to_install_has_no_install_or_download_button(monkeypatch):
+    buttons = []
+    _patch_widgets(monkeypatch, captured_buttons=buttons)
+    b = UpdateBanner(root=object(), settings=_FakeSettings(), get_anchor=lambda: object())
+    b._can_self_update = True
+    b.show_ready_to_install(_release())
+    # Nur der Dismiss-Button ("✕") — es gibt nichts mehr zu klicken, das
+    # Update laedt/installiert bereits automatisch.
+    assert buttons == ["✕"]
+
+
+def test_show_ready_to_install_replaces_an_already_shown_available_banner(monkeypatch):
+    _patch_widgets(monkeypatch)
+    b = UpdateBanner(root=object(), settings=_FakeSettings(), get_anchor=lambda: object())
+    rel = _release()
+    b.show_if_newer(rel)
+    first_banner = b._banner
+    assert b._ready_to_install is False
+
+    b.show_ready_to_install(rel)
+
+    assert b._ready_to_install is True
+    assert b._banner is not first_banner
+
+
+def test_show_ready_to_install_is_idempotent_once_shown(monkeypatch):
+    # Ein zweiter Aufruf (z.B. vom naechsten taeglichen Check, solange noch
+    # nicht beendet wurde) darf den Banner nicht unnoetig neu aufbauen.
+    _patch_widgets(monkeypatch)
+    b = UpdateBanner(root=object(), settings=_FakeSettings(), get_anchor=lambda: object())
+    rel = _release()
+    b.show_ready_to_install(rel)
+    first_banner = b._banner
+
+    b.show_ready_to_install(rel)
+
+    assert b._banner is first_banner

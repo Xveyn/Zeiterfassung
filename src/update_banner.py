@@ -38,6 +38,10 @@ class UpdateBanner:
         # no-op haelt den Banner unabhaengig von App testbar.
         self._open_updates_tab = on_open_updates_tab
         self._banner = None              # Frame oder None (None = nicht sichtbar)
+        # True, waehrend der aktuell sichtbare Banner der "wird beim Beenden
+        # installiert"-Zustand ist (statt der normalen "Version X
+        # verfuegbar"-Meldung) — s. show_ready_to_install.
+        self._ready_to_install = False
         # Einmalig ermittelt wie im Updates-Tab: aendert sich waehrend der
         # Laufzeit nicht (Plattform/Frozen-Status stehen beim Start fest).
         self._can_self_update = supports_self_update(
@@ -52,20 +56,44 @@ class UpdateBanner:
         """
         if release.release_id == self._settings.get("dismissed_version"):
             return
-        self._show(release)
+        self._show(release, ready_to_install=False)
 
-    def _show(self, release):
+    def show_ready_to_install(self, release):
+        """Zeigt (oder aktualisiert) den Banner mit dem Hinweis, dass ein
+        bereits geladenes und geprüftes Update beim nächsten Beenden
+        installiert wird (Automatik-Schalter, injiziert aus `ui.py` — der
+        Banner importiert `src.ui` weiterhin nicht).
+
+        Ignoriert bewusst `dismissed_version`: ein Update, das gleich
+        automatisch installiert wird, ist wichtiger als eine zuvor
+        weggeklickte Verfügbarkeits-Meldung — niemand soll davon überrascht
+        werden (Design-Regel 3, „sichtbar bleibt es trotzdem"). Ein bereits
+        sichtbarer "normaler" Banner für dieselbe Version wird durch den
+        Ready-Zustand ersetzt statt liegenzubleiben.
+        """
+        if self._banner is not None and self._ready_to_install:
+            return  # schon im richtigen Zustand sichtbar
+        if self._banner is not None:
+            self._banner.destroy()
+            self._banner = None
+        self._show(release, ready_to_install=True)
+
+    def _show(self, release, ready_to_install):
         if self._banner is not None:
             return
+        self._ready_to_install = ready_to_install
         self._banner = tk.Frame(self._root, bg=ACCENT)
         self._banner.pack(
             before=self._get_anchor(), fill=tk.X, padx=10, pady=(5, 0),
         )
 
-        kind = "Vorabversion" if release.is_prerelease else "Version"
+        if ready_to_install:
+            text = "Update bereit — wird beim Beenden installiert"
+        else:
+            kind = "Vorabversion" if release.is_prerelease else "Version"
+            text = f"{kind} {release.release_id} verfügbar"
         tk.Label(
-            self._banner,
-            text=f"{kind} {release.release_id} verfügbar",
+            self._banner, text=text,
             bg=ACCENT, fg="#ffffff", font=FONT_BOLD,
         ).pack(side=tk.LEFT, padx=10, pady=6)
 
@@ -80,14 +108,19 @@ class UpdateBanner:
         dismiss_btn.pack(side=tk.RIGHT, padx=(0, 4), pady=6)
         attach_tooltip(dismiss_btn, "Diese Version ausblenden")
 
-        label_button(
-            self._banner, _LABEL_INSTALL if self._can_self_update else _LABEL_DOWNLOAD,
-            lambda: self._install_or_download(release),
-            bg="#ffffff", fg=ACCENT,
-            hover_bg="#f0f0f0", hover_fg=ACCENT_HOVER,
-            font=FONT_BOLD,
-            label_padx=14, label_pady=2,
-        ).pack(side=tk.RIGHT, padx=8, pady=4)
+        if not ready_to_install:
+            # Im Ready-Zustand gibt es nichts mehr zu klicken — das Update
+            # laedt/installiert bereits automatisch, ein zweiter Ablaufpfad
+            # waere hier fehl am Platz (dieselbe Regel wie in
+            # _install_or_download unten).
+            label_button(
+                self._banner, _LABEL_INSTALL if self._can_self_update else _LABEL_DOWNLOAD,
+                lambda: self._install_or_download(release),
+                bg="#ffffff", fg=ACCENT,
+                hover_bg="#f0f0f0", hover_fg=ACCENT_HOVER,
+                font=FONT_BOLD,
+                label_padx=14, label_pady=2,
+            ).pack(side=tk.RIGHT, padx=8, pady=4)
 
         # Der Banner sitzt zwischen Header und Grid und braucht zusätzliche
         # Höhe. Das Fenster ist fix (resizable(False, False)) und wächst nur

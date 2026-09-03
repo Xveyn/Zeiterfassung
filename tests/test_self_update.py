@@ -274,6 +274,159 @@ def test_download_to_removes_file_on_http_exception_during_download(tmp_path):
     assert not dest.exists(), "halbe Datei muss aufgeräumt sein"
 
 
+# === Tests für download_and_verify_update (Task 9, Nachtrag) ===
+#
+# Gemeinsamer Kern von Ein-Klick-Weg (tab_updates.py) und stillem Automatik-
+# Pfad (ui.py) — beide Aufrufer teilen sich diese eine Funktion, s. deren
+# Docstring in self_update.py.
+
+
+class _FakeSumsResponse:
+    """Antwort für den `fetch_text`-Aufruf am Anfang: `read()` OHNE
+    Größenangabe, wie eine echte kleine Prüfsummen-Datei. Anders als
+    `_FakeResponse` oben, das `read(size)` für `download_to` braucht."""
+
+    def __init__(self, payload):
+        self._payload = payload
+
+    def read(self):
+        return self._payload
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
+def test_download_and_verify_update_returns_error_when_sums_fetch_fails():
+    from src.self_update import UpdatePlan, download_and_verify_update
+    import urllib.error
+
+    plan = UpdatePlan(asset_url="https://x/exe", asset_name="Zeiterfassung_Setup.exe",
+                      sums_url="https://x/sums", target="/tmp/x")
+    with patch("src.self_update.urlopen", side_effect=urllib.error.URLError("weg")):
+        result = download_and_verify_update(plan, "/tmp/out.exe")
+    assert result == "Die Prüfsummen ließen sich nicht laden."
+
+
+def test_download_and_verify_update_returns_error_when_asset_missing_from_sums():
+    from src.self_update import UpdatePlan, download_and_verify_update
+
+    plan = UpdatePlan(asset_url="https://x/exe", asset_name="Zeiterfassung_Setup.exe",
+                      sums_url="https://x/sums", target="/tmp/x")
+    sums_text = "0" * 64 + "  AnderesFile.exe\n"
+    # side_effect als Liste mit GENAU einem Eintrag: würde die Funktion trotz
+    # fehlendem Digest weiterlaufen (Bug), risse der zweite urlopen-Aufruf
+    # (fürs Laden) mit StopIteration ab — der Test faellt dann laut auf statt
+    # still das Falsche zu pruefen.
+    with patch("src.self_update.urlopen",
+              side_effect=[_FakeSumsResponse(sums_text.encode())]):
+        result = download_and_verify_update(plan, "/tmp/out.exe")
+    assert "Prüfsumme" in result
+
+
+def test_download_and_verify_update_propagates_download_failure(tmp_path):
+    from src.self_update import UpdatePlan, download_and_verify_update
+
+    digest = "a" * 64
+    sums_text = f"{digest}  Zeiterfassung_Setup.exe\n"
+    plan = UpdatePlan(asset_url="https://x/exe", asset_name="Zeiterfassung_Setup.exe",
+                      sums_url="https://x/sums", target="/tmp/x")
+    with patch("src.self_update.urlopen",
+              return_value=_FakeSumsResponse(sums_text.encode())), \
+        patch("src.self_update.download_to", return_value=False) as mock_dl:
+        result = download_and_verify_update(plan, str(tmp_path / "out.exe"))
+    assert result == "Der Download ist fehlgeschlagen."
+    assert mock_dl.called
+
+
+def test_download_and_verify_update_removes_file_and_reports_error_on_hash_mismatch(tmp_path):
+    """Kernanforderung (Task-9-Vorgabe): eine geladene Datei mit falschem
+    Hash bleibt NIE liegen und wird NIE als Erfolg gemeldet.
+
+    Rot-Nachweis siehe Report — mit entfernter Hash-Prüfung liefert die
+    Funktion faelschlich ein DownloadedUpdate zurück und die Datei bleibt
+    liegen."""
+    from src.self_update import UpdatePlan, download_and_verify_update
+
+    expected = hashlib.sha256(b"echt").hexdigest()
+    sums_text = f"{expected}  Zeiterfassung_Setup.exe\n"
+    plan = UpdatePlan(asset_url="https://x/exe", asset_name="Zeiterfassung_Setup.exe",
+                      sums_url="https://x/sums", target="/tmp/x")
+    dest = tmp_path / "out.exe"
+
+    def fake_download_to(url, dst, on_progress=None, timeout=30.0):
+        # Simuliert eine "erfolgreich" geladene, aber inhaltlich falsche
+        # Datei (kaputte Uebertragung trotz erfolgreichem HTTP-Request).
+        with open(dst, "wb") as fh:
+            fh.write(b"falsch")
+        return True
+
+    with patch("src.self_update.urlopen",
+              return_value=_FakeSumsResponse(sums_text.encode())), \
+        patch("src.self_update.download_to", side_effect=fake_download_to):
+        result = download_and_verify_update(plan, str(dest))
+
+    assert "Prüfsumme" in result
+    assert not dest.exists(), "eine Datei mit falschem Hash darf nicht liegen bleiben"
+
+
+def test_download_and_verify_update_succeeds_and_reports_progress(tmp_path):
+    from src.self_update import DownloadedUpdate, UpdatePlan, download_and_verify_update
+
+    payload = b"x" * 3000
+    digest = hashlib.sha256(payload).hexdigest()
+    sums_text = f"{digest}  Zeiterfassung_Setup.exe\n"
+    plan = UpdatePlan(asset_url="https://x/exe", asset_name="Zeiterfassung_Setup.exe",
+                      sums_url="https://x/sums", target="/tmp/x")
+    dest = tmp_path / "out.exe"
+    progress = []
+
+    def fake_download_to(url, dst, on_progress=None, timeout=30.0):
+        with open(dst, "wb") as fh:
+            fh.write(payload)
+        if on_progress is not None:
+            on_progress(len(payload), len(payload))
+        return True
+
+    with patch("src.self_update.urlopen",
+              return_value=_FakeSumsResponse(sums_text.encode())), \
+        patch("src.self_update.download_to", side_effect=fake_download_to):
+        result = download_and_verify_update(plan, str(dest), on_progress=progress.append)
+
+    assert isinstance(result, DownloadedUpdate)
+    assert result.path == str(dest)
+    assert result.sha256 == digest
+    assert any("Lade" in t and "100 %" in t for t in progress)
+    assert "Prüfe Prüfsumme …" in progress
+
+
+def test_download_and_verify_update_works_without_progress_callback(tmp_path):
+    """Der stille Automatik-Pfad (ui.py) laesst on_progress weg — darf nicht
+    crashen."""
+    from src.self_update import DownloadedUpdate, UpdatePlan, download_and_verify_update
+
+    payload = b"y" * 10
+    digest = hashlib.sha256(payload).hexdigest()
+    sums_text = f"{digest}  Zeiterfassung_Setup.exe\n"
+    plan = UpdatePlan(asset_url="https://x/exe", asset_name="Zeiterfassung_Setup.exe",
+                      sums_url="https://x/sums", target="/tmp/x")
+    dest = tmp_path / "out.exe"
+
+    def fake_download_to(url, dst, on_progress=None, timeout=30.0):
+        with open(dst, "wb") as fh:
+            fh.write(payload)
+        return True
+
+    with patch("src.self_update.urlopen",
+              return_value=_FakeSumsResponse(sums_text.encode())), \
+        patch("src.self_update.download_to", side_effect=fake_download_to):
+        result = download_and_verify_update(plan, str(dest))
+
+    assert isinstance(result, DownloadedUpdate)
+
+
 # === Tests für Windows Update-Helfer (Task 5) ===
 
 
