@@ -32,8 +32,8 @@ jobs:
       title: ${{ steps.tag.outputs.title }}
       notes_start: ${{ steps.tag.outputs.notes_start }}
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.10'
 
@@ -136,8 +136,8 @@ jobs:
     if: needs.pre-check.outputs.should_release == 'true'
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.10'
       - name: Install dependencies
@@ -166,8 +166,8 @@ jobs:
     if: needs.pre-check.outputs.should_release == 'true'
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.10'
       - name: Install dependencies
@@ -191,8 +191,8 @@ jobs:
     if: needs.pre-check.outputs.should_release == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.10'
       - name: Install system dependencies
@@ -225,7 +225,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - uses: actions/download-artifact@v8
         with:
@@ -321,13 +321,13 @@ jobs:
       contents: write        # Branch pushen (nicht master)
       pull-requests: write   # PR oeffnen
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           # --prune liest die Release-Tags ueber `git tag -l`; ohne die
           # vollstaendige Historie waere die Tag-Liste leer und nie ein
           # Marker reif — der Job liefe still ins Leere.
           fetch-depth: 0
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.10'
 
