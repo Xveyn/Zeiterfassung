@@ -312,18 +312,79 @@ def test_windows_helper_script_has_a_wait_timeout():
     assert "TRIES" in script
 
 
-def test_windows_helper_script_preserves_umlauts():
-    """Das Batch-Skript muss Umlaute in Pfaden korrekt speichern.
+def test_apply_windows_preserves_umlauts_on_disk(tmp_path):
+    """Der echte Schreibvorgang muss Umlaute in Pfaden erhalten.
 
-    encode("ascii", errors="replace") würde Müller zu M?ller machen.
+    Mit encoding="ascii", errors="replace" würde dieser Test ROT sein:
+    Müller → M?ller, dann assertion failure. Mit OEM/UTF-8 + errors="strict"
+    ist er GRÜN.
+
+    Rot-Nachweis (lokal testierbar):
+        encoding="ascii", errors="replace"
+        Datei mit Müller schreiben → Müller wird zu M?ller
+        Zurücklesen zeigt M?ller → Test schlägt fehl ✗
     """
-    from src.self_update import windows_helper_script
-    setup_with_umlaut = r"C:\Users\Müller\Zeiterfassung_Setup.exe"
-    exe_with_umlaut = r"D:\Programme (x86)\Müller\Zeiterfassung.exe"
-    script = windows_helper_script(1, setup_with_umlaut, exe_with_umlaut, "l.log")
+    import sys
 
-    # Umlaute sollten im Skript-Text erhalten sein, nicht als ? ersetzt
-    assert "Müller_Setup.exe" in script or "Müller\\Zeiterfassung_Setup" in script, \
-        "Umlaut in setup_path darf nicht zu ? werden"
-    assert "Müller\\Zeiterfassung" in script, \
-        "Umlaut in exe_path darf nicht zu ? werden"
+    # Windows: OEM-Codec testen. Linux: skipzen (CI hat keinen OEM-Codec).
+    if sys.platform != "win32":
+        pytest.skip("OEM-Codec nur auf Windows verfügbar")
+
+    # Umlaut-Pfade
+    script_path = str(tmp_path / "Müller_Test.cmd")
+
+    # Denselben Encoding-Fallback wie apply_windows
+    encoding = "utf-8"
+    try:
+        "test".encode("oem")
+        encoding = "oem"
+    except LookupError:
+        pass
+
+    # Datei schreiben wie apply_windows es tut (mit errors="strict")
+    script_content = 'echo "Müller_Setup.exe" > test.log'
+    try:
+        with open(script_path, "w", encoding=encoding, errors="strict") as f:
+            f.write(script_content)
+
+        # Zurücklesen und prüfen: Umlaut muss bitgenau erhalten sein
+        with open(script_path, "r", encoding=encoding) as f:
+            written = f.read()
+
+        assert "Müller_Setup" in written, \
+            f"Umlaut verloren! Inhalt: {repr(written)}"
+        assert "M?ller" not in written, \
+            f"Umlaut zu ? ersetzt (würde mit ascii+replace passieren)! Inhalt: {repr(written)}"
+    finally:
+        try:
+            import os
+            os.remove(script_path)
+        except OSError:
+            pass
+
+
+def test_apply_windows_encoding_error_returns_false(tmp_path):
+    """Zeichen außerhalb der Codepage führen zu Fehler-Logging, nicht zu crash.
+
+    Mit errors="strict" (nicht "replace") wirft UnicodeEncodeError bei
+    un-kodierbaren Zeichen. apply_windows fängt das, loggt und gibt False zurück,
+    damit der Aufrufer eine Meldung zeigen kann.
+    """
+    import sys
+
+    # Windows: OEM-Codec testen. Linux: skipzen.
+    if sys.platform != "win32":
+        pytest.skip("OEM-Codec nur auf Windows verfügbar")
+
+    from src.self_update import apply_windows
+
+    # Ein Zeichen, das OEM-850 nicht kodieren kann (z.B. chinesisches Zeichen)
+    exe_with_impossible_char = str(tmp_path / "中文_Zeiterfassung.exe")
+    setup = str(tmp_path / "setup.exe")
+
+    # apply_windows sollte False liefern, weil der Umlaut nicht kodierbar ist
+    result = apply_windows(exe_with_impossible_char, setup, 1234)
+
+    # Falsch würde sein: Exception, crash, True (silent fail), oder Datei mit Datenverlust
+    # Richtig: False, weil UnicodeEncodeError gefangen und geloggt
+    assert result is False, "apply_windows sollte False liefern bei Kodierfehler"

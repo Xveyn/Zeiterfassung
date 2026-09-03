@@ -283,11 +283,19 @@ def apply_windows(exe_path: str, setup_path: str, pid: int) -> bool:
         pass
 
     handle = tempfile.NamedTemporaryFile(
-        "w", suffix=".cmd", delete=False, encoding=encoding, errors="replace")
+        "w", suffix=".cmd", delete=False, encoding=encoding, errors="strict")
     try:
         with handle:
             handle.write(windows_helper_script(
                 pid, setup_path, exe_path, log_path))
+        # Prozess-Flags: CREATE_NEW_PROCESS_GROUP entkoppelt den Helfer,
+        # damit er das Ende der App überlebt. CREATE_NO_WINDOW hält die
+        # Konsole unsichtbar.
+        # BEWUSST NICHT: DETACHED_PROCESS (0x8). Mit diesem Flag würde dem
+        # Prozess die Konsole entzogen → tasklist liefert keine Ausgabe,
+        # die Warteschleife (:wait) läuft blind über das Ende der App,
+        # springt sofort zu :install, während der AppMutex noch gehalten wird.
+        # Das ist exakt das Gegenteil des Zwecks.
         subprocess.Popen(
             ["cmd", "/c", handle.name],
             creationflags=(0x00000200 |   # CREATE_NEW_PROCESS_GROUP
@@ -296,4 +304,7 @@ def apply_windows(exe_path: str, setup_path: str, pid: int) -> bool:
         return True
     except OSError as exc:
         log.warning("Update-Helfer konnte nicht gestartet werden: %s", exc)
+        return False
+    except UnicodeEncodeError as exc:
+        log.warning("Update-Helfer: Zeichen in Pfaden lassen sich nicht kodieren: %s", exc)
         return False
