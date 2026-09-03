@@ -264,6 +264,13 @@ gegenchecken, nicht blind auf „latest" gehen.
 gepinnt — kein Lockfile, keine Hashes. Wer eine direkte Dep hinzufügt, pinnt sie
 `==` und ergänzt sie in der README-Abhängigkeiten-Tabelle.
 
+Bewusste Ausnahme von dieser Regel: `jaraco.functools`/`jaraco.context`/
+`importlib_metadata` (Transitive von `keyring`) sind einzeln gepinnt — sie
+fordern in ihren aktuellen Versionen bereits Python ≥3.10 und damit ohne
+Puffer genau unser CI-/Release-Python; Begründung im Kommentar über den drei
+Zeilen in `requirements.txt`. Kein Freibrief, weitere Transitive zu pinnen —
+nur diese drei tragen dasselbe Risiko.
+
 `release.yml` installiert `-r requirements.txt` plus das reine Build-Tooling
 `pip-licenses==5.5.5` (erzeugt `THIRD-PARTY-NOTICES.txt`). PyInstaller kommt
 gepinnt aus `requirements.txt` — **nicht** zusätzlich auf die Install-Zeile
@@ -278,8 +285,8 @@ bauen (siehe „Plattformspezifische PRs — Pre-Release vorschlagen").
 
 Installierte App und Benutzerdaten liegen je nach Plattform:
 
-| Plattform | Installation | Benutzerdaten (Entries, Settings, `token.json`, `credentials.json`) |
-|-----------|--------------|--------------------------------------------------------------------|
+| Plattform | Installation | Benutzerdaten (Entries, Settings, `token.json`, `credentials.json`, `smtp.json`) |
+|-----------|--------------|-----------------------------------------------------------------------------------|
 | Windows | `%LOCALAPPDATA%\Programs\Zeiterfassung\` | Gleiches Verzeichnis wie die Exe |
 | macOS | `/Applications/Zeiterfassung.app` | `~/Library/Application Support/Zeiterfassung/` |
 | Linux | Beliebige AppImage-Datei | `$XDG_DATA_HOME/Zeiterfassung/` (Fallback `~/.local/share/Zeiterfassung/`) |
@@ -316,12 +323,22 @@ Damit Umlaute/ß nicht als Mojibake ankommen, gelten drei Pflichten:
 - `MIMEText(html, "html", _charset="utf-8")`
 - Betreff: `Header(subject, "utf-8")`
 
-Diese drei Pflichten gelten nur für den Mail-Kanal — Webhooks transportieren
-das Berichts-JSON/PDF direkt, ohne HTML-Body. Beide Kanäle laufen über
-denselben Dispatcher: `src/dialogs/send_task.py::perform_send` feuert Mail
-und beliebig viele Webhooks unabhängig voneinander und liefert je Kanal ein
-Result-Dict zurück, statt zu werfen (siehe `src/CLAUDE.md`, Abschnitt
-„Threading-Modell").
+Die letzten beiden liegen seit dem SMTP-Feature gebündelt in
+`src/mime_message.py::build_message` — **einmal**, für **beide** Mailwege
+(Gmail-API und SMTP bauen ihre Nachricht beide darüber). Die erste Pflicht
+(`<meta charset="utf-8">`) liegt weiterhin bei den HTML-Erzeugern selbst
+(`report.py`, `share_dialog.py`) und ist damit **nicht** an derselben Stelle
+gebündelt wie die anderen beiden — ein künftiger Mail-Kanal, der sein HTML
+selbst baut, kann diese dritte Pflicht also weiterhin still verletzen, ohne
+dass `mime_message.py` das verhindert.
+
+Diese drei Pflichten gelten nur für den Mail-Kanal (jetzt Gmail **und**
+SMTP) — Webhooks transportieren das Berichts-JSON/PDF direkt, ohne
+HTML-Body. Alle Kanäle laufen über denselben Dispatcher:
+`src/dialogs/send_task.py::perform_send` feuert Gmail, beliebig viele
+SMTP-Konten und beliebig viele Webhooks unabhängig voneinander und liefert
+je Kanal ein Result-Dict zurück, statt zu werfen (siehe `src/CLAUDE.md`,
+Abschnitt „Threading-Modell").
 
 ## Datumsformat: intern ISO, in der UI deutsch
 
@@ -677,6 +694,31 @@ nicht mehr als „offen" führen — der Verweis lautet auf diese Grenze.
 - `src/webhook_store.py` — gerätelokaler Store der Webhook-Konfiguration
   (`webhooks.json`). Enthält Konfiguration **und** Secrets und wird deshalb wie
   `token.json` gehärtet geschrieben; reist bewusst **nicht** per Drive-Sync.
+- `src/mime_message.py` — Aufbau der Mail-Nachricht, gemeinsam für Gmail-API
+  und SMTP. Hier liegen **zwei der drei** UTF-8-Pflichten (MIMEText-Charset,
+  Betreff-Header) und die Steuerzeichen-Abwehr gegen Header-Injection
+  (Audit N11) — jeweils genau einmal; `mail.send_email` und `smtp.send` bauen
+  ihre Nachricht beide hierüber
+- `src/smtp.py` — SMTP-Versand (`smtplib`/`ssl`), Verbindungstest ohne Mail
+  und **eigene** Fehlerklassifikation (`auth`/`recipient`/`tls`/`server`/
+  `offline`). Eigener Klassifikator wie bei `webhook.py`: die drei Kinds aus
+  `mail_task` würden jede Serverantwort zu „unerwarteter Fehler mit
+  Traceback" verschmelzen. TLS immer mit Zertifikatsprüfung, und
+  **fail-closed**: ein unbekannter `security`-Wert wirft, statt still
+  unverschlüsselt zu verbinden
+- `src/smtp_store.py` — gerätelokaler Store der SMTP-Konten (`smtp.json`),
+  Mechanik wie `webhook_store.py`; prüft `security` schon beim Laden. Reist
+  **nicht** per Drive-Sync. Fasst den Schlüsselbund nicht an — das Secret
+  eines gelöschten Kontos räumt der Aufrufer ab
+- `src/keyring_store.py` — Passwörter im OS-Schlüsselbund, mit Datei-Fallback
+  wenn keiner verfügbar ist. `import keyring` lazy in den Funktionen (CI),
+  und **jeder Zugriff hinter einem 30-s-Watchdog**: `keyring` ruft auf Linux
+  `collection.unlock()` ohne Timeout, und ein hängender Worker bedeutet, dass
+  `BackgroundTaskRunner` `on_done` nie ruft. `get_secret` liefert `None`, wenn
+  sich das Vorhandensein eines Passworts nicht ermitteln ließ (Timeout/Fehler
+  ohne lokale Fallback-Kopie) — Aufrufer dürfen sich damit nicht anmelden
+- `src/dialogs/smtp_dialog.py` — Anlegen/Bearbeiten eines SMTP-Kontos inkl.
+  Verbindungstest
 - `src/reservations.py` — Reservierungen (zukünftige Soll-Zeiten, eigenes Konzept
   neben Ist-Zeiten). Slot-Schema `{start, end, kategorie, gcal_event_id,
   send_reminder_minutes}`; `send_reminder_minutes` markiert den Slot, an dem die
@@ -722,7 +764,7 @@ nicht mehr als „offen" führen — der Verweis lautet auf diese Grenze.
 - `src/holidays_de.py` — Feiertags-Lookup (über `holidays`-Lib)
 - `src/paths.py` — `get_base_path()` dispatched über `platform.system()` und Frozen- vs. Repo-Modus; `relaunch_command()` baut das Neustart-Kommando (Exe im Frozen-Build, `python -m src.main` im Repo)
 - `src/autostart.py` — plattformabhängiger Autostart (Windows-**Registry** HKCU Run, gleicher Wertname `Zeiterfassung` wie `installer.iss` → strukturell ein Eintrag; macOS-LaunchAgent / Linux `.desktop`). `is_autostart_enabled()` liest den echten Zustand, `migrate_legacy_autostart()` überführt Alt-Startup-Shortcuts frozen-gated in die Registry
-- `src/secure_file.py` — Zugriffsschutz für die lokal abgelegten Secrets (`token.json`, `instance-secret`): unter Windows `icacls`-ACL statt des dort wirkungslosen `chmod 0600` (Audit M8); best-effort, scheitert nie den Schreibvorgang
+- `src/secure_file.py` — Zugriffsschutz für die lokal abgelegten Secrets (`token.json`, `instance-secret`, `webhooks.json`, `smtp.json`): unter Windows `icacls`-ACL statt des dort wirkungslosen `chmod 0600` (Audit M8); best-effort, scheitert nie den Schreibvorgang
 - `src/single_instance.py` — Tk-freier Single-Instance-Guard (pro-Nutzer-Localhost-Port, `acquire`/`serve`/`release`); verhindert parallele Instanzen und holt bei manuellem Zweitstart das vorhandene Fenster nach vorn (SHOW), beim Autostart-Doppelfeuer ohne Fenster-Pop (PING)
 - `src/devices.py` — lesbare **Gerätenamen** für die Sync-Anzeige (Konfliktdialog): Ableitung aus dem Hostnamen, Sanitizing (Fremddaten!) und die Registry `{device_id: {name, updated_at}}`, die im Sync-Doc unter `devices` mitreist. Bewusst **ohne** Schema-Bump additiv — `SCHEMA_VERSION` bleibt 4, sonst pausierte `remote_is_newer` den Sync jedes älteren Geräts wegen eines Anzeigefelds. Fehlt oder bricht die Registry, zeigt der Dialog die gekürzte ID wie zuvor. Der eigene Name ist **kein** synchronisierter Setting-Key (der wäre ein einziger globaler Wert, die Geräte würden ihn sich gegenseitig überschreiben) — er lebt gerätelokal in `device_name`, der Spiegel der anderen in `known_devices`
 - `src/device_id.py` — stabile, hardware-abgeleitete Geräte-ID für den Sync (Windows `MachineGuid` / macOS `IOPlatformUUID` / Linux `/etc/machine-id`, SHA-256-gehasht); nur für installierte Builds (`main.py::_ensure_device_id`, gated auf `sys.frozen`) — Repo-/Skript-Modus bleibt bei der alten, in `settings.json` persistierten Zufalls-UUID, damit eine parallel laufende Dev-Instanz nie dieselbe device_id wie eine echte Installation auf demselben Rechner bekommt
@@ -758,3 +800,19 @@ seinen Pfad, nicht per Import.
   Webhook-Versand: zeigt Content-Type, Auth-Header, HMAC-Prüfung und den Body
   (JSON/PDF/multipart aufgetrennt), und kann Fehlerfälle simulieren
   (`--status`, `--redirect`). Reine stdlib.
+- `scripts/smtp_testserver.py` — lokaler Test-Mailserver für den
+  SMTP-Versand: zeigt Umschlag, Kopfzeilen (Betreff roh **und** dekodiert),
+  die MIME-Teile einzeln und den PDF-Anhang, und löst über je einen Schalter
+  **jeden** Zweig von `smtp.classify_smtp_error` aus (`--reject-auth`,
+  `--no-auth`, `--no-starttls`, `--reject-sender`, `--reject-recipient`,
+  `--status`, `--hang`). Reine stdlib; nur `--security starttls|ssl` braucht
+  `cryptography` für das selbst erzeugte Zertifikat.
+
+  **Zu TLS gehört ein Handgriff:** `smtp._tls_context()` prüft voll und hat
+  bewusst keinen Schalter dagegen, ein selbstsigniertes Zertifikat wird also
+  abgelehnt. Der Server druckt beim Start die Zeile, mit der die App es
+  akzeptiert (`SSL_CERT_FILE=<pfad> python -m src.main`) — die Variable
+  **ergänzt** den System-Zertifikatsspeicher, sie ersetzt ihn nicht, Drive-Sync
+  und Update-Prüfung laufen also weiter. Wer den Weg abkürzen will, testet mit
+  `--security none`: Versand, MIME-Aufbau und alle Fehlercodes gehen auch
+  unverschlüsselt durch.

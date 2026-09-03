@@ -103,6 +103,12 @@ def _pyinstaller_common(extra_args):
         "--collect-all", "reportlab",
         "--collect-all", "holidays",
         "--collect-all", "pystray",
+        # Redundant zum PyInstaller-Core-Hook (hook-keyring.py bündelt
+        # keyring.backends samt Metadata; das keyring-Wheel selbst bringt
+        # KEINEN Hook mit). Steht hier als Absicherung, falls dieser Hook
+        # wegfällt — ohne die Backends findet der gebaute Build seinen
+        # Schlüsselbund nicht und fiele still auf den Datei-Fallback zurück.
+        "--collect-all", "keyring",
         *extra_args,
         "src/main.py",
     ]

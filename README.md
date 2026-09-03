@@ -25,7 +25,7 @@ Desktop-App zur Erfassung von Arbeitszeiten mit Kalenderansicht, PDF-Report und 
 ## Inhalt
 
 [Features](#features) · [Installation](#installation) · [Projektstruktur](#projektstruktur) ·
-[Gmail API](#gmail-api-einrichten) · [Multi-Device-Sync](#multi-device-sync-einrichten-optional) ·
+[Gmail API](#gmail-api-einrichten) · [SMTP](#e-mail-versand-ohne-google-smtp) · [Multi-Device-Sync](#multi-device-sync-einrichten-optional) ·
 [Google-Kalender](#google-kalender-für-reservierungen-einrichten-optional) ·
 [Einstellungen](#einstellungen) · [Build](#build) ·
 [Plattform-Kompatibilität](#plattform-kompatibilität) · [Tests](#tests) ·
@@ -55,6 +55,7 @@ Desktop-App zur Erfassung von Arbeitszeiten mit Kalenderansicht, PDF-Report und 
 
 - **PDF-Report** — Automatische Generierung als druckfreundliches PDF, gruppiert pro ISO-Kalenderwoche; Kategorie-Aufschlüsselung optional
 - **E-Mail-Versand** — HTML-E-Mail mit PDF-Anhang über Gmail API (OAuth2)
+- **SMTP-Versand** *(ab 1.23.0)* — Berichte über einen eigenen Mail-Server statt über die Gmail-API verschicken; mehrere Konten mit je eigenem Empfänger möglich
 - **Webhook-Versand** — Der Bericht lässt sich zusätzlich zur E-Mail an konfigurierbare HTTP-Endpunkte senden (JSON und/oder PDF, optional mit Token oder HMAC-Signatur); gerätelokal konfiguriert
 - **PDF-Export** — Bericht für einen frei gewählten Zeitraum direkt als PDF lokal speichern (ohne Mail-Versand)
 - **Urlaub im Bericht** *(ab 1.22.0)* — Optionales Häkchen „Urlaub ausweisen“: der Bericht bekommt einen eigenen Urlaubs-Block je Zeitraum und die Zeile „Zu vergüten gesamt“. „Gesamt“ bleibt die reine Ist-Zeit
@@ -73,7 +74,7 @@ Desktop-App zur Erfassung von Arbeitszeiten mit Kalenderansicht, PDF-Report und 
 ### App & Umgebung
 
 - **Multi-Device-Sync** — Optionale Synchronisation von Zeiteinträgen und Mail-Vorlagen über Google Drive (`appDataFolder`), inklusive Konflikt-Auflösung wenn dasselbe Datum offline auf mehreren Geräten bearbeitet wurde — per Linksklick direkt auf den betroffenen Kalendertag oder gesammelt in den Einstellungen
-- **Einstellungen** — In Tabs gegliedert (Arbeitszeit / Bericht & Mail / Google / App / Webhooks / Updates); E-Mail-Vorlagen mit Platzhaltern, Standardpause, Empfänger und Update-Einstellungen
+- **Einstellungen** — In Tabs gegliedert (Arbeitszeit / Bericht & Mail / Webhooks / SMTP / Google / App / Updates); E-Mail-Vorlagen mit Platzhaltern, Standardpause, Empfänger und Update-Einstellungen
 - **Autostart & Einzelinstanz** — Optionaler minimierter Start bei Anmeldung (Windows, macOS, Linux); es läuft immer nur eine Instanz — ein zweiter Start holt das vorhandene Fenster nach vorn
 - **Update-Check** — Konfigurierbare Hintergrund-Prüfung auf neue Releases; Updates-Tab mit manuellem Check, Changelog und Direkt-Download, bei aktivem Tray als einmaliger Toast statt Banner. Läuft die App im Infobereich, stößt **„Nach Updates suchen"** im Tray-Menü die Prüfung direkt an — das Ergebnis kommt als Toast, auch wenn alles aktuell ist. Optional lassen sich auch Vorabversionen (Pre-Releases) anbieten — Testbuilds vor dem echten Release
 - **Dark Mode UI** — Modernes dunkles Design, für alle Dialoge einheitlich
@@ -164,6 +165,7 @@ python -m src.main
 | `xhtml2pdf` | PDF-Generierung aus HTML |
 | `pyinstaller` | Paketierung als Standalone-Binary |
 | `holidays` | Feiertags-Lookup (deutsche Feiertage) |
+| `keyring` | SMTP-Passwörter im Schlüsselbund des Betriebssystems |
 | `pystray` | Infobereich-Icon (Minimize-to-Tray) |
 | `Pillow` | Icon-/Bildverarbeitung (Tray-Icon) |
 | `pyobjc-framework-Cocoa` | Natives macOS-Tray (nur macOS) |
@@ -184,12 +186,16 @@ Zeiterfassung/
 │   ├── background_tasks.py # Hintergrund-Worker + Thread-Mechanik (Token-Refresh, Update-Check, Reconcile)
 │   ├── sync_orchestrator.py # Drive-Sync-Steuerung (manuell/Tray/Pull/Quit, Fehler-Aufbereitung)
 │   ├── update_banner.py   # GitHub-Release-Hinweis-Banner
-│   ├── dialogs/           # Modal-Dialoge (entry, send, export, settings, share, import, conflicts, category, scopes, webhook, vacation) + geteilter period_picker
+│   ├── dialogs/           # Modal-Dialoge (entry, send, export, settings [inkl. SMTP-Tab], share, import, conflicts, category, scopes, webhook, smtp, vacation) + geteilter period_picker
 │   ├── storage.py         # JSON-Persistenz der Zeiteinträge
 │   ├── settings.py        # Einstellungen mit Standardwerten
 │   ├── category_defaults.py # Default-Kategorien für Zeit-Slots
 │   ├── report.py          # HTML- & PDF-Reportgenerierung
+│   ├── mime_message.py    # Gemeinsamer MIME-Bau für Gmail-API und SMTP (UTF-8-Charset, Betreff-Header, Header-Injection-Abwehr)
 │   ├── mail.py            # Gmail OAuth2-Authentifizierung & Versand
+│   ├── smtp.py            # SMTP-Versand (smtplib/ssl), Verbindungstest, eigene Fehlerklassifikation
+│   ├── smtp_store.py      # Gerätelokale Persistenz der SMTP-Konten (gehärtet geschrieben, kein Sync)
+│   ├── keyring_store.py   # SMTP-Passwörter im OS-Schlüsselbund, mit Datei-Fallback
 │   ├── webhook.py         # Webhook-Versand (URL-Prüfung, Auth/HMAC, Payload, POST), pure Logik
 │   ├── webhook_store.py   # Gerätelokale Persistenz der Webhooks (gehärtet geschrieben, kein Sync)
 │   ├── drive.py           # Google Drive API-Wrapper (Multi-Device-Sync)
@@ -236,7 +242,8 @@ Zeiterfassung/
 ├── docs/                  # Specs/Plans, Known Limitations
 ├── scripts/               # Entwickler-Skripte (nicht Teil der App)
 │   ├── build.py           # Plattform-Dispatcher für den PyInstaller-Build
-│   └── webhook_testserver.py  # lokaler Test-Empfänger für den Webhook-Versand
+│   ├── webhook_testserver.py  # lokaler Test-Empfänger für den Webhook-Versand
+│   └── smtp_testserver.py     # lokaler Test-Mailserver für den SMTP-Versand
 ├── installer.iss          # Inno Setup Script (Windows-Installer)
 ├── requirements.txt       # Python-Abhängigkeiten (App-Laufzeit, exakt gepinnt)
 ├── requirements-test.txt  # Test-/CI-Abhängigkeiten (pytest & Co., exakt gepinnt)
@@ -250,7 +257,7 @@ Zeiterfassung/
 
 ## Gmail API einrichten
 
-Damit die App E-Mails versenden kann, muss einmalig ein Google Cloud Projekt mit Gmail API eingerichtet werden.
+Damit die App E-Mails über Gmail versenden kann, muss einmalig ein Google Cloud Projekt mit Gmail API eingerichtet werden. Wer keinen Google-Account als Absender nutzen will oder kein Cloud-Projekt anlegen möchte, kann stattdessen auf einen eigenen SMTP-Server ausweichen — siehe [E-Mail-Versand ohne Google (SMTP)](#e-mail-versand-ohne-google-smtp) weiter unten.
 
 ### 1. Google Cloud Projekt erstellen
 
@@ -304,6 +311,42 @@ Die Scopes werden nicht hier, sondern unter **Data Access** vergeben — entwede
 - Innerhalb der Token-Gültigkeit wird der Access-Token automatisch erneuert; läuft der Refresh-Token ab, öffnet sich der Browser erneut
 - Welche Berechtigungen dein Konto der App tatsächlich gewährt hat, zeigt die App unter **Einstellungen → Google → Berechtigungen** — die Kontrolle nach dem Setup und nach jedem Zuschalten von Sync oder Kalender
 - `credentials.json` und `token.json` gehören **nicht** ins Repository
+
+## E-Mail-Versand ohne Google (SMTP)
+
+Statt der Gmail-API kann die App Berichte über einen ganz normalen
+Mail-Server verschicken — dann wird kein Google-Cloud-Projekt und keine
+`credentials.json` gebraucht.
+
+Einstellungen → **SMTP** → **Hinzufügen**:
+
+| Feld | Bedeutung |
+|------|-----------|
+| Name | Frei wählbar, erscheint so im Sende-Dialog |
+| Server / Port | z. B. `mail.gmx.net` / `587` |
+| Verschlüsselung | STARTTLS (Port 587) oder SSL/TLS (Port 465) |
+| Benutzer / Passwort | Zugangsdaten des Postfachs; darf bei internen Relays ohne Anmeldung leer bleiben |
+| Absender | Die Adresse, die als Absender erscheint |
+| Empfänger | Wohin dieses Konto den Bericht schickt |
+
+**Verbindung testen** prüft Server und Zugangsdaten, ohne eine Mail zu
+verschicken.
+
+Das Passwort wird im Schlüsselbund des Betriebssystems abgelegt (Windows
+Credential Manager, macOS Keychain, Linux Secret Service). Steht keiner zur
+Verfügung, wird es lokal in `smtp.json` gespeichert — die App sagt das dann
+beim Speichern. Der Schlüsselbund bindet den Zugriff an die installierte
+App; wird die App aus dem Repo heraus gestartet (`python -m src.main`), hängt
+er dagegen am Python-Interpreter und schützt entsprechend weniger.
+
+**Was nicht geht:** Microsoft-Konten (Outlook.com, Microsoft 365). Microsoft
+hat SMTP mit Passwort 2026 abgeschaltet; auch App-Passwörter funktionieren
+dort nicht mehr. Für **Gmail** wird ein
+[App-Passwort](https://support.google.com/accounts/answer/185833) benötigt —
+nicht das Kontopasswort —, das eine aktive Zwei-Faktor-Anmeldung voraussetzt.
+
+SMTP-Konten gelten **nur auf diesem Gerät** und reisen nicht per
+Multi-Device-Sync.
 
 ## Multi-Device-Sync einrichten (optional)
 
@@ -503,6 +546,7 @@ Das meiste sind JSON-Dateien — `instance-secret` und das Protokoll sind es nic
 - **credentials.json** — dein OAuth-Client aus der Google Cloud Console; legst du selbst dort ab (siehe Gmail-Einrichtung oben)
 - **token.json** — OAuth-Token für Gmail, Drive und ggf. Kalender (wird automatisch erneuert)
 - **webhooks.json** — Webhook-Konfiguration **inklusive** Zugangstoken bzw. HMAC-Schlüssel. Gerätelokal: reist bewusst **nicht** über den Drive-Sync mit
+- **smtp.json** — SMTP-Kontokonfiguration; das Passwort liegt darin nur, wenn kein Schlüsselbund verfügbar war (Datei-Fallback, dann im Klartext). Gerätelokal: reist bewusst **nicht** über den Drive-Sync mit
 - **instance-secret** — schützt den lokalen Kanal, über den eine zweite Instanz das vorhandene Fenster nach vorn holt
 
 Bei aktivem Sync liegt zusätzlich in deinem Google Drive eine versteckte Datei `zeiterfassung-sync.json` im `appDataFolder` — nicht über die Drive-Web-Oberfläche sichtbar, nur die App kommt dran.
@@ -516,14 +560,16 @@ Speicherort je nach Plattform (siehe `src/paths.py`):
 | Linux (AppImage) | `$XDG_DATA_HOME/Zeiterfassung/` (Fallback `~/.local/share/Zeiterfassung/`) |
 | Entwicklung (Source) | Projekt-Root |
 
-> **Sicherheitshinweis:** Drei Dateien im Datenordner sind Geheimnisse, keine
+> **Sicherheitshinweis:** Vier Dateien im Datenordner sind Geheimnisse, keine
 > Nutzerdaten. `token.json` enthält im Klartext einen langlebigen
 > OAuth-Refresh-Token, der laufenden Zugriff auf dein Google-Konto
 > (Gmail-Versand, Drive-Sync, ggf. Kalender) gewährt. `webhooks.json` enthält
-> die Zugangstoken bzw. HMAC-Schlüssel deiner Webhook-Ziele. `instance-secret`
-> schützt den lokalen Single-Instance-Kanal.
+> die Zugangstoken bzw. HMAC-Schlüssel deiner Webhook-Ziele. `smtp.json`
+> enthält die SMTP-Kontodaten und — nur ohne verfügbaren Schlüsselbund — das
+> Mail-Passwort im Klartext. `instance-secret` schützt den lokalen
+> Single-Instance-Kanal.
 >
-> Alle drei werden gleich behandelt: unter macOS/Linux per `chmod 0600` nur für
+> Alle vier werden gleich behandelt: unter macOS/Linux per `chmod 0600` nur für
 > deinen Benutzer lesbar; unter Windows setzt die App per `icacls` eine eigene
 > ACL — geerbte Rechte (SYSTEM, lokale Administratoren) entfallen, Zugriff hat
 > nur dein Benutzerkonto. Beides ist Zugriffsschutz auf Dateiebene, keine

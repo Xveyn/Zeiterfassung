@@ -7,6 +7,17 @@ google-api-python-client==2.196.0
 xhtml2pdf==0.2.17
 pyinstaller==6.20.0
 holidays==0.99
+keyring==25.7.0
+# Bewusste Ausnahme von der Transitiv-Regel (sonst pinnen wir nur direkte
+# Deps): jaraco.functools/context und importlib_metadata sind Transitive von
+# keyring und fordern in ihren aktuellen Versionen bereits Python >=3.10 —
+# also GENAU unser CI-/Release-Python, ohne Puffer. Zieht jaraco seine
+# Skeleton-Pakete auf >=3.11, braeche der 3.10-Build still ueber eine Dep,
+# die niemand angefasst hat, und der in CLAUDE.md vorgeschriebene
+# 3.10-Gegencheck schlaege nicht an, weil er nur die direkte Dep betrachtet.
+jaraco.functools==4.6.0
+jaraco.context==6.1.2
+importlib_metadata==9.0.1
 pystray==0.19.5
 Pillow==12.3.0
 dbus-fast==5.0.22; sys_platform == "linux"

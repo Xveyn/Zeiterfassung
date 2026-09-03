@@ -24,6 +24,7 @@ from src.weekly_limit import format_limit_warnings, period_scan_needed, scan_per
 from src.dialogs.settings_dialog.tab_app import AppTab
 from src.dialogs.settings_dialog.tab_google import GoogleTab
 from src.dialogs.settings_dialog.tab_mail import MailTab
+from src.dialogs.settings_dialog.tab_smtp import SmtpTab
 from src.dialogs.settings_dialog.tab_updates import UpdatesTab
 from src.dialogs.settings_dialog.tab_webhooks import WebhooksTab
 from src.dialogs.settings_dialog.tab_work import WorkTab
@@ -33,10 +34,11 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
                          runner, conflicts_store=None, storage=None,
                          reservation_store=None, on_request_restart=None,
                          data_lock=None, sync_guard=None, webhook_store=None,
+                         smtp_store=None,
                          vacation_store=None, on_vacation_change=None,
                          on_vacation_display_change=None):
-    """Modaler Dialog zum Bearbeiten der App-Einstellungen, aufgeteilt auf sechs
-    Tabs (Arbeitszeit / Bericht & Mail / Webhooks / Google / App / Updates).
+    """Modaler Dialog zum Bearbeiten der App-Einstellungen, aufgeteilt auf sieben
+    Tabs (Arbeitszeit / Bericht & Mail / Webhooks / SMTP / Google / App / Updates).
 
     on_change wird nach erfolgreichem Speichern aufgerufen, damit der Kalender
     sich aktualisiert. conflicts_store und storage sind optional; sind sie
@@ -62,12 +64,14 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
     tab_work = tk.Frame(notebook, bg=BG)
     tab_mail = tk.Frame(notebook, bg=BG)
     tab_webhooks = tk.Frame(notebook, bg=BG)
+    tab_smtp = tk.Frame(notebook, bg=BG)
     tab_google = tk.Frame(notebook, bg=BG)
     tab_app = tk.Frame(notebook, bg=BG)
     tab_updates = tk.Frame(notebook, bg=BG)
     notebook.add(tab_work, text="Arbeitszeit")
     notebook.add(tab_mail, text="Bericht & Mail")
     notebook.add(tab_webhooks, text="Webhooks")
+    notebook.add(tab_smtp, text="SMTP")
     notebook.add(tab_google, text="Google")
     notebook.add(tab_app, text="App")
     notebook.add(tab_updates, text="Updates")
@@ -82,6 +86,9 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
 
     # ===================== Tab: Webhooks =====================
     hooks = WebhooksTab(tab_webhooks, dialog, webhook_store, runner, parent)
+
+    # ===================== Tab: SMTP =====================
+    SmtpTab(tab_smtp, dialog, smtp_store, runner, parent)
 
     # ===================== Tab: Google =====================
     google = GoogleTab(

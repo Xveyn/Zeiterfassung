@@ -18,17 +18,24 @@ from src.theme import (
     BG, CELL_BG, FONT, TEXT,
     apply_combobox_style, attach_unfocus_on_click, center_dialog_on_parent,
     create_dialog,
-    dark_entry, primary_button, secondary_button,
+    dark_combo, dark_entry, primary_button, secondary_button,
     set_button_text, set_primary_button_enabled,
     themed_showerror, themed_showinfo,
 )
 
 
-def open_share_dialog(parent, storage, settings, base_path, runner, reservation_store=None):
+def open_share_dialog(parent, storage, settings, base_path, runner, reservation_store=None,
+                      smtp_store=None):
     credentials_path = os.path.join(base_path, "credentials.json")
     token_path = os.path.join(base_path, "token.json")
 
-    if not os.path.exists(credentials_path):
+    accounts = smtp_store.enabled() if smtp_store else []
+    gmail_possible = os.path.exists(credentials_path)
+
+    # Nicht mehr „credentials.json muss da sein", sondern „irgendein Mailweg
+    # muss da sein". Sonst bleibt Teilen für alle unerreichbar, die genau
+    # deshalb SMTP eingerichtet haben.
+    if not gmail_possible and not accounts:
         show_missing_credentials_dialog(parent, base_path)
         return
 
@@ -197,6 +204,36 @@ def open_share_dialog(parent, storage, settings, base_path, runner, reservation_
 
         return _n(entries), _n(reservations)
 
+    transport_labels = (["Gmail"] if gmail_possible else []) + \
+        [a.get("name", "") for a in accounts]
+    transport_var = tk.StringVar(value=transport_labels[0])
+    transport_combo = None
+    if len(transport_labels) > 1:
+        tk.Label(dialog, text="Versand über:", font=FONT, bg=BG, fg=TEXT).grid(
+            row=row, column=0, padx=(20, 6), pady=(0, 4), sticky="w")
+        transport_combo = dark_combo(dialog, transport_var, transport_labels, width=24)
+        transport_combo.grid(row=row, column=1, padx=(0, 20), pady=(0, 4), sticky="w")
+        row += 1
+
+    def _chosen_transport():
+        """Das gewählte SMTP-Konto, oder None für den Gmail-Weg.
+
+        Über den INDEX aufgelöst, nicht über den angezeigten Namen: heißt ein
+        SMTP-Konto wörtlich "Gmail", erscheint das Label zweimal in
+        `transport_labels`, und eine Namens-Suche fände in beiden Fällen den
+        ersten Treffer — verschickt würde dann über einen anderen Weg als
+        angezeigt. Position 0 ist Gmail, sofern `gmail_possible`; sonst
+        verschiebt sich der Offset in `accounts` um eins.
+        """
+        index = transport_combo.current() if transport_combo is not None else 0
+        if gmail_possible:
+            if index == 0:
+                return None
+            index -= 1
+        if 0 <= index < len(accounts):
+            return accounts[index]
+        return None
+
     tk.Label(
         dialog, text="Empfänger:", font=FONT, bg=BG, fg=TEXT,
     ).grid(row=row, column=0, padx=(20, 6), pady=(0, 4), sticky="w")
@@ -294,6 +331,7 @@ def open_share_dialog(parent, storage, settings, base_path, runner, reservation_
                 sync_enabled=settings.get("sync_enabled"),
                 gcal_enabled=settings.get("gcal_enabled"),
                 save_default=save_default_var.get(), settings=settings,
+                transport=_chosen_transport(),
             )
 
         def on_done(res):
@@ -322,12 +360,24 @@ def open_share_dialog(parent, storage, settings, base_path, runner, reservation_
                     "Bitte prüfe deine Internetverbindung und versuche es "
                     "dann erneut.",
                 )
-            else:
+            elif res.get("tb"):
+                # Nur der Catch-all-Zweig ist nativ: ein themed Dialog baut
+                # selbst Tk-Widgets auf und ist im gestörten Zustand die
+                # unzuverlässigere Schicht (CLAUDE.md, Audit N14).
                 messagebox.showerror(
                     "Teilen fehlgeschlagen",
                     f"{type(res['error']).__name__}: {res['error']}\n\n{res['tb']}",
                     parent=target,
                 )
+            else:
+                # Erwartete SMTP-Fehler (auth/recipient/tls/server): kuratierte
+                # Meldung samt Serverantwort, themed.
+                from src.dialogs.send_task import format_result_summary
+                themed_showerror(
+                    target, "Teilen fehlgeschlagen",
+                    format_result_summary([{
+                        "name": share_recipient, "ok": False,
+                        "kind": kind, "detail": res.get("detail")}]))
 
         runner.run(fn, on_done)
 

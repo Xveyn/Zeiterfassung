@@ -70,6 +70,17 @@ def test_all_platforms_keep_mandatory_collect_all(monkeypatch):
             assert pkg in cmd, f"{pkg} fehlt im {build_fn.__name__}-Kommando"
 
 
+def test_all_platforms_bundle_keyring(monkeypatch):
+    """Redundant zum PyInstaller-Core-Hook, aber bewusst gesetzt: faellt der
+    Hook je weg, findet der gebaute Build seine Backends nicht und legt
+    Passwoerter still im Datei-Fallback ab, statt im Schluesselbund. Kein
+    Absturz, keine Meldung — nur schwaecherer Schutz. Deshalb hier
+    festgehalten, aber getrennt von den vier zwingenden --collect-all."""
+    for build_fn in (build.build_windows, build.build_linux):
+        cmd = _capture_pyinstaller_cmd(monkeypatch, build_fn)
+        assert "keyring" in cmd, f"keyring fehlt im {build_fn.__name__}-Kommando"
+
+
 def test_linux_bundles_dbus_fast(monkeypatch):
     """Das SNI-Tray importiert dbus_fast lazy — ohne --collect-all fehlt es in
     der AppImage und das Tray stirbt beim Start statt beim Build (#42)."""
