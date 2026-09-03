@@ -84,6 +84,59 @@ def _split_bold(content: str) -> list[tuple[str, tuple[str, ...]]]:
     return segments
 
 
+# --- Aufbereitung der generierten Pre-Release-Notes -------------------------
+# Fuer Pre-Releases IST der generierte Release-Body die Changelog-Quelle
+# (updater.resolve_check_result): CHANGELOG.md kennt am Pre-Tag nur die zuletzt
+# veroeffentlichte Version, also genau das, was der Nutzer schon hat. Der Body
+# traegt aber Verweise, die im Updates-Tab nichts nuetzen — er ist ein reines
+# Text-Widget ohne Klick-Ziele.
+NO_CHANGES_NOTICE = "Keine Änderungen seit dem letzten Release."
+
+# "**Full Changelog**: <url>" — ohne die URL bliebe ein nacktes Label ohne Ziel.
+_FULL_CHANGELOG_LINE = re.compile(r"^\*\*Full Changelog\*\*:.*$", re.MULTILINE)
+# Die Ueberschrift wiederholt nur das Label ueber der Box.
+_WHATS_CHANGED_HEADING = re.compile(r"^##\s+What's Changed\s*$", re.MULTILINE)
+# "… by @user in <url>" am Zeilenende: Autorenangabe plus PR-Link.
+_AUTHOR_SUFFIX = re.compile(r"\s+by\s+@\S+\s+in\s+\S+\s*$", re.MULTILINE)
+# Blanke URLs. `_LINK` oben fasst nur [text](url) — GitHub schreibt aber blank,
+# und genau dadurch stand die Begruendung von `_LINK` (nicht klickbar, bricht
+# im 58 Zeichen schmalen Feld nur um) fuer die generierten Notes auf dem Kopf.
+_BARE_URL = re.compile(r"\s*https?://\S+")
+
+
+def release_notes_for_display(notes: str) -> str:
+    """Bereitet den generierten Release-Notes-Body fuer den Updates-Tab auf:
+    uebrig bleiben die reinen PR-Titel.
+
+    Die Reihenfolge ist nicht beliebig — die "Full Changelog"-Zeile muss ganz
+    fallen, BEVOR blanke URLs entfernt werden, sonst bliebe ihr Label ohne
+    Ziel stehen.
+
+    Laeuft ausschliesslich auf dem Pre-Release-Zweig; der kuratierte
+    CHANGELOG.md-Abschnitt eines echten Releases geht unveraendert an
+    `parse_changelog_markdown`.
+
+    Bleibt nichts uebrig (ein Pre-Release direkt nach einem Release hat keine
+    PRs in den Notes), kommt `NO_CHANGES_NOTICE` zurueck — eine leere Box saehe
+    aus wie ein Ladefehler.
+    """
+    text = _HTML_COMMENT.sub("", notes)
+    text = _FULL_CHANGELOG_LINE.sub("", text)
+    text = _WHATS_CHANGED_HEADING.sub("", text)
+    text = _AUTHOR_SUFFIX.sub("", text)
+    text = _BARE_URL.sub("", text)
+
+    lines: list[str] = []
+    for raw in text.splitlines():
+        line = raw.rstrip()
+        if not line and (not lines or not lines[-1]):
+            continue  # fuehrende Leerzeilen und Leerzeilen-Laeufe einsammeln
+        lines.append(line)
+    while lines and not lines[-1]:
+        lines.pop()
+    return "\n".join(lines) or NO_CHANGES_NOTICE
+
+
 def parse_changelog_markdown(text: str) -> list[dict[str, Any]]:
     """Wandelt einen Changelog-Abschnitt (Markdown) in anzeigefertige Zeilen
     für ein Tk-Text-Widget um (Tk-frei/ohne UI testbar).

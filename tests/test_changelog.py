@@ -4,7 +4,8 @@ from unittest.mock import patch
 from urllib.error import HTTPError, URLError
 
 from src.changelog import (
-    extract_version_section, fetch_changelog_entry, parse_changelog_markdown,
+    NO_CHANGES_NOTICE, extract_version_section, fetch_changelog_entry,
+    parse_changelog_markdown, release_notes_for_display,
 )
 
 
@@ -369,3 +370,89 @@ def test_real_1_21_0_line_renders_clean():
     assert _texts(parse_changelog_markdown(md)) == [
         "Letztes Release aus diesem Repository. Alle weiteren Versionen "
         "erscheinen unter Xveyn/Zeiterfassung — siehe unten."]
+
+
+# --- Pre-Release-Notes fuer die Anzeige aufbereiten ---
+
+# Der unveraenderte Body von v1.22.0-pre.1, wie ihn die GitHub-API liefert.
+PRE_NOTES_FIXTURE = (
+    "<!-- Release notes generated using configuration in .github/release.yml"
+    " at v1.22.0-pre.1 -->\n"
+    "\n"
+    "## What's Changed\n"
+    "* feat(urlaub): Stundenzeile in der Kalenderzelle abschaltbar machen"
+    " by @Xveyn in https://github.com/Xveyn/Zeiterfassung/pull/102\n"
+    "* fix(ui): KW-Header verdeckt den \u201eWoche\"-Toggle nicht mehr"
+    " by @Xveyn in https://github.com/Xveyn/Zeiterfassung/pull/103\n"
+    "* feat(smtp): SMTP als zweiter Mailweg neben der Gmail-API"
+    " by @Xveyn in https://github.com/Xveyn/Zeiterfassung/pull/104\n"
+    "\n"
+    "\n"
+    "**Full Changelog**: https://github.com/Xveyn/Zeiterfassung/compare/"
+    "v1.22.0...v1.22.0-pre.1\n"
+)
+
+
+def test_release_notes_for_display_keeps_only_the_titles():
+    """Der ganze Fall in einem Test: aus dem echten Body werden drei nackte
+    Bullet-Zeilen, Titel woertlich erhalten (inkl. Umlauten und typografischen
+    Anfuehrungszeichen)."""
+    assert release_notes_for_display(PRE_NOTES_FIXTURE) == (
+        "* feat(urlaub): Stundenzeile in der Kalenderzelle abschaltbar machen\n"
+        "* fix(ui): KW-Header verdeckt den \u201eWoche\"-Toggle nicht mehr\n"
+        "* feat(smtp): SMTP als zweiter Mailweg neben der Gmail-API"
+    )
+
+
+def test_release_notes_for_display_drops_bare_urls():
+    # Im Text-Widget nicht klickbar, und im 58 Zeichen schmalen Feld bricht
+    # sie nur um — dieselbe Begruendung wie beim Markdown-Link-Strip.
+    assert "http" not in release_notes_for_display(PRE_NOTES_FIXTURE)
+
+
+def test_release_notes_for_display_drops_the_author_suffix():
+    assert "@Xveyn" not in release_notes_for_display(PRE_NOTES_FIXTURE)
+    assert " by " not in release_notes_for_display(PRE_NOTES_FIXTURE)
+
+
+def test_release_notes_for_display_drops_the_full_changelog_line():
+    # Ohne die URL bliebe sonst ein nacktes "Full Changelog:" ohne Ziel stehen.
+    assert "Full Changelog" not in release_notes_for_display(PRE_NOTES_FIXTURE)
+
+
+def test_release_notes_for_display_drops_the_whats_changed_heading():
+    # Wiederholt nur das Label ueber der Box.
+    assert "What's Changed" not in release_notes_for_display(PRE_NOTES_FIXTURE)
+
+
+def test_release_notes_for_display_drops_the_generator_comment():
+    assert "<!--" not in release_notes_for_display(PRE_NOTES_FIXTURE)
+
+
+def test_release_notes_for_display_without_a_full_changelog_line():
+    md = "## What's Changed\n* feat: X by @y in https://github.com/o/r/pull/1\n"
+    assert release_notes_for_display(md) == "* feat: X"
+
+
+def test_release_notes_for_display_falls_back_when_nothing_is_left():
+    """Ein Pre-Release direkt nach einem Release hat keine PRs in den Notes.
+    Eine leere Box saehe aus wie ein Ladefehler."""
+    md = ("<!-- Release notes generated -->\n\n## What's Changed\n\n"
+          "**Full Changelog**: https://github.com/o/r/compare/v1...v2\n")
+    assert release_notes_for_display(md) == NO_CHANGES_NOTICE
+
+
+def test_release_notes_for_display_on_empty_input():
+    assert release_notes_for_display("") == NO_CHANGES_NOTICE
+
+
+def test_release_notes_for_display_collapses_blank_runs():
+    md = "## What's Changed\n\n\n* feat: A\n\n\n\n* feat: B\n"
+    assert release_notes_for_display(md) == "* feat: A\n\n* feat: B"
+
+
+def test_release_notes_for_display_keeps_a_url_that_is_the_whole_title():
+    # Gegenprobe: der Strip haengt am " by @… in <url>"-Suffix bzw. an blanken
+    # URLs — ein Titel ohne beides bleibt unangetastet.
+    md = "## What's Changed\n* fix: Tippfehler in der README\n"
+    assert release_notes_for_display(md) == "* fix: Tippfehler in der README"
