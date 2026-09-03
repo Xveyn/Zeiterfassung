@@ -370,6 +370,93 @@ Installierte App und Benutzerdaten liegen je nach Plattform:
 
 `src/paths.py::get_base_path` dispatched über `platform.system()` und unterscheidet zwischen Frozen- und Repo-Modus.
 
+## Update-Weg
+
+Aus dem Download-Knopf (Updates-Tab, Banner, Tray-Toast) wird auf **Windows
+und Linux** ein „Update installieren": die App lädt das passende Release-Asset
+selbst (`src/self_update.py`), prüft es gegen das `SHA256SUMS`-Asset des
+Releases und installiert. **macOS bleibt** beim reinen Browser-Download — der
+Knopf öffnet weiterhin nur die Release-URL. Begründung und der Grund, das
+später nachzuziehen: `docs/known-limitations.md`, Abschnitt „macOS: kein
+Selbst-Update".
+
+- **Windows:** Ein Helfer-Skript (nicht der Installer selbst) übernimmt den
+  Ablauf. Es wartet auf das Verschwinden der laufenden App-PID und ruft dann
+  `Zeiterfassung_Setup.exe /SILENT /NORESTART`. Ob die App danach wieder
+  startet, entscheidet der Parameter `restart` (s.u.).
+  Der Helfer-Prozess läuft mit `CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW`
+  (`apply_windows` in `src/self_update.py`) — entkoppelt, damit er das Ende
+  der App überlebt, ohne eigenes Konsolenfenster. **Bewusst ohne**
+  `DETACHED_PROCESS`, s.u.
+- **Linux:** Die laufende AppImage wird im laufenden Betrieb ersetzt
+  (`os.replace` auf `$APPIMAGE`, alte Datei als `.old` für den Rollback) und
+  die App startet per `os.execv` neu — derselbe Mechanismus wie
+  AppImageUpdate.
+- **macOS:** kein Selbst-Update, s.o.
+
+**Neu gestartet wird nur der Sofort-Weg.** Klickt der Nutzer „Update
+installieren", will er danach weiterarbeiten — Windows startet die Exe über
+den Helfer neu (`apply_windows(..., restart=True)`), Linux `exec`t sich
+selbst. Wird ein still vorbereitetes Update dagegen **beim Beenden**
+angewendet (`ui.App._apply_pending_update`), bleibt die App zu:
+`restart=False`, und Linux ersetzt nur die Datei ohne `os.execv`. Wer die App
+beendet, will sie beendet haben; sie eine Minute später unaufgefordert wieder
+auf dem Bildschirm zu haben, wäre das Gegenteil der Zusage „nie mitten in der
+Arbeit".
+
+**Jeder Download-Lauf bekommt einen eigenen Zielnamen**
+(`self_update.download_dest`). Es gibt zwei Wege, die laden — den Ein-Klick-Weg
+im Updates-Tab und den stillen Automatik-Pfad in `ui.py` —, und mit einem
+festen Namen könnten sie in dieselbe Datei schreiben, während der Sofort-Weg
+den Prozess unmittelbar nach seiner Hash-Prüfung beendet. Eine weitere Prüfung
+schlösse dieses Fenster nicht (sie läge wieder davor); ein eigener Name lässt
+es nicht entstehen. Der Preis: jeder Fehlerpfad räumt seine Datei selbst weg —
+es gibt keinen festen Namen mehr, den ein späterer Lauf überschriebe.
+
+**`installer.iss` bleibt bei alldem unangetastet.** Zwei Gründe, beide zwingen
+zum Helfer-Skript statt zu einem Umbau des Installers:
+`AppMutex=ZeiterfassungAppMutex` lässt Inno eine laufende Instanz erkennen und
+bricht den Silent-Lauf ab bzw. zeigt einen Retry-Dialog, solange die App noch
+läuft — der Helfer wartet deshalb erst das Prozessende ab, statt gegen dieses
+Race anzutreten. Und der `[Run]`-Eintrag trägt `skipifsilent`: der Installer
+startet die App nach einer stillen Installation nicht selbst, das übernimmt
+ebenfalls der Helfer. Dazu kommt ein praktischer Grund: `installer.iss` ist
+die am schwersten lokal zu prüfende Datei im Repo (Inno fehlt auf der
+Windows-Dev-Maschine, testbar nur über den Workflow **Build** mit gesetztem
+`installer`-Häkchen) — ein Umbau dort wäre entsprechend riskant zu verifizieren.
+
+**Wichtig für das Helfer-Skript: `DETACHED_PROCESS` (0x8) bewusst NICHT
+setzen.** Das Flag entzieht dem Prozess seine Konsole — ohne Konsole liefert
+`tasklist /FI "PID eq …"` keine Ausgabe mehr, die Warteschleife auf das
+Prozessende (`:wait` im Helfer-Skript) läuft dadurch blind über das Ende der
+App hinweg und springt sofort zu `:install`, während der `AppMutex` noch
+gehalten wird — der Installer startet dann gegen die noch laufende App. Das
+war der teuerste Fehler bei der Umsetzung dieses Features — über mehrere
+Runden hinweg gefunden und behoben; das Flag nicht „zur Sicherheit" wieder
+einbauen. Verwendet werden stattdessen
+`CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW` (s.o.) — die entkoppeln den
+Helfer ebenso, ohne ihm die Konsole zu nehmen.
+
+**Was die Hash-Prüfung leistet — und was nicht.** `SHA256SUMS` schützt gegen
+abgebrochene und verfälschte Übertragung: eine unvollständige oder
+beschädigte Datei wird erkannt und gelöscht, bevor sie installiert wird. Sie
+schützt **nicht** gegen ein kompromittiertes Release — die Summen-Datei ist
+selbst unsigniert und liegt neben genau den Assets, die sie beschreibt; wer
+die Assets ersetzen kann, ersetzt die Summen gleich mit. Der Vertrauensanker
+bleibt TLS zu GitHub, derselbe wie beim bisherigen Browser-Download. Die
+Updates dieser App sind an keiner Stelle **signiert** — das darf so in Code
+und Doku nirgends anders klingen.
+
+**`auto_update_enabled` ist gerätelokal** (nicht in `SYNCED_SETTING_KEYS`):
+ein Wert, den sich ein Mac und ein Windows-Rechner über den Sync teilen,
+wäre auf dem Mac systematisch falsch — er kann den Schalter gar nicht
+einlösen, weil er nicht selbst updaten kann. Ist die Automatik an,
+installiert die App ein verifiziertes Update **nicht sofort**, sondern
+merkt es sich vor (`pending_update_path`/`pending_update_sha256`, ebenfalls
+gerätelokal — ein Pfad im `%TEMP%` eines anderen Rechners wäre dort sinnlos)
+und wendet es erst beim nächsten regulären Beenden an — nie mitten in der
+Arbeit.
+
 ## UI-Fehler sichtbar machen
 
 `--noconsole` unterdrückt stderr. Fehler aus dem Sendepfad (Gmail, PDF-Erzeugung) **müssen** per `messagebox.showerror` mit `traceback.format_exc()` angezeigt werden — sonst klickt der Nutzer auf „Senden", nichts passiert, und es gibt keine Spur.

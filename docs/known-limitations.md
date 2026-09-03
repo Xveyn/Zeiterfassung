@@ -243,3 +243,32 @@ das ausdrücklich als „Passwort konnte nicht aus dem Schlüsselbund gelesen
 werden" statt sich mit einem leeren Passwort anzumelden: eine leere Anmeldung
 würde der Server mit „Zugangsdaten abgelehnt" quittieren, und der Nutzer
 suchte das Problem beim Passwort statt beim Schlüsselbund.
+
+## macOS: kein Selbst-Update
+
+Windows und Linux laden ein Update in der App, prüfen es gegen die
+Prüfsummen des Releases und installieren es (Details: `CLAUDE.md`, Abschnitt
+„Update-Weg"). Auf macOS bleibt der Knopf beim heutigen Verhalten — er öffnet
+den Download im Browser.
+
+**Gründe:**
+
+- **Das Bundle ist weder signiert noch notarisiert** — `scripts/build.py`
+  enthält kein `codesign`. Ein Selbst-Update müsste das DMG mounten, nach
+  `/Applications` schreiben und dabei mit Gatekeeper umgehen.
+- **Nicht verifizierbar auf der Windows-Entwicklungsmaschine.** Die
+  CLAUDE.md-Regel „Plattformspezifische PRs — Pre-Release vorschlagen" trägt
+  hier allein nicht weit genug: ein Selbst-Updater ist genau die Fehlerklasse,
+  die sich nicht per Update reparieren lässt, wenn sie einmal ausgeliefert ist.
+- **CI baut nur arm64** — kein Intel-Artefakt zum Testen oder Ausliefern.
+
+**Warum das später trotzdem lohnt:** Ausgerechnet macOS hätte den größten
+Gewinn. Der heutige Browser-Download setzt beim Speichern der Datei das
+Attribut `com.apple.quarantine`, und genau daran hängt die Gatekeeper-Warnung,
+die Nutzer per Rechtsklick → Öffnen wegklicken müssen. Ein Download per
+`urllib`, wie ihn Windows und Linux verwenden, setzt dieses Attribut **nicht**
+— das erledigt LaunchServices beim Sichern aus dem Browser, nicht der
+Netzwerk-Socket. Ein Selbst-Update auf dem Mac würde die Gatekeeper-Hürde
+also nicht umgehen müssen, sondern schlicht nie auslösen. Das ist der
+eigentliche Grund, die Lücke später zu schließen — nicht bloß Komfort auf
+Augenhöhe mit den anderen beiden Plattformen.

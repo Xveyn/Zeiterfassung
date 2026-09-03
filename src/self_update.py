@@ -1,0 +1,554 @@
+"""In-App-Update für Windows und Linux: reine Logik, Tk-frei, stdlib-only.
+
+Die App lädt das Plattform-Asset selbst, prüft es gegen den `SHA256SUMS` des
+Releases und installiert es. macOS ist bewusst NICHT dabei — das Bundle ist
+weder signiert noch notarisiert, und der Weg über DMG-Mount und
+`/Applications` ist auf der Windows-Entwicklungsmaschine nicht verifizierbar
+(s. `docs/known-limitations.md`).
+
+**Was die Hash-Prüfung leistet und was nicht.** `SHA256SUMS` schützt gegen
+abgebrochene und verfälschte Übertragung. Es schützt NICHT gegen ein
+kompromittiertes Release: die Datei ist selbst unsigniert und liegt neben den
+Assets, die sie beschreibt. Vertrauensanker bleibt TLS zu GitHub — derselbe
+wie beim manuellen Download im Browser. Das löst den Audit-Vermerk M9 ein
+(„ein In-App-Auto-Download OHNE Verifikation wäre eine echte Lücke"), ohne
+mehr zu behaupten, als es trägt.
+"""
+from __future__ import annotations
+
+import hashlib
+import http.client
+import logging
+import os
+import posixpath
+import uuid
+from dataclasses import dataclass
+from typing import Any, Callable
+from urllib.error import URLError
+from urllib.request import Request, urlopen
+
+from src.updater import pick_asset_url
+from src.version import VERSION
+
+log = logging.getLogger(__name__)
+
+# Name des Prüfsummen-Assets, das `release.yml` jedem Release beilegt.
+SUMS_ASSET_NAME: str = "SHA256SUMS"
+
+_HEX = set("0123456789abcdef")
+_CHUNK_BYTES = 1024 * 1024
+
+# Wie lange der Helfer auf das Ende der App wartet, bevor er aufgibt.
+# 60 x 1 s: grosszuegig genug fuer einen langsamen Sync-Push beim Beenden,
+# kurz genug, dass ein haengender Prozess den Nutzer nicht ewig blockiert.
+_WAIT_TRIES = 60
+
+
+def parse_sha256sums(text: str) -> dict[str, str]:
+    """`SHA256SUMS`-Text → {Dateiname: Hex-Digest}.
+
+    Format ist das von coreutils `sha256sum`: `<digest>  <name>` (zwei
+    Leerzeichen) bzw. `<digest> *<name>` im Binärmodus. Unbrauchbare Zeilen
+    werden übersprungen statt zu werfen — eine kaputte Zeile darf den Rest
+    der Datei nicht entwerten.
+    """
+    result: dict[str, str] = {}
+    for raw in text.splitlines():
+        parts = raw.strip().split(None, 1)
+        if len(parts) != 2:
+            continue
+        digest = parts[0].lower()
+        if len(digest) != 64 or not set(digest) <= _HEX:
+            continue
+        result[parts[1].strip().lstrip("*")] = digest
+    return result
+
+
+def verify_file(path: str, expected_hex: str) -> bool:
+    """True, wenn die Datei den erwarteten SHA256 hat.
+
+    Blockweise gelesen: die AppImage ist ~65 MB und hat im Speicher nichts zu
+    suchen. Ein Lesefehler ist ein Prüf-Fehlschlag, kein Ausnahmefall — der
+    Aufrufer behandelt beides gleich (Datei löschen, Update abbrechen).
+    """
+    digest = hashlib.sha256()
+    try:
+        with open(path, "rb") as handle:
+            for chunk in iter(lambda: handle.read(_CHUNK_BYTES), b""):
+                digest.update(chunk)
+    except OSError:
+        return False
+    return digest.hexdigest() == (expected_hex or "").lower()
+
+
+@dataclass(frozen=True)
+class UpdatePlan:
+    """Alles, was der Ablauf braucht — ermittelt, bevor ein Byte fließt."""
+
+    asset_url: str
+    asset_name: str
+    sums_url: str
+    target: str     # Linux: $APPIMAGE; Windows: Pfad der laufenden Exe
+
+
+@dataclass(frozen=True)
+class UpdateBlocked:
+    """Warum es NICHT losgehen kann — `reason` ist anzeigbarer Text."""
+
+    reason: str
+
+
+@dataclass(frozen=True)
+class DownloadedUpdate:
+    """Ergebnis eines erfolgreichen `download_and_verify_update`-Laufs.
+
+    `sha256` wird separat mitgegeben (statt den Aufrufer die Prüfsummen-Datei
+    ein zweites Mal laden zu lassen): der stille Automatik-Pfad in `ui.py`
+    braucht ihn, um ihn als `pending_update_sha256` zu persistieren."""
+
+    path: str
+    sha256: str
+
+
+def download_and_verify_update(
+        plan: UpdatePlan, dest: str,
+        on_progress: Callable[[str], None] | None = None) -> DownloadedUpdate | str:
+    """Lädt und prüft ein Update — der gemeinsame Kern für BEIDE Aufrufer:
+    den Ein-Klick-Weg im Updates-Tab (mit Fortschrittsanzeige) und den
+    stillen Automatik-Pfad (`ui.py`, ohne UI, `on_progress=None`).
+
+    Absichtlich EINE Funktion statt zwei ähnlicher Implementierungen (Task 8
+    hat aus demselben Grund den Banner an den Updates-Tab delegieren lassen,
+    statt einen zweiten Update-Ablauf zu bauen): zwei Stellen, die dasselbe
+    tun, laufen früher oder später auseinander.
+
+    Holt zuerst `SHA256SUMS`, lädt dann `plan.asset_url` nach `dest` und
+    verifiziert das Ergebnis gegen den erwarteten Hash. `on_progress(text)`
+    bekommt fertig formatierte, deutschsprachige Fortschrittstexte ("Lade …
+    42 %", "Prüfe Prüfsumme …") — beide Aufrufer zeigen so denselben Text,
+    ohne die Formatierung zu duplizieren; der stille Pfad lässt den Parameter
+    einfach weg.
+
+    Liefert ein `DownloadedUpdate` bei Erfolg, sonst einen anzeigbaren
+    Fehlertext. Bei jedem Fehlschlag bleibt keine (halbe oder falsch
+    geprüfte) Datei unter `dest` liegen: `download_to` räumt seinen eigenen
+    Fehlerfall selbst auf, ein Hash-Mismatch wird hier zusätzlich entfernt.
+    """
+    sums_text = fetch_text(plan.sums_url)
+    if sums_text is None:
+        return "Die Prüfsummen ließen sich nicht laden."
+    expected = parse_sha256sums(sums_text).get(plan.asset_name)
+    if not expected:
+        return "Für diese Datei steht keine Prüfsumme im Release."
+
+    def progress(done: int, total: int) -> None:
+        if on_progress is None:
+            return
+        pct = f"{done * 100 // total} %" if total else f"{done // 1024} KB"
+        on_progress(f"Lade {plan.asset_name} … {pct}")
+
+    if not download_to(plan.asset_url, dest, on_progress=progress):
+        return "Der Download ist fehlgeschlagen."
+
+    if on_progress is not None:
+        on_progress("Prüfe Prüfsumme …")
+    if not verify_file(dest, expected):
+        try:
+            os.remove(dest)
+        except OSError:
+            pass  # Löschen ist best-effort; die Datei wird nicht benutzt
+        return ("Die Prüfsumme der geladenen Datei stimmt nicht. "
+                "Die Datei wurde verworfen.")
+    return DownloadedUpdate(path=dest, sha256=expected)
+
+
+def supports_self_update(system: str, frozen: bool) -> bool:
+    """Kann sich die App auf dieser Plattform selbst aktualisieren?
+
+    Nur Windows und Linux, und nur im Frozen-Build: im Repo-Modus gibt es
+    keine installierte Datei, die man ersetzen könnte, und `python -m
+    src.main` aktualisiert man über git.
+    """
+    return bool(frozen) and system in ("Windows", "Linux")
+
+
+def plan_update(release: Any, system: str, machine: str, frozen: bool,
+                appimage: str, executable: str) -> "UpdatePlan | UpdateBlocked":
+    """Prüft alle Voraussetzungen und liefert entweder den Plan oder den Grund.
+
+    Bewusst EINE Stelle: jeder Abbruchgrund wird hier festgestellt, bevor
+    heruntergeladen wird — ein halb geladenes Update, das dann an einer
+    Kleinigkeit scheitert, wäre die schlechtere Erfahrung.
+
+    `appimage` ist `$APPIMAGE` (nur Linux relevant), `executable` ist
+    `sys.executable`.
+    """
+    if not supports_self_update(system, frozen):
+        if system == "Darwin":
+            return UpdateBlocked(
+                "Unter macOS lädt die App das Update nicht selbst — "
+                "der Download öffnet sich im Browser.")
+        return UpdateBlocked(
+            "Das Update aus der App heraus gibt es nur in der installierten "
+            "Version.")
+
+    asset_url = pick_asset_url(release.assets, system, release.version, machine)
+    if asset_url is None:
+        # Bewusst OHNE das Wort „Architektur": `pick_asset_url` prüft sie nur
+        # auf macOS und Linux. Unter Windows heißt `None` schlicht „das Asset
+        # fehlt in diesem Release" — dieser Text ist in beiden Fällen wahr.
+        return UpdateBlocked(
+            "Für diesen Rechner gibt es in diesem Release keine passende "
+            "Datei.")
+
+    sums_url = next(
+        (a.url for a in release.assets if a.name == SUMS_ASSET_NAME), None)
+    if sums_url is None:
+        return UpdateBlocked(
+            "Dieses Release enthält keine Prüfsummen-Datei — die App "
+            "installiert nur, was sie prüfen kann.")
+
+    if system == "Linux":
+        if not appimage:
+            return UpdateBlocked(
+                "Der Pfad der laufenden AppImage ist unbekannt "
+                "($APPIMAGE nicht gesetzt).")
+        target = appimage
+    else:
+        target = executable
+
+    asset_name = {
+        "Windows": "Zeiterfassung_Setup.exe",
+        "Linux": f"Zeiterfassung-{release.version}-x86_64.AppImage",
+    }[system]
+    return UpdatePlan(asset_url=asset_url, asset_name=asset_name,
+                      sums_url=sums_url, target=target)
+
+
+def _request(url: str) -> Request:
+    return Request(url, headers={"User-Agent": f"Zeiterfassung/{VERSION}"})
+
+
+def fetch_text(url: str, timeout: float = 15.0) -> str | None:
+    """Kleine Textdatei laden (die Prüfsummen). None bei jedem Fehler —
+    nie eine Exception nach außen, analog `updater.check_latest_release`.
+
+    `http.client.HTTPException` wird eigens gefangen (z.B. IncompleteRead bei
+    abgebrochener Chunked-Response), weil dieser Typ kein OSError-Subtyp ist.
+    """
+    try:
+        with urlopen(_request(url), timeout=timeout) as response:
+            return response.read().decode("utf-8")
+    except (URLError, OSError, UnicodeDecodeError, http.client.HTTPException):
+        return None
+
+
+def download_to(url: str, dest: str,
+                on_progress: Callable[[int, int], None] | None = None,
+                timeout: float = 30.0) -> bool:
+    """Lädt `url` nach `dest`. True bei Erfolg.
+
+    `on_progress(geladen, gesamt)` wird je Block gerufen; `gesamt` ist 0, wenn
+    der Server keine Content-Length schickt. Der Callback läuft im
+    Worker-Thread — Aufrufer marshallen selbst auf den UI-Thread.
+
+    Bei JEDEM Fehler wird die angefangene Datei entfernt: eine halbe
+    Setup.exe, die liegen bleibt, würde beim nächsten Versuch als fertig
+    missverstanden oder vom Nutzer gefunden und ausgeführt.
+
+    `http.client.HTTPException` wird eigens gefangen (z.B. IncompleteRead bei
+    abgebrochener Chunked-Response), weil dieser Typ kein OSError-Subtyp ist.
+    """
+    try:
+        with urlopen(_request(url), timeout=timeout) as response:
+            total = int(response.headers.get("Content-Length") or 0)
+            done = 0
+            with open(dest, "wb") as handle:
+                while True:
+                    chunk = response.read(_CHUNK_BYTES)
+                    if not chunk:
+                        break
+                    handle.write(chunk)
+                    done += len(chunk)
+                    if on_progress is not None:
+                        on_progress(done, total)
+        return True
+    except (URLError, OSError, http.client.HTTPException) as exc:
+        log.warning("Update-Download fehlgeschlagen: %s", exc)
+        try:
+            os.remove(dest)
+        except OSError:
+            pass  # nichts angelegt oder schon weg — beides in Ordnung
+        return False
+
+
+_BACKUP_SUFFIX = ".old"
+
+
+def linux_backup_path(appimage: str) -> str:
+    """Backup-Pfad der laufenden AppImage (`<name>.old`).
+
+    Liegt NEBEN der AppImage, nicht in /tmp: `os.replace` ist nur innerhalb
+    desselben Dateisystems atomar, und /tmp ist auf vielen Systemen ein
+    eigenes (tmpfs).
+    """
+    return appimage + _BACKUP_SUFFIX
+
+
+def download_dest(system: str, asset_name: str, target: str,
+                  tempdir: str) -> str:
+    """Zielpfad für EINEN Download-Lauf — pro Aufruf ein anderer.
+
+    **Die Eindeutigkeit ist der ganze Zweck dieser Funktion.** Es gibt zwei
+    Wege, die laden: den Ein-Klick-Weg im Updates-Tab und den stillen
+    Automatik-Pfad in `ui.py`. Bauten beide denselben Namen (fester
+    Asset-Name im %TEMP% bzw. derselbe PID-Name neben der AppImage), könnten
+    sie sich begegnen: zwei Threads schreiben truncierend in dieselbe Datei,
+    und der Sofort-Weg beendet den Prozess unmittelbar nach seiner
+    Hash-Prüfung — der andere Thread stirbt dabei mitten im Schreiben und
+    kann die eben geprüfte Datei noch anschneiden. Eine weitere Prüfung
+    könnte das nicht schließen (sie läge wieder VOR dem Zeitfenster); ein
+    eigener Name pro Lauf lässt die Rennklasse gar nicht erst entstehen.
+
+    Der Preis sind mehr Leichen: jeder Fehlerpfad muss seine Datei selbst
+    wegräumen (`download_and_verify_update`, `UpdatesTab._apply`,
+    `App._apply_pending_update`) — es gibt keinen festen Namen mehr, den ein
+    späterer Lauf überschriebe.
+
+    `target` ist `plan.target` (Linux: `$APPIMAGE`), `tempdir` der
+    Temp-Ordner des Systems (nur Windows relevant). Bewusst `posixpath` für
+    den Linux-Zweig: `$APPIMAGE` ist immer ein POSIX-Pfad, und die
+    Unit-Tests laufen auch auf der Windows-Entwicklungsmaschine — dort würde
+    `os.path.join` mit `\\` verketten und einen Pfad liefern, der mit keinem
+    realen Linux-Pfad mehr übereinstimmt.
+    """
+    token = f"{os.getpid()}-{uuid.uuid4().hex[:8]}"
+    if system == "Linux":
+        # NEBEN die AppImage, nicht nach /tmp (s. `linux_backup_path`), und
+        # versteckt (führender Punkt), damit ein abgebrochener Lauf im
+        # Dateimanager nicht wie ein zweites Programm aussieht.
+        directory = posixpath.dirname(target) or "."
+        name = posixpath.basename(target)
+        return posixpath.join(directory, f".{name}.update-{token}")
+    stem, ext = os.path.splitext(asset_name)
+    return os.path.join(tempdir, f"{stem}-{token}{ext}")
+
+
+def discard_download(path: str) -> None:
+    """Räumt eine nicht (mehr) verwendbare Update-Datei weg (best-effort).
+
+    **Die eine Stelle für die Zusage aus `download_dest`:** seit jeder
+    Download-Lauf einen eigenen Namen trägt, überschreibt kein späterer Lauf
+    mehr eine liegengebliebene Datei — aus jedem Fehlerpfad, der nicht
+    aufräumt, werden dauerhaft ~65 MB im %TEMP% bzw. neben der AppImage.
+    Aufrufer sind `UpdatesTab._apply`/`_start_self_update` und
+    `App._apply_pending_update`; dieselbe Aufräum-Regel wie in `download_to`.
+
+    Bestes Bemühen: ein Fehlschlag beim Aufräumen darf nie die eigentliche
+    Fehlerbehandlung stören.
+    """
+    try:
+        os.remove(path)
+    except OSError:
+        pass  # nichts (mehr) da oder nicht entfernbar — beides in Ordnung
+
+
+def apply_linux(appimage: str, downloaded: str) -> str | None:
+    """Ersetzt die laufende AppImage durch die geladene Datei.
+
+    None bei Erfolg, sonst ein anzeigbarer Fehlertext.
+
+    Die laufende AppImage im Betrieb zu ersetzen ist der VORGESEHENE Weg —
+    genau so arbeitet AppImageUpdate. Der Inode der gemounteten Datei bleibt
+    bis zum Prozessende gültig, der laufende Prozess merkt nichts.
+
+    Die alte Datei bleibt als `<name>.old` liegen: sie ist der Rollback, falls
+    die neue Version gar nicht startet. Aufgeräumt wird sie beim nächsten
+    erfolgreichen Start (`sweep_appimage_backup`, gerufen aus `main.py`) —
+    dieselbe Idee wie AppImages `.zs-old`.
+    """
+    import stat
+
+    backup = linux_backup_path(appimage)
+    try:
+        mode = os.stat(downloaded).st_mode
+        os.chmod(downloaded, mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+    except OSError as exc:
+        return f"Die geladene Datei ließ sich nicht ausführbar machen: {exc}"
+
+    try:
+        os.replace(appimage, backup)
+    except OSError as exc:
+        return f"Die alte AppImage ließ sich nicht sichern: {exc}"
+
+    try:
+        os.replace(downloaded, appimage)
+    except OSError as exc:
+        try:
+            os.replace(backup, appimage)
+        except OSError:
+            log.exception("Rollback der AppImage fehlgeschlagen")
+        return f"Die neue AppImage ließ sich nicht einsetzen: {exc}"
+    return None
+
+
+def sweep_appimage_backup(appimage: str) -> bool:
+    """Räumt ein `<name>.old` neben der laufenden AppImage weg. True, wenn
+    etwas entfernt wurde.
+
+    Läuft beim Start: dass dieser Prozess überhaupt so weit gekommen ist, IST
+    der Beweis, dass die neue Datei startet — der Rollback wird nicht mehr
+    gebraucht.
+    """
+    backup = appimage + _BACKUP_SUFFIX
+    try:
+        os.remove(backup)
+        return True
+    except OSError:
+        return False  # kein Backup da (Normalfall) oder nicht entfernbar — beides kein Fehler
+
+
+def windows_helper_script(pid: int, setup_path: str, exe_path: str,
+                          log_path: str, restart: bool) -> str:
+    """Das Batch-Skript, das die App nach dem Beenden aktualisiert.
+
+    Drei Schritte, und die Reihenfolge ist der ganze Punkt:
+      1. warten, bis die App-PID verschwunden ist (sonst blockt `AppMutex`
+         den Installer)
+      2. `Setup.exe /SILENT /NORESTART` — bewusst OHNE `/VERYSILENT` (das
+         Fortschrittsfenster ist das einzige Signal, dass etwas passiert) und
+         OHNE `/SUPPRESSMSGBOXES` (macht „Abort" zur Standardantwort und
+         verschluckte echte Fehler)
+      3. die App wieder starten, aber NUR mit `restart=True` — der
+         `[Run]`-Eintrag in `installer.iss` trägt `skipifsilent` und feuert im
+         stillen Lauf nicht, der Start hinge also allein an dieser Zeile.
+
+    **Die zwei Fälle von `restart`:**
+
+    - `True` — der **Sofort-Weg** (`UpdatesTab._apply`): der Nutzer hat eben
+      „Update installieren" geklickt und will danach weiterarbeiten. Ohne
+      Neustart verschwände die App unter seinen Händen.
+    - `False` — der **Beenden-Weg** (`ui.App._apply_pending_update`, das
+      still vorbereitete Automatik-Update): wer die App beendet, will sie
+      beendet haben. Sie eine Minute später unaufgefordert wieder auf dem
+      Bildschirm zu haben, wäre das Gegenteil der Zusage „nie mitten in der
+      Arbeit". Linux verhält sich dort schon so — der Beenden-Pfad ersetzt
+      nur die AppImage und `exec`t sich NICHT neu.
+
+    Der Exit-Code des Installers landet im Log neben der App: scheitert der
+    Lauf, ist das die einzige Spur. Im Sofort-Weg wird die App danach in
+    JEDEM Fall gestartet — auch nach einem Fehlschlag ist eine laufende alte
+    Version besser als gar keine.
+
+    Alle Pfade sind gequotet: `D:\\Programme (x86)\\…` ist hier der Normalfall.
+    """
+    lines = [
+        "@echo off",
+        "setlocal",
+        f"set TRIES={_WAIT_TRIES}",
+        ":wait",
+        f'tasklist /FI "PID eq {pid}" 2>nul | find "{pid}" >nul',
+        "if errorlevel 1 goto install",
+        "set /a TRIES-=1",
+        "if %TRIES% LEQ 0 goto install",
+        "timeout /t 1 /nobreak >nul",
+        "goto wait",
+        ":install",
+        f'"{setup_path}" /SILENT /NORESTART',
+        f'echo Installer beendet mit %ERRORLEVEL% > "{log_path}"',
+    ]
+    if restart:
+        lines.append(f'start "" "{exe_path}"')
+    lines.append(f'del "{setup_path}" >nul 2>&1')
+    lines.append("")
+    return "\n".join(lines)
+
+
+def _delete_leftover_script(path: str) -> None:
+    """Räumt eine angelegte, aber nie ausgeführte Helfer-Datei weg.
+
+    Bestes Bemühen (wie das Aufräumen einer halben `Setup.exe` in
+    `download_to`): schlägt der Fehlerfall schon fehl, soll ein zweiter,
+    kleinerer Fehler beim Aufräumen nicht die eigentliche Fehlermeldung
+    verschlucken.
+    """
+    try:
+        os.remove(path)
+    except OSError:
+        pass  # nichts angelegt oder schon weg — beides in Ordnung
+
+
+def apply_windows(exe_path: str, setup_path: str, pid: int,
+                  restart: bool) -> bool:
+    """Schreibt den Helfer nach %TEMP% und startet ihn abgekoppelt.
+
+    Der Aufrufer beendet die App unmittelbar danach — der Helfer wartet auf
+    genau dieses Ende. `CREATE_NEW_PROCESS_GROUP` entkoppelt ihn, damit er
+    das Ende der App überlebt; `CREATE_NO_WINDOW` hält das Konsolenfenster
+    unsichtbar.
+
+    `restart` reicht die Entscheidung an `windows_helper_script` durch:
+    `True` für den Sofort-Weg (der Nutzer arbeitet weiter), `False` für das
+    Anwenden beim Beenden (die App bleibt zu) — Begründung dort.
+
+    Das Batch-Skript wird in der OEM-Codepage geschrieben (Windows-spezifisch),
+    damit Umlaute und andere Nicht-ASCII-Zeichen in Pfaden korrekt erhalten
+    bleiben. Linux hat keinen OEM-Codec — dort setzen wir UTF-8 (fallback).
+
+    **Wirft nie.** `False` ist die einzige Art, wie ein Fehlschlag hier nach
+    außen dringt — der Aufrufer beim Beenden (`ui.App._apply_pending_update`)
+    steht mitten im Herunterfahren, und eine Exception aus dieser Funktion
+    hielte die App offen. Deshalb liegt AUCH das Anlegen der Temp-Datei im
+    `try`: ein volles oder nicht beschreibbares %TEMP% wirft `OSError` schon
+    dort.
+    """
+    import subprocess
+    import tempfile
+
+    log_path = os.path.join(os.path.dirname(exe_path), "update.log")
+
+    # Encoding-Auswahl: OEM auf Windows (für cmd.exe-Kompatibilität),
+    # UTF-8 fallback auf Linux, wo dieser Codec nicht verfügbar ist.
+    encoding = "utf-8"
+    try:
+        # Versuche OEM-Encoding (nur Windows)
+        "test".encode("oem")
+        encoding = "oem"
+    except LookupError:
+        # OEM-Codec nicht verfügbar (z.B. Linux)
+        pass
+
+    handle = None
+    try:
+        handle = tempfile.NamedTemporaryFile(
+            "w", suffix=".cmd", delete=False, encoding=encoding,
+            errors="strict")
+        with handle:
+            handle.write(windows_helper_script(
+                pid, setup_path, exe_path, log_path, restart))
+        # Prozess-Flags: CREATE_NEW_PROCESS_GROUP entkoppelt den Helfer,
+        # damit er das Ende der App überlebt. CREATE_NO_WINDOW hält die
+        # Konsole unsichtbar.
+        # BEWUSST NICHT: DETACHED_PROCESS (0x8). Mit diesem Flag würde dem
+        # Prozess die Konsole entzogen → tasklist liefert keine Ausgabe,
+        # die Warteschleife (:wait) läuft blind über das Ende der App,
+        # springt sofort zu :install, während der AppMutex noch gehalten wird.
+        # Das ist exakt das Gegenteil des Zwecks.
+        subprocess.Popen(
+            ["cmd", "/c", handle.name],
+            creationflags=(0x00000200 |   # CREATE_NEW_PROCESS_GROUP
+                           0x08000000),   # CREATE_NO_WINDOW
+            close_fds=True)
+        return True
+    except OSError as exc:
+        # Deckt beides ab: ein %TEMP%, in das sich nichts schreiben lässt
+        # (NamedTemporaryFile), und ein fehlgeschlagenes Popen.
+        log.warning("Update-Helfer konnte nicht gestartet werden: %s", exc)
+        if handle is not None:
+            _delete_leftover_script(handle.name)
+        return False
+    except UnicodeEncodeError as exc:
+        log.warning("Update-Helfer: Zeichen in Pfaden lassen sich nicht kodieren: %s", exc)
+        if handle is not None:
+            _delete_leftover_script(handle.name)
+        return False
