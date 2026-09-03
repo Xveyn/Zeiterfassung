@@ -1,6 +1,7 @@
 """Reine Logik des In-App-Updates (Tk-frei, ohne Netzwerk)."""
 
 import hashlib
+from unittest.mock import patch
 
 import pytest
 
@@ -142,3 +143,60 @@ def test_plan_update_blocks_on_linux_without_appimage_env():
     blocked = plan_update(_release(), "Linux", "x86_64", True, "", "/tmp/x")
     assert isinstance(blocked, UpdateBlocked)
     assert "AppImage" in blocked.reason
+
+
+# === Tests für download_to und fetch_text ===
+
+class _FakeResponse:
+    def __init__(self, payload, length=None):
+        self._payload = payload
+        self._pos = 0
+        self.headers = {"Content-Length": str(length if length is not None
+                                              else len(payload))}
+
+    def read(self, size):
+        chunk = self._payload[self._pos:self._pos + size]
+        self._pos += len(chunk)
+        return chunk
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
+def test_download_to_writes_the_payload(tmp_path):
+    from src.self_update import download_to
+    dest = tmp_path / "out.bin"
+    with patch("src.self_update.urlopen", return_value=_FakeResponse(b"x" * 5000)):
+        assert download_to("https://x/f", str(dest)) is True
+    assert dest.read_bytes() == b"x" * 5000
+
+
+def test_download_to_reports_progress(tmp_path):
+    from src.self_update import download_to
+    seen = []
+    with patch("src.self_update.urlopen", return_value=_FakeResponse(b"y" * 3000)):
+        download_to("https://x/f", str(tmp_path / "o.bin"),
+                    on_progress=lambda done, total: seen.append((done, total)))
+    assert seen, "es muss mindestens einmal gemeldet werden"
+    assert seen[-1] == (3000, 3000)
+
+
+def test_download_to_removes_the_partial_file_on_error(tmp_path):
+    from src.self_update import download_to
+    import urllib.error
+    dest = tmp_path / "out.bin"
+    with patch("src.self_update.urlopen",
+               side_effect=urllib.error.URLError("weg")):
+        assert download_to("https://x/f", str(dest)) is False
+    assert not dest.exists(), "eine halbe Datei darf nicht liegenbleiben"
+
+
+def test_fetch_text_returns_none_on_error():
+    from src.self_update import fetch_text
+    import urllib.error
+    with patch("src.self_update.urlopen",
+               side_effect=urllib.error.URLError("weg")):
+        assert fetch_text("https://x/sums") is None

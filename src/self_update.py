@@ -17,10 +17,17 @@ mehr zu behaupten, als es trägt.
 from __future__ import annotations
 
 import hashlib
+import logging
+import os
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Callable
+from urllib.error import URLError
+from urllib.request import Request, urlopen
 
 from src.updater import pick_asset_url
+from src.version import VERSION
+
+log = logging.getLogger(__name__)
 
 # Name des Prüfsummen-Assets, das `release.yml` jedem Release beilegt.
 SUMS_ASSET_NAME: str = "SHA256SUMS"
@@ -141,3 +148,53 @@ def plan_update(release: Any, system: str, machine: str, frozen: bool,
     }[system]
     return UpdatePlan(asset_url=asset_url, asset_name=asset_name,
                       sums_url=sums_url, target=target)
+
+
+def _request(url: str) -> Request:
+    return Request(url, headers={"User-Agent": f"Zeiterfassung/{VERSION}"})
+
+
+def fetch_text(url: str, timeout: float = 15.0) -> str | None:
+    """Kleine Textdatei laden (die Prüfsummen). None bei jedem Fehler —
+    nie eine Exception nach außen, analog `updater.check_latest_release`."""
+    try:
+        with urlopen(_request(url), timeout=timeout) as response:
+            return response.read().decode("utf-8")
+    except (URLError, OSError, UnicodeDecodeError):
+        return None
+
+
+def download_to(url: str, dest: str,
+                on_progress: Callable[[int, int], None] | None = None,
+                timeout: float = 30.0) -> bool:
+    """Lädt `url` nach `dest`. True bei Erfolg.
+
+    `on_progress(geladen, gesamt)` wird je Block gerufen; `gesamt` ist 0, wenn
+    der Server keine Content-Length schickt. Der Callback läuft im
+    Worker-Thread — Aufrufer marshallen selbst auf den UI-Thread.
+
+    Bei JEDEM Fehler wird die angefangene Datei entfernt: eine halbe
+    Setup.exe, die liegen bleibt, würde beim nächsten Versuch als fertig
+    missverstanden oder vom Nutzer gefunden und ausgeführt.
+    """
+    try:
+        with urlopen(_request(url), timeout=timeout) as response:
+            total = int(response.headers.get("Content-Length") or 0)
+            done = 0
+            with open(dest, "wb") as handle:
+                while True:
+                    chunk = response.read(_CHUNK_BYTES)
+                    if not chunk:
+                        break
+                    handle.write(chunk)
+                    done += len(chunk)
+                    if on_progress is not None:
+                        on_progress(done, total)
+        return True
+    except (URLError, OSError) as exc:
+        log.warning("Update-Download fehlgeschlagen: %s", exc)
+        try:
+            os.remove(dest)
+        except OSError:
+            pass  # nichts angelegt oder schon weg — beides in Ordnung
+        return False
