@@ -202,38 +202,70 @@ def test_fetch_text_returns_none_on_error():
         assert fetch_text("https://x/sums") is None
 
 
-def test_download_to_removes_file_on_oserror_during_write(tmp_path):
-    """OSError während write() (z.B. Platte voll) — Datei muss weg."""
+class _FailingResponse:
+    """Liefert erst `good_chunks` Bloecke, dann wirft `exc`."""
+
+    def __init__(self, exc, good_chunks=2, block=b"z" * 4096):
+        self.headers = {"Content-Length": "999999"}
+        self._exc = exc
+        self._left = good_chunks
+        self._block = block
+
+    def read(self, size):
+        if self._left <= 0:
+            raise self._exc
+        self._left -= 1
+        return self._block
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
+def test_download_to_removes_the_partial_file_when_writing_fails(tmp_path):
+    """OSError während write() (z.B. Platte voll) — echte Datei wird angelegt,
+    dann beim Schreiben Fehler, dann muss Datei weg sein."""
+    import builtins
     from src.self_update import download_to
-    dest = tmp_path / "out.bin"
+    dest = tmp_path / "halb.bin"
+    real_open = builtins.open
 
-    # Mock urlopen, aber write() schlägt fehl
-    class FailingFile:
-        def __enter__(self):
-            return self
-        def __exit__(self, *exc):
-            return False
-        def write(self, data):
-            raise OSError("Platte voll")
+    def open_failing_after_first_write(*args, **kwargs):
+        handle = real_open(*args, **kwargs)
+        original = handle.write
+        seen = []
 
-    class FailingResponse(_FakeResponse):
-        def __enter__(self):
-            return self
-        def __exit__(self, *exc):
-            return False
+        def write(data):
+            seen.append(1)
+            if len(seen) > 1:
+                raise OSError(28, "No space left on device")
+            return original(data)
 
-    with patch("src.self_update.urlopen", return_value=FailingResponse(b"x" * 1000)):
-        with patch("builtins.open", return_value=FailingFile()):
-            assert download_to("https://x/f", str(dest)) is False
+        handle.write = write
+        return handle
+
+    with patch("src.self_update.urlopen",
+               return_value=_FailingResponse(None, good_chunks=5)), \
+         patch("builtins.open", side_effect=open_failing_after_first_write):
+        assert download_to("https://x/f", str(dest)) is False
+
+    assert not dest.exists(), "die angefangene Datei muss weg sein"
 
 
-def test_download_to_removes_file_on_http_exception(tmp_path):
-    """http.client.HTTPException (z.B. IncompleteRead) — Datei muss weg."""
+def test_download_to_removes_file_on_http_exception_during_download(tmp_path):
+    """http.client.HTTPException (z.B. IncompleteRead) mitten im Download —
+    echte Datei wird angelegt, dann wirft Response, dann muss Datei weg sein."""
     from src.self_update import download_to
     import http.client
     dest = tmp_path / "out.bin"
 
+    # Response liefert 2 Bloecke, dann wirft HTTPException
     with patch("src.self_update.urlopen",
-               side_effect=http.client.IncompleteRead(b"partial", 20)):
+               return_value=_FailingResponse(
+                   http.client.IncompleteRead(b"partial", 999),
+                   good_chunks=2)):
         assert download_to("https://x/f", str(dest)) is False
+
     assert not dest.exists(), "halbe Datei muss aufgeräumt sein"
