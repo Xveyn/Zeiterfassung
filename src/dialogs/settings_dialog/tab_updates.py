@@ -161,7 +161,11 @@ class UpdatesTab:
         self._changelog_text.config(state="disabled")
 
     def _check_now(self):
-        if self._checking:
+        # self._updating: waehrend ein Selbst-Update laeuft (Download/Pruef-
+        # /Installier-Phase), darf "Jetzt pruefen" nicht dazwischenfunken —
+        # sonst leert es self._latest_release und _finish_checking() aktiviert
+        # die Knoepfe wieder, obwohl das Update noch laeuft.
+        if self._checking or self._updating:
             return
         self._checking = True
         self._latest_release = None
@@ -269,8 +273,25 @@ class UpdatesTab:
             local = linux_apply_paths(plan.target)[0]
 
         def report(text):
-            # Aus dem Worker-Thread: nie direkt ans Widget.
-            self.frame.after(0, lambda: self._status_label.config(text=text))
+            # Aus dem Worker-Thread: nie direkt ans Widget. Analog
+            # App._marshal_to_ui (ui.py) werden Einplanen UND Ausfuehren
+            # gegen TclError abgesichert: schliesst der Nutzer den
+            # Einstellungen-Dialog waehrend des Downloads, existiert
+            # self._status_label beim Feuern nicht mehr, und der TclError
+            # liefe sonst ungefangen in Tkinters report_callback_exception —
+            # das dieses Projekt global auf ein sichtbares Fehler-Popup legt
+            # (logging_setup.py). progress() feuert pro 1-MB-Chunk, bei einem
+            # ~65-MB-Asset also dutzende Male, waehrend der Download im
+            # Hintergrund weiterlaeuft — ohne Guard dutzende Popups.
+            def apply_text():
+                try:
+                    self._status_label.config(text=text)
+                except tk.TclError:
+                    pass  # Dialog schon zu, die Meldung hat kein Ziel mehr
+            try:
+                self.frame.after(0, apply_text)
+            except tk.TclError:
+                pass  # Dialog schon zu, das Einplanen selbst hat kein Ziel mehr
 
         def work():
             sums_text = fetch_text(plan.sums_url)
@@ -301,24 +322,34 @@ class UpdatesTab:
             if not self.frame.winfo_exists():
                 return
             if error is not None:
-                self._updating = False
-                set_primary_button_enabled(self._check_btn, True)
-                set_secondary_button_enabled(self._download_btn, True)
-                self._status_label.config(text="Update fehlgeschlagen")
-                themed_showerror(self.frame, "Update fehlgeschlagen", error)
+                self._fail_update(error)
                 return
             self._status_label.config(text="Installiere …")
             self._apply(plan, local)
 
         self._runner.run(work, done)
 
+    def _fail_update(self, message):
+        """Bricht den laufenden Update-Versuch ab: Guard und beide Knoepfe
+        wieder hoch, Fehlermeldung zeigen.
+
+        EIN Ausstiegspunkt fuer alle Fehlerpfade nach dem Setzen von
+        `self._updating = True` (Download-/Pruef-Fehler in `done()` UND
+        Anwenden-Fehler in `_apply`) — sonst bleibt der Guard in
+        `_open_latest_download` fuer den Rest der Dialog-Session auf `True`
+        haengen und blockt jeden weiteren Klick, waehrend "Jetzt pruefen"
+        zusaetzlich optisch tot bliebe."""
+        self._updating = False
+        set_primary_button_enabled(self._check_btn, True)
+        set_secondary_button_enabled(self._download_btn, True)
+        self._status_label.config(text="Update fehlgeschlagen")
+        themed_showerror(self.frame, "Update fehlgeschlagen", message)
+
     def _apply(self, plan, local):
         """Anwenden und die App beenden bzw. neu starten."""
         if platform.system() == "Windows":
             if not apply_windows(plan.target, local, os.getpid()):
-                themed_showerror(
-                    self.frame, "Update fehlgeschlagen",
-                    "Der Update-Helfer ließ sich nicht starten.")
+                self._fail_update("Der Update-Helfer ließ sich nicht starten.")
                 return
             self.frame.winfo_toplevel().quit()
             return
@@ -333,7 +364,7 @@ class UpdatesTab:
                 os.remove(local)
             except OSError:
                 pass  # nichts angelegt oder schon weg — beides in Ordnung
-            themed_showerror(self.frame, "Update fehlgeschlagen", error)
+            self._fail_update(error)
             return
         os.execv(plan.target, [plan.target])
 
