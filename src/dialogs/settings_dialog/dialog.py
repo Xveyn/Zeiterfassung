@@ -242,6 +242,10 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
         for key in WEEKDAY_KEYS:
             updates[f"default_start_{key}"] = work.start_vars[key].get()
             updates[f"default_end_{key}"] = work.end_vars[key].get()
+        # auto_update_var ist None, wenn der Tab den Schalter gar nicht baut
+        # (Plattform kann kein Selbst-Update) — dann bleibt der Key unangetastet.
+        if updates_tab.auto_update_var is not None:
+            updates["auto_update_enabled"] = updates_tab.auto_update_var.get()
         settings.apply_updates(updates)
         # Kalender-Auswahl: Klarname zurück auf ID mappen, als Sync-Setting
         # speichern. Nur wenn die Kalenderliste schon geladen ist (cal_map

@@ -846,6 +846,24 @@ def test_prerelease_updates_flag_is_device_local():
     assert "prerelease_updates_enabled" not in SYNCED_SETTING_KEYS
 
 
+def test_auto_update_is_off_by_default_and_device_local():
+    from src.settings import DEFAULTS, SYNCED_SETTING_KEYS
+    assert DEFAULTS["auto_update_enabled"] is False
+    # Ein Wert, den sich ein Mac und ein Windows-Rechner teilen, waere auf
+    # einem der beiden systematisch falsch — der Mac kann gar nicht selbst
+    # updaten. Dieselbe Begruendung wie beim Pre-Release-Haekchen.
+    assert "auto_update_enabled" not in SYNCED_SETTING_KEYS
+
+
+def test_pending_update_keys_are_device_local():
+    # Ein Pfad aus dem %TEMP% eines anderen Rechners waere hier sinnlos.
+    from src.settings import DEFAULTS, SYNCED_SETTING_KEYS
+    assert DEFAULTS["pending_update_path"] == ""
+    assert DEFAULTS["pending_update_sha256"] == ""
+    assert "pending_update_path" not in SYNCED_SETTING_KEYS
+    assert "pending_update_sha256" not in SYNCED_SETTING_KEYS
+
+
 def test_new_send_reminder_defaults(tmp_path):
     s = Settings(str(tmp_path / "settings.json"))
     assert s.get("send_reminder_reservations_enabled") is False

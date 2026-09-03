@@ -1,5 +1,6 @@
 """Tab „Updates": Update-Status, Changelog und Check-Häufigkeit."""
 
+import logging
 import os
 import platform
 import sys
@@ -113,6 +114,28 @@ class UpdatesTab:
             font=FONT_SMALL, bg=BG, fg=TEXT_MUTED,
         ).grid(row=5, column=0, columnspan=2, padx=10, pady=(0, 4), sticky="w")
 
+        # Nur bauen, wo Selbst-Update ueberhaupt moeglich ist — ein Schalter
+        # fuer ein Feature, das die Plattform nicht hat, ist Rauschen
+        # (dieselbe Regel wie beim "Urlaub ausweisen"-Haekchen).
+        self.auto_update_var = None
+        if self._can_self_update:
+            self.auto_update_var = tk.BooleanVar(
+                value=bool(settings.get("auto_update_enabled")))
+            tk.Checkbutton(
+                frame, text="Updates automatisch installieren",
+                variable=self.auto_update_var, font=FONT, bg=BG, fg=TEXT,
+                selectcolor=CELL_BG, activebackground=BG, activeforeground=TEXT,
+                cursor="hand2",
+            ).grid(row=6, column=0, columnspan=2, padx=10, pady=(8, 0),
+                   sticky="w")
+            tk.Label(
+                frame,
+                text=("Lädt im Hintergrund und installiert beim nächsten "
+                      "Beenden — nie mitten in der Arbeit."),
+                font=FONT_SMALL, bg=BG, fg=TEXT_MUTED,
+            ).grid(row=7, column=0, columnspan=2, padx=10, pady=(0, 4),
+                   sticky="w")
+
         # Label + Text bleiben immer gegridded (nie grid_remove()) — sonst
         # verschwindet ihr Breitenbeitrag zum Notebook-Tab kurzzeitig während
         # eines Checks (Text leer/gecleart ist ok, ungegridded lässt die
@@ -120,10 +143,10 @@ class UpdatesTab:
         self._changelog_label = tk.Label(
             frame, text=_LABEL_CHANGELOG, font=FONT, bg=BG, fg=TEXT,
         )
-        self._changelog_label.grid(row=6, column=0, padx=10, pady=(12, 4), sticky="nw")
+        self._changelog_label.grid(row=8, column=0, padx=10, pady=(12, 4), sticky="nw")
         self._changelog_text = dark_text(frame, 58, 12)
         self._changelog_text.grid(
-            row=7, column=0, columnspan=2, padx=10, pady=4,
+            row=9, column=0, columnspan=2, padx=10, pady=4,
         )
         self._changelog_text.tag_configure("heading", font=FONT_BOLD)
         self._changelog_text.tag_configure("bold", font=FONT_BOLD)
@@ -197,6 +220,12 @@ class UpdatesTab:
                 self._download_btn.pack(side=tk.LEFT, padx=(8, 0))
             if result["persist"]:
                 self._settings.set_many(result["persist"])
+            if self._latest_release is not None:
+                # Derselbe Check, der den Nutzer ueber den Knopf informiert,
+                # loest bei aktivem Haekchen zusaetzlich den stillen
+                # Hintergrund-Download aus — kein eigener Timer (Regel 1 aus
+                # dem Design: "vorhandener Update-Check").
+                self._maybe_start_auto_update(self._latest_release)
             if result["changelog_notes"] is not None:
                 # Pre-Release: die Notes liegen dem Payload bereits bei,
                 # kein zweiter Netzwerk-Call nötig. Es ist aber der
@@ -240,8 +269,23 @@ class UpdatesTab:
             return
         self._open_download(self._latest_release)
 
-    def _start_self_update(self, release):
-        """Laden, pruefen, installieren — der Ein-Klick-Weg.
+    def _maybe_start_auto_update(self, release):
+        """Startet den stillen Hintergrund-Download, wenn der Nutzer das
+        Automatik-Haekchen gesetzt hat.
+
+        Dieselbe Maschine wie der Ein-Klick-Weg (`_start_self_update`), nur
+        `auto=True`: geladen und geprueft wird sofort, angewendet wird NICHT
+        hier — das passiert erst beim naechsten Beenden
+        (`ui.App._apply_pending_update`)."""
+        if not self._can_self_update or self._updating:
+            return
+        if not bool(self._settings.get("auto_update_enabled")):
+            return
+        self._start_self_update(release, auto=True)
+
+    def _start_self_update(self, release, auto=False):
+        """Laden, pruefen, installieren — der Ein-Klick-Weg (`auto=False`)
+        oder das stille Vorbereiten fuer das naechste Beenden (`auto=True`).
 
         Reihenfolge mit Absicht: `plan_update` stellt ALLE Abbruchgruende
         fest, bevor ein Byte fliesst. Ein halb geladenes Update, das dann an
@@ -252,6 +296,14 @@ class UpdatesTab:
             getattr(sys, "frozen", False),
             os.environ.get("APPIMAGE", ""), sys.executable)
         if isinstance(plan, UpdateBlocked):
+            if auto:
+                # Unbeaufsichtigt ausgeloest — kein Popup und kein
+                # Browser-Fallback fuer einen Vorgang, den niemand angestossen
+                # hat. Der naechste manuelle Klick auf "Update installieren"
+                # zeigt denselben Grund.
+                logging.getLogger(__name__).info(
+                    "Automatisches Update nicht moeglich: %s", plan.reason)
+                return
             themed_showerror(self.frame, "Update nicht möglich", plan.reason)
             self._open_download(release)
             return
@@ -293,6 +345,11 @@ class UpdatesTab:
             except tk.TclError:
                 pass  # Dialog schon zu, das Einplanen selbst hat kein Ziel mehr
 
+        # Traegt den geprueften Hash aus work() in done() (anderer Thread) —
+        # gebraucht nur im auto-Zweig, um ihn als pending_update_sha256 zu
+        # persistieren (verify_file selbst braucht ihn nur lokal).
+        verified_hash = {}
+
         def work():
             sums_text = fetch_text(plan.sums_url)
             if sums_text is None:
@@ -316,13 +373,35 @@ class UpdatesTab:
                     pass  # Loeschen ist best-effort; die Datei wird nicht benutzt
                 return ("Die Prüfsumme der geladenen Datei stimmt nicht. "
                         "Die Datei wurde verworfen.")
+            verified_hash["value"] = expected
             return None
 
         def done(error):
             if not self.frame.winfo_exists():
                 return
             if error is not None:
+                if auto:
+                    # Kein Popup fuer einen Vorgang, den der Nutzer nicht
+                    # ausgeloest hat — nur zuruecksetzen und loggen. Der
+                    # naechste Update-Check versucht es erneut.
+                    self._updating = False
+                    set_primary_button_enabled(self._check_btn, True)
+                    set_secondary_button_enabled(self._download_btn, True)
+                    logging.getLogger(__name__).info(
+                        "Automatisches Update abgebrochen: %s", error)
+                    return
                 self._fail_update(error)
+                return
+            if auto:
+                self._settings.set_many({
+                    "pending_update_path": local,
+                    "pending_update_sha256": verified_hash["value"],
+                })
+                self._updating = False
+                set_primary_button_enabled(self._check_btn, True)
+                set_secondary_button_enabled(self._download_btn, True)
+                self._status_label.config(
+                    text="Update bereit — wird beim Beenden installiert")
                 return
             self._status_label.config(text="Installiere …")
             self._apply(plan, local)
@@ -347,6 +426,13 @@ class UpdatesTab:
 
     def _apply(self, plan, local):
         """Anwenden und die App beenden bzw. neu starten."""
+        # Ein vom Automatik-Lauf vorbereitetes Update wird HIER sofort
+        # angewendet (Sofort-Ablauf gewinnt gegen "beim Beenden") — ohne
+        # Aufraeumen wuerde ui.App._apply_pending_update beim naechsten
+        # regulaeren Beenden dieselbe, laengst installierte Datei erneut
+        # anzuwenden versuchen.
+        self._settings.set_many({"pending_update_path": "",
+                                 "pending_update_sha256": ""})
         if platform.system() == "Windows":
             if not apply_windows(plan.target, local, os.getpid()):
                 self._fail_update("Der Update-Helfer ließ sich nicht starten.")

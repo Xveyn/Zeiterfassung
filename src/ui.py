@@ -951,7 +951,40 @@ class App:
         self._send_reminders.stop()
         if self._single_instance is not None:
             self._single_instance.release()
+        # Ein vorbereitetes Update erst hier anwenden — die App macht ohnehin
+        # zu, der Nutzer verliert keinen angefangenen Eintrag, und der
+        # Neustart nach dem Update entfaellt.
+        pending = self.settings.get("pending_update_path")
+        if pending:
+            self._apply_pending_update(pending)
         self.root.destroy()
+
+    def _apply_pending_update(self, path):
+        """Ein vorbereitetes Update beim Beenden anwenden (best-effort).
+
+        Erneut geprueft wird hier bewusst: zwischen Download und Beenden
+        koennen Stunden liegen, und Aufraeum-Tools leeren %TEMP%. Fehlt die
+        Datei oder stimmt ihr Hash nicht mehr, faellt der Vorgang still aus —
+        der naechste Update-Check beginnt von vorn. Ein Fehlschlag hier darf
+        das Beenden NIE aufhalten.
+        """
+        from src.self_update import apply_linux, apply_windows, verify_file
+
+        expected = self.settings.get("pending_update_sha256")
+        self.settings.set_many({"pending_update_path": "",
+                                "pending_update_sha256": ""})
+        if not os.path.exists(path) or not verify_file(path, expected):
+            logging.getLogger(__name__).info(
+                "Vorbereitetes Update verworfen (Datei fehlt oder Hash "
+                "stimmt nicht)")
+            return
+
+        if platform.system() == "Windows":
+            apply_windows(sys.executable, path, os.getpid())
+            return
+        appimage = os.environ.get("APPIMAGE", "")
+        if appimage:
+            apply_linux(appimage, path)
 
     def restart_for_scaling(self):
         """Startet die App neu, damit eine geänderte UI-Skalierung greift
