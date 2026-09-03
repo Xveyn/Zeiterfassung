@@ -25,8 +25,12 @@ Releases werden automatisch von `.github/workflows/release.yml` erzeugt, sobald 
 Ablauf vor dem Merge:
 1. `src/version.py` im PR auf die neue Version setzen (z.B. `VERSION = "1.5.0"`).
 2. `CHANGELOG.md` im PR aktualisieren.
-3. Passendes `release:*` Label am PR setzen (Label steuert nur den Trigger, nicht die Versionsnummer).
-4. PR mergen — Workflow liest die Version aus `src/version.py`, bricht ab falls der Tag `vX.Y.Z` bereits existiert, baut das Installer-Exe und veröffentlicht das Release.
+3. `python scripts/resolve_readme_version.py` laufen lassen — ersetzt die
+   README-Platzhalter `--VERSION--` durch die eben gesetzte Version (s.
+   „README-Zeilen für Unveröffentlichtes markieren"). Vergisst man es, hält
+   der `readme-version`-Check den PR an.
+4. Passendes `release:*` Label am PR setzen (Label steuert nur den Trigger, nicht die Versionsnummer).
+5. PR mergen — Workflow liest die Version aus `src/version.py`, bricht ab falls der Tag `vX.Y.Z` bereits existiert, baut das Installer-Exe und veröffentlicht das Release.
 
 Der Workflow pusht **nichts** nach `master`. Versionsbump gehört in den PR.
 
@@ -39,20 +43,60 @@ dort also jeder von etwas, das er nach dem Download nicht findet (beim Urlaub
 waren das rund 50 README-Zeilen über 87 Commits hinweg).
 
 Deshalb: **Wer die README um ein Feature ergänzt, das noch nicht released
-ist, hängt `*(ab X.Y.Z)*` an den fetten Namen** — die Version, mit der es
-erscheinen wird:
+ist, hängt `*(ab --VERSION--)*` an den fetten Namen** — den Platzhalter, nicht
+die geratene Zahl:
 
 ```markdown
-- **Urlaub** *(ab 1.22.0)* — Urlaubszeiträume als Einheit eintragen …
+- **Urlaub** *(ab --VERSION--)* — Urlaubszeiträume als Einheit eintragen …
 ```
 
-Der Marker muss beim Release **nicht** entfernt werden: „ab 1.22.0" liest
-sich davor wie danach richtig, und die README trägt an zwei älteren Stellen
-schon dasselbe Muster als „seit 1.19.1". Genau deshalb erklärt die Zeile
-unter „Features" den Marker als Versionsangabe und nicht als
+**Warum ein Platzhalter und keine Versionsnummer.** Wer beim Schreiben die
+kommende Version einträgt, rät sie: kommt vor dem Feature-Release noch ein
+Patch dazwischen, oder wird aus dem geplanten Minor ein Major, steht die
+falsche Zahl dauerhaft auf der Startseite — und niemandem fällt es auf, weil
+sie plausibel aussieht. `--VERSION--` kann nicht falsch raten. Als
+Nebeneffekt sagt der Platzhalter auf der gerenderten Startseite **sichtbar**
+„noch nicht released", was die geratene Zahl gerade nicht tut.
+
+**Aufgelöst wird im Release-PR**, wo `src/version.py` ohnehin auf die
+Zielversion gesetzt wird:
+
+```
+python scripts/resolve_readme_version.py
+```
+
+Der Workflow `readme-version.yml` hält jeden PR mit `release:*`-Label an,
+solange noch ein Platzhalter drinsteht (`--check`-Modus desselben Skripts).
+Er läuft in einer **eigenen** Workflow-Datei, weil `test.yml` als
+`on: [push, pull_request]` getriggert ist und diese Kurzform `labeled` nicht
+abdeckt — ein nachträglich gesetztes Label löste den Check sonst nie aus.
+Absichtlich **kein** Required Check: auf PRs ohne Release-Label meldet er
+seinen Context gar nicht.
+
+Aufgelöste Marker müssen beim Release **nicht** entfernt werden: „ab 1.22.0"
+liest sich davor wie danach richtig, und die README nennt Versionen an zwei
+älteren Stellen schon im Fließtext („seit 1.19.1"). Genau deshalb erklärt die
+Zeile unter „Features" den Marker als Versionsangabe und nicht als
 „unveröffentlicht" — sonst müsste sie mit jedem Release nachgezogen werden.
-Wer aufräumen will, kann alte Marker nach ein paar Releases streichen —
-Pflicht ist es nicht.
+
+**Alte Marker räumt die CI selbst weg.** Nach jedem echten Release entfernt
+der Job `readme-marker-cleanup` (in `release.yml`) alle Marker, deren Version
+mindestens `KEEP_RELEASES` echte Releases zurückliegt — der Wert steht in
+`scripts/resolve_readme_version.py` und ist derzeit **5**. Ohne das trüge die
+README nach zwanzig Releases auf fast jeder Zeile einen Marker, und die
+Startseite ersöffe in Klammern.
+
+Gemessen wird in **Releases, nicht in Versionssprüngen**: zwischen 1.22.0 und
+1.23.0 können mehrere Patches liegen, „drei Minor weiter" wäre also kein
+verlässliches Alter. Pre-Releases zählen dabei **nicht** mit — sie tragen die
+Version des vorangegangenen echten Releases (s. `version.parse_release_id`),
+und mehrere Pres würden das Alter sonst künstlich hochtreiben.
+
+Der Job **öffnet einen PR**, statt nach `master` zu pushen. Das Ruleset
+„Protect master" greift nur auf `~DEFAULT_BRANCH`, ein Feature-Branch wäre
+technisch frei — aber die Regel „Der Workflow pusht nichts nach `master`"
+bleibt so unangetastet, und ein Mensch sieht die Änderung vorher: entfernt
+wird Text von der Startseite. Der PR trägt bewusst **kein** `release:*`-Label.
 
 Bewusst **kein** eigener `releases`-Default-Branch, obwohl das dasselbe
 Problem löst: GitHub setzt die Base neuer PRs (und `gh pr create` ohne
@@ -287,6 +331,32 @@ setzen (sonst floatet es wieder).
 Zeilen) sind auf der Windows-Dev-Maschine nur für Windows verifizierbar → vor
 dem nächsten echten Release einen **Pre-Release** über alle drei Plattformen
 bauen (siehe „Plattformspezifische PRs — Pre-Release vorschlagen").
+
+### Dependabot: Actions ja, pip nein
+
+`.github/dependabot.yml` führt **ausschließlich** `github-actions`. Der Grund
+ist die 3.10-Regel oben: Version-Updates gehen per Definition auf „latest",
+also genau auf den Bump, den die Regel verbietet. Ein PR, der eine Dep auf eine
+3.11-only-Version hebt, bräche den Release-Build still — dieselbe Fehlerklasse,
+vor der der `jaraco`-Kommentar in `requirements.txt` warnt. **Dep-Bumps bleiben
+Handarbeit mit 3.10-Gegencheck.** Actions dagegen haben keinen Python-Bezug,
+laufen aber mit dem Repo-Token und sind damit die höchste Supply-Chain-Fläche
+im Repo.
+
+Davon getrennt sind die **Dependabot security updates** (Repo-Einstellung, nicht
+diese Datei) bewusst **an**, auch für pip: bei einer echten CVE schlägt
+Sicherheit die Pin-Stabilität. Solche PRs brauchen den 3.10-Gegencheck von Hand.
+
+Damit Dependabot dabei überhaupt die richtige Zielversion kennt, liegt
+**`.python-version` mit `3.10`** im Root. Ohne die Datei deklariert das Repo
+seine Python-Version nirgends (kein `[project] requires-python`, kein
+`setup.py`) — Dependabot nähme sein eigenes Default-Python an und schlüge
+Versionen vor, die 3.10 längst fallengelassen haben. Zwei Nebenwirkungen, beide
+gewollt: `uv` benutzt im Repo dann ebenfalls 3.10 statt der System-Python
+(spiegelt die Release-Umgebung, s. „Manueller CI-Build ohne Release"), und
+`actions/setup-python` bleibt unberührt, weil **alle** 13 Aufrufe in den
+Workflows ihr `python-version` explizit setzen. Wer das ändert, zieht die Datei
+mit.
 
 ## Installation & Daten
 
