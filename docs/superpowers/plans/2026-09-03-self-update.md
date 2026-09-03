@@ -19,7 +19,9 @@
 - **Jeder `except Exception` loggt, meldet oder trägt eine Begründung im Handler.** Durchgesetzt von `tests/test_catch_all_handlers.py` — ein nacktes `pass` lässt die Suite rot werden.
 - **Fehlerdialoge:** kuratierte Meldung → `theme.themed_showerror`; Catch-all mit Traceback → rohes `tkinter.messagebox.showerror`.
 - **Gerätelokale Settings** kommen **nicht** in `SYNCED_SETTING_KEYS`.
-- **README-Ergänzungen für Unveröffentlichtes** tragen den Marker `*(ab 1.23.0)*`.
+- **README-Ergänzungen für Unveröffentlichtes** tragen den Platzhalter
+  `*(ab --VERSION--)*` — nicht die geratene Version. Konvention seit Xveyn#113;
+  `scripts/resolve_readme_version.py` loest ihn im Release-PR auf.
 - **Kein Versionsbump, kein CHANGELOG, kein `release:*`-Label** in diesem PR — das gehört in den Release-PR.
 - Vor jedem Commit: `pytest -q`, `ruff check .`, `npx pyright@1.1.411` müssen sauber sein.
 
@@ -1517,7 +1519,7 @@ Das `—` folgt der Konvention der Tabelle: nie allein, immer mit Grund bzw. Ers
 Im Abschnitt „App & Umgebung" eine Zeile mit Marker ergänzen:
 
 ```markdown
-- **Update aus der App** *(ab 1.23.0)* — Unter Windows und Linux lädt die App ein Update selbst, prüft es gegen die Prüfsummen des Releases und installiert es; auf Wunsch automatisch beim nächsten Beenden. Unter macOS öffnet der Knopf weiterhin den Download im Browser
+- **Update aus der App** *(ab --VERSION--)* — Unter Windows und Linux lädt die App ein Update selbst, prüft es gegen die Prüfsummen des Releases und installiert es; auf Wunsch automatisch beim nächsten Beenden. Unter macOS öffnet der Knopf weiterhin den Download im Browser
 ```
 
 - [ ] **Schritt 3: `docs/known-limitations.md`**

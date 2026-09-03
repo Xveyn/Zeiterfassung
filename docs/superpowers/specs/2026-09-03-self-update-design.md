@@ -339,7 +339,9 @@ alles Entscheidbare liegt in den puren Funktionen.
   immer mit dem Grund bzw. dem Ersatz in Klammern („— (nicht nötig)"). Hier
   also das, was stattdessen passiert. Kein `○` — das ist in der Legende für
   „implementiert, aber dormant" reserviert, und für macOS ist nichts
-  implementiert. Marker `*(ab 1.23.0)*` an der Feature-Zeile in „Features".
+  implementiert. Marker `*(ab --VERSION--)*` an der Feature-Zeile in
+  „Features" — der Platzhalter, nicht die geratene Zahl (Konvention seit
+  Xveyn#113; `scripts/resolve_readme_version.py` loest ihn im Release-PR auf).
 - `docs/known-limitations.md`: die **Begründung** für die macOS-Lücke, die in
   eine Tabellenzeile nicht passt — unsigniertes Bundle, nicht auf der
   Dev-Maschine verifizierbar, und der Gatekeeper-Gewinn als Grund, es später
