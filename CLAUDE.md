@@ -300,6 +300,65 @@ Installierte App und Benutzerdaten liegen je nach Plattform:
 
 `src/paths.py::get_base_path` dispatched über `platform.system()` und unterscheidet zwischen Frozen- und Repo-Modus.
 
+## Update-Weg
+
+Aus dem Download-Knopf (Updates-Tab, Banner, Tray-Toast) wird auf **Windows
+und Linux** ein „Update installieren": die App lädt das passende Release-Asset
+selbst (`src/self_update.py`), prüft es gegen das `SHA256SUMS`-Asset des
+Releases und installiert. **macOS bleibt** beim reinen Browser-Download — der
+Knopf öffnet weiterhin nur die Release-URL. Begründung und der Grund, das
+später nachzuziehen: `docs/known-limitations.md`, Abschnitt „macOS: kein
+Selbst-Update".
+
+- **Windows:** Ein Helfer-Skript (nicht der Installer selbst) übernimmt den
+  Ablauf. Es wartet auf das Verschwinden der laufenden App-PID, ruft dann
+  `Zeiterfassung_Setup.exe /SILENT /NORESTART` und startet danach die Exe neu.
+  Das Skript läuft **detached** (`DETACHED_PROCESS | CREATE_NO_WINDOW`), damit
+  es die App überlebt, die sich gerade beendet.
+- **Linux:** Die laufende AppImage wird im laufenden Betrieb ersetzt
+  (`os.replace` auf `$APPIMAGE`, alte Datei als `.old` für den Rollback) und
+  die App startet per `os.execv` neu — derselbe Mechanismus wie
+  AppImageUpdate.
+- **macOS:** kein Selbst-Update, s.o.
+
+**`installer.iss` bleibt bei alldem unangetastet.** Zwei Gründe, beide zwingen
+zum Helfer-Skript statt zu einem Umbau des Installers:
+`AppMutex=ZeiterfassungAppMutex` lässt Inno eine laufende Instanz erkennen und
+bricht den Silent-Lauf ab bzw. zeigt einen Retry-Dialog, solange die App noch
+läuft — der Helfer wartet deshalb erst das Prozessende ab, statt gegen dieses
+Race anzutreten. Und der `[Run]`-Eintrag trägt `skipifsilent`: der Installer
+startet die App nach einer stillen Installation nicht selbst, das übernimmt
+ebenfalls der Helfer. Dazu kommt ein praktischer Grund: `installer.iss` ist
+die am schwersten lokal zu prüfende Datei im Repo (Inno fehlt auf der
+Windows-Dev-Maschine, testbar nur über den Workflow **Build** mit gesetztem
+`installer`-Häkchen) — ein Umbau dort wäre entsprechend riskant zu verifizieren.
+
+**Wichtig für das Helfer-Skript: `DETACHED_PROCESS`.** Ohne dieses Flag erbt
+der Helfer die Konsole der App und läuft, sobald die App sich beendet, ohne
+Konsolen-Fenster weiter — `tasklist /FI "PID eq …"` liefert dann keine
+Ausgabe mehr, die Warteschleife auf das Prozessende wird blind, und der
+Installer startet gegen die noch laufende App. Das war der teuerste Fehler
+bei der Umsetzung dieses Features; das Flag nicht „zur Sicherheit" wieder
+entfernen.
+
+**Was die Hash-Prüfung leistet — und was nicht.** `SHA256SUMS` schützt gegen
+abgebrochene und verfälschte Übertragung: eine unvollständige oder
+beschädigte Datei wird erkannt und gelöscht, bevor sie installiert wird. Sie
+schützt **nicht** gegen ein kompromittiertes Release — die Summen-Datei ist
+selbst unsigniert und liegt neben genau den Assets, die sie beschreibt; wer
+die Assets ersetzen kann, ersetzt die Summen gleich mit. Der Vertrauensanker
+bleibt TLS zu GitHub, derselbe wie beim bisherigen Browser-Download. Die
+Updates dieser App sind an keiner Stelle **signiert** — das darf so in Code
+und Doku nirgends anders klingen.
+
+**`auto_update_enabled` ist gerätelokal** (nicht in `SYNCED_SETTING_KEYS`),
+aus demselben Grund wie `prerelease_updates_enabled`: ein Wert, den sich ein
+Mac und ein Windows-Rechner über den Sync teilen, wäre auf einem der beiden
+systematisch falsch — der Mac kann den Schalter gar nicht einlösen, weil er
+nicht selbst updaten kann. Ist die Automatik an, installiert die App ein
+verifiziertes Update **nicht sofort**, sondern merkt es sich vor und wendet
+es erst beim nächsten regulären Beenden an — nie mitten in der Arbeit.
+
 ## UI-Fehler sichtbar machen
 
 `--noconsole` unterdrückt stderr. Fehler aus dem Sendepfad (Gmail, PDF-Erzeugung) **müssen** per `messagebox.showerror` mit `traceback.format_exc()` angezeigt werden — sonst klickt der Nutzer auf „Senden", nichts passiert, und es gibt keine Spur.

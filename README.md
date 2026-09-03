@@ -77,6 +77,7 @@ Desktop-App zur Erfassung von Arbeitszeiten mit Kalenderansicht, PDF-Report und 
 - **Einstellungen** — In Tabs gegliedert (Arbeitszeit / Bericht & Mail / Webhooks / SMTP / Google / App / Updates); E-Mail-Vorlagen mit Platzhaltern, Standardpause, Empfänger und Update-Einstellungen
 - **Autostart & Einzelinstanz** — Optionaler minimierter Start bei Anmeldung (Windows, macOS, Linux); es läuft immer nur eine Instanz — ein zweiter Start holt das vorhandene Fenster nach vorn
 - **Update-Check** — Konfigurierbare Hintergrund-Prüfung auf neue Releases; Updates-Tab mit manuellem Check, Changelog und Direkt-Download, bei aktivem Tray als einmaliger Toast statt Banner. Läuft die App im Infobereich, stößt **„Nach Updates suchen"** im Tray-Menü die Prüfung direkt an — das Ergebnis kommt als Toast, auch wenn alles aktuell ist. Optional lassen sich auch Vorabversionen (Pre-Releases) anbieten — Testbuilds vor dem echten Release
+- **Update aus der App** *(ab 1.23.0)* — Unter Windows und Linux lädt die App ein Update selbst, prüft es gegen die Prüfsummen des Releases und installiert es; auf Wunsch automatisch beim nächsten Beenden. Unter macOS öffnet der Knopf weiterhin den Download im Browser
 - **Dark Mode UI** — Modernes dunkles Design, für alle Dialoge einheitlich
 - **UI-Skalierung** — Stufenloser Skalierungsfaktor für die Oberfläche (gerätelokal)
 - **Cross-Platform-Installer** — Per PyInstaller gebaut, als Setup-Exe (Windows), DMG (macOS) und AppImage (Linux) paketierbar
@@ -507,6 +508,7 @@ Die App läuft auf **Windows, macOS und Linux**. Plattformspezifische Features w
 | Eintrag im Anwendungsmenü | ✓ (Startmenü, vom Setup) | ✓ (`Zeiterfassung.app` in `/Applications`) | ✓ (`.desktop` in `~/.local/share/applications/`, von der App beim Start geschrieben) |
 | Infobereich-Icon (Tray) | ✓ (pystray) | ○ (NSStatusItem, Opt-in `ZEIT_MACOS_TRAY=1`) | ○ (StatusNotifierItem, Opt-in `ZEIT_LINUX_TRAY=1`) |
 | Standalone-Binary (PyInstaller) | ✓ (`.exe`) | ✓ (`.app` Bundle) | ✓ (AppImage) |
+| Update aus der App | ✓ (lädt, prüft, installiert, startet neu) | — (Download im Browser) | ✓ (lädt, prüft, ersetzt die AppImage) |
 
 ○ = implementiert, aber bis zum manuellen Plattform-Test dormant. Das Linux-Tray
 spricht StatusNotifierItem über D-Bus (KDE Plasma, XFCE, GNOME mit
