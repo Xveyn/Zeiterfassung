@@ -214,5 +214,6 @@ class UpdatesTab:
     def _open_download(self, release):
         url = pick_asset_url(
             release.assets, platform.system(), release.version,
+            platform.machine(),
         ) or release.html_url
         webbrowser.open(url)

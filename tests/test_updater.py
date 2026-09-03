@@ -122,27 +122,53 @@ def _three_assets(version: str) -> list[Asset]:
 class TestPickAssetUrl:
     def test_windows_picks_exe(self):
         assets = _three_assets("1.9.0")
-        assert pick_asset_url(assets, "Windows", "1.9.0") == "https://example.com/exe"
+        assert pick_asset_url(assets, "Windows", "1.9.0", "AMD64") == "https://example.com/exe"
 
     def test_darwin_picks_arm_dmg(self):
         assets = _three_assets("1.9.0")
-        assert pick_asset_url(assets, "Darwin", "1.9.0") == "https://example.com/dmg"
+        assert pick_asset_url(assets, "Darwin", "1.9.0", "arm64") == "https://example.com/dmg"
 
     def test_linux_picks_appimage(self):
         assets = _three_assets("1.9.0")
-        assert pick_asset_url(assets, "Linux", "1.9.0") == "https://example.com/appimage"
+        assert pick_asset_url(assets, "Linux", "1.9.0", "x86_64") == "https://example.com/appimage"
 
     def test_unknown_system_returns_none(self):
         assets = _three_assets("1.9.0")
-        assert pick_asset_url(assets, "FreeBSD", "1.9.0") is None
+        assert pick_asset_url(assets, "FreeBSD", "1.9.0", "x86_64") is None
 
     def test_missing_asset_returns_none(self):
         assets = [Asset(name="Zeiterfassung-1.9.0-x86_64.AppImage", url="u")]
-        assert pick_asset_url(assets, "Windows", "1.9.0") is None
+        assert pick_asset_url(assets, "Windows", "1.9.0", "AMD64") is None
 
     def test_version_mismatch_in_dmg_name_returns_none(self):
         assets = [Asset(name="Zeiterfassung-1.8.0-arm64.dmg", url="u")]
-        assert pick_asset_url(assets, "Darwin", "1.9.0") is None
+        assert pick_asset_url(assets, "Darwin", "1.9.0", "arm64") is None
+
+    def test_intel_mac_gets_nothing(self):
+        # CI baut nur arm64. Ohne Architektur-Pruefung bekaeme ein Intel-Mac
+        # die arm64-DMG angeboten — sie laeuft dort nicht.
+        assets = _three_assets("1.9.0")
+        assert pick_asset_url(assets, "Darwin", "1.9.0", "x86_64") is None
+
+    def test_arm_linux_gets_nothing(self):
+        assets = _three_assets("1.9.0")
+        assert pick_asset_url(assets, "Linux", "1.9.0", "aarch64") is None
+
+    def test_apple_silicon_gets_the_dmg(self):
+        assets = _three_assets("1.9.0")
+        assert pick_asset_url(
+            assets, "Darwin", "1.9.0", "arm64") == "https://example.com/dmg"
+
+    def test_amd64_linux_gets_the_appimage(self):
+        assets = _three_assets("1.9.0")
+        assert pick_asset_url(
+            assets, "Linux", "1.9.0", "x86_64") == "https://example.com/appimage"
+
+    def test_windows_ignores_the_machine(self):
+        # Der Setup-Name traegt keine Architektur; Windows-Builds sind x64.
+        assets = _three_assets("1.9.0")
+        assert pick_asset_url(
+            assets, "Windows", "1.9.0", "AMD64") == "https://example.com/exe"
 
 
 def _api_response(payload: dict) -> BytesIO:
@@ -455,7 +481,7 @@ class TestCheckForUpdate:
 class TestPickAssetUrlForPrerelease:
     def test_prerelease_assets_carry_base_version_in_name(self):
         release = release_from_payload(PRERELEASE_PAYLOAD)
-        url = pick_asset_url(release.assets, "Darwin", release.version)
+        url = pick_asset_url(release.assets, "Darwin", release.version, "arm64")
         assert url == "https://example.com/pre-dmg"
 
 

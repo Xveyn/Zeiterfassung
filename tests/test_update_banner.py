@@ -52,7 +52,7 @@ def test_open_download_uses_asset_url(monkeypatch):
     opened = []
     monkeypatch.setattr(ub.webbrowser, "open", lambda url: opened.append(url))
     monkeypatch.setattr(ub, "pick_asset_url",
-                        lambda assets, sysname, ver: "https://asset/dl")
+                        lambda assets, sysname, ver, machine: "https://asset/dl")
     b = UpdateBanner(root=object(), settings=_FakeSettings(),
                      get_anchor=lambda: object())
     b._open_download(_release())
@@ -62,7 +62,7 @@ def test_open_download_uses_asset_url(monkeypatch):
 def test_open_download_falls_back_to_html_url(monkeypatch):
     opened = []
     monkeypatch.setattr(ub.webbrowser, "open", lambda url: opened.append(url))
-    monkeypatch.setattr(ub, "pick_asset_url", lambda assets, sysname, ver: None)
+    monkeypatch.setattr(ub, "pick_asset_url", lambda assets, sysname, ver, machine: None)
     b = UpdateBanner(root=object(), settings=_FakeSettings(),
                      get_anchor=lambda: object())
     b._open_download(_release(html_url="https://example/r"))

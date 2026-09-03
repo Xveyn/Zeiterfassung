@@ -87,6 +87,7 @@ class UpdateBanner:
         # Signatur-/Hash-Prüfung ergänzen.
         url = pick_asset_url(
             release.assets, platform.system(), release.version,
+            platform.machine(),
         ) or release.html_url
         webbrowser.open(url)
 

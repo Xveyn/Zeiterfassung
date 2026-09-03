@@ -172,8 +172,34 @@ def resolve_check_result(installed_id: str, release: "Release | None") -> dict:
     }
 
 
-def pick_asset_url(assets: Any, system: str, latest_version: str) -> str | None:
-    """Liefert die Download-URL für das Plattform-Asset oder None."""
+# platform.machine() liefert je nach OS verschiedene Schreibweisen fuer
+# dieselbe Architektur. Nur diese Werte gelten als Treffer.
+_ARM64 = {"arm64", "aarch64"}
+_X86_64 = {"x86_64", "amd64"}
+
+
+def pick_asset_url(assets: Any, system: str, latest_version: str,
+                   machine: str) -> str | None:
+    """Liefert die Download-URL für das Plattform-Asset oder None.
+
+    `machine` ist `platform.machine()`. Die Prüfung ist nicht kosmetisch: die
+    Asset-Namen tragen die Architektur fest verdrahtet (`-arm64.dmg`,
+    `-x86_64.AppImage`), und weil das Release genau diese Dateien führt,
+    passten die Namen vorher IMMER — ein Intel-Mac bekam die arm64-DMG
+    angeboten, ein arm64-Linux die x86_64-AppImage. Beide laufen dort nicht.
+    Mit dem In-App-Update wäre daraus eine automatische Fehlinstallation
+    geworden, deshalb sagt die Funktion jetzt lieber None; der Aufrufer fällt
+    dann auf die Release-Seite zurück.
+
+    Windows ist ausgenommen: `Zeiterfassung_Setup.exe` trägt keine
+    Architektur im Namen, und es gibt nur den x64-Build.
+    """
+    m = (machine or "").lower()
+    if system == "Darwin" and m not in _ARM64:
+        return None
+    if system == "Linux" and m not in _X86_64:
+        return None
+
     expected_name = {
         "Windows": "Zeiterfassung_Setup.exe",
         "Darwin": f"Zeiterfassung-{latest_version}-arm64.dmg",
