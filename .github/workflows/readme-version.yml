@@ -1,0 +1,42 @@
+name: README-Version
+
+# Haelt Release-PRs an, solange die README noch den Platzhalter `--VERSION--`
+# traegt (s. CLAUDE.md, „README-Zeilen fuer Unveroeffentlichtes markieren").
+#
+# WARUM EINE EIGENE DATEI statt eines Jobs in test.yml: dort steht der Trigger
+# als `on: [push, pull_request]`, und diese Kurzform deckt nur `opened`,
+# `synchronize` und `reopened` ab — NICHT `labeled`. Ein release:*-Label, das
+# nachtraeglich gesetzt wird (der uebliche Fall: erst PR, dann Label), loeste
+# den Check also nie aus, und der Waechter waere still wirkungslos. Den Trigger
+# von test.yml zu erweitern wuerde stattdessen die komplette Matrix bei jeder
+# Label-Aenderung neu starten.
+#
+# Bewusst KEIN Required Check: der Job laeuft nur auf PRs mit release:*-Label,
+# ein normaler Feature-PR meldet den Context damit gar nicht. Wer ihn dennoch
+# in die Branch Protection aufnehmen will, muss vorher pruefen, dass ein nicht
+# gestarteter Job dort nicht als „pending" haengenbleibt — dieselbe Falle, die
+# in CLAUDE.md unter „Branch Protection" und beim `test`-Sammel-Gate steht.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+
+permissions:
+  contents: read
+
+jobs:
+  readme-version:
+    # Label-Namen exakt wie das Gate in release.yml (`^release:(major|minor|patch)$`)
+    # — beide Stellen muessen dieselbe Menge treffen.
+    if: >-
+      contains(github.event.pull_request.labels.*.name, 'release:major') ||
+      contains(github.event.pull_request.labels.*.name, 'release:minor') ||
+      contains(github.event.pull_request.labels.*.name, 'release:patch')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.10'
+      # Reine stdlib — kein pip install noetig.
+      - run: python scripts/resolve_readme_version.py --check

@@ -296,3 +296,76 @@ jobs:
             git push origin ":refs/tags/$TAG" || true
             exit 1
           fi
+
+  # Raeumt README-Marker weg, die inzwischen KEEP_RELEASES echte Releases alt
+  # sind (scripts/resolve_readme_version.py --prune). Laeuft NACH dem Release,
+  # weil sich der Kreis der reifen Marker ausschliesslich durch ein Release
+  # aendert — ein Cron liefe die meiste Zeit umsonst.
+  #
+  # Nur bei echten Releases: ein Pre-Release traegt die Version des
+  # VORANGEGANGENEN Releases (s. CLAUDE.md, "Pre-Releases"), das Alter der
+  # Marker aendert sich dadurch nicht.
+  #
+  # Der Job pusht einen BRANCH und oeffnet einen PR — bewusst kein Push nach
+  # master. Das Ruleset "Protect master" greift nur auf ~DEFAULT_BRANCH, ein
+  # Feature-Branch ist also frei; und die Regel "Der Workflow pusht nichts nach
+  # master" bleibt unangetastet. Dass ein Mensch die Prosa-Aenderung vor dem
+  # Merge sieht, ist Absicht: entfernt wird Text aus der Startseite.
+  readme-marker-cleanup:
+    needs: [pre-check, publish]
+    if: >-
+      needs.pre-check.outputs.should_release == 'true' &&
+      needs.pre-check.outputs.is_prerelease != 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write        # Branch pushen (nicht master)
+      pull-requests: write   # PR oeffnen
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          # --prune liest die Release-Tags ueber `git tag -l`; ohne die
+          # vollstaendige Historie waere die Tag-Liste leer und nie ein
+          # Marker reif — der Job liefe still ins Leere.
+          fetch-depth: 0
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.10'
+
+      - name: Alte Marker entfernen
+        id: prune
+        shell: bash
+        run: |
+          python scripts/resolve_readme_version.py --prune
+          if git diff --quiet -- README.md; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: PR oeffnen
+        if: steps.prune.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.pre-check.outputs.version }}
+        shell: bash
+        run: |
+          BRANCH="chore/readme-marker-cleanup-v${VERSION}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$BRANCH"
+          git add README.md
+          git commit -m "docs(readme): ueberholte Versionsmarker nach v${VERSION} entfernen"
+          git push origin "$BRANCH"
+          gh pr create --base master --head "$BRANCH" \
+            --title "docs(readme): ueberholte Versionsmarker entfernen (nach v${VERSION})" \
+            --body "Automatisch nach dem Release von v${VERSION} erzeugt.
+
+          Entfernt wurden Marker \`*(ab X.Y.Z)*\`, deren Version inzwischen
+          mindestens \`KEEP_RELEASES\` echte Releases zurueckliegt — siehe
+          \`scripts/resolve_readme_version.py\` und CLAUDE.md, Abschnitt
+          \"README-Zeilen fuer Unveroeffentlichtes markieren\".
+
+          Rein kosmetisch: der Marker hat seinen Zweck erfuellt, sobald das
+          Feature ein paar Releases lang ausgeliefert ist. Kein \`release:*\`-Label
+          setzen." \
+            --label documentation
