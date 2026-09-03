@@ -288,6 +288,32 @@ Zeilen) sind auf der Windows-Dev-Maschine nur für Windows verifizierbar → vor
 dem nächsten echten Release einen **Pre-Release** über alle drei Plattformen
 bauen (siehe „Plattformspezifische PRs — Pre-Release vorschlagen").
 
+### Dependabot: Actions ja, pip nein
+
+`.github/dependabot.yml` führt **ausschließlich** `github-actions`. Der Grund
+ist die 3.10-Regel oben: Version-Updates gehen per Definition auf „latest",
+also genau auf den Bump, den die Regel verbietet. Ein PR, der eine Dep auf eine
+3.11-only-Version hebt, bräche den Release-Build still — dieselbe Fehlerklasse,
+vor der der `jaraco`-Kommentar in `requirements.txt` warnt. **Dep-Bumps bleiben
+Handarbeit mit 3.10-Gegencheck.** Actions dagegen haben keinen Python-Bezug,
+laufen aber mit dem Repo-Token und sind damit die höchste Supply-Chain-Fläche
+im Repo.
+
+Davon getrennt sind die **Dependabot security updates** (Repo-Einstellung, nicht
+diese Datei) bewusst **an**, auch für pip: bei einer echten CVE schlägt
+Sicherheit die Pin-Stabilität. Solche PRs brauchen den 3.10-Gegencheck von Hand.
+
+Damit Dependabot dabei überhaupt die richtige Zielversion kennt, liegt
+**`.python-version` mit `3.10`** im Root. Ohne die Datei deklariert das Repo
+seine Python-Version nirgends (kein `[project] requires-python`, kein
+`setup.py`) — Dependabot nähme sein eigenes Default-Python an und schlüge
+Versionen vor, die 3.10 längst fallengelassen haben. Zwei Nebenwirkungen, beide
+gewollt: `uv` benutzt im Repo dann ebenfalls 3.10 statt der System-Python
+(spiegelt die Release-Umgebung, s. „Manueller CI-Build ohne Release"), und
+`actions/setup-python` bleibt unberührt, weil **alle** 13 Aufrufe in den
+Workflows ihr `python-version` explizit setzen. Wer das ändert, zieht die Datei
+mit.
+
 ## Installation & Daten
 
 Installierte App und Benutzerdaten liegen je nach Plattform:
