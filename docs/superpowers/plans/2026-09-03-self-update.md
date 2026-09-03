@@ -70,7 +70,7 @@ An `tests/test_updater.py`, in der bestehenden Klasse `TestPickAssetUrl`, anhän
             assets, "Windows", "1.9.0", "AMD64") == "https://example.com/exe"
 ```
 
-Die **fünf bestehenden** Tests der Klasse bekommen den vierten Parameter passend zur Plattform: `"AMD64"` für Windows, `"arm64"` für Darwin, `"x86_64"` für Linux, `"x86_64"` für den `FreeBSD`-Fall.
+**Alle bestehenden** Tests der Klasse (aktuell sieben) bekommen den vierten Parameter passend zur Plattform: `"AMD64"` für Windows, `"arm64"` für Darwin, `"x86_64"` für Linux, `"x86_64"` für den `FreeBSD`-Fall.
 
 - [ ] **Schritt 2: Tests laufen lassen, Fehlschlag prüfen**
 
@@ -444,7 +444,7 @@ Erwartet: FAIL — `ImportError: cannot import name 'plan_update'`
 
 - [ ] **Schritt 3: Implementierung**
 
-An `src/self_update.py` anhängen (und `from dataclasses import dataclass`, `from typing import Any` oben ergänzen):
+An `src/self_update.py` anhängen. Oben ergänzen: `from dataclasses import dataclass`, `from typing import Any` und `from src.updater import pick_asset_url` — ein Import-Zyklus entsteht dadurch **nicht**, `updater.py` importiert `self_update` seinerseits nicht.
 
 ```python
 @dataclass(frozen=True)
@@ -485,8 +485,6 @@ def plan_update(release: Any, system: str, machine: str, frozen: bool,
     `appimage` ist `$APPIMAGE` (nur Linux relevant), `executable` ist
     `sys.executable`.
     """
-    from src.updater import pick_asset_url  # lazy: vermeidet Import-Zyklus
-
     if not supports_self_update(system, frozen):
         if system == "Darwin":
             return UpdateBlocked(
@@ -899,16 +897,35 @@ def test_apply_linux_makes_the_new_file_executable(tmp_path):
 
 
 def test_apply_linux_restores_the_backup_when_replacing_fails(tmp_path):
+    import os as _os
     from unittest.mock import patch
     from src.self_update import apply_linux
     target = tmp_path / "Z.AppImage"
     target.write_bytes(b"alt")
     neu = tmp_path / "n.tmp"
     neu.write_bytes(b"neu")
-    with patch("src.self_update.os.replace", side_effect=OSError("voll")):
+
+    # NUR der zweite os.replace scheitert. `os.replace` global zu werfen waere
+    # zweierlei falsch: schon die Sicherung schluege fehl (die Funktion kaeme
+    # nie zum Rollback), und weil die Dateien sich unter einem Mock gar nicht
+    # bewegen, wuerde die Schluss-Assertion ohnehin nur die Ausgangslage
+    # bestaetigen. Deshalb echte Aufrufe, mit einer gezielten Ausnahme.
+    real_replace = _os.replace
+    calls = []
+
+    def flaky(src, dst):
+        calls.append((src, dst))
+        if len(calls) == 2:          # das Einsetzen der neuen Datei
+            raise OSError("kein Platz")
+        return real_replace(src, dst)
+
+    with patch("src.self_update.os.replace", side_effect=flaky):
         error = apply_linux(str(target), str(neu))
+
     assert error is not None
+    assert len(calls) == 3, "sichern, einsetzen (faellt), zurueckrollen"
     assert target.read_bytes() == b"alt", "die alte Datei muss zurueck sein"
+    assert not (tmp_path / "Z.AppImage.old").exists()
 
 
 def test_sweep_appimage_backup_removes_a_leftover(tmp_path):
