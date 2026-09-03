@@ -305,9 +305,25 @@ alles Entscheidbare liegt in den puren Funktionen.
 - `CLAUDE.md`: neuer Abschnitt zum Update-Weg — die drei Plattformen, warum
   macOS fehlt, warum `installer.iss` unangetastet bleibt, was die
   Hash-Prüfung leistet und was nicht.
-- `docs/known-limitations.md`: macOS ohne Selbst-Update, mit dem
-  Gatekeeper-Argument als Grund, es später zu bauen.
-- `README.md`: Nutzer-Zeile mit Marker `*(ab 1.23.0)*`.
+- `README.md`, Abschnitt **„Plattform-Kompatibilität"**: eine neue Zeile in der
+  vorhandenen Feature-Matrix `| Feature | Windows | macOS | Linux |`. Das ist
+  der Ort, an dem ein Leser ohnehin nachsieht, was seine Plattform kann — und
+  die Tabelle beantwortet die Frage in einer Zeile statt in einem Absatz:
+
+  | Feature | Windows | macOS | Linux |
+  |---|---|---|---|
+  | Update aus der App | ✓ (lädt, prüft, installiert, startet neu) | — (Download im Browser) | ✓ (lädt, prüft, ersetzt die AppImage) |
+
+  Das `—` folgt der Konvention der Tabelle: es steht dort nie allein, sondern
+  immer mit dem Grund bzw. dem Ersatz in Klammern („— (nicht nötig)"). Hier
+  also das, was stattdessen passiert. Kein `○` — das ist in der Legende für
+  „implementiert, aber dormant" reserviert, und für macOS ist nichts
+  implementiert. Marker `*(ab 1.23.0)*` an der Feature-Zeile in „Features".
+- `docs/known-limitations.md`: die **Begründung** für die macOS-Lücke, die in
+  eine Tabellenzeile nicht passt — unsigniertes Bundle, nicht auf der
+  Dev-Maschine verifizierbar, und der Gatekeeper-Gewinn als Grund, es später
+  nachzuziehen. Dieselbe Arbeitsteilung wie beim Tray: knappe Zeile in der
+  Matrix, ausführliche Begründung daneben.
 - Der M9-Vermerk in `update_banner.py` wird durch die eingelöste Zusicherung
   ersetzt.
 
