@@ -146,3 +146,58 @@ def test_period_has_no_content_does_not_block_vacation_in_range():
         ranged=None, vacation_days=vacation_days,
         date_from=datetime.date(2026, 3, 1), date_to=datetime.date(2026, 3, 31),
     ) is False
+
+
+# ----- Vorschau: Urlaub gekappt wie im Bericht (Xveyn#97) -----
+
+def _preview(**kw):
+    from src.dialogs.period_picker import vacation_preview
+    return vacation_preview(**kw)
+
+
+def test_vacation_preview_sums_the_period_without_worktime():
+    minutes, notice = _preview(
+        date_from=datetime.date(2026, 9, 1), date_to=datetime.date(2026, 9, 30),
+        all_entries={}, categories=None,
+        vacation_days={"2026-09-01": 480, "2026-09-02": 480})
+    assert minutes == 960
+    assert notice == ""
+
+
+def test_vacation_preview_counts_only_days_in_the_range():
+    minutes, _ = _preview(
+        date_from=datetime.date(2026, 9, 1), date_to=datetime.date(2026, 9, 30),
+        all_entries={}, categories=None,
+        vacation_days={"2026-09-01": 480, "2026-10-01": 480})
+    assert minutes == 480
+
+
+def test_vacation_preview_caps_against_worktime_like_the_report():
+    # Ohne Kappung zeigte die Vorschau „+ 8.0h Urlaub", der erzeugte Bericht
+    # aber 4.0h — die beiden duerfen sich nicht widersprechen.
+    from tests.conftest import ist_slot
+    minutes, notice = _preview(
+        date_from=datetime.date(2026, 9, 1), date_to=datetime.date(2026, 9, 30),
+        all_entries={"2026-09-01": {"slots": [ist_slot("08:00", "12:00")]}},
+        categories=None, vacation_days={"2026-09-01": 480})
+    assert minutes == 240
+    assert "01.09.2026" in notice
+
+
+def test_vacation_preview_uses_the_selected_categories_only():
+    from tests.conftest import ist_slot
+    minutes, notice = _preview(
+        date_from=datetime.date(2026, 9, 1), date_to=datetime.date(2026, 9, 30),
+        all_entries={"2026-09-01": {
+            "slots": [ist_slot("08:00", "12:00", kategorie="B")]}},
+        categories={"A"}, vacation_days={"2026-09-01": 480})
+    assert minutes == 480
+    assert notice == ""
+
+
+def test_vacation_preview_without_vacation_is_zero():
+    minutes, notice = _preview(
+        date_from=datetime.date(2026, 9, 1), date_to=datetime.date(2026, 9, 30),
+        all_entries={}, categories=None, vacation_days={})
+    assert minutes == 0
+    assert notice == ""

@@ -4,8 +4,28 @@ import tkinter as tk
 
 from src import workweek
 from src.dialogs.date_row import build_date_row
-from src.report import filter_period, total_hours
+from src.report import filter_categories, filter_period, total_hours
+from src.vacations import cap_by_worktime, cap_notice
 from src.theme import BG, CELL_BG, FONT, FONT_SMALL, TEXT, TEXT_MUTED
+
+
+def vacation_preview(date_from, date_to, all_entries, categories,
+                     vacation_days):
+    """Urlaubsminuten im Zeitraum für die Live-Vorschau, plus Hinweistext.
+
+    Rechnet exakt wie der erzeugte Bericht: derselbe Zeitraum- und
+    Kategorien-Ausschnitt, dieselbe Kappung gegen erfasste Ist-Zeit
+    (`vacations.cap_by_worktime`). Ohne sie behauptete die Vorschau
+    „+ 8.0h Urlaub", während der Bericht für denselben Tag 4.0h ausweist.
+
+    Returns (Minuten, Hinweistext) — der Text ist "" ohne Kollision.
+    """
+    ranged = filter_period(date_from, date_to, all_entries) or {}
+    if ranged:
+        ranged = filter_categories(ranged, categories)
+    in_range = filter_period(date_from, date_to, vacation_days) or {}
+    capped, hits = cap_by_worktime(in_range, ranged)
+    return sum(capped.values()), cap_notice(hits)
 
 
 def selected_category_filter(selected_map):
@@ -185,20 +205,37 @@ def build_period_picker(parent, storage, settings, on_change=None,
     weekend_hint.grid(row=6, column=0, columnspan=6, padx=10, pady=(0, 8), sticky="w")
     weekend_hint.grid_remove()  # startet unsichtbar; ein leeres Label würde trotzdem eine Zeile beanspruchen
 
+    # Zweite gedämpfte Hinweiszeile, gleiche Machart: sie erscheint nur, wenn
+    # im Zeitraum ein Tag Urlaub UND erfasste Ist-Zeit trägt. Der Bericht
+    # kappt den Urlaub dort (Xveyn#97) — ohne diese Zeile geschähe das still,
+    # und die Vorschau wiche unerklärt vom Urlaubs-Dialog ab.
+    vacation_hint = tk.Label(frame, text="", font=FONT_SMALL, bg=BG,
+                             fg=TEXT_MUTED, wraplength=460, justify="left")
+    vacation_hint.grid(row=7, column=0, columnspan=6, padx=10, pady=(0, 8), sticky="w")
+    vacation_hint.grid_remove()
+
     def _update_total(*_):
         df, dt = handle.get_range()
         if df is None or dt is None or df > dt:
             total_label.config(text="Gesamtstunden: —")
             weekend_hint.grid_remove()
+            vacation_hint.grid_remove()
             return
         hours = total_hours(df, dt, all_entries, handle.get_categories())
         text = f"Gesamtstunden: {hours}h"
+        notice = ""
         if handle.get_show_vacation():
-            in_range = filter_period(df, dt, vacation_days) or {}
-            urlaub = round(sum(in_range.values()) / 60, 2)
+            minutes, notice = vacation_preview(
+                df, dt, all_entries, handle.get_categories(), vacation_days)
+            urlaub = round(minutes / 60, 2)
             if urlaub:
                 text += f"  (+ {urlaub}h Urlaub)"
         total_label.config(text=text)
+        if notice:
+            vacation_hint.config(text=notice)
+            vacation_hint.grid()
+        else:
+            vacation_hint.grid_remove()
         n = (workweek.count_weekend_entries(all_entries_raw, df, dt)
              if settings.get("workweek_only") else 0)
         if n == 1:

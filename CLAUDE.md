@@ -422,7 +422,7 @@ Lösch-Pfad im Linksklick-Dialog auf Win/Linux).
 
 Urlaub ist ein Zeitraum A–B, kein Tag. Gespeichert wird er trotzdem
 tagesgenau: die **Periode** trägt die Identität (Name, Kalender-Event,
-Löschen als Einheit), die **Tagesminuten** liegen in ihr. Daraus folgen vier
+Löschen als Einheit), die **Tagesminuten** liegen in ihr. Daraus folgen fünf
 Regeln:
 
 - **Urlaub gewinnt im Kalender** — er färbt die Zelle auch über Feiertag und
@@ -439,9 +439,41 @@ Regeln:
   (Wochenende, Feiertag): sie halten den Zeitraum als Block zusammen, sind
   aber kein Urlaubstag — wer am Samstag mitten im Urlaub arbeitet, darf das
   erfassen. Beide Sperren prüfen deshalb auf `minutes > 0`, nicht auf
-  „Tag liegt in einer Periode". Alt-Daten, die den Zustand bereits tragen,
-  räumt die Sperre nicht auf (Xveyn#97) — deshalb baut `grid_renderer` die
-  Eintragszelle auf Urlaubs-Untergrund weiterhin.
+  „Tag liegt in einer Periode". Die Sperre räumt den Zustand aber nicht auf,
+  und sie ist auch nicht dicht — deshalb baut `grid_renderer` die
+  Eintragszelle auf Urlaubs-Untergrund weiterhin (s. nächster Punkt).
+- **Trotzdem gewinnt der Urlaub auch in der Abrechnung: `cap_by_worktime`.**
+  Die Sperre oben sitzt an den **UI-Eingängen**, nicht im Store — `Storage`
+  kennt den Urlaub nicht. Zwei Wege schreiben deshalb weiterhin Ist-Zeit auf
+  einen Urlaubstag: der **Import** geteilter Arbeitszeiten (der Absender
+  kennt den Urlaub des Empfängers nicht, Urlaub steht nicht im Share-Doc)
+  und der **Drive-Sync** eines zweiten Geräts (Urlaub ist gerätelokal). Das
+  an diesen Stellen zu verbieten hieße, in einen LWW-Merge eine Ablehnung
+  einzubauen — LWW hat dafür kein Konzept. Also wird der Zustand
+  **behandelt statt verhindert**: `vacations.cap_by_worktime` kappt die
+  Urlaubsminuten eines Tages um die dort erfasste Ist-Zeit (Untergrenze 0),
+  bevor der Wert in eine Summe geht. Ein Kalendertag kommt damit nie auf mehr
+  Stunden, als er hat (Xveyn#97).
+
+  Gekappt wird **zugunsten des Urlaubs** — der Tag bleibt bei seinem
+  Urlaubswert, die Arbeitszeit wird darin aufgezehrt. Die App entscheidet
+  damit bewusst *nicht*, welche der beiden Zahlen die richtige ist: der Tag
+  ist falsch erfasst, und das muss sichtbar sein. Deshalb ist die Kappung an
+  **beiden** Stellen beschriftet, wortgleich aus `vacations.cap_notice`:
+  als Hinweiszeile in der Live-Vorschau des Zeitraum-Pickers
+  (`period_picker.vacation_preview`, im Stil der `weekend_hint` daneben) und
+  als Fußnote unter dem Urlaubs-Block im Bericht (`report._cap_footnote`).
+  Eine stille Kappung wäre schlimmer als der Bug: der Urlaubs-Block wiche
+  ohne Erklärung von dem ab, was der Verwaltungs-Dialog für dieselbe Periode
+  zeigt.
+
+  Gerufen wird `cap_by_worktime` an den **drei** Ausgabewegen — `report.generate_report`,
+  `report.generate_pdf` und `webhook.build_json_payload` — jeweils gegen den
+  bereits zeitraum- **und** kategoriegefilterten Ausschnitt. Das ist kein
+  Detail: filtert jemand auf eine Kategorie, zehrt nur die dort *sichtbare*
+  Arbeitszeit den Urlaub auf, sonst gingen Ist-Zeit, Urlaub und „Zu vergüten
+  gesamt" auf derselben Seite nicht auf. Die 0-Minuten-Tage bleiben auch hier
+  ausgenommen. Wer einen vierten Ausgabeweg baut, ruft die Funktion mit.
 - **Gelöscht wird immer die ganze Periode.** Einzelne Tage aus der Mitte
   herauszubrechen würde die `days`-Invariante (lückenlos von `from` bis `to`)
   verletzen; Korrekturen laufen über den Verwaltungs-Dialog.
@@ -690,7 +722,11 @@ nicht mehr als „offen" führen — der Verweis lautet auf diese Grenze.
   `vacation` (`{ISO: minutes}` der Urlaubstage im Berichtszeitraum, oder
   `null` ohne Häkchen) und `vacation_minutes` (Summe daraus, `0` ohne
   Urlaub) — ohne gesetztes Häkchen bleiben beide Felder auf ihrem Leerwert,
-  ein bestehender Empfänger läuft also unverändert weiter.
+  ein bestehender Empfänger läuft also unverändert weiter. Beide Werte sind
+  über `vacations.cap_by_worktime` gekappt wie in Mail-HTML und PDF (s.
+  „Urlaub"): ein Empfänger, der `total_minutes` und `vacation_minutes`
+  addiert, bekommt für einen Kalendertag nie mehr Stunden, als er hat. Die
+  Shape ändert sich dadurch nicht — **kein** Schema-Bump.
 - `src/webhook_store.py` — gerätelokaler Store der Webhook-Konfiguration
   (`webhooks.json`). Enthält Konfiguration **und** Secrets und wird deshalb wie
   `token.json` gehärtet geschrieben; reist bewusst **nicht** per Drive-Sync.

@@ -170,6 +170,13 @@ Begründung und die Grenze der LWW-Heilung stehen im Docstring von
 `VacationStore.day_minutes()` gezogen hat. Die Worker greifen nie selbst auf
 den Store zu — dieselbe Regel wie beim Entries-Snapshot.
 
+Der Snapshot ist dabei **nicht** der endgültige Wert: `report.generate_report`,
+`report.generate_pdf` und `webhook.build_json_payload` schicken ihn jeweils
+noch durch `vacations.cap_by_worktime`, das die Urlaubsminuten eines Tages um
+die dort erfasste Ist-Zeit kappt (Xveyn#97, Begründung in der Wurzel-CLAUDE.md
+unter „Urlaub"). Gekappt wird erst dort, weil erst dort feststeht, auf welchen
+Zeitraum und welche Kategorien der Bericht gefiltert ist.
+
 ## Daten- & Persistenz-Schicht
 
 - `json_store.py` — **die gemeinsame Mechanik, und der einzige Ort für zwei Regeln** (R2):
