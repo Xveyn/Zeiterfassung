@@ -667,3 +667,71 @@ def test_still_no_report_without_entries_and_without_vacation():
         datetime.date(2026, 7, 1), datetime.date(2026, 7, 31), {})
     assert html is None
     assert total == 0
+
+
+# --------------------- Urlaub trifft Ist-Zeit am selben Tag (Xveyn#97)
+
+def test_report_caps_vacation_against_worktime_on_the_same_day():
+    # 8 h Urlaub und 4 h erfasste Ist-Zeit am 01.07.: der Kalendertag darf
+    # nicht mit 12 h in „Zu vergüten gesamt" landen.
+    entries = {"2026-07-01": {"slots": [_slot("08:00", "12:00")]}}
+    html, total = generate_report(
+        datetime.date(2026, 7, 1), datetime.date(2026, 7, 31), entries,
+        vacation_days={"2026-07-01": 480})
+    assert "12.0h" not in html
+    assert "8.0h" in html
+    assert total == 4.0  # „Gesamt" bleibt reine Ist-Zeit
+
+
+def test_report_footnote_names_the_capped_day():
+    entries = {"2026-07-01": {"slots": [_slot("08:00", "12:00")]}}
+    html, _ = generate_report(
+        datetime.date(2026, 7, 1), datetime.date(2026, 7, 31), entries,
+        vacation_days={"2026-07-01": 480})
+    assert "01.07.2026" in html
+    assert "liegt Urlaub auf erfasster Arbeitszeit" in html
+
+
+def test_report_has_no_footnote_without_a_collision():
+    entries = {"2026-07-01": {"slots": [_slot("08:00", "12:00")]}}
+    html, _ = generate_report(
+        datetime.date(2026, 7, 1), datetime.date(2026, 7, 31), entries,
+        vacation_days={"2026-07-06": 480})
+    assert "liegt Urlaub auf erfasster Arbeitszeit" not in html
+    assert "12.0h" in html  # 4 h Ist + 8 h Urlaub, verschiedene Tage
+
+
+def test_report_cap_counts_only_the_selected_categories():
+    # Gefiltert auf „A": die 4 h in „B" sind im Bericht nicht sichtbar und
+    # zehren den Urlaub deshalb auch nicht auf — sonst gingen die drei
+    # Zahlen auf der Seite nicht auf.
+    entries = {"2026-07-01": {"slots": [_slot("08:00", "12:00", kategorie="B")]}}
+    html, _ = generate_report(
+        datetime.date(2026, 7, 1), datetime.date(2026, 7, 31), entries,
+        categories={"A"}, vacation_days={"2026-07-01": 480})
+    assert "8.0h" in html
+    assert "liegt Urlaub auf erfasster Arbeitszeit" not in html
+
+
+def test_report_cap_ignores_zero_minute_vacation_days():
+    # Samstag mitten im Urlaub: 0 Urlaubsminuten, Arbeit erlaubt (bewusste
+    # Ausnahme). Der Urlaubs-Block der Woche bleibt unangetastet.
+    entries = {"2026-07-04": {"slots": [_slot("08:00", "12:00")]}}
+    html, _ = generate_report(
+        datetime.date(2026, 7, 1), datetime.date(2026, 7, 31), entries,
+        vacation_days={"2026-07-03": 480, "2026-07-04": 0})
+    assert "12.0h" in html  # 4 h Ist + 8 h Urlaub, kein Konflikt
+    assert "liegt Urlaub auf erfasster Arbeitszeit" not in html
+
+
+def test_pdf_caps_vacation_against_worktime_too():
+    from src import report as report_mod
+    entries = {"2026-07-01": {"slots": [_slot("08:00", "12:00")]}}
+    captured = {}
+    with patch.dict("sys.modules",
+                    {"xhtml2pdf": make_fake_xhtml2pdf(captured)}):
+        report_mod.generate_pdf(
+            datetime.date(2026, 7, 1), datetime.date(2026, 7, 31), entries,
+            vacation_days={"2026-07-01": 480})
+    assert "12.0h" not in captured["html"]
+    assert "liegt Urlaub auf erfasster Arbeitszeit" in captured["html"]

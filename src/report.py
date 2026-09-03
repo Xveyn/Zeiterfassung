@@ -7,6 +7,7 @@ from collections import OrderedDict
 from typing import Any, Collection
 
 from src.time_utils import DAYS_DE, calculate_hours, format_date, get_week_label, hours_to_minutes
+from src.vacations import CappedDay, cap_by_worktime, cap_notice
 
 
 def _esc(text: str | None) -> str:
@@ -57,6 +58,7 @@ HTML_STYLE = {
     "total_row":   "background:#334155;",
     "total_lbl":   "padding:12px 14px;color:#ffffff;font-weight:700;",
     "total_hrs":   "padding:12px 14px;color:#00D8A7;font-weight:700;font-size:15px;",
+    "footnote":    "margin:6px 0 0 0;color:#94a3b8;font-size:12px;line-height:1.4;",
 }
 
 PDF_STYLE = {
@@ -80,6 +82,7 @@ PDF_STYLE = {
     "total_row":   "background:#1e293b;",
     "total_lbl":   "padding:10px 12px;color:#ffffff;font-weight:700;",
     "total_hrs":   "padding:10px 12px;color:#ffffff;font-weight:700;",
+    "footnote":    "margin:6px 0 0 0;color:#475569;font-size:10px;line-height:1.4;",
 }
 
 
@@ -347,7 +350,9 @@ def _vacation_runs(vacation_days: dict[str, int]) -> list[tuple[str, str, int]]:
 
 def _build_vacation_summary(vacation_days: dict[str, int],
                             work_minutes: int,
-                            style: dict[str, Any]) -> str:
+                            style: dict[str, Any],
+                            capped_days: list[CappedDay] | None = None
+                            ) -> str:
     """„Urlaub"-Block unter der Stundentabelle, plus die Zeile „Zu vergüten
     gesamt".
 
@@ -361,6 +366,11 @@ def _build_vacation_summary(vacation_days: dict[str, int],
     Gerechnet wird durchgehend in Minuten (CLAUDE.md) — `work_minutes` kommt
     aus `_build_table` und damit aus derselben Auflösung, sodass die drei
     Zahlen auf der Seite aufgehen.
+
+    `capped_days` sind die Tage, an denen `cap_by_worktime` den Urlaub um
+    erfasste Ist-Zeit gekürzt hat. Sie bekommen eine Fußnote unter der
+    Tabelle: ohne sie wiche der Urlaubs-Block still von dem ab, was der
+    Verwaltungs-Dialog für dieselbe Periode zeigt.
     """
     runs = _vacation_runs(vacation_days)
     if not runs:
@@ -395,7 +405,22 @@ def _build_vacation_summary(vacation_days: dict[str, int],
         f'{_minutes_as_hours(work_minutes + vacation_minutes)}h</td>'
         f'</tr>'
         f'</table>'
+        f'{_cap_footnote(capped_days, s)}'
     )
+
+
+def _cap_footnote(capped_days: list[CappedDay] | None,
+                  style: dict[str, Any]) -> str:
+    """Fußnote unter dem Urlaubs-Block, wenn Tage gekappt wurden.
+
+    Wortlaut aus `vacations.cap_notice` — dieselbe Formulierung wie die
+    Hinweiszeile im Zeitraum-Picker, damit Vorschau und Bericht nicht
+    verschieden über denselben Sachverhalt reden.
+    """
+    text = cap_notice(capped_days or [])
+    if not text:
+        return ""
+    return (f'<p style="{style["footnote"]}">{_esc(text)}</p>')
 
 
 def generate_report(date_from: datetime.date, date_to: datetime.date,
@@ -421,6 +446,12 @@ def generate_report(date_from: datetime.date, date_to: datetime.date,
     if range_entries:
         range_entries = filter_categories(range_entries, categories)
     vacation_in_range = filter_period(date_from, date_to, vacation_days or {}) or {}
+    # Trifft Urlaub auf erfasste Ist-Zeit, wird der Urlaub des Tages um sie
+    # gekappt — sonst käme ein Kalendertag in „Zu vergüten gesamt" auf mehr
+    # Stunden, als er hat (Xveyn#97). Gegen den bereits kategoriegefilterten
+    # Ausschnitt, damit die drei Zahlen auf der Seite aufgehen.
+    vacation_in_range, capped_days = cap_by_worktime(
+        vacation_in_range, range_entries or {})
 
     # Leer ist der Bericht nur ohne Ist-Zeit UND ohne bezahlte Urlaubsminute.
     # Ein voller Urlaubsmonat ohne erfasste Arbeitszeit ist für den
@@ -442,7 +473,7 @@ def generate_report(date_from: datetime.date, date_to: datetime.date,
         table, total_minutes, category_summary = "", 0, ""
     total = _minutes_as_hours(total_minutes)
     vacation_summary = _build_vacation_summary(
-        vacation_in_range, total_minutes, HTML_STYLE)
+        vacation_in_range, total_minutes, HTML_STYLE, capped_days)
 
     greeting_filled = _apply_placeholders(_esc_multiline(greeting), label, total)
     content_filled = _apply_placeholders(_esc_multiline(content), label, total)
@@ -487,6 +518,12 @@ def generate_pdf(date_from: datetime.date, date_to: datetime.date,
     if range_entries:
         range_entries = filter_categories(range_entries, categories)
     vacation_in_range = filter_period(date_from, date_to, vacation_days or {}) or {}
+    # Trifft Urlaub auf erfasste Ist-Zeit, wird der Urlaub des Tages um sie
+    # gekappt — sonst käme ein Kalendertag in „Zu vergüten gesamt" auf mehr
+    # Stunden, als er hat (Xveyn#97). Gegen den bereits kategoriegefilterten
+    # Ausschnitt, damit die drei Zahlen auf der Seite aufgehen.
+    vacation_in_range, capped_days = cap_by_worktime(
+        vacation_in_range, range_entries or {})
 
     # Leer ist der Bericht nur ohne Ist-Zeit UND ohne bezahlte Urlaubsminute.
     # Ein voller Urlaubsmonat ohne erfasste Arbeitszeit ist für den
@@ -507,7 +544,7 @@ def generate_pdf(date_from: datetime.date, date_to: datetime.date,
         # Kopfzeile und „Gesamt 0h" und sagte nichts aus.
         table, total_minutes, category_summary = "", 0, ""
     vacation_summary = _build_vacation_summary(
-        vacation_in_range, total_minutes, PDF_STYLE)
+        vacation_in_range, total_minutes, PDF_STYLE, capped_days)
 
     name_html = (
         f"<p style='color:#111827;font-size:13px;margin:0 0 2px 0;font-weight:600;'>{_esc(name)}</p>"

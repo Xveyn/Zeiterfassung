@@ -625,3 +625,18 @@ def test_payload_vacation_matches_report_slice():
         vacation_days=snapshot)
     assert payload["vacation"] == filter_period(
         datetime.date(2026, 12, 1), datetime.date(2026, 12, 31), snapshot)
+
+
+def test_payload_caps_vacation_against_worktime_on_the_same_day():
+    """Xveyn#97: derselbe Kalendertag darf nicht Urlaub UND Ist-Zeit voll
+    ausweisen — sonst summiert ein Empfänger mehr Stunden, als der Tag hat.
+    Gekappt wie in Mail-HTML und PDF, damit alle drei Wege dieselbe Zahl
+    behaupten."""
+    payload = build_json_payload(
+        date_from=datetime.date(2026, 9, 1), date_to=datetime.date(2026, 9, 30),
+        entries={"2026-09-01": {"slots": [_slot("08:00", "12:00")]}},
+        name="", sender="", categories=None,
+        vacation_days={"2026-09-01": 480})
+    assert payload["vacation"] == {"2026-09-01": 240}
+    assert payload["vacation_minutes"] == 240
+    assert payload["total_minutes"] == 240  # Ist-Zeit unveraendert

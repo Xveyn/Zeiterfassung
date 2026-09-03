@@ -3,7 +3,9 @@
 import pytest
 
 from src.vacations import (
-    apportion_minutes, conflicting_days, expand_days, periods_overlap,
+    CappedDay, apportion_minutes, cap_by_worktime, cap_notice, conflicting_days,
+    expand_days,
+    periods_overlap,
     total_minutes,
 )
 
@@ -177,3 +179,123 @@ def test_conflicting_days_reports_sorted_and_deduplicated():
     assert conflicting_days(
         days, ["2026-04-15", "2026-04-14"], ["2026-04-14", "2026-04-13"]
     ) == ["2026-04-13", "2026-04-14", "2026-04-15"]
+
+
+# ------------------------------------------------------------ cap_by_worktime
+
+def _entry(*slots):
+    """Eintrag im Storage-Format aus (start, end)-Paaren."""
+    return {"slots": [{"start": s, "end": e, "pause": 0, "kategorie": ""}
+                      for s, e in slots]}
+
+
+def test_cap_by_worktime_leaves_days_without_worktime_alone():
+    days = {"2026-09-01": 480, "2026-09-02": 480}
+    capped, hits = cap_by_worktime(days, {})
+    assert capped == days
+    assert hits == []
+
+
+def test_cap_by_worktime_reduces_vacation_by_the_worked_minutes():
+    # 8 h Urlaub, 4 h erfasste Ist-Zeit -> der Tag verguetet 8 h, nicht 12 h.
+    days = {"2026-09-01": 480}
+    entries = {"2026-09-01": _entry(("08:00", "12:00"))}
+    capped, hits = cap_by_worktime(days, entries)
+    assert capped == {"2026-09-01": 240}
+    assert len(hits) == 1
+    assert hits[0].date == "2026-09-01"
+    assert hits[0].vacation == 480
+    assert hits[0].work == 240
+    assert hits[0].capped == 240
+
+
+def test_cap_by_worktime_floors_at_zero():
+    # Mehr gearbeitet als Urlaub am Tag -> 0, nie negativ.
+    days = {"2026-09-01": 240}
+    entries = {"2026-09-01": _entry(("08:00", "16:00"))}
+    capped, hits = cap_by_worktime(days, entries)
+    assert capped == {"2026-09-01": 0}
+    assert hits[0].capped == 0
+
+
+def test_cap_by_worktime_ignores_days_without_vacation_hours():
+    # Sa/So und Feiertage stehen mit 0 Minuten in der Periode. Dort DARF
+    # Arbeitszeit liegen (dokumentierte Ausnahme) — nichts zu kappen, nichts
+    # zu melden.
+    days = {"2026-09-05": 0}
+    entries = {"2026-09-05": _entry(("08:00", "12:00"))}
+    capped, hits = cap_by_worktime(days, entries)
+    assert capped == {"2026-09-05": 0}
+    assert hits == []
+
+
+def test_cap_by_worktime_sums_multiple_slots_over_minutes():
+    # Zwei Slots am selben Tag: 2 h + 1.5 h = 210 min gegen 480 min Urlaub.
+    days = {"2026-09-01": 480}
+    entries = {"2026-09-01": _entry(("08:00", "10:00"), ("13:00", "14:30"))}
+    capped, hits = cap_by_worktime(days, entries)
+    assert capped == {"2026-09-01": 270}
+    assert hits[0].work == 210
+
+
+def test_cap_by_worktime_honours_the_pause_of_a_slot():
+    days = {"2026-09-01": 480}
+    entries = {"2026-09-01": {"slots": [
+        {"start": "08:00", "end": "12:00", "pause": 30, "kategorie": ""}]}}
+    capped, _ = cap_by_worktime(days, entries)
+    assert capped == {"2026-09-01": 270}  # 480 - (240 - 30)
+
+
+def test_cap_by_worktime_reports_hits_chronologically():
+    days = {"2026-09-03": 480, "2026-09-01": 480, "2026-09-02": 480}
+    entries = {
+        "2026-09-03": _entry(("08:00", "09:00")),
+        "2026-09-01": _entry(("08:00", "09:00")),
+    }
+    _, hits = cap_by_worktime(days, entries)
+    assert [h.date for h in hits] == ["2026-09-01", "2026-09-03"]
+
+
+def test_cap_by_worktime_does_not_mutate_its_input():
+    days = {"2026-09-01": 480}
+    entries = {"2026-09-01": _entry(("08:00", "12:00"))}
+    cap_by_worktime(days, entries)
+    assert days == {"2026-09-01": 480}
+
+
+def test_cap_by_worktime_handles_empty_inputs():
+    assert cap_by_worktime({}, {}) == ({}, [])
+
+
+# ----------------------------------------------------------------- cap_notice
+
+def test_cap_notice_is_empty_without_hits():
+    assert cap_notice([]) == ""
+
+
+def test_cap_notice_names_a_single_day_and_its_hours():
+    hits = [CappedDay("2026-09-01", 480, 240, 240)]
+    text = cap_notice(hits)
+    assert "1 Tag" in text
+    assert "01.09.2026" in text
+    assert "4.0h" in text
+
+
+def test_cap_notice_lists_up_to_three_days():
+    hits = [
+        CappedDay("2026-09-01", 480, 60, 420),
+        CappedDay("2026-09-02", 480, 60, 420),
+        CappedDay("2026-09-03", 480, 60, 420),
+    ]
+    text = cap_notice(hits)
+    assert "3 Tagen" in text
+    assert "01.09.2026" in text
+    assert "03.09.2026" in text
+    assert "3.0h" in text  # 3 x 60 min gekuerzt
+
+
+def test_cap_notice_drops_the_list_beyond_three_days():
+    hits = [CappedDay(f"2026-09-0{i}", 480, 60, 420) for i in range(1, 5)]
+    text = cap_notice(hits)
+    assert "4 Tagen" in text
+    assert "01.09.2026" not in text  # Liste waere zu lang, nur die Zahl

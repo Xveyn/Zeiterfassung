@@ -24,6 +24,7 @@ from urllib.parse import unquote, urlsplit
 from src.mail import is_offline_error
 from src.report import filter_categories, filter_period
 from src.time_utils import calculate_hours, hours_to_minutes, utc_now_iso
+from src.vacations import cap_by_worktime
 from src.version import VERSION
 
 log = logging.getLogger(__name__)
@@ -244,6 +245,14 @@ def build_json_payload(*, date_from: datetime.date, date_to: datetime.date,
         filter_period(date_from, date_to, vacation_days) or {}
         if vacation_days is not None else None
     )
+    # Trifft Urlaub auf erfasste Ist-Zeit, wird der Urlaub des Tages um sie
+    # gekappt — dieselbe Rechnung wie in Mail-HTML und PDF, sonst summierte
+    # ein Empfänger für einen Kalendertag mehr Stunden, als er hat
+    # (Xveyn#97). Gegen `ranged`, also den bereits zeitraum- und
+    # kategoriegefilterten, projizierten Ausschnitt, auf dem auch
+    # `total_minutes` rechnet.
+    if vacation_ranged:
+        vacation_ranged, _ = cap_by_worktime(vacation_ranged, ranged)
     return {
         "schema_version": PAYLOAD_SCHEMA_VERSION,
         "kind": PAYLOAD_KIND,
