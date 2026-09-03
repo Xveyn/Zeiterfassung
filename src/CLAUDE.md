@@ -103,6 +103,14 @@ Banner-Routing liegen in `ui.py::_on_update_check_result` bzw.
 `get_anchor=lambda: App._renderer.grid_container` (Grid existiert erst nach dem Build).
 `on_resize` (= `App._renderer.repin_geometry`) wird in `_show`/`_dismiss` aufgerufen, damit
 das fixe Fenster auf die geänderte Banner-Höhe nachzieht (sonst Footer abgeschnitten, margenheld/Zeiterfassung#92).
+Der Banner fährt **keinen eigenen** Update-Ablauf (keine Statuszeile, keine
+Fortschrittsanzeige): `_install_or_download` prüft `supports_self_update`
+(einmalig in `__init__` ermittelt, wie im Updates-Tab) und delegiert bei
+`True` per injiziertem `on_open_updates_tab` (= `App._open_settings(
+initial_tab="updates")`) an den Einstellungsdialog — sonst bleibt es beim
+Browser-Download aus `_open_download`. `open_settings_dialog(...,
+initial_tab=...)` ist der dafür ergänzte, sonst unveränderte Default-Pfad
+(`dialog.py`).
 
 ## Threading-Modell
 

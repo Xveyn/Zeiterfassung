@@ -111,3 +111,67 @@ def test_show_if_newer_dismissed_prerelease_does_not_show():
     rel = _release(version="1.2.0", release_id="1.2.0-pre.2", is_prerelease=True)
     b.show_if_newer(rel)
     b._show.assert_not_called()
+
+
+def test_repo_mode_cannot_self_update():
+    # Gegenprobe zur "tragenden Entscheidung": im Repo-Modus (kein Frozen-
+    # Build) ist supports_self_update() immer False, unabhängig von der
+    # Plattform (sys.frozen fehlt bzw. ist False) — der Banner muss also
+    # weiterhin den Browser-Download-Pfad nehmen.
+    b = UpdateBanner(root=object(), settings=_FakeSettings(),
+                     get_anchor=lambda: object())
+    assert b._can_self_update is False
+
+
+def test_install_or_download_delegates_to_updates_tab_when_self_update_possible():
+    # Bewusst KEIN zweiter Ablaufpfad im Banner: kann die App sich selbst
+    # aktualisieren, schickt der Klick nur zum Updates-Tab, statt Download/
+    # Prüfung/Installation hier zu duplizieren.
+    opened_tab = []
+    opened_download = []
+    b = UpdateBanner(root=object(), settings=_FakeSettings(),
+                     get_anchor=lambda: object(),
+                     on_open_updates_tab=lambda: opened_tab.append(True))
+    b._can_self_update = True
+    b._open_download = lambda release: opened_download.append(release)
+    rel = _release()
+    b._install_or_download(rel)
+    assert opened_tab == [True]
+    assert opened_download == []
+
+
+def test_install_or_download_falls_back_to_browser_download():
+    # Ohne Selbst-Update-Fähigkeit (macOS, falsche Architektur, Repo-Modus)
+    # bleibt es beim bisherigen Browser-Download.
+    opened_tab = []
+    opened_download = []
+    b = UpdateBanner(root=object(), settings=_FakeSettings(),
+                     get_anchor=lambda: object(),
+                     on_open_updates_tab=lambda: opened_tab.append(True))
+    b._can_self_update = False
+    b._open_download = lambda release: opened_download.append(release)
+    rel = _release()
+    b._install_or_download(rel)
+    assert opened_download == [rel]
+    assert opened_tab == []
+
+
+def test_show_button_label_reflects_self_update_capability(monkeypatch):
+    # Knopftext analog Task 7 (tab_updates.py): "Update installieren" nur,
+    # wenn die App das Update auch selbst laden kann.
+    monkeypatch.setattr(ub.tk, "Frame", lambda *a, **k: MagicMock())
+    monkeypatch.setattr(ub.tk, "Label", lambda *a, **k: MagicMock())
+    captured = []
+
+    def _fake_label_button(parent, text, *a, **k):
+        captured.append(text)
+        return MagicMock()
+
+    monkeypatch.setattr(ub, "label_button", _fake_label_button)
+    monkeypatch.setattr(ub, "attach_tooltip", lambda *a, **k: None)
+    b = UpdateBanner(root=object(), settings=_FakeSettings(),
+                     get_anchor=lambda: object())
+    b._can_self_update = True
+    b._show(_release())
+    assert ub._LABEL_INSTALL in captured
+    assert ub._LABEL_DOWNLOAD not in captured

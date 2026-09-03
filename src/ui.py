@@ -177,7 +177,8 @@ class App:
         self._bg.fetch_sender_email()
         self._update_banner = UpdateBanner(
             self.root, self.settings, lambda: self._renderer.grid_container,
-            on_resize=self._renderer.repin_geometry)
+            on_resize=self._renderer.repin_geometry,
+            on_open_updates_tab=lambda: self._open_settings(initial_tab="updates"))
         self._bg.check_update(on_result=self._on_update_check_result)
         self._bg.reconcile_on_start(on_ok=self._on_reconcile_start_done)
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
@@ -485,7 +486,7 @@ class App:
         set_toggle_active(self.btn_month, self.view_mode == "month")
         set_toggle_active(self.btn_week, self.view_mode == "week")
 
-    def _open_settings(self):
+    def _open_settings(self, initial_tab=None):
         def _on_change():
             self._refresh()
             self._sync.update_status_label()
@@ -513,6 +514,7 @@ class App:
             on_vacation_change=self._on_vacation_change,
             smtp_store=self._smtp_store,
             on_vacation_display_change=self._refresh,
+            initial_tab=initial_tab,
         )
 
     def _on_vacation_change(self):

@@ -36,7 +36,7 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
                          data_lock=None, sync_guard=None, webhook_store=None,
                          smtp_store=None,
                          vacation_store=None, on_vacation_change=None,
-                         on_vacation_display_change=None):
+                         on_vacation_display_change=None, initial_tab=None):
     """Modaler Dialog zum Bearbeiten der App-Einstellungen, aufgeteilt auf sieben
     Tabs (Arbeitszeit / Bericht & Mail / Webhooks / SMTP / Google / App / Updates).
 
@@ -52,6 +52,10 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
     on_vacation_display_change: reines Neuzeichnen des Kalenders für die
     Anzeige-Schalter jenes Dialogs — ohne den Kalender-Abgleich, den
     on_vacation_change mitbringt.
+    initial_tab: optionaler Schlüssel aus `tabs` (unten), auf den der Dialog
+    direkt aufspringt — Default `None` lässt es beim bisherigen Verhalten
+    (erster Tab „Arbeitszeit"). Für Aufrufer, die gezielt zu einem Tab wollen
+    (das Update-Banner zu „updates"), statt dass der Nutzer ihn selbst sucht.
     """
     dialog = create_dialog(parent, "Einstellungen", escape_closes=False)
 
@@ -116,6 +120,13 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
         "app": app.frame,
         "updates": updates_tab.frame,
     }
+
+    # Springt direkt auf den gewünschten Tab, statt den Nutzer beim Default
+    # ("Arbeitszeit") suchen zu lassen. `notebook.select(...)` löst dabei
+    # <<NotebookTabChanged>> aus wie ein Klick — der Updates-Tab startet also
+    # auch so seinen Live-Check (`_on_tab_changed` oben, bereits gebunden).
+    if initial_tab is not None and initial_tab in tabs:
+        notebook.select(tabs[initial_tab])
 
     def save_settings():
         for key, lbl in zip(WEEKDAY_KEYS, DAYS_DE, strict=False):
