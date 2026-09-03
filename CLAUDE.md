@@ -313,8 +313,10 @@ Selbst-Update".
 - **Windows:** Ein Helfer-Skript (nicht der Installer selbst) übernimmt den
   Ablauf. Es wartet auf das Verschwinden der laufenden App-PID, ruft dann
   `Zeiterfassung_Setup.exe /SILENT /NORESTART` und startet danach die Exe neu.
-  Das Skript läuft **detached** (`DETACHED_PROCESS | CREATE_NO_WINDOW`), damit
-  es die App überlebt, die sich gerade beendet.
+  Der Helfer-Prozess läuft mit `CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW`
+  (`apply_windows` in `src/self_update.py`) — entkoppelt, damit er das Ende
+  der App überlebt, ohne eigenes Konsolenfenster. **Bewusst ohne**
+  `DETACHED_PROCESS`, s.u.
 - **Linux:** Die laufende AppImage wird im laufenden Betrieb ersetzt
   (`os.replace` auf `$APPIMAGE`, alte Datei als `.old` für den Rollback) und
   die App startet per `os.execv` neu — derselbe Mechanismus wie
@@ -333,13 +335,16 @@ die am schwersten lokal zu prüfende Datei im Repo (Inno fehlt auf der
 Windows-Dev-Maschine, testbar nur über den Workflow **Build** mit gesetztem
 `installer`-Häkchen) — ein Umbau dort wäre entsprechend riskant zu verifizieren.
 
-**Wichtig für das Helfer-Skript: `DETACHED_PROCESS`.** Ohne dieses Flag erbt
-der Helfer die Konsole der App und läuft, sobald die App sich beendet, ohne
-Konsolen-Fenster weiter — `tasklist /FI "PID eq …"` liefert dann keine
-Ausgabe mehr, die Warteschleife auf das Prozessende wird blind, und der
-Installer startet gegen die noch laufende App. Das war der teuerste Fehler
-bei der Umsetzung dieses Features; das Flag nicht „zur Sicherheit" wieder
-entfernen.
+**Wichtig für das Helfer-Skript: `DETACHED_PROCESS` (0x8) bewusst NICHT
+setzen.** Das Flag entzieht dem Prozess seine Konsole — ohne Konsole liefert
+`tasklist /FI "PID eq …"` keine Ausgabe mehr, die Warteschleife auf das
+Prozessende (`:wait` im Helfer-Skript) läuft dadurch blind über das Ende der
+App hinweg und springt sofort zu `:install`, während der `AppMutex` noch
+gehalten wird — der Installer startet dann gegen die noch laufende App. Das
+war der teuerste Fehler bei der Umsetzung dieses Features (drei Fix-Runden);
+das Flag nicht „zur Sicherheit" wieder einbauen. Verwendet werden stattdessen
+`CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW` (s.o.) — die entkoppeln den
+Helfer ebenso, ohne ihm die Konsole zu nehmen.
 
 **Was die Hash-Prüfung leistet — und was nicht.** `SHA256SUMS` schützt gegen
 abgebrochene und verfälschte Übertragung: eine unvollständige oder
@@ -351,13 +356,15 @@ bleibt TLS zu GitHub, derselbe wie beim bisherigen Browser-Download. Die
 Updates dieser App sind an keiner Stelle **signiert** — das darf so in Code
 und Doku nirgends anders klingen.
 
-**`auto_update_enabled` ist gerätelokal** (nicht in `SYNCED_SETTING_KEYS`),
-aus demselben Grund wie `prerelease_updates_enabled`: ein Wert, den sich ein
-Mac und ein Windows-Rechner über den Sync teilen, wäre auf einem der beiden
-systematisch falsch — der Mac kann den Schalter gar nicht einlösen, weil er
-nicht selbst updaten kann. Ist die Automatik an, installiert die App ein
-verifiziertes Update **nicht sofort**, sondern merkt es sich vor und wendet
-es erst beim nächsten regulären Beenden an — nie mitten in der Arbeit.
+**`auto_update_enabled` ist gerätelokal** (nicht in `SYNCED_SETTING_KEYS`):
+ein Wert, den sich ein Mac und ein Windows-Rechner über den Sync teilen,
+wäre auf dem Mac systematisch falsch — er kann den Schalter gar nicht
+einlösen, weil er nicht selbst updaten kann. Ist die Automatik an,
+installiert die App ein verifiziertes Update **nicht sofort**, sondern
+merkt es sich vor (`pending_update_path`/`pending_update_sha256`, ebenfalls
+gerätelokal — ein Pfad im `%TEMP%` eines anderen Rechners wäre dort sinnlos)
+und wendet es erst beim nächsten regulären Beenden an — nie mitten in der
+Arbeit.
 
 ## UI-Fehler sichtbar machen
 

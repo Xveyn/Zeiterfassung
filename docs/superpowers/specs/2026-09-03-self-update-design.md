@@ -127,8 +127,9 @@ Zweitens startet der Installer die App danach **nicht**: der `[Run]`-Eintrag
 trägt `skipifsilent`.
 
 Beides erledigt ein kleines Helfer-Skript, das die App nach `%TEMP%` schreibt
-und *detached* startet (`DETACHED_PROCESS | CREATE_NO_WINDOW`), bevor sie sich
-beendet:
+und abgekoppelt startet (`CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW`),
+bevor sie sich beendet — **nicht** `DETACHED_PROCESS`, s. Nachtrag am Ende
+dieses Abschnitts:
 
 1. auf das Verschwinden der übergebenen PID warten (`tasklist /FI "PID eq …"`,
    mit Zeitlimit)
@@ -152,6 +153,22 @@ steht nicht mehr in der offiziellen Inno-Dokumentation.
 (`get_base_path()` = `dirname(sys.executable)`), aber `[Files]` kopiert mit
 `ignoreversion recursesubdirs` darüber und löscht nichts — genau wie bei jedem
 heutigen Update.
+
+**Nachtrag (2026-09-04):** Diese ursprüngliche Fassung des Abschnitts nannte
+`DETACHED_PROCESS | CREATE_NO_WINDOW` als Prozess-Flags für das Helfer-Skript
+(s. History dieser Datei). Das erwies sich bei der Umsetzung als Fehler und
+kostete drei Fix-Runden: `DETACHED_PROCESS` entzieht dem Prozess seine
+Konsole — ohne Konsole liefert `tasklist /FI "PID eq …"` **keine** Ausgabe
+mehr, die Warteschleife auf das Ende der App-PID läuft dadurch blind über
+deren Prozessende hinweg und springt sofort zum Installer-Aufruf, während der
+`AppMutex` noch gehalten wird. Der Installer bricht dann gegen die
+scheinbar noch laufende App ab bzw. zeigt den Retry-Dialog — exakt das
+Problem, das der Helfer verhindern sollte. Die tatsächlich verwendeten,
+korrekten Flags sind `CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW`
+(`src/self_update.py::apply_windows`, mit demselben `tasklist`-Argument
+kommentiert) — sie entkoppeln den Helfer ebenso, ohne ihm die Konsole zu
+nehmen. Der Abschnitt oben ist entsprechend korrigiert; dieser Nachtrag bleibt
+stehen, damit die Historie nachvollziehbar bleibt.
 
 ### Linux: Datei ersetzen
 
