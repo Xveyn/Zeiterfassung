@@ -298,6 +298,8 @@ def open_smtp_dialog(parent, store, runner, record: dict | None = None,
             try:
                 smtp.test_connection(candidate, password)
             except Exception as e:
+                # Nicht geschluckt: classify_smtp_error uebersetzt JEDEN
+                # Fehler in ein kind/detail-Dict, das der Dialog anzeigt.
                 return smtp.classify_smtp_error(e)
             return {"ok": True, "checked_login": bool(candidate["username"])}
 

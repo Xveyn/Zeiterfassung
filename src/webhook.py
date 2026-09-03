@@ -361,6 +361,9 @@ def _response_snippet(exc: urllib.error.HTTPError) -> str:
     try:
         raw = exc.read(_MAX_RESPONSE_BYTES)
     except Exception:
+        # Der Body ist reine Detailanzeige unter der Fehlermeldung. Laesst er
+        # sich nicht lesen, faellt nur dieses Detail weg — die Klassifikation
+        # des Fehlers steht bereits fest und bleibt unberuehrt.
         return ""
     finally:
         # `exc` (der HTTPError) ist ein offener Dateizeiger auf die
@@ -372,7 +375,7 @@ def _response_snippet(exc: urllib.error.HTTPError) -> str:
         try:
             exc.close()
         except Exception:
-            pass
+            pass  # Begruendung im Block-Kommentar direkt darueber
     text = raw.decode("utf-8", "replace").strip()
     return text[:_MAX_DETAIL_CHARS]
 

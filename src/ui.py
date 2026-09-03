@@ -197,6 +197,8 @@ class App:
         try:
             ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(app_aumid)
         except Exception:
+            # Best-Effort (s. Docstring): ohne AUMID gruppiert Windows die
+            # Fenster nur anders — kein Grund, den Start abzubrechen.
             pass
         try:
             import winreg
@@ -209,6 +211,8 @@ class App:
                     f"Zeiterfassung v{VERSION}",
                 )
         except Exception:
+            # Best-Effort (s. Docstring): ohne DisplayName zeigt der Toast
+            # den rohen AUMID als Absender an, mehr passiert nicht.
             pass
 
     def _setup_window_icon(self, resource_path):

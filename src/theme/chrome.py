@@ -9,6 +9,7 @@ Zum bekannten kurzen Aufblitzen der hellen Titelleiste siehe
 `docs/known-limitations.md` und den Kommentar in `apply_dark_titlebar`.
 """
 
+import logging
 import os
 import platform
 import tkinter as tk
@@ -16,6 +17,8 @@ import tkinter as tk
 from src.paths import get_resource_path
 
 from src.theme.palette import BG, TEXT
+
+log = logging.getLogger(__name__)
 
 
 def _hex_to_colorref(hex_color: str) -> int:
@@ -129,7 +132,12 @@ def _apply_dark_titlebar_now(window):
         u32.SetWindowPos(hwnd, 0, 0, 0, 0, 0,
             SWP_NOSIZE | SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED)
     except Exception:
-        pass
+        # Best-Effort: schlaegt die Win32-Chrome fehl, sieht das Fenster nur
+        # nativ aus statt themed — kein Grund, den Dialog scheitern zu lassen.
+        # Aber geloggt, nicht verschluckt: der Aufrufer prueft oben bereits
+        # `platform.system() != "Windows"`, ein Fehler HIER ist also ein
+        # echter Windows-Fehler und keine Plattform-Unvertraeglichkeit.
+        log.debug("Dunkle Titelleiste konnte nicht gesetzt werden", exc_info=True)
 
 
 def disable_min_max(window):
@@ -201,7 +209,12 @@ def _disable_min_max_now(window):
         u32.SetWindowPos(hwnd, 0, 0, 0, 0, 0,
             SWP_NOSIZE | SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED)
     except Exception:
-        pass
+        # Best-Effort: schlaegt die Win32-Chrome fehl, sieht das Fenster nur
+        # nativ aus statt themed — kein Grund, den Dialog scheitern zu lassen.
+        # Aber geloggt, nicht verschluckt: der Aufrufer prueft oben bereits
+        # `platform.system() != "Windows"`, ein Fehler HIER ist also ein
+        # echter Windows-Fehler und keine Plattform-Unvertraeglichkeit.
+        log.debug("Min-/Max-Buttons konnten nicht deaktiviert werden", exc_info=True)
 
 
 def create_dialog(parent, title, *, resizable=False, modal=True,
