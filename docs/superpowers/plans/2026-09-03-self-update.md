@@ -835,6 +835,43 @@ def apply_windows(exe_path: str, setup_path: str, pid: int) -> bool:
         return False
 ```
 
+**Nachtrag (2026-09-04): Der Entwurf oben enthält die zwei teuersten Fehler
+dieser Umsetzung — beide stehen absichtlich unverändert da, damit die
+Historie erkennbar bleibt.** Was tatsächlich im Code steht
+(`src/self_update.py::apply_windows`), weicht an drei Stellen ab:
+
+1. **`DETACHED_PROCESS` (0x8) ist raus.** Das Flag entzieht dem Helfer seine
+   Konsole — ohne Konsole liefert `tasklist /FI "PID eq …"` keine Ausgabe
+   mehr, die Warteschleife läuft blind über das Ende der App hinweg und
+   springt sofort zu `:install`, während der `AppMutex` noch gehalten wird.
+   Der Installer trifft dann auf die scheinbar laufende App — exakt das
+   Problem, das der Helfer verhindern sollte. Die Begründung im Entwurf
+   („entkoppelt ihn, damit er das Ende der App überlebt") gilt schon für
+   `CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW` allein; das sind die
+   verwendeten Flags. Nicht „zur Sicherheit" wieder einbauen — s. auch
+   `CLAUDE.md`, Abschnitt „Update-Weg", und den Nachtrag in der Spec.
+2. **`encoding="ascii", errors="replace"` ist falsch.** Damit wird ein
+   Umlaut im Installationspfad lautlos zu `?`, und der Helfer arbeitet auf
+   einem Pfad, den es nicht gibt — `D:\Programme (x86)\…` mit Umlaut ist auf
+   dieser Maschine der Normalfall. Der Code schreibt in der **OEM-Codepage**
+   (das ist, was `cmd.exe` liest) mit `errors="strict"`, fällt auf UTF-8
+   zurück, wo es keinen OEM-Codec gibt (Linux/CI), und behandelt einen
+   `UnicodeEncodeError` als Fehlschlag mit Aufräumen statt als stillen
+   Datenverlust.
+3. **`apply_windows` trägt einen vierten Parameter `restart: bool`** und
+   `windows_helper_script` einen fünften. `True` = Sofort-Weg (der Nutzer hat
+   eben geklickt und will weiterarbeiten), `False` = Anwenden beim Beenden
+   (wer beendet, will beendet haben). Der Entwurf kannte nur den ersten Fall
+   und startete die App immer. Ebenfalls anders als oben: das Anlegen der
+   Temp-Datei liegt **innerhalb** des `try` — ein volles %TEMP% darf beim
+   Beenden keine Exception werfen.
+
+Auch die Linux-Seite (Task 6) heißt im Code anders: statt
+`linux_apply_paths(appimage) -> (tmp, backup)` gibt es `linux_backup_path`
+und `download_dest`; letzteres vergibt **pro Download-Lauf** einen eigenen
+Zielnamen, damit sich der manuelle und der stille Download nie in derselben
+Datei begegnen.
+
 - [ ] **Schritt 4: Tests laufen lassen**
 
 Run: `python -m pytest tests/test_self_update.py -q` — Erwartet: alle grün

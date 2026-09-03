@@ -311,8 +311,9 @@ später nachzuziehen: `docs/known-limitations.md`, Abschnitt „macOS: kein
 Selbst-Update".
 
 - **Windows:** Ein Helfer-Skript (nicht der Installer selbst) übernimmt den
-  Ablauf. Es wartet auf das Verschwinden der laufenden App-PID, ruft dann
-  `Zeiterfassung_Setup.exe /SILENT /NORESTART` und startet danach die Exe neu.
+  Ablauf. Es wartet auf das Verschwinden der laufenden App-PID und ruft dann
+  `Zeiterfassung_Setup.exe /SILENT /NORESTART`. Ob die App danach wieder
+  startet, entscheidet der Parameter `restart` (s.u.).
   Der Helfer-Prozess läuft mit `CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW`
   (`apply_windows` in `src/self_update.py`) — entkoppelt, damit er das Ende
   der App überlebt, ohne eigenes Konsolenfenster. **Bewusst ohne**
@@ -322,6 +323,25 @@ Selbst-Update".
   die App startet per `os.execv` neu — derselbe Mechanismus wie
   AppImageUpdate.
 - **macOS:** kein Selbst-Update, s.o.
+
+**Neu gestartet wird nur der Sofort-Weg.** Klickt der Nutzer „Update
+installieren", will er danach weiterarbeiten — Windows startet die Exe über
+den Helfer neu (`apply_windows(..., restart=True)`), Linux `exec`t sich
+selbst. Wird ein still vorbereitetes Update dagegen **beim Beenden**
+angewendet (`ui.App._apply_pending_update`), bleibt die App zu:
+`restart=False`, und Linux ersetzt nur die Datei ohne `os.execv`. Wer die App
+beendet, will sie beendet haben; sie eine Minute später unaufgefordert wieder
+auf dem Bildschirm zu haben, wäre das Gegenteil der Zusage „nie mitten in der
+Arbeit".
+
+**Jeder Download-Lauf bekommt einen eigenen Zielnamen**
+(`self_update.download_dest`). Es gibt zwei Wege, die laden — den Ein-Klick-Weg
+im Updates-Tab und den stillen Automatik-Pfad in `ui.py` —, und mit einem
+festen Namen könnten sie in dieselbe Datei schreiben, während der Sofort-Weg
+den Prozess unmittelbar nach seiner Hash-Prüfung beendet. Eine weitere Prüfung
+schlösse dieses Fenster nicht (sie läge wieder davor); ein eigener Name lässt
+es nicht entstehen. Der Preis: jeder Fehlerpfad räumt seine Datei selbst weg —
+es gibt keinen festen Namen mehr, den ein späterer Lauf überschriebe.
 
 **`installer.iss` bleibt bei alldem unangetastet.** Zwei Gründe, beide zwingen
 zum Helfer-Skript statt zu einem Umbau des Installers:

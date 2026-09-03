@@ -508,7 +508,7 @@ Die App läuft auf **Windows, macOS und Linux**. Plattformspezifische Features w
 | Eintrag im Anwendungsmenü | ✓ (Startmenü, vom Setup) | ✓ (`Zeiterfassung.app` in `/Applications`) | ✓ (`.desktop` in `~/.local/share/applications/`, von der App beim Start geschrieben) |
 | Infobereich-Icon (Tray) | ✓ (pystray) | ○ (NSStatusItem, Opt-in `ZEIT_MACOS_TRAY=1`) | ○ (StatusNotifierItem, Opt-in `ZEIT_LINUX_TRAY=1`) |
 | Standalone-Binary (PyInstaller) | ✓ (`.exe`) | ✓ (`.app` Bundle) | ✓ (AppImage) |
-| Update aus der App | ✓ (lädt, prüft, installiert, startet neu) | — (Download im Browser) | ✓ (lädt, prüft, ersetzt die AppImage) |
+| Update aus der App | ✓ (lädt, prüft, installiert; per Knopf mit Neustart, beim Beenden ohne) | — (Download im Browser) | ✓ (lädt, prüft, ersetzt die AppImage; per Knopf mit Neustart, beim Beenden ohne) |
 
 ○ = implementiert, aber bis zum manuellen Plattform-Test dormant. Das Linux-Tray
 spricht StatusNotifierItem über D-Bus (KDE Plasma, XFCE, GNOME mit

@@ -104,10 +104,13 @@ die Zuschnitt-Regel aus CLAUDE.md („Getestet wird Logik, nicht UI"):
   entscheidet, ob es losgehen kann, und bei „nein" **einen Grund nennt**
   (falsche Plattform, keine passende Architektur, `$APPIMAGE` fehlt, Ziel
   nicht schreibbar, zu wenig Plattenplatz, kein `SHA256SUMS` im Release).
-- `windows_helper_script(pid, setup_path, exe_path) -> str` und
-  `linux_apply_paths(appimage_path) -> tuple[str, str, str]` — die
+- `windows_helper_script(pid, setup_path, exe_path, log_path, restart) -> str`,
+  `linux_backup_path(appimage_path) -> str` und
+  `download_dest(system, asset_name, target, tempdir) -> str` — die
   Kommando-/Pfadkonstruktion je Plattform, als reine Textfunktionen. Sie sind
-  der Teil, den man testen kann, ohne etwas zu installieren.
+  der Teil, den man testen kann, ohne etwas zu installieren. `download_dest`
+  vergibt **pro Aufruf** einen anderen Namen: der manuelle und der stille
+  Download dürfen sich nie in derselben Datei begegnen.
 
 Der **Download** selbst (`urllib`, mit Fortschritts-Callback und Abbruch)
 liegt ebenfalls hier, läuft aber über `BackgroundTaskRunner` — nie im
@@ -172,7 +175,8 @@ stehen, damit die Historie nachvollziehbar bleibt.
 
 ### Linux: Datei ersetzen
 
-1. Neue AppImage nach `<zielverzeichnis>/.zeiterfassung-update-<pid>.tmp` laden
+1. Neue AppImage nach `<zielverzeichnis>/.<name>.update-<pid>-<zufall>` laden
+   (`download_dest`; der Zufallsteil macht den Namen pro Lauf eindeutig)
 2. Hash prüfen
 3. `chmod +x`
 4. laufende Datei nach `<name>.old` umbenennen
@@ -294,7 +298,8 @@ Pure Logik in `tests/test_self_update.py`:
 - `windows_helper_script`: enthält PID, Setup-Pfad und Exe-Pfad; keine
   unquotierten Pfade mit Leerzeichen (`D:\Programme (x86)\…` ist der Normalfall
   auf dieser Maschine!)
-- `linux_apply_paths`: `.old`-Name, Temp-Name, Kollisionsfreiheit
+- `linux_backup_path`: `.old`-Name; `download_dest`: Nachbar der AppImage
+  bzw. %TEMP%-Pfad, und Eindeutigkeit über zwei Aufrufe hinweg
 
 Erweitert wird `tests/test_updater.py` um die Architektur-Fälle von
 `pick_asset_url` (Intel-Mac bekommt `None`, arm64-Linux bekommt `None`,
