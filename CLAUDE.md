@@ -78,8 +78,25 @@ liest sich davor wie danach richtig, und die README nennt Versionen an zwei
 älteren Stellen schon im Fließtext („seit 1.19.1"). Genau deshalb erklärt die
 Zeile unter „Features" den Marker als Versionsangabe und nicht als
 „unveröffentlicht" — sonst müsste sie mit jedem Release nachgezogen werden.
-Wer aufräumen will, kann alte Marker nach ein paar Releases streichen —
-Pflicht ist es nicht.
+
+**Alte Marker räumt die CI selbst weg.** Nach jedem echten Release entfernt
+der Job `readme-marker-cleanup` (in `release.yml`) alle Marker, deren Version
+mindestens `KEEP_RELEASES` echte Releases zurückliegt — der Wert steht in
+`scripts/resolve_readme_version.py` und ist derzeit **5**. Ohne das trüge die
+README nach zwanzig Releases auf fast jeder Zeile einen Marker, und die
+Startseite ersöffe in Klammern.
+
+Gemessen wird in **Releases, nicht in Versionssprüngen**: zwischen 1.22.0 und
+1.23.0 können mehrere Patches liegen, „drei Minor weiter" wäre also kein
+verlässliches Alter. Pre-Releases zählen dabei **nicht** mit — sie tragen die
+Version des vorangegangenen echten Releases (s. `version.parse_release_id`),
+und mehrere Pres würden das Alter sonst künstlich hochtreiben.
+
+Der Job **öffnet einen PR**, statt nach `master` zu pushen. Das Ruleset
+„Protect master" greift nur auf `~DEFAULT_BRANCH`, ein Feature-Branch wäre
+technisch frei — aber die Regel „Der Workflow pusht nichts nach `master`"
+bleibt so unangetastet, und ein Mensch sieht die Änderung vorher: entfernt
+wird Text von der Startseite. Der PR trägt bewusst **kein** `release:*`-Label.
 
 Bewusst **kein** eigener `releases`-Default-Branch, obwohl das dasselbe
 Problem löst: GitHub setzt die Base neuer PRs (und `gh pr create` ohne
