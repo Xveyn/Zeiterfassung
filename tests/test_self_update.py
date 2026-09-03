@@ -200,3 +200,40 @@ def test_fetch_text_returns_none_on_error():
     with patch("src.self_update.urlopen",
                side_effect=urllib.error.URLError("weg")):
         assert fetch_text("https://x/sums") is None
+
+
+def test_download_to_removes_file_on_oserror_during_write(tmp_path):
+    """OSError während write() (z.B. Platte voll) — Datei muss weg."""
+    from src.self_update import download_to
+    dest = tmp_path / "out.bin"
+
+    # Mock urlopen, aber write() schlägt fehl
+    class FailingFile:
+        def __enter__(self):
+            return self
+        def __exit__(self, *exc):
+            return False
+        def write(self, data):
+            raise OSError("Platte voll")
+
+    class FailingResponse(_FakeResponse):
+        def __enter__(self):
+            return self
+        def __exit__(self, *exc):
+            return False
+
+    with patch("src.self_update.urlopen", return_value=FailingResponse(b"x" * 1000)):
+        with patch("builtins.open", return_value=FailingFile()):
+            assert download_to("https://x/f", str(dest)) is False
+
+
+def test_download_to_removes_file_on_http_exception(tmp_path):
+    """http.client.HTTPException (z.B. IncompleteRead) — Datei muss weg."""
+    from src.self_update import download_to
+    import http.client
+    dest = tmp_path / "out.bin"
+
+    with patch("src.self_update.urlopen",
+               side_effect=http.client.IncompleteRead(b"partial", 20)):
+        assert download_to("https://x/f", str(dest)) is False
+    assert not dest.exists(), "halbe Datei muss aufgeräumt sein"

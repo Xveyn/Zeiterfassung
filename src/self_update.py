@@ -17,6 +17,7 @@ mehr zu behaupten, als es trägt.
 from __future__ import annotations
 
 import hashlib
+import http.client
 import logging
 import os
 from dataclasses import dataclass
@@ -156,11 +157,15 @@ def _request(url: str) -> Request:
 
 def fetch_text(url: str, timeout: float = 15.0) -> str | None:
     """Kleine Textdatei laden (die Prüfsummen). None bei jedem Fehler —
-    nie eine Exception nach außen, analog `updater.check_latest_release`."""
+    nie eine Exception nach außen, analog `updater.check_latest_release`.
+
+    `http.client.HTTPException` wird eigens gefangen (z.B. IncompleteRead bei
+    abgebrochener Chunked-Response), weil dieser Typ kein OSError-Subtyp ist.
+    """
     try:
         with urlopen(_request(url), timeout=timeout) as response:
             return response.read().decode("utf-8")
-    except (URLError, OSError, UnicodeDecodeError):
+    except (URLError, OSError, UnicodeDecodeError, http.client.HTTPException):
         return None
 
 
@@ -176,6 +181,9 @@ def download_to(url: str, dest: str,
     Bei JEDEM Fehler wird die angefangene Datei entfernt: eine halbe
     Setup.exe, die liegen bleibt, würde beim nächsten Versuch als fertig
     missverstanden oder vom Nutzer gefunden und ausgeführt.
+
+    `http.client.HTTPException` wird eigens gefangen (z.B. IncompleteRead bei
+    abgebrochener Chunked-Response), weil dieser Typ kein OSError-Subtyp ist.
     """
     try:
         with urlopen(_request(url), timeout=timeout) as response:
@@ -191,7 +199,7 @@ def download_to(url: str, dest: str,
                     if on_progress is not None:
                         on_progress(done, total)
         return True
-    except (URLError, OSError) as exc:
+    except (URLError, OSError, http.client.HTTPException) as exc:
         log.warning("Update-Download fehlgeschlagen: %s", exc)
         try:
             os.remove(dest)
