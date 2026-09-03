@@ -341,8 +341,9 @@ setzen.** Das Flag entzieht dem Prozess seine Konsole — ohne Konsole liefert
 Prozessende (`:wait` im Helfer-Skript) läuft dadurch blind über das Ende der
 App hinweg und springt sofort zu `:install`, während der `AppMutex` noch
 gehalten wird — der Installer startet dann gegen die noch laufende App. Das
-war der teuerste Fehler bei der Umsetzung dieses Features (drei Fix-Runden);
-das Flag nicht „zur Sicherheit" wieder einbauen. Verwendet werden stattdessen
+war der teuerste Fehler bei der Umsetzung dieses Features — über mehrere
+Runden hinweg gefunden und behoben; das Flag nicht „zur Sicherheit" wieder
+einbauen. Verwendet werden stattdessen
 `CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW` (s.o.) — die entkoppeln den
 Helfer ebenso, ohne ihm die Konsole zu nehmen.
 

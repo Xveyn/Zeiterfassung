@@ -157,7 +157,7 @@ heutigen Update.
 **Nachtrag (2026-09-04):** Diese ursprüngliche Fassung des Abschnitts nannte
 `DETACHED_PROCESS | CREATE_NO_WINDOW` als Prozess-Flags für das Helfer-Skript
 (s. History dieser Datei). Das erwies sich bei der Umsetzung als Fehler und
-kostete drei Fix-Runden: `DETACHED_PROCESS` entzieht dem Prozess seine
+wurde erst über mehrere Runden gefunden und behoben: `DETACHED_PROCESS` entzieht dem Prozess seine
 Konsole — ohne Konsole liefert `tasklist /FI "PID eq …"` **keine** Ausgabe
 mehr, die Warteschleife auf das Ende der App-PID läuft dadurch blind über
 deren Prozessende hinweg und springt sofort zum Installer-Aufruf, während der
@@ -228,9 +228,8 @@ wie schon während eines Checks.
 Updates-Tab, unter dem Pre-Release-Häkchen und im selben Stil, mit einer
 gedämpften Hinweiszeile darunter. Sie ist **gerätelokal** und kommt
 **nicht** in `SYNCED_SETTING_KEYS`: ein Wert, den sich ein Mac und ein
-Windows-Rechner teilen, wäre auf einem der beiden systematisch falsch — der Mac
-kann gar nicht selbst updaten. Dieselbe Begründung wie beim
-Pre-Release-Häkchen, das aus demselben Grund gerätelokal ist.
+Windows-Rechner teilen, wäre auf dem Mac systematisch falsch — er kann den
+Schalter gar nicht einlösen, weil er nicht selbst updaten kann.
 
 Der Schalter wird nur gebaut, wo Selbst-Update möglich ist — ein Schalter für
 ein Feature, das die Plattform nicht hat, ist Rauschen (dieselbe Regel wie beim
