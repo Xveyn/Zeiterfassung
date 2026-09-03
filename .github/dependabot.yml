@@ -1,0 +1,35 @@
+# Dependabot — bewusst NUR github-actions.
+#
+# Warum kein `pip`-Eintrag: `requirements.txt` ist per Audit M17 exakt gepinnt,
+# und jede Version muss Python 3.10 tragen (CI- und Release-Python, s. CLAUDE.md
+# „Abhaengigkeiten & Pinning"). Version-Updates gehen per Definition auf
+# „latest" — genau der Bump, den die Regel verbietet. Ein Dependabot-PR, der
+# eine Dep auf eine 3.11-only-Version hebt, braeche den Release-Build still;
+# das ist dieselbe Fehlerklasse, vor der schon der jaraco-Kommentar in
+# `requirements.txt` warnt. Dep-Bumps bleiben deshalb Handarbeit mit
+# 3.10-Gegencheck.
+#
+# Actions dagegen haben keinen Python-Bezug, laufen aber mit dem Repo-Token —
+# also die hoechste Supply-Chain-Flaeche im Repo. Die will man aktuell haben.
+#
+# Sicherheits-Updates fuer pip laufen separat ueber die Repo-Einstellung
+# (Dependabot security updates) und sind bewusst an: bei einer echten CVE
+# schlaegt Sicherheit die Pin-Stabilitaet. Solche PRs brauchen den
+# 3.10-Gegencheck von Hand — `.python-version` gibt Dependabot dafuer die
+# richtige Zielversion vor.
+
+version: 2
+
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    # Alle Actions in einen PR buendeln statt vier einzelne — dieselbe
+    # Motivation wie „Grouped security updates" in den Repo-Einstellungen.
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+    commit-message:
+      prefix: "chore"
