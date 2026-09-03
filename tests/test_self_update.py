@@ -2,7 +2,13 @@
 
 import hashlib
 
-from src.self_update import parse_sha256sums, verify_file
+import pytest
+
+from src.self_update import (
+    UpdateBlocked, UpdatePlan, parse_sha256sums, plan_update,
+    supports_self_update, verify_file,
+)
+from src.updater import Asset, Release
 
 # So sieht die Datei im Release wirklich aus (coreutils `sha256sum`,
 # zwei Leerzeichen zwischen Digest und Name).
@@ -63,3 +69,76 @@ def test_verify_file_is_case_insensitive_about_the_digest(tmp_path):
 
 def test_verify_file_on_missing_file_is_false(tmp_path):
     assert not verify_file(str(tmp_path / "gibtsnicht.bin"), "00" * 32)
+
+
+def _release(version="1.23.0", with_sums=True):
+    assets = [
+        Asset(name="Zeiterfassung_Setup.exe", url="https://x/exe"),
+        Asset(name=f"Zeiterfassung-{version}-x86_64.AppImage", url="https://x/img"),
+        Asset(name=f"Zeiterfassung-{version}-arm64.dmg", url="https://x/dmg"),
+    ]
+    if with_sums:
+        assets.append(Asset(name="SHA256SUMS", url="https://x/sums"))
+    return Release(version=version, html_url="https://x/rel", assets=tuple(assets))
+
+
+@pytest.mark.parametrize("system,frozen,expected", [
+    ("Windows", True, True),
+    ("Linux", True, True),
+    ("Darwin", True, False),     # bewusst nicht unterstuetzt
+    ("Windows", False, False),   # Repo-Modus: nichts zu ersetzen
+    ("Linux", False, False),
+    ("FreeBSD", True, False),
+])
+def test_supports_self_update(system, frozen, expected):
+    assert supports_self_update(system, frozen) is expected
+
+
+def test_plan_update_on_windows_yields_setup_and_sums():
+    plan = plan_update(_release(), "Windows", "AMD64", True, "",
+                       r"C:\Apps\Zeiterfassung\Zeiterfassung.exe")
+    assert isinstance(plan, UpdatePlan)
+    assert plan.asset_name == "Zeiterfassung_Setup.exe"
+    assert plan.asset_url == "https://x/exe"
+    assert plan.sums_url == "https://x/sums"
+    assert plan.target == r"C:\Apps\Zeiterfassung\Zeiterfassung.exe"
+
+
+def test_plan_update_on_linux_targets_the_appimage():
+    plan = plan_update(_release(), "Linux", "x86_64", True,
+                       "/home/u/Apps/Zeiterfassung.AppImage", "/tmp/whatever")
+    assert isinstance(plan, UpdatePlan)
+    assert plan.asset_name == "Zeiterfassung-1.23.0-x86_64.AppImage"
+    assert plan.target == "/home/u/Apps/Zeiterfassung.AppImage"
+
+
+def test_plan_update_blocks_on_macos():
+    blocked = plan_update(_release(), "Darwin", "arm64", True, "", "/A/Z.app")
+    assert isinstance(blocked, UpdateBlocked)
+    assert "macOS" in blocked.reason
+
+
+def test_plan_update_blocks_in_repo_mode():
+    blocked = plan_update(_release(), "Windows", "AMD64", False, "", "python.exe")
+    assert isinstance(blocked, UpdateBlocked)
+
+
+def test_plan_update_blocks_when_architecture_does_not_match():
+    blocked = plan_update(_release(), "Linux", "aarch64", True,
+                          "/home/u/Z.AppImage", "/tmp/x")
+    assert isinstance(blocked, UpdateBlocked)
+    assert "Architektur" in blocked.reason
+
+
+def test_plan_update_blocks_without_a_sums_asset():
+    blocked = plan_update(_release(with_sums=False), "Windows", "AMD64", True,
+                          "", r"C:\Apps\Z.exe")
+    assert isinstance(blocked, UpdateBlocked)
+    assert "Prüfsumme" in blocked.reason
+
+
+def test_plan_update_blocks_on_linux_without_appimage_env():
+    # Die nackte PyInstaller-Ausgabe hat $APPIMAGE nicht.
+    blocked = plan_update(_release(), "Linux", "x86_64", True, "", "/tmp/x")
+    assert isinstance(blocked, UpdateBlocked)
+    assert "AppImage" in blocked.reason
