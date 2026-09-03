@@ -20,6 +20,7 @@ import hashlib
 import http.client
 import logging
 import os
+import posixpath
 from dataclasses import dataclass
 from typing import Any, Callable
 from urllib.error import URLError
@@ -211,6 +212,83 @@ def download_to(url: str, dest: str,
         except OSError:
             pass  # nichts angelegt oder schon weg — beides in Ordnung
         return False
+
+
+_BACKUP_SUFFIX = ".old"
+
+
+def linux_apply_paths(appimage: str) -> tuple[str, str]:
+    """(Temp-Pfad für den Download, Backup-Pfad der laufenden Datei).
+
+    Beide liegen NEBEN der AppImage, nicht in /tmp: `os.replace` ist nur
+    innerhalb desselben Dateisystems atomar, und /tmp ist auf vielen Systemen
+    ein eigenes (tmpfs).
+
+    Bewusst `posixpath` statt `os.path`: `$APPIMAGE` ist immer ein
+    POSIX-Pfad (die Funktion läuft nur auf echtem Linux, s. `apply_linux`),
+    und die Unit-Tests laufen auch auf der Windows-Entwicklungsmaschine —
+    dort würde `os.path.join` mit `\\` verketten und einen Pfad liefern, der
+    mit keinem realen Linux-Pfad mehr übereinstimmt.
+    """
+    directory = posixpath.dirname(appimage) or "."
+    name = posixpath.basename(appimage)
+    return (posixpath.join(directory, f".{name}.update-{os.getpid()}"),
+            appimage + _BACKUP_SUFFIX)
+
+
+def apply_linux(appimage: str, downloaded: str) -> str | None:
+    """Ersetzt die laufende AppImage durch die geladene Datei.
+
+    None bei Erfolg, sonst ein anzeigbarer Fehlertext.
+
+    Die laufende AppImage im Betrieb zu ersetzen ist der VORGESEHENE Weg —
+    genau so arbeitet AppImageUpdate. Der Inode der gemounteten Datei bleibt
+    bis zum Prozessende gültig, der laufende Prozess merkt nichts.
+
+    Die alte Datei bleibt als `<name>.old` liegen: sie ist der Rollback, falls
+    die neue Version gar nicht startet. Aufgeräumt wird sie beim nächsten
+    erfolgreichen Start (`sweep_appimage_backup`, gerufen aus `main.py`) —
+    dieselbe Idee wie AppImages `.zs-old`.
+    """
+    import stat
+
+    _tmp, backup = linux_apply_paths(appimage)
+    try:
+        mode = os.stat(downloaded).st_mode
+        os.chmod(downloaded, mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+    except OSError as exc:
+        return f"Die geladene Datei ließ sich nicht ausführbar machen: {exc}"
+
+    try:
+        os.replace(appimage, backup)
+    except OSError as exc:
+        return f"Die alte AppImage ließ sich nicht sichern: {exc}"
+
+    try:
+        os.replace(downloaded, appimage)
+    except OSError as exc:
+        try:
+            os.replace(backup, appimage)
+        except OSError:
+            log.exception("Rollback der AppImage fehlgeschlagen")
+        return f"Die neue AppImage ließ sich nicht einsetzen: {exc}"
+    return None
+
+
+def sweep_appimage_backup(appimage: str) -> bool:
+    """Räumt ein `<name>.old` neben der laufenden AppImage weg. True, wenn
+    etwas entfernt wurde.
+
+    Läuft beim Start: dass dieser Prozess überhaupt so weit gekommen ist, IST
+    der Beweis, dass die neue Datei startet — der Rollback wird nicht mehr
+    gebraucht.
+    """
+    backup = appimage + _BACKUP_SUFFIX
+    try:
+        os.remove(backup)
+        return True
+    except OSError:
+        return False  # kein Backup da (Normalfall) oder nicht entfernbar — beides kein Fehler
 
 
 def windows_helper_script(pid: int, setup_path: str, exe_path: str,

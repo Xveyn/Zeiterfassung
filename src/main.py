@@ -153,9 +153,14 @@ def _apply_ui_scaling(root, factor):
 def _refresh_linux_integration(base):
     """Linux-Desktop-Integration beim Start nachziehen (best-effort).
 
-    Zwei Selbstheilungen mit derselben Ursache: der Updater ersetzt die
-    AppImage nicht selbst, und ihr Dateiname trägt die Version. Beide Ziele
-    zeigen sonst nach einem Update auf die alte Datei.
+    Zwei Selbstheilungen mit derselben Ursache: wer die AppImage von Hand
+    herunterlädt, bekommt eine Datei mit der Version im Namen — Menüeintrag
+    und Autostart zeigten sonst auf die alte. (Das In-App-Update ersetzt
+    dagegen `$APPIMAGE` an Ort und Stelle, dort ändert sich der Pfad nicht.)
+
+    Dazu wird ein `<name>.old` weggeräumt, das das In-App-Update als Rollback
+    hinterlassen hat: dass dieser Prozess läuft, IST der Beweis, dass die neue
+    Datei startet.
 
     Fehler sind hier NIE fatal — ein nicht geschriebener Menüeintrag ist der
     Status quo, ein verhinderter Start wäre eine Regression (Muster wie beim
@@ -172,6 +177,12 @@ def _refresh_linux_integration(base):
     appimage = os.environ.get("APPIMAGE")
     if not appimage:
         return
+
+    from src.self_update import sweep_appimage_backup
+    if sweep_appimage_backup(appimage):
+        logging.getLogger(__name__).info(
+            "Rollback-Datei des letzten Updates entfernt")
+
     try:
         write_menu_entry(appimage, ensure_icon(get_resource_path(), base))
     except Exception:

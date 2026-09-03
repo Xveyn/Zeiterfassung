@@ -410,3 +410,85 @@ def test_apply_windows_encoding_error_returns_false(tmp_path):
     # Falsch würde sein: Exception, crash, True (silent fail), oder Datei mit Datenverlust
     # Richtig: False, weil UnicodeEncodeError gefangen und geloggt
     assert result is False, "apply_windows sollte False liefern bei Kodierfehler"
+
+
+def test_linux_apply_paths_are_siblings_of_the_appimage():
+    from src.self_update import linux_apply_paths
+    tmp, backup = linux_apply_paths("/home/u/Apps/Zeiterfassung.AppImage")
+    assert tmp.startswith("/home/u/Apps/")
+    assert backup == "/home/u/Apps/Zeiterfassung.AppImage.old"
+    assert tmp != backup
+
+
+def test_apply_linux_replaces_the_file_and_keeps_a_backup(tmp_path):
+    from src.self_update import apply_linux
+    target = tmp_path / "Zeiterfassung.AppImage"
+    target.write_bytes(b"alt")
+    neu = tmp_path / "geladen.tmp"
+    neu.write_bytes(b"neu")
+
+    assert apply_linux(str(target), str(neu)) is None
+    assert target.read_bytes() == b"neu"
+    assert (tmp_path / "Zeiterfassung.AppImage.old").read_bytes() == b"alt"
+
+
+def test_apply_linux_makes_the_new_file_executable(tmp_path):
+    import os as _os
+    import stat
+    from src.self_update import apply_linux
+    target = tmp_path / "Z.AppImage"
+    target.write_bytes(b"alt")
+    neu = tmp_path / "n.tmp"
+    neu.write_bytes(b"neu")
+    apply_linux(str(target), str(neu))
+    if sys.platform == "win32":
+        pytest.skip("Ausfuehrbarkeits-Bit (S_IXUSR) ist unter Windows kein aussagekraeftiges Konzept")
+    assert _os.stat(str(target)).st_mode & stat.S_IXUSR
+
+
+def test_apply_linux_restores_the_backup_when_replacing_fails(tmp_path):
+    import os as _os
+    from unittest.mock import patch
+    from src.self_update import apply_linux
+    target = tmp_path / "Z.AppImage"
+    target.write_bytes(b"alt")
+    neu = tmp_path / "n.tmp"
+    neu.write_bytes(b"neu")
+
+    # NUR der zweite os.replace scheitert. `os.replace` global zu werfen waere
+    # zweierlei falsch: schon die Sicherung schluege fehl (die Funktion kaeme
+    # nie zum Rollback), und weil die Dateien sich unter einem Mock gar nicht
+    # bewegen, wuerde die Schluss-Assertion ohnehin nur die Ausgangslage
+    # bestaetigen. Deshalb echte Aufrufe, mit einer gezielten Ausnahme.
+    real_replace = _os.replace
+    calls = []
+
+    def flaky(src, dst):
+        calls.append((src, dst))
+        if len(calls) == 2:          # das Einsetzen der neuen Datei
+            raise OSError("kein Platz")
+        return real_replace(src, dst)
+
+    with patch("src.self_update.os.replace", side_effect=flaky):
+        error = apply_linux(str(target), str(neu))
+
+    assert error is not None
+    assert len(calls) == 3, "sichern, einsetzen (faellt), zurueckrollen"
+    assert target.read_bytes() == b"alt", "die alte Datei muss zurueck sein"
+    assert not (tmp_path / "Z.AppImage.old").exists()
+
+
+def test_sweep_appimage_backup_removes_a_leftover(tmp_path):
+    from src.self_update import sweep_appimage_backup
+    target = tmp_path / "Z.AppImage"
+    target.write_bytes(b"neu")
+    (tmp_path / "Z.AppImage.old").write_bytes(b"alt")
+    assert sweep_appimage_backup(str(target)) is True
+    assert not (tmp_path / "Z.AppImage.old").exists()
+
+
+def test_sweep_appimage_backup_without_a_leftover_is_false(tmp_path):
+    from src.self_update import sweep_appimage_backup
+    target = tmp_path / "Z.AppImage"
+    target.write_bytes(b"neu")
+    assert sweep_appimage_backup(str(target)) is False
