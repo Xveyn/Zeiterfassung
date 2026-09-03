@@ -36,6 +36,11 @@ SUMS_ASSET_NAME: str = "SHA256SUMS"
 _HEX = set("0123456789abcdef")
 _CHUNK_BYTES = 1024 * 1024
 
+# Wie lange der Helfer auf das Ende der App wartet, bevor er aufgibt.
+# 60 x 1 s: grosszuegig genug fuer einen langsamen Sync-Push beim Beenden,
+# kurz genug, dass ein haengender Prozess den Nutzer nicht ewig blockiert.
+_WAIT_TRIES = 60
+
 
 def parse_sha256sums(text: str) -> dict[str, str]:
     """`SHA256SUMS`-Text → {Dateiname: Hex-Digest}.
@@ -205,4 +210,75 @@ def download_to(url: str, dest: str,
             os.remove(dest)
         except OSError:
             pass  # nichts angelegt oder schon weg — beides in Ordnung
+        return False
+
+
+def windows_helper_script(pid: int, setup_path: str, exe_path: str,
+                          log_path: str) -> str:
+    """Das Batch-Skript, das die App nach dem Beenden aktualisiert.
+
+    Drei Schritte, und die Reihenfolge ist der ganze Punkt:
+      1. warten, bis die App-PID verschwunden ist (sonst blockt `AppMutex`
+         den Installer)
+      2. `Setup.exe /SILENT /NORESTART` — bewusst OHNE `/VERYSILENT` (das
+         Fortschrittsfenster ist das einzige Signal, dass etwas passiert) und
+         OHNE `/SUPPRESSMSGBOXES` (macht „Abort" zur Standardantwort und
+         verschluckte echte Fehler)
+      3. die App wieder starten — der `[Run]`-Eintrag in `installer.iss`
+         trägt `skipifsilent` und feuert im stillen Lauf nicht
+
+    Der Exit-Code des Installers landet im Log neben der App: scheitert der
+    Lauf, ist das die einzige Spur. Gestartet wird die App danach in JEDEM
+    Fall — auch nach einem Fehlschlag ist eine laufende alte Version besser
+    als gar keine.
+
+    Alle Pfade sind gequotet: `D:\\Programme (x86)\\…` ist hier der Normalfall.
+    """
+    return "\n".join([
+        "@echo off",
+        "setlocal",
+        f"set TRIES={_WAIT_TRIES}",
+        ":wait",
+        f'tasklist /FI "PID eq {pid}" 2>nul | find "{pid}" >nul',
+        "if errorlevel 1 goto install",
+        "set /a TRIES-=1",
+        "if %TRIES% LEQ 0 goto install",
+        "timeout /t 1 /nobreak >nul",
+        "goto wait",
+        ":install",
+        f'"{setup_path}" /SILENT /NORESTART',
+        f'echo Installer beendet mit %ERRORLEVEL% > "{log_path}"',
+        f'start "" "{exe_path}"',
+        f'del "{setup_path}" >nul 2>&1',
+        "",
+    ])
+
+
+def apply_windows(exe_path: str, setup_path: str, pid: int) -> bool:
+    """Schreibt den Helfer nach %TEMP% und startet ihn abgekoppelt.
+
+    Der Aufrufer beendet die App unmittelbar danach — der Helfer wartet auf
+    genau dieses Ende. `DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP`
+    entkoppelt ihn, damit er das Ende der App überlebt; `CREATE_NO_WINDOW`
+    hält das Konsolenfenster unsichtbar.
+    """
+    import subprocess
+    import tempfile
+
+    log_path = os.path.join(os.path.dirname(exe_path), "update.log")
+    handle = tempfile.NamedTemporaryFile(
+        "w", suffix=".cmd", delete=False, encoding="ascii", errors="replace")
+    try:
+        with handle:
+            handle.write(windows_helper_script(
+                pid, setup_path, exe_path, log_path))
+        subprocess.Popen(
+            ["cmd", "/c", handle.name],
+            creationflags=(0x00000008 |   # DETACHED_PROCESS
+                           0x00000200 |   # CREATE_NEW_PROCESS_GROUP
+                           0x08000000),   # CREATE_NO_WINDOW
+            close_fds=True)
+        return True
+    except OSError as exc:
+        log.warning("Update-Helfer konnte nicht gestartet werden: %s", exc)
         return False

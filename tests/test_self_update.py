@@ -269,3 +269,44 @@ def test_download_to_removes_file_on_http_exception_during_download(tmp_path):
         assert download_to("https://x/f", str(dest)) is False
 
     assert not dest.exists(), "halbe Datei muss aufgeräumt sein"
+
+
+# === Tests für Windows Update-Helfer (Task 5) ===
+
+
+def test_windows_helper_script_quotes_every_path():
+    from src.self_update import windows_helper_script
+    script = windows_helper_script(
+        4711,
+        r"C:\Temp\Zeiterfassung_Setup.exe",
+        r"D:\Programme (x86)\Zeiterfassung\Zeiterfassung.exe",
+        r"C:\Temp\update.log")
+    # Pfade mit Leerzeichen und Klammern sind hier der NORMALFALL.
+    assert '"D:\\Programme (x86)\\Zeiterfassung\\Zeiterfassung.exe"' in script
+    assert '"C:\\Temp\\Zeiterfassung_Setup.exe"' in script
+    assert "4711" in script
+
+
+def test_windows_helper_script_waits_then_installs_then_starts():
+    from src.self_update import windows_helper_script
+    script = windows_helper_script(1, "s.exe", "z.exe", "l.log")
+    wait_at = script.index("tasklist")
+    install_at = script.index("/SILENT")
+    start_at = script.rindex("start ")
+    assert wait_at < install_at < start_at, "Reihenfolge ist der ganze Punkt"
+
+
+def test_windows_helper_script_uses_neither_verysilent_nor_suppressmsgboxes():
+    from src.self_update import windows_helper_script
+    script = windows_helper_script(1, "s.exe", "z.exe", "l.log")
+    assert "/SILENT" in script
+    assert "/VERYSILENT" not in script       # Fortschritt soll sichtbar sein
+    assert "/SUPPRESSMSGBOXES" not in script  # echte Fehler sollen auffallen
+    assert "/SMS" not in script               # nicht mehr dokumentiert
+
+
+def test_windows_helper_script_has_a_wait_timeout():
+    from src.self_update import windows_helper_script
+    script = windows_helper_script(1, "s.exe", "z.exe", "l.log")
+    # Ohne Obergrenze liefe der Helfer ewig, falls die PID nie verschwindet.
+    assert "TRIES" in script
