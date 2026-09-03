@@ -323,6 +323,43 @@ Für Fehlerdialoge gilt eine bewusste Aufteilung:
 Neue Fehlerpfade dieser Konvention folgen: kuratierte Meldung → themed;
 Traceback-/Catch-all-Ausgabe → nativ.
 
+### Ein Catch-all loggt, meldet oder trägt eine Begründung (Xveyn#73)
+
+`src/` hält rund 90 Handler auf `except Exception` / `except BaseException`.
+Die **Dichte ist unkritisch und gewollt**: sie sitzen im Bootstrap, an
+Threading-Rändern und an Best-Effort-Plattformaufrufen — genau dort, wo ein
+Catch-all hingehört. Eine Bestandsaufnahme über alle Handler ergab, dass 96 %
+eine Spur hinterlassen oder den Fehler als Wert weiterreichen. Wer die Zahl
+beim nächsten Review wiedersieht: sie ist gemessen, nicht übersehen.
+
+Was auffallen muss, ist nicht die Zahl, sondern ein Handler, der **schweigt,
+ohne zu sagen warum** — `--noconsole` unterdrückt stderr, ein stummes `pass`
+ist damit endgültig. Also:
+
+- **Jeder Catch-all loggt, meldet oder trägt eine Begründung im Handler
+  selbst.** Eine Erklärung zwölf Zeilen weiter oben im Docstring zählt nicht:
+  der Leser steht an der Fundstelle.
+- **Nicht das `except` verengen, sondern das `try`.** Die Breite, auf die es
+  ankommt, ist die des `try`-Blocks. Ein Catch-all um drei Zeilen ist eine
+  präzise Aussage („dieser eine Aufruf darf scheitern"); einer um 40 Zeilen
+  gemischte Logik ist eine Wette darauf, dass niemand später eine fünfte
+  Zeile hineinschiebt.
+- **`except BaseException` nur zum Aufräumen-und-Weiterwerfen** (die
+  `os.replace`-Pfade in `oauth_utils`/`smtp_store`/`webhook_store`/
+  `sync_journal`) oder zur Weitergabe über eine Thread-Grenze
+  (`keyring_store`). Sonst schluckte es auch Strg+C.
+- **Best-Effort heißt nicht spurlos.** Schlägt Win32-Fensterchrome fehl, sieht
+  der Dialog nur nativ aus — das rechtfertigt kein `pass`, sondern ein
+  `log.debug(..., exc_info=True)`. Beide Aufrufer prüfen vorher
+  `platform.system() != "Windows"`, ein Fehler dort ist also ein echter
+  Windows-Fehler und keine Plattform-Unverträglichkeit.
+
+Durchgesetzt wird das von **`tests/test_catch_all_handlers.py`**, nicht vom
+Linter: `ruff`s `BLE001` meckerte jeden Catch-all an, also auch die ~90
+korrekten — reines Rauschen mit anschließender `noqa`-Flut. Der Test prüft
+stattdessen genau die vier Punkte oben. Muster wie
+`tests/test_type_annotations.py`.
+
 ## UTF-8 im Mail-Pipeline
 
 Damit Umlaute/ß nicht als Mojibake ankommen, gelten drei Pflichten:
