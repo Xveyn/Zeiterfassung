@@ -4,7 +4,9 @@ import platform
 import tkinter as tk
 import webbrowser
 
-from src.changelog import fetch_changelog_entry, parse_changelog_markdown
+from src.changelog import (
+    fetch_changelog_entry, parse_changelog_markdown, release_notes_for_display,
+)
 from src.dialogs.settings_dialog._shared import label
 from src.theme import (
     BG, CELL_BG, FONT, FONT_BOLD, FONT_SMALL, TEXT, TEXT_MUTED,
@@ -16,6 +18,13 @@ from src.updater import (
     resolve_check_result,
 )
 from src.version import installed_release_id
+
+
+# Beschriftung der Changelog-Box. Ein Pre-Release hat bewusst KEINEN
+# kuratierten Changelog-Eintrag — dort stehen die generierten Release-Notes,
+# und die Box sagt das auch, statt "Changelog" zu behaupten.
+_LABEL_CHANGELOG = "Changelog:"
+_LABEL_PRERELEASE = "Enthaltene Änderungen:"
 
 
 class UpdatesTab:
@@ -90,7 +99,7 @@ class UpdatesTab:
         # eines Checks (Text leer/gecleart ist ok, ungegridded lässt die
         # ansonsten fixe Dialogbreite kurz einbrechen.
         self._changelog_label = tk.Label(
-            frame, text="Changelog:", font=FONT, bg=BG, fg=TEXT,
+            frame, text=_LABEL_CHANGELOG, font=FONT, bg=BG, fg=TEXT,
         )
         self._changelog_label.grid(row=6, column=0, padx=10, pady=(12, 4), sticky="nw")
         self._changelog_text = dark_text(frame, 58, 12)
@@ -141,6 +150,9 @@ class UpdatesTab:
         set_button_text(self._check_btn, "Prüfe…")
         self._status_label.config(text="Prüfe…")
         self._download_btn.pack_forget()
+        # Zuruecksetzen, sonst bliebe die Pre-Release-Beschriftung stehen,
+        # wenn jemand das Haekchen abwaehlt und erneut prueft.
+        self._changelog_label.config(text=_LABEL_CHANGELOG)
         self._set_changelog("")
 
         # Tk-Variable im UI-Thread lesen und als Wert in die Closure geben —
@@ -164,11 +176,16 @@ class UpdatesTab:
                 self._settings.set_many(result["persist"])
             if result["changelog_notes"] is not None:
                 # Pre-Release: die Notes liegen dem Payload bereits bei,
-                # kein zweiter Netzwerk-Call nötig.
+                # kein zweiter Netzwerk-Call nötig. Es ist aber der
+                # GENERIERTE Body, kein kuratierter Changelog-Eintrag —
+                # `release_notes_for_display` laesst die reinen PR-Titel
+                # stehen (Links und Autorenangaben nuetzen in einem
+                # Text-Widget ohne Klick-Ziele nichts), und das Label
+                # behauptet kein "Changelog".
                 self._finish_checking()
+                self._changelog_label.config(text=_LABEL_PRERELEASE)
                 self._set_changelog(
-                    result["changelog_notes"] or "Changelog konnte nicht geladen werden.",
-                )
+                    release_notes_for_display(result["changelog_notes"]))
                 return
             if result["changelog_version"] is None:
                 self._finish_checking()

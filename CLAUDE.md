@@ -103,6 +103,13 @@ Actions → Workflow **Release** → „Run workflow" mit gesetztem Häkchen
 - **Kein Versionsbump, kein CHANGELOG, kein Label** nötig. Die Release-Notes werden
   wie beim echten Release automatisch aus den PRs generiert (`--generate-notes`),
   kumulativ seit dem letzten **echten** Release.
+- **Anzeige im Updates-Tab:** Weil es keinen kuratierten CHANGELOG-Eintrag gibt,
+  zeigt der Tab für ein Pre-Release den generierten Notes-Body — aber
+  aufbereitet durch `changelog.release_notes_for_display` (nur die PR-Titel,
+  ohne Links, Autorenangaben und „Full Changelog"-Zeile) und unter dem Label
+  „Enthaltene Änderungen:" statt „Changelog:". Den CHANGELOG.md-Abschnitt vom
+  Pre-Tag zu laden wäre falsch: dort steht die zuletzt veröffentlichte Version,
+  also genau das, was der Nutzer schon hat (`updater.resolve_check_result`).
 
 Manuelles „Run workflow" **ohne** das prerelease-Häkchen baut wie bisher ein echtes
 Voll-Release (Tag `vX.Y.Z`).

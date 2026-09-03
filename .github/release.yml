@@ -18,8 +18,17 @@
 #   <!-- Release notes generated using configuration in .github/release.yml at <tag> -->
 # Das lässt sich nicht abschalten. Für Pre-Releases IST dieser Body die
 # Changelog-Quelle der App (`updater.resolve_check_result`), der Kommentar stand
-# dadurch roh im Updates-Tab; `changelog.parse_changelog_markdown` filtert
-# HTML-Kommentare deshalb heraus. Wer den Anzeigepfad umbaut, muss das mitziehen.
+# dadurch roh im Updates-Tab.
+#
+# Der Anzeigepfad bereitet den Body deshalb auf: `changelog.release_notes_for_
+# display` wirft Generator-Kommentar, „## What's Changed"-Überschrift, die
+# „by @user in <url>"-Suffixe und die „Full Changelog"-Zeile weg, übrig bleiben
+# die reinen PR-Titel (der Updates-Tab ist ein Text-Widget ohne Klick-Ziele, eine
+# URL bricht dort nur um). `parse_changelog_markdown` filtert HTML-Kommentare
+# zusätzlich, weil es auch den kuratierten CHANGELOG.md-Abschnitt sieht.
+# Wer die Notes-Struktur ändert — etwa Kategorien in `changelog:` konfiguriert —
+# muss die Aufbereitung mitziehen; die Tests dazu stehen in
+# tests/test_changelog.py mit dem echten Body von v1.22.0-pre.1 als Fixture.
 changelog:
   exclude:
     labels:
