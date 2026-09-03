@@ -14,7 +14,7 @@ from src.changelog import (
 from src.dialogs.settings_dialog._shared import label
 from src.self_update import (
     UpdateBlocked, apply_linux, apply_windows, download_and_verify_update,
-    linux_apply_paths, plan_update, supports_self_update,
+    linux_apply_paths, plan_update, supports_self_update, verify_file,
 )
 from src.theme import (
     BG, CELL_BG, FONT, FONT_BOLD, FONT_SMALL, TEXT, TEXT_MUTED,
@@ -378,7 +378,7 @@ class UpdatesTab:
                     text="Update bereit — wird beim Beenden installiert")
                 return
             self._status_label.config(text="Installiere …")
-            self._apply(plan, result.path)
+            self._apply(plan, result.path, result.sha256)
 
         self._runner.run(work, done)
 
@@ -398,8 +398,36 @@ class UpdatesTab:
         self._status_label.config(text="Update fehlgeschlagen")
         themed_showerror(self.frame, "Update fehlgeschlagen", message)
 
-    def _apply(self, plan, local):
-        """Anwenden und die App beenden bzw. neu starten."""
+    def _apply(self, plan, local, expected_sha256):
+        """Anwenden und die App beenden bzw. neu starten.
+
+        Erneut geprueft wird hier bewusst, UNMITTELBAR bevor installiert
+        wird — dieselbe Pruefung wie in `ui.App._apply_pending_update`, aus
+        demselben Grund: zwischen dem Download-Ende und diesem Aufruf koennen
+        (wenn auch nur kurz) andere Vorgaenge auf denselben Pfad zugreifen.
+        Besonders wichtig unter Windows: `apply_windows` startet den Helfer
+        NUR ab und beendet diesen Prozess sofort danach — installiert wird
+        asynchron, NACHDEM die App schon weg ist. Laeuft zu diesem Zeitpunkt
+        noch ein stiller Automatik-Download auf denselben Zielpfad (Windows:
+        fester Dateiname im Temp; Linux: derselbe PID-Name, weil es derselbe
+        Prozess ist), wird dessen Thread beim Prozessende abrupt gekillt —
+        zurueck bliebe womoeglich eine halb geschriebene Datei, die der
+        Installer sonst UNGEPRUEFT ausfuehren wuerde. Das widerspraeche M9
+        ("installiert wird nur, was geprueft ist"). Ohne diese zweite Pruefung
+        waere die Kombination aus Sofort-Installieren und stillem Automatik-
+        Download also die einzige Stelle im Ablauf, an der eine ungeprüfte
+        Datei durchrutschen könnte.
+        """
+        if not os.path.exists(local) or not verify_file(local, expected_sha256):
+            try:
+                os.remove(local)
+            except OSError:
+                pass  # nichts (mehr) da oder nicht entfernbar — beides in Ordnung
+            self._fail_update(
+                "Die geladene Datei ist nicht mehr vorhanden oder wurde "
+                "zwischenzeitlich veraendert. Bitte erneut versuchen.")
+            return
+
         # Ein vom Automatik-Lauf vorbereitetes Update wird HIER sofort
         # angewendet (Sofort-Ablauf gewinnt gegen "beim Beenden") — ohne
         # Aufraeumen wuerde ui.App._apply_pending_update beim naechsten
