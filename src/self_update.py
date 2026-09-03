@@ -254,6 +254,20 @@ def windows_helper_script(pid: int, setup_path: str, exe_path: str,
     ])
 
 
+def _delete_leftover_script(path: str) -> None:
+    """Räumt eine angelegte, aber nie ausgeführte Helfer-Datei weg.
+
+    Bestes Bemühen (wie das Aufräumen einer halben `Setup.exe` in
+    `download_to`): schlägt der Fehlerfall schon fehl, soll ein zweiter,
+    kleinerer Fehler beim Aufräumen nicht die eigentliche Fehlermeldung
+    verschlucken.
+    """
+    try:
+        os.remove(path)
+    except OSError:
+        pass  # nichts angelegt oder schon weg — beides in Ordnung
+
+
 def apply_windows(exe_path: str, setup_path: str, pid: int) -> bool:
     """Schreibt den Helfer nach %TEMP% und startet ihn abgekoppelt.
 
@@ -304,7 +318,9 @@ def apply_windows(exe_path: str, setup_path: str, pid: int) -> bool:
         return True
     except OSError as exc:
         log.warning("Update-Helfer konnte nicht gestartet werden: %s", exc)
+        _delete_leftover_script(handle.name)
         return False
     except UnicodeEncodeError as exc:
         log.warning("Update-Helfer: Zeichen in Pfaden lassen sich nicht kodieren: %s", exc)
+        _delete_leftover_script(handle.name)
         return False

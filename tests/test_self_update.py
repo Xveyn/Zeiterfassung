@@ -1,12 +1,15 @@
 """Reine Logik des In-App-Updates (Tk-frei, ohne Netzwerk)."""
 
 import hashlib
+import os
+import sys
+import tempfile
 from unittest.mock import patch
 
 import pytest
 
 from src.self_update import (
-    UpdateBlocked, UpdatePlan, parse_sha256sums, plan_update,
+    UpdateBlocked, UpdatePlan, apply_windows, parse_sha256sums, plan_update,
     supports_self_update, verify_file,
 )
 from src.updater import Asset, Release
@@ -313,54 +316,77 @@ def test_windows_helper_script_has_a_wait_timeout():
 
 
 def test_apply_windows_preserves_umlauts_on_disk(tmp_path):
-    """Der echte Schreibvorgang muss Umlaute in Pfaden erhalten.
+    """`apply_windows` selbst muss einen Umlaut im Pfad unbeschadet auf die
+    Platte bringen — nicht nur eine Kopie seiner Encoding-Logik.
 
-    Mit encoding="ascii", errors="replace" würde dieser Test ROT sein:
-    Müller → M?ller, dann assertion failure. Mit OEM/UTF-8 + errors="strict"
-    ist er GRÜN.
+    Ruft die echte Produktionsfunktion auf; nur das tatsächliche Starten des
+    Helfer-Prozesses wird unterbunden (`subprocess.Popen` gepatcht), damit der
+    Test nicht wirklich `cmd.exe` lostreten muss. Die geschriebene Datei wird
+    danach genau so zurückgelesen, wie `cmd.exe` sie lesen würde: über die
+    OEM-Codepage.
 
-    Rot-Nachweis (lokal testierbar):
-        encoding="ascii", errors="replace"
-        Datei mit Müller schreiben → Müller wird zu M?ller
-        Zurücklesen zeigt M?ller → Test schlägt fehl ✗
+    Rot-Nachweis (Task-Vorgabe, manuell durchgeführt — s. Report): mit dem
+    alten `encoding="ascii", errors="replace"` wird "Müller" beim Schreiben
+    lautlos zu "M?ller", und die zweite Assertion unten schlägt fehl.
     """
-    import sys
-
-    # Windows: OEM-Codec testen. Linux: skipzen (CI hat keinen OEM-Codec).
     if sys.platform != "win32":
-        pytest.skip("OEM-Codec nur auf Windows verfügbar")
+        pytest.skip("cmd.exe/OEM-Codec nur unter Windows verfügbar")
 
-    # Umlaut-Pfade
-    script_path = str(tmp_path / "Müller_Test.cmd")
+    exe_path = str(tmp_path / "Müller" / "Zeiterfassung.exe")
+    setup_path = str(tmp_path / "Zeiterfassung_Setup.exe")
 
-    # Denselben Encoding-Fallback wie apply_windows
-    encoding = "utf-8"
+    with patch("subprocess.Popen") as mock_popen:
+        result = apply_windows(exe_path, setup_path, 4711)
+
+    assert result is True
+    script_path = mock_popen.call_args[0][0][2]
     try:
-        "test".encode("oem")
-        encoding = "oem"
-    except LookupError:
-        pass
-
-    # Datei schreiben wie apply_windows es tut (mit errors="strict")
-    script_content = 'echo "Müller_Setup.exe" > test.log'
-    try:
-        with open(script_path, "w", encoding=encoding, errors="strict") as f:
-            f.write(script_content)
-
-        # Zurücklesen und prüfen: Umlaut muss bitgenau erhalten sein
-        with open(script_path, "r", encoding=encoding) as f:
-            written = f.read()
-
-        assert "Müller_Setup" in written, \
-            f"Umlaut verloren! Inhalt: {repr(written)}"
-        assert "M?ller" not in written, \
-            f"Umlaut zu ? ersetzt (würde mit ascii+replace passieren)! Inhalt: {repr(written)}"
+        with open(script_path, "r", encoding="oem") as handle:
+            written = handle.read()
+        assert "Müller" in written, f"Umlaut verloren! Inhalt: {written!r}"
+        assert "M?ller" not in written, (
+            f"Umlaut zu ? ersetzt (passiert mit ascii+replace)! Inhalt: {written!r}")
     finally:
-        try:
-            import os
-            os.remove(script_path)
-        except OSError:
-            pass
+        os.remove(script_path)
+
+
+def test_apply_windows_deletes_leftover_script_on_popen_failure(tmp_path, monkeypatch):
+    """Scheitert das Starten des Helfers, darf keine halbe `.cmd`-Datei in
+    %TEMP% liegen bleiben (dieselbe Aufräum-Regel wie bei `download_to`).
+
+    `tempfile.gettempdir` wird auf `tmp_path` umgelenkt, damit der Test die
+    tatsächlich angelegte Datei wiederfindet, ohne im echten %TEMP% zu
+    wühlen.
+    """
+    monkeypatch.setattr(tempfile, "gettempdir", lambda: str(tmp_path))
+    exe_path = str(tmp_path / "Zeiterfassung.exe")
+    setup_path = str(tmp_path / "Zeiterfassung_Setup.exe")
+
+    with patch("subprocess.Popen", side_effect=OSError("kein cmd.exe gefunden")):
+        result = apply_windows(exe_path, setup_path, 4711)
+
+    assert result is False
+    leftover = list(tmp_path.glob("*.cmd"))
+    assert leftover == [], f"Halbe .cmd-Datei bleibt liegen: {leftover}"
+
+
+def test_apply_windows_deletes_leftover_script_on_encoding_error(tmp_path, monkeypatch):
+    """Dieselbe Aufräum-Regel gilt für den `UnicodeEncodeError`-Zweig: ein
+    Zeichen, das die OEM-Codepage nicht kennt, darf keine halbe `.cmd`-Datei
+    zurücklassen.
+    """
+    if sys.platform != "win32":
+        pytest.skip("OEM-Codec nur unter Windows verfügbar")
+
+    monkeypatch.setattr(tempfile, "gettempdir", lambda: str(tmp_path))
+    exe_path = str(tmp_path / "中文_Zeiterfassung.exe")
+    setup_path = str(tmp_path / "Zeiterfassung_Setup.exe")
+
+    result = apply_windows(exe_path, setup_path, 4711)
+
+    assert result is False
+    leftover = list(tmp_path.glob("*.cmd"))
+    assert leftover == [], f"Halbe .cmd-Datei bleibt liegen: {leftover}"
 
 
 def test_apply_windows_encoding_error_returns_false(tmp_path):
@@ -370,13 +396,9 @@ def test_apply_windows_encoding_error_returns_false(tmp_path):
     un-kodierbaren Zeichen. apply_windows fängt das, loggt und gibt False zurück,
     damit der Aufrufer eine Meldung zeigen kann.
     """
-    import sys
-
     # Windows: OEM-Codec testen. Linux: skipzen.
     if sys.platform != "win32":
         pytest.skip("OEM-Codec nur auf Windows verfügbar")
-
-    from src.self_update import apply_windows
 
     # Ein Zeichen, das OEM-850 nicht kodieren kann (z.B. chinesisches Zeichen)
     exe_with_impossible_char = str(tmp_path / "中文_Zeiterfassung.exe")
