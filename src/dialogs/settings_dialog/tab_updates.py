@@ -1,6 +1,9 @@
 """Tab „Updates": Update-Status, Changelog und Check-Häufigkeit."""
 
+import os
 import platform
+import sys
+import tempfile
 import tkinter as tk
 import webbrowser
 
@@ -8,10 +11,16 @@ from src.changelog import (
     fetch_changelog_entry, parse_changelog_markdown, release_notes_for_display,
 )
 from src.dialogs.settings_dialog._shared import label
+from src.self_update import (
+    UpdateBlocked, apply_linux, apply_windows, download_to, fetch_text,
+    linux_apply_paths, parse_sha256sums, plan_update, supports_self_update,
+    verify_file,
+)
 from src.theme import (
     BG, CELL_BG, FONT, FONT_BOLD, FONT_SMALL, TEXT, TEXT_MUTED,
     dark_combo, dark_text, primary_button, secondary_button,
-    set_button_text, set_primary_button_enabled,
+    set_button_text, set_primary_button_enabled, set_secondary_button_enabled,
+    themed_showerror,
 )
 from src.updater import (
     FREQUENCY_OPTIONS, REPO, check_for_update, pick_asset_url,
@@ -26,6 +35,11 @@ from src.version import installed_release_id
 _LABEL_CHANGELOG = "Changelog:"
 _LABEL_PRERELEASE = "Enthaltene Änderungen:"
 
+# Der Knopf heisst nur dort "Update installieren", wo die App das auch kann.
+# Sonst bleibt es beim bisherigen Browser-Download.
+_LABEL_INSTALL = "Update installieren"
+_LABEL_DOWNLOAD = "Download"
+
 
 class UpdatesTab:
     """Baut den Updates-Tab und exponiert `frequency_var` für save_settings."""
@@ -37,6 +51,7 @@ class UpdatesTab:
         self._latest_release = None
         self._checked = False
         self._checking = False
+        self._updating = False
 
         # Damit die Changelog-Box (unten) breiter als ihr Zeichen-`width` sein
         # und sich mit gleichem Abstand links/rechts zentrieren kann, statt
@@ -58,8 +73,12 @@ class UpdatesTab:
         btn_row.grid(row=2, column=0, columnspan=2, padx=10, pady=4, sticky="w")
         self._check_btn = primary_button(btn_row, "Jetzt prüfen", self._check_now)
         self._check_btn.pack(side=tk.LEFT)
+        self._can_self_update = supports_self_update(
+            platform.system(), getattr(sys, "frozen", False))
         self._download_btn = secondary_button(
-            btn_row, "Download", self._open_latest_download,
+            btn_row,
+            _LABEL_INSTALL if self._can_self_update else _LABEL_DOWNLOAD,
+            self._open_latest_download,
         )
 
         freq_row = tk.Frame(frame, bg=BG)
@@ -207,9 +226,116 @@ class UpdatesTab:
         self._runner.run(fn, on_done)
 
     def _open_latest_download(self):
-        if self._latest_release is None:
+        # `set_secondary_button_enabled` graut den Knopf nur optisch aus, die
+        # Bindung feuert weiter (s. dessen Docstring) — der Guard hier ist
+        # das, was einen zweiten Klick waehrend des Downloads wirklich stoppt.
+        if self._latest_release is None or self._updating:
+            return
+        if self._can_self_update:
+            self._start_self_update(self._latest_release)
             return
         self._open_download(self._latest_release)
+
+    def _start_self_update(self, release):
+        """Laden, pruefen, installieren — der Ein-Klick-Weg.
+
+        Reihenfolge mit Absicht: `plan_update` stellt ALLE Abbruchgruende
+        fest, bevor ein Byte fliesst. Ein halb geladenes Update, das dann an
+        einer Kleinigkeit scheitert, waere die schlechtere Erfahrung.
+        """
+        plan = plan_update(
+            release, platform.system(), platform.machine(),
+            getattr(sys, "frozen", False),
+            os.environ.get("APPIMAGE", ""), sys.executable)
+        if isinstance(plan, UpdateBlocked):
+            themed_showerror(self.frame, "Update nicht möglich", plan.reason)
+            self._open_download(release)
+            return
+
+        set_primary_button_enabled(self._check_btn, False)
+        # ACHTUNG: `set_secondary_button_enabled` aendert laut seinem Docstring
+        # NUR die Optik — die Klick-Bindung bleibt aktiv. Der Callback muss
+        # deshalb selbst ein No-op machen, siehe `self._updating`-Guard oben in
+        # `_open_latest_download`.
+        set_secondary_button_enabled(self._download_btn, False)
+        self._updating = True
+
+        if platform.system() == "Windows":
+            local = os.path.join(tempfile.gettempdir(), plan.asset_name)
+        else:
+            # NEBEN die AppImage, nicht nach /tmp: `os.replace` ist nur
+            # innerhalb desselben Dateisystems atomar, und /tmp ist auf vielen
+            # Systemen ein eigenes (tmpfs).
+            local = linux_apply_paths(plan.target)[0]
+
+        def report(text):
+            # Aus dem Worker-Thread: nie direkt ans Widget.
+            self.frame.after(0, lambda: self._status_label.config(text=text))
+
+        def work():
+            sums_text = fetch_text(plan.sums_url)
+            if sums_text is None:
+                return "Die Prüfsummen ließen sich nicht laden."
+            expected = parse_sha256sums(sums_text).get(plan.asset_name)
+            if not expected:
+                return "Für diese Datei steht keine Prüfsumme im Release."
+
+            def progress(done, total):
+                pct = f"{done * 100 // total} %" if total else f"{done // 1024} KB"
+                report(f"Lade {plan.asset_name} … {pct}")
+
+            if not download_to(plan.asset_url, local, on_progress=progress):
+                return "Der Download ist fehlgeschlagen."
+
+            report("Prüfe Prüfsumme …")
+            if not verify_file(local, expected):
+                try:
+                    os.remove(local)
+                except OSError:
+                    pass  # Loeschen ist best-effort; die Datei wird nicht benutzt
+                return ("Die Prüfsumme der geladenen Datei stimmt nicht. "
+                        "Die Datei wurde verworfen.")
+            return None
+
+        def done(error):
+            if not self.frame.winfo_exists():
+                return
+            if error is not None:
+                self._updating = False
+                set_primary_button_enabled(self._check_btn, True)
+                set_secondary_button_enabled(self._download_btn, True)
+                self._status_label.config(text="Update fehlgeschlagen")
+                themed_showerror(self.frame, "Update fehlgeschlagen", error)
+                return
+            self._status_label.config(text="Installiere …")
+            self._apply(plan, local)
+
+        self._runner.run(work, done)
+
+    def _apply(self, plan, local):
+        """Anwenden und die App beenden bzw. neu starten."""
+        if platform.system() == "Windows":
+            if not apply_windows(plan.target, local, os.getpid()):
+                themed_showerror(
+                    self.frame, "Update fehlgeschlagen",
+                    "Der Update-Helfer ließ sich nicht starten.")
+                return
+            self.frame.winfo_toplevel().quit()
+            return
+
+        error = apply_linux(plan.target, local)
+        if error is not None:
+            # Die heruntergeladene Datei blieb sonst neben der AppImage
+            # liegen — halbe/nicht-uebernommene Downloads bleiben in diesem
+            # Projekt an keiner Stelle bewusst zurueck (s. download_to,
+            # verify_file oben).
+            try:
+                os.remove(local)
+            except OSError:
+                pass  # nichts angelegt oder schon weg — beides in Ordnung
+            themed_showerror(self.frame, "Update fehlgeschlagen", error)
+            return
+        os.execv(plan.target, [plan.target])
 
     def _open_download(self, release):
         url = pick_asset_url(
