@@ -25,8 +25,12 @@ Releases werden automatisch von `.github/workflows/release.yml` erzeugt, sobald 
 Ablauf vor dem Merge:
 1. `src/version.py` im PR auf die neue Version setzen (z.B. `VERSION = "1.5.0"`).
 2. `CHANGELOG.md` im PR aktualisieren.
-3. Passendes `release:*` Label am PR setzen (Label steuert nur den Trigger, nicht die Versionsnummer).
-4. PR mergen — Workflow liest die Version aus `src/version.py`, bricht ab falls der Tag `vX.Y.Z` bereits existiert, baut das Installer-Exe und veröffentlicht das Release.
+3. `python scripts/resolve_readme_version.py` laufen lassen — ersetzt die
+   README-Platzhalter `--VERSION--` durch die eben gesetzte Version (s.
+   „README-Zeilen für Unveröffentlichtes markieren"). Vergisst man es, hält
+   der `readme-version`-Check den PR an.
+4. Passendes `release:*` Label am PR setzen (Label steuert nur den Trigger, nicht die Versionsnummer).
+5. PR mergen — Workflow liest die Version aus `src/version.py`, bricht ab falls der Tag `vX.Y.Z` bereits existiert, baut das Installer-Exe und veröffentlicht das Release.
 
 Der Workflow pusht **nichts** nach `master`. Versionsbump gehört in den PR.
 
@@ -39,17 +43,40 @@ dort also jeder von etwas, das er nach dem Download nicht findet (beim Urlaub
 waren das rund 50 README-Zeilen über 87 Commits hinweg).
 
 Deshalb: **Wer die README um ein Feature ergänzt, das noch nicht released
-ist, hängt `*(ab X.Y.Z)*` an den fetten Namen** — die Version, mit der es
-erscheinen wird:
+ist, hängt `*(ab --VERSION--)*` an den fetten Namen** — den Platzhalter, nicht
+die geratene Zahl:
 
 ```markdown
-- **Urlaub** *(ab 1.22.0)* — Urlaubszeiträume als Einheit eintragen …
+- **Urlaub** *(ab --VERSION--)* — Urlaubszeiträume als Einheit eintragen …
 ```
 
-Der Marker muss beim Release **nicht** entfernt werden: „ab 1.22.0" liest
-sich davor wie danach richtig, und die README trägt an zwei älteren Stellen
-schon dasselbe Muster als „seit 1.19.1". Genau deshalb erklärt die Zeile
-unter „Features" den Marker als Versionsangabe und nicht als
+**Warum ein Platzhalter und keine Versionsnummer.** Wer beim Schreiben die
+kommende Version einträgt, rät sie: kommt vor dem Feature-Release noch ein
+Patch dazwischen, oder wird aus dem geplanten Minor ein Major, steht die
+falsche Zahl dauerhaft auf der Startseite — und niemandem fällt es auf, weil
+sie plausibel aussieht. `--VERSION--` kann nicht falsch raten. Als
+Nebeneffekt sagt der Platzhalter auf der gerenderten Startseite **sichtbar**
+„noch nicht released", was die geratene Zahl gerade nicht tut.
+
+**Aufgelöst wird im Release-PR**, wo `src/version.py` ohnehin auf die
+Zielversion gesetzt wird:
+
+```
+python scripts/resolve_readme_version.py
+```
+
+Der Workflow `readme-version.yml` hält jeden PR mit `release:*`-Label an,
+solange noch ein Platzhalter drinsteht (`--check`-Modus desselben Skripts).
+Er läuft in einer **eigenen** Workflow-Datei, weil `test.yml` als
+`on: [push, pull_request]` getriggert ist und diese Kurzform `labeled` nicht
+abdeckt — ein nachträglich gesetztes Label löste den Check sonst nie aus.
+Absichtlich **kein** Required Check: auf PRs ohne Release-Label meldet er
+seinen Context gar nicht.
+
+Aufgelöste Marker müssen beim Release **nicht** entfernt werden: „ab 1.22.0"
+liest sich davor wie danach richtig, und die README nennt Versionen an zwei
+älteren Stellen schon im Fließtext („seit 1.19.1"). Genau deshalb erklärt die
+Zeile unter „Features" den Marker als Versionsangabe und nicht als
 „unveröffentlicht" — sonst müsste sie mit jedem Release nachgezogen werden.
 Wer aufräumen will, kann alte Marker nach ein paar Releases streichen —
 Pflicht ist es nicht.
