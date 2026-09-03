@@ -310,3 +310,20 @@ def test_windows_helper_script_has_a_wait_timeout():
     script = windows_helper_script(1, "s.exe", "z.exe", "l.log")
     # Ohne Obergrenze liefe der Helfer ewig, falls die PID nie verschwindet.
     assert "TRIES" in script
+
+
+def test_windows_helper_script_preserves_umlauts():
+    """Das Batch-Skript muss Umlaute in Pfaden korrekt speichern.
+
+    encode("ascii", errors="replace") würde Müller zu M?ller machen.
+    """
+    from src.self_update import windows_helper_script
+    setup_with_umlaut = r"C:\Users\Müller\Zeiterfassung_Setup.exe"
+    exe_with_umlaut = r"D:\Programme (x86)\Müller\Zeiterfassung.exe"
+    script = windows_helper_script(1, setup_with_umlaut, exe_with_umlaut, "l.log")
+
+    # Umlaute sollten im Skript-Text erhalten sein, nicht als ? ersetzt
+    assert "Müller_Setup.exe" in script or "Müller\\Zeiterfassung_Setup" in script, \
+        "Umlaut in setup_path darf nicht zu ? werden"
+    assert "Müller\\Zeiterfassung" in script, \
+        "Umlaut in exe_path darf nicht zu ? werden"

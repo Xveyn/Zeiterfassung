@@ -258,24 +258,39 @@ def apply_windows(exe_path: str, setup_path: str, pid: int) -> bool:
     """Schreibt den Helfer nach %TEMP% und startet ihn abgekoppelt.
 
     Der Aufrufer beendet die App unmittelbar danach — der Helfer wartet auf
-    genau dieses Ende. `DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP`
-    entkoppelt ihn, damit er das Ende der App überlebt; `CREATE_NO_WINDOW`
-    hält das Konsolenfenster unsichtbar.
+    genau dieses Ende. `CREATE_NEW_PROCESS_GROUP` entkoppelt ihn, damit er
+    das Ende der App überlebt; `CREATE_NO_WINDOW` hält das Konsolenfenster
+    unsichtbar.
+
+    Das Batch-Skript wird in der OEM-Codepage geschrieben (Windows-spezifisch),
+    damit Umlaute und andere Nicht-ASCII-Zeichen in Pfaden korrekt erhalten
+    bleiben. Linux hat keinen OEM-Codec — dort setzen wir UTF-8 (fallback).
     """
     import subprocess
     import tempfile
 
     log_path = os.path.join(os.path.dirname(exe_path), "update.log")
+
+    # Encoding-Auswahl: OEM auf Windows (für cmd.exe-Kompatibilität),
+    # UTF-8 fallback auf Linux, wo dieser Codec nicht verfügbar ist.
+    encoding = "utf-8"
+    try:
+        # Versuche OEM-Encoding (nur Windows)
+        "test".encode("oem")
+        encoding = "oem"
+    except LookupError:
+        # OEM-Codec nicht verfügbar (z.B. Linux)
+        pass
+
     handle = tempfile.NamedTemporaryFile(
-        "w", suffix=".cmd", delete=False, encoding="ascii", errors="replace")
+        "w", suffix=".cmd", delete=False, encoding=encoding, errors="replace")
     try:
         with handle:
             handle.write(windows_helper_script(
                 pid, setup_path, exe_path, log_path))
         subprocess.Popen(
             ["cmd", "/c", handle.name],
-            creationflags=(0x00000008 |   # DETACHED_PROCESS
-                           0x00000200 |   # CREATE_NEW_PROCESS_GROUP
+            creationflags=(0x00000200 |   # CREATE_NEW_PROCESS_GROUP
                            0x08000000),   # CREATE_NO_WINDOW
             close_fds=True)
         return True
