@@ -32,11 +32,23 @@ def test_resolve_ersetzt_den_platzhalter_durch_die_version():
     assert count == 1
 
 
-def test_resolve_ersetzt_alle_vorkommen():
-    text = "a *(ab --VERSION--)* b *(ab --VERSION--)* c --VERSION--\n"
+def test_resolve_ersetzt_alle_marker():
+    text = "a *(ab --VERSION--)* b *(ab --VERSION--)* c\n"
     out, count = resolver.resolve(text, "2.0.0")
-    assert "--VERSION--" not in out
-    assert count == 3
+    assert out == "a *(ab 2.0.0)* b *(ab 2.0.0)* c\n"
+    assert count == 2
+
+
+def test_resolve_laesst_das_blanke_token_im_fliesstext_stehen():
+    # Die README erklärt den Platzhalter unter „Features" selbst — dort steht
+    # `--VERSION--` in Prosa, nicht als Marker. Nähme ein Lauf ihn mit, stünde
+    # die Legende danach dauerhaft falsch da („statt einer Zahl `1.23.0`"),
+    # und keine spätere Auflösung könnte das zurückdrehen: ein Platzhalter,
+    # den man auflöst, ist danach keiner mehr.
+    text = "Steht dort statt einer Zahl `--VERSION--`, ist es fertig.\n"
+    out, count = resolver.resolve(text, "1.24.0")
+    assert out == text
+    assert count == 0
 
 
 def test_resolve_laesst_text_ohne_platzhalter_unveraendert():
@@ -58,12 +70,19 @@ def test_resolve_fasst_aehnlich_aussehende_tokens_nicht_an():
 # --- find_unresolved -------------------------------------------------------
 
 def test_find_unresolved_meldet_zeilennummern_eins_basiert():
-    text = "erste Zeile\nzweite *(ab --VERSION--)*\ndritte\nvierte --VERSION--\n"
+    text = ("erste Zeile\nzweite *(ab --VERSION--)*\ndritte\n"
+            "vierte *(ab --VERSION--)*\n")
     assert resolver.find_unresolved(text) == [2, 4]
 
 
 def test_find_unresolved_ist_leer_wenn_nichts_offen_ist():
     assert resolver.find_unresolved("nichts hier\n") == []
+
+
+def test_find_unresolved_meldet_das_blanke_token_nicht():
+    # Sonst hielte der readme-version-Check jeden Release-PR an der Legende
+    # auf — die trägt den Platzhalter per Definition dauerhaft.
+    assert resolver.find_unresolved("Zahl `--VERSION--` heißt offen\n") == []
 
 
 # --- find_markers ----------------------------------------------------------
