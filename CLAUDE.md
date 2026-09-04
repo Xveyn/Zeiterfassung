@@ -871,6 +871,38 @@ verzeichnisgebunden — die Tk-freien Module liegen aber flach in `src/` neben
 `ui.py`/`theme/`. Ein Modul in die Whitelist einzutragen ist eine Zusage: die
 Annotationen müssen **richtig** sein, eine falsche ist schlimmer als keine.
 
+### Harte Behauptungen dieser Datei sind Assertions (Xveyn#110)
+
+Einige Stellen hier nennen **exakte** Werte, die woanders im Repo noch einmal
+stehen: die Required-Check-Liste, der Mutex-String aus `installer.iss`, die
+Spanne der Test-Matrix, die beiden Tool-Pins der Workflows und die zwei
+Schema-Konstanten. Solche Doppelungen driften lautlos — auffallen würde es
+erst dem, der sich darauf verlässt. **`tests/test_claude_md_claims.py`** hält
+sie deshalb gegen den Code.
+
+Der Test ist eine **Ratsche gegen künftige Drift**, kein Bugfix: die Messung
+in Xveyn#109 fand über ~180 maschinell prüfbare Referenzen keine einzige echte
+Drift. Warum ein Test und kein eigener CI-Job: dasselbe Muster wie
+`test_catch_all_handlers.py` und `test_type_annotations.py` — dokumentierte
+Konvention als Assertion, läuft in der bestehenden Matrix mit, reine stdlib.
+
+Drei Dinge, die beim Ändern dieser Datei zu wissen sind:
+
+- **Die Erwartungswerte werden aus dieser Datei geparst**, nicht im Test
+  kopiert — sonst prüfte er seine eigene Kopie. Wer eine der genannten
+  Behauptungen **umformuliert**, macht den Test rot: das Muster im Test
+  gehört dann nachgezogen. Wer sie **entfernt**, entfernt auch die Assertion.
+- **Ein gescheiterter Parser ist rot, nicht grün.** Ein Test, der seine
+  Erwartung nicht mehr findet und deshalb schweigt, prüft nichts mehr.
+- **Zahlen mit „rund" werden mit Toleranz geprüft**, nicht auf Gleichheit —
+  sonst würde die Größenordnung im Text zur Wartungslast bei jedem neuen
+  Handler.
+
+Die `.spec`-Behauptung prüft die **versionierten** Dateien, nicht das
+Dateisystem: PyInstaller legt die Datei bei jedem Build im Root ab
+(`.gitignore` führt sie), ein Dateisystem-Check wäre auf jeder Entwickler-
+Maschine dauerhaft rot und in der CI grün.
+
 ### Getestet wird Logik, nicht UI (entschiedene Scope-Grenze)
 
 Tk-gebundener Code — Dialog-Aufbau, Grid-Rendering, Event-Bindings — wird
