@@ -64,25 +64,34 @@ KEEP_RELEASES = 5
 #: aufgelöst, nicht entfernt.
 _MARKER = re.compile(r" ?\*\(ab (\d+\.\d+\.\d+)\)\*")
 
+#: Der noch offene Marker `*(ab --VERSION--)*`. Bewusst dieselbe Form wie
+#: `_MARKER` und NICHT das blanke Token: die README erklaert den Platzhalter
+#: unter „Features" selbst im Fliesstext („Steht dort statt einer Zahl
+#: `--VERSION--`, ist das Feature fertig …"). Ein Ersetzen ueber das blanke
+#: Token traefe diese Legende mit und machte aus ihr „Steht dort statt einer
+#: Zahl `1.23.0`" — und zwar dauerhaft, denn danach steht dort kein
+#: Platzhalter mehr, den ein spaeterer Lauf zurueckdrehen koennte.
+_PLACEHOLDER_MARKER = re.compile(r"\*\(ab " + re.escape(PLACEHOLDER) + r"\)\*")
+
 
 # --- Platzhalter auflösen --------------------------------------------------
 
 def resolve(text, version):
-    """Ersetzt jeden Platzhalter in `text` durch `version`.
+    """Ersetzt jeden offenen Marker in `text` durch einen mit `version`.
 
     Liefert `(neuer_text, anzahl)`. Reine Textlogik ohne Dateizugriff, damit
-    sie testbar bleibt.
+    sie testbar bleibt. Getroffen wird nur die Marker-Form, nicht das blanke
+    Token — s. `_PLACEHOLDER_MARKER`.
     """
-    count = text.count(PLACEHOLDER)
-    return text.replace(PLACEHOLDER, version), count
+    return _PLACEHOLDER_MARKER.subn(lambda _: f"*(ab {version})*", text)
 
 
 def find_unresolved(text):
-    """Liefert die 1-basierten Zeilennummern, in denen noch ein Platzhalter steht."""
+    """Liefert die 1-basierten Zeilennummern mit einem noch offenen Marker."""
     return [
         number
         for number, line in enumerate(text.splitlines(), start=1)
-        if PLACEHOLDER in line
+        if _PLACEHOLDER_MARKER.search(line)
     ]
 
 
