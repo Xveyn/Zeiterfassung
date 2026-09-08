@@ -1,5 +1,90 @@
 # Changelog
 
+## 1.23.0 — 2026-09-08
+
+### Hinzugefügt
+- **SMTP-Versand**: Berichte lassen sich jetzt zusätzlich zur Gmail-API über
+  einen eigenen Mail-Server verschicken (Einstellungen → „SMTP“). Mehrere
+  Konten mit je eigenem Empfänger sind möglich, jedes einzeln aktivierbar und
+  im Sende-Dialog einzeln anwählbar; ein „Verbindung testen“-Button prüft
+  Server und Zugangsdaten direkt im Dialog, ohne eine Mail zu verschicken.
+  Passwörter liegen im Schlüsselbund des Betriebssystems; steht keiner zur
+  Verfügung, fällt die App auf eine lokal gehärtet geschriebene Datei zurück
+  und sagt das beim Speichern. Auch der Teilen-Dialog kann wahlweise über ein
+  SMTP-Konto statt über Gmail versenden — der im Konto hinterlegte Empfänger
+  ist dort vorbelegt und überschreibbar. Gmail muss dadurch nicht mehr
+  zwingend eingerichtet sein: wer ausschließlich SMTP nutzt, kommt ohne
+  `credentials.json` aus. Nicht möglich sind Microsoft-Konten (Outlook.com,
+  Microsoft 365) — Microsoft hat SMTP mit Passwort abgeschaltet; für Gmail
+  wird ein App-Passwort gebraucht. SMTP-Konten gelten nur auf diesem Gerät
+  und reisen **nicht** über den Drive-Sync mit.
+- **Update aus der App** (Windows und Linux): Der Download-Knopf — im
+  Updates-Tab, im Banner und im Tray-Toast — installiert das Update jetzt
+  selbst, statt nur den Browser zu öffnen. Die App lädt das passende
+  Release-Asset, prüft es gegen die `SHA256SUMS`-Datei des Releases und
+  installiert es: unter Windows über den stillen Installer, unter Linux durch
+  Ersetzen der laufenden AppImage (mit Rollback, falls etwas schiefgeht).
+  Danach startet sie neu. Optional erledigt sie das von selbst: ist „Updates
+  automatisch installieren“ eingeschaltet, lädt sie ein geprüftes Update im
+  Hintergrund und wendet es erst beim nächsten Beenden an — nie mitten in der
+  Arbeit, und ohne die App danach unaufgefordert wieder zu öffnen. Unter
+  macOS bleibt es beim Download im Browser. Die Prüfsumme schützt gegen
+  abgebrochene und verfälschte Übertragung, **nicht** gegen ein
+  kompromittiertes Release: die Updates sind an keiner Stelle signiert, der
+  Vertrauensanker bleibt die verschlüsselte Verbindung zu GitHub — derselbe
+  wie beim Download im Browser.
+- **Stundenzeile an Urlaubstagen abschaltbar**: Neuer Schalter „Stunden an
+  Urlaubstagen im Kalender anzeigen“ im Dialog „Urlaub verwalten“.
+  Abgeschaltet bleibt der Zeitraum als durchgehender Block mit „Urlaub“
+  stehen, die Stunden stehen weiterhin im Tooltip. Gerätelokal wie die
+  übrigen Urlaubs-Einstellungen.
+
+### Geändert
+- **Sendeziele nach Kanal gruppiert**: Der Sende-Dialog listete Gmail,
+  SMTP-Konten und Webhooks flach untereinander — ein SMTP-Konto namens „Büro“
+  war dort von einem Webhook gleichen Namens nicht zu unterscheiden. Die
+  Ziele stehen jetzt unter den Überschriften „Gmail“, „SMTP“ und „Webhooks“.
+- **Pre-Releases im Updates-Tab**: Ein Pre-Release hat keinen kuratierten
+  Changelog-Eintrag. Statt eines „Changelog:“-Kastens mit dem rohen
+  GitHub-Text — samt Autorenangaben und URLs, die im schmalen Feld nur
+  umbrachen — stehen dort jetzt unter „Enthaltene Änderungen:“ die reinen
+  Titel der enthaltenen Änderungen.
+
+### Behoben
+- **Urlaub und Arbeitszeit am selben Tag wurden doppelt vergütet**: Liegt an
+  einem Tag beides, zählten Urlaubs- und Ist-Stunden in „Zu vergüten gesamt“
+  nebeneinander — der Kalendertag kam damit auf mehr Stunden, als er hat. Die
+  App verhindert diese Kombination an den Eingabewegen, über einen Import
+  oder einen Sync vom Zweitgerät konnte sie aber trotzdem entstehen (der
+  Urlaub ist gerätelokal, der Absender kennt ihn nicht). An solchen Tagen
+  wird der Urlaub jetzt um die erfasste Arbeitszeit gekürzt — und beide
+  Stellen sagen es: eine Hinweiszeile im Sende- und Export-Dialog und eine
+  Fußnote unter dem Urlaubs-Block im Bericht.
+- **Falsches Update-Asset auf Intel-Macs und ARM-Linux**: Der Download-Knopf
+  bot die Datei der jeweils anderen Architektur an (arm64-DMG auf einem
+  Intel-Mac, x86_64-AppImage auf ARM-Linux) — beide laufen dort nicht.
+  Passt keine Datei zur Architektur, führt der Knopf jetzt auf die
+  Release-Seite.
+- **KW-Header verdeckte den „Woche“-Umschalter**: In der Wochenansicht legte
+  sich das zentrierte Kalenderwochen-Label über den Umschalter daneben,
+  sobald es breit genug wurde.
+
+### Intern
+- **Konvention für Catch-all-Handler**: Jeder `except Exception`-Zweig
+  loggt, meldet oder trägt eine Begründung im Handler selbst — durchgesetzt
+  von einem Test, nicht vom Linter.
+- **Harte Angaben in `CLAUDE.md` sind jetzt Assertions**: Exakte Werte, die
+  auch im Code stehen (Required Checks, Mutex-Name, Matrix-Spanne,
+  Tool-Pins), prüft ein Test gegen den Code, damit sie nicht lautlos
+  auseinanderlaufen.
+- **Dependabot für GitHub Actions**: Actions-Updates laufen automatisch,
+  Python-Abhängigkeiten bleiben bewusst Handarbeit (jede Version muss
+  Python 3.10 unterstützen).
+- **Versionsmarker der README**: Noch nicht veröffentlichte Features tragen
+  auf der Startseite den Platzhalter `--VERSION--` statt einer geratenen
+  Versionsnummer; ein Workflow hält den Release-PR an, solange einer offen
+  ist, und ein zweiter räumt überholte Marker später wieder weg.
+
 ## 1.22.0 — 2026-08-31
 
 ### Hinzugefügt

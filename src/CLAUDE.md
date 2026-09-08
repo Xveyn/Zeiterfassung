@@ -558,6 +558,22 @@ Weitere Dialoge: `share_dialog`, `import_dialog`, `category_dialog`,
 `conflicts_dialog`, `scopes_dialog`. `period_picker` ist kein Dialog, sondern der von
 `send_dialog` + `export_dialog` geteilte Zeitraum+Kategorie+Vorschau-Baustein.
 
+`share_dialog` wählt den Versandweg (Gmail oder eines der SMTP-Konten) über
+den **Index** der Combobox auf, nicht über den angezeigten Namen — ein Konto
+darf „Gmail" heißen. Die Empfänger-Vorbelegung dazu liegt Tk-frei in
+`default_share_recipient` (SMTP-Konto gewinnt, sonst `share_recipient`); der
+Dialog zieht sie beim Wechsel des Wegs nach, **außer** der Nutzer hat selbst
+etwas eingetippt. Gesendet wird immer an das, was im Feld steht — `share_task`
+liest `transport["recipient"]` nie selbst.
+
+**Tk-Variablen brauchen eine lebende Referenz.** Eine `StringVar`, die nach
+dem Dialog-Aufbau in keiner Closure und keinem Container mehr steht, sammelt
+Python ein; ihr `__del__` löscht die Tcl-Variable, und das Widget mit diesem
+`textvariable` steht danach **leer** da — ohne Fehler, ohne Spur. Genau das
+passierte der Versandweg-Auswahl in `share_dialog` (die übrigen Variablen dort
+hängen an `_current_range`, `do_send` oder einem Dict). Wer eine Variable baut,
+die keine Closure liest, hängt sie ans Widget (`combo.keep_var = var`).
+
 `scopes_dialog` zeigt read-only, welche OAuth-Scopes im `token.json` gewährt sind,
 bewertet gegen die aktuell gebrauchten (`mail.scope_overview`): ✓ genutzt, ○ gewährt
 aber Funktion aus, ✗ gebraucht aber fehlt. Bewusst ein Modal statt einer Liste im
