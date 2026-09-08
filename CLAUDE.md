@@ -356,7 +356,10 @@ gegenchecken, nicht blind auf „latest" gehen.
 
 **Transitive** Deps (u. a. `reportlab` via `xhtml2pdf`) sind bewusst **nicht**
 gepinnt — kein Lockfile, keine Hashes. Wer eine direkte Dep hinzufügt, pinnt sie
-`==` und ergänzt sie in der README-Abhängigkeiten-Tabelle.
+`==` und ergänzt sie in der Abhängigkeiten-Tabelle in
+[`CONTRIBUTING.md`](CONTRIBUTING.md) (bis 1.23.0 stand sie in der README — die
+ist seither auf den Nutzer zugeschnitten, alles Entwicklerische liegt in
+`CONTRIBUTING.md`).
 
 Bewusste Ausnahme von dieser Regel: `jaraco.functools`/`jaraco.context`/
 `importlib_metadata` (Transitive von `keyring`) sind einzeln gepinnt — sie
