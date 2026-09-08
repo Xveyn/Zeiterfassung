@@ -24,7 +24,9 @@ Releases werden automatisch von `.github/workflows/release.yml` erzeugt, sobald 
 
 Ablauf vor dem Merge:
 1. `src/version.py` im PR auf die neue Version setzen (z.B. `VERSION = "1.5.0"`).
-2. `CHANGELOG.md` im PR aktualisieren.
+2. `CHANGELOG.md` im PR aktualisieren. **Pflicht, nicht Kür:** dieser Abschnitt
+   *ist* der Body des GitHub-Releases (s. „Release-Body = CHANGELOG-Abschnitt"),
+   der `pre-check`-Job bricht ohne ihn ab.
 3. `python scripts/resolve_readme_version.py` laufen lassen — ersetzt die
    README-Platzhalter `--VERSION--` durch die eben gesetzte Version (s.
    „README-Zeilen für Unveröffentlichtes markieren"). Vergisst man es, hält
@@ -33,6 +35,45 @@ Ablauf vor dem Merge:
 5. PR mergen — Workflow liest die Version aus `src/version.py`, bricht ab falls der Tag `vX.Y.Z` bereits existiert, baut das Installer-Exe und veröffentlicht das Release.
 
 Der Workflow pusht **nichts** nach `master`. Versionsbump gehört in den PR.
+
+### Release-Body = CHANGELOG-Abschnitt
+
+Der Body eines **echten** Releases ist der kuratierte `CHANGELOG.md`-Abschnitt
+dieser Version — nicht die von GitHub generierte PR-Liste. Die beschreibt die
+Arbeit („fix(urlaub): …"), der CHANGELOG beschreibt die Änderung; und
+geschrieben wird er für jedes Release ohnehin. Er stand nur bisher im Repo,
+wo ihn auf der Release-Seite niemand suchte.
+
+Gebaut wird er von **`scripts/release_notes.py`**, an zwei Stellen in
+`release.yml`:
+
+- `--check` im **`pre-check`**-Job: bricht ab, wenn `CHANGELOG.md` keinen (oder
+  einen leeren) Abschnitt zur Version hat. Bewusst dort und nicht im
+  `publish`-Job — dort wären die drei Plattform-Builds bereits gelaufen.
+- `--out release-notes.md` im **`publish`**-Job, **vor** `git tag`: scheitert
+  die Extraktion doch noch, ist kein Tag gepusht, den der Rollback wieder
+  abräumen müsste.
+
+Der Ausschnitt kommt aus `src.changelog.extract_version_section` — derselben
+Funktion, mit der die App den Eintrag im Updates-Tab anzeigt. Ein zweiter
+Parser für dieselbe Datei liefe lautlos auseinander. Die
+`## X.Y.Z — Datum`-Überschrift fällt weg: der Release-Titel nennt die Version
+schon, das Datum zeigt GitHub selbst.
+
+Zwei Dinge, die daran hängen:
+
+- **`--notes-file` statt `--generate-notes`.** Damit entfällt neben der
+  PR-Liste auch die `**Full Changelog**`-Zeile darunter — die erzeugt
+  `--generate-notes`, und sie lässt sich nicht einzeln abschalten. Wer die
+  Liste wiederhaben will, bekommt die Zeile also mit.
+- **Pre-Releases bleiben bei `--generate-notes`** (samt `--notes-start-tag`).
+  Sie haben per Definition keinen kuratierten Eintrag, und für sie **ist** der
+  generierte Body die Changelog-Quelle der App (s. „Pre-Releases"). Damit
+  betrifft auch `.github/release.yml` — die Konfiguration der generierten
+  Notes — nur noch diesen Zweig.
+
+Die App ist davon unberührt: bei einem echten Release lädt der Updates-Tab
+`CHANGELOG.md` vom Tag, nicht den Release-Body.
 
 ### README-Zeilen für Unveröffentlichtes markieren
 
@@ -144,9 +185,11 @@ Actions → Workflow **Release** → „Run workflow" mit gesetztem Häkchen
   Identität (`version.installed_release_id()`) und zeigt im Titel
   `X.Y.Z-pre.N` statt nur `X.Y.Z-pre`. Fehlt der Stempel (Alt-Build, Dev-Modus),
   gilt die reine `VERSION`.
-- **Kein Versionsbump, kein CHANGELOG, kein Label** nötig. Die Release-Notes werden
-  wie beim echten Release automatisch aus den PRs generiert (`--generate-notes`),
-  kumulativ seit dem letzten **echten** Release.
+- **Kein Versionsbump, kein CHANGELOG, kein Label** nötig. Die Release-Notes
+  werden automatisch aus den PRs generiert (`--generate-notes`), kumulativ seit
+  dem letzten **echten** Release. Das ist der Unterschied zum echten Release:
+  dessen Body ist der kuratierte CHANGELOG-Abschnitt (s. „Release-Body =
+  CHANGELOG-Abschnitt"), den es hier gerade nicht gibt.
 - **Anzeige im Updates-Tab:** Weil es keinen kuratierten CHANGELOG-Eintrag gibt,
   zeigt der Tab für ein Pre-Release den generierten Notes-Body — aber
   aufbereitet durch `changelog.release_notes_for_display` (nur die PR-Titel,
@@ -1066,6 +1109,12 @@ seinen Pfad, nicht per Import.
   Dateianfang legt deshalb das Root auf `sys.path` und wechselt dorthin —
   ohne ihn scheitert schon `from src.version import VERSION`. Wer weitere
   Skripte mit Root-Bezug hinzufügt, braucht denselben Bootstrap.
+- `scripts/release_notes.py` — schneidet den Release-Body eines echten
+  Releases aus `CHANGELOG.md` (`--check` im `pre-check`-Job, `--out` im
+  `publish`-Job; s. „Release-Body = CHANGELOG-Abschnitt"). Zwei Modi wie
+  `resolve_readme_version.py`, derselbe Root-Bootstrap. Reine stdlib —
+  der `publish`-Job richtet bewusst kein `setup-python` ein und ruft
+  `python3`.
 - `scripts/webhook_testserver.py` — lokaler Test-Empfänger für den
   Webhook-Versand: zeigt Content-Type, Auth-Header, HMAC-Prüfung und den Body
   (JSON/PDF/multipart aufgetrennt), und kann Fehlerfälle simulieren

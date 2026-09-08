@@ -78,6 +78,21 @@ jobs:
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
           echo "Releasing v${VERSION}"
 
+      # Der Body eines echten Releases IST der kuratierte CHANGELOG-Abschnitt
+      # (s. publish-Job). Fehlt er, gaebe es ein Release ohne Notes — deshalb
+      # hier abbrechen und nicht erst im publish-Job: dort waeren die drei
+      # Plattform-Builds bereits gelaufen.
+      #
+      # Nur bei echten Releases: ein Pre-Release hat bewusst KEINEN kuratierten
+      # Eintrag (s. CLAUDE.md, "Pre-Releases") und generiert seine Notes
+      # weiterhin aus den PRs.
+      - name: Verify changelog entry exists
+        if: >-
+          steps.gate.outputs.should_release == 'true' &&
+          steps.gate.outputs.is_prerelease != 'true'
+        shell: bash
+        run: python scripts/release_notes.py --check
+
       - name: Compute tag, title and notes-start
         id: tag
         if: steps.gate.outputs.should_release == 'true'
@@ -120,11 +135,12 @@ jobs:
               exit 1
             fi
           fi
-          # Release-Notes ab dem letzten ECHTEN Release (ohne -pre-Suffix): so
-          # bleiben Voll-Release-Notes vollständig (unbeeinflusst von zwischen-
-          # zeitlichen Pre-Releases) und Pre-Release-Notes kumulativ = alle PRs
-          # seit dem letzten Release. Leer beim allerersten Release → gh nutzt
-          # dann seine Auto-Erkennung.
+          # Startpunkt der GENERIERTEN Notes, also nur noch für Pre-Releases
+          # relevant: ein echtes Release bekommt seinen Body aus CHANGELOG.md
+          # (s. publish-Job) und generiert gar nichts mehr. Gemessen ab dem
+          # letzten ECHTEN Release (ohne -pre-Suffix), damit Pre-Release-Notes
+          # kumulativ bleiben = alle PRs seit dem letzten Release. Leer beim
+          # allerersten Release → gh nutzt dann seine Auto-Erkennung.
           NOTES_START=$(git tag -l 'v*' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -1)
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
           echo "title=${TITLE}" >> "$GITHUB_OUTPUT"
@@ -260,6 +276,21 @@ jobs:
           TAG="${{ needs.pre-check.outputs.tag }}"
           TITLE="${{ needs.pre-check.outputs.title }}"
           NOTES_START="${{ needs.pre-check.outputs.notes_start }}"
+          IS_PRE="${{ needs.pre-check.outputs.is_prerelease }}"
+          # Body eines ECHTEN Releases: der kuratierte CHANGELOG-Abschnitt. Er
+          # beschreibt die Aenderung, waehrend die generierte PR-Liste die
+          # Arbeit beschreibt — und er wird fuer jedes Release ohnehin
+          # geschrieben. Vor `git tag` erzeugt: schlaegt die Extraktion fehl,
+          # ist noch kein Tag gepusht, den ein Rollback wieder abraeumen
+          # muesste. Das pre-check-Gate hat den Abschnitt da schon geprueft,
+          # dieser Aufruf kann also nur noch an einem echten Fehler scheitern.
+          # `python3`, nicht `python`: dieser Job richtet bewusst kein
+          # setup-python ein (das Skript braucht nur die stdlib).
+          if [ "$IS_PRE" != "true" ]; then
+            python3 scripts/release_notes.py --out release-notes.md
+            echo "=== Release-Body ==="
+            cat release-notes.md
+          fi
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git tag "$TAG"
@@ -273,13 +304,21 @@ jobs:
             "dist/Zeiterfassung-${VERSION}-x86_64.AppImage"
             dist/SHA256SUMS
             --title "$TITLE"
-            --generate-notes
           )
-          if [ -n "$NOTES_START" ]; then
-            args+=(--notes-start-tag "$NOTES_START")
-          fi
-          if [ "${{ needs.pre-check.outputs.is_prerelease }}" = "true" ]; then
-            args+=(--prerelease)
+          if [ "$IS_PRE" = "true" ]; then
+            # Pre-Release: kein kuratierter Eintrag vorhanden — hier IST der
+            # generierte Body die Changelog-Quelle der App
+            # (updater.resolve_check_result, s. CLAUDE.md "Pre-Releases").
+            args+=(--generate-notes --prerelease)
+            if [ -n "$NOTES_START" ]; then
+              args+=(--notes-start-tag "$NOTES_START")
+            fi
+          else
+            # `--notes-file` statt `--generate-notes`: damit entfaellt neben
+            # der PR-Liste auch die "**Full Changelog**"-Zeile darunter — die
+            # erzeugt `--generate-notes` und laesst sich nicht einzeln
+            # abschalten.
+            args+=(--notes-file release-notes.md)
           fi
           # Rollback: der Tag ist zu diesem Zeitpunkt schon gepusht. Scheitert
           # `gh release create` (Netz, Rate-Limit), bliebe ein Tag ohne Release

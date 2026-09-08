@@ -1,9 +1,15 @@
 # Konfiguration der automatisch erzeugten Release-Notes.
 #
-# `release.yml` (Workflow) ruft `gh release create --generate-notes`; GitHub
-# baut daraus die „What's Changed"-Liste und liest dafür diese Datei aus dem
-# Repository (nicht aus dem Tag) — Änderungen wirken also erst, wenn sie auf
-# master liegen.
+# Betrifft nur noch **Pre-Releases**: seit dem Umbau auf den kuratierten
+# Release-Body (CLAUDE.md, „Release-Body = CHANGELOG-Abschnitt") bekommt ein
+# echtes Release seinen Text per `--notes-file` aus `CHANGELOG.md` und
+# generiert gar nichts mehr. Der Rest dieser Datei gilt unverändert — die
+# Ausschluss-Regel unten greift beim nächsten Pre-Release genauso.
+#
+# `release.yml` (Workflow) ruft dafür `gh release create --generate-notes`;
+# GitHub baut daraus die „What's Changed"-Liste und liest dafür diese Datei aus
+# dem Repository (nicht aus dem Tag) — Änderungen wirken also erst, wenn sie
+# auf master liegen.
 #
 # Ausgeschlossen wird genau der Release-PR selbst: er trägt per Definition
 # eines der `release:*`-Labels (sie lösen den Workflow überhaupt erst aus,
