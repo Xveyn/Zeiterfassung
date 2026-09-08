@@ -24,6 +24,29 @@ from src.theme import (
 )
 
 
+def default_share_recipient(account, fallback):
+    """Empfänger-Vorbelegung für den gewählten Versandweg (Tk-frei).
+
+    `account` ist der SMTP-Record oder `None` für den Gmail-Weg, `fallback`
+    der zuletzt gespeicherte Standard-Empfänger (`settings.share_recipient`).
+
+    Ein SMTP-Konto trägt bereits eine Empfängeradresse — sie im Teilen-Dialog
+    noch einmal abzutippen ist genau die Arbeit, die der Store schon erledigt
+    hat. Deshalb gewinnt sie hier. Trägt das Konto keine (das Feld ist
+    optional befüllbar), bleibt es beim gespeicherten Standard, statt das
+    Feld zu leeren.
+
+    Vorbelegung heißt Vorschlag: der Dialog lässt den Wert überschreiben (s.
+    `_apply_transport_default` dort — eine vom Nutzer geänderte Adresse
+    überlebt den Wechsel des Versandwegs).
+    """
+    if account is not None:
+        from_account = (account.get("recipient") or "").strip()
+        if from_account:
+            return from_account
+    return (fallback or "").strip()
+
+
 def open_share_dialog(parent, storage, settings, base_path, runner, reservation_store=None,
                       smtp_store=None):
     credentials_path = os.path.join(base_path, "credentials.json")
@@ -213,6 +236,17 @@ def open_share_dialog(parent, storage, settings, base_path, runner, reservation_
             row=row, column=0, padx=(20, 6), pady=(0, 4), sticky="w")
         transport_combo = dark_combo(dialog, transport_var, transport_labels, width=24)
         transport_combo.grid(row=row, column=1, padx=(0, 20), pady=(0, 4), sticky="w")
+        # Referenz festhalten. `transport_var` ist sonst die einzige Tk-Variable
+        # dieses Dialogs, die keine Closure überlebt (die Datumsfelder hängen an
+        # `_current_range`, der Empfänger an `do_send`, die Kategorien im Dict):
+        # Python sammelt sie beim Verlassen von `open_share_dialog` ein, ihr
+        # `__del__` löscht die zugehörige Tcl-Variable, und das `textvariable`
+        # der Combobox zeigt ins Leere — das Feld stand deshalb bis zur ersten
+        # Auswahl LEER da, obwohl „Gmail" gewählt war.
+        # (Attribut am Widget statt einer Closure-Variablen: das ist die
+        # übliche Tk-Lösung dafür und hält die Referenz genau so lange, wie
+        # das Widget lebt.)
+        transport_combo.keep_var = transport_var  # pyright: ignore[reportAttributeAccessIssue]
         row += 1
 
     def _chosen_transport():
@@ -238,10 +272,35 @@ def open_share_dialog(parent, storage, settings, base_path, runner, reservation_
         dialog, text="Empfänger:", font=FONT, bg=BG, fg=TEXT,
     ).grid(row=row, column=0, padx=(20, 6), pady=(0, 4), sticky="w")
 
-    recipient_var = tk.StringVar(value=settings.get("share_recipient") or "")
+    recipient_var = tk.StringVar(
+        value=default_share_recipient(
+            _chosen_transport(), settings.get("share_recipient")))
     recipient_entry = dark_entry(dialog, recipient_var, width=35)
     recipient_entry.grid(row=row, column=1, padx=(0, 20), pady=(0, 4), sticky="w")
     row += 1
+
+    # Zuletzt selbst eingesetzte Vorbelegung. Steht sie unverändert im Feld,
+    # gilt der Empfänger als „nicht angefasst" und darf beim Wechsel des
+    # Versandwegs ersetzt werden; hat der Nutzer etwas anderes eingetippt,
+    # bleibt seine Eingabe stehen — eine getippte Adresse still zu
+    # überschreiben wäre der schlimmere Fehler als eine veraltete Vorbelegung.
+    auto_recipient = {"value": recipient_var.get()}
+
+    def _apply_transport_default(*_):
+        suggested = default_share_recipient(
+            _chosen_transport(), settings.get("share_recipient"))
+        current = recipient_var.get().strip()
+        if not current or current == auto_recipient["value"].strip():
+            recipient_var.set(suggested)
+        # Auch wenn die Nutzereingabe stehen bleibt: die Vorbelegung des
+        # jetzt gewählten Wegs ist ab hier der Vergleichswert. Sonst wäre ein
+        # zurückgewechselter Versandweg wieder „unverändert" und überschriebe
+        # die Eingabe doch noch.
+        auto_recipient["value"] = suggested
+
+    if transport_combo is not None:
+        transport_combo.bind("<<ComboboxSelected>>", _apply_transport_default,
+                             add="+")
 
     save_default_var = tk.BooleanVar(value=False)
     tk.Checkbutton(

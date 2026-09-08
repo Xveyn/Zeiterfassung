@@ -7,8 +7,10 @@ Schlüsselbund-Zugriff) + senden + optional Standard-Empfänger persistieren.
 
 `transport=None` ist der Gmail-Weg; ein SMTP-Record schickt stattdessen über
 dieses Konto. Der Empfänger kommt in **beiden** Fällen aus `recipient`, also
-aus dem Eingabefeld des Dialogs — das `recipient`-Feld eines SMTP-Kontos
-bezeichnet etwas anderes (wohin dieses Konto den Bericht schickt).
+aus dem Eingabefeld des Dialogs — nie aus `transport["recipient"]`. Der Dialog
+belegt das Feld bei SMTP zwar aus dem Konto vor
+(`share_dialog.default_share_recipient`), aber als Vorschlag: was hier
+ankommt, ist die Adresse, die im Feld stand.
 """
 
 import logging

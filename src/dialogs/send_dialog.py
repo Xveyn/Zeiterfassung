@@ -13,7 +13,7 @@ from src.report import (
     default_pdf_filename, filter_categories, filter_period, generate_report,
 )
 from src.theme import (
-    BG, CELL_BG, FONT, TEXT, TEXT_MUTED,
+    BG, CELL_BG, FONT, FONT_BOLD, TEXT, TEXT_MUTED,
     apply_combobox_style, attach_unfocus_on_click, center_dialog_on_parent,
     create_dialog, dark_combo, primary_button, secondary_button,
     set_button_text, set_primary_button_enabled,
@@ -142,6 +142,26 @@ FORMAT_LABELS = {(True, False): "JSON", (False, True): "PDF",
 _FORMAT_BY_LABEL = {v: k for k, v in FORMAT_LABELS.items()}
 
 
+def mail_target_label(recipient, have_credentials):
+    """Beschriftung der Gmail-Zeile in der Ziel-Liste.
+
+    Nennt den Kanal bewusst NICHT — das tut die Abschnitts-Überschrift
+    darüber. Was die Zeile dagegen sagen muss: warum sie ggf. tot ist. Ohne
+    den Zusatz stünde dort die Empfängeradresse und nichts erklärte, warum
+    sie nicht anwählbar ist.
+    """
+    if not recipient:
+        return "Kein Empfänger eingetragen"
+    if not have_credentials:
+        return f"An {recipient} (Zugangsdaten fehlen)"
+    return f"An {recipient}"
+
+
+def smtp_target_label(record):
+    """Beschriftung einer SMTP-Zeile: Kontoname → wohin es schickt."""
+    return f"{record.get('name', '')} → {record.get('recipient', '')}"
+
+
 def open_send_dialog(parent, storage, settings, base_path, runner,
                      reservation_store=None, webhook_store=None,
                      vacation_store=None, smtp_store=None):
@@ -167,14 +187,7 @@ def open_send_dialog(parent, storage, settings, base_path, runner,
             show_missing_credentials_dialog(parent, base_path)
         return
 
-    # Warum die Mail-Zeile ggf. tot ist — sonst steht dort die
-    # Empfängeradresse und nichts erklärt, warum sie nicht anwählbar ist.
-    if not recipient:
-        mail_label = "E-Mail (kein Empfänger eingetragen)"
-    elif not have_credentials:
-        mail_label = f"E-Mail an {recipient} (Zugangsdaten fehlen)"
-    else:
-        mail_label = f"E-Mail an {recipient}"
+    mail_label = mail_target_label(recipient, have_credentials)
 
     dialog = create_dialog(parent, "Zeitraum wählen")
 
@@ -210,31 +223,50 @@ def open_send_dialog(parent, storage, settings, base_path, runner,
         targets = tk.LabelFrame(dialog, text="Ziele", font=FONT, bg=BG, fg=TEXT_MUTED)
         targets.grid(row=1, column=0, padx=10, pady=(4, 0), sticky="we")
 
+        # Nach Kanal gruppiert: „Gmail", „SMTP" und „Webhooks" verschicken auf
+        # grundverschiedenen Wegen (Google-Konto / eigener Mailserver /
+        # HTTP-Endpunkt). In einer flachen Liste stünde ein SMTP-Konto
+        # namens „Büro" neben einem Webhook namens „Büro", ohne dass etwas
+        # sagt, was der Haken auslöst. Die Überschrift sagt es einmal pro
+        # Block, die Zeilen bleiben dadurch kurz.
+        target_row = {"n": 0}
+
+        def _section(title):
+            tk.Label(
+                targets, text=title, font=FONT_BOLD, bg=BG, fg=TEXT_MUTED,
+            ).grid(row=target_row["n"], column=0, columnspan=2, sticky="w",
+                   padx=6, pady=(6, 0))
+            target_row["n"] += 1
+
+        _section("Gmail")
         mail_cb = tk.Checkbutton(
             targets, text=mail_label,
             variable=mail_var, font=FONT, bg=BG, fg=TEXT, selectcolor=CELL_BG,
             activebackground=BG, activeforeground=TEXT, cursor="hand2",
             command=_update_send_button)
-        mail_cb.grid(row=0, column=0, sticky="w", padx=6, pady=2)
+        mail_cb.grid(row=target_row["n"], column=0, sticky="w", padx=(20, 6), pady=2)
+        target_row["n"] += 1
         if not mail_possible:
             mail_var.set(False)
             mail_cb.config(state="disabled")
 
-        target_row = 1
+        if accounts:
+            _section("SMTP")
         for record in accounts:
             # Vorbelegt angehakt, wenn es KEINEN Gmail-Weg gibt: dann ist SMTP
             # der Standardweg und nicht die Ausnahme.
             var = tk.BooleanVar(value=not mail_possible)
             tk.Checkbutton(
-                targets,
-                text=f"{record.get('name', '')} → {record.get('recipient', '')}",
+                targets, text=smtp_target_label(record),
                 variable=var, font=FONT, bg=BG, fg=TEXT, selectcolor=CELL_BG,
                 activebackground=BG, activeforeground=TEXT, cursor="hand2",
                 command=_update_send_button,
-            ).grid(row=target_row, column=0, sticky="w", padx=6, pady=2)
+            ).grid(row=target_row["n"], column=0, sticky="w", padx=(20, 6), pady=2)
             smtp_vars.append((record, var))
-            target_row += 1
+            target_row["n"] += 1
 
+        if hooks:
+            _section("Webhooks")
         for record in hooks:
             # Vorbelegt ABGEHAKT: Mail bleibt der Standardweg, ein Versand an
             # einen externen Endpunkt soll eine bewusste Entscheidung sein.
@@ -244,15 +276,15 @@ def open_send_dialog(parent, storage, settings, base_path, runner,
                 bg=BG, fg=TEXT, selectcolor=CELL_BG, activebackground=BG,
                 activeforeground=TEXT, cursor="hand2",
                 command=_update_send_button,
-            ).grid(row=target_row, column=0, sticky="w", padx=6, pady=2)
+            ).grid(row=target_row["n"], column=0, sticky="w", padx=(20, 6), pady=2)
 
             payload = record.get("payload") or {}
             current = (bool(payload.get("json")), bool(payload.get("pdf")))
             fmt_var = tk.StringVar(value=FORMAT_LABELS.get(current, "JSON"))
             dark_combo(targets, fmt_var, list(_FORMAT_BY_LABEL), width=12).grid(
-                row=target_row, column=1, sticky="w", padx=(12, 6), pady=2)
+                row=target_row["n"], column=1, sticky="w", padx=(12, 6), pady=2)
             hook_vars.append((record, var, fmt_var))
-            target_row += 1
+            target_row["n"] += 1
 
     busy = {"running": False}
 
