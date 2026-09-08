@@ -41,7 +41,7 @@ Desktop-App zur Erfassung von Arbeitszeiten mit Kalenderansicht, PDF-Report und 
 - **Kategorien** — Mehrere Zeitblöcke pro Tag mit eigenen Kategorien; Standard-Start/-Ende pro Kategorie, optional pro Wochentag
 - **Reservierungen & Google-Kalender** — Zukünftige Arbeitszeiten pro Tag reservieren (eigenes Konzept neben den Ist-Zeiten, im Kalender als violetter Eck-Punkt markiert); optionaler Abgleich mit einem wählbaren Google Kalender
 - **Reservierungs-Erinnerungen** — Optionale Toast-Benachrichtigung, wenn ein für heute reservierter Slot fällig wird und noch keine Ist-Zeit erfasst ist (konfigurierbare Vorlaufzeit)
-- **Urlaub** *(ab 1.22.0)* — Urlaubszeiträume als Einheit eintragen (Name, Von/Bis, Stunden pro Tag oder Gesamtstunden auf die Arbeitstage verteilt); im Kalender ein durchgehender türkiser Block über Wochenenden und Feiertage hinweg, einzelne Tage nachträglich anpassbar (halbe Urlaubstage). Urlaub und Arbeitszeit schließen sich am selben Tag aus — ein Urlaubstag nimmt keine Arbeitszeit an, und ein Urlaub lässt sich nicht über bereits erfasste Tage legen. Die Stundenzeile in der Kalenderzelle („4:00 h") lässt sich im Dialog „Urlaub verwalten" abschalten *(ab --VERSION--)* — der Zeitraum bleibt dann als Block mit „Urlaub" stehen, die Stunden stehen weiterhin im Tooltip. Optional als Ganztags-Termine im Google Kalender — im Dialog „Urlaub verwalten" ein- und ausschaltbar; beim Ausschalten räumt die App ihre Termine auf Wunsch wieder weg. Gerätelokal — Urlaub reist **nicht** über den Drive-Sync mit
+- **Urlaub** *(ab 1.22.0)* — Urlaubszeiträume als Einheit eintragen (Name, Von/Bis, Stunden pro Tag oder Gesamtstunden auf die Arbeitstage verteilt); im Kalender ein durchgehender türkiser Block über Wochenenden und Feiertage hinweg, einzelne Tage nachträglich anpassbar (halbe Urlaubstage). Urlaub und Arbeitszeit schließen sich am selben Tag aus — ein Urlaubstag nimmt keine Arbeitszeit an, und ein Urlaub lässt sich nicht über bereits erfasste Tage legen. Die Stundenzeile in der Kalenderzelle („4:00 h") lässt sich im Dialog „Urlaub verwalten" abschalten *(ab 1.23.0)* — der Zeitraum bleibt dann als Block mit „Urlaub" stehen, die Stunden stehen weiterhin im Tooltip. Optional als Ganztags-Termine im Google Kalender — im Dialog „Urlaub verwalten" ein- und ausschaltbar; beim Ausschalten räumt die App ihre Termine auf Wunsch wieder weg. Gerätelokal — Urlaub reist **nicht** über den Drive-Sync mit
 - **Feiertage** — Feiertage des gewählten Bundeslands sind im Kalender markiert und werden beim Anlegen eines Eintrags nachgefragt
 - **Nur Werktage** — Optional lässt sich das Wochenende komplett deaktivieren: Sa/So verschwinden aus Kalender, Standardzeiten, Bericht, Mailversand und PDF-Export. Vorhandene Wochenend-Einträge bleiben gespeichert und sind sofort wieder da, wenn die Einstellung zurückgenommen wird
 - **Wochenstunden-Limit** — Optionales Werkstudenten-Limit über einen konfigurierbaren Zeitraum mit Warnung beim Überschreiten
@@ -55,13 +55,13 @@ Desktop-App zur Erfassung von Arbeitszeiten mit Kalenderansicht, PDF-Report und 
 
 - **PDF-Report** — Automatische Generierung als druckfreundliches PDF, gruppiert pro ISO-Kalenderwoche; Kategorie-Aufschlüsselung optional
 - **E-Mail-Versand** — HTML-E-Mail mit PDF-Anhang über Gmail API (OAuth2)
-- **SMTP-Versand** *(ab --VERSION--)* — Berichte über einen eigenen Mail-Server statt über die Gmail-API verschicken; mehrere Konten mit je eigenem Empfänger möglich
+- **SMTP-Versand** *(ab 1.23.0)* — Berichte über einen eigenen Mail-Server statt über die Gmail-API verschicken; mehrere Konten mit je eigenem Empfänger möglich, im Sende-Dialog einzeln anwählbar (die Ziele stehen dort nach Kanal gruppiert: Gmail, SMTP, Webhooks)
 - **Webhook-Versand** — Der Bericht lässt sich zusätzlich zur E-Mail an konfigurierbare HTTP-Endpunkte senden (JSON und/oder PDF, optional mit Token oder HMAC-Signatur); gerätelokal konfiguriert
 - **PDF-Export** — Bericht für einen frei gewählten Zeitraum direkt als PDF lokal speichern (ohne Mail-Versand)
-- **Urlaub im Bericht** *(ab 1.22.0)* — Optionales Häkchen „Urlaub ausweisen“: der Bericht bekommt einen eigenen Urlaubs-Block je Zeitraum und die Zeile „Zu vergüten gesamt“. „Gesamt“ bleibt die reine Ist-Zeit. Liegt an einem Tag ausnahmsweise doch beides — Urlaub *und* erfasste Arbeitszeit, etwa nach einem Import oder einem Sync vom Zweitgerät —, zählt der Tag nicht doppelt: der Urlaub wird dort um die erfassten Stunden gekürzt, und eine Zeile im Sende-/Export-Dialog sowie eine Fußnote im Bericht sagen, an welchem Tag das passiert ist *(ab --VERSION--)*
+- **Urlaub im Bericht** *(ab 1.22.0)* — Optionales Häkchen „Urlaub ausweisen“: der Bericht bekommt einen eigenen Urlaubs-Block je Zeitraum und die Zeile „Zu vergüten gesamt“. „Gesamt“ bleibt die reine Ist-Zeit. Liegt an einem Tag ausnahmsweise doch beides — Urlaub *und* erfasste Arbeitszeit, etwa nach einem Import oder einem Sync vom Zweitgerät —, zählt der Tag nicht doppelt: der Urlaub wird dort um die erfassten Stunden gekürzt, und eine Zeile im Sende-/Export-Dialog sowie eine Fußnote im Bericht sagen, an welchem Tag das passiert ist *(ab 1.23.0)*
 - **Zeitraumwahl** — Flexibler Datumsbereich für Reports, mit Filter auf einzelne Kategorien
 - **Sende-Erinnerung** — Optionale Toast-Erinnerung, die Arbeitszeiten zu verschicken: monatlich an einem frei wählbaren Tag (auf Wunsch von Wochenenden und Feiertagen weg verschoben) und/oder tagesbezogen, wenn ein dafür markierter Reservierungs-Slot ausläuft. Der Sende-Dialog schlägt den Zeitraum seit der letzten Erinnerung vor
-- **Teilen & Importieren** — Eigene Arbeitszeiten als JSON-Anhang per Mail an eine zweite Person teilen; der Empfänger importiert sie mit Zeitraum-Filter und drei Konflikt-Modi (alles importieren / alles lokal / pro Tag entscheiden)
+- **Teilen & Importieren** — Eigene Arbeitszeiten als JSON-Anhang per Mail an eine zweite Person teilen — wahlweise über Gmail oder ein SMTP-Konto, dessen hinterlegter Empfänger dann vorbelegt und überschreibbar ist *(ab 1.23.0)*; der Empfänger importiert sie mit Zeitraum-Filter und drei Konflikt-Modi (alles importieren / alles lokal / pro Tag entscheiden)
 
 ![Sende-Dialog mit Zeitraum- und Kategorieauswahl](docs/screenshots/senden-v1.21.0.png)
 
@@ -77,7 +77,7 @@ Desktop-App zur Erfassung von Arbeitszeiten mit Kalenderansicht, PDF-Report und 
 - **Einstellungen** — In Tabs gegliedert (Arbeitszeit / Bericht & Mail / Webhooks / SMTP / Google / App / Updates); E-Mail-Vorlagen mit Platzhaltern, Standardpause, Empfänger und Update-Einstellungen
 - **Autostart & Einzelinstanz** — Optionaler minimierter Start bei Anmeldung (Windows, macOS, Linux); es läuft immer nur eine Instanz — ein zweiter Start holt das vorhandene Fenster nach vorn
 - **Update-Check** — Konfigurierbare Hintergrund-Prüfung auf neue Releases; Updates-Tab mit manuellem Check, Changelog und Direkt-Download, bei aktivem Tray als einmaliger Toast statt Banner. Läuft die App im Infobereich, stößt **„Nach Updates suchen"** im Tray-Menü die Prüfung direkt an — das Ergebnis kommt als Toast, auch wenn alles aktuell ist. Optional lassen sich auch Vorabversionen (Pre-Releases) anbieten — Testbuilds vor dem echten Release
-- **Update aus der App** *(ab --VERSION--)* — Unter Windows und Linux lädt die App ein Update selbst, prüft es gegen die Prüfsummen des Releases und installiert es; auf Wunsch automatisch beim nächsten Beenden. Unter macOS öffnet der Knopf weiterhin den Download im Browser
+- **Update aus der App** *(ab 1.23.0)* — Unter Windows und Linux lädt die App ein Update selbst, prüft es gegen die Prüfsummen des Releases und installiert es; auf Wunsch automatisch beim nächsten Beenden. Unter macOS öffnet der Knopf weiterhin den Download im Browser
 - **Dark Mode UI** — Modernes dunkles Design, für alle Dialoge einheitlich
 - **UI-Skalierung** — Stufenloser Skalierungsfaktor für die Oberfläche (gerätelokal)
 - **Cross-Platform-Installer** — Per PyInstaller gebaut, als Setup-Exe (Windows), DMG (macOS) und AppImage (Linux) paketierbar
@@ -169,6 +169,7 @@ python -m src.main
 | `keyring` | SMTP-Passwörter im Schlüsselbund des Betriebssystems |
 | `pystray` | Infobereich-Icon (Minimize-to-Tray) |
 | `Pillow` | Icon-/Bildverarbeitung (Tray-Icon) |
+| `dbus-fast` | Linux-Tray über StatusNotifierItem (nur Linux) |
 | `pyobjc-framework-Cocoa` | Natives macOS-Tray (nur macOS) |
 
 ## Projektstruktur
@@ -188,6 +189,7 @@ Zeiterfassung/
 │   ├── sync_orchestrator.py # Drive-Sync-Steuerung (manuell/Tray/Pull/Quit, Fehler-Aufbereitung)
 │   ├── update_banner.py   # GitHub-Release-Hinweis-Banner
 │   ├── dialogs/           # Modal-Dialoge (entry, send, export, settings [inkl. SMTP-Tab], share, import, conflicts, category, scopes, webhook, smtp, vacation) + geteilter period_picker
+│   ├── json_store.py      # Gemeinsame Mechanik der lokalen JSON-Stores (atomares Schreiben, Quarantäne)
 │   ├── storage.py         # JSON-Persistenz der Zeiteinträge
 │   ├── settings.py        # Einstellungen mit Standardwerten
 │   ├── category_defaults.py # Default-Kategorien für Zeit-Slots
@@ -201,6 +203,7 @@ Zeiterfassung/
 │   ├── webhook_store.py   # Gerätelokale Persistenz der Webhooks (gehärtet geschrieben, kein Sync)
 │   ├── drive.py           # Google Drive API-Wrapper (Multi-Device-Sync)
 │   ├── sync.py            # Sync-Engine (pure Logik, LWW-Merge, Konflikterkennung)
+│   ├── sync_runtime.py    # Sync-/Kompaktierungs-/Reconcile-Flows über der Engine
 │   ├── sync_journal.py    # Crash-Recovery für den Sync-Apply (Write-Ahead-Journal)
 │   ├── sync_history.py    # Persistenter „hat je gesynct/abgeglichen"-Marker (Tombstone-Schutz)
 │   ├── conflicts_store.py # Lokale Persistenz der Konfliktliste
@@ -218,9 +221,10 @@ Zeiterfassung/
 │   ├── workweek.py        # Nur-Werktage-Modus (Sa/So ausblenden), pure Logik
 │   ├── gcal.py            # Google-Calendar-API-Wrapper
 │   ├── oauth_utils.py     # Gemeinsame OAuth-Token-Boilerplate (Persistenz, Scope-Upgrade) für mail/drive/gcal
-│   ├── tray.py            # Infobereich-Icon (Minimize-to-Tray); Plattform-Fassade
-│   ├── tray_mac.py        # Natives macOS-Tray-Backend (NSStatusItem, dormant/opt-in)
-│   ├── tray_linux.py      # Linux-Tray-Backend (StatusNotifierItem über D-Bus, dormant/opt-in)
+│   ├── tray/              # Infobereich-Icon (Minimize-to-Tray): Plattform-Fassade,
+│   │                      #   Menü-Modell und je ein Backend für Windows (pystray),
+│   │                      #   macOS (NSStatusItem) und Linux (StatusNotifierItem) — die
+│   │                      #   letzten beiden dormant/opt-in
 │   ├── autostart.py       # Plattformabhängiger Autostart (Windows-Registry/macOS/Linux)
 │   ├── desktop_entry.py   # Freedesktop-.desktop-Eintrag + Icon-Kopie (Linux-Anwendungsmenü)
 │   ├── secure_file.py     # Zugriffsschutz für lokale Secrets (Windows-ACL via icacls)
@@ -228,12 +232,14 @@ Zeiterfassung/
 │   ├── device_id.py       # Stabile, hardware-abgeleitete Geräte-ID für installierte Builds (Sync)
 │   ├── devices.py         # Lesbare Gerätenamen (Registry im Sync-Doc) für den Konflikt-Dialog
 │   ├── updater.py         # GitHub-Releases-Check (stdlib-only, Frequenz konfigurierbar)
+│   ├── self_update.py     # Update laden, gegen SHA256SUMS prüfen und installieren (Windows/Linux)
 │   ├── changelog.py       # Lädt/parst den Changelog-Abschnitt einer Release-Version
 │   ├── holidays_de.py     # Feiertags-Lookup (python-holidays)
 │   ├── time_utils.py      # Zeitberechnung und Validierung
 │   ├── logging_setup.py   # File-Logging + globaler Excepthook
 │   ├── platform_open.py   # os.startfile/open/xdg-open-Wrapper
-│   ├── theme.py           # Theme-/Font-Konstanten
+│   ├── theme/             # Dark-Theme: Palette, Fonts, Widget-Fabriken, Fenster-Chrome,
+│   │                      #   Geometrie-Helfer und themed messagebox-Drop-ins
 │   ├── tooltip.py         # Tooltip-Helfer
 │   ├── version.py         # Einzige Quelle der App-Version
 │   └── paths.py           # Pfadauflösung (Script- vs. Frozen-Modus)
@@ -243,6 +249,7 @@ Zeiterfassung/
 ├── docs/                  # Specs/Plans, Known Limitations
 ├── scripts/               # Entwickler-Skripte (nicht Teil der App)
 │   ├── build.py           # Plattform-Dispatcher für den PyInstaller-Build
+│   ├── resolve_readme_version.py # Pflegt die Versionsmarker dieser README
 │   ├── webhook_testserver.py  # lokaler Test-Empfänger für den Webhook-Versand
 │   └── smtp_testserver.py     # lokaler Test-Mailserver für den SMTP-Versand
 ├── installer.iss          # Inno Setup Script (Windows-Installer)
@@ -328,7 +335,7 @@ Einstellungen → **SMTP** → **Hinzufügen**:
 | Verschlüsselung | STARTTLS (Port 587) oder SSL/TLS (Port 465) |
 | Benutzer / Passwort | Zugangsdaten des Postfachs; darf bei internen Relays ohne Anmeldung leer bleiben |
 | Absender | Die Adresse, die als Absender erscheint |
-| Empfänger | Wohin dieses Konto den Bericht schickt |
+| Empfänger | Wohin dieses Konto den Bericht schickt; im Teilen-Dialog ist diese Adresse vorbelegt und überschreibbar |
 
 **Verbindung testen** prüft Server und Zugangsdaten, ohne eine Mail zu
 verschicken.
