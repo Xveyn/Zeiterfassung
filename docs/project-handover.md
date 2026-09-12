@@ -79,10 +79,10 @@ und damit der ganze Umzug.
 - [ ] **GitHub-Account/Org `margenheld`:** Hängen Login oder Recovery-Adresse an
       einem Firmenpostfach? Mit dessen Abschaltung ist der Zugang weg.
 - [ ] **Domain `margen-held.de`:** trug die Security-Meldeadresse — aus
-      `SECURITY.md` inzwischen **ersatzlos entfernt**, Meldungen laufen nur noch
-      über die GitHub Security Advisories des neuen Repos. Offen bleibt der
-      organisatorische Teil:
-      (`SECURITY.md:24`, `sven@margen-held.de`). Läuft die Domain aus und
+      `SECURITY.md` inzwischen **ersatzlos entfernt** (die Datei nennt heute
+      gar keine Mailadresse mehr), Meldungen laufen nur noch über die GitHub
+      Security Advisories des neuen Repos. Offen bleibt der organisatorische
+      Teil: Läuft die Domain aus und
       registriert sie jemand neu, empfängt dieser Passwort-Resets für jeden
       Account, der noch auf sie zeigt. → GitHub-Account auf eine private
       Adresse umstellen, 2FA-Recovery-Codes sichern.
@@ -103,12 +103,20 @@ verlieren.
 
 ## 3. Die Update-Brücke
 
-**Grundlage:** Die App aktualisiert sich **nie selbst**. `update_banner._open_download`
-und `tab_updates._open_download` machen beide nur `webbrowser.open(url)` — auf
-die Asset-URL, ersatzweise auf `release.html_url`; installiert wird manuell
-(vgl. Kommentar in `src/autostart.py:228`). Der Updater ist also ein reiner
-**Melder**. Das heißt: die Migration kann nicht stillschweigend passieren, aber
-sie ist technisch simpel — es muss nur die *Meldung* beim Nutzer ankommen.
+**Grundlage (Stand der Brücke, 2026-08):** Die App aktualisierte sich damals
+**nie selbst**. `update_banner._open_download` und `tab_updates._open_download`
+machten beide nur `webbrowser.open(url)` — auf die Asset-URL, ersatzweise auf
+`release.html_url`; installiert wurde manuell. Der Updater war also ein reiner
+**Melder**. Das heißt: die Migration konnte nicht stillschweigend passieren,
+war aber technisch simpel — es musste nur die *Meldung* beim Nutzer ankommen.
+
+> **Seit 1.23.0 gilt das so nicht mehr**, für die Brücke aber weiterhin: unter
+> Windows und Linux installiert die App ein Update selbst
+> (`src/self_update.py`), unter macOS bleibt es beim Browser-Download. Für die
+> Brücke ändert das nichts — sie hing an der *Meldung*, und die kommt
+> unverändert aus `updater.REPO`. Wer hier die Update-Mechanik nachliest,
+> nimmt `CLAUDE.md`, Abschnitt „Update-Weg", nicht diesen Absatz: der
+> beschreibt den Stand von 2026-08.
 
 - [x] **Schritt 1 — Brücken-Release im ALTEN Repo: `1.21.0`.** *(erledigt: `margenheld/Zeiterfassung` `v1.21.0`, 4 Assets, 2026-08-26.)* Gebaut und
       veröffentlicht wird es noch hier, die Assets liegen also im alten Repo.
@@ -165,7 +173,7 @@ Der alte Name muss dauerhaft belegt bleiben.
       2026-08-26: beide Seiten hatten **46 Tags**, aber
       nicht dieselben — dem Fork fehlt `v1.20.0-pre.2`, upstream fehlt
       `v1.17.0-pre.1`. `git push origin --tags` schließt die Lücke im Fork.
-      Ohne die Tags scheitern zwei Dinge: (a) `src/changelog.py:15` lädt
+      Ohne die Tags scheitern zwei Dinge: (a) `src/changelog.py` lädt
       `raw.githubusercontent.com/{repo}/v{version}/CHANGELOG.md` und findet für
       ältere Versionen nichts mehr; (b) das `pre-check`-Gate in `release.yml`
       verlangt für einen Pre-Release, dass `v<VERSION>` bereits existiert.
@@ -221,15 +229,15 @@ Der alte Name muss dauerhaft belegt bleiben.
 
 ## 5. Code-Stelle: der Auto-Updater
 
-`src/updater.py:35` — `REPO = "MargenHeld/Zeiterfassung"`, genutzt in
+`src/updater.py` — `REPO = "MargenHeld/Zeiterfassung"`, genutzt in
 `src/ui.py`, `src/background_tasks.py` und
 `src/dialogs/settings_dialog/tab_updates.py`. Diese Konstante ist in **jeder
 bereits installierten App fest eingebacken** — deshalb die Update-Brücke aus
 Abschnitt 3.
 
-- [x] Konstante auf `Xveyn/Zeiterfassung` gesetzt (`src/updater.py:35`). Sie muss im **Brücken-Release
+- [x] Konstante auf `Xveyn/Zeiterfassung` gesetzt (`src/updater.py`, `REPO`). Sie muss im **Brücken-Release
       des alten Repos** stecken, nicht erst im ersten Release des Forks.
-- [x] `src/changelog.py:15` baut
+- [x] `src/changelog.py` baut
       `https://raw.githubusercontent.com/{repo}/v{version}/CHANGELOG.md` — der
       Grund, warum die Tags im Fork vollständig sein müssen (Abschnitt 4). Die
       `MargenHeld/…`-Vorkommen in `tests/test_changelog.py` sind reine
@@ -239,8 +247,8 @@ Abschnitt 3.
 
 ## 6. Bewusst NICHT anfassen
 
-- **`com.margenheld.zeiterfassung`** — `src/autostart.py:12` (`MACOS_LABEL`) und
-  `scripts/build.py:160` (`--osx-bundle-identifier`). Ändern = verwaister LaunchAgent
+- **`com.margenheld.zeiterfassung`** — `src/autostart.py` (`MACOS_LABEL`) und
+  `scripts/build.py` (`--osx-bundle-identifier`). Ändern = verwaister LaunchAgent
   unter `~/Library/LaunchAgents/`, und macOS behandelt die App als komplett neue
   (Berechtigungen/TCC von vorn). Entweder so lassen oder mit expliziter
   Migration in `autostart.py`.

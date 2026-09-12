@@ -188,6 +188,51 @@ class TestPins:
             f"CLAUDE.md sagt pip-licenses=={version}, release.yml installiert {actual}")
 
 
+class TestSetupPythonCalls:
+    """Die dokumentierte Zahl der `setup-python`-Aufrufe == die Workflows.
+
+    Die Behauptung trägt die Begründung für `.python-version`: Dependabot
+    darf die Datei lesen, ohne dass sie die Workflows beeinflusst — weil
+    dort **jeder** Aufruf sein `python-version` selbst setzt. Ein neuer
+    Workflow ohne diese Zeile entwertet die Begründung still, und die alte
+    Zahl deckt es zu. Genau das war passiert: die Doku stand auf 13, während
+    `readme-version.yml` und der Marker-Cleanup längst dazugekommen waren.
+
+    Geprüft wird beides — die Zahl **und** die Eigenschaft dahinter. Nur die
+    Zahl zu zählen ginge am Punkt vorbei: der Satz behauptet nicht „es sind
+    15", sondern „alle setzen es explizit".
+    """
+
+    def _calls(self):
+        """[(Datei, Block-Text)] je setup-python-Aufruf über alle Workflows."""
+        found = []
+        for path in sorted((ROOT / ".github" / "workflows").glob("*.yml")):
+            text = path.read_text(encoding="utf-8")
+            for match in re.finditer(r"uses: actions/setup-python@[^\n]*\n"
+                                     r"((?:[ \t]+[^\n]*\n)*)", text):
+                found.append((path.name, match.group(1)))
+        return found
+
+    def test_documented_count_matches_the_workflows(self):
+        documented = int(_claim(
+            r"`actions/setup-python` bleibt unber[^.]*?\*\*alle\*\* (\d+) Aufrufe",
+            "die Zahl der setup-python-Aufrufe").group(1))
+        calls = self._calls()
+        assert calls, "Parser gescheitert: kein setup-python-Aufruf gefunden"
+        assert len(calls) == documented, (
+            f"CLAUDE.md sagt {documented} setup-python-Aufrufe, die Workflows "
+            f"haben {len(calls)}: "
+            + ", ".join(sorted({name for name, _ in calls})))
+
+    def test_every_call_sets_python_version_explicitly(self):
+        without = [name for name, block in self._calls()
+                   if "python-version:" not in block]
+        assert not without, (
+            "CLAUDE.md begründet `.python-version` damit, dass ALLE "
+            "setup-python-Aufrufe ihr `python-version` explizit setzen. "
+            f"Ohne die Zeile: {without}")
+
+
 class TestSchemaVersions:
     """`SCHEMA_VERSION` und `PAYLOAD_SCHEMA_VERSION` == die Zahlen in der Doku.
 

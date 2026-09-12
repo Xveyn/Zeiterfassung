@@ -400,9 +400,10 @@ seine Python-Version nirgends (kein `[project] requires-python`, kein
 Versionen vor, die 3.10 längst fallengelassen haben. Zwei Nebenwirkungen, beide
 gewollt: `uv` benutzt im Repo dann ebenfalls 3.10 statt der System-Python
 (spiegelt die Release-Umgebung, s. „Manueller CI-Build ohne Release"), und
-`actions/setup-python` bleibt unberührt, weil **alle** 13 Aufrufe in den
+`actions/setup-python` bleibt unberührt, weil **alle** 15 Aufrufe in den
 Workflows ihr `python-version` explizit setzen. Wer das ändert, zieht die Datei
-mit.
+mit. Die Zahl hält `tests/test_claude_md_claims.py` fest — sie war schon einmal
+stehengeblieben, während neue Workflows dazukamen.
 
 ## Installation & Daten
 
@@ -759,7 +760,7 @@ Der Google-Kalender-Push ist ein **Zusatz**, keine Voraussetzung: anders als
 Reservierungen ist Urlaub **nicht** an `gcal_enabled` gekoppelt. Für den
 **Push** selbst gelten dagegen vier Bedingungen: `gcal_enabled`, ein gewählter
 Kalender, ein vorhandener `reservation_store` — `_reservations_active`
-(`ui.py:245`) prüft beides, und `trigger_reconcile`/`reconcile_on_start`
+(`ui.py`) prüft beides, und `trigger_reconcile`/`reconcile_on_start`
 kehren sonst früh zurück — **und** der eigene Schalter
 `vacation_gcal_enabled`.
 
