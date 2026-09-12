@@ -7,6 +7,7 @@ Display zum Import nötig). `run_push_blocking` kommt aus `src.sync_runtime`
 src.ui → src.sync_orchestrator).
 """
 
+import datetime
 import logging
 import tkinter as tk
 import traceback
@@ -14,8 +15,11 @@ from tkinter import messagebox
 
 from src.drive import DriveAuthError, DriveNetworkError
 from src.sync_runtime import run_push_blocking
-from src.theme import set_icon_button_enabled, themed_showinfo
-from src.time_utils import format_iso_date
+from src.theme import STATUS_WARN, TEXT_MUTED, set_icon_button_enabled, themed_showinfo
+from src.time_utils import format_date, local_date_of_iso
+
+
+_DAY_WATCH_MS = 60_000  # minütlich — wie der ReminderScheduler.
 
 
 def classify_sync_error(error):
@@ -87,11 +91,52 @@ def _show_sync_error(parent, error, tb="", suffix=""):
         messagebox.showerror(title, message)
 
 
-def _status_text(n_conflicts, last_pull_at):
-    """Text fürs Status-Label: offener Konflikt hat Vorrang, sonst letzter Pull."""
+def _status_view(n_conflicts, last_pull_at, today=None):
+    """(Text, Vordergrundfarbe, Tooltip) fürs Status-Label im Header.
+
+    Der Haken steht für *heute erledigt*, nicht für *irgendwann mal*. Ein
+    abgelaufener Google-Token lässt den Start-Pull still scheitern; frisch
+    blieb `last_pull_at` dann trotzdem nie, und ein ✓ neben einem drei Tage
+    alten Datum behauptete das Gegenteil dessen, was der Fall ist. Alles,
+    was nicht heute gelaufen ist — und jeder offene Konflikt — bekommt
+    deshalb das Warnzeichen und die Warnfarbe; nur der grüne Normalfall
+    bleibt gedimmt, weil er nichts von einem will.
+
+    Verglichen wird das *lokale* Kalenderdatum (s. `local_date_of_iso`),
+    `last_pull_at` steht in UTC. `today` ist injizierbar, damit Tests nicht
+    an der Uhr des Rechners hängen.
+    """
     if n_conflicts > 0:
-        return f"⚠ {n_conflicts} Konflikt{'e' if n_conflicts != 1 else ''}"
-    return f"✓ {format_iso_date(last_pull_at, fallback='noch nie')}"
+        plural = "e" if n_conflicts != 1 else ""
+        return (
+            f"⚠ {n_conflicts} Konflikt{plural}",
+            STATUS_WARN,
+            f"{n_conflicts} Sync-Konflikt{plural} offen — in den Einstellungen "
+            "unter „Google“ auflösen.",
+        )
+
+    pulled_on = local_date_of_iso(last_pull_at)
+    if pulled_on is None:
+        return (
+            "⚠ noch nie",
+            STATUS_WARN,
+            "Noch nie mit Google Drive synchronisiert.",
+        )
+
+    shown = format_date(pulled_on)
+    if pulled_on == (today or datetime.date.today()):
+        return (
+            f"✓ {shown}",
+            TEXT_MUTED,
+            f"Heute synchronisiert ({shown}).",
+        )
+    return (
+        f"⚠ {shown}",
+        STATUS_WARN,
+        f"Zuletzt synchronisiert: {shown} — heute noch nicht.\n"
+        "Über ⟳ erneut versuchen; hält es an, die "
+        "Google-Verbindung prüfen.",
+    )
 
 
 def _short_sync_error(error):
@@ -151,11 +196,54 @@ class SyncOrchestrator:
         # No-op bei bereits laufendem Manual-Sync (der sync_guard schützt die
         # Daten zusätzlich engineseitig; hier geht es um Doppelklick-UX).
         self._sync_in_progress = False
+        # Lokales Datum, für das das Status-Label zuletzt gerendert wurde.
+        # Läuft die App über Mitternacht, wäre der Haken sonst bis zum
+        # nächsten Refresh weiter grün — genau die Falschaussage, gegen die
+        # _status_view gebaut ist. _day_watch_id trägt den geplanten Tick.
+        self._rendered_day = None
+        self._day_watch_id = None
 
     def attach_widgets(self, sync_button, status_label, next_button):
         self._sync_button = sync_button
         self._status_label = status_label
         self._next_button = next_button
+
+    def start_day_watch(self):
+        """Plant den minütlichen Datums-Tick. Idempotent (Muster:
+        ReminderScheduler)."""
+        if self._day_watch_id is not None:
+            return
+        self._day_watch_id = self._root.after(_DAY_WATCH_MS, self._day_tick)
+
+    def stop_day_watch(self):
+        """Bricht den geplanten Tick ab. Idempotent."""
+        if self._day_watch_id is not None:
+            try:
+                self._root.after_cancel(self._day_watch_id)
+            except Exception:
+                # Die ID kann längst abgelaufen sein (Tick gefeuert, Root
+                # zerstört) — after_cancel wirft dann. Das Ziel (kein
+                # geplanter Tick mehr) ist so oder so erreicht.
+                logging.getLogger(__name__).debug(
+                    "after_cancel des Datums-Ticks fehlgeschlagen", exc_info=True)
+            self._day_watch_id = None
+
+    def _day_tick(self):
+        try:
+            self.poll_day_change()
+        except Exception:
+            logging.getLogger(__name__).exception("Datums-Tick fehlgeschlagen")
+        finally:
+            self._day_watch_id = self._root.after(_DAY_WATCH_MS, self._day_tick)
+
+    def poll_day_change(self, today=None):
+        """Rendert das Status-Label neu, wenn seit dem letzten Rendern ein
+        neuer Tag begonnen hat. Sonst passiert nichts — der Tick läuft
+        minütlich und soll nicht minütlich die Konfliktliste zählen."""
+        today = today or datetime.date.today()
+        if self._rendered_day == today:
+            return
+        self.update_status_label(today=today)
 
     def _conflict_count(self):
         if self._conflicts_store is not None:
@@ -179,13 +267,24 @@ class SyncOrchestrator:
         _show_sync_error(self._root, error, tb)
         self.update_status_label()
 
-    def update_status_label(self):
+    def status_tooltip(self, today=None):
+        """Tooltip-Text zum Status-Label. Als Callable an attach_tooltip
+        übergeben (Konvention für zustandsabhängigen Text), nicht als
+        fertiger String — der Zustand wechselt ohne Neuaufbau des Widgets."""
+        if not self._settings.get("sync_enabled"):
+            return ""
+        _text, _fg, tip = _status_view(
+            self._conflict_count(), self._settings.get("last_pull_at"), today)
+        return tip
+
+    def update_status_label(self, today=None):
         if self._status_label is None:
             return
         if not self._settings.get("sync_enabled"):
             self._sync_button.pack_forget()
             self._status_label.pack_forget()
             self._status_label.config(text="")
+            self._rendered_day = None
             return
         # Sichtbar machen, falls vorher versteckt. Reihenfolge wie Build-Time.
         if not self._sync_button.winfo_ismapped():
@@ -193,9 +292,11 @@ class SyncOrchestrator:
                                    before=self._next_button)
             self._status_label.pack(side=tk.RIGHT, padx=(8, 4),
                                     before=self._sync_button)
-        self._status_label.config(
-            text=_status_text(self._conflict_count(),
-                              self._settings.get("last_pull_at")))
+        today = today or datetime.date.today()
+        text, fg, _tip = _status_view(
+            self._conflict_count(), self._settings.get("last_pull_at"), today)
+        self._status_label.config(text=text, fg=fg)
+        self._rendered_day = today
 
     def on_sync_clicked(self):
         if not self._settings.get("sync_enabled"):
@@ -207,7 +308,7 @@ class SyncOrchestrator:
         if self._sync_in_progress:
             return  # läuft bereits — Button ist nur optisch gedimmt
         self._sync_in_progress = True
-        self._status_label.config(text="Synchronisiere…")
+        self._status_label.config(text="Synchronisiere…", fg=TEXT_MUTED)
         if self._sync_button is not None:
             set_icon_button_enabled(self._sync_button, False)
         self._runner.run(self._push, self._on_manual_done)

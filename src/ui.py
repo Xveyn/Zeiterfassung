@@ -151,7 +151,11 @@ class App:
             self.header_label, self.footer_label, self.header_width_spacer)
         self._sync.attach_widgets(
             self.sync_button, self.sync_status_label, self._next_button)
+        attach_tooltip(self.sync_status_label, self._sync.status_tooltip)
         self._sync.update_status_label()
+        # Tages-Tick: hält das ✓/⚠ aktuell, wenn die App über Mitternacht
+        # offen bleibt (s. SyncOrchestrator.poll_day_change).
+        self._sync.start_day_watch()
         self._apply_always_on_top()
         self._apply_tray_setting()
         self._apply_reminder_setting()
@@ -1033,6 +1037,7 @@ class App:
             self._tray.stop()
         self._reminders.stop()
         self._send_reminders.stop()
+        self._sync.stop_day_watch()
         if self._single_instance is not None:
             self._single_instance.release()
         # Ein vorbereitetes Update erst hier anwenden — die App macht ohnehin
@@ -1161,4 +1166,5 @@ class App:
             self._tray.stop()
         self._reminders.stop()
         self._send_reminders.stop()
+        self._sync.stop_day_watch()
         self.root.destroy()

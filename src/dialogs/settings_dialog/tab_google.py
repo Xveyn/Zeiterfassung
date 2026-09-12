@@ -22,7 +22,7 @@ from src.theme import (
     dark_combo, dark_entry, secondary_button, themed_askyesno, themed_showerror,
     themed_showinfo, themed_showwarning,
 )
-from src.time_utils import format_iso_date
+from src.time_utils import format_date, local_date_of_iso
 
 # Zeichen + Farbe je Zustand aus mail.scope_summary — dieselbe Sprache
 # wie die credentials.json-Zeile darüber (✓ grün / ✗ rot).
@@ -289,7 +289,11 @@ class GoogleTab:
             bg=BG, fg=TEXT_MUTED,
         ).grid(row=9, column=0, columnspan=2, padx=10, pady=(2, 0), sticky="w")
 
-        last = format_iso_date(settings.get("last_pull_at"), fallback="noch nie")
+        # Lokales Datum wie im Header-Status-Label (s. sync_orchestrator.
+        # _status_view) — zwei verschiedene Daten für denselben Wert wären
+        # schlimmer als ein um Mitternacht schiefes.
+        _pulled_on = local_date_of_iso(settings.get("last_pull_at"))
+        last = format_date(_pulled_on) if _pulled_on else "noch nie"
         tk.Label(
             frame, text=f"Letzte Synchronisation: {last}", font=FONT_SMALL,
             bg=BG, fg=TEXT_MUTED,
