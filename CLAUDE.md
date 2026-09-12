@@ -795,23 +795,37 @@ komplette Fenster-Chrome (BG, dunkle Titelleiste, disable_min_max,
 App-Icon, modal/Escape) konventionskonform. `center_dialog_on_parent`
 nach dem Widget-Aufbau bleibt Aufgabe des Dialogs.
 
-**Bekannte, akzeptierte Einschränkung — kurzes Aufblitzen der hellen
-Windows-Titelleiste:** `apply_dark_titlebar`/`disable_min_max` sind bewusst
-per `window.after(100, …)` verzögert (s. Kommentar dort — frühere Tk-eigene
-Fenster-Property-Calls würden das DWM-Farb-Attribut sonst clobbern). In
-diesem ~100ms-Fenster rendert Windows die Titelleiste kurz im hellen
-Standard-Stil, bevor sie umgefärbt wird. Versuch, das Fenster bis dahin per
-`-alpha 0.0` unsichtbar zu halten (reine Compositing-Deckkraft statt
-`withdraw`/`deiconify`, um `grab_set()` nicht zu gefährden): macht auf
-diesem Windows/Tk-Gespann `center_dialog_on_parent` dauerhaft kaputt — ein
-frisch erzeugtes Toplevel, das direkt `-alpha 0.0` bekommt, ignoriert
-spätere `geometry()`-Aufrufe komplett (auch ein zweiter Zentrier-Aufruf
-nach dem Sichtbarmachen bringt die Position nicht zurück, Dialog landet bei
-`+0+0` bzw. einem falschen Offset). Tieferer Windows/DWM-Layered-Window-
-Effekt, kein einfacher Timing-Bug — daher bewusst nicht gefixt; das
-Flackern ist als Kompromiss akzeptiert. Vor einem neuen Versuch: das oben
-beschriebene Verhalten reproduzieren und gegenchecken, ob es (in einer
-neueren Tk/Python-Version) noch auftritt.
+**Dialoge werden verborgen aufgebaut — und das ist keine Kosmetik.**
+`create_dialog` ruft `withdraw()` direkt nach dem `Toplevel`, sichtbar macht
+den Dialog erst `center_dialog_on_parent` (über `reveal_dialog`). Daraus
+folgt eine **Paarungs-Regel**: wer `create_dialog` ruft, MUSS
+`center_dialog_on_parent` rufen — sonst baut sich der Dialog vollständig auf
+und ist nie zu sehen, ohne Fehlermeldung. `tests/test_dialog_reveal.py`
+prüft das pro Funktion.
+
+Der Grund ist ein **Handle-Wechsel**: Tk erzeugt das Win32-Fenster während
+des Dialog-Aufbaus neu — messbar am wechselnden HWND, zuletzt bei
+`transient()`, das `center_dialog_on_parent` setzt. Ein vorher gesetztes
+DWM-Farbattribut hängt danach an einem toten Fenster. Genau das meinte der
+frühere Hinweis, Tk-Property-Calls würden das Attribut „clobbern"; deshalb
+stand dort ein `window.after(100, …)` — ein **Rateversuch** auf den
+Zeitpunkt, zu dem Tk fertig ist. In diesem Ratefenster stand der Dialog
+bereits sichtbar mit heller Titelleiste da (gemessen: ~56 ms). Verborgen
+aufgebaut gibt es nichts zu raten: beim Sichtbarmachen ist der Handle
+endgültig, `_apply_dark_titlebar_now`/`disable_min_max` laufen **synchron**,
+danach erst `deiconify`. `grab_set`/`focus_set` wandern mit ins
+Sichtbarmachen — ein verborgenes Fenster kann keinen Grab nehmen.
+
+`apply_dark_titlebar` behält seinen `after(100, …)`-Aufschub, hat aber nur
+noch **einen** Aufrufer: das Hauptfenster in `ui.py`. Das ist von Anfang an
+sichtbar und hat diese Klammer nicht.
+
+**Der `-alpha`-Weg ist tot, und zwar breiter als bisher notiert.** Ein
+Toplevel, das `-alpha 0.0` **vor** dem `geometry()`-Aufruf bekommt, ignoriert
+die Positionierung dauerhaft — direkt nach der Erzeugung landet es bei
+`+0+0`, nach einem ersten `update_idletasks` an einem anderen falschen
+Offset. Beides auf Tk 8.6.15 reproduziert. Wer es erneut versucht, misst
+zuerst die Geometrie, nicht das Flackern.
 
 ## Tooltips: alle Buttons des Hauptfensters, sonst nach Bedarf
 

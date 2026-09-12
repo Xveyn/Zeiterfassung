@@ -163,6 +163,21 @@ def center_dialog_on_parent(dialog, parent):
         y = wa_top + max(0, (wa_bottom - wa_top - h) // 2)
     dialog.geometry(f"+{x}+{y}")
 
+    # Jetzt — und keinen Moment früher — sichtbar machen. `transient()` oben
+    # war der letzte Tk-Call, der das Win32-Fenster neu erzeugt; erst danach
+    # steht der Handle fest, auf dem die dunkle Titelleiste gesetzt werden
+    # kann (Xveyn#34, Begründung in `chrome.create_dialog`). Der Aufruf läuft
+    # über ein Attribut statt über einen Import: `geometry` liegt in der
+    # Theme-Schichtung vor `chrome`.
+    #
+    # Einmalig: ein zweiter Zentrier-Aufruf (z.B. nach einer Größenänderung)
+    # darf nicht erneut greifen — `grab_set` auf einem bereits modalen Dialog
+    # wäre wirkungslos, `focus_set` risse aber den Fokus aus einem Eingabefeld.
+    reveal = getattr(dialog, "_zeit_reveal", None)
+    if reveal is not None:
+        dialog._zeit_reveal = None
+        reveal()
+
     if not parent_viewable:
         # Ohne transient-Bindung muss der Dialog selbst nach vorn — sonst
         # öffnet er bei verstecktem Hauptfenster unfokussiert im Hintergrund.

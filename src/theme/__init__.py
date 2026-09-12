@@ -97,6 +97,7 @@ from src.theme.chrome import (  # noqa: F401
     apply_app_icon,
     apply_dark_titlebar,
     create_dialog,
+    reveal_dialog,
     disable_min_max,
 )
 from src.theme.messagebox import (  # noqa: F401
@@ -129,6 +130,7 @@ __all__ = [
     "_stray_click_suppressed",
     # chrome
     "apply_app_icon", "apply_dark_titlebar", "create_dialog", "disable_min_max",
+    "reveal_dialog",
     # messagebox
     "themed_ask_delete_choice", "themed_askyesno", "themed_showerror",
     "themed_showinfo", "themed_showwarning",
