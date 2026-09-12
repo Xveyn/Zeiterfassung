@@ -82,20 +82,32 @@ Pull nicht pausieren, wenn das pre-v3-Remote-Doc ausschließlich Einträge des
 umformulieren, dass sie den Einzelgerät-Fall mit abdeckt. Der Guard für echte
 Multi-Device-Fälle bleibt unangetastet.
 
-## Windows: kurzes Aufblitzen der hellen Titelleiste beim Öffnen von Dialogen
+## Windows: Aufblitzen der hellen Titelleiste — behoben, mit Rest
 
-`apply_dark_titlebar`/`disable_min_max` (`src/theme/chrome.py`) sind bewusst per
-`window.after(100, …)` verzögert — frühere Tk-eigene Fenster-Property-Calls
-würden das DWM-Farb-Attribut sonst clobbern. In diesem ~100ms-Fenster rendert
-Windows die Titelleiste kurz im hellen Standard-Stil, bevor sie umgefärbt
-wird.
+Dialoge blitzten beim Öffnen kurz mit heller Titelleiste auf (gemessen
+~56 ms), weil `apply_dark_titlebar` die Umfärbung per `window.after(100, …)`
+aufschob, der Dialog aber schon vorher sichtbar war.
 
-**Warum nicht gefixt:** Ein Versuch, das Fenster bis dahin per `-alpha 0.0`
-unsichtbar zu halten, macht `center_dialog_on_parent` auf diesem Windows/Tk-
-Gespann dauerhaft kaputt — ein frisch erzeugtes Toplevel, das direkt
-`-alpha 0.0` bekommt, ignoriert spätere `geometry()`-Aufrufe komplett (Dialog
-landet bei `+0+0`). Details/Reproduktion: [`CLAUDE.md`](../CLAUDE.md)
-(Abschnitt „Dialog-Styling"). Als Kompromiss akzeptiert.
+**Behoben:** Dialoge werden seit [Xveyn#34] verborgen aufgebaut
+(`create_dialog` → `withdraw`) und erst von `center_dialog_on_parent`
+sichtbar gemacht, wenn die Titelleiste bereits dunkel ist. Begründung und
+die daran hängende Paarungs-Regel: [`CLAUDE.md`](../CLAUDE.md), Abschnitt
+„Dialog-Styling".
+
+**Was bleibt:** das **Hauptfenster**. Es ist von Anfang an sichtbar und hat
+die Klammer aus `create_dialog`/`center_dialog_on_parent` nicht — beim Start
+und beim Wiederherstellen aus dem Tray kann die Titelleiste weiterhin kurz
+hell erscheinen. Derselbe Trick ginge dort nicht ohne Weiteres: ein
+verborgen gestartetes Hauptfenster müsste sein `deiconify` mit dem
+Tray-/`--minimized`-Pfad abstimmen.
+
+**Sackgasse, die man nicht zweimal gehen muss:** das Fenster stattdessen per
+`-alpha 0.0` unsichtbar zu halten. Ein Toplevel, das `-alpha` **vor** dem
+`geometry()`-Aufruf bekommt, ignoriert die Positionierung dauerhaft (direkt
+nach der Erzeugung: `+0+0`; nach einem ersten `update_idletasks`: ein
+anderer falscher Offset). Auf Tk 8.6.15 reproduziert.
+
+[Xveyn#34]: https://github.com/Xveyn/Zeiterfassung/issues/34
 
 ## Tests: die Tk-/UI-Schicht ist bewusst nicht automatisiert getestet
 

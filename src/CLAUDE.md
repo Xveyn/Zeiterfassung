@@ -422,6 +422,15 @@ Wert.
   **Importiert wird weiterhin `from src.theme import …`**, nicht aus den Teilmodulen —
   `__init__.py` re-exportiert die Oberfläche. Wer etwas ergänzt, legt es ins passende
   Teilmodul und trägt es dort nach.
+
+  **`create_dialog` und `center_dialog_on_parent` sind ein Paar** (Xveyn#34):
+  der Dialog entsteht verborgen (`withdraw`) und wird erst beim Zentrieren
+  sichtbar gemacht, wenn seine Titelleiste schon dunkel ist. Ohne den zweiten
+  Aufruf bleibt er unsichtbar — `tests/test_dialog_reveal.py` hält das fest,
+  die Begründung (Tk erzeugt das Win32-Fenster während des Aufbaus neu) steht
+  in der Wurzel-`CLAUDE.md` unter „Dialog-Styling". Der Rückruf läuft über das
+  Attribut `_zeit_reveal` am Widget statt über einen Import: `geometry` liegt
+  in der Schichtung **vor** `chrome`, ein Import zurück wäre ein Zyklus.
 - `tooltip.py` — Hover-Tooltips (`attach_tooltip`). Ein Aufruf bindet **einen**
   Tooltip an ein Widget oder eine Widget-Gruppe; `text` darf ein
   `Callable[[], str]` sein, das erst beim Anzeigen ausgewertet wird
