@@ -227,11 +227,18 @@ def _disable_linux() -> None:
 def refresh_linux_target(base_path: str) -> None:
     """Zieht die Autostart-Datei auf den aktuellen `$APPIMAGE`-Pfad nach.
 
-    Der Updater ersetzt die AppImage nie selbst (`update_banner._open_download`
-    öffnet nur den Browser), und die Assets tragen die Version im Dateinamen.
-    Ohne diesen Schritt zeigt `~/.config/autostart/Zeiterfassung.desktop` nach
-    jedem Update weiter auf die alte Datei — der Nutzer startet bei jeder
-    Anmeldung stillschweigend die Vorgängerversion.
+    Gebraucht wird das für den **manuellen** Update-Weg: die Assets tragen die
+    Version im Dateinamen, eine im Browser geladene AppImage liegt also unter
+    einem neuen Pfad. Ohne diesen Schritt zeigt
+    `~/.config/autostart/Zeiterfassung.desktop` danach weiter auf die alte
+    Datei — der Nutzer startet bei jeder Anmeldung stillschweigend die
+    Vorgängerversion.
+
+    Das **Selbst-Update** (seit 1.23.0, `self_update.apply_linux`) braucht ihn
+    nicht: es ersetzt die laufende AppImage per `os.replace` an **demselben**
+    Pfad, das Autostart-Ziel bleibt also gültig. Der Aufruf schadet dort auch
+    nicht — er schreibt denselben Pfad zurück. Beide Wege existieren
+    nebeneinander, deshalb bleibt die Funktion.
 
     Vier Gates, alle müssen zutreffen:
     1. frozen — im Repo-Modus zeigte das Ziel sonst auf python.exe + Repo
