@@ -68,6 +68,7 @@ import socket  # noqa: E402
 
 from src.mail import (  # noqa: E402
     refresh_token_if_needed,
+    friendly_token_message,
     is_offline_error,
     TokenAuthError,
     TokenNetworkError,
@@ -549,3 +550,33 @@ class TestScopeSummary:
                                 sync_enabled=False, gcal_enabled=False)
         assert summary.text == "2 von 2 Berechtigungen"
         assert summary.status == "ok"
+
+
+class TestFriendlyTokenMessage:
+    """Der Start-Dialog nach abgelaufenem Token zeigt keine Google-Rohmeldung."""
+
+    # So kommt der Regelfall aus google-auth an: repr eines Tupels aus
+    # Meldung und Fehler-Dict.
+    REVOKED = (
+        "('invalid_grant: Token has been expired or revoked.', "
+        "{'error': 'invalid_grant', 'error_description': "
+        "'Token has been expired or revoked.'})"
+    )
+
+    def test_revoked_token_message_has_no_raw_google_text(self):
+        title, text = friendly_token_message(self.REVOKED)
+        assert title == "Gmail-Anmeldung abgelaufen"
+        assert "invalid_grant" not in text
+        assert "error_description" not in text
+        assert "nächsten Senden" in text
+
+    def test_plain_invalid_grant_is_also_recognised(self):
+        _, text = friendly_token_message("invalid_grant")
+        assert "invalid_grant" not in text
+
+    def test_unknown_error_keeps_its_original_text(self):
+        """Selten genug, dass die Originalmeldung die einzige Spur ist."""
+        title, text = friendly_token_message(
+            "Token ist ungültig und enthält kein Refresh-Token.")
+        assert title == "Gmail-Anmeldung erneuern"
+        assert "kein Refresh-Token" in text

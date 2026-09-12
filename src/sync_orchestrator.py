@@ -94,10 +94,32 @@ def _status_text(n_conflicts, last_pull_at):
     return f"✓ {format_iso_date(last_pull_at, fallback='noch nie')}"
 
 
+def _short_sync_error(error):
+    """Kurzfassung eines Sync-Fehlers für den Tray-Toast.
+
+    Der Toast ist flüchtig und hat keinen Knopf, hinter dem noch etwas
+    stünde — was dort steht, ist alles, was der Nutzer bekommt. Der rohe
+    Fehlertext füllt ihn beim abgelaufenen Token mit dem repr eines
+    Google-Tupels (vier Zeilen `invalid_grant`), aus dem nicht hervorgeht,
+    was zu tun ist. Der Dialog-Weg kuratiert denselben Fehler längst
+    (_friendly_sync_message); hier dieselbe Klassifikation, nur kürzer.
+
+    Der unbekannte Fall behält seinen Text: er ist die einzige Spur, und
+    der Toast ist die einzige Stelle, an der der Tray-Sync überhaupt etwas
+    meldet.
+    """
+    kind = classify_sync_error(error)
+    if kind == "auth":
+        return "Die Google-Verbindung muss erneuert werden."
+    if kind == "network":
+        return "Keine Internetverbindung."
+    return str(error)
+
+
 def _tray_toast(ok, n_conflicts, error):
     """Toast-Meldung nach Tray-Sync."""
     if not ok:
-        return f"Sync fehlgeschlagen:\n{error}"
+        return f"Sync fehlgeschlagen:\n{_short_sync_error(error)}"
     if n_conflicts == 0:
         return "Synchronisiert."
     return f"Synchronisiert — {n_conflicts} Konflikt{'e' if n_conflicts != 1 else ''} offen."

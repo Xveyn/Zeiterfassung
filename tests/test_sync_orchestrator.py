@@ -2,6 +2,7 @@
 
 from unittest.mock import MagicMock
 
+from src.drive import DriveNetworkError
 from src.sync_orchestrator import SyncOrchestrator, _status_text, _tray_toast
 
 
@@ -33,7 +34,28 @@ def test_tray_toast_ok_multiple_conflicts():
     assert _tray_toast(True, 2, None) == "Synchronisiert — 2 Konflikte offen."
 
 
-def test_tray_toast_failure():
+# So kommt der abgelaufene/widerrufene Token aus google-auth an: repr eines
+# Tupels aus Meldung und Fehler-Dict — im Toast vier Zeilen Jargon,
+# aus denen nicht hervorgeht, was zu tun ist.
+REVOKED = ("('invalid_grant: Token has been expired or revoked.', "
+           "{'error': 'invalid_grant', 'error_description': "
+           "'Token has been expired or revoked.'})")
+
+
+def test_tray_toast_failure_auth_is_curated():
+    toast = _tray_toast(False, 0, REVOKED)
+    assert "invalid_grant" not in toast
+    assert toast == ("Sync fehlgeschlagen:\n"
+                     "Die Google-Verbindung muss erneuert werden.")
+
+
+def test_tray_toast_failure_network_is_curated():
+    assert _tray_toast(False, 0, DriveNetworkError("timeout")) == (
+        "Sync fehlgeschlagen:\nKeine Internetverbindung.")
+
+
+def test_tray_toast_failure_unknown_keeps_its_text():
+    """Der unbekannte Fall ist die einzige Spur — Text bleibt stehen."""
     assert _tray_toast(False, 0, "boom") == "Sync fehlgeschlagen:\nboom"
 
 
