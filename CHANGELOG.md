@@ -1,5 +1,57 @@
 # Changelog
 
+## 1.23.1 — 2026-09-12
+
+Ein Wartungs-Release: lauter Stellen, an denen die App entweder etwas
+Falsches behauptet oder unaufgefordert etwas getan hat.
+
+### Hinzugefügt
+- **Zeile „Anmeldung" im Google-Tab**: Die Einstellungen sagen jetzt, ob die
+  Google-Anmeldung überhaupt noch trägt — „gültig", „nicht angemeldet",
+  „abgelaufen" oder „nicht prüfbar (offline)". Sie ergänzt die Zeile
+  „Berechtigungen" darüber, ersetzt sie nicht: die sagt, *welche* Freigaben
+  erteilt sind, diese, *ob* die Anmeldung noch funktioniert. Genau diese
+  Unterscheidung fehlte — Freigaben vollständig, Anmeldung tot. Geprüft wird
+  beim Öffnen, ohne Browser; lässt sich die Anmeldung still erneuern, tut die
+  App das dabei und meldet „gültig".
+
+### Behoben
+- **Der Haken neben dem Sync-Datum behauptete zu viel**: Im Kopf des Fensters
+  stand ein ✓ vor dem Datum der letzten Synchronisation — auch wenn diese
+  „noch nie" stattfand oder Wochen zurücklag. Gerade im wichtigen Fall war
+  das falsch: Ist die Google-Anmeldung abgelaufen, scheitert der Abgleich
+  beim Start stillschweigend, das Datum bleibt stehen, und der Haken
+  versicherte weiter, alles sei aktuell. Jetzt steht das ✓ nur noch für
+  „heute abgeglichen"; alles andere bekommt ein ⚠ in Bernstein, und ein
+  Tooltip sagt, was los ist. Bleibt die App über Mitternacht offen, wechselt
+  die Anzeige von selbst.
+- **Die Einstellungen rissen ungefragt den Browser auf**: War die
+  Google-Anmeldung abgelaufen und der Kalender-Abgleich aktiv, öffnete allein
+  das Öffnen der Einstellungen ein Google-Freigabefenster im Browser. Jetzt
+  fragt die App dort nicht mehr nach — sie vermerkt in der Kalender-Zeile,
+  dass eine Anmeldung nötig ist. Ein Freigabe-Fenster erscheint nur noch als
+  Folge eines Klicks.
+- **Google-Fehlermeldungen waren roher Maschinentext**: Beim Start konnte ein
+  Dialog erscheinen, in dem dreimal „invalid_grant" stand und aus dem nicht
+  hervorging, was zu tun ist (nämlich nichts — die App holt die Freigabe beim
+  nächsten Senden selbst). Derselbe Text landete im Tray-Hinweis. Beide sagen
+  jetzt in einem Satz, was passiert ist.
+- **Titelleiste blitzte beim Öffnen von Dialogen hell auf** (Windows): Für
+  einen Sekundenbruchteil erschien die helle Standard-Titelleiste, bevor sie
+  dunkel wurde. Dialoge werden jetzt unsichtbar aufgebaut und erst gezeigt,
+  wenn sie fertig eingefärbt sind. Beim Hauptfenster kann das Aufblitzen
+  weiterhin auftreten.
+
+### Intern
+- **Release-Notizen kommen aus dem CHANGELOG**: Der Text eines Releases ist
+  jetzt dieser Abschnitt statt einer generierten Liste von Pull-Requests. Die
+  beschreibt die Arbeit, der CHANGELOG beschreibt die Änderung — und
+  geschrieben wird er ohnehin.
+- **README auf Nutzer zugeschnitten**, alles Entwicklerische nach
+  `CONTRIBUTING.md`.
+- **Veraltete Stellen in der Projektdokumentation nachgezogen**, dazu ein
+  Test, der die exakten Werte darin gegen den Code hält.
+
 ## 1.23.0 — 2026-09-08
 
 ### Hinzugefügt
