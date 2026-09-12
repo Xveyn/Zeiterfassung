@@ -8,17 +8,18 @@ import tkinter as tk
 import traceback
 from tkinter import messagebox
 
+from src import gcal
 from src.devices import MAX_NAME_LENGTH
 from src.dialogs.settings_dialog._shared import label, subheader
 from src.dialogs.settings_dialog.google_tab_task import (
-    fetch_sender_email, load_calendars, open_calendar_service,
-    open_drive_service, reconnect_drive,
+    check_token_status, fetch_sender_email, load_calendars,
+    open_calendar_service, open_drive_service, reconnect_drive,
 )
 from src.dialogs.settings_dialog.oauth_task import build_oauth_enable_task
 from src.platform_open import open_folder
 from src.sync_runtime import run_compaction_blocking
 from src.theme import (
-    ACCENT, BG, CELL_BG, FONT, FONT_SMALL, STATUS_OK, TEXT, TEXT_MUTED,
+    ACCENT, BG, CELL_BG, FONT, FONT_SMALL, STATUS_OK, STATUS_WARN, TEXT, TEXT_MUTED,
     dark_combo, dark_entry, secondary_button, themed_askyesno, themed_showerror,
     themed_showinfo, themed_showwarning,
 )
@@ -30,6 +31,17 @@ _SCOPE_MARKS = {
     "ok": ("✓", STATUS_OK),
     "partial": ("○", TEXT_MUTED),
     "core_missing": ("✗", ACCENT),
+}
+
+# Text + Farbe je Token-Zustand aus google_tab_task.check_token_status.
+# „unknown" (offline) bleibt bewusst gedämpft statt warnend: nicht prüfbar
+# ist nicht dasselbe wie abgelaufen, und ein falscher Alarm schickte den
+# Nutzer grundlos durch einen Re-Consent.
+_TOKEN_MARKS = {
+    "valid": ("✓ gültig", STATUS_OK),
+    "no_token": ("nicht angemeldet", TEXT_MUTED),
+    "reauth": ("⚠ abgelaufen — „Google neu verbinden“ nötig", STATUS_WARN),
+    "unknown": ("nicht prüfbar (offline)", TEXT_MUTED),
 }
 
 
@@ -126,6 +138,16 @@ class GoogleTab:
         self._scopes_status.pack(side=tk.LEFT, padx=(10, 0))
         self._refresh_scopes_status()
 
+        # Anmeldung: trägt der Token noch? Ergänzt die Zeile darüber, ersetzt
+        # sie nicht — die sagt, WELCHE Scopes gewährt sind, diese, OB der
+        # Token überhaupt noch trägt. Genau diese Unterscheidung fehlte:
+        # Berechtigungen vollständig, Anmeldung abgelaufen (Xveyn#124).
+        label(frame, "Anmeldung:", row=4, pady=(0, 4))
+        self._token_status = tk.Label(
+            frame, text="wird geprüft…", font=FONT_SMALL, bg=BG, fg=TEXT_MUTED)
+        self._token_status.grid(row=4, column=1, padx=10, pady=(0, 4), sticky="w")
+        self._check_token()
+
     def _open_data_folder(self):
         try:
             open_folder(self._base_path)
@@ -186,6 +208,31 @@ class GoogleTab:
 
         self._runner.run(lambda: fetch_sender_email(settings, base_path), _on_done)
 
+    def _check_token(self):
+        """Prüft den Token beim Aufbau im Worker — ohne Browser.
+
+        `check_token_status` erneuert dabei still, wenn der Refresh-Token noch
+        trägt; nur wenn auch der tot ist, steht hier der Hinweis. Ein einzelner
+        Netzaufruf pro Dialog-Öffnung, und nur dann, wenn der Token abgelaufen
+        ist — ein gültiger Token wird lokal beantwortet.
+        """
+        settings, base_path = self._settings, self._base_path
+
+        def _on_done(res):
+            if not self._token_status.winfo_exists():
+                return
+            if not res["ok"]:
+                # Unerwarteter Fehler: die Zeile ist ein Statusanzeiger, kein
+                # Fehlerkanal — sie sagt „unbekannt", die Spur geht ins Log.
+                logging.getLogger(__name__).warning(
+                    "Token-Status nicht ermittelbar: %s", res["tb"])
+                self._token_status.config(text="nicht prüfbar", fg=TEXT_MUTED)
+                return
+            text, fg = _TOKEN_MARKS[res["state"]]
+            self._token_status.config(text=text, fg=fg)
+
+        self._runner.run(lambda: check_token_status(settings, base_path), _on_done)
+
     def _open_scopes(self):
         from src.dialogs.scopes_dialog import open_scopes_dialog
         open_scopes_dialog(self._dialog, self._settings, self._base_path)
@@ -235,11 +282,11 @@ class GoogleTab:
         """Baut die Sync-Sektion und liefert die nächste freie Grid-Zeile."""
         frame, settings = self.frame, self._settings
 
-        subheader(frame, "Synchronisation", row=4)
+        subheader(frame, "Synchronisation", row=5)
         tk.Label(
             frame, text="Diese Schalter wirken sofort (Anmeldung im Browser).",
             font=FONT_SMALL, bg=BG, fg=TEXT_MUTED,
-        ).grid(row=5, column=0, columnspan=2, padx=10, pady=(0, 4), sticky="w")
+        ).grid(row=6, column=0, columnspan=2, padx=10, pady=(0, 4), sticky="w")
 
         self._var_sync = tk.BooleanVar(value=settings.get("sync_enabled"))
         self._cb_sync = tk.Checkbutton(
@@ -250,13 +297,13 @@ class GoogleTab:
             cursor="hand2",
             command=self._on_sync_toggled,
         )
-        self._cb_sync.grid(row=6, column=0, columnspan=2, padx=10, pady=(4, 0), sticky="w")
+        self._cb_sync.grid(row=7, column=0, columnspan=2, padx=10, pady=(4, 0), sticky="w")
 
         # Gerätename: reist über die Sync-Registry mit und macht die
         # Geräte-ID im Konfliktdialog lesbar (s. devices.py). Leer lassen ist
         # erlaubt — dann zeigt der Dialog weiter nur die gekürzte ID.
         device_row = tk.Frame(frame, bg=BG)
-        device_row.grid(row=7, column=0, columnspan=2, padx=10, pady=(6, 0), sticky="w")
+        device_row.grid(row=8, column=0, columnspan=2, padx=10, pady=(6, 0), sticky="w")
         tk.Label(
             device_row, text="Gerät:", font=FONT_SMALL, bg=BG, fg=TEXT_MUTED,
         ).pack(side=tk.LEFT)
@@ -280,14 +327,14 @@ class GoogleTab:
         tk.Label(
             frame, text="Wird anderen Geräten bei Sync-Konflikten angezeigt.",
             font=FONT_SMALL, bg=BG, fg=TEXT_MUTED,
-        ).grid(row=8, column=0, columnspan=2, padx=10, pady=(2, 0), sticky="w")
+        ).grid(row=9, column=0, columnspan=2, padx=10, pady=(2, 0), sticky="w")
 
         device_id = settings.get("device_id") or "(noch nicht gesetzt)"
         device_id_short = device_id[:8] + "…" if len(device_id) > 8 else device_id
         tk.Label(
             frame, text=f"Geräte-ID: {device_id_short}", font=FONT_SMALL,
             bg=BG, fg=TEXT_MUTED,
-        ).grid(row=9, column=0, columnspan=2, padx=10, pady=(2, 0), sticky="w")
+        ).grid(row=10, column=0, columnspan=2, padx=10, pady=(2, 0), sticky="w")
 
         # Lokales Datum wie im Header-Status-Label (s. sync_orchestrator.
         # _status_view) — zwei verschiedene Daten für denselben Wert wären
@@ -297,11 +344,11 @@ class GoogleTab:
         tk.Label(
             frame, text=f"Letzte Synchronisation: {last}", font=FONT_SMALL,
             bg=BG, fg=TEXT_MUTED,
-        ).grid(row=10, column=0, columnspan=2, padx=10, pady=(2, 4), sticky="w")
+        ).grid(row=11, column=0, columnspan=2, padx=10, pady=(2, 4), sticky="w")
 
         # Ab hier wachsen im Google-Tab optionale Zeilen (Konflikte, Kompaktieren)
         # dynamisch — deshalb eine laufende Row-Nummer statt fixer Konstanten.
-        next_google_row = 11
+        next_google_row = 12
         unresolved = 0
         if self._conflicts_store is not None:
             unresolved = self._conflicts_store.count_unresolved()
@@ -516,7 +563,10 @@ class GoogleTab:
                               padx=10, pady=(0, 4), sticky="w")
 
         if settings.get("gcal_enabled"):
-            self._load_calendars()
+            # Beim Aufbau: nicht-interaktiv. Hier hat niemand geklickt, und
+            # ein Consent-Flow riss bisher ungefragt den Browser auf, sobald
+            # der Token nicht mehr trug (Xveyn#124).
+            self._load_calendars(interactive=False)
 
     def _populate_calendars(self, items):
         if not self._cal_combo.winfo_exists():
@@ -533,7 +583,14 @@ class GoogleTab:
                 break
         self._cal_status.config(text="")
 
-    def _load_calendars(self):
+    def _load_calendars(self, interactive=True):
+        """Lädt die Kalenderliste im Worker.
+
+        `interactive=False` beim Tab-Aufbau: kein Consent-Flow, und der
+        Fehlschlag bleibt in der Statuszeile. Eine Messagebox beim bloßen
+        Öffnen des Dialogs wäre dieselbe Zumutung wie das Browserfenster —
+        der Nutzer wollte nur in die Einstellungen.
+        """
         settings, base_path, dialog = self._settings, self._base_path, self._dialog
 
         self._cal_status.config(text="Kalenderliste wird geladen…")
@@ -542,7 +599,15 @@ class GoogleTab:
             if not self._cal_status.winfo_exists():
                 return
             if not res["ok"]:
+                if isinstance(res["error"], gcal.CalendarAuthError):
+                    self._cal_status.config(
+                        text="Kalenderliste nicht geladen — Anmeldung erforderlich")
+                    return
                 self._cal_status.config(text="Kalenderliste nicht verfügbar")
+                if not interactive:
+                    logging.getLogger(__name__).warning(
+                        "Kalenderliste beim Öffnen nicht geladen: %s", res["tb"])
+                    return
                 messagebox.showerror(
                     "Google Kalender",
                     "Kalenderliste konnte nicht geladen werden:\n\n"
@@ -552,7 +617,9 @@ class GoogleTab:
                 return
             self._populate_calendars(res["items"])
 
-        self._runner.run(lambda: load_calendars(settings, base_path), _on_done)
+        self._runner.run(
+            lambda: load_calendars(settings, base_path, interactive=interactive),
+            _on_done)
 
     def _on_gcal_toggled(self):
         settings, base_path = self._settings, self._base_path

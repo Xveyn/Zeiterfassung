@@ -1,5 +1,7 @@
 from unittest.mock import MagicMock
 
+import pytest
+
 from src import gcal
 
 
@@ -187,3 +189,65 @@ def test_vacation_parser_rejects_a_reservation_event():
     ev = {**gcal.event_payload("2026-07-01", "08:00", "16:00", "",
                                "2026-08-30T10:00:00Z"), "id": "x"}
     assert gcal.parse_vacation_event(ev) is None
+
+
+# --- get_calendar_service: interactive=False startet keinen Browser -------
+
+def test_calendar_service_non_interactive_without_token_raises_auth_error(tmp_path):
+    """Ohne brauchbaren Token gibt es im nicht-interaktiven Modus nur den
+    Fehler — kein `flow.run_local_server`, das ungefragt den Browser aufreißt."""
+    with pytest.raises(gcal.CalendarAuthError):
+        gcal.get_calendar_service(
+            str(tmp_path / "credentials.json"),
+            str(tmp_path / "token.json"),
+            interactive=False,
+        )
+
+
+def test_calendar_service_non_interactive_never_starts_the_oauth_flow(monkeypatch, tmp_path):
+    """Scharfe Variante: credentials.json IST da (der FileNotFoundError greift
+    also nicht) und der Flow würde sofort auffliegen, wenn er liefe."""
+    creds = tmp_path / "credentials.json"
+    creds.write_text("{}", encoding="utf-8")
+
+    import google_auth_oauthlib.flow as flow_mod
+
+    class _Tripwire:
+        @staticmethod
+        def from_client_secrets_file(*a, **k):
+            raise AssertionError("OAuth-Flow gestartet — genau das soll nicht passieren")
+
+    monkeypatch.setattr(flow_mod, "InstalledAppFlow", _Tripwire)
+
+    with pytest.raises(gcal.CalendarAuthError):
+        gcal.get_calendar_service(str(creds), str(tmp_path / "token.json"),
+                                  interactive=False)
+
+
+def test_calendar_service_interactive_still_runs_the_flow(monkeypatch, tmp_path):
+    """Der Default bleibt interaktiv — der Kalender-Schalter lebt davon."""
+    creds = tmp_path / "credentials.json"
+    creds.write_text("{}", encoding="utf-8")
+
+    import google_auth_oauthlib.flow as flow_mod
+    import googleapiclient.discovery as disc
+    from src import oauth_utils
+
+    started = []
+
+    class _Flow:
+        @staticmethod
+        def from_client_secrets_file(*a, **k):
+            started.append(True)
+            return _Flow()
+
+        def run_local_server(self, port=0):
+            return "CREDS"
+
+    monkeypatch.setattr(flow_mod, "InstalledAppFlow", _Flow)
+    monkeypatch.setattr(oauth_utils, "write_token", lambda *a, **k: None)
+    monkeypatch.setattr(gcal, "write_token", lambda *a, **k: None)
+    monkeypatch.setattr(disc, "build", lambda *a, **k: "SERVICE")
+
+    assert gcal.get_calendar_service(str(creds), str(tmp_path / "token.json")) == "SERVICE"
+    assert started == [True]
