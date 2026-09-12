@@ -32,6 +32,14 @@ VACATION_SUMMARY = "Urlaub"
 VACATION_DESCRIPTION = "Von der Zeiterfassung verwalteter Urlaub."
 
 
+class CalendarAuthError(Exception):
+    """Der vorhandene Token trägt nicht (fehlend, widerrufen, Scope-Upgrade)
+    und ein Consent-Flow ist nicht erlaubt — siehe `get_calendar_service`
+    mit `interactive=False`. Eigener Typ wie `DriveAuthError` in `drive.py`,
+    damit der Aufrufer diesen Fall von einem Netz- oder API-Fehler
+    unterscheiden kann."""
+
+
 def event_payload(date_str, start, end, kategorie, modified_at):
     """Baut den Calendar-API-Event-Body aus einem Reservierungs-Slot.
 
@@ -90,13 +98,22 @@ def parse_event(event):
 
 
 def get_calendar_service(credentials_path="credentials.json",
-                         token_path="token.json", sync_enabled=False):
+                         token_path="token.json", sync_enabled=False,
+                         interactive=True):
     """Authentifiziert gegen die Calendar API und liefert ein Service-Objekt.
 
     Fordert die VEREINIGUNG aller App-Scopes an (Gmail, Drive falls Sync,
     Calendar) — sonst verdrängte ein Calendar-Re-Consent die Gmail-/Drive-
     Scopes aus dem gemeinsamen token.json. Spiegelt get_gmail_service inkl.
     Scope-Upgrade-Erkennung. Google-Imports lazy (CI ohne requirements.txt).
+
+    `interactive=False` schaltet den Consent-Flow ab: reicht der vorhandene
+    Token nicht (fehlend, widerrufen, Scope-Upgrade nötig), fliegt ein
+    `CalendarAuthError`, statt `run_local_server` zu starten. Für Aufrufer,
+    die der Nutzer nicht angestoßen hat — der Einstellungsdialog lädt die
+    Kalenderliste beim Öffnen, und ein Browserfenster, das ungefragt
+    aufgeht, ist genau das, was man dort nicht will (Xveyn#124). Wer
+    interaktiv aufruft, tut es als Folge eines Klicks.
     """
     import os
 
@@ -126,6 +143,12 @@ def get_calendar_service(credentials_path="credentials.json",
             creds = None
 
     if not creds or not creds.valid:
+        if not interactive:
+            # Vor dem credentials.json-Check: ohne Flow wird die Datei gar
+            # nicht gebraucht, und der Aufrufer soll den Auth-Fall als
+            # solchen sehen (Statuszeile) statt als fehlende Datei.
+            raise CalendarAuthError(
+                "Kein gültiger Google-Token — Anmeldung erforderlich.")
         if not os.path.exists(credentials_path):
             raise FileNotFoundError(
                 f"credentials.json nicht gefunden unter:\n{credentials_path}"

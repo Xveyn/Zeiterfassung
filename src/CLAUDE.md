@@ -88,7 +88,15 @@ Thread-Mechanik **und** die proaktiven Startup-Tasks.
 ### SyncOrchestrator (`sync_orchestrator.py`)
 Drive-Sync: manueller Sync, Tray-Sync, Pull-Callbacks, Status-Label, Quit-Push, Fehler-
 Aufbereitung (`_classify_sync_error`/`_friendly_sync_message`/`_show_sync_error` — auch von
-Tests genutzt). Reine Formatier-Helfer `_status_text`/`_tray_toast` sind ohne Tk testbar.
+Tests genutzt). Reine Formatier-Helfer `_status_view`/`_tray_toast` sind ohne Tk testbar.
+- **Das Status-Label sagt, ob HEUTE gesynct wurde**, nicht bloß wann zuletzt: `_status_view`
+  liefert `(Text, Farbe, Tooltip)` und vergibt das ✓ nur für den heutigen Tag — alles andere
+  (älteres Datum, „noch nie", offene Konflikte) bekommt ⚠ in `STATUS_WARN`. Verglichen wird
+  das **lokale** Datum über `time_utils.local_date_of_iso`, weil `last_pull_at` in UTC steht.
+  Ein minütlicher `root.after`-Tick (`start_day_watch`/`poll_day_change`, Muster wie
+  `ReminderScheduler`) zieht das über Mitternacht nach; er rendert nur bei echtem
+  Datumswechsel neu. `App` startet ihn nach `attach_widgets` und stoppt ihn in beiden
+  Shutdown-Pfaden.
 - Header-Widgets per `attach_widgets(...)`; Tray **lazy** über `get_tray=lambda: App._tray`
   (einzige Quelle bleibt `App._tray`); `run_push_blocking` kommt aus `src.sync_runtime`
   (seit R1 ein normaler Top-Level-Import — vorher lazy aus `src.main`).
@@ -421,7 +429,9 @@ Wert.
   Ansicht. Die Sichtbarkeits-Entscheidung liegt Tk-frei in
   `_should_hide_tip` (minimiert/withdrawn, fremder Grab, Zeiger draußen).
   Konvention, wo Tooltips hingehören: Root-`CLAUDE.md`, Abschnitt „Tooltips".
-- `time_utils.py` — Stunden, KW-Labels, `format_iso_date`/`format_iso_datetime`.
+- `time_utils.py` — Stunden, KW-Labels, `format_iso_date`/`format_iso_datetime` (Anzeige,
+  Zeitanteil roh) und `local_date_of_iso` (UTC-Stempel → lokales Datum, zum **Vergleichen**;
+  s. Sync-Status-Label).
 - `holidays_de.py`, `paths.py` (`get_base_path` Frozen-vs-Repo), `updater.py`
   (GitHub-Releases, stdlib-only, Frequenz über `update_check_frequency`, Pre-Release-Opt-in über `prerelease_updates_enabled`), `changelog.py`
   (lädt/parst den Changelog-Abschnitt einer Release-Version vom GitHub-Tag), `platform_open.py`, `logging_setup.py`,
@@ -547,13 +557,33 @@ Kompaktier-Zeile nur unter Bedingungen erscheinen. Neue Interaktionen dort als
 Methode ergänzen, nicht als verschachtelte Funktion.
 Die blockierenden Kerne liegen seit Stufe 2 Tk-frei in
 `settings_dialog/google_tab_task.py` (Muster wie `send_task`/`share_task`, M10):
-`fetch_sender_email` / `load_calendars` / `reconnect_drive` liefern ein
+`fetch_sender_email` / `load_calendars` / `reconnect_drive` /
+`check_token_status` liefern ein
 Result-Dict und **werfen nie**; `open_drive_service` / `open_calendar_service`
 sind die `service_fn`-Einstiege für `oauth_task.build_oauth_enable_task` und
 **werfen** bewusst (der Builder fängt selbst und dreht den Toggle zurück). Im
 Tab bleibt `runner.run(fn, on_done)` plus die Widget-Kosmetik im `on_done`.
 Getestet in `tests/test_google_tab_task.py` — die erste echte Abdeckung des
 Tabs. Neue Netz-/OAuth-Arbeit des Tabs gehört dorthin, nicht in eine Closure.
+
+**Der Dialog öffnet nie ungefragt den Browser (Xveyn#124).** Der Tab-Aufbau
+ruft `load_calendars(..., interactive=False)`; das reicht bis
+`gcal.get_calendar_service` durch, das mit `interactive=False` einen
+`CalendarAuthError` wirft, statt `flow.run_local_server` zu starten. Vorher
+riss allein das Öffnen der Einstellungen ein Consent-Fenster auf, sobald der
+Token nicht mehr trug. Die Regel dahinter: **ein Consent-Flow ist die Folge
+eines Klicks** — der Kalender-Schalter und „Google neu verbinden" bleiben
+deshalb interaktiv, alles, was beim Aufbau läuft, nicht. Der Fehlschlag landet
+dort in der Statuszeile, nicht in einer Messagebox; ein Modal beim bloßen
+Öffnen wäre dieselbe Zumutung. Wer weitere Netzarbeit an den Tab-Aufbau hängt,
+zieht das mit.
+`check_token_status` ist das Gegenstück für die Zeile „Anmeldung": es nutzt
+`mail.refresh_token_if_needed` (nicht-interaktiv, erneuert still, wenn der
+Refresh-Token noch trägt) und mappt auf `valid`/`no_token`/`reauth`/`unknown`.
+`unknown` (offline) ist bewusst von `reauth` getrennt — „nicht prüfbar" als
+„abgelaufen" anzuzeigen schickte den Nutzer grundlos durch einen Re-Consent.
+Die Zeile ergänzt „Berechtigungen" daneben: die sagt, **welche** Scopes
+gewährt sind, diese, **ob** der Token überhaupt noch trägt.
 Weitere Dialoge: `share_dialog`, `import_dialog`, `category_dialog`,
 `conflicts_dialog`, `scopes_dialog`. `period_picker` ist kein Dialog, sondern der von
 `send_dialog` + `export_dialog` geteilte Zeitraum+Kategorie+Vorschau-Baustein.

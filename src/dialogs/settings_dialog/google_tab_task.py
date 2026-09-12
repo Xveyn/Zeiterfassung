@@ -25,7 +25,10 @@ import os
 import traceback
 
 from src import drive, gcal
-from src.mail import fetch_user_email, get_gmail_service
+from src.mail import (
+    TokenAuthError, TokenNetworkError, fetch_user_email, get_gmail_service,
+    refresh_token_if_needed,
+)
 
 
 def _paths(base_path):
@@ -60,13 +63,51 @@ def fetch_sender_email(settings, base_path):
     return {"ok": True, "email": email}
 
 
-def load_calendars(settings, base_path):
-    """Kalenderliste des angemeldeten Kontos. `{"ok": True, "items": [...]}`."""
+def check_token_status(settings, base_path):
+    """Prüft den Google-Token, **ohne** je einen Consent-Flow zu starten.
+
+    Liefert `{"ok": True, "state": …}` mit einem von vier Zuständen:
+    `valid` (trägt), `no_token` (nie angemeldet), `reauth` (abgelaufen oder
+    widerrufen — der Nutzer muss neu verbinden) und `unknown` (offline, also
+    nicht prüfbar). Die Unterscheidung der letzten beiden ist der Punkt:
+    „offline" als „abgelaufen" anzuzeigen schickte den Nutzer grundlos durch
+    einen Re-Consent.
+
+    `refresh_token_if_needed` erneuert dabei still, wenn der Refresh-Token
+    noch trägt — die Zeile heilt den Normalfall also nebenbei, statt ihn nur
+    zu melden. `ok: False` bleibt dem unerwarteten Fehler vorbehalten
+    (Vertrag wie die übrigen Kerne hier).
+    """
+    _creds_path, token_path = _paths(base_path)
+    try:
+        state = refresh_token_if_needed(
+            token_path,
+            sync_enabled=settings.get("sync_enabled"),
+            gcal_enabled=settings.get("gcal_enabled"),
+        )
+    except TokenAuthError:
+        return {"ok": True, "state": "reauth"}
+    except TokenNetworkError:
+        return {"ok": True, "state": "unknown"}
+    except Exception as e:
+        return {"ok": False, "error": e, "tb": traceback.format_exc()}
+    return {"ok": True, "state": "valid" if state != "no_token" else "no_token"}
+
+
+def load_calendars(settings, base_path, interactive=True):
+    """Kalenderliste des angemeldeten Kontos. `{"ok": True, "items": [...]}`.
+
+    `interactive=False` reicht bis `gcal.get_calendar_service` durch und
+    verhindert dort den Consent-Flow — der Tab lädt die Liste beim Öffnen,
+    ohne dass jemand geklickt hätte (Xveyn#124). Der Fehler ist dann ein
+    `gcal.CalendarAuthError` und landet wie jeder andere im Result-Dict.
+    """
     creds_path, token_path = _paths(base_path)
     try:
         service = gcal.get_calendar_service(
             creds_path, token_path,
             sync_enabled=settings.get("sync_enabled"),
+            interactive=interactive,
         )
         items = gcal.list_calendars(service)
     except Exception as e:

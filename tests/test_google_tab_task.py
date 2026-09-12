@@ -13,8 +13,8 @@ import pytest
 
 import src.dialogs.settings_dialog.google_tab_task as gtt
 from src.dialogs.settings_dialog.google_tab_task import (
-    fetch_sender_email, load_calendars, open_calendar_service,
-    open_drive_service, reconnect_drive,
+    check_token_status, fetch_sender_email, load_calendars,
+    open_calendar_service, open_drive_service, reconnect_drive,
 )
 
 
@@ -114,7 +114,7 @@ def test_load_calendars_returns_items(monkeypatch, tmp_path):
     items = [{"summary": "Privat", "id": "cal-1"}]
     seen = {}
 
-    def fake_service(creds, token, *, sync_enabled):
+    def fake_service(creds, token, *, sync_enabled, interactive):
         seen["args"] = (creds, token, sync_enabled)
         return "SERVICE"
 
@@ -217,3 +217,96 @@ def test_service_fns_propagate_errors(monkeypatch, tmp_path, fn, module, attr):
 
     with pytest.raises(_Boom):
         fn(_FakeSettings(), str(tmp_path))
+
+
+def test_load_calendars_non_interactive_passes_the_flag_through():
+    """Der Tab lädt die Liste beim Öffnen — ohne Klick darf kein Browser
+    aufgehen (Xveyn#124). Der Flag muss also bis zum Wrapper durchreichen."""
+    settings = _FakeSettings(sync_enabled=True)
+    seen = {}
+
+    def fake_service(creds, token, *, sync_enabled, interactive):
+        seen["interactive"] = interactive
+        return "SERVICE"
+
+    import src.dialogs.settings_dialog.google_tab_task as mod
+    orig = mod.gcal.get_calendar_service
+    mod.gcal.get_calendar_service = fake_service
+    mod.gcal.list_calendars = lambda service: []
+    try:
+        load_calendars(settings, ".", interactive=False)
+    finally:
+        mod.gcal.get_calendar_service = orig
+    assert seen["interactive"] is False
+
+
+def test_load_calendars_defaults_to_interactive(monkeypatch, tmp_path):
+    seen = {}
+
+    def fake_service(creds, token, *, sync_enabled, interactive):
+        seen["interactive"] = interactive
+        return "SERVICE"
+
+    monkeypatch.setattr(gtt.gcal, "get_calendar_service", fake_service)
+    monkeypatch.setattr(gtt.gcal, "list_calendars", lambda service: [])
+
+    load_calendars(_FakeSettings(), str(tmp_path))
+
+    assert seen["interactive"] is True
+
+
+# --- check_token_status ---------------------------------------------------
+
+def test_check_token_status_reports_a_valid_token(monkeypatch, tmp_path):
+    monkeypatch.setattr(gtt, "refresh_token_if_needed", lambda *a, **k: "valid")
+    assert check_token_status(_FakeSettings(), str(tmp_path)) == {
+        "ok": True, "state": "valid"}
+
+
+def test_check_token_status_reports_a_missing_token(monkeypatch, tmp_path):
+    monkeypatch.setattr(gtt, "refresh_token_if_needed", lambda *a, **k: "no_token")
+    assert check_token_status(_FakeSettings(), str(tmp_path))["state"] == "no_token"
+
+
+def test_check_token_status_maps_an_expired_token_to_reauth(monkeypatch, tmp_path):
+    """Der Fall, um den es geht: Scopes vollständig, Token tot."""
+    from src.mail import TokenAuthError
+
+    def boom(*a, **k):
+        raise TokenAuthError("invalid_grant: Token has been expired or revoked.")
+
+    monkeypatch.setattr(gtt, "refresh_token_if_needed", boom)
+    res = check_token_status(_FakeSettings(), str(tmp_path))
+    assert res == {"ok": True, "state": "reauth"}
+
+
+def test_check_token_status_maps_a_network_problem_to_unknown(monkeypatch, tmp_path):
+    """Offline heißt nicht abgelaufen — das darf die Zeile nicht behaupten."""
+    from src.mail import TokenNetworkError
+
+    def boom(*a, **k):
+        raise TokenNetworkError("kein Netz")
+
+    monkeypatch.setattr(gtt, "refresh_token_if_needed", boom)
+    assert check_token_status(_FakeSettings(), str(tmp_path))["state"] == "unknown"
+
+
+def test_check_token_status_never_raises(monkeypatch, tmp_path):
+    boom = _Boom("kaputt")
+    monkeypatch.setattr(gtt, "refresh_token_if_needed",
+                        lambda *a, **k: (_ for _ in ()).throw(boom))
+    res = check_token_status(_FakeSettings(), str(tmp_path))
+    assert res["ok"] is False and res["error"] is boom and res["tb"]
+
+
+def test_check_token_status_passes_paths_and_flags(monkeypatch, tmp_path):
+    settings = _FakeSettings(sync_enabled=True, gcal_enabled=True)
+    seen = {}
+
+    def fake(token_path, *, sync_enabled, gcal_enabled):
+        seen["args"] = (token_path, sync_enabled, gcal_enabled)
+        return "valid"
+
+    monkeypatch.setattr(gtt, "refresh_token_if_needed", fake)
+    check_token_status(settings, str(tmp_path))
+    assert seen["args"] == (os.path.join(str(tmp_path), "token.json"), True, True)

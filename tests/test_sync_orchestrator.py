@@ -1,25 +1,74 @@
 """SyncOrchestrator: reine Formatier-Helfer (ohne Tk) + Klassen-Tests."""
 
+import datetime
 from unittest.mock import MagicMock
 
 from src.drive import DriveNetworkError
-from src.sync_orchestrator import SyncOrchestrator, _status_text, _tray_toast
+from src.sync_orchestrator import SyncOrchestrator, _status_view, _tray_toast
+from src.theme.palette import STATUS_WARN, TEXT_MUTED
+
+TODAY = datetime.date(2026, 6, 14)
 
 
-def test_status_text_no_conflicts_shows_last_pull():
-    assert _status_text(0, "2026-06-14") == "✓ 14.06.2026"
+def test_status_view_synced_today_shows_check_and_stays_muted():
+    text, fg, _tip = _status_view(0, "2026-06-14T09:00:00Z", today=TODAY)
+    assert text == "✓ 14.06.2026"
+    assert fg == TEXT_MUTED
 
 
-def test_status_text_never_pulled_fallback():
-    assert _status_text(0, None) == "✓ noch nie"
+def test_status_view_synced_before_today_drops_the_check():
+    # Der Haken behauptete bisher auch für wochenalte Daten, alles sei aktuell.
+    text, fg, _tip = _status_view(0, "2026-06-10T09:00:00Z", today=TODAY)
+    assert text == "⚠ 10.06.2026"
+    assert fg == STATUS_WARN
 
 
-def test_status_text_single_conflict_singular():
-    assert _status_text(1, "2026-06-14") == "⚠ 1 Konflikt"
+def test_status_view_never_pulled_is_a_warning():
+    text, fg, _tip = _status_view(0, None, today=TODAY)
+    assert text == "⚠ noch nie"
+    assert fg == STATUS_WARN
 
 
-def test_status_text_multiple_conflicts_plural():
-    assert _status_text(3, "2026-06-14") == "⚠ 3 Konflikte"
+def test_status_view_unparsable_timestamp_is_treated_as_never():
+    text, _fg, _tip = _status_view(0, "kaputt", today=TODAY)
+    assert text == "⚠ noch nie"
+
+
+def test_status_view_single_conflict_singular():
+    text, fg, _tip = _status_view(1, "2026-06-14T09:00:00Z", today=TODAY)
+    assert text == "⚠ 1 Konflikt"
+    assert fg == STATUS_WARN
+
+
+def test_status_view_multiple_conflicts_plural():
+    text, _fg, _tip = _status_view(3, "2026-06-14T09:00:00Z", today=TODAY)
+    assert text == "⚠ 3 Konflikte"
+
+
+def test_status_view_conflicts_win_over_a_stale_date():
+    text, _fg, _tip = _status_view(2, "2026-06-10T09:00:00Z", today=TODAY)
+    assert text == "⚠ 2 Konflikte"
+
+
+def test_status_view_tooltip_names_the_date_when_synced_today():
+    _text, _fg, tip = _status_view(0, "2026-06-14T09:00:00Z", today=TODAY)
+    assert "14.06.2026" in tip
+
+
+def test_status_view_tooltip_says_today_is_missing_when_stale():
+    _text, _fg, tip = _status_view(0, "2026-06-10T09:00:00Z", today=TODAY)
+    assert "10.06.2026" in tip
+    assert "heute noch nicht" in tip
+
+
+def test_status_view_tooltip_points_at_the_conflicts():
+    _text, _fg, tip = _status_view(2, "2026-06-14T09:00:00Z", today=TODAY)
+    assert "Konflikte" in tip
+
+
+def test_status_view_tooltip_never_synced():
+    _text, _fg, tip = _status_view(0, "", today=TODAY)
+    assert "Noch nie" in tip
 
 
 def test_tray_toast_ok_no_conflicts():
@@ -79,9 +128,14 @@ class _FakeRunner:
 class _FakeLabel:
     def __init__(self):
         self.text = None
+        self.fg = None
 
-    def config(self, text):
+    def config(self, text, fg=None):
         self.text = text
+        self.fg = fg
+
+    def pack_forget(self):
+        pass
 
 
 class _FakeButton:
@@ -104,8 +158,9 @@ def _patch_dim(monkeypatch):
 
 
 def _orch(sync_enabled=True, execute_runner=False, get_tray=lambda: None,
-          conflicts=0, on_refresh=None, data_lock=None, sync_guard=None):
-    _vals = {"sync_enabled": sync_enabled, "last_pull_at": None}
+          conflicts=0, on_refresh=None, data_lock=None, sync_guard=None,
+          last_pull_at=None):
+    _vals = {"sync_enabled": sync_enabled, "last_pull_at": last_pull_at}
     settings = MagicMock(get=lambda k, d=None: _vals.get(k, d))
     conflicts_store = MagicMock(count_unresolved=lambda: conflicts)
     runner = _FakeRunner(execute=execute_runner)
@@ -262,3 +317,49 @@ def test_push_on_quit_skipped_logs_no_dialog(monkeypatch):
     orch, _ = _orch(sync_enabled=True)
     orch.push_on_quit()
     assert errors == []
+
+
+# --- Status-Label: Farbe, Tooltip und Tages-Rollover ------------------------
+
+def _labelled_orch(**kw):
+    """Orchestrator mit angehängten Widget-Attrappen. Gibt (orch, label) zurück;
+    `label.config` ist der Rekorder, an dem die Tests hängen."""
+    orch, _runner = _orch(**kw)
+    label = MagicMock()
+    orch.attach_widgets(MagicMock(), label, MagicMock())
+    return orch, label
+
+
+def test_update_status_label_warns_when_last_sync_was_not_today():
+    orch, label = _labelled_orch(last_pull_at="2026-06-10T09:00:00Z")
+    orch.update_status_label(today=datetime.date(2026, 6, 14))
+    kwargs = label.config.call_args.kwargs
+    assert kwargs["text"] == "⚠ 10.06.2026"
+    assert kwargs["fg"] == STATUS_WARN
+
+
+def test_update_status_label_stays_muted_when_synced_today():
+    orch, label = _labelled_orch(last_pull_at="2026-06-14T09:00:00Z")
+    orch.update_status_label(today=datetime.date(2026, 6, 14))
+    assert label.config.call_args.kwargs["fg"] == TEXT_MUTED
+
+
+def test_status_tooltip_follows_the_current_state():
+    orch, _label = _labelled_orch(last_pull_at="2026-06-10T09:00:00Z")
+    assert "heute noch nicht" in orch.status_tooltip(today=datetime.date(2026, 6, 14))
+
+
+def test_poll_day_change_rerenders_after_midnight():
+    orch, label = _labelled_orch(last_pull_at="2026-06-14T09:00:00Z")
+    orch.update_status_label(today=datetime.date(2026, 6, 14))
+    label.config.reset_mock()
+    orch.poll_day_change(today=datetime.date(2026, 6, 15))
+    assert label.config.call_args.kwargs["fg"] == STATUS_WARN
+
+
+def test_poll_day_change_is_quiet_within_the_same_day():
+    orch, label = _labelled_orch(last_pull_at="2026-06-14T09:00:00Z")
+    orch.update_status_label(today=datetime.date(2026, 6, 14))
+    label.config.reset_mock()
+    orch.poll_day_change(today=datetime.date(2026, 6, 14))
+    assert label.config.call_args is None

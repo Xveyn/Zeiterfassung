@@ -15,6 +15,11 @@ ACCENT_HOVER = "#c73550"
 # "nicht klickbar" erkennbar, behält aber den Rot-Charakter des Löschen-Buttons.
 ACCENT_DISABLED = "#5c2a37"
 STATUS_OK = "#4ade80"
+# Bernstein für Status, der Aufmerksamkeit will, ohne Fehler zu sein
+# (offener Sync-Konflikt, heute noch nicht synchronisiert). Derselbe
+# Ton-Charakter wie der orange Konflikt-Rand im Grid, aber auf dem
+# dunklen Header-BG lesbar — reines "orange" liefe dort matt.
+STATUS_WARN = "#fbbf24"
 TEXT = "#e0e0e0"
 TEXT_MUTED = "#888888"
 ENTRY_BG = "#1a3a5c"

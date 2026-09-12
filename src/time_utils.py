@@ -190,6 +190,40 @@ def format_iso_date(iso: str | None, fallback: str = "—") -> str:
         return iso[:10]
 
 
+def local_date_of_iso(iso: str | None,
+                      tz: datetime.tzinfo | None = None) -> datetime.date | None:
+    """ISO-Zeitstempel → lokales Kalenderdatum, oder None wenn unbrauchbar.
+
+    Gegenstück zu `format_iso_date`, das den Zeitanteil bewusst roh übernimmt
+    (Anzeige-Konvention). Hier wird umgerechnet, weil das Ergebnis *verglichen*
+    wird: `last_pull_at` steht in UTC, „heute" ist die lokale Wanduhr des
+    Nutzers. Ein Sync um 01:30 MESZ liegt als 23:30 UTC am Vortag — ohne
+    Umrechnung gälte er als „gestern gesynct", obwohl er gerade lief.
+
+    Ein reines Datum ('2026-09-12') wird unverändert übernommen: es trägt
+    keine Uhrzeit, eine Zonenverschiebung wäre geraten. Ein Zeitstempel ohne
+    Zonenangabe gilt als UTC — `utc_now_iso` hat nie etwas anderes geschrieben.
+    `tz=None` heißt Systemzone (Default von `astimezone`); der Parameter
+    existiert für die Tests, die nicht von der Zone des Rechners abhängen
+    dürfen.
+    """
+    if not iso or len(iso) < 10:
+        return None
+    if len(iso) == 10:
+        try:
+            return datetime.date.fromisoformat(iso)
+        except ValueError:
+            return None
+    text = iso[:-1] + "+00:00" if iso.endswith("Z") else iso
+    try:
+        stamp = datetime.datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    if stamp.tzinfo is None:
+        stamp = stamp.replace(tzinfo=datetime.timezone.utc)
+    return stamp.astimezone(tz).date()
+
+
 def format_iso_weekday_date(iso: str | None, fallback: str = "—") -> str:
     """ISO-Datum oder -Zeitstempel → 'Wochentag - TT.MM.JJJJ' für die Anzeige
     (z.B. 'Montag - 13.07.2026'). Leere oder unparsbare Werte liefern denselben

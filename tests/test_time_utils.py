@@ -2,7 +2,7 @@ import datetime
 
 from src.time_utils import (
     format_date, format_hours_colon, format_hours_hm, format_iso_date,
-    format_iso_datetime, format_iso_weekday_date,
+    format_iso_datetime, format_iso_weekday_date, local_date_of_iso,
 )
 
 
@@ -109,3 +109,43 @@ def test_format_hours_colon_unter_einer_stunde():
 
 def test_format_hours_colon_null():
     assert format_hours_colon(0.0) == "0:00"
+
+
+# --- local_date_of_iso: UTC-Zeitstempel → lokales Kalenderdatum -------------
+
+def test_local_date_of_iso_converts_utc_to_local():
+    # 23:30 UTC ist in einer Zone mit positivem Offset bereits der Folgetag.
+    # Fester Offset statt der echten Systemzone: der Test muss überall gelten.
+    tz = datetime.timezone(datetime.timedelta(hours=2))
+    assert local_date_of_iso("2026-09-11T23:30:00Z", tz=tz) == datetime.date(2026, 9, 12)
+
+
+def test_local_date_of_iso_keeps_same_day_when_no_rollover():
+    tz = datetime.timezone(datetime.timedelta(hours=2))
+    assert local_date_of_iso("2026-09-12T08:00:00Z", tz=tz) == datetime.date(2026, 9, 12)
+
+
+def test_local_date_of_iso_accepts_offset_suffix():
+    tz = datetime.timezone(datetime.timedelta(hours=2))
+    assert local_date_of_iso("2026-09-11T23:30:00+00:00", tz=tz) == datetime.date(2026, 9, 12)
+
+
+def test_local_date_of_iso_plain_date_is_taken_as_is():
+    # Ein reines Datum trägt keine Uhrzeit — es umzurechnen wäre geraten.
+    tz = datetime.timezone(datetime.timedelta(hours=-8))
+    assert local_date_of_iso("2026-09-12", tz=tz) == datetime.date(2026, 9, 12)
+
+
+def test_local_date_of_iso_naive_timestamp_is_treated_as_utc():
+    # Alt-Werte ohne Z-Suffix: der Store schrieb immer UTC.
+    tz = datetime.timezone(datetime.timedelta(hours=2))
+    assert local_date_of_iso("2026-09-11T23:30:00", tz=tz) == datetime.date(2026, 9, 12)
+
+
+def test_local_date_of_iso_empty_is_none():
+    assert local_date_of_iso("") is None
+    assert local_date_of_iso(None) is None
+
+
+def test_local_date_of_iso_unparsable_is_none():
+    assert local_date_of_iso("kein-datum") is None
