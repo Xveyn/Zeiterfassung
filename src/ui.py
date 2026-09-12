@@ -20,6 +20,7 @@ from src.background_tasks import BackgroundTaskRunner
 from src.weekly_limit import format_limit_warnings
 from src.grid_renderer import GridRenderer
 from src.paths import get_resource_path, relaunch_command
+from src.mail import friendly_token_message
 from src.self_update import (
     UpdateBlocked, apply_linux, apply_windows, discard_download,
     download_and_verify_update, download_dest, plan_update,
@@ -170,14 +171,16 @@ class App:
         self._refresh()
         self._bg.refresh_token(
             on_auth_error=lambda msg: themed_showinfo(
-                self.root,
-                "Gmail-Anmeldung abgelaufen",
-                "Der Gmail-Token konnte nicht automatisch erneuert werden:\n\n"
-                f"{msg}\n\n"
-                "Beim nächsten Senden wirst du zur erneuten Anmeldung aufgefordert.",
-            ),
-            on_error=lambda tb: themed_showinfo(
-                self.root, "Token-Refresh fehlgeschlagen", tb,
+                self.root, *friendly_token_message(msg)),
+            # Catch-all-Zweig: nativ und mit Traceback (Konvention
+            # „bekannt-themed / unerwartet-nativ“, s. CLAUDE.md) — ein themed
+            # Dialog baut selbst Tk-Widgets auf und ist im gestörten Zustand
+            # die unzuverlässigere Schicht.
+            on_error=lambda tb: messagebox.showerror(
+                "Gmail-Anmeldung konnte nicht erneuert werden",
+                "Beim Erneuern der Gmail-Anmeldung ist ein unerwarteter "
+                f"Fehler aufgetreten:\n\n{tb}\n\n"
+                "Beim nächsten Senden fragt die App nach einer neuen Freigabe.",
             ),
         )
         self._bg.fetch_sender_email()

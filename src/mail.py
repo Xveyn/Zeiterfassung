@@ -293,6 +293,38 @@ def refresh_token_if_needed(token_path="token.json", sync_enabled=False,
     return "refreshed"
 
 
+def friendly_token_message(message):
+    """Mappt die Meldung eines TokenAuthError auf (Titel, Text) für den
+    Hinweis-Dialog beim Start.
+
+    Der Regelfall ist ein abgelaufener oder widerrufener Token. Google meldet
+    ihn als repr eines Tupels — ``('invalid_grant: Token has been expired or
+    revoked.', {'error': 'invalid_grant', ...})`` —, und roh angezeigt sagt
+    das dem Nutzer nichts, was der Titel nicht schon sagt: er kann nichts
+    daran tun, die App holt die Freigabe beim nächsten Senden selbst. Deshalb
+    hier eine kuratierte Meldung ohne Originaltext (Konvention „bekannt-themed
+    / unerwartet-nativ", s. CLAUDE.md).
+
+    Jeder andere Auth-Fehler ist selten genug, dass die Originalmeldung die
+    einzige Spur ist — die bleibt deshalb im Text stehen.
+    """
+    text = str(message)
+    if "invalid_grant" in text or "expired or revoked" in text:
+        return (
+            "Gmail-Anmeldung abgelaufen",
+            "Die Anmeldung bei Gmail ist abgelaufen oder wurde widerrufen. "
+            "Das passiert nach längerer Zeit ohne Nutzung von selbst.\n\n"
+            "Es geht nichts verloren: Beim nächsten Senden fragt die App "
+            "automatisch nach einer neuen Freigabe.",
+        )
+    return (
+        "Gmail-Anmeldung erneuern",
+        "Die Gmail-Anmeldung konnte nicht automatisch erneuert werden:\n\n"
+        f"{text}\n\n"
+        "Beim nächsten Senden fragt die App nach einer neuen Freigabe.",
+    )
+
+
 def get_gmail_service(credentials_path="credentials.json", token_path="token.json",
                       sync_enabled=False, gcal_enabled=False):
     """Authenticate with Gmail API and return a service object.
