@@ -32,17 +32,33 @@ _VERSION_HEADING_LINE = re.compile(r"^##\s+\d+\.\d+\.\d+")
 _HTML_COMMENT = re.compile(r"<!--.*?-->", re.DOTALL)
 
 
+def split_version_sections(changelog_text: str) -> tuple[str, list[tuple[str, str]]]:
+    """Zerlegt einen CHANGELOG-Text in (Vorspann, [(Version, Abschnitt)]).
+
+    Der Vorspann ist alles vor der ersten '## '-Überschrift, unverändert. Jeder
+    Abschnitt reicht von seiner Überschrift bis zur nächsten oder zum
+    Dateiende, ohne umgebenden Leerraum; die Reihenfolge ist die der Datei.
+
+    Der einzige Parser für CHANGELOG.md: `extract_version_section` (App,
+    Release-Body) und `scripts/archive_changelog.py` bauen beide darauf auf —
+    zwei Parser für dieselbe Datei liefen lautlos auseinander."""
+    headings = list(_VERSION_HEADING.finditer(changelog_text))
+    if not headings:
+        return changelog_text, []
+    sections = []
+    for i, m in enumerate(headings):
+        end = headings[i + 1].start() if i + 1 < len(headings) else len(changelog_text)
+        sections.append((m.group(1), changelog_text[m.start():end].strip()))
+    return changelog_text[:headings[0].start()], sections
+
+
 def extract_version_section(changelog_text: str, version: str) -> str | None:
     """Extrahiert den Abschnitt zu `version` aus dem vollen CHANGELOG.md-Text:
     von der Zeile '## {version} ...' bis zur nächsten '## '-Überschrift oder
     zum Dateiende. None, wenn `version` nicht als Überschrift vorkommt."""
-    headings = list(_VERSION_HEADING.finditer(changelog_text))
-    for i, m in enumerate(headings):
-        if m.group(1) != version:
-            continue
-        start = m.start()
-        end = headings[i + 1].start() if i + 1 < len(headings) else len(changelog_text)
-        return changelog_text[start:end].strip()
+    for found, section in split_version_sections(changelog_text)[1]:
+        if found == version:
+            return section
     return None
 
 
