@@ -1,9 +1,15 @@
 """BackgroundTaskRunner: run() fuehrt fn im Thread aus und liefert das
 Ergebnis ueber marshal an on_done. marshal wird im Test synchron gefakt."""
 
+import os
 import threading
 
+import pytest
+
+import src.background_tasks as bg
 from src.background_tasks import BackgroundTaskRunner
+from src.mail import TokenAuthError, TokenNetworkError
+from src.settings import Settings
 
 
 def _runner(**overrides):
@@ -227,3 +233,129 @@ def test_trigger_reconcile_passes_storage_through(monkeypatch):
 
     assert done.wait(timeout=5)
     assert captured["storage"] is sentinel_storage
+
+
+# --- refresh_token / fetch_sender_email ------------------------------------
+#
+# Beide liefern ihr Ergebnis über on_done im UI-Thread aus. Der Marshal-Fake
+# meldet, wann das passiert ist — so wartet der Test auf das Ende des
+# Workers statt auf eine geratene Schlafdauer.
+
+def _runner_reporting_done(**overrides):
+    finished = threading.Event()
+
+    def marshal(callback):
+        try:
+            callback()
+        finally:
+            finished.set()
+
+    return _runner(marshal=marshal, **overrides), finished
+
+
+def _fake_refresh(monkeypatch, raises=None, calls=None):
+    def fake(token_path, sync_enabled=False, gcal_enabled=False):
+        if calls is not None:
+            calls.append((token_path, sync_enabled, gcal_enabled))
+        if raises is not None:
+            raise raises
+
+    monkeypatch.setattr(bg, "refresh_token_if_needed", fake)
+
+
+def test_refresh_token_reports_an_auth_error(monkeypatch):
+    """Widerrufener Token: der Nutzer muss es erfahren, sonst scheitert erst
+    der nächste Versand."""
+    _fake_refresh(monkeypatch, raises=TokenAuthError("Token widerrufen"))
+    auth_errors, errors = [], []
+    runner, finished = _runner_reporting_done()
+
+    runner.refresh_token(on_auth_error=auth_errors.append, on_error=errors.append)
+
+    assert finished.wait(timeout=5)
+    assert auth_errors == ["Token widerrufen"]
+    assert errors == []
+
+
+@pytest.mark.parametrize("raises", [
+    pytest.param(TokenNetworkError("offline"), id="offline"),
+    pytest.param(None, id="erfolgreich"),
+])
+def test_refresh_token_stays_silent_when_offline_or_fine(monkeypatch, raises):
+    """Ein Offline-Start ist kein Fehler — ein Dialog beim Hochfahren im Zug
+    wäre genau die Störung, die der stille Refresh vermeiden soll."""
+    _fake_refresh(monkeypatch, raises=raises)
+    auth_errors, errors = [], []
+    runner, finished = _runner_reporting_done()
+
+    runner.refresh_token(on_auth_error=auth_errors.append, on_error=errors.append)
+
+    assert finished.wait(timeout=5)
+    assert auth_errors == []
+    assert errors == []
+
+
+def test_refresh_token_reports_an_unexpected_error_with_traceback(monkeypatch):
+    """--noconsole schluckt stderr: der Traceback im Dialog ist die einzige
+    Spur eines unerwarteten Fehlers."""
+    _fake_refresh(monkeypatch, raises=ValueError("token.json kaputt"))
+    auth_errors, errors = [], []
+    runner, finished = _runner_reporting_done()
+
+    runner.refresh_token(on_auth_error=auth_errors.append, on_error=errors.append)
+
+    assert finished.wait(timeout=5)
+    assert auth_errors == []
+    assert len(errors) == 1
+    assert "Traceback" in errors[0]
+    assert "ValueError: token.json kaputt" in errors[0]
+
+
+def test_refresh_token_requests_the_scopes_of_all_enabled_features(monkeypatch, tmp_path):
+    """Gmail, Drive und Kalender teilen einen Token. Refresht der Start ihn
+    ohne die Flags, fehlen danach die Scopes der eingeschalteten Features."""
+    calls = []
+    _fake_refresh(monkeypatch, calls=calls)
+    runner, finished = _runner_reporting_done(
+        base_path=str(tmp_path),
+        settings={"sync_enabled": True, "gcal_enabled": True})
+
+    runner.refresh_token(on_auth_error=lambda msg: None, on_error=lambda tb: None)
+
+    assert finished.wait(timeout=5)
+    assert calls == [(os.path.join(str(tmp_path), "token.json"), True, True)]
+
+
+def _sender_email_setup(tmp_path, monkeypatch, fetched):
+    (tmp_path / "token.json").write_text("{}", encoding="utf-8")
+    settings = Settings(str(tmp_path / "settings.json"))
+    settings.set("sender_email", "alt@example.com")
+    monkeypatch.setattr(
+        bg, "fetch_user_email",
+        lambda token_path, sync_enabled=False, gcal_enabled=False: fetched)
+    return _runner_reporting_done(settings=settings, base_path=str(tmp_path))
+
+
+def test_fetch_sender_email_caches_a_changed_address(tmp_path, monkeypatch):
+    runner, finished = _sender_email_setup(tmp_path, monkeypatch, "neu@example.com")
+
+    runner.fetch_sender_email()
+
+    assert finished.wait(timeout=5)
+    assert Settings(str(tmp_path / "settings.json")).get("sender_email") == "neu@example.com"
+
+
+@pytest.mark.parametrize("fetched", [
+    pytest.param("", id="leer"),
+    pytest.param(None, id="keine-antwort"),
+])
+def test_fetch_sender_email_keeps_the_cached_address_without_a_result(
+        tmp_path, monkeypatch, fetched):
+    """Kein Ergebnis heißt „nicht ermittelbar“, nicht „keine Adresse“ — der
+    Cache darf davon nicht geleert werden."""
+    runner, finished = _sender_email_setup(tmp_path, monkeypatch, fetched)
+
+    runner.fetch_sender_email()
+
+    assert finished.wait(timeout=5)
+    assert Settings(str(tmp_path / "settings.json")).get("sender_email") == "alt@example.com"

@@ -1,4 +1,5 @@
 import json as _json
+import threading
 
 import pytest
 
@@ -961,6 +962,93 @@ def test_run_compaction_aborts_on_newer_remote(tmp_path, monkeypatch):
     assert res.get("reason") == "newer_version"
     assert upload_calls == []
     assert storage.get_all_raw() == {}
+
+
+# --- Kompaktierung: defektes Remote und Fehlerpfad ---
+#
+# Die Kompaktierung schreibt den lokalen Stand als neue Remote-Wahrheit hoch.
+# Ein kaputtes Remote darf sie deshalb weder abbrechen noch in den Merge
+# tragen — und ein gescheiterter Lauf darf keinen späteren Sync blockieren.
+
+def _compaction_stores(tmp_path):
+    storage = Storage(str(tmp_path / "z.json"), device_id="A")
+    storage.save("2026-06-09", [_slot("09:00", "17:00")])
+    settings = Settings(str(tmp_path / "s.json"))
+    settings.device_id_for_sync = "A"
+    conflicts = ConflictsStore(str(tmp_path / "c.json"))
+    return storage, settings, conflicts
+
+
+def _capture_upload(monkeypatch, drive):
+    uploaded = []
+
+    def _fake_upload(service, content, file_id=None, expected_etag=None):
+        uploaded.append(_json.loads(content))
+        return ("file-1", "etag-new")
+
+    monkeypatch.setattr(drive, "upload", _fake_upload)
+    return uploaded
+
+
+def test_run_compaction_with_unparsable_remote_uploads_the_local_state(
+        tmp_path, monkeypatch):
+    import src.sync_runtime as sync_runtime
+    storage, settings, conflicts = _compaction_stores(tmp_path)
+    uploaded = _capture_upload(monkeypatch, _mock_drive(monkeypatch, b"{kaputt"))
+
+    res = sync_runtime.run_compaction_blocking(storage, settings, conflicts, str(tmp_path))
+
+    assert res == {"ok": True}
+    assert len(uploaded) == 1
+    assert uploaded[0]["schema_version"] == 4
+    assert set(uploaded[0]["entries"]) == {"2026-06-09"}
+
+
+def test_run_compaction_with_invalid_remote_doc_keeps_its_entries_out(
+        tmp_path, monkeypatch):
+    """Audit M5: ein strukturell defektes Remote (Eintrag ohne Pflichtfelder)
+    wird verworfen, statt mitten im Merge zu scheitern oder lokal zu landen."""
+    import src.sync_runtime as sync_runtime
+    storage, settings, conflicts = _compaction_stores(tmp_path)
+    defect = _json.dumps({
+        "schema_version": 4, "settings": {}, "conflicts": [],
+        "entries": {"2026-06-20": {"slots": []}},
+    }).encode("utf-8")
+    uploaded = _capture_upload(monkeypatch, _mock_drive(monkeypatch, defect))
+
+    res = sync_runtime.run_compaction_blocking(storage, settings, conflicts, str(tmp_path))
+
+    assert res == {"ok": True}
+    assert set(uploaded[0]["entries"]) == {"2026-06-09"}
+    assert "2026-06-20" not in storage.get_all_raw()
+
+
+def test_run_compaction_upload_failure_is_reported_and_releases_the_guard(
+        tmp_path, monkeypatch):
+    """Der Guard serialisiert ALLE Drive-Sync-Einstiege. Bliebe er nach einem
+    Fehler gehalten, übersprängen Pull, Push und Quit-Push für den Rest der
+    Sitzung still jeden Lauf."""
+    import src.sync_runtime as sync_runtime
+    storage, settings, conflicts = _compaction_stores(tmp_path)
+    drive = _mock_drive(monkeypatch, _v2_remote_bytes({}))
+
+    def _failing_upload(service, content, file_id=None, expected_etag=None):
+        raise RuntimeError("upload 500")
+
+    monkeypatch.setattr(drive, "upload", _failing_upload)
+    etag_before = settings.get("drive_etag")
+    guard = threading.Lock()
+
+    res = sync_runtime.run_compaction_blocking(
+        storage, settings, conflicts, str(tmp_path),
+        timeout_seconds=5, sync_guard=guard)
+
+    assert res["ok"] is False
+    assert res["error"] == "upload 500"
+    assert "RuntimeError: upload 500" in res["tb"]
+    assert settings.get("drive_etag") == etag_before
+    assert guard.acquire(blocking=False)
+    guard.release()
 
 
 # --- Geräte-Registry (devices) ---
