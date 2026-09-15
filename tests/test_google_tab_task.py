@@ -179,29 +179,32 @@ def test_reconnect_drive_never_raises(monkeypatch, tmp_path):
 # --- service_fn-Einstiege für build_oauth_enable_task ---------------------
 
 def test_open_drive_service_passes_args(monkeypatch, tmp_path):
+    """Der Sync-Schalter ist eine Verbinden-Aktion: er fordert den Consent
+    ausdrücklich an — die Builder tun es von sich aus nicht mehr (Xveyn#129)."""
     settings = _FakeSettings(gcal_enabled=True)
     seen = {}
     monkeypatch.setattr(gtt.drive, "get_drive_service",
-                        lambda creds, token, *, gcal_enabled:
-                        seen.update(args=(creds, token, gcal_enabled)))
+                        lambda creds, token, *, gcal_enabled, interactive:
+                        seen.update(args=(creds, token, gcal_enabled, interactive)))
 
     open_drive_service(settings, str(tmp_path))
 
     assert seen["args"] == (os.path.join(str(tmp_path), "credentials.json"),
-                            os.path.join(str(tmp_path), "token.json"), True)
+                            os.path.join(str(tmp_path), "token.json"), True, True)
 
 
 def test_open_calendar_service_passes_args(monkeypatch, tmp_path):
+    """Wie beim Sync-Schalter: der Kalender-Schalter fordert den Consent an."""
     settings = _FakeSettings(sync_enabled=True)
     seen = {}
     monkeypatch.setattr(gtt.gcal, "get_calendar_service",
-                        lambda creds, token, *, sync_enabled:
-                        seen.update(args=(creds, token, sync_enabled)))
+                        lambda creds, token, *, sync_enabled, interactive:
+                        seen.update(args=(creds, token, sync_enabled, interactive)))
 
     open_calendar_service(settings, str(tmp_path))
 
     assert seen["args"] == (os.path.join(str(tmp_path), "credentials.json"),
-                            os.path.join(str(tmp_path), "token.json"), True)
+                            os.path.join(str(tmp_path), "token.json"), True, True)
 
 
 @pytest.mark.parametrize("fn,module,attr", [

@@ -166,3 +166,91 @@ class FakeCalendar:
 def fake_calendar(monkeypatch):
     """Ein installierter `FakeCalendar` ohne Events (Kalender-ID `cal-1`)."""
     return FakeCalendar().install(monkeypatch)
+
+
+# --- Google-Anmeldung: Token-Zustände und Consent-Stolperdraht ---------------
+#
+# Anders als `FakeCalendar` ersetzen diese Helfer NICHT die Service-Builder
+# (`gcal.get_calendar_service`, `drive.get_drive_service`), sondern nur, was
+# darunter liegt: das Laden des Tokens, den Consent-Flow und `build`. Die
+# Entscheidung „Flow starten oder Auth-Fehler" läuft damit echt.
+
+class FakeGoogleCreds:
+    """Die Attribute, die die Service-Builder an echten Credentials lesen."""
+
+    def __init__(self, *, valid, expired, refresh_error=None):
+        self.valid = valid
+        self.expired = expired
+        self.refresh_token = "refresh-1"
+        self.refreshed = False
+        self._refresh_error = refresh_error
+
+    def refresh(self, request):
+        if self._refresh_error is not None:
+            raise self._refresh_error
+        self.valid, self.expired, self.refreshed = True, False, True
+
+    def to_json(self):
+        return '{"token": "refreshed"}'
+
+
+def install_existing_token(monkeypatch, tmp_path, creds, scopes):
+    """Legt credentials.json und ein token.json mit `scopes` an; das Laden
+    des Tokens liefert `creds`. Liefert (credentials_path, token_path)."""
+    import json
+
+    from google.oauth2 import credentials as credentials_mod
+
+    creds_path = tmp_path / "credentials.json"
+    creds_path.write_text("{}", encoding="utf-8")
+    token_path = tmp_path / "token.json"
+    token_path.write_text(json.dumps({"token": "t", "scopes": list(scopes)}),
+                          encoding="utf-8")
+    # drive.py bindet `Credentials` beim Import — es ist dieselbe Klasse, das
+    # Attribut an ihr zu ersetzen trifft also beide Builder.
+    monkeypatch.setattr(credentials_mod.Credentials, "from_authorized_user_file",
+                        staticmethod(lambda path, scopes: creds))
+    return str(creds_path), str(token_path)
+
+
+def revoked_google_creds():
+    """Credentials, deren Refresh-Token Google widerrufen hat — der Zustand
+    aus Xveyn#129 (`invalid_grant` bei jedem Start)."""
+    from google.auth.exceptions import RefreshError
+
+    return FakeGoogleCreds(
+        valid=False, expired=True,
+        refresh_error=RefreshError("invalid_grant: Token has been expired or revoked."))
+
+
+def forbid_consent_flow(monkeypatch):
+    """Lässt jeden Start des Browser-Consents sofort scheitern — in gcal
+    (lazy importiert) wie in drive (beim Import gebunden)."""
+    import google_auth_oauthlib.flow as flow_mod
+
+    from src import drive
+
+    class _Tripwire:
+        @staticmethod
+        def from_client_secrets_file(*a, **k):
+            raise AssertionError("OAuth-Flow gestartet — genau das soll nicht passieren")
+
+    monkeypatch.setattr(flow_mod, "InstalledAppFlow", _Tripwire)
+    monkeypatch.setattr(drive, "InstalledAppFlow", _Tripwire)
+
+
+def fake_google_build(monkeypatch):
+    """Ersetzt discovery.build; liefert das Dict, in dem der Aufruf landet."""
+    import googleapiclient.discovery as disc
+
+    from src import drive
+
+    built = {}
+
+    def build(name, version, credentials=None):
+        built.update(name=name, version=version, credentials=credentials)
+        return "SERVICE"
+
+    monkeypatch.setattr(disc, "build", build)
+    monkeypatch.setattr(drive, "build", build)
+    return built

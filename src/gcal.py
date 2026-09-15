@@ -9,7 +9,10 @@ Die pure Helper `event_payload` / `parse_event` haben keine Google-Abhängigkeit
 import datetime
 
 from src.mail import get_scopes
-from src.oauth_utils import discard_token_for_scope_upgrade, write_token
+from src.oauth_utils import (
+    REAUTH_REQUIRED_MSG, discard_token_for_scope_upgrade, token_lacks_scopes,
+    write_token,
+)
 
 # Marker in extendedProperties.private — über diesen findet der Pull "seine"
 # Events; manuell angelegte Termine bleiben dadurch unangetastet.
@@ -99,7 +102,7 @@ def parse_event(event):
 
 def get_calendar_service(credentials_path="credentials.json",
                          token_path="token.json", sync_enabled=False,
-                         interactive=True):
+                         interactive=False):
     """Authentifiziert gegen die Calendar API und liefert ein Service-Objekt.
 
     Fordert die VEREINIGUNG aller App-Scopes an (Gmail, Drive falls Sync,
@@ -107,13 +110,16 @@ def get_calendar_service(credentials_path="credentials.json",
     Scopes aus dem gemeinsamen token.json. Spiegelt get_gmail_service inkl.
     Scope-Upgrade-Erkennung. Google-Imports lazy (CI ohne requirements.txt).
 
-    `interactive=False` schaltet den Consent-Flow ab: reicht der vorhandene
-    Token nicht (fehlend, widerrufen, Scope-Upgrade nötig), fliegt ein
-    `CalendarAuthError`, statt `run_local_server` zu starten. Für Aufrufer,
-    die der Nutzer nicht angestoßen hat — der Einstellungsdialog lädt die
-    Kalenderliste beim Öffnen, und ein Browserfenster, das ungefragt
-    aufgeht, ist genau das, was man dort nicht will (Xveyn#124). Wer
-    interaktiv aufruft, tut es als Folge eines Klicks.
+    **Ohne `interactive=True` startet nie ein Consent-Flow.** Reicht der
+    vorhandene Token nicht (fehlend, widerrufen, Scope fehlt), fliegt ein
+    `CalendarAuthError`, und der Token bleibt, wie er ist. Den Flow fordert
+    nur an, wer ihn als Folge eines Klicks braucht: der Kalender-Schalter.
+
+    Der Default war früher `True`, und genau das war der Fehler aus
+    Xveyn#129: der Kalender-Abgleich beim App-Start rief den Builder ohne
+    Flag, erbte den Flow und öffnete bei widerrufenem Token bei jedem Start
+    den Browser — `run_local_server` wartete dann unbegrenzt, der Abgleich
+    kam nie zurück. #124 hatte das nur für den Einstellungsdialog abgestellt.
     """
     import os
 
@@ -127,8 +133,14 @@ def get_calendar_service(credentials_path="credentials.json",
     creds = None
     if os.path.exists(token_path):
         creds = Credentials.from_authorized_user_file(token_path, scopes)
-        # Scope-Upgrade-Erkennung: hat der Token nicht alle Scopes, frischer Flow.
-        if discard_token_for_scope_upgrade(token_path, scopes):
+        # Scope-Upgrade-Erkennung: hat der Token nicht alle Scopes, braucht es
+        # einen frischen Consent. Verworfen wird er nur, wenn der sofort folgt
+        # — ohne Flow bliebe gar kein Token, und der Drive-Sync, der mit dem
+        # alten weiterlief, stünde still (Xveyn#129).
+        if not interactive:
+            if token_lacks_scopes(token_path, scopes):
+                raise CalendarAuthError(REAUTH_REQUIRED_MSG)
+        elif discard_token_for_scope_upgrade(token_path, scopes):
             creds = None
 
     if creds and creds.expired and creds.refresh_token:
@@ -147,8 +159,7 @@ def get_calendar_service(credentials_path="credentials.json",
             # Vor dem credentials.json-Check: ohne Flow wird die Datei gar
             # nicht gebraucht, und der Aufrufer soll den Auth-Fall als
             # solchen sehen (Statuszeile) statt als fehlende Datei.
-            raise CalendarAuthError(
-                "Kein gültiger Google-Token — Anmeldung erforderlich.")
+            raise CalendarAuthError(REAUTH_REQUIRED_MSG)
         if not os.path.exists(credentials_path):
             raise FileNotFoundError(
                 f"credentials.json nicht gefunden unter:\n{credentials_path}"

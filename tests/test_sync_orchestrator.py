@@ -3,7 +3,9 @@
 import datetime
 from unittest.mock import MagicMock
 
-from src.drive import DriveNetworkError
+import pytest
+
+from src.drive import DriveAuthError, DriveNetworkError
 from src.sync_orchestrator import SyncOrchestrator, _status_view, _tray_toast
 from src.theme.palette import STATUS_WARN, TEXT_MUTED
 
@@ -417,3 +419,46 @@ def test_poll_day_change_is_quiet_within_the_same_day():
     label.config.reset_mock()
     orch.poll_day_change(today=datetime.date(2026, 6, 14))
     assert label.config.call_args is None
+
+
+# --- Auth-Fall ohne Consent-Flow (Xveyn#129) ---------------------------------
+#
+# Ohne Klick werfen die Builder einen Auth-Fehler, statt den Browser zu öffnen.
+# Der Hinweis „Google-Verbindung erneuern" erscheint aber nur, wenn die
+# Klassifikation diesen Fehler auch als Auth-Fall erkennt — sonst käme
+# „unerwarteter Fehler" mit Traceback. Geprüft werden deshalb die ECHTEN
+# Fehler der Builder, in den Formen, in denen die Flows sie weiterreichen.
+
+def test_calendar_auth_failure_without_consent_is_classified_as_auth(
+        tmp_path, monkeypatch):
+    from src import gcal
+    from src.sync_orchestrator import classify_sync_error
+    from tests.conftest import forbid_consent_flow
+
+    forbid_consent_flow(monkeypatch)
+    with pytest.raises(gcal.CalendarAuthError) as caught:
+        gcal.get_calendar_service(str(tmp_path / "credentials.json"),
+                                  str(tmp_path / "token.json"))
+    error = caught.value
+
+    assert classify_sync_error(error) == "auth"
+    # run_calendar_reconcile reicht "Typ: Text" als String weiter.
+    assert classify_sync_error(f"{type(error).__name__}: {error}") == "auth"
+
+
+def test_drive_auth_failure_without_consent_is_classified_as_auth(
+        tmp_path, monkeypatch):
+    from src import drive
+    from src.sync_orchestrator import classify_sync_error
+    from tests.conftest import forbid_consent_flow
+
+    (tmp_path / "credentials.json").write_text('{"installed": {}}')
+    forbid_consent_flow(monkeypatch)
+    with pytest.raises(DriveAuthError) as caught:
+        drive.get_drive_service(str(tmp_path / "credentials.json"),
+                                str(tmp_path / "token.json"))
+    error = caught.value
+
+    assert classify_sync_error(error) == "auth"
+    # run_push_blocking reicht nur str(e) weiter — ohne Typinformation.
+    assert classify_sync_error(str(error)) == "auth"

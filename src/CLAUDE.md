@@ -575,17 +575,35 @@ Tab bleibt `runner.run(fn, on_done)` plus die Widget-Kosmetik im `on_done`.
 Getestet in `tests/test_google_tab_task.py` — die erste echte Abdeckung des
 Tabs. Neue Netz-/OAuth-Arbeit des Tabs gehört dorthin, nicht in eine Closure.
 
-**Der Dialog öffnet nie ungefragt den Browser (Xveyn#124).** Der Tab-Aufbau
-ruft `load_calendars(..., interactive=False)`; das reicht bis
-`gcal.get_calendar_service` durch, das mit `interactive=False` einen
-`CalendarAuthError` wirft, statt `flow.run_local_server` zu starten. Vorher
-riss allein das Öffnen der Einstellungen ein Consent-Fenster auf, sobald der
-Token nicht mehr trug. Die Regel dahinter: **ein Consent-Flow ist die Folge
-eines Klicks** — der Kalender-Schalter und „Google neu verbinden" bleiben
-deshalb interaktiv, alles, was beim Aufbau läuft, nicht. Der Fehlschlag landet
-dort in der Statuszeile, nicht in einer Messagebox; ein Modal beim bloßen
-Öffnen wäre dieselbe Zumutung. Wer weitere Netzarbeit an den Tab-Aufbau hängt,
-zieht das mit.
+**Die App öffnet nie ungefragt den Browser (Xveyn#124, #129).** Die Regel:
+**ein Consent-Flow ist die Folge eines Klicks auf eine Verbinden-Aktion.**
+Durchgesetzt wird sie am **Default** der beiden Service-Builder:
+`gcal.get_calendar_service` und `drive.get_drive_service` starten den Flow nur
+mit ausdrücklichem `interactive=True`. Ohne das wird ein fehlender,
+widerrufener oder scope-armer Token zu `CalendarAuthError` bzw.
+`DriveAuthError` (Text `oauth_utils.REAUTH_REQUIRED_MSG`), und der Token bleibt
+liegen — verworfen wird er nur, wenn der Consent unmittelbar folgt.
+
+`interactive=True` geben genau diese Aufrufer mit: Sync- und Kalender-Schalter
+(`open_drive_service`/`open_calendar_service`), „Google neu verbinden"
+(`drive.reconnect`) und das Nachladen der Kalenderliste nach dem Schalter.
+Alles andere — Start-Pull, Push (auch beim Beenden), Kompaktierung,
+Kalender-Abgleich, Urlaubs-Aufräumen, der Tab-Aufbau — läuft ohne und meldet
+den Auth-Fall. Gmail (`mail.get_gmail_service`) steht außerhalb dieser Regel:
+seine Aufrufer sind ausnahmslos Klicks (Senden, Teilen, „Anmelden").
+
+**Warum am Default und nicht am Aufrufer:** #124 hatte nur den Tab-Aufbau
+umgestellt, der Default blieb interaktiv. Der Kalender-Abgleich beim App-Start
+rief den Builder ohne Flag, erbte den Flow und öffnete bei widerrufenem Token
+**bei jedem Start** den Browser; `run_local_server` wartete dann unbegrenzt,
+der Abgleich kam nie zurück (im Log belegt, Xveyn#129). Ein sicherer Default
+schützt auch den nächsten Aufrufer, der das Flag vergisst.
+
+Damit der Hinweis „Google-Verbindung erneuern" statt eines Tracebacks kommt,
+erkennt `sync_orchestrator.classify_sync_error` beide Fehler — auch als
+bloßen Text, weil Push und Reconcile nur `str(e)` weiterreichen. Im Tab
+landet der Fehlschlag in der Statuszeile, nicht in einer Messagebox; ein Modal
+beim bloßen Öffnen wäre dieselbe Zumutung.
 `check_token_status` ist das Gegenstück für die Zeile „Anmeldung": es nutzt
 `mail.refresh_token_if_needed` (nicht-interaktiv, erneuert still, wenn der
 Refresh-Token noch trägt) und mappt auf `valid`/`no_token`/`reauth`/`unknown`.

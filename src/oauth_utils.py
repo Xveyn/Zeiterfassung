@@ -104,6 +104,24 @@ def read_granted_scopes(token_path: str) -> list[str] | None:
     return scopes
 
 
+REAUTH_REQUIRED_MSG = "Kein gültiger Google-Token — Anmeldung erforderlich."
+"""Fehlertext der Service-Builder, wenn sie ohne Klick keinen Consent starten
+dürfen (Xveyn#129). Ein Wert für beide Builder, weil die Sync-Flows den Fehler
+teils nur als `str(e)` weiterreichen — `sync_orchestrator.classify_sync_error`
+erkennt den Auth-Fall dann allein an diesem Text."""
+
+
+def token_lacks_scopes(token_path: str, scopes: Collection[str]) -> bool:
+    """True, wenn `token.json` lesbar ist und nicht alle `scopes` gewährt.
+
+    Bei Lesefehlern (kein/defektes JSON) konservativ `False`: ein womöglich
+    gültiger Token gilt nicht als unzureichend."""
+    granted = read_granted_scopes(token_path)
+    if granted is None:
+        return False
+    return not set(scopes).issubset(set(granted))
+
+
 def discard_token_for_scope_upgrade(token_path: str,
                                     scopes: Collection[str]) -> bool:
     """Erzwinge einen frischen OAuth-Flow, wenn der gespeicherte Token nicht
@@ -113,17 +131,15 @@ def discard_token_for_scope_upgrade(token_path: str,
     `True` geliefert — die aufrufende Seite setzt dann `creds = None` und
     durchläuft den vollen Consent. Andernfalls `False`.
 
+    Nur aufrufen, wenn der Consent **unmittelbar** folgt: ohne ihn bliebe gar
+    kein Token zurück (Xveyn#129). Nicht-interaktive Pfade fragen
+    `token_lacks_scopes` und melden den Auth-Fall.
+
     Bei Lesefehlern (kein/defektes JSON) konservativ `False`: der Token bleibt
     unangetastet, statt einen womöglich gültigen Token wegzuwerfen. Spiegelt
     das frühere `except Exception: pass` in den Wrappern.
     """
-    granted = read_granted_scopes(token_path)
-    if granted is None:
-        # Nicht lesbar → konservativ: Token unangetastet lassen, statt einen
-        # womöglich gültigen wegzuwerfen.
-        return False
-
-    if set(scopes).issubset(set(granted)):
+    if not token_lacks_scopes(token_path, scopes):
         return False
 
     try:
