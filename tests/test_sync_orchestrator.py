@@ -210,10 +210,15 @@ def test_on_tray_done_without_tray_does_not_crash():
     orch._on_tray_done({"ok": True})  # darf nicht werfen
 
 
-def test_push_on_quit_disabled_is_noop():
+def test_push_on_quit_disabled_is_noop(monkeypatch):
+    pushes = []
+    monkeypatch.setattr("src.sync_orchestrator.run_push_blocking",
+                        lambda *a, **k: pushes.append(k) or {"ok": True})
     orch, _ = _orch(sync_enabled=False)
-    # darf nicht werfen und nichts pushen (Guard greift vor dem Lazy-Import)
+
     orch.push_on_quit()
+
+    assert pushes == []
 
 
 def test_on_sync_clicked_dims_button(monkeypatch):
@@ -317,6 +322,55 @@ def test_push_on_quit_skipped_logs_no_dialog(monkeypatch):
     orch, _ = _orch(sync_enabled=True)
     orch.push_on_quit()
     assert errors == []
+
+
+def _capture_error_dialogs(monkeypatch):
+    """Fängt beide Dialog-Wege ab, die `_show_sync_error` nehmen kann.
+    Liefert die Liste [(weg, titel, meldung), ...]."""
+    import src.sync_orchestrator as so
+    shown = []
+    monkeypatch.setattr(so.messagebox, "showerror",
+                        lambda title, message: shown.append(("native", title, message)))
+    monkeypatch.setattr(so, "themed_showinfo",
+                        lambda parent, title, message: shown.append(("themed", title, message)))
+    return shown
+
+
+def test_push_on_quit_failure_shows_the_error_and_that_local_data_is_safe(monkeypatch):
+    """Beim Beenden sieht der Nutzer den Fehler als letztes — ohne den Zusatz
+    klänge er, als seien die Stunden verloren."""
+    shown = _capture_error_dialogs(monkeypatch)
+    monkeypatch.setattr("src.sync_orchestrator.run_push_blocking",
+                        lambda *a, **k: {"ok": False, "error": "HttpError 500",
+                                         "tb": "Traceback (most recent call last): …"})
+    orch, _ = _orch(sync_enabled=True)
+
+    orch.push_on_quit()
+
+    assert len(shown) == 1
+    way, title, message = shown[0]
+    assert (way, title) == ("native", "Synchronisation fehlgeschlagen")
+    assert "HttpError 500" in message
+    assert "Lokale Daten bleiben erhalten" in message
+
+
+def test_push_on_quit_exception_is_shown_instead_of_breaking_the_quit(monkeypatch):
+    """Wirft der Push selbst (statt ein Result-Dict zu liefern), darf das den
+    Beenden-Pfad nicht abbrechen — Tray-Stop und root.destroy stehen danach."""
+    shown = _capture_error_dialogs(monkeypatch)
+
+    def _raise(*a, **k):
+        raise RuntimeError("can't start new thread")
+
+    monkeypatch.setattr("src.sync_orchestrator.run_push_blocking", _raise)
+    orch, _ = _orch(sync_enabled=True)
+
+    orch.push_on_quit()
+
+    assert len(shown) == 1
+    _way, _title, message = shown[0]
+    assert "RuntimeError: can't start new thread" in message
+    assert "Lokale Daten bleiben erhalten" in message
 
 
 # --- Status-Label: Farbe, Tooltip und Tages-Rollover ------------------------

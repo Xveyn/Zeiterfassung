@@ -7,22 +7,7 @@ import threading
 from src.conflicts_store import ConflictsStore
 from src.settings import Settings
 from src.storage import Storage
-
-
-def _other_thread_can_acquire(lock):
-    """True, wenn ein ANDERER Thread den Lock nehmen kann (= Lock frei)."""
-    out = []
-
-    def probe():
-        got = lock.acquire(blocking=False)
-        out.append(got)
-        if got:
-            lock.release()
-
-    t = threading.Thread(target=probe)
-    t.start()
-    t.join()
-    return out[0]
+from tests.conftest import other_thread_can_acquire as _other_thread_can_acquire
 
 
 def _stores(tmp_path, lock):
