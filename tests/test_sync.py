@@ -1051,6 +1051,30 @@ def test_run_compaction_upload_failure_is_reported_and_releases_the_guard(
     guard.release()
 
 
+def test_run_pull_without_token_reports_auth_instead_of_opening_the_browser(
+        tmp_path, monkeypatch):
+    """Xveyn#129: der Start-Pull läuft ohne Klick. Fehlt token.json, darf er
+    keinen Browser-Consent im Hintergrund starten — der Nutzer bekommt den
+    Auth-Hinweis, der ihn zu „Google neu verbinden" schickt."""
+    import src.sync_runtime as sync_runtime
+    from src.sync_orchestrator import classify_sync_error
+    from tests.conftest import forbid_consent_flow
+
+    storage, settings, conflicts = _compaction_stores(tmp_path)
+    (tmp_path / "credentials.json").write_text('{"installed": {}}')
+    forbid_consent_flow(monkeypatch)
+    received = {}
+
+    def ui_callback(ok, error, tb=""):
+        received.update(ok=ok, error=error)
+
+    sync_runtime.run_pull_in_background(storage, settings, conflicts, str(tmp_path),
+                                        ui_callback)
+
+    assert received["ok"] is False
+    assert classify_sync_error(received["error"]) == "auth"
+
+
 # --- Geräte-Registry (devices) ---
 #
 # Additiv und OHNE Schema-Bump: SCHEMA_VERSION bleibt 4, damit ältere Clients

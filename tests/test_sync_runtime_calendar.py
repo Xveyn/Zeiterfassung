@@ -119,6 +119,32 @@ def test_vacation_push_failure_does_not_fail_the_reservation_reconcile(
                for r in caplog.records)
 
 
+def test_startup_reconcile_with_revoked_token_reports_auth_instead_of_opening_the_browser(
+        tmp_path, monkeypatch):
+    """Xveyn#129, im Log belegt: seit dem Widerruf öffnete JEDER App-Start
+    ~100 ms nach dem gescheiterten Pull den Google-Consent im Browser. Der
+    Kalender-Abgleich rief den Builder ohne `interactive` und erbte den Flow;
+    `run_local_server` wartete dann unbegrenzt, der Abgleich kam nie zurück.
+
+    Hier läuft der echte Builder — ersetzt sind nur Token, Flow und build."""
+    from src.mail import get_scopes
+    from src.sync_orchestrator import classify_sync_error
+    from tests.conftest import (
+        fake_google_build, forbid_consent_flow, install_existing_token,
+        revoked_google_creds,
+    )
+
+    install_existing_token(monkeypatch, tmp_path, revoked_google_creds(),
+                           get_scopes(True, gcal_enabled=True))
+    forbid_consent_flow(monkeypatch)
+    fake_google_build(monkeypatch)
+
+    result = _reconcile(tmp_path, _settings(tmp_path, sync_enabled=True), None)
+
+    assert result["ok"] is False
+    assert classify_sync_error(result["error"]) == "auth"
+
+
 # ----------------------------------------------------------- run_vacation_purge
 
 @pytest.mark.parametrize("overrides, with_store", [

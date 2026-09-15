@@ -49,7 +49,7 @@ def test_get_drive_service_runs_oauth_flow_when_no_token(tmp_path):
         mock_flow.run_local_server.return_value = new_creds
         mock_flow_cls.from_client_secrets_file.return_value = mock_flow
 
-        get_drive_service(str(creds_path), str(token_path))
+        get_drive_service(str(creds_path), str(token_path), interactive=True)
 
     assert mock_flow_cls.from_client_secrets_file.called
     call_args = mock_flow_cls.from_client_secrets_file.call_args
@@ -58,6 +58,21 @@ def test_get_drive_service_runs_oauth_flow_when_no_token(tmp_path):
     assert "https://www.googleapis.com/auth/gmail.send" in used_scopes
     # Token wurde geschrieben
     assert token_path.exists()
+
+
+def test_get_drive_service_without_token_raises_auth_error_instead_of_flow(
+        tmp_path, monkeypatch):
+    """Xveyn#129: der Start-Pull ruft den Builder ohne Klick. Fehlt der Token,
+    darf daraus kein Browser-Consent im Hintergrund werden, sondern der
+    Auth-Fall, den die Sync-Fehlermeldung schon kennt („neu verbinden")."""
+    from tests.conftest import forbid_consent_flow
+
+    creds_path = tmp_path / "credentials.json"
+    creds_path.write_text('{"installed": {}}')
+    forbid_consent_flow(monkeypatch)
+
+    with pytest.raises(DriveAuthError):
+        get_drive_service(str(creds_path), str(tmp_path / "token.json"))
 
 
 from src.drive import find_sync_file

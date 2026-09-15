@@ -131,9 +131,12 @@ def reconnect_drive(settings, base_path):
 def open_drive_service(settings, base_path):
     """`service_fn` für den Drive-Sync-Toggle — wirft bei Fehlschlag."""
     creds_path, token_path = _paths(base_path)
+    # Der Schalter ist eine Verbinden-Aktion: der Consent ist hier gewollt und
+    # muss ausdrücklich angefordert werden (Xveyn#129).
     drive.get_drive_service(
         creds_path, token_path,
         gcal_enabled=settings.get("gcal_enabled"),
+        interactive=True,
     )
 
 
@@ -143,4 +146,5 @@ def open_calendar_service(settings, base_path):
     gcal.get_calendar_service(
         creds_path, token_path,
         sync_enabled=settings.get("sync_enabled"),
+        interactive=True,
     )

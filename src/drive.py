@@ -9,7 +9,7 @@ import io
 import logging
 import os
 
-from src.oauth_utils import write_token
+from src.oauth_utils import REAUTH_REQUIRED_MSG, write_token
 
 SYNC_FILENAME = "zeiterfassung-sync.json"
 SYNC_MIMETYPE = "application/json"
@@ -66,11 +66,18 @@ SYNC_SCOPES = [
 ]
 
 
-def get_drive_service(credentials_path, token_path, gcal_enabled=False):
+def get_drive_service(credentials_path, token_path, gcal_enabled=False,
+                      interactive=False):
     """OAuth mit kombinierten Scopes (Gmail + Drive appdata, optional Calendar).
     Token wird mit allen Scopes geschrieben — Gmail send und Calendar
     funktionieren weiter mit demselben token.json. Wirft DriveAuthError oder
-    DriveNetworkError bei Problemen."""
+    DriveNetworkError bei Problemen.
+
+    **Ohne `interactive=True` startet nie ein Consent-Flow**, sondern ein
+    fehlender oder unbrauchbarer Token wird zu `DriveAuthError` — dem Fall,
+    für den die Sync-Fehlermeldung schon „Google neu verbinden" sagt. Den Flow
+    fordern nur Sync-Schalter und `reconnect` an; Start-Pull, Push (auch beim
+    Beenden) und Kompaktierung laufen ohne (Xveyn#129)."""
     if (Credentials is None or InstalledAppFlow is None
             or Request is None or build is None):
         raise ImportError(
@@ -96,6 +103,10 @@ def get_drive_service(credentials_path, token_path, gcal_enabled=False):
         write_token(creds, token_path)
 
     if not creds or not creds.valid:
+        if not interactive:
+            # Vor dem credentials.json-Check, wie in gcal: ohne Flow wird die
+            # Datei nicht gebraucht, und der Aufrufer soll den Auth-Fall sehen.
+            raise DriveAuthError(REAUTH_REQUIRED_MSG)
         if not os.path.exists(credentials_path):
             raise FileNotFoundError(
                 f"credentials.json nicht gefunden unter:\n{credentials_path}"
@@ -120,7 +131,8 @@ def reconnect(credentials_path, token_path, gcal_enabled=False):
         os.remove(token_path)
     except FileNotFoundError:
         pass
-    return get_drive_service(credentials_path, token_path, gcal_enabled=gcal_enabled)
+    return get_drive_service(credentials_path, token_path, gcal_enabled=gcal_enabled,
+                             interactive=True)
 
 
 def _dedupe_sort_key(f):

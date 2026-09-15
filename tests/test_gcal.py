@@ -1,10 +1,16 @@
-import json
 from unittest.mock import MagicMock
 
 import pytest
 
 from src import gcal
 from src.mail import get_scopes
+from tests.conftest import (
+    FakeGoogleCreds as _FakeCreds,
+    fake_google_build as _fake_build,
+    forbid_consent_flow as _forbid_consent_flow,
+    install_existing_token as _existing_token,
+    revoked_google_creds,
+)
 
 
 def test_event_payload_has_summary_and_marker():
@@ -227,7 +233,8 @@ def test_calendar_service_non_interactive_never_starts_the_oauth_flow(monkeypatc
 
 
 def test_calendar_service_interactive_still_runs_the_flow(monkeypatch, tmp_path):
-    """Der Default bleibt interaktiv — der Kalender-Schalter lebt davon."""
+    """Wer den Flow ausdrücklich anfordert, bekommt ihn — der
+    Kalender-Schalter lebt davon."""
     creds = tmp_path / "credentials.json"
     creds.write_text("{}", encoding="utf-8")
 
@@ -251,8 +258,68 @@ def test_calendar_service_interactive_still_runs_the_flow(monkeypatch, tmp_path)
     monkeypatch.setattr(gcal, "write_token", lambda *a, **k: None)
     monkeypatch.setattr(disc, "build", lambda *a, **k: "SERVICE")
 
-    assert gcal.get_calendar_service(str(creds), str(tmp_path / "token.json")) == "SERVICE"
+    assert gcal.get_calendar_service(str(creds), str(tmp_path / "token.json"),
+                                     interactive=True) == "SERVICE"
     assert started == [True]
+
+
+def test_calendar_service_defaults_to_no_consent_flow(monkeypatch, tmp_path):
+    """Xveyn#129, beobachtet: bei widerrufenem Token startete der
+    Kalender-Abgleich beim App-Start den Browser-Consent — er rief den Builder
+    ohne `interactive` auf und erbte damit den Flow. Den Flow bekommt nur, wer
+    ihn ausdrücklich anfordert; jeder andere Aufrufer ist sicher."""
+    creds_path, token_path = _existing_token(
+        monkeypatch, tmp_path, revoked_google_creds(), _CALENDAR_SCOPES)
+    _forbid_consent_flow(monkeypatch)
+    _fake_build(monkeypatch)
+
+    with pytest.raises(gcal.CalendarAuthError):
+        gcal.get_calendar_service(creds_path, token_path)
+
+
+def test_calendar_service_non_interactive_keeps_a_token_missing_a_scope(
+        monkeypatch, tmp_path):
+    """Xveyn#129: das Verwerfen eines scope-armen Tokens ist nur sinnvoll,
+    wenn der Consent unmittelbar folgt. Ohne Flow bliebe danach GAR kein
+    Token — und der Drive-Sync, der mit dem alten weiterlief, stünde still."""
+    creds = _FakeCreds(valid=True, expired=False)
+    gmail_only = get_scopes(False, gcal_enabled=False)
+    creds_path, token_path = _existing_token(monkeypatch, tmp_path, creds, gmail_only)
+    _forbid_consent_flow(monkeypatch)
+    _fake_build(monkeypatch)
+
+    with pytest.raises(gcal.CalendarAuthError):
+        gcal.get_calendar_service(creds_path, token_path, interactive=False)
+
+    assert (tmp_path / "token.json").exists()
+
+
+def test_calendar_service_interactive_replaces_a_token_missing_a_scope(
+        monkeypatch, tmp_path):
+    """Die Gegenseite: auf Klick muss ein scope-armer Token weiterhin einem
+    frischen Consent weichen, sonst bekäme ihn der Kalender-Schalter nie."""
+    import google_auth_oauthlib.flow as flow_mod
+
+    creds = _FakeCreds(valid=True, expired=False)
+    gmail_only = get_scopes(False, gcal_enabled=False)
+    creds_path, token_path = _existing_token(monkeypatch, tmp_path, creds, gmail_only)
+    _fake_build(monkeypatch)
+    started = []
+
+    class _Flow:
+        @staticmethod
+        def from_client_secrets_file(path, scopes):
+            started.append(scopes)
+            return _Flow()
+
+        def run_local_server(self, port=0):
+            return _FakeCreds(valid=True, expired=False)
+
+    monkeypatch.setattr(flow_mod, "InstalledAppFlow", _Flow)
+    monkeypatch.setattr(gcal, "write_token", lambda c, path: None)
+
+    assert gcal.get_calendar_service(creds_path, token_path, interactive=True) == "SERVICE"
+    assert started == [_CALENDAR_SCOPES]
 
 
 # --- get_calendar_service: vorhandener, aber nicht (mehr) tragender Token ---
@@ -261,62 +328,6 @@ def test_calendar_service_interactive_still_runs_the_flow(monkeypatch, tmp_path)
 # ein token.json, das DA ist und nicht mehr trägt — widerrufen, abgelaufen
 # oder mit zu wenigen Scopes. Genau diese Zweige laufen vor der
 # interactive-Weiche und entscheiden, ob sie überhaupt erreicht wird.
-
-class _FakeCreds:
-    """Die Attribute, die get_calendar_service an echten Credentials liest."""
-
-    def __init__(self, *, valid, expired, refresh_error=None):
-        self.valid = valid
-        self.expired = expired
-        self.refresh_token = "refresh-1"
-        self.refreshed = False
-        self._refresh_error = refresh_error
-
-    def refresh(self, request):
-        if self._refresh_error is not None:
-            raise self._refresh_error
-        self.valid, self.expired, self.refreshed = True, False, True
-
-
-def _existing_token(monkeypatch, tmp_path, creds, scopes):
-    """Legt credentials.json und ein token.json mit `scopes` an; das Laden
-    des Tokens liefert `creds`. Liefert (credentials_path, token_path)."""
-    from google.oauth2 import credentials as credentials_mod
-
-    creds_path = tmp_path / "credentials.json"
-    creds_path.write_text("{}", encoding="utf-8")
-    token_path = tmp_path / "token.json"
-    token_path.write_text(json.dumps({"token": "t", "scopes": list(scopes)}),
-                          encoding="utf-8")
-    monkeypatch.setattr(credentials_mod.Credentials, "from_authorized_user_file",
-                        staticmethod(lambda path, scopes: creds))
-    return str(creds_path), str(token_path)
-
-
-def _forbid_consent_flow(monkeypatch):
-    import google_auth_oauthlib.flow as flow_mod
-
-    class _Tripwire:
-        @staticmethod
-        def from_client_secrets_file(*a, **k):
-            raise AssertionError("OAuth-Flow gestartet — genau das soll nicht passieren")
-
-    monkeypatch.setattr(flow_mod, "InstalledAppFlow", _Tripwire)
-
-
-def _fake_build(monkeypatch):
-    """Ersetzt discovery.build; liefert das Dict, in dem der Aufruf landet."""
-    import googleapiclient.discovery as disc
-
-    built = {}
-
-    def build(name, version, credentials=None):
-        built.update(name=name, version=version, credentials=credentials)
-        return "SERVICE"
-
-    monkeypatch.setattr(disc, "build", build)
-    return built
-
 
 _CALENDAR_SCOPES = get_scopes(False, gcal_enabled=True)
 
