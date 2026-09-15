@@ -408,3 +408,69 @@ jobs:
           Feature ein paar Releases lang ausgeliefert ist. Kein \`release:*\`-Label
           setzen." \
             --label documentation
+
+  # Verschiebt nach jedem echten Release alle bis auf die neuesten
+  # KEEP_RELEASES Abschnitte aus CHANGELOG.md nach CHANGELOG-archive.md
+  # (scripts/archive_changelog.py). Laeuft NACH publish: der Release-Body ist
+  # zu dem Zeitpunkt schon aus CHANGELOG.md gebaut, und der Tag zeigt auf die
+  # ungekuerzte Datei — die App laedt dort ohnehin nur den Abschnitt ihrer
+  # eigenen Version, der oben steht.
+  #
+  # Eigener Job und eigener PR statt Huckepack auf readme-marker-cleanup:
+  # scheitert einer, haengt der andere nicht mit, und jeder PR bleibt fuer
+  # sich lesbar. Gleiche Gruende fuer Branch + PR statt Push nach master wie
+  # dort.
+  changelog-archive:
+    needs: [pre-check, publish]
+    if: >-
+      needs.pre-check.outputs.should_release == 'true' &&
+      needs.pre-check.outputs.is_prerelease != 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write        # Branch pushen (nicht master)
+      pull-requests: write   # PR oeffnen
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.10'
+
+      - name: Alte Versionen archivieren
+        id: archive
+        shell: bash
+        run: |
+          python scripts/archive_changelog.py
+          # status statt diff: beim ersten Lauf ist CHANGELOG-archive.md neu
+          # und damit untracked — `git diff` saehe sie nicht.
+          if [ -z "$(git status --porcelain -- CHANGELOG.md CHANGELOG-archive.md)" ]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: PR oeffnen
+        if: steps.archive.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.pre-check.outputs.version }}
+        shell: bash
+        run: |
+          BRANCH="chore/changelog-archive-v${VERSION}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$BRANCH"
+          git add CHANGELOG.md CHANGELOG-archive.md
+          git commit -m "docs(changelog): aeltere Versionen nach v${VERSION} archivieren"
+          git push origin "$BRANCH"
+          gh pr create --base master --head "$BRANCH" \
+            --title "docs(changelog): aeltere Versionen archivieren (nach v${VERSION})" \
+            --body "Automatisch nach dem Release von v${VERSION} erzeugt.
+
+          CHANGELOG.md behaelt die neuesten \`KEEP_RELEASES\` Versionen, alles
+          Aeltere steht wortgleich in CHANGELOG-archive.md — siehe
+          \`scripts/archive_changelog.py\` und CLAUDE.md, Abschnitt
+          \"CHANGELOG-Archiv\".
+
+          Reine Umlagerung, kein Abschnitt geht verloren. Kein \`release:*\`-Label
+          setzen." \
+            --label documentation

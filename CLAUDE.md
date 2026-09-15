@@ -75,6 +75,29 @@ Zwei Dinge, die daran hängen:
 Die App ist davon unberührt: bei einem echten Release lädt der Updates-Tab
 `CHANGELOG.md` vom Tag, nicht den Release-Body.
 
+### CHANGELOG-Archiv
+
+`CHANGELOG.md` behält nur die neuesten **`KEEP_RELEASES`** Versionen (derzeit
+**3**, Konstante in `scripts/archive_changelog.py`); alles Ältere steht
+wortgleich und neueste zuerst in **`CHANGELOG-archive.md`**, auf das der
+Vorspann von `CHANGELOG.md` verlinkt. Die Datei war nach 46 Versionen bei
+rund 800 Zeilen — gelesen wird fast immer nur der Anfang.
+
+Umgelagert wird **nicht von Hand**, sondern vom Job `changelog-archive` in
+`release.yml`: nach jedem echten Release (nicht bei Pre-Releases, die haben
+keinen Abschnitt), nach `publish`, als **PR** statt Push nach `master` — mit
+denselben Gründen wie `readme-marker-cleanup`. Der Release-PR selbst trägt
+also weiter nur den neuen Abschnitt oben.
+
+Warum das niemandem etwas wegnimmt: der Updates-Tab lädt `CHANGELOG.md` vom
+Tag **seiner** Version und sucht dort nur deren Abschnitt — an ihrem Tag
+steht sie immer oben. `release_notes.py` liest ebenfalls nur den aktuellen
+Abschnitt, und zwar vor dem Archivieren. Zerlegt wird die Datei über
+`src.changelog.split_version_sections`, denselben Parser, auf dem
+`extract_version_section` aufbaut. Der Archiv-Hinweis steht deshalb bewusst
+**nicht** als `## `-Überschrift im Vorspann — die hielte der Parser für eine
+Version.
+
 ### README-Zeilen für Unveröffentlichtes markieren
 
 `master` ist der Default-Branch, die README ist damit **die Startseite des
@@ -400,7 +423,7 @@ seine Python-Version nirgends (kein `[project] requires-python`, kein
 Versionen vor, die 3.10 längst fallengelassen haben. Zwei Nebenwirkungen, beide
 gewollt: `uv` benutzt im Repo dann ebenfalls 3.10 statt der System-Python
 (spiegelt die Release-Umgebung, s. „Manueller CI-Build ohne Release"), und
-`actions/setup-python` bleibt unberührt, weil **alle** 15 Aufrufe in den
+`actions/setup-python` bleibt unberührt, weil **alle** 16 Aufrufe in den
 Workflows ihr `python-version` explizit setzen. Wer das ändert, zieht die Datei
 mit. Die Zahl hält `tests/test_claude_md_claims.py` fest — sie war schon einmal
 stehengeblieben, während neue Workflows dazukamen.
@@ -1133,6 +1156,11 @@ seinen Pfad, nicht per Import.
   `resolve_readme_version.py`, derselbe Root-Bootstrap. Reine stdlib —
   der `publish`-Job richtet bewusst kein `setup-python` ein und ruft
   `python3`.
+- `scripts/archive_changelog.py` — verschiebt alles bis auf die neuesten
+  `KEEP_RELEASES` Versionen aus `CHANGELOG.md` nach `CHANGELOG-archive.md`
+  (Job `changelog-archive` in `release.yml`; s. „CHANGELOG-Archiv"). Ohne
+  Flag schreibt es, `--check` zeigt nur an. Idempotent, derselbe
+  Root-Bootstrap, reine stdlib.
 - `scripts/webhook_testserver.py` — lokaler Test-Empfänger für den
   Webhook-Versand: zeigt Content-Type, Auth-Header, HMAC-Prüfung und den Body
   (JSON/PDF/multipart aufgetrennt), und kann Fehlerfälle simulieren

@@ -5,7 +5,7 @@ from urllib.error import HTTPError, URLError
 
 from src.changelog import (
     NO_CHANGES_NOTICE, extract_version_section, fetch_changelog_entry,
-    parse_changelog_markdown, release_notes_for_display,
+    parse_changelog_markdown, release_notes_for_display, split_version_sections,
 )
 
 
@@ -58,6 +58,18 @@ class TestExtractVersionSection:
 
     def test_empty_text_returns_none(self):
         assert extract_version_section("", "1.0.0") is None
+
+
+class TestSplitVersionSections:
+    def test_splits_preamble_and_sections_in_file_order(self):
+        preamble, sections = split_version_sections(CHANGELOG_FIXTURE)
+        assert preamble == "# Changelog\n\n"
+        assert [v for v, _ in sections] == ["1.18.0", "1.17.0"]
+        assert sections[0][1] == extract_version_section(CHANGELOG_FIXTURE, "1.18.0")
+        assert sections[1][1] == extract_version_section(CHANGELOG_FIXTURE, "1.17.0")
+
+    def test_text_without_headings_is_all_preamble(self):
+        assert split_version_sections("# Changelog\n") == ("# Changelog\n", [])
 
 
 def _text_response(text: str) -> BytesIO:
