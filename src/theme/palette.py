@@ -54,3 +54,10 @@ TODAY_ACCENT = "#38bdf8"
 # Time dropdown values (5-min steps, 00:00 - 23:55)
 TIME_VALUES = [f"{h:02d}:{m:02d}" for h in range(24) for m in range(0, 60, 5)]
 PAUSE_VALUES = [str(m) for m in range(0, 125, 5)]
+
+# Formular-Bausteine (theme/form.py, #132): die feine Linie hinter
+# Abschnitts-Überschriften und die Farbe ausgegrauter Felder. Beide bewusst
+# dunkler als TEXT_MUTED — ein Hinweistext (gedämpft) soll lesbar bleiben,
+# ein ausgegrautes Feld klar zurücktreten.
+SEPARATOR = "#2e3150"
+TEXT_DISABLED = "#5c5c70"

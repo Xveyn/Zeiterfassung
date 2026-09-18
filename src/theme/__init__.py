@@ -41,9 +41,11 @@ from src.theme.palette import (  # noqa: F401
     HOLIDAY_BG_HOVER,
     PAUSE_VALUES,
     RESERVATION_ACCENT,
+    SEPARATOR,
     STATUS_OK,
     STATUS_WARN,
     TEXT,
+    TEXT_DISABLED,
     TEXT_MUTED,
     TIME_VALUES,
     TODAY_ACCENT,
@@ -88,6 +90,9 @@ from src.theme.widgets import (  # noqa: F401
     set_toggle_active,
     toggle_button,
 )
+from src.theme.form import (  # noqa: F401
+    set_enabled,
+)
 from src.theme.geometry import (  # noqa: F401
     _should_show_delete_button,
     _stray_click_suppressed,
@@ -113,9 +118,9 @@ __all__ = [
     # palette
     "ACCENT", "ACCENT_DISABLED", "ACCENT_HOVER", "BG", "CELL_BG", "CELL_BG_HOVER",
     "ENTRY_BG", "ENTRY_BG_HOVER", "HOLIDAY_ACCENT", "HOLIDAY_BG", "HOLIDAY_BG_HOVER",
-    "PAUSE_VALUES", "RESERVATION_ACCENT", "STATUS_OK", "STATUS_WARN", "TEXT", "TEXT_MUTED",
-    "TIME_VALUES", "TODAY_ACCENT", "VACATION_ACCENT", "VACATION_BG",
-    "VACATION_BG_HOVER", "WEEKEND_BG", "WEEKEND_BG_HOVER",
+    "PAUSE_VALUES", "RESERVATION_ACCENT", "SEPARATOR", "STATUS_OK", "STATUS_WARN", "TEXT",
+    "TEXT_DISABLED", "TEXT_MUTED", "TIME_VALUES", "TODAY_ACCENT", "VACATION_ACCENT",
+    "VACATION_BG", "VACATION_BG_HOVER", "WEEKEND_BG", "WEEKEND_BG_HOVER",
     "WEEKEND_ENTRY_BG", "WEEKEND_ENTRY_BG_HOVER", "WEEKEND_FG",
     # fonts
     "FONT", "FONT_BOLD", "FONT_FAMILY", "FONT_FOOTER", "FONT_HEADER",
@@ -126,6 +131,8 @@ __all__ = [
     "primary_button", "secondary_button", "set_button_text", "set_icon_button_enabled",
     "set_primary_button_enabled", "set_secondary_button_enabled", "set_toggle_active",
     "toggle_button", "_click_keeps_focus",
+    # form
+    "set_enabled",
     # geometry
     "STRAY_CLICK_GUARD_S", "center_dialog_on_parent", "_should_show_delete_button",
     "_stray_click_suppressed",
