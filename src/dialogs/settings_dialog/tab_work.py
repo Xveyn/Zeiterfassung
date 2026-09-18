@@ -78,12 +78,18 @@ class WorkTab:
         # Stundensumme ableitet — im Mailtext taucht er nirgends auf.
         label(frame, "Stundenlohn (€):", row=4)
         rate_var = tk.StringVar(value=str(settings.get("hourly_rate") or ""))
-        dark_entry(frame, rate_var, width=10).grid(
-            row=4, column=1, padx=10, pady=8, sticky="w")
+        # Feld und Hinweis in EIN Frame, nebeneinander gepackt: der Abstand
+        # ergibt sich so aus der tatsächlichen Feldbreite. Vorher lagen beide
+        # in derselben Grid-Zelle, der Hinweis mit festem padx=120 — das Feld
+        # (width=10 in Zeichen) wächst aber mit ui_scale mit, die 120 px
+        # nicht; ab 1.5 lag der Hinweis auf dem Feld (#133).
+        rate_row = tk.Frame(frame, bg=BG)
+        rate_row.grid(row=4, column=1, padx=10, pady=8, sticky="w")
+        dark_entry(rate_row, rate_var, width=10).pack(side=tk.LEFT)
         tk.Label(
-            frame, text="(optional – nur für dich sichtbar)", font=FONT_SMALL,
+            rate_row, text="(optional – nur für dich sichtbar)", font=FONT_SMALL,
             bg=BG, fg=TEXT_MUTED,
-        ).grid(row=4, column=1, padx=(120, 10), pady=8, sticky="w")
+        ).pack(side=tk.LEFT, padx=(8, 0))
 
         subheader(frame, "Werkstudenten-Limit", row=5)
         wsl_frame = tk.Frame(frame, bg=BG)
