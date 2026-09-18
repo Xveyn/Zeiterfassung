@@ -637,6 +637,12 @@ Dialog zieht sie beim Wechsel des Wegs nach, **außer** der Nutzer hat selbst
 etwas eingetippt. Gesendet wird immer an das, was im Feld steht — `share_task`
 liest `transport["recipient"]` nie selbst.
 
+Was verschickt wird — Betreff, HTML-Body, Anhangsname — baut der Dialog
+nicht selbst, sondern `share_message.build_share_message` (R10, Tk-frei,
+getestet in `tests/test_share_message.py`). Dort liegt für diesen Weg die
+`<meta charset="utf-8">`-Pflicht, und dort wird der Absendername fürs HTML
+escapet; der Dialog reicht nur Häkchen, Zeitraum und Settings-Werte hinein.
+
 **Tk-Variablen brauchen eine lebende Referenz.** Eine `StringVar`, die nach
 dem Dialog-Aufbau in keiner Closure und keinem Container mehr steht, sammelt
 Python ein; ihr `__del__` löscht die Tcl-Variable, und das Widget mit diesem

@@ -13,7 +13,7 @@ from src.share import (
     build_share_doc, filter_records_by_category, filter_records_by_range,
     serialize_share_doc,
 )
-from src.time_utils import format_date
+from src.share_message import build_share_message
 from src.theme import (
     BG, CELL_BG, FONT, TEXT,
     apply_combobox_style, attach_unfocus_on_click, center_dialog_on_parent,
@@ -334,7 +334,6 @@ def open_share_dialog(parent, storage, settings, base_path, runner, reservation_
             )
             return
         sender_email = settings.get("sender_email") or ""
-        display_name = settings.get("name") or sender_email or "anonym"
 
         date_from, date_to = _current_range()
         # _current_range liefert entweder zwei Daten oder (None, None); beide
@@ -353,30 +352,13 @@ def open_share_dialog(parent, storage, settings, base_path, runner, reservation_
             date_to=date_to,
         )
         payload = serialize_share_doc(doc)
-        parts = []
-        if want_entries:
-            parts.append("Arbeitszeiten")
-        if want_res:
-            parts.append("Reservierungen")
-        what = " und ".join(parts)
-        subject = f"{what} geteilt von {display_name}"
-        period = f"{format_date(date_from)} bis {format_date(date_to)}"
-        html = (
-            "<html><head><meta charset=\"utf-8\"></head><body>"
-            "<p>Hallo,</p>"
-            f"<p>im Anhang findest Du meine {what} vom {period} "
-            "als JSON-Datei.</p>"
-            "<p>Du kannst die Datei in der Zeiterfassung-App über "
-            "<em>Einstellungen → Daten importieren</em> einlesen. "
-            "Vor dem Import kannst Du einen Zeitraum auswählen und je "
-            "Datentyp festlegen, was bei Konflikten passieren soll.</p>"
-            f"<p>Viele Grüße<br/>{display_name}</p>"
-            "</body></html>"
+        message = build_share_message(
+            include_entries=want_entries, include_reservations=want_res,
+            name=settings.get("name"), sender_email=sender_email,
+            date_from=date_from, date_to=date_to,
+            exported_at=doc["exported_at"],
         )
-        filename = (
-            "zeiterfassung-share-"
-            f"{doc['exported_at'][:10].replace('-', '')}.json"
-        )
+        what = message.what
 
         busy["running"] = True
         set_primary_button_enabled(send_btn, False)
@@ -384,9 +366,10 @@ def open_share_dialog(parent, storage, settings, base_path, runner, reservation_
 
         def fn():
             return perform_share(
-                payload=payload, filename=filename,
+                payload=payload, filename=message.filename,
                 credentials_path=credentials_path, token_path=token_path,
-                recipient=share_recipient, subject=subject, html=html,
+                recipient=share_recipient, subject=message.subject,
+                html=message.html,
                 sync_enabled=settings.get("sync_enabled"),
                 gcal_enabled=settings.get("gcal_enabled"),
                 save_default=save_default_var.get(), settings=settings,

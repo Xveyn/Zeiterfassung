@@ -610,7 +610,7 @@ Die letzten beiden liegen seit dem SMTP-Feature gebündelt in
 `src/mime_message.py::build_message` — **einmal**, für **beide** Mailwege
 (Gmail-API und SMTP bauen ihre Nachricht beide darüber). Die erste Pflicht
 (`<meta charset="utf-8">`) liegt weiterhin bei den HTML-Erzeugern selbst
-(`report.py`, `share_dialog.py`) und ist damit **nicht** an derselben Stelle
+(`report.py`, `share_message.py`) und ist damit **nicht** an derselben Stelle
 gebündelt wie die anderen beiden — ein künftiger Mail-Kanal, der sein HTML
 selbst baut, kann diese dritte Pflicht also weiterhin still verletzen, ohne
 dass `mime_message.py` das verhindert.
@@ -1037,6 +1037,10 @@ nicht mehr als „offen" führen — der Verweis lautet auf diese Grenze.
 - `src/sync_history.py` — persistenter „hat je gesynct/abgeglichen"-Marker (`sync_history.json`, write-once, stdlib-only); vetoed den N6-Startup-Sweep gegen einen settings.json-Reset (M4), damit ein gesyncter Rechner nicht fälschlich seine Tombstones verliert (Resurrection)
 - `src/conflicts_store.py` — lokale JSON-Persistenz der Sync-Konfliktliste
 - `src/share.py` — Export/Import von Arbeitszeiten als Share-JSON (Teilen per Mail-Anhang)
+- `src/share_message.py` — die Mail zum Teilen (R10): Betreff, HTML-Body und
+  Anhangsname aus Häkchen, Absender, Zeitraum und `exported_at`. Tk-frei; trägt
+  für den Teilen-Weg die `<meta charset="utf-8">`-Pflicht (s. „UTF-8 im
+  Mail-Pipeline") und escapet den Absendernamen im HTML wie `report.py`
 - `src/webhook.py` — pure Logik des Webhook-Versands (Tk-frei, stdlib-only):
   URL-Regel (https außerhalb des lokalen Netzes), Auth-Header, HMAC-Signatur,
   JSON-Dokument (`kind: zeiterfassung-report`, Slot-Shape wie Share v3),
