@@ -19,7 +19,7 @@
 - Tk-freie Module (`src/theme/form_logic.py`, `src/dialogs/settings_dialog/form_model.py`) sind vollständig annotiert (Rückgabetyp + alle Parameter) und stehen in `ANNOTATED_MODULES` in `tests/test_type_annotations.py`.
 - Wer `create_dialog` ruft, ruft `center_dialog_on_parent` (Paarungsregel, `tests/test_dialog_reveal.py`).
 - Kein stummes `except`: jeder Handler loggt (`log.debug(..., exc_info=True)`) oder trägt eine Begründung im Handler (`tests/test_catch_all_handlers.py`).
-- Bestehende Dialoge ändern sich sichtbar **nicht**. Die neuen Combobox-Disabled-Farben greifen nur bei deaktivierten Comboboxen, und die gibt es heute nirgends.
+- Bestehende Dialoge ändern sich sichtbar **nicht** — mit einer Ausnahme, die erst im Final Review auffiel: der Tages-Dialog deaktiviert die Erinnerungs-Combobox, solange der Reservierungsblock leer ist (`entry_dialog.py`); ihr Pfeil ist mit den neuen Combobox-Disabled-Farben gedämpft statt rot. Gewollt (gesperrt sieht jetzt gesperrt aus), in der PR-Beschreibung offengelegt.
 - Kommentare/Docstrings deutsch, im Stil der Umgebung (erklären das Warum).
 - Commits: Nachricht per Datei (`git commit -F <datei>`), nie per Heredoc/`-m` mit Zeilenumbrüchen. Temp-Datei: `C:/Users/SvenB/.claude/jobs/58e9cd06/tmp/commit-msg.txt`. Jede Nachricht endet mit der Leerzeile + `Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>`.
 - Nach jeder Aufgabe grün: `python -m pytest -q`, `ruff check .`, `npx --yes pyright@1.1.411` (0 errors). Alle aus dem Repo-Root `D:\Programme (x86)\Zeiterfassung_Repo\Zeiterfassung`.

@@ -230,6 +230,24 @@ ziehen ihren Anteil an `values()`/`validate()`/`save()` mit.
 zu einer einbettbaren Liste (Kompaktform, `empty_state`), die
 `RecordListKind`-Aufteilung bleibt.
 
+**API-Ergänzungen an `Form`, die PR 3 braucht** (aus dem Final Review von
+PR 1 bewusst hierher verschoben — `Form` hatte dort noch keinen Aufrufer):
+- `depends_on` invers („grau, solange `var` an ist" — Wochenende anzeigen
+  vs. Nur Werktage) und optional ohne Einrückung.
+- `row()` liefert einen Handle (Label + Widget), damit Zeilen per
+  `grid_remove`/`grid` ein- und ausgeblendet werden können (Sa/So).
+- Tastatur-Fokus auf ein Feld außerhalb des sichtbaren Bereichs scrollt es
+  ins Bild (`<FocusIn>` → `yview_moveto`).
+- Mausrad über einem `Text`/einer `Listbox`, die nichts zu scrollen haben
+  (`yview() == (0.0, 1.0)`), scrollt das Formular statt still zu stehen —
+  sonst werden die Vorlagen-Textfelder im Versand-Tab zur Rad-Falle.
+- Feste, skalierte Scroll-Schrittweite (`yscrollincrement`, etwa 20 px ×
+  Skalierung, ~3 Einheiten je Raste), damit macOS-Trackpads nicht springen.
+- `scale` als Pflicht-Keyword (oder Default aus `fonts.init_fonts`), damit
+  ein vergessener Wert bei 150 % nicht still auf 600 px/420 px festnagelt.
+- `set_enabled` rekursiert noch nicht in `ttk.Labelframe` (nur relevant,
+  falls eines in einem Formular landet).
+
 **Restbefunde, die dabei erledigt werden:**
 - „Nur Werktage" blendet die Sa/So-Zeilen der Standardzeiten **sofort** aus
   (die `StringVar`s bleiben, s. `workweek.py`-Absatz in `src/CLAUDE.md`).
