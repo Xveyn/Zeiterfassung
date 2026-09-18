@@ -142,6 +142,28 @@ def test_crash_after_put_leaves_a_valid_file_and_is_retried(tmp_path, fake_keyri
     assert sm.migrate(str(token), None).token_moved
 
 
+def test_forget_all_removes_token_webhook_and_smtp_entries(tmp_path, fake_keyring):
+    from src.smtp_store import SmtpStore
+    fake = fake_keyring()
+    token = _token(tmp_path)
+    store = _store(tmp_path, _hook())
+    sm.migrate(str(token), store)                         # Token + Webhook im Schlüsselbund
+    smtp = SmtpStore(str(tmp_path / "smtp.json"))
+    smtp.save({"id": "s1", "name": "Firma", "enabled": True, "host": "smtp.example.org",
+               "port": 587, "security": "starttls", "username": "u",
+               "from_addr": "a@example.org", "recipient": "b@example.org",
+               "password_location": "keyring"})
+    keyring_store.set_secret("s1", "pw")
+
+    sm.forget_all(str(tmp_path))
+
+    assert fake.store == {}
+
+
+def test_forget_all_without_files_is_quiet(tmp_path):
+    sm.forget_all(str(tmp_path))
+
+
 def test_notice_texts():
     title, text = sm.notice(sm.MigrationReport(token_moved=True, webhooks_moved=("A", "B")), "Windows")
     assert title == "Zugangsdaten im Schlüsselbund"

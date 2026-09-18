@@ -57,8 +57,10 @@ Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: 
 ; Alles, was die App zur Laufzeit in {app} anlegt, bliebe liegen — darunter
 ; token.json mit einem langlebigen OAuth-Refresh-Token (Gmail-Versand,
 ; Drive-Sync, ggf. Kalender). Wer die App entfernt, erwartet zu Recht, dass
-; dieser Zugriff endet. Diese vier Dateien sind Zugangsdaten, keine
+; dieser Zugriff endet. Diese fünf Dateien sind Zugangsdaten, keine
 ; Nutzerdaten — sie verschwinden deshalb immer und ohne Rückfrage.
+; smtp.json trägt ohne Schlüsselbund das Mail-Passwort im Klartext — sie
+; gehört seit dem SMTP-Feature hierher und fehlte (#101).
 ;
 ; Bewusst explizite Namen statt eines Wildcards: die Inno-Doku warnt
 ; ausdrücklich davor, den {app}-Ordner pauschal leerzuräumen (der Nutzer könnte
@@ -68,6 +70,7 @@ Type: files; Name: "{app}\token.json"
 Type: files; Name: "{app}\instance-secret"
 Type: files; Name: "{app}\webhooks.json"
 Type: files; Name: "{app}\credentials.json"
+Type: files; Name: "{app}\smtp.json"
 
 
 [Run]
@@ -97,9 +100,20 @@ begin
 end;
 
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+var
+  ResultCode: Integer;
 begin
   if CurUninstallStep = usUninstall then
   begin
+    // Schlüsselbund abräumen (#101), BEVOR [UninstallDelete] token.json,
+    // webhooks.json und smtp.json löscht — die Exe liest aus ihnen, welche
+    // Einträge dazugehören. Ohne das bliebe der Refresh-Token in der
+    // Windows-Anmeldeinformationsverwaltung stehen, und der Hinweis unten
+    // („Google-Anmeldung entfernt") wäre falsch. Scheitert der Aufruf,
+    // läuft die Deinstallation trotzdem weiter.
+    Exec(ExpandConstant('{app}\Zeiterfassung.exe'), '--forget-secrets', '',
+         SW_HIDE, ewWaitUntilTerminated, ResultCode);
+
     // usUninstall feuert, BEVOR die Dateien entfernt werden — hier ist die
     // token.json also noch da und die Frage nach den Nutzerdaten kann noch
     // wirken, bevor der Ordner abgeräumt wird.

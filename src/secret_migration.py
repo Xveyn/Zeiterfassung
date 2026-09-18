@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from dataclasses import dataclass
 from typing import Any
 
@@ -25,8 +26,9 @@ from src.oauth_utils import (
     REFRESH_TOKEN_KEY, REFRESH_TOKEN_LOCATION, new_token_keyring_key,
     read_token_meta, token_in_keyring, write_token_json,
 )
+from src.smtp_store import SmtpStore
 from src.token_store import TOKEN_LOCK
-from src.webhook_store import WebhookStoreReadOnly
+from src.webhook_store import WebhookStore, WebhookStoreReadOnly
 
 log = logging.getLogger(__name__)
 
@@ -153,3 +155,35 @@ def notice(report: MigrationReport, system: str) -> tuple[str, str]:
 def toast_text(report: MigrationReport) -> str:
     """Kurzform für den Tray-Toast (Autostart mit --minimized)."""
     return "Zugangsdaten liegen jetzt im Schlüsselbund."
+
+
+def forget_all(base_path: str) -> None:
+    """Deinstallation (#101): alle Schlüsselbund-Einträge dieses
+    Datenverzeichnisses abräumen — Refresh-Token, Webhook- und SMTP-Secrets.
+
+    Gerufen vom Uninstaller (`Zeiterfassung.exe --forget-secrets`) BEVOR er
+    die Dateien löscht: aus ihnen stammen die Schlüssel. Wirft nie — jede
+    Quelle einzeln, ein Fehler in einer hält die übrigen nicht auf.
+    """
+    meta = read_token_meta(os.path.join(base_path, "token.json"))
+    key = meta.get(REFRESH_TOKEN_KEY) if meta is not None and token_in_keyring(meta) else None
+    if isinstance(key, str) and key:
+        keyring_store.remove(key)
+    try:
+        hooks = WebhookStore(os.path.join(base_path, "webhooks.json")).get_all()
+    except Exception:
+        # Bewusst alles: kaputte/fremde Datei — die übrigen Quellen trotzdem.
+        log.warning("webhooks.json beim Abräumen nicht lesbar", exc_info=True)
+        hooks = []
+    for record in hooks:
+        if webhook_secrets.in_keyring(record):
+            keyring_store.remove(webhook_secrets.keyring_key(record["id"]))
+    try:
+        accounts = SmtpStore(os.path.join(base_path, "smtp.json")).get_all()
+    except Exception:
+        # Bewusst alles, s. o.
+        log.warning("smtp.json beim Abräumen nicht lesbar", exc_info=True)
+        accounts = []
+    for account in accounts:
+        if account.get("password_location") == "keyring":
+            keyring_store.delete_secret(account["id"])
