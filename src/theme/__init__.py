@@ -12,6 +12,8 @@ Schichtung — zyklenfrei und in dieser Reihenfolge importierbar:
     palette      nur Konstanten, hängt an nichts
       └ fonts        benannte Tk-Fonts + Skalierung
           └ widgets      Widget-Fabriken, ttk-Styles
+              └ form         Formular-Bausteine (Form, set_enabled, empty_state)
+    form_logic   Tk-freie Entscheidungen der Formular-Bausteine, hängt an nichts
     geometry     Zentrierung + zwei Tk-freie Prädikate
     chrome       Win32-Fensterchrome, create_dialog
       └ messagebox   themed Drop-ins (nutzt chrome, widgets, geometry)
