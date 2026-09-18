@@ -18,7 +18,7 @@ from src.version import VERSION, version_label
 from src.background_tasks import BackgroundTaskRunner
 from src.weekly_limit import format_limit_warnings
 from src.grid_renderer import GridRenderer
-from src.paths import get_resource_path, relaunch_command
+from src.paths import get_resource_path, relaunch_command, relaunch_env
 from src.mail import friendly_token_message
 from src import secret_migration
 from src.sync_orchestrator import classify_sync_error, SyncOrchestrator
@@ -948,33 +948,20 @@ class App:
         bleibt die laufende App vollständig intakt (Tray läuft, Fenster offen)
         und der Nutzer bekommt einen Hinweis. Kein Sync-Push: der Faktor ist
         lokal, ein 5-s-Push würde den Neustart nur verzögern."""
-        cmd = relaunch_command(
-            sys.argv, sys.executable, getattr(sys, "frozen", False))
+        frozen = getattr(sys, "frozen", False)
+        cmd = relaunch_command(sys.argv, sys.executable, frozen,
+                               appimage=os.environ.get("APPIMAGE"))
         if self._single_instance is not None:
             self._single_instance.release()
         # Port VOR dem Spawn freigeben, sonst fände die neue Instanz ihn noch
         # belegt, schickte SHOW und beendete sich — die App verschwände beim
         # bloßen Skalierungswechsel.
         try:
-            env = os.environ.copy()
-            # PyInstaller-Onefile (≥6.10) behandelt einen per sys.executable
-            # gespawnten Kindprozess standardmäßig als Worker-Subprozess DER-
-            # SELBEN Instanz und lässt ihn das bereits entpackte _MEIPASS-
-            # Verzeichnis DES ALTEN Prozesses mitnutzen. Das räumt der alte
-            # Prozess aber auf, sobald er unten beendet wird — der neue
-            # Prozess bricht dann mit fehlenden Bundle-Dateien ab (z.B. "Tcl
-            # data directory ... not found", googleapiclient-Discovery-Docs
-            # nicht auffindbar → UnknownApiNameOrVersion). Ohne dieses Signal
-            # ist der Neustart also ein Wettlauf gegen die Temp-Aufräumung des
-            # alten Prozesses. PYINSTALLER_RESET_ENVIRONMENT=1 zwingt den
-            # neuen Prozess, sich frisch (in ein eigenes Verzeichnis) zu
-            # entpacken, statt zu erben — No-op im Repo-Modus (kein Bootloader
-            # liest die Variable dort). Seit #118 auch No-op auf Windows/macOS
-            # (onedir → kein _MEIPASS-Extraktion); relevant bleibt der Reset nur
-            # noch für die Linux-AppImage (weiter onefile). Bewusst unbedingt
-            # gesetzt, damit der eine plattformübergreifende Pfad korrekt bleibt.
-            env["PYINSTALLER_RESET_ENVIRONMENT"] = "1"
-            subprocess.Popen(cmd, env=env)
+            # Umgebung und Kommando kommen aus `paths` (Tk-frei, getestet):
+            # frisches Entpacken statt geerbtem _MEIPASS, und in der AppImage
+            # die AppImage-Datei statt der Binärdatei im gleich verschwindenden
+            # Mount (Begründung in `relaunch_command`/`relaunch_env`).
+            subprocess.Popen(cmd, env=relaunch_env(dict(os.environ), frozen))
         except Exception:
             logging.getLogger(__name__).exception(
                 "Neustart für UI-Skalierung fehlgeschlagen")

@@ -72,6 +72,7 @@ from src.theme.widgets import (  # noqa: F401
     _click_keeps_focus,
     apply_combobox_style,
     apply_notebook_style,
+    apply_widget_defaults,
     attach_unfocus_on_click,
     dark_combo,
     dark_entry,

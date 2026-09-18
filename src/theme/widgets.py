@@ -30,6 +30,19 @@ class _LabelButton(tk.Frame):
     _colors: _ToggleColors
 
 
+def apply_widget_defaults(root):
+    """App-weite Tk-Vorgaben, einmal beim Start auf den Root gesetzt.
+
+    Check- und Radiobuttons tragen von Haus aus einen 1-px-Fokusrahmen, dessen
+    `highlightbackground` der helle Tk-Standard ist. Unter X11 (Linux) zeichnet
+    Tk ihn sichtbar als weißen Rand um Kästchen samt Text; unter Windows fiel
+    er nie auf. Über die Option-Datenbank gilt die Vorgabe für jedes später
+    erzeugte Widget, auch in Dialogen — statt an jedem Aufruf einzeln
+    (`period_picker` setzte `highlightthickness=0` bisher von Hand)."""
+    for cls in ("Checkbutton", "Radiobutton"):
+        root.option_add(f"*{cls}.highlightThickness", 0)
+
+
 def apply_combobox_style(dialog):
     style = ttk.Style(dialog)
     style.theme_use("clam")
