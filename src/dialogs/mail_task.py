@@ -7,12 +7,15 @@ ein Result-Dict. Export nutzt sie NICHT (kein Netz-Pfad).
 import traceback
 
 from src.mail import is_offline_error
+from src.oauth_utils import KEYRING_UNAVAILABLE_MSG, TokenKeyringUnavailable
 
 
 def classify_mail_error(e):
     """Mappt eine beim Mailversand aufgetretene Exception auf ein
     Fehler-Result-Dict:
 
+    - TokenKeyringUnavailable -> kind "keyring" (Schlüsselbund nicht
+      erreichbar; kein Traceback).
     - FileNotFoundError -> kind "filenotfound" (fehlende credentials.json,
       erwartet; kein Traceback).
     - is_offline_error  -> kind "offline" (kein Netz; kein Traceback).
@@ -20,6 +23,9 @@ def classify_mail_error(e):
 
     Muss aus einem aktiven `except`-Block gerufen werden — der error-Fall
     liest den aktuellen Traceback über traceback.format_exc()."""
+    if isinstance(e, TokenKeyringUnavailable):
+        return {"ok": False, "kind": "keyring", "error": e, "tb": None,
+                "detail": KEYRING_UNAVAILABLE_MSG}
     if isinstance(e, FileNotFoundError):
         return {"ok": False, "kind": "filenotfound", "error": e, "tb": None}
     if is_offline_error(e):

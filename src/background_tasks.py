@@ -13,6 +13,7 @@ import threading
 import traceback
 
 from src.mail import fetch_user_email, refresh_token_if_needed, TokenAuthError, TokenNetworkError
+from src.oauth_utils import TokenKeyringUnavailable
 from src.sync_runtime import run_calendar_reconcile, run_vacation_purge
 from src.updater import REPO, check_for_update, is_newer, should_check
 from src.version import installed_release_id
@@ -59,10 +60,16 @@ class BackgroundTaskRunner:
                 self._marshal(lambda: done(result))
         threading.Thread(target=worker, daemon=True).start()
 
-    def refresh_token(self, on_auth_error, on_error):
+    def refresh_token(self, on_auth_error, on_error, on_finished=None):
         """Erneuert den Gmail-Token beim Start im Hintergrund. Auth-Fehler ->
         on_auth_error(msg); unerwartete Fehler -> on_error(traceback);
-        Netzwerkfehler werden still uebergangen (Offline-Start)."""
+        Netzwerkfehler werden still uebergangen (Offline-Start).
+
+        `on_finished()` kommt nach JEDEM Ausgang (UI-Thread), und zwar erst
+        NACHDEM `on_auth_error`/`on_error` zurückgekehrt sind. Diese zeigen
+        modale Dialoge, der Umzug der Zugangsdaten (#101) startet also erst
+        nach dem Wegklicken. So schreibt er token.json nicht parallel zum
+        Start-Refresh."""
         token_path = os.path.join(self._base_path, "token.json")
 
         def fn():
@@ -77,18 +84,24 @@ class BackgroundTaskRunner:
                 return ("auth", str(e))
             except TokenNetworkError:
                 return None
+            except TokenKeyringUnavailable:
+                # Nicht ungültig, nur gerade nicht lesbar — still wie ein
+                # Netzfehler beim Offline-Start.
+                log.warning("Token-Refresh: Schlüsselbund nicht erreichbar")
+                return None
             except Exception:
                 log.exception("Token-Refresh fehlgeschlagen")
                 return ("error", traceback.format_exc())
 
         def on_done(outcome):
-            if outcome is None:
-                return
-            kind, payload = outcome
-            if kind == "auth":
-                on_auth_error(payload)
-            else:
-                on_error(payload)
+            if outcome is not None:
+                kind, payload = outcome
+                if kind == "auth":
+                    on_auth_error(payload)
+                else:
+                    on_error(payload)
+            if on_finished is not None:
+                on_finished()
 
         self.run(fn, on_done)
 

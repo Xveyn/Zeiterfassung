@@ -462,3 +462,16 @@ def test_drive_auth_failure_without_consent_is_classified_as_auth(
     assert classify_sync_error(error) == "auth"
     # run_push_blocking reicht nur str(e) weiter — ohne Typinformation.
     assert classify_sync_error(str(error)) == "auth"
+
+
+def test_keyring_unavailable_is_its_own_kind_as_exception_and_as_text():
+    from src.oauth_utils import TokenKeyringUnavailable
+    from src.sync_orchestrator import (
+        _friendly_sync_message, _short_sync_error, classify_sync_error,
+    )
+    error = TokenKeyringUnavailable()
+    assert classify_sync_error(error) == "keyring"
+    assert classify_sync_error(f"{type(error).__name__}: {error}") == "keyring"
+    title, _msg, known = _friendly_sync_message(error)
+    assert title == "Schlüsselbund nicht erreichbar" and known is True
+    assert _short_sync_error(error) == "Der Schlüsselbund ist nicht erreichbar."

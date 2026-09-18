@@ -9,7 +9,8 @@ import io
 import logging
 import os
 
-from src.oauth_utils import REAUTH_REQUIRED_MSG, write_token, forget_token
+from src.oauth_utils import REAUTH_REQUIRED_MSG, forget_token
+from src.token_store import load_credentials, save_credentials
 
 SYNC_FILENAME = "zeiterfassung-sync.json"
 SYNC_MIMETYPE = "application/json"
@@ -91,7 +92,7 @@ def get_drive_service(credentials_path, token_path, gcal_enabled=False,
 
     creds = None
     if os.path.exists(token_path):
-        creds = Credentials.from_authorized_user_file(token_path, scopes)
+        creds = load_credentials(token_path, scopes, Credentials)
 
     if creds and creds.expired and creds.refresh_token:
         try:
@@ -100,7 +101,7 @@ def get_drive_service(credentials_path, token_path, gcal_enabled=False,
             raise DriveAuthError(str(e)) from e
         except TransportError as e:
             raise DriveNetworkError(str(e)) from e
-        write_token(creds, token_path)
+        save_credentials(creds, token_path)
 
     if not creds or not creds.valid:
         if not interactive:
@@ -113,7 +114,7 @@ def get_drive_service(credentials_path, token_path, gcal_enabled=False,
             )
         flow = InstalledAppFlow.from_client_secrets_file(credentials_path, scopes)
         creds = flow.run_local_server(port=0)
-        write_token(creds, token_path)
+        save_credentials(creds, token_path)
 
     return build("drive", "v3", credentials=creds)
 

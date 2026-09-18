@@ -268,6 +268,15 @@ class App:
                     "aus- und wieder einschalten). Der Abgleich wird danach "
                     "automatisch nachgeholt.",
                 )
+            elif classify_sync_error(error) == "keyring":
+                themed_showinfo(
+                    self.root,
+                    "Schlüsselbund nicht erreichbar",
+                    "Die Änderung wurde lokal gespeichert. Der Kalender-Abgleich "
+                    "ist fehlgeschlagen, weil der Schlüsselbund des "
+                    "Betriebssystems gerade nicht antwortet.\n\nEr wird beim "
+                    "nächsten Abgleich automatisch nachgeholt.",
+                )
             else:
                 messagebox.showerror(
                     "Google-Kalender-Abgleich fehlgeschlagen",

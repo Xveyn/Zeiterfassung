@@ -255,7 +255,7 @@ def test_calendar_service_interactive_still_runs_the_flow(monkeypatch, tmp_path)
 
     monkeypatch.setattr(flow_mod, "InstalledAppFlow", _Flow)
     monkeypatch.setattr(oauth_utils, "write_token", lambda *a, **k: None)
-    monkeypatch.setattr(gcal, "write_token", lambda *a, **k: None)
+    monkeypatch.setattr(gcal, "save_credentials", lambda *a, **k: None)
     monkeypatch.setattr(disc, "build", lambda *a, **k: "SERVICE")
 
     assert gcal.get_calendar_service(str(creds), str(tmp_path / "token.json"),
@@ -316,7 +316,7 @@ def test_calendar_service_interactive_replaces_a_token_missing_a_scope(
             return _FakeCreds(valid=True, expired=False)
 
     monkeypatch.setattr(flow_mod, "InstalledAppFlow", _Flow)
-    monkeypatch.setattr(gcal, "write_token", lambda c, path: None)
+    monkeypatch.setattr(gcal, "save_credentials", lambda c, path: None)
 
     assert gcal.get_calendar_service(creds_path, token_path, interactive=True) == "SERVICE"
     assert started == [_CALENDAR_SCOPES]
@@ -358,7 +358,7 @@ def test_calendar_service_refreshes_expired_token_without_consent(monkeypatch, t
     _forbid_consent_flow(monkeypatch)
     built = _fake_build(monkeypatch)
     written = []
-    monkeypatch.setattr(gcal, "write_token",
+    monkeypatch.setattr(gcal, "save_credentials",
                         lambda c, path: written.append((c, path)))
 
     service = gcal.get_calendar_service(creds_path, token_path, interactive=False)

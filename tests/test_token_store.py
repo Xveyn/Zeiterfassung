@@ -153,3 +153,51 @@ def test_keyring_token_saved_without_refresh_token_keeps_its_location(tmp_path, 
     assert data[oauth_utils.REFRESH_TOKEN_LOCATION] == "keyring"
     assert data[oauth_utils.REFRESH_TOKEN_KEY] == key
     assert load_credentials(str(path), SCOPES, Credentials).refresh_token == "1//refresh-token"
+
+
+# --- Verdrahtung: nicht-interaktive Pfade starten keinen Flow (#129) -------
+
+
+def _unreachable(tmp_path, fake_keyring):
+    path = _keyring_token(tmp_path, fake_keyring)
+    fake_keyring(working=False)
+    return path
+
+
+def test_drive_without_click_raises_unavailable_not_flow(tmp_path, fake_keyring, monkeypatch):
+    from src import drive
+    from tests.conftest import forbid_consent_flow
+    path = _unreachable(tmp_path, fake_keyring)
+    forbid_consent_flow(monkeypatch)
+    with pytest.raises(oauth_utils.TokenKeyringUnavailable):
+        drive.get_drive_service("credentials.json", str(path))
+
+
+def test_calendar_without_click_raises_unavailable_not_flow(tmp_path, fake_keyring, monkeypatch):
+    from src import gcal
+    from tests.conftest import forbid_consent_flow
+    path = _unreachable(tmp_path, fake_keyring)
+    forbid_consent_flow(monkeypatch)
+    with pytest.raises(oauth_utils.TokenKeyringUnavailable):
+        gcal.get_calendar_service("credentials.json", str(path))
+
+
+def test_start_refresh_raises_unavailable_for_the_runner(tmp_path, fake_keyring):
+    from src.mail import refresh_token_if_needed
+    path = _unreachable(tmp_path, fake_keyring)
+    with pytest.raises(oauth_utils.TokenKeyringUnavailable):
+        refresh_token_if_needed(str(path))
+
+
+def test_missing_keyring_entry_is_an_auth_error_at_start(tmp_path, fake_keyring):
+    from src.mail import TokenAuthError, refresh_token_if_needed
+    path = _keyring_token(tmp_path, fake_keyring)
+    fake_keyring()                                 # Eintrag weg
+    with pytest.raises(TokenAuthError):
+        refresh_token_if_needed(str(path))
+
+
+def test_sender_lookup_is_empty_when_the_keyring_is_unreachable(tmp_path, fake_keyring):
+    from src.mail import fetch_user_email
+    path = _unreachable(tmp_path, fake_keyring)
+    assert fetch_user_email(str(path)) == ""

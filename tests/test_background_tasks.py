@@ -359,3 +359,36 @@ def test_fetch_sender_email_keeps_the_cached_address_without_a_result(
 
     assert finished.wait(timeout=5)
     assert Settings(str(tmp_path / "settings.json")).get("sender_email") == "alt@example.com"
+
+
+@pytest.mark.parametrize("outcome", ["ok", "auth", "error", "keyring"])
+def test_start_refresh_calls_on_finished_after_every_outcome(outcome, monkeypatch):
+    """Der Umzug der Zugangsdaten hängt an on_finished (#101) — er muss nach
+    JEDEM Ausgang kommen, sonst zöge eine Installation nie um."""
+    from src import background_tasks
+    from src.mail import TokenAuthError
+    from src.oauth_utils import TokenKeyringUnavailable
+
+    def fake_refresh(*a, **k):
+        if outcome == "auth":
+            raise TokenAuthError("invalid_grant")
+        if outcome == "error":
+            raise RuntimeError("kaputt")
+        if outcome == "keyring":
+            raise TokenKeyringUnavailable()
+        return "valid"
+
+    monkeypatch.setattr(background_tasks, "refresh_token_if_needed", fake_refresh)
+    runner = background_tasks.BackgroundTaskRunner.__new__(background_tasks.BackgroundTaskRunner)
+    runner._base_path = "."
+    runner._settings = {"sync_enabled": False, "gcal_enabled": False}
+    runner.run = lambda fn, on_done: on_done(fn())  # pyright: ignore[reportOptionalCall]
+    events = []
+
+    runner.refresh_token(on_auth_error=lambda m: events.append("auth"),
+                         on_error=lambda tb: events.append("error"),
+                         on_finished=lambda: events.append("finished"))
+
+    assert events[-1] == "finished" and events.count("finished") == 1
+    assert ("auth" in events) == (outcome == "auth")
+    assert ("error" in events) == (outcome == "error")
