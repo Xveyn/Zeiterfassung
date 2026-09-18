@@ -1119,7 +1119,9 @@ nicht mehr als „offen" führen — der Verweis lautet auf diese Grenze.
   einem Service nicht threadsicher umschichtet. Ein Prozess-Cache (`_known`)
   spart unveränderte Schreibzugriffe; fehlt ein Schlüssel darin (erstes `put`
   nach dem Start), liest `put` zuerst und schreibt nur bei abweichendem Wert —
-  unter macOS wird aus Löschen-und-neu-Anlegen so ein Lesen. `fetch` füllt den
+  unter macOS wird aus Löschen-und-neu-Anlegen so ein Lesen. Hängt schon
+  dieses Lesen bis zum Watchdog, gibt `put` ohne Schreibversuch auf (sonst
+  zweimal 30 s pro Eintrag). `fetch` füllt den
   Cache **nie** und liest immer direkt: ein extern gelöschter Eintrag fällt
   beim nächsten Laden auf (→ neu anmelden) und verwirft dabei den Cache
 - `src/secret_migration.py` — zieht beim Start Klartext-Secrets in den
