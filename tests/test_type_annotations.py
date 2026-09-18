@@ -29,6 +29,7 @@ ANNOTATED_MODULES = [
     "src/webhook.py",
     "src/smtp.py",
     "src/share.py",
+    "src/share_message.py",
     "src/workweek.py",
     "src/reminders.py",
     "src/pause_requirement.py",

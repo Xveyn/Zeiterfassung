@@ -7,7 +7,7 @@ gegen Header-Injection (Audit N11), damit sie für beide Transporte gilt und
 nicht in zwei Kopien auseinanderläuft.
 
 Die dritte Pflicht, `<meta charset="utf-8">` im `<head>`, liegt NICHT hier:
-sie gehört zu den HTML-Erzeugern (`report.generate_report`, `share_dialog`),
+sie gehört zu den HTML-Erzeugern (`report.generate_report`, `share_message`),
 weil dieses Modul das HTML nur entgegennimmt.
 """
 
