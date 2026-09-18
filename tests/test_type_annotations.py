@@ -68,6 +68,7 @@ ANNOTATED_MODULES = [
     "src/sync_history.py",
     "src/json_store.py",
     "src/webhook_store.py",
+    "src/webhook_secrets.py",
     "src/holidays_de.py",
     "src/platform_open.py",
 ]

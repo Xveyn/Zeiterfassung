@@ -91,15 +91,18 @@ def validate_record(record: Webhook, existing: list[Webhook]) -> tuple[bool, str
 
     auth = record.get("auth") or {}
     mode = auth.get("mode")
+    # „secret_location" wie webhook_secrets.SECRET_LOCATION — hier als
+    # Literal, damit der Store frei von Schlüsselbund-Code bleibt.
+    keyring_held = auth.get("secret_location") == "keyring"
     if mode == "header":
         if not (auth.get("header") or "").strip():
             return False, "Bitte einen Header-Namen angeben."
-        if not (auth.get("value") or "").strip():
+        if not keyring_held and not (auth.get("value") or "").strip():
             return False, "Bitte einen Header-Wert (Token) angeben."
     elif mode == "hmac":
         if not (auth.get("header") or "").strip():
             return False, "Bitte einen Header-Namen angeben."
-        if not (auth.get("secret") or "").strip():
+        if not keyring_held and not (auth.get("secret") or "").strip():
             return False, "Bitte ein Secret für die Signatur angeben."
     elif mode != "none":
         return False, "Unbekanntes Auth-Verfahren."
