@@ -408,3 +408,12 @@ def test_forget_token_removes_the_keyring_entry_even_if_the_file_is_locked(
         _ou.forget_token(str(path))
 
     assert (_ks.service_for("google-oauth:k1"), "google-oauth:k1") not in fake.store
+
+
+def test_is_keyring_unavailable_recognises_exception_and_text():
+    """Der Kompaktierungs-Pfad reicht nur str(e) weiter — beides zählt."""
+    error = _ou.TokenKeyringUnavailable()
+    assert _ou.is_keyring_unavailable(error)
+    assert _ou.is_keyring_unavailable(f"{type(error).__name__}: {error}")
+    assert not _ou.is_keyring_unavailable(RuntimeError("kaputt"))
+    assert not _ou.is_keyring_unavailable(None)

@@ -438,7 +438,17 @@ nicht, wirft `token_store.load_credentials` `oauth_utils.
 TokenKeyringUnavailable` — **kein** Auth-Fehler (der Token ist nicht ungültig,
 nur gerade nicht lesbar) und darf deshalb **keinen** interaktiven Consent-Flow
 auslösen (Xveyn#129); Aufrufer behandeln ihn wie einen eigenen Fehlerfall und
-fassen `token.json` nicht an.
+fassen `token.json` nicht an. Gezeigt wird er überall als **bekannter** Fehler
+— themed, ohne Traceback, mit `oauth_utils.KEYRING_UNAVAILABLE_TITLE`/`_HINT`
+als einziger Textquelle; erkannt über `oauth_utils.is_keyring_unavailable`
+(auch am bloßen Text, weil Kompaktierung und Sync nur `str(e)` weiterreichen).
+Senden/Teilen führen ihn als Kind `keyring`, der Sync über
+`classify_sync_error`, der Google-Tab über `GoogleTab._show_keyring_error`
+(Schalter via `oauth_task`, Absender, Neu verbinden, Kalenderliste,
+Kompaktierung) und in der Zeile „Anmeldung" als eigenen Zustand `keyring` aus
+`check_token_status`. Wer einen weiteren Google-Pfad mit Fehlerdialog baut,
+prüft dort ebenfalls `is_keyring_unavailable`, bevor er in den nativen
+Catch-all fällt.
 
 `drive.find_sync_file` liefert bei mehreren Treffern deterministisch die
 **älteste** Datei (`createdTime`, Tie-Break `id`) — der appDataFolder kennt kein

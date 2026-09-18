@@ -121,3 +121,28 @@ def test_shift_labels_are_distinct_and_mapped():
     assert len(set(SHIFT_LABELS.values())) == 3
     for mode in SHIFT_LABELS:
         assert shift_for_label(label_for_shift(mode)) == mode
+
+
+def test_keyring_failure_is_a_themed_message_without_traceback(monkeypatch):
+    """Schlüsselbund gesperrt ist ein bekannter Fehler (#101): themed, kurz,
+    kein Traceback — nicht der native Catch-all-Dialog."""
+    from src.oauth_utils import KEYRING_UNAVAILABLE_TITLE, TokenKeyringUnavailable
+    native, themed = [], []
+    monkeypatch.setattr(sd.messagebox, "showerror", lambda *a, **k: native.append(a))
+    monkeypatch.setattr(sd, "themed_showerror", lambda *a: themed.append(a))
+    checkbox, var = _FakeCheckbox(), _FakeVar()
+
+    def service_fn():
+        raise TokenKeyringUnavailable()
+
+    fn, on_done = build_oauth_enable_task(
+        service_fn=service_fn, settings=_FakeSettings(), setting_key="sync_enabled",
+        checkbox=checkbox, toggle_var=var, on_change=MagicMock(),
+        dialog="dlg", error_title="Titel")
+    on_done(fn())
+
+    assert native == []
+    assert len(themed) == 1 and themed[0][0] == "dlg"
+    assert themed[0][1] == KEYRING_UNAVAILABLE_TITLE
+    assert "Traceback" not in themed[0][2]
+    assert var.value is False

@@ -14,7 +14,10 @@ import traceback
 from tkinter import messagebox
 
 from src.drive import DriveAuthError, DriveNetworkError
-from src.oauth_utils import KEYRING_UNAVAILABLE_MSG, REAUTH_REQUIRED_MSG
+from src.oauth_utils import (
+    KEYRING_UNAVAILABLE_HINT, KEYRING_UNAVAILABLE_TITLE, REAUTH_REQUIRED_MSG,
+    is_keyring_unavailable,
+)
 from src.sync_runtime import run_push_blocking
 from src.theme import STATUS_WARN, TEXT_MUTED, set_icon_button_enabled, themed_showinfo
 from src.time_utils import format_date, local_date_of_iso
@@ -37,7 +40,7 @@ def classify_sync_error(error):
     Kalender, als Exception wie als Text — erkennt allein der gemeinsame
     `REAUTH_REQUIRED_MSG`; beide Builder werfen ihn mit genau diesem Text."""
     text = str(error)
-    if KEYRING_UNAVAILABLE_MSG in text:
+    if is_keyring_unavailable(error):
         return "keyring"
     if (isinstance(error, DriveAuthError)
             or REAUTH_REQUIRED_MSG in text
@@ -70,13 +73,7 @@ def _friendly_sync_message(error, tb=""):
             True,
         )
     if kind == "keyring":
-        return (
-            "Schlüsselbund nicht erreichbar",
-            "Die Google-Anmeldung liegt im Schlüsselbund des Betriebssystems, "
-            "und der antwortet gerade nicht (gesperrt oder nicht gestartet)."
-            "\n\nBitte entsperre ihn und versuche es erneut.",
-            True,
-        )
+        return (KEYRING_UNAVAILABLE_TITLE, KEYRING_UNAVAILABLE_HINT, True)
     if kind == "network":
         return (
             "Keine Internetverbindung",

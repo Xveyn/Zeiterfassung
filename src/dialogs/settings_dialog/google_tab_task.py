@@ -29,6 +29,7 @@ from src.mail import (
     TokenAuthError, TokenNetworkError, fetch_user_email, get_gmail_service,
     refresh_token_if_needed,
 )
+from src.oauth_utils import TokenKeyringUnavailable
 
 
 def _paths(base_path):
@@ -89,6 +90,10 @@ def check_token_status(settings, base_path):
         return {"ok": True, "state": "reauth"}
     except TokenNetworkError:
         return {"ok": True, "state": "unknown"}
+    except TokenKeyringUnavailable:
+        # Nicht abgelaufen, nur gerade nicht lesbar (#101) — eigener Zustand,
+        # sonst schickte „abgelaufen" den Nutzer grundlos in einen Re-Consent.
+        return {"ok": True, "state": "keyring"}
     except Exception as e:
         return {"ok": False, "error": e, "tb": traceback.format_exc()}
     return {"ok": True, "state": "valid" if state != "no_token" else "no_token"}

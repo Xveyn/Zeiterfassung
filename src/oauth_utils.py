@@ -160,6 +160,25 @@ class TokenKeyringUnavailable(Exception):
         super().__init__(KEYRING_UNAVAILABLE_MSG)
 
 
+KEYRING_UNAVAILABLE_TITLE = "Schlüsselbund nicht erreichbar"
+KEYRING_UNAVAILABLE_HINT = (
+    "Die Google-Anmeldung liegt im Schlüsselbund des Betriebssystems, und der "
+    "antwortet gerade nicht (gesperrt oder nicht gestartet).\n\nBitte "
+    "entsperre ihn und versuche es erneut.")
+"""Titel und Text der themed Meldung für `TokenKeyringUnavailable` — ein
+bekannter Fehler, also kurz und ohne Traceback (Konvention „bekannt-themed /
+unerwartet-nativ"). Eine Quelle für Sync-Meldungen und Einstellungsdialog."""
+
+
+def is_keyring_unavailable(error: object) -> bool:
+    """Ist `error` (Exception oder deren Text) der Schlüsselbund-Ausfall?
+
+    Auch am Text erkennbar, weil die Kompaktierung und Sync-Flows Fehler nur
+    als `str(e)` weiterreichen."""
+    return (isinstance(error, TokenKeyringUnavailable)
+            or (error is not None and KEYRING_UNAVAILABLE_MSG in str(error)))
+
+
 def new_token_keyring_key() -> str:
     """Neuer, eindeutiger Schlüssel für den Refresh-Token. Eindeutig statt
     fest: zwei Datenverzeichnisse desselben OS-Nutzers (Dev-Instanz neben

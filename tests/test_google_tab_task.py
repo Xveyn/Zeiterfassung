@@ -313,3 +313,15 @@ def test_check_token_status_passes_paths_and_flags(monkeypatch, tmp_path):
     monkeypatch.setattr(gtt, "refresh_token_if_needed", fake)
     check_token_status(settings, str(tmp_path))
     assert seen["args"] == (os.path.join(str(tmp_path), "token.json"), True, True)
+
+
+def test_check_token_status_maps_an_unreachable_keyring_to_its_own_state(monkeypatch, tmp_path):
+    """Schlüsselbund gesperrt heißt weder „abgelaufen" noch „unerwartet" (#101)."""
+    from src.oauth_utils import TokenKeyringUnavailable
+
+    def boom(*a, **k):
+        raise TokenKeyringUnavailable()
+
+    monkeypatch.setattr(gtt, "refresh_token_if_needed", boom)
+    assert check_token_status(_FakeSettings(), str(tmp_path)) == {
+        "ok": True, "state": "keyring"}

@@ -7,6 +7,11 @@ tests/test_settings_dialog.py sein messagebox im Funktions-Modul monkeypatcht.
 import traceback
 from tkinter import messagebox
 
+from src.oauth_utils import (
+    KEYRING_UNAVAILABLE_HINT, KEYRING_UNAVAILABLE_TITLE, is_keyring_unavailable,
+)
+from src.theme import themed_showerror
+
 
 def build_oauth_enable_task(*, service_fn, settings, setting_key, checkbox,
                             toggle_var, on_change, dialog, error_title,
@@ -42,6 +47,11 @@ def build_oauth_enable_task(*, service_fn, settings, setting_key, checkbox,
                 on_success_dialog_ui()
         else:
             toggle_var.set(False)
+            if is_keyring_unavailable(res["error"]):
+                # Bekannter Fehler (#101): themed und ohne Traceback.
+                themed_showerror(dialog, KEYRING_UNAVAILABLE_TITLE,
+                                 KEYRING_UNAVAILABLE_HINT)
+                return
             messagebox.showerror(
                 error_title,
                 f"OAuth-Flow fehlgeschlagen:\n\n{res['error']}\n\n{res['tb']}",
