@@ -232,7 +232,14 @@ Wie Webhooks und Urlaub reisen SMTP-Konten nicht per Drive-Sync: sie enthalten
 Zugangsdaten, und die haben im Sync-Doc nichts verloren. Auf einem zweiten
 Gerät müssen die Konten deshalb neu eingerichtet werden.
 
-## macOS fragt nach jedem App-Update erneut nach dem Schlüsselbund
+## Schlüsselbund (#101): bekannte Grenzen
+
+Seit #101 liegen der OAuth-Refresh-Token und Webhook-Secrets (und, seit dem
+SMTP-Feature, das SMTP-Passwort) im OS-Schlüsselbund statt im Klartext im
+Datenordner, mit Datei-Fallback ohne verfügbaren Schlüsselbund. Daraus ergeben
+sich sieben bekannte Grenzen.
+
+### macOS fragt nach jedem App-Update erneut nach dem Schlüsselbund
 
 Auf macOS hängt die Zugriffsberechtigung eines Keychain-Eintrags am
 *Designated Requirement* des zugreifenden Programms. PyInstaller signiert die
@@ -255,6 +262,66 @@ das ausdrücklich als „Passwort konnte nicht aus dem Schlüsselbund gelesen
 werden" statt sich mit einem leeren Passwort anzumelden: eine leere Anmeldung
 würde der Server mit „Zugangsdaten abgelehnt" quittieren, und der Nutzer
 suchte das Problem beim Passwort statt beim Schlüsselbund.
+
+### Downgrade: eine ältere Version liest den Refresh-Token nicht
+
+Eine ältere App-Version kennt das Schlüsselbund-Format von `token.json` nicht
+und übergibt sie ohne `refresh_token` an google-auth — die Bibliothek bricht
+dann mit `ValueError: … missing fields refresh_token` ab. Abhilfe: einmal
+Einstellungen → Google → „Google neu verbinden", das schreibt `token.json`
+wieder im Format der installierten Version. Gleiches gilt für Webhooks mit
+aktivierter Authentifizierung: eine ältere Version sendet dort ohne Wert im
+Header bzw. signiert mit leerem HMAC-Secret, statt den Schlüsselbund zu lesen.
+
+### Datenordner auf einen anderen Rechner kopiert
+
+Der Schlüsselbund-Eintrag bleibt auf dem Ursprungsrechner — eine kopierte
+`token.json`/`webhooks.json` trägt auf dem neuen Rechner nur noch den
+Schlüssel, nicht das Secret. Google muss dort neu verbunden, Webhook-Secrets
+müssen neu eingegeben werden.
+
+### Windows-Größenlimit
+
+Der Windows Credential Manager fasst höchstens 1280 Zeichen (UTF-16) pro
+Eintrag. Google-Access-Tokens reservieren bis zu 2048 Byte — deshalb liegt nur
+der Refresh-Token im Schlüsselbund, `token.json` behält Access-Token, Scopes,
+Client und Ablauf unverändert als Datei (s. `src/CLAUDE.md`, Abschnitt
+„Google-Integration").
+
+### Extern gelöschter Eintrag fällt erst beim nächsten Start auf
+
+`keyring_store` cacht geschriebene Werte pro Prozess und schreibt nur bei
+Änderung neu (s. „macOS fragt nach jedem App-Update erneut" oben für den
+Grund). Wird ein Eintrag außerhalb der App entfernt — von Hand in der
+Anmeldeinformationsverwaltung/Schlüsselbundverwaltung —, merkt das laufende
+App-Fenster das nicht sofort; erst der nächste Start liest den Schlüsselbund
+wieder direkt und erkennt das Fehlen.
+
+### Klartext-Reste außerhalb des Umzugs
+
+Zwei Dateiarten können trotz Schlüsselbund kurzzeitig Klartext-Secrets
+enthalten, ohne dass das ein Bug ist:
+
+- Eine korrupte `webhooks.json` wird nach `webhooks.json.corrupt-<stamp>`
+  quarantäniert statt stillschweigend verworfen (N4) — auch während
+  `--forget-secrets` beim Deinstallieren. Diese Quarantäne-Datei kann ein
+  Secret aus dem Alt-Format enthalten und bleibt danach im Datenordner
+  liegen, bis sie von Hand gelöscht wird.
+- Nach einem harten Prozessabbruch (Absturz, Kill) mitten im Schreiben von
+  `token.json` kann eine Temp-Datei `.token-*.tmp` im Datenordner
+  zurückbleiben (`oauth_utils.write_token_json`, vor dem atomaren
+  `os.replace`). Sie ist harmlos für den nächsten Start, aber ebenfalls von
+  Hand zu entfernen.
+
+### macOS/Linux haben keinen Uninstaller
+
+`--forget-secrets` räumt der Windows-Uninstaller auf; macOS (`.app` in
+`/Applications`) und Linux (AppImage) kennen keinen Deinstallations-Hook, der
+das automatisch auslösen könnte (s. „Linux: Reste nach dem Löschen der
+AppImage" oben). Wer die Schlüsselbund-Einträge dort von Hand entfernen will,
+findet sie unter dem Service-Präfix `Zeiterfassung:` in der
+„Schlüsselbundverwaltung" (macOS) bzw. „Passwörter und Schlüssel" (Linux,
+GNOME Keyring/Seahorse — abhängig vom installierten Secret-Service-Backend).
 
 ## macOS: kein Selbst-Update
 

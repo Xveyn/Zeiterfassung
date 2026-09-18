@@ -421,6 +421,21 @@ Geschrieben wird der Token ausschließlich über `oauth_utils.write_token`: Temp
 Härtung → `os.replace` (mit `PermissionError`-Retry, margenheld/Zeiterfassung#135). Zur Härtung siehe
 `secure_file` unten.
 
+**Laden und Speichern laufen ausschließlich über `token_store.py`** (#101) —
+kein Wrapper liest/schreibt `token.json` mehr direkt. Im Schlüsselbund-Modus
+trägt die Datei nur `refresh_token_key`, den Refresh-Token selbst liefert
+`token_store.load_credentials` aus `keyring_store.fetch`; Speichern behält den
+einmal gewählten Ort bei (Datei bleibt Datei), umziehen darf ausschließlich
+`secret_migration`. Einen Token verwerfen heißt seit #101 `oauth_utils.
+forget_token(token_path)` statt eines rohen `os.remove` — sonst bliebe im
+Schlüsselbund-Fall ein verwaister Eintrag stehen, unter einer `key`, die in
+keiner Datei mehr referenziert wird. Antwortet der Schlüsselbund beim Laden
+nicht, wirft `token_store.load_credentials` `oauth_utils.
+TokenKeyringUnavailable` — **kein** Auth-Fehler (der Token ist nicht ungültig,
+nur gerade nicht lesbar) und darf deshalb **keinen** interaktiven Consent-Flow
+auslösen (Xveyn#129); Aufrufer behandeln ihn wie einen eigenen Fehlerfall und
+fassen `token.json` nicht an.
+
 `drive.find_sync_file` liefert bei mehreren Treffern deterministisch die
 **älteste** Datei (`createdTime`, Tie-Break `id`) — der appDataFolder kennt kein
 atomares create-if-not-exists, zwei Geräte können beim Erst-Setup also beide
@@ -528,6 +543,12 @@ Wert.
   Aufruf ein `timeout=15` trägt. Wissen fürs Debugging: liegen die Daten auf einem
   hängenden Netzlaufwerk, verzögert sich der Token-Schreibvorgang um bis zu diese
   15s pro Refresh. Wer den Helfer in einen UI-Thread-Pfad hängt, muss das prüfen.
+  **Mit verfügbarem Schlüsselbund (#101) trägt keine der vier Dateien mehr das
+  eigentliche Secret im Klartext** — `token.json` nur noch `refresh_token_key`,
+  `webhooks.json` nur `secret_location`, `smtp.json` nur `password_location`;
+  `write_token`/`write_token_json` und die beiden `_save_to_disk` bleiben aber
+  unverändert die Schreibpfade, über `harden_windows_acl` gehärtet, weil ohne
+  Schlüsselbund (oder im Alt-Format) das Secret weiterhin dort landet.
 - `single_instance.py` — Tk-freier Single-Instance-Guard. Erste Instanz leitet einen Port aus
   `get_base_path()` ab und bindet einen Listener (`SO_EXCLUSIVEADDRUSE` Windows, `SO_REUSEADDR` Unix).
   Folgeinstanzen melden sich per SHOW/PING-Protokoll und beenden sich. `main.py` ruft `acquire()`
@@ -733,6 +754,12 @@ selbst nach dem Aufbau.
   `update_coordinator.py`, die Auto-Update-**Policy** → `auto_update.py`. Reine
   Persistenz/Logik → der passende Store bzw. `sync.py`/`share.py`
   (Tk-frei, gut testbar).
+- **Ein neues Secret** (#101) geht über `keyring_store.put`/`fetch`/`remove`
+  plus einen eigenen Datei-Fallback (Ort/Feldname entscheidet der Aufrufer,
+  wie bei `webhook_secrets.py`) — nicht über eine eigene Schlüsselbund-Mechanik.
+  Dazu gehört zwingend ein Eintrag in `secret_migration.forget_all`: sonst
+  bliebe der Eintrag nach einer Windows-Deinstallation im Schlüsselbund stehen,
+  weil `--forget-secrets` ihn nicht kennt.
 - **Nicht** nach `main.py`: der Einstiegspunkt ist Bootstrap (Stores bauen, Wiring,
   `_hold_app_mutex`/`_ensure_device_id`/`_sweep_orphan_tombstones`/`_refresh_linux_integration`).
   Wer dort Fachlogik ablegt, erzeugt wieder den Zyklus, den R1 aufgelöst hat — Symptom ist
