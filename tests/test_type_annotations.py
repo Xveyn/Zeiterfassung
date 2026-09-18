@@ -51,6 +51,7 @@ ANNOTATED_MODULES = [
     "src/changelog.py",
     "src/desktop_entry.py",
     "src/oauth_utils.py",
+    "src/token_store.py",
     "src/sync_journal.py",
     "src/autostart.py",
     "src/single_instance.py",
@@ -67,6 +68,8 @@ ANNOTATED_MODULES = [
     "src/sync_history.py",
     "src/json_store.py",
     "src/webhook_store.py",
+    "src/webhook_secrets.py",
+    "src/secret_migration.py",
     "src/holidays_de.py",
     "src/platform_open.py",
 ]

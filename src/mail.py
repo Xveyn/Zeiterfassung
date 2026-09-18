@@ -5,7 +5,8 @@ import socket
 from collections import namedtuple
 
 from src.mime_message import build_message
-from src.oauth_utils import discard_token_for_scope_upgrade, write_token
+from src.oauth_utils import TokenKeyringUnavailable, discard_token_for_scope_upgrade
+from src.token_store import load_credentials, save_credentials
 
 GMAIL_SEND_SCOPE = "https://www.googleapis.com/auth/gmail.send"
 DRIVE_APPDATA_SCOPE = "https://www.googleapis.com/auth/drive.appdata"
@@ -143,14 +144,16 @@ def fetch_user_email(token_path="token.json", sync_enabled=False, gcal_enabled=F
     try:
         from google.oauth2.credentials import Credentials
 
-        creds = Credentials.from_authorized_user_file(
-            token_path, get_scopes(sync_enabled, gcal_enabled)
+        creds = load_credentials(
+            token_path, get_scopes(sync_enabled, gcal_enabled), Credentials
         )
+        if creds is None:
+            return ""
         if creds.expired and creds.refresh_token:
             from google.auth.transport.requests import Request
             try:
                 creds.refresh(Request())
-                write_token(creds, token_path)
+                save_credentials(creds, token_path)
             except Exception:
                 log.warning("fetch_user_email: token refresh failed")
                 return ""
@@ -170,6 +173,9 @@ def fetch_user_email(token_path="token.json", sync_enabled=False, gcal_enabled=F
             # nicht spurlos verschwinden.
             log.debug("fetch_user_email: granted-scopes-Diagnose fehlgeschlagen",
                       exc_info=True)
+    except TokenKeyringUnavailable:
+        log.warning("fetch_user_email: Schlüsselbund nicht erreichbar")
+        return ""
     except Exception:
         log.exception("fetch_user_email: setup failed")
         return ""
@@ -256,7 +262,7 @@ def _refresh_and_persist(creds, token_path):
     except TransportError as e:
         raise TokenNetworkError(str(e)) from e
 
-    write_token(creds, token_path)
+    save_credentials(creds, token_path)
 
 
 def refresh_token_if_needed(token_path="token.json", sync_enabled=False,
@@ -279,7 +285,11 @@ def refresh_token_if_needed(token_path="token.json", sync_enabled=False,
     if not os.path.exists(token_path):
         return "no_token"
 
-    creds = Credentials.from_authorized_user_file(token_path, scopes)
+    creds = load_credentials(token_path, scopes, Credentials)
+
+    if creds is None:
+        raise TokenAuthError(
+            "Der Refresh-Token fehlt im Schlüsselbund des Betriebssystems.")
 
     if creds.valid:
         return "valid"
@@ -339,7 +349,7 @@ def get_gmail_service(credentials_path="credentials.json", token_path="token.jso
     creds = None
 
     if os.path.exists(token_path):
-        creds = Credentials.from_authorized_user_file(token_path, scopes)
+        creds = load_credentials(token_path, scopes, Credentials)
         # Scope-Upgrade-Erkennung: deckt der gespeicherte Token nicht alle
         # angeforderten Scopes ab (typisch nach Feature-Update), erzwingen wir
         # einen frischen OAuth-Flow. Sonst bleibt der Token "valid" und der
@@ -362,7 +372,7 @@ def get_gmail_service(credentials_path="credentials.json", token_path="token.jso
             )
         flow = InstalledAppFlow.from_client_secrets_file(credentials_path, scopes)
         creds = flow.run_local_server(port=0)
-        write_token(creds, token_path)
+        save_credentials(creds, token_path)
 
     return build("gmail", "v1", credentials=creds)
 

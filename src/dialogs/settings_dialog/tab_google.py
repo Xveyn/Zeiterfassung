@@ -16,6 +16,9 @@ from src.dialogs.settings_dialog.google_tab_task import (
     open_calendar_service, open_drive_service, reconnect_drive,
 )
 from src.dialogs.settings_dialog.oauth_task import build_oauth_enable_task
+from src.oauth_utils import (
+    KEYRING_UNAVAILABLE_HINT, KEYRING_UNAVAILABLE_TITLE, is_keyring_unavailable,
+)
 from src.platform_open import open_folder
 from src.sync_runtime import run_compaction_blocking
 from src.theme import (
@@ -42,6 +45,7 @@ _TOKEN_MARKS = {
     "no_token": ("nicht angemeldet", TEXT_MUTED),
     "reauth": ("⚠ abgelaufen — „Google neu verbinden“ nötig", STATUS_WARN),
     "unknown": ("nicht prüfbar (offline)", TEXT_MUTED),
+    "keyring": ("⚠ Schlüsselbund nicht erreichbar", STATUS_WARN),
 }
 
 
@@ -148,6 +152,17 @@ class GoogleTab:
         self._token_status.grid(row=4, column=1, padx=10, pady=(0, 4), sticky="w")
         self._check_token()
 
+    def _show_keyring_error(self, error):
+        """Zeigt den Schlüsselbund-Ausfall (#101) als themed Meldung und
+        liefert True — oder False, wenn `error` etwas anderes ist. Ein
+        bekannter Fehler: kurz und ohne Traceback, anders als die nativen
+        Catch-all-Dialoge daneben."""
+        if not is_keyring_unavailable(error):
+            return False
+        themed_showerror(self._dialog, KEYRING_UNAVAILABLE_TITLE,
+                         KEYRING_UNAVAILABLE_HINT)
+        return True
+
     def _open_data_folder(self):
         try:
             open_folder(self._base_path)
@@ -194,6 +209,8 @@ class GoogleTab:
                 return
             self._set_sender_btn_text("Aktualisieren")
             if not res["ok"]:
+                if self._show_keyring_error(res.get("error")):
+                    return
                 messagebox.showerror(
                     "Anmeldung fehlgeschlagen",
                     "OAuth-Flow oder Userinfo-Aufruf fehlgeschlagen:\n\n"
@@ -457,6 +474,8 @@ class GoogleTab:
                     "Synchronisation sollte jetzt wieder funktionieren.",
                 )
                 return
+            if self._show_keyring_error(res.get("error")):
+                return
             messagebox.showerror(
                 "Google neu verbinden",
                 "Die Neuverbindung ist fehlgeschlagen:\n\n"
@@ -503,6 +522,8 @@ class GoogleTab:
                     dialog, "Update erforderlich", NEWER_REMOTE_VERSION_MSG,
                 )
             elif not res.get("ok"):
+                if self._show_keyring_error(res.get("error")):
+                    return
                 detail = f"{res.get('error', '?')}\n\n{res.get('tb', '')}"
                 themed_showerror(
                     dialog,
@@ -602,6 +623,12 @@ class GoogleTab:
                 if isinstance(res["error"], gcal.CalendarAuthError):
                     self._cal_status.config(
                         text="Kalenderliste nicht geladen — Anmeldung erforderlich")
+                    return
+                if is_keyring_unavailable(res["error"]):
+                    self._cal_status.config(
+                        text="Kalenderliste nicht geladen — Schlüsselbund nicht erreichbar")
+                    if interactive:
+                        self._show_keyring_error(res["error"])
                     return
                 self._cal_status.config(text="Kalenderliste nicht verfügbar")
                 if not interactive:

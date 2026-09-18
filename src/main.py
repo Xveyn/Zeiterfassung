@@ -201,6 +201,19 @@ def main():
         # schluckt stderr). Setup-Fehler sind nicht-fatal, die App läuft weiter.
         pass
 
+    # Deinstallation (installer.iss): Schlüsselbund-Einträge abräumen und
+    # sofort beenden — ohne Tk, ohne Single-Instance-Guard, ohne
+    # Autostart-Migration (die schriebe sonst den Run-Wert, den der
+    # Uninstaller gerade entfernt).
+    if "--forget-secrets" in sys.argv:
+        try:
+            from src import secret_migration
+            secret_migration.forget_all(base)
+        except Exception:
+            logging.getLogger(__name__).exception(
+                "Abräumen des Schlüsselbunds fehlgeschlagen")
+        return
+
     from src import single_instance
 
     try:

@@ -417,9 +417,38 @@ Zeitraum und welche Kategorien der Bericht gefiltert ist.
 `vacations_sync.py` (Einwegs-Push der Urlaubsperioden). Alle teilen
 denselben OAuth-Token; Scope-Upgrade erzwingt frischen Consent.
 
-Geschrieben wird der Token ausschließlich über `oauth_utils.write_token`: Temp-Datei →
+Gemeinsamer Schreibpfad des Tokens ist `oauth_utils.write_token_json` (genutzt von
+`write_token`, `token_store` und `secret_migration`), immer unter `TOKEN_LOCK`: Temp-Datei →
 Härtung → `os.replace` (mit `PermissionError`-Retry, margenheld/Zeiterfassung#135). Zur Härtung siehe
 `secure_file` unten.
+
+**Laden und Speichern laufen ausschließlich über `token_store.py`** (#101) —
+kein Wrapper liest/schreibt `token.json` mehr direkt. Im Schlüsselbund-Modus
+trägt die Datei nur `refresh_token_key`, den Refresh-Token selbst liefert
+`token_store.load_credentials` aus `keyring_store.fetch`; Speichern behält den
+einmal gewählten Ort bei (Datei bleibt Datei), umziehen darf ausschließlich
+`secret_migration`. Einen Token verwerfen heißt seit #101 `oauth_utils.
+forget_token(token_path)` statt eines rohen `os.remove` — sonst bliebe im
+Schlüsselbund-Fall ein verwaister Eintrag stehen, unter einer `key`, die in
+keiner Datei mehr referenziert wird. Maßgeblich ist dabei der Schlüssel, nicht
+der Ort: nach einem Datei-Fallback (Schlüsselbund fiel beim Speichern aus)
+steht der Token wieder in der Datei, `refresh_token_key` aber auch — und
+darunter noch der alte Eintrag. Antwortet der Schlüsselbund beim Laden
+nicht, wirft `token_store.load_credentials` `oauth_utils.
+TokenKeyringUnavailable` — **kein** Auth-Fehler (der Token ist nicht ungültig,
+nur gerade nicht lesbar) und darf deshalb **keinen** interaktiven Consent-Flow
+auslösen (Xveyn#129); Aufrufer behandeln ihn wie einen eigenen Fehlerfall und
+fassen `token.json` nicht an. Gezeigt wird er überall als **bekannter** Fehler
+— themed, ohne Traceback, mit `oauth_utils.KEYRING_UNAVAILABLE_TITLE`/`_HINT`
+als einziger Textquelle; erkannt über `oauth_utils.is_keyring_unavailable`
+(auch am bloßen Text, weil Kompaktierung und Sync nur `str(e)` weiterreichen).
+Senden/Teilen führen ihn als Kind `keyring`, der Sync über
+`classify_sync_error`, der Google-Tab über `GoogleTab._show_keyring_error`
+(Schalter via `oauth_task`, Absender, Neu verbinden, Kalenderliste,
+Kompaktierung) und in der Zeile „Anmeldung" als eigenen Zustand `keyring` aus
+`check_token_status`. Wer einen weiteren Google-Pfad mit Fehlerdialog baut,
+prüft dort ebenfalls `is_keyring_unavailable`, bevor er in den nativen
+Catch-all fällt.
 
 `drive.find_sync_file` liefert bei mehreren Treffern deterministisch die
 **älteste** Datei (`createdTime`, Tie-Break `id`) — der appDataFolder kennt kein
@@ -506,7 +535,7 @@ Wert.
   (Repo-Modus: No-op, würde andernfalls python.exe+Repo ins Register schreiben und bestehende
   Shortcuts beschädigen).
 - `secure_file.py` — Zugriffsschutz für die vier lokal abgelegten Secrets: `token.json`
-  (`oauth_utils.write_token`), `instance-secret` (`single_instance._write_secret_atomic`),
+  (`oauth_utils.write_token_json`), `instance-secret` (`single_instance._write_secret_atomic`),
   `webhooks.json` (`webhook_store._save_to_disk`, dritter Schreibpfad — enthält
   Auth-Token/HMAC-Secrets der konfigurierten Webhooks) und `smtp.json`
   (`smtp_store._save_to_disk`, vierter Schreibpfad — enthält, nur ohne Schlüsselbund,
@@ -521,13 +550,20 @@ Wert.
   gescheiterte Persistenz wäre eine Regression. Eigenes Modul, damit `single_instance`
   nichts aus dem OAuth-Umfeld importieren muss (und keiner den privaten Namen des anderen
   nutzt, Audit N17). Wer einen fünften Secret-Schreibpfad baut, ruft diesen Helfer mit auf.
-  **Aufrufhäufigkeit:** der Helfer hängt an `write_token`, läuft also bei *jedem*
+  **Aufrufhäufigkeit:** der Helfer hängt an `write_token_json`, läuft also bei *jedem*
   Token-Refresh in Mail-, Drive- und Kalender-Pfad — ein `icacls`-Subprozess pro
   Refresh, nicht einmalig beim Anlegen. Unkritisch, weil alle diese Pfade in den
   Worker-Threads des `BackgroundTaskRunner` laufen (die UI blockiert nicht) und der
   Aufruf ein `timeout=15` trägt. Wissen fürs Debugging: liegen die Daten auf einem
   hängenden Netzlaufwerk, verzögert sich der Token-Schreibvorgang um bis zu diese
   15s pro Refresh. Wer den Helfer in einen UI-Thread-Pfad hängt, muss das prüfen.
+  **Mit verfügbarem Schlüsselbund (#101) tragen `token.json`, `webhooks.json` und
+  `smtp.json` das eigentliche Secret nicht mehr im Klartext** (`instance-secret`
+  bleibt Klartext) — `token.json` nur noch `refresh_token_key`,
+  `webhooks.json` nur `secret_location`, `smtp.json` nur `password_location`;
+  `write_token`/`write_token_json` und die beiden `_save_to_disk` bleiben aber
+  unverändert die Schreibpfade, über `harden_windows_acl` gehärtet, weil ohne
+  Schlüsselbund (oder im Alt-Format) das Secret weiterhin dort landet.
 - `single_instance.py` — Tk-freier Single-Instance-Guard. Erste Instanz leitet einen Port aus
   `get_base_path()` ab und bindet einen Listener (`SO_EXCLUSIVEADDRUSE` Windows, `SO_REUSEADDR` Unix).
   Folgeinstanzen melden sich per SHOW/PING-Protokoll und beenden sich. `main.py` ruft `acquire()`
@@ -733,6 +769,12 @@ selbst nach dem Aufbau.
   `update_coordinator.py`, die Auto-Update-**Policy** → `auto_update.py`. Reine
   Persistenz/Logik → der passende Store bzw. `sync.py`/`share.py`
   (Tk-frei, gut testbar).
+- **Ein neues Secret** (#101) geht über `keyring_store.put`/`fetch`/`remove`
+  plus einen eigenen Datei-Fallback (Ort/Feldname entscheidet der Aufrufer,
+  wie bei `webhook_secrets.py`) — nicht über eine eigene Schlüsselbund-Mechanik.
+  Dazu gehört zwingend ein Eintrag in `secret_migration.forget_all`: sonst
+  bliebe der Eintrag nach einer Windows-Deinstallation im Schlüsselbund stehen,
+  weil `--forget-secrets` ihn nicht kennt.
 - **Nicht** nach `main.py`: der Einstiegspunkt ist Bootstrap (Stores bauen, Wiring,
   `_hold_app_mutex`/`_ensure_device_id`/`_sweep_orphan_tombstones`/`_refresh_linux_integration`).
   Wer dort Fachlogik ablegt, erzeugt wieder den Zyklus, den R1 aufgelöst hat — Symptom ist

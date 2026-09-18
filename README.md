@@ -240,7 +240,17 @@ Oder manuell: **Menü ☰ → Google Auth Platform → Data Access**.
 
 ### 3. Bestehendes Token verwerfen
 
-Solange die alte `token.json` (nur mit `gmail.send`-Scope) existiert, läuft kein neuer Consent-Flow. Datei löschen:
+Solange die alte `token.json` (nur mit `gmail.send`-Scope) existiert, läuft kein neuer Consent-Flow.
+
+**Empfohlener Weg** *(ab --VERSION--)*: Einstellungen → Google → „Google neu
+verbinden" — das räumt dabei auch einen eventuellen Schlüsselbund-Eintrag des
+Refresh-Tokens mit ab.
+
+Alternativ die Datei direkt löschen. Ein Schlüsselbund-Eintrag des
+Refresh-Tokens bleibt dann verwaist stehen — die nächste Anmeldung legt einen
+neuen an; den alten (Name beginnt mit `Zeiterfassung:google-oauth:`) bei Bedarf
+von Hand in der Anmeldeinformationsverwaltung bzw. Schlüsselbundverwaltung
+entfernen:
 
 - **Windows (installiert):** `%LOCALAPPDATA%\Programs\Zeiterfassung\token.json`
 - **macOS (installiert):** `~/Library/Application Support/Zeiterfassung/token.json`
@@ -391,31 +401,41 @@ Speicherort je nach Plattform:
 | Entwicklung (Source) | Projekt-Root |
 
 > **Sicherheitshinweis:** Vier Dateien im Datenordner sind Geheimnisse, keine
-> Nutzerdaten. `token.json` enthält im Klartext einen langlebigen
+> Nutzerdaten. `token.json` enthält einen langlebigen
 > OAuth-Refresh-Token, der laufenden Zugriff auf dein Google-Konto
 > (Gmail-Versand, Drive-Sync, ggf. Kalender) gewährt. `webhooks.json` enthält
 > die Zugangstoken bzw. HMAC-Schlüssel deiner Webhook-Ziele. `smtp.json`
-> enthält die SMTP-Kontodaten und — nur ohne verfügbaren Schlüsselbund — das
-> Mail-Passwort im Klartext. `instance-secret` schützt den lokalen
-> Single-Instance-Kanal.
+> enthält die SMTP-Kontodaten und, nur im Datei-Fallback, das Mail-Passwort.
+> `instance-secret` schützt den lokalen Single-Instance-Kanal.
 >
-> Alle vier werden gleich behandelt: unter macOS/Linux per `chmod 0600` nur für
-> deinen Benutzer lesbar; unter Windows setzt die App per `icacls` eine eigene
-> ACL — geerbte Rechte (SYSTEM, lokale Administratoren) entfallen, Zugriff hat
-> nur dein Benutzerkonto. Beides ist Zugriffsschutz auf Dateiebene, keine
-> Verschlüsselung. **Wer den Daten-/Installationsordner kopiert, sichert oder in
-> die Cloud synchronisiert, nimmt sie mit** — behandle den Ordner entsprechend
-> vertraulich und gib ihn nicht weiter. Für `credentials.json` gilt dasselbe
-> Weitergabe-Verbot; sie gewährt für sich genommen aber keinen Zugriff auf dein
-> Konto und wird deshalb nicht gehärtet.
+> **Mit verfügbarem Schlüsselbund** *(ab --VERSION--)* (Windows
+> Anmeldeinformationsverwaltung / macOS-Schlüsselbund / Linux Secret Service)
+> liegen Refresh-Token,
+> Webhook-Secrets und SMTP-Passwort dort statt im Klartext in diesen Dateien —
+> sie tragen dann nur noch einen Verweis auf den Schlüsselbund-Eintrag. Ist
+> kein Schlüsselbund verfügbar, bleibt es wie oben beschrieben: das jeweilige
+> Secret steht im Klartext in der Datei.
+>
+> Alle vier Dateien werden gleich gehärtet: unter macOS/Linux per `chmod 0600`
+> nur für deinen Benutzer lesbar; unter Windows setzt die App per `icacls` eine
+> eigene ACL — geerbte Rechte (SYSTEM, lokale Administratoren) entfallen,
+> Zugriff hat nur dein Benutzerkonto. Beides ist Zugriffsschutz auf
+> Dateiebene, keine Verschlüsselung, und gilt unverändert für alle Werte, die
+> (im Datei-Fallback oder im Alt-Format) dort stehen. **Wer den
+> Daten-/Installationsordner kopiert, sichert oder in die Cloud
+> synchronisiert, nimmt die dort verbliebenen Klartext-Secrets mit** —
+> behandle den Ordner entsprechend vertraulich und gib ihn nicht weiter. Für
+> `credentials.json` gilt dasselbe Weitergabe-Verbot; sie gewährt für sich
+> genommen aber keinen Zugriff auf dein Konto und wird deshalb nicht gehärtet.
 >
 > Bei Verdacht auf Kompromittierung: den Zugriff in den
 > [Google-Kontoeinstellungen](https://myaccount.google.com/permissions) entziehen
 > und `token.json` löschen (die App startet beim nächsten Versand einen neuen
 > Anmelde-Flow); Webhook-Secrets beim jeweiligen Zielsystem neu vergeben.
 >
-> Die Windows-Deinstallation entfernt diese Dateien automatisch. Das beendet
-> den Zugriff auf diesem Rechner — die erteilte Freigabe im Google-Konto bleibt
+> Die Windows-Deinstallation entfernt diese Dateien automatisch und räumt
+> zuvor auch die zugehörigen Schlüsselbund-Einträge ab. Das beendet den
+> Zugriff auf diesem Rechner — die erteilte Freigabe im Google-Konto bleibt
 > bestehen, bis du sie dort zurückziehst.
 
 ## Mitentwickeln

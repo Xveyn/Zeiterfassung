@@ -150,6 +150,27 @@ def test_invalid_record_is_skipped_rest_survives(tmp_path, caplog):
     assert [w["id"] for w in store.get_all()] == ["gut"]
 
 
+def test_skipped_record_log_names_neither_id_nor_secret(tmp_path, caplog):
+    """Die ID ist Teil des Schlüsselbund-Schlüssels (`webhook:<id>`) und
+    gehört so wenig ins Log wie das Secret — die Position reicht zum Finden."""
+    import logging
+    path = tmp_path / "webhooks.json"
+    path.write_text(json.dumps({
+        "schema_version": 1,
+        "webhooks": [
+            _record(id="gut"),
+            {"id": "geheime-id-123", "name": "Ziel",
+             "auth": {"mode": "header", "value": "Bearer geheim"}},
+        ],
+    }), encoding="utf-8")
+    with caplog.at_level(logging.WARNING, logger="src.webhook_store"):
+        WebhookStore(str(path))
+    assert "übersprungen" in caplog.text
+    assert "Nr. 2" in caplog.text
+    assert "geheime-id-123" not in caplog.text
+    assert "Bearer geheim" not in caplog.text
+
+
 def test_newer_schema_version_is_left_alone(tmp_path):
     """Ein älterer Build darf eine neuere Datei nicht überschreiben."""
     path = tmp_path / "webhooks.json"

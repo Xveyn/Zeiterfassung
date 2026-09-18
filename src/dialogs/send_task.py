@@ -12,7 +12,7 @@ import json as _json
 import logging
 import traceback
 
-from src import keyring_store, smtp, webhook
+from src import keyring_store, smtp, webhook, webhook_secrets
 from src.dialogs.mail_task import classify_mail_error
 from src.mail import fetch_user_email, get_gmail_service, send_email
 from src.report import generate_pdf
@@ -231,7 +231,12 @@ def perform_send(*, date_from, date_to, entries, name, categories,
             webhooks = [w for w in webhooks if not w.get("json")]
 
     for entry in webhooks:
-        record = entry["record"]
+        record, problem = webhook_secrets.resolve(entry["record"])
+        if problem is not None:
+            results.append({"channel": "webhook",
+                            "name": entry["record"].get("name", ""),
+                            **webhook_secrets.keyring_failure(problem)})
+            continue
         try:
             res = webhook.deliver(
                 record,
@@ -261,6 +266,7 @@ _KIND_TEXTS = {
     "server": "Server-Fehler",
     "config": "Konfiguration ungültig",
     "keyring": "Schlüsselbund nicht erreichbar",
+    "keyring_missing": "Zugangsdaten fehlen im Schlüsselbund",
     "error": "unerwarteter Fehler",
 }
 

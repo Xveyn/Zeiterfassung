@@ -10,49 +10,8 @@ Einträge im Windows-Anmeldeinformationsmanager hinterlassen.
 import logging
 import sys
 import threading
-import types
-
-import pytest
 
 from src import keyring_store
-
-
-class _FakeKeyring:
-    def __init__(self, working=True, block=None):
-        self.working = working
-        self.block = block          # threading.Event: blockiert bis gesetzt
-        self.store = {}
-
-    def _guard(self):
-        if self.block is not None:
-            self.block.wait()
-        if not self.working:
-            raise RuntimeError("No recommended backend was available")
-
-    def set_password(self, service, account, password):
-        self._guard()
-        self.store[(service, account)] = password
-
-    def get_password(self, service, account):
-        self._guard()
-        return self.store.get((service, account))
-
-    def delete_password(self, service, account):
-        self._guard()
-        del self.store[(service, account)]
-
-
-@pytest.fixture
-def fake_keyring(monkeypatch):
-    def _install(working=True, block=None):
-        fake = _FakeKeyring(working=working, block=block)
-        module = types.ModuleType("keyring")
-        module.set_password = fake.set_password
-        module.get_password = fake.get_password
-        module.delete_password = fake.delete_password
-        monkeypatch.setitem(sys.modules, "keyring", module)
-        return fake
-    return _install
 
 
 def _record(**over):
@@ -242,3 +201,209 @@ def test_delete_secret_timeout_does_not_log_the_record_id(
     finally:
         gate.set()
     assert "rec-4711-abcdef" not in caplog.text
+
+
+# --- schlüsselbasiert: put / fetch / remove (#101) -------------------------
+
+
+def _entry(key):
+    return (keyring_store.service_for(key), key)
+
+
+def test_service_is_per_entry():
+    """Ein Service je Eintrag: WinVaultKeyring schichtet mehrere Nutzernamen
+    unter EINEM Service per ungeschütztem Lesen-Ändern-Schreiben um."""
+    assert keyring_store.service_for("webhook:w1") == "Zeiterfassung:webhook:w1"
+
+
+def test_put_and_fetch_roundtrip(fake_keyring):
+    fake = fake_keyring()
+    assert keyring_store.put("google-oauth:abc", "1//refresh") is True
+    assert fake.store[_entry("google-oauth:abc")] == "1//refresh"
+    assert keyring_store.fetch("google-oauth:abc") == "1//refresh"
+
+
+def test_smtp_entries_stay_under_the_plain_service(fake_keyring):
+    fake = fake_keyring()
+    keyring_store.set_secret("rec-1", "pw")
+    keyring_store.put("webhook:w1", "tok")
+    assert (keyring_store.SERVICE, "rec-1") in fake.store
+    assert _entry("webhook:w1") in fake.store
+
+
+def test_fetch_returns_empty_string_for_a_missing_entry(fake_keyring):
+    fake_keyring()
+    assert keyring_store.fetch("google-oauth:abc") == ""
+
+
+def test_put_and_fetch_without_backend(fake_keyring):
+    fake_keyring(working=False)
+    assert keyring_store.put("k", "v") is False
+    assert keyring_store.fetch("k") is None
+
+
+def test_put_skips_an_unchanged_value(fake_keyring):
+    """Nur bei Änderung schreiben: jeder Token-Refresh schriebe sonst neu
+    (macOS: SecItemDelete+SecItemAdd, nicht atomar)."""
+    fake = fake_keyring()
+    keyring_store.put("k", "v")
+    del fake.store[_entry("k")]           # „hinter dem Rücken" entfernt
+    assert keyring_store.put("k", "v") is True
+    assert _entry("k") not in fake.store  # gleicher Wert: nicht erneut geschrieben
+    assert keyring_store.put("k", "w") is True
+    assert fake.store[_entry("k")] == "w"
+
+
+def test_put_and_fetch_give_up_when_the_keyring_blocks(fake_keyring, monkeypatch):
+    import threading
+    monkeypatch.setattr(keyring_store, "WATCHDOG_TIMEOUT", 0.05)
+    release = threading.Event()
+    fake_keyring(block=release)
+    try:
+        assert keyring_store.put("k", "v") is False
+        assert keyring_store.fetch("k") is None
+    finally:
+        release.set()
+
+
+def test_remove_deletes_and_is_quiet_when_missing(fake_keyring):
+    fake = fake_keyring()
+    keyring_store.put("k", "v")
+    keyring_store.remove("k")
+    assert _entry("k") not in fake.store
+    keyring_store.remove("k")             # fehlt: kein Fehler
+    assert keyring_store.put("k", "v") is True
+    assert fake.store[_entry("k")] == "v"  # Cache nach remove geleert
+
+
+def test_put_fetch_remove_never_log_key_or_value(fake_keyring, caplog):
+    import logging
+    fake_keyring(working=False)
+    with caplog.at_level(logging.DEBUG, logger="src.keyring_store"):
+        keyring_store.put("google-oauth:geheimer-schluessel", "1//geheim")
+        keyring_store.fetch("google-oauth:geheimer-schluessel")
+        keyring_store.remove("google-oauth:geheimer-schluessel")
+    assert "geheimer-schluessel" not in caplog.text
+    assert "1//geheim" not in caplog.text
+
+
+def test_fetch_does_not_let_a_later_put_skip(fake_keyring):
+    """fetch füllt den Cache nicht: sonst könnte ein veralteter Lesewert ein
+    späteres put mit genau diesem Wert verschlucken."""
+    fake = fake_keyring()
+    fake.store[_entry("k")] = "v"
+    assert keyring_store.fetch("k") == "v"
+    del fake.store[_entry("k")]
+    assert keyring_store.put("k", "v") is True
+    assert fake.store[_entry("k")] == "v"
+
+
+def test_concurrent_puts_leave_cache_and_backend_in_agreement(fake_keyring):
+    import sys
+    import threading
+    fake = fake_keyring()
+    module = sys.modules["keyring"]
+    entered, release = threading.Event(), threading.Event()
+    original = module.set_password
+
+    def gated(service, account, password):
+        if password == "vA":
+            entered.set()
+            release.wait(5)
+        original(service, account, password)
+
+    module.set_password = gated
+    a = threading.Thread(target=keyring_store.put, args=("k", "vA"))
+    a.start()
+    assert entered.wait(5)
+    b = threading.Thread(target=keyring_store.put, args=("k", "vB"))
+    b.start()
+    b.join(0.2)
+    assert b.is_alive()                     # wartet auf den laufenden Schreibvorgang
+    release.set()
+    a.join(5)
+    b.join(5)
+    assert keyring_store._known["k"] == fake.store[_entry("k")] == "vB"
+
+
+def _count_writes(monkeypatch):
+    """Ersetzt set_password des Fake-Moduls durch eine mitschreibende Hülle."""
+    import sys
+    module = sys.modules["keyring"]
+    original = module.set_password
+    writes = []
+
+    def counting(service, account, password):
+        writes.append(account)
+        original(service, account, password)
+
+    monkeypatch.setattr(module, "set_password", counting)
+    return writes
+
+
+def test_put_does_not_rewrite_a_value_the_backend_already_holds(fake_keyring, monkeypatch):
+    """W1: nach einem Neustart ist der Cache leer. Statt den unveränderten
+    Wert neu zu schreiben (macOS: SecItemDelete + SecItemAdd), liest put ihn
+    erst — gleicher Wert, kein Schreiben."""
+    fake = fake_keyring()
+    fake.store[_entry("k")] = "v"
+    writes = _count_writes(monkeypatch)
+
+    assert keyring_store.put("k", "v") is True
+    assert writes == []
+    assert keyring_store._known["k"] == "v"
+
+
+def test_put_writes_when_the_backend_holds_another_value(fake_keyring, monkeypatch):
+    fake = fake_keyring()
+    fake.store[_entry("k")] = "alt"
+    writes = _count_writes(monkeypatch)
+
+    assert keyring_store.put("k", "neu") is True
+    assert writes == ["k"]
+    assert fake.store[_entry("k")] == "neu"
+
+
+def test_put_still_writes_when_reading_fails(fake_keyring, monkeypatch):
+    import sys
+    fake = fake_keyring()
+
+    def broken_read(service, account):
+        raise RuntimeError("Lesen kaputt")
+
+    monkeypatch.setattr(sys.modules["keyring"], "get_password", broken_read)
+
+    assert keyring_store.put("k", "v") is True
+    assert fake.store[_entry("k")] == "v"
+
+
+def test_put_without_backend_logs_no_traceback(fake_keyring, caplog):
+    """Ohne Schlüsselbund scheitert put bei JEDEM Start — ein Traceback pro
+    Start wäre Rauschen im Log. Der Typ des Fehlers reicht."""
+    import logging
+    fake_keyring(working=False)
+    with caplog.at_level(logging.DEBUG, logger="src.keyring_store"):
+        assert keyring_store.put("k", "v") is False
+    records = [r for r in caplog.records if r.name == "src.keyring_store"]
+    assert records
+    assert all(r.exc_info is None for r in records)
+    assert "RuntimeError" in caplog.text
+
+
+def test_put_gives_up_without_writing_when_the_read_hangs(fake_keyring, monkeypatch):
+    """Hängt schon das Lesen, schreibt put nicht mehr hinterher — sonst
+    kostete ein hängender Schlüsselbund pro Eintrag zweimal den Watchdog."""
+    import sys
+    import threading
+    monkeypatch.setattr(keyring_store, "WATCHDOG_TIMEOUT", 0.05)
+    fake_keyring()
+    module = sys.modules["keyring"]
+    release = threading.Event()
+    writes = []
+    module.get_password = lambda service, account: release.wait(5)
+    module.set_password = lambda *a: writes.append(a)
+    try:
+        assert keyring_store.put("k", "v") is False
+    finally:
+        release.set()
+    assert writes == []

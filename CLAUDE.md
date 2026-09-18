@@ -440,6 +440,10 @@ Installierte App und Benutzerdaten liegen je nach Plattform:
 
 `src/paths.py::get_base_path` dispatched über `platform.system()` und unterscheidet zwischen Frozen- und Repo-Modus.
 
+Mit verfügbarem Schlüsselbund (#101) enthalten `token.json` und `webhooks.json`
+keinen Refresh-Token bzw. keine Webhook-Secrets mehr im Klartext — beide liegen
+dann im OS-Schlüsselbund statt im Datenverzeichnis.
+
 ## Update-Weg
 
 Aus dem Download-Knopf (Updates-Tab, Banner, Tray-Toast) wird auf **Windows
@@ -1033,6 +1037,19 @@ nicht mehr als „offen" führen — der Verweis lautet auf diese Grenze.
 - `src/report.py` — HTML-Mail und PDF (dark/light Theme), gruppiert pro ISO-Kalenderwoche; `xhtml2pdf`-Import ist **lazy** in `generate_pdf` (siehe Tests/CI)
 - `src/mail.py` — Gmail-API-Wrapper (OAuth2, `token.json` / `credentials.json`)
 - `src/drive.py` — Google-Drive-API-Wrapper für den Multi-Device-Sync (`appDataFolder`, Scope `drive.appdata`)
+- `src/token_store.py` — lädt/speichert die OAuth-Credentials (#101). `token.json`
+  bleibt am bisherigen Ort liegen — Speichern behält den Ort bei, umziehen darf
+  nur `secret_migration`. Im Schlüsselbund-Modus trägt die Datei nur noch den
+  Schlüssel (`refresh_token_key`), nicht den Refresh-Token selbst. Scheitert
+  dort das Schreiben in den Schlüsselbund, landet der Token vollständig in der
+  Datei, **der Schlüssel bleibt aber stehen** (ohne `refresh_token_location`):
+  unter ihm liegt noch der alte Eintrag, und nur so finden ihn der nächste
+  Umzug, `oauth_utils.forget_token` und `--forget-secrets` wieder. Eine Datei
+  ohne Schlüssel wird unverändert byte-gleich zu `write_token` geschrieben.
+  Speichern, Umzug und `forget_token` laufen unter `TOKEN_LOCK` (liegt in
+  `oauth_utils`, hier re-exportiert); `load_credentials` nimmt ihn bewusst
+  nicht, liest aber nach einem `ValueError` einmal neu, falls der Umzug die
+  Datei gerade umgeschrieben hat
 - `src/sync.py` — Sync-Engine (pure Logik: LWW-Merge der Entries/Settings, Konflikterkennung); importiert `SYNCED_SETTING_KEYS` aus `settings.py` (Single Source of Truth, nicht hier neu definieren); `validate_remote_doc` prüft ein Remote-Doc auf die Merge-Invarianten vor dem Merge (Audit M5)
 - `src/sync_runtime.py` — Sync-/Kompaktierungs-/Reconcile-**Runtime**: `run_pull_in_background`, `run_push_blocking`, `run_compaction_blocking`, `run_calendar_reconcile`, `run_vacation_purge`. Die Flows über der Engine `sync.py`; Google-Wrapper lazy in den Funktionen (CI). Aufrufer: `main.py`, `sync_orchestrator.py`, `background_tasks.py`, `tab_google.py`
 - `src/sync_journal.py` — Crash-Recovery für `sync.apply_merged_doc` via Write-Ahead-Journal (`sync-apply.journal`); beim Start holt `recover_pending_apply` einen unvollständigen Apply idempotent nach (Audit M6)
@@ -1065,6 +1082,13 @@ nicht mehr als „offen" führen — der Verweis lautet auf diese Grenze.
 - `src/webhook_store.py` — gerätelokaler Store der Webhook-Konfiguration
   (`webhooks.json`). Enthält Konfiguration **und** Secrets und wird deshalb wie
   `token.json` gehärtet geschrieben; reist bewusst **nicht** per Drive-Sync.
+- `src/webhook_secrets.py` — Webhook-Secrets im Schlüsselbund (#101), das
+  SMTP-Muster auf `webhooks.json` übertragen: `auth.value`/`auth.secret`
+  wandern in den Schlüsselbund, im Datensatz bleibt `auth.secret_location =
+  "keyring"`. `persist` legt das Secret ab und liefert zusätzlich einen
+  eventuell abzuräumenden alten Schlüssel — abgeräumt wird der aber erst vom
+  Aufrufer **nach** `store.save`, sonst zeigte der Datensatz bei einem
+  gescheiterten Schreibvorgang auf einen bereits gelöschten Eintrag
 - `src/mime_message.py` — Aufbau der Mail-Nachricht, gemeinsam für Gmail-API
   und SMTP. Hier liegen **zwei der drei** UTF-8-Pflichten (MIMEText-Charset,
   Betreff-Header) und die Steuerzeichen-Abwehr gegen Header-Injection
@@ -1087,7 +1111,29 @@ nicht mehr als „offen" führen — der Verweis lautet auf diese Grenze.
   `collection.unlock()` ohne Timeout, und ein hängender Worker bedeutet, dass
   `BackgroundTaskRunner` `on_done` nie ruft. `get_secret` liefert `None`, wenn
   sich das Vorhandensein eines Passworts nicht ermitteln ließ (Timeout/Fehler
-  ohne lokale Fallback-Kopie) — Aufrufer dürfen sich damit nicht anmelden
+  ohne lokale Fallback-Kopie) — Aufrufer dürfen sich damit nicht anmelden.
+  Daneben, unverändert an den SMTP-Funktionen (#101): `put`/`fetch`/`remove`
+  für schlüsselbasierte Secrets (Token, Webhooks) — jeder Eintrag unter einem
+  **eigenen** Service-Namen (`service_for(key)`), nicht dem gemeinsamen
+  `SERVICE` der SMTP-Konten, weil WinVaultKeyring mehrere Nutzernamen unter
+  einem Service nicht threadsicher umschichtet. Ein Prozess-Cache (`_known`)
+  spart unveränderte Schreibzugriffe; fehlt ein Schlüssel darin (erstes `put`
+  nach dem Start), liest `put` zuerst und schreibt nur bei abweichendem Wert —
+  unter macOS wird aus Löschen-und-neu-Anlegen so ein Lesen. Hängt schon
+  dieses Lesen bis zum Watchdog, gibt `put` ohne Schreibversuch auf (sonst
+  zweimal 30 s pro Eintrag). `fetch` füllt den
+  Cache **nie** und liest immer direkt: ein extern gelöschter Eintrag fällt
+  beim nächsten Laden auf (→ neu anmelden) und verwirft dabei den Cache
+- `src/secret_migration.py` — zieht beim Start Klartext-Secrets in den
+  Schlüsselbund (Token, Webhooks) und liefert den Uninstaller-Weg zurück
+  (`forget_all`, s. `installer.iss`). Idempotent bei jedem Start geprüft, kein
+  Versionsvergleich: pro Secret in den Schlüsselbund schreiben, zurücklesen,
+  nur bei Übereinstimmung die Datei umschreiben — jeder Abbruch davor lässt die
+  Datei gültig, der nächste Start holt nach. Trägt `token.json` schon einen
+  `refresh_token_key` (Datei-Fallback), nimmt der Umzug denselben Schlüssel
+  statt eines neuen; `forget_all` räumt jeden Schlüssel ab, den die Datei
+  trägt, unabhängig von `refresh_token_location`. Einmaliger Hinweis danach
+  (`ui.App._on_secrets_migrated`, Dialog/Toast/Log je nach Fenstersichtbarkeit)
 - `src/dialogs/smtp_dialog.py` — Anlegen/Bearbeiten eines SMTP-Kontos inkl.
   Verbindungstest
 - `src/reservations.py` — Reservierungen (zukünftige Soll-Zeiten, eigenes Konzept
@@ -1139,7 +1185,7 @@ nicht mehr als „offen" führen — der Verweis lautet auf diese Grenze.
 - `src/holidays_de.py` — Feiertags-Lookup (über `holidays`-Lib)
 - `src/paths.py` — `get_base_path()` dispatched über `platform.system()` und Frozen- vs. Repo-Modus; `relaunch_command()` baut das Neustart-Kommando (Exe im Frozen-Build, `python -m src.main` im Repo)
 - `src/autostart.py` — plattformabhängiger Autostart (Windows-**Registry** HKCU Run, gleicher Wertname `Zeiterfassung` wie `installer.iss` → strukturell ein Eintrag; macOS-LaunchAgent / Linux `.desktop`). `is_autostart_enabled()` liest den echten Zustand, `migrate_legacy_autostart()` überführt Alt-Startup-Shortcuts frozen-gated in die Registry
-- `src/secure_file.py` — Zugriffsschutz für die lokal abgelegten Secrets (`token.json`, `instance-secret`, `webhooks.json`, `smtp.json`): unter Windows `icacls`-ACL statt des dort wirkungslosen `chmod 0600` (Audit M8); best-effort, scheitert nie den Schreibvorgang
+- `src/secure_file.py` — Zugriffsschutz für die lokal abgelegten Secrets (`token.json`, `instance-secret`, `webhooks.json`, `smtp.json`): unter Windows `icacls`-ACL statt des dort wirkungslosen `chmod 0600` (Audit M8); best-effort, scheitert nie den Schreibvorgang. Mit verfügbarem Schlüsselbund (#101) tragen diese Dateien den Refresh-Token bzw. die Webhook-Secrets ohnehin nicht mehr im Klartext — die Härtung bleibt für den Datei-Fallback und die übrigen Felder (Konfiguration, `instance-secret`) unverändert nötig
 - `src/single_instance.py` — Tk-freier Single-Instance-Guard (pro-Nutzer-Localhost-Port, `acquire`/`serve`/`release`); verhindert parallele Instanzen und holt bei manuellem Zweitstart das vorhandene Fenster nach vorn (SHOW), beim Autostart-Doppelfeuer ohne Fenster-Pop (PING)
 - `src/devices.py` — lesbare **Gerätenamen** für die Sync-Anzeige (Konfliktdialog): Ableitung aus dem Hostnamen, Sanitizing (Fremddaten!) und die Registry `{device_id: {name, updated_at}}`, die im Sync-Doc unter `devices` mitreist. Bewusst **ohne** Schema-Bump additiv — `SCHEMA_VERSION` bleibt 4, sonst pausierte `remote_is_newer` den Sync jedes älteren Geräts wegen eines Anzeigefelds. Fehlt oder bricht die Registry, zeigt der Dialog die gekürzte ID wie zuvor. Der eigene Name ist **kein** synchronisierter Setting-Key (der wäre ein einziger globaler Wert, die Geräte würden ihn sich gegenseitig überschreiben) — er lebt gerätelokal in `device_name`, der Spiegel der anderen in `known_devices`
 - `src/device_id.py` — stabile, hardware-abgeleitete Geräte-ID für den Sync (Windows `MachineGuid` / macOS `IOPlatformUUID` / Linux `/etc/machine-id`, SHA-256-gehasht); nur für installierte Builds (`main.py::_ensure_device_id`, gated auf `sys.frozen`) — Repo-/Skript-Modus bleibt bei der alten, in `settings.json` persistierten Zufalls-UUID, damit eine parallel laufende Dev-Instanz nie dieselbe device_id wie eine echte Installation auf demselben Rechner bekommt
@@ -1167,7 +1213,10 @@ nicht mehr als „offen" führen — der Verweis lautet auf diese Grenze.
   eine laufende Instanz erkennen und den User per Retry-Dialog zum manuellen Schließen auffordern;
   `CloseApplications=no` schaltet bewusst den Default-Weg (Restart Manager) ab, der bei aktivem
   Minimize-to-Tray scheitert (`App._on_close` behandelt das dabei gesendete `WM_CLOSE` nur als
-  Fenster-Verstecken, der Prozess läuft weiter und blockiert die .exe-Datei)
+  Fenster-Verstecken, der Prozess läuft weiter und blockiert die .exe-Datei). Ruft beim
+  Deinstallieren zuerst `Zeiterfassung.exe --forget-secrets` (räumt den Schlüsselbund ab, #101),
+  BEVOR `[UninstallDelete]` `token.json`, `webhooks.json` und `smtp.json` löscht — aus ihnen
+  stammen die Schlüssel
 
 Hinweis: Es gibt **keine** `Zeiterfassung.spec`-Datei — Build läuft komplett über `scripts/build.py` mit expliziten PyInstaller-Args.
 

@@ -91,15 +91,18 @@ def validate_record(record: Webhook, existing: list[Webhook]) -> tuple[bool, str
 
     auth = record.get("auth") or {}
     mode = auth.get("mode")
+    # „secret_location" wie webhook_secrets.SECRET_LOCATION — hier als
+    # Literal, damit der Store frei von Schlüsselbund-Code bleibt.
+    keyring_held = auth.get("secret_location") == "keyring"
     if mode == "header":
         if not (auth.get("header") or "").strip():
             return False, "Bitte einen Header-Namen angeben."
-        if not (auth.get("value") or "").strip():
+        if not keyring_held and not (auth.get("value") or "").strip():
             return False, "Bitte einen Header-Wert (Token) angeben."
     elif mode == "hmac":
         if not (auth.get("header") or "").strip():
             return False, "Bitte einen Header-Namen angeben."
-        if not (auth.get("secret") or "").strip():
+        if not keyring_held and not (auth.get("secret") or "").strip():
             return False, "Bitte ein Secret für die Signatur angeben."
     elif mode != "none":
         return False, "Unbekanntes Auth-Verfahren."
@@ -162,18 +165,17 @@ class WebhookStore:
         raw = data.get("webhooks")
         if not isinstance(raw, list):
             return
-        for record in raw:
+        for position, record in enumerate(raw, start=1):
             if _is_wellformed(record):
                 self._webhooks.append(record)
             else:
-                # NIEMALS den Datensatz selbst loggen — er enthält das Token
-                # bzw. HMAC-Secret, und logs/zeiterfassung.log ist ungehärtet
-                # und genau die Datei, die Nutzer bei Problemen anhängen.
+                # NIEMALS den Datensatz oder eines seiner Felder loggen — er
+                # enthält das Token bzw. HMAC-Secret, die ID ist Teil des
+                # Schlüsselbund-Schlüssels (#101), und logs/zeiterfassung.log
+                # ist ungehärtet und genau die Datei, die Nutzer bei Problemen
+                # anhängen. Die Position in der Liste reicht zum Finden.
                 log.warning(
-                    "webhooks.json: Datensatz übersprungen (id=%r, name=%r)",
-                    (record or {}).get("id") if isinstance(record, dict) else None,
-                    (record or {}).get("name") if isinstance(record, dict) else None,
-                )
+                    "webhooks.json: Datensatz Nr. %d übersprungen", position)
 
     def _quarantine(self, reason: str) -> None:
         """Verschiebt die kaputte Datei nach `.corrupt-<stamp>` statt sie

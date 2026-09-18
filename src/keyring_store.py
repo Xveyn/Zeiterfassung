@@ -177,6 +177,160 @@ def delete_secret(record_id: str) -> None:
         log.warning("Schlüsselbund antwortet nicht — ein Secret blieb stehen")
 
 
+# Zuletzt geschriebener (oder von `put` als schon vorhanden gelesener) Wert je
+# Schlüssel, nur in diesem Prozess. `put` schreibt nur bei Änderung: sonst
+# schriebe jeder stündliche Token-Refresh denselben Wert neu — unter macOS
+# über SecItemDelete + SecItemAdd (nicht atomar, womöglich mit
+# Keychain-Rückfrage), unter Linux bei hängendem Secret Service mit 30 s
+# Watchdog. Nach einem Neustart ist der Cache leer; das erste put liest dann
+# den Wert im Schlüsselbund und schreibt nur, wenn er abweicht (s. put). Ein
+# außerhalb der App entfernter Eintrag fällt beim nächsten `fetch` auf — das
+# liest immer direkt und verwirft dabei den Cache, das nächste put schreibt
+# also wieder.
+_known: dict[str, str] = {}
+_known_lock = threading.Lock()
+# `put` und `remove` laufen ihre GANZE Sequenz (Cache-Check → Backend-Call →
+# Cache-Update) unter diesem Lock, sodass Cache und Backend nie auseinanderlaufen;
+# Schreibvorgänge sind selten, Serialisierung kostet nichts Spürbares.
+_write_lock = threading.Lock()
+
+
+def service_for(key: str) -> str:
+    """Service-Name eines schlüsselbasierten Eintrags (#101): einer je
+    Eintrag. Unter EINEM gemeinsamen Service schichtet WinVaultKeyring
+    mehrere Nutzernamen per ungeschütztem Lesen-Ändern-Schreiben um — nicht
+    thread-sicher, und die SMTP-Passwörter unter `SERVICE` wären betroffen."""
+    return f"{SERVICE}:{key}"
+
+
+def put(key: str, value: str) -> bool:
+    """Legt `value` unter `key` ab. `True` bei Erfolg (oder unverändert).
+
+    Anders als `set_secret` ohne Datensatz und ohne Datei-Fallback — den
+    entscheidet der Aufrufer. Geloggt wird weder Schlüssel noch Wert.
+    """
+    with _write_lock:
+        with _known_lock:
+            if _known.get(key) == value:
+                return True
+        # Erst lesen: liegt der Wert schon so im Schlüsselbund (typisch das
+        # erste put nach einem Neustart), wird aus dem destruktiven
+        # Delete+Add unter macOS ein Lesen. Weil alle put/remove unter
+        # `_write_lock` laufen, kann dieser Lesewert nicht gegen ein anderes
+        # put veralten.
+        held = _backend_holds(key, value)
+        if held is None:
+            # Schon das Lesen hing bis zum Watchdog — ein Schreibversuch
+            # träfe denselben hängenden Schlüsselbund und kostete weitere
+            # 30 s. Der Aufrufer fällt auf die Datei zurück.
+            log.warning("Schlüsselbund antwortet nicht (Timeout nach %.1fs) — "
+                        "Eintrag nicht abgelegt", WATCHDOG_TIMEOUT)
+            return False
+        if held:
+            with _known_lock:
+                _known[key] = value
+            return True
+
+        def work() -> None:
+            import keyring  # pyright: ignore[reportMissingImports]
+
+            keyring.set_password(service_for(key), key, value)
+
+        try:
+            ok, _ = _call_guarded(work)
+        except Exception as e:
+            # Bewusst alles: kein Backend, D-Bus-Fehler, Lib fehlt — für den
+            # Aufrufer dasselbe (s. set_secret). Nur der Typname, kein
+            # Traceback: ohne Schlüsselbund scheitert das bei jedem Start.
+            log.info("Schlüsselbund nicht verfügbar (%s) — Eintrag nicht "
+                     "abgelegt", type(e).__name__)
+            return False
+        if not ok:
+            log.warning("Schlüsselbund antwortet nicht (Timeout nach %.1fs) — "
+                        "Eintrag nicht abgelegt", WATCHDOG_TIMEOUT)
+            return False
+        with _known_lock:
+            _known[key] = value
+        return True
+
+
+def _backend_holds(key: str, value: str) -> bool | None:
+    """True, wenn der Schlüsselbund unter `key` bereits genau `value` hält;
+    `None` bei Timeout (hängender Schlüsselbund — `put` gibt dann auf). Ein
+    Fehler heißt `False`: `put` versucht das Schreiben wie bisher."""
+    def work() -> Any:
+        import keyring  # pyright: ignore[reportMissingImports]
+
+        return keyring.get_password(service_for(key), key)
+
+    try:
+        ok, stored = _call_guarded(work)
+    except Exception:
+        # Bewusst alles und ohne eigenes Log: der Schreibversuch direkt danach
+        # trifft denselben Schlüsselbund und meldet einen Ausfall selbst.
+        return False
+    if not ok:
+        return None
+    return stored == value
+
+
+def fetch(key: str) -> str | None:
+    """Liest `key` — immer aus dem Schlüsselbund, nie aus dem Cache.
+
+    Füllt den Cache NICHT, verwirft ihn nur (s. Kommentar unten). `None`: NICHT ermittelbar
+    (kein Backend, Timeout, Fehler). `""`: der Schlüsselbund hat geantwortet,
+    es gibt keinen Eintrag. Aufrufer MÜSSEN beides unterscheiden — dieselbe
+    Regel wie bei `get_secret`.
+    """
+    def work() -> Any:
+        import keyring  # pyright: ignore[reportMissingImports]
+
+        return keyring.get_password(service_for(key), key)
+
+    try:
+        ok, stored = _call_guarded(work)
+    except Exception:
+        # Bewusst alles, s. put.
+        log.warning("Schlüsselbund nicht lesbar", exc_info=True)
+        return None
+    if not ok:
+        log.warning("Schlüsselbund antwortet nicht (Timeout nach %.1fs)",
+                    WATCHDOG_TIMEOUT)
+        return None
+    value = str(stored) if stored else ""
+    with _known_lock:
+        if _known.get(key) != value:
+            # Nur verwerfen, nie füllen: ein parallel laufendes put könnte
+            # zwischen Lesen und diesem Block einen neueren Wert geschrieben
+            # haben. Ein zu leerer Cache kostet einen Schreibzugriff, ein
+            # falsch voller verschluckte einen.
+            _known.pop(key, None)
+    return value
+
+
+def remove(key: str) -> None:
+    """Räumt `key` ab. Ein fehlender Eintrag ist kein Fehler."""
+    with _write_lock:
+        with _known_lock:
+            _known.pop(key, None)
+
+        def work() -> None:
+            import keyring  # pyright: ignore[reportMissingImports]
+
+            keyring.delete_password(service_for(key), key)
+
+        try:
+            ok, _ = _call_guarded(work)
+        except Exception:
+            # Bewusst alles: kein Backend oder kein Eintrag (PasswordDeleteError)
+            # — beides heißt „nichts zu tun". Ohne Schlüssel im Log, s. put.
+            log.debug("Ein Eintrag ließ sich nicht entfernen (kein Schlüsselbund "
+                      "oder kein Eintrag)", exc_info=True)
+            return
+        if not ok:
+            log.warning("Schlüsselbund antwortet nicht — ein Eintrag blieb stehen")
+
+
 def persist_password(candidate: dict[str, Any], typed: str,
                      stored: dict[str, Any] | None = None) -> dict[str, Any]:
     """Entscheidet, wo das Passwort landet, und legt es ab.

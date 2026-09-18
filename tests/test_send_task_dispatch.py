@@ -339,3 +339,36 @@ def test_kind_texts_cover_the_new_smtp_kinds():
     assert "recipient" in _KIND_TEXTS
     assert "tls" in _KIND_TEXTS
     assert "keyring" in _KIND_TEXTS
+
+
+def _keyring_hook(name="Tresor"):
+    entry = _hook(name)
+    entry["record"]["auth"] = {"mode": "header", "header": "Authorization",
+                               "secret_location": "keyring"}
+    return entry
+
+
+def test_webhook_with_unreachable_keyring_is_not_sent_without_auth(monkeypatch):
+    _patch_mail_ok(monkeypatch)
+    monkeypatch.setattr(st.webhook, "deliver", lambda *a, **k: (_ for _ in ()).throw(
+        AssertionError("ohne Secret darf nicht gesendet werden")))
+    res = perform_send(**_kwargs(webhooks=[_keyring_hook()]))
+    hook = next(r for r in res["results"] if r["name"] == "Tresor")
+    assert hook["ok"] is False and hook["kind"] == "keyring"
+
+
+def test_webhook_secret_is_resolved_before_delivery(monkeypatch, fake_keyring):
+    from src import keyring_store
+    _patch_mail_ok(monkeypatch)
+    fake_keyring()
+    keyring_store.put("webhook:Tresor", "Bearer aus-dem-schluesselbund")
+    seen = []
+    monkeypatch.setattr(st.webhook, "deliver",
+                        lambda record, **k: seen.append(record) or {"ok": True, "status": 200})
+    perform_send(**_kwargs(webhooks=[_keyring_hook()]))
+    assert seen[0]["auth"]["value"] == "Bearer aus-dem-schluesselbund"
+    assert "secret_location" not in seen[0]["auth"]
+
+
+def test_missing_keyring_entry_has_its_own_text():
+    assert "fehlen" in st._KIND_TEXTS["keyring_missing"]

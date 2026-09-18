@@ -283,3 +283,137 @@ def test_read_granted_scopes_returns_none_for_non_dict_root(tmp_path):
         json.dump([], f)
 
     assert read_granted_scopes(path) is None
+
+
+# --- Schlüsselbund-Anbindung (#101) ----------------------------------------
+
+import json as _json
+
+from src import keyring_store as _ks
+from src import oauth_utils as _ou
+
+
+def test_new_token_keyring_keys_are_unique():
+    a, b = _ou.new_token_keyring_key(), _ou.new_token_keyring_key()
+    assert a.startswith("google-oauth:") and a != b
+
+
+def test_read_token_meta_and_location(tmp_path):
+    path = tmp_path / "token.json"
+    assert _ou.read_token_meta(str(path)) is None                # fehlt
+    path.write_text("kein json", encoding="utf-8")
+    assert _ou.read_token_meta(str(path)) is None                # kaputt
+    path.write_text('{"token": "t"}', encoding="utf-8")
+    meta = _ou.read_token_meta(str(path))
+    assert meta == {"token": "t"} and not _ou.token_in_keyring(meta)   # Alt-Format
+    path.write_text('{"refresh_token_location": "keyring"}', encoding="utf-8")
+    assert _ou.token_in_keyring(_ou.read_token_meta(str(path)))
+
+
+def test_write_token_json_writes_exactly_the_text(tmp_path):
+    path = tmp_path / "token.json"
+    _ou.write_token_json('{"a": 1}', str(path))
+    assert path.read_text(encoding="utf-8") == '{"a": 1}'
+
+
+def test_forget_token_removes_file_and_keyring_entry(tmp_path, fake_keyring):
+    fake = fake_keyring()
+    path = tmp_path / "token.json"
+    path.write_text(_json.dumps({"refresh_token_location": "keyring",
+                                 "refresh_token_key": "google-oauth:k1"}),
+                    encoding="utf-8")
+    _ks.put("google-oauth:k1", "1//refresh")
+
+    _ou.forget_token(str(path))
+
+    assert not path.exists()
+    assert (_ks.service_for("google-oauth:k1"), "google-oauth:k1") not in fake.store
+
+
+def test_forget_token_removes_the_entry_of_a_file_token_with_key(tmp_path, fake_keyring):
+    """Datei-Modus MIT Schlüssel (nach einem Datei-Fallback): der Eintrag
+    darunter ist noch da und gehört dieser App — er geht mit."""
+    fake = fake_keyring()
+    path = tmp_path / "token.json"
+    path.write_text('{"refresh_token": "1//x", "refresh_token_key": "google-oauth:k1"}',
+                    encoding="utf-8")
+    fake.store[(_ks.service_for("google-oauth:k1"), "google-oauth:k1")] = "1//alt"
+
+    _ou.forget_token(str(path))
+
+    assert not path.exists()
+    assert fake.store == {}
+
+
+def test_forget_token_leaves_the_keyring_alone_for_a_file_token_without_key(
+        tmp_path, fake_keyring, monkeypatch):
+    """Alt-Format ohne Schlüssel: nichts, was die App im Schlüsselbund
+    abgelegt haben könnte — er wird gar nicht erst gefragt."""
+    fake = fake_keyring()
+    path = tmp_path / "token.json"
+    path.write_text('{"refresh_token": "1//x"}', encoding="utf-8")
+    fake.store[("Zeiterfassung", "s1")] = "fremd"
+    calls = []
+    monkeypatch.setattr(_ks, "remove", calls.append)
+
+    _ou.forget_token(str(path))
+
+    assert not path.exists()
+    assert calls == []
+    assert fake.store == {("Zeiterfassung", "s1"): "fremd"}
+
+
+def test_forget_token_runs_under_the_token_lock(tmp_path, monkeypatch):
+    """Lesen-Löschen an token.json darf sich nicht mit einem Speichern oder
+    dem Umzug verschränken — derselbe Lock wie dort."""
+    from src import token_store
+    from tests.conftest import other_thread_can_acquire
+    assert token_store.TOKEN_LOCK is _ou.TOKEN_LOCK
+    path = tmp_path / "token.json"
+    path.write_text('{"refresh_token": "1//x"}', encoding="utf-8")
+    held = []
+    real_remove = _ou.os.remove
+
+    def remove(p):
+        held.append(not other_thread_can_acquire(_ou.TOKEN_LOCK))
+        real_remove(p)
+
+    monkeypatch.setattr(_ou.os, "remove", remove)
+    _ou.forget_token(str(path))
+
+    assert held == [True]
+
+
+def test_forget_token_is_quiet_without_a_file(tmp_path):
+    _ou.forget_token(str(tmp_path / "token.json"))
+
+
+def test_forget_token_removes_the_keyring_entry_even_if_the_file_is_locked(
+        tmp_path, fake_keyring, monkeypatch):
+    """Gesperrte token.json (Virenscanner, offenes Handle): der Eintrag geht
+    trotzdem — die Datei zeigt dann auf einen fehlenden Eintrag, was die App
+    als „neu anmelden" liest. Sonst bliebe er für immer verwaist."""
+    fake = fake_keyring()
+    path = tmp_path / "token.json"
+    path.write_text(_json.dumps({"refresh_token_location": "keyring",
+                                 "refresh_token_key": "google-oauth:k1"}),
+                    encoding="utf-8")
+    _ks.put("google-oauth:k1", "1//refresh")
+
+    def locked(p):
+        raise PermissionError("gesperrt")
+
+    monkeypatch.setattr(_ou.os, "remove", locked)
+    with pytest.raises(PermissionError):
+        _ou.forget_token(str(path))
+
+    assert (_ks.service_for("google-oauth:k1"), "google-oauth:k1") not in fake.store
+
+
+def test_is_keyring_unavailable_recognises_exception_and_text():
+    """Der Kompaktierungs-Pfad reicht nur str(e) weiter — beides zählt."""
+    error = _ou.TokenKeyringUnavailable()
+    assert _ou.is_keyring_unavailable(error)
+    assert _ou.is_keyring_unavailable(f"{type(error).__name__}: {error}")
+    assert not _ou.is_keyring_unavailable(RuntimeError("kaputt"))
+    assert not _ou.is_keyring_unavailable(None)

@@ -235,7 +235,7 @@ def test_smtp_remove_keeps_the_secret_when_the_record_stays(monkeypatch, error):
                        f"Das SMTP-Konto konnte nicht entfernt werden:\n\n{error}")]
 
 
-def test_webhook_remove_never_touches_the_keyring(monkeypatch):
+def test_webhook_remove_never_touches_the_smtp_keyring(monkeypatch):
     _answer(monkeypatch, WebhooksTab, yes=True)
     secrets = []
     monkeypatch.setattr(keyring_store, "delete_secret", secrets.append)
@@ -246,6 +246,32 @@ def test_webhook_remove_never_touches_the_keyring(monkeypatch):
 
     tab._store.delete.assert_called_once_with("w0")
     assert secrets == []
+
+
+def test_webhook_remove_forgets_its_keyring_entry_after_the_record(monkeypatch):
+    _answer(monkeypatch, WebhooksTab, yes=True)
+    order = []
+    monkeypatch.setattr(keyring_store, "remove", lambda key: order.append(("remove", key)))
+    tab = _tab(WebhooksTab, _HOOKS)
+    tab._store.delete.side_effect = lambda rid: order.append(("delete", rid))
+    _select(tab, 0)
+
+    tab._remove()
+
+    assert order == [("delete", "w0"), ("remove", "webhook:w0")]
+
+
+def test_webhook_remove_keeps_the_keyring_entry_when_the_write_fails(monkeypatch):
+    _answer(monkeypatch, WebhooksTab, yes=True)
+    removed = []
+    monkeypatch.setattr(keyring_store, "remove", removed.append)
+    tab = _tab(WebhooksTab, _HOOKS)
+    tab._store.delete.side_effect = OSError("Platte voll")
+    _select(tab, 0)
+
+    tab._remove()
+
+    assert removed == []
 
 
 @pytest.mark.parametrize("error", [WebhookStoreReadOnly("schreibgeschützt"),

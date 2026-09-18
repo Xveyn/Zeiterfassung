@@ -11,8 +11,8 @@ import datetime
 from src.mail import get_scopes
 from src.oauth_utils import (
     REAUTH_REQUIRED_MSG, discard_token_for_scope_upgrade, token_lacks_scopes,
-    write_token,
 )
+from src.token_store import load_credentials, save_credentials
 
 # Marker in extendedProperties.private — über diesen findet der Pull "seine"
 # Events; manuell angelegte Termine bleiben dadurch unangetastet.
@@ -132,7 +132,7 @@ def get_calendar_service(credentials_path="credentials.json",
 
     creds = None
     if os.path.exists(token_path):
-        creds = Credentials.from_authorized_user_file(token_path, scopes)
+        creds = load_credentials(token_path, scopes, Credentials)
         # Scope-Upgrade-Erkennung: hat der Token nicht alle Scopes, braucht es
         # einen frischen Consent. Verworfen wird er nur, wenn der sofort folgt
         # — ohne Flow bliebe gar kein Token, und der Drive-Sync, der mit dem
@@ -150,7 +150,7 @@ def get_calendar_service(credentials_path="credentials.json",
         from google.auth.exceptions import RefreshError
         try:
             creds.refresh(Request())
-            write_token(creds, token_path)
+            save_credentials(creds, token_path)
         except RefreshError:
             creds = None
 
@@ -166,7 +166,7 @@ def get_calendar_service(credentials_path="credentials.json",
             )
         flow = InstalledAppFlow.from_client_secrets_file(credentials_path, scopes)
         creds = flow.run_local_server(port=0)
-        write_token(creds, token_path)
+        save_credentials(creds, token_path)
 
     return build("calendar", "v3", credentials=creds)
 
