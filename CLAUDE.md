@@ -302,13 +302,21 @@ Zeitfenster war die Wurzel einer intermittierenden Fehlerklasse (Bootloader
 lädt `python310.dll` transient nicht → margenheld/Zeiterfassung#118; `holidays`
 fand `de.mo` transient nicht → margenheld/Zeiterfassung#116; der Skalierungs-
 Neustart musste den `_MEIPASS`-Erbgang per `PYINSTALLER_RESET_ENVIRONMENT`
-umgehen, siehe `ui.py`). Onedir legt Exe + `_internal\` einmalig entpackt ab —
+umgehen, siehe `paths.relaunch_env`). Onedir legt Exe + `_internal\` einmalig entpackt ab —
 kein Extraktions-Race pro Start. `installer.iss` shippt entsprechend den ganzen
 `dist\Zeiterfassung\`-Ordner (nicht nur die Exe); die Exe bleibt
 `{app}\Zeiterfassung.exe`, `get_base_path()=dirname(exe)` und alle
 Autostart-/Single-Instance-Pfade bleiben damit unverändert. Linux bleibt
 onefile, weil die AppImage ohnehin selbst mountet (onefile darin wäre
 Doppelpackung) und margenheld/Zeiterfassung#118 Windows-spezifisch ist.
+
+**Wer die AppImage neu startet, startet `$APPIMAGE`, nie `sys.executable`.**
+`sys.executable` zeigt in den temporären Mount `/tmp/.mount_…`, den die
+AppImage-Runtime aushängt, sobald die startende Instanz endet — ein daraus
+gestarteter Prozess verliert seine eigene Programmdatei und stirbt lautlos per
+Signal, ohne Spur im Log. Autostart, Self-Update und Skalierungs-Neustart
+(`paths.relaunch_command`) halten sich daran; der Skalierungs-Neustart tat es
+bis zum Linux-Test von `1.23.1-pre.2` nicht.
 
 ## Cross-Platform Builds
 

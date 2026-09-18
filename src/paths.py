@@ -75,13 +75,42 @@ def get_resource_path() -> str:
 
 
 def relaunch_command(argv: list[str], executable: str,
-                     frozen: bool) -> list[str]:
+                     frozen: bool, appimage: str | None = None) -> list[str]:
     """Baut das Kommando, um die App neu zu starten (nach UI-Skalierungs-
     Änderung). Im Frozen-Build ist `executable` die App-Exe selbst; im
     Repo-Modus wird `python -m src.main` aufgerufen. `--minimized` wird
     entfernt, weil der Nutzer nach einer interaktiven Skalierungsänderung das
-    Fenster sehen will, nicht ein erneut minimiertes."""
+    Fenster sehen will, nicht ein erneut minimiertes.
+
+    `appimage` ist `$APPIMAGE` (Linux). Ist er gesetzt, wird die AppImage-
+    Datei selbst gestartet, nicht `executable`: das zeigt in den temporären
+    Mount (`/tmp/.mount_…`), den die AppImage-Runtime aushängt, sobald die
+    alte Instanz endet — der neue Prozess verlöre seine eigene Programmdatei
+    und stürbe lautlos per Signal, ohne Spur im Log. Derselbe Grund, aus dem
+    Autostart und Self-Update `$APPIMAGE` nehmen."""
     rest = [a for a in argv[1:] if a != "--minimized"]
     if frozen:
-        return [executable] + rest
+        return [appimage or executable] + rest
     return [executable, "-m", "src.main"] + rest
+
+
+def relaunch_env(environ: dict[str, str], frozen: bool) -> dict[str, str]:
+    """Umgebung für den Neustart-Prozess (s. `relaunch_command`).
+
+    `PYINSTALLER_RESET_ENVIRONMENT=1` zwingt einen gespawnten Frozen-Build,
+    sich frisch zu entpacken, statt das `_MEIPASS` der alten Instanz zu
+    erben, das diese beim Beenden löscht (No-op im Repo-Modus und bei
+    onedir). Dazu im Frozen-Build `LD_LIBRARY_PATH` zurück auf den Wert vor
+    PyInstaller: der Bootloader hat ihn auf das `_MEI`-Verzeichnis gebogen,
+    und die AppImage-Runtime, die jetzt als Erstes startet, ist ein fremdes
+    Programm. Ohne Originalwert hat PyInstaller die Variable erst angelegt —
+    dann fällt sie weg. Im Repo-Modus gehört sie dem Nutzer und bleibt."""
+    env = dict(environ)
+    env["PYINSTALLER_RESET_ENVIRONMENT"] = "1"
+    if frozen:
+        original = env.pop("LD_LIBRARY_PATH_ORIG", None)
+        if original is not None:
+            env["LD_LIBRARY_PATH"] = original
+        else:
+            env.pop("LD_LIBRARY_PATH", None)
+    return env
