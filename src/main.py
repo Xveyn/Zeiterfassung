@@ -142,6 +142,37 @@ def _sweep_orphan_tombstones(storage, reservation_store, settings, base) -> int:
     return dropped
 
 
+NO_DISPLAY_MSG = (
+    "Kein Display gefunden — Zeiterfassung braucht eine grafische Sitzung. "
+    "Bitte aus einem Terminal im Desktop starten (per SSH fehlt das Display; "
+    "`ssh -X` zeigt das Fenster, das Tray-Icon aber nicht).")
+
+
+def _create_root(tk_factory=None):
+    """Erzeugt den Tk-Root — oder beendet mit einer verständlichen Meldung.
+
+    Ohne Display (SSH, TTY, Container) scheitert schon dieser Aufruf. Vorher
+    stand im Terminal nur PyInstallers „Failed to execute script 'main'", der
+    Grund landete allein im Log (#145). Ein Hinweisdialog ist hier unmöglich —
+    genau das Display fehlt, das er bräuchte; stderr ist der einzige Kanal.
+    Nur dieser eine Aufruf ist abgesichert: ein TclError später im Lauf ist
+    ein anderer Fehler und läuft weiter in den globalen Excepthook.
+    """
+    factory = tk_factory or tk.Tk   # erst beim Aufruf auflösen (Test-Patches)
+    try:
+        return factory()
+    except tk.TclError as exc:
+        text = str(exc)
+        message = (NO_DISPLAY_MSG if "display" in text.lower()
+                   else f"Tk konnte nicht gestartet werden: {text}")
+        logging.getLogger(__name__).error(message)
+        # --noconsole (Windows): sys.stderr ist None. Der Fall ist dort
+        # praktisch ausgeschlossen, darf aber nicht selbst zum Absturz werden.
+        if sys.stderr is not None:
+            print(message, file=sys.stderr)
+        raise SystemExit(1) from exc
+
+
 def _apply_ui_scaling(root, factor):
     """Legt die per UI-Faktor skalierten App-Fonts an (ersetzt das frühere
     `tk scaling`, das auf macOS/Aqua die Punkt-Fonts nicht skalierte → Slider dort
@@ -307,7 +338,7 @@ def main():
         logging.getLogger(__name__).exception(
             "Tombstone-Sweep fehlgeschlagen (nicht-fatal)")
 
-    root = tk.Tk()
+    root = _create_root()
     _apply_ui_scaling(root, settings.get("ui_scale"))
     apply_widget_defaults(root)
     app = App(root, storage, settings, base_path=base, conflicts_store=conflicts_store,
