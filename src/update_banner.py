@@ -32,17 +32,17 @@ class UpdateBanner:
         # nicht-resizable Fenster den Footer ab, #92). Default no-op hält den
         # Banner unabhängig vom Renderer testbar.
         self._on_resize = on_resize
-        # Oeffnet den Einstellungen-Dialog auf dem Updates-Tab (aus ui.py
-        # injiziert, wie die uebrigen Banner-Callbacks — der Banner
+        # Öffnet den Einstellungen-Dialog auf dem Updates-Tab (aus ui.py
+        # injiziert, wie die übrigen Banner-Callbacks — der Banner
         # importiert src.ui bewusst nicht, s. src/CLAUDE.md). Default
-        # no-op haelt den Banner unabhaengig von App testbar.
+        # no-op hält den Banner unabhängig von App testbar.
         self._open_updates_tab = on_open_updates_tab
         self._banner = None              # Frame oder None (None = nicht sichtbar)
-        # True, waehrend der aktuell sichtbare Banner der "wird beim Beenden
+        # True, während der aktuell sichtbare Banner der "wird beim Beenden
         # installiert"-Zustand ist (statt der normalen "Version X
-        # verfuegbar"-Meldung) — s. show_ready_to_install.
+        # verfügbar"-Meldung) — s. show_ready_to_install.
         self._ready_to_install = False
-        # Einmalig ermittelt wie im Updates-Tab: aendert sich waehrend der
+        # Einmalig ermittelt wie im Updates-Tab: ändert sich während der
         # Laufzeit nicht (Plattform/Frozen-Status stehen beim Start fest).
         self._can_self_update = supports_self_update(
             platform.system(), getattr(sys, "frozen", False))
@@ -110,8 +110,8 @@ class UpdateBanner:
 
         if not ready_to_install:
             # Im Ready-Zustand gibt es nichts mehr zu klicken — das Update
-            # laedt/installiert bereits automatisch, ein zweiter Ablaufpfad
-            # waere hier fehl am Platz (dieselbe Regel wie in
+            # lädt/installiert bereits automatisch, ein zweiter Ablaufpfad
+            # wäre hier fehl am Platz (dieselbe Regel wie in
             # _install_or_download unten).
             label_button(
                 self._banner, _LABEL_INSTALL if self._can_self_update else _LABEL_DOWNLOAD,
@@ -139,12 +139,12 @@ class UpdateBanner:
 
     def _open_download(self, release):
         # Fallback-Weg (macOS, unpassende Architektur, Repo-Modus): die App
-        # oeffnet nur die URL, sie laedt und startet nichts selbst.
+        # öffnet nur die URL, sie lädt und startet nichts selbst.
         #
-        # M9 ist damit eingeloest, aber nur zur Haelfte weg: der In-App-Weg
-        # (self_update.py) prueft JEDE geladene Datei gegen den SHA256SUMS des
-        # Releases und installiert nichts Ungeprueftes. Was das leistet, steht
-        # im Modul-Docstring dort — Schutz gegen kaputte Uebertragung, NICHT
+        # M9 ist damit eingelöst, aber nur zur Hälfte weg: der In-App-Weg
+        # (self_update.py) prüft JEDE geladene Datei gegen den SHA256SUMS des
+        # Releases und installiert nichts Ungeprüftes. Was das leistet, steht
+        # im Modul-Docstring dort — Schutz gegen kaputte Übertragung, NICHT
         # gegen ein kompromittiertes Release; die Summen-Datei ist selbst
         # unsigniert. Vertrauensanker bleibt TLS zu GitHub.
         url = pick_asset_url(

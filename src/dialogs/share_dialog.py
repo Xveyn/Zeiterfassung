@@ -117,12 +117,12 @@ def open_share_dialog(parent, storage, settings, base_path, runner, reservation_
     # --- Zeitraum (Xveyn/Zeiterfassung#48) ---
     # Vorbelegt auf den GESAMTEN Bestand, nicht auf "letzter Monat" wie in
     # send_dialog/export_dialog: der Teilen-Dialog hat bisher immer alles
-    # exportiert. Eine engere Vorbelegung wuerde still aendern, was ein
-    # unveraenderter Klick auf "Senden" verschickt.
+    # exportiert. Eine engere Vorbelegung würde still ändern, was ein
+    # unveränderter Klick auf "Senden" verschickt.
     #
     # Bewusst NICHT der period_picker, obwohl er Von/Bis mitbringt: der zieht
-    # Berichts-Semantik mit (Aufschluesselungs-Checkbox, Stundenvorschau nur
-    # ueber Arbeitszeiten, Kategorienliste durch workweek.filter_for_report).
+    # Berichts-Semantik mit (Aufschlüsselungs-Checkbox, Stundenvorschau nur
+    # über Arbeitszeiten, Kategorienliste durch workweek.filter_for_report).
     # Im Nur-Werktage-Modus fielen dort Wochenend-Kategorien aus der Auswahl,
     # obwohl der Share-Export gar nicht nach Werktagen filtert. Geteilt wird
     # deshalb die Ebene darunter: build_date_row.
@@ -136,18 +136,18 @@ def open_share_dialog(parent, storage, settings, base_path, runner, reservation_
     earliest = min(all_dates) if all_dates else today
     latest = max(all_dates) if all_dates else today
 
-    # Der Standard-Jahresbereich der Datumszeile beginnt 2020 — bei aelterem
-    # Bestand waere die Vorbelegung sonst nicht aus der Liste waehlbar.
+    # Der Standard-Jahresbereich der Datumszeile beginnt 2020 — bei älterem
+    # Bestand wäre die Vorbelegung sonst nicht aus der Liste wählbar.
     year_from = min(2020, earliest.year)
 
     # Aufbau wie der Kategorie-Block darunter: Beschriftung in Spalte 0,
-    # Inhalt als eigener Frame in Spalte 1. So haengen Datumsfelder,
-    # Kategorie-Checkboxen und Empfaenger-Feld an derselben Kante.
+    # Inhalt als eigener Frame in Spalte 1. So hängen Datumsfelder,
+    # Kategorie-Checkboxen und Empfänger-Feld an derselben Kante.
     # label_width=10 ist kein Zufallswert: es ist die Breite von
-    # "Kategorien:"/"Empfaenger:" darunter. Damit stehen die Datumsfelder auf
-    # derselben Kante wie die Kategorie-Checkboxen und das Empfaenger-Feld —
-    # der Dialog behaelt seine zwei Spalten (Beschriftung | Inhalt), statt eine
-    # dritte Ausrichtungslinie einzufuehren.
+    # "Kategorien:"/"Empfänger:" darunter. Damit stehen die Datumsfelder auf
+    # derselben Kante wie die Kategorie-Checkboxen und das Empfänger-Feld —
+    # der Dialog behält seine zwei Spalten (Beschriftung | Inhalt), statt eine
+    # dritte Ausrichtungslinie einzuführen.
     from_row = build_date_row(dialog, "Von:", earliest, on_change=lambda: _refresh(),
                               year_from=year_from, label_width=10)
     to_row = build_date_row(dialog, "Bis:", latest, on_change=lambda: _refresh(),
@@ -158,7 +158,7 @@ def open_share_dialog(parent, storage, settings, base_path, runner, reservation_
     row += 1
 
     def _current_range():
-        """(von, bis) als date-Paar, oder (None, None) bei unvollstaendiger
+        """(von, bis) als date-Paar, oder (None, None) bei unvollständiger
         oder unplausibler Eingabe."""
         try:
             df = datetime.date(int(from_row.year_var.get()),
@@ -210,10 +210,10 @@ def open_share_dialog(parent, storage, settings, base_path, runner, reservation_
         return selected
 
     def _selected_counts():
-        """(Tage Arbeitszeiten, Tage Reservierungen), die tatsaechlich
+        """(Tage Arbeitszeiten, Tage Reservierungen), die tatsächlich
         rausgehen — dieselben beiden Filter wie in `build_share_doc`, damit
         die Zahl neben der Checkbox und der Anhang nicht auseinanderlaufen
-        koennen."""
+        können."""
         df, dt = _current_range()
         if df is None:
             return 0, 0
@@ -339,7 +339,7 @@ def open_share_dialog(parent, storage, settings, base_path, runner, reservation_
         # _current_range liefert entweder zwei Daten oder (None, None); beide
         # zu prüfen kostet nichts und macht den Vertrag am Aufrufer sichtbar.
         if date_from is None or date_to is None:
-            # Ungueltiger Zeitraum → "Senden" ist deaktiviert (s.u.). No-op.
+            # Ungültiger Zeitraum → "Senden" ist deaktiviert (s.u.). No-op.
             return
 
         doc = build_share_doc(
@@ -431,16 +431,16 @@ def open_share_dialog(parent, storage, settings, base_path, runner, reservation_
     secondary_button(btn_frame, "Abbrechen", dialog.destroy).pack(side=tk.LEFT, padx=5)
 
     def _refresh(*_):
-        # Zahlen neben den Checkboxen zeigen die Tage im gewaehlten Zeitraum,
+        # Zahlen neben den Checkboxen zeigen die Tage im gewählten Zeitraum,
         # nicht den Gesamtbestand — sie sollen benennen, was rausgeht.
         n_entries, n_res = _selected_counts()
         cb_entries.config(text=f"Arbeitszeiten ({n_entries} Tage)")
         cb_res.config(text=f"Reservierungen ({n_res} Tage)")
 
         # „Senden" nur klickbar, wenn mind. ein Datentyp UND (falls Kategorien
-        # existieren) mind. eine Kategorie gewaehlt ist — und im Zeitraum
-        # ueberhaupt etwas uebrig bleibt. Ein leeres Share-Doc zu verschicken
-        # hilft dem Empfaenger nicht.
+        # existieren) mind. eine Kategorie gewählt ist — und im Zeitraum
+        # überhaupt etwas übrig bleibt. Ein leeres Share-Doc zu verschicken
+        # hilft dem Empfänger nicht.
         has_datatype = include_entries_var.get() or include_res_var.get()
         has_category = _selected_categories() != set()
         selected_days = ((n_entries if include_entries_var.get() else 0)

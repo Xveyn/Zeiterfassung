@@ -25,7 +25,7 @@ from typing import TYPE_CHECKING, Any, Callable, Collection
 
 from src.time_utils import utc_now_iso
 
-if TYPE_CHECKING:  # nur fuer die Signaturen — kein Import zur Laufzeit
+if TYPE_CHECKING:  # nur für die Signaturen — kein Import zur Laufzeit
     from src.reservations import ReservationStore
     from src.storage import Storage
 
@@ -269,16 +269,16 @@ def _share_reservation_shape(records: dict[str, Any]) -> dict[str, Any]:
 
 def filter_records_by_range(records: dict[str, Any], date_from: datetime.date | None,
                             date_to: datetime.date | None) -> dict[str, Any]:
-    """Behaelt die Tage, deren ISO-Schluessel in [date_from, date_to] liegt.
+    """Behält die Tage, deren ISO-Schlüssel in [date_from, date_to] liegt.
 
-    `None` je Seite = offene Grenze; beide `None` → unveraendert. Beide
-    Grenzen sind inklusiv. Nicht parsebare Schluessel fallen weg — dieselbe
+    `None` je Seite = offene Grenze; beide `None` → unverändert. Beide
+    Grenzen sind inklusiv. Nicht parsebare Schlüssel fallen weg — dieselbe
     defensive Haltung wie in `_diff_records`: ein kaputter Key darf den Export
-    nicht sprengen, gehoert aber auch in keinen datierten Ausschnitt.
+    nicht sprengen, gehört aber auch in keinen datierten Ausschnitt.
 
-    Oeffentlich, weil der Teilen-Dialog dieselbe Auswahl fuer seine
+    Öffentlich, weil der Teilen-Dialog dieselbe Auswahl für seine
     Live-Anzeige braucht ("Arbeitszeiten (N Tage)") — die angezeigte Zahl und
-    der tatsaechliche Export sollen aus derselben Funktion kommen.
+    der tatsächliche Export sollen aus derselben Funktion kommen.
     """
     if date_from is None and date_to is None:
         return records
@@ -316,7 +316,7 @@ def build_share_doc(storage: Storage, sender_email: str, *,
     }
 
     def _select(records: dict[str, Any]) -> dict[str, Any]:
-        # Datum zuerst: billiger Schluessel-Vergleich vor dem Slot-Filter.
+        # Datum zuerst: billiger Schlüssel-Vergleich vor dem Slot-Filter.
         return filter_records_by_category(
             filter_records_by_range(dict(records), date_from, date_to), categories)
 

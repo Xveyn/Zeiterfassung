@@ -1,7 +1,7 @@
 # src/theme/chrome.py
 """Fenster-Chrome: dunkle Titelleiste, Min/Max-Buttons, App-Icon, Dialog-Bau.
 
-Der Win32-lastige Teil des Themes (DWM-Attribute ueber ctypes). Auf macOS
+Der Win32-lastige Teil des Themes (DWM-Attribute über ctypes). Auf macOS
 und Linux sind die Aufrufe No-ops. `create_dialog` ist der Einstieg für
 jeden neuen Dialog — nicht handgebaute Toplevel-Boilerplate.
 
@@ -142,11 +142,11 @@ def _apply_dark_titlebar_now(window):
         u32.SetWindowPos(hwnd, 0, 0, 0, 0, 0,
             SWP_NOSIZE | SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED)
     except Exception:
-        # Best-Effort: schlaegt die Win32-Chrome fehl, sieht das Fenster nur
+        # Best-Effort: schlägt die Win32-Chrome fehl, sieht das Fenster nur
         # nativ aus statt themed — kein Grund, den Dialog scheitern zu lassen.
-        # Aber geloggt, nicht verschluckt: der Aufrufer prueft oben bereits
+        # Aber geloggt, nicht verschluckt: der Aufrufer prüft oben bereits
         # `platform.system() != "Windows"`, ein Fehler HIER ist also ein
-        # echter Windows-Fehler und keine Plattform-Unvertraeglichkeit.
+        # echter Windows-Fehler und keine Plattform-Unverträglichkeit.
         log.debug("Dunkle Titelleiste konnte nicht gesetzt werden", exc_info=True)
 
 
@@ -226,11 +226,11 @@ def _disable_min_max_now(window):
         u32.SetWindowPos(hwnd, 0, 0, 0, 0, 0,
             SWP_NOSIZE | SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED)
     except Exception:
-        # Best-Effort: schlaegt die Win32-Chrome fehl, sieht das Fenster nur
+        # Best-Effort: schlägt die Win32-Chrome fehl, sieht das Fenster nur
         # nativ aus statt themed — kein Grund, den Dialog scheitern zu lassen.
-        # Aber geloggt, nicht verschluckt: der Aufrufer prueft oben bereits
+        # Aber geloggt, nicht verschluckt: der Aufrufer prüft oben bereits
         # `platform.system() != "Windows"`, ein Fehler HIER ist also ein
-        # echter Windows-Fehler und keine Plattform-Unvertraeglichkeit.
+        # echter Windows-Fehler und keine Plattform-Unverträglichkeit.
         log.debug("Min-/Max-Buttons konnten nicht deaktiviert werden", exc_info=True)
 
 

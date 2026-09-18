@@ -239,8 +239,9 @@ Zeitraum und welche Kategorien der Bericht gefiltert ist.
 ## Daten- & Persistenz-Schicht
 
 - `json_store.py` — **die gemeinsame Mechanik, und der einzige Ort für zwei Regeln** (R2):
-  `atomic_write_json(path, obj)` (Temp → `flush`+`fsync` → `os.replace`, Temp-Cleanup und
-  `OSError` weiterreichen, wenn das Rename scheitert = **N1**) und
+  `atomic_write_json(path, obj)` (eigene Temp-Datei je Aufruf über `mkstemp` → `flush`+`fsync`
+  → `os.replace` → unter POSIX `fsync` aufs Verzeichnis; bei **jedem** Fehler, auch schon im
+  `json.dump`, Temp-Datei weg und Fehler weiterreichen = **N1**) und
   `load_json_or_quarantine(path)` → Objekt oder `None`, wobei eine unparsebare Datei nach
   `<name>.corrupt-<stamp>` verschoben und geloggt wird (**N4**). Genutzt von `storage`,
   `reservations`, `conflicts_store` (beide Helfer) und `settings` (nur der Schreib-Helfer).

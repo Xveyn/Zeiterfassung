@@ -170,7 +170,7 @@ def _response_detail(exc: BaseException) -> str:
     recipients = getattr(exc, "recipients", None)
     if isinstance(recipients, dict) and recipients:
         # SMTPRecipientsRefused hat KEIN smtp_code/smtp_error, sondern dieses
-        # Dict. `str(exc)` waere sonst woertlich "{'a@b': (550, b'...')}".
+        # Dict. `str(exc)` wäre sonst wörtlich "{'a@b': (550, b'...')}".
         parts = []
         for address, response in recipients.items():
             try:

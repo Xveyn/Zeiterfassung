@@ -1,9 +1,9 @@
 # src/tray/model.py
-"""Backend-agnostisches Menue-Modell des Trays.
+"""Backend-agnostisches Menü-Modell des Trays.
 
 Die testbare Naht zwischen Fassade und Backends: pure Datenstruktur, keine
 Plattform-API. Eigenes Modul (R7, #51), damit die Backends nicht aus ihrem
-eigenen Paket-`__init__` zurueckimportieren muessen — hier zeigt alles nach
+eigenen Paket-`__init__` zurückimportieren müssen — hier zeigt alles nach
 unten.
 """
 

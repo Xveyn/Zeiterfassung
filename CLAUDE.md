@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 # Zeiterfassung – Projekthinweise
 
-Kleines Desktop-Tool zur Zeiterfassung (Tkinter + Python) für Windows, macOS und Linux, das PDF-Berichte erzeugt und per Gmail verschickt.
+Desktop-Tool zur Zeiterfassung (Tkinter + Python) für Windows, macOS und Linux — schlank im Kern (Zeiten erfassen, PDF-Bericht), alles Weitere optional: Versand per Gmail, SMTP oder Webhook, Drive-Sync zwischen Geräten, Google Kalender, Selbst-Update.
 
 ## Entwicklung
 

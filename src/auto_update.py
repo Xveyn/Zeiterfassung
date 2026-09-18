@@ -122,7 +122,7 @@ class AutoUpdater:
             getattr(sys, "frozen", False),
             os.environ.get("APPIMAGE", ""), sys.executable)
         if isinstance(plan, UpdateBlocked):
-            log.info("Automatisches Update nicht moeglich: %s", plan.reason)
+            log.info("Automatisches Update nicht möglich: %s", plan.reason)
             return "blocked"
 
         # Pro Lauf ein eigener Zielname (s. `self_update.download_dest`).

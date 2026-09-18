@@ -1,11 +1,11 @@
 # src/theme/messagebox.py
 """Themed Drop-ins für die `tkinter.messagebox`-Familie.
 
-ACHTUNG, bewusste Zweiteilung (Audit N14): diese Dialoge sind fuer
+ACHTUNG, bewusste Zweiteilung (Audit N14): diese Dialoge sind für
 BEKANNTE, erwartete Fehler. Unerwartete Fehler (die generischen
 `except`-Zweige mit Traceback) nutzen weiterhin das ROHE
 `tkinter.messagebox.showerror` — ein themed Dialog baut selbst Tk-Widgets
-auf und könnte im bereits gestoerten Zustand genau die Meldung
+auf und könnte im bereits gestörten Zustand genau die Meldung
 verschlucken, die er zeigen soll.
 """
 

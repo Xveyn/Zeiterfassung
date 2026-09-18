@@ -428,8 +428,8 @@ def _open_edit_dialog(parent, vacation_store, settings, period_id, on_saved,
     existing = vacation_store.get(period_id) if period_id else None
     title = "Urlaub bearbeiten" if existing else "Urlaub eintragen"
     dialog = create_dialog(parent, title)
-    # Registriert die ttk-Styles des Dark-Themes — Dark.TCombobox fuer die
-    # Von/Bis-Zeilen UND Vertical.TScrollbar fuer die Tagesliste unten.
+    # Registriert die ttk-Styles des Dark-Themes — Dark.TCombobox für die
+    # Von/Bis-Zeilen UND Vertical.TScrollbar für die Tagesliste unten.
     apply_combobox_style(dialog)
     state = settings.get("state") or ""
 
@@ -512,7 +512,7 @@ def _open_edit_dialog(parent, vacation_store, settings, period_id, on_saved,
     # ttk.Scrollbar, NICHT tk.Scrollbar: die Legacy-Scrollbar kennt keine
     # ttk-Styles und bleibt im hellen Systemlook stehen, mitten im dunklen
     # Dialog. Vertical.TScrollbar ist in theme/widgets.py bereits dunkel
-    # konfiguriert (dort fuer das Combobox-Popdown).
+    # konfiguriert (dort für das Combobox-Popdown).
     day_bar = ttk.Scrollbar(day_scroll, orient="vertical",
                             command=day_canvas.yview,
                             style="Vertical.TScrollbar")

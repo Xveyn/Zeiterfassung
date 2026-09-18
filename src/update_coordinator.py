@@ -114,10 +114,10 @@ class UpdateCoordinator:
             self._settings.set("update_toast_shown_version", release.release_id)
         elif action == "banner":
             self._banner.show_if_newer(release)
-        # Derselbe Check, der den Nutzer ueber Toast/Banner informiert, loest
-        # bei aktivem Automatik-Schalter zusaetzlich den stillen Hintergrund-
+        # Derselbe Check, der den Nutzer über Toast/Banner informiert, löst
+        # bei aktivem Automatik-Schalter zusätzlich den stillen Hintergrund-
         # Download aus — kein eigener Timer (Design-Regel 1: "vorhandener
-        # Update-Check"). Laeuft unabhaengig von der toast/banner-Routing-
+        # Update-Check"). Läuft unabhängig von der toast/banner-Routing-
         # Entscheidung oben, deshalb hier und nicht in einem der beiden Zweige.
         # Die Policy selbst liegt in `auto_update.AutoUpdater` (R9).
         self.auto_updater.maybe_start(release)
@@ -169,7 +169,7 @@ class UpdateCoordinator:
 
         Ein vorbereitetes Update erst hier anwenden — die App macht ohnehin
         zu, der Nutzer verliert keinen angefangenen Eintrag, und der
-        Neustart nach dem Update entfaellt. Der Gurt gegen doch noch
+        Neustart nach dem Update entfällt. Der Gurt gegen doch noch
         entkommende Exceptions sitzt beim Aufrufer (`App._quit_with_sync_push`,
         direkt vor `root.destroy()`).
         """
@@ -180,18 +180,18 @@ class UpdateCoordinator:
     def _apply_pending_update(self, path: str) -> None:
         """Ein vorbereitetes Update beim Beenden anwenden (best-effort).
 
-        Erneut geprueft wird hier bewusst: zwischen Download und Beenden
-        koennen Stunden liegen, und Aufraeum-Tools leeren %TEMP%. Fehlt die
-        Datei oder stimmt ihr Hash nicht mehr, faellt der Vorgang still aus —
-        der naechste Update-Check beginnt von vorn. Ein Fehlschlag hier darf
-        das Beenden NIE aufhalten (der Aufrufer sichert das zusaetzlich ab).
+        Erneut geprüft wird hier bewusst: zwischen Download und Beenden
+        können Stunden liegen, und Aufräum-Tools leeren %TEMP%. Fehlt die
+        Datei oder stimmt ihr Hash nicht mehr, fällt der Vorgang still aus —
+        der nächste Update-Check beginnt von vorn. Ein Fehlschlag hier darf
+        das Beenden NIE aufhalten (der Aufrufer sichert das zusätzlich ab).
 
-        Gemeldet wird hier NICHTS: die App macht gerade zu, ein Dialog haette
-        kein Gegenueber mehr. Jeder Fehlerpfad geht ins Log — und raeumt
+        Gemeldet wird hier NICHTS: die App macht gerade zu, ein Dialog hätte
+        kein Gegenüber mehr. Jeder Fehlerpfad geht ins Log — und räumt
         seine Datei weg. Seit `download_dest` jedem Download-Lauf einen
-        eigenen Namen gibt, ueberschreibt sie kein spaeterer Lauf mehr; wer
-        sie hier liegen laesst, laesst dauerhaft ~65 MB liegen
-        (`sweep_appimage_backup` raeumt nur `.old`).
+        eigenen Namen gibt, überschreibt sie kein späterer Lauf mehr; wer
+        sie hier liegen lässt, lässt dauerhaft ~65 MB liegen
+        (`sweep_appimage_backup` räumt nur `.old`).
         """
         expected = self._settings.get("pending_update_sha256")
         self._settings.set_many({"pending_update_path": "",
@@ -205,8 +205,8 @@ class UpdateCoordinator:
 
         if platform.system() == "Windows":
             # restart=False: wer beendet, will beendet haben — der Helfer
-            # installiert, startet die App aber NICHT wieder (Gegenstueck:
-            # der Sofort-Weg im Updates-Tab). Linux verhaelt sich unten
+            # installiert, startet die App aber NICHT wieder (Gegenstück:
+            # der Sofort-Weg im Updates-Tab). Linux verhält sich unten
             # schon so: `apply_linux` ersetzt nur, ohne `os.execv`.
             if not apply_windows(sys.executable, path, os.getpid(), False):
                 # apply_windows hat den Grund bereits geloggt; die Datei

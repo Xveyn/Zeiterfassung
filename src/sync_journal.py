@@ -1,7 +1,7 @@
 """Crash-Recovery für `sync.apply_merged_doc` (Audit M6).
 
 `apply_merged_doc` schreibt das Merge-Ergebnis in mehrere separate Stores
-nacheinander (storage, settings-synced, conflicts, Geraete-Registry,
+nacheinander (storage, settings-synced, conflicts, Geräte-Registry,
 gc_watermark). Jeder einzelne
 Write ist atomar (`.tmp` + `os.replace`), die **Sequenz** ist es nicht: stürzt der
 Prozess zwischen zwei Writes ab (Stromausfall, Kill), bleiben die Stores
@@ -34,7 +34,7 @@ import tempfile
 
 from src import sync
 
-if TYPE_CHECKING:  # nur fuer die Signaturen
+if TYPE_CHECKING:  # nur für die Signaturen
     from src.conflicts_store import ConflictsStore
     from src.settings import Settings
     from src.storage import Storage

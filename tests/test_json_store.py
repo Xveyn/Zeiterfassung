@@ -43,7 +43,54 @@ def test_fsync_happens_before_replace(tmp_path, monkeypatch):
 
     atomic_write_json(str(tmp_path / "t.json"), {"a": 1})
 
-    assert calls == ["fsync", "replace"]
+    # Unter POSIX folgt nach dem Rename noch der fsync des Verzeichnisses —
+    # entscheidend ist, dass die Datei VOR dem Rename gesynct ist.
+    assert calls[:2] == ["fsync", "replace"]
+
+
+def test_failed_dump_leaves_target_and_no_temp_file(tmp_path):
+    """Scheitert schon das Serialisieren, bleibt die alte Datei unangetastet
+    und keine halbe Temp-Datei liegen."""
+    path = tmp_path / "t.json"
+    atomic_write_json(str(path), {"stand": "alt"})
+    original = path.read_bytes()
+
+    with pytest.raises(TypeError):
+        atomic_write_json(str(path), {"nicht": object()})
+
+    assert path.read_bytes() == original
+    assert [p.name for p in tmp_path.iterdir()] == ["t.json"]
+
+
+def test_temp_name_is_unique_per_write(tmp_path):
+    """Kein fester `<ziel>.tmp`: liegt dort etwas (Leiche eines alten Laufs,
+    paralleler Schreiber), darf das den Save nicht verhindern."""
+    path = tmp_path / "t.json"
+    (tmp_path / "t.json.tmp").mkdir()
+
+    atomic_write_json(str(path), {"a": 1})
+
+    assert json.loads(path.read_text(encoding="utf-8")) == {"a": 1}
+
+
+@pytest.mark.skipif(os.name == "nt", reason="Verzeichnis-fsync nur unter POSIX")
+def test_directory_is_synced_after_replace_on_posix(tmp_path, monkeypatch):
+    """Erst der fsync des Verzeichnisses macht das Rename selbst durabel."""
+    import stat
+    calls = []
+    real_fsync, real_replace = os.fsync, os.replace
+
+    def fsync(fd):
+        calls.append("fsync-dir" if stat.S_ISDIR(os.fstat(fd).st_mode) else "fsync")
+        return real_fsync(fd)
+
+    monkeypatch.setattr(os, "fsync", fsync)
+    monkeypatch.setattr(
+        os, "replace", lambda a, b: (calls.append("replace"), real_replace(a, b))[0])
+
+    atomic_write_json(str(tmp_path / "t.json"), {"a": 1})
+
+    assert calls == ["fsync", "replace", "fsync-dir"]
 
 
 def test_replace_error_removes_tmp_and_reraises(tmp_path):

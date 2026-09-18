@@ -35,7 +35,10 @@ import datetime
 import json
 import logging
 import os
+import tempfile
 from typing import Any
+
+log = logging.getLogger(__name__)
 
 
 def atomic_write_json(path: str, obj: Any) -> None:
@@ -50,20 +53,54 @@ def atomic_write_json(path: str, obj: Any) -> None:
     menschenlesbar (die Dateien liegen im Datenverzeichnis des Nutzers und
     werden im Support-Fall gelesen). Wer eine kompakte Variante braucht,
     ergänzt sie mit dem ersten echten Aufrufer.
+
+    Die Temp-Datei hat einen eigenen Namen je Aufruf (`mkstemp`), kein festes
+    `<ziel>.tmp`: eine liegengebliebene Leiche oder ein paralleler Schreiber
+    kann den Save so nicht blockieren. Unter POSIX legt `mkstemp` sie mit
+    0600 an, die Zieldatei erbt das — für Nutzerdaten gewollt.
     """
-    tmp = path + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(obj, f, indent=2, ensure_ascii=False)
-        # N1: fsync vor os.replace — sonst kann das Rename durabel sein, die
-        # Datenblöcke aber noch im OS-Cache (Stromausfall → leere/halbe Datei).
-        f.flush()
-        os.fsync(f.fileno())
+    directory = os.path.dirname(os.path.abspath(path))
+    fd, tmp = tempfile.mkstemp(
+        dir=directory, prefix=os.path.basename(path) + ".", suffix=".tmp")
     try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(obj, f, indent=2, ensure_ascii=False)
+            # N1: fsync vor os.replace — sonst kann das Rename durabel sein, die
+            # Datenblöcke aber noch im OS-Cache (Stromausfall → leere/halbe Datei).
+            f.flush()
+            os.fsync(f.fileno())
         os.replace(tmp, path)
-    except OSError:
-        if os.path.exists(tmp):
+    except BaseException:
+        # Aufräumen und weiterwerfen — auch wenn schon json.dump scheitert
+        # (nicht serialisierbarer Wert) oder der Nutzer abbricht. Die
+        # Zieldatei ist in jedem dieser Fälle unangetastet.
+        try:
             os.remove(tmp)
+        except OSError:
+            log.debug("Temp-Datei ließ sich nicht entfernen", exc_info=True)
         raise
+    _fsync_directory(directory)
+
+
+def _fsync_directory(directory: str) -> None:
+    """Macht unter POSIX das Rename selbst durabel: erst ein fsync auf das
+    Verzeichnis schreibt den neuen Verzeichniseintrag weg. Windows kennt
+    kein fsync auf Verzeichnis-Handles (NTFS journalisiert das Rename).
+    Best-Effort — manche Dateisysteme lehnen das ab; der Save ist dann so
+    durabel wie zuvor, gescheitert ist er nicht."""
+    if os.name == "nt":
+        return
+    try:
+        dir_fd = os.open(directory, os.O_RDONLY)
+    except OSError:
+        log.debug("Verzeichnis für fsync nicht zu öffnen", exc_info=True)
+        return
+    try:
+        os.fsync(dir_fd)
+    except OSError:
+        log.debug("fsync auf das Verzeichnis abgelehnt", exc_info=True)
+    finally:
+        os.close(dir_fd)
 
 
 def quarantine_corrupt(path: str) -> str:
