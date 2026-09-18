@@ -1,7 +1,12 @@
 """Tk-freie Planungslogik des Urlaubs-Dialogs (M16: Verhalten gehört in pure
 Funktionen, nicht ins Widget)."""
 
-from src.dialogs.vacation_dialog import _format_day_list, plan_vacation_save
+import pytest
+
+from src.dialogs.vacation_dialog import (
+    _format_day_list, blocking_days, parse_hours, plan_vacation_save,
+    prune_overrides,
+)
 
 
 def test_plan_rejects_empty_name():
@@ -161,3 +166,72 @@ def test_plan_rejects_a_non_numeric_value():
                                 "per_day", None, {}, "")
     assert result["error"] == "Bitte eine Zahl in das Stundenfeld eingeben."
     assert result["days"] == {}
+
+
+# --- R13: was bisher nur in den Closures von _open_edit_dialog stand -------
+
+
+@pytest.mark.parametrize("text, expected", [
+    ("8", 8.0),
+    ("7,5", 7.5),
+    ("7.5", 7.5),
+    ("", 0.0),          # leeres Feld zählt als 0, nicht als Fehler
+    ("abc", None),      # keine Zahl -> None, kein Sentinel wie -1
+    ("-2", -2.0),       # das Vorzeichen bewertet plan_vacation_save
+])
+def test_parse_hours(text, expected):
+    assert parse_hours(text) == expected
+
+
+def test_prune_overrides_drops_days_outside_a_valid_plan():
+    overrides = {"2026-08-03": 240, "2026-08-12": 120}
+    plan = {"error": None, "days": {"2026-08-03": 480, "2026-08-04": 480}}
+
+    assert prune_overrides(overrides, plan) == {"2026-08-03": 240}
+
+
+def test_prune_overrides_keeps_everything_while_the_plan_is_invalid():
+    """Wer „48" ins Stundenfeld tippt und danach das Datum korrigiert, darf
+    seine von Hand gesetzten Tage nicht verlieren: ein Fehler-Plan hat leere
+    `days`, gemessen daran läge jede Überschreibung „außerhalb"."""
+    overrides = {"2026-08-03": 240, "2026-08-12": 120}
+    plan = {"error": "Mehr als 24 Stunden pro Tag gibt es nicht.", "days": {}}
+
+    assert prune_overrides(overrides, plan) == overrides
+
+
+def test_prune_overrides_returns_a_new_dict():
+    overrides = {"2026-08-12": 120}
+
+    prune_overrides(overrides, {"error": None, "days": {}})
+
+    assert overrides == {"2026-08-12": 120}
+
+
+_DAYS = {"2026-10-05": 480, "2026-10-06": 480, "2026-10-10": 0}
+_WITH_SLOT = {"slots": [{"start": "09:00", "end": "10:00"}]}
+
+
+def test_blocking_days_counts_work_time_with_slots():
+    entries = {"2026-10-05": _WITH_SLOT, "2026-10-06": {"slots": []}}
+
+    assert blocking_days(_DAYS, entries, None, calendar_active=False) == ["2026-10-05"]
+
+
+def test_blocking_days_ignores_zero_minute_days():
+    """Ein Samstag mitten im Urlaub trägt 0 Minuten — wer dort arbeitet,
+    blockiert den Urlaub nicht."""
+    entries = {"2026-10-10": _WITH_SLOT}
+
+    assert blocking_days(_DAYS, entries, None, calendar_active=False) == []
+
+
+@pytest.mark.parametrize("calendar_active, expected", [
+    (False, []),                # unsichtbare Reservierung: keine Sackgasse
+    (True, ["2026-10-06"]),
+])
+def test_blocking_days_counts_reservations_only_with_active_calendar(
+        calendar_active, expected):
+    reservations = {"2026-10-06": _WITH_SLOT}
+
+    assert blocking_days(_DAYS, None, reservations, calendar_active) == expected
