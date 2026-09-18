@@ -282,7 +282,7 @@ class UpdatesTab:
         Geladen und geprueft wird dort — auch wenn der Start-Check der App
         schon laedt: dann haengt sich der Tab nur an dessen Fortschritt und
         Ausgang, statt selbst ein zweites Mal zu laden. Angewendet wird erst
-        beim naechsten Beenden (`ui.App._apply_pending_update`)."""
+        beim naechsten Beenden (`UpdateCoordinator._apply_pending_update`)."""
         outcome = self._auto_updater.maybe_start(
             release, on_progress=self._report_status,
             on_finished=self._on_auto_update_finished)
@@ -417,7 +417,7 @@ class UpdatesTab:
         """Anwenden und die App beenden bzw. neu starten.
 
         Erneut geprueft wird hier bewusst, UNMITTELBAR bevor installiert
-        wird — dieselbe Pruefung wie in `ui.App._apply_pending_update`, aus
+        wird — dieselbe Pruefung wie in `UpdateCoordinator._apply_pending_update`, aus
         demselben Grund: unter Windows startet `apply_windows` den Helfer nur
         ab und beendet diesen Prozess sofort danach, installiert wird also
         asynchron, NACHDEM die App schon weg ist. Was zwischen Download-Ende
@@ -441,7 +441,7 @@ class UpdatesTab:
 
         # Ein vom Automatik-Lauf vorbereitetes Update wird HIER sofort
         # angewendet (Sofort-Ablauf gewinnt gegen "beim Beenden") — ohne
-        # Aufraeumen wuerde ui.App._apply_pending_update beim naechsten
+        # Aufraeumen wuerde UpdateCoordinator._apply_pending_update beim naechsten
         # regulaeren Beenden dieselbe, laengst installierte Datei erneut
         # anzuwenden versuchen.
         pending = self._settings.get("pending_update_path")

@@ -20,12 +20,13 @@ main.py  ── Einstiegspunkt (nur Bootstrap): Tk-Root + Storage/Settings/App,
 ui.py::App  ── schlanker KOORDINATOR (kein God-Object mehr)
    ├─ besitzt: Datum/View-State (year/month/view_mode/iso_year/current_week),
    │           Header-/Footer-/Tray-Chrome, Dialog-Routing, Navigation
-   ├─ delegiert an vier Komponenten ▼
+   ├─ delegiert an fünf Komponenten ▼
    │
    ├─ GridRenderer        (grid_renderer.py)   — Kalender-/Grid-Rendering
    ├─ BackgroundTaskRunner(background_tasks.py) — Hintergrund-Worker + Thread-Mechanik
    ├─ SyncOrchestrator    (sync_orchestrator.py)— Drive-Sync (manuell/Tray/Pull/Quit)
-   └─ UpdateBanner        (update_banner.py)    — GitHub-Release-Hinweis
+   ├─ UpdateBanner        (update_banner.py)    — GitHub-Release-Hinweis
+   └─ UpdateCoordinator   (update_coordinator.py) — Update-Lebenszyklus (Check, Toast/Banner, Tray, Beenden)
 ```
 
 `App` hält den fachlichen Zustand und die Widget-Chrome (Header/Footer/Tray), die
@@ -34,7 +35,7 @@ Komponenten kapseln je eine Verantwortlichkeit. Datenfluss läuft App → Kompon
 z.B. `_open_dialog`/`_refresh` rein) — die Komponenten importieren `src.ui` **nicht**
 (kein Zyklus).
 
-## Die vier App-Komponenten und ihre Verträge
+## Die fünf App-Komponenten und ihre Verträge
 
 ### GridRenderer (`grid_renderer.py`)
 Rendering der Monats-/Wochenansicht inkl. Double-Buffer und Fenster-Geometrie.
@@ -79,7 +80,7 @@ Thread-Mechanik **und** die proaktiven Startup-Tasks.
   liefert das Ergebnis via `marshal` (= `App._marshal_to_ui`) an `on_done` auf dem
   **UI-Thread**. Auch `SyncOrchestrator` nutzt `run()` — es gibt nur dieses eine Muster.
 - Eigene Tasks: `refresh_token`, `fetch_sender_email`, `check_update`, `reconcile_on_start`,
-  `trigger_reconcile`. UI-Arbeit (Dialoge/Banner/Refresh) bleibt in App und kommt als Callback.
+  `trigger_reconcile`. UI-Arbeit (Dialoge/Banner/Refresh) bleibt beim Aufrufer — `App`, für den Update-Check der `UpdateCoordinator` — und kommt als Callback.
 - Tk-frei, keine Google-Imports auf Modulebene; `run_calendar_reconcile` kommt
   seit R1 als normaler **Top-Level-Import aus `src.sync_runtime`**
   (`background_tasks.py:16`) — vorher lag es in `src.main` und musste wegen
@@ -106,8 +107,8 @@ Tests genutzt). Reine Formatier-Helfer `_status_view`/`_tray_toast` sind ohne Tk
 ### UpdateBanner (`update_banner.py`)
 Banner über dem Kalender (anzeigen/Download/ausblenden). `show_if_newer(release)` prüft nur
 `dismissed_version` und zeigt ggf. an; Persistenz von `last_update_check_at` und Toast-vs.-
-Banner-Routing liegen in `ui.py::_on_update_check_result` bzw.
-`_route_update_notification(...)`. Pack-Anker **lazy** über
+Banner-Routing liegen im `UpdateCoordinator` (`on_check_result` bzw.
+`route_update_notification(...)`). Pack-Anker **lazy** über
 `get_anchor=lambda: App._renderer.grid_container` (Grid existiert erst nach dem Build).
 `on_resize` (= `App._renderer.repin_geometry`) wird in `_show`/`_dismiss` aufgerufen, damit
 das fixe Fenster auf die geänderte Banner-Höhe nachzieht (sonst Footer abgeschnitten, margenheld/Zeiterfassung#92).
@@ -127,11 +128,35 @@ ohne Install-/Download-Button, es gibt nichts mehr zu klicken. Anders als
 `show_if_newer` ignoriert er bewusst `dismissed_version` (ein bereits
 geladenes, gleich automatisch installiertes Update ist wichtiger als eine
 zuvor weggeklickte Verfügbarkeits-Meldung). Aufrufer ist ausschließlich
-der `AutoUpdater` (`auto_update.py`, s.u.): `App` reicht ihm
+der `AutoUpdater` (`auto_update.py`, s.u.): der `UpdateCoordinator` reicht ihm
 `show_ready_to_install` als `on_ready` hinein — der Banner importiert weder
 `src.ui` noch `src.auto_update`, kein neuer Callback-Parameter am Banner.
 `_show(release, ready_to_install)` ist die gemeinsame Bau-Methode beider
 Zustände.
+
+### UpdateCoordinator (`update_coordinator.py`)
+Der Update-Lebenszyklus der App, seit R11 (Xveyn#123) eigene Komponente statt
+rund 130 LOC in `App`. Gebaut wie `SyncOrchestrator` — Konstruktor-Injektion
+`(settings, runner, banner, get_tray)`, `get_tray` **lazy** über
+`lambda: App._tray`, kein Import von `src.ui` —, aber einen Schritt weiter:
+**Tk-frei** und vollständig annotiert (Whitelist in
+`test_type_annotations.py`). Den Banner baut `App` (er hängt an `root` und am
+Renderer) und reicht ihn fertig herein; die Tray-Callbacks marshallt `App`
+selbst per `root.after`.
+- `start()` stößt den Start-Check an (`BackgroundTaskRunner.check_update`,
+  Frequenz-Throttle dort); `on_check_result(release, newer)` schreibt
+  `last_update_check_at`, routet über `route_update_notification` zu Toast oder
+  Banner und löst `auto_updater.maybe_start` aus.
+- `tray_check()` ist „Nach Updates suchen" aus dem Tray: übergeht den Throttle,
+  meldet **immer** einen Toast, blockt den Doppelklick über
+  `_update_check_running`.
+- `auto_updater` ist der `AutoUpdater` (R9), den der Coordinator selbst baut
+  (`on_ready` = `banner.show_ready_to_install`); `App` reicht ihn an
+  `open_settings_dialog`.
+- `apply_pending_on_quit()` wendet ein vorbereitetes Update beim Beenden an.
+  **Der Gurt davor bleibt in `App._quit_with_sync_push`**, direkt vor
+  `root.destroy()`: die Zusage „nichts darf das Beenden aufhalten" gilt dem
+  `destroy()`, und der gehört der App.
 
 ## Threading-Modell
 
@@ -443,18 +468,17 @@ Wert.
   Zeitanteil roh) und `local_date_of_iso` (UTC-Stempel → lokales Datum, zum **Vergleichen**;
   s. Sync-Status-Label).
 - `auto_update.py` — die Auto-Update-Policy samt **dem einen** Guard für jeden
-  Update-Download (R9, Xveyn#123). `App` baut das einzige `AutoUpdater`-Exemplar
+  Update-Download (R9, Xveyn#123). Der `UpdateCoordinator` baut das einzige `AutoUpdater`-Exemplar
   (Runner `App._bg`, `on_ready` = Banner) und reicht es über
   `open_settings_dialog(..., auto_updater=…)` an den Updates-Tab. Beide
-  Auslöser — `App._on_update_check_result` und der Check des Tabs — rufen
+  Auslöser — `UpdateCoordinator.on_check_result` und der Check des Tabs — rufen
   `maybe_start`; wer nachfragt, während schon still geladen wird, hängt sich
   mit `on_progress`/`on_finished` an den laufenden Download, statt selbst zu
   laden. Der Ein-Klick-Weg des Tabs belegt denselben Guard
   (`acquire_manual`/`release_manual`) und entscheidet seinen Ausgang über
   `manual_outcome(ok, dialog_alive)`. Der stille Weg persistiert unabhängig
   davon, ob ein Dialog offen ist — die „Dialog zu"-Hälfte der alten
-  Vier-Felder-Tabelle gibt es nur noch für den manuellen Weg. Kandidat für
-  R11: ein `UpdateCoordinator` als fünfte App-Komponente baut hierauf auf.
+  Vier-Felder-Tabelle gibt es nur noch für den manuellen Weg.
 - `holidays_de.py`, `paths.py` (`get_base_path` Frozen-vs-Repo), `updater.py`
   (GitHub-Releases, stdlib-only, Frequenz über `update_check_frequency`, Pre-Release-Opt-in über `prerelease_updates_enabled`), `changelog.py`
   (lädt/parst den Changelog-Abschnitt einer Release-Version vom GitHub-Tag), `platform_open.py`, `logging_setup.py`,
@@ -537,7 +561,7 @@ Das Tray-Icon läuft, sobald `minimize_to_tray` **oder** `reminders_enabled` akt
 Die Menüeinträge kommen aus **`ui.py::App._tray_actions()`** — eine Liste `(label, callback,
 visible)`, die beide Backends rendern (pystray-Schleife bzw. `tray.build_menu_model`). Neue
 Einträge gehören dorthin, nicht in ein Backend. Die Callbacks laufen im Backend-Thread und
-marshallen selbst per `root.after(0, …)`. „Nach Updates suchen" (`_tray_check_update`) ist der
+marshallen selbst per `root.after(0, …)`. „Nach Updates suchen" (`UpdateCoordinator.tray_check`) ist der
 einzige Eintrag mit eigenem Hintergrund-Job: er übergeht den Frequenz-Throttle des
 Hintergrund-Checks, meldet sein Ergebnis in **jedem** Fall als Toast (`updater.
 manual_check_toast_text`) und blockt über `_update_check_running` den Doppelklick.
@@ -694,7 +718,9 @@ selbst nach dem Aufbau.
 - Rendering/Zell-Logik → `grid_renderer.py`. Neuer Hintergrund-Task → `background_tasks.py`
   (über `run()`). Sync-**Bedienung** (Buttons, Status, Fehlermeldungen) → `sync_orchestrator.py`,
   ein neuer Sync-/Reconcile-**Flow** (Drive/Kalender sprechen, mergen, hochladen) →
-  `sync_runtime.py`. Reine Persistenz/Logik → der passende Store bzw. `sync.py`/`share.py`
+  `sync_runtime.py`. Update-**Ablauf** (Check, Toast/Banner, Anwenden beim Beenden) →
+  `update_coordinator.py`, die Auto-Update-**Policy** → `auto_update.py`. Reine
+  Persistenz/Logik → der passende Store bzw. `sync.py`/`share.py`
   (Tk-frei, gut testbar).
 - **Nicht** nach `main.py`: der Einstiegspunkt ist Bootstrap (Stores bauen, Wiring,
   `_hold_app_mutex`/`_ensure_device_id`/`_sweep_orphan_tombstones`/`_refresh_linux_integration`).

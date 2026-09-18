@@ -470,7 +470,7 @@ def test_windows_helper_script_has_a_wait_timeout():
 
 
 def test_windows_helper_script_omits_the_start_when_restart_is_false():
-    """Der Beenden-Weg (`ui.App._apply_pending_update`) darf die App NICHT
+    """Der Beenden-Weg (`UpdateCoordinator._apply_pending_update`) darf die App NICHT
     wieder starten: wer beendet, will beendet haben. Installiert und
     aufgeraeumt wird trotzdem."""
     from src.self_update import windows_helper_script
@@ -499,7 +499,7 @@ def test_apply_windows_writes_the_restart_flag_into_the_script(tmp_path):
 
 def test_apply_windows_returns_false_when_the_temp_file_cannot_be_created(monkeypatch):
     """Ein volles oder nicht beschreibbares %TEMP% darf NICHT als Exception
-    entkommen: `App._apply_pending_update` laeuft mitten im Beenden, eine
+    entkommen: `UpdateCoordinator._apply_pending_update` laeuft mitten im Beenden, eine
     Exception hier liesse das Fenster mit einem Fehler-Popup offen stehen."""
     def boom(*args, **kwargs):
         raise OSError("No space left on device")
