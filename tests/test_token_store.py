@@ -137,3 +137,19 @@ def test_unreadable_file_takes_the_legacy_path(tmp_path):
 
     assert load_credentials(str(path), SCOPES, _Cls) == "LEGACY"
     assert calls == [str(path)]
+
+
+def test_keyring_token_saved_without_refresh_token_keeps_its_location(tmp_path, fake_keyring):
+    """Credentials ohne Refresh-Token (Google liefert beim Refresh keinen
+    neuen) dürfen die Markierung nicht verlieren — sonst fehlte der Datei
+    danach `refresh_token`, und das nächste Laden bräche mit ValueError ab."""
+    path = _keyring_token(tmp_path, fake_keyring)
+    key = _read(path)[oauth_utils.REFRESH_TOKEN_KEY]
+
+    save_credentials(_real_creds(refresh=None), str(path))
+
+    data = _read(path)
+    assert "refresh_token" not in data
+    assert data[oauth_utils.REFRESH_TOKEN_LOCATION] == "keyring"
+    assert data[oauth_utils.REFRESH_TOKEN_KEY] == key
+    assert load_credentials(str(path), SCOPES, Credentials).refresh_token == "1//refresh-token"

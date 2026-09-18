@@ -72,22 +72,39 @@ def save_credentials(creds: Any, token_path: str) -> None:
     with TOKEN_LOCK:
         exists = os.path.exists(token_path)
         meta = read_token_meta(token_path) if exists else None
-        refresh = getattr(creds, "refresh_token", None)
-        if ((exists and not token_in_keyring(meta))
-                or not (isinstance(refresh, str) and refresh)):
-            # Datei-Modus (Ort beibehalten) oder nichts für den Schlüsselbund
-            # (MagicMock-/Fake-Creds in Tests, Flow ohne Refresh-Token).
+        if exists and not token_in_keyring(meta):
+            # Datei-Modus: Ort beibehalten.
             write_token(creds, token_path)
             return
         key = meta.get(REFRESH_TOKEN_KEY) if meta is not None else None
         if not isinstance(key, str) or not key:
-            key = new_token_keyring_key()
+            key = None
+        refresh = getattr(creds, "refresh_token", None)
+        if not (isinstance(refresh, str) and refresh):
+            if key is not None:
+                # Schlüsselbund-Modus ohne neuen Refresh-Token: der dort
+                # liegende bleibt gültig. Ohne Markierung fehlte der Datei
+                # sonst `refresh_token`, und das nächste Laden bräche ab.
+                _write_keyring_mode(creds.to_json(), key, token_path)
+                return
+            # Nichts für den Schlüsselbund (MagicMock-/Fake-Creds in Tests,
+            # Flow ohne Refresh-Token).
+            write_token(creds, token_path)
+            return
+        key = key or new_token_keyring_key()
         if keyring_store.put(key, refresh):
-            data = json.loads(creds.to_json(strip=["refresh_token"]))
-            data[REFRESH_TOKEN_LOCATION] = "keyring"
-            data[REFRESH_TOKEN_KEY] = key
-            write_token_json(json.dumps(data), token_path)
+            _write_keyring_mode(creds.to_json(strip=["refresh_token"]), key, token_path)
             return
         # Schlüsselbund fällt aus: vollständig in die Datei — ein (rotierter)
         # Refresh-Token geht nie verloren; der nächste Start zieht ihn um.
         write_token(creds, token_path)
+
+
+def _write_keyring_mode(json_text: str, key: str, token_path: str) -> None:
+    """Schreibt token.json im Schlüsselbund-Modus: ohne Refresh-Token, mit
+    Markierung und Schlüssel."""
+    data = json.loads(json_text)
+    data.pop("refresh_token", None)
+    data[REFRESH_TOKEN_LOCATION] = "keyring"
+    data[REFRESH_TOKEN_KEY] = key
+    write_token_json(json.dumps(data), token_path)
