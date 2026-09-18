@@ -299,6 +299,32 @@ def test_calendar_without_click_raises_unavailable_not_flow(tmp_path, fake_keyri
         gcal.get_calendar_service("credentials.json", str(path))
 
 
+def test_drive_without_click_and_missing_entry_raises_auth_error_not_flow(
+        tmp_path, fake_keyring, monkeypatch):
+    """Eintrag fehlt (Schlüsselbund antwortet, hat aber nichts): das ist ein
+    Auth-Fall wie „kein Token" — gemeldet, nicht per Browser gelöst."""
+    from src import drive
+    from tests.conftest import forbid_consent_flow
+    path = _keyring_token(tmp_path, fake_keyring)
+    (tmp_path / "credentials.json").write_text("{}", encoding="utf-8")
+    fake_keyring()                                 # frischer, leerer Schlüsselbund
+    forbid_consent_flow(monkeypatch)
+    with pytest.raises(drive.DriveAuthError):
+        drive.get_drive_service(str(tmp_path / "credentials.json"), str(path))
+
+
+def test_calendar_without_click_and_missing_entry_raises_auth_error_not_flow(
+        tmp_path, fake_keyring, monkeypatch):
+    from src import gcal
+    from tests.conftest import forbid_consent_flow
+    path = _keyring_token(tmp_path, fake_keyring)
+    (tmp_path / "credentials.json").write_text("{}", encoding="utf-8")
+    fake_keyring()                                 # frischer, leerer Schlüsselbund
+    forbid_consent_flow(monkeypatch)
+    with pytest.raises(gcal.CalendarAuthError):
+        gcal.get_calendar_service(str(tmp_path / "credentials.json"), str(path))
+
+
 def test_start_refresh_raises_unavailable_for_the_runner(tmp_path, fake_keyring):
     from src.mail import refresh_token_if_needed
     path = _unreachable(tmp_path, fake_keyring)
