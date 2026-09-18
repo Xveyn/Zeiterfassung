@@ -35,7 +35,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
         with:
-          python-version: '3.10'
+          python-version: '3.12'
 
       # Push-Events tragen keine PR-Labels. Das release:*-Gate wird daher über
       # den zum Merge-Commit gehörenden PR per API geprüft. Manuelle Läufe
@@ -155,7 +155,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
         with:
-          python-version: '3.10'
+          python-version: '3.12'
       - name: Install dependencies
         run: pip install -r requirements.txt pip-licenses==5.5.5
       - name: Install Inno Setup
@@ -185,7 +185,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
         with:
-          python-version: '3.10'
+          python-version: '3.12'
       - name: Install dependencies
         run: pip install -r requirements.txt pip-licenses==5.5.5
       - name: Install create-dmg
@@ -210,7 +210,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
         with:
-          python-version: '3.10'
+          python-version: '3.12'
       - name: Install system dependencies
         run: |
           sudo apt-get update
@@ -368,7 +368,7 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-python@v7
         with:
-          python-version: '3.10'
+          python-version: '3.12'
 
       - name: Alte Marker entfernen
         id: prune
@@ -433,7 +433,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
         with:
-          python-version: '3.10'
+          python-version: '3.12'
 
       - name: Alte Versionen archivieren
         id: archive

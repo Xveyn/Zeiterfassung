@@ -12,7 +12,7 @@ miteinander gilt der [Verhaltenskodex](CODE_OF_CONDUCT.md).
 
 ### Voraussetzungen
 
-- Python 3.10+
+- Python 3.12+
 - Windows 10/11, macOS 12+ oder Linux (mit Tkinter)
 
 ### Linux: Tkinter installieren
@@ -177,7 +177,7 @@ pytest --cov=src --cov-report=term-missing
 Wer testbares Verhalten ändert (Feature wie Bugfix), schreibt einen passenden Test
 mit — bei Bugfixes idealerweise erst einen Test, der den Fehler reproduziert.
 
-In der CI läuft die Test-Suite gegen Python 3.10–3.13 sowie zusätzlich auf Windows
+In der CI läuft die Test-Suite gegen Python 3.12–3.14 sowie zusätzlich auf Windows
 und macOS; dazu kommen `ruff check .` (Lint) und `pyright` (Typen).
 
 ## Build

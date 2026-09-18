@@ -345,10 +345,10 @@ Fehlt das Pack-Tool lokal, überspringt `scripts/build.py` den Pack-Schritt mit 
 Für einen reinen Test-Build eines Branches — **ohne** Tag, Release oder
 Auto-Update-Effekt — gibt es den Workflow **Build** (`.github/workflows/build.yml`):
 Actions → **Build** → „Run workflow". Er baut in **CI-identischer Umgebung**
-(Python 3.10 + gepinnte `requirements.txt`), sodass man einen Stand verifizieren
+(Python 3.12 + gepinnte `requirements.txt`), sodass man einen Stand verifizieren
 kann, ohne eine lokale venv zu pflegen, die zur CI divergiert (Vorbild für das
 Divergenz-Problem: der lokale Frozen-Build scheiterte auf Python 3.13/3.14 an
-fehlenden gebündelten Datendateien — die CI auf 3.10 spiegelt die echte
+fehlenden gebündelten Datendateien — die CI auf 3.12 spiegelt die echte
 Release-Umgebung).
 
 - **Inputs:** `windows`/`macos`/`linux` als Häkchen (mindestens eins, maximal
@@ -391,9 +391,11 @@ starten (in der Actions-UI den Branch im „Run workflow"-Dropdown wählen). Der
 
 Die **direkten** Abhängigkeiten in `requirements.txt` sind exakt (`==`) auf
 known-good Versionen gepinnt — für reproduzierbare Release-Builds (Audit M17).
-Jede gepinnte Version muss **Python 3.10** unterstützen (CI- und Release-Python;
-per PyPI `requires_python` prüfen). Beim Bump also die neue Version gegen 3.10
-gegenchecken, nicht blind auf „latest" gehen.
+Jede gepinnte Version muss **Python 3.12** unterstützen (CI- und Release-Python;
+per PyPI `requires_python` prüfen, bei C-Erweiterungen zusätzlich, ob es
+cp312-Wheels für Windows, macOS arm64 und Linux x86_64 gibt). Beim Bump also die
+neue Version gegen 3.12 gegenchecken, nicht blind auf „latest" gehen. Bis 1.23.2
+war es 3.10 — mit dessen Lebensende (Oktober 2026) umgestellt (Xveyn#141).
 
 **Transitive** Deps (u. a. `reportlab` via `xhtml2pdf`) sind bewusst **nicht**
 gepinnt — kein Lockfile, keine Hashes. Wer eine direkte Dep hinzufügt, pinnt sie
@@ -404,10 +406,11 @@ ist seither auf den Nutzer zugeschnitten, alles Entwicklerische liegt in
 
 Bewusste Ausnahme von dieser Regel: `jaraco.functools`/`jaraco.context`/
 `importlib_metadata` (Transitive von `keyring`) sind einzeln gepinnt — sie
-fordern in ihren aktuellen Versionen bereits Python ≥3.10 und damit ohne
-Puffer genau unser CI-/Release-Python; Begründung im Kommentar über den drei
-Zeilen in `requirements.txt`. Kein Freibrief, weitere Transitive zu pinnen —
-nur diese drei tragen dasselbe Risiko.
+folgen der Python-Unterstützung als Erste (heute schon ≥3.10). Mit 3.12 als
+CI-/Release-Python ist zwar Puffer da, das Risiko aber dasselbe: zöge jaraco auf
+≥3.13, bräche der Build still über eine Dep, die niemand angefasst hat.
+Begründung im Kommentar über den drei Zeilen in `requirements.txt`. Kein
+Freibrief, weitere Transitive zu pinnen — nur diese drei tragen dasselbe Risiko.
 
 `release.yml` installiert `-r requirements.txt` plus das reine Build-Tooling
 `pip-licenses==5.5.5` (erzeugt `THIRD-PARTY-NOTICES.txt`). PyInstaller kommt
@@ -422,24 +425,24 @@ bauen (siehe „Plattformspezifische PRs — Pre-Release vorschlagen").
 ### Dependabot: Actions ja, pip nein
 
 `.github/dependabot.yml` führt **ausschließlich** `github-actions`. Der Grund
-ist die 3.10-Regel oben: Version-Updates gehen per Definition auf „latest",
+ist die 3.12-Regel oben: Version-Updates gehen per Definition auf „latest",
 also genau auf den Bump, den die Regel verbietet. Ein PR, der eine Dep auf eine
-3.11-only-Version hebt, bräche den Release-Build still — dieselbe Fehlerklasse,
+3.13-only-Version hebt, bräche den Release-Build still — dieselbe Fehlerklasse,
 vor der der `jaraco`-Kommentar in `requirements.txt` warnt. **Dep-Bumps bleiben
-Handarbeit mit 3.10-Gegencheck.** Actions dagegen haben keinen Python-Bezug,
+Handarbeit mit 3.12-Gegencheck.** Actions dagegen haben keinen Python-Bezug,
 laufen aber mit dem Repo-Token und sind damit die höchste Supply-Chain-Fläche
 im Repo.
 
 Davon getrennt sind die **Dependabot security updates** (Repo-Einstellung, nicht
 diese Datei) bewusst **an**, auch für pip: bei einer echten CVE schlägt
-Sicherheit die Pin-Stabilität. Solche PRs brauchen den 3.10-Gegencheck von Hand.
+Sicherheit die Pin-Stabilität. Solche PRs brauchen den 3.12-Gegencheck von Hand.
 
 Damit Dependabot dabei überhaupt die richtige Zielversion kennt, liegt
-**`.python-version` mit `3.10`** im Root. Ohne die Datei deklariert das Repo
+**`.python-version` mit `3.12`** im Root. Ohne die Datei deklariert das Repo
 seine Python-Version nirgends (kein `[project] requires-python`, kein
 `setup.py`) — Dependabot nähme sein eigenes Default-Python an und schlüge
-Versionen vor, die 3.10 längst fallengelassen haben. Zwei Nebenwirkungen, beide
-gewollt: `uv` benutzt im Repo dann ebenfalls 3.10 statt der System-Python
+Versionen vor, die 3.12 längst fallengelassen haben. Zwei Nebenwirkungen, beide
+gewollt: `uv` benutzt im Repo dann ebenfalls 3.12 statt der System-Python
 (spiegelt die Release-Umgebung, s. „Manueller CI-Build ohne Release"), und
 `actions/setup-python` bleibt unberührt, weil **alle** 16 Aufrufe in den
 Workflows ihr `python-version` explizit setzen. Wer das ändert, zieht die Datei
@@ -921,21 +924,21 @@ Zwei Regeln beim Ergänzen:
 
 `.github/workflows/test.yml` installiert gezielt nur die Pakete, die die Tests brauchen — gepinnt in **`requirements-test.txt`** (`pytest`, `holidays`, `google-api-python-client`, `google-auth`, `google-auth-oauthlib`), **nicht** `requirements.txt`. Grund: `pycairo` (transitive Dep von `xhtml2pdf`) braucht Cairo-Systemheader auf Ubuntu und bricht sonst den CI-Build. Der Import von `xhtml2pdf` in `src/report.py::generate_pdf` ist lazy, daher laufen die Report-Tests ohne die Lib. `holidays` und die Google-Libs sind pure Python ohne C-Deps und problemlos installierbar — letztere sind nötig, weil Tests `src.ui` importieren (z.B. `tests/test_ui_delete.py`), dessen Importkette die Google-Wrapper zieht.
 
-Die Test-Deps sind **exakt gepinnt** (Audit N25) — beim Bump gegen Python 3.10 gegenchecken (alle rein-Python, daher auf jedem Matrix-Python installierbar). Jobs (alle mit `cache: pip` auf `requirements-test.txt`):
+Die Test-Deps sind **exakt gepinnt** (Audit N25) — beim Bump gegen Python 3.12 gegenchecken (alle rein-Python, daher auf jedem Matrix-Python installierbar). Jobs (alle mit `cache: pip` auf `requirements-test.txt`):
 
 - **changes** — Torwächter: ermittelt, ob der Lauf überhaupt Code betrifft.
   Alle folgenden Jobs hängen per `if: needs.changes.outputs.code == 'true'`
   daran (Details unten, „Doku-only-PRs überspringen die Tests").
-- **test-matrix** — Matrix über **Python 3.10–3.13** (README: „3.10+"), `fail-fast: false`.
+- **test-matrix** — Matrix über **Python 3.12–3.14** (README: „3.12+"), `fail-fast: false`.
 - **test** — schlankes Sammel-Gate über `test-matrix`, das **nur** der Branch
   Protection dient: ein Matrix-Job meldet seine Check-Contexts ausschließlich
-  mit Suffix (`test-matrix (3.10)` …), ein Context namens `test` entstünde nie mehr —
+  mit Suffix (`test-matrix (3.12)` …), ein Context namens `test` entstünde nie mehr —
   der Required Check bliebe ewig „pending" und jeder PR dauerhaft blockiert.
   Nicht entfernen oder umbenennen, ohne die Required Checks mitzuziehen. Prüft
   `needs.test-matrix.result` explizit unter `if: always()`, weil ein
   übersprungener Required Check GitHub sonst als erfüllt gilt.
-- **coverage** — `pytest --cov=src` (ubuntu/3.10); Reporting, **kein** `fail_under`-Gate (Config: `pyproject.toml [tool.coverage]`, Audit N24).
-- **test-macos** / **test-windows** — Plattform-Verifikation (je 3.10; macOS zieht zusätzlich `pyobjc-framework-Cocoa`).
+- **coverage** — `pytest --cov=src` (ubuntu/3.12); Reporting, **kein** `fail_under`-Gate (Config: `pyproject.toml [tool.coverage]`, Audit N24).
+- **test-macos** / **test-windows** — Plattform-Verifikation (je 3.12; macOS zieht zusätzlich `pyobjc-framework-Cocoa`).
 - **lint** — `ruff check .`. **typecheck** — `pyright` (gepinnt `1.1.411`).
 
 Lokal: `pytest` aus dem Repo-Root (Coverage: `pytest --cov=src --cov-report=term-missing`). Alle Tests müssen vor dem PR-Merge grün sein.

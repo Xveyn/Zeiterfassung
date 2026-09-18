@@ -1,5 +1,5 @@
 [tool.ruff]
-target-version = "py310"
+target-version = "py312"
 line-length = 100
 
 [tool.ruff.lint]
@@ -42,7 +42,7 @@ exclude_also = [
 # eine einzige Quelle. Bewusst KEINE separate pyrightconfig.json, die wuerde
 # diesen Block ueberstimmen.
 typeCheckingMode = "basic"       # gleicht dem Pylance-Default an
-pythonVersion = "3.10"
+pythonVersion = "3.12"
 include = ["src", "tests"]
 # Repo-Root in den Import-Suchpfad: sonst findet pyright das `src`-Paket aus
 # den Test-Dateien (`from src.foo import ...`) nicht -> reportMissingImports.

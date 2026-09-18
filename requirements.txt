@@ -1,5 +1,5 @@
 # Direkte Abhängigkeiten, exakt gepinnt für reproduzierbare Release-Builds
-# (Audit M17). Known-good-Stände, alle Python-3.10-tauglich (CI/Release-Python).
+# (Audit M17). Known-good-Stände, alle Python-3.12-tauglich (CI/Release-Python).
 # Transitive Deps (u. a. reportlab via xhtml2pdf) sind bewusst NICHT gepinnt —
 # kein Lockfile/Hashes; siehe docs/superpowers/specs/2026-07-05-release-deps-pinnen-design.md
 google-auth-oauthlib==1.4.0
@@ -10,11 +10,13 @@ holidays==0.99
 keyring==25.7.0
 # Bewusste Ausnahme von der Transitiv-Regel (sonst pinnen wir nur direkte
 # Deps): jaraco.functools/context und importlib_metadata sind Transitive von
-# keyring und fordern in ihren aktuellen Versionen bereits Python >=3.10 —
-# also GENAU unser CI-/Release-Python, ohne Puffer. Zieht jaraco seine
-# Skeleton-Pakete auf >=3.11, braeche der 3.10-Build still ueber eine Dep,
-# die niemand angefasst hat, und der in CLAUDE.md vorgeschriebene
-# 3.10-Gegencheck schlaege nicht an, weil er nur die direkte Dep betrachtet.
+# keyring und folgen der Python-Unterstützung als Erste: sie fordern schon
+# Python >=3.10. Mit 3.12 als CI-/Release-Python bleibt zwar Puffer (bis 3.10
+# war es keiner), das Risiko ist aber dasselbe: zieht jaraco seine
+# Skeleton-Pakete auf >=3.13, braeche der 3.12-Build still ueber eine Dep, die
+# niemand angefasst hat, und der in CLAUDE.md vorgeschriebene 3.12-Gegencheck
+# schlaege nicht an, weil er nur die direkte Dep betrachtet. Die Pins bleiben
+# deshalb (ihr Wegfall aenderte zudem die Aufloesung des Release-Builds).
 jaraco.functools==4.6.0
 jaraco.context==6.1.2
 importlib_metadata==9.0.1

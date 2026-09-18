@@ -31,8 +31,9 @@ log = logging.getLogger(__name__)
 
 # Explizit ausgeschriebene Netzliste statt ip_address(...).is_private:
 # CPython hat die Einordnung von 100.64.0.0/10 (RFC 6598, CGNAT) zwischen
-# 3.10 und 3.13 geändert. Die CI-Matrix deckt beide ab — mit is_private wäre
-# derselbe Test auf einer Python-Version grün und auf der anderen rot.
+# 3.10 und 3.13 geändert. Die CI-Matrix (3.12–3.14) reicht über diese Änderung
+# hinweg — mit is_private wäre derselbe Test auf einer Python-Version grün und
+# auf der anderen rot.
 _PRIVATE_NETWORKS = tuple(
     ipaddress.ip_network(cidr)
     for cidr in (

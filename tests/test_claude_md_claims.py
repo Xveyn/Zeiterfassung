@@ -147,7 +147,7 @@ class TestAppMutex:
 
 
 class TestPythonMatrix:
-    """Die dokumentierte Spanne „Python 3.10–3.13" == `python-version` in test.yml."""
+    """Die dokumentierte Spanne „Python 3.12–3.14" == `python-version` in test.yml."""
 
     def test_documented_span_matches_the_matrix(self):
         # „–" ist ein Halbgeviertstrich, kein Bindestrich — beide zulassen.
