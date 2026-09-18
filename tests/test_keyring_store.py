@@ -285,3 +285,42 @@ def test_put_fetch_remove_never_log_key_or_value(fake_keyring, caplog):
         keyring_store.remove("google-oauth:geheimer-schluessel")
     assert "geheimer-schluessel" not in caplog.text
     assert "1//geheim" not in caplog.text
+
+
+def test_fetch_does_not_let_a_later_put_skip(fake_keyring):
+    """fetch füllt den Cache nicht: sonst könnte ein veralteter Lesewert ein
+    späteres put mit genau diesem Wert verschlucken."""
+    fake = fake_keyring()
+    fake.store[_entry("k")] = "v"
+    assert keyring_store.fetch("k") == "v"
+    del fake.store[_entry("k")]
+    assert keyring_store.put("k", "v") is True
+    assert fake.store[_entry("k")] == "v"
+
+
+def test_concurrent_puts_leave_cache_and_backend_in_agreement(fake_keyring):
+    import sys
+    import threading
+    fake = fake_keyring()
+    module = sys.modules["keyring"]
+    entered, release = threading.Event(), threading.Event()
+    original = module.set_password
+
+    def gated(service, account, password):
+        if password == "vA":
+            entered.set()
+            release.wait(5)
+        original(service, account, password)
+
+    module.set_password = gated
+    a = threading.Thread(target=keyring_store.put, args=("k", "vA"))
+    a.start()
+    assert entered.wait(5)
+    b = threading.Thread(target=keyring_store.put, args=("k", "vB"))
+    b.start()
+    b.join(0.2)
+    assert b.is_alive()                     # wartet auf den laufenden Schreibvorgang
+    release.set()
+    a.join(5)
+    b.join(5)
+    assert keyring_store._known["k"] == fake.store[_entry("k")] == "vB"
