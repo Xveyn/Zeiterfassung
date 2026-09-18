@@ -1,6 +1,5 @@
 """UpdatesTab._apply: erneute Hash-Prüfung unmittelbar vor dem Anwenden
-(Nachtrag zu Task 9, Re-Review-Auflage). Duck-Typed Stand-in wie in
-test_ui_apply_pending_update.py/test_ui_update_routing.py — `_apply`/
+(Nachtrag zu Task 9, Re-Review-Auflage). Duck-Typed Stand-in — `_apply`/
 `_fail_update` fassen nur Tk-Funktionsaufrufe an, die über die Modulnamen
 in `tab_updates.py` monkeypatchbar sind; ein `MagicMock()` steht für
 `self.frame`/`self._check_btn`/etc., echte Widgets sind nicht nötig.
@@ -36,8 +35,7 @@ class _FakePlan:
 
 def _fake_tab():
     """UpdatesTab-Stand-in ohne echten Tk-Aufbau: `_apply`/`_fail_update`
-    gebunden ans Fake-Objekt (Muster wie `_tray_app` in
-    test_ui_update_routing.py). `frame`/`_check_btn`/`_download_btn`/
+    gebunden ans Fake-Objekt. `frame`/`_check_btn`/`_download_btn`/
     `_status_label` bleiben MagicMocks — `_apply` ruft auf ihnen nur
     Funktionen auf, die hier per Modul-Patch abgefangen werden."""
     fake = MagicMock()

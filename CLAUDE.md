@@ -468,7 +468,7 @@ Selbst-Update".
 installieren", will er danach weiterarbeiten — Windows startet die Exe über
 den Helfer neu (`apply_windows(..., restart=True)`), Linux `exec`t sich
 selbst. Wird ein still vorbereitetes Update dagegen **beim Beenden**
-angewendet (`ui.App._apply_pending_update`), bleibt die App zu:
+angewendet (`UpdateCoordinator._apply_pending_update`), bleibt die App zu:
 `restart=False`, und Linux ersetzt nur die Datei ohne `os.execv`. Wer die App
 beendet, will sie beendet haben; sie eine Minute später unaufgefordert wieder
 auf dem Bildschirm zu haben, wäre das Gegenteil der Zusage „nie mitten in der
@@ -484,16 +484,17 @@ eigener Name lässt es nicht entstehen. Der Preis: jeder Fehlerpfad räumt seine
 Datei selbst weg — es gibt keinen festen Namen mehr, den ein späterer Lauf
 überschriebe.
 
-**Und es lädt immer nur einer.** Den stillen Download lösen zwei Stellen aus:
-der Update-Check der App beim Start und der Check des Updates-Tabs. Bis R9
-(Xveyn#123) entschied jede selbst, mit eigenem Laufguard — ein Klick auf den
-Banner während des Start-Downloads öffnete den Tab, und der lud dieselben
-~65 MB ein zweites Mal. Seither liegt die Policy **einmal** in
-`auto_update.AutoUpdater`, das die App besitzt und an den Tab durchreicht, mit
-**einem** Guard für jeden Update-Download: ein zweiter stiller Auslöser hängt
-sich an den laufenden an (Fortschritt und Ausgang), und „Update installieren"
-startet währenddessen keinen Download daneben. Wer einen dritten Auslöser
-baut, ruft `maybe_start` — keinen eigenen Ablauf.
+**Und es lädt immer nur einer.** Den stillen Download lösen zwei Stellen
+aus: der Update-Check der App beim Start und der Check des Updates-Tabs. Bis
+R9 (Xveyn#123) entschied jede selbst, mit eigenem Laufguard — ein Klick
+auf den Banner während des Start-Downloads öffnete den Tab, und der lud
+dieselben ~65 MB ein zweites Mal. Seither liegt die Policy **einmal** in
+`auto_update.AutoUpdater`, das der `UpdateCoordinator` besitzt und die App
+an den Tab durchreicht, mit **einem** Guard für jeden Update-Download:
+ein zweiter stiller Auslöser hängt sich an den laufenden an (Fortschritt
+und Ausgang), und „Update installieren" startet währenddessen keinen
+Download daneben. Wer einen dritten Auslöser baut, ruft `maybe_start`
+— keinen eigenen Ablauf.
 
 **`installer.iss` bleibt bei alldem unangetastet.** Zwei Gründe, beide zwingen
 zum Helfer-Skript statt zu einem Umbau des Installers:
@@ -1023,7 +1024,7 @@ nicht mehr als „offen" führen — der Verweis lautet auf diese Grenze.
 > mitpflegen.
 
 - `src/main.py` — Einstiegspunkt, **reiner Bootstrap**; baut `Tk`-Root, instanziert `Storage`/`Settings`/`App`, behandelt `--minimized`. Fachliche Sync-Flows gehören nach `sync_runtime.py` (R1, margenheld/Zeiterfassung#181 bzw. Xveyn#49)
-- `src/ui.py` — Tkinter-GUI; `App` ist schlanker Koordinator über `GridRenderer`/`BackgroundTaskRunner`/`SyncOrchestrator`/`UpdateBanner` (siehe `src/CLAUDE.md`)
+- `src/ui.py` — Tkinter-GUI; `App` ist schlanker Koordinator über `GridRenderer`/`BackgroundTaskRunner`/`SyncOrchestrator`/`UpdateBanner`/`UpdateCoordinator` (siehe `src/CLAUDE.md`)
 - `src/dialogs/` — Modal-Dialoge (`entry_dialog`, `send_dialog`, `settings_dialog`)
 - `src/json_store.py` — gemeinsame Mechanik der lokalen JSON-Stores und einziger Ort der beiden Regeln N1 (`atomic_write_json`: fsync vor `os.replace`) und N4 (`load_json_or_quarantine`: korrupte Datei nach `.corrupt-<stamp>` statt stillem Verwerfen). Neue Stores nutzen die beiden Funktionen, statt die Mechanik zu kopieren
 - `src/storage.py` — JSON-Persistenz der Zeiteinträge (Schlüssel: ISO-Datum)
@@ -1143,8 +1144,13 @@ nicht mehr als „offen" führen — der Verweis lautet auf diese Grenze.
   vorbereitete Datei, Guard, `plan_update`), lädt still und merkt das Update
   für das nächste Beenden vor; `acquire_manual`/`release_manual` teilen
   denselben Guard mit dem Ein-Klick-Weg, `manual_outcome` entscheidet dessen
-  Ausgang. Tk-frei, die App besitzt das eine Exemplar und reicht es an den
-  Updates-Tab weiter (s. „Update-Weg")
+  Ausgang. Tk-frei, der `UpdateCoordinator` besitzt das eine Exemplar, die App
+  reicht es an den Updates-Tab weiter (s. „Update-Weg")
+- `src/update_coordinator.py` — der Update-**Lebenszyklus** als fünfte
+  App-Komponente (R11): Start-Check, Toast-vs.-Banner-Routing, Tray-Check
+  „Nach Updates suchen", Anwenden eines vorbereiteten Updates beim Beenden.
+  Tk-frei, baut den `AutoUpdater`; der Gurt vor `root.destroy()` bleibt in
+  `App` (s. `src/CLAUDE.md`)
 - `src/self_update.py` — lädt das Release-Asset, prüft es gegen `SHA256SUMS` und wendet es an (`apply_windows` über ein Helfer-Skript, `apply_linux` durch Ersetzen der laufenden AppImage). Tk-frei, stdlib-only; die Regeln dazu — kein `DETACHED_PROCESS`, eigener Zielname je Download, was die Hash-Prüfung leistet — stehen oben unter „Update-Weg"
 - `src/platform_open.py` — `os.startfile`/`open`/`xdg-open`-Wrapper
 - `src/logging_setup.py` — File-Logging + globaler Excepthook (Setup-Fehler sind **nicht-fatal**, siehe `main.py`)

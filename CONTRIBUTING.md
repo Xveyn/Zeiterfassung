@@ -64,7 +64,7 @@ Script — die Imports innerhalb von `src/` sind absolut (`from src...`).
 
 ## Projektstruktur
 
-> Detaillierte Architektur — die `App`-Komponenten (`GridRenderer`, `BackgroundTaskRunner`, `SyncOrchestrator`, `UpdateBanner`), ihre Verträge und das Threading-Modell: [`src/CLAUDE.md`](src/CLAUDE.md).
+> Detaillierte Architektur — die `App`-Komponenten (`GridRenderer`, `BackgroundTaskRunner`, `SyncOrchestrator`, `UpdateBanner`, `UpdateCoordinator`), ihre Verträge und das Threading-Modell: [`src/CLAUDE.md`](src/CLAUDE.md).
 
 <details>
 <summary>Verzeichnisbaum mit Kurzbeschreibung je Modul</summary>
@@ -78,6 +78,7 @@ Zeiterfassung/
 │   ├── background_tasks.py # Hintergrund-Worker + Thread-Mechanik (Token-Refresh, Update-Check, Reconcile)
 │   ├── sync_orchestrator.py # Drive-Sync-Steuerung (manuell/Tray/Pull/Quit, Fehler-Aufbereitung)
 │   ├── update_banner.py   # GitHub-Release-Hinweis-Banner
+│   ├── update_coordinator.py # Update-Lebenszyklus: Start-Check, Toast/Banner, Tray-Check, Anwenden beim Beenden
 │   ├── dialogs/           # Modal-Dialoge (entry, send, export, settings [inkl. SMTP-Tab], share, import, conflicts, category, scopes, webhook, smtp, vacation) + geteilter period_picker
 │   ├── json_store.py      # Gemeinsame Mechanik der lokalen JSON-Stores (atomares Schreiben, Quarantäne)
 │   ├── storage.py         # JSON-Persistenz der Zeiteinträge

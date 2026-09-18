@@ -1,7 +1,7 @@
 """Die Auto-Update-Policy — genau einmal (R9, Xveyn#123).
 
 Zwei Stellen lösen den stillen Hintergrund-Download aus: der Update-Check der
-App beim Start (`ui.App._on_update_check_result`) und der Check des
+App beim Start (`UpdateCoordinator.on_check_result`) und der Check des
 Updates-Tabs beim Öffnen oder bei „Jetzt prüfen". Bis R9 entschied jede
 Stelle selbst — mit eigenem Laufguard, der den anderen nicht kannte. Klickte
 der Nutzer während des Start-Downloads auf „Update installieren" im Banner,
@@ -48,10 +48,10 @@ class _Runner(Protocol):
 class AutoUpdater:
     """Entscheidet und fährt den stillen Hintergrund-Download.
 
-    Gehört der App (ein Exemplar pro Prozess) und wird an den Updates-Tab
-    durchgereicht — nur so kennen beide Auslöser denselben Guard. Alle
-    Methoden laufen im UI-Thread; `on_done` des Runners ebenfalls, der
-    Guard braucht deshalb kein Lock.
+    Gehört dem `UpdateCoordinator` der App (ein Exemplar pro Prozess) und wird
+    an den Updates-Tab durchgereicht — nur so kennen beide Auslöser denselben
+    Guard. Alle Methoden laufen im UI-Thread; `on_done` des Runners ebenfalls,
+    der Guard braucht deshalb kein Lock.
     """
 
     def __init__(self, settings: _Settings, runner: _Runner,
@@ -94,7 +94,7 @@ class AutoUpdater:
         Downloads — bei `"busy"` das des bereits laufenden Auto-Downloads.
 
         Angewendet wird NICHT hier, sondern beim nächsten Beenden
-        (`ui.App._apply_pending_update`). Der Ablauf ist unbeobachtet: kein
+        (`UpdateCoordinator._apply_pending_update`). Der Ablauf ist unbeobachtet: kein
         Dialog, ein Fehlschlag geht nur ins Log, der nächste Check versucht
         es erneut.
         """

@@ -74,7 +74,7 @@ ist stabil, das hier sind keine Bug-Reports.
   damals genannte Sorge hat sich anders aufgelöst als vorgeschlagen: statt
   eines Mixins sind die Sync-Methoden in die eigene Komponente
   `sync_orchestrator.py` gewandert (dazu `grid_renderer.py`,
-  `background_tasks.py`, `update_banner.py`). `App` ist seither Koordinator,
+  `background_tasks.py`, `update_banner.py`, seit R11 `update_coordinator.py`). `App` ist seither Koordinator,
   keine God-Class — die Zeilen sind Chrome-Aufbau und Dialog-Routing. Der
   Schnitt steht in [`src/CLAUDE.md`](../src/CLAUDE.md).
 - **Fehlender „Abbrechen"-Button im Entry-Dialog** ist Design (Fenster zu =

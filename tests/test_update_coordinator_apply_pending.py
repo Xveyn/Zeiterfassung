@@ -1,12 +1,13 @@
-"""App._apply_pending_update: Anwenden eines vorbereiteten Auto-Updates beim
-Beenden (Task 9). Duck-Typed Stand-in wie in test_ui_update_routing.py — die
-Methode selbst fasst nur `self.settings` an, keine Tk-Widgets.
+"""UpdateCoordinator._apply_pending_update / apply_pending_on_quit: Anwenden
+eines vorbereiteten Auto-Updates beim Beenden (Task 9, seit R11 im
+Coordinator). Die Assertions sind beim Umzug aus `App` wortgleich geblieben.
 """
 
 import os
 import platform
+from unittest.mock import MagicMock
 
-from src.ui import App
+from src.update_coordinator import UpdateCoordinator
 
 
 class _FakeSettings:
@@ -23,8 +24,13 @@ class _FakeSettings:
 
 
 class _FakeApp:
+    """Hält die Settings unter dem Namen, unter dem die Tests sie bis R11 an
+    `App` fanden; `coordinator` ist das Objekt unter Test."""
+
     def __init__(self, settings_data):
         self.settings = _FakeSettings(settings_data)
+        self.coordinator = UpdateCoordinator(
+            self.settings, MagicMock(), MagicMock(), lambda: None)
 
 
 def test_apply_pending_update_clears_pending_settings_immediately(monkeypatch, tmp_path):
@@ -34,7 +40,7 @@ def test_apply_pending_update_clears_pending_settings_immediately(monkeypatch, t
     path = str(tmp_path / "missing-setup.exe")
     fake = _FakeApp({"pending_update_path": path, "pending_update_sha256": "abc"})
 
-    App._apply_pending_update(fake, path)
+    fake.coordinator._apply_pending_update(path)
 
     assert fake.settings.set_many_calls == [
         {"pending_update_path": "", "pending_update_sha256": ""},
@@ -46,12 +52,12 @@ def test_apply_pending_update_skips_silently_when_file_missing(monkeypatch, tmp_
     fake = _FakeApp({"pending_update_path": path, "pending_update_sha256": "deadbeef"})
 
     calls = []
-    monkeypatch.setattr("src.ui.apply_windows",
+    monkeypatch.setattr("src.update_coordinator.apply_windows",
                         lambda *a, **k: calls.append(("windows", a)))
-    monkeypatch.setattr("src.ui.apply_linux",
+    monkeypatch.setattr("src.update_coordinator.apply_linux",
                         lambda *a, **k: calls.append(("linux", a)))
 
-    App._apply_pending_update(fake, path)
+    fake.coordinator._apply_pending_update(path)
 
     assert calls == []
 
@@ -66,12 +72,12 @@ def test_apply_pending_update_skips_when_hash_no_longer_matches(monkeypatch, tmp
                      "pending_update_sha256": "0" * 64})
 
     calls = []
-    monkeypatch.setattr("src.ui.apply_windows",
+    monkeypatch.setattr("src.update_coordinator.apply_windows",
                         lambda *a, **k: calls.append(("windows", a)))
-    monkeypatch.setattr("src.ui.apply_linux",
+    monkeypatch.setattr("src.update_coordinator.apply_linux",
                         lambda *a, **k: calls.append(("linux", a)))
 
-    App._apply_pending_update(fake, str(path))
+    fake.coordinator._apply_pending_update(str(path))
 
     assert calls == []
 
@@ -92,15 +98,15 @@ def test_apply_pending_update_applies_on_windows_with_verified_file(monkeypatch,
     monkeypatch.setattr(platform, "system", lambda: "Windows")
     calls = []
     monkeypatch.setattr(
-        "src.ui.apply_windows",
+        "src.update_coordinator.apply_windows",
         lambda exe, setup, pid, restart: calls.append((exe, setup, pid, restart)) or True,
     )
     monkeypatch.setattr(
-        "src.ui.apply_linux",
+        "src.update_coordinator.apply_linux",
         lambda *a, **k: (_ for _ in ()).throw(AssertionError("apply_linux nicht erwartet")),
     )
 
-    App._apply_pending_update(fake, str(path))
+    fake.coordinator._apply_pending_update(str(path))
 
     assert calls == [(sys.executable, str(path), os.getpid(), False)]
 
@@ -119,15 +125,15 @@ def test_apply_pending_update_applies_on_linux_with_appimage_env(monkeypatch, tm
     monkeypatch.setenv("APPIMAGE", "/pfad/zur/app.AppImage")
     calls = []
     monkeypatch.setattr(
-        "src.ui.apply_linux",
+        "src.update_coordinator.apply_linux",
         lambda appimage, downloaded: calls.append((appimage, downloaded)),
     )
     monkeypatch.setattr(
-        "src.ui.apply_windows",
+        "src.update_coordinator.apply_windows",
         lambda *a, **k: (_ for _ in ()).throw(AssertionError("apply_windows nicht erwartet")),
     )
 
-    App._apply_pending_update(fake, str(path))
+    fake.coordinator._apply_pending_update(str(path))
 
     assert calls == [("/pfad/zur/app.AppImage", str(path))]
 
@@ -149,9 +155,9 @@ def test_apply_pending_update_does_nothing_on_linux_without_appimage_env(monkeyp
     monkeypatch.delenv("APPIMAGE", raising=False)
     calls = []
     monkeypatch.setattr(
-        "src.ui.apply_linux", lambda *a, **k: calls.append(a))
+        "src.update_coordinator.apply_linux", lambda *a, **k: calls.append(a))
 
-    App._apply_pending_update(fake, str(path))
+    fake.coordinator._apply_pending_update(str(path))
 
     assert calls == []
 
@@ -170,10 +176,10 @@ def test_apply_pending_update_deletes_the_file_when_hash_no_longer_matches(
     path.write_bytes(b"vermeintliches Update")
     fake = _FakeApp({"pending_update_path": str(path),
                      "pending_update_sha256": "0" * 64})
-    monkeypatch.setattr("src.ui.apply_windows", lambda *a, **k: True)
-    monkeypatch.setattr("src.ui.apply_linux", lambda *a, **k: None)
+    monkeypatch.setattr("src.update_coordinator.apply_windows", lambda *a, **k: True)
+    monkeypatch.setattr("src.update_coordinator.apply_linux", lambda *a, **k: None)
 
-    App._apply_pending_update(fake, str(path))
+    fake.coordinator._apply_pending_update(str(path))
 
     assert not path.exists(), "die verworfene Datei bleibt sonst dauerhaft liegen"
 
@@ -195,11 +201,11 @@ def test_apply_pending_update_deletes_the_file_when_apply_linux_fails(
     monkeypatch.setattr(platform, "system", lambda: "Linux")
     monkeypatch.setenv("APPIMAGE", "/pfad/zur/app.AppImage")
     monkeypatch.setattr(
-        "src.ui.apply_linux",
+        "src.update_coordinator.apply_linux",
         lambda appimage, downloaded: "Die alte AppImage ließ sich nicht sichern: nope")
 
-    with caplog.at_level(logging.WARNING, logger="src.ui"):
-        App._apply_pending_update(fake, str(path))
+    with caplog.at_level(logging.WARNING, logger="src.update_coordinator"):
+        fake.coordinator._apply_pending_update(str(path))
 
     assert not path.exists(), "die nicht uebernommene Datei bleibt sonst liegen"
     assert "nicht sichern" in caplog.text, (
@@ -217,25 +223,44 @@ def test_apply_pending_update_deletes_the_file_when_apply_windows_fails(
                      "pending_update_sha256": hashlib.sha256(content).hexdigest()})
 
     monkeypatch.setattr(platform, "system", lambda: "Windows")
-    monkeypatch.setattr("src.ui.apply_windows", lambda *a, **k: False)
+    monkeypatch.setattr("src.update_coordinator.apply_windows", lambda *a, **k: False)
 
-    App._apply_pending_update(fake, str(path))
+    fake.coordinator._apply_pending_update(str(path))
 
     assert not path.exists()
 
 
-def test_quit_with_sync_push_destroys_the_window_even_if_applying_raises(monkeypatch):
-    """F3-Zusage: NICHTS zwischen dem Anwenden und `root.destroy()` darf das
-    Beenden aufhalten. Bleibt wider Erwarten doch eine Exception uebrig,
-    wird sie geloggt — das Fenster geht trotzdem zu."""
-    from unittest.mock import MagicMock
+# --- Neu mit R11: der Einstieg beim Beenden -------------------------------
 
-    fake = MagicMock()
-    fake.settings = _FakeSettings({"pending_update_path": r"C:\Temp\setup.exe"})
-    fake._single_instance = None
-    fake._apply_pending_update = MagicMock(
-        side_effect=OSError("kein Platz mehr in %TEMP%"))
 
-    App._quit_with_sync_push(fake)
+def test_apply_pending_on_quit_touches_nothing_without_a_pending_update(monkeypatch):
+    """Der Normalfall beim Beenden: nichts vorbereitet — dann wird weder
+    geleert noch angewendet."""
+    fake = _FakeApp({})
+    monkeypatch.setattr(
+        "src.update_coordinator.apply_windows",
+        lambda *a, **k: (_ for _ in ()).throw(AssertionError("nicht anwenden")))
 
-    fake.root.destroy.assert_called_once_with()
+    fake.coordinator.apply_pending_on_quit()
+
+    assert fake.settings.set_many_calls == []
+
+
+def test_apply_pending_on_quit_applies_exactly_the_pending_file(monkeypatch, tmp_path):
+    import hashlib
+    import sys
+
+    path = tmp_path / "setup.exe"
+    content = b"echtes Update"
+    path.write_bytes(content)
+    fake = _FakeApp({"pending_update_path": str(path),
+                     "pending_update_sha256": hashlib.sha256(content).hexdigest()})
+    monkeypatch.setattr(platform, "system", lambda: "Windows")
+    calls = []
+    monkeypatch.setattr(
+        "src.update_coordinator.apply_windows",
+        lambda exe, setup, pid, restart: calls.append((exe, setup, pid, restart)) or True)
+
+    fake.coordinator.apply_pending_on_quit()
+
+    assert calls == [(sys.executable, str(path), os.getpid(), False)]

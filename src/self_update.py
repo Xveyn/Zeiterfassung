@@ -314,7 +314,7 @@ def download_dest(system: str, asset_name: str, target: str,
 
     Der Preis sind mehr Leichen: jeder Fehlerpfad muss seine Datei selbst
     wegräumen (`download_and_verify_update`, `UpdatesTab._apply`,
-    `App._apply_pending_update`) — es gibt keinen festen Namen mehr, den ein
+    `UpdateCoordinator._apply_pending_update`) — es gibt keinen festen Namen mehr, den ein
     späterer Lauf überschriebe.
 
     `target` ist `plan.target` (Linux: `$APPIMAGE`), `tempdir` der
@@ -344,7 +344,7 @@ def discard_download(path: str) -> None:
     mehr eine liegengebliebene Datei — aus jedem Fehlerpfad, der nicht
     aufräumt, werden dauerhaft ~65 MB im %TEMP% bzw. neben der AppImage.
     Aufrufer sind `UpdatesTab._apply`/`_start_self_update` und
-    `App._apply_pending_update`; dieselbe Aufräum-Regel wie in `download_to`.
+    `UpdateCoordinator._apply_pending_update`; dieselbe Aufräum-Regel wie in `download_to`.
 
     Bestes Bemühen: ein Fehlschlag beim Aufräumen darf nie die eigentliche
     Fehlerbehandlung stören.
@@ -430,7 +430,7 @@ def windows_helper_script(pid: int, setup_path: str, exe_path: str,
     - `True` — der **Sofort-Weg** (`UpdatesTab._apply`): der Nutzer hat eben
       „Update installieren" geklickt und will danach weiterarbeiten. Ohne
       Neustart verschwände die App unter seinen Händen.
-    - `False` — der **Beenden-Weg** (`ui.App._apply_pending_update`, das
+    - `False` — der **Beenden-Weg** (`UpdateCoordinator._apply_pending_update`, das
       still vorbereitete Automatik-Update): wer die App beendet, will sie
       beendet haben. Sie eine Minute später unaufgefordert wieder auf dem
       Bildschirm zu haben, wäre das Gegenteil der Zusage „nie mitten in der
@@ -498,7 +498,7 @@ def apply_windows(exe_path: str, setup_path: str, pid: int,
     bleiben. Linux hat keinen OEM-Codec — dort setzen wir UTF-8 (fallback).
 
     **Wirft nie.** `False` ist die einzige Art, wie ein Fehlschlag hier nach
-    außen dringt — der Aufrufer beim Beenden (`ui.App._apply_pending_update`)
+    außen dringt — der Aufrufer beim Beenden (`UpdateCoordinator._apply_pending_update`)
     steht mitten im Herunterfahren, und eine Exception aus dieser Funktion
     hielte die App offen. Deshalb liegt AUCH das Anlegen der Temp-Datei im
     `try`: ein volles oder nicht beschreibbares %TEMP% wirft `OSError` schon

@@ -10,7 +10,6 @@ import pytest
 import src.dialogs.settings_dialog.tab_updates as tab_module
 from src.dialogs.settings_dialog.tab_updates import UpdatesTab
 from src.self_update import DownloadedUpdate, UpdatePlan
-from src.ui import App
 
 
 class _Rel:
@@ -65,10 +64,10 @@ def test_startup_check_and_updates_tab_never_download_twice(monkeypatch):
     import platform
 
     import src.auto_update as auto_update
-    import src.ui as ui_module
+    import src.update_coordinator as coordinator_module
 
     monkeypatch.setattr(platform, "system", lambda: "Windows")
-    monkeypatch.setattr(ui_module, "today_iso", lambda: "2026-09-18")
+    monkeypatch.setattr(coordinator_module, "today_iso", lambda: "2026-09-18")
     monkeypatch.setattr(auto_update, "supports_self_update", lambda *a, **k: True)
     monkeypatch.setattr(auto_update, "plan_update", lambda *a, **k: _PLAN)
     monkeypatch.setattr(tab_module, "set_secondary_button_enabled",
@@ -84,14 +83,9 @@ def test_startup_check_and_updates_tab_never_download_twice(monkeypatch):
     settings = _FakeSettings({"auto_update_enabled": True})
     runner = _DeferredRunner()
     banner = MagicMock()
-    updater = auto_update.AutoUpdater(settings, runner,
-                                      on_ready=banner.show_ready_to_install)
-
-    app = MagicMock()
-    app.settings = settings
-    app._tray = None
-    app._update_banner = banner
-    app._auto_updater = updater
+    coordinator = coordinator_module.UpdateCoordinator(
+        settings, runner, banner, lambda: None)
+    updater = coordinator.auto_updater
 
     tab = MagicMock()
     tab._settings = settings
@@ -100,7 +94,7 @@ def test_startup_check_and_updates_tab_never_download_twice(monkeypatch):
     tab._on_auto_update_finished = MethodType(UpdatesTab._on_auto_update_finished, tab)
 
     rel = _Rel()
-    App._on_update_check_result(app, rel, True)   # Start-Check der App
+    coordinator.on_check_result(rel, True)        # Start-Check der App
     tab._maybe_start_auto_update(rel)             # Tab-Check, Download läuft noch
     runner.flush()
 
