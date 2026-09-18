@@ -92,6 +92,7 @@ procedure DeleteUserData();
 begin
   DeleteFile(ExpandConstant('{app}\zeiterfassung.json'));
   DeleteFile(ExpandConstant('{app}\reservations.json'));
+  DeleteFile(ExpandConstant('{app}\vacations.json'));
   DeleteFile(ExpandConstant('{app}\settings.json'));
   DeleteFile(ExpandConstant('{app}\conflicts.json'));
   DeleteFile(ExpandConstant('{app}\sync_history.json'));
