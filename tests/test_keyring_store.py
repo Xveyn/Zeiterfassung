@@ -388,3 +388,22 @@ def test_put_without_backend_logs_no_traceback(fake_keyring, caplog):
     assert records
     assert all(r.exc_info is None for r in records)
     assert "RuntimeError" in caplog.text
+
+
+def test_put_gives_up_without_writing_when_the_read_hangs(fake_keyring, monkeypatch):
+    """Hängt schon das Lesen, schreibt put nicht mehr hinterher — sonst
+    kostete ein hängender Schlüsselbund pro Eintrag zweimal den Watchdog."""
+    import sys
+    import threading
+    monkeypatch.setattr(keyring_store, "WATCHDOG_TIMEOUT", 0.05)
+    fake_keyring()
+    module = sys.modules["keyring"]
+    release = threading.Event()
+    writes = []
+    module.get_password = lambda service, account: release.wait(5)
+    module.set_password = lambda *a: writes.append(a)
+    try:
+        assert keyring_store.put("k", "v") is False
+    finally:
+        release.set()
+    assert writes == []

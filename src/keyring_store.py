@@ -218,7 +218,15 @@ def put(key: str, value: str) -> bool:
         # Delete+Add unter macOS ein Lesen. Weil alle put/remove unter
         # `_write_lock` laufen, kann dieser Lesewert nicht gegen ein anderes
         # put veralten.
-        if _backend_holds(key, value):
+        held = _backend_holds(key, value)
+        if held is None:
+            # Schon das Lesen hing bis zum Watchdog — ein Schreibversuch
+            # träfe denselben hängenden Schlüsselbund und kostete weitere
+            # 30 s. Der Aufrufer fällt auf die Datei zurück.
+            log.warning("Schlüsselbund antwortet nicht (Timeout nach %.1fs) — "
+                        "Eintrag nicht abgelegt", WATCHDOG_TIMEOUT)
+            return False
+        if held:
             with _known_lock:
                 _known[key] = value
             return True
@@ -246,10 +254,10 @@ def put(key: str, value: str) -> bool:
         return True
 
 
-def _backend_holds(key: str, value: str) -> bool:
-    """True, wenn der Schlüsselbund unter `key` bereits genau `value` hält.
-    Jeder Fehler und jeder Timeout heißt `False` — `put` schreibt dann wie
-    bisher."""
+def _backend_holds(key: str, value: str) -> bool | None:
+    """True, wenn der Schlüsselbund unter `key` bereits genau `value` hält;
+    `None` bei Timeout (hängender Schlüsselbund — `put` gibt dann auf). Ein
+    Fehler heißt `False`: `put` versucht das Schreiben wie bisher."""
     def work() -> Any:
         import keyring  # pyright: ignore[reportMissingImports]
 
@@ -261,7 +269,9 @@ def _backend_holds(key: str, value: str) -> bool:
         # Bewusst alles und ohne eigenes Log: der Schreibversuch direkt danach
         # trifft denselben Schlüsselbund und meldet einen Ausfall selbst.
         return False
-    return ok and stored == value
+    if not ok:
+        return None
+    return stored == value
 
 
 def fetch(key: str) -> str | None:
