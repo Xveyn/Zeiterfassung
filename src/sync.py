@@ -30,6 +30,7 @@ das wäre für ein reines Anzeigefeld völlig unverhältnismäßig. Konsequenzen
 from __future__ import annotations
 
 import contextlib
+import json
 import uuid
 from typing import TYPE_CHECKING, Any, Callable
 
@@ -107,6 +108,28 @@ def _values_equal_setting(a: dict[str, Any], b: dict[str, Any]) -> bool:
     return a.get("value") == b.get("value")
 
 
+def _canonical(value: Any) -> str:
+    """Stabile Textform eines Werts — letzter Tiebreaker, damit auch zwei
+    sekundengleiche Stände desselben Geräts eine feste Ordnung haben."""
+    return json.dumps(value, sort_keys=True, ensure_ascii=False, default=str)
+
+
+def _lww_key(item: dict[str, Any]) -> tuple[str, str, str]:
+    """Ordnung für Last-Write-Wins: Zeitstempel, dann Gerät, dann der Wert.
+
+    Ohne die beiden Tiebreaker gewann bei gleichem `modified_at` einfach die
+    Remote-Seite — `merge(A, B)` und `merge(B, A)` behielten dann verschiedene
+    Werte, und zwei Geräte, die denselben Tag in derselben Sekunde änderten,
+    liefen auseinander (#142)."""
+    return (item.get("modified_at") or "", item.get("device_id") or "",
+            _canonical(item))
+
+
+def _lww_winner(a: dict[str, Any], b: dict[str, Any]) -> dict[str, Any]:
+    """Der Gewinner zweier Stände — unabhängig von ihrer Reihenfolge."""
+    return b if _lww_key(b) >= _lww_key(a) else a
+
+
 def _merge_one(local: dict[str, Any] | None, remote: dict[str, Any] | None,
                last_pull_at: str, equal_fn: Callable[[Any, Any], bool] = _values_equal_entry,
                kind: str = "entry", key: str | None = None
@@ -129,9 +152,8 @@ def _merge_one(local: dict[str, Any] | None, remote: dict[str, Any] | None,
     if remote is None:
         return (local, None)
     if equal_fn(local, remote):
-        # jüngerer modified_at gewinnt — bei tie egal
-        winner = remote if remote["modified_at"] >= local["modified_at"] else local
-        return (winner, None)
+        # Wert gleich — die Metadaten (Stempel, Gerät) trotzdem symmetrisch wählen.
+        return (_lww_winner(local, remote), None)
 
     local_changed = local["modified_at"] > last_pull_at
     remote_changed = remote["modified_at"] > last_pull_at
@@ -141,9 +163,9 @@ def _merge_one(local: dict[str, Any] | None, remote: dict[str, Any] | None,
     # Vergleich ist ein String-Vergleich der ISO-Timestamps. Das LWW-Ergebnis
     # hängt damit an halbwegs synchronen Geräte-Uhren; eine stark falsch gehende
     # Uhr kann Änderungen dauerhaft gewinnen/verlieren lassen. Bei exakt gleicher
-    # Sekunde bevorzugt `>=` deterministisch die REMOTE-Seite (arbiträr, aber
-    # stabil) — akzeptierter Trade-off für ein Ein-Nutzer-Multi-Device-Tool.
-    winner = remote if remote["modified_at"] >= local["modified_at"] else local
+    # Sekunde entscheiden Gerät und Wert (`_lww_key`) — unabhängig davon, welche
+    # Seite lokal ist (#142; vorher gewann dann immer die Remote-Seite).
+    winner = _lww_winner(local, remote)
 
     if local_changed and remote_changed:
         conflict = {
@@ -167,14 +189,28 @@ def _strip_for_candidate(item: dict[str, Any]) -> dict[str, Any]:
 
 
 def _merge_conflict_pair(a: Conflict, b: Conflict) -> Conflict:
-    """LWW auf resolved_at, resolved beats unresolved."""
+    """LWW auf resolved_at, resolved beats unresolved — unabhängig davon,
+    welche Seite `a` ist (#142): bei gleichem `resolved_at` entscheiden das
+    auflösende Gerät und die Auflösung selbst."""
     if a.get("resolved") and not b.get("resolved"):
         return a
     if b.get("resolved") and not a.get("resolved"):
         return b
     if a.get("resolved") and b.get("resolved"):
-        return a if (a.get("resolved_at") or "") >= (b.get("resolved_at") or "") else b
-    return a  # beide unresolved — ID-Match heißt dasselbe Detection-Event
+        return b if _resolution_key(b) >= _resolution_key(a) else a
+    # Beide unresolved: ID-Match heißt dasselbe Detection-Event, die Inhalte
+    # sind gleich — trotzdem symmetrisch wählen, falls doch nicht.
+    return b if _canonical(b) >= _canonical(a) else a
+
+
+def _resolution_key(conflict: Conflict) -> tuple[str, str, str, str]:
+    """Ordnung gelöster Konflikte: Zeitpunkt, Gerät, Auflösung (s. `_lww_key`),
+    zuletzt der ganze Datensatz — damit ist die Ordnung auch dann total, wenn
+    zwei Seiten unter derselben ID Unterschiedliches tragen (sollte bei
+    uuid4-IDs nie vorkommen, darf den Merge aber nicht reihenfolgeabhängig
+    machen)."""
+    return (conflict.get("resolved_at") or "", conflict.get("resolved_by") or "",
+            _canonical(conflict.get("resolution")), _canonical(conflict))
 
 
 def _equivalent_unresolved_exists(existing: list[Conflict], new_conflict: Conflict) -> bool:
@@ -262,7 +298,10 @@ def merge(local: Doc, remote: Doc, last_pull_at: str) -> Doc:
     merged["conflicts"] = list(by_id.values())
 
     # Resolutions anwenden: jeder resolved Konflikt überschreibt entries/settings,
-    # falls die Resolution jünger ist als der aktuelle merged-Wert.
+    # falls die Resolution jünger ist als der aktuelle merged-Wert. Verglichen
+    # wird mit derselben Ordnung wie im LWW-Merge (`_lww_key`), damit auch zwei
+    # sekundengleiche Resolutions zum selben Schlüssel unabhängig von ihrer
+    # Reihenfolge in der Liste dasselbe Ergebnis liefern (#142).
     for c in merged["conflicts"]:
         if not c.get("resolved"):
             continue
@@ -270,22 +309,27 @@ def merge(local: Doc, remote: Doc, last_pull_at: str) -> Doc:
         resolved_at = c.get("resolved_at") or ""
         resolved_by = c.get("resolved_by") or ""
         if c["kind"] == "entry":
-            current = merged["entries"].get(c["key"])
-            if current is None or current["modified_at"] < resolved_at:
-                merged["entries"][c["key"]] = {
-                    "slots": resolution.get("slots", []),
-                    "modified_at": resolved_at,
-                    "device_id": resolved_by,
-                    "deleted": bool(resolution.get("deleted", False)),
-                }
+            section = merged["entries"]
+            candidate = {
+                "slots": resolution.get("slots", []),
+                "modified_at": resolved_at,
+                "device_id": resolved_by,
+                "deleted": bool(resolution.get("deleted", False)),
+            }
         elif c["kind"] == "setting":
-            current = merged["settings"].get(c["key"])
-            if current is None or current["modified_at"] < resolved_at:
-                merged["settings"][c["key"]] = {
-                    "value": resolution.get("value"),
-                    "modified_at": resolved_at,
-                    "device_id": resolved_by,
-                }
+            section = merged["settings"]
+            candidate = {
+                "value": resolution.get("value"),
+                "modified_at": resolved_at,
+                "device_id": resolved_by,
+            }
+        else:
+            continue
+        current = section.get(c["key"])
+        if (current is None or current["modified_at"] < resolved_at
+                or (current["modified_at"] == resolved_at
+                    and _lww_key(candidate) > _lww_key(current))):
+            section[c["key"]] = candidate
 
     # Regel 1: settled Tombstones entfernen (Kompaktierung propagieren).
     # Läuft NACH der Resolution-Application, damit kein resolved-Wert verloren geht.

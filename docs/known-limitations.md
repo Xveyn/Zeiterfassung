@@ -52,6 +52,22 @@ In den Einstellungen steht im Tab **Google** die Aktion **„Sync-Daten kompakti
 - **v2-Gerät mit Offline-Edit vor dem Watermark:** Ein v2-Gerät, das beim Kompaktieren offline war und einen lebenden Eintrag mit `modified_at` vor dem Watermark hält, verliert diesen Eintrag beim Zurückkehren (Regel 2 — Self-Heal-Suppression). Extrem selten in der Praxis (offline gewesene Geräte haben typischerweise keine alten unbewegten Einträge).
 - **Clock-Skew:** Wie im bestehenden Sync — bei grob synchronen Uhren vernachlässigbar.
 
+## Sync: Last-Write-Wins hängt an den Geräte-Uhren
+
+Welcher von zwei Ständen gewinnt, entscheidet der Zeitstempel der Änderung —
+eine Wanduhr-Zeit, sekundengenau, als Text verglichen (`sync._lww_key`). Das
+setzt halbwegs synchrone Uhren voraus: geht die Uhr eines Geräts deutlich vor,
+gewinnen seine Änderungen, auch wenn sie in Wahrheit älter sind; geht sie nach,
+verliert es. Bei den üblichen, per NTP gestellten Uhren ist das
+vernachlässigbar; ein Gerät mit falsch gestellter Uhr ist die bekannte Grenze.
+
+Ändern zwei Geräte denselben Tag **in derselben Sekunde** unterschiedlich,
+gewinnt vorläufig der Stand mit der größeren Geräte-ID (danach entscheidet der
+Wert selbst) — auf beiden Geräten derselbe, sodass die Stände nicht
+auseinanderlaufen (#142; vorher gewann die jeweils fremde Seite). Der Konflikt
+wird trotzdem erkannt und im Konfliktdialog zur Entscheidung vorgelegt; die
+Wahl nach Geräte-ID ist nur der Platzhalter bis dahin.
+
 ## Sync: Irreführende „älteres Gerät"-Meldung beim Einzelgerät-Upgrade auf v3
 
 Mit dem Multi-Timeslot-/Kategorien-Feature steigt das Sync-Schema auf v3

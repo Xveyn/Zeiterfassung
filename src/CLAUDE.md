@@ -324,6 +324,19 @@ Zeitraum und welche Kategorien der Bericht gefiltert ist.
   (Audit M5) — die Sync-Flows in `sync_runtime.py` behandeln ein invalides Doc wie
   korruptes JSON (quarantänen/leer weitermergen).
 
+  **Der Merge ist symmetrisch (#142).** `merge(A, B)` und `merge(B, A)` liefern
+  inhaltlich dasselbe — sonst behielte bei einem sekundengleichen Gleichstand
+  jedes Gerät seinen eigenen Wert. Überall, wo zwei Stände gegeneinander
+  gewinnen (Einträge/Settings in `_merge_one`, gelöste Konflikte in
+  `_merge_conflict_pair`, das Anwenden der Resolutions, die Geräte-Registry),
+  gilt dieselbe Ordnung: Zeitstempel, dann Gerät, dann der Wert selbst
+  (`_lww_key`/`_resolution_key`). Ein Permutationstest über zufällige Docs hält
+  das fest (`tests/test_sync_determinism.py`); wer eine weitere
+  Gewinner-Entscheidung einbaut, nimmt dieselbe Ordnung, sonst wird er rot.
+  Alle LWW-Zeitstempel haben ein festes Format (`utc_now_iso`,
+  `%Y-%m-%dT%H:%M:%SZ`) — nur deshalb ist der String-Vergleich korrekt; auch
+  das prüft der Test.
+
   **Tombstone-Lebenszyklus (Audit N6).** Ein Tombstone (`deleted: True`) hat
   genau einen Zweck: beim Merge ein veraltetes Save eines anderen Geräts zu
   schlagen. Er wird auf drei Wegen wieder los — und nur auf diesen:
