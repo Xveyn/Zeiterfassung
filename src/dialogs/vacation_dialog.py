@@ -221,7 +221,7 @@ def open_vacation_dialog(parent, vacation_store, settings, on_change=None,
         highlightthickness=0, bd=0, anchor="w",
     ).pack(anchor="w", padx=12, pady=(0, 6))
 
-    # selectbackground=ACCENT wie in conflicts_dialog.py und tab_webhooks.py.
+    # selectbackground=ACCENT wie in conflicts_dialog.py und _record_list_tab.py.
     # Stand hier auf CELL_BG, also auf der Hintergrundfarbe der Liste: die
     # Auswahl war damit unsichtbar, und weil „Bearbeiten"/„Löschen" ohne
     # Auswahl mit einer Fehlermeldung abbrechen, sah die Liste aus, als ließe
@@ -231,8 +231,8 @@ def open_vacation_dialog(parent, vacation_store, settings, on_change=None,
         selectforeground="#ffffff", highlightthickness=0, relief=tk.FLAT,
         width=52, height=10, activestyle="none",
     )
-    # Doppelklick öffnet den Bearbeiten-Dialog, wie in der Webhook-Liste
-    # (tab_webhooks.py) — dieselbe Bauform aus Liste plus Neu/Bearbeiten/
+    # Doppelklick öffnet den Bearbeiten-Dialog, wie in den Listen-Tabs
+    # Webhooks/SMTP (_record_list_tab.py) — dieselbe Bauform aus Liste plus Neu/Bearbeiten/
     # Löschen, also derselbe kurze Weg.
     listbox.bind("<Double-Button-1>", lambda e: _edit())
     listbox.pack(fill=tk.BOTH, expand=True, padx=12)

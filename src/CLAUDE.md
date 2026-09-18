@@ -596,7 +596,13 @@ ablaufidentisches `save_settings`; je Tab eine Klasse in `tab_work/`
 Tk-Variablen als Attribute für `save_settings` exponiert — **außer** `tab_webhooks` und
 `tab_smtp`: beide exponieren dafür **keine** Variablen, Webhooks bzw. SMTP-Konten liegen
 im jeweils eigenen Store und werden vom `webhook_dialog` bzw. `smtp_dialog` direkt
-gespeichert; `tab_updates` startet seinen Live-Check
+gespeichert. Seit R12 (Xveyn#123) teilen sich die beiden Tabs Aufbau und Ablauf in
+`_record_list_tab.RecordListTab`; `tab_webhooks.py`/`tab_smtp.py` tragen nur noch ihre
+`RecordListKind` (Hinweistext, Zeilen-Detail, Unterdialog, Texte beim Entfernen,
+Schreibschutz-Exception, Hook nach dem Löschen — beim SMTP-Konto das Passwort aus dem
+Schlüsselbund, erst nach erfolgreichem Schreiben). Ein weiterer Tab derselben Bauform ist
+eine neue `RecordListKind`, keine Kopie; getestet in `test_record_list_tab(s).py`.
+`tab_updates` startet seinen Live-Check
 bewusst erst per `<<NotebookTabChanged>>`, nicht schon beim Dialog-Öffnen;
 `oauth_task.py` = H5-OAuth-Toggle-Builder; Dark-Styling weiter via
 `theme.apply_notebook_style`).
