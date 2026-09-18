@@ -491,8 +491,11 @@ Wert.
   → `widgets` (Widget-Fabriken, ttk-Styles); daneben `geometry`
   (`center_dialog_on_parent` + die Tk-freien Prädikate `_stray_click_suppressed`/
   `_should_show_delete_button`), `chrome` (Win32-Fensterchrome, `create_dialog`) und
-  `messagebox` (themed Drop-ins, nutzt chrome/widgets/geometry). Die Schichtung ist
-  zyklenfrei und in genau dieser Reihenfolge importierbar.
+  `messagebox` (themed Drop-ins, nutzt chrome/widgets/geometry) und — seit #132 —
+  `form` (Formular-Bausteine über `widgets`: `Form`, `set_enabled`, `empty_state`)
+  mit seiner Tk-freien Logik in `form_logic` (hängt an nichts, getestet in
+  `tests/test_form_logic.py`). Die Schichtung ist zyklenfrei und in genau dieser
+  Reihenfolge importierbar; das Theme importiert nie aus `src/dialogs/`.
   **Importiert wird weiterhin `from src.theme import …`**, nicht aus den Teilmodulen —
   `__init__.py` re-exportiert die Oberfläche. Wer etwas ergänzt, legt es ins passende
   Teilmodul und trägt es dort nach.

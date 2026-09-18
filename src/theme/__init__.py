@@ -12,6 +12,8 @@ Schichtung — zyklenfrei und in dieser Reihenfolge importierbar:
     palette      nur Konstanten, hängt an nichts
       └ fonts        benannte Tk-Fonts + Skalierung
           └ widgets      Widget-Fabriken, ttk-Styles
+              └ form         Formular-Bausteine (Form, set_enabled, empty_state)
+    form_logic   Tk-freie Entscheidungen der Formular-Bausteine, hängt an nichts
     geometry     Zentrierung + zwei Tk-freie Prädikate
     chrome       Win32-Fensterchrome, create_dialog
       └ messagebox   themed Drop-ins (nutzt chrome, widgets, geometry)
@@ -41,9 +43,11 @@ from src.theme.palette import (  # noqa: F401
     HOLIDAY_BG_HOVER,
     PAUSE_VALUES,
     RESERVATION_ACCENT,
+    SEPARATOR,
     STATUS_OK,
     STATUS_WARN,
     TEXT,
+    TEXT_DISABLED,
     TEXT_MUTED,
     TIME_VALUES,
     TODAY_ACCENT,
@@ -88,6 +92,11 @@ from src.theme.widgets import (  # noqa: F401
     set_toggle_active,
     toggle_button,
 )
+from src.theme.form import (  # noqa: F401
+    Form,
+    empty_state,
+    set_enabled,
+)
 from src.theme.geometry import (  # noqa: F401
     _should_show_delete_button,
     _stray_click_suppressed,
@@ -103,6 +112,7 @@ from src.theme.chrome import (  # noqa: F401
 )
 from src.theme.messagebox import (  # noqa: F401
     themed_ask_delete_choice,
+    themed_ask_save_changes,
     themed_askyesno,
     themed_showerror,
     themed_showinfo,
@@ -113,9 +123,9 @@ __all__ = [
     # palette
     "ACCENT", "ACCENT_DISABLED", "ACCENT_HOVER", "BG", "CELL_BG", "CELL_BG_HOVER",
     "ENTRY_BG", "ENTRY_BG_HOVER", "HOLIDAY_ACCENT", "HOLIDAY_BG", "HOLIDAY_BG_HOVER",
-    "PAUSE_VALUES", "RESERVATION_ACCENT", "STATUS_OK", "STATUS_WARN", "TEXT", "TEXT_MUTED",
-    "TIME_VALUES", "TODAY_ACCENT", "VACATION_ACCENT", "VACATION_BG",
-    "VACATION_BG_HOVER", "WEEKEND_BG", "WEEKEND_BG_HOVER",
+    "PAUSE_VALUES", "RESERVATION_ACCENT", "SEPARATOR", "STATUS_OK", "STATUS_WARN", "TEXT",
+    "TEXT_DISABLED", "TEXT_MUTED", "TIME_VALUES", "TODAY_ACCENT", "VACATION_ACCENT",
+    "VACATION_BG", "VACATION_BG_HOVER", "WEEKEND_BG", "WEEKEND_BG_HOVER",
     "WEEKEND_ENTRY_BG", "WEEKEND_ENTRY_BG_HOVER", "WEEKEND_FG",
     # fonts
     "FONT", "FONT_BOLD", "FONT_FAMILY", "FONT_FOOTER", "FONT_HEADER",
@@ -126,6 +136,8 @@ __all__ = [
     "primary_button", "secondary_button", "set_button_text", "set_icon_button_enabled",
     "set_primary_button_enabled", "set_secondary_button_enabled", "set_toggle_active",
     "toggle_button", "_click_keeps_focus",
+    # form
+    "Form", "empty_state", "set_enabled",
     # geometry
     "STRAY_CLICK_GUARD_S", "center_dialog_on_parent", "_should_show_delete_button",
     "_stray_click_suppressed",
@@ -133,6 +145,6 @@ __all__ = [
     "apply_app_icon", "apply_dark_titlebar", "create_dialog", "disable_min_max",
     "reveal_dialog",
     # messagebox
-    "themed_ask_delete_choice", "themed_askyesno", "themed_showerror",
+    "themed_ask_delete_choice", "themed_ask_save_changes", "themed_askyesno", "themed_showerror",
     "themed_showinfo", "themed_showwarning",
 ]
