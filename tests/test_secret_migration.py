@@ -160,6 +160,30 @@ def test_forget_all_removes_token_webhook_and_smtp_entries(tmp_path, fake_keyrin
     assert fake.store == {}
 
 
+def test_migration_reuses_a_key_the_file_already_carries(tmp_path, fake_keyring):
+    """Nach einem Datei-Fallback trägt token.json ihren Schlüssel weiter —
+    der Umzug überschreibt denselben Eintrag, statt einen neuen anzulegen."""
+    fake = fake_keyring()
+    fake.store[(keyring_store.service_for("google-oauth:k1"), "google-oauth:k1")] = "1//alt"
+    token = _token(tmp_path, refresh_token_key="google-oauth:k1")
+
+    assert sm.migrate(str(token), None).token_moved
+
+    data = json.loads(token.read_text(encoding="utf-8"))
+    assert data[oauth_utils.REFRESH_TOKEN_KEY] == "google-oauth:k1"
+    assert fake.store == {(keyring_store.service_for("google-oauth:k1"), "google-oauth:k1"): "1//r"}
+
+
+def test_forget_all_removes_the_entry_of_a_file_mode_token_with_key(tmp_path, fake_keyring):
+    fake = fake_keyring()
+    fake.store[(keyring_store.service_for("google-oauth:k1"), "google-oauth:k1")] = "1//r"
+    _token(tmp_path, refresh_token_key="google-oauth:k1")
+
+    sm.forget_all(str(tmp_path))
+
+    assert fake.store == {}
+
+
 def test_forget_all_without_files_is_quiet(tmp_path):
     sm.forget_all(str(tmp_path))
 

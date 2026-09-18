@@ -124,6 +124,79 @@ def test_save_falls_back_to_the_file_when_the_keyring_fails(tmp_path, fake_keyri
     assert oauth_utils.REFRESH_TOKEN_LOCATION not in data
 
 
+def test_keyring_fallback_keeps_the_key_and_migration_reuses_it(tmp_path, fake_keyring):
+    """Final-Review #1: scheitert `put`, bleibt der Schlüssel in der Datei.
+    Sonst verwaiste der alte Eintrag, und der Umzug legte jedes Mal einen
+    neuen an."""
+    from src import secret_migration
+    fake = fake_keyring()
+    path = tmp_path / "token.json"
+    save_credentials(_real_creds(), str(path))
+    key = _read(path)[oauth_utils.REFRESH_TOKEN_KEY]
+
+    fake.working = False
+    save_credentials(_real_creds("1//rotiert"), str(path))
+
+    data = _read(path)
+    assert data["refresh_token"] == "1//rotiert"
+    assert data[oauth_utils.REFRESH_TOKEN_KEY] == key
+    assert oauth_utils.REFRESH_TOKEN_LOCATION not in data
+
+    fake.working = True
+    assert secret_migration.migrate(str(path), None).token_moved
+    data = _read(path)
+    assert data[oauth_utils.REFRESH_TOKEN_LOCATION] == "keyring"
+    assert data[oauth_utils.REFRESH_TOKEN_KEY] == key
+    assert fake.store == {(keyring_store.service_for(key), key): "1//rotiert"}
+
+
+def test_keyring_fallback_then_forget_all_leaves_no_entry(tmp_path, fake_keyring):
+    """Der Probe-Fall der Review: nach dem Datei-Fallback findet der
+    Uninstaller den (noch gültigen) Eintrag über den Schlüssel in der Datei."""
+    from src import secret_migration
+    fake = fake_keyring()
+    path = tmp_path / "token.json"
+    save_credentials(_real_creds(), str(path))
+    fake.working = False
+    save_credentials(_real_creds("1//rotiert"), str(path))
+    fake.working = True
+
+    secret_migration.forget_all(str(tmp_path))
+
+    assert fake.store == {}
+
+
+def test_file_mode_save_keeps_a_known_key(tmp_path, fake_keyring):
+    """Eine Datei-Modus-Datei MIT Schlüssel behält ihn beim Speichern — und
+    bleibt Datei (umziehen darf nur secret_migration)."""
+    fake = fake_keyring()
+    path = tmp_path / "token.json"
+    data = json.loads(_real_creds().to_json())
+    data[oauth_utils.REFRESH_TOKEN_KEY] = "google-oauth:k1"
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+    save_credentials(_real_creds("1//rotiert"), str(path))
+
+    data = _read(path)
+    assert data["refresh_token"] == "1//rotiert"
+    assert data[oauth_utils.REFRESH_TOKEN_KEY] == "google-oauth:k1"
+    assert oauth_utils.REFRESH_TOKEN_LOCATION not in data
+    assert fake.store == {}
+
+
+def test_file_mode_with_key_loads_like_a_legacy_file(tmp_path):
+    """google-auth ignoriert das zusätzliche Feld `refresh_token_key`."""
+    path = tmp_path / "token.json"
+    data = json.loads(_real_creds().to_json())
+    data[oauth_utils.REFRESH_TOKEN_KEY] = "google-oauth:k1"
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+    loaded = load_credentials(str(path), SCOPES, Credentials)
+
+    assert loaded.refresh_token == "1//refresh-token"
+    assert loaded.to_json() == _real_creds().to_json()
+
+
 def test_unreadable_file_takes_the_legacy_path(tmp_path):
     path = tmp_path / "token.json"
     path.write_text("kaputt", encoding="utf-8")

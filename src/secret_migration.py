@@ -67,7 +67,15 @@ def _stored_and_verified(key: str, secret: str) -> bool:
 
 def _move_token(token_path: str, secret: str) -> bool:
     with TOKEN_LOCK:
-        key = new_token_keyring_key()
+        # Trägt die Datei schon einen Schlüssel (Datei-Fallback nach einem
+        # gescheiterten Schreiben), liegt darunter womöglich noch der alte
+        # Eintrag — ihn überschreiben statt einen zweiten anzulegen. Scheitert
+        # der Umzug, geht er unten mit: ungeprüft bzw. überflüssig, denn die
+        # Datei behält den Klartext-Token.
+        known = read_token_meta(token_path) or {}
+        key = known.get(REFRESH_TOKEN_KEY)
+        if not isinstance(key, str) or not key:
+            key = new_token_keyring_key()
         if not _stored_and_verified(key, secret):
             return False
         meta = read_token_meta(token_path)
@@ -166,7 +174,10 @@ def forget_all(base_path: str) -> None:
     Quelle einzeln, ein Fehler in einer hält die übrigen nicht auf.
     """
     meta = read_token_meta(os.path.join(base_path, "token.json"))
-    key = meta.get(REFRESH_TOKEN_KEY) if meta is not None and token_in_keyring(meta) else None
+    # Jeder Schlüssel in der Datei, auch im Datei-Modus: nach einem
+    # Datei-Fallback liegt darunter noch der alte Eintrag. Der Schlüssel ist
+    # eine App-eigene uuid — nur diese App schreibt ihn.
+    key = meta.get(REFRESH_TOKEN_KEY) if meta is not None else None
     if isinstance(key, str) and key:
         keyring_store.remove(key)
     try:

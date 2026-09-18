@@ -330,17 +330,37 @@ def test_forget_token_removes_file_and_keyring_entry(tmp_path, fake_keyring):
     assert (_ks.service_for("google-oauth:k1"), "google-oauth:k1") not in fake.store
 
 
-def test_forget_token_leaves_the_keyring_alone_for_a_file_token(tmp_path, fake_keyring):
+def test_forget_token_removes_the_entry_of_a_file_token_with_key(tmp_path, fake_keyring):
+    """Datei-Modus MIT Schlüssel (nach einem Datei-Fallback): der Eintrag
+    darunter ist noch da und gehört dieser App — er geht mit."""
     fake = fake_keyring()
     path = tmp_path / "token.json"
     path.write_text('{"refresh_token": "1//x", "refresh_token_key": "google-oauth:k1"}',
                     encoding="utf-8")
-    fake.store[(_ks.service_for("google-oauth:k1"), "google-oauth:k1")] = "fremd"
+    fake.store[(_ks.service_for("google-oauth:k1"), "google-oauth:k1")] = "1//alt"
 
     _ou.forget_token(str(path))
 
     assert not path.exists()
-    assert fake.store[(_ks.service_for("google-oauth:k1"), "google-oauth:k1")] == "fremd"
+    assert fake.store == {}
+
+
+def test_forget_token_leaves_the_keyring_alone_for_a_file_token_without_key(
+        tmp_path, fake_keyring, monkeypatch):
+    """Alt-Format ohne Schlüssel: nichts, was die App im Schlüsselbund
+    abgelegt haben könnte — er wird gar nicht erst gefragt."""
+    fake = fake_keyring()
+    path = tmp_path / "token.json"
+    path.write_text('{"refresh_token": "1//x"}', encoding="utf-8")
+    fake.store[("Zeiterfassung", "s1")] = "fremd"
+    calls = []
+    monkeypatch.setattr(_ks, "remove", calls.append)
+
+    _ou.forget_token(str(path))
+
+    assert not path.exists()
+    assert calls == []
+    assert fake.store == {("Zeiterfassung", "s1"): "fremd"}
 
 
 def test_forget_token_is_quiet_without_a_file(tmp_path):

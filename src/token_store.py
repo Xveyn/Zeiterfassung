@@ -72,13 +72,14 @@ def save_credentials(creds: Any, token_path: str) -> None:
     with TOKEN_LOCK:
         exists = os.path.exists(token_path)
         meta = read_token_meta(token_path) if exists else None
-        if exists and not token_in_keyring(meta):
-            # Datei-Modus: Ort beibehalten.
-            write_token(creds, token_path)
-            return
         key = meta.get(REFRESH_TOKEN_KEY) if meta is not None else None
         if not isinstance(key, str) or not key:
             key = None
+        if exists and not token_in_keyring(meta):
+            # Datei-Modus: Ort beibehalten — und einen bekannten Schlüssel
+            # (aus einem früheren Datei-Fallback) mit.
+            _write_file_mode(creds, key, token_path)
+            return
         refresh = getattr(creds, "refresh_token", None)
         if not (isinstance(refresh, str) and refresh):
             if key is not None:
@@ -91,13 +92,33 @@ def save_credentials(creds: Any, token_path: str) -> None:
             # Flow ohne Refresh-Token).
             write_token(creds, token_path)
             return
+        meta_key = key
         key = key or new_token_keyring_key()
         if keyring_store.put(key, refresh):
             _write_keyring_mode(creds.to_json(strip=["refresh_token"]), key, token_path)
             return
         # Schlüsselbund fällt aus: vollständig in die Datei — ein (rotierter)
         # Refresh-Token geht nie verloren; der nächste Start zieht ihn um.
+        # Der Schlüssel bleibt stehen, sofern die Datei schon einen hatte:
+        # unter ihm liegt womöglich noch der alte Eintrag, und nur so finden
+        # ihn Umzug (derselbe Eintrag statt eines neuen), `forget_token` und
+        # der Uninstaller. Ein frisch erzeugter Schlüssel kommt dagegen nicht
+        # in die Datei — ohne Schlüsselbund bleibt sie byte-gleich zu vorher.
+        _write_file_mode(creds, meta_key, token_path)
+
+
+def _write_file_mode(creds: Any, key: str | None, token_path: str) -> None:
+    """Schreibt token.json im Datei-Modus. Ohne Schlüssel exakt
+    `write_token` (byte-gleich zum Verhalten vor #101); mit Schlüssel
+    zusätzlich `refresh_token_key`, aber ohne Markierung — der Refresh-Token
+    steht in der Datei, geladen wird wie bisher (google-auth ignoriert das
+    Feld)."""
+    if key is None:
         write_token(creds, token_path)
+        return
+    data = json.loads(creds.to_json())
+    data[REFRESH_TOKEN_KEY] = key
+    write_token_json(json.dumps(data), token_path)
 
 
 def _write_keyring_mode(json_text: str, key: str, token_path: str) -> None:
