@@ -110,6 +110,7 @@ from src.theme.chrome import (  # noqa: F401
 )
 from src.theme.messagebox import (  # noqa: F401
     themed_ask_delete_choice,
+    themed_ask_save_changes,
     themed_askyesno,
     themed_showerror,
     themed_showinfo,
@@ -142,6 +143,6 @@ __all__ = [
     "apply_app_icon", "apply_dark_titlebar", "create_dialog", "disable_min_max",
     "reveal_dialog",
     # messagebox
-    "themed_ask_delete_choice", "themed_askyesno", "themed_showerror",
+    "themed_ask_delete_choice", "themed_ask_save_changes", "themed_askyesno", "themed_showerror",
     "themed_showinfo", "themed_showwarning",
 ]
