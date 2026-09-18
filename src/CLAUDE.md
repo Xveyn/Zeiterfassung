@@ -127,10 +127,11 @@ ohne Install-/Download-Button, es gibt nichts mehr zu klicken. Anders als
 `show_if_newer` ignoriert er bewusst `dismissed_version` (ein bereits
 geladenes, gleich automatisch installiertes Update ist wichtiger als eine
 zuvor weggeklickte Verfügbarkeits-Meldung). Aufrufer ist ausschließlich
-`App._maybe_auto_update` in `ui.py` — der Banner importiert `src.ui`
-weiterhin nicht, das Signal kommt als normaler Methodenaufruf auf die
-bestehende Instanz, kein neuer Callback-Parameter nötig. `_show(release,
-ready_to_install)` ist die gemeinsame Bau-Methode beider Zustände.
+der `AutoUpdater` (`auto_update.py`, s.u.): `App` reicht ihm
+`show_ready_to_install` als `on_ready` hinein — der Banner importiert weder
+`src.ui` noch `src.auto_update`, kein neuer Callback-Parameter am Banner.
+`_show(release, ready_to_install)` ist die gemeinsame Bau-Methode beider
+Zustände.
 
 ## Threading-Modell
 
@@ -441,6 +442,19 @@ Wert.
 - `time_utils.py` — Stunden, KW-Labels, `format_iso_date`/`format_iso_datetime` (Anzeige,
   Zeitanteil roh) und `local_date_of_iso` (UTC-Stempel → lokales Datum, zum **Vergleichen**;
   s. Sync-Status-Label).
+- `auto_update.py` — die Auto-Update-Policy samt **dem einen** Guard für jeden
+  Update-Download (R9, Xveyn#123). `App` baut das einzige `AutoUpdater`-Exemplar
+  (Runner `App._bg`, `on_ready` = Banner) und reicht es über
+  `open_settings_dialog(..., auto_updater=…)` an den Updates-Tab. Beide
+  Auslöser — `App._on_update_check_result` und der Check des Tabs — rufen
+  `maybe_start`; wer nachfragt, während schon still geladen wird, hängt sich
+  mit `on_progress`/`on_finished` an den laufenden Download, statt selbst zu
+  laden. Der Ein-Klick-Weg des Tabs belegt denselben Guard
+  (`acquire_manual`/`release_manual`) und entscheidet seinen Ausgang über
+  `manual_outcome(ok, dialog_alive)`. Der stille Weg persistiert unabhängig
+  davon, ob ein Dialog offen ist — die „Dialog zu"-Hälfte der alten
+  Vier-Felder-Tabelle gibt es nur noch für den manuellen Weg. Kandidat für
+  R11: ein `UpdateCoordinator` als fünfte App-Komponente baut hierauf auf.
 - `holidays_de.py`, `paths.py` (`get_base_path` Frozen-vs-Repo), `updater.py`
   (GitHub-Releases, stdlib-only, Frequenz über `update_check_frequency`, Pre-Release-Opt-in über `prerelease_updates_enabled`), `changelog.py`
   (lädt/parst den Changelog-Abschnitt einer Release-Version vom GitHub-Tag), `platform_open.py`, `logging_setup.py`,

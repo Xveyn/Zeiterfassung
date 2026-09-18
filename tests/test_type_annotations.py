@@ -36,6 +36,7 @@ ANNOTATED_MODULES = [
     "src/send_reminder.py",
     "src/report.py",
     "src/self_update.py",
+    "src/auto_update.py",
     "src/mime_message.py",
     # Infra-/Plattform-Schicht
     "src/paths.py",

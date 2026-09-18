@@ -8,7 +8,6 @@ import os
 import platform
 import subprocess
 import sys
-import tempfile
 import time
 from src.time_utils import (
     format_iso_date, get_week_dates,
@@ -21,10 +20,9 @@ from src.weekly_limit import format_limit_warnings
 from src.grid_renderer import GridRenderer
 from src.paths import get_resource_path, relaunch_command
 from src.mail import friendly_token_message
+from src.auto_update import AutoUpdater
 from src.self_update import (
-    UpdateBlocked, apply_linux, apply_windows, discard_download,
-    download_and_verify_update, download_dest, plan_update,
-    supports_self_update, verify_file,
+    apply_linux, apply_windows, discard_download, verify_file,
 )
 from src.sync_orchestrator import classify_sync_error, SyncOrchestrator
 from src.update_banner import UpdateBanner
@@ -188,15 +186,16 @@ class App:
             ),
         )
         self._bg.fetch_sender_email()
-        # Guard gegen zwei ueberlappende stille Downloads desselben
-        # periodischen Checks (s. _maybe_auto_update) — nicht gegen einen
-        # zeitgleich im Updates-Tab laufenden manuellen Download; der
-        # pending_update_path-Check dort deckt den ueblichen Ueberschneidungsfall ab.
-        self._auto_update_running = False
         self._update_banner = UpdateBanner(
             self.root, self.settings, lambda: self._renderer.grid_container,
             on_resize=self._renderer.repin_geometry,
             on_open_updates_tab=lambda: self._open_settings(initial_tab="updates"))
+        # Die eine Auto-Update-Policy samt Guard (R9) — der Updates-Tab
+        # bekommt dasselbe Exemplar, sonst luden der Start-Check und der
+        # Check des Tabs dasselbe Update zweimal.
+        self._auto_updater = AutoUpdater(
+            self.settings, self._bg,
+            on_ready=self._update_banner.show_ready_to_install)
         self._bg.check_update(on_result=self._on_update_check_result)
         self._bg.reconcile_on_start(on_ok=self._on_reconcile_start_done)
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
@@ -533,6 +532,7 @@ class App:
             smtp_store=self._smtp_store,
             on_vacation_display_change=self._refresh,
             initial_tab=initial_tab,
+            auto_updater=self._auto_updater,
         )
 
     def _on_vacation_change(self):
@@ -728,71 +728,8 @@ class App:
         # Download aus — kein eigener Timer (Design-Regel 1: "vorhandener
         # Update-Check"). Laeuft unabhaengig von der toast/banner-Routing-
         # Entscheidung oben, deshalb hier und nicht in einem der beiden Zweige.
-        self._maybe_auto_update(release)
-
-    def _maybe_auto_update(self, release):
-        """Laedt und prueft `release` still im Hintergrund, wenn der
-        Automatik-Schalter an ist — dieselbe Funktion wie der Ein-Klick-Weg
-        im Updates-Tab (`self_update.download_and_verify_update`), damit
-        beide Pfade nicht auseinanderlaufen (vgl. Task 8: der Banner
-        delegiert aus demselben Grund an den Updates-Tab statt einen
-        zweiten Ablauf zu bauen).
-
-        Angewendet wird NICHT hier, sondern erst beim naechsten Beenden
-        (`_apply_pending_update`) — der Nutzer verliert so nie einen
-        angefangenen Eintrag. Der Ablauf ist bewusst UNBEOBACHTET: kein
-        Dialog, kein Fortschritt, ein Fehlschlag geht nur ins Log — der
-        naechste Check (dieselbe Haeufigkeit wie bisher) versucht es erneut.
-        """
-        if not bool(self.settings.get("auto_update_enabled")):
-            return
-        if not supports_self_update(platform.system(), getattr(sys, "frozen", False)):
-            return
-        if self.settings.get("pending_update_path"):
-            # Es liegt schon eine geprüfte, noch nicht angewendete Datei —
-            # nicht erneut laden (sonst laedt jeder taegliche Check dieselbe
-            # ~65 MB neu, solange der Nutzer nicht beendet). Nur die
-            # Sichtbarkeit auffrischen (Design-Regel 3: "sichtbar bleibt es
-            # trotzdem"), z.B. nach einem Neustart der App.
-            self._update_banner.show_ready_to_install(release)
-            return
-        if self._auto_update_running:
-            return
-
-        plan = plan_update(
-            release, platform.system(), platform.machine(),
-            getattr(sys, "frozen", False),
-            os.environ.get("APPIMAGE", ""), sys.executable)
-        if isinstance(plan, UpdateBlocked):
-            logging.getLogger(__name__).info(
-                "Automatisches Update nicht moeglich: %s", plan.reason)
-            return
-
-        # Pro Lauf ein eigener Zielname (s. `self_update.download_dest`):
-        # derselbe Aufruf wie im Updates-Tab, damit ein dort gestarteter
-        # manueller Download und dieser stille Lauf sich nicht mehr in
-        # derselben Datei begegnen koennen.
-        local = download_dest(platform.system(), plan.asset_name, plan.target,
-                              tempfile.gettempdir())
-
-        self._auto_update_running = True
-
-        def work():
-            return download_and_verify_update(plan, local)
-
-        def done(result):
-            self._auto_update_running = False
-            if isinstance(result, str):
-                logging.getLogger(__name__).info(
-                    "Automatisches Update abgebrochen: %s", result)
-                return
-            self.settings.set_many({
-                "pending_update_path": result.path,
-                "pending_update_sha256": result.sha256,
-            })
-            self._update_banner.show_ready_to_install(release)
-
-        self._bg.run(work, done)
+        # Die Policy selbst liegt in `auto_update.AutoUpdater` (R9).
+        self._auto_updater.maybe_start(release)
 
     def _restore_from_tray(self):
         """Bringt das Fenster aus dem `withdraw()`-Zustand zurück."""
