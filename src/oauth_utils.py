@@ -177,15 +177,22 @@ def token_in_keyring(meta: dict[str, Any] | None) -> bool:
 def forget_token(token_path: str) -> None:
     """Löscht token.json und — nur wenn der Refresh-Token dort liegt — den
     Eintrag im Schlüsselbund. Ohne das zweite blieben nach „Google neu
-    verbinden" oder einem Scope-Upgrade verwaiste Einträge stehen."""
+    verbinden" oder einem Scope-Upgrade verwaiste Einträge stehen.
+
+    Der Eintrag geht auch dann, wenn die Datei sich nicht löschen lässt
+    (gesperrt): sie zeigt danach auf einen fehlenden Eintrag, was
+    `token_store.load_credentials` als „neu anmelden" liest — genau das,
+    was beide Aufrufer ohnehin wollen. Der Löschfehler selbst wird
+    weitergereicht."""
     meta = read_token_meta(token_path)
     key = meta.get(REFRESH_TOKEN_KEY) if meta is not None and token_in_keyring(meta) else None
     try:
         os.remove(token_path)
     except FileNotFoundError:
         pass
-    if isinstance(key, str) and key:
-        keyring_store.remove(key)
+    finally:
+        if isinstance(key, str) and key:
+            keyring_store.remove(key)
 
 
 def token_lacks_scopes(token_path: str, scopes: Collection[str]) -> bool:

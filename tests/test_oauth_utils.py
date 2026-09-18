@@ -345,3 +345,25 @@ def test_forget_token_leaves_the_keyring_alone_for_a_file_token(tmp_path, fake_k
 
 def test_forget_token_is_quiet_without_a_file(tmp_path):
     _ou.forget_token(str(tmp_path / "token.json"))
+
+
+def test_forget_token_removes_the_keyring_entry_even_if_the_file_is_locked(
+        tmp_path, fake_keyring, monkeypatch):
+    """Gesperrte token.json (Virenscanner, offenes Handle): der Eintrag geht
+    trotzdem — die Datei zeigt dann auf einen fehlenden Eintrag, was die App
+    als „neu anmelden" liest. Sonst bliebe er für immer verwaist."""
+    fake = fake_keyring()
+    path = tmp_path / "token.json"
+    path.write_text(_json.dumps({"refresh_token_location": "keyring",
+                                 "refresh_token_key": "google-oauth:k1"}),
+                    encoding="utf-8")
+    _ks.put("google-oauth:k1", "1//refresh")
+
+    def locked(p):
+        raise PermissionError("gesperrt")
+
+    monkeypatch.setattr(_ou.os, "remove", locked)
+    with pytest.raises(PermissionError):
+        _ou.forget_token(str(path))
+
+    assert (_ks.service_for("google-oauth:k1"), "google-oauth:k1") not in fake.store
