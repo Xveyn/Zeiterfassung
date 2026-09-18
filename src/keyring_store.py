@@ -177,13 +177,16 @@ def delete_secret(record_id: str) -> None:
         log.warning("Schlüsselbund antwortet nicht — ein Secret blieb stehen")
 
 
-# Zuletzt geschriebener Wert je Schlüssel, nur in diesem Prozess. `put`
-# schreibt nur bei Änderung: sonst schriebe jeder stündliche Token-Refresh
-# denselben Wert neu — unter macOS über SecItemDelete + SecItemAdd (nicht
-# atomar, womöglich mit Keychain-Rückfrage), unter Linux bei hängendem Secret
-# Service mit 30 s Watchdog. Preis: wird ein Eintrag außerhalb der App
-# entfernt, merkt das erst der nächste Start. Nach einem Neustart schreibt das
-# erste put den Wert einmal neu — gewollt, s. fetch.
+# Zuletzt geschriebener (oder von `put` als schon vorhanden gelesener) Wert je
+# Schlüssel, nur in diesem Prozess. `put` schreibt nur bei Änderung: sonst
+# schriebe jeder stündliche Token-Refresh denselben Wert neu — unter macOS
+# über SecItemDelete + SecItemAdd (nicht atomar, womöglich mit
+# Keychain-Rückfrage), unter Linux bei hängendem Secret Service mit 30 s
+# Watchdog. Nach einem Neustart ist der Cache leer; das erste put liest dann
+# den Wert im Schlüsselbund und schreibt nur, wenn er abweicht (s. put). Ein
+# außerhalb der App entfernter Eintrag fällt beim nächsten `fetch` auf — das
+# liest immer direkt und verwirft dabei den Cache, das nächste put schreibt
+# also wieder.
 _known: dict[str, str] = {}
 _known_lock = threading.Lock()
 # `put` und `remove` laufen ihre GANZE Sequenz (Cache-Check → Backend-Call →
@@ -210,6 +213,15 @@ def put(key: str, value: str) -> bool:
         with _known_lock:
             if _known.get(key) == value:
                 return True
+        # Erst lesen: liegt der Wert schon so im Schlüsselbund (typisch das
+        # erste put nach einem Neustart), wird aus dem destruktiven
+        # Delete+Add unter macOS ein Lesen. Weil alle put/remove unter
+        # `_write_lock` laufen, kann dieser Lesewert nicht gegen ein anderes
+        # put veralten.
+        if _backend_holds(key, value):
+            with _known_lock:
+                _known[key] = value
+            return True
 
         def work() -> None:
             import keyring  # pyright: ignore[reportMissingImports]
@@ -231,6 +243,24 @@ def put(key: str, value: str) -> bool:
         with _known_lock:
             _known[key] = value
         return True
+
+
+def _backend_holds(key: str, value: str) -> bool:
+    """True, wenn der Schlüsselbund unter `key` bereits genau `value` hält.
+    Jeder Fehler und jeder Timeout heißt `False` — `put` schreibt dann wie
+    bisher."""
+    def work() -> Any:
+        import keyring  # pyright: ignore[reportMissingImports]
+
+        return keyring.get_password(service_for(key), key)
+
+    try:
+        ok, stored = _call_guarded(work)
+    except Exception:
+        # Bewusst alles und ohne eigenes Log: der Schreibversuch direkt danach
+        # trifft denselben Schlüsselbund und meldet einen Ausfall selbst.
+        return False
+    return ok and stored == value
 
 
 def fetch(key: str) -> str | None:

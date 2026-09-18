@@ -324,3 +324,54 @@ def test_concurrent_puts_leave_cache_and_backend_in_agreement(fake_keyring):
     a.join(5)
     b.join(5)
     assert keyring_store._known["k"] == fake.store[_entry("k")] == "vB"
+
+
+def _count_writes(monkeypatch):
+    """Ersetzt set_password des Fake-Moduls durch eine mitschreibende Hülle."""
+    import sys
+    module = sys.modules["keyring"]
+    original = module.set_password
+    writes = []
+
+    def counting(service, account, password):
+        writes.append(account)
+        original(service, account, password)
+
+    monkeypatch.setattr(module, "set_password", counting)
+    return writes
+
+
+def test_put_does_not_rewrite_a_value_the_backend_already_holds(fake_keyring, monkeypatch):
+    """W1: nach einem Neustart ist der Cache leer. Statt den unveränderten
+    Wert neu zu schreiben (macOS: SecItemDelete + SecItemAdd), liest put ihn
+    erst — gleicher Wert, kein Schreiben."""
+    fake = fake_keyring()
+    fake.store[_entry("k")] = "v"
+    writes = _count_writes(monkeypatch)
+
+    assert keyring_store.put("k", "v") is True
+    assert writes == []
+    assert keyring_store._known["k"] == "v"
+
+
+def test_put_writes_when_the_backend_holds_another_value(fake_keyring, monkeypatch):
+    fake = fake_keyring()
+    fake.store[_entry("k")] = "alt"
+    writes = _count_writes(monkeypatch)
+
+    assert keyring_store.put("k", "neu") is True
+    assert writes == ["k"]
+    assert fake.store[_entry("k")] == "neu"
+
+
+def test_put_still_writes_when_reading_fails(fake_keyring, monkeypatch):
+    import sys
+    fake = fake_keyring()
+
+    def broken_read(service, account):
+        raise RuntimeError("Lesen kaputt")
+
+    monkeypatch.setattr(sys.modules["keyring"], "get_password", broken_read)
+
+    assert keyring_store.put("k", "v") is True
+    assert fake.store[_entry("k")] == "v"
