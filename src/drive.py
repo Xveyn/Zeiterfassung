@@ -9,7 +9,7 @@ import io
 import logging
 import os
 
-from src.oauth_utils import REAUTH_REQUIRED_MSG, write_token
+from src.oauth_utils import REAUTH_REQUIRED_MSG, write_token, forget_token
 
 SYNC_FILENAME = "zeiterfassung-sync.json"
 SYNC_MIMETYPE = "application/json"
@@ -127,10 +127,7 @@ def reconnect(credentials_path, token_path, gcal_enabled=False):
     Refresh (fordert fehlende Scopes nicht nach) ersetzt wird — der Consent-
     Screen erscheint nur, wenn kein Token existiert. Holt mit den aktuellen
     Scopes (inkl. Calendar bei gcal_enabled) neu ein."""
-    try:
-        os.remove(token_path)
-    except FileNotFoundError:
-        pass
+    forget_token(token_path)
     return get_drive_service(credentials_path, token_path, gcal_enabled=gcal_enabled,
                              interactive=True)
 

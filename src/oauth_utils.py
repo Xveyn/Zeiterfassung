@@ -12,6 +12,8 @@ angefasst, was die aufrufende Seite ohnehin schon hält.
 from __future__ import annotations
 
 import json
+import logging
+import uuid
 from typing import Any, Collection
 import os
 import stat
@@ -19,10 +21,16 @@ import tempfile
 import time
 
 from src.secure_file import harden_windows_acl
+from src import keyring_store
+
+log = logging.getLogger(__name__)
 
 
-def write_token(creds: Any, token_path: str) -> None:
-    """Persistiere Credentials atomar und setze restriktive Permissions.
+def write_token_json(json_text: str, token_path: str) -> None:
+    """Persistiere fertigen JSON-Text atomar und setze restriktive Permissions.
+
+    Schreibt fertigen JSON-Text; `write_token` und `token_store.save_credentials`
+    liefern ihn.
 
     Geschrieben wird in eine Temp-Datei im selben Verzeichnis, dann via
     `os.replace` atomar an die Zielstelle bewegt — so kann ein abgebrochener
@@ -43,7 +51,7 @@ def write_token(creds: Any, token_path: str) -> None:
         dir=directory, prefix=".token-", suffix=".tmp")
     try:
         with os.fdopen(fd, "w") as f:
-            f.write(creds.to_json())
+            f.write(json_text)
         try:
             os.chmod(tmp_path, stat.S_IRUSR | stat.S_IWUSR)  # 0o600
         except OSError:
@@ -71,6 +79,12 @@ def write_token(creds: Any, token_path: str) -> None:
         except OSError:
             pass
         raise
+
+
+def write_token(creds: Any, token_path: str) -> None:
+    """Persistiere Credentials vollständig (inkl. Refresh-Token) als Datei —
+    der Datei-Modus, byte-gleich zum Verhalten vor #101."""
+    write_token_json(creds.to_json(), token_path)
 
 
 def read_granted_scopes(token_path: str) -> list[str] | None:
@@ -110,6 +124,69 @@ dürfen (Xveyn#129). Ein Wert für beide Builder, weil die Sync-Flows den Fehler
 teils nur als `str(e)` weiterreichen — `sync_orchestrator.classify_sync_error`
 erkennt den Auth-Fall dann allein an diesem Text."""
 
+KEYRING_UNAVAILABLE_MSG = (
+    "Der Schlüsselbund des Betriebssystems ist nicht erreichbar — dort liegt "
+    "die Google-Anmeldung.")
+"""Fehlertext, wenn der Refresh-Token im Schlüsselbund liegt, dieser aber
+nicht antwortet. Wie `REAUTH_REQUIRED_MSG` als Text erkennbar, weil
+Sync-Flows Fehler teils nur als `str(e)` weiterreichen."""
+
+REFRESH_TOKEN_LOCATION = "refresh_token_location"
+"""Feld in token.json: `"keyring"`, wenn der Refresh-Token im Schlüsselbund
+liegt. Fehlt es (Alt-Format), liegt er in der Datei (#101)."""
+
+REFRESH_TOKEN_KEY = "refresh_token_key"
+"""Feld in token.json: Schlüssel des Eintrags im Schlüsselbund. In der Datei
+statt aus dem Pfad abgeleitet — ein verschobener Datenordner (Junction,
+8.3-Name, Backup) behält so seinen Token."""
+
+
+class TokenKeyringUnavailable(Exception):
+    """Der Refresh-Token liegt im Schlüsselbund, der aber nicht antwortet.
+
+    Kein Auth-Fehler: der Token ist nicht ungültig, nur gerade nicht lesbar.
+    Aufrufer starten deshalb KEINEN Consent-Flow (Xveyn#129) und fassen
+    token.json nicht an."""
+
+    def __init__(self) -> None:
+        super().__init__(KEYRING_UNAVAILABLE_MSG)
+
+
+def new_token_keyring_key() -> str:
+    """Neuer, eindeutiger Schlüssel für den Refresh-Token. Eindeutig statt
+    fest: zwei Datenverzeichnisse desselben OS-Nutzers (Dev-Instanz neben
+    der Installation) dürfen sich keinen Eintrag teilen."""
+    return f"google-oauth:{uuid.uuid4().hex}"
+
+
+def read_token_meta(token_path: str) -> dict[str, Any] | None:
+    """Inhalt von token.json als Dict, oder None (fehlt/unlesbar/kein Dict)."""
+    try:
+        with open(token_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except (OSError, ValueError):
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def token_in_keyring(meta: dict[str, Any] | None) -> bool:
+    """Liegt der Refresh-Token laut `meta` im Schlüsselbund?"""
+    return isinstance(meta, dict) and meta.get(REFRESH_TOKEN_LOCATION) == "keyring"
+
+
+def forget_token(token_path: str) -> None:
+    """Löscht token.json und — nur wenn der Refresh-Token dort liegt — den
+    Eintrag im Schlüsselbund. Ohne das zweite blieben nach „Google neu
+    verbinden" oder einem Scope-Upgrade verwaiste Einträge stehen."""
+    meta = read_token_meta(token_path)
+    key = meta.get(REFRESH_TOKEN_KEY) if meta is not None and token_in_keyring(meta) else None
+    try:
+        os.remove(token_path)
+    except FileNotFoundError:
+        pass
+    if isinstance(key, str) and key:
+        keyring_store.remove(key)
+
 
 def token_lacks_scopes(token_path: str, scopes: Collection[str]) -> bool:
     """True, wenn `token.json` lesbar ist und nicht alle `scopes` gewährt.
@@ -143,7 +220,9 @@ def discard_token_for_scope_upgrade(token_path: str,
         return False
 
     try:
-        os.remove(token_path)
+        forget_token(token_path)
     except OSError:
-        pass
+        # Wie zuvor: ein Löschfehler (gesperrte Datei) darf den Consent, der
+        # unmittelbar folgt, nicht verhindern — der schreibt token.json neu.
+        log.debug("token.json ließ sich nicht löschen", exc_info=True)
     return True

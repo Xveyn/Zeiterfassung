@@ -283,3 +283,65 @@ def test_read_granted_scopes_returns_none_for_non_dict_root(tmp_path):
         json.dump([], f)
 
     assert read_granted_scopes(path) is None
+
+
+# --- Schlüsselbund-Anbindung (#101) ----------------------------------------
+
+import json as _json
+
+from src import keyring_store as _ks
+from src import oauth_utils as _ou
+
+
+def test_new_token_keyring_keys_are_unique():
+    a, b = _ou.new_token_keyring_key(), _ou.new_token_keyring_key()
+    assert a.startswith("google-oauth:") and a != b
+
+
+def test_read_token_meta_and_location(tmp_path):
+    path = tmp_path / "token.json"
+    assert _ou.read_token_meta(str(path)) is None                # fehlt
+    path.write_text("kein json", encoding="utf-8")
+    assert _ou.read_token_meta(str(path)) is None                # kaputt
+    path.write_text('{"token": "t"}', encoding="utf-8")
+    meta = _ou.read_token_meta(str(path))
+    assert meta == {"token": "t"} and not _ou.token_in_keyring(meta)   # Alt-Format
+    path.write_text('{"refresh_token_location": "keyring"}', encoding="utf-8")
+    assert _ou.token_in_keyring(_ou.read_token_meta(str(path)))
+
+
+def test_write_token_json_writes_exactly_the_text(tmp_path):
+    path = tmp_path / "token.json"
+    _ou.write_token_json('{"a": 1}', str(path))
+    assert path.read_text(encoding="utf-8") == '{"a": 1}'
+
+
+def test_forget_token_removes_file_and_keyring_entry(tmp_path, fake_keyring):
+    fake = fake_keyring()
+    path = tmp_path / "token.json"
+    path.write_text(_json.dumps({"refresh_token_location": "keyring",
+                                 "refresh_token_key": "google-oauth:k1"}),
+                    encoding="utf-8")
+    _ks.put("google-oauth:k1", "1//refresh")
+
+    _ou.forget_token(str(path))
+
+    assert not path.exists()
+    assert (_ks.service_for("google-oauth:k1"), "google-oauth:k1") not in fake.store
+
+
+def test_forget_token_leaves_the_keyring_alone_for_a_file_token(tmp_path, fake_keyring):
+    fake = fake_keyring()
+    path = tmp_path / "token.json"
+    path.write_text('{"refresh_token": "1//x", "refresh_token_key": "google-oauth:k1"}',
+                    encoding="utf-8")
+    fake.store[(_ks.service_for("google-oauth:k1"), "google-oauth:k1")] = "fremd"
+
+    _ou.forget_token(str(path))
+
+    assert not path.exists()
+    assert fake.store[(_ks.service_for("google-oauth:k1"), "google-oauth:k1")] == "fremd"
+
+
+def test_forget_token_is_quiet_without_a_file(tmp_path):
+    _ou.forget_token(str(tmp_path / "token.json"))
