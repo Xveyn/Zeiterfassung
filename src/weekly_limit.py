@@ -31,7 +31,7 @@ from typing import TYPE_CHECKING, Any, Iterable
 
 from src.time_utils import calculate_hours, get_week_dates, get_week_label
 
-if TYPE_CHECKING:  # nur fuer die Signaturen
+if TYPE_CHECKING:  # nur für die Signaturen
     from src.settings import SettingsLike
 
 

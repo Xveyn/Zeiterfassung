@@ -172,7 +172,7 @@ def resolve_check_result(installed_id: str, release: "Release | None") -> dict:
     }
 
 
-# platform.machine() liefert je nach OS verschiedene Schreibweisen fuer
+# platform.machine() liefert je nach OS verschiedene Schreibweisen für
 # dieselbe Architektur. Nur diese Werte gelten als Treffer.
 _ARM64 = {"arm64", "aarch64"}
 _X86_64 = {"x86_64", "amd64"}

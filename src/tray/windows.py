@@ -1,7 +1,7 @@
 # src/tray/windows.py
 """Windows-Tray-Backend (pystray im Daemon-Thread).
 
-Bis R7 (#51) wohnte diese Klasse in der Fassade, waehrend macOS und Linux
+Bis R7 (#51) wohnte diese Klasse in der Fassade, während macOS und Linux
 je ein eigenes Modul hatten — die Asymmetrie ist damit weg.
 
 `pystray` und `PIL` werden bewusst LAZY in den Methoden importiert: die CI
@@ -162,7 +162,7 @@ class _PystrayBackend:
             handle = getattr(self._icon, "_icon_handle", None)
             # _message ist eine pystray-Interne (nicht im Type-Stub) — wie
             # _icon_handle per getattr holen: entfernt die Pylance-Warnung und
-            # faellt sauber auf Standard-notify() zurueck, falls sie fehlt.
+            # fällt sauber auf Standard-notify() zurück, falls sie fehlt.
             send_message = getattr(self._icon, "_message", None)
             if not handle or send_message is None:
                 return False

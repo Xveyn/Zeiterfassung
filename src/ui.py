@@ -923,7 +923,7 @@ class App:
             self._single_instance.release()
         # Ein vorbereitetes Update erst hier anwenden (UpdateCoordinator,
         # R11) — die App macht ohnehin zu, der Nutzer verliert keinen
-        # angefangenen Eintrag, und der Neustart nach dem Update entfaellt.
+        # angefangenen Eintrag, und der Neustart nach dem Update entfällt.
         try:
             self._updates.apply_pending_on_quit()
         except Exception:

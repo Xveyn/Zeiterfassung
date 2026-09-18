@@ -14,7 +14,7 @@ from __future__ import annotations
 import datetime
 from typing import TYPE_CHECKING, Any
 
-if TYPE_CHECKING:  # nur fuer die Signaturen
+if TYPE_CHECKING:  # nur für die Signaturen
     from src.settings import SettingsLike
 
 

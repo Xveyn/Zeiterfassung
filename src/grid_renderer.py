@@ -65,7 +65,7 @@ class GridRenderer:
         self._last_refresh_columns = None
         self._last_footer_wide = None
         # Transienter Datum/View-Stand (von refresh gesetzt; Defaults nur
-        # Platzhalter, refresh() ueberschreibt sie vor jedem Render).
+        # Platzhalter, refresh() überschreibt sie vor jedem Render).
         self._view_mode = "month"
         self._year = 0
         self._month = 0
@@ -666,13 +666,13 @@ class GridRenderer:
         return self._conflicts_store.unresolved_entry_keys()
 
     def _cell_layout_metrics(self, frame):
-        """Misst die natuerliche Pixelgroesse einer Standard-Tageszelle (Probe-
-        Label) und liefert die layout-abhaengigen Groessen.
+        """Misst die natürliche Pixelgröße einer Standard-Tageszelle (Probe-
+        Label) und liefert die layout-abhängigen Größen.
 
         Bei ausgeblendetem Wochenende (5 statt 7 Spalten) bleibt mehr Horizontal-
-        platz pro Spalte: breitere Zellen und groessere Zeit-/Feiertagsschrift
+        platz pro Spalte: breitere Zellen und größere Zeit-/Feiertagsschrift
         (FONT statt FONT_SMALL), damit z.B. '09:30-17:00' bequem lesbar bleibt.
-        Holiday-Zellen werden spaeter auf `cell_size` fixiert, damit lange
+        Holiday-Zellen werden später auf `cell_size` fixiert, damit lange
         Feiertagsnamen die Spalte nicht aufweiten (Header-Reflow/Flackern)."""
         wide_cells = self._wide_cells()
         probe_width = PROBE_WIDTH_WIDE if wide_cells else PROBE_WIDTH_NARROW
@@ -870,10 +870,10 @@ class GridRenderer:
 
     @staticmethod
     def _hover(frame, bg, *labels):
-        """Faerbt Zelle + uebergebene Labels beim Hover. Die Eck-Overlays
+        """Färbt Zelle + übergebene Labels beim Hover. Die Eck-Overlays
         (_reservation_marker, macOS-_delete_button) werden mitgefaerbt, sonst
         bleibt ein andersfarbiges Rechteck stehen. Nur bg — die fg des
-        Loesch-Buttons steuert dessen eigener Enter/Leave-Handler."""
+        Lösch-Buttons steuert dessen eigener Enter/Leave-Handler."""
         frame.config(bg=bg)
         for lbl in labels:
             lbl.config(bg=bg)

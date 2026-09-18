@@ -39,8 +39,8 @@ _HEX = set("0123456789abcdef")
 _CHUNK_BYTES = 1024 * 1024
 
 # Wie lange der Helfer auf das Ende der App wartet, bevor er aufgibt.
-# 60 x 1 s: grosszuegig genug fuer einen langsamen Sync-Push beim Beenden,
-# kurz genug, dass ein haengender Prozess den Nutzer nicht ewig blockiert.
+# 60 x 1 s: großzügig genug für einen langsamen Sync-Push beim Beenden,
+# kurz genug, dass ein hängender Prozess den Nutzer nicht ewig blockiert.
 _WAIT_TRIES = 60
 
 

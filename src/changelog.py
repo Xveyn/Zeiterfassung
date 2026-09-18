@@ -19,9 +19,9 @@ _RAW_URL = "https://raw.githubusercontent.com/{repo}/v{version}/CHANGELOG.md"
 _VERSION_HEADING = re.compile(r"^##\s+(\S+)\s", re.MULTILINE)
 _BOLD = re.compile(r"\*\*(.+?)\*\*")
 # Markdown-Link bzw. -Bild: nur der Linktext wird angezeigt, das Ziel
-# faellt weg. Der Updates-Tab ist ein reines Text-Widget ohne Klick-Ziele,
-# und eine roh mitgezeigte URL wuerde im 58 Zeichen schmalen Feld nur
-# umbrechen. Das fuehrende `!?` nimmt die Bild-Syntax mit, sonst bliebe
+# fällt weg. Der Updates-Tab ist ein reines Text-Widget ohne Klick-Ziele,
+# und eine roh mitgezeigte URL würde im 58 Zeichen schmalen Feld nur
+# umbrechen. Das führende `!?` nimmt die Bild-Syntax mit, sonst bliebe
 # ein verwaistes "!" stehen.
 _LINK = re.compile(r"!?\[([^\]]+)\]\([^)]*\)")
 # Nur eine Versions-Überschrift ("## 1.18.0 — …") ist redundant zum Status-Text
@@ -83,8 +83,8 @@ def _split_bold(content: str) -> list[tuple[str, tuple[str, ...]]]:
     (Tags leer bei Normaltext, `("bold",)` innerhalb der Markierung).
 
     Links werden vorher auf ihren Text reduziert. Die Reihenfolge ist wichtig:
-    erst der Link, dann der Fett-Split. Andersherum laege eine Markierung wie
-    `[**Fett**](url)` quer ueber Segmentgrenzen und der Link-Rest bliebe roh
+    erst der Link, dann der Fett-Split. Andersherum läge eine Markierung wie
+    `[**Fett**](url)` quer über Segmentgrenzen und der Link-Rest bliebe roh
     stehen. So funktionieren beide Verschachtelungen — `[**x**](url)` und
     `**[x](url)**`."""
     content = _LINK.sub(r"\1", content)
@@ -101,39 +101,39 @@ def _split_bold(content: str) -> list[tuple[str, tuple[str, ...]]]:
 
 
 # --- Aufbereitung der generierten Pre-Release-Notes -------------------------
-# Fuer Pre-Releases IST der generierte Release-Body die Changelog-Quelle
+# Für Pre-Releases IST der generierte Release-Body die Changelog-Quelle
 # (updater.resolve_check_result): CHANGELOG.md kennt am Pre-Tag nur die zuletzt
-# veroeffentlichte Version, also genau das, was der Nutzer schon hat. Der Body
-# traegt aber Verweise, die im Updates-Tab nichts nuetzen — er ist ein reines
+# veröffentlichte Version, also genau das, was der Nutzer schon hat. Der Body
+# trägt aber Verweise, die im Updates-Tab nichts nützen — er ist ein reines
 # Text-Widget ohne Klick-Ziele.
 NO_CHANGES_NOTICE = "Keine Änderungen seit dem letzten Release."
 
 # "**Full Changelog**: <url>" — ohne die URL bliebe ein nacktes Label ohne Ziel.
 _FULL_CHANGELOG_LINE = re.compile(r"^\*\*Full Changelog\*\*:.*$", re.MULTILINE)
-# Die Ueberschrift wiederholt nur das Label ueber der Box.
+# Die Überschrift wiederholt nur das Label über der Box.
 _WHATS_CHANGED_HEADING = re.compile(r"^##\s+What's Changed\s*$", re.MULTILINE)
 # "… by @user in <url>" am Zeilenende: Autorenangabe plus PR-Link.
 _AUTHOR_SUFFIX = re.compile(r"\s+by\s+@\S+\s+in\s+\S+\s*$", re.MULTILINE)
 # Blanke URLs. `_LINK` oben fasst nur [text](url) — GitHub schreibt aber blank,
-# und genau dadurch stand die Begruendung von `_LINK` (nicht klickbar, bricht
-# im 58 Zeichen schmalen Feld nur um) fuer die generierten Notes auf dem Kopf.
+# und genau dadurch stand die Begründung von `_LINK` (nicht klickbar, bricht
+# im 58 Zeichen schmalen Feld nur um) für die generierten Notes auf dem Kopf.
 _BARE_URL = re.compile(r"\s*https?://\S+")
 
 
 def release_notes_for_display(notes: str) -> str:
-    """Bereitet den generierten Release-Notes-Body fuer den Updates-Tab auf:
-    uebrig bleiben die reinen PR-Titel.
+    """Bereitet den generierten Release-Notes-Body für den Updates-Tab auf:
+    übrig bleiben die reinen PR-Titel.
 
     Die Reihenfolge ist nicht beliebig — die "Full Changelog"-Zeile muss ganz
     fallen, BEVOR blanke URLs entfernt werden, sonst bliebe ihr Label ohne
     Ziel stehen.
 
-    Laeuft ausschliesslich auf dem Pre-Release-Zweig; der kuratierte
-    CHANGELOG.md-Abschnitt eines echten Releases geht unveraendert an
+    Läuft ausschliesslich auf dem Pre-Release-Zweig; der kuratierte
+    CHANGELOG.md-Abschnitt eines echten Releases geht unverändert an
     `parse_changelog_markdown`.
 
-    Bleibt nichts uebrig (ein Pre-Release direkt nach einem Release hat keine
-    PRs in den Notes), kommt `NO_CHANGES_NOTICE` zurueck — eine leere Box saehe
+    Bleibt nichts übrig (ein Pre-Release direkt nach einem Release hat keine
+    PRs in den Notes), kommt `NO_CHANGES_NOTICE` zurück — eine leere Box sähe
     aus wie ein Ladefehler.
     """
     text = _HTML_COMMENT.sub("", notes)
@@ -146,7 +146,7 @@ def release_notes_for_display(notes: str) -> str:
     for raw in text.splitlines():
         line = raw.rstrip()
         if not line and (not lines or not lines[-1]):
-            continue  # fuehrende Leerzeilen und Leerzeilen-Laeufe einsammeln
+            continue  # führende Leerzeilen und Leerzeilen-Läufe einsammeln
         lines.append(line)
     while lines and not lines[-1]:
         lines.pop()
@@ -197,16 +197,16 @@ def parse_changelog_markdown(text: str) -> list[dict[str, Any]]:
         # Blockquote-Marker abstreifen, BEVOR klassifiziert wird. Die
         # Reihenfolge ist der ganze Punkt:
         #   - vor dem Leerzeilen-Zweig, damit eine Zeile aus nur ">" (der
-        #     Absatztrenner innerhalb eines Zitats) zur Absatzluecke wird und
+        #     Absatztrenner innerhalb eines Zitats) zur Absatzlücke wird und
         #     nicht als Textblock mit Inhalt ">" durchrutscht;
-        #   - vor den Ueberschrift-/Bullet-Zweigen, damit "> ### Titel" und
+        #   - vor den Überschrift-/Bullet-Zweigen, damit "> ### Titel" und
         #     "> - Punkt" als solche erkannt werden.
         # Ohne den Strip landete der Marker im Text — und weil hart
         # umgebrochene Fortsetzungszeilen unten zu EINER logischen Zeile
-        # zusammengefuehrt werden, standen die ">" der Folgezeilen mitten im
+        # zusammengeführt werden, standen die ">" der Folgezeilen mitten im
         # Satz. `while` statt `if` wegen verschachtelter Zitate (">>").
-        # Nur der Zeilenanfang zaehlt: ein ">" im Fliesstext (etwa in einem
-        # generierten PR-Titel) bleibt unberuehrt.
+        # Nur der Zeilenanfang zählt: ein ">" im Fliesstext (etwa in einem
+        # generierten PR-Titel) bleibt unberührt.
         while line.startswith(">"):
             line = line[1:].lstrip()
         if not line:

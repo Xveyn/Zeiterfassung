@@ -4,7 +4,7 @@ Kalender-Reconcile) und die gemeinsame Thread-Mechanik.
 Tk-frei und ohne Google-Imports auf Modulebene: `run_calendar_reconcile` kommt
 aus `src.sync_runtime`, das seine Google-Wrapper selbst lazy zieht. UI-Arbeit
 (Dialoge, Banner, Refresh) macht die Klasse nicht selbst, sondern liefert
-Ergebnisse ueber `marshal` an Callbacks der App.
+Ergebnisse über `marshal` an Callbacks der App.
 """
 
 import logging
@@ -41,7 +41,7 @@ class BackgroundTaskRunner:
         self._vacation_store = vacation_store
 
     def run(self, fn, on_done=None):
-        """Fuehrt fn() in einem Daemon-Thread aus und liefert dessen Rueckgabe
+        """Führt fn() in einem Daemon-Thread aus und liefert dessen Rückgabe
         via marshal an on_done auf dem UI-Thread."""
         def worker():
             try:
@@ -50,12 +50,12 @@ class BackgroundTaskRunner:
                 # N19: Auffangnetz. Ohne dieses stirbt der Worker bei einem
                 # unerwarteten fn()-Fehler still (Daemon-Thread, kein
                 # threading.excepthook) und on_done feuert nie — ein Status-Label
-                # bliebe z.B. auf "Synchronisiere…" haengen. Die Aufrufer gaten
-                # ihre fn zwar selbst, der Runner verlaesst sich aber nicht darauf.
+                # bliebe z.B. auf "Synchronisiere…" hängen. Die Aufrufer gaten
+                # ihre fn zwar selbst, der Runner verlässt sich aber nicht darauf.
                 log.exception("Hintergrund-Task fehlgeschlagen")
                 return
             if on_done is not None:
-                # Lokale Bindung: Pyright traegt das None-Narrowing sonst nicht
+                # Lokale Bindung: Pyright trägt das None-Narrowing sonst nicht
                 # in die Closure (reportOptionalCall-FP).
                 done = on_done
                 self._marshal(lambda: done(result))
@@ -64,7 +64,7 @@ class BackgroundTaskRunner:
     def refresh_token(self, on_auth_error, on_error, on_finished=None):
         """Erneuert den Gmail-Token beim Start im Hintergrund. Auth-Fehler ->
         on_auth_error(msg); unerwartete Fehler -> on_error(traceback);
-        Netzwerkfehler werden still uebergangen (Offline-Start).
+        Netzwerkfehler werden still übergangen (Offline-Start).
 
         `on_finished()` kommt nach JEDEM Ausgang (UI-Thread), und zwar erst
         NACHDEM `on_auth_error`/`on_error` zurückgekehrt sind. Diese zeigen
@@ -128,9 +128,9 @@ class BackgroundTaskRunner:
         self.run(fn, done)
 
     def fetch_sender_email(self):
-        """Holt einmalig pro Start die authentifizierte E-Mail ueber OAuth2-
+        """Holt einmalig pro Start die authentifizierte E-Mail über OAuth2-
         Userinfo und cached sie in settings.sender_email. Still bei fehlendem
-        Token/Netz/Scope (der naechste Send-Dialog triggert den Re-Consent)."""
+        Token/Netz/Scope (der nächste Send-Dialog triggert den Re-Consent)."""
         token_path = os.path.join(self._base_path, "token.json")
         if not os.path.exists(token_path):
             return
@@ -155,11 +155,11 @@ class BackgroundTaskRunner:
 
     def check_update(self, on_result):
         """Fragt laut `update_check_frequency`-Setting nach einer neueren
-        Version (Default: 1x pro Kalendertag). Der Kanal haengt an
+        Version (Default: 1x pro Kalendertag). Der Kanal hängt an
         `prerelease_updates_enabled`: ohne Opt-in nur echte Releases.
         `is_newer` wird bereits im Worker ausgewertet, damit
-        on_result(release, newer) im UI-Thread keine ungeschuetzte Logik mehr
-        ausfuehrt. Fehler still."""
+        on_result(release, newer) im UI-Thread keine ungeschützte Logik mehr
+        ausführt. Fehler still."""
         frequency = self._settings.get("update_check_frequency")
         if not should_check(self._settings.get("last_update_check_at"), frequency):
             return
@@ -185,8 +185,8 @@ class BackgroundTaskRunner:
 
     def reconcile_on_start(self, on_ok):
         """Gleicht beim Start die Reservierungen mit dem Google Kalender ab.
-        Fehler werden STILL geloggt (Offline-Start nicht stoeren); bei Erfolg
-        on_ok(result) im UI-Thread (result enthaelt u.a. limit_warnings, #98)."""
+        Fehler werden STILL geloggt (Offline-Start nicht stören); bei Erfolg
+        on_ok(result) im UI-Thread (result enthält u.a. limit_warnings, #98)."""
         if not self._reservations_active():
             return
 
@@ -220,7 +220,7 @@ class BackgroundTaskRunner:
         self.run(fn, on_done)
 
     def trigger_reconcile(self, on_done):
-        """Stoesst nach einer Reservierungs- oder Urlaubsaenderung den
+        """Stößt nach einer Reservierungs- oder Urlaubsänderung den
         Abgleich an. Das Ergebnis geht IMMER an on_done(result) (User hat
         aktiv gespeichert und erwartet Feedback)."""
         if not self._reservations_active():

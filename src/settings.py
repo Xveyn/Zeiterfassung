@@ -59,8 +59,8 @@ DEFAULTS = {
     "prerelease_updates_enabled": False,
     "auto_update_enabled": False,
     # Beide gerätelokal wie auto_update_enabled: ein Pfad aus dem %TEMP%
-    # eines anderen Rechners waere dort sinnlos und im schlimmsten Fall
-    # irrefuehrend.
+    # eines anderen Rechners wäre dort sinnlos und im schlimmsten Fall
+    # irreführend.
     "pending_update_path": "",
     "pending_update_sha256": "",
     "default_start_mon": "08:00",

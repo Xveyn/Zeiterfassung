@@ -57,8 +57,8 @@ class SendReminderScheduler:
             try:
                 self._root.after_cancel(self._after_id)
             except Exception:
-                # Die ID kann laengst abgelaufen sein (Tick gefeuert,
-                # Root zerstoert) — after_cancel wirft dann. `stop()` ist
+                # Die ID kann längst abgelaufen sein (Tick gefeuert,
+                # Root zerstört) — after_cancel wirft dann. `stop()` ist
                 # idempotent, das Ziel (kein geplanter Tick mehr) ist so
                 # oder so erreicht.
                 pass

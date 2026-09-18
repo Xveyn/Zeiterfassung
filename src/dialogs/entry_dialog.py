@@ -321,7 +321,7 @@ def open_entry_dialog(parent, date_str, storage, settings, on_change,
         ).pack(side=tk.LEFT, padx=2)
 
     # ---------- Erinnerung an eine Reservierung ----------
-    # Bewusst auf Funktionsebene, NICHT im if show_reservation: — sonst waere
+    # Bewusst auf Funktionsebene, NICHT im if show_reservation: — sonst wäre
     # reminder_ui undefiniert, wenn kein Reservierungs-Block gezeigt wird, und
     # save_all liefe in einen NameError. reminder_block_visible verlangt
     # show_reservation ohnehin.

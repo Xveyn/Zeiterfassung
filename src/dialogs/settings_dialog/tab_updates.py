@@ -37,7 +37,7 @@ from src.version import installed_release_id
 _LABEL_CHANGELOG = "Changelog:"
 _LABEL_PRERELEASE = "Enthaltene Änderungen:"
 
-# Der Knopf heisst nur dort "Update installieren", wo die App das auch kann.
+# Der Knopf heißt nur dort "Update installieren", wo die App das auch kann.
 # Sonst bleibt es beim bisherigen Browser-Download.
 _LABEL_INSTALL = "Update installieren"
 _LABEL_DOWNLOAD = "Download"
@@ -52,8 +52,8 @@ class UpdatesTab:
         self.frame = frame
         self._settings = settings
         self._runner = runner
-        # Die Auto-Update-Policy der App, samt dem EINEN Guard fuer jeden
-        # Update-Download (R9) — der Tab faehrt keinen eigenen stillen Lauf.
+        # Die Auto-Update-Policy der App, samt dem EINEN Guard für jeden
+        # Update-Download (R9) — der Tab fährt keinen eigenen stillen Lauf.
         self._auto_updater = auto_updater
         self._latest_release = None
         self._checked = False
@@ -120,9 +120,9 @@ class UpdatesTab:
             font=FONT_SMALL, bg=BG, fg=TEXT_MUTED,
         ).grid(row=5, column=0, columnspan=2, padx=10, pady=(0, 4), sticky="w")
 
-        # Nur bauen, wo Selbst-Update ueberhaupt moeglich ist — ein Schalter
-        # fuer ein Feature, das die Plattform nicht hat, ist Rauschen
-        # (dieselbe Regel wie beim "Urlaub ausweisen"-Haekchen).
+        # Nur bauen, wo Selbst-Update überhaupt möglich ist — ein Schalter
+        # für ein Feature, das die Plattform nicht hat, ist Rauschen
+        # (dieselbe Regel wie beim "Urlaub ausweisen"-Häkchen).
         self.auto_update_var = None
         if self._can_self_update:
             self.auto_update_var = tk.BooleanVar(
@@ -190,10 +190,10 @@ class UpdatesTab:
         self._changelog_text.config(state="disabled")
 
     def _check_now(self):
-        # self._updating: waehrend ein Selbst-Update laeuft (Download/Pruef-
-        # /Installier-Phase), darf "Jetzt pruefen" nicht dazwischenfunken —
+        # self._updating: während ein Selbst-Update läuft (Download/Prüf-
+        # /Installier-Phase), darf "Jetzt prüfen" nicht dazwischenfunken —
         # sonst leert es self._latest_release und _finish_checking() aktiviert
-        # die Knoepfe wieder, obwohl das Update noch laeuft.
+        # die Knöpfe wieder, obwohl das Update noch läuft.
         if self._checking or self._updating:
             return
         self._checking = True
@@ -202,8 +202,8 @@ class UpdatesTab:
         set_button_text(self._check_btn, "Prüfe…")
         self._status_label.config(text="Prüfe…")
         self._download_btn.pack_forget()
-        # Zuruecksetzen, sonst bliebe die Pre-Release-Beschriftung stehen,
-        # wenn jemand das Haekchen abwaehlt und erneut prueft.
+        # Zurücksetzen, sonst bliebe die Pre-Release-Beschriftung stehen,
+        # wenn jemand das Häkchen abwählt und erneut prüft.
         self._changelog_label.config(text=_LABEL_CHANGELOG)
         self._set_changelog("")
 
@@ -227,8 +227,8 @@ class UpdatesTab:
             if result["persist"]:
                 self._settings.set_many(result["persist"])
             if self._latest_release is not None:
-                # Derselbe Check, der den Nutzer ueber den Knopf informiert,
-                # loest bei aktivem Haekchen zusaetzlich den stillen
+                # Derselbe Check, der den Nutzer über den Knopf informiert,
+                # löst bei aktivem Häkchen zusätzlich den stillen
                 # Hintergrund-Download aus — kein eigener Timer (Regel 1 aus
                 # dem Design: "vorhandener Update-Check").
                 self._maybe_start_auto_update(self._latest_release)
@@ -236,8 +236,8 @@ class UpdatesTab:
                 # Pre-Release: die Notes liegen dem Payload bereits bei,
                 # kein zweiter Netzwerk-Call nötig. Es ist aber der
                 # GENERIERTE Body, kein kuratierter Changelog-Eintrag —
-                # `release_notes_for_display` laesst die reinen PR-Titel
-                # stehen (Links und Autorenangaben nuetzen in einem
+                # `release_notes_for_display` lässt die reinen PR-Titel
+                # stehen (Links und Autorenangaben nützen in einem
                 # Text-Widget ohne Klick-Ziele nichts), und das Label
                 # behauptet kein "Changelog".
                 self._finish_checking()
@@ -267,7 +267,7 @@ class UpdatesTab:
     def _open_latest_download(self):
         # `set_secondary_button_enabled` graut den Knopf nur optisch aus, die
         # Bindung feuert weiter (s. dessen Docstring) — der Guard hier ist
-        # das, was einen zweiten Klick waehrend des Downloads wirklich stoppt.
+        # das, was einen zweiten Klick während des Downloads wirklich stoppt.
         if self._latest_release is None or self._updating:
             return
         if self._can_self_update:
@@ -279,10 +279,10 @@ class UpdatesTab:
         """Reicht den Check an die gemeinsame Auto-Update-Policy weiter
         (`auto_update.AutoUpdater`, R9) und zeigt deren Ausgang an.
 
-        Geladen und geprueft wird dort — auch wenn der Start-Check der App
-        schon laedt: dann haengt sich der Tab nur an dessen Fortschritt und
+        Geladen und geprüft wird dort — auch wenn der Start-Check der App
+        schon lädt: dann hängt sich der Tab nur an dessen Fortschritt und
         Ausgang, statt selbst ein zweites Mal zu laden. Angewendet wird erst
-        beim naechsten Beenden (`UpdateCoordinator._apply_pending_update`)."""
+        beim nächsten Beenden (`UpdateCoordinator._apply_pending_update`)."""
         outcome = self._auto_updater.maybe_start(
             release, on_progress=self._report_status,
             on_finished=self._on_auto_update_finished)
@@ -295,7 +295,7 @@ class UpdatesTab:
             set_secondary_button_enabled(self._download_btn, False)
 
     def _on_auto_update_finished(self, ok):
-        # Der Runner ist `App._bg` und ueberlebt den Dialog: persistiert hat
+        # Der Runner ist `App._bg` und überlebt den Dialog: persistiert hat
         # der AutoUpdater bereits, hier bleibt nur die Anzeige.
         if not self.frame.winfo_exists():
             return
@@ -308,14 +308,14 @@ class UpdatesTab:
     def _report_status(self, text):
         """Fortschrittstext aus dem Worker-Thread in die Statuszeile."""
         # Nie direkt ans Widget. Analog App._marshal_to_ui (ui.py) werden
-        # Einplanen UND Ausfuehren gegen TclError abgesichert: schliesst der
-        # Nutzer den Einstellungen-Dialog waehrend des Downloads, existiert
+        # Einplanen UND Ausführen gegen TclError abgesichert: schließt der
+        # Nutzer den Einstellungen-Dialog während des Downloads, existiert
         # self._status_label beim Feuern nicht mehr, und der TclError liefe
         # sonst ungefangen in Tkinters report_callback_exception — das dieses
         # Projekt global auf ein sichtbares Fehler-Popup legt
         # (logging_setup.py). Der Fortschritt feuert pro 1-MB-Chunk, bei
-        # einem ~65-MB-Asset also dutzende Male, waehrend der Download im
-        # Hintergrund weiterlaeuft — ohne Guard dutzende Popups.
+        # einem ~65-MB-Asset also dutzende Male, während der Download im
+        # Hintergrund weiterläuft — ohne Guard dutzende Popups.
         def apply_text():
             try:
                 self._status_label.config(text=text)
@@ -327,11 +327,11 @@ class UpdatesTab:
             pass  # Dialog schon zu, das Einplanen selbst hat kein Ziel mehr
 
     def _start_self_update(self, release):
-        """Laden, pruefen, installieren — der Ein-Klick-Weg.
+        """Laden, prüfen, installieren — der Ein-Klick-Weg.
 
-        Reihenfolge mit Absicht: `plan_update` stellt ALLE Abbruchgruende
+        Reihenfolge mit Absicht: `plan_update` stellt ALLE Abbruchgründe
         fest, bevor ein Byte fliesst. Ein halb geladenes Update, das dann an
-        einer Kleinigkeit scheitert, waere die schlechtere Erfahrung.
+        einer Kleinigkeit scheitert, wäre die schlechtere Erfahrung.
         """
         plan = plan_update(
             release, platform.system(), platform.machine(),
@@ -343,15 +343,15 @@ class UpdatesTab:
             return
 
         if not self._auto_updater.acquire_manual():
-            # Der stille Download (Start-Check der App oder dieser Tab) laeuft
+            # Der stille Download (Start-Check der App oder dieser Tab) läuft
             # schon. Ein zweiter daneben liesse beim sofortigen Installieren
-            # den halben stillen Download in %TEMP% zurueck (R9).
+            # den halben stillen Download in %TEMP% zurück (R9).
             self._status_label.config(
                 text="Update wird bereits im Hintergrund geladen …")
             return
 
         set_primary_button_enabled(self._check_btn, False)
-        # ACHTUNG: `set_secondary_button_enabled` aendert laut seinem Docstring
+        # ACHTUNG: `set_secondary_button_enabled` ändert laut seinem Docstring
         # NUR die Optik — die Klick-Bindung bleibt aktiv. Der Callback muss
         # deshalb selbst ein No-op machen, siehe `self._updating`-Guard oben in
         # `_open_latest_download`.
@@ -362,24 +362,24 @@ class UpdatesTab:
         local = download_dest(platform.system(), plan.asset_name, plan.target,
                               tempfile.gettempdir())
 
-        # Laden+Pruefen ist gemeinsamer Kern mit dem stillen Automatik-Pfad
+        # Laden+Prüfen ist gemeinsamer Kern mit dem stillen Automatik-Pfad
         # (`auto_update.AutoUpdater`) — beide rufen dieselbe Funktion in
-        # self_update.py, damit die beiden Ablaeufe nicht auseinanderlaufen.
+        # self_update.py, damit die beiden Abläufe nicht auseinanderlaufen.
         def work():
             return download_and_verify_update(
                 plan, local, on_progress=self._report_status)
 
         def done(result):
             self._auto_updater.release_manual()
-            # `alive` statt eines fruehen `return`: der Runner ist `App._bg`
-            # und ueberlebt den Dialog — ein ~65-MB-Download laeuft nach dem
+            # `alive` statt eines frühen `return`: der Runner ist `App._bg`
+            # und überlebt den Dialog — ein ~65-MB-Download läuft nach dem
             # Schliessen des Einstellungen-Dialogs fertig. Was dann mit der
             # Datei geschieht, entscheidet `manual_outcome`.
             ok = not isinstance(result, str)
             outcome = manual_outcome(ok, bool(self.frame.winfo_exists()))
             if outcome == "log":
                 # `download_and_verify_update` hat seine Datei bereits selbst
-                # weggeraeumt, und fuer eine Meldung ist niemand mehr da.
+                # weggeräumt, und für eine Meldung ist niemand mehr da.
                 logging.getLogger(__name__).info(
                     "Update abgebrochen (Dialog bereits zu): %s", result)
                 return
@@ -388,7 +388,7 @@ class UpdatesTab:
                 return
             if outcome == "discard":
                 logging.getLogger(__name__).info(
-                    "Update verworfen: der Dialog wurde waehrend des "
+                    "Update verworfen: der Dialog wurde während des "
                     "Downloads geschlossen")
                 discard_download(result.path)
                 return
@@ -398,15 +398,15 @@ class UpdatesTab:
         self._runner.run(work, done)
 
     def _fail_update(self, message):
-        """Bricht den laufenden Update-Versuch ab: Guard und beide Knoepfe
+        """Bricht den laufenden Update-Versuch ab: Guard und beide Knöpfe
         wieder hoch, Fehlermeldung zeigen.
 
-        EIN Ausstiegspunkt fuer alle Fehlerpfade nach dem Setzen von
-        `self._updating = True` (Download-/Pruef-Fehler in `done()` UND
+        EIN Ausstiegspunkt für alle Fehlerpfade nach dem Setzen von
+        `self._updating = True` (Download-/Prüf-Fehler in `done()` UND
         Anwenden-Fehler in `_apply`) — sonst bleibt der Guard in
-        `_open_latest_download` fuer den Rest der Dialog-Session auf `True`
-        haengen und blockt jeden weiteren Klick, waehrend "Jetzt pruefen"
-        zusaetzlich optisch tot bliebe."""
+        `_open_latest_download` für den Rest der Dialog-Session auf `True`
+        hängen und blockt jeden weiteren Klick, während "Jetzt prüfen"
+        zusätzlich optisch tot bliebe."""
         self._updating = False
         set_primary_button_enabled(self._check_btn, True)
         set_secondary_button_enabled(self._download_btn, True)
@@ -416,50 +416,50 @@ class UpdatesTab:
     def _apply(self, plan, local, expected_sha256):
         """Anwenden und die App beenden bzw. neu starten.
 
-        Erneut geprueft wird hier bewusst, UNMITTELBAR bevor installiert
-        wird — dieselbe Pruefung wie in `UpdateCoordinator._apply_pending_update`, aus
+        Erneut geprüft wird hier bewusst, UNMITTELBAR bevor installiert
+        wird — dieselbe Prüfung wie in `UpdateCoordinator._apply_pending_update`, aus
         demselben Grund: unter Windows startet `apply_windows` den Helfer nur
         ab und beendet diesen Prozess sofort danach, installiert wird also
         asynchron, NACHDEM die App schon weg ist. Was zwischen Download-Ende
-        und diesem Aufruf mit der Datei passiert ist (Aufraeum-Tool,
+        und diesem Aufruf mit der Datei passiert ist (Aufräum-Tool,
         Virenscanner, jemand mit einem Editor), sieht sonst niemand mehr —
-        und M9 verlangt, dass nur installiert wird, was geprueft ist.
+        und M9 verlangt, dass nur installiert wird, was geprüft ist.
 
-        Was diese Pruefung ausdruecklich NICHT mehr abzuwehren hat, ist ein
+        Was diese Prüfung ausdrücklich NICHT mehr abzuwehren hat, ist ein
         zeitgleicher stiller Automatik-Download: seit `download_dest` jedem
-        Lauf einen eigenen Zielnamen gibt, koennen sich die beiden Wege gar
-        nicht mehr in derselben Datei begegnen. Eine Pruefung haette dieses
-        Rennen ohnehin nie schliessen koennen — sie liegt VOR dem
+        Lauf einen eigenen Zielnamen gibt, können sich die beiden Wege gar
+        nicht mehr in derselben Datei begegnen. Eine Prüfung hätte dieses
+        Rennen ohnehin nie schließen können — sie liegt VOR dem
         Zeitfenster, nicht darin.
         """
         if not os.path.exists(local) or not verify_file(local, expected_sha256):
             discard_download(local)
             self._fail_update(
                 "Die geladene Datei ist nicht mehr vorhanden oder wurde "
-                "zwischenzeitlich veraendert. Bitte erneut versuchen.")
+                "zwischenzeitlich verändert. Bitte erneut versuchen.")
             return
 
         # Ein vom Automatik-Lauf vorbereitetes Update wird HIER sofort
         # angewendet (Sofort-Ablauf gewinnt gegen "beim Beenden") — ohne
-        # Aufraeumen wuerde UpdateCoordinator._apply_pending_update beim naechsten
-        # regulaeren Beenden dieselbe, laengst installierte Datei erneut
+        # Aufräumen würde UpdateCoordinator._apply_pending_update beim nächsten
+        # regulären Beenden dieselbe, längst installierte Datei erneut
         # anzuwenden versuchen.
         pending = self._settings.get("pending_update_path")
         if pending and pending != local:
-            # Seit `download_dest` traegt jeder Lauf einen eigenen Namen: die
+            # Seit `download_dest` trägt jeder Lauf einen eigenen Namen: die
             # still vorbereitete Datei ist eine ANDERE als die eben geladene
-            # und wuerde sonst als ~65-MB-Leiche liegen bleiben, weil sie
-            # kein spaeterer Lauf mehr ueberschreibt.
+            # und würde sonst als ~65-MB-Leiche liegen bleiben, weil sie
+            # kein späterer Lauf mehr überschreibt.
             discard_download(pending)
         self._settings.set_many({"pending_update_path": "",
                                  "pending_update_sha256": ""})
         if platform.system() == "Windows":
             # restart=True: der Nutzer hat eben geklickt und will
-            # weiterarbeiten (Gegenstueck: der Beenden-Weg in ui.py).
+            # weiterarbeiten (Gegenstück: der Beenden-Weg in ui.py).
             if not apply_windows(plan.target, local, os.getpid(), True):
                 # Wie im apply_linux-Zweig unten: pending_update_* ist zwei
                 # Zeilen weiter oben geleert, es gibt danach KEINE Referenz
-                # mehr auf diese Datei — ohne Aufraeumen bleiben ~65 MB
+                # mehr auf diese Datei — ohne Aufräumen bleiben ~65 MB
                 # dauerhaft im %TEMP% (die Zusage steht im Docstring von
                 # `download_dest`).
                 discard_download(local)
@@ -471,8 +471,8 @@ class UpdatesTab:
         error = apply_linux(plan.target, local)
         if error is not None:
             # Die heruntergeladene Datei blieb sonst neben der AppImage
-            # liegen — halbe/nicht-uebernommene Downloads bleiben in diesem
-            # Projekt an keiner Stelle bewusst zurueck (s. download_to,
+            # liegen — halbe/nicht-übernommene Downloads bleiben in diesem
+            # Projekt an keiner Stelle bewusst zurück (s. download_to,
             # verify_file oben).
             discard_download(local)
             self._fail_update(error)
