@@ -136,12 +136,14 @@ def sanitize_registry(raw: Any, max_devices: int = MAX_DEVICES) -> dict[str, dic
 def merge_registries(local: Any, remote: Any,
                      max_devices: int = MAX_DEVICES) -> dict[str, dict[str, str]]:
     """Vereinigt zwei Registries per LWW über `updated_at`; bei Gleichstand
-    gewinnt die lokale Seite. Beide Eingaben werden vorher saniert und bleiben
+    entscheidet der Name, damit das Ergebnis nicht davon abhängt, welche Seite
+    lokal ist (#142). Beide Eingaben werden vorher saniert und bleiben
     unangetastet."""
     merged = sanitize_registry(local, max_devices=max_devices)
     for device_id, entry in sanitize_registry(remote, max_devices=max_devices).items():
         current = merged.get(device_id)
-        if current is None or current["updated_at"] < entry["updated_at"]:
+        if current is None or ((current["updated_at"], current["name"])
+                               < (entry["updated_at"], entry["name"])):
             merged[device_id] = entry
     if len(merged) <= max_devices:
         return merged

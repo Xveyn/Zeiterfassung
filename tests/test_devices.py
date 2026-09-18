@@ -170,10 +170,15 @@ class TestMergeRegistries:
         remote = {"dev1": {"name": "Alter Name", "updated_at": "2026-07-01T00:00:00Z"}}
         assert devices.merge_registries(local, remote)["dev1"]["name"] == "Neuer Name"
 
-    def test_local_wins_on_equal_timestamps(self):
+    def test_equal_timestamps_resolve_the_same_both_ways(self):
+        """Bei Gleichstand entscheidet der Name — nicht, welche Seite lokal
+        ist (#142; vorher gewann die lokale Seite, und zwei Geräte behielten
+        verschiedene Namen)."""
         local = {"dev1": {"name": "Lokal", "updated_at": "2026-07-05T00:00:00Z"}}
         remote = {"dev1": {"name": "Remote", "updated_at": "2026-07-05T00:00:00Z"}}
-        assert devices.merge_registries(local, remote)["dev1"]["name"] == "Lokal"
+        assert (devices.merge_registries(local, remote)
+                == devices.merge_registries(remote, local))
+        assert devices.merge_registries(local, remote)["dev1"]["name"] == "Remote"
 
     def test_sanitizes_both_sides(self):
         local = {"dev1": "kaputt"}
