@@ -9,7 +9,7 @@ import json
 import tkinter as tk
 from typing import Any
 
-from src import webhook, webhook_store
+from src import keyring_store, webhook, webhook_secrets, webhook_store
 from src.theme import (
     BG, CELL_BG, FONT, FONT_SMALL, TEXT, TEXT_MUTED,
     apply_combobox_style, attach_unfocus_on_click, center_dialog_on_parent,
@@ -46,6 +46,12 @@ def open_webhook_dialog(parent, store, runner, record: dict | None = None, on_sa
         "payload": {"json": True, "pdf": False}, "auth": {"mode": "none"},
     })
     auth = dict(record.get("auth") or {"mode": "none"})
+    stored = None if is_new else dict(record)
+    # Liegt das Secret im Schlüsselbund, steht es nicht im Datensatz — das
+    # Feld bleibt leer, „leer lassen = unverändert" (wie im SMTP-Dialog).
+    # Im Datei-Modus bleibt der Klartext wie bisher vorbefüllt.
+    stored_in_keyring = stored is not None and webhook_secrets.in_keyring(stored)
+    stored_mode = auth.get("mode", "none")
 
     dialog = create_dialog(
         parent, "Webhook hinzufügen" if is_new else "Webhook bearbeiten")
@@ -132,11 +138,20 @@ def open_webhook_dialog(parent, store, runner, record: dict | None = None, on_sa
             if masked:
                 entry.config(show="•")
             entry.grid(row=i, column=1, padx=(8, 0), pady=4, sticky="w")
+        next_row = len(rows)
         if mode == "header":
             tk.Label(auth_frame,
                      text="z. B.  Bearer dein-token  —  Präfix mit eintragen",
                      font=FONT_SMALL, bg=BG, fg=TEXT_MUTED).grid(
-                row=len(rows), column=1, sticky="w", padx=(8, 0))
+                row=next_row, column=1, sticky="w", padx=(8, 0))
+            next_row += 1
+        if stored_in_keyring and mode == stored_mode:
+            tk.Label(auth_frame,
+                     text="Liegt im Schlüsselbund des Betriebssystems. "
+                          "Leer lassen = unverändert.",
+                     font=FONT_SMALL, bg=BG, fg=TEXT_MUTED,
+                     justify="left", wraplength=380).grid(
+                row=next_row, column=0, columnspan=2, sticky="w", pady=(4, 0))
 
     mode_var.trace_add("write", _rebuild_auth_fields)
     _rebuild_auth_fields()
@@ -144,11 +159,21 @@ def open_webhook_dialog(parent, store, runner, record: dict | None = None, on_sa
     def _collect():
         mode = _mode_for_label(mode_var.get())
         new_auth = {"mode": mode}
+        typed = ""
         if mode == "header":
-            new_auth.update(header=header_var.get().strip(), value=value_var.get())
+            typed = value_var.get()
+            new_auth.update(header=header_var.get().strip(), value=typed)
         elif mode == "hmac":
+            typed = secret_var.get()
             new_auth.update(header=header_var.get().strip(),
-                            prefix=prefix_var.get(), secret=secret_var.get())
+                            prefix=prefix_var.get(), secret=typed)
+        if (mode in ("header", "hmac") and not typed.strip()
+                and stored_in_keyring and mode == stored_mode):
+            # „leer lassen = unverändert": nur die Markierung, kein Wert.
+            new_auth.pop("value", None)
+            new_auth.pop("secret", None)
+            new_auth[webhook_secrets.SECRET_LOCATION] = "keyring"
+            typed = ""
         return {
             "id": record["id"],
             "name": name_var.get().strip(),
@@ -156,22 +181,23 @@ def open_webhook_dialog(parent, store, runner, record: dict | None = None, on_sa
             "enabled": bool(enabled_var.get()),
             "payload": {"json": bool(json_var.get()), "pdf": bool(pdf_var.get())},
             "auth": new_auth,
-        }
+        }, typed
 
     def _validated():
-        candidate = _collect()
+        candidate, typed = _collect()
         ok, msg = webhook_store.validate_record(candidate, store.get_all())
         if not ok:
             themed_showerror(dialog, "Eingabe unvollständig", msg)
             return None
-        return candidate
+        return candidate, typed
 
     def do_save():
         if busy["saving"]:
             return
-        candidate = _validated()
-        if candidate is None:
+        validated = _validated()
+        if validated is None:
             return
+        candidate, typed = validated
         busy["saving"] = True
         set_primary_button_enabled(save_btn, False)
 
@@ -181,9 +207,12 @@ def open_webhook_dialog(parent, store, runner, record: dict | None = None, on_sa
         # (src/CLAUDE.md, secure_file-Absatz).
         def fn():
             try:
-                store.save(candidate)
+                to_save, stale = webhook_secrets.persist(candidate, typed, stored)
+                store.save(to_save)
             except (webhook_store.WebhookStoreReadOnly, OSError) as e:
                 return {"ok": False, "error": e}
+            if stale is not None:
+                keyring_store.remove(stale)   # erst NACH dem Schreiben
             return {"ok": True}
 
         def on_done(res):
@@ -214,9 +243,10 @@ def open_webhook_dialog(parent, store, runner, record: dict | None = None, on_sa
         # löst ein Doppelklick zwei echte POSTs beim Empfänger aus.
         if busy["testing"]:
             return
-        candidate = _validated()
-        if candidate is None:
+        validated = _validated()
+        if validated is None:
             return
+        candidate, _typed = validated
         busy["testing"] = True
         set_secondary_button_enabled(test_btn, False)
 
@@ -231,8 +261,11 @@ def open_webhook_dialog(parent, store, runner, record: dict | None = None, on_sa
         body = json.dumps(sample, ensure_ascii=False).encode("utf-8")
 
         def fn():
+            record_for_send, problem = webhook_secrets.resolve(candidate)
+            if problem is not None:
+                return webhook_secrets.keyring_failure(problem)
             return webhook.deliver(
-                candidate,
+                record_for_send,
                 json_bytes=body if candidate["payload"]["json"] else None,
                 pdf_bytes=b"%PDF-1.4\n% Testversand\n"
                 if candidate["payload"]["pdf"] else None,

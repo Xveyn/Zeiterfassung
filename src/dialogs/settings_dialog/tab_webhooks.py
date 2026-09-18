@@ -7,7 +7,7 @@ eigenen, gerätelokalen Store und werden vom Unterdialog direkt gespeichert.
 
 from urllib.parse import urlsplit
 
-from src import webhook_store
+from src import webhook_secrets, webhook_store
 from src.dialogs.settings_dialog._record_list_tab import (
     RecordListKind, RecordListTab,
 )
@@ -21,6 +21,13 @@ def _open_dialog(parent, store, runner, **kwargs):
     open_webhook_dialog(parent, store, runner, **kwargs)
 
 
+def _forget_secret(webhook_id):
+    # Wie tab_smtp._delete_secret: erst NACH dem erfolgreichen Schreiben
+    # (remove_record ruft den Hook nur dann), und ein fehlender Eintrag ist
+    # kein Fehler. Für Webhooks ohne Schlüsselbund-Secret ein No-op.
+    webhook_secrets.forget_by_id(webhook_id)
+
+
 WEBHOOKS_KIND = RecordListKind(
     intro=("Der Bericht kann zusätzlich zur E-Mail an HTTP-Endpunkte "
            "gesendet werden. Webhooks gelten nur auf diesem Gerät und "
@@ -31,6 +38,7 @@ WEBHOOKS_KIND = RecordListKind(
     remove_title="Webhook entfernen",
     remove_error="Der Webhook konnte nicht entfernt werden:",
     read_only_error=webhook_store.WebhookStoreReadOnly,
+    after_delete=_forget_secret,
 )
 
 
