@@ -77,6 +77,12 @@ def test_readback_mismatch_leaves_the_files(tmp_path, fake_keyring):
     assert token.read_bytes() == before
 
 
+def test_readback_mismatch_removes_the_unverified_entry(tmp_path, fake_keyring):
+    fake = fake_keyring(lie=True)
+    sm.migrate(str(_token(tmp_path)), _store(tmp_path, _hook()))
+    assert fake.store == {}
+
+
 def test_changed_token_between_check_and_write_is_not_moved(tmp_path, fake_keyring, monkeypatch):
     fake_keyring()
     token = _token(tmp_path)

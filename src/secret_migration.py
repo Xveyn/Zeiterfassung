@@ -56,6 +56,9 @@ def _stored_and_verified(key: str, secret: str) -> bool:
     if keyring_store.fetch(key) != secret:
         log.warning("Schlüsselbund liefert nach dem Schreiben einen anderen "
                     "Wert — Umzug unterbleibt")
+        # Der Eintrag ist nicht verlässlich; stehen lassen hieße, ein
+        # ungeprüftes Secret im Schlüsselbund zu hinterlassen.
+        keyring_store.remove(key)
         return False
     return True
 
@@ -123,7 +126,7 @@ def migrate(token_path: str, webhook_store: Any | None) -> MigrationReport:
             moved.append(str(record.get("name", "")))
         else:
             name = record.get("name", "")
-            failures.append(f'Webhook "{name}"')
+            failures.append(f"Webhook „{name}“")
     return MigrationReport(token_moved, tuple(moved), tuple(failures))
 
 
