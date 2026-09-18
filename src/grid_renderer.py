@@ -56,6 +56,8 @@ class GridRenderer:
         self._grid_frames = []
         self._active_grid_idx = 0
         self._grid_frame = None
+        self._day_header = None
+        self._day_header_cols = None
         self._header_label = None
         self._footer_label = None
         self._header_width_spacer = None
@@ -78,14 +80,23 @@ class GridRenderer:
         # tauscht atomar.
         self.grid_container = tk.Frame(parent, bg=BG)
         self.grid_container.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
-        self.grid_container.rowconfigure(0, weight=1)
+        self.grid_container.rowconfigure(1, weight=1)
         self.grid_container.columnconfigure(0, weight=1)
+        # Wochentags-Kopfzeile (Mo … So) FEST über beiden Puffern, nicht in
+        # ihnen (#150): sie wird nur neu gebaut, wenn sich die Spaltenzahl
+        # ändert. Lag sie im Puffer, entstand sie bei jedem Blättern neu und
+        # sprang unter X11 kurz seitwärts, bis das Layout des frisch gehobenen
+        # Puffers stand. Kopf und Zellen liegen trotzdem exakt übereinander:
+        # beide Grids teilen die Breite gleichmäßig (`uniform="day"`).
+        self._day_header = tk.Frame(self.grid_container, bg=BG)
+        self._day_header.grid(row=0, column=0, sticky="ew")
+        self._day_header_cols = None
         self._grid_frames = []
         for _ in range(2):
             f = tk.Frame(self.grid_container, bg=BG)
-            f.grid(row=0, column=0, sticky="nsew")
+            f.grid(row=1, column=0, sticky="nsew")
             for col in range(7):
-                f.columnconfigure(col, weight=1)
+                f.columnconfigure(col, weight=1, uniform="day")
             self._grid_frames.append(f)
         self._grid_frames[0].lift()
         self._active_grid_idx = 0
@@ -133,9 +144,9 @@ class GridRenderer:
             inactive_idx = 1 - self._active_grid_idx
             self._grid_frames[inactive_idx].destroy()
             new_inactive = tk.Frame(self.grid_container, bg=BG)
-            new_inactive.grid(row=0, column=0, sticky="nsew")
+            new_inactive.grid(row=1, column=0, sticky="nsew")
             for col in range(7):
-                new_inactive.columnconfigure(col, weight=1 if col < current_cols else 0)
+                self._configure_day_column(new_inactive, col, col < current_cols)
             self._grid_frames[inactive_idx] = new_inactive
             self._grid_frames[self._active_grid_idx].lift()
 
@@ -210,7 +221,7 @@ class GridRenderer:
         `workweek_only` überstimmt `show_weekend`: im Nur-Werktage-Modus sind
         Sa/So immer aus (die Checkbox im App-Tab ist dann deaktiviert).
 
-        Wird von _build_grid_header und den Refresh-Pfaden als einzige
+        Wird von _ensure_day_header und den Refresh-Pfaden als einzige
         Quelle der Wahrheit konsultiert.
         """
         if self._settings.get("workweek_only"):
@@ -224,12 +235,33 @@ class GridRenderer:
         """
         return self._visible_day_count() == 5
 
-    def _build_grid_header(self, parent):
+    @staticmethod
+    def _configure_day_column(frame, col, visible):
+        """Sichtbare Tagesspalten teilen sich die Breite gleichmäßig
+        (`uniform`), ausgeblendete (Sa/So ohne Wochenende) bekommen nichts ab.
+        Gilt für die Kopfzeile und beide Puffer gleich — nur so stehen Mo … So
+        exakt über ihren Zellen, obwohl sie in getrennten Grids liegen."""
+        if visible:
+            frame.columnconfigure(col, weight=1, uniform="day")
+        else:
+            frame.columnconfigure(col, weight=0, uniform="")
+
+    def _ensure_day_header(self):
+        """Baut die feste Wochentags-Kopfzeile — nur wenn sich die Spaltenzahl
+        geändert hat (Wochenende ein/aus). Beim Blättern bleibt sie unberührt,
+        s. build_grid (#150)."""
         n = self._visible_day_count()
+        if self._day_header_cols == n:
+            return
+        self._day_header_cols = n
+        for child in list(self._day_header.winfo_children()):
+            child.destroy()
+        for col in range(7):
+            self._configure_day_column(self._day_header, col, col < n)
         for col, day_name in enumerate(DAYS_DE[:n]):
             fg = TEXT_MUTED if col < 5 else WEEKEND_FG
             tk.Label(
-                parent, text=day_name, font=FONT_BOLD, bg=BG, fg=fg,
+                self._day_header, text=day_name, font=FONT_BOLD, bg=BG, fg=fg,
             ).grid(row=0, column=col, sticky="nsew", padx=2, pady=2)
 
     def _build_entry_cell(self, parent, date_str, day_text, entry, is_weekend, pad,
@@ -582,12 +614,19 @@ class GridRenderer:
             inactive.rowconfigure(row, minsize=0, weight=0)
         n = self._visible_day_count()
         for col in range(7):
-            inactive.columnconfigure(col, weight=1 if col < n else 0)
+            self._configure_day_column(inactive, col, col < n)
         return inactive
 
     def _activate_grid(self, frame):
         """Hebt das eben gefüllte Backbuffer-Frame nach vorne. Der bisherige
-        Front-Buffer bleibt als Backbuffer hinten — keine Destroy-Lücke."""
+        Front-Buffer bleibt als Backbuffer hinten — keine Destroy-Lücke.
+
+        Vorher `update_idletasks`: das Grid-Layout des gefüllten Puffers wird
+        berechnet, solange er noch verdeckt ist. Sonst erschien er unter X11
+        für einen Frame im halbfertigen Zustand und rückte erst danach an
+        seinen Platz (#150) — dasselbe Prinzip wie bei den Dialogen
+        („verborgen aufbauen, dann zeigen")."""
+        frame.update_idletasks()
         frame.lift()
         self._active_grid_idx = 1 - self._active_grid_idx
         self._grid_frame = frame
@@ -688,7 +727,7 @@ class GridRenderer:
         # In den versteckten Backbuffer bauen, dann via lift() in den Vordergrund
         # holen — verhindert sichtbare leere Fläche zwischen Refreshes.
         new_frame = self._get_inactive_grid()
-        self._build_grid_header(new_frame)
+        self._ensure_day_header()
 
         cal = calendar.Calendar(firstweekday=0)
         entries = self._storage.get_all()
@@ -758,7 +797,7 @@ class GridRenderer:
 
     def _refresh_week(self):
         new_frame = self._get_inactive_grid()
-        self._build_grid_header(new_frame)
+        self._ensure_day_header()
 
         dates = get_week_dates(self._iso_year, self._current_week)
         entries = self._storage.get_all()
