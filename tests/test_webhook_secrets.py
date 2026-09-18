@@ -114,3 +114,14 @@ def test_forget_by_id_removes_the_entry(fake_keyring):
     keyring_store.put("webhook:w1", "x")
     ws.forget_by_id("w1")
     assert _entry("webhook:w1") not in fake.store
+
+
+def test_persist_rejects_a_keyring_marker_for_another_mode(fake_keyring):
+    """Wechsel header→hmac mit leerem Feld darf die Markierung nicht
+    übernehmen: im Eintrag läge noch der Header-Token, und der würde still
+    als HMAC-Secret benutzt."""
+    fake_keyring()
+    stored = ws.stored_in_keyring(_hook("header"))
+    candidate = ws.stored_in_keyring(_hook("hmac"))
+    with pytest.raises(ValueError):
+        ws.persist(candidate, "", stored=stored)

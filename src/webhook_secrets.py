@@ -91,7 +91,9 @@ def persist(candidate: dict[str, Any], typed: str,
       Datensatz (Alt-Format), und ein älterer Schlüsselbund-Eintrag ist
       abzuräumen (sonst zweite, veraltete Quelle).
     - `typed` leer oder nur Leerzeichen: unverändert (Dialog: „leer lassen =
-      unverändert"). Verändert `candidate` nicht.
+      unverändert"). Eine Schlüsselbund-Markierung im `candidate` ist dann
+      nur gültig, wenn `stored` für dasselbe Verfahren im Schlüsselbund
+      liegt — sonst `ValueError`. Verändert `candidate` nicht.
     """
     stale = keyring_key(candidate["id"]) if stored is not None and in_keyring(stored) else None
     field = secret_field(candidate)
@@ -106,6 +108,14 @@ def persist(candidate: dict[str, Any], typed: str,
         if keyring_store.put(keyring_key(candidate["id"]), typed):
             return stored_in_keyring(with_secret), None
         return with_secret, stale
+    if in_keyring(candidate) and not (
+            stored is not None and in_keyring(stored)
+            and secret_field(stored) == field):
+        # Die Markierung meint „das gespeicherte Secret bleibt" — das gibt es
+        # nur für dasselbe Verfahren. Nach einem Wechsel header→hmac läge im
+        # Eintrag noch der Header-Token und würde still als HMAC-Secret benutzt.
+        raise ValueError("Schlüsselbund-Markierung ohne gespeichertes Secret "
+                         "desselben Verfahrens")
     return copy.deepcopy(candidate), None
 
 
