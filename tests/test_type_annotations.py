@@ -72,6 +72,8 @@ ANNOTATED_MODULES = [
     "src/secret_migration.py",
     "src/holidays_de.py",
     "src/platform_open.py",
+    # Einstellungs-Dialog-Bausteine (#132)
+    "src/theme/form_logic.py",
 ]
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
