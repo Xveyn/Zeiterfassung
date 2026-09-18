@@ -21,6 +21,8 @@
 - Mehrzeilige Commit-Messages über eine Temp-Datei (`git commit -F <datei>`), nicht über Heredoc/Here-String im Aufruf.
 - Jeder Commit endet mit der Zeile `Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>`.
 - Alle Prüfbefehle aus dem Repo-Root: `python -m pytest -q -p no:warnings`, `python -m ruff check .`, `npx --yes pyright@1.1.411`.
+- pyright-Erwartung überall: `0 errors, 1 warning` — die eine Warnung ist die bestehende zu `src/build_info.py` (in `version.py`). **Jede weitere Warnung ist ein Befund**: `reportAttributeAccessIssue` steht in `pyproject.toml` global auf `"warning"`, ein Tippfehler in einem Attributnamen (z.B. `self._updates.auto_updaterr`) erscheint dort NUR als Warnung, nicht als Fehler.
+- Bewusste, dokumentierte Abweichungen von „verhaltensneutral" (sonst keine): (1) Log-Einträge der umgezogenen Methoden erscheinen im Logfile unter dem Logger `src.update_coordinator` statt `src.ui`; (2) der Gurt in `_quit_with_sync_push` umschließt jetzt auch das Lesen von `pending_update_path` (vorher lag es davor) — fängt also etwas mehr, nie weniger.
 
 ---
 
@@ -67,7 +69,7 @@ git mv tests/test_ui_update_routing.py tests/test_update_coordinator.py
 git mv tests/test_ui_apply_pending_update.py tests/test_update_coordinator_apply_pending.py
 ```
 
-- [ ] **Step 2: Die zwei App-seitigen Tests nach `tests/test_ui_update_wiring.py` verschieben (unverändert)**
+- [ ] **Step 2: Die zwei App-seitigen Tests nach `tests/test_ui_update_wiring.py` verschieben (Assertions unverändert, Aufbau auf `MagicMock`)**
 
 `test_tray_menu_offers_update_check` aus `tests/test_update_coordinator.py` und `test_quit_with_sync_push_destroys_the_window_even_if_applying_raises` aus `tests/test_update_coordinator_apply_pending.py` **löschen** und in der neuen Datei ablegen. Inhalt von `tests/test_ui_update_wiring.py`:
 
@@ -206,7 +208,7 @@ class _FakeTray:
         self.messages.append(message)
 ```
 
-(b) Im Rest der Datei diese Ersetzungen (alle Vorkommen):
+(b) Im Rest der Datei diese Ersetzungen (alle Vorkommen), **in genau dieser Reihenfolge** — wer `ui_module` → `coordinator_module` vor der Import-Zeile ersetzt, erhält `import src.ui as coordinator_module`, und die Tests patchen dann das falsche Modul:
 
 | alt | neu |
 |---|---|
@@ -383,7 +385,7 @@ In `tests/test_type_annotations.py`, Liste `ANNOTATED_MODULES`, direkt nach `"sr
 - [ ] **Step 7: Tests laufen lassen — müssen scheitern**
 
 Run: `python -m pytest tests/test_update_coordinator.py tests/test_update_coordinator_apply_pending.py tests/test_auto_update.py tests/test_type_annotations.py -q -p no:warnings`
-Expected: FAIL/ERROR mit `ModuleNotFoundError: No module named 'src.update_coordinator'` bzw. „Datei fehlt" im Annotations-Test.
+Expected: `Interrupted: 2 errors during collection` — beide mit `ModuleNotFoundError: No module named 'src.update_coordinator'`. (`test_auto_update.py`/`test_type_annotations.py` kommen dabei nicht zur Ausführung; rot ist es aus dem richtigen Grund.)
 
 - [ ] **Step 8: `src/update_coordinator.py` anlegen**
 
@@ -627,7 +629,7 @@ Expected: PASS (alle).
 - [ ] **Step 10: Volle Suite, Lint, Typecheck**
 
 Run: `python -m pytest -q -p no:warnings`, dann `python -m ruff check .`, dann `npx --yes pyright@1.1.411`
-Expected: alle Tests grün; `All checks passed!`; `0 errors`. (ui.py ist in diesem Task unverändert; seine alten Update-Methoden sind vorübergehend ungetestet — Task 2 entfernt sie.)
+Expected: alle Tests grün; `All checks passed!`; pyright `0 errors, 1 warning` (nur die bestehende `build_info`-Warnung). (ui.py ist in diesem Task unverändert; seine alten Update-Methoden sind vorübergehend ungetestet — Task 2 entfernt sie.)
 
 - [ ] **Step 11: Commit**
 
@@ -670,6 +672,9 @@ In `tests/test_ui_update_wiring.py`:
 (a) Im Gurt-Test die Zeilen
 
 ```python
+    fake = MagicMock()
+    fake.settings = _FakeSettings({"pending_update_path": r"C:\Temp\setup.exe"})
+    fake._single_instance = None
     fake._apply_pending_update = MagicMock(
         side_effect=OSError("kein Platz mehr in %TEMP%"))
 
@@ -678,9 +683,11 @@ In `tests/test_ui_update_wiring.py`:
     fake.root.destroy.assert_called_once_with()
 ```
 
-ersetzen durch
+ersetzen durch (das `settings`-Setup entfällt: App liest den Pfad nicht mehr selbst)
 
 ```python
+    fake = MagicMock()
+    fake._single_instance = None
     fake._updates.apply_pending_on_quit.side_effect = OSError(
         "kein Platz mehr in %TEMP%")
 
@@ -690,9 +697,40 @@ ersetzen durch
     fake.root.destroy.assert_called_once_with()
 ```
 
-(b) Neuen Test anhängen:
+Danach die nun unbenutzte Klasse `_FakeSettings` samt Leerzeilen aus `tests/test_ui_update_wiring.py` löschen.
+
+(b) Drei neue Tests anhängen:
 
 ```python
+def test_quit_applies_the_pending_update_before_destroying_the_window():
+    """Die Reihenfolge ist die Zusage: erst anwenden, dann `destroy()` —
+    umgekehrt hätte `apply_pending_on_quit` kein Gegenüber mehr, und unter
+    Windows startet der Helfer erst, wenn die App weg ist."""
+    fake = MagicMock()
+    fake._single_instance = None
+    order = []
+    fake._updates.apply_pending_on_quit.side_effect = lambda: order.append("apply")
+    fake.root.destroy.side_effect = lambda: order.append("destroy")
+
+    App._quit_with_sync_push(fake)
+
+    assert order == ["apply", "destroy"]
+
+
+def test_settings_dialog_gets_the_coordinators_auto_updater(monkeypatch):
+    """Updates-Tab und Start-Check müssen DENSELBEN AutoUpdater teilen (R9),
+    sonst gäbe es wieder zwei Guards. pyright meldet einen Tippfehler an
+    dieser Stelle nur als Warnung — deshalb dieser Test."""
+    captured = {}
+    monkeypatch.setattr("src.ui.open_settings_dialog",
+                        lambda *a, **k: captured.update(k))
+    fake = MagicMock()
+
+    App._open_settings(fake)
+
+    assert captured["auto_updater"] is fake._updates.auto_updater
+
+
 def test_tray_update_entry_runs_the_coordinator_check():
     """Der Tray-Eintrag marshallt auf den Tk-Thread (wie alle Einträge) und
     landet beim Coordinator — nicht mehr in einer App-Methode."""
@@ -707,7 +745,7 @@ def test_tray_update_entry_runs_the_coordinator_check():
 - [ ] **Step 2: Wiring-Tests laufen lassen — müssen scheitern**
 
 Run: `python -m pytest tests/test_ui_update_wiring.py -q -p no:warnings`
-Expected: 2 FAIL — `apply_pending_on_quit` wurde nicht aufgerufen bzw. `after` mit `fake._tray_check_update` statt `fake._updates.tray_check`.
+Expected: 4 FAIL, 1 PASS — `apply_pending_on_quit` nicht gerufen (Gurt-Test; Reihenfolge-Test mit `order == ["destroy"]`), `auto_updater` ist `fake._auto_updater` statt `fake._updates.auto_updater`, `after` mit `fake._tray_check_update` statt `fake._updates.tray_check`. `test_tray_menu_offers_update_check` bleibt grün.
 
 - [ ] **Step 3: `src/ui.py` umbauen**
 
@@ -740,7 +778,7 @@ from src.update_coordinator import UpdateCoordinator
 
 (die `updater`-Zeile entfällt ganz; `from src.update_coordinator import UpdateCoordinator` direkt nach `from src.update_banner import UpdateBanner` einfügen).
 
-(b) Die Modulfunktion `_route_update_notification` (von `def _route_update_notification(` bis einschließlich `return "banner", None`) löschen.
+(b) Die Modulfunktion `_route_update_notification` (von `def _route_update_notification(` bis einschließlich `return "banner", None`) **samt der zwei folgenden Leerzeilen** löschen — zwischen `_delete_action` und `class App` bleiben danach genau zwei Leerzeilen.
 
 (c) In `App.__init__` diese Zeilen löschen:
 
@@ -829,22 +867,22 @@ ersetzen durch
         self.root.destroy()
 ```
 
-Hinweis: vorher lief der `try` nur, wenn `pending_update_path` gesetzt war. Jetzt läuft immer `apply_pending_on_quit()`, das ohne Pfad sofort zurückkehrt (Test aus Task 1). Beobachtbares Verhalten: gleich.
+Hinweis: vorher lief der `try` nur, wenn `pending_update_path` gesetzt war, und das Lesen des Pfads lag außerhalb. Jetzt läuft immer `apply_pending_on_quit()`, das ohne Pfad sofort zurückkehrt (Test aus Task 1); das Lesen liegt damit innerhalb des Gurts — er fängt etwas mehr, nie weniger (s. Global Constraints).
 
 - [ ] **Step 4: Wiring-Tests laufen lassen — müssen bestehen**
 
 Run: `python -m pytest tests/test_ui_update_wiring.py -q -p no:warnings`
-Expected: 3 passed.
+Expected: 5 passed.
 
 - [ ] **Step 5: Reste prüfen**
 
-Run (Git-Bash): `grep -n "_update_check_running\|_auto_updater\|_apply_pending_update\|_on_update_check_result\|_tray_check_update\|_route_update_notification\|today_iso\|installed_release_id" src/ui.py`
-Expected: keine Treffer.
+Run (Git-Bash): `grep -n "_update_check_running\|self\._auto_updater\|self\._apply_pending_update\|def _apply_pending_update\|_on_update_check_result\|_tray_check_update\|_route_update_notification\|today_iso\|installed_release_id" src/ui.py`
+Expected: keine Treffer. (Der neue Gurt-Kommentar nennt `` `UpdateCoordinator._apply_pending_update` `` — das Muster ist bewusst so eng, dass er nicht trifft. Den Kommentar NICHT ändern.)
 
 - [ ] **Step 6: Volle Suite, Lint, Typecheck**
 
 Run: `python -m pytest -q -p no:warnings`, `python -m ruff check .`, `npx --yes pyright@1.1.411`
-Expected: alle grün; `All checks passed!` (keine unbenutzten Importe mehr); `0 errors`.
+Expected: alle grün; `All checks passed!` (keine unbenutzten Importe mehr); pyright `0 errors, 1 warning` (nur `build_info`).
 
 - [ ] **Step 7: Commit**
 
@@ -876,7 +914,8 @@ git commit -F <temp-datei>
 **Files:**
 - Modify: `src/CLAUDE.md` (Z. 23-28 Schichten-Überblick, Z. 37 Überschrift, Z. 106-110 UpdateBanner, Z. ~449 `auto_update.py`-Eintrag, Z. ~540 Tray-Absatz)
 - Modify: `CLAUDE.md` (Z. 471 „Update-Weg", Z. 1026 Strukturliste `ui.py`, neuer Eintrag nach `src/auto_update.py`)
-- Modify: Docstrings/Kommentare in `src/auto_update.py` (Z. 4, 97), `src/dialogs/settings_dialog/tab_updates.py` (Z. 285, 420, 444), `src/self_update.py` (Z. 317, 347, 433, 501), `tests/test_self_update.py` (Z. 473, 502), `tests/test_tab_updates_apply.py` (Z. 3)
+- Modify: Docstrings/Kommentare in `src/auto_update.py` (Z. 4, 97), `src/dialogs/settings_dialog/tab_updates.py` (Z. 285, 420, 444), `src/self_update.py` (Z. 317, 347, 433, 501), `tests/test_self_update.py` (Z. 473, 502), `tests/test_tab_updates_apply.py` (Z. 3, 40)
+- Modify: `CONTRIBUTING.md` (Z. 67 Komponentenliste, Z. 80 Verzeichnisbaum), `docs/code-quality-improvements.md` (Z. 75-77)
 
 **Interfaces:**
 - Consumes: Namen aus Task 1/2 (`UpdateCoordinator`, `update_coordinator.py`, `App._updates`, `on_check_result`, `tray_check`, `apply_pending_on_quit`, `_apply_pending_update`).
@@ -895,6 +934,7 @@ git commit -F <temp-datei>
 | `tests/test_self_update.py` Z. 473 | `` (`ui.App._apply_pending_update`) `` | `` (`UpdateCoordinator._apply_pending_update`) `` |
 | `tests/test_self_update.py` Z. 502 | `` `App._apply_pending_update` laeuft `` | `` `UpdateCoordinator._apply_pending_update` laeuft `` |
 | `tests/test_tab_updates_apply.py` Z. 3 | `test_ui_apply_pending_update.py/test_ui_update_routing.py` | `test_update_coordinator_apply_pending.py/test_update_coordinator.py` |
+| `tests/test_tab_updates_apply.py` Z. 40 | `test_ui_update_routing.py).` | `test_update_coordinator.py).` |
 
 Danach Kontrolle (Git-Bash): `grep -rn "App._apply_pending_update\|App._on_update_check_result\|_tray_check_update\|test_ui_update_routing\|test_ui_apply_pending_update" src tests --include=*.py`
 Expected: keine Treffer.
@@ -950,6 +990,12 @@ selbst per `root.after`.
 
 (f) Tray-Absatz: `` „Nach Updates suchen" (`_tray_check_update`) ist der `` → `` „Nach Updates suchen" (`UpdateCoordinator.tray_check`) ist der ``; `` blockt über `_update_check_running` den Doppelklick `` bleibt.
 
+(g) UpdateBanner-Abschnitt, zweiter Banner-Zustand: `` der `AutoUpdater` (`auto_update.py`, s.u.): `App` reicht ihm `` → `` der `AutoUpdater` (`auto_update.py`, s.u.): der `UpdateCoordinator` reicht ihm `` (die Folgezeile `` `show_ready_to_install` als `on_ready` hinein — der Banner importiert weder `` bleibt).
+
+(h) BackgroundTaskRunner-Abschnitt: `` `trigger_reconcile`. UI-Arbeit (Dialoge/Banner/Refresh) bleibt in App und kommt als Callback. `` → `` `trigger_reconcile`. UI-Arbeit (Dialoge/Banner/Refresh) bleibt beim Aufrufer — `App`, für den Update-Check der `UpdateCoordinator` — und kommt als Callback. ``
+
+(i) „Wo gehört neuer Code hin?": `` `sync_runtime.py`. Reine Persistenz/Logik → der passende Store bzw. `sync.py`/`share.py` `` → `` `sync_runtime.py`. Update-**Ablauf** (Check, Toast/Banner, Anwenden beim Beenden) → `update_coordinator.py`, die Auto-Update-**Policy** → `auto_update.py`. Reine Persistenz/Logik → der passende Store bzw. `sync.py`/`share.py` ``
+
 - [ ] **Step 3: `CLAUDE.md` anpassen**
 
 (a) „Update-Weg": `` angewendet (`ui.App._apply_pending_update`), bleibt die App zu: `` → `` angewendet (`UpdateCoordinator._apply_pending_update`), bleibt die App zu: ``
@@ -966,11 +1012,28 @@ selbst per `root.after`.
   `App` (s. `src/CLAUDE.md`)
 ```
 
+(e) „Update-Weg", Absatz „Und es lädt immer nur einer": `` `auto_update.AutoUpdater`, das die App besitzt und an den Tab durchreicht, mit `` → `` `auto_update.AutoUpdater`, das der `UpdateCoordinator` besitzt und die App an den Tab durchreicht, mit ``
+
 (d) Im `auto_update.py`-Eintrag der Strukturliste: `Tk-frei, die App besitzt das eine Exemplar und reicht es an den
   Updates-Tab weiter` → `Tk-frei, der `UpdateCoordinator` besitzt das eine Exemplar, die App
   reicht es an den Updates-Tab weiter`
 
+- [ ] **Step 3b: `CONTRIBUTING.md` und `docs/code-quality-improvements.md`**
+
+(a) `CONTRIBUTING.md` Z. 67: `` (`GridRenderer`, `BackgroundTaskRunner`, `SyncOrchestrator`, `UpdateBanner`) `` → `` (`GridRenderer`, `BackgroundTaskRunner`, `SyncOrchestrator`, `UpdateBanner`, `UpdateCoordinator`) ``
+
+(b) `CONTRIBUTING.md` Verzeichnisbaum: nach der Zeile `│   ├── update_banner.py   # GitHub-Release-Hinweis-Banner` einfügen:
+
+```
+│   ├── update_coordinator.py # Update-Lebenszyklus: Start-Check, Toast/Banner, Tray-Check, Anwenden beim Beenden
+```
+
+(c) `docs/code-quality-improvements.md`: `` `background_tasks.py`, `update_banner.py`). `` → `` `background_tasks.py`, `update_banner.py`, seit R11 `update_coordinator.py`). ``
+
 - [ ] **Step 4: Prüfen**
+
+Kontroll-grep über die Doku (Git-Bash): `grep -rn "App._apply_pending_update\|App._on_update_check_result\|_tray_check_update\|das die App besitzt\|App. reicht ihm" CLAUDE.md src/CLAUDE.md CONTRIBUTING.md docs/code-quality-improvements.md`
+Expected: keine Treffer.
 
 Run: `python -m pytest tests/test_claude_md_claims.py -q -p no:warnings`, dann `python -m pytest -q -p no:warnings`, `python -m ruff check .`
 Expected: alle grün. Scheitert `test_claude_md_claims.py`, ist eine zitierte Behauptung umformuliert worden — das Muster im Test nachziehen, nicht die Behauptung zurückdrehen.
@@ -988,7 +1051,7 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
 ```
 
 ```bash
-git add CLAUDE.md src/ tests/
+git add CLAUDE.md CONTRIBUTING.md docs/code-quality-improvements.md src/ tests/
 git commit -F <temp-datei>
 ```
 
@@ -1003,44 +1066,75 @@ Kein Code im Repo. Harness ins Scratchpad (nicht ins Repo), Muster wie bei R9.
 
 - [ ] **Step 1: Harness schreiben**
 
+Netz **und** Plattform sind gefälscht: ein fester Release statt der GitHub-API, sonst fehlte ohne Netz oder bei Rate-Limit der Start-Toast still. Toasts und Banner werden auf stdout gespiegelt, damit ein Agent sie prüfen kann. Der Tray-Check geht über den **echten** Menüeintrag aus `_tray_actions`. Das zweite Argument `tray|banner` wählt den Weg; `banner` ist der Default-Nutzerfall (ohne Tray), und nur dort wirkt der an den Coordinator gereichte Banner.
+
 ```python
-"""R11-Harness: Start-Check -> Toast, Tray-Check -> Toast, Beenden mit
-vorbereitetem Update -> apply_windows(restart=False). Netz/Plattform gefälscht."""
+"""R11-Harness. Weg "tray": Start-Check -> Toast, Tray-Menüeintrag -> Toast,
+Beenden mit vorbereitetem Update -> apply_windows(restart=False).
+Weg "banner" (Default-Nutzer ohne Tray): Start-Check -> Banner.
+Netz und Plattform gefälscht; Toast/Banner auf stdout gespiegelt."""
 import hashlib, os, sys, tempfile
-data = sys.argv[1]
+data, mode = sys.argv[1], sys.argv[2]
 os.environ["ZEITERFASSUNG_DATA_DIR"] = data
 sys.path.insert(0, os.getcwd())
 
 import src.background_tasks as bt
+import src.tray as tray_pkg
+import src.update_banner as ub
 import src.update_coordinator as uc
 import src.ui as ui
 from src.settings import Settings
+from src.updater import Release
 
 s = Settings(os.path.join(data, "settings.json"))
-s.set("minimize_to_tray", True)          # Tray an -> Toast-Weg
+s.set("minimize_to_tray", mode == "tray")
+s.set("last_update_check_at", "")          # Throttle aus, auch bei Wiederholung
 
-bt.installed_release_id = lambda: "0.0.1"   # Start-Check meldet "neuer"
-uc.installed_release_id = lambda: "0.0.1"   # Tray-Check ebenso
-uc.apply_windows = lambda exe, setup, pid, restart: print(
-    "APPLY_WINDOWS", setup, "restart=", restart, flush=True) or True
+REL = Release(version="9.9.9", html_url="https://example.invalid/r", assets=())
+bt.check_for_update = lambda *a, **k: REL
+uc.check_for_update = lambda *a, **k: REL
+bt.installed_release_id = lambda: "0.0.1"
+uc.installed_release_id = lambda: "0.0.1"
+
+orig_notify = tray_pkg.TrayIcon.notify
+def notify(self, message, title="Zeiterfassung"):
+    print("TOAST:", message, flush=True)
+    return orig_notify(self, message, title)
+tray_pkg.TrayIcon.notify = notify
+
+orig_show = ub.UpdateBanner.show_if_newer
+def show_if_newer(self, release):
+    print("BANNER:", release.release_id, flush=True)
+    return orig_show(self, release)
+ub.UpdateBanner.show_if_newer = show_if_newer
+
+FAKE = os.path.join(tempfile.gettempdir(), "r11-fake-setup.exe")
+def fake_apply(exe, setup, pid, restart):
+    print("APPLY_WINDOWS", setup, "restart=", restart, flush=True)
+    os.remove(setup)                       # aufräumen, statt liegen lassen
+    return True
+uc.apply_windows = fake_apply
 
 orig_init = ui.App.__init__
 def init(self, *a, **k):
     orig_init(self, *a, **k)
     def tray_check():
+        entry = next(a for a in self._tray_actions() if a[0] == "Nach Updates suchen")
         print("TRAY_CHECK", flush=True)
-        self._updates.tray_check()
+        entry[1]()                          # echter Menü-Callback (root.after)
     def quit_with_pending():
-        path = os.path.join(tempfile.gettempdir(), "r11-fake-setup.exe")
-        with open(path, "wb") as f:
+        with open(FAKE, "wb") as f:
             f.write(b"fake")
         self.settings.set_many({
-            "pending_update_path": path,
+            "pending_update_path": FAKE,
             "pending_update_sha256": hashlib.sha256(b"fake").hexdigest()})
         print("QUIT", flush=True)
         self._quit_with_sync_push()
-    self.root.after(6000, tray_check)
-    self.root.after(12000, quit_with_pending)
+    if mode == "tray":
+        self.root.after(6000, tray_check)
+        self.root.after(12000, quit_with_pending)
+    else:
+        self.root.after(6000, self._quit_with_sync_push)
 ui.App.__init__ = init
 
 from src.main import main
@@ -1048,22 +1142,26 @@ main()
 print("MAIN_RETURNED", flush=True)
 ```
 
-- [ ] **Step 2: Laufen lassen**
+- [ ] **Step 2: Weg „tray" laufen lassen**
 
 Run (Git-Bash, aus dem Repo-Root; `$SP` = Scratchpad):
-`mkdir -p "$SP/r11data"; PYTHONIOENCODING=utf-8 timeout 60 python -u "$SP/r11_harness.py" "$SP/r11data"`
+`rm -rf "$SP/r11data"; mkdir -p "$SP/r11data"; PYTHONIOENCODING=utf-8 timeout 60 python -u "$SP/r11_harness.py" "$SP/r11data" tray`
 
 Expected, in dieser Reihenfolge:
-- nach ~1–3 s ein Windows-Toast „Neue Version … verfügbar" (Start-Check, Tray aktiv)
-- `TRAY_CHECK`, danach ein zweiter Toast mit dem Ergebnis des manuellen Checks
+- `TOAST: …9.9.9…` (Start-Check, Tray aktiv)
+- `TRAY_CHECK`, danach `TOAST: …` mit dem Ergebnis des manuellen Checks
 - `QUIT`, dann `APPLY_WINDOWS …r11-fake-setup.exe restart= False`
-- `MAIN_RETURNED` (Fenster ist zu, Prozess endet)
+- `MAIN_RETURNED`
 
-Stderr darf keine Tracebacks enthalten. Das Log unter `$SP/r11data/logs/zeiterfassung.log` auf `ERROR` prüfen: `grep -n "ERROR" "$SP/r11data/logs/zeiterfassung.log"` → keine Treffer aus `src.update_coordinator` oder `src.ui`.
+- [ ] **Step 3: Weg „banner" laufen lassen**
 
-- [ ] **Step 3: Aufräumen**
+Run: `rm -rf "$SP/r11data"; mkdir -p "$SP/r11data"; PYTHONIOENCODING=utf-8 timeout 60 python -u "$SP/r11_harness.py" "$SP/r11data" banner`
 
-`rm -f "$LOCALAPPDATA/Temp/r11-fake-setup.exe"` (falls `apply_windows` gefälscht war, bleibt die Datei liegen).
+Expected: `BANNER: 9.9.9`, kein `TOAST:`, dann `MAIN_RETURNED`.
+
+- [ ] **Step 4: Log prüfen**
+
+Nach jedem Lauf: stderr ohne Traceback; `grep -n "ERROR\|WARNING" "$SP/r11data/logs/zeiterfassung.log"` → keine Treffer aus `src.update_coordinator` oder `src.ui`.
 
 ---
 

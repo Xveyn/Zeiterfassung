@@ -36,6 +36,16 @@ Callables, kein Import von `src.ui`. `App` behält nur noch das Wiring.
 Settings-Keys oder Fehlerpfaden. Beleg ist, dass die bestehenden Tests nur ihr
 Bindungsziel wechseln (`App` → `UpdateCoordinator`), nicht ihre Assertions.
 
+Zwei Abweichungen sind unvermeidlich bzw. harmlos und werden bewusst in Kauf
+genommen (im Plan-Review gefunden):
+
+- **Loggername.** Die Einträge „Manueller Update-Check fehlgeschlagen" und
+  „Vorbereitetes Update …" erscheinen im Logfile unter `src.update_coordinator`
+  statt `src.ui` (Format `%(name)s` in `logging_setup.py`).
+- **Der Gurt fängt etwas mehr.** Vorher lag `settings.get("pending_update_path")`
+  vor dem `try`; jetzt liest `apply_pending_on_quit()` den Pfad innerhalb des
+  Gurts. Fängt mehr, nie weniger.
+
 ## Architektur
 
 ### `src/update_coordinator.py` (neu, Tk-frei)
@@ -97,8 +107,10 @@ class UpdateCoordinator:
 
 - **Den Banner baut weiter `App`.** Er braucht `root`, den Renderer
   (`get_anchor`, `on_resize`) und `_open_settings` — alles App-Zustand. Er wird
-  fertig an den Coordinator gereicht; `self._update_banner` bleibt als Attribut
-  (Renderer-/Resize-Wiring hängt daran).
+  fertig an den Coordinator gereicht. `self._update_banner` bleibt als
+  Attribut, obwohl danach nur noch `__init__` es liest (das Renderer-/Resize-
+  Wiring hängt an den Konstruktor-Argumenten des Banners, nicht am Attribut) —
+  harmlos, und es hält die Referenz lesbar am Ort ihres Baus.
 - `self._updates = UpdateCoordinator(self.settings, self._bg,
   self._update_banner, lambda: self._tray)`, danach `self._updates.start()` an
   der Stelle des heutigen `check_update`-Aufrufs — die Reihenfolge der
@@ -189,15 +201,22 @@ Refactoring nach TDD: die Tests wechseln **zuerst** ihr Ziel (rot, weil
 - Der Tray-Eintrag der App ruft `_updates.tray_check` (über `root.after`).
 - Der vom Coordinator gebaute `AutoUpdater` meldet „bereit" an den Banner
   (`on_ready` ist `banner.show_ready_to_install`).
+- `App._open_settings` reicht **denselben** `AutoUpdater` an den Dialog
+  (`auto_updater is _updates.auto_updater`) — sonst gäbe es wieder zwei
+  Guards. Nötig als Test, weil pyright einen Tippfehler dort nur als Warnung
+  meldet (`reportAttributeAccessIssue = "warning"`).
+- Beim Beenden gilt die Reihenfolge „erst anwenden, dann `destroy()`".
 
 ## Verifikation vor dem Merge
 
 - `pytest`, `ruff check .`, `pyright` grün.
-- **Echte App** (Harness mit `ZEITERFASSUNG_DATA_DIR` im Scratchpad, Netz/
-  Plattform gefälscht wie bei R9): Start-Check → Banner bzw. Toast; Tray-Eintrag
-  „Nach Updates suchen" → Toast; Beenden mit gesetztem `pending_update_path`
-  → `apply_windows` (neutralisiert) wird mit `restart=False` gerufen, Fenster
-  geht zu.
+- **Echte App** (Harness mit `ZEITERFASSUNG_DATA_DIR` im Scratchpad; Netz —
+  fester Release statt GitHub-API — und Plattform gefälscht; Toasts und Banner
+  auf stdout gespiegelt), zwei Läufe:
+  - mit Tray: Start-Check → Toast; der **echte** Tray-Menüeintrag „Nach Updates
+    suchen" → Toast; Beenden mit gesetztem `pending_update_path` →
+    `apply_windows` (neutralisiert) mit `restart=False`, Fenster geht zu;
+  - ohne Tray (Default-Nutzer): Start-Check → Banner.
 - Kein Pre-Release nötig über den R9-Gate hinaus: die Plattformzweige in
   `_apply_pending_update` ziehen unverändert um. Der offene R9-Pre-Release
   deckt sie ohnehin mit ab.
