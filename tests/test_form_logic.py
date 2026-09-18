@@ -39,6 +39,18 @@ def test_missing_switch_value_counts_as_off():
     assert enabled_states({"g0": None, "g1": "g0"}, {"g1": True}) == {"g0": False, "g1": False}
 
 
+def test_missing_ancestor_group_still_counts_its_switch_value():
+    """Der Vorfahr einer Gruppe muss nicht selbst ein Eintrag in `parents`
+    sein (z.B. eine Gruppe ohne eigenen `depends_on`-Aufruf) — sein Wert im
+    `values`-Dict zählt trotzdem. Fehlt dort auch sein Wert, gilt er als aus
+    (dieselbe Regel wie bei einem bekannten Vorfahren, s.
+    `test_missing_switch_value_counts_as_off`)."""
+    parents = {"g1": "g0"}
+    assert enabled_states(parents, {"g0": True, "g1": True})["g1"] is True
+    assert enabled_states(parents, {"g0": False, "g1": True})["g1"] is False
+    assert enabled_states(parents, {"g1": True})["g1"] is False
+
+
 def test_cycle_is_a_programming_error():
     with pytest.raises(ValueError):
         enabled_states({"a": "b", "b": "a"}, {"a": True, "b": True})
@@ -80,6 +92,13 @@ def test_self_scrolling_widgets_keep_the_wheel():
 
 def test_combobox_is_protected():
     assert wheel_route("TCombobox") == "form_block"
+
+
+def test_spinbox_is_protected():
+    # Spinbox (tk) und TSpinbox (ttk) ändern beim Rad ebenfalls ihren Wert —
+    # dieselbe Falle wie bei der Combobox.
+    assert wheel_route("TSpinbox") == "form_block"
+    assert wheel_route("Spinbox") == "form_block"
 
 
 def test_everything_else_scrolls_the_form():

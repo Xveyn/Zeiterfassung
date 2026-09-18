@@ -33,10 +33,24 @@ def set_enabled(widget, on):
 
     Kennt jede Widget-Art der Dialoge: die Label-Buttons aus `widgets`, alle
     ttk-Widgets (Combobox), `tk.Entry`, Check-/Radiobuttons, `tk.Text`,
-    `tk.Label` und Container (`tk.Frame`), deren Kinder rekursiv folgen. Ein
-    ausgegrautes Feld behält seinen Wert."""
+    `tk.Label` und Container (`tk.Frame`/`tk.LabelFrame`/`ttk.Frame`), deren
+    Kinder rekursiv folgen. Ein ausgegrautes Feld behält seinen Wert.
+
+    Label-Buttons NIE zugleich über `set_enabled` UND einen der
+    `set_*_button_enabled`-Helfer (`set_primary_button_enabled`/
+    `set_secondary_button_enabled`/`set_icon_button_enabled`) steuern — beide
+    Wege mutieren dieselben `_colors`/`_zeit_*`-Attribute des Buttons und
+    laufen sich sonst gegenseitig den Rang ab (welcher zuletzt lief,
+    gewinnt, aber undokumentiert)."""
     if isinstance(widget, _LabelButton):
         _set_label_button_enabled(widget, on)
+        return
+    if isinstance(widget, ttk.Frame):
+        # Vor dem generischen ttk.Widget-Zweig: ein ttk.Frame hat kein
+        # sinnvolles eigenes -state (state(["disabled"]) ändert an einem
+        # Frame optisch nichts) — gemeint ist immer, seine Kinder zu sperren.
+        for child in widget.winfo_children():
+            set_enabled(child, on)
         return
     if isinstance(widget, ttk.Widget):
         widget.state(["!disabled"] if on else ["disabled"])
@@ -47,11 +61,20 @@ def set_enabled(widget, on):
                       disabledforeground=TEXT_DISABLED)
     elif isinstance(widget, (tk.Checkbutton, tk.Radiobutton)):
         widget.config(state=state, disabledforeground=TEXT_DISABLED)
+        # Cursor nur mitziehen, wenn er gerade den Gegenwert der Zielrichtung
+        # trägt — sonst bekäme ein Check-/Radiobutton ohne je gesetztes
+        # cursor="hand2" (form.check() setzt es, ein künftiger Aufrufer
+        # vielleicht nicht) beim Aktivieren einen Hand-Cursor aufgezwungen,
+        # den er vorher nie hatte.
+        if not on and widget.cget("cursor") == "hand2":
+            widget.config(cursor="arrow")
+        elif on and widget.cget("cursor") == "arrow":
+            widget.config(cursor="hand2")
     elif isinstance(widget, tk.Text):
         widget.config(state=state, fg=TEXT if on else TEXT_DISABLED)
     elif isinstance(widget, tk.Label):
         _set_label_enabled(widget, on)
-    elif isinstance(widget, tk.Frame):
+    elif isinstance(widget, (tk.Frame, tk.LabelFrame)):
         for child in widget.winfo_children():
             set_enabled(child, on)
     else:
@@ -66,14 +89,19 @@ def set_enabled(widget, on):
 def _set_label_enabled(label, on):
     """Labels kennen keinen gesperrten Zustand mit eigener Farbe — also die
     Schriftfarbe tauschen und die ursprüngliche merken (ein Hinweis ist
-    gedämpft, eine Beschriftung nicht; beide sollen zurück)."""
+    gedämpft, eine Beschriftung nicht; beide sollen zurück).
+
+    `_zeit_fg` wird beim Wiederherstellen wieder geleert: sonst hielte ein
+    Label über mehrere disable/enable-Zyklen hinweg die Farbe der ERSTEN
+    Aufnahme fest, auch wenn sich die Farbe zwischenzeitlich (z.B. durch
+    eine neue Kategorie) geändert hat."""
     if not on:
-        if not hasattr(label, "_zeit_fg") or label._zeit_fg is None:
+        if getattr(label, "_zeit_fg", None) is None:
             label._zeit_fg = label.cget("fg")
         label.config(fg=TEXT_DISABLED)
-    else:
-        if hasattr(label, "_zeit_fg") and label._zeit_fg is not None:
-            label.config(fg=label._zeit_fg)
+    elif getattr(label, "_zeit_fg", None) is not None:
+        label.config(fg=label._zeit_fg)
+        label._zeit_fg = None
 
 
 def _set_label_button_enabled(btn: _LabelButton, on):
@@ -104,7 +132,26 @@ _EDGE = 12
 _SECTION_GAP = 16
 # Kleinste Umbruchbreite eines Hinweises, bevor das Formular gemessen ist.
 _MIN_WRAP = 200
-_WHEEL_EVENTS = ("<MouseWheel>", "<Button-4>", "<Button-5>")
+# Umbruchbreite eines Hinweises vor der ersten Messung (mitskaliert) — vorher
+# ein Literal, jetzt benannt, damit sie neben `_MIN_WRAP` sichtbar bleibt.
+_INITIAL_WRAP = 420
+# <MouseWheel> feuert auf Windows und macOS; <Button-4>/<Button-5> sind die
+# X11-Tastencodes für das Rad (Linux) und dort NUR gemeint — auf Windows/macOS
+# lauern sie ungenutzt, aber harmlos... außer dass ein völlig anderes Gerät
+# (z.B. Maustaste 4/5 einer Gaming-Maus) rein zufällig dieselben Button-Codes
+# senden kann. `_wheel_sequences` bindet sie deshalb nur dort, wo sie
+# tatsächlich das Mausrad bedeuten.
+_WHEEL_EVENTS = ("<MouseWheel>",)
+_X11_WHEEL_EVENTS = ("<Button-4>", "<Button-5>")
+
+
+def _wheel_sequences(widget):
+    """Event-Sequenzen, die an `widget` als Mausrad gebunden werden sollen:
+    `<MouseWheel>` immer, `<Button-4>`/`<Button-5>` nur unter X11 (s.
+    `_X11_WHEEL_EVENTS`)."""
+    if widget.tk.call("tk", "windowingsystem") == "x11":
+        return _WHEEL_EVENTS + _X11_WHEEL_EVENTS
+    return _WHEEL_EVENTS
 
 
 class Form:
@@ -128,6 +175,18 @@ class Form:
     der Inhalt nicht hineinpasst. Das Mausrad scrollt das Formular, außer über
     Widgets, die selbst scrollen (Text, Listbox); über einer Combobox scrollt
     das Formular, und die Combobox ändert ihren Wert nicht.
+
+    **Lebensdauer-Vertrag:** Ein `Form` lebt so lange wie sein Dialog. Die
+    Mausrad-Bindung am Toplevel (`scroll=True`) und die Variablen-Traces aus
+    `depends_on` werden nie wieder abgebaut — ein `Form`, das bei jedem
+    Refresh neu gebaut wird, häuft beides pro Aufruf erneut an (mehrfach
+    feuernde Bindings, tote Traces auf verwaisten Widgets). Formulare gehören
+    einmal in den Dialog-Aufbau, nicht in eine Refresh-Methode.
+
+    **`scroll=True`-Formulare nicht verschachteln:** zwei geschachtelte
+    Scroll-Canvases binden beide dieselben Mausrad-Events an ihren jeweiligen
+    Toplevel — ein Rad-Ereignis über dem inneren Formular scrollte dann
+    zugleich das äußere mit.
     """
 
     def __init__(self, parent, *, scroll=False, scale=1.0):
@@ -167,7 +226,7 @@ class Form:
             # Wechsel auf ein Kind-Widget. Jedes Form prüft selbst, ob das
             # Event in seinem Canvas liegt (mehrere Forms je Dialog).
             top = self.frame.winfo_toplevel()
-            for seq in _WHEEL_EVENTS:
+            for seq in _wheel_sequences(top):
                 top.bind(seq, self._on_wheel, add="+")
         else:
             self.frame = tk.Frame(parent, bg=BG)
@@ -241,7 +300,14 @@ class Form:
 
     def block(self, widget, *, pady=4):
         """Ein eigenes Widget (Parent `form.body`) über beide Spalten —
-        Tabellen, Listen, Textfelder."""
+        Tabellen, Listen, Textfelder.
+
+        `widget` muss VOLLSTÄNDIG gebaut sein, bevor es hierher übergeben
+        wird: `_register`/`_guard_value_wheel` durchsucht die Kinder von
+        `widget` einmalig beim Aufruf, um Comboboxen gegen das Mausrad zu
+        schützen (s. `_guard_value_wheel`). Erst danach hinzugefügte
+        Comboboxen sind NICHT geschützt — ein Rad-Ereignis über ihnen würde
+        dann versehentlich ihren Wert ändern statt das Formular zu scrollen."""
         widget.grid(row=self._next_row(), column=0, columnspan=2, sticky="ew",
                     padx=(self._indent(), _EDGE), pady=pady)
         self._register(widget)
@@ -252,7 +318,17 @@ class Form:
         """Alles, was im `with`-Block entsteht, wird eingerückt und ist nur
         aktiv, solange `var` wahr ist (und alle Schalter darüber). Die
         Variable hält `Form` fest — sie braucht eine lebende Referenz, sonst
-        löscht der GC die Tcl-Variable (s. src/CLAUDE.md, Dialoge)."""
+        löscht der GC die Tcl-Variable (s. src/CLAUDE.md, Dialoge).
+
+        **Besitz-Vertrag:** die Mitglieder einer `depends_on`-Gruppe gehören
+        dem `Form` — `refresh_enabled` setzt ihren Zustand bei JEDER
+        Schalteränderung neu (`set_enabled(widget, states[group])`). Ein
+        Widget, das aus einem anderen Grund gesperrt ist (z.B. „läuft
+        gerade", während eines Hintergrund-Tasks), gehört deshalb nicht in
+        eine Gruppe: die nächste Schalteränderung überschreibt seinen
+        Zustand kommentarlos. Ein readonly `tk.Entry` wird durch Aktivieren
+        der Gruppe zu `normal` — `set_enabled` kennt keinen dritten,
+        readonly-erhaltenden Zustand."""
         group = f"g{len(self._parents)}"
         self._parents[group] = self._stack[-1] if self._stack else None
         self._vars[group] = var
@@ -266,7 +342,9 @@ class Form:
         self.refresh_enabled()
 
     def refresh_enabled(self):
-        """Wendet den aktuellen Zustand aller Schalter auf ihre Gruppen an."""
+        """Wendet den aktuellen Zustand aller Schalter auf ihre Gruppen an
+        (s. Besitz-Vertrag in `depends_on`: überschreibt jedes Mitglied
+        bedingungslos, unabhängig von einer anderweitigen Sperre)."""
         values = {}
         for group, var in self._vars.items():
             try:
@@ -303,8 +381,12 @@ class Form:
         Klassen-Binding überspringt — die Toplevel-Bindung käme zu spät, die
         Klasse hätte den Wert dann schon verstellt."""
         if wheel_route(widget.winfo_class()) == "form_block":
-            for seq in _WHEEL_EVENTS:
-                widget.bind(seq, self._on_blocked_wheel)
+            for seq in _wheel_sequences(widget):
+                # add="+" statt Ersetzen: wie jede andere Bindung in diesem
+                # Modul additiv, damit ein Widget, das aus irgendeinem Grund
+                # bereits eine eigene Instanz-Bindung auf dieselbe Sequenz
+                # trägt, diese nicht verliert.
+                widget.bind(seq, self._on_blocked_wheel, add="+")
         for child in widget.winfo_children():
             self._guard_value_wheel(child)
 
@@ -313,7 +395,7 @@ class Form:
         Einrückung. Vor der ersten Messung ein fester, mitskalierter Wert."""
         floor = round(_MIN_WRAP * self._scale)
         if not self._wrap:
-            return max(floor, round(420 * self._scale))
+            return max(floor, round(_INITIAL_WRAP * self._scale))
         return max(floor, self._wrap - indent - _EDGE)
 
     def _rewrap(self, _event=None):

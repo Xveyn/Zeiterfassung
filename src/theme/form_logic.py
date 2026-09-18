@@ -28,8 +28,10 @@ WheelRoute = Literal["widget", "form", "form_block"]
 # Widgets, die das Mausrad selbst auswerten (eigene Klassen-Bindings).
 _SELF_SCROLLING = frozenset({"Text", "Listbox"})
 # Widgets, die beim Rad ihren WERT ändern — beim Scrollen des Formulars
-# verstellte man sie sonst versehentlich.
-_VALUE_ON_WHEEL = frozenset({"TCombobox"})
+# verstellte man sie sonst versehentlich. Spinbox/TSpinbox ändern ihren Wert
+# beim Rad genau wie die Combobox, auch wenn `form.py` heute keine Spinbox
+# baut — die Falle träfe den nächsten, der eine ergänzt.
+_VALUE_ON_WHEEL = frozenset({"TCombobox", "TSpinbox", "Spinbox"})
 
 
 def enabled_states(
