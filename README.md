@@ -242,7 +242,7 @@ Oder manuell: **Menü ☰ → Google Auth Platform → Data Access**.
 
 Solange die alte `token.json` (nur mit `gmail.send`-Scope) existiert, läuft kein neuer Consent-Flow.
 
-**Empfohlener Weg** *(ab --VERSION--)*: Einstellungen → Google → „Google neu
+**Empfohlener Weg** *(ab 1.23.2)*: Einstellungen → Google → „Google neu
 verbinden" — das räumt dabei auch einen eventuellen Schlüsselbund-Eintrag des
 Refresh-Tokens mit ab.
 
@@ -355,7 +355,7 @@ Die App läuft auf **Windows, macOS und Linux**. Plattformspezifische Features w
 | Window-Icon | ✓ (`.ico`) | ✓ (`.png` Fallback) | ✓ (`.png` Fallback) |
 | Autostart bei Anmeldung | ✓ (Registry HKCU Run) | ✓ (LaunchAgent plist) | ✓ (`.desktop`-Datei) |
 | Eintrag im Anwendungsmenü | ✓ (Startmenü, vom Setup) | ✓ (`Zeiterfassung.app` in `/Applications`) | ✓ (`.desktop` in `~/.local/share/applications/`, von der App beim Start geschrieben) |
-| Infobereich-Icon (Tray) | ✓ (pystray) | ○ (NSStatusItem, Opt-in `ZEIT_MACOS_TRAY=1`) | ✓ (StatusNotifierItem) *(ab --VERSION--)* |
+| Infobereich-Icon (Tray) | ✓ (pystray) | ○ (NSStatusItem, Opt-in `ZEIT_MACOS_TRAY=1`) | ✓ (StatusNotifierItem) *(ab 1.23.2)* |
 | Standalone-Binary (PyInstaller) | ✓ (`.exe`) | ✓ (`.app` Bundle) | ✓ (AppImage) |
 | Update aus der App | ✓ (lädt, prüft, installiert; per Knopf mit Neustart, beim Beenden ohne) | — (Download im Browser) | ✓ (lädt, prüft, ersetzt die AppImage; per Knopf mit Neustart, beim Beenden ohne) |
 
@@ -409,7 +409,7 @@ Speicherort je nach Plattform:
 > enthält die SMTP-Kontodaten und, nur im Datei-Fallback, das Mail-Passwort.
 > `instance-secret` schützt den lokalen Single-Instance-Kanal.
 >
-> **Mit verfügbarem Schlüsselbund** *(ab --VERSION--)* (Windows
+> **Mit verfügbarem Schlüsselbund** *(ab 1.23.2)* (Windows
 > Anmeldeinformationsverwaltung / macOS-Schlüsselbund / Linux Secret Service)
 > liegen Refresh-Token,
 > Webhook-Secrets und SMTP-Passwort dort statt im Klartext in diesen Dateien —
