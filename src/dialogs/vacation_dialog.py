@@ -161,6 +161,54 @@ def _format_day_list(days, limit=8):
     return "\n".join(shown)
 
 
+def parse_hours(text):
+    """Eine Stundeneingabe als Zahl, deutsches Komma erlaubt; ein leeres Feld
+    zählt als 0.
+
+    None bei Buchstabensalat — kein Sentinel wie -1: der ergäbe die Meldung
+    „darf nicht negativ sein“ für eine Eingabe, die gar keine Zahl ist. Das
+    Vorzeichen bewertet `plan_vacation_save`, nicht diese Funktion.
+    """
+    try:
+        return float((text or "0").replace(",", "."))
+    except ValueError:
+        return None
+
+
+def prune_overrides(overrides, plan):
+    """Die Tages-Überschreibungen, die nach einer Zeitraum-Änderung bleiben.
+
+    Aussortiert wird nur bei GÜLTIGEM Plan: ein Fehler liefert ein leeres
+    `days` — daran gemessen läge jede Überschreibung außerhalb des
+    Zeitraums und flöge raus. Wer „48" ins Stundenfeld tippt und danach das
+    Bis-Datum korrigiert, verlöre so alle von Hand gesetzten Tage, obwohl er
+    nur einen Tippfehler behoben hat.
+
+    Liefert ein neues Dict; `overrides` bleibt unangetastet.
+    """
+    if plan["error"] is not None:
+        return dict(overrides)
+    return {d: m for d, m in overrides.items() if d in plan["days"]}
+
+
+def blocking_days(days, entries, reservations, calendar_active):
+    """Tage der geplanten Periode, an denen schon Ist-Zeit oder eine
+    Reservierung liegt (Regel in `vacations.conflicting_days`).
+
+    `entries`/`reservations` sind die `get_all()`-Dicts der Stores (oder None,
+    wenn es den Store nicht gibt); gezählt wird ein Tag nur mit Slots.
+    Reservierungen zählen NUR bei aktivem Kalender-Sync — ohne ihn zeigt der
+    Kalender sie gar nicht an und der Rechtsklick löscht sie nicht (vgl.
+    `ui.App._reservations_active`). Eine Sperre wegen einer unsichtbaren,
+    nicht löschbaren Reservierung wäre eine Sackgasse.
+    """
+    entry_dates = [d for d, e in (entries or {}).items() if e.get("slots")]
+    reservation_dates = (
+        [d for d, r in (reservations or {}).items() if r.get("slots")]
+        if calendar_active else [])
+    return conflicting_days(days, entry_dates, reservation_dates)
+
+
 def _period_line(period):
     """Eine Zeile der Übersicht: Name, Zeitraum, Gesamtstunden."""
     total = sum(period.get("days", {}).values())
@@ -490,15 +538,8 @@ def _open_edit_dialog(parent, vacation_store, settings, period_id, on_saved,
         return df, dt
 
     def _value():
-        """Der Sammelwert als Zahl, oder None bei Buchstabensalat im Feld.
-
-        None statt eines Sentinel-Werts wie -1: der ergäbe die Meldung „darf
-        nicht negativ sein“ für eine Eingabe, die gar keine Zahl ist.
-        """
-        try:
-            return float((value_var.get() or "0").replace(",", "."))
-        except ValueError:
-            return None
+        """Der Sammelwert als Zahl, oder None bei Buchstabensalat im Feld."""
+        return parse_hours(value_var.get())
 
     def _current_plan():
         df, dt = _range()
@@ -533,9 +574,8 @@ def _open_edit_dialog(parent, vacation_store, settings, period_id, on_saved,
         day_canvas.configure(scrollregion=day_canvas.bbox("all"))
 
     def _override(day):
-        try:
-            hours = float((day_vars[day].get() or "0").replace(",", "."))
-        except ValueError:
+        hours = parse_hours(day_vars[day].get())
+        if hours is None:
             return
         overrides[day] = max(0, _hours_to_minutes_exact(hours))
         _update_total()
@@ -563,14 +603,12 @@ def _open_edit_dialog(parent, vacation_store, settings, period_id, on_saved,
         if drop_overrides:
             overrides.clear()
         plan = _current_plan()
-        # Aussortiert wird nur bei GÜLTIGEM Plan. Ein Fehler liefert ein leeres
-        # `days` — daran gemessen läge jede Überschreibung außerhalb des
-        # Zeitraums und flöge raus. Wer „48" ins Stundenfeld tippt und danach
-        # das Bis-Datum korrigiert, verlöre so alle von Hand gesetzten Tage,
-        # obwohl er nur einen Tippfehler behoben hat.
-        if plan["error"] is None:
-            for day in [d for d in overrides if d not in plan["days"]]:
-                del overrides[day]
+        # In place: `overrides` ist das Dict, das `_current_plan` und
+        # `_override` teilen. Welche Tage bleiben, entscheidet
+        # `prune_overrides` (nur bei gültigem Plan wird aussortiert).
+        kept = prune_overrides(overrides, plan)
+        overrides.clear()
+        overrides.update(kept)
         if expanded["on"]:
             _rebuild_day_rows(plan["days"])
         _update_total()
@@ -588,30 +626,21 @@ def _open_edit_dialog(parent, vacation_store, settings, period_id, on_saved,
             day_scroll.pack_forget()
             set_button_text(toggle, "▸ Einzelne Tage anpassen")
 
-    def _blocking_days(days):
-        """Tage der geplanten Periode, an denen schon Ist-Zeit oder eine
-        Reservierung liegt (Regel in `vacations.conflicting_days`).
-
-        Reservierungen zählen NUR bei aktivem Kalender-Sync — ohne ihn zeigt
-        der Kalender sie gar nicht an und der Rechtsklick löscht sie nicht
-        (vgl. `ui.App._reservations_active`). Eine Sperre wegen einer
-        unsichtbaren, nicht löschbaren Reservierung wäre eine Sackgasse.
-        """
-        entry_dates = (
-            [d for d, e in storage.get_all().items() if e.get("slots")]
-            if storage is not None else [])
-        reservation_dates = (
-            [d for d, r in reservation_store.get_all().items() if r.get("slots")]
-            if reservation_store is not None and settings.get("gcal_enabled")
-            else [])
-        return conflicting_days(days, entry_dates, reservation_dates)
-
     def _save():
         plan = _current_plan()
         if plan["error"]:
             themed_showerror(dialog, "Urlaub nicht gespeichert", plan["error"])
             return
-        blocked = _blocking_days(plan["days"])
+        # Die Regel (Reservierungen nur bei aktivem Kalender) liegt in
+        # `blocking_days`; hier nur die Stores lesen — die Reservierungen
+        # erst gar nicht, wenn sie nicht zählen.
+        calendar_active = bool(settings.get("gcal_enabled"))
+        blocked = blocking_days(
+            plan["days"],
+            storage.get_all() if storage is not None else None,
+            (reservation_store.get_all()
+             if reservation_store is not None and calendar_active else None),
+            calendar_active)
         if blocked:
             themed_showerror(
                 dialog, "Urlaub nicht gespeichert",

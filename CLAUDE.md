@@ -716,7 +716,8 @@ Regeln:
   Urlaubsstunden, öffnet der Tages-Dialog gar nicht erst
   (`ui.App._open_dialog`), und ein Urlaub lässt sich nicht über Tage legen,
   an denen bereits Ist-Zeit oder eine aktive Reservierung liegt
-  (`vacations.conflicting_days`, geprüft in `vacation_dialog._save`). Der
+  (`vacations.conflicting_days`, geprüft in `vacation_dialog._save` über
+  `vacation_dialog.blocking_days`). Der
   Grund ist eine Zahl, keine Ästhetik: beide Werte landeten im Bericht
   nebeneinander in „Zu vergüten gesamt", ein Kalendertag käme also auf mehr
   Stunden, als er hat. **Ausgenommen sind die 0-Minuten-Tage** einer Periode
@@ -1111,7 +1112,11 @@ nicht mehr als „offen" führen — der Verweis lautet auf diese Grenze.
   zurück: alle App-Urlaubs-Events löschen und die `gcal_event_id` lokal
   leeren, wenn `vacation_gcal_enabled` abgeschaltet wird
 - `src/dialogs/vacation_dialog.py` — Verwaltung der Perioden (Einstieg:
-  Einstellungen → Arbeitszeit → „Urlaub verwalten")
+  Einstellungen → Arbeitszeit → „Urlaub verwalten"). Die Entscheidungen des
+  Bearbeiten-Dialogs liegen Tk-frei auf Modulebene und sind getestet:
+  `plan_vacation_save` (Tagesminuten aus der Eingabe), `prune_overrides`
+  (welche Tageswerte eine Zeitraum-Änderung überleben), `blocking_days`
+  (Sperre durch Ist-Zeit/Reservierung) und `parse_hours` (R13)
 - `src/reminders.py` — pure Fälligkeits-Logik für Reservierungs-Erinnerungen (Tk-frei); `src/reminder_scheduler.py` — periodischer Reminder-Poll (root.after) → Toast über Tray
 - `src/send_reminder.py` — pure Logik des Sende-Reminders (Tk-frei): monatlicher
   Termin (Tag im Monat auf die Monatslänge geclamped, optional von Wochenenden/
