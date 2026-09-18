@@ -7,7 +7,7 @@ name: Build
 # an `installer.iss`, die sich sonst nirgends prüfen lassen: lokal fehlt Inno
 # in der Regel, und ein Release nur zum Testen des Uninstallers wäre grob
 # unverhältnismäßig. Zweck: einen Branch in CI-identischer Umgebung
-# (Python 3.10 + gepinnte requirements.txt) bauen, ohne eine lokale venv zu
+# (Python 3.12 + gepinnte requirements.txt) bauen, ohne eine lokale venv zu
 # pflegen, die zur CI divergieren kann. Der Installer/Pack-Schritt (Inno Setup /
 # create-dmg / appimagetool) entfällt bewusst — `build.py` überspringt ihn
 # automatisch, wenn das jeweilige Pack-Tool fehlt, und lässt die reine
@@ -51,7 +51,7 @@ jobs:
           ref: ${{ inputs.ref || github.ref }}
       - uses: actions/setup-python@v7
         with:
-          python-version: '3.10'
+          python-version: '3.12'
       - name: Install dependencies
         run: pip install -r requirements.txt pip-licenses==5.5.5
       # Ohne Inno Setup überspringt build.py den Installer-Schritt und lässt den
@@ -100,7 +100,7 @@ jobs:
           ref: ${{ inputs.ref || github.ref }}
       - uses: actions/setup-python@v7
         with:
-          python-version: '3.10'
+          python-version: '3.12'
       - name: Install dependencies
         run: pip install -r requirements.txt pip-licenses==5.5.5
       # Kein create-dmg installiert → build.py überspringt den DMG-Schritt und
@@ -129,7 +129,7 @@ jobs:
           ref: ${{ inputs.ref || github.ref }}
       - uses: actions/setup-python@v7
         with:
-          python-version: '3.10'
+          python-version: '3.12'
       # libcairo2-dev + pkg-config: pycairo (transitiv über xhtml2pdf) braucht die
       # Cairo-Header beim pip-Build (sonst bricht die Installation). libfuse2 und
       # appimagetool entfallen bewusst — kein AppImage-Pack.

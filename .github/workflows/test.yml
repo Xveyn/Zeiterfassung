@@ -83,9 +83,9 @@ jobs:
           fi
 
   test-matrix:
-    # Audit N25: über alle unterstützten Python-Versionen testen (README: 3.10+),
-    # nicht nur 3.10. fail-fast=false, damit ein Ausreißer die anderen nicht
-    # abbricht. macOS/Windows verifizieren die Plattform (unten, je 3.10) —
+    # Audit N25: über alle unterstützten Python-Versionen testen (README: 3.12+),
+    # nicht nur 3.12. fail-fast=false, damit ein Ausreißer die anderen nicht
+    # abbricht. macOS/Windows verifizieren die Plattform (unten, je 3.12) —
     # hier geht es um die Sprachversion.
     needs: changes
     if: needs.changes.outputs.code == 'true'
@@ -93,7 +93,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ['3.10', '3.11', '3.12', '3.13']
+        python-version: ['3.12', '3.13', '3.14']
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
@@ -114,7 +114,7 @@ jobs:
 
   test:
     # Sammel-Gate für die Branch Protection. Ein Matrix-Job meldet seine
-    # Check-Contexts NUR mit Suffix (`test-matrix (3.10)`, `test-matrix (3.11)`, …) — ein
+    # Check-Contexts NUR mit Suffix (`test-matrix (3.12)`, `test-matrix (3.13)`, …) — ein
     # Context, der schlicht `test` heißt, entsteht dabei nie. Steht `test` als
     # Required Check in der Branch Protection, wartet GitHub ewig darauf und
     # der PR bleibt trotz grüner Matrix auf "blocked" hängen. Dieser Job
@@ -144,7 +144,7 @@ jobs:
 
   coverage:
     # Coverage-Report (Audit N24) — reines Reporting, KEIN fail_under-Gate
-    # (Config in pyproject.toml, [tool.coverage]). Ein Lauf auf ubuntu/3.10
+    # (Config in pyproject.toml, [tool.coverage]). Ein Lauf auf ubuntu/3.12
     # reicht; die Zahlen sind plattformunabhängig.
     needs: changes
     if: needs.changes.outputs.code == 'true'
@@ -153,7 +153,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
         with:
-          python-version: '3.10'
+          python-version: '3.12'
           cache: pip
           cache-dependency-path: requirements-test.txt
       - run: pip install -r requirements-test.txt pytest-cov==7.1.0
@@ -167,7 +167,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
         with:
-          python-version: '3.10'
+          python-version: '3.12'
           cache: pip
           cache-dependency-path: requirements-test.txt
       - run: pip install -r requirements-test.txt pyobjc-framework-Cocoa==12.2.1
@@ -181,7 +181,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
         with:
-          python-version: '3.10'
+          python-version: '3.12'
           cache: pip
           cache-dependency-path: requirements-test.txt
       - run: pip install -r requirements-test.txt
@@ -195,7 +195,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
         with:
-          python-version: '3.10'
+          python-version: '3.12'
           cache: pip
           cache-dependency-path: requirements-test.txt
       - run: pip install ruff==0.15.10
@@ -209,7 +209,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
         with:
-          python-version: '3.10'
+          python-version: '3.12'
           cache: pip
           cache-dependency-path: requirements-test.txt
       # Gleiche Minimal-Deps wie der test-matrix-Job (aus requirements-test.txt), damit

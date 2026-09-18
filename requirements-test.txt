@@ -1,7 +1,7 @@
 # Gepinnte Test-/CI-Abhängigkeiten (Audit N25) — known-good, für die Jobs in
 # .github/workflows/test.yml. NICHT die App-Laufzeit-Deps (die stehen in
 # requirements.txt). Alle rein-Python (keine C-Extensions), daher auf jedem
-# Matrix-Python (3.10–3.13) installierbar; ermöglicht zugleich pip-Caching.
+# Matrix-Python (3.12–3.14) installierbar; ermöglicht zugleich pip-Caching.
 #
 # Die Google-Libs sind nötig, weil Tests src.ui importieren (Importkette zieht
 # die Google-Wrapper); holidays für die Feiertags-Tests. pyobjc (macOS-Job) und
@@ -14,6 +14,6 @@ google-auth==2.55.0
 google-auth-oauthlib==1.4.0
 # Nur für den Linux-Job: Integrationstest des SNI-Trays gegen einen echten
 # dbus-daemon (tests/test_tray_linux_dbus.py). Cython-beschleunigt, aber mit
-# fertigen manylinux/musllinux-Wheels für 3.10-3.13 — nichts zu kompilieren,
+# fertigen manylinux/musllinux-Wheels für 3.10-3.14 — nichts zu kompilieren,
 # daher kein CI-Risiko.
 dbus-fast==5.0.22; sys_platform == "linux"
