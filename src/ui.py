@@ -566,9 +566,10 @@ class App:
         """Startet oder stoppt das Tray-Icon abhängig vom Settings-Toggle.
 
         Ob die Plattform überhaupt eines tragen kann, entscheidet allein
-        `tray.is_supported()`: Windows ja, macOS und Linux nur mit gesetzter
-        Opt-in-Env-Var, bis ihr jeweiliges manuelles Plattform-Gate grün ist
-        (#88 / #42). Sagt es nein, werden die drei Tray-abhängigen Optionen
+        `tray.is_supported()`: Windows ja, Linux wenn die Sitzung einen
+        StatusNotifierWatcher hat (#42), macOS nur mit gesetzter
+        Opt-in-Env-Var, bis sein manuelles Plattform-Gate grün ist (#88).
+        Sagt es nein, werden die drei Tray-abhängigen Optionen
         mit einem Hinweis wieder abgeschaltet — das Tray ist nicht nur
         Minimize-Ziel, sondern auch der einzige Toast-Kanal.
 
@@ -587,12 +588,18 @@ class App:
 
         if want_tray and self._tray is None:
             if not is_supported():
+                if platform.system() == "Linux":
+                    reason = ("Diese Desktop-Sitzung hat keinen Infobereich für "
+                              "App-Icons (StatusNotifier). Unter GNOME stellt ihn "
+                              "die Erweiterung „AppIndicator and KStatusNotifierItem "
+                              "Support“ bereit; KDE Plasma und XFCE bringen ihn mit.")
+                else:
+                    reason = ("Infobereich-Icon und Toast-Benachrichtigungen sind "
+                              "auf dieser Plattform noch nicht freigeschaltet.")
                 themed_showinfo(
                     self.root,
                     "Infobereich-Icon / Benachrichtigungen",
-                    "Infobereich-Icon und Toast-Benachrichtigungen sind auf "
-                    "dieser Plattform nicht zuverlässig nutzbar (typisch Linux). "
-                    "Die Optionen wurden wieder deaktiviert.",
+                    f"{reason}\n\nDie Optionen wurden wieder deaktiviert.",
                 )
                 self.settings.set("minimize_to_tray", False)
                 self.settings.set("reminders_enabled", False)

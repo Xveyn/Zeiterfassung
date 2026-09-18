@@ -35,7 +35,7 @@ from dbus_fast.annotations import (  # pyright: ignore[reportMissingImports]  # 
 )
 from dbus_fast.service import ServiceInterface, dbus_method, dbus_property  # pyright: ignore[reportMissingImports]  # dbus-fast: nur auf Linux installiert
 
-from src.tray.linux import ITEM_PATH, MENU_PATH, LinuxTrayBackend
+from src.tray.linux import ITEM_PATH, MENU_PATH, LinuxTrayBackend, watcher_available
 
 
 class _FakeWatcher(ServiceInterface):
@@ -443,3 +443,20 @@ def test_stop_releases_the_bus_name(desktop):
         return has_owner
 
     assert desktop.run(owner_gone()) is False
+
+
+# --- Watcher-Probe (Default-an seit dem Plasma-Gate, #42) -----------------
+
+
+def test_watcher_probe_finds_a_running_watcher(desktop):
+    assert watcher_available() is True
+
+
+def test_watcher_probe_says_no_on_a_bus_without_watcher(bus_env):
+    assert watcher_available() is False
+
+
+def test_watcher_probe_says_no_without_a_session_bus(monkeypatch, tmp_path):
+    monkeypatch.setenv("DBUS_SESSION_BUS_ADDRESS",
+                       f"unix:path={tmp_path / 'kein-bus'}")
+    assert watcher_available(timeout=1.0) is False

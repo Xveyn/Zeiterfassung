@@ -1188,7 +1188,7 @@ nicht mehr als „offen" führen — der Verweis lautet auf diese Grenze.
 - `src/gcal.py` — Google-Calendar-API-Wrapper (lazy Imports wie `drive.py`, wegen CI ohne `requirements.txt`)
 - `src/tray/` — Infobereich-Icon (Minimize-to-Tray) als Paket (R7): `__init__.py` ist die Plattform-Fassade (`TrayIcon`, `is_supported`, Opt-in-Gates) und behält den Importpfad `src.tray`; `model.py` das backend-agnostische Menü-Modell; je ein Backend in `windows.py` (pystray), `mac.py`, `linux.py`. Die Backends werden **nur lazy** in `_select_backend` geladen, damit `src.ui → src.tray` auf jeder Plattform importierbar bleibt
 - `src/tray/mac.py` — natives macOS-Tray (NSStatusItem, Main-Thread); dormant bis zum Mac-Gate (Opt-in `ZEIT_MACOS_TRAY=1`, margenheld/Zeiterfassung#88)
-- `src/tray/linux.py` — Linux-Tray über StatusNotifierItem + `com.canonical.dbusmenu` (D-Bus via `dbus-fast`, kein GTK/GI); dormant bis zum Plasma-Gate (Opt-in `ZEIT_LINUX_TRAY=1`, margenheld/Zeiterfassung#42). Menü-Logik D-Bus-frei in `MenuState`
+- `src/tray/linux.py` — Linux-Tray über StatusNotifierItem + `com.canonical.dbusmenu` (D-Bus via `dbus-fast`, kein GTK/GI); seit 1.23.2 an, sobald die Sitzung einen StatusNotifierWatcher hat (`watcher_available`, Plasma-Gate bestanden, margenheld/Zeiterfassung#42). Menü-Logik D-Bus-frei in `MenuState`
 - `src/time_utils.py` — Stundenberechnung, KW-Labels
 - `src/holidays_de.py` — Feiertags-Lookup (über `holidays`-Lib)
 - `src/paths.py` — `get_base_path()` dispatched über `platform.system()` und Frozen- vs. Repo-Modus; `relaunch_command()` baut das Neustart-Kommando (Exe im Frozen-Build, `python -m src.main` im Repo)

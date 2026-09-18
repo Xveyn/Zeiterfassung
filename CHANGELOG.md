@@ -1,5 +1,50 @@
 # Changelog
 
+## 1.23.2 — 2026-09-18
+
+Ein Wartungs-Release: Zugangsdaten liegen nicht mehr im Klartext im
+Datenordner, das Infobereich-Icon ist nach dem Test auf KDE Plasma unter Linux
+freigeschaltet, und eine Reihe von Fehlern ist behoben — die meisten davon
+unter Linux gefunden.
+
+### Geändert
+- **Zugangsdaten im Schlüsselbund des Betriebssystems**: Die Google-Anmeldung
+  und die Zugangsdaten von Webhooks liegen jetzt in der
+  Anmeldeinformationsverwaltung (Windows), im Schlüsselbund (macOS) bzw. im
+  Secret Service (Linux: KWallet, GNOME Keyring) — nicht mehr im Klartext in
+  `token.json` und `webhooks.json`. Bestehende Zugangsdaten zieht die App beim
+  ersten Start nach dem Update selbst um und sagt einmal Bescheid. Ohne
+  Schlüsselbund bleibt alles wie bisher.
+
+  Zwei Dinge, die man wissen sollte: Wer danach **auf eine ältere Version
+  zurückgeht**, muss Google einmal neu verbinden und Webhook-Zugangsdaten neu
+  eingeben — die alte Version findet sie im Schlüsselbund nicht. Und **macOS**
+  fragt nach App-Updates womöglich erneut, ob die App auf den Schlüsselbund
+  zugreifen darf.
+- **Infobereich-Icon unter Linux**: Das Tray-Icon (Minimieren in den
+  Infobereich, Menü, Erinnerungen als Benachrichtigung) ist unter Linux nicht
+  mehr hinter einer Test-Einstellung versteckt. Es schaltet sich ein, sobald
+  der Desktop einen Infobereich für App-Icons hat — KDE Plasma und XFCE von
+  Haus aus, GNOME mit der Erweiterung „AppIndicator and KStatusNotifierItem
+  Support". Fehlt er, sagt die App beim Einschalten, woran es liegt.
+- **Deinstallation (Windows)**: Sie entfernt jetzt auch die Einträge im
+  Schlüsselbund und die SMTP-Konten (`smtp.json`), und „Daten löschen" nimmt
+  die Urlaubszeiträume mit.
+
+### Behoben
+- **Jeder Start öffnete die Google-Anmeldung im Browser**: War die
+  Google-Anmeldung abgelaufen, riss der Kalender-Abgleich beim Start jedes Mal
+  ein Freigabe-Fenster auf. Ein Freigabe-Fenster erscheint jetzt nur noch als
+  Folge eines Klicks.
+- **Update wurde doppelt geladen**: Ein Klick auf den Update-Hinweis, während
+  die App das Update beim Start schon still herunterlud, startete denselben
+  Download ein zweites Mal.
+- **Stundenlohn-Hinweis überlappte das Eingabefeld** bei vergrößerter
+  Darstellung (Einstellungen → Arbeitszeit).
+- **Linux: Neustart nach geänderter Skalierung stürzte ab** — die App kam
+  nach dem Ändern der Skalierung nicht wieder hoch.
+- **Linux: weißer Rand um Häkchen-Felder** in allen Dialogen.
+
 ## 1.23.1 — 2026-09-12
 
 Ein Wartungs-Release: lauter Stellen, an denen die App entweder etwas
