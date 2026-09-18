@@ -177,3 +177,14 @@ def test_notice_texts():
     assert "nach App-Updates" in mac
     assert sm.toast_text(sm.MigrationReport(token_moved=True)) == \
         "Zugangsdaten liegen jetzt im Schlüsselbund."
+
+
+def test_forget_all_goes_on_when_webhooks_json_is_broken(tmp_path, fake_keyring):
+    fake = fake_keyring()
+    token = _token(tmp_path)
+    sm.migrate(str(token), None)                          # Token im Schlüsselbund
+    (tmp_path / "webhooks.json").write_text("kaputt", encoding="utf-8")
+
+    sm.forget_all(str(tmp_path))
+
+    assert fake.store == {}
