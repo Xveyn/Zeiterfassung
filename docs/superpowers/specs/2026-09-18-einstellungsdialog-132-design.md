@@ -64,9 +64,14 @@ angefasst wird.
 - `src/theme/form.py` (neu): Tk-Bausteine, eigene Schicht über `widgets`
   (Reihenfolge: `palette` → `fonts` → `widgets` → `form`). Re-Export über
   `src/theme/__init__.py`; importiert wird weiter `from src.theme import …`.
-- `src/dialogs/settings_dialog/form_model.py` (neu): Tk-freie Logik, vollständig
-  annotiert und in die Whitelist von `tests/test_type_annotations.py`
-  eingetragen.
+- `src/theme/form_logic.py` (neu): die Tk-freie Logik, die `form.py` selbst
+  braucht (`enabled_states`, `wheel_units`, `wheel_route`, `is_descendant`,
+  `body_height`). Liegt im Theme, weil das Theme nicht aus `dialogs/`
+  importieren darf.
+- `src/dialogs/settings_dialog/form_model.py` (neu): die Tk-freie Logik des
+  Einstellungs-Dialogs (`is_dirty`, ab PR 2 der `SaveCoordinator`).
+- Beide vollständig annotiert und in die Whitelist von
+  `tests/test_type_annotations.py` eingetragen.
 - `src/theme/palette.py`: zwei neue Konstanten — `SEPARATOR` (gedämpfte
   Trennlinie, dunkler als `TEXT_MUTED`) und `TEXT_DISABLED` (ausgegraute
   Beschriftungen/Felder).
@@ -101,28 +106,39 @@ behält seinen Wert.
 Canvas mit `ttk.Scrollbar(style="Vertical.TScrollbar")` — der Stil existiert
 bereits (dunkel, `apply_combobox_style` in `theme/widgets.py`). Die Leiste
 erscheint nur, wenn der Inhalt höher ist als der Container. Mausrad:
-- gebunden, solange der Zeiger über dem Container ist (`<Enter>`/`<Leave>`),
-  Windows/macOS `<MouseWheel>`, Linux `<Button-4>`/`<Button-5>`;
+- gebunden am Toplevel des Dialogs (Windows/macOS `<MouseWheel>`, Linux
+  `<Button-4>`/`<Button-5>`, `add="+"`); jedes `Form` reagiert nur auf
+  Events, deren Widget in seinem Container liegt (`is_descendant` über den
+  Tk-Pfad). `<Enter>`/`<Leave>` wären unzuverlässig: sie feuern auch beim
+  Wechsel auf ein Kind-Widget;
 - liegt der Zeiger über einem Widget, das selbst scrollt (`tk.Text`,
   `tk.Listbox`), scrollt nur dieses;
 - über einer `ttk.Combobox` scrollt das Formular, und die Combobox ändert
   ihren Wert **nicht** (Widget-Binding mit `"break"` vor dem
   Klassen-Binding) — sonst verstellte man beim Scrollen versehentlich Werte.
 
-**Tk-frei in `form_model.py` (getestet):**
-- `enabled_states(parents: dict[str, str | None], values: dict[str, bool]) -> dict[str, bool]`
-  — aktiv genau dann, wenn alle Vorfahren wahr sind.
-- `is_dirty(baseline: dict, current: dict) -> bool` — normalisiert Typen
-  (`"20"`, `20`, `20.0` gleich; `"08:00"` bleibt String), damit ein
-  unveränderter Wert nicht als Änderung zählt.
+**Tk-frei in `theme/form_logic.py` (getestet):**
+- `enabled_states(parents: Mapping[str, str | None], values: Mapping[str, bool]) -> dict[str, bool]`
+  — eine Gruppe ist aktiv genau dann, wenn ihr Schalter und alle Schalter
+  darüber an sind.
 - `wheel_units(system: str, delta: int, num: int | None) -> int` —
-  Scrollschritte aus dem Event (Windows `delta/120`, macOS `delta`,
-  Linux `num` 4/5).
+  Scrollschritte aus dem Event (Windows `delta/120`, mindestens ±1 für
+  Touchpads; macOS `-delta`; X11 `num` 4/5).
+- `wheel_route(widget_class: str) -> "widget" | "form" | "form_block"` —
+  `Text`/`Listbox` scrollen selbst, `TCombobox` wird geschützt, alles andere
+  scrollt das Formular.
+- `is_descendant(path: str, ancestor: str) -> bool` — Tk-Pfadvergleich.
 - `body_height(natural: int, scale: float, screen_height: int) -> int` —
-  Höhe des Tab-Körpers: `min(natural, BODY_MAX_HEIGHT * scale,
-  screen_height - SCREEN_MARGIN * scale)`, mit `BODY_MAX_HEIGHT = 600` und
-  `SCREEN_MARGIN = 160` (Basis 100 %). 600 entspricht in etwa dem heutigen
-  Tab-Körper des App-Tabs; der Dialog wird also nie höher als heute.
+  Höhe des Tab-Körpers: `min(natural, max(MIN_BODY_HEIGHT,
+  min(BODY_MAX_HEIGHT * scale, screen_height - SCREEN_MARGIN * scale)))`,
+  mit `BODY_MAX_HEIGHT = 600`, `SCREEN_MARGIN = 160`, `MIN_BODY_HEIGHT = 200`
+  (Basis 100 %). 600 entspricht in etwa dem heutigen Tab-Körper des
+  App-Tabs; der Dialog wird also nie höher als heute.
+
+**Tk-frei in `settings_dialog/form_model.py` (getestet):**
+- `is_dirty(baseline: Mapping, current: Mapping) -> bool` — normalisiert
+  Typen (`"20"`, `20`, `20.0` gleich; `"08:00"` bleibt String; `\r\n` = `\n`),
+  damit ein unveränderter Wert nicht als Änderung zählt.
 
 **Themed Rückfrage.** `themed_ask_save_changes(parent, tab_title) ->
 Literal["save", "discard", "cancel"]` in `theme/messagebox.py`, Knöpfe
@@ -224,9 +240,13 @@ zu einer einbettbaren Liste (Kompaktform, `empty_state`), die
 
 ## Tests
 
-- **PR 1:** `tests/test_form_model.py` — `enabled_states` (verschachtelt,
-  fehlender Vorfahr), `is_dirty` (Typ-Normalisierung, Text mit Zeilenenden),
-  `wheel_units` (alle drei Plattformen), `body_height` (alle drei Grenzen).
+- **PR 1:** `tests/test_form_logic.py` — `enabled_states` (verschachtelt,
+  fehlender Vorfahr, Zyklus), `wheel_units` (alle drei Plattformen),
+  `wheel_route`, `is_descendant`, `body_height` (alle Grenzen);
+  `tests/test_form_model.py` — `is_dirty` (Typ-Normalisierung, Text mit
+  Zeilenenden). Zusätzlich ein Smoke-Skript (nicht eingecheckt), das einen
+  Demo-Dialog baut, Ausgrauen/Mausrad/Combobox-Schutz per `event_generate`
+  prüft und Screenshots bei 100 % und 150 % erzeugt.
   `test_dialog_reveal.py` deckt `themed_ask_save_changes` automatisch ab.
 - **PR 2:** `SaveCoordinator` mit Fake-Tabs: Wechsel/Schließen je Antwort,
   Validierungsfehler hält fest, `on_change` genau einmal je Speichern,
