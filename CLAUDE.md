@@ -89,6 +89,16 @@ keinen Abschnitt), nach `publish`, als **PR** statt Push nach `master` — mit
 denselben Gründen wie `readme-marker-cleanup`. Der Release-PR selbst trägt
 also weiter nur den neuen Abschnitt oben.
 
+**Beide Jobs brauchen eine Repo-Einstellung**, die nicht im Code steht:
+Settings → Actions → General → „Allow GitHub Actions to create and approve
+pull requests" (API: `actions/permissions/workflow`,
+`can_approve_pull_request_reviews: true`). Ohne sie pusht der Job seinen
+Branch und scheitert erst an `gh pr create` mit „GitHub Actions is not
+permitted to create or approve pull requests" — so geschehen beim ersten
+echten Lauf nach v1.23.2. Die Genehmigungs-Hälfte der Einstellung erweitert
+nichts: das Ruleset verlangt 0 Reviews. Scheitert der Job trotzdem, liegt der
+Branch schon auf `origin`; den PR legt man dann von Hand daraus an.
+
 Warum das niemandem etwas wegnimmt: der Updates-Tab lädt `CHANGELOG.md` vom
 Tag **seiner** Version und sucht dort nur deren Abschnitt — an ihrem Tag
 steht sie immer oben. `release_notes.py` liest ebenfalls nur den aktuellen
