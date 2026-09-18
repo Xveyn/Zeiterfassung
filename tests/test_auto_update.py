@@ -94,7 +94,7 @@ def test_startup_check_and_updates_tab_never_download_twice(monkeypatch):
     tab._on_auto_update_finished = MethodType(UpdatesTab._on_auto_update_finished, tab)
 
     rel = _Rel()
-    coordinator.on_check_result(rel, True)     # Start-Check der App
+    coordinator.on_check_result(rel, True)        # Start-Check der App
     tab._maybe_start_auto_update(rel)             # Tab-Check, Download läuft noch
     runner.flush()
 

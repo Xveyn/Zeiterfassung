@@ -48,10 +48,10 @@ class _Runner(Protocol):
 class AutoUpdater:
     """Entscheidet und fährt den stillen Hintergrund-Download.
 
-    Gehört der App (ein Exemplar pro Prozess) und wird an den Updates-Tab
-    durchgereicht — nur so kennen beide Auslöser denselben Guard. Alle
-    Methoden laufen im UI-Thread; `on_done` des Runners ebenfalls, der
-    Guard braucht deshalb kein Lock.
+    Gehört dem `UpdateCoordinator` der App (ein Exemplar pro Prozess) und wird
+    an den Updates-Tab durchgereicht — nur so kennen beide Auslöser denselben
+    Guard. Alle Methoden laufen im UI-Thread; `on_done` des Runners ebenfalls,
+    der Guard braucht deshalb kein Lock.
     """
 
     def __init__(self, settings: _Settings, runner: _Runner,

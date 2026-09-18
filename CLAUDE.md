@@ -484,16 +484,17 @@ eigener Name lässt es nicht entstehen. Der Preis: jeder Fehlerpfad räumt seine
 Datei selbst weg — es gibt keinen festen Namen mehr, den ein späterer Lauf
 überschriebe.
 
-**Und es lädt immer nur einer.** Den stillen Download lösen zwei Stellen aus:
-der Update-Check der App beim Start und der Check des Updates-Tabs. Bis R9
-(Xveyn#123) entschied jede selbst, mit eigenem Laufguard — ein Klick auf den
-Banner während des Start-Downloads öffnete den Tab, und der lud dieselben
-~65 MB ein zweites Mal. Seither liegt die Policy **einmal** in
-`auto_update.AutoUpdater`, das der `UpdateCoordinator` besitzt und die App an den Tab durchreicht, mit
-**einem** Guard für jeden Update-Download: ein zweiter stiller Auslöser hängt
-sich an den laufenden an (Fortschritt und Ausgang), und „Update installieren"
-startet währenddessen keinen Download daneben. Wer einen dritten Auslöser
-baut, ruft `maybe_start` — keinen eigenen Ablauf.
+**Und es lädt immer nur einer.** Den stillen Download lösen zwei Stellen
+aus: der Update-Check der App beim Start und der Check des Updates-Tabs. Bis
+R9 (Xveyn#123) entschied jede selbst, mit eigenem Laufguard — ein Klick
+auf den Banner während des Start-Downloads öffnete den Tab, und der lud
+dieselben ~65 MB ein zweites Mal. Seither liegt die Policy **einmal** in
+`auto_update.AutoUpdater`, das der `UpdateCoordinator` besitzt und die App
+an den Tab durchreicht, mit **einem** Guard für jeden Update-Download:
+ein zweiter stiller Auslöser hängt sich an den laufenden an (Fortschritt
+und Ausgang), und „Update installieren" startet währenddessen keinen
+Download daneben. Wer einen dritten Auslöser baut, ruft `maybe_start`
+— keinen eigenen Ablauf.
 
 **`installer.iss` bleibt bei alldem unangetastet.** Zwei Gründe, beide zwingen
 zum Helfer-Skript statt zu einem Umbau des Installers:

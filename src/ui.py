@@ -118,6 +118,19 @@ class App:
             self.root, self.settings, lambda: self._tray,
             reservation_store=self.reservation_store,
         )
+        self._update_banner = UpdateBanner(
+            self.root, self.settings, lambda: self._renderer.grid_container,
+            on_resize=self._renderer.repin_geometry,
+            on_open_updates_tab=lambda: self._open_settings(initial_tab="updates"))
+        # Update-Lebenszyklus (R11): Start-Check, Toast/Banner, Tray-Check,
+        # Anwenden beim Beenden — und der AutoUpdater (R9) für den
+        # Einstellungsdialog. Den Banner baut die App, weil er an root und
+        # am Renderer hängt; der Coordinator bekommt ihn fertig. Gebaut wird
+        # er hier, vor `_apply_tray_setting()`: der Tray-Eintrag „Nach
+        # Updates suchen" liest `self._updates` beim Klick im pystray-Thread
+        # — vorher gäbe ein Klick in diesem Fenster einen `AttributeError`.
+        self._updates = UpdateCoordinator(
+            self.settings, self._bg, self._update_banner, lambda: self._tray)
         self._build_header()
         self._renderer.build_grid(self.root)
         self._build_footer()
@@ -162,16 +175,6 @@ class App:
             ),
         )
         self._bg.fetch_sender_email()
-        self._update_banner = UpdateBanner(
-            self.root, self.settings, lambda: self._renderer.grid_container,
-            on_resize=self._renderer.repin_geometry,
-            on_open_updates_tab=lambda: self._open_settings(initial_tab="updates"))
-        # Update-Lebenszyklus (R11): Start-Check, Toast/Banner, Tray-Check,
-        # Anwenden beim Beenden — und der AutoUpdater (R9) für den
-        # Einstellungsdialog. Den Banner baut die App, weil er an root und
-        # am Renderer hängt; der Coordinator bekommt ihn fertig.
-        self._updates = UpdateCoordinator(
-            self.settings, self._bg, self._update_banner, lambda: self._tray)
         self._updates.start()
         self._bg.reconcile_on_start(on_ok=self._on_reconcile_start_done)
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)

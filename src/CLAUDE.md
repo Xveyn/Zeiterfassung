@@ -80,7 +80,8 @@ Thread-Mechanik **und** die proaktiven Startup-Tasks.
   liefert das Ergebnis via `marshal` (= `App._marshal_to_ui`) an `on_done` auf dem
   **UI-Thread**. Auch `SyncOrchestrator` nutzt `run()` — es gibt nur dieses eine Muster.
 - Eigene Tasks: `refresh_token`, `fetch_sender_email`, `check_update`, `reconcile_on_start`,
-  `trigger_reconcile`. UI-Arbeit (Dialoge/Banner/Refresh) bleibt beim Aufrufer — `App`, für den Update-Check der `UpdateCoordinator` — und kommt als Callback.
+  `trigger_reconcile`. UI-Arbeit (Dialoge/Banner/Refresh) bleibt beim Aufrufer — `App`,
+  für den Update-Check der `UpdateCoordinator` — und kommt als Callback.
 - Tk-frei, keine Google-Imports auf Modulebene; `run_calendar_reconcile` kommt
   seit R1 als normaler **Top-Level-Import aus `src.sync_runtime`**
   (`background_tasks.py:16`) — vorher lag es in `src.main` und musste wegen
@@ -157,6 +158,10 @@ selbst per `root.after`.
   **Der Gurt davor bleibt in `App._quit_with_sync_push`**, direkt vor
   `root.destroy()`: die Zusage „nichts darf das Beenden aufhalten" gilt dem
   `destroy()`, und der gehört der App.
+- Gebaut wird er — wie jede Komponente, die ein Tray-Callback referenziert —
+  **vor** `_apply_tray_setting()`; `start()` läuft dagegen erst an der Stelle
+  des früheren Start-Checks, damit die Reihenfolge der Start-Tasks gleich
+  bleibt.
 
 ## Threading-Modell
 
