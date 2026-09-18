@@ -375,3 +375,16 @@ def test_put_still_writes_when_reading_fails(fake_keyring, monkeypatch):
 
     assert keyring_store.put("k", "v") is True
     assert fake.store[_entry("k")] == "v"
+
+
+def test_put_without_backend_logs_no_traceback(fake_keyring, caplog):
+    """Ohne Schlüsselbund scheitert put bei JEDEM Start — ein Traceback pro
+    Start wäre Rauschen im Log. Der Typ des Fehlers reicht."""
+    import logging
+    fake_keyring(working=False)
+    with caplog.at_level(logging.DEBUG, logger="src.keyring_store"):
+        assert keyring_store.put("k", "v") is False
+    records = [r for r in caplog.records if r.name == "src.keyring_store"]
+    assert records
+    assert all(r.exc_info is None for r in records)
+    assert "RuntimeError" in caplog.text

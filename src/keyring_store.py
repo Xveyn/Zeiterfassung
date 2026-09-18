@@ -230,11 +230,12 @@ def put(key: str, value: str) -> bool:
 
         try:
             ok, _ = _call_guarded(work)
-        except Exception:
+        except Exception as e:
             # Bewusst alles: kein Backend, D-Bus-Fehler, Lib fehlt — für den
-            # Aufrufer dasselbe (s. set_secret).
-            log.info("Schlüsselbund nicht verfügbar — Eintrag nicht abgelegt",
-                     exc_info=True)
+            # Aufrufer dasselbe (s. set_secret). Nur der Typname, kein
+            # Traceback: ohne Schlüsselbund scheitert das bei jedem Start.
+            log.info("Schlüsselbund nicht verfügbar (%s) — Eintrag nicht "
+                     "abgelegt", type(e).__name__)
             return False
         if not ok:
             log.warning("Schlüsselbund antwortet nicht (Timeout nach %.1fs) — "
