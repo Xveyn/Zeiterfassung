@@ -1,7 +1,7 @@
 # OAuth-Token und Webhook-Secrets in den OS-Schlüsselbund — Design
 
 **Datum:** 2026-09-18
-**Status:** Design abgestimmt, offene Punkte per Recherche geklärt (R1–R6, s.u.); Implementierungsplan folgt
+**Status:** Design abgestimmt; Recherche R1–R6 und Plan-Review (2026-09-18) eingearbeitet, s. „Nachträge aus dem Plan-Review"
 **Branch:** `feat/secrets-keyring`
 **Issue:** Xveyn/Zeiterfassung#101 (Kontext-Check und Umfangsentscheidung im Issue-Kommentar vom 2026-09-18)
 
@@ -42,6 +42,77 @@ Die beiden wertvollsten sind:
 
 `client_secret`, `client_id`, die Scopes und der Access-Token bleiben
 bewusst in `token.json` (s. „Warum nur der Refresh-Token").
+
+## Nachträge aus dem Plan-Review (2026-09-18)
+
+Das kritische Review des Implementierungsplans hat den Plan in einer
+Repo-Kopie durchgespielt, auch gegen den echten Windows-Schlüsselbund. Es
+hat Punkte gefunden, die das Design ändern. Sie **gehen den Abschnitten
+unten vor**.
+
+1. **Speichern behält den Ort bei (B1).**
+   - `save_credentials` schreibt eine bestehende `token.json` im Datei-Modus
+     wieder als Datei, so wie heute. Den Schlüsselbund nutzt es nur, wenn
+     der Token schon dort liegt oder es noch **keine** Datei gibt (frische
+     Anmeldung).
+   - **Umziehen darf ausschließlich `secret_migration`.** Sonst hätte der
+     Start-Refresh (Access-Token nach Pause praktisch immer abgelaufen)
+     den Token still und ohne Zurücklesen umgezogen, und der Hinweis wäre
+     ausgeblieben.
+2. **Der Schlüssel steht in der Datei, nicht im Pfad-Hash (W3).**
+   `token.json` trägt `refresh_token_key` (`"google-oauth:" + uuid4`),
+   einmal erzeugt und beim Speichern wiederverwendet, analog
+   `webhook:<id>`.
+   - Ein verschobener Datenordner (Junction, 8.3-Name, Backup) behält so
+     seinen Token.
+   - Zwei Datenverzeichnisse (Dev-Instanz) haben trotzdem getrennte
+     Einträge.
+   - Wer den Ordner auf einen **anderen Rechner** kopiert, muss Google
+     neu verbinden und die Webhook-Secrets neu eingeben (dokumentiert).
+3. **Eigener Service-Name pro Eintrag (W2).**
+   - Die neuen Einträge liegen unter Service `"Zeiterfassung:" + schlüssel`
+     (Nutzername = Schlüssel), nicht gemeinsam unter `"Zeiterfassung"`.
+   - `WinVaultKeyring` schichtet mehrere Nutzernamen unter einem Service
+     per ungeschütztem Lesen–Ändern–Schreiben um (`<user>@<service>`). Das
+     ist nicht thread-sicher, und die SMTP-Passwörter wären mitbetroffen.
+   - Mit einem Service pro Eintrag sind die Zielnamen deterministisch. Die
+     SMTP-Einträge bleiben unverändert unter `"Zeiterfassung"`.
+4. **Nur bei Änderung schreiben (W1).**
+   - `keyring_store.put` merkt sich pro Prozess den zuletzt geschriebenen
+     bzw. gelesenen Wert je Schlüssel und schreibt nur bei Änderung.
+   - Sonst schriebe jeder stündliche Refresh neu. Unter macOS
+     (`SecItemDelete`+`SecItemAdd`) ist das nicht atomar und womöglich
+     prompt-auslösend; unter Linux kostet es bei hängendem Secret Service
+     30 s pro Refresh.
+5. **Ein Lock um Speichern und Umzug (W6).**
+   - Beim Start erneuern mehrere Tasks gleichzeitig: Start-Refresh,
+     Absender-Abruf, Sync-Pull, Kalender-Abgleich.
+   - `token_store.TOKEN_LOCK` (RLock) umschließt `save_credentials` und
+     den Token-Umzug, also Schreiben, Prüfen und Datei-Schreiben.
+6. **Deinstallation räumt den Schlüsselbund ab (B2), entschieden.**
+   - Die Exe kennt einen Modus `--forget-secrets`: Er liest `token.json`,
+     `webhooks.json` und `smtp.json`, entfernt die zugehörigen Einträge
+     und beendet sich ohne Tk, ohne Single-Instance-Guard und ohne
+     Autostart-Migration.
+   - `installer.iss` ruft ihn in `usUninstall` vor dem Löschen der
+     Dateien. Die Zusage des Uninstallers („Google-Anmeldung wurde von
+     diesem Rechner entfernt") bleibt damit wahr.
+   - Nebenbefund: `smtp.json` fehlt bisher in `[UninstallDelete]`, obwohl
+     die Datei im Datei-Fallback ein Passwort im Klartext trägt. Das wird
+     mit korrigiert.
+   - macOS/Linux haben keinen Uninstaller; dort wird dokumentiert, wie
+     man die Einträge entfernt.
+7. **„Eintrag fehlt" ist eine eigene Fehlerart (Review K2).** Bei
+   Webhooks heißt sie `keyring_missing` („Zugangsdaten fehlen im
+   Schlüsselbund"), nicht `keyring` („nicht erreichbar").
+8. **Aufräumen erst nach dem Schreiben (Review K3).** `webhook_secrets.persist`
+   liefert einen abzuräumenden Schlüssel zurück. Der Dialog entfernt ihn
+   erst **nach** `store.save`, gleiche Regel wie `remove_record`.
+9. **Randnotiz zu R3:** In google-auth 2.55 gilt ein fehlendes `expiry`
+   als abgelaufen. Die Begründung „ohne Access-Token `expired=False`"
+   trifft also nicht mehr allgemein zu. Die Entscheidung, den Access-Token
+   in der Datei zu lassen, bleibt trotzdem richtig (Größenlimit, eine
+   Stunde Gültigkeit).
 
 ## Architektur
 
