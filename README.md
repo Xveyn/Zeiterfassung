@@ -14,7 +14,7 @@
 > alte Repository** — ab `1.21.0` meldet die App neue Versionen automatisch von
 > hier. Neue Releases erscheinen ausschließlich in diesem Repository.
 
-Desktop-App zur Erfassung von Arbeitszeiten mit Kalenderansicht, PDF-Report und automatischem Gmail-Versand.
+Desktop-App zur Erfassung von Arbeitszeiten: im Kern Kalenderansicht und PDF-Bericht, dazu optional Versand per Gmail, SMTP oder Webhook, Sync zwischen mehreren Geräten über Google Drive und ein Abgleich mit dem Google Kalender.
 
 [![Release](https://img.shields.io/github/v/release/Xveyn/Zeiterfassung?label=Release&color=success&logo=github)](https://github.com/Xveyn/Zeiterfassung/releases/latest) ![Python](https://img.shields.io/badge/Python-3.10+-blue) ![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow)](LICENSE)
 
