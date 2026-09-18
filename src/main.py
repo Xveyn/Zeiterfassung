@@ -34,7 +34,7 @@ from src.settings import Settings, clamp_ui_scale
 from src.storage import Storage
 from src.vacations import VacationStore
 from src.sync_runtime import run_pull_in_background
-from src.theme import init_fonts
+from src.theme import apply_widget_defaults, init_fonts
 from src.ui import App
 from src.version import VERSION
 from src.webhook_store import WebhookStore
@@ -309,6 +309,7 @@ def main():
 
     root = tk.Tk()
     _apply_ui_scaling(root, settings.get("ui_scale"))
+    apply_widget_defaults(root)
     app = App(root, storage, settings, base_path=base, conflicts_store=conflicts_store,
               reservation_store=reservation_store, single_instance=guard,
               data_lock=data_lock, sync_guard=sync_guard, webhook_store=webhook_store,
