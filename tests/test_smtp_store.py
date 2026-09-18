@@ -130,7 +130,7 @@ def test_delete_removes_the_account(tmp_path):
 
 def test_store_does_not_know_the_keyring_at_all():
     """Der Store bleibt reine Dateipersistenz; das Secret raeumt der Aufrufer
-    ab (tab_smtp._remove). Sonst faesst jeder Test, der delete ruft, den
+    ab (tab_smtp._delete_secret). Sonst faesst jeder Test, der delete ruft, den
     echten Credential Manager der Entwicklermaschine an — und blockiert auf
     Linux womoeglich."""
     assert not hasattr(smtp_store, "keyring_store")

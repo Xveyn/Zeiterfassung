@@ -11,7 +11,7 @@ sind bewusst gerätelokal, damit kein Secret im Sync-Doc landet — dieselbe
 Begründung wie bei den Webhooks.
 
 Der Store fasst den Schlüsselbund NICHT an. Das Secret zu einem gelöschten
-Konto räumt der Aufrufer ab (`tab_smtp._remove`), damit dieses Modul reine
+Konto räumt der Aufrufer ab (`tab_smtp._delete_secret`), damit dieses Modul reine
 Dateipersistenz bleibt und ohne Zugriff auf den echten Credential Manager
 testbar ist.
 """

@@ -87,9 +87,9 @@ class ConflictsDialog:
         else:
             left = self.top
 
-        # Eine von zwei Listboxen der App (die andere: der Webhooks-Tab in
-        # den Einstellungen, `tab_webhooks.py`) — beide dunkel über dieselbe
-        # Palette (ENTRY_BG wie Eingabefelder, ACCENT-Selektion), flach ohne
+        # Dieselbe Listbox-Palette wie die Listen-Tabs Webhooks/SMTP in den
+        # Einstellungen (`settings_dialog/_record_list_tab.py`) — dunkel
+        # (ENTRY_BG wie Eingabefelder, ACCENT-Selektion), flach ohne
         # Fokusrahmen. Bleibt im gefilterten Fall ungepackt (unsichtbar) —
         # _refresh_list/_on_select arbeiten unverändert auf ihr weiter, nur
         # ohne UI dafür.
