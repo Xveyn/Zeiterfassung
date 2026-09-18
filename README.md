@@ -246,8 +246,11 @@ Solange die alte `token.json` (nur mit `gmail.send`-Scope) existiert, läuft kei
 verbinden" — das räumt dabei auch einen eventuellen Schlüsselbund-Eintrag des
 Refresh-Tokens mit ab.
 
-Alternativ die Datei direkt löschen (der Schlüsselbund-Eintrag bleibt dann bis
-zur nächsten Anmeldung stehen):
+Alternativ die Datei direkt löschen. Ein Schlüsselbund-Eintrag des
+Refresh-Tokens bleibt dann verwaist stehen — die nächste Anmeldung legt einen
+neuen an; den alten (Name beginnt mit `Zeiterfassung:google-oauth:`) bei Bedarf
+von Hand in der Anmeldeinformationsverwaltung bzw. Schlüsselbundverwaltung
+entfernen:
 
 - **Windows (installiert):** `%LOCALAPPDATA%\Programs\Zeiterfassung\token.json`
 - **macOS (installiert):** `~/Library/Application Support/Zeiterfassung/token.json`

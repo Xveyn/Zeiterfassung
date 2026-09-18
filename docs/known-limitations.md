@@ -313,6 +313,16 @@ enthalten, ohne dass das ein Bug ist:
   `os.replace`). Sie ist harmlos für den nächsten Start, aber ebenfalls von
   Hand zu entfernen.
 
+### Deinstallation wartet auf den Schlüsselbund
+
+Der Windows-Uninstaller ruft `Zeiterfassung.exe --forget-secrets` und wartet
+auf dessen Ende (`ewWaitUntilTerminated`), bevor er die Dateien löscht — aus
+ihnen stammen die Schlüssel. Antwortet der Schlüsselbund nicht, greift pro
+Eintrag der 30-Sekunden-Watchdog, und die Zeiten summieren sich (Token, jeder
+Webhook, jedes SMTP-Konto im Schlüsselbund) — die Deinstallation steht dann
+entsprechend lange ohne sichtbaren Fortschritt.
+Sie läuft danach normal weiter, die betroffenen Einträge bleiben stehen.
+
 ### macOS/Linux haben keinen Uninstaller
 
 `--forget-secrets` räumt der Windows-Uninstaller auf; macOS (`.app` in
