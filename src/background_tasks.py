@@ -14,6 +14,7 @@ import traceback
 
 from src.mail import fetch_user_email, refresh_token_if_needed, TokenAuthError, TokenNetworkError
 from src.oauth_utils import TokenKeyringUnavailable
+from src import secret_migration
 from src.sync_runtime import run_calendar_reconcile, run_vacation_purge
 from src.updater import REPO, check_for_update, is_newer, should_check
 from src.version import installed_release_id
@@ -104,6 +105,27 @@ class BackgroundTaskRunner:
                 on_finished()
 
         self.run(fn, on_done)
+
+    def migrate_secrets(self, webhook_store, on_done):
+        """Zieht Klartext-Zugangsdaten in den Schlüsselbund (#101). Im Worker
+        (der Schlüsselbund kann bis zum Watchdog blockieren); `on_done(report)`
+        im UI-Thread. Ein unerwarteter Fehler wird geloggt und verschluckt —
+        der Umzug ist ein Zusatz, nichts hängt von ihm ab, und der nächste
+        Start versucht es erneut."""
+        token_path = os.path.join(self._base_path, "token.json")
+
+        def fn():
+            try:
+                return secret_migration.migrate(token_path, webhook_store)
+            except Exception:
+                log.exception("Umzug der Zugangsdaten fehlgeschlagen")
+                return None
+
+        def done(report):
+            if report is not None:
+                on_done(report)
+
+        self.run(fn, done)
 
     def fetch_sender_email(self):
         """Holt einmalig pro Start die authentifizierte E-Mail ueber OAuth2-

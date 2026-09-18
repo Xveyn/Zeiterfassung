@@ -12,6 +12,10 @@ from src.mail import TokenAuthError, TokenNetworkError
 from src.settings import Settings
 
 
+def _run_inline(fn, on_done):
+    on_done(fn())
+
+
 def _runner(**overrides):
     kw = dict(
         marshal=lambda cb: cb(),          # synchron ausfuehren
@@ -382,7 +386,7 @@ def test_start_refresh_calls_on_finished_after_every_outcome(outcome, monkeypatc
     runner = background_tasks.BackgroundTaskRunner.__new__(background_tasks.BackgroundTaskRunner)
     runner._base_path = "."
     runner._settings = {"sync_enabled": False, "gcal_enabled": False}
-    runner.run = lambda fn, on_done: on_done(fn())  # pyright: ignore[reportOptionalCall]
+    runner.run = _run_inline
     events = []
 
     runner.refresh_token(on_auth_error=lambda m: events.append("auth"),
@@ -392,3 +396,30 @@ def test_start_refresh_calls_on_finished_after_every_outcome(outcome, monkeypatc
     assert events[-1] == "finished" and events.count("finished") == 1
     assert ("auth" in events) == (outcome == "auth")
     assert ("error" in events) == (outcome == "error")
+
+
+def test_migrate_secrets_reports_the_result(tmp_path, monkeypatch):
+    from src import background_tasks, secret_migration
+    reports = []
+    runner = background_tasks.BackgroundTaskRunner.__new__(background_tasks.BackgroundTaskRunner)
+    runner._base_path = str(tmp_path)
+    runner.run = _run_inline
+    monkeypatch.setattr(secret_migration, "migrate",
+                        lambda path, store: secret_migration.MigrationReport(token_moved=True))
+    runner.migrate_secrets(object(), reports.append)
+    assert reports == [secret_migration.MigrationReport(token_moved=True)]
+
+
+def test_migrate_secrets_swallows_and_logs_unexpected_errors(tmp_path, monkeypatch, caplog):
+    from src import background_tasks, secret_migration
+    reports = []
+    runner = background_tasks.BackgroundTaskRunner.__new__(background_tasks.BackgroundTaskRunner)
+    runner._base_path = str(tmp_path)
+    runner.run = _run_inline
+
+    def boom(*a):
+        raise RuntimeError("kaputt")
+
+    monkeypatch.setattr(secret_migration, "migrate", boom)
+    runner.migrate_secrets(object(), reports.append)
+    assert reports == [] and "Umzug der Zugangsdaten" in caplog.text

@@ -20,6 +20,7 @@ from src.weekly_limit import format_limit_warnings
 from src.grid_renderer import GridRenderer
 from src.paths import get_resource_path, relaunch_command
 from src.mail import friendly_token_message
+from src import secret_migration
 from src.sync_orchestrator import classify_sync_error, SyncOrchestrator
 from src.update_banner import UpdateBanner
 from src.update_coordinator import UpdateCoordinator
@@ -173,6 +174,9 @@ class App:
                 f"Fehler aufgetreten:\n\n{tb}\n\n"
                 "Beim nächsten Senden fragt die App nach einer neuen Freigabe.",
             ),
+            # Erst NACH dem Start-Refresh: beide schreiben token.json (#101).
+            on_finished=lambda: self._bg.migrate_secrets(
+                self._webhook_store, self._on_secrets_migrated),
         )
         self._bg.fetch_sender_email()
         self._updates.start()
@@ -291,6 +295,22 @@ class App:
     def _on_reconcile_start_done(self, result):
         self._refresh()
         self._show_limit_warnings(result.get("limit_warnings"))
+
+    def _on_secrets_migrated(self, report):
+        """Einmaliger Hinweis, wenn Zugangsdaten in den Schlüsselbund
+        umgezogen sind (#101). Sichtbares Fenster → Dialog; beim Start in den
+        Tray (--minimized) → Toast statt Pop-up; sonst nur das Log."""
+        if not report.moved_anything:
+            return
+        # "zoomed": maximiertes Fenster unter Windows — ebenfalls sichtbar.
+        if self.root.state() in ("normal", "zoomed"):
+            title, text = secret_migration.notice(report, platform.system())
+            themed_showinfo(self.root, title, text)
+        elif self._tray is not None:
+            self._tray.notify(secret_migration.toast_text(report))
+        else:
+            logging.getLogger(__name__).info(
+                "Zugangsdaten in den Schlüsselbund umgezogen")
 
     def _show_limit_warnings(self, warnings):
         if not warnings:
