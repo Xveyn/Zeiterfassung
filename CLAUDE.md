@@ -476,12 +476,24 @@ Arbeit".
 
 **Jeder Download-Lauf bekommt einen eigenen Zielnamen**
 (`self_update.download_dest`). Es gibt zwei Wege, die laden — den Ein-Klick-Weg
-im Updates-Tab und den stillen Automatik-Pfad in `ui.py` —, und mit einem
-festen Namen könnten sie in dieselbe Datei schreiben, während der Sofort-Weg
-den Prozess unmittelbar nach seiner Hash-Prüfung beendet. Eine weitere Prüfung
-schlösse dieses Fenster nicht (sie läge wieder davor); ein eigener Name lässt
-es nicht entstehen. Der Preis: jeder Fehlerpfad räumt seine Datei selbst weg —
-es gibt keinen festen Namen mehr, den ein späterer Lauf überschriebe.
+im Updates-Tab und den stillen Automatik-Pfad (`src/auto_update.py`) —, und
+mit einem festen Namen könnten sie in dieselbe Datei schreiben, während der
+Sofort-Weg den Prozess unmittelbar nach seiner Hash-Prüfung beendet. Eine
+weitere Prüfung schlösse dieses Fenster nicht (sie läge wieder davor); ein
+eigener Name lässt es nicht entstehen. Der Preis: jeder Fehlerpfad räumt seine
+Datei selbst weg — es gibt keinen festen Namen mehr, den ein späterer Lauf
+überschriebe.
+
+**Und es lädt immer nur einer.** Den stillen Download lösen zwei Stellen aus:
+der Update-Check der App beim Start und der Check des Updates-Tabs. Bis R9
+(Xveyn#123) entschied jede selbst, mit eigenem Laufguard — ein Klick auf den
+Banner während des Start-Downloads öffnete den Tab, und der lud dieselben
+~65 MB ein zweites Mal. Seither liegt die Policy **einmal** in
+`auto_update.AutoUpdater`, das die App besitzt und an den Tab durchreicht, mit
+**einem** Guard für jeden Update-Download: ein zweiter stiller Auslöser hängt
+sich an den laufenden an (Fortschritt und Ausgang), und „Update installieren"
+startet währenddessen keinen Download daneben. Wer einen dritten Auslöser
+baut, ruft `maybe_start` — keinen eigenen Ablauf.
 
 **`installer.iss` bleibt bei alldem unangetastet.** Zwei Gründe, beide zwingen
 zum Helfer-Skript statt zu einem Umbau des Installers:
@@ -1122,6 +1134,13 @@ nicht mehr als „offen" führen — der Verweis lautet auf diese Grenze.
 - `src/devices.py` — lesbare **Gerätenamen** für die Sync-Anzeige (Konfliktdialog): Ableitung aus dem Hostnamen, Sanitizing (Fremddaten!) und die Registry `{device_id: {name, updated_at}}`, die im Sync-Doc unter `devices` mitreist. Bewusst **ohne** Schema-Bump additiv — `SCHEMA_VERSION` bleibt 4, sonst pausierte `remote_is_newer` den Sync jedes älteren Geräts wegen eines Anzeigefelds. Fehlt oder bricht die Registry, zeigt der Dialog die gekürzte ID wie zuvor. Der eigene Name ist **kein** synchronisierter Setting-Key (der wäre ein einziger globaler Wert, die Geräte würden ihn sich gegenseitig überschreiben) — er lebt gerätelokal in `device_name`, der Spiegel der anderen in `known_devices`
 - `src/device_id.py` — stabile, hardware-abgeleitete Geräte-ID für den Sync (Windows `MachineGuid` / macOS `IOPlatformUUID` / Linux `/etc/machine-id`, SHA-256-gehasht); nur für installierte Builds (`main.py::_ensure_device_id`, gated auf `sys.frozen`) — Repo-/Skript-Modus bleibt bei der alten, in `settings.json` persistierten Zufalls-UUID, damit eine parallel laufende Dev-Instanz nie dieselbe device_id wie eine echte Installation auf demselben Rechner bekommt
 - `src/updater.py` — GitHub-Releases-Check (stdlib-only, Check-Häufigkeit über `update_check_frequency` konfigurierbar, Default 1×/Tag; Pre-Releases optional über `prerelease_updates_enabled`, s. Release-Prozess); `src/changelog.py` — lädt und parst den Changelog-Abschnitt einer Release-Version vom GitHub-Tag (stdlib-only)
+- `src/auto_update.py` — die Auto-Update-**Policy**, genau einmal (R9,
+  Xveyn#123): `AutoUpdater.maybe_start` entscheidet (Häkchen, Plattform,
+  vorbereitete Datei, Guard, `plan_update`), lädt still und merkt das Update
+  für das nächste Beenden vor; `acquire_manual`/`release_manual` teilen
+  denselben Guard mit dem Ein-Klick-Weg, `manual_outcome` entscheidet dessen
+  Ausgang. Tk-frei, die App besitzt das eine Exemplar und reicht es an den
+  Updates-Tab weiter (s. „Update-Weg")
 - `src/self_update.py` — lädt das Release-Asset, prüft es gegen `SHA256SUMS` und wendet es an (`apply_windows` über ein Helfer-Skript, `apply_linux` durch Ersetzen der laufenden AppImage). Tk-frei, stdlib-only; die Regeln dazu — kein `DETACHED_PROCESS`, eigener Zielname je Download, was die Hash-Prüfung leistet — stehen oben unter „Update-Weg"
 - `src/platform_open.py` — `os.startfile`/`open`/`xdg-open`-Wrapper
 - `src/logging_setup.py` — File-Logging + globaler Excepthook (Setup-Fehler sind **nicht-fatal**, siehe `main.py`)

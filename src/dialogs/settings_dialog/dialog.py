@@ -31,7 +31,8 @@ from src.dialogs.settings_dialog.tab_work import WorkTab
 
 
 def open_settings_dialog(parent, settings, base_path, on_change, *,
-                         runner, conflicts_store=None, storage=None,
+                         runner, auto_updater, conflicts_store=None,
+                         storage=None,
                          reservation_store=None, on_request_restart=None,
                          data_lock=None, sync_guard=None, webhook_store=None,
                          smtp_store=None,
@@ -47,6 +48,8 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
     (Audit H1/H2) — von App durchgereicht.
     runner: der App-BackgroundTaskRunner (App._bg); alle Hintergrund-Worker des
     Dialogs laufen über runner.run(fn, on_done) (Audit H5).
+    auto_updater: der `auto_update.AutoUpdater` der App — derselbe, den ihr
+    Start-Check benutzt, damit beide Auslöser einen Guard teilen (R9).
     vacation_store/on_vacation_change: optional; sind sie gesetzt, erscheint
     im Arbeitszeit-Tab der „Urlaub verwalten"-Button.
     on_vacation_display_change: reines Neuzeichnen des Kalenders für die
@@ -103,7 +106,7 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
     app = AppTab(tab_app, settings)
 
     # ===================== Tab: Updates =====================
-    updates_tab = UpdatesTab(tab_updates, settings, runner)
+    updates_tab = UpdatesTab(tab_updates, settings, runner, auto_updater)
 
     def _on_tab_changed(_event):
         if notebook.select() == str(tab_updates):

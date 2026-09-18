@@ -8,6 +8,7 @@ import tempfile
 import tkinter as tk
 import webbrowser
 
+from src.auto_update import manual_outcome
 from src.changelog import (
     fetch_changelog_entry, parse_changelog_markdown, release_notes_for_display,
 )
@@ -41,14 +42,19 @@ _LABEL_PRERELEASE = "Enthaltene Änderungen:"
 _LABEL_INSTALL = "Update installieren"
 _LABEL_DOWNLOAD = "Download"
 
+_STATUS_READY = "Update bereit — wird beim Beenden installiert"
+
 
 class UpdatesTab:
     """Baut den Updates-Tab und exponiert `frequency_var` für save_settings."""
 
-    def __init__(self, frame, settings, runner):
+    def __init__(self, frame, settings, runner, auto_updater):
         self.frame = frame
         self._settings = settings
         self._runner = runner
+        # Die Auto-Update-Policy der App, samt dem EINEN Guard fuer jeden
+        # Update-Download (R9) — der Tab faehrt keinen eigenen stillen Lauf.
+        self._auto_updater = auto_updater
         self._latest_release = None
         self._checked = False
         self._checking = False
@@ -270,33 +276,58 @@ class UpdatesTab:
         self._open_download(self._latest_release)
 
     def _maybe_start_auto_update(self, release):
-        """Startet den stillen Hintergrund-Download, wenn der Nutzer das
-        Automatik-Haekchen gesetzt hat.
+        """Reicht den Check an die gemeinsame Auto-Update-Policy weiter
+        (`auto_update.AutoUpdater`, R9) und zeigt deren Ausgang an.
 
-        Dieselbe Maschine wie der Ein-Klick-Weg (`_start_self_update`), nur
-        `auto=True`: geladen und geprueft wird sofort, angewendet wird NICHT
-        hier — das passiert erst beim naechsten Beenden
-        (`ui.App._apply_pending_update`)."""
-        if not self._can_self_update or self._updating:
-            return
-        if not bool(self._settings.get("auto_update_enabled")):
-            return
-        if self._settings.get("pending_update_path"):
-            # Es liegt schon eine geprüfte, noch nicht angewendete Datei —
-            # nicht erneut laden. Ohne diesen Guard laedt jedes Oeffnen des
-            # Updates-Tabs dieselben ~65 MB neu, solange der Nutzer die App
-            # nicht beendet hat. Dieselbe Regel wie in
-            # `ui.App._maybe_auto_update`; den Banner frischt hier niemand
-            # auf, weil der Tab ihn nicht besitzt.
-            logging.getLogger(__name__).info(
-                "Automatisches Update: bereits vorbereitete Datei, "
-                "kein erneuter Download")
-            return
-        self._start_self_update(release, auto=True)
+        Geladen und geprueft wird dort — auch wenn der Start-Check der App
+        schon laedt: dann haengt sich der Tab nur an dessen Fortschritt und
+        Ausgang, statt selbst ein zweites Mal zu laden. Angewendet wird erst
+        beim naechsten Beenden (`ui.App._apply_pending_update`)."""
+        outcome = self._auto_updater.maybe_start(
+            release, on_progress=self._report_status,
+            on_finished=self._on_auto_update_finished)
+        if outcome == "pending":
+            self._status_label.config(text=_STATUS_READY)
+        elif outcome in ("started", "busy"):
+            # Nur optisch (s. `set_secondary_button_enabled`) — ein Klick
+            # landet trotzdem in `_start_self_update`, und dort stoppt ihn
+            # der gemeinsame Guard.
+            set_secondary_button_enabled(self._download_btn, False)
 
-    def _start_self_update(self, release, auto=False):
-        """Laden, pruefen, installieren — der Ein-Klick-Weg (`auto=False`)
-        oder das stille Vorbereiten fuer das naechste Beenden (`auto=True`).
+    def _on_auto_update_finished(self, ok):
+        # Der Runner ist `App._bg` und ueberlebt den Dialog: persistiert hat
+        # der AutoUpdater bereits, hier bleibt nur die Anzeige.
+        if not self.frame.winfo_exists():
+            return
+        set_secondary_button_enabled(self._download_btn, True)
+        self._status_label.config(
+            text=_STATUS_READY if ok else
+            "Automatischer Download fehlgeschlagen — neuer Versuch beim "
+            "nächsten Check")
+
+    def _report_status(self, text):
+        """Fortschrittstext aus dem Worker-Thread in die Statuszeile."""
+        # Nie direkt ans Widget. Analog App._marshal_to_ui (ui.py) werden
+        # Einplanen UND Ausfuehren gegen TclError abgesichert: schliesst der
+        # Nutzer den Einstellungen-Dialog waehrend des Downloads, existiert
+        # self._status_label beim Feuern nicht mehr, und der TclError liefe
+        # sonst ungefangen in Tkinters report_callback_exception — das dieses
+        # Projekt global auf ein sichtbares Fehler-Popup legt
+        # (logging_setup.py). Der Fortschritt feuert pro 1-MB-Chunk, bei
+        # einem ~65-MB-Asset also dutzende Male, waehrend der Download im
+        # Hintergrund weiterlaeuft — ohne Guard dutzende Popups.
+        def apply_text():
+            try:
+                self._status_label.config(text=text)
+            except tk.TclError:
+                pass  # Dialog schon zu, die Meldung hat kein Ziel mehr
+        try:
+            self.frame.after(0, apply_text)
+        except tk.TclError:
+            pass  # Dialog schon zu, das Einplanen selbst hat kein Ziel mehr
+
+    def _start_self_update(self, release):
+        """Laden, pruefen, installieren — der Ein-Klick-Weg.
 
         Reihenfolge mit Absicht: `plan_update` stellt ALLE Abbruchgruende
         fest, bevor ein Byte fliesst. Ein halb geladenes Update, das dann an
@@ -307,16 +338,16 @@ class UpdatesTab:
             getattr(sys, "frozen", False),
             os.environ.get("APPIMAGE", ""), sys.executable)
         if isinstance(plan, UpdateBlocked):
-            if auto:
-                # Unbeaufsichtigt ausgeloest — kein Popup und kein
-                # Browser-Fallback fuer einen Vorgang, den niemand angestossen
-                # hat. Der naechste manuelle Klick auf "Update installieren"
-                # zeigt denselben Grund.
-                logging.getLogger(__name__).info(
-                    "Automatisches Update nicht moeglich: %s", plan.reason)
-                return
             themed_showerror(self.frame, "Update nicht möglich", plan.reason)
             self._open_download(release)
+            return
+
+        if not self._auto_updater.acquire_manual():
+            # Der stille Download (Start-Check der App oder dieser Tab) laeuft
+            # schon. Ein zweiter daneben liesse beim sofortigen Installieren
+            # den halben stillen Download in %TEMP% zurueck (R9).
+            self._status_label.config(
+                text="Update wird bereits im Hintergrund geladen …")
             return
 
         set_primary_button_enabled(self._check_btn, False)
@@ -327,96 +358,35 @@ class UpdatesTab:
         set_secondary_button_enabled(self._download_btn, False)
         self._updating = True
 
-        # Pro Lauf ein eigener Zielname (s. `download_dest`): der stille
-        # Automatik-Download in `ui.py` baut seinen Pfad ueber dieselbe
-        # Funktion und kann uns damit nicht mehr in die Datei schreiben.
+        # Pro Lauf ein eigener Zielname (s. `download_dest`).
         local = download_dest(platform.system(), plan.asset_name, plan.target,
                               tempfile.gettempdir())
 
-        def report(text):
-            # Aus dem Worker-Thread: nie direkt ans Widget. Analog
-            # App._marshal_to_ui (ui.py) werden Einplanen UND Ausfuehren
-            # gegen TclError abgesichert: schliesst der Nutzer den
-            # Einstellungen-Dialog waehrend des Downloads, existiert
-            # self._status_label beim Feuern nicht mehr, und der TclError
-            # liefe sonst ungefangen in Tkinters report_callback_exception —
-            # das dieses Projekt global auf ein sichtbares Fehler-Popup legt
-            # (logging_setup.py). progress() feuert pro 1-MB-Chunk, bei einem
-            # ~65-MB-Asset also dutzende Male, waehrend der Download im
-            # Hintergrund weiterlaeuft — ohne Guard dutzende Popups.
-            def apply_text():
-                try:
-                    self._status_label.config(text=text)
-                except tk.TclError:
-                    pass  # Dialog schon zu, die Meldung hat kein Ziel mehr
-            try:
-                self.frame.after(0, apply_text)
-            except tk.TclError:
-                pass  # Dialog schon zu, das Einplanen selbst hat kein Ziel mehr
-
         # Laden+Pruefen ist gemeinsamer Kern mit dem stillen Automatik-Pfad
-        # in ui.py (`App._maybe_auto_update`) — beide rufen dieselbe Funktion
-        # in self_update.py, damit die beiden Ablaeufe nicht auseinanderlaufen.
+        # (`auto_update.AutoUpdater`) — beide rufen dieselbe Funktion in
+        # self_update.py, damit die beiden Ablaeufe nicht auseinanderlaufen.
         def work():
-            return download_and_verify_update(plan, local, on_progress=report)
+            return download_and_verify_update(
+                plan, local, on_progress=self._report_status)
 
         def done(result):
+            self._auto_updater.release_manual()
             # `alive` statt eines fruehen `return`: der Runner ist `App._bg`
             # und ueberlebt den Dialog — ein ~65-MB-Download laeuft nach dem
-            # Schliessen des Einstellungen-Dialogs fertig, und bei auto=True
-            # ist genau das der Normalfall (niemand sieht ihn). Ein Guard
-            # ganz oben liesse die fertig GEPRUEFTE Datei dann weder
-            # persistiert noch geloescht zurueck; seit `download_dest` jedem
-            # Lauf einen eigenen Namen gibt, raeumt sie auch kein spaeterer
-            # Lauf mehr weg. Also: Widget-Zugriffe gaten, Ergebnis nicht.
-            alive = bool(self.frame.winfo_exists())
-            if isinstance(result, str):
-                # Fehlerfall: `download_and_verify_update` hat seine Datei
-                # bereits selbst weggeraeumt, hier bleibt nur die UI.
-                if not alive:
-                    logging.getLogger(__name__).info(
-                        "Update abgebrochen (Dialog bereits zu): %s", result)
-                    return
-                if auto:
-                    # Kein Popup fuer einen Vorgang, den der Nutzer nicht
-                    # ausgeloest hat — nur zuruecksetzen und loggen. Der
-                    # naechste Update-Check versucht es erneut.
-                    self._updating = False
-                    set_primary_button_enabled(self._check_btn, True)
-                    set_secondary_button_enabled(self._download_btn, True)
-                    logging.getLogger(__name__).info(
-                        "Automatisches Update abgebrochen: %s", result)
-                    return
+            # Schliessen des Einstellungen-Dialogs fertig. Was dann mit der
+            # Datei geschieht, entscheidet `manual_outcome`.
+            ok = not isinstance(result, str)
+            outcome = manual_outcome(ok, bool(self.frame.winfo_exists()))
+            if outcome == "log":
+                # `download_and_verify_update` hat seine Datei bereits selbst
+                # weggeraeumt, und fuer eine Meldung ist niemand mehr da.
+                logging.getLogger(__name__).info(
+                    "Update abgebrochen (Dialog bereits zu): %s", result)
+                return
+            if outcome == "show_error":
                 self._fail_update(result)
                 return
-            if auto:
-                # ZUERST persistieren, auch ohne Dialog: die Datei ist
-                # geprueft, und sie beim naechsten Beenden anzuwenden ist
-                # genau das gewuenschte Verhalten — der geschlossene Dialog
-                # aendert daran nichts. Verwerfen waere die schlechtere
-                # Antwort: der Nutzer haette die ~65 MB umsonst geladen.
-                self._settings.set_many({
-                    "pending_update_path": result.path,
-                    "pending_update_sha256": result.sha256,
-                })
-                if not alive:
-                    logging.getLogger(__name__).info(
-                        "Automatisches Update vorbereitet (Dialog bereits "
-                        "zu) — wird beim Beenden installiert")
-                    return
-                self._updating = False
-                set_primary_button_enabled(self._check_btn, True)
-                set_secondary_button_enabled(self._download_btn, True)
-                self._status_label.config(
-                    text="Update bereit — wird beim Beenden installiert")
-                return
-            if not alive:
-                # Der manuelle Weg installiert SOFORT und beendet die App
-                # dabei (`_apply`). Das hinter dem Ruecken eines Nutzers zu
-                # tun, der den Dialog gerade zugemacht hat, waere das
-                # Gegenteil der Zusage „nie mitten in der Arbeit" — und
-                # `_apply` fasst ohnehin tote Widgets an. Also verwerfen; ein
-                # erneuter Klick laedt neu.
+            if outcome == "discard":
                 logging.getLogger(__name__).info(
                     "Update verworfen: der Dialog wurde waehrend des "
                     "Downloads geschlossen")

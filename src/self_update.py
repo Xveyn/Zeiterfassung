@@ -103,7 +103,8 @@ class DownloadedUpdate:
     """Ergebnis eines erfolgreichen `download_and_verify_update`-Laufs.
 
     `sha256` wird separat mitgegeben (statt den Aufrufer die Prüfsummen-Datei
-    ein zweites Mal laden zu lassen): der stille Automatik-Pfad in `ui.py`
+    ein zweites Mal laden zu lassen): der stille Automatik-Pfad
+    (`auto_update.py`)
     braucht ihn, um ihn als `pending_update_sha256` zu persistieren."""
 
     path: str
@@ -115,7 +116,8 @@ def download_and_verify_update(
         on_progress: Callable[[str], None] | None = None) -> DownloadedUpdate | str:
     """Lädt und prüft ein Update — der gemeinsame Kern für BEIDE Aufrufer:
     den Ein-Klick-Weg im Updates-Tab (mit Fortschrittsanzeige) und den
-    stillen Automatik-Pfad (`ui.py`, ohne UI, `on_progress=None`).
+    stillen Automatik-Pfad (`auto_update.py`, Fortschritt nur, wenn der
+    Updates-Tab zuschaut).
 
     Absichtlich EINE Funktion statt zwei ähnlicher Implementierungen (Task 8
     hat aus demselben Grund den Banner an den Updates-Tab delegieren lassen,
@@ -301,7 +303,7 @@ def download_dest(system: str, asset_name: str, target: str,
 
     **Die Eindeutigkeit ist der ganze Zweck dieser Funktion.** Es gibt zwei
     Wege, die laden: den Ein-Klick-Weg im Updates-Tab und den stillen
-    Automatik-Pfad in `ui.py`. Bauten beide denselben Namen (fester
+    Automatik-Pfad in `auto_update.py`. Bauten beide denselben Namen (fester
     Asset-Name im %TEMP% bzw. derselbe PID-Name neben der AppImage), könnten
     sie sich begegnen: zwei Threads schreiben truncierend in dieselbe Datei,
     und der Sofort-Weg beendet den Prozess unmittelbar nach seiner

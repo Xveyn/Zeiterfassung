@@ -59,9 +59,9 @@ class _FakeApp:
         self.root = MagicMock()
         self._sync = MagicMock()
         # Stub statt echter Automatik-Logik: die Routing-Tests in dieser
-        # Datei prüfen Toast/Banner, nicht den Auto-Update-Trigger — der hat
-        # eigene Tests weiter unten (App._maybe_auto_update direkt gebunden).
-        self._maybe_auto_update = MagicMock()
+        # Datei prüfen Toast/Banner, nicht die Auto-Update-Policy — die hat
+        # eigene Tests in test_auto_update.py.
+        self._auto_updater = MagicMock()
 
 
 class _FakeTray:
@@ -257,16 +257,7 @@ def test_tray_check_is_possible_again_after_a_failure(monkeypatch):
     assert len(fake._bg.jobs) == 1
 
 
-# --- App._maybe_auto_update (Task 9, Nachtrag: periodischer Hintergrund-Check
-# statt nur der manuelle Check im Updates-Tab) -----------------------------
-
-
-def _bind_auto_update(fake):
-    """Ersetzt den MagicMock-Stub aus _FakeApp durch die echte Methode,
-    gebunden ans Fake-Objekt (Muster wie `_tray_app` weiter oben)."""
-    fake._maybe_auto_update = MethodType(App._maybe_auto_update, fake)
-    fake._auto_update_running = False
-    return fake
+# --- Auslöser des stillen Downloads (die Policy selbst: test_auto_update.py) --
 
 
 def test_on_update_check_result_triggers_auto_update_when_newer(monkeypatch):
@@ -278,7 +269,7 @@ def test_on_update_check_result_triggers_auto_update_when_newer(monkeypatch):
 
     App._on_update_check_result(fake, rel, True)
 
-    fake._maybe_auto_update.assert_called_once_with(rel)
+    fake._auto_updater.maybe_start.assert_called_once_with(rel)
 
 
 def test_on_update_check_result_does_not_trigger_auto_update_when_not_newer(monkeypatch):
@@ -289,141 +280,4 @@ def test_on_update_check_result_does_not_trigger_auto_update_when_not_newer(monk
 
     App._on_update_check_result(fake, _Rel("1.9.0"), False)
 
-    fake._maybe_auto_update.assert_not_called()
-
-
-def test_maybe_auto_update_skips_when_setting_off():
-    fake = _bind_auto_update(_FakeApp(tray=None, settings_data={"auto_update_enabled": False}))
-
-    App._maybe_auto_update(fake, _Rel("1.9.0"))
-
-    assert fake._bg.jobs == []
-
-
-def test_maybe_auto_update_skips_when_platform_cannot_self_update(monkeypatch):
-    import src.ui as ui_module
-
-    monkeypatch.setattr(ui_module, "supports_self_update", lambda *a, **k: False)
-    fake = _bind_auto_update(_FakeApp(tray=None, settings_data={"auto_update_enabled": True}))
-
-    App._maybe_auto_update(fake, _Rel("1.9.0"))
-
-    assert fake._bg.jobs == []
-
-
-def test_maybe_auto_update_skips_when_already_running(monkeypatch):
-    import src.ui as ui_module
-
-    monkeypatch.setattr(ui_module, "supports_self_update", lambda *a, **k: True)
-    fake = _bind_auto_update(_FakeApp(tray=None, settings_data={"auto_update_enabled": True}))
-    fake._auto_update_running = True
-
-    App._maybe_auto_update(fake, _Rel("1.9.0"))
-
-    assert fake._bg.jobs == []
-
-
-def test_maybe_auto_update_reuses_pending_download_without_redownloading(monkeypatch):
-    """Liegt schon eine vorbereitete Datei (voriger Check hat schon geladen,
-    App wurde noch nicht beendet), wird NICHT erneut geladen — nur der
-    Banner erneut gezeigt."""
-    import src.ui as ui_module
-
-    monkeypatch.setattr(ui_module, "supports_self_update", lambda *a, **k: True)
-    fake = _bind_auto_update(_FakeApp(tray=None, settings_data={
-        "auto_update_enabled": True,
-        "pending_update_path": r"C:\Temp\Zeiterfassung_Setup.exe",
-    }))
-    rel = _Rel("1.9.0")
-
-    App._maybe_auto_update(fake, rel)
-
-    assert fake._bg.jobs == []
-    fake._update_banner.show_ready_to_install.assert_called_once_with(rel)
-
-
-def test_maybe_auto_update_does_nothing_when_plan_is_blocked(monkeypatch):
-    import src.ui as ui_module
-    from src.self_update import UpdateBlocked
-
-    monkeypatch.setattr(ui_module, "supports_self_update", lambda *a, **k: True)
-    monkeypatch.setattr(ui_module, "plan_update", lambda *a, **k: UpdateBlocked("nope"))
-    fake = _bind_auto_update(_FakeApp(tray=None, settings_data={"auto_update_enabled": True}))
-
-    App._maybe_auto_update(fake, _Rel("1.9.0"))
-
-    assert fake._bg.jobs == []
-    assert fake._auto_update_running is False
-
-
-def test_maybe_auto_update_downloads_and_persists_pending_update_on_success(monkeypatch):
-    import platform
-
-    import os
-    import tempfile
-
-    import src.ui as ui_module
-    from src.self_update import DownloadedUpdate, UpdatePlan
-
-    monkeypatch.setattr(ui_module, "supports_self_update", lambda *a, **k: True)
-    monkeypatch.setattr(platform, "system", lambda: "Windows")
-    plan = UpdatePlan(asset_url="https://x/exe", asset_name="Zeiterfassung_Setup.exe",
-                      sums_url="https://x/sums", target=r"C:\Apps\Z.exe")
-    monkeypatch.setattr(ui_module, "plan_update", lambda *a, **k: plan)
-    # Der tatsaechliche Zielpfad (local) wird von _maybe_auto_update selbst
-    # ueber `self_update.download_dest` gebaut (wie im Updates-Tab) — NICHT
-    # aus downloaded.path, das ist nur das Ergebnis der (gemockten)
-    # download_and_verify_update. Der Name ist pro Lauf eindeutig, deshalb
-    # wird er hier nicht vorhergesagt, sondern abgefangen und geprueft.
-    downloaded = DownloadedUpdate(path="egal", sha256="ab" * 32)
-    calls = []
-    monkeypatch.setattr(
-        ui_module, "download_and_verify_update",
-        lambda plan_arg, dest, **k: calls.append((plan_arg, dest)) or downloaded)
-
-    fake = _bind_auto_update(_FakeApp(tray=None, settings_data={"auto_update_enabled": True}))
-    rel = _Rel("1.9.0")
-
-    App._maybe_auto_update(fake, rel)
-    fake._bg.flush()
-
-    assert len(calls) == 1
-    used_plan, used_dest = calls[0]
-    assert used_plan is plan
-    assert used_dest.startswith(tempfile.gettempdir())
-    assert used_dest.endswith(".exe")
-    assert used_dest != os.path.join(tempfile.gettempdir(), plan.asset_name), (
-        "Der Zielname muss pro Lauf eindeutig sein — ein fester Name laesst "
-        "zwei parallele Downloads in dieselbe Datei schreiben (F1)")
-    assert fake.settings.get("pending_update_path") == downloaded.path
-    assert fake.settings.get("pending_update_sha256") == downloaded.sha256
-    assert fake._auto_update_running is False
-    fake._update_banner.show_ready_to_install.assert_called_once_with(rel)
-
-
-def test_maybe_auto_update_logs_and_resets_flag_on_download_failure(monkeypatch):
-    """Kernanforderung: ein Fehlschlag im stillen Pfad zeigt KEINEN Dialog
-    und setzt weder pending_update_path noch die Banner-Rückmeldung — nur
-    der Guard wird zurückgesetzt, damit der nächste Check es erneut
-    versucht."""
-    import platform
-
-    import src.ui as ui_module
-    from src.self_update import UpdatePlan
-
-    monkeypatch.setattr(ui_module, "supports_self_update", lambda *a, **k: True)
-    monkeypatch.setattr(platform, "system", lambda: "Windows")
-    plan = UpdatePlan(asset_url="https://x/exe", asset_name="Zeiterfassung_Setup.exe",
-                      sums_url="https://x/sums", target=r"C:\Apps\Z.exe")
-    monkeypatch.setattr(ui_module, "plan_update", lambda *a, **k: plan)
-    monkeypatch.setattr(ui_module, "download_and_verify_update",
-                        lambda *a, **k: "Der Download ist fehlgeschlagen.")
-
-    fake = _bind_auto_update(_FakeApp(tray=None, settings_data={"auto_update_enabled": True}))
-
-    App._maybe_auto_update(fake, _Rel("1.9.0"))
-    fake._bg.flush()
-
-    assert fake.settings.get("pending_update_path") == ""
-    assert fake._auto_update_running is False
-    fake._update_banner.show_ready_to_install.assert_not_called()
+    fake._auto_updater.maybe_start.assert_not_called()

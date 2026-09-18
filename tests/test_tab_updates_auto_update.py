@@ -1,87 +1,40 @@
-"""Der stille Automatik-Download aus dem Updates-Tab: der Einstieg
-`UpdatesTab._maybe_start_auto_update` (Abschluss-Review F2) und der
-Abschluss `_start_self_update.done` bei geschlossenem Dialog (L2).
+"""Der Ein-Klick-Weg im Updates-Tab (`UpdatesTab._start_self_update`) und
+sein Verhältnis zum stillen Hintergrund-Download.
 
-Gegenstueck zu `test_ui_update_routing.py::
-test_maybe_auto_update_reuses_pending_download_without_redownloading` — die
-Regel „liegt schon eine geprüfte Datei, wird NICHT erneut geladen" galt bis
-zum Abschluss-Review nur auf der ui.py-Seite. Duck-Typed Stand-in wie in
-test_tab_updates_apply.py: die Methode fasst nur `self._settings` und
-`self._start_self_update` an.
+Die Auto-Update-Policy selbst (Häkchen, vorbereitete Datei, Guard) liegt seit
+R9 in `src/auto_update.py` und wird in `test_auto_update.py` geprüft. Hier
+bleibt, was der Tab selbst entscheidet: dass er den gemeinsamen Guard
+respektiert und freigibt, und was mit einer fertigen Datei geschieht, wenn
+der Dialog inzwischen zu ist (L2).
+
+Duck-Typed Stand-in wie in test_tab_updates_apply.py, aber mit ECHTEM
+`AutoUpdater` — der Guard ist genau das, worum es geht.
 """
 
 from types import MethodType
 from unittest.mock import MagicMock
 
+from src.auto_update import AutoUpdater
 from src.dialogs.settings_dialog.tab_updates import UpdatesTab
+from src.self_update import DownloadedUpdate, UpdatePlan
+
+
+class _Rel:
+    version = "1.9.0"
+    release_id = "1.9.0"
 
 
 class _FakeSettings:
     def __init__(self, data=None):
         self._data = data or {}
+        self.set_many_calls = []
 
     def get(self, key):
         return self._data.get(key, "")
 
-
-def _fake_tab(settings_data):
-    fake = MagicMock()
-    fake._settings = _FakeSettings(settings_data)
-    fake._can_self_update = True
-    fake._updating = False
-    fake._maybe_start_auto_update = MethodType(
-        UpdatesTab._maybe_start_auto_update, fake)
-    return fake
-
-
-class _Rel:
-    version = "1.9.0"
-
-
-def test_auto_update_starts_when_enabled_and_nothing_is_pending():
-    fake = _fake_tab({"auto_update_enabled": True})
-    rel = _Rel()
-
-    fake._maybe_start_auto_update(rel)
-
-    fake._start_self_update.assert_called_once_with(rel, auto=True)
-
-
-def test_auto_update_skips_when_a_verified_download_is_already_pending():
-    """Kern von F2: ohne diesen Guard laedt jedes Oeffnen des Updates-Tabs
-    dieselben ~65 MB erneut, obwohl die geprüfte Datei laengst bereitliegt
-    und beim naechsten Beenden installiert wird."""
-    fake = _fake_tab({
-        "auto_update_enabled": True,
-        "pending_update_path": r"C:\Temp\Zeiterfassung_Setup-4711-ab12cd34.exe",
-    })
-
-    fake._maybe_start_auto_update(_Rel())
-
-    fake._start_self_update.assert_not_called()
-
-
-def test_auto_update_skips_when_the_setting_is_off():
-    fake = _fake_tab({"auto_update_enabled": False})
-
-    fake._maybe_start_auto_update(_Rel())
-
-    fake._start_self_update.assert_not_called()
-
-
-def test_auto_update_skips_when_the_platform_cannot_self_update():
-    fake = _fake_tab({"auto_update_enabled": True})
-    fake._can_self_update = False
-
-    fake._maybe_start_auto_update(_Rel())
-
-    fake._start_self_update.assert_not_called()
-
-
-# --- UpdatesTab._start_self_update: Dialog waehrend des Downloads zu (L2) ---
-#
-# Der Runner ist `App._bg` und ueberlebt den Dialog — ein ~65-MB-Download
-# laeuft nach dem Schliessen fertig und ruft `done()` auf einem toten Frame.
+    def set_many(self, updates):
+        self.set_many_calls.append(dict(updates))
+        self._data.update(updates)
 
 
 class _ImmediateRunner:
@@ -92,76 +45,88 @@ class _ImmediateRunner:
         on_done(fn())
 
 
-class _WritableSettings(_FakeSettings):
-    def __init__(self, data=None):
-        super().__init__(data)
-        self.set_many_calls = []
+class _HeldRunner:
+    """Haelt Jobs fest — der Download laeuft also noch."""
 
-    def set_many(self, updates):
-        self.set_many_calls.append(dict(updates))
-        self._data.update(updates)
+    def __init__(self):
+        self.jobs = []
+
+    def run(self, fn, on_done=None):
+        self.jobs.append((fn, on_done))
 
 
-def _run_download_with_closed_dialog(monkeypatch, tmp_path, auto):
-    """Laesst `_start_self_update` durchlaufen, waehrend `frame.winfo_exists()`
-    False liefert — der Dialog wurde also mitten im Download geschlossen.
-    Liefert (fake, geladene_datei)."""
+_PLAN = UpdatePlan(asset_url="https://x/exe",
+                   asset_name="Zeiterfassung_Setup.exe",
+                   sums_url="https://x/sums", target=r"C:\Apps\Z.exe")
+
+
+def _manual_tab(monkeypatch, tmp_path, *, runner, dialog_alive=True):
+    """Bindet `_start_self_update` an ein Fake-Tab mit echtem AutoUpdater.
+    Liefert (tab, geladene_datei, downloads)."""
     import platform
 
     import src.dialogs.settings_dialog.tab_updates as tab_updates_module
-    from src.self_update import DownloadedUpdate, UpdatePlan
 
     monkeypatch.setattr(platform, "system", lambda: "Windows")
     monkeypatch.setattr(tab_updates_module, "set_primary_button_enabled",
                         lambda *a, **k: None)
     monkeypatch.setattr(tab_updates_module, "set_secondary_button_enabled",
                         lambda *a, **k: None)
-    plan = UpdatePlan(asset_url="https://x/exe",
-                      asset_name="Zeiterfassung_Setup.exe",
-                      sums_url="https://x/sums", target=r"C:\Apps\Z.exe")
-    monkeypatch.setattr(tab_updates_module, "plan_update", lambda *a, **k: plan)
+    monkeypatch.setattr(tab_updates_module, "plan_update", lambda *a, **k: _PLAN)
 
     local = tmp_path / "Zeiterfassung_Setup-4711-ab12cd34.exe"
     monkeypatch.setattr(tab_updates_module, "download_dest",
                         lambda *a, **k: str(local))
+    downloads = []
 
     def fake_download(plan_arg, dest, **kwargs):
+        downloads.append(dest)
         local.write_bytes(b"geprueftes Update")   # der Download ist fertig
         return DownloadedUpdate(path=dest, sha256="ab" * 32)
 
     monkeypatch.setattr(tab_updates_module, "download_and_verify_update",
                         fake_download)
-    monkeypatch.setattr(
-        tab_updates_module, "apply_windows",
-        lambda *a, **k: (_ for _ in ()).throw(
-            AssertionError("bei geschlossenem Dialog nicht installieren")))
 
-    fake = MagicMock()
-    fake._settings = _WritableSettings()
-    fake._can_self_update = True
-    fake._updating = False
-    fake._runner = _ImmediateRunner()
-    fake.frame.winfo_exists.return_value = False   # Dialog ist zu
-    fake._start_self_update = MethodType(UpdatesTab._start_self_update, fake)
-
-    fake._start_self_update(_Rel(), auto=auto)
-    return fake, local
+    tab = MagicMock()
+    tab._settings = _FakeSettings()
+    tab._auto_updater = AutoUpdater(tab._settings, runner, on_ready=lambda r: None)
+    tab._runner = runner
+    tab._updating = False
+    tab.frame.winfo_exists.return_value = dialog_alive
+    tab._start_self_update = MethodType(UpdatesTab._start_self_update, tab)
+    return tab, local, downloads
 
 
-def test_auto_download_is_persisted_even_if_the_dialog_was_closed(
+def test_manual_click_does_not_start_a_second_download_beside_the_background_one(
         monkeypatch, tmp_path):
-    """L2, Automatik-Weg: die Datei ist fertig geprueft — sie beim naechsten
-    Beenden anzuwenden ist genau das gewuenschte Verhalten. Ein Guard vor dem
-    `set_many` liesse sie weder persistiert noch geloescht zurueck, und seit
-    `download_dest` raeumt kein spaeterer Lauf sie mehr weg."""
-    fake, local = _run_download_with_closed_dialog(monkeypatch, tmp_path,
-                                                   auto=True)
+    """Verhaltensaenderung aus R9: laedt der Start-Check der App gerade still,
+    startet „Update installieren" keinen zweiten ~65-MB-Download daneben. Der
+    alte Weg liess sonst beim sofortigen Installieren den halben stillen
+    Download in %TEMP% zurueck."""
+    tab, _, downloads = _manual_tab(monkeypatch, tmp_path, runner=_HeldRunner())
+    assert tab._auto_updater.acquire_manual()   # irgendein Download laeuft
 
-    assert fake._settings.set_many_calls == [{
-        "pending_update_path": str(local),
-        "pending_update_sha256": "ab" * 32,
-    }]
-    assert local.exists(), "die vorbereitete Datei darf NICHT geloescht werden"
+    tab._start_self_update(_Rel())
+
+    assert tab._runner.jobs == []
+    assert downloads == []
+    assert tab._updating is False, "die Knoepfe bleiben bedienbar"
+
+
+def test_the_guard_is_free_again_after_a_manual_download(monkeypatch, tmp_path):
+    """Ohne Freigabe blockierte ein einziger manueller Download jeden
+    kuenftigen stillen Lauf bis zum Neustart."""
+    import src.dialogs.settings_dialog.tab_updates as tab_updates_module
+
+    tab, _, _ = _manual_tab(monkeypatch, tmp_path, runner=_ImmediateRunner())
+    monkeypatch.setattr(tab_updates_module, "download_and_verify_update",
+                        lambda *a, **k: "Der Download ist fehlgeschlagen.")
+    tab._fail_update = MagicMock()
+
+    tab._start_self_update(_Rel())
+
+    tab._fail_update.assert_called_once_with("Der Download ist fehlgeschlagen.")
+    assert tab._auto_updater.busy is False
 
 
 def test_manual_download_is_discarded_if_the_dialog_was_closed(
@@ -169,8 +134,16 @@ def test_manual_download_is_discarded_if_the_dialog_was_closed(
     """L2, manueller Weg: `_apply` wuerde sofort installieren und die App
     dabei beenden. Hinter dem Ruecken eines Nutzers, der den Dialog gerade
     zugemacht hat, ist das falsch — also verwerfen statt liegen lassen."""
-    fake, local = _run_download_with_closed_dialog(monkeypatch, tmp_path,
-                                                   auto=False)
+    import src.dialogs.settings_dialog.tab_updates as tab_updates_module
+
+    monkeypatch.setattr(
+        tab_updates_module, "apply_windows",
+        lambda *a, **k: (_ for _ in ()).throw(
+            AssertionError("bei geschlossenem Dialog nicht installieren")))
+    tab, local, _ = _manual_tab(monkeypatch, tmp_path,
+                                runner=_ImmediateRunner(), dialog_alive=False)
+
+    tab._start_self_update(_Rel())
 
     assert not local.exists(), "die nicht angewendete Datei bleibt sonst liegen"
-    assert fake._settings.set_many_calls == []
+    assert tab._settings.set_many_calls == []
