@@ -14,7 +14,9 @@ Dazu kommen der Kalender-Fake (`FakeCalendar`, Fixture `fake_calendar`) für
 die Abgleich-Flows und `other_thread_can_acquire` für die Lock-Tests — beide
 von mehreren Testdateien genutzt.
 """
+import sys
 import threading
+import types
 from unittest.mock import MagicMock
 
 import pytest
@@ -166,6 +168,77 @@ class FakeCalendar:
 def fake_calendar(monkeypatch):
     """Ein installierter `FakeCalendar` ohne Events (Kalender-ID `cal-1`)."""
     return FakeCalendar().install(monkeypatch)
+
+
+# --- Schlüsselbund (Keyring) -------------------------------------------------------
+
+class FakeKeyring:
+    """Stand-in für das `keyring`-Paket. `keyring_store` importiert `keyring`
+    lazy in den Funktionen — ein Modul in sys.modules ersetzt also das echte
+    Backend vollständig. Kein Test darf Einträge im Anmeldeinformations-
+    manager / in der Keychain des Entwicklerrechners hinterlassen."""
+
+    def __init__(self, working=True, block=None, lie=False):
+        self.working = working
+        self.block = block          # threading.Event: blockiert bis gesetzt
+        self.lie = lie              # get_password liefert einen falschen Wert
+        self.store = {}
+
+    def _guard(self):
+        if self.block is not None:
+            self.block.wait()
+        if not self.working:
+            raise RuntimeError("No recommended backend was available")
+
+    def set_password(self, service, account, password):
+        self._guard()
+        self.store[(service, account)] = password
+
+    def get_password(self, service, account):
+        self._guard()
+        value = self.store.get((service, account))
+        if self.lie and value is not None:
+            return value + "-verfälscht"
+        return value
+
+    def delete_password(self, service, account):
+        self._guard()
+        del self.store[(service, account)]
+
+
+def _install_fake_keyring(monkeypatch, fake):
+    module = types.ModuleType("keyring")
+    module.set_password = fake.set_password
+    module.get_password = fake.get_password
+    module.delete_password = fake.delete_password
+    monkeypatch.setitem(sys.modules, "keyring", module)
+    return fake
+
+
+def _clear_keyring_cache():
+    from src import keyring_store
+    if hasattr(keyring_store, "_known"):
+        keyring_store._known.clear()
+
+
+@pytest.fixture(autouse=True)
+def _no_os_keyring(monkeypatch):
+    """Standard für JEDEN Test: kein Schlüsselbund verfügbar — alle Pfade
+    verhalten sich wie heute ohne Schlüsselbund (Datei), und ein Entwickler
+    mit installiertem `keyring` schreibt beim Testlauf nichts in seinen
+    echten Schlüsselbund. Der Prozess-Cache von `keyring_store` wird
+    geleert, damit kein Test Werte eines anderen sieht."""
+    _clear_keyring_cache()
+    _install_fake_keyring(monkeypatch, FakeKeyring(working=False))
+
+
+@pytest.fixture
+def fake_keyring(monkeypatch):
+    def _install(working=True, block=None, lie=False):
+        _clear_keyring_cache()
+        return _install_fake_keyring(
+            monkeypatch, FakeKeyring(working=working, block=block, lie=lie))
+    return _install
 
 
 # --- Google-Anmeldung: Token-Zustände und Consent-Stolperdraht ---------------

@@ -10,49 +10,8 @@ Einträge im Windows-Anmeldeinformationsmanager hinterlassen.
 import logging
 import sys
 import threading
-import types
-
-import pytest
 
 from src import keyring_store
-
-
-class _FakeKeyring:
-    def __init__(self, working=True, block=None):
-        self.working = working
-        self.block = block          # threading.Event: blockiert bis gesetzt
-        self.store = {}
-
-    def _guard(self):
-        if self.block is not None:
-            self.block.wait()
-        if not self.working:
-            raise RuntimeError("No recommended backend was available")
-
-    def set_password(self, service, account, password):
-        self._guard()
-        self.store[(service, account)] = password
-
-    def get_password(self, service, account):
-        self._guard()
-        return self.store.get((service, account))
-
-    def delete_password(self, service, account):
-        self._guard()
-        del self.store[(service, account)]
-
-
-@pytest.fixture
-def fake_keyring(monkeypatch):
-    def _install(working=True, block=None):
-        fake = _FakeKeyring(working=working, block=block)
-        module = types.ModuleType("keyring")
-        module.set_password = fake.set_password
-        module.get_password = fake.get_password
-        module.delete_password = fake.delete_password
-        monkeypatch.setitem(sys.modules, "keyring", module)
-        return fake
-    return _install
 
 
 def _record(**over):
