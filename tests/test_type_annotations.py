@@ -51,6 +51,7 @@ ANNOTATED_MODULES = [
     "src/changelog.py",
     "src/desktop_entry.py",
     "src/oauth_utils.py",
+    "src/token_store.py",
     "src/sync_journal.py",
     "src/autostart.py",
     "src/single_instance.py",
