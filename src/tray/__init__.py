@@ -7,8 +7,9 @@ auf den Tk-Thread). macOS → `MacTrayBackend` (`tray/mac.py`): natives
 NSStatusItem SYNCHRON auf dem Main-Thread, KEIN Thread, keine zweite
 NSApplication (Fix #88). Linux → `LinuxTrayBackend` (`tray/linux.py`):
 StatusNotifierItem über D-Bus, ohne GTK oder GObject-Introspection (#42).
-macOS und Linux sind bis zu ihrem manuellen Plattform-Gate dormant (Opt-in
-`ZEIT_MACOS_TRAY=1` bzw. `ZEIT_LINUX_TRAY=1`, s. is_supported).
+macOS ist bis zu seinem manuellen Plattform-Gate dormant (Opt-in
+`ZEIT_MACOS_TRAY=1`); Linux läuft, sobald die Sitzung einen
+StatusNotifierWatcher hat (Plasma-Gate bestanden, s. is_supported).
 `build_menu_model` (`tray/model.py`) ist die backend-agnostische, testbare Naht.
 
 Der Import-Pfad bleibt `src.tray` — Aufrufer und Tests merken vom Paket-Schnitt
@@ -34,19 +35,24 @@ def _macos_tray_opt_in():
     return os.environ.get("ZEIT_MACOS_TRAY") == "1"
 
 
-def _linux_tray_opt_in():
-    """Linux-Tray ist bis zum bestandenen Plasma-Gate dormant: nur aktiv, wenn
-    der Tester ZEIT_LINUX_TRAY=1 setzt (#42, analog macOS). Der Default-an-Flip
-    ersetzt diese Prüfung später durch „läuft ein StatusNotifierWatcher?"."""
-    return os.environ.get("ZEIT_LINUX_TRAY") == "1"
+def _linux_tray_available():
+    """Linux-Tray läuft, wenn die Sitzung einen StatusNotifierWatcher hat —
+    die tatsächliche Abhängigkeit (KDE, XFCE, GNOME mit AppIndicator-
+    Extension). Ersetzt seit dem bestandenen Plasma-Gate (#42, 1.23.2) die
+    Opt-in-Env-Var `ZEIT_LINUX_TRAY`. Lazy importiert wie die Backends; das
+    Modul ist auf Modulebene stdlib-only und damit überall importierbar."""
+    from src.tray import linux
+    return linux.watcher_available()
 
 
 def is_supported():
     """Kann auf diesem System ein Tray-Icon gezeigt werden?
 
-    Windows → True. macOS und Linux → nur mit Opt-in (dormant-Default, s.
-    _macos_tray_opt_in / _linux_tray_opt_in). Aufrufer kann unabhängig davon
-    `try/except` machen, falls das Backend zur Laufzeit doch fehlschlägt.
+    Windows → True. macOS → nur mit Opt-in (dormant-Default, s.
+    _macos_tray_opt_in). Linux → wenn ein StatusNotifierWatcher läuft (s.
+    _linux_tray_available; kostet einen kurzen D-Bus-Aufruf). Aufrufer kann
+    unabhängig davon `try/except` machen, falls das Backend zur Laufzeit doch
+    fehlschlägt.
     """
     system = platform.system()
     if system == "Windows":
@@ -54,7 +60,7 @@ def is_supported():
     if system == "Darwin":
         return _macos_tray_opt_in()
     if system == "Linux":
-        return _linux_tray_opt_in()
+        return _linux_tray_available()
     return False
 
 

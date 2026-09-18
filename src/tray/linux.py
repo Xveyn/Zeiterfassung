@@ -148,6 +148,42 @@ class MenuState:
         return False
 
 
+def watcher_available(timeout=2.0):
+    """Hat diese Sitzung einen StatusNotifierWatcher? Entscheidet, ob das
+    Linux-Tray angeboten wird (`tray.is_supported`).
+
+    Die ehrliche Laufzeitprüfung statt einer Desktop-Whitelist: sie deckt KDE,
+    XFCE und GNOME mit AppIndicator-Extension ab — und sagt auf GNOME ohne
+    Extension „nein", bevor Minimize-to-Tray das Fenster in einen Infobereich
+    schickt, den es nicht gibt. Jeder Fehler (kein Session-Bus, dbus_fast
+    fehlt, Timeout) heißt ebenfalls „nein"; geloggt ohne Traceback, weil das
+    auf solchen Desktops bei jedem Start so ist.
+    """
+    async def probe():
+        from dbus_fast import BusType, Message, MessageType  # pyright: ignore[reportMissingImports]  # dbus-fast: nur auf Linux installiert
+        from dbus_fast.aio import MessageBus  # pyright: ignore[reportMissingImports]  # dbus-fast: nur auf Linux installiert
+
+        bus = await MessageBus(bus_type=BusType.SESSION).connect()
+        try:
+            reply = await bus.call(Message(
+                destination="org.freedesktop.DBus", path="/org/freedesktop/DBus",
+                interface="org.freedesktop.DBus", member="NameHasOwner",
+                signature="s", body=[WATCHER_NAME],
+            ))
+        finally:
+            bus.disconnect()
+        return (reply is not None and reply.message_type is MessageType.METHOD_RETURN
+                and bool(reply.body[0]))
+
+    try:
+        return asyncio.run(asyncio.wait_for(probe(), timeout))
+    except Exception as exc:
+        # Bewusst alles: für die Frage „Tray anbieten?" ist jede Störung ein Nein.
+        logger.info("Kein StatusNotifierWatcher erreichbar (%s) — Linux-Tray aus",
+                    type(exc).__name__)
+        return False
+
+
 def argb32_from_rgba(rgba):
     """RGBA-Bytes → ARGB32 in Network-Byte-Order, wie SNI es für `IconPixmap`
     verlangt (`a(iiay)`). Pillow-frei und damit überall testbar."""

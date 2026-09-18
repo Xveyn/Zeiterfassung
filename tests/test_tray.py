@@ -4,21 +4,39 @@ import pytest
 from src import tray
 
 
-@pytest.mark.parametrize("system,mac_optin,linux_optin,expected", [
-    ("Windows", None, None, True),
-    ("Linux", None, None, False),    # dormant-Default
-    ("Linux", None, "1", True),      # opt-in für den Plasma-Tester
-    ("Darwin", None, None, False),   # dormant-Default
-    ("Darwin", "1", None, True),     # opt-in für den Mac-Tester
+@pytest.mark.parametrize("system,mac_optin,watcher,expected", [
+    ("Windows", None, False, True),
+    ("Linux", None, True, True),     # Sitzung mit StatusNotifierWatcher (Plasma, XFCE, …)
+    ("Linux", None, False, False),   # z. B. GNOME ohne AppIndicator-Extension
+    ("Darwin", None, True, False),   # dormant-Default, Watcher ist dort egal
+    ("Darwin", "1", False, True),    # opt-in für den Mac-Tester
 ])
-def test_is_supported_staging(system, mac_optin, linux_optin, expected, monkeypatch):
+def test_is_supported(system, mac_optin, watcher, expected, monkeypatch):
     monkeypatch.setattr("src.tray.platform.system", lambda: system)
-    for var, value in (("ZEIT_MACOS_TRAY", mac_optin), ("ZEIT_LINUX_TRAY", linux_optin)):
-        if value is None:
-            monkeypatch.delenv(var, raising=False)
-        else:
-            monkeypatch.setenv(var, value)
+    monkeypatch.setattr("src.tray.linux.watcher_available", lambda: watcher)
+    if mac_optin is None:
+        monkeypatch.delenv("ZEIT_MACOS_TRAY", raising=False)
+    else:
+        monkeypatch.setenv("ZEIT_MACOS_TRAY", mac_optin)
     assert tray.is_supported() is expected
+
+
+def test_linux_no_longer_needs_the_opt_in_variable(monkeypatch):
+    """Plasma-Gate bestanden (#42): die frühere Env-Var entscheidet nichts mehr."""
+    monkeypatch.setattr("src.tray.platform.system", lambda: "Linux")
+    monkeypatch.setattr("src.tray.linux.watcher_available", lambda: False)
+    monkeypatch.setenv("ZEIT_LINUX_TRAY", "1")
+    assert tray.is_supported() is False
+
+
+def test_watcher_probe_says_no_without_dbus_fast(monkeypatch):
+    """Ohne dbus_fast (Windows/macOS-CI, kaputter Build) ist die Antwort
+    „kein Watcher", nie eine Exception."""
+    import sys
+    from src.tray import linux
+    monkeypatch.setitem(sys.modules, "dbus_fast", None)
+    monkeypatch.setitem(sys.modules, "dbus_fast.aio", None)
+    assert linux.watcher_available(timeout=0.5) is False
 
 
 def test_build_menu_model_structure():

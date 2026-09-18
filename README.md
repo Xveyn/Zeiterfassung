@@ -355,14 +355,15 @@ Die App läuft auf **Windows, macOS und Linux**. Plattformspezifische Features w
 | Window-Icon | ✓ (`.ico`) | ✓ (`.png` Fallback) | ✓ (`.png` Fallback) |
 | Autostart bei Anmeldung | ✓ (Registry HKCU Run) | ✓ (LaunchAgent plist) | ✓ (`.desktop`-Datei) |
 | Eintrag im Anwendungsmenü | ✓ (Startmenü, vom Setup) | ✓ (`Zeiterfassung.app` in `/Applications`) | ✓ (`.desktop` in `~/.local/share/applications/`, von der App beim Start geschrieben) |
-| Infobereich-Icon (Tray) | ✓ (pystray) | ○ (NSStatusItem, Opt-in `ZEIT_MACOS_TRAY=1`) | ○ (StatusNotifierItem, Opt-in `ZEIT_LINUX_TRAY=1`) |
+| Infobereich-Icon (Tray) | ✓ (pystray) | ○ (NSStatusItem, Opt-in `ZEIT_MACOS_TRAY=1`) | ✓ (StatusNotifierItem) *(ab --VERSION--)* |
 | Standalone-Binary (PyInstaller) | ✓ (`.exe`) | ✓ (`.app` Bundle) | ✓ (AppImage) |
 | Update aus der App | ✓ (lädt, prüft, installiert; per Knopf mit Neustart, beim Beenden ohne) | — (Download im Browser) | ✓ (lädt, prüft, ersetzt die AppImage; per Knopf mit Neustart, beim Beenden ohne) |
 
 ○ = implementiert, aber bis zum manuellen Plattform-Test dormant. Das Linux-Tray
 spricht StatusNotifierItem über D-Bus (KDE Plasma, XFCE, GNOME mit
-AppIndicator-Extension); Desktops ohne StatusNotifierWatcher bekommen wie bisher
-kein Icon. Unter Wayland holt ein Klick das Fenster zurück, das Anheben in den
+AppIndicator-Extension) und schaltet sich ein, sobald die Sitzung einen
+Infobereich dafür hat; ohne ihn bleibt es aus, und die App sagt beim Einschalten,
+woran es liegt. Unter Wayland holt ein Klick das Fenster zurück, das Anheben in den
 Vordergrund darf der Compositor aber verweigern.
 
 ## Datenspeicherung

@@ -595,8 +595,14 @@ Wert.
   **lazy** in `_select_backend` (sonst zöge `src.ui → src.tray` PyObjC bzw. dbus_fast
   auf die falsche Plattform), und die Backends importieren `build_menu_model` aus
   `tray/model.py`, **nicht** aus dem Paket-`__init__` — so zeigt jede Kante nach unten.
-  Beide Nicht-Windows-Backends sind dormant hinter einer Opt-in-Env-Var, bis ihr
-  manuelles Plattform-Gate grün ist.
+  Das macOS-Backend ist dormant hinter der Opt-in-Env-Var `ZEIT_MACOS_TRAY=1`, bis
+  sein manuelles Plattform-Gate grün ist. Das Linux-Backend hat seines seit 1.23.2
+  bestanden (Plasma 6): `is_supported()` fragt dort per
+  `tray.linux.watcher_available()` einen kurzen D-Bus-Aufruf (`NameHasOwner`), ob
+  die Sitzung einen `org.kde.StatusNotifierWatcher` hat — die tatsächliche
+  Abhängigkeit statt einer Desktop-Whitelist. Ohne Watcher (GNOME ohne
+  AppIndicator-Extension) bleibt das Tray aus, bevor Minimize-to-Tray das Fenster
+  in einen Infobereich schicken könnte, den es nicht gibt.
 
 Das Tray-Icon läuft, sobald `minimize_to_tray` **oder** `reminders_enabled` aktiv ist (`ui.py::_apply_tray_setting`); bei nur `reminders_enabled` dient es ausschließlich als Toast-Kanal.
 
