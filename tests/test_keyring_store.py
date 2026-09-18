@@ -201,3 +201,87 @@ def test_delete_secret_timeout_does_not_log_the_record_id(
     finally:
         gate.set()
     assert "rec-4711-abcdef" not in caplog.text
+
+
+# --- schlüsselbasiert: put / fetch / remove (#101) -------------------------
+
+
+def _entry(key):
+    return (keyring_store.service_for(key), key)
+
+
+def test_service_is_per_entry():
+    """Ein Service je Eintrag: WinVaultKeyring schichtet mehrere Nutzernamen
+    unter EINEM Service per ungeschütztem Lesen-Ändern-Schreiben um."""
+    assert keyring_store.service_for("webhook:w1") == "Zeiterfassung:webhook:w1"
+
+
+def test_put_and_fetch_roundtrip(fake_keyring):
+    fake = fake_keyring()
+    assert keyring_store.put("google-oauth:abc", "1//refresh") is True
+    assert fake.store[_entry("google-oauth:abc")] == "1//refresh"
+    assert keyring_store.fetch("google-oauth:abc") == "1//refresh"
+
+
+def test_smtp_entries_stay_under_the_plain_service(fake_keyring):
+    fake = fake_keyring()
+    keyring_store.set_secret("rec-1", "pw")
+    keyring_store.put("webhook:w1", "tok")
+    assert (keyring_store.SERVICE, "rec-1") in fake.store
+    assert _entry("webhook:w1") in fake.store
+
+
+def test_fetch_returns_empty_string_for_a_missing_entry(fake_keyring):
+    fake_keyring()
+    assert keyring_store.fetch("google-oauth:abc") == ""
+
+
+def test_put_and_fetch_without_backend(fake_keyring):
+    fake_keyring(working=False)
+    assert keyring_store.put("k", "v") is False
+    assert keyring_store.fetch("k") is None
+
+
+def test_put_skips_an_unchanged_value(fake_keyring):
+    """Nur bei Änderung schreiben: jeder Token-Refresh schriebe sonst neu
+    (macOS: SecItemDelete+SecItemAdd, nicht atomar)."""
+    fake = fake_keyring()
+    keyring_store.put("k", "v")
+    del fake.store[_entry("k")]           # „hinter dem Rücken" entfernt
+    assert keyring_store.put("k", "v") is True
+    assert _entry("k") not in fake.store  # gleicher Wert: nicht erneut geschrieben
+    assert keyring_store.put("k", "w") is True
+    assert fake.store[_entry("k")] == "w"
+
+
+def test_put_and_fetch_give_up_when_the_keyring_blocks(fake_keyring, monkeypatch):
+    import threading
+    monkeypatch.setattr(keyring_store, "WATCHDOG_TIMEOUT", 0.05)
+    release = threading.Event()
+    fake_keyring(block=release)
+    try:
+        assert keyring_store.put("k", "v") is False
+        assert keyring_store.fetch("k") is None
+    finally:
+        release.set()
+
+
+def test_remove_deletes_and_is_quiet_when_missing(fake_keyring):
+    fake = fake_keyring()
+    keyring_store.put("k", "v")
+    keyring_store.remove("k")
+    assert _entry("k") not in fake.store
+    keyring_store.remove("k")             # fehlt: kein Fehler
+    assert keyring_store.put("k", "v") is True
+    assert fake.store[_entry("k")] == "v"  # Cache nach remove geleert
+
+
+def test_put_fetch_remove_never_log_key_or_value(fake_keyring, caplog):
+    import logging
+    fake_keyring(working=False)
+    with caplog.at_level(logging.DEBUG, logger="src.keyring_store"):
+        keyring_store.put("google-oauth:geheimer-schluessel", "1//geheim")
+        keyring_store.fetch("google-oauth:geheimer-schluessel")
+        keyring_store.remove("google-oauth:geheimer-schluessel")
+    assert "geheimer-schluessel" not in caplog.text
+    assert "1//geheim" not in caplog.text

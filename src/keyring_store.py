@@ -177,6 +177,109 @@ def delete_secret(record_id: str) -> None:
         log.warning("Schlüsselbund antwortet nicht — ein Secret blieb stehen")
 
 
+# Zuletzt geschriebener bzw. gelesener Wert je Schlüssel, nur in diesem
+# Prozess. `put` schreibt nur bei Änderung: sonst schriebe jeder stündliche
+# Token-Refresh denselben Wert neu — unter macOS über SecItemDelete +
+# SecItemAdd (nicht atomar, womöglich mit Keychain-Rückfrage), unter Linux
+# bei hängendem Secret Service mit 30 s Watchdog. Preis: wird ein Eintrag
+# außerhalb der App entfernt, merkt das erst der nächste Start.
+_known: dict[str, str] = {}
+_known_lock = threading.Lock()
+
+
+def service_for(key: str) -> str:
+    """Service-Name eines schlüsselbasierten Eintrags (#101): einer je
+    Eintrag. Unter EINEM gemeinsamen Service schichtet WinVaultKeyring
+    mehrere Nutzernamen per ungeschütztem Lesen-Ändern-Schreiben um — nicht
+    thread-sicher, und die SMTP-Passwörter unter `SERVICE` wären betroffen."""
+    return f"{SERVICE}:{key}"
+
+
+def put(key: str, value: str) -> bool:
+    """Legt `value` unter `key` ab. `True` bei Erfolg (oder unverändert).
+
+    Anders als `set_secret` ohne Datensatz und ohne Datei-Fallback — den
+    entscheidet der Aufrufer. Geloggt wird weder Schlüssel noch Wert.
+    """
+    with _known_lock:
+        if _known.get(key) == value:
+            return True
+
+    def work() -> None:
+        import keyring  # pyright: ignore[reportMissingImports]
+
+        keyring.set_password(service_for(key), key, value)
+
+    try:
+        ok, _ = _call_guarded(work)
+    except Exception:
+        # Bewusst alles: kein Backend, D-Bus-Fehler, Lib fehlt — für den
+        # Aufrufer dasselbe (s. set_secret).
+        log.info("Schlüsselbund nicht verfügbar — Eintrag nicht abgelegt",
+                 exc_info=True)
+        return False
+    if not ok:
+        log.warning("Schlüsselbund antwortet nicht (Timeout nach %.1fs) — "
+                    "Eintrag nicht abgelegt", WATCHDOG_TIMEOUT)
+        return False
+    with _known_lock:
+        _known[key] = value
+    return True
+
+
+def fetch(key: str) -> str | None:
+    """Liest `key` — immer aus dem Schlüsselbund, nie aus dem Cache.
+
+    `None`: NICHT ermittelbar (kein Backend, Timeout, Fehler). `""`: der
+    Schlüsselbund hat geantwortet, es gibt keinen Eintrag. Aufrufer MÜSSEN
+    beides unterscheiden — dieselbe Regel wie bei `get_secret`.
+    """
+    def work() -> Any:
+        import keyring  # pyright: ignore[reportMissingImports]
+
+        return keyring.get_password(service_for(key), key)
+
+    try:
+        ok, stored = _call_guarded(work)
+    except Exception:
+        # Bewusst alles, s. put.
+        log.warning("Schlüsselbund nicht lesbar", exc_info=True)
+        return None
+    if not ok:
+        log.warning("Schlüsselbund antwortet nicht (Timeout nach %.1fs)",
+                    WATCHDOG_TIMEOUT)
+        return None
+    value = str(stored) if stored else ""
+    with _known_lock:
+        if value:
+            _known[key] = value
+        else:
+            _known.pop(key, None)
+    return value
+
+
+def remove(key: str) -> None:
+    """Räumt `key` ab. Ein fehlender Eintrag ist kein Fehler."""
+    with _known_lock:
+        _known.pop(key, None)
+
+    def work() -> None:
+        import keyring  # pyright: ignore[reportMissingImports]
+
+        keyring.delete_password(service_for(key), key)
+
+    try:
+        ok, _ = _call_guarded(work)
+    except Exception:
+        # Bewusst alles: kein Backend oder kein Eintrag (PasswordDeleteError)
+        # — beides heißt „nichts zu tun". Ohne Schlüssel im Log, s. put.
+        log.debug("Ein Eintrag ließ sich nicht entfernen (kein Schlüsselbund "
+                  "oder kein Eintrag)", exc_info=True)
+        return
+    if not ok:
+        log.warning("Schlüsselbund antwortet nicht — ein Eintrag blieb stehen")
+
+
 def persist_password(candidate: dict[str, Any], typed: str,
                      stored: dict[str, Any] | None = None) -> dict[str, Any]:
     """Entscheidet, wo das Passwort landet, und legt es ab.
