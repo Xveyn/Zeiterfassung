@@ -400,16 +400,17 @@ Speicherort je nach Plattform:
 | Linux (AppImage) | `$XDG_DATA_HOME/Zeiterfassung/` (Fallback `~/.local/share/Zeiterfassung/`) |
 | Entwicklung (Source) | Projekt-Root |
 
-> **Sicherheitshinweis** *(ab --VERSION--)*: Vier Dateien im Datenordner sind
-> Geheimnisse, keine Nutzerdaten. `token.json` enthält einen langlebigen
+> **Sicherheitshinweis:** Vier Dateien im Datenordner sind Geheimnisse, keine
+> Nutzerdaten. `token.json` enthält einen langlebigen
 > OAuth-Refresh-Token, der laufenden Zugriff auf dein Google-Konto
 > (Gmail-Versand, Drive-Sync, ggf. Kalender) gewährt. `webhooks.json` enthält
 > die Zugangstoken bzw. HMAC-Schlüssel deiner Webhook-Ziele. `smtp.json`
 > enthält die SMTP-Kontodaten und, nur im Datei-Fallback, das Mail-Passwort.
 > `instance-secret` schützt den lokalen Single-Instance-Kanal.
 >
-> **Mit verfügbarem Schlüsselbund** (Windows Anmeldeinformationsverwaltung /
-> macOS-Schlüsselbund / Linux Secret Service) liegen Refresh-Token,
+> **Mit verfügbarem Schlüsselbund** *(ab --VERSION--)* (Windows
+> Anmeldeinformationsverwaltung / macOS-Schlüsselbund / Linux Secret Service)
+> liegen Refresh-Token,
 > Webhook-Secrets und SMTP-Passwort dort statt im Klartext in diesen Dateien —
 > sie tragen dann nur noch einen Verweis auf den Schlüsselbund-Eintrag. Ist
 > kein Schlüsselbund verfügbar, bleibt es wie oben beschrieben: das jeweilige

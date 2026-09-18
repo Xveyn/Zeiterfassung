@@ -1040,7 +1040,16 @@ nicht mehr als „offen" führen — der Verweis lautet auf diese Grenze.
 - `src/token_store.py` — lädt/speichert die OAuth-Credentials (#101). `token.json`
   bleibt am bisherigen Ort liegen — Speichern behält den Ort bei, umziehen darf
   nur `secret_migration`. Im Schlüsselbund-Modus trägt die Datei nur noch den
-  Schlüssel (`refresh_token_key`), nicht den Refresh-Token selbst
+  Schlüssel (`refresh_token_key`), nicht den Refresh-Token selbst. Scheitert
+  dort das Schreiben in den Schlüsselbund, landet der Token vollständig in der
+  Datei, **der Schlüssel bleibt aber stehen** (ohne `refresh_token_location`):
+  unter ihm liegt noch der alte Eintrag, und nur so finden ihn der nächste
+  Umzug, `oauth_utils.forget_token` und `--forget-secrets` wieder. Eine Datei
+  ohne Schlüssel wird unverändert byte-gleich zu `write_token` geschrieben.
+  Speichern, Umzug und `forget_token` laufen unter `TOKEN_LOCK` (liegt in
+  `oauth_utils`, hier re-exportiert); `load_credentials` nimmt ihn bewusst
+  nicht, liest aber nach einem `ValueError` einmal neu, falls der Umzug die
+  Datei gerade umgeschrieben hat
 - `src/sync.py` — Sync-Engine (pure Logik: LWW-Merge der Entries/Settings, Konflikterkennung); importiert `SYNCED_SETTING_KEYS` aus `settings.py` (Single Source of Truth, nicht hier neu definieren); `validate_remote_doc` prüft ein Remote-Doc auf die Merge-Invarianten vor dem Merge (Audit M5)
 - `src/sync_runtime.py` — Sync-/Kompaktierungs-/Reconcile-**Runtime**: `run_pull_in_background`, `run_push_blocking`, `run_compaction_blocking`, `run_calendar_reconcile`, `run_vacation_purge`. Die Flows über der Engine `sync.py`; Google-Wrapper lazy in den Funktionen (CI). Aufrufer: `main.py`, `sync_orchestrator.py`, `background_tasks.py`, `tab_google.py`
 - `src/sync_journal.py` — Crash-Recovery für `sync.apply_merged_doc` via Write-Ahead-Journal (`sync-apply.journal`); beim Start holt `recover_pending_apply` einen unvollständigen Apply idempotent nach (Audit M6)
@@ -1108,15 +1117,20 @@ nicht mehr als „offen" führen — der Verweis lautet auf diese Grenze.
   **eigenen** Service-Namen (`service_for(key)`), nicht dem gemeinsamen
   `SERVICE` der SMTP-Konten, weil WinVaultKeyring mehrere Nutzernamen unter
   einem Service nicht threadsicher umschichtet. Ein Prozess-Cache (`_known`)
-  schreibt nur bei geänderten Werten neu — `fetch` füllt ihn dafür **nie**,
-  sondern verwirft nur einen veralteten Eintrag; ein extern gelöschter
-  Schlüsselbund-Eintrag fällt deshalb erst beim nächsten Prozessstart auf
+  spart unveränderte Schreibzugriffe; fehlt ein Schlüssel darin (erstes `put`
+  nach dem Start), liest `put` zuerst und schreibt nur bei abweichendem Wert —
+  unter macOS wird aus Löschen-und-neu-Anlegen so ein Lesen. `fetch` füllt den
+  Cache **nie** und liest immer direkt: ein extern gelöschter Eintrag fällt
+  beim nächsten Laden auf (→ neu anmelden) und verwirft dabei den Cache
 - `src/secret_migration.py` — zieht beim Start Klartext-Secrets in den
   Schlüsselbund (Token, Webhooks) und liefert den Uninstaller-Weg zurück
   (`forget_all`, s. `installer.iss`). Idempotent bei jedem Start geprüft, kein
   Versionsvergleich: pro Secret in den Schlüsselbund schreiben, zurücklesen,
   nur bei Übereinstimmung die Datei umschreiben — jeder Abbruch davor lässt die
-  Datei gültig, der nächste Start holt nach. Einmaliger Hinweis danach
+  Datei gültig, der nächste Start holt nach. Trägt `token.json` schon einen
+  `refresh_token_key` (Datei-Fallback), nimmt der Umzug denselben Schlüssel
+  statt eines neuen; `forget_all` räumt jeden Schlüssel ab, den die Datei
+  trägt, unabhängig von `refresh_token_location`. Einmaliger Hinweis danach
   (`ui.App._on_secrets_migrated`, Dialog/Toast/Log je nach Fenstersichtbarkeit)
 - `src/dialogs/smtp_dialog.py` — Anlegen/Bearbeiten eines SMTP-Kontos inkl.
   Verbindungstest

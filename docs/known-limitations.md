@@ -269,7 +269,10 @@ Eine ältere App-Version kennt das Schlüsselbund-Format von `token.json` nicht
 und übergibt sie ohne `refresh_token` an google-auth — die Bibliothek bricht
 dann mit `ValueError: … missing fields refresh_token` ab. Abhilfe: einmal
 Einstellungen → Google → „Google neu verbinden", das schreibt `token.json`
-wieder im Format der installierten Version. Gleiches gilt für Webhooks mit
+wieder im Format der installierten Version. Die ältere Version löscht dabei
+allerdings nur die Datei: der Schlüsselbund-Eintrag bleibt verwaist, und weil
+die neu geschriebene `token.json` keinen Schlüssel mehr trägt, findet ihn
+danach auch der Uninstaller nicht mehr. Gleiches gilt für Webhooks mit
 aktivierter Authentifizierung: eine ältere Version sendet dort ohne Wert im
 Header bzw. signiert mit leerem HMAC-Secret, statt den Schlüsselbund zu lesen.
 
@@ -287,15 +290,6 @@ Eintrag. Google-Access-Tokens reservieren bis zu 2048 Byte — deshalb liegt nur
 der Refresh-Token im Schlüsselbund, `token.json` behält Access-Token, Scopes,
 Client und Ablauf unverändert als Datei (s. `src/CLAUDE.md`, Abschnitt
 „Google-Integration").
-
-### Extern gelöschter Eintrag fällt erst beim nächsten Start auf
-
-`keyring_store` cacht geschriebene Werte pro Prozess und schreibt nur bei
-Änderung neu (s. „macOS fragt nach jedem App-Update erneut" oben für den
-Grund). Wird ein Eintrag außerhalb der App entfernt — von Hand in der
-Anmeldeinformationsverwaltung/Schlüsselbundverwaltung —, merkt das laufende
-App-Fenster das nicht sofort; erst der nächste Start liest den Schlüsselbund
-wieder direkt und erkennt das Fehlen.
 
 ### Klartext-Reste außerhalb des Umzugs
 
@@ -328,10 +322,17 @@ Sie läuft danach normal weiter, die betroffenen Einträge bleiben stehen.
 `--forget-secrets` räumt der Windows-Uninstaller auf; macOS (`.app` in
 `/Applications`) und Linux (AppImage) kennen keinen Deinstallations-Hook, der
 das automatisch auslösen könnte (s. „Linux: Reste nach dem Löschen der
-AppImage" oben). Wer die Schlüsselbund-Einträge dort von Hand entfernen will,
-findet sie unter dem Service-Präfix `Zeiterfassung:` in der
-„Schlüsselbundverwaltung" (macOS) bzw. „Passwörter und Schlüssel" (Linux,
-GNOME Keyring/Seahorse — abhängig vom installierten Secret-Service-Backend).
+AppImage" oben). `--forget-secrets` funktioniert dort aber genauso — **vor**
+dem Löschen der App und ihres Datenordners einmal von Hand starten, denn die
+Schlüssel stehen in den Dateien:
+
+- macOS: `/Applications/Zeiterfassung.app/Contents/MacOS/Zeiterfassung --forget-secrets`
+- Linux: `./Zeiterfassung-*.AppImage --forget-secrets`
+
+Wer die Schlüsselbund-Einträge stattdessen von Hand entfernen will, findet sie
+unter dem Service-Präfix `Zeiterfassung:` in der „Schlüsselbundverwaltung"
+(macOS) bzw. „Passwörter und Schlüssel" (Linux, GNOME Keyring/Seahorse —
+abhängig vom installierten Secret-Service-Backend).
 
 ## macOS: kein Selbst-Update
 

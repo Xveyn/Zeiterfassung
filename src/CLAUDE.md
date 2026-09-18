@@ -417,7 +417,8 @@ Zeitraum und welche Kategorien der Bericht gefiltert ist.
 `vacations_sync.py` (Einwegs-Push der Urlaubsperioden). Alle teilen
 denselben OAuth-Token; Scope-Upgrade erzwingt frischen Consent.
 
-Geschrieben wird der Token ausschließlich über `oauth_utils.write_token`: Temp-Datei →
+Gemeinsamer Schreibpfad des Tokens ist `oauth_utils.write_token_json` (genutzt von
+`write_token`, `token_store` und `secret_migration`), immer unter `TOKEN_LOCK`: Temp-Datei →
 Härtung → `os.replace` (mit `PermissionError`-Retry, margenheld/Zeiterfassung#135). Zur Härtung siehe
 `secure_file` unten.
 
@@ -429,7 +430,10 @@ einmal gewählten Ort bei (Datei bleibt Datei), umziehen darf ausschließlich
 `secret_migration`. Einen Token verwerfen heißt seit #101 `oauth_utils.
 forget_token(token_path)` statt eines rohen `os.remove` — sonst bliebe im
 Schlüsselbund-Fall ein verwaister Eintrag stehen, unter einer `key`, die in
-keiner Datei mehr referenziert wird. Antwortet der Schlüsselbund beim Laden
+keiner Datei mehr referenziert wird. Maßgeblich ist dabei der Schlüssel, nicht
+der Ort: nach einem Datei-Fallback (Schlüsselbund fiel beim Speichern aus)
+steht der Token wieder in der Datei, `refresh_token_key` aber auch — und
+darunter noch der alte Eintrag. Antwortet der Schlüsselbund beim Laden
 nicht, wirft `token_store.load_credentials` `oauth_utils.
 TokenKeyringUnavailable` — **kein** Auth-Fehler (der Token ist nicht ungültig,
 nur gerade nicht lesbar) und darf deshalb **keinen** interaktiven Consent-Flow
@@ -521,7 +525,7 @@ Wert.
   (Repo-Modus: No-op, würde andernfalls python.exe+Repo ins Register schreiben und bestehende
   Shortcuts beschädigen).
 - `secure_file.py` — Zugriffsschutz für die vier lokal abgelegten Secrets: `token.json`
-  (`oauth_utils.write_token`), `instance-secret` (`single_instance._write_secret_atomic`),
+  (`oauth_utils.write_token_json`), `instance-secret` (`single_instance._write_secret_atomic`),
   `webhooks.json` (`webhook_store._save_to_disk`, dritter Schreibpfad — enthält
   Auth-Token/HMAC-Secrets der konfigurierten Webhooks) und `smtp.json`
   (`smtp_store._save_to_disk`, vierter Schreibpfad — enthält, nur ohne Schlüsselbund,
@@ -536,15 +540,16 @@ Wert.
   gescheiterte Persistenz wäre eine Regression. Eigenes Modul, damit `single_instance`
   nichts aus dem OAuth-Umfeld importieren muss (und keiner den privaten Namen des anderen
   nutzt, Audit N17). Wer einen fünften Secret-Schreibpfad baut, ruft diesen Helfer mit auf.
-  **Aufrufhäufigkeit:** der Helfer hängt an `write_token`, läuft also bei *jedem*
+  **Aufrufhäufigkeit:** der Helfer hängt an `write_token_json`, läuft also bei *jedem*
   Token-Refresh in Mail-, Drive- und Kalender-Pfad — ein `icacls`-Subprozess pro
   Refresh, nicht einmalig beim Anlegen. Unkritisch, weil alle diese Pfade in den
   Worker-Threads des `BackgroundTaskRunner` laufen (die UI blockiert nicht) und der
   Aufruf ein `timeout=15` trägt. Wissen fürs Debugging: liegen die Daten auf einem
   hängenden Netzlaufwerk, verzögert sich der Token-Schreibvorgang um bis zu diese
   15s pro Refresh. Wer den Helfer in einen UI-Thread-Pfad hängt, muss das prüfen.
-  **Mit verfügbarem Schlüsselbund (#101) trägt keine der vier Dateien mehr das
-  eigentliche Secret im Klartext** — `token.json` nur noch `refresh_token_key`,
+  **Mit verfügbarem Schlüsselbund (#101) tragen `token.json`, `webhooks.json` und
+  `smtp.json` das eigentliche Secret nicht mehr im Klartext** (`instance-secret`
+  bleibt Klartext) — `token.json` nur noch `refresh_token_key`,
   `webhooks.json` nur `secret_location`, `smtp.json` nur `password_location`;
   `write_token`/`write_token_json` und die beiden `_save_to_disk` bleiben aber
   unverändert die Schreibpfade, über `harden_windows_acl` gehärtet, weil ohne
