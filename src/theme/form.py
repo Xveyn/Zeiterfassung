@@ -153,8 +153,16 @@ class Form:
             self.frame.grid_rowconfigure(0, weight=1)
             self.frame.grid_columnconfigure(0, weight=1)
             self.body = tk.Frame(self._canvas, bg=BG)
-            self._canvas.create_window((0, 0), window=self.body, anchor="nw")
+            self._body_window = self._canvas.create_window(
+                (0, 0), window=self.body, anchor="nw")
             self.body.bind("<Configure>", self._fit_canvas, add="+")
+            # Ohne das hier bliebe der Körper auf seiner reqwidth stehen,
+            # sobald der Canvas breiter zugewiesen bekommt als er selbst
+            # angefordert hat (z.B. im Notebook-Tab neben einer breiteren
+            # Seite): die Trennlinie der Abschnitte reichte dann nicht bis
+            # zum rechten Rand, und `_rewrap` läse weiterhin die alte,
+            # schmale `body.winfo_width()`.
+            self._canvas.bind("<Configure>", self._fit_body_width, add="+")
             # Am Toplevel statt per <Enter>/<Leave>: die feuern auch beim
             # Wechsel auf ein Kind-Widget. Jedes Form prüft selbst, ob das
             # Event in seinem Canvas liegt (mehrere Forms je Dialog).
@@ -334,6 +342,21 @@ class Form:
         else:
             self._bar.grid_remove()
             canvas.yview_moveto(0)
+
+    def _fit_body_width(self, event):
+        """Streckt das `body`-Fenster-Item auf die tatsächliche Canvas-
+        Breite, nie schmaler als `body` von sich aus bräuchte. Ohne das
+        bliebe `body` auf seiner reqwidth stehen, sobald der Canvas mehr
+        Platz zugewiesen bekommt (Notebook-Tab neben einer breiteren Seite) —
+        die Abschnitts-Trennlinie erreichte den rechten Rand nicht, und
+        `_rewrap` läse eine zu schmale Breite. `_fit_canvas` bleibt bei der
+        reqwidth für die eigene Größenanforderung des Canvas, sonst gäbe es
+        eine Rückkopplung."""
+        canvas = self._canvas
+        if canvas is None:
+            return
+        width = max(event.width, self.body.winfo_reqwidth())
+        canvas.itemconfigure(self._body_window, width=width)
 
     def _scroll(self, event):
         if self._canvas is None or not self._scrollable:
