@@ -1,7 +1,7 @@
 # OAuth-Token und Webhook-Secrets in den OS-Schlüsselbund — Design
 
 **Datum:** 2026-09-18
-**Status:** Design abgestimmt; offene Punkte werden vor dem Plan per Recherche geklärt
+**Status:** Design abgestimmt, offene Punkte per Recherche geklärt (R1–R6, s.u.); Implementierungsplan folgt
 **Branch:** `feat/secrets-keyring`
 **Issue:** Xveyn/Zeiterfassung#101 (Kontext-Check und Umfangsentscheidung im Issue-Kommentar vom 2026-09-18)
 
@@ -47,14 +47,16 @@ bewusst in `token.json` (s. „Warum nur der Refresh-Token").
 
 ### Warum nur der Refresh-Token
 
-- **Windows-Größenlimit.** `keyring`s `WinVaultKeyring` schreibt per
-  `win32cred.CredWrite` und teilt dabei nicht auf. Ein Eintrag fasst
-  höchstens 2560 Byte, also rund 1280 Zeichen, falls als UTF-16 kodiert
-  (**Recherche R1**).
+- **Windows-Größenlimit (R1, bestätigt).** `keyring`s `WinVaultKeyring`
+  schreibt per `win32cred.CredWrite` und teilt dabei nicht auf. Der Blob ist
+  UTF-16 kodiert und darf höchstens 2560 Byte groß sein, also höchstens
+  **1280 Zeichen**. Wird das überschritten, antwortet `CredWrite` mit
+  Fehler 1783 („The stub received bad data").
   - Ein reales `token.json` hat ~970 Zeichen.
-  - Google reserviert für Access-Tokens bis zu 2048 Byte.
-  - Das ganze Token-JSON würde also früher oder später nicht mehr passen.
-    Ein Refresh-Token dagegen ist kurz.
+  - Google nennt als Obergrenze **2048 Byte für Access-Tokens** und
+    **512 Byte für Refresh-Tokens**.
+  - Das ganze Token-JSON kann das Limit also reißen. Ein Refresh-Token
+    belegt im schlechtesten Fall ~40 % davon.
 - **Der Access-Token muss in der Datei bleiben.** Fehlt er, liefert
   google-auth `creds.valid = False`, aber auch `creds.expired = False`,
   solange `expiry` fehlt oder in der Zukunft liegt.
@@ -92,6 +94,13 @@ class TokenKeyringUnavailable(Exception)
     `Credentials.from_authorized_user_info(info, scopes)`.
   - Ohne das Feld (Alt-Format) oder bei `"file"` verhält es sich exakt wie
     heute `from_authorized_user_file`.
+  - google-auth verlangt `refresh_token`, `client_id` und `client_secret`
+    und wirft sonst `ValueError` („Authorized user info was not in the
+    expected format, missing fields …"). Das gilt unverändert seit
+    Einführung der Methode (R3). Liefert der Schlüsselbund `""` (Eintrag
+    fehlt), prüft `load_credentials` das **vorher** und meldet den
+    Reauth-Fall. Es lässt den `ValueError` nicht als unerwarteten Fehler
+    durchlaufen.
   - Es ersetzt die fünf Aufrufe von `Credentials.from_authorized_user_file`
     in `mail.py` (3×: `fetch_user_email`, `refresh_token_if_needed`,
     `get_gmail_service`), `drive.py` und `gcal.py`.
@@ -99,8 +108,10 @@ class TokenKeyringUnavailable(Exception)
   (`mail`, `drive`, `gcal`).
   - Zuerst wird der Refresh-Token in den Schlüsselbund geschrieben.
   - Klappt das, geht die Datei **ohne** `refresh_token` und mit
-    `refresh_token_location: "keyring"` raus. Klappt es nicht, wird das
-    vollständige JSON wie heute mit `"file"` geschrieben.
+    `refresh_token_location: "keyring"` raus. Dafür wird
+    `creds.to_json(strip=["refresh_token"])` genutzt, nicht ein von Hand
+    bearbeitetes Dict. Klappt es nicht, wird das vollständige JSON wie heute
+    mit `"file"` geschrieben.
   - Der Datei-Schreibweg selbst bleibt `write_token`: atomar, gehärtet, mit
     Retry. Er bekommt dafür einen Parameter für das zu schreibende JSON,
     statt `creds.to_json()` selbst zu rufen.
@@ -182,8 +193,12 @@ def migrate(pending: Pending, ...) -> MigrationReport
   bekommt also einen zusätzlichen Abschluss-Callback, der immer gerufen wird.
   Außerdem liest er die
   Datei unmittelbar vor dem Schreiben erneut und zieht nur um, wenn der
-  Refresh-Token darin noch derselbe ist, den er verglichen hat
-  (**Recherche R2**: rotiert Google Refresh-Tokens bei Desktop-Clients?).
+  Refresh-Token darin noch derselbe ist, den er verglichen hat.
+  - R2: Google rotiert bei Desktop-Clients nicht bei jedem Refresh.
+    google-auth übernimmt aber jeden `refresh_token`, den der Endpunkt
+    liefert (`_handle_refresh_grant_response`).
+  - Rotation ist also selten, aber jederzeit möglich. Die Prüfung bleibt
+    deshalb.
 
 ### Hinweis nach dem Umzug
 
@@ -192,7 +207,16 @@ def migrate(pending: Pending, ...) -> MigrationReport
 - **Sichtbares Fenster:** themed Info-Dialog, bekannt-themed nach N14.
   Text-Entwurf: „Deine Google-Anmeldung und die Zugangsdaten deiner Webhooks
   liegen jetzt im Schlüsselbund des Betriebssystems statt im Klartext im
-  Datenordner." Unter macOS kommt ein Satz zum Keychain-Dialog dazu.
+  Datenordner."
+- **Unter macOS** kommt ein Satz dazu, **nicht** als „einmalig" formuliert:
+  „macOS kann nach App-Updates erneut fragen, ob Zeiterfassung auf den
+  Schlüsselbund zugreifen darf."
+  - Grund (R4): Die Keychain-ACL („Immer erlauben") hängt an der
+    Designated Requirement der Signatur.
+  - Die ad-hoc-Signatur ändert sich mit jedem Build, und damit greift die
+    alte Freigabe nach einem Update nicht mehr.
+  - Abhilfe wäre eine stabile Signatur (Developer ID). Die liegt außerhalb
+    dieses Vorhabens (s. „Bewusst nicht dabei").
 - **Autostart mit `--minimized` oder Fenster im Tray:** Tray-Toast statt
   Pop-up. Ohne Tray gibt es nur einen Log-Eintrag.
 
@@ -221,9 +245,10 @@ bleibt eng.
   Webhook in der Datei (z.B. weil sein Umzug scheiterte), oder umgekehrt.
 - **Downgrade (neu → alt), eine dokumentierte Einschränkung:**
   - Eine alte Version kennt `refresh_token_location` nicht. Ihr fehlt der
-    Refresh-Token, der Nutzer muss einmal „Google neu verbinden"
-    (**Recherche R3**: genaues Verhalten von google-auth bei fehlendem
-    `refresh_token`).
+    Refresh-Token. google-auth wirft dann `ValueError` („missing fields
+    refresh_token", R3). Die alte Version bricht also **laut** ab, nicht
+    still, und zeigt beim Senden bzw. Sync den Fehler mit Traceback. Abhilfe
+    ist einmal „Google neu verbinden", das `token.json` neu schreibt.
   - Webhooks mit Auth senden in der alten Version ohne Wert.
   - Der Auto-Updater downgradet nie, betroffen ist nur ein manueller
     Rückschritt. Das wird in `docs/known-limitations.md` und im CHANGELOG
@@ -297,10 +322,13 @@ die CI `keyring` bewusst nicht installiert. Der Fake kann zusätzlich
   3. Neustart: kein zweiter Hinweis.
 - **Pre-Release auf allen drei Plattformen** vor dem nächsten echten
   Release, zusammen mit dem offenen Pre-Release aus #123/R9:
-  - macOS: Keychain-Prompt einmal, danach still; nach einem Update erneut?
-    (**Recherche R4**)
+  - macOS: Nach dem Umzug erscheint der Keychain-Prompt einmal, danach ist
+    es still. Nach einem Update erscheint er laut R4 voraussichtlich erneut;
+    das wird bestätigen, der Hinweistext deckt es ab.
   - Linux: mit Secret Service (Umzug) und ohne (alles bleibt).
-  - Backend-Erkennung im PyInstaller-Build (**Recherche R5**).
+  - Backend-Erkennung im Frozen-Build: laut R5 unkritisch, weil der
+    PyInstaller-Core-Hook `hook-keyring.py` Backends samt Metadaten bündelt.
+    Trotzdem auf allen drei Plattformen beobachten.
 
 ## Dokumentation
 
@@ -314,16 +342,28 @@ die CI `keyring` bewusst nicht installiert. Der Fake kann zusätzlich
   Windows-Größenlimit (warum nur der Refresh-Token).
 - CHANGELOG-Eintrag gehört in den Release-PR.
 
-## Offene Punkte → Recherche vor dem Plan
+## Recherche-Ergebnisse (R1–R6)
 
-| # | Frage | Warum sie das Design berührt |
-|---|---|---|
-| R1 | Exaktes Größenlimit von `CredWrite` (`CRED_MAX_CREDENTIAL_BLOB_SIZE`) und wie `keyring`/pywin32 einen `str` kodiert (UTF-16?) | bestätigt oder widerlegt „nur der Refresh-Token" |
-| R2 | Rotiert Google Refresh-Tokens bei Desktop-/Installed-App-Clients, und liefert google-auth beim Refresh einen neuen `refresh_token` zurück? | bestimmt, wie oft `save_credentials` den Schlüsselbund beschreibt, und ob die Nebenläufigkeits-Prüfung im Umzug nötig ist |
-| R3 | Verhalten von `Credentials.from_authorized_user_file`/`_info`, wenn `refresh_token` fehlt | Downgrade-Folgen; Validierung in `load_credentials` |
-| R4 | macOS: Keychain-Prompt für `keyring` in einer ad-hoc-signierten PyInstaller-App. Bleibt „Immer erlauben" über Updates bestehen? | Hinweistext; ob ein Update jedes Mal einen Prompt auslöst |
-| R5 | `keyring`-Backend-Erkennung im PyInstaller-Build (Entry Points; Hook in `pyinstaller-hooks-contrib`?) | ob der Schlüsselbund im Frozen-Build überhaupt gefunden wird; SMTP hängt schon daran |
-| R6 | Linux Secret Service: Verhalten bei gesperrter Collection und im AppImage | Watchdog-Annahmen, Hinweis „kein Schlüsselbund" |
+Recherchiert am 2026-09-18 aus dem Quellcode von `keyring==25.7.0`,
+`google-auth` 2.55.0 (der Test-Pin; in `requirements.txt` kommt google-auth
+nur transitiv, `to_json(strip=…)` und die Pflichtfeld-Prüfung sind aber
+langjährig stabil) und `pyinstaller==6.20.0`, dazu aus GitHub-Issues und der
+Google- und Microsoft-Doku.
+
+| # | Frage | Ergebnis | Folge fürs Design |
+|---|---|---|---|
+| R1 | Windows-Größenlimit | `CRED_MAX_CREDENTIAL_BLOB_SIZE` = 2560 Byte, UTF-16 kodiert (pywin32-ctypes `create_unicode_buffer`), also **1280 Zeichen**. Wird es überschritten, kommt Fehler 1783 (jaraco/keyring#355). Google: Access-Token ≤ 2048 Byte, Refresh-Token ≤ 512 Byte. | bestätigt „nur der Refresh-Token" |
+| R2 | Rotation von Refresh-Tokens | Bei Desktop-Clients ist Rotation nicht die Regel. google-auth übernimmt aber jeden gelieferten neuen `refresh_token` (`google/oauth2/_client.py::_handle_refresh_grant_response`). | Nebenläufigkeits-Prüfung im Umzug bleibt |
+| R3 | Fehlender `refresh_token` | `ValueError` „… missing fields …", Pflichtfelder `refresh_token`/`client_id`/`client_secret`, unverändert seit Einführung (google-auth-library-python#226). `to_json(strip=…)` existiert. | `load_credentials` prüft vorher und meldet Reauth; `save_credentials` nutzt `strip`. Beim Downgrade bricht die alte Version laut, nicht still. |
+| R4 | macOS-Keychain-Prompt | Die ACL hängt an der Designated Requirement; eine ad-hoc-Signatur ändert sie mit jedem Build, also **Prompt nach jedem Update erneut**. | Hinweistext angepasst; Developer-ID-Signatur bleibt außerhalb |
+| R5 | Backends im Frozen-Build | Der Hook liegt im **PyInstaller-Core** (`PyInstaller/hooks/hook-keyring.py`: `collect_submodules('keyring.backends')` + `copy_metadata('keyring')`, seit PR #5245), **nicht** in hooks-contrib. `scripts/build.py` bündelt zusätzlich `--collect-all keyring`. | kein Handlungsbedarf |
+| R6 | Linux Secret Service | `keyring` ruft `collection.unlock()` **ohne Timeout** (`SecretService.py`; der `timeout`-Parameter von SecretStorage existiert erst ab 3.5 und bleibt ungenutzt). Fehlt der Daemon: Backend nicht viable → `NoKeyringError`. Ein abgelehnter Prompt ergibt `KeyringLocked`. AppImage ist keine Sandbox, der D-Bus-Zugriff verhält sich wie bei nativen Programmen. | Watchdog bestätigt; alle drei Fälle münden in „Umzug unterbleibt" |
+
+Nebenbefund, **außerhalb dieses Vorhabens**: Steht der OAuth-Client der App
+in der Google Cloud Console noch auf „Testing", laufen Refresh-Tokens nach
+**7 Tagen** ab. Das gilt unabhängig davon, wo sie gespeichert sind. Außerdem
+gelten 6 Monate Inaktivität und höchstens 100 gültige Tokens pro Nutzer und
+Client.
 
 ## Bewusst nicht dabei (YAGNI)
 
@@ -331,6 +371,9 @@ die CI `keyring` bewusst nicht installiert. Der Fake kann zusätzlich
 - **Access-Token im Schlüsselbund.** Größenlimit, eine Stunde Gültigkeit.
 - **Verschlüsselte Datei mit Schlüssel im Schlüsselbund.** Das bräuchte eine
   neue Abhängigkeit (AES, `cryptography`), und das nur für diesen Zweck.
+- **Stabile macOS-Signatur (Developer ID + Notarisierung)**, die den
+  Keychain-Prompt nach Updates vermiede (R4). Das wäre eine Änderung am
+  Build- und Kostenmodell, keine an diesem Feature.
 - **Rückweg „aus dem Schlüsselbund zurück in die Datei"** als Nutzerfunktion.
   Der Fallback beim Schreiben deckt den technischen Fall ab, einen
   Bedienweg dafür gibt es nicht.
