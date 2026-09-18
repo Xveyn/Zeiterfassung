@@ -20,19 +20,19 @@ from __future__ import annotations
 
 import json
 import os
-import threading
 from typing import Any
 
 from src import keyring_store
 from src.oauth_utils import (
-    REFRESH_TOKEN_KEY, REFRESH_TOKEN_LOCATION, TokenKeyringUnavailable,
-    new_token_keyring_key, read_token_meta, token_in_keyring, write_token,
-    write_token_json,
+    REFRESH_TOKEN_KEY, REFRESH_TOKEN_LOCATION, TOKEN_LOCK,
+    TokenKeyringUnavailable, new_token_keyring_key, read_token_meta,
+    token_in_keyring, write_token, write_token_json,
 )
 
-# Speichern und Umzug sind Lesen-Prüfen-Schreiben an token.json; beim Start
-# erneuern Refresh, Absender-Abruf, Sync-Pull und Kalender-Abgleich parallel.
-TOKEN_LOCK = threading.RLock()
+# Speichern und Umzug sind Lesen-Prüfen-Schreiben an token.json. Der Lock
+# liegt in `oauth_utils` (auch `forget_token` nimmt ihn) und wird hier für die
+# bisherigen Importeure (`secret_migration`) re-exportiert.
+__all__ = ["TOKEN_LOCK", "load_credentials", "save_credentials"]
 
 
 def load_credentials(token_path: str, scopes: list[str],
@@ -48,10 +48,27 @@ def load_credentials(token_path: str, scopes: list[str],
       - Eintrag oder Schlüssel fehlt → `None`; der Aufrufer behandelt das wie
         „kein Token" (vorab geprüft: google-auth würfe sonst `ValueError`
         „missing fields refresh_token", Spec R3).
+
+    Bewusst ohne `TOKEN_LOCK` (alle Schreiber tauschen die Datei atomar). Zieht
+    der Umzug zwischen `read_token_meta` und `from_authorized_user_file` um,
+    fehlt der Datei plötzlich `refresh_token` → `ValueError`. Dann genau einmal
+    neu lesen: steht sie jetzt im Schlüsselbund-Modus, von dort laden, sonst
+    den Fehler weiterreichen.
     """
     meta = read_token_meta(token_path)
     if meta is None or not token_in_keyring(meta):
-        return credentials_cls.from_authorized_user_file(token_path, scopes)
+        try:
+            return credentials_cls.from_authorized_user_file(token_path, scopes)
+        except ValueError:
+            meta = read_token_meta(token_path)
+            if meta is None or not token_in_keyring(meta):
+                raise
+    return _load_from_keyring(meta, scopes, credentials_cls)
+
+
+def _load_from_keyring(meta: dict[str, Any], scopes: list[str],
+                       credentials_cls: Any) -> Any | None:
+    """Schlüsselbund-Zweig von `load_credentials` (s. dort)."""
     key = meta.get(REFRESH_TOKEN_KEY)
     if not isinstance(key, str) or not key:
         return None

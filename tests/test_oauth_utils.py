@@ -363,6 +363,27 @@ def test_forget_token_leaves_the_keyring_alone_for_a_file_token_without_key(
     assert fake.store == {("Zeiterfassung", "s1"): "fremd"}
 
 
+def test_forget_token_runs_under_the_token_lock(tmp_path, monkeypatch):
+    """Lesen-Löschen an token.json darf sich nicht mit einem Speichern oder
+    dem Umzug verschränken — derselbe Lock wie dort."""
+    from src import token_store
+    from tests.conftest import other_thread_can_acquire
+    assert token_store.TOKEN_LOCK is _ou.TOKEN_LOCK
+    path = tmp_path / "token.json"
+    path.write_text('{"refresh_token": "1//x"}', encoding="utf-8")
+    held = []
+    real_remove = _ou.os.remove
+
+    def remove(p):
+        held.append(not other_thread_can_acquire(_ou.TOKEN_LOCK))
+        real_remove(p)
+
+    monkeypatch.setattr(_ou.os, "remove", remove)
+    _ou.forget_token(str(path))
+
+    assert held == [True]
+
+
 def test_forget_token_is_quiet_without_a_file(tmp_path):
     _ou.forget_token(str(tmp_path / "token.json"))
 

@@ -18,12 +18,20 @@ from typing import Any, Collection
 import os
 import stat
 import tempfile
+import threading
 import time
 
 from src.secure_file import harden_windows_acl
 from src import keyring_store
 
 log = logging.getLogger(__name__)
+
+# Speichern, Umzug und Verwerfen sind Lesen-Prüfen-Schreiben an token.json;
+# beim Start erneuern Refresh, Absender-Abruf, Sync-Pull und Kalender-Abgleich
+# parallel. Liegt hier und nicht in `token_store`, weil `forget_token` ihn
+# braucht und `token_store` dieses Modul importiert (andersherum ein Zyklus);
+# `token_store.TOKEN_LOCK` ist derselbe Lock.
+TOKEN_LOCK = threading.RLock()
 
 
 def write_token_json(json_text: str, token_path: str) -> None:
@@ -190,15 +198,16 @@ def forget_token(token_path: str) -> None:
     `token_store.load_credentials` als „neu anmelden" liest — genau das,
     was beide Aufrufer ohnehin wollen. Der Löschfehler selbst wird
     weitergereicht."""
-    meta = read_token_meta(token_path)
-    key = meta.get(REFRESH_TOKEN_KEY) if meta is not None else None
-    try:
-        os.remove(token_path)
-    except FileNotFoundError:
-        pass
-    finally:
-        if isinstance(key, str) and key:
-            keyring_store.remove(key)
+    with TOKEN_LOCK:
+        meta = read_token_meta(token_path)
+        key = meta.get(REFRESH_TOKEN_KEY) if meta is not None else None
+        try:
+            os.remove(token_path)
+        except FileNotFoundError:
+            pass
+        finally:
+            if isinstance(key, str) and key:
+                keyring_store.remove(key)
 
 
 def token_lacks_scopes(token_path: str, scopes: Collection[str]) -> bool:

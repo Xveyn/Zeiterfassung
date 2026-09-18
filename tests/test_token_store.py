@@ -197,6 +197,50 @@ def test_file_mode_with_key_loads_like_a_legacy_file(tmp_path):
     assert loaded.to_json() == _real_creds().to_json()
 
 
+def test_load_follows_a_migration_that_happened_while_reading(tmp_path, fake_keyring):
+    """Der Umzug schreibt token.json zwischen `read_token_meta` und
+    `from_authorized_user_file` um: die Datei hat dann kein `refresh_token`
+    mehr, google-auth wirft ValueError. Einmal neu lesen und den
+    Schlüsselbund-Zweig nehmen — ohne Lock in load_credentials."""
+    from src import secret_migration
+    fake_keyring()
+    path = tmp_path / "token.json"
+    oauth_utils.write_token(_real_creds(), str(path))
+    calls = []
+
+    class _Racing(Credentials):
+        @classmethod
+        def from_authorized_user_file(cls, filename, scopes=None):
+            calls.append(filename)
+            if len(calls) == 1:
+                assert secret_migration.migrate(filename, None).token_moved
+            return super().from_authorized_user_file(filename, scopes)
+
+    loaded = load_credentials(str(path), SCOPES, _Racing)
+
+    assert len(calls) == 1
+    assert loaded.refresh_token == "1//refresh-token"
+    assert oauth_utils.token_in_keyring(_read(path))
+
+
+def test_load_reraises_a_value_error_of_a_file_token(tmp_path):
+    """Kaputte Datei-Modus-Datei ohne Umzug dazwischen: der ValueError geht
+    wie bisher an den Aufrufer (genau ein Wiederholungsversuch, keiner mehr)."""
+    path = tmp_path / "token.json"
+    path.write_text('{"token": "t"}', encoding="utf-8")
+    calls = []
+
+    class _Cls:
+        @staticmethod
+        def from_authorized_user_file(p, scopes):
+            calls.append(p)
+            raise ValueError("missing fields refresh_token")
+
+    with pytest.raises(ValueError):
+        load_credentials(str(path), SCOPES, _Cls)
+    assert calls == [str(path)]
+
+
 def test_unreadable_file_takes_the_legacy_path(tmp_path):
     path = tmp_path / "token.json"
     path.write_text("kaputt", encoding="utf-8")
