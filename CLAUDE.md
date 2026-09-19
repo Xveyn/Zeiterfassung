@@ -877,6 +877,19 @@ Pixel), das wäre aus dem AST heraus geraten — dort bleibt es Handarbeit.
 Buttons der App laufen darüber, **kein** direkter `tk.Button`), und
 `apply_notebook_style` die Maße der Reiter.
 
+**Passt die Skalierung auf den Bildschirm?** Das Hauptfenster ist
+`resizable(False, False)` und wird von `grid_renderer.repin_geometry` auf seine
+angeforderte Größe gepinnt — die Bildschirmgröße sieht diese Funktion nie an.
+Bei 200 % wird das Fenster rund 1160 px hoch, auf einem 1080p-Schirm ist die
+Fußzeile damit abgeschnitten. Verhindert wird das **nicht**: der
+Einstellungen-Dialog schätzt beim Speichern über `theme.scaled_window_fits`,
+ob die *größere* Skalierung noch passt, und fragt sonst nach. Die Entscheidung
+gehört dem Nutzer, und sie ist umkehrbar — das Zahnrad sitzt im Header, die
+Einstellungen bleiben also erreichbar. Die Schätzung ist proportional (seit
+`px()` strukturell richtig, aber 0–5 % zu hoch wegen der Zeilenhöhen-Rundung);
+`FIT_TOLERANCE` federt genau das ab, sonst warnte die App bei 175 % auf 1080p,
+wo es real passt.
+
 **Bewusst nicht skaliert:** die rund 540 `padx`/`pady` der einzelnen Dialoge und
 die 1-px-Ränder (`highlightthickness`). Rein optisch, mechanisch über die halbe
 UI verteilt, und UI wird hier nicht automatisiert getestet (s. „Getestet wird

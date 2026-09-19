@@ -95,6 +95,8 @@ from src.theme.geometry import (  # noqa: F401
     _stray_click_suppressed,
     STRAY_CLICK_GUARD_S,
     center_dialog_on_parent,
+    scaled_window_fits,
+    workarea_for,
 )
 from src.theme.chrome import (  # noqa: F401
     apply_app_icon,
@@ -130,7 +132,8 @@ __all__ = [
     "set_primary_button_enabled", "set_secondary_button_enabled", "set_toggle_active",
     "toggle_button", "_click_keeps_focus",
     # geometry
-    "STRAY_CLICK_GUARD_S", "center_dialog_on_parent", "_should_show_delete_button",
+    "STRAY_CLICK_GUARD_S", "center_dialog_on_parent", "scaled_window_fits",
+    "workarea_for", "_should_show_delete_button",
     "_stray_click_suppressed",
     # chrome
     "apply_app_icon", "apply_dark_titlebar", "create_dialog", "disable_min_max",
