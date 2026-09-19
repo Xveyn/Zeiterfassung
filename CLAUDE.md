@@ -838,6 +838,50 @@ Push nie wieder anfasst. Gefragt wird nur, wenn lokal überhaupt eine
 diese IDs, sonst hielte `plan_vacation_sync` die Perioden beim späteren
 Wiedereinschalten für bereits gepusht und legte keine Events mehr an.
 
+## UI-Skalierung: Zeichen skalieren, Pixel nicht
+
+Die UI-Skalierung hat **einen** Hebel: `theme/fonts.py::init_fonts` setzt beim
+Start die Punktgrößen aller benannten Fonts auf `basis × faktor` (und merkt den
+Faktor für `px()`). Kein `tk scaling` — das skalierte auf macOS/Aqua die
+Punkt-Fonts nicht, und rohe Ints waren auch dort immer Pixel. Geändert wird der
+Faktor nur über einen Neustart (`ui.App.restart_for_scaling`).
+
+Daraus folgt die Regel, an der jede Layout-Angabe hängt:
+
+> Was in **Zeichen oder Zeilen** angegeben ist, skaliert mit.
+> Was in **Pixeln** angegeben ist, steht still.
+
+`Entry(width=35)` und `Listbox(height=8)` zählen Zeichen bzw. Zeilen und wachsen
+mit der Schrift; gemessene Werte (`winfo_reqwidth`, so macht es `grid_renderer`)
+ebenso. `wraplength=380`, `Canvas(height=320)` und `Scale(length=200)` zählen
+Pixel und bleiben, was sie sind.
+
+**Pixelangaben gehören deshalb durch `theme.px()`** — `wraplength=px(380)`. Bei
+100 % steht dort exakt der Wert aus dem Quelltext, darüber wächst er mit.
+`px()` darf **nicht zur Import-Zeit** ausgewertet werden (`WRAP = px(380)` als
+Modul-Konstante bliebe für immer unskaliert): `init_fonts` läuft erst nach der
+Root-Erzeugung, der Aufruf gehört an den Ort des Widget-Baus.
+
+Warum das eine Regel und kein Einzelfall ist: die Fehlerklasse kam mehrfach
+wieder. Xveyn#133 war ein festes `padx=120` neben einem in Zeichen bemessenen
+Feld; bei den themed Meldungsdialogen bestimmt der Hinweistext die ganze
+Dialogbreite, die damit komplett einfror — dieselbe Meldung wurde bei 200 % nur
+höher statt größer. Durchgesetzt wird die Regel von
+**`tests/test_pixel_scaling.py`**, das den AST nach `wraplength=`/`length=` mit
+Zahlen-Literal absucht. Bewusst nur diese beiden Optionen: bei `width`/`height`
+entscheidet die Widget-Klasse über die Einheit (Entry zählt Zeichen, Canvas
+Pixel), das wäre aus dem AST heraus geraten — dort bleibt es Handarbeit.
+
+**Zwei Dinge skalieren an zentraler Stelle**, nicht beim Aufrufer:
+`theme/widgets.py::label_button` skaliert seine Innenabstände selbst (alle 75
+Buttons der App laufen darüber, **kein** direkter `tk.Button`), und
+`apply_notebook_style` die Maße der Reiter.
+
+**Bewusst nicht skaliert:** die rund 540 `padx`/`pady` der einzelnen Dialoge und
+die 1-px-Ränder (`highlightthickness`). Rein optisch, mechanisch über die halbe
+UI verteilt, und UI wird hier nicht automatisiert getestet (s. „Getestet wird
+Logik, nicht UI") — das Verhältnis aus Risiko und Gewinn stimmt nicht.
+
 ## Dialog-Styling: ein gemeinsames Theme
 
 Alle Dialoge (modal wie nicht-modal) teilen sich dasselbe Dark-Theme aus

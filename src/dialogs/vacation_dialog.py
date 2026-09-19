@@ -14,7 +14,7 @@ from src.holidays_de import get_holidays
 from src.theme import (
     ACCENT, BG, CELL_BG, FONT, FONT_BOLD, FONT_SMALL, TEXT, TEXT_MUTED,
     apply_combobox_style,
-    center_dialog_on_parent, create_dialog, dark_entry, primary_button,
+    center_dialog_on_parent, create_dialog, dark_entry, primary_button, px,
     secondary_button, set_button_text, themed_askyesno, themed_showerror,
 )
 from src.time_utils import (
@@ -468,7 +468,7 @@ def _open_edit_dialog(parent, vacation_store, settings, period_id, on_saved,
             dialog,
             text=("Kein Bundesland gewählt — Feiertage werden als "
                   "Urlaubstage mit Stunden gezählt."),
-            font=FONT_SMALL, bg=BG, fg=TEXT_MUTED, wraplength=380,
+            font=FONT_SMALL, bg=BG, fg=TEXT_MUTED, wraplength=px(380),
             justify="left",
         ).pack(anchor="w", padx=12, pady=(4, 0))
 
@@ -508,7 +508,9 @@ def _open_edit_dialog(parent, vacation_store, settings, period_id, on_saved,
     # Ohne ihn wüchse der Dialog bei einem dreiwöchigen Urlaub um 21 Zeilen aus
     # dem Bildschirm, und `create_dialog` setzt resizable(False, False).
     day_scroll = tk.Frame(dialog, bg=BG)
-    day_canvas = tk.Canvas(day_scroll, bg=BG, highlightthickness=0, height=220)
+    # px() wie dort: sonst zeigt der Kasten bei 200 % halb so viele Tage.
+    day_canvas = tk.Canvas(day_scroll, bg=BG, highlightthickness=0,
+                           height=px(220))
     # ttk.Scrollbar, NICHT tk.Scrollbar: die Legacy-Scrollbar kennt keine
     # ttk-Styles und bleibt im hellen Systemlook stehen, mitten im dunklen
     # Dialog. Vertical.TScrollbar ist in theme/widgets.py bereits dunkel

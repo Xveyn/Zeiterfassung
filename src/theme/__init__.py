@@ -66,6 +66,8 @@ from src.theme.fonts import (  # noqa: F401
     FONT_SMALL,
     FONT_TINY,
     init_fonts,
+    px,
+    scaled_px,
     scaled_size,
 )
 from src.theme.widgets import (  # noqa: F401
@@ -119,7 +121,8 @@ __all__ = [
     "WEEKEND_ENTRY_BG", "WEEKEND_ENTRY_BG_HOVER", "WEEKEND_FG",
     # fonts
     "FONT", "FONT_BOLD", "FONT_FAMILY", "FONT_FOOTER", "FONT_HEADER",
-    "FONT_HEADER_SMALL", "FONT_SMALL", "FONT_TINY", "init_fonts", "scaled_size",
+    "FONT_HEADER_SMALL", "FONT_SMALL", "FONT_TINY", "init_fonts", "px", "scaled_px",
+    "scaled_size",
     # widgets
     "apply_combobox_style", "apply_notebook_style", "attach_unfocus_on_click",
     "dark_combo", "dark_entry", "dark_text", "icon_button", "label_button",

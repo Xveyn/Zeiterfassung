@@ -9,7 +9,7 @@ from src.holidays_de import STATES
 from src.send_reminder import SHIFT_LABELS, label_for_shift
 from src.theme import (
     ACCENT, BG, CELL_BG, FONT, FONT_BOLD, FONT_SMALL, TEXT, TEXT_MUTED,
-    TIME_VALUES, dark_combo,
+    TIME_VALUES, dark_combo, px,
 )
 
 
@@ -118,7 +118,7 @@ class AppTab:
 
         scale_widget = ttk.Scale(
             scale_row, from_=75, to=200, orient="horizontal",
-            variable=scale_var, command=_on_scale, length=200,
+            variable=scale_var, command=_on_scale, length=px(200),
             style="Display.Horizontal.TScale",
         )
         scale_widget.bind(

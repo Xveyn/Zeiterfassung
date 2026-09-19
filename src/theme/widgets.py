@@ -14,7 +14,7 @@ from src.theme.palette import (
     ACCENT, ACCENT_DISABLED, ACCENT_HOVER, BG, CELL_BG, CELL_BG_HOVER,
     ENTRY_BG, TEXT, TEXT_MUTED,
 )
-from src.theme.fonts import FONT, FONT_BOLD, FONT_SMALL
+from src.theme.fonts import FONT, FONT_BOLD, FONT_SMALL, px
 
 
 class _ToggleColors(TypedDict):
@@ -126,14 +126,15 @@ def apply_notebook_style(dialog):
     style = ttk.Style(dialog)
     style.configure(
         "Dark.TNotebook",
-        background=BG, borderwidth=0, tabmargins=(6, 6, 6, 0),
+        background=BG, borderwidth=0,
+        tabmargins=(px(6), px(6), px(6), 0),
         bordercolor=BG, lightcolor=BG, darkcolor=BG,
     )
     style.configure(
         "Dark.TNotebook.Tab",
         background=CELL_BG, foreground=TEXT_MUTED,
         bordercolor=BG, lightcolor=CELL_BG, darkcolor=CELL_BG,
-        padding=(14, 6), font=FONT, focuscolor=BG,
+        padding=(px(14), px(6)), font=FONT, focuscolor=BG,
     )
     style.map(
         "Dark.TNotebook.Tab",
@@ -194,7 +195,11 @@ def label_button(
         bg=bg, fg=fg, cursor="hand2",
         width=width,
     )
-    label.pack(padx=label_padx, pady=label_pady)
+    # px(): die Innenabstände sind Pixel und blieben sonst auf jeder
+    # Skalierungsstufe gleich — bei 200 % stünde doppelt so große Schrift in
+    # derselben Luft. Skaliert wird HIER statt in den Fabriken darunter, damit
+    # auch Aufrufer mit eigenem `label_padx` (update_banner) mitziehen.
+    label.pack(padx=px(label_padx), pady=px(label_pady))
     frame._label = label
     frame._colors = {
         "bg": bg, "fg": fg,

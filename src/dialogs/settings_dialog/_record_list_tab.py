@@ -18,7 +18,7 @@ from typing import Any, Callable
 
 from src.theme import (
     ACCENT, BG, ENTRY_BG, FONT, FONT_SMALL, TEXT, TEXT_MUTED,
-    primary_button, secondary_button, themed_askyesno, themed_showerror,
+    primary_button, px, secondary_button, themed_askyesno, themed_showerror,
 )
 
 
@@ -93,7 +93,7 @@ class RecordListTab:
         tk.Label(
             frame, text=self.KIND.intro,
             font=FONT_SMALL, bg=BG, fg=TEXT_MUTED, justify="left",
-            wraplength=380,
+            wraplength=px(380),
         ).grid(row=0, column=0, padx=10, pady=(10, 6), sticky="w")
 
         # Dieselbe Palette wie die Listbox im ConflictsDialog (ENTRY_BG wie

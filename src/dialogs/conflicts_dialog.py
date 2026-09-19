@@ -5,7 +5,7 @@ from src import sync
 from src.devices import device_label
 from src.theme import (
     ACCENT, BG, ENTRY_BG, FONT, FONT_BOLD, TEXT,
-    center_dialog_on_parent, create_dialog, secondary_button,
+    center_dialog_on_parent, create_dialog, px, secondary_button,
     set_secondary_button_enabled, themed_showerror,
 )
 from src.time_utils import format_iso_date, format_iso_datetime
@@ -110,7 +110,7 @@ class ConflictsDialog:
         initial_text = ("Wähle einen Konflikt links." if self._filter_key is None
                        else "Kein offener Konflikt mehr für diesen Tag.")
         self.detail_label = tk.Label(self.right, text=initial_text,
-                                      wraplength=400, justify="left",
+                                      wraplength=px(400), justify="left",
                                       font=FONT, bg=BG, fg=TEXT)
         self.detail_label.pack(anchor="nw")
 

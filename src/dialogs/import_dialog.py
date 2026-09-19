@@ -22,7 +22,7 @@ from src.time_utils import format_date, format_iso_date
 from src.theme import (
     BG, CELL_BG, FONT, FONT_SMALL, TEXT, TEXT_MUTED,
     apply_combobox_style, attach_unfocus_on_click, center_dialog_on_parent,
-    create_dialog, primary_button, secondary_button,
+    create_dialog, primary_button, px, secondary_button,
     themed_showerror, themed_showinfo,
 )
 
@@ -389,7 +389,11 @@ class _PerDayDialog:
             font=FONT, bg=BG, fg=TEXT,
         ).pack(padx=10, pady=(10, 4), anchor="w")
 
-        canvas = tk.Canvas(self.top, bg=BG, highlightthickness=0, height=320)
+        # px(): der Ausschnitt ist in Pixeln bemessen, die Zeilen darin wachsen
+        # mit der Schrift — ohne Skalierung zeigte derselbe Kasten bei 200 %
+        # halb so viele Tage.
+        canvas = tk.Canvas(self.top, bg=BG, highlightthickness=0,
+                           height=px(320))
         # ttk.Scrollbar, NICHT tk.Scrollbar: die Legacy-Scrollbar kennt keine
         # ttk-Styles und bliebe im hellen Systemlook stehen. Der Dialog ruft
         # oben bereits apply_combobox_style, das Vertical.TScrollbar dunkel

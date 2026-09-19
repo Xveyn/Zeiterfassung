@@ -13,8 +13,8 @@ from src import keyring_store, smtp, smtp_store
 from src.theme import (
     BG, CELL_BG, FONT, FONT_SMALL, TEXT, TEXT_MUTED,
     apply_combobox_style, attach_unfocus_on_click, center_dialog_on_parent,
-    create_dialog, dark_combo, dark_entry, primary_button, secondary_button,
-    set_primary_button_enabled, set_secondary_button_enabled,
+    create_dialog, dark_combo, dark_entry, primary_button, px,
+    secondary_button, set_primary_button_enabled, set_secondary_button_enabled,
     themed_askyesno, themed_showerror, themed_showinfo,
 )
 
@@ -123,7 +123,7 @@ def open_smtp_dialog(parent, store, runner, record: dict | None = None,
                        "lokal in smtp.json.")
         tk.Label(dialog, text=f"{stored_text}  Leer lassen = unverändert.",
                  font=FONT_SMALL, bg=BG, fg=TEXT_MUTED, justify="left",
-                 wraplength=380).grid(row=row, column=0, columnspan=2,
+                 wraplength=px(380)).grid(row=row, column=0, columnspan=2,
                                       padx=10, pady=(0, 4), sticky="w")
         row += 1
 
@@ -139,7 +139,7 @@ def open_smtp_dialog(parent, store, runner, record: dict | None = None,
     # Projekt übliche Wert.
     for hint in (STORAGE_HINT, PROVIDER_HINT):
         tk.Label(dialog, text=hint, font=FONT_SMALL, bg=BG, fg=TEXT_MUTED,
-                 justify="left", wraplength=380).grid(
+                 justify="left", wraplength=px(380)).grid(
             row=row, column=0, columnspan=2, padx=10, pady=(6, 2), sticky="w")
         row += 1
 
