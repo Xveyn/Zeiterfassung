@@ -243,8 +243,10 @@ PR 1 bewusst hierher verschoben — `Form` hatte dort noch keinen Aufrufer):
   sonst werden die Vorlagen-Textfelder im Versand-Tab zur Rad-Falle.
 - Feste, skalierte Scroll-Schrittweite (`yscrollincrement`, etwa 20 px ×
   Skalierung, ~3 Einheiten je Raste), damit macOS-Trackpads nicht springen.
-- `scale` als Pflicht-Keyword (oder Default aus `fonts.init_fonts`), damit
-  ein vergessener Wert bei 150 % nicht still auf 600 px/420 px festnagelt.
+- ~~`scale` als Pflicht-Keyword~~ — erledigt, anders als geplant: seit #158
+  gibt es `theme.px()`, `Form` skaliert darüber und hat keinen
+  `scale`-Parameter mehr; `body_height` bekommt den Faktor aus
+  `fonts.current_scale()`. Ein vergessener Wert ist damit nicht mehr möglich.
 - `set_enabled` rekursiert noch nicht in `ttk.Labelframe` (nur relevant,
   falls eines in einem Formular landet).
 

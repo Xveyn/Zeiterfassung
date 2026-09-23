@@ -19,7 +19,7 @@ from contextlib import contextmanager
 from tkinter import ttk
 
 from src.theme.palette import BG, CELL_BG, SEPARATOR, TEXT, TEXT_DISABLED, TEXT_MUTED
-from src.theme.fonts import FONT, FONT_BOLD, FONT_SMALL
+from src.theme.fonts import FONT, FONT_BOLD, FONT_SMALL, current_scale, px
 from src.theme.widgets import _LabelButton, _ToggleColors, secondary_button
 from src.theme.form_logic import (
     body_height, enabled_states, is_descendant, wheel_route, wheel_units,
@@ -161,7 +161,7 @@ class Form:
     über das ganze Formular; die Spaltenbreite ergibt sich aus der längsten
     Beschriftung. Zeilen zählt `Form` selbst.
 
-        form = Form(tab_frame, scroll=True, scale=ui_scale)
+        form = Form(tab_frame, scroll=True)
         form.frame.pack(fill="both", expand=True)
         form.section("Werkstudenten-Limit")
         form.check("Wochenlimit prüfen", wsl_var)
@@ -189,8 +189,7 @@ class Form:
     zugleich das äußere mit.
     """
 
-    def __init__(self, parent, *, scroll=False, scale=1.0):
-        self._scale = scale
+    def __init__(self, parent, *, scroll=False):
         self._row = 0
         self._sections = 0
         self._parents: dict[str, str | None] = {}
@@ -366,7 +365,7 @@ class Form:
         return r
 
     def _indent(self):
-        return _EDGE + round(INDENT * self._scale) * len(self._stack)
+        return _EDGE + px(INDENT) * len(self._stack)
 
     def _register(self, *widgets):
         if self._canvas is not None:
@@ -393,9 +392,9 @@ class Form:
     def _wrap_for(self, indent):
         """Umbruchbreite eines Hinweises: Formularbreite abzüglich seiner
         Einrückung. Vor der ersten Messung ein fester, mitskalierter Wert."""
-        floor = round(_MIN_WRAP * self._scale)
+        floor = px(_MIN_WRAP)
         if not self._wrap:
-            return max(floor, round(_INITIAL_WRAP * self._scale))
+            return max(floor, px(_INITIAL_WRAP))
         return max(floor, self._wrap - indent - _EDGE)
 
     def _rewrap(self, _event=None):
@@ -412,7 +411,8 @@ class Form:
             return
         width = self.body.winfo_reqwidth()
         natural = self.body.winfo_reqheight()
-        height = body_height(natural, self._scale, canvas.winfo_screenheight())
+        height = body_height(natural, current_scale(),
+                             canvas.winfo_screenheight())
         canvas.configure(width=width, height=height,
                          scrollregion=(0, 0, width, natural))
         needed = natural > height
