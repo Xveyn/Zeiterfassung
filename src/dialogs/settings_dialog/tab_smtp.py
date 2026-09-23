@@ -1,6 +1,6 @@
-"""Tab „SMTP": Liste der konfigurierten Mail-Konten.
+"""Liste „SMTP-Konten" im Versand-Tab: die konfigurierten Mail-Konten.
 
-Aufbau und Ablauf teilt er mit dem Webhooks-Tab (`_record_list_tab.py`, R12);
+Aufbau und Ablauf teilt sie mit der Webhook-Liste (`_record_list_tab.py`, R12);
 hier steht nur, was ihn davon unterscheidet. SMTP-Konten liegen in ihrem
 eigenen, gerätelokalen Store und werden vom Unterdialog direkt gespeichert.
 """
@@ -27,12 +27,12 @@ def _delete_secret(account_id):
 
 
 SMTP_KIND = RecordListKind(
-    intro=("Berichte können statt über die Gmail-API auch über einen "
-           "eigenen Mail-Server verschickt werden. Jedes Konto hat "
-           "seinen eigenen Empfänger und lässt sich beim Senden "
-           "einzeln auswählen. Konten gelten nur auf diesem Gerät und "
-           "werden sofort gespeichert — unabhängig vom „Speichern“ "
-           "dieses Einstellungen-Dialogs."),
+    intro=("Statt über die Gmail-API über einen eigenen Mail-Server senden. "
+           "Jedes Konto hat seinen eigenen Empfänger und lässt sich beim "
+           "Senden einzeln wählen. Gilt nur auf diesem Gerät und wird sofort "
+           "gespeichert, unabhängig vom Knopf „Speichern“."),
+    section="SMTP-Konten",
+    empty="Noch kein Konto — „Hinzufügen“ legt eins an.",
     row_detail=lambda record: record.get("host", "?"),
     open_dialog=_open_dialog,
     remove_title="SMTP-Konto entfernen",
@@ -44,4 +44,3 @@ SMTP_KIND = RecordListKind(
 
 class SmtpTab(RecordListTab):
     KIND = SMTP_KIND
-    title = "SMTP"

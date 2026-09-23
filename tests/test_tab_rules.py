@@ -115,8 +115,6 @@ def app_raw(**overrides):
     raw = {
         "state": STATES[1][1], "show_weekend": True, "autostart": False,
         "always_on_top": False, "minimize_to_tray": True, "ui_scale": 125,
-        "send_period_from_last_reminder": True,
-        "send_period_anchor_monthly": False,
     }
     raw.update(overrides)
     return raw
@@ -187,9 +185,20 @@ def test_app_updates_clamps_scale():
     assert tr.app_updates(app_raw(ui_scale=500))["ui_scale"] == 2.0
 
 
-def test_mail_updates_passes_text_through():
+def sending_raw(**overrides):
     raw = {k: f"<{k}>" for k in tr.MAIL_KEYS}
-    assert tr.mail_updates(raw) == raw
+    raw.update({"send_period_from_last_reminder": True,
+                "send_period_anchor_monthly": False})
+    raw.update(overrides)
+    return raw
+
+
+def test_sending_updates():
+    upd = tr.sending_updates(sending_raw())
+    assert set(upd) == set(tr.SENDING_KEYS)
+    assert upd["mail_subject"] == "<mail_subject>"
+    assert upd["send_period_from_last_reminder"] is True
+    assert upd["send_period_anchor_monthly"] is False
 
 
 def test_google_updates_sanitizes_device_name():
@@ -245,7 +254,7 @@ def test_tabs_together_write_exactly_the_legacy_keys():
     written = [
         tr.work_updates(work_raw(), OLD_WSL),
         tr.reminders_updates(reminders_raw()),
-        tr.mail_updates({k: "" for k in tr.MAIL_KEYS}),
+        tr.sending_updates(sending_raw()),
         tr.google_updates({"device_name": "", "gcal_calendar": ""}),
         tr.app_updates(app_raw()),
         tr.update_tab_updates({"update_check_frequency": FREQUENCY_OPTIONS[0][1],

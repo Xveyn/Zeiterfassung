@@ -1,26 +1,27 @@
-"""Gemeinsamer Aufbau der Listen-Tabs „Webhooks" und „SMTP" (R12, Xveyn#123).
+"""Gemeinsamer Aufbau der Listen „SMTP-Konten" und „Webhooks" im Versand-Tab
+(R12, Xveyn#123; seit #132 Abschnitte statt eigener Tabs).
 
-Beide Tabs sind „Liste konfigurierter Einträge plus Hinzufügen, Bearbeiten,
+Beide Listen sind „konfigurierte Einträge plus Hinzufügen, Bearbeiten,
 Entfernen" über einem eigenen, gerätelokalen Store; ihre Unterdialoge
 speichern direkt. Bis R12 standen sie als zwei zu 85 % gleiche Dateien da.
-Was sich wirklich unterscheidet — Hinweistext, Detail in der Zeile,
-Unterdialog, Texte beim Entfernen, Schreibschutz-Exception und was nach dem
-Löschen noch zu tun ist —, trägt eine `RecordListKind`; `tab_webhooks.py` und
-`tab_smtp.py` sind nur noch diese Beschreibung plus eine Unterklasse.
+Was sich wirklich unterscheidet — Überschrift, Hinweistext, Leertext, Detail
+in der Zeile, Unterdialog, Texte beim Entfernen, Schreibschutz-Exception und
+was nach dem Löschen noch zu tun ist —, trägt eine `RecordListKind`;
+`tab_webhooks.py` und `tab_smtp.py` sind nur noch diese Beschreibung plus
+eine Unterklasse. Die Namen tragen noch „Tab" aus R12 — die
+Charakterisierungstests hängen daran.
 
-Anders als die übrigen Tabs haben diese beiden keine Formularfelder: für den
-`SaveCoordinator` (#132) sind sie nie „geändert".
+Die Einträge speichern ihre Unterdialoge selbst — für den `SaveCoordinator`
+tragen die Listen keine Formularfelder.
 """
 
 import tkinter as tk
 from dataclasses import dataclass
 from typing import Any, Callable
 
-from src.dialogs.settings_dialog.fields import FieldSet
-from src.dialogs.settings_dialog.form_model import SaveOutcome
 from src.theme import (
-    ACCENT, BG, ENTRY_BG, FONT, FONT_SMALL, TEXT, TEXT_MUTED,
-    primary_button, px, secondary_button, themed_askyesno, themed_showerror,
+    ACCENT, BG, ENTRY_BG, FONT, TEXT, empty_state, primary_button,
+    secondary_button, themed_askyesno, themed_showerror,
 )
 
 
@@ -29,6 +30,8 @@ class RecordListKind:
     """Was einen Listen-Tab von seinem Zwilling unterscheidet."""
 
     intro: str                                  # Hinweistext über der Liste
+    section: str                                # Abschnitts-Überschrift
+    empty: str                                  # Leertext der leeren Liste
     row_detail: Callable[[dict], str]           # rechts vom Namen, z.B. der Host
     open_dialog: Callable[..., None]            # (parent, store, runner, record=, on_saved=)
     remove_title: str                           # Titel der Rückfrage beim Entfernen
@@ -63,84 +66,52 @@ def remove_record(store: Any, record_id: str, read_only_error: type[Exception],
 
 
 class RecordListTab:
-    """Listen-Tab über einem gerätelokalen Store; Unterklassen setzen `KIND`."""
+    """Eine Liste über einem gerätelokalen Store, als Abschnitt in einem
+    fremden `Form` (Versand-Tab); Unterklassen setzen `KIND`."""
 
     KIND: RecordListKind
-    title: str
 
-    def __init__(self, frame, dialog, store, runner, parent=None):
-        self.frame = frame
+    def __init__(self, form, dialog, store, runner, parent=None):
         self._dialog = dialog
         # Fallback-Ziel für Fehlermeldungen, falls der Einstellungen-Dialog
         # inzwischen geschlossen wurde (analog send_dialog.on_done). Ohne
         # Injektion (ältere Aufrufer/Tests) fällt das auf `dialog` selbst
-        # zurück — dann bleibt das Verhalten wie zuvor.
+        # zurück.
         self._parent = parent if parent is not None else dialog
         self._store = store
         self._runner = runner
 
-        # Verteilt überschüssige Breite an die Spalte, statt sie rechts liegen
-        # zu lassen: das Notebook ist so breit wie sein breitester Tab (App),
-        # dieser hier braucht weniger. Ohne das endete die Liste mitten im Tab
-        # und der Rest bliebe totes Feld. Auf die angeforderte Breite hat
-        # `weight` keinen Einfluss — nur auf den Überschuss.
-        frame.columnconfigure(0, weight=1)
+        form.section(self.KIND.section, hint=self.KIND.intro)
+        box = tk.Frame(form.body, bg=BG)
+        box.columnconfigure(0, weight=1)
 
-        # wraplength ist Pflicht, nicht Kosmetik: ohne sie wird das Label so
-        # breit wie seine längste Zeile und zieht den GANZEN Einstellungen-
-        # Dialog mit — das Notebook ist so breit wie sein breitester Tab.
-        # 380 ist der im Projekt übliche Wert (send_dialog, conflicts_dialog,
-        # die themed Message-Dialoge) und hält diesen Tab auf allen
-        # ui_scale-Stufen unter dem App-Tab, der die Dialogbreite bestimmt.
-        # Nachgemessen bei 0.75/1.0/1.25/1.5/2.0.
-        tk.Label(
-            frame, text=self.KIND.intro,
-            font=FONT_SMALL, bg=BG, fg=TEXT_MUTED, justify="left",
-            wraplength=px(380),
-        ).grid(row=0, column=0, padx=10, pady=(10, 6), sticky="w")
-
-        # Dieselbe Palette wie die Listbox im ConflictsDialog (ENTRY_BG wie
-        # Eingabefelder, ACCENT-Selektion, `selectforeground`/`relief`
-        # ebenfalls identisch). Zwei Listboxen mit unterschiedlichem Styling
-        # wären ein dialogspezifisches Stil-Extra — CLAUDE.md verbietet das
-        # ohne Rücksprache.
-        # width in Zeichen: bestimmt die MINDEST-Breite der Spalte. 48 zog den
-        # Dialog deutlich über die übrigen Tabs hinaus; 30 bleibt darunter,
-        # und `sticky="we"` lässt die Liste trotzdem die volle Tab-Breite
-        # einnehmen, die der Hinweistext vorgibt.
+        # Dieselbe Palette wie die Listbox im ConflictsDialog — zwei
+        # Listboxen mit unterschiedlichem Styling wären ein
+        # dialogspezifisches Stil-Extra. Drei Zeilen: im Versand-Tab stehen
+        # zwei Listen unter der Mail-Vorlage, mehr Konten sind selten, und
+        # die Listbox scrollt selbst, sobald es mehr werden.
         self._listbox = tk.Listbox(
-            frame, height=8, width=30, font=FONT,
+            box, height=3, width=30, font=FONT,
             bg=ENTRY_BG, fg=TEXT, selectbackground=ACCENT,
             selectforeground="#ffffff", relief="flat",
             highlightthickness=0, activestyle="none",
         )
-        self._listbox.grid(row=1, column=0, padx=10, pady=(0, 8), sticky="we")
+        self._listbox.grid(row=0, column=0, sticky="nsew")
         self._listbox.bind("<Double-Button-1>", lambda _e: self._edit())
+        # Liegt in derselben Zelle über der Liste; `refresh` blendet ihn
+        # aus, sobald es Einträge gibt.
+        self._empty = empty_state(box, self.KIND.empty, bg=ENTRY_BG)
+        self._empty.grid(row=0, column=0, sticky="nsew")
 
-        btns = tk.Frame(frame, bg=BG)
-        btns.grid(row=2, column=0, padx=10, pady=(0, 10), sticky="w")
-        primary_button(btns, "Hinzufügen", self._add).pack(side=tk.LEFT, padx=(0, 6))
-        secondary_button(btns, "Bearbeiten", self._edit).pack(side=tk.LEFT, padx=6)
-        secondary_button(btns, "Entfernen", self._remove).pack(side=tk.LEFT, padx=6)
+        btns = tk.Frame(box, bg=BG)
+        btns.grid(row=0, column=1, sticky="n", padx=(8, 0))
+        primary_button(btns, "Hinzufügen", self._add).pack(fill="x")
+        secondary_button(btns, "Bearbeiten", self._edit).pack(fill="x", pady=(4, 0))
+        secondary_button(btns, "Entfernen", self._remove).pack(fill="x", pady=(4, 0))
+        form.block(box)
 
         self._records = []
         self.refresh()
-
-        # Keine Formularfelder: Einträge speichern ihre Unterdialoge selbst
-        # (eigener Klick, eigenes Speichern). Der Tab ist nie „geändert".
-        self.fields = FieldSet()
-
-    def values(self):
-        return {}
-
-    def load(self, values):
-        pass  # nichts zu laden — s. `fields`
-
-    def validate(self):
-        return None
-
-    def save(self):
-        return SaveOutcome(saved=True)
 
     def refresh(self):
         self._records = self._store.get_all() if self._store else []
@@ -148,6 +119,10 @@ class RecordListTab:
         for record in self._records:
             self._listbox.insert(
                 tk.END, row_text(record, self.KIND.row_detail(record)))
+        if self._records:
+            self._empty.grid_remove()
+        else:
+            self._empty.grid()
 
     def _selected(self):
         selection = self._listbox.curselection()

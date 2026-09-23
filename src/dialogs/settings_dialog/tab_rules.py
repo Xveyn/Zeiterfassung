@@ -102,14 +102,20 @@ def wsl_snapshot(values: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
-# ---- Bericht & Mail ------------------------------------------------------
+# ---- Versand -------------------------------------------------------------
 
 MAIL_KEYS = ("recipient", "name", "mail_subject", "mail_greeting",
              "mail_content", "mail_closing")
+SENDING_KEYS = MAIL_KEYS + ("send_period_from_last_reminder",
+                            "send_period_anchor_monthly")
 
 
-def mail_updates(raw: Mapping[str, Any]) -> dict[str, Any]:
-    return {key: raw[key] for key in MAIL_KEYS}
+def sending_updates(raw: Mapping[str, Any]) -> dict[str, Any]:
+    updates: dict[str, Any] = {key: raw[key] for key in MAIL_KEYS}
+    updates["send_period_from_last_reminder"] = bool(
+        raw["send_period_from_last_reminder"])
+    updates["send_period_anchor_monthly"] = bool(raw["send_period_anchor_monthly"])
+    return updates
 
 
 # ---- Google --------------------------------------------------------------
@@ -195,9 +201,6 @@ def app_updates(raw: Mapping[str, Any]) -> dict[str, Any]:
         "always_on_top": bool(raw["always_on_top"]),
         "minimize_to_tray": bool(raw["minimize_to_tray"]),
         "ui_scale": clamp_ui_scale(slider_percent(float(raw["ui_scale"])) / 100),
-        "send_period_from_last_reminder": bool(
-            raw["send_period_from_last_reminder"]),
-        "send_period_anchor_monthly": bool(raw["send_period_anchor_monthly"]),
     }
 
 

@@ -1,4 +1,4 @@
-"""Tab „App": Bundesland, UI-Optionen, Skalierung, Zeitraum-Vorbelegung."""
+"""Tab „App": Bundesland, UI-Optionen, Skalierung."""
 
 import tkinter as tk
 from tkinter import ttk
@@ -147,25 +147,6 @@ class AppTab:
             bg=BG, fg=TEXT_MUTED,
         ).pack(anchor="w", pady=(2, 0))
 
-        period_row = tk.Frame(app_frame, bg=BG)
-        period_row.pack(anchor="w", pady=(4, 0))
-        send_period_from_last_var = tk.BooleanVar(
-            value=settings.get("send_period_from_last_reminder"))
-        tk.Checkbutton(
-            period_row, text="Zeitraum ab der letzten Erinnerung vorbelegen",
-            variable=send_period_from_last_var, font=FONT,
-            bg=BG, fg=TEXT, selectcolor=CELL_BG,
-            activebackground=BG, activeforeground=TEXT, cursor="hand2",
-        ).pack(side=tk.LEFT, padx=(0, 12))
-        send_period_anchor_monthly_var = tk.BooleanVar(
-            value=settings.get("send_period_anchor_monthly"))
-        tk.Checkbutton(
-            period_row, text="inkl. Monatstermine",
-            variable=send_period_anchor_monthly_var, font=FONT,
-            bg=BG, fg=TEXT, selectcolor=CELL_BG,
-            activebackground=BG, activeforeground=TEXT, cursor="hand2",
-        ).pack(side=tk.LEFT)
-
         self.frame = frame
         self.state_var = state_var
         self.show_weekend_var = show_weekend_var
@@ -173,8 +154,6 @@ class AppTab:
         self.always_on_top_var = always_on_top_var
         self.minimize_to_tray_var = minimize_to_tray_var
         self.scale_var = scale_var
-        self.send_period_from_last_var = send_period_from_last_var
-        self.send_period_anchor_monthly_var = send_period_anchor_monthly_var
 
         self.title = "App"
         self._settings = settings
@@ -191,8 +170,6 @@ class AppTab:
         # Gerastert gelesen: ein hin- und zurückgezogener Regler ist keine
         # Änderung.
         fields.add("ui_scale", scale_var, read=slider_percent)
-        fields.add("send_period_from_last_reminder", send_period_from_last_var)
-        fields.add("send_period_anchor_monthly", send_period_anchor_monthly_var)
         self.fields = fields
 
     def values(self):
