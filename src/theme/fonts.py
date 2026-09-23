@@ -54,6 +54,35 @@ _STANDARD_FONTS = (
 )
 
 
+def scaled_px(base, scale):
+    """Skalierte Pixelangabe: `round(base × scale)`.
+
+    Getrennt von `scaled_size`, obwohl beide runden: Font-Größen tragen auf
+    manchen Plattformen ein Vorzeichen (negativ = Pixel statt Punkt), das dort
+    erhalten bleiben muss. Eine Pixelangabe im Layout ist nie negativ — dafür
+    darf hier eine 1-px-Trennlinie nicht auf 0 fallen und damit unsichtbar
+    werden."""
+    scaled = round(base * scale)
+    if scaled == 0 and base > 0:
+        return 1
+    return scaled
+
+
+def px(base):
+    """`scaled_px` mit dem Faktor, den `init_fonts` gemerkt hat.
+
+    Der Einstieg für jede Pixelangabe im Layout — Umbruchbreiten, Innenabstände
+    von Buttons, feste Ausschnittshöhen. Ohne vorangegangenes `init_fonts`
+    (Tk-freie Tests, Import-Zeit) gilt 1.0, die Konstante bleibt dann exakt der
+    Wert, der im Quelltext steht.
+
+    **Nicht zur Import-Zeit auswerten:** `init_fonts` läuft erst nach der
+    Root-Erzeugung, eine Modul-Konstante `WRAP = px(380)` stünde also für immer
+    auf dem unskalierten Wert. Der Aufruf gehört an die Stelle, an der das
+    Widget gebaut wird."""
+    return scaled_px(base, _scale)
+
+
 def scaled_size(base, scale):
     """Skalierte Font-Größe: round(base × scale). Betrag min. 1 (nie 0 =
     unsichtbar), Vorzeichen erhalten — Standard-Tk-Fonts tragen je nach Plattform
@@ -69,13 +98,24 @@ def scaled_size(base, scale):
 # (`font delete`), und font=FONT wäre in den Widgets ein unbekannter Name.
 _APP_FONT_OBJECTS = []
 
+# Der zuletzt an `init_fonts` übergebene UI-Faktor — die Quelle für `px()`.
+# Modul-global statt durchgereicht, weil die Skalierung prozessweit gilt: sie
+# wird einmal beim Start gesetzt und ändert sich nur über einen Neustart
+# (`ui.App.restart_for_scaling`).
+_scale = 1.0
+
 
 def init_fonts(root, scale):
     """Legt die App-named-fonts an (Basisgröße × scale) und skaliert die
     Standard-Tk-Fonts mit. MUSS nach der Root-Erzeugung und VOR dem Aufbau der
     App-Widgets laufen, damit measure_max_width die skalierten Fonts misst und die
     Fenstergeometrie korrekt pinnt. Ersetzt das frühere `tk scaling`, das auf
-    macOS/Aqua wirkungslos war (skaliert dort die Punkt-Fonts nicht)."""
+    macOS/Aqua wirkungslos war (skaliert dort die Punkt-Fonts nicht).
+
+    Merkt den Faktor zusätzlich für `px()` — Schrift und Layout-Pixel hängen am
+    selben Hebel, sonst wächst nur die eine Hälfte."""
+    global _scale
+    _scale = scale
     for name, (size, weight) in _APP_FONTS.items():
         _APP_FONT_OBJECTS.append(
             tkfont.Font(root=root, name=name, family=FONT_FAMILY,

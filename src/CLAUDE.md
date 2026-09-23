@@ -487,10 +487,12 @@ Wert.
 
 - `report.py` — HTML-Mail + PDF (xhtml2pdf **lazy**), gruppiert pro ISO-KW.
 - `theme/` — Dark-Theme als Paket (R3, vorher eine 1075-Zeilen-Datei): `palette`
-  (Konstanten, hängt an nichts) → `fonts` (benannte Tk-Fonts, `init_fonts`/`scaled_size`)
+  (Konstanten, hängt an nichts) → `fonts` (benannte Tk-Fonts, `init_fonts`/`scaled_size`,
+  dazu `px()` für Pixelangaben im Layout — s. Root-`CLAUDE.md`, „UI-Skalierung")
   → `widgets` (Widget-Fabriken, ttk-Styles); daneben `geometry`
-  (`center_dialog_on_parent` + die Tk-freien Prädikate `_stray_click_suppressed`/
-  `_should_show_delete_button`), `chrome` (Win32-Fensterchrome, `create_dialog`) und
+  (`center_dialog_on_parent`, `workarea_for` + die Tk-freien Prädikate
+  `_stray_click_suppressed`/`_should_show_delete_button`/`scaled_window_fits`),
+  `chrome` (Win32-Fensterchrome, `create_dialog`) und
   `messagebox` (themed Drop-ins, nutzt chrome/widgets/geometry). Die Schichtung ist
   zyklenfrei und in genau dieser Reihenfolge importierbar.
   **Importiert wird weiterhin `from src.theme import …`**, nicht aus den Teilmodulen —

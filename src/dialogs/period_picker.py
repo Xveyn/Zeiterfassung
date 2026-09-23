@@ -6,7 +6,7 @@ from src import workweek
 from src.dialogs.date_row import build_date_row
 from src.report import filter_categories, filter_period, total_hours
 from src.vacations import cap_by_worktime, cap_notice
-from src.theme import BG, CELL_BG, FONT, FONT_SMALL, TEXT, TEXT_MUTED
+from src.theme import BG, CELL_BG, FONT, FONT_SMALL, TEXT, TEXT_MUTED, px
 
 
 def vacation_preview(date_from, date_to, all_entries, categories,
@@ -210,7 +210,7 @@ def build_period_picker(parent, storage, settings, on_change=None,
     # kappt den Urlaub dort (Xveyn#97) — ohne diese Zeile geschähe das still,
     # und die Vorschau wiche unerklärt vom Urlaubs-Dialog ab.
     vacation_hint = tk.Label(frame, text="", font=FONT_SMALL, bg=BG,
-                             fg=TEXT_MUTED, wraplength=460, justify="left")
+                             fg=TEXT_MUTED, wraplength=px(460), justify="left")
     vacation_hint.grid(row=7, column=0, columnspan=6, padx=10, pady=(0, 8), sticky="w")
     vacation_hint.grid_remove()
 

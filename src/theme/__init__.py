@@ -66,6 +66,8 @@ from src.theme.fonts import (  # noqa: F401
     FONT_SMALL,
     FONT_TINY,
     init_fonts,
+    px,
+    scaled_px,
     scaled_size,
 )
 from src.theme.widgets import (  # noqa: F401
@@ -93,6 +95,8 @@ from src.theme.geometry import (  # noqa: F401
     _stray_click_suppressed,
     STRAY_CLICK_GUARD_S,
     center_dialog_on_parent,
+    scaled_window_fits,
+    workarea_for,
 )
 from src.theme.chrome import (  # noqa: F401
     apply_app_icon,
@@ -119,7 +123,8 @@ __all__ = [
     "WEEKEND_ENTRY_BG", "WEEKEND_ENTRY_BG_HOVER", "WEEKEND_FG",
     # fonts
     "FONT", "FONT_BOLD", "FONT_FAMILY", "FONT_FOOTER", "FONT_HEADER",
-    "FONT_HEADER_SMALL", "FONT_SMALL", "FONT_TINY", "init_fonts", "scaled_size",
+    "FONT_HEADER_SMALL", "FONT_SMALL", "FONT_TINY", "init_fonts", "px", "scaled_px",
+    "scaled_size",
     # widgets
     "apply_combobox_style", "apply_notebook_style", "attach_unfocus_on_click",
     "dark_combo", "dark_entry", "dark_text", "icon_button", "label_button",
@@ -127,7 +132,8 @@ __all__ = [
     "set_primary_button_enabled", "set_secondary_button_enabled", "set_toggle_active",
     "toggle_button", "_click_keeps_focus",
     # geometry
-    "STRAY_CLICK_GUARD_S", "center_dialog_on_parent", "_should_show_delete_button",
+    "STRAY_CLICK_GUARD_S", "center_dialog_on_parent", "scaled_window_fits",
+    "workarea_for", "_should_show_delete_button",
     "_stray_click_suppressed",
     # chrome
     "apply_app_icon", "apply_dark_titlebar", "create_dialog", "disable_min_max",
