@@ -10,7 +10,6 @@ from tkinter import messagebox
 
 from src import gcal
 from src.devices import MAX_NAME_LENGTH
-from src.dialogs.settings_dialog._shared import label, subheader
 from src.dialogs.settings_dialog.fields import FieldSet
 from src.dialogs.settings_dialog.form_model import SaveOutcome
 from src.dialogs.settings_dialog.google_tab_task import (
@@ -24,7 +23,7 @@ from src.oauth_utils import (
 )
 from src.sync_runtime import run_compaction_blocking
 from src.theme import (
-    ACCENT, BG, CELL_BG, FONT, FONT_SMALL, STATUS_OK, STATUS_WARN, TEXT, TEXT_MUTED,
+    ACCENT, BG, FONT, FONT_SMALL, STATUS_OK, STATUS_WARN, TEXT_MUTED, Form,
     dark_combo, dark_entry, secondary_button, themed_askyesno, themed_showerror,
     themed_showinfo, themed_showwarning,
 )
@@ -55,15 +54,15 @@ class GoogleTab:
     """Baut den Google-Tab; Tab-Schnittstelle für den `SaveCoordinator`
     (#132).
 
-    Aufgebaut in drei Sektionsmethoden (R4, #51): `_build_account_section`,
-    `_build_sync_section`, `_build_calendar_section`. Vorher lag alles in
+    Aufgebaut in Sektionsmethoden (R4, #51): `_build_account_section`,
+    `_build_sync_section`, `_build_calendar_section`,
+    `_build_advanced_section`. Vorher lag alles in
     einem 525-Zeilen-`__init__` mit 13 Closures über ~30 geteilten lokalen
     Variablen; geteilter Zustand liegt jetzt auf `self`.
 
-    Die Row-Nummern der Sync- und Kalender-Sektion sind nicht fix: optionale
-    Zeilen (Konflikte, Kompaktieren) erscheinen nur unter Bedingungen. Deshalb
-    reicht `_build_sync_section` die nächste freie Zeile an
-    `_build_calendar_section` weiter.
+    Die Sektionen bauen in ein gemeinsames `Form` (#132) — Zeilen zählt das
+    Formular, keine Row-Nummern mehr von Hand. Dazu kommt `_build_advanced_
+    section` für die Kompaktierung.
     """
 
     def __init__(self, frame, dialog, settings, base_path, on_change, runner,
@@ -96,9 +95,12 @@ class GoogleTab:
         # Nutzers, der Coordinator übernimmt es als gespeichert.
         self.on_calendars_loaded: Callable[[], None] | None = None
 
+        self._form = Form(frame, scroll=True)
+        self._form.frame.pack(fill="both", expand=True)
         self._build_account_section()
-        next_row = self._build_sync_section()
-        self._build_calendar_section(next_row)
+        self._build_sync_section()
+        self._build_calendar_section()
+        self._build_advanced_section()
 
         fields = FieldSet()
         fields.add("device_name", self.device_name_var)
@@ -128,58 +130,53 @@ class GoogleTab:
     # --- Google-Konto -----------------------------------------------------
 
     def _build_account_section(self):
-        frame, settings = self.frame, self._settings
+        form, settings = self._form, self._settings
+        body = form.body
+        form.section("Konto")
 
-        subheader(frame, "Google-Konto", row=0, top_pad=10)
-
-        label(frame, "credentials.json:", row=1, pady=4)
-        creds_row = tk.Frame(frame, bg=BG)
-        creds_row.grid(row=1, column=1, padx=10, pady=4, sticky="w")
-
-        self._status_label = tk.Label(creds_row, text="", font=FONT_SMALL, bg=BG)
-        self._status_label.pack(side=tk.LEFT)
+        self._status_label = tk.Label(body, text="", font=FONT_SMALL, bg=BG)
+        form.row("credentials.json:", self._status_label)
         self._refresh_status()
 
         # Absender-Zeile: zeigt die authentifizierte E-Mail-Adresse, die ui.py
         # im Hintergrund über OAuth2-userinfo abruft und in settings cached.
-        label(frame, "Absender:", row=2, pady=(0, 4))
-        sender_row = tk.Frame(frame, bg=BG)
-        sender_row.grid(row=2, column=1, padx=10, pady=(0, 4), sticky="w")
+        sender_row = tk.Frame(body, bg=BG)
         self._sender_label = tk.Label(
             sender_row,
             text=settings.get("sender_email") or "(noch nicht ermittelt)",
             font=FONT, bg=BG, fg=TEXT_MUTED,
         )
         self._sender_label.pack(side=tk.LEFT)
-
         self._sender_btn = secondary_button(
             sender_row,
             "Aktualisieren" if settings.get("sender_email") else "Anmelden",
-            self._refresh_sender,
-            padx=12, pady=2,
+            self._refresh_sender, padx=12, pady=2,
         )
         self._sender_btn.pack(side=tk.LEFT, padx=(10, 0))
+        form.row("Absender:", sender_row)
 
-        label(frame, "Berechtigungen:", row=3, pady=(0, 4))
-        scopes_row = tk.Frame(frame, bg=BG)
-        scopes_row.grid(row=3, column=1, padx=10, pady=(0, 4), sticky="w")
-
+        scopes_row = tk.Frame(body, bg=BG)
         secondary_button(
             scopes_row, "Anzeigen", self._open_scopes, padx=12, pady=2,
         ).pack(side=tk.LEFT)
-
         self._scopes_status = tk.Label(scopes_row, text="", font=FONT_SMALL, bg=BG)
         self._scopes_status.pack(side=tk.LEFT, padx=(10, 0))
+        form.row("Berechtigungen:", scopes_row)
         self._refresh_scopes_status()
 
         # Anmeldung: trägt der Token noch? Ergänzt die Zeile darüber, ersetzt
         # sie nicht — die sagt, WELCHE Scopes gewährt sind, diese, OB der
-        # Token überhaupt noch trägt. Genau diese Unterscheidung fehlte:
-        # Berechtigungen vollständig, Anmeldung abgelaufen (Xveyn#124).
-        label(frame, "Anmeldung:", row=4, pady=(0, 4))
+        # Token überhaupt noch trägt (Xveyn#124). „Google neu verbinden"
+        # steht direkt daneben: genau diese Zeile sagt, wann er nötig ist.
+        token_row = tk.Frame(body, bg=BG)
         self._token_status = tk.Label(
-            frame, text="wird geprüft…", font=FONT_SMALL, bg=BG, fg=TEXT_MUTED)
-        self._token_status.grid(row=4, column=1, padx=10, pady=(0, 4), sticky="w")
+            token_row, text="wird geprüft…", font=FONT_SMALL, bg=BG, fg=TEXT_MUTED)
+        self._token_status.pack(side=tk.LEFT)
+        secondary_button(
+            token_row, "Google neu verbinden", self._reconnect_google,
+            padx=12, pady=2,
+        ).pack(side=tk.LEFT, padx=(10, 0))
+        form.row("Anmeldung:", token_row)
         self._check_token()
 
     def _show_keyring_error(self, error):
@@ -316,97 +313,61 @@ class GoogleTab:
     # --- Synchronisation --------------------------------------------------
 
     def _build_sync_section(self):
-        """Baut die Sync-Sektion und liefert die nächste freie Grid-Zeile."""
-        frame, settings = self.frame, self._settings
+        form, settings = self._form, self._settings
+        body = form.body
+        form.section("Synchronisation",
+                     hint="Der Schalter wirkt sofort (Anmeldung im Browser).")
 
-        subheader(frame, "Synchronisation", row=5)
-        tk.Label(
-            frame, text="Diese Schalter wirken sofort (Anmeldung im Browser).",
-            font=FONT_SMALL, bg=BG, fg=TEXT_MUTED,
-        ).grid(row=6, column=0, columnspan=2, padx=10, pady=(0, 4), sticky="w")
-
+        # Nicht in einer depends_on-Gruppe (Besitz-Vertrag): der Schalter
+        # wird während des Consent-Flows selbst gesperrt (oauth_task).
         self._var_sync = tk.BooleanVar(value=settings.get("sync_enabled"))
-        self._cb_sync = tk.Checkbutton(
-            frame, text="Mit Google Drive synchronisieren",
-            variable=self._var_sync, font=FONT,
-            bg=BG, fg=TEXT, selectcolor=CELL_BG,
-            activebackground=BG, activeforeground=TEXT,
-            cursor="hand2",
-            command=self._on_sync_toggled,
-        )
-        self._cb_sync.grid(row=7, column=0, columnspan=2, padx=10, pady=(4, 0), sticky="w")
+        self._cb_sync = form.check("Mit Google Drive synchronisieren", self._var_sync)
+        self._cb_sync.config(command=self._on_sync_toggled)
 
         # Gerätename: reist über die Sync-Registry mit und macht die
         # Geräte-ID im Konfliktdialog lesbar (s. devices.py). Leer lassen ist
         # erlaubt — dann zeigt der Dialog weiter nur die gekürzte ID.
-        device_row = tk.Frame(frame, bg=BG)
-        device_row.grid(row=8, column=0, columnspan=2, padx=10, pady=(6, 0), sticky="w")
-        tk.Label(
-            device_row, text="Gerät:", font=FONT_SMALL, bg=BG, fg=TEXT_MUTED,
-        ).pack(side=tk.LEFT)
         self.device_name_var = tk.StringVar(value=settings.get("device_name") or "")
-        entry = dark_entry(device_row, self.device_name_var, width=24)
+        entry = dark_entry(body, self.device_name_var, width=24)
         # Die Länge deckelt beim Speichern ohnehin `sanitize_device_name`; hier
         # sichtbar machen, statt den Namen still zu kürzen (das Feld zeigte
         # nach dem Speichern weiter den ungekürzten Namen, gespeichert wäre ein
         # anderer).
         entry.config(
             validate="key",
-            validatecommand=(frame.register(
+            validatecommand=(body.register(
                 lambda proposed: len(proposed) <= MAX_NAME_LENGTH), "%P"),
         )
-        entry.pack(side=tk.LEFT, padx=(6, 0))
+        form.row("Gerät:", entry)
         # Bewusst KEIN Tooltip (Konvention „Tooltips" in CLAUDE.md): Dialoge
         # bekommen keine flächendeckenden, und ein Hover-Text an einem
         # Eingabefeld bliebe die ganze Tippdauer offen — er verdeckte dabei
-        # genau die beiden Zeilen darunter, weil `_Tooltip` starr unter dem
-        # Widget aufpoppt und keinen Auto-Hide-Timeout kennt. Was nicht
+        # genau die Zeilen darunter, weil `_Tooltip` starr unter dem Widget
+        # aufpoppt und keinen Auto-Hide-Timeout kennt. Was nicht
         # selbsterklärend ist, steht deshalb als Hinweiszeile da.
-        tk.Label(
-            frame, text="Wird anderen Geräten bei Sync-Konflikten angezeigt.",
-            font=FONT_SMALL, bg=BG, fg=TEXT_MUTED,
-        ).grid(row=9, column=0, columnspan=2, padx=10, pady=(2, 0), sticky="w")
+        form.hint("Wird anderen Geräten bei Sync-Konflikten angezeigt.")
 
         device_id = settings.get("device_id") or "(noch nicht gesetzt)"
         device_id_short = device_id[:8] + "…" if len(device_id) > 8 else device_id
-        tk.Label(
-            frame, text=f"Geräte-ID: {device_id_short}", font=FONT_SMALL,
-            bg=BG, fg=TEXT_MUTED,
-        ).grid(row=10, column=0, columnspan=2, padx=10, pady=(2, 0), sticky="w")
+        form.row("Geräte-ID:", tk.Label(body, text=device_id_short, font=FONT,
+                                        bg=BG, fg=TEXT_MUTED))
 
         # Lokales Datum wie im Header-Status-Label (s. sync_orchestrator.
         # _status_view) — zwei verschiedene Daten für denselben Wert wären
         # schlimmer als ein um Mitternacht schiefes.
         _pulled_on = local_date_of_iso(settings.get("last_pull_at"))
         last = format_date(_pulled_on) if _pulled_on else "noch nie"
-        tk.Label(
-            frame, text=f"Letzte Synchronisation: {last}", font=FONT_SMALL,
-            bg=BG, fg=TEXT_MUTED,
-        ).grid(row=11, column=0, columnspan=2, padx=10, pady=(2, 4), sticky="w")
+        form.row("Letzte Synchronisation:", tk.Label(
+            body, text=last, font=FONT, bg=BG, fg=TEXT_MUTED))
 
-        # Ab hier wachsen im Google-Tab optionale Zeilen (Konflikte, Kompaktieren)
-        # dynamisch — deshalb eine laufende Row-Nummer statt fixer Konstanten.
-        next_google_row = 12
         unresolved = 0
         if self._conflicts_store is not None:
             unresolved = self._conflicts_store.count_unresolved()
         if unresolved > 0:
-            secondary_button(
-                frame,
-                f"Konflikte ansehen ({unresolved})",
-                self._open_conflicts_dialog,
-                padx=12, pady=2,
-            ).grid(row=next_google_row, column=0, columnspan=2, padx=10, pady=(0, 8), sticky="w")
-            next_google_row += 1
+            form.buttons((f"Konflikte ansehen ({unresolved})",
+                          self._open_conflicts_dialog))
 
-        btn_row = tk.Frame(frame, bg=BG)
-        btn_row.grid(row=next_google_row, column=0, columnspan=2, padx=10, pady=(4, 8), sticky="w")
-        next_google_row += 1
-
-        secondary_button(
-            btn_row, "Google neu verbinden", self._reconnect_google, padx=12, pady=2,
-        ).pack(side=tk.LEFT)
-
+    def _build_advanced_section(self):
         # Nicht an sync_enabled hängen, sondern an "hat je gesynct" (Audit N6):
         # wer den Sync abschaltet, behält seine Tombstones (das Remote kennt
         # die gelöschten Tage weiter) — und braucht damit weiterhin einen Weg,
@@ -415,15 +376,19 @@ class GoogleTab:
         # Variante, weil sie alle Geräte über das gc_watermark einbezieht. Nie
         # gesyncte Rechner brauchen den Knopf nicht: dort verwirft der
         # Startup-Sweep (sync.drop_orphan_tombstones) die Tombstones ohnehin.
+        settings = self._settings
         ever_synced = settings.get("sync_enabled") or settings.get("last_pull_at")
-        if ever_synced and self._storage is not None and self._conflicts_store is not None:
-            secondary_button(
-                frame, "Sync-Daten kompaktieren", self._on_compact_clicked,
-                padx=12, pady=2,
-            ).grid(row=next_google_row, column=0, columnspan=2, padx=10, pady=(0, 8), sticky="w")
-            next_google_row += 1
-
-        return next_google_row
+        if not (ever_synced and self._storage is not None
+                and self._conflicts_store is not None):
+            return
+        # Abgesetzt ganz unten (#132): die Aktion entfernt Einträge endgültig
+        # und stand vorher zwischen alltäglichen Knöpfen.
+        self._form.section(
+            "Erweitert",
+            hint="Entfernt alte gelöschte Einträge endgültig aus dem Sync — "
+                 "nur, wenn alle Geräte aktuell sind und kürzlich "
+                 "synchronisiert haben.")
+        self._form.buttons(("Sync-Daten kompaktieren", self._on_compact_clicked))
 
     def _on_sync_toggled(self):
         settings, base_path = self._settings, self._base_path
@@ -550,42 +515,28 @@ class GoogleTab:
 
     # --- Google Kalender --------------------------------------------------
 
-    def _build_calendar_section(self, start_row):
-        frame, settings = self.frame, self._settings
-
-        subheader(frame, "Google Kalender", row=start_row)
-        start_row += 1
+    def _build_calendar_section(self):
+        form, settings = self._form, self._settings
+        body = form.body
+        form.section("Kalender",
+                     hint="Der Schalter wirkt sofort (Anmeldung im Browser).")
 
         self._var_gcal = tk.BooleanVar(value=settings.get("gcal_enabled"))
-
         # Kalender-Auswahl: Combobox zeigt Klarnamen, gespeichert wird die ID.
         # cal_map summary->id wird im Hintergrund per API befüllt.
         self.cal_map: dict[str, str] = {}
         self.cal_var = tk.StringVar(value=settings.get("gcal_calendar_id") or "primary")
 
-        gcal_check_row = start_row
-        cal_label_row = start_row + 1
-        cal_status_row = start_row + 2
-
-        self._cb_gcal = tk.Checkbutton(
-            frame, text="Reservierungen mit Google Kalender abgleichen",
-            variable=self._var_gcal, font=FONT,
-            bg=BG, fg=TEXT, selectcolor=CELL_BG,
-            activebackground=BG, activeforeground=TEXT,
-            cursor="hand2",
-            command=self._on_gcal_toggled,
-        )
-        self._cb_gcal.grid(row=gcal_check_row, column=0, columnspan=2,
-                           padx=10, pady=(4, 0), sticky="w")
-
-        tk.Label(frame, text="Kalender:", font=FONT, bg=BG, fg=TEXT).grid(
-            row=cal_label_row, column=0, padx=10, pady=4, sticky="w")
-        self._cal_combo = dark_combo(frame, self.cal_var, [self.cal_var.get()], width=30)
-        self._cal_combo.grid(row=cal_label_row, column=1, padx=10, pady=4, sticky="w")
-
-        self._cal_status = tk.Label(frame, text="", font=FONT_SMALL, bg=BG, fg=TEXT_MUTED)
-        self._cal_status.grid(row=cal_status_row, column=0, columnspan=2,
-                              padx=10, pady=(0, 4), sticky="w")
+        # Wie beim Sync: nicht in eine Gruppe, der Consent sperrt ihn selbst.
+        self._cb_gcal = form.check(
+            "Reservierungen mit Google Kalender abgleichen", self._var_gcal)
+        self._cb_gcal.config(command=self._on_gcal_toggled)
+        with form.depends_on(self._var_gcal):
+            self._cal_combo = dark_combo(body, self.cal_var,
+                                         [self.cal_var.get()], width=30)
+            form.row("Kalender:", self._cal_combo)
+        # Außerhalb der Gruppe: „nicht verfügbar" soll lesbar bleiben.
+        self._cal_status = form.hint("")
 
         if settings.get("gcal_enabled"):
             # Beim Aufbau: nicht-interaktiv. Hier hat niemand geklickt, und
