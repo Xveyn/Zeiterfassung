@@ -10,8 +10,9 @@ from src.theme import (
     BG,
     apply_combobox_style, apply_notebook_style, attach_unfocus_on_click,
     center_dialog_on_parent, create_dialog,
-    primary_button, secondary_button,
-    themed_showwarning, themed_showerror,
+    primary_button, scaled_window_fits, secondary_button,
+    themed_askyesno, themed_showwarning, themed_showerror,
+    workarea_for,
 )
 from src.holidays_de import code_for_state_label
 from src.settings import (
@@ -201,6 +202,31 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
         selected_code = code_for_state_label(app.state_var.get())
         old_scale = settings.get("ui_scale")
         new_scale = clamp_ui_scale((round(app.scale_var.get() / 5) * 5) / 100)
+
+        # Passt die größere Skalierung überhaupt auf den Bildschirm? Das
+        # Hauptfenster ist `resizable(False, False)` und wird auf seine
+        # angeforderte Größe gepinnt — bei 200 % auf einem 1080p-Schirm ist die
+        # Fußzeile („Arbeitszeiten senden“/„Export“/„Teilen“) abgeschnitten.
+        # Nur beim Vergrößern gefragt: wer herunterskaliert, kann nichts
+        # verlieren. Verhindert wird nichts — die Entscheidung gehört dem
+        # Nutzer, und sie ist umkehrbar, weil das Zahnrad im Header sitzt.
+        if new_scale > old_scale:
+            _, wa_top, _, wa_bottom = workarea_for(parent)
+            available = wa_bottom - wa_top
+            needed, fits = scaled_window_fits(
+                parent.winfo_height(), old_scale, new_scale, available)
+            if not fits:
+                notebook.select(tabs["app"])
+                if not themed_askyesno(
+                    dialog, "Passt nicht auf den Bildschirm",
+                    f"Bei {round(new_scale * 100)} % braucht das Fenster etwa "
+                    f"{needed} Pixel Höhe — dein Bildschirm bietet "
+                    f"{available}.\n\nDie Fußzeile mit "
+                    "„Arbeitszeiten senden“, „Export“ und „Teilen“ wäre dann "
+                    "abgeschnitten. Die Einstellungen bleiben über das Zahnrad "
+                    "oben erreichbar.\n\nTrotzdem übernehmen?",
+                ):
+                    return
 
         updates = {
             "autostart": new_autostart,

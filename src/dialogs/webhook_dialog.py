@@ -13,8 +13,8 @@ from src import keyring_store, webhook, webhook_secrets, webhook_store
 from src.theme import (
     BG, CELL_BG, FONT, FONT_SMALL, TEXT, TEXT_MUTED,
     apply_combobox_style, attach_unfocus_on_click, center_dialog_on_parent,
-    create_dialog, dark_combo, dark_entry, primary_button, secondary_button,
-    set_primary_button_enabled, set_secondary_button_enabled,
+    create_dialog, dark_combo, dark_entry, primary_button, px,
+    secondary_button, set_primary_button_enabled, set_secondary_button_enabled,
     themed_showerror, themed_showinfo,
 )
 
@@ -150,7 +150,7 @@ def open_webhook_dialog(parent, store, runner, record: dict | None = None, on_sa
                      text="Liegt im Schlüsselbund des Betriebssystems. "
                           "Leer lassen = unverändert.",
                      font=FONT_SMALL, bg=BG, fg=TEXT_MUTED,
-                     justify="left", wraplength=380).grid(
+                     justify="left", wraplength=px(380)).grid(
                 row=next_row, column=0, columnspan=2, sticky="w", pady=(4, 0))
 
     mode_var.trace_add("write", _rebuild_auth_fields)

@@ -14,7 +14,7 @@ import tkinter as tk
 from typing import Literal
 
 from src.theme.palette import BG, CELL_BG, TEXT
-from src.theme.fonts import FONT
+from src.theme.fonts import FONT, px
 from src.theme.widgets import primary_button, secondary_button, set_primary_button_enabled
 from src.theme.geometry import center_dialog_on_parent
 from src.theme.chrome import create_dialog
@@ -64,7 +64,7 @@ def themed_askyesno(parent, title: str, message: str, lock_ms: int = 0) -> bool:
 
     tk.Label(
         dialog, text=message, font=FONT, bg=BG, fg=TEXT,
-        wraplength=380, justify="left",
+        wraplength=px(380), justify="left",
     ).pack(padx=24, pady=(20, 14))
 
     def click_yes():
@@ -120,7 +120,7 @@ def themed_ask_delete_choice(parent, title: str, message: str, options, lock_ms:
 
     tk.Label(
         dialog, text=message, font=FONT, bg=BG, fg=TEXT,
-        wraplength=380, justify="left",
+        wraplength=px(380), justify="left",
     ).pack(padx=24, pady=(20, 10))
 
     checkbuttons = []
@@ -200,7 +200,7 @@ def themed_ask_save_changes(parent, tab_title: str) -> SaveChoice:
     tk.Label(
         dialog,
         text=f"Im Tab „{tab_title}“ gibt es ungespeicherte Änderungen.\nSollen sie gespeichert werden?",
-        font=FONT, bg=BG, fg=TEXT, wraplength=380, justify="left",
+        font=FONT, bg=BG, fg=TEXT, wraplength=px(380), justify="left",
     ).pack(padx=24, pady=(20, 14))
 
     def choose(value: SaveChoice):
@@ -235,7 +235,7 @@ def _themed_ok_dialog(parent, title: str, message: str) -> None:
 
     tk.Label(
         dialog, text=message, font=FONT, bg=BG, fg=TEXT,
-        wraplength=380, justify="left",
+        wraplength=px(380), justify="left",
     ).pack(padx=24, pady=(20, 14))
 
     btn_frame = tk.Frame(dialog, bg=BG)

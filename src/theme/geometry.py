@@ -1,10 +1,13 @@
 # src/theme/geometry.py
-"""Fenster-Geometrie und zwei reine Prädikate.
+"""Fenster-Geometrie und drei reine Funktionen.
 
-`center_dialog_on_parent` ist der Geometrie-Teil; `_stray_click_suppressed`
-(Streuklick-Guard) und `_should_show_delete_button` (macOS-✕-Regel) sind
-Tk-freie Policy-Funktionen und werden direkt getestet
-(`tests/test_click_guard.py`, `tests/test_delete_button.py`).
+`center_dialog_on_parent` ist der Geometrie-Teil, `workarea_for` die
+Arbeitsflächen-Ermittlung darunter (auch vom Einstellungen-Dialog genutzt);
+`_stray_click_suppressed` (Streuklick-Guard), `_should_show_delete_button`
+(macOS-✕-Regel) und `scaled_window_fits` (passt die gewählte UI-Skalierung
+noch auf den Bildschirm?) sind Tk-freie Policy-Funktionen und werden direkt
+getestet (`tests/test_click_guard.py`, `tests/test_delete_button.py`,
+`tests/test_scaling_fit.py`).
 """
 
 import platform
@@ -12,7 +15,7 @@ import time
 import tkinter as tk
 
 
-def _parent_workarea(parent):
+def workarea_for(parent):
     """Liefert (left, top, right, bottom) der taskbar-freien Arbeitsfläche
     des Monitors, auf dem `parent` liegt.
 
@@ -109,6 +112,43 @@ def _should_show_delete_button(is_macos, has_entry, has_reservation,
     return is_macos and (has_entry or has_reservation or has_vacation)
 
 
+# Aufschlag auf die Arbeitsfläche, bis zu dem eine Schätzung noch als passend
+# gilt. Die Schätzung unten ist proportional und liegt dadurch 0–5 % ZU HOCH
+# (die Zeilenhöhen des Kalenders runden pro Zeile ab). Ohne diesen Puffer
+# warnte die App bei 175 % auf einem 1080p-Schirm, wo es real passt —
+# gemessen 1018 px bei einer Arbeitsfläche von 1040 px.
+FIT_TOLERANCE = 1.05
+
+
+def scaled_window_fits(current_height, current_scale, new_scale,
+                       workarea_height):
+    """Schätzt die Fensterhöhe bei `new_scale` und ob sie auf den Bildschirm
+    passt. Returns `(geschätzte Höhe, passt)`.
+
+    Das Hauptfenster ist `resizable(False, False)` und wird von
+    `grid_renderer.repin_geometry` auf seine angeforderte Größe gepinnt, ohne
+    die Bildschirmgröße je zu prüfen. Bei einer zu großen Skalierung ist die
+    Fußzeile damit abgeschnitten. Der Aufrufer (Einstellungen-Dialog) warnt
+    daraufhin — verhindert wird nichts: die Entscheidung gehört dem Nutzer,
+    und sie ist umkehrbar, weil das Zahnrad im Header sitzt.
+
+    Geschätzt wird **proportional**, und das ist seit `fonts.px()` strukturell
+    richtig: Schrift und Layout-Pixel hängen am selben Faktor, das Fenster
+    wächst also in beiden Achsen mit. Exakt wäre nur ein zweiter Aufbau der
+    gesamten UI mit den neuen Fonts — den Preis ist eine Warnung nicht wert.
+
+    Ohne belastbare Eingaben (Fenster noch nicht gemappt, kaputter `ui_scale`
+    aus einer verfälschten settings.json, Arbeitsfläche nicht ermittelbar)
+    gibt es `(0, True)` zurück: keine Aussage, also keine Warnung. Eine
+    Warnung ins Blaue wäre schlimmer als gar keine — sie erschiene bei jedem
+    Speichern und wäre nach dem dritten Mal weggeklickt, bevor sie gelesen
+    wird."""
+    if current_height <= 0 or current_scale <= 0 or workarea_height <= 0:
+        return 0, True
+    estimated = round(current_height * new_scale / current_scale)
+    return estimated, estimated <= workarea_height * FIT_TOLERANCE
+
+
 def center_dialog_on_parent(dialog, parent):
     """Position a Toplevel dialog over its parent's screen rect.
 
@@ -123,7 +163,7 @@ def center_dialog_on_parent(dialog, parent):
     Danach wird die Position an die Arbeitsfläche **des Parent-Monitors**
     geklammert, damit ein Parent am unteren/oberen Rand den Dialog nicht aus
     dem sichtbaren Bereich schiebt und gleichzeitig auf demselben Bildschirm
-    bleibt wie der Parent (siehe `_parent_workarea`).
+    bleibt wie der Parent (siehe `workarea_for`).
 
     Muss gerufen werden, nachdem alle Widgets erstellt sind, damit
     winfo_reqwidth/reqheight die finale Größe liefern.
@@ -147,7 +187,7 @@ def center_dialog_on_parent(dialog, parent):
     py = parent.winfo_rooty()
     pw = parent.winfo_width()
     ph = parent.winfo_height()
-    wa_left, wa_top, wa_right, wa_bottom = _parent_workarea(parent)
+    wa_left, wa_top, wa_right, wa_bottom = workarea_for(parent)
     if parent_viewable:
         x = px + max(0, (pw - w) // 2)
         y = py + max(0, (ph - h) // 2)

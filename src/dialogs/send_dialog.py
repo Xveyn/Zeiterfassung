@@ -15,7 +15,7 @@ from src.report import (
 from src.theme import (
     BG, CELL_BG, FONT, FONT_BOLD, TEXT, TEXT_MUTED,
     apply_combobox_style, attach_unfocus_on_click, center_dialog_on_parent,
-    create_dialog, dark_combo, primary_button, secondary_button,
+    create_dialog, dark_combo, primary_button, px, secondary_button,
     set_button_text, set_primary_button_enabled,
     themed_showerror, themed_showinfo,
 )
@@ -37,7 +37,7 @@ def show_missing_credentials_dialog(parent, base_path):
             "Mail-Konto einrichten — dann wird kein Google-Konto benötigt."
         ),
         font=FONT, bg=BG, fg=TEXT,
-        wraplength=380, justify="left",
+        wraplength=px(380), justify="left",
     ).grid(row=0, column=0, columnspan=2, padx=20, pady=(20, 12))
 
     def open_and_close():
