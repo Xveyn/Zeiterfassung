@@ -6,18 +6,26 @@ import tkinter as tk
 from src.dialogs.category_dialog import open_category_dialog
 from src.dialogs.date_row import build_date_row
 from src.dialogs.settings_dialog._shared import label, subheader
+from src.dialogs.settings_dialog.fields import FieldSet
+from src.dialogs.settings_dialog.form_model import SaveOutcome
+from src.dialogs.settings_dialog.tab_rules import (
+    WSL_KEYS, validate_work, work_updates, wsl_snapshot,
+)
 from src.dialogs.vacation_dialog import open_vacation_dialog
 from src.settings import WEEKDAY_KEYS
 from src.theme import (
     BG, CELL_BG, FONT, FONT_SMALL, PAUSE_VALUES, TEXT, TEXT_MUTED,
-    TIME_VALUES, dark_combo, dark_entry, secondary_button,
+    TIME_VALUES, dark_combo, dark_entry, secondary_button, themed_showwarning,
 )
 from src.time_utils import DAYS_DE
+from src.weekly_limit import (
+    format_limit_warnings, period_scan_needed, scan_period_for_warnings,
+)
 
 
 class WorkTab:
-    """Baut den Arbeitszeit-Tab; exponiert die Tk-Variablen, die
-    save_settings in dialog.py liest (Vertrag siehe Spec H4)."""
+    """Baut den Arbeitszeit-Tab; Tab-Schnittstelle für den `SaveCoordinator`
+    (#132)."""
 
     def __init__(self, frame, dialog, settings, vacation_store=None,
                  on_vacation_change=None, storage=None,
@@ -42,7 +50,7 @@ class WorkTab:
         start_vars = {}
         end_vars = {}
         # Die StringVars entstehen für ALLE sieben Tage, auch für die
-        # ausgeblendeten: save_settings schreibt unverändert alle Wochentage
+        # ausgeblendeten: `save` schreibt unverändert alle Wochentage
         # zurück, damit die Werte für Sa/So erhalten bleiben und sofort wieder
         # da sind, wenn "Nur Werktage" zurückgenommen wird.
         workweek_only = bool(settings.get("workweek_only"))
@@ -155,3 +163,57 @@ class WorkTab:
         self.wsl_end_vars = wsl_end_vars
         self.wsl_hours_var = wsl_hours_var
         self.workweek_only_var = workweek_only_var
+
+        self.title = "Arbeitszeit"
+        self._dialog = dialog
+        self._settings = settings
+        self._storage = storage
+
+        fields = FieldSet()
+        fields.add("workweek_only", workweek_only_var)
+        for key in WEEKDAY_KEYS:
+            fields.add(f"default_start_{key}", start_vars[key])
+            fields.add(f"default_end_{key}", end_vars[key])
+        fields.add("default_pause", pause_var)
+        fields.add("pause_warning_enabled", pause_warning_var)
+        fields.add("hourly_rate", rate_var)
+        fields.add("werkstudent_limit_enabled", wsl_enabled_var)
+        # Jahr → Monat → Tag ist Absicht: die Datumszeile klemmt den Tag bei
+        # jedem Schreibzugriff auf die Monatslänge, und `FieldSet.load`
+        # schreibt in dieser Reihenfolge zurück (Verwerfen nach 31.01. →
+        # Februar ergäbe sonst den 28.01.).
+        for which, (day, month, year) in (("start", wsl_start_vars),
+                                          ("end", wsl_end_vars)):
+            fields.add(f"werkstudent_limit_{which}.year", year)
+            fields.add(f"werkstudent_limit_{which}.month", month)
+            fields.add(f"werkstudent_limit_{which}.day", day)
+        fields.add("werkstudent_limit_max_hours", wsl_hours_var)
+        self.fields = fields
+
+    def values(self):
+        return self.fields.values()
+
+    def load(self, values):
+        self.fields.load(values)
+
+    def validate(self):
+        return validate_work(self.values())
+
+    def save(self):
+        settings = self._settings
+        old = {key: settings.get(key) for key in WSL_KEYS}
+        updates = work_updates(self.values(), old)
+        settings.apply_updates(updates)
+        # Geänderter Limit-Zeitraum: bereits erfasste Wochen darin prüfen —
+        # sonst fiele eine Überschreitung erst beim nächsten Eintrag auf.
+        if self._storage is not None and period_scan_needed(
+                wsl_snapshot(old), wsl_snapshot(updates)):
+            warnings = scan_period_for_warnings(settings, self._storage.get_all())
+            if warnings:
+                themed_showwarning(
+                    self._dialog, "Wochenlimit überschritten",
+                    "Im konfigurierten Zeitraum liegen bereits erfasste Wochen "
+                    f"über dem Limit:\n\n{format_limit_warnings(warnings)}\n\n"
+                    "Grobe Näherung, keine rechtliche Bewertung.",
+                )
+        return SaveOutcome(saved=True)

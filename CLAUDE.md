@@ -590,7 +590,7 @@ Traceback-/Catch-all-Ausgabe → nativ.
 
 ### Ein Catch-all loggt, meldet oder trägt eine Begründung (Xveyn#73)
 
-`src/` hält rund 90 Handler auf `except Exception` / `except BaseException`.
+`src/` hält rund 105 Handler auf `except Exception` / `except BaseException`.
 Die **Dichte ist unkritisch und gewollt**: sie sitzen im Bootstrap, an
 Threading-Rändern und an Best-Effort-Plattformaufrufen — genau dort, wo ein
 Catch-all hingehört. Eine Bestandsaufnahme über alle Handler ergab, dass 96 %
@@ -620,7 +620,7 @@ ist damit endgültig. Also:
   Windows-Fehler und keine Plattform-Unverträglichkeit.
 
 Durchgesetzt wird das von **`tests/test_catch_all_handlers.py`**, nicht vom
-Linter: `ruff`s `BLE001` meckerte jeden Catch-all an, also auch die ~90
+Linter: `ruff`s `BLE001` meckerte jeden Catch-all an, also auch die ~105
 korrekten — reines Rauschen mit anschließender `noqa`-Flut. Der Test prüft
 stattdessen genau die vier Punkte oben. Muster wie
 `tests/test_type_annotations.py`.

@@ -4,6 +4,7 @@ Reconnect/Kompaktierung) und Google-Kalender — inkl. der H5-Worker
 
 import logging
 import os
+from collections.abc import Callable
 import tkinter as tk
 import traceback
 from tkinter import messagebox
@@ -11,11 +12,14 @@ from tkinter import messagebox
 from src import gcal
 from src.devices import MAX_NAME_LENGTH
 from src.dialogs.settings_dialog._shared import label, subheader
+from src.dialogs.settings_dialog.fields import FieldSet
+from src.dialogs.settings_dialog.form_model import SaveOutcome
 from src.dialogs.settings_dialog.google_tab_task import (
     check_token_status, fetch_sender_email, load_calendars,
     open_calendar_service, open_drive_service, reconnect_drive,
 )
 from src.dialogs.settings_dialog.oauth_task import build_oauth_enable_task
+from src.dialogs.settings_dialog.tab_rules import calendar_update, google_updates
 from src.oauth_utils import (
     KEYRING_UNAVAILABLE_HINT, KEYRING_UNAVAILABLE_TITLE, is_keyring_unavailable,
 )
@@ -50,7 +54,8 @@ _TOKEN_MARKS = {
 
 
 class GoogleTab:
-    """Baut den Google-Tab; exponiert cal_map/cal_var für save_settings.
+    """Baut den Google-Tab; Tab-Schnittstelle für den `SaveCoordinator`
+    (#132).
 
     Aufgebaut in drei Sektionsmethoden (R4, #51): `_build_account_section`,
     `_build_sync_section`, `_build_calendar_section`. Vorher lag alles in
@@ -87,9 +92,40 @@ class GoogleTab:
         self._scope_stamp = None
         self._scope_granted = None
 
+        self.title = "Google"
+        # Setzt der Dialog: nach dem Nachladen der Kalenderliste steht in
+        # `cal_var` der Klarname statt der ID — das ist keine Änderung des
+        # Nutzers, der Coordinator übernimmt es als gespeichert.
+        self.on_calendars_loaded: Callable[[], None] | None = None
+
         self._build_account_section()
         next_row = self._build_sync_section()
         self._build_calendar_section(next_row)
+
+        fields = FieldSet()
+        fields.add("device_name", self.device_name_var)
+        fields.add("gcal_calendar", self.cal_var)
+        self.fields = fields
+
+    def values(self):
+        return self.fields.values()
+
+    def load(self, values):
+        self.fields.load(values)
+
+    def validate(self):
+        return None
+
+    def save(self):
+        settings = self._settings
+        raw = self.values()
+        settings.apply_updates(google_updates(raw))
+        new_id = calendar_update(
+            self.cal_map, raw["gcal_calendar"],
+            settings.get("gcal_calendar_id"), bool(settings.get("gcal_enabled")))
+        if new_id is not None:
+            settings.set_synced("gcal_calendar_id", new_id)
+        return SaveOutcome(saved=True)
 
     # --- Google-Konto -----------------------------------------------------
 
@@ -327,8 +363,9 @@ class GoogleTab:
         self.device_name_var = tk.StringVar(value=settings.get("device_name") or "")
         entry = dark_entry(device_row, self.device_name_var, width=24)
         # Die Länge deckelt beim Speichern ohnehin `sanitize_device_name`; hier
-        # sichtbar machen, statt den Namen still zu kürzen (der Dialog schließt
-        # beim Speichern, das Ergebnis sähe man erst beim nächsten Öffnen).
+        # sichtbar machen, statt den Namen still zu kürzen (das Feld zeigte
+        # nach dem Speichern weiter den ungekürzten Namen, gespeichert wäre ein
+        # anderer).
         entry.config(
             validate="key",
             validatecommand=(frame.register(
@@ -603,6 +640,8 @@ class GoogleTab:
                 self.cal_var.set(summary)
                 break
         self._cal_status.config(text="")
+        if self.on_calendars_loaded is not None:
+            self.on_calendars_loaded()
 
     def _load_calendars(self, interactive=True):
         """Lädt die Kalenderliste im Worker.

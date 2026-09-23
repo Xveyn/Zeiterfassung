@@ -211,6 +211,23 @@ Formularfelder: Anlegen/Bearbeiten/Entfernen von SMTP-Konten und Webhooks
 Google-Schalter für Sync und Kalender (starten den Consent; Hinweis „Diese
 Schalter wirken sofort (Anmeldung im Browser)." bleibt).
 
+**Umgesetzt mit fünf bewussten Abweichungen** (Plan
+`docs/superpowers/plans/2026-09-23-einstellungsdialog-132-pr2-speichern-je-tab.md`):
+
+1. `values()` liefert den rohen Formularstand statt der Settings-Form — es läuft
+   bei jedem Tastendruck und darf an „abc" im Stundenfeld nicht scheitern; die
+   Settings-Form entsteht erst in `save()` über `tab_rules`.
+2. `reset()` heißt `load(values)` und bekommt den Stand vom Coordinator, der die
+   Baseline ohnehin hält.
+3. `rebaseline(tab, fields=None)` nimmt optional die Felder, damit das
+   Nachladen der Kalenderliste eine Änderung am Gerätenamen nicht verschluckt.
+4. `SaveOutcome.saved` zusätzlich zu `restart`: `save()` kann selbst abbrechen
+   (Autostart scheitert, Skalierungs-Rückfrage verneint), der Tab bleibt dann
+   geändert.
+5. Im App-Tab kommt die Skalierungs-Rückfrage vor dem Umschalten des
+   Autostarts — vorher hinterließ eine verneinte Rückfrage einen bereits
+   umgeschalteten Autostart.
+
 ### PR 3 — Neuschnitt auf sechs Tabs
 
 Alle Tabs werden mit `Form(scroll=True)` gebaut.

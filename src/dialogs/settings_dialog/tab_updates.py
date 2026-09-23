@@ -13,6 +13,9 @@ from src.changelog import (
     fetch_changelog_entry, parse_changelog_markdown, release_notes_for_display,
 )
 from src.dialogs.settings_dialog._shared import label
+from src.dialogs.settings_dialog.fields import FieldSet
+from src.dialogs.settings_dialog.form_model import SaveOutcome
+from src.dialogs.settings_dialog.tab_rules import update_tab_updates
 from src.self_update import (
     UpdateBlocked, apply_linux, apply_windows, discard_download,
     download_and_verify_update, download_dest, plan_update,
@@ -46,7 +49,8 @@ _STATUS_READY = "Update bereit — wird beim Beenden installiert"
 
 
 class UpdatesTab:
-    """Baut den Updates-Tab und exponiert `frequency_var` für save_settings."""
+    """Baut den Updates-Tab; Tab-Schnittstelle für den `SaveCoordinator`
+    (#132)."""
 
     def __init__(self, frame, settings, runner, auto_updater):
         self.frame = frame
@@ -142,6 +146,14 @@ class UpdatesTab:
             ).grid(row=7, column=0, columnspan=2, padx=10, pady=(0, 4),
                    sticky="w")
 
+        self.title = "Updates"
+        fields = FieldSet()
+        fields.add("update_check_frequency", self.frequency_var)
+        fields.add("prerelease_updates_enabled", self.prerelease_var)
+        if self.auto_update_var is not None:
+            fields.add("auto_update_enabled", self.auto_update_var)
+        self.fields = fields
+
         # Label + Text bleiben immer gegridded (nie grid_remove()) — sonst
         # verschwindet ihr Breitenbeitrag zum Notebook-Tab kurzzeitig während
         # eines Checks (Text leer/gecleart ist ok, ungegridded lässt die
@@ -158,6 +170,19 @@ class UpdatesTab:
         self._changelog_text.tag_configure("bold", font=FONT_BOLD)
         self._changelog_text.tag_configure("hanging_indent", lmargin1=0, lmargin2=20)
         self._changelog_text.config(state="disabled")
+
+    def values(self):
+        return self.fields.values()
+
+    def load(self, values):
+        self.fields.load(values)
+
+    def validate(self):
+        return None
+
+    def save(self):
+        self._settings.apply_updates(update_tab_updates(self.values()))
+        return SaveOutcome(saved=True)
 
     def on_tab_selected(self):
         """Löst den Live-Check nur beim ersten Sichtbarwerden des Tabs aus."""
