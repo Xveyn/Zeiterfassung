@@ -58,7 +58,7 @@ def build_share_message(*, include_entries: bool, include_reservations: bool,
         f"<p>im Anhang findest Du meine {what} vom {period} "
         "als JSON-Datei.</p>"
         "<p>Du kannst die Datei in der Zeiterfassung-App über "
-        "<em>Einstellungen → Daten importieren</em> einlesen. "
+        "<em>Einstellungen → App → Daten importieren</em> einlesen. "
         "Vor dem Import kannst Du einen Zeitraum auswählen und je "
         "Datentyp festlegen, was bei Konflikten passieren soll.</p>"
         f"<p>Viele Grüße<br/>{html.escape(display_name)}</p>"

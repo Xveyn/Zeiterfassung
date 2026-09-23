@@ -130,7 +130,8 @@ Zeiterfassung/
 │   ├── logging_setup.py   # File-Logging + globaler Excepthook
 │   ├── platform_open.py   # os.startfile/open/xdg-open-Wrapper
 │   ├── theme/             # Dark-Theme: Palette, Fonts, Widget-Fabriken, Fenster-Chrome,
-│   │                      #   Geometrie-Helfer und themed messagebox-Drop-ins
+│   │                      #   Geometrie-Helfer, themed messagebox-Drop-ins und
+│   │                      #   Formular-Bausteine (Form)
 │   ├── tooltip.py         # Tooltip-Helfer
 │   ├── version.py         # Einzige Quelle der App-Version
 │   └── paths.py           # Pfadauflösung (Script- vs. Frozen-Modus)
@@ -138,9 +139,12 @@ Zeiterfassung/
 ├── assets/
 │   └── margenheld-icon    # App-Icon (.png + .ico + .icns)
 ├── docs/                  # Specs/Plans, Known Limitations
-├── scripts/               # Entwickler-Skripte (nicht Teil der App)
+├── scripts/               # Entwickler-Skripte (nicht Teil der App), s. scripts/README.md
 │   ├── build.py           # Plattform-Dispatcher für den PyInstaller-Build
-│   ├── resolve_readme_version.py # Pflegt die Versionsmarker dieser README
+│   ├── resolve_readme_version.py # Versionsmarker dieser README und Screenshot-Namen
+│   ├── release_notes.py   # Release-Body aus dem CHANGELOG-Abschnitt
+│   ├── archive_changelog.py   # ältere CHANGELOG-Abschnitte ins Archiv
+│   ├── demo_data.py       # Demo-Daten für Screenshots und zum Ausprobieren
 │   ├── webhook_testserver.py  # lokaler Test-Empfänger für den Webhook-Versand
 │   └── smtp_testserver.py     # lokaler Test-Mailserver für den SMTP-Versand
 ├── installer.iss          # Inno Setup Script (Windows-Installer)
