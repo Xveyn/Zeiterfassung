@@ -9,11 +9,11 @@ aktuelle Oberfläche zeigt oder eine drei Releases alte.
 
 | Datei | Motiv |
 |-------|-------|
-| `kalender-v1.21.0.png` | Monatsansicht (Hero-Bild) |
-| `tagesdialog-v1.21.0.png` | Tages-Dialog: Ist-Zeit, Reservierung, Erinnerung |
-| `senden-v1.21.0.png` | Sende-Dialog mit Zeitraum- und Kategoriewahl |
+| `kalender-v--VERSION--.png` | Monatsansicht (Hero-Bild) |
+| `tagesdialog-v--VERSION--.png` | Tages-Dialog: Ist-Zeit, Reservierung, Erinnerung |
+| `senden-v--VERSION--.png` | Sende-Dialog mit Zeitraum- und Kategoriewahl |
 | `bericht-v--VERSION--.png` | Erzeugter PDF-Bericht, Seite 1 |
-| `einstellungen-v1.21.0.png` | Einstellungen, Tab „Arbeitszeit" |
+| `einstellungen-v--VERSION--.png` | Einstellungen, Tab „Arbeitszeit" |
 
 ## Neue Screenshots aufnehmen
 
