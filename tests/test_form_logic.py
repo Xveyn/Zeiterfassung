@@ -5,9 +5,12 @@ import pytest
 from src.theme.form_logic import (
     BODY_MAX_HEIGHT,
     MIN_BODY_HEIGHT,
+    NOTCH_UNITS,
     SCREEN_MARGIN,
     body_height,
     enabled_states,
+    scroll_target,
+    scroll_units,
     is_descendant,
     wheel_route,
     wheel_units,
@@ -144,3 +147,50 @@ def test_tiny_screen_keeps_a_usable_minimum():
 
 def test_minimum_never_pads_short_content():
     assert body_height(120, 2.0, 400) == 120
+
+
+def test_wheel_route_idle_self_scroller_goes_to_form():
+    # Ein Textfeld ohne Überlauf fängt das Rad sonst still ab — mitten im
+    # Formular stünde die Seite dann (Vorlagen-Felder im Versand-Tab).
+    assert wheel_route("Text", can_scroll=False) == "form"
+    assert wheel_route("Listbox", can_scroll=False) == "form"
+    assert wheel_route("Text", can_scroll=True) == "widget"
+    # Für alle anderen Klassen spielt can_scroll keine Rolle.
+    assert wheel_route("TCombobox", can_scroll=False) == "form_block"
+    assert wheel_route("Frame", can_scroll=False) == "form"
+
+
+def test_scroll_units_notch_platforms_multiply():
+    assert scroll_units("Windows", 120, None) == -NOTCH_UNITS
+    assert scroll_units("Windows", -240, None) == 2 * NOTCH_UNITS
+    assert scroll_units("Linux", 0, 5) == NOTCH_UNITS
+    assert scroll_units("Linux", 0, 4) == -NOTCH_UNITS
+
+
+def test_scroll_units_macos_keeps_raw_trackpad_values():
+    # Trackpads liefern viele kleine Deltas — multipliziert spränge die Seite.
+    assert scroll_units("Darwin", 2, None) == -2
+    assert scroll_units("Darwin", 0, None) == 0
+
+
+def test_scroll_target_visible_item_stays():
+    # Sichtbar: 0–300 von 1000 px.
+    assert scroll_target(100, 30, 0.0, 0.3, 1000) is None
+    assert scroll_target(270, 30, 0.0, 0.3, 1000) is None
+
+
+def test_scroll_target_item_above_aligns_top():
+    assert scroll_target(100, 30, 0.5, 0.8, 1000) == 0.1
+
+
+def test_scroll_target_item_below_aligns_bottom():
+    # Unterkante 630 soll am Sichtrand liegen: erster sichtbarer Pixel 330.
+    assert scroll_target(600, 30, 0.0, 0.3, 1000) == 0.33
+
+
+def test_scroll_target_item_taller_than_view_aligns_top():
+    assert scroll_target(400, 500, 0.0, 0.3, 1000) == 0.4
+
+
+def test_scroll_target_degenerate_total():
+    assert scroll_target(0, 10, 0.0, 1.0, 0) is None
