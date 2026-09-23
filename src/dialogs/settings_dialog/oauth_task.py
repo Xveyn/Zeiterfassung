@@ -14,11 +14,11 @@ from src.oauth_utils import (
 from src.theme import themed_showerror
 
 
-def _show_missing_credentials(parent, base_path):
+def _show_missing_credentials(parent, base_path, action):
     # Lazy: send_dialog zieht Report/Period-Picker nach — für den Aufbau des
     # Einstellungs-Dialogs unnötig. Eigene Funktion, damit Tests sie ersetzen.
     from src.dialogs.send_dialog import show_missing_credentials_dialog
-    show_missing_credentials_dialog(parent, base_path)
+    show_missing_credentials_dialog(parent, base_path, google_action=action)
 
 
 def show_known_google_failure(dialog, error, base_path, action):
@@ -29,13 +29,15 @@ def show_known_google_failure(dialog, error, base_path, action):
 
     Bekannt sind: Schlüsselbund nicht erreichbar (#101), fehlende
     credentials.json (derselbe „Keine Zugangsdaten"-Dialog wie beim Senden,
-    mit „Datenordner öffnen") und keine Internetverbindung. `action` nennt,
+    mit „Datenordner öffnen", aber mit `action` statt des Gmail-Textes — kein
+    SMTP-Hinweis, Drive und Kalender gibt es nur mit Google) und keine
+    Internetverbindung. `action` nennt,
     was gerade scheiterte („Google Kalender aktivieren")."""
     if is_keyring_unavailable(error):
         themed_showerror(dialog, KEYRING_UNAVAILABLE_TITLE, KEYRING_UNAVAILABLE_HINT)
         return True
     if isinstance(error, FileNotFoundError) and base_path is not None:
-        _show_missing_credentials(dialog, base_path)
+        _show_missing_credentials(dialog, base_path, action)
         return True
     if is_offline_error(error):
         themed_showerror(

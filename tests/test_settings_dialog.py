@@ -160,7 +160,7 @@ def _run_failing(monkeypatch, error, *, base_path="/daten"):
     monkeypatch.setattr(sd.messagebox, "showerror", lambda *a, **k: native.append(a))
     monkeypatch.setattr(sd, "themed_showerror", lambda *a: themed.append(a))
     monkeypatch.setattr(sd, "_show_missing_credentials",
-                        lambda parent, path: missing.append((parent, path)))
+                        lambda parent, path, action: missing.append((parent, path, action)))
     checkbox, var = _FakeCheckbox(), _FakeVar()
 
     def service_fn():
@@ -180,7 +180,8 @@ def test_missing_credentials_shows_the_themed_credentials_dialog(monkeypatch):
         monkeypatch, FileNotFoundError("credentials.json nicht gefunden unter:\n/daten"))
 
     assert native == [] and themed == []
-    assert missing == [("dlg", "/daten")]
+    # Die Aktion reist mit: der Dialog nennt sie statt des Gmail-Textes.
+    assert missing == [("dlg", "/daten", "Google Kalender aktivieren")]
     assert var.value is False   # Schalter zurückgedreht wie bei jedem Fehlschlag
 
 
