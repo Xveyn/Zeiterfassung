@@ -42,7 +42,7 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
     auto_updater: der `auto_update.AutoUpdater` der App — derselbe, den ihr
     Start-Check benutzt, damit beide Auslöser einen Guard teilen (R9).
     vacation_store/on_vacation_change: optional; sind sie gesetzt, erscheint
-    im Arbeitszeit-Tab der Knopf „Urlaub…".
+    im Arbeitszeit-Tab der Knopf „Urlaub verwalten".
     on_vacation_display_change: reines Neuzeichnen des Kalenders für die
     Anzeige-Schalter jenes Dialogs — ohne den Kalender-Abgleich, den
     on_vacation_change mitbringt.

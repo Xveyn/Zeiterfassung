@@ -146,3 +146,65 @@ def test_keyring_failure_is_a_themed_message_without_traceback(monkeypatch):
     assert themed[0][1] == KEYRING_UNAVAILABLE_TITLE
     assert "Traceback" not in themed[0][2]
     assert var.value is False
+
+
+# --- Bekannte Google-Fehler: themed statt nativem Traceback (#132, PR 3) ----
+# Beim Pre-Release-Test aufgefallen: ohne credentials.json zeigte der
+# Kalender-/Sync-Schalter „OAuth-Flow fehlgeschlagen" mit Traceback im nativen
+# Dialog — ein erwarteter Fehler, für den es den themed „Keine
+# Zugangsdaten"-Dialog längst gibt.
+
+
+def _run_failing(monkeypatch, error, *, base_path="/daten"):
+    native, themed, missing = [], [], []
+    monkeypatch.setattr(sd.messagebox, "showerror", lambda *a, **k: native.append(a))
+    monkeypatch.setattr(sd, "themed_showerror", lambda *a: themed.append(a))
+    monkeypatch.setattr(sd, "_show_missing_credentials",
+                        lambda parent, path: missing.append((parent, path)))
+    checkbox, var = _FakeCheckbox(), _FakeVar()
+
+    def service_fn():
+        raise error
+
+    fn, on_done = build_oauth_enable_task(
+        service_fn=service_fn, settings=_FakeSettings(), setting_key="gcal_enabled",
+        checkbox=checkbox, toggle_var=var, on_change=MagicMock(),
+        dialog="dlg", error_title="Google Kalender aktivieren",
+        base_path=base_path)
+    on_done(fn())
+    return native, themed, missing, var
+
+
+def test_missing_credentials_shows_the_themed_credentials_dialog(monkeypatch):
+    native, themed, missing, var = _run_failing(
+        monkeypatch, FileNotFoundError("credentials.json nicht gefunden unter:\n/daten"))
+
+    assert native == [] and themed == []
+    assert missing == [("dlg", "/daten")]
+    assert var.value is False   # Schalter zurückgedreht wie bei jedem Fehlschlag
+
+
+def test_offline_is_a_themed_message_without_traceback(monkeypatch):
+    native, themed, missing, _var = _run_failing(
+        monkeypatch, ConnectionError("Network is unreachable"))
+
+    assert native == [] and missing == []
+    assert len(themed) == 1
+    parent, title, text = themed[0]
+    assert parent == "dlg" and title == "Keine Internetverbindung"
+    assert "Google Kalender aktivieren" in text
+
+
+def test_unexpected_error_stays_native_with_traceback(monkeypatch):
+    native, themed, missing, _var = _run_failing(monkeypatch, RuntimeError("boom"))
+
+    assert themed == [] and missing == []
+    assert len(native) == 1
+    assert "Traceback" in native[0][1]
+
+
+def test_show_known_google_failure_returns_false_for_unknown(monkeypatch):
+    monkeypatch.setattr(sd, "themed_showerror", lambda *a: None)
+    assert sd.show_known_google_failure("dlg", RuntimeError("x"), "/d", "X") is False
+    assert sd.show_known_google_failure(
+        "dlg", ConnectionError("down"), "/d", "X") is True

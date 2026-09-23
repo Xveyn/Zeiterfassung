@@ -126,13 +126,13 @@ class WorkTab:
 
         # --- Verwalten ---
         form.section("Verwalten")
-        specs = [("Kategorien…", lambda: open_category_dialog(dialog, settings))]
+        specs = [("Kategorien verwalten", lambda: open_category_dialog(dialog, settings))]
         if vacation_store is not None:
             # storage/reservation_store nur für die Kollisionsprüfung beim
             # Speichern: Urlaub und Arbeitszeit schließen sich am selben Tag
             # aus. runner: der Kalender-Schalter im Dialog räumt beim
             # Abschalten über runner.purge_vacations auf (Audit H5).
-            specs.append(("Urlaub…", lambda: open_vacation_dialog(
+            specs.append(("Urlaub verwalten", lambda: open_vacation_dialog(
                 dialog, vacation_store, settings, on_vacation_change,
                 storage, reservation_store, runner,
                 on_display_change=on_vacation_display_change)))

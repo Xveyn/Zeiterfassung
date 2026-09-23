@@ -234,7 +234,7 @@ Alle Tabs werden mit `Form(scroll=True)` gebaut.
 
 | Tab (`initial_tab`-Schlüssel) | Abschnitte |
 |---|---|
-| **Arbeitszeit** (`work`) | **Arbeitswoche:** Nur Werktage · Wochenende anzeigen (aus App; grau, solange „Nur Werktage" an) · Bundesland (aus App, Hinweis „für Feiertage und Urlaub") — **Standardzeiten:** Mo–So Start/Ende · Standard-Pause · Pausenpflicht-Warnung — **Vergütung:** Stundenlohn + Hinweis — **Werkstudenten-Limit:** Schalter; Zeitraum und Limit abhängig — **Verwalten:** Kategorien… · Urlaub… |
+| **Arbeitszeit** (`work`) | **Arbeitswoche:** Nur Werktage · Wochenende anzeigen (aus App; grau, solange „Nur Werktage" an) · Bundesland (aus App, Hinweis „für Feiertage und Urlaub") — **Standardzeiten:** Mo–So Start/Ende · Standard-Pause · Pausenpflicht-Warnung — **Vergütung:** Stundenlohn + Hinweis — **Werkstudenten-Limit:** Schalter; Zeitraum und Limit abhängig — **Verwalten:** Kategorien verwalten · Urlaub verwalten |
 | **Erinnerungen** (`reminders`) | **Reservierungen:** Toast-Erinnerung; Minuten vor Ende abhängig + Hinweis — **Monatliche Sende-Erinnerung:** Schalter; Tag/Uhrzeit, Wochenend-Verschiebung → auch Feiertage (verschachtelt) — **An Reservierungstagen:** Schalter; Standard-Minuten |
 | **Versand** (`sending`) | **Absender:** Dein Name · Empfänger — **Mail-Vorlage:** Betreff · Anrede · Inhalt · Gruß · Platzhalter-Hinweis — **Zeitraum:** ab letzter Erinnerung vorbelegen; inkl. Monatstermine abhängig — **SMTP-Konten** und **Webhooks:** je kompakte Liste (3 Zeilen, Knöpfe rechts daneben, `empty_state` wenn leer) |
 | **Google** (`google`) | **Konto:** credentials.json-Status · Absender · Berechtigungen · Anmeldung · Google neu verbinden — **Synchronisation:** Schalter · Gerät · Geräte-ID · Letzte Synchronisation · Konflikte — **Kalender:** Schalter · Kalender — **Erweitert:** Sync-Daten kompaktieren |
@@ -286,8 +286,10 @@ diesen Abweichungen:
    bisher schloss er sich und nahm ungespeicherte Änderungen ohne Rückfrage mit.
 3. Die Reitertexte kommen aus `tab.title` — keine zweite Namensliste in
    `dialog.py`.
-4. Die Knöpfe heißen „Kategorien…" und „Urlaub…", der Abschnitt darüber
-   „Verwalten".
+4. Die Knöpfe heißen ausgeschrieben „Kategorien verwalten" und „Urlaub
+   verwalten" (auch „Daten importieren" ohne „…") — mit Auslassungspunkten lasen
+   sie sich beim Test wie abgeschnittene Beschriftungen. Der Abschnitt darüber
+   heißt „Verwalten".
 5. Die Wochenend-Verschiebung „auch Feiertage" hängt an einer abgeleiteten
    Variable (`tab_rules.shift_moves`): bedienbar nur, wenn überhaupt verschoben
    wird.

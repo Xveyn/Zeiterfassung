@@ -16,7 +16,9 @@ from src.dialogs.settings_dialog.google_tab_task import (
     check_token_status, fetch_sender_email, load_calendars,
     open_calendar_service, open_drive_service, reconnect_drive,
 )
-from src.dialogs.settings_dialog.oauth_task import build_oauth_enable_task
+from src.dialogs.settings_dialog.oauth_task import (
+    build_oauth_enable_task, show_known_google_failure,
+)
 from src.dialogs.settings_dialog.tab_rules import calendar_update, google_updates
 from src.oauth_utils import (
     KEYRING_UNAVAILABLE_HINT, KEYRING_UNAVAILABLE_TITLE, is_keyring_unavailable,
@@ -226,7 +228,8 @@ class GoogleTab:
                 return
             self._set_sender_btn_text("Aktualisieren")
             if not res["ok"]:
-                if self._show_keyring_error(res.get("error")):
+                if show_known_google_failure(dialog, res.get("error"),
+                                             base_path, "Anmelden"):
                     return
                 messagebox.showerror(
                     "Anmeldung fehlgeschlagen",
@@ -403,6 +406,7 @@ class GoogleTab:
                 toggle_var=self._var_sync, on_change=self._on_change,
                 dialog=self._dialog,
                 error_title="Synchronisation aktivieren",
+                base_path=base_path,
             )
             self._runner.run(fn, on_done)
             return
@@ -443,7 +447,8 @@ class GoogleTab:
                     "Synchronisation sollte jetzt wieder funktionieren.",
                 )
                 return
-            if self._show_keyring_error(res.get("error")):
+            if show_known_google_failure(dialog, res.get("error"), base_path,
+                                         "Google neu verbinden"):
                 return
             messagebox.showerror(
                 "Google neu verbinden",
@@ -592,6 +597,9 @@ class GoogleTab:
                     logging.getLogger(__name__).warning(
                         "Kalenderliste beim Öffnen nicht geladen: %s", res["tb"])
                     return
+                if show_known_google_failure(dialog, res["error"], base_path,
+                                             "Kalenderliste laden"):
+                    return
                 messagebox.showerror(
                     "Google Kalender",
                     "Kalenderliste konnte nicht geladen werden:\n\n"
@@ -618,6 +626,7 @@ class GoogleTab:
                 toggle_var=self._var_gcal, on_change=self._on_change,
                 dialog=self._dialog,
                 error_title="Google Kalender aktivieren",
+                base_path=base_path,
                 on_success_dialog_ui=self._load_calendars,
             )
             self._runner.run(fn, on_done)

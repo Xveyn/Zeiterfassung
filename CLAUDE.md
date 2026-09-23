@@ -1244,7 +1244,7 @@ nicht mehr als „offen" führen — der Verweis lautet auf diese Grenze.
   zurück: alle App-Urlaubs-Events löschen und die `gcal_event_id` lokal
   leeren, wenn `vacation_gcal_enabled` abgeschaltet wird
 - `src/dialogs/vacation_dialog.py` — Verwaltung der Perioden (Einstieg:
-  Einstellungen → Arbeitszeit → „Urlaub…"). Die Entscheidungen des
+  Einstellungen → Arbeitszeit → „Urlaub verwalten"). Die Entscheidungen des
   Bearbeiten-Dialogs liegen Tk-frei auf Modulebene und sind getestet:
   `plan_vacation_save` (Tagesminuten aus der Eingabe), `prune_overrides`
   (welche Tageswerte eine Zeitraum-Änderung überleben), `blocking_days`

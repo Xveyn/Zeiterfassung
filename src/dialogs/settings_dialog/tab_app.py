@@ -96,7 +96,7 @@ class AppTab:
         form.section("Daten")
         specs = [("Datenordner öffnen", self._open_data_folder)]
         if storage is not None:
-            specs.append(("Daten importieren…", self._open_import_dialog))
+            specs.append(("Daten importieren", self._open_import_dialog))
         form.buttons(*specs)
         form.hint("Im Datenordner liegen Einträge, Einstellungen und "
                   "credentials.json. Importiert werden geteilte Arbeitszeiten "
