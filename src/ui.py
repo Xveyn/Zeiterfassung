@@ -449,8 +449,8 @@ class App:
         share_button.pack(side=tk.RIGHT, padx=(0, 4))
         attach_tooltip(
             share_button,
-            "Arbeitszeiten und Reservierungen per Mail an ein anderes "
-            "Gerät schicken",
+            "Arbeitszeiten und Reservierungen als Datei per Mail schicken, "
+            "zum Import in eine andere Zeiterfassung",
         )
 
         export_button = secondary_button(

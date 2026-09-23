@@ -191,13 +191,16 @@ def open_send_dialog(parent, storage, settings, base_path, runner,
 
     # Ohne jedes mögliche Ziel: erklären und abbrechen. Beide Texte nennen
     # beide Mailwege — sonst schicken sie jemanden ins Google-Cloud-Setup, der
-    # es gar nicht braucht.
+    # es gar nicht braucht. Der Webhook steht nur im ersten: der zweite ist
+    # der gemeinsame Zugangsdaten-Dialog, auch für das Teilen, und dort gibt
+    # es keinen Webhook-Weg.
     if not mail_possible and not accounts and not hooks:
         if not recipient:
             themed_showinfo(
                 parent, "Kein Empfänger",
                 "Bitte zuerst unter Einstellungen → Versand einen "
-                "Gmail-Empfänger angeben oder ein SMTP-Konto einrichten.")
+                "Gmail-Empfänger angeben, ein SMTP-Konto oder einen "
+                "Webhook einrichten.")
         else:
             show_missing_credentials_dialog(parent, base_path)
         return

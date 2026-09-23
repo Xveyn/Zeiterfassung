@@ -1,5 +1,10 @@
 """Modal-Dialog „Teilen": baut Share-Doc für Arbeitszeiten und/oder
-Reservierungen, sendet per Gmail."""
+Reservierungen, sendet per Gmail oder über ein SMTP-Konto.
+
+Bewusst ohne Webhook-Weg: das Share-Doc ist eine Importdatei für eine andere
+Zeiterfassung. Ein Webhook-Empfänger erwartet das Berichts-JSON
+(`kind: zeiterfassung-report`, s. `webhook.py`) und könnte mit ihm nichts
+anfangen."""
 
 import datetime
 import os
