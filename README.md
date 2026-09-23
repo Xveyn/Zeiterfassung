@@ -181,7 +181,7 @@ Statt der Gmail-API kann die App Berichte über einen ganz normalen
 Mail-Server verschicken — dann wird kein Google-Cloud-Projekt und keine
 `credentials.json` gebraucht.
 
-Einstellungen → **SMTP** → **Hinzufügen**:
+Einstellungen → **Versand** → **SMTP-Konten** → **Hinzufügen**:
 
 | Feld | Bedeutung |
 |------|-----------|

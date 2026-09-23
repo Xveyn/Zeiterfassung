@@ -42,12 +42,12 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
     auto_updater: der `auto_update.AutoUpdater` der App — derselbe, den ihr
     Start-Check benutzt, damit beide Auslöser einen Guard teilen (R9).
     vacation_store/on_vacation_change: optional; sind sie gesetzt, erscheint
-    im Arbeitszeit-Tab der „Urlaub verwalten"-Button.
+    im Arbeitszeit-Tab der Knopf „Urlaub…".
     on_vacation_display_change: reines Neuzeichnen des Kalenders für die
     Anzeige-Schalter jenes Dialogs — ohne den Kalender-Abgleich, den
     on_vacation_change mitbringt.
-    initial_tab: optionaler Schlüssel aus `tabs` (unten), auf den der Dialog
-    direkt aufspringt — Default `None` lässt es beim bisherigen Verhalten
+    initial_tab: optionaler Schlüssel aus `tabs` (unten: `work`/`reminders`/
+    `sending`/`google`/`app`/`updates`), auf den der Dialog direkt aufspringt — Default `None` lässt es beim bisherigen Verhalten
     (erster Tab „Arbeitszeit"). Für Aufrufer, die gezielt zu einem Tab wollen
     (das Update-Banner zu „updates"), statt dass der Nutzer ihn selbst sucht.
     """

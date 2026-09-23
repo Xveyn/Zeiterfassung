@@ -1,6 +1,6 @@
 """Einstellungen-Dialog als Paket (Audit H4): dialog.py trägt Chrome und
-das Speichern je Tab (`form_model.SaveCoordinator`), die Tabs sind eigene
-Klassen-Module.
+das Speichern je Tab (`form_model.SaveCoordinator`), die sechs Tabs sind eigene
+Klassen-Module, gebaut mit `theme.Form`.
 Öffentliche API unverändert re-exportiert."""
 
 from src.dialogs.settings_dialog.dialog import open_settings_dialog

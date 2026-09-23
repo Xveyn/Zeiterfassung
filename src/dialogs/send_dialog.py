@@ -33,7 +33,7 @@ def show_missing_credentials_dialog(parent, base_path):
             "Für den Versand über Gmail wird ein Google Cloud Projekt mit "
             "aktivierter Gmail API benötigt; lade die OAuth2 Client-ID als "
             "credentials.json in den Datenordner.\n\n"
-            "Alternativ kannst Du unter Einstellungen → SMTP ein eigenes "
+            "Alternativ kannst Du unter Einstellungen → Versand ein eigenes "
             "Mail-Konto einrichten — dann wird kein Google-Konto benötigt."
         ),
         font=FONT, bg=BG, fg=TEXT,

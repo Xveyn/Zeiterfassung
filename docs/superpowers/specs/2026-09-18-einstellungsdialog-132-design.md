@@ -275,6 +275,23 @@ PR 1 bewusst hierher verschoben — `Form` hatte dort noch keinen Aufrufer):
 - Leere Listen zeigen den Leertext.
 - `initial_tab` kennt die sechs Schlüssel oben; `"updates"` (Banner) bleibt.
 
+**Umgesetzt** (Plan
+`docs/superpowers/plans/2026-09-23-einstellungsdialog-132-pr3-neuschnitt.md`), mit
+diesen Abweichungen:
+
+1. SMTP- und Webhook-Liste behalten Datei- und Klassennamen (`tab_smtp.SmtpTab`,
+   `tab_webhooks.WebhooksTab`, `_record_list_tab.RecordListTab`) — die
+   Charakterisierungstests aus R12 hängen daran.
+2. „Daten importieren" lässt den Einstellungen-Dialog offen (nur `on_change`);
+   bisher schloss er sich und nahm ungespeicherte Änderungen ohne Rückfrage mit.
+3. Die Reitertexte kommen aus `tab.title` — keine zweite Namensliste in
+   `dialog.py`.
+4. Die Knöpfe heißen „Kategorien…" und „Urlaub…", der Abschnitt darüber
+   „Verwalten".
+5. Die Wochenend-Verschiebung „auch Feiertage" hängt an einer abgeleiteten
+   Variable (`tab_rules.shift_moves`): bedienbar nur, wenn überhaupt verschoben
+   wird.
+
 ## Tests
 
 - **PR 1:** `tests/test_form_logic.py` — `enabled_states` (verschachtelt,
