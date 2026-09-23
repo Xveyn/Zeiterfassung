@@ -83,6 +83,15 @@ def px(base):
     return scaled_px(base, _scale)
 
 
+def current_scale():
+    """Der Faktor, den `init_fonts` gemerkt hat (1.0 davor).
+
+    Für Tk-freie Logik, die den Faktor als Parameter nimmt, statt selbst aus
+    `theme.fonts` zu ziehen (`form_logic.body_height`) — der Aufrufer reicht
+    ihn hierüber durch, damit es dafür keinen zweiten Weg neben `px()` gibt."""
+    return _scale
+
+
 def scaled_size(base, scale):
     """Skalierte Font-Größe: round(base × scale). Betrag min. 1 (nie 0 =
     unsichtbar), Vorzeichen erhalten — Standard-Tk-Fonts tragen je nach Plattform

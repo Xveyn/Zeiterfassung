@@ -12,7 +12,7 @@ from typing import TypedDict
 
 from src.theme.palette import (
     ACCENT, ACCENT_DISABLED, ACCENT_HOVER, BG, CELL_BG, CELL_BG_HOVER,
-    ENTRY_BG, TEXT, TEXT_MUTED,
+    ENTRY_BG, TEXT, TEXT_DISABLED, TEXT_MUTED,
 )
 from src.theme.fonts import FONT, FONT_BOLD, FONT_SMALL, px
 
@@ -28,6 +28,11 @@ class _LabelButton(tk.Frame):
     """tk.Frame mit zusätzlichen Attributen für das label_button-Konstrukt."""
     _label: tk.Label
     _colors: _ToggleColors
+    # Von `theme.form.set_enabled` gesetzt: gesperrt heißt auch der Klick
+    # tut nichts. Die set_*_button_enabled-Helfer unten ändern dagegen nur
+    # die Optik und verlangen einen Callback, der selbst prüft.
+    _zeit_disabled: bool = False
+    _zeit_colors: _ToggleColors
 
 
 def apply_widget_defaults(root):
@@ -57,13 +62,17 @@ def apply_combobox_style(dialog):
     # clam den Pfeil-Button (Combobox.downarrow) im System-Default-Hell statt
     # in CELL_BG. fieldbackground reicht nicht, weil das nur das Textfeld
     # links färbt, nicht den Button rechts.
+    # "disabled" steht jeweils VOR "readonly": ttk nimmt den ersten passenden
+    # Zustand, und ein ausgegrautes Feld (theme.form.set_enabled) ist
+    # zugleich readonly — sonst bliebe sein Text in voller Helligkeit.
     style.map("Dark.TCombobox",
         fieldbackground=[("readonly", CELL_BG)],
         background=[("readonly", CELL_BG), ("active", CELL_BG)],
+        foreground=[("disabled", TEXT_DISABLED)],
         selectbackground=[("readonly", CELL_BG)],
-        selectforeground=[("readonly", TEXT)],
+        selectforeground=[("disabled", TEXT_DISABLED), ("readonly", TEXT)],
         bordercolor=[("focus", ACCENT)],
-        arrowcolor=[("readonly", ACCENT), ("active", ACCENT)],
+        arrowcolor=[("disabled", TEXT_DISABLED), ("readonly", ACCENT), ("active", ACCENT)],
     )
     # ComboboxPopdownFrame ist die ttk-Klasse des Frames innen im Popdown.
     # background=CELL_BG sorgt dafür, dass keine helle System-Default-Fläche
@@ -207,6 +216,8 @@ def label_button(
     }
 
     def on_click(_e):
+        if frame._zeit_disabled:
+            return
         command()
 
     def on_enter(_e):

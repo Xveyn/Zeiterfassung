@@ -9,14 +9,41 @@ auf und könnte im bereits gestörten Zustand genau die Meldung
 verschlucken, die er zeigen soll.
 """
 
+import logging
 import tkinter as tk
-
+from typing import Literal
 
 from src.theme.palette import BG, CELL_BG, TEXT
 from src.theme.fonts import FONT, px
 from src.theme.widgets import primary_button, secondary_button, set_primary_button_enabled
 from src.theme.geometry import center_dialog_on_parent
 from src.theme.chrome import create_dialog
+
+log = logging.getLogger(__name__)
+
+
+def _run_modal(dialog):
+    """Setzt den modalen Grab, wartet auf den Dialog und gibt den Grab an den
+    vorherigen Halter zurück.
+
+    Tk kennt keinen Grab-Stack: `grab_set()` merkt sich nicht, wer vorher den
+    Grab hielt, und `wait_window()` gibt ihn beim Zerstören ersatzlos frei.
+    Ruft ein bereits modaler Dialog (z.B. der Einstellungs-Dialog) einen
+    dieser themed Dialoge auf, wäre er danach nicht mehr modal — ein Klick
+    könnte an ihm vorbei auf das Fenster dahinter durchschlagen. Deshalb hier
+    den Halter VOR dem eigenen `grab_set()` merken und danach zurückholen."""
+    prev = dialog.grab_current()
+    dialog.grab_set()
+    dialog.wait_window()
+    if prev is not None:
+        try:
+            if prev.winfo_exists():
+                prev.grab_set()
+        except tk.TclError:
+            # Bestenfalls best-effort: der vorherige Halter ist inzwischen
+            # weg oder nicht mehr grab-fähig — dann bleibt es beim
+            # freigegebenen Grab, kein Grund, hier zu scheitern.
+            log.debug("Grab-Rückgabe an %r fehlgeschlagen", prev, exc_info=True)
 
 
 def themed_askyesno(parent, title: str, message: str, lock_ms: int = 0) -> bool:
@@ -68,8 +95,7 @@ def themed_askyesno(parent, title: str, message: str, lock_ms: int = 0) -> bool:
     dialog.protocol("WM_DELETE_WINDOW", click_no)
 
     center_dialog_on_parent(dialog, parent)
-    dialog.grab_set()
-    dialog.wait_window()
+    _run_modal(dialog)
     return result["value"]
 
 
@@ -152,8 +178,50 @@ def themed_ask_delete_choice(parent, title: str, message: str, options, lock_ms:
     dialog.protocol("WM_DELETE_WINDOW", click_cancel)
 
     center_dialog_on_parent(dialog, parent)
-    dialog.grab_set()
-    dialog.wait_window()
+    _run_modal(dialog)
+    return result["value"]
+
+
+SaveChoice = Literal["save", "discard", "cancel"]
+
+
+def themed_ask_save_changes(parent, tab_title: str) -> SaveChoice:
+    """Rückfrage beim Verlassen eines Tabs mit ungespeicherten Änderungen
+    (Einstellungs-Dialog, #132): „Speichern" · „Verwerfen" · „Zurück".
+
+    Rückgabe `"save"`, `"discard"` oder `"cancel"`. Escape, das X und
+    „Zurück" sind `"cancel"` — wer nur weg will, verliert dabei nichts.
+    Enter ist „Speichern", der hervorgehobene Knopf."""
+    dialog = create_dialog(parent, "Ungespeicherte Änderungen",
+                           modal=False, escape_closes=False)
+
+    result: dict[str, SaveChoice] = {"value": "cancel"}
+
+    tk.Label(
+        dialog,
+        text=f"Im Tab „{tab_title}“ gibt es ungespeicherte Änderungen.\nSollen sie gespeichert werden?",
+        font=FONT, bg=BG, fg=TEXT, wraplength=px(380), justify="left",
+    ).pack(padx=24, pady=(20, 14))
+
+    def choose(value: SaveChoice):
+        result["value"] = value
+        dialog.destroy()
+
+    btn_frame = tk.Frame(dialog, bg=BG)
+    btn_frame.pack(pady=(0, 18))
+    primary_button(btn_frame, "Speichern", lambda: choose("save")).pack(
+        side=tk.LEFT, padx=6)
+    secondary_button(btn_frame, "Verwerfen", lambda: choose("discard")).pack(
+        side=tk.LEFT, padx=6)
+    secondary_button(btn_frame, "Zurück", lambda: choose("cancel")).pack(
+        side=tk.LEFT, padx=6)
+
+    dialog.bind("<Return>", lambda e: choose("save"))
+    dialog.bind("<Escape>", lambda e: choose("cancel"))
+    dialog.protocol("WM_DELETE_WINDOW", lambda: choose("cancel"))
+
+    center_dialog_on_parent(dialog, parent)
+    _run_modal(dialog)
     return result["value"]
 
 
@@ -179,8 +247,7 @@ def _themed_ok_dialog(parent, title: str, message: str) -> None:
     dialog.protocol("WM_DELETE_WINDOW", dialog.destroy)
 
     center_dialog_on_parent(dialog, parent)
-    dialog.grab_set()
-    dialog.wait_window()
+    _run_modal(dialog)
 
 
 def themed_showinfo(parent, title: str, message: str) -> None:

@@ -914,6 +914,14 @@ komplette Fenster-Chrome (BG, dunkle Titelleiste, disable_min_max,
 App-Icon, modal/Escape) konventionskonform. `center_dialog_on_parent`
 nach dem Widget-Aufbau bleibt Aufgabe des Dialogs.
 
+**Formulare bauen auf `theme.Form`** (`src/theme/form.py`, #132): ein Raster
+mit Beschriftungs- und Feldspalte, linksbündige Abschnitte mit Trennlinie,
+abhängige Optionen über `form.depends_on(var)` (eingerückt, ausgegraut
+solange der Schalter aus ist) und auf Wunsch ein scrollbarer Körper
+(`scroll=True`), der den Dialog nie über den Bildschirm wachsen lässt.
+Ausgegraut wird über `set_enabled`, leere Listen zeigen `empty_state` — nicht
+über eigene Farben je Dialog.
+
 **Dialoge werden verborgen aufgebaut — und das ist keine Kosmetik.**
 `create_dialog` ruft `withdraw()` direkt nach dem `Toplevel`, sichtbar macht
 den Dialog erst `center_dialog_on_parent` (über `reveal_dialog`). Daraus
