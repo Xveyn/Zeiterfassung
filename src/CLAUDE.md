@@ -651,13 +651,23 @@ Zeit-/Kategorieänderungen. Dort liegen auch die Tk-freien Anzeige-Helfer
 über `smtp_store.validate_record`, Verbindungstest über `smtp.test_connection`, beide
 Tk-frei; das Passwort geht über `keyring_store` in den Schlüsselbund bzw. bei fehlendem
 Schlüsselbund unverändert in den Datensatz für `smtp_store`),
-`settings_dialog/` (Paket, Audit H4: `dialog.py` trägt Chrome + zentrales,
-ablaufidentisches `save_settings`; je Tab eine Klasse in `tab_work/`
-`tab_mail`/`tab_google`/`tab_app`/`tab_updates`/`tab_webhooks`/`tab_smtp`.py, die ihre
-Tk-Variablen als Attribute für `save_settings` exponiert — **außer** `tab_webhooks` und
-`tab_smtp`: beide exponieren dafür **keine** Variablen, Webhooks bzw. SMTP-Konten liegen
-im jeweils eigenen Store und werden vom `webhook_dialog` bzw. `smtp_dialog` direkt
-gespeichert. Seit R12 (Xveyn#123) teilen sich die beiden Tabs Aufbau und Ablauf in
+`settings_dialog/` (Paket, Audit H4: `dialog.py` trägt Chrome und verdrahtet das
+**Speichern je Tab** (#132); je Tab eine Klasse in `tab_work`/`tab_mail`/`tab_google`/
+`tab_app`/`tab_updates`/`tab_webhooks`/`tab_smtp`.py mit derselben Schnittstelle:
+`title`, `fields` (`fields.FieldSet` — die Tk-Variablen und Textfelder des Tabs unter
+einem Schlüssel), `values()` (roher Formularstand, darf nicht werfen), `validate()`,
+`save() -> SaveOutcome`, `load(values)`. Prüfung und Umrechnung in Settings-Werte liegen
+Tk-frei in `tab_rules.py` (je Tab `validate_*`/`*_updates`, der frühere Inhalt von
+`save_settings`; `test_tabs_together_write_exactly_the_legacy_keys` hält den
+Schlüsselsatz fest). Wann gefragt, gespeichert oder verworfen wird, entscheidet
+`form_model.SaveCoordinator`: „Speichern" schreibt nur den aktiven Tab und lässt den
+Dialog offen; wer einen geänderten Tab verlässt (Reiter-Klick, vor dem Wechsel über
+`<Button-1>` abgefangen — `ttk.Notebook` kennt kein Veto) oder den Dialog schließt
+(Knopf, X, Escape), wird gefragt. Werte, die im Hintergrund nachgeladen werden
+(Kalenderliste), übernimmt `rebaseline` feldweise als gespeichert. `tab_webhooks` und
+`tab_smtp` haben **keine** Formularfelder (`values()` ist `{}`, nie geändert): Webhooks
+bzw. SMTP-Konten liegen im jeweils eigenen Store und werden vom `webhook_dialog` bzw.
+`smtp_dialog` direkt gespeichert. Seit R12 (Xveyn#123) teilen sich die beiden Tabs Aufbau und Ablauf in
 `_record_list_tab.RecordListTab`; `tab_webhooks.py`/`tab_smtp.py` tragen nur noch ihre
 `RecordListKind` (Hinweistext, Zeilen-Detail, Unterdialog, Texte beim Entfernen,
 Schreibschutz-Exception, Hook nach dem Löschen — beim SMTP-Konto das Passwort aus dem
