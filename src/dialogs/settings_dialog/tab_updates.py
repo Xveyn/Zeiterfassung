@@ -12,7 +12,6 @@ from src.auto_update import manual_outcome
 from src.changelog import (
     fetch_changelog_entry, parse_changelog_markdown, release_notes_for_display,
 )
-from src.dialogs.settings_dialog._shared import label
 from src.dialogs.settings_dialog.fields import FieldSet
 from src.dialogs.settings_dialog.form_model import SaveOutcome
 from src.dialogs.settings_dialog.tab_rules import update_tab_updates
@@ -22,7 +21,7 @@ from src.self_update import (
     supports_self_update, verify_file,
 )
 from src.theme import (
-    BG, CELL_BG, FONT, FONT_BOLD, FONT_SMALL, TEXT, TEXT_MUTED,
+    BG, FONT, FONT_BOLD, TEXT, TEXT_MUTED, Form,
     dark_combo, dark_text, primary_button, secondary_button,
     set_button_text, set_primary_button_enabled, set_secondary_button_enabled,
     themed_showerror,
@@ -64,24 +63,20 @@ class UpdatesTab:
         self._checking = False
         self._updating = False
 
-        # Damit die Changelog-Box (unten) breiter als ihr Zeichen-`width` sein
-        # und sich mit gleichem Abstand links/rechts zentrieren kann, statt
-        # links angepinnt zu bleiben und den Rest der Notebook-Tab-Breite
-        # ungenutzt rechts stehen zu lassen.
-        frame.columnconfigure(0, weight=1)
-        frame.columnconfigure(1, weight=1)
+        form = Form(frame, scroll=True)
+        form.frame.pack(fill="both", expand=True)
+        body = form.body
 
-        label(frame, f"Installierte Version: {installed_release_id()}", row=0)
+        form.row("Installierte Version:", tk.Label(
+            body, text=installed_release_id(), font=FONT, bg=BG, fg=TEXT))
 
         self._status_label = tk.Label(
-            frame, text="", font=FONT, bg=BG, fg=TEXT_MUTED,
+            body, text="", font=FONT, bg=BG, fg=TEXT_MUTED, anchor="w",
+            justify="left",
         )
-        self._status_label.grid(
-            row=1, column=0, columnspan=2, padx=10, pady=4, sticky="w",
-        )
+        form.block(self._status_label)
 
-        btn_row = tk.Frame(frame, bg=BG)
-        btn_row.grid(row=2, column=0, columnspan=2, padx=10, pady=4, sticky="w")
+        btn_row = tk.Frame(body, bg=BG)
         self._check_btn = primary_button(btn_row, "Jetzt prüfen", self._check_now)
         self._check_btn.pack(side=tk.LEFT)
         self._can_self_update = supports_self_update(
@@ -91,60 +86,50 @@ class UpdatesTab:
             _LABEL_INSTALL if self._can_self_update else _LABEL_DOWNLOAD,
             self._open_latest_download,
         )
+        form.block(btn_row)
 
-        freq_row = tk.Frame(frame, bg=BG)
-        freq_row.grid(row=3, column=0, columnspan=2, padx=10, pady=(12, 4), sticky="w")
-        tk.Label(
-            freq_row, text="Automatisch prüfen:", font=FONT, bg=BG, fg=TEXT,
-        ).pack(side=tk.LEFT, padx=(0, 8))
+        # Direkt unter Status und Knöpfen (#132): bisher trennten drei
+        # Optionszeilen den Changelog von dem, wozu er gehört. Label + Text
+        # bleiben immer gegridded (nie grid_remove()) — sonst verschwindet
+        # ihr Breitenbeitrag kurzzeitig während eines Checks und die
+        # Dialogbreite bricht ein.
+        self._changelog_label = tk.Label(
+            body, text=_LABEL_CHANGELOG, font=FONT, bg=BG, fg=TEXT, anchor="w",
+        )
+        form.block(self._changelog_label, pady=(12, 4))
+        self._changelog_text = dark_text(body, 58, 12)
+        form.block(self._changelog_text)
+        self._changelog_text.tag_configure("heading", font=FONT_BOLD)
+        self._changelog_text.tag_configure("bold", font=FONT_BOLD)
+        self._changelog_text.tag_configure("hanging_indent", lmargin1=0, lmargin2=20)
+        self._changelog_text.config(state="disabled")
+
+        form.section("Optionen")
         current_frequency = settings.get("update_check_frequency")
         current_label = next(
             (lbl for value, lbl in FREQUENCY_OPTIONS if value == current_frequency),
             FREQUENCY_OPTIONS[0][1],
         )
         self.frequency_var = tk.StringVar(value=current_label)
-        dark_combo(
-            freq_row, self.frequency_var,
-            [lbl for _, lbl in FREQUENCY_OPTIONS], width=14,
-        ).pack(side=tk.LEFT)
+        form.row("Automatisch prüfen:", dark_combo(
+            body, self.frequency_var, [lbl for _, lbl in FREQUENCY_OPTIONS], width=14))
 
         # Opt-in für Pre-Releases: ohne Häkchen verhält sich der Tab exakt wie
         # bisher (nur echte Releases über /releases/latest).
         self.prerelease_var = tk.BooleanVar(
-            value=settings.get("prerelease_updates_enabled"),
-        )
-        tk.Checkbutton(
-            frame, text="Auch Vorabversionen (Pre-Releases) anbieten",
-            variable=self.prerelease_var, font=FONT, bg=BG, fg=TEXT,
-            selectcolor=CELL_BG, activebackground=BG, activeforeground=TEXT,
-            cursor="hand2",
-        ).grid(row=4, column=0, columnspan=2, padx=10, pady=(8, 0), sticky="w")
-        tk.Label(
-            frame, text="Testbuilds vor dem echten Release — können Fehler enthalten.",
-            font=FONT_SMALL, bg=BG, fg=TEXT_MUTED,
-        ).grid(row=5, column=0, columnspan=2, padx=10, pady=(0, 4), sticky="w")
+            value=settings.get("prerelease_updates_enabled"))
+        form.check("Auch Vorabversionen (Pre-Releases) anbieten", self.prerelease_var)
+        form.hint("Testbuilds vor dem echten Release — können Fehler enthalten.")
 
         # Nur bauen, wo Selbst-Update überhaupt möglich ist — ein Schalter
-        # für ein Feature, das die Plattform nicht hat, ist Rauschen
-        # (dieselbe Regel wie beim "Urlaub ausweisen"-Häkchen).
+        # für ein Feature, das die Plattform nicht hat, ist Rauschen.
         self.auto_update_var = None
         if self._can_self_update:
             self.auto_update_var = tk.BooleanVar(
                 value=bool(settings.get("auto_update_enabled")))
-            tk.Checkbutton(
-                frame, text="Updates automatisch installieren",
-                variable=self.auto_update_var, font=FONT, bg=BG, fg=TEXT,
-                selectcolor=CELL_BG, activebackground=BG, activeforeground=TEXT,
-                cursor="hand2",
-            ).grid(row=6, column=0, columnspan=2, padx=10, pady=(8, 0),
-                   sticky="w")
-            tk.Label(
-                frame,
-                text=("Lädt im Hintergrund und installiert beim nächsten "
-                      "Beenden — nie mitten in der Arbeit."),
-                font=FONT_SMALL, bg=BG, fg=TEXT_MUTED,
-            ).grid(row=7, column=0, columnspan=2, padx=10, pady=(0, 4),
-                   sticky="w")
+            form.check("Updates automatisch installieren", self.auto_update_var)
+            form.hint("Lädt im Hintergrund und installiert beim nächsten "
+                      "Beenden — nie mitten in der Arbeit.")
 
         self.title = "Updates"
         fields = FieldSet()
@@ -153,23 +138,6 @@ class UpdatesTab:
         if self.auto_update_var is not None:
             fields.add("auto_update_enabled", self.auto_update_var)
         self.fields = fields
-
-        # Label + Text bleiben immer gegridded (nie grid_remove()) — sonst
-        # verschwindet ihr Breitenbeitrag zum Notebook-Tab kurzzeitig während
-        # eines Checks (Text leer/gecleart ist ok, ungegridded lässt die
-        # ansonsten fixe Dialogbreite kurz einbrechen.
-        self._changelog_label = tk.Label(
-            frame, text=_LABEL_CHANGELOG, font=FONT, bg=BG, fg=TEXT,
-        )
-        self._changelog_label.grid(row=8, column=0, padx=10, pady=(12, 4), sticky="nw")
-        self._changelog_text = dark_text(frame, 58, 12)
-        self._changelog_text.grid(
-            row=9, column=0, columnspan=2, padx=10, pady=4,
-        )
-        self._changelog_text.tag_configure("heading", font=FONT_BOLD)
-        self._changelog_text.tag_configure("bold", font=FONT_BOLD)
-        self._changelog_text.tag_configure("hanging_indent", lmargin1=0, lmargin2=20)
-        self._changelog_text.config(state="disabled")
 
     def values(self):
         return self.fields.values()

@@ -327,7 +327,7 @@ class Form:
         self._register(*made)
         return made
 
-    def block(self, widget, *, pady=4):
+    def block(self, widget, *, pady: int | tuple[int, int] = 4):
         """Ein eigenes Widget (Parent `form.body`) über beide Spalten —
         Tabellen, Listen, Textfelder.
 
