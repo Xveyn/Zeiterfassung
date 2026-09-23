@@ -8,14 +8,16 @@ Unterdialog, Texte beim Entfernen, Schreibschutz-Exception und was nach dem
 Löschen noch zu tun ist —, trägt eine `RecordListKind`; `tab_webhooks.py` und
 `tab_smtp.py` sind nur noch diese Beschreibung plus eine Unterklasse.
 
-Anders als die übrigen Tabs exponieren diese beiden KEINE Variablen für
-save_settings.
+Anders als die übrigen Tabs haben diese beiden keine Formularfelder: für den
+`SaveCoordinator` (#132) sind sie nie „geändert".
 """
 
 import tkinter as tk
 from dataclasses import dataclass
 from typing import Any, Callable
 
+from src.dialogs.settings_dialog.fields import FieldSet
+from src.dialogs.settings_dialog.form_model import SaveOutcome
 from src.theme import (
     ACCENT, BG, ENTRY_BG, FONT, FONT_SMALL, TEXT, TEXT_MUTED,
     primary_button, px, secondary_button, themed_askyesno, themed_showerror,
@@ -64,6 +66,7 @@ class RecordListTab:
     """Listen-Tab über einem gerätelokalen Store; Unterklassen setzen `KIND`."""
 
     KIND: RecordListKind
+    title: str
 
     def __init__(self, frame, dialog, store, runner, parent=None):
         self.frame = frame
@@ -122,6 +125,22 @@ class RecordListTab:
 
         self._records = []
         self.refresh()
+
+        # Keine Formularfelder: Einträge speichern ihre Unterdialoge selbst
+        # (eigener Klick, eigenes Speichern). Der Tab ist nie „geändert".
+        self.fields = FieldSet()
+
+    def values(self):
+        return {}
+
+    def load(self, values):
+        pass  # nichts zu laden — s. `fields`
+
+    def validate(self):
+        return None
+
+    def save(self):
+        return SaveOutcome(saved=True)
 
     def refresh(self):
         self._records = self._store.get_all() if self._store else []

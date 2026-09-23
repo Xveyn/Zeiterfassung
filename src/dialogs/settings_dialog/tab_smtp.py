@@ -44,3 +44,4 @@ SMTP_KIND = RecordListKind(
 
 class SmtpTab(RecordListTab):
     KIND = SMTP_KIND
+    title = "SMTP"

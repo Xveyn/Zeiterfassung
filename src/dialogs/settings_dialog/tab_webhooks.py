@@ -44,3 +44,4 @@ WEBHOOKS_KIND = RecordListKind(
 
 class WebhooksTab(RecordListTab):
     KIND = WEBHOOKS_KIND
+    title = "Webhooks"

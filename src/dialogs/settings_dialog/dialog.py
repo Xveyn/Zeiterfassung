@@ -104,7 +104,7 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
         storage, conflicts_store, reservation_store, data_lock, sync_guard)
 
     # ===================== Tab: App =====================
-    app = AppTab(tab_app, settings)
+    app = AppTab(tab_app, settings, dialog, parent, base_path)
 
     # ===================== Tab: Updates =====================
     updates_tab = UpdatesTab(tab_updates, settings, runner, auto_updater)

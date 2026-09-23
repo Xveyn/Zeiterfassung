@@ -3,20 +3,29 @@
 import tkinter as tk
 from tkinter import ttk
 
-from src.autostart import is_autostart_enabled
+from src.autostart import (
+    disable_autostart, enable_autostart, is_autostart_enabled,
+    resolve_autostart_target,
+)
 from src.dialogs.settings_dialog._shared import label
+from src.dialogs.settings_dialog.fields import FieldSet
+from src.dialogs.settings_dialog.form_model import SaveOutcome
+from src.dialogs.settings_dialog.tab_rules import (
+    app_updates, slider_percent, validate_app,
+)
 from src.holidays_de import STATES
 from src.send_reminder import SHIFT_LABELS, label_for_shift
 from src.theme import (
     ACCENT, BG, CELL_BG, FONT, FONT_BOLD, FONT_SMALL, TEXT, TEXT_MUTED,
-    TIME_VALUES, dark_combo, px,
+    TIME_VALUES, dark_combo, px, scaled_window_fits, themed_askyesno,
+    themed_showerror, workarea_for,
 )
 
 
 class AppTab:
-    """Baut den App-Tab; exponiert die Variablen für save_settings."""
+    """Baut den App-Tab; Tab-Schnittstelle für den `SaveCoordinator` (#132)."""
 
-    def __init__(self, frame, settings):
+    def __init__(self, frame, settings, dialog, parent, base_path):
         label(frame, "Bundesland:", row=0, pady=(10, 8))
         state_labels = [lbl for _, lbl in STATES]
         current_code = settings.get("state")
@@ -109,16 +118,21 @@ class AppTab:
         )
         scale_var = tk.DoubleVar(value=round(settings.get("ui_scale") * 100))
         scale_value_label = tk.Label(
-            scale_row, text=f"{round(scale_var.get() / 5) * 5} %", font=FONT,
+            scale_row, text=f"{slider_percent(scale_var.get())} %", font=FONT,
             bg=BG, fg=TEXT_MUTED, width=5, anchor="w",
         )
 
-        def _on_scale(_raw):
-            scale_value_label.config(text=f"{round(scale_var.get() / 5) * 5} %")
+        # Als Trace statt als `command`: `command` feuert nur bei einer
+        # Bewegung des Nutzers, die Beschriftung muss aber auch beim
+        # Verwerfen (`load`) mitziehen.
+        def _on_scale(*_args):
+            scale_value_label.config(text=f"{slider_percent(scale_var.get())} %")
+
+        scale_var.trace_add("write", _on_scale)
 
         scale_widget = ttk.Scale(
             scale_row, from_=75, to=200, orient="horizontal",
-            variable=scale_var, command=_on_scale, length=px(200),
+            variable=scale_var, length=px(200),
             style="Display.Horizontal.TScale",
         )
         scale_widget.bind(
@@ -295,3 +309,93 @@ class AppTab:
         self.send_reminder_default_minutes_var = send_reminder_default_minutes_var
         self.send_period_from_last_var = send_period_from_last_var
         self.send_period_anchor_monthly_var = send_period_anchor_monthly_var
+
+        self.title = "App"
+        self._settings = settings
+        self._dialog = dialog
+        self._parent = parent
+        self._base_path = base_path
+
+        fields = FieldSet()
+        fields.add("state", state_var)
+        fields.add("show_weekend", show_weekend_var)
+        fields.add("autostart", autostart_var)
+        fields.add("always_on_top", always_on_top_var)
+        fields.add("minimize_to_tray", minimize_to_tray_var)
+        # Gerastert gelesen: ein hin- und zurückgezogener Regler ist keine
+        # Änderung.
+        fields.add("ui_scale", scale_var, read=slider_percent)
+        fields.add("reminders_enabled", reminders_enabled_var)
+        fields.add("reminder_minutes_before", reminder_minutes_var)
+        fields.add("send_reminder_enabled", send_reminder_enabled_var)
+        fields.add("send_reminder_day", send_reminder_day_var)
+        fields.add("send_reminder_time", send_reminder_time_var)
+        fields.add("send_reminder_weekend_shift", send_reminder_shift_var)
+        fields.add("send_reminder_shift_holidays", send_reminder_shift_holidays_var)
+        fields.add("send_reminder_reservations_enabled", send_reminder_reservations_var)
+        fields.add("send_reminder_default_minutes", send_reminder_default_minutes_var)
+        fields.add("send_period_from_last_reminder", send_period_from_last_var)
+        fields.add("send_period_anchor_monthly", send_period_anchor_monthly_var)
+        self.fields = fields
+
+    def values(self):
+        return self.fields.values()
+
+    def load(self, values):
+        self.fields.load(values)
+
+    def validate(self):
+        return validate_app(self.values())
+
+    def save(self):
+        settings = self._settings
+        updates = app_updates(self.values())
+        old_scale = settings.get("ui_scale")
+        new_scale = updates["ui_scale"]
+        # Erst die Frage, dann die Nebenwirkung: wer die Skalierung hier
+        # ablehnt, soll keinen bereits umgeschalteten Autostart zurückbehalten.
+        # Nur beim Vergrößern gefragt — wer herunterskaliert, kann nichts
+        # verlieren.
+        if new_scale > old_scale and not self._scale_confirmed(old_scale, new_scale):
+            return SaveOutcome(saved=False)
+        # Autostart vor dem Schreiben: scheitert er, wird nichts gespeichert.
+        new_autostart = updates["autostart"]
+        if new_autostart != is_autostart_enabled():
+            try:
+                if new_autostart:
+                    target, arguments = resolve_autostart_target(self._base_path)
+                    enable_autostart(target, arguments)
+                else:
+                    disable_autostart()
+            except Exception as e:
+                themed_showerror(
+                    self._dialog, "Autostart-Fehler",
+                    f"Autostart konnte nicht geändert werden:\n{e}",
+                )
+                return SaveOutcome(saved=False)
+        settings.apply_updates(updates)
+        return SaveOutcome(saved=True, restart=new_scale != old_scale)
+
+    def _scale_confirmed(self, old_scale, new_scale):
+        """Passt die größere Skalierung auf den Bildschirm? Sonst fragen.
+
+        Das Hauptfenster ist `resizable(False, False)` und wird auf seine
+        angeforderte Größe gepinnt — bei 200 % auf einem 1080p-Schirm ist die
+        Fußzeile abgeschnitten. Verhindert wird nichts: die Entscheidung
+        gehört dem Nutzer, und sie ist umkehrbar, weil das Zahnrad im Header
+        sitzt."""
+        _, wa_top, _, wa_bottom = workarea_for(self._parent)
+        available = wa_bottom - wa_top
+        needed, fits = scaled_window_fits(
+            self._parent.winfo_height(), old_scale, new_scale, available)
+        if fits:
+            return True
+        return themed_askyesno(
+            self._dialog, "Passt nicht auf den Bildschirm",
+            f"Bei {round(new_scale * 100)} % braucht das Fenster etwa "
+            f"{needed} Pixel Höhe — dein Bildschirm bietet "
+            f"{available}.\n\nDie Fußzeile mit "
+            "„Arbeitszeiten senden“, „Export“ und „Teilen“ wäre dann "
+            "abgeschnitten. Die Einstellungen bleiben über das Zahnrad "
+            "oben erreichbar.\n\nTrotzdem übernehmen?",
+        )
