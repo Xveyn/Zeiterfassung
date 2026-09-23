@@ -44,11 +44,23 @@ def test_build_is_deterministic():
 
 def test_entries_lie_in_the_past_reservations_in_the_future():
     demo = demo_data.build_demo(TODAY)
+    today = TODAY.isoformat()
     assert demo["entries"] and demo["reservations"]
-    assert all(d < TODAY.isoformat() for d in demo["entries"])
-    assert all(d > TODAY.isoformat() for d in demo["reservations"])
+    assert all(d <= today for d in demo["entries"])
+    assert all(d >= today for d in demo["reservations"])
     # Die Hero-Ansicht (aktueller Monat) soll schon Einträge zeigen.
     assert any(d.startswith("2026-09") for d in demo["entries"])
+
+
+def test_today_is_split_between_worked_and_reserved():
+    """Motiv des Tages-Dialogs: vormittags erfasst, nachmittags reserviert,
+    die Reservierung trägt die Sende-Erinnerung."""
+    demo = demo_data.build_demo(TODAY)
+    today = TODAY.isoformat()
+    (worked,) = demo["entries"][today]
+    (reserved,) = demo["reservations"][today]
+    assert worked["end"] <= reserved["start"]
+    assert reserved.get("send_reminder_minutes")
 
 
 def test_vacation_is_in_the_current_month_and_collides_with_nothing():

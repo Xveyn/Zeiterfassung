@@ -1,10 +1,11 @@
 """Legt Demo-Daten an, mit denen die App aus dem Repo startet.
 
 Für Screenshots (`docs/screenshots/`) und zum Ausprobieren: Max Mustermann
-mit zwei Monaten Arbeitszeit in drei Kategorien, Reservierungen für die
-kommenden Tage, einem Urlaub im laufenden Monat, zwei SMTP-Konten und zwei
-Webhooks. Alle Daten sind relativ zu heute gebaut, damit die Monatsansicht
-beim Start immer gefüllt ist.
+mit zwei Monaten Arbeitszeit in drei Kategorien, einem heute geteilten Tag
+(vormittags erfasst, nachmittags reserviert, mit Sende-Erinnerung),
+Reservierungen für die kommenden Tage, einem Urlaub im laufenden Monat, zwei
+SMTP-Konten und zwei Webhooks. Alle Daten sind relativ zu heute gebaut, damit
+die Monatsansicht beim Start immer gefüllt ist.
 
     python scripts/demo_data.py                  # in den Datenordner des Repos
     python scripts/demo_data.py --ohne-kalender  # ohne Kalender-Abgleich
@@ -104,7 +105,8 @@ def build_demo(today, *, with_calendar=True):
         return (day.weekday() >= 5 or day in holidays
                 or vac_days.get(day.isoformat(), 0) > 0)
 
-    # Ist-Zeit: jeder Werktag vom Ersten des Vormonats bis gestern.
+    # Ist-Zeit: jeder Werktag vom Ersten des Vormonats bis gestern (heute
+    # folgt unten, geteilt mit einer Reservierung).
     entries = {}
     start = (today.replace(day=1) - datetime.timedelta(days=1)).replace(day=1)
     day = start
@@ -116,13 +118,22 @@ def build_demo(today, *, with_calendar=True):
     saturday = start + datetime.timedelta(days=(5 - start.weekday()) % 7 + 7)
     entries[saturday.isoformat()] = [_slot("09:00", "13:00", 0, "Büro")]
 
-    # Reservierungen: die nächsten fünf freien Werktage. Die erste trägt die
-    # Sende-Erinnerung (send_reminder_minutes), die zweite ist geteilt.
+    # Heute: vormittags erfasst, nachmittags reserviert — mit der
+    # Sende-Erinnerung am Reservierungs-Slot. Das Motiv des Tages-Dialogs.
     reservations = {}
+    if not free(today):
+        entries[today.isoformat()] = [_slot("08:00", "12:00", 0, "Büro")]
+        reservations[today.isoformat()] = [
+            {"start": "13:00", "end": "17:00", "kategorie": "Homeoffice",
+             "send_reminder_minutes": 15}]
+
+    # Dazu die nächsten fünf freien Werktage; der zweite ist geteilt.
     day = today + datetime.timedelta(days=1)
-    while len(reservations) < 5:
+    upcoming = 0
+    while upcoming < 5:
         if not free(day):
-            n = len(reservations)
+            n = upcoming
+            upcoming += 1
             if n == 1:
                 slots = [
                     {"start": "08:00", "end": "12:00", "kategorie": "Büro"},
@@ -131,8 +142,6 @@ def build_demo(today, *, with_calendar=True):
             else:
                 slots = [{"start": "08:00", "end": "16:30",
                           "kategorie": "Homeoffice" if n % 2 else "Büro"}]
-            if n == 0:
-                slots[0]["send_reminder_minutes"] = 15
             reservations[day.isoformat()] = slots
         day += datetime.timedelta(days=1)
 
