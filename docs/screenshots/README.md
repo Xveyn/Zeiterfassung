@@ -21,7 +21,16 @@ Veraltet ein Bild, wird es **nicht überschrieben**, sondern unter neuem Namen
 (`…-v<neue-version>.png`) hinzugefügt und die Referenz im README umgehängt; das
 alte Bild kann im selben Zug gelöscht werden — die Historie steckt in git.
 
-Aufgenommen wird mit **Demo-Daten** (Max Mustermann, `…@example.com` /
-`…@musterfirma.de`), nie mit echten Nutzerdaten. Die Daten der App liegen im
-Repo-Modus im Projekt-Root (`zeiterfassung.json`, `reservations.json`,
-`settings.json`) und sind alle gitignored.
+Aufgenommen wird mit **Demo-Daten**, nie mit echten Nutzerdaten. Die legt
+`scripts/demo_data.py` an — Max Mustermann, zwei Monate Arbeitszeit relativ
+zu heute, Reservierungen, ein Urlaub im laufenden Monat, SMTP-Konten und
+Webhooks, Adressen nur aus den Beispiel-Domains (`…@example.com`):
+
+```
+python scripts/demo_data.py          # in den Datenordner des Repo-Modus
+python -m src.main
+```
+
+Die Daten liegen im Repo-Modus im Projekt-Root und sind alle gitignored; ein
+zweiter Lauf bricht ab, `--force` ersetzt sie. Der Schlüsselbund des
+Betriebssystems bleibt dabei unberührt (Details im Docstring des Skripts).
