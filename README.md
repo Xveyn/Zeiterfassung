@@ -20,7 +20,7 @@ Desktop-App zur Erfassung von Arbeitszeiten: im Kern Kalenderansicht und PDF-Ber
 
 ![Monatsansicht der Zeiterfassung mit erfassten Arbeitszeiten](docs/screenshots/kalender-v1.21.0.png)
 
-<sub>Alle Screenshots stammen aus Version 1.21.0 — die Version steht im Dateinamen (`…-v1.21.0.png`), siehe [`docs/screenshots/`](docs/screenshots/).</sub>
+<sub>Aus welcher Version ein Screenshot stammt, steht in seinem Dateinamen (`…-v<version>.png`), siehe [`docs/screenshots/`](docs/screenshots/).</sub>
 
 ## Inhalt
 
@@ -66,7 +66,7 @@ Desktop-App zur Erfassung von Arbeitszeiten: im Kern Kalenderansicht und PDF-Ber
 
 *Der Sende-Dialog: Zeitraum, Kategorie-Filter und die Gesamtstunden vor dem Absenden.*
 
-![Erzeugter PDF-Bericht](docs/screenshots/bericht-v1.21.0.png)
+![Erzeugter PDF-Bericht](docs/screenshots/bericht-v--VERSION--.png)
 
 *Der erzeugte PDF-Bericht — pro ISO-Kalenderwoche gruppiert, mit Tages- und Wochensummen.*
 
