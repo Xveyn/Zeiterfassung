@@ -29,7 +29,8 @@ Ablauf vor dem Merge:
    der `pre-check`-Job bricht ohne ihn ab.
 3. `python scripts/resolve_readme_version.py` laufen lassen — ersetzt die
    README-Platzhalter `--VERSION--` durch die eben gesetzte Version (s.
-   „README-Zeilen für Unveröffentlichtes markieren"). Vergisst man es, hält
+   „README-Zeilen für Unveröffentlichtes markieren") und benennt Screenshots
+   mit Platzhalter im Namen um (`docs/screenshots/README.md`). Vergisst man es, hält
    der `readme-version`-Check den PR an.
 4. Passendes `release:*` Label am PR setzen (Label steuert nur den Trigger, nicht die Versionsnummer).
 5. PR mergen — Workflow liest die Version aus `src/version.py`, bricht ab falls der Tag `vX.Y.Z` bereits existiert, baut das Installer-Exe und veröffentlicht das Release.

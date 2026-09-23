@@ -9,7 +9,7 @@ Alle Skripte werden aus dem **Repo-Root** aufgerufen:
 |---|---|
 | `build.py` | Plattform-Dispatcher für den PyInstaller-Build (`python scripts/build.py`) — siehe [`CLAUDE.md`](../CLAUDE.md), Abschnitt Build |
 | `release_notes.py` | schneidet den Release-Body aus `CHANGELOG.md` (`--check` im `pre-check`-Job, `--out` im `publish`-Job) — siehe [`CLAUDE.md`](../CLAUDE.md), „Release-Body = CHANGELOG-Abschnitt" |
-| `resolve_readme_version.py` | löst die README-Platzhalter `--VERSION--` auf und räumt alte Marker weg (`--check`/`--prune`) — siehe [`CLAUDE.md`](../CLAUDE.md), „README-Zeilen für Unveröffentlichtes markieren" |
+| `resolve_readme_version.py` | löst die Platzhalter `--VERSION--` in README und Screenshot-Namen auf und räumt alte Marker weg (`--check`/`--prune`) — siehe [`CLAUDE.md`](../CLAUDE.md), „README-Zeilen für Unveröffentlichtes markieren" |
 | `archive_changelog.py` | verschiebt alles bis auf die neuesten Versionen aus `CHANGELOG.md` nach `CHANGELOG-archive.md` (`--check` zeigt nur an) — siehe [`CLAUDE.md`](../CLAUDE.md), „CHANGELOG-Archiv" |
 | `demo_data.py` | legt Demo-Daten (Max Mustermann: Arbeitszeit, Reservierungen, Urlaub, SMTP-Konten, Webhooks) in den Datenordner des Repo-Modus, ohne den Schlüsselbund anzufassen (`python scripts/demo_data.py`, `--force`, `--ohne-kalender`) — Grundlage der [Screenshots](../docs/screenshots/README.md) |
 | `webhook_testserver.py` | lokaler Test-Empfänger für den Webhook-Versand (`python scripts/webhook_testserver.py`) |

@@ -18,8 +18,15 @@ aktuelle Oberfläche zeigt oder eine drei Releases alte.
 ## Neue Screenshots aufnehmen
 
 Veraltet ein Bild, wird es **nicht überschrieben**, sondern unter neuem Namen
-(`…-v<neue-version>.png`) hinzugefügt und die Referenz im README umgehängt; das
-alte Bild kann im selben Zug gelöscht werden — die Historie steckt in git.
+hinzugefügt und die Referenz im README umgehängt; das alte Bild kann im selben
+Zug gelöscht werden — die Historie steckt in git.
+
+Aufgenommen wird meist **vor** dem Release, die Version steht dann noch nicht
+fest. Der neue Name trägt deshalb denselben Platzhalter wie die README-Marker:
+`kalender-v--VERSION--.png`, ebenso jeder Verweis darauf. Im Release-PR löst
+`python scripts/resolve_readme_version.py` beides auf — benennt die Dateien um
+und zieht die Pfade in `README.md` und dieser Datei nach; `--check` hält den
+Release-PR an, solange ein Platzhalter übrig ist.
 
 Aufgenommen wird mit **Demo-Daten**, nie mit echten Nutzerdaten. Die legt
 `scripts/demo_data.py` an — Max Mustermann, zwei Monate Arbeitszeit relativ
