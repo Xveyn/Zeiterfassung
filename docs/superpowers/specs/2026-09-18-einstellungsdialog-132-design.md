@@ -291,6 +291,13 @@ diesen Abweichungen:
 5. Die Wochenend-Verschiebung „auch Feiertage" hängt an einer abgeleiteten
    Variable (`tab_rules.shift_moves`): bedienbar nur, wenn überhaupt verschoben
    wird.
+6. **Der Dialog wird höher als vorher** — entgegen „nie höher als heute" in
+   PR 1. Gemessen unter Linux: 664 → 704 px bei 100 %, 820 → 1031 px bei 150 %.
+   Versand und Arbeitszeit tragen mehr Inhalt und füllen die Obergrenze
+   `BODY_MAX_HEIGHT` × Skalierung; die Annahme „600 px ≈ heutiger App-Tab" war
+   unter Windows gemessen (756 px). Ziel 4 (passt auf den Bildschirm) hält über
+   die Bildschirm-Klammer in `body_height`. Vom Nutzer so akzeptiert; wer es
+   niedriger will, senkt die eine Konstante.
 
 ## Tests
 

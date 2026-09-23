@@ -339,9 +339,10 @@ class _ImportSummaryDialog:
             )
             return
         # themed_showinfo läuft VOR on_change: on_change kann self.parent
-        # zerstören (settings_dialog._after_import ruft dialog.destroy()), und
-        # der Info-Dialog braucht den Parent noch lebendig — sonst TclError:
-        # bad window path name.
+        # zerstören (früher schloss der Import den Einstellungen-Dialog; seit
+        # #132 bleibt er offen, die Reihenfolge bleibt trotzdem die sichere),
+        # und der Info-Dialog braucht den Parent noch lebendig — sonst
+        # TclError: bad window path name.
         self.top.destroy()
         themed_showinfo(
             self.parent,

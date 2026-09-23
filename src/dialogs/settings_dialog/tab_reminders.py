@@ -39,8 +39,8 @@ class RemindersTab:
         with form.depends_on(reminders_var):
             form.row("Minuten vor Ende:",
                      dark_combo(body, minutes_var, _MINUTES, width=4))
-            form.hint("Nur für Reservierungen mit Kategorie, an denen noch "
-                      "keine Ist-Zeit erfasst ist.")
+            form.hint("Nur für Reservierungen mit Kategorie — und nur, solange "
+                      "für diese Kategorie an dem Tag keine Ist-Zeit erfasst ist.")
 
         # --- Monatliche Sende-Erinnerung ---
         send_var = tk.BooleanVar(value=settings.get("send_reminder_enabled"))
