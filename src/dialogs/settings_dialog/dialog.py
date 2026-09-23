@@ -4,10 +4,9 @@ from tkinter import ttk
 from src.dialogs.settings_dialog.form_model import SaveCoordinator
 from src.dialogs.settings_dialog.tab_app import AppTab
 from src.dialogs.settings_dialog.tab_google import GoogleTab
-from src.dialogs.settings_dialog.tab_mail import MailTab
-from src.dialogs.settings_dialog.tab_smtp import SmtpTab
+from src.dialogs.settings_dialog.tab_reminders import RemindersTab
+from src.dialogs.settings_dialog.tab_sending import SendingTab
 from src.dialogs.settings_dialog.tab_updates import UpdatesTab
-from src.dialogs.settings_dialog.tab_webhooks import WebhooksTab
 from src.dialogs.settings_dialog.tab_work import WorkTab
 from src.theme import (
     BG,
@@ -26,8 +25,8 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
                          smtp_store=None,
                          vacation_store=None, on_vacation_change=None,
                          on_vacation_display_change=None, initial_tab=None):
-    """Modaler Dialog zum Bearbeiten der App-Einstellungen, aufgeteilt auf sieben
-    Tabs (Arbeitszeit / Bericht & Mail / Webhooks / SMTP / Google / App / Updates).
+    """Modaler Dialog zum Bearbeiten der App-Einstellungen, aufgeteilt auf sechs
+    Tabs (Arbeitszeit / Erinnerungen / Versand / Google / App / Updates).
 
     Gespeichert wird je Tab (#132): „Speichern" schreibt nur den aktiven Tab;
     wer einen geänderten Tab verlässt oder den Dialog schließt, wird gefragt
@@ -43,12 +42,12 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
     auto_updater: der `auto_update.AutoUpdater` der App — derselbe, den ihr
     Start-Check benutzt, damit beide Auslöser einen Guard teilen (R9).
     vacation_store/on_vacation_change: optional; sind sie gesetzt, erscheint
-    im Arbeitszeit-Tab der „Urlaub verwalten"-Button.
+    im Arbeitszeit-Tab der Knopf „Urlaub verwalten".
     on_vacation_display_change: reines Neuzeichnen des Kalenders für die
     Anzeige-Schalter jenes Dialogs — ohne den Kalender-Abgleich, den
     on_vacation_change mitbringt.
-    initial_tab: optionaler Schlüssel aus `tabs` (unten), auf den der Dialog
-    direkt aufspringt — Default `None` lässt es beim bisherigen Verhalten
+    initial_tab: optionaler Schlüssel aus `tabs` (unten: `work`/`reminders`/
+    `sending`/`google`/`app`/`updates`), auf den der Dialog direkt aufspringt — Default `None` lässt es beim bisherigen Verhalten
     (erster Tab „Arbeitszeit"). Für Aufrufer, die gezielt zu einem Tab wollen
     (das Update-Banner zu „updates"), statt dass der Nutzer ihn selbst sucht.
     """
@@ -60,45 +59,22 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
     notebook = ttk.Notebook(dialog, style="Dark.TNotebook")
     notebook.pack(fill="both", expand=True, padx=8, pady=(8, 0))
 
-    tab_work = tk.Frame(notebook, bg=BG)
-    tab_mail = tk.Frame(notebook, bg=BG)
-    tab_webhooks = tk.Frame(notebook, bg=BG)
-    tab_smtp = tk.Frame(notebook, bg=BG)
-    tab_google = tk.Frame(notebook, bg=BG)
-    tab_app = tk.Frame(notebook, bg=BG)
-    tab_updates = tk.Frame(notebook, bg=BG)
-    notebook.add(tab_work, text="Arbeitszeit")
-    notebook.add(tab_mail, text="Bericht & Mail")
-    notebook.add(tab_webhooks, text="Webhooks")
-    notebook.add(tab_smtp, text="SMTP")
-    notebook.add(tab_google, text="Google")
-    notebook.add(tab_app, text="App")
-    notebook.add(tab_updates, text="Updates")
+    frames = {key: tk.Frame(notebook, bg=BG) for key in
+              ("work", "reminders", "sending", "google", "app", "updates")}
 
-    # ===================== Tab: Arbeitszeit =====================
-    work = WorkTab(tab_work, dialog, settings, vacation_store,
+    work = WorkTab(frames["work"], dialog, settings, vacation_store,
                    on_vacation_change, storage, reservation_store, runner,
                    on_vacation_display_change)
-
-    # ===================== Tab: Bericht & Mail =====================
-    mail = MailTab(tab_mail, settings)
-
-    # ===================== Tab: Webhooks =====================
-    hooks = WebhooksTab(tab_webhooks, dialog, webhook_store, runner, parent)
-
-    # ===================== Tab: SMTP =====================
-    smtp = SmtpTab(tab_smtp, dialog, smtp_store, runner, parent)
-
-    # ===================== Tab: Google =====================
+    reminders = RemindersTab(frames["reminders"], settings)
+    sending = SendingTab(frames["sending"], dialog, settings, webhook_store,
+                         smtp_store, runner, parent)
     google = GoogleTab(
-        tab_google, dialog, settings, base_path, on_change, runner,
+        frames["google"], dialog, settings, base_path, on_change, runner,
         storage, conflicts_store, reservation_store, data_lock, sync_guard)
-
-    # ===================== Tab: App =====================
-    app = AppTab(tab_app, settings, dialog, parent, base_path)
-
-    # ===================== Tab: Updates =====================
-    updates_tab = UpdatesTab(tab_updates, settings, runner, auto_updater)
+    app = AppTab(frames["app"], settings, dialog, parent, base_path,
+                 storage=storage, reservation_store=reservation_store,
+                 on_change=on_change)
+    updates_tab = UpdatesTab(frames["updates"], settings, runner, auto_updater)
 
     # Vor dem initialen select deklariert und gebunden (wie bisher): der
     # Banner-Weg (initial_tab="updates") startet so seinen Live-Check über
@@ -119,19 +95,21 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
     notebook.bind("<<NotebookTabChanged>>", _on_tab_changed)
 
     # ===================== Speichern / Buttons =====================
-    # Reihenfolge = Reiterreihenfolge im Notebook: der Reiter-Klick unten
-    # rechnet über den Index auf den Schlüssel um.
+    # Reihenfolge = Reiterreihenfolge: der Reiter-Klick unten rechnet über
+    # den Index auf den Schlüssel um. Die Reitertexte kommen aus `tab.title`
+    # — eine zweite Liste mit Namen, die auseinanderlaufen könnte, gibt es
+    # nicht.
     tabs = {
         "work": work,
-        "mail": mail,
-        "webhooks": hooks,
-        "smtp": smtp,
+        "reminders": reminders,
+        "sending": sending,
         "google": google,
         "app": app,
         "updates": updates_tab,
     }
+    for tab in tabs.values():
+        notebook.add(tab.frame, text=tab.title)
     keys = list(tabs)
-    assert len(keys) == notebook.index("end"), "tabs und Notebook laufen auseinander"
 
     # Springt direkt auf den gewünschten Tab, statt den Nutzer beim Default
     # ("Arbeitszeit") suchen zu lassen. Läuft vor dem ersten Edit — der

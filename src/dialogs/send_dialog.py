@@ -22,20 +22,35 @@ from src.theme import (
 from src.time_utils import format_date, validate_period
 
 
-def show_missing_credentials_dialog(parent, base_path):
+def missing_credentials_text(base_path, google_action=None):
+    """Text des „Keine Zugangsdaten"-Dialogs.
+
+    Ohne `google_action` geht es um den Mailversand (Senden, Teilen, Gmail-
+    Absender) — dort ist ein SMTP-Konto eine echte Alternative und wird
+    genannt. Mit `google_action` („Google Kalender aktivieren") um eine
+    Funktion, die es ohne Google gar nicht gibt: dann fällt der SMTP-Hinweis
+    weg, er wäre dort eine falsche Fährte."""
+    head = f"credentials.json nicht gefunden unter:\n{base_path}\n\n"
+    if google_action is not None:
+        return head + (
+            f"„{google_action}“ braucht ein Google Cloud Projekt; lade dessen "
+            "OAuth2 Client-ID als credentials.json in den Datenordner. Die "
+            "Einrichtung beschreibt die README.")
+    return head + (
+        "Für den Versand über Gmail wird ein Google Cloud Projekt mit "
+        "aktivierter Gmail API benötigt; lade die OAuth2 Client-ID als "
+        "credentials.json in den Datenordner.\n\n"
+        "Alternativ kannst Du unter Einstellungen → Versand ein eigenes "
+        "Mail-Konto einrichten — dann wird kein Google-Konto benötigt.")
+
+
+def show_missing_credentials_dialog(parent, base_path, google_action=None):
+    """`google_action`: s. `missing_credentials_text`."""
     dialog = create_dialog(parent, "Keine Zugangsdaten", escape_closes=False)
 
     tk.Label(
         dialog,
-        text=(
-            "credentials.json nicht gefunden unter:\n"
-            f"{base_path}\n\n"
-            "Für den Versand über Gmail wird ein Google Cloud Projekt mit "
-            "aktivierter Gmail API benötigt; lade die OAuth2 Client-ID als "
-            "credentials.json in den Datenordner.\n\n"
-            "Alternativ kannst Du unter Einstellungen → SMTP ein eigenes "
-            "Mail-Konto einrichten — dann wird kein Google-Konto benötigt."
-        ),
+        text=missing_credentials_text(base_path, google_action),
         font=FONT, bg=BG, fg=TEXT,
         wraplength=px(380), justify="left",
     ).grid(row=0, column=0, columnspan=2, padx=20, pady=(20, 12))
@@ -181,8 +196,8 @@ def open_send_dialog(parent, storage, settings, base_path, runner,
         if not recipient:
             themed_showinfo(
                 parent, "Kein Empfänger",
-                "Bitte zuerst einen Empfänger in den Einstellungen angeben "
-                "oder unter „SMTP“ ein Mail-Konto einrichten.")
+                "Bitte zuerst unter Einstellungen → Versand einen "
+                "Gmail-Empfänger angeben oder ein SMTP-Konto einrichten.")
         else:
             show_missing_credentials_dialog(parent, base_path)
         return

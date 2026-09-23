@@ -5,9 +5,13 @@ import pytest
 from src.theme.form_logic import (
     BODY_MAX_HEIGHT,
     MIN_BODY_HEIGHT,
+    NOTCH_UNITS,
+    DIALOG_CHROME,
     SCREEN_MARGIN,
     body_height,
     enabled_states,
+    scroll_target,
+    scroll_units,
     is_descendant,
     wheel_route,
     wheel_units,
@@ -134,8 +138,29 @@ def test_capped_at_max_height_times_scale():
 
 
 def test_capped_by_screen_height():
-    # 1.5 × 600 = 900, aber 1000 − 1.5 × 160 = 760 ist enger.
-    assert body_height(2000, 1.5, 1000) == 1000 - round(SCREEN_MARGIN * 1.5)
+    # 1.5 × 600 = 900, aber der Bildschirm abzüglich fester und skalierter
+    # Reserve ist enger.
+    assert body_height(2000, 1.5, 1000) == (
+        1000 - SCREEN_MARGIN - round(DIALOG_CHROME * 1.5))
+
+
+# Gemessen im Einstellungs-Dialog (#132, PR 3, Linux): Reiter + Knopfreihe
+# über dem Körper je Skalierung. Titelleiste (~30) und Taskleiste (bis 48)
+# wachsen NICHT mit der App-Skalierung.
+_MEASURED_OVERHEAD = {0.75: 88, 1.0: 104, 1.25: 116, 1.5: 131, 1.75: 146, 2.0: 160}
+_TITLE_BAR, _TASKBAR = 30, 48
+
+
+@pytest.mark.parametrize("scale", sorted(_MEASURED_OVERHEAD))
+@pytest.mark.parametrize("screen", [768, 900, 1080, 1440])
+def test_dialog_fits_on_screen_with_taskbar(scale, screen):
+    # Ein 1366×768-Laptop bei 100 %: die alte Reserve (160 × Skalierung)
+    # ließ den Dialog dort unter die Taskleiste ragen.
+    body = body_height(10**6, scale, screen)
+    if body == MIN_BODY_HEIGHT:
+        return  # winziger Schirm: Bedienbarkeit schlägt „passt ganz"
+    total = body + _MEASURED_OVERHEAD[scale] + _TITLE_BAR + _TASKBAR
+    assert total <= screen, (scale, screen, body, total)
 
 
 def test_tiny_screen_keeps_a_usable_minimum():
@@ -144,3 +169,50 @@ def test_tiny_screen_keeps_a_usable_minimum():
 
 def test_minimum_never_pads_short_content():
     assert body_height(120, 2.0, 400) == 120
+
+
+def test_wheel_route_idle_self_scroller_goes_to_form():
+    # Ein Textfeld ohne Überlauf fängt das Rad sonst still ab — mitten im
+    # Formular stünde die Seite dann (Vorlagen-Felder im Versand-Tab).
+    assert wheel_route("Text", can_scroll=False) == "form"
+    assert wheel_route("Listbox", can_scroll=False) == "form"
+    assert wheel_route("Text", can_scroll=True) == "widget"
+    # Für alle anderen Klassen spielt can_scroll keine Rolle.
+    assert wheel_route("TCombobox", can_scroll=False) == "form_block"
+    assert wheel_route("Frame", can_scroll=False) == "form"
+
+
+def test_scroll_units_notch_platforms_multiply():
+    assert scroll_units("Windows", 120, None) == -NOTCH_UNITS
+    assert scroll_units("Windows", -240, None) == 2 * NOTCH_UNITS
+    assert scroll_units("Linux", 0, 5) == NOTCH_UNITS
+    assert scroll_units("Linux", 0, 4) == -NOTCH_UNITS
+
+
+def test_scroll_units_macos_keeps_raw_trackpad_values():
+    # Trackpads liefern viele kleine Deltas — multipliziert spränge die Seite.
+    assert scroll_units("Darwin", 2, None) == -2
+    assert scroll_units("Darwin", 0, None) == 0
+
+
+def test_scroll_target_visible_item_stays():
+    # Sichtbar: 0–300 von 1000 px.
+    assert scroll_target(100, 30, 0.0, 0.3, 1000) is None
+    assert scroll_target(270, 30, 0.0, 0.3, 1000) is None
+
+
+def test_scroll_target_item_above_aligns_top():
+    assert scroll_target(100, 30, 0.5, 0.8, 1000) == 0.1
+
+
+def test_scroll_target_item_below_aligns_bottom():
+    # Unterkante 630 soll am Sichtrand liegen: erster sichtbarer Pixel 330.
+    assert scroll_target(600, 30, 0.0, 0.3, 1000) == 0.33
+
+
+def test_scroll_target_item_taller_than_view_aligns_top():
+    assert scroll_target(400, 500, 0.0, 0.3, 1000) == 0.4
+
+
+def test_scroll_target_degenerate_total():
+    assert scroll_target(0, 10, 0.0, 1.0, 0) is None

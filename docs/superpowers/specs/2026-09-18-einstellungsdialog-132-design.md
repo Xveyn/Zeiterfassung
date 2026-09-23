@@ -234,7 +234,7 @@ Alle Tabs werden mit `Form(scroll=True)` gebaut.
 
 | Tab (`initial_tab`-Schlüssel) | Abschnitte |
 |---|---|
-| **Arbeitszeit** (`work`) | **Arbeitswoche:** Nur Werktage · Wochenende anzeigen (aus App; grau, solange „Nur Werktage" an) · Bundesland (aus App, Hinweis „für Feiertage und Urlaub") — **Standardzeiten:** Mo–So Start/Ende · Standard-Pause · Pausenpflicht-Warnung — **Vergütung:** Stundenlohn + Hinweis — **Werkstudenten-Limit:** Schalter; Zeitraum und Limit abhängig — **Verwalten:** Kategorien… · Urlaub… |
+| **Arbeitszeit** (`work`) | **Arbeitswoche:** Nur Werktage · Wochenende anzeigen (aus App; grau, solange „Nur Werktage" an) · Bundesland (aus App, Hinweis „für Feiertage und Urlaub") — **Standardzeiten:** Mo–So Start/Ende · Standard-Pause · Pausenpflicht-Warnung — **Vergütung:** Stundenlohn + Hinweis — **Werkstudenten-Limit:** Schalter; Zeitraum und Limit abhängig — **Verwalten:** Kategorien verwalten · Urlaub verwalten |
 | **Erinnerungen** (`reminders`) | **Reservierungen:** Toast-Erinnerung; Minuten vor Ende abhängig + Hinweis — **Monatliche Sende-Erinnerung:** Schalter; Tag/Uhrzeit, Wochenend-Verschiebung → auch Feiertage (verschachtelt) — **An Reservierungstagen:** Schalter; Standard-Minuten |
 | **Versand** (`sending`) | **Absender:** Dein Name · Empfänger — **Mail-Vorlage:** Betreff · Anrede · Inhalt · Gruß · Platzhalter-Hinweis — **Zeitraum:** ab letzter Erinnerung vorbelegen; inkl. Monatstermine abhängig — **SMTP-Konten** und **Webhooks:** je kompakte Liste (3 Zeilen, Knöpfe rechts daneben, `empty_state` wenn leer) |
 | **Google** (`google`) | **Konto:** credentials.json-Status · Absender · Berechtigungen · Anmeldung · Google neu verbinden — **Synchronisation:** Schalter · Gerät · Geräte-ID · Letzte Synchronisation · Konflikte — **Kalender:** Schalter · Kalender — **Erweitert:** Sync-Daten kompaktieren |
@@ -274,6 +274,43 @@ PR 1 bewusst hierher verschoben — `Form` hatte dort noch keinen Aufrufer):
   Schalter aus ist.
 - Leere Listen zeigen den Leertext.
 - `initial_tab` kennt die sechs Schlüssel oben; `"updates"` (Banner) bleibt.
+
+**Umgesetzt** (Plan
+`docs/superpowers/plans/2026-09-23-einstellungsdialog-132-pr3-neuschnitt.md`), mit
+diesen Abweichungen:
+
+1. SMTP- und Webhook-Liste behalten Datei- und Klassennamen (`tab_smtp.SmtpTab`,
+   `tab_webhooks.WebhooksTab`, `_record_list_tab.RecordListTab`) — die
+   Charakterisierungstests aus R12 hängen daran.
+2. „Daten importieren" lässt den Einstellungen-Dialog offen (nur `on_change`);
+   bisher schloss er sich und nahm ungespeicherte Änderungen ohne Rückfrage mit.
+3. Die Reitertexte kommen aus `tab.title` — keine zweite Namensliste in
+   `dialog.py`.
+4. Die Knöpfe heißen ausgeschrieben „Kategorien verwalten" und „Urlaub
+   verwalten" (auch „Daten importieren" ohne „…") — mit Auslassungspunkten lasen
+   sie sich beim Test wie abgeschnittene Beschriftungen. Der Abschnitt darüber
+   heißt „Verwalten".
+5. Die Wochenend-Verschiebung „auch Feiertage" hängt an einer abgeleiteten
+   Variable (`tab_rules.shift_moves`): bedienbar nur, wenn überhaupt verschoben
+   wird.
+6. **Der Dialog wird höher als vorher** — entgegen „nie höher als heute" in
+   PR 1. Gemessen unter Linux: 664 → 704 px bei 100 %, 820 → 1031 px bei 150 %.
+   Versand und Arbeitszeit tragen mehr Inhalt und füllen die Obergrenze
+   `BODY_MAX_HEIGHT` × Skalierung; die Annahme „600 px ≈ heutiger App-Tab" war
+   unter Windows gemessen (756 px). Ziel 4 (passt auf den Bildschirm) hält über
+   die Bildschirm-Klammer in `body_height`. Vom Nutzer so akzeptiert; wer es
+   niedriger will, senkt die eine Konstante.
+7. **Versand nach Kanal geordnet** statt „Absender: Dein Name · Empfänger" oben:
+   Bericht (Name + Vorlage, gilt für jeden Mailweg) · Zeitraum · Gmail
+   (Empfänger) · SMTP-Konten · Webhooks — wie der Sende-Dialog gruppiert. Der
+   obere Empfänger galt nur für Gmail, sah aber global aus (beim Testen
+   aufgefallen).
+8. **Bildschirm-Reserve in zwei Teilen** statt `SCREEN_MARGIN = 160` ×
+   Skalierung: `SCREEN_MARGIN = 100` fest (Titel- und Taskleiste wachsen nicht
+   mit der App-Skalierung) plus `DIALOG_CHROME = 110` × Skalierung (Reiter und
+   Knöpfe). Mit der alten Formel ragte der Dialog bei 100 % auf einem
+   768p-Schirm unter die Taskleiste; gemessen je Skalierung und festgehalten in
+   `test_dialog_fits_on_screen_with_taskbar`.
 
 ## Tests
 

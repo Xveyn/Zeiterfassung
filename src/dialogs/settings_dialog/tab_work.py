@@ -1,21 +1,22 @@
-"""Tab „Arbeitszeit": Standardzeiten, Pause, Werkstudenten-Limit, Kategorien."""
+"""Tab „Arbeitszeit": Arbeitswoche, Standardzeiten, Vergütung,
+Werkstudenten-Limit, Kategorien und Urlaub."""
 
 import datetime
 import tkinter as tk
 
 from src.dialogs.category_dialog import open_category_dialog
 from src.dialogs.date_row import build_date_row
-from src.dialogs.settings_dialog._shared import label, subheader
 from src.dialogs.settings_dialog.fields import FieldSet
 from src.dialogs.settings_dialog.form_model import SaveOutcome
 from src.dialogs.settings_dialog.tab_rules import (
     WSL_KEYS, validate_work, work_updates, wsl_snapshot,
 )
 from src.dialogs.vacation_dialog import open_vacation_dialog
+from src.holidays_de import STATES
 from src.settings import WEEKDAY_KEYS
 from src.theme import (
-    BG, CELL_BG, FONT, FONT_SMALL, PAUSE_VALUES, TEXT, TEXT_MUTED,
-    TIME_VALUES, dark_combo, dark_entry, secondary_button, themed_showwarning,
+    BG, FONT, PAUSE_VALUES, TEXT_MUTED, TIME_VALUES, Form, dark_combo,
+    dark_entry, themed_showwarning,
 )
 from src.time_utils import DAYS_DE
 from src.weekly_limit import (
@@ -31,128 +32,112 @@ class WorkTab:
                  on_vacation_change=None, storage=None,
                  reservation_store=None, runner=None,
                  on_vacation_display_change=None):
+        self.frame = frame
+        form = Form(frame, scroll=True)
+        form.frame.pack(fill="both", expand=True)
+        body = form.body
+
+        # --- Arbeitswoche ---
         workweek_only_var = tk.BooleanVar(value=settings.get("workweek_only"))
-        tk.Checkbutton(
-            frame, text="Nur Werktage — Wochenende (Sa/So) komplett deaktivieren",
-            variable=workweek_only_var, font=FONT, bg=BG, fg=TEXT, selectcolor=CELL_BG,
-            activebackground=BG, activeforeground=TEXT, cursor="hand2",
-        ).grid(row=0, column=0, columnspan=2, padx=10, pady=(10, 0), sticky="w")
+        show_weekend_var = tk.BooleanVar(value=settings.get("show_weekend"))
+        state_labels = [lbl for _, lbl in STATES]
+        current_state = settings.get("state")
+        state_var = tk.StringVar(value=next(
+            (lbl for code, lbl in STATES if code == current_state), STATES[0][1]))
+        form.section("Arbeitswoche")
+        form.check("Nur Werktage — Wochenende (Sa/So) komplett ausblenden",
+                   workweek_only_var)
+        # Stand bis PR 3 im App-Tab, mit einem Hinweis, der hierher verwies.
+        # Neben „Nur Werktage" braucht es keinen: grau, solange der an ist.
+        with form.depends_on(workweek_only_var, invert=True, indent=False):
+            form.check("Wochenende (Sa/So) im Kalender anzeigen", show_weekend_var)
+        form.row("Bundesland:", dark_combo(body, state_var, state_labels, width=22))
+        form.hint("Für Feiertage und Urlaub.")
 
-        label(frame, "Standardzeiten:", row=1, pady=(10, 4), sticky="nw")
-        times_frame = tk.Frame(frame, bg=BG)
-        times_frame.grid(row=1, column=1, padx=10, pady=(10, 4), sticky="w")
-
-        tk.Label(times_frame, text="Start", font=FONT_SMALL, bg=BG, fg=TEXT_MUTED).grid(
-            row=0, column=1, padx=2)
-        tk.Label(times_frame, text="Ende", font=FONT_SMALL, bg=BG, fg=TEXT_MUTED).grid(
-            row=0, column=2, padx=2)
-
+        # --- Standardzeiten ---
+        form.section("Standardzeiten")
         start_vars = {}
         end_vars = {}
+        day_rows = {}
         # Die StringVars entstehen für ALLE sieben Tage, auch für die
-        # ausgeblendeten: `save` schreibt unverändert alle Wochentage
-        # zurück, damit die Werte für Sa/So erhalten bleiben und sofort wieder
-        # da sind, wenn "Nur Werktage" zurückgenommen wird.
-        workweek_only = bool(settings.get("workweek_only"))
-        row = 0
-        for key, lbl in zip(WEEKDAY_KEYS, DAYS_DE, strict=False):
+        # ausgeblendeten: `save` schreibt unverändert alle Wochentage zurück,
+        # damit die Werte für Sa/So erhalten bleiben und sofort wieder da
+        # sind, wenn "Nur Werktage" zurückgenommen wird.
+        for key, lbl in zip(WEEKDAY_KEYS, DAYS_DE, strict=True):
             start_vars[key] = tk.StringVar(value=settings.get(f"default_start_{key}"))
             end_vars[key] = tk.StringVar(value=settings.get(f"default_end_{key}"))
-            if workweek_only and key in ("sat", "sun"):
-                continue
-            row += 1
-            tk.Label(times_frame, text=lbl, font=FONT, bg=BG, fg=TEXT, width=3, anchor="w").grid(
-                row=row, column=0, padx=(0, 8), pady=2)
-            dark_combo(times_frame, start_vars[key], TIME_VALUES).grid(
-                row=row, column=1, padx=2, pady=2)
-            dark_combo(times_frame, end_vars[key], TIME_VALUES).grid(
-                row=row, column=2, padx=2, pady=2)
+            cell = tk.Frame(body, bg=BG)
+            dark_combo(cell, start_vars[key], TIME_VALUES).pack(side=tk.LEFT)
+            tk.Label(cell, text="–", font=FONT, bg=BG, fg=TEXT_MUTED).pack(
+                side=tk.LEFT, padx=6)
+            dark_combo(cell, end_vars[key], TIME_VALUES).pack(side=tk.LEFT)
+            day_rows[key] = form.row(f"{lbl}:", cell)
 
-        label(frame, "Standard-Pause (Min):", row=2)
+        def _apply_workweek(*_args):
+            # Sofort statt erst beim nächsten Öffnen (#132) — auch beim
+            # Verwerfen, das die Variable über FieldSet.load zurücksetzt.
+            visible = not workweek_only_var.get()
+            for key in ("sat", "sun"):
+                day_rows[key].show(visible)
+
+        workweek_only_var.trace_add("write", _apply_workweek)
+        _apply_workweek()
+
         pause_var = tk.StringVar(value=str(settings.get("default_pause")))
-        dark_combo(frame, pause_var, PAUSE_VALUES).grid(
-            row=2, column=1, padx=10, pady=8, sticky="w")
-
+        form.row("Standard-Pause (Min):", dark_combo(body, pause_var, PAUSE_VALUES))
         pause_warning_var = tk.BooleanVar(value=settings.get("pause_warning_enabled"))
-        tk.Checkbutton(
-            frame, text="Warnen, wenn die Pausenpflicht (§4 ArbZG) unterschritten wird",
-            variable=pause_warning_var, font=FONT, bg=BG, fg=TEXT, selectcolor=CELL_BG,
-            activebackground=BG, activeforeground=TEXT, cursor="hand2",
-        ).grid(row=3, column=0, columnspan=2, padx=10, pady=(0, 8), sticky="w")
+        form.check("Warnen, wenn die Pausenpflicht (§4 ArbZG) unterschritten wird",
+                   pause_warning_var)
 
+        # --- Vergütung ---
         # Der Stundenlohn stand früher im Bericht-&-Mail-Tab. Er beschreibt
         # aber die Arbeit, nicht den Bericht: gelesen wird er ausschließlich
-        # vom Kalender-Footer (`grid_renderer`), der daraus den Geldbetrag zur
-        # Stundensumme ableitet — im Mailtext taucht er nirgends auf.
-        label(frame, "Stundenlohn (€):", row=4)
+        # vom Kalender-Footer (`grid_renderer`).
         rate_var = tk.StringVar(value=str(settings.get("hourly_rate") or ""))
-        # Feld und Hinweis in EIN Frame, nebeneinander gepackt: der Abstand
-        # ergibt sich so aus der tatsächlichen Feldbreite. Vorher lagen beide
-        # in derselben Grid-Zelle, der Hinweis mit festem padx=120 — das Feld
-        # (width=10 in Zeichen) wächst aber mit ui_scale mit, die 120 px
-        # nicht; ab 1.5 lag der Hinweis auf dem Feld (#133).
-        rate_row = tk.Frame(frame, bg=BG)
-        rate_row.grid(row=4, column=1, padx=10, pady=8, sticky="w")
-        dark_entry(rate_row, rate_var, width=10).pack(side=tk.LEFT)
-        tk.Label(
-            rate_row, text="(optional – nur für dich sichtbar)", font=FONT_SMALL,
-            bg=BG, fg=TEXT_MUTED,
-        ).pack(side=tk.LEFT, padx=(8, 0))
+        form.section("Vergütung")
+        form.row("Stundenlohn (€):", dark_entry(body, rate_var, width=10))
+        form.hint("Optional – nur für dich sichtbar, als Betrag neben der "
+                  "Stundensumme im Kalender.")
 
-        subheader(frame, "Werkstudenten-Limit", row=5)
-        wsl_frame = tk.Frame(frame, bg=BG)
-        wsl_frame.grid(row=6, column=0, columnspan=2, padx=10, pady=(0, 4), sticky="we")
-
+        # --- Werkstudenten-Limit ---
         wsl_enabled_var = tk.BooleanVar(value=settings.get("werkstudent_limit_enabled"))
-        tk.Checkbutton(
-            wsl_frame, text="Wochenstunden-Limit aktivieren", variable=wsl_enabled_var,
-            font=FONT, bg=BG, fg=TEXT, selectcolor=CELL_BG,
-            activebackground=BG, activeforeground=TEXT, cursor="hand2",
-        ).pack(anchor="w")
-
+        wsl_hours_var = tk.StringVar(value=str(settings.get("werkstudent_limit_max_hours")))
         wsl_start_default = (
             datetime.date.fromisoformat(settings.get("werkstudent_limit_start"))
             if settings.get("werkstudent_limit_start") else datetime.date.today())
         wsl_end_default = (
             datetime.date.fromisoformat(settings.get("werkstudent_limit_end"))
             if settings.get("werkstudent_limit_end") else datetime.date.today())
-        # Gemeinsames Datums-Zeilen-Widget (Audit M14); Werkstudenten-Limit
-        # erlaubt Zeiträume etwas weiter in die Zukunft (year_to_offset=3).
-        wsl_start_row = build_date_row(wsl_frame, "Zeitraum von:", wsl_start_default,
-                                       year_to_offset=3)
-        wsl_start_row.frame.pack(anchor="w", pady=(4, 0))
+        form.section("Werkstudenten-Limit")
+        form.check("Wochenstunden-Limit aktivieren", wsl_enabled_var)
+        with form.depends_on(wsl_enabled_var):
+            # Gemeinsames Datums-Zeilen-Widget (Audit M14), ohne eigene
+            # Beschriftung — die trägt die Formularspalte. Werkstudenten-
+            # Limit erlaubt Zeiträume etwas weiter in die Zukunft.
+            wsl_start_row = build_date_row(body, None, wsl_start_default,
+                                           year_to_offset=3)
+            form.row("Zeitraum von:", wsl_start_row.frame)
+            wsl_end_row = build_date_row(body, None, wsl_end_default,
+                                         year_to_offset=3)
+            form.row("bis:", wsl_end_row.frame)
+            form.row("Limit (Stunden/Woche):", dark_entry(body, wsl_hours_var, width=6))
         wsl_start_vars = wsl_start_row.vars
-        wsl_end_row = build_date_row(wsl_frame, "bis:", wsl_end_default, year_to_offset=3)
-        wsl_end_row.frame.pack(anchor="w", pady=(4, 0))
         wsl_end_vars = wsl_end_row.vars
 
-        wsl_hours_row = tk.Frame(wsl_frame, bg=BG)
-        wsl_hours_row.pack(anchor="w", pady=(4, 0))
-        tk.Label(wsl_hours_row, text="Limit (Stunden/Woche):", font=FONT, bg=BG, fg=TEXT).pack(
-            side=tk.LEFT, padx=(0, 5))
-        wsl_hours_var = tk.StringVar(value=str(settings.get("werkstudent_limit_max_hours")))
-        dark_entry(wsl_hours_row, wsl_hours_var, width=6).pack(side=tk.LEFT)
-
-        secondary_button(
-            frame, "Kategorien verwalten",
-            lambda: open_category_dialog(dialog, settings),
-        ).grid(row=7, column=0, columnspan=2, padx=10, pady=(12, 8), sticky="w")
-
+        # --- Verwalten ---
+        form.section("Verwalten")
+        specs = [("Kategorien verwalten", lambda: open_category_dialog(dialog, settings))]
         if vacation_store is not None:
-            secondary_button(
-                frame, "Urlaub verwalten",
-                # storage/reservation_store nur für die Kollisionsprüfung
-                # beim Speichern: Urlaub und Arbeitszeit schließen sich am
-                # selben Tag aus.
-                # runner: der Kalender-Schalter im Dialog räumt beim
-                # Abschalten über runner.purge_vacations auf (Audit H5).
-                lambda: open_vacation_dialog(
-                    dialog, vacation_store, settings, on_vacation_change,
-                    storage, reservation_store, runner,
-                    on_display_change=on_vacation_display_change),
-            ).grid(row=8, column=0, columnspan=2, padx=10, pady=(0, 8), sticky="w")
+            # storage/reservation_store nur für die Kollisionsprüfung beim
+            # Speichern: Urlaub und Arbeitszeit schließen sich am selben Tag
+            # aus. runner: der Kalender-Schalter im Dialog räumt beim
+            # Abschalten über runner.purge_vacations auf (Audit H5).
+            specs.append(("Urlaub verwalten", lambda: open_vacation_dialog(
+                dialog, vacation_store, settings, on_vacation_change,
+                storage, reservation_store, runner,
+                on_display_change=on_vacation_display_change)))
+        form.buttons(*specs)
 
-        self.frame = frame
         self.start_vars = start_vars
         self.end_vars = end_vars
         self.pause_var = pause_var
@@ -163,6 +148,8 @@ class WorkTab:
         self.wsl_end_vars = wsl_end_vars
         self.wsl_hours_var = wsl_hours_var
         self.workweek_only_var = workweek_only_var
+        self.show_weekend_var = show_weekend_var
+        self.state_var = state_var
 
         self.title = "Arbeitszeit"
         self._dialog = dialog
@@ -171,6 +158,8 @@ class WorkTab:
 
         fields = FieldSet()
         fields.add("workweek_only", workweek_only_var)
+        fields.add("show_weekend", show_weekend_var)
+        fields.add("state", state_var)
         for key in WEEKDAY_KEYS:
             fields.add(f"default_start_{key}", start_vars[key])
             fields.add(f"default_end_{key}", end_vars[key])

@@ -41,6 +41,7 @@ def _tab(cls, records, *, dialog_alive=True):
     tab._store.get_all.return_value = records
     tab._runner = _ImmediateRunner()
     tab._listbox = MagicMock()
+    tab._empty = MagicMock()
     tab._records = []
     return tab
 
@@ -117,6 +118,25 @@ def test_refresh_clears_the_list_first(cls):
 
     tab._listbox.delete.assert_called_once_with(0, "end")
     assert tab._listbox.insert.call_args_list == []
+
+
+@pytest.mark.parametrize("cls", [SmtpTab, WebhooksTab])
+def test_empty_list_shows_the_empty_text(cls):
+    tab = _tab(cls, [])
+
+    tab.refresh()
+
+    tab._empty.grid.assert_called_once_with()
+    tab._empty.grid_remove.assert_not_called()
+
+
+def test_filled_list_hides_the_empty_text():
+    tab = _tab(SmtpTab, _SMTP)
+
+    tab.refresh()
+
+    tab._empty.grid_remove.assert_called_once_with()
+    tab._empty.grid.assert_not_called()
 
 
 @pytest.mark.parametrize("cls", [SmtpTab, WebhooksTab])

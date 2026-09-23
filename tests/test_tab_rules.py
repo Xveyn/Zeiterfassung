@@ -22,6 +22,8 @@ def work_raw(**overrides):
         "werkstudent_limit_end.month": "9",
         "werkstudent_limit_end.day": "30",
         "werkstudent_limit_max_hours": "20",
+        "state": STATES[1][1],
+        "show_weekend": True,
     }
     for key in WEEKDAY_KEYS:
         raw[f"default_start_{key}"] = "08:00"
@@ -103,6 +105,12 @@ def test_work_updates_keeps_old_date_when_unparseable():
     assert upd["werkstudent_limit_end"] == "2026-03-31"
 
 
+def test_work_updates_carries_state_and_weekend():
+    upd = tr.work_updates(work_raw(), OLD_WSL)
+    assert upd["state"] == STATES[1][0]
+    assert upd["show_weekend"] is True
+
+
 def test_wsl_snapshot_from_settings_and_updates_agree():
     upd = tr.work_updates(work_raw(), OLD_WSL)
     assert tr.wsl_snapshot(upd) == {
@@ -113,8 +121,15 @@ def test_wsl_snapshot_from_settings_and_updates_agree():
 
 def app_raw(**overrides):
     raw = {
-        "state": STATES[1][1], "show_weekend": True, "autostart": False,
+        "autostart": False,
         "always_on_top": False, "minimize_to_tray": True, "ui_scale": 125,
+    }
+    raw.update(overrides)
+    return raw
+
+
+def reminders_raw(**overrides):
+    raw = {
         "reminders_enabled": True, "reminder_minutes_before": "15",
         "send_reminder_enabled": True, "send_reminder_day": "28",
         "send_reminder_time": "09:00",
@@ -122,8 +137,6 @@ def app_raw(**overrides):
         "send_reminder_shift_holidays": False,
         "send_reminder_reservations_enabled": True,
         "send_reminder_default_minutes": "30",
-        "send_period_from_last_reminder": True,
-        "send_period_anchor_monthly": False,
     }
     raw.update(overrides)
     return raw
@@ -135,10 +148,10 @@ def test_slider_percent_snaps_to_five():
     assert tr.slider_percent(200.0) == 200
 
 
-def test_validate_app():
-    assert tr.validate_app(app_raw()) is None
+def test_validate_reminders():
+    assert tr.validate_reminders(reminders_raw()) is None
     for bad in ("abc", "-5", "121", "7.5", ""):
-        result = tr.validate_app(app_raw(reminder_minutes_before=bad))
+        result = tr.validate_reminders(reminders_raw(reminder_minutes_before=bad))
         assert result is not None
         title, _ = result
         assert title == "Erinnerungszeit ungültig"
@@ -146,22 +159,53 @@ def test_validate_app():
 
 def test_app_updates_converts():
     upd = tr.app_updates(app_raw())
-    assert upd["state"] == STATES[1][0]
     assert upd["ui_scale"] == 1.25
+    assert upd["autostart"] is False
+
+
+def test_reminders_updates_converts():
+    upd = tr.reminders_updates(reminders_raw())
+    assert set(upd) == set(tr.REMINDER_KEYS)
     assert upd["reminder_minutes_before"] == 15
     assert upd["send_reminder_day"] == 28
     assert upd["send_reminder_weekend_shift"] == "backward"
     assert upd["send_reminder_default_minutes"] == 30
-    assert upd["autostart"] is False
+
+
+def test_reminders_updates_keeps_values_of_disabled_options():
+    # Ausgegraut heißt nicht gelöscht: schaltet man die Erinnerung ab, bleiben
+    # Minuten und Tag gespeichert und sind beim Wiedereinschalten da.
+    upd = tr.reminders_updates(reminders_raw(
+        reminders_enabled=False, send_reminder_enabled=False))
+    assert upd["reminders_enabled"] is False
+    assert upd["reminder_minutes_before"] == 15
+    assert upd["send_reminder_day"] == 28
+
+
+def test_shift_moves():
+    assert tr.shift_moves(SHIFT_LABELS["none"]) is False
+    assert tr.shift_moves(SHIFT_LABELS["backward"]) is True
+    assert tr.shift_moves(SHIFT_LABELS["forward"]) is True
 
 
 def test_app_updates_clamps_scale():
     assert tr.app_updates(app_raw(ui_scale=500))["ui_scale"] == 2.0
 
 
-def test_mail_updates_passes_text_through():
+def sending_raw(**overrides):
     raw = {k: f"<{k}>" for k in tr.MAIL_KEYS}
-    assert tr.mail_updates(raw) == raw
+    raw.update({"send_period_from_last_reminder": True,
+                "send_period_anchor_monthly": False})
+    raw.update(overrides)
+    return raw
+
+
+def test_sending_updates():
+    upd = tr.sending_updates(sending_raw())
+    assert set(upd) == set(tr.SENDING_KEYS)
+    assert upd["mail_subject"] == "<mail_subject>"
+    assert upd["send_period_from_last_reminder"] is True
+    assert upd["send_period_anchor_monthly"] is False
 
 
 def test_google_updates_sanitizes_device_name():
@@ -216,7 +260,8 @@ LEGACY_KEYS = (
 def test_tabs_together_write_exactly_the_legacy_keys():
     written = [
         tr.work_updates(work_raw(), OLD_WSL),
-        tr.mail_updates({k: "" for k in tr.MAIL_KEYS}),
+        tr.reminders_updates(reminders_raw()),
+        tr.sending_updates(sending_raw()),
         tr.google_updates({"device_name": "", "gcal_calendar": ""}),
         tr.app_updates(app_raw()),
         tr.update_tab_updates({"update_check_frequency": FREQUENCY_OPTIONS[0][1],

@@ -494,8 +494,10 @@ Wert.
   `_stray_click_suppressed`/`_should_show_delete_button`/`scaled_window_fits`),
   `chrome` (Win32-Fensterchrome, `create_dialog`) und
   `messagebox` (themed Drop-ins, nutzt chrome/widgets/geometry) und — seit #132 —
-  `form` (Formular-Bausteine über `widgets`: `Form`, `set_enabled`, `empty_state`)
-  mit seiner Tk-freien Logik in `form_logic` (hängt an nichts, getestet in
+  `form` (Formular-Bausteine über `widgets`: `Form`, `set_enabled`, `empty_state`;
+  `row()` liefert ein `FormRow`-Handle zum Ein-/Ausblenden, `depends_on(invert=,
+  indent=)`) mit seiner Tk-freien Logik in `form_logic` (auch Rad-Routing,
+  Schrittweite und Fokus-Ziel) (hängt an nichts, getestet in
   `tests/test_form_logic.py`). Die Schichtung ist zyklenfrei und in genau dieser
   Reihenfolge importierbar; das Theme importiert nie aus `src/dialogs/`.
   **Importiert wird weiterhin `from src.theme import …`**, nicht aus den Teilmodulen —
@@ -652,8 +654,9 @@ Zeit-/Kategorieänderungen. Dort liegen auch die Tk-freien Anzeige-Helfer
 Tk-frei; das Passwort geht über `keyring_store` in den Schlüsselbund bzw. bei fehlendem
 Schlüsselbund unverändert in den Datensatz für `smtp_store`),
 `settings_dialog/` (Paket, Audit H4: `dialog.py` trägt Chrome und verdrahtet das
-**Speichern je Tab** (#132); je Tab eine Klasse in `tab_work`/`tab_mail`/`tab_google`/
-`tab_app`/`tab_updates`/`tab_webhooks`/`tab_smtp`.py mit derselben Schnittstelle:
+**Speichern je Tab** (#132); je Tab eine Klasse in `tab_work`/`tab_reminders`/
+`tab_sending`/`tab_google`/`tab_app`/`tab_updates`.py, alle gebaut mit
+`theme.Form(scroll=True)`, mit derselben Schnittstelle:
 `title`, `fields` (`fields.FieldSet` — die Tk-Variablen und Textfelder des Tabs unter
 einem Schlüssel), `values()` (roher Formularstand, darf nicht werfen), `validate()`,
 `save() -> SaveOutcome`, `load(values)`. Prüfung und Umrechnung in Settings-Werte liegen
@@ -664,26 +667,33 @@ Schlüsselsatz fest). Wann gefragt, gespeichert oder verworfen wird, entscheidet
 Dialog offen; wer einen geänderten Tab verlässt (Reiter-Klick, vor dem Wechsel über
 `<Button-1>` abgefangen — `ttk.Notebook` kennt kein Veto) oder den Dialog schließt
 (Knopf, X, Escape), wird gefragt. Werte, die im Hintergrund nachgeladen werden
-(Kalenderliste), übernimmt `rebaseline` feldweise als gespeichert. `tab_webhooks` und
-`tab_smtp` haben **keine** Formularfelder (`values()` ist `{}`, nie geändert): Webhooks
-bzw. SMTP-Konten liegen im jeweils eigenen Store und werden vom `webhook_dialog` bzw.
-`smtp_dialog` direkt gespeichert. Seit R12 (Xveyn#123) teilen sich die beiden Tabs Aufbau und Ablauf in
-`_record_list_tab.RecordListTab`; `tab_webhooks.py`/`tab_smtp.py` tragen nur noch ihre
+(Kalenderliste), übernimmt `rebaseline` feldweise als gespeichert. Tab-Reihenfolge und
+`initial_tab`-Schlüssel: `work`, `reminders`, `sending`, `google`, `app`, `updates` — die
+Reitertexte kommen aus `tab.title`. SMTP-Konten und Webhooks sind Abschnitte im
+Versand-Tab (`tab_smtp.SmtpTab`/`tab_webhooks.WebhooksTab` über
+`_record_list_tab.RecordListTab`, eingebettet in dessen `Form`: drei Zeilen, Knöpfe
+daneben, Leertext bei leerer Liste) und tragen **keine** Formularfelder: die Einträge
+liegen im jeweils eigenen Store und werden vom `webhook_dialog` bzw. `smtp_dialog`
+direkt gespeichert. Die Klassennamen tragen noch „Tab" aus R12 — die
+Charakterisierungstests hängen daran. Seit R12 (Xveyn#123) teilen sich die beiden Listen
+Aufbau und Ablauf in `_record_list_tab.RecordListTab`; `tab_webhooks.py`/`tab_smtp.py` tragen nur noch ihre
 `RecordListKind` (Hinweistext, Zeilen-Detail, Unterdialog, Texte beim Entfernen,
 Schreibschutz-Exception, Hook nach dem Löschen — beim SMTP-Konto das Passwort aus dem
-Schlüsselbund, erst nach erfolgreichem Schreiben). Ein weiterer Tab derselben Bauform ist
-eine neue `RecordListKind`, keine Kopie; getestet in `test_record_list_tab(s).py`.
+Schlüsselbund, erst nach erfolgreichem Schreiben). Eine weitere Liste derselben Bauform
+ist eine neue `RecordListKind`, keine Kopie; getestet in `test_record_list_tab(s).py`.
 `tab_updates` startet seinen Live-Check
 bewusst erst per `<<NotebookTabChanged>>`, nicht schon beim Dialog-Öffnen;
 `oauth_task.py` = H5-OAuth-Toggle-Builder; Dark-Styling weiter via
 `theme.apply_notebook_style`).
-`GoogleTab` ist seit R4-Stufe 1 (#51) in drei Sektionsmethoden gebaut —
-`_build_account_section` / `_build_sync_section` / `_build_calendar_section`, jede
-Interaktion eine eigene Methode statt einer Closure im Konstruktor. Geteilter
-Zustand liegt auf `self`; die Row-Nummern reicht `_build_sync_section` als
-Rückgabewert an die Kalender-Sektion weiter, weil Konflikt- und
-Kompaktier-Zeile nur unter Bedingungen erscheinen. Neue Interaktionen dort als
-Methode ergänzen, nicht als verschachtelte Funktion.
+`GoogleTab` ist seit R4-Stufe 1 (#51) in Sektionsmethoden gebaut —
+`_build_account_section` / `_build_sync_section` / `_build_calendar_section` /
+`_build_advanced_section` (seit #132, nur auf Geräten, die je gesynct haben: die
+Kompaktierung), jede Interaktion eine eigene Methode statt einer Closure im
+Konstruktor. Geteilter Zustand liegt auf `self`; die Sektionen bauen in ein
+gemeinsames `Form`, Zeilen zählt das Formular. Die Sync- und Kalender-Schalter stehen
+bewusst in **keiner** `depends_on`-Gruppe: der Consent-Flow sperrt sie selbst
+(Besitz-Vertrag in `Form.depends_on`). Neue Interaktionen dort als Methode ergänzen,
+nicht als verschachtelte Funktion.
 Die blockierenden Kerne liegen seit Stufe 2 Tk-frei in
 `settings_dialog/google_tab_task.py` (Muster wie `send_task`/`share_task`, M10):
 `fetch_sender_email` / `load_calendars` / `reconnect_drive` /
@@ -760,7 +770,8 @@ die keine Closure liest, hängt sie ans Widget (`combo.keep_var = var`).
 `scopes_dialog` zeigt read-only, welche OAuth-Scopes im `token.json` gewährt sind,
 bewertet gegen die aktuell gebrauchten (`mail.scope_overview`): ✓ genutzt, ○ gewährt
 aber Funktion aus, ✗ gebraucht aber fehlt. Bewusst ein Modal statt einer Liste im
-Google-Tab (der ist mit 480 px schon der größte im Notebook) — und es liest
+Google-Tab (der ist schon voll; seit #132 scrollt er zwar, eine Scope-Liste darin wäre
+trotzdem eine Wand) — und es liest
 `token.json` beim Öffnen, ist also ohne Poll immer aktuell.
 
 Neben dem „Anzeigen"-Button steht die Kurzfassung aus `mail.scope_summary`:

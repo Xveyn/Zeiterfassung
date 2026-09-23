@@ -1,6 +1,6 @@
-"""Tab „Webhooks": Liste der konfigurierten HTTP-Ziele.
+"""Liste „Webhooks" im Versand-Tab: die konfigurierten HTTP-Ziele.
 
-Aufbau und Ablauf teilt er mit dem SMTP-Tab (`_record_list_tab.py`, R12);
+Aufbau und Ablauf teilt sie mit der SMTP-Liste (`_record_list_tab.py`, R12);
 hier steht nur, was ihn davon unterscheidet. Webhooks liegen in ihrem
 eigenen, gerätelokalen Store und werden vom Unterdialog direkt gespeichert.
 """
@@ -29,10 +29,11 @@ def _forget_secret(webhook_id):
 
 
 WEBHOOKS_KIND = RecordListKind(
-    intro=("Der Bericht kann zusätzlich zur E-Mail an HTTP-Endpunkte "
-           "gesendet werden. Webhooks gelten nur auf diesem Gerät und "
-           "werden sofort gespeichert — unabhängig vom „Speichern“ "
-           "dieses Einstellungen-Dialogs."),
+    intro=("Den Bericht zusätzlich an HTTP-Endpunkte senden. Gilt nur auf "
+           "diesem Gerät und wird sofort gespeichert, unabhängig vom Knopf "
+           "„Speichern“."),
+    section="Webhooks",
+    empty="Noch kein Webhook — „Hinzufügen“ legt einen an.",
     row_detail=lambda record: urlsplit(record.get("url", "")).hostname or "?",
     open_dialog=_open_dialog,
     remove_title="Webhook entfernen",
@@ -44,4 +45,3 @@ WEBHOOKS_KIND = RecordListKind(
 
 class WebhooksTab(RecordListTab):
     KIND = WEBHOOKS_KIND
-    title = "Webhooks"

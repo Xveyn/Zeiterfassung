@@ -47,3 +47,26 @@ def test_share_recipient_gmail_uses_saved_default():
 def test_share_recipient_without_anything_is_empty():
     assert default_share_recipient(None, None) == ""
     assert default_share_recipient({"recipient": "  "}, "") == ""
+
+
+# --- Text des „Keine Zugangsdaten"-Dialogs (#132, PR 3) ---------------------
+# Beim Test aufgefallen: Sync- und Kalender-Schalter zeigten den Gmail-Text
+# mit „Alternativ … eigenes Mail-Konto — dann wird kein Google-Konto
+# benötigt". Für Drive und Kalender gibt es aber keinen Weg ohne Google.
+
+
+def test_missing_credentials_text_for_mail_offers_smtp():
+    from src.dialogs.send_dialog import missing_credentials_text
+    text = missing_credentials_text("/daten")
+    assert "/daten" in text
+    assert "Gmail" in text
+    assert "eigenes Mail-Konto" in text
+
+
+def test_missing_credentials_text_for_google_feature_has_no_smtp_hint():
+    from src.dialogs.send_dialog import missing_credentials_text
+    text = missing_credentials_text("/daten", google_action="Google Kalender aktivieren")
+    assert "/daten" in text
+    assert "„Google Kalender aktivieren“" in text
+    assert "Mail-Konto" not in text
+    assert "Versand" not in text

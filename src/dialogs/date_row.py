@@ -49,7 +49,7 @@ class DateRow:
         return self.day_var, self.month_var, self.year_var
 
 
-def build_date_row(parent: tk.Misc, label_text: str, default_date: datetime.date, *,
+def build_date_row(parent: tk.Misc, label_text: str | None, default_date: datetime.date, *,
                    on_change: Callable[[], None] | None = None,
                    year_from: int = 2020, year_to_offset: int = 2,
                    label_width: int = 0) -> DateRow:
@@ -60,12 +60,16 @@ def build_date_row(parent: tk.Misc, label_text: str, default_date: datetime.date
       initialen Aufbau NICHT gefeuert.
     - year_from / year_to_offset: Jahresbereich `range(year_from,
       heute.Jahr + year_to_offset)`.
+    - label_text: Beschriftung links in der Zeile; `None` = keine.
     - label_width: feste Label-Breite in Zeichen (0 = natürlich) — für
       Spaltenausrichtung mehrerer Zeilen untereinander.
     """
     frame = tk.Frame(parent, bg=BG)
-    tk.Label(frame, text=label_text, font=FONT, bg=BG, fg=TEXT,
-             width=label_width, anchor="w").pack(side=tk.LEFT, padx=(0, 5))
+    # None: die Beschriftung trägt der Aufrufer selbst (Form.row im
+    # Einstellungs-Dialog) — sonst stünde sie doppelt da.
+    if label_text is not None:
+        tk.Label(frame, text=label_text, font=FONT, bg=BG, fg=TEXT,
+                 width=label_width, anchor="w").pack(side=tk.LEFT, padx=(0, 5))
 
     today = datetime.date.today()
     month_values = [str(m) for m in range(1, 13)]

@@ -13,15 +13,30 @@ from collections.abc import Mapping
 from typing import Literal
 
 # Höhe eines scrollbaren Formular-Körpers bei 100 % Skalierung. 600 px
-# entsprechen in etwa dem heutigen Tab-Körper des App-Tabs — der Dialog wird
-# durch den Umbau also nie höher als vorher.
+# entsprachen unter Windows etwa dem Tab-Körper des alten App-Tabs; unter
+# Linux ist der Dialog damit etwas höher als vor #132 (Spec, PR 3,
+# Abweichung 6).
 BODY_MAX_HEIGHT = 600
-# Abstand, den der Körper zum Bildschirmrand lassen muss: Titelleiste,
-# Reiterleiste, Knopfreihe und Taskleiste.
-SCREEN_MARGIN = 160
+# Abstand, den der Körper zum Bildschirmrand lassen muss, in zwei Teilen:
+# `SCREEN_MARGIN` für Titelleiste und Taskleiste — die wachsen NICHT mit der
+# App-Skalierung —, `DIALOG_CHROME` (mitskaliert) für Reiterleiste und
+# Knopfreihe des Dialogs. Vorher ein einziger skalierter Wert (160): bei 100 %
+# ragte der Dialog auf einem 768p-Schirm unter die Taskleiste, bei 200 % war
+# die Reserve doppelt so groß wie nötig. Die Messwerte hält
+# `test_dialog_fits_on_screen_with_taskbar` fest.
+SCREEN_MARGIN = 100
+DIALOG_CHROME = 110
 # Untergrenze auf winzigen Bildschirmen — darunter wäre der Körper nicht
 # mehr bedienbar, selbst mit Scrollleiste.
 MIN_BODY_HEIGHT = 200
+# Scroll-Schrittweite eines Formulars bei 100 % (`yscrollincrement`, px,
+# mitskaliert). Ohne feste Schrittweite rechnet der Canvas in Zehnteln der
+# sichtbaren Höhe — auf einem macOS-Trackpad, das viele kleine Deltas
+# schickt, sprang die Seite dadurch.
+WHEEL_STEP = 20
+# Schritte je Raste eines klassischen Mausrads (Windows, X11): drei mal
+# `WHEEL_STEP` fühlt sich an wie in anderen Anwendungen.
+NOTCH_UNITS = 3
 
 WheelRoute = Literal["widget", "form", "form_block"]
 
@@ -86,13 +101,51 @@ def wheel_units(system: str, delta: int, num: int | None) -> int:
     return -steps
 
 
-def wheel_route(widget_class: str) -> WheelRoute:
+def scroll_units(system: str, delta: int, num: int | None) -> int:
+    """`yview_scroll`-Einheiten (à `WHEEL_STEP`) aus einem Mausrad-Event.
+
+    Eine Raste (Windows, X11) zählt `NOTCH_UNITS` Einheiten. macOS liefert
+    Rohwerte, die schon fein genug sind — die bleiben, wie `wheel_units` sie
+    liest."""
+    units = wheel_units(system, delta, num)
+    if system == "Darwin" and num is None:
+        return units
+    return units * NOTCH_UNITS
+
+
+def scroll_target(item_top: int, item_height: int, first: float, last: float,
+                  total: int) -> float | None:
+    """Wohin gescrollt werden muss, damit ein Feld sichtbar ist.
+
+    `item_top`/`item_height` in px relativ zum Formularkörper, `first`/`last`
+    der sichtbare Bereich als Anteil (`canvas.yview()`), `total` die volle
+    Körperhöhe. Liefert den neuen `yview_moveto`-Wert oder `None`, wenn das
+    Feld schon ganz sichtbar ist. Liegt es darüber (oder ist es höher als der
+    Sichtbereich), kommt seine Oberkante an den oberen Rand, sonst seine
+    Unterkante an den unteren."""
+    if total <= 0:
+        return None
+    view_top = first * total
+    view_height = (last - first) * total
+    item_bottom = item_top + item_height
+    if item_top >= view_top and item_bottom <= view_top + view_height:
+        return None
+    if item_top < view_top or item_height >= view_height:
+        return max(0.0, item_top / total)
+    # Gerundet gegen Fließkomma-Reste wie 0.33000000000000007.
+    return round(max(0.0, (item_bottom - view_height) / total), 6)
+
+
+def wheel_route(widget_class: str, can_scroll: bool = True) -> WheelRoute:
     """Wohin ein Mausrad-Schritt über einem Widget dieser Klasse geht:
     `"widget"` — das Widget scrollt selbst, das Formular bleibt stehen;
     `"form_block"` — das Formular scrollt, das Widget darf den Schritt NICHT
-    sehen; `"form"` — das Formular scrollt."""
+    sehen; `"form"` — das Formular scrollt.
+
+    `can_scroll=False` meldet ein Text/eine Listbox ohne Überlauf: das Rad
+    ginge dort ins Leere, das Formular stünde still. Dann scrollt es."""
     if widget_class in _SELF_SCROLLING:
-        return "widget"
+        return "widget" if can_scroll else "form"
     if widget_class in _VALUE_ON_WHEEL:
         return "form_block"
     return "form"
@@ -111,10 +164,11 @@ def body_height(natural: int, scale: float, screen_height: int) -> int:
     """Sichtbare Höhe eines scrollbaren Formular-Körpers.
 
     Höchstens `BODY_MAX_HEIGHT` (mitskaliert) und höchstens so viel, wie der
-    Bildschirm abzüglich `SCREEN_MARGIN` hergibt — aber nie weniger als
+    Bildschirm abzüglich `SCREEN_MARGIN` und `DIALOG_CHROME` (mitskaliert)
+    hergibt — aber nie weniger als
     `MIN_BODY_HEIGHT`. Kurze Formulare behalten ihre natürliche Höhe; die
     Untergrenze polstert sie nicht auf."""
     cap = round(BODY_MAX_HEIGHT * scale)
-    room = screen_height - round(SCREEN_MARGIN * scale)
+    room = screen_height - SCREEN_MARGIN - round(DIALOG_CHROME * scale)
     limit = max(MIN_BODY_HEIGHT, min(cap, room))
     return min(natural, limit)
