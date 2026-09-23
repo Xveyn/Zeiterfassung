@@ -133,33 +133,37 @@ def calendar_update(cal_map: Mapping[str, str], selected: str,
     return new_id if new_id != stored_id else None
 
 
-# ---- App -----------------------------------------------------------------
+# ---- Erinnerungen --------------------------------------------------------
 
-def slider_percent(value: float) -> int:
-    """Skalierungs-Regler auf 5er-Schritte (ttk.Scale kennt kein
-    `resolution`)."""
-    return round(value / 5) * 5
+REMINDER_KEYS = (
+    "reminders_enabled", "reminder_minutes_before",
+    "send_reminder_enabled", "send_reminder_day", "send_reminder_time",
+    "send_reminder_weekend_shift", "send_reminder_shift_holidays",
+    "send_reminder_reservations_enabled", "send_reminder_default_minutes",
+)
 
 
-def validate_app(raw: Mapping[str, Any]) -> tuple[str, str] | None:
+def shift_moves(label: str) -> bool:
+    """Verschiebt die gewählte Wochenend-Regel den Termin überhaupt? Nur
+    dann hat „auch Feiertage" eine Wirkung (und ist bedienbar)."""
+    return shift_for_label(label) != "none"
+
+
+def validate_reminders(raw: Mapping[str, Any]) -> tuple[str, str] | None:
     if parse_reminder_minutes(raw["reminder_minutes_before"]) is None:
         return ("Erinnerungszeit ungültig",
                 "Bitte eine ganze Zahl zwischen 0 und 120 Minuten angeben.")
     return None
 
 
-def app_updates(raw: Mapping[str, Any]) -> dict[str, Any]:
-    """Settings-Werte des App-Tabs. Setzt `validate_app` voraus."""
+def reminders_updates(raw: Mapping[str, Any]) -> dict[str, Any]:
+    """Settings-Werte des Erinnerungen-Tabs. Setzt `validate_reminders`
+    voraus. Ausgegraute Optionen werden mitgeschrieben — ihr Wert bleibt
+    erhalten, bis der Schalter wieder an ist."""
     minutes = parse_reminder_minutes(raw["reminder_minutes_before"])
     if minutes is None:
-        raise ValueError("app_updates ohne vorheriges validate_app")
+        raise ValueError("reminders_updates ohne vorheriges validate_reminders")
     return {
-        "autostart": bool(raw["autostart"]),
-        "state": code_for_state_label(raw["state"]),
-        "show_weekend": bool(raw["show_weekend"]),
-        "always_on_top": bool(raw["always_on_top"]),
-        "minimize_to_tray": bool(raw["minimize_to_tray"]),
-        "ui_scale": clamp_ui_scale(slider_percent(float(raw["ui_scale"])) / 100),
         "reminders_enabled": bool(raw["reminders_enabled"]),
         "reminder_minutes_before": minutes,
         "send_reminder_enabled": bool(raw["send_reminder_enabled"]),
@@ -171,6 +175,26 @@ def app_updates(raw: Mapping[str, Any]) -> dict[str, Any]:
         "send_reminder_reservations_enabled": bool(
             raw["send_reminder_reservations_enabled"]),
         "send_reminder_default_minutes": int(raw["send_reminder_default_minutes"]),
+    }
+
+
+# ---- App -----------------------------------------------------------------
+
+def slider_percent(value: float) -> int:
+    """Skalierungs-Regler auf 5er-Schritte (ttk.Scale kennt kein
+    `resolution`)."""
+    return round(value / 5) * 5
+
+
+def app_updates(raw: Mapping[str, Any]) -> dict[str, Any]:
+    """Settings-Werte des App-Tabs."""
+    return {
+        "autostart": bool(raw["autostart"]),
+        "state": code_for_state_label(raw["state"]),
+        "show_weekend": bool(raw["show_weekend"]),
+        "always_on_top": bool(raw["always_on_top"]),
+        "minimize_to_tray": bool(raw["minimize_to_tray"]),
+        "ui_scale": clamp_ui_scale(slider_percent(float(raw["ui_scale"])) / 100),
         "send_period_from_last_reminder": bool(
             raw["send_period_from_last_reminder"]),
         "send_period_anchor_monthly": bool(raw["send_period_anchor_monthly"]),

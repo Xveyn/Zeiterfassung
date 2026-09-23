@@ -5,6 +5,7 @@ from src.dialogs.settings_dialog.form_model import SaveCoordinator
 from src.dialogs.settings_dialog.tab_app import AppTab
 from src.dialogs.settings_dialog.tab_google import GoogleTab
 from src.dialogs.settings_dialog.tab_mail import MailTab
+from src.dialogs.settings_dialog.tab_reminders import RemindersTab
 from src.dialogs.settings_dialog.tab_smtp import SmtpTab
 from src.dialogs.settings_dialog.tab_updates import UpdatesTab
 from src.dialogs.settings_dialog.tab_webhooks import WebhooksTab
@@ -61,6 +62,7 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
     notebook.pack(fill="both", expand=True, padx=8, pady=(8, 0))
 
     tab_work = tk.Frame(notebook, bg=BG)
+    tab_reminders = tk.Frame(notebook, bg=BG)
     tab_mail = tk.Frame(notebook, bg=BG)
     tab_webhooks = tk.Frame(notebook, bg=BG)
     tab_smtp = tk.Frame(notebook, bg=BG)
@@ -68,6 +70,7 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
     tab_app = tk.Frame(notebook, bg=BG)
     tab_updates = tk.Frame(notebook, bg=BG)
     notebook.add(tab_work, text="Arbeitszeit")
+    notebook.add(tab_reminders, text="Erinnerungen")
     notebook.add(tab_mail, text="Bericht & Mail")
     notebook.add(tab_webhooks, text="Webhooks")
     notebook.add(tab_smtp, text="SMTP")
@@ -79,6 +82,7 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
     work = WorkTab(tab_work, dialog, settings, vacation_store,
                    on_vacation_change, storage, reservation_store, runner,
                    on_vacation_display_change)
+    reminders = RemindersTab(tab_reminders, settings)
 
     # ===================== Tab: Bericht & Mail =====================
     mail = MailTab(tab_mail, settings)
@@ -123,6 +127,7 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
     # rechnet über den Index auf den Schlüssel um.
     tabs = {
         "work": work,
+        "reminders": reminders,
         "mail": mail,
         "webhooks": hooks,
         "smtp": smtp,
