@@ -22,7 +22,8 @@ from src.theme.palette import BG, CELL_BG, SEPARATOR, TEXT, TEXT_DISABLED, TEXT_
 from src.theme.fonts import FONT, FONT_BOLD, FONT_SMALL, current_scale, px
 from src.theme.widgets import _LabelButton, _ToggleColors, secondary_button
 from src.theme.form_logic import (
-    body_height, enabled_states, is_descendant, wheel_route, wheel_units,
+    WHEEL_STEP, body_height, enabled_states, is_descendant, scroll_target,
+    scroll_units, wheel_route,
 )
 
 log = logging.getLogger(__name__)
@@ -154,6 +155,25 @@ def _wheel_sequences(widget):
     return _WHEEL_EVENTS
 
 
+class FormRow:
+    """Handle einer `Form.row`: Beschriftung und Bedienelement, gemeinsam
+    ein- und ausblendbar — für Zeilen, die ein Schalter im selben Tab
+    sichtbar macht (Sa/So bei „Nur Werktage")."""
+
+    def __init__(self, label, widget):
+        self.label = label
+        self.widget = widget
+
+    def show(self, visible):
+        # grid_remove statt grid_forget: die Grid-Optionen (Zeile, Einzug)
+        # bleiben gemerkt, ein nacktes grid() stellt die Zeile wieder her.
+        for w in (self.label, self.widget):
+            if visible:
+                w.grid()
+            else:
+                w.grid_remove()
+
+
 class Form:
     """Ein Formular = ein Raster mit zwei Spalten, gegliedert in Abschnitte.
 
@@ -194,6 +214,8 @@ class Form:
         self._sections = 0
         self._parents: dict[str, str | None] = {}
         self._vars: dict[str, tk.Variable] = {}
+        self._invert: dict[str, bool] = {}
+        self._indents: dict[str, bool] = {}
         self._members: dict[str, list] = {}
         self._stack: list[str] = []
         self._hints: list[tuple[tk.Label, int]] = []
@@ -206,7 +228,8 @@ class Form:
             self._bar = ttk.Scrollbar(self.frame, orient="vertical",
                                       command=self._canvas.yview,
                                       style="Vertical.TScrollbar")
-            self._canvas.configure(yscrollcommand=self._bar.set)
+            self._canvas.configure(yscrollcommand=self._bar.set,
+                                   yscrollincrement=px(WHEEL_STEP))
             self._canvas.grid(row=0, column=0, sticky="nsew")
             self.frame.grid_rowconfigure(0, weight=1)
             self.frame.grid_columnconfigure(0, weight=1)
@@ -227,6 +250,10 @@ class Form:
             top = self.frame.winfo_toplevel()
             for seq in _wheel_sequences(top):
                 top.bind(seq, self._on_wheel, add="+")
+            # Tab-Taste auf ein Feld außerhalb des Sichtbereichs: dorthin
+            # scrollen, sonst tippt man blind (<FocusIn> des Toplevels sieht
+            # die Fokuswechsel aller Kinder).
+            top.bind("<FocusIn>", self._on_focus, add="+")
         else:
             self.frame = tk.Frame(parent, bg=BG)
             self.body = self.frame
@@ -249,14 +276,17 @@ class Form:
             self.hint(hint)
         return head
 
-    def row(self, label, widget):
-        """Beschriftung in Spalte 0, `widget` (Parent `form.body`) in Spalte 1."""
+    def row(self, label, widget, *, align_top=False):
+        """Beschriftung in Spalte 0, `widget` (Parent `form.body`) in Spalte 1.
+        `align_top` hält die Beschriftung oben (mehrzeilige Textfelder).
+        Liefert ein `FormRow`, über das sich die Zeile ausblenden lässt."""
         r = self._next_row()
         lbl = tk.Label(self.body, text=label, font=FONT, bg=BG, fg=TEXT)
-        lbl.grid(row=r, column=0, sticky="w", padx=(self._indent(), 8), pady=4)
+        lbl.grid(row=r, column=0, sticky="nw" if align_top else "w",
+                 padx=(self._indent(), 8), pady=4)
         widget.grid(row=r, column=1, sticky="w", padx=(0, _EDGE), pady=4)
         self._register(lbl, widget)
-        return lbl
+        return FormRow(lbl, widget)
 
     def check(self, text, var):
         """Checkbox über beide Spalten."""
@@ -313,10 +343,13 @@ class Form:
         return widget
 
     @contextmanager
-    def depends_on(self, var):
+    def depends_on(self, var, *, invert=False, indent=True):
         """Alles, was im `with`-Block entsteht, wird eingerückt und ist nur
-        aktiv, solange `var` wahr ist (und alle Schalter darüber). Die
-        Variable hält `Form` fest — sie braucht eine lebende Referenz, sonst
+        aktiv, solange `var` wahr ist (und alle Schalter darüber).
+        `invert=True` dreht das um: aktiv, solange `var` AUS ist
+        („Wochenende anzeigen" gegen „Nur Werktage"). `indent=False` rückt
+        nicht ein — für eine Option, die neben ihrem Gegenspieler steht statt
+        unter einem Hauptschalter. Die Variable hält `Form` fest — sie braucht eine lebende Referenz, sonst
         löscht der GC die Tcl-Variable (s. src/CLAUDE.md, Dialoge).
 
         **Besitz-Vertrag:** die Mitglieder einer `depends_on`-Gruppe gehören
@@ -331,6 +364,8 @@ class Form:
         group = f"g{len(self._parents)}"
         self._parents[group] = self._stack[-1] if self._stack else None
         self._vars[group] = var
+        self._invert[group] = invert
+        self._indents[group] = indent
         self._members[group] = []
         self._stack.append(group)
         try:
@@ -347,10 +382,11 @@ class Form:
         values = {}
         for group, var in self._vars.items():
             try:
-                values[group] = bool(var.get())
+                values[group] = bool(var.get()) != self._invert[group]
             except tk.TclError:
                 # Leeres/ungültiges Feld hinter einer Int-/Double-Variable:
-                # gilt als aus, statt den Aufbau abzubrechen.
+                # die Gruppe gilt als aus (auch bei `invert` — im Zweifel
+                # grau), statt den Aufbau abzubrechen.
                 values[group] = False
         states = enabled_states(self._parents, values)
         for group, members in self._members.items():
@@ -365,7 +401,8 @@ class Form:
         return r
 
     def _indent(self):
-        return _EDGE + px(INDENT) * len(self._stack)
+        levels = sum(1 for group in self._stack if self._indents[group])
+        return _EDGE + px(INDENT) * levels
 
     def _register(self, *widgets):
         if self._canvas is not None:
@@ -444,7 +481,8 @@ class Form:
         if self._canvas is None or not self._scrollable:
             return
         num = event.num if event.num in (4, 5) else None
-        units = wheel_units(platform.system(), int(getattr(event, "delta", 0) or 0), num)
+        units = scroll_units(platform.system(),
+                             int(getattr(event, "delta", 0) or 0), num)
         if units:
             self._canvas.yview_scroll(units, "units")
 
@@ -460,12 +498,37 @@ class Form:
                 return None
             inside = is_descendant(str(widget), str(canvas))
             cls = widget.winfo_class()
+            # Ein Text/eine Listbox ohne Überlauf gibt das Rad ans Formular
+            # ab (form_logic.wheel_route) — sonst stünde die Seite über den
+            # Vorlagen-Feldern still.
+            can_scroll = True
+            if wheel_route(cls) == "widget":
+                can_scroll = tuple(widget.yview()) != (0.0, 1.0)
         except tk.TclError:
             log.debug("Mausrad: Widget nicht mehr abfragbar", exc_info=True)
             return None
-        if inside and wheel_route(cls) == "form":
+        if inside and wheel_route(cls, can_scroll) == "form":
             self._scroll(event)
         return None
+
+    def _on_focus(self, event):
+        canvas = self._canvas
+        widget = event.widget
+        if canvas is None or not self._scrollable or isinstance(widget, str):
+            return
+        try:
+            if not is_descendant(str(widget), str(self.body)):
+                return
+            top = widget.winfo_rooty() - self.body.winfo_rooty()
+            height = widget.winfo_height()
+            total = self.body.winfo_reqheight()
+            first, last = canvas.yview()
+        except tk.TclError:
+            log.debug("Fokus: Widget nicht mehr abfragbar", exc_info=True)
+            return
+        target = scroll_target(top, height, first, last, total)
+        if target is not None:
+            canvas.yview_moveto(target)
 
     def _on_blocked_wheel(self, event):
         self._scroll(event)
