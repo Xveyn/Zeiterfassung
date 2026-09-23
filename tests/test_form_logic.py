@@ -6,6 +6,7 @@ from src.theme.form_logic import (
     BODY_MAX_HEIGHT,
     MIN_BODY_HEIGHT,
     NOTCH_UNITS,
+    DIALOG_CHROME,
     SCREEN_MARGIN,
     body_height,
     enabled_states,
@@ -137,8 +138,29 @@ def test_capped_at_max_height_times_scale():
 
 
 def test_capped_by_screen_height():
-    # 1.5 × 600 = 900, aber 1000 − 1.5 × 160 = 760 ist enger.
-    assert body_height(2000, 1.5, 1000) == 1000 - round(SCREEN_MARGIN * 1.5)
+    # 1.5 × 600 = 900, aber der Bildschirm abzüglich fester und skalierter
+    # Reserve ist enger.
+    assert body_height(2000, 1.5, 1000) == (
+        1000 - SCREEN_MARGIN - round(DIALOG_CHROME * 1.5))
+
+
+# Gemessen im Einstellungs-Dialog (#132, PR 3, Linux): Reiter + Knopfreihe
+# über dem Körper je Skalierung. Titelleiste (~30) und Taskleiste (bis 48)
+# wachsen NICHT mit der App-Skalierung.
+_MEASURED_OVERHEAD = {0.75: 88, 1.0: 104, 1.25: 116, 1.5: 131, 1.75: 146, 2.0: 160}
+_TITLE_BAR, _TASKBAR = 30, 48
+
+
+@pytest.mark.parametrize("scale", sorted(_MEASURED_OVERHEAD))
+@pytest.mark.parametrize("screen", [768, 900, 1080, 1440])
+def test_dialog_fits_on_screen_with_taskbar(scale, screen):
+    # Ein 1366×768-Laptop bei 100 %: die alte Reserve (160 × Skalierung)
+    # ließ den Dialog dort unter die Taskleiste ragen.
+    body = body_height(10**6, scale, screen)
+    if body == MIN_BODY_HEIGHT:
+        return  # winziger Schirm: Bedienbarkeit schlägt „passt ganz"
+    total = body + _MEASURED_OVERHEAD[scale] + _TITLE_BAR + _TASKBAR
+    assert total <= screen, (scale, screen, body, total)
 
 
 def test_tiny_screen_keeps_a_usable_minimum():

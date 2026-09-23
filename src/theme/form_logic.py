@@ -13,12 +13,19 @@ from collections.abc import Mapping
 from typing import Literal
 
 # Höhe eines scrollbaren Formular-Körpers bei 100 % Skalierung. 600 px
-# entsprechen in etwa dem heutigen Tab-Körper des App-Tabs — der Dialog wird
-# durch den Umbau also nie höher als vorher.
+# entsprachen unter Windows etwa dem Tab-Körper des alten App-Tabs; unter
+# Linux ist der Dialog damit etwas höher als vor #132 (Spec, PR 3,
+# Abweichung 6).
 BODY_MAX_HEIGHT = 600
-# Abstand, den der Körper zum Bildschirmrand lassen muss: Titelleiste,
-# Reiterleiste, Knopfreihe und Taskleiste.
-SCREEN_MARGIN = 160
+# Abstand, den der Körper zum Bildschirmrand lassen muss, in zwei Teilen:
+# `SCREEN_MARGIN` für Titelleiste und Taskleiste — die wachsen NICHT mit der
+# App-Skalierung —, `DIALOG_CHROME` (mitskaliert) für Reiterleiste und
+# Knopfreihe des Dialogs. Vorher ein einziger skalierter Wert (160): bei 100 %
+# ragte der Dialog auf einem 768p-Schirm unter die Taskleiste, bei 200 % war
+# die Reserve doppelt so groß wie nötig. Die Messwerte hält
+# `test_dialog_fits_on_screen_with_taskbar` fest.
+SCREEN_MARGIN = 100
+DIALOG_CHROME = 110
 # Untergrenze auf winzigen Bildschirmen — darunter wäre der Körper nicht
 # mehr bedienbar, selbst mit Scrollleiste.
 MIN_BODY_HEIGHT = 200
@@ -157,10 +164,11 @@ def body_height(natural: int, scale: float, screen_height: int) -> int:
     """Sichtbare Höhe eines scrollbaren Formular-Körpers.
 
     Höchstens `BODY_MAX_HEIGHT` (mitskaliert) und höchstens so viel, wie der
-    Bildschirm abzüglich `SCREEN_MARGIN` hergibt — aber nie weniger als
+    Bildschirm abzüglich `SCREEN_MARGIN` und `DIALOG_CHROME` (mitskaliert)
+    hergibt — aber nie weniger als
     `MIN_BODY_HEIGHT`. Kurze Formulare behalten ihre natürliche Höhe; die
     Untergrenze polstert sie nicht auf."""
     cap = round(BODY_MAX_HEIGHT * scale)
-    room = screen_height - round(SCREEN_MARGIN * scale)
+    room = screen_height - SCREEN_MARGIN - round(DIALOG_CHROME * scale)
     limit = max(MIN_BODY_HEIGHT, min(cap, room))
     return min(natural, limit)

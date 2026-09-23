@@ -303,6 +303,12 @@ diesen Abweichungen:
    (Empfänger) · SMTP-Konten · Webhooks — wie der Sende-Dialog gruppiert. Der
    obere Empfänger galt nur für Gmail, sah aber global aus (beim Testen
    aufgefallen).
+8. **Bildschirm-Reserve in zwei Teilen** statt `SCREEN_MARGIN = 160` ×
+   Skalierung: `SCREEN_MARGIN = 100` fest (Titel- und Taskleiste wachsen nicht
+   mit der App-Skalierung) plus `DIALOG_CHROME = 110` × Skalierung (Reiter und
+   Knöpfe). Mit der alten Formel ragte der Dialog bei 100 % auf einem
+   768p-Schirm unter die Taskleiste; gemessen je Skalierung und festgehalten in
+   `test_dialog_fits_on_screen_with_taskbar`.
 
 ## Tests
 
