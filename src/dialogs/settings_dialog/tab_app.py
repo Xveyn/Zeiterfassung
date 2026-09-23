@@ -1,4 +1,4 @@
-"""Tab „App": Bundesland, UI-Optionen, Skalierung."""
+"""Tab „App": UI-Optionen und Skalierung."""
 
 import tkinter as tk
 from tkinter import ttk
@@ -7,16 +7,14 @@ from src.autostart import (
     disable_autostart, enable_autostart, is_autostart_enabled,
     resolve_autostart_target,
 )
-from src.dialogs.settings_dialog._shared import label
 from src.dialogs.settings_dialog.fields import FieldSet
 from src.dialogs.settings_dialog.form_model import SaveOutcome
 from src.dialogs.settings_dialog.tab_rules import (
     app_updates, slider_percent,
 )
-from src.holidays_de import STATES
 from src.theme import (
     ACCENT, BG, CELL_BG, FONT, FONT_BOLD, FONT_SMALL, TEXT, TEXT_MUTED,
-    dark_combo, px, scaled_window_fits, themed_askyesno,
+    px, scaled_window_fits, themed_askyesno,
     themed_showerror, workarea_for,
 )
 
@@ -25,40 +23,10 @@ class AppTab:
     """Baut den App-Tab; Tab-Schnittstelle für den `SaveCoordinator` (#132)."""
 
     def __init__(self, frame, settings, dialog, parent, base_path):
-        label(frame, "Bundesland:", row=0, pady=(10, 8))
-        state_labels = [lbl for _, lbl in STATES]
-        current_code = settings.get("state")
-        current_label = next(
-            (lbl for code, lbl in STATES if code == current_code),
-            STATES[0][1],
-        )
-        state_var = tk.StringVar(value=current_label)
-        dark_combo(frame, state_var, state_labels, width=22).grid(
-            row=0, column=1, padx=10, pady=(10, 8), sticky="w")
-
         # Gerätelokale UI-Optionen. Alle in app_frame (ein Grid-Member), damit die
         # pack-Interna dieses Frames unberührt bleiben.
         app_frame = tk.Frame(frame, bg=BG)
-        app_frame.grid(row=1, column=0, columnspan=2, padx=10, pady=(4, 4), sticky="we")
-
-        show_weekend_var = tk.BooleanVar(value=settings.get("show_weekend"))
-        weekend_cb = tk.Checkbutton(
-            app_frame, text="Wochenende (Sa/So) im Kalender anzeigen",
-            variable=show_weekend_var, font=FONT,
-            bg=BG, fg=TEXT, selectcolor=CELL_BG,
-            activebackground=BG, activeforeground=TEXT,
-            cursor="hand2",
-        )
-        weekend_cb.pack(anchor="w")
-        if settings.get("workweek_only"):
-            # Sonst stünde hier ein Haken, der sichtbar nichts tut: der
-            # Nur-Werktage-Modus blendet Sa/So ohnehin aus.
-            weekend_cb.config(state="disabled")
-            tk.Label(
-                app_frame,
-                text="Durch „Nur Werktage\" (Arbeitszeit) überstimmt.",
-                font=FONT_SMALL, bg=BG, fg=TEXT_MUTED,
-            ).pack(anchor="w", padx=(24, 0))
+        app_frame.grid(row=0, column=0, columnspan=2, padx=10, pady=(10, 4), sticky="we")
 
         autostart_var = tk.BooleanVar(value=is_autostart_enabled())
         tk.Checkbutton(
@@ -148,8 +116,6 @@ class AppTab:
         ).pack(anchor="w", pady=(2, 0))
 
         self.frame = frame
-        self.state_var = state_var
-        self.show_weekend_var = show_weekend_var
         self.autostart_var = autostart_var
         self.always_on_top_var = always_on_top_var
         self.minimize_to_tray_var = minimize_to_tray_var
@@ -162,8 +128,6 @@ class AppTab:
         self._base_path = base_path
 
         fields = FieldSet()
-        fields.add("state", state_var)
-        fields.add("show_weekend", show_weekend_var)
         fields.add("autostart", autostart_var)
         fields.add("always_on_top", always_on_top_var)
         fields.add("minimize_to_tray", minimize_to_tray_var)

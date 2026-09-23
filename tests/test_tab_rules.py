@@ -22,6 +22,8 @@ def work_raw(**overrides):
         "werkstudent_limit_end.month": "9",
         "werkstudent_limit_end.day": "30",
         "werkstudent_limit_max_hours": "20",
+        "state": STATES[1][1],
+        "show_weekend": True,
     }
     for key in WEEKDAY_KEYS:
         raw[f"default_start_{key}"] = "08:00"
@@ -103,6 +105,12 @@ def test_work_updates_keeps_old_date_when_unparseable():
     assert upd["werkstudent_limit_end"] == "2026-03-31"
 
 
+def test_work_updates_carries_state_and_weekend():
+    upd = tr.work_updates(work_raw(), OLD_WSL)
+    assert upd["state"] == STATES[1][0]
+    assert upd["show_weekend"] is True
+
+
 def test_wsl_snapshot_from_settings_and_updates_agree():
     upd = tr.work_updates(work_raw(), OLD_WSL)
     assert tr.wsl_snapshot(upd) == {
@@ -113,7 +121,7 @@ def test_wsl_snapshot_from_settings_and_updates_agree():
 
 def app_raw(**overrides):
     raw = {
-        "state": STATES[1][1], "show_weekend": True, "autostart": False,
+        "autostart": False,
         "always_on_top": False, "minimize_to_tray": True, "ui_scale": 125,
     }
     raw.update(overrides)
@@ -151,7 +159,6 @@ def test_validate_reminders():
 
 def test_app_updates_converts():
     upd = tr.app_updates(app_raw())
-    assert upd["state"] == STATES[1][0]
     assert upd["ui_scale"] == 1.25
     assert upd["autostart"] is False
 

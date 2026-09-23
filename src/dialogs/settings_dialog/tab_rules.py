@@ -82,6 +82,8 @@ def work_updates(raw: Mapping[str, Any],
                                   or old["werkstudent_limit_end"]),
         "werkstudent_limit_max_hours": max_hours,
         "workweek_only": bool(raw["workweek_only"]),
+        "state": code_for_state_label(raw["state"]),
+        "show_weekend": bool(raw["show_weekend"]),
     }
     # Alle sieben Tage, auch Sa/So bei „Nur Werktage": die Werte bleiben so
     # erhalten und sind sofort wieder da, wenn der Modus zurückgenommen wird.
@@ -196,8 +198,6 @@ def app_updates(raw: Mapping[str, Any]) -> dict[str, Any]:
     """Settings-Werte des App-Tabs."""
     return {
         "autostart": bool(raw["autostart"]),
-        "state": code_for_state_label(raw["state"]),
-        "show_weekend": bool(raw["show_weekend"]),
         "always_on_top": bool(raw["always_on_top"]),
         "minimize_to_tray": bool(raw["minimize_to_tray"]),
         "ui_scale": clamp_ui_scale(slider_percent(float(raw["ui_scale"])) / 100),
