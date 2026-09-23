@@ -161,7 +161,7 @@ Die Scopes werden nicht hier, sondern unter **Data Access** vergeben — entwede
 ### 5. Erster Versand
 
 1. App starten
-2. Unter **Einstellungen** (⚙) E-Mail und Empfänger eintragen
+2. Unter **Einstellungen** (⚙) → **Versand** → **Gmail** den Empfänger eintragen (der Absender ist das Google-Konto)
 3. **Arbeitszeiten senden** klicken
 4. Browser öffnet sich → mit Google anmelden → Zugriff erlauben (bei unverifizierter App: **Erweitert → „Zu Zeiterfassung (unsicher)"**)
 5. `token.json` wird automatisch erstellt
@@ -319,8 +319,8 @@ Reservierungen anlegen und den Abgleich über die App-Oberfläche aktivieren; be
 
 | Einstellung | Beschreibung |
 |-------------|-------------|
-| **E-Mail** | Eigene Gmail-Adresse (Absender) |
-| **Empfänger** | E-Mail-Adresse für den Report |
+| **Absender** | Eigene Gmail-Adresse — kommt aus dem Google-Konto (Tab Google), nicht einzutragen |
+| **Empfänger** | E-Mail-Adresse für den Report über Gmail (Tab Versand); SMTP-Konten tragen je einen eigenen |
 | **Dein Name** | Eigener vollständiger Name (erscheint im PDF-Bericht und beim Teilen) |
 | **Standard-Pause** | Standardmäßige Pausendauer in Minuten |
 | **Pausenpflicht-Warnung** | Warnen, wenn die Pause die Mindestpause nach § 4 ArbZG unterschreitet (Standard: an) |

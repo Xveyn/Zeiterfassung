@@ -298,6 +298,11 @@ diesen Abweichungen:
    unter Windows gemessen (756 px). Ziel 4 (passt auf den Bildschirm) hält über
    die Bildschirm-Klammer in `body_height`. Vom Nutzer so akzeptiert; wer es
    niedriger will, senkt die eine Konstante.
+7. **Versand nach Kanal geordnet** statt „Absender: Dein Name · Empfänger" oben:
+   Bericht (Name + Vorlage, gilt für jeden Mailweg) · Zeitraum · Gmail
+   (Empfänger) · SMTP-Konten · Webhooks — wie der Sende-Dialog gruppiert. Der
+   obere Empfänger galt nur für Gmail, sah aber global aus (beim Testen
+   aufgefallen).
 
 ## Tests
 

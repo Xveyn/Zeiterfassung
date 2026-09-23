@@ -1,6 +1,6 @@
-"""Tab „Versand" (#132): alles, was einen Bericht verschickt — Absender und
-Empfänger, Mail-Vorlage, die Zeitraum-Vorbelegung des Sende-Dialogs und die
-Kanäle SMTP und Webhooks.
+"""Tab „Versand" (#132): alles, was einen Bericht verschickt — Name und
+Mail-Vorlage (für jeden Mailweg), die Zeitraum-Vorbelegung des Sende-Dialogs
+und je Kanal ein Abschnitt: Gmail (Empfänger), SMTP-Konten, Webhooks.
 
 Bis PR 3 verteilt auf „Bericht & Mail", „SMTP", „Webhooks" und den App-Tab.
 Der Gmail-Absender bleibt im Google-Tab: er hängt an der Google-Anmeldung.
@@ -31,15 +31,17 @@ class SendingTab:
         form.frame.pack(fill="both", expand=True)
         body = form.body
 
+        # Geordnet wie der Sende-Dialog: erst, was für jeden Weg gilt, dann je
+        # Kanal ein Abschnitt. Ein „Empfänger" ganz oben sah aus, als gälte
+        # er für alle Wege — er gilt nur für Gmail; SMTP-Konten tragen ihren
+        # eigenen, Webhooks haben eine URL.
         name_var = tk.StringVar(value=settings.get("name"))
-        recipient_var = tk.StringVar(value=settings.get("recipient"))
-        form.section("Absender & Empfänger")
-        form.row("Dein Name:", dark_entry(body, name_var, width=35))
-        form.row("Empfänger:", dark_entry(body, recipient_var, width=35))
-
         subject_var = tk.StringVar(value=settings.get("mail_subject"))
         greeting_var = tk.StringVar(value=settings.get("mail_greeting"))
-        form.section("Mail-Vorlage")
+        form.section("Bericht",
+                     hint="Name und Vorlage gelten für Gmail und alle SMTP-Konten; "
+                          "der Name steht auch im Bericht selbst.")
+        form.row("Dein Name:", dark_entry(body, name_var, width=35))
         form.row("Betreff:", dark_entry(body, subject_var, width=35))
         form.row("Anrede:", dark_entry(body, greeting_var, width=35))
         content_text = dark_text(body, 35, 3)
@@ -57,6 +59,11 @@ class SendingTab:
         form.check("Zeitraum ab der letzten Erinnerung vorbelegen", from_last_var)
         with form.depends_on(from_last_var):
             form.check("inkl. Monatstermine der Sende-Erinnerung", anchor_var)
+
+        recipient_var = tk.StringVar(value=settings.get("recipient"))
+        form.section("Gmail",
+                     hint="Absender ist dein Google-Konto (Tab Google).")
+        form.row("Empfänger:", dark_entry(body, recipient_var, width=35))
 
         self.smtp = SmtpTab(form, dialog, smtp_store, runner, parent)
         self.webhooks = WebhooksTab(form, dialog, webhook_store, runner, parent)

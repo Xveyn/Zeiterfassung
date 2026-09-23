@@ -181,8 +181,8 @@ def open_send_dialog(parent, storage, settings, base_path, runner,
         if not recipient:
             themed_showinfo(
                 parent, "Kein Empfänger",
-                "Bitte zuerst einen Empfänger in den Einstellungen angeben "
-                "oder unter „SMTP“ ein Mail-Konto einrichten.")
+                "Bitte zuerst unter Einstellungen → Versand einen "
+                "Gmail-Empfänger angeben oder ein SMTP-Konto einrichten.")
         else:
             show_missing_credentials_dialog(parent, base_path)
         return
