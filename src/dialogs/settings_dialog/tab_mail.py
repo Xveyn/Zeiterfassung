@@ -8,11 +8,15 @@ die Geldanzeige im Kalender-Footer (`grid_renderer`), nicht den Mailtext.
 import tkinter as tk
 
 from src.dialogs.settings_dialog._shared import label, subheader
+from src.dialogs.settings_dialog.fields import FieldSet
+from src.dialogs.settings_dialog.form_model import SaveOutcome
+from src.dialogs.settings_dialog.tab_rules import mail_updates
 from src.theme import BG, TEXT_MUTED, dark_entry, dark_text
 
 
 class MailTab:
-    """Baut den Bericht-&-Mail-Tab; exponiert die Variablen für save_settings."""
+    """Baut den Bericht-&-Mail-Tab; Tab-Schnittstelle für den
+    `SaveCoordinator` (#132)."""
 
     def __init__(self, frame, settings):
         label(frame, "Empfänger:", row=0, pady=(10, 8))
@@ -55,3 +59,29 @@ class MailTab:
         self.greeting_var = greeting_var
         self.content_text = content_text
         self.closing_text = closing_text
+
+        self.title = "Bericht & Mail"
+        self._settings = settings
+        fields = FieldSet()
+        fields.add("recipient", recipient_var)
+        fields.add("name", name_var)
+        fields.add("mail_subject", subject_var)
+        fields.add("mail_greeting", greeting_var)
+        # Nach dem Einfügen des Anfangstexts (oben) — add_text setzt das
+        # Modified-Flag zurück, das das Einfügen gesetzt hat.
+        fields.add_text("mail_content", content_text)
+        fields.add_text("mail_closing", closing_text)
+        self.fields = fields
+
+    def values(self):
+        return self.fields.values()
+
+    def load(self, values):
+        self.fields.load(values)
+
+    def validate(self):
+        return None
+
+    def save(self):
+        self._settings.apply_updates(mail_updates(self.values()))
+        return SaveOutcome(saved=True)
