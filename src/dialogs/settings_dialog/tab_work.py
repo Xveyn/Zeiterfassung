@@ -50,7 +50,7 @@ class WorkTab:
         start_vars = {}
         end_vars = {}
         # Die StringVars entstehen für ALLE sieben Tage, auch für die
-        # ausgeblendeten: save_settings schreibt unverändert alle Wochentage
+        # ausgeblendeten: `save` schreibt unverändert alle Wochentage
         # zurück, damit die Werte für Sa/So erhalten bleiben und sofort wieder
         # da sind, wenn "Nur Werktage" zurückgenommen wird.
         workweek_only = bool(settings.get("workweek_only"))

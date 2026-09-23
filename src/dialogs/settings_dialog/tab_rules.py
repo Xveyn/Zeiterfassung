@@ -7,7 +7,7 @@ hier wird er geprüft (`validate_*` → `(Titel, Meldung)` oder `None`) und in
 Settings-Werte umgerechnet (`*_updates` → Dict für `Settings.apply_updates`).
 
 Tk-frei und getestet. Die Umrechnung ist so tolerant wie vorher: was
-`save_settings` still auf einen Fallback setzte, tut es hier auch.
+das frühere `save_settings` still auf einen Fallback setzte, tut es hier auch.
 """
 
 import datetime

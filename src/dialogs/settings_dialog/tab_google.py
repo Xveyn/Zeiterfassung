@@ -4,6 +4,7 @@ Reconnect/Kompaktierung) und Google-Kalender — inkl. der H5-Worker
 
 import logging
 import os
+from collections.abc import Callable
 import tkinter as tk
 import traceback
 from tkinter import messagebox
@@ -95,7 +96,7 @@ class GoogleTab:
         # Setzt der Dialog: nach dem Nachladen der Kalenderliste steht in
         # `cal_var` der Klarname statt der ID — das ist keine Änderung des
         # Nutzers, der Coordinator übernimmt es als gespeichert.
-        self.on_calendars_loaded = None
+        self.on_calendars_loaded: Callable[[], None] | None = None
 
         self._build_account_section()
         next_row = self._build_sync_section()

@@ -31,7 +31,7 @@ def _forget_secret(webhook_id):
 WEBHOOKS_KIND = RecordListKind(
     intro=("Der Bericht kann zusätzlich zur E-Mail an HTTP-Endpunkte "
            "gesendet werden. Webhooks gelten nur auf diesem Gerät und "
-           "werden sofort gespeichert — unabhängig vom „Abbrechen“ "
+           "werden sofort gespeichert — unabhängig vom „Speichern“ "
            "dieses Einstellungen-Dialogs."),
     row_detail=lambda record: urlsplit(record.get("url", "")).hostname or "?",
     open_dialog=_open_dialog,

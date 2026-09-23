@@ -31,7 +31,7 @@ SMTP_KIND = RecordListKind(
            "eigenen Mail-Server verschickt werden. Jedes Konto hat "
            "seinen eigenen Empfänger und lässt sich beim Senden "
            "einzeln auswählen. Konten gelten nur auf diesem Gerät und "
-           "werden sofort gespeichert — unabhängig vom „Abbrechen“ "
+           "werden sofort gespeichert — unabhängig vom „Speichern“ "
            "dieses Einstellungen-Dialogs."),
     row_detail=lambda record: record.get("host", "?"),
     open_dialog=_open_dialog,
