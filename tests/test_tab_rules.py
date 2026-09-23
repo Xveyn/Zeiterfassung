@@ -2,7 +2,10 @@
 der aufgeteilte Inhalt des früheren `save_settings`."""
 
 from src.dialogs.settings_dialog import tab_rules as tr
+from src.holidays_de import STATES
 from src.settings import WEEKDAY_KEYS
+from src.send_reminder import SHIFT_LABELS
+from src.updater import FREQUENCY_OPTIONS
 
 
 def work_raw(**overrides):
@@ -106,3 +109,120 @@ def test_wsl_snapshot_from_settings_and_updates_agree():
         "enabled": False, "start": "2026-04-01", "end": "2026-09-30",
         "max_hours": 20.0}
     assert tr.wsl_snapshot(OLD_WSL)["start"] == "2025-10-01"
+
+
+def app_raw(**overrides):
+    raw = {
+        "state": STATES[1][1], "show_weekend": True, "autostart": False,
+        "always_on_top": False, "minimize_to_tray": True, "ui_scale": 125,
+        "reminders_enabled": True, "reminder_minutes_before": "15",
+        "send_reminder_enabled": True, "send_reminder_day": "28",
+        "send_reminder_time": "09:00",
+        "send_reminder_weekend_shift": SHIFT_LABELS["backward"],
+        "send_reminder_shift_holidays": False,
+        "send_reminder_reservations_enabled": True,
+        "send_reminder_default_minutes": "30",
+        "send_period_from_last_reminder": True,
+        "send_period_anchor_monthly": False,
+    }
+    raw.update(overrides)
+    return raw
+
+
+def test_slider_percent_snaps_to_five():
+    assert tr.slider_percent(101.3) == 100
+    assert tr.slider_percent(103.0) == 105
+    assert tr.slider_percent(200.0) == 200
+
+
+def test_validate_app():
+    assert tr.validate_app(app_raw()) is None
+    for bad in ("abc", "-5", "121", "7.5", ""):
+        result = tr.validate_app(app_raw(reminder_minutes_before=bad))
+        assert result is not None
+        title, _ = result
+        assert title == "Erinnerungszeit ungültig"
+
+
+def test_app_updates_converts():
+    upd = tr.app_updates(app_raw())
+    assert upd["state"] == STATES[1][0]
+    assert upd["ui_scale"] == 1.25
+    assert upd["reminder_minutes_before"] == 15
+    assert upd["send_reminder_day"] == 28
+    assert upd["send_reminder_weekend_shift"] == "backward"
+    assert upd["send_reminder_default_minutes"] == 30
+    assert upd["autostart"] is False
+
+
+def test_app_updates_clamps_scale():
+    assert tr.app_updates(app_raw(ui_scale=500))["ui_scale"] == 2.0
+
+
+def test_mail_updates_passes_text_through():
+    raw = {k: f"<{k}>" for k in tr.MAIL_KEYS}
+    assert tr.mail_updates(raw) == raw
+
+
+def test_google_updates_sanitizes_device_name():
+    upd = tr.google_updates({"device_name": "  Laptop\x07 ", "gcal_calendar": "x"})
+    assert upd == {"device_name": "Laptop"}
+
+
+def test_calendar_update():
+    cal_map = {"Arbeit": "abc@group", "Privat": "primary"}
+    assert tr.calendar_update(cal_map, "Arbeit", "primary", True) == "abc@group"
+    assert tr.calendar_update(cal_map, "Privat", "primary", True) is None
+    # Liste noch nicht geladen: nie vorschnell "primary" festschreiben.
+    assert tr.calendar_update({}, "primary", "abc@group", True) is None
+    assert tr.calendar_update(cal_map, "Arbeit", "primary", False) is None
+
+
+def test_update_tab_updates():
+    raw = {"update_check_frequency": FREQUENCY_OPTIONS[1][1],
+           "prerelease_updates_enabled": True}
+    assert tr.update_tab_updates(raw) == {
+        "update_check_frequency": FREQUENCY_OPTIONS[1][0],
+        "prerelease_updates_enabled": True}
+    raw["auto_update_enabled"] = False
+    assert tr.update_tab_updates(raw)["auto_update_enabled"] is False
+
+
+# Die Schlüssel, die das frühere dialog.save_settings geschrieben hat —
+# wörtlich aus dessen `updates`-Dict (plus die Wochentage und die beiden
+# Sonderfälle auto_update_enabled und gcal_calendar_id). Speichern je Tab
+# darf keinen davon verlieren und keinen dazuerfinden.
+_legacy_keys_base = {
+    "autostart", "default_pause", "recipient", "name", "mail_subject",
+    "mail_greeting", "mail_content", "mail_closing", "hourly_rate", "state",
+    "show_weekend", "always_on_top", "minimize_to_tray", "reminders_enabled",
+    "reminder_minutes_before", "send_reminder_enabled", "send_reminder_day",
+    "send_reminder_time", "send_reminder_weekend_shift",
+    "send_reminder_shift_holidays", "send_reminder_reservations_enabled",
+    "send_reminder_default_minutes", "send_period_from_last_reminder",
+    "send_period_anchor_monthly", "update_check_frequency",
+    "prerelease_updates_enabled", "ui_scale", "werkstudent_limit_enabled",
+    "werkstudent_limit_start", "werkstudent_limit_end",
+    "werkstudent_limit_max_hours", "pause_warning_enabled", "workweek_only",
+    "device_name", "auto_update_enabled",
+}
+LEGACY_KEYS = (
+    _legacy_keys_base |
+    {f"default_start_{k}" for k in WEEKDAY_KEYS} |  # type: ignore[reportGeneralTypeIssues]
+    {f"default_end_{k}" for k in WEEKDAY_KEYS}
+)
+
+
+def test_tabs_together_write_exactly_the_legacy_keys():
+    written = [
+        tr.work_updates(work_raw(), OLD_WSL),
+        tr.mail_updates({k: "" for k in tr.MAIL_KEYS}),
+        tr.google_updates({"device_name": "", "gcal_calendar": ""}),
+        tr.app_updates(app_raw()),
+        tr.update_tab_updates({"update_check_frequency": FREQUENCY_OPTIONS[0][1],
+                               "prerelease_updates_enabled": False,
+                               "auto_update_enabled": True}),
+    ]
+    keys = [k for upd in written for k in upd]
+    assert len(keys) == len(set(keys)), "ein Schlüssel in zwei Tabs"
+    assert set(keys) == LEGACY_KEYS
