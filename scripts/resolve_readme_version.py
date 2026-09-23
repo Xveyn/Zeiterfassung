@@ -24,6 +24,14 @@ zeigte.
 `--prune` räumt Marker weg, die `KEEP_RELEASES` echte Releases alt sind. Er
 läuft nach dem Release und öffnet einen PR (kein Push nach `master`) — siehe
 `release.yml`, Job `readme-marker-cleanup`.
+
+**Screenshots** (`docs/screenshots/`) tragen die Version im Dateinamen
+(`kalender-v1.24.0.png`). Wer sie vor dem Release aufnimmt, kennt die Version
+so wenig wie beim Marker — also `kalender-v--VERSION--.png`. Auflösen benennt
+diese Dateien um und zieht die Verweise in `README.md` und
+`docs/screenshots/README.md` nach; `--check` meldet einen offenen Platzhalter
+auch dort. Getroffen wird nur das Token zwischen `-v` und `.png`, nie
+Fließtext.
 """
 
 import os
@@ -46,6 +54,8 @@ if _ROOT not in sys.path:
 from src.version import VERSION, parse_release_id  # noqa: E402  (erst nach dem Bootstrap)
 
 README_PATH = os.path.join(_ROOT, "README.md")
+SCREENSHOTS_DIR = os.path.join(_ROOT, "docs", "screenshots")
+SCREENSHOTS_README = os.path.join(SCREENSHOTS_DIR, "README.md")
 
 #: Der Platzhalter. Bewusst laut und in Großbuchstaben — er soll auf der
 #: gerenderten Startseite auffallen, solange er unaufgelöst dort steht.
@@ -92,6 +102,38 @@ def find_unresolved(text):
         number
         for number, line in enumerate(text.splitlines(), start=1)
         if _PLACEHOLDER_MARKER.search(line)
+    ]
+
+
+# --- Screenshots -----------------------------------------------------------
+
+#: Der Platzhalter in einem Screenshot-Namen: nur zwischen `-v` und `.png`,
+#: damit Fließtext und die Marker-Form unberührt bleiben.
+_SCREENSHOT_TOKEN = re.compile(r"(?<=-v)" + re.escape(PLACEHOLDER) + r"(?=\.png)")
+#: Eine Screenshot-Datei mit Platzhalter im Namen.
+_SCREENSHOT_FILE = re.compile(r"^[\w.-]+-v" + re.escape(PLACEHOLDER) + r"\.png$")
+
+
+def resolve_screenshots(text, version):
+    """Ersetzt den Platzhalter in Screenshot-Pfaden. `(neuer_text, anzahl)`."""
+    return _SCREENSHOT_TOKEN.subn(version, text)
+
+
+def find_unresolved_screenshots(text):
+    """Zeilennummern (1-basiert) mit einem Screenshot-Pfad voller Platzhalter."""
+    return [
+        number
+        for number, line in enumerate(text.splitlines(), start=1)
+        if _SCREENSHOT_TOKEN.search(line)
+    ]
+
+
+def screenshot_renames(names, version):
+    """`(alt, neu)` für jede Datei in `names` mit Platzhalter, sortiert."""
+    return [
+        (name, name.replace(PLACEHOLDER, version))
+        for name in sorted(names)
+        if _SCREENSHOT_FILE.match(name)
     ]
 
 
@@ -145,14 +187,18 @@ def prune(text, versions):
 
 # --- I/O -------------------------------------------------------------------
 
-def _read_readme():
-    with open(README_PATH, encoding="utf-8") as handle:
+def _read_readme(path=README_PATH):
+    with open(path, encoding="utf-8") as handle:
         return handle.read()
 
 
-def _write_readme(text):
-    with open(README_PATH, "w", encoding="utf-8", newline="") as handle:
+def _write_readme(text, path=README_PATH):
+    with open(path, "w", encoding="utf-8", newline="") as handle:
         handle.write(text)
+
+
+def _screenshot_files():
+    return os.listdir(SCREENSHOTS_DIR) if os.path.isdir(SCREENSHOTS_DIR) else []
 
 
 def _released_versions():
@@ -167,27 +213,62 @@ def _released_versions():
 # --- CLI -------------------------------------------------------------------
 
 def _cmd_check():
-    offen = find_unresolved(_read_readme())
-    if not offen:
+    text = _read_readme()
+    offen = find_unresolved(text)
+    probleme = []
+    if offen:
+        probleme.append(("README.md", offen))
+    for path, name in ((README_PATH, "README.md"),
+                       (SCREENSHOTS_README, "docs/screenshots/README.md")):
+        if os.path.exists(path):
+            zeilen = find_unresolved_screenshots(_read_readme(path))
+            if zeilen:
+                probleme.append((name, zeilen))
+    dateien = [alt for alt, _neu in screenshot_renames(_screenshot_files(), VERSION)]
+    if not probleme and not dateien:
         print(f"README.md: kein {PLACEHOLDER} offen.")
         return 0
-    zeilen = ", ".join(str(n) for n in offen)
-    print(
-        f"::error file=README.md::README.md enthaelt noch {len(offen)}x "
-        f"{PLACEHOLDER} (Zeile {zeilen}). Vor dem Merge eines Release-PRs "
-        f"aufloesen: python scripts/resolve_readme_version.py",
-        file=sys.stderr,
-    )
+    for name, zeilen in probleme:
+        liste = ", ".join(str(n) for n in zeilen)
+        print(
+            f"::error file={name}::{name} enthaelt noch {len(zeilen)}x "
+            f"{PLACEHOLDER} (Zeile {liste}). Vor dem Merge eines Release-PRs "
+            f"aufloesen: python scripts/resolve_readme_version.py",
+            file=sys.stderr,
+        )
+    if dateien:
+        print(
+            f"::error::docs/screenshots/ hat noch {len(dateien)} Datei(en) mit "
+            f"{PLACEHOLDER} im Namen ({', '.join(dateien)}). Aufloesen: "
+            f"python scripts/resolve_readme_version.py",
+            file=sys.stderr,
+        )
     return 1
 
 
 def _cmd_resolve():
-    neu, count = resolve(_read_readme(), VERSION)
-    if count == 0:
+    text = _read_readme()
+    neu, count = resolve(text, VERSION)
+    neu, shots = resolve_screenshots(neu, VERSION)
+    if count or shots:
+        _write_readme(neu)
+    if os.path.exists(SCREENSHOTS_README):
+        doc = _read_readme(SCREENSHOTS_README)
+        doc_neu, doc_count = resolve_screenshots(doc, VERSION)
+        if doc_count:
+            _write_readme(doc_neu, SCREENSHOTS_README)
+        shots += doc_count
+    renames = screenshot_renames(_screenshot_files(), VERSION)
+    for alt, neu_name in renames:
+        os.replace(os.path.join(SCREENSHOTS_DIR, alt),
+                   os.path.join(SCREENSHOTS_DIR, neu_name))
+    if not (count or shots or renames):
         print(f"README.md: kein {PLACEHOLDER} gefunden, nichts zu tun.")
         return 0
-    _write_readme(neu)
     print(f"README.md: {count}x {PLACEHOLDER} -> {VERSION}")
+    if shots or renames:
+        print(f"Screenshots: {shots} Verweis(e) und {len(renames)} Datei(en) "
+              f"-> v{VERSION}")
     return 0
 
 

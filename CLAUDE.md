@@ -29,7 +29,8 @@ Ablauf vor dem Merge:
    der `pre-check`-Job bricht ohne ihn ab.
 3. `python scripts/resolve_readme_version.py` laufen lassen — ersetzt die
    README-Platzhalter `--VERSION--` durch die eben gesetzte Version (s.
-   „README-Zeilen für Unveröffentlichtes markieren"). Vergisst man es, hält
+   „README-Zeilen für Unveröffentlichtes markieren") und benennt Screenshots
+   mit Platzhalter im Namen um (`docs/screenshots/README.md`). Vergisst man es, hält
    der `readme-version`-Check den PR an.
 4. Passendes `release:*` Label am PR setzen (Label steuert nur den Trigger, nicht die Versionsnummer).
 5. PR mergen — Workflow liest die Version aus `src/version.py`, bricht ab falls der Tag `vX.Y.Z` bereits existiert, baut das Installer-Exe und veröffentlicht das Release.
@@ -1350,3 +1351,22 @@ seinen Pfad, nicht per Import.
   und Update-Prüfung laufen also weiter. Wer den Weg abkürzen will, testet mit
   `--security none`: Versand, MIME-Aufbau und alle Fehlercodes gehen auch
   unverschlüsselt durch.
+- `scripts/demo_data.py` — legt Demo-Daten (Max Mustermann) in den
+  Datenordner des Repo-Modus (`paths.get_base_path()`, also das Projekt-Root
+  bzw. `ZEITERFASSUNG_DATA_DIR`): zwei Monate Arbeitszeit relativ zu heute,
+  Reservierungen, ein Urlaub im laufenden Monat, zwei SMTP-Konten, zwei
+  Webhooks, Einstellungen. Geschrieben wird über die Stores der App, nicht
+  als handgebautes JSON; liegen schon Daten da, bricht es ohne `--force` ab.
+  Grundlage der Screenshots (`docs/screenshots/README.md`).
+
+  **Fasst den Schlüsselbund nicht an** — auch nicht beim nächsten App-Start:
+  SMTP-Passwörter liegen im Datensatz (`password_location="file"`), Webhooks
+  haben keine Authentifizierung (sonst zöge `secret_migration` ein Secret
+  beim Start um), und es gibt kein `token.json`. `tests/test_demo_data.py`
+  hält das fest, indem es jeden `keyring_store`-Weg auf einen Fehler legt.
+  Den Schlüsselbund berühren nur Handgriffe in der App: ein Demo-Konto oder
+  einen Demo-Webhook löschen, oder im SMTP-Dialog ein Passwort eintippen und
+  speichern. Der Kalender-Abgleich ist an (Reservierungen zeigt die App nur
+  damit); ohne Google-Anmeldung meldet die App dann nach dem Speichern einer
+  Reservierung „Google-Verbindung abgelaufen" — `--ohne-kalender` schaltet
+  ihn aus.

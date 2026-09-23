@@ -146,3 +146,48 @@ def test_prune_fasst_den_offenen_platzhalter_nicht_an():
     out, count = resolver.prune(text, {"1.22.0", "--VERSION--"})
     assert out == text
     assert count == 0
+
+
+# --- Screenshots -------------------------------------------------------------
+# Neue Screenshots entstehen vor dem Release und tragen den Platzhalter im
+# Namen (`kalender-v--VERSION--.png`). Im Release-PR wird er wie die Marker
+# aufgelöst: Datei umbenennen, Verweise nachziehen. Ohne das bliebe der Name
+# für immer beim Platzhalter, und --check sähe ihn nicht.
+
+
+def test_resolve_screenshots_ersetzt_den_platzhalter_im_bildpfad():
+    text = "![Kalender](docs/screenshots/kalender-v--VERSION--.png)\n"
+    out, count = resolver.resolve_screenshots(text, "1.24.0")
+    assert out == "![Kalender](docs/screenshots/kalender-v1.24.0.png)\n"
+    assert count == 1
+
+
+def test_resolve_screenshots_trifft_auch_tabellenzellen():
+    text = "| `senden-v--VERSION--.png` | Sende-Dialog |\n"
+    out, count = resolver.resolve_screenshots(text, "1.24.0")
+    assert out == "| `senden-v1.24.0.png` | Sende-Dialog |\n"
+    assert count == 1
+
+
+def test_resolve_screenshots_laesst_fliesstext_und_marker_stehen():
+    text = ("Steht dort `--VERSION--`, ist es offen. "
+            "- **Urlaub** *(ab --VERSION--)*\n")
+    out, count = resolver.resolve_screenshots(text, "1.24.0")
+    assert out == text
+    assert count == 0
+
+
+def test_find_unresolved_screenshots_meldet_zeilen():
+    text = "a\n![x](docs/screenshots/x-v--VERSION--.png)\nb\n"
+    assert resolver.find_unresolved_screenshots(text) == [2]
+    assert resolver.find_unresolved_screenshots("![x](x-v1.24.0.png)\n") == []
+
+
+def test_screenshot_renames_nur_fuer_platzhalter_dateien():
+    names = ["kalender-v--VERSION--.png", "bericht-v1.21.0.png",
+             "README.md", "einstellungen-versand-v--VERSION--.png"]
+    assert resolver.screenshot_renames(names, "1.24.0") == [
+        ("einstellungen-versand-v--VERSION--.png",
+         "einstellungen-versand-v1.24.0.png"),
+        ("kalender-v--VERSION--.png", "kalender-v1.24.0.png"),
+    ]
