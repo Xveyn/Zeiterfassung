@@ -71,7 +71,9 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
     google = GoogleTab(
         frames["google"], dialog, settings, base_path, on_change, runner,
         storage, conflicts_store, reservation_store, data_lock, sync_guard)
-    app = AppTab(frames["app"], settings, dialog, parent, base_path)
+    app = AppTab(frames["app"], settings, dialog, parent, base_path,
+                 storage=storage, reservation_store=reservation_store,
+                 on_change=on_change)
     updates_tab = UpdatesTab(frames["updates"], settings, runner, auto_updater)
 
     # Vor dem initialen select deklariert und gebunden (wie bisher): der

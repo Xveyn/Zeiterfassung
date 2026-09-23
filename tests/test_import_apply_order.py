@@ -1,6 +1,7 @@
 """Regression: der „Importiert"-Bestätigungsdialog muss erscheinen, solange
-sein Parent (der Settings-Dialog) noch lebt. on_change() zerstört den Parent
-(settings_dialog._after_import ruft dialog.destroy()), also muss themed_showinfo
+sein Parent (der Settings-Dialog) noch lebt. on_change() kann den Parent
+zerstören — früher schloss der Import den Settings-Dialog; seit #132 bleibt er
+offen, die Reihenfolge bleibt trotzdem die sichere. Also muss themed_showinfo
 VOR on_change() laufen — sonst TclError: bad window path name."""
 
 from unittest.mock import Mock

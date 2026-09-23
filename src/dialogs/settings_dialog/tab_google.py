@@ -6,7 +6,6 @@ import logging
 import os
 from collections.abc import Callable
 import tkinter as tk
-import traceback
 from tkinter import messagebox
 
 from src import gcal
@@ -23,7 +22,6 @@ from src.dialogs.settings_dialog.tab_rules import calendar_update, google_update
 from src.oauth_utils import (
     KEYRING_UNAVAILABLE_HINT, KEYRING_UNAVAILABLE_TITLE, is_keyring_unavailable,
 )
-from src.platform_open import open_folder
 from src.sync_runtime import run_compaction_blocking
 from src.theme import (
     ACCENT, BG, CELL_BG, FONT, FONT_SMALL, STATUS_OK, STATUS_WARN, TEXT, TEXT_MUTED,
@@ -134,16 +132,12 @@ class GoogleTab:
 
         subheader(frame, "Google-Konto", row=0, top_pad=10)
 
-        label(frame, "Datenordner:", row=1, pady=4)
+        label(frame, "credentials.json:", row=1, pady=4)
         creds_row = tk.Frame(frame, bg=BG)
         creds_row.grid(row=1, column=1, padx=10, pady=4, sticky="w")
 
-        secondary_button(
-            creds_row, "Ordner öffnen", self._open_data_folder, padx=12, pady=2,
-        ).pack(side=tk.LEFT)
-
         self._status_label = tk.Label(creds_row, text="", font=FONT_SMALL, bg=BG)
-        self._status_label.pack(side=tk.LEFT, padx=(10, 0))
+        self._status_label.pack(side=tk.LEFT)
         self._refresh_status()
 
         # Absender-Zeile: zeigt die authentifizierte E-Mail-Adresse, die ui.py
@@ -199,24 +193,14 @@ class GoogleTab:
                          KEYRING_UNAVAILABLE_HINT)
         return True
 
-    def _open_data_folder(self):
-        try:
-            open_folder(self._base_path)
-        except Exception as e:
-            logging.getLogger(__name__).exception("Datenordner konnte nicht geöffnet werden")
-            messagebox.showerror(
-                "Ordner konnte nicht geöffnet werden",
-                f"{type(e).__name__}: {e}\n\n{traceback.format_exc()}",
-                parent=self._dialog,
-            )
-
     def _refresh_status(self):
         if not self._status_label.winfo_exists():
             return
         if os.path.exists(self._creds_path):
-            self._status_label.config(text="✓ credentials.json vorhanden", fg=STATUS_OK)
+            self._status_label.config(text="✓ vorhanden", fg=STATUS_OK)
         else:
-            self._status_label.config(text="✗ credentials.json fehlt", fg=ACCENT)
+            self._status_label.config(
+                text="✗ fehlt (Datenordner: Tab App)", fg=ACCENT)
         self._dialog.after(500, self._refresh_status)
 
     def _set_sender_btn_text(self, text):
@@ -423,11 +407,6 @@ class GoogleTab:
             btn_row, "Google neu verbinden", self._reconnect_google, padx=12, pady=2,
         ).pack(side=tk.LEFT)
 
-        if self._storage is not None:
-            secondary_button(
-                btn_row, "Daten importieren", self._open_import_dialog, padx=12, pady=2,
-            ).pack(side=tk.LEFT, padx=(8, 0))
-
         # Nicht an sync_enabled hängen, sondern an "hat je gesynct" (Audit N6):
         # wer den Sync abschaltet, behält seine Tombstones (das Remote kennt
         # die gelöschten Tage weiter) — und braucht damit weiterhin einen Weg,
@@ -473,18 +452,6 @@ class GoogleTab:
         ConflictsDialog(self._dialog, self._storage, self._settings,
                         self._conflicts_store, data_lock=self._data_lock,
                         on_resolved=self._on_change)
-
-    def _open_import_dialog(self):
-        from src.dialogs.import_dialog import open_import_dialog
-
-        def _after_import():
-            self._on_change()
-            self._dialog.destroy()
-
-        open_import_dialog(
-            self._dialog, self._storage, self._settings, _after_import,
-            reservation_store=self._reservation_store,
-        )
 
     def _reconnect_google(self):
         dialog, settings, base_path = self._dialog, self._settings, self._base_path

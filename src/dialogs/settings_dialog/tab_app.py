@@ -1,7 +1,9 @@
-"""Tab „App": UI-Optionen und Skalierung."""
+"""Tab „App": Fenster, Darstellung (Skalierung) und Daten (Datenordner, Import)."""
 
+import logging
 import tkinter as tk
-from tkinter import ttk
+import traceback
+from tkinter import messagebox, ttk
 
 from src.autostart import (
     disable_autostart, enable_autostart, is_autostart_enabled,
@@ -12,60 +14,37 @@ from src.dialogs.settings_dialog.form_model import SaveOutcome
 from src.dialogs.settings_dialog.tab_rules import (
     app_updates, slider_percent,
 )
+from src.platform_open import open_folder
 from src.theme import (
-    ACCENT, BG, CELL_BG, FONT, FONT_BOLD, FONT_SMALL, TEXT, TEXT_MUTED,
-    px, scaled_window_fits, themed_askyesno,
-    themed_showerror, workarea_for,
+    ACCENT, BG, CELL_BG, FONT, TEXT_MUTED, Form, px, scaled_window_fits,
+    themed_askyesno, themed_showerror, workarea_for,
 )
 
 
 class AppTab:
     """Baut den App-Tab; Tab-Schnittstelle für den `SaveCoordinator` (#132)."""
 
-    def __init__(self, frame, settings, dialog, parent, base_path):
-        # Gerätelokale UI-Optionen. Alle in app_frame (ein Grid-Member), damit die
-        # pack-Interna dieses Frames unberührt bleiben.
-        app_frame = tk.Frame(frame, bg=BG)
-        app_frame.grid(row=0, column=0, columnspan=2, padx=10, pady=(10, 4), sticky="we")
+    def __init__(self, frame, settings, dialog, parent, base_path, *,
+                 storage=None, reservation_store=None, on_change=None):
+        self.frame = frame
+        self._storage = storage
+        self._reservation_store = reservation_store
+        self._on_change = on_change
+        form = Form(frame, scroll=True)
+        form.frame.pack(fill="both", expand=True)
+        body = form.body
 
         autostart_var = tk.BooleanVar(value=is_autostart_enabled())
-        tk.Checkbutton(
-            app_frame, text="Autostart (minimiert bei Anmeldung)",
-            variable=autostart_var, font=FONT,
-            bg=BG, fg=TEXT, selectcolor=CELL_BG,
-            activebackground=BG, activeforeground=TEXT,
-            cursor="hand2",
-        ).pack(anchor="w")
-
         always_on_top_var = tk.BooleanVar(value=settings.get("always_on_top"))
-        tk.Checkbutton(
-            app_frame, text="Immer im Vordergrund",
-            variable=always_on_top_var, font=FONT,
-            bg=BG, fg=TEXT, selectcolor=CELL_BG,
-            activebackground=BG, activeforeground=TEXT,
-            cursor="hand2",
-        ).pack(anchor="w")
-
         minimize_to_tray_var = tk.BooleanVar(value=settings.get("minimize_to_tray"))
-        tk.Checkbutton(
-            app_frame, text="Beim Schließen in den Infobereich minimieren",
-            variable=minimize_to_tray_var, font=FONT,
-            bg=BG, fg=TEXT, selectcolor=CELL_BG,
-            activebackground=BG, activeforeground=TEXT,
-            cursor="hand2",
-        ).pack(anchor="w")
+        form.section("Fenster")
+        form.check("Autostart (minimiert bei Anmeldung)", autostart_var)
+        form.check("Immer im Vordergrund", always_on_top_var)
+        form.check("Beim Schließen in den Infobereich minimieren", minimize_to_tray_var)
 
         # --- Darstellung (UI-Skalierung, gerätelokal) ---
-        tk.Label(
-            app_frame, text="— Darstellung —", font=FONT_BOLD,
-            bg=BG, fg=TEXT_MUTED,
-        ).pack(pady=(12, 4))
-        scale_row = tk.Frame(app_frame, bg=BG)
-        scale_row.pack(fill="x")
-        tk.Label(
-            scale_row, text="Skalierung:", font=FONT, bg=BG, fg=TEXT,
-        ).pack(side=tk.LEFT, padx=(0, 8))
-
+        form.section("Darstellung")
+        scale_cell = tk.Frame(body, bg=BG)
         # ttk.Scale statt klassischer tk.Scale: das clam-Theme ist via
         # apply_combobox_style aktiv, klassische tk.Scale rendert unter Windows
         # einen hellen System-Trough/-Regler. Wert in eigenem Label (kein
@@ -85,7 +64,7 @@ class AppTab:
         )
         scale_var = tk.DoubleVar(value=round(settings.get("ui_scale") * 100))
         scale_value_label = tk.Label(
-            scale_row, text=f"{slider_percent(scale_var.get())} %", font=FONT,
+            scale_cell, text=f"{slider_percent(scale_var.get())} %", font=FONT,
             bg=BG, fg=TEXT_MUTED, width=5, anchor="w",
         )
 
@@ -98,7 +77,7 @@ class AppTab:
         scale_var.trace_add("write", _on_scale)
 
         scale_widget = ttk.Scale(
-            scale_row, from_=75, to=200, orient="horizontal",
+            scale_cell, from_=75, to=200, orient="horizontal",
             variable=scale_var, length=px(200),
             style="Display.Horizontal.TScale",
         )
@@ -110,12 +89,19 @@ class AppTab:
         )
         scale_widget.pack(side=tk.LEFT)
         scale_value_label.pack(side=tk.LEFT, padx=(8, 0))
-        tk.Label(
-            app_frame, text="Änderung startet die App neu.", font=FONT_SMALL,
-            bg=BG, fg=TEXT_MUTED,
-        ).pack(anchor="w", pady=(2, 0))
+        form.row("Skalierung:", scale_cell)
+        form.hint("Änderung startet die App neu.")
 
-        self.frame = frame
+        # --- Daten ---
+        form.section("Daten")
+        specs = [("Datenordner öffnen", self._open_data_folder)]
+        if storage is not None:
+            specs.append(("Daten importieren…", self._open_import_dialog))
+        form.buttons(*specs)
+        form.hint("Im Datenordner liegen Einträge, Einstellungen und "
+                  "credentials.json. Importiert werden geteilte Arbeitszeiten "
+                  "(JSON-Datei aus „Teilen“).")
+
         self.autostart_var = autostart_var
         self.always_on_top_var = always_on_top_var
         self.minimize_to_tray_var = minimize_to_tray_var
@@ -173,6 +159,30 @@ class AppTab:
                 return SaveOutcome(saved=False)
         settings.apply_updates(updates)
         return SaveOutcome(saved=True, restart=new_scale != old_scale)
+
+    def _open_data_folder(self):
+        try:
+            open_folder(self._base_path)
+        except Exception as e:
+            logging.getLogger(__name__).exception(
+                "Datenordner konnte nicht geöffnet werden")
+            messagebox.showerror(
+                "Ordner konnte nicht geöffnet werden",
+                f"{type(e).__name__}: {e}\n\n{traceback.format_exc()}",
+                parent=self._dialog,
+            )
+
+    def _open_import_dialog(self):
+        from src.dialogs.import_dialog import open_import_dialog
+
+        # Der Einstellungen-Dialog bleibt nach dem Import offen (#132): er
+        # schloss sich früher, und das nahm ungespeicherte Änderungen eines
+        # Tabs ohne Rückfrage mit. on_change aktualisiert den Kalender.
+        open_import_dialog(
+            self._dialog, self._storage, self._settings,
+            self._on_change or (lambda: None),
+            reservation_store=self._reservation_store,
+        )
 
     def _scale_confirmed(self, old_scale, new_scale):
         """Passt die größere Skalierung auf den Bildschirm? Sonst fragen.
