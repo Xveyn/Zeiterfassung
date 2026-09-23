@@ -41,6 +41,9 @@ Dialoge jetzt auch in die Breite. Dazu kommen einige Korrekturen unter Linux.
   Zugangsdaten.
 - **Senden ohne Ziel**: Die Meldung nennt jetzt auch den Webhook als
   mögliches Ziel.
+- **Teilen: falscher Weg in der Mail**: Die Mail zum Teilen verwies auf
+  „Einstellungen → Daten importieren“. Der Knopf liegt seit dem Neuschnitt
+  unter „Einstellungen → App → Daten importieren“.
 - **Linux: Wochentage sprangen beim Blättern**: Die Kopfzeile Mo–So zuckte
   in der Monatsansicht bei jedem Monatswechsel kurz zur Seite.
 - **Linux: Start ohne grafische Sitzung** (etwa per SSH) brach mit einer

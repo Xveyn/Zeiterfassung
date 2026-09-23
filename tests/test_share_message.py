@@ -30,7 +30,7 @@ def test_html_is_the_complete_share_mail():
         "<p>im Anhang findest Du meine Arbeitszeiten vom 01.09.2026 bis "
         "30.09.2026 als JSON-Datei.</p>"
         "<p>Du kannst die Datei in der Zeiterfassung-App über "
-        "<em>Einstellungen → Daten importieren</em> einlesen. "
+        "<em>Einstellungen → App → Daten importieren</em> einlesen. "
         "Vor dem Import kannst Du einen Zeitraum auswählen und je "
         "Datentyp festlegen, was bei Konflikten passieren soll.</p>"
         "<p>Viele Grüße<br/>Sven</p>"
