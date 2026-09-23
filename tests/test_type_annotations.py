@@ -75,6 +75,7 @@ ANNOTATED_MODULES = [
     # Einstellungs-Dialog-Bausteine (#132)
     "src/theme/form_logic.py",
     "src/dialogs/settings_dialog/form_model.py",
+    "src/dialogs/settings_dialog/fields.py",
 ]
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
