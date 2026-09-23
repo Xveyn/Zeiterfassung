@@ -2,6 +2,59 @@
 
 Ältere Versionen stehen im [Archiv](CHANGELOG-archive.md).
 
+## 1.23.3 — 2026-09-23
+
+Ein Wartungs-Release rund um die Einstellungen: der Dialog ist neu
+geordnet und speichert tabweise, und bei vergrößerter Darstellung wachsen
+Dialoge jetzt auch in die Breite. Dazu kommen einige Korrekturen unter Linux.
+
+### Geändert
+- **Einstellungen neu geordnet**: sechs statt sieben Tabs — Arbeitszeit,
+  Erinnerungen, Versand, Google, App, Updates —, jeder nach demselben Aufbau
+  mit Abschnitten. Optionen, die von einem Schalter abhängen, sind
+  eingerückt und grau, solange der Schalter aus ist. Wird der Inhalt zu
+  lang, scrollt er, statt dass der Dialog über den Bildschirm hinauswächst.
+  Der Gmail-Empfänger steht jetzt unter „Gmail“, denn für SMTP-Konten und
+  Webhooks galt er nie. „Sync-Daten kompaktieren“ steht abgesetzt unter
+  „Erweitert“, weil es Einträge endgültig entfernt.
+- **Speichern je Tab**: „Speichern“ übernimmt nur den gerade offenen Tab,
+  und der Dialog bleibt offen. Ohne Änderungen ist der Knopf grau. Wer einen
+  geänderten Tab verlässt oder den Dialog schließt, wird gefragt:
+  Speichern, Verwerfen oder Zurück. „Abbrechen“ heißt jetzt „Schließen“.
+- **„Nur Werktage“ wirkt sofort**: Die Zeilen für Samstag und Sonntag
+  verschwinden gleich, nicht erst beim nächsten Öffnen.
+- **Teilen**: Der Tooltip sagt jetzt, wofür der Knopf da ist — eine Datei
+  zum Import in eine andere Zeiterfassung, egal ob auf dem eigenen zweiten
+  Gerät oder bei einer anderen Person.
+
+### Behoben
+- **Vergrößerte Darstellung: Dialoge wurden nur höher, nicht breiter.**
+  Meldungen brachen bei 200 % in doppelt so viele Zeilen um, statt breiter
+  zu werden, und die Abstände in den Knöpfen blieben klein. Jetzt wächst
+  beides mit.
+- **„Daten importieren“ verwarf ungespeicherte Einstellungen**: Der Dialog
+  schloss sich dabei und nahm Änderungen ohne Rückfrage mit. Jetzt bleibt er
+  offen.
+- **Google-Fehler als Traceback**: Fehlte `credentials.json` oder das Netz,
+  zeigten Sync, Kalender und Anmeldung einen technischen Fehlerbericht. Jetzt
+  steht dort, was fehlt — mit „Datenordner öffnen“ bei fehlenden
+  Zugangsdaten.
+- **Senden ohne Ziel**: Die Meldung nennt jetzt auch den Webhook als
+  mögliches Ziel.
+- **Linux: Wochentage sprangen beim Blättern**: Die Kopfzeile Mo–So zuckte
+  in der Monatsansicht bei jedem Monatswechsel kurz zur Seite.
+- **Linux: Start ohne grafische Sitzung** (etwa per SSH) brach mit einer
+  nichtssagenden Meldung ab. Jetzt steht im Terminal, dass ein Display fehlt.
+- **Sync: gleichzeitige Änderung auf zwei Geräten**: Änderten zwei Geräte
+  denselben Tag in derselben Sekunde, behielt jedes vorläufig einen anderen
+  Wert. Jetzt ist das Ergebnis auf beiden gleich; der Konflikt wird wie
+  bisher gemeldet.
+
+### Intern
+- **Gebaut mit Python 3.12** statt 3.10, das im Oktober 2026 ausläuft.
+- **Neue Screenshots** im README, aufgenommen mit Demo-Daten
+  (`scripts/demo_data.py`).
+
 ## 1.23.2 — 2026-09-18
 
 Ein Wartungs-Release: Zugangsdaten liegen nicht mehr im Klartext im
