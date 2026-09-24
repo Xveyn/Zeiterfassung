@@ -42,6 +42,7 @@ ANNOTATED_MODULES = [
     "src/mime_message.py",
     # Infra-/Plattform-Schicht
     "src/paths.py",
+    "src/dpi.py",
     "src/version.py",
     "src/device_id.py",
     "src/devices.py",

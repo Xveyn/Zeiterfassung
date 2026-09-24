@@ -21,7 +21,7 @@ from typing import Any
 # (oauth_utils.py) erkannt und per frischem Consent nachgeholt. Kein Blankoscheck.
 os.environ.setdefault("OAUTHLIB_RELAX_TOKEN_SCOPE", "1")
 
-from src import sync_history
+from src import dpi, sync_history
 from src.autostart import migrate_legacy_autostart, refresh_linux_target
 from src.conflicts_store import ConflictsStore
 from src.desktop_entry import ensure_icon, write_menu_entry
@@ -173,12 +173,17 @@ def _create_root(tk_factory=None):
         raise SystemExit(1) from exc
 
 
-def _apply_ui_scaling(root, factor):
+def _apply_ui_scaling(root, factor, system_factor=1.0):
     """Legt die per UI-Faktor skalierten App-Fonts an (ersetzt das frühere
     `tk scaling`, das auf macOS/Aqua die Punkt-Fonts nicht skalierte → Slider dort
     wirkungslos). MUSS vor dem Aufbau der App-Widgets laufen, damit
-    measure_max_width die skalierten Fonts misst und die Fenstergeometrie pinnt."""
-    init_fonts(root, clamp_ui_scale(factor))
+    measure_max_width die skalierten Fonts misst und die Fenstergeometrie pinnt.
+
+    `system_factor` ist die Windows-Anzeigeskalierung (`dpi.init_system_scale`,
+    #157), `ui_scale` gilt zusätzlich. `pin_tk_scaling` hält Tk davon ab, die
+    Punkt-Schriften auf dem DPI-aware Prozess ein zweites Mal zu vergrößern."""
+    dpi.pin_tk_scaling(root)
+    init_fonts(root, clamp_ui_scale(factor) * system_factor)
 
 
 def _refresh_linux_integration(base):
@@ -338,8 +343,11 @@ def main():
         logging.getLogger(__name__).exception(
             "Tombstone-Sweep fehlgeschlagen (nicht-fatal)")
 
+    # Vor dem ersten Fenster: danach lässt Windows die DPI-Awareness nicht
+    # mehr ändern (#157). Außerhalb von Windows ein No-op mit Faktor 1,0.
+    system_factor = dpi.init_system_scale()
     root = _create_root()
-    _apply_ui_scaling(root, settings.get("ui_scale"))
+    _apply_ui_scaling(root, settings.get("ui_scale"), system_factor)
     apply_widget_defaults(root)
     app = App(root, storage, settings, base_path=base, conflicts_store=conflicts_store,
               reservation_store=reservation_store, single_instance=guard,
