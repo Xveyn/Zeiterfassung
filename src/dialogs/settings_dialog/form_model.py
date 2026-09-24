@@ -93,7 +93,10 @@ class SaveCoordinator:
     `ask`, `show_error`, `on_change` und `on_restart` sind injiziert; der
     Coordinator kennt kein Tk. `on_restart` beendet den Dialog: danach
     liefern `request_switch`/`request_close` `False`, damit der Aufrufer
-    nichts mehr an einem zerstörten Fenster tut."""
+    nichts mehr an einem zerstörten Fenster tut. `save_current` meldet den
+    Neustart dagegen als Erfolg — der Speichern-Knopf fragt deshalb `closed`,
+    bevor er den Dialog anfasst (nach dem Neustart ist der Tcl-Interpreter
+    weg, schon `winfo_exists` wirft dann)."""
 
     def __init__(self, tabs: Mapping[str, SettingsTab], current: str, *,
                  ask: Callable[[str], SaveChoice],
@@ -108,12 +111,18 @@ class SaveCoordinator:
         self._show_error = show_error
         self._on_change = on_change
         self._on_restart = on_restart
+        self._closed = False
         self._baselines: dict[str, dict[str, Any]] = {
             key: dict(tab.values()) for key, tab in self._tabs.items()}
 
     @property
     def current(self) -> str:
         return self._current
+
+    @property
+    def closed(self) -> bool:
+        """True, sobald `on_restart` den Dialog abgebaut hat."""
+        return self._closed
 
     def dirty(self, key: str | None = None) -> bool:
         """Hat der Tab `key` (Default: der aktive) ungespeicherte Änderungen?"""
@@ -179,6 +188,7 @@ class SaveCoordinator:
         self._baselines[key] = dict(tab.values())
         self._on_change()
         if outcome.restart:
+            self._closed = True
             self._on_restart()
             return "restart"
         return "saved"

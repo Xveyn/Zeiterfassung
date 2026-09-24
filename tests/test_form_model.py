@@ -241,6 +241,34 @@ def test_save_current_with_restart_reports_success():
     assert log["restarts"] == 1
 
 
+def test_closed_after_restart_via_save_button():
+    # Der Speichern-Knopf fragt danach den Dialog ab (Knopf grau/aktiv). Nach
+    # dem Neustart ist der Tcl-Interpreter weg, schon `winfo_exists` wirft
+    # dann TclError — der Aufrufer muss es vorher wissen.
+    tab = FakeTab(values={"s": 100}, outcome=SaveOutcome(saved=True, restart=True))
+    coord, _log = make({"a": tab})
+    assert not coord.closed
+    tab.state["s"] = 150
+    coord.save_current()
+    assert coord.closed
+
+
+def test_closed_after_restart_via_leave():
+    tab = FakeTab(values={"s": 100}, outcome=SaveOutcome(saved=True, restart=True))
+    coord, _log = make({"a": tab, "b": FakeTab()}, answer="save")
+    tab.state["s"] = 150
+    coord.request_switch("b")
+    assert coord.closed
+
+
+def test_not_closed_after_plain_save():
+    tab = FakeTab(values={"x": "1"})
+    coord, _log = make({"a": tab})
+    tab.state["x"] = "2"
+    coord.save_current()
+    assert not coord.closed
+
+
 def test_close_clean_does_not_ask():
     coord, log = make({"a": FakeTab()})
     assert coord.request_close()
