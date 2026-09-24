@@ -83,7 +83,10 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
     save_btn = None
 
     def _refresh_save_button():
-        if coordinator is None or save_btn is None or not dialog.winfo_exists():
+        # `closed` vor `winfo_exists`: nach dem Skalierungs-Neustart ist der
+        # Interpreter zerstört, und winfo_exists wirft dann statt False.
+        if (coordinator is None or save_btn is None or coordinator.closed
+                or not dialog.winfo_exists()):
             return
         set_primary_button_enabled(save_btn, coordinator.dirty())
 
