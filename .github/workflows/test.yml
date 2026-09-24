@@ -143,9 +143,11 @@ jobs:
           [ "${{ needs.test-matrix.result }}" = "success" ]
 
   coverage:
-    # Coverage-Report (Audit N24) — reines Reporting, KEIN fail_under-Gate
-    # (Config in pyproject.toml, [tool.coverage]). Ein Lauf auf ubuntu/3.12
-    # reicht; die Zahlen sind plattformunabhängig.
+    # Coverage-Report (Audit N24) plus Untergrenze NUR für die Tk-freien
+    # Module (scripts/coverage_gate.py). Die Gesamtzahl bleibt reines
+    # Reporting, KEIN fail_under in pyproject.toml — der Tk-Anteil drückt sie
+    # bewusst. Ein Lauf auf ubuntu/3.12; plattformabhängige Zweige laufen hier
+    # anders als unter Windows, FLOOR ist deshalb an DIESEM Lauf gemessen.
     needs: changes
     if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
@@ -157,7 +159,8 @@ jobs:
           cache: pip
           cache-dependency-path: requirements-test.txt
       - run: pip install -r requirements-test.txt pytest-cov==7.1.0
-      - run: pytest --cov=src --cov-report=term-missing tests/
+      - run: pytest --cov=src --cov-report=term-missing --cov-report=json tests/
+      - run: python scripts/coverage_gate.py coverage.json
 
   test-macos:
     needs: changes

@@ -28,10 +28,11 @@ branch = true
 
 [tool.coverage.report]
 show_missing = true
-# BEWUSST kein fail_under-Gate: Coverage ist hier Reporting, kein harter
-# CI-Blocker. Die UI/Tk-Schicht ist absichtlich nur über extrahierte
-# Pure-Functions getestet (vgl. Audit M16) — ein Schwellwert-Gate färbte den
-# Build sonst dauerhaft rot. Der Report zeigt Lücken, erzwingt sie aber nicht.
+# BEWUSST kein fail_under-Gate auf die GESAMTZAHL: die UI/Tk-Schicht ist
+# absichtlich nur über extrahierte Pure-Functions getestet (vgl. Audit M16),
+# ihr Anteil drückt die Zahl auf rund 60 %. Die Untergrenze gilt stattdessen
+# nur für die Tk-freien Module und sitzt in scripts/coverage_gate.py (läuft
+# im coverage-Job von test.yml) — fail_under kann nicht nach Import filtern.
 exclude_also = [
     "if TYPE_CHECKING:",
     "raise NotImplementedError",
