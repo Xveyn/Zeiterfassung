@@ -144,6 +144,7 @@ Zeiterfassung/
 │   ├── resolve_readme_version.py # Versionsmarker dieser README und Screenshot-Namen
 │   ├── release_notes.py   # Release-Body aus dem CHANGELOG-Abschnitt
 │   ├── archive_changelog.py   # ältere CHANGELOG-Abschnitte ins Archiv
+│   ├── coverage_gate.py   # Coverage-Untergrenze für die Tk-freien Module (CI)
 │   ├── demo_data.py       # Demo-Daten für Screenshots und zum Ausprobieren
 │   ├── webhook_testserver.py  # lokaler Test-Empfänger für den Webhook-Versand
 │   └── smtp_testserver.py     # lokaler Test-Mailserver für den SMTP-Versand
@@ -174,8 +175,15 @@ pytest tests/test_storage.py::test_name  # einzelner Test
 Coverage-Report lokal (braucht zusätzlich `pip install pytest-cov`):
 
 ```bash
-pytest --cov=src --cov-report=term-missing
+pytest --cov=src --cov-report=term-missing --cov-report=json
+python scripts/coverage_gate.py          # Untergrenze der Tk-freien Module
 ```
+
+Die Gesamtzahl liegt bei rund 60 % und ist **kein** Gate — Tk-Code wird bewusst
+nicht automatisiert getestet. Für alle Module, die `tkinter` nicht importieren,
+gilt dagegen eine Untergrenze (`FLOOR` in `scripts/coverage_gate.py`); die CI
+bricht ab, wenn sie unterschritten wird. Neue Logik gehört also in ein
+Tk-freies Modul **und** getestet.
 
 `pytest` ist das Gate: **alle Tests müssen grün sein, bevor ein PR gemerged wird.**
 Wer testbares Verhalten ändert (Feature wie Bugfix), schreibt einen passenden Test

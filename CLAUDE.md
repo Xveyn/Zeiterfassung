@@ -1030,7 +1030,11 @@ Die Test-Deps sind **exakt gepinnt** (Audit N25) — beim Bump gegen Python 3.12
   Nicht entfernen oder umbenennen, ohne die Required Checks mitzuziehen. Prüft
   `needs.test-matrix.result` explizit unter `if: always()`, weil ein
   übersprungener Required Check GitHub sonst als erfüllt gilt.
-- **coverage** — `pytest --cov=src` (ubuntu/3.12); Reporting, **kein** `fail_under`-Gate (Config: `pyproject.toml [tool.coverage]`, Audit N24).
+- **coverage** — `pytest --cov=src` (ubuntu/3.12) und danach
+  `scripts/coverage_gate.py`: Untergrenze **nur für die Tk-freien Module**
+  (Details unten, „Coverage-Untergrenze: nur Tk-frei"). Die Gesamtzahl bleibt
+  Reporting, **kein** `fail_under` (Config: `pyproject.toml [tool.coverage]`,
+  Audit N24).
 - **test-macos** / **test-windows** — Plattform-Verifikation (je 3.12; macOS zieht zusätzlich `pyobjc-framework-Cocoa`).
 - **lint** — `ruff check .`. **typecheck** — `pyright` (gepinnt `1.1.411`).
 
@@ -1071,6 +1075,30 @@ git-Problem) endet im vollen Testlauf, nie im stillen Überspringen.
 
 Wer die Doku-Muster erweitert, prüft vorher: kann eine Datei unter dem neuen
 Muster jemals das Verhalten der App ändern? Dann gehört sie nicht dazu.
+
+### Coverage-Untergrenze: nur Tk-frei
+
+Die Gesamt-Coverage liegt bei rund 60 % und bleibt **ohne** Gate: Tk-Code wird
+bewusst nicht automatisiert getestet (s. „Getestet wird Logik, nicht UI"), sein
+Anteil drückt die Zahl. Ein `fail_under` darauf färbte den Build dauerhaft rot
+oder läge so tief, dass es nichts mehr misst — deshalb Audit N24.
+
+Gemessen wird stattdessen genau der Teil, für den diese Scope-Grenze die Tests
+verspricht: **alle Module unter `src/`, die `tkinter` nicht importieren.**
+`scripts/coverage_gate.py` liest `coverage.json` und teilt über den AST ein,
+nicht über eine Liste — ein neues Tk-freies Modul fällt ohne Zutun unter das
+Gate. `fail_under` kann das nicht, es kennt nur Pfade.
+
+- **Ausgenommen sind die drei Tray-Backends** (`EXEMPT` im Skript): Tk-frei,
+  aber an pystray/PyObjC/D-Bus gebunden und nur in einer echten Sitzung ihrer
+  Plattform ausführbar; ihre Logik liegt getrennt in `tray/model.py` und
+  `MenuState`. Eine Ausnahme, deren Datei verschwindet, macht das Gate rot.
+- **`FLOOR` ist an der CI gemessen**, nicht lokal: plattformabhängige Zweige
+  (`dpi.py`, Autostart, Pfade) laufen auf ubuntu anders als unter Windows.
+- **Eine Ratsche.** Eingeführt bei 92,0 % mit `FLOOR` 91. Liegt die Messung
+  zwei Punkte oder mehr über `FLOOR`,
+  meldet der Job das als Hinweis — dann wird der Wert nachgezogen. Gesenkt
+  wird er nur mit Begründung im PR.
 
 ### Typannotationen: Tk-freie Module vollständig, UI-Schicht bewusst nicht
 
@@ -1361,6 +1389,10 @@ seinen Pfad, nicht per Import.
   (Job `changelog-archive` in `release.yml`; s. „CHANGELOG-Archiv"). Ohne
   Flag schreibt es, `--check` zeigt nur an. Idempotent, derselbe
   Root-Bootstrap, reine stdlib.
+- `scripts/coverage_gate.py` — Coverage-Untergrenze der Tk-freien Module aus
+  `coverage.json` (`coverage`-Job in `test.yml`; s. „Coverage-Untergrenze: nur
+  Tk-frei"). Reine stdlib, braucht keinen Root-Bootstrap: es importiert nichts
+  aus `src/`, sondern liest die Quelltexte als Text.
 - `scripts/webhook_testserver.py` — lokaler Test-Empfänger für den
   Webhook-Versand: zeigt Content-Type, Auth-Header, HMAC-Prüfung und den Body
   (JSON/PDF/multipart aufgetrennt), und kann Fehlerfälle simulieren
