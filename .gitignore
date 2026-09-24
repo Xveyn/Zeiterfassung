@@ -3,6 +3,7 @@ __pycache__/
 *.pyo
 .pytest_cache/
 .coverage
+coverage.json
 zeiterfassung.json
 credentials.json
 token.json
