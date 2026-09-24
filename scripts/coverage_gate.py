@@ -31,10 +31,10 @@ _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # Betriebssystem anders, lokal unter Windows liegt die Zahl etwas anders.
 # Eine Ratsche: steigt die Messung deutlich, wird der Wert nachgezogen —
 # das Skript meldet das —, gesenkt wird er nur mit Begruendung im PR.
-FLOOR = 88.0
+FLOOR = 91.0  # CI-Messung bei Einfuehrung: 92,0 %
 
 # Ab diesem Abstand zur Messung schlaegt das Skript vor, FLOOR anzuheben.
-RATCHET_HINT = 1.0
+RATCHET_HINT = 2.0
 
 # Tk-frei, aber trotzdem nicht Teil des Gates. Die Tray-Backends haengen an
 # pystray, PyObjC bzw. D-Bus und lassen sich nur auf ihrer eigenen Plattform

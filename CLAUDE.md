@@ -1095,7 +1095,8 @@ Gate. `fail_under` kann das nicht, es kennt nur Pfade.
   `MenuState`. Eine Ausnahme, deren Datei verschwindet, macht das Gate rot.
 - **`FLOOR` ist an der CI gemessen**, nicht lokal: plattformabhängige Zweige
   (`dpi.py`, Autostart, Pfade) laufen auf ubuntu anders als unter Windows.
-- **Eine Ratsche.** Liegt die Messung einen Punkt oder mehr über `FLOOR`,
+- **Eine Ratsche.** Eingeführt bei 92,0 % mit `FLOOR` 91. Liegt die Messung
+  zwei Punkte oder mehr über `FLOOR`,
   meldet der Job das als Hinweis — dann wird der Wert nachgezogen. Gesenkt
   wird er nur mit Begründung im PR.
 
