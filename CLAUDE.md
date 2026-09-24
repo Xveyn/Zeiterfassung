@@ -272,7 +272,13 @@ Das Ruleset erzwingt: kein Löschen, kein Force-Push, PR-Pflicht (0 Reviews —
 ein Solo-Maintainer kann den eigenen PR nicht approven) und diese Required
 Checks:
 
-    changes, test, lint, typecheck, test-macos, test-windows
+    changes, test, lint, typecheck, coverage, test-macos, test-windows
+
+**Das Ruleset liegt außerhalb des Repos und driftet lautlos.** Bis 2026-09-25
+nannte diese Liste `test-macos`/`test-windows`, das Ruleset verlangte sie aber
+längst nicht mehr — `tests/test_claude_md_claims.py` prüft die Liste nur gegen
+die Jobs in `test.yml`, nicht gegen GitHub. Wer die Liste oder das Ruleset
+ändert, gleicht beides mit dem `gh api`-Aufruf oben ab.
 
 **Keine `test-matrix (…)`-Contexts in die Liste aufnehmen.** Sie standen dort
 bis 2026-08-28 und sind genau die Falle, gegen die der `test`-Sammel-Job
