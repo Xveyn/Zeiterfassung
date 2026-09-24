@@ -5,6 +5,7 @@ import tkinter as tk
 import traceback
 from tkinter import messagebox, ttk
 
+from src import dpi
 from src.autostart import (
     disable_autostart, enable_autostart, is_autostart_enabled,
     resolve_autostart_target,
@@ -91,6 +92,9 @@ class AppTab:
         scale_value_label.pack(side=tk.LEFT, padx=(8, 0))
         form.row("Skalierung:", scale_cell)
         form.hint("Änderung startet die App neu.")
+        system_hint = dpi.scale_hint(dpi.system_scale())
+        if system_hint:
+            form.hint(system_hint)
 
         # --- Daten ---
         form.section("Daten")

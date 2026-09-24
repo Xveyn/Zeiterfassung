@@ -843,9 +843,34 @@ Wiedereinschalten für bereits gepusht und legte keine Events mehr an.
 
 Die UI-Skalierung hat **einen** Hebel: `theme/fonts.py::init_fonts` setzt beim
 Start die Punktgrößen aller benannten Fonts auf `basis × faktor` (und merkt den
-Faktor für `px()`). Kein `tk scaling` — das skalierte auf macOS/Aqua die
-Punkt-Fonts nicht, und rohe Ints waren auch dort immer Pixel. Geändert wird der
+Faktor für `px()`). Kein `tk scaling` als Hebel — das skalierte auf macOS/Aqua
+die Punkt-Fonts nicht, und rohe Ints waren auch dort immer Pixel. Geändert wird der
 Faktor nur über einen Neustart (`ui.App.restart_for_scaling`).
+
+**Unter Windows folgt die App der Anzeigeskalierung (#157).** Der Prozess ist
+seither **system-aware** (`src/dpi.py`, vor dem ersten Fenster in `main.py`):
+Windows streckt das Fenster nicht mehr als Bitmap, die Schrift bleibt scharf.
+In den Hebel geht deshalb `systemfaktor × ui_scale` — `ui_scale` ist ein
+Faktor **obendrauf**, 100 % heißt „wie Windows". Wer vorher einen eigenen
+Wert hatte, sieht die App gleich groß wie zuvor (Windows hat dasselbe Produkt
+gestreckt), nur scharf; eine Migration gibt es deshalb nicht.
+`scaled_window_fits` bleibt unberührt, der Systemfaktor kürzt sich im
+Verhältnis alt/neu heraus. Drei Dinge daran:
+
+- **`tk scaling` wird unter Windows auf 96 dpi festgenagelt**
+  (`dpi.pin_tk_scaling`). In einem DPI-aware Prozess leitet Tk den Wert aus
+  der echten Auflösung ab und vergrößerte Punkt-Schriften sonst selbst — die
+  App wäre doppelt skaliert. Das ist keine zweite Stellschraube, sondern hält
+  den einen Hebel allein. **Nicht auf macOS**: dort wirkt `tk scaling` auf
+  Pixel- statt Punkt-Schriften.
+- **system-aware, nicht per-monitor.** Tk 8.6 kennt keinen DPI-Wechsel
+  zwischen Bildschirmen; auf einem zweiten Monitor mit anderer Skalierung
+  streckt Windows weiter, wie bisher. Ein Wechsel der Windows-Skalierung
+  wirkt erst nach einem Neustart der App.
+- **Ohne gesetzte Awareness bleibt der Systemfaktor 1,0** — sonst streckte
+  Windows und die App skalierte obendrauf. Außerhalb von Windows ist der Weg
+  ein No-op; macOS löst Retina selbst, Linux braucht ein anderes Signal
+  (`Xft.dpi`, Xveyn#167).
 
 Daraus folgt die Regel, an der jede Layout-Angabe hängt:
 
@@ -894,7 +919,9 @@ wo es real passt.
 **Bewusst nicht skaliert:** die rund 540 `padx`/`pady` der einzelnen Dialoge und
 die 1-px-Ränder (`highlightthickness`). Rein optisch, mechanisch über die halbe
 UI verteilt, und UI wird hier nicht automatisiert getestet (s. „Getestet wird
-Logik, nicht UI") — das Verhältnis aus Risiko und Gewinn stimmt nicht.
+Logik, nicht UI") — das Verhältnis aus Risiko und Gewinn stimmt nicht. Seit der
+Windows-Awareness gilt das auch für die Systemskalierung: bei 150 % sind diese
+Abstände physisch kleiner als früher, als Windows sie mitstreckte.
 
 ## Dialog-Styling: ein gemeinsames Theme
 
@@ -1271,6 +1298,9 @@ nicht mehr als „offen" führen — der Verweis lautet auf diese Grenze.
 - `src/time_utils.py` — Stundenberechnung, KW-Labels
 - `src/holidays_de.py` — Feiertags-Lookup (über `holidays`-Lib)
 - `src/paths.py` — `get_base_path()` dispatched über `platform.system()` und Frozen- vs. Repo-Modus; `relaunch_command()` baut das Neustart-Kommando (Exe im Frozen-Build, `python -m src.main` im Repo)
+- `src/dpi.py` — Windows-DPI-Awareness und Systemfaktor der UI-Skalierung (#157;
+  s. „UI-Skalierung"). Tk-frei, die Win32-Aufrufe kommen als Argumente herein;
+  außerhalb von Windows ein No-op mit Faktor 1,0
 - `src/autostart.py` — plattformabhängiger Autostart (Windows-**Registry** HKCU Run, gleicher Wertname `Zeiterfassung` wie `installer.iss` → strukturell ein Eintrag; macOS-LaunchAgent / Linux `.desktop`). `is_autostart_enabled()` liest den echten Zustand, `migrate_legacy_autostart()` überführt Alt-Startup-Shortcuts frozen-gated in die Registry
 - `src/secure_file.py` — Zugriffsschutz für die lokal abgelegten Secrets (`token.json`, `instance-secret`, `webhooks.json`, `smtp.json`): unter Windows `icacls`-ACL statt des dort wirkungslosen `chmod 0600` (Audit M8); best-effort, scheitert nie den Schreibvorgang. Mit verfügbarem Schlüsselbund (#101) tragen diese Dateien den Refresh-Token bzw. die Webhook-Secrets ohnehin nicht mehr im Klartext — die Härtung bleibt für den Datei-Fallback und die übrigen Felder (Konfiguration, `instance-secret`) unverändert nötig
 - `src/single_instance.py` — Tk-freier Single-Instance-Guard (pro-Nutzer-Localhost-Port, `acquire`/`serve`/`release`); verhindert parallele Instanzen und holt bei manuellem Zweitstart das vorhandene Fenster nach vorn (SHOW), beim Autostart-Doppelfeuer ohne Fenster-Pop (PING)

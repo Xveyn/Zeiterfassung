@@ -598,6 +598,14 @@ Wert.
   bewusst bei der alten, in `settings.json` persistierten Zufalls-UUID (sonst hätte eine parallel zu
   einer echten Installation laufende Dev-Instanz auf demselben Rechner dieselbe device_id). Resolver
   liefern `None` statt zu werfen; `_ensure_device_id` fällt dann ebenfalls auf die Zufalls-UUID zurück.
+- `dpi.py` — Windows-DPI-Awareness (#157). `main.py` ruft `init_system_scale()` **vor** `_create_root`
+  (danach lässt Windows die Awareness nicht mehr ändern) und reicht den Systemfaktor an
+  `_apply_ui_scaling`, das `init_fonts(root, ui_scale × systemfaktor)` setzt und vorher per
+  `pin_tk_scaling` `tk scaling` auf 96 dpi festnagelt (sonst vergrößerte Tk die Punkt-Schriften ein
+  zweites Mal). `system_scale()`/`scale_hint()` speisen den Hinweis unter dem Skalierungsregler im
+  App-Tab. Tk-frei, Win32-Aufrufe als Default-Argumente (getestet in `tests/test_dpi.py`); jeder
+  Fehler endet in Faktor 1,0 und dem alten, unscharfen Verhalten, nie in einem verhinderten Start.
+  Außerhalb von Windows No-op. Begründung und Grenzen: Root-`CLAUDE.md`, „UI-Skalierung".
 - `main.py::_hold_app_mutex` — hält einen benannten Win32-Mutex (`_APP_MUTEX_NAME`, nur installierte
   Windows-Builds) für die Prozesslaufzeit; reiner Existenz-Marker für `installer.iss` (`AppMutex=`
   dort muss exakt zum Namen hier passen). Setup erkennt darüber eine laufende Instanz und lässt den
