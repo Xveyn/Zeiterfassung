@@ -1105,6 +1105,9 @@ Gate. `fail_under` kann das nicht, es kennt nur Pfade.
   zwei Punkte oder mehr über `FLOOR`,
   meldet der Job das als Hinweis — dann wird der Wert nachgezogen. Gesenkt
   wird er nur mit Begründung im PR.
+- **`coverage` ist Required Check** (s. „Branch Protection"): ein
+  Unterschreiten blockiert den Merge. Auf Doku-PRs meldet der Job
+  „skipped", das gilt als erfüllt.
 
 ### Typannotationen: Tk-freie Module vollständig, UI-Schicht bewusst nicht
 
