@@ -29,7 +29,10 @@ from __future__ import annotations
 import datetime
 from typing import TYPE_CHECKING, Any, Iterable
 
-from src.time_utils import calculate_hours, get_week_dates, get_week_label
+from src.time_utils import (
+    calculate_hours, format_minutes_hm, get_week_dates, get_week_label,
+    hours_to_minutes,
+)
 
 if TYPE_CHECKING:  # nur für die Signaturen
     from src.settings import SettingsLike
@@ -48,19 +51,24 @@ def is_limit_active(settings: SettingsLike, date_str: str) -> bool:
     return start <= date_str <= end
 
 
-def week_ist_hours(all_entries: dict[str, Any], iso_year: int, iso_week: int) -> float:
-    """Summe der Ist-Stunden (alle Kategorien) einer ISO-Woche.
+def week_ist_minutes(all_entries: dict[str, Any], iso_year: int, iso_week: int) -> int:
+    """Summe der Ist-Zeit (alle Kategorien) einer ISO-Woche in ganzen Minuten.
+
+    Summiert Minuten, nicht Dezimalstunden: `calculate_hours` rundet pro Slot
+    auf 0,01 h, und solche Werte driften aufsummiert — 100 + 100 + 160 Minuten
+    ergaben 6,01 statt 6,00 h und damit eine falsche Warnung bei einem Limit
+    von 6 h (Xveyn#171, Regel „Summen NUR über Minuten" in CLAUDE.md).
 
     all_entries: {date_str: {slots: [...]}} wie von Storage.get_all()."""
-    total = 0.0
+    total = 0
     for day in get_week_dates(iso_year, iso_week):
         entry = all_entries.get(day.isoformat())
         if not entry:
             continue
         for slot in entry["slots"]:
-            total += calculate_hours(
-                slot.get("start"), slot.get("end"), slot.get("pause", 0))
-    return round(total, 2)
+            total += hours_to_minutes(calculate_hours(
+                slot.get("start"), slot.get("end"), slot.get("pause", 0)))
+    return total
 
 
 def check_week_limit(settings: SettingsLike, all_entries: dict[str, Any],
@@ -69,19 +77,20 @@ def check_week_limit(settings: SettingsLike, all_entries: dict[str, Any],
     die Ist-Stunden-Summe der zugehörigen ISO-Woche das Limit überschreitet.
 
     Liefert None (Limit inaktiv, Datum außerhalb, oder Summe <= Limit) oder
-    ein Dict {iso_year, iso_week, total_hours, limit_hours} bei
-    Überschreitung."""
+    ein Dict {iso_year, iso_week, total_minutes, limit_minutes} bei
+    Überschreitung. Verglichen wird in ganzen Minuten; das Limit ist in den
+    Settings in Stunden hinterlegt und wird auf Minuten gerundet."""
     if not is_limit_active(settings, date_str):
         return None
     day = datetime.date.fromisoformat(date_str)
     iso = day.isocalendar()
-    total = week_ist_hours(all_entries, iso.year, iso.week)
-    limit = settings.get("werkstudent_limit_max_hours")
+    total = week_ist_minutes(all_entries, iso.year, iso.week)
+    limit = hours_to_minutes(settings.get("werkstudent_limit_max_hours"))
     if total <= limit:
         return None
     return {
         "iso_year": iso.year, "iso_week": iso.week,
-        "total_hours": total, "limit_hours": limit,
+        "total_minutes": total, "limit_minutes": limit,
     }
 
 
@@ -143,10 +152,11 @@ def scan_period_for_warnings(settings: SettingsLike,
 def format_limit_warnings(warnings: Iterable[dict[str, Any]]) -> str:
     """Formatiert eine Liste von Überschreitungs-Dicts (siehe
     check_week_limit) zu einem mehrzeiligen Anzeige-Text für einen
-    Warn-Dialog."""
+    Warn-Dialog — in Stunden und Minuten wie überall in der UI."""
     return "\n".join(
         f"– {get_week_label(w['iso_year'], w['iso_week'])}: "
-        f"{w['total_hours']:.2f}h (Limit {w['limit_hours']:.2f}h)"
+        f"{format_minutes_hm(w['total_minutes'])} "
+        f"(Limit {format_minutes_hm(w['limit_minutes'])})"
         for w in warnings
     )
 
