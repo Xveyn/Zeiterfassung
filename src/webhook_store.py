@@ -278,6 +278,33 @@ class WebhookStore:
                 self._webhooks = previous
                 raise
 
+    def save_if_unchanged(self, expected: Webhook, record: Webhook) -> bool:
+        """Wie `save`, aber nur, wenn unter `expected["id"]` noch genau
+        `expected` steht. `False`, wenn der Datensatz inzwischen gelöscht oder
+        geändert wurde — dann wird nichts geschrieben.
+
+        Für den Umzug in den Schlüsselbund (Xveyn#173): ein bedingungsloses
+        `save` legte einen gerade gelöschten Webhook wieder an. Prüfen und
+        Schreiben liegen unter derselben Sperre; ein Schlüsselbund-Aufruf
+        gehört nicht hinein (`get_all` läuft auch im UI-Thread).
+
+        Ruft `save` unter der eigenen Sperre — das setzt das reentrante
+        `RLock` voraus, das der Store ohne `lock=` selbst anlegt.
+
+        Wirft wie `save` und rollt dann zurück; `ValueError` bei
+        verschiedenen `id`s (Programmierfehler).
+        """
+        if record.get("id") != expected.get("id"):
+            raise ValueError("save_if_unchanged: expected und record tragen "
+                             "verschiedene ids")
+        with self._lock:
+            current = next((w for w in self._webhooks
+                            if w.get("id") == expected.get("id")), None)
+            if current != expected:
+                return False
+            self.save(record)
+            return True
+
     def delete(self, webhook_id: str) -> None:
         """Wie `save`: wirft bei Schreibfehlern und rollt dann zurück."""
         with self._lock:
