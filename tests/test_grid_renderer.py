@@ -3,6 +3,8 @@ conflicts_store lesen)."""
 
 from unittest.mock import MagicMock
 
+import pytest
+
 from src.time_utils import calculate_hours
 from src.grid_renderer import GridRenderer
 
@@ -90,6 +92,34 @@ def test_tooltip_text_conflict_only_when_no_other_units():
     # Konflikt-Hinweis (früher der separate attach_tooltip-Pfad).
     assert GridRenderer._build_tooltip_text(None, None, None, has_conflict=True) == (
         "Konflikt — bitte auflösen")
+
+
+def test_tooltip_text_holiday_with_conflict_keeps_the_name():
+    """Xveyn#177: Feiertag nur mit Konflikt. Die Zelle trägt dann den
+    kombinierten Tooltip — der volle Feiertagsname muss mit hinein, sonst
+    bliebe von „Christi Himmelfahrt" nur der abgeschnittene Zelltext."""
+    assert GridRenderer._build_tooltip_text(
+        None, None, "Christi Himmelfahrt", has_conflict=True) == (
+        "Feiertag: Christi Himmelfahrt\nKonflikt — bitte auflösen")
+
+
+@pytest.mark.parametrize("entry,reservation,vacation,conflict,expected", [
+    (None, None, None, False, False),          # Feiertag allein: eigener Tooltip
+    (None, None, None, True, True),            # nur Konflikt (#177)
+    (None, {"slots": []}, None, False, True),  # Reservierung
+    ({"slots": [{"start": "08:00", "end": "09:00"}]}, None, None, False, True),
+    (None, None, {"name": "U"}, False, True),  # Urlaub
+])
+def test_holiday_name_goes_into_exactly_one_tooltip(entry, reservation, vacation,
+                                                    conflict, expected):
+    """Genau EIN attach_tooltip pro Zelle: entweder trägt der kombinierte
+    Tooltip den Feiertagsnamen, oder die Feiertagszelle ihren eigenen — beide
+    Stellen leiten das aus derselben Regel ab."""
+    assert GridRenderer._holiday_in_combined_tip(
+        entry, reservation, vacation, conflict) is expected
+    text = GridRenderer._build_tooltip_text(
+        entry, reservation, "Neujahr", has_conflict=conflict, vacation=vacation)
+    assert ("Feiertag: Neujahr" in text) is expected
 
 
 def test_tooltip_text_no_conflict_is_unchanged():

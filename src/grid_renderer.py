@@ -381,6 +381,18 @@ class GridRenderer:
         return f"{slot['start']}-{slot['end']}{kat}"
 
     @staticmethod
+    def _holiday_in_combined_tip(entry, reservation, vacation, has_conflict):
+        """Trägt der kombinierte Tooltip den Feiertagsnamen? Genau dann, wenn
+        es ihn ohnehin gibt — bei Eintrag, Reservierung, Urlaub oder Konflikt.
+        Sonst hängt die Feiertagszelle ihren eigenen an (`name_tooltip`).
+
+        Beide Stellen leiten das hieraus ab, damit nie zwei `attach_tooltip`
+        an derselben Zelle landen (Xveyn#177: Feiertag mit Konflikt bekam
+        beide). Reine Funktion, Tk-frei."""
+        return bool(entry or reservation is not None or vacation is not None
+                    or has_conflict)
+
+    @staticmethod
     def _build_tooltip_text(entry, reservation, holiday_name, has_conflict=False,
                             vacation=None, vacation_minutes=0):
         """Baut den kombinierten Hover-Tooltip aus den vorhandenen Einheiten.
@@ -396,9 +408,9 @@ class GridRenderer:
         im Bericht heißt es schlicht „Urlaub".
 
         holiday_name: Feiertagsname, falls der Tag ein Feiertag ist, sonst None.
-        Er kommt in den kombinierten Tooltip, sobald ohnehin ein Eintrag, eine
-        Reservierung ODER ein Urlaub vorliegt — in all diesen Fällen zeigt die
-        Zelle den Namen nicht mehr selbst als Zelltext.
+        Er kommt in den kombinierten Tooltip, sobald es den ohnehin gibt
+        (`_holiday_in_combined_tip`: Eintrag, Reservierung, Urlaub oder
+        Konflikt) — dann hängt die Feiertagszelle keinen eigenen an.
 
         has_conflict: der Konflikt-Hinweis wird in DENSELBEN Tooltip gefaltet
         (Audit M11) — ein zweiter attach_tooltip am selben Widget verletzte den
@@ -422,8 +434,8 @@ class GridRenderer:
             if vacation_minutes:
                 span += f"  ·  {format_minutes_hm(vacation_minutes)}"
             parts.append(f"Urlaub: {vacation.get('name', '')}\n{span}")
-        if holiday_name and (reservation is not None or entry
-                             or vacation is not None):
+        if holiday_name and GridRenderer._holiday_in_combined_tip(
+                entry, reservation, vacation, has_conflict):
             parts.append(f"Feiertag: {holiday_name}")
         if has_conflict:
             parts.append("Konflikt — bitte auflösen")
@@ -528,6 +540,7 @@ class GridRenderer:
         # zweite Store-Sicht wäre eine zweite Quelle für dieselbe Zahl.
         vacation_minutes = (
             vacation.get("days", {}).get(date_str, 0) if vacation else 0)
+        has_conflict = bool(conflict_dates and date_str in conflict_dates)
         if entry:
             cell = self._build_entry_cell(
                 parent, date_str, day_text, entry, is_weekend, pad,
@@ -548,10 +561,12 @@ class GridRenderer:
                 on_right_click=lambda d=date_str: self._on_cell_right_click(d),
                 cell_size=cell_size,
                 name_font=holiday_name_font,
-                # Bei zusätzlicher Reservierung übernimmt der Reservierungs-
-                # Tooltip unten den Feiertagsnamen — sonst klebten zwei
-                # unabhängige Tooltips am selben Widget (s. attach_tooltip).
-                name_tooltip=reservation is None,
+                # Trägt der kombinierte Tooltip unten den Feiertagsnamen
+                # (Reservierung oder Konflikt), bekommt die Zelle keinen
+                # eigenen — sonst klebten zwei unabhängige Tooltips am selben
+                # Widget (s. attach_tooltip, Xveyn#177).
+                name_tooltip=not self._holiday_in_combined_tip(
+                    None, reservation, None, has_conflict),
             )
         else:
             cell = self._build_empty_cell(
@@ -563,10 +578,9 @@ class GridRenderer:
         # erzeugt überlappende Tooltips); deshalb alle relevanten Infos
         # (Arbeitszeit-Slots, Reservierung, Urlaub, Feiertag, Konflikt-Hinweis)
         # in einen kombinierten Tooltip (Textaufbau in _build_tooltip_text). Ein
-        # Feiertag OHNE Eintrag/Reservierung/Urlaub zeigt seinen Namen weiterhin
-        # als Zelltext (Holiday-Zelle) bzw. eigenen Tooltip (name_tooltip) und
-        # kommt hier NICHT rein.
-        has_conflict = bool(conflict_dates and date_str in conflict_dates)
+        # Feiertag OHNE Eintrag/Reservierung/Urlaub/Konflikt zeigt seinen Namen
+        # weiterhin als Zelltext (Holiday-Zelle) bzw. eigenen Tooltip
+        # (name_tooltip) und kommt hier NICHT rein (_holiday_in_combined_tip).
         if reservation is not None:
             self._add_reservation_marker(cell)
         tip_text = self._build_tooltip_text(
