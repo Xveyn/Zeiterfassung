@@ -22,24 +22,45 @@ def test_setting_travels_with_sync():
     assert "pause_warning_enabled" in SYNCED_SETTING_KEYS
 
 
+# required_pause_minutes nimmt die Netto-Arbeitszeit in ganzen Minuten —
+# die gesetzlichen Schwellen liegen exakt auf 6 h / 9 h, ohne Dezimalrest.
+
 def test_required_pause_minutes_none_up_to_six_hours():
-    assert required_pause_minutes(6.0) == 0
+    assert required_pause_minutes(6 * 60) == 0
 
 
 def test_required_pause_minutes_zero_for_short_day():
-    assert required_pause_minutes(2.5) == 0
+    assert required_pause_minutes(150) == 0
 
 
 def test_required_pause_minutes_thirty_over_six_hours():
-    assert required_pause_minutes(6.01) == 30
+    assert required_pause_minutes(6 * 60 + 1) == 30
 
 
 def test_required_pause_minutes_thirty_at_nine_hours():
-    assert required_pause_minutes(9.0) == 30
+    assert required_pause_minutes(9 * 60) == 30
 
 
 def test_required_pause_minutes_fortyfive_over_nine_hours():
-    assert required_pause_minutes(9.01) == 45
+    assert required_pause_minutes(9 * 60 + 1) == 45
+
+
+def test_check_day_pause_no_false_warning_at_exactly_six_hours():
+    """Xveyn#172: 100 + 100 + 160 Minuten sind exakt 6:00 h. Als pro Slot
+    gerundete Dezimalstunden summiert (1,67 + 1,67 + 2,67) wurden daraus
+    6,01 — und eine Pflichtpause, die erst ÜBER 6 h greift."""
+    slots = [_slot("08:00", "09:40"), _slot("10:00", "11:40"),
+             _slot("12:00", "14:40")]
+    assert check_day_pause(_settings(), slots) is None
+
+
+def test_check_day_pause_warns_one_minute_over_six_hours():
+    slots = [_slot("08:00", "09:40"), _slot("10:00", "11:40"),
+             _slot("12:00", "14:41")]
+    result = check_day_pause(_settings(), slots)
+    assert result is not None
+    assert result["worked_minutes"] == 361
+    assert result["required_pause_minutes"] == 30
 
 
 def test_check_day_pause_none_when_disabled():
@@ -72,7 +93,7 @@ def test_check_day_pause_violation_when_pause_missing():
     slots = [_slot("08:00", "16:00", pause=0)]  # 8h netto, keine Pause
     result = check_day_pause(_settings(), slots)
     assert result == {
-        "worked_hours": 8.0, "actual_pause_minutes": 0, "required_pause_minutes": 30,
+        "worked_minutes": 8 * 60, "actual_pause_minutes": 0, "required_pause_minutes": 30,
     }
 
 
@@ -80,7 +101,7 @@ def test_check_day_pause_violation_over_nine_hours_needs_fortyfive():
     slots = [_slot("07:00", "17:00", pause=30)]  # 9.5h netto, nur 30 Min
     result = check_day_pause(_settings(), slots)
     assert result == {
-        "worked_hours": 9.5, "actual_pause_minutes": 30, "required_pause_minutes": 45,
+        "worked_minutes": 9 * 60 + 30, "actual_pause_minutes": 30, "required_pause_minutes": 45,
     }
 
 
@@ -99,5 +120,5 @@ def test_check_day_pause_multiple_slots_violation():
     ]  # netto 8h, keine Pause in den Slots eingetragen
     result = check_day_pause(_settings(), slots)
     assert result == {
-        "worked_hours": 8.0, "actual_pause_minutes": 0, "required_pause_minutes": 30,
+        "worked_minutes": 8 * 60, "actual_pause_minutes": 0, "required_pause_minutes": 30,
     }

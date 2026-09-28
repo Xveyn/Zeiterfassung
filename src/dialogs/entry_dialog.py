@@ -18,7 +18,7 @@ from src.theme import (
 )
 from src.pause_requirement import check_day_pause
 from src.time_utils import (
-    format_date, format_hours_hm, format_iso_weekday_date, format_minutes_hm,
+    format_date, format_iso_weekday_date, format_minutes_hm,
     get_week_label, validate_slots,
 )
 from src.weekly_limit import check_week_limit
@@ -496,7 +496,7 @@ def open_entry_dialog(parent, date_str, storage, settings, on_change,
             if pause_violation is not None:
                 confirm = themed_askyesno(
                     dialog, "Pausenpflicht unterschritten",
-                    f"{format_hours_hm(pause_violation['worked_hours'])} Arbeitszeit "
+                    f"{format_minutes_hm(pause_violation['worked_minutes'])} Arbeitszeit "
                     f"mit nur {pause_violation['actual_pause_minutes']} min Pause "
                     f"eingetragen — §4 ArbZG schreibt ab dieser Arbeitszeit mindestens "
                     f"{pause_violation['required_pause_minutes']} min vor.\n\n"

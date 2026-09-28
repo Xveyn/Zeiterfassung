@@ -702,6 +702,10 @@ Minuten und vergleicht sie mit dem auf Minuten gerundeten Limit, die Warnung
 zeigt `format_minutes_hm`. Vorher summierte es Dezimalstunden — drei Slots
 über exakt 6:00 h ergaben 6,01 und bei einem Limit von 6 h eine falsche
 Warnung.
+Dasselbe galt für `src/pause_requirement.py` (Xveyn#172): exakt 6:00 h
+Netto-Arbeitszeit lösten dort eine Pflichtpause aus, die §4 ArbZG erst
+**über** 6 h vorsieht. `required_pause_minutes` nimmt seither Minuten, die
+Schwellen liegen exakt auf 360/540.
 
 ## Kalender-Interaktion: Linksklick speichert, Rechtsklick löscht
 
