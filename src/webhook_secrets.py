@@ -12,6 +12,7 @@ kann blockieren (Schlüsselbund-Watchdog) und läuft deshalb im Worker.
 from __future__ import annotations
 
 import copy
+import threading
 from typing import Any
 
 from src import keyring_store
@@ -19,6 +20,15 @@ from src import keyring_store
 SECRET_LOCATION = "secret_location"
 
 _FIELDS = {"header": "value", "hmac": "secret"}
+
+# Serialisiert alles, was ein Webhook-Secret im Schlüsselbund ablegt UND den
+# Datensatz dazu speichert: den Start-Umzug (`secret_migration._move_webhook`)
+# und das Dialog-Speichern (`save_with_secret`). Ohne sie überschrieb der
+# Umzug ein gerade neu eingegebenes Secret mit dem alten (Xveyn#173). Das
+# Löschen nimmt sie nicht — `WebhookStore.save_if_unchanged` fängt es ab.
+# Beide Halter laufen im Worker; darunter wird die Store-Sperre nie über
+# einen Schlüsselbund-Aufruf gehalten.
+SECRETS_LOCK = threading.Lock()
 
 
 def secret_field(record: dict[str, Any]) -> str | None:
