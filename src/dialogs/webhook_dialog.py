@@ -9,7 +9,7 @@ import json
 import tkinter as tk
 from typing import Any
 
-from src import keyring_store, webhook, webhook_secrets, webhook_store
+from src import webhook, webhook_secrets, webhook_store
 from src.theme import (
     BG, CELL_BG, FONT, FONT_SMALL, TEXT, TEXT_MUTED,
     apply_combobox_style, attach_unfocus_on_click, center_dialog_on_parent,
@@ -207,12 +207,13 @@ def open_webhook_dialog(parent, store, runner, record: dict | None = None, on_sa
         # (src/CLAUDE.md, secure_file-Absatz).
         def fn():
             try:
-                to_save, stale = webhook_secrets.persist(candidate, typed, stored)
-                store.save(to_save)
+                # Tk-frei in webhook_secrets: unter der Sperre mit dem
+                # Start-Umzug, gerechnet mit dem aktuellen Datensatz statt
+                # `stored` (Xveyn#173). Räumt einen veralteten Eintrag erst
+                # nach dem Schreiben ab.
+                webhook_secrets.save_with_secret(store, candidate, typed, stored)
             except (webhook_store.WebhookStoreReadOnly, OSError) as e:
                 return {"ok": False, "error": e}
-            if stale is not None:
-                keyring_store.remove(stale)   # erst NACH dem Schreiben
             return {"ok": True}
 
         def on_done(res):

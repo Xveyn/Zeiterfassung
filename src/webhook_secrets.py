@@ -129,6 +129,32 @@ def persist(candidate: dict[str, Any], typed: str,
     return copy.deepcopy(candidate), None
 
 
+def save_with_secret(store: Any, candidate: dict[str, Any], typed: str,
+                     stored: dict[str, Any] | None) -> None:
+    """Der Kern von „Speichern" im Webhook-Dialog: Secret ablegen, Datensatz
+    schreiben, danach einen veralteten Eintrag abräumen.
+
+    Unter `SECRETS_LOCK`, serialisiert mit dem Start-Umzug (Xveyn#173).
+    Gerechnet wird mit dem AKTUELLEN Datensatz, nicht mit dem Schnappschuss
+    `stored` vom Öffnen des Dialogs: war der über den Umzug hinweg offen,
+    zeigte `stored` noch Klartext, und ein Umstellen auf „Keine" oder ein
+    gescheitertes `put` ließe das umgezogene Secret für immer im
+    Schlüsselbund stehen. Fehlt der Datensatz (neu oder inzwischen
+    gelöscht), gilt `stored`.
+
+    Wirft Schreibfehler von `store.save` und `ValueError` von `persist`
+    durch; abgeräumt wird dann nichts. Blockierend (Schlüsselbund, icacls) —
+    gehört in einen Worker."""
+    with SECRETS_LOCK:
+        current = next((r for r in store.get_all()
+                        if r.get("id") == candidate.get("id")), None)
+        to_save, stale = persist(
+            candidate, typed, current if current is not None else stored)
+        store.save(to_save)
+    if stale is not None:
+        keyring_store.remove(stale)   # erst NACH dem Schreiben
+
+
 def forget_by_id(webhook_id: str) -> None:
     """Nach dem Löschen eines Webhooks den Eintrag abräumen (wie
     `tab_smtp._delete_secret` — ein fehlender Eintrag ist kein Fehler)."""

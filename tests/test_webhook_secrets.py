@@ -125,3 +125,84 @@ def test_persist_rejects_a_keyring_marker_for_another_mode(fake_keyring):
     candidate = ws.stored_in_keyring(_hook("hmac"))
     with pytest.raises(ValueError):
         ws.persist(candidate, "", stored=stored)
+
+
+# --- save_with_secret: der Dialog-Kern (Xveyn#173) --------------------------
+# Der Dialog hält einen Schnappschuss `stored` vom Öffnen. War er über den
+# Start-Umzug hinweg offen, ist der längst veraltet — gerechnet wird deshalb
+# mit dem aktuellen Datensatz.
+
+def _migrated_store(tmp_path):
+    """Store und Schlüsselbund nach einem Umzug: Datensatz in
+    Schlüsselbund-Form, Secret unter webhook:w1."""
+    store = webhook_store.WebhookStore(str(tmp_path / "webhooks.json"))
+    keyring_store.put(ws.keyring_key("w1"), "Bearer abc")
+    store.save(ws.stored_in_keyring(_hook("header")))
+    return store
+
+
+def test_switch_to_none_after_migration_removes_the_entry(tmp_path, fake_keyring):
+    """Dialog vor dem Umzug geöffnet (`stored` = Klartext), nach dem Umzug auf
+    „Keine" gestellt: aus `stored` berechnet bliebe das Secret für immer
+    stehen — nicht einmal forget_all fände es."""
+    fake = fake_keyring()
+    store = _migrated_store(tmp_path)
+
+    ws.save_with_secret(store, _hook("none"), "", stored=_hook("header"))
+
+    assert store.get_all()[0]["auth"] == {"mode": "none"}
+    assert fake.store == {}
+
+
+def test_failed_put_after_migration_removes_the_old_entry(tmp_path, fake_keyring, monkeypatch):
+    """Scheitert das put im Dialog, landet das neue Secret im Klartext — der
+    alte Schlüsselbund-Eintrag ist dann eine zweite, veraltete Quelle."""
+    fake = fake_keyring()
+    store = _migrated_store(tmp_path)
+    monkeypatch.setattr(keyring_store, "put", lambda key, value: False)
+
+    ws.save_with_secret(store, _hook("header"), "Bearer neu", stored=_hook("header"))
+
+    assert store.get_all()[0]["auth"]["value"] == "Bearer neu"
+    assert fake.store == {}
+
+
+def test_failed_write_keeps_the_entry(tmp_path, fake_keyring, monkeypatch):
+    """Erst NACH dem Schreiben abräumen — sonst zeigte der unveränderte
+    Datensatz auf einen gelöschten Eintrag."""
+    fake = fake_keyring()
+    store = _migrated_store(tmp_path)
+    monkeypatch.setattr(store, "save", lambda record: (_ for _ in ()).throw(OSError("voll")))
+
+    with pytest.raises(OSError):
+        ws.save_with_secret(store, _hook("none"), "", stored=_hook("header"))
+
+    assert list(fake.store.values()) == ["Bearer abc"]
+    assert not ws.SECRETS_LOCK.locked()
+
+
+def test_new_webhook_falls_back_to_the_snapshot(tmp_path, fake_keyring):
+    fake = fake_keyring()
+    store = webhook_store.WebhookStore(str(tmp_path / "webhooks.json"))
+
+    ws.save_with_secret(store, _hook("header"), "Bearer neu", stored=None)
+
+    assert ws.in_keyring(store.get_all()[0])
+    assert list(fake.store.values()) == ["Bearer neu"]
+
+
+def test_save_with_secret_holds_the_lock_during_put(tmp_path, fake_keyring, monkeypatch):
+    fake_keyring()
+    store = webhook_store.WebhookStore(str(tmp_path / "webhooks.json"))
+    seen = []
+    orig = keyring_store.put
+
+    def put(key, value):
+        seen.append(ws.SECRETS_LOCK.locked())
+        return orig(key, value)
+    monkeypatch.setattr(keyring_store, "put", put)
+
+    ws.save_with_secret(store, _hook("header"), "Bearer neu", stored=None)
+
+    assert seen == [True]
+    assert not ws.SECRETS_LOCK.locked()
