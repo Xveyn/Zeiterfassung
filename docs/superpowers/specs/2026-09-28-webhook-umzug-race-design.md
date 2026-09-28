@@ -1,7 +1,7 @@
 # Webhook-Secrets: Umzug in den Schlüsselbund race-frei — Design
 
 **Datum:** 2026-09-28
-**Status:** Entwurf, zur Prüfung
+**Status:** abgestimmt; kritisches Review (2026-09-28) eingearbeitet, s. „Nachträge aus dem Review"
 **Branch:** `fix/webhook-umzug-race`
 **Issue:** Xveyn/Zeiterfassung#173
 **Bezug:** `docs/superpowers/specs/2026-09-18-secrets-keyring-design.md` (#101)
@@ -94,11 +94,31 @@ Schlüsselbund **schreibt** und den Datensatz dazu speichert:
 
 - `_move_webhook` hält ihn pro Webhook, vom erneuten Lesen des Datensatzes
   bis nach dem Speichern.
-- `webhook_dialog.do_save.fn` hält ihn um `persist` und `store.save`.
-  Das `remove(stale)` danach läuft **außerhalb**: es betrifft einen
-  Schlüssel, den der gerade gespeicherte Datensatz nicht mehr referenziert.
+- Das Dialog-Speichern hält ihn um `persist` und `store.save` — über die
+  neue Tk-freie Funktion `webhook_secrets.save_with_secret` (s. u.). Das
+  `remove(stale)` danach läuft **außerhalb**: es betrifft einen Schlüssel,
+  den der gerade gespeicherte Datensatz nicht mehr referenziert.
 
 Das Löschen nimmt ihn nicht (s. Ansatz C).
+
+### `webhook_secrets.save_with_secret(store, candidate, typed, stored) -> None`
+
+Der Kern von `webhook_dialog.do_save.fn`, Tk-frei nach dem Muster der
+`*_task`-Kerne. Unter `SECRETS_LOCK`: den **aktuellen** Datensatz mit
+`candidate["id"]` aus `store.get_all()` lesen, `persist(candidate, typed,
+aktuell or stored)` und `store.save`. Nach der Sperre `remove(stale)`.
+Schreibfehler (`WebhookStoreReadOnly`/`OSError`) fliegen durch, der Dialog
+fängt sie wie bisher; `stale` wird dann nicht abgeräumt.
+
+Warum der aktuelle Datensatz statt des Dialog-Schnappschusses `stored`: war
+der Dialog über den Umzug hinweg offen, ist `stored` noch Klartext, der
+Datensatz aber schon im Schlüsselbund. Aus `stored` berechnet, wäre
+`stale = None` — stellte der Nutzer dann auf „Keine" um oder scheiterte das
+`put` im Dialog (Rückfall auf Klartext), bliebe das alte Secret unter
+`webhook:<id>` stehen, ohne dass der Datensatz noch darauf zeigt. Selbst
+`forget_all` fände es nie (dieselbe Fehlerklasse wie #173, nicht
+selbstheilend). Fehlt der Datensatz (neuer Webhook, oder inzwischen
+gelöscht), gilt `stored` wie bisher.
 
 ### `WebhookStore.save_if_unchanged(expected, record) -> bool`
 
@@ -107,7 +127,9 @@ Prüft und schreibt atomar unter der Store-Sperre: steht unter
 wird `record` gespeichert und `True` geliefert. Fehlt der Datensatz oder
 weicht er ab, wird nichts geschrieben und `False` geliefert. Schreibfehler
 werfen wie bei `save` (`WebhookStoreReadOnly`/`OSError`), mit demselben
-Rollback. Kein Schlüsselbund-Aufruf, die Sperre ist also nur für die Dauer
+Rollback. Tragen `expected` und `record` verschiedene `id`s, ist das ein
+Programmierfehler (`ValueError`). Es ruft `save` unter der eigenen Sperre —
+das setzt ein reentrantes `RLock` voraus (Default; im Docstring vermerkt). Kein Schlüsselbund-Aufruf, die Sperre ist also nur für die Dauer
 eines Dateischreibens gehalten, wie heute bei `save`.
 
 ### Neuer Ablauf von `_move_webhook`
@@ -159,15 +181,25 @@ ihn nicht als Klartext vorgefunden.
 
 ### Bewusst unverändert
 
-- **Dialog offen über den Umzug hinweg.** Öffnet der Nutzer den Dialog vor
-  dem Umzug und speichert danach, ohne ein Secret einzugeben, schreibt er den
-  alten Klartext-Datensatz zurück. Kein Datenverlust: das Secret steht dann
-  wieder im Klartext, der Schlüsselbund-Eintrag unter demselben
-  deterministischen Schlüssel wird beim nächsten Start wiederverwendet bzw.
-  beim Löschen abgeräumt. Der nächste Start zieht erneut um. Das ist ein
-  bekannter, selbstheilender Zustand und nicht Teil dieses Issues.
+- **`persist` kann `ValueError` werfen**, und `do_save.fn` fängt das nicht
+  — der Dialog bliebe auf „speichert" stehen. Vorbestehend, unabhängig von
+  #173 (die Sperre wird per `with` freigegeben, nichts verschlimmert sich);
+  als eigenes Issue.
 - **`forget_all`** (Uninstaller) bleibt, wie es ist.
 - **Token-Weg** (`_move_token`, `TOKEN_LOCK`) bleibt unberührt.
+
+### Bekannte Grenze: Watchdog-Timeout
+
+`keyring_store` bricht einen hängenden Schlüsselbund-Aufruf nach 30 s ab
+(`_call_guarded`), der Worker-Thread läuft aber weiter — ein `set_password`
+kann also **später** noch landen. Läuft das `put` des Umzugs in den
+Timeout, liefert es `False`, der Umzug räumt nichts ab, und der verspätete
+Schreibvorgang kann danach einen Eintrag verwaisen lassen oder ein
+inzwischen vom Dialog abgelegtes neues Secret überschreiben. Ebenso bleibt
+ein `remove`, das in den Timeout läuft, stehen (Warn-Log). Das ist eine
+Eigenschaft von `keyring_store` und im Rahmen dieses Issues nicht lösbar;
+die Aussage „schließt jeden Fall" oben gilt für Schlüsselbund-Aufrufe, die
+innerhalb des Watchdogs antworten.
 
 ## Tests
 
@@ -176,6 +208,14 @@ mit dem vorhandenen `fake_keyring`. Die Races werden deterministisch
 nachgestellt, indem ein Fake-Aufruf (`fetch` beim Zurücklesen bzw.
 `store.get_all`) die konkurrierende Aktion auslöst, nach dem Muster von
 `test_changed_token_between_check_and_write_is_not_moved`.
+
+**Jeder Race-Test muss gegen den alten Code rot sein.** Der Auslöser muss
+deshalb an einer fachlichen Stelle hängen, die alter und neuer Ablauf
+gleichermaßen durchlaufen: vor `_move_webhook` (Dialog speichert vorher),
+am Anfang des `put` (Löschen während des Umzugs), in `stored_in_keyring`
+(Löschen unmittelbar vor dem Speichern). Ein Auslöser im Zurücklesen oder im
+erneuten `get_all` liegt im alten und neuen Ablauf an verschiedenen Stellen
+und belegt nichts.
 
 - Gelöscht vor dem Umzug: kein Schlüsselbund-Eintrag, nicht umgezogen.
 - Gelöscht zwischen Zurücklesen und Speichern: kein verwaister Eintrag, der
@@ -186,17 +226,20 @@ nachgestellt, indem ein Fake-Aufruf (`fetch` beim Zurücklesen bzw.
   Klartext.
 - `save_if_unchanged`: speichert bei Gleichheit, verweigert bei fehlendem
   und bei abweichendem Datensatz, rollt bei Schreibfehler zurück.
-- Die Sperre wird gehalten: eine zweite Sperranforderung während eines
-  `put` blockiert (per `acquire(blocking=False)` im Fake geprüft).
+- Die Sperre wird während des `put` gehalten und danach freigegeben.
+- `save_with_secret`: Umstellen auf „Keine" nach dem Umzug räumt den
+  Eintrag ab; ein scheiterndes `put` im Dialog räumt den alten Eintrag ab;
+  ein Schreibfehler räumt nichts ab; die Sperre ist während des `put`
+  gehalten.
+- `save_if_unchanged` lässt bei `False` die Datei unberührt.
 
-Der Dialog-Weg (`do_save`) ist Tk-Code und nach Projektregel nicht
-automatisiert getestet. Er ändert sich nur um das `with SECRETS_LOCK:`,
-geprüft per Review.
+Der Dialog selbst (`do_save`) ist Tk-Code und nach Projektregel nicht
+automatisiert getestet; er ruft nur noch `save_with_secret`.
 
 ## Doku
 
-- `src/CLAUDE.md`, Abschnitt „Google-Integration"/Secrets bzw. der
-  `webhook_secrets`-Eintrag: die Sperr-Regel (wer sie nimmt, dass die
+- `src/CLAUDE.md`, Abschnitt „Wo gehört neuer Code hin?", Punkt „Ein neues
+  Secret": die Sperr-Regel (wer sie nimmt, dass die
   Store-Sperre nie über einen Schlüsselbund-Aufruf gehalten wird, dass das
   Löschen über `save_if_unchanged` abgefangen ist).
 - Root-`CLAUDE.md`, Modulliste `webhook_secrets.py`: ein Satz zur Sperre.
@@ -206,3 +249,20 @@ geprüft per Review.
 - Dieselbe Frage für SMTP-Konten: dort gibt es keinen automatischen Umzug,
   also keinen konkurrierenden Hintergrund-Schreiber.
 - Eine allgemeine Sperr-Abstraktion für alle Secret-Stores.
+
+## Nachträge aus dem Review (2026-09-28)
+
+Ein kritisches Review von Spec und Plan gegen den Code ergab:
+
+- **Drei geplante Race-Tests wären schon gegen den alten Code grün
+  gewesen** (Auslöser im Zurücklesen bzw. im erneuten `get_all`). Daraus die
+  Test-Regel im Abschnitt „Tests".
+- **Der Dialog-Weg hatte eine eigene Lücke** (`stale` aus dem
+  Dialog-Schnappschuss) → `save_with_secret` mit aktuellem Datensatz.
+- **Watchdog-Timeout** als bekannte Grenze dokumentiert.
+- `save_if_unchanged`: `ValueError` bei verschiedenen `id`s, RLock-Hinweis.
+- Bestätigt: keine Lock-Order-Inversion (immer `SECRETS_LOCK` vor
+  `_write_lock` bzw. `store._lock`, nie umgekehrt), der UI-Thread wartet nie
+  auf `SECRETS_LOCK`, `==` in `save_if_unchanged` ist verlässlich (`_load`
+  normalisiert nichts, alles über `deepcopy`), das Abräumen in den
+  Fehlerzweigen ist sicher.
