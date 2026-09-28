@@ -15,6 +15,18 @@ TooltipText = Union[str, Callable[[], str]]
 # Toplevel weiter über allem (der gemeldete Bug).
 _HIDDEN_ROOT_STATES = ("iconic", "withdrawn")
 
+# Hintergrund des Tooltips — Label UND Fenster. Ein Fenster, das noch nicht
+# bemalt ist, zeigt seinen eigenen Hintergrund; ohne gesetzten war das Tks
+# Default #d9d9d9, auf dem dunklen Theme ein fast weißes Rechteck.
+TIP_BG = "#1e293b"
+
+# Verzögerung, bevor der erste Tooltip erscheint. Ohne sie erzeugte jede Zelle,
+# über die der Zeiger huscht, ein eigenes Fenster und zerstörte es wieder; KWin
+# blendete jedes davon noch aus (Effekt „fadingpopups") — als Schleppe bzw. als
+# graue Rechtecke, wenn Tk noch nicht gemalt hatte. Ist schon ein Tooltip offen,
+# folgt der nächste sofort (s. `_show_delay_ms`).
+SHOW_DELAY_MS = 400
+
 
 def _should_hide_tip(root_state, widget_rects, pointer, grab_active=False):
     """Reine Entscheidungslogik: soll das Tooltip geschlossen werden?
@@ -62,20 +74,30 @@ def _resolve_text(text: Optional[TooltipText]) -> str:
 
 # Genau ein Tooltip darf gleichzeitig sichtbar sein (#66). Die Instanzen kennen
 # einander nicht, daher hält das Modul eine globale Referenz auf das aktuell
-# offene Tooltip: beim Anzeigen eines neuen wird das vorherige sofort geschlossen
-# (sonst hängt es bis zu seinem Close-Delay/Watchdog noch sichtbar herum, wenn
-# der Zeiger schnell über mehrere Elemente fährt).
+# offene Tooltip. Ein neues schließt das vorherige nicht, sondern übernimmt
+# dessen Fenster (`_claim_active`): abbauen und neu anlegen blendete KWin bei
+# jeder überfahrenen Zelle aus — eine Schleppe beim Weiterfahren.
 _active_tip = None
 
 
-def _set_active_tip(tip):
-    """Macht `tip` zum einzigen sichtbaren Tooltip: schließt ein evtl. anderes
-    aktives und merkt sich `tip`."""
+def _claim_active(tip):
+    """Macht `tip` zum einzigen aktiven Tooltip und gibt das Fenster des
+    bisher aktiven zurück, damit `tip` es weiterverwendet (None, wenn keines
+    offen war oder `tip` selbst schon aktiv ist)."""
     global _active_tip
     prev = _active_tip
+    window = None
     if prev is not None and prev is not tip:
-        prev._close()  # ruft seinerseits _clear_active_tip(prev)
+        window = prev._detach_window()  # ruft seinerseits _clear_active_tip(prev)
     _active_tip = tip
+    return window
+
+
+def _show_delay_ms(active_tip) -> int:
+    """Wie lange ein Tooltip nach `<Enter>` wartet: sofort, solange schon eines
+    offen ist (der Nutzer liest gerade Tooltips und fährt weiter), sonst
+    `SHOW_DELAY_MS`. Bewusst tk-frei gehalten, damit ohne Display testbar."""
+    return 0 if active_tip is not None else SHOW_DELAY_MS
 
 
 def _clear_active_tip(tip):
@@ -84,6 +106,53 @@ def _clear_active_tip(tip):
     global _active_tip
     if _active_tip is tip:
         _active_tip = None
+
+
+class _TipWindow:
+    """Das Tooltip-Fenster: rahmenloses Toplevel mit einem Label.
+
+    Hängt am Toplevel der Widgets (Hauptfenster bzw. Dialog), nicht am Widget
+    selbst — es wandert von Tooltip zu Tooltip, und eine Kalenderzelle, die
+    beim Re-Render zerstört wird, nähme es sonst mit, während es längst einer
+    anderen gehört."""
+
+    def __init__(self, parent):
+        self.top = tk.Toplevel(parent, background=TIP_BG)
+        self.top.wm_overrideredirect(True)
+        # Falls das Hauptfenster topmost ist (Setting 'Immer im Vordergrund'),
+        # muss das Tooltip-Toplevel ebenfalls topmost sein — sonst landet es
+        # hinter dem Mainwindow und der User sieht nichts.
+        try:
+            self.top.attributes("-topmost", True)
+        except tk.TclError:
+            pass
+        self.label = tk.Label(
+            self.top,
+            background=TIP_BG,
+            foreground="#e0e0e0",
+            relief="solid",
+            borderwidth=1,
+            padx=8,
+            pady=4,
+            font=(FONT_FAMILY, 9),
+        )
+        self.label.pack()
+
+    def show(self, text, x, y):
+        self.label.configure(text=text)
+        self.top.wm_geometry(f"+{x}+{y}")
+
+    def alive(self):
+        try:
+            return bool(self.top.winfo_exists())
+        except tk.TclError:
+            return False
+
+    def destroy(self):
+        try:
+            self.top.destroy()
+        except tk.TclError:
+            pass
 
 
 class _Tooltip:
@@ -102,6 +171,9 @@ class _Tooltip:
     `<Destroy>`-Binding (sofortiges Aufräumen bei Re-Render) und ein Watchdog-
     Poll, der Fensterzustand und Pointer erneut prüft, solange das Tooltip offen
     ist.
+
+    Geöffnet wird erst nach `SHOW_DELAY_MS` (s. dort); `<Leave>` und
+    `<Destroy>` brechen eine noch ausstehende Anzeige ab.
     """
 
     _CLOSE_DELAY_MS = 80
@@ -110,21 +182,47 @@ class _Tooltip:
     def __init__(self, widgets, text: TooltipText):
         self.widgets = tuple(widgets)
         self.text = text
-        self.tip: tk.Toplevel | None = None
+        self.tip: _TipWindow | None = None
         self._close_after_id: str | None = None
+        self._show_after_id: str | None = None
         self._watchdog_id: str | None = None
         for w in self.widgets:
-            w.bind("<Enter>", self._show, add="+")
+            w.bind("<Enter>", self._on_enter, add="+")
             w.bind("<Leave>", self._on_leave, add="+")
             w.bind("<Destroy>", self._on_destroy, add="+")
 
     def _primary(self):
         return self.widgets[0]
 
-    def _show(self, _event):
+    def _on_enter(self, _event):
         if self._close_after_id is not None:
             self._cancel(self._close_after_id)
             self._close_after_id = None
+        if self.tip is not None or self._show_after_id is not None:
+            return
+        delay = _show_delay_ms(_active_tip)
+        if delay == 0:
+            self._show()
+            return
+        try:
+            self._show_after_id = self._primary().after(delay, self._delayed_show)
+        except tk.TclError:
+            self._show_after_id = None
+
+    def _delayed_show(self):
+        self._show_after_id = None
+        # Zwischen <Enter> und jetzt kann das Fenster minimiert, ein Dialog
+        # geöffnet oder der Zeiger ohne <Leave> woanders sein (Re-Render).
+        if self._evaluate_should_hide():
+            return
+        self._show()
+
+    def _cancel_pending_show(self):
+        if self._show_after_id is not None:
+            self._cancel(self._show_after_id)
+            self._show_after_id = None
+
+    def _show(self):
         if self.tip is not None:
             return
         text = _resolve_text(self.text)
@@ -135,35 +233,20 @@ class _Tooltip:
         anchor = self._primary()
         x = anchor.winfo_rootx() + 20
         y = anchor.winfo_rooty() + anchor.winfo_height() + 4
-        self.tip = tk.Toplevel(anchor)
-        self.tip.wm_overrideredirect(True)
-        self.tip.wm_geometry(f"+{x}+{y}")
-        # Falls das Hauptfenster topmost ist (Setting 'Immer im Vordergrund'),
-        # muss das Tooltip-Toplevel ebenfalls topmost sein — sonst landet es
-        # hinter dem Mainwindow und der User sieht nichts.
-        try:
-            self.tip.attributes("-topmost", True)
-        except tk.TclError:
-            pass
-        tk.Label(
-            self.tip,
-            text=text,
-            background="#1e293b",
-            foreground="#e0e0e0",
-            relief="solid",
-            borderwidth=1,
-            padx=8,
-            pady=4,
-            font=(FONT_FAMILY, 9),
-        ).pack()
+        # Nur eines gleichzeitig (#66): ein noch offenes anderes gibt sein
+        # Fenster ab, statt geschlossen zu werden — es wandert nur weiter.
+        window = _claim_active(self)
+        if window is None or not window.alive():
+            window = _TipWindow(anchor.winfo_toplevel())
+        window.show(text, x, y)
+        self.tip = window
         # Auffangnetz für alle Fälle, in denen kein <Leave> kommt (minimiert,
         # Re-Render, Fokuswechsel): solange das Tooltip offen ist, periodisch
         # selbst prüfen, ob es noch sichtbar sein darf.
         self._schedule_watchdog()
-        # Nur eines gleichzeitig (#66): ein evtl. noch offenes anderes schließen.
-        _set_active_tip(self)
 
     def _on_leave(self, _event):
+        self._cancel_pending_show()
         if self._close_after_id is not None:
             self._cancel(self._close_after_id)
         self._close_after_id = self._primary().after(
@@ -228,18 +311,28 @@ class _Tooltip:
         except tk.TclError:
             pass
 
-    def _close(self):
+    def _cancel_timers(self):
+        self._cancel_pending_show()
         if self._close_after_id is not None:
             self._cancel(self._close_after_id)
             self._close_after_id = None
         if self._watchdog_id is not None:
             self._cancel(self._watchdog_id)
             self._watchdog_id = None
+
+    def _detach_window(self):
+        """Gibt das offene Fenster an das nächste Tooltip ab (s.
+        `_claim_active`), ohne es zu schließen; die eigenen Timer laufen
+        danach nicht weiter — sie gälten sonst einem fremden Fenster."""
+        self._cancel_timers()
+        window, self.tip = self.tip, None
+        _clear_active_tip(self)
+        return window
+
+    def _close(self):
+        self._cancel_timers()
         if self.tip is not None:
-            try:
-                self.tip.destroy()
-            except tk.TclError:
-                pass
+            self.tip.destroy()
             self.tip = None
         _clear_active_tip(self)
 
