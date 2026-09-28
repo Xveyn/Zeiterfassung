@@ -18,8 +18,8 @@ from src.theme import (
 )
 from src.pause_requirement import check_day_pause
 from src.time_utils import (
-    format_date, format_hours_hm, format_iso_weekday_date, get_week_label,
-    validate_slots,
+    format_date, format_hours_hm, format_iso_weekday_date, format_minutes_hm,
+    get_week_label, validate_slots,
 )
 from src.weekly_limit import check_week_limit
 
@@ -476,9 +476,9 @@ def open_entry_dialog(parent, date_str, storage, settings, on_change,
                 week_label = get_week_label(overshoot["iso_year"], overshoot["iso_week"])
                 confirm = themed_askyesno(
                     dialog, "Wochenlimit überschritten",
-                    f"{week_label}: {overshoot['total_hours']:.2f}h Ist-Zeit "
-                    f"überschreiten das konfigurierte Werkstudenten-Limit von "
-                    f"{overshoot['limit_hours']:.2f}h/Woche.\n\n"
+                    f"{week_label}: {format_minutes_hm(overshoot['total_minutes'])} "
+                    f"Ist-Zeit überschreiten das konfigurierte Werkstudenten-Limit "
+                    f"von {format_minutes_hm(overshoot['limit_minutes'])}/Woche.\n\n"
                     "Grobe Näherung, keine rechtliche Bewertung.\n\nTrotzdem speichern?",
                 )
                 if not confirm:

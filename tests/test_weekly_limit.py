@@ -1,6 +1,6 @@
 from src.weekly_limit import (
     check_dates_for_warnings, check_week_limit, format_limit_warnings,
-    is_limit_active, period_scan_needed, scan_period_for_warnings, week_ist_hours,
+    is_limit_active, period_scan_needed, scan_period_for_warnings, week_ist_minutes,
 )
 
 
@@ -40,19 +40,45 @@ def test_is_limit_active_true_inside_period():
     assert is_limit_active(_settings(), "2026-05-04") is True
 
 
-def test_week_ist_hours_sums_all_categories_across_week():
+def test_week_ist_minutes_sums_all_categories_across_week():
     # KW 19/2026: Mo 2026-05-04 .. So 2026-05-10
     all_entries = {
         "2026-05-04": _entry([_slot("08:00", "12:00", kategorie="Büro")]),
         "2026-05-06": _entry([_slot("08:00", "12:00"),
                               _slot("13:00", "16:00", kategorie="Homeoffice")]),
     }
-    assert week_ist_hours(all_entries, 2026, 19) == 11.0
+    assert week_ist_minutes(all_entries, 2026, 19) == 11 * 60
 
 
-def test_week_ist_hours_ignores_dates_outside_week():
+def test_week_ist_minutes_ignores_dates_outside_week():
     all_entries = {"2026-04-27": _entry([_slot("08:00", "16:00")])}  # KW 18
-    assert week_ist_hours(all_entries, 2026, 19) == 0.0
+    assert week_ist_minutes(all_entries, 2026, 19) == 0
+
+
+def test_week_ist_minutes_sums_minutes_not_rounded_hours():
+    """Xveyn#171: calculate_hours rundet pro Slot auf 0,01 h. 100 + 100 + 160
+    Minuten sind exakt 6:00 h — als Dezimalstunden summiert (1,67 + 1,67 +
+    2,67) wurden daraus 6,01."""
+    all_entries = {"2026-05-04": _entry([
+        _slot("08:00", "09:40"), _slot("10:00", "11:40"), _slot("12:00", "14:40"),
+    ])}
+    assert week_ist_minutes(all_entries, 2026, 19) == 360
+
+
+def test_check_week_limit_no_false_warning_from_rounding_drift():
+    all_entries = {"2026-05-04": _entry([
+        _slot("08:00", "09:40"), _slot("10:00", "11:40"), _slot("12:00", "14:40"),
+    ])}
+    assert check_week_limit(_settings(max_hours=6.0), all_entries, "2026-05-04") is None
+
+
+def test_check_week_limit_warns_one_minute_over():
+    all_entries = {"2026-05-04": _entry([
+        _slot("08:00", "09:40"), _slot("10:00", "11:40"), _slot("12:00", "14:41"),
+    ])}
+    result = check_week_limit(_settings(max_hours=6.0), all_entries, "2026-05-04")
+    assert result is not None
+    assert result["total_minutes"] == 361
 
 
 def test_check_week_limit_none_when_under_limit():
@@ -84,7 +110,8 @@ def test_check_week_limit_returns_overshoot_when_over_limit():
     }
     result = check_week_limit(_settings(), all_entries, "2026-05-04")
     assert result == {
-        "iso_year": 2026, "iso_week": 19, "total_hours": 25.0, "limit_hours": 20.0,
+        "iso_year": 2026, "iso_week": 19, "total_minutes": 25 * 60,
+        "limit_minutes": 20 * 60,
     }
 
 
@@ -132,10 +159,12 @@ def test_scan_period_for_warnings_finds_all_overshooting_weeks():
 
 def test_format_limit_warnings_lists_each_week():
     text = format_limit_warnings([
-        {"iso_year": 2026, "iso_week": 19, "total_hours": 25.0, "limit_hours": 20.0},
+        {"iso_year": 2026, "iso_week": 19, "total_minutes": 25 * 60 + 10,
+         "limit_minutes": 20 * 60},
     ])
-    assert "25.00h" in text
-    assert "20.00h" in text
+    # Anzeige wie überall in der UI über Minuten (CLAUDE.md), nicht dezimal.
+    assert "25 h 10 min" in text
+    assert "Limit 20 h" in text
 
 
 def test_period_scan_needed_false_when_still_disabled():

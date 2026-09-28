@@ -697,6 +697,12 @@ zur Anzeige um — vorher summierte `_build_table` Dezimalstunden. Erst dadurch
 addieren sich Arbeitszeit, Urlaub und „Zu vergüten gesamt" auf derselben
 Berichtsseite exakt (s. „Urlaub: Periode als Einheit, Stunden pro Tag" unten).
 
+Ebenso `src/weekly_limit.py` seit Xveyn#171: `week_ist_minutes` summiert
+Minuten und vergleicht sie mit dem auf Minuten gerundeten Limit, die Warnung
+zeigt `format_minutes_hm`. Vorher summierte es Dezimalstunden — drei Slots
+über exakt 6:00 h ergaben 6,01 und bei einem Limit von 6 h eine falsche
+Warnung.
+
 ## Kalender-Interaktion: Linksklick speichert, Rechtsklick löscht
 
 Im Kalender gilt ein striktes Modell: **Linksklick** öffnet den Tages-Dialog
