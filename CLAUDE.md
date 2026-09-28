@@ -1042,6 +1042,18 @@ Dialogtext den Kontext; ein Tooltip an „Speichern"/„Abbrechen" wäre Rausche
 Einzelne Dialog-Elemente dürfen einen bekommen, wenn ohne ihn etwas unklar
 bleibt (Vorbild: das ✕ im Update-Banner, `update_banner.py`).
 
+**Tooltips erscheinen verzögert** (`tooltip.SHOW_DELAY_MS`, 400 ms) — der
+erste nach dem Hovern, jeder weitere sofort, solange schon einer offen ist.
+Ohne Verzögerung erzeugte jede Kalenderzelle, über die der Zeiger huschte, ein
+eigenes Fenster; KWin blendete jedes davon aus (Effekt „fadingpopups"), noch
+ungemalte als fast weiße Rechtecke im Tk-Default-Hintergrund. Das
+Tooltip-Fenster trägt deshalb auch selbst `TIP_BG`, nicht nur sein Label.
+Aus demselben Grund gibt es beim Weiterfahren **ein** wanderndes Fenster: das
+neue Tooltip übernimmt das Fenster des offenen (`_claim_active`), statt es
+schließen und ein eigenes anlegen zu lassen. Das Fenster hängt am Toplevel,
+nicht an der Zelle — sonst nähme ein Re-Render der Zelle, die es angelegt
+hat, es mit, während es längst einer anderen gehört.
+
 Zwei Regeln beim Ergänzen:
 
 - **Genau ein `attach_tooltip` pro Widget.** Mehrfachaufruf erzeugt mehrere

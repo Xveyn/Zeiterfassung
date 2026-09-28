@@ -9,42 +9,59 @@ class _FakeTip:
     """Minimaler Stand-in für _Tooltip — nur das, was die Single-Active-Registry
     berührt (tk-frei, kein Display nötig)."""
 
-    def __init__(self):
+    def __init__(self, window=None):
         self.close_calls = 0
+        self.window = window
 
     def _close(self):
         self.close_calls += 1
         tooltip._clear_active_tip(self)
+
+    def _detach_window(self):
+        window, self.window = self.window, None
+        tooltip._clear_active_tip(self)
+        return window
 
 
 def _reset_active():
     tooltip._active_tip = None
 
 
-def test_showing_new_tooltip_closes_previous():
-    # Kern von #66: ein neues Tooltip schließt das vorher sichtbare.
+def test_new_tooltip_takes_over_the_open_window():
+    """Nur eines gleichzeitig (#66) — aber ohne Fenster abzubauen: ein neues
+    Tooltip übernimmt das offene Fenster des alten. Abbauen und neu anlegen
+    blendete KWin bei jeder Zelle aus (Schleppe beim Weiterfahren)."""
     _reset_active()
-    a, b = _FakeTip(), _FakeTip()
-    tooltip._set_active_tip(a)
-    tooltip._set_active_tip(b)
-    assert a.close_calls == 1
-    assert b.close_calls == 0
+    window = object()
+    a, b = _FakeTip(window), _FakeTip()
+    tooltip._active_tip = a
+    assert tooltip._claim_active(b) is window
+    assert a.window is None
+    assert a.close_calls == 0
     assert tooltip._active_tip is b
 
 
-def test_reactivating_same_tooltip_does_not_close_itself():
+def test_claim_without_open_tooltip_yields_no_window():
     _reset_active()
-    a = _FakeTip()
-    tooltip._set_active_tip(a)
-    tooltip._set_active_tip(a)
-    assert a.close_calls == 0
+    b = _FakeTip()
+    assert tooltip._claim_active(b) is None
+    assert tooltip._active_tip is b
+
+
+def test_reclaiming_same_tooltip_keeps_its_window():
+    _reset_active()
+    window = object()
+    a = _FakeTip(window)
+    tooltip._active_tip = a
+    assert tooltip._claim_active(a) is None
+    assert a.window is window
     assert tooltip._active_tip is a
 
 
 def test_clear_active_only_clears_when_it_is_the_active_one():
     _reset_active()
     a, b = _FakeTip(), _FakeTip()
-    tooltip._set_active_tip(a)
+    tooltip._active_tip = a
     tooltip._clear_active_tip(b)  # b ist nicht aktiv -> no-op
     assert tooltip._active_tip is a
     tooltip._clear_active_tip(a)
@@ -130,3 +147,24 @@ def test_resolve_text_of_none_is_empty_string():
 
 def test_resolve_text_stringifies_callable_result():
     assert _resolve_text(lambda: "") == ""
+
+
+# --- Anzeigeverzögerung ------------------------------------------------------
+# Ohne Verzögerung erzeugte jede Zelle, über die der Zeiger huscht, ein eigenes
+# Fenster und zerstörte es Millisekunden später. Auf KDE blendete KWin jedes
+# davon noch aus — ungemalte als graue Rechtecke, gemalte als Schleppe.
+
+def test_first_tooltip_waits_for_the_show_delay():
+    _reset_active()
+    assert tooltip._show_delay_ms(tooltip._active_tip) == tooltip.SHOW_DELAY_MS
+    assert tooltip.SHOW_DELAY_MS > 0
+
+
+def test_tooltip_follows_immediately_while_another_is_open():
+    """Wer einen Tooltip schon sieht, will beim Weiterfahren den nächsten
+    sofort — wie System-Tooltips."""
+    _reset_active()
+    a = _FakeTip()
+    tooltip._active_tip = a
+    assert tooltip._show_delay_ms(tooltip._active_tip) == 0
+

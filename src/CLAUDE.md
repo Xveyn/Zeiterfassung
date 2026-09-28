@@ -518,6 +518,12 @@ Wert.
   (`_resolve_text`) — so hängen die Header-Pfeile ihren Text an die aktuelle
   Ansicht. Die Sichtbarkeits-Entscheidung liegt Tk-frei in
   `_should_hide_tip` (minimiert/withdrawn, fremder Grab, Zeiger draußen).
+  Geöffnet wird nach `SHOW_DELAY_MS`, sofort nur, wenn schon ein Tooltip
+  offen ist (`_show_delay_ms`); `<Leave>`/`<Destroy>` brechen eine ausstehende
+  Anzeige ab, und vor dem verzögerten Öffnen prüft `_should_hide_tip` erneut.
+  Ist schon eines offen, übernimmt das neue dessen Fenster (`_claim_active`/
+  `_detach_window`, ein `_TipWindow` am Toplevel) — es wird verschoben und
+  neu beschriftet, nicht abgebaut.
   Konvention, wo Tooltips hingehören: Root-`CLAUDE.md`, Abschnitt „Tooltips".
 - `time_utils.py` — Stunden, KW-Labels, `format_iso_date`/`format_iso_datetime` (Anzeige,
   Zeitanteil roh) und `local_date_of_iso` (UTC-Stempel → lokales Datum, zum **Vergleichen**;
