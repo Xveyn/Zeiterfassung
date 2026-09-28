@@ -179,9 +179,10 @@ def _apply_ui_scaling(root, factor, system_factor=1.0):
     wirkungslos). MUSS vor dem Aufbau der App-Widgets laufen, damit
     measure_max_width die skalierten Fonts misst und die Fenstergeometrie pinnt.
 
-    `system_factor` ist die Windows-Anzeigeskalierung (`dpi.init_system_scale`,
-    #157), `ui_scale` gilt zusätzlich. `pin_tk_scaling` hält Tk davon ab, die
-    Punkt-Schriften auf dem DPI-aware Prozess ein zweites Mal zu vergrößern."""
+    `system_factor` ist die Anzeigeskalierung des Systems
+    (`dpi.init_system_scale`: Windows #157, Linux Xveyn#167), `ui_scale` gilt
+    zusätzlich. `pin_tk_scaling` hält Tk davon ab, die Punkt-Schriften ein
+    zweites Mal zu vergrößern."""
     dpi.pin_tk_scaling(root)
     init_fonts(root, clamp_ui_scale(factor) * system_factor)
 
@@ -344,8 +345,11 @@ def main():
             "Tombstone-Sweep fehlgeschlagen (nicht-fatal)")
 
     # Vor dem ersten Fenster: danach lässt Windows die DPI-Awareness nicht
-    # mehr ändern (#157). Außerhalb von Windows ein No-op mit Faktor 1,0.
-    system_factor = dpi.init_system_scale()
+    # mehr ändern (#157). Unter Linux der Faktor aus Xft.dpi (Xveyn#167),
+    # dort einmalig mit Umrechnung eines bisher ausgleichenden ui_scale.
+    # Unter macOS ein No-op mit Faktor 1,0.
+    system_factor = dpi.init_system_scale(tk_version=tk.TkVersion)
+    dpi.migrate_ui_scale(settings)
     root = _create_root()
     _apply_ui_scaling(root, settings.get("ui_scale"), system_factor)
     apply_widget_defaults(root)

@@ -188,6 +188,25 @@ zwei Einträge im Anwendungsmenü für dieselbe AppImage. Kein Datenverlust, rei
 kosmetisch — die App schreibt ihren eigenen Eintrag unabhängig davon, weil sie
 ohne eines dieser Tools sonst gar keinen bekäme.
 
+## Linux: Systemskalierung nur über `Xft.dpi`
+
+Die App folgt der Desktop-Skalierung über `Xft.dpi` (Xveyn#167; Begründung in
+`CLAUDE.md`, „UI-Skalierung"). Drei Grenzen bleiben:
+
+- **Häkchen, Radiobuttons und Scrollbalken bleiben klein.** Die X11-Themes
+  von Tk sind nicht HiDPI-fähig; Schrift und Abstände wachsen, diese
+  Elemente nicht. Daran ändert auch Tk 9 nichts.
+- **Unscharf, wo der Compositor streckt.** Unter GNOME Wayland und bei KDE
+  „Skalierung durch das System" bleibt `Xft.dpi` bei 96; die richtige Größe
+  kommt dort vom Compositor, der das XWayland-Fenster als Bitmap streckt. Die
+  App skaliert dann bewusst nicht selbst — sonst wäre sie doppelt so groß.
+  Scharf wird sie nur mit „Anwendungen skalieren sich selbst" (KDE) oder in
+  einer X11-Sitzung.
+- **GNOME auf Xorg meldet bei gebrochenen Stufen (125/150/175 %) teils
+  200 %**, die App wird dann entsprechend zu groß — über den
+  Skalierungsregler in den Einstellungen ausgleichbar. Ein Wechsel der
+  Desktop-Skalierung wirkt erst nach einem Neustart der App.
+
 ## Webhooks: Split-Horizon-DNS gilt als öffentliche Adresse
 
 Der Webhook-Versand erlaubt unverschlüsseltes `http://` nur für Adressen im

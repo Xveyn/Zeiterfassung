@@ -874,9 +874,45 @@ Verhältnis alt/neu heraus. Drei Dinge daran:
   streckt Windows weiter, wie bisher. Ein Wechsel der Windows-Skalierung
   wirkt erst nach einem Neustart der App.
 - **Ohne gesetzte Awareness bleibt der Systemfaktor 1,0** — sonst streckte
-  Windows und die App skalierte obendrauf. Außerhalb von Windows ist der Weg
-  ein No-op; macOS löst Retina selbst, Linux braucht ein anderes Signal
-  (`Xft.dpi`, Xveyn#167).
+  Windows und die App skalierte obendrauf. macOS löst Retina selbst, dort ist
+  der Weg ein No-op.
+
+**Unter Linux folgt die App `Xft.dpi` (Xveyn#167).** Tk 8.6 ignoriert unter
+X11 die Desktop-Skalierung; die Folge ist dort nicht Unschärfe, sondern eine
+**winzige** App. `Xft.dpi` ist das passende Signal, weil es genau dann über
+96 steht, wenn niemand sonst skaliert: wo der Compositor XWayland-Fenster
+streckt (GNOME Wayland, KDE „Skalierung durch das System"), bleibt es bei 96
+und der Faktor bei 1,0 — keine Doppelskalierung. Systemfaktor ist
+`max(1,0; Xft.dpi / 96)`, er geht in denselben Hebel wie unter Windows.
+Vier Dinge daran:
+
+- **Gelesen über libX11** (`XResourceManagerString` per `ctypes`, vor der
+  Root-Erzeugung). **Nicht** über Tks Ressourcen-Datenbank: die gleicht
+  Einträge gegen den eigenen App-Namen ab, `Xft.*` passt dort nie (auf
+  Plasma 6 gemessen: `option get` leer, `xrdb -query` zeigt den Wert). Und
+  nicht über `xrdb`, das nicht überall installiert ist. Kein Display, keine
+  libX11, kein Eintrag → Faktor 1,0, alles wie vorher.
+- **Nur unter Tk 8.** Tk 9 wertet `Xft.dpi` selbst aus (`tk::scalingPct`),
+  ein Faktor obendrauf skalierte doppelt. Die Version reicht `main.py` als
+  `tkinter.TkVersion` herein, `dpi.py` bleibt Tk-frei; ohne Angabe bleibt der
+  Faktor 1,0.
+- **`tk scaling` wird auch hier festgenagelt**, sobald ein `Xft.dpi` gefunden
+  wurde — auch bei 96. Tk leitet den Wert sonst aus den Bildschirmmaßen ab,
+  die der X-Server meldet, und die sind nicht immer 96 dpi. Ohne `Xft.dpi`
+  bleibt Linux unberührt.
+- **Hier gibt es eine Migration**, anders als unter Windows: niemand hat die
+  App bisher gestreckt, wer sie lesbar wollte, hat `ui_scale` hochgedreht —
+  mit dem Systemfaktor obendrauf wäre sie doppelt so groß. Beim ersten Start
+  mit gefundenem `Xft.dpi` rechnet `dpi.migrate_ui_scale` einen Wert **über**
+  100 % einmalig um (geteilt durch den Faktor, aufs 25-%-Raster;
+  150 % bei Faktor 1,5 → 100 %) und setzt den gerätelokalen Marker
+  `linux_system_scale_migrated` — auch ohne Umrechnung, damit ein später
+  bewusst gewählter Wert nie geteilt wird. 100 % und weniger bleiben stehen:
+  sie waren kein Ausgleich.
+
+Grenzen: die X11-Themes von Tk sind nicht HiDPI-fähig (Häkchen, Scrollbalken
+bleiben klein), GNOME auf Xorg meldet bei gebrochenen Stufen teils 200 %, und
+ein Wechsel der Desktop-Skalierung wirkt erst nach einem Neustart.
 
 Daraus folgt die Regel, an der jede Layout-Angabe hängt:
 
@@ -1335,9 +1371,10 @@ nicht mehr als „offen" führen — der Verweis lautet auf diese Grenze.
 - `src/time_utils.py` — Stundenberechnung, KW-Labels
 - `src/holidays_de.py` — Feiertags-Lookup (über `holidays`-Lib)
 - `src/paths.py` — `get_base_path()` dispatched über `platform.system()` und Frozen- vs. Repo-Modus; `relaunch_command()` baut das Neustart-Kommando (Exe im Frozen-Build, `python -m src.main` im Repo)
-- `src/dpi.py` — Windows-DPI-Awareness und Systemfaktor der UI-Skalierung (#157;
-  s. „UI-Skalierung"). Tk-frei, die Win32-Aufrufe kommen als Argumente herein;
-  außerhalb von Windows ein No-op mit Faktor 1,0
+- `src/dpi.py` — Systemfaktor der UI-Skalierung: Windows-DPI-Awareness (#157)
+  und Linux-`Xft.dpi` samt einmaliger `ui_scale`-Umrechnung (Xveyn#167; s.
+  „UI-Skalierung"). Tk-frei, die Plattform-Aufrufe kommen als Argumente
+  herein; unter macOS ein No-op mit Faktor 1,0
 - `src/autostart.py` — plattformabhängiger Autostart (Windows-**Registry** HKCU Run, gleicher Wertname `Zeiterfassung` wie `installer.iss` → strukturell ein Eintrag; macOS-LaunchAgent / Linux `.desktop`). `is_autostart_enabled()` liest den echten Zustand, `migrate_legacy_autostart()` überführt Alt-Startup-Shortcuts frozen-gated in die Registry
 - `src/secure_file.py` — Zugriffsschutz für die lokal abgelegten Secrets (`token.json`, `instance-secret`, `webhooks.json`, `smtp.json`): unter Windows `icacls`-ACL statt des dort wirkungslosen `chmod 0600` (Audit M8); best-effort, scheitert nie den Schreibvorgang. Mit verfügbarem Schlüsselbund (#101) tragen diese Dateien den Refresh-Token bzw. die Webhook-Secrets ohnehin nicht mehr im Klartext — die Härtung bleibt für den Datei-Fallback und die übrigen Felder (Konfiguration, `instance-secret`) unverändert nötig
 - `src/single_instance.py` — Tk-freier Single-Instance-Guard (pro-Nutzer-Localhost-Port, `acquire`/`serve`/`release`); verhindert parallele Instanzen und holt bei manuellem Zweitstart das vorhandene Fenster nach vorn (SHOW), beim Autostart-Doppelfeuer ohne Fenster-Pop (PING)

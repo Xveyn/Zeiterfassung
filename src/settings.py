@@ -120,6 +120,10 @@ DEFAULTS = {
     "categories": [],
     "category_times": {},
     "ui_scale": 1.0,
+    # Einmalige Umrechnung von ui_scale beim ersten Start mit Linux-
+    # Systemskalierung (dpi.migrate_ui_scale, Xveyn#167). Gerätelokal wie
+    # ui_scale selbst — NICHT in SYNCED_SETTING_KEYS.
+    "linux_system_scale_migrated": False,
     "werkstudent_limit_enabled": False,
     "werkstudent_limit_start": "",
     "werkstudent_limit_end": "",
