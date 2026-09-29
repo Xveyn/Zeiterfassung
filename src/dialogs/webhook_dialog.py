@@ -210,7 +210,8 @@ def open_webhook_dialog(parent, store, runner, record: dict | None = None, on_sa
                 # Tk-frei in webhook_secrets: unter der Sperre mit dem
                 # Start-Umzug, gerechnet mit dem aktuellen Datensatz statt
                 # `stored` (Xveyn#173). Räumt einen veralteten Eintrag erst
-                # nach dem Schreiben ab.
+                # nach dem Schreiben ab; ein inzwischen gelöschter Webhook
+                # wird nicht wieder angelegt.
                 webhook_secrets.save_with_secret(store, candidate, typed, stored)
             except (webhook_store.WebhookStoreReadOnly, OSError) as e:
                 return {"ok": False, "error": e}

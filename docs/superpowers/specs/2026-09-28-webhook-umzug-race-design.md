@@ -101,7 +101,7 @@ Schlüsselbund **schreibt** und den Datensatz dazu speichert:
 
 Das Löschen nimmt ihn nicht (s. Ansatz C).
 
-### `webhook_secrets.save_with_secret(store, candidate, typed, stored) -> None`
+### `webhook_secrets.save_with_secret(store, candidate, typed, stored) -> bool`
 
 Der Kern von `webhook_dialog.do_save.fn`, Tk-frei nach dem Muster der
 `*_task`-Kerne. Unter `SECRETS_LOCK`: den **aktuellen** Datensatz mit
@@ -117,8 +117,13 @@ Datensatz aber schon im Schlüsselbund. Aus `stored` berechnet, wäre
 `put` im Dialog (Rückfall auf Klartext), bliebe das alte Secret unter
 `webhook:<id>` stehen, ohne dass der Datensatz noch darauf zeigt. Selbst
 `forget_all` fände es nie (dieselbe Fehlerklasse wie #173, nicht
-selbstheilend). Fehlt der Datensatz (neuer Webhook, oder inzwischen
-gelöscht), gilt `stored` wie bisher.
+selbstheilend). Neuer Webhook (`stored is None`): es gibt noch keinen
+aktuellen Datensatz, gerechnet wird mit `stored`. Bestehender Webhook,
+inzwischen gelöscht: nichts wird gespeichert, `False` — sonst belebte ein
+bedingungsloses `save` ihn wieder (Abschluss-Review). Bestehender Webhook,
+sonst: geschrieben wird über `save_if_unchanged`; gewinnt dabei ein
+zwischenzeitliches Löschen, wird ein eben erst abgelegtes Secret wieder
+abgeräumt und `False` geliefert.
 
 ### `WebhookStore.save_if_unchanged(expected, record) -> bool`
 
@@ -266,3 +271,7 @@ Ein kritisches Review von Spec und Plan gegen den Code ergab:
   auf `SECRETS_LOCK`, `==` in `save_if_unchanged` ist verlässlich (`_load`
   normalisiert nichts, alles über `deepcopy`), das Abräumen in den
   Fehlerzweigen ist sicher.
+- **Abschluss-Review:** das Dialog-Speichern belebte einen gleichzeitig
+  gelöschten Webhook wieder (bedingungsloses `save`) → dieselbe Regel wie im
+  Umzug; `save_if_unchanged` ruft den Schreibkern `_save_locked` statt
+  `save` (kein RLock mehr nötig).

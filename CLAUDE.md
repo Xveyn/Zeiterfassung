@@ -1299,7 +1299,8 @@ nicht mehr als „offen" führen — der Verweis lautet auf diese Grenze.
   Aufrufer **nach** `store.save`, sonst zeigte der Datensatz bei einem
   gescheiterten Schreibvorgang auf einen bereits gelöschten Eintrag. Ablegen
   und Speichern laufen unter `SECRETS_LOCK`, den auch der Start-Umzug nimmt;
-  der Dialog-Kern ist `save_with_secret` (Xveyn#173)
+  der Dialog-Kern ist `save_with_secret` (Xveyn#173), der einen inzwischen
+  gelöschten Webhook nicht wieder anlegt
 - `src/mime_message.py` — Aufbau der Mail-Nachricht, gemeinsam für Gmail-API
   und SMTP. Hier liegen **zwei der drei** UTF-8-Pflichten (MIMEText-Charset,
   Betreff-Header) und die Steuerzeichen-Abwehr gegen Header-Injection

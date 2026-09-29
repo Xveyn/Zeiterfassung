@@ -169,10 +169,14 @@ def test_failed_put_after_migration_removes_the_old_entry(tmp_path, fake_keyring
 
 def test_failed_write_keeps_the_entry(tmp_path, fake_keyring, monkeypatch):
     """Erst NACH dem Schreiben abräumen — sonst zeigte der unveränderte
-    Datensatz auf einen gelöschten Eintrag."""
+    Datensatz auf einen gelöschten Eintrag.
+
+    Der Webhook existiert bereits, save_with_secret schreibt ihn also über
+    `save_if_unchanged` — dessen Schreibkern ist `_save_to_disk`, nicht mehr
+    `save` (M1, Xveyn#173 Abschluss-Review)."""
     fake = fake_keyring()
     store = _migrated_store(tmp_path)
-    monkeypatch.setattr(store, "save", lambda record: (_ for _ in ()).throw(OSError("voll")))
+    monkeypatch.setattr(store, "_save_to_disk", lambda: (_ for _ in ()).throw(OSError("voll")))
 
     with pytest.raises(OSError):
         ws.save_with_secret(store, _hook("none"), "", stored=_hook("header"))
@@ -206,3 +210,47 @@ def test_save_with_secret_holds_the_lock_during_put(tmp_path, fake_keyring, monk
 
     assert seen == [True]
     assert not ws.SECRETS_LOCK.locked()
+
+
+def test_save_does_not_resurrect_a_webhook_deleted_before(tmp_path, fake_keyring):
+    """Xveyn#173 (Abschluss-Review): der Webhook wurde gelöscht, während das
+    Dialog-Speichern auf die Sperre wartete — das Löschen gewinnt."""
+    fake = fake_keyring()
+    store = _migrated_store(tmp_path)
+    snapshot = store.get_all()[0]
+    store.delete("w1")
+    ws.forget_by_id("w1")
+
+    saved = ws.save_with_secret(store, _hook("header"), "Bearer neu", stored=snapshot)
+
+    assert saved is False
+    assert store.get_all() == []
+    assert fake.store == {}
+
+
+def test_save_does_not_resurrect_a_webhook_deleted_during_put(tmp_path, fake_keyring, monkeypatch):
+    fake = fake_keyring()
+    store = _migrated_store(tmp_path)
+    snapshot = store.get_all()[0]
+    orig = keyring_store.put
+    fired = {"done": False}
+
+    def put(key, value):
+        if not fired["done"]:
+            fired["done"] = True
+            store.delete("w1")
+            ws.forget_by_id("w1")
+        return orig(key, value)
+    monkeypatch.setattr(keyring_store, "put", put)
+
+    saved = ws.save_with_secret(store, _hook("header"), "Bearer neu", stored=snapshot)
+
+    assert saved is False
+    assert store.get_all() == []
+    assert fake.store == {}
+
+
+def test_save_with_secret_reports_success(tmp_path, fake_keyring):
+    fake_keyring()
+    store = _migrated_store(tmp_path)
+    assert ws.save_with_secret(store, _hook("none"), "", stored=_hook("header")) is True

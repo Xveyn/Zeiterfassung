@@ -842,10 +842,11 @@ selbst nach dem Aufbau.
   Webhook-Secrets haben zusätzlich eine Sperre (`webhook_secrets.SECRETS_LOCK`,
   Xveyn#173): Start-Umzug (`secret_migration._move_webhook`) und
   Dialog-Speichern (`webhook_secrets.save_with_secret`) legen das Secret ab und
-  speichern den Datensatz nur unter ihr. Der Umzug speichert über
-  `WebhookStore.save_if_unchanged`, damit ein gleichzeitig gelöschter Webhook
-  nicht wieder auflebt; das Dialog-Speichern rechnet mit dem aktuellen
-  Datensatz statt dem Schnappschuss vom Öffnen. Die Store-Sperre wird dabei nie
+  speichern den Datensatz nur unter ihr. Beide speichern bestehende
+  Datensätze über `WebhookStore.save_if_unchanged`, damit ein gleichzeitig
+  gelöschter Webhook nicht wieder auflebt; das Dialog-Speichern rechnet
+  außerdem mit dem aktuellen Datensatz statt dem Schnappschuss vom Öffnen.
+  Die Store-Sperre wird dabei nie
   über einen Schlüsselbund-Aufruf gehalten (`get_all` läuft auch im
   UI-Thread). Wer einen weiteren Schreiber für Webhook-Secrets baut, nimmt die
   Sperre mit. Grenze: ein Schlüsselbund-Aufruf, der in den 30-s-Watchdog

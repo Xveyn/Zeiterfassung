@@ -253,6 +253,24 @@ class WebhookStore:
             return copy.deepcopy(
                 [w for w in self._webhooks if w.get("enabled")])
 
+    def _save_locked(self, record: Webhook) -> None:
+        """Schreibkern von `save`: setzt voraus, dass der Aufrufer `self._lock`
+        bereits hält. Legt an oder ersetzt nach `id`, dann `_save_to_disk`,
+        mit Rollback bei Fehlern. Gemeinsam genutzt von `save` und
+        `save_if_unchanged`, die beide unter derselben Sperre schreiben."""
+        previous = copy.deepcopy(self._webhooks)
+        for i, existing in enumerate(self._webhooks):
+            if existing.get("id") == record.get("id"):
+                self._webhooks[i] = copy.deepcopy(record)
+                break
+        else:
+            self._webhooks.append(copy.deepcopy(record))
+        try:
+            self._save_to_disk()
+        except BaseException:
+            self._webhooks = previous
+            raise
+
     def save(self, record: Webhook) -> None:
         """Legt an oder ersetzt nach `id`.
 
@@ -265,18 +283,7 @@ class WebhookStore:
         Worker-Thread, nicht in einen Tk-Callback.
         """
         with self._lock:
-            previous = copy.deepcopy(self._webhooks)
-            for i, existing in enumerate(self._webhooks):
-                if existing.get("id") == record.get("id"):
-                    self._webhooks[i] = copy.deepcopy(record)
-                    break
-            else:
-                self._webhooks.append(copy.deepcopy(record))
-            try:
-                self._save_to_disk()
-            except BaseException:
-                self._webhooks = previous
-                raise
+            self._save_locked(record)
 
     def save_if_unchanged(self, expected: Webhook, record: Webhook) -> bool:
         """Wie `save`, aber nur, wenn unter `expected["id"]` noch genau
@@ -287,9 +294,6 @@ class WebhookStore:
         `save` legte einen gerade gelöschten Webhook wieder an. Prüfen und
         Schreiben liegen unter derselben Sperre; ein Schlüsselbund-Aufruf
         gehört nicht hinein (`get_all` läuft auch im UI-Thread).
-
-        Ruft `save` unter der eigenen Sperre — das setzt das reentrante
-        `RLock` voraus, das der Store ohne `lock=` selbst anlegt.
 
         Wirft wie `save` und rollt dann zurück; `ValueError` bei
         verschiedenen `id`s (Programmierfehler).
@@ -302,7 +306,7 @@ class WebhookStore:
                             if w.get("id") == expected.get("id")), None)
             if current != expected:
                 return False
-            self.save(record)
+            self._save_locked(record)
             return True
 
     def delete(self, webhook_id: str) -> None:

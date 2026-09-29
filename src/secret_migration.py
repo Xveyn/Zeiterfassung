@@ -126,7 +126,7 @@ def _move_webhook(store: Any, record: dict[str, Any]) -> bool:
             keyring_store.remove(key)
             return False
         if not saved:
-            log.info("Ein Webhook wurde während des Umzugs gelöscht")
+            log.info("Ein Webhook wurde während des Umzugs gelöscht oder geändert")
             keyring_store.remove(key)
             return False
         return True
