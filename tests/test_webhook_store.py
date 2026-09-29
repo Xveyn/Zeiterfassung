@@ -255,3 +255,65 @@ def test_uses_the_injected_lock(tmp_path):
 
 def test_creates_own_lock_without_injection(tmp_path):
     assert _store(tmp_path)._lock is not None
+
+
+# --- save_if_unchanged (Xveyn#173) -------------------------------------------
+# Der Umzug in den Schlüsselbund speichert nur, wenn niemand den Datensatz
+# zwischendurch gelöscht oder geändert hat — sonst belebte ein `save` einen
+# gerade gelöschten Webhook wieder (save legt an ODER ersetzt).
+
+def test_save_if_unchanged_writes_when_equal(tmp_path):
+    store = _store(tmp_path)
+    store.save(_record())
+    assert store.save_if_unchanged(_record(), _record(name="Neu")) is True
+    assert [w["name"] for w in store.get_all()] == ["Neu"]
+
+
+def test_save_if_unchanged_refuses_a_deleted_record(tmp_path):
+    store = _store(tmp_path)
+    store.save(_record())
+    store.delete("id-1")
+    assert store.save_if_unchanged(_record(), _record(name="Neu")) is False
+    assert store.get_all() == []
+
+
+def test_save_if_unchanged_refuses_a_changed_record(tmp_path):
+    store = _store(tmp_path)
+    store.save(_record(name="Anders"))
+    assert store.save_if_unchanged(_record(), _record(name="Neu")) is False
+    assert [w["name"] for w in store.get_all()] == ["Anders"]
+
+
+def test_save_if_unchanged_refusal_leaves_the_file_alone(tmp_path):
+    path = str(tmp_path / "webhooks.json")
+    store = WebhookStore(path)
+    store.save(_record(name="Anders"))
+    store.save_if_unchanged(_record(), _record(name="Neu"))
+    assert [w["name"] for w in WebhookStore(path).get_all()] == ["Anders"]
+
+
+def test_save_if_unchanged_rejects_mismatched_ids(tmp_path):
+    store = _store(tmp_path)
+    store.save(_record())
+    with pytest.raises(ValueError):
+        store.save_if_unchanged(_record(), _record(id="id-2"))
+
+
+def test_save_if_unchanged_rolls_back_a_failed_write(tmp_path, monkeypatch):
+    store = _store(tmp_path)
+    store.save(_record())
+    monkeypatch.setattr(whs.WebhookStore, "_save_to_disk",
+                        lambda self: (_ for _ in ()).throw(OSError("voll")))
+    with pytest.raises(OSError):
+        store.save_if_unchanged(_record(), _record(name="Neu"))
+    assert [w["name"] for w in store.get_all()] == ["Server"]
+
+
+def test_save_if_unchanged_read_only_raises_and_keeps_list(tmp_path, monkeypatch):
+    store = _store(tmp_path)
+    store.save(_record())
+    monkeypatch.setattr(whs.WebhookStore, "_save_to_disk",
+                        lambda self: (_ for _ in ()).throw(whs.WebhookStoreReadOnly("ro")))
+    with pytest.raises(whs.WebhookStoreReadOnly):
+        store.save_if_unchanged(_record(), _record(name="Neu"))
+    assert [w["name"] for w in store.get_all()] == ["Server"]

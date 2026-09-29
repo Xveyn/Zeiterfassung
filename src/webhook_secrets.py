@@ -12,6 +12,7 @@ kann blockieren (Schlüsselbund-Watchdog) und läuft deshalb im Worker.
 from __future__ import annotations
 
 import copy
+import threading
 from typing import Any
 
 from src import keyring_store
@@ -19,6 +20,15 @@ from src import keyring_store
 SECRET_LOCATION = "secret_location"
 
 _FIELDS = {"header": "value", "hmac": "secret"}
+
+# Serialisiert alles, was ein Webhook-Secret im Schlüsselbund ablegt UND den
+# Datensatz dazu speichert: den Start-Umzug (`secret_migration._move_webhook`)
+# und das Dialog-Speichern (`save_with_secret`). Ohne sie überschrieb der
+# Umzug ein gerade neu eingegebenes Secret mit dem alten (Xveyn#173). Das
+# Löschen nimmt sie nicht — `WebhookStore.save_if_unchanged` fängt es ab.
+# Beide Halter laufen im Worker; darunter wird die Store-Sperre nie über
+# einen Schlüsselbund-Aufruf gehalten.
+SECRETS_LOCK = threading.Lock()
 
 
 def secret_field(record: dict[str, Any]) -> str | None:
@@ -117,6 +127,54 @@ def persist(candidate: dict[str, Any], typed: str,
         raise ValueError("Schlüsselbund-Markierung ohne gespeichertes Secret "
                          "desselben Verfahrens")
     return copy.deepcopy(candidate), None
+
+
+def save_with_secret(store: Any, candidate: dict[str, Any], typed: str,
+                     stored: dict[str, Any] | None) -> bool:
+    """Der Kern von „Speichern" im Webhook-Dialog: Secret ablegen, Datensatz
+    schreiben, danach einen veralteten Eintrag abräumen.
+
+    Unter `SECRETS_LOCK`, serialisiert mit dem Start-Umzug (Xveyn#173).
+    Gerechnet wird mit dem AKTUELLEN Datensatz, nicht mit dem Schnappschuss
+    `stored` vom Öffnen des Dialogs: war der über den Umzug hinweg offen,
+    zeigte `stored` noch Klartext, und ein Umstellen auf „Keine" oder ein
+    gescheitertes `put` ließe das umgezogene Secret für immer im
+    Schlüsselbund stehen.
+
+    Neuer Webhook (`stored is None`): es gibt noch keinen aktuellen
+    Datensatz, gerechnet wird mit `stored`. Bestehender Webhook, der
+    inzwischen gelöscht wurde (`stored is not None`, aber kein aktueller
+    Datensatz mehr): nichts wird gespeichert, `False` — sonst belebte ein
+    bedingungsloses `save` ihn wieder (Xveyn#173, Abschluss-Review). Sonst
+    wird über `WebhookStore.save_if_unchanged` gegen den aktuellen Datensatz
+    geschrieben; gewinnt dabei ein zwischenzeitliches Löschen, wird ein eben
+    erst abgelegtes Secret wieder abgeräumt und `False` geliefert.
+
+    Liefert `True`, wenn gespeichert wurde, sonst `False`.
+
+    Wirft Schreibfehler von `store.save`/`store.save_if_unchanged` und
+    `ValueError` von `persist` durch; abgeräumt wird dann nichts. Blockierend
+    (Schlüsselbund, icacls) — gehört in einen Worker."""
+    with SECRETS_LOCK:
+        current = next((r for r in store.get_all()
+                        if r.get("id") == candidate.get("id")), None)
+        if current is None and stored is not None:
+            # Bestehender Webhook, inzwischen gelöscht: das Löschen gewinnt —
+            # ein bedingungsloses save legte ihn wieder an (Xveyn#173).
+            return False
+        to_save, stale = persist(
+            candidate, typed, current if current is not None else stored)
+        if current is None:
+            store.save(to_save)                        # neuer Webhook
+        elif not store.save_if_unchanged(current, to_save):
+            # Unter der Sperre ändert ihn nur das Löschen — ein eben
+            # abgelegtes Secret gehört dann niemandem mehr.
+            if in_keyring(to_save):
+                keyring_store.remove(keyring_key(candidate["id"]))
+            return False
+    if stale is not None:
+        keyring_store.remove(stale)   # erst NACH dem Schreiben
+    return True
 
 
 def forget_by_id(webhook_id: str) -> None:

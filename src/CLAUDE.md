@@ -838,6 +838,19 @@ selbst nach dem Aufbau.
   Dazu gehört zwingend ein Eintrag in `secret_migration.forget_all`: sonst
   bliebe der Eintrag nach einer Windows-Deinstallation im Schlüsselbund stehen,
   weil `--forget-secrets` ihn nicht kennt.
+
+  Webhook-Secrets haben zusätzlich eine Sperre (`webhook_secrets.SECRETS_LOCK`,
+  Xveyn#173): Start-Umzug (`secret_migration._move_webhook`) und
+  Dialog-Speichern (`webhook_secrets.save_with_secret`) legen das Secret ab und
+  speichern den Datensatz nur unter ihr. Beide speichern bestehende
+  Datensätze über `WebhookStore.save_if_unchanged`, damit ein gleichzeitig
+  gelöschter Webhook nicht wieder auflebt; das Dialog-Speichern rechnet
+  außerdem mit dem aktuellen Datensatz statt dem Schnappschuss vom Öffnen.
+  Die Store-Sperre wird dabei nie
+  über einen Schlüsselbund-Aufruf gehalten (`get_all` läuft auch im
+  UI-Thread). Wer einen weiteren Schreiber für Webhook-Secrets baut, nimmt die
+  Sperre mit. Grenze: ein Schlüsselbund-Aufruf, der in den 30-s-Watchdog
+  läuft, kann danach noch landen (Spec 2026-09-28-webhook-umzug-race).
 - **Nicht** nach `main.py`: der Einstiegspunkt ist Bootstrap (Stores bauen, Wiring,
   `_hold_app_mutex`/`_ensure_device_id`/`_sweep_orphan_tombstones`/`_refresh_linux_integration`).
   Wer dort Fachlogik ablegt, erzeugt wieder den Zyklus, den R1 aufgelöst hat — Symptom ist

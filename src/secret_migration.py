@@ -99,20 +99,37 @@ def _move_token(token_path: str, secret: str) -> bool:
 
 
 def _move_webhook(store: Any, record: dict[str, Any]) -> bool:
+    """Zieht das Secret eines Webhooks um — race-frei gegen Bearbeiten und
+    Löschen (Xveyn#173).
+
+    Unter `SECRETS_LOCK` wird der Datensatz VOR dem `put` neu gelesen: hat der
+    Dialog ihn geändert, bleibt der Schlüsselbund unberührt (sonst
+    überschriebe der Umzug das neue Secret mit dem alten). Gespeichert wird
+    nur über `save_if_unchanged` — ein zwischendurch gelöschter Webhook
+    lebt nicht wieder auf. Abgeräumt wird nur, wo der Eintrag sicher dem
+    Umzug gehört: der Dialog-Weg ist durch die Sperre ausgeschlossen."""
     secret = webhook_secrets.plaintext_secret(record)
-    if not _stored_and_verified(webhook_secrets.keyring_key(record["id"]), secret):
-        return False
-    current = next((r for r in store.get_all() if r.get("id") == record["id"]), None)
-    if current is None or webhook_secrets.plaintext_secret(current) != secret:
-        log.info("Ein Webhook hat sich während des Umzugs geändert")
-        return False
-    try:
-        store.save(webhook_secrets.stored_in_keyring(current))
-    except (WebhookStoreReadOnly, OSError):
-        log.warning("webhooks.json ließ sich nach dem Umzug nicht schreiben",
-                    exc_info=True)
-        return False
-    return True
+    key = webhook_secrets.keyring_key(record["id"])
+    with webhook_secrets.SECRETS_LOCK:
+        current = next((r for r in store.get_all() if r.get("id") == record["id"]), None)
+        if current is None or webhook_secrets.plaintext_secret(current) != secret:
+            log.info("Ein Webhook hat sich vor dem Umzug geändert")
+            return False
+        if not _stored_and_verified(key, secret):
+            return False
+        try:
+            saved = store.save_if_unchanged(
+                current, webhook_secrets.stored_in_keyring(current))
+        except (WebhookStoreReadOnly, OSError):
+            log.warning("webhooks.json ließ sich nach dem Umzug nicht schreiben",
+                        exc_info=True)
+            keyring_store.remove(key)
+            return False
+        if not saved:
+            log.info("Ein Webhook wurde während des Umzugs gelöscht oder geändert")
+            keyring_store.remove(key)
+            return False
+        return True
 
 
 def migrate(token_path: str, webhook_store: Any | None) -> MigrationReport:
