@@ -1,7 +1,7 @@
 import tkinter as tk
 from typing import Callable, Optional, Union
 
-from src.theme import FONT_FAMILY
+from src.theme import FONT_FAMILY, workarea_for
 
 # Ein Tooltip-Text ist entweder fix oder wird beim Anzeigen berechnet.
 # Dynamisch braucht es z.B. die Header-Pfeile: dieselben Buttons blättern
@@ -26,6 +26,10 @@ TIP_BG = "#1e293b"
 # graue Rechtecke, wenn Tk noch nicht gemalt hatte. Ist schon ein Tooltip offen,
 # folgt der nächste sofort (s. `_show_delay_ms`).
 SHOW_DELAY_MS = 400
+
+# Lage des Tooltips zum Anker-Widget: eingerückt und knapp darunter.
+TIP_OFFSET_X = 20
+TIP_GAP_Y = 4
 
 
 def _should_hide_tip(root_state, widget_rects, pointer, grab_active=False):
@@ -100,6 +104,33 @@ def _show_delay_ms(active_tip) -> int:
     return 0 if active_tip is not None else SHOW_DELAY_MS
 
 
+def _tip_position(anchor, size, workarea):
+    """Bildschirmposition (x, y) eines Tooltips der Größe `size` (w, h) zum
+    Anker-Widget `anchor` (x, y, w, h), geklemmt an `workarea`
+    (left, top, right, bottom) — alles in Screen-Koordinaten.
+
+    Normal steht es `TIP_OFFSET_X` eingerückt `TIP_GAP_Y` unter dem Anker.
+    Ragt es rechts hinaus, rückt es nach links, bis es bündig abschließt;
+    ragt es unten hinaus, wandert es über den Anker (#185). Das Fenster ist
+    `overrideredirect`, kein Window-Manager korrigiert die Lage. Passt es gar
+    nicht, bleiben linker bzw. oberer Rand sichtbar — der Textanfang zählt.
+    Über dem Anker überdeckt es ihn nicht, `_should_hide_tip` bleibt also
+    unberührt. Bewusst tk-frei gehalten, damit ohne Display testbar.
+    """
+    ax, ay, _aw, ah = anchor
+    w, h = size
+    left, top, right, bottom = workarea
+    x = ax + TIP_OFFSET_X
+    if x + w > right:
+        x = right - w
+    x = max(left, x)
+    y = ay + ah + TIP_GAP_Y
+    if y + h > bottom:
+        y = ay - TIP_GAP_Y - h
+    y = max(top, y)
+    return x, y
+
+
 def _clear_active_tip(tip):
     """Entfernt `tip` aus der Registry — aber nur, wenn es das aktive ist
     (ein bereits abgelöstes Tooltip darf das neue nicht überschreiben)."""
@@ -138,8 +169,18 @@ class _TipWindow:
         )
         self.label.pack()
 
-    def show(self, text, x, y):
+    def show(self, text, anchor):
+        """Zeigt `text` am Widget `anchor`. Die Größe wird jedes Mal neu
+        gemessen: das Fenster wandert von Tooltip zu Tooltip und trägt dort
+        einen anderen Text (s. `_claim_active`)."""
         self.label.configure(text=text)
+        self.top.update_idletasks()
+        x, y = _tip_position(
+            (anchor.winfo_rootx(), anchor.winfo_rooty(),
+             anchor.winfo_width(), anchor.winfo_height()),
+            (self.top.winfo_reqwidth(), self.top.winfo_reqheight()),
+            workarea_for(anchor.winfo_toplevel()),
+        )
         self.top.wm_geometry(f"+{x}+{y}")
 
     def alive(self):
@@ -231,14 +272,12 @@ class _Tooltip:
         # Positioniere relativ zum ersten (typisch äußersten) Widget — stabile
         # Tooltip-Position auch wenn der Mauszeiger zwischen Children wandert.
         anchor = self._primary()
-        x = anchor.winfo_rootx() + 20
-        y = anchor.winfo_rooty() + anchor.winfo_height() + 4
         # Nur eines gleichzeitig (#66): ein noch offenes anderes gibt sein
         # Fenster ab, statt geschlossen zu werden — es wandert nur weiter.
         window = _claim_active(self)
         if window is None or not window.alive():
             window = _TipWindow(anchor.winfo_toplevel())
-        window.show(text, x, y)
+        window.show(text, anchor)
         self.tip = window
         # Auffangnetz für alle Fälle, in denen kein <Leave> kommt (minimiert,
         # Re-Render, Fokuswechsel): solange das Tooltip offen ist, periodisch

@@ -168,3 +168,55 @@ def test_tooltip_follows_immediately_while_another_is_open():
     tooltip._active_tip = a
     assert tooltip._show_delay_ms(tooltip._active_tip) == 0
 
+
+
+# --- Position am Bildschirmrand (#185) --------------------------------------
+# Arbeitsfläche 0..1920 × 0..1040 (Taskleiste unten abgezogen).
+_WA = (0, 0, 1920, 1040)
+
+
+def test_position_default_below_and_offset_right():
+    """Mitten auf dem Bildschirm bleibt alles wie bisher: 20 px eingerückt,
+    4 px unter dem Widget."""
+    assert tooltip._tip_position((500, 300, 80, 30), (200, 40), _WA) == (520, 334)
+
+
+def test_position_shifted_left_at_right_edge():
+    """Ragt der Tooltip rechts über die Arbeitsfläche, schließt er bündig mit
+    ihr ab — statt abgeschnitten zu werden (#185)."""
+    x, y = tooltip._tip_position((1850, 300, 60, 30), (300, 40), _WA)
+    assert x == 1920 - 300
+    assert y == 334
+
+
+def test_position_flips_above_at_bottom_edge():
+    """Ragt er unten hinaus (Footer-Buttons), erscheint er über dem Widget."""
+    x, y = tooltip._tip_position((500, 1000, 80, 30), (200, 40), _WA)
+    assert x == 520
+    assert y == 1000 - 4 - 40
+
+
+def test_position_bottom_right_corner_moves_both_ways():
+    x, y = tooltip._tip_position((1850, 1000, 60, 30), (300, 40), _WA)
+    assert (x, y) == (1620, 956)
+
+
+def test_position_wider_than_workarea_keeps_left_edge_visible():
+    """Breiter als die Fläche: lieber rechts abgeschnitten als links — der
+    Textanfang bleibt lesbar."""
+    x, _ = tooltip._tip_position((100, 300, 60, 30), (2500, 40), _WA)
+    assert x == 0
+
+
+def test_position_never_above_workarea_top():
+    """Passt er weder unter noch über das Widget, bleibt er an der Oberkante
+    der Fläche statt darüber zu verschwinden."""
+    _, y = tooltip._tip_position((500, 20, 80, 1000), (200, 40), _WA)
+    assert y == 0
+
+
+def test_position_respects_offset_workarea():
+    """Zweiter Monitor links vom Primärmonitor: negative Koordinaten."""
+    wa = (-1920, 0, 0, 1080)
+    x, y = tooltip._tip_position((-100, 300, 60, 30), (300, 40), wa)
+    assert (x, y) == (-300, 334)
