@@ -26,7 +26,7 @@ from src.theme import (
     VACATION_BG, VACATION_BG_HOVER, VACATION_ACCENT,
     CELL_BG_HOVER, WEEKEND_BG_HOVER, ENTRY_BG_HOVER, WEEKEND_ENTRY_BG_HOVER,
     FONT, FONT_BOLD, FONT_TINY, FONT_SMALL, FONT_HEADER, FONT_HEADER_SMALL,
-    _should_show_delete_button,
+    px, _should_show_delete_button,
 )
 
 # Probe-Label-Geometrie zur Zellgrößen-Messung (aus ui.py übernommen).
@@ -447,8 +447,13 @@ class GridRenderer:
         rendert je nach Font als kaum sichtbarer Fleck; das Oval gibt einen
         sauber gerundeten, größenkontrollierten Punkt. place() überlagert die
         gepackten Kind-Widgets. Der Marker wird als cell._reservation_marker
-        getaggt, damit _hover seinen Hintergrund beim Hover mitfärbt."""
-        box, dot = 12, 7
+        getaggt, damit _hover seinen Hintergrund beim Hover mitfärbt.
+
+        Größe und Offsets laufen durch `px()` (UI-Skalierung): die Zelle
+        wächst mit der Schrift, ein fester Punkt würde darin winzig. `px()`
+        wird hier ausgewertet, nicht als Konstante — `init_fonts` läuft erst
+        nach der Root-Erzeugung."""
+        box, dot = px(12), px(7)
         marker = tk.Canvas(
             cell, width=box, height=box, bg=cell.cget("bg"),
             highlightthickness=0, cursor="hand2",
@@ -458,7 +463,7 @@ class GridRenderer:
             inset, inset, inset + dot, inset + dot,
             fill=RESERVATION_ACCENT, outline="",
         )
-        marker.place(relx=1.0, x=-3, y=3, anchor="ne")
+        marker.place(relx=1.0, x=-px(3), y=px(3), anchor="ne")
         cell._reservation_marker = marker
 
     def _add_delete_button(self, cell, date_str):
@@ -474,7 +479,7 @@ class GridRenderer:
         btn = tk.Label(
             cell, text="✕", font=FONT_TINY, bg=bg, fg=TEXT_MUTED, cursor="hand2",
         )
-        btn.place(relx=0.0, x=3, y=2, anchor="nw")
+        btn.place(relx=0.0, x=px(3), y=px(2), anchor="nw")
         # "break" stoppt jede Propagation, damit der Klick nicht zusätzlich als
         # Zell-Linksklick (Bearbeiten-Dialog) durchschlägt.
         btn.bind("<Button-1>",
