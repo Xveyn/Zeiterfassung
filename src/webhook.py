@@ -230,8 +230,11 @@ def build_json_payload(*, date_from: datetime.date, date_to: datetime.date,
     `vacation_days` ist der {ISO: minutes}-Snapshot des Urlaubs-Stores oder
     None (Häkchen nicht gesetzt). Er läuft durch DENSELBEN `filter_period`
     wie die Entries — die drei Ausgabewege (Mail-HTML, PDF, Webhook) sollen
-    denselben Ausschnitt behaupten. Ohne Urlaub bleiben die Felder
-    null/0, damit ein bestehender Empfänger unverändert weiterläuft.
+    denselben Ausschnitt behaupten. `vacation` ist `null` NUR ohne gesetztes
+    Häkchen; mit Häkchen, aber ohne Urlaub im Zeitraum ist es `{}` — so kann
+    ein Empfänger „nicht angefragt" von „angefragt, 0 Tage" unterscheiden
+    (Xveyn#175). `vacation_minutes` ist in beiden Fällen 0, damit ein
+    bestehender Empfänger unverändert weiterläuft.
 
     Eigenes `kind` statt `zeiterfassung-share`: das Dokument trägt
     Report-Metadaten, die der Share-Validator als unbekannte Felder ablehnt.
