@@ -862,6 +862,8 @@ def test_pending_update_keys_are_device_local():
     assert DEFAULTS["pending_update_sha256"] == ""
     assert "pending_update_path" not in SYNCED_SETTING_KEYS
     assert "pending_update_sha256" not in SYNCED_SETTING_KEYS
+    assert DEFAULTS["pending_update_release_id"] == ""
+    assert "pending_update_release_id" not in SYNCED_SETTING_KEYS
 
 
 def test_new_send_reminder_defaults(tmp_path):

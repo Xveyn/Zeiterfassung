@@ -172,12 +172,83 @@ def test_a_pending_download_is_reused_and_only_made_visible_again(monkeypatch):
     updater, _, runner, ready, _ = _updater(monkeypatch, {
         "auto_update_enabled": True,
         "pending_update_path": r"C:\Temp\Zeiterfassung_Setup-4711-ab12cd34.exe",
+        "pending_update_release_id": "1.9.0",
     })
     rel = _Rel()
 
     assert updater.maybe_start(rel) == "pending"
     assert runner.jobs == []
     assert ready.releases == [rel]
+
+
+_OLD_FILE = r"C:\Temp\Zeiterfassung_Setup-4711-ab12cd34.exe"
+
+
+@pytest.mark.parametrize("pending_id", ["1.8.0", ""])
+def test_a_pending_file_of_another_release_is_not_shown_as_ready(
+        monkeypatch, pending_id):
+    """Xveyn#176: gehört die vorgemerkte Datei zu einem anderen Release als
+    dem gerade gefundenen (oder trägt sie keine Kennung — vor dem Fix
+    vorgemerkt), darf der Banner sie nicht als dieses Release melden: beim
+    Beenden würde sonst die ältere Datei installiert. Stattdessen lädt der
+    Lauf das aktuelle Release; bis er fertig ist, meldet nichts „bereit"."""
+    updater, _, runner, ready, downloads = _updater(monkeypatch, {
+        "auto_update_enabled": True,
+        "pending_update_path": _OLD_FILE,
+        "pending_update_release_id": pending_id,
+    })
+
+    assert updater.maybe_start(_Rel()) == "started"
+    assert ready.releases == []
+    assert len(runner.jobs) == 1
+
+
+def test_the_new_download_replaces_the_stale_pending_file(monkeypatch):
+    import src.auto_update as auto_update
+
+    updater, settings, runner, ready, downloads = _updater(monkeypatch, {
+        "auto_update_enabled": True,
+        "pending_update_path": _OLD_FILE,
+        "pending_update_sha256": "cd" * 32,
+        "pending_update_release_id": "1.8.0",
+    })
+    discarded = []
+    monkeypatch.setattr(auto_update, "discard_download", discarded.append)
+    rel = _Rel()
+
+    updater.maybe_start(rel)
+    runner.flush()
+
+    new_path = downloads[0][1]
+    assert settings.get("pending_update_path") == new_path
+    assert settings.get("pending_update_sha256") == "ab" * 32
+    assert settings.get("pending_update_release_id") == "1.9.0"
+    assert discarded == [_OLD_FILE]       # sonst bliebe sie als ~65 MB liegen
+    assert ready.releases == [rel]
+
+
+def test_a_failed_new_download_keeps_the_older_pending_update(monkeypatch):
+    """Scheitert der Ersatz-Download, bleibt die ältere, geprüfte Datei samt
+    Kennung vorgemerkt — ein gültiges Update ist besser als keines."""
+    import src.auto_update as auto_update
+
+    updater, settings, runner, ready, _ = _updater(
+        monkeypatch, {
+            "auto_update_enabled": True,
+            "pending_update_path": _OLD_FILE,
+            "pending_update_sha256": "cd" * 32,
+            "pending_update_release_id": "1.8.0",
+        }, result="Der Download ist fehlgeschlagen.")
+    discarded = []
+    monkeypatch.setattr(auto_update, "discard_download", discarded.append)
+
+    updater.maybe_start(_Rel())
+    runner.flush()
+
+    assert settings.get("pending_update_path") == _OLD_FILE
+    assert settings.get("pending_update_release_id") == "1.8.0"
+    assert discarded == []
+    assert ready.releases == []
 
 
 def test_a_blocked_plan_starts_nothing_and_leaves_the_guard_free(monkeypatch):
@@ -211,6 +282,7 @@ def test_success_persists_the_verified_file_and_reports_ready(monkeypatch):
         "Der Zielname muss pro Lauf eindeutig sein (s. download_dest)")
     assert settings.get("pending_update_path") == used_dest
     assert settings.get("pending_update_sha256") == "ab" * 32
+    assert settings.get("pending_update_release_id") == "1.9.0"
     assert ready.releases == [rel]
     assert finished == [True]
     assert updater.busy is False

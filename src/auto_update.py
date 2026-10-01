@@ -27,8 +27,8 @@ import tempfile
 from typing import Any, Callable, Protocol
 
 from src.self_update import (
-    DownloadedUpdate, UpdateBlocked, download_and_verify_update, download_dest,
-    plan_update, supports_self_update,
+    DownloadedUpdate, UpdateBlocked, discard_download,
+    download_and_verify_update, download_dest, plan_update, supports_self_update,
 )
 
 log = logging.getLogger(__name__)
@@ -103,10 +103,22 @@ class AutoUpdater:
         if not supports_self_update(platform.system(),
                                     getattr(sys, "frozen", False)):
             return "unsupported"
-        if self._settings.get("pending_update_path"):
+        if (self._settings.get("pending_update_path")
+                and self._settings.get("pending_update_release_id")
+                == release.release_id):
             # Nicht erneut laden (sonst lädt jeder Check dieselben ~65 MB,
             # solange der Nutzer nicht beendet) — nur wieder sichtbar machen,
             # z.B. nach einem Neustart der App.
+            #
+            # Nur, wenn die vorgemerkte Datei zu DIESEM Release gehört
+            # (Xveyn#176): sonst zeigte der Banner „1.24.0 bereit", während
+            # beim Beenden die Datei von 1.23.5 installiert würde. Eine
+            # Datei ohne Kennung (vor dem Fix vorgemerkt) gilt als fremd.
+            # Bei Abweichung lädt der Lauf unten das aktuelle Release; die
+            # alte Datei bleibt bis dahin vorgemerkt und wird erst nach dem
+            # erfolgreichen Laden ersetzt (`done`) — scheitert der neue
+            # Download, bleibt es bei einem gültigen, ehrlich angezeigten
+            # Update statt bei keinem.
             self._on_ready(release)
             return "pending"
         if self._busy:
@@ -151,9 +163,16 @@ class AutoUpdater:
             if isinstance(result, str):
                 log.info("Automatisches Update abgebrochen: %s", result)
             else:
+                # Eine ältere, überholte Datei räumt hier weg, wer sie
+                # ersetzt — kein späterer Lauf überschreibt sie mehr
+                # (`download_dest`), sie bliebe als ~65-MB-Leiche liegen.
+                stale = self._settings.get("pending_update_path")
+                if stale and stale != result.path:
+                    discard_download(stale)
                 self._settings.set_many({
                     "pending_update_path": result.path,
                     "pending_update_sha256": result.sha256,
+                    "pending_update_release_id": release.release_id,
                 })
                 self._on_ready(release)
             for listener in listeners:

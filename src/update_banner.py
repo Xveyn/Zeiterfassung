@@ -42,6 +42,7 @@ class UpdateBanner:
         # installiert"-Zustand ist (statt der normalen "Version X
         # verfügbar"-Meldung) — s. show_ready_to_install.
         self._ready_to_install = False
+        self._ready_release_id = None    # Kennung des Ready-Banners
         # Einmalig ermittelt wie im Updates-Tab: ändert sich während der
         # Laufzeit nicht (Plattform/Frozen-Status stehen beim Start fest).
         self._can_self_update = supports_self_update(
@@ -71,8 +72,12 @@ class UpdateBanner:
         sichtbarer "normaler" Banner für dieselbe Version wird durch den
         Ready-Zustand ersetzt statt liegenzubleiben.
         """
-        if self._banner is not None and self._ready_to_install:
+        if (self._banner is not None and self._ready_to_install
+                and self._ready_release_id == release.release_id):
             return  # schon im richtigen Zustand sichtbar
+        # Anderes Release als das angezeigte (ein neueres Update ersetzt das
+        # vorgemerkte): neu bauen, sonst hielte der ✕-Knopf die alte Kennung
+        # (Xveyn#176).
         if self._banner is not None:
             self._banner.destroy()
             self._banner = None
@@ -82,6 +87,7 @@ class UpdateBanner:
         if self._banner is not None:
             return
         self._ready_to_install = ready_to_install
+        self._ready_release_id = release.release_id if ready_to_install else None
         self._banner = tk.Frame(self._root, bg=ACCENT)
         self._banner.pack(
             before=self._get_anchor(), fill=tk.X, padx=10, pady=(5, 0),
