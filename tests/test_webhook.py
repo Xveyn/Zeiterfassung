@@ -598,6 +598,19 @@ def test_payload_without_vacation_has_null_fields():
     assert payload["vacation_minutes"] == 0
 
 
+def test_payload_vacation_checked_but_empty_is_empty_dict_not_null():
+    """Xveyn#175: `null` heißt „Häkchen nicht gesetzt", `{}` „Häkchen gesetzt,
+    aber kein Urlaub im Zeitraum" — Empfänger unterscheiden darüber."""
+    kwargs = dict(
+        date_from=datetime.date(2026, 7, 1), date_to=datetime.date(2026, 7, 31),
+        entries={}, name="", sender="", categories=None,
+        generated_at="2026-08-30T10:00:00Z")
+    for days in ({}, {"2026-12-28": 480}):  # leer bzw. nur außerhalb des Zeitraums
+        payload = build_json_payload(vacation_days=days, **kwargs)
+        assert payload["vacation"] == {}
+        assert payload["vacation_minutes"] == 0
+
+
 def test_payload_carries_vacation_days_in_period():
     payload = build_json_payload(
         date_from=datetime.date(2026, 12, 1), date_to=datetime.date(2026, 12, 31),
