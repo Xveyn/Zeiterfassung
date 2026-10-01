@@ -20,7 +20,8 @@ from src.weekly_limit import format_limit_warnings
 from src.grid_renderer import GridRenderer
 from src.paths import get_resource_path, relaunch_command, relaunch_env
 from src.mail import friendly_token_message
-from src import secret_migration
+from src import keyring_store, secret_migration
+from src.topmost_relief import TopmostRelief
 from src.sync_orchestrator import classify_sync_error, SyncOrchestrator
 from src.update_banner import UpdateBanner
 from src.update_coordinator import UpdateCoordinator
@@ -144,6 +145,16 @@ class App:
         # Tages-Tick: hält das ✓/⚠ aktuell, wenn die App über Mitternacht
         # offen bleibt (s. SyncOrchestrator.poll_day_change).
         self._sync.start_day_watch()
+        # „Immer im Vordergrund" fällt kurz, solange der Schlüsselbund fragt
+        # (Xveyn#186). Vor dem ersten Zugriff registrieren: der kommt gleich
+        # unten beim Token-Refresh, wenn der Schlüsselbund meist noch zu ist.
+        self._topmost_relief = TopmostRelief(
+            self._set_topmost,
+            lambda: bool(self.settings.get("always_on_top")),
+            self.root.after, self.root.after_cancel)
+        keyring_store.set_activity_hook(
+            lambda active: self._marshal_to_ui(
+                lambda: self._topmost_relief.activity(active)))
         self._apply_always_on_top()
         self._apply_tray_setting()
         self._apply_reminder_setting()
@@ -555,9 +566,14 @@ class App:
         """Tk-übergreifender Topmost-Toggle. Funktioniert auf Windows, macOS
         und Linux (X11/Wayland mit gängigen WMs) identisch — kein OS-Sniffing
         nötig. Bei deaktivierter Option wird das Attribut explizit auf False
-        gesetzt, damit ein Toggle wirklich zurücksetzt."""
+        gesetzt, damit ein Toggle wirklich zurücksetzt. Während eines
+        Schlüsselbund-Zugriffs, der länger dauert, bleibt das Topmost aufgehoben
+        (`TopmostRelief`) — ein Speichern der Einstellungen holt es nicht zurück."""
+        self._set_topmost(self._topmost_relief.effective())
+
+    def _set_topmost(self, value):
         try:
-            self.root.attributes("-topmost", bool(self.settings.get("always_on_top")))
+            self.root.attributes("-topmost", bool(value))
         except tk.TclError:
             # Sehr exotische WMs ohne topmost-Unterstützung — silently ignore.
             pass

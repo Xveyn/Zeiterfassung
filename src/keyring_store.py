@@ -41,6 +41,57 @@ SERVICE = "Zeiterfassung"
 # im UI — ein längerer Timeout kostet hier nichts außer Geduld.
 WATCHDOG_TIMEOUT = 30.0
 
+# Aktivitäts-Hook (Xveyn#186): die App erfährt, wann ein Schlüsselbund-Zugriff
+# läuft, und kann ihr „Immer im Vordergrund" kurz aufheben — der Passwort-Dialog
+# des Systems (KWallet/GNOME Keyring) käme sonst nicht über das Hauptfenster.
+# Hier nur Zähler und Hook; `keyring_store` bleibt Tk-frei, die Entscheidung
+# (Schwelle, Umschalten) liegt in `topmost_relief`. Mehrere Worker können
+# gleichzeitig zugreifen — gemeldet wird deshalb nur der Übergang 0→1 (aktiv)
+# und 1→0 (frei), nicht jeder einzelne Zugriff.
+_activity_lock = threading.Lock()
+_activity_count = 0
+_activity_hook: Callable[[bool], None] | None = None
+
+
+def set_activity_hook(hook: Callable[[bool], None] | None) -> None:
+    """Registriert den Hook `hook(active)`; `None` entfernt ihn.
+
+    Wird aus dem Worker-Thread gerufen, der den Zugriff macht — der Hook muss
+    selbst auf den UI-Thread übergeben (`App._marshal_to_ui`) und schnell
+    zurückkehren."""
+    global _activity_hook
+    _activity_hook = hook
+
+
+def _notify_activity(active: bool) -> None:
+    hook = _activity_hook
+    if hook is None:
+        return
+    try:
+        hook(active)
+    except Exception:
+        # Ein kaputter Hook darf den Schlüsselbund-Zugriff nie kippen: die
+        # Passwörter sind wichtiger als die Fenster-Kosmetik.
+        log.exception("Aktivitäts-Hook des Schlüsselbunds ist fehlgeschlagen")
+
+
+def _activity_enter() -> None:
+    global _activity_count
+    with _activity_lock:
+        _activity_count += 1
+        # Unter dem Lock gerufen, damit „aktiv" und „frei" in der richtigen
+        # Reihenfolge ankommen; der Hook selbst ist billig (nur Weiterreichen).
+        if _activity_count == 1:
+            _notify_activity(True)
+
+
+def _activity_leave() -> None:
+    global _activity_count
+    with _activity_lock:
+        _activity_count -= 1
+        if _activity_count == 0:
+            _notify_activity(False)
+
 
 def _call_guarded(work: Callable[[], Any]) -> tuple[bool, Any]:
     """Ruft `work` in einem Sekundär-Thread und gibt nach `WATCHDOG_TIMEOUT`
@@ -50,7 +101,18 @@ def _call_guarded(work: Callable[[], Any]) -> tuple[bool, Any]:
     `(False, None)`. Eine Exception aus `work` wird im Aufrufer-Thread erneut
     geworfen. Der Thread ist ein Daemon: bleibt er hängen, blockiert er das
     Beenden der App nicht.
+
+    Jeder Zugriff meldet sich beim Aktivitäts-Hook (`set_activity_hook`) an
+    und ab — auch beim Timeout und bei einer Exception.
     """
+    _activity_enter()
+    try:
+        return _call_guarded_inner(work)
+    finally:
+        _activity_leave()
+
+
+def _call_guarded_inner(work: Callable[[], Any]) -> tuple[bool, Any]:
     box: dict[str, Any] = {}
 
     def runner() -> None:
