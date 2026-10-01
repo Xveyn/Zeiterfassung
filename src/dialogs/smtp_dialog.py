@@ -7,6 +7,8 @@ dort getestet.
 """
 
 import tkinter as tk
+import traceback
+from tkinter import messagebox
 from typing import Any
 
 from src import keyring_store, smtp, smtp_store
@@ -220,21 +222,34 @@ def open_smtp_dialog(parent, store, runner, record: dict | None = None,
         # icacls-Subprozess (timeout=15), und der Schlüsselbund kann auf Linux
         # blockieren. Im Tk-Callback fröre beides die Oberfläche ein.
         def fn():
-            to_save = keyring_store.persist_password(candidate, password,
-                                                     stored=stored)
-            try:
-                store.save(to_save)
-            except (smtp_store.SmtpStoreReadOnly, OSError) as e:
+            to_save = None
+
+            def _compensate():
                 # Kompensation: das Secret steht schon im Schlüsselbund, der
                 # Datensatz aber nirgends. Bei einem NEUEN Konto bliebe es
                 # dort für immer unter einer id, die in keiner Datei mehr
                 # steht — unauffindbar und unlöschbar. Beim Bearbeiten NICHT
                 # kompensieren: dort existiert der Datensatz weiter, und das
                 # frisch geschriebene Passwort ist das, was der Nutzer wollte.
-                if is_new and password and \
+                if is_new and password and to_save is not None and \
                         to_save.get("password_location") == "keyring":
                     keyring_store.delete_secret(to_save["id"])
+
+            try:
+                to_save = keyring_store.persist_password(candidate, password,
+                                                         stored=stored)
+                store.save(to_save)
+            except (smtp_store.SmtpStoreReadOnly, OSError) as e:
+                _compensate()
                 return {"ok": False, "error": e}
+            except Exception as e:
+                # Unerwartet: als Wert mit Traceback an `on_done` reichen.
+                # Ließe `fn` sie durch, loggte der Runner sie nur und riefe
+                # `on_done` NIE — Speichern-Knopf für immer gesperrt, und unter
+                # --noconsole keine Spur (Xveyn#189). Das Secret räumt dieselbe
+                # Kompensation ab wie beim erwarteten Schreibfehler.
+                _compensate()
+                return {"ok": False, "error": e, "tb": traceback.format_exc()}
             return {"ok": True,
                     "fell_back": bool(password)
                     and to_save.get("password_location") == "file"}
@@ -259,6 +274,15 @@ def open_smtp_dialog(parent, store, runner, record: dict | None = None,
                 busy["saving"] = False
                 set_primary_button_enabled(save_btn, True)
             target = dialog if alive else parent
+            if res.get("tb"):
+                # Unerwarteter Fehler: bewusst nativ und mit Traceback
+                # („bekannt-themed / unerwartet-nativ", CLAUDE.md, Audit N14).
+                messagebox.showerror(
+                    "Nicht gespeichert",
+                    "Beim Speichern des SMTP-Kontos ist ein unerwarteter "
+                    f"Fehler aufgetreten:\n\n{res['tb']}",
+                    parent=target)
+                return
             themed_showerror(
                 target, "Nicht gespeichert",
                 f"Das SMTP-Konto konnte nicht gespeichert werden:\n\n{res['error']}")

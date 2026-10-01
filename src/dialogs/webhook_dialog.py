@@ -7,6 +7,8 @@ getestet.
 
 import json
 import tkinter as tk
+import traceback
+from tkinter import messagebox
 from typing import Any
 
 from src import webhook, webhook_secrets, webhook_store
@@ -215,6 +217,13 @@ def open_webhook_dialog(parent, store, runner, record: dict | None = None, on_sa
                 webhook_secrets.save_with_secret(store, candidate, typed, stored)
             except (webhook_store.WebhookStoreReadOnly, OSError) as e:
                 return {"ok": False, "error": e}
+            except Exception as e:
+                # Unerwartet (z. B. das absichtliche ValueError aus
+                # `webhook_secrets.persist`): als Wert mit Traceback an
+                # `on_done` reichen. Ließe `fn` sie durch, loggte der Runner sie
+                # nur und riefe `on_done` NIE — Speichern-Knopf für immer
+                # gesperrt, und unter --noconsole keine Spur (Xveyn#189).
+                return {"ok": False, "error": e, "tb": traceback.format_exc()}
             return {"ok": True}
 
         def on_done(res):
@@ -233,6 +242,15 @@ def open_webhook_dialog(parent, store, runner, record: dict | None = None, on_sa
                 busy["saving"] = False
                 set_primary_button_enabled(save_btn, True)
             target = dialog if alive else parent
+            if res.get("tb"):
+                # Unerwarteter Fehler: bewusst nativ und mit Traceback
+                # („bekannt-themed / unerwartet-nativ", CLAUDE.md, Audit N14).
+                messagebox.showerror(
+                    "Nicht gespeichert",
+                    "Beim Speichern des Webhooks ist ein unerwarteter Fehler "
+                    f"aufgetreten:\n\n{res['tb']}",
+                    parent=target)
+                return
             themed_showerror(
                 target, "Nicht gespeichert",
                 f"Der Webhook konnte nicht gespeichert werden:\n\n{res['error']}")
