@@ -368,8 +368,13 @@ def open_vacation_dialog(parent, vacation_store, settings, on_change=None,
 
         def _on_purged(result):
             if not result.get("ok"):
+                # Ein Fehlschlag darf nie stillbleiben — auch wenn der Dialog
+                # inzwischen geschlossen wurde, während der Purge lief. Dann
+                # auf `parent` zeigen; auf einem zerstörten Toplevel gäbe es
+                # einen TclError, den `_marshal_to_ui` still verschluckt.
+                target = dialog if dialog.winfo_exists() else parent
                 themed_showerror(
-                    dialog, "Urlaubstermine nicht entfernt",
+                    target, "Urlaubstermine nicht entfernt",
                     "Die Termine konnten nicht aus dem Kalender entfernt "
                     "werden:\n\n" + result.get("error", "")
                     + "\n\nDer Push ist trotzdem abgeschaltet; "
