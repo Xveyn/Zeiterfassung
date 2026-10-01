@@ -152,9 +152,13 @@ class _TipWindow:
         self.top.wm_overrideredirect(True)
         # Falls das Hauptfenster topmost ist (Setting 'Immer im Vordergrund'),
         # muss das Tooltip-Toplevel ebenfalls topmost sein — sonst landet es
-        # hinter dem Mainwindow und der User sieht nichts.
+        # hinter dem Mainwindow und der User sieht nichts. Gefolgt wird dem
+        # ZUSTAND des Fensters, nicht fest `True`: ist das Topmost gerade
+        # aufgehoben (Schlüsselbund-Prompt, `topmost_relief`), soll auch das
+        # Tooltip nicht über dem System-Dialog schweben (Xveyn#186).
         try:
-            self.top.attributes("-topmost", True)
+            topmost = bool(parent.winfo_toplevel().attributes("-topmost"))
+            self.top.attributes("-topmost", topmost)
         except tk.TclError:
             pass
         self.label = tk.Label(

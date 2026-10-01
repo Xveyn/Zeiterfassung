@@ -1353,6 +1353,20 @@ nicht mehr als „offen" führen — der Verweis lautet auf diese Grenze.
   zweimal 30 s pro Eintrag). `fetch` füllt den
   Cache **nie** und liest immer direkt: ein extern gelöschter Eintrag fällt
   beim nächsten Laden auf (→ neu anmelden) und verwirft dabei den Cache
+- `src/topmost_relief.py` — hebt „Immer im Vordergrund" kurz auf, solange ein
+  Schlüsselbund-Zugriff länger als 300 ms läuft (Xveyn#186): der Passwort-Dialog
+  des Systems (KWallet/GNOME Keyring) liegt sonst **unter** dem `-topmost`-Hauptfenster,
+  man sieht ihn nicht, und nach dem 30-s-Watchdog gilt das Secret als nicht
+  lesbar. Tk-frei, Zeitplanung und Setzen des Attributs kommen als Callables
+  herein; `keyring_store` meldet über `set_activity_hook` nur den Übergang
+  „erster Zugriff beginnt" / „letzter ist fertig" (mehrere Worker greifen
+  gleichzeitig zu), die App (`ui.py`) übergibt per `_marshal_to_ui` an den
+  UI-Thread. `App._apply_always_on_top` fragt `effective()`, damit ein Speichern
+  der Einstellungen mitten im Prompt das Topmost nicht zurückholt; das
+  Tooltip-Fenster folgt dem tatsächlichen Zustand des Hauptfensters. Betrifft
+  Linux (macOS-SecurityAgent liegt auf dem Shielding-Level über Tk-Fenstern,
+  Windows fragt nicht); andere verdeckte Fenster (Task Manager) löst das **nicht**
+  — Topmost heißt, über allen Nicht-Topmost-Fenstern zu liegen.
 - `src/secret_migration.py` — zieht beim Start Klartext-Secrets in den
   Schlüsselbund (Token, Webhooks) und liefert den Uninstaller-Weg zurück
   (`forget_all`, s. `installer.iss`). Idempotent bei jedem Start geprüft, kein

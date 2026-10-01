@@ -79,6 +79,110 @@ def test_delete_secret_is_quiet_when_nothing_is_stored(fake_keyring):
     keyring_store.delete_secret("gibt-es-nicht")
 
 
+# --- Aktivitäts-Hook (Xveyn#186) -------------------------------------------
+
+def _hook_events(monkeypatch):
+    events = []
+    monkeypatch.setattr(keyring_store, "_activity_hook", events.append)
+    return events
+
+
+def test_an_access_reports_active_then_free(fake_keyring, monkeypatch):
+    fake_keyring()
+    events = _hook_events(monkeypatch)
+
+    keyring_store.set_secret("rec-1", "geheim")
+
+    assert events == [True, False]
+
+
+def test_every_entry_point_reports(fake_keyring, monkeypatch):
+    fake_keyring()
+    events = _hook_events(monkeypatch)
+
+    keyring_store.put("k", "v")
+    keyring_store.fetch("k")
+    keyring_store.remove("k")
+
+    assert events and events[0] is True and events[-1] is False
+    assert events.count(True) == events.count(False)
+
+
+def test_a_timeout_still_reports_free(fake_keyring, monkeypatch):
+    """Sonst bliebe das Topmost nach einem hängenden Prompt für immer weg."""
+    gate = threading.Event()
+    fake_keyring(block=gate)
+    monkeypatch.setattr(keyring_store, "WATCHDOG_TIMEOUT", 0.05)
+    events = _hook_events(monkeypatch)
+    try:
+        keyring_store.set_secret("rec-1", "geheim")
+    finally:
+        gate.set()
+
+    assert events == [True, False]
+
+
+def test_an_exception_still_reports_free(monkeypatch):
+    events = _hook_events(monkeypatch)
+
+    def boom():
+        raise ValueError("kaputt")
+
+    try:
+        keyring_store._call_guarded(boom)
+    except ValueError:
+        pass
+
+    assert events == [True, False]
+
+
+def test_overlapping_accesses_report_only_the_outer_transitions(monkeypatch):
+    """Mehrere Worker greifen gleichzeitig zu — gemeldet wird erst „aktiv" beim
+    ersten und „frei" nach dem letzten, nicht dazwischen."""
+    events = _hook_events(monkeypatch)
+    release = threading.Event()
+    inside = threading.Event()
+
+    def slow():
+        inside.set()
+        release.wait()
+
+    first = threading.Thread(target=keyring_store._call_guarded, args=(slow,))
+    first.start()
+    inside.wait()
+    keyring_store._call_guarded(lambda: None)      # zweiter Zugriff, kurz
+    assert events == [True]                        # der erste läuft noch
+    release.set()
+    first.join()
+
+    assert events == [True, False]
+
+
+def test_a_failing_hook_never_breaks_the_access(fake_keyring, monkeypatch, caplog):
+    fake_keyring()
+
+    def bad(active):
+        raise RuntimeError("Hook kaputt")
+
+    monkeypatch.setattr(keyring_store, "_activity_hook", bad)
+    with caplog.at_level(logging.ERROR):
+        assert keyring_store.set_secret("rec-1", "geheim") == "keyring"
+
+    assert "Aktivitäts-Hook" in caplog.text
+
+
+def test_set_activity_hook_registers_and_clears(monkeypatch):
+    monkeypatch.setattr(keyring_store, "_activity_hook", None)
+    seen = []
+
+    keyring_store.set_activity_hook(seen.append)
+    keyring_store._call_guarded(lambda: None)
+    keyring_store.set_activity_hook(None)
+    keyring_store._call_guarded(lambda: None)
+
+    assert seen == [True, False]
+
+
 # --- Watchdog --------------------------------------------------------------
 
 def test_set_secret_gives_up_when_the_keyring_blocks(fake_keyring, monkeypatch):
