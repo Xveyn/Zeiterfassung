@@ -911,7 +911,7 @@ X11 die Desktop-Skalierung; die Folge ist dort nicht Unschärfe, sondern eine
 streckt (GNOME Wayland, KDE „Skalierung durch das System"), bleibt es bei 96
 und der Faktor bei 1,0 — keine Doppelskalierung. Systemfaktor ist
 `max(1,0; Xft.dpi / 96)`, er geht in denselben Hebel wie unter Windows.
-Vier Dinge daran:
+Fünf Dinge daran:
 
 - **Gelesen über libX11** (`XResourceManagerString` per `ctypes`, vor der
   Root-Erzeugung). **Nicht** über Tks Ressourcen-Datenbank: die gleicht
@@ -927,6 +927,15 @@ Vier Dinge daran:
   wurde — auch bei 96. Tk leitet den Wert sonst aus den Bildschirmmaßen ab,
   die der X-Server meldet, und die sind nicht immer 96 dpi. Ohne `Xft.dpi`
   bleibt Linux unberührt.
+- **Tks Schriftbackend rechnet selbst mit `Xft.dpi`** (Xveyn#199): auch
+  Pixelgrößen, `tk scaling` ändert daran nichts (gemessen: 10 pt = 17 px bei
+  96 dpi, 39 px bei 240). Ohne Gegenmittel wäre die Schrift mit dem Faktor
+  aus `init_fonts` doppelt skaliert (4K @ 250 %: Hauptfenster 3340×2828
+  statt 591×580, der Regler käme nie unter Faktor × 75 %).
+  `dpi.neutralize_xft_dpi` lässt Tk `Xft.dpi` nur im eigenen Prozess als 96
+  sehen — eine Datei mit `Xft.dpi: 96` in `XENVIRONMENT`, die Xlib über die
+  Server-Ressourcen legt; eine vorhandene Nutzer-Datei bleibt erhalten. Vor
+  der Root-Erzeugung, und nur, wenn `Xft.dpi` gefunden wurde.
 - **Hier gibt es eine Migration**, anders als unter Windows: niemand hat die
   App bisher gestreckt, wer sie lesbar wollte, hat `ui_scale` hochgedreht —
   mit dem Systemfaktor obendrauf wäre sie doppelt so groß. Beim ersten Start
