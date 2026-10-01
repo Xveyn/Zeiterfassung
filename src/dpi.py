@@ -20,8 +20,10 @@ zwischen Bildschirmen; per-monitor-aware hätte das Fenster auf einem zweiten
 Monitor mit anderer Skalierung die falsche Größe. System-aware streckt Windows
 dort weiter, wie bisher.
 
-**Linux über `Xft.dpi`.** Tk 8.6 ignoriert unter X11 die Desktop-Skalierung,
-die App erscheint dort nicht unscharf, sondern winzig. `Xft.dpi` steht genau
+**Linux über `Xft.dpi`.** Tk 8.6 ignoriert unter X11 die Desktop-Skalierung
+(`tk scaling`), die App erscheint dort nicht unscharf, sondern winzig.
+Sein Schriftbackend rechnet allerdings selbst mit `Xft.dpi` —
+`neutralize_xft_dpi` nimmt ihm das (Xveyn#199). `Xft.dpi` steht genau
 dann über 96, wenn niemand sonst skaliert: wo der Compositor streckt (GNOME
 Wayland, KDE „Skalierung durch das System"), bleibt es bei 96 und der Faktor
 bei 1,0 — keine Doppelskalierung. Tk 9 wertet dieselbe Quelle selbst aus
@@ -42,8 +44,11 @@ Entscheidung darum herum ohne Windows und ohne X testbar ist
 
 from __future__ import annotations
 
+import atexit
 import logging
+import os
 import platform
+import tempfile
 from typing import Any, Callable, Optional
 
 log = logging.getLogger(__name__)
@@ -204,6 +209,60 @@ def init_system_scale(system: Optional[str] = None,
 def system_scale() -> float:
     """Der Faktor aus `init_system_scale` (1,0 davor und unter macOS)."""
     return _system_scale
+
+
+def neutralize_xft_dpi(system: Optional[str] = None,
+                       directory: Optional[str] = None) -> Optional[str]:
+    """Lässt Tk `Xft.dpi` nur in **diesem Prozess** als 96 sehen (Xveyn#199).
+
+    Tks Xft-Schriftbackend rechnet unter X11 selbst mit `Xft.dpi` — auch
+    Pixelgrößen, `tk scaling` ändert daran nichts (gemessen: 10 pt = 17 px bei
+    96, 39 px bei 240). Geht der Systemfaktor zusätzlich in `init_fonts`, ist
+    die Schrift doppelt skaliert (bei 250 %: 2,5 × 2,5), das Layout nur
+    einmal, und der Regler kommt nie unter den Systemfaktor × 75 %. So bleibt
+    `init_fonts` der eine Hebel.
+
+    Xlib legt die Datei aus `XENVIRONMENT` über die Ressourcen des Servers;
+    Xft liest `Xft.dpi` darüber. Muss vor der Root-Erzeugung laufen. Eine
+    schon gesetzte `XENVIRONMENT`-Datei bleibt erhalten, unsere Zeile steht
+    dahinter. Nur unter Linux und nur, wenn `init_system_scale` ein `Xft.dpi`
+    gefunden hat. Liefert den Pfad der Datei, sonst None; scheitert das
+    Schreiben, startet die App wie bisher."""
+    if (system or platform.system()) != "Linux" or not _xft_found:
+        return None
+    lines = []
+    old = os.environ.get("XENVIRONMENT")
+    try:
+        if old:
+            try:
+                with open(old, encoding="utf-8", errors="replace") as f:
+                    lines = f.read().splitlines()
+            except OSError:
+                log.debug("XENVIRONMENT %s nicht lesbar — wird ersetzt", old,
+                          exc_info=True)
+        lines.append(f"Xft.dpi: {BASE_DPI}")
+        fd, path = tempfile.mkstemp(prefix="zeiterfassung-xres-",
+                                    dir=directory)
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write("\n".join(lines) + "\n")
+    except OSError:
+        log.warning("Xft.dpi lässt sich für Tk nicht neutralisieren — "
+                    "Schrift womöglich doppelt skaliert", exc_info=True)
+        return None
+    os.environ["XENVIRONMENT"] = path
+    # Nur die eigene Datei räumen wir weg; ein Neustart-Kind erbt die
+    # Variable, Xlib ignoriert eine fehlende Datei und es legt sich eine neue an.
+    atexit.register(_remove_quietly, path)
+    log.info("Xft.dpi für Tk auf %d gesetzt (Faktor kommt aus init_fonts)",
+             BASE_DPI)
+    return path
+
+
+def _remove_quietly(path: str) -> None:
+    try:
+        os.remove(path)
+    except OSError:
+        log.debug("Ressourcen-Datei %s nicht entfernt", path, exc_info=True)
 
 
 def pin_tk_scaling(root: Any, system: Optional[str] = None) -> None:

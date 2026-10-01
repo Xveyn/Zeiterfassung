@@ -9,6 +9,8 @@ ohne gesetzte Awareness bleibt der Faktor 1,0 — sonst streckte Windows das
 Fenster und die App skalierte obendrauf.
 """
 
+import os
+
 import pytest
 
 from src import dpi
@@ -284,3 +286,56 @@ def test_linux_without_known_tk_version_stays_neutral(monkeypatch):
     monkeypatch.setattr(dpi, "_xft_found", False)
     assert dpi.init_system_scale("Linux", get_xft_dpi=lambda: 144) == 1.0
     assert dpi._xft_found is False
+
+
+# --- Tks Xft-Schriftbackend rechnet selbst mit Xft.dpi (Xveyn#199) -----------
+
+def test_neutralize_xft_dpi_overrides_it_for_this_process(tmp_path, monkeypatch):
+    """Tks Xft-Backend skaliert Schriften selbst mit `Xft.dpi` — auch Pixel-
+    größen, `tk scaling` ändert daran nichts. Zusätzlich zu `init_fonts`
+    wäre die Schrift doppelt skaliert (bei 240 dpi: 2,5 × 2,5). Die
+    Prozess-Ressourcen (`XENVIRONMENT`) legen sich über die des Servers."""
+    _linux(monkeypatch, 240)
+    monkeypatch.delenv("XENVIRONMENT", raising=False)
+    path = dpi.neutralize_xft_dpi("Linux", directory=str(tmp_path))
+    assert path is not None
+    assert os.environ["XENVIRONMENT"] == path
+    assert "Xft.dpi: 96" in open(path, encoding="utf-8").read().splitlines()
+
+
+def test_neutralize_xft_dpi_keeps_an_existing_xenvironment_file(tmp_path, monkeypatch):
+    """Eine eigene `XENVIRONMENT`-Datei des Nutzers bleibt erhalten; unsere
+    Zeile steht dahinter und gewinnt nur für `Xft.dpi`."""
+    _linux(monkeypatch, 240)
+    mine = tmp_path / "mine"
+    mine.write_text("Xterm*foo: bar\nXft.dpi: 200\n", encoding="utf-8")
+    monkeypatch.setenv("XENVIRONMENT", str(mine))
+    path = dpi.neutralize_xft_dpi("Linux", directory=str(tmp_path))
+    lines = open(path, encoding="utf-8").read().splitlines()
+    assert lines[0] == "Xterm*foo: bar"
+    assert lines[-1] == "Xft.dpi: 96"
+
+
+def test_neutralize_xft_dpi_only_with_found_xft_dpi(tmp_path, monkeypatch):
+    """Ohne `Xft.dpi` bleibt Linux exakt wie vorher."""
+    _linux(monkeypatch, None)
+    monkeypatch.delenv("XENVIRONMENT", raising=False)
+    assert dpi.neutralize_xft_dpi("Linux", directory=str(tmp_path)) is None
+    assert "XENVIRONMENT" not in os.environ
+
+
+@pytest.mark.parametrize("system", ["Windows", "Darwin"])
+def test_neutralize_xft_dpi_only_on_linux(tmp_path, monkeypatch, system):
+    _linux(monkeypatch, 240)
+    monkeypatch.delenv("XENVIRONMENT", raising=False)
+    assert dpi.neutralize_xft_dpi(system, directory=str(tmp_path)) is None
+    assert "XENVIRONMENT" not in os.environ
+
+
+def test_neutralize_xft_dpi_survives_an_unwritable_directory(tmp_path, monkeypatch):
+    """Best-Effort: scheitert das Schreiben, startet die App wie bisher."""
+    _linux(monkeypatch, 240)
+    monkeypatch.delenv("XENVIRONMENT", raising=False)
+    missing = str(tmp_path / "gibt-es-nicht")
+    assert dpi.neutralize_xft_dpi("Linux", directory=missing) is None
+    assert "XENVIRONMENT" not in os.environ

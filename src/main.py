@@ -350,6 +350,8 @@ def main():
     # Unter macOS ein No-op mit Faktor 1,0.
     system_factor = dpi.init_system_scale(tk_version=tk.TkVersion)
     dpi.migrate_ui_scale(settings)
+    # Tks Schriftbackend skaliert sonst selbst mit Xft.dpi (Xveyn#199).
+    dpi.neutralize_xft_dpi()
     root = _create_root()
     _apply_ui_scaling(root, settings.get("ui_scale"), system_factor)
     apply_widget_defaults(root)
