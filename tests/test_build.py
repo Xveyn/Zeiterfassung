@@ -88,6 +88,53 @@ def test_linux_bundles_dbus_fast(monkeypatch):
     assert "dbus_fast" in cmd
 
 
+def _inno_cmd(monkeypatch, *args):
+    """Das ISCC-Kommando von build_windows (letzter subprocess.run-Call)."""
+    calls = []
+    monkeypatch.setattr(build.subprocess, "run",
+                        lambda cmd, **kw: calls.append(cmd))
+    monkeypatch.setattr(build, "generate_third_party_notices", lambda: None)
+    monkeypatch.setattr(build, "_find_inno_compiler", lambda: "ISCC.exe")
+    build.build_windows(*args)
+    return calls[-1]
+
+
+def test_installer_gets_label_and_commit(monkeypatch):
+    """Der Installer muss Kanal und Commit des Builds kennen — sonst zeigt
+    ein CI-/Pre-Release-Setup nur die nackte VERSION."""
+    cmd = _inno_cmd(monkeypatch, "1.24.0-pre.2", "abc1234")
+    assert cmd[0] == "ISCC.exe" and cmd[-1] == "installer.iss"
+    assert f"/DAppVer={build.VERSION}" in cmd
+    assert "/DAppLabel=1.24.0-pre.2" in cmd
+    assert "/DAppBuild=1.24.0-pre.2 (abc1234)" in cmd
+
+
+def test_installer_build_text_does_not_repeat_the_commit(monkeypatch):
+    """Ein Dev-Label trägt den Commit schon — er steht nicht doppelt da."""
+    cmd = _inno_cmd(monkeypatch, "1.24.0-dev (abc1234)", "abc1234")
+    assert "/DAppBuild=1.24.0-dev (abc1234)" in cmd
+
+
+def test_installer_without_stamp_falls_back_to_the_plain_version(monkeypatch):
+    cmd = _inno_cmd(monkeypatch)
+    assert f"/DAppLabel={build.VERSION}" in cmd
+    assert f"/DAppBuild={build.VERSION}" in cmd
+
+
+def test_generate_build_info_returns_the_label_the_app_will_show(
+        monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "src").mkdir()
+    monkeypatch.setenv("ZEIT_PRERELEASE", "1")
+    monkeypatch.setenv("ZEIT_RELEASE_TAG", "v1.24.0-pre.2")
+    monkeypatch.setattr(build.subprocess, "run",
+                        lambda cmd, **kw: type("R", (), {"stdout": "abc1234\n"})())
+
+    label, sha = build.generate_build_info()
+
+    assert (label, sha) == ("1.24.0-pre.2", "abc1234")
+
+
 def test_windows_does_not_bundle_dbus_fast(monkeypatch):
     """dbus_fast ist Linux-only (Marker in requirements.txt) — auf Windows wäre
     das --collect-all ein Build-Fehler."""

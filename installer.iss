@@ -1,6 +1,21 @@
+; AppVer ist die reine VERSION (build.py: /DAppVer=...). AppLabel/AppBuild tragen
+; Kanal und Commit des Builds (/DAppLabel, /DAppBuild) — ohne sie wüsste der
+; Installer eines Pre-Release- oder CI-Builds nicht, was er ist. Beim Aufruf
+; ohne die beiden (ISCC von Hand) gilt wie früher nur AppVer.
+#ifndef AppLabel
+  #define AppLabel AppVer
+#endif
+#ifndef AppBuild
+  #define AppBuild AppLabel
+#endif
+
 [Setup]
 AppName=Zeiterfassung
-AppVersion={#AppVer}
+; Anzeige-Version: Setup-Assistent und „Apps & Features". Dasselbe Label wie im
+; Fenstertitel der App (src.version.version_label).
+AppVersion={#AppLabel}
+; Produktversion in den Datei-Eigenschaften der Setup.exe — mit Commit.
+VersionInfoProductTextVersion={#AppBuild}
 AppPublisher=Margenheld
 AppPublisherURL=https://github.com/Xveyn/Zeiterfassung
 DefaultDirName={autopf}\Zeiterfassung

@@ -345,6 +345,15 @@ bis zum Linux-Test von `1.23.1-pre.2` nicht.
 | macOS | `brew install create-dmg` | `dist/Zeiterfassung-<ver>-arm64.dmg` (CI baut nur Apple Silicon; Intel-Runner `macos-13` hat de-facto unbrauchbare Queue-Zeiten) |
 | Linux | `apt install libfuse2` + `appimagetool` auf `$PATH` | `dist/Zeiterfassung-<ver>-<arch>.AppImage` |
 
+**Der Windows-Installer kennt Kanal und Commit seines Builds.** `build.py`
+reicht neben `/DAppVer` (reine `VERSION`) `/DAppLabel` und `/DAppBuild` an Inno
+durch: `AppVersion` ist das Label des Fenstertitels (`src.version.build_label`,
+also `1.24.0-pre.2` bzw. `1.24.0-dev (abc1234)`) und erscheint im
+Setup-Assistenten und unter „Apps & Features"; die Produktversion in den
+Datei-Eigenschaften der Setup.exe trägt zusätzlich den Commit. Ohne die
+Defines (ISCC von Hand) gelten Defaults in `installer.iss`. Der Dateiname
+`Zeiterfassung_Setup.exe` bleibt fest — `self_update` sucht danach.
+
 Fehlt das Pack-Tool lokal, überspringt `scripts/build.py` den Pack-Schritt mit Warnung — der PyInstaller-Build läuft trotzdem durch. Das ist für Local-Dev gewollt.
 
 ## Manueller CI-Build ohne Release (`build.yml`)
