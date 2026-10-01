@@ -126,6 +126,35 @@ class TestFormatVersionLabelWithStampedTag:
         assert _format_version_label("1.19.0", "release", "", "1.19.0") == "1.19.0"
 
 
+class TestBuildLabel:
+    """`build_label` ist für `scripts/build.py` (Installer-Beschriftung) —
+    es muss dasselbe liefern wie `version_label()` zur Laufzeit."""
+
+    def test_prerelease_shows_the_stamped_number(self):
+        from src.version import build_label
+        assert build_label("prerelease", "abc1234", "v1.19.0-pre.2") == "1.19.0-pre.2"
+
+    def test_dev_shows_the_sha(self):
+        from src.version import VERSION, build_label
+        assert build_label("dev", "abc1234") == f"{VERSION}-dev (abc1234)"
+
+    def test_release_is_the_plain_version(self):
+        from src.version import VERSION, build_label
+        assert build_label("release", "abc1234", f"v{VERSION}") == VERSION
+
+    def test_a_malformed_tag_falls_back_like_an_unstamped_build(self):
+        from src.version import VERSION, build_label
+        assert build_label("prerelease", "abc1234", "nightly") == f"{VERSION}-pre"
+
+    def test_matches_version_label_at_runtime(self):
+        from src.version import build_label, version_label
+        with patch("src.version._build_info",
+                   _FakeBuildInfo(channel="prerelease", sha="abc1234",
+                                  release_tag="v1.19.0-pre.2")):
+            assert version_label() == build_label(
+                "prerelease", "abc1234", "v1.19.0-pre.2")
+
+
 class TestInstalledReleaseId:
     def test_stamped_prerelease_tag_wins(self):
         with patch("src.version._build_info",

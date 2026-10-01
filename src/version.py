@@ -70,13 +70,28 @@ def _format_version_label(version: str, channel: str, sha: str,
     return f"{version}-dev"
 
 
+def _release_id_from_tag(tag: str) -> str:
+    """'v1.19.0-pre.2' -> '1.19.0-pre.2'; leer, wenn der Tag nicht dem Muster
+    folgt (oder fehlt)."""
+    release_id = strip_tag_prefix(tag)
+    return release_id if parse_release_id(release_id) is not None else ""
+
+
 def _stamped_release_id() -> str:
     """Release-Kennung aus dem beim Build gestempelten Tag ('v1.19.0-pre.2'
     -> '1.19.0-pre.2'). Leer, wenn kein Stempel existiert (Alt-Builds vor
     diesem Feature, Dev-/Repo-Modus) oder der Tag nicht dem Muster folgt."""
     raw = "" if _build_info is None else getattr(_build_info, "RELEASE_TAG", "")
-    release_id = strip_tag_prefix(raw)
-    return release_id if parse_release_id(release_id) is not None else ""
+    return _release_id_from_tag(raw)
+
+
+def build_label(channel: str, sha: str, release_tag: str = "") -> str:
+    """Das Versions-Label eines Builds aus seinen Stempel-Werten — dasselbe,
+    das `version_label()` zur Laufzeit liefert. Für `scripts/build.py`, das den
+    Installer beschriften muss, bevor das gerade geschriebene `build_info`
+    importierbar ist (das Modul ist dann schon ohne den Stempel geladen)."""
+    return _format_version_label(
+        VERSION, channel, sha, _release_id_from_tag(release_tag))
 
 
 def installed_release_id() -> str:

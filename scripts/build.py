@@ -20,7 +20,7 @@ _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, _ROOT)
 os.chdir(_ROOT)
 
-from src.version import VERSION  # noqa: E402  (erst nach dem Bootstrap möglich)
+from src.version import VERSION, build_label  # noqa: E402  (erst nach dem Bootstrap möglich)
 
 NOTICES_PATH = os.path.join("dist", "THIRD-PARTY-NOTICES.txt")
 
@@ -129,7 +129,21 @@ def _find_inno_compiler():
     return None
 
 
-def build_windows():
+def _inno_defines(label, sha):
+    """Die /D-Defines für `installer.iss`.
+
+    `AppVer` bleibt die reine VERSION; `AppLabel` ist das Label, das die App
+    im Fenstertitel zeigt (`1.24.0-pre.2`, `1.24.0-dev (abc1234)`) und das
+    Setup-Assistent und „Apps & Features" als Version anzeigen; `AppBuild`
+    trägt zusätzlich den Commit (Datei-Eigenschaften der Setup.exe). Ohne die
+    beiden wüsste ein gebauter Installer weder, ob er ein Pre-Release ist,
+    noch, von welchem Commit er stammt."""
+    label = label or VERSION
+    build = f"{label} ({sha})" if sha and sha not in label else label
+    return [f"/DAppVer={VERSION}", f"/DAppLabel={label}", f"/DAppBuild={build}"]
+
+
+def build_windows(label=None, sha=""):
     print(f"Building Zeiterfassung v{VERSION} (Windows) ...")
     # --onedir statt --onefile (#118): Onefile entpackt bei JEDEM Start alle
     # DLLs frisch in einen _MEIxxxxxx-Tempordner. Dieses Zeitfenster ist die
@@ -152,8 +166,9 @@ def build_windows():
     if not inno_compiler:
         print("Inno Setup not found on PATH or in standard locations — skipping installer.")
         return
-    print(f"Building installer v{VERSION} with {inno_compiler} ...")
-    subprocess.run([inno_compiler, f"/DAppVer={VERSION}", "installer.iss"], check=True)
+    print(f"Building installer v{label or VERSION} with {inno_compiler} ...")
+    subprocess.run([inno_compiler, *_inno_defines(label, sha), "installer.iss"],
+                   check=True)
     print("Installer created: dist/Zeiterfassung_Setup.exe")
 
 
@@ -268,7 +283,10 @@ def generate_build_info():
     Der Release-Tag taugt nicht zur Kanal-Erkennung (er wird erst nach dem Build
     gepusht) — daher die expliziten Flags. Für die Update-Prüfung reicht der
     Workflow ihn aber als ZEIT_RELEASE_TAG durch (Job `pre-check` berechnet ihn
-    vor den Build-Jobs); ohne die Variable bleibt RELEASE_TAG leer."""
+    vor den Build-Jobs); ohne die Variable bleibt RELEASE_TAG leer.
+
+    Liefert `(label, sha)` — das Versions-Label wie die App es im Titel zeigt
+    und den Kurz-Commit — für die Beschriftung des Windows-Installers."""
     if os.environ.get("ZEIT_PRERELEASE") == "1":
         channel = "prerelease"
     elif os.environ.get("ZEIT_RELEASE") == "1":
@@ -301,13 +319,14 @@ def generate_build_info():
             f'BUILD_TIME = "{build_time}"\n'
         )
     print(f"build_info: CHANNEL={channel} TAG={release_tag or '-'} SHA={sha or '-'} DIRTY={dirty}")
+    return build_label(channel, sha, release_tag), sha
 
 
 def main():
-    generate_build_info()
+    label, sha = generate_build_info()
     system = platform.system()
     if system == "Windows":
-        build_windows()
+        build_windows(label, sha)
     elif system == "Darwin":
         build_macos()
     elif system == "Linux":

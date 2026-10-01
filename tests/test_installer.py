@@ -101,6 +101,25 @@ class TestUninstallCode:
         assert "DelTree(ExpandConstant('{app}')" not in code
 
 
+class TestBuildStamp:
+    """Der Installer trägt Kanal und Commit des Builds. Statisch prüfbar ist
+    nur die Verdrahtung; ob Inno die Werte so annimmt, zeigt der Workflow
+    Build mit gesetztem `installer`-Häkchen."""
+
+    def test_display_version_is_the_label_not_the_bare_version(self):
+        assert "AppVersion={#AppLabel}" in _section("Setup")
+
+    def test_commit_lands_in_the_file_properties(self):
+        assert "VersionInfoProductTextVersion={#AppBuild}" in _section("Setup")
+
+    def test_a_manual_iscc_call_with_only_appver_still_compiles(self):
+        """Ohne /DAppLabel und /DAppBuild (ISCC von Hand) gelten die Defaults
+        — sonst bräche das alte `ISCC /DAppVer=... installer.iss`."""
+        text = _text()
+        assert "#ifndef AppLabel" in text and "#define AppLabel AppVer" in text
+        assert "#ifndef AppBuild" in text and "#define AppBuild AppLabel" in text
+
+
 class TestPascalSyntax:
     def test_code_section_uses_pascal_comments(self):
         """Innerhalb von [Code] ist die Sprache Pascal — dort leitet `;` keinen
