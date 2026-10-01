@@ -195,7 +195,8 @@ class UpdateCoordinator:
         """
         expected = self._settings.get("pending_update_sha256")
         self._settings.set_many({"pending_update_path": "",
-                                 "pending_update_sha256": ""})
+                                 "pending_update_sha256": "",
+                                 "pending_update_release_id": ""})
         if not os.path.exists(path) or not verify_file(path, expected):
             logging.getLogger(__name__).info(
                 "Vorbereitetes Update verworfen (Datei fehlt oder Hash "

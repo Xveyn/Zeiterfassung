@@ -126,7 +126,8 @@ def test_apply_installs_on_windows_when_hash_still_matches(monkeypatch, tmp_path
     # pending_update_* wird beim Sofort-Anwenden geleert (bestehendes
     # Verhalten, unveraendert durch diesen Fix).
     assert fake._settings.set_many_calls == [
-        {"pending_update_path": "", "pending_update_sha256": ""},
+        {"pending_update_path": "", "pending_update_sha256": "",
+         "pending_update_release_id": ""},
     ]
 
 

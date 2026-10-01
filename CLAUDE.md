@@ -567,10 +567,18 @@ ein Wert, den sich ein Mac und ein Windows-Rechner über den Sync teilen,
 wäre auf dem Mac systematisch falsch — er kann den Schalter gar nicht
 einlösen, weil er nicht selbst updaten kann. Ist die Automatik an,
 installiert die App ein verifiziertes Update **nicht sofort**, sondern
-merkt es sich vor (`pending_update_path`/`pending_update_sha256`, ebenfalls
-gerätelokal — ein Pfad im `%TEMP%` eines anderen Rechners wäre dort sinnlos)
-und wendet es erst beim nächsten regulären Beenden an — nie mitten in der
-Arbeit.
+merkt es sich vor (`pending_update_path`/`pending_update_sha256`/
+`pending_update_release_id`, ebenfalls gerätelokal — ein Pfad im `%TEMP%`
+eines anderen Rechners wäre dort sinnlos) und wendet es erst beim nächsten
+regulären Beenden an — nie mitten in der Arbeit.
+
+**Die vorgemerkte Datei trägt ihre Release-Kennung** (Xveyn#176):
+`AutoUpdater.maybe_start` meldet „bereit" nur, wenn `pending_update_release_id`
+zum gerade gefundenen Release passt. Sonst — neueres Release erschienen, oder
+Kennung fehlt, weil vor dem Fix vorgemerkt — lädt es das aktuelle; die alte
+Datei bleibt bis zum erfolgreichen Ersatz vorgemerkt (scheitert der Download,
+bleibt ein gültiges Update) und wird dann weggeräumt. Ohne die Kennung zeigte
+der Banner „1.24.0 bereit", während beim Beenden die Datei von 1.23.5 lief.
 
 ## UI-Fehler sichtbar machen
 

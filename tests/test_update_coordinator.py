@@ -301,6 +301,7 @@ def test_the_auto_updater_reports_ready_to_the_banner(monkeypatch):
     settings = _FakeSettings({
         "auto_update_enabled": True,
         "pending_update_path": r"C:\Temp\Zeiterfassung_Setup-1-ab.exe",
+        "pending_update_release_id": "1.9.0",
     })
     coordinator = UpdateCoordinator(settings, _FakeRunner(), banner, lambda: None)
     rel = _Rel("1.9.0")

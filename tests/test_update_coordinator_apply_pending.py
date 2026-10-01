@@ -43,7 +43,8 @@ def test_apply_pending_update_clears_pending_settings_immediately(monkeypatch, t
     fake.coordinator._apply_pending_update(path)
 
     assert fake.settings.set_many_calls == [
-        {"pending_update_path": "", "pending_update_sha256": ""},
+        {"pending_update_path": "", "pending_update_sha256": "",
+         "pending_update_release_id": ""},
     ]
 
 

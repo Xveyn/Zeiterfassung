@@ -445,7 +445,8 @@ class UpdatesTab:
             # kein späterer Lauf mehr überschreibt.
             discard_download(pending)
         self._settings.set_many({"pending_update_path": "",
-                                 "pending_update_sha256": ""})
+                                 "pending_update_sha256": "",
+                                 "pending_update_release_id": ""})
         if platform.system() == "Windows":
             # restart=True: der Nutzer hat eben geklickt und will
             # weiterarbeiten (Gegenstück: der Beenden-Weg in ui.py).
