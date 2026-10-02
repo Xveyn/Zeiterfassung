@@ -376,6 +376,17 @@ Secret-Service-Backend), und zwar unter **zwei** Service-Namen:
 Die vollständige Schritt-für-Schritt-Anleitung steht in der README unter
 „Vollständig entfernen".
 
+Seit der Version, die diesen Eintrag einführt (siehe CHANGELOG), gibt es
+„Zeiterfassung entfernen…" (Einstellungen → App). Zwei Grenzen:
+
+- Der Schritt „Schlüsselbund-Einträge" meldet ✓, sobald `--forget-secrets`
+  durchlief — der läuft Eintrag für Eintrag durch und schluckt Einzelfehler
+  (Timeout, gesperrter Schlüsselbund). Ein ✓ heißt „ausgeführt", nicht
+  „nachgeprüft"; Fehler stehen nur im Protokoll, und mit dem Häkchen
+  „Nutzerdaten" löscht die App auch dieses.
+- Die Programmdatei löscht die App nicht (Linux: `$APPIMAGE`, macOS: `.app`).
+  Unter macOS ist der Ablauf nicht auf einem Mac geprüft worden.
+
 ## macOS: kein Selbst-Update
 
 Windows und Linux laden ein Update in der App, prüfen es gegen die
