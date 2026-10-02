@@ -259,3 +259,159 @@ def test_user_data_files_match_installer():
     names = set(re.findall(r"DeleteFile\(ExpandConstant\('\{app\}\\([^']+)'\)\)",
                            _installer()))
     assert names == {*removal.USER_DATA_FILES, removal.SETTINGS_FILE}
+
+
+# --- Review-Fixes (Final) ---------------------------------------------------
+
+def test_macos_autostart_removes_plist_without_launchctl(tmp_path, monkeypatch):
+    """I4: `launchctl unload` beendet den per RunAtLoad gestarteten Prozess —
+    also die App selbst. Auf macOS wird nur die plist gelöscht."""
+    plist = tmp_path / "LaunchAgents" / "com.margenheld.zeiterfassung.plist"
+    _touch(plist)
+    monkeypatch.setattr(removal.secret_migration, "forget_all", lambda base: None)
+    monkeypatch.setattr(removal, "macos_plist_path", lambda: str(plist))
+
+    def unload():
+        raise AssertionError("launchctl darf auf macOS nicht laufen")
+
+    monkeypatch.setattr(removal, "disable_autostart", unload)
+
+    results = removal.execute_removal(str(tmp_path / "data"), False, "Darwin")
+
+    assert all(r.ok for r in results), results
+    assert not plist.exists()
+
+
+def test_linux_autostart_still_uses_disable_autostart(tmp_path, monkeypatch):
+    calls = []
+    monkeypatch.setattr(removal.secret_migration, "forget_all", lambda base: None)
+    monkeypatch.setattr(removal, "disable_autostart", lambda: calls.append("off"))
+
+    removal.execute_removal(str(tmp_path), False, "Linux")
+
+    assert calls == ["off"]
+
+
+def test_summary_states_keyring_is_not_verified():
+    """I3 / Review Focus 1: ✓ heißt „ausgeführt“, nicht „nachgeprüft“."""
+    text = removal.format_summary([StepResult("Schlüsselbund-Einträge", True)],
+                                  None, had_token=False)
+    assert "nicht nachgeprüft" in text
+
+
+def test_summary_without_keyring_step_has_no_keyring_hint():
+    text = removal.format_summary([StepResult("Autostart", True)], None, False)
+    assert "nicht nachgeprüft" not in text
+
+
+def test_credential_temp_files_removed_without_data(tmp_path, quiet):
+    """M3: mkstemp-Reste der Secret-Schreiber tragen Klartext."""
+    for name in (".smtp-ab.tmp", ".webhooks-ab.tmp", ".instance-secret-ab.tmp"):
+        _touch(tmp_path / name)
+    _touch(tmp_path / "zeiterfassung.json.ab.tmp")
+
+    removal.execute_removal(str(tmp_path), False, "Linux")
+
+    for name in (".smtp-ab.tmp", ".webhooks-ab.tmp", ".instance-secret-ab.tmp"):
+        assert not (tmp_path / name).exists()
+    assert (tmp_path / "zeiterfassung.json.ab.tmp").exists()   # gehört zum Häkchen
+
+
+def test_user_data_temp_files_removed_with_data(tmp_path, quiet):
+    _touch(tmp_path / "zeiterfassung.json.ab.tmp")
+    _touch(tmp_path / "sync_history.json.tmp")
+
+    removal.execute_removal(str(tmp_path), True, "Linux")
+
+    assert not tmp_path.exists()
+
+
+def test_settings_file_is_removed_last(tmp_path, monkeypatch):
+    _populate(tmp_path)
+    order = []
+    real_remove = os.remove
+
+    def recording(path, *a, **k):
+        order.append(os.path.basename(path))
+        return real_remove(path, *a, **k)
+
+    monkeypatch.setattr(os, "remove", recording)
+
+    removal._delete_user_data(str(tmp_path))
+
+    assert order[-1] == "settings.json"
+
+
+def test_special_characters_in_base_path(tmp_path, quiet):
+    base = tmp_path / "a[1] (x86)"
+    _touch(base / "webhooks.json.corrupt-1")
+    _touch(base / ".smtp-x.tmp")
+
+    results = removal.execute_removal(str(base), False, "Linux")
+
+    assert all(r.ok for r in results), results
+    assert not (base / "webhooks.json.corrupt-1").exists()
+    assert not (base / ".smtp-x.tmp").exists()
+
+
+def test_real_forget_all_removes_keyring_entry_and_files(tmp_path, monkeypatch,
+                                                         fake_keyring):
+    """Kein Stub: Schlüssel aus token.json → Eintrag weg, dann die Dateien."""
+    import json
+
+    from src import keyring_store, oauth_utils
+
+    fake = fake_keyring()
+    key = "google-oauth:k1"
+    fake.store[(keyring_store.service_for(key), key)] = "1//r"
+    (tmp_path / "token.json").write_text(
+        json.dumps({oauth_utils.REFRESH_TOKEN_KEY: key, "token": "t"}),
+        encoding="utf-8")
+    monkeypatch.setattr(removal, "disable_autostart", lambda: None)
+
+    results = removal.execute_removal(str(tmp_path), False, "Linux")
+
+    assert all(r.ok for r in results), results
+    assert fake.store == {}
+    assert not (tmp_path / "token.json").exists()
+
+
+# --- RemovalState: darf jetzt entfernt werden? ------------------------------
+
+def test_state_begin_takes_the_guard_and_never_gives_it_back():
+    import threading
+
+    guard = threading.Lock()
+    state = removal.RemovalState()
+
+    assert state.begin(guard) is True
+    assert state.active is True
+    assert guard.locked()
+
+
+def test_state_begin_refuses_while_a_sync_holds_the_guard():
+    """I5 / Review Focus 5: nichts wird angetastet."""
+    import threading
+
+    guard = threading.Lock()
+    guard.acquire()
+    state = removal.RemovalState()
+
+    assert state.begin(guard) is False
+    assert state.active is False
+
+
+def test_state_begin_without_a_guard():
+    state = removal.RemovalState()
+    assert state.begin(None) is True and state.active is True
+
+
+def test_state_admits_everything_until_active_then_only_forced():
+    """I2: fremde Callbacks anderer Worker dürfen nichts mehr schreiben."""
+    state = removal.RemovalState()
+    assert state.admits(False) is True
+
+    state.begin(None)
+
+    assert state.admits(False) is False
+    assert state.admits(True) is True

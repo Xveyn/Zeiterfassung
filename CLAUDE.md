@@ -1393,8 +1393,13 @@ nicht mehr als „offen" führen — der Verweis lautet auf diese Grenze.
   Reihenfolge: Schlüsselbund → Autostart/Menüeintrag → Zugangsdaten →
   (nur mit Häkchen) Nutzerdaten, `settings.json` zuletzt → Datenordner nur
   wenn leer. Die App löscht ihre Programmdatei nicht, sie nennt sie.
-  Eintrittspunkt `ui.App.remove_application`: nimmt den `sync_guard` und gibt
-  ihn nie zurück, beendet ohne Sync-Push und ohne Update-Anwendung.
+  Eintrittspunkt `ui.App.remove_application`: `RemovalState.begin` nimmt den
+  `sync_guard` und gibt ihn nie zurück (läuft ein Sync, bleibt alles
+  unangetastet), danach verwirft `_marshal_to_ui` fremde Callbacks, und
+  `BackgroundTaskRunner.wait_idle` wartet laufende Jobs ab. Beendet wird ohne
+  Sync-Push und ohne Update-Anwendung; der Single-Instance-Port bleibt bis
+  zum Schluss belegt. **macOS: nur die plist löschen, kein `launchctl
+  unload`** — das beendete den per RunAtLoad gestarteten App-Prozess selbst.
 - `src/dialogs/smtp_dialog.py` — Anlegen/Bearbeiten eines SMTP-Kontos inkl.
   Verbindungstest
 - `src/reservations.py` — Reservierungen (zukünftige Soll-Zeiten, eigenes Konzept

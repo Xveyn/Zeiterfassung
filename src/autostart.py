@@ -78,6 +78,12 @@ def _macos_plist_path() -> str:
     )
 
 
+def macos_plist_path() -> str:
+    """Öffentlich für `removal`: dort wird nur die Datei gelöscht, ohne
+    `launchctl unload` (s. `removal._remove_macos_autostart`)."""
+    return _macos_plist_path()
+
+
 def _linux_desktop_path() -> str:
     return os.path.join(
         os.path.expanduser("~"),

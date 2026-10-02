@@ -59,6 +59,7 @@ def test_settings_dialog_gets_the_coordinators_auto_updater(monkeypatch):
     monkeypatch.setattr("src.ui.open_settings_dialog",
                         lambda *a, **k: captured.update(k))
     fake = MagicMock()
+    fake._removal.active = False
 
     App._open_settings(fake)
 

@@ -25,11 +25,12 @@ import glob
 import logging
 import os
 import shutil
+import threading
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 
 from src import desktop_entry, oauth_utils, secret_migration, self_update
-from src.autostart import disable_autostart
+from src.autostart import disable_autostart, macos_plist_path
 
 log = logging.getLogger(__name__)
 
@@ -48,7 +49,14 @@ LOGS_DIR = "logs"
 README_HINT = (
     "Bleibt etwas stehen, steht in der README unter „Vollständig entfernen“, "
     "wie du es von Hand abräumst.")
+KEYRING_HINT = (
+    "Der Schlüsselbund wird nicht nachgeprüft: Bleibt dort ein Eintrag "
+    "„Zeiterfassung“ stehen, entferne ihn von Hand.")
+KEYRING_STEP = "Schlüsselbund-Einträge"
 GOOGLE_PERMISSIONS_URL = "https://myaccount.google.com/permissions"
+# So lange wartet das Entfernen auf laufende Hintergrundjobs (Token-Refresh,
+# Kalender-Abgleich), bevor es Dateien löscht.
+IDLE_WAIT_S = 20.0
 
 Step = tuple[str, Callable[[], None]]
 
@@ -92,7 +100,11 @@ def _credential_paths(base_path: str) -> list[str]:
     # (`oauth_utils.write_token_json`) tragen dieselben Secrets.
     for name in CREDENTIAL_FILES:
         paths.extend(_glob(base_path, f"{glob.escape(name)}.corrupt-*"))
-    paths.extend(_glob(base_path, ".token-*.tmp"))
+    # mkstemp-Reste der Secret-Schreiber: `.<stem>-*.tmp` (token, webhooks,
+    # smtp, instance-secret) — im Datei-Fallback tragen sie Klartext.
+    for name in CREDENTIAL_FILES:
+        stem = name.removesuffix(".json")
+        paths.extend(_glob(base_path, f".{glob.escape(stem)}-*.tmp"))
     return paths
 
 
@@ -108,6 +120,10 @@ def _delete_user_data(base_path: str) -> None:
     try:
         _remove_all(os.path.join(base_path, name) for name in USER_DATA_FILES)
         _remove_all(_glob(base_path, "*.corrupt-*"))
+        # Reste von `json_store.atomic_write_json` (`<name>.<zufall>.tmp`)
+        # und `sync_history.json.tmp`.
+        for name in (*USER_DATA_FILES, SETTINGS_FILE):
+            _remove_all(_glob(base_path, f"{glob.escape(name)}.*tmp"))
     except OSError as e:
         failures.append(str(e))
     logs = os.path.join(base_path, LOGS_DIR)
@@ -143,6 +159,15 @@ def _remove_menu_entry(base_path: str) -> None:
                  os.path.join(base_path, desktop_entry.ICON_FILENAME)])
 
 
+def _remove_macos_autostart() -> None:
+    """Nur die plist löschen, **kein** `launchctl unload`: wurde die App über
+    den Autostart gestartet, gehört ihr Prozess zu diesem launchd-Job, und das
+    Entladen schickt ihr SIGTERM — mitten im Entfernen, vor den Dateischritten
+    und ohne Zusammenfassung. Der geladene Job läuft ohnehin nur bis zum
+    Beenden der App; ohne plist lädt ihn die nächste Anmeldung nicht mehr."""
+    _remove_all([macos_plist_path()])
+
+
 def plan_removal(base_path: str, with_data: bool, system: str,
                  pending_update_path: str = "") -> list[Step]:
     """Die Schritte in der Reihenfolge, in der sie laufen müssen. Leer, wo
@@ -150,9 +175,9 @@ def plan_removal(base_path: str, with_data: bool, system: str,
     if system not in ("Darwin", "Linux"):
         return []
     steps: list[Step] = [
-        ("Schlüsselbund-Einträge",
-         lambda: secret_migration.forget_all(base_path)),
-        ("Autostart", disable_autostart),
+        (KEYRING_STEP, lambda: secret_migration.forget_all(base_path)),
+        ("Autostart",
+         _remove_macos_autostart if system == "Darwin" else disable_autostart),
     ]
     if system == "Linux":
         steps.append(("Menüeintrag", lambda: _remove_menu_entry(base_path)))
@@ -222,6 +247,33 @@ def format_summary(results: list[StepResult], app_file: str | None,
         lines.append("")
         lines.append("Die Freigabe im Google-Konto bleibt bestehen. Zurückziehen "
                      f"lässt sie sich unter:\n{GOOGLE_PERMISSIONS_URL}")
+    if any(r.name == KEYRING_STEP and r.ok for r in results):
+        lines.append("")
+        lines.append(KEYRING_HINT)
     lines.append("")
     lines.append(README_HINT)
     return "\n".join(lines)
+
+
+class RemovalState:
+    """Läuft gerade das Entfernen? Tk-frei, damit die Entscheidungen testbar
+    sind, die `ui.App` sonst nur im Widget-Code träfe.
+
+    `begin` nimmt den `sync_guard` und gibt ihn **nie** zurück: jeder
+    Sync-Einstieg überspringt danach seinen Lauf. Gelingt das nicht, läuft
+    ein Sync — dann bleibt alles unangetastet (`active` bleibt `False`).
+    `admits` entscheidet, ob ein auf den UI-Thread marshallter Callback noch
+    laufen darf: fremde Worker (Update-Check, Reconcile …) dürfen nach dem
+    Löschen nichts mehr schreiben; nur der eigene Abschluss ist `forced`."""
+
+    def __init__(self) -> None:
+        self.active = False
+
+    def begin(self, sync_guard: threading.Lock | None) -> bool:
+        if sync_guard is not None and not sync_guard.acquire(blocking=False):
+            return False
+        self.active = True
+        return True
+
+    def admits(self, forced: bool) -> bool:
+        return forced or not self.active

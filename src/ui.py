@@ -74,6 +74,7 @@ class App:
         self.vacation_store = vacation_store
         self._data_lock = data_lock      # geteilter Store-RLock (Audit H1)
         self._sync_guard = sync_guard    # Sync-Re-Entrancy-Guard (Audit H2)
+        self._removal = removal.RemovalState()   # „Zeiterfassung entfernen“ (#50)
         # Gerätelokale Webhook-Konfiguration; None bedeutet „Feature nicht
         # verfügbar" und wird von den Dialogen wie eine leere Liste behandelt.
         self._webhook_store = webhook_store
@@ -523,6 +524,8 @@ class App:
         set_toggle_active(self.btn_week, self.view_mode == "week")
 
     def _open_settings(self, initial_tab=None):
+        if self._removal.active:
+            return  # Entfernen läuft (#50): nichts mehr speichern
         def _on_change():
             self._refresh()
             self._sync.update_status_label()
@@ -705,7 +708,7 @@ class App:
         self.root.lift()
         self.root.focus_force()
 
-    def _marshal_to_ui(self, fn):
+    def _marshal_to_ui(self, fn, force=False):
         """Marshallt `fn` aus einem Daemon-Worker auf den Tk-Thread via
         after(0) und verwirft den Aufruf still, falls das Fenster
         zwischenzeitlich geschlossen wurde.
@@ -715,7 +718,15 @@ class App:
         Fenster, bevor der Callback feuert, läuft er gegen den zerstörten
         Tk-Interpreter -> "application has been destroyed" (TclError). Sowohl
         das Einplanen als auch das spätere Ausführen werden daher gegen
-        TclError abgesichert (vgl. tooltip.py)."""
+        TclError abgesichert (vgl. tooltip.py).
+
+        Läuft „Zeiterfassung entfernen“ (#50), werden fremde Callbacks
+        verworfen — sonst schriebe ein Update-Check oder Reconcile nach dem
+        Löschen `settings.json` & Co. neu. Nur der eigene Abschluss kommt mit
+        `force=True` durch."""
+        if not self._removal.admits(force):
+            return
+
         def guarded():
             try:
                 fn()
@@ -847,6 +858,8 @@ class App:
             self._bg.trigger_reconcile(self._on_reconcile_done)
 
     def _open_dialog(self, date_str):
+        if self._removal.active:
+            return  # Entfernen läuft (#50): nichts mehr speichern
         if _stray_click_suppressed(getattr(self.root, "_dialog_closed_at", 0),
                                    time.monotonic()):
             return  # Linksklick schlägt von einem eben geschlossenen Dialog durch (#44).
@@ -925,6 +938,11 @@ class App:
         self._sync.on_pull_error(error, tb)
 
     def _on_close(self):
+        if self._removal.active:
+            # Entfernen läuft (#50): weder den regulären Beenden-Pfad (Push,
+            # vorbereitetes Update) noch ein Verstecken im Tray — den Abschluss
+            # beendet die App selbst.
+            return
         # Bei aktivem Minimize-to-Tray klappt der X-Button das Fenster nur weg;
         # der Prozess lebt weiter und ist über das Tray-Icon erreichbar. Sync-
         # Push und Quit passieren erst beim Tray-Menü-„Beenden" bzw. wenn das
@@ -967,29 +985,26 @@ class App:
 
     def remove_application(self, with_data):
         """„Zeiterfassung entfernen" (#50): ruhigstellen, aufräumen, beenden.
+        Liefert `False`, wenn gerade ein Sync läuft — dann bleibt alles
+        unangetastet (der Einstellungen-Dialog schließt in diesem Fall nicht).
 
         Kein `_quit_with_sync_push`: der Push bräuchte genau die Zugangsdaten,
         die hier gelöscht werden, und ein vorbereitetes Update soll nicht noch
         installiert werden. Ruhiggestellt wird, was Dateien neu schreiben
-        könnte: Sync (über den `sync_guard`, der **nie** zurückgegeben wird),
-        Tray, Erinnerungen, Tages-Tick, Single-Instance-Port.
-
-        Lässt sich der Guard nicht nehmen, läuft gerade ein Sync: dann bleibt
-        alles unangetastet und der Nutzer versucht es gleich noch einmal.
+        könnte: Sync (`RemovalState.begin` nimmt den `sync_guard` und gibt ihn
+        nie zurück), Tray, Erinnerungen, Tages-Tick, fremde Callbacks
+        (`_marshal_to_ui`), Schließen/Dialoge (`_removal.active`). Laufende
+        Hintergrundjobs (Token-Refresh, Kalender-Abgleich) werden abgewartet.
+        Der Single-Instance-Port bleibt bis zum Schluss belegt, damit keine
+        zweite Instanz mittendrin startet.
         """
-        guard = self._sync_guard
-        if guard is not None and not guard.acquire(blocking=False):
-            themed_showinfo(
-                self.root, "Sync läuft",
-                "Gerade läuft ein Sync. Bitte in einem Moment erneut versuchen.")
-            return
+        if not self._removal.begin(self._sync_guard):
+            return False
         if self._tray is not None:
             self._tray.stop()
         self._reminders.stop()
         self._send_reminders.stop()
         self._sync.stop_day_watch()
-        if self._single_instance is not None:
-            self._single_instance.release()
 
         base = self.base_path
         system = platform.system()
@@ -998,16 +1013,27 @@ class App:
         app_file = removal.app_file_hint(system, os.environ, sys.executable)
 
         def _done(results):
-            themed_showinfo(self.root, "Zeiterfassung entfernt",
-                            removal.format_summary(results, app_file, had_token))
-            self.root.destroy()
+            try:
+                themed_showinfo(self.root, "Zeiterfassung entfernt",
+                                removal.format_summary(results, app_file, had_token))
+            finally:
+                # Ohne finally bliebe die App ruhiggestellt offen, wenn der
+                # Dialog an etwas anderem als TclError scheitert.
+                if self._single_instance is not None:
+                    self._single_instance.release()
+                self.root.destroy()
+
+        def _work():
+            # `own=1`: dieser Worker läuft selbst über den Runner.
+            self._bg.wait_idle(removal.IDLE_WAIT_S, own=1)
+            results = removal.execute_removal(base, with_data, system, pending)
+            self._marshal_to_ui(lambda: _done(results), force=True)
 
         # Der Schlüsselbund-Schritt kann pro Eintrag bis zum 30-s-Watchdog
         # dauern; ohne Rückmeldung wirkte die App eingefroren.
         self.root.config(cursor="watch")
-        self._bg.run(
-            lambda: removal.execute_removal(base, with_data, system, pending),
-            _done)
+        self._bg.run(_work)
+        return True
 
     def restart_for_scaling(self):
         """Startet die App neu, damit eine geänderte UI-Skalierung greift

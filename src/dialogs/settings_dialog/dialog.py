@@ -13,7 +13,7 @@ from src.theme import (
     apply_combobox_style, apply_notebook_style, attach_unfocus_on_click,
     center_dialog_on_parent, create_dialog,
     primary_button, secondary_button, set_primary_button_enabled,
-    themed_ask_save_changes, themed_showerror,
+    themed_ask_save_changes, themed_showerror, themed_showinfo,
 )
 
 
@@ -75,12 +75,19 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
         frames["google"], dialog, settings, base_path, on_change, runner,
         storage, conflicts_store, reservation_store, data_lock, sync_guard)
     def _remove(with_data):
+        if on_request_removal is None:
+            return
+        # Erst die App fragen, dann schließen: läuft gerade ein Sync, bleibt der
+        # Dialog samt ungespeicherten Änderungen stehen und nichts wird entfernt.
+        if on_request_removal(with_data) is False:
+            themed_showinfo(
+                dialog, "Sync läuft",
+                "Gerade läuft ein Sync. Bitte in einem Moment erneut versuchen.")
+            return
         # Ohne Rückfrage nach ungespeicherten Änderungen schließen: ein Speichern
         # nach dem Aufräumen legte settings.json neu an (#50). Wie `_restart`
         # unten: der Dialog geht, dann übernimmt die App.
         dialog.destroy()
-        if on_request_removal is not None:
-            on_request_removal(with_data)
 
     app = AppTab(frames["app"], settings, dialog, parent, base_path,
                  storage=storage, reservation_store=reservation_store,
