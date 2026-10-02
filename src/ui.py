@@ -1015,7 +1015,8 @@ class App:
         def _done(results):
             try:
                 themed_showinfo(self.root, "Zeiterfassung entfernt",
-                                removal.format_summary(results, app_file, had_token))
+                                removal.format_summary(results, app_file, had_token),
+                                copyable=True)
             finally:
                 # Ohne finally bliebe die App ruhiggestellt offen, wenn der
                 # Dialog an etwas anderem als TclError scheitert.
