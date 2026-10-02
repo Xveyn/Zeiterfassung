@@ -851,6 +851,11 @@ selbst nach dem Aufbau.
   UI-Thread). Wer einen weiteren Schreiber für Webhook-Secrets baut, nimmt die
   Sperre mit. Grenze: ein Schlüsselbund-Aufruf, der in den 30-s-Watchdog
   läuft, kann danach noch landen (Spec 2026-09-28-webhook-umzug-race).
+- **Etwas, das beim „Entfernen" aufgeräumt werden muss** (neue Datei im
+  Datenordner, neuer Schlüsselbund-Eintrag, neue Autostart-Spur) → in
+  `removal.py` ergänzen **und** in `installer.iss` (Windows). Zwei Test-
+  Assertions halten beide Listen zusammen; ein neues Secret braucht außerdem
+  den Eintrag in `secret_migration.forget_all` (s. oben).
 - **Nicht** nach `main.py`: der Einstiegspunkt ist Bootstrap (Stores bauen, Wiring,
   `_hold_app_mutex`/`_ensure_device_id`/`_sweep_orphan_tombstones`/`_refresh_linux_integration`).
   Wer dort Fachlogik ablegt, erzeugt wieder den Zyklus, den R1 aufgelöst hat — Symptom ist

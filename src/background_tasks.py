@@ -10,6 +10,7 @@ Ergebnisse über `marshal` an Callbacks der App.
 import logging
 import os
 import threading
+import time
 import traceback
 
 from src.mail import fetch_user_email, refresh_token_if_needed, TokenAuthError, TokenNetworkError
@@ -39,11 +40,27 @@ class BackgroundTaskRunner:
         # stumm verschieben; kein Test fängt das ab, weil test_background_tasks.py
         # per **kw konstruiert (s. Docstring von run_calendar_reconcile).
         self._vacation_store = vacation_store
+        # Zählt laufende `run`-Jobs, damit „Zeiterfassung entfernen“ (#50) sie
+        # abwarten kann, bevor es Dateien löscht (`wait_idle`).
+        self._active = 0
+        self._idle = threading.Condition()
+
+    def wait_idle(self, timeout: float, own: int = 0) -> bool:
+        """Wartet, bis höchstens `own` Jobs laufen (`own=1`: der Aufrufer ist
+        selbst einer). `False`, wenn die Zeit vorher abläuft."""
+        deadline = time.monotonic() + timeout
+        with self._idle:
+            while self._active > own:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    return False
+                self._idle.wait(remaining)
+            return True
 
     def run(self, fn, on_done=None):
         """Führt fn() in einem Daemon-Thread aus und liefert dessen Rückgabe
         via marshal an on_done auf dem UI-Thread."""
-        def worker():
+        def body():
             try:
                 result = fn()
             except Exception:
@@ -59,6 +76,17 @@ class BackgroundTaskRunner:
                 # in die Closure (reportOptionalCall-FP).
                 done = on_done
                 self._marshal(lambda: done(result))
+
+        def worker():
+            try:
+                body()
+            finally:
+                with self._idle:
+                    self._active -= 1
+                    self._idle.notify_all()
+
+        with self._idle:
+            self._active += 1
         threading.Thread(target=worker, daemon=True).start()
 
     def refresh_token(self, on_auth_error, on_error, on_finished=None):

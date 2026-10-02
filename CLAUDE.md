@@ -1386,6 +1386,20 @@ nicht mehr als „offen" führen — der Verweis lautet auf diese Grenze.
   statt eines neuen; `forget_all` räumt jeden Schlüssel ab, den die Datei
   trägt, unabhängig von `refresh_token_location`. Einmaliger Hinweis danach
   (`ui.App._on_secrets_migrated`, Dialog/Toast/Log je nach Fenstersichtbarkeit)
+- `src/removal.py` — „Zeiterfassung entfernen" (macOS/Linux, #50): Dateilisten
+  (Spiegel von `installer.iss`, `tests/test_removal.py` hält sie zusammen),
+  `plan_removal`/`run_removal`/`execute_removal` (**wirft nie** — `on_done` des
+  Runners feuert bei einer Exception nie) und die Hinweise für den Abschluss.
+  Reihenfolge: Schlüsselbund → Autostart/Menüeintrag → Zugangsdaten →
+  (nur mit Häkchen) Nutzerdaten, `settings.json` zuletzt → Datenordner nur
+  wenn leer. Die App löscht ihre Programmdatei nicht, sie nennt sie.
+  Eintrittspunkt `ui.App.remove_application`: `RemovalState.begin` nimmt den
+  `sync_guard` und gibt ihn nie zurück (läuft ein Sync, bleibt alles
+  unangetastet), danach verwirft `_marshal_to_ui` fremde Callbacks, und
+  `BackgroundTaskRunner.wait_idle` wartet laufende Jobs ab. Beendet wird ohne
+  Sync-Push und ohne Update-Anwendung; der Single-Instance-Port bleibt bis
+  zum Schluss belegt. **macOS: nur die plist löschen, kein `launchctl
+  unload`** — das beendete den per RunAtLoad gestarteten App-Prozess selbst.
 - `src/dialogs/smtp_dialog.py` — Anlegen/Bearbeiten eines SMTP-Kontos inkl.
   Verbindungstest
 - `src/reservations.py` — Reservierungen (zukünftige Soll-Zeiten, eigenes Konzept

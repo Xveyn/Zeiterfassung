@@ -22,7 +22,7 @@ from src.theme.chrome import create_dialog
 log = logging.getLogger(__name__)
 
 
-def _run_modal(dialog):
+def run_modal(dialog):
     """Setzt den modalen Grab, wartet auf den Dialog und gibt den Grab an den
     vorherigen Halter zurück.
 
@@ -95,7 +95,7 @@ def themed_askyesno(parent, title: str, message: str, lock_ms: int = 0) -> bool:
     dialog.protocol("WM_DELETE_WINDOW", click_no)
 
     center_dialog_on_parent(dialog, parent)
-    _run_modal(dialog)
+    run_modal(dialog)
     return result["value"]
 
 
@@ -178,7 +178,7 @@ def themed_ask_delete_choice(parent, title: str, message: str, options, lock_ms:
     dialog.protocol("WM_DELETE_WINDOW", click_cancel)
 
     center_dialog_on_parent(dialog, parent)
-    _run_modal(dialog)
+    run_modal(dialog)
     return result["value"]
 
 
@@ -221,7 +221,7 @@ def themed_ask_save_changes(parent, tab_title: str) -> SaveChoice:
     dialog.protocol("WM_DELETE_WINDOW", lambda: choose("cancel"))
 
     center_dialog_on_parent(dialog, parent)
-    _run_modal(dialog)
+    run_modal(dialog)
     return result["value"]
 
 
@@ -247,7 +247,7 @@ def _themed_ok_dialog(parent, title: str, message: str) -> None:
     dialog.protocol("WM_DELETE_WINDOW", dialog.destroy)
 
     center_dialog_on_parent(dialog, parent)
-    _run_modal(dialog)
+    run_modal(dialog)
 
 
 def themed_showinfo(parent, title: str, message: str) -> None:

@@ -1,11 +1,13 @@
 """Tab „App": Fenster, Darstellung (Skalierung) und Daten (Datenordner, Import)."""
 
 import logging
+import platform
+import sys
 import tkinter as tk
 import traceback
 from tkinter import messagebox, ttk
 
-from src import dpi
+from src import dpi, removal
 from src.autostart import (
     disable_autostart, enable_autostart, is_autostart_enabled,
     resolve_autostart_target,
@@ -26,8 +28,10 @@ class AppTab:
     """Baut den App-Tab; Tab-Schnittstelle für den `SaveCoordinator` (#132)."""
 
     def __init__(self, frame, settings, dialog, parent, base_path, *,
-                 storage=None, reservation_store=None, on_change=None):
+                 storage=None, reservation_store=None, on_change=None,
+                 on_request_removal=None):
         self.frame = frame
+        self._on_request_removal = on_request_removal
         self._storage = storage
         self._reservation_store = reservation_store
         self._on_change = on_change
@@ -105,6 +109,12 @@ class AppTab:
         form.hint("Im Datenordner liegen Einträge, Einstellungen und "
                   "credentials.json. Importiert werden geteilte Arbeitszeiten "
                   "(JSON-Datei aus „Teilen“).")
+        if on_request_removal is not None and removal.is_available(
+                platform.system(), getattr(sys, "frozen", False)):
+            form.buttons(("Zeiterfassung entfernen…", self._request_removal))
+            form.hint("Räumt Schlüsselbund, Zugangsdaten, Autostart und "
+                      "Menüeintrag ab und beendet die App. Die Programmdatei "
+                      "löschst du danach selbst.")
 
         self.autostart_var = autostart_var
         self.always_on_top_var = always_on_top_var
@@ -175,6 +185,22 @@ class AppTab:
                 f"{type(e).__name__}: {e}\n\n{traceback.format_exc()}",
                 parent=self._dialog,
             )
+
+    def _request_removal(self):
+        from src.dialogs.removal_dialog import ask_removal
+
+        # Lokale Bindung: Pyright trägt das None-Narrowing sonst nicht in die
+        # Closure (reportOptionalCall-FP, Muster wie in background_tasks.run).
+        callback = self._on_request_removal
+        if callback is None:
+            return
+        with_data = ask_removal(self._dialog)
+        if with_data is None:
+            return
+        # Schließt den Einstellungen-Dialog ohne Rückfrage nach ungespeicherten
+        # Änderungen (dialog.py::_remove) — ein Speichern danach legte
+        # settings.json neu an.
+        callback(with_data)
 
     def _open_import_dialog(self):
         from src.dialogs.import_dialog import open_import_dialog
