@@ -415,3 +415,23 @@ def test_state_admits_everything_until_active_then_only_forced():
 
     assert state.admits(False) is False
     assert state.admits(True) is True
+
+
+def test_foreign_files_keep_the_folder_and_say_so(tmp_path):
+    """M4 (#204): ✓ allein ließe den Nutzer glauben, der Ordner sei weg."""
+    _touch(tmp_path / "fremd.txt")
+
+    results = removal.run_removal(
+        [("Datenordner", lambda: removal._remove_dir_if_empty(str(tmp_path)))])
+
+    assert results[0].ok and "fremde Dateien" in results[0].note
+    text = removal.format_summary(results, None, False)
+    assert "✓ Datenordner — bleibt" in text
+
+
+def test_empty_folder_is_removed_without_a_note(tmp_path):
+    results = removal.run_removal(
+        [("Datenordner", lambda: removal._remove_dir_if_empty(str(tmp_path)))])
+
+    assert results == [StepResult("Datenordner", True)]
+    assert not tmp_path.exists()
