@@ -58,7 +58,9 @@ GOOGLE_PERMISSIONS_URL = "https://myaccount.google.com/permissions"
 # Kalender-Abgleich), bevor es Dateien löscht.
 IDLE_WAIT_S = 20.0
 
-Step = tuple[str, Callable[[], None]]
+# Ein Schritt darf einen Hinweis (`str`) zurückgeben: erledigt, aber mit etwas,
+# das der Nutzer wissen muss. Jeder andere Rückgabewert zählt als „nichts".
+Step = tuple[str, Callable[[], object]]
 
 
 @dataclass(frozen=True)
@@ -66,6 +68,7 @@ class StepResult:
     name: str
     ok: bool
     error: str = ""
+    note: str = ""
 
 
 def is_available(system: str, frozen: bool) -> bool:
@@ -141,7 +144,9 @@ def _delete_user_data(base_path: str) -> None:
         raise OSError("; ".join(failures))
 
 
-def _remove_dir_if_empty(base_path: str) -> None:
+def _remove_dir_if_empty(base_path: str) -> str | None:
+    """`None` = Ordner weg. Ein Hinweis, wenn er bleibt (M4): sonst liest der
+    Nutzer ✓ und sucht nicht weiter."""
     try:
         os.rmdir(base_path)
     except FileNotFoundError:
@@ -150,8 +155,9 @@ def _remove_dir_if_empty(base_path: str) -> None:
         # Nicht leer: fremde Dateien bleiben, und mit ihnen der Ordner. Das
         # ist gewollt, kein Fehler. Jeder andere Grund (Rechte) wird gemeldet.
         if os.path.isdir(base_path) and os.listdir(base_path):
-            return
+            return f"bleibt, enthält noch fremde Dateien: {base_path}"
         raise
+    return None
 
 
 def _remove_menu_entry(base_path: str) -> None:
@@ -196,14 +202,14 @@ def run_removal(steps: list[Step]) -> list[StepResult]:
     results: list[StepResult] = []
     for name, fn in steps:
         try:
-            fn()
+            note = fn()
         except Exception as e:
             # Bewusst alles: ein Schritt darf scheitern, die übrigen laufen
             # weiter (Modul-Docstring). Der Fehler steht im Ergebnis und im Log.
             log.warning("Entfernen: Schritt %r fehlgeschlagen", name, exc_info=True)
             results.append(StepResult(name, False, f"{type(e).__name__}: {e}"))
         else:
-            results.append(StepResult(name, True))
+            results.append(StepResult(name, True, note=note if isinstance(note, str) else ""))
     return results
 
 
@@ -236,7 +242,8 @@ def app_file_hint(system: str, environ: Mapping[str, str],
 
 def format_summary(results: list[StepResult], app_file: str | None,
                    had_token: bool) -> str:
-    lines = [f"✓ {r.name}" if r.ok else f"✗ {r.name} — {r.error}" for r in results]
+    lines = [(f"✓ {r.name} — {r.note}" if r.note else f"✓ {r.name}") if r.ok
+             else f"✗ {r.name} — {r.error}" for r in results]
     lines.append("")
     if app_file:
         lines.append("Die Programmdatei bleibt liegen. Lösche sie jetzt selbst:")
