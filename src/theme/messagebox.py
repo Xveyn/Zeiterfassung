@@ -225,11 +225,16 @@ def themed_ask_save_changes(parent, tab_title: str) -> SaveChoice:
     return result["value"]
 
 
-def _themed_ok_dialog(parent, title: str, message: str) -> None:
+def _themed_ok_dialog(parent, title: str, message: str,
+                      copyable: bool = False) -> None:
     """Modaler OK-Dialog im App-Theme — Basis für info/warning/error.
 
     Eigener Toplevel mit Dark-Theme-Farben und gebrandeter Titelleiste
     (`tkinter.messagebox.*` ist eine Black-Box ohne Customization-Hooks).
+
+    `copyable`: zusätzlicher „Kopieren"-Knopf, der den Meldungstext in die
+    Zwischenablage legt — für Texte mit Pfaden/URLs, die sich sonst nur
+    abtippen ließen (das `tk.Label` ist nicht markierbar).
     """
     dialog = create_dialog(parent, title, modal=False, escape_closes=False)
 
@@ -240,7 +245,14 @@ def _themed_ok_dialog(parent, title: str, message: str) -> None:
 
     btn_frame = tk.Frame(dialog, bg=BG)
     btn_frame.pack(pady=(0, 18))
-    primary_button(btn_frame, "OK", dialog.destroy).pack()
+    if copyable:
+        def copy():
+            dialog.clipboard_clear()
+            dialog.clipboard_append(message)
+            copy_btn._label.config(text="Kopiert ✓")
+        copy_btn = secondary_button(btn_frame, "Kopieren", copy)
+        copy_btn.pack(side=tk.LEFT, padx=6)
+    primary_button(btn_frame, "OK", dialog.destroy).pack(side=tk.LEFT, padx=6)
 
     dialog.bind("<Return>", lambda e: dialog.destroy())
     dialog.bind("<Escape>", lambda e: dialog.destroy())
@@ -250,9 +262,10 @@ def _themed_ok_dialog(parent, title: str, message: str) -> None:
     run_modal(dialog)
 
 
-def themed_showinfo(parent, title: str, message: str) -> None:
+def themed_showinfo(parent, title: str, message: str,
+                    copyable: bool = False) -> None:
     """Modaler Info-Dialog im App-Theme. Drop-in für `messagebox.showinfo`."""
-    _themed_ok_dialog(parent, title, message)
+    _themed_ok_dialog(parent, title, message, copyable)
 
 
 def themed_showwarning(parent, title: str, message: str) -> None:
