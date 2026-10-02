@@ -170,14 +170,21 @@ class GoogleTab:
         # sie nicht — die sagt, WELCHE Scopes gewährt sind, diese, OB der
         # Token überhaupt noch trägt (Xveyn#124). „Google neu verbinden"
         # steht direkt daneben: genau diese Zeile sagt, wann er nötig ist.
+        # Untereinander statt nebeneinander: der Status wechselt zur Laufzeit
+        # von „wird geprüft…" zu einem langen Text („⚠ abgelaufen — …"). Neben
+        # dem Knopf machte das die Zeile um ~90 px breiter — und der Notebook
+        # fordert die Breite des breitesten Reiters an, auch eines
+        # unsichtbaren: der ganze Dialog sprang nach dem Öffnen auf und wurde
+        # breiter als die Tab-Leiste. Gestapelt braucht die Zeile nur die Breite
+        # des längeren von beiden.
         token_row = tk.Frame(body, bg=BG)
         self._token_status = tk.Label(
             token_row, text="wird geprüft…", font=FONT_SMALL, bg=BG, fg=TEXT_MUTED)
-        self._token_status.pack(side=tk.LEFT)
+        self._token_status.pack(side=tk.TOP, anchor="w")
         secondary_button(
             token_row, "Google neu verbinden", self._reconnect_google,
             padx=12, pady=2,
-        ).pack(side=tk.LEFT, padx=(10, 0))
+        ).pack(side=tk.TOP, anchor="w", pady=(4, 0))
         form.row("Anmeldung:", token_row)
         self._check_token()
 
