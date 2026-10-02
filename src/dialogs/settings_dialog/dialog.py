@@ -24,7 +24,8 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
                          data_lock=None, sync_guard=None, webhook_store=None,
                          smtp_store=None,
                          vacation_store=None, on_vacation_change=None,
-                         on_vacation_display_change=None, initial_tab=None):
+                         on_vacation_display_change=None, initial_tab=None,
+                         on_request_removal=None):
     """Modaler Dialog zum Bearbeiten der App-Einstellungen, aufgeteilt auf sechs
     Tabs (Arbeitszeit / Erinnerungen / Versand / Google / App / Updates).
 
@@ -50,6 +51,8 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
     `sending`/`google`/`app`/`updates`), auf den der Dialog direkt aufspringt — Default `None` lässt es beim bisherigen Verhalten
     (erster Tab „Arbeitszeit"). Für Aufrufer, die gezielt zu einem Tab wollen
     (das Update-Banner zu „updates"), statt dass der Nutzer ihn selbst sucht.
+    on_request_removal: Rückruf(with_data) für „Zeiterfassung entfernen" (#50);
+    der Dialog schließt dafür ohne Speichern.
     """
     dialog = create_dialog(parent, "Einstellungen", escape_closes=False)
 
@@ -71,9 +74,17 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
     google = GoogleTab(
         frames["google"], dialog, settings, base_path, on_change, runner,
         storage, conflicts_store, reservation_store, data_lock, sync_guard)
+    def _remove(with_data):
+        # Ohne Rückfrage nach ungespeicherten Änderungen schließen: ein Speichern
+        # nach dem Aufräumen legte settings.json neu an (#50). Wie `_restart`
+        # unten: der Dialog geht, dann übernimmt die App.
+        dialog.destroy()
+        if on_request_removal is not None:
+            on_request_removal(with_data)
+
     app = AppTab(frames["app"], settings, dialog, parent, base_path,
                  storage=storage, reservation_store=reservation_store,
-                 on_change=on_change)
+                 on_change=on_change, on_request_removal=_remove)
     updates_tab = UpdatesTab(frames["updates"], settings, runner, auto_updater)
 
     # Vor dem initialen select deklariert und gebunden (wie bisher): der

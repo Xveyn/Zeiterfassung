@@ -20,7 +20,7 @@ from src.weekly_limit import format_limit_warnings
 from src.grid_renderer import GridRenderer
 from src.paths import get_resource_path, relaunch_command, relaunch_env
 from src.mail import friendly_token_message
-from src import keyring_store, secret_migration
+from src import keyring_store, removal, secret_migration
 from src.topmost_relief import TopmostRelief
 from src.sync_orchestrator import classify_sync_error, SyncOrchestrator
 from src.update_banner import UpdateBanner
@@ -552,6 +552,7 @@ class App:
             on_vacation_display_change=self._refresh,
             initial_tab=initial_tab,
             auto_updater=self._updates.auto_updater,
+            on_request_removal=self.remove_application,
         )
 
     def _on_vacation_change(self):
@@ -963,6 +964,50 @@ class App:
             logging.getLogger(__name__).exception(
                 "Vorbereitetes Update konnte nicht angewendet werden")
         self.root.destroy()
+
+    def remove_application(self, with_data):
+        """„Zeiterfassung entfernen" (#50): ruhigstellen, aufräumen, beenden.
+
+        Kein `_quit_with_sync_push`: der Push bräuchte genau die Zugangsdaten,
+        die hier gelöscht werden, und ein vorbereitetes Update soll nicht noch
+        installiert werden. Ruhiggestellt wird, was Dateien neu schreiben
+        könnte: Sync (über den `sync_guard`, der **nie** zurückgegeben wird),
+        Tray, Erinnerungen, Tages-Tick, Single-Instance-Port.
+
+        Lässt sich der Guard nicht nehmen, läuft gerade ein Sync: dann bleibt
+        alles unangetastet und der Nutzer versucht es gleich noch einmal.
+        """
+        guard = self._sync_guard
+        if guard is not None and not guard.acquire(blocking=False):
+            themed_showinfo(
+                self.root, "Sync läuft",
+                "Gerade läuft ein Sync. Bitte in einem Moment erneut versuchen.")
+            return
+        if self._tray is not None:
+            self._tray.stop()
+        self._reminders.stop()
+        self._send_reminders.stop()
+        self._sync.stop_day_watch()
+        if self._single_instance is not None:
+            self._single_instance.release()
+
+        base = self.base_path
+        system = platform.system()
+        pending = self.settings.get("pending_update_path") or ""
+        had_token = os.path.exists(os.path.join(base, "token.json"))
+        app_file = removal.app_file_hint(system, os.environ, sys.executable)
+
+        def _done(results):
+            themed_showinfo(self.root, "Zeiterfassung entfernt",
+                            removal.format_summary(results, app_file, had_token))
+            self.root.destroy()
+
+        # Der Schlüsselbund-Schritt kann pro Eintrag bis zum 30-s-Watchdog
+        # dauern; ohne Rückmeldung wirkte die App eingefroren.
+        self.root.config(cursor="watch")
+        self._bg.run(
+            lambda: removal.execute_removal(base, with_data, system, pending),
+            _done)
 
     def restart_for_scaling(self):
         """Startet die App neu, damit eine geänderte UI-Skalierung greift
