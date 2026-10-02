@@ -365,9 +365,16 @@ Schlüssel stehen in den Dateien:
 - Linux: `./Zeiterfassung-*.AppImage --forget-secrets`
 
 Wer die Schlüsselbund-Einträge stattdessen von Hand entfernen will, findet sie
-unter dem Service-Präfix `Zeiterfassung:` in der „Schlüsselbundverwaltung"
-(macOS) bzw. „Passwörter und Schlüssel" (Linux, GNOME Keyring/Seahorse —
-abhängig vom installierten Secret-Service-Backend).
+in der „Schlüsselbundverwaltung" (macOS) bzw. „Passwörter und Schlüssel"
+(Linux, GNOME Keyring/Seahorse — abhängig vom installierten
+Secret-Service-Backend), und zwar unter **zwei** Service-Namen:
+`Zeiterfassung:<Schlüssel>` (Refresh-Token, Webhook-Secrets) und exakt
+`Zeiterfassung` (SMTP-Passwörter, Konto-ID als Benutzername;
+`keyring_store.SERVICE`). Eine Suche nur nach dem Präfix `Zeiterfassung:`
+übersähe die SMTP-Passwörter.
+
+Die vollständige Schritt-für-Schritt-Anleitung steht in der README unter
+„Vollständig entfernen".
 
 ## macOS: kein Selbst-Update
 
