@@ -28,7 +28,7 @@ Desktop-App zur Erfassung von Arbeitszeiten: im Kern Kalenderansicht und PDF-Ber
 [Gmail API](#gmail-api-einrichten) · [SMTP](#e-mail-versand-ohne-google-smtp) · [Multi-Device-Sync](#multi-device-sync-einrichten-optional) ·
 [Google-Kalender](#google-kalender-für-reservierungen-einrichten-optional) ·
 [Einstellungen](#einstellungen) · [Plattform-Kompatibilität](#plattform-kompatibilität) ·
-[Datenspeicherung](#datenspeicherung) · [Mitentwickeln](#mitentwickeln) · [Lizenz](#lizenz)
+[Datenspeicherung](#datenspeicherung) · [Entfernen](#vollständig-entfernen) · [Mitentwickeln](#mitentwickeln) · [Lizenz](#lizenz)
 
 ## Features
 
@@ -438,6 +438,52 @@ Speicherort je nach Plattform:
 > zuvor auch die zugehörigen Schlüsselbund-Einträge ab. Das beendet den
 > Zugriff auf diesem Rechner — die erteilte Freigabe im Google-Konto bleibt
 > bestehen, bis du sie dort zurückziehst.
+
+## Vollständig entfernen
+
+**Windows:** Unter „Apps & Features" deinstallieren. Der Uninstaller räumt Zugangsdaten,
+Schlüsselbund-Einträge und den Autostart-Eintrag ab und fragt, ob auch deine
+Daten (Zeiten, Einstellungen, Protokoll) weg sollen.
+
+**macOS und Linux** haben keinen Uninstaller — das Löschen der App räumt weder
+den Datenordner noch den Autostart noch den Schlüsselbund auf. Von Hand, in
+dieser Reihenfolge (der Schlüsselbund-Schritt muss **vor** dem Löschen des
+Datenordners laufen, denn die Schlüssel stehen in den Dateien dort):
+
+1. **Autostart ausschalten:** Einstellungen → App → „Autostart", dann App beenden.
+2. **Schlüsselbund abräumen**, einmal von Hand:
+   - macOS: `/Applications/Zeiterfassung.app/Contents/MacOS/Zeiterfassung --forget-secrets`
+   - Linux: `./Zeiterfassung-*.AppImage --forget-secrets`
+
+   Der Aufruf öffnet kein Fenster und beendet sich sofort. Er entfernt
+   Refresh-Token, Webhook-Secrets und SMTP-Passwörter.
+3. **App löschen:** macOS `/Applications/Zeiterfassung.app` in den Papierkorb,
+   Linux die AppImage-Datei.
+4. **Datenordner löschen** (enthält Zeiten, Einstellungen, `token.json`,
+   `webhooks.json`, `smtp.json`, Protokoll und auf Linux das Menü-Icon):
+   - macOS: `~/Library/Application Support/Zeiterfassung/`
+   - Linux: `$XDG_DATA_HOME/Zeiterfassung/` (Fallback `~/.local/share/Zeiterfassung/`)
+5. **Reste prüfen**, falls Schritt 1 ausgelassen wurde:
+   - macOS: `~/Library/LaunchAgents/com.margenheld.zeiterfassung.plist` — vorher
+     `launchctl unload` darauf ausführen, sonst bleibt der Dienst bis zur nächsten
+     Abmeldung geladen.
+   - Linux: `~/.config/autostart/Zeiterfassung.desktop` (Autostart) und
+     `$XDG_DATA_HOME/applications/Zeiterfassung.desktop` (Fallback
+     `~/.local/share/applications/`, Anwendungsmenü). Wer `appimaged` oder
+     AppImageLauncher nutzt, findet dort zusätzlich einen Eintrag
+     `appimagekit_<hash>-Zeiterfassung.desktop`.
+
+Die Einträge im Schlüsselbund, falls `--forget-secrets` nicht lief, stehen in der
+„Schlüsselbundverwaltung" (macOS) bzw. „Passwörter und Schlüssel" (Linux) unter
+dem Namen `Zeiterfassung` (SMTP-Passwörter) und `Zeiterfassung:<Schlüssel>`
+(Refresh-Token, Webhook-Secrets).
+
+**Auf allen Plattformen:** Die Freigabe im Google-Konto bleibt bestehen, bis du
+sie unter [myaccount.google.com/permissions](https://myaccount.google.com/permissions)
+zurückziehst. Mit aktivem Drive-Sync liegt dort außerdem die versteckte
+Sync-Datei im `appDataFolder`. Der Entzug der Freigabe löscht sie nicht
+zwingend; in Google Drive unter Einstellungen → „Apps verwalten" lassen sich
+die ausgeblendeten App-Daten gezielt löschen.
 
 ## Mitentwickeln
 
