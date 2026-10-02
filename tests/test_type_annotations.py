@@ -57,6 +57,7 @@ ANNOTATED_MODULES = [
     "src/sync_journal.py",
     "src/autostart.py",
     "src/single_instance.py",
+    "src/removal.py",
     # Bereits vor #72 vollstaendig annotiert — hier gelistet, damit sie
     # nicht unbemerkt zurueckfallen koennen.
     "src/storage.py",
