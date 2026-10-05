@@ -31,6 +31,17 @@ def test_classify_network_error_instance_is_network():
     assert classify_sync_error(DriveNetworkError("connection reset")) == "network"
 
 
+def test_push_timeout_is_known_and_themed():
+    """Der Join-Timeout des Push-Workers ist ein erwarteter Fall: kein
+    nativer Dialog mit 'unerwartetem Fehler', sondern bekannter themed Text."""
+    from src.sync_runtime import SYNC_TIMEOUT_MSG
+    assert classify_sync_error(SYNC_TIMEOUT_MSG) == "timeout"
+    title, message, known = _friendly_sync_message(SYNC_TIMEOUT_MSG)
+    assert known is True
+    assert "unerwartet" not in message
+    assert title == "Synchronisation dauert zu lange"
+
+
 def test_classify_plain_error_is_unknown():
     assert classify_sync_error("ValueError: kaputt") == "unknown"
 

@@ -29,6 +29,12 @@ import traceback
 from src import sync_history
 from src.time_utils import utc_now_iso
 
+# Fehlertext, wenn der Worker nach dem Join-Timeout noch nichts geliefert hat.
+# Eigene Konstante, weil die UI daran den (erwarteten) Zeitüberschreitungs-Fall
+# erkennt (`sync_orchestrator.classify_sync_error`) statt ihn als unbekannten
+# Fehler mit nativem Dialog zu zeigen.
+SYNC_TIMEOUT_MSG = "Timeout"
+
 
 def _parse_remote_or_quarantine(content_bytes, file_id, on_corrupt):
     """Parsed Remote-Bytes als JSON. Bei Fehler ruft on_corrupt(file_id) auf
@@ -228,7 +234,7 @@ def run_push_blocking(storage, settings, conflicts_store, base, timeout_seconds=
     t.start()
     t.join(timeout=timeout_seconds)
     if not result:
-        result = {"ok": False, "error": "Timeout", "tb": ""}
+        result = {"ok": False, "error": SYNC_TIMEOUT_MSG, "tb": ""}
     return result
 
 
@@ -321,7 +327,7 @@ def run_compaction_blocking(storage, settings, conflicts_store, base, timeout_se
     t.start()
     t.join(timeout=timeout_seconds)
     if not result:
-        result = {"ok": False, "error": "Timeout", "tb": ""}
+        result = {"ok": False, "error": SYNC_TIMEOUT_MSG, "tb": ""}
     return result
 
 
