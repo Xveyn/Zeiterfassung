@@ -2,6 +2,7 @@ import datetime
 import tkinter as tk
 from typing import Callable
 
+from src.dialogs.category_dialog import open_category_dialog
 from src.dialogs.slot_rows import (
     NO_CATEGORY_LABEL, OVERRIDE_MARKER, SlotRowList, category_choices,
     category_from_display, category_to_display, slot_category_display,
@@ -235,8 +236,21 @@ def open_entry_dialog(parent, date_str, storage, settings, on_change,
             save_locked["value"] = False
             refresh_save_state()
 
+    def open_new_category(on_saved):
+        # „Neue Kategorie" im Dropdown: nach dem Speichern bekommen die
+        # Dropdowns beider Blöcke die neue Liste, der Tages-Dialog bleibt offen.
+        def changed():
+            new_cats = settings.get("categories") or []
+            new_times = settings.get("category_times") or {}
+            ist_list.refresh_categories(new_cats, new_times)
+            if show_reservation:
+                res_list.refresh_categories(new_cats, new_times)
+            on_saved()
+        open_category_dialog(dialog, settings, on_change=changed)
+
     ist_list = SlotRowList(
         ist_rows_frame, with_pause=True, categories=categories,
+        on_new_category=open_new_category,
         category_times=category_times, weekday_key=weekday_key,
         default_start=default_start, default_end=default_end,
         default_pause=default_pause,
@@ -289,6 +303,7 @@ def open_entry_dialog(parent, date_str, storage, settings, on_change,
 
         res_list = SlotRowList(
             res_rows_frame, with_pause=False, categories=categories,
+            on_new_category=open_new_category,
             category_times=category_times, weekday_key=weekday_key,
             default_start=default_start, default_end=default_end,
             default_pause=default_pause,
