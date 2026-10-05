@@ -19,6 +19,16 @@ LOG_SUBDIR = "logs"
 MAX_BYTES = 1_000_000
 BACKUP_COUNT = 3
 DEFAULT_LEVEL = logging.INFO
+LEVEL_ENV = "ZEITERFASSUNG_LOG_LEVEL"
+
+
+def _resolve_level() -> int:
+    """Log-Level: `ZEITERFASSUNG_LOG_LEVEL` (z.B. `DEBUG`) überschreibt den
+    Default für Konsole **und** Logfile. Ein unbekannter Wert fällt auf den
+    Default zurück — Logging-Setup darf den Start nie verhindern."""
+    name = os.environ.get(LEVEL_ENV, "").strip().upper()
+    level = logging.getLevelName(name) if name else None
+    return level if isinstance(level, int) else DEFAULT_LEVEL
 
 
 def get_log_path(base_path: str) -> str:
@@ -26,8 +36,23 @@ def get_log_path(base_path: str) -> str:
     return os.path.join(base_path, LOG_SUBDIR, LOGFILE_NAME)
 
 
-def setup_logging(base_path: str) -> str:
+def _console_wanted() -> bool:
+    """Konsolenausgabe nur im Quellcode-Betrieb (`python -m src.main`).
+
+    Der gebaute Build ist `--noconsole`, dort gibt es keinen sinnvollen stderr
+    (unter Windows ist `sys.stderr` dann `None`); er bleibt beim Logfile.
+    """
+    return not getattr(sys, "frozen", False) and sys.stderr is not None
+
+
+def setup_logging(base_path: str, console: bool | None = None) -> str:
     """Konfiguriert Root-Logger und Excepthooks. Returns Logfile-Pfad.
+
+    `console`: zusätzlich nach stderr loggen. `None` = automatisch (nur wenn
+    die App aus dem Quellcode läuft, s. `_console_wanted`).
+
+    `ZEITERFASSUNG_LOG_LEVEL=DEBUG` hebt die Ausführlichkeit an (Konsole und
+    Logfile).
 
     Idempotent: ein zweiter Aufruf addiert keinen weiteren Handler.
     """
@@ -36,7 +61,7 @@ def setup_logging(base_path: str) -> str:
     log_path = os.path.join(log_dir, LOGFILE_NAME)
 
     root = logging.getLogger()
-    root.setLevel(DEFAULT_LEVEL)
+    root.setLevel(_resolve_level())
     if not any(isinstance(h, RotatingFileHandler) for h in root.handlers):
         handler = RotatingFileHandler(
             log_path,
@@ -48,6 +73,16 @@ def setup_logging(base_path: str) -> str:
             "%(asctime)s [%(levelname)s] %(name)s: %(message)s",
         ))
         root.addHandler(handler)
+
+    # `type(h) is`, nicht isinstance: RotatingFileHandler ist selbst ein
+    # StreamHandler und würde den Konsolen-Handler sonst vortäuschen.
+    if (_console_wanted() if console is None else console) and not any(
+            type(h) is logging.StreamHandler for h in root.handlers):
+        console_handler = logging.StreamHandler()
+        console_handler.setFormatter(logging.Formatter(
+            "%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+        ))
+        root.addHandler(console_handler)
 
     _install_excepthooks()
     return log_path

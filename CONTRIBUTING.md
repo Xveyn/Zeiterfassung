@@ -47,6 +47,19 @@ python -m src.main
 Die App **muss** als Modul gestartet werden (`python -m src.main`), nicht als
 Script — die Imports innerhalb von `src/` sind absolut (`from src...`).
 
+Aus dem Quellcode gestartet, erscheinen die Log-Zeilen zusätzlich im Terminal
+(der gebaute Build loggt nur ins Logfile `logs/zeiterfassung.log`). Mehr Details
+liefert die Umgebungsvariable `ZEITERFASSUNG_LOG_LEVEL` — sie gilt für Terminal
+und Logfile:
+
+```powershell
+$env:ZEITERFASSUNG_LOG_LEVEL = "DEBUG" ; python -m src.main
+```
+
+```bash
+ZEITERFASSUNG_LOG_LEVEL=DEBUG python -m src.main
+```
+
 ### Abhängigkeiten
 
 | Paket | Zweck |
