@@ -24,6 +24,7 @@ from __future__ import annotations
 import glob
 import logging
 import os
+import shlex
 import shutil
 import threading
 from collections.abc import Callable, Iterable, Mapping
@@ -240,14 +241,26 @@ def app_file_hint(system: str, environ: Mapping[str, str],
     return None
 
 
+def app_file_command(system: str, app_file: str | None) -> str | None:
+    """Terminal-Befehl, der die Programmdatei löscht — nur für die AppImage.
+    Distributionsunabhängig: eine einzelne Datei, kein Paketmanager im Spiel.
+    macOS bleibt beim Papierkorb (ein `rm -rf` auf ein Bundle wäre ungeprüft)."""
+    if system == "Linux" and app_file:
+        return f"rm -- {shlex.quote(app_file)}"
+    return None
+
+
 def format_summary(results: list[StepResult], app_file: str | None,
-                   had_token: bool) -> str:
+                   had_token: bool, command: str | None = None) -> str:
     lines = [(f"✓ {r.name} — {r.note}" if r.note else f"✓ {r.name}") if r.ok
              else f"✗ {r.name} — {r.error}" for r in results]
     lines.append("")
     if app_file:
         lines.append("Die Programmdatei bleibt liegen. Lösche sie jetzt selbst:")
         lines.append(app_file)
+        if command:
+            lines.append("")
+            lines.append(f"Oder im Terminal:\n{command}")
     else:
         lines.append("Die Programmdatei bleibt liegen — lösche sie selbst.")
     if had_token:
