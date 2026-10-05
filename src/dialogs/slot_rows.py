@@ -189,6 +189,26 @@ class SlotRowList:
 
         cat_combo.bind("<<ComboboxSelected>>", on_pick)
 
+        # Das Mausrad schaltet ein ttk-Combobox durch seine Werte — dabei darf
+        # „Neue Kategorie" nie ausgewählt werden: das öffnet einen Dialog und
+        # gehört ausdrücklich geklickt. Instanz-Binding läuft vor dem
+        # Klassen-Binding; "break" unterdrückt dessen Standardverhalten.
+        def on_wheel(event):
+            values = category_choices(self._categories)
+            cur = category_from_display(kv.get())
+            idx = values.index(category_to_display(cur)) if (
+                category_to_display(cur) in values) else 0
+            up = getattr(event, "num", 0) == 4 or getattr(event, "delta", 0) > 0
+            new = max(0, min(len(values) - 1, idx + (-1 if up else 1)))
+            if new != idx:
+                kv.set(values[new])
+                cat_combo.event_generate("<<ComboboxSelected>>")
+            return "break"
+
+        cat_combo.bind("<MouseWheel>", on_wheel)
+        cat_combo.bind("<Button-4>", on_wheel)
+        cat_combo.bind("<Button-5>", on_wheel)
+
         record = {"frame": row, "start": sv, "end": ev, "kategorie": kv,
                   "combo": cat_combo}
         if pv is not None:
