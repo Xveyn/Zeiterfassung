@@ -75,7 +75,7 @@ Desktop-App zur Erfassung von Arbeitszeiten: im Kern Kalenderansicht und PDF-Ber
 - **Multi-Device-Sync** — Optionale Synchronisation von Zeiteinträgen und Mail-Vorlagen über Google Drive (`appDataFolder`), inklusive Konflikt-Auflösung wenn dasselbe Datum offline auf mehreren Geräten bearbeitet wurde — per Linksklick direkt auf den betroffenen Kalendertag oder gesammelt in den Einstellungen
 - **Einstellungen** — In Tabs gegliedert (Arbeitszeit / Erinnerungen / Versand / Google / App / Updates); Standardzeiten und Pause, Erinnerungen, E-Mail-Vorlagen mit Platzhaltern, Empfänger, SMTP-Konten und Webhooks, Update-Einstellungen
 - **Autostart & Einzelinstanz** — Optionaler minimierter Start bei Anmeldung (Windows, macOS, Linux); es läuft immer nur eine Instanz — ein zweiter Start holt das vorhandene Fenster nach vorn
-- **Entfernen aus der App** *(ab --VERSION--)* — Unter macOS und Linux räumt „Zeiterfassung entfernen…“ (Einstellungen → App) Schlüsselbund, Zugangsdaten, Autostart und Menüeintrag ab, auf Wunsch auch Zeiten und Einstellungen; die Programmdatei löschst du danach selbst
+- **Entfernen aus der App** *(ab --VERSION--)* — Unter macOS und Linux räumt „Zeiterfassung entfernen“ (Einstellungen → App) Schlüsselbund, Zugangsdaten, Autostart und Menüeintrag ab, auf Wunsch auch Zeiten und Einstellungen; die Programmdatei löschst du danach selbst
 - **Update-Check** — Konfigurierbare Hintergrund-Prüfung auf neue Releases; Updates-Tab mit manuellem Check, Changelog und Direkt-Download, bei aktivem Tray als einmaliger Toast statt Banner. Läuft die App im Infobereich, stößt **„Nach Updates suchen"** im Tray-Menü die Prüfung direkt an — das Ergebnis kommt als Toast, auch wenn alles aktuell ist. Optional lassen sich auch Vorabversionen (Pre-Releases) anbieten — Testbuilds vor dem echten Release
 - **Update aus der App** *(ab 1.23.0)* — Unter Windows und Linux lädt die App ein Update selbst, prüft es gegen die Prüfsummen des Releases und installiert es; auf Wunsch automatisch beim nächsten Beenden. Unter macOS öffnet der Knopf weiterhin den Download im Browser
 - **Dark Mode UI** — Modernes dunkles Design, für alle Dialoge einheitlich
@@ -448,7 +448,7 @@ Daten (Zeiten, Einstellungen, Protokoll) weg sollen.
 
 **macOS und Linux** haben keinen Uninstaller — das Löschen der App räumt weder
 den Datenordner noch den Autostart noch den Schlüsselbund auf. Ab --VERSION--
-erledigt das der Button „Zeiterfassung entfernen…“ (Einstellungen → App →
+erledigt das der Button „Zeiterfassung entfernen“ (Einstellungen → App →
 Daten) in einem Schritt, bis auf die Programmdatei selbst. Von Hand, in
 dieser Reihenfolge (der Schlüsselbund-Schritt muss **vor** dem Löschen des
 Datenordners laufen, denn die Schlüssel stehen in den Dateien dort):

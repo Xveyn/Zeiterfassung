@@ -111,7 +111,7 @@ class AppTab:
                   "(JSON-Datei aus „Teilen“).")
         if on_request_removal is not None and removal.is_available(
                 platform.system(), getattr(sys, "frozen", False)):
-            form.buttons(("Zeiterfassung entfernen…", self._request_removal))
+            form.buttons(("Zeiterfassung entfernen", self._request_removal))
             form.hint("Räumt Schlüsselbund, Zugangsdaten, Autostart und "
                       "Menüeintrag ab und beendet die App. Die Programmdatei "
                       "löschst du danach selbst.")

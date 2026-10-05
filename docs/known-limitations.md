@@ -377,7 +377,7 @@ Die vollständige Schritt-für-Schritt-Anleitung steht in der README unter
 „Vollständig entfernen".
 
 Seit der Version, die diesen Eintrag einführt (siehe CHANGELOG), gibt es
-„Zeiterfassung entfernen…" (Einstellungen → App). Zwei Grenzen:
+„Zeiterfassung entfernen" (Einstellungen → App). Zwei Grenzen:
 
 - Der Schritt „Schlüsselbund-Einträge" meldet ✓, sobald `--forget-secrets`
   durchlief — der läuft Eintrag für Eintrag durch und schluckt Einzelfehler
