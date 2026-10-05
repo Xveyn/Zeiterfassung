@@ -223,14 +223,44 @@ Windows baut seit 1.19.1 `--onedir` statt `--onefile`: Onefile entpackte bei jed
 3. PR gegen `master` öffnen mit einer kurzen Beschreibung, **was** sich verhält und
    **warum**.
 
-Nur anfassen, was die Änderung verlangt, und den vorhandenen Stil matchen. `master`
-ist protected — Merge erfolgt über PR.
+Nur anfassen, was die Änderung verlangt, und den vorhandenen Stil matchen — eine
+Änderung pro PR, nichts „nebenbei“ mitnehmen. `master` ist protected — Merge
+erfolgt über PR.
 
 ## Commit-Konventionen
 
 - Commit-**Typ** englisch im Conventional-Commits-Stil: `feat:`, `fix:`, `docs:`,
   `ci:`, `refactor:` … Der Body darf deutsch sein.
 - Code und Bezeichner englisch; UI-Texte und Konversation deutsch.
+
+## KI-generierter Code
+
+Code, der mit einem LLM-Werkzeug entstanden ist, ist willkommen und unterliegt
+denselben Regeln wie alles andere. Dazu kommt, was sich im Umgang damit
+bewährt hat:
+
+- **Verantwortung bleibt bei dir.** Wer einen PR öffnet, hat den Diff selbst
+  gelesen und kann ihn erklären. Das Werkzeug steht als `Co-Authored-By` im
+  Commit, damit die Herkunft nachvollziehbar bleibt.
+- **Erst Befund und Design, dann Code.** Bei Features und nicht trivialen Fixes
+  wird das Problem zuerst reproduziert oder belegt und der Ansatz kurz
+  abgestimmt; größere Vorhaben bekommen Spec und Plan unter `docs/superpowers/`.
+  Gibt es noch kein Issue, wird erst eines angelegt, damit der PR es mit
+  `Closes #N` schließt.
+- **Der Test war sichtbar rot.** Ein Test, der nie fehlgeschlagen ist, beweist
+  nichts — erst den Fehler zeigen, dann beheben (Regeln und Zuschnitt: „Tests“
+  oben). Die komplette Suite, `ruff check .` und `pyright` laufen **vor** dem
+  PR lokal durch; „sollte funktionieren“ zählt nicht.
+- **Nichts behaupten, was nicht geprüft ist.** Was sich nicht verifizieren ließ
+  (andere Plattform, UI ohne automatisierten Test), steht im PR unter
+  „Hinweise“. Betrifft die Änderung nur macOS oder Linux, wird vor dem Merge
+  ein Pre-Release dafür vorgeschlagen (siehe [`CLAUDE.md`](CLAUDE.md#plattformspezifische-prs--pre-release-vorschlagen)).
+  Das Gleiche gilt für Zahlen, Pfade und Funktionsnamen in Doku und PR-Text:
+  gegen den Code prüfen, nicht aus dem Gedächtnis übernehmen.
+- **Unabhängige Durchsicht bei größeren Änderungen.** Jemand, der den
+  Entstehungskontext nicht kennt (Mensch oder neue Sitzung), liest den Diff.
+  Befunde werden einzeln behoben, jeweils mit rotem Test; offene Kleinigkeiten
+  stehen im PR.
 
 ## Wichtige Projekt-Konventionen
 
