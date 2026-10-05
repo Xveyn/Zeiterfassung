@@ -38,6 +38,11 @@ NO_CATEGORY_LABEL = "(ohne Kategorie)"
 # reine Anzeige, s. slot_category_display/category_from_display.
 OVERRIDE_MARKER = "*"
 
+# Letzter Eintrag im Kategorie-Dropdown (nur wenn der Dialog einen Weg zum
+# Anlegen anbietet): kein Wert, sondern eine Aktion — die Auswahl öffnet den
+# Kategorien-Dialog und springt auf den vorherigen Wert zurück.
+NEW_CATEGORY_LABEL = "＋ Neue Kategorie"
+
 
 def category_choices(categories):
     """Werte fürs readonly-Kategorie-Dropdown: '(ohne Kategorie)' zuerst, dann
@@ -99,8 +104,11 @@ class SlotRowList:
 
     def __init__(self, frame, *, with_pause, categories, category_times,
                  weekday_key, default_start, default_end, default_pause,
-                 on_rows_changed, on_value_changed=None):
+                 on_rows_changed, on_value_changed=None, on_new_category=None):
         self.rows = []
+        # on_new_category(on_saved): öffnet den Kategorien-Dialog; on_saved
+        # wird nach dem Speichern gerufen. None = kein „Neue Kategorie"-Eintrag.
+        self._on_new_category = on_new_category
         self._frame = frame
         self._with_pause = with_pause
         self._categories = categories
@@ -111,6 +119,21 @@ class SlotRowList:
         self._default_pause = default_pause
         self._on_rows_changed = on_rows_changed
         self._on_value_changed = on_value_changed
+
+    def refresh_categories(self, categories, category_times):
+        """Übernimmt eine geänderte Kategorieliste (z.B. nach dem Kategorien-
+        Dialog): neue Zeilen und die Dropdowns bestehender Zeilen sehen sie
+        sofort. Die gewählten Werte bleiben unangetastet."""
+        self._categories = categories
+        self._category_times = category_times
+        for record in self.rows:
+            record["combo"].configure(values=self._choices())
+
+    def _choices(self):
+        choices = category_choices(self._categories)
+        if self._on_new_category is not None:
+            choices.append(NEW_CATEGORY_LABEL)
+        return choices
 
     def add(self, start, end, kategorie, *, pause=None, removable=True,
             parent=None, extra=None):
@@ -142,10 +165,32 @@ class SlotRowList:
         dark_combo(row, ev, TIME_VALUES, width=6).pack(side=tk.LEFT, padx=2)
         if pv is not None:
             dark_combo(row, pv, PAUSE_VALUES, width=4).pack(side=tk.LEFT, padx=2)
-        cat_combo = dark_combo(row, kv, category_choices(self._categories), width=18)
+        cat_combo = dark_combo(row, kv, self._choices(), width=18)
         cat_combo.pack(side=tk.LEFT, padx=2)
 
-        record = {"frame": row, "start": sv, "end": ev, "kategorie": kv}
+        # Als ERSTER Handler gebunden: bei „Neue Kategorie" den alten Wert
+        # zurückholen, bevor die übrigen Handler die Auswahl auswerten.
+        last_value = {"v": kv.get()}
+
+        def on_pick(_e=None):
+            if kv.get() != NEW_CATEGORY_LABEL:
+                last_value["v"] = kv.get()
+                return
+            kv.set(last_value["v"])
+            before = set(self._categories)
+
+            def saved():
+                added = [c for c in self._categories if c not in before]
+                if added and cat_combo.winfo_exists():
+                    kv.set(added[0])
+                    cat_combo.event_generate("<<ComboboxSelected>>")
+
+            cat_combo.after_idle(lambda: self._on_new_category(saved))
+
+        cat_combo.bind("<<ComboboxSelected>>", on_pick)
+
+        record = {"frame": row, "start": sv, "end": ev, "kategorie": kv,
+                  "combo": cat_combo}
         if pv is not None:
             record["pause"] = pv
         if extra:
