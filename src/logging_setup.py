@@ -26,8 +26,20 @@ def get_log_path(base_path: str) -> str:
     return os.path.join(base_path, LOG_SUBDIR, LOGFILE_NAME)
 
 
-def setup_logging(base_path: str) -> str:
+def _console_wanted() -> bool:
+    """Konsolenausgabe nur im Quellcode-Betrieb (`python -m src.main`).
+
+    Der gebaute Build ist `--noconsole`, dort gibt es keinen sinnvollen stderr
+    (unter Windows ist `sys.stderr` dann `None`); er bleibt beim Logfile.
+    """
+    return not getattr(sys, "frozen", False) and sys.stderr is not None
+
+
+def setup_logging(base_path: str, console: bool | None = None) -> str:
     """Konfiguriert Root-Logger und Excepthooks. Returns Logfile-Pfad.
+
+    `console`: zusätzlich nach stderr loggen. `None` = automatisch (nur wenn
+    die App aus dem Quellcode läuft, s. `_console_wanted`).
 
     Idempotent: ein zweiter Aufruf addiert keinen weiteren Handler.
     """
@@ -48,6 +60,16 @@ def setup_logging(base_path: str) -> str:
             "%(asctime)s [%(levelname)s] %(name)s: %(message)s",
         ))
         root.addHandler(handler)
+
+    # `type(h) is`, nicht isinstance: RotatingFileHandler ist selbst ein
+    # StreamHandler und würde den Konsolen-Handler sonst vortäuschen.
+    if (_console_wanted() if console is None else console) and not any(
+            type(h) is logging.StreamHandler for h in root.handlers):
+        console_handler = logging.StreamHandler()
+        console_handler.setFormatter(logging.Formatter(
+            "%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+        ))
+        root.addHandler(console_handler)
 
     _install_excepthooks()
     return log_path
