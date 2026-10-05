@@ -173,7 +173,8 @@ class SlotRowList:
         last_value = {"v": kv.get()}
 
         def on_pick(_e=None):
-            if kv.get() != NEW_CATEGORY_LABEL:
+            open_new = self._on_new_category
+            if kv.get() != NEW_CATEGORY_LABEL or open_new is None:
                 last_value["v"] = kv.get()
                 return
             kv.set(last_value["v"])
@@ -185,7 +186,7 @@ class SlotRowList:
                     kv.set(added[0])
                     cat_combo.event_generate("<<ComboboxSelected>>")
 
-            cat_combo.after_idle(lambda: self._on_new_category(saved))
+            cat_combo.after_idle(lambda: open_new(saved))
 
         cat_combo.bind("<<ComboboxSelected>>", on_pick)
 
