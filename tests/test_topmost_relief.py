@@ -5,7 +5,8 @@ Kein Tk: Zeitplanung und Setzen des Attributs sind Fakes, `tick()` lässt die
 Schwelle verstreichen.
 """
 
-from src.topmost_relief import RELIEF_DELAY_MS, TopmostRelief
+from src.removal import RemovalState
+from src.topmost_relief import RELIEF_DELAY_MS, TopmostRelief, activity_hook
 
 
 class _Harness:
@@ -139,3 +140,45 @@ def test_a_new_access_after_a_restore_lifts_again():
     h.tick()
 
     assert h.calls == [False, True, False]
+
+
+# --- Hook während „Zeiterfassung entfernen" (#211) --------------------------
+
+def _marshal_like_app(state, queue):
+    """Wie `App._marshal_to_ui`: fremde Callbacks fallen weg, solange das
+    Entfernen läuft — außer mit `force=True`."""
+    def marshal(fn, force=False):
+        if state.admits(force):
+            queue.append(fn)
+    return marshal
+
+
+def test_hook_lifts_topmost_while_removal_runs():
+    """Der Passwort-Dialog des Schlüsselbunds kommt genau dann, wenn das
+    Entfernen läuft; der Hook darf dort nicht verworfen werden."""
+    h = _Harness(wanted=True)
+    state = RemovalState()
+    state.begin(None)
+    queue = []
+    hook = activity_hook(_marshal_like_app(state, queue), h.relief)
+
+    hook(True)
+    assert len(queue) == 1
+    queue.pop()()
+    h.tick()
+    assert h.calls == [False]
+
+
+def test_hook_restores_topmost_after_access_during_removal():
+    h = _Harness(wanted=True)
+    state = RemovalState()
+    state.begin(None)
+    queue = []
+    hook = activity_hook(_marshal_like_app(state, queue), h.relief)
+
+    hook(True)
+    queue.pop()()
+    h.tick()
+    hook(False)
+    queue.pop()()
+    assert h.calls == [False, True]

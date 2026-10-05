@@ -21,7 +21,7 @@ from src.grid_renderer import GridRenderer
 from src.paths import get_resource_path, relaunch_command, relaunch_env
 from src.mail import friendly_token_message
 from src import keyring_store, removal, secret_migration
-from src.topmost_relief import TopmostRelief
+from src.topmost_relief import TopmostRelief, activity_hook
 from src.sync_orchestrator import classify_sync_error, SyncOrchestrator
 from src.update_banner import UpdateBanner
 from src.update_coordinator import UpdateCoordinator
@@ -154,8 +154,7 @@ class App:
             lambda: bool(self.settings.get("always_on_top")),
             self.root.after, self.root.after_cancel)
         keyring_store.set_activity_hook(
-            lambda active: self._marshal_to_ui(
-                lambda: self._topmost_relief.activity(active)))
+            activity_hook(self._marshal_to_ui, self._topmost_relief))
         self._apply_always_on_top()
         self._apply_tray_setting()
         self._apply_reminder_setting()
