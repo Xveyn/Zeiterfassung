@@ -73,3 +73,18 @@ class TopmostRelief:
         if self._active and self._wanted():
             self._lifted = True
             self._set_topmost(False)
+
+
+def activity_hook(marshal: Callable[..., None],
+                  relief: TopmostRelief) -> Callable[[bool], None]:
+    """Der Hook für `keyring_store.set_activity_hook`: reicht den Übergang
+    auf den UI-Thread und an `relief.activity`.
+
+    Marshallt mit `force=True`: während „Zeiterfassung entfernen“ (#211)
+    verwirft `App._marshal_to_ui` sonst jeden fremden Callback — und genau
+    dann fragt der Schlüsselbund nach dem Passwort. Der Callback schreibt
+    keine Daten, er stellt nur das Fensterattribut um; die Sperre soll
+    Update-Check & Co. aufhalten, nicht diesen."""
+    def hook(active: bool) -> None:
+        marshal(lambda: relief.activity(active), force=True)
+    return hook
