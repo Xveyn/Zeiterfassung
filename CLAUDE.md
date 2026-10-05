@@ -301,9 +301,28 @@ werden kann — statt das erst beim nächsten regulären, für diese Plattform d
 faktisch ungetesteten Release zu bemerken. Vorbild: das manuelle macOS-Gate in
 margenheld/Zeiterfassung#96. Der Pre-Release-Workflow selbst ist seit
 margenheld/Zeiterfassung#99 umgesetzt (siehe „Pre-Releases" oben) — das
-Triggern ist also ein Handgriff. PR-Plattform-Labels sind als
-margenheld/Zeiterfassung#100 weiterhin nur vorgeschlagen; bis dahin gilt der
-Hinweis als Review-Empfehlung, nicht als automatisierter Check.
+Triggern ist also ein Handgriff. PR-Plattform-Labels gibt es seit Xveyn#32 (s. u.).
+
+### Plattform-Labels am PR
+
+| Label | Wann |
+|-------|------|
+| `platform:macos` | Änderung wirkt nur auf macOS (`tray/mac.py`, macOS-Zweige in `autostart.py` …) |
+| `platform:linux` | Änderung wirkt auf Linux allgemein (`tray/linux.py`, AppImage, `dpi.py`-Xft-Zweig …) |
+| `platform:kde` | **Zusätzlich** zu `platform:linux`, wenn das Verhalten an KDE Plasma hängt (z. B. KWin-Effekte, KWallet, Plasma-Tray; margenheld/Zeiterfassung#42) |
+| `platform:gnome` | **Zusätzlich** zu `platform:linux`, wenn es an GNOME hängt (z. B. fehlender StatusNotifierWatcher, GNOME Keyring, Wayland-Skalierung) |
+| `platform:windows` | Nur Windows-spezifisch (`dpi.py`-Awareness, Registry-Autostart, Inno-Installer); meist implizit, da Dev-Plattform |
+
+- **`kde`/`gnome` sind Sonderfälle von Linux, kein Ersatz:** sie stehen immer
+  *neben* `platform:linux`. Ein weiteres Desktop-Label (Xfce, Cinnamon …) kommt
+  erst, wenn es dort einen echten Sonderfall gibt.
+- **Gesetzt wird manuell** (PR-Autor oder Maintainer). Eine Pfad-Heuristik
+  wäre unscharf — ein generischer `ui.py`-Change kann plattformspezifisch
+  wirken, ohne eine Plattform-Datei zu berühren —, deshalb gibt es keine
+  automatische Vergabe.
+- **Wirkung:** bei `platform:macos`/`linux`/`kde`/`gnome` schlägt Claude vor dem
+  Merge einen Pre-Release vor (s. o.). Kein Merge-Block, keine Required
+  Checks: das Label ist ein Hinweis, keine Schranke.
 
 ## Build
 

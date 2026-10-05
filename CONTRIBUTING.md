@@ -276,6 +276,11 @@ bewährt hat:
   einträgt, das noch nicht released ist, hängt `*(ab X.Y.Z)*` an den fetten
   Namen — sonst liest die Startseite des Repositories von etwas, das es im
   Download noch nicht gibt.
+- **Plattform-Labels:** Betrifft ein PR nur macOS oder Linux, trägt er
+  `platform:macos` bzw. `platform:linux` — bei KDE- oder GNOME-spezifischem
+  Verhalten zusätzlich `platform:kde` bzw. `platform:gnome`. Vor dem Merge
+  wird dann ein Pre-Release zum Testen gebaut (Details in `CLAUDE.md`,
+  „Plattform-Labels am PR").
 - Weitere Details (UTF-8 in der Mail-Pipeline, Build, CI-Eigenheiten) stehen in
   [`CLAUDE.md`](CLAUDE.md).
 

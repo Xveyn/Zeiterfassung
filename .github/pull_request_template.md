@@ -13,7 +13,9 @@
 
 - [ ] Die Änderung wirkt sich **nur** auf macOS und/oder Linux aus
 
-Falls angehakt: vor dem Merge einen **Pre-Release** bauen, damit sie dort getestet
+Falls angehakt: `platform:macos` / `platform:linux` als Label setzen (bei
+KDE- bzw. GNOME-spezifischem Verhalten zusätzlich `platform:kde` / `platform:gnome`)
+und vor dem Merge einen **Pre-Release** bauen, damit sie dort getestet
 werden kann (Actions → Release → „Run workflow" mit gesetztem `prerelease`-Häkchen,
 siehe [`CLAUDE.md`](../CLAUDE.md#pre-releases-plattformübergreifende-test-builds)).
 
