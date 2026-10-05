@@ -18,7 +18,7 @@ from src.oauth_utils import (
     KEYRING_UNAVAILABLE_HINT, KEYRING_UNAVAILABLE_TITLE, REAUTH_REQUIRED_MSG,
     is_keyring_unavailable,
 )
-from src.sync_runtime import run_push_blocking
+from src.sync_runtime import SYNC_TIMEOUT_MSG, run_push_blocking
 from src.theme import STATUS_WARN, TEXT_MUTED, set_icon_button_enabled, themed_showinfo
 from src.time_utils import format_date, local_date_of_iso
 
@@ -28,7 +28,7 @@ _DAY_WATCH_MS = 60_000  # minütlich — wie der ReminderScheduler.
 
 def classify_sync_error(error):
     """Kategorisiert einen Google-Sync/Reconcile-Fehler als 'auth', 'network',
-    'unknown' oder 'keyring'. `error` kann eine Exception oder ein String sein
+    'timeout', 'unknown' oder 'keyring'. `error` kann eine Exception oder ein String sein
     (der Push-/Reconcile-Pfad liefert str(e), der Pull-Pfad das
     Exception-Objekt).
     Der abgelaufene/widerrufene Token kommt als invalid_grant durch — sowohl
@@ -51,6 +51,8 @@ def classify_sync_error(error):
         return "auth"
     if isinstance(error, DriveNetworkError):
         return "network"
+    if text == SYNC_TIMEOUT_MSG:
+        return "timeout"
     return "unknown"
 
 
@@ -80,6 +82,14 @@ def _friendly_sync_message(error, tb=""):
             "Die Synchronisation mit Google Drive ist fehlgeschlagen, weil "
             "keine Verbindung zum Internet besteht.\n\nBitte prüfe deine "
             "Verbindung und versuche es erneut.",
+            True,
+        )
+    if kind == "timeout":
+        return (
+            "Synchronisation dauert zu lange",
+            "Die Synchronisation mit Google Drive hat zu lange gedauert und "
+            "wurde abgebrochen.\n\nBitte prüfe deine Verbindung und versuche "
+            "es erneut.",
             True,
         )
     detail = f"{error}\n\n{tb}" if tb else str(error)
@@ -173,6 +183,8 @@ def _short_sync_error(error):
         return "Der Schlüsselbund ist nicht erreichbar."
     if kind == "network":
         return "Keine Internetverbindung."
+    if kind == "timeout":
+        return "Zeitüberschreitung."
     return str(error)
 
 
