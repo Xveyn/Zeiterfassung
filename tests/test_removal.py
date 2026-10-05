@@ -229,6 +229,23 @@ def test_summary_lists_steps_and_app_file():
     assert "myaccount.google.com" not in text
 
 
+def test_app_file_command_linux_quotes_path():
+    cmd = removal.app_file_command("Linux", "/home/u/My Apps/Z's.AppImage")
+    assert cmd == "rm -- '/home/u/My Apps/Z'\"'\"'s.AppImage'"
+
+
+def test_app_file_command_only_for_linux_with_file():
+    assert removal.app_file_command("Linux", None) is None
+    assert removal.app_file_command("Darwin", "/Applications/Zeiterfassung.app") is None
+
+
+def test_summary_shows_terminal_command():
+    text = removal.format_summary([], "/home/u/Z.AppImage", False,
+                                  command="rm -- /home/u/Z.AppImage")
+    assert "Terminal" in text
+    assert "rm -- /home/u/Z.AppImage" in text
+
+
 def test_summary_mentions_google_only_with_token():
     text = removal.format_summary([], None, had_token=True)
     assert "https://myaccount.google.com/permissions" in text

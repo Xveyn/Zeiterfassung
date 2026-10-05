@@ -226,7 +226,8 @@ def themed_ask_save_changes(parent, tab_title: str) -> SaveChoice:
 
 
 def _themed_ok_dialog(parent, title: str, message: str,
-                      copyable: bool = False) -> None:
+                      copyable: bool = False,
+                      copy_text: str | None = None) -> None:
     """Modaler OK-Dialog im App-Theme — Basis für info/warning/error.
 
     Eigener Toplevel mit Dark-Theme-Farben und gebrandeter Titelleiste
@@ -235,6 +236,10 @@ def _themed_ok_dialog(parent, title: str, message: str,
     `copyable`: zusätzlicher „Kopieren"-Knopf, der den Meldungstext in die
     Zwischenablage legt — für Texte mit Pfaden/URLs, die sich sonst nur
     abtippen ließen (das `tk.Label` ist nicht markierbar).
+    `copy_text`: kopiert statt der ganzen Meldung nur diesen Text (z. B. einen
+    Terminal-Befehl) und beschriftet den Knopf entsprechend. Die Rückmeldung
+    steht als eigene Zeile, nicht im Knopf — „Kopiert ✓" las sich wie ein
+    Knopfname.
     """
     dialog = create_dialog(parent, title, modal=False, escape_closes=False)
 
@@ -243,14 +248,17 @@ def _themed_ok_dialog(parent, title: str, message: str,
         wraplength=px(380), justify="left",
     ).pack(padx=24, pady=(20, 14))
 
+    feedback = tk.Label(dialog, text="", font=FONT, bg=BG, fg=TEXT)
+    feedback.pack(pady=(0, 6))
     btn_frame = tk.Frame(dialog, bg=BG)
     btn_frame.pack(pady=(0, 18))
-    if copyable:
+    if copyable or copy_text:
         def copy():
             dialog.clipboard_clear()
-            dialog.clipboard_append(message)
-            copy_btn._label.config(text="Kopiert ✓")
-        copy_btn = secondary_button(btn_frame, "Kopieren", copy)
+            dialog.clipboard_append(copy_text or message)
+            feedback.config(text="In die Zwischenablage kopiert")
+        copy_btn = secondary_button(
+            btn_frame, "Befehl kopieren" if copy_text else "Kopieren", copy)
         copy_btn.pack(side=tk.LEFT, padx=6)
     primary_button(btn_frame, "OK", dialog.destroy).pack(side=tk.LEFT, padx=6)
 
@@ -263,9 +271,10 @@ def _themed_ok_dialog(parent, title: str, message: str,
 
 
 def themed_showinfo(parent, title: str, message: str,
-                    copyable: bool = False) -> None:
+                    copyable: bool = False,
+                    copy_text: str | None = None) -> None:
     """Modaler Info-Dialog im App-Theme. Drop-in für `messagebox.showinfo`."""
-    _themed_ok_dialog(parent, title, message, copyable)
+    _themed_ok_dialog(parent, title, message, copyable, copy_text)
 
 
 def themed_showwarning(parent, title: str, message: str) -> None:
