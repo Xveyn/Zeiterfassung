@@ -2,6 +2,89 @@
 
 Ältere Versionen stehen im [Archiv](CHANGELOG-archive.md).
 
+## 1.24.0 — 2026-10-06
+
+Die App folgt jetzt der Anzeigeskalierung des Systems — unter Windows scharf,
+unter Linux nicht mehr winzig —, unter macOS und Linux lässt sie sich aus den
+Einstellungen heraus vollständig entfernen, und neue Kategorien lassen sich
+direkt im Tages-Dialog anlegen. Dazu kommen Korrekturen bei Rundung, Tooltips
+und dem Schlüsselbund.
+
+### Hinzugefügt
+- **Windows: Anzeigeskalierung ohne Unschärfe**: Die App übernimmt die
+  Skalierung von Windows (125 %, 150 % …) und zeichnet ihre Schrift in der
+  echten Auflösung, statt das Fenster als Bild zu strecken. Der Regler
+  „UI-Skalierung" gilt jetzt *obendrauf*: 100 % heißt „wie Windows". Wer
+  vorher einen eigenen Wert eingestellt hat, sieht die App gleich groß wie
+  zuvor, nur schärfer. Bei mehreren Bildschirmen mit unterschiedlicher
+  Skalierung streckt Windows auf dem zweiten weiterhin; ein Wechsel der
+  Windows-Skalierung wirkt erst nach einem Neustart der App.
+- **Linux: Desktop-Skalierung wird übernommen**: Auf skalierten Desktops
+  (X11/XWayland) erschien die App bisher winzig. Sie folgt jetzt der
+  Einstellung des Desktops (`Xft.dpi`), ohne doppelt zu skalieren; wo der
+  Desktop selbst streckt, bleibt alles wie bisher. Ein zuvor hochgedrehter
+  „UI-Skalierung"-Wert wird beim ersten Start einmalig umgerechnet, damit die
+  App nicht doppelt so groß wird.
+- **Zeiterfassung entfernen (macOS und Linux)**: Einstellungen → App →
+  „Zeiterfassung entfernen" räumt Schlüsselbund, Zugangsdaten, Autostart und
+  Menüeintrag ab, auf Wunsch auch Zeiten, Einstellungen und Protokoll, und
+  beendet die App. Die Programmdatei löschst du danach selbst — die App nennt
+  den Pfad (unter Linux samt Terminal-Befehl) und lässt ihn kopieren. Bleibt
+  der Datenordner wegen fremder Dateien stehen, steht das in der
+  Zusammenfassung. Unter Windows übernimmt das wie bisher die Deinstallation.
+  Eine Schritt-für-Schritt-Anleitung steht im README.
+- **Neue Kategorie direkt im Tages-Dialog**: Das Kategorie-Dropdown hat als
+  letzten Eintrag „＋ Neue Kategorie". Er öffnet den Kategorien-Dialog; die
+  neu angelegte Kategorie ist danach in der Zeile ausgewählt. Das Mausrad
+  überspringt den Eintrag, er lässt sich nur anklicken.
+
+### Behoben
+- **Wochenlimit und Pausenpflicht: Rundungsfehler**: Beide rechneten mit auf
+  0,01 h gerundeten Werten und lösten bei exakt 6:00 h falsch aus — eine
+  Wochensumme von genau 6 h über einem Limit von 6 h warnte, und exakt 6 h
+  Arbeitszeit verlangten 30 Minuten Pause, obwohl § 4 ArbZG erst *über* 6 h
+  greift. Gerechnet wird jetzt in Minuten.
+- **Tooltips**: Beim schnellen Überfahren des Kalenders flackerten sie und
+  zeigten unter Linux (KDE) weiße Rechtecke; sie erscheinen jetzt nach einer
+  kurzen Verzögerung. Am Bildschirmrand werden sie nicht mehr abgeschnitten,
+  und ein Feiertag mit Sync-Konflikt zeigt nur noch einen Tooltip statt zwei.
+- **Schlüsselbund bei „Immer im Vordergrund"**: Der Passwort-Dialog des
+  Systems (KWallet, GNOME Keyring) lag unter dem Hauptfenster und blieb
+  unsichtbar, bis die Abfrage ablief. Das Fenster gibt den Vordergrund jetzt
+  frei, solange der Schlüsselbund fragt.
+- **Webhook-Zugangsdaten beim Start**: Der Umzug in den Schlüsselbund konnte
+  mit dem Speichern oder Löschen eines Webhooks zusammenstoßen — ein gelöschter
+  Webhook tauchte wieder auf, ein frisch eingegebenes Geheimnis wurde
+  überschrieben.
+- **Speichern von Webhook und SMTP-Konto**: Ein unerwarteter Fehler ließ den
+  Speichern-Knopf dauerhaft gesperrt, ohne Meldung. Jetzt erscheint der Fehler.
+- **Sync-Zeitüberschreitung**: Dauerte der Abgleich zu lange, erschien ein
+  heller Fehlerdialog mit dem Text „Timeout". Jetzt gibt es eine verständliche
+  Meldung im Dunkel-Design.
+- **Einstellungen nach Skalierungswechsel**: Nach dem Speichern einer anderen
+  Skalierung erschien „Unerwarteter Fehler: TclError", obwohl die App sauber
+  neu startete.
+- **Einstellungen sprangen auf**: Der Dialog wurde nach dem Öffnen plötzlich
+  breiter, sobald die Prüfung der Google-Anmeldung antwortete.
+- **Vergrößerte Darstellung**: Reservierungs-Markierung und Lösch-Knopf (✕) in
+  den Kalenderzellen wuchsen nicht mit.
+- **Urlaub: Kalender-Aufräumen**: Scheiterte das Entfernen der Urlaubstermine
+  im Google Kalender, während der Dialog schon zu war, erfuhr man nichts davon.
+- **Auto-Update**: Ein vorgemerktes Update gehörte womöglich zu einer älteren
+  Version als der, die der Hinweis nannte; beim Beenden wurde dann die ältere
+  installiert.
+
+### Intern
+- **Logs im Terminal**: Wer die App aus dem Quellcode startet
+  (`python -m src.main`), sieht die Log-Zeilen jetzt auch im Terminal;
+  `ZEITERFASSUNG_LOG_LEVEL=DEBUG` macht sie ausführlicher.
+- **Installer und Test-Builds**: Das Setup zeigt Kanal und Commit des Builds
+  (z. B. `1.24.0-pre.2`) im Assistenten und unter „Apps & Features".
+- **Coverage**: Für die Tk-freien Module gilt in der CI jetzt eine
+  Untergrenze.
+- **Plattform-Labels** für Pull Requests (macOS, Linux, KDE, GNOME, Windows)
+  und ein Abschnitt zu KI-generiertem Code in `CONTRIBUTING.md`.
+
 ## 1.23.3 — 2026-09-23
 
 Ein Wartungs-Release rund um die Einstellungen: der Dialog ist neu
