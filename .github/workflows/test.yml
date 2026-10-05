@@ -126,6 +126,10 @@ jobs:
     # übersprungen statt zu scheitern, und ein übersprungener Required Check
     # gilt GitHub als erfüllt. Deshalb wird `result` explizit geprüft, statt
     # sich auf das implizite needs-Verhalten zu verlassen.
+    # `!cancelled()` verhindert dabei ein Schein-Fehlschlagen nach einem
+    # Workflow-Abbruch: wird der Lauf als Ganzes abgebrochen, soll auch dieses
+    # Sammel-Gate nicht mehr auf "cancelled" der Matrix laufen und mit Exit 1
+    # enden.
     #
     # Der Zusatz `needs.changes.outputs.code == 'true'` ist die EINZIGE
     # Ausnahme davon: bei einem Doku-only-PR soll dieser Job bewusst
@@ -134,7 +138,7 @@ jobs:
     # der Job wird ebenfalls übersprungen — genau deshalb steht `changes`
     # selbst mit in den Required Checks.
     needs: [changes, test-matrix]
-    if: always() && needs.changes.outputs.code == 'true'
+    if: always() && !cancelled() && needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Matrix-Ergebnis prüfen
