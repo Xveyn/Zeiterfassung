@@ -19,6 +19,16 @@ LOG_SUBDIR = "logs"
 MAX_BYTES = 1_000_000
 BACKUP_COUNT = 3
 DEFAULT_LEVEL = logging.INFO
+LEVEL_ENV = "ZEITERFASSUNG_LOG_LEVEL"
+
+
+def _resolve_level() -> int:
+    """Log-Level: `ZEITERFASSUNG_LOG_LEVEL` (z.B. `DEBUG`) überschreibt den
+    Default für Konsole **und** Logfile. Ein unbekannter Wert fällt auf den
+    Default zurück — Logging-Setup darf den Start nie verhindern."""
+    name = os.environ.get(LEVEL_ENV, "").strip().upper()
+    level = logging.getLevelName(name) if name else None
+    return level if isinstance(level, int) else DEFAULT_LEVEL
 
 
 def get_log_path(base_path: str) -> str:
@@ -41,6 +51,9 @@ def setup_logging(base_path: str, console: bool | None = None) -> str:
     `console`: zusätzlich nach stderr loggen. `None` = automatisch (nur wenn
     die App aus dem Quellcode läuft, s. `_console_wanted`).
 
+    `ZEITERFASSUNG_LOG_LEVEL=DEBUG` hebt die Ausführlichkeit an (Konsole und
+    Logfile).
+
     Idempotent: ein zweiter Aufruf addiert keinen weiteren Handler.
     """
     log_dir = os.path.join(base_path, LOG_SUBDIR)
@@ -48,7 +61,7 @@ def setup_logging(base_path: str, console: bool | None = None) -> str:
     log_path = os.path.join(log_dir, LOGFILE_NAME)
 
     root = logging.getLogger()
-    root.setLevel(DEFAULT_LEVEL)
+    root.setLevel(_resolve_level())
     if not any(isinstance(h, RotatingFileHandler) for h in root.handlers):
         handler = RotatingFileHandler(
             log_path,

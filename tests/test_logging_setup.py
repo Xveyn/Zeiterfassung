@@ -99,3 +99,17 @@ def test_setup_logging_console_auto_in_source_mode(tmp_path, isolated_logging, m
     monkeypatch.delattr(sys, "frozen", raising=False)
     setup_logging(str(tmp_path))
     assert len(_console_handlers()) == 1
+
+
+def test_log_level_env_overrides_default(tmp_path, isolated_logging, monkeypatch):
+    monkeypatch.setenv("ZEITERFASSUNG_LOG_LEVEL", "debug")
+    setup_logging(str(tmp_path), console=False)
+    assert logging.getLogger().level == logging.DEBUG
+
+
+@pytest.mark.parametrize("value", ["", "quatsch", "42"])
+def test_log_level_env_invalid_falls_back_to_default(
+        tmp_path, isolated_logging, monkeypatch, value):
+    monkeypatch.setenv("ZEITERFASSUNG_LOG_LEVEL", value)
+    setup_logging(str(tmp_path), console=False)
+    assert logging.getLogger().level == logging.INFO
