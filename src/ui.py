@@ -968,7 +968,10 @@ class App:
         Der Single-Instance-Port bleibt bis zum Schluss belegt, damit keine
         zweite Instanz mittendrin startet.
         """
-        if not self._removal.begin(self._sync_guard):
+        claim = self._removal.claim(self._sync_guard)
+        if claim == "running":
+            return True  # läuft schon; der Dialog darf schließen, nichts doppelt
+        if claim == "sync":
             return False
         if self._tray is not None:
             self._tray.stop()

@@ -340,5 +340,15 @@ class RemovalState:
         self.active = True
         return True
 
+    def claim(self, sync_guard: threading.Lock | None) -> str:
+        """`begin` mit einer Antwort, die „läuft schon" von „Sync läuft"
+        unterscheidet (M11): `"started"` (jetzt ruhiggestellt, Aufrufer
+        räumt auf), `"running"` (ein früherer Aufruf ist schon dabei — nichts
+        zu tun, und **keine** Sync-Meldung: der Guard ist ja von uns selbst
+        belegt) oder `"sync"` (ein Sync läuft, alles bleibt unangetastet)."""
+        if self.active:
+            return "running"
+        return "started" if self.begin(sync_guard) else "sync"
+
     def admits(self, forced: bool) -> bool:
         return forced or not self.active
