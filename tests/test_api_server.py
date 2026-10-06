@@ -168,6 +168,18 @@ def test_oversized_body_is_413_without_reading_it(server, value):
     assert (response.status, error_code(body)) == (413, "payload_too_large")
 
 
+def test_a_zero_length_body_is_accepted(server):
+    response, _, _ = http_call(server, "GET", "/v1/status", {"Content-Length": "0"})
+    assert response.status == 200
+
+
+def test_a_small_body_is_read_before_routing(server):
+    # Lesende Routen ignorieren den Body, der Server muss ihn trotzdem lesen,
+    # statt die Verbindung mit ungelesenen Bytes zu schließen.
+    response, body, _ = http_call(server, "GET", "/v1/status", body=b"{}")
+    assert response.status == 200 and body["api_version"] == 1
+
+
 def test_truncated_body_is_400(server):
     sock = socket.create_connection(("127.0.0.1", server.port), timeout=5)
     try:

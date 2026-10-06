@@ -370,7 +370,7 @@ Vordergrund darf der Compositor aber verweigern.
 ## Datenspeicherung
 
 Alle Daten liegen lokal in einem Ordner (Pfad je nach Plattform, siehe unten).
-Das meiste sind JSON-Dateien — `instance-secret` und das Protokoll sind es nicht.
+Das meiste sind JSON-Dateien — `instance-secret`, `api-token` und das Protokoll sind es nicht.
 
 **Deine Daten:**
 
@@ -390,6 +390,7 @@ Das meiste sind JSON-Dateien — `instance-secret` und das Protokoll sind es nic
 - **webhooks.json** — Webhook-Konfiguration **inklusive** Zugangstoken bzw. HMAC-Schlüssel. Gerätelokal: reist bewusst **nicht** über den Drive-Sync mit
 - **smtp.json** — SMTP-Kontokonfiguration; das Passwort liegt darin nur, wenn kein Schlüsselbund verfügbar war (Datei-Fallback, dann im Klartext). Gerätelokal: reist bewusst **nicht** über den Drive-Sync mit
 - **instance-secret** — schützt den lokalen Kanal, über den eine zweite Instanz das vorhandene Fenster nach vorn holt
+- **api-token** *(ab --VERSION--)* — Zugriffstoken der lokalen HTTP-API; nur vorhanden, wenn die API einmal eingeschaltet war. Gerätelokal: reist bewusst **nicht** über den Drive-Sync mit
 
 Bei aktivem Sync liegt zusätzlich in deinem Google Drive eine versteckte Datei `zeiterfassung-sync.json` im `appDataFolder` — nicht über die Drive-Web-Oberfläche sichtbar, nur die App kommt dran.
 

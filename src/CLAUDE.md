@@ -224,6 +224,13 @@ Retry-on-conflict und Drive Content Restrictions sind geprüft und verworfen.
 Begründung und die Grenze der LWW-Heilung stehen im Docstring von
 `drive.py::upload`; wer das Fenster erneut angehen will, fängt dort an.
 
+**Der API-Server ist ein zweiter erlaubter Thread-Ort** (`api_server.py`), wie der
+Accept-Loop in `single_instance`: ein eigener Daemon-Thread, der nie ein Widget
+berührt. Seine Routen holen Daten ausschließlich über die Store-Methoden (die den
+`data_lock` selbst nehmen). Schreibende Routen (spätere PRs) führen Prüfen →
+Konfliktcheck → Speichern unter demselben `data_lock` aus und rufen die UI nur über
+`App._marshal_to_ui`.
+
 **Urlaub reist als Snapshot, nicht als Store.** `send_task.perform_send` und
 `export_task.perform_export_pdf` bekommen `vacation_days` als fertiges
 `{ISO: minutes}`-Dict, das der Dialog-Thread über
@@ -601,12 +608,45 @@ Wert.
   gibt es keins (`load_or_create_token` → `None`), die API bleibt aus — anders
   als `single_instance`, das unauthentifiziert weiterläuft. `Policy` und
   `Principal.scopes` sind die Nahtstellen für die LAN-Freigabe (#221). Der
-  Server selbst (Routen, Thread, Settings-Tab) folgt in den nächsten PRs.
+  Server, Routen und Lebenszyklus: `api_server.py`, `api_routes.py`,
+  `api_service.py` (unten).
   **`load_or_create_token` und `rotate_token` blockieren** (Windows: `icacls`
   bis 15 s, Retry von `os.replace`) — nur über `BackgroundTaskRunner.run`, nie
   im UI-Thread. Eine vorhandene Token-Datei wird beim Laden auf Besitzer-only
   nachgezogen; ein Token, das nicht genau dem erzeugten Format (43 Zeichen)
   entspricht, wird ersetzt.
+- `api_routes.py` — Routing und Antworten der lokalen API (#92), Tk-frei und
+  ohne Socket: `handle(request, ctx, principal)` über eine Routentabelle
+  (Methode, Muster, Handler, **Scope**). Lesend: `GET /v1/status`,
+  `/v1/entries`, `/v1/entries/{date}`. Die Daten kommen über `Storage.get_all()`/
+  `get()` (nehmen den `data_lock` selbst, liefern Kopien) — die Routen halten
+  keinen Lock und ändern nichts. Strikte Datumsform (`[0-9]{4}-[0-9]{2}-[0-9]{2}`,
+  nicht `\d`, nicht `fromisoformat` allein: das nähme `20260105` und `2026-W01-1`),
+  unbekannte und doppelte Query-Parameter sind 400. Ein Programmfehler wirft
+  durch; der Server macht daraus eine 500 ohne Details.
+- `api_server.py` — HTTP-Server der lokalen API: `ApiServer(context, verifier,
+  port=…)`. Ein Daemon-Thread mit eigener `handle_request()`-Schleife (kein
+  `serve_forever()`/`shutdown()`: das blockiert für immer, wenn es vor dem Eintritt
+  in die Schleife gerufen wird), pro Verbindung ein Daemon-Thread. Reihenfolge je
+  Anfrage: doppelte Header → 400, `api_auth.authorize`, `Transfer-Encoding` → 400,
+  Body lesen (Limit 1 MiB), `api_routes.handle`. Nur Loopback (Bind-Adresse aus
+  `Policy.bind_host`); `server_bind` umgeht `socket.getfqdn` (hängt bei kaputtem
+  DNS) und setzt unter Windows `SO_EXCLUSIVEADDRUSE` statt `SO_REUSEADDR` — sonst
+  könnte ein anderer lokaler Prozess den Port zusätzlich binden und Token
+  mitlesen. `send_error` ist überschrieben: JSON statt HTML-Seite. Nie ein
+  CORS-Header. `set_verifier` tauscht den Prüfer ohne Neustart (Token-Rotation).
+- `api_service.py` — Lebenszyklus der lokalen API: `ApiService(settings, base_path,
+  context, run=…)`. `apply()` liest `api_enabled`/`api_port` (beide gerätelokal) und
+  bringt den Server im **Worker** in den passenden Zustand (Token laden blockiert);
+  Ergebnis ist ein `ApiStatus(state, port, reason)` mit Grund
+  (`invalid_port`/`port_in_use`/`token_unavailable`/`start_failed`) für den
+  Settings-Tab. Bei ungültigem Port wird **kein** Token angelegt. `shutdown()` wartet
+  höchstens `lock_timeout` auf einen laufenden Start und sperrt weitere Starts —
+  Beenden darf nie hängen, und beim Entfernen würde ein spät fertiges Token-Laden die
+  Datei neu anlegen. `reopen()` nimmt das zurück (fehlgeschlagener Skalierungs-Neustart).
+  `App` ruft `shutdown()` in `_quit_with_sync_push`, `remove_application` (vor jedem
+  Worker) und `restart_for_scaling` (**vor** dem Spawn, der Port muss frei sein);
+  `tests/test_api_wiring.py` hält das am Quelltext fest.
 - `single_instance.py` — Tk-freier Single-Instance-Guard. Erste Instanz leitet einen Port aus
   `get_base_path()` ab und bindet einen Listener (`SO_EXCLUSIVEADDRUSE` Windows, `SO_REUSEADDR` Unix).
   Folgeinstanzen melden sich per SHOW/PING-Protokoll und beenden sich. `main.py` ruft `acquire()`

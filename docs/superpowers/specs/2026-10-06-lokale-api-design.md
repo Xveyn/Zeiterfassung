@@ -176,10 +176,15 @@ Dialogen; Präzedenz ist der Accept-Loop in `single_instance`. Der Abschnitt
 ## Stack innerhalb von #92
 
 1. `api_auth` samt Tokendatei, Policy und Principal (rein, getestet).
-2. Server und lesende Routen, `/status`, Settings-Tab, Verdrahtung.
-3. Schreibende Ist-Zeit-Endpunkte samt den Regeln aus „Regeln, die die API
+2. Server (`api_server`), Routing (`api_routes`) mit `/status` und den lesenden
+   Ist-Zeit-Routen, Lebenszyklus (`api_service`), Settings-Schlüssel,
+   Verdrahtung in `App`.
+3. Settings-Tab (Schalter, Port, Token anzeigen/kopieren/neu erzeugen,
+   Statusgrund).
+4. Schreibende Ist-Zeit-Endpunkte samt den Regeln aus „Regeln, die die API
    nachbilden muss".
-4. Reservierungen und Auswertungen.
+5. Reservierungen und Auswertungen (Summen, Wochenlimit, Pausenpflicht,
+   Kategorien, Feiertage).
 
 ## Offene Punkte (bewusst nicht in Stufe 1)
 

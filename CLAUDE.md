@@ -1480,8 +1480,12 @@ nicht mehr als „offen" führen — der Verweis lautet auf diese Grenze.
 - `src/api_auth.py` — Token und Zugangsprüfung der lokalen HTTP-API (#92): Datei
   `api-token` (ACL-gehärtet wie `instance-secret`, fail-closed: ohne lesbares
   Token bleibt die API aus) und `authorize` als einzige Stelle der Auth-Tore
-  (Methode → Host → Origin → `Sec-Fetch-Site` → Bearer → Content-Type). Tk-frei;
-  der Server folgt in den nächsten PRs des Stacks
+  (Methode → Host → Origin → `Sec-Fetch-Site` → Bearer → Content-Type). Tk-frei.
+- `src/api_routes.py`, `src/api_server.py`, `src/api_service.py` — lokale HTTP-API
+  (#92), Tk-frei: Routing mit Scope pro Route (`GET /v1/status`, `/v1/entries`),
+  Server im Daemon-Thread (nur Loopback, `authorize` vor dem Routing, nie ein
+  CORS-Header) und Lebenszyklus über `api_enabled`/`api_port` (gerätelokal,
+  Default aus) mit Statusgrund. Beschreibung und Verträge: `src/CLAUDE.md`.
 - `src/single_instance.py` — Tk-freier Single-Instance-Guard (pro-Nutzer-Localhost-Port, `acquire`/`serve`/`release`); verhindert parallele Instanzen und holt bei manuellem Zweitstart das vorhandene Fenster nach vorn (SHOW), beim Autostart-Doppelfeuer ohne Fenster-Pop (PING)
 - `src/devices.py` — lesbare **Gerätenamen** für die Sync-Anzeige (Konfliktdialog): Ableitung aus dem Hostnamen, Sanitizing (Fremddaten!) und die Registry `{device_id: {name, updated_at}}`, die im Sync-Doc unter `devices` mitreist. Bewusst **ohne** Schema-Bump additiv — `SCHEMA_VERSION` bleibt 4, sonst pausierte `remote_is_newer` den Sync jedes älteren Geräts wegen eines Anzeigefelds. Fehlt oder bricht die Registry, zeigt der Dialog die gekürzte ID wie zuvor. Der eigene Name ist **kein** synchronisierter Setting-Key (der wäre ein einziger globaler Wert, die Geräte würden ihn sich gegenseitig überschreiben) — er lebt gerätelokal in `device_name`, der Spiegel der anderen in `known_devices`
 - `src/device_id.py` — stabile, hardware-abgeleitete Geräte-ID für den Sync (Windows `MachineGuid` / macOS `IOPlatformUUID` / Linux `/etc/machine-id`, SHA-256-gehasht); nur für installierte Builds (`main.py::_ensure_device_id`, gated auf `sys.frozen`) — Repo-/Skript-Modus bleibt bei der alten, in `settings.json` persistierten Zufalls-UUID, damit eine parallel laufende Dev-Instanz nie dieselbe device_id wie eine echte Installation auf demselben Rechner bekommt

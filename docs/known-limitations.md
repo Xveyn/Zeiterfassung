@@ -415,3 +415,23 @@ Netzwerk-Socket. Ein Selbst-Update auf dem Mac würde die Gatekeeper-Hürde
 also nicht umgehen müssen, sondern schlicht nie auslösen. Das ist der
 eigentliche Grund, die Lücke später zu schließen — nicht bloß Komfort auf
 Augenhöhe mit den anderen beiden Plattformen.
+
+## Lokale API (#92): bekannte Grenzen
+
+- **Das Token liegt in einer Datei.** `api-token` (wie `instance-secret`) ist für
+  jeden Prozess lesbar, der **als derselbe Nutzer** läuft. Auf einem Desktop-
+  Betriebssystem nicht zu ändern — direkt daneben liegt `token.json`, das mehr
+  wert ist. Bewusst kein Schlüsselbund: Skripte müssen das Token lesen können.
+  Die API verschiebt diese Grenze nicht.
+- **Kein TLS.** Auf Loopback bedeutungslos. Mit der LAN-Freigabe (#221) wird das
+  eine Entscheidung.
+- **Nur solange die App läuft.** Der Server lebt im App-Prozess (Single-Writer,
+  siehe #92); ohne laufende App ist die API nicht erreichbar. Wer sie praktisch
+  braucht, schaltet Autostart ein.
+- **Port belegt oder gesperrt.** Ein belegter Port lässt die API aus; der Grund
+  steht im Status (`port_in_use`), die App läuft normal weiter. Unter Windows bindet
+  die App den Port exklusiv (`SO_EXCLUSIVEADDRUSE`); ein anderer Prozess, der ihn
+  vorher belegt, ist von dort aus nicht zu verdrängen.
+- **Gerätelokal.** `api_enabled` und `api_port` reisen nicht per Drive-Sync.
+- **Kein Brute-Force-Schutz.** 256 Bit sind nicht zu erraten, und gegen lokale
+  Codeausführung wäre eine Sperre wirkungslos.
