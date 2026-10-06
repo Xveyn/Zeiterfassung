@@ -137,8 +137,7 @@ class App:
         self._build_header()
         self._renderer.build_grid(self.root)
         self._build_footer()
-        self._renderer.attach_labels(
-            self.header_label, self.footer_label, self.header_width_spacer)
+        self._renderer.attach_labels(self.header_label, self.footer_label)
         self._sync.attach_widgets(
             self.sync_button, self.sync_status_label, self._next_button)
         attach_tooltip(self.sync_status_label, self._sync.status_tooltip)
@@ -369,55 +368,23 @@ class App:
         )
         self.btn_week.pack(side=tk.LEFT)
 
-        # header_width_spacer: unsichtbarer Platzhalter (kein Text, gleiche
-        # bg), der ANSTELLE von header_label im pack-Fluss steht — GridRenderer
-        # hält font/width synchron zum echten header_label (s. attach_labels/
-        # refresh dort). Grund: header_label selbst wird unten per `place`
-        # (nicht `pack`) absolut auf die Fensterbreite zentriert, damit es nie
-        # verrutscht, egal wie breit die rechte Sync-Button-Gruppe gerade ist
-        # (die darf während des Synchronisierens ruhig wandern). `place`-
-        # Kinder zählen aber nicht zur reqwidth des Frames — ohne diesen
-        # Platzhalter würde GridRenderer.measure_max_width() die von
-        # header_label benötigte Breite nicht mehr einrechnen und das fixe
-        # Fenster könnte zu schmal gepinnt werden (u.a. Sync-Button ohne Platz).
-        self.header_width_spacer = tk.Label(frame, text="", bg=BG, width=0)
-        self.header_width_spacer.pack(side=tk.LEFT, expand=True)
-
-        # font und width werden in _refresh() je nach View gesetzt — fixe
-        # width verhindert Pack-Reflow beim Text-Wechsel innerhalb derselben
-        # View, und die Wochen-Variante braucht eine kleinere Schrift, weil
-        # das KW-Label sonst breiter als das Fenster ist.
-        self.header_label = tk.Label(
-            frame, text="", bg=BG, fg="#ffffff",
-        )
-        self.header_label.place(relx=0.5, rely=0.5, anchor="center")
-
-        # Toggle-Gruppe über das Label heben (#94). Das Label liegt per
-        # `place` über der vollen Fensterbreite und wird als letztes erzeugt,
-        # steht also oben in der Stacking-Order — in der Wochenansicht
-        # übermalte sein leerer Rand (fixe Zeichen-Breite, s.o.: Box 326 px,
-        # Text nur ~236 px) die rechten 28 px des „Woche"-Toggles, sichtbar
-        # blieb ein „W". Nur ohne Sync sichtbar: mit Sync-Button und
-        # Status-Label ist das Fenster breiter, das zentrierte Label rutscht
-        # nach rechts.
+        # header_label steht im pack-Fluss und füllt (expand) den freien Bereich
+        # zwischen Toggle- und Sync-Gruppe; der Text sitzt darin mittig. Font und
+        # width setzt _refresh() je View — die fixe Zeichen-Breite verhindert
+        # Pack-Reflow beim Textwechsel innerhalb derselben View, und die
+        # Wochen-Variante braucht eine kleinere Schrift, weil das KW-Label sonst
+        # breiter als das Fenster ist.
         #
-        # NICHT umgekehrt per header_label.lower(): das Label fiele damit auch
-        # unter den header_width_spacer, und dessen `bg` verdeckt dann den
-        # Titel vollständig (nachgestellt — der Header war danach leer).
-        toggle_frame.lift()
-
-        # Die zweite Hälfte von #94 — den Spacer auf den echten Textbedarf
-        # verkleinern, damit measure_max_width das Fenster nicht ~60 px zu
-        # breit pinnt — geht mit DIESER Zentrierung nicht: fensterzentriert
-        # braucht der Titel mindestens 2×(Ende der Toggle-Gruppe) + Textbreite,
-        # bei Scale 1.0 also ~518 px (2×141 + 236 für das längste KW-Label
-        # „KW 53 · 28.12.2026 – 03.01.2027"). Schrumpft das Fenster auf die
-        # vom Grid/Footer bestimmten ~490 px, kollidiert nicht mehr der leere
-        # Rand, sondern der Text selbst mit dem Toggle. Wer die Breite holen
-        # will, stellt also zuerst die Zentrierung auf den freien Bereich
-        # zwischen Toggle- und Sync-Gruppe um (gemessen 336 px, reicht auch
-        # bei 490 px Fenster) — und nimmt dafür in Kauf, dass der Titel
-        # versetzt, sobald die Sync-Widgets rechts erscheinen.
+        # Bis #94 war das Label per `place` auf die Fensterbreite zentriert (damit
+        # es beim Sync-Status nicht wandert) und ein unsichtbarer Spacer trug
+        # seinen Breitenbedarf in die reqwidth. Fensterzentriert braucht der Titel
+        # aber 2×(Ende der Toggle-Gruppe) + Textbreite, und die zu breite
+        # Wochen-Box pinnte das Fenster ~60 px über das, was Grid und Footer
+        # brauchen. Preis der Umstellung: der Titel versetzt sich um die halbe
+        # Breite der Sync-Gruppe, sobald sie erscheint — deren Status-Label hat
+        # deshalb eine feste Breite, damit er beim Syncen nicht wandert.
+        self.header_label = tk.Label(frame, text="", bg=BG, fg="#ffffff")
+        self.header_label.pack(side=tk.LEFT, expand=True)
 
         settings_button = icon_button(
             frame, "\u2699", self._open_settings,
@@ -439,7 +406,11 @@ class App:
         # ist opt-in; bei deaktiviertem Sync soll der Header unver\u00e4ndert wirken.
         self.sync_button = icon_button(frame, "\u27f3", self._sync.on_sync_clicked)
         attach_tooltip(self.sync_button, "Jetzt mit Google Drive synchronisieren")
-        self.sync_status_label = tk.Label(frame, text="", bg=BG, fg=TEXT_MUTED, font=FONT_SMALL)
+        # Feste Breite (längster Text „⚠ 10 Konflikte"): sonst wandert der
+        # mittige Header-Titel, wenn der Status-Text wechselt.
+        self.sync_status_label = tk.Label(
+            frame, text="", bg=BG, fg=TEXT_MUTED, font=FONT_SMALL,
+            width=14, anchor="e")
 
     def _build_footer(self):
         footer_frame = tk.Frame(self.root, bg=BG)

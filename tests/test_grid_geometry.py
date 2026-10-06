@@ -101,3 +101,23 @@ def test_wide_cells_respects_workweek_only():
         show_weekend=True, workweek_only=False)._wide_cells() is False
     assert _renderer_with_settings(
         show_weekend=False, workweek_only=False)._wide_cells() is True
+
+
+def test_week_header_width_between_clipping_and_old_excess():
+    """#94: die fixe Zeichen-Breite des Wochen-Titels darf nicht unter den
+    gemessenen Bedarf fallen (längstes KW-Label braucht auf Linux ~27 Zeichen-
+    breiten, darunter wird es abgeschnitten) und nicht mehr die 32 sein, die
+    das Fenster ~60 px zu breit pinnten."""
+    r, _root = _renderer_with_root(reqwidth=500)
+    header, footer = MagicMock(), MagicMock()
+    r.attach_labels(header, footer)
+    r._refresh_week = lambda: None
+    r._visible_day_count = lambda: 7
+    r.repin_geometry = lambda: None
+    r._last_refresh_view = "week"  # Grid-Neuaufbau überspringen (kein Tk)
+    r._last_refresh_columns = 7
+    r._last_footer_wide = False
+
+    r.refresh("week", 2026, 12, 2026, 53)
+
+    assert 27 <= header.config.call_args.kwargs["width"] < 32
