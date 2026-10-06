@@ -60,7 +60,6 @@ class GridRenderer:
         self._day_header_cols = None
         self._header_label = None
         self._footer_label = None
-        self._header_width_spacer = None
         self._fixed_width = None
         self._suppress_geometry = False
         self._last_refresh_view = None
@@ -102,10 +101,9 @@ class GridRenderer:
         self._active_grid_idx = 0
         self._grid_frame = self._grid_frames[0]
 
-    def attach_labels(self, header_label, footer_label, header_width_spacer):
+    def attach_labels(self, header_label, footer_label):
         self._header_label = header_label
         self._footer_label = footer_label
-        self._header_width_spacer = header_width_spacer
 
     def refresh(self, view_mode: str, year: int, month: int,
                 iso_year: int, current_week: int):
@@ -122,18 +120,15 @@ class GridRenderer:
             )
             self._refresh_month()
         else:
-            # FONT_HEADER_SMALL (12pt) + width=32 — KW-Variante mit Jahreswechsel.
-            font, width = FONT_HEADER_SMALL, 32
+            # FONT_HEADER_SMALL (12pt) + width=28 — KW-Variante mit Jahreswechsel
+            # (längstes Label „KW 53 · 28.12.2020 – 03.01.2021": 296 px auf Linux,
+            # Box bei 28 Zeichen ~313 px; bei 24 würde es abgeschnitten).
+            font, width = FONT_HEADER_SMALL, 28
             self._header_label.config(
                 text=get_week_label(self._iso_year, self._current_week),
                 font=font, width=width,
             )
             self._refresh_week()
-        # header_width_spacer steht (unsichtbar) an header_labels alter pack-
-        # Position, damit dessen Breitenbedarf weiter in die reqwidth des
-        # Frames eingeht — header_label selbst ist per `place` zentriert und
-        # zählt dafür nicht mehr mit (s. ui.py::_build_header).
-        self._header_width_spacer.config(font=font, width=width)
         current_cols = self._visible_day_count()
         view_changed = self._last_refresh_view != self._view_mode
         cols_changed = self._last_refresh_columns != current_cols

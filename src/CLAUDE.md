@@ -49,16 +49,17 @@ Rendering der Monats-/Wochenansicht inkl. Double-Buffer und Fenster-Geometrie.
   binden diese Callbacks, nicht App-Methoden direkt.
 - **Widgets:** der Renderer besitzt `grid_container` + die zwei Double-Buffer-Frames
   (`build_grid(parent)`); `header_label`/`footer_label` werden in `App._build_header`/
-  `_build_footer` erzeugt und per `attach_labels(header_label, footer_label,
-  header_width_spacer)` nachgereicht (der Renderer beschreibt sie). `header_label` selbst
-  hängt **nicht** im pack-Fluss von `header_frame`, sondern wird per `place(relx=0.5, …)`
-  absolut auf die Fensterbreite zentriert — sonst würde es je nach Breite der rechten
-  Sync-Button-Gruppe (Status-Text ändert sich laufend) sichtbar verrutschen. Damit
-  `header_label`s Breitenbedarf trotzdem in `measure_max_width` einfließt (place-Kinder
-  zählen nicht zur reqwidth), steht an seiner alten pack-Position ein unsichtbarer
-  `header_width_spacer`, dessen `font`/`width` `refresh()` synchron zum echten
-  `header_label` hält. `measure_max_width(...)` pinnt vor `mainloop()` die Fensterbreite
-  (4-Kombi-Probing).
+  `_build_footer` erzeugt und per `attach_labels(header_label, footer_label)`
+  nachgereicht (der Renderer beschreibt sie). `header_label` steht im pack-Fluss von
+  `header_frame` (`expand=True`) und sitzt damit mittig im freien Bereich zwischen
+  Toggle- und Sync-Gruppe; `refresh()` setzt `font`/`width` je View (fixe Zeichen-Breite
+  gegen Pack-Reflow, Woche 28 Zeichen; 24 schnitte das längste KW-Label unter Linux ab). Bis #94 war es per
+  `place(relx=0.5)` auf die Fensterbreite zentriert, mit einem unsichtbaren
+  `header_width_spacer` für die reqwidth — das pinnte das Fenster ~60 px zu breit, weil
+  fensterzentriert 2×(Toggle-Ende)+Textbreite nötig ist. Preis: der Titel versetzt sich um
+  die halbe Breite der Sync-Gruppe, wenn sie erscheint; das Status-Label hat deshalb eine
+  feste `width`, damit er beim Syncen nicht wandert. `measure_max_width(...)` pinnt vor
+  `mainloop()` die Fensterbreite (4-Kombi-Probing).
 - **Fenster-Geometrie:** `repin_geometry()` setzt Breite (≥ gemessenes Maximum) und Höhe
   (aktuelle reqheight) neu auf das fixe Fenster. Genutzt vom View-/Spalten-Wechsel in
   `refresh()`, beim Wechsel der Footer-Reservierungsbreite (Stundenlohn zur Laufzeit
