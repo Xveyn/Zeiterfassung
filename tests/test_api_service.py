@@ -1,0 +1,307 @@
+# tests/test_api_service.py
+import http.client
+import socket
+import threading
+import time
+
+import pytest
+
+from src import api_service
+from src.api_routes import ApiContext
+from src.api_service import (
+    DEFAULT_PORT, REASON_INVALID_PORT, REASON_PORT_IN_USE, REASON_TOKEN_UNAVAILABLE,
+    STATE_ERROR, STATE_OFF, STATE_RUNNING, ApiService, ApiStatus, parse_port,
+)
+from src.settings import DEFAULTS
+from src.storage import Storage
+
+
+def free_port():
+    with socket.socket() as sock:
+        sock.bind(("127.0.0.1", 0))
+        return sock.getsockname()[1]
+
+
+def sync_run(fn, on_done=None):
+    result = fn()
+    if on_done is not None:
+        on_done(result)
+
+
+def make_service(tmp_path, settings, run=sync_run, statuses=None):
+    storage = Storage(str(tmp_path / "zeiterfassung.json"), device_id="dev")
+    context = ApiContext(storage=storage, settings=settings, app_version=lambda: "t")
+    on_status = statuses.append if statuses is not None else None
+    return ApiService(settings, str(tmp_path), context, run=run, on_status=on_status)
+
+
+def token_of(tmp_path):
+    return (tmp_path / "api-token").read_text(encoding="ascii")
+
+
+def get_status_code(port, token):
+    conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+    try:
+        conn.request("GET", "/v1/status", headers={"Authorization": f"Bearer {token}"})
+        response = conn.getresponse()
+        response.read()
+        return response.status
+    finally:
+        conn.close()
+
+
+def port_is_closed(port):
+    try:
+        socket.create_connection(("127.0.0.1", port), timeout=1).close()
+    except OSError:
+        return True
+    return False
+
+
+# --- parse_port -----------------------------------------------------------------
+
+@pytest.mark.parametrize("value,expected", [
+    (17653, 17653), ("17653", 17653), (" 8080 ", 8080), (1024, 1024), (65535, 65535),
+    (1023, None), (0, None), (80, None), (65536, None), (70000, None), (-5, None),
+    ("abc", None), ("", None), ("17653.5", None), (17653.0, None), (None, None),
+    (True, None), ("٨٠٨٠", None), ("9" * 5000, None), ([8080], None),
+])
+def test_parse_port(value, expected):
+    assert parse_port(value) == expected
+
+
+def test_default_port_matches_the_settings_default():
+    assert DEFAULT_PORT == DEFAULTS["api_port"]
+
+
+# --- Aus, Ein, Aus --------------------------------------------------------------------
+
+def test_disabled_by_default_starts_nothing_and_creates_no_token(tmp_path):
+    service = make_service(tmp_path, {"api_enabled": False, "api_port": free_port()})
+
+    service.apply()
+
+    assert service.status == ApiStatus(STATE_OFF)
+    assert not (tmp_path / "api-token").exists()
+
+
+def test_enabling_starts_the_server_with_the_stored_token(tmp_path):
+    port = free_port()
+    service = make_service(tmp_path, {"api_enabled": True, "api_port": port})
+
+    service.apply()
+    try:
+        assert service.status == ApiStatus(STATE_RUNNING, port)
+        assert get_status_code(port, token_of(tmp_path)) == 200
+        assert get_status_code(port, "falsch") == 401
+    finally:
+        service.shutdown()
+
+
+def test_disabling_stops_the_server_and_frees_the_port(tmp_path):
+    port = free_port()
+    settings = {"api_enabled": True, "api_port": port}
+    service = make_service(tmp_path, settings)
+    service.apply()
+
+    settings["api_enabled"] = False
+    service.apply()
+
+    assert service.status == ApiStatus(STATE_OFF)
+    assert port_is_closed(port)
+
+
+def test_changing_the_port_rebinds(tmp_path):
+    first, second = free_port(), free_port()
+    settings = {"api_enabled": True, "api_port": first}
+    service = make_service(tmp_path, settings)
+    service.apply()
+    try:
+        settings["api_port"] = second
+        service.apply()
+
+        assert service.status == ApiStatus(STATE_RUNNING, second)
+        assert port_is_closed(first)
+        assert get_status_code(second, token_of(tmp_path)) == 200
+    finally:
+        service.shutdown()
+
+
+def test_applying_the_same_settings_twice_keeps_the_running_server(tmp_path):
+    port = free_port()
+    service = make_service(tmp_path, {"api_enabled": True, "api_port": port})
+    service.apply()
+    try:
+        server = service._server
+        token = token_of(tmp_path)
+
+        service.apply()
+
+        assert service._server is server
+        assert token_of(tmp_path) == token
+    finally:
+        service.shutdown()
+
+
+# --- Review Focus 5: ungültige Settings ---------------------------------------------------
+
+@pytest.mark.parametrize("bad", ["abc", 0, 80, 70000, None, True, "", "17653.5", -5])
+def test_invalid_port_is_an_error_status_without_server_or_token(tmp_path, bad):
+    service = make_service(tmp_path, {"api_enabled": True, "api_port": bad})
+
+    service.apply()
+
+    assert service.status == ApiStatus(STATE_ERROR, None, REASON_INVALID_PORT)
+    assert service._server is None
+    assert not (tmp_path / "api-token").exists()
+
+
+def test_port_in_use_is_reported_and_recovers_when_freed(tmp_path):
+    blocker = socket.socket()
+    blocker.bind(("127.0.0.1", 0))
+    blocker.listen(1)
+    port = blocker.getsockname()[1]
+    service = make_service(tmp_path, {"api_enabled": True, "api_port": port})
+    try:
+        service.apply()
+        assert service.status == ApiStatus(STATE_ERROR, port, REASON_PORT_IN_USE)
+
+        blocker.close()
+        service.apply()
+        assert service.status == ApiStatus(STATE_RUNNING, port)
+    finally:
+        blocker.close()
+        service.shutdown()
+
+
+def test_unusable_token_location_is_an_error_status(tmp_path):
+    missing = tmp_path / "gibt-es-nicht"
+    storage = Storage(str(tmp_path / "z.json"), device_id="dev")
+    settings = {"api_enabled": True, "api_port": free_port()}
+    context = ApiContext(storage=storage, settings=settings, app_version=lambda: "t")
+    service = ApiService(settings, str(missing), context, run=sync_run)
+
+    service.apply()
+
+    assert service.status == ApiStatus(STATE_ERROR, None, REASON_TOKEN_UNAVAILABLE)
+    assert service._server is None
+
+
+def test_status_changes_are_reported_to_the_callback(tmp_path):
+    port = free_port()
+    statuses = []
+    settings = {"api_enabled": True, "api_port": port}
+    service = make_service(tmp_path, settings, statuses=statuses)
+
+    service.apply()
+    settings["api_enabled"] = False
+    service.apply()
+
+    assert statuses == [ApiStatus(STATE_RUNNING, port), ApiStatus(STATE_OFF)]
+
+
+# --- Review Focus 4: Beenden und Entfernen -----------------------------------------------------
+
+def test_shutdown_stops_the_server_and_blocks_further_applies(tmp_path):
+    port = free_port()
+    service = make_service(tmp_path, {"api_enabled": True, "api_port": port})
+    service.apply()
+
+    service.shutdown()
+    assert port_is_closed(port)
+
+    service.apply()                              # darf nichts mehr starten
+    assert port_is_closed(port)
+
+
+def test_reopen_allows_starting_again(tmp_path):
+    port = free_port()
+    service = make_service(tmp_path, {"api_enabled": True, "api_port": port})
+    service.apply()
+    service.shutdown()
+
+    service.reopen()
+    service.apply()
+    try:
+        assert service.status == ApiStatus(STATE_RUNNING, port)
+    finally:
+        service.shutdown()
+
+
+def test_shutdown_before_the_worker_runs_prevents_any_start(tmp_path):
+    jobs = []
+    port = free_port()
+    service = make_service(tmp_path, {"api_enabled": True, "api_port": port},
+                           run=lambda fn, on_done=None: jobs.append(fn))
+    service.apply()
+
+    service.shutdown()
+    jobs[0]()                                    # der Worker läuft erst jetzt
+
+    assert port_is_closed(port)
+    assert not (tmp_path / "api-token").exists()
+
+
+def test_shutdown_during_the_token_load_neither_blocks_nor_starts(tmp_path, monkeypatch):
+    port = free_port()
+    service = make_service(tmp_path, {"api_enabled": True, "api_port": port})
+    real_loader = api_service.load_or_create_token
+    elapsed = []
+
+    def loader(base_path):
+        token = real_loader(base_path)
+        began = time.monotonic()
+        service.shutdown(lock_timeout=0.05)      # Worker hält den Lock
+        elapsed.append(time.monotonic() - began)
+        return token
+
+    monkeypatch.setattr(api_service, "load_or_create_token", loader)
+
+    service.apply()
+
+    assert elapsed and elapsed[0] < 1.0
+    assert service.status.state != STATE_RUNNING
+    assert port_is_closed(port)
+
+
+def test_unexpected_errors_in_the_worker_become_an_error_status(tmp_path, monkeypatch, caplog):
+    service = make_service(tmp_path, {"api_enabled": True, "api_port": free_port()})
+
+    def boom(base_path):
+        raise RuntimeError("unerwartet")
+
+    monkeypatch.setattr(api_service, "load_or_create_token", boom)
+
+    service.apply()
+
+    assert service.status.state == STATE_ERROR
+    assert "Lokale API" in caplog.text
+
+
+def test_concurrent_applies_end_in_one_running_server(tmp_path):
+    port = free_port()
+    threads = []
+    statuses = []
+
+    def thread_run(fn, on_done=None):
+        def body():
+            result = fn()
+            if on_done is not None:
+                on_done(result)
+        thread = threading.Thread(target=body)
+        threads.append(thread)
+        thread.start()
+
+    service = make_service(tmp_path, {"api_enabled": True, "api_port": port},
+                           run=thread_run, statuses=statuses)
+    try:
+        for _ in range(10):
+            service.apply()
+        for thread in threads:
+            thread.join()
+
+        assert service.status == ApiStatus(STATE_RUNNING, port)
+        assert all(s == ApiStatus(STATE_RUNNING, port) for s in statuses)
+        assert get_status_code(port, token_of(tmp_path)) == 200
+    finally:
+        service.shutdown()

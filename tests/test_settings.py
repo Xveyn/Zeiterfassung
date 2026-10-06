@@ -885,3 +885,13 @@ def test_new_send_reminder_keys_are_device_local():
                 "send_period_from_last_reminder",
                 "send_period_anchor_monthly"):
         assert key not in SYNCED_SETTING_KEYS
+
+
+def test_api_defaults_present_and_device_local():
+    from src.settings import DEFAULTS, SYNCED_SETTING_KEYS
+    assert DEFAULTS["api_enabled"] is False
+    assert DEFAULTS["api_port"] == 17653
+    # Gerätelokal: ein zweiter Rechner mit anderem Port/Zustand darf nicht von
+    # einem synchronisierten Wert überstimmt werden.
+    assert "api_enabled" not in SYNCED_SETTING_KEYS
+    assert "api_port" not in SYNCED_SETTING_KEYS
