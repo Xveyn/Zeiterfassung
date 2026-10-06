@@ -982,12 +982,13 @@ class App:
         had_token = os.path.exists(os.path.join(base, "token.json"))
         app_file = removal.app_file_hint(system, os.environ, sys.executable)
         command = removal.app_file_command(system, app_file)
+        translocated = removal.is_translocated(system, sys.executable)
 
         def _done(results):
             try:
                 themed_showinfo(self.root, "Zeiterfassung entfernt",
                                 removal.format_summary(results, app_file, had_token,
-                                                       command),
+                                                       command, translocated),
                                 copyable=True, copy_text=command)
             finally:
                 # Ohne finally bliebe die App ruhiggestellt offen, wenn der

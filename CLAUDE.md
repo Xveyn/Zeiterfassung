@@ -1411,7 +1411,9 @@ nicht mehr als „offen" führen — der Verweis lautet auf diese Grenze.
   Runners feuert bei einer Exception nie) und die Hinweise für den Abschluss.
   Reihenfolge: Schlüsselbund → Autostart/Menüeintrag → Zugangsdaten →
   (nur mit Häkchen) Nutzerdaten, `settings.json` zuletzt → Datenordner nur
-  wenn leer. Die App löscht ihre Programmdatei nicht, sie nennt sie.
+  wenn leer. Die App löscht ihre Programmdatei nicht, sie nennt sie
+  — außer unter macOS App Translocation (`is_translocated`): der Pfad dort ist
+  schreibgeschützt und unbekannt, der Hinweis bleibt allgemein.
   Eintrittspunkt `ui.App.remove_application`: `RemovalState.begin` nimmt den
   `sync_guard` und gibt ihn nie zurück (läuft ein Sync, bleibt alles
   unangetastet), danach verwirft `_marshal_to_ui` fremde Callbacks, und
