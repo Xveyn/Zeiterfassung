@@ -338,3 +338,9 @@ class TestRefreshLinuxTarget:
         refresh_linux_target(str(frozen_linux))
         content = open(_linux_desktop_path(), encoding="utf-8").read()
         assert "1.0.0" in content
+
+
+def test_disable_autostart_uses_injected_system_over_platform():
+    """M9: ein übergebenes `system` gilt, ohne dass `platform.system()` gestubbt wird."""
+    with pytest.raises(RuntimeError, match="Plan9"):
+        disable_autostart("Plan9")
