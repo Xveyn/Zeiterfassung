@@ -634,7 +634,13 @@ Wert.
   DNS) und setzt unter Windows `SO_EXCLUSIVEADDRUSE` statt `SO_REUSEADDR` — sonst
   könnte ein anderer lokaler Prozess den Port zusätzlich binden und Token
   mitlesen. `send_error` ist überschrieben: JSON statt HTML-Seite. Nie ein
-  CORS-Header. `set_verifier` tauscht den Prüfer ohne Neustart (Token-Rotation).
+  CORS-Header. **Last:** höchstens 32 gleichzeitige Verbindungen (darüber wird
+  im Accept-Thread sofort geschlossen — angenommen wird vor der Auth, ohne die
+  Grenze könnte ein lokaler Prozess Threads und Dateihandles der ganzen App
+  aufzehren), 15 s Gesamtfrist je Verbindung (das Socket-Timeout gilt nur je
+  `recv()`), Lingering close (erst `SHUT_WR`, dann kurz leer lesen: kein RST mit
+  ungelesenem Body, kein `TIME_WAIT` auf dem API-Port). Verbindungsabbrüche und
+  Timeouts loggen nur auf DEBUG; ein Body-Timeout ist 408. `set_verifier` tauscht den Prüfer ohne Neustart (Token-Rotation).
 - `api_service.py` — Lebenszyklus der lokalen API: `ApiService(settings, base_path,
   context, run=…)`. `apply()` liest `api_enabled`/`api_port` (beide gerätelokal) und
   bringt den Server im **Worker** in den passenden Zustand (Token laden blockiert);

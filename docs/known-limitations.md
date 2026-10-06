@@ -432,6 +432,10 @@ Augenhöhe mit den anderen beiden Plattformen.
   steht im Status (`port_in_use`), die App läuft normal weiter. Unter Windows bindet
   die App den Port exklusiv (`SO_EXCLUSIVEADDRUSE`); ein anderer Prozess, der ihn
   vorher belegt, ist von dort aus nicht zu verdrängen.
+- **Last.** Höchstens 32 gleichzeitige Verbindungen, jede mit 15 s Gesamtfrist;
+  weitere werden sofort geschlossen. Ein lokaler Prozess kann damit die **API**
+  zeitweise blockieren (angenommen wird vor der Auth), nicht aber die App. Eine
+  Abfrage ohne Zeitraum liefert alle Einträge ohne Paginierung.
 - **Gerätelokal.** `api_enabled` und `api_port` reisen nicht per Drive-Sync.
 - **Kein Brute-Force-Schutz.** 256 Bit sind nicht zu erraten, und gegen lokale
   Codeausführung wäre eine Sperre wirkungslos.
