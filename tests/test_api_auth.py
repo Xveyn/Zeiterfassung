@@ -134,6 +134,64 @@ def test_no_temp_files_remain_after_success(tmp_path):
     assert [p.name for p in tmp_path.iterdir()] == [TOKEN_FILENAME]
 
 
+# --- Windows-Eigenheiten und Aufräumen -------------------------------------
+
+def test_replace_is_retried_when_the_target_is_briefly_locked(tmp_path, monkeypatch):
+    real_replace = os.replace
+    calls = []
+
+    def flaky(src, dst):
+        calls.append(1)
+        if len(calls) < 3:
+            raise PermissionError("kurz gesperrt (Virenscanner)")
+        real_replace(src, dst)
+
+    monkeypatch.setattr(api_auth.os, "replace", flaky)
+    monkeypatch.setattr(api_auth.time, "sleep", lambda seconds: None)
+
+    token = load_or_create_token(str(tmp_path))
+
+    assert token is not None and len(calls) == 3
+    assert (tmp_path / TOKEN_FILENAME).read_text(encoding="ascii") == token
+
+
+def test_permanent_lock_gives_no_token_after_five_attempts(tmp_path, monkeypatch):
+    calls = []
+
+    def locked(src, dst):
+        calls.append(1)
+        raise PermissionError("dauerhaft gesperrt")
+
+    monkeypatch.setattr(api_auth.os, "replace", locked)
+    monkeypatch.setattr(api_auth.time, "sleep", lambda seconds: None)
+
+    assert load_or_create_token(str(tmp_path)) is None
+    assert len(calls) == 5
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_failing_chmod_does_not_prevent_the_token(tmp_path, monkeypatch):
+    def no_chmod(path, mode):
+        raise OSError("chmod nicht möglich")
+
+    monkeypatch.setattr(api_auth.os, "chmod", no_chmod)
+
+    assert load_or_create_token(str(tmp_path)) is not None
+
+
+def test_failing_cleanup_does_not_mask_the_original_error(tmp_path, monkeypatch):
+    def boom(src, dst):
+        raise OSError("replace failed")
+
+    def no_remove(path):
+        raise OSError("remove failed")
+
+    monkeypatch.setattr(api_auth.os, "replace", boom)
+    monkeypatch.setattr(api_auth.os, "remove", no_remove)
+
+    assert load_or_create_token(str(tmp_path)) is None   # kein Durchschlagen von no_remove
+
+
 # --- Rotation ---------------------------------------------------------------
 
 def test_rotate_token_replaces_file_and_returns_the_new_token(tmp_path):

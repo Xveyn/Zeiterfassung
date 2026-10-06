@@ -562,12 +562,13 @@ Wert.
   `migrate_legacy_autostart()` überführt Alt-Shortcuts in den Registry-Key, ist aber frozen-gated
   (Repo-Modus: No-op, würde andernfalls python.exe+Repo ins Register schreiben und bestehende
   Shortcuts beschädigen).
-- `secure_file.py` — Zugriffsschutz für die vier lokal abgelegten Secrets: `token.json`
+- `secure_file.py` — Zugriffsschutz für die fünf lokal abgelegten Secrets: `token.json`
   (`oauth_utils.write_token_json`), `instance-secret` (`single_instance._write_secret_atomic`),
   `webhooks.json` (`webhook_store._save_to_disk`, dritter Schreibpfad — enthält
   Auth-Token/HMAC-Secrets der konfigurierten Webhooks) und `smtp.json`
   (`smtp_store._save_to_disk`, vierter Schreibpfad — enthält, nur ohne Schlüsselbund,
-  das SMTP-Passwort im Klartext). Alle vier Schreibpfade laufen
+  das SMTP-Passwort im Klartext) und `api-token` (`api_auth._write_token_atomic`,
+  fünfter Schreibpfad — Bearer-Token der lokalen API). Alle fünf Schreibpfade laufen
   Temp-Datei → `chmod 0600` → `harden_windows_acl` → `os.replace`.
   Unter Windows ist chmod ein No-op, deshalb dort zusätzlich `icacls /inheritance:r
   /grant:r <user>:(F)` (Audit M8): geerbte ACEs (u.a. SYSTEM, lokale Administratoren) raus,
@@ -592,6 +593,15 @@ Wert.
   `write_token`/`write_token_json` und die beiden `_save_to_disk` bleiben aber
   unverändert die Schreibpfade, über `harden_windows_acl` gehärtet, weil ohne
   Schlüsselbund (oder im Alt-Format) das Secret weiterhin dort landet.
+- `api_auth.py` — Authentifizierung der lokalen HTTP-API (#92), Tk-frei und
+  ohne Socket. Token (`secrets.token_urlsafe(32)`, Datei `api-token`, gehärtet
+  wie `instance-secret`) und `authorize(method, headers, policy, verifier)` als
+  **die eine** Stelle der Tore (Methode → Host → Origin → `Sec-Fetch-Site` →
+  Bearer → Content-Type). **Fail-closed:** ohne lesbares/schreibbares Token
+  gibt es keins (`load_or_create_token` → `None`), die API bleibt aus — anders
+  als `single_instance`, das unauthentifiziert weiterläuft. `Policy` und
+  `Principal.scopes` sind die Nahtstellen für die LAN-Freigabe (#221). Der
+  Server selbst (Routen, Thread, Settings-Tab) folgt in den nächsten PRs.
 - `single_instance.py` — Tk-freier Single-Instance-Guard. Erste Instanz leitet einen Port aus
   `get_base_path()` ab und bindet einen Listener (`SO_EXCLUSIVEADDRUSE` Windows, `SO_REUSEADDR` Unix).
   Folgeinstanzen melden sich per SHOW/PING-Protokoll und beenden sich. `main.py` ruft `acquire()`

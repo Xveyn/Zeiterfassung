@@ -25,9 +25,9 @@ Zwei Dinge werden jetzt schon als Parameter gebaut, weil sie nachträglich der
 riskanteste Umbau wären:
 
 1. **Auth-Policy als Wert:** `Policy(allowed_hosts, allowed_origins,
-   bind_host, cors_prefixes)`. Stufe 1 setzt `allowed_origins = ∅` und
-   `cors_prefixes = ()`; #221 füllt sie (gehostete PWA-Origin und eigene
-   Desktop-Adresse).
+   bind_host)`. Stufe 1 setzt `allowed_origins = ∅`; #221 füllt sie (gehostete
+   PWA-Origin und eigene Desktop-Adresse) und ergänzt die CORS-Konfiguration,
+   sobald es CORS gibt.
 2. **Token mit Scope:** der Token-Prüfer liefert ein `Principal` mit
    `scopes`; jede Route deklariert den Scope, den sie braucht. Stufe 1 kennt
    nur `local`; #221 ergänzt `mobile-sync` mit eingeschränkten Routen.
