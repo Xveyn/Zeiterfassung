@@ -424,6 +424,29 @@ def test_state_begin_without_a_guard():
     assert state.begin(None) is True and state.active is True
 
 
+def test_state_claim_tells_a_second_call_from_a_running_sync():
+    """M11: der zweite Aufruf sieht den selbst belegten Guard — das ist kein Sync."""
+    import threading
+
+    guard = threading.Lock()
+    state = removal.RemovalState()
+
+    assert state.claim(guard) == "started"
+    assert state.claim(guard) == "running"
+    assert state.active is True
+
+
+def test_state_claim_reports_a_real_sync():
+    import threading
+
+    guard = threading.Lock()
+    guard.acquire()
+    state = removal.RemovalState()
+
+    assert state.claim(guard) == "sync"
+    assert state.active is False
+
+
 def test_state_admits_everything_until_active_then_only_forced():
     """I2: fremde Callbacks anderer Worker dürfen nichts mehr schreiben."""
     state = removal.RemovalState()
