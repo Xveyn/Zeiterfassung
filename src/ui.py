@@ -13,9 +13,11 @@ from src.time_utils import (
     format_iso_date, get_week_dates,
 )
 
-from src.version import VERSION, version_label
+from src.version import VERSION, installed_release_id, version_label
 
 from src.background_tasks import BackgroundTaskRunner
+from src.api_routes import ApiContext
+from src.api_service import ApiService
 from src.weekly_limit import format_limit_warnings
 from src.grid_renderer import GridRenderer
 from src.paths import get_resource_path, relaunch_command, relaunch_env
@@ -107,6 +109,14 @@ class App:
             self.base_path, self._bg, self._refresh, lambda: self._tray,
             data_lock=data_lock, sync_guard=sync_guard,
         )
+        # Lokale HTTP-API (#92): Lebenszyklus samt Token-Laden im Worker. Der
+        # Dienst startet nur bei `api_enabled`; die Routen lesen über die
+        # Store-Methoden und halten keinen Lock.
+        self._api = ApiService(
+            self.settings, self.base_path,
+            ApiContext(storage=self.storage, settings=self.settings,
+                       app_version=installed_release_id),
+            run=self._bg.run)
         self._renderer = GridRenderer(
             self.root, self.storage, self.settings, self.reservation_store,
             self.conflicts_store, self._open_dialog, self._delete_day,
@@ -158,6 +168,7 @@ class App:
         self._apply_tray_setting()
         self._apply_reminder_setting()
         self._apply_send_reminder_setting()
+        self._apply_api_setting()
         self.root.bind("<Left>", lambda e: self._navigate(-1))
         self.root.bind("<Right>", lambda e: self._navigate(+1))
         # Tab schaltet zwischen Monat- und Wochenansicht. "break" verhindert
@@ -503,6 +514,7 @@ class App:
             self._apply_tray_setting()
             self._apply_reminder_setting()
             self._apply_send_reminder_setting()
+            self._apply_api_setting()
             # Nach jeder Settings-Speicherung den sender_email-Fetch nochmal
             # anstoßen. Damit erscheint die Absender-Adresse automatisch nach
             # Sync-Aktivierung (frischer Token mit userinfo.email-Scope), ohne
@@ -656,6 +668,11 @@ class App:
             self._reminders.start()
         else:
             self._reminders.stop()
+
+    def _apply_api_setting(self):
+        """Bringt die lokale API in den Zustand der Settings (#92). Die Arbeit
+        läuft im Worker (Token-Laden blockiert); hier wird nur angestoßen."""
+        self._api.apply()
 
     def _apply_send_reminder_setting(self):
         """Startet/stoppt den Sende-Reminder-Poll abhängig vom Setting.
@@ -928,6 +945,7 @@ class App:
         self._sync.push_on_quit()
         if self._tray is not None:
             self._tray.stop()
+        self._api.shutdown()
         self._reminders.stop()
         self._send_reminders.stop()
         self._sync.stop_day_watch()
@@ -973,6 +991,10 @@ class App:
             return True  # läuft schon; der Dialog darf schließen, nichts doppelt
         if claim == "sync":
             return False
+        # Vor allem anderen: ein spät fertiges Token-Laden würde `api-token`
+        # nach dem Aufräumen neu anlegen. `shutdown` sperrt weitere Starts;
+        # ein laufender Worker wird unten von `wait_idle` abgewartet.
+        self._api.shutdown()
         if self._tray is not None:
             self._tray.stop()
         self._reminders.stop()
@@ -1028,6 +1050,9 @@ class App:
         frozen = getattr(sys, "frozen", False)
         cmd = relaunch_command(sys.argv, sys.executable, frozen,
                                appimage=os.environ.get("APPIMAGE"))
+        # Auch der API-Port muss VOR dem Spawn frei sein, sonst findet die neue
+        # Instanz ihn belegt und die API bleibt dort aus.
+        self._api.shutdown()
         if self._single_instance is not None:
             self._single_instance.release()
         # Port VOR dem Spawn freigeben, sonst fände die neue Instanz ihn noch
@@ -1052,6 +1077,9 @@ class App:
                 if self._single_instance is not None:
                     self._single_instance.serve(
                         lambda: self._marshal_to_ui(self._restore_from_tray))
+            # Popen ist gescheitert, die App läuft weiter: die API zurückholen.
+            self._api.reopen()
+            self._api.apply()
             themed_showinfo(
                 self.root,
                 "Neustart nötig",
