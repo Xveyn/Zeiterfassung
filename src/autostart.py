@@ -108,8 +108,10 @@ def enable_autostart(target: str, arguments: str = "") -> None:
         raise RuntimeError(f"Autostart not supported on {system}")
 
 
-def disable_autostart() -> None:
-    system = platform.system()
+def disable_autostart(system: str | None = None) -> None:
+    """`system` ist für Aufrufer, die ihre Plattform schon kennen und sie
+    nicht ein zweites Mal abfragen sollen (`removal.plan_removal`)."""
+    system = system or platform.system()
     if system == "Windows":
         _disable_windows()
     elif system == "Darwin":

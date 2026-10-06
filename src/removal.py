@@ -184,7 +184,8 @@ def plan_removal(base_path: str, with_data: bool, system: str,
     steps: list[Step] = [
         (KEYRING_STEP, lambda: secret_migration.forget_all(base_path)),
         ("Autostart",
-         _remove_macos_autostart if system == "Darwin" else disable_autostart),
+         _remove_macos_autostart if system == "Darwin"
+         else lambda: disable_autostart(system)),
     ]
     if system == "Linux":
         steps.append(("Menüeintrag", lambda: _remove_menu_entry(base_path)))

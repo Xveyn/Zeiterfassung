@@ -28,7 +28,7 @@ def _populate(base, *, credentials=True, data=True):
 def quiet(monkeypatch):
     """Schlüsselbund und Autostart sind hier nicht das Thema."""
     monkeypatch.setattr(removal.secret_migration, "forget_all", lambda base: None)
-    monkeypatch.setattr(removal, "disable_autostart", lambda: None)
+    monkeypatch.setattr(removal, "disable_autostart", lambda system=None: None)
 
 
 def _names(steps):
@@ -79,7 +79,7 @@ def test_keyring_runs_before_any_file_is_deleted(tmp_path, monkeypatch):
     seen = {}
     monkeypatch.setattr(removal.secret_migration, "forget_all",
                         lambda base: seen.update(token=(tmp_path / "token.json").exists()))
-    monkeypatch.setattr(removal, "disable_autostart", lambda: None)
+    monkeypatch.setattr(removal, "disable_autostart", lambda system=None: None)
 
     removal.execute_removal(str(tmp_path), True, "Linux")
 
@@ -302,11 +302,12 @@ def test_macos_autostart_removes_plist_without_launchctl(tmp_path, monkeypatch):
 def test_linux_autostart_still_uses_disable_autostart(tmp_path, monkeypatch):
     calls = []
     monkeypatch.setattr(removal.secret_migration, "forget_all", lambda base: None)
-    monkeypatch.setattr(removal, "disable_autostart", lambda: calls.append("off"))
+    monkeypatch.setattr(removal, "disable_autostart", calls.append)
 
     removal.execute_removal(str(tmp_path), False, "Linux")
 
-    assert calls == ["off"]
+    # Die Plattform kommt aus dem Plan, nicht aus einer zweiten Abfrage (M9).
+    assert calls == ["Linux"]
 
 
 def test_summary_states_keyring_is_not_verified():
@@ -384,7 +385,7 @@ def test_real_forget_all_removes_keyring_entry_and_files(tmp_path, monkeypatch,
     (tmp_path / "token.json").write_text(
         json.dumps({oauth_utils.REFRESH_TOKEN_KEY: key, "token": "t"}),
         encoding="utf-8")
-    monkeypatch.setattr(removal, "disable_autostart", lambda: None)
+    monkeypatch.setattr(removal, "disable_autostart", lambda system=None: None)
 
     results = removal.execute_removal(str(tmp_path), False, "Linux")
 
