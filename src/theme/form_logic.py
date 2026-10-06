@@ -9,7 +9,7 @@ Mausrad-Schritt geht und wie hoch ein scrollbarer Tab-Körper werden darf.
 Unterste Schicht neben `palette`: reine stdlib, hängt an nichts.
 """
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from typing import Literal
 
 # Höhe eines scrollbaren Formular-Körpers bei 100 % Skalierung. 600 px
@@ -172,3 +172,24 @@ def body_height(natural: int, scale: float, screen_height: int) -> int:
     room = screen_height - SCREEN_MARGIN - round(DIALOG_CHROME * scale)
     limit = max(MIN_BODY_HEIGHT, min(cap, room))
     return min(natural, limit)
+
+
+def pane_width(tab_bar: int, tabs: Sequence[tuple[int, bool]],
+               scrollbar: int) -> int:
+    """Feste Breite der Reiterfläche eines Dialogs mit `Form`-Reitern (#206).
+
+    `tabs` sind die natürlichen Breiten der Reiter, jeweils mit der Angabe, ob
+    der Reiter scrollt: ein scrollender Reiter bekommt `scrollbar` dazu, und
+    zwar von Anfang an — erschiene die Leiste erst später, verschöbe sie die
+    Breite. Nie schmaler als die Tab-Leiste. Der Dialog setzt das Ergebnis
+    einmal als `-width` des Notebooks; danach kann kein Reiter die Breite
+    mehr ändern."""
+    widest = max((w + (scrollbar if scrolls else 0) for w, scrolls in tabs),
+                 default=0)
+    return max(tab_bar, widest)
+
+
+def hint_wrap(pane: int, indent: int, edge: int, floor: int) -> int:
+    """Umbruchbreite eines Hinweises in einer Reiterfläche der Breite `pane`:
+    abzüglich seiner Einrückung und des rechten Rands, nie unter `floor`."""
+    return max(floor, pane - indent - edge)

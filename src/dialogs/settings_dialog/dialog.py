@@ -11,7 +11,7 @@ from src.dialogs.settings_dialog.tab_work import WorkTab
 from src.theme import (
     BG,
     apply_combobox_style, apply_notebook_style, attach_unfocus_on_click,
-    center_dialog_on_parent, create_dialog,
+    center_dialog_on_parent, create_dialog, pin_notebook_width,
     primary_button, secondary_button, set_primary_button_enabled,
     themed_ask_save_changes, themed_showerror, themed_showinfo,
 )
@@ -200,4 +200,5 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
     attach_unfocus_on_click(dialog)
     dialog.protocol("WM_DELETE_WINDOW", _close)
     dialog.bind("<Escape>", lambda _e: _close())
+    pin_notebook_width(notebook)
     center_dialog_on_parent(dialog, parent)

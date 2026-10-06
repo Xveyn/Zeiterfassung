@@ -216,3 +216,34 @@ def test_scroll_target_item_taller_than_view_aligns_top():
 
 def test_scroll_target_degenerate_total():
     assert scroll_target(0, 10, 0.0, 1.0, 0) is None
+
+
+# --- pane_width / hint_wrap (#206) -----------------------------------------
+
+from src.theme.form_logic import hint_wrap, pane_width  # noqa: E402
+
+
+def test_pane_width_is_the_widest_tab():
+    assert pane_width(400, [(300, False), (520, False), (450, False)], 15) == 520
+
+
+def test_pane_width_is_at_least_the_tab_bar():
+    assert pane_width(538, [(300, False), (427, False)], 15) == 538
+
+
+def test_pane_width_reserves_the_scrollbar_for_tabs_that_scroll():
+    # Der Reiter fordert 500 px an und bekommt eine Leiste dazu — die Breite
+    # muss von Anfang an 515 sein, nicht erst, wenn die Leiste erscheint.
+    assert pane_width(400, [(500, True), (480, False)], 15) == 515
+
+
+def test_pane_width_without_tabs_is_the_tab_bar():
+    assert pane_width(420, [], 15) == 420
+
+
+def test_hint_wrap_subtracts_indent_and_edge():
+    assert hint_wrap(600, 34, 12, 200) == 554
+
+
+def test_hint_wrap_never_goes_below_the_floor():
+    assert hint_wrap(220, 100, 12, 200) == 200

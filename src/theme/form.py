@@ -22,8 +22,8 @@ from src.theme.palette import BG, CELL_BG, SEPARATOR, TEXT, TEXT_DISABLED, TEXT_
 from src.theme.fonts import FONT, FONT_BOLD, FONT_SMALL, current_scale, px
 from src.theme.widgets import _LabelButton, _ToggleColors, secondary_button
 from src.theme.form_logic import (
-    WHEEL_STEP, body_height, enabled_states, is_descendant, scroll_target,
-    scroll_units, wheel_route,
+    WHEEL_STEP, body_height, enabled_states, hint_wrap, is_descendant,
+    pane_width, scroll_target, scroll_units, wheel_route,
 )
 
 log = logging.getLogger(__name__)
@@ -220,6 +220,9 @@ class Form:
         self._stack: list[str] = []
         self._hints: list[tuple[tk.Label, int]] = []
         self._wrap = 0
+        # Feste Breite der Reiterfläche, sobald `pin_notebook_width` sie
+        # gesetzt hat (#206); davor 0 = Umbruch aus der gemessenen Breite.
+        self._pane = 0
         self._scrollable = False
         self._canvas = None
         if scroll:
@@ -248,6 +251,11 @@ class Form:
             # Wechsel auf ein Kind-Widget. Jedes Form prüft selbst, ob das
             # Event in seinem Canvas liegt (mehrere Forms je Dialog).
             top = self.frame.winfo_toplevel()
+            # Fürs Festnageln der Dialogbreite: `pin_notebook_width` findet
+            # die Formulare eines Dialogs über das Toplevel.
+            if not hasattr(top, "_zeit_forms"):
+                top._zeit_forms = []
+            top._zeit_forms.append(self)
             for seq in _wheel_sequences(top):
                 top.bind(seq, self._on_wheel, add="+")
             # Tab-Taste auf ein Feld außerhalb des Sichtbereichs: dorthin
@@ -432,9 +440,39 @@ class Form:
         floor = px(_MIN_WRAP)
         if not self._wrap:
             return max(floor, px(_INITIAL_WRAP))
-        return max(floor, self._wrap - indent - _EDGE)
+        return hint_wrap(self._wrap, indent, _EDGE, floor)
+
+    def natural_width(self):
+        """Breite, die das Formular von sich aus anfordert (mit den Hinweisen
+        bei ihrer Anfangs-Umbruchbreite) — Grundlage für `pin_notebook_width`."""
+        return self.body.winfo_reqwidth()
+
+    def needs_scrollbar(self):
+        """Ob das Formular höher wird, als sein Körper sichtbar sein darf —
+        dieselbe Rechnung wie `_fit_canvas`, aber ohne auf ein <Configure> zu
+        warten (ein noch verborgener Dialog bekommt keines)."""
+        if self._canvas is None:
+            return False
+        natural = self.body.winfo_reqheight()
+        return natural > body_height(natural, current_scale(),
+                                     self._canvas.winfo_screenheight())
+
+    def scrollbar_width(self):
+        return self._bar.winfo_reqwidth() if self._canvas is not None else 0
+
+    def fix_width(self, pane):
+        """Legt die Breite der Reiterfläche fest: die Hinweise brechen ab jetzt
+        auf diese Breite um (abzüglich der Leiste, falls das Formular scrollt)
+        und werden nicht mehr nachgemessen — `_rewrap` ließe den Reiter sonst
+        nach dem Anzeigen wachsen (#206)."""
+        self._pane = pane
+        self._wrap = pane - (self.scrollbar_width() if self.needs_scrollbar() else 0)
+        for lbl, indent in self._hints:
+            lbl.config(wraplength=self._wrap_for(indent))
 
     def _rewrap(self, _event=None):
+        if self._pane:
+            return
         width = self.body.winfo_width()
         if width <= 1 or width == self._wrap:
             return
@@ -533,6 +571,33 @@ class Form:
     def _on_blocked_wheel(self, event):
         self._scroll(event)
         return "break"
+
+
+def pin_notebook_width(notebook):
+    """Nagelt die Breite eines Notebooks mit `Form`-Reitern einmal fest (#206).
+
+    Ein `ttk.Notebook` fordert die Breite seines breitesten Reiters an, auch
+    eines unsichtbaren — jede spätere Änderung der Wunschbreite eines Reiters
+    (Hinweis, der neu umbricht, Label mit längerem Text, erscheinende
+    Scrollleiste) verbreiterte deshalb den ganzen Dialog. Hier wird die Breite
+    EINMAL aus Tab-Leiste und natürlicher Reiterbreite bestimmt (Rechnung:
+    `form_logic.pane_width`) und als `-width` gesetzt; das ersetzt das Maximum
+    über die Reiter. Aufzurufen, wenn alle Reiter gebaut sind und vor dem
+    Sichtbarmachen des Dialogs."""
+    top = notebook.winfo_toplevel()
+    forms = [f for f in getattr(top, "_zeit_forms", []) if f.frame.winfo_exists()]
+    if not forms:
+        return
+    # Erst ohne Reiterbreite messen: mit -width=1 bleibt von der Anforderung
+    # nur die Tab-Leiste übrig.
+    notebook.configure(width=1)
+    top.update_idletasks()
+    tab_bar = notebook.winfo_reqwidth()
+    tabs = [(f.natural_width(), f.needs_scrollbar()) for f in forms]
+    width = pane_width(tab_bar, tabs, max(f.scrollbar_width() for f in forms))
+    notebook.configure(width=width)
+    for f in forms:
+        f.fix_width(width)
 
 
 def empty_state(parent, text, *, bg=BG):
