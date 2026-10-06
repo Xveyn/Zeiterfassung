@@ -74,10 +74,22 @@ def test_the_removal_finish_callback_still_passes():
 def test_remove_application_refuses_while_a_sync_runs_and_touches_nothing():
     """I5 / Review Focus 5."""
     fake = _fake(active=False)
-    fake._removal.begin.return_value = False
+    fake._removal.claim.return_value = "sync"
 
     assert App.remove_application(fake, True) is False
 
     fake._tray.stop.assert_not_called()
     fake._reminders.stop.assert_not_called()
+    fake._bg.run.assert_not_called()
+
+
+def test_remove_application_second_call_is_a_quiet_noop():
+    """M11: läuft das Entfernen schon, ist das kein „Sync läuft“ — der Dialog
+    darf schließen, aufgeräumt wird nicht zweimal."""
+    fake = _fake(active=True)
+    fake._removal.claim.return_value = "running"
+
+    assert App.remove_application(fake, True) is True
+
+    fake._tray.stop.assert_not_called()
     fake._bg.run.assert_not_called()
