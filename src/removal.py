@@ -9,7 +9,8 @@ zusammen.
 **Reihenfolge ist der Punkt:** der Schlüsselbund zuerst, denn die Schlüssel
 stehen in `token.json`/`webhooks.json`/`smtp.json` (`secret_migration.
 forget_all` liest sie von dort). Danach Autostart/Menüeintrag, dann die
-Dateien; `settings.json` als letzte Datei.
+Dateien; `settings.json` als letzte Datei — bricht der Lauf ab, sind die
+Einstellungen noch da und das Entfernen lässt sich wiederholen.
 
 Jeder Schritt läuft für sich: ein Fehler (gesperrte Datei, hängender
 Schlüsselbund) hält die übrigen nicht auf und steht im Ergebnis. Nach außen
@@ -144,7 +145,8 @@ def _delete_user_data(base_path: str) -> None:
         except OSError as e:
             failures.append(f"{LOGS_DIR}: {e}")
     try:
-        # Als letzte Datei: andere Schritte lesen sie nicht mehr.
+        # Als letzte Datei: bricht der Lauf vorher ab, ist sie noch da. (Der
+        # Update-Pfad wird nicht hieraus gelesen, sondern vorab im UI-Thread.)
         _remove_all([os.path.join(base_path, SETTINGS_FILE)])
     except OSError as e:
         failures.append(str(e))

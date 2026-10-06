@@ -56,8 +56,10 @@ Widerruf im Google-Konto.
    6. Nur mit Häkchen: Nutzerdaten (`zeiterfassung.json`,
       `reservations.json`, `vacations.json`, `settings.json`,
       `conflicts.json`, `sync_history.json`, `sync-apply.journal`,
-      `logs/`, `*.corrupt-*`). `settings.json` als **letzte** Datei, weil
-      Schritt 4 sie liest.
+      `logs/`, `*.corrupt-*`). `settings.json` als **letzte** Datei: bricht der Lauf mittendrin ab, hat er die
+      Einstellungen noch nicht verloren und lässt sich wiederholen. (Der Pfad
+      der Update-Datei aus Schritt 4 wird dafür nicht gebraucht: die App liest
+      ihn vorab im UI-Thread, bevor der Worker startet.)
    7. Datenordner entfernen, **nur wenn er leer ist**. Fremde Dateien bleiben.
 6. **Abschluss:** Ergebnisdialog mit ✓/✗ je Schritt, dem Hinweis auf die
    selbst zu löschende Datei und — falls ein `token.json` da war — dem
