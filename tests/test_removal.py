@@ -453,3 +453,33 @@ def test_empty_folder_is_removed_without_a_note(tmp_path):
 
     assert results == [StepResult("Datenordner", True)]
     assert not tmp_path.exists()
+
+
+TRANSLOCATED = ("/private/var/folders/zy/jmx4mdfx6s36fdtd0_4ndl7c0000gn/T/"
+                "AppTranslocation/613DF902-6BE1-4C37-A4C2-34/d/"
+                "Zeiterfassung.app/Contents/MacOS/Zeiterfassung")
+
+
+def test_translocated_app_has_no_file_hint():
+    """M6: der Pfad unter AppTranslocation ist schreibgeschützt und dem Nutzer
+    unbekannt — ihn zu nennen wäre falsch."""
+    assert removal.is_translocated("Darwin", TRANSLOCATED)
+    assert removal.app_file_hint("Darwin", {}, TRANSLOCATED) is None
+
+
+def test_normal_mac_app_is_not_translocated():
+    exe = "/Applications/Zeiterfassung.app/Contents/MacOS/Zeiterfassung"
+    assert not removal.is_translocated("Darwin", exe)
+    assert removal.app_file_hint("Darwin", {}, exe) == "/Applications/Zeiterfassung.app"
+
+
+def test_translocation_marker_only_counts_on_macos():
+    assert not removal.is_translocated("Linux", TRANSLOCATED)
+
+
+def test_summary_explains_translocation_instead_of_a_path():
+    text = removal.format_summary([StepResult("Autostart", True)], None,
+                                  had_token=False, translocated=True)
+    assert "App Translocation" in text
+    assert "AppTranslocation" not in text  # kein Pfad
+    assert "lösche sie selbst" not in text

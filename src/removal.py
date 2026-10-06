@@ -55,6 +55,13 @@ KEYRING_HINT = (
     "„Zeiterfassung“ stehen, entferne ihn von Hand.")
 KEYRING_STEP = "Schlüsselbund-Einträge"
 GOOGLE_PERMISSIONS_URL = "https://myaccount.google.com/permissions"
+TRANSLOCATION_MARKER = "/AppTranslocation/"
+TRANSLOCATION_HINT = (
+    "Die Programmdatei bleibt liegen. Die App lief aus einem temporären, "
+    "schreibgeschützten Ort (macOS App Translocation), dessen Pfad du nicht "
+    "löschen kannst. Lösche die .app dort, wo du sie heruntergeladen oder "
+    "hinkopiert hast — meist im Ordner „Downloads“ oder „Programme“."
+)
 # So lange wartet das Entfernen auf laufende Hintergrundjobs (Token-Refresh,
 # Kalender-Abgleich), bevor es Dateien löscht.
 IDLE_WAIT_S = 20.0
@@ -235,11 +242,23 @@ def app_file_hint(system: str, environ: Mapping[str, str],
     if system == "Linux":
         return environ.get("APPIMAGE") or None
     if system == "Darwin":
+        if is_translocated(system, executable):
+            return None
         parts = executable.split("/")
         for i, part in enumerate(parts):
             if part.endswith(".app"):
                 return "/".join(parts[:i + 1])
     return None
+
+
+def is_translocated(system: str, executable: str) -> bool:
+    """Läuft die `.app` aus macOS' App Translocation (M6)? Gatekeeper startet
+    eine frisch heruntergeladene App mit Quarantäne-Attribut aus einer
+    zufälligen, schreibgeschützten Kopie unter `…/T/AppTranslocation/<UUID>/d/`.
+    Der Pfad dort ist weder löschbar noch dem Nutzer bekannt. Den echten Ort
+    kennt nur die private Security-Schnittstelle `SecTranslocateCreateOriginal-
+    PathForURL` — die nutzen wir bewusst nicht, der Hinweis bleibt allgemein."""
+    return system == "Darwin" and TRANSLOCATION_MARKER in executable
 
 
 def app_file_command(system: str, app_file: str | None) -> str | None:
@@ -252,7 +271,8 @@ def app_file_command(system: str, app_file: str | None) -> str | None:
 
 
 def format_summary(results: list[StepResult], app_file: str | None,
-                   had_token: bool, command: str | None = None) -> str:
+                   had_token: bool, command: str | None = None,
+                   translocated: bool = False) -> str:
     lines = [(f"✓ {r.name} — {r.note}" if r.note else f"✓ {r.name}") if r.ok
              else f"✗ {r.name} — {r.error}" for r in results]
     lines.append("")
@@ -262,6 +282,8 @@ def format_summary(results: list[StepResult], app_file: str | None,
         if command:
             lines.append("")
             lines.append(f"Oder im Terminal:\n{command}")
+    elif translocated:
+        lines.append(TRANSLOCATION_HINT)
     else:
         lines.append("Die Programmdatei bleibt liegen — lösche sie selbst.")
     if had_token:
