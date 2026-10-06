@@ -14,6 +14,7 @@ Arbeitszeitdaten der falsche Fallback.
 """
 from __future__ import annotations
 
+import hmac
 import logging
 import os
 import re
@@ -21,6 +22,8 @@ import secrets
 import stat
 import tempfile
 import time
+from dataclasses import dataclass
+from typing import Callable, Mapping
 
 from src.secure_file import harden_windows_acl
 
@@ -113,3 +116,115 @@ def rotate_token(base_path: str) -> str:
     token = generate_token()
     _write_token_atomic(os.path.join(base_path, TOKEN_FILENAME), token)
     return token
+
+
+SCOPE_LOCAL = "local"
+ALLOWED_METHODS = frozenset({"GET", "PUT", "POST", "DELETE"})
+_BODY_METHODS = frozenset({"POST", "PUT"})   # tragen einen Body → JSON Pflicht
+_MAX_BEARER_LEN = 512
+
+
+@dataclass(frozen=True)
+class Principal:
+    """Wer da anfragt und was er darf. Stufe 1 kennt nur `local`; #221
+    ergänzt `mobile-sync` mit eingeschränkten Routen."""
+    name: str
+    scopes: frozenset[str]
+
+
+TokenVerifier = Callable[[str], "Principal | None"]
+
+
+def single_token_verifier(token: str) -> TokenVerifier:
+    """Prüfer für das eine Stufe-1-Token. #221 liefert einen Prüfer über
+    gespeicherte Geräte-Token-Hashes — `authorize` merkt den Unterschied nicht."""
+    expected = token.encode("utf-8")
+    principal = Principal("local", frozenset({SCOPE_LOCAL}))
+
+    def verify(candidate: str) -> Principal | None:
+        # errors="replace": Zeichen außerhalb von UTF-8 (lone surrogates) dürfen
+        # hier nicht werfen; das Token-Alphabet enthält kein "?".
+        if hmac.compare_digest(candidate.encode("utf-8", errors="replace"), expected):
+            return principal
+        return None
+
+    return verify
+
+
+@dataclass(frozen=True)
+class Policy:
+    """Was `authorize` zulässt. Stufe 1: nur Loopback, keine Browser-Origin.
+    #221 füllt `allowed_hosts`/`allowed_origins` und setzt `bind_host`."""
+    allowed_hosts: frozenset[str]
+    allowed_origins: frozenset[str] = frozenset()
+    bind_host: str = "127.0.0.1"
+
+    @classmethod
+    def loopback(cls, port: int) -> Policy:
+        return cls(allowed_hosts=frozenset({f"127.0.0.1:{port}", f"localhost:{port}"}))
+
+
+@dataclass(frozen=True)
+class AuthResult:
+    status: int
+    code: str
+    principal: Principal | None = None
+
+    @property
+    def ok(self) -> bool:
+        return self.status == 200
+
+
+def _bearer_principal(value: str | None, verifier: TokenVerifier) -> Principal | None:
+    if not value:
+        return None
+    scheme, _, token = value.strip().partition(" ")
+    token = token.strip()
+    if scheme.lower() != "bearer" or not token or len(token) > _MAX_BEARER_LEN:
+        return None
+    return verifier(token)
+
+
+def _is_json(content_type: str | None) -> bool:
+    if not content_type:
+        return False
+    return content_type.split(";", 1)[0].strip().lower() == "application/json"
+
+
+def authorize(method: str, headers: Mapping[str, str], policy: Policy,
+              verifier: TokenVerifier) -> AuthResult:
+    """Die vier Tore, in dieser Reihenfolge — ein Browser-Angriff scheitert
+    an Host/Origin/Sec-Fetch-Site, bevor der Token überhaupt verglichen wird,
+    und ein unauthentifizierter Aufrufer erfährt nichts über Content-Types.
+
+    `headers` darf beliebige Schreibweise der Namen haben. Doppelte Host-/
+    Authorization-Header kann ein Mapping nicht darstellen; die Server-Schicht
+    lehnt sie vorher ab.
+
+    `Sec-Fetch-Site` hilft nur auf Loopback: über `http://<LAN-IP>` sendet
+    Chrome es nicht (Spike #221). Es ist ein zweiter Marker, nie der
+    tragende Schutz — Origin und Token tragen."""
+    method = method.upper()
+    if method not in ALLOWED_METHODS:
+        return AuthResult(405, "method_not_allowed")
+    h = {name.lower(): value for name, value in headers.items()}
+    if h.get("host", "").strip().lower() not in policy.allowed_hosts:
+        return AuthResult(403, "bad_host")
+    origin = h.get("origin")
+    if origin is not None and origin not in policy.allowed_origins:
+        return AuthResult(403, "bad_origin")
+    if "sec-fetch-site" in h:
+        return AuthResult(403, "browser_request")
+    principal = _bearer_principal(h.get("authorization"), verifier)
+    if principal is None:
+        return AuthResult(401, "unauthorized")
+    if method in _BODY_METHODS and not _is_json(h.get("content-type")):
+        return AuthResult(415, "unsupported_media_type")
+    return AuthResult(200, "ok", principal)
+
+
+def require_scope(principal: Principal, scope: str) -> AuthResult:
+    """Scope-Prüfung pro Route (nach dem Routing, das die Server-Schicht macht)."""
+    if scope in principal.scopes:
+        return AuthResult(200, "ok", principal)
+    return AuthResult(403, "insufficient_scope")
