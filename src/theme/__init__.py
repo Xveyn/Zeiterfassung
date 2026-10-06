@@ -96,7 +96,7 @@ from src.theme.widgets import (  # noqa: F401
 )
 from src.theme.form import (  # noqa: F401
     Form,
-    empty_state,
+    empty_state, pin_notebook_width,
     set_enabled,
 )
 from src.theme.geometry import (  # noqa: F401
@@ -143,7 +143,7 @@ __all__ = [
     "set_primary_button_enabled", "set_secondary_button_enabled", "set_toggle_active",
     "toggle_button", "_click_keeps_focus",
     # form
-    "Form", "empty_state", "set_enabled",
+    "Form", "empty_state", "pin_notebook_width", "set_enabled",
     # geometry
     "STRAY_CLICK_GUARD_S", "center_dialog_on_parent", "scaled_window_fits",
     "workarea_for", "_should_show_delete_button",
