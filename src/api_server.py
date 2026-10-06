@@ -1,0 +1,249 @@
+# src/api_server.py
+"""HTTP-Server der lokalen API (#92), Tk-frei. Kein Fachwissen: er nimmt eine
+Anfrage entgegen, lässt `api_auth.authorize` entscheiden, übergibt an
+`api_routes.handle` und schreibt die Antwort.
+
+Eigener Daemon-Thread (Muster: der Accept-Loop in `single_instance`), pro
+Verbindung ein weiterer Daemon-Thread (`ThreadingMixIn`). Der Server berührt nie
+ein Widget und hält keinen Store-Lock; die Routen holen ihre Daten über die
+Store-Methoden.
+
+Absichtlich NICHT `serve_forever()`/`shutdown()`: `shutdown()` blockiert für
+immer, wenn es vor dem Eintritt in `serve_forever()` gerufen wird (Beenden
+direkt nach dem Start). Stattdessen pollt eine eigene Schleife mit
+`handle_request()` und einem 0,1-s-Timeout gegen ein `Event`.
+
+Unter Windows bindet der Server mit `SO_EXCLUSIVEADDRUSE` und ohne
+`SO_REUSEADDR`: sonst dürfte ein anderer lokaler Prozess denselben Port
+zusätzlich binden und Bearer-Token mitlesen. Wie in `single_instance`.
+"""
+from __future__ import annotations
+
+import http
+import http.server
+import json
+import logging
+import socket
+import socketserver
+import sys
+import threading
+from collections.abc import Callable
+from typing import Any, cast
+from urllib.parse import parse_qs
+
+from src.api_auth import ALLOWED_METHODS, AuthResult, Policy, TokenVerifier, authorize
+from src.api_routes import ApiContext, ApiRequest, ApiResponse, error_response, handle
+
+_log = logging.getLogger(__name__)
+
+MAX_BODY_BYTES = 1024 * 1024
+_SOCKET_TIMEOUT_S = 10.0
+_POLL_INTERVAL_S = 0.1
+_MAX_QUERY_FIELDS = 20
+_MAX_CONTENT_LENGTH_DIGITS = 12
+# Diese Header dürfen genau einmal vorkommen. Ein `dict` kann Duplikate nicht
+# darstellen — `authorize` sähe nur den letzten und könnte getäuscht werden.
+_SINGLE_VALUE_HEADERS = ("host", "authorization", "origin", "content-type",
+                         "content-length")
+
+_AUTH_MESSAGES = {
+    "method_not_allowed": "Methode nicht erlaubt.",
+    "bad_host": "Ungültiger Host-Header.",
+    "bad_origin": "Anfragen mit Origin-Header sind nicht erlaubt.",
+    "browser_request": "Browser-Anfragen sind nicht erlaubt.",
+    "unauthorized": "Token fehlt oder ist ungültig.",
+    "unsupported_media_type": "Content-Type muss application/json sein.",
+}
+
+
+def _auth_error(auth: AuthResult) -> ApiResponse:
+    headers: dict[str, str] = {}
+    if auth.status == 405:
+        headers["Allow"] = ", ".join(sorted(ALLOWED_METHODS))
+    if auth.status == 401:
+        headers["WWW-Authenticate"] = "Bearer"
+    return error_response(auth.status, auth.code,
+                          _AUTH_MESSAGES.get(auth.code, "Abgelehnt."), headers)
+
+
+class _Handler(http.server.BaseHTTPRequestHandler):
+    server_version = "Zeiterfassung-API"
+    sys_version = ""
+    protocol_version = "HTTP/1.0"            # eine Anfrage je Verbindung
+    timeout = _SOCKET_TIMEOUT_S
+
+    def version_string(self) -> str:
+        return self.server_version
+
+    def __getattr__(self, name: str) -> Any:
+        # Jede Methode läuft durch denselben Weg — auch unbekannte, damit sie
+        # von `authorize` mit 405 abgelehnt werden statt als HTML-501 von
+        # `http.server`.
+        if name.startswith("do_"):
+            return self._serve
+        raise AttributeError(name)
+
+    def log_message(self, format: str, *args: Any) -> None:
+        _log.debug("API %s", format % args)
+
+    def send_error(self, code: int, message: str | None = None,
+                   explain: str | None = None) -> None:
+        try:
+            phrase = http.HTTPStatus(code).phrase
+        except ValueError:
+            phrase = "Fehler"
+        self._send(error_response(code, "http_error", phrase))
+
+    def _send(self, response: ApiResponse) -> None:
+        payload = json.dumps(response.body, ensure_ascii=False).encode("utf-8")
+        self.close_connection = True
+        try:
+            self.send_response(response.status)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Length", str(len(payload)))
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.send_header("Connection", "close")
+            for name, value in response.headers.items():
+                self.send_header(name, value)
+            self.end_headers()
+            self.wfile.write(payload)
+        except OSError:
+            _log.debug("Client hat die Verbindung vor der Antwort geschlossen",
+                       exc_info=True)
+
+    def _serve(self) -> None:
+        try:
+            response = self._respond()
+        except Exception:
+            # Programmfehler: Details nur ins Log, nie in die Antwort.
+            _log.exception("API-Anfrage fehlgeschlagen")
+            response = error_response(500, "internal_error", "Interner Fehler.")
+        self._send(response)
+
+    def _read_body(self) -> bytes | ApiResponse:
+        raw = self.headers.get("Content-Length")
+        if raw is None:
+            return b""
+        if not (raw.isascii() and raw.isdigit()):
+            return error_response(400, "invalid_content_length",
+                                  "Content-Length ist keine Zahl.")
+        if len(raw) > _MAX_CONTENT_LENGTH_DIGITS or int(raw) > MAX_BODY_BYTES:
+            return error_response(413, "payload_too_large", "Body ist zu groß.")
+        length = int(raw)
+        if length == 0:
+            return b""
+        data = self.rfile.read(length)
+        if len(data) != length:
+            return error_response(400, "incomplete_body", "Body ist unvollständig.")
+        return data
+
+    def _respond(self) -> ApiResponse:
+        server = cast("_ApiHTTPServer", self.server)
+        for name in _SINGLE_VALUE_HEADERS:
+            if len(self.headers.get_all(name) or []) > 1:
+                return error_response(400, "duplicate_header",
+                                      f"Header {name} darf nur einmal vorkommen.")
+        headers = dict(self.headers.items())
+        auth = authorize(self.command, headers, server.policy, server.verifier)
+        if not auth.ok or auth.principal is None:
+            return _auth_error(auth)
+        if any(name.lower() == "transfer-encoding" for name in headers):
+            return error_response(400, "unsupported_encoding",
+                                  "Transfer-Encoding wird nicht unterstützt.")
+        body = self._read_body()
+        if isinstance(body, ApiResponse):
+            return body
+        path, _, raw_query = self.path.partition("?")
+        try:
+            query = parse_qs(raw_query, keep_blank_values=True,
+                             max_num_fields=_MAX_QUERY_FIELDS)
+        except ValueError:
+            return error_response(400, "invalid_query", "Ungültige Query.")
+        request = ApiRequest(self.command, path, query, body)
+        return handle(request, server.context, auth.principal)
+
+
+class _ApiHTTPServer(http.server.ThreadingHTTPServer):
+    daemon_threads = True
+    timeout = _POLL_INTERVAL_S
+    # Unter Windows würde SO_REUSEADDR das gleichzeitige Binden desselben
+    # Ports erlauben; dort schützt SO_EXCLUSIVEADDRUSE (server_bind).
+    allow_reuse_address = sys.platform != "win32"
+
+    def __init__(self, address: tuple[str, int],
+                 policy_for_port: Callable[[int], Policy],
+                 verifier: TokenVerifier, context: ApiContext) -> None:
+        self.verifier = verifier
+        self.context = context
+        self.policy: Policy
+        super().__init__(address, _Handler)
+        self.policy = policy_for_port(self.server_address[1])
+
+    def server_bind(self) -> None:
+        if sys.platform == "win32":
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+        # Nicht `HTTPServer.server_bind`: das ruft `socket.getfqdn` auf, und das
+        # kann bei kaputtem DNS lange hängen.
+        socketserver.TCPServer.server_bind(self)
+        host, port = self.server_address[:2]
+        self.server_name = str(host)
+        self.server_port = port
+
+    def handle_error(self, request: Any, client_address: Any) -> None:
+        # Standard wäre ein Traceback auf stderr — unter --noconsole spurlos.
+        _log.exception("API-Verbindung fehlgeschlagen")
+
+
+class ApiServer:
+    def __init__(self, context: ApiContext, verifier: TokenVerifier, *, port: int = 0,
+                 policy_for_port: Callable[[int], Policy] = Policy.loopback) -> None:
+        self._context = context
+        self._verifier = verifier
+        self._requested_port = port
+        self._policy_for_port = policy_for_port
+        self._httpd: _ApiHTTPServer | None = None
+        self._thread: threading.Thread | None = None
+        self._stop_event = threading.Event()
+
+    @property
+    def port(self) -> int:
+        if self._httpd is None:
+            raise RuntimeError("Server läuft nicht")
+        return int(self._httpd.server_address[1])
+
+    def start(self) -> None:
+        """Bindet und startet den Server-Thread. Wirft `OSError`, wenn der
+        Bind scheitert (Port belegt)."""
+        if self._httpd is not None:
+            raise RuntimeError("Server läuft bereits")
+        bind_host = self._policy_for_port(self._requested_port).bind_host
+        httpd = _ApiHTTPServer((bind_host, self._requested_port), self._policy_for_port,
+                               self._verifier, self._context)
+        self._httpd = httpd
+        self._stop_event.clear()
+        thread = threading.Thread(target=self._serve_loop, args=(httpd,),
+                                  name="api-server", daemon=True)
+        self._thread = thread
+        thread.start()
+
+    def _serve_loop(self, httpd: _ApiHTTPServer) -> None:
+        while not self._stop_event.is_set():
+            httpd.handle_request()
+
+    def set_verifier(self, verifier: TokenVerifier) -> None:
+        """Tauscht den Prüfer (Token-Rotation) ohne Neustart."""
+        self._verifier = verifier
+        if self._httpd is not None:
+            self._httpd.verifier = verifier
+
+    def stop(self, timeout: float = 2.0) -> None:
+        """Beendet den Server und gibt den Port frei. Idempotent."""
+        self._stop_event.set()
+        thread, httpd = self._thread, self._httpd
+        self._thread = None
+        self._httpd = None
+        if thread is not None:
+            thread.join(timeout)
+        if httpd is not None:
+            httpd.server_close()
