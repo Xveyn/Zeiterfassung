@@ -1,8 +1,12 @@
 # tests/test_api_auth.py
 import hmac
+import logging
 import os
+import pathlib
 import re
+import shutil
 import stat
+import subprocess
 import sys
 
 import pytest
@@ -189,7 +193,79 @@ def test_failing_cleanup_does_not_mask_the_original_error(tmp_path, monkeypatch)
     monkeypatch.setattr(api_auth.os, "replace", boom)
     monkeypatch.setattr(api_auth.os, "remove", no_remove)
 
-    assert load_or_create_token(str(tmp_path)) is None   # kein Durchschlagen von no_remove
+    # Direkt gegen den Schreiber: load_or_create_token würde beide OSError zu None
+    # verschmelzen und den Test vakuös machen.
+    with pytest.raises(OSError, match="replace failed"):
+        api_auth._write_token_atomic(str(tmp_path / TOKEN_FILENAME), generate_token())
+
+
+# --- Review-Fixes: Bestandsdatei, Länge, gitignore, Log ---------------------
+
+@pytest.mark.skipif(sys.platform == "win32",
+                    reason="chmod 0600 ist unter Windows ein No-op (dort greift die ACL)")
+def test_existing_token_file_with_loose_mode_is_tightened_on_load(tmp_path):
+    path = tmp_path / TOKEN_FILENAME
+    token = generate_token()
+    path.write_text(token, encoding="ascii")
+    os.chmod(path, 0o644)                      # Editor/echo > api-token mit umask 022
+
+    assert load_or_create_token(str(tmp_path)) == token
+    assert stat.S_IMODE(os.stat(path).st_mode) == 0o600
+
+
+def test_existing_token_file_is_acl_hardened_on_load(tmp_path, monkeypatch):
+    path = tmp_path / TOKEN_FILENAME
+    path.write_text(generate_token(), encoding="ascii")
+    calls = []
+    monkeypatch.setattr(api_auth, "harden_windows_acl", calls.append)
+
+    load_or_create_token(str(tmp_path))
+
+    assert calls == [str(path)]
+
+
+@pytest.mark.parametrize("length", [31, 32, 42, 44, 128, 129])
+def test_token_of_the_wrong_length_is_replaced(tmp_path, length):
+    path = tmp_path / TOKEN_FILENAME
+    weak = "a" * length
+    path.write_text(weak, encoding="ascii")
+
+    token = load_or_create_token(str(tmp_path))
+
+    assert token != weak and _TOKEN_RE.fullmatch(token)
+    assert path.read_text(encoding="ascii") == token
+
+
+def test_token_of_exactly_43_characters_is_kept(tmp_path):
+    existing = "a" * 43
+    (tmp_path / TOKEN_FILENAME).write_text(existing, encoding="ascii")
+
+    assert load_or_create_token(str(tmp_path)) == existing
+
+
+@pytest.mark.skipif(shutil.which("git") is None, reason="git nicht verfügbar")
+@pytest.mark.parametrize("name", ["api-token", "api-token.corrupt-20261006",
+                                  ".api-token-ab12.tmp"])
+def test_api_token_files_are_gitignored(name):
+    # Im Dev-Modus ist das Repo-Root der Datenordner: ein `git add -A` darf
+    # kein Bearer-Token committen.
+    root = pathlib.Path(__file__).resolve().parent.parent
+    result = subprocess.run(["git", "check-ignore", "-q", name], cwd=root)
+    assert result.returncode == 0, f"{name} ist nicht in .gitignore"
+
+
+def test_secrets_never_appear_in_log_output(tmp_path, caplog):
+    caplog.set_level(logging.DEBUG)
+    leaked = "GEHEIM" * 7                      # ungültiger Dateiinhalt, 42 Zeichen
+    (tmp_path / TOKEN_FILENAME).write_text(leaked, encoding="ascii")
+
+    fresh = load_or_create_token(str(tmp_path))                 # ungültig → neu
+    load_or_create_token(str(tmp_path / "gibt-es-nicht"))       # nicht schreibbar
+    with pytest.raises(OSError):
+        rotate_token(str(tmp_path / "gibt-es-nicht"))
+
+    assert caplog.text                                           # es wurde geloggt
+    assert leaked not in caplog.text and fresh not in caplog.text
 
 
 # --- Rotation ---------------------------------------------------------------
@@ -201,6 +277,21 @@ def test_rotate_token_replaces_file_and_returns_the_new_token(tmp_path):
 
     assert new != old and _TOKEN_RE.fullmatch(new)
     assert (tmp_path / TOKEN_FILENAME).read_text(encoding="ascii") == new
+
+
+def test_failed_rotation_keeps_the_old_token(tmp_path, monkeypatch):
+    old = load_or_create_token(str(tmp_path))
+
+    def boom(src, dst):
+        raise OSError("replace failed")
+
+    monkeypatch.setattr(api_auth.os, "replace", boom)
+    with pytest.raises(OSError, match="replace failed"):
+        rotate_token(str(tmp_path))
+    monkeypatch.undo()
+
+    assert (tmp_path / TOKEN_FILENAME).read_text(encoding="ascii") == old
+    assert [p.name for p in tmp_path.iterdir()] == [TOKEN_FILENAME]
 
 
 def test_rotate_token_raises_when_it_cannot_write(tmp_path):
@@ -402,6 +493,25 @@ def test_token_is_checked_before_the_content_type():
     assert result.status == 401
 
 
+def test_sec_fetch_site_is_checked_before_the_token():
+    result = call(extra={"Sec-Fetch-Site": "cross-site"}, drop=("Authorization",))
+    assert (result.status, result.code) == (403, "browser_request")
+
+
+def test_overlong_bearer_value_never_reaches_the_verifier():
+    seen = []
+
+    def spy(candidate):
+        seen.append(candidate)
+        return None
+
+    base = {"Host": GOOD_HOST}
+    authorize("GET", {**base, "Authorization": "Bearer " + "A" * 10_000}, POLICY, spy)
+    assert seen == []
+    authorize("GET", {**base, "Authorization": "Bearer " + "A" * 50}, POLICY, spy)
+    assert seen == ["A" * 50]
+
+
 def test_origin_is_checked_before_the_token():
     result = call(extra={"Origin": "https://evil.example"}, drop=("Authorization",))
     assert result.status == 403
@@ -413,6 +523,11 @@ def test_verifier_accepts_only_the_exact_token():
     assert VERIFY(TOKEN) is not None
     assert VERIFY(TOKEN + "x") is None
     assert VERIFY("") is None
+
+
+def test_verifier_refuses_to_be_built_without_a_token():
+    with pytest.raises(ValueError):
+        single_token_verifier("")
 
 
 def test_verifier_uses_constant_time_comparison(monkeypatch):

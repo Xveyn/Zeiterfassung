@@ -602,6 +602,11 @@ Wert.
   als `single_instance`, das unauthentifiziert weiterläuft. `Policy` und
   `Principal.scopes` sind die Nahtstellen für die LAN-Freigabe (#221). Der
   Server selbst (Routen, Thread, Settings-Tab) folgt in den nächsten PRs.
+  **`load_or_create_token` und `rotate_token` blockieren** (Windows: `icacls`
+  bis 15 s, Retry von `os.replace`) — nur über `BackgroundTaskRunner.run`, nie
+  im UI-Thread. Eine vorhandene Token-Datei wird beim Laden auf Besitzer-only
+  nachgezogen; ein Token, das nicht genau dem erzeugten Format (43 Zeichen)
+  entspricht, wird ersetzt.
 - `single_instance.py` — Tk-freier Single-Instance-Guard. Erste Instanz leitet einen Port aus
   `get_base_path()` ab und bindet einen Listener (`SO_EXCLUSIVEADDRUSE` Windows, `SO_REUSEADDR` Unix).
   Folgeinstanzen melden sich per SHOW/PING-Protokoll und beenden sich. `main.py` ruft `acquire()`

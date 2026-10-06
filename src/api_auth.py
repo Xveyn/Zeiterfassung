@@ -31,8 +31,10 @@ _log = logging.getLogger(__name__)
 
 TOKEN_FILENAME = "api-token"
 _TOKEN_BYTES = 32
-# token_urlsafe(32) liefert 43 Zeichen; großzügige Spanne für Handarbeit.
-_TOKEN_RE = re.compile(r"[A-Za-z0-9_-]{32,128}")
+# token_urlsafe(32) liefert genau 43 Zeichen. Alles andere ist kein Token dieser
+# App (leer, abgeschnitten, von Hand gesetzt) und wird ersetzt: ein kürzerer,
+# selbst gewählter Wert wäre kein 256-Bit-Geheimnis mehr.
+_TOKEN_RE = re.compile(r"[A-Za-z0-9_-]{43}")
 _MAX_FILE_BYTES = 1024
 
 
@@ -77,8 +79,25 @@ def _write_token_atomic(path: str, token: str) -> None:
         raise
 
 
+def _harden_existing(path: str) -> None:
+    """Zieht eine vorhandene Token-Datei auf Besitzer-only nach (0600, unter
+    Windows die ACL). Eine von Hand angelegte oder kopierte Datei trägt sonst
+    die Rechte ihres Erzeugers (typisch 0644) — und der Loopback-Port steht
+    jedem lokalen Nutzer offen. Best-effort wie `secure_file`: scheitert das
+    (fremder Besitzer), ist der Zustand der von vorher, nie ein Startabbruch."""
+    try:
+        os.chmod(path, stat.S_IRUSR | stat.S_IWUSR)
+    except OSError:
+        _log.debug("chmod 0600 auf %s fehlgeschlagen", path, exc_info=True)
+    harden_windows_acl(path)
+
+
 def load_or_create_token(base_path: str) -> str | None:
     """Lädt das Token aus `<base_path>/api-token` oder erzeugt es.
+
+    **Blockiert** (Windows: `icacls`-Subprozess bis 15 s, dazu der Retry von
+    `os.replace`) — nie im UI-Thread aufrufen, nur über
+    `BackgroundTaskRunner.run`.
 
     `None` heißt: kein Token, die API bleibt aus. Das gilt, wenn die Datei
     nicht lesbar ist (sie wird dann NICHT überschrieben — es könnte das Token
@@ -98,6 +117,7 @@ def load_or_create_token(base_path: str) -> str | None:
     if data is not None:
         candidate = data.strip().decode("ascii", errors="replace")
         if len(data) <= _MAX_FILE_BYTES and _TOKEN_RE.fullmatch(candidate):
+            _harden_existing(path)
             return candidate
         _log.warning("API-Token-Datei ungültig — wird neu erzeugt")
     token = generate_token()
@@ -112,7 +132,10 @@ def load_or_create_token(base_path: str) -> str | None:
 def rotate_token(base_path: str) -> str:
     """Ersetzt das Token durch ein neues (Settings-Tab „Token neu erzeugen").
     Wirft `OSError`, wenn das Schreiben scheitert — der Aufrufer zeigt das an;
-    das alte Token bleibt dann gültig."""
+    das alte Token bleibt dann gültig.
+
+    **Blockiert** wie `load_or_create_token` — nur über
+    `BackgroundTaskRunner.run`, nie im UI-Thread."""
     token = generate_token()
     _write_token_atomic(os.path.join(base_path, TOKEN_FILENAME), token)
     return token
@@ -138,6 +161,8 @@ TokenVerifier = Callable[[str], "Principal | None"]
 def single_token_verifier(token: str) -> TokenVerifier:
     """Prüfer für das eine Stufe-1-Token. #221 liefert einen Prüfer über
     gespeicherte Geräte-Token-Hashes — `authorize` merkt den Unterschied nicht."""
+    if not token:
+        raise ValueError("leeres Token: der Prüfer würde jeden leeren Wert zulassen")
     expected = token.encode("utf-8")
     principal = Principal("local", frozenset({SCOPE_LOCAL}))
 
