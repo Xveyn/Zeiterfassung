@@ -483,3 +483,52 @@ def test_summary_explains_translocation_instead_of_a_path():
     assert "App Translocation" in text
     assert "AppTranslocation" not in text  # kein Pfad
     assert "lösche sie selbst" not in text
+
+
+def test_pending_update_keys_cleared_when_settings_stay(tmp_path, quiet):
+    """M7: ohne „Nutzerdaten" bleibt settings.json — sie darf nicht auf die
+    gelöschte Update-Datei zeigen."""
+    pending = tmp_path / ".Zeiterfassung.update-1-ab"
+    _touch(pending)
+    cleared = []
+
+    removal.execute_removal(str(tmp_path), False, "Linux",
+                            pending_update_path=str(pending),
+                            clear_pending=lambda: cleared.append(pending.exists()))
+
+    # Geleert wird erst, nachdem die Datei weg ist.
+    assert cleared == [False]
+
+
+def test_pending_update_keys_untouched_when_settings_go(tmp_path, quiet):
+    """Mit Häkchen verschwindet settings.json ohnehin; ein Schreiben davor
+    wäre überflüssig, eines danach legte sie neu an."""
+    pending = tmp_path / ".Zeiterfassung.update-1-ab"
+    _touch(pending)
+    cleared = []
+
+    removal.execute_removal(str(tmp_path), True, "Linux",
+                            pending_update_path=str(pending),
+                            clear_pending=lambda: cleared.append(1))
+
+    assert cleared == []
+    assert not pending.exists()
+
+
+def test_pending_update_keys_kept_when_file_cannot_be_deleted(tmp_path, quiet,
+                                                              monkeypatch):
+    pending = tmp_path / ".Zeiterfassung.update-1-ab"
+    _touch(pending)
+    cleared = []
+
+    def boom(_path):
+        raise OSError("gesperrt")
+
+    monkeypatch.setattr(removal.self_update, "discard_download", boom)
+
+    results = removal.execute_removal(str(tmp_path), False, "Linux",
+                                      pending_update_path=str(pending),
+                                      clear_pending=lambda: cleared.append(1))
+
+    assert cleared == []
+    assert [r.ok for r in results if r.name == "Vorbereitetes Update"] == [False]

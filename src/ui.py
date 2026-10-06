@@ -984,6 +984,11 @@ class App:
         command = removal.app_file_command(system, app_file)
         translocated = removal.is_translocated(system, sys.executable)
 
+        def clear_pending():
+            self.settings.set_many({"pending_update_path": "",
+                                    "pending_update_sha256": "",
+                                    "pending_update_release_id": ""})
+
         def _done(results):
             try:
                 themed_showinfo(self.root, "Zeiterfassung entfernt",
@@ -1000,7 +1005,8 @@ class App:
         def _work():
             # `own=1`: dieser Worker läuft selbst über den Runner.
             self._bg.wait_idle(removal.IDLE_WAIT_S, own=1)
-            results = removal.execute_removal(base, with_data, system, pending)
+            results = removal.execute_removal(base, with_data, system, pending,
+                                              clear_pending)
             self._marshal_to_ui(lambda: _done(results), force=True)
 
         # Der Schlüsselbund-Schritt kann pro Eintrag bis zum 30-s-Watchdog

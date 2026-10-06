@@ -182,10 +182,25 @@ def _remove_macos_autostart() -> None:
     _remove_all([macos_plist_path()])
 
 
+def _discard_pending(path: str, clear_pending: Callable[[], None] | None) -> None:
+    self_update.discard_download(path)
+    # Erst nach erfolgreichem Löschen: scheitert es, zeigt der Eintrag weiter
+    # auf eine Datei, die noch da ist (M7).
+    if clear_pending is not None:
+        clear_pending()
+
+
 def plan_removal(base_path: str, with_data: bool, system: str,
-                 pending_update_path: str = "") -> list[Step]:
+                 pending_update_path: str = "",
+                 clear_pending: Callable[[], None] | None = None) -> list[Step]:
     """Die Schritte in der Reihenfolge, in der sie laufen müssen. Leer, wo
-    es nichts zu tun gibt (Windows)."""
+    es nichts zu tun gibt (Windows).
+
+    `clear_pending` leert die `pending_update_*`-Schlüssel der Einstellungen.
+    Nur ohne Häkchen „Nutzerdaten" gesetzt: dann bleibt `settings.json` stehen
+    und würde sonst auf die gelöschte Update-Datei zeigen (M7). Mit Häkchen
+    ginge `settings.json` ohnehin weg — ein Schreiben davor wäre überflüssig,
+    eines danach legte sie neu an."""
     if system not in ("Darwin", "Linux"):
         return []
     steps: list[Step] = [
@@ -198,7 +213,9 @@ def plan_removal(base_path: str, with_data: bool, system: str,
         steps.append(("Menüeintrag", lambda: _remove_menu_entry(base_path)))
     if pending_update_path:
         steps.append(("Vorbereitetes Update",
-                      lambda: self_update.discard_download(pending_update_path)))
+                      lambda: _discard_pending(
+                          pending_update_path,
+                          None if with_data else clear_pending)))
     steps.append(("Zugangsdaten", lambda: _delete_credentials(base_path)))
     if with_data:
         steps.append(("Zeiten, Einstellungen und Protokoll",
@@ -223,12 +240,15 @@ def run_removal(steps: list[Step]) -> list[StepResult]:
 
 
 def execute_removal(base_path: str, with_data: bool, system: str,
-                    pending_update_path: str = "") -> list[StepResult]:
+                    pending_update_path: str = "",
+                    clear_pending: Callable[[], None] | None = None,
+                    ) -> list[StepResult]:
     """Plan + Ausführung in einem Aufruf — **wirft nie**, auch nicht beim
     Planen (Einstieg für `BackgroundTaskRunner.run`, dessen `on_done` bei
     einer Exception nie feuert)."""
     try:
-        steps = plan_removal(base_path, with_data, system, pending_update_path)
+        steps = plan_removal(base_path, with_data, system, pending_update_path,
+                             clear_pending)
     except Exception as e:
         log.exception("Entfernen: Planung fehlgeschlagen")
         return [StepResult("Planung", False, f"{type(e).__name__}: {e}")]
