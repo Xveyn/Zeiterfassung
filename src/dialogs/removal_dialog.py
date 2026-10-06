@@ -7,7 +7,7 @@ import tkinter as tk
 
 from src.theme import (
     BG, CELL_BG, FONT, TEXT, center_dialog_on_parent, create_dialog, primary_button,
-    px, run_modal, secondary_button,
+    px, run_modal, secondary_button, set_primary_button_enabled,
 )
 
 MESSAGE = (
@@ -18,6 +18,9 @@ MESSAGE = (
     "Zeiten und Einstellungen bleiben erhalten, solange du nichts anderes "
     "ankreuzt."
 )
+# Wie bei den Lösch-Rückfragen (`lock_ms=600`): kurz gesperrt gegen
+# Sofort-Bestätigen — das hier ist die destruktivste Aktion der App (M10).
+LOCK_MS = 600
 DATA_LABEL = "Auch Zeiten, Einstellungen und Protokoll löschen"
 
 
@@ -38,7 +41,11 @@ def ask_removal(parent) -> bool | None:
         cursor="hand2",
     ).pack(padx=28, anchor="w")
 
+    unlocked = {"ready": False}
+
     def confirm():
+        if not unlocked["ready"]:
+            return
         result["value"] = bool(data_var.get())
         dialog.destroy()
 
@@ -47,8 +54,16 @@ def ask_removal(parent) -> bool | None:
 
     btn_frame = tk.Frame(dialog, bg=BG)
     btn_frame.pack(pady=(14, 18))
-    primary_button(btn_frame, "Entfernen", confirm).pack(side=tk.LEFT, padx=6)
+    confirm_btn = primary_button(btn_frame, "Entfernen", confirm)
+    confirm_btn.pack(side=tk.LEFT, padx=6)
     secondary_button(btn_frame, "Abbrechen", cancel).pack(side=tk.LEFT, padx=6)
+
+    set_primary_button_enabled(confirm_btn, False)
+
+    def _unlock():
+        unlocked["ready"] = True
+        set_primary_button_enabled(confirm_btn, True)
+    dialog.after(LOCK_MS, _unlock)
 
     dialog.bind("<Escape>", lambda _e: cancel())
     dialog.protocol("WM_DELETE_WINDOW", cancel)
