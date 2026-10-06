@@ -3,6 +3,7 @@ import http.client
 import json
 import logging
 import socket
+import struct
 import threading
 import time
 
@@ -314,6 +315,11 @@ def test_stop_releases_the_port_and_a_new_start_succeeds(tmp_path):
     first = ApiServer(make_context(tmp_path), single_token_verifier(TOKEN), port=0)
     first.start()
     port = first.port
+    # Erst eine Anfrage bedienen: der Server schließt die Verbindung und könnte
+    # TIME_WAIT auf seinem Port halten. Ohne bediente Anfrage fände der Test das
+    # Problem nie — und unter Windows (SO_EXCLUSIVEADDRUSE, kein SO_REUSEADDR)
+    # wäre das Aus-/Einschalten der API in der App betroffen.
+    assert http_call(first, "GET", "/v1/status")[0].status == 200
     first.stop()
 
     with pytest.raises(OSError):
@@ -350,3 +356,115 @@ def test_start_does_not_resolve_the_host_name(tmp_path, monkeypatch):
     srv = ApiServer(make_context(tmp_path), single_token_verifier(TOKEN))
     srv.start()
     srv.stop()
+
+
+# --- Review-Fixes: Auth vor Body, Last, Fehlerpfade ------------------------------
+
+@pytest.mark.parametrize("headers", [
+    {"Content-Length": "9" * 5000},
+    {"Content-Length": str(MAX_BODY_BYTES + 1)},
+    {"Content-Length": "abc"},
+    {"Transfer-Encoding": "chunked"},
+])
+def test_unauthenticated_requests_get_401_before_any_body_handling(server, headers):
+    # Reihenfolge am Draht: authorize VOR Transfer-Encoding und Body. Ein Aufrufer
+    # ohne Token erfährt nichts über Längen- und Kodierungsregeln.
+    response, body, _ = http_call(server, "GET", "/v1/status", headers, token=None)
+    assert (response.status, error_code(body)) == (401, "unauthorized")
+
+
+def test_a_lone_surrogate_in_stored_data_does_not_break_the_response(tmp_path):
+    class Odd:
+        def get_all(self):
+            return {"2026-01-05": {"slots": [
+                {"start": "08:00", "end": "09:00", "pause": 0, "kategorie": "\ud800x"}]}}
+
+        def get(self, date_str):
+            return None
+
+    srv = ApiServer(make_context(tmp_path, storage=Odd()), single_token_verifier(TOKEN))
+    srv.start()
+    try:
+        response, body, _ = http_call(srv, "GET", "/v1/entries")
+    finally:
+        srv.stop()
+
+    assert response.status == 200
+    assert body["entries"]["2026-01-05"]["slots"][0]["kategorie"] == "\ud800x"
+
+
+def _errors(caplog):
+    return [r for r in caplog.records if r.levelno >= logging.ERROR]
+
+
+def test_a_stalled_body_is_408_without_a_traceback(server, monkeypatch, caplog):
+    monkeypatch.setattr(api_server._Handler, "timeout", 0.3)
+    sock = socket.create_connection(("127.0.0.1", server.port), timeout=5)
+    try:
+        sock.sendall((f"GET /v1/status HTTP/1.0\r\nHost: 127.0.0.1:{server.port}\r\n"
+                      f"Authorization: Bearer {TOKEN}\r\nContent-Length: 50\r\n\r\nkurz").encode())
+        raw = b""
+        while chunk := sock.recv(4096):          # Server antwortet nach dem Timeout
+            raw += chunk
+    finally:
+        sock.close()
+
+    head, _, payload = raw.partition(b"\r\n\r\n")
+    assert head.startswith(b"HTTP/1.0 408")
+    assert json.loads(payload)["error"]["code"] == "request_timeout"
+    assert _errors(caplog) == []
+
+
+def test_a_reset_connection_is_not_logged_as_an_error(server, caplog):
+    sock = socket.create_connection(("127.0.0.1", server.port), timeout=5)
+    sock.sendall(b"GET /v1/status HTTP/1.0\r\nHost: ")
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack("ii", 1, 0))
+    sock.close()                                  # RST statt FIN (Port-Scanner)
+    time.sleep(0.4)
+
+    assert _errors(caplog) == []
+    assert http_call(server, "GET", "/v1/status")[0].status == 200
+
+
+def test_connections_beyond_the_cap_are_closed_at_once(tmp_path, monkeypatch):
+    monkeypatch.setattr(api_server._ApiHTTPServer, "max_connections", 3)
+    srv = ApiServer(make_context(tmp_path), single_token_verifier(TOKEN))
+    srv.start()
+    idle = []
+    try:
+        for _ in range(3):
+            idle.append(socket.create_connection(("127.0.0.1", srv.port), timeout=5))
+        time.sleep(0.3)                           # die drei halten ihren Slot
+        extra = socket.create_connection(("127.0.0.1", srv.port), timeout=5)
+        try:
+            extra.settimeout(2)
+            assert extra.recv(10) == b""          # sofort zu, kein Warten aufs Timeout
+        finally:
+            extra.close()
+        for sock in idle:
+            sock.close()
+        time.sleep(0.4)                           # Slots werden frei
+        assert http_call(srv, "GET", "/v1/status")[0].status == 200
+    finally:
+        for sock in idle:
+            sock.close()
+        srv.stop()
+
+
+def test_a_trickling_client_hits_the_total_request_deadline(server, monkeypatch):
+    # Das Socket-Timeout gilt je recv(): ein Byte alle 0,2 s hielte die
+    # Verbindung ewig offen. Die Gesamtfrist kappt sie.
+    monkeypatch.setattr(api_server, "_REQUEST_DEADLINE_S", 0.6)
+    sock = socket.create_connection(("127.0.0.1", server.port), timeout=5)
+    closed = False
+    try:
+        for _ in range(25):
+            try:
+                sock.sendall(b"G")
+            except OSError:
+                closed = True
+                break
+            time.sleep(0.2)
+    finally:
+        sock.close()
+    assert closed, "Verbindung nach der Gesamtfrist weiter offen"

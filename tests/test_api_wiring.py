@@ -78,3 +78,39 @@ def test_removal_stops_the_api_before_any_background_job_is_queued():
     shutdown = _self_calls(removal, "_api", "shutdown")[0]
     queued = _self_calls(removal, "_bg", "run")[0]
     assert shutdown.lineno < queued.lineno
+
+
+def _top_level_statement(func, call):
+    """Die direkte Anweisung im Funktionskörper, die `call` enthält."""
+    for stmt in func.body:
+        if any(node is call for node in ast.walk(stmt)):
+            return stmt
+    raise AssertionError("Aufruf nicht im Funktionskörper")
+
+
+def test_shutdown_is_unconditional_in_every_exit_path():
+    # Ein `shutdown()` in einem if/try-Zweig würde bei fehlender Bedingung
+    # übersprungen: z. B. im Restart-Pfad nur bei gesetztem _single_instance.
+    for name in ("_quit_with_sync_push", "remove_application", "restart_for_scaling"):
+        func = _function(name)
+        call = _self_calls(func, "_api", "shutdown")[0]
+        stmt = _top_level_statement(func, call)
+        assert isinstance(stmt, ast.Expr) and stmt.value is call, (
+            f"{name}: self._api.shutdown() muss eine eigene Anweisung auf oberster "
+            "Ebene sein, nicht in einem Zweig")
+
+
+def test_removal_shuts_the_api_down_only_after_it_was_admitted():
+    # `claim == "sync"` lehnt das Entfernen ab („alles unangetastet"): wäre die
+    # API vorher gestoppt, bliebe sie danach dauerhaft tot.
+    func = _function("remove_application")
+    shutdown = _top_level_statement(func, _self_calls(func, "_api", "shutdown")[0])
+    claims = [stmt for stmt in func.body
+              if isinstance(stmt, ast.Assign)
+              and any(isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
+                      and n.func.attr == "claim" for n in ast.walk(stmt))]
+    refusals = [stmt for stmt in func.body if isinstance(stmt, ast.If)
+                and any(isinstance(n, ast.Constant) and n.value == "sync"
+                        for n in ast.walk(stmt.test))]
+    assert claims and refusals
+    assert func.body.index(shutdown) > func.body.index(refusals[0]) > func.body.index(claims[0])

@@ -27,6 +27,7 @@ import socket
 import socketserver
 import sys
 import threading
+import time
 from collections.abc import Callable
 from typing import Any, cast
 from urllib.parse import parse_qs
@@ -38,6 +39,20 @@ _log = logging.getLogger(__name__)
 
 MAX_BODY_BYTES = 1024 * 1024
 _SOCKET_TIMEOUT_S = 10.0
+# Das Socket-Timeout gilt je recv(): ein Byte alle 9 s hielte eine Verbindung
+# ewig offen. Die Gesamtfrist kappt sie; die Obergrenze verhindert, dass ein
+# lokaler Prozess (auch ohne Token — angenommen wird vor der Auth) Threads und
+# Dateihandles der ganzen App verbraucht.
+_REQUEST_DEADLINE_S = 15.0
+_MAX_CONNECTIONS = 32
+# Lingering close: erst die Sendeseite schließen, dann kurz leer lesen. Schließt
+# der Server mit ungelesenen Bytes im Puffer, schickt das OS ein RST und der
+# Client verliert unter Umständen die Antwort (401 wird zu "connection reset").
+# Dazu hält der zuerst schließende Teil TIME_WAIT auf seinem Port — beim Server
+# wäre das der API-Port.
+_LINGER_TIMEOUT_S = 0.5
+_LINGER_WINDOW_S = 1.0
+_LINGER_MAX_BYTES = 64 * 1024
 _POLL_INTERVAL_S = 0.1
 _MAX_QUERY_FIELDS = 20
 _MAX_CONTENT_LENGTH_DIGITS = 12
@@ -75,6 +90,23 @@ class _Handler(http.server.BaseHTTPRequestHandler):
     def version_string(self) -> str:
         return self.server_version
 
+    def setup(self) -> None:
+        super().setup()
+        self._deadline = threading.Timer(_REQUEST_DEADLINE_S, self._abort)
+        self._deadline.daemon = True
+        self._deadline.start()
+
+    def finish(self) -> None:
+        self._deadline.cancel()
+        super().finish()
+
+    def _abort(self) -> None:
+        # Gesamtfrist überschritten: ein blockierter recv() kehrt zurück.
+        try:
+            self.connection.shutdown(socket.SHUT_RDWR)
+        except OSError:
+            _log.debug("Abbruch nach Gesamtfrist: Verbindung schon zu", exc_info=True)
+
     def __getattr__(self, name: str) -> Any:
         # Jede Methode läuft durch denselben Weg — auch unbekannte, damit sie
         # von `authorize` mit 405 abgelehnt werden statt als HTML-501 von
@@ -95,7 +127,10 @@ class _Handler(http.server.BaseHTTPRequestHandler):
         self._send(error_response(code, "http_error", phrase))
 
     def _send(self, response: ApiResponse) -> None:
-        payload = json.dumps(response.body, ensure_ascii=False).encode("utf-8")
+        # ensure_ascii (Standard): ein Lone Surrogate in gespeicherten Daten
+        # (korrupte Datei, Sync) würde sonst beim UTF-8-Encode werfen — außerhalb
+        # jedes try, der Client bekäme eine leere Antwort.
+        payload = json.dumps(response.body).encode("utf-8")
         self.close_connection = True
         try:
             self.send_response(response.status)
@@ -133,7 +168,13 @@ class _Handler(http.server.BaseHTTPRequestHandler):
         length = int(raw)
         if length == 0:
             return b""
-        data = self.rfile.read(length)
+        try:
+            data = self.rfile.read(length)
+        except TimeoutError:
+            return error_response(408, "request_timeout", "Body kam nicht rechtzeitig an.")
+        except ConnectionError:
+            return error_response(400, "incomplete_body",
+                                  "Verbindung während des Bodys beendet.")
         if len(data) != length:
             return error_response(400, "incomplete_body", "Body ist unvollständig.")
         return data
@@ -170,6 +211,7 @@ class _ApiHTTPServer(http.server.ThreadingHTTPServer):
     # Unter Windows würde SO_REUSEADDR das gleichzeitige Binden desselben
     # Ports erlauben; dort schützt SO_EXCLUSIVEADDRUSE (server_bind).
     allow_reuse_address = sys.platform != "win32"
+    max_connections = _MAX_CONNECTIONS
 
     def __init__(self, address: tuple[str, int],
                  policy_for_port: Callable[[int], Policy],
@@ -177,6 +219,7 @@ class _ApiHTTPServer(http.server.ThreadingHTTPServer):
         self.verifier = verifier
         self.context = context
         self.policy: Policy
+        self._slots = threading.BoundedSemaphore(self.max_connections)
         super().__init__(address, _Handler)
         self.policy = policy_for_port(self.server_address[1])
 
@@ -190,8 +233,48 @@ class _ApiHTTPServer(http.server.ThreadingHTTPServer):
         self.server_name = str(host)
         self.server_port = port
 
+    def process_request(self, request: Any, client_address: Any) -> None:
+        if not self._slots.acquire(blocking=False):
+            # Voll: sofort schließen, kein Thread, kein Warten im Accept-Thread.
+            self.close_request(request)
+            return
+        try:
+            super().process_request(request, client_address)
+        except BaseException:
+            self._slots.release()                # Thread-Start gescheitert
+            raise
+
+    def process_request_thread(self, request: Any, client_address: Any) -> None:
+        try:
+            super().process_request_thread(request, client_address)
+        finally:
+            self._slots.release()
+
+    def shutdown_request(self, request: Any) -> None:
+        """Lingering close, siehe `_LINGER_*`. Läuft im Verbindungs-Thread."""
+        try:
+            request.shutdown(socket.SHUT_WR)
+            request.settimeout(_LINGER_TIMEOUT_S)
+            end = time.monotonic() + _LINGER_WINDOW_S
+            drained = 0
+            while drained < _LINGER_MAX_BYTES and time.monotonic() < end:
+                chunk = request.recv(4096)
+                if not chunk:
+                    break
+                drained += len(chunk)
+        except OSError:
+            _log.debug("Lingering close: Verbindung schon zu", exc_info=True)
+        finally:
+            self.close_request(request)
+
     def handle_error(self, request: Any, client_address: Any) -> None:
         # Standard wäre ein Traceback auf stderr — unter --noconsole spurlos.
+        exc = sys.exc_info()[1]
+        if isinstance(exc, (ConnectionError, TimeoutError)):
+            # Port-Scanner, RST, Abbruch: kein Fehler der App. Auf ERROR geloggt
+            # spülte ein lokaler Prozess damit die Log-Rotation leer.
+            _log.debug("API-Verbindung abgebrochen", exc_info=True)
+            return
         _log.exception("API-Verbindung fehlgeschlagen")
 
 
