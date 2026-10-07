@@ -190,3 +190,28 @@ def test_the_api_tab_gets_its_arguments_in_the_expected_order():
     call = _api_tab_calls(_dialog_function())[0]
     assert [ast.unparse(a) for a in call.args] == [
         "frames['api']", "dialog", "settings", "api_service", "runner"]
+
+
+# --- PR 4: Schreibzugriff in der App ---------------------------------------------------------------
+
+def test_the_api_context_carries_the_locks_stores_and_the_refresh_callback():
+    init = _function("__init__")
+    contexts = [n for n in ast.walk(init)
+                if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
+                and n.func.id == "ApiContext"]
+    assert len(contexts) == 1
+    keywords = {kw.arg: ast.unparse(kw.value) for kw in contexts[0].keywords}
+    assert keywords["data_lock"] == "self._data_lock"
+    assert keywords["conflicts_store"] == "self.conflicts_store"
+    assert keywords["vacation_store"] == "self.vacation_store"
+    # Der Server-Thread berührt nie ein Widget: Neuzeichnen nur über den Marshal.
+    assert keywords["on_change"] == "lambda: self._marshal_to_ui(self._refresh)"
+
+
+def test_the_api_is_shut_down_before_the_final_sync_push():
+    # Sonst könnte eine schreibende Route nach dem Push-Snapshot noch Daten
+    # ändern, die dann nie mehr hochgeladen werden.
+    func = _function("_quit_with_sync_push")
+    shutdown = _top_level_statement(func, _self_calls(func, "_api", "shutdown")[0])
+    push = _top_level_statement(func, _self_calls(func, "_sync", "push_on_quit")[0])
+    assert func.body.index(shutdown) < func.body.index(push)

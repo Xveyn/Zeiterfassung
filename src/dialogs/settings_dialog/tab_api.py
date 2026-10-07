@@ -75,7 +75,7 @@ class ApiTab:
 
         form.section("Lokale HTTP-API")
         form.hint("Andere Programme auf diesem Rechner (Skripte, Taskplaner, "
-                  "Dashboards) können Zeiten lesen. Erreichbar nur von diesem "
+                  "Dashboards) können Zeiten lesen und eintragen. Erreichbar nur von diesem "
                   "Rechner und nur mit Token.")
         form.check("Lokale API aktivieren", enabled_var)
         with form.depends_on(enabled_var):

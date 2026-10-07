@@ -110,12 +110,18 @@ class App:
             data_lock=data_lock, sync_guard=sync_guard,
         )
         # Lokale HTTP-API (#92): Lebenszyklus samt Token-Laden im Worker. Der
-        # Dienst startet nur bei `api_enabled`; die Routen lesen über die
-        # Store-Methoden und halten keinen Lock.
+        # Dienst startet nur bei `api_enabled`; lesende Routen halten keinen
+        # Lock, schreibende prüfen und speichern unter dem geteilten `data_lock`
+        # und melden die Änderung über den Marshal (der Server-Thread berührt nie
+        # ein Widget).
         self._api = ApiService(
             self.settings, self.base_path,
             ApiContext(storage=self.storage, settings=self.settings,
-                       app_version=installed_release_id),
+                       app_version=installed_release_id,
+                       data_lock=self._data_lock,
+                       conflicts_store=self.conflicts_store,
+                       vacation_store=self.vacation_store,
+                       on_change=lambda: self._marshal_to_ui(self._refresh)),
             run=self._bg.run)
         self._renderer = GridRenderer(
             self.root, self.storage, self.settings, self.reservation_store,
@@ -943,10 +949,12 @@ class App:
     def _quit_with_sync_push(self):
         """Push zum Drive (falls aktiv) und App komplett beenden. Wird vom
         normalen X-Klick (ohne Tray) und vom Tray-Menü-„Beenden" aufgerufen."""
+        # Zuerst die API: eine schreibende Route darf nach dem Push-Snapshot keine
+        # Daten mehr ändern, die dann nie mehr hochgeladen würden.
+        self._api.shutdown()
         self._sync.push_on_quit()
         if self._tray is not None:
             self._tray.stop()
-        self._api.shutdown()
         self._reminders.stop()
         self._send_reminders.stop()
         self._sync.stop_day_watch()
