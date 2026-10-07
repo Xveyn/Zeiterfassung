@@ -15,6 +15,11 @@ from collections.abc import Mapping
 from typing import Any
 
 from src.devices import sanitize_device_name
+from src.api_service import (
+    DEFAULT_PORT, MAX_PORT, MIN_PORT, REASON_INVALID_PORT, REASON_PORT_IN_USE,
+    REASON_TOKEN_UNAVAILABLE, STATE_ERROR, STATE_RUNNING, STATE_STARTING,
+    ApiStatus, parse_port,
+)
 from src.holidays_de import code_for_state_label
 from src.send_reminder import shift_for_label
 from src.settings import (
@@ -216,3 +221,74 @@ def update_tab_updates(raw: Mapping[str, Any]) -> dict[str, Any]:
     if "auto_update_enabled" in raw:
         updates["auto_update_enabled"] = bool(raw["auto_update_enabled"])
     return updates
+
+
+# ---- API (#92) --------------------------------------------------------------
+
+# Bereich, aus dem `single_instance` den Port je Installationsordner ableitet
+# (20000–31999); `tests/test_tab_rules.py` hält ihn gegen Drift fest.
+_SINGLE_INSTANCE_FROM = 20000
+_SINGLE_INSTANCE_TO = 31999
+# Ab hier vergeben Betriebssysteme kurzlebig Ports an andere Programme (Linux
+# 32768+, Windows 49152+).
+_EPHEMERAL_FROM = 32768
+
+_API_ERRORS = {
+    REASON_INVALID_PORT: "Ungültiger Port — die API ist aus.",
+    REASON_PORT_IN_USE: ("Port {port} ist belegt. Einen anderen Port wählen oder das "
+                         "andere Programm beenden."),
+    REASON_TOKEN_UNAVAILABLE: ("Das Token ist nicht les- oder schreibbar "
+                               "(Zugriffsrechte des Datenordners?)."),
+}
+
+
+def validate_api(raw: Mapping[str, Any]) -> tuple[str, str] | None:
+    """Der Port muss gültig sein — auch bei ausgeschalteter API, damit ein
+    kaputter Wert nicht erst beim späteren Einschalten auffällt."""
+    if parse_port(raw["api_port"]) is None:
+        return ("Ungültiger Port",
+                f"Der Port muss eine Zahl zwischen {MIN_PORT} und {MAX_PORT} sein.")
+    return None
+
+
+def api_updates(raw: Mapping[str, Any]) -> dict[str, Any]:
+    """Settings-Werte des API-Tabs. Tolerant wie die anderen Tabs: ein
+    ungültiger Port fällt auf den Standard (`validate_api` fängt ihn vorher)."""
+    return {
+        "api_enabled": bool(raw["api_enabled"]),
+        "api_port": parse_port(raw["api_port"]) or DEFAULT_PORT,
+    }
+
+
+def port_hint(raw_port: Any) -> str:
+    """Hinweis zum eingegebenen Port, leer wenn es nichts zu sagen gibt."""
+    port = parse_port(raw_port)
+    if port is None:
+        return ""
+    if _SINGLE_INSTANCE_FROM <= port <= _SINGLE_INSTANCE_TO:
+        return ("Dieser Bereich wird auch vom Mehrfachstart-Schutz der App genutzt "
+                "(je Installationsordner ein Port). Bei einem Konflikt einen anderen "
+                "Port wählen.")
+    if port >= _EPHEMERAL_FROM:
+        return (f"Ab {_EPHEMERAL_FROM} vergibt das Betriebssystem kurzlebig Ports an "
+                "andere Programme; ist der Port beim Start belegt, bleibt die API aus.")
+    return ""
+
+
+def status_view(status: ApiStatus) -> tuple[str, str]:
+    """(Text, Art) für die Statuszeile; Art ist `ok`, `muted` oder `error`."""
+    if status.state == STATE_RUNNING:
+        return f"Läuft auf 127.0.0.1:{status.port}", "ok"
+    if status.state == STATE_STARTING:
+        return "Startet …", "muted"
+    if status.state == STATE_ERROR:
+        text = _API_ERRORS.get(status.reason,
+                               "Start fehlgeschlagen. Details im Protokoll.")
+        return text.format(port=status.port), "error"
+    return "Aus.", "muted"
+
+
+def curl_example(raw_port: Any) -> str:
+    """Beispielaufruf für die Hinweiszeile; mit Platzhalter statt echtem Token."""
+    port = parse_port(raw_port) or DEFAULT_PORT
+    return f'curl -H "Authorization: Bearer <Token>" http://127.0.0.1:{port}/v1/status'
