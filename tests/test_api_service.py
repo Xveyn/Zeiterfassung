@@ -484,3 +484,18 @@ def test_read_token_returns_the_file_token_and_creates_nothing(tmp_path):
 
     (tmp_path / "api-token").write_text("a" * 43, encoding="ascii")
     assert service.read_token() == "a" * 43
+
+
+def test_a_stale_starting_status_is_corrected_when_the_server_already_runs(tmp_path):
+    # Rennen: `apply()` liest „läuft noch nicht" und schreibt STARTING, der Worker
+    # des vorigen `apply()` startet den Server aber schon. Der nächste Worker darf
+    # dieses STARTING nicht durchreichen.
+    port = free_port()
+    service = make_service(tmp_path, {"api_enabled": True, "api_port": port})
+    service.apply()
+    try:
+        service._status = ApiStatus(STATE_STARTING, port)
+
+        assert service._reconcile() == ApiStatus(STATE_RUNNING, port)
+    finally:
+        service.shutdown()
