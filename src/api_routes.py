@@ -6,9 +6,12 @@
 Jede Route deklariert den Scope, den sie braucht (`api_auth.require_scope`);
 Stufe 1 kennt nur `local`.
 
-Lesend: `GET /v1/status`, `GET /v1/entries`, `GET /v1/entries/{date}`. Die Daten
-kommen über `Storage.get_all()`/`get()`, die den geteilten `data_lock` selbst
-nehmen und Kopien liefern — die Routen halten keinen Lock und ändern nichts.
+Lesend: `GET /v1/status`, `GET /v1/entries`, `GET /v1/entries/{date}` (über
+`Storage.get_all()`/`get()`, die den geteilten `data_lock` selbst nehmen und
+Kopien liefern, ohne eigenen Lock). Schreibend: `PUT`/`DELETE
+/v1/entries/{date}`: Prüfen, Konfliktcheck und Speichern laufen unter
+`ctx.data_lock`, die Regeln der UI stehen in `api_entry_write`; `ctx.on_change`
+kommt danach, und nur bei einer Änderung.
 Wire-Format der Slots: `{start, end, pause, kategorie}` (Share v3).
 
 Ein Programmfehler in einem Handler wirft hier durch; den macht der Server zu
@@ -16,17 +19,24 @@ einer 500-Antwort ohne Details.
 """
 from __future__ import annotations
 
+import contextlib
 import datetime
+import logging
 import re
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Protocol
 
 from src.api_auth import SCOPE_LOCAL, Principal, require_scope
+from src.api_entry_write import (
+    WriteError, check_date_range, check_day_writable, parse_day_body, warnings_for,
+)
 from src.time_utils import utc_now_iso
 
 if TYPE_CHECKING:  # nur für die Signaturen
     from src.settings import SettingsLike
+
+_log = logging.getLogger(__name__)
 
 API_VERSION = 1
 
@@ -40,6 +50,10 @@ class EntryStore(Protocol):
     def get_all(self) -> dict[str, dict[str, Any]]: ...
 
     def get(self, date_str: str) -> dict[str, Any] | None: ...
+
+    def save(self, date_str: str, slots: list[dict[str, Any]]) -> None: ...
+
+    def delete(self, date_str: str) -> None: ...
 
 
 @dataclass(frozen=True)
@@ -57,12 +71,24 @@ class ApiResponse:
     headers: Mapping[str, str] = field(default_factory=dict)
 
 
+def _no_change() -> None:
+    return None
+
+
 @dataclass(frozen=True)
 class ApiContext:
     storage: EntryStore
     settings: SettingsLike
     app_version: Callable[[], str]
     now: Callable[[], str] = utc_now_iso
+    # Nur für schreibende Routen. `data_lock` ist der geteilte Store-`RLock`
+    # der App (Prüfen, Konfliktcheck und Speichern laufen darunter);
+    # `on_change` meldet der UI eine Änderung (App: `_marshal_to_ui(_refresh)`)
+    # und läuft NACH dem Lock.
+    data_lock: Any = None
+    conflicts_store: Any = None
+    vacation_store: Any = None
+    on_change: Callable[[], None] = _no_change
 
 
 def error_response(status: int, code: str, message: str,
@@ -146,6 +172,61 @@ def _entry(request: ApiRequest, ctx: ApiContext, match: re.Match[str]) -> ApiRes
     return ApiResponse(200, {"date": day_key, "slots": entry["slots"]})
 
 
+def _locked(ctx: ApiContext) -> Any:
+    return ctx.data_lock if ctx.data_lock is not None else contextlib.nullcontext()
+
+
+def _notify(ctx: ApiContext) -> None:
+    try:
+        ctx.on_change()
+    except Exception:
+        # Die Daten sind gespeichert; ein Fehler beim Neuzeichnen darf daraus
+        # keine 500 machen (der Client würde den Schreibzugriff wiederholen).
+        _log.exception("Lokale API: on_change nach dem Schreiben fehlgeschlagen")
+
+
+def _write_day(match: re.Match[str]) -> str:
+    day_key = match.group(1)
+    day = parse_date(day_key)
+    if day is None:
+        raise _ApiError(400, "invalid_date", "Erwartet YYYY-MM-DD.")
+    check_date_range(day)
+    return day_key
+
+
+def _put_entry(request: ApiRequest, ctx: ApiContext, match: re.Match[str]) -> ApiResponse:
+    _only_params(request.query, frozenset())
+    day_key = _write_day(match)
+    slots = parse_day_body(request.body)
+    with _locked(ctx):
+        check_day_writable(day_key, conflicts_store=ctx.conflicts_store,
+                           vacation_store=ctx.vacation_store, for_save=True)
+        existing = ctx.storage.get(day_key)
+        changed = existing is None or existing["slots"] != slots
+        warnings = warnings_for(ctx.settings, ctx.storage.get_all(), day_key, slots)
+        if changed:
+            ctx.storage.save(day_key, slots)
+        stored = ctx.storage.get(day_key)
+    if changed:
+        _notify(ctx)
+    return ApiResponse(200, {"date": day_key,
+                             "slots": stored["slots"] if stored else slots,
+                             "changed": changed, "warnings": warnings})
+
+
+def _delete_entry(request: ApiRequest, ctx: ApiContext, match: re.Match[str]) -> ApiResponse:
+    _only_params(request.query, frozenset())
+    day_key = _write_day(match)
+    with _locked(ctx):
+        check_day_writable(day_key, conflicts_store=ctx.conflicts_store,
+                           vacation_store=ctx.vacation_store, for_save=False)
+        if ctx.storage.get(day_key) is None:
+            raise _ApiError(404, "not_found", "Für diesen Tag gibt es keinen Eintrag.")
+        ctx.storage.delete(day_key)
+    _notify(ctx)
+    return ApiResponse(200, {"date": day_key, "deleted": True})
+
+
 @dataclass(frozen=True)
 class Route:
     method: str
@@ -158,6 +239,8 @@ ROUTES: tuple[Route, ...] = (
     Route("GET", re.compile(r"/v1/status"), _status, SCOPE_LOCAL),
     Route("GET", re.compile(r"/v1/entries"), _entries, SCOPE_LOCAL),
     Route("GET", re.compile(r"/v1/entries/([^/]+)"), _entry, SCOPE_LOCAL),
+    Route("PUT", re.compile(r"/v1/entries/([^/]+)"), _put_entry, SCOPE_LOCAL),
+    Route("DELETE", re.compile(r"/v1/entries/([^/]+)"), _delete_entry, SCOPE_LOCAL),
 )
 
 
@@ -182,5 +265,5 @@ def handle(request: ApiRequest, ctx: ApiContext, principal: Principal) -> ApiRes
         return error_response(denied.status, denied.code, "Dem Token fehlt die Berechtigung.")
     try:
         return route.handler(request, ctx, match)
-    except _ApiError as exc:
+    except (_ApiError, WriteError) as exc:
         return error_response(exc.status, exc.code, exc.message)

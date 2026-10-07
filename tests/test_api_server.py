@@ -468,3 +468,69 @@ def test_a_trickling_client_hits_the_total_request_deadline(server, monkeypatch)
     finally:
         sock.close()
     assert closed, "Verbindung nach der Gesamtfrist weiter offen"
+
+
+# --- PUT/DELETE am Draht (PR 4) ------------------------------------------------------------------------
+
+JSON_HEADERS = {"Content-Type": "application/json"}
+
+
+def put_body(slots):
+    return json.dumps({"slots": slots}).encode("utf-8")
+
+
+def test_put_get_delete_roundtrip_over_http(tmp_path):
+    changes = []
+    context = make_context(tmp_path)
+    context = ApiContext(storage=context.storage, settings=context.settings,
+                         app_version=context.app_version, on_change=lambda: changes.append(1))
+    srv = ApiServer(context, single_token_verifier(TOKEN))
+    srv.start()
+    try:
+        slots = [{"start": "08:00", "end": "12:00", "pause": 0, "kategorie": "X"}]
+        response, body, _ = http_call(srv, "PUT", "/v1/entries/2026-10-07", JSON_HEADERS,
+                                      put_body(slots))
+        assert response.status == 200 and body["changed"] is True and body["slots"] == slots
+
+        got, got_body, _ = http_call(srv, "GET", "/v1/entries/2026-10-07")
+        assert got.status == 200 and got_body["slots"] == slots
+
+        deleted, deleted_body, _ = http_call(srv, "DELETE", "/v1/entries/2026-10-07")
+        assert deleted.status == 200 and deleted_body["deleted"] is True
+        assert http_call(srv, "GET", "/v1/entries/2026-10-07")[0].status == 404
+        assert changes == [1, 1]
+    finally:
+        srv.stop()
+
+
+def test_put_without_a_json_content_type_is_415_and_changes_nothing(server):
+    response, body, _ = http_call(server, "PUT", "/v1/entries/2026-10-07",
+                                  {"Content-Type": "text/plain"},
+                                  put_body([{"start": "08:00", "end": "12:00"}]))
+    assert (response.status, error_code(body)) == (415, "unsupported_media_type")
+    assert http_call(server, "GET", "/v1/entries/2026-10-07")[0].status == 404
+
+
+def test_an_unauthenticated_put_never_changes_anything(server):
+    response, body, _ = http_call(server, "PUT", "/v1/entries/2026-10-07", JSON_HEADERS,
+                                  put_body([{"start": "08:00", "end": "12:00"}]), token=None)
+    assert response.status == 401
+    assert http_call(server, "GET", "/v1/entries/2026-10-07")[0].status == 404
+
+
+@pytest.mark.parametrize("method", ["put", "Put", "delete"])
+def test_lowercase_write_methods_are_405_at_the_wire(server, method):
+    response, _, _ = http_call(server, method, "/v1/entries/2026-10-07", JSON_HEADERS,
+                               put_body([{"start": "08:00", "end": "12:00"}]))
+    assert response.status == 405
+
+
+def test_a_malformed_put_body_is_400_json(server):
+    response, body, _ = http_call(server, "PUT", "/v1/entries/2026-10-07", JSON_HEADERS, b"{")
+    assert (response.status, error_code(body)) == (400, "invalid_json")
+
+
+def test_a_deeply_nested_put_body_is_400_not_500(server):
+    response, body, _ = http_call(server, "PUT", "/v1/entries/2026-10-07", JSON_HEADERS,
+                                  b"[" * 200_000)
+    assert response.status == 400
