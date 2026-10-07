@@ -251,7 +251,9 @@ def authorize(method: str, headers: Mapping[str, str], policy: Policy,
     `Sec-Fetch-Site` hilft nur auf Loopback: über `http://<LAN-IP>` sendet
     Chrome es nicht (Spike #221). Es ist ein zweiter Marker, nie der
     tragende Schutz — Origin und Token tragen."""
-    method = method.upper()
+    # Methoden sind case-sensitive (RFC 9110): kein `.upper()`. Das Routing
+    # vergleicht exakt; eine großgeschriebene Sicht hier und eine rohe dort wären
+    # zwei Wahrheiten über dieselbe Anfrage.
     if method not in ALLOWED_METHODS:
         return AuthResult(405, "method_not_allowed")
     h = {name.lower(): value for name, value in headers.items()}

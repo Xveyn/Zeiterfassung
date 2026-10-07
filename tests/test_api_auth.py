@@ -340,8 +340,20 @@ def test_delete_needs_no_content_type():
     assert call("DELETE").ok
 
 
-def test_method_name_is_case_insensitive():
-    assert call("get").ok
+@pytest.mark.parametrize("method", ["get", "Get", "put", "pOST", "delete", "poſt"])
+def test_method_names_are_case_sensitive(method):
+    # RFC 9110: Methoden sind case-sensitive. `authorize` und das Routing
+    # (exakter Vergleich) sehen sonst zwei verschiedene Anfragen — und mit
+    # schreibenden Methoden zählt das.
+    result = call(method)
+    assert (result.status, result.code) == (405, "method_not_allowed")
+
+
+@pytest.mark.parametrize("method", [None, 5, b"GET"])
+def test_non_string_methods_are_405_not_an_exception(method):
+    result = authorize(method, {"Host": GOOD_HOST, "Authorization": f"Bearer {TOKEN}"},
+                       POLICY, VERIFY)
+    assert result.status == 405
 
 
 def test_header_names_are_case_insensitive():
