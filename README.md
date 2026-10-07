@@ -336,6 +336,8 @@ curl -H "Authorization: Bearer <Token>" http://127.0.0.1:17653/v1/entries/2026-1
 | `GET /v1/entries?from=…&to=…` | Ist-Zeiten im Zeitraum (ohne Angabe: alle), je Tag die Slots `{start, end, pause, kategorie}` |
 | `GET /v1/entries/{YYYY-MM-DD}` | ein Tag (404, wenn es keinen Eintrag gibt) |
 
+Unter Windows PowerShell heißt der Aufruf `curl.exe` statt `curl`: dort ist `curl` ein Alias für `Invoke-WebRequest`, und `-H` funktioniert nicht.
+
 Die API läuft nur, solange die App läuft (Autostart hilft), nimmt nur Anfragen von diesem Rechner mit Token an und keine Browser-Anfragen. Grenzen: [`docs/known-limitations.md`](docs/known-limitations.md#lokale-api-92-bekannte-grenzen).
 
 ## Einstellungen

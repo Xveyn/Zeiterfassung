@@ -292,3 +292,25 @@ def curl_example(raw_port: Any) -> str:
     """Beispielaufruf für die Hinweiszeile; mit Platzhalter statt echtem Token."""
     port = parse_port(raw_port) or DEFAULT_PORT
     return f'curl -H "Authorization: Bearer <Token>" http://127.0.0.1:{port}/v1/status'
+
+
+TOKEN_MASK = "•" * 24
+TOKEN_MISSING = "Wird beim ersten Einschalten erzeugt."
+
+
+def token_buttons_enabled(*, api_on: bool, token_known: bool, busy: bool) -> bool:
+    """Ob „Token kopieren“ und „Neu erzeugen“ bedienbar sind: nur bei
+    eingeschalteter API (Häkchen im Formular), vorhandenem Token und ohne
+    laufende Rotation. Eine Stelle für beide Knöpfe — `set_secondary_button_
+    enabled` dämpft nur die Optik, der Callback bleibt gebunden."""
+    return api_on and token_known and not busy
+
+
+def token_label_view(*, token_known: bool, notice: str | None) -> tuple[str, str]:
+    """(Text, Art) der Token-Zeile; Art ist `ok` oder `muted`. Eine Rückmeldung
+    (`notice`) geht vor der Maske: das Nachlesen des Tokens nach „Neu erzeugen“
+    kommt Millisekunden nach der Erfolgsmeldung zurück und würde sie sonst
+    überschreiben."""
+    if notice:
+        return notice, "ok"
+    return (TOKEN_MASK if token_known else TOKEN_MISSING), "muted"

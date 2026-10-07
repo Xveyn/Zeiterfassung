@@ -377,3 +377,37 @@ def test_curl_example_uses_the_port_and_never_a_real_token():
     assert tr.curl_example("8080") == (
         'curl -H "Authorization: Bearer <Token>" http://127.0.0.1:8080/v1/status')
     assert "17653" in tr.curl_example("abc")          # Fallback auf den Standard
+
+
+# --- API-Tab: Knopfzustände und Token-Zeile (Review-Fixes) -------------------------
+
+@pytest.mark.parametrize("api_on", [True, False])
+@pytest.mark.parametrize("token_known", [True, False])
+@pytest.mark.parametrize("busy", [True, False])
+def test_token_buttons_need_the_api_on_a_known_token_and_no_rotation(api_on, token_known, busy):
+    expected = api_on and token_known and not busy
+    assert tr.token_buttons_enabled(api_on=api_on, token_known=token_known, busy=busy) is expected
+
+
+def test_token_label_shows_the_mask_or_the_hint_without_a_notice():
+    assert tr.token_label_view(token_known=True, notice=None) == (tr.TOKEN_MASK, "muted")
+    assert tr.token_label_view(token_known=False, notice=None) == (tr.TOKEN_MISSING, "muted")
+    assert tr.token_label_view(token_known=True, notice="") == (tr.TOKEN_MASK, "muted")
+
+
+@pytest.mark.parametrize("token_known", [True, False])
+def test_a_notice_wins_over_the_mask_so_a_late_reread_cannot_overwrite_it(token_known):
+    # Das Nachlesen des Tokens nach „Neu erzeugen“ kommt Millisekunden NACH der
+    # Erfolgsmeldung zurück und rendert die Zeile neu — die Meldung muss gewinnen.
+    assert tr.token_label_view(token_known=token_known, notice="Token erneuert.") == (
+        "Token erneuert.", "ok")
+
+
+def test_the_mask_never_contains_a_token_like_string():
+    assert set(tr.TOKEN_MASK) == {"•"}
+
+
+def test_leading_zeros_are_accepted_as_the_plain_number():
+    # Entscheidung: „08080“ ist 8080 (harmlos, eindeutig) — weder Fehler noch Sonderfall.
+    assert tr.validate_api(api_raw(api_port="08080")) is None
+    assert tr.api_updates(api_raw(api_port="08080"))["api_port"] == 8080

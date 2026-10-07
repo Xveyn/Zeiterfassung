@@ -168,8 +168,25 @@ def test_the_api_tab_sits_between_google_and_app_and_only_with_a_service():
     assert api_assign
 
 
-def test_the_api_tab_is_built_from_the_service_and_the_runner():
-    calls = [n for n in ast.walk(_dialog_function())
-             if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
-             and n.func.id == "ApiTab"]
-    assert calls and len(calls[0].args) == 5
+def _api_tab_calls(func):
+    return [n for n in ast.walk(func)
+            if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
+            and n.func.id == "ApiTab"]
+
+
+def test_the_api_tab_is_only_built_when_a_service_is_given():
+    # Ohne den Guard fiele der Dialog ohne Dienst mit KeyError ("api" fehlt in
+    # `frames`) — ui.py übergibt den Dienst zwar immer, aber der Dialog soll
+    # auch ohne ihn funktionieren.
+    func = _dialog_function()
+    guarded = [stmt for stmt in ast.walk(func)
+               if isinstance(stmt, ast.If) and ast.unparse(stmt.test) == "api_service is not None"
+               and _api_tab_calls(stmt)]
+    assert guarded, "ApiTab(...) muss unter `if api_service is not None:` gebaut werden"
+    assert len(_api_tab_calls(func)) == 1
+
+
+def test_the_api_tab_gets_its_arguments_in_the_expected_order():
+    call = _api_tab_calls(_dialog_function())[0]
+    assert [ast.unparse(a) for a in call.args] == [
+        "frames['api']", "dialog", "settings", "api_service", "runner"]
