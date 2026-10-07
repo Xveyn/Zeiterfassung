@@ -75,7 +75,7 @@ Desktop-App zur Erfassung von Arbeitszeiten: im Kern Kalenderansicht und PDF-Ber
 
 - **Multi-Device-Sync** — Optionale Synchronisation von Zeiteinträgen und Mail-Vorlagen über Google Drive (`appDataFolder`), inklusive Konflikt-Auflösung wenn dasselbe Datum offline auf mehreren Geräten bearbeitet wurde — per Linksklick direkt auf den betroffenen Kalendertag oder gesammelt in den Einstellungen
 - **Einstellungen** — In Tabs gegliedert (Arbeitszeit / Erinnerungen / Versand / Google / API / App / Updates); Standardzeiten und Pause, Erinnerungen, E-Mail-Vorlagen mit Platzhaltern, Empfänger, SMTP-Konten und Webhooks, Update-Einstellungen
-- **Lokale HTTP-API** *(ab --VERSION--)* — Optional (Standard: aus): ein Server nur auf `127.0.0.1`, über den Skripte, Taskplaner oder andere Programme auf diesem Rechner deine Zeiten lesen können — nur mit Token (Einstellungen → API), nie aus dem Browser; siehe [Lokale HTTP-API](#lokale-http-api-optional)
+- **Lokale HTTP-API** *(ab --VERSION--)* — Optional (Standard: aus): ein Server nur auf `127.0.0.1`, über den Skripte, Taskplaner oder andere Programme auf diesem Rechner deine Zeiten lesen und eintragen können — nur mit Token (Einstellungen → API), nie aus dem Browser; siehe [Lokale HTTP-API](#lokale-http-api-optional)
 - **Autostart & Einzelinstanz** — Optionaler minimierter Start bei Anmeldung (Windows, macOS, Linux); es läuft immer nur eine Instanz — ein zweiter Start holt das vorhandene Fenster nach vorn
 - **Entfernen aus der App** *(ab 1.24.0)* — Unter macOS und Linux räumt „Zeiterfassung entfernen“ (Einstellungen → App) Schlüsselbund, Zugangsdaten, Autostart und Menüeintrag ab, auf Wunsch auch Zeiten und Einstellungen; die Programmdatei löschst du danach selbst
 - **Update-Check** — Konfigurierbare Hintergrund-Prüfung auf neue Releases; Updates-Tab mit manuellem Check, Changelog und Direkt-Download, bei aktivem Tray als einmaliger Toast statt Banner. Läuft die App im Infobereich, stößt **„Nach Updates suchen"** im Tray-Menü die Prüfung direkt an — das Ergebnis kommt als Toast, auch wenn alles aktuell ist. Optional lassen sich auch Vorabversionen (Pre-Releases) anbieten — Testbuilds vor dem echten Release
@@ -318,7 +318,7 @@ Reservierungen anlegen und den Abgleich über die App-Oberfläche aktivieren; be
 
 ## Lokale HTTP-API (optional)
 
-**Lokale HTTP-API** *(ab --VERSION--)* — Eine kleine Schnittstelle nur auf deinem Rechner (`127.0.0.1`), über die Skripte, Taskplaner oder andere Programme deine Zeiten lesen können. Standardmäßig **aus**.
+**Lokale HTTP-API** *(ab --VERSION--)* — Eine kleine Schnittstelle nur auf deinem Rechner (`127.0.0.1`), über die Skripte, Taskplaner oder andere Programme deine Zeiten lesen und eintragen können. Standardmäßig **aus**.
 
 1. Einstellungen → **API** → „Lokale API aktivieren“, speichern. Der Standard-Port ist 17653; die Statuszeile zeigt, ob die API läuft.
 2. **Token kopieren** — jeder Zugriff braucht es als `Authorization: Bearer <Token>`. „Neu erzeugen …“ sperrt alle Programme aus, die das alte Token benutzen.
@@ -335,8 +335,20 @@ curl -H "Authorization: Bearer <Token>" http://127.0.0.1:17653/v1/entries/2026-1
 | `GET /v1/status` | App-Version, Gerätename, API-Version, Zeit |
 | `GET /v1/entries?from=…&to=…` | Ist-Zeiten im Zeitraum (ohne Angabe: alle), je Tag die Slots `{start, end, pause, kategorie}` |
 | `GET /v1/entries/{YYYY-MM-DD}` | ein Tag (404, wenn es keinen Eintrag gibt) |
+| `PUT /v1/entries/{YYYY-MM-DD}` | Tag **ersetzen**, Body `{"slots": [...]}`; Antwort mit `changed` (ein identischer Tag wird nicht neu geschrieben) und `warnings` (Wochenlimit, Pausenpflicht — blockieren nie) |
+| `DELETE /v1/entries/{YYYY-MM-DD}` | Tag löschen (404, wenn es keinen Eintrag gibt) |
 
-Unter Windows PowerShell heißt der Aufruf `curl.exe` statt `curl`: dort ist `curl` ein Alias für `Invoke-WebRequest`, und `-H` funktioniert nicht.
+Einen Tag eintragen (ersetzt den ganzen Tag; `pause` in Minuten und `kategorie` sind optional):
+
+~~~
+curl -X PUT -H "Authorization: Bearer <Token>" -H "Content-Type: application/json" \
+     -d '{"slots": [{"start": "08:00", "end": "12:00", "pause": 0, "kategorie": "Projekt"}]}' \
+     http://127.0.0.1:17653/v1/entries/2026-10-07
+~~~
+
+Fehler: `400` kaputtes JSON oder falsche Form, `422` ungültiger Slot oder Datum (Jahr 2000–2100, höchstens 50 Slots, Zeiten genau `HH:MM`), `409` der Tag hat einen ungelösten Sync-Konflikt oder Urlaub (dann in der App lösen). Eine leere Slot-Liste speichert nichts — zum Löschen `DELETE` benutzen.
+
+Unter Windows PowerShell heißt der Aufruf `curl.exe` statt `curl`: dort ist `curl` ein Alias für `Invoke-WebRequest`, und `-H` funktioniert nicht. In Windows PowerShell 5.1 den JSON-Body am besten aus einer Datei übergeben (`-d @tag.json`), die Anführungszeichen in `-d '…'` gehen dort verloren, und den Aufruf in eine Zeile schreiben (`\` ist dort kein Zeilenumbruch).
 
 Die API läuft nur, solange die App läuft (Autostart hilft), nimmt nur Anfragen von diesem Rechner mit Token an und keine Browser-Anfragen. Grenzen: [`docs/known-limitations.md`](docs/known-limitations.md#lokale-api-92-bekannte-grenzen).
 

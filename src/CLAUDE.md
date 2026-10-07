@@ -227,9 +227,10 @@ Begründung und die Grenze der LWW-Heilung stehen im Docstring von
 **Der API-Server ist ein zweiter erlaubter Thread-Ort** (`api_server.py`), wie der
 Accept-Loop in `single_instance`: ein eigener Daemon-Thread, der nie ein Widget
 berührt. Seine Routen holen Daten ausschließlich über die Store-Methoden (die den
-`data_lock` selbst nehmen). Schreibende Routen (spätere PRs) führen Prüfen →
+`data_lock` selbst nehmen). Schreibende Routen führen Prüfen →
 Konfliktcheck → Speichern unter demselben `data_lock` aus und rufen die UI nur über
-`App._marshal_to_ui`.
+`App._marshal_to_ui` (`ctx.on_change`, nach dem Lock). `App._quit_with_sync_push` stoppt die API
+VOR dem finalen Push, damit nach dem Snapshot keine Route mehr schreibt.
 
 **Urlaub reist als Snapshot, nicht als Store.** `send_task.perform_send` und
 `export_task.perform_export_pdf` bekommen `vacation_days` als fertiges
@@ -620,11 +621,22 @@ Wert.
   ohne Socket: `handle(request, ctx, principal)` über eine Routentabelle
   (Methode, Muster, Handler, **Scope**). Lesend: `GET /v1/status`,
   `/v1/entries`, `/v1/entries/{date}`. Die Daten kommen über `Storage.get_all()`/
-  `get()` (nehmen den `data_lock` selbst, liefern Kopien) — die Routen halten
-  keinen Lock und ändern nichts. Strikte Datumsform (`[0-9]{4}-[0-9]{2}-[0-9]{2}`,
+  `get()` (nehmen den `data_lock` selbst, liefern Kopien) — die lesenden Routen
+  halten keinen Lock. `PUT`/`DELETE /v1/entries/{date}` prüfen, machen den Konfliktcheck
+  und speichern unter `ctx.data_lock` (der geteilte Store-`RLock`) und melden `ctx.on_change`
+  erst NACH dem Lock und nur bei einer Änderung (App: `_marshal_to_ui(_refresh)`); ein Fehler
+  in `on_change` macht aus einem gespeicherten Schreibzugriff keine 500. Strikte Datumsform (`[0-9]{4}-[0-9]{2}-[0-9]{2}`,
   nicht `\d`, nicht `fromisoformat` allein: das nähme `20260105` und `2026-W01-1`),
   unbekannte und doppelte Query-Parameter sind 400. Ein Programmfehler wirft
   durch; der Server macht daraus eine 500 ohne Details.
+- `api_entry_write.py` — Schreibpfad der lokalen API für Ist-Zeiten (#92), Tk-frei: nimmt
+  **Fremddaten** und bildet die Regeln nach, die die UI an ihren Eingängen durchsetzt und
+  `Storage` nicht kennt. `parse_day_body` (strenges JSON — kein `NaN`, keine doppelten
+  Schlüssel, `RecursionError` ist 400 —, genau `HH:MM`, nur die vier Felder, `validate_slots`),
+  `check_date_range` (2000–2100), `check_day_writable` (ungelöster Sync-Konflikt: `PUT` und
+  `DELETE`; Urlaubsminuten > 0: nur `PUT`, 0-Minuten-Tage bleiben frei) und `warnings_for`
+  (Wochenlimit/Pausenpflicht gegen den simulierten Stand nach dem Speichern, nie ein Fehler).
+  Hält keinen Lock; den nimmt der Aufrufer um Prüfen und Speichern gemeinsam.
 - `api_server.py` — HTTP-Server der lokalen API: `ApiServer(context, verifier,
   port=…)`. Ein Daemon-Thread mit eigener `handle_request()`-Schleife (kein
   `serve_forever()`/`shutdown()`: das blockiert für immer, wenn es vor dem Eintritt

@@ -181,10 +181,10 @@ Dialogen; Präzedenz ist der Accept-Loop in `single_instance`. Der Abschnitt
    Verdrahtung in `App`.
 3. Settings-Tab (Schalter, Port, Token anzeigen/kopieren/neu erzeugen,
    Statusgrund).
-4. Schreibende Ist-Zeit-Endpunkte samt den Regeln aus „Regeln, die die API
-   nachbilden muss".
-5. Reservierungen und Auswertungen (Summen, Wochenlimit, Pausenpflicht,
-   Kategorien, Feiertage).
+4. Schreibende Ist-Zeit-Endpunkte (`PUT`/`DELETE /v1/entries/{date}`) samt den Regeln aus
+   „Regeln, die die API nachbilden muss“.
+5. Auswertungen (Summen, Wochenlimit, Pausenpflicht, Kategorien, Feiertage), dann
+   Reservierungen und Urlaub — Zuschnitt und offene Fragen in Issue #239.
 
 ## Offene Punkte (bewusst nicht in Stufe 1)
 

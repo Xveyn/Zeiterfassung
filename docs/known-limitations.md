@@ -436,6 +436,7 @@ Augenhöhe mit den anderen beiden Plattformen.
   weitere werden sofort geschlossen. Ein lokaler Prozess kann damit die **API**
   zeitweise blockieren (angenommen wird vor der Auth), nicht aber die App. Eine
   Abfrage ohne Zeitraum liefert alle Einträge ohne Paginierung.
+- **Schreiben ist Last-Write-Wins.** `PUT`/`DELETE /v1/entries/{date}` schreiben wie der Tages-Dialog: ist der Tag in der App gleichzeitig geöffnet, gewinnt, wer zuletzt speichert. Es gibt kein Rückgängig; wer sichergehen will, liest den Tag vorher. Wochenlimit und Pausenpflicht kommen nur als Warnung.
 - **Gerätelokal.** `api_enabled` und `api_port` reisen nicht per Drive-Sync.
 - **Kein Brute-Force-Schutz.** 256 Bit sind nicht zu erraten, und gegen lokale
   Codeausführung wäre eine Sperre wirkungslos.
