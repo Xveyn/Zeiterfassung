@@ -607,7 +607,8 @@ Wert.
   Bearer → Content-Type). **Fail-closed:** ohne lesbares/schreibbares Token
   gibt es keins (`load_or_create_token` → `None`), die API bleibt aus — anders
   als `single_instance`, das unauthentifiziert weiterläuft. `Policy` und
-  `Principal.scopes` sind die Nahtstellen für die LAN-Freigabe (#221). Der
+  `Principal.scopes` sind die Nahtstellen für die LAN-Freigabe (#221). `read_token` liest das Token
+  rein lesend (kein Anlegen, kein Härten) — für „Token kopieren“.
   Server, Routen und Lebenszyklus: `api_server.py`, `api_routes.py`,
   `api_service.py` (unten).
   **`load_or_create_token` und `rotate_token` blockieren** (Windows: `icacls`
@@ -650,6 +651,12 @@ Wert.
   höchstens `lock_timeout` auf einen laufenden Start und sperrt weitere Starts —
   Beenden darf nie hängen, und beim Entfernen würde ein spät fertiges Token-Laden die
   Datei neu anlegen. `reopen()` nimmt das zurück (fehlgeschlagener Skalierungs-Neustart).
+  `apply()` setzt sofort `starting` (Token-Laden blockiert unter Windows bis 15 s), und
+  `_publish` meldet immer den **aktuellen** `.status`, nie das Ergebnis eines zu spät
+  fertigen Workers. `rotate()` (Worker!) erneuert das Token und tauscht den Prüfer des
+  laufenden Servers aus — unter demselben `_lock` wie der Start, sodass der Server nach
+  jeder Verschränkung genau das Token akzeptiert, das in der Datei steht; scheitert das
+  Schreiben, bleibt das alte gültig. `read_token()` liest rein lesend.
   `App` ruft `shutdown()` in `_quit_with_sync_push`, `remove_application` (vor jedem
   Worker) und `restart_for_scaling` (**vor** dem Spawn, der Port muss frei sein);
   `tests/test_api_wiring.py` hält das am Quelltext fest.
@@ -734,7 +741,7 @@ Tk-frei; das Passwort geht über `keyring_store` in den Schlüsselbund bzw. bei 
 Schlüsselbund unverändert in den Datensatz für `smtp_store`),
 `settings_dialog/` (Paket, Audit H4: `dialog.py` trägt Chrome und verdrahtet das
 **Speichern je Tab** (#132); je Tab eine Klasse in `tab_work`/`tab_reminders`/
-`tab_sending`/`tab_google`/`tab_app`/`tab_updates`.py, alle gebaut mit
+`tab_sending`/`tab_google`/`tab_api`/`tab_app`/`tab_updates`.py, alle gebaut mit
 `theme.Form(scroll=True)`, mit derselben Schnittstelle:
 `title`, `fields` (`fields.FieldSet` — die Tk-Variablen und Textfelder des Tabs unter
 einem Schlüssel), `values()` (roher Formularstand, darf nicht werfen), `validate()`,
@@ -747,8 +754,18 @@ Dialog offen; wer einen geänderten Tab verlässt (Reiter-Klick, vor dem Wechsel
 `<Button-1>` abgefangen — `ttk.Notebook` kennt kein Veto) oder den Dialog schließt
 (Knopf, X, Escape), wird gefragt. Werte, die im Hintergrund nachgeladen werden
 (Kalenderliste), übernimmt `rebaseline` feldweise als gespeichert. Tab-Reihenfolge und
-`initial_tab`-Schlüssel: `work`, `reminders`, `sending`, `google`, `app`, `updates` — die
-Reitertexte kommen aus `tab.title`. SMTP-Konten und Webhooks sind Abschnitte im
+`initial_tab`-Schlüssel: `work`, `reminders`, `sending`, `google`, `api` (nur mit
+`api_service`), `app`, `updates` — die
+Reitertexte kommen aus `tab.title`. **`tab_api.ApiTab` (#92)** ist der Tab „API“
+(Schalter, Port, Statuszeile, Token kopieren/neu erzeugen): nur `api_enabled`/`api_port`
+sind Formularfelder, Kopieren und Erneuern sind Aktionen, die sofort wirken und — weil
+sie Dateizugriff machen (unter Windows `icacls`) — über den `BackgroundTaskRunner`
+laufen. Der Status kommt per `after`-Poll aus `ApiService.status`, nicht aus
+`on_status` (das Callback kann nach dem Schließen des Dialogs zurückkommen). Das Token
+wird nie angezeigt. Prüfung und Texte (`validate_api`, `api_updates`, `port_hint`,
+`status_view`, `curl_example`) liegen Tk-frei in `tab_rules.py`; den Tab hängt
+`open_settings_dialog` nur ein, wenn ihm ein `api_service` übergeben wird. SMTP-Konten
+und Webhooks sind Abschnitte im
 Versand-Tab (`tab_smtp.SmtpTab`/`tab_webhooks.WebhooksTab` über
 `_record_list_tab.RecordListTab`, eingebettet in dessen `Form`: drei Zeilen, Knöpfe
 daneben, Leertext bei leerer Liste) und tragen **keine** Formularfelder: die Einträge

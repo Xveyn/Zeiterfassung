@@ -27,6 +27,7 @@ Desktop-App zur Erfassung von Arbeitszeiten: im Kern Kalenderansicht und PDF-Ber
 [Features](#features) · [Installation](#installation) ·
 [Gmail API](#gmail-api-einrichten) · [SMTP](#e-mail-versand-ohne-google-smtp) · [Multi-Device-Sync](#multi-device-sync-einrichten-optional) ·
 [Google-Kalender](#google-kalender-für-reservierungen-einrichten-optional) ·
+[Lokale API](#lokale-http-api-optional) ·
 [Einstellungen](#einstellungen) · [Plattform-Kompatibilität](#plattform-kompatibilität) ·
 [Datenspeicherung](#datenspeicherung) · [Entfernen](#vollständig-entfernen) · [Mitentwickeln](#mitentwickeln) · [Lizenz](#lizenz)
 
@@ -73,7 +74,8 @@ Desktop-App zur Erfassung von Arbeitszeiten: im Kern Kalenderansicht und PDF-Ber
 ### App & Umgebung
 
 - **Multi-Device-Sync** — Optionale Synchronisation von Zeiteinträgen und Mail-Vorlagen über Google Drive (`appDataFolder`), inklusive Konflikt-Auflösung wenn dasselbe Datum offline auf mehreren Geräten bearbeitet wurde — per Linksklick direkt auf den betroffenen Kalendertag oder gesammelt in den Einstellungen
-- **Einstellungen** — In Tabs gegliedert (Arbeitszeit / Erinnerungen / Versand / Google / App / Updates); Standardzeiten und Pause, Erinnerungen, E-Mail-Vorlagen mit Platzhaltern, Empfänger, SMTP-Konten und Webhooks, Update-Einstellungen
+- **Einstellungen** — In Tabs gegliedert (Arbeitszeit / Erinnerungen / Versand / Google / API / App / Updates); Standardzeiten und Pause, Erinnerungen, E-Mail-Vorlagen mit Platzhaltern, Empfänger, SMTP-Konten und Webhooks, Update-Einstellungen
+- **Lokale HTTP-API** *(ab --VERSION--)* — Optional (Standard: aus): ein Server nur auf `127.0.0.1`, über den Skripte, Taskplaner oder andere Programme auf diesem Rechner deine Zeiten lesen können — nur mit Token (Einstellungen → API), nie aus dem Browser; siehe [Lokale HTTP-API](#lokale-http-api-optional)
 - **Autostart & Einzelinstanz** — Optionaler minimierter Start bei Anmeldung (Windows, macOS, Linux); es läuft immer nur eine Instanz — ein zweiter Start holt das vorhandene Fenster nach vorn
 - **Entfernen aus der App** *(ab 1.24.0)* — Unter macOS und Linux räumt „Zeiterfassung entfernen“ (Einstellungen → App) Schlüsselbund, Zugangsdaten, Autostart und Menüeintrag ab, auf Wunsch auch Zeiten und Einstellungen; die Programmdatei löschst du danach selbst
 - **Update-Check** — Konfigurierbare Hintergrund-Prüfung auf neue Releases; Updates-Tab mit manuellem Check, Changelog und Direkt-Download, bei aktivem Tray als einmaliger Toast statt Banner. Läuft die App im Infobereich, stößt **„Nach Updates suchen"** im Tray-Menü die Prüfung direkt an — das Ergebnis kommt als Toast, auch wenn alles aktuell ist. Optional lassen sich auch Vorabversionen (Pre-Releases) anbieten — Testbuilds vor dem echten Release
@@ -314,6 +316,28 @@ Ein bereits gespeicherter Token ohne die Kalender-Scopes löst keinen neuen Cons
 
 Reservierungen anlegen und den Abgleich über die App-Oberfläche aktivieren; beim ersten Zugriff zeigt der Consent-Screen die beiden Kalender-Berechtigungen zusätzlich an.
 
+## Lokale HTTP-API (optional)
+
+**Lokale HTTP-API** *(ab --VERSION--)* — Eine kleine Schnittstelle nur auf deinem Rechner (`127.0.0.1`), über die Skripte, Taskplaner oder andere Programme deine Zeiten lesen können. Standardmäßig **aus**.
+
+1. Einstellungen → **API** → „Lokale API aktivieren“, speichern. Der Standard-Port ist 17653; die Statuszeile zeigt, ob die API läuft.
+2. **Token kopieren** — jeder Zugriff braucht es als `Authorization: Bearer <Token>`. „Neu erzeugen …“ sperrt alle Programme aus, die das alte Token benutzen.
+3. Abfragen, zum Beispiel:
+
+~~~
+curl -H "Authorization: Bearer <Token>" http://127.0.0.1:17653/v1/status
+curl -H "Authorization: Bearer <Token>" "http://127.0.0.1:17653/v1/entries?from=2026-10-01&to=2026-10-31"
+curl -H "Authorization: Bearer <Token>" http://127.0.0.1:17653/v1/entries/2026-10-06
+~~~
+
+| Pfad | Antwort |
+|------|---------|
+| `GET /v1/status` | App-Version, Gerätename, API-Version, Zeit |
+| `GET /v1/entries?from=…&to=…` | Ist-Zeiten im Zeitraum (ohne Angabe: alle), je Tag die Slots `{start, end, pause, kategorie}` |
+| `GET /v1/entries/{YYYY-MM-DD}` | ein Tag (404, wenn es keinen Eintrag gibt) |
+
+Die API läuft nur, solange die App läuft (Autostart hilft), nimmt nur Anfragen von diesem Rechner mit Token an und keine Browser-Anfragen. Grenzen: [`docs/known-limitations.md`](docs/known-limitations.md#lokale-api-92-bekannte-grenzen).
+
 ## Einstellungen
 
 Über das Zahnrad-Symbol (⚙) im Header konfigurierbar:
@@ -332,6 +356,7 @@ Reservierungen anlegen und den Abgleich über die App-Oberfläche aktivieren; be
 | **Inhalt** | E-Mail-Body mit Platzhaltern |
 | **Grußformel** | Abschluss der E-Mail (Zeilenumbrüche mit `\n`) |
 | **Autostart** | App minimiert bei Systemanmeldung starten (Windows/macOS/Linux) |
+| **Lokale API** *(ab --VERSION--)* | Tab „API“: lokale HTTP-API ein-/ausschalten, Port, Status, Token kopieren oder neu erzeugen (Standard: aus, gerätelokal) |
 | **Synchronisation** | Multi-Device-Sync via Google Drive aktivieren (siehe Abschnitt oben) |
 | **Berechtigungen** | Zeigt, welche Google-Berechtigungen (OAuth-Scopes) das Konto der App gewährt hat — inkl. solcher, die noch gewährt, aber zurzeit ungenutzt sind. Daneben steht auf einen Blick „n von m Berechtigungen": ✓ alles da, ○ eine zuschaltbare Funktion wartet noch auf ihre Freigabe, ✗ eine Grundberechtigung fehlt (dann klappt auch der Mail-Versand nicht) |
 | **Anmeldung** *(ab 1.23.1)* | Ob die Google-Anmeldung noch trägt: ✓ gültig, „nicht angemeldet", ⚠ abgelaufen (dann „Google neu verbinden") oder „nicht prüfbar (offline)". Ergänzt die Zeile darüber: die sagt, *welche* Freigaben erteilt sind, diese, *ob* die Anmeldung noch funktioniert — beides kann auseinanderfallen. Wird beim Öffnen geprüft, ohne Browser; lässt sich die Anmeldung still erneuern, passiert das dabei |
