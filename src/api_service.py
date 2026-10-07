@@ -20,7 +20,10 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-from src.api_auth import load_or_create_token, single_token_verifier
+from src.api_auth import (
+    load_or_create_token, rotate_token, single_token_verifier,
+)
+from src.api_auth import read_token as read_token_file
 from src.api_routes import ApiContext
 from src.api_server import ApiServer
 
@@ -35,12 +38,15 @@ MAX_PORT = 65535
 
 STATE_OFF = "off"
 STATE_RUNNING = "running"
+STATE_STARTING = "starting"
 STATE_ERROR = "error"
 
 REASON_INVALID_PORT = "invalid_port"
 REASON_PORT_IN_USE = "port_in_use"
 REASON_TOKEN_UNAVAILABLE = "token_unavailable"
 REASON_START_FAILED = "start_failed"
+REASON_CLOSED = "closed"
+REASON_ROTATE_FAILED = "rotate_failed"
 
 _MAX_PORT_DIGITS = 5
 # Windows meldet einen belegten Port mit WSAEADDRINUSE (10048), einen mit
@@ -52,6 +58,12 @@ _WINERRORS_IN_USE = (10048, 10013)
 class ApiStatus:
     state: str
     port: int | None = None
+    reason: str = ""
+
+
+@dataclass(frozen=True)
+class RotateResult:
+    ok: bool
     reason: str = ""
 
 
@@ -97,14 +109,33 @@ class ApiService:
 
     def apply(self) -> None:
         """Bringt den Server in den Zustand der Settings. Im UI-Thread
-        aufrufen; die Arbeit läuft im Worker, `on_status` kommt zurück."""
+        aufrufen; die Arbeit läuft im Worker, `on_status` kommt zurück.
+
+        Sofort sichtbar wird „startet": das Token-Laden blockiert unter
+        Windows bis 15 s, bis dahin stünde sonst „aus" da."""
         if self._closed:
             return
+        port = parse_port(self._settings.get("api_port"))
+        if (self._settings.get("api_enabled") and port is not None
+                and self._running_port() != port):
+            self._status = ApiStatus(STATE_STARTING, port)
         self._run(self._reconcile, self._publish)
 
-    def _publish(self, status: ApiStatus) -> None:
+    def _running_port(self) -> int | None:
+        server = self._server
+        if server is None:
+            return None
+        try:
+            return server.port
+        except RuntimeError:                     # gerade gestoppt
+            return None
+
+    def _publish(self, _result: ApiStatus) -> None:
+        # Der aktuelle Stand, nicht das Ergebnis dieses Workers: kommen zwei
+        # Worker vertauscht zurück, würde die UI sonst einen veralteten
+        # Status zeigen.
         if self._on_status is not None:
-            self._on_status(status)
+            self._on_status(self._status)
 
     def _reconcile(self) -> ApiStatus:
         with self._lock:
@@ -131,7 +162,10 @@ class ApiService:
             self._status = ApiStatus(STATE_ERROR, None, REASON_INVALID_PORT)
             return self._status
         if self._server is not None and self._server.port == port:
-            return self._status                  # läuft schon, nichts zu tun
+            # Läuft schon. RUNNING setzen statt `_status` durchzureichen: `apply`
+            # kann dazwischen „startet" geschrieben haben.
+            self._status = ApiStatus(STATE_RUNNING, port)
+            return self._status
         self._stop_server()
         token = load_or_create_token(self._base_path)    # blockiert: nur im Worker
         if token is None:
@@ -171,6 +205,31 @@ class ApiService:
             self._status = ApiStatus(STATE_OFF)
         finally:
             self._lock.release()
+
+    def rotate(self) -> RotateResult:
+        """Erneuert das Token und tauscht den Prüfer des laufenden Servers aus.
+
+        **Blockiert** (Dateizugriff, unter Windows `icacls`): nur im Worker.
+        Läuft unter demselben Lock wie der Start — nach jeder Verschränkung
+        akzeptiert der Server genau das Token, das in der Datei steht.
+        Scheitert das Schreiben, bleibt das alte Token gültig."""
+        with self._lock:
+            if self._closed:
+                return RotateResult(False, REASON_CLOSED)
+            try:
+                token = rotate_token(self._base_path)
+            except OSError:
+                _log.warning("Lokale API: Token konnte nicht erneuert werden",
+                             exc_info=True)
+                return RotateResult(False, REASON_ROTATE_FAILED)
+            if self._server is not None:
+                self._server.set_verifier(single_token_verifier(token))
+            return RotateResult(True)
+
+    def read_token(self) -> str | None:
+        """Token zum Kopieren (Settings-Tab). Rein lesend: legt nichts an.
+        Dateizugriff — über den Worker aufrufen."""
+        return read_token_file(self._base_path)
 
     def reopen(self) -> None:
         """Macht `shutdown` rückgängig (Skalierungs-Neustart ist gescheitert,

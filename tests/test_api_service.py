@@ -9,8 +9,9 @@ import pytest
 from src import api_service
 from src.api_routes import ApiContext
 from src.api_service import (
-    DEFAULT_PORT, REASON_INVALID_PORT, REASON_PORT_IN_USE, REASON_TOKEN_UNAVAILABLE,
-    STATE_ERROR, STATE_OFF, STATE_RUNNING, ApiService, ApiStatus, parse_port,
+    DEFAULT_PORT, REASON_CLOSED, REASON_INVALID_PORT, REASON_PORT_IN_USE,
+    REASON_ROTATE_FAILED, REASON_TOKEN_UNAVAILABLE, STATE_ERROR, STATE_OFF,
+    STATE_RUNNING, STATE_STARTING, ApiService, ApiStatus, RotateResult, parse_port,
 )
 from src.settings import DEFAULTS
 from src.storage import Storage
@@ -305,3 +306,181 @@ def test_concurrent_applies_end_in_one_running_server(tmp_path):
         assert get_status_code(port, token_of(tmp_path)) == 200
     finally:
         service.shutdown()
+
+
+# --- PR 3: Zustand „startet", aktueller Status, Rotation, Token lesen -------------
+
+def deferred_run(jobs):
+    def run(fn, on_done=None):
+        jobs.append((fn, on_done))
+    return run
+
+
+def test_apply_shows_starting_before_the_worker_has_run(tmp_path):
+    jobs = []
+    port = free_port()
+    service = make_service(tmp_path, {"api_enabled": True, "api_port": port},
+                           run=deferred_run(jobs))
+
+    service.apply()
+    assert service.status == ApiStatus(STATE_STARTING, port)
+
+    fn, on_done = jobs[0]
+    on_done(fn())
+    try:
+        assert service.status == ApiStatus(STATE_RUNNING, port)
+    finally:
+        service.shutdown()
+
+
+def test_apply_does_not_flash_starting_while_the_server_already_runs(tmp_path):
+    port = free_port()
+    service = make_service(tmp_path, {"api_enabled": True, "api_port": port})
+    service.apply()                                     # läuft
+    jobs = []
+    service._run = deferred_run(jobs)                   # ab hier verzögert
+    try:
+        service.apply()
+
+        assert service.status == ApiStatus(STATE_RUNNING, port)
+        fn, _ = jobs[0]
+        assert fn() == ApiStatus(STATE_RUNNING, port)   # „läuft schon" meldet RUNNING
+    finally:
+        service.shutdown()
+
+
+@pytest.mark.parametrize("settings", [
+    {"api_enabled": False, "api_port": 17653},
+    {"api_enabled": True, "api_port": "abc"},
+])
+def test_apply_shows_no_starting_when_nothing_will_start(tmp_path, settings):
+    jobs = []
+    service = make_service(tmp_path, dict(settings), run=deferred_run(jobs))
+
+    service.apply()
+
+    assert service.status.state == STATE_OFF
+
+
+def test_status_callback_reports_the_current_status_not_a_late_workers_result(tmp_path):
+    port = free_port()
+    jobs, statuses = [], []
+    settings = {"api_enabled": True, "api_port": port}
+    service = make_service(tmp_path, settings, run=deferred_run(jobs), statuses=statuses)
+    service.apply()
+    first_fn, first_done = jobs[0]
+    first_result = first_fn()                           # RUNNING
+    settings["api_enabled"] = False
+    service.apply()
+    second_fn, second_done = jobs[1]
+    second_done(second_fn())                            # OFF
+
+    first_done(first_result)                            # kommt zu spät an
+
+    assert statuses == [ApiStatus(STATE_OFF), ApiStatus(STATE_OFF)]
+
+
+def test_rotate_switches_the_token_of_the_running_server_without_a_restart(tmp_path):
+    port = free_port()
+    service = make_service(tmp_path, {"api_enabled": True, "api_port": port})
+    service.apply()
+    try:
+        old, server = token_of(tmp_path), service._server
+
+        result = service.rotate()
+
+        new = token_of(tmp_path)
+        assert result == RotateResult(True) and new != old
+        assert service._server is server
+        assert get_status_code(port, old) == 401
+        assert get_status_code(port, new) == 200
+    finally:
+        service.shutdown()
+
+
+def test_rotate_without_a_server_writes_the_token_and_starts_nothing(tmp_path):
+    port = free_port()
+    service = make_service(tmp_path, {"api_enabled": False, "api_port": port})
+
+    result = service.rotate()
+
+    assert result == RotateResult(True)
+    assert (tmp_path / "api-token").exists() and port_is_closed(port)
+
+
+def test_failed_rotation_keeps_the_old_token_valid(tmp_path, monkeypatch):
+    port = free_port()
+    service = make_service(tmp_path, {"api_enabled": True, "api_port": port})
+    service.apply()
+    try:
+        old = token_of(tmp_path)
+
+        def boom(base_path):
+            raise OSError("nicht schreibbar")
+
+        monkeypatch.setattr(api_service, "rotate_token", boom)
+
+        result = service.rotate()
+
+        assert result == RotateResult(False, REASON_ROTATE_FAILED)
+        assert token_of(tmp_path) == old
+        assert get_status_code(port, old) == 200
+    finally:
+        service.shutdown()
+
+
+def test_rotate_after_shutdown_is_refused_and_changes_nothing(tmp_path):
+    port = free_port()
+    service = make_service(tmp_path, {"api_enabled": True, "api_port": port})
+    service.apply()
+    old = token_of(tmp_path)
+    service.shutdown()
+
+    result = service.rotate()
+
+    assert result == RotateResult(False, REASON_CLOSED)
+    assert token_of(tmp_path) == old
+
+
+def test_rotation_is_serialized_against_a_start_in_progress(tmp_path, monkeypatch):
+    port = free_port()
+    service = make_service(tmp_path, {"api_enabled": True, "api_port": port})
+    entered, release = threading.Event(), threading.Event()
+    real_loader = api_service.load_or_create_token
+
+    def slow_loader(base_path):
+        token = real_loader(base_path)
+        entered.set()
+        assert release.wait(5)
+        return token
+
+    monkeypatch.setattr(api_service, "load_or_create_token", slow_loader)
+    starter = threading.Thread(target=service._reconcile)
+    starter.start()
+    assert entered.wait(5)
+    rotated = []
+    rotator = threading.Thread(target=lambda: rotated.append(service.rotate()))
+    rotator.start()
+
+    rotator.join(0.3)
+    assert rotator.is_alive(), "rotate() hätte auf den laufenden Start warten müssen"
+    release.set()
+    starter.join(5)
+    rotator.join(5)
+
+    try:
+        assert rotated == [RotateResult(True)]
+        # Die Datei trägt das neue Token — und genau das akzeptiert der Server.
+        assert get_status_code(port, token_of(tmp_path)) == 200
+    finally:
+        service.shutdown()
+
+
+def test_read_token_returns_the_file_token_and_creates_nothing(tmp_path):
+    service = make_service(tmp_path, {"api_enabled": False, "api_port": 17653})
+
+    assert service.read_token() is None
+    assert list(tmp_path.glob("api-token*")) == []
+
+    (tmp_path / "api-token").write_text("a" * 43, encoding="ascii")
+    assert service.read_token() == "a" * 43
