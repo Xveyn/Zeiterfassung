@@ -14,8 +14,8 @@ import pytest
 from src import api_auth
 from src.api_auth import (
     ALLOWED_METHODS, SCOPE_LOCAL, TOKEN_FILENAME, AuthResult, Policy, Principal,
-    authorize, generate_token, load_or_create_token, require_scope, rotate_token,
-    single_token_verifier,
+    authorize, generate_token, load_or_create_token, read_token, require_scope,
+    rotate_token, single_token_verifier,
 )
 
 _TOKEN_RE = re.compile(r"[A-Za-z0-9_-]{43}")
@@ -569,3 +569,70 @@ def test_results_never_contain_the_token():
 def test_auth_result_ok_follows_status():
     assert AuthResult(200, "ok", Principal("p", frozenset())).ok
     assert not AuthResult(401, "unauthorized").ok
+
+
+# --- read_token: rein lesend (PR 3, Settings-Tab „Token kopieren") --------------
+
+def test_read_token_returns_the_stored_token(tmp_path):
+    token = generate_token()
+    (tmp_path / TOKEN_FILENAME).write_text(token, encoding="ascii")
+
+    assert read_token(str(tmp_path)) == token
+
+
+def test_read_token_tolerates_a_trailing_newline(tmp_path):
+    token = generate_token()
+    (tmp_path / TOKEN_FILENAME).write_bytes(token.encode("ascii") + b"\r\n")
+
+    assert read_token(str(tmp_path)) == token
+
+
+def test_read_token_without_a_file_is_none_and_creates_nothing(tmp_path):
+    assert read_token(str(tmp_path)) is None
+    assert list(tmp_path.iterdir()) == []
+
+
+@pytest.mark.parametrize("content", [b"", b"zu-kurz", b"x" * 5000, b"\xff\xfe" * 30,
+                                     b"a" * 42, b"a" * 44])
+def test_read_token_with_invalid_content_is_none_and_leaves_the_file_alone(tmp_path, content):
+    path = tmp_path / TOKEN_FILENAME
+    path.write_bytes(content)
+
+    assert read_token(str(tmp_path)) is None
+    assert path.read_bytes() == content
+
+
+def test_read_token_unreadable_is_none(tmp_path, monkeypatch):
+    (tmp_path / TOKEN_FILENAME).write_text(generate_token(), encoding="ascii")
+    real_open = open
+
+    def fake_open(file, *args, **kwargs):
+        if os.fspath(file).endswith(TOKEN_FILENAME):
+            raise PermissionError("denied")
+        return real_open(file, *args, **kwargs)
+
+    monkeypatch.setattr(api_auth, "open", fake_open, raising=False)
+
+    assert read_token(str(tmp_path)) is None
+
+
+@pytest.mark.skipif(sys.platform == "win32",
+                    reason="Dateimodi sind unter Windows kein Maßstab")
+def test_read_token_does_not_touch_the_file_mode(tmp_path):
+    path = tmp_path / TOKEN_FILENAME
+    path.write_text(generate_token(), encoding="ascii")
+    os.chmod(path, 0o644)
+
+    read_token(str(tmp_path))
+
+    assert stat.S_IMODE(os.stat(path).st_mode) == 0o644
+
+
+def test_read_token_never_hardens_the_file(tmp_path, monkeypatch):
+    (tmp_path / TOKEN_FILENAME).write_text(generate_token(), encoding="ascii")
+    calls = []
+    monkeypatch.setattr(api_auth, "harden_windows_acl", calls.append)
+
+    read_token(str(tmp_path))
+
+    assert calls == []                  # `icacls` bis 15 s: nichts für „nur kopieren"

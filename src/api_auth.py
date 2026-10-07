@@ -42,6 +42,15 @@ def generate_token() -> str:
     return secrets.token_urlsafe(_TOKEN_BYTES)
 
 
+def _valid_token(data: bytes) -> str | None:
+    """Das Token aus einem Dateiinhalt, oder `None`, wenn es keines ist (zu
+    groß, falsches Format). Ein Zeilenumbruch am Ende wird toleriert."""
+    if len(data) > _MAX_FILE_BYTES:
+        return None
+    candidate = data.strip().decode("ascii", errors="replace")
+    return candidate if _TOKEN_RE.fullmatch(candidate) else None
+
+
 def _write_token_atomic(path: str, token: str) -> None:
     """Schreibt das Token atomar (Temp + os.replace) mit 0600 und
     PermissionError-Retry — dasselbe Muster wie `single_instance.
@@ -115,8 +124,8 @@ def load_or_create_token(base_path: str) -> str | None:
         _log.warning("API-Token nicht lesbar — API bleibt aus", exc_info=True)
         return None
     if data is not None:
-        candidate = data.strip().decode("ascii", errors="replace")
-        if len(data) <= _MAX_FILE_BYTES and _TOKEN_RE.fullmatch(candidate):
+        candidate = _valid_token(data)
+        if candidate is not None:
             _harden_existing(path)
             return candidate
         _log.warning("API-Token-Datei ungültig — wird neu erzeugt")
@@ -127,6 +136,19 @@ def load_or_create_token(base_path: str) -> str | None:
         _log.warning("API-Token nicht schreibbar — API bleibt aus", exc_info=True)
         return None
     return token
+
+
+def read_token(base_path: str) -> str | None:
+    """Liest das Token, **ohne etwas anzulegen, zu ändern oder zu härten** —
+    für „Token kopieren" im Settings-Tab. `None`, wenn die Datei fehlt, nicht
+    lesbar oder ungültig ist."""
+    try:
+        with open(os.path.join(base_path, TOKEN_FILENAME), "rb") as f:
+            data = f.read(_MAX_FILE_BYTES + 1)
+    except OSError:
+        _log.debug("API-Token nicht lesbar", exc_info=True)
+        return None
+    return _valid_token(data)
 
 
 def rotate_token(base_path: str) -> str:
