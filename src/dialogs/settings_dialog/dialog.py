@@ -2,6 +2,7 @@ import tkinter as tk
 from tkinter import ttk
 
 from src.dialogs.settings_dialog.form_model import SaveCoordinator
+from src.dialogs.settings_dialog.tab_api import ApiTab
 from src.dialogs.settings_dialog.tab_app import AppTab
 from src.dialogs.settings_dialog.tab_google import GoogleTab
 from src.dialogs.settings_dialog.tab_reminders import RemindersTab
@@ -25,9 +26,9 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
                          smtp_store=None,
                          vacation_store=None, on_vacation_change=None,
                          on_vacation_display_change=None, initial_tab=None,
-                         on_request_removal=None):
-    """Modaler Dialog zum Bearbeiten der App-Einstellungen, aufgeteilt auf sechs
-    Tabs (Arbeitszeit / Erinnerungen / Versand / Google / App / Updates).
+                         on_request_removal=None, api_service=None):
+    """Modaler Dialog zum Bearbeiten der App-Einstellungen, aufgeteilt auf sieben
+    Tabs (Arbeitszeit / Erinnerungen / Versand / Google / API / App / Updates).
 
     Gespeichert wird je Tab (#132): „Speichern" schreibt nur den aktiven Tab;
     wer einen geänderten Tab verlässt oder den Dialog schließt, wird gefragt
@@ -48,11 +49,13 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
     Anzeige-Schalter jenes Dialogs — ohne den Kalender-Abgleich, den
     on_vacation_change mitbringt.
     initial_tab: optionaler Schlüssel aus `tabs` (unten: `work`/`reminders`/
-    `sending`/`google`/`app`/`updates`), auf den der Dialog direkt aufspringt — Default `None` lässt es beim bisherigen Verhalten
+    `sending`/`google`/`api`/`app`/`updates`), auf den der Dialog direkt aufspringt — Default `None` lässt es beim bisherigen Verhalten
     (erster Tab „Arbeitszeit"). Für Aufrufer, die gezielt zu einem Tab wollen
     (das Update-Banner zu „updates"), statt dass der Nutzer ihn selbst sucht.
     on_request_removal: Rückruf(with_data) für „Zeiterfassung entfernen" (#50);
     der Dialog schließt dafür ohne Speichern.
+    api_service: der `api_service.ApiService` der App (#92); ohne ihn gibt es
+    keinen Tab „API".
     """
     dialog = create_dialog(parent, "Einstellungen", escape_closes=False)
 
@@ -62,8 +65,11 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
     notebook = ttk.Notebook(dialog, style="Dark.TNotebook")
     notebook.pack(fill="both", expand=True, padx=8, pady=(8, 0))
 
-    frames = {key: tk.Frame(notebook, bg=BG) for key in
-              ("work", "reminders", "sending", "google", "app", "updates")}
+    frame_keys = ["work", "reminders", "sending", "google"]
+    if api_service is not None:
+        frame_keys.append("api")
+    frame_keys += ["app", "updates"]
+    frames = {key: tk.Frame(notebook, bg=BG) for key in frame_keys}
 
     work = WorkTab(frames["work"], dialog, settings, vacation_store,
                    on_vacation_change, storage, reservation_store, runner,
@@ -74,6 +80,9 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
     google = GoogleTab(
         frames["google"], dialog, settings, base_path, on_change, runner,
         storage, conflicts_store, reservation_store, data_lock, sync_guard)
+    api = None
+    if api_service is not None:
+        api = ApiTab(frames["api"], dialog, settings, api_service, runner)
     def _remove(with_data):
         if on_request_removal is None:
             return
@@ -125,9 +134,11 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
         "reminders": reminders,
         "sending": sending,
         "google": google,
-        "app": app,
-        "updates": updates_tab,
     }
+    if api is not None:
+        tabs["api"] = api
+    tabs["app"] = app
+    tabs["updates"] = updates_tab
     for tab in tabs.values():
         notebook.add(tab.frame, text=tab.title)
     keys = list(tabs)

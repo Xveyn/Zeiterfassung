@@ -114,3 +114,62 @@ def test_removal_shuts_the_api_down_only_after_it_was_admitted():
                         for n in ast.walk(stmt.test))]
     assert claims and refusals
     assert func.body.index(shutdown) > func.body.index(refusals[0]) > func.body.index(claims[0])
+
+
+# --- Settings-Tab (PR 3) -------------------------------------------------------
+
+DIALOG = (pathlib.Path(__file__).resolve().parent.parent / "src" / "dialogs"
+          / "settings_dialog" / "dialog.py")
+DIALOG_TREE = ast.parse(DIALOG.read_text(encoding="utf-8"))
+
+
+def _dialog_function():
+    for node in ast.walk(DIALOG_TREE):
+        if isinstance(node, ast.FunctionDef) and node.name == "open_settings_dialog":
+            return node
+    raise AssertionError("open_settings_dialog fehlt")
+
+
+def test_the_app_hands_its_api_service_to_the_settings_dialog():
+    call = [n for n in ast.walk(_function("_open_settings"))
+            if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
+            and n.func.id == "open_settings_dialog"][0]
+    keywords = {kw.arg: kw.value for kw in call.keywords}
+    assert "api_service" in keywords
+    value = keywords["api_service"]
+    assert (isinstance(value, ast.Attribute) and value.attr == "_api"
+            and isinstance(value.value, ast.Name) and value.value.id == "self")
+
+
+def test_the_dialog_accepts_api_service_as_an_optional_keyword():
+    args = _dialog_function().args
+    names = [a.arg for a in args.kwonlyargs] + [a.arg for a in args.args]
+    assert "api_service" in names
+    defaults = dict(zip([a.arg for a in args.kwonlyargs], args.kw_defaults, strict=True))
+    assert isinstance(defaults["api_service"], ast.Constant) and defaults["api_service"].value is None
+
+
+def test_the_api_tab_sits_between_google_and_app_and_only_with_a_service():
+    func = _dialog_function()
+    order = []          # (Zeile, Schlüssel) aller `tabs[...] = …` und des Literals
+    for node in ast.walk(func):
+        if (isinstance(node, ast.Assign) and len(node.targets) == 1
+                and isinstance(node.targets[0], ast.Subscript)
+                and isinstance(node.targets[0].value, ast.Name)
+                and node.targets[0].value.id == "tabs"
+                and isinstance(node.targets[0].slice, ast.Constant)):
+            order.append((node.lineno, node.targets[0].slice.value))
+    assert [key for _, key in sorted(order)] == ["api", "app", "updates"]
+    # Der Eintrag „api" steht unter einer Bedingung (kein Dienst, kein Tab).
+    api_assign = [n for n in ast.walk(func) if isinstance(n, ast.If)
+                  and any(isinstance(s, ast.Assign) and isinstance(s.targets[0], ast.Subscript)
+                          and isinstance(s.targets[0].slice, ast.Constant)
+                          and s.targets[0].slice.value == "api" for s in n.body)]
+    assert api_assign
+
+
+def test_the_api_tab_is_built_from_the_service_and_the_runner():
+    calls = [n for n in ast.walk(_dialog_function())
+             if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
+             and n.func.id == "ApiTab"]
+    assert calls and len(calls[0].args) == 5
