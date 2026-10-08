@@ -322,6 +322,20 @@ Zeitraum und welche Kategorien der Bericht gefiltert ist.
   kann). Geräte-ID, Name und Token kommen vom Handy — Fremddaten (`normalize_device_id`,
   `clean_device_name`). Design: `docs/superpowers/specs/2026-10-08-mobile-pwa-design.md`.
 
+  `mobile_sync.py` — Abgleich mit dem Handy (`POST /v1/sync`), Tk-frei, ohne Socket. Der Body ist
+  Fremddaten: `parse_request` prüft ihn mit den Regeln der lokalen API (`api_entry_write.parse_slots`),
+  dazu Datum, Zeitstempel, höchstens 400 Tage, die Uhr (15 Minuten, **vor** den Einträgen, damit ein
+  vorgehendes Handy `clock_skew` statt `invalid_entry` bekommt) und `modified_at` höchstens 15 Minuten in
+  der Zukunft (sonst gewänne ein Zukunftsstempel jeden LWW-Vergleich). Die Geräte-ID kommt aus dem Token,
+  nie aus dem Body. `perform_sync` nimmt den `sync_guard` nicht-blockierend (belegt → 503 `busy`),
+  klammert Snapshot → `sync.merge(local=Handy, remote=Desktop)` → `apply_merged_doc_journaled` mit dem
+  `data_lock` und setzt danach `sync_history.mark_synced` (der Startup-Sweep darf die Tombstones eines
+  Rechners, der mit dem Handy abgleicht, nicht verwerfen). Das Handy als `local` lässt die Self-Heal-Regel
+  (`excluded`) richtig wirken; das `last_pull_at` kommt aus dem Gerätespeicher, nie aus dem Body.
+  `build_response` ist rein: Fenster `[heute − 90, heute]` plus gesendete Tage, offene Eintrags-Konflikte
+  mit Gerätenamen aus der Registry, alle Slots über `storage.sanitize_slot`. `on_change` ruft die Route
+  nach Freigabe von Guard und Lock.
+
   `VacationStore` (`vacations.json`) hängt am geteilten `data_lock` wie
   `Storage`, `Settings`, `ConflictsStore` und `ReservationStore` — anders als
   `WebhookStore`, der bewusst seinen eigenen mitbringt. Er ist gerätelokal:
