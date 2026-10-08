@@ -790,3 +790,44 @@ def test_a_non_finite_weekly_limit_setting_is_no_500(tmp_path, path):
     assert response.status == 200
     assert response.body["total_minutes"] == 240
     assert all(w["limit_minutes"] is None for w in response.body["weeks"])
+
+
+# --- Fremddaten in der Datei: dieselbe Antwort wie für saubere Daten, nie 500 ------------------
+
+def test_the_api_reads_a_store_file_with_broken_entries(tmp_path):
+    path = tmp_path / "z.json"
+    good = {"slots": [ist_slot("08:00", "12:00", 0, "Projekt")], "modified_at": "2026-01-05T08:00:00Z",
+            "device_id": "x", "deleted": False}
+    path.write_text(json.dumps({
+        "2026-01-05": good, "2026-01-06": None, "2026-01-07": "x",
+        "2026-01-08": dict(good, slots=["x", None, {"start": "09:00", "end": "10:00",
+                                                    "pause": None, "kategorie": 5}]),
+    }), encoding="utf-8")
+    env = Env(tmp_path)
+    env.storage = Storage(str(path), device_id="dev")
+    env.ctx = ApiContext(storage=env.storage, settings={}, app_version=lambda: "t",
+                         vacation_store=env.vacations)
+
+    entries = get(env, "/v1/entries")
+    month = get(env, "/v1/summary/month/2026-01")
+
+    assert entries.status == 200 and month.status == 200
+    assert list(entries.body["entries"]) == ["2026-01-05", "2026-01-08"]
+    assert entries.body["entries"]["2026-01-08"]["slots"] == [ist_slot("09:00", "10:00", 0, "")]
+    assert month.body["total_minutes"] == 240 + 60
+    assert get(env, "/v1/entries/2026-01-06").status == 404
+
+
+def test_an_absurd_stored_pause_gives_strict_json_over_entries(tmp_path):
+    path = tmp_path / "z.json"
+    path.write_text('{"2026-01-05": {"slots": [{"start": "08:00", "end": "12:00", "pause": '
+                    '-Infinity, "kategorie": ""}], "modified_at": "a", "device_id": "x", '
+                    '"deleted": false}}', encoding="utf-8")
+    env = Env(tmp_path)
+    env.storage = Storage(str(path), device_id="dev")
+    env.ctx = ApiContext(storage=env.storage, settings={}, app_version=lambda: "t")
+
+    body = get(env, "/v1/entries").body
+
+    assert body["entries"]["2026-01-05"]["slots"][0]["pause"] == 0
+    json.dumps(body, allow_nan=False)                       # strikt: kein -Infinity/NaN mehr

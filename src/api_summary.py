@@ -7,9 +7,10 @@ den der Aufrufer reicht; gerechnet wird in ganzen MINUTEN je Slot (Regel
 „Summen NUR über Minuten“ in der Wurzel-`CLAUDE.md`), Dezimalstunden kommen
 nirgends vor.
 
-Gespeicherte Slots sind Fremddaten (der Sync validiert ihren Inhalt nicht): ein
-Slot mit ungewöhnlichem Inhalt zählt 0 Minuten und wird geloggt, er macht aus
-einer lesenden Route keine 500.
+Gespeicherte Slots sind Fremddaten. `Storage` bereinigt sie an der Lese-Grenze
+(`storage.sanitize_slot`); was `summarize` trotzdem von einem Aufrufer mit eigenem
+Snapshot bekommt, zählt als ungewöhnlicher Slot 0 Minuten und wird geloggt. Das ist
+die zweite Linie, kein Ersatz für die erste.
 """
 from __future__ import annotations
 

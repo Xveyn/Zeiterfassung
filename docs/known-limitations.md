@@ -441,3 +441,10 @@ Augenhöhe mit den anderen beiden Plattformen.
 - **Gerätelokal.** `api_enabled` und `api_port` reisen nicht per Drive-Sync.
 - **Kein Brute-Force-Schutz.** 256 Bit sind nicht zu erraten, und gegen lokale
   Codeausführung wäre eine Sperre wirkungslos.
+
+## Beschädigte oder fremde Daten (Storage)
+
+- **Ungültige Slot-Werte werden beim Lesen ersetzt, nicht repariert.** Eine gespeicherte Pause, die keine ganze Zahl von 0 bis 1440 ist (`null`, Text, `30.5`, negativ, `inf`), zählt `0`; `start`/`end` ohne Text zählen als leer, eine Kategorie ohne Text als „ohne Kategorie“. Die Datei behält den Originalwert, bis der Tag neu gespeichert wird.
+- **Was beim Laden nicht Objekt-förmig ist, wird verworfen.** Das betrifft nur Einträge und Slots, die kein JSON-Objekt sind (Handbearbeitung, Fremd-Sync). Vorher liegt eine Kopie als `zeiterfassung.json.corrupt-<Zeitstempel>` neben der Datei; scheitert die Kopie, bleibt die Datei unverändert und der reparierte Stand gilt nur bis zum nächsten Speichern.
+- **Ein Remote-Doc mit einem Nicht-Objekt in `slots` ist ungültig** und wird wie andere Strukturfehler behandelt (Remote quarantänen, lokaler Stand wird neue Wahrheit).
+- **Reservierungen und Urlaub** haben diese Härtung noch nicht (Follow-up über #239).

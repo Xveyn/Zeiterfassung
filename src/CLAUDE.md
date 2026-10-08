@@ -252,7 +252,9 @@ Zeitraum und welche Kategorien der Bericht gefiltert ist.
   → `os.replace` → unter POSIX `fsync` aufs Verzeichnis; bei **jedem** Fehler, auch schon im
   `json.dump`, Temp-Datei weg und Fehler weiterreichen = **N1**) und
   `load_json_or_quarantine(path)` → Objekt oder `None`, wobei eine unparsebare Datei nach
-  `<name>.corrupt-<stamp>` verschoben und geloggt wird (**N4**). Genutzt von `storage`,
+  `<name>.corrupt-<stamp>` verschoben und geloggt wird (**N4**); `quarantine_corrupt(path, reason)`
+  nimmt einen Grund für die Logzeile, `backup_corrupt(path, reason)` kopiert statt zu verschieben (für
+  Dateien, die gleich repariert werden). Genutzt von `storage`,
   `reservations`, `conflicts_store` (beide Helfer) und `settings` (nur der Schreib-Helfer).
   Wer einen neuen JSON-Store baut, nimmt diese beiden Funktionen — nicht die Mechanik
   erneut abschreiben.
@@ -267,7 +269,18 @@ Zeitraum und welche Kategorien der Bericht gefiltert ist.
   `apply_merge` **rollen den Speicher zurück**, wenn das Schreiben auf die Platte scheitert:
   sonst läuft der Speicher dem Stand der Platte voraus, ein Retry hält den Tag für gespeichert
   (die API-Idempotenz-Abkürzung), und jeder spätere Save schriebe den ungeschriebenen Stand
-  unbemerkt mit. `reservations.py` — Reservierungen
+  unbemerkt mit.
+  **Beschädigte Dateien** (Handbearbeitung, ein fremdes Sync-Doc): `_load` quarantäniert ein
+  Top-Level, das kein Objekt ist, wie unparsebar und startet leer; Einträge ohne Objektform und
+  Slot-Listen mit Nicht-Objekten werden nach einer Sicherung (`json_store.backup_corrupt`,
+  `<datei>.corrupt-<stamp>`) repariert und zurückgeschrieben — scheitert die Sicherung, wird
+  nicht geschrieben. Wertfehler bleiben roh (der Sync soll keine spontane Änderung sehen) und
+  werden an der Lese-Grenze bereinigt: `sanitize_slot` in `_user_shape` macht aus jedem Slot
+  `start`/`end` Text-oder-`None`, `kategorie` Text, `pause` eine ganze Zahl 0–1440 (sonst 0).
+  Alle Leser (UI, Berichte, API) gehen über `get`/`get_all` und sehen nie Fremddaten;
+  `get_all_raw` bleibt das Original für den Sync. `sync.validate_remote_doc` lehnt Slot-Listen
+  mit Nicht-Objekten ab.
+  `reservations.py` — Reservierungen
   (zukünftige Soll-Zeiten, eigenes Konzept). `settings.py` — Einstellungen mit Defaults.
 - `conflicts_store.py` — lokale Sync-Konfliktliste. `category_defaults.py` — Default-Kategorien.
 - `webhook_store.py` — gerätelokaler Store der Webhook-Konfiguration
