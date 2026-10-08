@@ -464,6 +464,24 @@ def test_validate_rejects_entry_modified_at_not_string():
     ok, _ = validate_remote_doc(doc)
     assert ok is False
 
+@pytest.mark.parametrize("junk", [None, "x", 5, ["a"], [None]], ids=repr)
+def test_validate_rejects_a_slot_that_is_not_an_object(junk):
+    # slots war nur als Liste geprüft: [null] lief durch und ließ später get_all() abstürzen
+    doc = _valid_remote_doc()
+    doc["entries"]["2026-05-14"]["slots"] = [junk]
+    ok, reason = validate_remote_doc(doc)
+    assert ok is False
+    assert "slots" in reason and "2026-05-14" in reason
+
+
+def test_validate_still_accepts_slots_with_unusual_values():
+    # Wertfehler fängt die Lese-Grenze von Storage ab; abgelehnt wird nur die Struktur
+    doc = _valid_remote_doc()
+    doc["entries"]["2026-05-14"]["slots"] = [
+        {"start": "08:00", "end": "12:00", "pause": None, "kategorie": 5}, {}]
+    ok, reason = validate_remote_doc(doc)
+    assert ok is True, reason
+
 
 def test_validate_rejects_setting_missing_value():
     doc = _valid_remote_doc()

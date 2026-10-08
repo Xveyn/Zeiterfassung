@@ -504,6 +504,8 @@ def validate_remote_doc(doc: Any) -> tuple[bool, str]:
             return False, f"entry {date!r}: modified_at ist kein String"
         if not isinstance(entry.get("slots"), list):
             return False, f"entry {date!r}: slots ist keine Liste"
+        if not all(isinstance(slot, dict) for slot in entry["slots"]):
+            return False, f"entry {date!r}: slots enthält ein Nicht-Objekt"
 
     settings = doc.get("settings", {})
     if not isinstance(settings, dict):
