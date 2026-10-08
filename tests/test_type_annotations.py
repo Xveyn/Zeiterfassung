@@ -65,6 +65,7 @@ ANNOTATED_MODULES = [
     "src/api_service.py",
     "src/api_entry_write.py",
     "src/api_summary.py",
+    "src/mobile_pairing.py",
     # Bereits vor #72 vollstaendig annotiert — hier gelistet, damit sie
     # nicht unbemerkt zurueckfallen koennen.
     "src/storage.py",
