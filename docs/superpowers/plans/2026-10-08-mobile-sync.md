@@ -23,6 +23,7 @@
 - **Nach jedem erfolgreichen Abgleich `sync_history.mark_synced(base)`.** Der Startup-Sweep (`main._sweep_orphan_tombstones`) verwirft Tombstones auf Rechnern, die „nie gesynct" haben. Ein Rechner, der nur mit dem Handy abgleicht, hätte sonst nach dem nächsten Start keine Tombstones mehr, und ein am Desktop gelöschter Tag käme vom Handy zurück. Die Wurzel-`CLAUDE.md` verlangt das ausdrücklich: „Ein neuer Sync/Reconcile-Pfad muss ihn mitsetzen." Preis: Tombstones bleiben dann bis zu einer Kompaktierung liegen (die hängt am Google-Tab).
 - **Das Antwortfenster nimmt auch die vom Handy gesendeten Tage mit**, Einträge wie offene Konflikte (die Spec sagt es nur für die Einträge). Ein Konflikt auf einem Tag außerhalb der 90 Tage bliebe sonst unsichtbar.
 - **Ein gesendeter Tag, der im Merge-Ergebnis fehlt** (Self-Heal bei `excluded`), steht nicht in der Antwort. Das Handy erkennt ihn am Flag `excluded: true`; das Verhalten der PWA ist Sache von PR 6.
+- **Die Stempel der gesendeten Tage werden auf `last_pull_at + 1 s` angehoben** (Befund des Reviews): der Merge vergleicht `modified_at` (Handy-Uhr) mit `last_pull_at` (Desktop-Uhr); bei einem nachgehenden Handy verlöre eine Änderung nach dem Abgleich still gegen die Desktop-Version. Bei `excluded` bleiben die Stempel unangetastet (Self-Heal).
 - **Die Antwort sanitisiert alles, was vom Desktop kommt** (`storage.sanitize_slot`, nur die vier Slot-Felder): gespeicherte Slots sind Fremddaten aus dem Drive-Sync.
 - **`on_change` (UI-Refresh) ruft die Route**, nicht `perform_sync`: es soll nach Freigabe von Guard und Lock laufen.
 
@@ -399,7 +400,7 @@ def _parse_utc(text: object) -> datetime.datetime | None:
 
 def _parse_entry(date: str, raw: object, now_dt: datetime.datetime) -> dict[str, Any]:
     # `ascii()` escaped auch Surrogate: die Meldung bleibt als UTF-8 schreibbar.
-    label = ascii(date)[:_ECHO_MAX]
+    label = ascii(date)[1:-1][:_ECHO_MAX]
 
     def bad(reason: str) -> SyncError:
         return SyncError(422, "invalid_entry", f"{label}: {reason}")

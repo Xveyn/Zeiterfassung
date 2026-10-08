@@ -332,6 +332,10 @@ Zeitraum und welche Kategorien der Bericht gefiltert ist.
   `data_lock` und setzt danach `sync_history.mark_synced` (der Startup-Sweep darf die Tombstones eines
   Rechners, der mit dem Handy abgleicht, nicht verwerfen). Das Handy als `local` lässt die Self-Heal-Regel
   (`excluded`) richtig wirken; das `last_pull_at` kommt aus dem Gerätespeicher, nie aus dem Body.
+  Weil der Merge `modified_at > last_pull_at` vergleicht und die beiden Seiten verschiedene Uhren
+  haben, hebt `_phone_doc` die Stempel der gesendeten Tage auf `last_pull_at + 1 s` an (außer bei
+  `excluded`): das Handy schickt nur Tage, die es seit dem Abgleich geändert hat, und bei einem
+  nachgehenden Handy ginge die Änderung sonst still gegen die Desktop-Version verloren.
   `build_response` ist rein: Fenster `[heute − 90, heute]` plus gesendete Tage, offene Eintrags-Konflikte
   mit Gerätenamen aus der Registry, alle Slots über `storage.sanitize_slot`. `on_change` ruft die Route
   nach Freigabe von Guard und Lock.

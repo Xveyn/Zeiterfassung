@@ -28,7 +28,7 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-from src import sync, sync_history, sync_journal
+from src import mobile_pairing, sync, sync_history, sync_journal
 from src.api_entry_write import WriteError, check_date_range, load_json_body, parse_slots
 from src.devices import sanitize_registry, with_own_entry
 from src.storage import sanitize_slot
@@ -231,13 +231,24 @@ def build_response(merged: Mapping[str, Any], *, sent_dates: Iterable[str],
     }
 
 
-def _phone_doc(request: SyncRequest, device_id: str, device_name: str, now: str) -> dict[str, Any]:
+def _phone_doc(request: SyncRequest, device_id: str, device_name: str, now: str,
+               changed_since: str = "") -> dict[str, Any]:
     """Das Handy als `local` des Merges: nur die geschickten Tage, die Geräte-ID aus
-    dem Token. So wirkt die Self-Heal-Regel (`excluded`) für das Handy richtig."""
+    dem Token. So wirkt die Self-Heal-Regel (`excluded`) für das Handy richtig.
+
+    `changed_since` (das `last_pull_at` des Desktops, sonst leer): das Handy schickt
+    nur Tage, die es seit dem letzten Abgleich geändert hat — jeder gilt per
+    Definition als seither geändert. Der Merge entscheidet das aber über
+    `modified_at > last_pull_at`, und diese Stempel stammen von zwei Uhren: bei einem
+    nachgehenden Handy läge der Stempel vor `last_pull_at`, und die Änderung verlöre
+    still gegen die Desktop-Version, ohne Konflikt. Deshalb wird der Stempel auf
+    `last_pull_at + 1 s` angehoben (innerhalb der erlaubten 15 Minuten Abweichung)."""
+    floor = mobile_pairing.shift(changed_since, datetime.timedelta(seconds=1)) if changed_since else ""
     return {
         "schema_version": sync.SCHEMA_VERSION,
         "entries": {
-            date: {**entry, "device_id": device_id}
+            date: {**entry, "modified_at": max(entry["modified_at"], floor),
+                   "device_id": device_id}
             for date, entry in request.entries.items()
         },
         "settings": {},
@@ -266,9 +277,14 @@ def perform_sync(request: SyncRequest, *, device_id: str, device_name: str,
     if sync_guard is not None and not sync_guard.acquire(blocking=False):
         raise SyncError(503, "busy", "Ein anderer Abgleich läuft gerade. Bitte später erneut versuchen.")
     try:
-        phone_doc = _phone_doc(request, device_id, device_name, now)
         with (data_lock if data_lock is not None else contextlib.nullcontext()):
             desktop_doc = sync.build_local_doc(storage, settings, conflicts_store)
+            watermark = (desktop_doc.get("meta") or {}).get("gc_watermark") or ""
+            excluded = bool(last_pull_at) and last_pull_at < watermark
+            # Bei `excluded` bleiben die Stempel unangetastet: die Self-Heal-Regel
+            # vergleicht sie mit dem Watermark und soll alte Tage nicht wiederbeleben.
+            phone_doc = _phone_doc(request, device_id, device_name, now,
+                                   "" if excluded else last_pull_at)
             merged = sync.merge(phone_doc, desktop_doc, last_pull_at)
             sync_journal.apply_merged_doc_journaled(
                 merged, storage, settings, conflicts_store,
@@ -276,8 +292,6 @@ def perform_sync(request: SyncRequest, *, device_id: str, device_name: str,
             # Der Startup-Sweep verwirft Tombstones auf Rechnern, die „nie gesynct"
             # haben: nach einem Abgleich mit dem Handy haben sie einen Abnehmer.
             sync_history.mark_synced(base)
-        watermark = (desktop_doc.get("meta") or {}).get("gc_watermark") or ""
-        excluded = bool(last_pull_at) and last_pull_at < watermark
         return build_response(merged, sent_dates=request.entries, today=today, now=now,
                               excluded=excluded, categories=categories)
     finally:

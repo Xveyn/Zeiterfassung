@@ -453,3 +453,25 @@ def test_perform_sync_overrides_a_device_id_that_slipped_into_the_request(env):
         base=env.base, now=NOW, today=TODAY)
 
     assert env.storage.get_all_raw()["2026-10-07"]["device_id"] == PHONE
+
+
+@pytest.mark.parametrize("phone_stamp", [
+    pytest.param("2026-10-07T11:54:00Z", id="slow-phone-clock"),
+    pytest.param("2026-10-07T12:00:00Z", id="same-second-as-last-pull"),
+])
+def test_a_phone_edit_after_the_last_pull_wins_even_with_a_stamp_before_it(env, phone_stamp):
+    # Das Handy schickt nur Tage, die es seit dem letzten Abgleich geändert hat. Sein
+    # Stempel stammt von der Handy-Uhr, last_pull_at von der des Desktops: bei einer
+    # nachgehenden Uhr läge er sonst vor last_pull_at und verlöre still gegen die
+    # Desktop-Version, ohne Konflikt.
+    put_desktop(env, "2026-10-07", modified_at="2026-10-07T11:57:00Z",
+                slots=({"start": "09:00", "end": "13:00", "pause": 0, "kategorie": ""},))
+    corrected = {"start": "07:00", "end": "11:00", "pause": 0, "kategorie": ""}
+
+    response = run(env, {"2026-10-07": day(slots=(corrected,), modified_at=phone_stamp)},
+                   last_pull_at="2026-10-07T12:00:00Z")
+
+    assert env.storage.get("2026-10-07")["slots"][0]["start"] == "07:00"
+    assert env.conflicts.get_all() == []
+    assert response["entries"]["2026-10-07"]["slots"] == [corrected]
+    assert response["entries"]["2026-10-07"]["device_id"] == PHONE
