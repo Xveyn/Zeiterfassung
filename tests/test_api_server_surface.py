@@ -188,3 +188,125 @@ def test_the_query_string_does_not_turn_a_protected_path_public(make_server):
     response, body, _ = call(server, "POST", "/v1/sync?x=/v1/pair", JSON, b"{}", token=None)
 
     assert response.status == 401 and server.calls == []
+
+
+# --- CORS ---------------------------------------------------------------------------------------------
+
+def preflight(server, path="/v1/sync", method="POST", headers=None, drop=()):
+    merged = {"Origin": ORIGIN, "Access-Control-Request-Method": method,
+              "Access-Control-Request-Headers": "authorization, content-type"}
+    merged.update(headers or {})
+    for name in drop:
+        merged.pop(name, None)
+    return call(server, "OPTIONS", path, merged, token=None)
+
+
+def test_a_preflight_is_a_204_without_body_and_needs_no_token(make_server):
+    server = make_server(cors=True)
+
+    response, body, raw = preflight(server)
+
+    assert response.status == 204 and raw == b"" and body is None
+    assert response.getheader("Content-Type") is None
+    assert response.getheader("Access-Control-Allow-Origin") == ORIGIN
+    assert response.getheader("Vary") == "Origin"
+    assert response.getheader("Access-Control-Allow-Methods") == "POST"
+    assert response.getheader("Access-Control-Allow-Headers") == "Authorization, Content-Type"
+    assert response.getheader("Access-Control-Max-Age") == "600"
+    assert response.getheader("Access-Control-Allow-Credentials") is None
+    assert response.getheader("Access-Control-Allow-Private-Network") is None
+    assert server.calls == []                          # der Preflight trägt keine Daten
+
+
+def test_the_preflight_answers_the_private_network_request(make_server):
+    server = make_server(cors=True)
+
+    response, _, _ = preflight(server, headers={"Access-Control-Request-Private-Network": "true"})
+
+    assert response.getheader("Access-Control-Allow-Private-Network") == "true"
+
+
+@pytest.mark.parametrize("kwargs,status", [
+    ({"headers": {"Origin": "https://evil.example"}}, 403),
+    ({"drop": ("Origin",)}, 403),
+    ({"headers": {"Host": "evil.example"}}, 403),
+    ({"path": "/v1/unbekannt"}, 404),
+    ({"path": "/v1/ping", "method": "POST"}, 405),                  # /v1/ping kennt nur GET
+    ({"method": "DELETE"}, 405),
+    ({"drop": ("Access-Control-Request-Method",)}, 405),
+])
+def test_a_refused_preflight_has_no_cors_headers(make_server, kwargs, status):
+    server = make_server(cors=True)
+
+    response, body, _ = preflight(server, **kwargs)
+
+    assert response.status == status and "error" in body
+    assert response.getheader("Access-Control-Allow-Origin") is None
+    assert response.getheader("Access-Control-Allow-Methods") is None
+    assert server.calls == []
+
+
+def test_responses_for_the_allowed_origin_carry_cors_headers_even_when_they_are_errors(make_server):
+    server = make_server(cors=True)
+
+    ok, _, _ = call(server, "GET", "/v1/ping", {"Origin": ORIGIN})
+    expired, body, _ = call(server, "GET", "/v1/ping", {"Origin": ORIGIN}, token=EXPIRED)
+    missing, _, _ = call(server, "GET", "/v1/unbekannt", {"Origin": ORIGIN})
+
+    for response in (ok, expired, missing):
+        assert response.getheader("Access-Control-Allow-Origin") == ORIGIN
+        assert response.getheader("Vary") == "Origin"
+        assert response.getheader("Access-Control-Allow-Credentials") is None
+    assert (ok.status, expired.status, missing.status) == (200, 401, 404)
+    assert code(body) == "token_expired"
+
+
+def test_a_public_route_answers_the_allowed_origin_too(make_server):
+    server = make_server(cors=True)
+
+    response, _, _ = call(server, "POST", "/v1/pair", {"Origin": ORIGIN, **JSON}, b"{}", token=None)
+
+    assert response.status == 200
+    assert response.getheader("Access-Control-Allow-Origin") == ORIGIN
+
+
+def test_a_server_error_carries_cors_headers_for_the_allowed_origin(make_server):
+    def broken(token):
+        raise RuntimeError("x")
+
+    server = make_server(cors=True, verifier=broken)
+
+    response, body, _ = call(server, "GET", "/v1/ping", {"Origin": ORIGIN})
+
+    assert response.status == 500
+    assert response.getheader("Access-Control-Allow-Origin") == ORIGIN
+
+
+def test_a_foreign_origin_gets_a_403_without_cors_headers(make_server):
+    server = make_server(cors=True)
+
+    response, body, _ = call(server, "GET", "/v1/ping", {"Origin": "https://evil.example"})
+
+    assert response.status == 403 and code(body) == "bad_origin"
+    assert response.getheader("Access-Control-Allow-Origin") is None
+
+
+def test_requests_without_origin_get_no_cors_headers(make_server):
+    server = make_server(cors=True)
+
+    response, _, _ = call(server, "GET", "/v1/ping")
+
+    assert response.status == 200
+    assert response.getheader("Access-Control-Allow-Origin") is None
+    assert response.getheader("Vary") is None
+
+
+def test_without_the_cors_switch_options_stays_a_405(make_server):
+    server = make_server(cors=False)
+
+    response, body, _ = preflight(server)
+
+    assert response.status == 405
+    assert response.getheader("Access-Control-Allow-Origin") is None
+    ok, _, _ = call(server, "GET", "/v1/ping", {"Origin": ORIGIN})
+    assert ok.getheader("Access-Control-Allow-Origin") is None

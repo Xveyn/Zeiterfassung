@@ -164,11 +164,13 @@ class _Handler(http.server.BaseHTTPRequestHandler):
         # ensure_ascii (Standard): ein Lone Surrogate in gespeicherten Daten
         # (korrupte Datei, Sync) würde sonst beim UTF-8-Encode werfen — außerhalb
         # jedes try, der Client bekäme eine leere Antwort.
-        payload = json.dumps(response.body).encode("utf-8")
+        # 204 (Preflight) trägt nie einen Body und keinen Content-Type.
+        payload = b"" if response.status == 204 else json.dumps(response.body).encode("utf-8")
         self.close_connection = True
         try:
             self.send_response(response.status)
-            self.send_header("Content-Type", "application/json; charset=utf-8")
+            if response.status != 204:
+                self.send_header("Content-Type", "application/json; charset=utf-8")
             self.send_header("Content-Length", str(len(payload)))
             self.send_header("Cache-Control", "no-store")
             self.send_header("X-Content-Type-Options", "nosniff")
@@ -188,7 +190,50 @@ class _Handler(http.server.BaseHTTPRequestHandler):
             # Programmfehler: Details nur ins Log, nie in die Antwort.
             _log.exception("API-Anfrage fehlgeschlagen")
             response = error_response(500, "internal_error", "Interner Fehler.")
-        self._send(response)
+        self._send(self._with_cors(response))
+
+    def _with_cors(self, response: ApiResponse) -> ApiResponse:
+        """CORS-Header für die erlaubte Origin, an jeder Antwort — auch an Fehlern: die
+        PWA muss `token_expired` lesen können, sonst sieht sie nur einen Netzwerkfehler.
+        Eine fremde Origin bekommt nie einen, auch nicht am `403 bad_origin`. Nie
+        `Allow-Credentials`: die Anmeldung läuft über den Authorization-Header."""
+        server = cast("_ApiHTTPServer", self.server)
+        if not server.surface.cors:
+            return response
+        if self.command == "OPTIONS" and response.status != 204:
+            return response                      # ein abgelehnter Preflight bewirbt nichts
+        origin = self.headers.get("Origin")
+        if origin is None or origin not in server.policy.allowed_origins:
+            return response
+        return ApiResponse(response.status, response.body,
+                           {**response.headers, "Access-Control-Allow-Origin": origin,
+                            "Vary": "Origin"})
+
+    def _preflight(self, headers: dict[str, str], path: str) -> ApiResponse:
+        """`OPTIONS` einer CORS-Surface. Prüft Host, Origin und Methode, nicht das
+        Token (Browser senden im Preflight keinen Authorization-Header), und berührt
+        keinen Store."""
+        server = cast("_ApiHTTPServer", self.server)
+        h = {name.lower(): value for name, value in headers.items()}
+        if h.get("host", "").strip(" \t").lower() not in server.policy.allowed_hosts:
+            return _auth_error(AuthResult(403, "bad_host"), server.surface.methods)
+        origin = h.get("origin")
+        if origin is None or origin not in server.policy.allowed_origins:
+            return _auth_error(AuthResult(403, "bad_origin"), server.surface.methods)
+        methods = server.surface.route_methods(path)
+        if not methods:
+            return error_response(404, "not_found", "Unbekannter Pfad.")
+        if h.get("access-control-request-method") not in methods:
+            return error_response(405, "method_not_allowed", "Methode nicht erlaubt.",
+                                  {"Allow": ", ".join(sorted(methods))})
+        reply = {
+            "Access-Control-Allow-Methods": ", ".join(sorted(methods)),
+            "Access-Control-Allow-Headers": "Authorization, Content-Type",
+            "Access-Control-Max-Age": "600",
+        }
+        if h.get("access-control-request-private-network", "").lower() == "true":
+            reply["Access-Control-Allow-Private-Network"] = "true"
+        return ApiResponse(204, None, reply)
 
     def _read_body(self) -> bytes | ApiResponse:
         raw = self.headers.get("Content-Length")
@@ -222,6 +267,8 @@ class _Handler(http.server.BaseHTTPRequestHandler):
         headers = dict(self.headers.items())
         path = self.path.partition("?")[0]
         surface = server.surface
+        if surface.cors and self.command == "OPTIONS":
+            return self._preflight(headers, path)
         if (self.command, path) in surface.public:
             auth = authorize_public(self.command, headers, server.policy)
         else:
