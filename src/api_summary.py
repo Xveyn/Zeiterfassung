@@ -115,37 +115,52 @@ def _slot_minutes(slot: Mapping[str, Any]) -> int:
     try:
         return hours_to_minutes(calculate_hours(
             slot.get("start"), slot.get("end"), slot.get("pause", 0)))
-    except (TypeError, ValueError, AttributeError):
-        _log.warning("Lokale API: Slot nicht berechenbar, zählt 0 Minuten: %r",
-                     slot, exc_info=True)
+    except (TypeError, ValueError, AttributeError, ArithmeticError) as exc:
+        # Kurz und ohne Slot-Inhalt: ein Dashboard fragt alle paar Sekunden, ein
+        # ungewöhnlicher Slot dürfte die Log-Rotation sonst in Stunden leerspülen.
+        _log.warning("Lokale API: Slot nicht berechenbar, zählt 0 Minuten (%s)",
+                     type(exc).__name__)
         return 0
 
 
-def _day_minutes(entry: Any) -> int:
-    return sum(_slot_minutes(slot) for slot in _slots_of(entry))
-
-
-def _limit_minutes(settings: SettingsLike) -> int | None:
-    try:
-        return hours_to_minutes(settings.get("werkstudent_limit_max_hours"))
-    except (TypeError, ValueError):
-        _log.warning("Lokale API: werkstudent_limit_max_hours nicht lesbar, "
-                     "Wochenlimit entfällt", exc_info=True)
-        return None
+def _day_slots(cache: dict[str, list[tuple[dict[str, Any], int]]],
+               entries: Mapping[str, Any], key: str) -> list[tuple[dict[str, Any], int]]:
+    """Die Slots eines Tages samt Minuten, je Anfrage einmal berechnet: Tage,
+    Kategorien, Wochen und Urlaubskappung teilen sich das Ergebnis (und ein
+    ungewöhnlicher Slot loggt nur einmal)."""
+    if key not in cache:
+        cache[key] = [(slot, _slot_minutes(slot)) for slot in _slots_of(entries.get(key))]
+    return cache[key]
 
 
 def _week_row(iso_year: int, iso_week: int, entries: Mapping[str, Any],
-              settings: SettingsLike) -> dict[str, Any]:
+              settings: SettingsLike, cache: dict[str, list[tuple[dict[str, Any], int]]],
+              use_limit: bool) -> dict[str, Any]:
     dates = get_week_dates(iso_year, iso_week)
-    total = sum(_day_minutes(entries.get(day.isoformat())) for day in dates)
+    total = sum(minutes for day in dates
+                for _, minutes in _day_slots(cache, entries, day.isoformat()))
     limit = None
-    if any(is_limit_active(settings, day.isoformat()) for day in dates):
-        limit = _limit_minutes(settings)
+    if use_limit and any(is_limit_active(settings, day.isoformat()) for day in dates):
+        limit = hours_to_minutes(settings.get("werkstudent_limit_max_hours"))
     return {
         "iso_year": iso_year, "iso_week": iso_week,
         "total_minutes": total, "limit_minutes": limit,
         "exceeded": limit is not None and total > limit,
     }
+
+
+def _week_rows(weeks: list[tuple[int, int]], entries: Mapping[str, Any],
+               settings: SettingsLike,
+               cache: dict[str, list[tuple[dict[str, Any], int]]]) -> list[dict[str, Any]]:
+    """Eine Zeile je Woche. Die Limit-Einstellungen sind Fremddaten (der Sync prüft
+    nur, dass ein Wert da ist; der Einstellungsdialog nimmt auch `inf`): sind sie
+    unlesbar, entfällt das Limit für die ganze Anfrage, einmal geloggt."""
+    try:
+        return [_week_row(year, week, entries, settings, cache, True) for year, week in weeks]
+    except (TypeError, ValueError, ArithmeticError) as exc:
+        _log.warning("Lokale API: Wochenlimit-Einstellungen nicht lesbar, Limit entfällt (%s)",
+                     type(exc).__name__)
+        return [_week_row(year, week, entries, settings, cache, False) for year, week in weeks]
 
 
 def _weeks_in(date_from: datetime.date, date_to: datetime.date) -> list[tuple[int, int]]:
@@ -165,8 +180,11 @@ def _pause_warnings(settings: SettingsLike,
     for day_key in sorted(in_range):
         try:
             violation = check_day_pause(settings, _slots_of(in_range[day_key]))
-        except Exception:
-            _log.exception("Lokale API: Pausenpflicht für %s nicht berechenbar", day_key)
+        except Exception as exc:
+            # Fremddaten (fehlende Felder, falsche Typen): kurz loggen, ohne
+            # Traceback, damit ein pollendes Dashboard das Log nicht flutet.
+            _log.warning("Lokale API: Pausenpflicht für %s nicht berechenbar (%s)",
+                         day_key, type(exc).__name__)
             continue
         if violation is not None:
             found.append({"date": day_key, **violation})
@@ -174,7 +192,7 @@ def _pause_warnings(settings: SettingsLike,
 
 
 def _vacation_part(vacation_days: Mapping[str, int], first: str, last: str,
-                   in_range: dict[str, Any]) -> tuple[int, list[dict[str, Any]]]:
+                   work: dict[str, Any]) -> tuple[int, list[dict[str, Any]]]:
     """(Urlaubsminuten nach Kappung, gekappte Tage). Gekappt wird wie in Mail,
     PDF und Webhook gegen die erfasste Ist-Zeit desselben Ausschnitts, damit ein
     Kalendertag nie mehr Stunden hat, als er hat (`vacations.cap_by_worktime`)."""
@@ -182,7 +200,7 @@ def _vacation_part(vacation_days: Mapping[str, int], first: str, last: str,
             if _DAY_KEY_RE.fullmatch(key) and first <= key <= last
             and isinstance(minutes, int) and not isinstance(minutes, bool)}
     try:
-        capped, hits = cap_by_worktime(days, in_range)
+        capped, hits = cap_by_worktime(days, work)
     except Exception:
         _log.exception("Lokale API: Urlaubskappung nicht berechenbar, Urlaub ungekappt")
         capped, hits = dict(days), []
@@ -205,20 +223,24 @@ def summarize(date_from: datetime.date, date_to: datetime.date,
     in_range = {key: entry for key, entry in entries.items()
                 if _DAY_KEY_RE.fullmatch(key) and first <= key <= last
                 and _slots_of(entry)}
+    cache: dict[str, list[tuple[dict[str, Any], int]]] = {}
     days = []
     by_category: dict[str, int] = {}
     for key in sorted(in_range):
-        slots = _slots_of(in_range[key])
-        minutes = 0
-        for slot in slots:
-            slot_minutes = _slot_minutes(slot)
-            minutes += slot_minutes
+        pairs = _day_slots(cache, entries, key)
+        for slot, slot_minutes in pairs:
             name = slot.get("kategorie")
             name = name if isinstance(name, str) else ""
             by_category[name] = by_category.get(name, 0) + slot_minutes
-        days.append({"date": key, "minutes": minutes, "slots": len(slots)})
+        days.append({"date": key, "minutes": sum(m for _, m in pairs), "slots": len(pairs)})
     total = sum(day["minutes"] for day in days)
-    vacation_minutes, capped_days = _vacation_part(vacation_days, first, last, in_range)
+    # Die Kappung rechnet gegen die bereits berechneten Minuten (ein Slot je
+    # "00:00"–"hh:mm"), nicht gegen die Rohdaten: ein ungewöhnlicher Slot an einem
+    # Urlaubstag darf die Kappung der anderen Tage nicht abschalten.
+    work = {key: {"slots": [{"start": "00:00", "end": f"{minutes // 60:02d}:{minutes % 60:02d}",
+                             "pause": 0} for _, minutes in _day_slots(cache, entries, key)]}
+            for key in in_range}
+    vacation_minutes, capped_days = _vacation_part(vacation_days, first, last, work)
     return {
         "from": first,
         "to": last,
@@ -230,7 +252,6 @@ def summarize(date_from: datetime.date, date_to: datetime.date,
         "by_category": [{"kategorie": name, "minutes": minutes} for name, minutes
                         in sorted(by_category.items(),
                                   key=lambda kv: (-kv[1], kv[0] == "", kv[0]))],
-        "weeks": [_week_row(year, week, entries, settings)
-                  for year, week in _weeks_in(date_from, date_to)],
+        "weeks": _week_rows(_weeks_in(date_from, date_to), entries, settings, cache),
         "pause_warnings": _pause_warnings(settings, in_range),
     }

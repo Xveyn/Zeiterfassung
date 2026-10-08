@@ -776,3 +776,17 @@ def test_holidays_use_the_state_of_the_settings(tmp_path):
 
 def test_holidays_without_a_state_are_empty_and_say_so(env):
     assert get(env, "/v1/holidays/2026").body == {"year": 2026, "state": "", "holidays": []}
+
+
+@pytest.mark.parametrize("path", ["/v1/summary/month/2026-01", "/v1/summary/week/2026-W02"])
+def test_a_non_finite_weekly_limit_setting_is_no_500(tmp_path, path):
+    env = Env(tmp_path, {"werkstudent_limit_enabled": True, "werkstudent_limit_start": "2026-01-01",
+                         "werkstudent_limit_end": "2026-12-31",
+                         "werkstudent_limit_max_hours": float("inf")})
+    env.storage.save("2026-01-05", [ist_slot("08:00", "12:00")])
+
+    response = get(env, path)
+
+    assert response.status == 200
+    assert response.body["total_minutes"] == 240
+    assert all(w["limit_minutes"] is None for w in response.body["weeks"])

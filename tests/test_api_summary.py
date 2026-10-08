@@ -245,7 +245,7 @@ def test_an_unreadable_limit_drops_the_limit_and_logs(caplog):
         result = run({"2026-01-05": day(ist_slot("08:00", "20:00"))},
                      dict(LIMIT, werkstudent_limit_max_hours=None))
     assert all(w["limit_minutes"] is None and not w["exceeded"] for w in result["weeks"])
-    assert "werkstudent_limit_max_hours" in caplog.text
+    assert "Wochenlimit" in caplog.text
 
 
 # --- Pausenpflicht -------------------------------------------------------------------------------
@@ -336,8 +336,70 @@ def test_an_odd_stored_slot_counts_zero_and_never_raises(caplog):
 def test_odd_data_on_one_day_does_not_hide_the_pause_warning_of_another(caplog):
     entries = {"2026-01-05": day({"start": "08:00", "end": "17:00"}, {"end": "18:00"}),
                "2026-01-06": day(ist_slot("08:00", "15:00", 0))}
-    with caplog.at_level(logging.ERROR, logger="src.api_summary"):
+    with caplog.at_level(logging.WARNING, logger="src.api_summary"):
         result = run(entries, {"pause_warning_enabled": True})
     assert [w["date"] for w in result["pause_warnings"]] == ["2026-01-06"]
     assert result["total_minutes"] == 540 + 420
     assert "Pausenpflicht für 2026-01-05" in caplog.text
+    assert all(r.exc_info is None for r in caplog.records)        # kein Traceback je Anfrage
+
+
+# --- Review-Befunde (I1, M1, M2, M3) ----------------------------------------------------------------
+
+@pytest.mark.parametrize("override", [
+    {"werkstudent_limit_max_hours": float("inf")},
+    {"werkstudent_limit_max_hours": float("-inf")},
+    {"werkstudent_limit_max_hours": float("nan")},
+    {"werkstudent_limit_max_hours": 1e999},
+    {"werkstudent_limit_max_hours": 1e308},
+    {"werkstudent_limit_max_hours": "viel"},
+    {"werkstudent_limit_start": 20260101},
+    {"werkstudent_limit_start": True},
+    {"werkstudent_limit_end": ["x"]},
+], ids=["inf", "-inf", "nan", "1e999", "1e308", "text", "start-int", "start-bool", "end-list"])
+def test_odd_limit_settings_drop_the_limit_and_never_raise(override, caplog):
+    entries = {"2026-01-05": day(ist_slot("08:00", "20:00"))}
+    with caplog.at_level(logging.WARNING, logger="src.api_summary"):
+        result = run(entries, dict(LIMIT, **override))
+    assert result["total_minutes"] == 720
+    assert all(w["limit_minutes"] is None and w["exceeded"] is False for w in result["weeks"])
+    assert len(caplog.records) == 1                       # einmal je Anfrage, nicht je Woche
+    assert "Wochenlimit" in caplog.text
+
+
+@pytest.mark.parametrize("pause", [float("-inf"), float("inf"), float("nan"), 10 ** 400],
+                         ids=["-inf", "inf", "nan", "huge-int"])
+def test_an_absurd_stored_pause_counts_zero_and_never_raises(pause):
+    entries = {"2026-01-05": day(ist_slot("08:00", "12:00"), ist_slot("13:00", "14:00", pause))}
+    result = run(entries, {"pause_warning_enabled": True})
+    assert result["total_minutes"] == 240
+    assert result["weeks"][1]["total_minutes"] == 240
+
+
+def test_an_odd_slot_on_one_vacation_day_does_not_switch_off_the_cap_for_the_others():
+    entries = {"2026-01-12": day(ist_slot("08:00", "12:00")),
+               "2026-01-13": day({"start": "08:00", "end": "12:00", "pause": None})}
+
+    result = run(entries, vacation={"2026-01-12": 480, "2026-01-13": 480})
+
+    assert result["vacation_minutes"] == (480 - 240) + 480
+    assert [d["date"] for d in result["vacation_capped_days"]] == ["2026-01-12"]
+
+
+def test_every_slot_is_computed_once_per_request(caplog):
+    entries = {"2026-01-05": day(ist_slot("08:00", "09:00"),
+                                 {"start": "09:00", "end": "10:00", "pause": None})}
+    with caplog.at_level(logging.WARNING, logger="src.api_summary"):
+        run(entries, {"pause_warning_enabled": True})
+    odd = [r for r in caplog.records if "Slot nicht berechenbar" in r.getMessage()]
+    assert len(odd) == 1
+
+
+def test_the_warning_for_an_odd_slot_is_short_and_has_no_traceback(caplog):
+    entries = {"2026-01-05": day({"start": "08:00", "end": "09:00", "pause": None,
+                                  "kategorie": "GEHEIM" * 100})}
+    with caplog.at_level(logging.WARNING, logger="src.api_summary"):
+        run(entries)
+    record = caplog.records[0]
+    assert record.exc_info is None
+    assert len(record.getMessage()) < 200 and "GEHEIM" not in record.getMessage()
