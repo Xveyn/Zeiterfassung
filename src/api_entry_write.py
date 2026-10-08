@@ -71,7 +71,7 @@ def _reject_duplicates(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
     return result
 
 
-def _load_json(body: bytes) -> Any:
+def load_json_body(body: bytes) -> Any:
     try:
         # utf-8-sig: ein BOM ist erlaubt (Windows PowerShell 5.1 schreibt eines).
         text = body.decode("utf-8-sig")
@@ -133,17 +133,10 @@ def _parse_slot(item: Any, index: int) -> dict[str, Any]:
     }
 
 
-def parse_day_body(body: bytes) -> list[dict[str, Any]]:
-    """Body → geprüfte Slots (`{start, end, pause, kategorie}`, alle vier Felder).
-    Wirft `WriteError`: 400 bei kaputtem JSON oder falscher Form, 422 bei
-    ungültigem Slot."""
-    data = _load_json(body)
-    if not isinstance(data, dict) or set(data) != {"slots"} or not isinstance(data["slots"], list):
-        raise WriteError(400, "invalid_body", 'Erwartet wird {"slots": [...]}.')
-    raw = data["slots"]
-    if not raw:
-        raise WriteError(422, "empty_slots",
-                         "Eine leere Slot-Liste speichert nichts — zum Löschen DELETE benutzen.")
+def parse_slots(raw: list[Any]) -> list[dict[str, Any]]:
+    """Geprüfte Slots (`{start, end, pause, kategorie}`, alle vier Felder) aus einer
+    Liste von Fremddaten. Wirft `WriteError` 422. Eine leere Liste ist hier gültig;
+    ob ein Tag ohne Slots erlaubt ist, entscheidet der Aufrufer."""
     if len(raw) > MAX_SLOTS:
         raise WriteError(422, "too_many_slots", f"Höchstens {MAX_SLOTS} Slots je Tag.")
     slots = [_parse_slot(item, i + 1) for i, item in enumerate(raw)]
@@ -151,6 +144,20 @@ def parse_day_body(body: bytes) -> list[dict[str, Any]]:
     if not ok:
         raise WriteError(422, "invalid_slots", message)
     return slots
+
+
+def parse_day_body(body: bytes) -> list[dict[str, Any]]:
+    """Body → geprüfte Slots (`{start, end, pause, kategorie}`, alle vier Felder).
+    Wirft `WriteError`: 400 bei kaputtem JSON oder falscher Form, 422 bei
+    ungültigem Slot."""
+    data = load_json_body(body)
+    if not isinstance(data, dict) or set(data) != {"slots"} or not isinstance(data["slots"], list):
+        raise WriteError(400, "invalid_body", 'Erwartet wird {"slots": [...]}.')
+    raw = data["slots"]
+    if not raw:
+        raise WriteError(422, "empty_slots",
+                         "Eine leere Slot-Liste speichert nichts — zum Löschen DELETE benutzen.")
+    return parse_slots(raw)
 
 
 def check_date_range(day: datetime.date) -> None:

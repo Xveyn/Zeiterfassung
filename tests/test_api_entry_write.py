@@ -330,3 +330,28 @@ def test_a_huge_key_name_is_cut_in_the_error_message():
     assert info.value.code == "invalid_slot"
     assert len(info.value.message) < 600
     assert "x" * 41 not in info.value.message
+
+
+def test_parse_slots_returns_checked_slots_with_all_four_fields():
+    slots = w.parse_slots([{"start": "08:00", "end": "12:00"}])
+    assert slots == [{"start": "08:00", "end": "12:00", "pause": 0, "kategorie": ""}]
+
+
+@pytest.mark.parametrize("raw,code", [
+    ([{"start": "8:00", "end": "12:00"}], "invalid_time"),
+    ([{"start": "08:00", "end": "12:00", "pause": -1}], "invalid_pause"),
+    ([{"start": "08:00", "end": "12:00", "x": 1}], "invalid_slot"),
+    ([{"start": "08:00", "end": "12:00"}, {"start": "11:00", "end": "13:00"}], "invalid_slots"),
+    ([{"start": "00:00", "end": "00:01"}] * (w.MAX_SLOTS + 1), "too_many_slots"),
+])
+def test_parse_slots_rejects_with_a_write_error(raw, code):
+    with pytest.raises(w.WriteError) as excinfo:
+        w.parse_slots(raw)
+    assert excinfo.value.status == 422 and excinfo.value.code == code
+
+
+def test_load_json_body_is_strict():
+    assert w.load_json_body(b'{"a": 1}') == {"a": 1}
+    for body in (b"{kaputt", b'{"a": NaN}', b'{"a": 1, "a": 2}', b"[" * 100000, b"\xff"):
+        with pytest.raises(w.WriteError):
+            w.load_json_body(body)
