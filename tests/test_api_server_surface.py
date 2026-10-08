@@ -310,3 +310,32 @@ def test_without_the_cors_switch_options_stays_a_405(make_server):
     assert response.getheader("Access-Control-Allow-Origin") is None
     ok, _, _ = call(server, "GET", "/v1/ping", {"Origin": ORIGIN})
     assert ok.getheader("Access-Control-Allow-Origin") is None
+
+
+def test_a_public_route_stays_public_with_a_query_string(make_server):
+    server = make_server()
+
+    response, body, _ = call(server, "POST", "/v1/pair?x=1", JSON, b"{}", token=None)
+
+    assert response.status == 200 and body["who"] == "anonymous"
+    assert server.calls == [("POST", "/v1/pair", "anonymous")]
+
+
+def test_a_preflight_204_carries_no_bytes_after_the_headers(make_server):
+    # http.client ignoriert bei 204 einen mitgesendeten Body: erst der Rohsocket zeigt ihn.
+    import socket
+    server = make_server(cors=True)
+    request = (f"OPTIONS /v1/sync HTTP/1.1\r\nHost: 127.0.0.1:{server.port}\r\n"
+               f"Origin: {ORIGIN}\r\nAccess-Control-Request-Method: POST\r\n"
+               "Connection: close\r\n\r\n").encode()
+    with socket.create_connection(("127.0.0.1", server.port), timeout=5) as sock:
+        sock.sendall(request)
+        raw = b""
+        while chunk := sock.recv(4096):
+            raw += chunk
+
+    head, _, rest = raw.partition(b"\r\n\r\n")
+    assert head.startswith(b"HTTP/1.0 204") and rest == b""
+    lines = [line.lower() for line in head.split(b"\r\n")]
+    assert not any(line.startswith(b"content-type:") for line in lines)
+    assert b"content-length: 0" in lines
