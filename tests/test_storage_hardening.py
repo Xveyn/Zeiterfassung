@@ -5,6 +5,11 @@ Zwei Linien: beim Laden wird die STRUKTUR repariert (mit Sicherung), und an der
 Lese-Grenze (`get`/`get_all`) werden die WERTE bereinigt (`sanitize_slot`). Das
 Original bleibt dort unangetastet, damit der Sync keine spontanen Änderungen sieht.
 """
+import json
+import logging
+import math
+import os
+
 import pytest
 
 from src.storage import MAX_PAUSE_MINUTES, Storage, sanitize_slot
@@ -16,6 +21,17 @@ DAY = "2026-01-05"
 def entry(slots, deleted=False):
     return {"slots": slots, "modified_at": "2026-01-05T08:00:00Z", "device_id": "x",
             "deleted": deleted}
+
+
+def write(tmp_path, content, name="z.json"):
+    path = tmp_path / name
+    path.write_text(content if isinstance(content, str) else json.dumps(content),
+                    encoding="utf-8")
+    return str(path)
+
+
+def backups(tmp_path):
+    return sorted(p.name for p in tmp_path.iterdir() if ".corrupt-" in p.name)
 
 
 # --- sanitize_slot ------------------------------------------------------------------------------
@@ -122,3 +138,137 @@ def test_hours_can_be_computed_for_every_cleaned_slot(storage):
                                 for pause in (None, "x", float("nan"), 10 ** 400, True)])
     for slot in storage.get(DAY)["slots"]:
         assert calculate_hours(slot["start"], slot["end"], slot["pause"]) == 4.0
+
+
+# --- Laden: Struktur --------------------------------------------------------------------------------------
+
+@pytest.mark.parametrize("content", ["[]", "[1, 2]", '"text"', "42", "true", "3.5"])
+def test_a_non_object_top_level_is_quarantined_and_the_app_starts_empty(tmp_path, content, caplog):
+    path = write(tmp_path, content)
+
+    with caplog.at_level(logging.WARNING):
+        storage = Storage(path, device_id="dev")
+
+    assert storage.get_all() == {}
+    assert not os.path.exists(path)
+    (name,) = backups(tmp_path)
+    assert (tmp_path / name).read_text(encoding="utf-8") == content          # Inhalt gerettet
+    assert "Top-Level" in caplog.text and "Quarantäne" in caplog.text
+    storage.save(DAY, [ist_slot("08:00", "09:00")])                          # und benutzbar
+    assert Storage(path, device_id="dev").get(DAY) == {"slots": [ist_slot("08:00", "09:00")]}
+
+
+def test_non_object_entries_are_dropped_with_a_backup_and_the_file_is_healed(tmp_path, caplog):
+    original = {"2026-01-05": entry([ist_slot("08:00", "09:00")]), "2026-01-06": None,
+                "2026-01-07": "x", "2026-01-08": [1]}
+    path = write(tmp_path, original)
+
+    with caplog.at_level(logging.WARNING):
+        storage = Storage(path, device_id="dev")
+
+    assert list(storage.get_all()) == ["2026-01-05"]
+    (name,) = backups(tmp_path)
+    assert json.loads((tmp_path / name).read_text(encoding="utf-8")) == original
+    assert "Sicherung" in caplog.text
+    assert sorted(json.loads(open(path, encoding="utf-8").read())) == ["2026-01-05"]   # geheilt
+
+
+def test_a_healed_file_makes_no_second_backup_on_the_next_start(tmp_path):
+    path = write(tmp_path, {"2026-01-05": None, "2026-01-06": entry(["x"])})
+    Storage(path, device_id="dev")
+    assert len(backups(tmp_path)) == 1
+
+    Storage(path, device_id="dev")
+    Storage(path, device_id="dev")
+
+    assert len(backups(tmp_path)) == 1
+
+
+def test_broken_slot_lists_are_repaired(tmp_path):
+    path = write(tmp_path, {
+        "2026-01-05": entry(["x", None, ist_slot("08:00", "09:00"), 5]),
+        "2026-01-06": entry("kaputt"), "2026-01-07": entry(None), "2026-01-08": entry({"a": 1}),
+    })
+
+    storage = Storage(path, device_id="dev")
+
+    raw = storage.get_all_raw()
+    assert raw["2026-01-05"]["slots"] == [ist_slot("08:00", "09:00")]
+    assert [raw[d]["slots"] for d in ("2026-01-06", "2026-01-07", "2026-01-08")] == [[], [], []]
+    assert len(backups(tmp_path)) == 1
+
+
+def test_repair_keeps_metadata_and_tombstones(tmp_path):
+    tomb = entry([], deleted=True)
+    path = write(tmp_path, {"2026-01-05": entry(["x", ist_slot("08:00", "09:00")]),
+                            "2026-01-06": tomb})
+
+    raw = Storage(path, device_id="dev").get_all_raw()
+
+    assert raw["2026-01-05"]["modified_at"] == "2026-01-05T08:00:00Z"
+    assert raw["2026-01-05"]["device_id"] == "x"
+    assert raw["2026-01-06"] == tomb
+
+
+def test_unusual_values_stay_raw_on_disk_but_are_clean_when_read(tmp_path):
+    odd = {"start": "08:00", "end": "12:00", "pause": None, "kategorie": ""}
+    path = write(tmp_path, {DAY: entry([odd])})
+
+    storage = Storage(path, device_id="dev")
+
+    assert storage.get_all_raw()[DAY]["slots"] == [odd]                      # Sync sieht das Original
+    assert storage.get(DAY) == {"slots": [ist_slot("08:00", "12:00", 0, "")]}
+    assert backups(tmp_path) == []                                           # kein Anlass zur Reparatur
+
+
+def test_a_clean_file_is_neither_backed_up_nor_rewritten(tmp_path):
+    path = write(tmp_path, {DAY: entry([ist_slot("08:00", "09:00")])})
+    os.utime(path, (1_000_000_000, 1_000_000_000))
+
+    Storage(path, device_id="dev")
+
+    assert backups(tmp_path) == []
+    assert os.path.getmtime(path) == 1_000_000_000
+
+
+def test_legacy_entries_are_still_migrated_next_to_broken_ones(tmp_path):
+    path = write(tmp_path, {"2026-01-05": {"start": "08:00", "end": "09:00", "pause": 15},
+                            "2026-01-06": None})
+
+    storage = Storage(path, device_id="dev")
+
+    assert storage.get(DAY) == {"slots": [ist_slot("08:00", "09:00", 15)]}
+
+
+def test_without_a_backup_nothing_is_written_back(tmp_path, monkeypatch, caplog):
+    original = {DAY: entry([ist_slot("08:00", "09:00")]), "2026-01-06": None}
+    path = write(tmp_path, original)
+
+    def refuse(*_args):
+        raise OSError("Platte voll")
+    monkeypatch.setattr("src.storage.backup_corrupt", refuse)
+
+    with caplog.at_level(logging.WARNING):
+        storage = Storage(path, device_id="dev")
+
+    assert list(storage.get_all()) == [DAY]                                  # der Start gelingt
+    assert json.loads(open(path, encoding="utf-8").read()) == original       # Datei unberührt
+    assert "nicht auf die Platte" in caplog.text
+
+
+def test_a_failing_heal_write_does_not_stop_the_start(tmp_path, monkeypatch):
+    path = write(tmp_path, {DAY: entry([ist_slot("08:00", "09:00")]), "2026-01-06": None})
+
+    def refuse(self):
+        raise OSError("schreibgeschützt")
+    monkeypatch.setattr(Storage, "_save_to_disk", refuse)
+
+    assert list(Storage(path, device_id="dev").get_all()) == [DAY]
+
+
+def test_nan_never_reaches_a_reader(tmp_path):
+    path = write(tmp_path, '{"2026-01-05": {"slots": [{"start": "08:00", "end": "12:00", '
+                           '"pause": NaN, "kategorie": ""}], "modified_at": "a", '
+                           '"device_id": "x", "deleted": false}}')
+    pause = Storage(path, device_id="dev").get(DAY)["slots"][0]["pause"]
+    assert pause == 0 and not math.isnan(pause)

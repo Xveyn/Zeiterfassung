@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import datetime
+import logging
 import os
 import threading
 from typing import Any
 
-from src.json_store import atomic_write_json, load_json_or_quarantine
+from src.json_store import (
+    atomic_write_json, backup_corrupt, load_json_or_quarantine, quarantine_corrupt,
+)
 from src.time_utils import utc_now_iso
 
 # JSON-getragene Records (Audit N8): ein Slot {start, end, pause, kategorie};
@@ -15,6 +18,8 @@ Slot = dict[str, Any]
 Entry = dict[str, Any]
 
 REQUIRED_ENTRY_KEYS = frozenset({"slots", "modified_at", "device_id", "deleted"})
+
+log = logging.getLogger(__name__)
 
 # Eine Pause über einen ganzen Tag hinaus ist kein Wert, sondern Müll.
 MAX_PAUSE_MINUTES = 24 * 60
@@ -83,8 +88,58 @@ class Storage:
         if data is None:  # nicht vorhanden oder korrupt (dann quarantäniert)
             self._data = {}
             return
+        if not isinstance(data, dict):
+            # Gültiges JSON, aber kein Store (Liste, Text, Zahl): sonst stürbe schon
+            # der Start in der Migration. Wie unparsebar behandeln.
+            quarantine_corrupt(
+                self.filepath, f"Top-Level ist {type(data).__name__}, erwartet ein Objekt")
+            self._data = {}
+            return
         self._data = data
+        dropped = self._drop_non_object_entries()
         self._migrate_legacy_entries()
+        repaired = self._repair_slot_structure()
+        if dropped or repaired:
+            self._heal(f"{dropped} Eintrag/Einträge ohne Objektform, "
+                       f"{repaired} Eintrag/Einträge mit kaputter Slot-Liste")
+
+    def _drop_non_object_entries(self) -> int:
+        """Entfernt Tage, deren Wert kein Objekt ist (`null`, Text, Liste)."""
+        bad = [day for day, entry in self._data.items() if not isinstance(entry, dict)]
+        for day in bad:
+            del self._data[day]
+        return len(bad)
+
+    def _repair_slot_structure(self) -> int:
+        """Macht aus einer Nicht-Liste als `slots` eine leere Liste und wirft
+        Nicht-Objekte aus der Liste. Nur die STRUKTUR: ungewöhnliche Werte in einem
+        Slot (`pause: null`) bleiben roh liegen und werden an der Lese-Grenze
+        (`sanitize_slot`) bereinigt, damit der Sync keine spontanen Änderungen sieht."""
+        fixed = 0
+        for entry in self._data.values():
+            slots = entry.get("slots")
+            if not isinstance(slots, list):
+                entry["slots"] = []
+                fixed += 1
+                continue
+            objects = [slot for slot in slots if isinstance(slot, dict)]
+            if len(objects) != len(slots):
+                entry["slots"] = objects
+                fixed += 1
+        return fixed
+
+    def _heal(self, problems: str) -> None:
+        """Sichert die Datei, dann schreibt sie den reparierten Stand zurück —
+        sonst fände jeder Start dasselbe vor und legte jedes Mal eine Sicherung an.
+        Ohne Sicherung wird nicht geschrieben (nichts geht still verloren); der
+        reparierte Stand gilt dann nur im Speicher."""
+        try:
+            backup_corrupt(self.filepath, problems)
+            self._save_to_disk()
+        except OSError:
+            log.warning("%s: Reparatur nicht auf die Platte geschrieben, der Stand "
+                        "gilt nur im Speicher", os.path.basename(self.filepath),
+                        exc_info=True)
 
     def _migrate_legacy_entries(self) -> None:
         """Rüstet Sync-Metadaten nach UND wrappt alte Ein-Eintrag-Tage in eine
