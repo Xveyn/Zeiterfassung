@@ -61,9 +61,12 @@ def test_a_malformed_body_is_400(raw):
         "invalid_json", "invalid_body", "invalid_encoding"}
 
 
+# Kurze IDs sind Pflicht: pytest macht die Parameter zur Test-ID und legt sie in die
+# Umgebungsvariable PYTEST_CURRENT_TEST — unter Windows sind Werte dort auf 32 767
+# Zeichen begrenzt, ein 100 000 Zeichen langer Bytes-Parameter ließ das Setup scheitern.
 @pytest.mark.parametrize("raw", [
-    b"[" * 100_000,                                       # RecursionError im Parser
-    b'{"slots": ' + b"[" * 100_000 + b"}",
+    pytest.param(b"[" * 100_000, id="verschachtelte-liste"),            # RecursionError im Parser
+    pytest.param(b'{"slots": ' + b"[" * 100_000 + b"}", id="verschachtelte-slots"),
 ])
 def test_deeply_nested_json_is_400_never_an_exception(raw):
     error = error_of(w.parse_day_body, raw)

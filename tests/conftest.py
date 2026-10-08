@@ -327,3 +327,20 @@ def fake_google_build(monkeypatch):
     monkeypatch.setattr(disc, "build", build)
     monkeypatch.setattr(drive, "build", build)
     return built
+
+
+# Windows begrenzt Umgebungsvariablen-Werte auf 32 767 Zeichen, und pytest legt die
+# Test-ID vor jedem Test in PYTEST_CURRENT_TEST. Ein riesiger Parameter (z. B.
+# 100 000 Bytes für einen Rekursionstest) wird zur Test-ID und lässt das Setup nur
+# unter Windows scheitern — die Linux-Läufe merken nichts (so geschehen in #240).
+MAX_NODE_ID_LENGTH = 4000
+
+
+def pytest_collection_modifyitems(items):
+    too_long = [item.nodeid for item in items if len(item.nodeid) > MAX_NODE_ID_LENGTH]
+    if too_long:
+        shown = "\n  ".join(f"{node[:100]}… ({len(node)} Zeichen)" for node in too_long[:5])
+        raise pytest.UsageError(
+            f"{len(too_long)} Test-ID(s) länger als {MAX_NODE_ID_LENGTH} Zeichen — unter "
+            "Windows scheitert damit das Setup (PYTEST_CURRENT_TEST ≤ 32 767). Kurze IDs "
+            f"vergeben: pytest.param(..., id=\"name\").\n  {shown}")
