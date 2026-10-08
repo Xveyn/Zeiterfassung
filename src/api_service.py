@@ -4,7 +4,7 @@
 `ApiService.apply()` liest `api_enabled`/`api_port` aus den Settings und bringt
 den Server in den passenden Zustand — im Worker, nie im UI-Thread: das
 Token-Laden blockiert (Windows: `icacls` bis 15 s). Das Ergebnis ist ein
-`ApiStatus` samt Grund, den der Settings-Tab (PR 3) anzeigt.
+`ApiStatus` samt Grund, den der Settings-Tab anzeigt.
 
 Beenden, Entfernen und Skalierungs-Neustart rufen `shutdown()`; das wartet nie
 länger als `lock_timeout` auf einen laufenden Start (nichts darf das Beenden

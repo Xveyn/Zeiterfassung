@@ -295,7 +295,7 @@ def curl_example(raw_port: Any) -> str:
 
 
 TOKEN_MASK = "•" * 24
-TOKEN_MISSING = "Wird beim ersten Einschalten erzeugt."
+TOKEN_MISSING = "Kein lesbares Token — wird beim Einschalten der API erzeugt."
 
 
 def token_buttons_enabled(*, api_on: bool, token_known: bool, busy: bool) -> bool:

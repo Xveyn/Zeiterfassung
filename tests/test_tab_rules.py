@@ -411,3 +411,9 @@ def test_leading_zeros_are_accepted_as_the_plain_number():
     # Entscheidung: „08080“ ist 8080 (harmlos, eindeutig) — weder Fehler noch Sonderfall.
     assert tr.validate_api(api_raw(api_port="08080")) is None
     assert tr.api_updates(api_raw(api_port="08080"))["api_port"] == 8080
+
+
+def test_the_missing_token_text_does_not_promise_a_first_time_creation():
+    # Die Maske steht auch, wenn die API läuft und die Datei extern gelöscht wurde.
+    assert "ersten" not in tr.TOKEN_MISSING
+    assert "lesbar" in tr.TOKEN_MISSING and "Einschalten" in tr.TOKEN_MISSING

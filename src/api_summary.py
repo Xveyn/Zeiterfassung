@@ -217,7 +217,8 @@ def summarize(date_from: datetime.date, date_to: datetime.date,
     """Auswertung für [date_from, date_to] (beide einschließlich) über einen
     `Storage.get_all()`-Snapshot (ohne Tombstones) und den Urlaubs-Snapshot
     `{ISO: Minuten}`. `by_category` ist nach Minuten absteigend sortiert, bei
-    Gleichstand nach Name, die leere Kategorie zuletzt (wie im Bericht). `weeks` führt jede ISO-Woche auf, die der Zeitraum
+    Gleichstand nach Name (Groß-/Kleinschreibung beachtend, anders als der Bericht), die
+    leere Kategorie zuletzt. `weeks` führt jede ISO-Woche auf, die der Zeitraum
     berührt, mit der Summe der GANZEN Woche — das Wochenlimit gilt für die Woche,
     auch wenn der Monat sie nur teilweise enthält."""
     first, last = date_from.isoformat(), date_to.isoformat()

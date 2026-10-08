@@ -8,10 +8,12 @@ Verbindung ein weiterer Daemon-Thread (`ThreadingMixIn`). Der Server berührt ni
 ein Widget und hält keinen Store-Lock; die Routen holen ihre Daten über die
 Store-Methoden.
 
-Absichtlich NICHT `serve_forever()`/`shutdown()`: `shutdown()` blockiert für
-immer, wenn es vor dem Eintritt in `serve_forever()` gerufen wird (Beenden
-direkt nach dem Start). Stattdessen pollt eine eigene Schleife mit
-`handle_request()` und einem 0,1-s-Timeout gegen ein `Event`.
+Absichtlich NICHT `serve_forever()`/`shutdown()`: `shutdown()` wartet, bis
+`serve_forever()` die Schleife verlassen hat, und blockiert für immer, wenn der
+Thread nie dorthin kommt (er startet nicht, oder `start()` scheitert nach dem
+Bind). Stattdessen pollt eine eigene Schleife mit `handle_request()` und einem
+0,1-s-Timeout gegen ein `Event`; der Preis sind rund zehn Aufwachvorgänge pro
+Sekunde.
 
 Unter Windows bindet der Server mit `SO_EXCLUSIVEADDRUSE` und ohne
 `SO_REUSEADDR`: sonst dürfte ein anderer lokaler Prozess denselben Port

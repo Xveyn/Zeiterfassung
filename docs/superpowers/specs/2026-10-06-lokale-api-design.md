@@ -36,7 +36,7 @@ riskanteste Umbau wären:
 
 | Modul | Aufgabe |
 |---|---|
-| `src/api_auth.py` | Token erzeugen/laden (Datei `api-token` im Datenordner, Muster `single_instance._write_secret_atomic`: Temp → `chmod 0600` → `harden_windows_acl` → `os.replace` mit `PermissionError`-Retry). `authorize(request, policy) -> AuthResult` als **eine** Funktion. Vergleich mit `hmac.compare_digest`. |
+| `src/api_auth.py` | Token erzeugen/laden (Datei `api-token` im Datenordner, Muster `single_instance._write_secret_atomic`: Temp → `chmod 0600` → `harden_windows_acl` → `os.replace` mit `PermissionError`-Retry). `authorize(method, headers, policy, verifier) -> AuthResult` als **eine** Funktion. Vergleich mit `hmac.compare_digest`. |
 | `src/api_routes.py` | `handle(ApiRequest, ctx) -> ApiResponse`: Routing, Validierung, Serialisierung. `ctx` hält Stores, `data_lock` und den `on_change`-Callback. |
 | `src/api_server.py` | Dünner `ThreadingHTTPServer` im eigenen Daemon-Thread (Muster: Accept-Loop in `single_instance`). Body-Limit, Socket-Timeouts, Start/Stopp. Kein Fachwissen. |
 

@@ -604,7 +604,7 @@ Wert.
   benennbarer Principal → loggen und weiter): ungehärtet ist der Status quo, eine
   gescheiterte Persistenz wäre eine Regression. Eigenes Modul, damit `single_instance`
   nichts aus dem OAuth-Umfeld importieren muss (und keiner den privaten Namen des anderen
-  nutzt, Audit N17). Wer einen fünften Secret-Schreibpfad baut, ruft diesen Helfer mit auf.
+  nutzt, Audit N17). Wer einen sechsten Secret-Schreibpfad baut, ruft diesen Helfer mit auf.
   **Aufrufhäufigkeit:** der Helfer hängt an `write_token_json`, läuft also bei *jedem*
   Token-Refresh in Mail-, Drive- und Kalender-Pfad — ein `icacls`-Subprozess pro
   Refresh, nicht einmalig beim Anlegen. Unkritisch, weil alle diese Pfade in den
@@ -662,8 +662,10 @@ Wert.
 - `api_summary.py` — Auswertungen der lokalen API (#92), Tk-frei, rein: Pfad-Parser (`parse_week`, `parse_month`, `parse_year`, nur ASCII-Ziffern, `fromisocalendar` entscheidet über KW 53), `summarize` (Tage, Kategorien, `weeks[]` mit Wochenlimit, Pausenwarnungen, Urlaub über `vacations.cap_by_worktime`), `category_names`, `holidays_for`. Gerechnet wird über **Minuten je Slot**; gespeicherte Slots sind Fremddaten, ein ungewöhnlicher Slot zählt 0 Minuten und wird geloggt. Die Routen (`/v1/summary/week|month`, `/v1/categories`, `/v1/holidays`) in `api_routes` holen nur den Snapshot (`Storage.get_all()`, `VacationStore.day_minutes()`), halten keinen Lock und melden nie `on_change`.
 - `api_server.py` — HTTP-Server der lokalen API: `ApiServer(context, verifier,
   port=…)`. Ein Daemon-Thread mit eigener `handle_request()`-Schleife (kein
-  `serve_forever()`/`shutdown()`: das blockiert für immer, wenn es vor dem Eintritt
-  in die Schleife gerufen wird), pro Verbindung ein Daemon-Thread. Reihenfolge je
+  `serve_forever()`/`shutdown()`: `shutdown()` wartet, bis die Schleife verlassen
+  wurde, und blockiert für immer, wenn der Thread nie dorthin kommt — Preis der
+  eigenen Schleife sind rund zehn Aufwachvorgänge pro Sekunde), pro Verbindung ein
+  Daemon-Thread. Reihenfolge je
   Anfrage: doppelte Header → 400, `api_auth.authorize`, `Transfer-Encoding` → 400,
   Body lesen (Limit 1 MiB), `api_routes.handle`. Nur Loopback (Bind-Adresse aus
   `Policy.bind_host`); `server_bind` umgeht `socket.getfqdn` (hängt bei kaputtem
