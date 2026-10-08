@@ -34,6 +34,10 @@ from src.weekly_limit import check_week_limit
 
 _log = logging.getLogger(__name__)
 
+# Schlüsselnamen aus dem Body kommen mit höchstens 1 MiB Länge; in der Fehlermeldung
+# stehen sie gekürzt (wie `_NAME_ECHO_MAX` bei den Query-Parametern).
+_KEY_ECHO_MAX = 40
+
 MIN_YEAR = 2000
 MAX_YEAR = 2100
 MAX_SLOTS = 50
@@ -116,7 +120,7 @@ def _parse_slot(item: Any, index: int) -> dict[str, Any]:
         raise WriteError(
             422, "invalid_slot",
             f"Slot {index}: erlaubt sind start, end (Pflicht) sowie pause und kategorie; "
-            f"gefunden: {sorted(keys)[:10]}.")
+            f"gefunden: {sorted(str(key)[:_KEY_ECHO_MAX] for key in keys)[:10]}.")
     pause = item.get("pause", 0)
     if not isinstance(pause, int) or isinstance(pause, bool) or pause < 0:
         raise WriteError(422, "invalid_pause",

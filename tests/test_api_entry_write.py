@@ -319,3 +319,14 @@ def test_a_failing_weekly_check_does_not_hide_the_pause_warning():
     slots = [{"start": "08:00", "end": "16:00", "pause": 0, "kategorie": ""}]   # 8 h ohne Pause
     codes = [x["code"] for x in w.warnings_for(LIMIT, entries, "2026-10-09", slots)]
     assert codes == ["pause_requirement"]
+
+
+def test_a_huge_key_name_is_cut_in_the_error_message():
+    body = json.dumps({"slots": [{"start": "08:00", "end": "09:00", "x" * 200_000: 1}]}).encode()
+
+    with pytest.raises(WriteError) as info:
+        w.parse_day_body(body)
+
+    assert info.value.code == "invalid_slot"
+    assert len(info.value.message) < 600
+    assert "x" * 41 not in info.value.message
