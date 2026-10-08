@@ -75,6 +75,10 @@ def _no_change() -> None:
     return None
 
 
+def _not_closing() -> bool:
+    return False
+
+
 @dataclass(frozen=True)
 class ApiContext:
     storage: EntryStore
@@ -89,6 +93,10 @@ class ApiContext:
     conflicts_store: Any = None
     vacation_store: Any = None
     on_change: Callable[[], None] = _no_change
+    # Wahr, sobald die App beendet oder entfernt wird: schreibende Routen
+    # lehnen dann (unter dem Lock) mit 503 ab. Der Sync-Push nimmt denselben
+    # Lock — so landet nach `shutdown()` nichts mehr hinter dem Push-Snapshot.
+    closing: Callable[[], bool] = _not_closing
 
 
 def error_response(status: int, code: str, message: str,
@@ -176,6 +184,11 @@ def _locked(ctx: ApiContext) -> Any:
     return ctx.data_lock if ctx.data_lock is not None else contextlib.nullcontext()
 
 
+def _refuse_while_closing(ctx: ApiContext) -> None:
+    if ctx.closing():
+        raise _ApiError(503, "shutting_down", "Die App wird gerade beendet.")
+
+
 def _notify(ctx: ApiContext) -> None:
     try:
         ctx.on_change()
@@ -199,6 +212,7 @@ def _put_entry(request: ApiRequest, ctx: ApiContext, match: re.Match[str]) -> Ap
     day_key = _write_day(match)
     slots = parse_day_body(request.body)
     with _locked(ctx):
+        _refuse_while_closing(ctx)
         check_day_writable(day_key, conflicts_store=ctx.conflicts_store,
                            vacation_store=ctx.vacation_store, for_save=True)
         existing = ctx.storage.get(day_key)
@@ -218,6 +232,7 @@ def _delete_entry(request: ApiRequest, ctx: ApiContext, match: re.Match[str]) ->
     _only_params(request.query, frozenset())
     day_key = _write_day(match)
     with _locked(ctx):
+        _refuse_while_closing(ctx)
         check_day_writable(day_key, conflicts_store=ctx.conflicts_store,
                            vacation_store=ctx.vacation_store, for_save=False)
         if ctx.storage.get(day_key) is None:

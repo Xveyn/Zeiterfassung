@@ -633,7 +633,7 @@ Traceback-/Catch-all-Ausgabe → nativ.
 
 ### Ein Catch-all loggt, meldet oder trägt eine Begründung (Xveyn#73)
 
-`src/` hält rund 105 Handler auf `except Exception` / `except BaseException`.
+`src/` hält rund 125 Handler auf `except Exception` / `except BaseException`.
 Die **Dichte ist unkritisch und gewollt**: sie sitzen im Bootstrap, an
 Threading-Rändern und an Best-Effort-Plattformaufrufen — genau dort, wo ein
 Catch-all hingehört. Eine Bestandsaufnahme über alle Handler ergab, dass 96 %

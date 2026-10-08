@@ -11,7 +11,8 @@ from src.api_routes import ApiContext
 from src.api_service import (
     DEFAULT_PORT, REASON_CLOSED, REASON_INVALID_PORT, REASON_PORT_IN_USE,
     REASON_ROTATE_FAILED, REASON_TOKEN_UNAVAILABLE, STATE_ERROR, STATE_OFF,
-    STATE_RUNNING, STATE_STARTING, ApiService, ApiStatus, RotateResult, parse_port,
+    STATE_RUNNING, STATE_STARTING, ApiService, ApiStatus, RefreshCoalescer, RotateResult,
+    parse_port,
 )
 from src.settings import DEFAULTS
 from src.storage import Storage
@@ -499,3 +500,90 @@ def test_a_stale_starting_status_is_corrected_when_the_server_already_runs(tmp_p
         assert service._reconcile() == ApiStatus(STATE_RUNNING, port)
     finally:
         service.shutdown()
+
+
+
+# --- Review PR 4: Refresh bündeln, Schreiben beim Beenden sperren --------------------------------------
+
+def test_refresh_requests_are_coalesced_into_one_scheduled_run():
+    scheduled, ran = [], []
+    coalescer = RefreshCoalescer(scheduled.append, lambda: ran.append(1))
+
+    for _ in range(1000):                   # ein Backfill-Skript mit 1000 PUTs
+        coalescer.request()
+
+    assert len(scheduled) == 1 and ran == []
+    scheduled[0]()
+    assert ran == [1]
+
+
+def test_a_request_after_the_run_schedules_again():
+    scheduled, ran = [], []
+    coalescer = RefreshCoalescer(scheduled.append, lambda: ran.append(1))
+    coalescer.request()
+    scheduled.pop()()
+
+    coalescer.request()
+
+    assert len(scheduled) == 1
+
+
+def test_a_failing_schedule_does_not_wedge_the_coalescer():
+    calls = []
+
+    def schedule(fn):
+        calls.append(fn)
+        raise RuntimeError("Fenster weg")
+
+    coalescer = RefreshCoalescer(schedule, lambda: None)
+    with pytest.raises(RuntimeError):
+        coalescer.request()
+    with pytest.raises(RuntimeError):
+        coalescer.request()                 # „ansteht“ wurde zurückgesetzt
+
+    assert len(calls) == 2
+
+
+def test_a_failing_action_still_clears_the_pending_flag():
+    scheduled = []
+
+    def action():
+        raise ValueError("kaputt")
+
+    coalescer = RefreshCoalescer(scheduled.append, action)
+    coalescer.request()
+    with pytest.raises(ValueError):
+        scheduled.pop()()
+
+    coalescer.request()
+
+    assert len(scheduled) == 1
+
+
+def test_concurrent_requests_schedule_exactly_once():
+    scheduled = []
+    coalescer = RefreshCoalescer(scheduled.append, lambda: None)
+    barrier = threading.Barrier(20)
+
+    def worker():
+        barrier.wait()
+        coalescer.request()
+
+    threads = [threading.Thread(target=worker) for _ in range(20)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    assert len(scheduled) == 1
+
+
+def test_the_write_context_knows_when_the_service_is_closing(tmp_path):
+    service = make_service(tmp_path, {"api_enabled": False, "api_port": 17653})
+    assert service._context.closing() is False
+
+    service.shutdown()
+    assert service._context.closing() is True
+
+    service.reopen()
+    assert service._context.closing() is False

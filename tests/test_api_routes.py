@@ -251,10 +251,12 @@ class TrackingLock:
     def __init__(self):
         self._lock = threading.RLock()
         self.depth = 0
+        self.enters = 0
 
     def __enter__(self):
         self._lock.acquire()
         self.depth += 1
+        self.enters += 1
         return self
 
     def __exit__(self, *exc):
@@ -523,3 +525,85 @@ def test_delete_runs_under_the_lock(env, monkeypatch):
     env.delete()
 
     assert seen == [1]
+
+
+
+# --- Review PR 4 -----------------------------------------------------------------------------------
+
+def test_put_takes_the_lock_exactly_once_so_check_and_save_are_one_critical_section(env):
+    # Zwei getrennte `with`-Blöcke (Prüfen / Speichern) wären ein echtes TOCTOU —
+    # die Tiefe am Check und am Save wäre in beiden Fällen 1.
+    env.put(SLOTS_BODY)
+    assert env.lock.enters == 1
+
+
+def test_delete_takes_the_lock_exactly_once(env):
+    env.put(SLOTS_BODY)
+    before = env.lock.enters
+    env.delete()
+    assert env.lock.enters - before == 1
+
+
+def test_delete_on_a_vacation_day_is_allowed(env):
+    # Löschen ist der Weg aus der Sackgasse: nur PUT wird am Urlaubstag gesperrt.
+    env.vacations.save(None, "Sommer", "2026-10-07", "2026-10-09", {
+        "2026-10-07": 480, "2026-10-08": 480, "2026-10-09": 480})
+    env.storage.save("2026-10-07", [{"start": "08:00", "end": "09:00"}])   # Altlast
+
+    response = env.delete("2026-10-07")
+
+    assert response.status == 200 and env.storage.get("2026-10-07") is None
+
+
+def test_a_lone_surrogate_is_422_and_leaves_the_store_usable(env):
+    bad = b'{"slots": [{"start": "08:00", "end": "09:00", "kategorie": "A\\ud83d"}]}'
+
+    response = env.put(bad)
+
+    assert (response.status, code(response)) == (422, "invalid_category")
+    env.storage.save("2026-10-09", [{"start": "08:00", "end": "09:00"}])   # darf nicht werfen
+    assert env.storage.get(DAY) is None and env.changes == 0
+
+
+def test_a_failed_disk_write_is_not_remembered_as_saved(env, monkeypatch):
+    real = env.storage._save_to_disk
+    monkeypatch.setattr(env.storage, "_save_to_disk",
+                        lambda: (_ for _ in ()).throw(OSError(28, "voll")))
+    with pytest.raises(OSError):
+        env.put(SLOTS_BODY)
+    assert env.changes == 0 and env.storage.get(DAY) is None
+    monkeypatch.setattr(env.storage, "_save_to_disk", real)
+
+    retry = env.put(SLOTS_BODY)
+
+    # Ohne Rollback stünde der Tag im Speicher: der Retry wäre „unverändert“ und
+    # würde nie auf die Platte geschrieben.
+    assert retry.status == 200 and retry.body["changed"] is True and env.changes == 1
+
+
+@pytest.mark.parametrize("method", ["PUT", "DELETE"])
+def test_writes_are_refused_while_the_service_shuts_down(tmp_path, method):
+    env = Env(tmp_path)
+    env.put(SLOTS_BODY)
+    changes = env.changes
+    env.ctx = ApiContext(storage=env.storage, settings={}, app_version=lambda: "t",
+                         data_lock=env.lock, closing=lambda: True,
+                         on_change=env._on_change)
+    request = ApiRequest(method, f"/v1/entries/{DAY}", {}, OTHER_BODY)
+
+    response = handle(request, env.ctx, LOCAL)
+
+    assert (response.status, code(response)) == (503, "shutting_down")
+    assert env.storage.get(DAY)["slots"][0]["end"] == "12:00" and env.changes == changes
+    assert handle(ApiRequest("GET", f"/v1/entries/{DAY}", {}), env.ctx, LOCAL).status == 200
+
+
+def test_odd_stored_data_cannot_block_a_put_through_the_warnings(tmp_path):
+    settings = {"werkstudent_limit_enabled": True, "werkstudent_limit_start": "2026-01-01",
+                "werkstudent_limit_end": "2026-12-31", "werkstudent_limit_max_hours": 20}
+    env = Env(tmp_path, settings=settings)
+    env.storage.save("2026-10-08", [{"start": "08:00", "end": "17:00", "pause": None}])
+
+    response = env.put(SLOTS_BODY, day="2026-10-09")
+
+    assert response.status == 200 and env.storage.get("2026-10-09") is not None

@@ -1,6 +1,7 @@
 # tests/test_api_entry_write.py
 import datetime
 import json
+import logging
 
 import pytest
 
@@ -56,7 +57,8 @@ def test_a_non_ascii_category_is_fine():
 ])
 def test_a_malformed_body_is_400(raw):
     error = error_of(w.parse_day_body, raw)
-    assert error.status == 400 and error.code in {"invalid_json", "invalid_body"}
+    assert error.status == 400 and error.code in {
+        "invalid_json", "invalid_body", "invalid_encoding"}
 
 
 @pytest.mark.parametrize("raw", [
@@ -110,7 +112,8 @@ def test_pause_must_be_a_whole_number_of_minutes(pause):
 
 
 @pytest.mark.parametrize("category", [5, None, ["a"], {"a": 1}, True,
-                                      "a\nb", "a\x00b", "a\x7fb", "a\tb", "x" * 101])
+                                      "a\nb", "a\x00b", "a\x7fb", "a\tb", "x" * 101,
+                                      "\ud800", "A\ud83d", "\udc00x", "a\x85b", "a\x9fb"])
 def test_a_bad_category_is_422(category):
     error = error_of(w.parse_day_body, body([{"start": "08:00", "end": "12:00",
                                               "kategorie": category}]))
@@ -267,3 +270,49 @@ def test_warnings_do_not_mutate_the_callers_entries():
     w.warnings_for(LIMIT, entries, "2026-10-09",
                    [{"start": "08:00", "end": "13:00", "pause": 0, "kategorie": ""}])
     assert json.dumps(entries, sort_keys=True) == before
+
+
+
+# --- Review PR 4: Surrogate, Kodierung, Warnungen -------------------------------------------------
+
+def test_a_lone_surrogate_can_never_reach_the_store():
+    # Ein Skript, das einen Namen mitten in einem Emoji kürzt, erzeugt \ud83d. Im
+    # Store würde es jedes spätere Speichern an `UnicodeEncodeError` scheitern lassen.
+    raw = b'{"slots": [{"start": "08:00", "end": "09:00", "kategorie": "A\\ud83d"}]}'
+    error = error_of(w.parse_day_body, raw)
+    assert (error.status, error.code) == (422, "invalid_category")
+
+
+def test_a_utf8_bom_is_ignored():
+    # Windows PowerShell 5.1: `Set-Content -Encoding UTF8` schreibt ein BOM.
+    slots = w.parse_day_body(b"\xef\xbb\xbf" + body())
+    assert slots[0]["start"] == "08:00"
+
+
+@pytest.mark.parametrize("raw", [
+    body().decode("utf-8").encode("utf-16"),                       # `>` / Out-File
+    '{"slots": [{"start": "08:00", "end": "09:00", "kategorie": "Büro"}]}'.encode("cp1252"),
+])
+def test_other_encodings_get_a_clear_encoding_error(raw):
+    error = error_of(w.parse_day_body, raw)
+    assert (error.status, error.code) == (400, "invalid_encoding")
+    assert "UTF-8" in error.message
+
+
+def test_warnings_never_block_a_write_even_on_odd_stored_data(caplog):
+    # Der Sync validiert Slot-Inhalte nicht; ein gespeicherter Slot mit pause=None
+    # ließ `week_ist_minutes` mit TypeError scheitern und damit das Schreiben.
+    entries = {"2026-10-08": {"slots": [{"start": "08:00", "end": "17:00",
+                                         "pause": None, "kategorie": ""}]}}
+    slots = [{"start": "08:00", "end": "09:00", "pause": 0, "kategorie": ""}]
+    with caplog.at_level(logging.ERROR):
+        assert w.warnings_for(LIMIT, entries, "2026-10-09", slots) == []
+    assert "Warnungen" in caplog.text
+
+
+def test_a_failing_weekly_check_does_not_hide_the_pause_warning():
+    entries = {"2026-10-08": {"slots": [{"start": "08:00", "end": "17:00",
+                                         "pause": None, "kategorie": ""}]}}
+    slots = [{"start": "08:00", "end": "16:00", "pause": 0, "kategorie": ""}]   # 8 h ohne Pause
+    codes = [x["code"] for x in w.warnings_for(LIMIT, entries, "2026-10-09", slots)]
+    assert codes == ["pause_requirement"]

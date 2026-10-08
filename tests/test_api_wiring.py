@@ -205,7 +205,7 @@ def test_the_api_context_carries_the_locks_stores_and_the_refresh_callback():
     assert keywords["conflicts_store"] == "self.conflicts_store"
     assert keywords["vacation_store"] == "self.vacation_store"
     # Der Server-Thread berührt nie ein Widget: Neuzeichnen nur über den Marshal.
-    assert keywords["on_change"] == "lambda: self._marshal_to_ui(self._refresh)"
+    assert keywords["on_change"] == "self._api_refresh.request"
 
 
 def test_the_api_is_shut_down_before_the_final_sync_push():
@@ -215,3 +215,14 @@ def test_the_api_is_shut_down_before_the_final_sync_push():
     shutdown = _top_level_statement(func, _self_calls(func, "_api", "shutdown")[0])
     push = _top_level_statement(func, _self_calls(func, "_sync", "push_on_quit")[0])
     assert func.body.index(shutdown) < func.body.index(push)
+
+
+
+def test_api_refreshes_are_coalesced_and_marshalled_to_the_ui_thread():
+    # 365 PUTs eines Backfill-Skripts dürfen nicht 365 volle Grid-Refreshs queuen
+    # (je rund 0,3–0,9 s); der Server-Thread berührt nie ein Widget.
+    init = _function("__init__")
+    built = [ast.unparse(n.value) for n in ast.walk(init)
+             if isinstance(n, ast.Assign)
+             and any(isinstance(t, ast.Attribute) and t.attr == "_api_refresh" for t in n.targets)]
+    assert built == ["RefreshCoalescer(self._marshal_to_ui, self._refresh)"]

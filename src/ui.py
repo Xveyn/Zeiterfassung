@@ -17,7 +17,7 @@ from src.version import VERSION, installed_release_id, version_label
 
 from src.background_tasks import BackgroundTaskRunner
 from src.api_routes import ApiContext
-from src.api_service import ApiService
+from src.api_service import ApiService, RefreshCoalescer
 from src.weekly_limit import format_limit_warnings
 from src.grid_renderer import GridRenderer
 from src.paths import get_resource_path, relaunch_command, relaunch_env
@@ -114,6 +114,8 @@ class App:
         # Lock, schreibende prüfen und speichern unter dem geteilten `data_lock`
         # und melden die Änderung über den Marshal (der Server-Thread berührt nie
         # ein Widget).
+        # Viele API-Schreibzugriffe nacheinander lösen nur EINEN Refresh aus.
+        self._api_refresh = RefreshCoalescer(self._marshal_to_ui, self._refresh)
         self._api = ApiService(
             self.settings, self.base_path,
             ApiContext(storage=self.storage, settings=self.settings,
@@ -121,7 +123,7 @@ class App:
                        data_lock=self._data_lock,
                        conflicts_store=self.conflicts_store,
                        vacation_store=self.vacation_store,
-                       on_change=lambda: self._marshal_to_ui(self._refresh)),
+                       on_change=self._api_refresh.request),
             run=self._bg.run)
         self._renderer = GridRenderer(
             self.root, self.storage, self.settings, self.reservation_store,

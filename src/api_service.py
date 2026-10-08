@@ -13,6 +13,7 @@ ein spät fertiges Token-Laden die Datei neu anlegen würde.
 """
 from __future__ import annotations
 
+import dataclasses
 import errno
 import logging
 import threading
@@ -67,6 +68,41 @@ class RotateResult:
     reason: str = ""
 
 
+class RefreshCoalescer:
+    """Bündelt viele `request()`-Aufrufe zu **einem** ausstehenden Lauf.
+
+    Die API meldet jede Änderung; ein Skript, das 365 Tage nachträgt, würde sonst
+    365 volle Grid-Refreshs queuen (je rund 0,3–0,9 s) und die UI minutenlang
+    lähmen. `schedule` bringt die Aktion in den UI-Thread (`App._marshal_to_ui`),
+    `action` ist das Neuzeichnen. Thread-sicher: `request()` kommt aus Server-
+    Threads. Schlägt `schedule` fehl, wird „steht an“ zurückgesetzt, sonst käme nie
+    wieder ein Refresh."""
+
+    def __init__(self, schedule: Callable[[Callable[[], None]], None],
+                 action: Callable[[], None]) -> None:
+        self._schedule = schedule
+        self._action = action
+        self._lock = threading.Lock()
+        self._pending = False
+
+    def request(self) -> None:
+        with self._lock:
+            if self._pending:
+                return
+            self._pending = True
+        try:
+            self._schedule(self._run)
+        except BaseException:
+            with self._lock:
+                self._pending = False
+            raise
+
+    def _run(self) -> None:
+        with self._lock:
+            self._pending = False       # zuerst: ein Fehler in `action` darf nichts blockieren
+        self._action()
+
+
 def parse_port(value: Any) -> int | None:
     """Gültiger Port (1024–65535) oder `None`. Bools, Floats, Text mit Nicht-
     ASCII-Ziffern und absurd lange Zahlen sind ungültig."""
@@ -95,7 +131,9 @@ class ApiService:
                  on_status: Callable[[ApiStatus], None] | None = None) -> None:
         self._settings = settings
         self._base_path = base_path
-        self._context = context
+        # Die schreibenden Routen fragen `closing` unter dem Lock: nach `shutdown()`
+        # (Beenden, Entfernen, Neustart) schreibt keine Route mehr.
+        self._context = dataclasses.replace(context, closing=lambda: self._closed)
         self._run = run
         self._on_status = on_status
         self._lock = threading.Lock()

@@ -124,15 +124,30 @@ class Storage:
                 return None
             return self._user_shape(entry)
 
+    def _restore_day(self, date_str: str, previous: Entry | None) -> None:
+        if previous is None:
+            self._data.pop(date_str, None)
+        else:
+            self._data[date_str] = previous
+
     def save(self, date_str: str, slots: list[Slot]) -> None:
         with self._lock:
+            previous = self._data.get(date_str)
             self._data[date_str] = {
                 "slots": [_normalize_slot(s) for s in slots],
                 "modified_at": utc_now_iso(),
                 "device_id": self.device_id,
                 "deleted": False,
             }
-            self._save_to_disk()
+            try:
+                self._save_to_disk()
+            except BaseException:
+                # Scheitert das Schreiben (Platte voll, Rechte, nicht kodierbares
+                # Zeichen), darf der Speicher dem Stand der Platte nicht vorauslaufen:
+                # sonst hält ein Retry den Tag für gespeichert, und jeder spätere
+                # Save schriebe ihn unbemerkt mit.
+                self._restore_day(date_str, previous)
+                raise
 
     def delete(self, date_str: str) -> None:
         with self._lock:
@@ -140,13 +155,18 @@ class Storage:
                 return
             # Tombstone: behält die Zeile mit deleted=true, damit der Sync ein
             # Delete gegen ein veraltetes Save eines anderen Geräts durchsetzen kann.
+            previous = self._data[date_str]
             self._data[date_str] = {
                 "slots": [],
                 "modified_at": utc_now_iso(),
                 "device_id": self.device_id,
                 "deleted": True,
             }
-            self._save_to_disk()
+            try:
+                self._save_to_disk()
+            except BaseException:
+                self._restore_day(date_str, previous)   # Begründung: siehe save()
+                raise
 
     def apply_merge(self, merged_entries: dict[str, Entry]) -> None:
         """Ersetzt den kompletten Storage-Stand durch das Merge-Ergebnis.
@@ -159,8 +179,13 @@ class Storage:
                     raise ValueError(
                         f"apply_merge: entry {date!r} missing keys {sorted(missing)}"
                     )
+            previous_data = self._data
             self._data = dict(merged_entries)
-            self._save_to_disk()
+            try:
+                self._save_to_disk()
+            except BaseException:
+                self._data = previous_data              # Begründung: siehe save()
+                raise
 
     def save_many(self, updates: dict[str, dict[str, Any]]) -> None:
         """Mehrere Einträge in einem einzigen Disk-Write speichern.
@@ -174,6 +199,7 @@ class Storage:
         if not updates:
             return
         with self._lock:
+            previous_data = dict(self._data)
             now = utc_now_iso()
             for date_str, payload in updates.items():
                 self._data[date_str] = {
@@ -182,4 +208,8 @@ class Storage:
                     "device_id": self.device_id,
                     "deleted": False,
                 }
-            self._save_to_disk()
+            try:
+                self._save_to_disk()
+            except BaseException:
+                self._data = previous_data              # Begründung: siehe save()
+                raise

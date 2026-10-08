@@ -23,12 +23,16 @@ from __future__ import annotations
 
 import datetime
 import json
+import logging
 import re
+import unicodedata
 from typing import Any
 
 from src.pause_requirement import check_day_pause
 from src.time_utils import parse_time, validate_slots
 from src.weekly_limit import check_week_limit
+
+_log = logging.getLogger(__name__)
 
 MIN_YEAR = 2000
 MAX_YEAR = 2100
@@ -65,12 +69,18 @@ def _reject_duplicates(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
 
 def _load_json(body: bytes) -> Any:
     try:
-        return json.loads(body.decode("utf-8"), parse_constant=_reject_constant,
+        # utf-8-sig: ein BOM ist erlaubt (Windows PowerShell 5.1 schreibt eines).
+        text = body.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        raise WriteError(400, "invalid_encoding",
+                         "Der Body muss UTF-8 sein (ein BOM ist erlaubt).") from None
+    try:
+        return json.loads(text, parse_constant=_reject_constant,
                           object_pairs_hook=_reject_duplicates)
     except (ValueError, RecursionError):
-        # ValueError deckt kaputtes JSON, UnicodeDecodeError, NaN/Infinity und
-        # doppelte Schlüssel; RecursionError die tiefe Verschachtelung (ein
-        # 1-MiB-Body aus lauter "[" wäre sonst eine 500).
+        # ValueError deckt kaputtes JSON, NaN/Infinity und doppelte Schlüssel;
+        # RecursionError die tiefe Verschachtelung (ein 1-MiB-Body aus lauter "["
+        # wäre sonst eine 500).
         raise WriteError(400, "invalid_json", "Der Body ist kein gültiges JSON.") from None
 
 
@@ -88,9 +98,13 @@ def _parse_category(value: Any, index: int) -> str:
     if len(value) > MAX_CATEGORY_LEN:
         raise WriteError(422, "invalid_category",
                          f"Slot {index}: kategorie darf höchstens {MAX_CATEGORY_LEN} Zeichen haben.")
-    if any(ord(ch) < 32 or ord(ch) == 127 for ch in value):
+    # Cc: Steuerzeichen (auch C1, DEL); Cs: Surrogate. Ein einzelnes Surrogat (ein
+    # mitten im Emoji gekürzter Name) ließe sich nicht als UTF-8 schreiben und
+    # machte jedes spätere Speichern des Stores unmöglich.
+    if any(unicodedata.category(ch) in ("Cc", "Cs") for ch in value):
         raise WriteError(422, "invalid_category",
-                         f"Slot {index}: kategorie darf keine Steuerzeichen enthalten.")
+                         f"Slot {index}: kategorie darf keine Steuerzeichen oder "
+                         "ungültigen Unicode-Zeichen enthalten.")
     return value
 
 
@@ -169,10 +183,19 @@ def warnings_for(settings: Any, all_entries: dict[str, Any], date_str: str,
     simulated = dict(all_entries)
     simulated[date_str] = {"slots": slots}
     found: list[dict[str, Any]] = []
-    overshoot = check_week_limit(settings, simulated, date_str)
-    if overshoot is not None:
-        found.append({"code": "weekly_limit", **overshoot})
-    violation = check_day_pause(settings, slots)
-    if violation is not None:
-        found.append({"code": "pause_requirement", **violation})
+    # Nie ein Fehler: ein gespeicherter Slot mit ungewöhnlichem Inhalt (der Sync
+    # validiert Slot-Inhalte nicht, z. B. pause=None) ließe die Summe mit
+    # TypeError scheitern und damit das Schreiben. Jede Prüfung für sich.
+    try:
+        overshoot = check_week_limit(settings, simulated, date_str)
+        if overshoot is not None:
+            found.append({"code": "weekly_limit", **overshoot})
+    except Exception:
+        _log.exception("Lokale API: Wochenlimit nicht berechenbar — Warnungen übersprungen")
+    try:
+        violation = check_day_pause(settings, slots)
+        if violation is not None:
+            found.append({"code": "pause_requirement", **violation})
+    except Exception:
+        _log.exception("Lokale API: Pausenpflicht nicht berechenbar — Warnungen übersprungen")
     return found

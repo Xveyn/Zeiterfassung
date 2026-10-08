@@ -263,7 +263,11 @@ Zeitraum und welche Kategorien der Bericht gefiltert ist.
   die Crash-Recovery-Schicht selbst); die Secret-Schreiber `webhook_store`/`smtp_store`/
   `oauth_utils`/`single_instance` (brauchen zusätzlich ACL-Härtung + Rename-Retry, s.
   `secure_file.py`).
-- `storage.py` — Ist-Zeiten (JSON, Schlüssel = ISO-Datum). `reservations.py` — Reservierungen
+- `storage.py` — Ist-Zeiten (JSON, Schlüssel = ISO-Datum). `save`/`delete`/`save_many`/
+  `apply_merge` **rollen den Speicher zurück**, wenn das Schreiben auf die Platte scheitert:
+  sonst läuft der Speicher dem Stand der Platte voraus, ein Retry hält den Tag für gespeichert
+  (die API-Idempotenz-Abkürzung), und jeder spätere Save schriebe den ungeschriebenen Stand
+  unbemerkt mit. `reservations.py` — Reservierungen
   (zukünftige Soll-Zeiten, eigenes Konzept). `settings.py` — Einstellungen mit Defaults.
 - `conflicts_store.py` — lokale Sync-Konfliktliste. `category_defaults.py` — Default-Kategorien.
 - `webhook_store.py` — gerätelokaler Store der Webhook-Konfiguration
@@ -632,10 +636,13 @@ Wert.
 - `api_entry_write.py` — Schreibpfad der lokalen API für Ist-Zeiten (#92), Tk-frei: nimmt
   **Fremddaten** und bildet die Regeln nach, die die UI an ihren Eingängen durchsetzt und
   `Storage` nicht kennt. `parse_day_body` (strenges JSON — kein `NaN`, keine doppelten
-  Schlüssel, `RecursionError` ist 400 —, genau `HH:MM`, nur die vier Felder, `validate_slots`),
+  Schlüssel, `RecursionError` ist 400, UTF-8 mit oder ohne BOM —, genau `HH:MM`, nur die vier
+  Felder, Kategorie ohne Unicode-Klassen `Cc`/`Cs`: ein einzelnes Surrogat ließe sich nicht
+  als UTF-8 schreiben und machte jedes spätere Speichern des Stores unmöglich — `validate_slots`),
   `check_date_range` (2000–2100), `check_day_writable` (ungelöster Sync-Konflikt: `PUT` und
   `DELETE`; Urlaubsminuten > 0: nur `PUT`, 0-Minuten-Tage bleiben frei) und `warnings_for`
-  (Wochenlimit/Pausenpflicht gegen den simulierten Stand nach dem Speichern, nie ein Fehler).
+  (Wochenlimit/Pausenpflicht gegen den simulierten Stand nach dem Speichern, nie ein Fehler —
+  auch nicht bei ungewöhnlich gespeicherten Daten: jede Prüfung ist für sich abgesichert).
   Hält keinen Lock; den nimmt der Aufrufer um Prüfen und Speichern gemeinsam.
 - `api_server.py` — HTTP-Server der lokalen API: `ApiServer(context, verifier,
   port=…)`. Ein Daemon-Thread mit eigener `handle_request()`-Schleife (kein
@@ -663,6 +670,10 @@ Wert.
   höchstens `lock_timeout` auf einen laufenden Start und sperrt weitere Starts —
   Beenden darf nie hängen, und beim Entfernen würde ein spät fertiges Token-Laden die
   Datei neu anlegen. `reopen()` nimmt das zurück (fehlgeschlagener Skalierungs-Neustart).
+  `RefreshCoalescer` bündelt `ApiContext.on_change` zu **einem** ausstehenden Neuzeichnen
+  (ein Backfill-Skript mit 365 PUTs queuete sonst 365 volle Grid-Refreshs). `ApiContext.closing`
+  (aus `ApiService._closed`) lässt schreibende Routen unter dem Lock mit 503 ablehnen — der
+  Sync-Push nimmt denselben Lock, nach `shutdown()` landet also nichts hinter dem Snapshot.
   `apply()` setzt sofort `starting` (Token-Laden blockiert unter Windows bis 15 s), und
   `_publish` meldet immer den **aktuellen** `.status`, nie das Ergebnis eines zu spät
   fertigen Workers. `rotate()` (Worker!) erneuert das Token und tauscht den Prüfer des
