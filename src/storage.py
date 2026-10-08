@@ -16,6 +16,9 @@ Entry = dict[str, Any]
 
 REQUIRED_ENTRY_KEYS = frozenset({"slots", "modified_at", "device_id", "deleted"})
 
+# Eine Pause über einen ganzen Tag hinaus ist kein Wert, sondern Müll.
+MAX_PAUSE_MINUTES = 24 * 60
+
 
 def _normalize_slot(slot: Slot) -> Slot:
     """Vervollständigt einen Ist-Zeit-Slot auf {start, end, pause, kategorie}.
@@ -29,6 +32,37 @@ def _normalize_slot(slot: Slot) -> Slot:
         "pause": slot.get("pause", 0),
         "kategorie": slot.get("kategorie", ""),
     }
+
+
+def sanitize_slot(slot: Any) -> Slot | None:
+    """Ein wohlgeformter Ist-Zeit-Slot aus einem gespeicherten, oder `None`.
+
+    Gespeicherte Slots sind Fremddaten: der Sync prüft nur, dass `slots` eine
+    Liste ist, und eine Datei lässt sich von Hand ändern. Alles, was die Datei
+    hergibt, läuft hier durch, bevor UI, Berichte und API es sehen:
+    - Kein Objekt → `None` (der Slot entfällt).
+    - `start`/`end` nur als Text, sonst `None` (`calculate_hours` zählt das 0).
+    - `kategorie` nur als Text, sonst `""`.
+    - `pause` eine ganze Zahl von 0 bis `MAX_PAUSE_MINUTES` (`30.0` zählt als 30),
+      sonst `0`: `None`, Bool, Text, negativ, `inf`/`nan` und Riesen-Ints
+      brächten sonst jede Rechnung damit zum Absturz.
+    Weitere Schlüssel bleiben erhalten; das Original wird nie verändert."""
+    if not isinstance(slot, dict):
+        return None
+    pause = slot.get("pause", 0)
+    if isinstance(pause, float) and pause.is_integer():
+        pause = int(pause)
+    if isinstance(pause, bool) or not isinstance(pause, int) or not 0 <= pause <= MAX_PAUSE_MINUTES:
+        pause = 0
+    start, end, kategorie = slot.get("start"), slot.get("end"), slot.get("kategorie", "")
+    clean = dict(slot)
+    clean.update({
+        "start": start if isinstance(start, str) else None,
+        "end": end if isinstance(end, str) else None,
+        "pause": pause,
+        "kategorie": kategorie if isinstance(kategorie, str) else "",
+    })
+    return clean
 
 
 class Storage:
@@ -97,10 +131,15 @@ class Storage:
         atomic_write_json(self.filepath, self._data)
 
     @staticmethod
-    def _user_shape(entry: Entry) -> dict[str, Any]:
+    def _user_shape(entry: Any) -> dict[str, Any]:
         """Reduziert ein Roh-Entry auf {slots: [...]} für UI-Caller.
-        Liefert frische Kopien, damit Caller den internen Stand nicht mutieren."""
-        return {"slots": [dict(s) for s in entry.get("slots", [])]}
+        Liefert frische, bereinigte Kopien (`sanitize_slot`), damit Caller den
+        internen Stand nicht mutieren und nie auf Fremddaten treffen, die ihre
+        Rechnung zum Absturz bringen."""
+        slots = entry.get("slots") if isinstance(entry, dict) else None
+        if not isinstance(slots, list):
+            return {"slots": []}
+        return {"slots": [clean for clean in map(sanitize_slot, slots) if clean is not None]}
 
     def get_all(self) -> dict[str, dict[str, Any]]:
         """Liefert {date: {slots: [...]}} ohne Tombstones."""
@@ -108,7 +147,7 @@ class Storage:
             return {
                 date: self._user_shape(entry)
                 for date, entry in self._data.items()
-                if not entry.get("deleted")
+                if isinstance(entry, dict) and not entry.get("deleted")
             }
 
     def get_all_raw(self) -> dict[str, Entry]:
@@ -120,7 +159,7 @@ class Storage:
     def get(self, date_str: str) -> dict[str, Any] | None:
         with self._lock:
             entry = self._data.get(date_str)
-            if entry is None or entry.get("deleted"):
+            if not isinstance(entry, dict) or entry.get("deleted"):
                 return None
             return self._user_shape(entry)
 
