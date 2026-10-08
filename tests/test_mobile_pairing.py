@@ -126,9 +126,10 @@ def test_close_invalidates_the_code_and_clears_a_lock():
     shown = session.open()
     session.close()
     assert session.redeem(shown) is RedeemResult.INVALID
+    session.open()
     for _ in range(5):
-        session.open()
         session.redeem("AAAA-AAAA")
+    assert session.redeem("AAAA-AAAA") is RedeemResult.LOCKED
     session.close()
     assert session.redeem("AAAA-AAAA") is RedeemResult.INVALID            # nicht LOCKED
 
