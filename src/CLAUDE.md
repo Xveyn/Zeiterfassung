@@ -254,7 +254,8 @@ Zeitraum und welche Kategorien der Bericht gefiltert ist.
   `load_json_or_quarantine(path)` → Objekt oder `None`, wobei eine unparsebare Datei nach
   `<name>.corrupt-<stamp>` verschoben und geloggt wird (**N4**); `quarantine_corrupt(path, reason)`
   nimmt einen Grund für die Logzeile, `backup_corrupt(path, reason)` kopiert statt zu verschieben (für
-  Dateien, die gleich repariert werden). Genutzt von `storage`,
+  Dateien, die gleich repariert werden; eine schon vorhandene Sicherung mit gleichem Inhalt wird
+  wiederverwendet, damit ein nicht zurückschreibbarer Stand nicht bei jedem Start eine Kopie anlegt). Genutzt von `storage`,
   `reservations`, `conflicts_store` (beide Helfer) und `settings` (nur der Schreib-Helfer).
   Wer einen neuen JSON-Store baut, nimmt diese beiden Funktionen — nicht die Mechanik
   erneut abschreiben.

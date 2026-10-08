@@ -272,3 +272,45 @@ def test_nan_never_reaches_a_reader(tmp_path):
                            '"device_id": "x", "deleted": false}}')
     pause = Storage(path, device_id="dev").get(DAY)["slots"][0]["pause"]
     assert pause == 0 and not math.isnan(pause)
+
+
+# --- Review-Befunde (I2, M3) ---------------------------------------------------------------------------
+
+def test_a_lone_surrogate_next_to_a_broken_entry_does_not_stop_the_start(tmp_path, caplog):
+    # Das Zurückschreiben scheitert mit UnicodeEncodeError (ein ValueError, kein OSError).
+    path = write(tmp_path, '{"2026-01-05": {"slots": [{"start": "08:00", "end": "09:00", '
+                           '"pause": 0, "kategorie": "\\ud83d"}], "modified_at": "a", '
+                           '"device_id": "x", "deleted": false}, "2026-01-06": null}')
+    before = open(path, encoding="utf-8").read()
+
+    with caplog.at_level(logging.WARNING):
+        storage = Storage(path, device_id="dev")
+
+    assert list(storage.get_all()) == [DAY]
+    assert open(path, encoding="utf-8").read() == before                 # nichts überschrieben
+    assert "nicht auf die Platte" in caplog.text
+
+
+def test_a_heal_that_cannot_be_written_back_makes_one_backup_not_one_per_start(tmp_path):
+    path = write(tmp_path, '{"2026-01-05": {"slots": [{"start": "08:00", "end": "09:00", '
+                           '"pause": 0, "kategorie": "\\ud83d"}], "modified_at": "a", '
+                           '"device_id": "x", "deleted": false}, "2026-01-06": null}')
+
+    for _ in range(3):
+        Storage(path, device_id="dev")
+
+    assert len(backups(tmp_path)) == 1
+
+
+def test_a_healed_file_is_not_backed_up_again_on_later_starts(tmp_path, monkeypatch):
+    import src.storage as storage_module
+    calls = []
+    real = storage_module.backup_corrupt
+    monkeypatch.setattr(storage_module, "backup_corrupt",
+                        lambda *a: calls.append(a) or real(*a))
+    path = write(tmp_path, {"2026-01-06": None, DAY: entry([ist_slot("08:00", "09:00")])})
+
+    for _ in range(3):
+        Storage(path, device_id="dev")
+
+    assert len(calls) == 1                                  # nur der erste Start hat gesichert

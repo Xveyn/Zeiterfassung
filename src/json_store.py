@@ -32,6 +32,8 @@ Die beiden Regeln stehen deshalb hier, und zwar nur hier:
 """
 
 import datetime
+import filecmp
+import glob
 import json
 import logging
 import os
@@ -126,7 +128,17 @@ def backup_corrupt(path: str, reason: str) -> str:
     """Kopiert eine Datei, die gleich repariert wird, nach `<name>.corrupt-<stamp>`
     (anders als `quarantine_corrupt` bleibt das Original liegen) und loggt das.
     Liefert den Zielpfad. `OSError` läuft hoch: ohne Sicherung repariert der
-    Aufrufer nicht, damit nichts still verloren geht."""
+    Aufrufer nicht, damit nichts still verloren geht. Liegt schon eine Sicherung mit
+    **gleichem Inhalt** daneben, wird sie wiederverwendet: gelingt das Zurückschreiben der
+    Reparatur nicht, fände sonst jeder Start dasselbe vor und legte jedes Mal eine volle
+    Kopie des Stores an."""
+    for existing in sorted(glob.glob(glob.escape(path) + ".corrupt-*")):
+        if filecmp.cmp(path, existing, shallow=False):
+            logging.getLogger(__name__).warning(
+                "%s enthält Unbrauchbares (%s) — identische Sicherung %s liegt schon da",
+                os.path.basename(path), reason, os.path.basename(existing),
+            )
+            return existing
     stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
     target = f"{path}.corrupt-{stamp}"
     shutil.copy2(path, target)

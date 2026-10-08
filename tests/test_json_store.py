@@ -205,3 +205,26 @@ def test_load_json_null_returns_none(tmp_path):
     path = tmp_path / "t.json"
     path.write_text("null", encoding="utf-8")
     assert load_json_or_quarantine(str(path)) is None
+
+
+def test_backup_reuses_an_identical_earlier_backup(tmp_path):
+    path = tmp_path / "store.json"
+    path.write_text('{"a": null}', encoding="utf-8")
+    earlier = tmp_path / "store.json.corrupt-20200101-000000"
+    earlier.write_text('{"a": null}', encoding="utf-8")
+
+    target = backup_corrupt(str(path), "egal")
+
+    assert target == str(earlier)
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["store.json", earlier.name]
+
+
+def test_backup_still_copies_when_the_earlier_backup_differs(tmp_path):
+    path = tmp_path / "store.json"
+    path.write_text('{"a": null}', encoding="utf-8")
+    (tmp_path / "store.json.corrupt-20200101-000000").write_text("anderer Inhalt", encoding="utf-8")
+
+    target = backup_corrupt(str(path), "egal")
+
+    assert open(target, encoding="utf-8").read() == '{"a": null}'
+    assert len(list(tmp_path.glob("store.json.corrupt-*"))) == 2

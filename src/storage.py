@@ -136,7 +136,9 @@ class Storage:
         try:
             backup_corrupt(self.filepath, problems)
             self._save_to_disk()
-        except OSError:
+        except (OSError, ValueError):
+            # ValueError: ein einzelnes Surrogat in einer Kategorie lässt sich nicht
+            # als UTF-8 schreiben (UnicodeEncodeError) — das darf den Start nicht kosten.
             log.warning("%s: Reparatur nicht auf die Platte geschrieben, der Stand "
                         "gilt nur im Speicher", os.path.basename(self.filepath),
                         exc_info=True)
