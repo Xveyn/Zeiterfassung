@@ -13,7 +13,9 @@ from unittest import mock
 
 import pytest
 
-from src.json_store import atomic_write_json, load_json_or_quarantine, quarantine_corrupt
+from src.json_store import (
+    atomic_write_json, backup_corrupt, load_json_or_quarantine, quarantine_corrupt,
+)
 
 
 # --- atomic_write_json ----------------------------------------------------
@@ -133,6 +135,44 @@ def test_quarantine_preserves_content(tmp_path):
 
     with open(target, encoding="utf-8") as f:
         assert f.read() == "halb geschriebene Nutzdaten"
+
+def test_quarantine_names_the_reason_in_the_log(tmp_path, caplog):
+    path = tmp_path / "liste.json"
+    path.write_text("[]", encoding="utf-8")
+
+    with caplog.at_level(logging.WARNING):
+        quarantine_corrupt(str(path), "Top-Level ist list, erwartet ein Objekt")
+
+    assert "Top-Level ist list" in caplog.text
+    assert "JSON nicht parsebar" not in caplog.text
+
+
+def test_quarantine_default_reason_is_unchanged(tmp_path, caplog):
+    path = tmp_path / "kaputt.json"
+    path.write_text("{", encoding="utf-8")
+    with caplog.at_level(logging.WARNING):
+        quarantine_corrupt(str(path))
+    assert "JSON nicht parsebar" in caplog.text
+
+
+# --- backup_corrupt ---------------------------------------------------------
+
+def test_backup_copies_and_keeps_the_original(tmp_path, caplog):
+    path = tmp_path / "store.json"
+    path.write_text('{"a": null}', encoding="utf-8")
+
+    with caplog.at_level(logging.WARNING):
+        target = backup_corrupt(str(path), "1 Eintrag ohne Objektform")
+
+    assert path.read_text(encoding="utf-8") == '{"a": null}'
+    assert open(target, encoding="utf-8").read() == '{"a": null}'
+    assert os.path.basename(target).startswith("store.json.corrupt-")
+    assert "Sicherung" in caplog.text and "1 Eintrag ohne Objektform" in caplog.text
+
+
+def test_backup_of_a_missing_file_raises_oserror(tmp_path):
+    with pytest.raises(OSError):
+        backup_corrupt(str(tmp_path / "gibt-es-nicht.json"), "egal")
 
 
 # --- load_json_or_quarantine ----------------------------------------------
