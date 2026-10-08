@@ -123,6 +123,10 @@ Slot-Format `{start, end, pause, kategorie}` aus Share v3. Fehler als
 
 Keine Pfade zu Berichtversand, Settings, Secrets, Webhooks, Sync.
 
+### Auswertungen
+
+`summary/week` und `summary/month` liefern dieselbe Form (`week` bzw. `month` trägt das Pfadsegment): `from`, `to`, `total_minutes`, `vacation_minutes`, `payable_minutes`, `vacation_capped_days[]` (`date`, `vacation_minutes`, `work_minutes`, `counted_minutes`), `days[]` (`date`, `minutes`, `slots`), `by_category[]` (`kategorie`, `minutes`), `weeks[]` (`iso_year`, `iso_week`, `total_minutes`, `limit_minutes` oder `null`, `exceeded`) und `pause_warnings[]` (`date`, `worked_minutes`, `actual_pause_minutes`, `required_pause_minutes`). Alles in ganzen Minuten. Der Urlaub ist der dieses Geräts, gekappt wie in Bericht und Webhook. `weeks[]` führt jede ISO-Woche, die der Zeitraum berührt, mit der Summe der ganzen Woche. Jahre 2000–2100 (422), ungültige Pfadform 400. `/v1/holidays/{YYYY}` liefert `{year, state, holidays: [{date, name}]}`, ohne Bundesland eine leere Liste.
+
 ## Regeln, die die API nachbilden muss
 
 Der Store kennt sie nicht, sie sitzen heute an den UI-Eingängen. Die API ist
@@ -183,8 +187,7 @@ Dialogen; Präzedenz ist der Accept-Loop in `single_instance`. Der Abschnitt
    Statusgrund).
 4. Schreibende Ist-Zeit-Endpunkte (`PUT`/`DELETE /v1/entries/{date}`) samt den Regeln aus
    „Regeln, die die API nachbilden muss“.
-5. Auswertungen (Summen, Wochenlimit, Pausenpflicht, Kategorien, Feiertage), dann
-   Reservierungen und Urlaub — Zuschnitt und offene Fragen in Issue #239.
+5. Auswertungen (rein lesend): `GET /v1/summary/week/{YYYY-Www}`, `/v1/summary/month/{YYYY-MM}`, `/v1/categories`, `/v1/holidays/{YYYY}`. Danach Reservierungen und Urlaub — Zuschnitt und offene Fragen in Issue #239.
 
 ## Offene Punkte (bewusst nicht in Stufe 1)
 

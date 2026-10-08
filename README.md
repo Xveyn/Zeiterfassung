@@ -328,6 +328,7 @@ Reservierungen anlegen und den Abgleich über die App-Oberfläche aktivieren; be
 curl -H "Authorization: Bearer <Token>" http://127.0.0.1:17653/v1/status
 curl -H "Authorization: Bearer <Token>" "http://127.0.0.1:17653/v1/entries?from=2026-10-01&to=2026-10-31"
 curl -H "Authorization: Bearer <Token>" http://127.0.0.1:17653/v1/entries/2026-10-06
+curl -H "Authorization: Bearer <Token>" http://127.0.0.1:17653/v1/summary/month/2026-10
 ~~~
 
 | Pfad | Antwort |
@@ -337,6 +338,10 @@ curl -H "Authorization: Bearer <Token>" http://127.0.0.1:17653/v1/entries/2026-1
 | `GET /v1/entries/{YYYY-MM-DD}` | ein Tag (404, wenn es keinen Eintrag gibt) |
 | `PUT /v1/entries/{YYYY-MM-DD}` | Tag **ersetzen**, Body `{"slots": [...]}`; Antwort mit `changed` (ein identischer Tag wird nicht neu geschrieben) und `warnings` (Wochenlimit, Pausenpflicht — blockieren nie) |
 | `DELETE /v1/entries/{YYYY-MM-DD}` | Tag löschen (404, wenn es keinen Eintrag gibt) |
+| `GET /v1/summary/week/{YYYY-Www}` | Auswertung einer ISO-Woche (z. B. `2026-W41`) |
+| `GET /v1/summary/month/{YYYY-MM}` | Auswertung eines Monats (z. B. `2026-10`) |
+| `GET /v1/categories` | die in den Einstellungen konfigurierten Kategorien |
+| `GET /v1/holidays/{YYYY}` | Feiertage des eingestellten Bundeslands (leer, solange keins gesetzt ist) |
 
 Einen Tag eintragen (ersetzt den ganzen Tag; `pause` in Minuten und `kategorie` sind optional):
 
@@ -349,6 +354,8 @@ curl -X PUT -H "Authorization: Bearer <Token>" -H "Content-Type: application/jso
 Fehler: `400` kaputtes JSON oder falsche Form, `422` ungültiger Slot oder Datum (Jahr 2000–2100, höchstens 50 Slots, Zeiten genau `HH:MM`), `409` der Tag hat einen ungelösten Sync-Konflikt oder Urlaub (dann in der App lösen). Eine leere Slot-Liste speichert nichts — zum Löschen `DELETE` benutzen.
 
 Die Antwort enthält `warnings`, die **nie** blockieren: `{"code": "weekly_limit", "iso_year", "iso_week", "total_minutes", "limit_minutes"}` (Werkstudenten-Limit) und `{"code": "pause_requirement", "worked_minutes", "actual_pause_minutes", "required_pause_minutes"}` (§ 4 ArbZG). `kategorie` ist frei (höchstens 100 Zeichen, ohne Steuer- und ungültige Unicode-Zeichen, umgebende Leerzeichen werden entfernt), `pause` muss eine ganze Zahl sein (`30.0` ist ein Fehler). Der Body muss UTF-8 sein, ein BOM ist erlaubt. `DELETE` entfernt nur die **Ist-Zeit** des Tages, keine Reservierung und keinen Urlaub.
+
+Die Auswertungen rechnen wie die App in **ganzen Minuten**: `total_minutes` (Ist-Zeit), `days[]` (je Tag mit Ist-Zeit), `by_category[]` (absteigend; `""` heißt „ohne Kategorie“), `weeks[]` (jede ISO-Woche, die der Zeitraum berührt, mit der Summe der **ganzen** Woche und, bei aktivem Werkstudenten-Limit, `limit_minutes` und `exceeded`) und `pause_warnings[]`. Dazu der **Urlaub dieses Geräts**: `vacation_minutes` (um die am selben Tag erfasste Ist-Zeit gekappt, die betroffenen Tage stehen in `vacation_capped_days`) und `payable_minutes` („Zu vergüten gesamt“, Ist-Zeit plus Urlaub). Es gelten die Jahre 2000–2100; ungültige Pfade sind `400`, Jahre außerhalb `422`.
 
 Unter Windows PowerShell heißt der Aufruf `curl.exe` statt `curl`: dort ist `curl` ein Alias für `Invoke-WebRequest`, und `-H` funktioniert nicht. In Windows PowerShell 5.1 den JSON-Body am besten aus einer Datei übergeben (`-d @tag.json`), die Anführungszeichen in `-d '…'` gehen dort verloren, und den Aufruf in eine Zeile schreiben (`\` ist dort kein Zeilenumbruch).
 

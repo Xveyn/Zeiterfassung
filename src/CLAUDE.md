@@ -624,7 +624,8 @@ Wert.
 - `api_routes.py` — Routing und Antworten der lokalen API (#92), Tk-frei und
   ohne Socket: `handle(request, ctx, principal)` über eine Routentabelle
   (Methode, Muster, Handler, **Scope**). Lesend: `GET /v1/status`,
-  `/v1/entries`, `/v1/entries/{date}`. Die Daten kommen über `Storage.get_all()`/
+  `/v1/entries`, `/v1/entries/{date}`. Auswertungen: `/v1/summary/…`, `/v1/categories`,
+  `/v1/holidays/{year}` (Rechnung in `api_summary`). Die Daten kommen über `Storage.get_all()`/
   `get()` (nehmen den `data_lock` selbst, liefern Kopien) — die lesenden Routen
   halten keinen Lock. `PUT`/`DELETE /v1/entries/{date}` prüfen, machen den Konfliktcheck
   und speichern unter `ctx.data_lock` (der geteilte Store-`RLock`) und melden `ctx.on_change`
@@ -644,6 +645,7 @@ Wert.
   (Wochenlimit/Pausenpflicht gegen den simulierten Stand nach dem Speichern, nie ein Fehler —
   auch nicht bei ungewöhnlich gespeicherten Daten: jede Prüfung ist für sich abgesichert).
   Hält keinen Lock; den nimmt der Aufrufer um Prüfen und Speichern gemeinsam.
+- `api_summary.py` — Auswertungen der lokalen API (#92), Tk-frei, rein: Pfad-Parser (`parse_week`, `parse_month`, `parse_year`, nur ASCII-Ziffern, `fromisocalendar` entscheidet über KW 53), `summarize` (Tage, Kategorien, `weeks[]` mit Wochenlimit, Pausenwarnungen, Urlaub über `vacations.cap_by_worktime`), `category_names`, `holidays_for`. Gerechnet wird über **Minuten je Slot**; gespeicherte Slots sind Fremddaten, ein ungewöhnlicher Slot zählt 0 Minuten und wird geloggt. Die Routen (`/v1/summary/week|month`, `/v1/categories`, `/v1/holidays`) in `api_routes` holen nur den Snapshot (`Storage.get_all()`, `VacationStore.day_minutes()`), halten keinen Lock und melden nie `on_change`.
 - `api_server.py` — HTTP-Server der lokalen API: `ApiServer(context, verifier,
   port=…)`. Ein Daemon-Thread mit eigener `handle_request()`-Schleife (kein
   `serve_forever()`/`shutdown()`: das blockiert für immer, wenn es vor dem Eintritt
