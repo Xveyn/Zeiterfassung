@@ -1364,6 +1364,7 @@ nicht mehr als „offen" führen — der Verweis lautet auf diese Grenze.
   eines gelöschten Kontos räumt der Aufrufer ab
 - `src/mobile_pairing.py` — Einmalcode und Gerätetoken der Handy-Erfassung per PWA (#221): rein, ohne I/O, Uhr als Parameter; Fremddaten vom Handy werden normalisiert (s. `src/CLAUDE.md`)
 - `src/mobile_store.py` — gerätelokale Datei `mobile_devices.json` der gekoppelten Handys (nur Token-**Hashes**; reist nicht per Drive-Sync); Mechanik und eigener Lock wie `smtp_store.py`, aber ohne ACL-Härtung (Hashes statt Klartext)
+- `src/mobile_sync.py` — fachlicher Kern von `POST /v1/sync` der Handy-Erfassung (#221): `parse_request` prüft den Body (Fremddaten, Regeln der lokalen API), `perform_sync` merged das Handy als `local` über `sync.merge` und wendet über `sync_journal` an, `build_response` baut Lesefenster und Konflikte. Tk-frei; Token und Gerätedatensatz gehören der Route (s. `src/CLAUDE.md`)
 - `src/keyring_store.py` — Passwörter im OS-Schlüsselbund, mit Datei-Fallback
   wenn keiner verfügbar ist. `import keyring` lazy in den Funktionen (CI),
   und **jeder Zugriff hinter einem 30-s-Watchdog**: `keyring` ruft auf Linux
