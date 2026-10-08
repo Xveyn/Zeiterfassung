@@ -382,7 +382,7 @@ def main():
                         app.on_sync_pull_error(error, tb)
                 except tk.TclError:
                     pass
-            root.after(0, apply)
+            app._marshal_to_ui(apply)
         threading.Thread(
             target=run_pull_in_background,
             args=(storage, settings, conflicts_store, base, _on_sync_done),

@@ -26,6 +26,7 @@ import pytest
 # grün ist — und nur für Module ohne Tk-Import.
 ANNOTATED_MODULES = [
     "src/time_utils.py",
+    "src/ui_queue.py",
     "src/webhook.py",
     "src/smtp.py",
     "src/share.py",

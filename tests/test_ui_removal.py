@@ -59,7 +59,7 @@ def test_foreign_callbacks_are_dropped_while_removing():
 
     App._marshal_to_ui(fake, lambda: None)
 
-    fake.root.after.assert_not_called()
+    fake._ui_queue.put.assert_not_called()
 
 
 def test_the_removal_finish_callback_still_passes():
@@ -68,7 +68,7 @@ def test_the_removal_finish_callback_still_passes():
 
     App._marshal_to_ui(fake, lambda: None, force=True)
 
-    fake.root.after.assert_called_once()
+    fake._ui_queue.put.assert_called_once()
 
 
 def test_remove_application_refuses_while_a_sync_runs_and_touches_nothing():
