@@ -39,7 +39,7 @@ log = logging.getLogger(__name__)
 # Spiegel von `installer.iss` ([UninstallDelete] bzw. DeleteUserData).
 CREDENTIAL_FILES: tuple[str, ...] = (
     "token.json", "instance-secret", "webhooks.json", "smtp.json",
-    "credentials.json", "api-token",
+    "credentials.json", "api-token", "mobile_devices.json",
 )
 USER_DATA_FILES: tuple[str, ...] = (
     "zeiterfassung.json", "reservations.json", "vacations.json",

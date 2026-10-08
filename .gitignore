@@ -23,6 +23,8 @@ webhooks.json.corrupt-*
 .webhooks-*.tmp
 smtp.json
 smtp.json.corrupt-*
+mobile_devices.json
+mobile_devices.json.corrupt-*
 .smtp-*.tmp
 logs/
 dist/

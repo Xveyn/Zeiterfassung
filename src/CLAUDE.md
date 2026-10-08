@@ -201,7 +201,7 @@ sich mit leerem Passwort anzumelden.
 (`storage`/`settings`/`conflicts_store`/`reservations`/`vacations`) teilen
 sich einen in `main()` erzeugten `RLock` (Konstruktor-Param `lock=`; ohne
 Injektion legt jeder Store einen eigenen an — Tests bleiben unverändert); nur
-`webhook_store` und `smtp_store` bringen bewusst ihren eigenen mit (s. „Daten- &
+`webhook_store`, `smtp_store` und `mobile_store` bringen bewusst ihren eigenen mit (s. „Daten- &
 Persistenz-Schicht" unten). Die Sync-Flows
 (`_run_pull_in_background`/`run_push_blocking`/`_run_compaction_blocking`/
 `reconcile_reservations`) klammern Snapshot→Merge→Apply mit diesem `data_lock`
@@ -256,7 +256,7 @@ Zeitraum und welche Kategorien der Bericht gefiltert ist.
   nimmt einen Grund für die Logzeile, `backup_corrupt(path, reason)` kopiert statt zu verschieben (für
   Dateien, die gleich repariert werden; eine schon vorhandene Sicherung mit gleichem Inhalt wird
   wiederverwendet, damit ein nicht zurückschreibbarer Stand nicht bei jedem Start eine Kopie anlegt). Genutzt von `storage`,
-  `reservations`, `conflicts_store` (beide Helfer) und `settings` (nur der Schreib-Helfer).
+  `reservations`, `conflicts_store`, `mobile_store` (beide Helfer) und `settings` (nur der Schreib-Helfer).
   Wer einen neuen JSON-Store baut, nimmt diese beiden Funktionen — nicht die Mechanik
   erneut abschreiben.
   **Bewusst eigen geblieben:** `settings._quarantine_corrupt` und
@@ -304,6 +304,23 @@ Zeitraum und welche Kategorien der Bericht gefiltert ist.
   Konfiguration, aber **nicht** das Passwort — das liegt im Schlüsselbund
   (`keyring_store.py`) oder, nur als Fallback, im Klartext in `smtp.json`
   selbst; auch dann wird die Datei gehärtet geschrieben.
+
+  `mobile_store.py` — gerätelokaler Store der gekoppelten Handys (`mobile_devices.json`,
+  #221), Mechanik und eigener Lock wie `smtp_store`; nichts davon im Sync-Doc oder Share-Doc.
+  Die Datei trägt von jedem Gerätetoken nur den **SHA-256-Hash** (256 Bit Zufall, nicht
+  umkehrbar), deshalb schreibt der Store über `json_store.atomic_write_json` und nicht über den
+  gehärteten Pfad der Secret-Dateien (kein `icacls`-Aufruf bei jedem Abgleich); sie steht trotzdem
+  in `removal.CREDENTIAL_FILES`, `installer.iss` und `.gitignore`. Defekte Datensätze werden
+  übersprungen (im Log nur `id` und Name, nie Hashes), eine kaputte Datei wird quarantäniert,
+  eine neuere `schema_version` oder ein Lesefehler macht den Store read-only
+  (`MobileStoreReadOnly`, die Datei bleibt unberührt), ein Schreibfehler rollt den Speicher
+  zurück. `mobile_pairing.py` hält die Regeln dazu, rein und ohne I/O: der Einmalcode
+  (`PairingSession`: 8 Zeichen aus 31, 5 Minuten, einmal einlösbar, nach 5 Fehlversuchen
+  gesperrt, nur im Hauptspeicher) und das Gerätetoken (`issue_device`/`renew`/`revoke`/
+  `authenticate`: 30 Tage ab der letzten Nutzung, ein erneuertes Token lässt das alte 10 Minuten
+  gelten; ein widerrufener Datensatz bleibt erhalten, damit die Antwort `token_revoked` lauten
+  kann). Geräte-ID, Name und Token kommen vom Handy — Fremddaten (`normalize_device_id`,
+  `clean_device_name`). Design: `docs/superpowers/specs/2026-10-08-mobile-pwa-design.md`.
 
   `VacationStore` (`vacations.json`) hängt am geteilten `data_lock` wie
   `Storage`, `Settings`, `ConflictsStore` und `ReservationStore` — anders als
