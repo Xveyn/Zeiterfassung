@@ -333,7 +333,9 @@ def fake_google_build(monkeypatch):
 # Test-ID vor jedem Test in PYTEST_CURRENT_TEST. Ein riesiger Parameter (z. B.
 # 100 000 Bytes für einen Rekursionstest) wird zur Test-ID und lässt das Setup nur
 # unter Windows scheitern — die Linux-Läufe merken nichts (so geschehen in #240).
-MAX_NODE_ID_LENGTH = 4000
+# Weit unter den 32 767 (Spielraum für das Suffix " (teardown)"), aber über den 5–10 000
+# Zeichen, die bestehende Tests unter Windows unproblematisch nutzen.
+MAX_NODE_ID_LENGTH = 20_000
 
 
 def pytest_collection_modifyitems(items):
