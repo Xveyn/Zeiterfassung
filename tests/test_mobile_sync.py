@@ -438,3 +438,18 @@ def test_the_response_has_the_window_and_the_categories(env):
 
     assert sorted(response["entries"]) == ["2026-10-01"]
     assert response["categories"] == ["Projekt"] and response["last_pull_at"] == NOW
+
+
+def test_perform_sync_overrides_a_device_id_that_slipped_into_the_request(env):
+    # Zweite Linie hinter parse_request: selbst ein von Hand gebauter Request kann
+    # nicht als anderes Gerät schreiben.
+    request = mobile_sync.SyncRequest(NOW, {"2026-10-07": {
+        "slots": [SLOT], "modified_at": "2026-10-07T18:30:00Z", "deleted": False,
+        "device_id": "evil"}})
+
+    mobile_sync.perform_sync(
+        request, device_id=PHONE, device_name="Pixel", last_pull_at="", categories=[],
+        storage=env.storage, settings=env.settings, conflicts_store=env.conflicts,
+        base=env.base, now=NOW, today=TODAY)
+
+    assert env.storage.get_all_raw()["2026-10-07"]["device_id"] == PHONE
