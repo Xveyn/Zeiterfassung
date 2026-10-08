@@ -13,9 +13,9 @@ import pytest
 
 from src import api_auth
 from src.api_auth import (
-    ALLOWED_METHODS, SCOPE_LOCAL, TOKEN_FILENAME, AuthResult, Policy, Principal,
-    authorize, generate_token, load_or_create_token, read_token, require_scope,
-    rotate_token, single_token_verifier,
+    ALLOWED_METHODS, ANONYMOUS, SCOPE_LOCAL, SCOPE_MOBILE, TOKEN_FILENAME, AuthResult,
+    Denied, Policy, Principal, authorize, authorize_public, generate_token,
+    load_or_create_token, read_token, require_scope, rotate_token, single_token_verifier,
 )
 
 _TOKEN_RE = re.compile(r"[A-Za-z0-9_-]{43}")
@@ -726,3 +726,76 @@ def test_the_token_is_hardened_before_it_is_written(tmp_path, monkeypatch):
 
     assert events == ["harden", "write"]                      # nie umgekehrt
     assert (tmp_path / TOKEN_FILENAME).read_text(encoding="ascii") == token
+
+
+# --- Denied und öffentliche Routen (#221) ------------------------------------------------------
+
+LAN_POLICY = Policy(allowed_hosts=frozenset({"192.168.1.20:17654"}),
+                    allowed_origins=frozenset({"https://xveyn.github.io"}),
+                    bind_host="192.168.1.20")
+LAN_HEADERS = {"Host": "192.168.1.20:17654", "Origin": "https://xveyn.github.io",
+               "Authorization": "Bearer abc", "Content-Type": "application/json"}
+
+
+@pytest.mark.parametrize("code", ["token_expired", "token_revoked"])
+def test_a_denied_verdict_becomes_a_401_with_its_own_code(code):
+    result = authorize("POST", LAN_HEADERS, LAN_POLICY, lambda token: Denied(code))
+    assert (result.status, result.code, result.principal) == (401, code, None)
+
+
+def test_an_unknown_token_is_still_plain_unauthorized():
+    result = authorize("POST", LAN_HEADERS, LAN_POLICY, lambda token: None)
+    assert (result.status, result.code) == (401, "unauthorized")
+
+
+def test_a_principal_with_the_mobile_scope_passes():
+    principal = Principal("device-0001", frozenset({SCOPE_MOBILE}))
+    result = authorize("POST", LAN_HEADERS, LAN_POLICY, lambda token: principal)
+    assert result.ok and result.principal is principal
+    assert require_scope(principal, SCOPE_MOBILE).ok
+    assert require_scope(principal, SCOPE_LOCAL).status == 403
+
+
+def test_the_gates_still_run_before_the_verifier():
+    called = []
+
+    def verifier(token):
+        called.append(token)
+        return Denied("token_expired")
+
+    wrong_host = dict(LAN_HEADERS, Host="evil.example:17654")
+    assert authorize("POST", wrong_host, LAN_POLICY, verifier).code == "bad_host"
+    assert authorize("POST", dict(LAN_HEADERS, Origin="https://evil.example"),
+                     LAN_POLICY, verifier).code == "bad_origin"
+    assert called == []
+
+
+def test_public_authorize_needs_no_token_and_yields_the_anonymous_principal():
+    headers = {k: v for k, v in LAN_HEADERS.items() if k != "Authorization"}
+
+    result = authorize_public("POST", headers, LAN_POLICY)
+
+    assert result.ok and result.principal is ANONYMOUS
+    assert ANONYMOUS.scopes == frozenset()
+    assert require_scope(ANONYMOUS, SCOPE_MOBILE).status == 403
+
+
+def test_public_authorize_ignores_an_authorization_header():
+    assert authorize_public("POST", LAN_HEADERS, LAN_POLICY).ok
+
+
+@pytest.mark.parametrize("override,expected", [
+    ({"Host": "evil.example:17654"}, (403, "bad_host")),
+    ({"Origin": "https://evil.example"}, (403, "bad_origin")),
+    ({"Sec-Fetch-Site": "cross-site"}, (403, "browser_request")),
+    ({"Content-Type": "text/plain"}, (415, "unsupported_media_type")),
+])
+def test_public_authorize_keeps_the_other_gates(override, expected):
+    headers = dict(LAN_HEADERS, **override)
+    result = authorize_public("POST", headers, LAN_POLICY)
+    assert (result.status, result.code) == expected and result.principal is None
+
+
+def test_public_authorize_rejects_unknown_methods():
+    assert authorize_public("PATCH", LAN_HEADERS, LAN_POLICY).status == 405
+    assert authorize_public("OPTIONS", LAN_HEADERS, LAN_POLICY).status == 405

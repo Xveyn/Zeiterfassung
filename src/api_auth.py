@@ -172,6 +172,7 @@ def rotate_token(base_path: str) -> str:
 
 
 SCOPE_LOCAL = "local"
+SCOPE_MOBILE = "mobile-sync"
 ALLOWED_METHODS = frozenset({"GET", "PUT", "POST", "DELETE"})
 _BODY_METHODS = frozenset({"POST", "PUT"})   # tragen einen Body → JSON Pflicht
 _MAX_BEARER_LEN = 512
@@ -185,7 +186,19 @@ class Principal:
     scopes: frozenset[str]
 
 
-TokenVerifier = Callable[[str], "Principal | None"]
+@dataclass(frozen=True)
+class Denied:
+    """Der Prüfer kennt das Token, lässt es aber nicht zu (`token_expired`,
+    `token_revoked`). `None` heißt dagegen „unbekannt" (`unauthorized`); ohne
+    diese Unterscheidung könnte die PWA nicht zwischen „neu koppeln" und
+    „Token falsch" unterscheiden."""
+    code: str
+
+
+TokenVerifier = Callable[[str], "Principal | Denied | None"]
+
+# Wer an einer öffentlichen Route (ohne Token) anfragt: keine Rechte.
+ANONYMOUS = Principal("anonymous", frozenset())
 
 
 def single_token_verifier(token: str) -> TokenVerifier:
@@ -231,7 +244,8 @@ class AuthResult:
         return self.status == 200 and self.principal is not None
 
 
-def _bearer_principal(value: str | None, verifier: TokenVerifier) -> Principal | None:
+def _bearer_principal(value: str | None,
+                      verifier: TokenVerifier) -> Principal | Denied | None:
     if not value:
         return None
     scheme, _, token = value.strip().partition(" ")
@@ -247,6 +261,39 @@ def _is_json(content_type: str | None) -> bool:
     return content_type.split(";", 1)[0].strip().lower() == "application/json"
 
 
+def _gate(method: str, h: Mapping[str, str], policy: Policy) -> AuthResult | None:
+    """Die Tore vor dem Token, gemeinsam für `authorize` und `authorize_public`;
+    `h` hat kleingeschriebene Namen. `None` heißt: durch."""
+    # Methoden sind case-sensitive (RFC 9110): kein `.upper()`. Das Routing
+    # vergleicht exakt; eine großgeschriebene Sicht hier und eine rohe dort wären
+    # zwei Wahrheiten über dieselbe Anfrage.
+    if method not in ALLOWED_METHODS:
+        return AuthResult(405, "method_not_allowed")
+    # Nur HTTP-OWS (Leerzeichen, Tab) abschneiden: `str.strip()` nähme auch NBSP,
+    # U+2028 und \x85.
+    if h.get("host", "").strip(" \t").lower() not in policy.allowed_hosts:
+        return AuthResult(403, "bad_host")
+    origin = h.get("origin")
+    if origin is not None and origin not in policy.allowed_origins:
+        return AuthResult(403, "bad_origin")
+    if "sec-fetch-site" in h:
+        return AuthResult(403, "browser_request")
+    return None
+
+
+def authorize_public(method: str, headers: Mapping[str, str],
+                     policy: Policy) -> AuthResult:
+    """Dieselben Tore wie `authorize`, aber ohne Token: für Routen, die ein Gerät
+    erst koppeln (`/v1/pair`). Ein `Authorization`-Header wird ignoriert."""
+    h = {name.lower(): value for name, value in headers.items()}
+    refused = _gate(method, h, policy)
+    if refused is not None:
+        return refused
+    if method in _BODY_METHODS and not _is_json(h.get("content-type")):
+        return AuthResult(415, "unsupported_media_type")
+    return AuthResult(200, "ok", ANONYMOUS)
+
+
 def authorize(method: str, headers: Mapping[str, str], policy: Policy,
               verifier: TokenVerifier) -> AuthResult:
     """Die vier Tore, in dieser Reihenfolge — ein Browser-Angriff scheitert
@@ -260,27 +307,18 @@ def authorize(method: str, headers: Mapping[str, str], policy: Policy,
     `Sec-Fetch-Site` hilft nur auf Loopback: über `http://<LAN-IP>` sendet
     Chrome es nicht (Spike #221). Es ist ein zweiter Marker, nie der
     tragende Schutz — Origin und Token tragen."""
-    # Methoden sind case-sensitive (RFC 9110): kein `.upper()`. Das Routing
-    # vergleicht exakt; eine großgeschriebene Sicht hier und eine rohe dort wären
-    # zwei Wahrheiten über dieselbe Anfrage.
-    if method not in ALLOWED_METHODS:
-        return AuthResult(405, "method_not_allowed")
     h = {name.lower(): value for name, value in headers.items()}
-    # Nur HTTP-OWS (Leerzeichen, Tab) abschneiden: `str.strip()` nähme auch NBSP,
-    # U+2028 und \x85.
-    if h.get("host", "").strip(" \t").lower() not in policy.allowed_hosts:
-        return AuthResult(403, "bad_host")
-    origin = h.get("origin")
-    if origin is not None and origin not in policy.allowed_origins:
-        return AuthResult(403, "bad_origin")
-    if "sec-fetch-site" in h:
-        return AuthResult(403, "browser_request")
-    principal = _bearer_principal(h.get("authorization"), verifier)
-    if principal is None:
+    refused = _gate(method, h, policy)
+    if refused is not None:
+        return refused
+    found = _bearer_principal(h.get("authorization"), verifier)
+    if isinstance(found, Denied):
+        return AuthResult(401, found.code)
+    if found is None:
         return AuthResult(401, "unauthorized")
     if method in _BODY_METHODS and not _is_json(h.get("content-type")):
         return AuthResult(415, "unsupported_media_type")
-    return AuthResult(200, "ok", principal)
+    return AuthResult(200, "ok", found)
 
 
 def require_scope(principal: Principal, scope: str) -> AuthResult:

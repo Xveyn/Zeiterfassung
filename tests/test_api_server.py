@@ -550,3 +550,14 @@ def test_too_many_query_fields_are_rejected_before_the_parameters_are_checked(se
     response, body, _ = http_call(server, "GET", f"/v1/entries?{query}")
     assert response.status == 400
     assert body["error"]["code"] == "invalid_query"
+
+
+def test_the_local_api_still_answers_neither_options_nor_cors(server):
+    origin = {"Origin": "https://xveyn.github.io"}
+    options, _, _ = http_call(server, "OPTIONS", "/v1/status",
+                              headers={**origin, "Access-Control-Request-Method": "GET"})
+    get, body, _ = http_call(server, "GET", "/v1/status", headers=origin)
+
+    assert options.status == 405 and options.getheader("Access-Control-Allow-Origin") is None
+    assert get.status == 403 and error_code(body) == "bad_origin"
+    assert get.getheader("Access-Control-Allow-Origin") is None

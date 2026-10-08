@@ -314,6 +314,11 @@ ROUTES: tuple[Route, ...] = (
 )
 
 
+def methods_for_path(path: str) -> frozenset[str]:
+    """Die Methoden, die ROUTES für genau diesen Pfad kennen (leer = unbekannter Pfad)."""
+    return frozenset(route.method for route in ROUTES if route.pattern.fullmatch(path))
+
+
 def routed_methods() -> frozenset[str]:
     """Die Methoden, die irgendeine Route kennt (für `Allow` bei einem 405, das
     `authorize` vor dem Routing ausspricht)."""

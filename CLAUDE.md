@@ -1482,12 +1482,15 @@ nicht mehr als „offen" führen — der Verweis lautet auf diese Grenze.
 - `src/secure_file.py` — Zugriffsschutz für die lokal abgelegten Secrets (`token.json`, `instance-secret`, `webhooks.json`, `smtp.json`, `api-token`): unter Windows `icacls`-ACL statt des dort wirkungslosen `chmod 0600` (Audit M8); best-effort, scheitert nie den Schreibvorgang. Mit verfügbarem Schlüsselbund (#101) tragen diese Dateien den Refresh-Token bzw. die Webhook-Secrets ohnehin nicht mehr im Klartext — die Härtung bleibt für den Datei-Fallback und die übrigen Felder (Konfiguration, `instance-secret`) unverändert nötig
 - `src/api_auth.py` — Token und Zugangsprüfung der lokalen HTTP-API (#92): Datei
   `api-token` (ACL-gehärtet wie `instance-secret`, fail-closed: ohne lesbares
-  Token bleibt die API aus) und `authorize` als einzige Stelle der Auth-Tore
-  (Methode → Host → Origin → `Sec-Fetch-Site` → Bearer → Content-Type). Tk-frei.
+  Token bleibt die API aus) und `authorize` als Stelle der Auth-Tore
+  (Methode → Host → Origin → `Sec-Fetch-Site` → Bearer → Content-Type); für die
+  Handy-Instanz (#221) kommen `authorize_public` (dieselben Tore ohne Token, für
+  `/v1/pair`) und `Denied` (`token_expired`/`token_revoked`) dazu. Tk-frei.
+- `src/netinfo.py` — LAN-Adressen für die Handy-Erfassung (#221): nur die drei RFC-1918-Netze (nicht `ipaddress.is_private`: das zählt auch das Benchmark-Netz der VPN-Tunnel mit), Aufzählung ohne Zusatzbibliothek (Routen-Adresse per UDP-Socket ohne Senden, Hostname-Auflösung), `pick_address` ersetzt eine verschwundene Adresse nie still. Tk-frei, die Socket-Aufrufe kommen als Parameter herein
 - `src/api_routes.py`, `src/api_server.py`, `src/api_service.py` — lokale HTTP-API
   (#92), Tk-frei: Routing mit Scope pro Route (`GET /v1/status`, `/v1/entries`, `/v1/summary/…`),
-  Server im Daemon-Thread (nur Loopback, `authorize` vor dem Routing, nie ein
-  CORS-Header) und Lebenszyklus über `api_enabled`/`api_port` (gerätelokal,
+  Server im Daemon-Thread (die lokale Instanz nur Loopback, `authorize` vor dem Routing,
+  nie ein CORS-Header; die Handy-Instanz über eine eigene `Surface`) und Lebenszyklus über `api_enabled`/`api_port` (gerätelokal,
   Default aus) mit Statusgrund. Beschreibung und Verträge: `src/CLAUDE.md`.
 - `src/api_summary.py` — Rechnung der Auswertungen der lokalen API (rein, über Minuten je Slot; s. `src/CLAUDE.md`).
 - `src/single_instance.py` — Tk-freier Single-Instance-Guard (pro-Nutzer-Localhost-Port, `acquire`/`serve`/`release`); verhindert parallele Instanzen und holt bei manuellem Zweitstart das vorhandene Fenster nach vorn (SHOW), beim Autostart-Doppelfeuer ohne Fenster-Pop (PING)
