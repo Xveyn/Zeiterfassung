@@ -587,3 +587,64 @@ def test_the_write_context_knows_when_the_service_is_closing(tmp_path):
 
     service.reopen()
     assert service._context.closing() is False
+
+
+# --- Härtung aus dem Review von PR 3 (#233) -----------------------------------------------
+
+def test_an_unexpected_error_in_rotation_is_a_failed_result_not_a_dead_worker(tmp_path, monkeypatch, caplog):
+    service = make_service(tmp_path, {"api_enabled": False, "api_port": free_port()})
+
+    def boom(base_path):
+        raise ValueError("kein OSError")
+
+    monkeypatch.setattr(api_service, "rotate_token", boom)
+
+    with caplog.at_level("WARNING"):
+        result = service.rotate()
+
+    assert result == RotateResult(False, REASON_ROTATE_FAILED)
+    assert "konnte nicht erneuert" in caplog.text
+
+
+def test_a_successful_rotation_clears_the_token_unavailable_error(tmp_path, monkeypatch):
+    port = free_port()
+    service = make_service(tmp_path, {"api_enabled": True, "api_port": port})
+    monkeypatch.setattr(api_service, "load_or_create_token", lambda base_path: None)
+    service.apply()
+    assert service.status.reason == "token_unavailable"
+    monkeypatch.undo()                                  # das Token ist wieder erzeugbar
+    try:
+        result = service.rotate()
+
+        assert result == RotateResult(True)
+        assert service.status.state == STATE_RUNNING and service.status.port == port
+        assert get_status_code(port, token_of(tmp_path)) == 200
+    finally:
+        service.shutdown()
+
+
+def test_a_shutdown_that_gave_up_during_a_rotation_still_stops_the_server(tmp_path, monkeypatch):
+    port = free_port()
+    service = make_service(tmp_path, {"api_enabled": True, "api_port": port})
+    service.apply()
+    assert not port_is_closed(port)
+    entered, release = threading.Event(), threading.Event()
+    real = api_service.rotate_token
+
+    def slow(base_path):
+        entered.set()
+        release.wait(5)
+        return real(base_path)
+
+    monkeypatch.setattr(api_service, "rotate_token", slow)
+    worker = threading.Thread(target=service.rotate)
+    worker.start()
+    assert entered.wait(5)
+
+    service.shutdown(lock_timeout=0.05)                 # wartet nicht auf die Rotation
+    assert not port_is_closed(port)                     # der Server läuft noch ...
+    release.set()
+    worker.join(5)
+
+    assert port_is_closed(port)                         # ... bis die Rotation fertig ist
+    assert service.status.state == STATE_OFF

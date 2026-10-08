@@ -177,15 +177,20 @@ class ApiService:
 
     def _reconcile(self) -> ApiStatus:
         with self._lock:
-            try:
-                return self._reconcile_locked()
-            except Exception:
-                # Der Runner würde den Fehler nur loggen und `on_done` nie
-                # rufen — der Status bliebe stehen. Hier wird er zum Zustand.
-                _log.exception("Lokale API: Start/Stopp fehlgeschlagen")
-                self._stop_server()
-                self._status = ApiStatus(STATE_ERROR, None, REASON_START_FAILED)
-                return self._status
+            return self._reconcile_guarded()
+
+    def _reconcile_guarded(self) -> ApiStatus:
+        """`_reconcile_locked`, aber ein Fehler wird zum Status. Der Aufrufer hält
+        `_lock`."""
+        try:
+            return self._reconcile_locked()
+        except Exception:
+            # Der Runner würde den Fehler nur loggen und `on_done` nie
+            # rufen — der Status bliebe stehen. Hier wird er zum Zustand.
+            _log.exception("Lokale API: Start/Stopp fehlgeschlagen")
+            self._stop_server()
+            self._status = ApiStatus(STATE_ERROR, None, REASON_START_FAILED)
+            return self._status
 
     def _reconcile_locked(self) -> ApiStatus:
         if self._closed:
@@ -256,12 +261,23 @@ class ApiService:
                 return RotateResult(False, REASON_CLOSED)
             try:
                 token = rotate_token(self._base_path)
-            except OSError:
+            except Exception:
+                # Nicht nur OSError: der Runner ruft bei einer anderen Ausnahme
+                # `on_done` nie, der Tab bliebe mit toten Knöpfen und ohne Meldung stehen.
                 _log.warning("Lokale API: Token konnte nicht erneuert werden",
                              exc_info=True)
                 return RotateResult(False, REASON_ROTATE_FAILED)
             if self._server is not None:
                 self._server.set_verifier(single_token_verifier(token))
+            elif self._status.reason == REASON_TOKEN_UNAVAILABLE:
+                # Das Token war der Grund, warum die API nicht lief: jetzt gibt es
+                # eines, also starten (sonst stünde der Fehler bis zum nächsten apply()).
+                self._reconcile_guarded()
+            if self._closed:
+                # `shutdown()` hat auf diesen Lock nur bis zum Timeout gewartet und
+                # aufgegeben; den Server stoppt dann der, der den Lock hielt.
+                self._stop_server()
+                self._status = ApiStatus(STATE_OFF)
             return RotateResult(True)
 
     def read_token(self) -> str | None:
