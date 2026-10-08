@@ -50,6 +50,8 @@ Eine **zweite `ApiServer`-Instanz** mit eigener `Policy` (`allowed_hosts` = gena
 
 Die Auth-Tore bleiben, in dieser Reihenfolge, wie in der lokalen API; `Sec-Fetch-Site` zählt im LAN nicht als Schutz (Chrome sendet es über `http://<LAN-IP>` nicht, Spike), Host, Origin und Token tragen. **CORS** nur auf diesen vier Routen und nur für die erlaubte Origin: `Access-Control-Allow-Origin: <Origin>`, `Vary: Origin`, erlaubte Header `Authorization, Content-Type`, `Max-Age` 600, nie `Allow-Credentials`. Der Preflight trägt keine Daten; die Auth läuft immer auf dem eigentlichen Request. Body-Limit, Socket-Timeouts und die Obergrenze gleichzeitiger Verbindungen wie `api_server`.
 
+**Umsetzung (PR 4a):** Der Prüfer liefert `Principal | Denied | None`; `Denied("token_expired"|"token_revoked")` wird zu `401` mit diesem Code. `POST /v1/pair` ist als einziges (Methode, Pfad)-Paar öffentlich, mit denselben Toren Host/Origin/`Sec-Fetch-Site`/Content-Type. CORS-Header tragen alle Antworten auf die erlaubte Origin, auch Fehler; der Preflight antwortet auf `Access-Control-Request-Private-Network: true` mit `Access-Control-Allow-Private-Network: true`. Risiko für den Android-Test (#248): sendet Chrome `Sec-Fetch-Site` doch an `http://<LAN-IP>`, scheitert jede Anfrage mit `403 browser_request`.
+
 ## Protokoll (`/v1`, zusätzlich `protocol: 1` im Body)
 
 Fehler wie in der lokalen API: `{"error": {"code": "...", "message": "..."}}`.

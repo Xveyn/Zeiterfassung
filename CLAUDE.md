@@ -1484,6 +1484,7 @@ nicht mehr als „offen" führen — der Verweis lautet auf diese Grenze.
   `api-token` (ACL-gehärtet wie `instance-secret`, fail-closed: ohne lesbares
   Token bleibt die API aus) und `authorize` als einzige Stelle der Auth-Tore
   (Methode → Host → Origin → `Sec-Fetch-Site` → Bearer → Content-Type). Tk-frei.
+- `src/netinfo.py` — LAN-Adressen für die Handy-Erfassung (#221): nur private IPv4-Adressen, Aufzählung ohne Zusatzbibliothek (Routen-Adresse per UDP-Socket ohne Senden, Hostname-Auflösung), `pick_address` ersetzt eine verschwundene Adresse nie still. Tk-frei, die Socket-Aufrufe kommen als Parameter herein
 - `src/api_routes.py`, `src/api_server.py`, `src/api_service.py` — lokale HTTP-API
   (#92), Tk-frei: Routing mit Scope pro Route (`GET /v1/status`, `/v1/entries`, `/v1/summary/…`),
   Server im Daemon-Thread (nur Loopback, `authorize` vor dem Routing, nie ein
