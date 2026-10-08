@@ -118,7 +118,7 @@ def test_options_head_patch_trace_and_unknown_methods_are_405_with_allow(server)
     for method in ("OPTIONS", "HEAD", "PATCH", "TRACE", "FOO"):
         response, _, _ = http_call(server, method, "/v1/status")
         assert response.status == 405, method
-        assert response.getheader("Allow") == "DELETE, GET, POST, PUT"
+        assert response.getheader("Allow") == "DELETE, GET, PUT"       # kein POST: keine Route kennt es
 
 
 def test_wrong_host_origin_and_sec_fetch_are_403(server):
@@ -233,12 +233,6 @@ def test_leading_double_slash_never_reaches_a_different_resource(server):
     assert response.status in (200, 404)
     if response.status == 200:
         assert "api_version" in body
-
-
-def test_too_many_query_fields_are_400(server):
-    query = "&".join(f"a{i}=1" for i in range(500))
-    response, body, _ = http_call(server, "GET", f"/v1/entries?{query}")
-    assert response.status == 400
 
 
 def test_slow_client_is_dropped_and_the_server_keeps_serving(server, monkeypatch):
@@ -534,3 +528,25 @@ def test_a_deeply_nested_put_body_is_400_not_500(server):
     response, body, _ = http_call(server, "PUT", "/v1/entries/2026-10-07", JSON_HEADERS,
                                   b"[" * 200_000)
     assert response.status == 400
+
+
+# --- Härtung aus dem Review von PR 2 (#233) -----------------------------------------------
+
+@pytest.mark.parametrize("method", ["OPTIONS", "HEAD", "PATCH", "TRACE"])
+def test_allow_names_only_methods_that_a_route_can_serve(server, method):
+    response, _body, _ = http_call(server, method, "/v1/status")
+    assert response.status == 405
+    assert response.getheader("Allow") == "DELETE, GET, PUT"       # kein POST
+
+
+def test_the_listen_backlog_is_larger_than_the_default():
+    assert api_server._ApiHTTPServer.request_queue_size >= 64
+
+
+def test_too_many_query_fields_are_rejected_before_the_parameters_are_checked(server):
+    # 30 gleichnamige Felder: ohne die Obergrenze käme "duplicate_parameter",
+    # mit ihr scheitert schon das Parsen der Query.
+    query = "&".join("from=2026-01-01" for _ in range(30))
+    response, body, _ = http_call(server, "GET", f"/v1/entries?{query}")
+    assert response.status == 400
+    assert body["error"]["code"] == "invalid_query"

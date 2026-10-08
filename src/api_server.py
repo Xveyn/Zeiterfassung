@@ -32,8 +32,10 @@ from collections.abc import Callable
 from typing import Any, cast
 from urllib.parse import parse_qs
 
-from src.api_auth import ALLOWED_METHODS, AuthResult, Policy, TokenVerifier, authorize
-from src.api_routes import ApiContext, ApiRequest, ApiResponse, error_response, handle
+from src.api_auth import AuthResult, Policy, TokenVerifier, authorize
+from src.api_routes import (
+    ApiContext, ApiRequest, ApiResponse, error_response, handle, routed_methods,
+)
 
 _log = logging.getLogger(__name__)
 
@@ -74,7 +76,9 @@ _AUTH_MESSAGES = {
 def _auth_error(auth: AuthResult) -> ApiResponse:
     headers: dict[str, str] = {}
     if auth.status == 405:
-        headers["Allow"] = ", ".join(sorted(ALLOWED_METHODS))
+        # Was die Routen tatsächlich können, nicht `ALLOWED_METHODS`: POST ist für
+        # #221 vorgesehen, aber keine Route kennt es.
+        headers["Allow"] = ", ".join(sorted(routed_methods()))
     if auth.status == 401:
         headers["WWW-Authenticate"] = "Bearer"
     return error_response(auth.status, auth.code,
@@ -212,6 +216,10 @@ class _ApiHTTPServer(http.server.ThreadingHTTPServer):
     # Ports erlauben; dort schützt SO_EXCLUSIVEADDRUSE (server_bind).
     allow_reuse_address = sys.platform != "win32"
     max_connections = _MAX_CONNECTIONS
+    # Der Standard (5) lässt bei einem Schwung gleichzeitiger Verbindungen die
+    # Warteschlange überlaufen: Latenz bis über eine Sekunde, unter Windows
+    # abgewiesene Verbindungen. Angenommen wird ohnehin sofort (Obergrenze oben).
+    request_queue_size = 128
 
     def __init__(self, address: tuple[str, int],
                  policy_for_port: Callable[[int], Policy],

@@ -314,6 +314,12 @@ ROUTES: tuple[Route, ...] = (
 )
 
 
+def routed_methods() -> frozenset[str]:
+    """Die Methoden, die irgendeine Route kennt (für `Allow` bei einem 405, das
+    `authorize` vor dem Routing ausspricht)."""
+    return frozenset(route.method for route in ROUTES)
+
+
 def handle(request: ApiRequest, ctx: ApiContext, principal: Principal) -> ApiResponse:
     allowed: set[str] = set()
     chosen: tuple[Route, re.Match[str]] | None = None
