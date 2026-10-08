@@ -31,6 +31,7 @@ from src.dialogs.entry_dialog import open_entry_dialog
 from src.dialogs.send_dialog import open_send_dialog
 from src.dialogs.settings_dialog import open_settings_dialog
 from src.tooltip import attach_tooltip
+from src.ui_queue import UiQueue
 from src.theme import (
     BG, ACCENT, TEXT, TEXT_MUTED,
     FONT_HEADER, FONT_FOOTER, FONT_SMALL, apply_dark_titlebar, themed_askyesno, themed_ask_delete_choice, themed_showerror, themed_showinfo,
@@ -75,6 +76,11 @@ class App:
         self._data_lock = data_lock      # geteilter Store-RLock (Audit H1)
         self._sync_guard = sync_guard    # Sync-Re-Entrancy-Guard (Audit H2)
         self._removal = removal.RemovalState()   # „Zeiterfassung entfernen“ (#50)
+        # Worker legen ihre Callbacks hier ab statt root.after aufzurufen: vor
+        # der Mainloop wirft das RuntimeError (Xveyn#244). Der Poll läuft ab
+        # jetzt, noch vor dem ersten Worker.
+        self._ui_queue = UiQueue()
+        self._ui_queue.start(self.root.after)
         # Gerätelokale Webhook-Konfiguration; None bedeutet „Feature nicht
         # verfügbar" und wird von den Dialogen wie eine leere Liste behandelt.
         self._webhook_store = webhook_store
@@ -702,10 +708,7 @@ class App:
                 fn()
             except tk.TclError:
                 pass
-        try:
-            self.root.after(0, guarded)
-        except tk.TclError:
-            pass
+        self._ui_queue.put(guarded)
 
     def _refresh(self):
         self._renderer.refresh(
