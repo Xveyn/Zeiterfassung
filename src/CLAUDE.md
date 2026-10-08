@@ -305,6 +305,23 @@ Zeitraum und welche Kategorien der Bericht gefiltert ist.
   (`keyring_store.py`) oder, nur als Fallback, im Klartext in `smtp.json`
   selbst; auch dann wird die Datei gehärtet geschrieben.
 
+  `mobile_store.py` — gerätelokaler Store der gekoppelten Handys (`mobile_devices.json`,
+  #221), Mechanik und eigener Lock wie `smtp_store`; nichts davon im Sync-Doc oder Share-Doc.
+  Die Datei trägt von jedem Gerätetoken nur den **SHA-256-Hash** (256 Bit Zufall, nicht
+  umkehrbar), deshalb schreibt der Store über `json_store.atomic_write_json` und nicht über den
+  gehärteten Pfad der Secret-Dateien (kein `icacls`-Aufruf bei jedem Abgleich); sie steht trotzdem
+  in `removal.CREDENTIAL_FILES`, `installer.iss` und `.gitignore`. Defekte Datensätze werden
+  übersprungen (im Log nur `id` und Name, nie Hashes), eine kaputte Datei wird quarantäniert,
+  eine neuere `schema_version` oder ein Lesefehler macht den Store read-only
+  (`MobileStoreReadOnly`, die Datei bleibt unberührt), ein Schreibfehler rollt den Speicher
+  zurück. `mobile_pairing.py` hält die Regeln dazu, rein und ohne I/O: der Einmalcode
+  (`PairingSession`: 8 Zeichen aus 31, 5 Minuten, einmal einlösbar, nach 5 Fehlversuchen
+  gesperrt, nur im Hauptspeicher) und das Gerätetoken (`issue_device`/`renew`/`revoke`/
+  `authenticate`: 30 Tage ab der letzten Nutzung, ein erneuertes Token lässt das alte 10 Minuten
+  gelten; ein widerrufener Datensatz bleibt erhalten, damit die Antwort `token_revoked` lauten
+  kann). Geräte-ID, Name und Token kommen vom Handy — Fremddaten (`normalize_device_id`,
+  `clean_device_name`). Design: `docs/superpowers/specs/2026-10-08-mobile-pwa-design.md`.
+
   `VacationStore` (`vacations.json`) hängt am geteilten `data_lock` wie
   `Storage`, `Settings`, `ConflictsStore` und `ReservationStore` — anders als
   `WebhookStore`, der bewusst seinen eigenen mitbringt. Er ist gerätelokal:
