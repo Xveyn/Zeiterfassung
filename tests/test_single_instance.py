@@ -258,3 +258,19 @@ def test_secret_file_acl_hardened_before_replace(tmp_path, monkeypatch):
     assert events[0][1].endswith(".tmp")
     with open(path, "rb") as f:
         assert f.read() == b"s" * 32
+
+
+def test_the_instance_secret_is_hardened_before_it_is_written(tmp_path, monkeypatch):
+    import src.single_instance as si
+    seen = []
+    real = si.harden_windows_acl
+
+    def spy(path):
+        seen.append(os.path.getsize(path))
+        real(path)
+    monkeypatch.setattr(si, "harden_windows_acl", spy)
+
+    si._write_secret_atomic(str(tmp_path / "instance-secret"), b"s" * 32)
+
+    assert seen == [0]
+    assert (tmp_path / "instance-secret").read_bytes() == b"s" * 32

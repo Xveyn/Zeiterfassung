@@ -50,12 +50,13 @@ def _write_secret_atomic(path: str, secret: bytes) -> None:
         dir=directory, prefix=".instance-secret-", suffix=".tmp")
     try:
         with os.fdopen(fd, "wb") as f:
+            # Erst härten, dann schreiben (die Temp-Datei ist beim Anlegen leer).
+            try:
+                os.chmod(tmp_path, stat.S_IRUSR | stat.S_IWUSR)  # 0o600; Win: No-op
+            except OSError:
+                pass
+            harden_windows_acl(tmp_path)
             f.write(secret)
-        try:
-            os.chmod(tmp_path, stat.S_IRUSR | stat.S_IWUSR)  # 0o600; Win: No-op
-        except OSError:
-            pass
-        harden_windows_acl(tmp_path)
         attempts = 5
         for attempt in range(attempts):
             try:

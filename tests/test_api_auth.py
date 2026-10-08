@@ -648,3 +648,62 @@ def test_read_token_never_hardens_the_file(tmp_path, monkeypatch):
     read_token(str(tmp_path))
 
     assert calls == []                  # `icacls` bis 15 s: nichts für „nur kopieren"
+
+
+# --- Härtung aus dem Review von PR 1 (#233) ------------------------------------------
+
+def test_a_token_file_with_a_utf8_bom_is_still_the_token(tmp_path):
+    token = generate_token()
+    (tmp_path / TOKEN_FILENAME).write_bytes(b"\xef\xbb\xbf" + token.encode("ascii") + b"\r\n")
+
+    assert load_or_create_token(str(tmp_path)) == token
+    assert read_token(str(tmp_path)) == token
+
+
+@pytest.mark.parametrize("content", [
+    "utf16", "nul-in-the-middle", "non-ascii-in-the-middle", "bom-then-junk",
+])
+def test_a_token_file_that_is_not_ascii_is_not_a_token_and_never_crashes(tmp_path, content):
+    token = generate_token()
+    data = {
+        "utf16": b"\xff\xfe" + token.encode("utf-16-le"),
+        "nul-in-the-middle": token[:20].encode() + b"\x00" + token[21:].encode(),
+        "non-ascii-in-the-middle": token[:20].encode() + b"\xc3\xa4" + token[22:].encode(),
+        "bom-then-junk": b"\xef\xbb\xbf" + b"zu-kurz",
+    }[content]
+    (tmp_path / TOKEN_FILENAME).write_bytes(data)
+
+    assert read_token(str(tmp_path)) is None
+    fresh = load_or_create_token(str(tmp_path))
+    assert fresh is not None and fresh != token
+
+
+def test_an_auth_result_with_status_200_but_no_principal_is_not_ok():
+    assert not AuthResult(200, "ok").ok
+    assert not AuthResult(200, "ok", None).ok
+
+
+def test_the_host_header_is_trimmed_of_http_whitespace_only():
+    policy = Policy.loopback(17653)
+    verify = single_token_verifier("a" * 43)
+    ok = authorize("GET", {"Host": " \t127.0.0.1:17653 \t", "Authorization": "Bearer " + "a" * 43},
+                   policy, verify)
+    assert ok.status == 200
+    for junk in ("\u00a0127.0.0.1:17653", "127.0.0.1:17653\u2028", "\x85127.0.0.1:17653"):
+        assert authorize("GET", {"Host": junk, "Authorization": "Bearer " + "a" * 43},
+                         policy, verify).code == "bad_host"
+
+
+def test_the_token_is_hardened_before_it_is_written(tmp_path, monkeypatch):
+    seen = []
+    real = api_auth.harden_windows_acl
+
+    def spy(path):
+        seen.append(os.path.getsize(path))                    # Größe zum Zeitpunkt der Härtung
+        real(path)
+    monkeypatch.setattr(api_auth, "harden_windows_acl", spy)
+
+    token = load_or_create_token(str(tmp_path))
+
+    assert seen == [0]                                        # die Datei war noch leer
+    assert (tmp_path / TOKEN_FILENAME).read_text(encoding="ascii") == token

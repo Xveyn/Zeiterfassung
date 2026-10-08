@@ -36,6 +36,7 @@ _TOKEN_BYTES = 32
 # selbst gewählter Wert wäre kein 256-Bit-Geheimnis mehr.
 _TOKEN_RE = re.compile(r"[A-Za-z0-9_-]{43}")
 _MAX_FILE_BYTES = 1024
+_UTF8_BOM = b"\xef\xbb\xbf"
 
 
 def generate_token() -> str:
@@ -44,9 +45,13 @@ def generate_token() -> str:
 
 def _valid_token(data: bytes) -> str | None:
     """Das Token aus einem Dateiinhalt, oder `None`, wenn es keines ist (zu
-    groß, falsches Format). Ein Zeilenumbruch am Ende wird toleriert."""
+    groß, falsches Format). Ein Zeilenumbruch am Ende und ein UTF-8-BOM am Anfang
+    werden toleriert; UTF-16 (Windows PowerShell 5.1 `>`) nicht — die Datei gilt
+    dann als ungültig und wird durch ein frisches Token ersetzt."""
     if len(data) > _MAX_FILE_BYTES:
         return None
+    if data.startswith(_UTF8_BOM):          # Windows-Editor, PowerShell 7 `>`
+        data = data[len(_UTF8_BOM):]
     candidate = data.strip().decode("ascii", errors="replace")
     return candidate if _TOKEN_RE.fullmatch(candidate) else None
 
@@ -65,12 +70,15 @@ def _write_token_atomic(path: str, token: str) -> None:
         dir=directory, prefix=f".{TOKEN_FILENAME}-", suffix=".tmp")
     try:
         with os.fdopen(fd, "w", encoding="ascii") as f:
+            # Erst härten, dann schreiben: die Temp-Datei ist beim Anlegen leer, das
+            # Token steht nie in einer Datei mit geerbten Rechten (unter Windows
+            # sonst bis zum `icacls`-Aufruf lesbar).
+            try:
+                os.chmod(tmp_path, stat.S_IRUSR | stat.S_IWUSR)  # 0o600; Win: No-op
+            except OSError:
+                _log.debug("chmod 0600 auf %s fehlgeschlagen", tmp_path, exc_info=True)
+            harden_windows_acl(tmp_path)
             f.write(token)
-        try:
-            os.chmod(tmp_path, stat.S_IRUSR | stat.S_IWUSR)  # 0o600; Win: No-op
-        except OSError:
-            _log.debug("chmod 0600 auf %s fehlgeschlagen", tmp_path, exc_info=True)
-        harden_windows_acl(tmp_path)
         attempts = 5
         for attempt in range(attempts):
             try:
@@ -219,7 +227,8 @@ class AuthResult:
 
     @property
     def ok(self) -> bool:
-        return self.status == 200
+        # Ein 200 ohne Principal ist kein Zugang: `handle` bekäme `None`.
+        return self.status == 200 and self.principal is not None
 
 
 def _bearer_principal(value: str | None, verifier: TokenVerifier) -> Principal | None:
@@ -257,7 +266,9 @@ def authorize(method: str, headers: Mapping[str, str], policy: Policy,
     if method not in ALLOWED_METHODS:
         return AuthResult(405, "method_not_allowed")
     h = {name.lower(): value for name, value in headers.items()}
-    if h.get("host", "").strip().lower() not in policy.allowed_hosts:
+    # Nur HTTP-OWS (Leerzeichen, Tab) abschneiden: `str.strip()` nähme auch NBSP,
+    # U+2028 und \x85.
+    if h.get("host", "").strip(" \t").lower() not in policy.allowed_hosts:
         return AuthResult(403, "bad_host")
     origin = h.get("origin")
     if origin is not None and origin not in policy.allowed_origins:
