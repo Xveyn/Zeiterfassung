@@ -31,12 +31,16 @@ import sys
 import threading
 import time
 from collections.abc import Callable
+from dataclasses import dataclass
 from typing import Any, cast
 from urllib.parse import parse_qs
 
-from src.api_auth import AuthResult, Policy, TokenVerifier, authorize
+from src.api_auth import (
+    AuthResult, Policy, Principal, TokenVerifier, authorize, authorize_public,
+)
 from src.api_routes import (
-    ApiContext, ApiRequest, ApiResponse, error_response, handle, routed_methods,
+    ApiContext, ApiRequest, ApiResponse, error_response, handle, methods_for_path,
+    routed_methods,
 )
 
 _log = logging.getLogger(__name__)
@@ -71,16 +75,40 @@ _AUTH_MESSAGES = {
     "bad_origin": "Anfragen mit Origin-Header sind nicht erlaubt.",
     "browser_request": "Browser-Anfragen sind nicht erlaubt.",
     "unauthorized": "Token fehlt oder ist ungültig.",
+    "token_expired": "Das Token ist abgelaufen. Das Gerät muss neu gekoppelt werden.",
+    "token_revoked": "Das Token wurde widerrufen. Das Gerät muss neu gekoppelt werden.",
     "unsupported_media_type": "Content-Type muss application/json sein.",
 }
 
 
-def _auth_error(auth: AuthResult) -> ApiResponse:
+@dataclass(frozen=True)
+class Surface:
+    """Was eine Server-Instanz ausliefert: die lokale API (Loopback, ein Token) und
+    die Handy-Instanz (LAN, Gerätetoken, CORS) teilen sich diesen Server und
+    unterscheiden sich nur hierin.
+
+    `dispatch` bekommt eine bereits authentifizierte Anfrage. `methods` ist, was
+    irgendeine Route kann (`Allow` bei einem 405 aus `authorize`, nicht
+    `ALLOWED_METHODS`), `route_methods(path)` was genau dieser Pfad kann (leer =
+    unbekannt; der Preflight fragt es). `public` sind (Methode, Pfad)-Paare, die
+    ohne Token erreichbar sind — exakt, kein Muster. `cors` schaltet Preflight und
+    CORS-Header für die erlaubten Origins der Policy ein."""
+    dispatch: Callable[[ApiRequest, Principal], ApiResponse]
+    methods: frozenset[str]
+    route_methods: Callable[[str], frozenset[str]]
+    public: frozenset[tuple[str, str]] = frozenset()
+    cors: bool = False
+
+
+def local_surface(context: ApiContext) -> Surface:
+    return Surface(dispatch=lambda request, principal: handle(request, context, principal),
+                   methods=routed_methods(), route_methods=methods_for_path)
+
+
+def _auth_error(auth: AuthResult, allowed_methods: frozenset[str]) -> ApiResponse:
     headers: dict[str, str] = {}
     if auth.status == 405:
-        # Was die Routen tatsächlich können, nicht `ALLOWED_METHODS`: POST ist für
-        # #221 vorgesehen, aber keine Route kennt es.
-        headers["Allow"] = ", ".join(sorted(routed_methods()))
+        headers["Allow"] = ", ".join(sorted(allowed_methods))
     if auth.status == 401:
         headers["WWW-Authenticate"] = "Bearer"
     return error_response(auth.status, auth.code,
@@ -192,23 +220,28 @@ class _Handler(http.server.BaseHTTPRequestHandler):
                 return error_response(400, "duplicate_header",
                                       f"Header {name} darf nur einmal vorkommen.")
         headers = dict(self.headers.items())
-        auth = authorize(self.command, headers, server.policy, server.verifier)
+        path = self.path.partition("?")[0]
+        surface = server.surface
+        if (self.command, path) in surface.public:
+            auth = authorize_public(self.command, headers, server.policy)
+        else:
+            auth = authorize(self.command, headers, server.policy, server.verifier)
         if not auth.ok or auth.principal is None:
-            return _auth_error(auth)
+            return _auth_error(auth, surface.methods)
         if any(name.lower() == "transfer-encoding" for name in headers):
             return error_response(400, "unsupported_encoding",
                                   "Transfer-Encoding wird nicht unterstützt.")
         body = self._read_body()
         if isinstance(body, ApiResponse):
             return body
-        path, _, raw_query = self.path.partition("?")
+        raw_query = self.path.partition("?")[2]
         try:
             query = parse_qs(raw_query, keep_blank_values=True,
                              max_num_fields=_MAX_QUERY_FIELDS)
         except ValueError:
             return error_response(400, "invalid_query", "Ungültige Query.")
         request = ApiRequest(self.command, path, query, body)
-        return handle(request, server.context, auth.principal)
+        return surface.dispatch(request, auth.principal)
 
 
 class _ApiHTTPServer(http.server.ThreadingHTTPServer):
@@ -225,9 +258,9 @@ class _ApiHTTPServer(http.server.ThreadingHTTPServer):
 
     def __init__(self, address: tuple[str, int],
                  policy_for_port: Callable[[int], Policy],
-                 verifier: TokenVerifier, context: ApiContext) -> None:
+                 verifier: TokenVerifier, surface: Surface) -> None:
         self.verifier = verifier
-        self.context = context
+        self.surface = surface
         self.policy: Policy
         self._slots = threading.BoundedSemaphore(self.max_connections)
         super().__init__(address, _Handler)
@@ -289,9 +322,14 @@ class _ApiHTTPServer(http.server.ThreadingHTTPServer):
 
 
 class ApiServer:
-    def __init__(self, context: ApiContext, verifier: TokenVerifier, *, port: int = 0,
-                 policy_for_port: Callable[[int], Policy] = Policy.loopback) -> None:
-        self._context = context
+    def __init__(self, context: ApiContext | None, verifier: TokenVerifier, *, port: int = 0,
+                 policy_for_port: Callable[[int], Policy] = Policy.loopback,
+                 surface: Surface | None = None) -> None:
+        if surface is None:
+            if context is None:
+                raise ValueError("ApiServer braucht einen Kontext oder eine Surface")
+            surface = local_surface(context)
+        self._surface = surface
         self._verifier = verifier
         self._requested_port = port
         self._policy_for_port = policy_for_port
@@ -312,7 +350,7 @@ class ApiServer:
             raise RuntimeError("Server läuft bereits")
         bind_host = self._policy_for_port(self._requested_port).bind_host
         httpd = _ApiHTTPServer((bind_host, self._requested_port), self._policy_for_port,
-                               self._verifier, self._context)
+                               self._verifier, self._surface)
         self._httpd = httpd
         self._stop_event.clear()
         thread = threading.Thread(target=self._serve_loop, args=(httpd,),
