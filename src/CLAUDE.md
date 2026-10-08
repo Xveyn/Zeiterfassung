@@ -657,8 +657,10 @@ Wert.
 - `api_auth.py` — Authentifizierung der lokalen HTTP-API (#92), Tk-frei und
   ohne Socket. Token (`secrets.token_urlsafe(32)`, Datei `api-token`, gehärtet
   wie `instance-secret`) und `authorize(method, headers, policy, verifier)` als
-  **die eine** Stelle der Tore (Methode → Host → Origin → `Sec-Fetch-Site` →
-  Bearer → Content-Type). **Fail-closed:** ohne lesbares/schreibbares Token
+  Stelle der Tore (Methode → Host → Origin → `Sec-Fetch-Site` → Bearer →
+  Content-Type). Die Tore selbst stehen in `_gate`, das auch `authorize_public`
+  (ohne Token, für `/v1/pair`) nutzt; der Preflight des Servers prüft Host und
+  Origin ein drittes Mal für sich (kein Token im Preflight). **Fail-closed:** ohne lesbares/schreibbares Token
   gibt es keins (`load_or_create_token` → `None`), die API bleibt aus — anders
   als `single_instance`, das unauthentifiziert weiterläuft. `Policy` und
   `Principal.scopes` sind die Nahtstellen für die LAN-Freigabe (#221). `read_token` liest das Token
@@ -695,17 +697,25 @@ Wert.
   auch nicht bei ungewöhnlich gespeicherten Daten: jede Prüfung ist für sich abgesichert).
   Hält keinen Lock; den nimmt der Aufrufer um Prüfen und Speichern gemeinsam.
 - `api_summary.py` — Auswertungen der lokalen API (#92), Tk-frei, rein: Pfad-Parser (`parse_week`, `parse_month`, `parse_year`, nur ASCII-Ziffern, `fromisocalendar` entscheidet über KW 53), `summarize` (Tage, Kategorien, `weeks[]` mit Wochenlimit, Pausenwarnungen, Urlaub über `vacations.cap_by_worktime`), `category_names`, `holidays_for`. Gerechnet wird über **Minuten je Slot**; gespeicherte Slots sind Fremddaten, ein ungewöhnlicher Slot zählt 0 Minuten und wird geloggt. Die Routen (`/v1/summary/week|month`, `/v1/categories`, `/v1/holidays`) in `api_routes` holen nur den Snapshot (`Storage.get_all()`, `VacationStore.day_minutes()`), halten keinen Lock und melden nie `on_change`.
-- `api_server.py` — HTTP-Server, seit #221 für zwei Instanzen gebaut: die lokale API (Loopback, ein Token) und die Handy-Instanz (LAN, Gerätetoken) teilen sich ihn und unterscheiden sich in der **`Surface`** (`dispatch`, `methods` für `Allow`, `route_methods(path)` für den Preflight, `public` = exakte (Methode, Pfad)-Paare ohne Token, `cors`); `ApiServer(context, …)` baut ohne Angabe die lokale (`local_surface`). Bei `cors=True` wird `OPTIONS` **vor** `authorize` beantwortet (Host, Origin, Methode; kein Token, kein Store, `204` ohne Body), und jede Antwort auf die erlaubte Origin trägt `Access-Control-Allow-Origin` + `Vary: Origin`, auch Fehler (die PWA muss `token_expired` lesen können); eine fremde Origin nie, `Allow-Credentials` nie. Ein Prüfer liefert `Principal | Denied | None` (`Denied(code)` → `401 <code>`). Für die lokale API ändert sich nichts. Zur lokalen API: `ApiServer(context, verifier,
-  port=…)`. Ein Daemon-Thread mit eigener `handle_request()`-Schleife (kein
+- `api_server.py` — HTTP-Server, seit #221 für zwei Instanzen gebaut: die lokale API (Loopback, ein Token) und die Handy-Instanz (LAN, Gerätetoken) teilen sich ihn und unterscheiden sich in der **`Surface`** (`dispatch`, `methods` für `Allow`, `route_methods(path)` für den Preflight, `public` = exakte (Methode, Pfad)-Paare ohne Token, `cors`); `ApiServer(context, …)` baut ohne Angabe die lokale (`local_surface`). Ein Prüfer liefert `Principal | Denied | None` (`Denied(code)` → `401 <code>`).
+  Ein Daemon-Thread mit eigener `handle_request()`-Schleife (kein
   `serve_forever()`/`shutdown()`: `shutdown()` wartet, bis die Schleife verlassen
   wurde, und blockiert für immer, wenn der Thread nie dorthin kommt — Preis der
   eigenen Schleife sind rund zehn Aufwachvorgänge pro Sekunde), pro Verbindung ein
-  Daemon-Thread. Reihenfolge je Anfrage: doppelte Header → 400, `api_auth.authorize`, `Transfer-Encoding` → 400,
-  Body lesen (Limit 1 MiB), `api_routes.handle`. Nur Loopback (Bind-Adresse aus
-  `Policy.bind_host`); `server_bind` umgeht `socket.getfqdn` (hängt bei kaputtem
+  Daemon-Thread. Reihenfolge je Anfrage: doppelte Header → 400; bei `cors=True` ein
+  `OPTIONS` als Preflight (Host, Origin, Methode; kein Token, kein Store, `204` ohne
+  Body, Antworten ohne CORS-Header, wenn abgelehnt); sonst `api_auth.authorize` (an einer
+  öffentlichen Route `authorize_public`), `Transfer-Encoding` → 400, Body lesen
+  (Limit 1 MiB), `surface.dispatch` (lokal `api_routes.handle`). Bind-Adresse aus
+  `Policy.bind_host` (lokal Loopback, die Handy-Instanz die gewählte LAN-Adresse, nie
+  `0.0.0.0`); `server_bind` umgeht `socket.getfqdn` (hängt bei kaputtem
   DNS) und setzt unter Windows `SO_EXCLUSIVEADDRUSE` statt `SO_REUSEADDR` — sonst
   könnte ein anderer lokaler Prozess den Port zusätzlich binden und Token
-  mitlesen. `send_error` ist überschrieben: JSON statt HTML-Seite. Nie ein
+  mitlesen. `send_error` ist überschrieben: JSON statt HTML-Seite. **CORS:** nur bei
+  `cors=True` — jede Antwort auf eine Anfrage mit der erlaubten Origin trägt
+  `Access-Control-Allow-Origin` (Echo) + `Vary: Origin`, auch Fehler (die PWA muss
+  `token_expired` lesen können), ein abgelehnter Preflight aber nie; eine fremde Origin
+  bekommt nie einen, `Allow-Credentials` nie. Die lokale API sendet nie einen
   CORS-Header. **Last:** höchstens 32 gleichzeitige Verbindungen (darüber wird
   im Accept-Thread sofort geschlossen — angenommen wird vor der Auth, ohne die
   Grenze könnte ein lokaler Prozess Threads und Dateihandles der ganzen App

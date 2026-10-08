@@ -11,7 +11,13 @@ def test_private_ipv4_addresses_are_lan_addresses(text):
 
 @pytest.mark.parametrize("text", [
     "0.0.0.0", "127.0.0.1", "127.0.1.1", "169.254.1.1", "100.64.0.1", "8.8.8.8",
-    "172.32.0.1", "224.0.0.1", "255.255.255.255", "192.168.1.256", "192.168.001.001",
+    "172.32.0.1", "172.15.255.255", "192.167.255.255", "192.169.0.1",
+    # von `ipaddress.is_private` mitgezählt, aber kein RFC-1918-LAN: Testnetze, das
+    # Benchmark-Netz (VPN-Tunnel mit Fake-IP wie Clash/Surge belegen 198.18.0.0/15),
+    # „dieses Netz" und die IETF-Protokollzuweisung.
+    "0.1.2.3", "192.0.2.1", "198.18.0.1", "198.19.255.254", "198.51.100.7", "203.0.113.5",
+    "192.0.0.8", "192.0.0.170",
+    "224.0.0.1", "255.255.255.255", "192.168.1.256", "192.168.001.001",
     "192.168.1", "192.168.1.20 ", " 192.168.1.20", "192.168.1.20:17654", "::1",
     "fe80::1", "fd00::1", "", "localhost", "１９２.１６８.１.２０", "192.168.1.20\n",
     None, 5, 192168120, b"192.168.1.20", ["192.168.1.20"],
@@ -107,3 +113,8 @@ def test_the_real_candidates_are_all_lan_addresses():
 ])
 def test_pick_address(configured, candidates, expected):
     assert netinfo.pick_address(configured, candidates) == expected
+
+
+def test_a_vpn_tunnel_address_is_never_suggested_as_the_default():
+    assert netinfo.lan_candidates(route=lambda: "198.18.0.1",
+                                  interfaces=lambda: ["192.168.1.20"]) == ["192.168.1.20"]

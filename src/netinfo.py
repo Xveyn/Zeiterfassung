@@ -3,8 +3,8 @@
 
 Die App bindet den Handy-Server nie auf `0.0.0.0`, sondern auf **eine** gewählte
 private Adresse. Dieses Modul liefert die Kandidaten: nur private IPv4-Adressen
-(RFC 1918), nie Loopback, Link-Local, `0.0.0.0`, Multicast oder Carrier-Grade-NAT
-(Tailscale u. ä.).
+(`10/8`, `172.16/12`, `192.168/16`), sonst nichts: nie Loopback, Link-Local, `0.0.0.0`,
+Multicast, Testnetze, das Benchmark-Netz der VPN-Tunnel oder Carrier-Grade-NAT (Tailscale).
 
 Aufgezählt wird ohne Zusatzbibliothek: die Adresse der aktiven Route (UDP-Socket,
 der nur `connect`et und nie sendet — das wählt die Route) und die Adressen, die
@@ -24,6 +24,14 @@ _log = logging.getLogger(__name__)
 # Schnittstelle der Standardroute.
 _PROBE = ("192.0.2.1", 9)
 
+# Genau die drei privaten Netze. Nicht `ipaddress.is_private`: das zählt auch Testnetze,
+# `0.0.0.0/8`, die IETF-Protokollzuweisung und das Benchmark-Netz 198.18.0.0/15 mit,
+# in dem VPN-Clients mit Fake-IP-Tunnel (Clash, Surge) liegen — ihre Adresse wäre der
+# Vorschlag, und das Handy erreichte sie nie. Die Bedeutung von `is_private` hat sich
+# zudem zwischen Python-Versionen geändert.
+_RFC1918 = (ipaddress.IPv4Network("10.0.0.0/8"), ipaddress.IPv4Network("172.16.0.0/12"),
+            ipaddress.IPv4Network("192.168.0.0/16"))
+
 
 def is_lan_address(text: object) -> bool:
     """True für eine private IPv4-Adresse in kanonischer Schreibweise. Alles
@@ -37,9 +45,7 @@ def is_lan_address(text: object) -> bool:
         return False
     if str(address) != text:                      # „192.168.1.20 " o. ä. kommt nie bis hier
         return False
-    return (address.is_private and not address.is_loopback
-            and not address.is_link_local and not address.is_unspecified
-            and not address.is_multicast and not address.is_reserved)
+    return any(address in network for network in _RFC1918)
 
 
 def route_address(probe: tuple[str, int] = _PROBE) -> str | None:
