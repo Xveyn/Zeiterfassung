@@ -12,6 +12,8 @@ Kopien liefern, ohne eigenen Lock). Schreibend: `PUT`/`DELETE
 /v1/entries/{date}`: Prüfen, Konfliktcheck und Speichern laufen unter
 `ctx.data_lock`, die Regeln der UI stehen in `api_entry_write`; `ctx.on_change`
 kommt danach, und nur bei einer Änderung.
+Auswertungen: `GET /v1/summary/week/{YYYY-Www}`, `/v1/summary/month/{YYYY-MM}`,
+`/v1/categories`, `/v1/holidays/{YYYY}` (Rechnung in `api_summary`).
 Wire-Format der Slots: `{start, end, pause, kategorie}` (Share v3).
 
 Ein Programmfehler in einem Handler wirft hier durch; den macht der Server zu
@@ -29,7 +31,11 @@ from typing import TYPE_CHECKING, Any, Protocol
 
 from src.api_auth import SCOPE_LOCAL, Principal, require_scope
 from src.api_entry_write import (
-    WriteError, check_date_range, check_day_writable, parse_day_body, warnings_for,
+    MAX_YEAR, MIN_YEAR, WriteError, check_date_range, check_day_writable, parse_day_body,
+    warnings_for,
+)
+from src.api_summary import (
+    category_names, holidays_for, parse_month, parse_week, parse_year, summarize,
 )
 from src.time_utils import utc_now_iso
 
@@ -180,6 +186,51 @@ def _entry(request: ApiRequest, ctx: ApiContext, match: re.Match[str]) -> ApiRes
     return ApiResponse(200, {"date": day_key, "slots": entry["slots"]})
 
 
+def _check_year(year: int) -> None:
+    if not MIN_YEAR <= year <= MAX_YEAR:
+        raise _ApiError(422, "date_out_of_range",
+                        f"Nur die Jahre {MIN_YEAR} bis {MAX_YEAR} werden unterstützt.")
+
+
+def _summary(ctx: ApiContext, span: tuple[datetime.date, datetime.date]) -> dict[str, Any]:
+    vacation = ctx.vacation_store.day_minutes() if ctx.vacation_store is not None else {}
+    return summarize(span[0], span[1], ctx.storage.get_all(), ctx.settings, vacation)
+
+
+def _summary_week(request: ApiRequest, ctx: ApiContext, match: re.Match[str]) -> ApiResponse:
+    _only_params(request.query, frozenset())
+    raw = match.group(1)
+    span = parse_week(raw)
+    if span is None:
+        raise _ApiError(400, "invalid_week", "Erwartet YYYY-Www, zum Beispiel 2026-W01.")
+    _check_year(int(raw[:4]))
+    return ApiResponse(200, {"week": raw, **_summary(ctx, span)})
+
+
+def _summary_month(request: ApiRequest, ctx: ApiContext, match: re.Match[str]) -> ApiResponse:
+    _only_params(request.query, frozenset())
+    raw = match.group(1)
+    span = parse_month(raw)
+    if span is None:
+        raise _ApiError(400, "invalid_month", "Erwartet YYYY-MM, zum Beispiel 2026-01.")
+    _check_year(span[0].year)
+    return ApiResponse(200, {"month": raw, **_summary(ctx, span)})
+
+
+def _categories(request: ApiRequest, ctx: ApiContext, _match: re.Match[str]) -> ApiResponse:
+    _only_params(request.query, frozenset())
+    return ApiResponse(200, {"categories": category_names(ctx.settings)})
+
+
+def _holidays(request: ApiRequest, ctx: ApiContext, match: re.Match[str]) -> ApiResponse:
+    _only_params(request.query, frozenset())
+    year = parse_year(match.group(1))
+    if year is None:
+        raise _ApiError(400, "invalid_year", "Erwartet YYYY, zum Beispiel 2026.")
+    _check_year(year)
+    return ApiResponse(200, holidays_for(ctx.settings, year))
+
+
 def _locked(ctx: ApiContext) -> Any:
     return ctx.data_lock if ctx.data_lock is not None else contextlib.nullcontext()
 
@@ -256,6 +307,10 @@ ROUTES: tuple[Route, ...] = (
     Route("GET", re.compile(r"/v1/entries/([^/]+)"), _entry, SCOPE_LOCAL),
     Route("PUT", re.compile(r"/v1/entries/([^/]+)"), _put_entry, SCOPE_LOCAL),
     Route("DELETE", re.compile(r"/v1/entries/([^/]+)"), _delete_entry, SCOPE_LOCAL),
+    Route("GET", re.compile(r"/v1/summary/week/([^/]+)"), _summary_week, SCOPE_LOCAL),
+    Route("GET", re.compile(r"/v1/summary/month/([^/]+)"), _summary_month, SCOPE_LOCAL),
+    Route("GET", re.compile(r"/v1/categories"), _categories, SCOPE_LOCAL),
+    Route("GET", re.compile(r"/v1/holidays/([^/]+)"), _holidays, SCOPE_LOCAL),
 )
 
 

@@ -607,3 +607,172 @@ def test_odd_stored_data_cannot_block_a_put_through_the_warnings(tmp_path):
     response = env.put(SLOTS_BODY, day="2026-10-09")
 
     assert response.status == 200 and env.storage.get("2026-10-09") is not None
+
+
+# --- Auswertungen: /v1/summary, /v1/categories, /v1/holidays ---------------------------
+
+def get(env, path, query=None, principal=LOCAL):
+    return handle(ApiRequest("GET", path, query or {}), env.ctx, principal)
+
+
+def seed_week(env):
+    env.storage.save("2026-01-05", [ist_slot("08:00", "12:00", 0, "Projekt")])
+    env.storage.save("2026-01-06", [ist_slot("09:00", "17:00", 30, "Büro")])
+
+
+def test_week_summary_has_the_range_the_totals_and_the_label(env):
+    seed_week(env)
+
+    response = get(env, "/v1/summary/week/2026-W02")
+
+    assert response.status == 200
+    body = response.body
+    assert body["week"] == "2026-W02"
+    assert (body["from"], body["to"]) == ("2026-01-05", "2026-01-11")
+    assert body["total_minutes"] == 240 + 450
+    assert [d["date"] for d in body["days"]] == ["2026-01-05", "2026-01-06"]
+    assert [(w["iso_year"], w["iso_week"]) for w in body["weeks"]] == [(2026, 2)]
+
+
+def test_month_summary_covers_the_whole_month(env):
+    seed_week(env)
+    env.storage.save("2026-02-02", [ist_slot("08:00", "09:00")])
+
+    response = get(env, "/v1/summary/month/2026-01")
+
+    assert response.status == 200
+    assert response.body["month"] == "2026-01"
+    assert (response.body["from"], response.body["to"]) == ("2026-01-01", "2026-01-31")
+    assert response.body["total_minutes"] == 690          # Februar zählt nicht
+    assert len(response.body["weeks"]) == 5
+
+
+def test_summary_total_matches_the_entries_route(env):
+    seed_week(env)
+    entries = get(env, "/v1/entries", {"from": ["2026-01-01"], "to": ["2026-01-31"]}).body["entries"]
+    by_hand = sum(
+        (int(s["end"][:2]) * 60 + int(s["end"][3:])) - (int(s["start"][:2]) * 60 + int(s["start"][3:])) - s["pause"]
+        for e in entries.values() for s in e["slots"])
+    assert get(env, "/v1/summary/month/2026-01").body["total_minutes"] == by_hand
+
+
+def test_summary_includes_the_vacation_of_the_store(env):
+    env.vacations.save(None, "Sommer", "2026-01-12", "2026-01-13",
+                       {"2026-01-12": 480, "2026-01-13": 480})
+    env.storage.save("2026-01-12", [ist_slot("08:00", "10:00")])
+
+    body = get(env, "/v1/summary/month/2026-01").body
+
+    assert body["total_minutes"] == 120
+    assert body["vacation_minutes"] == 480 - 120 + 480          # 12.01. um die Arbeitszeit gekappt
+    assert body["payable_minutes"] == 120 + body["vacation_minutes"]
+    assert [d["date"] for d in body["vacation_capped_days"]] == ["2026-01-12"]
+
+
+def test_summary_without_a_vacation_store_has_no_vacation(tmp_path):
+    ctx = make_ctx(Storage(str(tmp_path / "z.json"), device_id="d"))
+    body = handle(ApiRequest("GET", "/v1/summary/month/2026-01", {}), ctx, LOCAL).body
+    assert (body["vacation_minutes"], body["payable_minutes"]) == (0, 0)
+
+
+def test_summary_reports_the_weekly_limit_and_pause_warnings(tmp_path):
+    env = Env(tmp_path, {
+        "werkstudent_limit_enabled": True, "werkstudent_limit_start": "2026-01-01",
+        "werkstudent_limit_end": "2026-12-31", "werkstudent_limit_max_hours": 5.0,
+        "pause_warning_enabled": True})
+    env.storage.save("2026-01-05", [ist_slot("08:00", "15:00", 0)])
+
+    body = get(env, "/v1/summary/week/2026-W02").body
+
+    assert body["weeks"] == [{"iso_year": 2026, "iso_week": 2, "total_minutes": 420,
+                              "limit_minutes": 300, "exceeded": True}]
+    assert body["pause_warnings"] == [{"date": "2026-01-05", "worked_minutes": 420,
+                                       "actual_pause_minutes": 0, "required_pause_minutes": 30}]
+
+
+@pytest.mark.parametrize("path,error", [
+    ("/v1/summary/week/2026-W1", "invalid_week"), ("/v1/summary/week/2025-W53", "invalid_week"),
+    ("/v1/summary/week/2026-01", "invalid_week"), ("/v1/summary/week/abc", "invalid_week"),
+    ("/v1/summary/month/2026-13", "invalid_month"), ("/v1/summary/month/2026-W02", "invalid_month"),
+    ("/v1/summary/month/2026-1", "invalid_month"), ("/v1/summary/month/9999-01", "invalid_month"),
+    ("/v1/holidays/26", "invalid_year"), ("/v1/holidays/2026-01", "invalid_year"),
+    ("/v1/holidays/abcd", "invalid_year"),
+])
+def test_malformed_summary_paths_are_400(env, path, error):
+    response = get(env, path)
+    assert (response.status, code(response)) == (400, error)
+
+
+@pytest.mark.parametrize("path", [
+    "/v1/summary/month/1999-12", "/v1/summary/month/2101-01", "/v1/summary/week/1999-W52",
+    "/v1/summary/week/2101-W01", "/v1/holidays/1999", "/v1/holidays/2101",
+])
+def test_years_outside_2000_to_2100_are_422(env, path):
+    response = get(env, path)
+    assert (response.status, code(response)) == (422, "date_out_of_range")
+
+
+@pytest.mark.parametrize("path", [
+    "/v1/summary/month/2000-01", "/v1/summary/month/2100-12", "/v1/summary/week/2000-W01",
+    "/v1/summary/week/2100-W01", "/v1/holidays/2000", "/v1/holidays/2100",
+])
+def test_the_edges_of_the_year_range_are_accepted(env, path):
+    assert get(env, path).status == 200
+
+
+@pytest.mark.parametrize("path", [
+    "/v1/summary/week/2026-W02", "/v1/summary/month/2026-01", "/v1/categories",
+    "/v1/holidays/2026",
+])
+def test_summary_routes_take_no_query(env, path):
+    response = get(env, path, {"x": ["1"]})
+    assert (response.status, code(response)) == (400, "unknown_parameter")
+
+
+@pytest.mark.parametrize("path", [
+    "/v1/summary/week/2026-W02", "/v1/summary/month/2026-01", "/v1/categories",
+    "/v1/holidays/2026",
+])
+def test_summary_routes_are_read_only(env, path):
+    response = handle(ApiRequest("PUT", path, {}, b"{}"), env.ctx, LOCAL)
+    assert response.status == 405 and response.headers["Allow"] == "GET"
+
+
+@pytest.mark.parametrize("path", [
+    "/v1/summary/week/2026-W02", "/v1/summary/month/2026-01", "/v1/categories",
+    "/v1/holidays/2026",
+])
+def test_summary_routes_need_the_local_scope(env, path):
+    nobody = Principal("x", frozenset())
+    assert get(env, path, principal=nobody).status == 403
+
+
+def test_reading_a_summary_takes_no_data_lock_and_changes_nothing(env):
+    seed_week(env)
+    before = env.storage.get_all()
+
+    get(env, "/v1/summary/month/2026-01")
+    get(env, "/v1/summary/week/2026-W02")
+
+    assert (env.lock.enters, env.changes) == (0, 0)
+    assert env.storage.get_all() == before
+
+
+def test_categories_come_from_the_settings(tmp_path):
+    env = Env(tmp_path, {"categories": ["Projekt", "", "Büro", "Projekt"]})
+    assert get(env, "/v1/categories").body == {"categories": ["Projekt", "Büro"]}
+
+
+def test_categories_default_to_an_empty_list(env):
+    assert get(env, "/v1/categories").body == {"categories": []}
+
+
+def test_holidays_use_the_state_of_the_settings(tmp_path):
+    env = Env(tmp_path, {"state": "BY"})
+    body = get(env, "/v1/holidays/2026").body
+    assert (body["year"], body["state"]) == (2026, "BY")
+    assert {"date": "2026-01-01", "name": "Neujahr"} in body["holidays"]
+
+
+def test_holidays_without_a_state_are_empty_and_say_so(env):
+    assert get(env, "/v1/holidays/2026").body == {"year": 2026, "state": "", "holidays": []}
