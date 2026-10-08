@@ -21,10 +21,13 @@ from __future__ import annotations
 
 import datetime
 import re
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from typing import Any
 
 from src.api_entry_write import WriteError, check_date_range, load_json_body, parse_slots
+from src.devices import sanitize_registry
+from src.storage import sanitize_slot
 
 PROTOCOL = 1
 WINDOW_DAYS = 90
@@ -137,3 +140,83 @@ def parse_request(body: bytes, *, now: str) -> SyncRequest:
         raise SyncError(422, "invalid_entry", f"Höchstens {MAX_ENTRIES} Tage je Anfrage.")
     entries = {date: _parse_entry(date, raw, now_dt) for date, raw in raw_entries.items()}
     return SyncRequest(str(data["client_time"]), entries)
+
+
+def _clean_slots(raw: object) -> list[dict[str, Any]]:
+    """Gespeicherte Slots sind Fremddaten (Drive-Sync, Handbearbeitung): bereinigen
+    und auf die vier Felder des Protokolls beschränken."""
+    if not isinstance(raw, list):
+        return []
+    slots = []
+    for item in raw:
+        clean = sanitize_slot(item)
+        if clean is not None:
+            slots.append({key: clean[key] for key in ("start", "end", "pause", "kategorie")})
+    return slots
+
+
+def _clean_entry(entry: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        "slots": _clean_slots(entry.get("slots")),
+        "modified_at": str(entry.get("modified_at") or ""),
+        "device_id": str(entry.get("device_id") or ""),
+        "deleted": bool(entry.get("deleted")),
+    }
+
+
+def _conflict_views(merged: Mapping[str, Any], visible: Any) -> list[dict[str, Any]]:
+    registry = sanitize_registry(merged.get("devices"))
+    views = []
+    for conflict in merged.get("conflicts") or []:
+        if not isinstance(conflict, dict) or conflict.get("kind") != "entry" or conflict.get("resolved"):
+            continue
+        key = conflict.get("key")
+        if not isinstance(key, str) or not visible(key):
+            continue
+        versions = []
+        for candidate in conflict.get("candidates") or []:
+            if not isinstance(candidate, dict):
+                continue
+            device = candidate.get("device_id")
+            device = device if isinstance(device, str) else ""
+            versions.append({
+                "device": device,
+                "name": registry.get(device, {}).get("name", ""),
+                "modified_at": str(candidate.get("modified_at") or ""),
+                "slots": _clean_slots(candidate.get("slots")),
+            })
+        views.append({"id": str(conflict.get("id") or ""), "date": key, "versions": versions})
+    return sorted(views, key=lambda view: view["date"])
+
+
+def build_response(merged: Mapping[str, Any], *, sent_dates: Iterable[str],
+                   today: datetime.date, now: str, excluded: bool,
+                   categories: list[str]) -> dict[str, Any]:
+    """Die Antwort des Abgleichs aus dem Merge-Ergebnis, ohne `token`/`expires_at`
+    (die ergänzt die Route). Fenster `[heute − 90, heute]` (heute ist das lokale
+    Datum des Desktops) plus alle gesendeten Tage — beides für Einträge **und**
+    Konflikte: ein Konflikt auf einem gesendeten Tag außerhalb des Fensters bliebe
+    sonst unsichtbar. Ein gesendeter Tag, den der Merge verworfen hat (Self-Heal bei
+    `excluded`), fehlt in `entries`."""
+    sent = set(sent_dates)
+    first = (today - datetime.timedelta(days=WINDOW_DAYS)).isoformat()
+    last = today.isoformat()
+
+    def visible(date: str) -> bool:
+        return date in sent or first <= date <= last
+
+    entries = {
+        date: _clean_entry(entry)
+        for date, entry in sorted((merged.get("entries") or {}).items())
+        if isinstance(date, str) and isinstance(entry, dict) and visible(date)
+    }
+    return {
+        "protocol": PROTOCOL,
+        "server_time": now,
+        "last_pull_at": now,
+        "excluded": excluded,
+        "window_days": WINDOW_DAYS,
+        "entries": entries,
+        "conflicts": _conflict_views(merged, visible),
+        "categories": list(categories),
+    }

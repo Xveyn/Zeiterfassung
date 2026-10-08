@@ -153,3 +153,100 @@ def test_at_most_400_days_per_request():
     assert len(parse({d: day() for d in dates[:400]}).entries) == 400
     error = rejected(body({d: day() for d in dates}))
     assert (error.status, error.code) == (422, "invalid_entry")
+
+
+# --- build_response ----------------------------------------------------------------------------
+
+def _entry(date, *, slots=(SLOT,), modified_at="2026-10-01T10:00:00Z", device="DESK", deleted=False):
+    return {"slots": [dict(s) if isinstance(s, dict) else s for s in slots], "modified_at": modified_at,
+            "device_id": device, "deleted": deleted}
+
+
+def _iso(offset):
+    return (TODAY + datetime.timedelta(days=offset)).isoformat()
+
+
+def respond(merged, *, sent=(), excluded=False, categories=("Projekt",)):
+    merged = {"entries": {}, "conflicts": [], "devices": {}, **merged}
+    return mobile_sync.build_response(merged, sent_dates=sent, today=TODAY, now=NOW,
+                                      excluded=excluded, categories=list(categories))
+
+
+def test_the_response_carries_the_protocol_fields_and_no_token():
+    response = respond({})
+
+    assert response == {
+        "protocol": 1, "server_time": NOW, "last_pull_at": NOW, "excluded": False,
+        "window_days": 90, "entries": {}, "conflicts": [], "categories": ["Projekt"]}
+
+
+def test_the_window_is_today_minus_90_days_through_today():
+    merged = {"entries": {
+        _iso(-91): _entry(_iso(-91)), _iso(-90): _entry(_iso(-90)),
+        _iso(0): _entry(_iso(0)), _iso(1): _entry(_iso(1)),
+        _iso(-30): _entry(_iso(-30), slots=(), deleted=True)}}
+
+    entries = respond(merged)["entries"]
+
+    assert sorted(entries) == sorted([_iso(-90), _iso(-30), _iso(0)])
+    assert entries[_iso(-30)]["deleted"] is True            # Tombstones im Fenster reisen mit
+
+
+def test_days_the_phone_sent_are_included_outside_the_window():
+    merged = {"entries": {"2025-01-15": _entry("2025-01-15"), _iso(-200): _entry(_iso(-200))}}
+
+    entries = respond(merged, sent=["2025-01-15"])["entries"]
+
+    assert sorted(entries) == ["2025-01-15"]
+
+
+def test_entries_are_sorted_and_use_only_the_four_entry_fields():
+    merged = {"entries": {_iso(0): _entry(_iso(0)), _iso(-1): _entry(_iso(-1))}}
+
+    entries = respond(merged)["entries"]
+
+    assert list(entries) == [_iso(-1), _iso(0)]
+    assert set(entries[_iso(0)]) == {"slots", "modified_at", "device_id", "deleted"}
+
+
+def test_foreign_slot_values_are_sanitised_in_the_response():
+    dirty = {"start": "08:00", "end": "12:00", "pause": "abc", "kategorie": 5, "send_reminder_minutes": 10}
+    merged = {"entries": {_iso(0): _entry(_iso(0), slots=(dirty, "kein Objekt"))}}
+
+    slots = respond(merged)["entries"][_iso(0)]["slots"]
+
+    assert slots == [{"start": "08:00", "end": "12:00", "pause": 0, "kategorie": ""}]
+
+
+def _conflict(key, *, resolved=False, kind="entry"):
+    return {"id": f"c-{key}", "kind": kind, "key": key, "resolved": resolved,
+            "candidates": [
+                _entry(key, modified_at="2026-10-07T18:30:00Z", device="PHONE-0001"),
+                _entry(key, slots=({"start": "09:00", "end": "13:00", "pause": 0, "kategorie": ""},),
+                       modified_at="2026-10-07T20:00:00Z", device="DESK")]}
+
+
+def test_open_entry_conflicts_in_the_window_are_listed_with_device_names():
+    merged = {"conflicts": [_conflict(_iso(-1))],
+              "devices": {"PHONE-0001": {"name": "Pixel", "updated_at": NOW}}}
+
+    conflicts = respond(merged)["conflicts"]
+
+    assert conflicts == [{"id": f"c-{_iso(-1)}", "date": _iso(-1), "versions": [
+        {"device": "PHONE-0001", "name": "Pixel", "modified_at": "2026-10-07T18:30:00Z",
+         "slots": [SLOT]},
+        {"device": "DESK", "name": "", "modified_at": "2026-10-07T20:00:00Z",
+         "slots": [{"start": "09:00", "end": "13:00", "pause": 0, "kategorie": ""}]}]}]
+
+
+def test_resolved_setting_and_out_of_window_conflicts_are_left_out():
+    merged = {"conflicts": [
+        _conflict(_iso(-1), resolved=True), _conflict("recipient", kind="setting"),
+        _conflict(_iso(-200)), _conflict("2025-01-15"), "kein Objekt", {"kind": "entry", "key": 5}]}
+
+    assert [c["date"] for c in respond(merged, sent=["2025-01-15"])["conflicts"]] == ["2025-01-15"]
+
+
+def test_the_excluded_flag_and_categories_are_passed_through():
+    response = respond({}, excluded=True, categories=["A", "B"])
+    assert response["excluded"] is True and response["categories"] == ["A", "B"]
