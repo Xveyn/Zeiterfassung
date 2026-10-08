@@ -1,11 +1,17 @@
 # tests/test_mobile_sync.py
 import datetime
 import json
+import os
+import threading
+import types
 
 import pytest
 
-from src import mobile_sync
+from src import mobile_sync, sync_history, sync_journal
+from src.conflicts_store import ConflictsStore
 from src.mobile_sync import SyncError
+from src.settings import Settings
+from src.storage import Storage
 
 NOW = "2026-10-08T12:00:00Z"
 TODAY = datetime.date(2026, 10, 8)
@@ -250,3 +256,185 @@ def test_resolved_setting_and_out_of_window_conflicts_are_left_out():
 def test_the_excluded_flag_and_categories_are_passed_through():
     response = respond({}, excluded=True, categories=["A", "B"])
     assert response["excluded"] is True and response["categories"] == ["A", "B"]
+
+
+# --- perform_sync ---------------------------------------------------------------------------------
+
+PHONE = "phone-0001"
+
+
+@pytest.fixture
+def env(tmp_path):
+    settings = Settings(str(tmp_path / "settings.json"))
+    settings.device_id_for_sync = "DESK"
+    return types.SimpleNamespace(
+        storage=Storage(str(tmp_path / "zeiterfassung.json"), device_id="DESK"),
+        settings=settings,
+        conflicts=ConflictsStore(str(tmp_path / "conflicts.json")),
+        base=str(tmp_path))
+
+
+def put_desktop(env, date, *, slots=(SLOT,), modified_at, device="DESK", deleted=False):
+    raw = dict(env.storage.get_all_raw())
+    raw[date] = {"slots": [dict(s) for s in slots], "modified_at": modified_at,
+                 "device_id": device, "deleted": deleted}
+    env.storage.apply_merge(raw)
+
+
+def run(env, entries, *, last_pull_at="", now=NOW, **over):
+    request = mobile_sync.parse_request(body(entries), now=now)
+    kwargs = dict(device_id=PHONE, device_name="Pixel", last_pull_at=last_pull_at,
+                  categories=["Projekt"], storage=env.storage, settings=env.settings,
+                  conflicts_store=env.conflicts, base=env.base, now=now, today=TODAY)
+    kwargs.update(over)
+    return mobile_sync.perform_sync(request, **kwargs)
+
+
+def test_a_new_day_from_the_phone_is_stored_under_the_device_of_the_token(env):
+    response = run(env, {"2026-10-07": day(device_id="evil")})
+
+    stored = env.storage.get_all_raw()["2026-10-07"]
+    assert stored["device_id"] == PHONE and stored["slots"] == [SLOT] and not stored["deleted"]
+    assert response["entries"]["2026-10-07"]["device_id"] == PHONE
+
+
+def test_the_phone_appears_with_its_name_in_the_device_registry(env):
+    run(env, {"2026-10-07": day()})
+    assert env.settings.get("known_devices")[PHONE]["name"] == "Pixel"
+
+
+def test_a_newer_phone_change_wins_without_a_conflict(env):
+    put_desktop(env, "2026-10-07", modified_at="2026-10-01T10:00:00Z")
+
+    run(env, {"2026-10-07": day(slots=({"start": "07:00", "end": "11:00"},),
+                                modified_at="2026-10-07T18:30:00Z")},
+        last_pull_at="2026-10-05T00:00:00Z")
+
+    assert env.storage.get("2026-10-07")["slots"][0]["start"] == "07:00"
+    assert env.conflicts.get_all() == []
+
+
+def test_a_phone_tombstone_deletes_an_older_desktop_day(env):
+    put_desktop(env, "2026-10-05", modified_at="2026-10-05T10:00:00Z")
+
+    response = run(env, {"2026-10-05": tomb("2026-10-07T18:30:00Z")},
+                   last_pull_at="2026-10-06T00:00:00Z")
+
+    assert env.storage.get("2026-10-05") is None
+    assert env.storage.get_all_raw()["2026-10-05"]["deleted"] is True
+    assert response["entries"]["2026-10-05"]["deleted"] is True
+
+
+def test_a_change_on_both_sides_becomes_a_conflict(env):
+    put_desktop(env, "2026-10-07", modified_at="2026-10-07T20:00:00Z",
+                slots=({"start": "09:00", "end": "13:00", "pause": 0, "kategorie": ""},))
+
+    response = run(env, {"2026-10-07": day(modified_at="2026-10-07T18:30:00Z")},
+                   last_pull_at="2026-10-06T00:00:00Z")
+
+    stored = env.conflicts.get_all()
+    assert len(stored) == 1 and stored[0]["key"] == "2026-10-07" and not stored[0]["resolved"]
+    assert [c["date"] for c in response["conflicts"]] == ["2026-10-07"]
+    assert {v["device"] for v in response["conflicts"][0]["versions"]} == {PHONE, "DESK"}
+    assert response["entries"]["2026-10-07"]["slots"][0]["start"] == "09:00"    # LWW: der jüngere
+
+
+def test_the_first_sync_turns_every_differing_day_into_a_conflict(env):
+    put_desktop(env, "2026-10-07", modified_at="2026-10-01T10:00:00Z",
+                slots=({"start": "09:00", "end": "13:00", "pause": 0, "kategorie": ""},))
+
+    run(env, {"2026-10-07": day(modified_at="2026-10-07T18:30:00Z")}, last_pull_at="")
+
+    assert len(env.conflicts.get_all()) == 1
+
+
+def test_the_same_request_twice_changes_nothing_and_adds_no_conflict(env):
+    put_desktop(env, "2026-10-07", modified_at="2026-10-07T20:00:00Z",
+                slots=({"start": "09:00", "end": "13:00", "pause": 0, "kategorie": ""},))
+    entries = {"2026-10-07": day(modified_at="2026-10-07T18:30:00Z"), "2026-10-06": day()}
+
+    first = run(env, entries, last_pull_at="")
+    stored = dict(env.storage.get_all_raw())
+    second = run(env, entries, last_pull_at="")
+
+    assert len(env.conflicts.get_all()) == 1
+    assert env.storage.get_all_raw() == stored
+    assert second["entries"] == first["entries"]
+
+
+def test_a_phone_offline_longer_than_the_last_compaction_cannot_resurrect_a_day(env):
+    env.settings.set("gc_watermark", "2026-10-01T00:00:00Z")
+
+    response = run(env, {"2026-08-15": day(modified_at="2026-08-15T10:00:00Z")},
+                   last_pull_at="2026-09-01T00:00:00Z")
+
+    assert response["excluded"] is True
+    assert "2026-08-15" not in env.storage.get_all_raw()
+    assert "2026-08-15" not in response["entries"]
+
+
+def test_excluded_is_false_without_or_after_the_watermark(env):
+    env.settings.set("gc_watermark", "2026-10-01T00:00:00Z")
+    assert run(env, {}, last_pull_at="")["excluded"] is False
+    assert run(env, {}, last_pull_at="2026-10-02T00:00:00Z")["excluded"] is False
+
+
+def test_a_successful_sync_leaves_no_journal_and_marks_the_machine_as_synced(env):
+    assert not sync_history.ever_synced(env.base)
+
+    run(env, {"2026-10-07": day()})
+
+    assert sync_journal.JOURNAL_FILENAME not in os.listdir(env.base)
+    assert sync_history.ever_synced(env.base)
+
+
+def test_a_busy_guard_is_503_and_nothing_is_applied(env):
+    guard = threading.Lock()
+    guard.acquire()
+
+    with pytest.raises(SyncError) as excinfo:
+        run(env, {"2026-10-07": day()}, sync_guard=guard)
+
+    assert (excinfo.value.status, excinfo.value.code) == (503, "busy")
+    assert env.storage.get_all_raw() == {} and not sync_history.ever_synced(env.base)
+    assert guard.locked()                                      # der fremde Halter bleibt Halter
+
+
+def test_the_guard_is_released_after_success_and_after_an_error(env, monkeypatch):
+    guard = threading.Lock()
+    run(env, {"2026-10-07": day()}, sync_guard=guard)
+    assert guard.acquire(blocking=False)
+    guard.release()
+
+    def boom(*args, **kwargs):
+        raise RuntimeError("Platte voll")
+    monkeypatch.setattr(sync_journal, "apply_merged_doc_journaled", boom)
+    with pytest.raises(RuntimeError):
+        run(env, {"2026-10-06": day()}, sync_guard=guard)
+    assert guard.acquire(blocking=False)
+
+
+def test_snapshot_merge_and_apply_run_under_the_data_lock(env, monkeypatch):
+    lock = threading.RLock()
+    seen = {}
+    real = sync_journal.apply_merged_doc_journaled
+
+    def spy(*args, **kwargs):
+        seen["owned"] = lock._is_owned()
+        return real(*args, **kwargs)
+    monkeypatch.setattr(sync_journal, "apply_merged_doc_journaled", spy)
+
+    run(env, {"2026-10-07": day()}, data_lock=lock)
+
+    assert seen == {"owned": True}
+    assert lock.acquire(blocking=False)                        # und danach wieder frei
+
+
+def test_the_response_has_the_window_and_the_categories(env):
+    put_desktop(env, "2026-10-01", modified_at="2026-10-01T10:00:00Z")
+    put_desktop(env, "2025-01-15", modified_at="2025-01-15T10:00:00Z")
+
+    response = run(env, {}, last_pull_at="2026-10-02T00:00:00Z")
+
+    assert sorted(response["entries"]) == ["2026-10-01"]
+    assert response["categories"] == ["Projekt"] and response["last_pull_at"] == NOW

@@ -19,15 +19,24 @@ Es gibt keinen Merge in JavaScript und keinen zweiten hier: Konfliktlogik bleibt
 """
 from __future__ import annotations
 
+import contextlib
 import datetime
+import os
 import re
+import threading
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
+from src import sync, sync_history, sync_journal
 from src.api_entry_write import WriteError, check_date_range, load_json_body, parse_slots
-from src.devices import sanitize_registry
+from src.devices import sanitize_registry, with_own_entry
 from src.storage import sanitize_slot
+
+if TYPE_CHECKING:
+    from src.conflicts_store import ConflictsStore
+    from src.settings import Settings
+    from src.storage import Storage
 
 PROTOCOL = 1
 WINDOW_DAYS = 90
@@ -220,3 +229,57 @@ def build_response(merged: Mapping[str, Any], *, sent_dates: Iterable[str],
         "conflicts": _conflict_views(merged, visible),
         "categories": list(categories),
     }
+
+
+def _phone_doc(request: SyncRequest, device_id: str, device_name: str, now: str) -> dict[str, Any]:
+    """Das Handy als `local` des Merges: nur die geschickten Tage, die Geräte-ID aus
+    dem Token. So wirkt die Self-Heal-Regel (`excluded`) für das Handy richtig."""
+    return {
+        "schema_version": sync.SCHEMA_VERSION,
+        "entries": {
+            date: {**entry, "device_id": device_id}
+            for date, entry in request.entries.items()
+        },
+        "settings": {},
+        "conflicts": [],
+        "devices": with_own_entry(None, device_id, device_name, now),
+        "meta": {"gc_watermark": ""},
+    }
+
+
+def perform_sync(request: SyncRequest, *, device_id: str, device_name: str,
+                 last_pull_at: str, categories: list[str], storage: Storage,
+                 settings: Settings, conflicts_store: ConflictsStore, base: str,
+                 now: str, today: datetime.date,
+                 data_lock: threading.RLock | None = None,
+                 sync_guard: threading.Lock | None = None) -> dict[str, Any]:
+    """Wendet den Abgleich an und liefert die Antwort (ohne `token`/`expires_at`).
+
+    `last_pull_at` ist der Stand aus dem Gerätespeicher des Desktops, nie der Wert
+    aus dem Body. `sync_guard` (derselbe wie Drive-Sync, Kompaktierung, Quit-Push)
+    wird nicht-blockierend genommen und im `finally` dieses Threads freigegeben;
+    belegt → `SyncError` 503. `data_lock` klammert Snapshot → Merge → Apply. Die
+    Route ruft `on_change` erst danach.
+
+    Idempotent: derselbe Request liefert dasselbe Ergebnis (der Merge ist es, und
+    `merge` dedupliziert gleichwertige offene Konflikte)."""
+    if sync_guard is not None and not sync_guard.acquire(blocking=False):
+        raise SyncError(503, "busy", "Ein anderer Abgleich läuft gerade. Bitte später erneut versuchen.")
+    try:
+        phone_doc = _phone_doc(request, device_id, device_name, now)
+        with (data_lock if data_lock is not None else contextlib.nullcontext()):
+            desktop_doc = sync.build_local_doc(storage, settings, conflicts_store)
+            merged = sync.merge(phone_doc, desktop_doc, last_pull_at)
+            sync_journal.apply_merged_doc_journaled(
+                merged, storage, settings, conflicts_store,
+                os.path.join(base, sync_journal.JOURNAL_FILENAME))
+            # Der Startup-Sweep verwirft Tombstones auf Rechnern, die „nie gesynct"
+            # haben: nach einem Abgleich mit dem Handy haben sie einen Abnehmer.
+            sync_history.mark_synced(base)
+        watermark = (desktop_doc.get("meta") or {}).get("gc_watermark") or ""
+        excluded = bool(last_pull_at) and last_pull_at < watermark
+        return build_response(merged, sent_dates=request.entries, today=today, now=now,
+                              excluded=excluded, categories=categories)
+    finally:
+        if sync_guard is not None:
+            sync_guard.release()
