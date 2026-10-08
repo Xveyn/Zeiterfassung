@@ -260,3 +260,33 @@ def test_empty_optional_timestamps_are_fine(path):
     assert record["last_pull_at"] == "" and record["previous_valid_until"] == ""
     MobileStore(path).save(record)
     assert MobileStore(path).get("device-0001") == record
+
+
+def test_a_record_with_a_lone_surrogate_is_skipped_so_saving_keeps_working(path):
+    # Ein JSON-Escape "\ud800" lädt als str, scheiterte aber beim Schreiben mit
+    # UnicodeEncodeError und sperrte damit auch jeden Widerruf.
+    good, token = make_record("device-good")
+    bad = dict(good, id="device-bad1", name="X\ud800")
+    open(path, "w", encoding="utf-8").write(
+        json.dumps({"schema_version": 1, "devices": [bad, good]}, ensure_ascii=True))
+    store = MobileStore(path)
+
+    store.save(mp.revoke(store.get("device-good")))
+
+    assert [r["id"] for r in MobileStore(path).get_all()] == ["device-good"]
+    assert MobileStore(path).get("device-good")["revoked"] is True
+
+
+def test_duplicate_ids_in_the_file_keep_only_the_first_record(path):
+    first, t1 = make_record("device-0001", "Erstes")
+    second, t2 = make_record("device-0001", "Zweites")
+    open(path, "w", encoding="utf-8").write(
+        json.dumps({"schema_version": 1, "devices": [first, second]}))
+    store = MobileStore(path)
+
+    store.save(mp.revoke(store.get("device-0001")))
+
+    again = MobileStore(path)
+    assert [r["name"] for r in again.get_all()] == ["Erstes"]
+    assert mp.authenticate(again.get_all(), t2, NOW).status == "unauthorized"
+    assert mp.authenticate(again.get_all(), t1, NOW).status == "revoked"

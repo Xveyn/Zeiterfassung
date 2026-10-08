@@ -201,7 +201,7 @@ sich mit leerem Passwort anzumelden.
 (`storage`/`settings`/`conflicts_store`/`reservations`/`vacations`) teilen
 sich einen in `main()` erzeugten `RLock` (Konstruktor-Param `lock=`; ohne
 Injektion legt jeder Store einen eigenen an — Tests bleiben unverändert); nur
-`webhook_store` und `smtp_store` bringen bewusst ihren eigenen mit (s. „Daten- &
+`webhook_store`, `smtp_store` und `mobile_store` bringen bewusst ihren eigenen mit (s. „Daten- &
 Persistenz-Schicht" unten). Die Sync-Flows
 (`_run_pull_in_background`/`run_push_blocking`/`_run_compaction_blocking`/
 `reconcile_reservations`) klammern Snapshot→Merge→Apply mit diesem `data_lock`
@@ -256,7 +256,7 @@ Zeitraum und welche Kategorien der Bericht gefiltert ist.
   nimmt einen Grund für die Logzeile, `backup_corrupt(path, reason)` kopiert statt zu verschieben (für
   Dateien, die gleich repariert werden; eine schon vorhandene Sicherung mit gleichem Inhalt wird
   wiederverwendet, damit ein nicht zurückschreibbarer Stand nicht bei jedem Start eine Kopie anlegt). Genutzt von `storage`,
-  `reservations`, `conflicts_store` (beide Helfer) und `settings` (nur der Schreib-Helfer).
+  `reservations`, `conflicts_store`, `mobile_store` (beide Helfer) und `settings` (nur der Schreib-Helfer).
   Wer einen neuen JSON-Store baut, nimmt diese beiden Funktionen — nicht die Mechanik
   erneut abschreiben.
   **Bewusst eigen geblieben:** `settings._quarantine_corrupt` und

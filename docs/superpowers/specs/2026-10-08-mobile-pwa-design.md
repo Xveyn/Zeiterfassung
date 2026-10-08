@@ -34,7 +34,7 @@ Erfolg: ein am Handy eingetragener Tag steht nach dem nächsten Abgleich im Kale
 Desktop (Tk-frei und einzeln testbar, außer dem Dialog):
 
 - **`mobile_pairing.py`** (rein): Code erzeugen/prüfen, Gültigkeit, Fehlversuch-Sperre, Token ausgeben und erneuern (Sliding Expiration mit Karenzfenster), Widerruf.
-- **`mobile_store.py`:** gerätelokale Datei `mobile_devices.json` (nicht im Drive-Sync, nicht im Share-Doc; ACL-gehärtet wie `smtp.json`; Mechanik über `json_store`; eigener Lock wie `smtp_store`). Pro Gerät: `id`, `name`, `token_hash`, `previous_token_hash` mit `previous_valid_until`, `expires_at`, `last_seen`, `last_pull_at`.
+- **`mobile_store.py`:** gerätelokale Datei `mobile_devices.json` (nicht im Drive-Sync, nicht im Share-Doc; ohne ACL-Härtung, da nur Token-Hashes darin stehen (siehe Plan Teil 1); Mechanik über `json_store`; eigener Lock wie `smtp_store`). Pro Gerät: `id`, `name`, `token_hash`, `previous_token_hash` mit `previous_valid_until`, `expires_at`, `last_seen`, `last_pull_at`.
 - **`mobile_sync.py`:** Handy-Doc prüfen, durch `sync.merge` schicken, über die journalisierte Pipeline anwenden, Antwort bauen.
 - **`mobile_routes.py`, `MobileService`:** Routentabelle und Lebenszyklus der zweiten Server-Instanz (Muster `api_routes`/`api_service`).
 - **`netinfo.py`:** LAN-Adress-Kandidaten, plattformneutral, ohne Zusatzbibliothek (Adresse der aktiven Route per UDP-Socket ohne Senden, dazu private Adressen der Schnittstellen).

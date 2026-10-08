@@ -49,6 +49,10 @@ class MobileStoreReadOnly(Exception):
     Speichervorgang wäre schlimmer als ein Fehler."""
 
 
+def _has_surrogate(text: str) -> bool:
+    return any("\ud800" <= ch <= "\udfff" for ch in text)
+
+
 def _is_wellformed(record: Any) -> bool:
     """Strukturprüfung fürs Laden. Fremde oder handbearbeitete Datensätze, die
     `authenticate` oder den Tab zum Absturz brächten, werden übersprungen."""
@@ -57,6 +61,10 @@ def _is_wellformed(record: Any) -> bool:
     if not all(isinstance(record.get(key), str) for key in _TEXT_KEYS):
         return False
     if not record["id"]:
+        return False
+    # Ein Lone Surrogate (JSON-Escape "\ud800") lädt als str, lässt sich aber nicht
+    # als UTF-8 schreiben: jedes spätere `save`, auch ein Widerruf, würfe.
+    if any(_has_surrogate(record[key]) for key in _TEXT_KEYS):
         return False
     for key in _REQUIRED_TIMES:
         if not isinstance(record.get(key), str) or not _TIME_RE.fullmatch(record[key]):
@@ -109,8 +117,12 @@ class MobileStore:
         raw = data.get("devices")
         if not isinstance(raw, list):
             return
+        seen: set[str] = set()
         for record in raw:
-            if _is_wellformed(record):
+            if _is_wellformed(record) and record["id"] not in seen:
+                # Doppelte IDs behielten sonst zwei Token, von denen ein Widerruf nur
+                # eines träfe (`get`/`save` nehmen den ersten, `authenticate` jeden).
+                seen.add(record["id"])
                 self._devices.append(record)
             else:
                 # Nie den Datensatz loggen (er trägt Token-Hashes), nur id und Name.
