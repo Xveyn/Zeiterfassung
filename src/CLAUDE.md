@@ -224,6 +224,14 @@ Retry-on-conflict und Drive Content Restrictions sind geprüft und verworfen.
 Begründung und die Grenze der LWW-Heilung stehen im Docstring von
 `drive.py::upload`; wer das Fenster erneut angehen will, fängt dort an.
 
+**Der API-Server ist ein zweiter erlaubter Thread-Ort** (`api_server.py`), wie der
+Accept-Loop in `single_instance`: ein eigener Daemon-Thread, der nie ein Widget
+berührt. Seine Routen holen Daten ausschließlich über die Store-Methoden (die den
+`data_lock` selbst nehmen). Schreibende Routen führen Prüfen →
+Konfliktcheck → Speichern unter demselben `data_lock` aus und rufen die UI nur über
+`App._marshal_to_ui` (`ctx.on_change`, nach dem Lock). `App._quit_with_sync_push` stoppt die API
+VOR dem finalen Push, damit nach dem Snapshot keine Route mehr schreibt.
+
 **Urlaub reist als Snapshot, nicht als Store.** `send_task.perform_send` und
 `export_task.perform_export_pdf` bekommen `vacation_days` als fertiges
 `{ISO: minutes}`-Dict, das der Dialog-Thread über
@@ -244,7 +252,10 @@ Zeitraum und welche Kategorien der Bericht gefiltert ist.
   → `os.replace` → unter POSIX `fsync` aufs Verzeichnis; bei **jedem** Fehler, auch schon im
   `json.dump`, Temp-Datei weg und Fehler weiterreichen = **N1**) und
   `load_json_or_quarantine(path)` → Objekt oder `None`, wobei eine unparsebare Datei nach
-  `<name>.corrupt-<stamp>` verschoben und geloggt wird (**N4**). Genutzt von `storage`,
+  `<name>.corrupt-<stamp>` verschoben und geloggt wird (**N4**); `quarantine_corrupt(path, reason)`
+  nimmt einen Grund für die Logzeile, `backup_corrupt(path, reason)` kopiert statt zu verschieben (für
+  Dateien, die gleich repariert werden; eine schon vorhandene Sicherung mit gleichem Inhalt wird
+  wiederverwendet, damit ein nicht zurückschreibbarer Stand nicht bei jedem Start eine Kopie anlegt). Genutzt von `storage`,
   `reservations`, `conflicts_store` (beide Helfer) und `settings` (nur der Schreib-Helfer).
   Wer einen neuen JSON-Store baut, nimmt diese beiden Funktionen — nicht die Mechanik
   erneut abschreiben.
@@ -255,7 +266,22 @@ Zeitraum und welche Kategorien der Bericht gefiltert ist.
   die Crash-Recovery-Schicht selbst); die Secret-Schreiber `webhook_store`/`smtp_store`/
   `oauth_utils`/`single_instance` (brauchen zusätzlich ACL-Härtung + Rename-Retry, s.
   `secure_file.py`).
-- `storage.py` — Ist-Zeiten (JSON, Schlüssel = ISO-Datum). `reservations.py` — Reservierungen
+- `storage.py` — Ist-Zeiten (JSON, Schlüssel = ISO-Datum). `save`/`delete`/`save_many`/
+  `apply_merge` **rollen den Speicher zurück**, wenn das Schreiben auf die Platte scheitert:
+  sonst läuft der Speicher dem Stand der Platte voraus, ein Retry hält den Tag für gespeichert
+  (die API-Idempotenz-Abkürzung), und jeder spätere Save schriebe den ungeschriebenen Stand
+  unbemerkt mit.
+  **Beschädigte Dateien** (Handbearbeitung, ein fremdes Sync-Doc): `_load` quarantäniert ein
+  Top-Level, das kein Objekt ist, wie unparsebar und startet leer; Einträge ohne Objektform und
+  Slot-Listen mit Nicht-Objekten werden nach einer Sicherung (`json_store.backup_corrupt`,
+  `<datei>.corrupt-<stamp>`) repariert und zurückgeschrieben — scheitert die Sicherung, wird
+  nicht geschrieben. Wertfehler bleiben roh (der Sync soll keine spontane Änderung sehen) und
+  werden an der Lese-Grenze bereinigt: `sanitize_slot` in `_user_shape` macht aus jedem Slot
+  `start`/`end` Text-oder-`None`, `kategorie` Text, `pause` eine ganze Zahl 0–1440 (sonst 0).
+  Alle Leser (UI, Berichte, API) gehen über `get`/`get_all` und sehen nie Fremddaten;
+  `get_all_raw` bleibt das Original für den Sync. `sync.validate_remote_doc` lehnt Slot-Listen
+  mit Nicht-Objekten ab.
+  `reservations.py` — Reservierungen
   (zukünftige Soll-Zeiten, eigenes Konzept). `settings.py` — Einstellungen mit Defaults.
 - `conflicts_store.py` — lokale Sync-Konfliktliste. `category_defaults.py` — Default-Kategorien.
 - `webhook_store.py` — gerätelokaler Store der Webhook-Konfiguration
@@ -562,12 +588,13 @@ Wert.
   `migrate_legacy_autostart()` überführt Alt-Shortcuts in den Registry-Key, ist aber frozen-gated
   (Repo-Modus: No-op, würde andernfalls python.exe+Repo ins Register schreiben und bestehende
   Shortcuts beschädigen).
-- `secure_file.py` — Zugriffsschutz für die vier lokal abgelegten Secrets: `token.json`
+- `secure_file.py` — Zugriffsschutz für die fünf lokal abgelegten Secrets: `token.json`
   (`oauth_utils.write_token_json`), `instance-secret` (`single_instance._write_secret_atomic`),
   `webhooks.json` (`webhook_store._save_to_disk`, dritter Schreibpfad — enthält
   Auth-Token/HMAC-Secrets der konfigurierten Webhooks) und `smtp.json`
   (`smtp_store._save_to_disk`, vierter Schreibpfad — enthält, nur ohne Schlüsselbund,
-  das SMTP-Passwort im Klartext). Alle vier Schreibpfade laufen
+  das SMTP-Passwort im Klartext) und `api-token` (`api_auth._write_token_atomic`,
+  fünfter Schreibpfad — Bearer-Token der lokalen API). Alle fünf Schreibpfade laufen
   Temp-Datei → `chmod 0600` → `harden_windows_acl` → `os.replace`.
   Unter Windows ist chmod ein No-op, deshalb dort zusätzlich `icacls /inheritance:r
   /grant:r <user>:(F)` (Audit M8): geerbte ACEs (u.a. SYSTEM, lokale Administratoren) raus,
@@ -577,7 +604,7 @@ Wert.
   benennbarer Principal → loggen und weiter): ungehärtet ist der Status quo, eine
   gescheiterte Persistenz wäre eine Regression. Eigenes Modul, damit `single_instance`
   nichts aus dem OAuth-Umfeld importieren muss (und keiner den privaten Namen des anderen
-  nutzt, Audit N17). Wer einen fünften Secret-Schreibpfad baut, ruft diesen Helfer mit auf.
+  nutzt, Audit N17). Wer einen sechsten Secret-Schreibpfad baut, ruft diesen Helfer mit auf.
   **Aufrufhäufigkeit:** der Helfer hängt an `write_token_json`, läuft also bei *jedem*
   Token-Refresh in Mail-, Drive- und Kalender-Pfad — ein `icacls`-Subprozess pro
   Refresh, nicht einmalig beim Anlegen. Unkritisch, weil alle diese Pfade in den
@@ -592,6 +619,91 @@ Wert.
   `write_token`/`write_token_json` und die beiden `_save_to_disk` bleiben aber
   unverändert die Schreibpfade, über `harden_windows_acl` gehärtet, weil ohne
   Schlüsselbund (oder im Alt-Format) das Secret weiterhin dort landet.
+- `api_auth.py` — Authentifizierung der lokalen HTTP-API (#92), Tk-frei und
+  ohne Socket. Token (`secrets.token_urlsafe(32)`, Datei `api-token`, gehärtet
+  wie `instance-secret`) und `authorize(method, headers, policy, verifier)` als
+  **die eine** Stelle der Tore (Methode → Host → Origin → `Sec-Fetch-Site` →
+  Bearer → Content-Type). **Fail-closed:** ohne lesbares/schreibbares Token
+  gibt es keins (`load_or_create_token` → `None`), die API bleibt aus — anders
+  als `single_instance`, das unauthentifiziert weiterläuft. `Policy` und
+  `Principal.scopes` sind die Nahtstellen für die LAN-Freigabe (#221). `read_token` liest das Token
+  rein lesend (kein Anlegen, kein Härten) — für „Token kopieren“.
+  Server, Routen und Lebenszyklus: `api_server.py`, `api_routes.py`,
+  `api_service.py` (unten).
+  **`load_or_create_token` und `rotate_token` blockieren** (Windows: `icacls`
+  bis 15 s, Retry von `os.replace`) — nur über `BackgroundTaskRunner.run`, nie
+  im UI-Thread. Eine vorhandene Token-Datei wird beim Laden auf Besitzer-only
+  nachgezogen; ein Token, das nicht genau dem erzeugten Format (43 Zeichen)
+  entspricht, wird ersetzt.
+- `api_routes.py` — Routing und Antworten der lokalen API (#92), Tk-frei und
+  ohne Socket: `handle(request, ctx, principal)` über eine Routentabelle
+  (Methode, Muster, Handler, **Scope**). Lesend: `GET /v1/status`,
+  `/v1/entries`, `/v1/entries/{date}`. Auswertungen: `/v1/summary/…`, `/v1/categories`,
+  `/v1/holidays/{year}` (Rechnung in `api_summary`). Die Daten kommen über `Storage.get_all()`/
+  `get()` (nehmen den `data_lock` selbst, liefern Kopien) — die lesenden Routen
+  halten keinen Lock. `PUT`/`DELETE /v1/entries/{date}` prüfen, machen den Konfliktcheck
+  und speichern unter `ctx.data_lock` (der geteilte Store-`RLock`) und melden `ctx.on_change`
+  erst NACH dem Lock und nur bei einer Änderung (App: `_marshal_to_ui(_refresh)`); ein Fehler
+  in `on_change` macht aus einem gespeicherten Schreibzugriff keine 500. Strikte Datumsform (`[0-9]{4}-[0-9]{2}-[0-9]{2}`,
+  nicht `\d`, nicht `fromisoformat` allein: das nähme `20260105` und `2026-W01-1`),
+  unbekannte und doppelte Query-Parameter sind 400. Ein Programmfehler wirft
+  durch; der Server macht daraus eine 500 ohne Details.
+- `api_entry_write.py` — Schreibpfad der lokalen API für Ist-Zeiten (#92), Tk-frei: nimmt
+  **Fremddaten** und bildet die Regeln nach, die die UI an ihren Eingängen durchsetzt und
+  `Storage` nicht kennt. `parse_day_body` (strenges JSON — kein `NaN`, keine doppelten
+  Schlüssel, `RecursionError` ist 400, UTF-8 mit oder ohne BOM —, genau `HH:MM`, nur die vier
+  Felder, Kategorie ohne Unicode-Klassen `Cc`/`Cs`: ein einzelnes Surrogat ließe sich nicht
+  als UTF-8 schreiben und machte jedes spätere Speichern des Stores unmöglich — `validate_slots`),
+  `check_date_range` (2000–2100), `check_day_writable` (ungelöster Sync-Konflikt: `PUT` und
+  `DELETE`; Urlaubsminuten > 0: nur `PUT`, 0-Minuten-Tage bleiben frei) und `warnings_for`
+  (Wochenlimit/Pausenpflicht gegen den simulierten Stand nach dem Speichern, nie ein Fehler —
+  auch nicht bei ungewöhnlich gespeicherten Daten: jede Prüfung ist für sich abgesichert).
+  Hält keinen Lock; den nimmt der Aufrufer um Prüfen und Speichern gemeinsam.
+- `api_summary.py` — Auswertungen der lokalen API (#92), Tk-frei, rein: Pfad-Parser (`parse_week`, `parse_month`, `parse_year`, nur ASCII-Ziffern, `fromisocalendar` entscheidet über KW 53), `summarize` (Tage, Kategorien, `weeks[]` mit Wochenlimit, Pausenwarnungen, Urlaub über `vacations.cap_by_worktime`), `category_names`, `holidays_for`. Gerechnet wird über **Minuten je Slot**; gespeicherte Slots sind Fremddaten, ein ungewöhnlicher Slot zählt 0 Minuten und wird geloggt. Die Routen (`/v1/summary/week|month`, `/v1/categories`, `/v1/holidays`) in `api_routes` holen nur den Snapshot (`Storage.get_all()`, `VacationStore.day_minutes()`), halten keinen Lock und melden nie `on_change`.
+- `api_server.py` — HTTP-Server der lokalen API: `ApiServer(context, verifier,
+  port=…)`. Ein Daemon-Thread mit eigener `handle_request()`-Schleife (kein
+  `serve_forever()`/`shutdown()`: `shutdown()` wartet, bis die Schleife verlassen
+  wurde, und blockiert für immer, wenn der Thread nie dorthin kommt — Preis der
+  eigenen Schleife sind rund zehn Aufwachvorgänge pro Sekunde), pro Verbindung ein
+  Daemon-Thread. Reihenfolge je Anfrage: doppelte Header → 400, `api_auth.authorize`, `Transfer-Encoding` → 400,
+  Body lesen (Limit 1 MiB), `api_routes.handle`. Nur Loopback (Bind-Adresse aus
+  `Policy.bind_host`); `server_bind` umgeht `socket.getfqdn` (hängt bei kaputtem
+  DNS) und setzt unter Windows `SO_EXCLUSIVEADDRUSE` statt `SO_REUSEADDR` — sonst
+  könnte ein anderer lokaler Prozess den Port zusätzlich binden und Token
+  mitlesen. `send_error` ist überschrieben: JSON statt HTML-Seite. Nie ein
+  CORS-Header. **Last:** höchstens 32 gleichzeitige Verbindungen (darüber wird
+  im Accept-Thread sofort geschlossen — angenommen wird vor der Auth, ohne die
+  Grenze könnte ein lokaler Prozess Threads und Dateihandles der ganzen App
+  aufzehren), 15 s Gesamtfrist je Verbindung (das Socket-Timeout gilt nur je
+  `recv()`), Lingering close (erst `SHUT_WR`, dann kurz leer lesen: kein RST mit
+  ungelesenem Body, kein `TIME_WAIT` auf dem API-Port). Verbindungsabbrüche und
+  Timeouts loggen nur auf DEBUG; ein Body-Timeout ist 408. `set_verifier` tauscht den Prüfer ohne Neustart (Token-Rotation).
+- `api_service.py` — Lebenszyklus der lokalen API: `ApiService(settings, base_path,
+  context, run=…)`. `apply()` liest `api_enabled`/`api_port` (beide gerätelokal) und
+  bringt den Server im **Worker** in den passenden Zustand (Token laden blockiert);
+  Ergebnis ist ein `ApiStatus(state, port, reason)` mit Grund
+  (`invalid_port`/`port_in_use`/`token_unavailable`/`start_failed`) für den
+  Settings-Tab. Bei ungültigem Port wird **kein** Token angelegt. `shutdown()` wartet
+  höchstens `lock_timeout` auf einen laufenden Start und sperrt weitere Starts —
+  Beenden darf nie hängen, und beim Entfernen würde ein spät fertiges Token-Laden die
+  Datei neu anlegen. `reopen()` nimmt das zurück (fehlgeschlagener Skalierungs-Neustart).
+  `RefreshCoalescer` bündelt `ApiContext.on_change` zu **einem** ausstehenden Neuzeichnen
+  (ein Backfill-Skript mit 365 PUTs queuete sonst 365 volle Grid-Refreshs). `ApiContext.closing`
+  (aus `ApiService._closed`) lässt schreibende Routen unter dem Lock mit 503 ablehnen — der
+  Sync-Push nimmt denselben Lock, nach `shutdown()` landet also nichts hinter dem Snapshot.
+  `apply()` setzt sofort `starting` (Token-Laden blockiert unter Windows bis 15 s), und
+  `_publish` meldet immer den **aktuellen** `.status`, nie das Ergebnis eines zu spät
+  fertigen Workers. `rotate()` (Worker!) erneuert das Token und tauscht den Prüfer des
+  laufenden Servers aus — unter demselben `_lock` wie der Start, sodass der Server nach
+  jeder Verschränkung genau das Token akzeptiert, das in der Datei steht; scheitert das
+  Schreiben (jede Ausnahme, nicht nur `OSError`), bleibt das alte gültig. War der Grund
+  für die ruhende API `token_unavailable`, startet eine gelungene Rotation sie (über
+  `_reconcile_guarded`, dieselbe Fehler-zu-Status-Umwandlung wie `apply()`). Hat
+  `shutdown()` während der Rotation nach seinem Timeout aufgegeben, stoppt `rotate()`
+  den Server auf **jedem** Ausgang (`_stop_if_closed`). `read_token()` liest rein lesend.
+  `App` ruft `shutdown()` in `_quit_with_sync_push`, `remove_application` (vor jedem
+  Worker) und `restart_for_scaling` (**vor** dem Spawn, der Port muss frei sein);
+  `tests/test_api_wiring.py` hält das am Quelltext fest.
 - `single_instance.py` — Tk-freier Single-Instance-Guard. Erste Instanz leitet einen Port aus
   `get_base_path()` ab und bindet einen Listener (`SO_EXCLUSIVEADDRUSE` Windows, `SO_REUSEADDR` Unix).
   Folgeinstanzen melden sich per SHOW/PING-Protokoll und beenden sich. `main.py` ruft `acquire()`
@@ -673,7 +785,7 @@ Tk-frei; das Passwort geht über `keyring_store` in den Schlüsselbund bzw. bei 
 Schlüsselbund unverändert in den Datensatz für `smtp_store`),
 `settings_dialog/` (Paket, Audit H4: `dialog.py` trägt Chrome und verdrahtet das
 **Speichern je Tab** (#132); je Tab eine Klasse in `tab_work`/`tab_reminders`/
-`tab_sending`/`tab_google`/`tab_app`/`tab_updates`.py, alle gebaut mit
+`tab_sending`/`tab_google`/`tab_api`/`tab_app`/`tab_updates`.py, alle gebaut mit
 `theme.Form(scroll=True)`, mit derselben Schnittstelle:
 `title`, `fields` (`fields.FieldSet` — die Tk-Variablen und Textfelder des Tabs unter
 einem Schlüssel), `values()` (roher Formularstand, darf nicht werfen), `validate()`,
@@ -686,8 +798,18 @@ Dialog offen; wer einen geänderten Tab verlässt (Reiter-Klick, vor dem Wechsel
 `<Button-1>` abgefangen — `ttk.Notebook` kennt kein Veto) oder den Dialog schließt
 (Knopf, X, Escape), wird gefragt. Werte, die im Hintergrund nachgeladen werden
 (Kalenderliste), übernimmt `rebaseline` feldweise als gespeichert. Tab-Reihenfolge und
-`initial_tab`-Schlüssel: `work`, `reminders`, `sending`, `google`, `app`, `updates` — die
-Reitertexte kommen aus `tab.title`. SMTP-Konten und Webhooks sind Abschnitte im
+`initial_tab`-Schlüssel: `work`, `reminders`, `sending`, `google`, `api` (nur mit
+`api_service`), `app`, `updates` — die
+Reitertexte kommen aus `tab.title`. **`tab_api.ApiTab` (#92)** ist der Tab „API“
+(Schalter, Port, Statuszeile, Token kopieren/neu erzeugen): nur `api_enabled`/`api_port`
+sind Formularfelder, Kopieren und Erneuern sind Aktionen, die sofort wirken und — weil
+sie Dateizugriff machen (unter Windows `icacls`) — über den `BackgroundTaskRunner`
+laufen. Der Status kommt per `after`-Poll aus `ApiService.status`, nicht aus
+`on_status` (das Callback kann nach dem Schließen des Dialogs zurückkommen). Das Token
+wird nie angezeigt. Prüfung und Texte (`validate_api`, `api_updates`, `port_hint`,
+`status_view`, `curl_example`) liegen Tk-frei in `tab_rules.py`; den Tab hängt
+`open_settings_dialog` nur ein, wenn ihm ein `api_service` übergeben wird. SMTP-Konten
+und Webhooks sind Abschnitte im
 Versand-Tab (`tab_smtp.SmtpTab`/`tab_webhooks.WebhooksTab` über
 `_record_list_tab.RecordListTab`, eingebettet in dessen `Form`: drei Zeilen, Knöpfe
 daneben, Leertext bei leerer Liste) und tragen **keine** Formularfelder: die Einträge

@@ -32,6 +32,7 @@ from __future__ import annotations
 import contextlib
 import json
 import uuid
+from collections.abc import Iterable
 from typing import TYPE_CHECKING, Any, Callable
 
 # SYNCED_SETTING_KEYS lebt als Single Source of Truth in settings.py — hier nur
@@ -89,11 +90,24 @@ def _is_settled_conflict(conflict: Conflict, watermark: str) -> bool:
     return bool(conflict.get("resolved")) and resolved_at != "" and resolved_at < watermark
 
 
+def sorted_signature(items: Iterable[tuple[Any, ...]]) -> list[tuple[Any, ...]]:
+    """Sortiert Slot-Tupel für den Reihenfolge-unabhängigen Vergleich. Gemischte Typen
+    (`None` neben Text, Text neben Zahl) lassen `sorted` mit `TypeError` scheitern:
+    `validate_remote_doc` lässt Wertfehler in Slots durch, und der Vergleich läuft bei
+    jedem Merge, ein Fehler hier sperrte den Sync dauerhaft. Dann gilt ersatzweise die
+    Textform als Schlüssel — für saubere Daten bleibt die Ordnung unverändert."""
+    rows = list(items)
+    try:
+        return sorted(rows)
+    except TypeError:
+        return sorted(rows, key=repr)
+
+
 def _slots_signature(entry: Entry) -> list[tuple[Any, ...]]:
     """Reihenfolge-normalisierte Signatur der Slot-Liste eines Eintrags,
     für den Gleichheitsvergleich im Merge. Sortiert nach den Slot-Feldern,
     damit eine reine Umordnung der Slots NICHT als Änderung zählt."""
-    return sorted(
+    return sorted_signature(
         (s.get("start"), s.get("end"), s.get("pause", 0), s.get("kategorie", ""))
         for s in (entry.get("slots") or [])
     )
@@ -504,6 +518,8 @@ def validate_remote_doc(doc: Any) -> tuple[bool, str]:
             return False, f"entry {date!r}: modified_at ist kein String"
         if not isinstance(entry.get("slots"), list):
             return False, f"entry {date!r}: slots ist keine Liste"
+        if not all(isinstance(slot, dict) for slot in entry["slots"]):
+            return False, f"entry {date!r}: slots enthält ein Nicht-Objekt"
 
     settings = doc.get("settings", {})
     if not isinstance(settings, dict):

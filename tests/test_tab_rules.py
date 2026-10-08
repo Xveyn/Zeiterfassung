@@ -1,6 +1,8 @@
 """Tests für tab_rules.py (#132, PR 2): Prüfung und Umrechnung je Tab —
 der aufgeteilte Inhalt des früheren `save_settings`."""
 
+import pytest
+
 from src.dialogs.settings_dialog import tab_rules as tr
 from src.holidays_de import STATES
 from src.settings import WEEKDAY_KEYS
@@ -271,3 +273,147 @@ def test_tabs_together_write_exactly_the_legacy_keys():
     keys = [k for upd in written for k in upd]
     assert len(keys) == len(set(keys)), "ein Schlüssel in zwei Tabs"
     assert set(keys) == LEGACY_KEYS
+
+
+# --- API-Tab (#92, PR 3) ----------------------------------------------------------
+
+from src import single_instance  # noqa: E402
+from src.api_service import (  # noqa: E402
+    DEFAULT_PORT, REASON_INVALID_PORT, REASON_PORT_IN_USE, REASON_START_FAILED,
+    REASON_TOKEN_UNAVAILABLE, STATE_ERROR, STATE_OFF, STATE_RUNNING, STATE_STARTING,
+    ApiStatus,
+)
+
+
+def api_raw(**overrides):
+    raw = {"api_enabled": True, "api_port": "17653"}
+    raw.update(overrides)
+    return raw
+
+
+@pytest.mark.parametrize("port", ["17653", " 8080 ", "1024", "65535"])
+def test_validate_api_accepts_valid_ports(port):
+    assert tr.validate_api(api_raw(api_port=port)) is None
+
+
+@pytest.mark.parametrize("port", ["", "abc", "0", "80", "1023", "65536", "70000",
+                                  "17653.5", "-5", "٨٠٨٠", "9" * 5000, "0x50", " "])
+def test_validate_api_rejects_everything_else(port):
+    result = tr.validate_api(api_raw(api_port=port))
+
+    assert result is not None
+    title, message = result
+    assert title and "1024" in message and "65535" in message
+
+
+def test_validate_api_checks_the_port_even_when_the_api_is_off():
+    # Ein kaputter Port im Feld soll nicht erst beim späteren Einschalten auffallen.
+    assert tr.validate_api(api_raw(api_enabled=False, api_port="abc")) is not None
+
+
+def test_api_updates_converts_the_form_state():
+    assert tr.api_updates(api_raw(api_port=" 8080 ")) == {
+        "api_enabled": True, "api_port": 8080}
+    assert tr.api_updates(api_raw(api_enabled=False)) == {
+        "api_enabled": False, "api_port": 17653}
+
+
+def test_api_updates_falls_back_to_the_default_port_like_the_other_tabs():
+    assert tr.api_updates(api_raw(api_port="abc"))["api_port"] == DEFAULT_PORT
+
+
+def test_api_tab_keys_do_not_collide_with_the_other_tabs():
+    assert set(tr.api_updates(api_raw())) & LEGACY_KEYS == set()
+
+
+@pytest.mark.parametrize("port,expected_fragment", [
+    ("20000", "Mehrfachstart"), ("31999", "Mehrfachstart"), ("25000", "Mehrfachstart"),
+    ("32768", "32768"), ("60000", "32768"), ("65535", "32768"),
+])
+def test_port_hint_warns_for_the_busy_ranges(port, expected_fragment):
+    assert expected_fragment in tr.port_hint(port)
+
+
+@pytest.mark.parametrize("port", ["17653", "1024", "19999", "32000", "32767", "abc", "", "0"])
+def test_port_hint_is_empty_everywhere_else(port):
+    assert tr.port_hint(port) == ""
+
+
+def test_port_hint_range_matches_the_single_instance_range():
+    # Der Hinweis nennt den Bereich des Mehrfachstart-Schutzes; ändert sich der,
+    # muss der Hinweis mit.
+    assert tr._SINGLE_INSTANCE_FROM == single_instance._PORT_BASE
+    assert tr._SINGLE_INSTANCE_TO == single_instance._PORT_BASE + single_instance._PORT_SPAN - 1
+
+
+def test_status_view_for_every_state():
+    assert tr.status_view(ApiStatus(STATE_OFF)) == ("Aus.", "muted")
+    assert tr.status_view(ApiStatus(STATE_STARTING, 17653)) == ("Startet …", "muted")
+    assert tr.status_view(ApiStatus(STATE_RUNNING, 17653)) == (
+        "Läuft auf 127.0.0.1:17653", "ok")
+
+
+@pytest.mark.parametrize("reason", [REASON_INVALID_PORT, REASON_PORT_IN_USE,
+                                    REASON_TOKEN_UNAVAILABLE, REASON_START_FAILED,
+                                    "etwas-neues"])
+def test_status_view_error_reasons_are_distinct_and_never_empty(reason):
+    text, kind = tr.status_view(ApiStatus(STATE_ERROR, 17653, reason))
+    assert kind == "error" and text.strip()
+
+
+def test_status_view_port_in_use_names_the_port():
+    text, _ = tr.status_view(ApiStatus(STATE_ERROR, 8080, REASON_PORT_IN_USE))
+    assert "8080" in text
+
+
+def test_status_view_reasons_have_different_texts():
+    texts = {tr.status_view(ApiStatus(STATE_ERROR, 8080, r))[0]
+             for r in (REASON_INVALID_PORT, REASON_PORT_IN_USE,
+                       REASON_TOKEN_UNAVAILABLE, REASON_START_FAILED)}
+    assert len(texts) == 4
+
+
+def test_curl_example_uses_the_port_and_never_a_real_token():
+    assert tr.curl_example("8080") == (
+        'curl -H "Authorization: Bearer <Token>" http://127.0.0.1:8080/v1/status')
+    assert "17653" in tr.curl_example("abc")          # Fallback auf den Standard
+
+
+# --- API-Tab: Knopfzustände und Token-Zeile (Review-Fixes) -------------------------
+
+@pytest.mark.parametrize("api_on", [True, False])
+@pytest.mark.parametrize("token_known", [True, False])
+@pytest.mark.parametrize("busy", [True, False])
+def test_token_buttons_need_the_api_on_a_known_token_and_no_rotation(api_on, token_known, busy):
+    expected = api_on and token_known and not busy
+    assert tr.token_buttons_enabled(api_on=api_on, token_known=token_known, busy=busy) is expected
+
+
+def test_token_label_shows_the_mask_or_the_hint_without_a_notice():
+    assert tr.token_label_view(token_known=True, notice=None) == (tr.TOKEN_MASK, "muted")
+    assert tr.token_label_view(token_known=False, notice=None) == (tr.TOKEN_MISSING, "muted")
+    assert tr.token_label_view(token_known=True, notice="") == (tr.TOKEN_MASK, "muted")
+
+
+@pytest.mark.parametrize("token_known", [True, False])
+def test_a_notice_wins_over_the_mask_so_a_late_reread_cannot_overwrite_it(token_known):
+    # Das Nachlesen des Tokens nach „Neu erzeugen“ kommt Millisekunden NACH der
+    # Erfolgsmeldung zurück und rendert die Zeile neu — die Meldung muss gewinnen.
+    assert tr.token_label_view(token_known=token_known, notice="Token erneuert.") == (
+        "Token erneuert.", "ok")
+
+
+def test_the_mask_never_contains_a_token_like_string():
+    assert set(tr.TOKEN_MASK) == {"•"}
+
+
+def test_leading_zeros_are_accepted_as_the_plain_number():
+    # Entscheidung: „08080“ ist 8080 (harmlos, eindeutig) — weder Fehler noch Sonderfall.
+    assert tr.validate_api(api_raw(api_port="08080")) is None
+    assert tr.api_updates(api_raw(api_port="08080"))["api_port"] == 8080
+
+
+def test_the_missing_token_text_does_not_promise_a_first_time_creation():
+    # Die Maske steht auch, wenn die API läuft und die Datei extern gelöscht wurde.
+    assert "ersten" not in tr.TOKEN_MISSING
+    assert "lesbar" in tr.TOKEN_MISSING and "Einschalten" in tr.TOKEN_MISSING

@@ -415,3 +415,48 @@ Netzwerk-Socket. Ein Selbst-Update auf dem Mac würde die Gatekeeper-Hürde
 also nicht umgehen müssen, sondern schlicht nie auslösen. Das ist der
 eigentliche Grund, die Lücke später zu schließen — nicht bloß Komfort auf
 Augenhöhe mit den anderen beiden Plattformen.
+
+## Lokale API (#92): bekannte Grenzen
+
+- **Das Token liegt in einer Datei.** `api-token` (wie `instance-secret`) ist für
+  jeden Prozess lesbar, der **als derselbe Nutzer** läuft. Auf einem Desktop-
+  Betriebssystem nicht zu ändern — direkt daneben liegt `token.json`, das mehr
+  wert ist. Bewusst kein Schlüsselbund: Skripte müssen das Token lesen können.
+  Die API verschiebt diese Grenze nicht.
+- **Kein TLS.** Auf Loopback bedeutungslos. Mit der LAN-Freigabe (#221) wird das
+  eine Entscheidung.
+- **Nur solange die App läuft.** Der Server lebt im App-Prozess (Single-Writer,
+  siehe #92); ohne laufende App ist die API nicht erreichbar. Wer sie praktisch
+  braucht, schaltet Autostart ein.
+- **Port belegt oder gesperrt.** Ein belegter Port lässt die API aus; der Grund
+  steht im Status (`port_in_use`), die App läuft normal weiter. Unter Windows bindet
+  die App den Port exklusiv (`SO_EXCLUSIVEADDRUSE`); ein anderer Prozess, der ihn
+  vorher belegt, ist von dort aus nicht zu verdrängen. Unter Linux und macOS bindet die
+  App nicht exklusiv: auch dort kann ein anderer Nutzer desselben Rechners den Port vor
+  der App belegen (`port_in_use`), oder ein fremder Prozess antwortet unter dem Port.
+  Clients verbinden mit `127.0.0.1`, nicht mit `localhost` (gebunden ist nur IPv4).
+- **Das Token wird beim Start der API gelesen.** Ein extern gelöschtes, geändertes oder
+  rotiertes `api-token` wirkt erst nach einem Neustart der App oder nach Aus- und
+  Wiedereinschalten der API; „Neu erzeugen“ im Tab schreibt dagegen die Datei und tauscht
+  den Prüfer des laufenden Servers. Der Tab liest die Datei und kann deshalb vom laufenden
+  Server abweichen. Die Datei muss ASCII sein (ein UTF-8-BOM und ein Zeilenumbruch werden
+  toleriert); UTF-16, wie ihn Windows PowerShell 5.1 mit `>` schreibt, gilt als ungültig und
+  wird durch ein neues Token ersetzt. Ein BOM bleibt in der Datei stehen: ein Skript, das
+  sie roh einliest (`cat`), schickt es mit und bekommt 401 — BOM-fähig lesen oder im Tab
+  „Neu erzeugen“ (das schreibt die Datei sauber).
+- **Last.** Höchstens 32 gleichzeitige Verbindungen, jede mit 15 s Gesamtfrist;
+  weitere werden sofort geschlossen. Ein lokaler Prozess kann damit die **API**
+  zeitweise blockieren (angenommen wird vor der Auth), nicht aber die App. Eine
+  Abfrage ohne Zeitraum liefert alle Einträge ohne Paginierung.
+- **Schreiben ist Last-Write-Wins.** `PUT`/`DELETE /v1/entries/{date}` schreiben wie der Tages-Dialog: ist der Tag in der App gleichzeitig geöffnet, gewinnt, wer zuletzt speichert. Es gibt kein Rückgängig; wer sichergehen will, liest den Tag vorher. Wochenlimit und Pausenpflicht kommen nur als Warnung.
+- **Auswertungen sind eine Momentaufnahme dieses Geräts.** Ist-Zeit und Urlaub werden nacheinander gelesen, ein gleichzeitiges Speichern in der App kann dazwischen liegen. Der Urlaub ist gerätelokal (reist nicht per Drive-Sync): dieselbe Woche liefert auf dem Laptop und auf dem Desktop dieselbe Ist-Zeit, aber nur den eigenen Urlaub und damit ein anderes `payable_minutes`. Das Wochenlimit zählt nur Ist-Zeit (Urlaub ist keine geleistete Arbeit). `workweek_only` wirkt hier nicht: die API liefert alle Daten.
+- **Gerätelokal.** `api_enabled` und `api_port` reisen nicht per Drive-Sync.
+- **Kein Brute-Force-Schutz.** 256 Bit sind nicht zu erraten, und gegen lokale
+  Codeausführung wäre eine Sperre wirkungslos.
+
+## Beschädigte oder fremde Daten (Storage)
+
+- **Ungültige Slot-Werte werden beim Lesen ersetzt, nicht repariert.** Eine gespeicherte Pause, die keine ganze Zahl von 0 bis 1440 ist (`null`, Text, `30.5`, negativ, `inf`), zählt `0`; `start`/`end` ohne Text zählen als leer, eine Kategorie ohne Text als „ohne Kategorie“. Die Datei behält den Originalwert, bis der Tag neu gespeichert wird.
+- **Was beim Laden nicht Objekt-förmig ist, wird verworfen.** Das betrifft nur Einträge und Slots, die kein JSON-Objekt sind (Handbearbeitung, Fremd-Sync). Vorher liegt eine Kopie als `zeiterfassung.json.corrupt-<Zeitstempel>` neben der Datei; scheitert die Kopie, bleibt die Datei unverändert und der reparierte Stand gilt nur bis zum nächsten Speichern.
+- **Ein Remote-Doc mit einem Nicht-Objekt in `slots` ist ungültig** und wird wie andere Strukturfehler behandelt (Remote quarantänen, lokaler Stand wird neue Wahrheit).
+- **Reservierungen und Urlaub** haben diese Härtung noch nicht (Follow-up über #239).

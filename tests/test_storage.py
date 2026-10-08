@@ -212,3 +212,67 @@ def test_save_many_slot_defaults(tmp_storage):
     slot = tmp_storage.get_all()["2026-05-14"]["slots"][0]
     assert slot["pause"] == 0
     assert slot["kategorie"] == ""
+
+
+
+# --- Rollback bei fehlgeschlagenem Plattenschreiben (Review PR 4) ----------------------------------
+
+def _break_disk(storage, monkeypatch):
+    def boom():
+        raise OSError(28, "No space left on device")
+    monkeypatch.setattr(storage, "_save_to_disk", boom)
+
+
+def test_save_rolls_back_a_new_day_when_the_disk_write_fails(tmp_storage, monkeypatch):
+    _break_disk(tmp_storage, monkeypatch)
+    with pytest.raises(OSError):
+        tmp_storage.save("2026-05-14", [_slot("08:00", "16:00")])
+    assert tmp_storage.get("2026-05-14") is None
+    assert "2026-05-14" not in tmp_storage.get_all_raw()
+
+
+def test_save_rolls_back_to_the_previous_day_when_the_disk_write_fails(tmp_storage, monkeypatch):
+    tmp_storage.save("2026-05-14", [_slot("08:00", "12:00")])
+    before = tmp_storage.get_all_raw()["2026-05-14"]
+    _break_disk(tmp_storage, monkeypatch)
+    with pytest.raises(OSError):
+        tmp_storage.save("2026-05-14", [_slot("09:00", "17:00")])
+    assert tmp_storage.get("2026-05-14") == {"slots": [_slot("08:00", "12:00")]}
+    assert tmp_storage.get_all_raw()["2026-05-14"] == before
+
+
+def test_delete_rolls_back_when_the_disk_write_fails(tmp_storage, monkeypatch):
+    tmp_storage.save("2026-05-14", [_slot("08:00", "12:00")])
+    _break_disk(tmp_storage, monkeypatch)
+    with pytest.raises(OSError):
+        tmp_storage.delete("2026-05-14")
+    assert tmp_storage.get("2026-05-14") == {"slots": [_slot("08:00", "12:00")]}
+
+
+def test_save_many_rolls_back_every_day_when_the_disk_write_fails(tmp_storage, monkeypatch):
+    tmp_storage.save("2026-05-14", [_slot("08:00", "12:00")])
+    _break_disk(tmp_storage, monkeypatch)
+    with pytest.raises(OSError):
+        tmp_storage.save_many({"2026-05-14": {"slots": [_slot("09:00", "10:00")]},
+                               "2026-05-15": {"slots": [_slot("09:00", "10:00")]}})
+    assert tmp_storage.get("2026-05-14") == {"slots": [_slot("08:00", "12:00")]}
+    assert tmp_storage.get("2026-05-15") is None
+
+
+def test_apply_merge_rolls_back_when_the_disk_write_fails(tmp_storage, monkeypatch):
+    tmp_storage.save("2026-05-14", [_slot("08:00", "12:00")])
+    before = tmp_storage.get_all_raw()
+    _break_disk(tmp_storage, monkeypatch)
+    with pytest.raises(OSError):
+        tmp_storage.apply_merge({})
+    assert tmp_storage.get_all_raw() == before
+
+
+def test_a_working_save_after_a_failed_one_succeeds(tmp_storage, monkeypatch):
+    with monkeypatch.context() as m:
+        _break_disk(tmp_storage, m)
+        with pytest.raises(OSError):
+            tmp_storage.save("2026-05-14", [_slot("08:00", "12:00")])
+    tmp_storage.save("2026-05-15", [_slot("08:00", "12:00")])
+    assert tmp_storage.get("2026-05-14") is None
+    assert tmp_storage.get("2026-05-15") is not None

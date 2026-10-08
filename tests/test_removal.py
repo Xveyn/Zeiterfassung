@@ -335,6 +335,18 @@ def test_credential_temp_files_removed_without_data(tmp_path, quiet):
     assert (tmp_path / "zeiterfassung.json.ab.tmp").exists()   # gehört zum Häkchen
 
 
+def test_api_token_and_its_leftovers_removed_without_data(tmp_path, quiet):
+    for name in ("api-token", ".api-token-ab.tmp", "api-token.corrupt-20261006"):
+        _touch(tmp_path / name)
+    _touch(tmp_path / "zeiterfassung.json")          # Nutzerdaten bleiben ohne Häkchen
+
+    removal.execute_removal(str(tmp_path), False, "Linux")
+
+    for name in ("api-token", ".api-token-ab.tmp", "api-token.corrupt-20261006"):
+        assert not (tmp_path / name).exists()
+    assert (tmp_path / "zeiterfassung.json").exists()
+
+
 def test_user_data_temp_files_removed_with_data(tmp_path, quiet):
     _touch(tmp_path / "zeiterfassung.json.ab.tmp")
     _touch(tmp_path / "sync_history.json.tmp")

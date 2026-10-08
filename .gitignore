@@ -15,6 +15,9 @@ sync_history.json
 sync-apply.journal
 instance-secret
 .instance-secret-*.tmp
+api-token
+api-token.corrupt-*
+.api-token-*.tmp
 webhooks.json
 webhooks.json.corrupt-*
 .webhooks-*.tmp

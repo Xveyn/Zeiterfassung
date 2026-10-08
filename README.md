@@ -27,6 +27,7 @@ Desktop-App zur Erfassung von Arbeitszeiten: im Kern Kalenderansicht und PDF-Ber
 [Features](#features) · [Installation](#installation) ·
 [Gmail API](#gmail-api-einrichten) · [SMTP](#e-mail-versand-ohne-google-smtp) · [Multi-Device-Sync](#multi-device-sync-einrichten-optional) ·
 [Google-Kalender](#google-kalender-für-reservierungen-einrichten-optional) ·
+[Lokale API](#lokale-http-api-optional) ·
 [Einstellungen](#einstellungen) · [Plattform-Kompatibilität](#plattform-kompatibilität) ·
 [Datenspeicherung](#datenspeicherung) · [Entfernen](#vollständig-entfernen) · [Mitentwickeln](#mitentwickeln) · [Lizenz](#lizenz)
 
@@ -73,7 +74,8 @@ Desktop-App zur Erfassung von Arbeitszeiten: im Kern Kalenderansicht und PDF-Ber
 ### App & Umgebung
 
 - **Multi-Device-Sync** — Optionale Synchronisation von Zeiteinträgen und Mail-Vorlagen über Google Drive (`appDataFolder`), inklusive Konflikt-Auflösung wenn dasselbe Datum offline auf mehreren Geräten bearbeitet wurde — per Linksklick direkt auf den betroffenen Kalendertag oder gesammelt in den Einstellungen
-- **Einstellungen** — In Tabs gegliedert (Arbeitszeit / Erinnerungen / Versand / Google / App / Updates); Standardzeiten und Pause, Erinnerungen, E-Mail-Vorlagen mit Platzhaltern, Empfänger, SMTP-Konten und Webhooks, Update-Einstellungen
+- **Einstellungen** — In Tabs gegliedert (Arbeitszeit / Erinnerungen / Versand / Google / API / App / Updates); Standardzeiten und Pause, Erinnerungen, E-Mail-Vorlagen mit Platzhaltern, Empfänger, SMTP-Konten und Webhooks, Update-Einstellungen
+- **Lokale HTTP-API** *(ab --VERSION--)* — Optional (Standard: aus): ein Server nur auf `127.0.0.1`, über den Skripte, Taskplaner oder andere Programme auf diesem Rechner deine Zeiten lesen und eintragen können — nur mit Token (Einstellungen → API), nie aus dem Browser; siehe [Lokale HTTP-API](#lokale-http-api-optional)
 - **Autostart & Einzelinstanz** — Optionaler minimierter Start bei Anmeldung (Windows, macOS, Linux); es läuft immer nur eine Instanz — ein zweiter Start holt das vorhandene Fenster nach vorn
 - **Entfernen aus der App** *(ab 1.24.0)* — Unter macOS und Linux räumt „Zeiterfassung entfernen“ (Einstellungen → App) Schlüsselbund, Zugangsdaten, Autostart und Menüeintrag ab, auf Wunsch auch Zeiten und Einstellungen; die Programmdatei löschst du danach selbst
 - **Update-Check** — Konfigurierbare Hintergrund-Prüfung auf neue Releases; Updates-Tab mit manuellem Check, Changelog und Direkt-Download, bei aktivem Tray als einmaliger Toast statt Banner. Läuft die App im Infobereich, stößt **„Nach Updates suchen"** im Tray-Menü die Prüfung direkt an — das Ergebnis kommt als Toast, auch wenn alles aktuell ist. Optional lassen sich auch Vorabversionen (Pre-Releases) anbieten — Testbuilds vor dem echten Release
@@ -314,6 +316,51 @@ Ein bereits gespeicherter Token ohne die Kalender-Scopes löst keinen neuen Cons
 
 Reservierungen anlegen und den Abgleich über die App-Oberfläche aktivieren; beim ersten Zugriff zeigt der Consent-Screen die beiden Kalender-Berechtigungen zusätzlich an.
 
+## Lokale HTTP-API (optional)
+
+**Lokale HTTP-API** *(ab --VERSION--)* — Eine kleine Schnittstelle nur auf deinem Rechner (`127.0.0.1`), über die Skripte, Taskplaner oder andere Programme deine Zeiten lesen und eintragen können. Standardmäßig **aus**.
+
+1. Einstellungen → **API** → „Lokale API aktivieren“, speichern. Der Standard-Port ist 17653; die Statuszeile zeigt, ob die API läuft.
+2. **Token kopieren** — jeder Zugriff braucht es als `Authorization: Bearer <Token>`. „Neu erzeugen …“ sperrt alle Programme aus, die das alte Token benutzen.
+3. Abfragen, zum Beispiel:
+
+~~~
+curl -H "Authorization: Bearer <Token>" http://127.0.0.1:17653/v1/status
+curl -H "Authorization: Bearer <Token>" "http://127.0.0.1:17653/v1/entries?from=2026-10-01&to=2026-10-31"
+curl -H "Authorization: Bearer <Token>" http://127.0.0.1:17653/v1/entries/2026-10-06
+curl -H "Authorization: Bearer <Token>" http://127.0.0.1:17653/v1/summary/month/2026-10
+~~~
+
+| Pfad | Antwort |
+|------|---------|
+| `GET /v1/status` | App-Version, Gerätename, API-Version, Zeit |
+| `GET /v1/entries?from=…&to=…` | Ist-Zeiten im Zeitraum (ohne Angabe: alle), je Tag die Slots `{start, end, pause, kategorie}` |
+| `GET /v1/entries/{YYYY-MM-DD}` | ein Tag (404, wenn es keinen Eintrag gibt) |
+| `PUT /v1/entries/{YYYY-MM-DD}` | Tag **ersetzen**, Body `{"slots": [...]}`; Antwort mit `changed` (ein identischer Tag wird nicht neu geschrieben) und `warnings` (Wochenlimit, Pausenpflicht — blockieren nie) |
+| `DELETE /v1/entries/{YYYY-MM-DD}` | Tag löschen (404, wenn es keinen Eintrag gibt) |
+| `GET /v1/summary/week/{YYYY-Www}` | Auswertung einer ISO-Woche (z. B. `2026-W41`) |
+| `GET /v1/summary/month/{YYYY-MM}` | Auswertung eines Monats (z. B. `2026-10`) |
+| `GET /v1/categories` | die in den Einstellungen konfigurierten Kategorien |
+| `GET /v1/holidays/{YYYY}` | Feiertage des eingestellten Bundeslands (leer, solange keins gesetzt ist) |
+
+Einen Tag eintragen (ersetzt den ganzen Tag; `pause` in Minuten und `kategorie` sind optional):
+
+~~~
+curl -X PUT -H "Authorization: Bearer <Token>" -H "Content-Type: application/json" \
+     -d '{"slots": [{"start": "08:00", "end": "12:00", "pause": 0, "kategorie": "Projekt"}]}' \
+     http://127.0.0.1:17653/v1/entries/2026-10-07
+~~~
+
+Fehler: `400` kaputtes JSON oder falsche Form, `422` ungültiger Slot oder Datum (Jahr 2000–2100, höchstens 50 Slots, Zeiten genau `HH:MM`), `409` der Tag hat einen ungelösten Sync-Konflikt oder Urlaub (dann in der App lösen). Eine leere Slot-Liste speichert nichts — zum Löschen `DELETE` benutzen.
+
+Die Antwort enthält `warnings`, die **nie** blockieren: `{"code": "weekly_limit", "iso_year", "iso_week", "total_minutes", "limit_minutes"}` (Werkstudenten-Limit) und `{"code": "pause_requirement", "worked_minutes", "actual_pause_minutes", "required_pause_minutes"}` (§ 4 ArbZG). `kategorie` ist frei (höchstens 100 Zeichen, ohne Steuer- und ungültige Unicode-Zeichen, umgebende Leerzeichen werden entfernt), `pause` muss eine ganze Zahl sein (`30.0` ist ein Fehler). Der Body muss UTF-8 sein, ein BOM ist erlaubt. `DELETE` entfernt nur die **Ist-Zeit** des Tages, keine Reservierung und keinen Urlaub.
+
+Die Auswertungen rechnen wie die App in **ganzen Minuten**: `total_minutes` (Ist-Zeit), `days[]` (je Tag mit Ist-Zeit), `by_category[]` (absteigend; `""` heißt „ohne Kategorie“), `weeks[]` (jede ISO-Woche, die der Zeitraum berührt, mit der Summe der **ganzen** Woche und `limit_minutes` (`null` ohne aktives Werkstudenten-Limit) und `exceeded`) und `pause_warnings[]`. Dazu der **Urlaub dieses Geräts**: `vacation_minutes` (um die am selben Tag erfasste Ist-Zeit gekappt, die betroffenen Tage stehen in `vacation_capped_days`) und `payable_minutes` („Zu vergüten gesamt“, Ist-Zeit plus Urlaub). Es gelten die Jahre 2000–2100: Jahre außerhalb davon sind `422`, ungültige Pfade `400` (bei Wochen und Monaten gehören Jahr `0000` und `9999` dazu; `/v1/holidays/0000` und `/9999` sind `422`). Bei einem Monat kann `weeks[]` eine Woche des Vorjahres enthalten (KW 52/1999 bei `2000-01`), die `/v1/summary/week/…` selbst ablehnt.
+
+Unter Windows PowerShell heißt der Aufruf `curl.exe` statt `curl`: dort ist `curl` ein Alias für `Invoke-WebRequest`, und `-H` funktioniert nicht. In Windows PowerShell 5.1 den JSON-Body am besten aus einer Datei übergeben (`-d @tag.json`), die Anführungszeichen in `-d '…'` gehen dort verloren, und den Aufruf in eine Zeile schreiben (`\` ist dort kein Zeilenumbruch).
+
+Die API läuft nur, solange die App läuft (Autostart hilft), nimmt nur Anfragen von diesem Rechner mit Token an und keine Browser-Anfragen. Grenzen: [`docs/known-limitations.md`](docs/known-limitations.md#lokale-api-92-bekannte-grenzen).
+
 ## Einstellungen
 
 Über das Zahnrad-Symbol (⚙) im Header konfigurierbar:
@@ -332,6 +379,7 @@ Reservierungen anlegen und den Abgleich über die App-Oberfläche aktivieren; be
 | **Inhalt** | E-Mail-Body mit Platzhaltern |
 | **Grußformel** | Abschluss der E-Mail (Zeilenumbrüche mit `\n`) |
 | **Autostart** | App minimiert bei Systemanmeldung starten (Windows/macOS/Linux) |
+| **Lokale API** *(ab --VERSION--)* | Tab „API“: lokale HTTP-API ein-/ausschalten, Port, Status, Token kopieren oder neu erzeugen (Standard: aus, gerätelokal) |
 | **Synchronisation** | Multi-Device-Sync via Google Drive aktivieren (siehe Abschnitt oben) |
 | **Berechtigungen** | Zeigt, welche Google-Berechtigungen (OAuth-Scopes) das Konto der App gewährt hat — inkl. solcher, die noch gewährt, aber zurzeit ungenutzt sind. Daneben steht auf einen Blick „n von m Berechtigungen": ✓ alles da, ○ eine zuschaltbare Funktion wartet noch auf ihre Freigabe, ✗ eine Grundberechtigung fehlt (dann klappt auch der Mail-Versand nicht) |
 | **Anmeldung** *(ab 1.23.1)* | Ob die Google-Anmeldung noch trägt: ✓ gültig, „nicht angemeldet", ⚠ abgelaufen (dann „Google neu verbinden") oder „nicht prüfbar (offline)". Ergänzt die Zeile darüber: die sagt, *welche* Freigaben erteilt sind, diese, *ob* die Anmeldung noch funktioniert — beides kann auseinanderfallen. Wird beim Öffnen geprüft, ohne Browser; lässt sich die Anmeldung still erneuern, passiert das dabei |
@@ -370,7 +418,7 @@ Vordergrund darf der Compositor aber verweigern.
 ## Datenspeicherung
 
 Alle Daten liegen lokal in einem Ordner (Pfad je nach Plattform, siehe unten).
-Das meiste sind JSON-Dateien — `instance-secret` und das Protokoll sind es nicht.
+Das meiste sind JSON-Dateien — `instance-secret`, `api-token` und das Protokoll sind es nicht.
 
 **Deine Daten:**
 
@@ -390,6 +438,7 @@ Das meiste sind JSON-Dateien — `instance-secret` und das Protokoll sind es nic
 - **webhooks.json** — Webhook-Konfiguration **inklusive** Zugangstoken bzw. HMAC-Schlüssel. Gerätelokal: reist bewusst **nicht** über den Drive-Sync mit
 - **smtp.json** — SMTP-Kontokonfiguration; das Passwort liegt darin nur, wenn kein Schlüsselbund verfügbar war (Datei-Fallback, dann im Klartext). Gerätelokal: reist bewusst **nicht** über den Drive-Sync mit
 - **instance-secret** — schützt den lokalen Kanal, über den eine zweite Instanz das vorhandene Fenster nach vorn holt
+- **api-token** *(ab --VERSION--)* — Zugriffstoken der lokalen HTTP-API; nur vorhanden, wenn die API einmal eingeschaltet war. Gerätelokal: reist bewusst **nicht** über den Drive-Sync mit
 
 Bei aktivem Sync liegt zusätzlich in deinem Google Drive eine versteckte Datei `zeiterfassung-sync.json` im `appDataFolder` — nicht über die Drive-Web-Oberfläche sichtbar, nur die App kommt dran.
 

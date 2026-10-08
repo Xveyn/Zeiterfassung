@@ -624,3 +624,14 @@ def test_share_doc_omits_send_reminder_minutes(tmp_path):
     assert set(slot.keys()) == {"start", "end", "kategorie"}
     # Das eigene Doc muss den eigenen, strikten Validator bestehen.
     parse_share_doc(serialize_share_doc(doc))
+
+
+# --- Slots gemischter Typen (Review Storage-Härtung) ---------------------------------------------
+
+def test_share_diff_survives_slots_of_mixed_types():
+    from src.share import _entries_equal
+    a = {"slots": [{"start": None, "end": "12:00", "pause": 0, "kategorie": ""},
+                   {"start": "08:00", "end": "12:00", "pause": 0, "kategorie": ""}]}
+    b = {"slots": list(reversed(a["slots"]))}
+    assert _entries_equal(a, b) is True
+    assert _entries_equal(a, {"slots": a["slots"][:1]}) is False

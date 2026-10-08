@@ -633,7 +633,7 @@ Traceback-/Catch-all-Ausgabe → nativ.
 
 ### Ein Catch-all loggt, meldet oder trägt eine Begründung (Xveyn#73)
 
-`src/` hält rund 105 Handler auf `except Exception` / `except BaseException`.
+`src/` hält rund 125 Handler auf `except Exception` / `except BaseException`.
 Die **Dichte ist unkritisch und gewollt**: sie sitzen im Bootstrap, an
 Threading-Rändern und an Best-Effort-Plattformaufrufen — genau dort, wo ein
 Catch-all hingehört. Eine Bestandsaufnahme über alle Handler ergab, dass 96 %
@@ -1286,7 +1286,7 @@ nicht mehr als „offen" führen — der Verweis lautet auf diese Grenze.
 - `src/ui.py` — Tkinter-GUI; `App` ist schlanker Koordinator über `GridRenderer`/`BackgroundTaskRunner`/`SyncOrchestrator`/`UpdateBanner`/`UpdateCoordinator` (siehe `src/CLAUDE.md`)
 - `src/dialogs/` — Modal-Dialoge (`entry_dialog`, `send_dialog`, `settings_dialog`)
 - `src/json_store.py` — gemeinsame Mechanik der lokalen JSON-Stores und einziger Ort der beiden Regeln N1 (`atomic_write_json`: fsync vor `os.replace`) und N4 (`load_json_or_quarantine`: korrupte Datei nach `.corrupt-<stamp>` statt stillem Verwerfen). Neue Stores nutzen die beiden Funktionen, statt die Mechanik zu kopieren
-- `src/storage.py` — JSON-Persistenz der Zeiteinträge (Schlüssel: ISO-Datum)
+- `src/storage.py` — JSON-Persistenz der Zeiteinträge (Schlüssel: ISO-Datum). Gelesen wird nur bereinigt (`sanitize_slot`), eine beschädigte Datei wird beim Laden mit Sicherung repariert (s. `src/CLAUDE.md`)
 - `src/settings.py` — Benutzereinstellungen mit Defaults
 - `src/report.py` — HTML-Mail und PDF (dark/light Theme), gruppiert pro ISO-Kalenderwoche; `xhtml2pdf`-Import ist **lazy** in `generate_pdf` (siehe Tests/CI)
 - `src/mail.py` — Gmail-API-Wrapper (OAuth2, `token.json` / `credentials.json`)
@@ -1476,7 +1476,17 @@ nicht mehr als „offen" führen — der Verweis lautet auf diese Grenze.
   „UI-Skalierung"). Tk-frei, die Plattform-Aufrufe kommen als Argumente
   herein; unter macOS ein No-op mit Faktor 1,0
 - `src/autostart.py` — plattformabhängiger Autostart (Windows-**Registry** HKCU Run, gleicher Wertname `Zeiterfassung` wie `installer.iss` → strukturell ein Eintrag; macOS-LaunchAgent / Linux `.desktop`). `is_autostart_enabled()` liest den echten Zustand, `migrate_legacy_autostart()` überführt Alt-Startup-Shortcuts frozen-gated in die Registry
-- `src/secure_file.py` — Zugriffsschutz für die lokal abgelegten Secrets (`token.json`, `instance-secret`, `webhooks.json`, `smtp.json`): unter Windows `icacls`-ACL statt des dort wirkungslosen `chmod 0600` (Audit M8); best-effort, scheitert nie den Schreibvorgang. Mit verfügbarem Schlüsselbund (#101) tragen diese Dateien den Refresh-Token bzw. die Webhook-Secrets ohnehin nicht mehr im Klartext — die Härtung bleibt für den Datei-Fallback und die übrigen Felder (Konfiguration, `instance-secret`) unverändert nötig
+- `src/secure_file.py` — Zugriffsschutz für die lokal abgelegten Secrets (`token.json`, `instance-secret`, `webhooks.json`, `smtp.json`, `api-token`): unter Windows `icacls`-ACL statt des dort wirkungslosen `chmod 0600` (Audit M8); best-effort, scheitert nie den Schreibvorgang. Mit verfügbarem Schlüsselbund (#101) tragen diese Dateien den Refresh-Token bzw. die Webhook-Secrets ohnehin nicht mehr im Klartext — die Härtung bleibt für den Datei-Fallback und die übrigen Felder (Konfiguration, `instance-secret`) unverändert nötig
+- `src/api_auth.py` — Token und Zugangsprüfung der lokalen HTTP-API (#92): Datei
+  `api-token` (ACL-gehärtet wie `instance-secret`, fail-closed: ohne lesbares
+  Token bleibt die API aus) und `authorize` als einzige Stelle der Auth-Tore
+  (Methode → Host → Origin → `Sec-Fetch-Site` → Bearer → Content-Type). Tk-frei.
+- `src/api_routes.py`, `src/api_server.py`, `src/api_service.py` — lokale HTTP-API
+  (#92), Tk-frei: Routing mit Scope pro Route (`GET /v1/status`, `/v1/entries`, `/v1/summary/…`),
+  Server im Daemon-Thread (nur Loopback, `authorize` vor dem Routing, nie ein
+  CORS-Header) und Lebenszyklus über `api_enabled`/`api_port` (gerätelokal,
+  Default aus) mit Statusgrund. Beschreibung und Verträge: `src/CLAUDE.md`.
+- `src/api_summary.py` — Rechnung der Auswertungen der lokalen API (rein, über Minuten je Slot; s. `src/CLAUDE.md`).
 - `src/single_instance.py` — Tk-freier Single-Instance-Guard (pro-Nutzer-Localhost-Port, `acquire`/`serve`/`release`); verhindert parallele Instanzen und holt bei manuellem Zweitstart das vorhandene Fenster nach vorn (SHOW), beim Autostart-Doppelfeuer ohne Fenster-Pop (PING)
 - `src/devices.py` — lesbare **Gerätenamen** für die Sync-Anzeige (Konfliktdialog): Ableitung aus dem Hostnamen, Sanitizing (Fremddaten!) und die Registry `{device_id: {name, updated_at}}`, die im Sync-Doc unter `devices` mitreist. Bewusst **ohne** Schema-Bump additiv — `SCHEMA_VERSION` bleibt 4, sonst pausierte `remote_is_newer` den Sync jedes älteren Geräts wegen eines Anzeigefelds. Fehlt oder bricht die Registry, zeigt der Dialog die gekürzte ID wie zuvor. Der eigene Name ist **kein** synchronisierter Setting-Key (der wäre ein einziger globaler Wert, die Geräte würden ihn sich gegenseitig überschreiben) — er lebt gerätelokal in `device_name`, der Spiegel der anderen in `known_devices`
 - `src/device_id.py` — stabile, hardware-abgeleitete Geräte-ID für den Sync (Windows `MachineGuid` / macOS `IOPlatformUUID` / Linux `/etc/machine-id`, SHA-256-gehasht); nur für installierte Builds (`main.py::_ensure_device_id`, gated auf `sys.frozen`) — Repo-/Skript-Modus bleibt bei der alten, in `settings.json` persistierten Zufalls-UUID, damit eine parallel laufende Dev-Instanz nie dieselbe device_id wie eine echte Installation auf demselben Rechner bekommt

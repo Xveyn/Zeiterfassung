@@ -72,7 +72,7 @@ Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: 
 ; Alles, was die App zur Laufzeit in {app} anlegt, bliebe liegen — darunter
 ; token.json mit einem langlebigen OAuth-Refresh-Token (Gmail-Versand,
 ; Drive-Sync, ggf. Kalender). Wer die App entfernt, erwartet zu Recht, dass
-; dieser Zugriff endet. Diese fünf Dateien sind Zugangsdaten, keine
+; dieser Zugriff endet. Diese sechs Dateien sind Zugangsdaten, keine
 ; Nutzerdaten — sie verschwinden deshalb immer und ohne Rückfrage.
 ; smtp.json trägt ohne Schlüsselbund das Mail-Passwort im Klartext — sie
 ; gehört seit dem SMTP-Feature hierher und fehlte (#101).
@@ -86,6 +86,7 @@ Type: files; Name: "{app}\instance-secret"
 Type: files; Name: "{app}\webhooks.json"
 Type: files; Name: "{app}\credentials.json"
 Type: files; Name: "{app}\smtp.json"
+Type: files; Name: "{app}\api-token"
 
 
 [Run]

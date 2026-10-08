@@ -32,9 +32,12 @@ Die beiden Regeln stehen deshalb hier, und zwar nur hier:
 """
 
 import datetime
+import filecmp
+import glob
 import json
 import logging
 import os
+import shutil
 import tempfile
 from typing import Any
 
@@ -103,19 +106,45 @@ def _fsync_directory(directory: str) -> None:
         os.close(dir_fd)
 
 
-def quarantine_corrupt(path: str) -> str:
-    """Verschiebt eine unparsebare Datei nach `<name>.corrupt-<stamp>` (N4)
-    und loggt das. Liefert den Zielpfad. Ein fehlschlagender Rename läuft als
-    `OSError` hoch — hier ist er nicht harmlos: die Datei bliebe unlesbar
-    liegen und der nächste Start liefe erneut hinein.
+def quarantine_corrupt(path: str, reason: str = "JSON nicht parsebar") -> str:
+    """Verschiebt eine unbrauchbare Datei nach `<name>.corrupt-<stamp>` (N4)
+    und loggt das. Liefert den Zielpfad. `reason` steht in der Logzeile (Standard:
+    unparsebar; „Top-Level ist eine Liste“ ist ebenso gültiges JSON, aber kein
+    Store). Ein fehlschlagender Rename läuft als `OSError` hoch — hier ist er
+    nicht harmlos: die Datei bliebe unlesbar liegen und der nächste Start liefe
+    erneut hinein.
     """
     stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
     target = f"{path}.corrupt-{stamp}"
     os.replace(path, target)
     logging.getLogger(__name__).warning(
-        "%s korrupt (JSON nicht parsebar) — nach %s in Quarantäne "
-        "verschoben, starte leer",
-        os.path.basename(path), os.path.basename(target),
+        "%s korrupt (%s) — nach %s in Quarantäne verschoben, starte leer",
+        os.path.basename(path), reason, os.path.basename(target),
+    )
+    return target
+
+
+def backup_corrupt(path: str, reason: str) -> str:
+    """Kopiert eine Datei, die gleich repariert wird, nach `<name>.corrupt-<stamp>`
+    (anders als `quarantine_corrupt` bleibt das Original liegen) und loggt das.
+    Liefert den Zielpfad. `OSError` läuft hoch: ohne Sicherung repariert der
+    Aufrufer nicht, damit nichts still verloren geht. Liegt schon eine Sicherung mit
+    **gleichem Inhalt** daneben, wird sie wiederverwendet: gelingt das Zurückschreiben der
+    Reparatur nicht, fände sonst jeder Start dasselbe vor und legte jedes Mal eine volle
+    Kopie des Stores an."""
+    for existing in sorted(glob.glob(glob.escape(path) + ".corrupt-*")):
+        if filecmp.cmp(path, existing, shallow=False):
+            logging.getLogger(__name__).warning(
+                "%s enthält Unbrauchbares (%s) — identische Sicherung %s liegt schon da",
+                os.path.basename(path), reason, os.path.basename(existing),
+            )
+            return existing
+    stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+    target = f"{path}.corrupt-{stamp}"
+    shutil.copy2(path, target)
+    logging.getLogger(__name__).warning(
+        "%s enthält Unbrauchbares (%s) — Sicherung nach %s, der Rest wird repariert",
+        os.path.basename(path), reason, os.path.basename(target),
     )
     return target
 

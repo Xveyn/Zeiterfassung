@@ -23,6 +23,7 @@ import json
 import re
 from typing import TYPE_CHECKING, Any, Callable, Collection
 
+from src.sync import sorted_signature
 from src.time_utils import utc_now_iso
 
 if TYPE_CHECKING:  # nur für die Signaturen — kein Import zur Laufzeit
@@ -336,7 +337,7 @@ def serialize_share_doc(doc: dict[str, Any]) -> bytes:
 def _slot_signature(slots: list[dict[str, Any]] | None,
                     keys: tuple[str, ...]) -> list[tuple[Any, ...]]:
     """Reihenfolge-normalisierte Signatur einer Slot-Liste über `keys`."""
-    return sorted(tuple(s.get(k) for k in keys) for s in (slots or []))
+    return sorted_signature(tuple(s.get(k) for k in keys) for s in (slots or []))
 
 
 def _entries_equal(a: dict[str, Any], b: dict[str, Any]) -> bool:

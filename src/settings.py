@@ -58,6 +58,11 @@ DEFAULTS = {
     "update_toast_shown_version": "",
     "prerelease_updates_enabled": False,
     "auto_update_enabled": False,
+    # Lokale HTTP-API (#92). Beide gerätelokal, NICHT in SYNCED_SETTING_KEYS:
+    # ein Rechner mit belegtem Port oder ohne Bedarf darf nicht von einem
+    # synchronisierten Wert eines anderen überstimmt werden.
+    "api_enabled": False,
+    "api_port": 17653,
     # Alle drei gerätelokal wie auto_update_enabled: ein Pfad aus dem %TEMP%
     # eines anderen Rechners wäre dort sinnlos und im schlimmsten Fall
     # irreführend. `pending_update_release_id` sagt, zu welchem Release die

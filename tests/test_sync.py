@@ -464,6 +464,24 @@ def test_validate_rejects_entry_modified_at_not_string():
     ok, _ = validate_remote_doc(doc)
     assert ok is False
 
+@pytest.mark.parametrize("junk", [None, "x", 5, ["a"], [None]], ids=repr)
+def test_validate_rejects_a_slot_that_is_not_an_object(junk):
+    # slots war nur als Liste geprüft: [null] lief durch und ließ später get_all() abstürzen
+    doc = _valid_remote_doc()
+    doc["entries"]["2026-05-14"]["slots"] = [junk]
+    ok, reason = validate_remote_doc(doc)
+    assert ok is False
+    assert "slots" in reason and "2026-05-14" in reason
+
+
+def test_validate_still_accepts_slots_with_unusual_values():
+    # Wertfehler fängt die Lese-Grenze von Storage ab; abgelehnt wird nur die Struktur
+    doc = _valid_remote_doc()
+    doc["entries"]["2026-05-14"]["slots"] = [
+        {"start": "08:00", "end": "12:00", "pause": None, "kategorie": 5}, {}]
+    ok, reason = validate_remote_doc(doc)
+    assert ok is True, reason
+
 
 def test_validate_rejects_setting_missing_value():
     doc = _valid_remote_doc()
@@ -1254,3 +1272,52 @@ def test_cleared_device_name_does_not_come_back(tmp_path, monkeypatch):
 
     assert settings_b.get("known_devices")["A"]["name"] == ""
     assert device_label("A", settings_b.get("known_devices")) == "A"
+
+
+# --- Slots gemischter Typen (Review Storage-Härtung, I1) -----------------------------------------
+# validate_remote_doc lässt Wertfehler in Slots bewusst durch; der Gleichheitsvergleich im
+# Merge darf daran nicht scheitern, sonst bliebe der Sync dauerhaft gesperrt (kein lokaler Weg).
+
+def _two_slots(first, second, modified_at, device_id="other"):
+    return {"slots": [first, second], "modified_at": modified_at,
+            "device_id": device_id, "deleted": False}
+
+
+_MIXED = {
+    "pause None gegen 0": ({"start": "08:00", "end": "12:00", "pause": None, "kategorie": ""},
+                           {"start": "08:00", "end": "12:00", "pause": 0, "kategorie": ""}),
+    "start None gegen Text": ({"start": None, "end": "12:00", "pause": 0, "kategorie": ""},
+                              {"start": "08:00", "end": "12:00", "pause": 0, "kategorie": ""}),
+    "kategorie Zahl gegen Text": ({"start": "08:00", "end": "12:00", "pause": 0, "kategorie": 5},
+                                  {"start": "08:00", "end": "12:00", "pause": 0, "kategorie": "A"}),
+    "pause Text gegen Zahl": ({"start": "08:00", "end": "12:00", "pause": "30", "kategorie": ""},
+                              {"start": "08:00", "end": "12:00", "pause": 30, "kategorie": ""}),
+}
+
+
+@pytest.mark.parametrize("first,second", _MIXED.values(), ids=_MIXED.keys())
+def test_merge_survives_slots_of_mixed_types(first, second):
+    local = _doc({"2026-05-14": _e("08:00", "16:00", 30, "2026-05-14T10:00:00Z", "mine")})
+    remote = _doc({"2026-05-14": _two_slots(first, second, "2026-05-14T11:00:00Z")})
+
+    merged = merge(local, remote, "2026-05-13T00:00:00Z")
+
+    assert "2026-05-14" in merged["entries"]
+
+
+@pytest.mark.parametrize("first,second", _MIXED.values(), ids=_MIXED.keys())
+def test_the_same_mixed_slots_in_another_order_are_equal_not_a_conflict(first, second):
+    a = _doc({"2026-05-14": _two_slots(first, second, "2026-05-14T10:00:00Z", "A")})
+    b = _doc({"2026-05-14": _two_slots(second, first, "2026-05-14T11:00:00Z", "B")})
+
+    merged = merge(a, b, "2026-05-13T00:00:00Z")
+
+    assert merged["conflicts"] == []
+
+
+def test_a_reorder_of_clean_slots_is_still_no_change():
+    s1 = {"start": "08:00", "end": "12:00", "pause": 0, "kategorie": ""}
+    s2 = {"start": "13:00", "end": "17:00", "pause": 30, "kategorie": "B"}
+    a = _doc({"2026-05-14": _two_slots(s1, s2, "2026-05-14T10:00:00Z", "A")})
+    b = _doc({"2026-05-14": _two_slots(s2, s1, "2026-05-14T11:00:00Z", "B")})
+    assert merge(a, b, "2026-05-13T00:00:00Z")["conflicts"] == []
