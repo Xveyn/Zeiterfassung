@@ -238,7 +238,8 @@ class ApiService:
         """Stoppt den Server und sperrt weitere Starts. Blockiert höchstens
         `lock_timeout`: läuft gerade ein Start (der Worker hält den Lock),
         wird nicht gewartet — der Start prüft `_closed` und bricht selbst ab,
-        und ein Daemon-Thread stirbt mit dem Prozess."""
+        und ein Daemon-Thread stirbt mit dem Prozess. Dasselbe gilt für eine
+        laufende Rotation: sie stoppt den Server am Ende (`_stop_if_closed`)."""
         self._closed = True
         if not self._lock.acquire(timeout=lock_timeout):
             _log.warning("Lokale API: Beenden wartet nicht auf einen laufenden Start")
@@ -266,6 +267,7 @@ class ApiService:
                 # `on_done` nie, der Tab bliebe mit toten Knöpfen und ohne Meldung stehen.
                 _log.warning("Lokale API: Token konnte nicht erneuert werden",
                              exc_info=True)
+                self._stop_if_closed()
                 return RotateResult(False, REASON_ROTATE_FAILED)
             if self._server is not None:
                 self._server.set_verifier(single_token_verifier(token))
@@ -273,12 +275,16 @@ class ApiService:
                 # Das Token war der Grund, warum die API nicht lief: jetzt gibt es
                 # eines, also starten (sonst stünde der Fehler bis zum nächsten apply()).
                 self._reconcile_guarded()
-            if self._closed:
-                # `shutdown()` hat auf diesen Lock nur bis zum Timeout gewartet und
-                # aufgegeben; den Server stoppt dann der, der den Lock hielt.
-                self._stop_server()
-                self._status = ApiStatus(STATE_OFF)
+            self._stop_if_closed()
             return RotateResult(True)
+
+    def _stop_if_closed(self) -> None:
+        """Hat `shutdown()` auf den Lock nur bis zum Timeout gewartet und aufgegeben,
+        stoppt den Server der, der ihn hielt — auf **jedem** Ausgang von `rotate()`,
+        auch dem gescheiterten. Der Aufrufer hält `_lock`."""
+        if self._closed:
+            self._stop_server()
+            self._status = ApiStatus(STATE_OFF)
 
     def read_token(self) -> str | None:
         """Token zum Kopieren (Settings-Tab). Rein lesend: legt nichts an.

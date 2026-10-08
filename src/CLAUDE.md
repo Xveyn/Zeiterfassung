@@ -665,8 +665,7 @@ Wert.
   `serve_forever()`/`shutdown()`: `shutdown()` wartet, bis die Schleife verlassen
   wurde, und blockiert für immer, wenn der Thread nie dorthin kommt — Preis der
   eigenen Schleife sind rund zehn Aufwachvorgänge pro Sekunde), pro Verbindung ein
-  Daemon-Thread. Reihenfolge je
-  Anfrage: doppelte Header → 400, `api_auth.authorize`, `Transfer-Encoding` → 400,
+  Daemon-Thread. Reihenfolge je Anfrage: doppelte Header → 400, `api_auth.authorize`, `Transfer-Encoding` → 400,
   Body lesen (Limit 1 MiB), `api_routes.handle`. Nur Loopback (Bind-Adresse aus
   `Policy.bind_host`); `server_bind` umgeht `socket.getfqdn` (hängt bei kaputtem
   DNS) und setzt unter Windows `SO_EXCLUSIVEADDRUSE` statt `SO_REUSEADDR` — sonst
@@ -697,7 +696,11 @@ Wert.
   fertigen Workers. `rotate()` (Worker!) erneuert das Token und tauscht den Prüfer des
   laufenden Servers aus — unter demselben `_lock` wie der Start, sodass der Server nach
   jeder Verschränkung genau das Token akzeptiert, das in der Datei steht; scheitert das
-  Schreiben, bleibt das alte gültig. `read_token()` liest rein lesend.
+  Schreiben (jede Ausnahme, nicht nur `OSError`), bleibt das alte gültig. War der Grund
+  für die ruhende API `token_unavailable`, startet eine gelungene Rotation sie (über
+  `_reconcile_guarded`, dieselbe Fehler-zu-Status-Umwandlung wie `apply()`). Hat
+  `shutdown()` während der Rotation nach seinem Timeout aufgegeben, stoppt `rotate()`
+  den Server auf **jedem** Ausgang (`_stop_if_closed`). `read_token()` liest rein lesend.
   `App` ruft `shutdown()` in `_quit_with_sync_push`, `remove_application` (vor jedem
   Worker) und `restart_for_scaling` (**vor** dem Spawn, der Port muss frei sein);
   `tests/test_api_wiring.py` hält das am Quelltext fest.

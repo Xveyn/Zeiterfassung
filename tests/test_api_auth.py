@@ -694,16 +694,35 @@ def test_the_host_header_is_trimmed_of_http_whitespace_only():
                          policy, verify).code == "bad_host"
 
 
-def test_the_token_is_hardened_before_it_is_written(tmp_path, monkeypatch):
-    seen = []
-    real = api_auth.harden_windows_acl
+class _WriteSpy:
+    """Reicht alles an die echte Datei durch und merkt sich, wann geschrieben wird."""
 
-    def spy(path):
-        seen.append(os.path.getsize(path))                    # Größe zum Zeitpunkt der Härtung
-        real(path)
-    monkeypatch.setattr(api_auth, "harden_windows_acl", spy)
+    def __init__(self, handle, events):
+        self._handle, self._events = handle, events
+
+    def write(self, data):
+        self._events.append("write")
+        return self._handle.write(data)
+
+    def __enter__(self):
+        self._handle.__enter__()
+        return self
+
+    def __exit__(self, *exc):
+        return self._handle.__exit__(*exc)
+
+    def __getattr__(self, name):
+        return getattr(self._handle, name)
+
+
+def test_the_token_is_hardened_before_it_is_written(tmp_path, monkeypatch):
+    events = []
+    real_fdopen, real_harden = os.fdopen, api_auth.harden_windows_acl
+    monkeypatch.setattr(os, "fdopen", lambda *a, **k: _WriteSpy(real_fdopen(*a, **k), events))
+    monkeypatch.setattr(api_auth, "harden_windows_acl",
+                        lambda path: (events.append("harden"), real_harden(path))[1])
 
     token = load_or_create_token(str(tmp_path))
 
-    assert seen == [0]                                        # die Datei war noch leer
+    assert events == ["harden", "write"]                      # nie umgekehrt
     assert (tmp_path / TOKEN_FILENAME).read_text(encoding="ascii") == token

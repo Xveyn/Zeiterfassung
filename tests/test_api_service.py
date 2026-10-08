@@ -648,3 +648,29 @@ def test_a_shutdown_that_gave_up_during_a_rotation_still_stops_the_server(tmp_pa
 
     assert port_is_closed(port)                         # ... bis die Rotation fertig ist
     assert service.status.state == STATE_OFF
+
+
+def test_a_shutdown_that_gave_up_during_a_failing_rotation_still_stops_the_server(tmp_path, monkeypatch):
+    port = free_port()
+    service = make_service(tmp_path, {"api_enabled": True, "api_port": port})
+    service.apply()
+    entered, release = threading.Event(), threading.Event()
+
+    def slow_and_failing(base_path):
+        entered.set()
+        release.wait(5)
+        raise OSError("nicht schreibbar")
+
+    monkeypatch.setattr(api_service, "rotate_token", slow_and_failing)
+    results = []
+    worker = threading.Thread(target=lambda: results.append(service.rotate()))
+    worker.start()
+    assert entered.wait(5)
+
+    service.shutdown(lock_timeout=0.05)
+    release.set()
+    worker.join(5)
+
+    assert results == [RotateResult(False, REASON_ROTATE_FAILED)]
+    assert port_is_closed(port)                         # auch ein gescheiterter Lauf stoppt den Server
+    assert service.status.state == STATE_OFF

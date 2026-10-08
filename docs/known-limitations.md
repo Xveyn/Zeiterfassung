@@ -435,13 +435,15 @@ Augenhöhe mit den anderen beiden Plattformen.
   App nicht exklusiv: auch dort kann ein anderer Nutzer desselben Rechners den Port vor
   der App belegen (`port_in_use`), oder ein fremder Prozess antwortet unter dem Port.
   Clients verbinden mit `127.0.0.1`, nicht mit `localhost` (gebunden ist nur IPv4).
-- **Das Token wird beim Start gelesen.** Ein extern gelöschtes, geändertes oder
-  rotiertes `api-token` wirkt erst nach einem Neustart der App; „Neu erzeugen“ im Tab
-  schreibt dagegen die Datei und tauscht den Prüfer des laufenden Servers. Der Tab liest
-  die Datei und kann deshalb vom laufenden Server abweichen. Die Datei muss ASCII sein
-  (ein UTF-8-BOM und ein Zeilenumbruch werden toleriert); UTF-16, wie ihn Windows
-  PowerShell 5.1 mit `>` schreibt, gilt als ungültig und wird durch ein neues Token
-  ersetzt.
+- **Das Token wird beim Start der API gelesen.** Ein extern gelöschtes, geändertes oder
+  rotiertes `api-token` wirkt erst nach einem Neustart der App oder nach Aus- und
+  Wiedereinschalten der API; „Neu erzeugen“ im Tab schreibt dagegen die Datei und tauscht
+  den Prüfer des laufenden Servers. Der Tab liest die Datei und kann deshalb vom laufenden
+  Server abweichen. Die Datei muss ASCII sein (ein UTF-8-BOM und ein Zeilenumbruch werden
+  toleriert); UTF-16, wie ihn Windows PowerShell 5.1 mit `>` schreibt, gilt als ungültig und
+  wird durch ein neues Token ersetzt. Ein BOM bleibt in der Datei stehen: ein Skript, das
+  sie roh einliest (`cat`), schickt es mit und bekommt 401 — BOM-fähig lesen oder im Tab
+  „Neu erzeugen“ (das schreibt die Datei sauber).
 - **Last.** Höchstens 32 gleichzeitige Verbindungen, jede mit 15 s Gesamtfrist;
   weitere werden sofort geschlossen. Ein lokaler Prozess kann damit die **API**
   zeitweise blockieren (angenommen wird vor der Auth), nicht aber die App. Eine
