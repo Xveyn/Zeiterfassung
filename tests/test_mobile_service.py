@@ -366,3 +366,14 @@ def test_there_is_no_pair_link_while_the_server_is_not_running(tmp_path):
     service, _settings, _ctx = make_service(tmp_path, enabled=False)
     service.apply()
     assert service.pair_link("K7M2-9QXA") is None
+
+
+def test_there_is_no_pair_link_for_a_vanished_address(tmp_path):
+    # Der Zustand trägt die gewählte Adresse, der Server läuft aber nicht: ein Link
+    # (und damit ein QR-Code) auf diese Adresse führte ins Leere.
+    service, _settings, _ctx = make_service(tmp_path, address="192.168.77.5",
+                                            candidates=(LOOPBACK,))
+    service.apply()
+
+    assert service.status.address == "192.168.77.5" and service.status.state == STATE_ERROR
+    assert service.pair_link("K7M2-9QXA") is None
