@@ -65,6 +65,8 @@ ANNOTATED_MODULES = [
     "src/api_service.py",
     "src/api_entry_write.py",
     "src/api_summary.py",
+    "src/mobile_routes.py",
+    "src/mobile_service.py",
     "src/netinfo.py",
     "src/mobile_sync.py",
     "src/mobile_pairing.py",

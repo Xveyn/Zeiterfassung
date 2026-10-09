@@ -1486,6 +1486,8 @@ nicht mehr als „offen" führen — der Verweis lautet auf diese Grenze.
   (Methode → Host → Origin → `Sec-Fetch-Site` → Bearer → Content-Type); für die
   Handy-Instanz (#221) kommen `authorize_public` (dieselben Tore ohne Token, für
   `/v1/pair`) und `Denied` (`token_expired`/`token_revoked`) dazu. Tk-frei.
+- `src/mobile_routes.py` — die vier Routen der Handy-Instanz (#221, `POST /v1/pair` öffentlich, `GET /v1/ping`, `GET /v1/categories`, `POST /v1/sync`), der Prüfer über die gekoppelten Geräte (`make_verifier` → `MobilePrincipal`/`Denied`) und `surface(ctx)` für den `ApiServer`. Tk-frei; Koppeln und Abgleich samt Tokenerneuerung laufen unter `devices_lock` (s. `src/CLAUDE.md`)
+- `src/mobile_service.py` — Lebenszyklus der Handy-Instanz (Muster `ApiService`): bindet nur die gewählte LAN-Adresse, Statusgründe (`address_gone`, `no_address`, `port_in_use` …), Geräteverwaltung und Koppel-Link. Noch nicht in `ui.py` verdrahtet (PR 5)
 - `src/netinfo.py` — LAN-Adressen für die Handy-Erfassung (#221): nur die drei RFC-1918-Netze (nicht `ipaddress.is_private`: das zählt auch das Benchmark-Netz der VPN-Tunnel mit), Aufzählung ohne Zusatzbibliothek (Routen-Adresse per UDP-Socket ohne Senden, Hostname-Auflösung), `pick_address` ersetzt eine verschwundene Adresse nie still. Tk-frei, die Socket-Aufrufe kommen als Parameter herein
 - `src/api_routes.py`, `src/api_server.py`, `src/api_service.py` — lokale HTTP-API
   (#92), Tk-frei: Routing mit Scope pro Route (`GET /v1/status`, `/v1/entries`, `/v1/summary/…`),

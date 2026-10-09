@@ -1,0 +1,282 @@
+# src/mobile_routes.py
+"""Routen der Handy-Instanz (#221), Tk-frei und ohne Socket.
+
+Die zweite `ApiServer`-Instanz (LAN, Gerätetoken) liefert nur diese vier Routen:
+`POST /v1/pair` (öffentlich, solange ein Code aktiv ist), `GET /v1/ping`,
+`GET /v1/categories` und `POST /v1/sync`. Auth, Host- und Origin-Tore und CORS
+macht der Server (`api_server`, `api_auth`); hier liegen Prüfer, Routing und
+Handler. Alle Pfade sind exakte Zeichenketten, keine kennt Query-Parameter.
+
+Der Prüfer (`make_verifier`) läuft **vor** dem Handler und liest nur. Jede Folge
+„Datensatz lesen → ändern → speichern" (Koppeln, Abgleich samt Tokenerneuerung)
+läuft im Handler unter `ctx.devices_lock`, und der Abgleich liest den Datensatz
+dort neu: zwischen Prüfer und Handler kann ein Widerruf liegen.
+Sperrreihenfolge: `devices_lock` → `sync_guard` → `data_lock`.
+"""
+from __future__ import annotations
+
+import datetime
+import logging
+import threading
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any
+
+from src import mobile_pairing, mobile_sync
+from src.api_auth import SCOPE_MOBILE, Denied, Principal, TokenVerifier, require_scope
+from src.api_entry_write import WriteError, load_json_body
+from src.api_routes import ApiRequest, ApiResponse, error_response
+from src.api_server import Surface
+from src.api_summary import category_names
+from src.mobile_sync import PROTOCOL, WINDOW_DAYS, SyncError
+from src.time_utils import utc_now_iso
+
+if TYPE_CHECKING:
+    from src.mobile_pairing import PairingSession
+    from src.mobile_store import MobileStore
+
+_log = logging.getLogger(__name__)
+
+# Die gehostete PWA. Zieht das Repo um, müssen beide Konstanten (und die Doku) mit.
+PWA_ORIGIN = "https://xveyn.github.io"
+PWA_URL = "https://xveyn.github.io/Zeiterfassung/"
+
+
+def _no_change() -> None:
+    return None
+
+
+def _never_closing() -> bool:
+    return False
+
+
+@dataclass(frozen=True)
+class MobilePrincipal(Principal):
+    """Ein authentifiziertes Handy: der Datensatz, mit dem der Prüfer das Token
+    zugeordnet hat, und ob es das *vorherige* Token war (Karenzfenster)."""
+    record: dict[str, Any]
+    via_previous: bool = False
+
+
+@dataclass(frozen=True)
+class MobileContext:
+    pairing: PairingSession
+    devices: MobileStore
+    devices_lock: threading.RLock
+    storage: Any
+    settings: Any
+    conflicts_store: Any
+    base: str
+    desktop_name: Callable[[], str]
+    now: Callable[[], str] = utc_now_iso
+    today: Callable[[], datetime.date] = datetime.date.today
+    data_lock: Any = None
+    sync_guard: Any = None
+    # `on_change` meldet der UI einen angewendeten Abgleich und läuft nach der Freigabe
+    # aller Sperren. `closing` ist wahr, sobald die App beendet oder entfernt wird.
+    on_change: Callable[[], None] = _no_change
+    closing: Callable[[], bool] = _never_closing
+
+
+class _MobileError(Exception):
+    def __init__(self, status: int, code: str, message: str) -> None:
+        super().__init__(message)
+        self.status = status
+        self.code = code
+        self.message = message
+
+
+def make_verifier(devices: MobileStore, now: Callable[[], str]) -> TokenVerifier:
+    """Prüfer für den Server: ordnet ein Token einem Gerät zu. `Denied` für
+    abgelaufen und widerrufen (die PWA zeigt dann „Neu koppeln"), `None` für alles
+    Unbekannte."""
+    def verify(token: str) -> Principal | Denied | None:
+        outcome = mobile_pairing.authenticate(devices.get_all(), token, now())
+        if outcome.status == "ok" and outcome.record is not None:
+            return MobilePrincipal(outcome.record["id"], frozenset({SCOPE_MOBILE}),
+                                   outcome.record, outcome.via_previous)
+        if outcome.status == "expired":
+            return Denied("token_expired")
+        if outcome.status == "revoked":
+            return Denied("token_revoked")
+        return None
+    return verify
+
+
+def _no_query(request: ApiRequest) -> None:
+    if request.query:
+        raise _MobileError(400, "unknown_parameter", "Diese Route kennt keine Query-Parameter.")
+
+
+def _ping(request: ApiRequest, ctx: MobileContext, principal: Principal) -> ApiResponse:
+    _no_query(request)
+    return ApiResponse(200, {"protocol": PROTOCOL, "server_time": ctx.now(),
+                             "window_days": WINDOW_DAYS})
+
+
+def _categories(request: ApiRequest, ctx: MobileContext, principal: Principal) -> ApiResponse:
+    _no_query(request)
+    return ApiResponse(200, {"categories": category_names(ctx.settings)})
+
+
+def _json_object(body: bytes) -> dict[str, Any]:
+    try:
+        data = load_json_body(body)
+    except WriteError as exc:
+        raise _MobileError(400, "invalid_json", exc.message) from None
+    if not isinstance(data, dict):
+        raise _MobileError(400, "invalid_json", "Erwartet wird ein JSON-Objekt.")
+    return data
+
+
+def _refuse_while_closing(ctx: MobileContext) -> None:
+    if ctx.closing():
+        raise _MobileError(503, "shutting_down", "Die App wird gerade beendet.")
+
+
+def _pair(request: ApiRequest, ctx: MobileContext, principal: Principal) -> ApiResponse:
+    """Koppelt ein Handy. Erst Form und Gerät, dann der Code: ein ungültiges
+    `device_id` antwortet `400`, ohne den Code zu prüfen — kein Orakel, und ein
+    gültiger Code verbrennt dabei nicht."""
+    _no_query(request)
+    data = _json_object(request.body)
+    if "protocol" in data:
+        protocol = data["protocol"]
+        if not isinstance(protocol, int) or isinstance(protocol, bool) or protocol != PROTOCOL:
+            raise _MobileError(400, "invalid_protocol", f"Unterstützt wird protocol {PROTOCOL}.")
+    device_id = mobile_pairing.normalize_device_id(data.get("device_id"))
+    if device_id is None:
+        raise _MobileError(400, "invalid_json", "device_id fehlt oder ist ungültig.")
+    _refuse_while_closing(ctx)
+    result = ctx.pairing.redeem(data.get("code"))
+    if result is mobile_pairing.RedeemResult.LOCKED:
+        raise _MobileError(429, "pairing_locked",
+                           "Zu viele Fehlversuche. Am Desktop einen neuen Code erzeugen.")
+    if result is not mobile_pairing.RedeemResult.OK:
+        # Falsch, abgelaufen, verbraucht und „kein Code aktiv" sind dieselbe Antwort.
+        raise _MobileError(403, "invalid_code", "Der Code ist ungültig oder abgelaufen.")
+    with ctx.devices_lock:
+        record, token = mobile_pairing.issue_device(
+            device_id, mobile_pairing.clean_device_name(data.get("device_name")), ctx.now(),
+            ctx.devices.get(device_id))
+        ctx.devices.save(record)
+    _log.info("Handy gekoppelt: %s (%s)", record["id"], record["name"])
+    return ApiResponse(200, {"token": token, "expires_at": record["expires_at"],
+                             "window_days": WINDOW_DAYS, "desktop_name": ctx.desktop_name(),
+                             "protocol": PROTOCOL})
+
+
+def _notify(ctx: MobileContext) -> None:
+    try:
+        ctx.on_change()
+    except Exception:
+        # Der Abgleich ist angewendet und gespeichert; ein Fehler beim Neuzeichnen
+        # darf daraus keine 500 machen (das Handy wiederholte den Abgleich).
+        _log.exception("Handy-Abgleich: on_change fehlgeschlagen")
+
+
+def _still_valid(principal: MobilePrincipal, record: Mapping[str, Any], now: str) -> bool:
+    """Das Token, mit dem diese Anfrage kam, gegen den **frisch gelesenen** Datensatz.
+    Der Prüfer lief vor dem Handler und ohne Lock: dazwischen kann eine Erneuerung, ein
+    erneutes Koppeln oder der Ablauf liegen. Liefert, ob das Token jetzt das *vorherige*
+    ist (dann bleibt es beim Erneuern erhalten); wirft, wenn es weder aktuell noch
+    vorherig ist oder abgelaufen. Der Hash stammt aus dem Datensatz, den der Prüfer
+    seinerzeit zugeordnet hat — das Token selbst kennt der Handler nicht."""
+    presented = (principal.record["previous_token_hash"] if principal.via_previous
+                 else principal.record["token_hash"])
+    if str(record["expires_at"]) <= now:
+        raise _MobileError(401, "token_expired",
+                           "Das Token ist abgelaufen. Das Gerät muss neu gekoppelt werden.")
+    if presented == record["token_hash"]:
+        return False
+    if (presented and presented == record["previous_token_hash"]
+            and str(record["previous_valid_until"]) >= now):
+        return True
+    raise _MobileError(401, "unauthorized", "Das Token ist nicht mehr gültig.")
+
+
+def _sync(request: ApiRequest, ctx: MobileContext, principal: Principal) -> ApiResponse:
+    """Der Abgleich. Unter `devices_lock`: den Datensatz neu lesen (ein Widerruf kann
+    zwischen Prüfer und Handler liegen), `perform_sync`, danach Token erneuern und
+    `last_pull_at` speichern. Erneuert wird nur nach einem erfolgreichen Abgleich;
+    scheitert er, bleiben Token und `last_pull_at` unverändert."""
+    _no_query(request)
+    if not isinstance(principal, MobilePrincipal):
+        raise _MobileError(403, "insufficient_scope", "Dem Token fehlt die Berechtigung.")
+    _refuse_while_closing(ctx)
+    now = ctx.now()
+    parsed = mobile_sync.parse_request(request.body, now=now)
+    with ctx.devices_lock:
+        record = ctx.devices.get(principal.name)
+        if record is None or record.get("revoked"):
+            raise _MobileError(401, "token_revoked",
+                               "Das Token wurde widerrufen. Das Gerät muss neu gekoppelt werden.")
+        keep_previous = _still_valid(principal, record, now)
+        response = mobile_sync.perform_sync(
+            parsed, device_id=record["id"], device_name=record["name"],
+            last_pull_at=record["last_pull_at"], categories=category_names(ctx.settings),
+            storage=ctx.storage, settings=ctx.settings, conflicts_store=ctx.conflicts_store,
+            base=ctx.base, now=now, today=ctx.today(), data_lock=ctx.data_lock,
+            sync_guard=ctx.sync_guard)
+        renewed, token = mobile_pairing.renew(record, now, keep_previous=keep_previous)
+        renewed["last_pull_at"] = response["last_pull_at"]
+        ctx.devices.save(renewed)
+    response["token"] = token
+    response["expires_at"] = renewed["expires_at"]
+    _notify(ctx)
+    return ApiResponse(200, response)
+
+
+
+
+@dataclass(frozen=True)
+class _Route:
+    method: str
+    path: str
+    handler: Callable[[ApiRequest, MobileContext, Principal], ApiResponse]
+    public: bool = False
+
+
+ROUTES: tuple[_Route, ...] = (
+    _Route("POST", "/v1/pair", _pair, public=True),
+    _Route("GET", "/v1/ping", _ping),
+    _Route("GET", "/v1/categories", _categories),
+    _Route("POST", "/v1/sync", _sync),
+)
+
+
+def methods_for_path(path: str) -> frozenset[str]:
+    return frozenset(route.method for route in ROUTES if route.path == path)
+
+
+def routed_methods() -> frozenset[str]:
+    return frozenset(route.method for route in ROUTES)
+
+
+def dispatch(request: ApiRequest, ctx: MobileContext, principal: Principal) -> ApiResponse:
+    """Eine bereits authentifizierte Anfrage (an einer öffentlichen Route mit dem
+    anonymen Principal) → Antwort. Ein Programmfehler wirft durch; der Server macht
+    daraus eine `500` ohne Details."""
+    same_path = [route for route in ROUTES if route.path == request.path]
+    if not same_path:
+        return error_response(404, "not_found", "Unbekannter Pfad.")
+    route = next((r for r in same_path if r.method == request.method), None)
+    if route is None:
+        return error_response(405, "method_not_allowed", "Methode nicht erlaubt.",
+                              {"Allow": ", ".join(sorted(r.method for r in same_path))})
+    if not route.public:
+        denied = require_scope(principal, SCOPE_MOBILE)
+        if not denied.ok:
+            return error_response(denied.status, denied.code, "Dem Token fehlt die Berechtigung.")
+    try:
+        return route.handler(request, ctx, principal)
+    except (_MobileError, SyncError) as exc:
+        return error_response(exc.status, exc.code, exc.message)
+
+
+def surface(ctx: MobileContext) -> Surface:
+    return Surface(
+        dispatch=lambda request, principal: dispatch(request, ctx, principal),
+        methods=routed_methods(), route_methods=methods_for_path,
+        public=frozenset((route.method, route.path) for route in ROUTES if route.public),
+        cors=True)

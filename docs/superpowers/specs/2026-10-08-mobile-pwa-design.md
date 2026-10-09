@@ -52,6 +52,8 @@ Die Auth-Tore bleiben, in dieser Reihenfolge, wie in der lokalen API; `Sec-Fetch
 
 **Umsetzung (PR 4a):** Der Prüfer liefert `Principal | Denied | None`; `Denied("token_expired"|"token_revoked")` wird zu `401` mit diesem Code. `POST /v1/pair` ist als einziges (Methode, Pfad)-Paar öffentlich, mit denselben Toren Host/Origin/`Sec-Fetch-Site`/Content-Type. CORS-Header tragen alle Antworten auf die erlaubte Origin, auch Fehler; der Preflight antwortet auf `Access-Control-Request-Private-Network: true` mit `Access-Control-Allow-Private-Network: true`. Risiko für den Android-Test (#248): sendet Chrome `Sec-Fetch-Site` doch an `http://<LAN-IP>`, scheitert jede Anfrage mit `403 browser_request`.
 
+**Umsetzung (PR 4b):** Körperfehler an `/v1/pair` und `/v1/sync` (auch ein ungültiges `device_id`) sind `400 invalid_json`; `protocol` ist im Pair-Request optional, aber wenn vorhanden `1`. Die Tokenerneuerung und `last_pull_at` werden erst nach einem erfolgreichen Abgleich gespeichert. Ein Fehler beim Speichern des Geräts nach erfolgreichem Einlösen ist eine `500` (der Code ist verbraucht).
+
 ## Protokoll (`/v1`, zusätzlich `protocol: 1` im Body)
 
 Fehler wie in der lokalen API: `{"error": {"code": "...", "message": "..."}}`.

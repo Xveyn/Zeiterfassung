@@ -895,3 +895,12 @@ def test_api_defaults_present_and_device_local():
     # einem synchronisierten Wert überstimmt werden.
     assert "api_enabled" not in SYNCED_SETTING_KEYS
     assert "api_port" not in SYNCED_SETTING_KEYS
+
+
+def test_the_mobile_keys_are_device_local_with_safe_defaults():
+    from src.settings import DEFAULTS, SYNCED_SETTING_KEYS
+    assert DEFAULTS["mobile_enabled"] is False          # aus, bis es der Nutzer einschaltet
+    assert DEFAULTS["mobile_port"] == 17654
+    assert DEFAULTS["mobile_address"] == ""             # leer = Vorschlag der aktiven Route
+    for key in ("mobile_enabled", "mobile_port", "mobile_address"):
+        assert key not in SYNCED_SETTING_KEYS           # ein Wert, den sich zwei Rechner teilen, wäre falsch
