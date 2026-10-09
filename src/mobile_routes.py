@@ -24,6 +24,7 @@ from typing import TYPE_CHECKING, Any
 
 from src import mobile_pairing
 from src.api_auth import SCOPE_MOBILE, Denied, Principal, TokenVerifier, require_scope
+from src.api_entry_write import WriteError, load_json_body
 from src.api_routes import ApiRequest, ApiResponse, error_response
 from src.api_server import Surface
 from src.api_summary import category_names
@@ -118,6 +119,53 @@ def _categories(request: ApiRequest, ctx: MobileContext, principal: Principal) -
     return ApiResponse(200, {"categories": category_names(ctx.settings)})
 
 
+def _json_object(body: bytes) -> dict[str, Any]:
+    try:
+        data = load_json_body(body)
+    except WriteError as exc:
+        raise _MobileError(400, "invalid_json", exc.message) from None
+    if not isinstance(data, dict):
+        raise _MobileError(400, "invalid_json", "Erwartet wird ein JSON-Objekt.")
+    return data
+
+
+def _refuse_while_closing(ctx: MobileContext) -> None:
+    if ctx.closing():
+        raise _MobileError(503, "shutting_down", "Die App wird gerade beendet.")
+
+
+def _pair(request: ApiRequest, ctx: MobileContext, principal: Principal) -> ApiResponse:
+    """Koppelt ein Handy. Erst Form und Gerät, dann der Code: ein ungültiges
+    `device_id` antwortet `400`, ohne den Code zu prüfen — kein Orakel, und ein
+    gültiger Code verbrennt dabei nicht."""
+    _no_query(request)
+    data = _json_object(request.body)
+    if "protocol" in data:
+        protocol = data["protocol"]
+        if not isinstance(protocol, int) or isinstance(protocol, bool) or protocol != PROTOCOL:
+            raise _MobileError(400, "invalid_protocol", f"Unterstützt wird protocol {PROTOCOL}.")
+    device_id = mobile_pairing.normalize_device_id(data.get("device_id"))
+    if device_id is None:
+        raise _MobileError(400, "invalid_json", "device_id fehlt oder ist ungültig.")
+    _refuse_while_closing(ctx)
+    result = ctx.pairing.redeem(data.get("code"))
+    if result is mobile_pairing.RedeemResult.LOCKED:
+        raise _MobileError(429, "pairing_locked",
+                           "Zu viele Fehlversuche. Am Desktop einen neuen Code erzeugen.")
+    if result is not mobile_pairing.RedeemResult.OK:
+        # Falsch, abgelaufen, verbraucht und „kein Code aktiv" sind dieselbe Antwort.
+        raise _MobileError(403, "invalid_code", "Der Code ist ungültig oder abgelaufen.")
+    with ctx.devices_lock:
+        record, token = mobile_pairing.issue_device(
+            device_id, mobile_pairing.clean_device_name(data.get("device_name")), ctx.now(),
+            ctx.devices.get(device_id))
+        ctx.devices.save(record)
+    _log.info("Handy gekoppelt: %s (%s)", record["id"], record["name"])
+    return ApiResponse(200, {"token": token, "expires_at": record["expires_at"],
+                             "window_days": WINDOW_DAYS, "desktop_name": ctx.desktop_name(),
+                             "protocol": PROTOCOL})
+
+
 @dataclass(frozen=True)
 class _Route:
     method: str
@@ -127,6 +175,7 @@ class _Route:
 
 
 ROUTES: tuple[_Route, ...] = (
+    _Route("POST", "/v1/pair", _pair, public=True),
     _Route("GET", "/v1/ping", _ping),
     _Route("GET", "/v1/categories", _categories),
 )

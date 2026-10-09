@@ -1,5 +1,6 @@
 # tests/test_mobile_routes.py
 import datetime
+import json
 import threading
 import types
 
@@ -110,22 +111,6 @@ def test_an_unknown_token_is_not_recognised(env, junk):
 
 # --- Routing ----------------------------------------------------------------------------------------
 
-def test_the_route_table_knows_only_its_own_routes():
-    assert mobile_routes.methods_for_path("/v1/ping") == frozenset({"GET"})
-    assert mobile_routes.methods_for_path("/v1/categories") == frozenset({"GET"})
-    assert mobile_routes.methods_for_path("/v1/entries") == frozenset()      # nichts von der lokalen API
-    assert mobile_routes.methods_for_path("/v1/status") == frozenset()
-    assert mobile_routes.routed_methods() == frozenset({"GET"})
-
-
-def test_the_surface_enables_cors_and_has_no_public_route_yet(env):
-    surface = mobile_routes.surface(env.ctx)
-
-    assert surface.public == frozenset()
-    assert surface.cors is True and surface.methods == frozenset({"GET"})
-    assert surface.route_methods("/v1/ping") == frozenset({"GET"})
-
-
 def test_an_unknown_path_is_404(env):
     _record, token = add_device(env)
     for path in ("/v1/entries", "/v1/status", "/v1/ping/", "/v1/PING", "/"):
@@ -174,3 +159,180 @@ def test_categories_are_the_configured_names_without_blanks_and_duplicates(env):
     response = call(env, "GET", "/v1/categories", token=token)
 
     assert response.status == 200 and response.body == {"categories": ["Projekt", "Intern"]}
+
+
+# --- pair ---------------------------------------------------------------------------------------------
+
+def pair_body(code, device_id=PHONE, name="Pixel von Sven", **extra):
+    doc = {"code": code, "device_name": name, "device_id": device_id}
+    doc.update(extra)
+    return json.dumps(doc).encode()
+
+
+def pair(env, code, **kwargs):
+    return call(env, "POST", "/v1/pair", body=pair_body(code, **kwargs))
+
+
+def test_the_pair_route_is_the_only_public_one(env):
+    surface = mobile_routes.surface(env.ctx)
+
+    assert surface.public == frozenset({("POST", "/v1/pair")})
+    assert surface.methods == frozenset({"GET", "POST"})
+    assert surface.route_methods("/v1/pair") == frozenset({"POST"})
+
+
+def test_a_correct_code_pairs_the_device_and_returns_its_token(env):
+    code = env.ctx.pairing.open()
+
+    response = pair(env, code)
+
+    assert response.status == 200
+    body = response.body
+    assert set(body) == {"token", "expires_at", "window_days", "desktop_name", "protocol"}
+    assert (body["window_days"], body["desktop_name"], body["protocol"]) == (90, "Desktop", 1)
+    assert body["expires_at"] == "2026-11-07T12:00:00Z"
+    stored = env.ctx.devices.get(PHONE)
+    assert stored["name"] == "Pixel von Sven" and stored["token_hash"] == mobile_pairing.hash_token(body["token"])
+    assert isinstance(principal_for(env, body["token"]), MobilePrincipal)
+    with open(env.ctx.devices.filepath, encoding="utf-8") as handle:
+        assert body["token"] not in handle.read()                  # nur der Hash steht in der Datei
+
+
+def test_the_code_is_single_use(env):
+    code = env.ctx.pairing.open()
+    assert pair(env, code).status == 200
+
+    again = pair(env, code, device_id="phone-0002")
+
+    assert again.status == 403 and error_code(again) == "invalid_code"
+    assert env.ctx.devices.get("phone-0002") is None
+
+
+def test_a_wrong_code_and_no_active_code_give_one_shared_answer(env):
+    env.ctx.pairing.open()
+    wrong = pair(env, "AAAA-AAAA")
+    env.ctx.pairing.close()
+    nothing_active = pair(env, "AAAA-AAAA")
+
+    assert wrong.status == nothing_active.status == 403
+    assert wrong.body == nothing_active.body and error_code(wrong) == "invalid_code"
+
+
+def test_an_expired_code_gives_the_same_answer(env):
+    code = env.ctx.pairing.open()
+    env.clock["pairing"] += 300                                  # genau die Gültigkeit
+
+    expired = pair(env, code)
+
+    assert expired.status == 403 and expired.body == pair(env, "AAAA-AAAA").body
+
+
+def test_five_wrong_codes_lock_the_session_even_for_the_right_one(env):
+    code = env.ctx.pairing.open()
+
+    results = [pair(env, "AAAA-AAAA").status for _ in range(5)]
+    locked = pair(env, "AAAA-AAAA")
+    right_but_locked = pair(env, code)
+
+    assert results == [403] * 5
+    assert locked.status == 429 and error_code(locked) == "pairing_locked"
+    assert right_but_locked.status == 429
+    assert env.ctx.devices.get(PHONE) is None
+
+
+@pytest.mark.parametrize("device_id", [None, "", "kurz", "a" * 65, "mit leerzeichen!", 5, ["x"], "٢" * 10])
+def test_an_invalid_device_id_is_400_without_looking_at_the_code(env, device_id):
+    code = env.ctx.pairing.open()
+    body = json.dumps({"code": code, "device_name": "P", "device_id": device_id}).encode()
+
+    response = call(env, "POST", "/v1/pair", body=body)
+    wrong_code = call(env, "POST", "/v1/pair", body=json.dumps(
+        {"code": "AAAA-AAAA", "device_name": "P", "device_id": device_id}).encode())
+
+    assert response.status == 400 and error_code(response) == "invalid_json"
+    assert wrong_code.status == 400 and wrong_code.body == response.body      # kein Orakel
+    assert pair(env, code).status == 200                                       # Code nicht verbrannt
+
+
+def test_a_request_with_a_bad_device_id_never_counts_as_a_failed_attempt(env):
+    code = env.ctx.pairing.open()
+    for _ in range(10):
+        call(env, "POST", "/v1/pair", body=json.dumps(
+            {"code": "AAAA-AAAA", "device_id": "x"}).encode())
+
+    assert pair(env, code).status == 200
+
+
+@pytest.mark.parametrize("raw", [
+    b"", b"{kaputt", b"[]", b'"x"', b"5", b'{"code": NaN}', b'{"a":1,"a":2}',
+    pytest.param(b"[" * 100000, id="deep-nesting"), b"\xff",
+])
+def test_a_malformed_pair_body_is_400_invalid_json(env, raw):
+    env.ctx.pairing.open()
+
+    response = call(env, "POST", "/v1/pair", body=raw)
+
+    assert response.status == 400 and error_code(response) == "invalid_json"
+
+
+@pytest.mark.parametrize("protocol", [0, 2, "1", 1.0, True, None, [1]])
+def test_a_present_but_wrong_protocol_is_400_invalid_protocol(env, protocol):
+    code = env.ctx.pairing.open()
+
+    response = pair(env, code, protocol=protocol)
+
+    assert response.status == 400 and error_code(response) == "invalid_protocol"
+    assert pair(env, code).status == 200                                       # Code nicht verbrannt
+
+
+def test_protocol_one_is_accepted(env):
+    assert pair(env, env.ctx.pairing.open(), protocol=1).status == 200
+
+
+@pytest.mark.parametrize("code", [None, 5, "", ["x"], {"a": 1}, "٢" * 8, "A" * 5000])
+def test_a_junk_code_is_a_failed_attempt_not_an_error(env, code):
+    env.ctx.pairing.open()
+
+    response = call(env, "POST", "/v1/pair", body=json.dumps(
+        {"code": code, "device_name": "P", "device_id": PHONE}).encode())
+
+    assert response.status == 403 and error_code(response) == "invalid_code"
+
+
+def test_a_junk_name_becomes_the_default_name(env):
+    code = env.ctx.pairing.open()
+    body = json.dumps({"code": code, "device_id": PHONE, "device_name": "Pi\nxel\x00"}).encode()
+
+    assert call(env, "POST", "/v1/pair", body=body).status == 200
+    assert env.ctx.devices.get(PHONE)["name"] == "Pixel"
+
+
+def test_pairing_again_keeps_the_sync_identity_and_lifts_a_revocation(env):
+    old, _token = add_device(env, now="2026-10-01T08:00:00Z")
+    old["last_pull_at"] = "2026-10-07T09:00:00Z"
+    env.ctx.devices.save(mobile_pairing.revoke(old))
+    code = env.ctx.pairing.open()
+
+    response = pair(env, code, name="Pixel neu")
+
+    assert response.status == 200
+    stored = env.ctx.devices.get(PHONE)
+    assert stored["created_at"] == "2026-10-01T08:00:00Z" and stored["last_pull_at"] == "2026-10-07T09:00:00Z"
+    assert stored["revoked"] is False and stored["name"] == "Pixel neu"
+    assert isinstance(principal_for(env, response.body["token"]), MobilePrincipal)
+
+
+def test_pairing_is_refused_while_the_app_closes_and_keeps_the_code(env):
+    code = env.ctx.pairing.open()
+    closing = mobile_routes.MobileContext(**{**env.ctx.__dict__, "closing": lambda: True})
+
+    response = mobile_routes.dispatch(
+        ApiRequest("POST", "/v1/pair", {}, pair_body(code)), closing, ANONYMOUS)
+
+    assert response.status == 503 and error_code(response) == "shutting_down"
+    assert pair(env, code).status == 200
+
+
+def test_a_query_string_on_pair_is_rejected(env):
+    response = call(env, "POST", "/v1/pair", body=pair_body("AAAA-AAAA"), query={"x": ["1"]})
+    assert response.status == 400 and error_code(response) == "unknown_parameter"
