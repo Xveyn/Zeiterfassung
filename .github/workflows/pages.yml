@@ -1,0 +1,50 @@
+name: PWA veröffentlichen
+
+# Veröffentlicht den Ordner pwa/ (die Handy-PWA) nach GitHub Pages unter
+# https://xveyn.github.io/Zeiterfassung/. Braucht eine Repo-Einstellung, die nicht im Code
+# steht: Settings → Pages → Source: „GitHub Actions“ (Issue #266). Ohne sie scheitert
+# deploy-pages. Der Workflow pusht NICHTS nach master.
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'pwa/**'
+      - '.github/workflows/pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Ein Deploy nach dem anderen; ein laufender wird nicht abgebrochen (halb veröffentlicht
+# wäre schlimmer als verzögert).
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Laufzeitdateien zusammenstellen und Build-Kennung einsetzen
+        run: |
+          set -euo pipefail
+          mkdir _site
+          # Nur, was die App zur Laufzeit braucht: kein test/, kein package.json.
+          rsync -a --exclude 'test/' --exclude 'package.json' --exclude 'memory-adapter.js' --exclude 'node_modules/' pwa/ _site/
+          # Jeder Deploy bekommt einen eigenen Cache (sw-core.js trägt den Platzhalter __BUILD__).
+          sed -i "s/__BUILD__/${GITHUB_SHA::12}/" _site/sw-core.js
+          grep -q "${GITHUB_SHA::12}" _site/sw-core.js
+          if grep -q "__BUILD__" _site/sw-core.js; then echo "Platzhalter nicht ersetzt" >&2; exit 1; fi
+          ls -R _site
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: _site
+      - id: deployment
+        uses: actions/deploy-pages@v5

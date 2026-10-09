@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs';
 
 import {
   CODE_ALPHABET, DEFAULT_PORT, PROTOCOL, baseUrl, deviceNameFromUserAgent, isLanAddress,
-  isValidDeviceId, newDeviceId, normalizeCode, pairRequestBody, parseHostPort, parsePairFragment,
+  isValidDeviceId, newDeviceId, normalizeCode, pairRequestBody, parseHostPort, parsePairFragment, parseQrText,
 } from '../pairing.js';
 
 const cases = JSON.parse(readFileSync(new URL('./fixtures/pairing-cases.json', import.meta.url)));
@@ -107,4 +107,16 @@ test('the pair request body has the protocol fields', () => {
   assert.deepEqual(pairRequestBody({ code: 'K7M2-9QXA', deviceName: 'Pixel', deviceId: 'abcdefgh' }), {
     protocol: 1, code: 'K7M2-9QXA', device_name: 'Pixel', device_id: 'abcdefgh',
   });
+});
+
+test('a scanned QR text is the full link; only its fragment counts', () => {
+  assert.deepEqual(parseQrText('https://xveyn.github.io/Zeiterfassung/#pair=192.168.178.20:17654:K7M29QXA'),
+    { host: '192.168.178.20', port: 17654, code: 'K7M29QXA' });
+  assert.deepEqual(parseQrText('http://localhost:8099/#pair=10.0.0.5:20000:23456789'),
+    { host: '10.0.0.5', port: 20000, code: '23456789' });
+  for (const bad of ['', 'kein link', 'https://x.example/#pair=8.8.8.8:17654:K7M29QXA',
+    'https://x.example/#pair=192.168.1.20:80:K7M29QXA', 'https://x.example/', 'https://x.example/#other=1',
+    null, undefined, 5, 'http://[::1', 'a'.repeat(5000)]) {
+    assert.equal(parseQrText(bad), null, String(bad).slice(0, 30));
+  }
 });
