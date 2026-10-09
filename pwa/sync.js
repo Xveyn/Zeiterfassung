@@ -113,6 +113,8 @@ export function clockSkewMs(serverTime, now) {
   return Date.parse(serverTime) - now.getTime();
 }
 
+const DISCARDED = () => ({ sent: 0, conflicts: 0, excluded: false, discarded: true });
+
 export class SyncClient {
   constructor({ store, fetchFn = (...args) => globalThis.fetch(...args), now = () => new Date(), timeoutMs = 15000 }) {
     this._store = store;
@@ -196,6 +198,12 @@ export class SyncClient {
     return this._running;
   }
 
+  _pairingChanged(meta) {
+    const current = this._store.getMeta();
+    return current.token !== meta.token || current.address?.host !== meta.address.host
+      || current.address?.port !== meta.address.port;
+  }
+
   async _run() {
     const meta = this._store.getMeta();
     if (!meta.address || !meta.token) throw new SyncError({ kind: 'not_paired', message: 'Noch nicht gekoppelt.' });
@@ -207,19 +215,20 @@ export class SyncClient {
         protocol: PROTOCOL, client_time: utcStamp(now), last_pull_at: meta.last_pull_at || '',
         entries: snapshot.entries } });
     } catch (error) {
+      // Währenddessen neu gekoppelt: der Fehler gehört zum alten Server/Token und darf weder
+      // den Zustand der neuen Kopplung markieren noch als deren Fehler erscheinen.
+      if (this._pairingChanged(meta)) return DISCARDED();
       if (error instanceof SyncError && error.kind === 'invalid_entry' && error.day) {
         await this._store.markDayError(error.day, error.message, snapshot.versions[error.day]);
       }
       throw error;
     }
     const parsed = parseSyncResponse(raw);
-    const current = this._store.getMeta();
-    if (current.token !== meta.token || current.address?.host !== meta.address.host
-      || current.address?.port !== meta.address.port) {
+    if (this._pairingChanged(meta)) {
       // Währenddessen wurde neu gekoppelt: die Antwort gehört zum alten Server/Token. Sie
       // anzuwenden legte das alte Token über das neue und markierte Tage als übertragen,
       // die ein anderer Desktop nie bekam. Die Tage bleiben „nicht übertragen“.
-      return { sent: 0, conflicts: 0, excluded: false, discarded: true };
+      return DISCARDED();
     }
     await this._store.applyResponse(parsed, snapshot, localIsoDate(now));
     return { sent: Object.keys(snapshot.entries).length, conflicts: parsed.conflicts.length, excluded: parsed.excluded };

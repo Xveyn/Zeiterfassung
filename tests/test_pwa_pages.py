@@ -19,6 +19,7 @@ def test_the_build_placeholder_is_replaced_by_the_workflow():
 def test_only_runtime_files_are_published():
     assert re.search(r"--exclude\s+'?test/'?", WORKFLOW)
     assert re.search(r"--exclude\s+'?package\.json'?", WORKFLOW)
+    assert re.search(r"--exclude\s+'?memory-adapter\.js'?", WORKFLOW)   # Testhilfe, nicht im PRECACHE
     assert "path: _site" in WORKFLOW
 
 
@@ -47,3 +48,10 @@ def test_the_desktop_knows_the_address_the_workflow_publishes():
     from src import mobile_routes
     assert mobile_routes.PWA_ORIGIN == "https://xveyn.github.io"
     assert mobile_routes.PWA_URL == "https://xveyn.github.io/Zeiterfassung/"
+
+
+def test_the_service_worker_precaches_past_the_http_cache():
+    # GitHub Pages liefert mit max-age=600; ohne cache: 'reload' könnte ein neuer Worker Dateien
+    # der vorigen Installation einsammeln und eine Version-Mischung festschreiben.
+    worker = (ROOT / "pwa" / "sw.js").read_text(encoding="utf-8")
+    assert "cache: 'reload'" in worker

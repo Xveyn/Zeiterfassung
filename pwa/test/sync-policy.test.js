@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { AUTO_COOLDOWN_MS, OFFLINE_BACKOFF_MS, shouldSync } from '../sync-policy.js';
+import { AUTO_COOLDOWN_MS, OFFLINE_BACKOFF_MS, shouldQueue, shouldSync } from '../sync-policy.js';
 
 const base = { paired: true, syncing: false, online: true, now: 1_000_000, lastAttemptAt: 0, lastError: null };
 const ask = (over) => shouldSync({ ...base, ...over });
@@ -57,4 +57,13 @@ test('a dead token stops every automatic trigger until the user pairs again', ()
 
 test('an unknown trigger does nothing', () => {
   assert.equal(ask({ trigger: 'zufall' }), false);
+});
+
+test('save and manual are remembered while a sync runs, automatic triggers are not', () => {
+  const queue = (trigger, over = {}) => shouldQueue({ trigger, paired: true, syncing: true, ...over });
+  assert.equal(queue('save'), true);
+  assert.equal(queue('manual'), true);
+  for (const trigger of ['start', 'visible', 'online', 'zufall']) assert.equal(queue(trigger), false, trigger);
+  assert.equal(queue('save', { syncing: false }), false);
+  assert.equal(queue('save', { paired: false }), false);
 });

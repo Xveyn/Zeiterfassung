@@ -429,3 +429,22 @@ test('a 422 for a day that was edited meanwhile does not mark the new version', 
   assert.equal(store.getDay('2026-10-07').error, null);
   assert.deepEqual(Object.keys(store.snapshotDirty().entries), ['2026-10-07']);
 });
+
+test('an error from a sync that was running while re-pairing is discarded, not thrown', async () => {
+  let release;
+  const gate = new Promise((resolve) => { release = resolve; });
+  const { store, client } = await make({ handler: async (url) => {
+    if (url.endsWith('/v1/pair')) return reply(200, fixture('pair-response.json'));
+    await gate;
+    return reply(401, { error: { code: 'unauthorized', message: 'nein' } });
+  } });
+  await store.saveDay('2026-10-07', [SLOT]);
+
+  const running = client.sync();
+  await client.pair({ host: '192.168.1.99', port: 17655, code: 'K7M2-9QXA', deviceName: 'P' });
+  release();
+  const result = await running;
+
+  assert.equal(result.discarded, true);
+  assert.equal(store.getMeta().token, fixture('pair-response.json').token);
+});

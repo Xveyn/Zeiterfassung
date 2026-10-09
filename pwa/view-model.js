@@ -34,7 +34,7 @@ function stampLabel(iso, timeZone) {
 
 // --- Woche ---------------------------------------------------------------------------------------
 
-export function weekModel({ getDay, anchor, today, conflictDates = [] }) {
+export function weekModel({ getDay, anchor, today, conflictDates = [], windowDays = 0 }) {
   const conflicts = new Set(conflictDates);
   const dates = weekDays(anchor);
   const week = dates.map((date, index) => {
@@ -49,6 +49,9 @@ export function weekModel({ getDay, anchor, today, conflictDates = [] }) {
       isToday: date === today,
       isWeekend: index >= 5,
       beyondWindow: date > addDays(today, VISIBLE_AHEAD_DAYS),
+      // Außerhalb dessen, was das Handy vom Desktop kennt: ein leer wirkender Tag kann dort Einträge
+      // haben, und Speichern ersetzt sie (der Handy-Stand gewinnt ohne Konflikt).
+      outsideWindow: date > addDays(today, VISIBLE_AHEAD_DAYS) || (windowDays > 0 && date < addDays(today, -windowDays)),
       slots: slots.map(slotText),
       minutes,
       minutesLabel: minutes > 0 ? formatMinutes(minutes) : '',

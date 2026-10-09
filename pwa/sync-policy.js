@@ -7,6 +7,12 @@ export const AUTO_COOLDOWN_MS = 5000;
 export const OFFLINE_BACKOFF_MS = 30000;
 const AUTOMATIC = new Set(['start', 'visible', 'online']);
 
+/** Ein „Speichern“ oder „Jetzt abgleichen“ während eines laufenden Abgleichs darf nicht
+ *  verloren gehen: die App merkt es sich und startet nach dem Ende einen weiteren Lauf. */
+export function shouldQueue({ trigger, paired, syncing }) {
+  return Boolean(paired && syncing && (trigger === 'manual' || trigger === 'save'));
+}
+
 export function shouldSync({ trigger, paired, syncing, online, now, lastAttemptAt, lastError }) {
   if (!paired || syncing) return false;
   if (trigger === 'manual' || trigger === 'save') return true;       // der Nutzer hat es gewollt

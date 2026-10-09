@@ -31,12 +31,17 @@ export function statusBar(status, handlers) {
 
 // --- Koppeln ----------------------------------------------------------------------------------------
 
-export function pairView({ address, code, deviceName, busy, canScan, canCancel }, handlers) {
+export function pairView({ address, code, deviceName, busy, canScan, canCancel, error }, handlers) {
   const addressInput = h('input', { id: 'pair-address', name: 'address', value: address, inputmode: 'decimal',
     autocomplete: 'off', placeholder: '192.168.178.20:17654', required: true });
   const codeInput = h('input', { id: 'pair-code', name: 'code', value: code, autocapitalize: 'characters',
     autocomplete: 'off', spellcheck: 'false', placeholder: 'K7M2-9QXA', required: true });
   const nameInput = h('input', { id: 'pair-name', name: 'name', value: deviceName, maxlength: 60, autocomplete: 'off' });
+  // Eingaben sofort merken: ein Hintergrund-Render (online, Sichtbarwerden, Abgleich-Ende) baut das
+  // Formular neu und würde sonst alles Getippte verwerfen.
+  for (const [input, field] of [[addressInput, 'address'], [codeInput, 'code'], [nameInput, 'deviceName']]) {
+    input.addEventListener('input', () => handlers.change(field, input.value));
+  }
   return h('main', {},
     h('h1', {}, 'Mit dem Desktop koppeln'),
     h('p', { class: 'muted' }, 'Am Desktop: Einstellungen → Mobil → „Gerät koppeln …“. Dann den QR-Code scannen oder Adresse und Code eintippen.'),
@@ -45,15 +50,10 @@ export function pairView({ address, code, deviceName, busy, canScan, canCancel }
       h('label', { for: 'pair-address' }, 'Adresse des Desktops'), addressInput,
       h('label', { for: 'pair-code' }, 'Code'), codeInput,
       h('label', { for: 'pair-name' }, 'Name dieses Handys'), nameInput,
-      h('div', { class: 'error-text', role: 'alert', id: 'pair-error' }),
+      h('div', { class: 'error-text', role: 'alert', id: 'pair-error' }, error || ''),
       h('div', { class: 'buttons' },
         canCancel && button('Abbrechen', handlers.cancel),
         h('button', { type: 'submit', class: 'primary', disabled: busy }, busy ? 'Koppele …' : 'Koppeln'))));
-}
-
-export function setPairError(text) {
-  const element = document.getElementById('pair-error');
-  if (element) element.textContent = text;
 }
 
 // --- Woche ---------------------------------------------------------------------------------------------
@@ -94,7 +94,7 @@ function openDialog(dialog) {
 
 /** Tag bearbeiten. Der Dialog hält seine Zeilen selbst (Eingaben gehen bei Hintergrund-Renders
  *  nicht verloren). `handlers.save(rows)` liefert `null` bei Erfolg oder eine Fehlermeldung. */
-export function editorDialog({ title, rows, categories, error, beyondWindow, canClear, validate }, handlers) {
+export function editorDialog({ title, rows, categories, error, outsideWindow, canClear, validate }, handlers) {
   const list = h('div', {});
   const message = h('div', { class: 'error-text', role: 'alert' }, error ?? '');
   const datalist = h('datalist', { id: 'categories' }, categories.map((name) => h('option', { value: name })));
@@ -133,7 +133,7 @@ export function editorDialog({ title, rows, categories, error, beyondWindow, can
       if (failure) message.textContent = failure; else dialog.close();
     } },
       h('h2', { id: 'editor-title' }, title),
-      beyondWindow && h('p', { class: 'hint warn' }, 'Dieser Tag liegt nach morgen: am Desktop gespeichert, nach dem nächsten Abgleich aber nicht mehr hier sichtbar.'),
+      outsideWindow && h('p', { class: 'hint warn' }, 'Dieser Tag liegt außerhalb des Zeitraums, den das Handy vom Desktop kennt. Er kann dort bereits Einträge haben: Speichern ersetzt sie, und nach dem Abgleich ist der Tag hier nicht mehr sichtbar.'),
       list, datalist,
       button('+ Slot', () => { state.push({ start: state.at(-1)?.end ?? '', end: '', pause: '0', kategorie: state.at(-1)?.kategorie ?? '' }); build(); refresh(); }),
       message,

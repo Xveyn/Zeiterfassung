@@ -225,3 +225,16 @@ test('validation uses the same rules as the server and speaks German', () => {
     'Zeitslots dürfen sich zeitlich nicht überlappen.');
   assert.equal(validateRows([{ ...ok[0], kategorie: 'x'.repeat(101) }]).ok, false);
 });
+
+test('days outside the read window are marked, because saving there can replace desktop entries', () => {
+  const week = weekModel({ getDay: days({}), anchor: '2026-07-06', today: '2026-10-08', windowDays: 90 });
+  // Fenster: ab 2026-07-10 (heute − 90)
+  assert.deepEqual(week.days.map((d) => d.outsideWindow), [true, true, true, true, false, false, false]);
+  const current = weekModel({ getDay: days({}), anchor: '2026-10-08', today: '2026-10-08', windowDays: 90 });
+  assert.deepEqual(current.days.map((d) => d.outsideWindow), [false, false, false, false, false, true, true]);
+});
+
+test('without a known window nothing is marked before it', () => {
+  const week = weekModel({ getDay: days({}), anchor: '2026-01-05', today: '2026-10-08' });
+  assert.equal(week.days.every((d) => d.outsideWindow === false), true);
+});
