@@ -52,3 +52,33 @@ def test_time_rule_messages_are_word_for_word_those_of_validate_slots(row):
 def test_iso_weeks_match(row):
     year, week, _weekday = datetime.date.fromisoformat(row["date"]).isocalendar()
     assert (year, week) == (row["year"], row["week"])
+
+
+# --- Koppeln: Code, Adresse, Link -------------------------------------------------------------
+
+from src import mobile_pairing, netinfo  # noqa: E402
+from src.mobile_service import STATE_RUNNING, MobileService, MobileStatus  # noqa: E402
+
+
+@pytest.mark.parametrize("row", load("pairing-cases.json")["codes"], ids=lambda r: repr(r["raw"]))
+def test_code_normalisation_matches(row):
+    assert mobile_pairing.normalize_code(row["raw"]) == row["code"]
+
+
+@pytest.mark.parametrize("row", load("pairing-cases.json")["lan_addresses"],
+                         ids=lambda r: repr(r["address"]))
+def test_the_lan_address_rule_matches(row):
+    assert netinfo.is_lan_address(row["address"]) is row["lan"]
+
+
+@pytest.mark.parametrize(
+    "row", [r for r in load("pairing-cases.json")["fragments"] if r.get("python_link")],
+    ids=lambda r: r["hash"])
+def test_the_link_the_desktop_builds_is_the_fragment_the_pwa_parses(row):
+    service = MobileService.__new__(MobileService)           # nur pair_link, ohne Server
+    service._status = MobileStatus(STATE_RUNNING, row["host"], row["port"])
+
+    link = service.pair_link(row["code"])
+
+    assert link is not None and "#" in link
+    assert "#" + link.split("#", 1)[1] == row["hash"]
