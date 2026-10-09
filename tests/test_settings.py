@@ -904,3 +904,9 @@ def test_the_mobile_keys_are_device_local_with_safe_defaults():
     assert DEFAULTS["mobile_address"] == ""             # leer = Vorschlag der aktiven Route
     for key in ("mobile_enabled", "mobile_port", "mobile_address"):
         assert key not in SYNCED_SETTING_KEYS           # ein Wert, den sich zwei Rechner teilen, wäre falsch
+
+
+def test_the_first_enable_notice_is_remembered_device_locally():
+    from src.settings import DEFAULTS, SYNCED_SETTING_KEYS
+    assert DEFAULTS["mobile_notice_accepted"] is False
+    assert "mobile_notice_accepted" not in SYNCED_SETTING_KEYS

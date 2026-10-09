@@ -12,6 +12,7 @@ das frühere `save_settings` still auf einen Fallback setzte, tut es hier auch.
 
 import datetime
 from collections.abc import Mapping
+from dataclasses import dataclass
 from typing import Any
 
 from src.devices import sanitize_device_name
@@ -21,12 +22,21 @@ from src.api_service import (
     ApiStatus, parse_port,
 )
 from src.holidays_de import code_for_state_label
+from src.mobile_service import (
+    DEFAULT_PORT as MOBILE_DEFAULT_PORT, REASON_ADDRESS_GONE, REASON_NO_ADDRESS,
+    REASON_INVALID_PORT as MOBILE_INVALID_PORT, REASON_PORT_IN_USE as MOBILE_PORT_IN_USE,
+    STATE_ERROR as MOBILE_ERROR, STATE_RUNNING as MOBILE_RUNNING,
+    STATE_STARTING as MOBILE_STARTING, MobileStatus,
+)
+from src.netinfo import is_lan_address
 from src.send_reminder import shift_for_label
 from src.settings import (
     WEEKDAY_KEYS, clamp_ui_scale, parse_hourly_rate, parse_reminder_minutes,
     resolve_calendar_id,
 )
-from src.time_utils import DAYS_DE, validate_entry, validate_period
+from src.time_utils import (
+    DAYS_DE, format_iso_date, format_iso_datetime, validate_entry, validate_period,
+)
 from src.updater import frequency_for_label
 
 WSL_KEYS = (
@@ -314,3 +324,127 @@ def token_label_view(*, token_known: bool, notice: str | None) -> tuple[str, str
     if notice:
         return notice, "ok"
     return (TOKEN_MASK if token_known else TOKEN_MISSING), "muted"
+
+
+# --- Mobil-Tab (#221) ---------------------------------------------------------------------------
+
+AUTO_ADDRESS = "Automatisch"
+
+FIRST_ENABLE_NOTICE = (
+    "Die Handy-Erfassung öffnet einen Server in Ihrem WLAN/LAN. Die Verbindung zum Handy "
+    "ist unverschlüsselt: wer im selben Netz mitlauscht, kann das Gerätetoken mitlesen "
+    "und damit Arbeitszeiten lesen und eintragen. Nutzen Sie die Funktion nur in einem "
+    "vertrauenswürdigen Netz.\\n\\n"
+    "Die App muss laufen, damit sich das Handy abgleichen kann; ein Autostart "
+    "(Tab „App“) wird empfohlen. Unter Windows fragt die Firewall beim ersten Mal, ob "
+    "die App im privaten Netz Verbindungen annehmen darf.\\n\\n"
+    "Jetzt einschalten?")
+
+_MOBILE_ERRORS = {
+    MOBILE_INVALID_PORT: "Der Port ist ungültig (1024 bis 65535).",
+    REASON_NO_ADDRESS: ("Keine passende Netzwerkadresse gefunden. Mit einem WLAN oder "
+                        "LAN verbinden und die Einstellungen erneut speichern."),
+    REASON_ADDRESS_GONE: ("Die gewählte Adresse {address} gibt es nicht mehr (anderes "
+                          "Netz?). Bitte eine Adresse wählen oder „Automatisch“ einstellen."),
+    MOBILE_PORT_IN_USE: "Port {port} ist belegt. Einen anderen Port wählen.",
+}
+
+
+def address_options(candidates: list[str]) -> list[str]:
+    """Die Auswahl der Adress-Combobox: „Automatisch“ (der Vorschlag der aktiven
+    Verbindung) und die gefundenen LAN-Adressen."""
+    return [AUTO_ADDRESS, *candidates]
+
+
+def address_from_choice(choice: str) -> str:
+    """Der Settings-Wert zu einer Auswahl: „Automatisch“ ist die leere Adresse."""
+    return "" if choice == AUTO_ADDRESS else choice
+
+
+def address_to_choice(address: str) -> str:
+    return address or AUTO_ADDRESS
+
+
+def validate_mobile(raw: Mapping[str, Any]) -> tuple[str, str] | None:
+    """Port und Adresse müssen gültig sein — auch bei ausgeschaltetem Schalter, damit ein
+    kaputter Wert nicht erst beim späteren Einschalten auffällt."""
+    if parse_port(raw["mobile_port"]) is None:
+        return ("Ungültiger Port",
+                f"Der Port muss eine Zahl zwischen {MIN_PORT} und {MAX_PORT} sein.")
+    address = address_from_choice(str(raw["mobile_address"]))
+    if address and not is_lan_address(address):
+        return ("Ungültige Adresse",
+                "Die Adresse muss eine private IPv4-Adresse sein (10.x.x.x, 172.16–31.x.x "
+                "oder 192.168.x.x) oder „Automatisch“.")
+    return None
+
+
+def mobile_updates(raw: Mapping[str, Any]) -> dict[str, Any]:
+    """Settings-Werte des Mobil-Tabs. Tolerant wie die anderen Tabs: ein ungültiger Port
+    fällt auf den Standard (`validate_mobile` fängt ihn vorher)."""
+    return {
+        "mobile_enabled": bool(raw["mobile_enabled"]),
+        "mobile_port": parse_port(raw["mobile_port"]) or MOBILE_DEFAULT_PORT,
+        "mobile_address": address_from_choice(str(raw["mobile_address"])),
+    }
+
+
+def mobile_status_view(status: MobileStatus) -> tuple[str, str]:
+    """(Text, Art) für die Statuszeile; Art ist `ok`, `muted` oder `error`."""
+    if status.state == MOBILE_RUNNING:
+        return f"Läuft auf {status.address}:{status.port}", "ok"
+    if status.state == MOBILE_STARTING:
+        return "Startet …", "muted"
+    if status.state == MOBILE_ERROR:
+        text = _MOBILE_ERRORS.get(status.reason,
+                                  "Start fehlgeschlagen. Details im Protokoll.")
+        return text.format(address=status.address, port=status.port), "error"
+    return "Aus.", "muted"
+
+
+def device_row_text(record: Mapping[str, Any], now: str) -> str:
+    """Eine Zeile der Geräteliste: Name, zuletzt gesehen, gültig bis; widerrufen und
+    abgelaufen sind markiert."""
+    name = str(record.get("name") or record.get("id") or "?")
+    mark = ""
+    if record.get("revoked"):
+        mark = "  (widerrufen)"
+    elif str(record.get("expires_at") or "9999") <= now:
+        mark = "  (abgelaufen)"
+    seen = format_iso_datetime(record.get("last_seen"))
+    until = format_iso_date(record.get("expires_at"))
+    return f"{name}{mark}  —  zuletzt {seen}, gültig bis {until}"
+
+
+def format_countdown(seconds: int) -> str:
+    """`299` → `4:59`. Negative Werte zeigen `0:00`."""
+    seconds = max(0, int(seconds))
+    return f"{seconds // 60}:{seconds % 60:02d}"
+
+
+@dataclass(frozen=True)
+class PairChanges:
+    added: list[dict[str, Any]]
+    replaced: list[dict[str, Any]]      # vorhandene, nicht widerrufene Geräte mit neuem Token
+
+    @property
+    def empty(self) -> bool:
+        return not self.added and not self.replaced
+
+
+def pair_changes(before: list[dict[str, Any]], after: list[dict[str, Any]]) -> PairChanges:
+    """Was ein Koppeln am Gerätebestand geändert hat. Neu = unbekannte ID **oder** ein
+    widerrufenes Gerät, das ein neues Token bekam. `replaced` = ein vorhandenes, nicht
+    widerrufenes Gerät bekam ein neues Token (jemand hat sich mit seiner `device_id`
+    gekoppelt): der Besitzer soll das sehen. Erneuerungen beim Abgleich fallen nicht
+    darunter — der Koppel-Dialog schaut nur, solange sein Code offen ist."""
+    known = {record["id"]: record for record in before}
+    added: list[dict[str, Any]] = []
+    replaced: list[dict[str, Any]] = []
+    for record in after:
+        old = known.get(record["id"])
+        if old is None:
+            added.append(record)
+        elif old.get("token_hash") != record.get("token_hash"):
+            (added if old.get("revoked") else replaced).append(record)
+    return PairChanges(added, replaced)

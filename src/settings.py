@@ -70,6 +70,9 @@ DEFAULTS = {
     "mobile_enabled": False,
     "mobile_port": 17654,
     "mobile_address": "",
+    # Der Hinweis beim ersten Einschalten (unverschlüsselte Verbindung, vertrauenswürdiges
+    # Netz, App muss laufen) wurde bestätigt. Gerätelokal wie die übrigen mobile_*.
+    "mobile_notice_accepted": False,
     # Alle drei gerätelokal wie auto_update_enabled: ein Pfad aus dem %TEMP%
     # eines anderen Rechners wäre dort sinnlos und im schlimmsten Fall
     # irreführend. `pending_update_release_id` sagt, zu welchem Release die
