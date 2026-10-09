@@ -8,6 +8,7 @@ import os
 import platform
 import subprocess
 import sys
+import threading
 import time
 from src.time_utils import (
     format_iso_date, get_week_dates,
@@ -18,6 +19,10 @@ from src.version import VERSION, installed_release_id, version_label
 from src.background_tasks import BackgroundTaskRunner
 from src.api_routes import ApiContext
 from src.api_service import ApiService, RefreshCoalescer
+from src.devices import default_device_name
+from src.mobile_pairing import PairingSession
+from src.mobile_routes import MobileContext
+from src.mobile_service import MobileService
 from src.weekly_limit import format_limit_warnings
 from src.grid_renderer import GridRenderer
 from src.paths import get_resource_path, relaunch_command, relaunch_env
@@ -66,7 +71,7 @@ class App:
     def __init__(self, root, storage, settings, base_path=".", conflicts_store=None,
                  reservation_store=None, single_instance=None,
                  data_lock=None, sync_guard=None, webhook_store=None,
-                 vacation_store=None, smtp_store=None):
+                 vacation_store=None, smtp_store=None, mobile_store=None):
         self.root = root
         self.storage = storage
         self.settings = settings
@@ -131,6 +136,23 @@ class App:
                        vacation_store=self.vacation_store,
                        on_change=self._api_refresh.request),
             run=self._bg.run)
+        # Handy-Instanz (#221): gleiche Bauart wie die lokale API, aber im LAN und mit
+        # Gerätetoken. Ohne Store (Tests, Alt-Aufrufer) gibt es sie nicht. Teilt sich
+        # den Coalescer: ein Schwung Abgleiche löst nur EINEN Refresh aus. Der Dienst
+        # startet nur bei `mobile_enabled`.
+        self._mobile = None
+        if mobile_store is not None:
+            self._mobile = MobileService(
+                self.settings,
+                MobileContext(
+                    pairing=PairingSession(), devices=mobile_store,
+                    devices_lock=threading.RLock(), storage=self.storage,
+                    settings=self.settings, conflicts_store=self.conflicts_store,
+                    base=self.base_path,
+                    desktop_name=lambda: self.settings.get("device_name") or default_device_name(),
+                    data_lock=self._data_lock, sync_guard=self._sync_guard,
+                    on_change=self._api_refresh.request),
+                run=self._bg.run)
         self._renderer = GridRenderer(
             self.root, self.storage, self.settings, self.reservation_store,
             self.conflicts_store, self._open_dialog, self._delete_day,
@@ -183,6 +205,7 @@ class App:
         self._apply_reminder_setting()
         self._apply_send_reminder_setting()
         self._apply_api_setting()
+        self._apply_mobile_setting()
         self.root.bind("<Left>", lambda e: self._navigate(-1))
         self.root.bind("<Right>", lambda e: self._navigate(+1))
         # Tab schaltet zwischen Monat- und Wochenansicht. "break" verhindert
@@ -529,6 +552,7 @@ class App:
             self._apply_reminder_setting()
             self._apply_send_reminder_setting()
             self._apply_api_setting()
+            self._apply_mobile_setting()
             # Nach jeder Settings-Speicherung den sender_email-Fetch nochmal
             # anstoßen. Damit erscheint die Absender-Adresse automatisch nach
             # Sync-Aktivierung (frischer Token mit userinfo.email-Scope), ohne
@@ -550,6 +574,7 @@ class App:
             smtp_store=self._smtp_store,
             on_vacation_display_change=self._refresh,
             api_service=self._api,
+            mobile_service=self._mobile,
             initial_tab=initial_tab,
             auto_updater=self._updates.auto_updater,
             on_request_removal=self.remove_application,
@@ -688,6 +713,12 @@ class App:
         """Bringt die lokale API in den Zustand der Settings (#92). Die Arbeit
         läuft im Worker (Token-Laden blockiert); hier wird nur angestoßen."""
         self._api.apply()
+
+    def _apply_mobile_setting(self):
+        """Bringt die Handy-Instanz in den Zustand der Settings (#221). Die Arbeit läuft
+        im Worker (Adressauflösung kann blockieren); hier wird nur angestoßen."""
+        if self._mobile is not None:
+            self._mobile.apply()
 
     def _apply_send_reminder_setting(self):
         """Startet/stoppt den Sende-Reminder-Poll abhängig vom Setting.
@@ -957,6 +988,8 @@ class App:
         # Zuerst die API: eine schreibende Route darf nach dem Push-Snapshot keine
         # Daten mehr ändern, die dann nie mehr hochgeladen würden.
         self._api.shutdown()
+        if self._mobile is not None:
+            self._mobile.shutdown()
         self._sync.push_on_quit()
         if self._tray is not None:
             self._tray.stop()
@@ -1009,6 +1042,8 @@ class App:
         # nach dem Aufräumen neu anlegen. `shutdown` sperrt weitere Starts;
         # ein laufender Worker wird unten von `wait_idle` abgewartet.
         self._api.shutdown()
+        if self._mobile is not None:
+            self._mobile.shutdown()
         if self._tray is not None:
             self._tray.stop()
         self._reminders.stop()
@@ -1067,6 +1102,8 @@ class App:
         # Auch der API-Port muss VOR dem Spawn frei sein, sonst findet die neue
         # Instanz ihn belegt und die API bleibt dort aus.
         self._api.shutdown()
+        if self._mobile is not None:
+            self._mobile.shutdown()
         if self._single_instance is not None:
             self._single_instance.release()
         # Port VOR dem Spawn freigeben, sonst fände die neue Instanz ihn noch
@@ -1094,6 +1131,9 @@ class App:
             # Popen ist gescheitert, die App läuft weiter: die API zurückholen.
             self._api.reopen()
             self._api.apply()
+            if self._mobile is not None:
+                self._mobile.reopen()
+                self._mobile.apply()
             themed_showinfo(
                 self.root,
                 "Neustart nötig",
