@@ -23,7 +23,7 @@ body {
   padding-bottom: env(safe-area-inset-bottom);
 }
 #app { min-height: 100vh; display: flex; flex-direction: column; }
-main { flex: 1; padding: var(--gutter); padding-bottom: calc(var(--gutter) + 72px); max-width: 640px; width: 100%; margin: 0 auto; }
+main { flex: 1; padding: var(--gutter); padding-bottom: calc(var(--gutter) + 120px); max-width: 640px; width: 100%; margin: 0 auto; }
 h1, h2 { font-size: 1.15rem; margin: 0 0 8px; }
 p { margin: 0 0 12px; }
 .muted { color: var(--muted); }
@@ -85,7 +85,9 @@ form .row > div { flex: 1; min-width: 0; }
   padding: 8px var(--gutter) calc(8px + env(safe-area-inset-bottom));
   background: #101a30; border-top: 1px solid #2a3a5a; display: flex; align-items: center; gap: 12px;
 }
-.statusbar .text { flex: 1; font-size: .85rem; min-width: 0; }
+.statusbar { flex-wrap: wrap; gap: 4px 12px; }
+.statusbar .text { flex: 1 1 100%; font-size: .85rem; min-width: 0; display: flex; flex-wrap: wrap; gap: 0 12px; }
+.statusbar button { flex: 1 1 110px; }
 .statusbar .online { color: var(--ok); } .statusbar .offline { color: var(--warn); }
 
 dialog {

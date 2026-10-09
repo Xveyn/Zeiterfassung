@@ -156,7 +156,7 @@ export function confirmDialog({ title, text, confirmLabel }, onConfirm) {
 export function conflictsDialog(conflicts, handlers) {
   const dialog = h('dialog', { 'aria-labelledby': 'conflicts-title' },
     h('h2', { id: 'conflicts-title' }, 'Konflikte'),
-    h('p', { class: 'muted' }, 'Beide Fassungen sind gespeichert. Gelöst wird am Desktop (Einstellungen → Google → „Konflikte ansehen“ oder Klick auf den Tag).'),
+    h('p', { class: 'muted' }, 'Beide Fassungen sind gespeichert. Gelöst wird am Desktop (Einstellungen → Google → „Konflikte ansehen“).'),
     conflicts.length === 0 && h('p', {}, 'Keine offenen Konflikte.'),
     conflicts.map((conflict) => h('section', {},
       h('h2', {}, conflict.dateLabel),
