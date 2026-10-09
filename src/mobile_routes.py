@@ -22,7 +22,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-from src import mobile_pairing
+from src import mobile_pairing, mobile_sync
 from src.api_auth import SCOPE_MOBILE, Denied, Principal, TokenVerifier, require_scope
 from src.api_entry_write import WriteError, load_json_body
 from src.api_routes import ApiRequest, ApiResponse, error_response
@@ -166,6 +166,48 @@ def _pair(request: ApiRequest, ctx: MobileContext, principal: Principal) -> ApiR
                              "protocol": PROTOCOL})
 
 
+def _notify(ctx: MobileContext) -> None:
+    try:
+        ctx.on_change()
+    except Exception:
+        # Der Abgleich ist angewendet und gespeichert; ein Fehler beim Neuzeichnen
+        # darf daraus keine 500 machen (das Handy wiederholte den Abgleich).
+        _log.exception("Handy-Abgleich: on_change fehlgeschlagen")
+
+
+def _sync(request: ApiRequest, ctx: MobileContext, principal: Principal) -> ApiResponse:
+    """Der Abgleich. Unter `devices_lock`: den Datensatz neu lesen (ein Widerruf kann
+    zwischen Prüfer und Handler liegen), `perform_sync`, danach Token erneuern und
+    `last_pull_at` speichern. Erneuert wird nur nach einem erfolgreichen Abgleich;
+    scheitert er, bleiben Token und `last_pull_at` unverändert."""
+    _no_query(request)
+    if not isinstance(principal, MobilePrincipal):
+        raise _MobileError(403, "insufficient_scope", "Dem Token fehlt die Berechtigung.")
+    _refuse_while_closing(ctx)
+    now = ctx.now()
+    parsed = mobile_sync.parse_request(request.body, now=now)
+    with ctx.devices_lock:
+        record = ctx.devices.get(principal.name)
+        if record is None or record.get("revoked"):
+            raise _MobileError(401, "token_revoked",
+                               "Das Token wurde widerrufen. Das Gerät muss neu gekoppelt werden.")
+        response = mobile_sync.perform_sync(
+            parsed, device_id=record["id"], device_name=record["name"],
+            last_pull_at=record["last_pull_at"], categories=category_names(ctx.settings),
+            storage=ctx.storage, settings=ctx.settings, conflicts_store=ctx.conflicts_store,
+            base=ctx.base, now=now, today=ctx.today(), data_lock=ctx.data_lock,
+            sync_guard=ctx.sync_guard)
+        renewed, token = mobile_pairing.renew(record, now, keep_previous=principal.via_previous)
+        renewed["last_pull_at"] = response["last_pull_at"]
+        ctx.devices.save(renewed)
+    response["token"] = token
+    response["expires_at"] = renewed["expires_at"]
+    _notify(ctx)
+    return ApiResponse(200, response)
+
+
+
+
 @dataclass(frozen=True)
 class _Route:
     method: str
@@ -178,6 +220,7 @@ ROUTES: tuple[_Route, ...] = (
     _Route("POST", "/v1/pair", _pair, public=True),
     _Route("GET", "/v1/ping", _ping),
     _Route("GET", "/v1/categories", _categories),
+    _Route("POST", "/v1/sync", _sync),
 )
 
 

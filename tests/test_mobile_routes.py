@@ -336,3 +336,201 @@ def test_pairing_is_refused_while_the_app_closes_and_keeps_the_code(env):
 def test_a_query_string_on_pair_is_rejected(env):
     response = call(env, "POST", "/v1/pair", body=pair_body("AAAA-AAAA"), query={"x": ["1"]})
     assert response.status == 400 and error_code(response) == "unknown_parameter"
+
+
+# --- sync ----------------------------------------------------------------------------------------------
+
+SLOT = {"start": "08:00", "end": "12:00", "pause": 0, "kategorie": "Projekt"}
+
+
+def sync_body(env, entries=None, **over):
+    doc = {"protocol": 1, "client_time": env.clock["now"], "last_pull_at": "",
+           "entries": entries or {}}
+    doc.update(over)
+    return json.dumps(doc).encode()
+
+
+def day(modified_at="2026-10-07T18:30:00Z", slots=(SLOT,), deleted=False):
+    return {"slots": list(slots), "modified_at": modified_at, "deleted": deleted}
+
+
+def sync(env, token, entries=None, **over):
+    return call(env, "POST", "/v1/sync", body=sync_body(env, entries, **over), token=token)
+
+
+def test_a_sync_applies_the_days_and_renews_the_token(env):
+    record, token = add_device(env)
+
+    response = sync(env, token, {"2026-10-07": day()})
+
+    assert response.status == 200
+    body = response.body
+    assert body["protocol"] == 1 and body["server_time"] == NOW and body["last_pull_at"] == NOW
+    assert body["entries"]["2026-10-07"]["device_id"] == PHONE
+    assert env.ctx.storage.get_all_raw()["2026-10-07"]["device_id"] == PHONE
+    assert body["token"] != token and body["expires_at"] == "2026-11-07T12:00:00Z"
+    stored = env.ctx.devices.get(PHONE)
+    assert stored["token_hash"] == mobile_pairing.hash_token(body["token"])
+    assert stored["last_pull_at"] == NOW and stored["last_seen"] == NOW
+    assert env.changes == [1]
+
+
+def test_the_old_token_works_for_ten_minutes_after_the_renewal_and_the_new_one_always(env):
+    _record, old = add_device(env)
+    new = sync(env, old).body["token"]
+
+    env.clock["now"] = "2026-10-08T12:10:00Z"
+    inside = principal_for(env, old)
+    env.clock["now"] = "2026-10-08T12:10:01Z"
+
+    assert isinstance(inside, MobilePrincipal) and inside.via_previous is True
+    assert principal_for(env, old) is None
+    assert isinstance(principal_for(env, new), MobilePrincipal)
+
+
+def test_a_lost_answer_twice_does_not_lock_the_phone_out(env):
+    _record, t1 = add_device(env)
+    sync(env, t1)                                            # Antwort mit t2 geht verloren
+    env.clock["now"] = "2026-10-08T12:05:00Z"
+
+    second = sync(env, t1)                                   # Handy sendet weiter mit t1
+    t3 = second.body["token"]                                # auch diese Antwort geht verloren
+    env.clock["now"] = "2026-10-08T12:06:00Z"
+
+    assert second.status == 200
+    assert isinstance(principal_for(env, t1), MobilePrincipal)      # t1 gilt noch
+    assert isinstance(principal_for(env, t3), MobilePrincipal)
+
+
+def test_a_rejected_sync_neither_renews_the_token_nor_moves_last_pull_at(env):
+    record, token = add_device(env)
+    before = env.ctx.devices.get(PHONE)
+
+    bad_json = call(env, "POST", "/v1/sync", body=b"{kaputt", token=token)
+    skew = sync(env, token, client_time="2026-10-08T13:00:00Z")
+    invalid = sync(env, token, {"2026-10-07": day(slots=())})
+
+    assert (bad_json.status, skew.status, invalid.status) == (400, 409, 422)
+    assert error_code(skew) == "clock_skew" and error_code(invalid) == "invalid_entry"
+    assert env.ctx.devices.get(PHONE) == before
+    assert env.ctx.storage.get_all_raw() == {} and env.changes == []
+
+
+def test_a_busy_sync_guard_is_503_and_keeps_the_token(env):
+    _record, token = add_device(env)
+    before = env.ctx.devices.get(PHONE)
+    guard = threading.Lock()
+    guard.acquire()
+    busy = mobile_routes.MobileContext(**{**env.ctx.__dict__, "sync_guard": guard})
+
+    response = mobile_routes.dispatch(
+        ApiRequest("POST", "/v1/sync", {}, sync_body(env)), busy, principal_for(env, token))
+
+    assert response.status == 503 and error_code(response) == "busy"
+    assert env.ctx.devices.get(PHONE) == before
+
+
+def test_a_device_revoked_between_the_check_and_the_handler_is_refused(env):
+    record, token = add_device(env)
+    principal = principal_for(env, token)                      # der Prüfer war schon durch
+    env.ctx.devices.save(mobile_pairing.revoke(record))
+
+    response = call(env, "POST", "/v1/sync", body=sync_body(env, {"2026-10-07": day()}),
+                    principal=principal)
+
+    assert response.status == 401 and error_code(response) == "token_revoked"
+    assert env.ctx.storage.get_all_raw() == {}
+
+
+def test_a_sync_is_refused_while_the_app_closes(env):
+    _record, token = add_device(env)
+    closing = mobile_routes.MobileContext(**{**env.ctx.__dict__, "closing": lambda: True})
+
+    response = mobile_routes.dispatch(
+        ApiRequest("POST", "/v1/sync", {}, sync_body(env)), closing, principal_for(env, token))
+
+    assert response.status == 503 and error_code(response) == "shutting_down"
+    assert env.ctx.storage.get_all_raw() == {}
+
+
+def test_last_pull_at_is_saved_with_the_apply_so_a_repeated_first_sync_adds_no_conflict(env):
+    # Vertrag aus #254. Erstabgleich: der Desktop kennt den Tag anders.
+    env.ctx.storage.apply_merge({"2026-10-07": {
+        "slots": [{"start": "09:00", "end": "13:00", "pause": 0, "kategorie": ""}],
+        "modified_at": "2026-10-07T20:00:00Z", "device_id": "DESK", "deleted": False}})
+    _record, token = add_device(env)
+    entries = {"2026-10-07": day(modified_at="2026-10-07T18:30:00Z")}
+
+    first = sync(env, token, entries)
+    assert env.ctx.devices.get(PHONE)["last_pull_at"] == NOW
+    again = sync(env, token, entries)                          # Antwort ging verloren, gleicher Request
+
+    assert first.status == again.status == 200
+    assert len(env.ctx.conflicts_store.get_all()) == 1
+
+
+def test_a_failing_on_change_does_not_turn_a_saved_sync_into_a_500(env, caplog):
+    _record, token = add_device(env)
+
+    def boom():
+        raise RuntimeError("UI weg")
+    failing = mobile_routes.MobileContext(**{**env.ctx.__dict__, "on_change": boom})
+
+    response = mobile_routes.dispatch(
+        ApiRequest("POST", "/v1/sync", {}, sync_body(env, {"2026-10-07": day()})), failing,
+        principal_for(env, token))
+
+    assert response.status == 200 and "2026-10-07" in env.ctx.storage.get_all_raw()
+
+
+def test_syncing_does_not_touch_other_devices(env):
+    _a, token_a = add_device(env, "phone-aaaa", "A")
+    b, _token_b = add_device(env, "phone-bbbb", "B")
+
+    sync(env, token_a, {"2026-10-07": day()})
+
+    assert env.ctx.devices.get("phone-bbbb") == b
+
+
+def test_the_response_contains_the_new_token_but_neither_the_old_one_nor_any_hash(env):
+    record, token = add_device(env)
+
+    body = sync(env, token, {"2026-10-07": day()}).body
+    text = json.dumps(body)
+
+    assert body["token"] in text and token not in text
+    assert record["token_hash"] not in text and mobile_pairing.hash_token(body["token"]) not in text
+
+
+def test_two_concurrent_syncs_of_one_device_never_lose_a_renewal(env):
+    _record, token = add_device(env)
+    principal = principal_for(env, token)
+    results = []
+
+    def run():
+        results.append(call(env, "POST", "/v1/sync", body=sync_body(env), principal=principal))
+
+    threads = [threading.Thread(target=run) for _ in range(8)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    tokens = [r.body["token"] for r in results]
+    hashes = {mobile_pairing.hash_token(t) for t in tokens}
+    stored = env.ctx.devices.get(PHONE)
+    assert all(r.status == 200 for r in results) and len(set(tokens)) == 8
+    # Die Abgleiche laufen nacheinander durch den Lock: gespeichert ist das Token des
+    # zuletzt fertigen, und das vorherige ist das des davor — nie ein veralteter Stand.
+    assert stored["token_hash"] in hashes and stored["previous_token_hash"] in hashes
+
+
+
+def test_the_route_table_has_exactly_the_four_routes(env):
+    assert mobile_routes.methods_for_path("/v1/pair") == frozenset({"POST"})
+    assert mobile_routes.methods_for_path("/v1/ping") == frozenset({"GET"})
+    assert mobile_routes.methods_for_path("/v1/categories") == frozenset({"GET"})
+    assert mobile_routes.methods_for_path("/v1/sync") == frozenset({"POST"})
+    assert mobile_routes.methods_for_path("/v1/entries") == frozenset()
+    assert mobile_routes.routed_methods() == frozenset({"GET", "POST"})
+    assert mobile_routes.surface(env.ctx).public == frozenset({("POST", "/v1/pair")})
