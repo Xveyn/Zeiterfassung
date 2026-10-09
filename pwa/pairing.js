@@ -69,6 +69,14 @@ export function parsePairFragment(hash) {
   return { host: target.host, port: target.port, code };
 }
 
+/** Gescannter QR-Text (der volle Link) → `{host, port, code}` oder `null`. Nur das Fragment
+ *  zählt; Schema, Host und Pfad der Seite sind egal (Dev-Server, Pages, spätere Umzüge). */
+export function parseQrText(text) {
+  if (typeof text !== 'string' || text.length > 512) return null;
+  const hash = text.indexOf('#');
+  return hash === -1 ? null : parsePairFragment(text.slice(hash));
+}
+
 export function baseUrl({ host, port }) {
   return `http://${host}:${port}`;
 }
