@@ -521,8 +521,10 @@ def test_two_concurrent_syncs_of_one_device_never_lose_a_renewal(env):
     stored = env.ctx.devices.get(PHONE)
     assert all(r.status == 200 for r in results) and len(set(tokens)) == 8
     # Die Abgleiche laufen nacheinander durch den Lock: gespeichert ist das Token des
-    # zuletzt fertigen, und das vorherige ist das des davor — nie ein veralteter Stand.
-    assert stored["token_hash"] in hashes and stored["previous_token_hash"] in hashes
+    # zuletzt fertigen. Alle acht kamen mit dem Ausgangstoken, dessen Antworten (T1 …)
+    # nie ausgeliefert sein müssen — also bleibt der Ausgangstoken das vorherige.
+    assert stored["token_hash"] in hashes
+    assert stored["previous_token_hash"] == mobile_pairing.hash_token(token)
 
 
 
@@ -534,3 +536,44 @@ def test_the_route_table_has_exactly_the_four_routes(env):
     assert mobile_routes.methods_for_path("/v1/entries") == frozenset()
     assert mobile_routes.routed_methods() == frozenset({"GET", "POST"})
     assert mobile_routes.surface(env.ctx).public == frozenset({("POST", "/v1/pair")})
+
+
+def test_a_request_verified_before_a_concurrent_renewal_still_keeps_the_old_token_alive(env):
+    # Zwei Anfragen mit T0 werden geprüft, bevor die erste speichert (Client-Timeout,
+    # Wiederholung). Die zweite sieht beim Prüfen "aktuell", ist beim Speichern aber das
+    # vorherige Token — und darf das noch nie ausgelieferte T1 nicht verdrängen.
+    _record, t0 = add_device(env)
+    first, second = principal_for(env, t0), principal_for(env, t0)
+    assert not first.via_previous and not second.via_previous
+
+    call(env, "POST", "/v1/sync", body=sync_body(env), principal=first)      # Antwort geht verloren
+    call(env, "POST", "/v1/sync", body=sync_body(env), principal=second)     # Antwort geht verloren
+
+    assert isinstance(principal_for(env, t0), MobilePrincipal)               # T0 gilt noch
+
+
+def test_a_request_whose_token_was_replaced_by_a_new_pairing_is_refused(env):
+    record, token = add_device(env)
+    stale = principal_for(env, token)
+    env.ctx.pairing.open()
+    fresh, _new_token = mobile_pairing.issue_device(PHONE, "Pixel neu", NOW, record)
+    env.ctx.devices.save(fresh)                                  # erneut gekoppelt: neues Token
+
+    response = call(env, "POST", "/v1/sync", body=sync_body(env, {"2026-10-07": day()}),
+                    principal=stale)
+
+    assert response.status == 401 and error_code(response) == "unauthorized"
+    assert env.ctx.storage.get_all_raw() == {}
+    assert env.ctx.devices.get(PHONE)["previous_token_hash"] == ""     # nichts in die Karenz geschoben
+
+
+def test_a_request_whose_token_expired_before_the_handler_ran_is_refused(env):
+    _record, token = add_device(env)
+    principal = principal_for(env, token)
+    env.clock["now"] = "2026-11-07T12:00:00Z"                    # genau expires_at
+
+    response = call(env, "POST", "/v1/sync", body=sync_body(env, {"2026-10-07": day()}),
+                    principal=principal)
+
+    assert response.status == 401 and error_code(response) == "token_expired"
+    assert env.ctx.storage.get_all_raw() == {}

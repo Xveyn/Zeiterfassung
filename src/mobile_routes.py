@@ -18,7 +18,7 @@ from __future__ import annotations
 import datetime
 import logging
 import threading
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
@@ -175,6 +175,26 @@ def _notify(ctx: MobileContext) -> None:
         _log.exception("Handy-Abgleich: on_change fehlgeschlagen")
 
 
+def _still_valid(principal: MobilePrincipal, record: Mapping[str, Any], now: str) -> bool:
+    """Das Token, mit dem diese Anfrage kam, gegen den **frisch gelesenen** Datensatz.
+    Der Prüfer lief vor dem Handler und ohne Lock: dazwischen kann eine Erneuerung, ein
+    erneutes Koppeln oder der Ablauf liegen. Liefert, ob das Token jetzt das *vorherige*
+    ist (dann bleibt es beim Erneuern erhalten); wirft, wenn es weder aktuell noch
+    vorherig ist oder abgelaufen. Der Hash stammt aus dem Datensatz, den der Prüfer
+    seinerzeit zugeordnet hat — das Token selbst kennt der Handler nicht."""
+    presented = (principal.record["previous_token_hash"] if principal.via_previous
+                 else principal.record["token_hash"])
+    if str(record["expires_at"]) <= now:
+        raise _MobileError(401, "token_expired",
+                           "Das Token ist abgelaufen. Das Gerät muss neu gekoppelt werden.")
+    if presented == record["token_hash"]:
+        return False
+    if (presented and presented == record["previous_token_hash"]
+            and str(record["previous_valid_until"]) >= now):
+        return True
+    raise _MobileError(401, "unauthorized", "Das Token ist nicht mehr gültig.")
+
+
 def _sync(request: ApiRequest, ctx: MobileContext, principal: Principal) -> ApiResponse:
     """Der Abgleich. Unter `devices_lock`: den Datensatz neu lesen (ein Widerruf kann
     zwischen Prüfer und Handler liegen), `perform_sync`, danach Token erneuern und
@@ -191,13 +211,14 @@ def _sync(request: ApiRequest, ctx: MobileContext, principal: Principal) -> ApiR
         if record is None or record.get("revoked"):
             raise _MobileError(401, "token_revoked",
                                "Das Token wurde widerrufen. Das Gerät muss neu gekoppelt werden.")
+        keep_previous = _still_valid(principal, record, now)
         response = mobile_sync.perform_sync(
             parsed, device_id=record["id"], device_name=record["name"],
             last_pull_at=record["last_pull_at"], categories=category_names(ctx.settings),
             storage=ctx.storage, settings=ctx.settings, conflicts_store=ctx.conflicts_store,
             base=ctx.base, now=now, today=ctx.today(), data_lock=ctx.data_lock,
             sync_guard=ctx.sync_guard)
-        renewed, token = mobile_pairing.renew(record, now, keep_previous=principal.via_previous)
+        renewed, token = mobile_pairing.renew(record, now, keep_previous=keep_previous)
         renewed["last_pull_at"] = response["last_pull_at"]
         ctx.devices.save(renewed)
     response["token"] = token
