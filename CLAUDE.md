@@ -807,10 +807,11 @@ Regeln:
   Eintragszelle auf Urlaubs-Untergrund weiterhin (s. nächster Punkt).
 - **Trotzdem gewinnt der Urlaub auch in der Abrechnung: `cap_by_worktime`.**
   Die Sperre oben sitzt an den **UI-Eingängen**, nicht im Store — `Storage`
-  kennt den Urlaub nicht. Zwei Wege schreiben deshalb weiterhin Ist-Zeit auf
+  kennt den Urlaub nicht. Drei Wege schreiben deshalb weiterhin Ist-Zeit auf
   einen Urlaubstag: der **Import** geteilter Arbeitszeiten (der Absender
-  kennt den Urlaub des Empfängers nicht, Urlaub steht nicht im Share-Doc)
-  und der **Drive-Sync** eines zweiten Geräts (Urlaub ist gerätelokal). Das
+  kennt den Urlaub des Empfängers nicht, Urlaub steht nicht im Share-Doc),
+  der **Drive-Sync** eines zweiten Geräts (Urlaub ist gerätelokal) und der
+  **Abgleich mit dem Handy** (`mobile_sync`; das Handy kennt keinen Urlaub). Das
   an diesen Stellen zu verbieten hieße, in einen LWW-Merge eine Ablehnung
   einzubauen — LWW hat dafür kein Konzept. Also wird der Zustand
   **behandelt statt verhindert**: `vacations.cap_by_worktime` kappt die

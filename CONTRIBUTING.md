@@ -216,7 +216,7 @@ cd pwa && node --test
 
 Die JSON-Beispiele in `pwa/test/fixtures/` sind der Vertrag zum Python-Server: Dieselben Dateien lesen die JS-Tests und `tests/test_mobile_contract.py`. Ändert sich Request, Response oder ein Fehlercode des Servers, ändern sich die Beispiele mit — sonst wird einer der beiden Tests rot.
 
-Zum Ausprobieren im Browser startet `python scripts/pwa_devserver.py` die echte Handy-Instanz der App und dazu `pwa/` auf `http://localhost:8099/`; er druckt einen Koppel-Link mit frischem Code. Der Koppel-Link akzeptiert nur private IPv4-Adressen, starte ihn also mit `--address <LAN-IP>` (nicht `127.0.0.1`). Der Service Worker cached im Dev dauerhaft (#272): nach Änderungen an `pwa/` in den Browser-Werkzeugen den Worker abmelden und die Caches leeren.
+Zum Ausprobieren im Browser startet `python scripts/pwa_devserver.py` die echte Handy-Instanz der App und dazu `pwa/` auf `http://localhost:8099/`; er druckt einen Koppel-Link mit frischem Code. Der Koppel-Link akzeptiert nur private IPv4-Adressen: Standard ist die erste gefundene LAN-Adresse; fällt der Server auf `127.0.0.1` zurück (kein LAN), startest du ihn mit `--address <LAN-IP>`. Der Service Worker cached im Dev dauerhaft (#272): nach Änderungen an `pwa/` in den Browser-Werkzeugen den Worker abmelden und die Caches leeren.
 
 Veröffentlicht wird `pwa/` von `.github/workflows/pages.yml` (Details in der `CLAUDE.md`).
 

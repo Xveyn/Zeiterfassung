@@ -74,7 +74,7 @@ Desktop-App zur Erfassung von Arbeitszeiten: im Kern Kalenderansicht und PDF-Ber
 ### App & Umgebung
 
 - **Multi-Device-Sync** — Optionale Synchronisation von Zeiteinträgen und Mail-Vorlagen über Google Drive (`appDataFolder`), inklusive Konflikt-Auflösung wenn dasselbe Datum offline auf mehreren Geräten bearbeitet wurde — per Linksklick direkt auf den betroffenen Kalendertag oder gesammelt in den Einstellungen
-- **Einstellungen** — In Tabs gegliedert (Arbeitszeit / Erinnerungen / Versand / Google / API / App / Updates); Standardzeiten und Pause, Erinnerungen, E-Mail-Vorlagen mit Platzhaltern, Empfänger, SMTP-Konten und Webhooks, Update-Einstellungen
+- **Einstellungen** — In Tabs gegliedert (Arbeitszeit / Erinnerungen / Versand / Google / API / Mobil / App / Updates); Standardzeiten und Pause, Erinnerungen, E-Mail-Vorlagen mit Platzhaltern, Empfänger, SMTP-Konten und Webhooks, Update-Einstellungen
 - **Lokale HTTP-API** *(ab --VERSION--)* — Optional (Standard: aus): ein Server nur auf `127.0.0.1`, über den Skripte, Taskplaner oder andere Programme auf diesem Rechner deine Zeiten lesen und eintragen können — nur mit Token (Einstellungen → API), nie aus dem Browser; siehe [Lokale HTTP-API](#lokale-http-api-optional)
 - **Handy-Erfassung** *(ab --VERSION--)* — Optional (Standard: aus): Zeiten unterwegs auf dem Handy nachtragen — auch ohne Verbindung — und im selben WLAN mit der App abgleichen. Läuft als Web-App (PWA) im Browser des Handys (Chrome auf Android), gekoppelt per QR-Code; keine App-Installation aus einem Store. Die Verbindung ist **unverschlüsselt** (nur in vertrauenswürdigen Netzen nutzen), die Desktop-App muss laufen; siehe [Handy-Erfassung](#handy-erfassung-optional)
 - **Autostart & Einzelinstanz** — Optionaler minimierter Start bei Anmeldung (Windows, macOS, Linux); es läuft immer nur eine Instanz — ein zweiter Start holt das vorhandene Fenster nach vorn
@@ -368,16 +368,16 @@ Die API läuft nur, solange die App läuft (Autostart hilft), nimmt nur Anfragen
 
 **Voraussetzungen:** Handy und Rechner im selben WLAN, die Desktop-App läuft, auf dem Handy ein aktueller Chrome (Android). Die Web-App liegt unter `https://xveyn.github.io/Zeiterfassung/`; der Rechner stellt nur die Abgleich-Schnittstelle bereit, nicht die Seite.
 
-1. Einstellungen → **Mobil** → „Handy-Erfassung aktivieren". Beim ersten Einschalten erklärt die App die Folgen (unverschlüsselt, App muss laufen). Unter Windows fragt die Firewall nach; erlaube den Zugriff für **private** Netzwerke. Der Standard-Port ist 17654; die Adresse wählt die App aus deinen Netzwerken, du kannst sie ändern.
+1. Einstellungen → **Mobil** → „Handy-Erfassung aktivieren". Beim ersten Einschalten erklärt die App die Folgen (unverschlüsselt, App muss laufen). Unter Windows fragt die Firewall nach; erlaube den Zugriff für dein WLAN (stuft Windows es als „öffentlich“ ein, muss es dafür freigegeben sein — das wird vor dem Release auf echter Hardware geprüft). Der Standard-Port ist 17654; die Adresse wählt die App aus deinen Netzwerken („Automatisch“), du kannst sie fest vorgeben. Danach **speichern**: „Gerät koppeln …“ ist erst aktiv, wenn der Server läuft.
 2. **„Gerät koppeln …"** zeigt einen QR-Code und darunter Adresse und Code als Text. Scanne den QR-Code mit dem Handy (Kamera-App oder in der Web-App) oder tippe Adresse und Code ein. Der Code ist **fünf Minuten** gültig, gilt einmal und sperrt sich nach fünf Fehlversuchen.
 3. Auf dem Handy erscheint die Wochenansicht. Tag antippen → Zeiten, Pause und Kategorie eintragen → „Speichern". Der Abgleich läuft beim Start, beim Zurückkehren in die App, bei wiederhergestellter Verbindung, kurz nach dem Speichern und auf Knopfdruck („Jetzt abgleichen"). Die Statuszeile zeigt, ob Änderungen noch nicht übertragen sind.
-4. Zur Startseite hinzufügen (Chrome-Menü → „App installieren"): dann startet die Web-App wie eine App, auch offline.
+4. Optional zur Startseite hinzufügen (Chrome-Menü → „App installieren“): dann startet die Web-App wie eine App und lässt sich auch ohne Verbindung öffnen. Beides, Installation und QR-Scan in der Web-App, wird vor dem Release auf echten Geräten geprüft; die Kamera-App des Handys und die Eingabe von Adresse und Code funktionieren unabhängig davon.
 
-**Was abgeglichen wird:** nur Ist-Zeiten. Das Handy sieht die letzten 90 Tage und alle Kategorien; Einstellungen, Zugangsdaten, Reservierungen und Urlaub bleiben auf dem Rechner. Dasselbe Zusammenführen wie beim Drive-Sync: bei gleichzeitigen Änderungen am selben Tag gewinnt die neuere, und ein echter Konflikt landet in der Konfliktliste der App (Einstellungen → Google → „Konflikte ansehen"); die Web-App zeigt ihn nur an.
+**Was abgeglichen wird:** nur Ist-Zeiten. Das Handy sieht die letzten 90 Tage und alle Kategorien; Einstellungen, Zugangsdaten, Reservierungen und Urlaub bleiben auf dem Rechner. Dasselbe Zusammenführen wie beim Drive-Sync: hat nur eine Seite einen Tag geändert, gilt ihr Stand; haben beide ihn geändert, entsteht ein Konflikt in der Konfliktliste der App (Einstellungen → Google → „Konflikte ansehen (n)“, erscheint nur bei offenen Konflikten), bis zur Auflösung gilt der neuere Stand. Die Web-App zeigt Konflikte nur an.
 
-**Geräte verwalten:** Einstellungen → Mobil zeigt die gekoppelten Handys mit „zuletzt gesehen" und „gültig bis". Ein Gerät ist 30 Tage ab seiner letzten Nutzung gekoppelt, danach koppelst du neu (die Einträge auf dem Handy bleiben dabei erhalten). „Widerrufen" und „Alle widerrufen …" sperren Handys sofort aus.
+**Geräte verwalten:** Einstellungen → Mobil zeigt die gekoppelten Handys mit „zuletzt …“ und „gültig bis …“. Ein Gerät ist 30 Tage ab seinem letzten Abgleich gekoppelt, danach koppelst du neu (die Einträge auf dem Handy bleiben dabei erhalten). „Widerrufen" und „Alle widerrufen …" sperren Handys sofort aus.
 
-**Sicherheit in Kürze:** Die Verbindung im WLAN ist nicht verschlüsselt; wer im selben WLAN mitliest, kann das Gerätetoken sehen und damit Arbeitszeiten lesen und schreiben — nicht aber Einstellungen oder Zugangsdaten. Der Rechner speichert nur einen Hash des Tokens, lauscht nur auf der gewählten Adresse, und die Funktion lässt sich jederzeit ausschalten. Grenzen: [`docs/known-limitations.md`](docs/known-limitations.md#handy-erfassung-221-bekannte-grenzen).
+**Sicherheit in Kürze:** Die Verbindung im WLAN ist nicht verschlüsselt; wer im selben WLAN mitliest, kann das Gerätetoken sehen und damit Arbeitszeiten lesen und schreiben — nicht aber Einstellungen (außer der Kategorienliste) oder Zugangsdaten. Der Rechner speichert nur einen Hash des Tokens, lauscht nur auf der gewählten Adresse, und die Funktion lässt sich jederzeit ausschalten. Grenzen: [`docs/known-limitations.md`](docs/known-limitations.md#handy-erfassung-221-bekannte-grenzen).
 
 ## Einstellungen
 
@@ -446,7 +446,7 @@ Das meiste sind JSON-Dateien — `instance-secret`, `api-token` und das Protokol
 - **reservations.json** — Reservierungen, also zukünftige Soll-Zeiten (eigenes Konzept neben den Ist-Zeiten)
 - **vacations.json** — Urlaubszeiträume. Gerätelokal: reist bewusst **nicht** über den Drive-Sync mit
 - **settings.json** — Benutzereinstellungen
-- **conflicts.json** — Lokaler Spiegel der Sync-Konflikte (nur vorhanden bei aktivem Sync und mindestens einem registrierten Konflikt)
+- **conflicts.json** — Lokaler Spiegel der Sync-Konflikte (nur vorhanden bei mindestens einem registrierten Konflikt — aus dem Drive-Sync oder der Handy-Erfassung)
 - **sync_history.json** — Marker „wurde auf diesem Gerät je synchronisiert/abgeglichen"; schützt gelöschte Tage davor, nach einer beschädigten `settings.json` zurückzukehren
 - **sync-apply.journal** — Write-Ahead-Journal des Sync-Abgleichs; existiert nur währenddessen. Stürzt die App mittendrin ab, holt der nächste Start den Abgleich darüber nach
 - **logs/zeiterfassung.log** — Protokoll
