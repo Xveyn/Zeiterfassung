@@ -11,7 +11,8 @@ das frühere `save_settings` still auf einen Fallback setzte, tut es hier auch.
 """
 
 import datetime
-from collections.abc import Mapping
+import logging
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Any
 
@@ -28,6 +29,7 @@ from src.mobile_service import (
     STATE_ERROR as MOBILE_ERROR, STATE_RUNNING as MOBILE_RUNNING,
     STATE_STARTING as MOBILE_STARTING, MobileStatus,
 )
+from src.mobile_store import MobileStoreReadOnly
 from src.netinfo import is_lan_address
 from src.send_reminder import shift_for_label
 from src.settings import (
@@ -38,6 +40,8 @@ from src.time_utils import (
     DAYS_DE, format_iso_date, format_iso_datetime, validate_entry, validate_period,
 )
 from src.updater import frequency_for_label
+
+_log = logging.getLogger(__name__)
 
 WSL_KEYS = (
     "werkstudent_limit_enabled", "werkstudent_limit_start",
@@ -334,10 +338,10 @@ FIRST_ENABLE_NOTICE = (
     "Die Handy-Erfassung öffnet einen Server in Ihrem WLAN/LAN. Die Verbindung zum Handy "
     "ist unverschlüsselt: wer im selben Netz mitlauscht, kann das Gerätetoken mitlesen "
     "und damit Arbeitszeiten lesen und eintragen. Nutzen Sie die Funktion nur in einem "
-    "vertrauenswürdigen Netz.\\n\\n"
+    "vertrauenswürdigen Netz.\n\n"
     "Die App muss laufen, damit sich das Handy abgleichen kann; ein Autostart "
     "(Tab „App“) wird empfohlen. Unter Windows fragt die Firewall beim ersten Mal, ob "
-    "die App im privaten Netz Verbindungen annehmen darf.\\n\\n"
+    "die App im privaten Netz Verbindungen annehmen darf.\n\n"
     "Jetzt einschalten?")
 
 _MOBILE_ERRORS = {
@@ -434,10 +438,15 @@ class PairChanges:
 
 def pair_changes(before: list[dict[str, Any]], after: list[dict[str, Any]]) -> PairChanges:
     """Was ein Koppeln am Gerätebestand geändert hat. Neu = unbekannte ID **oder** ein
-    widerrufenes Gerät, das ein neues Token bekam. `replaced` = ein vorhandenes, nicht
-    widerrufenes Gerät bekam ein neues Token (jemand hat sich mit seiner `device_id`
-    gekoppelt): der Besitzer soll das sehen. Erneuerungen beim Abgleich fallen nicht
-    darunter — der Koppel-Dialog schaut nur, solange sein Code offen ist."""
+    widerrufenes Gerät, das neu gekoppelt wurde. `replaced` = ein vorhandenes, nicht
+    widerrufenes Gerät wurde neu gekoppelt (jemand hat sich mit seiner `device_id`
+    gekoppelt): der Besitzer soll das sehen.
+
+    Neu gekoppelt heißt: neues Token **und** leeres `previous_token_hash` — das setzt
+    `issue_device`. Jeder Abgleich erneuert das Token ebenfalls, lässt aber das alte als
+    `previous_token_hash` stehen (`renew`); das ist ein gewöhnlicher Abgleich eines
+    schon gekoppelten Handys und darf nie als Ersetzen gemeldet werden — der Dialog ist
+    oft offen, während ein anderes Handy gerade synct."""
     known = {record["id"]: record for record in before}
     added: list[dict[str, Any]] = []
     replaced: list[dict[str, Any]] = []
@@ -445,6 +454,43 @@ def pair_changes(before: list[dict[str, Any]], after: list[dict[str, Any]]) -> P
         old = known.get(record["id"])
         if old is None:
             added.append(record)
-        elif old.get("token_hash") != record.get("token_hash"):
+        elif (old.get("token_hash") != record.get("token_hash")
+              and not record.get("previous_token_hash")):
             (added if old.get("revoked") else replaced).append(record)
     return PairChanges(added, replaced)
+
+
+def pair_poll_view(*, active: bool, seconds_left: int, paired: bool) -> tuple[str, str]:
+    """Was der Koppel-Dialog bei einem Poll zeigt: `(Zustand, Text)` mit dem Zustand
+    `paired`, `counting` oder `expired`. Ein Koppeln geht vor: es kann in der letzten
+    Sekunde geschehen, wenn der Code schon nicht mehr aktiv ist. Solange der Code aktiv
+    ist, läuft der Countdown — auch bei `0:00` (`seconds_left` schneidet Sekundenbruchteile
+    ab), sonst bliebe „0:01“ stehen und „abgelaufen“ käme nie."""
+    if paired:
+        return "paired", ""
+    if active:
+        return "counting", f"Gültig noch {format_countdown(seconds_left)}"
+    return "expired", "Der Code ist abgelaufen — „Neuer Code“."
+
+
+def pair_poll_keeps_running(state: str) -> bool:
+    """Nur ein laufender Countdown braucht den nächsten Poll."""
+    return state == "counting"
+
+
+REVOKE_ERROR_TEXT = (
+    "Das Gerät konnte nicht widerrufen werden (Zugriffsrechte des Datenordners?). Es "
+    "bleibt weiterhin gekoppelt und kann sich abgleichen.")
+
+
+def revoke_outcome(action: Callable[[], Any]) -> dict[str, Any]:
+    """Der Worker hinter „Widerrufen": `{"ok": True, "result": …}` oder
+    `{"ok": False, "error": e}` für die erwarteten Schreibfehler (Schreibschutz,
+    `OSError`); alles andere ist ein Bug und fliegt durch. Ohne diese Hülle ruft der
+    Runner bei einer Ausnahme `on_done` nie, und der Reiter bliebe gesperrt, ohne dass
+    der Nutzer erfährt, dass das Gerät noch aktiv ist."""
+    try:
+        return {"ok": True, "result": action()}
+    except (MobileStoreReadOnly, OSError) as exc:
+        _log.warning("Widerruf fehlgeschlagen", exc_info=True)
+        return {"ok": False, "error": exc}

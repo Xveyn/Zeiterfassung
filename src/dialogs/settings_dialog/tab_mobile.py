@@ -15,16 +15,16 @@ App muss laufen); erst die Zustimmung wird gemerkt (`mobile_notice_accepted`).
 import tkinter as tk
 
 from src import netinfo
-from src.dialogs.mobile_pair_dialog import open_pair_dialog
 from src.dialogs.settings_dialog.fields import FieldSet
 from src.dialogs.settings_dialog.form_model import SaveOutcome
 from src.dialogs.settings_dialog.tab_rules import (
-    FIRST_ENABLE_NOTICE, address_options, address_to_choice, device_row_text,
-    mobile_status_view, mobile_updates, validate_mobile,
+    FIRST_ENABLE_NOTICE, REVOKE_ERROR_TEXT, address_options, address_to_choice,
+    device_row_text, mobile_status_view, mobile_updates, revoke_outcome, validate_mobile,
 )
 from src.theme import (
     ACCENT, BG, ENTRY_BG, FONT, STATUS_OK, STATUS_WARN, TEXT, TEXT_MUTED, Form, dark_combo,
     dark_entry, empty_state, px, set_secondary_button_enabled, themed_askyesno,
+    themed_showerror,
 )
 from src.time_utils import utc_now_iso
 
@@ -163,6 +163,9 @@ class MobileTab:
             text, kind = mobile_status_view(self._service.status)
             self._status_label.config(text=text, fg=_STATUS_COLORS[kind])
             self._refresh_devices()
+            # Bei jedem Poll, nicht nur bei einer geänderten Geräteliste: der Zustand von
+            # „Gerät koppeln …" hängt am Status, und der ändert sich unabhängig davon.
+            self._sync_buttons()
             self._poll_id = self.frame.after(_POLL_MS, self._poll)
         except tk.TclError:
             self._alive = False             # Fenster zwischenzeitlich zu
@@ -206,6 +209,9 @@ class MobileTab:
     def _pair(self):
         if self._service.status.state != "running" or self._busy:
             return
+        # Lazy: der Dialog importiert `tab_rules` und damit dieses Paket; oben stünde
+        # ein Importzyklus (Dialog → Paket → tab_mobile → Dialog).
+        from src.dialogs.mobile_pair_dialog import open_pair_dialog
         open_pair_dialog(self._dialog, self._service)
         if self._alive:
             self._refresh_devices()
@@ -222,7 +228,8 @@ class MobileTab:
             return
         self._busy = True
         self._sync_buttons()
-        self._runner.run(lambda: self._service.revoke(device_id), self._revoked)
+        self._runner.run(
+            lambda: revoke_outcome(lambda: self._service.revoke(device_id)), self._revoked)
 
     def _revoke_all(self):
         if not self._rows or self._busy:
@@ -234,14 +241,17 @@ class MobileTab:
             return
         self._busy = True
         self._sync_buttons()
-        self._runner.run(self._service.revoke_all, self._revoked)
+        self._runner.run(
+            lambda: revoke_outcome(self._service.revoke_all), self._revoked)
 
-    def _revoked(self, _result):
+    def _revoked(self, outcome):
         self._busy = False
         if not self._alive:
             return
         try:
             self._refresh_devices()
             self._sync_buttons()
+            if not outcome["ok"]:
+                themed_showerror(self._dialog, "Widerruf fehlgeschlagen", REVOKE_ERROR_TEXT)
         except tk.TclError:
             self._alive = False

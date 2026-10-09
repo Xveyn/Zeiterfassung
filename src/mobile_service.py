@@ -13,8 +13,10 @@ eine andere ersetzt. Bei jedem Statuswechsel weg von „läuft" wird die offene
 Kopplungssitzung geschlossen — ein Code ohne Server ist nutzlos.
 
 Die Geräteverwaltung (`list_devices`, `revoke`, `revoke_all`) und `pair_link` liegen
-hier, weil sie sich den `devices_lock` mit den Routen teilen müssen. Sie schreiben
-(Datei): im Worker aufrufen.
+hier, weil sie sich den `devices_lock` mit den Routen teilen müssen. `revoke` und
+`revoke_all` schreiben (Datei): im Worker aufrufen. `list_devices` liest nur den
+Speicher des Stores (`MobileStore.get_all` kopiert, kein Dateizugriff) und darf im
+UI-Thread laufen; sie wartet höchstens auf den kurzen Store-Lock.
 """
 from __future__ import annotations
 
@@ -206,7 +208,7 @@ class MobileService:
     # --- Geräte ---------------------------------------------------------------------------------
 
     def list_devices(self) -> list[Record]:
-        """Die gekoppelten Geräte nach Name (Datei lesen: im Worker)."""
+        """Die gekoppelten Geräte nach Name. Liest nur den Speicher, kein Dateizugriff."""
         return sorted(self._context.devices.get_all(),
                       key=lambda record: (record["name"].lower(), record["id"]))
 

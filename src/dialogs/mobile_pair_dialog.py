@@ -13,7 +13,9 @@ import logging
 import tkinter as tk
 
 from src import qr
-from src.dialogs.settings_dialog.tab_rules import format_countdown, pair_changes
+from src.dialogs.settings_dialog.tab_rules import (
+    format_countdown, pair_changes, pair_poll_keeps_running, pair_poll_view,
+)
 from src.theme import (
     BG, FONT, FONT_BOLD, STATUS_OK, STATUS_WARN, TEXT, TEXT_MUTED, center_dialog_on_parent,
     create_dialog, primary_button, px, secondary_button,
@@ -88,6 +90,9 @@ class _PairDialog:
         link = self._service.pair_link(code)
         self._address.config(text=f"Adresse: {status.address}:{status.port}")
         self._code.config(text=f"Code: {code}")
+        # Sofort, nicht erst nach dem ersten Poll: sonst ist die Zeile eine Sekunde leer.
+        self._countdown.config(
+            text=f"Gültig noch {format_countdown(self._service.pairing.seconds_left())}")
         self._draw(link)
         self._schedule_poll()
 
@@ -117,18 +122,28 @@ class _PairDialog:
         if not self._alive:
             return
         try:
-            left = self._service.pairing.seconds_left()
             changes = pair_changes(self._before, self._service.list_devices())
-            if not changes.empty:
+            state, text = pair_poll_view(
+                active=self._service.pairing.is_active(),
+                seconds_left=self._service.pairing.seconds_left(),
+                paired=not changes.empty)
+            if state == "paired":
                 self._show_paired(changes)
-            elif left > 0:
-                self._countdown.config(text=f"Gültig noch {format_countdown(left)}")
-            elif not self._service.pairing.is_active():
-                self._countdown.config(text="Der Code ist abgelaufen — „Neuer Code“.")
-            if self._alive and (left > 0 or not changes.empty):
+            elif state == "counting":
+                self._countdown.config(text=text)
+            else:
+                self._show_expired(text)
+            if self._alive and pair_poll_keeps_running(state):
                 self._schedule_poll()
         except tk.TclError:
             self._alive = False             # Fenster zwischenzeitlich zu
+
+    def _show_expired(self, text):
+        """Ein abgelaufener Code zeigt weder QR-Code noch Code: er wäre nutzlos und
+        sähe gültig aus."""
+        self._canvas.delete("all")
+        self._code.config(text="")
+        self._countdown.config(text=text)
 
     def _show_paired(self, changes):
         names = ", ".join(d["name"] for d in changes.added + changes.replaced)

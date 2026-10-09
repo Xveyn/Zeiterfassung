@@ -550,8 +550,11 @@ def test_the_first_enable_notice_names_the_three_things_the_spec_demands():
     assert "Autostart" in notice
 
 
-def dev(device_id, token_hash, name="P", revoked=False):
-    return {"id": device_id, "token_hash": token_hash, "name": name, "revoked": revoked}
+def dev(device_id, token_hash, name="P", revoked=False, previous=""):
+    # `previous_token_hash` ist leer nach dem Koppeln und gefüllt nach jedem Abgleich
+    # (`mobile_pairing.renew`): daran unterscheidet `pair_changes` beides.
+    return {"id": device_id, "token_hash": token_hash, "name": name, "revoked": revoked,
+            "previous_token_hash": previous}
 
 
 def test_pair_changes_finds_a_new_device():
@@ -575,3 +578,68 @@ def test_pair_changes_ignores_renewals_that_keep_the_token_state():
 
 def test_pair_changes_reports_nothing_for_an_unchanged_or_shrunk_list():
     assert tr.pair_changes([dev("a", "h1")], []).empty
+
+
+def test_a_normal_sync_renewal_is_not_a_replacement():
+    # Jeder Abgleich erneuert das Token (neuer token_hash, gefülltes previous_token_hash).
+    # Das darf der offene Koppel-Dialog nie als „Gerät ersetzt" melden.
+    changes = tr.pair_changes([dev("a", "h1")], [dev("a", "h2", previous="h1")])
+    assert changes.empty
+
+
+def test_two_renewals_in_a_row_are_still_not_a_replacement():
+    changes = tr.pair_changes([dev("a", "h2", previous="h1")], [dev("a", "h3", previous="h1")])
+    assert changes.empty
+
+
+def test_a_new_pairing_of_an_existing_device_is_a_replacement_even_after_renewals():
+    changes = tr.pair_changes([dev("a", "h3", "Alt", previous="h2")], [dev("a", "h9", "Alt")])
+    assert [d["name"] for d in changes.replaced] == ["Alt"]
+
+
+def test_a_phone_that_pairs_and_syncs_right_away_is_just_added():
+    changes = tr.pair_changes([dev("a", "h1")], [dev("a", "h1"), dev("b", "h5", "Neu", previous="h4")])
+    assert [d["name"] for d in changes.added] == ["Neu"] and changes.replaced == []
+
+
+@pytest.mark.parametrize("active,left,paired,state,text", [
+    (True, 299, False, "counting", "Gültig noch 4:59"),
+    (True, 1, False, "counting", "Gültig noch 0:01"),
+    (True, 0, False, "counting", "Gültig noch 0:00"),      # aktiv, aber unter einer Sekunde
+    (False, 0, False, "expired", "Der Code ist abgelaufen"),
+    (False, 0, True, "paired", ""),                           # in der letzten Sekunde gekoppelt
+    (True, 120, True, "paired", ""),
+])
+def test_the_pair_poll_view(active, left, paired, state, text):
+    got_state, got_text = tr.pair_poll_view(active=active, seconds_left=left, paired=paired)
+    assert got_state == state and text in got_text
+
+
+def test_only_a_counting_code_keeps_the_poll_running():
+    assert tr.pair_poll_keeps_running("counting") is True
+    assert tr.pair_poll_keeps_running("expired") is False
+    assert tr.pair_poll_keeps_running("paired") is False
+
+
+def test_revoke_outcome_reports_success_and_expected_write_errors():
+    from src.mobile_store import MobileStoreReadOnly
+    assert tr.revoke_outcome(lambda: 3) == {"ok": True, "result": 3}
+    failed = tr.revoke_outcome(lambda: (_ for _ in ()).throw(OSError(28, "Platte voll")))
+    assert failed["ok"] is False and isinstance(failed["error"], OSError)
+    read_only = tr.revoke_outcome(lambda: (_ for _ in ()).throw(MobileStoreReadOnly("x")))
+    assert read_only["ok"] is False and isinstance(read_only["error"], MobileStoreReadOnly)
+
+
+def test_revoke_outcome_lets_a_programming_error_through():
+    with pytest.raises(RuntimeError):
+        tr.revoke_outcome(lambda: (_ for _ in ()).throw(RuntimeError("Bug")))
+
+
+def test_the_revoke_error_text_names_the_consequence():
+    text = tr.REVOKE_ERROR_TEXT
+    assert "weiterhin" in text and "Datenordner" in text
+
+
+def test_the_first_enable_notice_uses_real_line_breaks():
+    assert "\n\n" in tr.FIRST_ENABLE_NOTICE
+    assert "\\n" not in tr.FIRST_ENABLE_NOTICE

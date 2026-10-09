@@ -60,3 +60,43 @@ def test_the_tab_never_calls_the_service_writes_in_the_ui_thread():
               and n.func.attr in ("revoke", "revoke_all") and id(n) not in inside_lambda]
     assert direct == [], "revoke/revoke_all gehören in den Worker (runner.run)"
     assert "self._service.revoke" in TAB.read_text(encoding="utf-8")
+
+
+def _tab_method(name):
+    tree = ast.parse(TAB.read_text(encoding="utf-8"))
+    cls = next(n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == "MobileTab")
+    return next(n for n in cls.body if isinstance(n, ast.FunctionDef) and n.name == name)
+
+
+def _self_calls(func, method):
+    return [n for n in ast.walk(func) if isinstance(n, ast.Call)
+            and isinstance(n.func, ast.Attribute) and n.func.attr == method
+            and isinstance(n.func.value, ast.Name) and n.func.value.id == "self"]
+
+
+def test_every_poll_refreshes_the_buttons():
+    # Sonst bleibt „Gerät koppeln …" nach dem Einschalten grau, bis sich die Geräteliste
+    # ändert — und umgekehrt sieht es nach dem Stoppen noch bedienbar aus.
+    assert _self_calls(_tab_method("_poll"), "_sync_buttons")
+
+
+def test_a_failed_revoke_is_shown_and_releases_the_tab():
+    source = TAB.read_text(encoding="utf-8")
+    assert "revoke_outcome" in source and "themed_showerror" in source
+    revoked = _tab_method("_revoked")
+    assert _self_calls(revoked, "_sync_buttons")
+    busy = [n for n in ast.walk(revoked) if isinstance(n, ast.Assign)
+            and any(isinstance(t, ast.Attribute) and t.attr == "_busy" for t in n.targets)]
+    assert busy, "_revoked muss _busy zurücksetzen"
+
+
+def test_the_pair_dialog_imports_on_its_own():
+    # Dialog → Paket settings_dialog (wegen tab_rules) → tab_mobile → Dialog wäre ein
+    # Zyklus. In der App half nur die Importreihenfolge; ein Test, der den Dialog zuerst
+    # importiert, scheiterte. Frischer Prozess, damit kein früherer Import mitspielt.
+    import subprocess
+    import sys
+    result = subprocess.run(
+        [sys.executable, "-c", "import src.dialogs.mobile_pair_dialog"],
+        cwd=SRC.parent, capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
