@@ -357,3 +357,16 @@ test('keys like __proto__ cannot pollute the prototype', async () => {
   assert.equal({}.slots, undefined);
   assert.equal(store.getDay('__proto__'), null);
 });
+
+test('a day edited during the request is kept even far outside the window and even if the response lists it', async () => {
+  const { store, now } = await make();
+  await store.saveDay('2026-01-15', [SLOT]);
+  const snapshot = store.snapshotDirty();
+  now.advance(5000);
+  await store.saveDay('2026-01-15', [OTHER]);                       // während des Sendens
+
+  await store.applyResponse(parsedResponse({ entries: { '2026-01-15': remoteDay([SLOT]) } }), snapshot, TODAY);
+
+  assert.deepEqual(store.getDay('2026-01-15').slots, [OTHER]);
+  assert.equal(store.getDay('2026-01-15').dirty, true);
+});
