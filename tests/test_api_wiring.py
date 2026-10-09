@@ -159,7 +159,8 @@ def test_the_api_tab_sits_between_google_and_app_and_only_with_a_service():
                 and node.targets[0].value.id == "tabs"
                 and isinstance(node.targets[0].slice, ast.Constant)):
             order.append((node.lineno, node.targets[0].slice.value))
-    assert [key for _, key in sorted(order)] == ["api", "app", "updates"]
+    # Seit #221 steht „mobile“ (ebenfalls nur mit Dienst) zwischen „api“ und „app“.
+    assert [key for _, key in sorted(order)] == ["api", "mobile", "app", "updates"]
     # Der Eintrag „api" steht unter einer Bedingung (kein Dienst, kein Tab).
     api_assign = [n for n in ast.walk(func) if isinstance(n, ast.If)
                   and any(isinstance(s, ast.Assign) and isinstance(s.targets[0], ast.Subscript)

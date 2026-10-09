@@ -417,3 +417,244 @@ def test_the_missing_token_text_does_not_promise_a_first_time_creation():
     # Die Maske steht auch, wenn die API läuft und die Datei extern gelöscht wurde.
     assert "ersten" not in tr.TOKEN_MISSING
     assert "lesbar" in tr.TOKEN_MISSING and "Einschalten" in tr.TOKEN_MISSING
+
+
+# --- Mobil-Tab (#221, PR 5) -----------------------------------------------------------------
+
+from src.mobile_service import (  # noqa: E402
+    REASON_ADDRESS_GONE, REASON_INVALID_PORT, REASON_NO_ADDRESS, REASON_PORT_IN_USE,
+    REASON_START_FAILED, MobileStatus,
+)
+from src.mobile_service import STATE_ERROR as M_ERROR  # noqa: E402
+from src.mobile_service import STATE_OFF as M_OFF  # noqa: E402
+from src.mobile_service import STATE_RUNNING as M_RUNNING  # noqa: E402
+from src.mobile_service import STATE_STARTING as M_STARTING  # noqa: E402
+
+
+def mobile_raw(**overrides):
+    raw = {"mobile_enabled": True, "mobile_port": "17654", "mobile_address": tr.AUTO_ADDRESS}
+    raw.update(overrides)
+    return raw
+
+
+def test_address_options_start_with_automatic_and_keep_the_order():
+    assert tr.address_options(["192.168.1.20", "10.0.0.5"]) == [
+        tr.AUTO_ADDRESS, "192.168.1.20", "10.0.0.5"]
+    assert tr.address_options([]) == [tr.AUTO_ADDRESS]
+
+
+def test_address_choice_round_trips():
+    assert tr.address_from_choice(tr.AUTO_ADDRESS) == ""
+    assert tr.address_from_choice("192.168.1.20") == "192.168.1.20"
+    assert tr.address_to_choice("") == tr.AUTO_ADDRESS
+    assert tr.address_to_choice("192.168.1.20") == "192.168.1.20"
+
+
+def test_valid_mobile_input_passes_and_converts():
+    assert tr.validate_mobile(mobile_raw()) is None
+    assert tr.mobile_updates(mobile_raw()) == {
+        "mobile_enabled": True, "mobile_port": 17654, "mobile_address": ""}
+    assert tr.mobile_updates(mobile_raw(mobile_address="10.0.0.5", mobile_enabled=False,
+                                        mobile_port=" 8080 ")) == {
+        "mobile_enabled": False, "mobile_port": 8080, "mobile_address": "10.0.0.5"}
+
+
+@pytest.mark.parametrize("port", ["", "abc", "80", "70000", "17654.5", "٨٠٨٠", "9" * 5000])
+def test_an_invalid_port_is_refused_even_when_off(port):
+    result = tr.validate_mobile(mobile_raw(mobile_port=port, mobile_enabled=False))
+    assert result is not None and "Port" in result[0]
+
+
+@pytest.mark.parametrize("address", [
+    " 192.168.1.20", "192.168.1.20:17654", "8.8.8.8", "127.0.0.1", "0.0.0.0", "::1", "fe80::1",
+    "192.168.001.001", "１９２.１６８.１.２０", "localhost", "192.168.1.256",
+])
+def test_an_address_that_is_not_a_lan_address_is_refused(address):
+    result = tr.validate_mobile(mobile_raw(mobile_address=address))
+    assert result is not None and "Adresse" in result[0]
+
+
+def test_mobile_updates_write_exactly_the_three_form_keys():
+    assert set(tr.mobile_updates(mobile_raw())) == {
+        "mobile_enabled", "mobile_port", "mobile_address"}
+
+
+@pytest.mark.parametrize("status,kind,fragment", [
+    (MobileStatus(M_OFF), "muted", "Aus"),
+    (MobileStatus(M_STARTING, None, 17654), "muted", "Startet"),
+    (MobileStatus(M_RUNNING, "192.168.1.20", 17654), "ok", "192.168.1.20:17654"),
+    (MobileStatus(M_ERROR, None, None, REASON_INVALID_PORT), "error", "Port"),
+    (MobileStatus(M_ERROR, None, 17654, REASON_NO_ADDRESS), "error", "Netzwerk"),
+    (MobileStatus(M_ERROR, "10.9.9.9", 17654, REASON_ADDRESS_GONE), "error", "10.9.9.9"),
+    (MobileStatus(M_ERROR, "192.168.1.20", 17654, REASON_PORT_IN_USE), "error", "17654"),
+    (MobileStatus(M_ERROR, "192.168.1.20", 17654, REASON_START_FAILED), "error", "Protokoll"),
+])
+def test_the_status_view(status, kind, fragment):
+    text, got_kind = tr.mobile_status_view(status)
+    assert got_kind == kind and fragment in text
+
+
+def test_an_unknown_error_reason_still_gets_a_sentence():
+    text, kind = tr.mobile_status_view(MobileStatus(M_ERROR, None, None, "ganz neu"))
+    assert kind == "error" and "Protokoll" in text
+
+
+def test_the_vanished_address_status_offers_the_choice():
+    text, _kind = tr.mobile_status_view(
+        MobileStatus(M_ERROR, "10.9.9.9", 17654, REASON_ADDRESS_GONE))
+    assert "wählen" in text.lower()
+
+
+NOW_ISO = "2026-10-08T12:00:00Z"
+
+
+def device(**overrides):
+    record = {"id": "phone-0001", "name": "Pixel von Sven", "revoked": False,
+              "last_seen": "2026-10-07T09:15:00Z", "expires_at": "2026-11-06T09:15:00Z"}
+    record.update(overrides)
+    return record
+
+
+def test_a_device_row_shows_name_last_seen_and_expiry_in_german_format():
+    text = tr.device_row_text(device(), NOW_ISO)
+    assert "Pixel von Sven" in text and "07.10.2026 09:15" in text and "06.11.2026" in text
+    assert "widerrufen" not in text and "abgelaufen" not in text
+
+
+def test_a_revoked_device_is_marked():
+    assert "widerrufen" in tr.device_row_text(device(revoked=True), NOW_ISO)
+
+
+def test_an_expired_device_is_marked_from_the_second_it_expires():
+    assert "abgelaufen" not in tr.device_row_text(device(expires_at="2026-10-08T12:00:01Z"), NOW_ISO)
+    assert "abgelaufen" in tr.device_row_text(device(expires_at="2026-10-08T12:00:00Z"), NOW_ISO)
+
+
+def test_a_device_row_survives_missing_fields():
+    text = tr.device_row_text({"id": "x", "name": ""}, NOW_ISO)
+    assert isinstance(text, str) and text
+
+
+@pytest.mark.parametrize("seconds,expected", [
+    (300, "5:00"), (299, "4:59"), (61, "1:01"), (60, "1:00"), (9, "0:09"), (0, "0:00"),
+    (-5, "0:00"),
+])
+def test_the_countdown(seconds, expected):
+    assert tr.format_countdown(seconds) == expected
+
+
+def test_the_first_enable_notice_names_the_three_things_the_spec_demands():
+    notice = tr.FIRST_ENABLE_NOTICE
+    assert "unverschlüsselt" in notice
+    assert "vertrauenswürdig" in notice
+    assert "Autostart" in notice
+
+
+def dev(device_id, token_hash, name="P", revoked=False, previous="", count=1):
+    # `pair_count` zählt das Koppeln (`issue_device`), nicht den Abgleich (`renew`):
+    # nur daran erkennt `pair_changes` ein Ersetzen — Token-Hashes zu deuten täuscht,
+    # sobald ein Handy gleich nach dem Koppeln synct.
+    return {"id": device_id, "token_hash": token_hash, "name": name, "revoked": revoked,
+            "previous_token_hash": previous, "pair_count": count}
+
+
+def test_pair_changes_finds_a_new_device():
+    changes = tr.pair_changes([dev("a", "h1")], [dev("a", "h1"), dev("b", "h2", "Neu")])
+    assert [d["name"] for d in changes.added] == ["Neu"] and changes.replaced == []
+
+
+def test_pair_changes_flags_a_replaced_live_device():
+    changes = tr.pair_changes([dev("a", "h1", "Alt")], [dev("a", "h2", "Alt", count=2)])
+    assert changes.added == [] and [d["name"] for d in changes.replaced] == ["Alt"]
+
+
+def test_pair_changes_does_not_warn_when_the_replaced_device_was_revoked():
+    changes = tr.pair_changes([dev("a", "h1", "Alt", revoked=True)],
+                              [dev("a", "h2", "Alt", count=2)])
+    assert changes.replaced == [] and [d["name"] for d in changes.added] == ["Alt"]
+
+
+def test_pair_changes_ignores_an_unchanged_or_shrunk_list():
+    assert tr.pair_changes([dev("a", "h1")], [dev("a", "h1")]).empty
+    assert tr.pair_changes([dev("a", "h1")], []).empty
+
+
+def test_a_normal_sync_renewal_is_not_a_replacement():
+    # Jeder Abgleich erneuert das Token (neuer token_hash, gefülltes previous_token_hash).
+    # Das darf der offene Koppel-Dialog nie als „Gerät ersetzt" melden.
+    changes = tr.pair_changes([dev("a", "h1")], [dev("a", "h2", previous="h1")])
+    assert changes.empty
+
+
+def test_two_renewals_between_two_polls_are_still_not_a_replacement():
+    changes = tr.pair_changes([dev("a", "h1")], [dev("a", "h3", previous="h2")])
+    assert changes.empty
+
+
+def test_a_replacement_is_found_even_when_the_new_phone_synced_within_the_same_poll():
+    # Der Normalfall: die PWA synct „beim Start", also gleich nach dem Koppeln — das
+    # previous_token_hash ist dann schon gefüllt (mit dem Token aus dem Koppeln).
+    changes = tr.pair_changes([dev("a", "h1", "Alt")],
+                              [dev("a", "h3", "Alt", previous="h2", count=2)])
+    assert [d["name"] for d in changes.replaced] == ["Alt"]
+
+
+def test_a_phone_that_pairs_and_syncs_right_away_is_just_added():
+    changes = tr.pair_changes([dev("a", "h1")],
+                              [dev("a", "h1"), dev("b", "h5", "Neu", previous="h4")])
+    assert [d["name"] for d in changes.added] == ["Neu"] and changes.replaced == []
+
+
+def test_records_without_a_counter_are_compared_as_zero():
+    legacy = {"id": "a", "token_hash": "h1", "name": "Alt", "revoked": False}
+    renewed = {**legacy, "token_hash": "h2", "previous_token_hash": "h1"}
+    assert tr.pair_changes([legacy], [renewed]).empty
+    assert [d["name"] for d in tr.pair_changes([legacy], [{**renewed, "pair_count": 1}]).replaced] == ["Alt"]
+
+
+def test_junk_counters_do_not_crash_the_comparison():
+    junk = {"id": "a", "token_hash": "h1", "name": "J", "revoked": False, "pair_count": "x"}
+    assert isinstance(tr.pair_changes([junk], [dev("a", "h9", count=1)]).replaced, list)
+
+
+@pytest.mark.parametrize("active,left,paired,state,text", [
+    (True, 299, False, "counting", "Gültig noch 4:59"),
+    (True, 1, False, "counting", "Gültig noch 0:01"),
+    (True, 0, False, "counting", "Gültig noch 0:00"),      # aktiv, aber unter einer Sekunde
+    (False, 0, False, "expired", "Der Code ist abgelaufen"),
+    (False, 0, True, "paired", ""),                           # in der letzten Sekunde gekoppelt
+    (True, 120, True, "paired", ""),
+])
+def test_the_pair_poll_view(active, left, paired, state, text):
+    got_state, got_text = tr.pair_poll_view(active=active, seconds_left=left, paired=paired)
+    assert got_state == state and text in got_text
+
+
+def test_only_a_counting_code_keeps_the_poll_running():
+    assert tr.pair_poll_keeps_running("counting") is True
+    assert tr.pair_poll_keeps_running("expired") is False
+    assert tr.pair_poll_keeps_running("paired") is False
+
+
+def test_revoke_outcome_reports_success_and_expected_write_errors():
+    from src.mobile_store import MobileStoreReadOnly
+    assert tr.revoke_outcome(lambda: 3) == {"ok": True, "result": 3}
+    failed = tr.revoke_outcome(lambda: (_ for _ in ()).throw(OSError(28, "Platte voll")))
+    assert failed["ok"] is False and isinstance(failed["error"], OSError)
+    read_only = tr.revoke_outcome(lambda: (_ for _ in ()).throw(MobileStoreReadOnly("x")))
+    assert read_only["ok"] is False and isinstance(read_only["error"], MobileStoreReadOnly)
+
+
+def test_revoke_outcome_lets_a_programming_error_through():
+    with pytest.raises(RuntimeError):
+        tr.revoke_outcome(lambda: (_ for _ in ()).throw(RuntimeError("Bug")))
+
+
+def test_the_revoke_error_text_names_the_consequence():
+    text = tr.REVOKE_ERROR_TEXT
+    assert "weiterhin" in text and "Datenordner" in text
+
+
+def test_the_first_enable_notice_uses_real_line_breaks():
+    assert "\n\n" in tr.FIRST_ENABLE_NOTICE
+    assert "\\n" not in tr.FIRST_ENABLE_NOTICE

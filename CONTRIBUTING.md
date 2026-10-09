@@ -70,6 +70,7 @@ ZEITERFASSUNG_LOG_LEVEL=DEBUG python -m src.main
 | `pyinstaller` | Paketierung als Standalone-Binary |
 | `holidays` | Feiertags-Lookup (deutsche Feiertage) |
 | `keyring` | SMTP-Passwörter, OAuth-Refresh-Token, Webhook-Secrets im Schlüsselbund des Betriebssystems |
+| `segno` | QR-Code im Koppel-Dialog der Handy-Erfassung (reines Python) |
 | `pystray` | Infobereich-Icon (Minimize-to-Tray) |
 | `Pillow` | Icon-/Bildverarbeitung (Tray-Icon) |
 | `dbus-fast` | Linux-Tray über StatusNotifierItem (nur Linux) |

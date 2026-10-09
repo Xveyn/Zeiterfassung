@@ -320,3 +320,25 @@ def test_the_right_device_is_found_among_several():
 
     assert mp.authenticate([a, b], tb, NOW).record["id"] == "device-bbbb"
     assert mp.authenticate([a, b], ta, NOW).record["id"] == "device-aaaa"
+
+
+def test_every_pairing_counts_up_and_renewal_and_revocation_keep_the_count():
+    first, _ = mp.issue_device("device-0001", "Pixel", NOW)
+    assert first["pair_count"] == 1
+
+    renewed, _ = mp.renew(first, NOW)
+    assert renewed["pair_count"] == 1                          # ein Abgleich ist kein Koppeln
+    assert mp.revoke(renewed)["pair_count"] == 1
+
+    again, _ = mp.issue_device("device-0001", "Pixel", NOW, existing=mp.renew(renewed, NOW)[0])
+    assert again["pair_count"] == 2                            # auch in derselben Sekunde
+    assert mp.issue_device("device-0001", "Pixel", NOW, existing=again)[0]["pair_count"] == 3
+
+
+def test_a_record_from_before_the_counter_counts_from_zero():
+    legacy, _ = mp.issue_device("device-0001", "Pixel", NOW)
+    del legacy["pair_count"]
+
+    assert mp.issue_device("device-0001", "Pixel", NOW, existing=legacy)[0]["pair_count"] == 1
+    assert mp.issue_device("device-0001", "Pixel", NOW, existing={**legacy, "pair_count": "x"}
+                           )[0]["pair_count"] == 1

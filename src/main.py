@@ -39,6 +39,7 @@ from src.ui import App
 from src.version import VERSION
 from src.webhook_store import WebhookStore
 from src.smtp_store import SmtpStore
+from src.mobile_store import MobileStore
 
 # Muss exakt zum AppMutex-Wert in installer.iss passen. Der Installer prüft
 # beim Start, ob dieser Mutex existiert, und bittet den User, die App manuell
@@ -323,6 +324,10 @@ def main():
     # Lock über den icacls-Subprozess.
     smtp_store = SmtpStore(os.path.join(base, "smtp.json"))
 
+    # Gekoppelte Handys (#221): gerätelokal, eigener Lock, nur Token-Hashes. Nimmt an
+    # keinem Sync-Flow teil; die Handy-Instanz selbst startet nur bei `mobile_enabled`.
+    mobile_store = MobileStore(os.path.join(base, "mobile_devices.json"))
+
     # M6: Ein unvollständig gebliebener Sync-Apply eines vorherigen Laufs
     # (Crash zwischen den Store-Writes) wird jetzt idempotent nachgeholt —
     # bevor irgendein Sync-Thread startet, hier noch single-threaded (kein
@@ -358,7 +363,8 @@ def main():
     app = App(root, storage, settings, base_path=base, conflicts_store=conflicts_store,
               reservation_store=reservation_store, single_instance=guard,
               data_lock=data_lock, sync_guard=sync_guard, webhook_store=webhook_store,
-              vacation_store=vacation_store, smtp_store=smtp_store)
+              vacation_store=vacation_store, smtp_store=smtp_store,
+              mobile_store=mobile_store)
 
     if "--minimized" in sys.argv:
         root.iconify()
