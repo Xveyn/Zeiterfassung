@@ -29,6 +29,7 @@ from src.mobile_service import (
     STATE_ERROR as MOBILE_ERROR, STATE_RUNNING as MOBILE_RUNNING,
     STATE_STARTING as MOBILE_STARTING, MobileStatus,
 )
+from src.mobile_pairing import pair_count
 from src.mobile_store import MobileStoreReadOnly
 from src.netinfo import is_lan_address
 from src.send_reminder import shift_for_label
@@ -442,11 +443,10 @@ def pair_changes(before: list[dict[str, Any]], after: list[dict[str, Any]]) -> P
     widerrufenes Gerät wurde neu gekoppelt (jemand hat sich mit seiner `device_id`
     gekoppelt): der Besitzer soll das sehen.
 
-    Neu gekoppelt heißt: neues Token **und** leeres `previous_token_hash` — das setzt
-    `issue_device`. Jeder Abgleich erneuert das Token ebenfalls, lässt aber das alte als
-    `previous_token_hash` stehen (`renew`); das ist ein gewöhnlicher Abgleich eines
-    schon gekoppelten Handys und darf nie als Ersetzen gemeldet werden — der Dialog ist
-    oft offen, während ein anderes Handy gerade synct."""
+    Neu gekoppelt heißt: der `pair_count` des Datensatzes ist gestiegen — den zählt nur
+    `issue_device` hoch. Token-Hashes taugen nicht dafür: jeder Abgleich erneuert das
+    Token (ein gewöhnlicher Abgleich darf nie als Ersetzen gelten), und ein Handy synct
+    gleich nach dem Koppeln, sodass sich beides in einem Poll vermischt."""
     known = {record["id"]: record for record in before}
     added: list[dict[str, Any]] = []
     replaced: list[dict[str, Any]] = []
@@ -454,8 +454,7 @@ def pair_changes(before: list[dict[str, Any]], after: list[dict[str, Any]]) -> P
         old = known.get(record["id"])
         if old is None:
             added.append(record)
-        elif (old.get("token_hash") != record.get("token_hash")
-              and not record.get("previous_token_hash")):
+        elif pair_count(record) != pair_count(old):
             (added if old.get("revoked") else replaced).append(record)
     return PairChanges(added, replaced)
 

@@ -319,7 +319,8 @@ Zeitraum und welche Kategorien der Bericht gefiltert ist.
   gesperrt, nur im Hauptspeicher) und das Gerätetoken (`issue_device`/`renew`/`revoke`/
   `authenticate`: 30 Tage ab der letzten Nutzung, ein erneuertes Token lässt das alte 10 Minuten
   gelten; ein widerrufener Datensatz bleibt erhalten, damit die Antwort `token_revoked` lauten
-  kann). Geräte-ID, Name und Token kommen vom Handy — Fremddaten (`normalize_device_id`,
+  kann; `pair_count` zählt jedes Koppeln hoch, nie einen Abgleich — daran erkennt der Koppel-Dialog ein
+  Ersetzen). Geräte-ID, Name und Token kommen vom Handy — Fremddaten (`normalize_device_id`,
   `clean_device_name`). Design: `docs/superpowers/specs/2026-10-08-mobile-pwa-design.md`.
 
   `mobile_sync.py` — Abgleich mit dem Handy (`POST /v1/sync`), Tk-frei, ohne Socket. Der Body ist

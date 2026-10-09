@@ -191,12 +191,21 @@ def shift(now: str, delta: datetime.timedelta) -> str:
     return (moment + delta).strftime(_TIME_FORMAT)
 
 
+def pair_count(record: Mapping[str, Any] | None) -> int:
+    """Wie oft dieses Gerät gekoppelt wurde (`issue_device`); Datensätze von vorher und
+    Fremdwerte zählen als 0. Ein Abgleich (`renew`) ändert den Zähler nicht."""
+    value = record.get("pair_count") if record else 0
+    return value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else 0
+
+
 def issue_device(device_id: str, name: str, now: str,
                  existing: Mapping[str, Any] | None = None) -> tuple[Record, str]:
     """Ein neues Gerät (oder ein erneutes Koppeln desselben): liefert den Datensatz
     **ohne Klartext-Token** und das Token zur einmaligen Übergabe an das Handy. Beim
     erneuten Koppeln bleiben `created_at` und `last_pull_at` erhalten (die Identität
-    im Sync ändert sich nicht), ein Widerruf wird aufgehoben."""
+    im Sync ändert sich nicht), ein Widerruf wird aufgehoben. `pair_count` zählt jedes
+    Koppeln hoch: so erkennt der Koppel-Dialog ein Ersetzen ausdrücklich, statt es aus
+    Token-Hashes zu raten (ein Handy synct gleich nach dem Koppeln)."""
     token = new_token()
     record: Record = {
         "id": device_id,
@@ -209,6 +218,7 @@ def issue_device(device_id: str, name: str, now: str,
         "last_seen": now,
         "last_pull_at": str(existing["last_pull_at"]) if existing else "",
         "revoked": False,
+        "pair_count": pair_count(existing) + 1,
     }
     return record, token
 

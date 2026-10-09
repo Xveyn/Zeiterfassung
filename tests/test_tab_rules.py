@@ -550,11 +550,12 @@ def test_the_first_enable_notice_names_the_three_things_the_spec_demands():
     assert "Autostart" in notice
 
 
-def dev(device_id, token_hash, name="P", revoked=False, previous=""):
-    # `previous_token_hash` ist leer nach dem Koppeln und gefüllt nach jedem Abgleich
-    # (`mobile_pairing.renew`): daran unterscheidet `pair_changes` beides.
+def dev(device_id, token_hash, name="P", revoked=False, previous="", count=1):
+    # `pair_count` zählt das Koppeln (`issue_device`), nicht den Abgleich (`renew`):
+    # nur daran erkennt `pair_changes` ein Ersetzen — Token-Hashes zu deuten täuscht,
+    # sobald ein Handy gleich nach dem Koppeln synct.
     return {"id": device_id, "token_hash": token_hash, "name": name, "revoked": revoked,
-            "previous_token_hash": previous}
+            "previous_token_hash": previous, "pair_count": count}
 
 
 def test_pair_changes_finds_a_new_device():
@@ -563,20 +564,18 @@ def test_pair_changes_finds_a_new_device():
 
 
 def test_pair_changes_flags_a_replaced_live_device():
-    changes = tr.pair_changes([dev("a", "h1", "Alt")], [dev("a", "h2", "Alt")])
+    changes = tr.pair_changes([dev("a", "h1", "Alt")], [dev("a", "h2", "Alt", count=2)])
     assert changes.added == [] and [d["name"] for d in changes.replaced] == ["Alt"]
 
 
 def test_pair_changes_does_not_warn_when_the_replaced_device_was_revoked():
-    changes = tr.pair_changes([dev("a", "h1", "Alt", revoked=True)], [dev("a", "h2", "Alt")])
+    changes = tr.pair_changes([dev("a", "h1", "Alt", revoked=True)],
+                              [dev("a", "h2", "Alt", count=2)])
     assert changes.replaced == [] and [d["name"] for d in changes.added] == ["Alt"]
 
 
-def test_pair_changes_ignores_renewals_that_keep_the_token_state():
+def test_pair_changes_ignores_an_unchanged_or_shrunk_list():
     assert tr.pair_changes([dev("a", "h1")], [dev("a", "h1")]).empty
-
-
-def test_pair_changes_reports_nothing_for_an_unchanged_or_shrunk_list():
     assert tr.pair_changes([dev("a", "h1")], []).empty
 
 
@@ -587,19 +586,35 @@ def test_a_normal_sync_renewal_is_not_a_replacement():
     assert changes.empty
 
 
-def test_two_renewals_in_a_row_are_still_not_a_replacement():
-    changes = tr.pair_changes([dev("a", "h2", previous="h1")], [dev("a", "h3", previous="h1")])
+def test_two_renewals_between_two_polls_are_still_not_a_replacement():
+    changes = tr.pair_changes([dev("a", "h1")], [dev("a", "h3", previous="h2")])
     assert changes.empty
 
 
-def test_a_new_pairing_of_an_existing_device_is_a_replacement_even_after_renewals():
-    changes = tr.pair_changes([dev("a", "h3", "Alt", previous="h2")], [dev("a", "h9", "Alt")])
+def test_a_replacement_is_found_even_when_the_new_phone_synced_within_the_same_poll():
+    # Der Normalfall: die PWA synct „beim Start", also gleich nach dem Koppeln — das
+    # previous_token_hash ist dann schon gefüllt (mit dem Token aus dem Koppeln).
+    changes = tr.pair_changes([dev("a", "h1", "Alt")],
+                              [dev("a", "h3", "Alt", previous="h2", count=2)])
     assert [d["name"] for d in changes.replaced] == ["Alt"]
 
 
 def test_a_phone_that_pairs_and_syncs_right_away_is_just_added():
-    changes = tr.pair_changes([dev("a", "h1")], [dev("a", "h1"), dev("b", "h5", "Neu", previous="h4")])
+    changes = tr.pair_changes([dev("a", "h1")],
+                              [dev("a", "h1"), dev("b", "h5", "Neu", previous="h4")])
     assert [d["name"] for d in changes.added] == ["Neu"] and changes.replaced == []
+
+
+def test_records_without_a_counter_are_compared_as_zero():
+    legacy = {"id": "a", "token_hash": "h1", "name": "Alt", "revoked": False}
+    renewed = {**legacy, "token_hash": "h2", "previous_token_hash": "h1"}
+    assert tr.pair_changes([legacy], [renewed]).empty
+    assert [d["name"] for d in tr.pair_changes([legacy], [{**renewed, "pair_count": 1}]).replaced] == ["Alt"]
+
+
+def test_junk_counters_do_not_crash_the_comparison():
+    junk = {"id": "a", "token_hash": "h1", "name": "J", "revoked": False, "pair_count": "x"}
+    assert isinstance(tr.pair_changes([junk], [dev("a", "h9", count=1)]).replaced, list)
 
 
 @pytest.mark.parametrize("active,left,paired,state,text", [
