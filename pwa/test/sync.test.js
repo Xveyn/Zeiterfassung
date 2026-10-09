@@ -389,3 +389,43 @@ test('a bad ping answer is a protocol error', async () => {
   const { client } = await make({ handler: () => reply(200, { protocol: 2 }) });
   await assert.rejects(client.ping(), (e) => e.kind === 'protocol');
 });
+
+test('re-pairing during a running sync discards the old answer', async () => {
+  let release;
+  const gate = new Promise((resolve) => { release = resolve; });
+  const { store, client } = await make({ handler: async (url) => {
+    if (url.endsWith('/v1/pair')) return reply(200, fixture('pair-response.json'));
+    await gate;
+    return reply(200, fixture('sync-response.json'));
+  } });
+  await store.saveDay('2026-10-07', [SLOT]);
+
+  const running = client.sync();
+  await client.pair({ host: '192.168.1.99', port: 17655, code: 'K7M2-9QXA', deviceName: 'P' });
+  release();
+  const result = await running;
+
+  assert.equal(result.discarded, true);
+  const meta = store.getMeta();
+  assert.equal(meta.token, fixture('pair-response.json').token);        // das neue Token bleibt
+  assert.deepEqual(meta.address, { host: '192.168.1.99', port: 17655 });
+  assert.deepEqual(store.dirtyDates(), ['2026-10-07']);                  // nichts als übertragen markiert
+});
+
+test('a 422 for a day that was edited meanwhile does not mark the new version', async () => {
+  let release;
+  const gate = new Promise((resolve) => { release = resolve; });
+  const { store, client } = await make({ handler: async () => {
+    await gate;
+    return reply(422, { error: { code: 'invalid_entry', message: '2026-10-07: Endzeit muss nach Startzeit liegen' } });
+  } });
+  await store.saveDay('2026-10-07', [SLOT]);
+
+  const running = client.sync();
+  await store.saveDay('2026-10-07', [{ start: '07:00', end: '11:00', pause: 0, kategorie: '' }]);
+  release();
+  await assert.rejects(running, (e) => e.kind === 'invalid_entry');
+
+  assert.equal(store.getDay('2026-10-07').error, null);
+  assert.deepEqual(Object.keys(store.snapshotDirty().entries), ['2026-10-07']);
+});

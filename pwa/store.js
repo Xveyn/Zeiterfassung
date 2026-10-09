@@ -30,6 +30,7 @@ const DEFAULT_META = Object.freeze({
   server_time: '',
 });
 
+const FUTURE_LIMIT_MS = 14 * 60 * 1000;
 const isObject = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
 const isDirty = (record) => record.dirty_version > record.synced_version;
 
@@ -123,12 +124,27 @@ export class Store {
     await this._adapter.batch([{ store: 'meta', op: 'put', key: 'meta', value: this._meta }]);
   }
 
-  _stampAfter(previous) {
-    let stamp = utcStamp(this._now());
-    if (previous && stamp <= previous) {
-      stamp = utcStamp(new Date(Date.parse(previous) + 1000));
+  _stampAfter(previous, foreign = false) {
+    const now = this._now();
+    let stamp = utcStamp(now);
+    const before = Date.parse(previous);
+    if (!Number.isNaN(before) && stamp <= previous) {
+      // Mindestens eine Sekunde nach dem bisherigen Stempel — aber nie mehr als
+      // FUTURE_LIMIT_MS vor der Uhr: der Server lehnt Stempel mehr als 15 Minuten in der
+      // Zukunft ab, und ein vorauslaufender Stempel vom Desktop (Gerät mit falscher Uhr)
+      // machte sonst jede Änderung daran zu einem dauerhaften 422. Verliert die Änderung
+      // dann gegen den Desktop-Stand, meldet der Abgleich einen Konflikt statt zu klemmen.
+      // Nur für Stempel eines ANDEREN Geräts: ein eigener früherer Stempel (Uhr
+      // inzwischen zurückgestellt) muss überboten werden, sonst verlöre die Änderung in LWW
+      // gegen den eigenen älteren Eintrag.
+      const wanted = before + 1000;
+      stamp = utcStamp(new Date(foreign ? Math.min(wanted, now.getTime() + FUTURE_LIMIT_MS) : wanted));
     }
     return stamp;
+  }
+
+  _isForeign(record) {
+    return Boolean(record) && record.entry.device_id !== this._meta.device_id;
   }
 
   _put(date, entry, ops) {
@@ -150,11 +166,17 @@ export class Store {
     const check = validateSlots(normalized);
     if (!check.ok) throw new Error(check.message);
     const old = this._days.get(date);
-    if (old && !old.entry.deleted && signature(old.entry.slots) === signature(normalized)) return;
+    if (old && !old.entry.deleted && signature(old.entry.slots) === signature(normalized)) {
+      if (old.error) {                                             // erneut speichern = erneut versuchen
+        old.error = null;
+        await this._adapter.batch([{ store: 'entries', op: 'put', key: date, value: old }]);
+      }
+      return;
+    }
     const ops = [];
     this._put(date, {
       slots: normalized,
-      modified_at: this._stampAfter(old?.entry.modified_at),
+      modified_at: this._stampAfter(old?.entry.modified_at, this._isForeign(old)),
       device_id: this._meta.device_id,
       deleted: false,
     }, ops);
@@ -168,16 +190,20 @@ export class Store {
     const ops = [];
     this._put(date, {
       slots: [],
-      modified_at: this._stampAfter(old.entry.modified_at),
+      modified_at: this._stampAfter(old.entry.modified_at, this._isForeign(old)),
       device_id: this._meta.device_id,
       deleted: true,
     }, ops);
     await this._adapter.batch(ops);
   }
 
-  async markDayError(date, message) {
+  /** Markiert einen Tag als vom Server abgelehnt — aber nur, wenn er noch die Version hat, die
+   *  gesendet wurde (`version`): wurde er seither geändert, gilt die Ablehnung der älteren
+   *  Fassung nicht für die neue. */
+  async markDayError(date, message, version) {
     const record = this._days.get(date);
     if (!record) return;
+    if (version !== undefined && record.dirty_version !== version) return;
     record.error = String(message);
     await this._adapter.batch([{ store: 'entries', op: 'put', key: date, value: record }]);
   }
@@ -227,7 +253,14 @@ export class Store {
       }
       const sent = snapshot.versions[date];
       if (isDirty(record)) {
-        if (sent !== undefined && sent === record.dirty_version) this._drop(date, ops);
+        // Bei `excluded` verwirft der Desktop gesendete Tage per Self-Heal (Handy länger
+        // offline als die letzte Kompaktierung). Das Handy schickt aber nur Tage, die es
+        // seit dem letzten Abgleich geändert hat: das ist Arbeit, keine Wiederbelebung.
+        // Sie bleibt liegen; der nächste Abgleich (last_pull_at liegt dann hinter dem
+        // Watermark) nimmt sie an.
+        if (sent !== undefined && sent === record.dirty_version && !parsed.excluded) {
+          this._drop(date, ops);
+        }
       } else if ((date >= innerFrom && date <= innerTo) || date < pruneBefore || date > pruneAfter) {
         this._drop(date, ops);
       }

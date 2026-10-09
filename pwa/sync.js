@@ -208,11 +208,19 @@ export class SyncClient {
         entries: snapshot.entries } });
     } catch (error) {
       if (error instanceof SyncError && error.kind === 'invalid_entry' && error.day) {
-        await this._store.markDayError(error.day, error.message);
+        await this._store.markDayError(error.day, error.message, snapshot.versions[error.day]);
       }
       throw error;
     }
     const parsed = parseSyncResponse(raw);
+    const current = this._store.getMeta();
+    if (current.token !== meta.token || current.address?.host !== meta.address.host
+      || current.address?.port !== meta.address.port) {
+      // Währenddessen wurde neu gekoppelt: die Antwort gehört zum alten Server/Token. Sie
+      // anzuwenden legte das alte Token über das neue und markierte Tage als übertragen,
+      // die ein anderer Desktop nie bekam. Die Tage bleiben „nicht übertragen“.
+      return { sent: 0, conflicts: 0, excluded: false, discarded: true };
+    }
     await this._store.applyResponse(parsed, snapshot, localIsoDate(now));
     return { sent: Object.keys(snapshot.entries).length, conflicts: parsed.conflicts.length, excluded: parsed.excluded };
   }

@@ -246,13 +246,27 @@ test('a sent day outside the window is clean afterwards but then pruned', async 
   assert.deepEqual(store.dirtyDates(), []);
 });
 
-test('a sent day the desktop dropped (self-heal) is removed when unchanged', async () => {
+test('excluded: a sent day the desktop dropped stays dirty so the next sync can send it again', async () => {
+  // Das Handy schickt nur Tage, die es seit dem letzten Abgleich geändert hat — nie einen
+  // veralteten. Verwirft der Desktop sie wegen `excluded` (Kompaktierung), ist das keine
+  // Wiederbelebung, sondern echte Arbeit: sie darf nicht lokal gelöscht werden. Der nächste
+  // Abgleich nimmt sie an (last_pull_at liegt dann hinter dem Watermark).
   const { store } = await make();
   await store.saveDay('2026-09-01', [SLOT]);
   const snapshot = store.snapshotDirty();
   await store.applyResponse(parsedResponse({ excluded: true }), snapshot, TODAY);
-  assert.equal(store.getDay('2026-09-01'), null);
+  assert.deepEqual(store.getDay('2026-09-01').slots, [SLOT]);
+  assert.equal(store.getDay('2026-09-01').dirty, true);
   assert.equal(store.getMeta().excluded, true);
+});
+
+test('a sent day the desktop dropped without excluded (settled tombstone) is removed when unchanged', async () => {
+  const { store } = await make();
+  await store.saveDay('2026-09-01', [SLOT]);
+  await store.clearDay('2026-09-01');
+  const snapshot = store.snapshotDirty();
+  await store.applyResponse(parsedResponse(), snapshot, TODAY);
+  assert.equal(store.getDay('2026-09-01'), null);
 });
 
 test('a sent day the desktop dropped is kept when it was edited meanwhile', async () => {
@@ -369,4 +383,59 @@ test('a day edited during the request is kept even far outside the window and ev
 
   assert.deepEqual(store.getDay('2026-01-15').slots, [OTHER]);
   assert.equal(store.getDay('2026-01-15').dirty, true);
+});
+
+test('an error for an older version does not mark the newer edit', async () => {
+  const { store, now } = await make();
+  await store.saveDay('2026-10-07', [SLOT]);
+  const { versions } = store.snapshotDirty();
+  now.advance(5000);
+  await store.saveDay('2026-10-07', [OTHER]);                       // Änderung während des Sendens
+
+  await store.markDayError('2026-10-07', 'abgelehnt', versions['2026-10-07']);
+
+  assert.equal(store.getDay('2026-10-07').error, null);
+  assert.deepEqual(Object.keys(store.snapshotDirty().entries), ['2026-10-07']);
+});
+
+test('an error for the current version marks the day', async () => {
+  const { store } = await make();
+  await store.saveDay('2026-10-07', [SLOT]);
+  const { versions } = store.snapshotDirty();
+  await store.markDayError('2026-10-07', 'abgelehnt', versions['2026-10-07']);
+  assert.equal(store.getDay('2026-10-07').error, 'abgelehnt');
+});
+
+test('saving the same slots again clears an error so the user can retry without changing anything', async () => {
+  const { store } = await make();
+  await store.saveDay('2026-10-07', [SLOT]);
+  await store.markDayError('2026-10-07', 'abgelehnt');
+
+  await store.saveDay('2026-10-07', [SLOT]);
+
+  assert.equal(store.getDay('2026-10-07').error, null);
+  assert.deepEqual(Object.keys(store.snapshotDirty().entries), ['2026-10-07']);
+});
+
+test('a stamp far in the future on the desktop does not push the phone stamp into the future', async () => {
+  // Der Server lehnt modified_at mehr als 15 Minuten in der Zukunft ab. Stand der Tag mit
+  // einem vorauslaufenden Stempel (Gerät mit falscher Uhr) in der Antwort, würde „+1 s“
+  // jede Änderung daran zum dauerhaften 422 machen.
+  const { store, now } = await make();
+  await store.applyResponse(parsedResponse({ entries: {
+    '2026-10-07': remoteDay([OTHER], { modified_at: '2026-10-08T14:00:00Z' }) } }),
+    store.snapshotDirty(), TODAY);
+
+  await store.saveDay('2026-10-07', [SLOT]);
+
+  const stamp = Date.parse(store.getDay('2026-10-07').modified_at);
+  assert.ok(stamp - now().getTime() <= 14 * 60 * 1000, store.getDay('2026-10-07').modified_at);
+});
+
+test('a broken stored stamp does not make the day uneditable', async () => {
+  const { store } = await make();
+  await store.applyResponse(parsedResponse({ entries: {
+    '2026-10-07': remoteDay([OTHER], { modified_at: 'x' }) } }), store.snapshotDirty(), TODAY);
+  await store.saveDay('2026-10-07', [SLOT]);
+  assert.equal(store.getDay('2026-10-07').modified_at, '2026-10-08T12:00:00Z');
 });
