@@ -63,6 +63,13 @@ DEFAULTS = {
     # synchronisierten Wert eines anderen überstimmt werden.
     "api_enabled": False,
     "api_port": 17653,
+    # Handy-Erfassung per PWA (#221). Alle drei gerätelokal: eine Adresse oder ein
+    # belegter Port eines anderen Rechners wäre hier falsch, und ein synchronisierter
+    # Schalter würde das Handy-Netz auf einem Rechner einschalten, der es nie wollte.
+    # `mobile_address` leer = der Vorschlag der aktiven Route (`netinfo`).
+    "mobile_enabled": False,
+    "mobile_port": 17654,
+    "mobile_address": "",
     # Alle drei gerätelokal wie auto_update_enabled: ein Pfad aus dem %TEMP%
     # eines anderen Rechners wäre dort sinnlos und im schlimmsten Fall
     # irreführend. `pending_update_release_id` sagt, zu welchem Release die
