@@ -1,0 +1,19 @@
+{
+  "protocol": 1,
+  "client_time": "2026-10-08T12:00:00Z",
+  "last_pull_at": "2026-10-07T09:00:00Z",
+  "entries": {
+    "2026-10-07": {
+      "slots": [{"start": "08:00", "end": "12:00", "pause": 0, "kategorie": "Projekt"}],
+      "modified_at": "2026-10-07T18:30:00Z",
+      "device_id": "6f1c2b9e-3d4a-4b5c-8d7e-9f0a1b2c3d4e",
+      "deleted": false
+    },
+    "2026-10-06": {
+      "slots": [],
+      "modified_at": "2026-10-07T18:31:00Z",
+      "device_id": "6f1c2b9e-3d4a-4b5c-8d7e-9f0a1b2c3d4e",
+      "deleted": true
+    }
+  }
+}

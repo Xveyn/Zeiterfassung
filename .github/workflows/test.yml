@@ -224,3 +224,19 @@ jobs:
       # Checks nach.
       - run: pip install -r requirements-test.txt pyright==1.1.411
       - run: pyright
+
+  pwa:
+    # Tests der Handy-PWA (pwa/): reines JavaScript ohne Build und ohne
+    # Abhängigkeiten, `node --test`. Gleiche Gate-Logik wie die übrigen Jobs: nur bei
+    # Code-Änderungen. Bewusst KEIN Required Check in der CLAUDE.md-Liste — das
+    # Ruleset liegt außerhalb des Repos, die Aufnahme entscheidet der Maintainer.
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '20'
+      - run: node --test
+        working-directory: pwa
