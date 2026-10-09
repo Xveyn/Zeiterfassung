@@ -54,6 +54,8 @@ Die Auth-Tore bleiben, in dieser Reihenfolge, wie in der lokalen API; `Sec-Fetch
 
 **Umsetzung (PR 4b):** Körperfehler an `/v1/pair` und `/v1/sync` (auch ein ungültiges `device_id`) sind `400 invalid_json`; `protocol` ist im Pair-Request optional, aber wenn vorhanden `1`. Die Tokenerneuerung und `last_pull_at` werden erst nach einem erfolgreichen Abgleich gespeichert. Ein Fehler beim Speichern des Geräts nach erfolgreichem Einlösen ist eine `500` (der Code ist verbraucht).
 
+**Umsetzung (PR 5):** Der Koppel-Dialog erkennt das Koppeln am Gerätebestand (vorher/nachher) und warnt, wenn dabei ein vorhandenes, nicht widerrufenes Gerät ersetzt wurde (dieselbe `device_id`, neues Token): die Spec erlaubt das erneute Koppeln derselben ID bewusst, der Besitzer soll es aber sehen (#258). Das erste Einschalten fragt nach und merkt die Zustimmung im gerätelokalen Key `mobile_notice_accepted` (ein vierter Key neben den drei der Spec). `segno` wird lazy importiert; die QR-Matrix hat Fehlerkorrektur `M`, kein Micro-QR.
+
 ## Protokoll (`/v1`, zusätzlich `protocol: 1` im Body)
 
 Fehler wie in der lokalen API: `{"error": {"code": "...", "message": "..."}}`.
