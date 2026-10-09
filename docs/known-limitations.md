@@ -454,6 +454,48 @@ Augenhöhe mit den anderen beiden Plattformen.
 - **Kein Brute-Force-Schutz.** 256 Bit sind nicht zu erraten, und gegen lokale
   Codeausführung wäre eine Sperre wirkungslos.
 
+## Handy-Erfassung (#221): bekannte Grenzen
+
+- **Klartext im LAN.** Die Verbindung zwischen Handy und App ist unverschlüsselt
+  (`http://`). Wer im selben WLAN mitliest, sieht das Gerätetoken und kann damit
+  Ist-Zeiten lesen und über den Abgleich schreiben — nicht Einstellungen, Zugangsdaten,
+  Webhooks oder die Sync-Konfiguration. Gegenmaßnahmen: Funktion standardmäßig aus, Bindung
+  nur an die gewählte Adresse, Token pro Gerät (nur als Hash gespeichert, widerrufbar,
+  30 Tage ab letzter Nutzung), kurzlebiger Einmalcode mit Sperre. Verschlüsselung der
+  Nutzdaten: #249.
+- **Die erlaubte Origin gilt für alle GitHub-Pages-Seiten des Kontos.** Der Server lässt
+  `https://xveyn.github.io` zu, ohne Pfad; jede andere Pages-Seite unter diesem Nutzernamen
+  könnte ihn per Browser ansprechen. Sie braucht dafür ein gültiges Gerätetoken.
+- **Nur solange die App läuft** und Handy und Rechner im selben Netz sind. Wechselt die
+  Adresse des Rechners (anderes WLAN, DHCP), sagt die App das im Status
+  (`address_gone`) und tauscht sie nie still aus; das Handy muss neu gekoppelt werden
+  (eine feste Adresse im Router hilft).
+- **Android/Chrome.** Entwickelt und geprüft wird auf Android mit Chrome. iOS ist nicht
+  vorgesehen (kein Zugriff auf `http://` im WLAN aus einer `https`-Seite ohne
+  Zusatzweg). Was erst ein Test mit echtem Gerät klärt — Berechtigung für Zugriffe im
+  lokalen Netz, Verhalten bei abgelehnter Berechtigung, QR-Scan in der Web-App, Installation
+  als App —, steht in der Prüfliste vor dem Release (#267).
+- **Lokaler Speicher kann verloren gehen.** Löscht du die Website-Daten oder räumt Android
+  bei Platzmangel auf, sind nicht übertragene Einträge weg. Die Web-App bittet um
+  dauerhaften Speicher, zeigt einen Zähler „n Änderungen nicht übertragen" und warnt, wenn
+  der Speicher nicht dauerhaft ist.
+- **Die Uhr des Handys zählt.** Bei gleichzeitigen Änderungen am selben Tag gewinnt der
+  neuere Zeitstempel. Weicht die Uhr um mehr als 2 Minuten ab, warnt die Web-App; bei mehr
+  als 15 Minuten lehnt der Abgleich ab.
+- **Das Handy kennt nur die letzten 90 Tage.** Vergangene Tage davor und Tage nach morgen
+  wirken dort leer, auch wenn die App Einträge hat. Wer dort speichert, ersetzt sie ohne
+  Konflikt (der Editor warnt davor). Tage in der Zukunft verschwinden nach dem nächsten
+  Abgleich wieder vom Handy (#265, #273, #250).
+- **Mehr als 400 nicht übertragene Tage** auf einmal lehnt der Server ab; der Abgleich
+  scheitert dann bei jedem Versuch, bis weniger offen sind (Aufteilen steht aus, #262).
+- **Geräteverwaltung und Urlaub sind gerätelokal.** Die Liste der gekoppelten Handys
+  und der Urlaub reisen nicht per Drive-Sync; das Handy zeigt keinen Urlaub und keine
+  Reservierungen.
+- **Konflikte löst nur die App.** Das Handy zeigt beide Fassungen an, die Auswahl trifft
+  man am Rechner.
+- **Kein Brute-Force-Schutz außer dem Einmalcode.** Der Code sperrt sich nach fünf
+  Fehlversuchen; das Gerätetoken (256 Bit) ist nicht zu erraten.
+
 ## Beschädigte oder fremde Daten (Storage)
 
 - **Ungültige Slot-Werte werden beim Lesen ersetzt, nicht repariert.** Eine gespeicherte Pause, die keine ganze Zahl von 0 bis 1440 ist (`null`, Text, `30.5`, negativ, `inf`), zählt `0`; `start`/`end` ohne Text zählen als leer, eine Kategorie ohne Text als „ohne Kategorie“. Die Datei behält den Originalwert, bis der Tag neu gespeichert wird.
