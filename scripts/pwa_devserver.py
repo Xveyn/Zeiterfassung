@@ -73,6 +73,7 @@ def running(data_dir: pathlib.Path, *, web_port: int, api_port: int, address: st
     threading.Thread(target=web.serve_forever, daemon=True, name="pwa-web").start()
     origin = f"http://localhost:{web_port}"
     # Die Handy-Instanz liest beides beim Start; nur dieses Skript ändert es.
+    saved = (mobile_routes.PWA_ORIGIN, mobile_routes.PWA_URL)
     mobile_routes.PWA_ORIGIN, mobile_routes.PWA_URL = origin, f"{origin}/"
     data_dir.mkdir(parents=True, exist_ok=True)
     settings = Settings(str(data_dir / "settings.json"))
@@ -101,6 +102,7 @@ def running(data_dir: pathlib.Path, *, web_port: int, api_port: int, address: st
             raise RuntimeError(f"Handy-Server startet nicht: {service.status}")
         yield Dev(service, web, web_port, service.status.port, address, data_dir)
     finally:
+        mobile_routes.PWA_ORIGIN, mobile_routes.PWA_URL = saved      # Prozessweit: nicht in Tests lecken
         service.shutdown()
         web.shutdown()
         web.server_close()

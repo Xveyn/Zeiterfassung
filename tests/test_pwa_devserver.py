@@ -67,3 +67,11 @@ def test_a_pair_code_is_available_and_the_link_points_at_the_dev_site(devserver,
             headers={"Content-Type": "application/json", "Origin": f"http://localhost:{dev.web_port}"})
         with urllib.request.urlopen(request, timeout=5) as response:
             assert response.status == 200 and "token" in json.loads(response.read())
+
+
+def test_the_dev_origin_does_not_leak_into_the_process(devserver, tmp_path):
+    from src import mobile_routes
+    before = (mobile_routes.PWA_ORIGIN, mobile_routes.PWA_URL)
+    with devserver.running(tmp_path, web_port=0, api_port=0, address="127.0.0.1"):
+        assert mobile_routes.PWA_ORIGIN != before[0]
+    assert (mobile_routes.PWA_ORIGIN, mobile_routes.PWA_URL) == before
