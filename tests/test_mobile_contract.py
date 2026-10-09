@@ -82,3 +82,100 @@ def test_the_link_the_desktop_builds_is_the_fragment_the_pwa_parses(row):
 
     assert link is not None and "#" in link
     assert "#" + link.split("#", 1)[1] == row["hash"]
+
+
+# --- Sync, Koppeln und Fehlercodes ------------------------------------------------------------
+
+import re  # noqa: E402
+
+from src import mobile_routes, mobile_sync  # noqa: E402
+from src.api_auth import ANONYMOUS  # noqa: E402
+from src.api_routes import ApiRequest  # noqa: E402
+from tests import test_mobile_routes as mr  # noqa: E402
+
+DATE_KEY = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+def shape(value):
+    """Die Form eines JSON-Werts: Schlüssel und Typen, nicht die Werte. Eine Liste hat die Form
+    ihres ersten Elements, ein Objekt mit lauter Datumsschlüsseln die seines ersten Werts."""
+    if isinstance(value, list):
+        return [shape(value[0])] if value else []
+    if isinstance(value, dict):
+        if value and all(DATE_KEY.match(key) for key in value):
+            return {"<date>": shape(next(iter(value.values())))}
+        return {key: shape(value[key]) for key in sorted(value)}
+    if isinstance(value, bool):
+        return "boolean"
+    if isinstance(value, (int, float)):
+        return "number"
+    if value is None:
+        return "null"
+    return "string"
+
+
+def test_the_request_example_is_accepted_by_the_server_parser():
+    example = load("sync-request.json")
+
+    parsed = mobile_sync.parse_request(json.dumps(example).encode(), now=example["client_time"])
+
+    assert sorted(parsed.entries) == sorted(example["entries"])
+
+
+def test_the_response_example_has_the_shape_the_server_really_sends(tmp_path):
+    example = load("sync-response.json")
+    env = mr.make_env(tmp_path)
+    env.ctx.settings.set("categories", ["Projekt", "Intern"])
+    _record, token = mr.add_device(env, mr.PHONE, "Pixel")
+    # Der Desktop kennt 2026-10-05 anders: der Erstabgleich macht daraus einen Konflikt.
+    env.ctx.storage.apply_merge({"2026-10-05": {
+        "slots": [{"start": "09:00", "end": "13:00", "pause": 0, "kategorie": ""}],
+        "modified_at": "2026-10-07T20:00:00Z", "device_id": "DESK", "deleted": False}})
+    body = {"protocol": 1, "client_time": mr.NOW, "entries": {
+        "2026-10-07": mr.day(), "2026-10-06": mr.day(slots=(), deleted=True),
+        "2026-10-05": mr.day(modified_at="2026-10-07T18:30:00Z")}}
+
+    response = mr.call(env, "POST", "/v1/sync", body=json.dumps(body).encode(), token=token)
+
+    assert response.status == 200
+    assert shape(response.body) == shape(example)
+
+
+def test_the_pair_examples_have_the_shape_the_server_expects_and_sends(tmp_path):
+    request = load("pair-request.json")
+    example = load("pair-response.json")
+    env = mr.make_env(tmp_path)
+    request["code"] = env.ctx.pairing.open()
+
+    response = mobile_routes.dispatch(
+        ApiRequest("POST", "/v1/pair", {}, json.dumps(request).encode()), env.ctx, ANONYMOUS)
+
+    assert response.status == 200
+    assert shape(response.body) == shape(example)
+    assert response.body["window_days"] == example["window_days"]
+    assert response.body["protocol"] == example["protocol"] == 1
+
+
+_EMITTED = re.compile(
+    r'(?:SyncError|_MobileError|AuthResult|error_response)\(\s*(\d{3}),\s*"([a-z_]+)"')
+_DENIED = re.compile(r'Denied\("([a-z_]+)"\)')
+_SOURCES = ("mobile_routes.py", "mobile_sync.py", "api_server.py", "api_auth.py")
+
+
+def test_the_pwa_classifies_every_error_the_server_can_send():
+    src = pathlib.Path(__file__).resolve().parent.parent / "src"
+    emitted = set()
+    for name in _SOURCES:
+        text = (src / name).read_text(encoding="utf-8")
+        emitted |= {(int(status), code) for status, code in _EMITTED.findall(text)}
+        if name == "mobile_routes.py":
+            emitted |= {(401, code) for code in _DENIED.findall(text)}
+    assert emitted, "Parser gescheitert: keine Fehlercodes im Quelltext gefunden"
+    emitted = {(status, code) for status, code in emitted if status >= 400}     # (200, "ok") ist kein Fehler
+    known = {(row["status"], row["code"]) for row in load("errors.json")}
+
+    missing = sorted(emitted - known)
+
+    assert not missing, (
+        f"Der Server kann diese (Status, Code)-Paare senden, die pwa/test/fixtures/errors.json "
+        f"nicht kennt — die PWA wüsste nicht, wie sie sie einordnet: {missing}")
