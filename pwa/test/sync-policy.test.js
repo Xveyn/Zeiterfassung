@@ -26,8 +26,9 @@ test('save does not wait for the cooldown', () => {
 
 test('automatic triggers wait for the cooldown', () => {
   for (const trigger of ['start', 'visible', 'online']) {
-    assert.equal(ask({ trigger, lastAttemptAt: base.now - (AUTO_COOLDOWN_MS - 1) }), false, trigger);
-    assert.equal(ask({ trigger, lastAttemptAt: base.now - AUTO_COOLDOWN_MS }), true, trigger);
+    assert.equal(ask({ trigger, lastAttemptAt: base.now - 4999 }), false, trigger);
+    assert.equal(ask({ trigger, lastAttemptAt: base.now - 5000 }), true, trigger);
+    assert.equal(AUTO_COOLDOWN_MS, 5000);
   }
 });
 
@@ -35,6 +36,7 @@ test('automatic triggers stay quiet while the browser says offline, except the o
   assert.equal(ask({ trigger: 'start', online: false }), false);
   assert.equal(ask({ trigger: 'visible', online: false }), false);
   assert.equal(ask({ trigger: 'online', online: true }), true);
+  assert.equal(ask({ trigger: 'online', online: false }), true);   // das Ereignis kommt vor navigator.onLine
 });
 
 test('after a network failure start and visible back off, the online event does not', () => {

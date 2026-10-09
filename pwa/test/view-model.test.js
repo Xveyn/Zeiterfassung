@@ -122,6 +122,8 @@ test('each situation gets its hint and way out', () => {
   assert.deepEqual(ids({ skewMs: 180000 }), ['skew']);
   assert.deepEqual(ids({ skewMs: -180000 }), ['skew']);
   assert.deepEqual(ids({ skewMs: 60000 }), []);
+  assert.deepEqual(ids({ skewMs: 119999 }), []);
+  assert.deepEqual(ids({ skewMs: 120000 }), ['skew']);
   assert.deepEqual(ids({ persistent: false }), ['storage']);
   assert.deepEqual(ids({ persistent: null }), []);                  // noch nicht gefragt
   assert.deepEqual(ids({ updateReady: true }), ['update']);
