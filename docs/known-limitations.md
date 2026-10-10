@@ -470,7 +470,7 @@ Augenhöhe mit den anderen beiden Plattformen.
   nichts lesen oder schreiben. Das Gerätetoken steht weiter im Klartext-Header, ist aber ohne den
   Schlüssel wertlos. Weitere Maßnahmen: Funktion standardmäßig aus, Bindung nur an die gewählte
   Adresse, Token pro Gerät (nur als Hash gespeichert, widerrufbar, 30 Tage ab letztem Abgleich),
-  kurzlebiger Kopplungscode mit Sperre. Nicht gelöst: Firefox und iOS (Mixed Content, s. u.);
+  kurzlebiger, einmaliger Kopplungscode. Nicht gelöst: Firefox und iOS (Mixed Content, s. u.);
   HTTPS direkt vom Desktop bleibt als Alternative offen (#249).
 - **Wo der Geräteschlüssel am Rechner liegt.** Im Schlüsselbund des Betriebssystems (Windows
   Credential Manager, macOS Keychain, Linux Secret Service). **Nur ohne Schlüsselbund** (Linux
@@ -514,9 +514,10 @@ Augenhöhe mit den anderen beiden Plattformen.
   Reservierungen.
 - **Konflikte löst nur die App.** Das Handy zeigt beide Fassungen an, die Auswahl trifft
   man am Rechner.
-- **Kein Brute-Force-Schutz außer der Sperre des Kopplungscodes.** Der Code sperrt sich nach
-  fünf Fehlversuchen (nur gegen Störung: 139 Bit sind nicht zu erraten); Gerätetoken und
-  Geräteschlüssel haben 256 Bit.
+- **Keine Sperre bei Fehlversuchen.** Der Kopplungscode hat ≈139 Bit und gilt fünf Minuten und
+  einmal; Gerätetoken und Geräteschlüssel haben 256 Bit. Eine Sperre schützte vor nichts und
+  wäre nur ein Hebel, mit dem jemand im selben WLAN die Kopplung dauerhaft verhindern könnte.
+  Ein Fremder kann den Server mit Fehlversuchen beschäftigen, nicht aber koppeln.
 
 ## Beschädigte oder fremde Daten (Storage)
 

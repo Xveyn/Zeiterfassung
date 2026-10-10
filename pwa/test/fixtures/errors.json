@@ -23,7 +23,6 @@
   {"status": 413, "code": "payload_too_large", "kind": "client_error", "needs_repair": false, "retryable": false},
   {"status": 415, "code": "unsupported_media_type", "kind": "client_error", "needs_repair": false, "retryable": false},
   {"status": 422, "code": "invalid_entry", "kind": "invalid_entry", "needs_repair": false, "retryable": false},
-  {"status": 429, "code": "pairing_locked", "kind": "pairing_locked", "needs_repair": false, "retryable": false},
   {"status": 500, "code": "internal_error", "kind": "server", "needs_repair": false, "retryable": true},
   {"status": 500, "code": "http_error", "kind": "server", "needs_repair": false, "retryable": true},
   {"status": 503, "code": "busy", "kind": "transient", "needs_repair": false, "retryable": true},

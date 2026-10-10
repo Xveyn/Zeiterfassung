@@ -291,17 +291,18 @@ def test_an_expired_code_gives_the_same_answer(env):
     assert expired.status == 403 and expired.body == pair(env, mobile_pairing.generate_code()).body
 
 
-def test_five_wrong_codes_lock_the_session_even_for_the_right_one(env):
+def test_wrong_codes_never_lock_the_pairing_so_a_stranger_cannot_block_it(env):
     code = new_code(env)
 
-    results = [pair(env, mobile_pairing.generate_code()).status for _ in range(5)]
-    locked = pair(env, mobile_pairing.generate_code())
-    right_but_locked = pair(env, code)
+    results = [pair(env, mobile_pairing.generate_code()).status for _ in range(50)]
+    garbage = [call(env, "POST", "/v1/pair", body=json.dumps(
+        {"v": 2, "seq": 1, "n": mc.b64e(bytes(12)), "c": mc.b64e(bytes(i + 16))}).encode()).status
+        for i in range(50)]
+    right = pair(env, code)
 
-    assert results == [403] * 5
-    assert locked.status == 429 and error_code(locked) == "pairing_locked"
-    assert right_but_locked.status == 429
-    assert env.ctx.devices.get(PHONE) is None
+    assert results == [403] * 50 and garbage == [403] * 50
+    assert right.status == 200                                                # der echte Code geht trotzdem
+    assert env.ctx.devices.get(PHONE) is not None
 
 
 @pytest.mark.parametrize("device_id", [None, "", "kurz", "a" * 65, "mit leerzeichen!", 5, ["x"], "٢" * 10])
@@ -828,3 +829,19 @@ def test_nothing_in_the_logs_names_secrets(env, caplog):
                  mc.b64e(paired.phone.key))
     for secret in (code, token, ok.body["token"], *key_forms, "Projekt"):
         assert secret not in caplog.text, secret
+
+
+def test_the_counter_is_stored_even_when_the_apply_crashes_unexpectedly(env, monkeypatch):
+    _record, token = add_device(env)
+    body = sync_body(env)
+
+    def boom(*args, **kwargs):
+        raise OSError("Platte voll")
+    monkeypatch.setattr("src.mobile_sync.perform_sync", boom)
+    with pytest.raises(OSError):
+        call(env, "POST", "/v1/sync", body=body, token=token)
+    monkeypatch.undo()
+
+    assert env.ctx.devices.get(PHONE)["last_seq"] == 1
+    again = call(env, "POST", "/v1/sync", body=body, token=token)           # derselbe Umschlag noch einmal
+    assert (again.status, error_code(again)) == (409, "replay")

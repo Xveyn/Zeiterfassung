@@ -257,8 +257,22 @@ class MobileKeyStore:
                 continue
             with self._lock:
                 entry = self._entries.get(device_id)
-                if entry is None or entry["location"] != LOCATION_FILE or self._cache.get(device_id) != key:
+                if entry is None:
+                    orphaned = True                       # inzwischen widerrufen: der Eintrag unten ist verwaist
+                elif entry["location"] != LOCATION_FILE or self._cache.get(device_id) != key:
                     continue                              # inzwischen neu gekoppelt: später erneut
+                else:
+                    orphaned = False
+            if orphaned:
+                # `remove` lief schon (Datei, Cache, Schlüsselbund) und fand noch nichts: das gerade
+                # abgelegte Geheimnis würde sonst für immer im Schlüsselbund bleiben, weil
+                # `retain` und `forget_all` nur über die Datei suchen.
+                keyring_store.remove(keyring_key(device_id))
+                continue
+            with self._lock:
+                entry = self._entries.get(device_id)
+                if entry is None or entry["location"] != LOCATION_FILE or self._cache.get(device_id) != key:
+                    continue                              # zwischen den beiden Sperren verändert: später erneut
                 self._entries[device_id] = {"location": LOCATION_KEYRING}
                 try:
                     self._save_locked()

@@ -32,7 +32,7 @@ const KINDS = {
   incomplete_body: 'transient', request_timeout: 'transient', busy: 'transient', shutting_down: 'transient',
   unauthorized: 'repair', token_expired: 'repair', token_revoked: 'repair',
   bad_host: 'address', bad_origin: 'address', browser_request: 'browser',
-  invalid_code: 'invalid_code', pairing_locked: 'pairing_locked', clock_skew: 'clock_skew',
+  invalid_code: 'invalid_code', clock_skew: 'clock_skew',
   invalid_entry: 'invalid_entry', invalid_protocol: 'protocol', not_found: 'protocol',
   method_not_allowed: 'protocol', internal_error: 'server',
   // Verschlüsselung (#249): ein Umschlag, den der Desktop nicht öffnen kann, ein wiedereingespielter

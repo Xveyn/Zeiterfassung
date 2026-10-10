@@ -122,11 +122,13 @@ class MobileService:
         if self._closed or not self._settings.get("mobile_enabled"):
             return
         keys = self._context.keys
-        steps: list[tuple[str, Callable[[], Any]]] = [
-            ("retain", lambda: keys.retain([r["id"] for r in self._context.devices.get_all()])),
-            ("load", keys.load),
-            ("migrate", keys.migrate),
-        ]
+        steps: list[tuple[str, Callable[[], Any]]] = [("load", keys.load), ("migrate", keys.migrate)]
+        if self._context.devices.read_only:
+            # Eine nicht gelesene Gerätedatei ist leer, aber nicht „alle Geräte sind weg“: ein
+            # Aufräumen gegen diese Liste löschte jeden Schlüssel (und mit ihm jede Kopplung).
+            _log.warning("Handy-Erfassung: Gerätedatei nicht gelesen — Schlüssel werden nicht aufgeräumt")
+        else:
+            steps.insert(0, ("retain", lambda: keys.retain([r["id"] for r in self._context.devices.get_all()])))
         for name, step in steps:
             if self._closed:
                 return

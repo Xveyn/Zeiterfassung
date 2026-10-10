@@ -254,3 +254,40 @@ def test_no_secret_in_the_log(tmp_path, ring, caplog):
     store_at(tmp_path)
     secret_forms = (KEY.hex(), base64.urlsafe_b64encode(KEY).rstrip(b"=").decode("ascii"))
     assert not any(form in caplog.text for form in secret_forms)
+
+
+def test_a_key_removed_while_it_migrates_leaves_nothing_behind_in_the_keyring(tmp_path, ring):
+    # Widerruf während des Umzugs: der Schlüssel darf nicht als verwaistes Geheimnis im Schlüsselbund bleiben
+    # (forget_all und retain arbeiten nur über die Datei und fänden ihn nie wieder).
+    store = store_at(tmp_path)
+    store.put("a" * 8, KEY)
+    store.put("b" * 8, KEY)
+    original_put = ring.put
+
+    def put_then_revoke_b(key, value):
+        result = original_put(key, value)
+        if key == "mobile:" + "a" * 8:
+            store.remove("b" * 8)
+        return result
+    ring.put = put_then_revoke_b
+
+    store.migrate()
+
+    assert "mobile:" + "b" * 8 not in ring.items
+    assert file_of(tmp_path)["keys"] == {"a" * 8: {"location": "keyring"}}
+
+
+def test_a_re_paired_key_is_not_removed_by_the_migration_of_the_old_one(tmp_path, ring):
+    store = store_at(tmp_path)
+    store.put(ID, KEY)
+    original_put = ring.put
+
+    def put_then_repair(key, value):
+        result = original_put(key, value)
+        store.put(ID, bytes(reversed(range(32))))                     # neu gekoppelt: anderer Schlüssel
+        return result
+    ring.put = put_then_repair
+
+    assert store.migrate() == 0
+    assert store.get(ID) == bytes(reversed(range(32)))
+    assert file_of(tmp_path)["keys"][ID]["location"] == "file"        # der neue wartet auf seinen Umzug

@@ -28,8 +28,6 @@ export function describeError(error) {
       return { text: 'Dieser Browser sendet die Anfrage als seitenübergreifend (Sec-Fetch-Site) und der Desktop lehnt sie ab. Bitte Chrome auf Android verwenden.', action: null };
     case 'invalid_code':
       return { text: 'Der Code ist ungültig oder abgelaufen. Am Desktop einen neuen Code erzeugen.', action: 'pair' };
-    case 'pairing_locked':
-      return { text: 'Zu viele Fehlversuche. Am Desktop einen neuen Code erzeugen.', action: 'pair' };
     case 'clock_skew':
       return { text: 'Die Uhr des Handys weicht mehr als 15 Minuten von der des Desktops ab. Datum und Uhrzeit am Handy prüfen.', action: null };
     case 'invalid_entry':

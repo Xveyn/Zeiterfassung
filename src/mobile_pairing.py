@@ -10,7 +10,7 @@ nur auf.
 Zwei Dinge liegen hier:
 
 - **Der Kopplungscode** (`PairingSession`): 28 Zeichen aus 31 (≈139 Bit), 5 Minuten
-  gültig, einmal einlösbar, nach 5 Fehlversuchen gesperrt. Er steht nur im Hauptspeicher
+  gültig, einmal einlösbar, **ohne Sperre** (s. dort). Er steht nur im Hauptspeicher
   und geht nie über das Netz: er verschlüsselt die Kopplung (`mobile_crypto`).
 - **Das Gerätetoken** (`issue_device`, `renew`, `authenticate`): 256 Bit Zufall,
   im Datensatz nur als SHA-256-Hash. 30 Tage ab der letzten Nutzung (Sliding
@@ -39,7 +39,6 @@ CODE_ALPHABET = "23456789ABCDEFGHJKMNPQRSTUVWXYZ"
 # (aus ihm leitet `mobile_crypto.pair_keys` die Schlüssel ab) und lässt sich abtippen.
 CODE_LENGTH = 28
 CODE_TTL_SECONDS = 300
-MAX_CODE_FAILURES = 5
 _MAX_RAW_CODE_LENGTH = 64
 
 
@@ -71,42 +70,38 @@ T = TypeVar("T")
 
 class RedeemResult(enum.Enum):
     OK = "ok"
-    INVALID = "invalid"      # falsch, abgelaufen, verbraucht oder gar kein Code aktiv
-    LOCKED = "locked"        # zu viele Fehlversuche, bis zum nächsten `open()`
+    INVALID = "invalid"      # nicht zu öffnen, abgelaufen, verbraucht oder gar kein Code aktiv
 
 
 class PairingSession:
-    """Der eine aktive Einmalcode. Thread-sicher: `redeem` kommt aus
-    Server-Threads, `open`/`close` aus dem UI-Thread."""
+    """Der eine aktive Kopplungscode. Thread-sicher: `try_open` kommt aus Server-Threads,
+    `open`/`close` aus dem UI-Thread.
+
+    **Keine Sperre nach Fehlversuchen.** Mit ≈139 Bit ist der Code nicht zu erraten; eine
+    Sperre schützte also vor nichts und wäre nur ein Hebel, mit dem ein Fremder im WLAN die
+    Kopplung dauerhaft verhindert (ein paar Zufalls-Umschläge an `/v1/pair` genügten). Der
+    Schutz sind die Länge des Codes, die fünf Minuten Gültigkeit und dass er nur einmal gilt;
+    ein Fehlversuch kostet den Angreifer eine AES-GCM-Prüfung und den Server dasselbe."""
 
     def __init__(self, clock: Callable[[], float] = time.monotonic, *,
-                 ttl_seconds: float = CODE_TTL_SECONDS,
-                 max_failures: int = MAX_CODE_FAILURES) -> None:
+                 ttl_seconds: float = CODE_TTL_SECONDS) -> None:
         self._clock = clock
         self._ttl = ttl_seconds
-        self._max_failures = max_failures
         self._lock = threading.Lock()
         self._code: str | None = None
         self._expires = 0.0
-        self._failures = 0
-        self._locked = False
 
     def open(self) -> str:
-        """Erzeugt einen neuen Code (der alte verfällt, Sperre und Zähler werden
-        zurückgesetzt) und liefert ihn formatiert."""
+        """Erzeugt einen neuen Code (der alte verfällt) und liefert ihn formatiert."""
         with self._lock:
             self._code = generate_code()
             self._expires = self._clock() + self._ttl
-            self._failures = 0
-            self._locked = False
             return format_code(self._code)
 
     def close(self) -> None:
         """Macht den Code ungültig (Dialog geschlossen)."""
         with self._lock:
             self._code = None
-            self._failures = 0
-            self._locked = False
 
     def is_active(self) -> bool:
         with self._lock:
@@ -127,47 +122,18 @@ class PairingSession:
         return True
 
     def try_open(self, attempt: Callable[[str], T | None]) -> tuple[RedeemResult, T | None]:
-        """Wie `redeem`, aber der Code wird nicht verglichen, sondern **benutzt**: `attempt`
-        bekommt den aktiven Code (zum Ableiten der Kopplungsschlüssel) und liefert das
-        Ergebnis, oder `None`, wenn die Nachricht nicht damit zu öffnen war. Nur ein
-        Ergebnis verbraucht den Code; `None` zählt als Fehlversuch (nach `max_failures`
-        gesperrt). Läuft unter dem Lock: `attempt` muss kurz sein und darf nichts loggen."""
+        """Benutzt den aktiven Code: `attempt` bekommt ihn (zum Ableiten der Kopplungsschlüssel)
+        und liefert ein Ergebnis oder `None`, wenn die Nachricht nicht damit zu öffnen war. Nur
+        ein Ergebnis verbraucht den Code; `None` ändert nichts. Läuft unter dem Lock: `attempt`
+        muss kurz sein und darf nichts loggen."""
         with self._lock:
-            if self._locked:
-                return RedeemResult.LOCKED, None
             if not self._active_locked() or self._code is None:
                 return RedeemResult.INVALID, None
             value = attempt(self._code)
-            if value is not None:
-                self._code = None
-                self._failures = 0
-                return RedeemResult.OK, value
-            self._failures += 1
-            if self._failures >= self._max_failures:
-                self._code = None
-                self._locked = True
-            return RedeemResult.INVALID, None
-
-    def redeem(self, raw: object) -> RedeemResult:
-        """Löst den Code ein. Bei Erfolg ist er verbraucht. Der Fehlversuch, der den
-        Zähler erschöpft, ist selbst noch `INVALID`; danach antwortet die Sitzung
-        `LOCKED`, bis ein neuer Code geöffnet wird."""
-        with self._lock:
-            if self._locked:
-                return RedeemResult.LOCKED
-            if not self._active_locked() or self._code is None:
-                return RedeemResult.INVALID
-            candidate = normalize_code(raw) or "-" * CODE_LENGTH
-            # Immer vergleichen, auch bei einer Form, die nie passen kann: gleiche Laufzeit.
-            if hmac.compare_digest(candidate.encode("ascii"), self._code.encode("ascii")):
-                self._code = None
-                self._failures = 0
-                return RedeemResult.OK
-            self._failures += 1
-            if self._failures >= self._max_failures:
-                self._code = None
-                self._locked = True
-            return RedeemResult.INVALID
+            if value is None:
+                return RedeemResult.INVALID, None
+            self._code = None
+            return RedeemResult.OK, value
 
 
 # --- Gerätetoken und -datensätze ---------------------------------------------------------------------

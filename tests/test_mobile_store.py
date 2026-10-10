@@ -316,3 +316,11 @@ def test_a_record_with_an_invalid_last_seq_is_skipped(path, value):
     with open(path, "w", encoding="utf-8") as handle:
         json.dump({"schema_version": 1, "devices": [broken]}, handle)
     assert MobileStore(path).get_all() == []
+
+
+def test_read_only_is_visible_to_callers(path, monkeypatch):
+    assert MobileStore(path).read_only is False
+    with open(path, "w", encoding="utf-8") as handle:
+        json.dump({"schema_version": 99, "devices": []}, handle)
+    assert MobileStore(path).read_only is True
+    assert MobileStore(str(path) + ".nicht-da").read_only is False

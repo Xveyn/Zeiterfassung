@@ -44,9 +44,8 @@ test('server texts are passed through for invalid entries and client errors', ()
   assert.match(describeError(new SyncError({ kind: 'client_error', message: 'Body ist zu groß.' })).text, /Body ist zu groß/);
 });
 
-test('clock skew and locked pairing say what to do', () => {
+test('clock skew and an invalid code say what to do', () => {
   assert.match(describeError(new SyncError({ kind: 'clock_skew' })).text, /Uhr/);
-  assert.match(describeError(new SyncError({ kind: 'pairing_locked' })).text, /neuen Code/);
   assert.match(describeError(new SyncError({ kind: 'invalid_code' })).text, /neuen Code/);
 });
 

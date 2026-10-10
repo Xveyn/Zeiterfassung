@@ -67,81 +67,67 @@ def test_normalize_rejects_anything_that_cannot_be_a_code(raw):
 
 # --- PairingSession ---------------------------------------------------------------------
 
-def test_no_code_is_active_before_open():
-    session = PairingSession(FakeClock())
-    assert not session.is_active() and session.seconds_left() == 0
-    assert session.redeem(SHOWN) is RedeemResult.INVALID
-
-
-def test_open_returns_a_formatted_code_that_redeems_once():
-    session = PairingSession(FakeClock())
+def opened(session):
+    """Öffnet eine Sitzung und liefert (angezeigter Code, kanonischer Code)."""
     shown = session.open()
+    return shown, mp.normalize_code(shown)
+
+
+def test_no_code_is_active_before_open_and_the_attempt_is_never_called():
+    session = PairingSession(FakeClock())
+    called = []
+    assert not session.is_active() and session.seconds_left() == 0
+    assert session.try_open(lambda c: called.append(c)) == (RedeemResult.INVALID, None)
+    assert called == []
+
+
+def test_open_returns_a_formatted_code_that_opens_once():
+    session = PairingSession(FakeClock())
+    shown, code = opened(session)
 
     assert len(shown) == 34 and shown.count("-") == 6 and shown[4] == "-"
     assert session.is_active()
-    assert session.redeem(shown) is RedeemResult.OK
+    assert session.try_open(lambda c: {"code": c}) == (RedeemResult.OK, {"code": code})
     assert not session.is_active()
-    assert session.redeem(shown) is RedeemResult.INVALID                # verbraucht
+    assert session.try_open(lambda c: {"code": c}) == (RedeemResult.INVALID, None)       # verbraucht
 
 
-def test_the_code_is_accepted_in_any_spelling():
+def test_a_failed_attempt_consumes_nothing():
     session = PairingSession(FakeClock())
-    shown = session.open()
-    assert session.redeem(shown.lower().replace("-", " ")) is RedeemResult.OK
+    _, code = opened(session)
+    assert session.try_open(lambda c: None) == (RedeemResult.INVALID, None)
+    assert session.is_active()
+    assert session.try_open(lambda c: {"code": c}) == (RedeemResult.OK, {"code": code})
+
+
+def test_any_number_of_failed_attempts_never_locks_the_session():
+    # Der Code hat ≈139 Bit: eine Sperre schützt nicht vor Raten, sie wäre nur ein Hebel, mit dem ein
+    # Fremder im WLAN die Kopplung dauerhaft verhindert (fünf Zufalls-Umschläge genügten).
+    session = PairingSession(FakeClock())
+    _, code = opened(session)
+    for _ in range(500):
+        assert session.try_open(lambda c: None) == (RedeemResult.INVALID, None)
+    assert session.is_active()
+    assert session.try_open(lambda c: {"code": c}) == (RedeemResult.OK, {"code": code})
 
 
 def test_the_code_expires_after_five_minutes_exactly():
     clock = FakeClock()
     session = PairingSession(clock)
-    shown = session.open()
+    session.open()
     clock.advance(299)
     assert session.is_active() and session.seconds_left() == 1
     clock.advance(1)                                                     # 300 s: abgelaufen
     assert not session.is_active() and session.seconds_left() == 0
-    assert session.redeem(shown) is RedeemResult.INVALID
+    assert session.try_open(lambda c: {"code": c}) == (RedeemResult.INVALID, None)
 
 
-def test_five_wrong_attempts_lock_the_session_until_the_next_open():
+def test_close_invalidates_the_code():
     session = PairingSession(FakeClock())
-    shown = session.open()
-
-    results = [session.redeem("AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA") for _ in range(5)]
-    assert results == [RedeemResult.INVALID] * 5                          # der fünfte ist noch INVALID
-    assert session.redeem("AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA") is RedeemResult.LOCKED
-    assert session.redeem(shown) is RedeemResult.LOCKED                   # auch der richtige Code
+    opened(session)
+    session.close()
     assert not session.is_active()
-
-    fresh = session.open()                                                # neuer Code hebt die Sperre auf
-    assert session.redeem(fresh) is RedeemResult.OK
-
-
-def test_four_wrong_attempts_do_not_lock():
-    session = PairingSession(FakeClock())
-    shown = session.open()
-    for _ in range(4):
-        session.redeem("AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA")
-    assert session.redeem(shown) is RedeemResult.OK
-
-
-def test_malformed_input_counts_as_a_failed_attempt():
-    session = PairingSession(FakeClock())
-    session.open()
-    for raw in (None, 5, "", "zu kurz", "٢" * 8):
-        session.redeem(raw)
-    assert session.redeem("AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA") is RedeemResult.LOCKED
-
-
-def test_close_invalidates_the_code_and_clears_a_lock():
-    session = PairingSession(FakeClock())
-    shown = session.open()
-    session.close()
-    assert session.redeem(shown) is RedeemResult.INVALID
-    session.open()
-    for _ in range(5):
-        session.redeem("AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA")
-    assert session.redeem("AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA") is RedeemResult.LOCKED
-    session.close()
-    assert session.redeem("AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA") is RedeemResult.INVALID            # nicht LOCKED
+    assert session.try_open(lambda c: {"code": c}) == (RedeemResult.INVALID, None)
 
 
 def test_reopening_replaces_the_old_code():
@@ -149,17 +135,18 @@ def test_reopening_replaces_the_old_code():
     first = session.open()
     second = session.open()
     assert first != second
-    assert session.redeem(first) is RedeemResult.INVALID
-    assert session.redeem(second) is RedeemResult.OK
+    seen = []
+    session.try_open(lambda c: seen.append(c))
+    assert seen == [mp.normalize_code(second)]
 
 
-def test_exactly_one_of_many_concurrent_redeems_wins():
+def test_exactly_one_of_many_concurrent_attempts_wins():
     session = PairingSession()
-    shown = session.open()
+    session.open()
     results = []
 
     def attempt():
-        results.append(session.redeem(shown))
+        results.append(session.try_open(lambda c: {"code": c})[0])
 
     threads = [threading.Thread(target=attempt) for _ in range(40)]
     for thread in threads:
@@ -354,47 +341,9 @@ def test_a_record_from_before_the_counter_counts_from_zero():
                            )[0]["pair_count"] == 1
 
 
-def test_try_open_consumes_the_code_only_on_success():
-    clock = {"t": 0.0}
-    session = PairingSession(lambda: clock["t"])
-    code = mp.normalize_code(session.open())
-    assert session.try_open(lambda c: None) == (RedeemResult.INVALID, None)
-    assert session.is_active()                                    # ein Fehlversuch verbraucht nichts
-    result, value = session.try_open(lambda c: {"code": c})
-    assert (result, value) == (RedeemResult.OK, {"code": code})
-    assert not session.is_active()
-    assert session.try_open(lambda c: {"x": 1}) == (RedeemResult.INVALID, None)
 
 
-def test_try_open_counts_failures_and_locks_like_redeem():
-    session = PairingSession(lambda: 0.0, max_failures=3)
-    session.open()
-    for _ in range(3):
-        assert session.try_open(lambda c: None)[0] is RedeemResult.INVALID
-    assert session.try_open(lambda c: {"x": 1})[0] is RedeemResult.LOCKED
 
-
-def test_try_open_without_an_active_code_never_calls_the_attempt():
-    called = []
-    assert PairingSession().try_open(lambda c: called.append(c))[0] is RedeemResult.INVALID
-    assert called == []
-
-
-def test_try_open_expired_code_is_invalid():
-    clock = {"t": 0.0}
-    session = PairingSession(lambda: clock["t"], ttl_seconds=10)
-    session.open()
-    clock["t"] = 11.0
-    assert session.try_open(lambda c: {"x": 1})[0] is RedeemResult.INVALID
-
-
-def test_a_new_open_lifts_the_lock_for_try_open_too():
-    session = PairingSession(lambda: 0.0, max_failures=1)
-    session.open()
-    session.try_open(lambda c: None)
-    assert session.try_open(lambda c: {"x": 1})[0] is RedeemResult.LOCKED
-    session.open()
-    assert session.try_open(lambda c: {"x": 1})[0] is RedeemResult.OK
 
 
 def test_devices_start_with_sequence_zero_and_with_seq_keeps_everything_else():

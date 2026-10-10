@@ -95,6 +95,13 @@ class MobileStore:
         self._readonly = False
         self._load()
 
+    @property
+    def read_only(self) -> bool:
+        """Die Datei wurde nicht gelesen (neuere `schema_version` oder gesperrt): der Store ist
+        leer und schreibt nichts. Leer heißt dann **nicht** „es gibt keine Geräte“ — Aufrufer, die
+        aus der Liste Schlüsse ziehen (Aufräumen), müssen das wissen."""
+        return self._readonly
+
     def _load(self) -> None:
         try:
             data = load_json_or_quarantine(self.filepath)

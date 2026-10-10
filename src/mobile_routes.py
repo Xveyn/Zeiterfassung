@@ -168,7 +168,7 @@ def _pair(request: ApiRequest, ctx: MobileContext, principal: Principal) -> ApiR
     """Koppelt ein Handy. Der Body ist ein Umschlag, mit dem aus dem Kopplungscode
     abgeleiteten Schlüssel verschlüsselt; der Code selbst steht nie im Netz. Was sich damit
     nicht öffnen lässt — falscher, abgelaufener, verbrauchter Code, „kein Code aktiv“, auch
-    ein ungültiger Inhalt —, ist dieselbe `403 invalid_code` und zählt als Fehlversuch.
+    ein ungültiger Inhalt —, ist dieselbe `403 invalid_code`; es gibt keine Sperre (der Code hat ≈139 Bit, eine Sperre wäre nur ein DoS-Hebel für Fremde im WLAN).
     Die Antwort trägt Token und den frischen Geräteschlüssel, verschlüsselt."""
     _no_query(request)
     envelope = _envelope(request.body)
@@ -194,9 +194,6 @@ def _pair(request: ApiRequest, ctx: MobileContext, principal: Principal) -> ApiR
                 "name": mobile_pairing.clean_device_name(data.get("device_name"))}
 
     result, opened = ctx.pairing.try_open(attempt)
-    if result is mobile_pairing.RedeemResult.LOCKED:
-        raise _MobileError(429, "pairing_locked",
-                           "Zu viele Fehlversuche. Am Desktop einen neuen Code erzeugen.")
     if result is not mobile_pairing.RedeemResult.OK or opened is None:
         # Falsch, abgelaufen, verbraucht und „kein Code aktiv“ sind dieselbe Antwort.
         raise _MobileError(403, "invalid_code", "Der Code ist ungültig oder abgelaufen.")
@@ -307,6 +304,11 @@ def _sync(request: ApiRequest, ctx: MobileContext, principal: Principal) -> ApiR
             return _sealed(response_key, path="/v1/sync", device_id=record["id"], seq=seq,
                            payload={"error": {"code": exc.code, "message": exc.message}},
                            status=exc.status)
+        except Exception:
+            # Unerwartet (Platte voll …): der Server antwortet 500, der entschlüsselte Umschlag
+            # darf aber nicht noch einmal einspielbar sein — den Zähler trotzdem festhalten.
+            ctx.devices.save(seen)
+            raise
         renewed, token = mobile_pairing.renew(seen, now, keep_previous=keep_previous)
         renewed["last_pull_at"] = response["last_pull_at"]
         ctx.devices.save(renewed)

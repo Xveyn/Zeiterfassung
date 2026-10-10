@@ -563,3 +563,29 @@ def test_shutdown_does_not_wait_for_a_hanging_keyring(tmp_path, ring):
     service.shutdown()
     release.set()
     assert time.time() - started_at < 2
+
+
+def test_a_device_file_that_could_not_be_read_never_costs_the_keys(tmp_path, ring):
+    # Die Gerätedatei hat eine neuere schema_version (Downgrade) oder war gesperrt: der Store startet
+    # read-only und leer. Das ist kein „alle Geräte sind weg“ — die Schlüssel dürfen nicht abgeräumt werden,
+    # sonst muss nach dem nächsten normalen Start jedes Handy neu koppeln.
+    (tmp_path / "mobile_devices.json").write_text(json.dumps({"schema_version": 99, "devices": []}), encoding="utf-8")
+    service, _settings, ctx = make_service(tmp_path)
+    ctx.keys.put("phone-0001", KEY)
+    ctx.keys.migrate()
+    assert ctx.devices.read_only and ctx.devices.get_all() == []
+
+    service._maintain_keys()
+
+    assert ctx.keys.where() == {"phone-0001": "keyring"} and "mobile:phone-0001" in ring.items
+
+
+def test_keys_of_devices_the_store_no_longer_knows_are_still_cleaned_up(tmp_path, ring):
+    service, _settings, ctx = make_service(tmp_path)
+    add_keyed_device(ctx, "phone-aaaa")
+    ctx.keys.put("phone-orphan", KEY)
+    ctx.keys.migrate()
+
+    service._maintain_keys()
+
+    assert set(ctx.keys.where()) == {"phone-aaaa"} and "mobile:phone-orphan" not in ring.items
