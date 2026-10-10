@@ -21,6 +21,19 @@ export function slotText(slot) {
   return `${slot.start}–${slot.end}${pause}${category}`;
 }
 
+/** Zeilen des Kategorie-Modals: alle bekannten Kategorien in Server-Reihenfolge. Steht am Tag eine,
+ *  die der Server nicht listet (frei eingegeben, vom Desktop), hängt sie hinten dran — sonst fehlte
+ *  im Modal ausgerechnet die aktuelle Auswahl. */
+export function categoryOptions(categories, current) {
+  const options = categories.map((name) => ({ name, active: name === current }));
+  if (current && !categories.includes(current)) options.push({ name: current, active: true });
+  return options;
+}
+
+export function categoryLabel(current) {
+  return current ? current : 'Wählen';
+}
+
 export function localTime(iso, timeZone) {
   const time = Date.parse(iso);
   if (Number.isNaN(time)) return '';

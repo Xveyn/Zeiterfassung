@@ -4,6 +4,7 @@
 // Handler als Parameter; nichts hier kennt den Store oder das Netz.
 import { h } from './dom.js';
 import { MAX_CATEGORY_LENGTH } from './minutes.js';
+import { categoryLabel, categoryOptions } from './view-model.js';
 
 const button = (label, onclick, className = '', extra = {}) =>
   h('button', { type: 'button', class: className, onclick, ...extra }, label);
@@ -99,7 +100,6 @@ function openDialog(dialog) {
 export function editorDialog({ title, rows, categories, error, outsideWindow, canClear, validate }, handlers) {
   const list = h('div', {});
   const message = h('div', { class: 'error-text', role: 'alert' }, error ?? '');
-  const datalist = h('datalist', { id: 'categories' }, categories.map((name) => h('option', { value: name })));
   const save = h('button', { type: 'submit', class: 'primary' }, 'Speichern');
   const state = rows.map((row) => ({ ...row }));
   const dialog = h('dialog', { 'aria-labelledby': 'editor-title' });
@@ -115,6 +115,20 @@ export function editorDialog({ title, rows, categories, error, outsideWindow, ca
       oninput: () => { state[index][key] = input.value; refresh(); } });
     return h('div', {}, h('label', { for: id }, label), input);
   };
+  // Modal statt <datalist>: auf dem Handy zeigt ein Datalist erst nach Eingabe etwas und filtert nach
+  // dem Feldinhalt, und Chips blähen den Editor bei mehreren Slots auf.
+  const categoryField = (index) => {
+    const id = `slot-${index}-kategorie`;
+    const text = h('span', { class: 'text' }, categoryLabel(state[index].kategorie));
+    const picker = button([text, h('span', { 'aria-hidden': 'true' }, '▾')], () => {
+      categoryPickerDialog({ categories, current: state[index].kategorie }, (name) => {
+        state[index].kategorie = name;
+        text.textContent = categoryLabel(name);
+        refresh();
+      });
+    }, 'picker', { id });
+    return h('div', {}, h('label', { for: id }, 'Kategorie'), picker);
+  };
   const build = () => {
     list.replaceChildren(...state.map((_, index) => h('fieldset', { class: 'slot' },
       state.length > 1 && button('×', () => { state.splice(index, 1); build(); refresh(); }, 'remove', { 'aria-label': 'Slot entfernen' }),
@@ -123,7 +137,7 @@ export function editorDialog({ title, rows, categories, error, outsideWindow, ca
         field(index, 'end', 'bis', { type: 'time', step: 60 })),
       h('div', { class: 'row' },
         field(index, 'pause', 'Pause (Min)', { type: 'number', inputmode: 'numeric', min: 0, step: 1 }),
-        field(index, 'kategorie', 'Kategorie', { type: 'text', list: 'categories', maxlength: MAX_CATEGORY_LENGTH, autocomplete: 'off' })))));
+        categoryField(index)))));
   };
   build();
   refresh();
@@ -136,13 +150,38 @@ export function editorDialog({ title, rows, categories, error, outsideWindow, ca
     } },
       h('h2', { id: 'editor-title' }, title),
       outsideWindow && h('p', { class: 'hint warn' }, 'Dieser Tag liegt außerhalb des Zeitraums, den das Handy vom Desktop kennt. Er kann dort bereits Einträge haben: Speichern ersetzt sie, und nach dem Abgleich ist der Tag hier nicht mehr sichtbar.'),
-      list, datalist,
+      list,
       button('+ Slot', () => { state.push({ start: state.at(-1)?.end ?? '', end: '', pause: '0', kategorie: state.at(-1)?.kategorie ?? '' }); build(); refresh(); }),
       message,
       h('div', { class: 'buttons' },
         canClear && button('Tag leeren', () => handlers.clear(dialog), 'link'),
         button('Abbrechen', () => dialog.close()),
         save)));
+  return openDialog(dialog);
+}
+
+/** Kategorie wählen. Antippen einer Zeile übernimmt und schließt sofort; „Andere …“ nimmt freie
+ *  Eingabe. `onPick(name)` bekommt `''` für „Keine Kategorie“. */
+export function categoryPickerDialog({ categories, current }, onPick) {
+  const dialog = h('dialog', { 'aria-labelledby': 'category-title', class: 'picker-dialog' });
+  const choose = (name) => { dialog.close(); onPick(name); };
+  const row = (label, name, active) => h('li', {},
+    h('button', { type: 'button', class: active ? 'option active' : 'option', 'aria-pressed': String(active), onclick: () => choose(name) },
+      label, active && h('span', { 'aria-hidden': 'true' }, '✓')));
+  const custom = h('input', { id: 'category-custom', type: 'text', maxlength: MAX_CATEGORY_LENGTH, autocomplete: 'off' });
+  const apply = button('Übernehmen', () => choose(custom.value.trim()), 'primary');
+  const sync = () => { apply.disabled = custom.value.trim() === ''; };
+  custom.addEventListener('input', sync);
+  custom.addEventListener('keydown', (event) => { if (event.key === 'Enter' && !apply.disabled) { event.preventDefault(); apply.click(); } });
+  sync();
+  dialog.append(
+    h('h2', { id: 'category-title' }, 'Kategorie'),
+    h('ul', { class: 'options' },
+      row('Keine Kategorie', '', !current),
+      categoryOptions(categories, current).map((option) => row(option.name, option.name, option.active))),
+    h('label', { for: 'category-custom' }, 'Andere …'),
+    h('div', { class: 'custom' }, custom, apply),
+    h('div', { class: 'buttons' }, button('Abbrechen', () => dialog.close())));
   return openDialog(dialog);
 }
 
