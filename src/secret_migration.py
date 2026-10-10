@@ -182,6 +182,27 @@ def toast_text(report: MigrationReport) -> str:
     return "Zugangsdaten liegen jetzt im Schlüsselbund."
 
 
+def _forget_mobile_keys(path: str) -> None:
+    """Die Geräteschlüssel der Handy-Erfassung (#249) aus dem Schlüsselbund räumen: jedes
+    Gerät mit Ort `keyring` in `mobile_keys.json` hat dort einen Eintrag `mobile:<id>`. Liest
+    die Datei defensiv (kein `MobileKeyStore`: der legte Cache und Datei an) und wirft nie."""
+    try:
+        with open(path, encoding="utf-8") as handle:
+            data = json.load(handle)
+    except FileNotFoundError:
+        return
+    except Exception:
+        # Bewusst alles: kaputte/fremde Datei — die übrigen Quellen sind schon abgeräumt.
+        log.warning("mobile_keys.json beim Abräumen nicht lesbar", exc_info=True)
+        return
+    keys = data.get("keys") if isinstance(data, dict) else None
+    if not isinstance(keys, dict):
+        return
+    for device_id, entry in keys.items():
+        if isinstance(entry, dict) and entry.get("location") == "keyring" and isinstance(device_id, str):
+            keyring_store.remove(f"mobile:{device_id}")
+
+
 def forget_all(base_path: str) -> None:
     """Deinstallation (#101): alle Schlüsselbund-Einträge dieses
     Datenverzeichnisses abräumen — Refresh-Token, Webhook- und SMTP-Secrets.
@@ -215,3 +236,4 @@ def forget_all(base_path: str) -> None:
     for account in accounts:
         if account.get("password_location") == "keyring":
             keyring_store.delete_secret(account["id"])
+    _forget_mobile_keys(os.path.join(base_path, "mobile_keys.json"))

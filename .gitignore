@@ -25,6 +25,8 @@ smtp.json
 smtp.json.corrupt-*
 mobile_devices.json
 mobile_devices.json.corrupt-*
+mobile_keys.json
+mobile_keys.json.corrupt-*
 .smtp-*.tmp
 logs/
 dist/

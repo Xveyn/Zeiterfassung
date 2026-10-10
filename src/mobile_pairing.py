@@ -9,8 +9,9 @@ nur auf.
 
 Zwei Dinge liegen hier:
 
-- **Der Einmalcode** (`PairingSession`): 8 Zeichen aus 31, 5 Minuten gültig, einmal
-  einlösbar, nach 5 Fehlversuchen gesperrt. Er steht nur im Hauptspeicher.
+- **Der Kopplungscode** (`PairingSession`): 28 Zeichen aus 31 (≈139 Bit), 5 Minuten
+  gültig, einmal einlösbar, nach 5 Fehlversuchen gesperrt. Er steht nur im Hauptspeicher
+  und geht nie über das Netz: er verschlüsselt die Kopplung (`mobile_crypto`).
 - **Das Gerätetoken** (`issue_device`, `renew`, `authenticate`): 256 Bit Zufall,
   im Datensatz nur als SHA-256-Hash. 30 Tage ab der letzten Nutzung (Sliding
   Expiration); jede Erneuerung lässt das alte Token noch 10 Minuten gelten, damit
@@ -30,14 +31,16 @@ import threading
 import time
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, TypeVar
 
 # Ziffern 2–9 und Buchstaben ohne I, L, O: 31 Zeichen, keine Verwechslung 0/O, 1/I/L.
 CODE_ALPHABET = "23456789ABCDEFGHJKMNPQRSTUVWXYZ"
-CODE_LENGTH = 8
+# 28 Zeichen aus 31: ≈139 Bit. Der Code ist seit #249 zugleich Schlüsselmaterial der Kopplung
+# (aus ihm leitet `mobile_crypto.pair_keys` die Schlüssel ab) und lässt sich abtippen.
+CODE_LENGTH = 28
 CODE_TTL_SECONDS = 300
 MAX_CODE_FAILURES = 5
-_MAX_RAW_CODE_LENGTH = 32
+_MAX_RAW_CODE_LENGTH = 64
 
 
 
@@ -47,9 +50,8 @@ def generate_code() -> str:
 
 
 def format_code(code: str) -> str:
-    """`K7M29QXA` → `K7M2-9QXA` (Anzeige und QR-Code)."""
-    half = CODE_LENGTH // 2
-    return f"{code[:half]}-{code[half:]}"
+    """`K7M29QXA…` → `K7M2-9QXA-…` (Anzeige): Gruppen zu vier."""
+    return "-".join(code[i:i + 4] for i in range(0, len(code), 4))
 
 
 def normalize_code(raw: object) -> str | None:
@@ -62,6 +64,9 @@ def normalize_code(raw: object) -> str | None:
     if len(code) != CODE_LENGTH or any(ch not in CODE_ALPHABET for ch in code):
         return None
     return code
+
+
+T = TypeVar("T")
 
 
 class RedeemResult(enum.Enum):
@@ -120,6 +125,28 @@ class PairingSession:
             self._code = None
             return False
         return True
+
+    def try_open(self, attempt: Callable[[str], T | None]) -> tuple[RedeemResult, T | None]:
+        """Wie `redeem`, aber der Code wird nicht verglichen, sondern **benutzt**: `attempt`
+        bekommt den aktiven Code (zum Ableiten der Kopplungsschlüssel) und liefert das
+        Ergebnis, oder `None`, wenn die Nachricht nicht damit zu öffnen war. Nur ein
+        Ergebnis verbraucht den Code; `None` zählt als Fehlversuch (nach `max_failures`
+        gesperrt). Läuft unter dem Lock: `attempt` muss kurz sein und darf nichts loggen."""
+        with self._lock:
+            if self._locked:
+                return RedeemResult.LOCKED, None
+            if not self._active_locked() or self._code is None:
+                return RedeemResult.INVALID, None
+            value = attempt(self._code)
+            if value is not None:
+                self._code = None
+                self._failures = 0
+                return RedeemResult.OK, value
+            self._failures += 1
+            if self._failures >= self._max_failures:
+                self._code = None
+                self._locked = True
+            return RedeemResult.INVALID, None
 
     def redeem(self, raw: object) -> RedeemResult:
         """Löst den Code ein. Bei Erfolg ist er verbraucht. Der Fehlversuch, der den
@@ -219,8 +246,16 @@ def issue_device(device_id: str, name: str, now: str,
         "last_pull_at": str(existing["last_pull_at"]) if existing else "",
         "revoked": False,
         "pair_count": pair_count(existing) + 1,
+        "last_seq": 0,                      # Replay-Schutz (#249): höchster gesehener Zähler
     }
     return record, token
+
+
+def with_seq(record: Mapping[str, Any], seq: int) -> Record:
+    """Kopie des Datensatzes mit höchstem gesehenen Zähler `seq` (Replay-Schutz, #249)."""
+    updated: Record = dict(record)
+    updated["last_seq"] = seq
+    return updated
 
 
 def renew(record: Mapping[str, Any], now: str, *,

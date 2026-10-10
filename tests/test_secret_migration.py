@@ -365,3 +365,20 @@ def test_deleted_webhook_does_not_block_the_others(tmp_path, fake_keyring, monke
 
     assert report.webhooks_moved == ("Zweites",)
     assert list(fake.store.values()) == ["Bearer z"]
+
+
+def test_forget_all_removes_the_mobile_keys_of_every_keyring_device(tmp_path, monkeypatch):
+    removed = []
+    monkeypatch.setattr("src.keyring_store.remove", lambda key: removed.append(key))
+    (tmp_path / "mobile_keys.json").write_text(json.dumps({"schema_version": 1, "keys": {
+        "phone-0001": {"location": "keyring"},
+        "phone-0002": {"location": "file", "key": "A" * 43},
+        "phone-0003": {"location": "keyring"}}}), encoding="utf-8")
+    sm.forget_all(str(tmp_path))
+    assert sorted(k for k in removed if k.startswith("mobile:")) == ["mobile:phone-0001", "mobile:phone-0003"]
+
+
+def test_forget_all_survives_a_broken_mobile_keys_file(tmp_path, monkeypatch):
+    monkeypatch.setattr("src.keyring_store.remove", lambda key: None)
+    (tmp_path / "mobile_keys.json").write_text("{kaputt", encoding="utf-8")
+    sm.forget_all(str(tmp_path))                     # wirft nicht

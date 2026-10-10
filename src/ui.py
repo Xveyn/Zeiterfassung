@@ -71,7 +71,7 @@ class App:
     def __init__(self, root, storage, settings, base_path=".", conflicts_store=None,
                  reservation_store=None, single_instance=None,
                  data_lock=None, sync_guard=None, webhook_store=None,
-                 vacation_store=None, smtp_store=None, mobile_store=None):
+                 vacation_store=None, smtp_store=None, mobile_store=None, mobile_keys=None):
         self.root = root
         self.storage = storage
         self.settings = settings

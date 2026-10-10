@@ -96,3 +96,5 @@ def test_main_builds_the_store_in_the_data_folder_and_passes_it_on():
     source = MAIN.read_text(encoding="utf-8")
     assert 'MobileStore(os.path.join(base, "mobile_devices.json"))' in source
     assert "mobile_store=mobile_store" in source
+    assert 'MobileKeyStore(os.path.join(base, "mobile_keys.json"))' in source
+    assert "mobile_keys=mobile_keys" in source

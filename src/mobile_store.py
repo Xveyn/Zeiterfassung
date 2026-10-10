@@ -41,6 +41,7 @@ _TIME_RE = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z")
 _REQUIRED_TIMES = ("created_at", "expires_at", "last_seen")
 _OPTIONAL_TIMES = ("last_pull_at", "previous_valid_until")      # leer = nie gesetzt
 _TEXT_KEYS = ("id", "name")
+_MAX_SEQ = 2 ** 53 - 1                  # größte in JavaScript exakte ganze Zahl
 
 
 class MobileStoreReadOnly(Exception):
@@ -78,7 +79,11 @@ def _is_wellformed(record: Any) -> bool:
     previous = record.get("previous_token_hash")
     if not isinstance(previous, str) or (previous and not _HASH_RE.fullmatch(previous)):
         return False
-    return isinstance(record.get("revoked"), bool)
+    if not isinstance(record.get("revoked"), bool):
+        return False
+    # Replay-Zähler (#249); fehlt er (Datei von vorher), gilt 0 (`_load` setzt ihn).
+    seq = record.get("last_seq", 0)
+    return isinstance(seq, int) and not isinstance(seq, bool) and 0 <= seq <= _MAX_SEQ
 
 
 class MobileStore:
@@ -123,6 +128,7 @@ class MobileStore:
                 # Doppelte IDs behielten sonst zwei Token, von denen ein Widerruf nur
                 # eines träfe (`get`/`save` nehmen den ersten, `authenticate` jeden).
                 seen.add(record["id"])
+                record.setdefault("last_seq", 0)
                 self._devices.append(record)
             else:
                 # Nie den Datensatz loggen (er trägt Token-Hashes), nur id und Name.
