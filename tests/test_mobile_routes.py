@@ -787,6 +787,22 @@ def test_a_keyring_key_that_is_not_loaded_yet_is_503_and_changes_nothing(env):
     assert sync(env, token).status == 200
 
 
+def test_the_503_answer_does_not_wait_for_a_hanging_keyring(env):
+    record, token = add_device(env)
+    env.ctx.keys.migrate()
+    env.ctx = dataclasses.replace(env.ctx, keys=MobileKeyStore(str(env.keys_path)))      # Neustart, Cache leer
+    release = threading.Event()
+    original = env.ring.fetch
+    env.ring.fetch = lambda key: (release.wait(5), original(key))[1]                      # der Schlüsselbund hängt
+    try:
+        started = time.time()
+        response = call(env, "POST", "/v1/sync", body=sync_body(env), token=token)
+        assert (response.status, error_code(response)) == (503, "key_unavailable")
+        assert time.time() - started < 1                                                  # nicht auf ihn gewartet
+    finally:
+        release.set()
+
+
 def test_the_hot_path_never_touches_the_keyring(env, monkeypatch):
     def boom(*args, **kwargs):
         raise AssertionError("Schlüsselbund im heißen Pfad")

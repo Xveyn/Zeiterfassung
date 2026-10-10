@@ -497,7 +497,9 @@ def test_a_blocking_keyring_does_not_delay_the_server_start(tmp_path, ring):
     fresh_keys = MobileKeyStore(str(tmp_path / "mobile_keys.json"))
     service._context = __import__("dataclasses").replace(service._context, keys=fresh_keys)
     ring.fetch = hanging
+    started = time.time()
     service.apply()
+    assert time.time() - started < 1                                  # apply selbst wartet nicht auf den Schlüsselbund
     try:
         deadline = time.time() + 2
         while service.status.state != STATE_RUNNING and time.time() < deadline:

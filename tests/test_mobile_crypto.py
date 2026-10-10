@@ -80,7 +80,7 @@ def test_malformed_envelopes_are_refused_before_decrypting(bad):
 
 def test_base64url_is_strict():
     assert mc.b64d(mc.b64e(bytes(range(40)))) == bytes(range(40))
-    for text in ("AA==", "A", "AA AA", "AA+/", "é"):
+    for text in ("AA==", "A", "AA AA", "AA+/", "é", "AB", "AAB", "B" * 43):      # die letzten beiden: nicht kanonisch
         with pytest.raises(mc.CryptoError):
             mc.b64d(text)
 
