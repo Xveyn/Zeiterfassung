@@ -514,6 +514,11 @@ Augenhöhe mit den anderen beiden Plattformen.
   Reservierungen.
 - **Konflikte löst nur die App.** Das Handy zeigt beide Fassungen an, die Auswahl trifft
   man am Rechner.
+- **Mehrere Tabs der PWA.** Schickt ein Tab „Neu laden" (`SKIP_WAITING`), übernimmt der neue
+  Service Worker alle offenen Tabs; ein anderer Tab läuft mit seinem bereits geladenen Code
+  weiter (alle Module sind statisch importiert) und lädt erst beim nächsten Öffnen neu. Das
+  ist nicht automatisiert getestet. Der Editor warnt, wenn sich ein Tag seit dem Öffnen
+  geändert hat (Abgleich im Hintergrund oder anderer Tab): erst das zweite Speichern überschreibt.
 - **Keine Sperre bei Fehlversuchen.** Der Kopplungscode hat ≈139 Bit und gilt fünf Minuten und
   einmal; Gerätetoken und Geräteschlüssel haben 256 Bit. Eine Sperre schützte vor nichts und
   wäre nur ein Hebel, mit dem jemand im selben WLAN die Kopplung dauerhaft verhindern könnte.

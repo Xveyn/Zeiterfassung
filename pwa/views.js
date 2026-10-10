@@ -4,7 +4,7 @@
 // Handler als Parameter; nichts hier kennt den Store oder das Netz.
 import { h } from './dom.js';
 import { MAX_CATEGORY_LENGTH } from './minutes.js';
-import { categoryLabel, categoryOptions } from './view-model.js';
+import { categoryLabel, categoryOptions, hintKey } from './view-model.js';
 
 const button = (label, onclick, className = '', extra = {}) =>
   h('button', { type: 'button', class: className, onclick, ...extra }, label);
@@ -13,32 +13,65 @@ const button = (label, onclick, className = '', extra = {}) =>
 
 const ACTION_LABELS = { pair: 'Neu koppeln', rescan: 'QR neu scannen', retry: 'Erneut versuchen', reload: 'Neu laden', conflicts: 'Anzeigen' };
 
-export function hintsView(hints, handlers) {
-  return h('div', { class: 'hints' }, hints.map((hint) => h('div', { class: `hint ${hint.kind}`, role: hint.kind === 'error' ? 'alert' : 'status' },
-    h('div', {}, hint.text),
-    hint.action && h('div', { class: 'actions' },
-      button(ACTION_LABELS[hint.action], () => handlers[hint.action](), 'link')))));
+/** Persistenter Container der Hinweise. Er bleibt über alle Renders im Dokument, damit Screenreader
+ *  Änderungen ansagen; `patchHints` tauscht nur, was sich geändert hat. */
+export function hintsHost() {
+  return h('div', { class: 'hints', 'aria-live': 'polite', 'aria-relevant': 'additions text' });
 }
 
-export function statusBar(status, handlers) {
-  return h('footer', { class: 'statusbar' },
-    h('div', { class: 'text', 'aria-live': 'polite' },
-      h('div', { class: status.online ? 'online' : 'offline' }, status.connection),
-      status.pendingText && h('div', {}, status.pendingText),
-      h('div', { class: 'muted' }, status.lastText)),
-    button('Verbindung', handlers.connection),
-    button('Jetzt abgleichen', handlers.sync, 'primary', { disabled: !status.canSync }));
+function hintElement(hint, handlers) {
+  return h('div', { class: `hint ${hint.kind}`, role: hint.kind === 'error' ? 'alert' : 'status', 'data-key': hintKey(hint) },
+    h('div', {}, hint.text),
+    hint.action && h('div', { class: 'actions' },
+      button(ACTION_LABELS[hint.action], () => handlers[hint.action](), 'link', { 'data-focus': `hint-${hint.action}` })));
+}
+
+/** Gleicht die Hinweise im Container mit der Liste ab: unveränderte bleiben stehen (nicht erneut
+ *  angesagt, Fokus bleibt), nur Entfernte gehen, nur Neue kommen dazu. */
+export function patchHints(host, hints, handlers) {
+  const keys = hints.map(hintKey);
+  for (const child of [...host.children]) {
+    if (!keys.includes(child.getAttribute('data-key'))) child.remove();
+  }
+  hints.forEach((hint, index) => {
+    const current = host.children[index];
+    if (current && current.getAttribute('data-key') === keys[index]) return;
+    host.insertBefore(hintElement(hint, handlers), current ?? null);
+  });
+}
+
+/** Statuszeile: einmal gebaut, danach nur `update(status)` — die Live-Region bleibt dieselbe, und nur
+ *  geänderter Text wird ersetzt. */
+export function statusBar(handlers) {
+  const connection = h('div', {});
+  const pending = h('div', {});
+  const last = h('div', { class: 'muted' });
+  const sync = button('Jetzt abgleichen', handlers.sync, 'primary', { 'data-focus': 'sync' });
+  const element = h('footer', { class: 'statusbar' },
+    h('div', { class: 'text', 'aria-live': 'polite' }, connection, pending, last),
+    button('Verbindung', handlers.connection, '', { 'data-focus': 'connection' }),
+    sync);
+  const setText = (node, text) => { if (node.textContent !== text) node.textContent = text; };
+  const update = (status) => {
+    setText(connection, status.connection);
+    connection.className = status.online ? 'online' : 'offline';
+    setText(pending, status.pendingText || '');
+    pending.hidden = !status.pendingText;
+    setText(last, status.lastText);
+    sync.disabled = !status.canSync;
+  };
+  return { element, update };
 }
 
 // --- Koppeln ----------------------------------------------------------------------------------------
 
 export function pairView({ address, code, deviceName, busy, canScan, canCancel, error }, handlers) {
   const addressInput = h('input', { id: 'pair-address', name: 'address', value: address, inputmode: 'decimal',
-    autocomplete: 'off', placeholder: '192.168.178.20:17654', required: true });
+    autocomplete: 'off', placeholder: '192.168.178.20:17654', required: true, 'data-focus': 'pair-address' });
   const codeInput = h('input', { id: 'pair-code', name: 'code', value: code, autocapitalize: 'characters',
     autocomplete: 'off', spellcheck: 'false', maxlength: 48, required: true,
-    placeholder: 'K7M2-9QXA-K7M2-9QXA-K7M2-9QXA-K7M2' });
-  const nameInput = h('input', { id: 'pair-name', name: 'name', value: deviceName, maxlength: 60, autocomplete: 'off' });
+    placeholder: 'K7M2-9QXA-K7M2-9QXA-K7M2-9QXA-K7M2', 'data-focus': 'pair-code' });
+  const nameInput = h('input', { id: 'pair-name', name: 'name', value: deviceName, maxlength: 60, autocomplete: 'off', 'data-focus': 'pair-name' });
   // Eingaben sofort merken: ein Hintergrund-Render (online, Sichtbarwerden, Abgleich-Ende) baut das
   // Formular neu und würde sonst alles Getippte verwerfen.
   for (const [input, field] of [[addressInput, 'address'], [codeInput, 'code'], [nameInput, 'deviceName']]) {
@@ -56,7 +89,7 @@ export function pairView({ address, code, deviceName, busy, canScan, canCancel, 
       h('div', { class: 'error-text', role: 'alert', id: 'pair-error' }, error || ''),
       h('div', { class: 'buttons' },
         canCancel && button('Abbrechen', handlers.cancel),
-        h('button', { type: 'submit', class: 'primary', disabled: busy }, busy ? 'Koppele …' : 'Koppeln'))));
+        h('button', { type: 'submit', class: 'primary', disabled: busy, 'data-focus': 'pair-submit' }, busy ? 'Koppele …' : 'Koppeln'))));
 }
 
 // --- Woche ---------------------------------------------------------------------------------------------
@@ -65,7 +98,7 @@ function dayRow(day, handlers) {
   const classes = ['day', day.state, day.isWeekend && 'weekend', day.isToday && 'today', day.beyondWindow && 'future'];
   return h('li', {}, h('button', { type: 'button', class: classes.filter(Boolean).join(' '),
     'aria-label': `${day.weekday} ${day.label}${day.minutesLabel ? `, ${day.minutesLabel} Stunden` : ''}`,
-    onclick: () => handlers.openDay(day.date) },
+    'data-focus': `day-${day.date}`, onclick: () => handlers.openDay(day.date) },
     h('span', {}, h('div', { class: 'wd' }, day.weekday), h('div', { class: 'date' }, day.label.slice(0, 6))),
     h('ul', { class: 'slots' }, day.state === 'cleared' ? h('li', {}, 'geleert') : day.slots.map((text) => h('li', {}, text))),
     h('span', { class: 'sum' }, day.minutesLabel),
@@ -76,12 +109,12 @@ function dayRow(day, handlers) {
 }
 
 export function weekView(model, handlers) {
-  return h('main', {},
+  return h('div', { class: 'week' },
     h('div', { class: 'weekbar' },
-      button('‹', handlers.previous, '', { 'aria-label': 'Vorherige Woche' }),
+      button('‹', handlers.previous, '', { 'aria-label': 'Vorherige Woche', 'data-focus': 'previous' }),
       h('div', { class: 'title' }, h('strong', {}, model.title), h('span', { class: 'muted' }, model.range)),
-      button('›', handlers.next, '', { 'aria-label': 'Nächste Woche' })),
-    !model.isCurrent && button('Zur aktuellen Woche', handlers.today, 'link'),
+      button('›', handlers.next, '', { 'aria-label': 'Nächste Woche', 'data-focus': 'next' })),
+    !model.isCurrent && button('Zur aktuellen Woche', handlers.today, 'link', { 'data-focus': 'today' }),
     h('ul', { class: 'days' }, model.days.map((day) => dayRow(day, handlers))),
     h('div', { class: 'total' }, h('span', {}, 'Woche gesamt'), h('span', {}, model.totalLabel)));
 }

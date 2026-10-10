@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
-  WEEKDAYS, blankRow, categoryLabel, categoryOptions, conflictsModel, editorRows, hintsModel, localTime, rowsToSlots, slotText,
+  WEEKDAYS, blankRow, categoryLabel, categoryOptions, conflictsModel, dayChanged, editorRows, focusKeyToRestore, hintKey, hintsModel, localTime, rowsToSlots, slotText,
   statusModel, validateRows, weekModel,
 } from '../view-model.js';
 import { SyncError } from '../sync.js';
@@ -257,4 +257,52 @@ test('the category button label names the category or invites to choose one', ()
   assert.equal(categoryLabel('Projekt'), 'Projekt');
   assert.equal(categoryLabel(''), 'Wählen');
   assert.equal(categoryLabel(undefined), 'Wählen');
+});
+
+// --- Tag seit dem Öffnen des Editors geändert? ---------------------------------------------------------
+
+test('a day is unchanged when nothing about its content differs', () => {
+  assert.equal(dayChanged(null, null), false);
+  assert.equal(dayChanged(live([SLOT]), live([SLOT])), false);
+});
+
+test('a pending flag turning off after an acknowledged sync is not a change', () => {
+  assert.equal(dayChanged(live([SLOT], { dirty: true }), live([SLOT], { dirty: false })), false);
+});
+
+test('a newer modified_at, different slots or a deletion count as changed', () => {
+  assert.equal(dayChanged(live([SLOT]), live([SLOT], { modified_at: 'y' })), true);
+  assert.equal(dayChanged(live([SLOT]), live([{ ...SLOT, end: '13:00' }])), true);
+  assert.equal(dayChanged(live([SLOT]), live([SLOT], { deleted: true })), true);
+});
+
+test('a day that appeared or vanished since opening counts as changed', () => {
+  assert.equal(dayChanged(null, live([SLOT])), true);
+  assert.equal(dayChanged(live([SLOT]), null), true);
+});
+
+// --- Hinweise: Identität -------------------------------------------------------------------------------
+
+test('a hint keeps its key while id, text and action stay the same', () => {
+  const hint = { id: 'error', kind: 'error', text: 'Offline', action: 'retry' };
+  assert.equal(hintKey(hint), hintKey({ ...hint }));
+  assert.notEqual(hintKey(hint), hintKey({ ...hint, text: 'Server nicht erreichbar' }));
+  assert.notEqual(hintKey(hint), hintKey({ ...hint, action: null }));
+  assert.notEqual(hintKey(hint), hintKey({ ...hint, id: 'other' }));
+});
+
+// --- Fokus über Renders hinweg -------------------------------------------------------------------------
+
+test('focus inside the app is restored by its key', () => {
+  assert.equal(focusKeyToRestore({ activeKey: 'sync', inRoot: true, isBody: false, last: 'x' }), 'sync');
+});
+
+test('focus lost to the body (element disabled or removed) falls back to the last key', () => {
+  assert.equal(focusKeyToRestore({ activeKey: null, inRoot: false, isBody: true, last: 'sync' }), 'sync');
+  assert.equal(focusKeyToRestore({ activeKey: null, inRoot: false, isBody: true, last: null }), null);
+});
+
+test('focus in a dialog or elsewhere is left alone and forgets the last key', () => {
+  assert.equal(focusKeyToRestore({ activeKey: null, inRoot: false, isBody: false, last: 'sync' }), null);
+  assert.equal(focusKeyToRestore({ activeKey: null, inRoot: true, isBody: false, last: 'sync' }), null);
 });
