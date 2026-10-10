@@ -71,6 +71,7 @@ ZEITERFASSUNG_LOG_LEVEL=DEBUG python -m src.main
 | `holidays` | Feiertags-Lookup (deutsche Feiertage) |
 | `keyring` | SMTP-Passwörter, OAuth-Refresh-Token, Webhook-Secrets im Schlüsselbund des Betriebssystems |
 | `segno` | QR-Code im Koppel-Dialog der Handy-Erfassung (reines Python) |
+| `cryptography` | AES-GCM und HKDF für die Verschlüsselung der Handy-Erfassung (vorher nur transitiv über `google-auth`; Wheels `cp311-abi3` für Windows, macOS arm64 und Linux x86_64) |
 | `pystray` | Infobereich-Icon (Minimize-to-Tray) |
 | `Pillow` | Icon-/Bildverarbeitung (Tray-Icon) |
 | `dbus-fast` | Linux-Tray über StatusNotifierItem (nur Linux) |

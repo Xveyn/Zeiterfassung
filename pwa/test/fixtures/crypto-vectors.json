@@ -1,0 +1,58 @@
+{
+  "code": "K7M29QXAK7M29QXAK7M29QXAK7M2",
+  "pair_request_key": "611f5ae50bfa1dc69007741588cdabd830ebe35bfe005476f6d516595123bfe9",
+  "pair_response_key": "13b03117f4887716563f7d8dfc007be459a0b66cf1d350673bb282beae25f1bf",
+  "device_key": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+  "request_key": "03ad3aae3d93dfc483362c83ead0a19447baf165357f3cd85fdf2aad84fe6d81",
+  "response_key": "65e51b1d8424717309c690d82d526556ed0ae4ec1319e70ed772c656b65e5fca",
+  "cases": [
+    {
+      "key": "611f5ae50bfa1dc69007741588cdabd830ebe35bfe005476f6d516595123bfe9",
+      "direction": "req",
+      "method": "POST",
+      "path": "/v1/pair",
+      "device_id": "-",
+      "seq": 1,
+      "plaintext": "{\"protocol\":2,\"device_id\":\"phone-0001\",\"device_name\":\"Pixel\"}",
+      "nonce": "000102030405060708090a0b",
+      "envelope": {
+        "v": 2,
+        "seq": 1,
+        "n": "AAECAwQFBgcICQoL",
+        "c": "7Qe7STbzumDTvJUb3NH4qjgaUY5F5Yr_cQK_-LKdyZ1Sm2Mwoi_cptdXuoEIqgyo2hL8CdSwJ6--vS5AnJsxP1vFYcblkcHYMU-j46k"
+      }
+    },
+    {
+      "key": "03ad3aae3d93dfc483362c83ead0a19447baf165357f3cd85fdf2aad84fe6d81",
+      "direction": "req",
+      "method": "POST",
+      "path": "/v1/sync",
+      "device_id": "phone-0001",
+      "seq": 7,
+      "plaintext": "{\"entries\":{},\"last_pull_at\":\"\"}",
+      "nonce": "0c0d0e0f1011121314151617",
+      "envelope": {
+        "v": 2,
+        "seq": 7,
+        "n": "DA0ODxAREhMUFRYX",
+        "c": "hsbCsw3drnFE6BYtz5AGo6Bk1b53v0hRcM1mKAvry1oxguVpkMWmX_TyjmFpcDc5"
+      }
+    },
+    {
+      "key": "65e51b1d8424717309c690d82d526556ed0ae4ec1319e70ed772c656b65e5fca",
+      "direction": "res",
+      "method": "POST",
+      "path": "/v1/sync",
+      "device_id": "phone-0001",
+      "seq": 7,
+      "plaintext": "{\"token\":\"x\",\"entries\":{\"2026-10-07\":{\"slots\":[{\"start\":\"08:00\",\"end\":\"12:00\",\"pause\":0,\"kategorie\":\"Ä ü ß\"}]}}}",
+      "nonce": "18191a1b1c1d1e1f20212223",
+      "envelope": {
+        "v": 2,
+        "seq": 7,
+        "n": "GBkaGxwdHh8gISIj",
+        "c": "6T6vTOXGCIcWmQa9eH7g3dv_lwxCg98K7AaGkTWKMSN_mMRN1e3bAPdXvVju9_OI8iwHzFR8HMkAY3vvq9QJorV0Jr0PmVsEWy7ZP7z8IfdJuChvCz6npK09xpdh1sSbeytrXnMvoUXKiR_-rUPCir6f7G-6gEupgsf3fCPfWUxdh0Q"
+      }
+    }
+  ]
+}
