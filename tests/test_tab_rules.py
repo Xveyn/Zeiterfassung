@@ -658,3 +658,21 @@ def test_the_revoke_error_text_names_the_consequence():
 def test_the_first_enable_notice_uses_real_line_breaks():
     assert "\n\n" in tr.FIRST_ENABLE_NOTICE
     assert "\\n" not in tr.FIRST_ENABLE_NOTICE
+
+
+# --- Schlüsselspeicher (#249) -------------------------------------------------------------------
+
+def test_the_key_store_summary_says_where_the_device_keys_live():
+    from src.dialogs.settings_dialog.tab_rules import keystore_summary
+    assert keystore_summary({}) == ""
+    assert keystore_summary({"a": "keyring", "b": "keyring"}) == "Schlüsselspeicher: Schlüsselbund des Betriebssystems"
+    file_text = keystore_summary({"a": "file"})
+    assert "Datei" in file_text and "kein Schlüsselbund" in file_text and "nur für dein Benutzerkonto lesbar" in file_text
+    mixed = keystore_summary({"a": "keyring", "b": "file"})
+    assert "teils Schlüsselbund, teils Datei" in mixed
+    assert len({keystore_summary({"a": "keyring"}), file_text, mixed}) == 3
+
+
+def test_the_key_store_summary_ignores_unknown_locations():
+    from src.dialogs.settings_dialog.tab_rules import keystore_summary
+    assert keystore_summary({"a": "wolke"}) == ""

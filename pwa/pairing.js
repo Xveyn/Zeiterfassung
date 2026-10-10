@@ -1,25 +1,27 @@
 // pwa/pairing.js
 // Koppeln: Einmalcode, Adresse, Koppel-Link. Rein, ohne DOM und ohne Netz.
 //
-// Der Koppel-Link (`#pair=<ip>:<port>:<code>`) stammt aus einem QR-Code und ist
+// Der Koppel-Link (`#pair=<ip>:<port>:<code>`, 28 Zeichen) stammt aus einem QR-Code und ist
 // Fremdeingabe. Ohne die Adressprüfung könnte ein manipulierter Link das Handy dazu
 // bringen, Code, Gerätenamen und -ID an einen beliebigen Host zu senden — deshalb nur
 // private IPv4-Adressen, dieselbe Regel wie `netinfo.is_lan_address` am Desktop. Die
 // Regeln prüft `tests/test_mobile_contract.py` gegen `test/fixtures/pairing-cases.json`.
 
-export const PROTOCOL = 1;
+export const PROTOCOL = 2;
 export const DEFAULT_PORT = 17654;
 // Ziffern 2–9 und Buchstaben ohne I, L, O: keine Verwechslung 0/O, 1/I/L.
 export const CODE_ALPHABET = '23456789ABCDEFGHJKMNPQRSTUVWXYZ';
-const CODE_LENGTH = 8;
-const MAX_RAW_CODE_LENGTH = 32;
+// 28 Zeichen aus 31 (≈139 Bit): der Kopplungscode verschlüsselt die Kopplung (crypto.js) und
+// steht deshalb nie im Netz; er lässt sich in Gruppen zu vier abtippen.
+export const CODE_LENGTH = 28;
+const MAX_RAW_CODE_LENGTH = 64;
 const MIN_PORT = 1024;
 const MAX_PORT = 65535;
 const MAX_DEVICE_NAME = 60;
 const DEVICE_ID_RE = /^[A-Za-z0-9-]{8,64}$/;
 const IPV4_RE = /^(0|[1-9][0-9]{0,2})\.(0|[1-9][0-9]{0,2})\.(0|[1-9][0-9]{0,2})\.(0|[1-9][0-9]{0,2})$/;
 
-/** Eingabe oder Link-Teil → kanonischer Code (8 Zeichen aus dem Alphabet) oder `null`.
+/** Eingabe oder Link-Teil → kanonischer Code (28 Zeichen aus dem Alphabet) oder `null`.
  *  Groß-/Kleinschreibung, Bindestriche und Leerzeichen sind egal. */
 export function normalizeCode(raw) {
   if (typeof raw !== 'string' || raw.length > MAX_RAW_CODE_LENGTH) return null;
@@ -107,6 +109,8 @@ export function deviceNameFromUserAgent(userAgent) {
   return model.length > 1 ? model : fallback;
 }
 
-export function pairRequestBody({ code, deviceName, deviceId }) {
-  return { protocol: PROTOCOL, code, device_name: deviceName, device_id: deviceId };
+/** Der Klartext der Kopplungsanfrage — er wird verschlüsselt gesendet; der Code selbst ist nur
+ *  der Schlüssel und steht nicht darin. */
+export function pairRequestBody({ deviceName, deviceId }) {
+  return { protocol: PROTOCOL, device_name: deviceName, device_id: deviceId };
 }

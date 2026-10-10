@@ -23,9 +23,13 @@
   {"status": 413, "code": "payload_too_large", "kind": "client_error", "needs_repair": false, "retryable": false},
   {"status": 415, "code": "unsupported_media_type", "kind": "client_error", "needs_repair": false, "retryable": false},
   {"status": 422, "code": "invalid_entry", "kind": "invalid_entry", "needs_repair": false, "retryable": false},
-  {"status": 429, "code": "pairing_locked", "kind": "pairing_locked", "needs_repair": false, "retryable": false},
   {"status": 500, "code": "internal_error", "kind": "server", "needs_repair": false, "retryable": true},
   {"status": 500, "code": "http_error", "kind": "server", "needs_repair": false, "retryable": true},
   {"status": 503, "code": "busy", "kind": "transient", "needs_repair": false, "retryable": true},
-  {"status": 503, "code": "shutting_down", "kind": "transient", "needs_repair": false, "retryable": true}
+  {"status": 503, "code": "shutting_down", "kind": "transient", "needs_repair": false, "retryable": true},
+  {"status": 400, "code": "invalid_envelope", "kind": "protocol", "needs_repair": false, "retryable": false},
+  {"status": 400, "code": "decrypt_failed", "kind": "crypto", "needs_repair": true, "retryable": false},
+  {"status": 409, "code": "replay", "kind": "crypto", "needs_repair": true, "retryable": false},
+  {"status": 401, "code": "encryption_required", "kind": "encryption", "needs_repair": true, "retryable": false},
+  {"status": 503, "code": "key_unavailable", "kind": "transient", "needs_repair": false, "retryable": true}
 ]

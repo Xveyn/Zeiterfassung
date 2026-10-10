@@ -456,16 +456,36 @@ Augenhöhe mit den anderen beiden Plattformen.
 
 ## Handy-Erfassung (#221): bekannte Grenzen
 
-- **Klartext im LAN.** Die Verbindung zwischen Handy und App ist unverschlüsselt
-  (`http://`). Wer im selben WLAN mitliest, sieht das Gerätetoken und kann damit
-  Ist-Zeiten lesen und über den Abgleich schreiben — nicht Einstellungen, Zugangsdaten,
-  Webhooks oder die Sync-Konfiguration (die Kategorienliste ist die einzige Einstellung, die das Handy sieht). Gegenmaßnahmen: Funktion standardmäßig aus, Bindung
-  nur an die gewählte Adresse, Token pro Gerät (nur als Hash gespeichert, widerrufbar,
-  30 Tage ab letzter Nutzung), kurzlebiger Einmalcode mit Sperre. Verschlüsselung der
-  Nutzdaten: #249.
+- **Verschlüsselt, aber nicht über HTTPS.** Die Verbindung zwischen Handy und App ist
+  `http://`, die Nutzdaten sind aber Ende-zu-Ende verschlüsselt (#249): Kopplung und Abgleich
+  laufen als AES-256-GCM-Umschläge, Anfrage und Antwort mit getrennten Schlüsseln, je Nachricht
+  eine zufällige Nonce; Methode, Pfad, Geräte-ID und ein streng steigender Zähler sind gebunden
+  (Schutz gegen Fälschen, Umleiten und Wiedereinspielen, ohne die Handy-Uhr). Der Kopplungscode
+  (28 Zeichen, ≈139 Bit) steht nie im Netz; der Abgleich läuft mit einem eigenen, zufälligen
+  Geräteschlüssel, den die Kopplungsantwort verschlüsselt mitbringt — ein später abfotografierter
+  QR-Code öffnet keinen Abgleich. **Sichtbar bleibt**, dass ein Handy mit dem Rechner spricht,
+  wann und wie viel (Adressen, Zeitpunkte, Größen), und `GET /v1/ping` (Version, Serverzeit).
+  **Keine Forward Secrecy:** wer später den Geräteschlüssel erbeutet, kann Mitschnitte von vorher
+  lesen. Wer die Verbindung aktiv stört (Pakete verwerfen), kann den Abgleich verhindern, aber
+  nichts lesen oder schreiben. Das Gerätetoken steht weiter im Klartext-Header, ist aber ohne den
+  Schlüssel wertlos. Weitere Maßnahmen: Funktion standardmäßig aus, Bindung nur an die gewählte
+  Adresse, Token pro Gerät (nur als Hash gespeichert, widerrufbar, 30 Tage ab letztem Abgleich),
+  kurzlebiger, einmaliger Kopplungscode. Nicht gelöst: Firefox und iOS (Mixed Content, s. u.);
+  HTTPS direkt vom Desktop bleibt als Alternative offen (#249).
+- **Wo der Geräteschlüssel am Rechner liegt.** Im Schlüsselbund des Betriebssystems (Windows
+  Credential Manager, macOS Keychain, Linux Secret Service). **Nur ohne Schlüsselbund** (Linux
+  ohne Secret Service, gesperrt oder nicht antwortend) steht er in `mobile_keys.json` im
+  Klartext, lesbar für Prozesse desselben Nutzers (`chmod 0600` bzw. ACL unter Windows, wie
+  `api-token`); der Tab „Mobil" sagt, welcher Fall zutrifft. Gleich nach dem Koppeln liegt der
+  Schlüssel für wenige Sekunden in der Datei, bis der Umzug in den Schlüsselbund fertig ist (die
+  Kopplungsantwort soll nie auf einen Passwort-Prompt warten). Ein gesperrter Schlüsselbund lässt
+  Abgleiche mit `503 key_unavailable` scheitern („Schlüsselbund am Rechner antwortet gerade
+  nicht"), bis er entsperrt ist; macOS fragt nach einem App-Update erneut (vgl. „Schlüsselbund
+  (#101)"). Geht ein Schlüsselbund-Eintrag verloren (anderer Rechner, gelöscht), muss das Handy
+  neu koppeln.
 - **Die erlaubte Origin gilt für alle GitHub-Pages-Seiten des Kontos.** Der Server lässt
   `https://xveyn.github.io` zu, ohne Pfad; jede andere Pages-Seite unter diesem Nutzernamen
-  könnte ihn per Browser ansprechen. Sie braucht dafür ein gültiges Gerätetoken oder einen gerade am Rechner angezeigten Koppel-Code (`/v1/pair` ist öffentlich).
+  könnte ihn per Browser ansprechen. Sie bräuchte dafür den Kopplungscode des gerade offenen Koppel-Dialogs (die Kopplung ist verschlüsselt, ohne den Code geht nichts) oder ein gültiges Gerätetoken **und** den Geräteschlüssel.
 - **Nur solange die App läuft** und Handy und Rechner im selben Netz sind. Wechselt die
   Adresse des Rechners (anderes WLAN, DHCP), meldet die App bei **fest gewählter** Adresse
   `address_gone` und tauscht sie nicht still aus; bei „Automatisch“ nimmt sie beim nächsten
@@ -494,8 +514,10 @@ Augenhöhe mit den anderen beiden Plattformen.
   Reservierungen.
 - **Konflikte löst nur die App.** Das Handy zeigt beide Fassungen an, die Auswahl trifft
   man am Rechner.
-- **Kein Brute-Force-Schutz außer dem Einmalcode.** Der Code sperrt sich nach fünf
-  Fehlversuchen; das Gerätetoken (256 Bit) ist nicht zu erraten.
+- **Keine Sperre bei Fehlversuchen.** Der Kopplungscode hat ≈139 Bit und gilt fünf Minuten und
+  einmal; Gerätetoken und Geräteschlüssel haben 256 Bit. Eine Sperre schützte vor nichts und
+  wäre nur ein Hebel, mit dem jemand im selben WLAN die Kopplung dauerhaft verhindern könnte.
+  Ein Fremder kann den Server mit Fehlversuchen beschäftigen, nicht aber koppeln.
 
 ## Beschädigte oder fremde Daten (Storage)
 

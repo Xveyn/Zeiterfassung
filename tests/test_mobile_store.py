@@ -290,3 +290,37 @@ def test_duplicate_ids_in_the_file_keep_only_the_first_record(path):
     assert [r["name"] for r in again.get_all()] == ["Erstes"]
     assert mp.authenticate(again.get_all(), t2, NOW).status == "unauthorized"
     assert mp.authenticate(again.get_all(), t1, NOW).status == "revoked"
+
+
+# --- Replay-Zähler (#249) ---------------------------------------------------------------------
+
+def test_last_seq_round_trips_through_the_file(path):
+    record, _ = make_record()
+    store = MobileStore(path)
+    store.save(mp.with_seq(record, 41))
+    assert MobileStore(path).get("device-0001")["last_seq"] == 41
+
+
+def test_a_record_without_last_seq_loads_as_zero(path):
+    record, _ = make_record()
+    legacy = {k: v for k, v in record.items() if k != "last_seq"}
+    with open(path, "w", encoding="utf-8") as handle:
+        json.dump({"schema_version": 1, "devices": [legacy]}, handle)
+    assert MobileStore(path).get("device-0001")["last_seq"] == 0
+
+
+@pytest.mark.parametrize("value", [-1, 2 ** 53, 1.5, "7", True, None, [1]])
+def test_a_record_with_an_invalid_last_seq_is_skipped(path, value):
+    record, _ = make_record()
+    broken = {**record, "last_seq": value}
+    with open(path, "w", encoding="utf-8") as handle:
+        json.dump({"schema_version": 1, "devices": [broken]}, handle)
+    assert MobileStore(path).get_all() == []
+
+
+def test_read_only_is_visible_to_callers(path, monkeypatch):
+    assert MobileStore(path).read_only is False
+    with open(path, "w", encoding="utf-8") as handle:
+        json.dump({"schema_version": 99, "devices": []}, handle)
+    assert MobileStore(path).read_only is True
+    assert MobileStore(str(path) + ".nicht-da").read_only is False

@@ -10,6 +10,7 @@
 pytest==9.0.3
 # tests/test_qr.py (QR-Code der Handy-Erfassung); reines Python.
 segno==1.6.6
+cryptography==50.0.2
 holidays==0.99
 google-api-python-client==2.196.0
 google-auth==2.55.0

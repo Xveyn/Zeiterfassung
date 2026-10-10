@@ -28,13 +28,18 @@ export function describeError(error) {
       return { text: 'Dieser Browser sendet die Anfrage als seitenübergreifend (Sec-Fetch-Site) und der Desktop lehnt sie ab. Bitte Chrome auf Android verwenden.', action: null };
     case 'invalid_code':
       return { text: 'Der Code ist ungültig oder abgelaufen. Am Desktop einen neuen Code erzeugen.', action: 'pair' };
-    case 'pairing_locked':
-      return { text: 'Zu viele Fehlversuche. Am Desktop einen neuen Code erzeugen.', action: 'pair' };
     case 'clock_skew':
       return { text: 'Die Uhr des Handys weicht mehr als 15 Minuten von der des Desktops ab. Datum und Uhrzeit am Handy prüfen.', action: null };
     case 'invalid_entry':
       return { text: `Der Desktop hat einen Tag abgelehnt: ${server || 'ungültiger Eintrag'}`, action: null };
+    case 'crypto':
+      return { text: 'Die Verschlüsselung zwischen Handy und Desktop passt nicht mehr (Handy oder Rechner wurden zurückgesetzt?). Bitte neu koppeln — Ihre nicht übertragenen Einträge bleiben erhalten.', action: 'pair' };
+    case 'encryption':
+      return { text: 'Diese Kopplung ist noch nicht verschlüsselt. Bitte neu koppeln — Ihre nicht übertragenen Einträge bleiben erhalten.', action: 'pair' };
     case 'transient':
+      if (error.code === 'key_unavailable') {
+        return { text: 'Der Schlüsselbund am Rechner antwortet gerade nicht (gesperrt?). Bitte gleich erneut versuchen.', action: 'retry' };
+      }
       return { text: 'Der Desktop ist gerade beschäftigt. Bitte gleich erneut versuchen.', action: 'retry' };
     case 'server':
       return { text: 'Der Desktop meldet einen internen Fehler. Details stehen im Protokoll der Desktop-App.', action: 'retry' };

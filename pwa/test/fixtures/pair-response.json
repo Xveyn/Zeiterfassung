@@ -3,5 +3,6 @@
   "expires_at": "2026-11-07T12:00:00Z",
   "window_days": 90,
   "desktop_name": "Desktop",
-  "protocol": 1
+  "protocol": 2,
+  "key": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8"
 }

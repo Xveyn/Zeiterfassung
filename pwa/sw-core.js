@@ -26,6 +26,7 @@ export const PRECACHE = [
   './sync-policy.js',
   './minutes.js',
   './pairing.js',
+  './crypto.js',
   './store.js',
   './db.js',
   './sync.js',

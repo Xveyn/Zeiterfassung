@@ -96,3 +96,12 @@ def test_main_builds_the_store_in_the_data_folder_and_passes_it_on():
     source = MAIN.read_text(encoding="utf-8")
     assert 'MobileStore(os.path.join(base, "mobile_devices.json"))' in source
     assert "mobile_store=mobile_store" in source
+    assert 'MobileKeyStore(os.path.join(base, "mobile_keys.json"))' in source
+    assert "mobile_keys=mobile_keys" in source
+
+
+def test_the_app_gives_the_key_store_to_the_phone_context_and_needs_both_stores():
+    source = UI.read_text(encoding="utf-8")
+    assert "mobile_keys=None" in source
+    assert "if mobile_store is not None and mobile_keys is not None:" in source
+    assert "keys=mobile_keys" in source

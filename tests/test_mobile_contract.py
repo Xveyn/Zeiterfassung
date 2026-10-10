@@ -88,6 +88,7 @@ def test_the_link_the_desktop_builds_is_the_fragment_the_pwa_parses(row):
 
 import re  # noqa: E402
 
+from src import mobile_crypto as mc  # noqa: E402
 from src import mobile_routes, mobile_sync  # noqa: E402
 from src.api_auth import ANONYMOUS  # noqa: E402
 from src.api_routes import ApiRequest  # noqa: E402
@@ -131,29 +132,59 @@ def test_the_response_example_has_the_shape_the_server_really_sends(tmp_path):
     env.ctx.storage.apply_merge({"2026-10-05": {
         "slots": [{"start": "09:00", "end": "13:00", "pause": 0, "kategorie": ""}],
         "modified_at": "2026-10-07T20:00:00Z", "device_id": "DESK", "deleted": False}})
-    body = {"protocol": 1, "client_time": mr.NOW, "entries": {
-        "2026-10-07": mr.day(), "2026-10-06": mr.day(slots=(), deleted=True),
-        "2026-10-05": mr.day(modified_at="2026-10-07T18:30:00Z")}}
+    entries = {"2026-10-07": mr.day(), "2026-10-06": mr.day(slots=(), deleted=True),
+               "2026-10-05": mr.day(modified_at="2026-10-07T18:30:00Z")}
 
-    response = mr.call(env, "POST", "/v1/sync", body=json.dumps(body).encode(), token=token)
+    raw = mr.call(env, "POST", "/v1/sync", body=mr.sync_body(env, entries), token=token)
+    response = mr.opened(env, raw)
 
-    assert response.status == 200
+    assert raw.status == 200
+    assert set(raw.body) == {"v", "seq", "n", "c"}                      # auf dem Draht nur der Umschlag
     assert shape(response.body) == shape(example)
+    assert response.body["protocol"] == example["protocol"] == 2
+
+
+def test_the_sync_request_example_has_the_shape_the_phone_sends(tmp_path):
+    example = load("sync-request.json")
+    env = mr.make_env(tmp_path)
+    mr.add_device(env)
+    sent = mr.sync_doc(env, {"2026-10-07": mr.day(), "2026-10-06": mr.day(slots=(), deleted=True)})
+    sent["last_pull_at"] = example["last_pull_at"]
+
+    assert set(sent) == set(example) and sent["protocol"] == example["protocol"] == 2
 
 
 def test_the_pair_examples_have_the_shape_the_server_expects_and_sends(tmp_path):
     request = load("pair-request.json")
     example = load("pair-response.json")
     env = mr.make_env(tmp_path)
-    request["code"] = env.ctx.pairing.open()
+    code = mobile_pairing.normalize_code(env.ctx.pairing.open())
+    phone = mr.Phone(request["device_id"], request["device_name"])
+    envelope = phone.pair_request(code)
+    request_key, _ = mc.pair_keys(code)
+    plain = json.loads(mc.open_envelope(request_key, envelope, direction="req", method="POST",
+                                        path="/v1/pair", device_id="-", seq=1))
 
+    assert shape(plain) == shape(request)                                  # der Klartext der Anfrage
+    assert "code" not in plain                                              # der Code ist nur der Schlüssel
     response = mobile_routes.dispatch(
-        ApiRequest("POST", "/v1/pair", {}, json.dumps(request).encode()), env.ctx, ANONYMOUS)
+        ApiRequest("POST", "/v1/pair", {}, json.dumps(envelope).encode()), env.ctx, ANONYMOUS)
+    answer = phone.open_pair_response(code, response.body)
 
-    assert response.status == 200
-    assert shape(response.body) == shape(example)
-    assert response.body["window_days"] == example["window_days"]
-    assert response.body["protocol"] == example["protocol"] == 1
+    assert response.status == 200 and set(response.body) == {"v", "seq", "n", "c"}
+    assert shape(answer) == shape(example)
+    assert answer["window_days"] == example["window_days"]
+    assert answer["protocol"] == example["protocol"] == 2
+    assert len(mc.b64d(answer["key"])) == 32 and len(mc.b64d(example["key"])) == 32
+
+
+def test_the_fixture_errors_include_the_encryption_codes_with_the_expected_repair_flags():
+    rows = {(row["status"], row["code"]): row for row in load("errors.json")}
+    for status, code, kind, repair in ((400, "decrypt_failed", "crypto", True), (409, "replay", "crypto", True),
+                                       (401, "encryption_required", "encryption", True),
+                                       (400, "invalid_envelope", "protocol", False),
+                                       (503, "key_unavailable", "transient", False)):
+        assert rows[(status, code)]["kind"] == kind and rows[(status, code)]["needs_repair"] is repair
 
 
 _EMITTED = re.compile(

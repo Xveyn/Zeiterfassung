@@ -71,6 +71,7 @@ ZEITERFASSUNG_LOG_LEVEL=DEBUG python -m src.main
 | `holidays` | Feiertags-Lookup (deutsche Feiertage) |
 | `keyring` | SMTP-Passwörter, OAuth-Refresh-Token, Webhook-Secrets im Schlüsselbund des Betriebssystems |
 | `segno` | QR-Code im Koppel-Dialog der Handy-Erfassung (reines Python) |
+| `cryptography` | AES-GCM und HKDF für die Verschlüsselung der Handy-Erfassung (vorher nur transitiv über `google-auth`; Wheels `cp311-abi3` für Windows, macOS arm64 und Linux x86_64) |
 | `pystray` | Infobereich-Icon (Minimize-to-Tray) |
 | `Pillow` | Icon-/Bildverarbeitung (Tray-Icon) |
 | `dbus-fast` | Linux-Tray über StatusNotifierItem (nur Linux) |
@@ -217,6 +218,8 @@ cd pwa && node --test
 Die JSON-Beispiele in `pwa/test/fixtures/` sind der Vertrag zum Python-Server: Dieselben Dateien lesen die JS-Tests und `tests/test_mobile_contract.py`. Ändert sich Request, Response oder ein Fehlercode des Servers, ändern sich die Beispiele mit — sonst wird einer der beiden Tests rot.
 
 Zum Ausprobieren im Browser startet `python scripts/pwa_devserver.py` die echte Handy-Instanz der App und dazu `pwa/` auf `http://localhost:8099/`; er druckt einen Koppel-Link mit frischem Code. Der Koppel-Link akzeptiert nur private IPv4-Adressen: Standard ist die erste gefundene LAN-Adresse; fällt der Server auf `127.0.0.1` zurück (kein LAN), startest du ihn mit `--address <LAN-IP>`. Der Service Worker cached im Dev dauerhaft (#272): nach Änderungen an `pwa/` in den Browser-Werkzeugen den Worker abmelden und die Caches leeren.
+
+**Kryptografie ändert man immer auf beiden Seiten:** `src/mobile_crypto.py` und `pwa/crypto.js` müssen byte-genau dasselbe tun (Ableitung, Zusatzdaten, Umschlag). Gemeinsame Testvektoren liegen in `pwa/test/fixtures/crypto-vectors.json`; wer etwas daran ändert, erzeugt sie neu (Skript im Plan `docs/superpowers/plans/2026-10-10-pwa-verschluesselung.md`, Task 1) und lässt beide Testsuiten laufen.
 
 Veröffentlicht wird `pwa/` von `.github/workflows/pages.yml` (Details in der `CLAUDE.md`).
 

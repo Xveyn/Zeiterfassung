@@ -44,9 +44,8 @@ test('server texts are passed through for invalid entries and client errors', ()
   assert.match(describeError(new SyncError({ kind: 'client_error', message: 'Body ist zu groß.' })).text, /Body ist zu groß/);
 });
 
-test('clock skew and locked pairing say what to do', () => {
+test('clock skew and an invalid code say what to do', () => {
   assert.match(describeError(new SyncError({ kind: 'clock_skew' })).text, /Uhr/);
-  assert.match(describeError(new SyncError({ kind: 'pairing_locked' })).text, /neuen Code/);
   assert.match(describeError(new SyncError({ kind: 'invalid_code' })).text, /neuen Code/);
 });
 
@@ -59,4 +58,23 @@ test('anything that is not a SyncError still gets a text', () => {
   assert.ok(describeError(new Error('kaputt')).text.length > 10);
   assert.ok(describeError(null).text.length > 10);
   assert.ok(describeError(undefined).text.length > 10);
+});
+
+test('crypto and encryption errors say to pair again and keep the unsent entries', () => {
+  for (const kind of ['crypto', 'encryption']) {
+    const result = describeError(new SyncError({ kind, needsRepair: true }));
+    assert.equal(result.action, 'pair', kind);
+    assert.match(result.text, /neu koppeln/, kind);
+    assert.match(result.text, /nicht übertragenen Einträge bleiben erhalten/, kind);
+  }
+  assert.notEqual(describeError(new SyncError({ kind: 'crypto' })).text,
+    describeError(new SyncError({ kind: 'encryption' })).text);
+});
+
+test('a locked keyring on the desktop is told apart from a busy desktop and may be retried', () => {
+  const locked = describeError(new SyncError({ kind: 'transient', code: 'key_unavailable' }));
+  const busy = describeError(new SyncError({ kind: 'transient', code: 'busy' }));
+  assert.match(locked.text, /Schlüsselbund/);
+  assert.equal(locked.action, 'retry');
+  assert.notEqual(locked.text, busy.text);
 });

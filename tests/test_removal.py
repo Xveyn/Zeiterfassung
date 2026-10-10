@@ -572,6 +572,8 @@ def test_pending_update_keys_kept_when_file_cannot_be_deleted(tmp_path, quiet,
 def test_the_mobile_devices_file_is_removed_and_ignored():
     import pathlib
     assert "mobile_devices.json" in removal.CREDENTIAL_FILES
+    assert "mobile_keys.json" in removal.CREDENTIAL_FILES
     ignore = (pathlib.Path(__file__).resolve().parent.parent / ".gitignore")
     lines = ignore.read_text(encoding="utf-8").splitlines()
     assert "mobile_devices.json" in lines and "mobile_devices.json.corrupt-*" in lines
+    assert "mobile_keys.json" in lines and "mobile_keys.json.corrupt-*" in lines

@@ -38,7 +38,7 @@ if TYPE_CHECKING:
     from src.settings import Settings
     from src.storage import Storage
 
-PROTOCOL = 1
+PROTOCOL = 2                  # Protokoll v2 (#249): verschlüsselt, s. `mobile_crypto`
 WINDOW_DAYS = 90
 MAX_ENTRIES = 400
 # LWW vertraut `modified_at`: eine falsche Uhr würde echte Einträge überschreiben.

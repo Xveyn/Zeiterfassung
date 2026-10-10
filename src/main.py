@@ -39,6 +39,7 @@ from src.ui import App
 from src.version import VERSION
 from src.webhook_store import WebhookStore
 from src.smtp_store import SmtpStore
+from src.mobile_keys import MobileKeyStore
 from src.mobile_store import MobileStore
 
 # Muss exakt zum AppMutex-Wert in installer.iss passen. Der Installer prüft
@@ -327,6 +328,7 @@ def main():
     # Gekoppelte Handys (#221): gerätelokal, eigener Lock, nur Token-Hashes. Nimmt an
     # keinem Sync-Flow teil; die Handy-Instanz selbst startet nur bei `mobile_enabled`.
     mobile_store = MobileStore(os.path.join(base, "mobile_devices.json"))
+    mobile_keys = MobileKeyStore(os.path.join(base, "mobile_keys.json"))
 
     # M6: Ein unvollständig gebliebener Sync-Apply eines vorherigen Laufs
     # (Crash zwischen den Store-Writes) wird jetzt idempotent nachgeholt —
@@ -364,7 +366,7 @@ def main():
               reservation_store=reservation_store, single_instance=guard,
               data_lock=data_lock, sync_guard=sync_guard, webhook_store=webhook_store,
               vacation_store=vacation_store, smtp_store=smtp_store,
-              mobile_store=mobile_store)
+              mobile_store=mobile_store, mobile_keys=mobile_keys)
 
     if "--minimized" in sys.argv:
         root.iconify()

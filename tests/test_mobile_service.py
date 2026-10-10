@@ -3,13 +3,15 @@ import http.client
 import json
 import socket
 import threading
+import time
 
 import pytest
 
-from src import mobile_pairing, mobile_routes
+from src import mobile_keys, mobile_pairing, mobile_routes
 from src.api_auth import ANONYMOUS
 from src.api_routes import ApiRequest
 from src.conflicts_store import ConflictsStore
+from src.mobile_keys import MobileKeyStore
 from src.mobile_pairing import PairingSession
 from src.mobile_service import (
     DEFAULT_PORT, REASON_ADDRESS_GONE, REASON_INVALID_PORT, REASON_NO_ADDRESS,
@@ -20,9 +22,20 @@ from src.mobile_store import MobileStore
 from src.settings import DEFAULTS, Settings
 from src.storage import Storage
 from src.time_utils import utc_now_iso
+from tests.mobile_phone import FakeRing, Phone
 
+LONG = "K7M29QXA" * 3 + "K7M2"
+SHOWN = "K7M2-9QXA-K7M2-9QXA-K7M2-9QXA-K7M2"
 ORIGIN = "https://xveyn.github.io"
 LOOPBACK = "127.0.0.1"
+
+
+@pytest.fixture(autouse=True)
+def ring(monkeypatch):
+    """Kein Test fasst den echten Schlüsselbund an."""
+    fake = FakeRing()
+    monkeypatch.setattr(mobile_keys, "keyring_store", fake)
+    return fake
 
 
 def free_port():
@@ -47,6 +60,7 @@ def make_service(tmp_path, *, enabled=True, port=None, address="", candidates=(L
         pairing=PairingSession(),
         devices=MobileStore(str(tmp_path / "mobile_devices.json")),
         devices_lock=threading.RLock(),
+        keys=MobileKeyStore(str(tmp_path / "mobile_keys.json")),
         storage=Storage(str(tmp_path / "zeiterfassung.json"), device_id="DESK"),
         settings=settings,
         conflicts_store=ConflictsStore(str(tmp_path / "conflicts.json")),
@@ -123,7 +137,7 @@ def test_an_enabled_service_binds_the_chosen_address_and_answers(started):
     ctx.devices.save(record)
     response, body = http_call(port, "GET", "/v1/ping", token=token)
 
-    assert response.status == 200 and body["protocol"] == 1
+    assert response.status == 200 and body["protocol"] == 2
     assert response.getheader("Access-Control-Allow-Origin") == ORIGIN
 
 
@@ -152,21 +166,23 @@ def test_the_local_api_surface_is_not_reachable_through_the_phone_server(started
 def test_pairing_and_syncing_work_end_to_end_over_a_real_socket(started):
     service, _settings, ctx = started
     port = service.status.port
-    code = service.pairing.open()
+    code = mobile_pairing.normalize_code(service.pairing.open())
+    phone = Phone("phone-0001", "Pixel")
 
-    paired, body = http_call(port, "POST", "/v1/pair", body={
-        "code": code, "device_name": "Pixel", "device_id": "phone-0001"})
-    token = body["token"]
+    paired, body = http_call(port, "POST", "/v1/pair", body=phone.pair_request(code))
+    answer = phone.open_pair_response(code, body)
+    token = answer["token"]
     entries = {"2026-10-07": {"slots": [{"start": "08:00", "end": "12:00", "pause": 0,
                                          "kategorie": "Projekt"}],
                               "modified_at": "2026-10-07T18:30:00Z", "deleted": False}}
-    synced, answer = http_call(port, "POST", "/v1/sync", token=token, body={
-        "protocol": 1, "client_time": utc_now_iso(), "entries": entries})
-    renewed = answer["token"]
+    synced, sealed = http_call(port, "POST", "/v1/sync", token=token, body=phone.sync_request(
+        {"protocol": 2, "client_time": utc_now_iso(), "last_pull_at": "", "entries": entries}))
+    renewed = phone.open_sync_response(sealed)["token"]
     still_old, _b = http_call(port, "GET", "/v1/ping", token=token)       # Karenz
     new_ok, _b2 = http_call(port, "GET", "/v1/ping", token=renewed)
 
     assert paired.status == 200 and synced.status == 200
+    assert "Projekt" not in json.dumps(sealed) and token not in json.dumps(sealed)
     assert ctx.storage.get_all_raw()["2026-10-07"]["device_id"] == "phone-0001"
     assert still_old.status == 200 and new_ok.status == 200
     assert paired.getheader("Access-Control-Allow-Origin") == ORIGIN
@@ -176,8 +192,8 @@ def test_a_refused_pairing_has_no_token_in_the_answer(started):
     service, _settings, _ctx = started
     service.pairing.open()
 
-    response, body = http_call(service.status.port, "POST", "/v1/pair", body={
-        "code": "AAAA-AAAA", "device_name": "P", "device_id": "phone-0001"})
+    response, body = http_call(service.status.port, "POST", "/v1/pair",
+                               body=Phone().pair_request(mobile_pairing.generate_code()))
 
     assert response.status == 403 and "token" not in json.dumps(body)
 
@@ -277,7 +293,8 @@ def test_apply_shows_starting_before_the_worker_ran(tmp_path):
 
     service.apply()
 
-    assert service.status.state == STATE_STARTING and len(queued) == 1
+    assert service.status.state == STATE_STARTING
+    assert [fn.__name__ for fn, _done in queued] == ["_reconcile", "_maintain_keys"]
 
 
 def test_the_status_callback_gets_the_current_status(tmp_path):
@@ -308,10 +325,9 @@ def test_shutdown_stops_the_server_and_blocks_new_starts_until_reopened(tmp_path
 def test_routes_refuse_work_after_shutdown(tmp_path):
     service, _settings, ctx = make_service(tmp_path)
     service.apply()
-    code = service.pairing.open()
+    code = mobile_pairing.normalize_code(service.pairing.open())
     service.shutdown()
-    request = ApiRequest("POST", "/v1/pair", {}, json.dumps(
-        {"code": code, "device_id": "phone-0001"}).encode())
+    request = ApiRequest("POST", "/v1/pair", {}, json.dumps(Phone().pair_request(code)).encode())
 
     response = mobile_routes.dispatch(request, service._context, ANONYMOUS)
 
@@ -356,16 +372,17 @@ def test_the_pair_link_carries_address_port_and_the_canonical_code(started):
     service, _settings, _ctx = started
     port = service.status.port
 
-    assert service.pair_link("K7M2-9QXA") == (
-        f"https://xveyn.github.io/Zeiterfassung/#pair=127.0.0.1:{port}:K7M29QXA")
-    assert service.pair_link("k7m2 9qxa") == service.pair_link("K7M2-9QXA")
+    assert service.pair_link(SHOWN) == (
+        f"https://xveyn.github.io/Zeiterfassung/#pair=127.0.0.1:{port}:{LONG}")
+    assert service.pair_link(SHOWN.lower().replace("-", " ")) == service.pair_link(SHOWN)
     assert service.pair_link("kein code") is None
+    assert service.pair_link("K7M2-9QXA") is None                         # ein alter 8-Zeichen-Code
 
 
 def test_there_is_no_pair_link_while_the_server_is_not_running(tmp_path):
     service, _settings, _ctx = make_service(tmp_path, enabled=False)
     service.apply()
-    assert service.pair_link("K7M2-9QXA") is None
+    assert service.pair_link(SHOWN) is None
 
 
 def test_there_is_no_pair_link_for_a_vanished_address(tmp_path):
@@ -376,4 +393,199 @@ def test_there_is_no_pair_link_for_a_vanished_address(tmp_path):
     service.apply()
 
     assert service.status.address == "192.168.77.5" and service.status.state == STATE_ERROR
-    assert service.pair_link("K7M2-9QXA") is None
+    assert service.pair_link(SHOWN) is None
+
+
+# --- Schlüssel (#249) -----------------------------------------------------------------------------------
+
+KEY = bytes(range(32))
+
+
+def add_keyed_device(ctx, device_id="phone-0001", name="Pixel"):
+    record, token = mobile_pairing.issue_device(device_id, name, utc_now_iso())
+    ctx.devices.save(record)
+    ctx.keys.put(device_id, KEY)
+    return record, token
+
+
+def test_revoking_a_device_removes_its_key_from_cache_file_and_keyring(started, ring):
+    service, _settings, ctx = started
+    add_keyed_device(ctx, "phone-aaaa")
+    add_keyed_device(ctx, "phone-bbbb")
+    ctx.keys.migrate()
+    assert "mobile:phone-aaaa" in ring.items
+
+    assert service.revoke("phone-aaaa") is True
+
+    assert ctx.keys.get("phone-aaaa") is None and "phone-aaaa" not in ctx.keys.where()
+    assert "mobile:phone-aaaa" not in ring.items
+    assert ctx.keys.get("phone-bbbb") == KEY and "mobile:phone-bbbb" in ring.items       # andere unberührt
+
+
+def test_revoking_an_unknown_device_touches_no_key(started, ring):
+    service, _settings, ctx = started
+    add_keyed_device(ctx)
+    assert service.revoke("unbekannt") is False
+    assert ctx.keys.get("phone-0001") == KEY and not any(call[0] == "remove" for call in ring.calls)
+
+
+def test_revoke_all_removes_every_key(started, ring):
+    service, _settings, ctx = started
+    for index in range(3):
+        add_keyed_device(ctx, f"phone-000{index}")
+    ctx.keys.migrate()
+
+    assert service.revoke_all() == 3
+
+    assert ctx.keys.where() == {} and ring.items == {}
+
+
+def test_a_revoke_does_not_hold_the_devices_lock_while_the_keyring_works(tmp_path, ring):
+    service, _settings, ctx = make_service(tmp_path)
+    add_keyed_device(ctx)
+    ctx.keys.migrate()
+    held = []
+    original = ring.remove
+
+    def slow_remove(key):
+        held.append(ctx.devices_lock.acquire(blocking=False))      # frei, wenn der Schlüsselbund arbeitet
+        if held[-1]:
+            ctx.devices_lock.release()
+        original(key)
+    ring.remove = slow_remove
+    service.revoke("phone-0001")
+    assert held == [True]
+
+
+def test_apply_retains_loads_and_migrates_after_the_server_is_up(tmp_path, ring):
+    order = []
+    service, _settings, ctx = make_service(tmp_path)
+    keys = ctx.keys
+    for name in ("retain", "load", "migrate"):
+        original = getattr(keys, name)
+        setattr(keys, name, (lambda n, f: lambda *a, **k: (order.append((n, service.status.state)), f(*a, **k))[1])(name, original))
+    service.apply()
+    try:
+        assert [name for name, _ in order] == ["retain", "load", "migrate"]
+        assert all(state == STATE_RUNNING for _, state in order)        # der Server läuft schon
+    finally:
+        service.shutdown()
+
+
+def test_apply_moves_a_file_key_into_the_keyring_and_the_key_keeps_working(tmp_path, ring):
+    service, _settings, ctx = make_service(tmp_path)
+    add_keyed_device(ctx)
+    service.apply()
+    try:
+        assert ctx.keys.where() == {"phone-0001": "keyring"} and "mobile:phone-0001" in ring.items
+        assert ctx.keys.get("phone-0001") == KEY
+    finally:
+        service.shutdown()
+
+
+def test_a_blocking_keyring_does_not_delay_the_server_start(tmp_path, ring):
+    release = threading.Event()
+    original = ring.fetch
+
+    def hanging(key):
+        release.wait(5)
+        return original(key)
+    service, _settings, ctx = make_service(tmp_path, run=lambda fn, on_done=None: threading.Thread(
+        target=lambda: (lambda r: on_done(r) if on_done else None)(fn()), daemon=True).start())
+    add_keyed_device(ctx)
+    ctx.keys.migrate()
+    fresh_keys = MobileKeyStore(str(tmp_path / "mobile_keys.json"))
+    service._context = __import__("dataclasses").replace(service._context, keys=fresh_keys)
+    ring.fetch = hanging
+    started = time.time()
+    service.apply()
+    assert time.time() - started < 1                                  # apply selbst wartet nicht auf den Schlüsselbund
+    try:
+        deadline = time.time() + 2
+        while service.status.state != STATE_RUNNING and time.time() < deadline:
+            time.sleep(0.01)
+        assert service.status.state == STATE_RUNNING                  # obwohl fetch noch hängt
+    finally:
+        release.set()
+        service.shutdown()
+
+
+def test_an_unreadable_keyring_leaves_the_service_running(tmp_path, ring):
+    service, _settings, ctx = make_service(tmp_path)
+    add_keyed_device(ctx)
+    ctx.keys.migrate()
+    ctx.keys.__init__(str(tmp_path / "mobile_keys.json"))                   # Neustart: Cache leer
+    ring.available = False
+    service.apply()
+    try:
+        assert service.status.state == STATE_RUNNING
+        assert ctx.keys.get("phone-0001") is None
+    finally:
+        service.shutdown()
+
+
+def test_a_pairing_starts_the_migration_in_the_worker(tmp_path, ring):
+    jobs = []
+
+    def collecting_run(fn, on_done=None):
+        jobs.append(fn)
+        if fn.__name__ in ("_reconcile", "_maintain_keys"):
+            result = fn()
+            if on_done:
+                on_done(result)
+    service, _settings, ctx = make_service(tmp_path, run=collecting_run)
+    service.apply()
+    try:
+        port = service.status.port
+        code = mobile_pairing.normalize_code(service.pairing.open())
+        phone = Phone()
+        http_call(port, "POST", "/v1/pair", body=phone.pair_request(code))
+        migrate_jobs = [job for job in jobs if job.__name__ == "_migrate_keys"]
+        assert len(migrate_jobs) == 1 and ctx.keys.where() == {"phone-0001": "file"}   # noch nicht umgezogen
+        migrate_jobs[0]()
+        assert ctx.keys.where() == {"phone-0001": "keyring"}
+    finally:
+        service.shutdown()
+
+
+def test_shutdown_does_not_wait_for_a_hanging_keyring(tmp_path, ring):
+    release = threading.Event()
+    service, _settings, ctx = make_service(tmp_path, run=lambda fn, on_done=None: threading.Thread(
+        target=lambda: (lambda r: on_done(r) if on_done else None)(fn()), daemon=True).start())
+    add_keyed_device(ctx)
+    ctx.keys.migrate()
+    ctx.keys.__init__(str(tmp_path / "mobile_keys.json"))
+    original = ring.fetch
+    ring.fetch = lambda key: (release.wait(5), original(key))[1]
+    service.apply()
+    time.sleep(0.2)
+    started_at = time.time()
+    service.shutdown()
+    release.set()
+    assert time.time() - started_at < 2
+
+
+def test_a_device_file_that_could_not_be_read_never_costs_the_keys(tmp_path, ring):
+    # Die Gerätedatei hat eine neuere schema_version (Downgrade) oder war gesperrt: der Store startet
+    # read-only und leer. Das ist kein „alle Geräte sind weg“ — die Schlüssel dürfen nicht abgeräumt werden,
+    # sonst muss nach dem nächsten normalen Start jedes Handy neu koppeln.
+    (tmp_path / "mobile_devices.json").write_text(json.dumps({"schema_version": 99, "devices": []}), encoding="utf-8")
+    service, _settings, ctx = make_service(tmp_path)
+    ctx.keys.put("phone-0001", KEY)
+    ctx.keys.migrate()
+    assert ctx.devices.read_only and ctx.devices.get_all() == []
+
+    service._maintain_keys()
+
+    assert ctx.keys.where() == {"phone-0001": "keyring"} and "mobile:phone-0001" in ring.items
+
+
+def test_keys_of_devices_the_store_no_longer_knows_are_still_cleaned_up(tmp_path, ring):
+    service, _settings, ctx = make_service(tmp_path)
+    add_keyed_device(ctx, "phone-aaaa")
+    ctx.keys.put("phone-orphan", KEY)
+    ctx.keys.migrate()
+
+    service._maintain_keys()
+
+    assert set(ctx.keys.where()) == {"phone-aaaa"} and "mobile:phone-orphan" not in ring.items

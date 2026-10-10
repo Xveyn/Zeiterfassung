@@ -1,12 +1,19 @@
 {
-  "protocol": 1,
+  "protocol": 2,
   "server_time": "2026-10-08T12:00:00Z",
   "last_pull_at": "2026-10-08T12:00:00Z",
   "excluded": false,
   "window_days": 90,
   "entries": {
     "2026-10-07": {
-      "slots": [{"start": "08:00", "end": "12:00", "pause": 0, "kategorie": "Projekt"}],
+      "slots": [
+        {
+          "start": "08:00",
+          "end": "12:00",
+          "pause": 0,
+          "kategorie": "Projekt"
+        }
+      ],
       "modified_at": "2026-10-07T18:30:00Z",
       "device_id": "6f1c2b9e-3d4a-4b5c-8d7e-9f0a1b2c3d4e",
       "deleted": false
@@ -23,16 +30,39 @@
       "id": "0c7a5f0e-6b1d-4c53-9d1e-2a3b4c5d6e7f",
       "date": "2026-10-05",
       "versions": [
-        {"device": "6f1c2b9e-3d4a-4b5c-8d7e-9f0a1b2c3d4e", "name": "Pixel von Sven",
-         "modified_at": "2026-10-07T18:30:00Z",
-         "slots": [{"start": "08:00", "end": "12:00", "pause": 0, "kategorie": "Projekt"}]},
-        {"device": "DESK", "name": "",
-         "modified_at": "2026-10-07T20:00:00Z",
-         "slots": [{"start": "09:00", "end": "13:00", "pause": 0, "kategorie": ""}]}
+        {
+          "device": "6f1c2b9e-3d4a-4b5c-8d7e-9f0a1b2c3d4e",
+          "name": "Pixel von Sven",
+          "modified_at": "2026-10-07T18:30:00Z",
+          "slots": [
+            {
+              "start": "08:00",
+              "end": "12:00",
+              "pause": 0,
+              "kategorie": "Projekt"
+            }
+          ]
+        },
+        {
+          "device": "DESK",
+          "name": "",
+          "modified_at": "2026-10-07T20:00:00Z",
+          "slots": [
+            {
+              "start": "09:00",
+              "end": "13:00",
+              "pause": 0,
+              "kategorie": ""
+            }
+          ]
+        }
       ]
     }
   ],
-  "categories": ["Projekt", "Intern"],
+  "categories": [
+    "Projekt",
+    "Intern"
+  ],
   "token": "aB3dE5fG7hJ9kL1mN3pQ5rS7tU9vW1xY3zA5bC7dE9f",
   "expires_at": "2026-11-07T12:00:00Z"
 }

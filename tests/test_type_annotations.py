@@ -70,6 +70,8 @@ ANNOTATED_MODULES = [
     "src/mobile_service.py",
     "src/netinfo.py",
     "src/mobile_sync.py",
+    "src/mobile_crypto.py",
+    "src/mobile_keys.py",
     "src/mobile_pairing.py",
     "src/mobile_store.py",
     # Bereits vor #72 vollstaendig annotiert — hier gelistet, damit sie

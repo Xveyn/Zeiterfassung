@@ -88,6 +88,7 @@ Type: files; Name: "{app}\credentials.json"
 Type: files; Name: "{app}\smtp.json"
 Type: files; Name: "{app}\api-token"
 Type: files; Name: "{app}\mobile_devices.json"
+Type: files; Name: "{app}\mobile_keys.json"
 
 
 [Run]
