@@ -9,13 +9,13 @@ import { Store } from './store.js';
 import { SyncClient, SyncError, clockSkewMs } from './sync.js';
 import { shouldQueue, shouldSync } from './sync-policy.js';
 import {
-  conflictsModel, editorRows, hintsModel, rowsToSlots, statusModel, validateRows, weekModel,
+  conflictsModel, dayChanged, editorRows, focusKeyToRestore, hintsModel, rowsToSlots, statusModel, validateRows, weekModel,
 } from './view-model.js';
 import { BUILD } from './sw-core.js';
-import { clear } from './dom.js';
+import { clear, focusByKey, focusState, h } from './dom.js';
 import {
-  conflictsDialog, confirmDialog, connectionDialog, editorDialog, fatalView, hintsView, pairView,
-  scanDialog, statusBar, weekView,
+  conflictsDialog, confirmDialog, connectionDialog, editorDialog, fatalView, hintsHost, pairView,
+  patchHints, scanDialog, statusBar, weekView,
 } from './views.js';
 import { canScan, scanForPairLink } from './scanner.js';
 import { describeError } from './messages.js';
@@ -40,6 +40,16 @@ class App {
     this.saveTimer = null;
     this.queued = false;
     this.reloading = false;
+    this.shell = null;          // persistente Teile der Wochenansicht (Hinweise, Statuszeile)
+    this.lastFocusKey = null;
+    this.hintHandlers = {
+      pair: () => { this.screen = 'pair'; this.render(); },
+      rescan: () => { this.screen = 'pair'; this.render(); },
+      retry: () => this.trigger('manual'),
+      reload: () => this.reloadForUpdate(),
+      // Hinweise bleiben über Renders stehen: der Stand wird beim Klick gelesen, nicht beim Bau.
+      conflicts: () => conflictsDialog(this.conflictList(), { openDay: (date) => this.openDay(date) }),
+    };
   }
 
   get paired() {
@@ -155,8 +165,10 @@ class App {
   }
 
   render() {
-    clear(this.root);
+    const focusKey = focusKeyToRestore({ ...focusState(this.root), last: this.lastFocusKey });
     if (this.screen === 'pair') {
+      this.shell = null;
+      clear(this.root);
       this.root.append(pairView({
         address: this.pairing.address, code: this.pairing.code,
         deviceName: this.pairing.deviceName || this.store.getMeta().device_name || deviceNameFromUserAgent(navigator.userAgent),
@@ -168,6 +180,7 @@ class App {
         scan: () => this.scanPairing(),
         cancel: () => { this.screen = 'week'; this.render(); },
       }));
+      this.lastFocusKey = focusByKey(this.root, focusKey) ? focusKey : null;
       return;
     }
     const meta = this.store.getMeta();
@@ -181,27 +194,29 @@ class App {
       updateReady: this.updateReady, conflictCount: conflicts.length,
       errorDays: this.store.days().filter((date) => this.store.getDay(date).error).length,
     });
-    const handlers = {
-      pair: () => { this.screen = 'pair'; this.render(); },
-      rescan: () => { this.screen = 'pair'; this.render(); },
-      retry: () => this.trigger('manual'),
-      reload: () => this.reloadForUpdate(),
-      conflicts: () => conflictsDialog(conflicts, { openDay: (date) => this.openDay(date) }),
-    };
-    const main = weekView(model, {
+    if (!this.shell) this.shell = this.buildShell();
+    patchHints(this.shell.hints, hints, this.hintHandlers);
+    this.shell.week.replaceChildren(weekView(model, {
       previous: () => { this.anchor = addDays(this.anchor, -7); this.render(); },
       next: () => { this.anchor = addDays(this.anchor, 7); this.render(); },
       today: () => { this.anchor = localIsoDate(new Date()); this.render(); },
       openDay: (date) => this.openDay(date),
-    });
-    main.prepend(hintsView(hints, handlers));
-    this.root.append(main, statusBar(statusModel({
+    }));
+    this.shell.status.update(statusModel({
       paired: this.paired, online: this.online, syncing: this.syncing, pending: this.store.dirtyDates().length,
       lastSyncAt: meta.server_time,
-    }), {
-      sync: () => this.trigger('manual'),
-      connection: () => this.openConnection(),
     }));
+    this.lastFocusKey = focusByKey(this.root, focusKey) ? focusKey : null;
+  }
+
+  /** Hinweise und Statuszeile werden einmal gebaut und danach nur gepatcht (Live-Regionen, Fokus). */
+  buildShell() {
+    clear(this.root);
+    const hints = hintsHost();
+    const week = h('div', {});
+    const status = statusBar({ sync: () => this.trigger('manual'), connection: () => this.openConnection() });
+    this.root.append(h('main', {}, hints, week), status.element);
+    return { hints, week, status };
   }
 
   openConnection() {
@@ -219,8 +234,10 @@ class App {
     const day = this.store.getDay(date);
     const meta = this.store.getMeta();
     const today = localIsoDate(new Date());
+    const returnKey = focusState(this.root).activeKey;
+    let baseline = day;         // Stand beim Öffnen: Speichern prüft, ob der Tag inzwischen anders ist
     const outsideWindow = date > addDays(today, 1) || date < addDays(today, -meta.window_days);
-    editorDialog({
+    const dialog = editorDialog({
       title: `${formatDateDe(date)}`,
       rows: editorRows(day),
       categories: meta.categories,
@@ -230,6 +247,11 @@ class App {
       validate: (rows) => validateRows(rows),
     }, {
       save: async (rows) => {
+        const current = this.store.getDay(date);
+        if (dayChanged(baseline, current)) {
+          baseline = current;   // bewusst gewarnt: das nächste Speichern überschreibt
+          return 'Dieser Tag wurde inzwischen aktualisiert (Abgleich). Nochmaliges Speichern überschreibt die neuere Fassung.';
+        }
         try {
           await this.store.saveDay(date, rowsToSlots(rows));
         } catch (error) {
@@ -254,6 +276,8 @@ class App {
         this.scheduleSyncAfterSave();
       }),
     });
+    // Der Opener wird bei jedem Render ersetzt; der Browser kann den Fokus nach dem Schließen nicht zurückgeben.
+    dialog.addEventListener('close', () => { focusByKey(this.root, returnKey); });
   }
 
   // --- Service Worker ----------------------------------------------------------------------------

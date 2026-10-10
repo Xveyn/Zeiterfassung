@@ -23,3 +23,23 @@ export function h(tag, attrs = {}, ...children) {
 export function clear(element) {
   while (element.firstChild) element.firstChild.remove();
 }
+
+/** Der `data-focus`-Schlüssel des fokussierten Elements, wenn es in `root` liegt. */
+export function focusState(root) {
+  const active = document.activeElement;
+  const inRoot = Boolean(active) && active !== document.body && root.contains(active);
+  return {
+    activeKey: inRoot ? active.getAttribute('data-focus') : null,
+    inRoot,
+    isBody: !active || active === document.body,
+  };
+}
+
+/** Gibt dem Element mit diesem `data-focus`-Schlüssel den Fokus (falls es da und nicht gesperrt ist). */
+export function focusByKey(root, key) {
+  if (!key) return false;
+  const target = [...root.querySelectorAll('[data-focus]')].find((element) => element.getAttribute('data-focus') === key);
+  if (!target || target.disabled) return false;
+  target.focus();
+  return true;
+}

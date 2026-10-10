@@ -183,3 +183,28 @@ export function rowsToSlots(rows) {
 export function validateRows(rows) {
   return validateSlots(normalizeSlots(rowsToSlots(rows)));
 }
+
+// --- Tag seit dem Öffnen des Editors geändert? -----------------------------------------------------
+
+/** Hat sich der Inhalt eines Tages geändert (Abgleich, anderer Tab), seit der Editor ihn gelesen hat?
+ *  Das „nicht übertragen“-Kennzeichen zählt nicht: es fällt nach einem bestätigten Abgleich, ohne
+ *  dass sich am Tag etwas ändert. */
+export function dayChanged(opened, current) {
+  if (!opened || !current) return Boolean(opened) !== Boolean(current);
+  return opened.modified_at !== current.modified_at || opened.deleted !== current.deleted
+    || JSON.stringify(opened.slots) !== JSON.stringify(current.slots);
+}
+
+// --- Stabile Oberfläche über Renders hinweg ----------------------------------------------------------
+
+/** Identität eines Hinweises: gleicher Schlüssel, gleiches Element — es wird nicht neu eingefügt und
+ *  damit auch nicht erneut angesagt. */
+export const hintKey = (hint) => `${hint.id}|${hint.kind}|${hint.action ?? ''}|${hint.text}`;
+
+/** Welches Element bekommt nach einem Render den Fokus zurück (`data-focus`-Schlüssel) oder `null`?
+ *  Liegt der Fokus im Body, war das fokussierte Element weg oder gesperrt: dann gilt der letzte
+ *  Schlüssel. Liegt er in einem Dialog oder sonstwo, bleibt er unangetastet. */
+export function focusKeyToRestore({ activeKey, inRoot, isBody, last }) {
+  if (inRoot && activeKey) return activeKey;
+  return isBody ? last : null;
+}
