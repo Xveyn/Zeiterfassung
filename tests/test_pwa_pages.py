@@ -12,8 +12,9 @@ WORKFLOW = (ROOT / ".github" / "workflows" / "pages.yml").read_text(encoding="ut
 def test_the_build_placeholder_is_replaced_by_the_workflow():
     core = (ROOT / "pwa" / "sw-core.js").read_text(encoding="utf-8")
     assert core.count("__BUILD__") == 1
-    assert "sed -i" in WORKFLOW and "__BUILD__" in WORKFLOW and "sw-core.js" in WORKFLOW
-    assert re.search(r"grep -q .*sw-core\.js", WORKFLOW), "der Workflow muss prüfen, dass der Platzhalter ersetzt wurde"
+    assert "scripts/pwa_stamp.py _site" in WORKFLOW
+    assert "fetch-depth: 0" in WORKFLOW, "die Zählung seit dem letzten Release braucht die ganze Historie"
+    assert re.search(r'grep -rq "__BUILD__" _site', WORKFLOW), "der Workflow muss prüfen, dass der Platzhalter ersetzt wurde"
 
 
 def test_only_runtime_files_are_published():

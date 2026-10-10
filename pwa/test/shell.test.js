@@ -94,6 +94,7 @@ test('the manifest is installable', () => {
   assert.equal(manifest.scope, './');
   assert.equal(manifest.display, 'standalone');
   assert.equal(manifest.lang, 'de');
+  assert.equal(manifest.version, '__BUILD__', 'Metadaten tragen die Build-Kennung (pwa_stamp.py)');
   const css = read('app.css');
   assert.equal(manifest.background_color, /--bg:\s*(#[0-9a-f]{6})/i.exec(css)[1]);
   assert.equal(manifest.theme_color, manifest.background_color);

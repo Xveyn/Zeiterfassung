@@ -4,7 +4,7 @@
 // (`test/shell.test.js`); `sw.js` ist nur die dünne Hülle mit den Ereignissen.
 //
 // `BUILD` ist im Repository ein Platzhalter. Der Pages-Workflow setzt beim Veröffentlichen die
-// Commit-Kennung ein: jeder Deploy bekommt damit einen eigenen Cache und löst ein Update aus.
+// Build-Kennung (`N/X.Y.Z (sha)`, scripts/pwa_stamp.py) ein: jeder Deploy bekommt damit einen eigenen Cache und löst ein Update aus.
 // (Der Browser vergleicht `sw.js` samt importierter Module Byte für Byte.)
 export const BUILD = '__BUILD__';
 export const CACHE_PREFIX = 'zeiterfassung-pwa-';

@@ -1561,6 +1561,11 @@ seinen Pfad, nicht per Import.
   (Job `changelog-archive` in `release.yml`; s. „CHANGELOG-Archiv"). Ohne
   Flag schreibt es, `--check` zeigt nur an. Idempotent, derselbe
   Root-Bootstrap, reine stdlib.
+- `scripts/pwa_stamp.py` — stempelt die Build-Kennung der Handy-PWA
+  `N/X.Y.Z (sha)` (#280) in `sw-core.js` und Manifest (`pages.yml`): N =
+  Commits unter `pwa/` seit dem letzten echten Release-Tag, X.Y.Z = dessen
+  Version (vom Tag, nicht aus `src/version.py`; Pre-Releases zählen nicht).
+  Braucht den Checkout mit ganzer Historie und Tags. Reine stdlib.
 - `scripts/coverage_gate.py` — Coverage-Untergrenze der Tk-freien Module aus
   `coverage.json` (`coverage`-Job in `test.yml`; s. „Coverage-Untergrenze: nur
   Tk-frei"). Reine stdlib, braucht keinen Root-Bootstrap: es importiert nichts
