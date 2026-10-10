@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
-  WEEKDAYS, blankRow, conflictsModel, editorRows, hintsModel, localTime, rowsToSlots, slotText,
+  WEEKDAYS, blankRow, categoryLabel, categoryOptions, conflictsModel, editorRows, hintsModel, localTime, rowsToSlots, slotText,
   statusModel, validateRows, weekModel,
 } from '../view-model.js';
 import { SyncError } from '../sync.js';
@@ -237,4 +237,24 @@ test('days outside the read window are marked, because saving there can replace 
 test('without a known window nothing is marked before it', () => {
   const week = weekModel({ getDay: days({}), anchor: '2026-01-05', today: '2026-10-08' });
   assert.equal(week.days.every((d) => d.outsideWindow === false), true);
+});
+
+// --- Kategorie-Auswahl -----------------------------------------------------------------------------
+
+test('category options keep the server order and mark the current one', () => {
+  assert.deepEqual(categoryOptions(['A', 'B'], 'B'), [{ name: 'A', active: false }, { name: 'B', active: true }]);
+  assert.deepEqual(categoryOptions(['A', 'B'], ''), [{ name: 'A', active: false }, { name: 'B', active: false }]);
+  assert.deepEqual(categoryOptions([], ''), []);
+});
+
+test('a current category the server does not list is appended, not lost', () => {
+  assert.deepEqual(categoryOptions(['A'], 'Frei'), [{ name: 'A', active: false }, { name: 'Frei', active: true }]);
+  assert.deepEqual(categoryOptions(['A'], 'a'), [{ name: 'A', active: false }, { name: 'a', active: true }]);
+  assert.deepEqual(categoryOptions([], 'Frei'), [{ name: 'Frei', active: true }]);
+});
+
+test('the category button label names the category or invites to choose one', () => {
+  assert.equal(categoryLabel('Projekt'), 'Projekt');
+  assert.equal(categoryLabel(''), 'Wählen');
+  assert.equal(categoryLabel(undefined), 'Wählen');
 });

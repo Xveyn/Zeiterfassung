@@ -48,6 +48,14 @@ input, select {
 input[type="time"], input[type="number"] { min-width: 0; }
 form .row { display: flex; gap: 8px; }
 form .row > div { flex: 1; min-width: 0; }
+button.picker { width: 100%; min-height: var(--tap); margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; gap: 8px; text-align: left; border: 1px solid #2a3a5a; }
+button.picker .text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.picker-dialog .options { list-style: none; margin: 0 0 12px; padding: 0; max-height: 50vh; overflow-y: auto; }
+.picker-dialog .options li + li { margin-top: 6px; }
+button.option { width: 100%; display: flex; justify-content: space-between; align-items: center; text-align: left; }
+button.option.active { background: var(--accent); color: #fff; font-weight: 600; }
+.picker-dialog .custom { display: flex; gap: 8px; align-items: flex-start; }
+.picker-dialog .custom input { flex: 1; min-width: 0; }
 
 .hint { padding: 10px 12px; border-radius: 8px; margin: 0 0 8px; background: var(--cell); border-left: 4px solid var(--muted); }
 .hint.error { border-color: var(--accent); }
