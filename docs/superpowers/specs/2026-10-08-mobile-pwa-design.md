@@ -66,7 +66,7 @@ Fehler wie in der lokalen API: `{"error": {"code": "...", "message": "..."}}`.
 
 ### `POST /v1/pair` (ohne Token, nur solange ein Code aktiv ist)
 
-Request `{"code": "K7M2-9QXA", "device_name": "Pixel von Sven", "device_id": "<uuid>"}`. Antwort `200`: `{"token", "expires_at", "window_days": 90, "desktop_name", "protocol": 1}`. Falscher, abgelaufener oder verbrauchter Code und „kein Code aktiv" geben **dieselbe** Antwort `403 invalid_code`; nach 5 Fehlversuchen ist der aktive Code ungültig (`429 pairing_locked`). Der Vergleich läuft konstantzeitig. Das Handy erzeugt die `device_id` einmalig selbst und behält sie dauerhaft (auch über erneutes Koppeln).
+Request `{"code": "K7M2-9QXA", "device_name": "Pixel von Sven", "device_id": "<uuid>"}`. Antwort `200`: `{"token", "expires_at", "window_days": 90, "desktop_name", "protocol": 1}`. Falscher, abgelaufener oder verbrauchter Code und „kein Code aktiv" geben **dieselbe** Antwort `403 invalid_code`; nach 5 Fehlversuchen ist der aktive Code ungültig (`429 pairing_locked`). Der Vergleich läuft konstantzeitig. Das Handy erzeugt die `device_id` einmalig selbst und behält sie dauerhaft (auch über erneutes Koppeln). **Seit #249 gilt das nur noch als Inhalt eines Umschlags (s. „Verschlüsselung“): der Code steht nicht mehr im Request, `protocol` ist `2`, die Antwort trägt zusätzlich `key` (den Geräteschlüssel), und beides geht verschlüsselt über die Leitung.**
 
 ### `GET /v1/ping`
 
@@ -104,7 +104,7 @@ Request:
 
 ## Pairing und Token
 
-1. Im Tab „Gerät koppeln": Der Desktop erzeugt einen Code aus **31 Zeichen** (Ziffern 2–9 und Buchstaben ohne I, L, O), 8 Stellen als `XXXX-XXXX`, rund 40 Bit, **5 Minuten** gültig, einmal einlösbar. Er zeigt Code, Adresse und einen QR-Code mit `https://xveyn.github.io/Zeiterfassung/#pair=<ip>:<port>:<code>`. Das Fragment geht nie an einen Server; es enthält nur Adresse und Einmalcode, kein Token.
+1. Im Tab „Gerät koppeln": Der Desktop erzeugt einen Code aus **31 Zeichen** (Ziffern 2–9 und Buchstaben ohne I, L, O), 8 Stellen als `XXXX-XXXX`, rund 40 Bit, **5 Minuten** gültig, einmal einlösbar. Er zeigt Code, Adresse und einen QR-Code mit `https://xveyn.github.io/Zeiterfassung/#pair=<ip>:<port>:<code>`. Das Fragment geht nie an einen Server; es enthält nur Adresse und Einmalcode, kein Token. **Seit #249 ist der Code 28 Zeichen lang (≈139 Bit, `XXXX-…-XXXX` in Vierergruppen), weil er zugleich das Schlüsselmaterial der Kopplung ist.**
 2. Das Handy scannt (Kamera-App, oder in der PWA „QR scannen" per `BarcodeDetector`; Rückfall: Eingabe von Adresse und Code), speichert die Adresse und ruft `POST /v1/pair`.
 3. Der Code wird ungültig durch Ablauf, erfolgreiches Koppeln, 5 Fehlversuche oder Schließen des Dialogs. Ohne aktiven Code ist `/v1/pair` wirkungslos.
 4. Das Gerätetoken (`secrets.token_urlsafe(32)`) liegt im Desktop nur als SHA-256-Hash, im Handy in IndexedDB. **30 Tage ab der letzten Nutzung**, jeder erfolgreiche Sync erneuert es. Abgelaufen oder widerrufen → `401` mit eigenem Code; die PWA zeigt „Neu koppeln" und **behält alle lokalen, nicht übertragenen Einträge** (die `device_id` bleibt, die LWW-Identität ändert sich nicht).
@@ -129,7 +129,7 @@ Standardmäßig **aus.** Beim ersten Einschalten erklärt ein Hinweis, dass die 
 
 ## Sicherheit und Grenzen
 
-- **Klartext im LAN:** Wer im selben WLAN mitlauscht, kann das Gerätetoken mitlesen und damit Ist-Zeiten lesen und über den Sync-Pfad schreiben — nicht Einstellungen, Secrets, Webhooks oder die Sync-Konfiguration. Maßnahmen: Funktion aus, Bind nur auf die gewählte Adresse, Scope `mobile-sync`, Token pro Gerät nur als Hash und widerrufbar, kurzlebiger Einmalcode mit Sperre, Ablauf nach 30 Tagen. Ausbau: #249.
+- **Klartext im LAN:** Wer im selben WLAN mitlauscht, kann das Gerätetoken mitlesen und damit Ist-Zeiten lesen und über den Sync-Pfad schreiben — nicht Einstellungen, Secrets, Webhooks oder die Sync-Konfiguration. Maßnahmen: Funktion aus, Bind nur auf die gewählte Adresse, Scope `mobile-sync`, Token pro Gerät nur als Hash und widerrufbar, kurzlebiger Einmalcode mit Sperre, Ablauf nach 30 Tagen. Ausbau: #249. **Seit #249 überholt:** Kopplung und Abgleich sind Ende-zu-Ende verschlüsselt, ein mitgelesenes Token ist ohne den Geräteschlüssel wertlos (Abschnitt „Verschlüsselung“).
 - **Origin ohne Pfad:** erlaubt ist `https://xveyn.github.io`; damit könnte jede andere GitHub-Pages-Seite unter diesem Nutzernamen die API ansprechen, braucht aber das Gerätetoken.
 - **Lokaler Speicher kann verloren gehen:** löscht der Nutzer die Website-Daten oder räumt Android bei Platzmangel auf, sind nicht übertragene Einträge weg. Gegenmaßnahmen: dauerhafter Speicher, sichtbarer Zähler.
 - **Uhr:** LWW vertraut der Handy-Uhr; 15-Minuten-Grenze (s. oben).
@@ -168,3 +168,16 @@ Release: ein Minor. Davor Pre-Release über alle drei Plattformen und ein Test m
 ## Referenzen
 
 #221 (Idee und Spike), #92 und `2026-10-06-lokale-api-design.md` (lokale API), #233/#246/#248 (Review-Reste und Prüfliste), #249, #250.
+
+## Verschlüsselung (#249)
+
+Die Verbindung bleibt `http://<LAN-IP>` (Spike-Ergebnis in #221), die Nutzdaten sind aber Ende-zu-Ende verschlüsselt. Die PWA-Dateien selbst kommen über HTTPS von GitHub und lassen sich im LAN nicht verändern; deshalb trägt die Verschlüsselung im Browser.
+
+- **Bausteine:** AES-256-GCM mit zufälliger 96-Bit-Nonce je Nachricht, HKDF-SHA-256 (leerer Salt); Python `cryptography`, JavaScript WebCrypto; keine eigene Kryptografie. Gleichlauf über gemeinsame Testvektoren (`pwa/test/fixtures/crypto-vectors.json`).
+- **Umschlag:** `{"v": 2, "seq": N, "n": <Nonce>, "c": <Chiffretext+Tag>}`, base64url ohne Padding, genau diese vier Felder. Die Zusatzdaten binden `zeit-mobile/2|<req|res>|<METHOD>|<Pfad>|<Geräte-ID>|<seq>`: ein Umschlag taugt nur für genau diese Anfrage dieses Geräts. Anfrage und Antwort haben getrennte Schlüssel (`sync/request`, `sync/response`).
+- **Kopplung:** der 28-Zeichen-Kopplungscode ist Schlüsselmaterial (`pair/request`, `pair/response`) und steht nie im Netz. Die Anfrage `{protocol: 2, device_id, device_name}` kommt als Umschlag (Zähler 1, Geräte-ID `-` in den Zusatzdaten); was sich mit dem Schlüssel des aktiven Codes nicht öffnen lässt, ist `403 invalid_code` und ein Fehlversuch. Die Antwort trägt Token **und einen frischen zufälligen Geräteschlüssel** `k_dev`, verschlüsselt — ein später abfotografierter oder mitgeschnittener Code öffnet keinen Abgleich.
+- **Abgleich:** `POST /v1/sync` als Umschlag mit dem Schlüssel aus `k_dev`. `seq` steigt je Gerät streng; der Desktop speichert den höchsten gesehenen (`last_seq`) nach **jedem entschlüsselten** Paket, auch bei einem Folgefehler, und lehnt Kleineres oder Gleiches mit `409 replay` ab. Die Handy-Uhr spielt dafür keine Rolle; das Handy legt den Zähler **vor** dem Senden dauerhaft ab. Das Gerätetoken bleibt im `Authorization`-Header (die Tore bleiben), ist aber ohne den Schlüssel wertlos.
+- **Fehler:** was **vor** dem Entschlüsseln entschieden wird (Tore, Token, `invalid_protocol`, `invalid_envelope`, `replay`, `decrypt_failed`, `encryption_required`, `key_unavailable`, `invalid_code`, `pairing_locked`) kommt im Klartext und verrät nur den Grund. Fehler **danach** (`invalid_entry`, `clock_skew`, `busy`) gehen als Umschlag `{"error": {code, message}}` zurück; die PWA glaubt diese Codes im Klartext **nie**.
+- **Klartext ist verboten:** `400 invalid_protocol`; eine Kopplung ohne Schlüssel bekommt `401 encryption_required` und muss neu koppeln. `/v1/categories` entfiel (die Kategorien kommen in der Sync-Antwort); `/v1/ping` bleibt im Klartext.
+- **Schlüssel am Rechner:** im Schlüsselbund des Betriebssystems (`mobile:<device_id>`), Datei `mobile_keys.json` nur als Fallback, gehärtet geschrieben (0600/ACL). Der heiße Pfad liest nur einen Speicher-Cache (ein Schlüsselbund-Zugriff kann bis zum Watchdog blockieren): ist ein Schlüssel noch nicht geladen, `503 key_unavailable` und gedrosseltes Nachladen im Hintergrund. Koppeln schreibt zuerst in die Datei, der Umzug in den Schlüsselbund folgt im Worker.
+- **Grenzen:** Metadaten bleiben sichtbar; keine Forward Secrecy; der Klartext-Fallback der Schlüsseldatei; Firefox und iOS bleiben ausgesperrt (Mixed Content, #275). HTTPS direkt vom Desktop bleibt als Alternative offen (#249).

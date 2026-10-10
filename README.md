@@ -369,7 +369,7 @@ Die API läuft nur, solange die App läuft (Autostart hilft), nimmt nur Anfragen
 **Voraussetzungen:** Handy und Rechner im selben WLAN, die Desktop-App läuft, auf dem Handy ein aktueller Chrome (Android). Die Web-App liegt unter `https://xveyn.github.io/Zeiterfassung/`; der Rechner stellt nur die Abgleich-Schnittstelle bereit, nicht die Seite.
 
 1. Einstellungen → **Mobil** → „Handy-Erfassung aktivieren". Beim ersten Einschalten erklärt die App die Folgen (unverschlüsselt, App muss laufen). Unter Windows fragt die Firewall nach; erlaube den Zugriff für dein WLAN (stuft Windows es als „öffentlich“ ein, muss es dafür freigegeben sein — das wird vor dem Release auf echter Hardware geprüft). Der Standard-Port ist 17654; die Adresse wählt die App aus deinen Netzwerken („Automatisch“), du kannst sie fest vorgeben. Danach **speichern**: „Gerät koppeln …“ ist erst aktiv, wenn der Server läuft.
-2. **„Gerät koppeln …"** zeigt einen QR-Code und darunter Adresse und Code als Text. Scanne den QR-Code mit dem Handy (Kamera-App oder in der Web-App) oder tippe Adresse und Code ein. Der Code ist **fünf Minuten** gültig, gilt einmal und sperrt sich nach fünf Fehlversuchen.
+2. **„Gerät koppeln …"** zeigt einen QR-Code und darunter Adresse und **Kopplungscode** (28 Zeichen, in Gruppen zu vier) als Text. Scanne den QR-Code mit dem Handy (Kamera-App oder in der Web-App) oder tippe Adresse und Kopplungscode ein. Der Code ist **fünf Minuten** gültig, gilt einmal, sperrt sich nach fünf Fehlversuchen und verschlüsselt die Verbindung — zeige ihn nur dem eigenen Handy.
 3. Auf dem Handy erscheint die Wochenansicht. Tag antippen → Zeiten, Pause und Kategorie eintragen → „Speichern". Der Abgleich läuft beim Start, beim Zurückkehren in die App, bei wiederhergestellter Verbindung, kurz nach dem Speichern und auf Knopfdruck („Jetzt abgleichen"). Die Statuszeile zeigt, ob Änderungen noch nicht übertragen sind.
 4. Optional zur Startseite hinzufügen (Chrome-Menü → „App installieren“): dann startet die Web-App wie eine App und lässt sich auch ohne Verbindung öffnen. Beides, Installation und QR-Scan in der Web-App, wird vor dem Release auf echten Geräten geprüft; die Kamera-App des Handys und die Eingabe von Adresse und Code funktionieren unabhängig davon.
 
@@ -377,7 +377,7 @@ Die API läuft nur, solange die App läuft (Autostart hilft), nimmt nur Anfragen
 
 **Geräte verwalten:** Einstellungen → Mobil zeigt die gekoppelten Handys mit „zuletzt …“ und „gültig bis …“. Ein Gerät ist 30 Tage ab seinem letzten Abgleich gekoppelt, danach koppelst du neu (die Einträge auf dem Handy bleiben dabei erhalten). „Widerrufen" und „Alle widerrufen …" sperren Handys sofort aus.
 
-**Sicherheit in Kürze:** Die Verbindung im WLAN ist nicht verschlüsselt; wer im selben WLAN mitliest, kann das Gerätetoken sehen und damit Arbeitszeiten lesen und schreiben — nicht aber Einstellungen (außer der Kategorienliste) oder Zugangsdaten. Der Rechner speichert nur einen Hash des Tokens, lauscht nur auf der gewählten Adresse, und die Funktion lässt sich jederzeit ausschalten. Grenzen: [`docs/known-limitations.md`](docs/known-limitations.md#handy-erfassung-221-bekannte-grenzen).
+**Sicherheit in Kürze:** Die Verbindung im WLAN ist nicht per HTTPS gesichert, aber **Ende-zu-Ende verschlüsselt** (AES-256-GCM): wer im selben WLAN mitliest, sieht weder Einträge noch Kategorien noch das Gerätetoken im Klartext und kann Anfragen weder fälschen noch wiedereinspielen. Sichtbar bleibt, dass ein Handy mit deinem Rechner spricht, wann und wie viel. Der Schlüssel entsteht beim Koppeln und liegt nur auf Handy und Rechner — am Rechner im Schlüsselbund des Betriebssystems, ohne Schlüsselbund in einer nur für dein Benutzerkonto lesbaren Datei. Der Rechner speichert vom Gerätetoken nur einen Hash, lauscht nur auf der gewählten Adresse, und die Funktion lässt sich jederzeit ausschalten. Grenzen: [`docs/known-limitations.md`](docs/known-limitations.md#handy-erfassung-221-bekannte-grenzen).
 
 ## Einstellungen
 
@@ -460,6 +460,7 @@ Das meiste sind JSON-Dateien — `instance-secret`, `api-token` und das Protokol
 - **instance-secret** — schützt den lokalen Kanal, über den eine zweite Instanz das vorhandene Fenster nach vorn holt
 - **api-token** *(ab --VERSION--)* — Zugriffstoken der lokalen HTTP-API; nur vorhanden, wenn die API einmal eingeschaltet war. Gerätelokal: reist bewusst **nicht** über den Drive-Sync mit
 - **mobile_devices.json** *(ab --VERSION--)* — die gekoppelten Handys der Handy-Erfassung: Name, Zeitpunkte und nur ein **Hash** des Gerätetokens, nie das Token selbst. Gerätelokal: reist bewusst **nicht** über den Drive-Sync mit
+- **mobile_keys.json** *(ab --VERSION--)* — wo der Schlüssel eines gekoppelten Handys liegt: im Schlüsselbund des Betriebssystems oder, wenn keiner verfügbar ist, in dieser Datei selbst (dann nur für dein Benutzerkonto lesbar). Gerätelokal: reist bewusst **nicht** über den Drive-Sync mit
 
 Bei aktivem Sync liegt zusätzlich in deinem Google Drive eine versteckte Datei `zeiterfassung-sync.json` im `appDataFolder` — nicht über die Drive-Web-Oberfläche sichtbar, nur die App kommt dran.
 

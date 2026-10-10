@@ -219,6 +219,8 @@ Die JSON-Beispiele in `pwa/test/fixtures/` sind der Vertrag zum Python-Server: D
 
 Zum Ausprobieren im Browser startet `python scripts/pwa_devserver.py` die echte Handy-Instanz der App und dazu `pwa/` auf `http://localhost:8099/`; er druckt einen Koppel-Link mit frischem Code. Der Koppel-Link akzeptiert nur private IPv4-Adressen: Standard ist die erste gefundene LAN-Adresse; fällt der Server auf `127.0.0.1` zurück (kein LAN), startest du ihn mit `--address <LAN-IP>`. Der Service Worker cached im Dev dauerhaft (#272): nach Änderungen an `pwa/` in den Browser-Werkzeugen den Worker abmelden und die Caches leeren.
 
+**Kryptografie ändert man immer auf beiden Seiten:** `src/mobile_crypto.py` und `pwa/crypto.js` müssen byte-genau dasselbe tun (Ableitung, Zusatzdaten, Umschlag). Gemeinsame Testvektoren liegen in `pwa/test/fixtures/crypto-vectors.json`; wer etwas daran ändert, erzeugt sie neu (Skript im Plan `docs/superpowers/plans/2026-10-10-pwa-verschluesselung.md`, Task 1) und lässt beide Testsuiten laufen.
+
 Veröffentlicht wird `pwa/` von `.github/workflows/pages.yml` (Details in der `CLAUDE.md`).
 
 ## Build
