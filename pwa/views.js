@@ -35,7 +35,8 @@ export function pairView({ address, code, deviceName, busy, canScan, canCancel, 
   const addressInput = h('input', { id: 'pair-address', name: 'address', value: address, inputmode: 'decimal',
     autocomplete: 'off', placeholder: '192.168.178.20:17654', required: true });
   const codeInput = h('input', { id: 'pair-code', name: 'code', value: code, autocapitalize: 'characters',
-    autocomplete: 'off', spellcheck: 'false', placeholder: 'K7M2-9QXA', required: true });
+    autocomplete: 'off', spellcheck: 'false', maxlength: 48, required: true,
+    placeholder: 'K7M2-9QXA-K7M2-9QXA-K7M2-9QXA-K7M2' });
   const nameInput = h('input', { id: 'pair-name', name: 'name', value: deviceName, maxlength: 60, autocomplete: 'off' });
   // Eingaben sofort merken: ein Hintergrund-Render (online, Sichtbarwerden, Abgleich-Ende) baut das
   // Formular neu und würde sonst alles Getippte verwerfen.
@@ -44,11 +45,12 @@ export function pairView({ address, code, deviceName, busy, canScan, canCancel, 
   }
   return h('main', {},
     h('h1', {}, 'Mit dem Desktop koppeln'),
-    h('p', { class: 'muted' }, 'Am Desktop: Einstellungen → Mobil → „Gerät koppeln …“. Dann den QR-Code scannen oder Adresse und Code eintippen.'),
+    h('p', { class: 'muted' }, 'Am Desktop: Einstellungen → Mobil → „Gerät koppeln …“. Dann den QR-Code scannen oder Adresse und Kopplungscode eintippen.'),
     canScan && button('QR-Code scannen', handlers.scan, 'primary'),
     h('form', { onsubmit: (event) => { event.preventDefault(); handlers.submit({ address: addressInput.value, code: codeInput.value, deviceName: nameInput.value }); } },
       h('label', { for: 'pair-address' }, 'Adresse des Desktops'), addressInput,
-      h('label', { for: 'pair-code' }, 'Code'), codeInput,
+      h('label', { for: 'pair-code' }, 'Kopplungscode'), codeInput,
+      h('p', { class: 'muted' }, 'Den Code zeigt der Desktop unter dem QR-Code. Er verschlüsselt die Verbindung.'),
       h('label', { for: 'pair-name' }, 'Name dieses Handys'), nameInput,
       h('div', { class: 'error-text', role: 'alert', id: 'pair-error' }, error || ''),
       h('div', { class: 'buttons' },

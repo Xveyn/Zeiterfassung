@@ -38,7 +38,7 @@ class _PairDialog:
 
         tk.Label(
             dialog, text=("Kamera-App des Handys öffnen und den QR-Code scannen — oder "
-                          "die Adresse im Browser öffnen und den Code eintippen."),
+                          "die Adresse im Browser öffnen und den Kopplungscode eintippen."),
             font=FONT, bg=BG, fg=TEXT, justify="left", anchor="w",
             wraplength=px(_WRAP_PX)).pack(padx=16, pady=(14, 8), anchor="w")
 
@@ -48,8 +48,14 @@ class _PairDialog:
 
         self._address = tk.Label(dialog, text="", font=FONT, bg=BG, fg=TEXT_MUTED)
         self._address.pack(pady=(6, 0))
+        self._code_title = tk.Label(dialog, text="", font=FONT, bg=BG, fg=TEXT_MUTED)
+        self._code_title.pack()
         self._code = tk.Label(dialog, text="", font=FONT_BOLD, bg=BG, fg=TEXT)
         self._code.pack()
+        self._hint = tk.Label(
+            dialog, text="", font=FONT, bg=BG, fg=TEXT_MUTED, justify="center",
+            wraplength=px(_WRAP_PX))
+        self._hint.pack(padx=16)
         self._countdown = tk.Label(dialog, text="", font=FONT, bg=BG, fg=TEXT_MUTED)
         self._countdown.pack()
         self._result = tk.Label(
@@ -70,6 +76,11 @@ class _PairDialog:
 
     # --- Code und Anzeige ---------------------------------------------------------
 
+    def _clear_code(self):
+        self._code_title.config(text="")
+        self._code.config(text="")
+        self._hint.config(text="")
+
     def _new_code(self):
         status = self._service.status
         self._canvas.delete("all")
@@ -77,7 +88,7 @@ class _PairDialog:
         if status.state != "running":
             self._service.pairing.close()
             self._address.config(text="")
-            self._code.config(text="")
+            self._clear_code()
             self._countdown.config(text="")
             self._result.config(
                 text="Die Handy-Erfassung läuft gerade nicht. Im Reiter „Mobil“ "
@@ -89,7 +100,10 @@ class _PairDialog:
         code = self._service.pairing.open()
         link = self._service.pair_link(code)
         self._address.config(text=f"Adresse: {status.address}:{status.port}")
-        self._code.config(text=f"Code: {code}")
+        self._code_title.config(text="Kopplungscode (zum Abtippen):")
+        self._code.config(text=code)
+        self._hint.config(text=("Der Code gilt einmal, fünf Minuten lang, und verschlüsselt die "
+                                "Verbindung — nur dem eigenen Handy zeigen."))
         # Sofort, nicht erst nach dem ersten Poll: sonst ist die Zeile eine Sekunde leer.
         self._countdown.config(
             text=f"Gültig noch {format_countdown(self._service.pairing.seconds_left())}")
@@ -142,7 +156,7 @@ class _PairDialog:
         """Ein abgelaufener Code zeigt weder QR-Code noch Code: er wäre nutzlos und
         sähe gültig aus."""
         self._canvas.delete("all")
-        self._code.config(text="")
+        self._clear_code()
         self._countdown.config(text=text)
 
     def _show_paired(self, changes):
@@ -157,7 +171,7 @@ class _PairDialog:
             color = STATUS_WARN
         self._result.config(text=text, fg=color)
         self._canvas.delete("all")
-        self._code.config(text="")
+        self._clear_code()
         self._countdown.config(text="")
         self._before = self._service.list_devices()
 

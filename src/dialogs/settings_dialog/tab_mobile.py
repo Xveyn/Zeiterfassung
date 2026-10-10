@@ -19,7 +19,8 @@ from src.dialogs.settings_dialog.fields import FieldSet
 from src.dialogs.settings_dialog.form_model import SaveOutcome
 from src.dialogs.settings_dialog.tab_rules import (
     FIRST_ENABLE_NOTICE, REVOKE_ERROR_TEXT, address_options, address_to_choice,
-    device_row_text, mobile_status_view, mobile_updates, revoke_outcome, validate_mobile,
+    device_row_text, keystore_summary, mobile_status_view, mobile_updates, revoke_outcome,
+    validate_mobile,
 )
 from src.theme import (
     ACCENT, BG, ENTRY_BG, FONT, STATUS_OK, STATUS_WARN, TEXT, TEXT_MUTED, Form, dark_combo,
@@ -90,6 +91,7 @@ class MobileTab:
             ("Gerät koppeln …", self._pair),
             ("Widerrufen", self._revoke),
             ("Alle widerrufen …", self._revoke_all))
+        self._keystore_label = form.hint("")
         self._listbox.bind("<<ListboxSelect>>", lambda _e: self._sync_buttons())
 
         port_var.trace_add("write", lambda *_args: self._sync_buttons())
@@ -171,6 +173,7 @@ class MobileTab:
             self._alive = False             # Fenster zwischenzeitlich zu
 
     def _refresh_devices(self):
+        self._keystore_label.config(text=keystore_summary(self._service.key_locations()))
         records = self._service.list_devices()
         now = utc_now_iso()
         texts = [device_row_text(record, now) for record in records]

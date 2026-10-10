@@ -421,6 +421,20 @@ def device_row_text(record: Mapping[str, Any], now: str) -> str:
     return f"{name}{mark}  —  zuletzt {seen}, gültig bis {until}"
 
 
+def keystore_summary(where: Mapping[str, str]) -> str:
+    """Wo die Geräteschlüssel der gekoppelten Handys liegen (#249), für eine Zeile im Tab. Leer,
+    solange kein Gerät einen Schlüssel hat. Nur lesen: kein Schlüsselbund-Aufruf im UI-Thread."""
+    locations = {location for location in where.values() if location in ("keyring", "file")}
+    if not locations:
+        return ""
+    if locations == {"keyring"}:
+        return "Schlüsselspeicher: Schlüsselbund des Betriebssystems"
+    if locations == {"file"}:
+        return ("Schlüsselspeicher: Datei (kein Schlüsselbund verfügbar) — "
+                "nur für dein Benutzerkonto lesbar")
+    return "Schlüsselspeicher: teils Schlüsselbund, teils Datei (der Umzug steht noch aus)"
+
+
 def format_countdown(seconds: int) -> str:
     """`299` → `4:59`. Negative Werte zeigen `0:00`."""
     seconds = max(0, int(seconds))

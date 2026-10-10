@@ -255,6 +255,11 @@ class MobileService:
         return sorted(self._context.devices.get_all(),
                       key=lambda record: (record["name"].lower(), record["id"]))
 
+    def key_locations(self) -> dict[str, str]:
+        """`{device_id: "keyring" | "file"}` der Geräteschlüssel (#249). Liest nur den Speicher,
+        fasst den Schlüsselbund nie an — darf im UI-Thread laufen."""
+        return self._context.keys.where()
+
     def revoke(self, device_id: str) -> bool:
         """Widerruft ein Gerät (der Datensatz bleibt, die Antwort wird `token_revoked`).
         `False`, wenn es das Gerät nicht gibt."""
