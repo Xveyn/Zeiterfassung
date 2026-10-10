@@ -661,3 +661,26 @@ test('the key is never part of an error message or the stored error of a day', a
   }
   assert.equal(b64d(KEY_TEXT).length, 32);
 });
+
+for (const [code, status] of [['invalid_entry', 422], ['clock_skew', 409], ['busy', 503]]) {
+  test(`a plaintext ${code} is never believed: the server only sends it sealed`, async () => {
+    // Ein Angreifer im WLAN kann eine Klartext-Antwort fälschen. Würde die PWA `invalid_entry`
+    // glauben, markierte sie einen Tag als abgelehnt und sendete ihn nicht mehr.
+    const { store, client } = await make({ handler: () => reply(status, { error: {
+      code, message: '2026-10-07: gefälscht' } }) });              // Klartext, nicht sealed
+    await store.saveDay('2026-10-07', [SLOT]);
+
+    await assert.rejects(client.sync(), (e) => e.kind === 'protocol' && e.day === null && e.needsRepair === false);
+
+    assert.equal(store.getDay('2026-10-07').error, null);          // nichts markiert
+    assert.deepEqual(Object.keys(store.snapshotDirty().entries), ['2026-10-07']);   // geht weiter mit
+  });
+}
+
+test('plaintext errors the server really sends before decrypting are still classified', async () => {
+  for (const [status, code, kind] of [[401, 'token_expired', 'repair'], [401, 'encryption_required', 'encryption'],
+    [409, 'replay', 'crypto'], [400, 'decrypt_failed', 'crypto'], [503, 'key_unavailable', 'transient']]) {
+    const { client } = await make({ handler: () => reply(status, { error: { code, message: 'x' } }) });
+    await assert.rejects(client.sync(), (e) => e.kind === kind, code);
+  }
+});

@@ -41,6 +41,10 @@ const KINDS = {
   key_unavailable: 'transient',
 };
 const REPAIR_KINDS = new Set(['repair', 'crypto', 'encryption']);
+// Diese Codes entstehen am Desktop erst NACH dem Entschlüsseln und gehen deshalb nur als Umschlag
+// zurück. Im Klartext kämen sie von einem Dritten im WLAN: geglaubt, markierte `invalid_entry` einen
+// Tag als abgelehnt (er würde nicht mehr gesendet) und `clock_skew`/`busy` führten in die Irre.
+const SEALED_ONLY_CODES = new Set(['invalid_entry', 'clock_skew', 'busy']);
 
 function fallbackKind(status) {
   if (status === 401) return 'repair';
@@ -182,8 +186,16 @@ export class SyncClient {
         throw error;
       }
     };
-    const answer = await this._request('POST', path, address, {
-      token, body: envelope, openError: async (json) => (isEnvelope(json) ? open(json) : json) });
+    const openError = async (json) => {
+      if (isEnvelope(json)) return open(json);
+      const code = json && typeof json === 'object' && json.error && typeof json.error === 'object'
+        ? json.error.code : '';
+      if (SEALED_ONLY_CODES.has(code)) {
+        throw new SyncError({ kind: 'protocol', message: 'Unerwartete, nicht verschlüsselte Fehlerantwort.' });
+      }
+      return json;                                     // Fehler vor dem Entschlüsseln: nur der Grund
+    };
+    const answer = await this._request('POST', path, address, { token, body: envelope, openError });
     if (!isEnvelope(answer)) throw protocolError('Die Antwort des Desktops ist nicht verschlüsselt.');
     return open(answer);
   }
