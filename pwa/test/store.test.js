@@ -439,3 +439,19 @@ test('a broken stored stamp does not make the day uneditable', async () => {
   await store.saveDay('2026-10-07', [SLOT]);
   assert.equal(store.getDay('2026-10-07').modified_at, '2026-10-08T12:00:00Z');
 });
+
+test('the meta knows the device key and the request counter, empty by default', async () => {
+  const { store } = await make();
+  assert.equal(store.getMeta().key, '');
+  assert.equal(store.getMeta().seq, 0);
+});
+
+test('the device key and the counter survive a reload together with the token', async () => {
+  const adapter = createMemoryAdapter();
+  const first = new Store(adapter, () => new Date('2026-10-08T12:00:00Z'));
+  await first.load();
+  await first.setMeta({ key: 'B'.repeat(43), seq: 7, token: 'T0' });
+  const second = new Store(adapter, () => new Date('2026-10-08T12:00:00Z'));
+  await second.load();
+  assert.deepEqual([second.getMeta().key, second.getMeta().seq, second.getMeta().token], ['B'.repeat(43), 7, 'T0']);
+});

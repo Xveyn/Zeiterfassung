@@ -7,6 +7,7 @@
 //
 // Die Fehlerarten stehen in `test/fixtures/errors.json`; `tests/test_mobile_contract.py`
 // verlangt dort jedes (Status, Code)-Paar, das der Server senden kann.
+import { CryptoFailure, b64d, deviceKeys, isEnvelope, openEnvelope, pairKeys, seal } from './crypto.js';
 import { isIsoDate, localIsoDate, utcStamp } from './minutes.js';
 import {
   PROTOCOL, baseUrl, isLanAddress, isValidDeviceId, newDeviceId, normalizeCode, pairRequestBody,
@@ -16,6 +17,7 @@ export const SKEW_WARN_MS = 120000;
 const MAX_WINDOW_DAYS = 3650;
 const STAMP_RE = /^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$/;
 const TOKEN_RE = /^[A-Za-z0-9_-]{16,256}$/;
+const KEY_RE = /^[A-Za-z0-9_-]{43}$/;                            // 32 Bytes, base64url ohne Padding
 
 export class SyncError extends Error {
   constructor({ kind, status = 0, code = '', message = '', needsRepair = false, retryable = false, day = null }) {
@@ -33,7 +35,12 @@ const KINDS = {
   invalid_code: 'invalid_code', pairing_locked: 'pairing_locked', clock_skew: 'clock_skew',
   invalid_entry: 'invalid_entry', invalid_protocol: 'protocol', not_found: 'protocol',
   method_not_allowed: 'protocol', internal_error: 'server',
+  // Verschlüsselung (#249): ein Umschlag, den der Desktop nicht öffnen kann, ein wiedereingespielter
+  // Zähler, eine Kopplung ohne Schlüssel — in allen drei Fällen hilft nur neu koppeln.
+  invalid_envelope: 'protocol', decrypt_failed: 'crypto', replay: 'crypto', encryption_required: 'encryption',
+  key_unavailable: 'transient',
 };
+const REPAIR_KINDS = new Set(['repair', 'crypto', 'encryption']);
 
 function fallbackKind(status) {
   if (status === 401) return 'repair';
@@ -50,7 +57,7 @@ export function classifyHttpError(status, body) {
   const day = kind === 'invalid_entry' ? (/^(\d{4}-\d{2}-\d{2}):/.exec(message)?.[1] ?? null) : null;
   return new SyncError({
     kind, status, code, message,
-    needsRepair: kind === 'repair',
+    needsRepair: REPAIR_KINDS.has(kind),
     retryable: kind === 'transient' || kind === 'server',
     day,
   });
@@ -124,7 +131,7 @@ export class SyncClient {
     this._running = null;
   }
 
-  async _request(method, path, address, { token = null, body = null } = {}) {
+  async _request(method, path, address, { token = null, body = null, openError = null } = {}) {
     const headers = { Accept: 'application/json' };
     if (token) headers.Authorization = `Bearer ${token}`;
     if (body !== null) headers['Content-Type'] = 'application/json';
@@ -145,12 +152,46 @@ export class SyncClient {
     } catch {
       json = null;                                  // kein JSON: der Statuscode entscheidet
     }
-    if (!response.ok) throw classifyHttpError(response.status, json);
+    if (!response.ok) {
+      // Fehler nach dem Entschlüsseln gehen verschlüsselt zurück: erst öffnen, dann einordnen.
+      throw classifyHttpError(response.status, openError ? await openError(json) : json);
+    }
     return json;
   }
 
-  /** Koppelt mit dem Code: legt Adresse, Token und (einmalig) die Geräte-ID ab. Die Geräte-ID
-   *  bleibt über erneutes Koppeln erhalten; nicht übertragene Tage bleiben liegen. */
+  /** Eine verschlüsselte Anfrage (POST). `aadRequest`/`aadResponse` sind die Geräte-IDs in den
+   *  Zusatzdaten (bei der Kopplung vorher `-`, die Antwort trägt die echte ID); `seq` der Zähler.
+   *  Liefert den entschlüsselten Klartext (Objekt) der Erfolgsantwort; ein Fehler-Umschlag wird
+   *  geöffnet und als `SyncError` geworfen. Was nicht zu öffnen ist, ist `crypto` — nie ein
+   *  Klartext, dem man glauben dürfte. */
+  async _sealedPost(path, address, { token, requestKey, responseKey, aadRequest, aadResponse, seq, payload }) {
+    const envelope = await seal(requestKey, {
+      direction: 'req', method: 'POST', path, deviceId: aadRequest, seq,
+      plaintext: new TextEncoder().encode(JSON.stringify(payload)),
+    });
+    const open = async (json) => {
+      try {
+        const plain = await openEnvelope(responseKey, json, {
+          direction: 'res', method: 'POST', path, deviceId: aadResponse, seq });
+        return JSON.parse(new TextDecoder().decode(plain));
+      } catch (error) {
+        if (error instanceof CryptoFailure || error instanceof SyntaxError) {
+          throw new SyncError({ kind: 'crypto', needsRepair: true,
+            message: 'Die Antwort des Desktops ließ sich nicht entschlüsseln.' });
+        }
+        throw error;
+      }
+    };
+    const answer = await this._request('POST', path, address, {
+      token, body: envelope, openError: async (json) => (isEnvelope(json) ? open(json) : json) });
+    if (!isEnvelope(answer)) throw protocolError('Die Antwort des Desktops ist nicht verschlüsselt.');
+    return open(answer);
+  }
+
+  /** Koppelt mit dem Kopplungscode: legt Adresse, Token, den Geräteschlüssel und (einmalig) die
+   *  Geräte-ID ab. Der Code geht nie über das Netz — er leitet nur die Schlüssel ab, mit denen
+   *  Anfrage und Antwort verschlüsselt sind. Die Geräte-ID bleibt über erneutes Koppeln
+   *  erhalten; nicht übertragene Tage bleiben liegen. Ein neuer Schlüssel setzt den Zähler zurück. */
   async pair({ host, port, code, deviceName }) {
     const normalized = normalizeCode(code);
     if (normalized === null) {
@@ -164,16 +205,19 @@ export class SyncClient {
       deviceId = newDeviceId();
       await this._store.setMeta({ device_id: deviceId });
     }
-    const answer = await this._request('POST', '/v1/pair', { host, port }, {
-      body: pairRequestBody({ code: normalized, deviceName, deviceId }) });
+    const [requestKey, responseKey] = await pairKeys(normalized);
+    const answer = await this._sealedPost('/v1/pair', { host, port }, {
+      token: null, requestKey, responseKey, aadRequest: '-', aadResponse: deviceId, seq: 1,
+      payload: pairRequestBody({ deviceName, deviceId }) });
     if (!isObject(answer) || answer.protocol !== PROTOCOL || typeof answer.token !== 'string'
       || !TOKEN_RE.test(answer.token) || typeof answer.expires_at !== 'string'
-      || !Number.isInteger(answer.window_days) || typeof answer.desktop_name !== 'string') {
+      || !Number.isInteger(answer.window_days) || typeof answer.desktop_name !== 'string'
+      || typeof answer.key !== 'string' || !KEY_RE.test(answer.key) || b64d(answer.key).length !== 32) {
       throw protocolError('Ungültige Antwort beim Koppeln.');
     }
     await this._store.setMeta({
       address: { host, port }, token: answer.token, token_expires_at: answer.expires_at,
-      desktop_name: answer.desktop_name, window_days: answer.window_days,
+      desktop_name: answer.desktop_name, window_days: answer.window_days, key: answer.key, seq: 0,
     });
     return { desktopName: answer.desktop_name };
   }
@@ -207,13 +251,23 @@ export class SyncClient {
   async _run() {
     const meta = this._store.getMeta();
     if (!meta.address || !meta.token) throw new SyncError({ kind: 'not_paired', message: 'Noch nicht gekoppelt.' });
+    if (!KEY_RE.test(meta.key || '')) {
+      throw new SyncError({ kind: 'encryption', needsRepair: true,
+        message: 'Diese Kopplung ist noch nicht verschlüsselt. Bitte neu koppeln.' });
+    }
     const snapshot = this._store.snapshotDirty();
     const now = this._now();
+    // Den Zähler VOR dem Senden dauerhaft ablegen: ein Absturz mitten im Request darf ihn nie
+    // wiederverwenden (der Desktop lehnt einen wiederholten Zähler als Replay ab).
+    const seq = meta.seq + 1;
+    await this._store.setMeta({ seq });
+    const [requestKey, responseKey] = await deviceKeys(b64d(meta.key));
     let raw;
     try {
-      raw = await this._request('POST', '/v1/sync', meta.address, { token: meta.token, body: {
-        protocol: PROTOCOL, client_time: utcStamp(now), last_pull_at: meta.last_pull_at || '',
-        entries: snapshot.entries } });
+      raw = await this._sealedPost('/v1/sync', meta.address, {
+        token: meta.token, requestKey, responseKey, aadRequest: meta.device_id, aadResponse: meta.device_id, seq,
+        payload: { protocol: PROTOCOL, client_time: utcStamp(now), last_pull_at: meta.last_pull_at || '',
+          entries: snapshot.entries } });
     } catch (error) {
       // Währenddessen neu gekoppelt: der Fehler gehört zum alten Server/Token und darf weder
       // den Zustand der neuen Kopplung markieren noch als deren Fehler erscheinen.

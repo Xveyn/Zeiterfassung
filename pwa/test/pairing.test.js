@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 import {
-  CODE_ALPHABET, DEFAULT_PORT, PROTOCOL, baseUrl, deviceNameFromUserAgent, isLanAddress,
+  CODE_ALPHABET, CODE_LENGTH, DEFAULT_PORT, PROTOCOL, baseUrl, deviceNameFromUserAgent, isLanAddress,
   isValidDeviceId, newDeviceId, normalizeCode, pairRequestBody, parseHostPort, parsePairFragment, parseQrText,
 } from '../pairing.js';
 
@@ -14,7 +14,8 @@ test('the code alphabet has 31 unambiguous characters', () => {
   assert.equal(CODE_ALPHABET.length, 31);
   assert.equal(new Set(CODE_ALPHABET).size, 31);
   for (const ch of '01ILO') assert.equal(CODE_ALPHABET.includes(ch), false, ch);
-  assert.equal(PROTOCOL, 1);
+  assert.equal(PROTOCOL, 2);
+  assert.equal(CODE_LENGTH, 28);
   assert.equal(DEFAULT_PORT, 17654);
 });
 
@@ -103,19 +104,22 @@ test('the device name comes from the user agent and falls back to a default', ()
   assert.ok(deviceNameFromUserAgent(`(Linux; Android 14; ${'x'.repeat(200)})`).length <= 60);
 });
 
-test('the pair request body has the protocol fields', () => {
-  assert.deepEqual(pairRequestBody({ code: 'K7M2-9QXA', deviceName: 'Pixel', deviceId: 'abcdefgh' }), {
-    protocol: 1, code: 'K7M2-9QXA', device_name: 'Pixel', device_id: 'abcdefgh',
-  });
+test('the pair request body has the protocol fields and never carries the code', () => {
+  const body = pairRequestBody({ code: 'K7M29QXA'.repeat(3) + 'K7M2', deviceName: 'Pixel', deviceId: 'abcdefgh' });
+  assert.deepEqual(body, { protocol: 2, device_name: 'Pixel', device_id: 'abcdefgh' });
+  assert.equal(JSON.stringify(body).includes('K7M2'), false);
 });
 
 test('a scanned QR text is the full link; only its fragment counts', () => {
-  assert.deepEqual(parseQrText('https://xveyn.github.io/Zeiterfassung/#pair=192.168.178.20:17654:K7M29QXA'),
-    { host: '192.168.178.20', port: 17654, code: 'K7M29QXA' });
-  assert.deepEqual(parseQrText('http://localhost:8099/#pair=10.0.0.5:20000:23456789'),
-    { host: '10.0.0.5', port: 20000, code: '23456789' });
-  for (const bad of ['', 'kein link', 'https://x.example/#pair=8.8.8.8:17654:K7M29QXA',
-    'https://x.example/#pair=192.168.1.20:80:K7M29QXA', 'https://x.example/', 'https://x.example/#other=1',
+  const L = 'K7M29QXA'.repeat(3) + 'K7M2';
+  const N = '23456789'.repeat(3) + '2345';
+  assert.deepEqual(parseQrText(`https://xveyn.github.io/Zeiterfassung/#pair=192.168.178.20:17654:${L}`),
+    { host: '192.168.178.20', port: 17654, code: L });
+  assert.deepEqual(parseQrText(`http://localhost:8099/#pair=10.0.0.5:20000:${N}`),
+    { host: '10.0.0.5', port: 20000, code: N });
+  for (const bad of ['', 'kein link', `https://x.example/#pair=8.8.8.8:17654:${L}`,
+    `https://x.example/#pair=192.168.1.20:80:${L}`, 'https://x.example/#pair=192.168.1.20:17654:K7M29QXA',
+    'https://x.example/', 'https://x.example/#other=1',
     null, undefined, 5, 'http://[::1', 'a'.repeat(5000)]) {
     assert.equal(parseQrText(bad), null, String(bad).slice(0, 30));
   }

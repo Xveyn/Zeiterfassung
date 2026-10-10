@@ -60,3 +60,22 @@ test('anything that is not a SyncError still gets a text', () => {
   assert.ok(describeError(null).text.length > 10);
   assert.ok(describeError(undefined).text.length > 10);
 });
+
+test('crypto and encryption errors say to pair again and keep the unsent entries', () => {
+  for (const kind of ['crypto', 'encryption']) {
+    const result = describeError(new SyncError({ kind, needsRepair: true }));
+    assert.equal(result.action, 'pair', kind);
+    assert.match(result.text, /neu koppeln/, kind);
+    assert.match(result.text, /nicht übertragenen Einträge bleiben erhalten/, kind);
+  }
+  assert.notEqual(describeError(new SyncError({ kind: 'crypto' })).text,
+    describeError(new SyncError({ kind: 'encryption' })).text);
+});
+
+test('a locked keyring on the desktop is told apart from a busy desktop and may be retried', () => {
+  const locked = describeError(new SyncError({ kind: 'transient', code: 'key_unavailable' }));
+  const busy = describeError(new SyncError({ kind: 'transient', code: 'busy' }));
+  assert.match(locked.text, /Schlüsselbund/);
+  assert.equal(locked.action, 'retry');
+  assert.notEqual(locked.text, busy.text);
+});

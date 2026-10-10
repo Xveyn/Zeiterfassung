@@ -1,82 +1,307 @@
 {
   "codes": [
-    {"raw": "K7M2-9QXA", "code": "K7M29QXA"},
-    {"raw": "k7m2-9qxa", "code": "K7M29QXA"},
-    {"raw": " K7M29QXA ", "code": "K7M29QXA"},
-    {"raw": "K7M2 9QXA", "code": "K7M29QXA"},
-    {"raw": "K7-M2-9Q-XA", "code": "K7M29QXA"},
-    {"raw": " K7M29QXA", "code": "K7M29QXA"},
-    {"raw": "ﬀﬀﬀﬀ", "code": "FFFFFFFF"},
-    {"raw": "K7M2-9QX", "code": null},
-    {"raw": "K7M2-9QXAA", "code": null},
-    {"raw": "K7M2-9QX0", "code": null},
-    {"raw": "K7M2-9QXO", "code": null},
-    {"raw": "K7M2-9QX1", "code": null},
-    {"raw": "K7M2-9QXI", "code": null},
-    {"raw": "K7M2-9QXL", "code": null},
-    {"raw": "K7M2-9QXÄ", "code": null},
-    {"raw": "K7M2–9QXA", "code": null},
-    {"raw": "K7M2 9QXA", "code": null},
-    {"raw": "٢٢٢٢٢٢٢٢", "code": null},
-    {"raw": "K7M2-9QX\n", "code": null},
-    {"raw": "", "code": null}
+    {
+      "raw": "K7M2-9QXA-K7M2-9QXA-K7M2-9QXA-K7M2",
+      "code": "K7M29QXAK7M29QXAK7M29QXAK7M2"
+    },
+    {
+      "raw": "k7m2-9qxa-k7m2-9qxa-k7m2-9qxa-k7m2",
+      "code": "K7M29QXAK7M29QXAK7M29QXAK7M2"
+    },
+    {
+      "raw": " K7M29QXAK7M29QXAK7M29QXAK7M2 ",
+      "code": "K7M29QXAK7M29QXAK7M29QXAK7M2"
+    },
+    {
+      "raw": "K7M2 9QXA K7M2 9QXA K7M2 9QXA K7M2",
+      "code": "K7M29QXAK7M29QXAK7M29QXAK7M2"
+    },
+    {
+      "raw": "K7-M2-9Q-XA-K7-M2-9Q-XA-K7-M2-9Q-XA-K7-M2",
+      "code": "K7M29QXAK7M29QXAK7M29QXAK7M2"
+    },
+    {
+      "raw": " K7M29QXAK7M29QXAK7M29QXAK7M2",
+      "code": "K7M29QXAK7M29QXAK7M29QXAK7M2"
+    },
+    {
+      "raw": "ﬀﬀﬀﬀﬀﬀﬀﬀﬀﬀﬀﬀﬀﬀ",
+      "code": "FFFFFFFFFFFFFFFFFFFFFFFFFFFF"
+    },
+    {
+      "raw": "K7M2-9QXA",
+      "code": null
+    },
+    {
+      "raw": "K7M2-9QXA-K7M2-9QXA-K7M2-9QXA-K7M",
+      "code": null
+    },
+    {
+      "raw": "K7M2-9QXA-K7M2-9QXA-K7M2-9QXA-K7M2A",
+      "code": null
+    },
+    {
+      "raw": "K7M2-9QXA-K7M2-9QXA-K7M2-9QXA-K7M0",
+      "code": null
+    },
+    {
+      "raw": "K7M2-9QXA-K7M2-9QXA-K7M2-9QXA-K7MO",
+      "code": null
+    },
+    {
+      "raw": "K7M2-9QXA-K7M2-9QXA-K7M2-9QXA-K7M1",
+      "code": null
+    },
+    {
+      "raw": "K7M2-9QXA-K7M2-9QXA-K7M2-9QXA-K7MI",
+      "code": null
+    },
+    {
+      "raw": "K7M2-9QXA-K7M2-9QXA-K7M2-9QXA-K7ML",
+      "code": null
+    },
+    {
+      "raw": "K7M2-9QXA-K7M2-9QXA-K7M2-9QXA-K7MÄ",
+      "code": null
+    },
+    {
+      "raw": "K7M2–9QXA-K7M2-9QXA-K7M2-9QXA-K7M2",
+      "code": null
+    },
+    {
+      "raw": "٢٢٢٢٢٢٢٢٢٢٢٢٢٢٢٢٢٢٢٢٢٢٢٢٢٢٢٢",
+      "code": null
+    },
+    {
+      "raw": "K7M2-9QXA-K7M2-9QXA-K7M2-9QXA-K7M\n",
+      "code": null
+    },
+    {
+      "raw": "",
+      "code": null
+    },
+    {
+      "raw": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      "code": null
+    }
   ],
   "lan_addresses": [
-    {"address": "192.168.1.20", "lan": true},
-    {"address": "10.0.0.5", "lan": true},
-    {"address": "172.16.0.1", "lan": true},
-    {"address": "172.31.255.254", "lan": true},
-    {"address": "0.0.0.0", "lan": false},
-    {"address": "127.0.0.1", "lan": false},
-    {"address": "169.254.1.1", "lan": false},
-    {"address": "100.64.0.1", "lan": false},
-    {"address": "8.8.8.8", "lan": false},
-    {"address": "172.32.0.1", "lan": false},
-    {"address": "172.15.255.255", "lan": false},
-    {"address": "192.167.255.255", "lan": false},
-    {"address": "192.169.0.1", "lan": false},
-    {"address": "198.18.0.1", "lan": false},
-    {"address": "192.0.2.1", "lan": false},
-    {"address": "224.0.0.1", "lan": false},
-    {"address": "255.255.255.255", "lan": false},
-    {"address": "192.168.1.256", "lan": false},
-    {"address": "192.168.001.001", "lan": false},
-    {"address": "192.168.1", "lan": false},
-    {"address": "192.168.1.20 ", "lan": false},
-    {"address": " 192.168.1.20", "lan": false},
-    {"address": "192.168.1.20:17654", "lan": false},
-    {"address": "::1", "lan": false},
-    {"address": "fe80::1", "lan": false},
-    {"address": "localhost", "lan": false},
-    {"address": "１９２.１６８.１.２０", "lan": false},
-    {"address": "192.168.1.20\n", "lan": false},
-    {"address": "", "lan": false}
+    {
+      "address": "192.168.1.20",
+      "lan": true
+    },
+    {
+      "address": "10.0.0.5",
+      "lan": true
+    },
+    {
+      "address": "172.16.0.1",
+      "lan": true
+    },
+    {
+      "address": "172.31.255.254",
+      "lan": true
+    },
+    {
+      "address": "0.0.0.0",
+      "lan": false
+    },
+    {
+      "address": "127.0.0.1",
+      "lan": false
+    },
+    {
+      "address": "169.254.1.1",
+      "lan": false
+    },
+    {
+      "address": "100.64.0.1",
+      "lan": false
+    },
+    {
+      "address": "8.8.8.8",
+      "lan": false
+    },
+    {
+      "address": "172.32.0.1",
+      "lan": false
+    },
+    {
+      "address": "172.15.255.255",
+      "lan": false
+    },
+    {
+      "address": "192.167.255.255",
+      "lan": false
+    },
+    {
+      "address": "192.169.0.1",
+      "lan": false
+    },
+    {
+      "address": "198.18.0.1",
+      "lan": false
+    },
+    {
+      "address": "192.0.2.1",
+      "lan": false
+    },
+    {
+      "address": "224.0.0.1",
+      "lan": false
+    },
+    {
+      "address": "255.255.255.255",
+      "lan": false
+    },
+    {
+      "address": "192.168.1.256",
+      "lan": false
+    },
+    {
+      "address": "192.168.001.001",
+      "lan": false
+    },
+    {
+      "address": "192.168.1",
+      "lan": false
+    },
+    {
+      "address": "192.168.1.20 ",
+      "lan": false
+    },
+    {
+      "address": " 192.168.1.20",
+      "lan": false
+    },
+    {
+      "address": "192.168.1.20:17654",
+      "lan": false
+    },
+    {
+      "address": "::1",
+      "lan": false
+    },
+    {
+      "address": "fe80::1",
+      "lan": false
+    },
+    {
+      "address": "localhost",
+      "lan": false
+    },
+    {
+      "address": "１９２.１６８.１.２０",
+      "lan": false
+    },
+    {
+      "address": "192.168.1.20\n",
+      "lan": false
+    },
+    {
+      "address": "",
+      "lan": false
+    }
   ],
   "fragments": [
-    {"hash": "#pair=192.168.178.20:17654:K7M29QXA", "host": "192.168.178.20", "port": 17654,
-     "code": "K7M29QXA", "python_link": true},
-    {"hash": "#pair=10.0.0.5:20000:23456789", "host": "10.0.0.5", "port": 20000,
-     "code": "23456789", "python_link": true},
-    {"hash": "#pair=172.16.4.4:1024:ZZZZ2222", "host": "172.16.4.4", "port": 1024,
-     "code": "ZZZZ2222", "python_link": true},
-    {"hash": "#pair=192.168.1.20:65535:K7M29QXA", "host": "192.168.1.20", "port": 65535,
-     "code": "K7M29QXA", "python_link": true},
-    {"hash": "#pair=192.168.1.20:17654:k7m2-9qxa", "host": "192.168.1.20", "port": 17654,
-     "code": "K7M29QXA", "python_link": false},
-    {"hash": "#pair=8.8.8.8:17654:K7M29QXA", "host": null},
-    {"hash": "#pair=evil.example:17654:K7M29QXA", "host": null},
-    {"hash": "#pair=127.0.0.1:17654:K7M29QXA", "host": null},
-    {"hash": "#pair=192.168.1.20:80:K7M29QXA", "host": null},
-    {"hash": "#pair=192.168.1.20:1023:K7M29QXA", "host": null},
-    {"hash": "#pair=192.168.1.20:65536:K7M29QXA", "host": null},
-    {"hash": "#pair=192.168.1.20:abc:K7M29QXA", "host": null},
-    {"hash": "#pair=192.168.1.20:17654:K7M29QX0", "host": null},
-    {"hash": "#pair=192.168.1.20:17654", "host": null},
-    {"hash": "#pair=192.168.1.20:17654:K7M29QXA:extra", "host": null},
-    {"hash": "#pair=", "host": null},
-    {"hash": "#pair", "host": null},
-    {"hash": "pair=192.168.1.20:17654:K7M29QXA", "host": null},
-    {"hash": "#other=192.168.1.20:17654:K7M29QXA", "host": null},
-    {"hash": "", "host": null}
+    {
+      "hash": "#pair=192.168.178.20:17654:K7M29QXAK7M29QXAK7M29QXAK7M2",
+      "host": "192.168.178.20",
+      "port": 17654,
+      "code": "K7M29QXAK7M29QXAK7M29QXAK7M2",
+      "python_link": true
+    },
+    {
+      "hash": "#pair=10.0.0.5:20000:2345678923456789234567892345",
+      "host": "10.0.0.5",
+      "port": 20000,
+      "code": "2345678923456789234567892345",
+      "python_link": true
+    },
+    {
+      "hash": "#pair=172.16.4.4:1024:ZZZZ2222ZZZZ2222ZZZZ2222ZZZZ",
+      "host": "172.16.4.4",
+      "port": 1024,
+      "code": "ZZZZ2222ZZZZ2222ZZZZ2222ZZZZ",
+      "python_link": true
+    },
+    {
+      "hash": "#pair=192.168.1.20:65535:K7M29QXAK7M29QXAK7M29QXAK7M2",
+      "host": "192.168.1.20",
+      "port": 65535,
+      "code": "K7M29QXAK7M29QXAK7M29QXAK7M2",
+      "python_link": true
+    },
+    {
+      "hash": "#pair=192.168.1.20:17654:k7m2-9qxa-k7m2-9qxa-k7m2-9qxa-k7m2",
+      "host": "192.168.1.20",
+      "port": 17654,
+      "code": "K7M29QXAK7M29QXAK7M29QXAK7M2",
+      "python_link": false
+    },
+    {
+      "hash": "#pair=8.8.8.8:17654:K7M29QXAK7M29QXAK7M29QXAK7M2",
+      "host": null
+    },
+    {
+      "hash": "#pair=evil.example:17654:K7M29QXAK7M29QXAK7M29QXAK7M2",
+      "host": null
+    },
+    {
+      "hash": "#pair=127.0.0.1:17654:K7M29QXAK7M29QXAK7M29QXAK7M2",
+      "host": null
+    },
+    {
+      "hash": "#pair=192.168.1.20:80:K7M29QXAK7M29QXAK7M29QXAK7M2",
+      "host": null
+    },
+    {
+      "hash": "#pair=192.168.1.20:1023:K7M29QXAK7M29QXAK7M29QXAK7M2",
+      "host": null
+    },
+    {
+      "hash": "#pair=192.168.1.20:65536:K7M29QXAK7M29QXAK7M29QXAK7M2",
+      "host": null
+    },
+    {
+      "hash": "#pair=192.168.1.20:abc:K7M29QXAK7M29QXAK7M29QXAK7M2",
+      "host": null
+    },
+    {
+      "hash": "#pair=192.168.1.20:17654:K7M29QXAK7M29QXAK7M29QXAK7M0",
+      "host": null
+    },
+    {
+      "hash": "#pair=192.168.1.20:17654:K7M29QXA",
+      "host": null
+    },
+    {
+      "hash": "#pair=192.168.1.20:17654",
+      "host": null
+    },
+    {
+      "hash": "#pair=192.168.1.20:17654:K7M29QXAK7M29QXAK7M29QXAK7M2:extra",
+      "host": null
+    },
+    {
+      "hash": "#pair=",
+      "host": null
+    },
+    {
+      "hash": "#pair",
+      "host": null
+    },
+    {
+      "hash": "pair=192.168.1.20:17654:K7M29QXAK7M29QXAK7M29QXAK7M2",
+      "host": null
+    },
+    {
+      "hash": "#other=192.168.1.20:17654:K7M29QXAK7M29QXAK7M29QXAK7M2",
+      "host": null
+    },
+    {
+      "hash": "",
+      "host": null
+    }
   ]
 }

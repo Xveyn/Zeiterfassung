@@ -20,6 +20,8 @@ const DEFAULT_META = Object.freeze({
   address: null,
   token: '',
   token_expires_at: '',
+  key: '',                 // Geräteschlüssel k_dev (base64url), kommt verschlüsselt mit der Kopplungsantwort (#249)
+  seq: 0,                  // höchster gesendeter Anfragezähler (Replay-Schutz); wird VOR dem Senden abgelegt
   device_id: '',
   desktop_name: '',
   last_pull_at: '',
