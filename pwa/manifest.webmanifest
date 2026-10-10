@@ -3,6 +3,7 @@
   "short_name": "Zeit",
   "description": "Arbeitszeiten unterwegs erfassen und mit dem Desktop abgleichen.",
   "lang": "de",
+  "version": "__BUILD__",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

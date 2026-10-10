@@ -32,16 +32,19 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0   # ganze Historie + Tags: scripts/pwa_stamp.py zählt Commits seit dem letzten Release
+          fetch-tags: true
       - name: Laufzeitdateien zusammenstellen und Build-Kennung einsetzen
         run: |
           set -euo pipefail
           mkdir _site
           # Nur, was die App zur Laufzeit braucht: kein test/, kein package.json.
           rsync -a --exclude 'test/' --exclude 'package.json' --exclude 'memory-adapter.js' --exclude 'node_modules/' pwa/ _site/
-          # Jeder Deploy bekommt einen eigenen Cache (sw-core.js trägt den Platzhalter __BUILD__).
-          sed -i "s/__BUILD__/${GITHUB_SHA::12}/" _site/sw-core.js
-          grep -q "${GITHUB_SHA::12}" _site/sw-core.js
-          if grep -q "__BUILD__" _site/sw-core.js; then echo "Platzhalter nicht ersetzt" >&2; exit 1; fi
+          # Build-Kennung „N/X.Y.Z (sha)“ einsetzen (Platzhalter __BUILD__ in sw-core.js und
+          # Manifest); jeder Deploy bekommt damit einen eigenen Cache.
+          python3 scripts/pwa_stamp.py _site
+          if grep -rq "__BUILD__" _site; then echo "Platzhalter nicht ersetzt" >&2; exit 1; fi
           ls -R _site
       - uses: actions/upload-pages-artifact@v5
         with:
