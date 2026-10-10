@@ -141,12 +141,12 @@ class App:
         # den Coalescer: ein Schwung Abgleiche löst nur EINEN Refresh aus. Der Dienst
         # startet nur bei `mobile_enabled`.
         self._mobile = None
-        if mobile_store is not None:
+        if mobile_store is not None and mobile_keys is not None:
             self._mobile = MobileService(
                 self.settings,
                 MobileContext(
                     pairing=PairingSession(), devices=mobile_store,
-                    devices_lock=threading.RLock(), storage=self.storage,
+                    devices_lock=threading.RLock(), keys=mobile_keys, storage=self.storage,
                     settings=self.settings, conflicts_store=self.conflicts_store,
                     base=self.base_path,
                     desktop_name=lambda: self.settings.get("device_name") or default_device_name(),

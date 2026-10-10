@@ -19,7 +19,7 @@ SLOT = {"start": "08:00", "end": "12:00", "pause": 0, "kategorie": "Projekt"}
 
 
 def body(entries=None, **over):
-    doc = {"protocol": 1, "client_time": NOW, "last_pull_at": "", "entries": {} if entries is None else entries}
+    doc = {"protocol": 2, "client_time": NOW, "last_pull_at": "", "entries": {} if entries is None else entries}
     doc.update(over)
     return json.dumps(doc).encode()
 
@@ -64,14 +64,14 @@ def test_a_request_without_entries_is_fine():
     b"{kaputt", b"[]", b'"text"', b"\xff", b'{"protocol": NaN}', pytest.param(b"[" * 100000, id="deep-nesting"),
     body(client_time="gestern"), body(client_time=None), body(client_time="2026-10-08 12:00:00"),
     body(entries=[]), body(entries="x"),
-    b'{"protocol":1,"client_time":"' + NOW.encode() + b'","entries":{"2026-10-07":{},"2026-10-07":{}}}',
+    b'{"protocol":2,"client_time":"' + NOW.encode() + b'","entries":{"2026-10-07":{},"2026-10-07":{}}}',
 ])
 def test_a_malformed_request_is_400_invalid_json(raw):
     error = rejected(raw)
     assert (error.status, error.code) == (400, "invalid_json") and error.message
 
 
-@pytest.mark.parametrize("protocol", [None, 0, 2, "1", 1.0, True, [1]])
+@pytest.mark.parametrize("protocol", [None, 0, 1, 3, "2", 2.0, True, [2]])
 def test_a_wrong_protocol_is_400_invalid_protocol(protocol):
     error = rejected(body(protocol=protocol))
     assert (error.status, error.code) == (400, "invalid_protocol")
@@ -182,7 +182,7 @@ def test_the_response_carries_the_protocol_fields_and_no_token():
     response = respond({})
 
     assert response == {
-        "protocol": 1, "server_time": NOW, "last_pull_at": NOW, "excluded": False,
+        "protocol": 2, "server_time": NOW, "last_pull_at": NOW, "excluded": False,
         "window_days": 90, "entries": {}, "conflicts": [], "categories": ["Projekt"]}
 
 

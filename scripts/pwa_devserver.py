@@ -29,8 +29,9 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 PWA = ROOT / "pwa"
 
-from src import mobile_routes, netinfo  # noqa: E402
+from src import mobile_keys, mobile_routes, netinfo  # noqa: E402
 from src.conflicts_store import ConflictsStore  # noqa: E402
+from src.mobile_keys import MobileKeyStore  # noqa: E402
 from src.mobile_service import STATE_RUNNING, MobileService  # noqa: E402
 from src.mobile_store import MobileStore  # noqa: E402
 from src.mobile_pairing import PairingSession  # noqa: E402
@@ -48,6 +49,24 @@ class _Handler(http.server.SimpleHTTPRequestHandler):
         super().end_headers()
 
     def log_message(self, format: str, *args: object) -> None:  # noqa: A002
+        return None
+
+
+class _NoKeyring:
+    """Ersatz für `keyring_store`: legt nie etwas ab. Der Dev-Server darf den Schlüsselbund des
+    Entwicklers nicht anfassen (Muster wie `demo_data.py`); die Geräteschlüssel bleiben deshalb in
+    der Datei des Dev-Datenordners (`location: file`) und überstehen so einen Neustart."""
+
+    @staticmethod
+    def put(key: str, value: str) -> bool:
+        return False
+
+    @staticmethod
+    def fetch(key: str) -> str | None:
+        return None
+
+    @staticmethod
+    def remove(key: str) -> None:
         return None
 
 
@@ -75,6 +94,8 @@ def running(data_dir: pathlib.Path, *, web_port: int, api_port: int, address: st
     # Die Handy-Instanz liest beides beim Start; nur dieses Skript ändert es.
     saved = (mobile_routes.PWA_ORIGIN, mobile_routes.PWA_URL)
     mobile_routes.PWA_ORIGIN, mobile_routes.PWA_URL = origin, f"{origin}/"
+    saved_keyring = mobile_keys.keyring_store
+    mobile_keys.keyring_store = _NoKeyring()          # type: ignore[assignment]
     data_dir.mkdir(parents=True, exist_ok=True)
     settings = Settings(str(data_dir / "settings.json"))
     settings.device_id_for_sync = "DESKTOP-DEV"
@@ -83,7 +104,8 @@ def running(data_dir: pathlib.Path, *, web_port: int, api_port: int, address: st
                        "categories": ["Projekt", "Intern", "Support"]})
     context = mobile_routes.MobileContext(
         pairing=PairingSession(), devices=MobileStore(str(data_dir / "mobile_devices.json")),
-        devices_lock=threading.RLock(), storage=Storage(str(data_dir / "zeiterfassung.json"), device_id="DESKTOP-DEV"),
+        devices_lock=threading.RLock(), keys=MobileKeyStore(str(data_dir / "mobile_keys.json")),
+        storage=Storage(str(data_dir / "zeiterfassung.json"), device_id="DESKTOP-DEV"),
         settings=settings, conflicts_store=ConflictsStore(str(data_dir / "conflicts.json")),
         base=str(data_dir), desktop_name=lambda: "Desktop (Dev)")
 
@@ -103,6 +125,7 @@ def running(data_dir: pathlib.Path, *, web_port: int, api_port: int, address: st
         yield Dev(service, web, web_port, service.status.port, address, data_dir)
     finally:
         mobile_routes.PWA_ORIGIN, mobile_routes.PWA_URL = saved      # Prozessweit: nicht in Tests lecken
+        mobile_keys.keyring_store = saved_keyring
         service.shutdown()
         web.shutdown()
         web.server_close()

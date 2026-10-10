@@ -78,7 +78,9 @@ class MobileService:
         self._settings = settings
         # Die Routen fragen `closing` unter dem Lock: nach `shutdown()` (Beenden,
         # Entfernen, Neustart) koppelt und gleicht keine Route mehr ab.
-        self._context = dataclasses.replace(context, closing=lambda: self._closed)
+        self._on_paired_outer = context.on_paired
+        self._context = dataclasses.replace(context, closing=lambda: self._closed,
+                                            on_paired=self._on_paired)
         self._run = run
         self._on_status = on_status
         self._lan_candidates = lan_candidates
@@ -107,6 +109,47 @@ class MobileService:
                 and (self._running is None or self._running[1] != port)):
             self._status = MobileStatus(STATE_STARTING, None, port)
         self._run(self._reconcile, self._publish)
+        # Die Geräteschlüssel (#249) in einem eigenen Worker: ein hängender Schlüsselbund
+        # (gesperrt, Prompt) darf weder den Serverstart noch den Statuswechsel aufhalten.
+        self._run(self._maintain_keys)
+
+    def _maintain_keys(self) -> None:
+        """Räumt Schlüssel unbekannter Geräte ab, lädt die Schlüsselbund-Schlüssel in den Cache
+        und zieht Datei-Schlüssel in den Schlüsselbund um. Blockiert (Worker). Jede Stufe für
+        sich: ein Ausfall hält weder die übrigen noch den Dienst auf; was nicht geladen werden
+        konnte, antwortet `503 key_unavailable` und wird beim nächsten Anfrage-Versuch
+        nachgeladen."""
+        if self._closed or not self._settings.get("mobile_enabled"):
+            return
+        keys = self._context.keys
+        steps: list[tuple[str, Callable[[], Any]]] = [
+            ("retain", lambda: keys.retain([r["id"] for r in self._context.devices.get_all()])),
+            ("load", keys.load),
+            ("migrate", keys.migrate),
+        ]
+        for name, step in steps:
+            if self._closed:
+                return
+            try:
+                step()
+            except Exception:
+                _log.warning("Handy-Erfassung: Schlüssel (%s) nicht bearbeitet", name, exc_info=True)
+
+    def _on_paired(self) -> None:
+        """Nach einer Kopplung (Server-Thread, außerhalb der Sperren): der Schlüssel liegt
+        schon in der gehärteten Datei; der Umzug in den Schlüsselbund läuft im Worker."""
+        try:
+            self._on_paired_outer()
+        finally:
+            self._run(self._migrate_keys)
+
+    def _migrate_keys(self) -> None:
+        if self._closed:
+            return
+        try:
+            self._context.keys.migrate()
+        except Exception:
+            _log.warning("Handy-Erfassung: Schlüsselumzug fehlgeschlagen", exc_info=True)
 
     def _publish(self, _result: MobileStatus) -> None:
         # Der aktuelle Stand, nicht das Ergebnis dieses Workers: kommen zwei Worker
@@ -220,7 +263,9 @@ class MobileService:
             if record is None:
                 return False
             self._context.devices.save(mobile_pairing.revoke(record))
-            return True
+        # Außerhalb der Gerätesperre: der Schlüsselbund kann blockieren (Worker).
+        self._context.keys.remove(device_id)
+        return True
 
     def revoke_all(self) -> int:
         """Widerruft alle Geräte in **einem** Schreibvorgang; liefert die Zahl der
@@ -228,11 +273,12 @@ class MobileService:
         with self._context.devices_lock:
             records = self._context.devices.get_all()
             self._context.devices.replace_all([mobile_pairing.revoke(r) for r in records])
-            return len(records)
+        self._context.keys.retain([])
+        return len(records)
 
     def pair_link(self, code: str) -> str | None:
         """Der Link im QR-Code: `<PWA>#pair=<ip>:<port>:<code>`. Das Fragment geht nie
-        an einen Server und trägt nur Adresse und Einmalcode, kein Token. `None`,
+        an einen Server und trägt nur Adresse und Kopplungscode (28 Zeichen), kein Token. `None`,
         solange der Server nicht läuft oder der Code keine Form eines Codes hat."""
         status = self._status
         canonical = mobile_pairing.normalize_code(code)

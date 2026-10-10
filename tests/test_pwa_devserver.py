@@ -61,12 +61,44 @@ def test_a_pair_code_is_available_and_the_link_points_at_the_dev_site(devserver,
         code = dev.new_code()
         link = dev.pair_link(code)
         assert link.startswith(f"http://localhost:{dev.web_port}/#pair=127.0.0.1:{dev.api_port}:")
-        body = json.dumps({"protocol": 1, "code": code, "device_name": "Dev", "device_id": "dev-device-0001"}).encode()
+        from src import mobile_pairing
+        from tests.mobile_phone import Phone
+        phone = Phone("dev-device-0001", "Dev")
+        canonical = mobile_pairing.normalize_code(code)
+        assert len(canonical) == 28 and link.endswith(canonical)
         request = urllib.request.Request(
-            f"http://127.0.0.1:{dev.api_port}/v1/pair", data=body, method="POST",
+            f"http://127.0.0.1:{dev.api_port}/v1/pair", data=json.dumps(phone.pair_request(canonical)).encode(),
+            method="POST",
             headers={"Content-Type": "application/json", "Origin": f"http://localhost:{dev.web_port}"})
         with urllib.request.urlopen(request, timeout=5) as response:
-            assert response.status == 200 and "token" in json.loads(response.read())
+            assert response.status == 200
+            answer = phone.open_pair_response(canonical, json.loads(response.read()))
+        assert "token" in answer and len(phone.key) == 32
+
+
+def test_the_dev_server_never_touches_the_developers_keyring(devserver, tmp_path, monkeypatch):
+    from src import mobile_keys
+
+    def boom(*args, **kwargs):
+        raise AssertionError("echter Schlüsselbund")
+    import types
+    original = types.SimpleNamespace(put=boom, fetch=boom, remove=boom)
+    monkeypatch.setattr(mobile_keys, "keyring_store", original)
+    with devserver.running(tmp_path, web_port=0, api_port=0, address="127.0.0.1") as dev:
+        assert mobile_keys.keyring_store is not original
+        from src import mobile_pairing
+        from tests.mobile_phone import Phone
+        code = mobile_pairing.normalize_code(dev.new_code())
+        phone = Phone()
+        request = urllib.request.Request(
+            f"http://127.0.0.1:{dev.api_port}/v1/pair", data=json.dumps(phone.pair_request(code)).encode(),
+            method="POST", headers={"Content-Type": "application/json",
+                                     "Origin": f"http://localhost:{dev.web_port}"})
+        with urllib.request.urlopen(request, timeout=5) as response:
+            assert response.status == 200
+        dev.service._maintain_keys()                     # Umzug versuchen: bleibt in der Datei
+        assert dev.service._context.keys.where() == {"phone-0001": "file"}
+    assert mobile_keys.keyring_store is original          # zurückgesetzt
 
 
 def test_the_dev_origin_does_not_leak_into_the_process(devserver, tmp_path):
