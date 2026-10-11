@@ -22,7 +22,7 @@ def _runner(**overrides):
         settings=overrides.pop("settings", {}),
         base_path=overrides.pop("base_path", "."),
         reservation_store=overrides.pop("reservation_store", None),
-        reservations_active=overrides.pop("reservations_active", lambda: False),
+        calendar_active=overrides.pop("calendar_active", lambda: False),
         storage=overrides.pop("storage", None),
     )
     kw.update(overrides)
@@ -170,9 +170,9 @@ def test_check_update_compares_against_installed_release_id(monkeypatch):
     assert got["rel"] is release
 
 
-def test_reconcile_on_start_skips_when_reservations_inactive():
+def test_reconcile_on_start_skips_when_calendar_inactive():
     ran = {"n": 0}
-    r = _runner(reservations_active=lambda: False)
+    r = _runner(calendar_active=lambda: False)
     r.reconcile_on_start(on_ok=lambda result: ran.__setitem__("n", ran["n"] + 1))
     import time
     time.sleep(0.2)
@@ -209,7 +209,7 @@ def test_reconcile_on_start_passes_storage_and_result_to_on_ok(monkeypatch):
 
     received = {}
     sentinel_storage = object()
-    r = _runner(reservations_active=lambda: True, storage=sentinel_storage)
+    r = _runner(calendar_active=lambda: True, storage=sentinel_storage)
     r.reconcile_on_start(on_ok=lambda result: received.__setitem__("result", result))
 
     import time
@@ -232,7 +232,7 @@ def test_trigger_reconcile_passes_storage_through(monkeypatch):
 
     done = threading.Event()
     sentinel_storage = object()
-    r = _runner(reservations_active=lambda: True, storage=sentinel_storage)
+    r = _runner(calendar_active=lambda: True, storage=sentinel_storage)
     r.trigger_reconcile(lambda result: done.set())
 
     assert done.wait(timeout=5)
@@ -423,3 +423,43 @@ def test_migrate_secrets_swallows_and_logs_unexpected_errors(tmp_path, monkeypat
     monkeypatch.setattr(secret_migration, "migrate", boom)
     runner.migrate_secrets(object(), reports.append)
     assert reports == [] and "Umzug der Zugangsdaten" in caplog.text
+
+
+def _capturing_reconcile(captured):
+    def fake_reconcile(reservation_store, settings, base_path, storage,
+                       data_lock=None, vacation_store=None):
+        captured["store"] = reservation_store
+        return {"ok": True, "error": "", "tb": "", "limit_warnings": []}
+    return fake_reconcile
+
+
+def test_trigger_reconcile_passes_store_only_when_reservations_enabled(monkeypatch):
+    import src.background_tasks as bt_module
+
+    sentinel = object()
+    for enabled, expected in ((True, sentinel), (False, None)):
+        captured = {}
+        monkeypatch.setattr(bt_module, "run_calendar_reconcile",
+                            _capturing_reconcile(captured))
+        done = threading.Event()
+        r = _runner(calendar_active=lambda: True, reservation_store=sentinel,
+                    settings={"reservations_enabled": enabled})
+        r.trigger_reconcile(lambda result: done.set())
+        assert done.wait(timeout=5)
+        assert captured["store"] is expected
+
+
+def test_reconcile_on_start_passes_store_only_when_reservations_enabled(monkeypatch):
+    import src.background_tasks as bt_module
+
+    sentinel = object()
+    for enabled, expected in ((True, sentinel), (False, None)):
+        captured = {}
+        monkeypatch.setattr(bt_module, "run_calendar_reconcile",
+                            _capturing_reconcile(captured))
+        got = threading.Event()
+        r = _runner(calendar_active=lambda: True, reservation_store=sentinel,
+                    settings={"reservations_enabled": enabled})
+        r.reconcile_on_start(on_ok=lambda result: got.set())
+        assert got.wait(timeout=5)
+        assert captured["store"] is expected

@@ -9,7 +9,7 @@ from src.background_tasks import BackgroundTaskRunner
 def _runner():
     return BackgroundTaskRunner(
         marshal=lambda fn: fn(), settings=None, base_path="",
-        reservation_store=None, reservations_active=lambda: False)
+        reservation_store=None, calendar_active=lambda: False)
 
 
 def test_idle_runner_returns_immediately():

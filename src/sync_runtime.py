@@ -371,6 +371,9 @@ def run_calendar_reconcile(reservation_store, settings, base, storage,
                            data_lock=None, vacation_store=None):
     """Baut den Calendar-Service und fährt einen Reservierungs-Reconcile.
 
+    `reservation_store=None` überspringt den Reservierungs-Abgleich
+    (Reservierungen aus, Kalender an); der Urlaub-Push läuft trotzdem.
+
     Liefert {"ok": bool, "error": str, "tb": str, "limit_warnings": [...]}.
     Wirft NICHT — der Caller (UI-Thread) wertet das Dict aus. No-op, wenn
     gcal deaktiviert oder kein Kalender gewählt ist.
@@ -407,11 +410,13 @@ def run_calendar_reconcile(reservation_store, settings, base, storage,
             os.path.join(base, "token.json"),
             sync_enabled=settings.get("sync_enabled"),
         )
-        result = reconcile_reservations(service, calendar_id, reservation_store,
-                                        settings, data_lock=data_lock)
-        sync_history.mark_reconciled(base)
-        limit_warnings = check_dates_for_warnings(
-            settings, storage.get_all(), result["imported_dates"])
+        limit_warnings: list = []
+        if reservation_store is not None:
+            result = reconcile_reservations(service, calendar_id, reservation_store,
+                                            settings, data_lock=data_lock)
+            sync_history.mark_reconciled(base)
+            limit_warnings = check_dates_for_warnings(
+                settings, storage.get_all(), result["imported_dates"])
         # Urlaubs-Push zuletzt und bewusst NICHT-FATAL: derselbe Service,
         # dasselbe gcal_enabled-Gate, derselbe data_lock — aber ein eigener
         # Fehlerraum. Läge er im gemeinsamen try, risse ein scheiternder Push
