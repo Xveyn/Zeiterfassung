@@ -233,7 +233,7 @@ def test_trigger_reconcile_passes_storage_through(monkeypatch):
     done = threading.Event()
     sentinel_storage = object()
     r = _runner(calendar_active=lambda: True, storage=sentinel_storage)
-    r.trigger_reconcile(lambda result: done.set())
+    r.trigger_reconcile(lambda result, done=done: done.set())
 
     assert done.wait(timeout=5)
     assert captured["storage"] is sentinel_storage
@@ -444,7 +444,7 @@ def test_trigger_reconcile_passes_store_only_when_reservations_enabled(monkeypat
         done = threading.Event()
         r = _runner(calendar_active=lambda: True, reservation_store=sentinel,
                     settings={"reservations_enabled": enabled})
-        r.trigger_reconcile(lambda result: done.set())
+        r.trigger_reconcile(lambda result, done=done: done.set())
         assert done.wait(timeout=5)
         assert captured["store"] is expected
 
@@ -460,6 +460,6 @@ def test_reconcile_on_start_passes_store_only_when_reservations_enabled(monkeypa
         got = threading.Event()
         r = _runner(calendar_active=lambda: True, reservation_store=sentinel,
                     settings={"reservations_enabled": enabled})
-        r.reconcile_on_start(on_ok=lambda result: got.set())
+        r.reconcile_on_start(on_ok=lambda result, got=got: got.set())
         assert got.wait(timeout=5)
         assert captured["store"] is expected

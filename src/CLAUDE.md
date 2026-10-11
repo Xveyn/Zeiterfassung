@@ -45,7 +45,7 @@ Rendering der Monats-/Wochenansicht inkl. Double-Buffer und Fenster-Geometrie.
   **eine** Render-Eintritt für alle Aufrufer (Navigation, Dialog-`on_change`, Sync-/
   Reconcile-Callbacks `on_refresh`/`on_ok`).
 - **Interaktion injiziert:** `on_cell_click` (= `App._open_dialog`), `on_cell_right_click`
-  (= `App._delete_day`), `reservations_active` (= `App._reservations_active`). Die Zellen
+  (= `App._delete_day`), `reservations_active` (= `App._reservations_active`, d. h. Store vorhanden und `reservations_enabled`). Die Zellen
   binden diese Callbacks, nicht App-Methoden direkt.
 - **Widgets:** der Renderer besitzt `grid_container` + die zwei Double-Buffer-Frames
   (`build_grid(parent)`); `header_label`/`footer_label` werden in `App._build_header`/
@@ -81,7 +81,9 @@ Thread-Mechanik **und** die proaktiven Startup-Tasks.
   liefert das Ergebnis via `marshal` (= `App._marshal_to_ui`) an `on_done` auf dem
   **UI-Thread**. Auch `SyncOrchestrator` nutzt `run()` — es gibt nur dieses eine Muster.
 - Eigene Tasks: `refresh_token`, `fetch_sender_email`, `check_update`, `reconcile_on_start`,
-  `trigger_reconcile`. UI-Arbeit (Dialoge/Banner/Refresh) bleibt beim Aufrufer — `App`,
+  `trigger_reconcile`. Deren Gate ist der Parameter `calendar_active` (= `App._calendar_push_active`,
+  d. h. `gcal_enabled`): den Reservierungs-Store reichen sie nur
+  durch, wenn `reservations_enabled` an ist — ohne ihn pusht `run_calendar_reconcile` nur Urlaub. UI-Arbeit (Dialoge/Banner/Refresh) bleibt beim Aufrufer — `App`,
   für den Update-Check der `UpdateCoordinator` — und kommt als Callback.
 - Tk-frei, keine Google-Imports auf Modulebene; `run_calendar_reconcile` kommt
   seit R1 als normaler **Top-Level-Import aus `src.sync_runtime`**
@@ -522,7 +524,7 @@ Zeitraum und welche Kategorien der Bericht gefiltert ist.
   schreibt weiter alle sieben Tage, damit die Werte erhalten bleiben. Bewusst
   unberührt: Werkstudenten-Limit (zählt real geleistete Stunden), Teilen und
   Kalender-Abgleich.
-  `reminders.py` — pure Fälligkeits-Logik für Reservierungs-Erinnerungen (Tk-frei, `now` als Parameter): pro heutigem reservierten Slot mit Kategorie ohne erfasste Ist-Zeit `upcoming` (N Min vor Ende) oder `missed` (nach Ende). Der `ReminderScheduler` (`reminder_scheduler.py`) pollt minütlich über `root.after` und schickt fällige Toasts über `App._tray`. Analog dazu `send_reminder.py`/`send_reminder_scheduler.py`, dort aber mit **zwei Kanälen** in einem Poll. **Monatlich**: ein einzelner Fällig-Zeitpunkt pro Monat (Tag + Uhrzeit, Tag auf die Monatslänge geclamped, optional von arbeitsfreien Tagen weg verschoben) statt Slot-Fenster; der Fired-Zustand wird bewusst **persistiert** (`settings.send_reminder_last_fired_month`, `"YYYY-MM"`) statt nur im Speicher gehalten wie beim Reservierungs-Reminder — verhindert wiederholte Toasts bei App-Neustarts im selben Monat. **Tagesbezogen**: der `SendReminderScheduler` bekommt zusätzlich den `reservation_store` durchgereicht und feuert, wenn eine heutige Reservierung mit gesetztem `send_reminder_minutes` ausläuft; dieser Kanal verlangt neben dem Haupt-Schalter `send_reminder_reservations_enabled` **und** `gcal_enabled` (ohne Kalender-Abgleich zeigt die App gar keine Reservierungen, s. `App._reservations_active`) und dedupliziert — anders als der Monats-Kanal — nur im Speicher, tageweise: ein persistierter Marker müsste in `reservations.json` landen und würde dort `modified_at` anfassen, was einen gcal-Push auslöst.
+  `reminders.py` — pure Fälligkeits-Logik für Reservierungs-Erinnerungen (Tk-frei, `now` als Parameter): pro heutigem reservierten Slot mit Kategorie ohne erfasste Ist-Zeit `upcoming` (N Min vor Ende) oder `missed` (nach Ende). Der `ReminderScheduler` (`reminder_scheduler.py`) pollt minütlich über `root.after` und schickt fällige Toasts über `App._tray`. Analog dazu `send_reminder.py`/`send_reminder_scheduler.py`, dort aber mit **zwei Kanälen** in einem Poll. **Monatlich**: ein einzelner Fällig-Zeitpunkt pro Monat (Tag + Uhrzeit, Tag auf die Monatslänge geclamped, optional von arbeitsfreien Tagen weg verschoben) statt Slot-Fenster; der Fired-Zustand wird bewusst **persistiert** (`settings.send_reminder_last_fired_month`, `"YYYY-MM"`) statt nur im Speicher gehalten wie beim Reservierungs-Reminder — verhindert wiederholte Toasts bei App-Neustarts im selben Monat. **Tagesbezogen**: der `SendReminderScheduler` bekommt zusätzlich den `reservation_store` durchgereicht und feuert, wenn eine heutige Reservierung mit gesetztem `send_reminder_minutes` ausläuft; dieser Kanal verlangt neben dem Haupt-Schalter `send_reminder_reservations_enabled` **und** `reservations_enabled` (ohne eingeschaltete Reservierungen zeigt die App gar keine, s. `App._reservations_active`; der Google-Kalender-Abgleich spielt dafür keine Rolle) und dedupliziert — anders als der Monats-Kanal — nur im Speicher, tageweise: ein persistierter Marker müsste in `reservations.json` landen und würde dort `modified_at` anfassen, was einen gcal-Push auslöst.
 
 ## Google-Integration (alle Wrapper mit Lazy-Imports für CI ohne requirements.txt)
 

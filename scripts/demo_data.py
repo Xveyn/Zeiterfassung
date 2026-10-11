@@ -25,12 +25,12 @@ Secret zieht `secret_migration` beim Start nichts um), und es gibt kein
 Demo-Konto oder einen Demo-Webhook **löschen** (räumt den zugehörigen
 Eintrag ab) und im SMTP-Dialog ein Passwort **eintippen und speichern**.
 
-**Kalender-Abgleich:** Reservierungen zeigt die App nur mit eingeschaltetem
-Abgleich (`App._reservations_active`), deshalb ist er standardmäßig an. Ohne
-Google-Anmeldung meldet die App dann nach jedem Speichern einer Reservierung
-oder eines Urlaubs „Google-Verbindung abgelaufen" (lokal ist gespeichert),
-und der Google-Tab zeigt „Kalenderliste nicht geladen". `--ohne-kalender`
-schaltet ihn aus; die Reservierungen liegen trotzdem vor.
+**Reservierungen** sind eingeschaltet (`reservations_enabled`); der
+Kalender-Abgleich ist ein Zusatz und standardmäßig an. Ohne Google-Anmeldung
+meldet die App dann nach jedem Speichern einer Reservierung oder eines
+Urlaubs „Google-Verbindung abgelaufen" (lokal ist gespeichert), und der
+Google-Tab zeigt „Kalenderliste nicht geladen". `--ohne-kalender` schaltet
+ihn aus; die Reservierungen bleiben.
 
 Adressen und URLs stammen ausschließlich aus den reservierten
 Beispiel-Domains (RFC 2606, `example.com`/`example.org`).
@@ -186,6 +186,8 @@ def build_demo(today, *, with_calendar=True):
         "send_reminder_reservations_enabled": True,
         "device_name": "Demo-Laptop",
         "sync_enabled": False,
+        "reservations_enabled": True,
+        "reservations_migrated": True,
         "gcal_enabled": bool(with_calendar),
         "gcal_calendar_id": "primary" if with_calendar else "",
     }
@@ -235,7 +237,7 @@ def write_demo(base, demo, *, force=False):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--ohne-kalender", action="store_true",
-                        help="Kalender-Abgleich aus (keine Reservierungen sichtbar)")
+                        help="Kalender-Abgleich aus (Reservierungen bleiben)")
     parser.add_argument("--force", action="store_true",
                         help="vorhandene Daten im Zielordner ersetzen")
     args = parser.parse_args(argv)

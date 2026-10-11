@@ -892,11 +892,12 @@ Folge zweier verschiedener Fragen.
 
 Der Google-Kalender-Push ist ein **Zusatz**, keine Voraussetzung: anders als
 Reservierungen ist Urlaub **nicht** an `gcal_enabled` gekoppelt. Für den
-**Push** selbst gelten dagegen vier Bedingungen: `gcal_enabled`, ein gewählter
-Kalender, ein vorhandener `reservation_store` — `_reservations_active`
-(`ui.py`) prüft beides, und `trigger_reconcile`/`reconcile_on_start`
-kehren sonst früh zurück — **und** der eigene Schalter
-`vacation_gcal_enabled`.
+**Push** selbst gelten dagegen zwei Bedingungen: `gcal_enabled`
+(`_calendar_push_active` in `ui.py`; `trigger_reconcile`/`reconcile_on_start`
+kehren sonst früh zurück) **und** der eigene Schalter
+`vacation_gcal_enabled`. Von den Reservierungen
+(`reservations_enabled`) ist der Urlaubs-Push unabhängig: ohne sie läuft der
+Abgleich ohne Reservierungs-Store und pusht nur Urlaub.
 
 **Der Schalter ist umkehrbar, und das ist die eigentliche Arbeit daran.** Er
 sitzt im Dialog „Urlaub verwalten" und wird nur gebaut, wenn der Kalender
@@ -1626,7 +1627,7 @@ seinen Pfad, nicht per Import.
   hält das fest, indem es jeden `keyring_store`-Weg auf einen Fehler legt.
   Den Schlüsselbund berühren nur Handgriffe in der App: ein Demo-Konto oder
   einen Demo-Webhook löschen, oder im SMTP-Dialog ein Passwort eintippen und
-  speichern. Der Kalender-Abgleich ist an (Reservierungen zeigt die App nur
-  damit); ohne Google-Anmeldung meldet die App dann nach dem Speichern einer
+  speichern. Reservierungen sind eingeschaltet (`reservations_enabled`) und
+  der Kalender-Abgleich ist an; ohne Google-Anmeldung meldet die App dann nach dem Speichern einer
   Reservierung „Google-Verbindung abgelaufen" — `--ohne-kalender` schaltet
   ihn aus.
