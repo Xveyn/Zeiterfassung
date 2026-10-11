@@ -240,6 +240,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      actions: write   # pages.yml neu anstossen (s. letzter Schritt)
     steps:
       - uses: actions/checkout@v7
 
@@ -335,6 +336,23 @@ jobs:
             git push origin ":refs/tags/$TAG" || true
             exit 1
           fi
+
+      # Ein Release setzt den Zaehler N der PWA-Build-Kennung (`P-N/X.Y.Z`) auf 0
+      # und aendert deren Anker X.Y.Z. pages.yml laeuft aber nur bei Pushes mit
+      # Aenderungen unter pwa/**; der Release-PR deployt beim Merge VOR dem Tag
+      # (alter Anker), und ein mit GITHUB_TOKEN gepushter Tag loest keinen
+      # Workflow aus. Also hier neu anstossen. Nur bei echten Releases:
+      # Pre-Release-Tags zaehlen als Anker nicht (scripts/pwa_stamp.py).
+      # Scheitert das, ist das Release selbst fertig — nur die Kennung bleibt bis
+      # zum naechsten Deploy alt, deshalb Warnung statt Abbruch.
+      - name: PWA neu veroeffentlichen (Build-Kennung)
+        if: needs.pre-check.outputs.is_prerelease != 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh workflow run pages.yml --ref master \
+            || echo "::warning::pages.yml konnte nicht angestossen werden — Build-Kennung der PWA bleibt bis zum naechsten Deploy veraltet (Actions -> PWA veroeffentlichen -> Run workflow)"
 
   # Raeumt README-Marker weg, die inzwischen KEEP_RELEASES echte Releases alt
   # sind (scripts/resolve_readme_version.py --prune). Laeuft NACH dem Release,

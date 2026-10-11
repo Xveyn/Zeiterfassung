@@ -1,5 +1,6 @@
 {
   "name": "zeiterfassung-pwa",
+  "version": "1.0.0",
   "private": true,
   "type": "module",
   "description": "Handy-Erfassung der Zeiterfassung (PWA). Reines JavaScript, kein Build, keine Abhängigkeiten.",
