@@ -63,6 +63,8 @@ class ReminderScheduler:
         tray = self._get_tray()
         if tray is None:
             return []
+        if not self._settings.get("reservations_enabled"):
+            return []
         today = now_dt.date().isoformat()
         if self._fired_date != today:
             self._fired.clear()
