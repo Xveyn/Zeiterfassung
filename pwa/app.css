@@ -110,3 +110,6 @@ dialog .buttons { display: flex; gap: 8px; justify-content: flex-end; flex-wrap:
 .version { background: var(--cell); border-radius: 8px; padding: 10px; margin-bottom: 8px; }
 .version ul { margin: 4px 0 0; padding-left: 18px; }
 video { width: 100%; border-radius: 8px; background: #000; }
+
+label.check { display: flex; align-items: center; gap: 8px; min-height: var(--tap); margin: 4px 0; }
+label.check input { width: auto; min-height: 0; flex: none; }

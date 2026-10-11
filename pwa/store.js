@@ -29,6 +29,7 @@ const DEFAULT_META = Object.freeze({
   defaults: null,          // Standardzeiten des Desktops (#288); null bei älterem Desktop
   desktop: { name: '', version: '', platform: '' },
   window_days: 90,
+  auto_update: false,      // Updates der PWA automatisch einspielen (#290); gerätelokal, Standard aus
   excluded: false,
   conflicts: [],
   server_time: '',

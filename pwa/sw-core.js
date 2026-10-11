@@ -24,6 +24,7 @@ export const PRECACHE = [
   './view-model.js',
   './messages.js',
   './sync-policy.js',
+  './update-policy.js',
   './minutes.js',
   './defaults.js',
   './pairing.js',

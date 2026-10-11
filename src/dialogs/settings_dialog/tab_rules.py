@@ -407,14 +407,19 @@ def mobile_status_view(status: MobileStatus) -> tuple[str, str]:
     return "Aus.", "muted"
 
 
+def visible_devices(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Die Geräte, die der Tab zeigt: ohne die widerrufenen. Deren Datensatz bleibt im Speicher
+    (die Antwort an das Handy lautet `token_revoked`, und das Koppel-Fenster erkennt an ihm eine
+    Neukopplung), in der Liste hat er aber nichts mehr verloren."""
+    return [record for record in records if not record.get("revoked")]
+
+
 def device_row_text(record: Mapping[str, Any], now: str) -> str:
-    """Eine Zeile der Geräteliste: Name, zuletzt gesehen, gültig bis; widerrufen und
-    abgelaufen sind markiert."""
+    """Eine Zeile der Geräteliste: Name, zuletzt gesehen, gültig bis; abgelaufen ist markiert.
+    Widerrufene Geräte kommen hier nicht an (`visible_devices`)."""
     name = str(record.get("name") or record.get("id") or "?")
     mark = ""
-    if record.get("revoked"):
-        mark = "  (widerrufen)"
-    elif str(record.get("expires_at") or "9999") <= now:
+    if str(record.get("expires_at") or "9999") <= now:
         mark = "  (abgelaufen)"
     seen = format_iso_datetime(record.get("last_seen"))
     until = format_iso_date(record.get("expires_at"))

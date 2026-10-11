@@ -235,3 +235,14 @@ export function focusKeyToRestore({ activeKey, inRoot, isBody, last }) {
   if (inRoot && activeKey) return activeKey;
   return isBody ? last : null;
 }
+
+// --- Verbindungsdialog ---------------------------------------------------------------------------
+
+/** Hinweis für den Verbindungsdialog, wenn der Desktop älter ist als diese Seite: er schickt weder
+ *  `desktop` noch `defaults` (#288). Erkannt wird das an den fehlenden Feldern, nicht an einer Version
+ *  (Feature-Erkennung, s. pwa/CLAUDE.md „Kompatibilität“). Vor dem ersten Abgleich weiß man nichts. */
+export function desktopHint(meta) {
+  if (!meta || !meta.last_pull_at) return '';
+  const known = Boolean(meta.desktop && meta.desktop.version);
+  return known ? '' : 'Die Desktop-App ist älter als diese Seite, einige Funktionen fehlen (z. B. die Vorbelegung der Zeiten). Bitte die Desktop-App aktualisieren.';
+}

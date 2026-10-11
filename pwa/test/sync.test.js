@@ -706,3 +706,12 @@ test('plaintext errors the server really sends before decrypting are still class
     await assert.rejects(client.sync(), (e) => e.kind === kind, code);
   }
 });
+
+test('classifyHttpError keeps the protocol number the desktop names (#290)', () => {
+  const body = (supported) => ({ error: { code: 'invalid_protocol', message: 'x', supported_protocol: supported } });
+  assert.equal(classifyHttpError(400, body(3)).supportedProtocol, 3);
+  for (const bad of [undefined, null, 'x', 1.5, -2, 0, 99999]) {
+    assert.equal(classifyHttpError(400, body(bad)).supportedProtocol, null, String(bad));
+  }
+  assert.equal(classifyHttpError(500, { error: { code: 'internal_error', message: 'x' } }).supportedProtocol, null);
+});

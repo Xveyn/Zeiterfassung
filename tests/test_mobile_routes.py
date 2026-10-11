@@ -464,6 +464,16 @@ def test_a_plaintext_sync_body_is_refused(env):
     assert env.ctx.storage.get_all_raw() == {}
 
 
+def test_a_wrong_protocol_names_the_protocol_the_desktop_speaks(env):
+    # Damit die PWA sagen kann, welche Seite die ältere ist (#290).
+    _record, token = add_device(env)
+    for body in (json.dumps(SYNC_BODY).encode(), json.dumps({"v": 3, "seq": 1, "n": "x", "c": "x"}).encode()):
+        response = call(env, "POST", "/v1/sync", body=body, token=token)
+
+        assert error_code(response) == "invalid_protocol"
+        assert response.body["error"]["supported_protocol"] == mc.PROTOCOL
+
+
 def test_the_old_token_works_for_ten_minutes_after_the_renewal_and_the_new_one_always(env):
     _record, old = add_device(env)
     new = sync(env, old).body["token"]

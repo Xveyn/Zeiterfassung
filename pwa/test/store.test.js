@@ -475,3 +475,14 @@ test('the device key and the counter survive a reload together with the token', 
   await second.load();
   assert.deepEqual([second.getMeta().key, second.getMeta().seq, second.getMeta().token], ['B'.repeat(43), 7, 'T0']);
 });
+
+test('automatic updates are off by default and the choice survives a restart (#290)', async () => {
+  const adapter = createMemoryAdapter();
+  const { store } = await make({ adapter });
+  assert.equal(store.getMeta().auto_update, false);
+
+  await store.setMeta({ auto_update: true });
+  const again = new Store(adapter, clock());
+  await again.load();
+  assert.equal(again.getMeta().auto_update, true);
+});

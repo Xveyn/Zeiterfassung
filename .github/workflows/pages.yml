@@ -40,7 +40,7 @@ jobs:
           set -euo pipefail
           mkdir _site
           # Nur, was die App zur Laufzeit braucht: kein test/, kein package.json.
-          rsync -a --exclude 'test/' --exclude 'package.json' --exclude 'memory-adapter.js' --exclude 'node_modules/' pwa/ _site/
+          rsync -a --exclude 'test/' --exclude 'package.json' --exclude '*.md' --exclude 'memory-adapter.js' --exclude 'node_modules/' pwa/ _site/
           # Build-Kennung „N/X.Y.Z (sha)“ einsetzen (Platzhalter __BUILD__ in sw-core.js und
           # Manifest); jeder Deploy bekommt damit einen eigenen Cache.
           python3 scripts/pwa_stamp.py _site

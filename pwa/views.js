@@ -4,6 +4,7 @@
 // Handler als Parameter; nichts hier kennt den Store oder das Netz.
 import { h } from './dom.js';
 import { MAX_CATEGORY_LENGTH } from './minutes.js';
+import { updateStatusText } from './update-policy.js';
 import { categoryLabel, categoryOptions, hintKey, nextRow, pickCategory } from './view-model.js';
 
 const button = (label, onclick, className = '', extra = {}) =>
@@ -244,7 +245,20 @@ export function conflictsDialog(conflicts, handlers) {
   return openDialog(dialog);
 }
 
-export function connectionDialog({ desktopName, desktop, address, build, persistent, tokenUntil }, handlers) {
+export function connectionDialog({ desktopName, desktop, hint = '', address, build, persistent, tokenUntil, update }, handlers) {
+  const updateStatus = h('dd', { role: 'status' }, updateStatusText(update.state));
+  const apply = button('Jetzt neu laden', () => handlers.applyUpdate(), 'primary');
+  apply.hidden = update.state !== 'available';
+  const check = button('Nach Updates suchen', async () => {
+    check.disabled = true;
+    updateStatus.textContent = updateStatusText('checking');
+    const state = await handlers.checkUpdate();
+    updateStatus.textContent = updateStatusText(state);
+    apply.hidden = state !== 'available';
+    check.disabled = false;
+  });
+  const auto = h('input', { id: 'auto-update', type: 'checkbox', checked: update.auto,
+    onchange: () => handlers.setAutoUpdate(auto.checked) });
   const dialog = h('dialog', { 'aria-labelledby': 'connection-title' },
     h('h2', { id: 'connection-title' }, 'Verbindung'),
     h('dl', {},
@@ -254,7 +268,11 @@ export function connectionDialog({ desktopName, desktop, address, build, persist
       h('dt', { class: 'muted' }, 'Adresse'), h('dd', {}, address || '—'),
       h('dt', { class: 'muted' }, 'Kopplung gültig bis'), h('dd', {}, tokenUntil || '—'),
       h('dt', { class: 'muted' }, 'Dauerhafter Speicher'), h('dd', {}, persistent === null ? 'unbekannt' : persistent ? 'ja' : 'nein'),
-      h('dt', { class: 'muted' }, 'Handy-App'), h('dd', {}, build)),
+      h('dt', { class: 'muted' }, 'Handy-App'), h('dd', {}, build),
+      h('dt', { class: 'muted' }, 'Updates'), updateStatus),
+    h('div', { class: 'buttons' }, check, apply),
+    h('label', { class: 'check', for: 'auto-update' }, auto, ' Updates automatisch einspielen'),
+    hint && h('p', { class: 'hint warn', role: 'status' }, hint),
     h('div', { class: 'buttons' },
       button('QR neu scannen / Neu koppeln', () => { dialog.close(); handlers.pair(); }),
       button('Schließen', () => dialog.close(), 'primary')));

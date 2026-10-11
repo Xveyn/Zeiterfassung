@@ -3,6 +3,8 @@
 // Ausweg. Die Arten stehen in `test/fixtures/errors.json`; der Test verlangt für jede einen
 // eigenen Text, damit ein neuer Fehlercode im Server nicht als „unbekannter Fehler" endet.
 
+import { PROTOCOL } from './pairing.js';
+
 const DEFAULT = { text: 'Der Abgleich ist fehlgeschlagen. Bitte später erneut versuchen.', action: 'retry' };
 
 const REPAIR = {
@@ -43,8 +45,18 @@ export function describeError(error) {
       return { text: 'Der Desktop ist gerade beschäftigt. Bitte gleich erneut versuchen.', action: 'retry' };
     case 'server':
       return { text: 'Der Desktop meldet einen internen Fehler. Details stehen im Protokoll der Desktop-App.', action: 'retry' };
-    case 'protocol':
+    case 'protocol': {
+      // Nennt der Desktop sein Protokoll (#290), sagen wir, welche Seite die ältere ist. Die Zahl kommt im
+      // Klartext und ist damit nur ein Hinweis, kein Beleg.
+      const theirs = error.supportedProtocol;
+      if (Number.isInteger(theirs) && theirs > 0 && theirs < PROTOCOL) {
+        return { text: 'Die Desktop-App ist älter als diese Seite und spricht ein anderes Protokoll. Bitte die Desktop-App aktualisieren.', action: null };
+      }
+      if (Number.isInteger(theirs) && theirs > PROTOCOL) {
+        return { text: 'Die Desktop-App ist neuer als diese Seite. Bitte diese Seite neu laden bzw. aktualisieren.', action: 'reload' };
+      }
       return { text: 'Die App-Versionen von Handy und Desktop passen nicht zusammen. Desktop-App und diese Seite aktualisieren.', action: null };
+    }
     case 'client_error':
       return { text: `Anfrage abgelehnt: ${server || 'unbekannter Grund'}`, action: null };
     default:

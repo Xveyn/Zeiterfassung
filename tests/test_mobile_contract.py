@@ -225,3 +225,13 @@ def test_the_desktop_resolves_the_shared_default_cases_like_the_phone_expects(ca
         day["start"], day["end"], defaults["pause"])
 
     assert {"start": start, "end": end, "pause": pause} == case["expected"]
+
+
+def test_the_desktop_still_accepts_the_frozen_request_of_an_older_phone():
+    # `fixtures/compat/` ist eingefroren (pwa/CLAUDE.md, „Kompatibilität“): ein Handy mit älterer PWA muss
+    # weiter abgleichen können, auch wenn sich das Live-Beispiel `sync-request.json` ändert.
+    example = load("compat/sync-request-pre-288.json")
+
+    parsed = mobile_sync.parse_request(json.dumps(example).encode(), now=example["client_time"])
+
+    assert sorted(parsed.entries) == sorted(example["entries"])

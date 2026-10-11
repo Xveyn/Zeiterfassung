@@ -97,11 +97,13 @@ class MobileContext:
 
 
 class _MobileError(Exception):
-    def __init__(self, status: int, code: str, message: str) -> None:
+    def __init__(self, status: int, code: str, message: str,
+                 extra: Mapping[str, Any] | None = None) -> None:
         super().__init__(message)
         self.status = status
         self.code = code
         self.message = message
+        self.extra = dict(extra or {})
 
 
 def make_verifier(devices: MobileStore, now: Callable[[], str]) -> TokenVerifier:
@@ -152,8 +154,11 @@ def _envelope(body: bytes) -> dict[str, Any]:
     `invalid_protocol`: die PWA zeigt dann „Versionen passen nicht zusammen“."""
     data = _json_object(body)
     if "c" not in data or data.get("v") != mc.PROTOCOL:
+        # Die Protokollnummer im Klartext-Fehler: so kann die PWA sagen, welche Seite die ältere
+        # ist (#290). Mehr als ein Hinweistext hängt nicht daran.
         raise _MobileError(400, "invalid_protocol",
-                           f"Unterstützt wird protocol {mc.PROTOCOL} (verschlüsselt).")
+                           f"Unterstützt wird protocol {mc.PROTOCOL} (verschlüsselt).",
+                           {"supported_protocol": mc.PROTOCOL})
     if not mc.is_envelope(data):
         raise _MobileError(400, "invalid_envelope", "Ungültiger Umschlag.")
     return data
@@ -364,7 +369,11 @@ def dispatch(request: ApiRequest, ctx: MobileContext, principal: Principal) -> A
     try:
         return route.handler(request, ctx, principal)
     except (_MobileError, SyncError) as exc:
-        return error_response(exc.status, exc.code, exc.message)
+        response = error_response(exc.status, exc.code, exc.message)
+        extra = getattr(exc, "extra", None)
+        if extra:
+            response.body["error"].update(extra)
+        return response
 
 
 def surface(ctx: MobileContext) -> Surface:
