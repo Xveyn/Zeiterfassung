@@ -8,6 +8,7 @@
 // Die Fehlerarten stehen in `test/fixtures/errors.json`; `tests/test_mobile_contract.py`
 // verlangt dort jedes (Status, Code)-Paar, das der Server senden kann.
 import { CryptoFailure, b64d, deviceKeys, isEnvelope, openEnvelope, pairKeys, seal } from './crypto.js';
+import { parseDefaults, parseDesktopInfo } from './defaults.js';
 import { isIsoDate, localIsoDate, utcStamp } from './minutes.js';
 import {
   PROTOCOL, baseUrl, isLanAddress, isValidDeviceId, newDeviceId, normalizeCode, pairRequestBody,
@@ -116,6 +117,7 @@ export function parseSyncResponse(raw) {
     protocol: PROTOCOL, server_time: raw.server_time, last_pull_at: raw.last_pull_at,
     excluded: raw.excluded, window_days: raw.window_days, entries, conflicts,
     categories: [...raw.categories], token: raw.token, expires_at: raw.expires_at,
+    defaults: parseDefaults(raw.defaults), desktop: parseDesktopInfo(raw.desktop),
   };
 }
 

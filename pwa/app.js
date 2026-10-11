@@ -3,6 +3,7 @@
 // Entscheidungen stehen in den getesteten Modulen (`view-model.js`, `sync-policy.js`,
 // `messages.js`); hier wird nur zusammengesteckt.
 import { addDays, formatDateDe, localIsoDate, mondayOf } from './minutes.js';
+import { weekdayKey } from './defaults.js';
 import { deviceNameFromUserAgent, parseHostPort, parsePairFragment } from './pairing.js';
 import { openDatabase, requestPersistentStorage } from './db.js';
 import { Store } from './store.js';
@@ -223,6 +224,7 @@ class App {
     const meta = this.store.getMeta();
     connectionDialog({
       desktopName: meta.desktop_name,
+      desktop: meta.desktop,
       address: meta.address ? `${meta.address.host}:${meta.address.port}` : '',
       build: BUILD,
       persistent: this.persistent,
@@ -239,8 +241,10 @@ class App {
     const outsideWindow = date > addDays(today, 1) || date < addDays(today, -meta.window_days);
     const dialog = editorDialog({
       title: `${formatDateDe(date)}`,
-      rows: editorRows(day),
+      rows: editorRows(day, meta.defaults, weekdayKey(date)),
       categories: meta.categories,
+      defaults: meta.defaults,
+      weekday: weekdayKey(date),
       error: day?.error ?? null,
       outsideWindow,
       canClear: Boolean(day && !day.deleted),

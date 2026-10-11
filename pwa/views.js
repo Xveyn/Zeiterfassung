@@ -4,7 +4,7 @@
 // Handler als Parameter; nichts hier kennt den Store oder das Netz.
 import { h } from './dom.js';
 import { MAX_CATEGORY_LENGTH } from './minutes.js';
-import { categoryLabel, categoryOptions, hintKey } from './view-model.js';
+import { categoryLabel, categoryOptions, hintKey, nextRow, pickCategory } from './view-model.js';
 
 const button = (label, onclick, className = '', extra = {}) =>
   h('button', { type: 'button', class: className, onclick, ...extra }, label);
@@ -130,11 +130,11 @@ function openDialog(dialog) {
 
 /** Tag bearbeiten. Der Dialog hält seine Zeilen selbst (Eingaben gehen bei Hintergrund-Renders
  *  nicht verloren). `handlers.save(rows)` liefert `null` bei Erfolg oder eine Fehlermeldung. */
-export function editorDialog({ title, rows, categories, error, outsideWindow, canClear, validate }, handlers) {
+export function editorDialog({ title, rows, categories, defaults = null, weekday = '', error, outsideWindow, canClear, validate }, handlers) {
   const list = h('div', {});
   const message = h('div', { class: 'error-text', role: 'alert' }, error ?? '');
   const save = h('button', { type: 'submit', class: 'primary' }, 'Speichern');
-  const state = rows.map((row) => ({ ...row }));
+  const state = rows.map((row) => ({ ...row, base: row.base && { ...row.base } }));
   const dialog = h('dialog', { 'aria-labelledby': 'editor-title' });
 
   const refresh = () => {
@@ -155,9 +155,10 @@ export function editorDialog({ title, rows, categories, error, outsideWindow, ca
     const text = h('span', { class: 'text' }, categoryLabel(state[index].kategorie));
     const picker = button([text, h('span', { 'aria-hidden': 'true' }, '▾')], () => {
       categoryPickerDialog({ categories, current: state[index].kategorie }, (name) => {
-        state[index].kategorie = name;
-        text.textContent = categoryLabel(name);
+        pickCategory(state[index], name, defaults, weekday);
+        build();                                   // Zeiten können sich geändert haben (Vorbelegung, #288)
         refresh();
+        document.getElementById(id)?.focus();
       });
     }, 'picker', { id });
     return h('div', {}, h('label', { for: id }, 'Kategorie'), picker);
@@ -184,7 +185,7 @@ export function editorDialog({ title, rows, categories, error, outsideWindow, ca
       h('h2', { id: 'editor-title' }, title),
       outsideWindow && h('p', { class: 'hint warn' }, 'Dieser Tag liegt außerhalb des Zeitraums, den das Handy vom Desktop kennt. Er kann dort bereits Einträge haben: Speichern ersetzt sie, und nach dem Abgleich ist der Tag hier nicht mehr sichtbar.'),
       list,
-      button('+ Slot', () => { state.push({ start: state.at(-1)?.end ?? '', end: '', pause: '0', kategorie: state.at(-1)?.kategorie ?? '' }); build(); refresh(); }),
+      button('+ Slot', () => { state.push(nextRow(state.at(-1))); build(); refresh(); }),
       message,
       h('div', { class: 'buttons' },
         canClear && button('Tag leeren', () => handlers.clear(dialog), 'link'),
@@ -243,15 +244,17 @@ export function conflictsDialog(conflicts, handlers) {
   return openDialog(dialog);
 }
 
-export function connectionDialog({ desktopName, address, build, persistent, tokenUntil }, handlers) {
+export function connectionDialog({ desktopName, desktop, address, build, persistent, tokenUntil }, handlers) {
   const dialog = h('dialog', { 'aria-labelledby': 'connection-title' },
     h('h2', { id: 'connection-title' }, 'Verbindung'),
     h('dl', {},
       h('dt', { class: 'muted' }, 'Desktop'), h('dd', {}, desktopName || '—'),
+      h('dt', { class: 'muted' }, 'Desktop-Version'), h('dd', {}, desktop?.version || '—'),
+      h('dt', { class: 'muted' }, 'Plattform'), h('dd', {}, desktop?.platform || '—'),
       h('dt', { class: 'muted' }, 'Adresse'), h('dd', {}, address || '—'),
       h('dt', { class: 'muted' }, 'Kopplung gültig bis'), h('dd', {}, tokenUntil || '—'),
       h('dt', { class: 'muted' }, 'Dauerhafter Speicher'), h('dd', {}, persistent === null ? 'unbekannt' : persistent ? 'ja' : 'nein'),
-      h('dt', { class: 'muted' }, 'Version'), h('dd', {}, build)),
+      h('dt', { class: 'muted' }, 'Handy-App'), h('dd', {}, build)),
     h('div', { class: 'buttons' },
       button('QR neu scannen / Neu koppeln', () => { dialog.close(); handlers.pair(); }),
       button('Schließen', () => dialog.close(), 'primary')));

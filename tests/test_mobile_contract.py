@@ -12,6 +12,7 @@ import pathlib
 import pytest
 
 from src.api_entry_write import WriteError, parse_slots
+from src.category_defaults import resolve_slot_defaults
 from src.time_utils import calculate_hours, hours_to_minutes, validate_slots
 
 FIXTURES = pathlib.Path(__file__).resolve().parent.parent / "pwa" / "test" / "fixtures"
@@ -127,6 +128,7 @@ def test_the_response_example_has_the_shape_the_server_really_sends(tmp_path):
     example = load("sync-response.json")
     env = mr.make_env(tmp_path)
     env.ctx.settings.set("categories", ["Projekt", "Intern"])
+    env.ctx.settings.set("category_times", {"Projekt": {"start": "09:00", "end": "17:00", "pause": 45}})
     _record, token = mr.add_device(env, mr.PHONE, "Pixel")
     # Der Desktop kennt 2026-10-05 anders: der Erstabgleich macht daraus einen Konflikt.
     env.ctx.storage.apply_merge({"2026-10-05": {
@@ -210,3 +212,16 @@ def test_the_pwa_classifies_every_error_the_server_can_send():
     assert not missing, (
         f"Der Server kann diese (Status, Code)-Paare senden, die pwa/test/fixtures/errors.json "
         f"nicht kennt — die PWA wüsste nicht, wie sie sie einordnet: {missing}")
+
+
+@pytest.mark.parametrize("case", load("category-defaults-cases.json"), ids=lambda case: case["name"])
+def test_the_desktop_resolves_the_shared_default_cases_like_the_phone_expects(case):
+    # Gleichlauf mit `pwa/defaults.js`: dieselben Fälle prüft der JS-Test.
+    defaults = case["defaults"]
+    day = defaults["weekdays"][case["weekday"]]
+
+    start, end, pause = resolve_slot_defaults(
+        defaults["category_times"], case["kategorie"], case["weekday"],
+        day["start"], day["end"], defaults["pause"])
+
+    assert {"start": start, "end": end, "pause": pause} == case["expected"]

@@ -26,6 +26,8 @@ const DEFAULT_META = Object.freeze({
   desktop_name: '',
   last_pull_at: '',
   categories: [],
+  defaults: null,          // Standardzeiten des Desktops (#288); null bei älterem Desktop
+  desktop: { name: '', version: '', platform: '' },
   window_days: 90,
   excluded: false,
   conflicts: [],
@@ -273,6 +275,8 @@ export class Store {
       last_pull_at: parsed.last_pull_at,
       server_time: parsed.server_time,
       categories: [...parsed.categories],
+      defaults: structuredClone(parsed.defaults ?? null),
+      desktop: { ...parsed.desktop },
       window_days: parsed.window_days,
       excluded: parsed.excluded,
       conflicts: structuredClone(parsed.conflicts),
