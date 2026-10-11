@@ -88,9 +88,9 @@ class Surface:
     unterscheiden sich nur hierin.
 
     `dispatch` bekommt eine bereits authentifizierte Anfrage. `methods` ist, was
-    irgendeine Route kann (`Allow` bei einem 405 aus `authorize`, nicht
+    irgendeine Route kann (`Allow` bei einem 405 für einen unbekannten Pfad, nicht
     `ALLOWED_METHODS`), `route_methods(path)` was genau dieser Pfad kann (leer =
-    unbekannt; der Preflight fragt es). `public` sind (Methode, Pfad)-Paare, die
+    unbekannt; der Preflight und das `Allow` eines 405 fragen es). `public` sind (Methode, Pfad)-Paare, die
     ohne Token erreichbar sind — exakt, kein Muster. `cors` schaltet Preflight und
     CORS-Header für die erlaubten Origins der Policy ein."""
     dispatch: Callable[[ApiRequest, Principal], ApiResponse]
@@ -274,7 +274,9 @@ class _Handler(http.server.BaseHTTPRequestHandler):
         else:
             auth = authorize(self.command, headers, server.policy, server.verifier)
         if not auth.ok or auth.principal is None:
-            return _auth_error(auth, surface.methods)
+            # RFC 9110 §15.5.6: `Allow` nennt die Methoden der Zielressource. Ein unbekannter
+            # Pfad kennt keine; dann die Vereinigung aller Routen wie bisher.
+            return _auth_error(auth, surface.route_methods(path) or surface.methods)
         if any(name.lower() == "transfer-encoding" for name in headers):
             return error_response(400, "unsupported_encoding",
                                   "Transfer-Encoding wird nicht unterstützt.")

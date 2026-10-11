@@ -623,6 +623,28 @@ def test_a_successful_rotation_clears_the_token_unavailable_error(tmp_path, monk
         service.shutdown()
 
 
+def test_the_restart_after_a_rotation_uses_the_fresh_token_instead_of_reading_it_again(tmp_path, monkeypatch):
+    """Sonst läse `load_or_create_token` die gerade geschriebene Datei erneut und härtete sie
+    ein zweites Mal — unter Windows ein weiterer `icacls` (bis 15 s) unter dem Lock (#246)."""
+    port = free_port()
+    service = make_service(tmp_path, {"api_enabled": True, "api_port": port})
+    monkeypatch.setattr(api_service, "load_or_create_token", lambda base_path: None)
+    service.apply()
+    assert service.status.reason == "token_unavailable"
+    loads = []
+    monkeypatch.setattr(api_service, "load_or_create_token",
+                        lambda base_path: loads.append(base_path))
+    try:
+        result = service.rotate()
+
+        assert result == RotateResult(True)
+        assert loads == []                              # das frische Token wurde durchgereicht
+        assert service.status.state == STATE_RUNNING
+        assert get_status_code(port, token_of(tmp_path)) == 200
+    finally:
+        service.shutdown()
+
+
 def test_a_shutdown_that_gave_up_during_a_rotation_still_stops_the_server(tmp_path, monkeypatch):
     port = free_port()
     service = make_service(tmp_path, {"api_enabled": True, "api_port": port})

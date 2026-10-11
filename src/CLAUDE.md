@@ -714,7 +714,11 @@ Wert.
   `api_service.py` (unten).
   **`load_or_create_token` und `rotate_token` blockieren** (Windows: `icacls`
   bis 15 s, Retry von `os.replace`) — nur über `BackgroundTaskRunner.run`, nie
-  im UI-Thread. Eine vorhandene Token-Datei wird beim Laden auf Besitzer-only
+  im UI-Thread. Beide laufen unter einer Prozess-Sperre (`_TOKEN_LOCK`): zwei gleichzeitige
+  Erststarts erzeugen sonst zwei Tokens, von denen nur eines in der Datei steht. Die Datei
+  liest höchstens 1025 Byte; was größer als 1024 ist, gilt nicht (auch nicht mit Leerraum
+  vor dem Token). `ApiService.rotate` reicht das frische Token an den Neustart weiter,
+  statt es erneut zu lesen und ein zweites Mal zu härten. Eine vorhandene Token-Datei wird beim Laden auf Besitzer-only
   nachgezogen; ein Token, das nicht genau dem erzeugten Format (43 Zeichen)
   entspricht, wird ersetzt.
 - `api_routes.py` — Routing und Antworten der lokalen API (#92), Tk-frei und
@@ -742,7 +746,7 @@ Wert.
   auch nicht bei ungewöhnlich gespeicherten Daten: jede Prüfung ist für sich abgesichert).
   Hält keinen Lock; den nimmt der Aufrufer um Prüfen und Speichern gemeinsam.
 - `api_summary.py` — Auswertungen der lokalen API (#92), Tk-frei, rein: Pfad-Parser (`parse_week`, `parse_month`, `parse_year`, nur ASCII-Ziffern, `fromisocalendar` entscheidet über KW 53), `summarize` (Tage, Kategorien, `weeks[]` mit Wochenlimit, Pausenwarnungen, Urlaub über `vacations.cap_by_worktime`), `category_names`, `holidays_for`. Gerechnet wird über **Minuten je Slot**; gespeicherte Slots sind Fremddaten, ein ungewöhnlicher Slot zählt 0 Minuten und wird geloggt. Die Routen (`/v1/summary/week|month`, `/v1/categories`, `/v1/holidays`) in `api_routes` holen nur den Snapshot (`Storage.get_all()`, `VacationStore.day_minutes()`), halten keinen Lock und melden nie `on_change`.
-- `api_server.py` — HTTP-Server, seit #221 für zwei Instanzen gebaut: die lokale API (Loopback, ein Token) und die Handy-Instanz (LAN, Gerätetoken) teilen sich ihn und unterscheiden sich in der **`Surface`** (`dispatch`, `methods` für `Allow`, `route_methods(path)` für den Preflight, `public` = exakte (Methode, Pfad)-Paare ohne Token, `cors`); `ApiServer(context, …)` baut ohne Angabe die lokale (`local_surface`). Ein Prüfer liefert `Principal | Denied | None` (`Denied(code)` → `401 <code>`).
+- `api_server.py` — HTTP-Server, seit #221 für zwei Instanzen gebaut: die lokale API (Loopback, ein Token) und die Handy-Instanz (LAN, Gerätetoken) teilen sich ihn und unterscheiden sich in der **`Surface`** (`dispatch`, `route_methods(path)` für den Preflight **und** das `Allow` eines 405 (RFC 9110: die Methoden der Zielressource), `methods` (Vereinigung aller Routen) nur als `Allow` für einen unbekannten Pfad, `public` = exakte (Methode, Pfad)-Paare ohne Token, `cors`); `ApiServer(context, …)` baut ohne Angabe die lokale (`local_surface`). Ein Prüfer liefert `Principal | Denied | None` (`Denied(code)` → `401 <code>`).
   Ein Daemon-Thread mit eigener `handle_request()`-Schleife (kein
   `serve_forever()`/`shutdown()`: `shutdown()` wartet, bis die Schleife verlassen
   wurde, und blockiert für immer, wenn der Thread nie dorthin kommt — Preis der

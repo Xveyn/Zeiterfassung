@@ -179,11 +179,12 @@ class ApiService:
         with self._lock:
             return self._reconcile_guarded()
 
-    def _reconcile_guarded(self) -> ApiStatus:
+    def _reconcile_guarded(self, token: str | None = None) -> ApiStatus:
         """`_reconcile_locked`, aber ein Fehler wird zum Status. Der Aufrufer hält
-        `_lock`."""
+        `_lock`. `token`: ein gerade geschriebenes Token (`rotate`), das nicht erneut
+        gelesen und gehärtet werden muss."""
         try:
-            return self._reconcile_locked()
+            return self._reconcile_locked(token)
         except Exception:
             # Der Runner würde den Fehler nur loggen und `on_done` nie
             # rufen — der Status bliebe stehen. Hier wird er zum Zustand.
@@ -192,7 +193,7 @@ class ApiService:
             self._status = ApiStatus(STATE_ERROR, None, REASON_START_FAILED)
             return self._status
 
-    def _reconcile_locked(self) -> ApiStatus:
+    def _reconcile_locked(self, fresh_token: str | None = None) -> ApiStatus:
         if self._closed:
             return self._status
         if not self._settings.get("api_enabled"):
@@ -210,7 +211,7 @@ class ApiService:
             self._status = ApiStatus(STATE_RUNNING, port)
             return self._status
         self._stop_server()
-        token = load_or_create_token(self._base_path)    # blockiert: nur im Worker
+        token = fresh_token or load_or_create_token(self._base_path)    # blockiert: nur im Worker
         if token is None:
             self._status = ApiStatus(STATE_ERROR, None, REASON_TOKEN_UNAVAILABLE)
             return self._status
@@ -274,7 +275,7 @@ class ApiService:
             elif self._status.reason == REASON_TOKEN_UNAVAILABLE:
                 # Das Token war der Grund, warum die API nicht lief: jetzt gibt es
                 # eines, also starten (sonst stünde der Fehler bis zum nächsten apply()).
-                self._reconcile_guarded()
+                self._reconcile_guarded(token)
             self._stop_if_closed()
             return RotateResult(True)
 
