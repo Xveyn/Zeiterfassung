@@ -787,10 +787,10 @@ def test_the_size_limit_is_exactly_1024_bytes(tmp_path):
     token = api_auth.generate_token()
     path = tmp_path / TOKEN_FILENAME
     fits = "\n" * (1024 - len(token)) + token
-    path.write_text(fits, encoding="ascii")
+    path.write_bytes(fits.encode("ascii"))          # Bytes: write_text machte unter Windows CRLF daraus
     assert len(fits) == 1024 and api_auth.read_token(str(tmp_path)) == token
 
-    path.write_text("\n" + fits, encoding="ascii")                  # 1025 Byte
+    path.write_bytes(("\n" + fits).encode("ascii"))                 # 1025 Byte
     assert api_auth.read_token(str(tmp_path)) is None
     fresh = load_or_create_token(str(tmp_path))
     assert fresh is not None and fresh != token
