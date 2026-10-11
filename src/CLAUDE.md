@@ -385,9 +385,10 @@ Zeitraum und welche Kategorien der Bericht gefiltert ist.
   **Tombstones nur mit Kalender-Event.** `VacationStore.delete` entfernt den
   Record direkt, wenn er keine `gcal_event_id` trägt — nur mit Event gibt es
   draußen etwas aufzuräumen, und nur dann kann `reconcile_vacations` den
-  Tombstone einlösen. Ein bedingungsloser Tombstone (wie bei den
-  Reservierungen, die per Definition am Kalender hängen) wäre auf jedem Rechner
-  ohne Google unsterblich. Rest-Risiko: wurde eine Periode gepusht und der
+  Tombstone einlösen. Ein bedingungsloser Tombstone (wie ihn die
+  Reservierungen kennen, die auch ohne Kalender lokal existieren) wäre auf
+  jedem Rechner ohne Google unsterblich — bei den Reservierungen zählt der
+  Tombstone nur mit einem Kalender als Partner. Rest-Risiko: wurde eine Periode gepusht und der
   Kalender-Sync danach abgeschaltet, bleibt ihr Tombstone liegen, bis der Sync
   wieder läuft — bewusst akzeptiert, statt dafür einen vierten Startup-Sweep zu
   bauen.

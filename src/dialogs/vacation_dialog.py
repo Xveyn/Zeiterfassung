@@ -21,6 +21,7 @@ from src.time_utils import (
     format_iso_date, format_iso_weekday_date, format_minutes_hm,
 )
 from src.dialogs.date_row import build_date_row
+from src.reservations import reservations_active
 from src.vacations import apportion_minutes, conflicting_days, expand_days
 
 log = logging.getLogger(__name__)
@@ -191,21 +192,22 @@ def prune_overrides(overrides, plan):
     return {d: m for d, m in overrides.items() if d in plan["days"]}
 
 
-def blocking_days(days, entries, reservations, calendar_active):
+def blocking_days(days, entries, reservations, settings):
     """Tage der geplanten Periode, an denen schon Ist-Zeit oder eine
     Reservierung liegt (Regel in `vacations.conflicting_days`).
 
     `entries`/`reservations` sind die `get_all()`-Dicts der Stores (oder None,
     wenn es den Store nicht gibt); gezählt wird ein Tag nur mit Slots.
-    Reservierungen zählen NUR bei aktivem Kalender-Sync — ohne ihn zeigt der
-    Kalender sie gar nicht an und der Rechtsklick löscht sie nicht (vgl.
-    `ui.App._reservations_active`). Eine Sperre wegen einer unsichtbaren,
-    nicht löschbaren Reservierung wäre eine Sackgasse.
+    Reservierungen zählen NUR, wenn sie eingeschaltet sind
+    (`settings["reservations_enabled"]`, vgl. `reservations.reservations_active`)
+    — sonst zeigt der Kalender sie nicht an und der Rechtsklick löscht sie
+    nicht. Eine Sperre wegen einer unsichtbaren, nicht löschbaren
+    Reservierung wäre eine Sackgasse. Unabhängig vom Google-Kalender.
     """
     entry_dates = [d for d, e in (entries or {}).items() if e.get("slots")]
     reservation_dates = (
         [d for d, r in (reservations or {}).items() if r.get("slots")]
-        if calendar_active else [])
+        if settings.get("reservations_enabled") else [])
     return conflicting_days(days, entry_dates, reservation_dates)
 
 
@@ -638,16 +640,15 @@ def _open_edit_dialog(parent, vacation_store, settings, period_id, on_saved,
         if plan["error"]:
             themed_showerror(dialog, "Urlaub nicht gespeichert", plan["error"])
             return
-        # Die Regel (Reservierungen nur bei aktivem Kalender) liegt in
-        # `blocking_days`; hier nur die Stores lesen — die Reservierungen
-        # erst gar nicht, wenn sie nicht zählen.
-        calendar_active = bool(settings.get("gcal_enabled"))
+        # Die Regel (Reservierungen nur, wenn eingeschaltet) liegt in
+        # `blocking_days`, ausgewertet erst jetzt beim Speichern; hier nur die
+        # Stores lesen — die Reservierungen erst gar nicht, wenn sie nicht zählen.
         blocked = blocking_days(
             plan["days"],
             storage.get_all() if storage is not None else None,
             (reservation_store.get_all()
-             if reservation_store is not None and calendar_active else None),
-            calendar_active)
+             if reservations_active(reservation_store, settings) else None),
+            settings)
         if blocked:
             themed_showerror(
                 dialog, "Urlaub nicht gespeichert",

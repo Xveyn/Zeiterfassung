@@ -574,7 +574,7 @@ class App:
             runner=self._bg,
             conflicts_store=self.conflicts_store,
             storage=self.storage,
-            reservation_store=self._active_reservation_store(),
+            reservation_store=self.reservation_store,
             on_request_restart=self.restart_for_scaling,
             data_lock=self._data_lock,
             sync_guard=self._sync_guard,

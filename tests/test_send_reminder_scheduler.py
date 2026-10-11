@@ -167,8 +167,9 @@ def test_day_reminder_needs_both_switches():
                  "send_reminder_last_fired_month": "2026-07"}, tray, store)
     assert off.poll(_now(15, 16, 45)) is False
     no_reservations = _make({"send_reminder_reservations_enabled": True,
-                     "reservations_enabled": False,
-                     "send_reminder_last_fired_month": "2026-07"}, tray, store)
+                             "reservations_enabled": False,
+                             "send_reminder_last_fired_month": "2026-07"},
+                            tray, store)
     assert no_reservations.poll(_now(15, 16, 45)) is False
     assert tray.messages == []
 
