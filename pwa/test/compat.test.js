@@ -25,3 +25,12 @@ test('every frozen response keeps the fields the phone relies on', () => {
     assert.ok(key in doc, key);
   }
 });
+
+test('the response of a desktop before the window wish (#250) is still understood', () => {
+  const doc = frozen('sync-response-pre-250.json');
+  assert.ok(!('window_max_days' in doc));
+  const parsed = parseSyncResponse(doc);
+  assert.equal(parsed.window_max, null);                 // unbekannt = älterer Desktop
+  assert.equal(parsed.window_days, 90);
+  assert.deepEqual(Object.keys(parsed.entries), ['2026-10-07', '2026-10-06']);
+});
