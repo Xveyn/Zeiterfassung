@@ -118,7 +118,7 @@ def test_options_head_patch_trace_and_unknown_methods_are_405_with_allow(server)
     for method in ("OPTIONS", "HEAD", "PATCH", "TRACE", "FOO"):
         response, _, _ = http_call(server, method, "/v1/status")
         assert response.status == 405, method
-        assert response.getheader("Allow") == "DELETE, GET, PUT"       # kein POST: keine Route kennt es
+        assert response.getheader("Allow") == "GET"                    # die Methoden dieser Ressource
 
 
 def test_wrong_host_origin_and_sec_fetch_are_403(server):
@@ -536,7 +536,18 @@ def test_a_deeply_nested_put_body_is_400_not_500(server):
 def test_allow_names_only_methods_that_a_route_can_serve(server, method):
     response, _body, _ = http_call(server, method, "/v1/status")
     assert response.status == 405
-    assert response.getheader("Allow") == "DELETE, GET, PUT"       # kein POST
+    assert response.getheader("Allow") == "GET"
+
+
+def test_allow_is_path_aware_and_falls_back_to_the_union_for_unknown_paths(server):
+    """RFC 9110: `Allow` nennt die Methoden der Zielressource (#246)."""
+    known, _, _ = http_call(server, "PATCH", "/v1/entries/2026-10-07")
+    unknown, _, _ = http_call(server, "PATCH", "/v1/gibt-es-nicht")
+    with_query, _, _ = http_call(server, "PATCH", "/v1/status?x=1")
+
+    assert known.getheader("Allow") == "DELETE, GET, PUT"
+    assert unknown.getheader("Allow") == "DELETE, GET, PUT"        # unbekannt: Vereinigung aller Routen
+    assert with_query.getheader("Allow") == "GET"                  # die Query zählt nicht zum Pfad
 
 
 def test_the_listen_backlog_is_larger_than_the_default():

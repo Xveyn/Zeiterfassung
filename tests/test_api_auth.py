@@ -776,3 +776,67 @@ def test_public_authorize_keeps_the_other_gates(override, expected):
 def test_public_authorize_rejects_unknown_methods():
     assert authorize_public("PATCH", LAN_HEADERS, LAN_POLICY).status == 405
     assert authorize_public("OPTIONS", LAN_HEADERS, LAN_POLICY).status == 405
+
+
+# --- Größengrenze der Token-Datei (#246) ------------------------------------------------------------
+
+def test_the_size_limit_is_exactly_1024_bytes(tmp_path):
+    """Gelesen werden höchstens 1025 Byte; ein Token, das erst mit dem 1025. Byte fertig ist,
+    gilt nicht mehr (die Regex allein ließe es nach `strip()` durch). Daher ist die Grenze
+    keine Doppelung der Regex."""
+    token = api_auth.generate_token()
+    path = tmp_path / TOKEN_FILENAME
+    fits = "\n" * (1024 - len(token)) + token
+    path.write_bytes(fits.encode("ascii"))          # Bytes: write_text machte unter Windows CRLF daraus
+    assert len(fits) == 1024 and api_auth.read_token(str(tmp_path)) == token
+
+    path.write_bytes(("\n" + fits).encode("ascii"))                 # 1025 Byte
+    assert api_auth.read_token(str(tmp_path)) is None
+    fresh = load_or_create_token(str(tmp_path))
+    assert fresh is not None and fresh != token
+    assert path.read_text(encoding="ascii") == fresh
+
+
+def test_a_huge_file_is_never_read_in_full(tmp_path, monkeypatch):
+    (tmp_path / TOKEN_FILENAME).write_bytes(b"A" * 5_000_000)
+    reads = []
+    real_open = open
+
+    def spy(path, *args, **kwargs):
+        handle = real_open(path, *args, **kwargs)
+        if str(path).endswith(TOKEN_FILENAME):
+            real_read = handle.read
+            handle.read = lambda n=-1: (reads.append(n), real_read(n))[1]
+        return handle
+
+    monkeypatch.setattr("builtins.open", spy)
+
+    assert api_auth.read_token(str(tmp_path)) is None
+    assert reads == [1025]
+
+
+def test_two_simultaneous_first_starts_agree_on_one_token(tmp_path, monkeypatch):
+    """Prüfen-dann-Schreiben ohne Sperre: beide fänden keine Datei, jeder erzeugte ein Token,
+    und eines davon stünde nicht in der Datei (#246/#233)."""
+    import threading
+    real_write = api_auth._write_token_atomic
+    both_looked = threading.Barrier(2, timeout=0.5)
+
+    def slow_write(path, token):
+        try:
+            both_looked.wait()            # ohne Sperre erreichen beide Threads diese Stelle
+        except threading.BrokenBarrierError:
+            pass                          # mit Sperre kommt nur einer hierher: nach 0,5 s weiter
+        real_write(path, token)
+
+    monkeypatch.setattr(api_auth, "_write_token_atomic", slow_write)
+    results = []
+    threads = [threading.Thread(target=lambda: results.append(load_or_create_token(str(tmp_path))))
+               for _ in range(2)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(10)
+
+    assert len(results) == 2 and results[0] == results[1]
+    assert (tmp_path / TOKEN_FILENAME).read_text(encoding="ascii") == results[0]

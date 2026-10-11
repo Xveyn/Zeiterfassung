@@ -130,9 +130,11 @@ def test_a_verifier_that_raises_is_a_500_without_details(make_server):
 def test_the_allow_header_of_a_405_comes_from_the_surface(make_server):
     server = make_server()
 
-    response, body, _ = call(server, "PATCH", "/v1/ping")
+    known, _, _ = call(server, "PATCH", "/v1/ping")
+    unknown, _, _ = call(server, "PATCH", "/v1/gibt-es-nicht")
 
-    assert response.status == 405 and response.getheader("Allow") == "GET, POST"
+    assert known.status == 405 and known.getheader("Allow") == "GET"      # `route_methods` der Surface
+    assert unknown.status == 405 and unknown.getheader("Allow") == "GET, POST"   # `methods` der Surface
 
 
 # --- öffentliche Routen -----------------------------------------------------------------------------

@@ -20,6 +20,7 @@ import os
 import re
 import secrets
 import stat
+import threading
 from dataclasses import dataclass
 from typing import Callable, Mapping
 
@@ -35,6 +36,10 @@ _TOKEN_BYTES = 32
 _TOKEN_RE = re.compile(r"[A-Za-z0-9_-]{43}")
 _MAX_FILE_BYTES = 1024
 _UTF8_BOM = b"\xef\xbb\xbf"
+# Laden/Anlegen und Erneuern sind innerhalb des Prozesses Prüfen-dann-Schreiben: ohne diese
+# Sperre liefern zwei gleichzeitige Erststarts verschiedene Tokens, von denen nur eines in der
+# Datei steht. Über Prozesse hinweg verhindert das `single_instance`.
+_TOKEN_LOCK = threading.RLock()
 
 
 def generate_token() -> str:
@@ -87,6 +92,11 @@ def load_or_create_token(base_path: str) -> str | None:
     Eine vorhandene, aber ungültige Datei (leer, abgeschnitten, Müll) wird
     durch ein frisches Token ersetzt; ein Zeilenumbruch am Ende wird
     toleriert (Hand-Bearbeitung, Kopieren)."""
+    with _TOKEN_LOCK:
+        return _load_or_create_locked(base_path)
+
+
+def _load_or_create_locked(base_path: str) -> str | None:
     path = os.path.join(base_path, TOKEN_FILENAME)
     try:
         with open(path, "rb") as f:
@@ -131,9 +141,10 @@ def rotate_token(base_path: str) -> str:
 
     **Blockiert** wie `load_or_create_token` — nur über
     `BackgroundTaskRunner.run`, nie im UI-Thread."""
-    token = generate_token()
-    _write_token_atomic(os.path.join(base_path, TOKEN_FILENAME), token)
-    return token
+    with _TOKEN_LOCK:
+        token = generate_token()
+        _write_token_atomic(os.path.join(base_path, TOKEN_FILENAME), token)
+        return token
 
 
 SCOPE_LOCAL = "local"
