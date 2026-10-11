@@ -154,7 +154,9 @@ Speichern sind auf beiden Seiten vernachlässigbar; der Engpass ist die
 Übertragung (die PWA bricht nach 15 s ab). Deshalb kürzt der Desktop das
 gewährte Fenster, wenn die Einträge mehr als ein Budget von 768 KiB ergäben
 (`MAX_RESPONSE_ENTRY_BYTES`, `fit_window`); das Standardfenster bleibt immer,
-gesendete Tage kommen immer zurück. Die Antwort nennt das tatsächliche Fenster;
+gesendete Tage kommen immer zurück — **sie und die Konflikt-Kandidaten zählen nicht
+ins Budget** (Extremfall gemessen: 400 gesendete Tage × 50 Slots ≈ 5,4 MB; das Handy sendet
+höchstens 400 Tage je Anfrage). Die Antwort nennt das tatsächliche Fenster;
 liegt es unter dem Wunsch und unter der Obergrenze, sagt die Wochenansicht „wegen
 der Datenmenge“. `tests/test_mobile_volume.py` hält das mit denselben Fällen fest.
 Fenster über 365 Tage brauchen Delta-Antworten (die PWA deutet „Tag fehlt in der

@@ -123,6 +123,12 @@ class _PairDialog:
         except qr.QrTooLong:
             log.warning("Koppel-Link zu lang für einen QR-Code", exc_info=True)
             matrix = None
+        except ImportError:
+            # segno fehlt (z. B. übersieht PyInstaller den lazy Import): ohne diesen Fang bliebe
+            # der Dialog unsichtbar und der Code bis zum Ablauf offen. Adresse und Code stehen
+            # als Text da.
+            log.warning("segno nicht verfügbar, Koppel-Dialog ohne QR-Code", exc_info=True)
+            matrix = None
         if matrix is None:
             self._canvas.config(width=1, height=1)
             self._result.config(text="Der QR-Code konnte nicht erzeugt werden — bitte "

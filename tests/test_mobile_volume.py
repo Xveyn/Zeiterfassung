@@ -32,7 +32,7 @@ def wire_size(response):
     key = mc.new_device_key()
     _, response_key = mc.device_keys(key)
     envelope = mc.seal(response_key, direction="res", method="POST", path="/v1/sync",
-                       device_id="d", seq=1, plaintext=json.dumps(response).encode())
+                       device_id="d", seq=1, plaintext=json.dumps(response, ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
     return len(json.dumps(envelope).encode())
 
 
@@ -82,3 +82,15 @@ def test_days_the_phone_sent_come_back_even_outside_the_trimmed_window(monkeypat
     response = build(entries(365, 50), sent=[old])
 
     assert old in response["entries"] and response["window_days"] == 90
+
+
+def test_the_budget_counts_bytes_the_way_the_response_is_sealed():
+    """`_entry_bytes` misst mit der Serialisierung der Route (`mobile_routes`): Umlaute
+    zählen 2 Byte (nicht 6 als `\\u00fc`), Separatoren sind kompakt."""
+    clean = {"slots": [{"start": "08:00", "end": "09:00", "pause": 0, "kategorie": "Übung für Ärzte"}],
+             "modified_at": "2026-10-07T18:30:00Z", "device_id": "DESK", "deleted": False}
+    expected = len(json.dumps({"2026-10-07": clean}, ensure_ascii=False,
+                              separators=(",", ":")).encode("utf-8"))
+
+    assert mobile_sync._entry_bytes("2026-10-07", clean) == expected
+

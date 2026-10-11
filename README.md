@@ -398,7 +398,7 @@ Die API läuft nur, solange die App läuft (Autostart hilft), nimmt nur Anfragen
 | **Grußformel** | Abschluss der E-Mail (Zeilenumbrüche mit `\n`) |
 | **Autostart** | App minimiert bei Systemanmeldung starten (Windows/macOS/Linux) |
 | **Lokale API** *(ab --VERSION--)* | Tab „API“: lokale HTTP-API ein-/ausschalten, Port, Status, Token kopieren oder neu erzeugen (Standard: aus, gerätelokal) |
-| **Mobil** *(ab --VERSION--)* | Tab „Mobil“: Handy-Erfassung ein-/ausschalten, Port, Adresse, Status, gekoppelte Geräte, Koppeln und Widerrufen (Standard: aus, gerätelokal) |
+| **Mobil** *(ab --VERSION--)* | Tab „Mobil“: Handy-Erfassung ein-/ausschalten, Port, Adresse, Obergrenze des Verlaufs („Verlauf bis zu“, höchstens 365 Tage), Status, gekoppelte Geräte, Koppeln und Widerrufen (Standard: aus, gerätelokal) |
 | **Synchronisation** | Multi-Device-Sync via Google Drive aktivieren (siehe Abschnitt oben) |
 | **Berechtigungen** | Zeigt, welche Google-Berechtigungen (OAuth-Scopes) das Konto der App gewährt hat — inkl. solcher, die noch gewährt, aber zurzeit ungenutzt sind. Daneben steht auf einen Blick „n von m Berechtigungen": ✓ alles da, ○ eine zuschaltbare Funktion wartet noch auf ihre Freigabe, ✗ eine Grundberechtigung fehlt (dann klappt auch der Mail-Versand nicht) |
 | **Anmeldung** *(ab 1.23.1)* | Ob die Google-Anmeldung noch trägt: ✓ gültig, „nicht angemeldet", ⚠ abgelaufen (dann „Google neu verbinden") oder „nicht prüfbar (offline)". Ergänzt die Zeile darüber: die sagt, *welche* Freigaben erteilt sind, diese, *ob* die Anmeldung noch funktioniert — beides kann auseinanderfallen. Wird beim Öffnen geprüft, ohne Browser; lässt sich die Anmeldung still erneuern, passiert das dabei |

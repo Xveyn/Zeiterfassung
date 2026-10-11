@@ -368,7 +368,11 @@ def address_from_choice(choice: str) -> str:
 
 
 def address_to_choice(address: str) -> str:
-    return address or AUTO_ADDRESS
+    """Die Auswahl zu einem Settings-Wert. Ein Müllwert (handbearbeitete `settings.json`,
+    z. B. `123`) zeigt „Automatisch“, statt unverändert in der readonly-Combobox zu stehen
+    und `validate_mobile` auch bei ausgeschaltetem Schalter zu stören. Eine gültige, aber
+    gerade nicht vorhandene LAN-Adresse bleibt stehen (der Status meldet `address_gone`)."""
+    return address if address and is_lan_address(address) else AUTO_ADDRESS
 
 
 def window_cap_options() -> list[str]:

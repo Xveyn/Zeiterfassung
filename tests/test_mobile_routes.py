@@ -856,3 +856,20 @@ def test_the_counter_is_stored_even_when_the_apply_crashes_unexpectedly(env, mon
     assert env.ctx.devices.get(PHONE)["last_seq"] == 1
     again = call(env, "POST", "/v1/sync", body=body, token=token)           # derselbe Umschlag noch einmal
     assert (again.status, error_code(again)) == (409, "replay")
+
+
+# --- Obergrenze im Klartext-Ping und in der Kopplung (#293 M7) ---------------------------------------
+
+@pytest.mark.parametrize("setting,expected", [(30, 30), (180, 90), (365, 90), ("x", 90), (7, 90), (None, 90)])
+def test_ping_reports_the_window_the_cap_allows(env, setting, expected):
+    _record, token = add_device(env)
+    env.ctx.settings.set("mobile_window_max_days", setting)
+
+    assert call(env, "GET", "/v1/ping", token=token).body["window_days"] == expected
+
+
+@pytest.mark.parametrize("setting,expected", [(30, 30), ("x", 90)])
+def test_pairing_reports_the_window_the_cap_allows(env, setting, expected):
+    env.ctx.settings.set("mobile_window_max_days", setting)
+
+    assert pair(env, new_code(env)).body["window_days"] == expected

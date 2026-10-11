@@ -449,6 +449,9 @@ def test_address_choice_round_trips():
     assert tr.address_from_choice("192.168.1.20") == "192.168.1.20"
     assert tr.address_to_choice("") == tr.AUTO_ADDRESS
     assert tr.address_to_choice("192.168.1.20") == "192.168.1.20"
+    # Müll fällt auf „Automatisch“ zurück (#260); eine gültige, vielleicht verschwundene Adresse nicht.
+    for junk in ("123", "٣.٣.٣.٣", "evil.example", "8.8.8.8", " "):
+        assert tr.address_to_choice(junk) == tr.AUTO_ADDRESS, junk
 
 
 def test_valid_mobile_input_passes_and_converts():

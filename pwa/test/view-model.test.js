@@ -419,6 +419,11 @@ test('capped, trimmed and old-desktop notices explain instead of offering a dead
   assert.match(capped.text, /höchstens 180 Tage/);
   assert.match(capped.text, /Einstellungen → Mobil/);
   assert.equal(capped.action, null);
+  // Bei 365 (Maximum der Desktop-Einstellung) gibt es nichts mehr einzustellen.
+  const atMaximum = olderModel({ kind: 'capped', days: 365 });
+  assert.equal(atMaximum.text, 'Mehr als 365 Tage gibt es nur am Desktop.');
+  assert.doesNotMatch(atMaximum.text, /Einstellungen/);
+  assert.equal(atMaximum.action, null);
 
   const trimmed = olderModel({ kind: 'trimmed', days: 120 });
   assert.match(trimmed.text, /wegen der Datenmenge nur 120 Tage/);
