@@ -22,7 +22,8 @@ function walk(dir) {
 const EXCLUDED = new Set(['package.json', 'sw.js', 'memory-adapter.js']);
 const runtimeFiles = () => walk(root)
   .map((path) => relative(root, path))
-  .filter((path) => !path.startsWith('test/') && !path.startsWith('node_modules/') && !EXCLUDED.has(path))
+  .filter((path) => !path.startsWith('test/') && !path.startsWith('node_modules/') && !path.endsWith('.md')
+    && !EXCLUDED.has(path))
   .sort();
 
 // --- Vorab-Cache -----------------------------------------------------------------------------------
@@ -140,4 +141,9 @@ test('the app logs no secrets', () => {
   for (const file of runtimeFiles().filter((path) => path.endsWith('.js'))) {
     assert.doesNotMatch(read(file), /console\.\w+\([^)]*(token|code|device_name)/i, file);
   }
+});
+
+test('the pages workflow does not publish markdown from pwa/', () => {
+  const workflow = readFileSync(new URL('../../.github/workflows/pages.yml', import.meta.url), 'utf8');
+  assert.match(workflow, /--exclude '\*\.md'/);
 });

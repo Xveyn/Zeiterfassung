@@ -34,7 +34,7 @@ def test_the_static_server_serves_the_pwa_with_module_friendly_types(devserver, 
 
 def test_the_static_server_does_not_leak_outside_the_pwa_folder(devserver, tmp_path):
     with devserver.running(tmp_path, web_port=0, api_port=0, address="127.0.0.1") as dev:
-        for path in ("/../src/main.py", "/%2e%2e/src/main.py", "/test/../../CLAUDE.md"):
+        for path in ("/../src/main.py", "/%2e%2e/src/main.py", "/test/../../README.md"):
             with pytest.raises(urllib.error.HTTPError):
                 get(f"http://127.0.0.1:{dev.web_port}{path}")
 

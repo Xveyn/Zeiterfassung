@@ -2,7 +2,7 @@
 gekoppelte Geräte und Koppeln.
 
 Schalter, Port und Adresse sind Formularfelder (Speichern je Tab, `SaveCoordinator`);
-„Gerät koppeln …", „Widerrufen" und „Alle widerrufen …" sind Aktionen, die sofort wirken.
+„Gerät koppeln", „Widerrufen" und „Alle widerrufen" sind Aktionen, die sofort wirken.
 Schreiben (Widerruf) läuft über den `BackgroundTaskRunner`; die Geräteliste zu lesen ist
 günstig (der Store hält sie im Speicher) und geschieht im Poll. Den Status liefert ein
 `after`-Poll aus `MobileService.status` — wie im API-Tab ein Poll, der mit dem Tab
@@ -88,9 +88,9 @@ class MobileTab:
         self._empty.grid(row=0, column=0, sticky="nsew")
         form.block(box)
         self._pair_btn, self._revoke_btn, self._revoke_all_btn = form.buttons(
-            ("Gerät koppeln …", self._pair),
+            ("Gerät koppeln", self._pair),
             ("Widerrufen", self._revoke),
-            ("Alle widerrufen …", self._revoke_all))
+            ("Alle widerrufen", self._revoke_all))
         self._keystore_label = form.hint("")
         self._listbox.bind("<<ListboxSelect>>", lambda _e: self._sync_buttons())
 
@@ -166,7 +166,7 @@ class MobileTab:
             self._status_label.config(text=text, fg=_STATUS_COLORS[kind])
             self._refresh_devices()
             # Bei jedem Poll, nicht nur bei einer geänderten Geräteliste: der Zustand von
-            # „Gerät koppeln …" hängt am Status, und der ändert sich unabhängig davon.
+            # „Gerät koppeln" hängt am Status, und der ändert sich unabhängig davon.
             self._sync_buttons()
             self._poll_id = self.frame.after(_POLL_MS, self._poll)
         except tk.TclError:

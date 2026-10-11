@@ -1,0 +1,171 @@
+# pwa/ — die Handy-PWA der Handy-Erfassung
+
+Reines JavaScript ohne Build und ohne Abhängigkeiten (#221). Die PWA wird
+**nicht** in die Desktop-App gebündelt und von keinem Python-Modul importiert;
+sie läuft im Browser des Handys und spricht per HTTP mit der Handy-Instanz des
+Desktops (`src/mobile_routes.py`, `src/mobile_service.py`; deren Verträge
+stehen in `src/CLAUDE.md`). Diese Datei beschreibt die PWA-Seite und den
+Vertrag zwischen beiden.
+
+## Module
+
+ES-Module flach im Ordner:
+
+- `minutes.js` — Zeiten, Minuten, Validierung, ISO-Wochen. Summen nur über
+  ganze Minuten.
+- `defaults.js` — Vorbelegung der Zeiten aus den Standardzeiten des Desktops
+  (#288). `resolveSlotDefaults` ist das Gegenstück zu
+  `category_defaults.resolve_slot_defaults`; der **Gleichlauf** hängt an
+  `test/fixtures/category-defaults-cases.json`, das JS- und Python-Test lesen.
+  Fehlt `defaults` in der Antwort (älterer Desktop), bleibt der Editor leer.
+  Überschrieben werden nur Felder, die noch auf dem zuletzt vorbelegten Wert
+  stehen, gespeicherte Slots nie.
+- `pairing.js` — Kopplungscode, Koppel-Link, Adressregel.
+- `store.js` — lokaler Zustand: erfasste Tage, `dirty_version`/
+  `synced_version`, Anwenden der Sync-Antwort, Lesefenster. Mit
+  `memory-adapter.js` (Tests) und `db.js` (IndexedDB-Adapter, eine Transaktion
+  je `batch`).
+- `sync.js` — Client: Koppeln, Ping, Abgleich, Einordnung der Server-Fehler in
+  `SyncError.kind`.
+- `crypto.js` — Gegenstück zu `src/mobile_crypto.py` (WebCrypto), s.
+  „Verschlüsselung“.
+- `view-model.js`, `messages.js`, `sync-policy.js`, `update-policy.js` —
+  Anzeige- und Entscheidungslogik, DOM-frei und getestet.
+- `dom.js`, `views.js`, `scanner.js`, `app.js` — die DOM-Schicht. Sie baut
+  Elemente **nur** über `createElement` und Textknoten (ein Test verbietet
+  `innerHTML` & Co.; Namen, Kategorien und Fehlertexte sind Fremddaten).
+- `index.html`, `app.css`, `manifest.webmanifest`, `icons/` (erzeugt von
+  `scripts/pwa_icons.py` aus dem Markenbild).
+- `sw.js` — Service Worker (ES-Modul) mit dem getesteten Kern `sw-core.js`:
+  Cache-Name, Vorab-Cache-Liste `PRECACHE`, `shouldHandle` (nur eigene, vorab
+  gecachte GET-Anfragen). **API-Antworten und Anfragen an den Desktop gehen nie
+  durch den Service Worker.**
+
+`PRECACHE` und die Dateien unter `pwa/` müssen übereinstimmen: der Test
+`test/shell.test.js` verlangt, dass jede Laufzeitdatei gelistet ist. Nicht
+dazu zählen `test/`, `package.json`, `sw.js`, `memory-adapter.js` und
+Markdown-Dateien wie diese.
+
+## Tests
+
+```
+cd pwa && node --test
+```
+
+Der CI-Job `pwa` (`.github/workflows/test.yml`) läuft mit Node 22.
+
+## Vertrag gegen Drift
+
+Die JSON-Beispiele in `test/fixtures/` lesen die JS-Tests **und**
+`tests/test_mobile_contract.py`: Validierung/Minuten, Code- und Adressregel,
+Request/Response von `/v1/pair` und `/v1/sync`, die Liste aller Fehlercodes
+(der Python-Test scannt die Server-Quellen nach `(Status, Code)`-Paaren und
+verlangt sie in `errors.json`).
+
+Regeln, die nur in der PWA gelten:
+
+- Ein Koppel-Link wird nur mit privater IPv4-Adresse akzeptiert (das Fragment
+  kommt aus einem QR-Code).
+- `401 unauthorized` heißt ebenfalls „neu koppeln“.
+- Ein `422` blockiert nur den betroffenen Tag.
+- Fehlende Tage werden nur im **inneren** Lesefenster lokal gelöscht (Randtage
+  gehören dem Desktop).
+
+## Kompatibilität zu älteren und neueren Desktops
+
+Die PWA kommt per Pages sofort bei jedem an, der Desktop hängt hinterher
+(macOS hat kein Selbst-Update, Nutzer lassen Updates liegen). Der häufige Fall
+ist also **neue PWA, alter Desktop**; der umgekehrte (gecachte alte PWA, neuer
+Desktop) ist seltener, kommt aber vor. Sechs Regeln:
+
+1. **Zwei Arten von Änderungen.** *Additiv* (ein neues Feld in Antwort oder
+   Anfrage) ändert `PROTOCOL` nicht: beide Seiten ignorieren Unbekanntes und
+   tolerieren Fehlendes. *Brechend* (Feld entfällt, Bedeutung ändert sich,
+   Verschlüsselung) hebt `PROTOCOL`. Aktuell steht es auf `PROTOCOL` 2 —
+   `pwa/pairing.js`, `src/mobile_sync.py` und `src/mobile_crypto.py` müssen
+   übereinstimmen.
+2. **Feature-Erkennung statt Versionsvergleich.** Die PWA fragt „ist `defaults`
+   da?“, nicht „ist der Desktop ≥ 1.25?“. `desktop.version` ist nur Anzeige.
+   Ein Feature, das ein neues Feld braucht, fällt ohne das Feld still auf das
+   alte Verhalten zurück (so macht es `parseDefaults`: `null` statt Fehler).
+3. **Brechende Änderungen nur als Expand/Contract:** erst ein Desktop-Release,
+   das alt **und** neu spricht, dann die PWA mit dem Neuen, später das Alte
+   entfernen. Umgekehrt ginge es nicht, weil sich der Desktop-Bestand nicht
+   zwingen lässt.
+4. **Eingefrorene Vorgänger.** `test/fixtures/compat/` enthält Kopien der
+   Vertragsbeispiele zu dem Zeitpunkt, an dem die Form galt. Sie werden **nie**
+   mitgezogen, wenn sich das Live-Beispiel ändert: die PWA muss die alte Antwort
+   weiter verstehen (`test/compat.test.js`), der Desktop die alte Anfrage
+   (`tests/test_mobile_contract.py`). Wer den Vertrag erweitert, friert die
+   Form **vor** der Änderung ein. Der erste eingefrorene Stand ist das
+   Protokoll 2 vor #288 (ohne `defaults`/`desktop`); Protokoll 1 war nie in
+   einem echten Release.
+5. **Die Meldung nennt die ältere Seite.** Antwortet der Desktop auf einen
+   falschen Umschlag mit `invalid_protocol`, steht im Klartext-Fehler
+   `supported_protocol`; daraus macht `messages.js` „Desktop-App ist älter“
+   (Desktop aktualisieren) bzw. „Desktop-App ist neuer“ (Seite neu laden). Die
+   Zahl kommt im Klartext und ist nur ein Hinweis, kein Beleg. Fehlt sie
+   (Desktop vor dieser Änderung), bleibt der allgemeine Text.
+6. **Ein älterer Desktop wird angezeigt.** Schickt er weder `desktop` noch
+   `defaults`, sagt der Verbindungsdialog das (`desktopHint`).
+
+## Updates der PWA
+
+Der Browser prüft `sw.js` von sich aus nur bei einer Navigation und höchstens
+alle 24 Stunden. Die App stößt die Prüfung deshalb selbst an
+(`update-policy.js`): beim Start und beim Zurückkehren in den Vordergrund,
+höchstens alle 30 Minuten (`UPDATE_CHECK_INTERVAL_MS`), und auf Knopfdruck im
+Verbindungsdialog („Nach Updates suchen“; Zustände wird geprüft / aktuell /
+Update verfügbar / offline). Ein neuer Worker wartet, bis die Seite ihn
+freigibt (`SKIP_WAITING`) — nie mitten in einer Eingabe.
+
+**Automatisch einspielen** ist ein Schalter im Verbindungsdialog (Meta
+`auto_update`, gerätelokal, Standard **aus**; dann bleibt es beim Hinweis
+„Neue Version verfügbar“ mit „Neu laden“). Ist er an, spielt die PWA ein
+wartendes Update nur an einem sicheren Zeitpunkt ein (`shouldApplyUpdate`):
+kein Dialog offen (eine halbe Eingabe), kein Abgleich läuft. Beim Start
+sofort, danach beim Zurückkehren in den Vordergrund, wenn ein Dialog schließt
+und wenn ein Abgleich endet. Pro wartendem Worker genau ein `SKIP_WAITING`
+(`applyRequested`), sonst gäbe es eine Neulade-Schleife. Nicht übertragene Tage
+liegen in IndexedDB und überstehen das Neuladen.
+
+Das Einspielen prüft **nicht**, ob die neue PWA dasselbe Protokoll spricht wie
+der gekoppelte Desktop: die Seite kann das Protokoll des wartenden Workers
+nicht sicher lesen, und die Regeln oben (Desktop zuerst, Meldung nennt die
+ältere Seite) fangen den Fall ab.
+
+## Verschlüsselung (#249)
+
+`crypto.js` ist das Gegenstück zu `src/mobile_crypto.py`; wer eine Konstante,
+die AAD oder die Ableitung ändert, ändert beide Seiten und erzeugt
+`test/fixtures/crypto-vectors.json` neu. Kopplung und Abgleich in `sync.js`
+laufen als Umschläge, der Zähler `seq` wird **vor** dem Senden dauerhaft
+abgelegt, und die PWA glaubt im Klartext nur, was der Desktop vor dem
+Entschlüsseln sendet (`invalid_entry`/`clock_skew`/`busy` nur als Umschlag —
+sonst könnte ein Dritter im WLAN einen Tag als abgelehnt markieren lassen).
+
+## Veröffentlichung
+
+`.github/workflows/pages.yml` (Push auf `master` mit Änderungen unter `pwa/**`,
+oder von Hand) kopiert die Laufzeitdateien nach `_site/` (ohne `test/`,
+`package.json` und Markdown), ersetzt in `sw-core.js` den Platzhalter
+`__BUILD__` durch die Build-Kennung (`scripts/pwa_stamp.py`; sonst liefe jeder
+Deploy mit demselben Cache, und Updates kämen nie an) und veröffentlicht per
+`deploy-pages`.
+
+**Braucht eine Repo-Einstellung, die nicht im Code steht:** Settings → Pages →
+Source „GitHub Actions“ (#266). Ohne sie scheitert der Deploy, und der
+Workflow ist erst nach dem Merge nach `master` über „Run workflow“ erreichbar.
+
+Die Adresse `https://xveyn.github.io/Zeiterfassung/` steht als `PWA_ORIGIN`/
+`PWA_URL` in `src/mobile_routes.py` (einzig erlaubte Origin des Handy-Servers,
+Basis des Koppel-Links); zieht das Repo um, müssen beide mit.
+
+## Entwickeln und prüfen
+
+`python scripts/pwa_devserver.py` startet die echte Handy-Instanz
+(`MobileService`, Dev-Origin statt Pages) plus `pwa/` statisch auf
+`http://localhost:8099/` (sichere Origin, Service Worker läuft) und druckt
+einen Koppel-Link mit frischem Code — auch für Browser-Tests mit Playwright.
+Die PWA lehnt Loopback-Adressen ab; der Server bindet deshalb an die
+LAN-Adresse (`--address` nur mit einer privaten Adresse).

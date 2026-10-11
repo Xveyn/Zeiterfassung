@@ -75,7 +75,7 @@ def _self_calls(func, method):
 
 
 def test_every_poll_refreshes_the_buttons():
-    # Sonst bleibt „Gerät koppeln …" nach dem Einschalten grau, bis sich die Geräteliste
+    # Sonst bleibt „Gerät koppeln" nach dem Einschalten grau, bis sich die Geräteliste
     # ändert — und umgekehrt sieht es nach dem Stoppen noch bedienbar aus.
     assert _self_calls(_tab_method("_poll"), "_sync_buttons")
 

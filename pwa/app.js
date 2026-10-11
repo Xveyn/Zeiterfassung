@@ -9,8 +9,9 @@ import { openDatabase, requestPersistentStorage } from './db.js';
 import { Store } from './store.js';
 import { SyncClient, SyncError, clockSkewMs } from './sync.js';
 import { shouldQueue, shouldSync } from './sync-policy.js';
+import { shouldApplyUpdate, shouldCheckForUpdate } from './update-policy.js';
 import {
-  conflictsModel, dayChanged, editorRows, focusKeyToRestore, hintsModel, rowsToSlots, statusModel, validateRows, weekModel,
+  conflictsModel, dayChanged, desktopHint, editorRows, focusKeyToRestore, hintsModel, rowsToSlots, statusModel, validateRows, weekModel,
 } from './view-model.js';
 import { BUILD } from './sw-core.js';
 import { clear, focusByKey, focusState, h } from './dom.js';
@@ -37,6 +38,11 @@ class App {
     this.skewMs = 0;
     this.persistent = null;
     this.updateReady = false;
+    this.registration = null;
+    this.updateState = 'serviceWorker' in navigator ? 'idle' : 'unsupported';
+    this.lastUpdateCheckAt = 0;
+    this.checkingUpdate = false;
+    this.applyRequested = false;     // für den wartenden Worker ist SKIP_WAITING schon raus (keine Neulade-Schleife)
     this.pairing = { address: '', code: '', deviceName: '', busy: false, error: '' };
     this.saveTimer = null;
     this.queued = false;
@@ -64,7 +70,15 @@ class App {
     window.addEventListener('online', () => { this.online = true; this.trigger('online'); this.render(); });
     window.addEventListener('hashchange', () => { if (this.captureFragment()) this.render(); });
     window.addEventListener('offline', () => { this.online = false; this.render(); });
-    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') this.trigger('visible'); });
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState !== 'visible') return;
+      this.trigger('visible');
+      this.checkForUpdate('visible');
+      this.maybeApplyUpdate();
+    });
+    // Ein Dialog, der sich schließt, kann der letzte Grund gewesen sein, ein wartendes Update aufzuschieben.
+    // `close` bubbelt nicht: Capture fängt es am Dokument.
+    document.addEventListener('close', () => this.maybeApplyUpdate(), true);
     this.registerServiceWorker();
     this.render();
     this.persistent = await requestPersistentStorage();
@@ -155,6 +169,8 @@ class App {
       if (this.queued) {                                  // ein Speichern/Knopfdruck kam währenddessen
         this.queued = false;
         this.trigger('manual');
+      } else {
+        this.maybeApplyUpdate();                          // ein Abgleich war der Grund, ein Update aufzuschieben
       }
     }
   }
@@ -225,11 +241,21 @@ class App {
     connectionDialog({
       desktopName: meta.desktop_name,
       desktop: meta.desktop,
+      update: { state: this.updateState, auto: Boolean(meta.auto_update) },
+      hint: desktopHint(meta),
       address: meta.address ? `${meta.address.host}:${meta.address.port}` : '',
       build: BUILD,
       persistent: this.persistent,
       tokenUntil: meta.token_expires_at ? formatDateDe(meta.token_expires_at.slice(0, 10)) : '',
-    }, { pair: () => { this.screen = 'pair'; this.render(); } });
+    }, {
+      pair: () => { this.screen = 'pair'; this.render(); },
+      checkUpdate: () => this.checkForUpdate('manual'),
+      applyUpdate: () => this.reloadForUpdate(),
+      setAutoUpdate: async (on) => {
+        await this.store.setMeta({ auto_update: on });
+        this.maybeApplyUpdate();
+      },
+    });
   }
 
   openDay(date) {
@@ -290,23 +316,76 @@ class App {
     if (!('serviceWorker' in navigator)) return;
     try {
       const registration = await navigator.serviceWorker.register('./sw.js', { type: 'module' });
+      this.registration = registration;
       const watch = (worker) => worker?.addEventListener('statechange', () => {
-        if (worker.state === 'installed' && navigator.serviceWorker.controller) {
-          this.updateReady = true;
-          this.render();
-        }
+        if (worker.state === 'installed' && navigator.serviceWorker.controller) this.markUpdateReady();
       });
-      if (registration.waiting && navigator.serviceWorker.controller) { this.updateReady = true; this.render(); }
+      if (registration.waiting && navigator.serviceWorker.controller) this.markUpdateReady();
       watch(registration.installing);
       registration.addEventListener('updatefound', () => watch(registration.installing));
       navigator.serviceWorker.addEventListener('controllerchange', () => { if (this.reloading) location.reload(); });
+      this.checkForUpdate('start');
     } catch {
       // Ohne Service Worker läuft die App online weiter; offline starten kann sie dann nicht.
+      this.updateState = 'unsupported';
     }
   }
 
+  markUpdateReady() {
+    this.updateReady = true;
+    this.updateState = 'available';
+    this.render();
+    this.maybeApplyUpdate();
+  }
+
+  /** Sucht nach einer neuen Version (der Browser tut das von sich aus nur bei einer Navigation) und
+   *  liefert den Zustand für die Anzeige: current / available / offline / error / unsupported. */
+  async checkForUpdate(trigger) {
+    const supported = Boolean(this.registration);
+    if (!shouldCheckForUpdate({ trigger, now: Date.now(), lastCheckAt: this.lastUpdateCheckAt,
+      online: this.online, checking: this.checkingUpdate, supported })) {
+      return this.checkingUpdate ? 'checking' : this.updateState;
+    }
+    this.checkingUpdate = true;
+    this.lastUpdateCheckAt = Date.now();
+    this.updateState = 'checking';
+    try {
+      await this.registration.update();
+      const worker = this.registration.installing;
+      if (worker) {
+        await new Promise((resolve) => {
+          const settled = () => { if (['installed', 'activated', 'redundant'].includes(worker.state)) resolve(); };
+          worker.addEventListener('statechange', settled);
+          settled();
+        });
+      }
+      if (this.updateReady || this.registration.waiting) this.markUpdateReady();
+      else this.updateState = 'current';
+    } catch {
+      this.updateState = navigator.onLine === false ? 'offline' : 'error';
+    } finally {
+      this.checkingUpdate = false;
+    }
+    return this.updateState;
+  }
+
+  /** Spielt ein wartendes Update ein, wenn der Nutzer das erlaubt hat und es gerade nichts stört. */
+  maybeApplyUpdate() {
+    if (!shouldApplyUpdate({
+      autoUpdate: Boolean(this.store.getMeta().auto_update), updateReady: this.updateReady,
+      dialogOpen: document.querySelector('dialog[open]') !== null, syncing: this.syncing,
+      requested: this.applyRequested,
+    })) return;
+    this.applyRequested = true;
+    this.reloadForUpdate();
+  }
+
   async reloadForUpdate() {
-    const registration = await navigator.serviceWorker.getRegistration();
+    let registration = await navigator.serviceWorker.getRegistration();
+    if (!registration?.waiting) {
+      await this.checkForUpdate('manual');          // z. B. „Neu laden“ nach einer Protokoll-Meldung
+      registration = await navigator.serviceWorker.getRegistration();
+    }
     if (!registration?.waiting) { location.reload(); return; }
     this.reloading = true;
     registration.waiting.postMessage({ type: 'SKIP_WAITING' });

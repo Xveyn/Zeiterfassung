@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 import { describeError } from '../messages.js';
+import { PROTOCOL } from '../pairing.js';
 import { SyncError } from '../sync.js';
 
 const errors = JSON.parse(readFileSync(new URL('./fixtures/errors.json', import.meta.url)));
@@ -77,4 +78,25 @@ test('a locked keyring on the desktop is told apart from a busy desktop and may 
   assert.match(locked.text, /Schlüsselbund/);
   assert.equal(locked.action, 'retry');
   assert.notEqual(locked.text, busy.text);
+});
+
+// --- Welche Seite ist älter? (#290) ---------------------------------------------------------------
+
+test('a protocol mismatch says which side is older when the desktop names its protocol', () => {
+  const older = describeError(new SyncError({ kind: 'protocol', code: 'invalid_protocol', supportedProtocol: PROTOCOL - 1 }));
+  assert.match(older.text, /Desktop-App ist älter/);
+  assert.equal(older.action, null);
+
+  const newer = describeError(new SyncError({ kind: 'protocol', code: 'invalid_protocol', supportedProtocol: PROTOCOL + 1 }));
+  assert.match(newer.text, /Desktop-App ist neuer/);
+  assert.equal(newer.action, 'reload');
+});
+
+test('without a usable protocol number the generic mismatch text is kept', () => {
+  const generic = describeError(new SyncError({ kind: 'protocol', code: 'invalid_protocol' })).text;
+  assert.match(generic, /passen nicht zusammen/);
+  for (const supportedProtocol of [null, undefined, PROTOCOL, 'x', 1.5, -1]) {
+    assert.equal(describeError(new SyncError({ kind: 'protocol', code: 'invalid_protocol', supportedProtocol })).text, generic,
+      String(supportedProtocol));
+  }
 });

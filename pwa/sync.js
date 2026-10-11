@@ -21,10 +21,10 @@ const TOKEN_RE = /^[A-Za-z0-9_-]{16,256}$/;
 const KEY_RE = /^[A-Za-z0-9_-]{43}$/;                            // 32 Bytes, base64url ohne Padding
 
 export class SyncError extends Error {
-  constructor({ kind, status = 0, code = '', message = '', needsRepair = false, retryable = false, day = null }) {
+  constructor({ kind, status = 0, code = '', message = '', needsRepair = false, retryable = false, day = null, supportedProtocol = null }) {
     super(message);
     this.name = 'SyncError';
-    Object.assign(this, { kind, status, code, needsRepair, retryable, day });
+    Object.assign(this, { kind, status, code, needsRepair, retryable, day, supportedProtocol });
   }
 }
 
@@ -60,11 +60,13 @@ export function classifyHttpError(status, body) {
   const message = typeof detail.message === 'string' ? detail.message : '';
   const kind = KINDS[code] ?? fallbackKind(status);
   const day = kind === 'invalid_entry' ? (/^(\d{4}-\d{2}-\d{2}):/.exec(message)?.[1] ?? null) : null;
+  const named = detail.supported_protocol;
+  const supportedProtocol = code === 'invalid_protocol' && Number.isInteger(named) && named > 0 && named < 1000 ? named : null;
   return new SyncError({
     kind, status, code, message,
     needsRepair: REPAIR_KINDS.has(kind),
     retryable: kind === 'transient' || kind === 'server',
-    day,
+    day, supportedProtocol,
   });
 }
 

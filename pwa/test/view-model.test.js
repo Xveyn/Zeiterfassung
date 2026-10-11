@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
-  WEEKDAYS, categoryLabel, categoryOptions, conflictsModel, dayChanged, editorRows, focusKeyToRestore, hintKey, hintsModel, localTime, nextRow, pickCategory, rowsToSlots, slotText,
+  WEEKDAYS, categoryLabel, categoryOptions, conflictsModel, dayChanged, editorRows, focusKeyToRestore, hintKey, hintsModel, desktopHint, localTime, nextRow, pickCategory, rowsToSlots, slotText,
   statusModel, validateRows, weekModel,
 } from '../view-model.js';
 import { SyncError } from '../sync.js';
@@ -385,4 +385,17 @@ test('an added slot keeps the previous end as start and only takes end and pause
 test('rowsToSlots ignores the bookkeeping of a row', () => {
   const [row] = editorRows(null, DEFAULTS, 'mon');
   assert.deepEqual(Object.keys(rowsToSlots([row])[0]).sort(), ['end', 'kategorie', 'pause', 'start']);
+});
+
+// --- Hinweis bei älterem Desktop (#290) ----------------------------------------------------------
+
+test('an old desktop is recognised by the missing desktop info after a sync', () => {
+  const synced = { last_pull_at: '2026-10-08T12:00:00Z', desktop: { name: '', version: '', platform: '' }, defaults: null };
+  assert.match(desktopHint(synced), /Desktop-App ist älter/);
+  assert.equal(desktopHint({ ...synced, desktop: { name: 'PC', version: '1.25.0', platform: 'Linux' } }), '');
+});
+
+test('no hint before the first sync (nothing is known yet)', () => {
+  assert.equal(desktopHint({ last_pull_at: '', desktop: { name: '', version: '', platform: '' }, defaults: null }), '');
+  assert.equal(desktopHint({}), '');
 });
