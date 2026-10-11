@@ -209,6 +209,16 @@ oder von Hand) kopiert die Laufzeitdateien nach `_site/` (ohne `test/`,
 Deploy mit demselben Cache, und Updates kämen nie an) und veröffentlicht per
 `deploy-pages`.
 
+**Die Kennung heißt `P-N/X.Y.Z (sha)`** (#304), z. B. `1.0.0-12/1.26.2 (abc123…)`:
+P ist die eigene Version der PWA (`version` in `pwa/package.json`, Semver), N die
+Zahl der Commits unter `pwa/` seit dem letzten echten Desktop-Release, X.Y.Z
+dessen Version, dazu der Commit. Jede Änderung unter `pwa/` geht sofort live,
+deshalb zählt N sie einzeln; P wird nur im Release-PR gebumpt — zusammen mit
+`src/version.py`, auch ohne PWA-Änderung, weil ein Release N auf 0 zurücksetzt
+(`pwa-version.yml` erzwingt das). Nach dem Release stößt `release.yml`
+`pages.yml` neu an, sonst stünde bis zum nächsten `pwa/`-Push eine Kennung mit
+altem Anker und altem N im Netz.
+
 **Braucht eine Repo-Einstellung, die nicht im Code steht:** Settings → Pages →
 Source „GitHub Actions“ (#266). Ohne sie scheitert der Deploy, und der
 Workflow ist erst nach dem Merge nach `master` über „Run workflow“ erreichbar.
