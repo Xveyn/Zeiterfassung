@@ -137,6 +137,13 @@ DEFAULTS = {
     "gcal_enabled": False,
     "gcal_calendar_id": "",
     "last_calendar_sync_at": "",
+    # Reservierungen verwenden (zukünftige Soll-Zeiten). Bis dahin hingen sie an
+    # gcal_enabled; jetzt ist der Kalender-Abgleich ein Zusatz. Gerätelokal
+    # (NICHT in SYNCED_SETTING_KEYS): wie gcal_enabled eine Entscheidung dieses
+    # Rechners. `reservations_migrated` merkt die einmalige Umstellung
+    # (reservations.migrate_reservations_enabled).
+    "reservations_enabled": False,
+    "reservations_migrated": False,
     "categories": [],
     "category_times": {},
     "ui_scale": 1.0,

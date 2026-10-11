@@ -205,3 +205,23 @@ class ReservationStore:
                     )
             self._data = dict(reconciled)
             self._save_to_disk()
+
+
+def reservations_active(store: Any, settings: Any) -> bool:
+    """True, wenn Reservierungen angezeigt und bearbeitet werden dürfen: ein
+    Store existiert UND der Nutzer hat sie eingeschaltet. Unabhängig vom
+    Google-Kalender — der ist nur ein optionaler Abgleich."""
+    return store is not None and bool(settings.get("reservations_enabled"))
+
+
+def migrate_reservations_enabled(settings: Any) -> None:
+    """Einmalige Umstellung beim Start: wer den Kalender-Abgleich an hatte, sah
+    bisher Reservierungen und behält sie. Der Marker wird auch ohne
+    Umstellung gesetzt — ein später bewusst ausgeschalteter Schalter wird nie
+    wieder überschrieben."""
+    if settings.get("reservations_migrated"):
+        return
+    updates: dict[str, Any] = {"reservations_migrated": True}
+    if settings.get("gcal_enabled"):
+        updates["reservations_enabled"] = True
+    settings.set_many(updates)
