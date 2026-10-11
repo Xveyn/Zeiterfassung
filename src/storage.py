@@ -96,6 +96,7 @@ class Storage:
         # bewusst ungelockt.
         self._lock = lock if lock is not None else threading.RLock()
         self._data: dict[str, Entry] = {}
+        self._backup_pending: str | None = None     # Grund der noch fehlenden Sicherung
         self._load()
 
     def _load(self) -> None:
@@ -183,6 +184,15 @@ class Storage:
         reparierte Stand gilt dann nur im Speicher."""
         try:
             backup_corrupt(self.filepath, problems)
+        except OSError:
+            # Ohne Sicherung nicht schreiben. Der nächste normale Schreibvorgang
+            # holt sie nach, bevor er die Datei überschreibt (`_save_to_disk`).
+            self._backup_pending = problems
+            log.warning("%s: Reparatur nicht auf die Platte geschrieben (keine Sicherung "
+                        "möglich), der Stand gilt nur im Speicher",
+                        os.path.basename(self.filepath), exc_info=True)
+            return
+        try:
             self._save_to_disk()
         except (OSError, ValueError):
             # ValueError: ein einzelnes Surrogat in einer Kategorie lässt sich nicht
@@ -233,7 +243,21 @@ class Storage:
                 entry.setdefault("deleted", False)
 
     def _save_to_disk(self) -> None:
+        self._retry_pending_backup()
         atomic_write_json(self.filepath, self._data)
+
+    def _retry_pending_backup(self) -> None:
+        """Hat beim Laden die Sicherung gefehlt, steht der Müll noch in der Datei und
+        dieser Schreibvorgang würde ihn ohne Spur überschreiben: Sicherung jetzt noch
+        einmal versuchen, sonst im Log sagen, dass es ohne geschieht. Einmalig."""
+        problems, self._backup_pending = self._backup_pending, None
+        if problems is None:
+            return
+        try:
+            backup_corrupt(self.filepath, problems)
+        except OSError:
+            log.warning("%s: Schreiben ohne Sicherung — verworfen wird: %s",
+                        os.path.basename(self.filepath), problems, exc_info=True)
 
     @staticmethod
     def _user_shape(entry: Any) -> dict[str, Any]:

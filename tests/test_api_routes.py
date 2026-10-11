@@ -831,3 +831,28 @@ def test_an_absurd_stored_pause_gives_strict_json_over_entries(tmp_path):
 
     assert body["entries"]["2026-01-05"]["slots"][0]["pause"] == 0
     json.dumps(body, allow_nan=False)                       # strikt: kein -Infinity/NaN mehr
+
+
+# --- #242: nur die vier Felder des Protokolls ---------------------------------------------------
+
+def _store_with_extras(storage):
+    raw = {"2026-01-05": {"slots": [{"start": "08:00", "end": "12:00", "pause": 0, "kategorie": "A",
+                                     "foo": float("nan"), "x": {"y": float("-inf")}}],
+                          "modified_at": "2026-01-05T08:00:00Z", "device_id": "dev", "deleted": False}}
+    storage.apply_merge(raw)
+
+
+def test_entries_carry_only_the_four_slot_fields(storage):
+    _store_with_extras(storage)
+
+    slots = call("/v1/entries", make_ctx(storage)).body["entries"]["2026-01-05"]["slots"]
+
+    assert slots == [{"start": "08:00", "end": "12:00", "pause": 0, "kategorie": "A"}]
+
+
+def test_a_single_entry_carries_only_the_four_slot_fields(storage):
+    _store_with_extras(storage)
+
+    slots = call("/v1/entries/2026-01-05", make_ctx(storage)).body["slots"]
+
+    assert slots == [{"start": "08:00", "end": "12:00", "pause": 0, "kategorie": "A"}]

@@ -36,6 +36,12 @@ def test_fmt_slot_line_without_category():
         {"start": "08:00", "end": "12:00"}) == "08:00-12:00"
 
 
+def test_a_slot_with_a_broken_time_never_shows_none():
+    assert GridRenderer._fmt_slot_line({"start": None, "end": "12:00"}) == "?-12:00"
+    assert GridRenderer._fmt_slot_line({"start": "08:00", "end": None}) == "08:00-?"
+    assert GridRenderer._fmt_slot_time({"start": None, "end": None}) == "?-?"
+
+
 def test_tooltip_text_single_slot_shows_category():
     # Neu: schon bei EINEM Slot erscheint der Arbeitszeit-Block, damit die
     # Kategorie beim Hovern sichtbar wird (vorher erst ab >1 Slot).

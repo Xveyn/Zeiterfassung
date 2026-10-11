@@ -275,14 +275,20 @@ Zeitraum und welche Kategorien der Bericht gefiltert ist.
   Top-Level, das kein Objekt ist, wie unparsebar und startet leer; Einträge ohne Objektform und
   Slot-Listen mit Nicht-Objekten werden nach einer Sicherung (`json_store.backup_corrupt`,
   `<datei>.corrupt-<stamp>`) repariert und zurückgeschrieben — scheitert die Sicherung, wird
-  nicht geschrieben. Dieselbe Reparatur (`_repair_entry_values`, #254) deckt, was Merge und
-  Schreiben sprengt: `modified_at`/`device_id` ohne Text → `""` (ein `None` wirft in
+  nicht geschrieben; der nächste Schreibvorgang holt die Sicherung nach, bevor er die Datei
+  überschreibt (`_retry_pending_backup`), und sagt im Log „ohne Sicherung“, wenn auch das
+  scheitert. Es bleiben die neuesten `json_store.KEEP_BACKUPS` (5) Sicherungen je Datei; zwei
+  Vorfälle in derselben Sekunde bekommen verschiedene Namen (`-1`, `-2`). Dieselbe Reparatur
+  (`_repair_entry_values`, #254) deckt, was Merge und Schreiben sprengt: `modified_at`/`device_id` ohne Text → `""` (ein `None` wirft in
   `sync._merge_one` einen `TypeError`), `deleted` nur als echtes `True`, Lone Surrogate werden
   aus Texten entfernt (ein Tag mit Surrogat im Schlüssel entfällt), weil sich ein Surrogat nicht
   als UTF-8 schreiben lässt. Sonstige Wertfehler bleiben roh (der Sync soll keine spontane Änderung sehen) und
   werden an der Lese-Grenze bereinigt: `sanitize_slot` in `_user_shape` macht aus jedem Slot
   `start`/`end` Text-oder-`None`, `kategorie` Text, `pause` eine ganze Zahl 0–1440 (sonst 0).
-  Alle Leser (UI, Berichte, API) gehen über `get`/`get_all` und sehen nie Fremddaten;
+  Alle Leser (UI, Berichte, API) gehen über `get`/`get_all` und sehen die vier Felder eines Slots
+  bereinigt; **beliebiger Text** in `start`/`end`/`kategorie` und mitgeführte **Zusatzschlüssel**
+  passieren dagegen weiter (`sanitize_slot` behält sie). Wer ein festes Format ausgibt, projiziert
+  selbst auf die vier Felder (`webhook._project_slots`, `api_routes._wire_slots`).
   `get_all_raw` bleibt das Original für den Sync. `sync.validate_remote_doc` lehnt Slot-Listen
   mit Nicht-Objekten ab.
   `reservations.py` — Reservierungen

@@ -106,8 +106,36 @@ const
 var
   HadToken: Boolean;
 
+// Löscht alle Dateien in {app}, die auf Pattern passen (Dateien, keine Ordner).
+// Für die Sicherungen `<datei>.corrupt-<stamp>` (#242): volle Kopien der
+// Nutzerdaten mit unbekanntem Suffix, ein fester Name geht dafür nicht.
+procedure DeleteMatching(const Pattern: String);
+var
+  FindRec: TFindRec;
+  Dir: String;
+begin
+  Dir := ExpandConstant('{app}\');
+  if FindFirst(Dir + Pattern, FindRec) then
+  try
+    repeat
+      if (FindRec.Attributes and FILE_ATTRIBUTE_DIRECTORY) = 0 then
+        DeleteFile(Dir + FindRec.Name);
+    until not FindNext(FindRec);
+  finally
+    FindClose(FindRec);
+  end;
+end;
+
 procedure DeleteUserData();
 begin
+  // Sicherungen zuerst (gleiche Liste wie unten, `removal.USER_DATA_FILES`).
+  DeleteMatching('zeiterfassung.json.corrupt-*');
+  DeleteMatching('reservations.json.corrupt-*');
+  DeleteMatching('vacations.json.corrupt-*');
+  DeleteMatching('settings.json.corrupt-*');
+  DeleteMatching('conflicts.json.corrupt-*');
+  DeleteMatching('sync_history.json.corrupt-*');
+  DeleteMatching('sync-apply.journal.corrupt-*');
   DeleteFile(ExpandConstant('{app}\zeiterfassung.json'));
   DeleteFile(ExpandConstant('{app}\reservations.json'));
   DeleteFile(ExpandConstant('{app}\vacations.json'));

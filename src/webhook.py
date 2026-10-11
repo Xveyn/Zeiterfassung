@@ -175,12 +175,13 @@ PAYLOAD_KIND = "zeiterfassung-report"
 def _project_slots(entries: dict[str, Any]) -> dict[str, Any]:
     """Reduziert jeden Slot auf die vier Felder des Wire-Formats.
 
-    Sieht überflüssig aus, ist es aber nicht: `Storage._load` normalisiert
-    Slots NICHT — das tut nur der Schreibpfad (`Storage.save` über
-    `_normalize_slot`). Ein Slot aus einer von Hand bearbeiteten oder von
-    einer neueren App-Version geschriebenen zeiterfassung.json trägt seine
-    Zusatzfelder sonst bis ins Webhook-Dokument. Diese Projektion ist die
-    Stelle, an der das Wire-Format tatsächlich festgelegt wird.
+    Sieht überflüssig aus, ist es aber nicht: `Storage._load` repariert nur die
+    Struktur (Slot-Liste, Metadaten), die Werte bereinigt erst die Lese-Grenze
+    (`sanitize_slot`), und die behält Zusatzschlüssel. Ein Slot aus einer von
+    Hand bearbeiteten oder von einer neueren App-Version geschriebenen
+    zeiterfassung.json trägt seine Zusatzfelder sonst bis ins Webhook-Dokument.
+    Diese Projektion ist die Stelle, an der das Wire-Format tatsächlich
+    festgelegt wird.
 
     Die Defaults sind dieselben wie in `storage._normalize_slot` (`pause` → 0,
     `kategorie` → ""). Das ist keine Kosmetik: `total_minutes` rechnet auf

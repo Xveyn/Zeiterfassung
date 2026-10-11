@@ -158,6 +158,13 @@ def _status(request: ApiRequest, ctx: ApiContext, _match: re.Match[str]) -> ApiR
     })
 
 
+def _wire_slots(slots: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Nur die vier Felder des Protokolls. `sanitize_slot` behält Zusatzschlüssel
+    (Plan-Ruling), und ein gespeichertes `NaN`/`-Infinity` darin verließe die API als
+    nicht-striktes JSON. Die Werte der vier Felder hat die Lese-Grenze schon bereinigt."""
+    return [{key: slot[key] for key in ("start", "end", "pause", "kategorie")} for slot in slots]
+
+
 def _entries(request: ApiRequest, ctx: ApiContext, _match: re.Match[str]) -> ApiResponse:
     _only_params(request.query, frozenset({"from", "to"}))
     start = _query_date(request.query, "from")
@@ -171,7 +178,7 @@ def _entries(request: ApiRequest, ctx: ApiContext, _match: re.Match[str]) -> Api
             continue
         if (start is not None and day < start) or (end is not None and day > end):
             continue
-        entries[day_key] = entry
+        entries[day_key] = {**entry, "slots": _wire_slots(entry["slots"])}
     return ApiResponse(200, {"entries": dict(sorted(entries.items()))})
 
 
@@ -183,7 +190,7 @@ def _entry(request: ApiRequest, ctx: ApiContext, match: re.Match[str]) -> ApiRes
     entry = ctx.storage.get(day_key)
     if entry is None:
         raise _ApiError(404, "not_found", "Für diesen Tag gibt es keinen Eintrag.")
-    return ApiResponse(200, {"date": day_key, "slots": entry["slots"]})
+    return ApiResponse(200, {"date": day_key, "slots": _wire_slots(entry["slots"])})
 
 
 def _check_year(year: int) -> None:
