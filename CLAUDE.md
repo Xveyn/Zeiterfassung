@@ -212,6 +212,15 @@ Actions → Workflow **Release** → „Run workflow" mit gesetztem Häkchen
   angezeigt und als Toast/Banner gemeldet (`updater.check_for_update` fragt
   dann `/releases` statt `/releases/latest`). Die Einstellung ist gerätelokal
   (nicht in `SYNCED_SETTING_KEYS`).
+- **Dev-Builds (`build.yml`, Start aus dem Quellcode) prüfen nie auf Updates**
+  (`version.updates_supported`: nur Kanal `release`/`prerelease`). Ihre
+  `VERSION` ist die des letzten Releases, der Code aber neuer; gegen ein
+  Pre-Release derselben Version (Rang 0 < `pre.N`) böten sie sonst einen
+  Rückschritt an. Der Updates-Tab zeigt statt Knöpfen und Changelog einen
+  Hinweis, der Hintergrund-Check kehrt sofort zurück, der Tray-Eintrag
+  „Nach Updates suchen" toastet den Hinweis. Tests setzen den Kanal per
+  Autouse-Fixture auf `release` (`tests/conftest.py`; `real_channel` schaltet
+  das ab).
 - **Reihenfolge-Regel (wichtig, vom Workflow erzwungen):** Ein Pre-Release wird
   **immer nach** dem gleichnamigen echten Release gebaut, aus neuerem Code. Die
   App ordnet entsprechend `X.Y.Z < X.Y.Z-pre.1 < X.Y.Z-pre.2 < X.Y.Z+1`

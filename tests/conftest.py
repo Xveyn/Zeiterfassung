@@ -232,6 +232,21 @@ def _no_os_keyring(monkeypatch):
     _install_fake_keyring(monkeypatch, FakeKeyring(working=False))
 
 
+@pytest.fixture(autouse=True)
+def _release_channel(monkeypatch, request):
+    """Standard für JEDEN Test: Kanal 'release'. Sonst hinge das Ergebnis an
+    der gitignorierten `src/build_info.py` des Rechners (lokal 'dev', in der CI
+    'source') — und Dev-Builds prüfen nie auf Updates."""
+    if "real_channel" in request.fixturenames:
+        return
+    monkeypatch.setattr("src.version.build_channel", lambda: "release")
+
+
+@pytest.fixture
+def real_channel():
+    """Schaltet `_release_channel` ab: der Test sieht `build_channel` echt."""
+
+
 @pytest.fixture
 def fake_keyring(monkeypatch):
     def _install(working=True, block=None, lie=False):

@@ -30,7 +30,9 @@ from src.updater import (
     REPO, check_for_update, is_newer, manual_check_toast_text, today_iso,
     update_toast_text,
 )
-from src.version import installed_release_id
+from src.version import (
+    UPDATES_UNSUPPORTED_HINT, installed_release_id, updates_supported,
+)
 
 
 class _Settings(Protocol):
@@ -129,7 +131,11 @@ class UpdateCoordinator:
         Hintergrund-Checks — manuell heißt manuell —, respektiert aber dessen
         Kanal-Einstellung (`prerelease_updates_enabled`).
         """
-        if self._get_tray() is None or self._update_check_running:
+        tray = self._get_tray()
+        if tray is None or self._update_check_running:
+            return
+        if not updates_supported():
+            tray.notify(UPDATES_UNSUPPORTED_HINT)
             return
         self._update_check_running = True
         include_prereleases = bool(self._settings.get("prerelease_updates_enabled"))

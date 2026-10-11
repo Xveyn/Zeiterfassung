@@ -30,7 +30,9 @@ from src.updater import (
     FREQUENCY_OPTIONS, REPO, check_for_update, pick_asset_url,
     resolve_check_result,
 )
-from src.version import installed_release_id
+from src.version import (
+    UPDATES_UNSUPPORTED_HINT, installed_release_id, updates_supported,
+)
 
 
 # Beschriftung der Changelog-Box. Ein Pre-Release hat bewusst KEINEN
@@ -86,7 +88,13 @@ class UpdatesTab:
             _LABEL_INSTALL if self._can_self_update else _LABEL_DOWNLOAD,
             self._open_latest_download,
         )
-        form.block(btn_row)
+        # Dev-/Source-Builds: keine Knöpfe, stattdessen der Hinweis in der
+        # Statuszeile (die Knöpfe bleiben ungepackt, aber als Attribute da).
+        self._updates_supported = updates_supported()
+        if self._updates_supported:
+            form.block(btn_row)
+        else:
+            self._status_label.config(text=UPDATES_UNSUPPORTED_HINT)
 
         # Direkt unter Status und Knöpfen (#132): bisher trennten drei
         # Optionszeilen den Changelog von dem, wozu er gehört. Label + Text
@@ -96,9 +104,12 @@ class UpdatesTab:
         self._changelog_label = tk.Label(
             body, text=_LABEL_CHANGELOG, font=FONT, bg=BG, fg=TEXT, anchor="w",
         )
-        form.block(self._changelog_label, pady=(12, 4))
+        # Bei Dev-/Source-Builds ganz weg: es gibt keinen Check und damit
+        # nichts, was die Box füllen könnte (leer wirkte sie kaputt).
         self._changelog_text = dark_text(body, 58, 12)
-        form.block(self._changelog_text)
+        if self._updates_supported:
+            form.block(self._changelog_label, pady=(12, 4))
+            form.block(self._changelog_text)
         self._changelog_text.tag_configure("heading", font=FONT_BOLD)
         self._changelog_text.tag_configure("bold", font=FONT_BOLD)
         self._changelog_text.tag_configure("hanging_indent", lmargin1=0, lmargin2=20)
@@ -187,7 +198,7 @@ class UpdatesTab:
         # /Installier-Phase), darf "Jetzt prüfen" nicht dazwischenfunken —
         # sonst leert es self._latest_release und _finish_checking() aktiviert
         # die Knöpfe wieder, obwohl das Update noch läuft.
-        if self._checking or self._updating:
+        if self._checking or self._updating or not self._updates_supported:
             return
         self._checking = True
         self._latest_release = None

@@ -102,6 +102,28 @@ def installed_release_id() -> str:
     return _stamped_release_id() or VERSION
 
 
+def build_channel() -> str:
+    """Kanal des laufenden Builds: 'release', 'prerelease', 'dev' (CI-Build
+    ohne Release, build.yml) oder 'source' (Start aus dem Quellcode)."""
+    if _build_info is None:
+        return "source"
+    return getattr(_build_info, "CHANNEL", "dev")
+
+
+UPDATES_UNSUPPORTED_HINT = (
+    "Dev-Builds (Test-Builds aus der CI und Start aus dem Quellcode) "
+    "erhalten keine Updates."
+)
+
+
+def updates_supported() -> bool:
+    """False für Dev-/Source-Builds. Ihre VERSION ist die des letzten Releases,
+    der Code aber neuer — gegen ein Pre-Release derselben Version gälten sie
+    fälschlich als älter (Rang 0 < pre.N) und bekämen einen Rückschritt
+    angeboten."""
+    return build_channel() in ("release", "prerelease")
+
+
 def version_label() -> str:
     """Versions-Label inkl. Kanal-Marker für die Titelzeile. Liest den beim Build
     gestempelten Kanal; fehlt build_info (Quellcode-Start), gilt 'source'."""
