@@ -116,6 +116,9 @@ def write_secret_bytes(path: str, data: bytes, *, prefix: str) -> None:
         except OSError:
             _log.debug("chmod 0600 nicht möglich (%s)", tmp_path, exc_info=True)
         harden_windows_acl(tmp_path)
+        # Klartext ist hier Absicht (CodeQL: py/clear-text-storage-sensitive-data, als Fehlalarm
+        # geschlossen): die Datei ist bis hierher auf den Benutzer beschränkt, und mit
+        # Schlüsselbund (#101) liegt das eigentliche Secret gar nicht in ihr.
         with open(tmp_path, "wb") as handle:
             handle.write(data)
             handle.flush()
