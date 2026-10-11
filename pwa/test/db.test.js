@@ -6,9 +6,11 @@ import { openDatabase, requestPersistentStorage } from '../db.js';
 
 /** Minimale Attrappe der IndexedDB-Schnittstelle: genug für Form und Fehlerpfade. Die Handler
  *  werden von `db.js` NACH dem Aufruf zugewiesen, deshalb feuern die Attrappen per Microtask. */
-function fakeFactory({ failOpen = false } = {}) {
+function fakeFactory({ failOpen = false, throwOnSecondPut = false, failRequest = false, blocked = false } = {}) {
   const data = { entries: new Map(), meta: new Map() };
   const created = [];
+  const log = { aborted: false, closed: 0 };
+  let puts = 0;
   const factory = {
     open() {
       const request = {};
@@ -21,10 +23,15 @@ function fakeFactory({ failOpen = false } = {}) {
         request.result = {
           objectStoreNames: { contains: (name) => created.includes(name) },
           createObjectStore: (name) => created.push(name),
+          close: () => { log.closed += 1; },
           transaction(_names, mode) {
             const transaction = {
               objectStore: (name) => ({
-                put: (value, key) => data[name].set(key, value),
+                put: (value, key) => {
+                  puts += 1;
+                  if (throwOnSecondPut && puts === 2) throw new Error('DataCloneError');
+                  data[name].set(key, value);
+                },
                 delete: (key) => data[name].delete(key),
                 getAllKeys: () => {
                   const r = {};
@@ -38,19 +45,29 @@ function fakeFactory({ failOpen = false } = {}) {
                 },
               }),
             };
-            if (mode === 'readwrite') {
-              queueMicrotask(() => queueMicrotask(() => transaction.oncomplete()));
+            transaction.abort = () => { log.aborted = true; queueMicrotask(() => transaction.onabort?.()); };
+            if (mode === 'readwrite' && failRequest) {
+              // Wie der Browser: der Fehler steht am Auslöser, `transaction.error` ist noch leer.
+              queueMicrotask(() => transaction.onerror({ target: { error: new Error('QuotaExceededError') } }));
+            } else if (mode === 'readwrite') {
+              queueMicrotask(() => queueMicrotask(() => { if (!log.aborted) transaction.oncomplete(); }));
             }
             return transaction;
           },
         };
+        log.database = request.result;
         request.onupgradeneeded();
+        if (blocked) {
+          request.onblocked();
+          queueMicrotask(() => request.onsuccess());
+          return;
+        }
         request.onsuccess();
       });
       return request;
     },
   };
-  return { factory, data, created };
+  return { factory, data, created, log };
 }
 
 test('opening creates both object stores', async () => {
@@ -92,4 +109,41 @@ test('persistent storage: granted, refused, missing, failing', async () => {
   assert.equal(await requestPersistentStorage(undefined), false);
   assert.equal(await requestPersistentStorage({}), false);
   assert.equal(await requestPersistentStorage({ persist: async () => { throw new Error('x'); } }), false);
+});
+
+test('a request error rejects with the real error, not null', async () => {
+  const { factory } = fakeFactory({ failRequest: true });
+  const db = await openDatabase(factory);
+
+  await assert.rejects(() => db.batch([{ store: 'entries', op: 'put', key: 'a', value: 1 }]),
+    (error) => error instanceof Error && error.message === 'QuotaExceededError');
+});
+
+test('a throw in the middle of a batch aborts the transaction', async () => {
+  const { factory, log } = fakeFactory({ throwOnSecondPut: true });
+  const db = await openDatabase(factory);
+
+  await assert.rejects(() => db.batch([
+    { store: 'entries', op: 'put', key: 'a', value: 1 },
+    { store: 'entries', op: 'put', key: 'b', value: 2 }]), /DataCloneError/);
+
+  assert.equal(log.aborted, true);
+});
+
+test('a connection that arrives after a blocked open is closed, not leaked', async () => {
+  const { factory, log } = fakeFactory({ blocked: true });
+
+  await assert.rejects(() => openDatabase(factory), /blockiert/);
+  await new Promise((resolve) => setTimeout(resolve, 5));
+
+  assert.equal(log.closed, 1);
+});
+
+test('the connection lets go when another tab upgrades the schema', async () => {
+  const { factory, log } = fakeFactory();
+  await openDatabase(factory);
+
+  log.database.onversionchange();
+
+  assert.equal(log.closed, 1);
 });

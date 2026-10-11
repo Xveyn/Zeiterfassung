@@ -873,3 +873,18 @@ def test_pairing_reports_the_window_the_cap_allows(env, setting, expected):
     env.ctx.settings.set("mobile_window_max_days", setting)
 
     assert pair(env, new_code(env)).body["window_days"] == expected
+
+
+def test_a_waiting_sync_is_refused_when_the_app_closes_while_it_waits_for_the_lock(env):
+    """Die erste Prüfung läuft vor `devices_lock`; ein dort wartender Abgleich darf nach dem
+    finalen Quit-Push nicht mehr anwenden (#258)."""
+    _record, token = add_device(env)
+    answers = iter([False, True])           # vor dem Lock: läuft noch; unter dem Lock: beendet
+    closing = dataclasses.replace(env.ctx, closing=lambda: next(answers, True))
+
+    response = mobile_routes.dispatch(
+        ApiRequest("POST", "/v1/sync", {}, sync_body(env, {"2026-10-07": day()})), closing,
+        principal_for(env, token))
+
+    assert response.status == 503 and error_code(response) == "shutting_down"
+    assert env.ctx.storage.get_all_raw() == {}

@@ -69,7 +69,10 @@ Regeln, die nur in der PWA gelten:
 - Ein Koppel-Link wird nur mit privater IPv4-Adresse akzeptiert (das Fragment
   kommt aus einem QR-Code).
 - `401 unauthorized` heißt ebenfalls „neu koppeln“.
-- Ein `422` blockiert nur den betroffenen Tag.
+- Ein `422` blockiert nur den betroffenen Tag. Mehr als 400 nicht übertragene Tage gehen in
+  Päckchen zu höchstens 400 (`MAX_DAYS_PER_REQUEST`, neueste zuerst) innerhalb **eines**
+  Abgleichs hinaus; scheitert ein späteres Päckchen, bleiben die vorherigen angewendet und der
+  Rest „nicht übertragen“ bis zum nächsten Lauf.
 - Fehlende Tage werden nur im **inneren** Lesefenster lokal gelöscht (Randtage
   gehören dem Desktop).
 

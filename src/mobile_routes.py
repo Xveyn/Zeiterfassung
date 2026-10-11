@@ -277,6 +277,9 @@ def _sync(request: ApiRequest, ctx: MobileContext, principal: Principal) -> ApiR
     now = ctx.now()
     notify = False
     with ctx.devices_lock:
+        # Die Prüfung oben lief vor dem Lock: ein hier wartender Abgleich darf nach dem
+        # finalen Quit-Push nicht mehr anwenden (die Daten blieben lokal, bis zum nächsten Start).
+        _refuse_while_closing(ctx)
         record = ctx.devices.get(principal.name)
         if record is None or record.get("revoked"):
             raise _MobileError(401, "token_revoked",

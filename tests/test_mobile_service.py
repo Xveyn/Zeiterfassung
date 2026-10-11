@@ -589,3 +589,29 @@ def test_keys_of_devices_the_store_no_longer_knows_are_still_cleaned_up(tmp_path
     service._maintain_keys()
 
     assert set(ctx.keys.where()) == {"phone-aaaa"} and "mobile:phone-orphan" not in ring.items
+
+
+def test_a_slow_reconcile_that_outlives_shutdown_still_stops_the_server(tmp_path):
+    """`shutdown()` gibt nach dem Timeout auf, wenn ein Start den Lock hält. Endet dieser
+    Start im „läuft schon“-Zweig, blieb der Server gebunden (#258)."""
+    service, _settings, _ctx = make_service(tmp_path)
+    service.apply()
+    port = service.status.port
+    entered, release = threading.Event(), threading.Event()
+
+    def slow_candidates():
+        entered.set()
+        release.wait(5)
+        return [LOOPBACK]
+
+    service._lan_candidates = slow_candidates
+    worker = threading.Thread(target=service._reconcile)
+    worker.start()
+    assert entered.wait(5)
+
+    service.shutdown(lock_timeout=0.05)          # gibt auf: der Worker hält den Lock
+    release.set()
+    worker.join(5)
+
+    assert port_is_closed(port)
+    assert service.status.state == STATE_OFF

@@ -170,6 +170,17 @@ class MobileService:
                 self._stop_server()
                 self._status = MobileStatus(STATE_ERROR, None, None, REASON_START_FAILED)
                 return self._status
+            finally:
+                self._stop_if_closed()
+
+    def _stop_if_closed(self) -> None:
+        """Hat `shutdown()` auf den Lock nur bis zum Timeout gewartet und aufgegeben, stoppt
+        den Server der, der ihn hielt — auf **jedem** Ausgang, auch dem „läuft schon“-Zweig
+        (sonst bliebe der Port offen und der Skalierungs-Neustart träfe `port_in_use`).
+        Der Aufrufer hält `_lock`."""
+        if self._closed:
+            self._stop_server()
+            self._status = MobileStatus(STATE_OFF)
 
     def _reconcile_locked(self) -> MobileStatus:
         if self._closed:
