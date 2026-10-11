@@ -133,6 +133,19 @@ Desktop deckelt:**
   Zeile „Verlauf“ mit „Auf 90 Tage zurücksetzen“.
 - **Fehlt `window_max_days`** (älterer Desktop), ändert die PWA ihr Fenster nie
   und erklärt das, statt einen wirkungslosen Knopf zu zeigen (Feature-Erkennung).
+- **Drei Zustände der Obergrenze.** Vor der ersten angewandten Antwort ist sie
+  *unbekannt* (`window_max_known` falsch): die Wochenansicht bittet um einen
+  Abgleich und beschuldigt keinen Desktop. Danach ist sie eine Zahl oder, wenn
+  die Antwort sie nicht trug, `null` (älterer Desktop). Welche Meldung erscheint,
+  entscheidet `olderState` aus dem **bestätigten** Wunsch (`window_wish_acked`,
+  der Wunsch, zu dem die letzte Antwort gehört) und nicht aus dem gerade
+  getippten: ein noch unbeantworteter oder fehlgeschlagener Abgleich darf nie
+  „wegen der Datenmenge“ melden.
+- **Zeitüberschreitung** (15 s) ist eine eigene Fehlerart (`timeout`): sie kann
+  einen schlafenden Desktop oder eine zu große Antwort bei schwachem WLAN meinen.
+  Der Text nennt beides und verweist auf „Verbindung“, wo sich der Verlauf auf
+  90 Tage zurücksetzen lässt. Einen automatischen Rückfall gibt es bewusst nicht
+  (er träfe auch den schlafenden Desktop).
 
 **Datenmenge.** Jede Antwort enthält das ganze Fenster, kein Delta. Gemessen
 (verschlüsselt auf dem Draht): realistisch 365 Tage ≈ 90 KB, 50 Slots je Tag
