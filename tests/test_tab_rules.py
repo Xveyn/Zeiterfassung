@@ -712,3 +712,24 @@ def test_the_key_store_summary_says_where_the_device_keys_live():
 def test_the_key_store_summary_ignores_unknown_locations():
     from src.dialogs.settings_dialog.tab_rules import keystore_summary
     assert keystore_summary({"a": "wolke"}) == ""
+
+
+def test_paired_notice_for_a_new_device_is_a_plain_success():
+    changes = tr.pair_changes([], [dev("b", "h2", "Pixel 8")])
+    notice = tr.paired_notice(changes)
+    assert notice.warn is False
+    assert notice.title == "Handy gekoppelt"
+    assert notice.text == "Mobiles Gerät „Pixel 8“ erfolgreich gekoppelt."
+
+
+def test_paired_notice_lists_several_devices():
+    changes = tr.pair_changes([], [dev("a", "h1", "A"), dev("b", "h2", "B")])
+    assert "„A, B“" in tr.paired_notice(changes).text
+
+
+def test_paired_notice_warns_when_a_live_device_was_replaced():
+    changes = tr.pair_changes([dev("a", "h1", "Alt")], [dev("a", "h2", "Alt", count=2)])
+    notice = tr.paired_notice(changes)
+    assert notice.warn is True
+    assert "erfolgreich gekoppelt" in notice.text
+    assert "„Alt“" in notice.text and "widerrufen" in notice.text

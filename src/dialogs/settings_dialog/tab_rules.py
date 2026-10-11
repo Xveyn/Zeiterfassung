@@ -495,6 +495,27 @@ def pair_changes(before: list[dict[str, Any]], after: list[dict[str, Any]]) -> P
     return PairChanges(added, replaced)
 
 
+@dataclass(frozen=True)
+class PairedNotice:
+    title: str
+    text: str
+    warn: bool          # ein vorhandenes Gerät wurde ersetzt: Warn- statt Info-Dialog
+
+
+def paired_notice(changes: PairChanges) -> PairedNotice:
+    """Die Meldung, die nach dem Koppeln den Koppel-Dialog ablöst. Wurde dabei ein
+    vorhandenes, nicht widerrufenes Gerät ersetzt, trägt sie zusätzlich die Warnung."""
+    names = ", ".join(d["name"] for d in changes.added + changes.replaced)
+    text = f"Mobiles Gerät „{names}“ erfolgreich gekoppelt."
+    if not changes.replaced:
+        return PairedNotice("Handy gekoppelt", text, False)
+    old = ", ".join(d["name"] for d in changes.replaced)
+    text += (f"\n\nAchtung: dabei wurde das vorhandene Gerät „{old}“ ersetzt "
+             "(jemand hat sich mit dessen Kennung gekoppelt). Gehörte der Code "
+             "nicht zu Ihrem eigenen Handy, widerrufen Sie das Gerät im Reiter.")
+    return PairedNotice("Handy gekoppelt", text, True)
+
+
 def pair_poll_view(*, active: bool, seconds_left: int, paired: bool) -> tuple[str, str]:
     """Was der Koppel-Dialog bei einem Poll zeigt: `(Zustand, Text)` mit dem Zustand
     `paired`, `counting` oder `expired`. Ein Koppeln geht vor: es kann in der letzten
