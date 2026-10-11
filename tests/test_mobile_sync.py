@@ -176,11 +176,13 @@ DEFAULTS = {"pause": 30, "weekdays": {}, "category_times": {}}
 DESKTOP = {"name": "PC", "version": "1.0.0", "platform": "Linux"}
 
 
-def respond(merged, *, sent=(), excluded=False, categories=("Projekt",)):
+def respond(merged, *, sent=(), excluded=False, categories=("Projekt",), window_days=90,
+            window_max_days=365):
     merged = {"entries": {}, "conflicts": [], "devices": {}, **merged}
     return mobile_sync.build_response(merged, sent_dates=sent, today=TODAY, now=NOW,
                                       excluded=excluded, categories=list(categories),
-                                      defaults=DEFAULTS, desktop=DESKTOP)
+                                      defaults=DEFAULTS, desktop=DESKTOP,
+                                      window_days=window_days, window_max_days=window_max_days)
 
 
 def test_the_response_carries_the_protocol_fields_and_no_token():
@@ -188,7 +190,8 @@ def test_the_response_carries_the_protocol_fields_and_no_token():
 
     assert response == {
         "protocol": 2, "server_time": NOW, "last_pull_at": NOW, "excluded": False,
-        "window_days": 90, "entries": {}, "conflicts": [], "categories": ["Projekt"],
+        "window_days": 90, "window_max_days": 365, "entries": {}, "conflicts": [],
+        "categories": ["Projekt"],
         "defaults": DEFAULTS, "desktop": DESKTOP}
 
 
@@ -348,8 +351,9 @@ def put_desktop(env, date, *, slots=(SLOT,), modified_at, device="DESK", deleted
     env.storage.apply_merge(raw)
 
 
-def run(env, entries, *, last_pull_at="", now=NOW, **over):
-    request = mobile_sync.parse_request(body(entries), now=now)
+def run(env, entries, *, last_pull_at="", now=NOW, wish=None, **over):
+    extra = {} if wish is None else {"window_days": wish}
+    request = mobile_sync.parse_request(body(entries, **extra), now=now)
     kwargs = dict(device_id=PHONE, device_name="Pixel", last_pull_at=last_pull_at,
                   categories=["Projekt"], storage=env.storage, settings=env.settings,
                   conflicts_store=env.conflicts, base=env.base, now=now, today=TODAY,
@@ -558,3 +562,26 @@ def test_perform_sync_sends_defaults_from_the_settings_and_the_desktop_info(env)
     response = run(env, {})
 
     assert response["defaults"]["pause"] == 20 and response["desktop"] == DESKTOP
+
+
+def test_the_window_follows_the_granted_days_not_the_constant():
+    merged = {"entries": {_iso(-100): _entry(_iso(-100)), _iso(-10): _entry(_iso(-10))}}
+
+    assert sorted(respond(merged, window_days=90)["entries"]) == [_iso(-10)]
+    wide = respond(merged, window_days=180)
+    assert sorted(wide["entries"]) == [_iso(-100), _iso(-10)] and wide["window_days"] == 180
+
+
+def test_perform_sync_grants_the_wish_up_to_the_setting(env):
+    env.settings.set("mobile_window_max_days", 180)
+
+    assert run(env, {}, wish=365)["window_days"] == 180         # Wunsch über der Obergrenze
+    assert run(env, {}, wish=120)["window_days"] == 120
+    assert run(env, {})["window_days"] == 90                    # kein Wunsch
+    assert run(env, {})["window_max_days"] == 180
+
+
+def test_perform_sync_reads_the_setting_on_every_call(env):
+    assert run(env, {}, wish=365)["window_days"] == 365
+    env.settings.set("mobile_window_max_days", 30)
+    assert run(env, {}, wish=365)["window_days"] == 30

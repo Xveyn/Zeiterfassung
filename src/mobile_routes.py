@@ -40,7 +40,7 @@ from src.api_entry_write import WriteError, load_json_body
 from src.api_routes import ApiRequest, ApiResponse, error_response
 from src.api_server import Surface
 from src.api_summary import category_names
-from src.mobile_sync import WINDOW_DAYS, SyncError
+from src.mobile_sync import SyncError, grant_window, window_cap
 from src.time_utils import utc_now_iso
 from src.version import version_label
 
@@ -128,10 +128,15 @@ def _no_query(request: ApiRequest) -> None:
         raise _MobileError(400, "unknown_parameter", "Diese Route kennt keine Query-Parameter.")
 
 
+def _standard_window(ctx: MobileContext) -> int:
+    """Das Fenster ohne Wunsch (Ping und Kopplung): Standardfenster, gedeckelt auf die Obergrenze."""
+    return grant_window(None, window_cap(ctx.settings.get("mobile_window_max_days")))
+
+
 def _ping(request: ApiRequest, ctx: MobileContext, principal: Principal) -> ApiResponse:
     _no_query(request)
     return ApiResponse(200, {"protocol": mc.PROTOCOL, "server_time": ctx.now(),
-                             "window_days": WINDOW_DAYS})
+                             "window_days": _standard_window(ctx)})
 
 
 def _json_object(body: bytes) -> dict[str, Any]:
@@ -215,7 +220,7 @@ def _pair(request: ApiRequest, ctx: MobileContext, principal: Principal) -> ApiR
     _notify_paired(ctx)
     _, response_key = mc.pair_keys(opened["code"])
     return _sealed(response_key, path="/v1/pair", device_id=opened["device_id"], seq=1, payload={
-        "token": token, "expires_at": record["expires_at"], "window_days": WINDOW_DAYS,
+        "token": token, "expires_at": record["expires_at"], "window_days": _standard_window(ctx),
         "desktop_name": ctx.desktop_name(), "protocol": mc.PROTOCOL, "key": mc.b64e(key)})
 
 

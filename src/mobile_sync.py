@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import contextlib
 import datetime
+import json
 import os
 import re
 import threading
@@ -312,36 +313,53 @@ def desktop_info(name: str, version: str, system: str) -> dict[str, str]:
     return {"name": name, "version": version, "platform": _PLATFORMS.get(system, "")}
 
 
+def _entry_bytes(date: str, clean: Mapping[str, Any]) -> int:
+    """Serialisierte Größe eines Eintrags in der Antwort (wie `json.dumps` sie schreibt)."""
+    return len(json.dumps({date: clean}).encode())
+
+
 def build_response(merged: Mapping[str, Any], *, sent_dates: Iterable[str],
                    today: datetime.date, now: str, excluded: bool,
                    categories: list[str], defaults: Mapping[str, Any],
-                   desktop: Mapping[str, str]) -> dict[str, Any]:
+                   desktop: Mapping[str, str], window_days: int,
+                   window_max_days: int) -> dict[str, Any]:
     """Die Antwort des Abgleichs aus dem Merge-Ergebnis, ohne `token`/`expires_at`
-    (die ergänzt die Route). Fenster `[heute − 90, heute]` (heute ist das lokale
+    (die ergänzt die Route). Fenster `[heute − Fenster, heute]` (heute ist das lokale
     Datum des Desktops) plus alle gesendeten Tage — beides für Einträge **und**
     Konflikte: ein Konflikt auf einem gesendeten Tag außerhalb des Fensters bliebe
     sonst unsichtbar. Ein gesendeter Tag, den der Merge verworfen hat (Self-Heal bei
-    `excluded`), fehlt in `entries`."""
+    `excluded`), fehlt in `entries`.
+
+    `window_days` ist das **gewährte** Fenster (`grant_window`); `fit_window` kürzt es,
+    wenn die Einträge mehr als `MAX_RESPONSE_ENTRY_BYTES` ergäben (#250). Die Antwort
+    nennt das Fenster, das tatsächlich gilt."""
     sent = set(sent_dates)
-    first = (today - datetime.timedelta(days=WINDOW_DAYS)).isoformat()
     last = today.isoformat()
+
+    clean_entries: dict[str, dict[str, Any]] = {}
+    for date, entry in (merged.get("entries") or {}).items():
+        if isinstance(date, str) and _DATE_RE.fullmatch(date) and isinstance(entry, dict):
+            clean = _clean_entry(entry)
+            if clean is not None:
+                clean_entries[date] = clean
+    sizes = {date: _entry_bytes(date, clean) for date, clean in clean_entries.items()
+             if date not in sent}
+    granted = fit_window(sizes, today=today, window_days=window_days,
+                         floor_days=min(WINDOW_DAYS, window_days),
+                         budget=MAX_RESPONSE_ENTRY_BYTES)
+    first = (today - datetime.timedelta(days=granted)).isoformat()
 
     def visible(date: str) -> bool:
         return date in sent or first <= date <= last
 
-    entries = {}
-    for date, entry in sorted((merged.get("entries") or {}).items(), key=lambda item: str(item[0])):
-        if (isinstance(date, str) and _DATE_RE.fullmatch(date) and isinstance(entry, dict)
-                and visible(date)):
-            clean = _clean_entry(entry)
-            if clean is not None:
-                entries[date] = clean
+    entries = {date: clean for date, clean in sorted(clean_entries.items()) if visible(date)}
     return {
         "protocol": PROTOCOL,
         "server_time": now,
         "last_pull_at": now,
         "excluded": excluded,
-        "window_days": WINDOW_DAYS,
+        "window_days": granted,
+        "window_max_days": window_max_days,
         "entries": entries,
         "conflicts": _conflict_views(merged, visible),
         "categories": list(categories),
@@ -411,9 +429,12 @@ def perform_sync(request: SyncRequest, *, device_id: str, device_name: str,
             # Der Startup-Sweep verwirft Tombstones auf Rechnern, die „nie gesynct"
             # haben: nach einem Abgleich mit dem Handy haben sie einen Abnehmer.
             sync_history.mark_synced(base)
+        cap = window_cap(settings.get("mobile_window_max_days"))
         return build_response(merged, sent_dates=request.entries, today=today, now=now,
                               excluded=excluded, categories=categories,
-                              defaults=build_defaults(settings, categories), desktop=desktop)
+                              defaults=build_defaults(settings, categories), desktop=desktop,
+                              window_days=grant_window(request.window_days, cap),
+                              window_max_days=cap)
     finally:
         if sync_guard is not None:
             sync_guard.release()
