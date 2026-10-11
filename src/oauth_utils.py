@@ -16,12 +16,9 @@ import logging
 import uuid
 from typing import Any, Collection
 import os
-import stat
-import tempfile
 import threading
-import time
 
-from src.secure_file import harden_windows_acl
+from src.secure_file import write_secret_text
 from src import keyring_store
 
 log = logging.getLogger(__name__)
@@ -49,44 +46,10 @@ def write_token_json(json_text: str, token_path: str) -> None:
     exotische Filesystems (sshfs, FAT32) ab, wo chmod fehlschlagen kann. Dort
     übernimmt stattdessen `secure_file.harden_windows_acl` (Audit M8).
 
-    Beide Härtungen greifen auf der **Temp-Datei**, also vor dem `os.replace`:
-    sonst gäbe es ein Fenster, in dem `token.json` bereits am Zielpfad steht,
-    aber noch die geerbten Rechte trägt.
+    Der Ablauf (Temp-Datei, härten, dann erst schreiben, ersetzen) steht in
+    `secure_file.write_secret_bytes`.
     """
-    token_path = os.fspath(token_path)
-    directory = os.path.dirname(os.path.abspath(token_path))
-    fd, tmp_path = tempfile.mkstemp(
-        dir=directory, prefix=".token-", suffix=".tmp")
-    try:
-        with os.fdopen(fd, "w") as f:
-            f.write(json_text)
-        try:
-            os.chmod(tmp_path, stat.S_IRUSR | stat.S_IWUSR)  # 0o600
-        except OSError:
-            pass
-        harden_windows_acl(tmp_path)
-        # os.replace mit Retry gegen transiente Windows-PermissionError: ein
-        # Virenscanner, der die frisch erzeugte .token-*.tmp scannt, oder ein
-        # noch offenes Handle auf token.json blockiert den atomaren Rename kurz
-        # (WinError 5/32 -> beide PermissionError). Kurzer Backoff überbrückt das;
-        # bleibt es dabei, wird der Fehler durchgereicht (Issue #135, Muster wie
-        # #117). Gezielt PermissionError, damit echte Fehler (fehlende tmp,
-        # Zielverzeichnis) nicht maskiert werden.
-        attempts = 5
-        for attempt in range(attempts):
-            try:
-                os.replace(tmp_path, token_path)
-                break
-            except PermissionError:
-                if attempt == attempts - 1:
-                    raise
-                time.sleep(0.2)
-    except BaseException:
-        try:
-            os.remove(tmp_path)
-        except OSError:
-            pass
-        raise
+    write_secret_text(os.fspath(token_path), json_text, prefix=".token-")
 
 
 def write_token(creds: Any, token_path: str) -> None:

@@ -1,15 +1,16 @@
 # src/secure_file.py
 """Zugriffsschutz für lokal abgelegte Secrets (Audit M8).
 
-Die App schreibt fünf sensible Dateien neben die Nutzerdaten: `token.json`
+Die App schreibt sensible Dateien neben die Nutzerdaten: `token.json`
 (OAuth-Refresh-Token, `oauth_utils.write_token`), `instance-secret`
 (Shared Secret des Single-Instance-Handshakes, `single_instance`),
 `webhooks.json` (Webhook-Konfiguration inkl. Auth-Token/HMAC-Secrets,
 `webhook_store`), `smtp.json` (SMTP-Kontokonfiguration inkl. Passwort im
 Datei-Fallback ohne Schlüsselbund, `smtp_store`) und `api-token` (Bearer-Token
-der lokalen HTTP-API, `api_auth`). Alle fünf werden atomar
-über Temp-Datei + `os.replace` geschrieben und mit `chmod 0600` abgesichert —
-unter Windows ist das chmod allerdings ein No-op.
+der lokalen HTTP-API, `api_auth`) und `mobile_keys.json` (Geräteschlüssel,
+`mobile_keys`). Alle werden über **`write_secret_bytes`** geschrieben (s. dort): atomar
+über Temp-Datei + `os.replace`, mit `chmod 0600` — unter Windows ist das chmod
+allerdings ein No-op.
 
 Dieses Modul liefert das Windows-Gegenstück. Es ist bewusst ein eigenes,
 stdlib-only Modul und hängt an keinem der Aufrufer: `oauth_utils`,
@@ -89,28 +90,36 @@ def harden_windows_acl(path: str) -> None:
                      path, proc.returncode, (proc.stderr or "").strip())
 
 
-def write_secret_json(path: str, obj: Any, *, prefix: str) -> None:
-    """Schreibt `obj` als JSON atomar und gehärtet (#249): Temp-Datei im Zielordner →
-    `flush` + `fsync` → `chmod 0600` → `harden_windows_acl` (Windows) → `os.replace`.
+def write_secret_bytes(path: str, data: bytes, *, prefix: str) -> None:
+    """Schreibt `data` atomar und gehärtet — **der** Schreibpfad für alle lokalen Secrets
+    (#246): Temp-Datei im Zielordner anlegen und schließen → `chmod 0600` →
+    `harden_windows_acl` (Windows) → erst **dann** den Inhalt schreiben (`flush` + `fsync`)
+    → `os.replace`.
 
-    Derselbe Ablauf wie `smtp_store._save_to_disk` und `oauth_utils.write_token`; chmod und
-    icacls laufen auf der **Temp-Datei**, damit die Datei nie kurz mit geerbten Rechten am
-    Zielpfad liegt. Der Rename wird bei `PermissionError` fünfmal wiederholt (ein Virenscanner
-    auf der frisch ge-ACLten Datei, #135/#117). Bei **jedem** Fehler — auch schon im
-    `json.dump` — wird die Temp-Datei entfernt und der Fehler weitergereicht; die alte Datei
-    bleibt unberührt."""
+    Gehärtet wird die noch **leere** Temp-Datei: das Secret steht nie in einer Datei mit
+    geerbten Rechten (unter Windows sonst bis zum `icacls`-Aufruf lesbar). Die Datei wird
+    vor dem Härten geschlossen und danach neu geöffnet, damit `icacls` nie gegen ein
+    offenes Handle läuft; die ACL bleibt beim Neuöffnen erhalten. Der Rename wird bei
+    `PermissionError` fünfmal wiederholt (ein Virenscanner auf der frisch ge-ACLten Datei,
+    #135/#117). Bei **jedem** Fehler wird die Temp-Datei entfernt und der Fehler
+    weitergereicht; die alte Datei bleibt unberührt.
+
+    `prefix` ist der Temp-Name (`.token-` …); `removal._credential_paths` kennt ihn für
+    liegengebliebene Dateien. Wer ein neues Secret ablegt, nimmt diese Funktion und baut
+    keinen eigenen Ablauf — `tests/test_secret_writers.py` hält die Reihenfolge fest."""
     directory = os.path.dirname(os.path.abspath(path))
     fd, tmp_path = tempfile.mkstemp(dir=directory, prefix=prefix, suffix=".tmp")
     try:
-        with os.fdopen(fd, "w", encoding="utf-8") as handle:
-            json.dump(obj, handle, indent=2, ensure_ascii=False)
-            handle.flush()
-            os.fsync(handle.fileno())
+        os.close(fd)
         try:
-            os.chmod(tmp_path, stat.S_IRUSR | stat.S_IWUSR)         # 0o600
+            os.chmod(tmp_path, stat.S_IRUSR | stat.S_IWUSR)         # 0o600; Win: No-op
         except OSError:
             _log.debug("chmod 0600 nicht möglich (%s)", tmp_path, exc_info=True)
         harden_windows_acl(tmp_path)
+        with open(tmp_path, "wb") as handle:
+            handle.write(data)
+            handle.flush()
+            os.fsync(handle.fileno())
         attempts = 5
         for attempt in range(attempts):
             try:
@@ -126,3 +135,14 @@ def write_secret_json(path: str, obj: Any, *, prefix: str) -> None:
         except OSError:
             _log.debug("Temp-Datei nicht entfernbar (%s)", tmp_path, exc_info=True)
         raise
+
+
+def write_secret_text(path: str, text: str, *, prefix: str) -> None:
+    """`write_secret_bytes` für Text (UTF-8, keine Zeilenumbruch-Umsetzung)."""
+    write_secret_bytes(path, text.encode("utf-8"), prefix=prefix)
+
+
+def write_secret_json(path: str, obj: Any, *, prefix: str) -> None:
+    """`write_secret_bytes` für ein JSON-Objekt (eingerückt, UTF-8). Serialisiert **vor**
+    dem Anlegen der Temp-Datei: ein nicht darstellbarer Wert hinterlässt nichts."""
+    write_secret_text(path, json.dumps(obj, indent=2, ensure_ascii=False), prefix=prefix)

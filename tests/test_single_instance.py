@@ -241,7 +241,8 @@ def test_secret_file_acl_hardened_before_replace(tmp_path, monkeypatch):
     import src.single_instance as si
 
     events = []
-    monkeypatch.setattr(si, "harden_windows_acl",
+    from src import secure_file
+    monkeypatch.setattr(secure_file, "harden_windows_acl",
                         lambda p: events.append(("harden", p)))
     real_replace = os.replace
 
@@ -260,36 +261,13 @@ def test_secret_file_acl_hardened_before_replace(tmp_path, monkeypatch):
         assert f.read() == b"s" * 32
 
 
-class _WriteSpy:
-    """Reicht alles an die echte Datei durch und merkt sich, wann geschrieben wird."""
-
-    def __init__(self, handle, events):
-        self._handle, self._events = handle, events
-
-    def write(self, data):
-        self._events.append("write")
-        return self._handle.write(data)
-
-    def __enter__(self):
-        self._handle.__enter__()
-        return self
-
-    def __exit__(self, *exc):
-        return self._handle.__exit__(*exc)
-
-    def __getattr__(self, name):
-        return getattr(self._handle, name)
-
-
 def test_the_instance_secret_is_hardened_before_it_is_written(tmp_path, monkeypatch):
     import src.single_instance as si
-    events = []
-    real_fdopen, real_harden = os.fdopen, si.harden_windows_acl
-    monkeypatch.setattr(os, "fdopen", lambda *a, **k: _WriteSpy(real_fdopen(*a, **k), events))
-    monkeypatch.setattr(si, "harden_windows_acl",
-                        lambda path: (events.append("harden"), real_harden(path))[1])
+    from src import secure_file
+    sizes = []
+    monkeypatch.setattr(secure_file, "harden_windows_acl", lambda path: sizes.append(os.path.getsize(path)))
 
     si._write_secret_atomic(str(tmp_path / "instance-secret"), b"s" * 32)
 
-    assert events == ["harden", "write"]
+    assert sizes == [0]                                       # gehärtet, solange die Datei noch leer ist
     assert (tmp_path / "instance-secret").read_bytes() == b"s" * 32

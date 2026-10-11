@@ -661,23 +661,30 @@ Wert.
   `migrate_legacy_autostart()` überführt Alt-Shortcuts in den Registry-Key, ist aber frozen-gated
   (Repo-Modus: No-op, würde andernfalls python.exe+Repo ins Register schreiben und bestehende
   Shortcuts beschädigen).
-- `secure_file.py` — Zugriffsschutz für die fünf lokal abgelegten Secrets: `token.json`
+- `secure_file.py` — Zugriffsschutz für die lokal abgelegten Secrets: `token.json`
   (`oauth_utils.write_token_json`), `instance-secret` (`single_instance._write_secret_atomic`),
-  `webhooks.json` (`webhook_store._save_to_disk`, dritter Schreibpfad — enthält
-  Auth-Token/HMAC-Secrets der konfigurierten Webhooks) und `smtp.json`
-  (`smtp_store._save_to_disk`, vierter Schreibpfad — enthält, nur ohne Schlüsselbund,
-  das SMTP-Passwort im Klartext) und `api-token` (`api_auth._write_token_atomic`,
-  fünfter Schreibpfad — Bearer-Token der lokalen API). Alle fünf Schreibpfade laufen
-  Temp-Datei → `chmod 0600` → `harden_windows_acl` → `os.replace`.
+  `webhooks.json` (`webhook_store._save_to_disk` — enthält Auth-Token/HMAC-Secrets der
+  konfigurierten Webhooks), `smtp.json` (`smtp_store._save_to_disk` — enthält, nur ohne
+  Schlüsselbund, das SMTP-Passwort im Klartext), `api-token` (`api_auth._write_token_atomic`
+  — Bearer-Token der lokalen API) und `mobile_keys.json` (`mobile_keys`). **Alle laufen über
+  einen Helfer, `write_secret_bytes`** (`write_secret_text`/`write_secret_json` bauen darauf
+  auf; #246): Temp-Datei anlegen und schließen → `chmod 0600` → `harden_windows_acl` →
+  **erst dann** schreiben (`flush` + `fsync`) → `os.replace` (5× Retry bei
+  `PermissionError`). Gehärtet wird also die noch *leere* Datei: ein Secret steht nie in einer
+  Datei mit geerbten Rechten. Geschlossen und neu geöffnet wird, damit `icacls` nie gegen
+  ein offenes Handle läuft. `tests/test_secret_writers.py` geht durch den öffentlichen Einstieg
+  jedes Schreibers und hält Reihenfolge, Aufräumen und Retry fest; ein Quelltext-Test lässt
+  `harden_windows_acl` nur in `secure_file` und für die *vorhandene* Datei in `api_auth`
+  zu — ein eigener Ablauf fiele dort durch.
   Unter Windows ist chmod ein No-op, deshalb dort zusätzlich `icacls /inheritance:r
   /grant:r <user>:(F)` (Audit M8): geerbte ACEs (u.a. SYSTEM, lokale Administratoren) raus,
   genau ein Berechtigter bleibt. **Vollzugriff** statt R/W, weil das spätere `os.replace`
-  DELETE auf der Zieldatei braucht; **auf der Temp-Datei**, damit die Datei nie kurz mit
-  geerbten Rechten am Zielpfad liegt. Best-effort und nie fatal (fehlendes `icacls`, kein
+  DELETE auf der Zieldatei braucht; **auf der leeren Temp-Datei**, damit die Datei nie kurz
+  mit geerbten Rechten am Zielpfad liegt. Best-effort und nie fatal (fehlendes `icacls`, kein
   benennbarer Principal → loggen und weiter): ungehärtet ist der Status quo, eine
   gescheiterte Persistenz wäre eine Regression. Eigenes Modul, damit `single_instance`
   nichts aus dem OAuth-Umfeld importieren muss (und keiner den privaten Namen des anderen
-  nutzt, Audit N17). Wer einen sechsten Secret-Schreibpfad baut, ruft diesen Helfer mit auf.
+  nutzt, Audit N17). Wer ein weiteres Secret ablegt, ruft `write_secret_bytes` und trägt den Schreiber in `tests/test_secret_writers.py` ein.
   **Aufrufhäufigkeit:** der Helfer hängt an `write_token_json`, läuft also bei *jedem*
   Token-Refresh in Mail-, Drive- und Kalender-Pfad — ein `icacls`-Subprozess pro
   Refresh, nicht einmalig beim Anlegen. Unkritisch, weil alle diese Pfade in den
@@ -690,7 +697,7 @@ Wert.
   bleibt Klartext) — `token.json` nur noch `refresh_token_key`,
   `webhooks.json` nur `secret_location`, `smtp.json` nur `password_location`;
   `write_token`/`write_token_json` und die beiden `_save_to_disk` bleiben aber
-  unverändert die Schreibpfade, über `harden_windows_acl` gehärtet, weil ohne
+  unverändert die Schreibpfade, über `write_secret_bytes` gehärtet, weil ohne
   Schlüsselbund (oder im Alt-Format) das Secret weiterhin dort landet.
 - `api_auth.py` — Authentifizierung der lokalen HTTP-API (#92), Tk-frei und
   ohne Socket. Token (`secrets.token_urlsafe(32)`, Datei `api-token`, gehärtet
