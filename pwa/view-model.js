@@ -246,3 +246,33 @@ export function desktopHint(meta) {
   const known = Boolean(meta.desktop && meta.desktop.version);
   return known ? '' : 'Die Desktop-App ist älter als diese Seite, einige Funktionen fehlen (z. B. die Vorbelegung der Zeiten). Bitte die Desktop-App aktualisieren.';
 }
+
+// --- Lesefenster (#250) --------------------------------------------------------------------------
+
+/** Text und Aktion für den Rand des Fensters (`window-policy.olderState`); `null`, wenn nichts zu sagen ist. */
+export function olderModel(state) {
+  switch (state.kind) {
+    case 'load':
+      return { text: 'Ältere Zeiten sind noch nicht geladen.', action: 'older', wish: state.wish,
+        buttonText: `Ältere Zeiten laden (bis ${state.wish} Tage)` };
+    case 'capped':
+      return { text: `Der Desktop liefert höchstens ${state.days} Tage. Die Obergrenze lässt sich am Desktop unter Einstellungen → Mobil ändern.`, action: null };
+    case 'trimmed':
+      return { text: `Der Desktop liefert wegen der Datenmenge nur ${state.days} Tage.`, action: null };
+    case 'old_desktop':
+      return { text: 'Dieser Desktop kann nicht mehr als 90 Tage liefern. Bitte die Desktop-App aktualisieren.', action: null };
+    default:
+      return null;
+  }
+}
+
+/** Die Zeile „Verlauf“ im Verbindungsdialog. */
+export function windowRow({ days, max, wish }) {
+  const parts = [];
+  if (Number.isInteger(wish) && wish !== days) parts.push(`gewünscht ${wish}`);
+  if (Number.isInteger(max)) parts.push(`Desktop erlaubt bis ${max}`);
+  return {
+    text: parts.length ? `${days} Tage (${parts.join(', ')})` : `${days} Tage`,
+    canReset: Number.isInteger(wish) && wish > 90,
+  };
+}

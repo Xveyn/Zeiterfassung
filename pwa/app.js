@@ -4,6 +4,7 @@
 // `messages.js`); hier wird nur zusammengesteckt.
 import { addDays, formatDateDe, localIsoDate, mondayOf } from './minutes.js';
 import { weekdayKey } from './defaults.js';
+import { DEFAULT_WISH, olderState } from './window-policy.js';
 import { deviceNameFromUserAgent, parseHostPort, parsePairFragment } from './pairing.js';
 import { openDatabase, requestPersistentStorage } from './db.js';
 import { Store } from './store.js';
@@ -11,7 +12,7 @@ import { SyncClient, SyncError, clockSkewMs } from './sync.js';
 import { shouldQueue, shouldSync } from './sync-policy.js';
 import { shouldApplyUpdate, shouldCheckForUpdate } from './update-policy.js';
 import {
-  conflictsModel, dayChanged, desktopHint, editorRows, focusKeyToRestore, hintsModel, rowsToSlots, statusModel, validateRows, weekModel,
+  conflictsModel, dayChanged, desktopHint, editorRows, focusKeyToRestore, hintsModel, olderModel, rowsToSlots, statusModel, validateRows, weekModel,
 } from './view-model.js';
 import { BUILD } from './sw-core.js';
 import { clear, focusByKey, focusState, h } from './dom.js';
@@ -206,6 +207,10 @@ class App {
       getDay: (date) => this.store.getDay(date), anchor: this.anchor, today: localIsoDate(new Date()),
       conflictDates: conflicts.map((conflict) => conflict.date), windowDays: meta.window_days,
     });
+    model.older = olderModel(olderState({
+      firstDay: model.days[0].date, today: localIsoDate(new Date()), windowDays: meta.window_days,
+      windowMax: meta.window_max, wish: meta.window_wish,
+    }));
     const hints = hintsModel({
       lastError: this.lastError, excluded: meta.excluded, skewMs: this.skewMs, persistent: this.persistent,
       updateReady: this.updateReady, conflictCount: conflicts.length,
@@ -218,6 +223,7 @@ class App {
       next: () => { this.anchor = addDays(this.anchor, 7); this.render(); },
       today: () => { this.anchor = localIsoDate(new Date()); this.render(); },
       openDay: (date) => this.openDay(date),
+      older: (wish) => this.loadOlder(wish),
     }));
     this.shell.status.update(statusModel({
       paired: this.paired, online: this.online, syncing: this.syncing, pending: this.store.dirtyDates().length,
@@ -242,6 +248,7 @@ class App {
       desktopName: meta.desktop_name,
       desktop: meta.desktop,
       update: { state: this.updateState, auto: Boolean(meta.auto_update) },
+      window: { days: meta.window_days, max: meta.window_max, wish: meta.window_wish },
       hint: desktopHint(meta),
       address: meta.address ? `${meta.address.host}:${meta.address.port}` : '',
       build: BUILD,
@@ -250,6 +257,7 @@ class App {
     }, {
       pair: () => { this.screen = 'pair'; this.render(); },
       checkUpdate: () => this.checkForUpdate('manual'),
+      resetWindow: () => this.resetWindow(),
       applyUpdate: () => this.reloadForUpdate(),
       setAutoUpdate: async (on) => {
         await this.store.setMeta({ auto_update: on });
@@ -378,6 +386,17 @@ class App {
     })) return;
     this.applyRequested = true;
     this.reloadForUpdate();
+  }
+
+  /** „Ältere Zeiten laden“: den Wunsch erhöhen und abgleichen; der Desktop gewährt, was er darf. */
+  async loadOlder(wish) {
+    await this.store.setMeta({ window_wish: wish });
+    this.trigger('manual');
+  }
+
+  async resetWindow() {
+    await this.store.setMeta({ window_wish: DEFAULT_WISH });
+    this.trigger('manual');
   }
 
   async reloadForUpdate() {

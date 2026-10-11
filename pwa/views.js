@@ -5,7 +5,7 @@
 import { h } from './dom.js';
 import { MAX_CATEGORY_LENGTH } from './minutes.js';
 import { updateStatusText } from './update-policy.js';
-import { categoryLabel, categoryOptions, hintKey, nextRow, pickCategory } from './view-model.js';
+import { categoryLabel, categoryOptions, hintKey, nextRow, pickCategory, windowRow } from './view-model.js';
 
 const button = (label, onclick, className = '', extra = {}) =>
   h('button', { type: 'button', class: className, onclick, ...extra }, label);
@@ -117,6 +117,9 @@ export function weekView(model, handlers) {
       button('›', handlers.next, '', { 'aria-label': 'Nächste Woche', 'data-focus': 'next' })),
     !model.isCurrent && button('Zur aktuellen Woche', handlers.today, 'link', { 'data-focus': 'today' }),
     h('ul', { class: 'days' }, model.days.map((day) => dayRow(day, handlers))),
+    model.older && h('div', { class: 'hint older', role: 'status' },
+      h('span', {}, model.older.text),
+      model.older.action === 'older' && button(model.older.buttonText, () => handlers.older(model.older.wish), 'link', { 'data-focus': 'older' })),
     h('div', { class: 'total' }, h('span', {}, 'Woche gesamt'), h('span', {}, model.totalLabel)));
 }
 
@@ -245,7 +248,11 @@ export function conflictsDialog(conflicts, handlers) {
   return openDialog(dialog);
 }
 
-export function connectionDialog({ desktopName, desktop, hint = '', address, build, persistent, tokenUntil, update }, handlers) {
+export function connectionDialog({ desktopName, desktop, hint = '', address, build, persistent, tokenUntil, update, window: windowInfo }, handlers) {
+  const windowState = windowRow(windowInfo);
+  const resetWindow = button('Auf 90 Tage zurücksetzen', () => { dialog.close(); handlers.resetWindow(); });
+  resetWindow.hidden = !windowState.canReset;
+  const windowCell = h('dd', {}, windowState.text, ' ', resetWindow);
   const updateStatus = h('dd', { role: 'status' }, updateStatusText(update.state));
   const apply = button('Jetzt neu laden', () => handlers.applyUpdate(), 'primary');
   apply.hidden = update.state !== 'available';
@@ -269,7 +276,8 @@ export function connectionDialog({ desktopName, desktop, hint = '', address, bui
       h('dt', { class: 'muted' }, 'Kopplung gültig bis'), h('dd', {}, tokenUntil || '—'),
       h('dt', { class: 'muted' }, 'Dauerhafter Speicher'), h('dd', {}, persistent === null ? 'unbekannt' : persistent ? 'ja' : 'nein'),
       h('dt', { class: 'muted' }, 'Handy-App'), h('dd', {}, build),
-      h('dt', { class: 'muted' }, 'Updates'), updateStatus),
+      h('dt', { class: 'muted' }, 'Updates'), updateStatus,
+      h('dt', { class: 'muted' }, 'Verlauf'), windowCell),
     h('div', { class: 'buttons' }, check, apply),
     h('label', { class: 'check', for: 'auto-update' }, auto, ' Updates automatisch einspielen'),
     hint && h('p', { class: 'hint warn', role: 'status' }, hint),
