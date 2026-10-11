@@ -18,7 +18,7 @@ from src.oauth_utils import TokenKeyringUnavailable
 from src import secret_migration
 from src.sync_runtime import run_calendar_reconcile, run_vacation_purge
 from src.updater import REPO, check_for_update, is_newer, should_check
-from src.version import installed_release_id
+from src.version import installed_release_id, updates_supported
 
 log = logging.getLogger(__name__)
 
@@ -187,7 +187,10 @@ class BackgroundTaskRunner:
         `prerelease_updates_enabled`: ohne Opt-in nur echte Releases.
         `is_newer` wird bereits im Worker ausgewertet, damit
         on_result(release, newer) im UI-Thread keine ungeschützte Logik mehr
-        ausführt. Fehler still."""
+        ausführt. Fehler still. Dev-/Source-Builds prüfen nie
+        (`version.updates_supported`)."""
+        if not updates_supported():
+            return
         frequency = self._settings.get("update_check_frequency")
         if not should_check(self._settings.get("last_update_check_at"), frequency):
             return

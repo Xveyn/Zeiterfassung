@@ -185,3 +185,35 @@ class TestInstalledReleaseId:
         # Start aus dem Quellcode (python -m src.main).
         with patch("src.version._build_info", None):
             assert installed_release_id() == VERSION
+
+
+class TestUpdatesSupported:
+    """Dev-/Source-Builds tragen die VERSION des letzten Releases bei neuerem
+    Code und würden ein Pre-Release derselben Version fälschlich als Update
+    sehen — sie prüfen deshalb nie."""
+
+    def test_by_channel(self, monkeypatch):
+        from src.version import updates_supported
+        for channel, expected in [("release", True), ("prerelease", True),
+                                  ("dev", False), ("source", False)]:
+            monkeypatch.setattr("src.version.build_channel", lambda c=channel: c)
+            assert updates_supported() is expected
+
+    def test_build_channel_without_build_info_is_source(self, real_channel):
+        from src.version import build_channel
+        with patch("src.version._build_info", None):
+            assert build_channel() == "source"
+
+    def test_build_channel_reads_stamp(self, real_channel):
+        from src.version import build_channel
+        with patch("src.version._build_info", _FakeBuildInfo(channel="dev")):
+            assert build_channel() == "dev"
+
+    def test_background_check_is_skipped_for_dev(self, monkeypatch):
+        from unittest.mock import MagicMock
+        from src.background_tasks import BackgroundTaskRunner
+        monkeypatch.setattr("src.version.build_channel", lambda: "dev")
+        fake = MagicMock()
+        BackgroundTaskRunner.check_update(fake, on_result=MagicMock())
+        fake.run.assert_not_called()
+        fake._settings.get.assert_not_called()
