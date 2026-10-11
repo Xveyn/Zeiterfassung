@@ -3,6 +3,8 @@ Sende-Erinnerung und die Sende-Erinnerung an Reservierungstagen.
 
 Stand bis PR 3 im App-Tab, dort ohne Überschriften — zwei fast gleich
 benannte Minuten-Einstellungen nebeneinander. Jede hat jetzt ihren Abschnitt.
+Die Reservierungs-Abschnitte erscheinen nur, wenn Reservierungen eingeschaltet
+sind (Tab Arbeitszeit); die Werte bleiben erhalten.
 """
 
 import tkinter as tk
@@ -31,16 +33,19 @@ class RemindersTab:
         form.frame.pack(fill="both", expand=True)
         body = form.body
 
+        show_reservations = bool(settings.get("reservations_enabled"))
+
         # --- Reservierungs-Erinnerung (Toast, gerätelokal) ---
         reminders_var = tk.BooleanVar(value=settings.get("reminders_enabled"))
         minutes_var = tk.StringVar(value=str(settings.get("reminder_minutes_before")))
-        form.section("Reservierungen")
-        form.check("Erinnerungen als Toast anzeigen", reminders_var)
-        with form.depends_on(reminders_var):
-            form.row("Minuten vor Ende:",
-                     dark_combo(body, minutes_var, _MINUTES, width=4))
-            form.hint("Nur für Reservierungen mit Kategorie — und nur, solange "
-                      "für diese Kategorie an dem Tag keine Ist-Zeit erfasst ist.")
+        if show_reservations:
+            form.section("Reservierungen")
+            form.check("Erinnerungen als Toast anzeigen", reminders_var)
+            with form.depends_on(reminders_var):
+                form.row("Minuten vor Ende:",
+                         dark_combo(body, minutes_var, _MINUTES, width=4))
+                form.hint("Nur für Reservierungen mit Kategorie — und nur, solange "
+                          "für diese Kategorie an dem Tag keine Ist-Zeit erfasst ist.")
 
         # --- Monatliche Sende-Erinnerung ---
         send_var = tk.BooleanVar(value=settings.get("send_reminder_enabled"))
@@ -75,19 +80,14 @@ class RemindersTab:
             value=settings.get("send_reminder_reservations_enabled"))
         default_minutes_var = tk.StringVar(
             value=str(settings.get("send_reminder_default_minutes")))
-        form.section("An Reservierungstagen")
-        form.check("Sende-Erinnerung am Ende einer markierten Reservierung",
-                   res_var)
-        with form.depends_on(res_var):
-            form.row("Standard (Minuten vor Ende):", dark_combo(
-                body, default_minutes_var, _MINUTES, width=4))
-            # Ohne Kalender-Abgleich zeigt die App gar keine Reservierungen
-            # (App._reservations_active) — der Schalter bliebe sonst
-            # wirkungslos, ohne dass man sieht warum.
-            hint = "Welche Tage erinnern, legst du im Tages-Dialog fest."
-            if not settings.get("gcal_enabled"):
-                hint += " Braucht den Kalender-Abgleich (Tab Google)."
-            form.hint(hint)
+        if show_reservations:
+            form.section("An Reservierungstagen")
+            form.check("Sende-Erinnerung am Ende einer markierten Reservierung",
+                       res_var)
+            with form.depends_on(res_var):
+                form.row("Standard (Minuten vor Ende):", dark_combo(
+                    body, default_minutes_var, _MINUTES, width=4))
+                form.hint("Welche Tage erinnern, legst du im Tages-Dialog fest.")
 
         fields = FieldSet()
         fields.add("reminders_enabled", reminders_var)

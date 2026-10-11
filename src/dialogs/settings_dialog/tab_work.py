@@ -124,6 +124,16 @@ class WorkTab:
         wsl_start_vars = wsl_start_row.vars
         wsl_end_vars = wsl_end_row.vars
 
+        # --- Reservierungen ---
+        reservations_var = tk.BooleanVar(value=settings.get("reservations_enabled"))
+        form.section("Reservierungen")
+        form.check("Reservierungen verwenden (zukünftige Soll-Zeiten)",
+                   reservations_var)
+        form.hint("Pro Tag eine Soll-Zeit planen, im Kalender als Punkt markiert. "
+                  "Der Abgleich mit Google Kalender ist optional (Tab Google). "
+                  "Erinnerungen dazu erscheinen nach erneutem Öffnen der "
+                  "Einstellungen.")
+
         # --- Verwalten ---
         form.section("Verwalten")
         specs = [("Kategorien verwalten", lambda: open_category_dialog(dialog, settings))]
@@ -142,6 +152,7 @@ class WorkTab:
         self.end_vars = end_vars
         self.pause_var = pause_var
         self.pause_warning_var = pause_warning_var
+        self.reservations_var = reservations_var
         self.rate_var = rate_var
         self.wsl_enabled_var = wsl_enabled_var
         self.wsl_start_vars = wsl_start_vars
@@ -165,6 +176,7 @@ class WorkTab:
             fields.add(f"default_end_{key}", end_vars[key])
         fields.add("default_pause", pause_var)
         fields.add("pause_warning_enabled", pause_warning_var)
+        fields.add("reservations_enabled", reservations_var)
         fields.add("hourly_rate", rate_var)
         fields.add("werkstudent_limit_enabled", wsl_enabled_var)
         # Jahr → Monat → Tag ist Absicht: die Datumszeile klemmt den Tag bei

@@ -15,6 +15,7 @@ def work_raw(**overrides):
         "workweek_only": False,
         "default_pause": "30",
         "pause_warning_enabled": True,
+        "reservations_enabled": False,
         "hourly_rate": "15.5",
         "werkstudent_limit_enabled": False,
         "werkstudent_limit_start.year": "2026",
@@ -238,6 +239,13 @@ def test_update_tab_updates():
 # wörtlich aus dessen `updates`-Dict (plus die Wochentage und die beiden
 # Sonderfälle auto_update_enabled und gcal_calendar_id). Speichern je Tab
 # darf keinen davon verlieren und keinen dazuerfinden.
+def test_work_updates_writes_reservations_enabled():
+    assert tr.work_updates(work_raw(reservations_enabled=True), OLD_WSL)[
+        "reservations_enabled"] is True
+    assert tr.work_updates(work_raw(reservations_enabled=False), OLD_WSL)[
+        "reservations_enabled"] is False
+
+
 _legacy_keys_base = {
     "autostart", "default_pause", "recipient", "name", "mail_subject",
     "mail_greeting", "mail_content", "mail_closing", "hourly_rate", "state",
@@ -250,7 +258,7 @@ _legacy_keys_base = {
     "prerelease_updates_enabled", "ui_scale", "werkstudent_limit_enabled",
     "werkstudent_limit_start", "werkstudent_limit_end",
     "werkstudent_limit_max_hours", "pause_warning_enabled", "workweek_only",
-    "device_name", "auto_update_enabled",
+    "device_name", "auto_update_enabled", "reservations_enabled",
 }
 LEGACY_KEYS = (
     _legacy_keys_base |
