@@ -521,8 +521,20 @@ def test_a_device_row_shows_name_last_seen_and_expiry_in_german_format():
     assert "widerrufen" not in text and "abgelaufen" not in text
 
 
-def test_a_revoked_device_is_marked():
-    assert "widerrufen" in tr.device_row_text(device(revoked=True), NOW_ISO)
+def test_revoked_devices_are_not_listed():
+    # Der Datensatz bleibt im Speicher (die Antwort an das Handy lautet `token_revoked`), die Liste
+    # im Tab zeigt aber nur Geräte, die noch koppelbar sind.
+    active, revoked = device(id="a"), device(id="b", revoked=True)
+
+    assert tr.visible_devices([active, revoked]) == [active]
+    assert tr.visible_devices([revoked]) == []
+    assert tr.visible_devices([]) == []
+
+
+def test_visible_devices_keeps_expired_and_malformed_records_and_the_order():
+    expired = device(id="a", expires_at="2026-10-01T00:00:00Z")
+    odd = {"id": "b"}                                       # ohne `revoked`
+    assert tr.visible_devices([expired, odd]) == [expired, odd]
 
 
 def test_an_expired_device_is_marked_from_the_second_it_expires():

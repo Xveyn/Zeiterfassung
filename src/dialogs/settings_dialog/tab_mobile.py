@@ -20,7 +20,7 @@ from src.dialogs.settings_dialog.form_model import SaveOutcome
 from src.dialogs.settings_dialog.tab_rules import (
     FIRST_ENABLE_NOTICE, REVOKE_ERROR_TEXT, address_options, address_to_choice,
     device_row_text, keystore_summary, mobile_status_view, mobile_updates, revoke_outcome,
-    validate_mobile,
+    validate_mobile, visible_devices,
 )
 from src.theme import (
     ACCENT, BG, ENTRY_BG, FONT, STATUS_OK, STATUS_WARN, TEXT, TEXT_MUTED, Form, dark_combo,
@@ -174,7 +174,7 @@ class MobileTab:
 
     def _refresh_devices(self):
         self._keystore_label.config(text=keystore_summary(self._service.key_locations()))
-        records = self._service.list_devices()
+        records = visible_devices(self._service.list_devices())
         now = utc_now_iso()
         texts = [device_row_text(record, now) for record in records]
         if texts == self._row_texts:
