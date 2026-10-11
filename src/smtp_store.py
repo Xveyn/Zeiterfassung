@@ -23,14 +23,11 @@ import datetime
 import json
 import logging
 import os
-import stat
-import tempfile
 import threading
-import time
 import uuid
 from typing import Any
 
-from src.secure_file import harden_windows_acl
+from src.secure_file import write_secret_json
 from src.smtp import SECURITY_MODES
 
 log = logging.getLogger(__name__)
@@ -208,12 +205,8 @@ class SmtpStore:
                     reason, os.path.basename(target))
 
     def _save_to_disk(self) -> None:
-        """Atomar und gehärtet — derselbe Ablauf wie oauth_utils.write_token.
-
-        chmod und icacls laufen auf der TEMP-Datei: sonst gäbe es ein Fenster,
-        in dem smtp.json schon am Zielpfad steht, aber noch die geerbten
-        Rechte trägt.
-        """
+        """Atomar und gehärtet über `secure_file.write_secret_json` (härten, bevor
+        geschrieben wird; Ablauf dort beschrieben)."""
         if self._readonly:
             # Lautlos zurückkehren wäre die schlechteste Variante: der Dialog
             # schlösse sich, die Liste zeigte den Eintrag (er steht in
@@ -223,38 +216,7 @@ class SmtpStore:
                 "Die SMTP-Datei stammt von einer neueren Version oder ist "
                 "nicht lesbar und wird deshalb nicht überschrieben.")
         payload = {"schema_version": SCHEMA_VERSION, "accounts": self._accounts}
-        directory = os.path.dirname(os.path.abspath(self.filepath))
-        fd, tmp_path = tempfile.mkstemp(
-            dir=directory, prefix=".smtp-", suffix=".tmp")
-        try:
-            with os.fdopen(fd, "w", encoding="utf-8") as f:
-                json.dump(payload, f, indent=2, ensure_ascii=False)
-                f.flush()
-                os.fsync(f.fileno())
-            try:
-                os.chmod(tmp_path, stat.S_IRUSR | stat.S_IWUSR)  # 0o600
-            except OSError:
-                pass
-            harden_windows_acl(tmp_path)
-            # Retry wie in oauth_utils.write_token (#135/#117): ein
-            # Virenscanner, der die frische Temp-Datei greift — die gerade per
-            # icacls neu ge-ACLt wurde —, blockiert den Rename kurzzeitig.
-            # Gezielt PermissionError, damit echte Fehler nicht maskiert werden.
-            attempts = 5
-            for attempt in range(attempts):
-                try:
-                    os.replace(tmp_path, self.filepath)
-                    break
-                except PermissionError:
-                    if attempt == attempts - 1:
-                        raise
-                    time.sleep(0.2)
-        except BaseException:
-            try:
-                os.remove(tmp_path)
-            except OSError:
-                pass
-            raise
+        write_secret_json(self.filepath, payload, prefix=".smtp-")
 
     def get_all(self) -> list[Account]:
         # deepcopy, nicht dict(): auch wenn die Konten hier flacher sind als

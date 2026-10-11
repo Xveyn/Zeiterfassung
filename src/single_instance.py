@@ -10,14 +10,11 @@ from typing import Callable
 import logging
 import os
 import socket
-import stat
 import sys
-import tempfile
 import threading
-import time
 import zlib
 
-from src.secure_file import harden_windows_acl
+from src.secure_file import write_secret_bytes
 
 _MAGIC_SHOW = b"ZEIT-SHOW"
 _MAGIC_PING = b"ZEIT-PING"
@@ -45,33 +42,7 @@ def _write_secret_atomic(path: str, secret: bytes) -> None:
     (Audit M8): wer das Secret lesen kann, kann den SHOW/PING-Handshake fälschen
     und einer laufenden Instanz das Fenster nach vorn holen. Gehärtet wird die
     Temp-Datei, bevor os.replace sie unter dem Zielnamen sichtbar macht."""
-    directory = os.path.dirname(os.path.abspath(path))
-    fd, tmp_path = tempfile.mkstemp(
-        dir=directory, prefix=".instance-secret-", suffix=".tmp")
-    try:
-        with os.fdopen(fd, "wb") as f:
-            # Erst härten, dann schreiben (die Temp-Datei ist beim Anlegen leer).
-            try:
-                os.chmod(tmp_path, stat.S_IRUSR | stat.S_IWUSR)  # 0o600; Win: No-op
-            except OSError:
-                pass
-            harden_windows_acl(tmp_path)
-            f.write(secret)
-        attempts = 5
-        for attempt in range(attempts):
-            try:
-                os.replace(tmp_path, path)
-                break
-            except PermissionError:
-                if attempt == attempts - 1:
-                    raise
-                time.sleep(0.2)
-    except BaseException:
-        try:
-            os.remove(tmp_path)
-        except OSError:
-            pass
-        raise
+    write_secret_bytes(path, secret, prefix=".instance-secret-")
 
 
 def _load_or_create_secret(base_path: str) -> bytes | None:

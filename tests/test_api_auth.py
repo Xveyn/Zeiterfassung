@@ -11,7 +11,7 @@ import sys
 
 import pytest
 
-from src import api_auth
+from src import api_auth, secure_file
 from src.api_auth import (
     ALLOWED_METHODS, ANONYMOUS, SCOPE_LOCAL, SCOPE_MOBILE, TOKEN_FILENAME, AuthResult,
     Denied, Policy, Principal, authorize, authorize_public, generate_token,
@@ -61,7 +61,7 @@ def test_acl_hardening_runs_on_temp_file_before_replace(tmp_path, monkeypatch):
         seen.append((os.path.basename(path),
                      (tmp_path / TOKEN_FILENAME).exists()))
 
-    monkeypatch.setattr(api_auth, "harden_windows_acl", fake_harden)
+    monkeypatch.setattr(secure_file, "harden_windows_acl", fake_harden)
 
     load_or_create_token(str(tmp_path))
 
@@ -151,7 +151,7 @@ def test_replace_is_retried_when_the_target_is_briefly_locked(tmp_path, monkeypa
         real_replace(src, dst)
 
     monkeypatch.setattr(api_auth.os, "replace", flaky)
-    monkeypatch.setattr(api_auth.time, "sleep", lambda seconds: None)
+    monkeypatch.setattr(secure_file.time, "sleep", lambda seconds: None)
 
     token = load_or_create_token(str(tmp_path))
 
@@ -167,7 +167,7 @@ def test_permanent_lock_gives_no_token_after_five_attempts(tmp_path, monkeypatch
         raise PermissionError("dauerhaft gesperrt")
 
     monkeypatch.setattr(api_auth.os, "replace", locked)
-    monkeypatch.setattr(api_auth.time, "sleep", lambda seconds: None)
+    monkeypatch.setattr(secure_file.time, "sleep", lambda seconds: None)
 
     assert load_or_create_token(str(tmp_path)) is None
     assert len(calls) == 5
@@ -694,38 +694,15 @@ def test_the_host_header_is_trimmed_of_http_whitespace_only():
                          policy, verify).code == "bad_host"
 
 
-class _WriteSpy:
-    """Reicht alles an die echte Datei durch und merkt sich, wann geschrieben wird."""
-
-    def __init__(self, handle, events):
-        self._handle, self._events = handle, events
-
-    def write(self, data):
-        self._events.append("write")
-        return self._handle.write(data)
-
-    def __enter__(self):
-        self._handle.__enter__()
-        return self
-
-    def __exit__(self, *exc):
-        return self._handle.__exit__(*exc)
-
-    def __getattr__(self, name):
-        return getattr(self._handle, name)
-
-
 def test_the_token_is_hardened_before_it_is_written(tmp_path, monkeypatch):
-    events = []
-    real_fdopen, real_harden = os.fdopen, api_auth.harden_windows_acl
-    monkeypatch.setattr(os, "fdopen", lambda *a, **k: _WriteSpy(real_fdopen(*a, **k), events))
-    monkeypatch.setattr(api_auth, "harden_windows_acl",
-                        lambda path: (events.append("harden"), real_harden(path))[1])
+    sizes = []
+    monkeypatch.setattr(secure_file, "harden_windows_acl", lambda path: sizes.append(os.path.getsize(path)))
 
     token = load_or_create_token(str(tmp_path))
 
-    assert events == ["harden", "write"]                      # nie umgekehrt
+    assert sizes == [0]                                       # gehärtet, solange die Datei noch leer ist
     assert (tmp_path / TOKEN_FILENAME).read_text(encoding="ascii") == token
+
 
 
 # --- Denied und öffentliche Routen (#221) ------------------------------------------------------

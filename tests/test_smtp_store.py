@@ -11,7 +11,7 @@ import threading
 
 import pytest
 
-from src import smtp_store
+from src import secure_file, smtp_store
 from src.smtp_store import SmtpStore, SmtpStoreReadOnly, validate_record
 
 
@@ -163,7 +163,7 @@ def test_hardening_runs_on_the_temp_file(tmp_path, monkeypatch):
     Fenster, in dem smtp.json schon am Zielpfad steht, aber noch die
     geerbten Rechte traegt."""
     seen = []
-    monkeypatch.setattr(smtp_store, "harden_windows_acl", seen.append)
+    monkeypatch.setattr(secure_file, "harden_windows_acl", seen.append)
     path = str(tmp_path / "smtp.json")
     SmtpStore(path).save(_record())
     assert seen

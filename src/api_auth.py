@@ -20,12 +20,10 @@ import os
 import re
 import secrets
 import stat
-import tempfile
-import time
 from dataclasses import dataclass
 from typing import Callable, Mapping
 
-from src.secure_file import harden_windows_acl
+from src.secure_file import harden_windows_acl, write_secret_bytes
 
 _log = logging.getLogger(__name__)
 
@@ -57,43 +55,10 @@ def _valid_token(data: bytes) -> str | None:
 
 
 def _write_token_atomic(path: str, token: str) -> None:
-    """Schreibt das Token atomar (Temp + os.replace) mit 0600 und
-    PermissionError-Retry — dasselbe Muster wie `single_instance.
-    _write_secret_atomic` (Issue #135, Audit M8).
-
-    Gehärtet wird die Temp-Datei, bevor `os.replace` sie unter dem Zielnamen
-    sichtbar macht; unter Windows ist das chmod ein No-op, dort greift die
-    ACL (`secure_file`). Das Präfix `.api-token-` erwartet
-    `removal._credential_paths` für liegengebliebene Temp-Dateien."""
-    directory = os.path.dirname(os.path.abspath(path))
-    fd, tmp_path = tempfile.mkstemp(
-        dir=directory, prefix=f".{TOKEN_FILENAME}-", suffix=".tmp")
-    try:
-        with os.fdopen(fd, "w", encoding="ascii") as f:
-            # Erst härten, dann schreiben: die Temp-Datei ist beim Anlegen leer, das
-            # Token steht nie in einer Datei mit geerbten Rechten (unter Windows
-            # sonst bis zum `icacls`-Aufruf lesbar).
-            try:
-                os.chmod(tmp_path, stat.S_IRUSR | stat.S_IWUSR)  # 0o600; Win: No-op
-            except OSError:
-                _log.debug("chmod 0600 auf %s fehlgeschlagen", tmp_path, exc_info=True)
-            harden_windows_acl(tmp_path)
-            f.write(token)
-        attempts = 5
-        for attempt in range(attempts):
-            try:
-                os.replace(tmp_path, path)
-                break
-            except PermissionError:
-                if attempt == attempts - 1:
-                    raise
-                time.sleep(0.2)
-    except BaseException:
-        try:
-            os.remove(tmp_path)
-        except OSError:
-            _log.debug("Temp-Datei %s nicht entfernbar", tmp_path, exc_info=True)
-        raise
+    """Schreibt das Token über `secure_file.write_secret_bytes` (atomar, gehärtet, bevor
+    geschrieben wird, `PermissionError`-Retry; Issue #135, Audit M8). Das Präfix
+    `.api-token-` erwartet `removal._credential_paths` für liegengebliebene Temp-Dateien."""
+    write_secret_bytes(path, token.encode("ascii"), prefix=f".{TOKEN_FILENAME}-")
 
 
 def _harden_existing(path: str) -> None:

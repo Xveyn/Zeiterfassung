@@ -5,6 +5,7 @@ import json
 import pytest
 
 import src.webhook_store as whs
+from src import secure_file
 from src.webhook_store import WebhookStore, new_id, validate_record
 
 
@@ -190,7 +191,7 @@ def test_hardening_runs_on_the_temp_file(tmp_path, monkeypatch):
     """Auf der Temp-Datei, VOR os.replace — sonst läge die Datei kurz mit
     geerbten Rechten am Zielpfad (Muster wie oauth_utils.write_token)."""
     hardened = []
-    monkeypatch.setattr(whs, "harden_windows_acl", hardened.append)
+    monkeypatch.setattr(secure_file, "harden_windows_acl", hardened.append)
     path = tmp_path / "webhooks.json"
     WebhookStore(str(path)).save(_record())
     assert hardened, "harden_windows_acl wurde nicht aufgerufen"
