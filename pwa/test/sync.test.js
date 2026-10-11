@@ -141,6 +141,28 @@ test('the example response is accepted', () => {
   assert.deepEqual(Object.keys(parsed.entries), ['2026-10-07', '2026-10-06']);
 });
 
+test('the example response carries the defaults and the desktop info (#288)', () => {
+  const parsed = parseSyncResponse(fixture('sync-response.json'));
+  assert.equal(parsed.defaults.pause, 30);
+  assert.deepEqual(parsed.defaults.category_times.Projekt, { start: '09:00', end: '17:00', pause: 45 });
+  assert.deepEqual(parsed.desktop, { name: 'Büro-PC', version: '1.24.0', platform: 'Linux' });
+});
+
+test('a response from an older desktop without defaults and desktop info is still accepted', () => {
+  const doc = fixture('sync-response.json');
+  delete doc.defaults;
+  delete doc.desktop;
+  const parsed = parseSyncResponse(doc);
+  assert.equal(parsed.defaults, null);
+  assert.deepEqual(parsed.desktop, { name: '', version: '', platform: '' });
+});
+
+test('garbage in defaults does not refuse the response', () => {
+  const doc = fixture('sync-response.json');
+  doc.defaults = 'kaputt';
+  assert.equal(parseSyncResponse(doc).defaults, null);
+});
+
 const broken = (mutate) => {
   const doc = fixture('sync-response.json');
   mutate(doc);

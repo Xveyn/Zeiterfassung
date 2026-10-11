@@ -299,6 +299,26 @@ test('the response updates token, last_pull_at, categories, window and conflicts
   assert.equal(meta.device_id, 'phone-0001');                        // bleibt
 });
 
+test('the response stores the defaults and the desktop info, and an older desktop clears them (#288)', async () => {
+  const { store } = await make();
+  const defaults = { pause: 30, weekdays: {}, category_times: {} };
+  const desktop = { name: 'PC', version: '1.24.0', platform: 'Linux' };
+
+  await store.applyResponse(parsedResponse({ defaults, desktop }), store.snapshotDirty(), TODAY);
+  assert.deepEqual(store.getMeta().defaults, defaults);
+  assert.deepEqual(store.getMeta().desktop, desktop);
+
+  await store.applyResponse(parsedResponse({ defaults: null, desktop: { name: '', version: '', platform: '' } }),
+    store.snapshotDirty(), TODAY);
+  assert.equal(store.getMeta().defaults, null);
+});
+
+test('a store without the new meta fields starts with no defaults', async () => {
+  const { store } = await make();
+  assert.equal(store.getMeta().defaults, null);
+  assert.deepEqual(store.getMeta().desktop, { name: '', version: '', platform: '' });
+});
+
 test('days and the new token are written in one batch', async () => {
   const adapter = createMemoryAdapter();
   const batches = [];

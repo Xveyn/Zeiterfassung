@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
-  WEEKDAYS, blankRow, categoryLabel, categoryOptions, conflictsModel, dayChanged, editorRows, focusKeyToRestore, hintKey, hintsModel, localTime, rowsToSlots, slotText,
+  WEEKDAYS, categoryLabel, categoryOptions, conflictsModel, dayChanged, editorRows, focusKeyToRestore, hintKey, hintsModel, localTime, nextRow, pickCategory, rowsToSlots, slotText,
   statusModel, validateRows, weekModel,
 } from '../view-model.js';
 import { SyncError } from '../sync.js';
@@ -184,18 +184,19 @@ test('conflicts are sorted by date and junk is skipped', () => {
 
 // --- Editor ----------------------------------------------------------------------------------------
 
+const plain = ({ start, end, pause, kategorie }) => ({ start, end, pause, kategorie });
+
 test('the editor starts from the stored slots or from one blank row', () => {
-  assert.deepEqual(editorRows(null), [blankRow()]);
-  assert.deepEqual(editorRows(live([], { deleted: true })), [blankRow()]);
+  assert.deepEqual(editorRows(null).map(plain), [{ start: '', end: '', pause: '0', kategorie: '' }]);
+  assert.deepEqual(editorRows(live([], { deleted: true })).map(plain), [{ start: '', end: '', pause: '0', kategorie: '' }]);
   assert.deepEqual(editorRows(live([{ start: '08:00', end: '12:00', pause: 15, kategorie: 'A' }])),
     [{ start: '08:00', end: '12:00', pause: '15', kategorie: 'A' }]);
 });
 
 test('a new row continues after the previous one', () => {
-  assert.deepEqual(blankRow(), { start: '', end: '', pause: '0', kategorie: '' });
-  assert.deepEqual(blankRow({ start: '08:00', end: '12:00', pause: '0', kategorie: 'A' }),
+  assert.deepEqual(plain(nextRow({ start: '08:00', end: '12:00', pause: '0', kategorie: 'A' })),
     { start: '12:00', end: '', pause: '0', kategorie: 'A' });
-  assert.deepEqual(blankRow({ start: '08:00', end: '', pause: '0', kategorie: '' }),
+  assert.deepEqual(plain(nextRow({ start: '08:00', end: '', pause: '0', kategorie: '' })),
     { start: '', end: '', pause: '0', kategorie: '' });
 });
 
@@ -214,8 +215,8 @@ test('rows become wire slots; blank rows are dropped', () => {
 test('validation uses the same rules as the server and speaks German', () => {
   const ok = [{ start: '08:00', end: '12:00', pause: '0', kategorie: 'A' }];
   assert.deepEqual(validateRows(ok), { ok: true, message: '' });
-  assert.equal(validateRows([blankRow()]).ok, false);
-  assert.match(validateRows([blankRow()]).message, /Mindestens ein Slot/);
+  assert.equal(validateRows([{ start: '', end: '', pause: '0', kategorie: '' }]).ok, false);
+  assert.match(validateRows([{ start: '', end: '', pause: '0', kategorie: '' }]).message, /Mindestens ein Slot/);
   assert.equal(validateRows([{ ...ok[0], end: '07:00' }]).message, 'Endzeit muss nach Startzeit liegen');
   assert.equal(validateRows([{ ...ok[0], start: '' }]).message, 'Startzeit ungültig (Format: HH:MM)');
   assert.equal(validateRows([{ ...ok[0], pause: '1.5' }]).ok, false);
@@ -305,4 +306,83 @@ test('focus lost to the body (element disabled or removed) falls back to the las
 test('focus in a dialog or elsewhere is left alone and forgets the last key', () => {
   assert.equal(focusKeyToRestore({ activeKey: null, inRoot: false, isBody: false, last: 'sync' }), null);
   assert.equal(focusKeyToRestore({ activeKey: null, inRoot: true, isBody: false, last: 'sync' }), null);
+});
+
+// --- Vorbelegung (#288) --------------------------------------------------------------------------
+
+const DEFAULTS = {
+  pause: 30,
+  weekdays: { mon: { start: '08:00', end: '16:00' }, fri: { start: '08:00', end: '13:00' } },
+  category_times: { Büro: { start: '09:00', end: '17:00', pause: 45 } },
+};
+
+test('a new day starts with the weekday defaults', () => {
+  const [row] = editorRows(null, DEFAULTS, 'fri');
+  assert.deepEqual({ start: row.start, end: row.end, pause: row.pause, kategorie: row.kategorie },
+    { start: '08:00', end: '13:00', pause: '30', kategorie: '' });
+});
+
+test('without defaults (older desktop) a new day stays blank as before', () => {
+  const [row] = editorRows(null, null, 'mon');
+  assert.deepEqual({ start: row.start, end: row.end, pause: row.pause }, { start: '', end: '', pause: '0' });
+  assert.deepEqual(editorRows(null)[0].start, '');
+});
+
+test('a deleted or empty day is prefilled like a new one', () => {
+  assert.equal(editorRows({ deleted: true, slots: [] }, DEFAULTS, 'mon')[0].end, '16:00');
+  assert.equal(editorRows({ deleted: false, slots: [] }, DEFAULTS, 'mon')[0].end, '16:00');
+});
+
+test('saved slots are shown as they are', () => {
+  const [row] = editorRows(live([SLOT]), DEFAULTS, 'mon');
+  assert.deepEqual({ start: row.start, end: row.end, pause: row.pause }, { start: '08:00', end: '12:00', pause: '0' });
+});
+
+test('picking a category fills the fields that are still untouched', () => {
+  const [row] = editorRows(null, DEFAULTS, 'mon');
+  pickCategory(row, 'Büro', DEFAULTS, 'mon');
+  assert.deepEqual({ start: row.start, end: row.end, pause: row.pause, kategorie: row.kategorie },
+    { start: '09:00', end: '17:00', pause: '45', kategorie: 'Büro' });
+});
+
+test('picking a category keeps fields the user already changed', () => {
+  const [row] = editorRows(null, DEFAULTS, 'mon');
+  row.start = '07:30';
+  pickCategory(row, 'Büro', DEFAULTS, 'mon');
+  assert.equal(row.start, '07:30');
+  assert.equal(row.end, '17:00');
+});
+
+test('a second pick applies again as long as the fields stayed on the applied values', () => {
+  const [row] = editorRows(null, DEFAULTS, 'mon');
+  pickCategory(row, 'Büro', DEFAULTS, 'mon');
+  pickCategory(row, '', DEFAULTS, 'mon');
+  assert.deepEqual({ start: row.start, end: row.end, pause: row.pause, kategorie: row.kategorie },
+    { start: '08:00', end: '16:00', pause: '30', kategorie: '' });
+});
+
+test('a saved slot keeps its times when the category changes', () => {
+  const [row] = editorRows(live([SLOT]), DEFAULTS, 'mon');
+  pickCategory(row, 'Büro', DEFAULTS, 'mon');
+  assert.deepEqual({ start: row.start, end: row.end, pause: row.pause, kategorie: row.kategorie },
+    { start: '08:00', end: '12:00', pause: '0', kategorie: 'Büro' });
+});
+
+test('picking a category without defaults only sets the name', () => {
+  const [row] = editorRows(null, null, 'mon');
+  pickCategory(row, 'Büro', null, 'mon');
+  assert.deepEqual({ start: row.start, end: row.end, pause: row.pause, kategorie: row.kategorie },
+    { start: '', end: '', pause: '0', kategorie: 'Büro' });
+});
+
+test('an added slot keeps the previous end as start and only takes end and pause from the category', () => {
+  const next = nextRow({ start: '08:00', end: '12:00', pause: '0', kategorie: '' });
+  assert.deepEqual({ start: next.start, end: next.end, pause: next.pause }, { start: '12:00', end: '', pause: '0' });
+  pickCategory(next, 'Büro', DEFAULTS, 'mon');
+  assert.deepEqual({ start: next.start, end: next.end, pause: next.pause }, { start: '12:00', end: '17:00', pause: '45' });
+});
+
+test('rowsToSlots ignores the bookkeeping of a row', () => {
+  const [row] = editorRows(null, DEFAULTS, 'mon');
+  assert.deepEqual(Object.keys(rowsToSlots([row])[0]).sort(), ['end', 'kategorie', 'pause', 'start']);
 });

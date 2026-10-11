@@ -64,5 +64,50 @@
     "Intern"
   ],
   "token": "aB3dE5fG7hJ9kL1mN3pQ5rS7tU9vW1xY3zA5bC7dE9f",
-  "expires_at": "2026-11-07T12:00:00Z"
+  "expires_at": "2026-11-07T12:00:00Z",
+  "defaults": {
+    "pause": 30,
+    "weekdays": {
+      "mon": {
+        "start": "08:00",
+        "end": "16:00"
+      },
+      "tue": {
+        "start": "08:00",
+        "end": "16:00"
+      },
+      "wed": {
+        "start": "08:00",
+        "end": "16:00"
+      },
+      "thu": {
+        "start": "08:00",
+        "end": "16:00"
+      },
+      "fri": {
+        "start": "08:00",
+        "end": "16:00"
+      },
+      "sat": {
+        "start": "08:00",
+        "end": "16:00"
+      },
+      "sun": {
+        "start": "08:00",
+        "end": "16:00"
+      }
+    },
+    "category_times": {
+      "Projekt": {
+        "start": "09:00",
+        "end": "17:00",
+        "pause": 45
+      }
+    }
+  },
+  "desktop": {
+    "name": "Büro-PC",
+    "version": "1.24.0",
+    "platform": "Linux"
+  }
 }

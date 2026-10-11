@@ -6,6 +6,7 @@ import {
   addDays, dayMinutes, formatDateDe, formatMinutes, isoWeek, mondayOf, normalizeSlots,
   validateSlots, weekDays,
 } from './minutes.js';
+import { resolveSlotDefaults } from './defaults.js';
 import { describeError } from './messages.js';
 
 export const WEEKDAYS = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
@@ -155,16 +156,42 @@ export function conflictsModel(conflicts, timeZone) {
 
 // --- Editor --------------------------------------------------------------------------------------
 
-export function blankRow(previous) {
-  const start = previous && previous.end ? previous.end : '';
-  return { start, end: '', pause: '0', kategorie: previous?.kategorie ?? '' };
+/** Eine frische Zeile. Mit Standardzeiten des Desktops (#288) ist sie wie am Desktop vorbelegt;
+ *  `base` merkt sich, was zuletzt vorbelegt wurde: `pickCategory` überschreibt nur Felder, die noch
+ *  darauf stehen. Ohne Standardwerte (älterer Desktop) bleibt sie leer wie zuvor. */
+function freshRow(defaults, weekday) {
+  const d = defaults ? resolveSlotDefaults(defaults, '', weekday) : { start: '', end: '', pause: 0 };
+  const row = { start: d.start, end: d.end, pause: String(d.pause), kategorie: '' };
+  return { ...row, base: { start: row.start, end: row.end, pause: row.pause } };
 }
 
-export function editorRows(day) {
-  if (!day || day.deleted || day.slots.length === 0) return [blankRow()];
+export function editorRows(day, defaults = null, weekday = '') {
+  if (!day || day.deleted || day.slots.length === 0) return [freshRow(defaults, weekday)];
   return day.slots.map((slot) => ({
     start: slot.start, end: slot.end, pause: String(slot.pause ?? 0), kategorie: slot.kategorie ?? '',
   }));
+}
+
+/** „+ Slot“: der Start ist das Ende des vorigen und wird von einer Kategorie nie überschrieben. */
+export function nextRow(previous) {
+  const start = previous.end ?? '';
+  return { start, end: '', pause: '0', kategorie: previous.kategorie ?? '',
+    base: { start: null, end: '', pause: '0' } };
+}
+
+/** Kategorie setzen und, wie am Desktop, Start/Ende/Pause aus den Standardzeiten übernehmen — aber nur
+ *  in Feldern, die noch auf dem zuletzt vorbelegten Wert stehen. Gespeicherte Slots haben kein `base`:
+ *  ihre Zeiten sind bewusst gesetzt und bleiben unangetastet. */
+export function pickCategory(row, name, defaults, weekday) {
+  row.kategorie = name;
+  if (!defaults || !row.base) return;
+  const next = resolveSlotDefaults(defaults, name, weekday);
+  for (const [field, value] of [['start', next.start], ['end', next.end], ['pause', String(next.pause)]]) {
+    if (row.base[field] !== null && row[field] === row.base[field]) {
+      row[field] = value;
+      row.base[field] = value;
+    }
+  }
 }
 
 const isBlank = (row) => row.start === '' && row.end === '' && (row.pause === '' || row.pause === '0')

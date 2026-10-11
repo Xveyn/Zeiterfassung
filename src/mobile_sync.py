@@ -31,6 +31,7 @@ from typing import TYPE_CHECKING, Any
 from src import mobile_pairing, sync, sync_history, sync_journal
 from src.api_entry_write import WriteError, check_date_range, load_json_body, parse_slots
 from src.devices import sanitize_registry, with_own_entry
+from src.settings import WEEKDAY_KEYS
 from src.storage import sanitize_slot
 
 if TYPE_CHECKING:
@@ -208,9 +209,73 @@ def _conflict_views(merged: Mapping[str, Any], visible: Any) -> list[dict[str, A
     return sorted(views, key=lambda view: view["date"])
 
 
+_CLOCK_RE = re.compile(r"([01]\d|2[0-3]):[0-5]\d")
+MAX_DEFAULT_PAUSE = 24 * 60
+_PLATFORMS = {"Windows": "Windows", "Darwin": "macOS", "Linux": "Linux"}
+
+
+def _clock(value: Any) -> str:
+    return value if isinstance(value, str) and _CLOCK_RE.fullmatch(value) else ""
+
+
+def _pause(value: Any) -> int | None:
+    if isinstance(value, bool) or not isinstance(value, (int, str)):
+        return None
+    try:
+        minutes = int(value)
+    except ValueError:
+        return None
+    return minutes if 0 <= minutes <= MAX_DEFAULT_PAUSE else None
+
+
+def _clean_category_times(entry: Any) -> dict[str, Any]:
+    """Eine Kategorie aus `category_times` (Form: `category_defaults`), auf gültige Felder
+    reduziert. Ein fehlendes oder ungültiges Feld fehlt in der Antwort — die PWA greift dann
+    wie der Desktop auf den globalen Standard zurück."""
+    if not isinstance(entry, dict):
+        return {}
+    out: dict[str, Any] = {}
+    if entry.get("mode") == "per_day":
+        out["mode"] = "per_day"
+        days = entry.get("days")
+        clean_days: dict[str, dict[str, str]] = {}
+        for key in WEEKDAY_KEYS:
+            day = days.get(key) if isinstance(days, dict) else None
+            if isinstance(day, dict):
+                clean_days[key] = {f: t for f in ("start", "end") if (t := _clock(day.get(f)))}
+        out["days"] = clean_days
+    else:
+        out.update({f: t for f in ("start", "end") if (t := _clock(entry.get(f)))})
+    pause = _pause(entry.get("pause"))
+    if pause is not None:
+        out["pause"] = pause
+    return out
+
+
+def build_defaults(settings: Settings, categories: list[str]) -> dict[str, Any]:
+    """Standardzeiten für die Vorbelegung in der PWA (#288): Wochentag-Standards, globale
+    Pause und die `category_times` der bekannten Kategorien. Die Auflösung selbst
+    (`category_defaults.resolve_slot_defaults`) macht die PWA mit derselben Semantik.
+    Fremdes im Settings-Dokument (Sync!) wird verworfen, nicht durchgereicht."""
+    weekdays = {key: {"start": _clock(settings.get(f"default_start_{key}")),
+                      "end": _clock(settings.get(f"default_end_{key}"))} for key in WEEKDAY_KEYS}
+    raw = settings.get("category_times")
+    category_times = {name: _clean_category_times(raw[name]) for name in categories
+                      if isinstance(raw, dict) and isinstance(raw.get(name), dict)}
+    return {"pause": _pause(settings.get("default_pause")) or 0, "weekdays": weekdays,
+            "category_times": category_times}
+
+
+def desktop_info(name: str, version: str, system: str) -> dict[str, str]:
+    """Angaben zum Desktop für den Verbindungsdialog der PWA; `system` ist `platform.system()`.
+    Eine unbekannte Plattform bleibt leer, statt einen Rohwert anzuzeigen."""
+    return {"name": name, "version": version, "platform": _PLATFORMS.get(system, "")}
+
+
 def build_response(merged: Mapping[str, Any], *, sent_dates: Iterable[str],
                    today: datetime.date, now: str, excluded: bool,
-                   categories: list[str]) -> dict[str, Any]:
+                   categories: list[str], defaults: Mapping[str, Any],
+                   desktop: Mapping[str, str]) -> dict[str, Any]:
     """Die Antwort des Abgleichs aus dem Merge-Ergebnis, ohne `token`/`expires_at`
     (die ergänzt die Route). Fenster `[heute − 90, heute]` (heute ist das lokale
     Datum des Desktops) plus alle gesendeten Tage — beides für Einträge **und**
@@ -240,6 +305,8 @@ def build_response(merged: Mapping[str, Any], *, sent_dates: Iterable[str],
         "entries": entries,
         "conflicts": _conflict_views(merged, visible),
         "categories": list(categories),
+        "defaults": dict(defaults),
+        "desktop": dict(desktop),
     }
 
 
@@ -273,7 +340,7 @@ def _phone_doc(request: SyncRequest, device_id: str, device_name: str, now: str,
 def perform_sync(request: SyncRequest, *, device_id: str, device_name: str,
                  last_pull_at: str, categories: list[str], storage: Storage,
                  settings: Settings, conflicts_store: ConflictsStore, base: str,
-                 now: str, today: datetime.date,
+                 now: str, today: datetime.date, desktop: Mapping[str, str],
                  data_lock: threading.RLock | None = None,
                  sync_guard: threading.Lock | None = None) -> dict[str, Any]:
     """Wendet den Abgleich an und liefert die Antwort (ohne `token`/`expires_at`).
@@ -305,7 +372,8 @@ def perform_sync(request: SyncRequest, *, device_id: str, device_name: str,
             # haben: nach einem Abgleich mit dem Handy haben sie einen Abnehmer.
             sync_history.mark_synced(base)
         return build_response(merged, sent_dates=request.entries, today=today, now=now,
-                              excluded=excluded, categories=categories)
+                              excluded=excluded, categories=categories,
+                              defaults=build_defaults(settings, categories), desktop=desktop)
     finally:
         if sync_guard is not None:
             sync_guard.release()

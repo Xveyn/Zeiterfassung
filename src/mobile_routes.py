@@ -27,6 +27,7 @@ from __future__ import annotations
 import datetime
 import json
 import logging
+import platform
 import threading
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
@@ -41,6 +42,7 @@ from src.api_server import Surface
 from src.api_summary import category_names
 from src.mobile_sync import WINDOW_DAYS, SyncError
 from src.time_utils import utc_now_iso
+from src.version import version_label
 
 if TYPE_CHECKING:
     from src.mobile_keys import MobileKeyStore
@@ -298,6 +300,7 @@ def _sync(request: ApiRequest, ctx: MobileContext, principal: Principal) -> ApiR
                 last_pull_at=record["last_pull_at"], categories=category_names(ctx.settings),
                 storage=ctx.storage, settings=ctx.settings, conflicts_store=ctx.conflicts_store,
                 base=ctx.base, now=now, today=ctx.today(), data_lock=ctx.data_lock,
+                desktop=mobile_sync.desktop_info(ctx.desktop_name(), version_label(), platform.system()),
                 sync_guard=ctx.sync_guard)
         except (_MobileError, SyncError) as exc:
             ctx.devices.save(seen)                       # nur der Zähler: Token bleibt unverändert

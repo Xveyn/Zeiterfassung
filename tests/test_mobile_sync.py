@@ -172,10 +172,15 @@ def _iso(offset):
     return (TODAY + datetime.timedelta(days=offset)).isoformat()
 
 
+DEFAULTS = {"pause": 30, "weekdays": {}, "category_times": {}}
+DESKTOP = {"name": "PC", "version": "1.0.0", "platform": "Linux"}
+
+
 def respond(merged, *, sent=(), excluded=False, categories=("Projekt",)):
     merged = {"entries": {}, "conflicts": [], "devices": {}, **merged}
     return mobile_sync.build_response(merged, sent_dates=sent, today=TODAY, now=NOW,
-                                      excluded=excluded, categories=list(categories))
+                                      excluded=excluded, categories=list(categories),
+                                      defaults=DEFAULTS, desktop=DESKTOP)
 
 
 def test_the_response_carries_the_protocol_fields_and_no_token():
@@ -183,7 +188,8 @@ def test_the_response_carries_the_protocol_fields_and_no_token():
 
     assert response == {
         "protocol": 2, "server_time": NOW, "last_pull_at": NOW, "excluded": False,
-        "window_days": 90, "entries": {}, "conflicts": [], "categories": ["Projekt"]}
+        "window_days": 90, "entries": {}, "conflicts": [], "categories": ["Projekt"],
+        "defaults": DEFAULTS, "desktop": DESKTOP}
 
 
 def test_the_window_is_today_minus_90_days_through_today():
@@ -346,7 +352,8 @@ def run(env, entries, *, last_pull_at="", now=NOW, **over):
     request = mobile_sync.parse_request(body(entries), now=now)
     kwargs = dict(device_id=PHONE, device_name="Pixel", last_pull_at=last_pull_at,
                   categories=["Projekt"], storage=env.storage, settings=env.settings,
-                  conflicts_store=env.conflicts, base=env.base, now=now, today=TODAY)
+                  conflicts_store=env.conflicts, base=env.base, now=now, today=TODAY,
+                  desktop=DESKTOP)
     kwargs.update(over)
     return mobile_sync.perform_sync(request, **kwargs)
 
@@ -511,7 +518,7 @@ def test_perform_sync_overrides_a_device_id_that_slipped_into_the_request(env):
     mobile_sync.perform_sync(
         request, device_id=PHONE, device_name="Pixel", last_pull_at="", categories=[],
         storage=env.storage, settings=env.settings, conflicts_store=env.conflicts,
-        base=env.base, now=NOW, today=TODAY)
+        base=env.base, now=NOW, today=TODAY, desktop=DESKTOP)
 
     assert env.storage.get_all_raw()["2026-10-07"]["device_id"] == PHONE
 
@@ -543,3 +550,11 @@ def test_a_sent_day_older_than_the_window_comes_back_from_perform_sync(env):
     response = run(env, {old: day(modified_at="2026-10-07T18:30:00Z")})
 
     assert list(response["entries"]) == [old]
+
+
+def test_perform_sync_sends_defaults_from_the_settings_and_the_desktop_info(env):
+    env.settings.set("default_pause", 20)
+
+    response = run(env, {})
+
+    assert response["defaults"]["pause"] == 20 and response["desktop"] == DESKTOP

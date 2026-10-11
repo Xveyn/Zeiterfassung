@@ -101,7 +101,13 @@ def running(data_dir: pathlib.Path, *, web_port: int, api_port: int, address: st
     settings.device_id_for_sync = "DESKTOP-DEV"
     settings.set_many({"mobile_enabled": True, "mobile_port": api_port or 17654,
                        "mobile_address": address, "mobile_notice_accepted": True,
-                       "categories": ["Projekt", "Intern", "Support"]})
+                       "categories": ["Projekt", "Intern", "Support"],
+                       # Zum Ausprobieren der Vorbelegung (#288): Projekt mit festen Zeiten,
+                       # Support nur am Freitag abweichend, Intern ohne Eintrag (= Wochentag-Standard).
+                       "category_times": {
+                           "Projekt": {"start": "09:00", "end": "17:00", "pause": 45},
+                           "Support": {"mode": "per_day", "pause": 15,
+                                       "days": {"fri": {"start": "07:00", "end": "11:00"}}}}})
     context = mobile_routes.MobileContext(
         pairing=PairingSession(), devices=MobileStore(str(data_dir / "mobile_devices.json")),
         devices_lock=threading.RLock(), keys=MobileKeyStore(str(data_dir / "mobile_keys.json")),
