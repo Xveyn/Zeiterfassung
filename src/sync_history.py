@@ -91,8 +91,10 @@ def _mark(base: str, key: str) -> None:
 
 
 def mark_synced(base: str) -> None:
-    """Vermerkt dauerhaft, dass ein Drive-Sync stattgefunden hat. Best-effort,
-    idempotent. Aufrufen, wo `last_pull_at` gesetzt wird."""
+    """Vermerkt dauerhaft, dass ein Abgleich mit einem Partner stattgefunden hat —
+    Drive-Sync oder Handy (`mobile_sync.perform_sync`). Best-effort, idempotent.
+    Aufrufen, wo `last_pull_at` gesetzt wird bzw. nach dem Anwenden eines
+    Handy-Abgleichs."""
     _mark(base, "synced")
 
 

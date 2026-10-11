@@ -164,12 +164,22 @@ def _clean_slots(raw: object) -> list[dict[str, Any]]:
     return slots
 
 
-def _clean_entry(entry: Mapping[str, Any]) -> dict[str, Any]:
+def _clean_entry(entry: Mapping[str, Any]) -> dict[str, Any] | None:
+    """Ein Desktop-Eintrag in der Form des Protokolls, oder `None`, wenn er sich nicht
+    so darstellen lässt. Die Invariante „keine Slots ⇔ gelöscht" erzwingt schon
+    `parse_request`; dieselbe gilt hier für Fremddaten vom Desktop. Gelöscht ist nur
+    ein echtes `True` (`"false"` ist truthy). Ein Tombstone trägt keine Slots; ein
+    lebender Tag ohne brauchbare Slots entfällt — als Tombstone gesendet, würde er
+    am Handy einen Tag löschen, nur weil die Desktop-Datei beschädigt ist."""
+    deleted = entry.get("deleted") is True
+    slots = [] if deleted else _clean_slots(entry.get("slots"))
+    if not deleted and not slots:
+        return None
     return {
-        "slots": _clean_slots(entry.get("slots")),
+        "slots": slots,
         "modified_at": str(entry.get("modified_at") or ""),
         "device_id": str(entry.get("device_id") or ""),
-        "deleted": bool(entry.get("deleted")),
+        "deleted": deleted,
     }
 
 
@@ -180,7 +190,7 @@ def _conflict_views(merged: Mapping[str, Any], visible: Any) -> list[dict[str, A
         if not isinstance(conflict, dict) or conflict.get("kind") != "entry" or conflict.get("resolved"):
             continue
         key = conflict.get("key")
-        if not isinstance(key, str) or not visible(key):
+        if not isinstance(key, str) or not _DATE_RE.fullmatch(key) or not visible(key):
             continue
         versions = []
         for candidate in conflict.get("candidates") or []:
@@ -214,11 +224,13 @@ def build_response(merged: Mapping[str, Any], *, sent_dates: Iterable[str],
     def visible(date: str) -> bool:
         return date in sent or first <= date <= last
 
-    entries = {
-        date: _clean_entry(entry)
-        for date, entry in sorted((merged.get("entries") or {}).items())
-        if isinstance(date, str) and isinstance(entry, dict) and visible(date)
-    }
+    entries = {}
+    for date, entry in sorted((merged.get("entries") or {}).items(), key=lambda item: str(item[0])):
+        if (isinstance(date, str) and _DATE_RE.fullmatch(date) and isinstance(entry, dict)
+                and visible(date)):
+            clean = _clean_entry(entry)
+            if clean is not None:
+                entries[date] = clean
     return {
         "protocol": PROTOCOL,
         "server_time": now,

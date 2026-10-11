@@ -275,7 +275,11 @@ Zeitraum und welche Kategorien der Bericht gefiltert ist.
   Top-Level, das kein Objekt ist, wie unparsebar und startet leer; Einträge ohne Objektform und
   Slot-Listen mit Nicht-Objekten werden nach einer Sicherung (`json_store.backup_corrupt`,
   `<datei>.corrupt-<stamp>`) repariert und zurückgeschrieben — scheitert die Sicherung, wird
-  nicht geschrieben. Wertfehler bleiben roh (der Sync soll keine spontane Änderung sehen) und
+  nicht geschrieben. Dieselbe Reparatur (`_repair_entry_values`, #254) deckt, was Merge und
+  Schreiben sprengt: `modified_at`/`device_id` ohne Text → `""` (ein `None` wirft in
+  `sync._merge_one` einen `TypeError`), `deleted` nur als echtes `True`, Lone Surrogate werden
+  aus Texten entfernt (ein Tag mit Surrogat im Schlüssel entfällt), weil sich ein Surrogat nicht
+  als UTF-8 schreiben lässt. Sonstige Wertfehler bleiben roh (der Sync soll keine spontane Änderung sehen) und
   werden an der Lese-Grenze bereinigt: `sanitize_slot` in `_user_shape` macht aus jedem Slot
   `start`/`end` Text-oder-`None`, `kategorie` Text, `pause` eine ganze Zahl 0–1440 (sonst 0).
   Alle Leser (UI, Berichte, API) gehen über `get`/`get_all` und sehen nie Fremddaten;
@@ -438,7 +442,10 @@ Zeitraum und welche Kategorien der Bericht gefiltert ist.
      `reservations_sync.drop_orphan_reservation_tombstones`, gebündelt in
      `main._sweep_orphan_tombstones`) — verwirft Tombstones auf Rechnern, die
      **nie** gesynct/abgeglichen haben (`never_synced` / `never_reconciled`).
-     Dort gibt es keinen Partner, gegen den sie je wirken könnten.
+     Dort gibt es keinen Partner, gegen den sie je wirken könnten. „Gesynct"
+     meint jeden Abnehmer: neben dem Drive-Sync setzt auch der Abgleich mit dem
+     Handy (`mobile_sync.perform_sync`) den Marker `sync_history.mark_synced` —
+     das Handy ist ein Partner, gegen den ein Tombstone wirkt.
 
   Die Bedingung des Sweeps ist bewusst eng: Feature AUS reicht nicht, es muss
   **nie an** gewesen sein. Wer den Sync abschaltet, dessen Remote kennt die
