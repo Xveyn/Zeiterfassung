@@ -256,6 +256,8 @@ export function olderModel(state) {
       return { text: 'Ältere Zeiten sind noch nicht geladen.', action: 'older', wish: state.wish,
         buttonText: `Ältere Zeiten laden (bis ${state.wish} Tage)` };
     case 'capped':
+      // 365 ist das Maximum der Desktop-Einstellung: dorthin zu verweisen führt ins Leere.
+      if (state.days >= 365) return { text: 'Mehr als 365 Tage gibt es nur am Desktop.', action: null };
       return { text: `Der Desktop liefert höchstens ${state.days} Tage. Die Obergrenze lässt sich am Desktop unter Einstellungen → Mobil ändern.`, action: null };
     case 'trimmed':
       return { text: `Der Desktop liefert wegen der Datenmenge nur ${state.days} Tage.`, action: null };

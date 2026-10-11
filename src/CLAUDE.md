@@ -371,7 +371,7 @@ Zeitraum und welche Kategorien der Bericht gefiltert ist.
   haben, hebt `_phone_doc` die Stempel der gesendeten Tage auf `last_pull_at + 1 s` an (außer bei
   `excluded`): das Handy schickt nur Tage, die es seit dem Abgleich geändert hat, und bei einem
   nachgehenden Handy ginge die Änderung sonst still gegen die Desktop-Version verloren.
-  `build_response` ist rein: Fenster `[heute − 90, heute]` plus gesendete Tage, offene Eintrags-Konflikte
+  `build_response` ist rein: Fenster `[heute − Fenster, heute]` (gewährt über `grant_window`, vom Budget `fit_window` gekürzt, #250/#292) plus gesendete Tage, offene Eintrags-Konflikte
   mit Gerätenamen aus der Registry, alle Slots über `storage.sanitize_slot`. `on_change` ruft die Route
   nach Freigabe von Guard und Lock.
 

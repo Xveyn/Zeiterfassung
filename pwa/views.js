@@ -117,7 +117,7 @@ export function weekView(model, handlers) {
       button('›', handlers.next, '', { 'aria-label': 'Nächste Woche', 'data-focus': 'next' })),
     !model.isCurrent && button('Zur aktuellen Woche', handlers.today, 'link', { 'data-focus': 'today' }),
     h('ul', { class: 'days' }, model.days.map((day) => dayRow(day, handlers))),
-    model.older && h('div', { class: 'hint older', role: 'status' },
+    model.older && h('div', { class: 'hint older' },
       h('span', {}, model.older.text),
       model.older.action === 'older' && button(model.older.buttonText, () => handlers.older(model.older.wish), 'link', { 'data-focus': 'older' })),
     h('div', { class: 'total' }, h('span', {}, 'Woche gesamt'), h('span', {}, model.totalLabel)));

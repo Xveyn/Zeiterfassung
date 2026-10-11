@@ -317,8 +317,10 @@ def desktop_info(name: str, version: str, system: str) -> dict[str, str]:
 
 
 def _entry_bytes(date: str, clean: Mapping[str, Any]) -> int:
-    """Serialisierte Größe eines Eintrags in der Antwort (wie `json.dumps` sie schreibt)."""
-    return len(json.dumps({date: clean}).encode())
+    """Serialisierte Größe eines Eintrags in der Antwort — mit derselben Serialisierung
+    wie `mobile_routes` sie siegelt (`ensure_ascii=False`, kompakte Separatoren): Umlaute
+    zählen 2 statt 6 Byte, das Budget kürzt nicht unnötig knapp."""
+    return len(json.dumps({date: clean}, ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
 
 
 def build_response(merged: Mapping[str, Any], *, sent_dates: Iterable[str],
