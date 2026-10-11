@@ -276,19 +276,18 @@ def test_nan_never_reaches_a_reader(tmp_path):
 
 # --- Review-Befunde (I2, M3) ---------------------------------------------------------------------------
 
-def test_a_lone_surrogate_next_to_a_broken_entry_does_not_stop_the_start(tmp_path, caplog):
-    # Das Zurückschreiben scheitert mit UnicodeEncodeError (ein ValueError, kein OSError).
+def test_a_lone_surrogate_next_to_a_broken_entry_is_scrubbed_and_the_file_healed(tmp_path):
+    # Ein Surrogat lässt sich nicht als UTF-8 schreiben: bliebe es stehen, scheiterte jeder
+    # spätere Schreibvorgang (Speichern, Sync-Apply, Handy-Abgleich).
     path = write(tmp_path, '{"2026-01-05": {"slots": [{"start": "08:00", "end": "09:00", '
-                           '"pause": 0, "kategorie": "\\ud83d"}], "modified_at": "a", '
+                           '"pause": 0, "kategorie": "A\\ud83dB"}], "modified_at": "a", '
                            '"device_id": "x", "deleted": false}, "2026-01-06": null}')
-    before = open(path, encoding="utf-8").read()
 
-    with caplog.at_level(logging.WARNING):
-        storage = Storage(path, device_id="dev")
+    storage = Storage(path, device_id="dev")
 
-    assert list(storage.get_all()) == [DAY]
-    assert open(path, encoding="utf-8").read() == before                 # nichts überschrieben
-    assert "nicht auf die Platte" in caplog.text
+    assert storage.get(DAY)["slots"][0]["kategorie"] == "AB"
+    storage.save("2026-01-07", [ist_slot("08:00", "09:00")])             # Schreiben geht wieder
+    assert "\\ud83d" not in open(path, encoding="utf-8").read()
 
 
 def test_a_heal_that_cannot_be_written_back_makes_one_backup_not_one_per_start(tmp_path):
@@ -314,3 +313,42 @@ def test_a_healed_file_is_not_backed_up_again_on_later_starts(tmp_path, monkeypa
         Storage(path, device_id="dev")
 
     assert len(calls) == 1                                  # nur der erste Start hat gesichert
+
+
+# --- #254: Metadaten und Surrogate aus Fremddaten --------------------------------------------------
+
+@pytest.mark.parametrize("bad", [None, 5, ["x"], True])
+def test_a_non_text_modified_at_or_device_id_is_repaired_so_the_merge_cannot_crash(tmp_path, bad):
+    raw = entry([ist_slot("08:00", "09:00")])
+    raw["modified_at"], raw["device_id"] = bad, bad
+    path = write(tmp_path, {DAY: raw})
+
+    stored = Storage(path, device_id="dev").get_all_raw()[DAY]
+
+    assert stored["modified_at"] == "" and stored["device_id"] == ""
+    assert len(backups(tmp_path)) == 1
+
+
+def test_a_missing_modified_at_is_still_filled_from_the_file_time(tmp_path):
+    raw = entry([ist_slot("08:00", "09:00")])
+    del raw["modified_at"]
+    path = write(tmp_path, {DAY: raw})
+
+    assert Storage(path, device_id="dev").get_all_raw()[DAY]["modified_at"].endswith("Z")
+
+
+@pytest.mark.parametrize("flag", [None, 0, 1, "false", "yes"])
+def test_deleted_is_a_real_boolean_after_loading(tmp_path, flag):
+    raw = entry([ist_slot("08:00", "09:00")])
+    raw["deleted"] = flag
+    path = write(tmp_path, {DAY: raw})
+
+    assert Storage(path, device_id="dev").get_all_raw()[DAY]["deleted"] is False
+
+
+def test_a_surrogate_in_a_date_key_drops_the_entry(tmp_path):
+    path = write(tmp_path, '{"2026-01-0\\ud800": {"slots": [], "modified_at": "a", '
+                           '"device_id": "x", "deleted": true}}')
+
+    assert Storage(path, device_id="dev").get_all_raw() == {}
+

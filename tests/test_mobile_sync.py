@@ -224,12 +224,73 @@ def test_foreign_slot_values_are_sanitised_in_the_response():
     assert slots == [{"start": "08:00", "end": "12:00", "pause": 0, "kategorie": ""}]
 
 
+def test_keys_that_are_not_a_date_are_left_out_of_the_response():
+    merged = {"entries": {_iso(0): _entry(_iso(0)), _iso(0) + "x": _entry(_iso(0)),
+                          "": _entry(_iso(0)), 5: _entry(_iso(0))}}
+
+    assert list(respond(merged)["entries"]) == [_iso(0)]
+
+
+def test_a_living_day_without_usable_slots_is_left_out_of_the_response():
+    broken = {"slots": "nope", "modified_at": NOW, "device_id": "DESK", "deleted": False}
+    merged = {"entries": {_iso(-1): broken, _iso(-2): _entry(_iso(-2), slots=("kein Objekt",)),
+                          _iso(0): _entry(_iso(0))}}
+
+    assert list(respond(merged)["entries"]) == [_iso(0)]
+
+
+@pytest.mark.parametrize("flag", [0, "false", "yes", None, 1])
+def test_deleted_is_true_only_for_the_boolean_true(flag):
+    merged = {"entries": {_iso(0): _entry(_iso(0), deleted=flag)}}
+
+    entry = respond(merged)["entries"][_iso(0)]
+
+    assert entry["deleted"] is False and entry["slots"] == [SLOT]
+
+
+def test_a_tombstone_never_carries_slots():
+    merged = {"entries": {_iso(0): _entry(_iso(0), deleted=True)}}
+
+    assert respond(merged)["entries"][_iso(0)] == {
+        "slots": [], "modified_at": "2026-10-01T10:00:00Z", "device_id": "DESK", "deleted": True}
+
+
+def test_a_sent_day_older_than_the_window_is_included_only_when_sent():
+    old = "2025-01-15"
+    merged = {"entries": {old: _entry(old)}}
+
+    assert respond(merged)["entries"] == {}
+    assert list(respond(merged, sent=[old])["entries"]) == [old]
+
+
+def test_conflict_candidates_use_the_cleaned_slots():
+    dirty = {"start": "08:00", "end": "12:00", "pause": "abc", "kategorie": 5, "send_reminder_minutes": 3}
+    conflict = _conflict(_iso(-1))
+    conflict["candidates"][0]["slots"] = [dirty, "kein Objekt"]
+
+    versions = respond({"conflicts": [conflict]})["conflicts"][0]["versions"]
+
+    assert versions[0]["slots"] == [{"start": "08:00", "end": "12:00", "pause": 0, "kategorie": ""}]
+
+
+def test_conflicts_are_sorted_by_date():
+    merged = {"conflicts": [_conflict(_iso(0)), _conflict(_iso(-2)), _conflict(_iso(-1))]}
+
+    assert [c["date"] for c in respond(merged)["conflicts"]] == [_iso(-2), _iso(-1), _iso(0)]
+
+
 def _conflict(key, *, resolved=False, kind="entry"):
     return {"id": f"c-{key}", "kind": kind, "key": key, "resolved": resolved,
             "candidates": [
                 _entry(key, modified_at="2026-10-07T18:30:00Z", device="PHONE-0001"),
                 _entry(key, slots=({"start": "09:00", "end": "13:00", "pause": 0, "kategorie": ""},),
                        modified_at="2026-10-07T20:00:00Z", device="DESK")]}
+
+
+def test_a_conflict_whose_key_is_not_a_date_is_left_out():
+    merged = {"conflicts": [_conflict(_iso(-1) + "x"), _conflict(_iso(-1))]}
+
+    assert [c["date"] for c in respond(merged)["conflicts"]] == [_iso(-1)]
 
 
 def test_open_entry_conflicts_in_the_window_are_listed_with_device_names():
@@ -475,3 +536,10 @@ def test_a_phone_edit_after_the_last_pull_wins_even_with_a_stamp_before_it(env, 
     assert env.conflicts.get_all() == []
     assert response["entries"]["2026-10-07"]["slots"] == [corrected]
     assert response["entries"]["2026-10-07"]["device_id"] == PHONE
+
+
+def test_a_sent_day_older_than_the_window_comes_back_from_perform_sync(env):
+    old = "2026-01-15"                      # TODAY - 90 Tage liegt davor
+    response = run(env, {old: day(modified_at="2026-10-07T18:30:00Z")})
+
+    assert list(response["entries"]) == [old]

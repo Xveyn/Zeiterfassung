@@ -70,6 +70,21 @@ def sanitize_slot(slot: Any) -> Slot | None:
     return clean
 
 
+def _has_surrogate(text: str) -> bool:
+    return any("\ud800" <= ch <= "\udfff" for ch in text)
+
+
+def _scrub_surrogates(value: Any) -> Any:
+    """Kopie von `value` ohne Lone Surrogate in Texten (auch in Schlüsseln)."""
+    if isinstance(value, str):
+        return "".join(ch for ch in value if not "\ud800" <= ch <= "\udfff") if _has_surrogate(value) else value
+    if isinstance(value, list):
+        return [_scrub_surrogates(item) for item in value]
+    if isinstance(value, dict):
+        return {_scrub_surrogates(k): _scrub_surrogates(v) for k, v in value.items()}
+    return value
+
+
 class Storage:
     def __init__(self, filepath: str = "zeiterfassung.json", device_id: str = "",
                  lock: threading.RLock | None = None) -> None:
@@ -99,9 +114,11 @@ class Storage:
         dropped = self._drop_non_object_entries()
         self._migrate_legacy_entries()
         repaired = self._repair_slot_structure()
-        if dropped or repaired:
+        repaired_values = self._repair_entry_values()
+        if dropped or repaired or repaired_values:
             self._heal(f"{dropped} Eintrag/Einträge ohne Objektform, "
-                       f"{repaired} Eintrag/Einträge mit kaputter Slot-Liste")
+                       f"{repaired} Eintrag/Einträge mit kaputter Slot-Liste, "
+                       f"{repaired_values} Eintrag/Einträge mit unbrauchbaren Metadaten/Zeichen")
 
     def _drop_non_object_entries(self) -> int:
         """Entfernt Tage, deren Wert kein Objekt ist (`null`, Text, Liste)."""
@@ -126,6 +143,37 @@ class Storage:
             if len(objects) != len(slots):
                 entry["slots"] = objects
                 fixed += 1
+        return fixed
+
+    def _repair_entry_values(self) -> int:
+        """Metadaten und Zeichen, an denen spätere Schritte scheitern (#254):
+        - `modified_at`/`device_id` kein Text → `""` (der Merge vergleicht sie mit
+          `>`/`<`; `None` darin wirft einen `TypeError`, im Drive-Sync wie im
+          Handy-Abgleich). `""` ist die kleinste Marke: der Eintrag verliert gegen jede
+          andere Version, statt den Merge abzubrechen.
+        - `deleted` vorhanden, aber kein Bool → nur ein echtes `True` löscht.
+        - Lone Surrogate (JSON-Escape `\\ud800`) lädt als `str`, lässt sich aber nicht als
+          UTF-8 schreiben: jeder spätere Schreibvorgang scheiterte. In Texten werden sie
+          entfernt; ein Tag, dessen Schlüssel eines trägt, entfällt."""
+        fixed = 0
+        for day in [d for d in self._data if _has_surrogate(d)]:
+            del self._data[day]
+            fixed += 1
+        for entry in self._data.values():
+            changed = False
+            for key in ("modified_at", "device_id"):
+                if key in entry and not isinstance(entry[key], str):
+                    entry[key] = ""
+                    changed = True
+            if "deleted" in entry and not isinstance(entry["deleted"], bool):
+                entry["deleted"] = entry["deleted"] is True
+                changed = True
+            scrubbed = _scrub_surrogates(entry)
+            if scrubbed != entry:
+                entry.clear()
+                entry.update(scrubbed)
+                changed = True
+            fixed += changed
         return fixed
 
     def _heal(self, problems: str) -> None:
