@@ -188,7 +188,10 @@ def fit_window(sizes: Mapping[str, int], *, today: datetime.date, window_days: i
     for date in sorted((d for d in sizes if first <= d <= last), reverse=True):
         used += sizes[date]
         if used > budget:
-            cutoff = datetime.date.fromisoformat(date)       # dieser Tag passt nicht mehr hinein
+            try:
+                cutoff = datetime.date.fromisoformat(date)   # dieser Tag passt nicht mehr hinein
+            except ValueError:
+                continue        # „2026-09-31“: passt auf das Muster, ist aber kein Kalendertag (Fremddaten)
             return min(window_days, max((today - cutoff).days - 1, floor_days))
     return window_days
 

@@ -20,7 +20,8 @@ export function shouldSync({ trigger, paired, syncing, online, now, lastAttemptA
   if (lastError?.needsRepair) return false;                          // totes Token: erst neu koppeln
   if (trigger !== 'online' && !online) return false;
   if (now - lastAttemptAt < AUTO_COOLDOWN_MS) return false;
-  if (trigger !== 'online' && lastError?.kind === 'offline' && now - lastAttemptAt < OFFLINE_BACKOFF_MS) {
+  if (trigger !== 'online' && (lastError?.kind === 'offline' || lastError?.kind === 'timeout')
+    && now - lastAttemptAt < OFFLINE_BACKOFF_MS) {
     return false;
   }
   return true;

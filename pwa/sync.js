@@ -70,10 +70,13 @@ export function classifyHttpError(status, body) {
   });
 }
 
-/** Keine Antwort (Verbindung, Zeitüberschreitung, Abbruch) → immer `offline`, nie ein Absturz. */
+/** Keine Antwort (Verbindung, Abbruch) → `offline`, nie ein Absturz. Eine Zeitüberschreitung hat eine
+ *  eigene Art (#292): dahinter steckt entweder ein unerreichbarer Desktop oder eine zu große Antwort bei
+ *  schwachem WLAN — der Text nennt beides und zeigt, wo sich der Verlauf verkleinern lässt. */
 export function classifyNetworkError(error) {
+  const timedOut = error?.name === 'TimeoutError';
   return new SyncError({
-    kind: 'offline', message: 'Der Desktop ist nicht erreichbar.', retryable: true,
+    kind: timedOut ? 'timeout' : 'offline', message: 'Der Desktop ist nicht erreichbar.', retryable: true,
     code: error?.name ?? '',
   });
 }
@@ -275,6 +278,7 @@ export class SyncClient {
     }
     const snapshot = this._store.snapshotDirty();
     const now = this._now();
+    const wishSent = meta.window_wish ?? 90;
     // Den Zähler VOR dem Senden dauerhaft ablegen: ein Absturz mitten im Request darf ihn nie
     // wiederverwenden (der Desktop lehnt einen wiederholten Zähler als Replay ab).
     const seq = meta.seq + 1;
@@ -285,7 +289,7 @@ export class SyncClient {
       raw = await this._sealedPost('/v1/sync', meta.address, {
         token: meta.token, requestKey, responseKey, aadRequest: meta.device_id, aadResponse: meta.device_id, seq,
         payload: { protocol: PROTOCOL, client_time: utcStamp(now), last_pull_at: meta.last_pull_at || '',
-          window_days: meta.window_wish ?? 90, entries: snapshot.entries } });
+          window_days: wishSent, entries: snapshot.entries } });
     } catch (error) {
       // Währenddessen neu gekoppelt: der Fehler gehört zum alten Server/Token und darf weder
       // den Zustand der neuen Kopplung markieren noch als deren Fehler erscheinen.
@@ -296,6 +300,7 @@ export class SyncClient {
       throw error;
     }
     const parsed = parseSyncResponse(raw);
+    parsed.window_wish_sent = wishSent;       // zu welchem Wunsch diese Antwort gehört (#292)
     if (this._pairingChanged(meta)) {
       // Währenddessen wurde neu gekoppelt: die Antwort gehört zum alten Server/Token. Sie
       // anzuwenden legte das alte Token über das neue und markierte Tage als übertragen,

@@ -28,7 +28,7 @@ test('stepFor takes the smallest step that covers the need, capped by the maximu
   assert.equal(stepFor(100, 30), 30);                    // Obergrenze unter dem Standard
 });
 
-const base = { today: TODAY, windowDays: 90, windowMax: 365, wish: 90 };
+const base = { today: TODAY, windowDays: 90, windowMax: 365, maxKnown: true, acked: 90 };
 
 test('a week inside the window needs nothing', () => {
   assert.deepEqual(olderState({ ...base, firstDay: '2026-07-13' }), { kind: 'none' });   // 87 Tage zurück
@@ -41,21 +41,37 @@ test('a week before the window offers to load older times with the right step', 
   assert.deepEqual(olderState({ ...base, firstDay: '2026-01-05' }), { kind: 'load', wish: 365 });  // 276 Tage
 });
 
-test('an old desktop (no maximum) cannot load more', () => {
+test('an old desktop (answered without a maximum) cannot load more', () => {
   assert.deepEqual(olderState({ ...base, windowMax: null, firstDay: '2026-07-06' }), { kind: 'old_desktop' });
 });
 
-test('when the wish already covers the week but the window did not grow it was capped or trimmed', () => {
-  // Obergrenze erreicht: der Desktop kann nicht mehr liefern.
-  assert.deepEqual(olderState({ ...base, windowDays: 180, windowMax: 180, wish: 365, firstDay: '2025-12-01' }),
+test('before the first answer the maximum is unknown, which is not the same as an old desktop (#292)', () => {
+  assert.deepEqual(olderState({ ...base, windowMax: null, maxKnown: false, firstDay: '2026-07-06' }), { kind: 'unknown' });
+});
+
+test('a window that already equals the desktop maximum is capped', () => {
+  assert.deepEqual(olderState({ ...base, windowDays: 180, windowMax: 180, acked: 365, firstDay: '2025-12-01' }),
     { kind: 'capped', days: 180 });
-  // Wunsch ist erfüllbar, aber die Antwort wurde wegen der Menge gekürzt.
-  assert.deepEqual(olderState({ ...base, windowDays: 120, windowMax: 365, wish: 365, firstDay: '2026-01-05' }),
+  assert.deepEqual(olderState({ ...base, windowDays: 90, windowMax: 90, firstDay: '2026-07-06' }),
+    { kind: 'capped', days: 90 });
+});
+
+test('a window below what was asked for and below the maximum was cut by the data volume', () => {
+  assert.deepEqual(olderState({ ...base, windowDays: 120, acked: 365, firstDay: '2026-01-05' }),
+    { kind: 'trimmed', days: 120 });
+  // ... auch dann, wenn eine noch größere Stufe angeboten würde: sie änderte nichts.
+  assert.deepEqual(olderState({ ...base, windowDays: 120, acked: 180, firstDay: '2025-12-01' }),
     { kind: 'trimmed', days: 120 });
 });
 
+test('a wish the desktop has not answered yet is never reported as trimmed (#292)', () => {
+  // Der Nutzer hat gerade „laden (bis 180)“ getippt (Wunsch 180), die Antwort fehlt noch oder der
+  // Abgleich ist fehlgeschlagen: das letzte bestätigte Fenster war 90 mit Wunsch 90.
+  assert.deepEqual(olderState({ ...base, acked: 90, firstDay: '2026-07-06' }), { kind: 'load', wish: 180 });
+});
+
 test('after loading, the notice disappears once the week is inside the window', () => {
-  assert.deepEqual(olderState({ ...base, windowDays: 180, wish: 180, firstDay: '2026-07-06' }), { kind: 'none' });
+  assert.deepEqual(olderState({ ...base, windowDays: 180, acked: 180, firstDay: '2026-07-06' }), { kind: 'none' });
 });
 
 test('absurd inputs never throw', () => {
@@ -63,4 +79,5 @@ test('absurd inputs never throw', () => {
     assert.deepEqual(olderState({ ...base, firstDay }), { kind: 'none' });
   }
   assert.deepEqual(olderState({ ...base, windowDays: 'x', firstDay: '2026-07-06' }), { kind: 'none' });
+  assert.deepEqual(olderState({ ...base, acked: 'x', firstDay: '2026-07-06' }), { kind: 'load', wish: 180 });
 });

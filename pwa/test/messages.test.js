@@ -11,7 +11,7 @@ const errors = JSON.parse(readFileSync(new URL('./fixtures/errors.json', import.
 
 test('every error kind the server can produce has its own text', () => {
   const kinds = new Set(errors.map((row) => row.kind));
-  for (const extra of ['offline', 'not_paired']) kinds.add(extra);
+  for (const extra of ['offline', 'not_paired', 'timeout']) kinds.add(extra);
   const fallback = describeError(new SyncError({ kind: 'völlig_neu' })).text;
   for (const kind of kinds) {
     const { text } = describeError(new SyncError({ kind, message: 'Text vom Server', code: '' }));
@@ -99,4 +99,12 @@ test('without a usable protocol number the generic mismatch text is kept', () =>
     assert.equal(describeError(new SyncError({ kind: 'protocol', code: 'invalid_protocol', supportedProtocol })).text, generic,
       String(supportedProtocol));
   }
+});
+
+test('a timeout names both likely causes and where the history can be reset (#292)', () => {
+  const { text, action } = describeError(new SyncError({ kind: 'timeout', retryable: true }));
+  assert.match(text, /Zeitüberschreitung/);
+  assert.match(text, /Verbindung/);
+  assert.match(text, /90 Tage/);
+  assert.equal(action, 'retry');
 });

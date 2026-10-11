@@ -209,7 +209,7 @@ class App {
     });
     model.older = olderModel(olderState({
       firstDay: model.days[0].date, today: localIsoDate(new Date()), windowDays: meta.window_days,
-      windowMax: meta.window_max, wish: meta.window_wish,
+      windowMax: meta.window_max, maxKnown: meta.window_max_known, acked: meta.window_wish_acked,
     }));
     const hints = hintsModel({
       lastError: this.lastError, excluded: meta.excluded, skewMs: this.skewMs, persistent: this.persistent,

@@ -19,16 +19,19 @@ export function stepFor(needDays, max) {
   return Math.min(step, max);
 }
 
-/** Was die Wochenansicht zum Rand des Fensters sagt. `firstDay` ist der Wochenanfang. */
-export function olderState({ firstDay, today, windowDays, windowMax, wish }) {
+/** Was die Wochenansicht zum Rand des Fensters sagt. `firstDay` ist der Wochenanfang, `windowDays` das
+ *  zuletzt gewährte Fenster, `acked` der Wunsch, zu dem diese Antwort gehört (nicht der gerade getippte:
+ *  ein noch unbeantworteter Wunsch darf nie als „gekürzt“ erscheinen), `maxKnown` ob schon eine Antwort
+ *  da war (vorher ist die Obergrenze unbekannt, nicht „älterer Desktop“). */
+export function olderState({ firstDay, today, windowDays, windowMax, maxKnown, acked }) {
   if (!isIsoDate(firstDay) || !isIsoDate(today) || !Number.isInteger(windowDays)) return { kind: 'none' };
   const need = daysBack(today, firstDay);
   if (need <= windowDays) return { kind: 'none' };
+  if (!maxKnown) return { kind: 'unknown' };
   if (!Number.isInteger(windowMax)) return { kind: 'old_desktop' };
-  const target = stepFor(need, windowMax);
-  if (wish >= target) {
-    // Der Wunsch deckt die Woche schon ab und das Fenster ist trotzdem zu klein: der Desktop liefert nicht mehr.
-    return windowDays >= windowMax ? { kind: 'capped', days: windowMax } : { kind: 'trimmed', days: windowDays };
-  }
-  return { kind: 'load', wish: target };
+  if (windowDays >= windowMax) return { kind: 'capped', days: windowMax };
+  const asked = Number.isInteger(acked) ? acked : DEFAULT_WISH;
+  // Der Desktop hat weniger gegeben, als erbeten und erlaubt war: die Datenmenge. Eine größere Stufe änderte nichts.
+  if (windowDays < Math.min(asked, windowMax)) return { kind: 'trimmed', days: windowDays };
+  return { kind: 'load', wish: stepFor(need, windowMax) };
 }

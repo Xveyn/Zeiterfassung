@@ -67,3 +67,10 @@ test('save and manual are remembered while a sync runs, automatic triggers are n
   assert.equal(queue('save', { syncing: false }), false);
   assert.equal(queue('save', { paired: false }), false);
 });
+
+test('a timeout backs off like a missing answer (#292)', () => {
+  const lastError = { kind: 'timeout', needsRepair: false };
+  const recent = base.now - (OFFLINE_BACKOFF_MS - 1000);
+  assert.equal(ask({ trigger: 'start', lastError, lastAttemptAt: recent }), false);
+  assert.equal(ask({ trigger: 'start', lastError, lastAttemptAt: base.now - OFFLINE_BACKOFF_MS }), true);
+});

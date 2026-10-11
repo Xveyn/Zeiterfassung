@@ -436,3 +436,10 @@ test('the connection row reads the window and offers a reset only when it is abo
   assert.deepEqual(windowRow({ days: 120, max: 365, wish: 365 }),
     { text: '120 Tage (gewünscht 365, Desktop erlaubt bis 365)', canReset: true });
 });
+
+test('an unknown maximum asks for a sync first instead of blaming the desktop (#292)', () => {
+  const model = olderModel({ kind: 'unknown' });
+  assert.match(model.text, /abgleich/i);
+  assert.doesNotMatch(model.text, /aktualisieren/);
+  assert.equal(model.action, null);
+});

@@ -259,6 +259,8 @@ export function olderModel(state) {
       return { text: `Der Desktop liefert höchstens ${state.days} Tage. Die Obergrenze lässt sich am Desktop unter Einstellungen → Mobil ändern.`, action: null };
     case 'trimmed':
       return { text: `Der Desktop liefert wegen der Datenmenge nur ${state.days} Tage.`, action: null };
+    case 'unknown':
+      return { text: 'Ältere Zeiten sind noch nicht geladen. Sobald der Abgleich mit dem Desktop gelaufen ist, lässt sich der Verlauf erweitern.', action: null };
     case 'old_desktop':
       return { text: 'Dieser Desktop kann nicht mehr als 90 Tage liefern. Bitte die Desktop-App aktualisieren.', action: null };
     default:

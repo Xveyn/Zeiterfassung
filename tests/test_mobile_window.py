@@ -107,3 +107,14 @@ def test_parse_request_reads_the_window_wish_tolerantly(sent, expected):
 def test_a_request_without_the_wish_is_still_valid():
     parsed = mobile_sync.parse_request(_body(), now="2026-10-08T12:00:00Z")
     assert parsed.window_days is None
+
+
+def test_fit_window_survives_a_date_key_that_is_not_a_calendar_day():
+    # Schlüssel wie „2026-09-31“ passen auf das Datumsmuster, sind aber kein Kalendertag (Fremddaten,
+    # Handbearbeitung). Der alte Antwortbau war rein textuell und vertrug sie: ein Fehler wäre ein 500
+    # bei jedem Abgleich.
+    sizes = {"2026-09-31": 800 * 1024, "2026-10-07": 10}
+
+    granted = fit_window(sizes, today=TODAY, window_days=365, floor_days=90, budget=768 * 1024)
+
+    assert 90 <= granted <= 365

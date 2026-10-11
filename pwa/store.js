@@ -30,7 +30,9 @@ const DEFAULT_META = Object.freeze({
   desktop: { name: '', version: '', platform: '' },
   window_days: 90,
   window_wish: 90,         // gewünschtes Fenster in Tagen (#250); der Desktop deckelt
-  window_max: null,        // Obergrenze des Desktops; null = unbekannt (älterer Desktop)
+  window_wish_acked: 90,   // der Wunsch, zu dem die letzte angewandte Antwort gehört (#292)
+  window_max: null,        // Obergrenze des Desktops; null = kam nicht mit (älterer Desktop)
+  window_max_known: false, // erst nach der ersten angewandten Antwort wahr; vorher weiß man nichts
   auto_update: false,      // Updates der PWA automatisch einspielen (#290); gerätelokal, Standard aus
   excluded: false,
   conflicts: [],
@@ -282,6 +284,8 @@ export class Store {
       desktop: { ...parsed.desktop },
       window_days: parsed.window_days,
       window_max: parsed.window_max ?? null,
+      window_max_known: true,
+      window_wish_acked: parsed.window_wish_sent ?? this._meta.window_wish_acked,
       excluded: parsed.excluded,
       conflicts: structuredClone(parsed.conflicts),
       token: parsed.token,

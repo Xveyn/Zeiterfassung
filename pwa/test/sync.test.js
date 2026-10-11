@@ -125,7 +125,7 @@ test('an invalid_entry error carries the day from the message', () => {
 
 test('a missing answer is offline, whatever the reason', () => {
   for (const error of [new TypeError('Failed to fetch'), new DOMException('x', 'AbortError'),
-    new DOMException('x', 'TimeoutError'), new Error('irgendwas')]) {
+    new Error('irgendwas')]) {
     const result = classifyNetworkError(error);
     assert.equal(result.kind, 'offline');
     assert.equal(result.retryable, true);
@@ -738,4 +738,33 @@ test('parseSyncResponse reads the maximum tolerantly', () => {
     if (bad === undefined) delete copy.window_max_days; else copy.window_max_days = bad;
     assert.equal(parseSyncResponse(copy).window_max, null, String(bad));
   }
+});
+
+test('a timeout is its own kind, so the message can point at the history size (#292)', () => {
+  const result = classifyNetworkError(new DOMException('x', 'TimeoutError'));
+  assert.equal(result.kind, 'timeout');
+  assert.equal(result.retryable, true);
+  assert.equal(result.needsRepair, false);
+});
+
+test('a sync records which wish the answer belongs to and that the desktop has answered (#292)', async () => {
+  const { store, client } = await make();
+  await store.setMeta({ window_wish: 180 });
+  assert.equal(store.getMeta().window_wish_acked, 90);
+  assert.equal(store.getMeta().window_max_known, false);
+
+  await client.sync();
+
+  assert.equal(store.getMeta().window_wish_acked, 180);
+  assert.equal(store.getMeta().window_max_known, true);
+});
+
+test('an old desktop answer still marks the maximum as known (and absent)', async () => {
+  const doc = fixture('compat/sync-response-pre-250.json');
+  const { store, client } = await make({ handler: () => reply(200, doc) });
+
+  await client.sync();
+
+  assert.equal(store.getMeta().window_max_known, true);
+  assert.equal(store.getMeta().window_max, null);
 });

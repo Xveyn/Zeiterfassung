@@ -514,3 +514,15 @@ test('a shrinking window removes clean days outside it but keeps unsent ones (#2
 
   assert.deepEqual(store.days().sort(), ['2026-03-03', '2026-09-30']);   // sauber → weg, unübertragen → bleibt
 });
+
+test('the maximum is unknown until an answer arrived, and an answer without it means an old desktop (#292)', async () => {
+  const { store } = await make();
+  assert.equal(store.getMeta().window_max_known, false);
+  assert.equal(store.getMeta().window_wish_acked, 90);
+
+  await store.applyResponse(parsedResponse({ window_max: null, window_wish_sent: 120 }), store.snapshotDirty(), TODAY);
+
+  assert.equal(store.getMeta().window_max_known, true);
+  assert.equal(store.getMeta().window_max, null);
+  assert.equal(store.getMeta().window_wish_acked, 120);
+});
