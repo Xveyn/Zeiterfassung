@@ -1,5 +1,6 @@
 """Koppel-Dialog der Handy-Erfassung (#221): zeigt einen Einmalcode als QR-Code und als
-Text, zählt seine Gültigkeit herunter und meldet das Koppeln.
+Text, zählt seine Gültigkeit herunter; ein Koppeln schließt ihn und meldet es in einer
+themed Meldung.
 
 Der Code lebt nur im Hauptspeicher (`PairingSession`). Verlässt der Nutzer den Dialog —
 Schließen, X, Escape —, wird die Sitzung geschlossen: ein offener Code ohne Dialog wäre
@@ -14,11 +15,11 @@ import tkinter as tk
 
 from src import qr
 from src.dialogs.settings_dialog.tab_rules import (
-    format_countdown, pair_changes, pair_poll_keeps_running, pair_poll_view,
+    format_countdown, pair_changes, pair_poll_keeps_running, pair_poll_view, paired_notice,
 )
 from src.theme import (
     BG, FONT, FONT_BOLD, STATUS_OK, STATUS_WARN, TEXT, TEXT_MUTED, center_dialog_on_parent,
-    create_dialog, primary_button, px, secondary_button,
+    create_dialog, primary_button, px, secondary_button, themed_showinfo, themed_showwarning,
 )
 
 log = logging.getLogger(__name__)
@@ -31,6 +32,7 @@ _MODULE_PX = 6           # Kantenlänge eines Moduls bei 100 %; skaliert über p
 class _PairDialog:
     def __init__(self, parent, service):
         self._service = service
+        self._parent = parent
         self._alive = True
         self._poll_id = None
         self._before = service.list_devices()
@@ -75,6 +77,10 @@ class _PairDialog:
         center_dialog_on_parent(dialog, parent)
 
     # --- Code und Anzeige ---------------------------------------------------------
+
+    def _blank_canvas(self):
+        self._canvas.delete("all")
+        self._canvas.config(width=1, height=1)      # `_draw` stellt die Größe wieder her
 
     def _clear_code(self):
         self._code_title.config(text="")
@@ -154,26 +160,19 @@ class _PairDialog:
 
     def _show_expired(self, text):
         """Ein abgelaufener Code zeigt weder QR-Code noch Code: er wäre nutzlos und
-        sähe gültig aus."""
-        self._canvas.delete("all")
+        sähe gültig aus. Die weiße Fläche schrumpft mit, sonst bliebe ein leeres Quadrat."""
+        self._blank_canvas()
         self._clear_code()
         self._countdown.config(text=text)
 
     def _show_paired(self, changes):
-        names = ", ".join(d["name"] for d in changes.added + changes.replaced)
-        text = f"Gekoppelt: {names}. Für ein weiteres Handy „Neuer Code“."
-        color = STATUS_OK
-        if changes.replaced:
-            old = ", ".join(d["name"] for d in changes.replaced)
-            text += (f"\nAchtung: dabei wurde das vorhandene Gerät „{old}“ ersetzt "
-                     "(jemand hat sich mit dessen Kennung gekoppelt). Gehörte der Code "
-                     "nicht zu Ihrem eigenen Handy, widerrufen Sie das Gerät im Reiter.")
-            color = STATUS_WARN
-        self._result.config(text=text, fg=color)
-        self._canvas.delete("all")
-        self._clear_code()
-        self._countdown.config(text="")
-        self._before = self._service.list_devices()
+        """Das Koppeln ist durch: der Dialog mit dem QR-Code geht zu, eine themed
+        Meldung löst ihn ab (bei ersetztem Gerät als Warnung)."""
+        notice = paired_notice(changes)
+        parent = self._parent
+        self._close()
+        show = themed_showwarning if notice.warn else themed_showinfo
+        show(parent, notice.title, notice.text)
 
     # --- Schließen -------------------------------------------------------------------
 
