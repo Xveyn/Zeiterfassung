@@ -503,10 +503,14 @@ Augenhöhe mit den anderen beiden Plattformen.
 - **Die Uhr des Handys zählt.** Bei gleichzeitigen Änderungen am selben Tag gewinnt der
   neuere Zeitstempel (bei Änderungen auf beiden Seiten zunächst als Konflikt). Weicht die Uhr um mehr als 2 Minuten ab, warnt die Web-App; bei mehr
   als 15 Minuten lehnt der Abgleich ab.
-- **Das Handy kennt nur die letzten 90 Tage.** Tage davor und alles ab morgen wirken dort
-  leer, auch wenn die App Einträge hat. Wer dort speichert, ersetzt sie ohne Konflikt; der
-  Editor warnt vor dem Fenster und ab übermorgen (für morgen nicht). Solche Tage verschwinden
-  nach dem nächsten Abgleich wieder vom Handy (#265, #273, #250).
+- **Das Handy kennt standardmäßig die letzten 90 Tage.** Es kann bis zur Obergrenze, die der
+  Desktop vorgibt (Einstellungen → Mobil, höchstens 365 Tage), ältere Zeiten nachladen. Tage
+  außerhalb des geladenen Fensters und alles ab morgen wirken dort leer, auch wenn die App
+  Einträge hat. Wer dort speichert, ersetzt sie ohne Konflikt; der Editor warnt vor dem Fenster
+  und ab übermorgen (für morgen nicht). Solche Tage verschwinden nach dem nächsten Abgleich
+  wieder vom Handy (#265, #273, #250). Bei sehr großen Beständen (viele Slots je Tag) kürzt der
+  Desktop das Fenster auf ein Datenbudget von 768 KiB; die Wochenansicht sagt dann „wegen der
+  Datenmenge“. Mehr als 365 Tage gibt es nur am Desktop.
 - **Mehr als 400 nicht übertragene Tage** auf einmal lehnt der Server ab; der Abgleich
   scheitert dann bei jedem Versuch, bis weniger offen sind (Aufteilen steht aus, #262).
 - **Geräteverwaltung und Urlaub sind gerätelokal.** Die Liste der gekoppelten Handys

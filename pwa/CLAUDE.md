@@ -29,6 +29,8 @@ ES-Module flach im Ordner:
   `SyncError.kind`.
 - `crypto.js` — Gegenstück zu `src/mobile_crypto.py` (WebCrypto), s.
   „Verschlüsselung“.
+- `window-policy.js` — Lesefenster (#250): Stufen, Wunsch, die Entscheidung der Wochenansicht
+  am Fensterrand (s. „Lesefenster“).
 - `view-model.js`, `messages.js`, `sync-policy.js`, `update-policy.js` —
   Anzeige- und Entscheidungslogik, DOM-frei und getestet.
 - `dom.js`, `views.js`, `scanner.js`, `app.js` — die DOM-Schicht. Sie baut
@@ -99,7 +101,8 @@ Desktop) ist seltener, kommt aber vor. Sechs Regeln:
    (`tests/test_mobile_contract.py`). Wer den Vertrag erweitert, friert die
    Form **vor** der Änderung ein. Der erste eingefrorene Stand ist das
    Protokoll 2 vor #288 (ohne `defaults`/`desktop`); Protokoll 1 war nie in
-   einem echten Release.
+   einem echten Release. Dazu kommt der Stand vor dem Lesefenster
+   (`compat/*-pre-250.json`, ohne `window_days`/`window_max_days`).
 5. **Die Meldung nennt die ältere Seite.** Antwortet der Desktop auf einen
    falschen Umschlag mit `invalid_protocol`, steht im Klartext-Fehler
    `supported_protocol`; daraus macht `messages.js` „Desktop-App ist älter“
@@ -108,6 +111,41 @@ Desktop) ist seltener, kommt aber vor. Sechs Regeln:
    (Desktop vor dieser Änderung), bleibt der allgemeine Text.
 6. **Ein älterer Desktop wird angezeigt.** Schickt er weder `desktop` noch
    `defaults`, sagt der Verbindungsdialog das (`desktopHint`).
+
+## Lesefenster (#250)
+
+Die PWA sieht standardmäßig die letzten 90 Tage (Standardfenster **90 Tage**,
+`WINDOW_DAYS` am Desktop, `DEFAULT_WISH` im Handy). **Das Handy wünscht, der
+Desktop deckelt:**
+
+- **Anfrage** (optional): `window_days` — der Wunsch des Handys. Fehlt er oder ist
+  er ungültig, gilt das Standardfenster.
+- **Antwort:** `window_days` — das **gewährte** Fenster, `window_max_days` — die
+  Obergrenze des Desktops. Der Wunsch wird geklemmt, nicht abgelehnt: kein neuer
+  Fehlercode.
+- **Obergrenze** am Desktop: Einstellung im Tab „Mobil“, Auswahl
+  Obergrenze **30 / 90 / 180 / 365** Tage, Standard 365, gerätelokal
+  (`mobile_window_max_days`, nicht in `SYNCED_SETTING_KEYS`).
+- Die PWA kennt die Stufen **90 / 180 / 365** Tage (`WINDOW_STEPS`). „Ältere Zeiten
+  laden“ erscheint, wenn der Wochenanfang vor dem Fenster liegt, und wählt die
+  kleinste Stufe, die die Woche abdeckt, höchstens `window_max_days`. Das
+  Wunschfenster bleibt auf dem Handy; der Verbindungsdialog zeigt es in der
+  Zeile „Verlauf“ mit „Auf 90 Tage zurücksetzen“.
+- **Fehlt `window_max_days`** (älterer Desktop), ändert die PWA ihr Fenster nie
+  und erklärt das, statt einen wirkungslosen Knopf zu zeigen (Feature-Erkennung).
+
+**Datenmenge.** Jede Antwort enthält das ganze Fenster, kein Delta. Gemessen
+(verschlüsselt auf dem Draht): realistisch 365 Tage ≈ 90 KB, 50 Slots je Tag
+(`MAX_SLOTS`) und 365 Tage ≈ 1,8 MB, mit langen Kategorien ≈ 4 MB. Rechnen und
+Speichern sind auf beiden Seiten vernachlässigbar; der Engpass ist die
+Übertragung (die PWA bricht nach 15 s ab). Deshalb kürzt der Desktop das
+gewährte Fenster, wenn die Einträge mehr als ein Budget von 768 KiB ergäben
+(`MAX_RESPONSE_ENTRY_BYTES`, `fit_window`); das Standardfenster bleibt immer,
+gesendete Tage kommen immer zurück. Die Antwort nennt das tatsächliche Fenster;
+liegt es unter dem Wunsch und unter der Obergrenze, sagt die Wochenansicht „wegen
+der Datenmenge“. `tests/test_mobile_volume.py` hält das mit denselben Fällen fest.
+Fenster über 365 Tage brauchen Delta-Antworten (die PWA deutet „Tag fehlt in der
+Antwort“ heute als Löschen) und stehen weiter in #250.
 
 ## Updates der PWA
 
