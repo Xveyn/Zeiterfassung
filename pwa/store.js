@@ -29,6 +29,8 @@ const DEFAULT_META = Object.freeze({
   defaults: null,          // Standardzeiten des Desktops (#288); null bei älterem Desktop
   desktop: { name: '', version: '', platform: '' },
   window_days: 90,
+  window_wish: 90,         // gewünschtes Fenster in Tagen (#250); der Desktop deckelt
+  window_max: null,        // Obergrenze des Desktops; null = unbekannt (älterer Desktop)
   auto_update: false,      // Updates der PWA automatisch einspielen (#290); gerätelokal, Standard aus
   excluded: false,
   conflicts: [],
@@ -279,6 +281,7 @@ export class Store {
       defaults: structuredClone(parsed.defaults ?? null),
       desktop: { ...parsed.desktop },
       window_days: parsed.window_days,
+      window_max: parsed.window_max ?? null,
       excluded: parsed.excluded,
       conflicts: structuredClone(parsed.conflicts),
       token: parsed.token,
