@@ -20,7 +20,7 @@ from src.dialogs.settings_dialog.form_model import SaveOutcome
 from src.dialogs.settings_dialog.tab_rules import (
     FIRST_ENABLE_NOTICE, REVOKE_ERROR_TEXT, address_options, address_to_choice,
     device_row_text, keystore_summary, mobile_status_view, mobile_updates, revoke_outcome,
-    validate_mobile, visible_devices,
+    validate_mobile, visible_devices, window_cap_options, window_cap_to_choice,
 )
 from src.theme import (
     ACCENT, BG, ENTRY_BG, FONT, STATUS_OK, STATUS_WARN, TEXT, TEXT_MUTED, Form, dark_combo,
@@ -58,6 +58,8 @@ class MobileTab:
         port_var = tk.StringVar(value=str(settings.get("mobile_port")))
         address_var = tk.StringVar(
             value=address_to_choice(str(settings.get("mobile_address") or "")))
+        window_var = tk.StringVar(
+            value=window_cap_to_choice(settings.get("mobile_window_max_days")))
         self._enabled_var = enabled_var
         self._last_enabled = enabled_var.get()
 
@@ -71,6 +73,10 @@ class MobileTab:
             form.row("Port:", dark_entry(body, port_var, width=7))
             self._combo = dark_combo(body, address_var, address_options([]), width=20)
             form.row("Adresse:", self._combo)
+            form.row("Verlauf bis zu:", dark_combo(body, window_var, window_cap_options(), width=12))
+            form.hint("So viele Tage kann das Handy höchstens laden. Größere Fenster machen "
+                      "jeden Abgleich größer (365 Tage ≈ 100 KB); das Handy wählt selbst, wie "
+                      "viel es braucht.")
         self._status_label = tk.Label(
             body, text="", font=FONT, bg=BG, fg=TEXT_MUTED, anchor="w",
             justify="left", wraplength=px(_WRAP_PX))
@@ -101,6 +107,7 @@ class MobileTab:
         fields.add("mobile_enabled", enabled_var)
         fields.add("mobile_port", port_var)
         fields.add("mobile_address", address_var)
+        fields.add("mobile_window_max_days", window_var)
         self.fields = fields
 
         self._runner.run(netinfo.lan_candidates, self._candidates_loaded)

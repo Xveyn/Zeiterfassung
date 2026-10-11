@@ -415,7 +415,8 @@ SLOT = {"start": "08:00", "end": "12:00", "pause": 0, "kategorie": "Projekt"}
 
 
 def sync_doc(env, entries=None, **over):
-    doc = {"protocol": 2, "client_time": env.clock["now"], "last_pull_at": "", "entries": entries or {}}
+    doc = {"protocol": 2, "client_time": env.clock["now"], "last_pull_at": "", "window_days": 90,
+           "entries": entries or {}}
     doc.update(over)
     return doc
 

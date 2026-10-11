@@ -137,3 +137,38 @@ def test_the_pages_workflow_does_not_publish_the_markdown_the_doc_lives_in():
 def test_the_root_claude_md_points_to_the_pwa_doc():
     assert "pwa/CLAUDE.md" in _read("CLAUDE.md"), (
         "Die Root-CLAUDE.md muss auf pwa/CLAUDE.md verweisen (die PWA-Doku liegt dort, #290)")
+
+
+def test_the_documented_window_steps_match_the_policy():
+    documented = [int(n) for n in _claim(r"Stufen \*\*(\d+) / (\d+) / (\d+)\*\* Tage",
+                                         "die Fensterstufen").groups()]
+    found = re.search(r"WINDOW_STEPS = \[([\d, ]+)\]", _read("pwa/window-policy.js"))
+    assert found, "Parser gescheitert: WINDOW_STEPS in pwa/window-policy.js"
+    assert [int(n) for n in found.group(1).split(",")] == documented, (
+        f"pwa/CLAUDE.md sagt {documented}, window-policy.js sagt {found.group(1)}")
+
+
+def test_the_documented_window_budget_matches_the_desktop():
+    documented = int(_claim(r"Budget von (\d+) KiB", "das Mengenlimit").group(1))
+    found = re.search(r"^MAX_RESPONSE_ENTRY_BYTES = (\d+) \* 1024", _read("src/mobile_sync.py"), re.M)
+    assert found, "Parser gescheitert: MAX_RESPONSE_ENTRY_BYTES in src/mobile_sync.py"
+    assert int(found.group(1)) == documented, (
+        f"pwa/CLAUDE.md sagt {documented} KiB, mobile_sync.py sagt {found.group(1)}")
+
+
+def test_the_documented_window_cap_choices_match_the_desktop():
+    documented = [int(n) for n in _claim(r"Obergrenze \*\*(\d+) / (\d+) / (\d+) / (\d+)\*\* Tage",
+                                         "die Obergrenzen").groups()]
+    found = re.search(r"^WINDOW_CAP_CHOICES = \(([\d, ]+)\)", _read("src/mobile_sync.py"), re.M)
+    assert found, "Parser gescheitert: WINDOW_CAP_CHOICES in src/mobile_sync.py"
+    assert [int(n) for n in found.group(1).split(",")] == documented, (
+        f"pwa/CLAUDE.md sagt {documented}, mobile_sync.py sagt {found.group(1)}")
+
+
+def test_the_documented_default_window_matches_the_desktop_and_the_phone():
+    documented = int(_claim(r"Standardfenster \*\*(\d+) Tage\*\*", "das Standardfenster").group(1))
+    desktop = re.search(r"^WINDOW_DAYS = (\d+)", _read("src/mobile_sync.py"), re.M)
+    phone = re.search(r"DEFAULT_WISH = (\d+)", _read("pwa/window-policy.js"))
+    assert desktop and phone, "Parser gescheitert: WINDOW_DAYS / DEFAULT_WISH"
+    assert int(desktop.group(1)) == documented == int(phone.group(1)), (
+        f"pwa/CLAUDE.md sagt {documented}, Desktop {desktop.group(1)}, Handy {phone.group(1)}")

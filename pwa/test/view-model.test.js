@@ -3,8 +3,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
-  WEEKDAYS, categoryLabel, categoryOptions, conflictsModel, dayChanged, editorRows, focusKeyToRestore, hintKey, hintsModel, desktopHint, localTime, nextRow, pickCategory, rowsToSlots, slotText,
-  statusModel, validateRows, weekModel,
+  WEEKDAYS, categoryLabel, categoryOptions, conflictsModel, dayChanged, editorRows, focusKeyToRestore, hintKey, hintsModel, desktopHint, localTime, nextRow, olderModel, pickCategory, rowsToSlots, slotText,
+  statusModel, validateRows, weekModel, windowRow,
 } from '../view-model.js';
 import { SyncError } from '../sync.js';
 
@@ -398,4 +398,48 @@ test('an old desktop is recognised by the missing desktop info after a sync', ()
 test('no hint before the first sync (nothing is known yet)', () => {
   assert.equal(desktopHint({ last_pull_at: '', desktop: { name: '', version: '', platform: '' }, defaults: null }), '');
   assert.equal(desktopHint({}), '');
+});
+
+// --- Ältere Zeiten (#250) ----------------------------------------------------------------------
+
+test('nothing is shown while the week is inside the window', () => {
+  assert.equal(olderModel({ kind: 'none' }), null);
+});
+
+test('the load notice names the step and offers the button', () => {
+  const model = olderModel({ kind: 'load', wish: 180 });
+  assert.match(model.text, /noch nicht geladen/);
+  assert.equal(model.action, 'older');
+  assert.equal(model.wish, 180);
+  assert.match(model.buttonText, /180 Tage/);
+});
+
+test('capped, trimmed and old-desktop notices explain instead of offering a dead button', () => {
+  const capped = olderModel({ kind: 'capped', days: 180 });
+  assert.match(capped.text, /höchstens 180 Tage/);
+  assert.match(capped.text, /Einstellungen → Mobil/);
+  assert.equal(capped.action, null);
+
+  const trimmed = olderModel({ kind: 'trimmed', days: 120 });
+  assert.match(trimmed.text, /wegen der Datenmenge nur 120 Tage/);
+  assert.equal(trimmed.action, null);
+
+  const old = olderModel({ kind: 'old_desktop' });
+  assert.match(old.text, /Desktop-App aktualisieren/);
+  assert.equal(old.action, null);
+});
+
+test('the connection row reads the window and offers a reset only when it is above the default', () => {
+  assert.deepEqual(windowRow({ days: 90, max: 365, wish: 90 }), { text: '90 Tage (Desktop erlaubt bis 365)', canReset: false });
+  assert.deepEqual(windowRow({ days: 180, max: 365, wish: 180 }), { text: '180 Tage (Desktop erlaubt bis 365)', canReset: true });
+  assert.deepEqual(windowRow({ days: 90, max: null, wish: 90 }), { text: '90 Tage', canReset: false });
+  assert.deepEqual(windowRow({ days: 120, max: 365, wish: 365 }),
+    { text: '120 Tage (gewünscht 365, Desktop erlaubt bis 365)', canReset: true });
+});
+
+test('an unknown maximum asks for a sync first instead of blaming the desktop (#292)', () => {
+  const model = olderModel({ kind: 'unknown' });
+  assert.match(model.text, /abgleich/i);
+  assert.doesNotMatch(model.text, /aktualisieren/);
+  assert.equal(model.action, null);
 });

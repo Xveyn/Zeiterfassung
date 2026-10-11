@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import contextlib
 import datetime
+import json
 import os
 import re
 import threading
@@ -40,7 +41,10 @@ if TYPE_CHECKING:
     from src.storage import Storage
 
 PROTOCOL = 2                  # Protokoll v2 (#249): verschlüsselt, s. `mobile_crypto`
-WINDOW_DAYS = 90
+WINDOW_DAYS = 90                    # Standardfenster, wenn das Handy keinen Wunsch äußert
+HARD_MAX_WINDOW_DAYS = 365          # weiter geht kein Fenster, auch nicht per Einstellung
+WINDOW_CAP_CHOICES = (30, 90, 180, 365)
+MAX_RESPONSE_ENTRY_BYTES = 768 * 1024   # Klartext der Einträge im Fenster; s. fit_window
 MAX_ENTRIES = 400
 # LWW vertraut `modified_at`: eine falsche Uhr würde echte Einträge überschreiben.
 CLOCK_SKEW_LIMIT = datetime.timedelta(minutes=15)
@@ -66,6 +70,7 @@ class SyncRequest:
     # {date: {slots, modified_at, deleted}} — bewusst ohne `device_id`: die setzt
     # `perform_sync` aus dem Token, nie aus dem Body.
     entries: dict[str, dict[str, Any]]
+    window_days: int | None = None      # Wunsch des Handys (#250); `None` = keiner/ungültig
 
 
 def _parse_utc(text: object) -> datetime.datetime | None:
@@ -149,7 +154,46 @@ def parse_request(body: bytes, *, now: str) -> SyncRequest:
     if len(raw_entries) > MAX_ENTRIES:
         raise SyncError(422, "invalid_entry", f"Höchstens {MAX_ENTRIES} Tage je Anfrage.")
     entries = {date: _parse_entry(date, raw, now_dt) for date, raw in raw_entries.items()}
-    return SyncRequest(str(data["client_time"]), entries)
+    wish = data.get("window_days")
+    window_days = wish if isinstance(wish, int) and not isinstance(wish, bool) and wish >= 1 else None
+    return SyncRequest(str(data["client_time"]), entries, window_days)
+
+
+def window_cap(raw: object) -> int:
+    """Die Obergrenze aus der Einstellung. Nur die angebotenen Werte gelten; alles andere
+    (handbearbeitete `settings.json`, Fremdwert) fällt auf das Maximum zurück."""
+    if isinstance(raw, int) and not isinstance(raw, bool) and raw in WINDOW_CAP_CHOICES:
+        return raw
+    return HARD_MAX_WINDOW_DAYS
+
+
+def grant_window(wish: object, cap: int) -> int:
+    """Das gewährte Fenster: der Wunsch (sonst das Standardfenster), auf `1..cap` geklemmt.
+    Ein ungültiger Wunsch ist kein Fehler — das Handy bekommt dann das Standardfenster."""
+    base = wish if isinstance(wish, int) and not isinstance(wish, bool) and wish >= 1 else WINDOW_DAYS
+    return max(1, min(base, cap))
+
+
+def fit_window(sizes: Mapping[str, int], *, today: datetime.date, window_days: int,
+               floor_days: int, budget: int) -> int:
+    """Kürzt das Fenster, wenn seine Einträge mehr als `budget` Byte ergäben.
+
+    `sizes` ist die serialisierte Größe je Datum. Gezählt wird von heute rückwärts; das Fenster
+    endet vor dem ersten Tag, der das Budget sprengt. Nie unter `floor_days` (das Standardfenster
+    bleibt, wie es immer war), nie über `window_days`. Tage außerhalb von `[heute − window_days,
+    heute]` zählen nicht."""
+    first = (today - datetime.timedelta(days=window_days)).isoformat()
+    last = today.isoformat()
+    used = 0
+    for date in sorted((d for d in sizes if first <= d <= last), reverse=True):
+        used += sizes[date]
+        if used > budget:
+            try:
+                cutoff = datetime.date.fromisoformat(date)   # dieser Tag passt nicht mehr hinein
+            except ValueError:
+                continue        # „2026-09-31“: passt auf das Muster, ist aber kein Kalendertag (Fremddaten)
+            return min(window_days, max((today - cutoff).days - 1, floor_days))
+    return window_days
 
 
 def _clean_slots(raw: object) -> list[dict[str, Any]]:
@@ -272,36 +316,53 @@ def desktop_info(name: str, version: str, system: str) -> dict[str, str]:
     return {"name": name, "version": version, "platform": _PLATFORMS.get(system, "")}
 
 
+def _entry_bytes(date: str, clean: Mapping[str, Any]) -> int:
+    """Serialisierte Größe eines Eintrags in der Antwort (wie `json.dumps` sie schreibt)."""
+    return len(json.dumps({date: clean}).encode())
+
+
 def build_response(merged: Mapping[str, Any], *, sent_dates: Iterable[str],
                    today: datetime.date, now: str, excluded: bool,
                    categories: list[str], defaults: Mapping[str, Any],
-                   desktop: Mapping[str, str]) -> dict[str, Any]:
+                   desktop: Mapping[str, str], window_days: int,
+                   window_max_days: int) -> dict[str, Any]:
     """Die Antwort des Abgleichs aus dem Merge-Ergebnis, ohne `token`/`expires_at`
-    (die ergänzt die Route). Fenster `[heute − 90, heute]` (heute ist das lokale
+    (die ergänzt die Route). Fenster `[heute − Fenster, heute]` (heute ist das lokale
     Datum des Desktops) plus alle gesendeten Tage — beides für Einträge **und**
     Konflikte: ein Konflikt auf einem gesendeten Tag außerhalb des Fensters bliebe
     sonst unsichtbar. Ein gesendeter Tag, den der Merge verworfen hat (Self-Heal bei
-    `excluded`), fehlt in `entries`."""
+    `excluded`), fehlt in `entries`.
+
+    `window_days` ist das **gewährte** Fenster (`grant_window`); `fit_window` kürzt es,
+    wenn die Einträge mehr als `MAX_RESPONSE_ENTRY_BYTES` ergäben (#250). Die Antwort
+    nennt das Fenster, das tatsächlich gilt."""
     sent = set(sent_dates)
-    first = (today - datetime.timedelta(days=WINDOW_DAYS)).isoformat()
     last = today.isoformat()
+
+    clean_entries: dict[str, dict[str, Any]] = {}
+    for date, entry in (merged.get("entries") or {}).items():
+        if isinstance(date, str) and _DATE_RE.fullmatch(date) and isinstance(entry, dict):
+            clean = _clean_entry(entry)
+            if clean is not None:
+                clean_entries[date] = clean
+    sizes = {date: _entry_bytes(date, clean) for date, clean in clean_entries.items()
+             if date not in sent}
+    granted = fit_window(sizes, today=today, window_days=window_days,
+                         floor_days=min(WINDOW_DAYS, window_days),
+                         budget=MAX_RESPONSE_ENTRY_BYTES)
+    first = (today - datetime.timedelta(days=granted)).isoformat()
 
     def visible(date: str) -> bool:
         return date in sent or first <= date <= last
 
-    entries = {}
-    for date, entry in sorted((merged.get("entries") or {}).items(), key=lambda item: str(item[0])):
-        if (isinstance(date, str) and _DATE_RE.fullmatch(date) and isinstance(entry, dict)
-                and visible(date)):
-            clean = _clean_entry(entry)
-            if clean is not None:
-                entries[date] = clean
+    entries = {date: clean for date, clean in sorted(clean_entries.items()) if visible(date)}
     return {
         "protocol": PROTOCOL,
         "server_time": now,
         "last_pull_at": now,
         "excluded": excluded,
-        "window_days": WINDOW_DAYS,
+        "window_days": granted,
+        "window_max_days": window_max_days,
         "entries": entries,
         "conflicts": _conflict_views(merged, visible),
         "categories": list(categories),
@@ -371,9 +432,12 @@ def perform_sync(request: SyncRequest, *, device_id: str, device_name: str,
             # Der Startup-Sweep verwirft Tombstones auf Rechnern, die „nie gesynct"
             # haben: nach einem Abgleich mit dem Handy haben sie einen Abnehmer.
             sync_history.mark_synced(base)
+        cap = window_cap(settings.get("mobile_window_max_days"))
         return build_response(merged, sent_dates=request.entries, today=today, now=now,
                               excluded=excluded, categories=categories,
-                              defaults=build_defaults(settings, categories), desktop=desktop)
+                              defaults=build_defaults(settings, categories), desktop=desktop,
+                              window_days=grant_window(request.window_days, cap),
+                              window_max_days=cap)
     finally:
         if sync_guard is not None:
             sync_guard.release()

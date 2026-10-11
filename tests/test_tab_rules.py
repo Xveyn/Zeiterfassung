@@ -432,7 +432,8 @@ from src.mobile_service import STATE_STARTING as M_STARTING  # noqa: E402
 
 
 def mobile_raw(**overrides):
-    raw = {"mobile_enabled": True, "mobile_port": "17654", "mobile_address": tr.AUTO_ADDRESS}
+    raw = {"mobile_enabled": True, "mobile_port": "17654", "mobile_address": tr.AUTO_ADDRESS,
+           "mobile_window_max_days": "365 Tage"}
     raw.update(overrides)
     return raw
 
@@ -453,10 +454,33 @@ def test_address_choice_round_trips():
 def test_valid_mobile_input_passes_and_converts():
     assert tr.validate_mobile(mobile_raw()) is None
     assert tr.mobile_updates(mobile_raw()) == {
-        "mobile_enabled": True, "mobile_port": 17654, "mobile_address": ""}
+        "mobile_enabled": True, "mobile_port": 17654, "mobile_address": "",
+        "mobile_window_max_days": 365}
     assert tr.mobile_updates(mobile_raw(mobile_address="10.0.0.5", mobile_enabled=False,
                                         mobile_port=" 8080 ")) == {
-        "mobile_enabled": False, "mobile_port": 8080, "mobile_address": "10.0.0.5"}
+        "mobile_enabled": False, "mobile_port": 8080, "mobile_address": "10.0.0.5",
+        "mobile_window_max_days": 365}
+
+
+def test_the_window_cap_choices_are_the_four_offered_values():
+    assert tr.window_cap_options() == ["30 Tage", "90 Tage", "180 Tage", "365 Tage"]
+
+
+@pytest.mark.parametrize("days,label", [(30, "30 Tage"), (365, "365 Tage"), (7, "365 Tage"),
+                                        (None, "365 Tage"), ("x", "365 Tage"), (True, "365 Tage")])
+def test_the_window_cap_shows_as_a_label_and_falls_back_to_the_maximum(days, label):
+    assert tr.window_cap_to_choice(days) == label
+
+
+@pytest.mark.parametrize("choice,days", [("30 Tage", 30), ("180 Tage", 180), ("365 Tage", 365),
+                                         ("", 365), ("abc", 365), (None, 365), ("7 Tage", 365)])
+def test_the_window_cap_choice_parses_tolerantly(choice, days):
+    assert tr.window_cap_from_choice(choice) == days
+
+
+def test_mobile_updates_carries_the_window_cap():
+    assert tr.mobile_updates(mobile_raw(mobile_window_max_days="180 Tage"))["mobile_window_max_days"] == 180
+    assert tr.mobile_updates(mobile_raw(mobile_window_max_days="kaputt"))["mobile_window_max_days"] == 365
 
 
 @pytest.mark.parametrize("port", ["", "abc", "80", "70000", "17654.5", "٨٠٨٠", "9" * 5000])
@@ -474,9 +498,9 @@ def test_an_address_that_is_not_a_lan_address_is_refused(address):
     assert result is not None and "Adresse" in result[0]
 
 
-def test_mobile_updates_write_exactly_the_three_form_keys():
+def test_mobile_updates_write_exactly_the_four_form_keys():
     assert set(tr.mobile_updates(mobile_raw())) == {
-        "mobile_enabled", "mobile_port", "mobile_address"}
+        "mobile_enabled", "mobile_port", "mobile_address", "mobile_window_max_days"}
 
 
 @pytest.mark.parametrize("status,kind,fragment", [

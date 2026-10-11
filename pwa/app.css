@@ -113,3 +113,5 @@ video { width: 100%; border-radius: 8px; background: #000; }
 
 label.check { display: flex; align-items: center; gap: 8px; min-height: var(--tap); margin: 4px 0; }
 label.check input { width: auto; min-height: 0; flex: none; }
+
+.hint.older { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }

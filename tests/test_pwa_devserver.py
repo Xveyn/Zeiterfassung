@@ -107,3 +107,27 @@ def test_the_dev_origin_does_not_leak_into_the_process(devserver, tmp_path):
     with devserver.running(tmp_path, web_port=0, api_port=0, address="127.0.0.1"):
         assert mobile_routes.PWA_ORIGIN != before[0]
     assert (mobile_routes.PWA_ORIGIN, mobile_routes.PWA_URL) == before
+
+
+def test_seed_entries_covers_the_workdays_of_the_last_days(devserver):
+    import datetime
+    today = datetime.date(2026, 10, 8)            # ein Donnerstag
+
+    entries = devserver.seed_entries(today, days=14, slots=2)
+
+    assert sorted(entries) == [d for d in sorted(entries) if datetime.date.fromisoformat(d).weekday() < 5]
+    assert max(entries) == "2026-10-08" and min(entries) >= "2026-09-24"
+    assert all(len(entry["slots"]) == 2 and entry["deleted"] is False for entry in entries.values())
+
+
+def test_seed_entries_defaults_to_nothing(devserver):
+    import datetime
+    assert devserver.seed_entries(datetime.date(2026, 10, 8), days=0, slots=1) == {}
+
+
+def test_the_dev_data_can_be_seeded_and_the_cap_set(devserver, tmp_path):
+    with devserver.running(tmp_path, web_port=0, api_port=0, address="127.0.0.1",
+                           seed_days=30, seed_slots=3, window_max=180) as dev:
+        raw = dev.storage.get_all_raw()
+        assert raw and all(len(entry["slots"]) == 3 for entry in raw.values())
+        assert dev.settings.get("mobile_window_max_days") == 180

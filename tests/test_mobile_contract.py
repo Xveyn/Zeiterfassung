@@ -235,3 +235,21 @@ def test_the_desktop_still_accepts_the_frozen_request_of_an_older_phone():
     parsed = mobile_sync.parse_request(json.dumps(example).encode(), now=example["client_time"])
 
     assert sorted(parsed.entries) == sorted(example["entries"])
+
+
+def test_the_desktop_still_accepts_the_request_of_a_phone_without_the_window_wish():
+    example = load("compat/sync-request-pre-250.json")
+    assert "window_days" not in example
+
+    parsed = mobile_sync.parse_request(json.dumps(example).encode(), now=example["client_time"])
+
+    assert parsed.window_days is None
+    assert sorted(parsed.entries) == sorted(example["entries"])
+
+
+def test_the_live_request_example_carries_the_wish_the_server_reads():
+    example = load("sync-request.json")
+
+    parsed = mobile_sync.parse_request(json.dumps(example).encode(), now=example["client_time"])
+
+    assert parsed.window_days == example["window_days"]

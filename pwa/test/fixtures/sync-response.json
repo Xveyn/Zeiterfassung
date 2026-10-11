@@ -4,6 +4,7 @@
   "last_pull_at": "2026-10-08T12:00:00Z",
   "excluded": false,
   "window_days": 90,
+  "window_max_days": 365,
   "entries": {
     "2026-10-07": {
       "slots": [

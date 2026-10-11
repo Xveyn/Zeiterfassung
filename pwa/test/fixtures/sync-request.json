@@ -2,6 +2,7 @@
   "protocol": 2,
   "client_time": "2026-10-08T12:00:00Z",
   "last_pull_at": "2026-10-07T09:00:00Z",
+  "window_days": 180,
   "entries": {
     "2026-10-07": {
       "slots": [

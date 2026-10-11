@@ -26,7 +26,7 @@ async function make({ adapter = createMemoryAdapter(), now = clock() } = {}) {
 function parsedResponse(over = {}) {
   return {
     protocol: 1, server_time: '2026-10-08T12:00:00Z', last_pull_at: '2026-10-08T12:00:00Z',
-    excluded: false, window_days: 90, entries: {}, conflicts: [], categories: ['Projekt'],
+    excluded: false, window_days: 90, window_max: 365, entries: {}, conflicts: [], categories: ['Projekt'],
     token: 'T1', expires_at: '2026-11-07T12:00:00Z', ...over,
   };
 }
@@ -485,4 +485,44 @@ test('automatic updates are off by default and the choice survives a restart (#2
   const again = new Store(adapter, clock());
   await again.load();
   assert.equal(again.getMeta().auto_update, true);
+});
+
+test('the wish defaults to 90, survives a restart, and the maximum comes from the response (#250)', async () => {
+  const adapter = createMemoryAdapter();
+  const { store } = await make({ adapter });
+  assert.equal(store.getMeta().window_wish, 90);
+  assert.equal(store.getMeta().window_max, null);
+
+  await store.setMeta({ window_wish: 365 });
+  await store.applyResponse(parsedResponse({ window_max: 180, window_days: 180 }), store.snapshotDirty(), TODAY);
+  const again = new Store(adapter, clock());
+  await again.load();
+  assert.equal(again.getMeta().window_wish, 365);          // der Wunsch bleibt, auch über der Obergrenze
+  assert.equal(again.getMeta().window_max, 180);
+});
+
+test('a shrinking window removes clean days outside it but keeps unsent ones (#250)', async () => {
+  const { store } = await make();
+  await store.applyResponse(parsedResponse({ window_days: 365, window_max: 365, entries: {
+    '2026-03-02': remoteDay(), '2026-09-30': remoteDay() } }), store.snapshotDirty(), TODAY);
+  const snapshot = store.snapshotDirty();                    // ... der Abgleich läuft los ...
+  await store.saveDay('2026-03-03', [SLOT]);                 // ... und währenddessen entsteht ein Tag, weit zurück
+  assert.deepEqual(store.days().sort(), ['2026-03-02', '2026-03-03', '2026-09-30']);
+
+  await store.applyResponse(parsedResponse({ window_days: 90, window_max: 90, entries: {
+    '2026-09-30': remoteDay() } }), snapshot, TODAY);
+
+  assert.deepEqual(store.days().sort(), ['2026-03-03', '2026-09-30']);   // sauber → weg, unübertragen → bleibt
+});
+
+test('the maximum is unknown until an answer arrived, and an answer without it means an old desktop (#292)', async () => {
+  const { store } = await make();
+  assert.equal(store.getMeta().window_max_known, false);
+  assert.equal(store.getMeta().window_wish_acked, 90);
+
+  await store.applyResponse(parsedResponse({ window_max: null, window_wish_sent: 120 }), store.snapshotDirty(), TODAY);
+
+  assert.equal(store.getMeta().window_max_known, true);
+  assert.equal(store.getMeta().window_max, null);
+  assert.equal(store.getMeta().window_wish_acked, 120);
 });
