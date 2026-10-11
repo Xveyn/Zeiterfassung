@@ -20,7 +20,8 @@ function requestResult(request) {
 function transactionDone(transaction) {
   return new Promise((resolve, reject) => {
     transaction.oncomplete = () => resolve();
-    transaction.onerror = () => reject(transaction.error);
+    // Im geblubberten `onerror` ist `transaction.error` noch nicht gesetzt: der Fehler steht am Auslöser.
+    transaction.onerror = (event) => reject(event?.target?.error ?? transaction.error ?? new Error('Schreibfehler'));
     transaction.onabort = () => reject(transaction.error ?? new Error('Transaktion abgebrochen'));
   });
 }
@@ -38,9 +39,20 @@ export function openDatabase(factory = globalThis.indexedDB, name = 'zeiterfassu
       }
     };
     request.onerror = () => reject(request.error);
-    request.onblocked = () => reject(new Error('IndexedDB ist von einem anderen Tab blockiert'));
+    let abandoned = false;
+    request.onblocked = () => {
+      abandoned = true;
+      reject(new Error('IndexedDB ist von einem anderen Tab blockiert'));
+    };
     request.onsuccess = () => {
       const database = request.result;
+      if (abandoned) {                  // die Anfrage lief nach der Ablehnung doch noch durch: nicht lecken
+        database.close();
+        return;
+      }
+      // Ein zweiter Tab oder ein neuer Service Worker will das Schema hochziehen: freigeben,
+      // sonst blockiert diese Verbindung dessen Upgrade.
+      database.onversionchange = () => database.close();
       resolve({
         async getAll(storeName) {
           const transaction = database.transaction(storeName, 'readonly');
@@ -58,10 +70,18 @@ export function openDatabase(factory = globalThis.indexedDB, name = 'zeiterfassu
           }
           const transaction = database.transaction(STORES, 'readwrite');
           const done = transactionDone(transaction);
-          for (const { store, op, key, value } of ops) {
-            const target = transaction.objectStore(store);
-            if (op === 'put') target.put(value, key);
-            else target.delete(key);
+          try {
+            for (const { store, op, key, value } of ops) {
+              const target = transaction.objectStore(store);
+              if (op === 'put') target.put(value, key);
+              else target.delete(key);
+            }
+          } catch (error) {
+            // Ein Wurf mitten in der Schleife bricht die Transaktion nicht ab: die ersten
+            // Operationen würden sonst committet, der Rest nie.
+            try { transaction.abort(); } catch { /* schon beendet */ }
+            await done.catch(() => {});
+            throw error;
           }
           await done;
         },

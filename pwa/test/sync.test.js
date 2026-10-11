@@ -768,3 +768,95 @@ test('an old desktop answer still marks the maximum as known (and absent)', asyn
   assert.equal(store.getMeta().window_max_known, true);
   assert.equal(store.getMeta().window_max, null);
 });
+
+// --- Mehr als 400 nicht übertragene Tage (#262) -----------------------------------------------------
+
+test('more than 400 untransferred days go out in chunks within one sync, newest first', async () => {
+  const { store, client, fetchFn } = await make();
+  const dates = Array.from({ length: 450 }, (_, i) => {
+    const day = new Date(Date.UTC(2025, 0, 1 + i));
+    return day.toISOString().slice(0, 10);
+  });
+  for (const date of dates) await store.saveDay(date, [SLOT]);
+
+  const result = await client.sync();
+
+  const sent = fetchFn.calls.filter((c) => c.url.endsWith('/v1/sync')).map((c) => Object.keys(c.plain.entries));
+  assert.deepEqual(sent.map((chunk) => chunk.length), [400, 50]);
+  assert.ok(sent[0].includes(dates.at(-1)) && !sent[1].includes(dates.at(-1)));   // zuerst die neuesten
+  assert.equal(new Set(sent.flat()).size, 450);                                   // jeder Tag genau einmal
+  assert.equal(result.sent, 450);
+  assert.deepEqual(store.dirtyDates(), []);
+});
+
+test('a failing later chunk keeps the first one applied and the rest untransferred', async () => {
+  let call = 0;
+  const { store, client } = await make({ handler: () => (++call === 1
+    ? reply(200, fixture('sync-response.json'))
+    : reply(503, { error: { code: 'busy', message: 'beschäftigt' } }, { sealed: true })) });
+  const dates = Array.from({ length: 450 }, (_, i) => new Date(Date.UTC(2025, 0, 1 + i)).toISOString().slice(0, 10));
+  for (const date of dates) await store.saveDay(date, [SLOT]);
+
+  await assert.rejects(() => client.sync(), SyncError);
+
+  assert.equal(store.dirtyDates().length, 50);          // 400 sind durch, 50 warten auf den nächsten Lauf
+});
+
+test('with `excluded` the sent days stay open, yet no chunk is sent twice', async () => {
+  const { store, client, fetchFn } = await make({ handler: () => reply(200, { ...fixture('sync-response.json'), excluded: true }) });
+  const dates = Array.from({ length: 450 }, (_, i) => new Date(Date.UTC(2025, 0, 1 + i)).toISOString().slice(0, 10));
+  for (const date of dates) await store.saveDay(date, [SLOT]);
+
+  await client.sync();
+
+  const sent = fetchFn.calls.filter((c) => c.url.endsWith('/v1/sync')).map((c) => Object.keys(c.plain.entries));
+  assert.deepEqual(sent.map((chunk) => chunk.length), [400, 50]);
+});
+
+test('exactly 400 untransferred days need one request, not two', async () => {
+  const { store, client, fetchFn } = await make();
+  for (let i = 0; i < 400; i += 1) await store.saveDay(new Date(Date.UTC(2025, 0, 1 + i)).toISOString().slice(0, 10), [SLOT]);
+
+  await client.sync();
+
+  assert.equal(fetchFn.calls.filter((c) => c.url.endsWith('/v1/sync')).length, 1);
+});
+
+// --- Inhalte der Antwort prüfen (#262) --------------------------------------------------------------
+
+test('foreign values in slots, stamps and conflict versions never reach the store as they are', () => {
+  const doc = fixture('sync-response.json');
+  doc.entries['2026-10-07'].modified_at = 'x';
+  doc.entries['2026-10-07'].slots = [{ start: 5, end: null, pause: 'viel', kategorie: { a: 1 }, extra: '<b>' }, 'kaputt', null];
+  doc.conflicts[0].versions = [{ device: 7, name: ['x'], modified_at: 'nie', slots: 'kein Array', extra: 1 }, 'text'];
+
+  const parsed = parseSyncResponse(doc);
+
+  assert.equal(parsed.entries['2026-10-07'].modified_at, '');
+  assert.deepEqual(parsed.entries['2026-10-07'].slots, [{ start: '', end: '', pause: 0, kategorie: '' }]);
+  assert.deepEqual(parsed.conflicts[0].versions, [{ device: '', name: '', modified_at: '', slots: [] }]);
+});
+
+test('valid values pass through unchanged', () => {
+  const doc = fixture('sync-response.json');
+
+  const parsed = parseSyncResponse(doc);
+
+  assert.deepEqual(parsed.entries['2026-10-07'], doc.entries['2026-10-07']);
+  assert.deepEqual(parsed.conflicts[0].versions, doc.conflicts[0].versions);
+});
+
+for (const [name, change] of [
+  ['expires_at without a stamp', (d) => { d.expires_at = 'morgen'; }],
+  ['window_days of zero', (d) => { d.window_days = 0; }],
+  ['window_days absurdly high', (d) => { d.window_days = 1e9; }],
+]) {
+  test(`pairing refuses an answer with ${name}`, async () => {
+    const answer = PAIR_ANSWER();
+    change(answer);
+    const { client } = await make({ paired: false, handler: () => reply(200, answer) });
+
+    await assert.rejects(client.pair({ host: '192.168.1.20', port: 17654, code: CODE, deviceName: 'P' }),
+      (error) => error.kind === 'protocol');
+  });
+}

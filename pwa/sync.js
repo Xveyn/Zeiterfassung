@@ -16,6 +16,7 @@ import {
 
 export const SKEW_WARN_MS = 120000;
 const MAX_WINDOW_DAYS = 3650;
+const MAX_DAYS_PER_REQUEST = 400;         // Gegenstück zu `MAX_ENTRIES` in src/mobile_sync.py
 const STAMP_RE = /^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$/;
 const TOKEN_RE = /^[A-Za-z0-9_-]{16,256}$/;
 const KEY_RE = /^[A-Za-z0-9_-]{43}$/;                            // 32 Bytes, base64url ohne Padding
@@ -90,7 +91,22 @@ function parseEntry(date, raw) {
     || typeof raw.device_id !== 'string' || typeof raw.deleted !== 'boolean') {
     throw protocolError(`Ungültiger Eintrag in der Antwort: ${date}`);
   }
-  return { slots: raw.slots.map((s) => ({ ...s })), modified_at: raw.modified_at, device_id: raw.device_id, deleted: raw.deleted };
+  return { slots: cleanSlots(raw.slots), modified_at: cleanStamp(raw.modified_at), device_id: raw.device_id, deleted: raw.deleted };
+}
+
+/** Ein Zeitstempel wie ihn der Desktop schreibt, sonst leer (der Desktop schickt `""` für einen
+ *  Eintrag ohne Stempel). Fremdes landete sonst im Store und in `_stampAfter`. */
+const cleanStamp = (value) => (typeof value === 'string' && STAMP_RE.test(value) ? value : '');
+
+/** Nur die vier Felder des Protokolls, mit ihren Typen; Unbrauchbares wird zu einem leeren
+ *  Wert (die Anzeige rendert die Slots). Eine Ablehnung der ganzen Antwort wegen eines
+ *  Slots wäre schlimmer: der Abgleich scheiterte dann bei jedem Versuch. */
+function cleanSlots(slots) {
+  const text = (value) => (typeof value === 'string' ? value : '');
+  return slots.filter(isObject).map((slot) => ({
+    start: text(slot.start), end: text(slot.end),
+    pause: Number.isInteger(slot.pause) ? slot.pause : 0, kategorie: text(slot.kategorie),
+  }));
 }
 
 /** Prüft eine Sync-Antwort vollständig, BEVOR sie den Zustand anfasst. Die Antwort kommt vom
@@ -116,7 +132,9 @@ export function parseSyncResponse(raw) {
   const conflicts = raw.conflicts.map((conflict) => {
     if (!isObject(conflict) || typeof conflict.id !== 'string' || !isIsoDate(conflict.date)
       || !Array.isArray(conflict.versions)) throw protocolError('Ungültiger Konflikt in der Antwort.');
-    return { id: conflict.id, date: conflict.date, versions: conflict.versions.map((v) => ({ ...v })) };
+    return { id: conflict.id, date: conflict.date, versions: conflict.versions.filter(isObject).map((v) => ({
+      device: typeof v.device === 'string' ? v.device : '', name: typeof v.name === 'string' ? v.name : '',
+      modified_at: cleanStamp(v.modified_at), slots: Array.isArray(v.slots) ? cleanSlots(v.slots) : [] })) };
   });
   const max = raw.window_max_days;
   const windowMax = Number.isInteger(max) && max >= 1 && max <= MAX_WINDOW_DAYS ? max : null;   // fehlt bei älterem Desktop
@@ -231,8 +249,8 @@ export class SyncClient {
       token: null, requestKey, responseKey, aadRequest: '-', aadResponse: deviceId, seq: 1,
       payload: pairRequestBody({ deviceName, deviceId }) });
     if (!isObject(answer) || answer.protocol !== PROTOCOL || typeof answer.token !== 'string'
-      || !TOKEN_RE.test(answer.token) || typeof answer.expires_at !== 'string'
-      || !Number.isInteger(answer.window_days) || typeof answer.desktop_name !== 'string'
+      || !TOKEN_RE.test(answer.token) || typeof answer.expires_at !== 'string' || !STAMP_RE.test(answer.expires_at)
+      || !Number.isInteger(answer.window_days) || answer.window_days < 1 || answer.window_days > MAX_WINDOW_DAYS || typeof answer.desktop_name !== 'string'
       || typeof answer.key !== 'string' || !KEY_RE.test(answer.key) || b64d(answer.key).length !== 32) {
       throw protocolError('Ungültige Antwort beim Koppeln.');
     }
@@ -269,14 +287,30 @@ export class SyncClient {
       || current.address?.port !== meta.address.port;
   }
 
+  /** Alle nicht übertragenen Tage, in Päckchen zu höchstens `MAX_DAYS_PER_REQUEST` (der Desktop
+   *  lehnt mehr mit 422 ohne Tag ab, sonst scheiterte der Abgleich bei jedem Versuch). Das erste
+   *  Päckchen holt zugleich die Antwort; ein späteres Päckchen, das scheitert, lässt die
+   *  vorherigen angewendet und den Rest „nicht übertragen“. */
   async _run() {
+    let total = { sent: 0, conflicts: 0, excluded: false };
+    const done = new Set();         // schon gesendet: bei `excluded` bleiben sie „offen“, gingen sonst endlos hinaus
+    for (;;) {
+      const result = await this._runOnce(MAX_DAYS_PER_REQUEST, done);
+      if (result.discarded) return result;
+      total = { ...result, sent: total.sent + result.sent };
+      if (result.sent < MAX_DAYS_PER_REQUEST
+        || Object.keys(this._store.snapshotDirty(1, done).entries).length === 0) return total;
+    }
+  }
+
+  async _runOnce(limit, done) {
     const meta = this._store.getMeta();
     if (!meta.address || !meta.token) throw new SyncError({ kind: 'not_paired', message: 'Noch nicht gekoppelt.' });
     if (!KEY_RE.test(meta.key || '')) {
       throw new SyncError({ kind: 'encryption', needsRepair: true,
         message: 'Diese Kopplung ist noch nicht verschlüsselt. Bitte neu koppeln.' });
     }
-    const snapshot = this._store.snapshotDirty();
+    const snapshot = this._store.snapshotDirty(limit, done);
     const now = this._now();
     const wishSent = meta.window_wish ?? 90;
     // Den Zähler VOR dem Senden dauerhaft ablegen: ein Absturz mitten im Request darf ihn nie
@@ -308,6 +342,7 @@ export class SyncClient {
       return DISCARDED();
     }
     await this._store.applyResponse(parsed, snapshot, localIsoDate(now));
+    for (const date of Object.keys(snapshot.entries)) done.add(date);
     return { sent: Object.keys(snapshot.entries).length, conflicts: parsed.conflicts.length, excluded: parsed.excluded };
   }
 }

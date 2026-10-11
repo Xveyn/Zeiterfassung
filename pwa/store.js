@@ -108,13 +108,17 @@ export class Store {
   }
 
   /** Was der nächste Abgleich schickt: nur Tage ohne Fehler. `versions` merkt sich, mit
-   *  welchem Stand gesendet wurde (`applyResponse` vergleicht danach). */
-  snapshotDirty() {
+   *  welchem Stand gesendet wurde (`applyResponse` vergleicht danach). Mit `limit` nur die
+   *  neuesten `limit` Tage (der Desktop nimmt höchstens 400 je Anfrage), ohne die Tage in `skip`; der Rest bleibt
+   *  „nicht übertragen“ und geht im nächsten Durchgang hinaus. */
+  snapshotDirty(limit = Infinity, skip = new Set()) {
     const entries = {};
     const versions = {};
-    for (const date of this.dirtyDates()) {
+    const dates = limit === Infinity ? this.dirtyDates() : [...this.dirtyDates()].sort().reverse();
+    for (const date of dates) {
       const record = this._days.get(date);
-      if (record.error) continue;
+      if (record.error || skip.has(date)) continue;
+      if (Object.keys(entries).length >= limit) break;
       entries[date] = {
         slots: structuredClone(record.entry.slots),
         modified_at: record.entry.modified_at,
