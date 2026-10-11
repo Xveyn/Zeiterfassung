@@ -15,7 +15,8 @@ Die beiden Regeln stehen deshalb hier, und zwar nur hier:
   einem Stromausfall läge dann eine leere oder halbe Datei am Zielnamen.
 - **N4 (Quarantäne):** eine unparsebare Datei wird nicht kommentarlos
   verworfen, sondern nach `<name>.corrupt-<stamp>` verschoben und geloggt.
-  Der Nutzer verliert seine Daten damit nicht unwiederbringlich.
+  Der Nutzer verliert seine Daten damit nicht unwiederbringlich. Von den
+  `.corrupt-*`-Dateien einer Datei bleiben die neuesten `KEEP_BACKUPS`.
 
 **Bewusst NICHT hier:**
 
@@ -40,6 +41,8 @@ import os
 import shutil
 import tempfile
 from typing import Any
+
+KEEP_BACKUPS = 5     # so viele `<datei>.corrupt-*` bleiben liegen, ältere räumt `backup_corrupt` weg
 
 log = logging.getLogger(__name__)
 
@@ -141,12 +144,36 @@ def backup_corrupt(path: str, reason: str) -> str:
             return existing
     stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
     target = f"{path}.corrupt-{stamp}"
+    # Zwei verschiedene Vorfälle in derselben Sekunde dürfen sich nicht überschreiben.
+    counter = 1
+    while os.path.exists(target):
+        target = f"{path}.corrupt-{stamp}-{counter}"
+        counter += 1
     shutil.copy2(path, target)
     logging.getLogger(__name__).warning(
         "%s enthält Unbrauchbares (%s) — Sicherung nach %s, der Rest wird repariert",
         os.path.basename(path), reason, os.path.basename(target),
     )
+    _rotate_backups(path, keep=target)
     return target
+
+
+def _rotate_backups(path: str, keep: str) -> None:
+    """Behält die neuesten `KEEP_BACKUPS` Dateien `<path>.corrupt-*` (Stempel sortieren
+    lexikografisch = zeitlich), `keep` immer. Ohne Obergrenze sammelten sich volle
+    Kopien des Stores an. Jede entfernte Datei steht im Log: Quarantäne-Dateien
+    (`quarantine_corrupt`) tragen dasselbe Muster, und nichts darf ohne Spur gehen."""
+    found = sorted(glob.glob(glob.escape(path) + ".corrupt-*"))
+    for old in [f for f in found if f != keep][:max(0, len(found) - KEEP_BACKUPS)]:
+        try:
+            os.remove(old)
+        except OSError:
+            logging.getLogger(__name__).warning(
+                "Alte Sicherung %s ließ sich nicht entfernen", os.path.basename(old), exc_info=True)
+        else:
+            logging.getLogger(__name__).warning(
+                "Alte Sicherung %s entfernt (es bleiben die neuesten %d)",
+                os.path.basename(old), KEEP_BACKUPS)
 
 
 def load_json_or_quarantine(path: str) -> Any:
@@ -164,7 +191,7 @@ def load_json_or_quarantine(path: str) -> Any:
     if not os.path.exists(path):
         return None
     try:
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, "r", encoding="utf-8-sig") as f:    # BOM: Windows-Editor
             return json.load(f)
     except (json.JSONDecodeError, ValueError):
         quarantine_corrupt(path)

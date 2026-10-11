@@ -13,8 +13,9 @@ from unittest import mock
 
 import pytest
 
+from src import json_store
 from src.json_store import (
-    atomic_write_json, backup_corrupt, load_json_or_quarantine, quarantine_corrupt,
+    KEEP_BACKUPS, atomic_write_json, backup_corrupt, load_json_or_quarantine, quarantine_corrupt,
 )
 
 
@@ -228,3 +229,51 @@ def test_backup_still_copies_when_the_earlier_backup_differs(tmp_path):
 
     assert open(target, encoding="utf-8").read() == '{"a": null}'
     assert len(list(tmp_path.glob("store.json.corrupt-*"))) == 2
+
+
+class _FrozenNow:
+    """`datetime.datetime` mit festgehaltener Uhr: dieselbe Sekunde, derselbe Stempel."""
+    _real = json_store.datetime.datetime
+
+    @classmethod
+    def now(cls):
+        return cls._real(2026, 10, 11, 12, 0, 0)
+
+
+def test_two_different_incidents_in_the_same_second_keep_both_backups(tmp_path, monkeypatch):
+    monkeypatch.setattr(json_store.datetime, "datetime", _FrozenNow)
+    path = tmp_path / "store.json"
+    path.write_text("erster Vorfall", encoding="utf-8")
+    first = backup_corrupt(str(path), "egal")
+    path.write_text("zweiter Vorfall", encoding="utf-8")
+
+    second = backup_corrupt(str(path), "egal")
+
+    assert first != second
+    assert open(first, encoding="utf-8").read() == "erster Vorfall"
+    assert open(second, encoding="utf-8").read() == "zweiter Vorfall"
+
+
+def test_only_the_newest_backups_are_kept(tmp_path, caplog):
+    path = tmp_path / "store.json"
+    for day in range(1, KEEP_BACKUPS + 3):
+        (tmp_path / f"store.json.corrupt-202001{day:02d}-000000").write_text(
+            f"alt {day}", encoding="utf-8")
+    path.write_text("neu", encoding="utf-8")
+
+    with caplog.at_level(logging.WARNING):
+        target = backup_corrupt(str(path), "egal")
+
+    kept = sorted(p.name for p in tmp_path.glob("store.json.corrupt-*"))
+    assert len(kept) == KEEP_BACKUPS
+    assert os.path.basename(target) in kept                    # die frische bleibt
+    assert "store.json.corrupt-20200101-000000" not in kept     # die älteste geht
+    assert "store.json.corrupt-20200101-000000" in caplog.text  # und das steht im Log
+
+
+def test_a_bom_file_loads_instead_of_being_quarantined(tmp_path):
+    path = tmp_path / "t.json"
+    path.write_bytes(b"\xef\xbb\xbf" + b'{"a": 1}')
+
+    assert load_json_or_quarantine(str(path)) == {"a": 1}
+    assert not list(tmp_path.glob("*.corrupt-*"))

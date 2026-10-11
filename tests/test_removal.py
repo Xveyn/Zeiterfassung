@@ -278,6 +278,13 @@ def test_user_data_files_match_installer():
     assert names == {*removal.USER_DATA_FILES, removal.SETTINGS_FILE}
 
 
+def test_user_data_backups_match_installer():
+    """#242: die Sicherungen (`<datei>.corrupt-*`) sind volle Kopien der Nutzerdaten;
+    „meine Daten löschen" muss sie genauso mitnehmen wie `removal.py`."""
+    names = set(re.findall(r"DeleteMatching\('([^']+)\.corrupt-\*'\)", _installer()))
+    assert names == {*removal.USER_DATA_FILES, removal.SETTINGS_FILE}
+
+
 # --- Review-Fixes (Final) ---------------------------------------------------
 
 def test_macos_autostart_removes_plist_without_launchctl(tmp_path, monkeypatch):

@@ -293,7 +293,7 @@ class GridRenderer:
         slots = entry.get("slots", [])
         if slots:
             first = slots[0]
-            time_text = f"{first['start']}-{first['end']}"
+            time_text = GridRenderer._fmt_slot_time(first)
             if len(slots) > 1:
                 time_text += f"  +{len(slots) - 1}"
         else:
@@ -373,7 +373,13 @@ class GridRenderer:
         """Eine Tooltip-Zeile für einen Slot: 'HH:MM-HH:MM  Kategorie'
         (Kategorie weggelassen, wenn leer)."""
         kat = f"  {slot['kategorie']}" if slot.get("kategorie") else ""
-        return f"{slot['start']}-{slot['end']}{kat}"
+        return f"{GridRenderer._fmt_slot_time(slot)}{kat}"
+
+    @staticmethod
+    def _fmt_slot_time(slot):
+        """'HH:MM-HH:MM'. Die Lese-Grenze (`sanitize_slot`) liefert für eine kaputte Zeit
+        `None`; das soll nicht als 'None-None' in der Zelle stehen."""
+        return f"{slot.get('start') or '?'}-{slot.get('end') or '?'}"
 
     @staticmethod
     def _holiday_in_combined_tip(entry, reservation, vacation, has_conflict):

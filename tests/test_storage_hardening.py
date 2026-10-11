@@ -352,3 +352,50 @@ def test_a_surrogate_in_a_date_key_drops_the_entry(tmp_path):
 
     assert Storage(path, device_id="dev").get_all_raw() == {}
 
+
+
+# --- #242: Sicherung scheitert, das nächste save() -------------------------------------------------
+
+def _break_backup(monkeypatch):
+    def refuse(*args):
+        raise OSError("Platte voll")
+    monkeypatch.setattr("src.storage.backup_corrupt", refuse)
+
+
+def test_a_failed_backup_is_retried_before_the_next_save_overwrites_the_file(tmp_path, monkeypatch):
+    path = write(tmp_path, {DAY: entry([ist_slot("08:00", "09:00")]), "2026-01-06": None})
+    _break_backup(monkeypatch)
+    storage = Storage(path, device_id="dev")
+    assert backups(tmp_path) == []                                       # Start: keine Sicherung
+
+    monkeypatch.undo()
+    storage.save("2026-01-07", [ist_slot("08:00", "09:00")])
+
+    (name,) = backups(tmp_path)                                           # nachgeholt, vor dem Schreiben
+    assert "2026-01-06" in json.loads((tmp_path / name).read_text(encoding="utf-8"))
+    assert "2026-01-06" not in json.loads(open(path, encoding="utf-8").read())
+
+
+def test_a_save_that_still_cannot_back_up_says_so_in_the_log(tmp_path, monkeypatch, caplog):
+    path = write(tmp_path, {DAY: entry([ist_slot("08:00", "09:00")]), "2026-01-06": None})
+    _break_backup(monkeypatch)
+    storage = Storage(path, device_id="dev")
+
+    with caplog.at_level(logging.WARNING):
+        storage.save("2026-01-07", [ist_slot("08:00", "09:00")])
+
+    assert "ohne Sicherung" in caplog.text
+    assert "2026-01-07" in json.loads(open(path, encoding="utf-8").read())     # gespeichert wird trotzdem
+
+
+def test_the_missing_backup_is_reported_once_not_on_every_save(tmp_path, monkeypatch, caplog):
+    path = write(tmp_path, {DAY: entry([ist_slot("08:00", "09:00")]), "2026-01-06": None})
+    _break_backup(monkeypatch)
+    storage = Storage(path, device_id="dev")
+    storage.save("2026-01-07", [ist_slot("08:00", "09:00")])
+    caplog.clear()
+
+    with caplog.at_level(logging.WARNING):
+        storage.save("2026-01-08", [ist_slot("08:00", "09:00")])
+
+    assert "ohne Sicherung" not in caplog.text
