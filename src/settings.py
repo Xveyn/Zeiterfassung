@@ -73,6 +73,9 @@ DEFAULTS = {
     # Der Hinweis beim ersten Einschalten (unverschlüsselte Verbindung, vertrauenswürdiges
     # Netz, App muss laufen) wurde bestätigt. Gerätelokal wie die übrigen mobile_*.
     "mobile_notice_accepted": False,
+    # Obergrenze des Lesefensters der Handy-PWA in Tagen (#250): 30/90/180/365. Gerätelokal wie
+    # die übrigen mobile_*; das Handy wünscht, der Desktop deckelt.
+    "mobile_window_max_days": 365,
     # Alle drei gerätelokal wie auto_update_enabled: ein Pfad aus dem %TEMP%
     # eines anderen Rechners wäre dort sinnlos und im schlimmsten Fall
     # irreführend. `pending_update_release_id` sagt, zu welchem Release die

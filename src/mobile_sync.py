@@ -40,7 +40,10 @@ if TYPE_CHECKING:
     from src.storage import Storage
 
 PROTOCOL = 2                  # Protokoll v2 (#249): verschlüsselt, s. `mobile_crypto`
-WINDOW_DAYS = 90
+WINDOW_DAYS = 90                    # Standardfenster, wenn das Handy keinen Wunsch äußert
+HARD_MAX_WINDOW_DAYS = 365          # weiter geht kein Fenster, auch nicht per Einstellung
+WINDOW_CAP_CHOICES = (30, 90, 180, 365)
+MAX_RESPONSE_ENTRY_BYTES = 768 * 1024   # Klartext der Einträge im Fenster; s. fit_window
 MAX_ENTRIES = 400
 # LWW vertraut `modified_at`: eine falsche Uhr würde echte Einträge überschreiben.
 CLOCK_SKEW_LIMIT = datetime.timedelta(minutes=15)
@@ -66,6 +69,7 @@ class SyncRequest:
     # {date: {slots, modified_at, deleted}} — bewusst ohne `device_id`: die setzt
     # `perform_sync` aus dem Token, nie aus dem Body.
     entries: dict[str, dict[str, Any]]
+    window_days: int | None = None      # Wunsch des Handys (#250); `None` = keiner/ungültig
 
 
 def _parse_utc(text: object) -> datetime.datetime | None:
@@ -149,7 +153,43 @@ def parse_request(body: bytes, *, now: str) -> SyncRequest:
     if len(raw_entries) > MAX_ENTRIES:
         raise SyncError(422, "invalid_entry", f"Höchstens {MAX_ENTRIES} Tage je Anfrage.")
     entries = {date: _parse_entry(date, raw, now_dt) for date, raw in raw_entries.items()}
-    return SyncRequest(str(data["client_time"]), entries)
+    wish = data.get("window_days")
+    window_days = wish if isinstance(wish, int) and not isinstance(wish, bool) and wish >= 1 else None
+    return SyncRequest(str(data["client_time"]), entries, window_days)
+
+
+def window_cap(raw: object) -> int:
+    """Die Obergrenze aus der Einstellung. Nur die angebotenen Werte gelten; alles andere
+    (handbearbeitete `settings.json`, Fremdwert) fällt auf das Maximum zurück."""
+    if isinstance(raw, int) and not isinstance(raw, bool) and raw in WINDOW_CAP_CHOICES:
+        return raw
+    return HARD_MAX_WINDOW_DAYS
+
+
+def grant_window(wish: object, cap: int) -> int:
+    """Das gewährte Fenster: der Wunsch (sonst das Standardfenster), auf `1..cap` geklemmt.
+    Ein ungültiger Wunsch ist kein Fehler — das Handy bekommt dann das Standardfenster."""
+    base = wish if isinstance(wish, int) and not isinstance(wish, bool) and wish >= 1 else WINDOW_DAYS
+    return max(1, min(base, cap))
+
+
+def fit_window(sizes: Mapping[str, int], *, today: datetime.date, window_days: int,
+               floor_days: int, budget: int) -> int:
+    """Kürzt das Fenster, wenn seine Einträge mehr als `budget` Byte ergäben.
+
+    `sizes` ist die serialisierte Größe je Datum. Gezählt wird von heute rückwärts; das Fenster
+    endet vor dem ersten Tag, der das Budget sprengt. Nie unter `floor_days` (das Standardfenster
+    bleibt, wie es immer war), nie über `window_days`. Tage außerhalb von `[heute − window_days,
+    heute]` zählen nicht."""
+    first = (today - datetime.timedelta(days=window_days)).isoformat()
+    last = today.isoformat()
+    used = 0
+    for date in sorted((d for d in sizes if first <= d <= last), reverse=True):
+        used += sizes[date]
+        if used > budget:
+            cutoff = datetime.date.fromisoformat(date)       # dieser Tag passt nicht mehr hinein
+            return min(window_days, max((today - cutoff).days - 1, floor_days))
+    return window_days
 
 
 def _clean_slots(raw: object) -> list[dict[str, Any]]:
