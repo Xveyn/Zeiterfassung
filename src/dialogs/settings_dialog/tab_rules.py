@@ -30,6 +30,7 @@ from src.mobile_service import (
     STATE_STARTING as MOBILE_STARTING, MobileStatus,
 )
 from src.mobile_pairing import pair_count
+from src.mobile_sync import WINDOW_CAP_CHOICES, window_cap
 from src.mobile_store import MobileStoreReadOnly
 from src.netinfo import is_lan_address
 from src.send_reminder import shift_for_label
@@ -370,6 +371,21 @@ def address_to_choice(address: str) -> str:
     return address or AUTO_ADDRESS
 
 
+def window_cap_options() -> list[str]:
+    """Die Auswahl der Combobox „Verlauf bis zu“ (Obergrenze des Lesefensters, #250)."""
+    return [f"{days} Tage" for days in WINDOW_CAP_CHOICES]
+
+
+def window_cap_to_choice(days: object) -> str:
+    return f"{window_cap(days)} Tage"
+
+
+def window_cap_from_choice(choice: object) -> int:
+    """Die Obergrenze zu einer Auswahl; alles Unlesbare ist das Maximum."""
+    head = str(choice or "").split(" ", 1)[0]
+    return window_cap(int(head)) if head.isdigit() else window_cap(None)
+
+
 def validate_mobile(raw: Mapping[str, Any]) -> tuple[str, str] | None:
     """Port und Adresse müssen gültig sein — auch bei ausgeschaltetem Schalter, damit ein
     kaputter Wert nicht erst beim späteren Einschalten auffällt."""
@@ -391,6 +407,7 @@ def mobile_updates(raw: Mapping[str, Any]) -> dict[str, Any]:
         "mobile_enabled": bool(raw["mobile_enabled"]),
         "mobile_port": parse_port(raw["mobile_port"]) or MOBILE_DEFAULT_PORT,
         "mobile_address": address_from_choice(str(raw["mobile_address"])),
+        "mobile_window_max_days": window_cap_from_choice(raw["mobile_window_max_days"]),
     }
 
 
