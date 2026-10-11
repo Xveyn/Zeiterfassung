@@ -209,7 +209,7 @@ und macOS; dazu kommen `ruff check .` (Lint) und `pyright` (Typen).
 
 ### PWA (`pwa/`)
 
-Die Handy-Web-App ist reines JavaScript ohne Build und ohne npm-Abhängigkeiten. Tests laufen mit dem eingebauten Runner von Node (Node 20 oder neuer):
+Die Handy-Web-App ist reines JavaScript ohne Build und ohne npm-Abhängigkeiten. Tests laufen mit dem eingebauten Runner von Node (Node 22 oder neuer):
 
 ```
 cd pwa && node --test
