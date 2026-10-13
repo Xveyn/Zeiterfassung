@@ -383,6 +383,7 @@ Zeitraum und welche Kategorien der Bericht gefiltert ist.
   (wie `_phone_doc`), und ein gewonnener Tag bekommt mindestens den Empfangszeitpunkt — der Kalender-Abgleich
   (`reservations_sync._merge_one_date`, Fall 4) verwirft lokale Tage ohne Event, deren Stempel nicht über seinem Watermark liegt. Die Antwort trägt
   `reservations` (aktive Tage heute…+365) **nur** bei eingeschalteten Reservierungen — daran erkennt die PWA die Funktion.
+  Die PWA sendet und liest `reservations` seit PR 3 (`pwa/CLAUDE.md`, „Reservierungen“).
   `SyncReport.reservations_changed` löst nach Freigabe aller Sperren `MobileContext.on_reservations_change` aus (`App`
   stößt den Kalender-Abgleich an).
   `build_response` ist rein: Fenster `[heute − Fenster, heute]` (gewährt über `grant_window`, vom Budget `fit_window` gekürzt, #250/#292) plus gesendete Tage, offene Eintrags-Konflikte

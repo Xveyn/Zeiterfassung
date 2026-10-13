@@ -7,8 +7,8 @@
 // Hier prüft nur ein Test mit einer Attrappe Form und Fehlerpfade; das echte IndexedDB
 // wird von Hand im Browser geprüft.
 
-const VERSION = 1;
-const STORES = ['entries', 'meta'];
+const VERSION = 2;                  // 2: Object Store `reservations`; ein Upgrade lässt `entries`/`meta` unberührt
+const STORES = ['entries', 'meta', 'reservations'];
 
 function requestResult(request) {
   return new Promise((resolve, reject) => {

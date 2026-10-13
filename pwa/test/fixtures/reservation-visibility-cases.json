@@ -1,0 +1,8 @@
+[
+  {"name": "yesterday is hidden", "day": "2026-10-12", "today": "2026-10-13", "visible": false},
+  {"name": "today is shown", "day": "2026-10-13", "today": "2026-10-13", "visible": true},
+  {"name": "tomorrow is shown", "day": "2026-10-14", "today": "2026-10-13", "visible": true},
+  {"name": "a year ahead is shown", "day": "2027-10-13", "today": "2026-10-13", "visible": true},
+  {"name": "across the month boundary", "day": "2026-11-01", "today": "2026-10-31", "visible": true},
+  {"name": "across the year boundary, past", "day": "2026-12-31", "today": "2027-01-01", "visible": false}
+]

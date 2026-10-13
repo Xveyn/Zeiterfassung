@@ -4,7 +4,7 @@
 // gemeinsam anwendet (bei IndexedDB eine Transaktion).
 
 export function createMemoryAdapter() {
-  const stores = { entries: new Map(), meta: new Map() };
+  const stores = { entries: new Map(), meta: new Map(), reservations: new Map() };
   return {
     async getAll(name) {
       return [...stores[name]].map(([key, value]) => ({ key, value: structuredClone(value) }));

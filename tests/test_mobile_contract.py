@@ -13,6 +13,7 @@ import pytest
 
 from src.api_entry_write import WriteError, parse_slots
 from src.category_defaults import resolve_slot_defaults
+from src.dialogs.entry_dialog import reservation_block_visible
 from src.time_utils import calculate_hours, hours_to_minutes, validate_slots
 
 FIXTURES = pathlib.Path(__file__).resolve().parent.parent / "pwa" / "test" / "fixtures"
@@ -156,7 +157,9 @@ def test_the_sync_request_example_has_the_shape_the_phone_sends(tmp_path):
     sent = mr.sync_doc(env, {"2026-10-07": mr.day(), "2026-10-06": mr.day(slots=(), deleted=True)})
     sent["last_pull_at"] = example["last_pull_at"]
 
-    assert set(sent) == set(example) and sent["protocol"] == example["protocol"] == 2
+    # `reservations` sendet die PWA nur mit nicht übertragenen Reservierungen; die Form prüft der JS-Test
+    # (`sync.test.js`), und dass der Desktop sie liest, `test_the_live_request_example_carries_…`.
+    assert set(sent) == set(example) - {"reservations"} and sent["protocol"] == example["protocol"] == 2
 
 
 def test_the_pair_examples_have_the_shape_the_server_expects_and_sends(tmp_path):
@@ -275,3 +278,23 @@ def test_the_live_response_example_has_the_shape_build_reservations_emits():
     rebuilt = mobile_reservations.build_reservations(example["reservations"], today=today)
 
     assert rebuilt == example["reservations"]
+
+
+@pytest.mark.parametrize("case", load("reservation-visibility-cases.json"), ids=lambda case: case["name"])
+def test_the_desktop_shows_the_reservation_block_like_the_phone_does(case):
+    # Gleichlauf mit `pwa/reservations.js`: dieselben Fälle prüft der JS-Test.
+    day = datetime.date.fromisoformat(case["day"])
+    today = datetime.date.fromisoformat(case["today"])
+
+    assert reservation_block_visible(day, today) is case["visible"]
+
+
+def test_the_live_request_example_carries_reservations_the_server_reads():
+    example = load("sync-request.json")
+    assert example["reservations"]
+
+    parsed = mobile_sync.parse_request(
+        json.dumps(example).encode(), now=example["client_time"],
+        today=datetime.date.fromisoformat(example["client_time"][:10]))
+
+    assert sorted(parsed.reservations) == sorted(example["reservations"])

@@ -14,7 +14,11 @@
 // Transaktionen entstehen in Aufrufreihenfolge, eine zusätzliche Warteschlange braucht
 // es nicht. Scheitert das Schreiben, wirft die Methode; der Cache ist dem Speicher dann
 // voraus, und die Oberfläche meldet den Fehler.
-import { addDays, isIsoDate, normalizeSlots, utcStamp, validateSlots } from './minutes.js';
+import { addDays, isIsoDate, localIsoDate, normalizeSlots, utcStamp, validateSlots } from './minutes.js';
+import {
+  RESERVATION_HORIZON_DAYS, normalizeReservationSlots, reservationEditable, reservationSignature,
+  validateReservationSlots,
+} from './reservations.js';
 
 const DEFAULT_META = Object.freeze({
   address: null,
@@ -34,11 +38,13 @@ const DEFAULT_META = Object.freeze({
   window_max: null,        // Obergrenze des Desktops; null = kam nicht mit (älterer Desktop)
   window_max_known: false, // erst nach der ersten angewandten Antwort wahr; vorher weiß man nichts
   auto_update: false,      // Updates der PWA automatisch einspielen (#290); gerätelokal, Standard aus
+  reservations_enabled: false, // Desktop bietet Reservierungen an (Feld in der Antwort); fehlt es, bleibt alles verborgen
   excluded: false,
   conflicts: [],
   server_time: '',
 });
 
+const MAX_RESERVATIONS_PER_REQUEST = 400;      // Gegenstück zu `MAX_RESERVATIONS` in src/mobile_reservations.py
 const FUTURE_LIMIT_MS = 14 * 60 * 1000;
 const isObject = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
 const isDirty = (record) => record.dirty_version > record.synced_version;
@@ -61,6 +67,7 @@ export class Store {
     this._adapter = adapter;
     this._now = now;
     this._days = new Map();
+    this._reservations = new Map();
     this._meta = structuredClone(DEFAULT_META);
   }
 
@@ -76,6 +83,16 @@ export class Store {
         error: typeof value.error === 'string' ? value.error : null,
       } : null;
       if (record && validRecord(key, record)) this._days.set(key, record);
+    }
+    this._reservations.clear();
+    for (const { key, value } of await this._adapter.getAll('reservations')) {
+      const record = isObject(value) ? {
+        entry: value.entry,
+        dirty_version: value.dirty_version,
+        synced_version: Number.isInteger(value.synced_version) ? value.synced_version : 0,
+        error: typeof value.error === 'string' ? value.error : null,
+      } : null;
+      if (record && validRecord(key, record)) this._reservations.set(key, record);
     }
     const stored = (await this._adapter.getAll('meta')).find((row) => row.key === 'meta');
     this._meta = { ...structuredClone(DEFAULT_META), ...(stored && isObject(stored.value) ? stored.value : {}) };
@@ -160,16 +177,20 @@ export class Store {
     return Boolean(record) && record.entry.device_id !== this._meta.device_id;
   }
 
-  _put(date, entry, ops) {
-    const old = this._days.get(date);
+  _putIn(map, storeName, date, entry, ops) {
+    const old = map.get(date);
     const record = {
       entry,
       dirty_version: (old ? old.dirty_version : 0) + 1,
       synced_version: old ? old.synced_version : 0,
       error: null,
     };
-    this._days.set(date, record);
-    ops.push({ store: 'entries', op: 'put', key: date, value: record });
+    map.set(date, record);
+    ops.push({ store: storeName, op: 'put', key: date, value: record });
+  }
+
+  _put(date, entry, ops) {
+    this._putIn(this._days, 'entries', date, entry, ops);
   }
 
   /** Speichert einen Tag (geprüfte Slots). Wirft bei ungültigen Slots oder Datum. */
@@ -219,6 +240,154 @@ export class Store {
     if (version !== undefined && record.dirty_version !== version) return;
     record.error = String(message);
     await this._adapter.batch([{ store: 'entries', op: 'put', key: date, value: record }]);
+  }
+
+  // --- Reservierungen --------------------------------------------------------------------------
+
+  reservationDates() {
+    return [...this._reservations.keys()].sort();
+  }
+
+  getReservation(date) {
+    const record = this._reservations.get(date);
+    if (!record) return null;
+    return {
+      slots: structuredClone(record.entry.slots),
+      modified_at: record.entry.modified_at,
+      deleted: record.entry.deleted,
+      dirty: isDirty(record),
+      error: record.error,
+    };
+  }
+
+  /** Nicht übertragene Änderungen: Ist-Zeiten und Reservierungen zusammen (Statuszeile). */
+  pendingCount() {
+    if (!this._meta.reservations_enabled) return this.dirtyDates().length;
+    return this.dirtyDates().length
+      + [...this._reservations.values()].filter((record) => isDirty(record)).length;
+  }
+
+  /** Tage mit abgelehntem Stand, Ist-Zeiten und Reservierungen zusammen. Ist die Funktion verborgen
+   *  (der Desktop bietet sie nicht an), zählen Reservierungen nicht: man könnte sie nicht ansehen. */
+  errorCount() {
+    const reservations = this._meta.reservations_enabled ? [...this._reservations.values()] : [];
+    return [...this._days.values(), ...reservations].filter((record) => record.error).length;
+  }
+
+  /** Speichert die Reservierung eines Tages. Wirft bei ungültigen Slots oder Datum. */
+  async saveReservation(date, slots) {
+    if (!isIsoDate(date)) throw new Error(`Ungültiges Datum: ${date}`);
+    // Der Desktop lehnt Tage hinter heute + 365 mit der ganzen Anfrage ab: gar nicht erst annehmen.
+    if (!reservationEditable(date, localIsoDate(this._now()))) {
+      throw new Error(`Reservierungen sind nur für heute und höchstens ${RESERVATION_HORIZON_DAYS - 1} Tage im Voraus möglich (365 Tage).`);
+    }
+    const normalized = normalizeReservationSlots(slots);
+    const check = validateReservationSlots(normalized);
+    if (!check.ok) throw new Error(check.message);
+    const old = this._reservations.get(date);
+    if (old && !old.entry.deleted && reservationSignature(old.entry.slots) === reservationSignature(normalized)) {
+      if (old.error) {                                             // erneut speichern = erneut versuchen
+        old.error = null;
+        await this._adapter.batch([{ store: 'reservations', op: 'put', key: date, value: old }]);
+      }
+      return;
+    }
+    const ops = [];
+    this._putIn(this._reservations, 'reservations', date, {
+      slots: normalized, modified_at: this._stampAfter(old?.entry.modified_at), deleted: false,
+    }, ops);
+    await this._adapter.batch(ops);
+  }
+
+  /** „Tag leeren“ für die Reservierung: ein Tombstone, den der nächste Abgleich überträgt. */
+  async clearReservation(date) {
+    const old = this._reservations.get(date);
+    if (!old || old.entry.deleted) return;
+    if (old.synced_version === 0) {            // der Desktop kennt den Tag nie: kein Tombstone nötig
+      this._reservations.delete(date);
+      await this._adapter.batch([{ store: 'reservations', op: 'delete', key: date }]);
+      return;
+    }
+    const ops = [];
+    this._putIn(this._reservations, 'reservations', date, {
+      slots: [], modified_at: this._stampAfter(old.entry.modified_at), deleted: true,
+    }, ops);
+    await this._adapter.batch(ops);
+  }
+
+  async markReservationError(date, message, version) {
+    const record = this._reservations.get(date);
+    if (!record) return;
+    if (version !== undefined && record.dirty_version !== version) return;
+    record.error = String(message);
+    await this._adapter.batch([{ store: 'reservations', op: 'put', key: date, value: record }]);
+  }
+
+  /** Was der nächste Abgleich an Reservierungen schickt: dirty Tage ohne Fehler, neueste zuerst,
+   *  höchstens `limit` (der Desktop nimmt höchstens 400). Form der Anfrage: `{slots, modified_at,
+   *  deleted}` — ohne `device_id`, ohne `pause`. */
+  snapshotReservations(limit = MAX_RESERVATIONS_PER_REQUEST) {
+    const reservations = {};
+    const reservationVersions = {};
+    for (const date of this.reservationDates().reverse()) {
+      const record = this._reservations.get(date);
+      if (!isDirty(record) || record.error) continue;
+      if (Object.keys(reservations).length >= limit) break;
+      reservations[date] = {
+        slots: structuredClone(record.entry.slots),
+        modified_at: record.entry.modified_at,
+        deleted: record.entry.deleted,
+      };
+      reservationVersions[date] = record.dirty_version;
+    }
+    return { reservations, reservationVersions };
+  }
+
+  /** Wendet die `reservations` der Antwort an (`null`: der Desktop bietet sie nicht an — lokal bleibt
+   *  alles stehen, nur die Funktion ist verborgen). Gleiche Regeln wie bei den Ist-Zeiten: ein
+   *  gesendeter, unveränderter Tag wird vom Desktop-Stand ersetzt, ein inzwischen geänderter bleibt.
+   *  Ein sauberer Tag, den die Antwort nicht kennt, ist am Desktop gelöscht oder vergangen — aber nur
+   *  bis `heute + 365`; dahinter gehört er dem Desktop nicht. Ein gesendeter, unveränderter Tag, den
+   *  die Antwort nicht kennt, ist erledigt (Tombstone eingelöst, oder vergangen und vom Desktop still
+   *  verworfen). */
+  _applyReservations(parsed, snapshot, today, ops) {
+    // Ein abgelehnter Tag, der inzwischen vergangen ist, lässt sich nicht mehr bearbeiten und würde
+    // nie wieder gesendet: aufräumen, sonst bliebe er als „abgelehnt“ und „nicht übertragen“ stehen.
+    for (const [date, record] of [...this._reservations]) {
+      if (record.error && date < today) {
+        this._reservations.delete(date);
+        ops.push({ store: 'reservations', op: 'delete', key: date });
+      }
+    }
+    if (parsed.reservations === null || parsed.reservations === undefined) return;
+    const remote = new Map(Object.entries(parsed.reservations));
+    const horizon = addDays(today, RESERVATION_HORIZON_DAYS);
+    const sentVersions = snapshot.reservationVersions ?? {};
+
+    for (const [date, entry] of remote) {
+      if (!isIsoDate(date)) continue;
+      const record = this._reservations.get(date);
+      const sent = sentVersions[date];
+      if (record && isDirty(record) && !(sent !== undefined && sent === record.dirty_version)) continue;
+      const next = {
+        entry: { slots: structuredClone(entry.slots), modified_at: entry.modified_at, deleted: false },
+        dirty_version: record ? record.dirty_version : 0,
+        synced_version: record ? record.dirty_version : 0,
+        error: null,
+      };
+      this._reservations.set(date, next);
+      ops.push({ store: 'reservations', op: 'put', key: date, value: next });
+    }
+    for (const [date, record] of [...this._reservations]) {
+      if (remote.has(date)) continue;
+      const sent = sentVersions[date];
+      const dropSent = isDirty(record) && sent !== undefined && sent === record.dirty_version;
+      const dropClean = !isDirty(record) && date <= horizon;
+      if (dropSent || dropClean) {
+        this._reservations.delete(date);
+        ops.push({ store: 'reservations', op: 'delete', key: date });
+      }
+    }
   }
 
   /** Wendet eine geprüfte Antwort an (`sync.parseSyncResponse`). `snapshot` ist, was gesendet
@@ -279,8 +448,11 @@ export class Store {
       }
     }
 
+    this._applyReservations(parsed, snapshot, today, ops);
+
     this._meta = {
       ...this._meta,
+      reservations_enabled: parsed.reservations !== null && parsed.reservations !== undefined,
       last_pull_at: parsed.last_pull_at,
       server_time: parsed.server_time,
       categories: [...parsed.categories],

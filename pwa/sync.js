@@ -22,10 +22,10 @@ const TOKEN_RE = /^[A-Za-z0-9_-]{16,256}$/;
 const KEY_RE = /^[A-Za-z0-9_-]{43}$/;                            // 32 Bytes, base64url ohne Padding
 
 export class SyncError extends Error {
-  constructor({ kind, status = 0, code = '', message = '', needsRepair = false, retryable = false, day = null, supportedProtocol = null }) {
+  constructor({ kind, status = 0, code = '', message = '', needsRepair = false, retryable = false, day = null, dayKind = null, supportedProtocol = null }) {
     super(message);
     this.name = 'SyncError';
-    Object.assign(this, { kind, status, code, needsRepair, retryable, day, supportedProtocol });
+    Object.assign(this, { kind, status, code, needsRepair, retryable, day, dayKind, supportedProtocol });
   }
 }
 
@@ -60,14 +60,17 @@ export function classifyHttpError(status, body) {
   const code = typeof detail.code === 'string' ? detail.code : '';
   const message = typeof detail.message === 'string' ? detail.message : '';
   const kind = KINDS[code] ?? fallbackKind(status);
-  const day = kind === 'invalid_entry' ? (/^(\d{4}-\d{2}-\d{2}):/.exec(message)?.[1] ?? null) : null;
-  const named = detail.supported_protocol;
-  const supportedProtocol = code === 'invalid_protocol' && Number.isInteger(named) && named > 0 && named < 1000 ? named : null;
+  // Der Desktop nennt den Tag vorn in der Meldung; eine Reservierung mit dem Vorsatz „Reservierung“.
+  const named = kind === 'invalid_entry' ? /^(Reservierung )?(\d{4}-\d{2}-\d{2}):/.exec(message) : null;
+  const day = named?.[2] ?? null;
+  const dayKind = day ? (named[1] ? 'reservation' : 'entry') : null;
+  const protocolNumber = detail.supported_protocol;
+  const supportedProtocol = code === 'invalid_protocol' && Number.isInteger(protocolNumber) && protocolNumber > 0 && protocolNumber < 1000 ? protocolNumber : null;
   return new SyncError({
     kind, status, code, message,
     needsRepair: REPAIR_KINDS.has(kind),
     retryable: kind === 'transient' || kind === 'server',
-    day, supportedProtocol,
+    day, dayKind, supportedProtocol,
   });
 }
 
@@ -109,6 +112,22 @@ function cleanSlots(slots) {
   }));
 }
 
+/** Reservierungen der Antwort: `null`, wenn das Feld fehlt oder kein Objekt ist (der Desktop bietet
+ *  sie nicht an, Feature-Erkennung). Einzelne unbrauchbare Tage entfallen, statt die Antwort zu kippen. */
+function parseReservations(raw) {
+  if (!isObject(raw)) return null;
+  const text = (value) => (typeof value === 'string' ? value : '');
+  const out = {};
+  for (const [date, entry] of Object.entries(raw)) {
+    if (!isIsoDate(date) || !isObject(entry) || !Array.isArray(entry.slots)) continue;
+    const slots = entry.slots.filter(isObject).map((slot) => ({
+      start: text(slot.start), end: text(slot.end), kategorie: text(slot.kategorie) }));
+    if (slots.length === 0) continue;
+    out[date] = { slots, modified_at: cleanStamp(entry.modified_at) };
+  }
+  return out;
+}
+
 /** Prüft eine Sync-Antwort vollständig, BEVOR sie den Zustand anfasst. Die Antwort kommt vom
  *  Desktop, kann aber von einer anderen Version stammen; eine halbe Anwendung wäre schlimmer
  *  als eine Ablehnung. Unbekannte Felder werden verworfen. */
@@ -143,6 +162,7 @@ export function parseSyncResponse(raw) {
     excluded: raw.excluded, window_days: raw.window_days, window_max: windowMax, entries, conflicts,
     categories: [...raw.categories], token: raw.token, expires_at: raw.expires_at,
     defaults: parseDefaults(raw.defaults), desktop: parseDesktopInfo(raw.desktop),
+    reservations: parseReservations(raw.reservations),
   };
 }
 
@@ -294,8 +314,10 @@ export class SyncClient {
   async _run() {
     let total = { sent: 0, conflicts: 0, excluded: false };
     const done = new Set();         // schon gesendet: bei `excluded` bleiben sie „offen“, gingen sonst endlos hinaus
+    let first = true;               // Reservierungen gehen nur im ersten Päckchen hinaus
     for (;;) {
-      const result = await this._runOnce(MAX_DAYS_PER_REQUEST, done);
+      const result = await this._runOnce(MAX_DAYS_PER_REQUEST, done, first);
+      first = false;
       if (result.discarded) return result;
       total = { ...result, sent: total.sent + result.sent };
       if (result.sent < MAX_DAYS_PER_REQUEST
@@ -303,7 +325,7 @@ export class SyncClient {
     }
   }
 
-  async _runOnce(limit, done) {
+  async _runOnce(limit, done, withReservations = false) {
     const meta = this._store.getMeta();
     if (!meta.address || !meta.token) throw new SyncError({ kind: 'not_paired', message: 'Noch nicht gekoppelt.' });
     if (!KEY_RE.test(meta.key || '')) {
@@ -311,6 +333,8 @@ export class SyncClient {
         message: 'Diese Kopplung ist noch nicht verschlüsselt. Bitte neu koppeln.' });
     }
     const snapshot = this._store.snapshotDirty(limit, done);
+    Object.assign(snapshot, withReservations
+      ? this._store.snapshotReservations() : { reservations: {}, reservationVersions: {} });
     const now = this._now();
     const wishSent = meta.window_wish ?? 90;
     // Den Zähler VOR dem Senden dauerhaft ablegen: ein Absturz mitten im Request darf ihn nie
@@ -323,13 +347,18 @@ export class SyncClient {
       raw = await this._sealedPost('/v1/sync', meta.address, {
         token: meta.token, requestKey, responseKey, aadRequest: meta.device_id, aadResponse: meta.device_id, seq,
         payload: { protocol: PROTOCOL, client_time: utcStamp(now), last_pull_at: meta.last_pull_at || '',
-          window_days: wishSent, entries: snapshot.entries } });
+          window_days: wishSent, entries: snapshot.entries,
+          ...(Object.keys(snapshot.reservations).length > 0 ? { reservations: snapshot.reservations } : {}) } });
     } catch (error) {
       // Währenddessen neu gekoppelt: der Fehler gehört zum alten Server/Token und darf weder
       // den Zustand der neuen Kopplung markieren noch als deren Fehler erscheinen.
       if (this._pairingChanged(meta)) return DISCARDED();
       if (error instanceof SyncError && error.kind === 'invalid_entry' && error.day) {
-        await this._store.markDayError(error.day, error.message, snapshot.versions[error.day]);
+        if (error.dayKind === 'reservation') {
+          await this._store.markReservationError(error.day, error.message, snapshot.reservationVersions[error.day]);
+        } else {
+          await this._store.markDayError(error.day, error.message, snapshot.versions[error.day]);
+        }
       }
       throw error;
     }

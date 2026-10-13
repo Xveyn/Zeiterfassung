@@ -526,3 +526,223 @@ test('the maximum is unknown until an answer arrived, and an answer without it m
   assert.equal(store.getMeta().window_max, null);
   assert.equal(store.getMeta().window_wish_acked, 120);
 });
+
+// --- Reservierungen ---------------------------------------------------------------------------------
+
+const RES = { start: '09:00', end: '12:00', kategorie: 'Projekt' };
+const RES_TODAY = '2026-10-13';
+const parsedWith = (reservations, over = {}) => parsedResponse({ reservations, ...over });
+const emptySnapshot = (extra = {}) => ({ entries: {}, versions: {}, reservations: {}, reservationVersions: {}, ...extra });
+
+test('saving a reservation marks it dirty, strips everything but the three fields and stamps it', async () => {
+  const { store } = await make();
+  await store.saveReservation('2026-10-20', [{ ...RES, pause: 30, gcal_event_id: 'x' }]);
+
+  const day = store.getReservation('2026-10-20');
+  assert.deepEqual(day.slots, [RES]);
+  assert.equal(day.dirty, true);
+  assert.equal(day.deleted, false);
+  assert.match(day.modified_at, /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$/);
+  assert.deepEqual(store.reservationDates(), ['2026-10-20']);
+});
+
+test('saving identical reservation slots changes nothing', async () => {
+  const { store } = await make();
+  await store.saveReservation('2026-10-20', [RES]);
+  const first = store.getReservation('2026-10-20');
+
+  await store.saveReservation('2026-10-20', [{ ...RES }]);
+
+  assert.equal(store.getReservation('2026-10-20').modified_at, first.modified_at);
+});
+
+test('saving invalid reservation slots throws and stores nothing', async () => {
+  const { store } = await make();
+  await assert.rejects(() => store.saveReservation('2026-10-20', [{ start: '12:00', end: '09:00', kategorie: '' }]));
+  assert.deepEqual(store.reservationDates(), []);
+});
+
+test('clearing a confirmed reservation makes a dirty tombstone; clearing again is a no-op', async () => {
+  const { store } = await make();
+  await store.saveReservation('2026-10-20', [RES]);
+  await store.applyResponse(parsedWith({ '2026-10-20': { slots: [RES], modified_at: '2026-10-13T12:00:00Z' } }),
+    emptySnapshot(store.snapshotReservations()), RES_TODAY);
+  await store.clearReservation('2026-10-20');
+  const cleared = store.getReservation('2026-10-20');
+  assert.equal(cleared.deleted, true);
+  assert.deepEqual(cleared.slots, []);
+  assert.equal(cleared.dirty, true);
+
+  await store.clearReservation('2026-10-20');
+  assert.equal(store.getReservation('2026-10-20').modified_at, cleared.modified_at);
+});
+
+test('the snapshot holds dirty reservations without a device id or a pause, newest first, and skips errors', async () => {
+  const { store } = await make();
+  await store.saveReservation('2026-10-20', [RES]);
+  await store.saveReservation('2026-10-21', [RES]);
+  await store.saveReservation('2026-10-22', [RES]);
+  await store.markReservationError('2026-10-22', 'abgelehnt');
+  await store.setMeta({ reservations_enabled: true });
+
+  const snapshot = store.snapshotReservations();
+
+  assert.deepEqual(Object.keys(snapshot.reservations).sort(), ['2026-10-20', '2026-10-21']);
+  assert.deepEqual(Object.keys(snapshot.reservations['2026-10-20']).sort(), ['deleted', 'modified_at', 'slots']);
+  assert.deepEqual(Object.keys(snapshot.reservationVersions).sort(), ['2026-10-20', '2026-10-21']);
+  assert.equal(Object.keys(store.snapshotReservations(1).reservations).length, 1);
+  assert.equal(store.errorCount(), 1);
+});
+
+test('a sent reservation that stayed unchanged is replaced by the desktop state and becomes clean', async () => {
+  const { store } = await make();
+  await store.saveReservation('2026-10-20', [RES]);
+  const snapshot = emptySnapshot(store.snapshotReservations());
+
+  await store.applyResponse(parsedWith({
+    '2026-10-20': { slots: [RES], modified_at: '2026-10-13T12:00:00Z' } }), snapshot, RES_TODAY);
+
+  const day = store.getReservation('2026-10-20');
+  assert.equal(day.dirty, false);
+  assert.equal(day.modified_at, '2026-10-13T12:00:00Z');
+  assert.equal(store.getMeta().reservations_enabled, true);
+});
+
+test('a reservation edited while the request was in flight stays local and dirty', async () => {
+  const { store } = await make();
+  await store.saveReservation('2026-10-20', [RES]);
+  const snapshot = emptySnapshot(store.snapshotReservations());
+  await store.saveReservation('2026-10-20', [{ ...RES, end: '13:00' }]);
+
+  await store.applyResponse(parsedWith({
+    '2026-10-20': { slots: [RES], modified_at: '2026-10-13T12:00:00Z' } }), snapshot, RES_TODAY);
+
+  assert.equal(store.getReservation('2026-10-20').slots[0].end, '13:00');
+  assert.equal(store.getReservation('2026-10-20').dirty, true);
+});
+
+test('a clean reservation the desktop no longer lists is removed inside the future window only', async () => {
+  const { store } = await make();
+  await store.applyResponse(parsedWith({
+    '2026-10-20': { slots: [RES], modified_at: '2026-10-12T12:00:00Z' },
+    '2027-10-14': { slots: [RES], modified_at: '2026-10-12T12:00:00Z' } }), emptySnapshot(), RES_TODAY);
+  assert.deepEqual(store.reservationDates(), ['2026-10-20', '2027-10-14']);
+
+  await store.applyResponse(parsedWith({}), emptySnapshot(), RES_TODAY);
+
+  assert.deepEqual(store.reservationDates(), ['2027-10-14']);      // hinter heute + 365 gehört dem Desktop nicht
+});
+
+test('past reservations are cleaned up: clean ones by absence, sent dirty ones the desktop dropped', async () => {
+  const { store } = await make();
+  await store.applyResponse(parsedWith({ '2026-10-20': { slots: [RES], modified_at: '2026-10-12T12:00:00Z' } }),
+    emptySnapshot(), RES_TODAY);
+  await store.saveReservation('2026-10-21', [RES]);                       // wird dirty
+  const snapshot = emptySnapshot(store.snapshotReservations());
+
+  // zehn Tage später: beide sind vergangen, der Desktop liefert sie nicht mehr
+  await store.applyResponse(parsedWith({}), snapshot, '2026-10-23');
+
+  assert.deepEqual(store.reservationDates(), []);
+});
+
+test('a dirty reservation that was not part of the request survives a response without it', async () => {
+  const { store } = await make();
+  await store.saveReservation('2026-10-20', [RES]);
+
+  await store.applyResponse(parsedWith({}), emptySnapshot(), RES_TODAY);
+
+  assert.equal(store.getReservation('2026-10-20').dirty, true);
+});
+
+test('a desktop without reservations changes nothing locally and switches the feature off', async () => {
+  const { store } = await make();
+  await store.applyResponse(parsedWith({ '2026-10-20': { slots: [RES], modified_at: '2026-10-12T12:00:00Z' } }),
+    emptySnapshot(), RES_TODAY);
+  await store.saveReservation('2026-10-21', [RES]);
+
+  await store.applyResponse(parsedWith(null), emptySnapshot(), RES_TODAY);
+
+  assert.equal(store.getMeta().reservations_enabled, false);
+  assert.deepEqual(store.reservationDates(), ['2026-10-20', '2026-10-21']);
+  assert.equal(store.getReservation('2026-10-21').dirty, true);
+});
+
+test('reservations survive a reload', async () => {
+  const { store, adapter } = await make();
+  await store.saveReservation('2026-10-20', [RES]);
+
+  const second = new Store(adapter);
+  await second.load();
+
+  assert.deepEqual(second.getReservation('2026-10-20').slots, [RES]);
+});
+
+test('a broken stored reservation row is skipped, not thrown', async () => {
+  const adapter = createMemoryAdapter();
+  await adapter.batch([{ store: 'reservations', op: 'put', key: '2026-10-20', value: { entry: 'kaputt' } }]);
+  const store = new Store(adapter);
+
+  await store.load();
+
+  assert.deepEqual(store.reservationDates(), []);
+});
+
+test('the pending count includes dirty days and dirty reservations', async () => {
+  const { store } = await make();
+  await store.saveDay('2026-10-07', [SLOT]);
+  await store.saveReservation('2026-10-20', [RES]);
+  await store.setMeta({ reservations_enabled: true });
+
+  assert.equal(store.pendingCount(), 2);
+});
+
+test('a reservation beyond the horizon is refused on the phone', async () => {
+  const { store, now } = await make({ now: clock('2026-10-13T10:00:00Z') });
+  await assert.rejects(() => store.saveReservation('2027-12-01', [RES]), /365 Tage/);
+  assert.deepEqual(store.reservationDates(), []);
+  assert.ok(now);
+});
+
+test('clearing a reservation the desktop never confirmed just drops it', async () => {
+  const { store } = await make();
+  await store.saveReservation('2026-10-20', [RES]);
+
+  await store.clearReservation('2026-10-20');
+
+  assert.deepEqual(store.reservationDates(), []);                  // kein Tombstone ohne Gegenstelle
+});
+
+test('clearing a confirmed reservation still leaves a tombstone', async () => {
+  const { store } = await make();
+  await store.saveReservation('2026-10-20', [RES]);
+  await store.applyResponse(parsedWith({ '2026-10-20': { slots: [RES], modified_at: '2026-10-13T12:00:00Z' } }),
+    { ...emptySnapshot(store.snapshotReservations()) }, RES_TODAY);
+
+  await store.clearReservation('2026-10-20');
+
+  assert.equal(store.getReservation('2026-10-20').deleted, true);
+});
+
+test('a rejected reservation that is now in the past is cleaned up', async () => {
+  const { store } = await make();
+  await store.saveReservation('2026-10-15', [RES]);
+  await store.markReservationError('2026-10-15', 'abgelehnt');
+
+  await store.applyResponse(parsedWith({}), emptySnapshot(), '2026-10-16');
+
+  assert.deepEqual(store.reservationDates(), []);
+  assert.equal(store.errorCount(), 0);
+});
+
+test('with the feature off, reservations neither count as pending nor as rejected', async () => {
+  const { store } = await make();
+  await store.saveReservation('2026-10-20', [RES]);
+  await store.markReservationError('2026-10-20', 'x');
+  await store.setMeta({ reservations_enabled: true });
+  assert.equal(store.pendingCount(), 1);                           // Funktion an: zählt
+  await store.applyResponse(parsedWith(null), emptySnapshot(), RES_TODAY);
+
+  assert.equal(store.pendingCount(), 0);
+  assert.equal(store.errorCount(), 0);
+});

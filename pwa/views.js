@@ -101,12 +101,17 @@ function dayRow(day, handlers) {
     'aria-label': `${day.weekday} ${day.label}${day.minutesLabel ? `, ${day.minutesLabel} Stunden` : ''}`,
     'data-focus': `day-${day.date}`, onclick: () => handlers.openDay(day.date) },
     h('span', {}, h('div', { class: 'wd' }, day.weekday), h('div', { class: 'date' }, day.label.slice(0, 6))),
-    h('ul', { class: 'slots' }, day.state === 'cleared' ? h('li', {}, 'geleert') : day.slots.map((text) => h('li', {}, text))),
+    h('div', { class: 'content' },
+      h('ul', { class: 'slots' }, day.state === 'cleared' ? h('li', {}, 'geleert') : day.slots.map((text) => h('li', {}, text))),
+      day.reservation && h('ul', { class: 'slots reserved' },
+        day.reservation.slots.map((text) => h('li', {}, `geplant ${text}`)))),
     h('span', { class: 'sum' }, day.minutesLabel),
     h('span', { class: 'marks' },
       day.dirty && h('span', { class: 'mark-dirty', title: 'nicht übertragen' }, '● '),
+      day.reservation?.dirty && h('span', { class: 'mark-dirty', title: 'Reservierung nicht übertragen' }, '○ '),
       day.conflict && h('span', { class: 'mark-conflict', title: 'Konflikt' }, '⚠')),
-    day.error && h('span', { class: 'err' }, day.error)));
+    day.error && h('span', { class: 'err' }, day.error),
+    day.reservation?.error && h('span', { class: 'err' }, day.reservation.error)));
 }
 
 export function weekView(model, handlers) {
@@ -132,36 +137,29 @@ function openDialog(dialog) {
   return dialog;
 }
 
-/** Tag bearbeiten. Der Dialog hält seine Zeilen selbst (Eingaben gehen bei Hintergrund-Renders
- *  nicht verloren). `handlers.save(rows)` liefert `null` bei Erfolg oder eine Fehlermeldung. */
-export function editorDialog({ title, rows, categories, defaults = null, weekday = '', error, outsideWindow, canClear, validate }, handlers) {
+/** Eine Liste von Slot-Zeilen (Arbeitszeit mit Pause, Reservierung ohne). Der Abschnitt hält seinen
+ *  Zustand selbst: Eingaben gehen bei Hintergrund-Renders und beim Wechsel des Reiters nicht verloren.
+ *  `onChange` meldet jede Eingabe (der Dialog prüft dann neu). */
+function slotSection({ rows, categories, defaults, weekday, withPause, onChange }) {
   const list = h('div', {});
-  const message = h('div', { class: 'error-text', role: 'alert' }, error ?? '');
-  const save = h('button', { type: 'submit', class: 'primary' }, 'Speichern');
   const state = rows.map((row) => ({ ...row, base: row.base && { ...row.base } }));
-  const dialog = h('dialog', { 'aria-labelledby': 'editor-title' });
-
-  const refresh = () => {
-    const check = validate(state);
-    save.disabled = !check.ok;
-    if (!error || check.ok) message.textContent = check.ok ? '' : check.message;
-  };
+  const prefix = withPause ? 'slot' : 'res';       // die Ids beider Abschnitte dürfen nicht kollidieren
   const field = (index, key, label, attrs) => {
-    const id = `slot-${index}-${key}`;
+    const id = `${prefix}-${index}-${key}`;
     const input = h('input', { id, value: state[index][key], ...attrs,
-      oninput: () => { state[index][key] = input.value; refresh(); } });
+      oninput: () => { state[index][key] = input.value; onChange(); } });
     return h('div', {}, h('label', { for: id }, label), input);
   };
   // Modal statt <datalist>: auf dem Handy zeigt ein Datalist erst nach Eingabe etwas und filtert nach
   // dem Feldinhalt, und Chips blähen den Editor bei mehreren Slots auf.
   const categoryField = (index) => {
-    const id = `slot-${index}-kategorie`;
+    const id = `${prefix}-${index}-kategorie`;
     const text = h('span', { class: 'text' }, categoryLabel(state[index].kategorie));
     const picker = button([text, h('span', { 'aria-hidden': 'true' }, '▾')], () => {
       categoryPickerDialog({ categories, current: state[index].kategorie }, (name) => {
         pickCategory(state[index], name, defaults, weekday);
         build();                                   // Zeiten können sich geändert haben (Vorbelegung, #288)
-        refresh();
+        onChange();
         document.getElementById(id)?.focus();
       });
     }, 'picker', { id });
@@ -169,32 +167,79 @@ export function editorDialog({ title, rows, categories, defaults = null, weekday
   };
   const build = () => {
     list.replaceChildren(...state.map((_, index) => h('fieldset', { class: 'slot' },
-      state.length > 1 && button('×', () => { state.splice(index, 1); build(); refresh(); }, 'remove', { 'aria-label': 'Slot entfernen' }),
+      state.length > 1 && button('×', () => { state.splice(index, 1); build(); onChange(); }, 'remove', { 'aria-label': 'Slot entfernen' }),
       h('div', { class: 'row' },
         field(index, 'start', 'von', { type: 'time', step: 60 }),
         field(index, 'end', 'bis', { type: 'time', step: 60 })),
       h('div', { class: 'row' },
-        field(index, 'pause', 'Pause (Min)', { type: 'number', inputmode: 'numeric', min: 0, step: 1 }),
+        withPause && field(index, 'pause', 'Pause (Min)', { type: 'number', inputmode: 'numeric', min: 0, step: 1 }),
         categoryField(index)))));
   };
   build();
-  refresh();
+  const element = h('div', {}, list, button('+ Slot', () => { state.push(nextRow(state.at(-1))); build(); onChange(); }));
+  return { element, state };
+}
+
+/** Tag bearbeiten. Mit `reservation` hat der Dialog zwei Reiter (Arbeitszeit / Reservierung); jeder
+ *  hält seinen eigenen Zustand, „Speichern“ und „Tag leeren“ wirken auf den aktiven.
+ *  `handlers.save(kind, rows)` liefert `null` bei Erfolg oder eine Fehlermeldung; `kind` ist
+ *  `'work'` oder `'reservation'`. */
+export function editorDialog({ title, rows, categories, defaults = null, weekday = '', errors = {}, outsideWindow, canClear, validate,
+  reservation = null, startWith = 'work' }, handlers) {
+  const message = h('div', { class: 'error-text', role: 'alert' }, '');
+  const save = h('button', { type: 'submit', class: 'primary' }, 'Speichern');
+  const dialog = h('dialog', { 'aria-labelledby': 'editor-title' });
+  let active = reservation ? startWith : 'work';
+
+  // Der gespeicherte Fehler gehört zu seinem Reiter und bleibt stehen, bis dort etwas geändert wird.
+  const edited = { work: false, reservation: false };
+  const refresh = () => {
+    const check = active === 'work' ? validate(work.state) : reservation.validate(res.state);
+    save.disabled = !check.ok;
+    if (errors[active] && !edited[active]) message.textContent = errors[active];
+    else message.textContent = check.ok ? '' : check.message;
+  };
+  const work = slotSection({ rows, categories, defaults, weekday, withPause: true,
+    onChange: () => { edited.work = true; refresh(); } });
+  const res = reservation && slotSection({ rows: reservation.rows, categories, defaults, weekday,
+    withPause: false, onChange: () => { edited.reservation = true; refresh(); } });
+  const clearButton = button('Tag leeren', () => handlers.clear(active, dialog), 'link');
+  const windowHint = outsideWindow && h('p', { class: 'hint warn' }, 'Dieser Tag liegt außerhalb des Zeitraums, den das Handy vom Desktop kennt. Er kann dort bereits Einträge haben: Speichern ersetzt sie, und nach dem Abgleich ist der Tag hier nicht mehr sichtbar.');
+  const tabs = reservation && {
+    work: h('button', { type: 'button', role: 'tab', 'data-focus': 'tab-work', onclick: () => show('work') }, 'Arbeitszeit'),
+    reservation: h('button', { type: 'button', role: 'tab', 'data-focus': 'tab-reservation', onclick: () => show('reservation') }, 'Reservierung'),
+  };
+  const show = (kind) => {
+    active = kind;
+    work.element.hidden = kind !== 'work';
+    if (res) res.element.hidden = kind !== 'reservation';
+    if (windowHint) windowHint.hidden = kind !== 'work';
+    if (tabs) {
+      tabs.work.setAttribute('aria-selected', String(kind === 'work'));
+      tabs.reservation.setAttribute('aria-selected', String(kind === 'reservation'));
+    }
+    clearButton.textContent = kind === 'work' ? 'Tag leeren' : 'Reservierung löschen';
+    clearButton.hidden = !(kind === 'work' ? canClear : reservation.canClear);
+    refresh();
+  };
 
   dialog.append(
     h('form', { method: 'dialog', onsubmit: async (event) => {
       event.preventDefault();
-      const failure = await handlers.save(state);
+      const failure = await handlers.save(active, active === 'work' ? work.state : res.state);
       if (failure) message.textContent = failure; else dialog.close();
     } },
       h('h2', { id: 'editor-title' }, title),
-      outsideWindow && h('p', { class: 'hint warn' }, 'Dieser Tag liegt außerhalb des Zeitraums, den das Handy vom Desktop kennt. Er kann dort bereits Einträge haben: Speichern ersetzt sie, und nach dem Abgleich ist der Tag hier nicht mehr sichtbar.'),
-      list,
-      button('+ Slot', () => { state.push(nextRow(state.at(-1))); build(); refresh(); }),
+      tabs && h('div', { class: 'tabs', role: 'tablist' }, tabs.work, tabs.reservation),
+      windowHint,
+      work.element,
+      res && res.element,
       message,
       h('div', { class: 'buttons' },
-        canClear && button('Tag leeren', () => handlers.clear(dialog), 'link'),
+        clearButton,
         button('Abbrechen', () => dialog.close()),
         save)));
+  show(active);
   return openDialog(dialog);
 }
 

@@ -8,6 +8,7 @@ import {
 } from './minutes.js';
 import { resolveSlotDefaults } from './defaults.js';
 import { describeError } from './messages.js';
+import { normalizeReservationSlots, reservationBlockVisible, validateReservationSlots } from './reservations.js';
 
 export const WEEKDAYS = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
 const SKEW_WARN_MS = 120000;
@@ -48,7 +49,8 @@ function stampLabel(iso, timeZone) {
 
 // --- Woche ---------------------------------------------------------------------------------------
 
-export function weekModel({ getDay, anchor, today, conflictDates = [], windowDays = 0 }) {
+export function weekModel({ getDay, anchor, today, conflictDates = [], windowDays = 0,
+  getReservation = () => null, reservationsEnabled = false }) {
   const conflicts = new Set(conflictDates);
   const dates = weekDays(anchor);
   const week = dates.map((date, index) => {
@@ -56,6 +58,9 @@ export function weekModel({ getDay, anchor, today, conflictDates = [], windowDay
     const cleared = Boolean(day?.deleted);
     const slots = day && !cleared ? day.slots : [];
     const minutes = dayMinutes(slots);
+    const visible = reservationsEnabled && reservationBlockVisible(date, today);
+    const planned = visible ? getReservation(date) : null;
+    const reservation = planned && !planned.deleted && planned.slots.length > 0 ? planned : null;
     return {
       date,
       weekday: WEEKDAYS[index],
@@ -73,6 +78,10 @@ export function weekModel({ getDay, anchor, today, conflictDates = [], windowDay
       dirty: Boolean(day?.dirty),
       error: day?.error ?? null,
       conflict: conflicts.has(date),
+      // Reservierungen zählen nicht in `minutes`/`totalMinutes`; vergangene Tage zeigen nie eine.
+      reservationVisible: visible,
+      reservation: reservation && {
+        slots: reservation.slots.map(slotText), dirty: reservation.dirty, error: reservation.error },
     };
   });
   const total = week.reduce((sum, day) => sum + day.minutes, 0);
@@ -170,6 +179,23 @@ export function editorRows(day, defaults = null, weekday = '') {
   return day.slots.map((slot) => ({
     start: slot.start, end: slot.end, pause: String(slot.pause ?? 0), kategorie: slot.kategorie ?? '',
   }));
+}
+
+/** Zeilen der Reservierung: wie `editorRows`. Die Pause bleibt im Zustand (die Vorbelegung liefert
+ *  sie), wird aber nie angezeigt und nie gespeichert. */
+export function reservationRows(reservation, defaults = null, weekday = '') {
+  return editorRows(reservation, defaults, weekday);
+}
+
+const isBlankReservation = (row) => row.start === '' && row.end === '' && row.kategorie === '';
+
+export function reservationRowsToSlots(rows) {
+  return rows.filter((row) => !isBlankReservation(row)).map((row) => ({
+    start: row.start, end: row.end, kategorie: row.kategorie }));
+}
+
+export function validateReservationRows(rows) {
+  return validateReservationSlots(normalizeReservationSlots(reservationRowsToSlots(rows)));
 }
 
 /** „+ Slot“: der Start ist das Ende des vorigen und wird von einer Kategorie nie überschrieben. */
