@@ -110,5 +110,18 @@
     "name": "Büro-PC",
     "version": "1.24.0",
     "platform": "Linux"
+  },
+  "reservations": {
+    "2026-10-15": {
+      "slots": [
+        {
+          "start": "09:00",
+          "end": "12:00",
+          "kategorie": "Projekt"
+        }
+      ],
+      "modified_at": "2026-10-07T18:40:00Z",
+      "deleted": false
+    }
   }
 }
