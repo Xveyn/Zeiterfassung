@@ -193,7 +193,8 @@ def test_the_response_carries_the_protocol_fields_and_no_token():
         "protocol": 2, "server_time": NOW, "last_pull_at": NOW, "excluded": False,
         "window_days": 90, "window_max_days": 365, "entries": {}, "conflicts": [],
         "categories": ["Projekt"],
-        "defaults": DEFAULTS, "desktop": DESKTOP}
+        "defaults": DEFAULTS, "desktop": DESKTOP,
+        "writable_settings": ["categories", "category_times"]}
 
 
 def test_the_window_is_today_minus_90_days_through_today():
@@ -738,6 +739,11 @@ def run_settings(env, settings, *, last_pull_at="", **over):
                   base=env.base, now=NOW, today=TODAY, desktop=DESKTOP)
     kwargs.update(over)
     return mobile_sync.perform_sync(request, **kwargs)
+
+
+def test_the_response_names_the_settings_the_phone_may_write(env):
+    response = run_settings(env, {})
+    assert response["writable_settings"] == ["categories", "category_times"]
 
 
 def test_settings_are_parsed_next_to_the_entries():

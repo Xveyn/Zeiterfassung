@@ -368,6 +368,9 @@ def build_response(merged: Mapping[str, Any], *, sent_dates: Iterable[str],
         "categories": list(categories),
         "defaults": dict(defaults),
         "desktop": dict(desktop),
+        # Welche Einstellungen das Handy schreiben darf — daran erkennt die PWA einen Desktop, der
+        # `settings` versteht (Feature-Erkennung; `defaults.category_times` gibt es schon länger).
+        "writable_settings": list(mobile_settings.SETTING_KEYS),
     }
     if reservations is not None:       # nur bei eingeschalteten Reservierungen (Feature-Erkennung)
         response["reservations"] = dict(reservations)

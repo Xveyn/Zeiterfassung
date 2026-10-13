@@ -359,7 +359,7 @@ Zeitraum und welche Kategorien der Bericht gefiltert ist.
   key_unavailable`. Wer einen weiteren Schlüsselbund-Eintrag anlegt, trägt ihn in
   `secret_migration.forget_all` ein.
 
-  `mobile_sync.py` — Abgleich mit dem Handy (`POST /v1/sync`), Tk-frei, ohne Socket. Der Body ist
+  `mobile_sync.py` — Abgleich mit dem Handy (`POST /v1/sync`), Tk-frei, ohne Socket. Die Antwort trägt `writable_settings` (Feature-Erkennung der PWA). Der Body ist
   Fremddaten: `parse_request` prüft ihn mit den Regeln der lokalen API (`api_entry_write.parse_slots`),
   dazu Datum, Zeitstempel, höchstens 400 Tage, die Uhr (15 Minuten, **vor** den Einträgen, damit ein
   vorgehendes Handy `clock_skew` statt `invalid_entry` bekommt) und `modified_at` höchstens 15 Minuten in

@@ -125,6 +125,11 @@ def test_the_request_example_is_accepted_by_the_server_parser():
     assert sorted(parsed.entries) == sorted(example["entries"])
 
 
+def test_the_response_example_lists_the_writable_settings():
+    example = load("sync-response.json")
+    assert example["writable_settings"] == ["categories", "category_times"]
+
+
 def test_the_response_example_has_the_shape_the_server_really_sends(tmp_path):
     example = load("sync-response.json")
     env = mr.make_env(tmp_path)
