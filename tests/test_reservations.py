@@ -327,9 +327,12 @@ def test_merge_phone_loses_against_a_newer_desktop_day(tmp_path):
 
 def test_merge_phone_tombstone_deletes_a_known_day(tmp_path):
     store = _phone_store(tmp_path)
-    store.merge_phone({"2026-10-20": _phone(PHONE_SLOT)})
+    # `now` festnageln: ohne Angabe stempelt `merge_phone` mit der echten Uhr, und der Test
+    # hinge davon ab, ob sie vor oder nach den festen Stempeln unten liegt.
+    store.merge_phone({"2026-10-20": _phone(PHONE_SLOT)}, now="2026-10-13T10:10:00Z")
 
-    changed = store.merge_phone({"2026-10-20": _phone(modified_at="2026-10-13T12:00:00Z", deleted=True)})
+    changed = store.merge_phone({"2026-10-20": _phone(modified_at="2026-10-13T12:00:00Z", deleted=True)},
+                                now="2026-10-13T12:00:00Z")
 
     assert changed is True
     assert store.get_all_raw()["2026-10-20"] == {
