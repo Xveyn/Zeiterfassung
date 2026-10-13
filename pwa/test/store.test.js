@@ -746,3 +746,134 @@ test('with the feature off, reservations neither count as pending nor as rejecte
   assert.equal(store.pendingCount(), 0);
   assert.equal(store.errorCount(), 0);
 });
+
+// --- Kategorien-Block --------------------------------------------------------------------------------
+
+const DEFAULTS = { pause: 0, weekdays: {}, category_times: { Projekt: { start: '09:00', end: '17:00', pause: 45 } } };
+const withDesktop = (over = {}) => parsedResponse({
+  categories: ['Projekt', 'Intern'], defaults: structuredClone(DEFAULTS),
+  writable_settings: ['categories', 'category_times'], ...over });
+const settingsSnapshot = (store) => ({ ...emptySnapshot(), ...(store.snapshotSettings() ?? {}) });
+
+async function writable() {
+  const made = await make();
+  await made.store.applyResponse(withDesktop(), emptySnapshot(), RES_TODAY);
+  return made;
+}
+
+test('saving categories changes the local view at once and marks the block dirty', async () => {
+  const { store } = await writable();
+
+  await store.saveCategories({ categories: ['Neu', 'Projekt'],
+    category_times: { Projekt: { start: '08:00' } } });
+
+  const meta = store.getMeta();
+  assert.deepEqual(meta.categories, ['Neu', 'Projekt']);
+  assert.deepEqual(meta.defaults.category_times, { Projekt: { start: '08:00' } });
+  assert.equal(store.categoriesDirty(), true);
+  assert.equal(store.pendingCount(), 1);
+});
+
+test('saving an unchanged block is a no-op', async () => {
+  const { store } = await writable();
+  await store.saveCategories({ categories: ['Projekt', 'Intern'], category_times: DEFAULTS.category_times });
+  assert.equal(store.categoriesDirty(), false);
+  assert.equal(store.getMeta().categories_edit, null);
+});
+
+test('an invalid block throws and changes nothing', async () => {
+  const { store } = await writable();
+  await assert.rejects(() => store.saveCategories({ categories: ['A', 'A'], category_times: {} }), /doppelt/);
+  assert.deepEqual(store.getMeta().categories, ['Projekt', 'Intern']);
+});
+
+test('without writable_settings saving is refused', async () => {
+  const { store } = await make();
+  await store.applyResponse(withDesktop({ writable_settings: undefined }), emptySnapshot(), RES_TODAY);
+  await assert.rejects(() => store.saveCategories({ categories: ['X'], category_times: {} }), /Desktop/);
+  assert.equal(store.getMeta().settings_writable, false);
+});
+
+test('the snapshot carries both keys with one stamp and the version; clean or rejected blocks send nothing', async () => {
+  const { store } = await writable();
+  assert.equal(store.snapshotSettings(), null);
+  await store.saveCategories({ categories: ['Neu'], category_times: {} });
+
+  const snapshot = store.snapshotSettings();
+
+  assert.deepEqual(Object.keys(snapshot.settings).sort(), ['categories', 'category_times']);
+  assert.deepEqual(snapshot.settings.categories.value, ['Neu']);
+  assert.equal(snapshot.settings.categories.modified_at, snapshot.settings.category_times.modified_at);
+  assert.equal(snapshot.settingsVersion, 1);
+
+  await store.markSettingsError('abgelehnt', snapshot.settingsVersion);
+  assert.equal(store.snapshotSettings(), null);
+  assert.equal(store.errorCount(), 1);
+});
+
+test('a confirmed block becomes clean and the desktop state replaces the local one', async () => {
+  const { store } = await writable();
+  await store.saveCategories({ categories: ['Neu'], category_times: {} });
+  const snapshot = settingsSnapshot(store);
+
+  await store.applyResponse(withDesktop({ categories: ['Neu'], defaults: { ...DEFAULTS, category_times: {} } }),
+    snapshot, RES_TODAY);
+
+  assert.equal(store.categoriesDirty(), false);
+  assert.deepEqual(store.getMeta().categories, ['Neu']);
+});
+
+test('a block edited while the request was in flight stays local and dirty', async () => {
+  const { store } = await writable();
+  await store.saveCategories({ categories: ['Eins'], category_times: {} });
+  const snapshot = settingsSnapshot(store);
+  await store.saveCategories({ categories: ['Eins', 'Zwei'], category_times: {} });
+
+  await store.applyResponse(withDesktop({ categories: ['Eins'], defaults: { ...DEFAULTS, category_times: {} } }),
+    snapshot, RES_TODAY);
+
+  assert.deepEqual(store.getMeta().categories, ['Eins', 'Zwei']);
+  assert.equal(store.categoriesDirty(), true);
+});
+
+test('a dirty block that was not sent survives a response with other categories', async () => {
+  const { store } = await writable();
+  await store.saveCategories({ categories: ['Lokal'], category_times: {} });
+
+  await store.applyResponse(withDesktop({ categories: ['Desktop'] }), emptySnapshot(), RES_TODAY);
+
+  assert.deepEqual(store.getMeta().categories, ['Lokal']);
+  assert.equal(store.categoriesDirty(), true);
+});
+
+test('other defaults still follow the desktop while the block is dirty', async () => {
+  const { store } = await writable();
+  await store.saveCategories({ categories: ['Lokal'], category_times: {} });
+
+  await store.applyResponse(withDesktop({ defaults: { ...DEFAULTS, pause: 30 } }), emptySnapshot(), RES_TODAY);
+
+  assert.equal(store.getMeta().defaults.pause, 30);
+  assert.deepEqual(store.getMeta().defaults.category_times, {});
+});
+
+test('a desktop that drops writable_settings hides the block: it neither counts nor is sent', async () => {
+  const { store } = await writable();
+  await store.saveCategories({ categories: ['Lokal'], category_times: {} });
+
+  await store.applyResponse(withDesktop({ writable_settings: undefined }), emptySnapshot(), RES_TODAY);
+
+  assert.equal(store.pendingCount(), 0);
+  assert.equal(store.snapshotSettings(), null);
+  assert.equal(store.categoriesDirty(), true);                       // bleibt liegen für später
+});
+
+test('the category block survives a reload', async () => {
+  const { store, adapter } = await writable();
+  await store.saveCategories({ categories: ['Neu'], category_times: {} });
+
+  const second = new Store(adapter);
+  await second.load();
+
+  assert.deepEqual(second.getMeta().categories, ['Neu']);
+  assert.equal(second.categoriesDirty(), true);
+});
