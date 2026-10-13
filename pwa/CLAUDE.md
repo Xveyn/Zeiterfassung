@@ -20,9 +20,14 @@ ES-Module flach im Ordner:
   Fehlt `defaults` in der Antwort (älterer Desktop), bleibt der Editor leer.
   Überschrieben werden nur Felder, die noch auf dem zuletzt vorbelegten Wert
   stehen, gespeicherte Slots nie.
+- `reservations.js` — Reservierungen (zukünftige Soll-Zeiten) ohne DOM: wann der
+  Block erscheint (`reservationBlockVisible`, Gleichlauf mit
+  `reservation_block_visible` über `test/fixtures/reservation-visibility-cases.json`),
+  Slot-Normalisierung und -Prüfung ohne Pause (s. „Reservierungen“).
 - `pairing.js` — Kopplungscode, Koppel-Link, Adressregel.
-- `store.js` — lokaler Zustand: erfasste Tage, `dirty_version`/
-  `synced_version`, Anwenden der Sync-Antwort, Lesefenster. Mit
+- `store.js` — lokaler Zustand: erfasste Tage und Reservierungen (zwei
+  Sammlungen), `dirty_version`/`synced_version`, Anwenden der Sync-Antwort,
+  Lesefenster. Mit
   `memory-adapter.js` (Tests) und `db.js` (IndexedDB-Adapter, eine Transaktion
   je `batch`).
 - `sync.js` — Client: Koppeln, Ping, Abgleich, Einordnung der Server-Fehler in
@@ -115,6 +120,46 @@ Desktop) ist seltener, kommt aber vor. Sechs Regeln:
    (Desktop vor dieser Änderung), bleibt der allgemeine Text.
 6. **Ein älterer Desktop wird angezeigt.** Schickt er weder `desktop` noch
    `defaults`, sagt der Verbindungsdialog das (`desktopHint`).
+
+## Reservierungen
+
+Reservierungen sind zukünftige Soll-Zeiten, eine **eigene Sammlung** neben den
+Ist-Zeiten (Object Store `reservations`, IndexedDB `VERSION` 2; Schlüssel =
+Datum, gleiche Felder `dirty_version`/`synced_version`/`error`). Der Desktop
+bietet sie nur an, wenn „Reservierungen verwenden“ an ist.
+
+- **Feature-Erkennung.** Trägt die Antwort ein Feld `reservations`, ist die
+  Funktion an (Meta `reservations_enabled`); fehlt es (Reservierungen am
+  Desktop aus, oder ein Desktop vor #309), bleibt alles verborgen — **lokale
+  Reservierungen werden dabei nie gelöscht**, nicht übertragene gehen beim
+  Wiedereinschalten hinaus. `parseReservations` liefert dafür `null`.
+- **Form auf dem Draht** wie in der Anfrage des Desktops:
+  `{ISO: {slots: [{start, end, kategorie}], modified_at, deleted}}`, ohne
+  `device_id`, ohne `pause`; der Desktop lehnt jedes weitere Feld am Slot ab.
+  Gesendet wird im ersten Päckchen eines Abgleichs und nur, wenn welche
+  nicht übertragen sind.
+- **Anwenden** (`Store._applyReservations`, in derselben Transaktion wie der
+  Rest der Antwort): ein gesendeter, unveränderter Tag wird vom Desktop-Stand
+  ersetzt, ein inzwischen geänderter bleibt lokal. Ein sauberer Tag, den die
+  Antwort nicht kennt, wird entfernt — das gilt bis heute + 365; dahinter
+  gehört er dem Desktop nicht. Ein gesendeter, unveränderter Tag ohne Antwort
+  ist erledigt (Tombstone eingelöst, oder vergangen und vom Desktop still
+  verworfen).
+- **Nur heute und Zukunft.** Marker in der Wochenansicht („geplant …“) und der
+  Reiter im Tages-Editor erscheinen nur dann; vergangene Tage zeigen nichts,
+  auch keine vorhandene Reservierung. Der Editor öffnet an Tagen **nach heute**
+  bei der Reservierung (die Ist-Zeilen sind mit Standardzeiten vorbelegt, ein
+  Speichern dort legte sonst still eine Ist-Zeit an), heute bei der Arbeitszeit.
+  Reservierungen zählen nicht in die Wochensumme.
+- **Löschen** wie bei den Ist-Zeiten: „Tag leeren“ (am Reiter „Reservierung“
+  mit eigener Bestätigung) schreibt einen Tombstone.
+- **Ablehnung je Tag.** Der Desktop nennt den Tag vorn in der Meldung
+  (`Reservierung <Datum>: …`); `SyncError.dayKind` unterscheidet das von einem
+  Ist-Tag, und nur dieser Tag wird als abgelehnt markiert.
+- **Zwei Uhren.** Der Desktop hebt den Stempel eines Handy-Tags auf
+  `last_pull_at + 1 s` und stempelt einen übernommenen Tag mindestens mit dem
+  Empfangszeitpunkt (`ReservationStore.merge_phone`); die Antwort kann daher
+  einen neueren `modified_at` tragen als gesendet.
 
 ## Lesefenster (#250)
 
@@ -236,3 +281,6 @@ Basis des Koppel-Links); zieht das Repo um, müssen beide mit.
 einen Koppel-Link mit frischem Code — auch für Browser-Tests mit Playwright.
 Die PWA lehnt Loopback-Adressen ab; der Server bindet deshalb an die
 LAN-Adresse (`--address` nur mit einer privaten Adresse).
+
+`--reservations` schaltet den Reservierungs-Abgleich ein (wie „Reservierungen verwenden“
+am Desktop); ohne den Schalter fehlt das Feld `reservations` in der Antwort.

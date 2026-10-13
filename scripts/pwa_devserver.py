@@ -36,6 +36,7 @@ from src.mobile_keys import MobileKeyStore  # noqa: E402
 from src.mobile_service import STATE_RUNNING, MobileService  # noqa: E402
 from src.mobile_store import MobileStore  # noqa: E402
 from src.mobile_pairing import PairingSession  # noqa: E402
+from src.reservations import ReservationStore  # noqa: E402
 from src.settings import Settings  # noqa: E402
 from src.storage import Storage  # noqa: E402
 
@@ -88,10 +89,12 @@ class Dev:
 
 @contextlib.contextmanager
 def running(data_dir: pathlib.Path, *, web_port: int, api_port: int, address: str,
-            seed_days: int = 0, seed_slots: int = 1, window_max: int = 365) -> Iterator[Dev]:
+            seed_days: int = 0, seed_slots: int = 1, window_max: int = 365,
+            reservations: bool = False) -> Iterator[Dev]:
     """Startet beide Server und räumt sie wieder ab. Port 0 = frei wählen. `seed_days` legt
     Beispieleinträge für die letzten Tage an (`seed_slots` Slots je Tag), `window_max` ist die
-    Obergrenze des Lesefensters (#250)."""
+    Obergrenze des Lesefensters (#250). Mit `reservations` ist der Reservierungs-Abgleich an
+    (wie „Reservierungen verwenden“ am Desktop)."""
     handler = functools.partial(_Handler, directory=str(PWA))
     web = http.server.ThreadingHTTPServer(("127.0.0.1", web_port), handler)
     web_port = web.server_address[1]
@@ -107,7 +110,7 @@ def running(data_dir: pathlib.Path, *, web_port: int, api_port: int, address: st
     settings.device_id_for_sync = "DESKTOP-DEV"
     settings.set_many({"mobile_enabled": True, "mobile_port": api_port or 17654,
                        "mobile_address": address, "mobile_notice_accepted": True,
-                       "mobile_window_max_days": window_max,
+                       "mobile_window_max_days": window_max, "reservations_enabled": reservations,
                        "categories": ["Projekt", "Intern", "Support"],
                        # Zum Ausprobieren der Vorbelegung (#288): Projekt mit festen Zeiten,
                        # Support nur am Freitag abweichend, Intern ohne Eintrag (= Wochentag-Standard).
@@ -123,7 +126,8 @@ def running(data_dir: pathlib.Path, *, web_port: int, api_port: int, address: st
         devices_lock=threading.RLock(), keys=MobileKeyStore(str(data_dir / "mobile_keys.json")),
         storage=storage,
         settings=settings, conflicts_store=ConflictsStore(str(data_dir / "conflicts.json")),
-        base=str(data_dir), desktop_name=lambda: "Desktop (Dev)")
+        base=str(data_dir), desktop_name=lambda: "Desktop (Dev)",
+        reservation_store=ReservationStore(str(data_dir / "reservations.json")) if reservations else None)
 
     def run(fn, done=None):
         result = fn()
@@ -182,11 +186,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--seed-slots", type=int, default=1, help="Slots je Beispieltag (Standard 1)")
     parser.add_argument("--window-max", type=int, default=365, choices=(30, 90, 180, 365),
                         help="Obergrenze des Lesefensters in Tagen (Standard 365)")
+    parser.add_argument("--reservations", action="store_true",
+                        help="Reservierungen im Abgleich anbieten (reservations_enabled)")
     args = parser.parse_args(argv)
     address = args.address or (netinfo.lan_candidates() or ["127.0.0.1"])[0]
     data_dir = args.data_dir or pathlib.Path(tempfile.mkdtemp(prefix="zeiterfassung-pwa-dev-"))
     with running(data_dir, web_port=args.port, api_port=args.api_port, address=address,
-                 seed_days=args.seed_days, seed_slots=args.seed_slots, window_max=args.window_max) as dev:
+                 seed_days=args.seed_days, seed_slots=args.seed_slots, window_max=args.window_max,
+                 reservations=args.reservations) as dev:
         code = dev.new_code()
         print(f"PWA:           http://localhost:{dev.web_port}/")
         print(f"Handy-Server:  http://{address}:{dev.api_port}")
