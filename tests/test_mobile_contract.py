@@ -13,6 +13,7 @@ import pytest
 
 from src.api_entry_write import WriteError, parse_slots
 from src.category_defaults import resolve_slot_defaults
+from src.dialogs.entry_dialog import reservation_block_visible
 from src.time_utils import calculate_hours, hours_to_minutes, validate_slots
 
 FIXTURES = pathlib.Path(__file__).resolve().parent.parent / "pwa" / "test" / "fixtures"
@@ -275,3 +276,12 @@ def test_the_live_response_example_has_the_shape_build_reservations_emits():
     rebuilt = mobile_reservations.build_reservations(example["reservations"], today=today)
 
     assert rebuilt == example["reservations"]
+
+
+@pytest.mark.parametrize("case", load("reservation-visibility-cases.json"), ids=lambda case: case["name"])
+def test_the_desktop_shows_the_reservation_block_like_the_phone_does(case):
+    # Gleichlauf mit `pwa/reservations.js`: dieselben Fälle prüft der JS-Test.
+    day = datetime.date.fromisoformat(case["day"])
+    today = datetime.date.fromisoformat(case["today"])
+
+    assert reservation_block_visible(day, today) is case["visible"]
