@@ -122,8 +122,9 @@ jedes Reiters selbst; ein Wechsel verliert keine Eingaben.
   Öffnen durch einen Abgleich geändert, warnt die PWA wie bei den Tagen
   („inzwischen aktualisiert … nochmaliges Speichern überschreibt“,
   `dayChanged`-Muster). Danach wird ein Abgleich angestoßen.
-- Ein älterer Desktop (Antwort ohne `category_times`): Reiter lesbar, Bearbeiten
-  aus, Hinweis „Desktop aktualisieren“ (Muster `desktopHint`).
+- Ein älterer Desktop (Antwort ohne `writable_settings`): Reiter lesbar,
+  Bearbeiten aus, Hinweis „Desktop aktualisieren“ (Muster `desktopHint`); ein
+  dirty Block bleibt liegen und zählt nicht als nicht übertragen.
 
 ### Store und Abgleich
 
@@ -140,8 +141,10 @@ jedes Reiters selbst; ein Wechsel verliert keine Eingaben.
 - `422` für den Block (`Einstellung <Schlüssel>: …`) markiert ihn als
   abgelehnt; er wird erst nach erneutem Speichern gesendet und blockiert die
   Tage nicht dauerhaft (wie `markDayError`).
-- Die Feature-Erkennung hängt an `category_times` in `defaults`; ein Desktop
-  ohne diese Änderung ignoriert `settings` in der Anfrage.
+- Die Feature-Erkennung hängt an `writable_settings` in der Antwort (PR 1 trägt
+  es nach): `defaults.category_times` gibt es schon seit #288, es sagt also
+  nichts darüber, ob der Desktop `settings` annimmt; ein Desktop ohne #311
+  ignoriert `settings` in der Anfrage und kennt das Feld nicht.
 
 ### Tests
 

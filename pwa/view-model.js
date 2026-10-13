@@ -263,9 +263,9 @@ export function focusKeyToRestore({ activeKey, inRoot, isBody, last }) {
   return isBody ? last : null;
 }
 
-// --- Verbindungsdialog ---------------------------------------------------------------------------
+// --- Reiter „Verbindung“ ---------------------------------------------------------------------------
 
-/** Hinweis für den Verbindungsdialog, wenn der Desktop älter ist als diese Seite: er schickt weder
+/** Hinweis für den Reiter „Verbindung“ der Einstellungen, wenn der Desktop älter ist als diese Seite: er schickt weder
  *  `desktop` noch `defaults` (#288). Erkannt wird das an den fehlenden Feldern, nicht an einer Version
  *  (Feature-Erkennung, s. pwa/CLAUDE.md „Kompatibilität“). Vor dem ersten Abgleich weiß man nichts. */
 export function desktopHint(meta) {
@@ -297,7 +297,7 @@ export function olderModel(state) {
   }
 }
 
-/** Die Zeile „Verlauf“ im Verbindungsdialog. */
+/** Die Zeile „Verlauf“ im Reiter „Verbindung“. */
 export function windowRow({ days, max, wish }) {
   const parts = [];
   if (Number.isInteger(wish) && wish !== days) parts.push(`gewünscht ${wish}`);
