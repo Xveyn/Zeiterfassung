@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 
 import {
   WEEKDAYS, categoryLabel, categoryOptions, conflictsModel, dayChanged, editorRows, focusKeyToRestore, hintKey, hintsModel, desktopHint, localTime, nextRow, olderModel, pickCategory, rowsToSlots, slotText,
-  statusModel, validateRows, weekModel, windowRow,
+  statusModel, validateRows, weekModel, windowRow, reservationRows, reservationRowsToSlots, validateReservationRows,
 } from '../view-model.js';
 import { SyncError } from '../sync.js';
 
@@ -447,4 +447,59 @@ test('an unknown maximum asks for a sync first instead of blaming the desktop (#
   assert.match(model.text, /abgleich/i);
   assert.doesNotMatch(model.text, /aktualisieren/);
   assert.equal(model.action, null);
+});
+
+// --- Reservierungen ---------------------------------------------------------------------------------
+
+const RES_SLOT = { start: '09:00', end: '12:00', kategorie: 'Projekt' };
+const reservations = (map) => (date) => map[date] ?? null;
+const reserved = (slots, over = {}) => ({ slots, deleted: false, dirty: false, error: null, modified_at: 'x', ...over });
+
+test('a reservation shows on today and future days when the feature is on, and not in the total', () => {
+  const week = weekModel({
+    getDay: days({ '2026-10-08': live([SLOT]) }), anchor: '2026-10-08', today: '2026-10-08',
+    getReservation: reservations({ '2026-10-09': reserved([RES_SLOT], { dirty: true }) }), reservationsEnabled: true });
+
+  assert.deepEqual(week.days[4].reservation.slots, ['09:00–12:00 · Projekt']);
+  assert.equal(week.days[4].reservation.dirty, true);
+  assert.equal(week.days[4].minutes, 0);
+  assert.equal(week.totalMinutes, week.days[3].minutes);
+});
+
+test('reservations are hidden when the feature is off or the day is in the past', () => {
+  const get = reservations({ '2026-10-07': reserved([RES_SLOT]), '2026-10-09': reserved([RES_SLOT]) });
+  const off = weekModel({ getDay: days({}), anchor: '2026-10-08', today: '2026-10-08', getReservation: get, reservationsEnabled: false });
+  const on = weekModel({ getDay: days({}), anchor: '2026-10-08', today: '2026-10-08', getReservation: get, reservationsEnabled: true });
+
+  assert.ok(off.days.every((d) => d.reservation === null && d.reservationVisible === false));
+  assert.equal(on.days[2].reservation, null);              // gestern: nichts, auch keine vorhandene
+  assert.equal(on.days[2].reservationVisible, false);
+  assert.notEqual(on.days[4].reservation, null);
+  assert.equal(on.days[3].reservationVisible, true);       // heute
+});
+
+test('a cleared reservation is not shown', () => {
+  const week = weekModel({ getDay: days({}), anchor: '2026-10-08', today: '2026-10-08',
+    getReservation: reservations({ '2026-10-09': reserved([], { deleted: true }) }), reservationsEnabled: true });
+  assert.equal(week.days[4].reservation, null);
+});
+
+test('reservation rows start from the weekday defaults and carry no pause on save', () => {
+  const defaults = { pause: 30, weekdays: { fr: { start: '09:00', end: '17:00' } }, category_times: {} };
+  const rows = reservationRows(null, defaults, 'fr');
+  assert.equal(rows.length, 1);
+  assert.deepEqual(reservationRowsToSlots(rows), [{ start: '09:00', end: '17:00', kategorie: '' }]);
+});
+
+test('saved reservation rows show their slots and a blank new row is dropped', () => {
+  const rows = reservationRows(reserved([RES_SLOT]), null, 'mo');
+  assert.deepEqual(reservationRowsToSlots(rows), [RES_SLOT]);
+  const added = [...rows, { start: '', end: '', pause: '0', kategorie: '' }];
+  assert.deepEqual(reservationRowsToSlots(added), [RES_SLOT]);
+  assert.equal(validateReservationRows(added).ok, true);
+});
+
+test('a reservation row with times but a stray default pause validates', () => {
+  const rows = [{ start: '09:00', end: '10:00', pause: '30', kategorie: '' }];
+  assert.equal(validateReservationRows(rows).ok, true);          // die Pause zählt bei Reservierungen nicht
 });
