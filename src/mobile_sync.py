@@ -32,6 +32,7 @@ from typing import TYPE_CHECKING, Any
 from src import mobile_pairing, mobile_reservations, sync, sync_history, sync_journal
 from src.api_entry_write import WriteError, check_date_range, load_json_body, parse_slots
 from src.devices import sanitize_registry, with_own_entry
+from src.mobile_settings import clean_category_times, clock, pause
 from src.reservations import reservations_active
 from src.settings import WEEKDAY_KEYS
 from src.storage import sanitize_slot
@@ -277,47 +278,7 @@ def _conflict_views(merged: Mapping[str, Any], visible: Any) -> list[dict[str, A
     return sorted(views, key=lambda view: view["date"])
 
 
-_CLOCK_RE = re.compile(r"([01]\d|2[0-3]):[0-5]\d")
-MAX_DEFAULT_PAUSE = 24 * 60
 _PLATFORMS = {"Windows": "Windows", "Darwin": "macOS", "Linux": "Linux"}
-
-
-def _clock(value: Any) -> str:
-    return value if isinstance(value, str) and _CLOCK_RE.fullmatch(value) else ""
-
-
-def _pause(value: Any) -> int | None:
-    if isinstance(value, bool) or not isinstance(value, (int, str)):
-        return None
-    try:
-        minutes = int(value)
-    except ValueError:
-        return None
-    return minutes if 0 <= minutes <= MAX_DEFAULT_PAUSE else None
-
-
-def _clean_category_times(entry: Any) -> dict[str, Any]:
-    """Eine Kategorie aus `category_times` (Form: `category_defaults`), auf gültige Felder
-    reduziert. Ein fehlendes oder ungültiges Feld fehlt in der Antwort — die PWA greift dann
-    wie der Desktop auf den globalen Standard zurück."""
-    if not isinstance(entry, dict):
-        return {}
-    out: dict[str, Any] = {}
-    if entry.get("mode") == "per_day":
-        out["mode"] = "per_day"
-        days = entry.get("days")
-        clean_days: dict[str, dict[str, str]] = {}
-        for key in WEEKDAY_KEYS:
-            day = days.get(key) if isinstance(days, dict) else None
-            if isinstance(day, dict):
-                clean_days[key] = {f: t for f in ("start", "end") if (t := _clock(day.get(f)))}
-        out["days"] = clean_days
-    else:
-        out.update({f: t for f in ("start", "end") if (t := _clock(entry.get(f)))})
-    pause = _pause(entry.get("pause"))
-    if pause is not None:
-        out["pause"] = pause
-    return out
 
 
 def build_defaults(settings: Settings, categories: list[str]) -> dict[str, Any]:
@@ -325,12 +286,12 @@ def build_defaults(settings: Settings, categories: list[str]) -> dict[str, Any]:
     Pause und die `category_times` der bekannten Kategorien. Die Auflösung selbst
     (`category_defaults.resolve_slot_defaults`) macht die PWA mit derselben Semantik.
     Fremdes im Settings-Dokument (Sync!) wird verworfen, nicht durchgereicht."""
-    weekdays = {key: {"start": _clock(settings.get(f"default_start_{key}")),
-                      "end": _clock(settings.get(f"default_end_{key}"))} for key in WEEKDAY_KEYS}
+    weekdays = {key: {"start": clock(settings.get(f"default_start_{key}")),
+                      "end": clock(settings.get(f"default_end_{key}"))} for key in WEEKDAY_KEYS}
     raw = settings.get("category_times")
-    category_times = {name: _clean_category_times(raw[name]) for name in categories
+    category_times = {name: clean_category_times(raw[name]) for name in categories
                       if isinstance(raw, dict) and isinstance(raw.get(name), dict)}
-    return {"pause": _pause(settings.get("default_pause")) or 0, "weekdays": weekdays,
+    return {"pause": pause(settings.get("default_pause")) or 0, "weekdays": weekdays,
             "category_times": category_times}
 
 
