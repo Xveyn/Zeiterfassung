@@ -6,9 +6,9 @@ import { openDatabase, requestPersistentStorage } from '../db.js';
 
 /** Minimale Attrappe der IndexedDB-Schnittstelle: genug für Form und Fehlerpfade. Die Handler
  *  werden von `db.js` NACH dem Aufruf zugewiesen, deshalb feuern die Attrappen per Microtask. */
-function fakeFactory({ failOpen = false, throwOnSecondPut = false, failRequest = false, blocked = false } = {}) {
+function fakeFactory({ failOpen = false, throwOnSecondPut = false, failRequest = false, blocked = false, existing = [] } = {}) {
   const data = { entries: new Map(), meta: new Map(), reservations: new Map() };
-  const created = [];
+  const created = [...existing];       // schon vorhandene Object Stores (Upgrade einer älteren Datenbank)
   const log = { aborted: false, closed: 0 };
   let puts = 0;
   const factory = {
@@ -146,4 +146,10 @@ test('the connection lets go when another tab upgrades the schema', async () => 
   log.database.onversionchange();
 
   assert.equal(log.closed, 1);
+});
+
+test('upgrading a version 1 database adds only the reservations store and keeps the old ones', async () => {
+  const { factory, created } = fakeFactory({ existing: ['entries', 'meta'] });
+  await openDatabase(factory);
+  assert.deepEqual(created.sort(), ['entries', 'meta', 'reservations']);        // keine Duplikate, nichts neu angelegt
 });

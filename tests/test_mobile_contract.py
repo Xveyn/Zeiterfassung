@@ -156,9 +156,10 @@ def test_the_sync_request_example_has_the_shape_the_phone_sends(tmp_path):
     mr.add_device(env)
     sent = mr.sync_doc(env, {"2026-10-07": mr.day(), "2026-10-06": mr.day(slots=(), deleted=True)})
     sent["last_pull_at"] = example["last_pull_at"]
-    sent["reservations"] = example["reservations"]       # die PWA sendet das Feld nur mit nicht übertragenen Reservierungen
 
-    assert set(sent) == set(example) and sent["protocol"] == example["protocol"] == 2
+    # `reservations` sendet die PWA nur mit nicht übertragenen Reservierungen; die Form prüft der JS-Test
+    # (`sync.test.js`), und dass der Desktop sie liest, `test_the_live_request_example_carries_…`.
+    assert set(sent) == set(example) - {"reservations"} and sent["protocol"] == example["protocol"] == 2
 
 
 def test_the_pair_examples_have_the_shape_the_server_expects_and_sends(tmp_path):

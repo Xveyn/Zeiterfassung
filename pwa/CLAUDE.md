@@ -151,8 +151,14 @@ bietet sie nur an, wenn „Reservierungen verwenden“ an ist.
   bei der Reservierung (die Ist-Zeilen sind mit Standardzeiten vorbelegt, ein
   Speichern dort legte sonst still eine Ist-Zeit an), heute bei der Arbeitszeit.
   Reservierungen zählen nicht in die Wochensumme.
+- **Nur, was der Desktop annimmt.** Der Desktop lehnt hinter heute + 365 die **ganze**
+  Anfrage ab (auch die Ist-Zeiten). Die PWA lässt deshalb nur bis heute + 364 zu
+  (`reservationEditable`, ein Tag Reserve für eine vorgehende Handy-Uhr); `saveReservation` wirft
+  sonst. Ein abgelehnter Tag, der inzwischen vergangen ist, wird aufgeräumt; ist die Funktion
+  verborgen, zählen Reservierungen weder als „nicht übertragen“ noch als „abgelehnt“.
 - **Löschen** wie bei den Ist-Zeiten: „Tag leeren“ (am Reiter „Reservierung“
-  mit eigener Bestätigung) schreibt einen Tombstone.
+  mit eigener Bestätigung) schreibt einen Tombstone — außer der Desktop kennt den Tag nie
+  (`synced_version` 0): dann wird er nur lokal verworfen.
 - **Ablehnung je Tag.** Der Desktop nennt den Tag vorn in der Meldung
   (`Reservierung <Datum>: …`); `SyncError.dayKind` unterscheidet das von einem
   Ist-Tag, und nur dieser Tag wird als abgelehnt markiert.

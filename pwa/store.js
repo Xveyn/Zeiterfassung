@@ -14,9 +14,10 @@
 // Transaktionen entstehen in Aufrufreihenfolge, eine zusätzliche Warteschlange braucht
 // es nicht. Scheitert das Schreiben, wirft die Methode; der Cache ist dem Speicher dann
 // voraus, und die Oberfläche meldet den Fehler.
-import { addDays, isIsoDate, normalizeSlots, utcStamp, validateSlots } from './minutes.js';
+import { addDays, isIsoDate, localIsoDate, normalizeSlots, utcStamp, validateSlots } from './minutes.js';
 import {
-  RESERVATION_HORIZON_DAYS, normalizeReservationSlots, reservationSignature, validateReservationSlots,
+  RESERVATION_HORIZON_DAYS, normalizeReservationSlots, reservationEditable, reservationSignature,
+  validateReservationSlots,
 } from './reservations.js';
 
 const DEFAULT_META = Object.freeze({
@@ -261,18 +262,25 @@ export class Store {
 
   /** Nicht übertragene Änderungen: Ist-Zeiten und Reservierungen zusammen (Statuszeile). */
   pendingCount() {
+    if (!this._meta.reservations_enabled) return this.dirtyDates().length;
     return this.dirtyDates().length
       + [...this._reservations.values()].filter((record) => isDirty(record)).length;
   }
 
-  /** Tage mit abgelehntem Stand, Ist-Zeiten und Reservierungen zusammen. */
+  /** Tage mit abgelehntem Stand, Ist-Zeiten und Reservierungen zusammen. Ist die Funktion verborgen
+   *  (der Desktop bietet sie nicht an), zählen Reservierungen nicht: man könnte sie nicht ansehen. */
   errorCount() {
-    return [...this._days.values(), ...this._reservations.values()].filter((record) => record.error).length;
+    const reservations = this._meta.reservations_enabled ? [...this._reservations.values()] : [];
+    return [...this._days.values(), ...reservations].filter((record) => record.error).length;
   }
 
   /** Speichert die Reservierung eines Tages. Wirft bei ungültigen Slots oder Datum. */
   async saveReservation(date, slots) {
     if (!isIsoDate(date)) throw new Error(`Ungültiges Datum: ${date}`);
+    // Der Desktop lehnt Tage hinter heute + 365 mit der ganzen Anfrage ab: gar nicht erst annehmen.
+    if (!reservationEditable(date, localIsoDate(this._now()))) {
+      throw new Error(`Reservierungen sind nur für heute und höchstens ${RESERVATION_HORIZON_DAYS - 1} Tage im Voraus möglich (365 Tage).`);
+    }
     const normalized = normalizeReservationSlots(slots);
     const check = validateReservationSlots(normalized);
     if (!check.ok) throw new Error(check.message);
@@ -295,6 +303,11 @@ export class Store {
   async clearReservation(date) {
     const old = this._reservations.get(date);
     if (!old || old.entry.deleted) return;
+    if (old.synced_version === 0) {            // der Desktop kennt den Tag nie: kein Tombstone nötig
+      this._reservations.delete(date);
+      await this._adapter.batch([{ store: 'reservations', op: 'delete', key: date }]);
+      return;
+    }
     const ops = [];
     this._putIn(this._reservations, 'reservations', date, {
       slots: [], modified_at: this._stampAfter(old.entry.modified_at), deleted: true,
@@ -338,6 +351,14 @@ export class Store {
    *  die Antwort nicht kennt, ist erledigt (Tombstone eingelöst, oder vergangen und vom Desktop still
    *  verworfen). */
   _applyReservations(parsed, snapshot, today, ops) {
+    // Ein abgelehnter Tag, der inzwischen vergangen ist, lässt sich nicht mehr bearbeiten und würde
+    // nie wieder gesendet: aufräumen, sonst bliebe er als „abgelehnt“ und „nicht übertragen“ stehen.
+    for (const [date, record] of [...this._reservations]) {
+      if (record.error && date < today) {
+        this._reservations.delete(date);
+        ops.push({ store: 'reservations', op: 'delete', key: date });
+      }
+    }
     if (parsed.reservations === null || parsed.reservations === undefined) return;
     const remote = new Map(Object.entries(parsed.reservations));
     const horizon = addDays(today, RESERVATION_HORIZON_DAYS);

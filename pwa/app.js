@@ -4,7 +4,7 @@
 // `messages.js`); hier wird nur zusammengesteckt.
 import { addDays, formatDateDe, localIsoDate, mondayOf } from './minutes.js';
 import { weekdayKey } from './defaults.js';
-import { reservationBlockVisible } from './reservations.js';
+import { reservationEditable } from './reservations.js';
 import { DEFAULT_WISH, olderState } from './window-policy.js';
 import { deviceNameFromUserAgent, parseHostPort, parsePairFragment } from './pairing.js';
 import { openDatabase, requestPersistentStorage } from './db.js';
@@ -277,7 +277,7 @@ class App {
     let baseline = day;         // Stand beim Öffnen: Speichern prüft, ob der Tag inzwischen anders ist
     const outsideWindow = date > addDays(today, 1) || date < addDays(today, -meta.window_days);
     // Reservierungen nur, wenn der Desktop sie anbietet und der Tag heute oder später ist.
-    const reservationOn = meta.reservations_enabled && reservationBlockVisible(date, today);
+    const reservationOn = meta.reservations_enabled && reservationEditable(date, today);
     const reservation = reservationOn ? this.store.getReservation(date) : null;
     let reservationBaseline = reservation;
     // An Tagen nach heute öffnet der Editor bei der Reservierung: die Ist-Zeilen sind mit den
@@ -289,7 +289,7 @@ class App {
       categories: meta.categories,
       defaults: meta.defaults,
       weekday: weekdayKey(date),
-      error: (startWith === 'reservation' ? reservation?.error : day?.error) ?? null,
+      errors: { work: day?.error ?? null, reservation: reservation?.error ?? null },
       outsideWindow,
       canClear: Boolean(day && !day.deleted),
       validate: (rows) => validateRows(rows),

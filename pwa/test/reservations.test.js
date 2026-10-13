@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 import {
-  RESERVATION_HORIZON_DAYS, normalizeReservationSlots, reservationBlockVisible, reservationSignature,
+  RESERVATION_HORIZON_DAYS, normalizeReservationSlots, reservationBlockVisible, reservationEditable, reservationSignature,
   validateReservationSlots,
 } from '../reservations.js';
 
@@ -42,4 +42,11 @@ test('the signature ignores the order of slots', () => {
   const b = { start: '11:00', end: '12:00', kategorie: 'B' };
   assert.equal(reservationSignature([a, b]), reservationSignature([b, a]));
   assert.notEqual(reservationSignature([a]), reservationSignature([b]));
+});
+
+test('the phone only offers days the desktop will accept, with a day of margin for clock differences', () => {
+  assert.equal(reservationEditable('2026-10-13', '2026-10-13'), true);
+  assert.equal(reservationEditable('2027-10-12', '2026-10-13'), true);      // heute + 364
+  assert.equal(reservationEditable('2027-10-13', '2026-10-13'), false);     // heute + 365: der Desktop rechnet knapp
+  assert.equal(reservationEditable('2026-10-12', '2026-10-13'), false);
 });

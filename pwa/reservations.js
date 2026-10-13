@@ -3,7 +3,7 @@
 // aussehen und geprüft werden. Gegenstück zu `reservation_block_visible` (Sichtbarkeit,
 // Gleichlauf über `test/fixtures/reservation-visibility-cases.json`) und zu
 // `src/mobile_reservations.py` (Form auf dem Draht).
-import { normalizeSlots, validateSlots } from './minutes.js';
+import { addDays, normalizeSlots, validateSlots } from './minutes.js';
 
 /** So weit voraus nimmt der Desktop Reservierungen an und liefert sie zurück. */
 export const RESERVATION_HORIZON_DAYS = 365;
@@ -13,6 +13,13 @@ export const RESERVATION_HORIZON_DAYS = 365;
  *  sich als Text. */
 export function reservationBlockVisible(day, today) {
   return day >= today;
+}
+
+/** Welche Tage das Handy anlegen und bearbeiten lässt: sichtbar **und** innerhalb dessen, was der
+ *  Desktop annimmt. Der Desktop lehnt hinter heute + 365 die ganze Anfrage ab (auch die Ist-Zeiten);
+ *  ein Tag Reserve fängt eine um einen Tag vorgehende Handy-Uhr ab. */
+export function reservationEditable(day, today) {
+  return reservationBlockVisible(day, today) && day <= addDays(today, RESERVATION_HORIZON_DAYS - 1);
 }
 
 /** Nur `start`, `end`, `kategorie`: `pause` gibt es bei Reservierungen nicht, und der Desktop

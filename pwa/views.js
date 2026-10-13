@@ -110,7 +110,8 @@ function dayRow(day, handlers) {
       day.dirty && h('span', { class: 'mark-dirty', title: 'nicht übertragen' }, '● '),
       day.reservation?.dirty && h('span', { class: 'mark-dirty', title: 'Reservierung nicht übertragen' }, '○ '),
       day.conflict && h('span', { class: 'mark-conflict', title: 'Konflikt' }, '⚠')),
-    (day.error || day.reservation?.error) && h('span', { class: 'err' }, day.error ?? day.reservation.error)));
+    day.error && h('span', { class: 'err' }, day.error),
+    day.reservation?.error && h('span', { class: 'err' }, day.reservation.error)));
 }
 
 export function weekView(model, handlers) {
@@ -183,21 +184,25 @@ function slotSection({ rows, categories, defaults, weekday, withPause, onChange 
  *  hält seinen eigenen Zustand, „Speichern“ und „Tag leeren“ wirken auf den aktiven.
  *  `handlers.save(kind, rows)` liefert `null` bei Erfolg oder eine Fehlermeldung; `kind` ist
  *  `'work'` oder `'reservation'`. */
-export function editorDialog({ title, rows, categories, defaults = null, weekday = '', error, outsideWindow, canClear, validate,
+export function editorDialog({ title, rows, categories, defaults = null, weekday = '', errors = {}, outsideWindow, canClear, validate,
   reservation = null, startWith = 'work' }, handlers) {
-  const message = h('div', { class: 'error-text', role: 'alert' }, error ?? '');
+  const message = h('div', { class: 'error-text', role: 'alert' }, '');
   const save = h('button', { type: 'submit', class: 'primary' }, 'Speichern');
   const dialog = h('dialog', { 'aria-labelledby': 'editor-title' });
   let active = reservation ? startWith : 'work';
 
+  // Der gespeicherte Fehler gehört zu seinem Reiter und bleibt stehen, bis dort etwas geändert wird.
+  const edited = { work: false, reservation: false };
   const refresh = () => {
     const check = active === 'work' ? validate(work.state) : reservation.validate(res.state);
     save.disabled = !check.ok;
-    if (!error || check.ok) message.textContent = check.ok ? '' : check.message;
+    if (errors[active] && !edited[active]) message.textContent = errors[active];
+    else message.textContent = check.ok ? '' : check.message;
   };
-  const work = slotSection({ rows, categories, defaults, weekday, withPause: true, onChange: () => refresh() });
+  const work = slotSection({ rows, categories, defaults, weekday, withPause: true,
+    onChange: () => { edited.work = true; refresh(); } });
   const res = reservation && slotSection({ rows: reservation.rows, categories, defaults, weekday,
-    withPause: false, onChange: () => refresh() });
+    withPause: false, onChange: () => { edited.reservation = true; refresh(); } });
   const clearButton = button('Tag leeren', () => handlers.clear(active, dialog), 'link');
   const windowHint = outsideWindow && h('p', { class: 'hint warn' }, 'Dieser Tag liegt außerhalb des Zeitraums, den das Handy vom Desktop kennt. Er kann dort bereits Einträge haben: Speichern ersetzt sie, und nach dem Abgleich ist der Tag hier nicht mehr sichtbar.');
   const tabs = reservation && {
@@ -213,6 +218,7 @@ export function editorDialog({ title, rows, categories, defaults = null, weekday
       tabs.work.setAttribute('aria-selected', String(kind === 'work'));
       tabs.reservation.setAttribute('aria-selected', String(kind === 'reservation'));
     }
+    clearButton.textContent = kind === 'work' ? 'Tag leeren' : 'Reservierung löschen';
     clearButton.hidden = !(kind === 'work' ? canClear : reservation.canClear);
     refresh();
   };

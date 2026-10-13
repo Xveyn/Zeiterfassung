@@ -562,9 +562,11 @@ test('saving invalid reservation slots throws and stores nothing', async () => {
   assert.deepEqual(store.reservationDates(), []);
 });
 
-test('clearing a reservation makes a dirty tombstone; clearing again is a no-op', async () => {
+test('clearing a confirmed reservation makes a dirty tombstone; clearing again is a no-op', async () => {
   const { store } = await make();
   await store.saveReservation('2026-10-20', [RES]);
+  await store.applyResponse(parsedWith({ '2026-10-20': { slots: [RES], modified_at: '2026-10-13T12:00:00Z' } }),
+    emptySnapshot(store.snapshotReservations()), RES_TODAY);
   await store.clearReservation('2026-10-20');
   const cleared = store.getReservation('2026-10-20');
   assert.equal(cleared.deleted, true);
@@ -581,6 +583,7 @@ test('the snapshot holds dirty reservations without a device id or a pause, newe
   await store.saveReservation('2026-10-21', [RES]);
   await store.saveReservation('2026-10-22', [RES]);
   await store.markReservationError('2026-10-22', 'abgelehnt');
+  await store.setMeta({ reservations_enabled: true });
 
   const snapshot = store.snapshotReservations();
 
@@ -689,6 +692,57 @@ test('the pending count includes dirty days and dirty reservations', async () =>
   const { store } = await make();
   await store.saveDay('2026-10-07', [SLOT]);
   await store.saveReservation('2026-10-20', [RES]);
+  await store.setMeta({ reservations_enabled: true });
 
   assert.equal(store.pendingCount(), 2);
+});
+
+test('a reservation beyond the horizon is refused on the phone', async () => {
+  const { store, now } = await make({ now: clock('2026-10-13T10:00:00Z') });
+  await assert.rejects(() => store.saveReservation('2027-12-01', [RES]), /365 Tage/);
+  assert.deepEqual(store.reservationDates(), []);
+  assert.ok(now);
+});
+
+test('clearing a reservation the desktop never confirmed just drops it', async () => {
+  const { store } = await make();
+  await store.saveReservation('2026-10-20', [RES]);
+
+  await store.clearReservation('2026-10-20');
+
+  assert.deepEqual(store.reservationDates(), []);                  // kein Tombstone ohne Gegenstelle
+});
+
+test('clearing a confirmed reservation still leaves a tombstone', async () => {
+  const { store } = await make();
+  await store.saveReservation('2026-10-20', [RES]);
+  await store.applyResponse(parsedWith({ '2026-10-20': { slots: [RES], modified_at: '2026-10-13T12:00:00Z' } }),
+    { ...emptySnapshot(store.snapshotReservations()) }, RES_TODAY);
+
+  await store.clearReservation('2026-10-20');
+
+  assert.equal(store.getReservation('2026-10-20').deleted, true);
+});
+
+test('a rejected reservation that is now in the past is cleaned up', async () => {
+  const { store } = await make();
+  await store.saveReservation('2026-10-15', [RES]);
+  await store.markReservationError('2026-10-15', 'abgelehnt');
+
+  await store.applyResponse(parsedWith({}), emptySnapshot(), '2026-10-16');
+
+  assert.deepEqual(store.reservationDates(), []);
+  assert.equal(store.errorCount(), 0);
+});
+
+test('with the feature off, reservations neither count as pending nor as rejected', async () => {
+  const { store } = await make();
+  await store.saveReservation('2026-10-20', [RES]);
+  await store.markReservationError('2026-10-20', 'x');
+  await store.setMeta({ reservations_enabled: true });
+  assert.equal(store.pendingCount(), 1);                           // Funktion an: zählt
+  await store.applyResponse(parsedWith(null), emptySnapshot(), RES_TODAY);
+
+  assert.equal(store.pendingCount(), 0);
+  assert.equal(store.errorCount(), 0);
 });

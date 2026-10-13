@@ -328,12 +328,16 @@ test('a malformed pair answer is a protocol error and changes nothing', async ()
 // --- Abgleich --------------------------------------------------------------------------------------
 
 test('a sync sends bearer, request shape and the dirty days, then applies the answer', async () => {
-  const { store, client, fetchFn } = await make();
+  // Der 16.10. ist am Desktop bekannt (bestätigt): nur dann schickt „leeren“ einen Tombstone.
+  const adapter = createMemoryAdapter();
+  await adapter.batch([{ store: 'reservations', op: 'put', key: '2026-10-16', value: {
+    entry: { slots: [RES], modified_at: '2026-10-07T00:00:00Z', deleted: false },
+    dirty_version: 1, synced_version: 1, error: null } }]);
+  const { store, client, fetchFn } = await make({ adapter });
   await store.saveDay('2026-10-07', [SLOT]);
   await store.saveDay('2026-10-06', [SLOT]);
   await store.clearDay('2026-10-06');                                // Tombstone
   await store.saveReservation('2026-10-15', [RES]);
-  await store.saveReservation('2026-10-16', [RES]);
   await store.clearReservation('2026-10-16');                        // Tombstone der Reservierung
 
   const result = await client.sync();
