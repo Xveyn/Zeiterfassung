@@ -255,3 +255,105 @@ def test_migration_persists(tmp_path):
     again = Settings(path)
     assert again.get("reservations_enabled") is True
     assert again.get("reservations_migrated") is True
+
+
+# --- merge_phone (Handy-Abgleich) ---------------------------------------------------------------
+
+def _phone_store(tmp_path):
+    return ReservationStore(str(tmp_path / "reservations.json"))
+
+
+def _phone(*slots, modified_at="2026-10-13T10:00:00Z", deleted=False):
+    return {"slots": [dict(s) for s in slots], "modified_at": modified_at, "deleted": deleted}
+
+
+PHONE_SLOT = {"start": "09:00", "end": "12:00", "kategorie": "Projekt"}
+
+
+def test_merge_phone_adds_a_new_day_with_the_phones_timestamp(tmp_path):
+    store = _phone_store(tmp_path)
+
+    changed = store.merge_phone({"2026-10-20": _phone(PHONE_SLOT)})
+
+    assert changed is True
+    raw = store.get_all_raw()["2026-10-20"]
+    assert raw["modified_at"] == "2026-10-13T10:00:00Z"
+    assert raw["deleted"] is False
+    assert raw["slots"] == [{"start": "09:00", "end": "12:00", "kategorie": "Projekt",
+                             "gcal_event_id": None, "send_reminder_minutes": None}]
+
+
+def test_merge_phone_is_idempotent(tmp_path):
+    store = _phone_store(tmp_path)
+    store.merge_phone({"2026-10-20": _phone(PHONE_SLOT)})
+    before = (tmp_path / "reservations.json").read_bytes()
+
+    changed = store.merge_phone({"2026-10-20": _phone(PHONE_SLOT)})
+
+    assert changed is False
+    assert (tmp_path / "reservations.json").read_bytes() == before
+
+
+def test_merge_phone_keeps_calendar_ids_and_reminders_by_index(tmp_path):
+    store = _phone_store(tmp_path)
+    store.apply_reconciled({"2026-10-20": {
+        "slots": [{"start": "09:00", "end": "12:00", "kategorie": "Projekt",
+                   "gcal_event_id": "ev1", "send_reminder_minutes": 15}],
+        "modified_at": "2026-10-12T08:00:00Z", "deleted": False}})
+
+    changed = store.merge_phone({"2026-10-20": _phone(
+        {"start": "09:30", "end": "12:00", "kategorie": "Projekt"})})
+
+    assert changed is True
+    slot = store.get_all_raw()["2026-10-20"]["slots"][0]
+    assert slot["start"] == "09:30"
+    assert slot["gcal_event_id"] == "ev1"
+    assert slot["send_reminder_minutes"] == 15
+
+
+def test_merge_phone_loses_against_a_newer_desktop_day(tmp_path):
+    store = _phone_store(tmp_path)
+    store.apply_reconciled({"2026-10-20": {
+        "slots": [{"start": "08:00", "end": "09:00", "kategorie": "",
+                   "gcal_event_id": None, "send_reminder_minutes": None}],
+        "modified_at": "2026-10-13T11:00:00Z", "deleted": False}})
+
+    changed = store.merge_phone({"2026-10-20": _phone(PHONE_SLOT, modified_at="2026-10-13T10:00:00Z")})
+
+    assert changed is False
+    assert store.get_all_raw()["2026-10-20"]["slots"][0]["start"] == "08:00"
+
+
+def test_merge_phone_tombstone_deletes_a_known_day(tmp_path):
+    store = _phone_store(tmp_path)
+    store.merge_phone({"2026-10-20": _phone(PHONE_SLOT)})
+
+    changed = store.merge_phone({"2026-10-20": _phone(modified_at="2026-10-13T12:00:00Z", deleted=True)})
+
+    assert changed is True
+    assert store.get_all_raw()["2026-10-20"] == {
+        "slots": [], "modified_at": "2026-10-13T12:00:00Z", "deleted": True}
+    assert store.get("2026-10-20") is None
+
+
+def test_merge_phone_ignores_a_tombstone_for_an_unknown_day(tmp_path):
+    store = _phone_store(tmp_path)
+
+    changed = store.merge_phone({"2026-10-20": _phone(modified_at="2026-10-13T12:00:00Z", deleted=True)})
+
+    assert changed is False
+    assert store.get_all_raw() == {}
+
+
+def test_merge_phone_keeps_memory_unchanged_when_the_write_fails(tmp_path, monkeypatch):
+    store = _phone_store(tmp_path)
+
+    def boom(*_args, **_kwargs):
+        raise OSError("Platte voll")
+
+    monkeypatch.setattr("src.reservations.atomic_write_json", boom)
+
+    with pytest.raises(OSError):
+        store.merge_phone({"2026-10-20": _phone(PHONE_SLOT)})
+
+    assert store.get_all_raw() == {}
