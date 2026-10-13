@@ -205,13 +205,22 @@ class ReservationStore:
                              sort_keys=True, ensure_ascii=False)
         return (str(entry.get("modified_at") or ""), content)
 
-    def merge_phone(self, days: dict[str, Reservation]) -> bool:
+    def merge_phone(self, days: dict[str, Reservation], *, floor: str = "",
+                    now: str | None = None) -> bool:
         """Übernimmt vom Handy gesendete Tage per LWW. `days` ist bereits geprüft
         (`mobile_reservations.parse_reservations`). Ein Tag gewinnt nur mit einem
         **größeren** Schlüssel als der Desktop-Stand: dieselbe Anfrage zweimal ist
-        damit ein No-op, ohne Schreiben und ohne Kalender-Abgleich. Der Zeitstempel
-        bleibt der des Handys (`save` setzte `utc_now_iso()` — das Handy erkennte den
-        Tag beim nächsten Abgleich als neuer).
+        damit ein No-op, ohne Schreiben und ohne Kalender-Abgleich.
+
+        Zwei Uhren, zwei Korrekturen (Review, wie `mobile_sync._phone_doc` bei den
+        Ist-Zeiten): `floor` (das `last_pull_at` des Handys + 1 s) hebt einen älteren
+        Stempel an — das Handy schickt nur Tage, die es seit dem Abgleich geändert hat,
+        eine nachgehende Handy-Uhr darf die Änderung nicht gegen eine frühere
+        Desktop-Version verlieren. Und ein gewonnener Tag bekommt mindestens den
+        Empfangszeitpunkt (`now`) als Stempel: der Kalender-Abgleich verwirft lokale Tage
+        ohne Event, deren Stempel nicht über seinem Watermark liegt
+        (`reservations_sync._merge_one_date`, Fall 4), und ein offline erfasster Tag
+        käme sonst mit altem Stempel und ginge dort verloren.
 
         Slots erben `gcal_event_id` und `send_reminder_minutes` per Index (wie
         `save`). Ein Tombstone für einen unbekannten Tag wird verworfen: es gibt
@@ -221,14 +230,16 @@ class ReservationStore:
         with self._lock:
             merged = dict(self._data)
             changed = False
+            received = now or utc_now_iso()
             for date, incoming in days.items():
+                incoming = {**incoming, "modified_at": max(incoming["modified_at"], floor)}
                 current = merged.get(date)
                 if incoming.get("deleted") is True and current is None:
                     continue
                 if current is not None and self._phone_key(incoming) <= self._phone_key(current):
                     continue
                 if incoming.get("deleted") is True:
-                    merged[date] = {"slots": [], "modified_at": incoming["modified_at"],
+                    merged[date] = {"slots": [], "modified_at": max(incoming["modified_at"], received),
                                     "deleted": True}
                 else:
                     old_slots = (current or {}).get("slots", [])
@@ -240,7 +251,7 @@ class ReservationStore:
                             normalized["send_reminder_minutes"] = _normalize_reminder_minutes(
                                 old_slots[i].get("send_reminder_minutes"))
                         new_slots.append(normalized)
-                    merged[date] = {"slots": new_slots, "modified_at": incoming["modified_at"],
+                    merged[date] = {"slots": new_slots, "modified_at": max(incoming["modified_at"], received),
                                     "deleted": False}
                 changed = True
             if changed:

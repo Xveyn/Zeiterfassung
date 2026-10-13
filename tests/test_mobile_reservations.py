@@ -46,10 +46,11 @@ def test_today_and_today_plus_365_are_allowed_and_the_day_after_is_not():
         parse({(TODAY + datetime.timedelta(days=366)).isoformat(): day(SLOT)})
 
 
-def test_a_day_before_today_is_rejected():
-    with pytest.raises(mr.ReservationError) as excinfo:
-        parse({(TODAY - datetime.timedelta(days=1)).isoformat(): day(SLOT)})
-    assert "2026-10-12" in excinfo.value.message
+def test_a_day_before_today_is_dropped_not_rejected():
+    # Handy-Uhr/Tagesgrenze: ein schmutziger Tag von gestern darf den Abgleich nicht blockieren.
+    out = parse({"2026-10-12": day(SLOT), "2026-10-13": day(SLOT)})
+
+    assert list(out) == ["2026-10-13"]
 
 
 @pytest.mark.parametrize("entry", [

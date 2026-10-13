@@ -470,7 +470,10 @@ def perform_sync(request: SyncRequest, *, device_id: str, device_name: str,
             if reservation_store is not None and reservations_active(reservation_store, settings):
                 active = True
                 if request.reservations:
-                    changed = reservation_store.merge_phone(request.reservations)
+                    floor = (mobile_pairing.shift(last_pull_at, datetime.timedelta(seconds=1))
+                             if last_pull_at else "")
+                    changed = reservation_store.merge_phone(request.reservations,
+                                                            floor=floor, now=now)
                     if report is not None:
                         report.reservations_changed = changed
         reservations = (mobile_reservations.build_reservations(

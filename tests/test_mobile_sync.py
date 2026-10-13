@@ -350,15 +350,15 @@ def test_a_request_without_reservations_has_none():
 
 
 def test_a_bad_reservation_is_422_invalid_entry_and_names_the_day():
-    error = rejected(body({}, reservations={"2026-10-01": res_day()}))   # vor TODAY
+    error = rejected(body({}, reservations={"2027-12-01": res_day()}))   # mehr als 365 Tage voraus
 
     assert (error.status, error.code) == (422, "invalid_entry")
-    assert "2026-10-01" in error.message
+    assert "2027-12-01" in error.message
 
 
 def test_the_clock_check_comes_before_the_reservations():
     error = rejected(body({}, client_time="2026-10-08T13:00:00Z",
-                          reservations={"2026-10-01": res_day()}))
+                          reservations={"2027-12-01": res_day()}))
 
     assert error.code == "clock_skew"
 
@@ -654,7 +654,8 @@ def test_perform_sync_merges_reservations_and_returns_the_active_days(env, res_s
     response = run_res(env, res_store, {"2026-10-20": res_day()}, report=report)
 
     assert report.reservations_changed is True
-    assert response["reservations"] == {"2026-10-20": res_day()}
+    # Der Tag trägt den Empfangszeitpunkt als Stempel (NOW), nicht den älteren des Handys.
+    assert response["reservations"] == {"2026-10-20": res_day(modified_at=NOW)}
     assert res_store.get("2026-10-20") is not None
 
 
@@ -707,9 +708,9 @@ def test_perform_sync_writes_reservations_inside_the_data_lock(env, res_store):
 
     spy = Spy()
 
-    def merge(days):
+    def merge(days, **kwargs):
         inside.append(spy.depth)
-        return real(days)
+        return real(days, **kwargs)
 
     res_store.merge_phone = merge
     run_res(env, res_store, {"2026-10-20": res_day()}, data_lock=spy)

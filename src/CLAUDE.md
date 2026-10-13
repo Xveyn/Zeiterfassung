@@ -375,10 +375,13 @@ Zeitraum und welche Kategorien der Bericht gefiltert ist.
   nachgehenden Handy ginge die Änderung sonst still gegen die Desktop-Version verloren.
   **Reservierungen reisen additiv mit** (`reservations`, `PROTOCOL` bleibt 2): `parse_request` liest sie nur mit
   `accept_reservations` (die Route übergibt `reservations_active`; bei ausgeschaltetem Schalter werden sie ignoriert, nicht
-  abgelehnt) und prüft sie über `mobile_reservations.parse_reservations` (Datum heute bis heute + 365, Slot-Regeln der
-  Ist-Zeiten, nie `gcal_event_id`/`send_reminder_minutes`; Fehler = `422 invalid_entry`, die ganze Anfrage wird abgelehnt).
-  Der Merge ist `ReservationStore.merge_phone` (LWW mit dem Zeitstempel des Handys, dieselbe Anfrage zweimal ist ein No-op,
-  Kalender-Ids und Sende-Erinnerung bleiben per Index erhalten) im selben `data_lock` wie die Ist-Zeiten. Die Antwort trägt
+  abgelehnt) und prüft sie über `mobile_reservations.parse_reservations` (Tage vor heute entfallen still — sie würden sonst
+  mit der Zeit jeden Abgleich sperren —, hinter heute + 365 ist `422 invalid_entry` und lehnt die ganze Anfrage ab; Slot-Regeln
+  der Ist-Zeiten, nie `gcal_event_id`/`send_reminder_minutes`).
+  Der Merge ist `ReservationStore.merge_phone` im selben `data_lock` wie die Ist-Zeiten: LWW, Kalender-Ids und
+  Sende-Erinnerung bleiben per Index erhalten. **Zwei Uhren:** der Stempel des Handys wird auf `last_pull_at + 1 s` angehoben
+  (wie `_phone_doc`), und ein gewonnener Tag bekommt mindestens den Empfangszeitpunkt — der Kalender-Abgleich
+  (`reservations_sync._merge_one_date`, Fall 4) verwirft lokale Tage ohne Event, deren Stempel nicht über seinem Watermark liegt. Die Antwort trägt
   `reservations` (aktive Tage heute…+365) **nur** bei eingeschalteten Reservierungen — daran erkennt die PWA die Funktion.
   `SyncReport.reservations_changed` löst nach Freigabe aller Sperren `MobileContext.on_reservations_change` aus (`App`
   stößt den Kalender-Abgleich an).

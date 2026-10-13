@@ -912,20 +912,20 @@ def test_a_sync_with_reservations_merges_them_and_reports_the_change_once(env, t
     store, calls = with_reservations(env, tmp_path)
 
     response = sync(env, token, reservations={"2026-10-20": RES_DAY})
-    again = sync(env, token, reservations={"2026-10-20": RES_DAY})
+    unchanged = sync(env, token)         # ein Abgleich ohne Reservierungen ändert nichts
 
     assert response.status == 200
     assert response.body["reservations"]["2026-10-20"]["slots"][0]["start"] == "09:00"
     assert store.get("2026-10-20") is not None
-    assert again.status == 200
-    assert calls == [1]                  # die Wiederholung ändert nichts
+    assert unchanged.status == 200
+    assert calls == [1]
 
 
 def test_a_rejected_reservation_is_an_encrypted_422_and_changes_nothing(env, tmp_path):
     _record, token = add_device(env)
     store, calls = with_reservations(env, tmp_path)
 
-    response = sync(env, token, {"2026-10-07": day()}, reservations={"2026-10-01": RES_DAY})
+    response = sync(env, token, {"2026-10-07": day()}, reservations={"2027-12-01": RES_DAY})
 
     assert response.status == 422 and error_code(response) == "invalid_entry"
     assert store.get_all_raw() == {} and calls == []

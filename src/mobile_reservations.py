@@ -4,7 +4,8 @@ Tk-frei und ohne I/O.
 
 Zwei Dinge liegen hier, beide für `mobile_sync`:
 
-- `parse_reservations`: der Teil `reservations` der Anfrage ist **Fremddaten**. Die
+- `parse_reservations`: der Teil `reservations` der Anfrage ist **Fremddaten**
+  (Tage vor heute entfallen still, hinter heute + 365 sind ein Fehler). Die
   Slot-Regeln sind die der Ist-Zeiten (`api_entry_write.parse_slots`); übernommen
   werden nur `start`, `end`, `kategorie` — `pause` gibt es bei Reservierungen nicht,
   `gcal_event_id` und `send_reminder_minutes` gehören dem Desktop und werden vom
@@ -58,8 +59,8 @@ def _parse_day(date: str, raw: object, *, today: datetime.date, now_dt: datetime
         day = datetime.date.fromisoformat(date)
     except ValueError:
         raise bad("kein gültiges Datum.") from None
-    if not today <= day <= today + datetime.timedelta(days=HORIZON_DAYS):
-        raise bad(f"nur von heute bis {HORIZON_DAYS} Tage voraus erlaubt.")
+    if day > today + datetime.timedelta(days=HORIZON_DAYS):
+        raise bad(f"nur bis {HORIZON_DAYS} Tage voraus erlaubt.")
     if not isinstance(raw, dict):
         raise bad("Eintrag muss ein Objekt sein.")
     deleted = raw.get("deleted")
@@ -100,9 +101,14 @@ def parse_reservations(raw: object, *, today: datetime.date, now_dt: datetime.da
     if len(raw) > MAX_RESERVATIONS:
         raise ReservationError(f"Höchstens {MAX_RESERVATIONS} Reservierungstage je Anfrage.")
     # Unbekannte Felder am Tag (z. B. `device_id`) entfallen still, wie bei Ist-Zeiten.
-    return {date: _parse_day(date, entry, today=today, now_dt=now_dt, parse_utc=parse_utc,
-                             skew_limit=skew_limit)
-            for date, entry in raw.items()}
+    parsed = {date: _parse_day(date, entry, today=today, now_dt=now_dt, parse_utc=parse_utc,
+                               skew_limit=skew_limit)
+              for date, entry in raw.items()}
+    # Vergangene Tage sind nicht mehr bearbeitbar. Sie lehnen die Anfrage nicht ab (Handy-Uhr,
+    # Tagesgrenze, Offline-Nacht: ein schmutziger Tag von gestern würde sonst jeden Abgleich
+    # sperren, auch den der Ist-Zeiten), sie entfallen still. Form und Zukunftsgrenze bleiben hart.
+    return {date: day for date, day in parsed.items()
+            if datetime.date.fromisoformat(date) >= today}
 
 
 def _clean_slots(raw: object) -> list[dict[str, str]]:
