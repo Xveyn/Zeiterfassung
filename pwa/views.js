@@ -2,7 +2,7 @@
 // Dünne DOM-Schicht: macht aus den Modellen von `view-model.js` Elemente. Keine Logik, die
 // sich ohne Browser testen ließe — die steckt in `view-model.js`. Jede Funktion bekommt ihre
 // Handler als Parameter; nichts hier kennt den Store oder das Netz.
-import { h } from './dom.js';
+import { focusByKey, h } from './dom.js';
 import { MAX_CATEGORY_LENGTH } from './minutes.js';
 import { updateStatusText } from './update-policy.js';
 import { MAX_NAME_LENGTH, blockSignature, moveRow, rowsToBlock, timesSummary, validateCategoryRows } from './categories.js';
@@ -356,7 +356,7 @@ function categoriesPanel(model, handlers) {
   const list = h('ul', { class: 'categories' });
   const storedError = h('p', { class: 'hint error', role: 'alert' }, model.error || '');
   storedError.hidden = !model.error;
-  const pending = h('p', { class: 'muted', role: 'status' }, 'Noch nicht an den Desktop übertragen.');
+  const pending = h('p', { class: 'muted', role: 'status', tabindex: -1, 'data-focus': 'categories-status' }, 'Noch nicht an den Desktop übertragen.');
   pending.hidden = !model.dirty;
   const message = h('div', { class: 'error-text', role: 'alert' }, '');
   const save = button('Speichern', async () => {
@@ -372,6 +372,7 @@ function categoriesPanel(model, handlers) {
     pending.textContent = 'Gespeichert — wird beim nächsten Abgleich an den Desktop übertragen.';
     pending.hidden = false;
     refresh();
+    pending.focus();                              // „Speichern“ ist jetzt gesperrt und hielte den Fokus nicht
   }, 'primary', { 'data-focus': 'categories-save' });
   const dirty = () => signatureOf(rows) !== saved;
   const refresh = () => {
@@ -379,18 +380,33 @@ function categoriesPanel(model, handlers) {
     save.disabled = !model.editable || !dirty() || !check.ok;
     message.textContent = check.ok ? '' : check.message;
   };
-  const change = (next) => { rows = next; build(); refresh(); };
+  // Jede Änderung baut die Liste neu, der fokussierte Knopf verschwindet dabei: danach den ersten
+  // passenden (nicht gesperrten) Schlüssel fokussieren.
+  const change = (next, focusKeys = []) => {
+    rows = next;
+    build();
+    refresh();
+    focusKeys.some((key) => focusByKey(element, key));
+  };
+  const move = (index, direction) => {
+    const target = index + direction;
+    const [same, other] = direction < 0 ? ['up', 'down'] : ['down', 'up'];
+    change(moveRow(rows, index, direction), [`category-${target}-${same}`, `category-${target}-${other}`]);
+  };
   const edit = (index) => categoryEditDialog(rows[index], {
-    onDone: (row) => change(rows.map((current, i) => (i === index ? row : current))),
-    onRemove: () => change(rows.filter((_, i) => i !== index)),
+    onDone: (row) => change(rows.map((current, i) => (i === index ? row : current)), [`category-${index}`]),
+    onRemove: () => {
+      const next = rows.filter((_, i) => i !== index);
+      change(next, [`category-${Math.min(index, next.length - 1)}`, 'category-add']);
+    },
   });
   const rowElement = (row, index) => {
     const info = [h('strong', { class: 'name' }, row.name.trim() || '(ohne Namen)'), h('span', { class: 'muted summary' }, timesSummary(row))];
     if (!model.editable) return h('li', { class: 'category' }, h('div', { class: 'info' }, info));
     return h('li', { class: 'category' },
       button(info, () => edit(index), 'info', { 'aria-label': `Kategorie „${row.name.trim()}“ bearbeiten`, 'data-focus': `category-${index}` }),
-      button('▲', () => change(moveRow(rows, index, -1)), 'move', { 'aria-label': 'Nach oben', disabled: index === 0, 'data-focus': `category-${index}-up` }),
-      button('▼', () => change(moveRow(rows, index, +1)), 'move', { 'aria-label': 'Nach unten', disabled: index === rows.length - 1, 'data-focus': `category-${index}-down` }));
+      button('▲', () => move(index, -1), 'move', { 'aria-label': 'Nach oben', disabled: index === 0, 'data-focus': `category-${index}-up` }),
+      button('▼', () => move(index, +1), 'move', { 'aria-label': 'Nach unten', disabled: index === rows.length - 1, 'data-focus': `category-${index}-down` }));
   };
   const build = () => {
     list.replaceChildren(...rows.map(rowElement));
@@ -405,7 +421,7 @@ function categoriesPanel(model, handlers) {
     pending,
     model.editable && h('div', { class: 'buttons' },
       button('+ Kategorie', () => categoryEditDialog(emptyCategoryRow(), {
-        isNew: true, onDone: (row) => change([...rows, row]),
+        isNew: true, onDone: (row) => change([...rows, row], [`category-${rows.length}`]),
       }), '', { 'data-focus': 'category-add' }),
       save),
     message);
@@ -453,7 +469,7 @@ export function settingsDialog({ tab = 'connection', connection, updates, catego
   dialog.append(
     h('h2', { id: 'settings-title' }, 'Einstellungen'),
     h('div', { class: 'tabs', role: 'tablist' }, SETTINGS_TABS.map((key) => tabs[key])),
-    SETTINGS_TABS.map((key) => panels[key]),
+    ...SETTINGS_TABS.map((key) => panels[key]),
     h('div', { class: 'buttons' }, button('Schließen', () => closeThen(), '', { 'data-focus': 'settings-close' })));
   show(SETTINGS_TABS.includes(tab) ? tab : 'connection');
   return openDialog(dialog);
@@ -486,7 +502,7 @@ export function categoryEditDialog(row, { onDone, onRemove, isNew = false }) {
         field('end', 'Ende', { type: 'time', step: 60, placeholder: 'Standard' })),
       field('pause', 'Pause (Min)', { type: 'number', inputmode: 'numeric', min: 0, step: 1, placeholder: 'Standard' }));
   const remove = !isNew && button('Löschen', () => confirmDialog({
-    title: 'Kategorie löschen?', text: categoryRemovalText(draft.name.trim() || row.name), confirmLabel: 'Löschen',
+    title: 'Kategorie löschen?', text: categoryRemovalText(row.name), confirmLabel: 'Löschen',
   }, () => { dialog.close(); onRemove(); }), 'link', { 'data-focus': 'category-remove' });
   dialog.append(
     h('form', { class: 'category-form', onsubmit: (event) => { event.preventDefault(); if (!done.disabled) done.click(); } },

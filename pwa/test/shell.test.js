@@ -147,3 +147,58 @@ test('the pages workflow does not publish markdown from pwa/', () => {
   const workflow = readFileSync(new URL('../../.github/workflows/pages.yml', import.meta.url), 'utf8');
   assert.match(workflow, /--exclude '\*\.md'/);
 });
+
+// --- Native append/replaceChildren bekommen keine Arrays -----------------------------------------------
+// Nur `h()` glättet Arrays. Das native `Element.append` macht aus einem Array den Text
+// „[object HTMLDivElement],…“ — ein `.map(` als Argument muss dort gespreizt werden (`...xs.map(…)`).
+
+/** Die Argumente des Aufrufs, der bei `open` (Index der öffnenden Klammer) beginnt, auf oberster Ebene
+ *  getrennt. Zeichenketten werden übersprungen, damit Klammern darin nicht zählen. */
+function topLevelArguments(source, open) {
+  const args = [];
+  let depth = 0;
+  let current = '';
+  for (let i = open; i < source.length; i += 1) {
+    const char = source[i];
+    if (char === '\'' || char === '"' || char === '`') {
+      let j = i + 1;
+      while (j < source.length && source[j] !== char) j += source[j] === '\\' ? 2 : 1;
+      current += source.slice(i, j + 1);
+      i = j;
+      continue;
+    }
+    if ('([{'.includes(char)) { depth += 1; if (depth === 1) continue; }
+    if (')]}'.includes(char)) { depth -= 1; if (depth === 0) { args.push(current); return args; } }
+    if (char === ',' && depth === 1) { args.push(current); current = ''; continue; }
+    current += char;
+  }
+  throw new Error('unbalancierte Klammern');
+}
+
+/** Native Aufrufe mit einem ungespreizten `.map(`-Argument, als „Datei:Zeile“. */
+function unspreadMapArguments(source, file) {
+  const findings = [];
+  for (const match of source.matchAll(/\.(?:append|replaceChildren)\(/g)) {
+    const open = match.index + match[0].length - 1;
+    for (const arg of topLevelArguments(source, open)) {
+      // Ein Argument, das selbst eine `.map(`-Kette ist (nicht gespreizt, nicht in `h(…)` verschachtelt).
+      if (/^\s*[\w$][\w$.]*\.map\(/.test(arg)) {
+        findings.push(`${file}:${source.slice(0, match.index).split('\n').length}`);
+      }
+    }
+  }
+  return findings;
+}
+
+test('the guard flags an un-spread map in a native append, but not a spread or one inside h()', () => {
+  assert.deepEqual(unspreadMapArguments("el.append(h('p'), xs.map((x) => x));", 'a'), ['a:1']);
+  assert.deepEqual(unspreadMapArguments('el.replaceChildren(...xs.map((x) => x));', 'a'), []);
+  assert.deepEqual(unspreadMapArguments("el.append(h('ul', {}, xs.map((x) => h('li', {}, x))));", 'a'), []);
+  assert.deepEqual(unspreadMapArguments("el.append(h('p', {}, 'a, (b'), ys.map(f));", 'a'), ['a:1']);
+});
+
+test('native append/replaceChildren never receive an un-spread array from .map()', () => {
+  for (const file of ['views.js', 'app.js']) {
+    assert.deepEqual(unspreadMapArguments(read(file), file), []);
+  }
+});
