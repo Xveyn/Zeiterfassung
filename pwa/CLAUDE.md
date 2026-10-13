@@ -111,7 +111,8 @@ Desktop) ist seltener, kommt aber vor. Sechs Regeln:
    Protokoll 2 vor #288 (ohne `defaults`/`desktop`); Protokoll 1 war nie in
    einem echten Release. Dazu kommt der Stand vor dem Lesefenster
    (`compat/*-pre-250.json`, ohne `window_days`/`window_max_days`) und der Stand vor den
-   Reservierungen (`compat/*-pre-reservations.json`, ohne `reservations`).
+   Reservierungen (`compat/*-pre-reservations.json`, ohne `reservations`) und der Stand vor den
+   Einstellungen (`compat/*-pre-settings.json`, ohne `settings`).
 5. **Die Meldung nennt die ältere Seite.** Antwortet der Desktop auf einen
    falschen Umschlag mit `invalid_protocol`, steht im Klartext-Fehler
    `supported_protocol`; daraus macht `messages.js` „Desktop-App ist älter“

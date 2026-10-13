@@ -386,6 +386,27 @@ Zeitraum und welche Kategorien der Bericht gefiltert ist.
   Die PWA sendet und liest `reservations` seit PR 3 (`pwa/CLAUDE.md`, „Reservierungen“).
   `SyncReport.reservations_changed` löst nach Freigabe aller Sperren `MobileContext.on_reservations_change` aus (`App`
   stößt den Kalender-Abgleich an).
+  **Einstellungen reisen additiv mit** (`settings`, `PROTOCOL` bleibt 2): erlaubt sind nur `categories` und
+  `category_times` (je `{value, modified_at}`), jeder andere Schlüssel ist `422 invalid_entry` und lehnt die ganze
+  Anfrage ab. Geprüft wird als Fremddaten in `mobile_settings.parse_settings` (Grenzen s. dort); `modified_at` gilt
+  wie bei den Einträgen (höchstens 15 Minuten in der Zukunft). Gemergt wird über `sync.merge`, wie zwischen zwei
+  Desktops: `_phone_doc` setzt `settings` mit der Geräte-ID aus dem Token und hebt die Stempel wie die der Tage auf
+  `last_pull_at + 1 s` an (außer bei `excluded`). Ein Konflikt (Desktop und Handy haben die Einstellung nach dem
+  letzten Abgleich geändert) entsteht als `kind: "setting"` und wird **nur im Desktop-Dialog** gelöst; die Antwort
+  trägt ihn nicht. Schickt das Handy `category_times` ohne `categories`, prüft `perform_sync` die Namen **vor** dem
+  Snapshot gegen die Kategorien des Desktops (`category_names(settings)`); mit `categories` zusammen prüft schon
+  `parse_settings` gegeneinander. Die Antwort berechnet `categories` und `defaults` **nach** dem Anwenden
+  (`perform_sync(categories=None)`; die Route übergibt nichts mehr, sonst hätte sie den Stand vor dem Merge
+  gebaut). Eine `per_day`-Kategorie, die das Handy unverändert zurückschickt, bleibt erhalten. Die PWA sendet
+  noch keine Einstellungen (späterer PR).
+  `mobile_settings.py` — Prüfung und Helfer der Einstellungen im Handy-Abgleich, Tk-frei und ohne I/O.
+  `parse_settings` → `{key: {value, modified_at}}` oder `SettingsError` (`mobile_sync` macht daraus `422
+  invalid_entry`, ein eigener Code brauchte einen Eintrag in `pwa/test/fixtures/errors.json`). Grenzen: höchstens
+  100 Kategorien, Namen 1–100 Zeichen (getrimmt, eindeutig, keine Klassen `Cc`/`Cs`), Uhrzeiten genau `HH:MM`,
+  Pause eine ganze Zahl 0–1440, `per_day` mit `days` je Wochentag (`WEEKDAY_KEYS`), unbekannte Felder abgelehnt.
+  `check_times_names` verlangt, dass jede Kategorie in `category_times` bekannt ist. Dazu die Helfer
+  `clock`/`pause`/`clean_category_times`, die vorher in `mobile_sync` lagen und die Antwort (`build_defaults`)
+  bereinigen.
   `build_response` ist rein: Fenster `[heute − Fenster, heute]` (gewährt über `grant_window`, vom Budget `fit_window` gekürzt, #250/#292) plus gesendete Tage, offene Eintrags-Konflikte
   mit Gerätenamen aus der Registry, alle Slots über `storage.sanitize_slot`. `on_change` ruft die Route
   nach Freigabe von Guard und Lock.
