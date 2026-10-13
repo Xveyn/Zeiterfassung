@@ -41,6 +41,7 @@ from src.api_routes import ApiRequest, ApiResponse, error_response
 from src.api_server import Surface
 from src.api_summary import category_names
 from src.mobile_sync import SyncError, grant_window, window_cap
+from src.reservations import reservations_active
 from src.time_utils import utc_now_iso
 from src.version import version_label
 
@@ -87,9 +88,13 @@ class MobileContext:
     today: Callable[[], datetime.date] = datetime.date.today
     data_lock: Any = None
     sync_guard: Any = None
+    reservation_store: Any = None
     # `on_change` meldet der UI einen angewendeten Abgleich und läuft nach der Freigabe
     # aller Sperren. `closing` ist wahr, sobald die App beendet oder entfernt wird.
     on_change: Callable[[], None] = _no_change
+    # Nach einem Abgleich, der Reservierungen verändert hat, außerhalb aller Sperren: die UI
+    # stößt damit den Kalender-Abgleich an (falls aktiv).
+    on_reservations_change: Callable[[], None] = _no_change
     closing: Callable[[], bool] = _never_closing
     # Nach einer erfolgreichen Kopplung, außerhalb der Sperren: der Dienst zieht den Schlüssel
     # damit im Worker in den Schlüsselbund um (`MobileKeyStore.migrate`).
@@ -242,6 +247,15 @@ def _notify(ctx: MobileContext) -> None:
         _log.exception("Handy-Abgleich: on_change fehlgeschlagen")
 
 
+def _notify_reservations(ctx: MobileContext) -> None:
+    try:
+        ctx.on_reservations_change()
+    except Exception:
+        # Der Abgleich ist angewendet und gespeichert; ein Fehler beim Anstoßen des
+        # Kalender-Abgleichs darf daraus keine 500 machen (das Handy wiederholte ihn).
+        _log.exception("Handy-Abgleich: on_reservations_change fehlgeschlagen")
+
+
 def _still_valid(principal: MobilePrincipal, record: Mapping[str, Any], now: str) -> bool:
     """Das Token, mit dem diese Anfrage kam, gegen den **frisch gelesenen** Datensatz.
     Der Prüfer lief vor dem Handler und ohne Lock: dazwischen kann eine Erneuerung, ein
@@ -306,15 +320,18 @@ def _sync(request: ApiRequest, ctx: MobileContext, principal: Principal) -> ApiR
             raise _MobileError(400, "decrypt_failed",
                                "Die Nachricht konnte nicht entschlüsselt werden.") from None
         seen = mobile_pairing.with_seq(record, seq)
+        report = mobile_sync.SyncReport()
         try:
-            parsed = mobile_sync.parse_request(plain, now=now)
+            parsed = mobile_sync.parse_request(
+                plain, now=now, today=ctx.today(),
+                accept_reservations=reservations_active(ctx.reservation_store, ctx.settings))
             response = mobile_sync.perform_sync(
                 parsed, device_id=record["id"], device_name=record["name"],
                 last_pull_at=record["last_pull_at"], categories=category_names(ctx.settings),
                 storage=ctx.storage, settings=ctx.settings, conflicts_store=ctx.conflicts_store,
                 base=ctx.base, now=now, today=ctx.today(), data_lock=ctx.data_lock,
                 desktop=mobile_sync.desktop_info(ctx.desktop_name(), version_label(), platform.system()),
-                sync_guard=ctx.sync_guard)
+                sync_guard=ctx.sync_guard, reservation_store=ctx.reservation_store, report=report)
         except (_MobileError, SyncError) as exc:
             ctx.devices.save(seen)                       # nur der Zähler: Token bleibt unverändert
             return _sealed(response_key, path="/v1/sync", device_id=record["id"], seq=seq,
@@ -333,6 +350,8 @@ def _sync(request: ApiRequest, ctx: MobileContext, principal: Principal) -> ApiR
     response["expires_at"] = renewed["expires_at"]
     if notify:
         _notify(ctx)
+        if report.reservations_changed:
+            _notify_reservations(ctx)
     return _sealed(response_key, path="/v1/sync", device_id=record["id"], seq=seq, payload=response)
 
 

@@ -19,6 +19,7 @@ from src.mobile_keys import MobileKeyStore
 from src.mobile_pairing import PairingSession
 from src.mobile_routes import MobilePrincipal
 from src.mobile_store import MobileStore
+from src.reservations import ReservationStore
 from src.settings import Settings
 from src.storage import Storage
 from tests.mobile_phone import SYNC_BODY, FakeRing, Phone
@@ -888,3 +889,66 @@ def test_a_waiting_sync_is_refused_when_the_app_closes_while_it_waits_for_the_lo
 
     assert response.status == 503 and error_code(response) == "shutting_down"
     assert env.ctx.storage.get_all_raw() == {}
+
+
+# --- Reservierungen -------------------------------------------------------------------------------
+
+RES_DAY = {"slots": [{"start": "09:00", "end": "12:00", "kategorie": "Projekt"}],
+           "modified_at": "2026-10-08T11:00:00Z", "deleted": False}
+
+
+def with_reservations(env, tmp_path, *, enabled=True, hook=None):
+    store = ReservationStore(str(tmp_path / "reservations.json"))
+    calls = []
+    env.ctx.settings.set_many({"reservations_enabled": enabled})
+    env.ctx = dataclasses.replace(
+        env.ctx, reservation_store=store,
+        on_reservations_change=hook or (lambda: calls.append(1)))
+    return store, calls
+
+
+def test_a_sync_with_reservations_merges_them_and_reports_the_change_once(env, tmp_path):
+    _record, token = add_device(env)
+    store, calls = with_reservations(env, tmp_path)
+
+    response = sync(env, token, reservations={"2026-10-20": RES_DAY})
+    again = sync(env, token, reservations={"2026-10-20": RES_DAY})
+
+    assert response.status == 200
+    assert response.body["reservations"]["2026-10-20"]["slots"][0]["start"] == "09:00"
+    assert store.get("2026-10-20") is not None
+    assert again.status == 200
+    assert calls == [1]                  # die Wiederholung ändert nichts
+
+
+def test_a_rejected_reservation_is_an_encrypted_422_and_changes_nothing(env, tmp_path):
+    _record, token = add_device(env)
+    store, calls = with_reservations(env, tmp_path)
+
+    response = sync(env, token, {"2026-10-07": day()}, reservations={"2026-10-01": RES_DAY})
+
+    assert response.status == 422 and error_code(response) == "invalid_entry"
+    assert store.get_all_raw() == {} and calls == []
+    assert "2026-10-07" not in env.ctx.storage.get_all_raw()
+
+
+def test_reservations_are_ignored_when_the_feature_is_off(env, tmp_path):
+    _record, token = add_device(env)
+    store, calls = with_reservations(env, tmp_path, enabled=False)
+
+    response = sync(env, token, reservations={"2026-10-01": "kaputt"})
+
+    assert response.status == 200 and "reservations" not in response.body
+    assert store.get_all_raw() == {} and calls == []
+
+
+def test_a_failing_reservation_hook_does_not_turn_a_saved_sync_into_a_500(env, tmp_path):
+    _record, token = add_device(env)
+
+    def boom():
+        raise RuntimeError("UI weg")
+    store, _calls = with_reservations(env, tmp_path, hook=boom)
+
+    response = sync(env, token, reservations={"2026-10-20": RES_DAY})
+
+    assert response.status == 200 and store.get("2026-10-20") is not None
