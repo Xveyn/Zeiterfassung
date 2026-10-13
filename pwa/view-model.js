@@ -6,6 +6,7 @@ import {
   addDays, dayMinutes, formatDateDe, formatMinutes, isoWeek, mondayOf, normalizeSlots,
   validateSlots, weekDays,
 } from './minutes.js';
+import { categoryRows, timesSummary } from './categories.js';
 import { resolveSlotDefaults } from './defaults.js';
 import { describeError } from './messages.js';
 import { normalizeReservationSlots, reservationBlockVisible, validateReservationSlots } from './reservations.js';
@@ -304,5 +305,33 @@ export function windowRow({ days, max, wish }) {
   return {
     text: parts.length ? `${days} Tage (${parts.join(', ')})` : `${days} Tage`,
     canReset: Number.isInteger(wish) && wish > 90,
+  };
+}
+
+// --- Einstellungen ---------------------------------------------------------------------------------
+
+export const SETTINGS_TABS = ['connection', 'categories', 'updates'];
+const TAB_LABELS = { connection: 'Verbindung', categories: 'Kategorien', updates: 'Updates' };
+export const settingsTabLabel = (key) => TAB_LABELS[key];
+
+export const categoryRenameHint = 'Bestehende Einträge behalten den alten Namen.';
+
+export function categoryRemovalText(name) {
+  return `Die Kategorie „${name}“ wird gelöscht. Bestehende Einträge behalten ihren Namen, sie erscheint nur nicht mehr in der Auswahl.`;
+}
+
+/** Der Reiter „Kategorien“: Zeilen mit Kurzfassung, ob bearbeitet werden darf (der Desktop versteht
+ *  `settings`) und der Zustand des Blocks. Ein älterer Desktop lässt die Liste lesbar, aber nicht
+ *  bearbeitbar (Feature-Erkennung wie bei den Reservierungen). */
+export function categoriesModel({ categories, defaults, writable, edit }) {
+  const rows = categoryRows(categories, defaults?.category_times ?? {}).map((row) => ({
+    ...row, summary: timesSummary(row) }));
+  const editable = Boolean(writable) && defaults !== null && defaults !== undefined;
+  return {
+    rows,
+    editable,
+    hint: editable ? '' : 'Die Desktop-App ist älter als diese Seite: Kategorien lassen sich nur dort bearbeiten. Bitte die Desktop-App aktualisieren.',
+    error: edit?.error ?? null,
+    dirty: Boolean(edit) && edit.dirty_version > edit.synced_version,
   };
 }

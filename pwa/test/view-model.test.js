@@ -3,6 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  SETTINGS_TABS, categoriesModel, categoryRemovalText, categoryRenameHint, settingsTabLabel,
   WEEKDAYS, categoryLabel, categoryOptions, conflictsModel, dayChanged, editorRows, focusKeyToRestore, hintKey, hintsModel, desktopHint, localTime, nextRow, olderModel, pickCategory, rowsToSlots, slotText,
   statusModel, validateRows, weekModel, windowRow, reservationRows, reservationRowsToSlots, validateReservationRows,
 } from '../view-model.js';
@@ -502,4 +503,48 @@ test('saved reservation rows show their slots and a blank new row is dropped', (
 test('a reservation row with times but a stray default pause validates', () => {
   const rows = [{ start: '09:00', end: '10:00', pause: '30', kategorie: '' }];
   assert.equal(validateReservationRows(rows).ok, true);          // die Pause zählt bei Reservierungen nicht
+});
+
+// --- Einstellungen / Kategorien -----------------------------------------------------------------------
+
+test('the settings tabs are connection, categories, updates, in that order, with German labels', () => {
+  assert.deepEqual(SETTINGS_TABS, ['connection', 'categories', 'updates']);
+  assert.deepEqual(SETTINGS_TABS.map(settingsTabLabel), ['Verbindung', 'Kategorien', 'Updates']);
+});
+
+test('the categories model lists rows with a summary and is editable with a writable desktop', () => {
+  const model = categoriesModel({ categories: ['Projekt', 'Support'], writable: true,
+    defaults: { category_times: { Projekt: { start: '09:00', end: '17:00', pause: 45 },
+      Support: { mode: 'per_day', days: {} } } }, edit: null });
+
+  assert.equal(model.editable, true);
+  assert.deepEqual(model.rows.map((r) => r.summary), ['09:00–17:00, 45 min Pause', 'pro Wochentag']);
+  assert.equal(model.hint, '');
+  assert.equal(model.dirty, false);
+});
+
+test('an older desktop leaves the list readable but not editable, with a hint', () => {
+  const model = categoriesModel({ categories: ['A'], writable: false, defaults: { category_times: {} }, edit: null });
+  assert.equal(model.editable, false);
+  assert.match(model.hint, /Desktop-App/);
+  assert.equal(model.rows.length, 1);
+});
+
+test('without any defaults the list is still readable', () => {
+  const model = categoriesModel({ categories: ['A'], writable: true, defaults: null, edit: null });
+  assert.equal(model.editable, false);
+  assert.equal(model.rows[0].summary, '—');
+});
+
+test('the model reports a dirty and a rejected block', () => {
+  const model = categoriesModel({ categories: ['A'], writable: true, defaults: { category_times: {} },
+    edit: { modified_at: 'x', dirty_version: 2, synced_version: 1, error: 'Einstellung categories: zu viele' } });
+  assert.equal(model.dirty, true);
+  assert.equal(model.error, 'Einstellung categories: zu viele');
+});
+
+test('removing and renaming say that existing entries keep the old name', () => {
+  assert.match(categoryRemovalText('Projekt'), /Projekt/);
+  assert.match(categoryRemovalText('Projekt'), /behalten/);
+  assert.match(categoryRenameHint, /alten Namen/);
 });
