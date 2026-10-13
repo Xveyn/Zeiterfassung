@@ -1,0 +1,73 @@
+- generic [ref=f4e2]:
+  - main [ref=f4e3]:
+    - status [ref=f4e5]:
+      - generic [ref=f4e6]: Der Browser sichert die Daten nicht dauerhaft. Nicht übertragene Einträge können bei Speichermangel verloren gehen.
+    - generic [ref=f4e8]:
+      - generic [ref=f4e9]:
+        - button "Vorherige Woche" [ref=f4e10] [cursor=pointer]: ‹
+        - generic [ref=f4e11]:
+          - strong [ref=f4e12]: KW 41
+          - text: 05.10.–11.10.2026
+        - button "Nächste Woche" [ref=f4e13] [cursor=pointer]: ›
+      - list [ref=f4e14]:
+        - listitem [ref=f4e15]:
+          - button "Mo 05.10.2026, 1:00 Stunden" [ref=f4e16] [cursor=pointer]:
+            - generic [ref=f4e17]:
+              - generic [ref=f4e18]: Mo
+              - generic [ref=f4e19]: 05.10.
+            - list [ref=f4e20]:
+              - listitem [ref=f4e21]: 08:00–09:00 · Projekt
+            - generic [ref=f4e22]: 1:00
+        - listitem [ref=f4e23]:
+          - button "Di 06.10.2026, 1:00 Stunden" [ref=f4e24] [cursor=pointer]:
+            - generic [ref=f4e25]:
+              - generic [ref=f4e26]: Di
+              - generic [ref=f4e27]: 06.10.
+            - list [ref=f4e28]:
+              - listitem [ref=f4e29]: 08:00–09:00 · Projekt
+            - generic [ref=f4e30]: 1:00
+        - listitem [ref=f4e31]:
+          - button "Mi 07.10.2026, 1:00 Stunden" [ref=f4e32] [cursor=pointer]:
+            - generic [ref=f4e33]:
+              - generic [ref=f4e34]: Mi
+              - generic [ref=f4e35]: 07.10.
+            - list [ref=f4e36]:
+              - listitem [ref=f4e37]: 08:00–09:00 · Projekt
+            - generic [ref=f4e38]: 1:00
+        - listitem [ref=f4e39]:
+          - button "Do 08.10.2026, 1:00 Stunden" [ref=f4e40] [cursor=pointer]:
+            - generic [ref=f4e41]:
+              - generic [ref=f4e42]: Do
+              - generic [ref=f4e43]: 08.10.
+            - list [ref=f4e44]:
+              - listitem [ref=f4e45]: 08:00–09:00 · Projekt
+            - generic [ref=f4e46]: 1:00
+        - listitem [ref=f4e47]:
+          - button "Fr 09.10.2026, 1:00 Stunden" [ref=f4e48] [cursor=pointer]:
+            - generic [ref=f4e49]:
+              - generic [ref=f4e50]: Fr
+              - generic [ref=f4e51]: 09.10.
+            - list [ref=f4e52]:
+              - listitem [ref=f4e53]: 08:00–09:00 · Projekt
+            - generic [ref=f4e54]: 1:00
+        - listitem [ref=f4e55]:
+          - button "Sa 10.10.2026" [ref=f4e56] [cursor=pointer]:
+            - generic [ref=f4e57]:
+              - generic [ref=f4e58]: Sa
+              - generic [ref=f4e59]: 10.10.
+            - list [ref=f4e60]
+        - listitem [ref=f4e61]:
+          - button "So 11.10.2026" [ref=f4e62] [cursor=pointer]:
+            - generic [ref=f4e63]:
+              - generic [ref=f4e64]: So
+              - generic [ref=f4e65]: 11.10.
+            - list [ref=f4e66]
+      - generic [ref=f4e67]:
+        - generic [ref=f4e68]: Woche gesamt
+        - generic [ref=f4e69]: 5:00
+  - contentinfo [ref=f4e70]:
+    - generic [ref=f4e71]:
+      - generic [ref=f4e72]: Gleiche ab …
+      - generic [ref=f4e73]: zuletzt abgeglichen um 15:29
+    - button "Verbindung" [ref=f4e74] [cursor=pointer]
+    - button "Jetzt abgleichen" [disabled] [ref=f4e75]

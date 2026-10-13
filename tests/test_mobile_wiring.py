@@ -105,3 +105,10 @@ def test_the_app_gives_the_key_store_to_the_phone_context_and_needs_both_stores(
     assert "mobile_keys=None" in source
     assert "if mobile_store is not None and mobile_keys is not None:" in source
     assert "keys=mobile_keys" in source
+
+
+def test_app_passes_the_reservation_store_and_the_hook_to_the_mobile_context():
+    source = (pathlib.Path(__file__).resolve().parent.parent / "src" / "ui.py").read_text(encoding="utf-8")
+    context = source.split("MobileContext(")[1].split("run=self._bg.run")[0]
+    assert "reservation_store=self.reservation_store" in context
+    assert "on_reservations_change=self._on_mobile_reservations_changed" in context

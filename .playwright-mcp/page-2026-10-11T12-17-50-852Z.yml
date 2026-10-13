@@ -1,0 +1,17 @@
+- main [ref=f1e3]:
+  - heading "Mit dem Desktop koppeln" [level=1] [ref=f1e4]
+  - paragraph [ref=f1e5]: "Am Desktop: Einstellungen → Mobil → „Gerät koppeln …“. Dann den QR-Code scannen oder Adresse und Kopplungscode eintippen."
+  - generic [ref=f1e6]:
+    - generic [ref=f1e7]: Adresse des Desktops
+    - textbox "Adresse des Desktops" [ref=f1e8]:
+      - /placeholder: 192.168.178.20:17654
+      - text: 192.168.178.53:17697
+    - generic [ref=f1e9]: Kopplungscode
+    - textbox "Kopplungscode" [ref=f1e10]:
+      - /placeholder: K7M2-9QXA-K7M2-9QXA-K7M2-9QXA-K7M2
+      - text: 9WQF9T9RYVY6BJGYQ8UKCCTKXBJP
+    - paragraph [ref=f1e11]: Den Code zeigt der Desktop unter dem QR-Code. Er verschlüsselt die Verbindung.
+    - generic [ref=f1e12]: Name dieses Handys
+    - textbox "Name dieses Handys" [ref=f1e13]: Android-Handy
+    - alert [ref=f1e14]
+    - button "Koppeln" [ref=f1e16] [cursor=pointer]

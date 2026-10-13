@@ -90,7 +90,7 @@ def test_the_link_the_desktop_builds_is_the_fragment_the_pwa_parses(row):
 import re  # noqa: E402
 
 from src import mobile_crypto as mc  # noqa: E402
-from src import mobile_routes, mobile_sync  # noqa: E402
+from src import mobile_reservations, mobile_routes, mobile_sync  # noqa: E402
 from src.api_auth import ANONYMOUS  # noqa: E402
 from src.api_routes import ApiRequest  # noqa: E402
 from tests import test_mobile_routes as mr  # noqa: E402
@@ -136,8 +136,11 @@ def test_the_response_example_has_the_shape_the_server_really_sends(tmp_path):
         "modified_at": "2026-10-07T20:00:00Z", "device_id": "DESK", "deleted": False}})
     entries = {"2026-10-07": mr.day(), "2026-10-06": mr.day(slots=(), deleted=True),
                "2026-10-05": mr.day(modified_at="2026-10-07T18:30:00Z")}
+    mr.with_reservations(env, tmp_path)         # Schalter an: erst dann trägt die Antwort das Feld
+    reservations = {"2026-10-15": mr.RES_DAY}
 
-    raw = mr.call(env, "POST", "/v1/sync", body=mr.sync_body(env, entries), token=token)
+    raw = mr.call(env, "POST", "/v1/sync",
+                  body=mr.sync_body(env, entries, reservations=reservations), token=token)
     response = mr.opened(env, raw)
 
     assert raw.status == 200
@@ -253,3 +256,22 @@ def test_the_live_request_example_carries_the_wish_the_server_reads():
     parsed = mobile_sync.parse_request(json.dumps(example).encode(), now=example["client_time"])
 
     assert parsed.window_days == example["window_days"]
+
+
+def test_the_desktop_still_accepts_the_request_of_a_phone_without_reservations():
+    example = load("compat/sync-request-pre-reservations.json")
+    assert "reservations" not in example
+
+    parsed = mobile_sync.parse_request(json.dumps(example).encode(), now=example["client_time"])
+
+    assert sorted(parsed.entries) == sorted(example["entries"])
+    assert parsed.reservations == {}
+
+
+def test_the_live_response_example_has_the_shape_build_reservations_emits():
+    example = load("sync-response.json")
+    today = datetime.date.fromisoformat(example["server_time"][:10])
+
+    rebuilt = mobile_reservations.build_reservations(example["reservations"], today=today)
+
+    assert rebuilt == example["reservations"]

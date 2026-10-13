@@ -152,7 +152,9 @@ class App:
                     base=self.base_path,
                     desktop_name=lambda: self.settings.get("device_name") or default_device_name(),
                     data_lock=self._data_lock, sync_guard=self._sync_guard,
-                    on_change=self._api_refresh.request),
+                    reservation_store=self.reservation_store,
+                    on_change=self._api_refresh.request,
+                    on_reservations_change=self._on_mobile_reservations_changed),
                 run=self._bg.run)
         self._renderer = GridRenderer(
             self.root, self.storage, self.settings, self.reservation_store,
@@ -597,6 +599,12 @@ class App:
         also ein No-op."""
         self._refresh()
         self._bg.trigger_reconcile(self._on_reconcile_done)
+
+    def _on_mobile_reservations_changed(self):
+        """Das Handy hat Reservierungen verändert: Kalender-Push anstoßen. Läuft im
+        Server-Thread, deshalb über `_marshal_to_ui`; `trigger_reconcile` gatet selbst
+        auf `gcal_enabled`. Das Neuzeichnen kommt schon über `on_change`."""
+        self._marshal_to_ui(lambda: self._bg.trigger_reconcile(self._on_reconcile_done))
 
     def _apply_always_on_top(self):
         """Tk-übergreifender Topmost-Toggle. Funktioniert auf Windows, macOS

@@ -105,7 +105,8 @@ Desktop) ist seltener, kommt aber vor. Sechs Regeln:
    Form **vor** der Änderung ein. Der erste eingefrorene Stand ist das
    Protokoll 2 vor #288 (ohne `defaults`/`desktop`); Protokoll 1 war nie in
    einem echten Release. Dazu kommt der Stand vor dem Lesefenster
-   (`compat/*-pre-250.json`, ohne `window_days`/`window_max_days`).
+   (`compat/*-pre-250.json`, ohne `window_days`/`window_max_days`) und der Stand vor den
+   Reservierungen (`compat/*-pre-reservations.json`, ohne `reservations`).
 5. **Die Meldung nennt die ältere Seite.** Antwortet der Desktop auf einen
    falschen Umschlag mit `invalid_protocol`, steht im Klartext-Fehler
    `supported_protocol`; daraus macht `messages.js` „Desktop-App ist älter“

@@ -373,6 +373,18 @@ Zeitraum und welche Kategorien der Bericht gefiltert ist.
   haben, hebt `_phone_doc` die Stempel der gesendeten Tage auf `last_pull_at + 1 s` an (außer bei
   `excluded`): das Handy schickt nur Tage, die es seit dem Abgleich geändert hat, und bei einem
   nachgehenden Handy ginge die Änderung sonst still gegen die Desktop-Version verloren.
+  **Reservierungen reisen additiv mit** (`reservations`, `PROTOCOL` bleibt 2): `parse_request` liest sie nur mit
+  `accept_reservations` (die Route übergibt `reservations_active`; bei ausgeschaltetem Schalter werden sie ignoriert, nicht
+  abgelehnt) und prüft sie über `mobile_reservations.parse_reservations` (Tage vor heute entfallen still — sie würden sonst
+  mit der Zeit jeden Abgleich sperren —, hinter heute + 365 ist `422 invalid_entry` und lehnt die ganze Anfrage ab; Slot-Regeln
+  der Ist-Zeiten, nie `gcal_event_id`/`send_reminder_minutes`).
+  Der Merge ist `ReservationStore.merge_phone` im selben `data_lock` wie die Ist-Zeiten: LWW, Kalender-Ids und
+  Sende-Erinnerung bleiben per Index erhalten. **Zwei Uhren:** der Stempel des Handys wird auf `last_pull_at + 1 s` angehoben
+  (wie `_phone_doc`), und ein gewonnener Tag bekommt mindestens den Empfangszeitpunkt — der Kalender-Abgleich
+  (`reservations_sync._merge_one_date`, Fall 4) verwirft lokale Tage ohne Event, deren Stempel nicht über seinem Watermark liegt. Die Antwort trägt
+  `reservations` (aktive Tage heute…+365) **nur** bei eingeschalteten Reservierungen — daran erkennt die PWA die Funktion.
+  `SyncReport.reservations_changed` löst nach Freigabe aller Sperren `MobileContext.on_reservations_change` aus (`App`
+  stößt den Kalender-Abgleich an).
   `build_response` ist rein: Fenster `[heute − Fenster, heute]` (gewährt über `grant_window`, vom Budget `fit_window` gekürzt, #250/#292) plus gesendete Tage, offene Eintrags-Konflikte
   mit Gerätenamen aus der Registry, alle Slots über `storage.sanitize_slot`. `on_change` ruft die Route
   nach Freigabe von Guard und Lock.
