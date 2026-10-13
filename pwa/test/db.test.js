@@ -7,7 +7,7 @@ import { openDatabase, requestPersistentStorage } from '../db.js';
 /** Minimale Attrappe der IndexedDB-Schnittstelle: genug für Form und Fehlerpfade. Die Handler
  *  werden von `db.js` NACH dem Aufruf zugewiesen, deshalb feuern die Attrappen per Microtask. */
 function fakeFactory({ failOpen = false, throwOnSecondPut = false, failRequest = false, blocked = false } = {}) {
-  const data = { entries: new Map(), meta: new Map() };
+  const data = { entries: new Map(), meta: new Map(), reservations: new Map() };
   const created = [];
   const log = { aborted: false, closed: 0 };
   let puts = 0;
@@ -70,10 +70,10 @@ function fakeFactory({ failOpen = false, throwOnSecondPut = false, failRequest =
   return { factory, data, created, log };
 }
 
-test('opening creates both object stores', async () => {
+test('opening creates all three object stores', async () => {
   const { factory, created } = fakeFactory();
   await openDatabase(factory);
-  assert.deepEqual(created.sort(), ['entries', 'meta']);
+  assert.deepEqual(created.sort(), ['entries', 'meta', 'reservations']);
 });
 
 test('a batch writes puts and deletes and getAll reads them back', async () => {
