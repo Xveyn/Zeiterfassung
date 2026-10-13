@@ -39,7 +39,6 @@ from src.api_auth import SCOPE_MOBILE, Denied, Principal, TokenVerifier, require
 from src.api_entry_write import WriteError, load_json_body
 from src.api_routes import ApiRequest, ApiResponse, error_response
 from src.api_server import Surface
-from src.api_summary import category_names
 from src.mobile_sync import SyncError, grant_window, window_cap
 from src.reservations import reservations_active
 from src.time_utils import utc_now_iso
@@ -327,7 +326,7 @@ def _sync(request: ApiRequest, ctx: MobileContext, principal: Principal) -> ApiR
                 accept_reservations=reservations_active(ctx.reservation_store, ctx.settings))
             response = mobile_sync.perform_sync(
                 parsed, device_id=record["id"], device_name=record["name"],
-                last_pull_at=record["last_pull_at"], categories=category_names(ctx.settings),
+                last_pull_at=record["last_pull_at"],
                 storage=ctx.storage, settings=ctx.settings, conflicts_store=ctx.conflicts_store,
                 base=ctx.base, now=now, today=ctx.today(), data_lock=ctx.data_lock,
                 desktop=mobile_sync.desktop_info(ctx.desktop_name(), version_label(), platform.system()),

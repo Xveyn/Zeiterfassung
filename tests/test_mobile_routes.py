@@ -952,3 +952,32 @@ def test_a_failing_reservation_hook_does_not_turn_a_saved_sync_into_a_500(env, t
     response = sync(env, token, reservations={"2026-10-20": RES_DAY})
 
     assert response.status == 200 and store.get("2026-10-20") is not None
+
+
+# --- Einstellungen --------------------------------------------------------------------------------
+
+SETTING_STAMP = "2026-10-08T11:00:00Z"
+
+
+def test_a_sync_with_settings_changes_the_desktop_and_answers_with_the_new_state(env):
+    _record, token = add_device(env)
+
+    response = sync(env, token, settings={
+        "categories": {"value": ["Neu"], "modified_at": SETTING_STAMP},
+        "category_times": {"value": {"Neu": {"start": "09:00", "pause": 30}}, "modified_at": SETTING_STAMP}})
+
+    assert response.status == 200
+    assert env.ctx.settings.get("categories") == ["Neu"]
+    assert response.body["categories"] == ["Neu"]
+    assert response.body["defaults"]["category_times"] == {"Neu": {"start": "09:00", "pause": 30}}
+
+
+def test_a_forbidden_setting_is_an_encrypted_422_and_changes_nothing(env):
+    _record, token = add_device(env)
+
+    response = sync(env, token, {"2026-10-07": day()},
+                    settings={"hourly_rate": {"value": 100, "modified_at": SETTING_STAMP}})
+
+    assert response.status == 422 and error_code(response) == "invalid_entry"
+    assert "2026-10-07" not in env.ctx.storage.get_all_raw()
+    assert env.ctx.settings.get("hourly_rate") != 100

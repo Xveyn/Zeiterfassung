@@ -298,3 +298,13 @@ def test_the_live_request_example_carries_reservations_the_server_reads():
         today=datetime.date.fromisoformat(example["client_time"][:10]))
 
     assert sorted(parsed.reservations) == sorted(example["reservations"])
+
+
+def test_the_desktop_still_accepts_the_request_of_a_phone_without_settings():
+    example = load("compat/sync-request-pre-settings.json")
+    assert "settings" not in example
+
+    parsed = mobile_sync.parse_request(json.dumps(example).encode(), now=example["client_time"])
+
+    assert sorted(parsed.entries) == sorted(example["entries"])
+    assert parsed.settings == {}
