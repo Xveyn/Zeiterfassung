@@ -34,3 +34,11 @@ test('the response of a desktop before the window wish (#250) is still understoo
   assert.equal(parsed.window_days, 90);
   assert.deepEqual(Object.keys(parsed.entries), ['2026-10-07', '2026-10-06']);
 });
+
+test('the response of a desktop before the reservations is still understood and keeps the feature hidden', () => {
+  const doc = frozen('sync-response-pre-reservations.json');
+  assert.ok(!('reservations' in doc));
+  const parsed = parseSyncResponse(doc);
+  assert.equal(parsed.reservations, null);
+  assert.deepEqual(Object.keys(parsed.entries), ['2026-10-07', '2026-10-06']);
+});

@@ -14,6 +14,7 @@ import {
 const fixture = (name) => JSON.parse(readFileSync(new URL(`./fixtures/${name}`, import.meta.url)));
 const SLOT = { start: '08:00', end: '12:00', pause: 0, kategorie: 'Projekt' };
 const NOW = '2026-10-08T12:00:00Z';
+const RES = { start: '09:00', end: '12:00', kategorie: 'Projekt' };
 
 const DEVICE_ID = '6f1c2b9e-3d4a-4b5c-8d7e-9f0a1b2c3d4e';
 const CODE = 'K7M29QXA'.repeat(3) + 'K7M2';
@@ -331,6 +332,9 @@ test('a sync sends bearer, request shape and the dirty days, then applies the an
   await store.saveDay('2026-10-07', [SLOT]);
   await store.saveDay('2026-10-06', [SLOT]);
   await store.clearDay('2026-10-06');                                // Tombstone
+  await store.saveReservation('2026-10-15', [RES]);
+  await store.saveReservation('2026-10-16', [RES]);
+  await store.clearReservation('2026-10-16');                        // Tombstone der Reservierung
 
   const result = await client.sync();
 
@@ -349,6 +353,12 @@ test('a sync sends bearer, request shape and the dirty days, then applies the an
   for (const date of Object.keys(example.entries)) {
     assert.deepEqual(keysOf(call.plain.entries[date]), keysOf(example.entries[date]), date);
   }
+  assert.deepEqual(Object.keys(call.plain.reservations).sort(), Object.keys(example.reservations).sort());
+  for (const date of Object.keys(example.reservations)) {
+    assert.deepEqual(keysOf(call.plain.reservations[date]), keysOf(example.reservations[date]), date);
+  }
+  assert.deepEqual(call.plain.reservations['2026-10-15'].slots, [RES]);
+  assert.equal(call.plain.reservations['2026-10-16'].deleted, true);
   assert.equal(call.plain.entries['2026-10-06'].deleted, true);
   assert.deepEqual(call.plain.entries['2026-10-06'].slots, []);
   assert.equal(call.plain.client_time, NOW);
@@ -860,3 +870,86 @@ for (const [name, change] of [
       (error) => error.kind === 'protocol');
   });
 }
+
+// --- Reservierungen ---------------------------------------------------------------------------------
+
+test('a response without reservations parses to null: the feature stays hidden', () => {
+  assert.equal(parseSyncResponse(fixture('compat/sync-response-pre-reservations.json')).reservations, null);
+});
+
+test('reservations in the response are cleaned: three slot fields, valid stamps, active days only', () => {
+  const raw = { ...fixture('sync-response.json'), reservations: {
+    '2026-10-15': { slots: [{ start: '09:00', end: '12:00', kategorie: 'Projekt', pause: 99, gcal_event_id: 'x' }],
+      modified_at: '2026-10-08T11:00:00Z', deleted: false },
+    '2026-10-16': { slots: [], modified_at: '2026-10-08T11:00:00Z', deleted: false },
+    kaputt: { slots: [{ start: '09:00', end: '12:00', kategorie: '' }], modified_at: 'x' },
+    '2026-10-17': 'kein Objekt',
+  } };
+
+  assert.deepEqual(parseSyncResponse(raw).reservations, {
+    '2026-10-15': { slots: [RES], modified_at: '2026-10-08T11:00:00Z' } });
+});
+
+test('a reservations field that is not an object counts as absent', () => {
+  assert.equal(parseSyncResponse({ ...fixture('sync-response.json'), reservations: [1] }).reservations, null);
+});
+
+test('a rejected reservation day is told apart from a rejected work day', () => {
+  const reservation = classifyHttpError(422, { error: { code: 'invalid_entry',
+    message: 'Reservierung 2027-12-01: nur bis 365 Tage voraus erlaubt.' } });
+  const entry = classifyHttpError(422, { error: { code: 'invalid_entry', message: '2026-10-07: kaputt' } });
+
+  assert.deepEqual([reservation.day, reservation.dayKind], ['2027-12-01', 'reservation']);
+  assert.deepEqual([entry.day, entry.dayKind], ['2026-10-07', 'entry']);
+});
+
+test('a sync without dirty reservations sends no reservations field', async () => {
+  const { store, client, fetchFn } = await make();
+  await store.saveDay('2026-10-07', [SLOT]);
+
+  await client.sync();
+
+  assert.equal('reservations' in fetchFn.calls[0].plain, false);
+});
+
+test('reservations go out in the first request only, and the answer applies them', async () => {
+  const { store, client, fetchFn } = await make();
+  await store.saveReservation('2026-10-15', [RES]);
+
+  await client.sync();
+
+  assert.deepEqual(Object.keys(fetchFn.calls[0].plain.reservations), ['2026-10-15']);
+  assert.equal(store.getMeta().reservations_enabled, true);
+  assert.equal(store.getReservation('2026-10-15').dirty, false);
+});
+
+test('a 422 for a reservation day marks only that reservation; the next sync goes through', async () => {
+  let n = 0;
+  const { store, client, fetchFn } = await make({ handler: () => {
+    n += 1;
+    return n === 1
+      ? reply(422, { error: { code: 'invalid_entry', message: 'Reservierung 2026-10-15: kaputt.' } }, { sealed: true })
+      : reply(200, fixture('sync-response.json'));
+  } });
+  await store.saveReservation('2026-10-15', [RES]);
+
+  await assert.rejects(() => client.sync(), (error) => error.kind === 'invalid_entry' && error.dayKind === 'reservation');
+  assert.ok(store.getReservation('2026-10-15').error);
+
+  await client.sync();
+  assert.equal('reservations' in fetchFn.calls[1].plain, false);
+});
+
+test('a work-day 422 still marks the work day', async () => {
+  let n = 0;
+  const { store, client } = await make({ handler: () => {
+    n += 1;
+    return n === 1
+      ? reply(422, { error: { code: 'invalid_entry', message: '2026-10-07: kaputt.' } }, { sealed: true })
+      : reply(200, fixture('sync-response.json'));
+  } });
+  await store.saveDay('2026-10-07', [SLOT]);
+
+  await assert.rejects(() => client.sync(), (error) => error.dayKind === 'entry');
+  assert.ok(store.getDay('2026-10-07').error);
+});

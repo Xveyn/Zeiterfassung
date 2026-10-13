@@ -156,6 +156,7 @@ def test_the_sync_request_example_has_the_shape_the_phone_sends(tmp_path):
     mr.add_device(env)
     sent = mr.sync_doc(env, {"2026-10-07": mr.day(), "2026-10-06": mr.day(slots=(), deleted=True)})
     sent["last_pull_at"] = example["last_pull_at"]
+    sent["reservations"] = example["reservations"]       # die PWA sendet das Feld nur mit nicht übertragenen Reservierungen
 
     assert set(sent) == set(example) and sent["protocol"] == example["protocol"] == 2
 
@@ -285,3 +286,14 @@ def test_the_desktop_shows_the_reservation_block_like_the_phone_does(case):
     today = datetime.date.fromisoformat(case["today"])
 
     assert reservation_block_visible(day, today) is case["visible"]
+
+
+def test_the_live_request_example_carries_reservations_the_server_reads():
+    example = load("sync-request.json")
+    assert example["reservations"]
+
+    parsed = mobile_sync.parse_request(
+        json.dumps(example).encode(), now=example["client_time"],
+        today=datetime.date.fromisoformat(example["client_time"][:10]))
+
+    assert sorted(parsed.reservations) == sorted(example["reservations"])
