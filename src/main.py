@@ -29,7 +29,7 @@ from src.device_id import derive_device_id
 from src.devices import default_device_name
 from src.logging_setup import setup_logging
 from src.paths import get_base_path, get_resource_path
-from src.reservations import ReservationStore
+from src.reservations import ReservationStore, migrate_reservations_enabled
 from src.settings import Settings, clamp_ui_scale
 from src.storage import Storage
 from src.vacations import VacationStore
@@ -338,6 +338,15 @@ def main():
     sync_journal.recover_pending_apply(
         os.path.join(base, sync_journal.JOURNAL_FILENAME),
         storage, settings, conflicts_store)
+
+    # Reservierungen hingen bis dahin an gcal_enabled (einmalige Umstellung,
+    # s. reservations.migrate_reservations_enabled). Nicht-fatal wie die
+    # übrigen Startschritte: ein Schreibfehler darf den Start nicht verhindern.
+    try:
+        migrate_reservations_enabled(settings)
+    except Exception:
+        logging.getLogger(__name__).exception(
+            "Reservierungs-Umstellung fehlgeschlagen (nicht-fatal)")
 
     # N6: Tombstones ohne Sync-/Kalender-Partner verwerfen. Hier, weil der
     # Prozess noch single-threaded ist (kein data_lock nötig) und der Sweep

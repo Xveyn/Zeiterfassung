@@ -25,18 +25,18 @@ log = logging.getLogger(__name__)
 
 class BackgroundTaskRunner:
     def __init__(self, marshal, settings, base_path, reservation_store,
-                 reservations_active, storage=None, data_lock=None,
+                 calendar_active, storage=None, data_lock=None,
                  vacation_store=None):
         self._marshal = marshal                          # App._marshal_to_ui
         self._settings = settings
         self._base_path = base_path
         self._reservation_store = reservation_store
-        self._reservations_active = reservations_active  # callable -> bool
+        self._calendar_active = calendar_active  # callable -> bool (Google-Kalender aktiv)
         self._storage = storage
         self._data_lock = data_lock                      # geteilter Store-RLock
         # vacation_store: letzter Parameter mit Default — ui.py:112-113 ruft
         # den Konstruktor POSITIONAL auf. Ein Einfügen "neben reservation_store"
-        # würde die nachfolgenden Positional-Args (reservations_active, storage)
+        # würde die nachfolgenden Positional-Args (calendar_active, storage)
         # stumm verschieben; kein Test fängt das ab, weil test_background_tasks.py
         # per **kw konstruiert (s. Docstring von run_calendar_reconcile).
         self._vacation_store = vacation_store
@@ -214,16 +214,24 @@ class BackgroundTaskRunner:
 
         self.run(fn, on_done)
 
+    def _reconcile_store(self):
+        """Reservierungs-Store für den Kalender-Abgleich — `None`, wenn
+        Reservierungen aus sind: der Abgleich darf dann nichts in einen Store
+        importieren, den die App nicht zeigt. Der Urlaub-Push läuft trotzdem."""
+        if self._settings.get("reservations_enabled"):
+            return self._reservation_store
+        return None
+
     def reconcile_on_start(self, on_ok):
-        """Gleicht beim Start die Reservierungen mit dem Google Kalender ab.
+        """Gleicht beim Start den Google Kalender ab (Reservierungen, sofern an, und Urlaub).
         Fehler werden STILL geloggt (Offline-Start nicht stören); bei Erfolg
         on_ok(result) im UI-Thread (result enthält u.a. limit_warnings, #98)."""
-        if not self._reservations_active():
+        if not self._calendar_active():
             return
 
         def fn():
             return run_calendar_reconcile(
-                self._reservation_store, self._settings, self._base_path,
+                self._reconcile_store(), self._settings, self._base_path,
                 self._storage, data_lock=self._data_lock,
                 vacation_store=self._vacation_store)
 
@@ -237,7 +245,7 @@ class BackgroundTaskRunner:
         """Räumt die Urlaubs-Events aus dem Kalender — Gegenstück zum
         Abschalten von `vacation_gcal_enabled` im Urlaubs-Dialog.
 
-        Bewusst NICHT an `_reservations_active` gehängt wie
+        Bewusst NICHT an `_calendar_active` gehängt wie
         `trigger_reconcile`: dort ist die Frage „soll ich pushen", hier „ist
         draußen etwas von mir liegengeblieben". Die Bedingungen prüft
         `run_vacation_purge` selbst und meldet ohne aktiven Kalender einen
@@ -254,12 +262,12 @@ class BackgroundTaskRunner:
         """Stößt nach einer Reservierungs- oder Urlaubsänderung den
         Abgleich an. Das Ergebnis geht IMMER an on_done(result) (User hat
         aktiv gespeichert und erwartet Feedback)."""
-        if not self._reservations_active():
+        if not self._calendar_active():
             return
 
         def fn():
             return run_calendar_reconcile(
-                self._reservation_store, self._settings, self._base_path,
+                self._reconcile_store(), self._settings, self._base_path,
                 self._storage, data_lock=self._data_lock,
                 vacation_store=self._vacation_store)
 

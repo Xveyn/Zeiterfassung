@@ -17,7 +17,7 @@ _DEFAULTS = {
     "send_reminder_weekend_shift": "none",
     "send_reminder_shift_holidays": False,
     "send_reminder_reservations_enabled": False,
-    "gcal_enabled": False,
+    "reservations_enabled": False,
     "state": "",
 }
 
@@ -124,7 +124,7 @@ def _res_store(date_str, end, minutes):
 def test_day_reminder_fires_before_reservation_end():
     tray = _FakeTray()
     sched = _make(
-        {"send_reminder_reservations_enabled": True, "gcal_enabled": True,
+        {"send_reminder_reservations_enabled": True, "reservations_enabled": True,
          "send_reminder_last_fired_month": "2026-07"},
         tray, _res_store("2026-07-15", "17:00", 15))
     assert sched.poll(_now(15, 16, 44)) is False
@@ -135,7 +135,7 @@ def test_day_reminder_fires_before_reservation_end():
 def test_day_reminder_fires_only_once_per_day():
     tray = _FakeTray()
     sched = _make(
-        {"send_reminder_reservations_enabled": True, "gcal_enabled": True,
+        {"send_reminder_reservations_enabled": True, "reservations_enabled": True,
          "send_reminder_last_fired_month": "2026-07"},
         tray, _res_store("2026-07-15", "17:00", 15))
     sched.poll(_now(15, 16, 45))
@@ -152,7 +152,7 @@ def test_day_reminder_resets_on_new_day():
                                   "kategorie": "", "send_reminder_minutes": 15}]},
     })
     sched = _make(
-        {"send_reminder_reservations_enabled": True, "gcal_enabled": True,
+        {"send_reminder_reservations_enabled": True, "reservations_enabled": True,
          "send_reminder_last_fired_month": "2026-07"}, tray, store)
     sched.poll(_now(15, 16, 45))
     assert sched.poll(_now(16, 16, 45)) is True
@@ -163,20 +163,21 @@ def test_day_reminder_needs_both_switches():
     tray = _FakeTray()
     store = _res_store("2026-07-15", "17:00", 15)
     off = _make({"send_reminder_reservations_enabled": False,
-                 "gcal_enabled": True,
+                 "reservations_enabled": True,
                  "send_reminder_last_fired_month": "2026-07"}, tray, store)
     assert off.poll(_now(15, 16, 45)) is False
-    no_gcal = _make({"send_reminder_reservations_enabled": True,
-                     "gcal_enabled": False,
-                     "send_reminder_last_fired_month": "2026-07"}, tray, store)
-    assert no_gcal.poll(_now(15, 16, 45)) is False
+    no_reservations = _make({"send_reminder_reservations_enabled": True,
+                             "reservations_enabled": False,
+                             "send_reminder_last_fired_month": "2026-07"},
+                            tray, store)
+    assert no_reservations.poll(_now(15, 16, 45)) is False
     assert tray.messages == []
 
 
 def test_day_reminder_without_store_is_noop():
     tray = _FakeTray()
     sched = _make({"send_reminder_reservations_enabled": True,
-                   "gcal_enabled": True,
+                   "reservations_enabled": True,
                    "send_reminder_last_fired_month": "2026-07"}, tray)
     assert sched.poll(_now(15, 16, 45)) is False
 
@@ -185,7 +186,7 @@ def test_both_channels_can_fire_on_the_same_day():
     tray = _FakeTray()
     sched = _make(
         {"send_reminder_day": 15, "send_reminder_time": "16:00",
-         "send_reminder_reservations_enabled": True, "gcal_enabled": True},
+         "send_reminder_reservations_enabled": True, "reservations_enabled": True},
         tray, _res_store("2026-07-15", "17:00", 15))
     assert sched.poll(_now(15, 16, 45)) is True
     assert len(tray.messages) == 2
@@ -198,3 +199,12 @@ def test_monthly_channel_uses_weekend_shift():
                    "send_reminder_weekend_shift": "backward"}, tray)
     assert sched.poll(datetime.datetime(2026, 8, 14, 18, 0)) is True
     assert "August" in tray.messages[0]
+
+
+def test_day_reminder_does_not_need_the_calendar():
+    tray = _FakeTray()
+    sched = _make({"send_reminder_reservations_enabled": True,
+                   "reservations_enabled": True,
+                   "send_reminder_last_fired_month": "2026-07"},
+                  tray, _res_store("2026-07-15", "17:00", 15))
+    assert sched.poll(_now(15, 16, 45)) is True

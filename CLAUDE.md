@@ -813,7 +813,10 @@ Regeln:
   (`ui.App._open_dialog`), und ein Urlaub lässt sich nicht über Tage legen,
   an denen bereits Ist-Zeit oder eine aktive Reservierung liegt
   (`vacations.conflicting_days`, geprüft in `vacation_dialog._save` über
-  `vacation_dialog.blocking_days`). Der
+  `vacation_dialog.blocking_days`). „Aktiv" heißt: Reservierungen sind
+  eingeschaltet (`reservations_enabled`, beim Speichern ausgewertet) —
+  unabhängig vom Google-Kalender; ausgeschaltet sind sie unsichtbar und nicht
+  löschbar, eine Sperre durch sie wäre eine Sackgasse. Der
   Grund ist eine Zahl, keine Ästhetik: beide Werte landeten im Bericht
   nebeneinander in „Zu vergüten gesamt", ein Kalendertag käme also auf mehr
   Stunden, als er hat. **Ausgenommen sind die 0-Minuten-Tage** einer Periode
@@ -890,13 +893,15 @@ Folge zweier verschiedener Fragen.
   vom Laptop statt vom Desktop gesendet, weist deshalb ein anderes „Zu
   vergüten gesamt" aus.
 
-Der Google-Kalender-Push ist ein **Zusatz**, keine Voraussetzung: anders als
-Reservierungen ist Urlaub **nicht** an `gcal_enabled` gekoppelt. Für den
-**Push** selbst gelten dagegen vier Bedingungen: `gcal_enabled`, ein gewählter
-Kalender, ein vorhandener `reservation_store` — `_reservations_active`
-(`ui.py`) prüft beides, und `trigger_reconcile`/`reconcile_on_start`
-kehren sonst früh zurück — **und** der eigene Schalter
-`vacation_gcal_enabled`.
+Der Google-Kalender-Push ist ein **Zusatz**, keine Voraussetzung: Urlaub
+hängt weder an den Reservierungen noch am Kalender — nur der Push braucht
+`gcal_enabled`. Für den
+**Push** selbst gelten dagegen zwei Bedingungen: `gcal_enabled`
+(`_calendar_push_active` in `ui.py`; `trigger_reconcile`/`reconcile_on_start`
+kehren sonst früh zurück) **und** der eigene Schalter
+`vacation_gcal_enabled`. Von den Reservierungen
+(`reservations_enabled`) ist der Urlaubs-Push unabhängig: ohne sie läuft der
+Abgleich ohne Reservierungs-Store und pusht nur Urlaub.
 
 **Der Schalter ist umkehrbar, und das ist die eigentliche Arbeit daran.** Er
 sitzt im Dialog „Urlaub verwalten" und wird nur gebaut, wenn der Kalender
@@ -1626,7 +1631,7 @@ seinen Pfad, nicht per Import.
   hält das fest, indem es jeden `keyring_store`-Weg auf einen Fehler legt.
   Den Schlüsselbund berühren nur Handgriffe in der App: ein Demo-Konto oder
   einen Demo-Webhook löschen, oder im SMTP-Dialog ein Passwort eintippen und
-  speichern. Der Kalender-Abgleich ist an (Reservierungen zeigt die App nur
-  damit); ohne Google-Anmeldung meldet die App dann nach dem Speichern einer
+  speichern. Reservierungen sind eingeschaltet (`reservations_enabled`) und
+  der Kalender-Abgleich ist an; ohne Google-Anmeldung meldet die App dann nach dem Speichern einer
   Reservierung „Google-Verbindung abgelaufen" — `--ohne-kalender` schaltet
   ihn aus.

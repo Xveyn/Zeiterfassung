@@ -95,6 +95,7 @@ def work_updates(raw: Mapping[str, Any],
     updates: dict[str, Any] = {
         "default_pause": int(raw["default_pause"]),
         "pause_warning_enabled": bool(raw["pause_warning_enabled"]),
+        "reservations_enabled": bool(raw["reservations_enabled"]),
         "hourly_rate": parse_hourly_rate(raw["hourly_rate"]),
         "werkstudent_limit_enabled": bool(raw["werkstudent_limit_enabled"]),
         "werkstudent_limit_start": (_wsl_date(raw, "start")

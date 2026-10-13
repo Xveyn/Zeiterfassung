@@ -215,7 +215,7 @@ _WITH_SLOT = {"slots": [{"start": "09:00", "end": "10:00"}]}
 def test_blocking_days_counts_work_time_with_slots():
     entries = {"2026-10-05": _WITH_SLOT, "2026-10-06": {"slots": []}}
 
-    assert blocking_days(_DAYS, entries, None, calendar_active=False) == ["2026-10-05"]
+    assert blocking_days(_DAYS, entries, None, {}) == ["2026-10-05"]
 
 
 def test_blocking_days_ignores_zero_minute_days():
@@ -223,15 +223,18 @@ def test_blocking_days_ignores_zero_minute_days():
     blockiert den Urlaub nicht."""
     entries = {"2026-10-10": _WITH_SLOT}
 
-    assert blocking_days(_DAYS, entries, None, calendar_active=False) == []
+    assert blocking_days(_DAYS, entries, None, {}) == []
 
 
-@pytest.mark.parametrize("calendar_active, expected", [
-    (False, []),                # unsichtbare Reservierung: keine Sackgasse
-    (True, ["2026-10-06"]),
+@pytest.mark.parametrize("enabled, gcal, expected", [
+    (False, True, []),              # unsichtbare Reservierung: keine Sackgasse
+    (False, False, []),
+    (True, False, ["2026-10-06"]),  # Reservierungen an, Kalender aus: sperrt
+    (True, True, ["2026-10-06"]),
 ])
-def test_blocking_days_counts_reservations_only_with_active_calendar(
-        calendar_active, expected):
+def test_blocking_days_counts_reservations_only_when_enabled(
+        enabled, gcal, expected):
     reservations = {"2026-10-06": _WITH_SLOT}
+    settings = {"reservations_enabled": enabled, "gcal_enabled": gcal}
 
-    assert blocking_days(_DAYS, None, reservations, calendar_active) == expected
+    assert blocking_days(_DAYS, None, reservations, settings) == expected

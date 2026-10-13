@@ -10,8 +10,8 @@ Tray-Icon.
   App-Neustarts hinweg nur einmal pro Monat erscheint.
 - **Tagesbezogener Kanal**: eine heutige Reservierung mit gesetztem
   `send_reminder_minutes` läuft in Kürze aus. Nur aktiv, wenn sowohl
-  `send_reminder_reservations_enabled` als auch `gcal_enabled` gesetzt sind
-  (ohne Kalender-Abgleich zeigt die App gar keine Reservierungen an, ein
+  `send_reminder_reservations_enabled` als auch `reservations_enabled` gesetzt
+  sind (ohne eingeschaltete Reservierungen zeigt die App keine an, ein
   Toast dafür wäre nicht nachvollziehbar). Der Fired-Zustand lebt nur im
   Speicher und wird tageweise zurückgesetzt (analog `ReminderScheduler`) —
   ein persistierter Marker müsste in reservations.json landen und würde dort
@@ -106,13 +106,14 @@ class SendReminderScheduler:
 
     def _poll_day(self, now_dt, tray):
         """Tagesbezogener Kanal. Verlangt zusätzlich zum Haupt-Schalter die
-        Option „Reservierungen" UND einen aktiven Kalender-Abgleich: ohne
-        gcal_enabled zeigt die App gar keine Reservierungen an
-        (App._reservations_active), ein Toast dafür wäre nicht nachvollziehbar."""
+        Option „Reservierungen" UND eingeschaltete Reservierungen
+        (`reservations_enabled`): ohne sie zeigt die App keine Reservierungen
+        an (`App._reservations_active`), ein Toast dafür wäre nicht
+        nachvollziehbar."""
         if self._reservation_store is None:
             return False
         if not (self._settings.get("send_reminder_reservations_enabled")
-                and self._settings.get("gcal_enabled")):
+                and self._settings.get("reservations_enabled")):
             return False
         today = now_dt.date().isoformat()
         if self._day_fired_date != today:

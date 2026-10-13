@@ -77,6 +77,28 @@ def test_vacation_push_is_skipped(fake_calendar, tmp_path, switch_on, with_store
     assert fake_calendar.created_vacations == []
 
 
+def test_reconcile_without_reservation_store_pushes_only_vacation(fake_calendar, tmp_path):
+    """Kalender an, Reservierungen aus: nichts wird in den (unsichtbaren)
+    Reservierungs-Store importiert, der Urlaub-Push läuft trotzdem."""
+    store, pid = _vacation_store(tmp_path)
+    result = run_calendar_reconcile(
+        None, _settings(tmp_path), str(tmp_path),
+        Storage(str(tmp_path / "entries.json")), vacation_store=store)
+
+    assert result["ok"] is True
+    assert result["limit_warnings"] == []
+    assert "list_app_events" not in fake_calendar.calls
+    assert len(fake_calendar.created_vacations) == 1
+    assert not sync_history.ever_reconciled(str(tmp_path))
+
+
+def test_reconcile_with_reservation_store_still_marks_reconciled(fake_calendar, tmp_path):
+    result = _reconcile(tmp_path, _settings(tmp_path), None)
+    assert result["ok"] is True
+    assert "list_app_events" in fake_calendar.calls
+    assert sync_history.ever_reconciled(str(tmp_path))
+
+
 def test_vacation_push_failure_does_not_fail_the_reservation_reconcile(
         fake_calendar, tmp_path, caplog):
     """Der Urlaubs-Push hat einen eigenen Fehlerraum. Risse er den

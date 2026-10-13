@@ -2,7 +2,10 @@ import logging
 from unittest import mock
 
 import pytest
-from src.reservations import ReservationStore
+from src.reservations import (
+    ReservationStore, migrate_reservations_enabled, reservations_active,
+)
+from src.settings import SYNCED_SETTING_KEYS, Settings
 
 
 @pytest.fixture
@@ -194,3 +197,61 @@ def test_send_reminder_minutes_not_carried_over_positionally(store):
                                "send_reminder_minutes": 15}])
     store.save("2026-08-31", [{"start": "08:00", "end": "12:00"}])
     assert store.get("2026-08-31")["slots"][0]["send_reminder_minutes"] is None
+
+
+def test_reservations_enabled_is_off_by_default_and_device_local(tmp_path):
+    settings = Settings(str(tmp_path / "settings.json"))
+    assert settings.get("reservations_enabled") is False
+    assert settings.get("reservations_migrated") is False
+    assert "reservations_enabled" not in SYNCED_SETTING_KEYS
+    assert "reservations_migrated" not in SYNCED_SETTING_KEYS
+
+
+def test_reservations_active_needs_store_and_switch(tmp_path):
+    settings = Settings(str(tmp_path / "settings.json"))
+    store = object()
+    assert reservations_active(store, settings) is False
+    settings.set("reservations_enabled", True)
+    assert reservations_active(store, settings) is True
+    assert reservations_active(None, settings) is False
+
+
+def test_reservations_active_ignores_gcal(tmp_path):
+    settings = Settings(str(tmp_path / "settings.json"))
+    settings.set("gcal_enabled", True)
+    assert reservations_active(object(), settings) is False
+
+
+def test_migration_turns_reservations_on_for_calendar_users(tmp_path):
+    settings = Settings(str(tmp_path / "settings.json"))
+    settings.set("gcal_enabled", True)
+    migrate_reservations_enabled(settings)
+    assert settings.get("reservations_enabled") is True
+    assert settings.get("reservations_migrated") is True
+
+
+def test_migration_leaves_users_without_calendar_off(tmp_path):
+    settings = Settings(str(tmp_path / "settings.json"))
+    migrate_reservations_enabled(settings)
+    assert settings.get("reservations_enabled") is False
+    assert settings.get("reservations_migrated") is True
+
+
+def test_migration_runs_only_once(tmp_path):
+    """Wer Reservierungen später bewusst ausschaltet, behält das."""
+    settings = Settings(str(tmp_path / "settings.json"))
+    settings.set("gcal_enabled", True)
+    migrate_reservations_enabled(settings)
+    settings.set("reservations_enabled", False)
+    migrate_reservations_enabled(settings)
+    assert settings.get("reservations_enabled") is False
+
+
+def test_migration_persists(tmp_path):
+    path = str(tmp_path / "settings.json")
+    settings = Settings(path)
+    settings.set("gcal_enabled", True)
+    migrate_reservations_enabled(settings)
+    again = Settings(path)
+    assert again.get("reservations_enabled") is True
+    assert again.get("reservations_migrated") is True

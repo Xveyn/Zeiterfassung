@@ -207,12 +207,11 @@ class _ImportSummaryDialog:
                 row += 1
 
         if (any(s["key"] == "reservations" for s in self.sections)
-                and not self.settings.get("gcal_enabled")):
+                and not self.settings.get("reservations_enabled")):
             tk.Label(
                 self.top,
-                text="Hinweis: Reservierungen werden sichtbar und mit dem "
-                     "Kalender\nabgeglichen, sobald der Google-Kalender-Sync "
-                     "in den Einstellungen aktiviert ist.",
+                text="Hinweis: Reservierungen werden erst sichtbar, wenn sie in den\n"
+                     "Einstellungen (Tab Arbeitszeit) eingeschaltet sind.",
                 font=FONT_SMALL, bg=BG, fg=TEXT_MUTED, justify="left",
             ).grid(row=row, column=0, columnspan=6, padx=10, pady=(8, 4), sticky="w")
             row += 1

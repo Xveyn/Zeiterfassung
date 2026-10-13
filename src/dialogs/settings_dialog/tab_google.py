@@ -541,7 +541,7 @@ class GoogleTab:
 
         # Wie beim Sync: nicht in eine Gruppe, der Consent sperrt ihn selbst.
         self._cb_gcal = form.check(
-            "Reservierungen mit Google Kalender abgleichen", self._var_gcal)
+            "Mit Google Kalender abgleichen (Reservierungen und Urlaub)", self._var_gcal)
         self._cb_gcal.config(command=self._on_gcal_toggled)
         with form.depends_on(self._var_gcal):
             self._cal_combo = dark_combo(body, self.cal_var,

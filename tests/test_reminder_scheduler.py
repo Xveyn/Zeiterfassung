@@ -23,8 +23,8 @@ def _now(h, m):
     return datetime.datetime(2026, 7, 2, h, m)
 
 
-def _make(reservation_by_date, entry_by_date, tray, minutes=15):
-    settings = {"reminder_minutes_before": minutes}
+def _make(reservation_by_date, entry_by_date, tray, minutes=15, enabled=True):
+    settings = {"reminder_minutes_before": minutes, "reservations_enabled": enabled}
     return ReminderScheduler(
         root=None,
         settings=type("S", (), {"get": staticmethod(lambda k: settings[k])})(),
@@ -80,3 +80,12 @@ def test_poll_clears_fired_on_date_change():
     other = datetime.datetime(2026, 7, 3, 8, 0)
     assert sched.poll(other) == []
     assert sched._fired_date == "2026-07-03"
+
+
+def test_poll_is_silent_when_reservations_are_off():
+    tray = _FakeTray()
+    sched = _make(
+        {"2026-07-02": {"slots": [{"start": "09:00", "end": "17:00", "kategorie": "A"}]}},
+        {}, tray, enabled=False)
+    assert sched.poll(_now(16, 50)) == []
+    assert tray.messages == []

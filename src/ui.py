@@ -24,6 +24,7 @@ from src.mobile_pairing import PairingSession
 from src.mobile_routes import MobileContext
 from src.mobile_service import MobileService
 from src.weekly_limit import format_limit_warnings
+from src.reservations import reservations_active
 from src.grid_renderer import GridRenderer
 from src.paths import get_resource_path, relaunch_command, relaunch_env
 from src.mail import friendly_token_message
@@ -111,7 +112,7 @@ class App:
         self._tray = None
         self._bg = BackgroundTaskRunner(
             self._marshal_to_ui, self.settings, self.base_path,
-            self.reservation_store, self._reservations_active, self.storage,
+            self.reservation_store, self._calendar_push_active, self.storage,
             data_lock=data_lock,
             vacation_store=self.vacation_store,
         )
@@ -310,11 +311,20 @@ class App:
 
     def _reservations_active(self):
         """True, wenn Reservierungen angezeigt/bearbeitet werden dürfen: ein
-        Store existiert UND der Google-Kalender-Sync ist in den Settings aktiv.
-        Bei deaktiviertem Sync werden Reservierungen weder im Kalender
-        gerendert noch im Tages-Dialog angeboten."""
-        return (self.reservation_store is not None
-                and bool(self.settings.get("gcal_enabled")))
+        Store existiert UND der Nutzer hat sie in den Einstellungen
+        eingeschaltet (`reservations_enabled`). Unabhängig vom Google-Kalender
+        — der gleicht sie nur optional ab."""
+        return reservations_active(self.reservation_store, self.settings)
+
+    def _active_reservation_store(self):
+        """Der Reservierungs-Store für Dialoge — `None`, wenn Reservierungen
+        aus sind (dann zeigen und prüfen die Dialoge keine)."""
+        return self.reservation_store if self._reservations_active() else None
+
+    def _calendar_push_active(self):
+        """True, wenn der Google-Kalender-Abgleich läuft (Reservierungen,
+        sofern an, und Urlaub)."""
+        return bool(self.settings.get("gcal_enabled"))
 
     def _on_reconcile_done(self, result):
         if not result.get("ok"):
@@ -583,8 +593,8 @@ class App:
     def _on_vacation_change(self):
         """Nach einer Urlaubsänderung den Kalender neu zeichnen und den
         Google-Kalender-Push anstoßen. `trigger_reconcile` selbst gatet auf
-        `_reservations_active` (== gcal_enabled, reservation_store ist immer
-        gesetzt) — ohne Kalender-Sync also ein No-op."""
+        `_calendar_push_active` (== gcal_enabled) — ohne Kalender-Sync
+        also ein No-op."""
         self._refresh()
         self._bg.trigger_reconcile(self._on_reconcile_done)
 
@@ -929,20 +939,19 @@ class App:
                 f"gearbeitet werden, lösche den Urlaub zuerst per Rechtsklick "
                 f"auf den Tag.")
             return
-        # Bei deaktiviertem Kalender-Sync KEIN reservation_store an den Dialog
+        # Bei ausgeschalteten Reservierungen KEIN reservation_store an den Dialog
         # geben — dann wird der Reservierungs-Block nicht angezeigt und ist per
         # Linksklick nicht setzbar (open_entry_dialog wertet None entsprechend).
         open_entry_dialog(
             self.root, date_str, self.storage, self.settings,
             on_change=self._refresh,
-            reservation_store=(
-                self.reservation_store if self._reservations_active() else None),
+            reservation_store=self._active_reservation_store(),
             trigger_reconcile=lambda: self._bg.trigger_reconcile(self._on_reconcile_done),
         )
 
     def _send(self):
         open_send_dialog(self.root, self.storage, self.settings, self.base_path,
-                         self._bg, reservation_store=self.reservation_store,
+                         self._bg, reservation_store=self._active_reservation_store(),
                          webhook_store=self._webhook_store,
                          vacation_store=self.vacation_store,
                          smtp_store=self._smtp_store)
@@ -951,7 +960,7 @@ class App:
         from src.dialogs.share_dialog import open_share_dialog
         open_share_dialog(
             self.root, self.storage, self.settings, self.base_path, self._bg,
-            reservation_store=self.reservation_store,
+            reservation_store=self._active_reservation_store(),
             smtp_store=self._smtp_store,
         )
 
