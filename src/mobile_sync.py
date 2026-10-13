@@ -29,8 +29,9 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
-from src import mobile_pairing, mobile_reservations, sync, sync_history, sync_journal
+from src import mobile_pairing, mobile_reservations, mobile_settings, sync, sync_history, sync_journal
 from src.api_entry_write import WriteError, check_date_range, load_json_body, parse_slots
+from src.api_summary import category_names
 from src.devices import sanitize_registry, with_own_entry
 from src.mobile_settings import clean_category_times, clock, pause
 from src.reservations import reservations_active
@@ -77,6 +78,9 @@ class SyncRequest:
     # {date: {slots, modified_at, deleted}} der Reservierungen; leer, wenn das Handy keine
     # sendet oder der Desktop sie nicht annimmt (`accept_reservations=False`).
     reservations: dict[str, dict[str, Any]] = field(default_factory=dict)
+    # {key: {value, modified_at}} der Einstellungen, die das Handy setzen darf (`categories`,
+    # `category_times`); leer, wenn es keine sendet. Geprüft von `mobile_settings.parse_settings`.
+    settings: dict[str, dict[str, Any]] = field(default_factory=dict)
 
 
 @dataclass
@@ -144,7 +148,8 @@ def parse_request(body: bytes, *, now: str, today: datetime.date | None = None,
     """Body → geprüfte Einträge. `now` ist die Desktop-Zeit (UTC-Text), `today` sein lokales
     Datum (Standard: das UTC-Datum von `now`). Mit `accept_reservations=False` wird das Feld
     `reservations` gar nicht gelesen — ein Desktop mit ausgeschalteten Reservierungen ignoriert
-    es, statt es abzulehnen. Wirft `SyncError`."""
+    es, statt es abzulehnen. `settings` darf nur `categories`/`category_times` enthalten.
+    Wirft `SyncError`."""
     try:
         data = load_json_body(body)
     except WriteError as error:
@@ -179,9 +184,16 @@ def parse_request(body: bytes, *, now: str, today: datetime.date | None = None,
                 parse_utc=_parse_utc, skew_limit=CLOCK_SKEW_LIMIT)
         except mobile_reservations.ReservationError as error:
             raise SyncError(422, "invalid_entry", error.message) from None
+    settings: dict[str, dict[str, Any]] = {}
+    if "settings" in data:
+        try:
+            settings = mobile_settings.parse_settings(
+                data["settings"], now_dt=now_dt, parse_utc=_parse_utc, skew_limit=CLOCK_SKEW_LIMIT)
+        except mobile_settings.SettingsError as error:
+            raise SyncError(422, "invalid_entry", error.message) from None
     wish = data.get("window_days")
     window_days = wish if isinstance(wish, int) and not isinstance(wish, bool) and wish >= 1 else None
-    return SyncRequest(str(data["client_time"]), entries, window_days, reservations)
+    return SyncRequest(str(data["client_time"]), entries, window_days, reservations, settings)
 
 
 def window_cap(raw: object) -> int:
@@ -373,7 +385,8 @@ def _phone_doc(request: SyncRequest, device_id: str, device_name: str, now: str,
     `modified_at > last_pull_at`, und diese Stempel stammen von zwei Uhren: bei einem
     nachgehenden Handy läge der Stempel vor `last_pull_at`, und die Änderung verlöre
     still gegen die Desktop-Version, ohne Konflikt. Deshalb wird der Stempel auf
-    `last_pull_at + 1 s` angehoben (innerhalb der erlaubten 15 Minuten Abweichung)."""
+    `last_pull_at + 1 s` angehoben (innerhalb der erlaubten 15 Minuten Abweichung).
+    Die Einstellungen bekommen denselben angehobenen Stempel."""
     floor = mobile_pairing.shift(changed_since, datetime.timedelta(seconds=1)) if changed_since else ""
     return {
         "schema_version": sync.SCHEMA_VERSION,
@@ -382,7 +395,11 @@ def _phone_doc(request: SyncRequest, device_id: str, device_name: str, now: str,
                    "device_id": device_id}
             for date, entry in request.entries.items()
         },
-        "settings": {},
+        "settings": {
+            key: {"value": payload["value"], "modified_at": max(payload["modified_at"], floor),
+                  "device_id": device_id}
+            for key, payload in request.settings.items()
+        },
         "conflicts": [],
         "devices": with_own_entry(None, device_id, device_name, now),
         "meta": {"gc_watermark": ""},
@@ -390,19 +407,21 @@ def _phone_doc(request: SyncRequest, device_id: str, device_name: str, now: str,
 
 
 def perform_sync(request: SyncRequest, *, device_id: str, device_name: str,
-                 last_pull_at: str, categories: list[str], storage: Storage,
+                 last_pull_at: str, storage: Storage,
                  settings: Settings, conflicts_store: ConflictsStore, base: str,
                  now: str, today: datetime.date, desktop: Mapping[str, str],
                  data_lock: threading.RLock | None = None,
                  sync_guard: threading.Lock | None = None,
                  reservation_store: ReservationStore | None = None,
-                 report: SyncReport | None = None) -> dict[str, Any]:
+                 report: SyncReport | None = None,
+                 categories: list[str] | None = None) -> dict[str, Any]:
     """Wendet den Abgleich an und liefert die Antwort (ohne `token`/`expires_at`).
 
     `last_pull_at` ist der Stand aus dem Gerätespeicher des Desktops, nie der Wert
     aus dem Body. `sync_guard` (derselbe wie Drive-Sync, Kompaktierung, Quit-Push)
     wird nicht-blockierend genommen und im `finally` dieses Threads freigegeben;
-    belegt → `SyncError` 503. `data_lock` klammert Snapshot → Merge → Apply. Die
+    belegt → `SyncError` 503. `categories` (`None`: aus den Einstellungen **nach** dem
+    Anwenden) bestimmt die Namen der Antwort. `data_lock` klammert Snapshot → Merge → Apply. Die
     Route ruft `on_change` erst danach.
 
     Idempotent: derselbe Request liefert dasselbe Ergebnis (der Merge ist es, und
@@ -412,6 +431,13 @@ def perform_sync(request: SyncRequest, *, device_id: str, device_name: str,
     active = False
     try:
         with (data_lock if data_lock is not None else contextlib.nullcontext()):
+            # Vor dem Snapshot: nichts darf angewendet sein, wenn die Anfrage abgelehnt wird.
+            if "category_times" in request.settings and "categories" not in request.settings:
+                try:
+                    mobile_settings.check_times_names(
+                        request.settings["category_times"]["value"], category_names(settings))
+                except mobile_settings.SettingsError as error:
+                    raise SyncError(422, "invalid_entry", error.message) from None
             desktop_doc = sync.build_local_doc(storage, settings, conflicts_store)
             watermark = (desktop_doc.get("meta") or {}).get("gc_watermark") or ""
             excluded = bool(last_pull_at) and last_pull_at < watermark
@@ -440,10 +466,11 @@ def perform_sync(request: SyncRequest, *, device_id: str, device_name: str,
         reservations = (mobile_reservations.build_reservations(
             reservation_store.get_all_raw(), today=today)
             if active and reservation_store is not None else None)
+        names = categories if categories is not None else category_names(settings)
         cap = window_cap(settings.get("mobile_window_max_days"))
         return build_response(merged, sent_dates=request.entries, today=today, now=now,
-                              excluded=excluded, categories=categories,
-                              defaults=build_defaults(settings, categories), desktop=desktop,
+                              excluded=excluded, categories=names,
+                              defaults=build_defaults(settings, names), desktop=desktop,
                               window_days=grant_window(request.window_days, cap),
                               window_max_days=cap, reservations=reservations)
     finally:

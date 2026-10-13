@@ -716,3 +716,124 @@ def test_perform_sync_writes_reservations_inside_the_data_lock(env, res_store):
     run_res(env, res_store, {"2026-10-20": res_day()}, data_lock=spy)
 
     assert inside == [1]
+
+
+# --- Einstellungen --------------------------------------------------------------------------------
+
+SET_STAMP = "2026-10-08T11:00:00Z"
+
+
+def setting(value, modified_at=SET_STAMP):
+    return {"value": value, "modified_at": modified_at}
+
+
+def desktop_setting(env, key, value, modified_at):
+    env.settings.apply_synced({key: {"value": value, "modified_at": modified_at, "device_id": "DESK"}})
+
+
+def run_settings(env, settings, *, last_pull_at="", **over):
+    request = mobile_sync.parse_request(body({}, settings=settings), now=NOW, today=TODAY)
+    kwargs = dict(device_id=PHONE, device_name="Pixel", last_pull_at=last_pull_at,
+                  storage=env.storage, settings=env.settings, conflicts_store=env.conflicts,
+                  base=env.base, now=NOW, today=TODAY, desktop=DESKTOP)
+    kwargs.update(over)
+    return mobile_sync.perform_sync(request, **kwargs)
+
+
+def test_settings_are_parsed_next_to_the_entries():
+    request = mobile_sync.parse_request(body({}, settings={"categories": setting(["A"])}), now=NOW, today=TODAY)
+    assert request.settings == {"categories": {"value": ["A"], "modified_at": SET_STAMP}}
+
+
+def test_a_request_without_settings_has_none():
+    assert parse({}).settings == {}
+
+
+def test_a_forbidden_setting_key_is_422_invalid_entry_and_names_the_key():
+    error = rejected(body({}, settings={"hourly_rate": setting(100)}))
+    assert (error.status, error.code) == (422, "invalid_entry")
+    assert "hourly_rate" in error.message
+
+
+def test_the_clock_check_comes_before_the_settings():
+    error = rejected(body({}, client_time="2026-10-08T13:00:00Z", settings={"hourly_rate": setting(1)}))
+    assert error.code == "clock_skew"
+
+
+def test_a_phone_change_wins_and_the_response_has_the_state_after_applying(env):
+    desktop_setting(env, "categories", ["Alt"], "2026-10-01T10:00:00Z")
+
+    response = run_settings(env, {"categories": setting(["Neu", "Intern"]),
+                                  "category_times": setting({"Neu": {"start": "09:00", "pause": 30}})},
+                            last_pull_at="2026-10-05T00:00:00Z")
+
+    assert env.settings.get("categories") == ["Neu", "Intern"]
+    assert response["categories"] == ["Neu", "Intern"]
+    assert response["defaults"]["category_times"] == {"Neu": {"start": "09:00", "pause": 30}}
+
+
+def test_a_slow_phone_clock_still_wins_against_an_older_desktop_value(env):
+    desktop_setting(env, "categories", ["Alt"], "2026-10-04T10:00:00Z")
+
+    # Das Handy hat nach dem letzten Abgleich (10-05) geändert, seine Uhr geht nach.
+    run_settings(env, {"categories": setting(["Neu"], modified_at="2026-10-03T00:00:00Z")},
+                 last_pull_at="2026-10-05T00:00:00Z")
+
+    assert env.settings.get("categories") == ["Neu"]
+
+
+def test_a_change_on_both_sides_becomes_a_setting_conflict_and_the_newer_wins(env):
+    desktop_setting(env, "categories", ["Desktop"], "2026-10-06T10:00:00Z")
+
+    response = run_settings(env, {"categories": setting(["Handy"], modified_at="2026-10-08T10:00:00Z")},
+                            last_pull_at="2026-10-05T00:00:00Z")
+
+    conflicts = env.conflicts.get_all()
+    assert [(c["kind"], c["key"]) for c in conflicts] == [("setting", "categories")]
+    assert env.settings.get("categories") == ["Handy"]
+    assert response["conflicts"] == []                     # das Handy zeigt nur Einträge
+
+
+def test_the_same_request_twice_changes_nothing_and_makes_no_second_conflict(env):
+    desktop_setting(env, "categories", ["Alt"], "2026-10-01T10:00:00Z")
+    first = run_settings(env, {"categories": setting(["Neu"])}, last_pull_at="2026-10-05T00:00:00Z")
+    before = (env.settings.get("categories"), len(env.conflicts.get_all()))
+
+    again = run_settings(env, {"categories": setting(["Neu"])}, last_pull_at="2026-10-05T00:00:00Z")
+
+    assert (env.settings.get("categories"), len(env.conflicts.get_all())) == before
+    assert again["categories"] == first["categories"]
+
+
+def test_a_per_day_category_the_phone_sends_back_stays_bit_identical(env):
+    times = {"Support": {"mode": "per_day", "pause": 15,
+                         "days": {"fri": {"start": "07:00", "end": "11:00"}}},
+             "Projekt": {"start": "09:00", "end": "17:00", "pause": 45}}
+    desktop_setting(env, "categories", ["Support", "Projekt"], "2026-10-01T10:00:00Z")
+    desktop_setting(env, "category_times", times, "2026-10-01T10:00:00Z")
+
+    run_settings(env, {"categories": setting(["Support", "Projekt", "Neu"]), "category_times": setting(times)},
+                 last_pull_at="2026-10-05T00:00:00Z")
+
+    assert env.settings.get("category_times") == times
+
+
+def test_category_times_alone_with_an_unknown_name_is_422_and_applies_nothing(env):
+    desktop_setting(env, "categories", ["A"], "2026-10-01T10:00:00Z")
+    request = mobile_sync.parse_request(
+        body({"2026-10-07": day()}, settings={"category_times": setting({"Fremd": {"pause": 5}})}),
+        now=NOW, today=TODAY)
+
+    with pytest.raises(SyncError) as excinfo:
+        mobile_sync.perform_sync(request, device_id=PHONE, device_name="Pixel", last_pull_at="",
+                                 storage=env.storage, settings=env.settings, conflicts_store=env.conflicts,
+                                 base=env.base, now=NOW, today=TODAY, desktop=DESKTOP)
+
+    assert (excinfo.value.status, excinfo.value.code) == (422, "invalid_entry")
+    assert env.storage.get("2026-10-07") is None
+    assert env.settings.get("category_times") == {}
+
+
+def test_without_a_categories_argument_the_response_reads_the_settings(env):
+    desktop_setting(env, "categories", ["Aus den Einstellungen"], "2026-10-01T10:00:00Z")
+    assert run_settings(env, {})["categories"] == ["Aus den Einstellungen"]
