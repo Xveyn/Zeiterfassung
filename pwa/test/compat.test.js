@@ -42,3 +42,11 @@ test('the response of a desktop before the reservations is still understood and 
   assert.equal(parsed.reservations, null);
   assert.deepEqual(Object.keys(parsed.entries), ['2026-10-07', '2026-10-06']);
 });
+
+test('the response of a desktop before the settings is still understood and offers nothing to write', () => {
+  const doc = frozen('sync-response-pre-settings.json');
+  assert.ok(!('writable_settings' in doc));
+  const parsed = parseSyncResponse(doc);
+  assert.deepEqual(parsed.writable_settings, []);
+  assert.deepEqual(Object.keys(parsed.entries), ['2026-10-07', '2026-10-06']);
+});

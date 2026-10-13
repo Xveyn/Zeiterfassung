@@ -41,5 +41,24 @@
       "modified_at": "2026-10-07T18:41:00Z",
       "deleted": true
     }
+  },
+  "settings": {
+    "categories": {
+      "value": [
+        "Projekt",
+        "Intern"
+      ],
+      "modified_at": "2026-10-07T18:45:00Z"
+    },
+    "category_times": {
+      "value": {
+        "Projekt": {
+          "start": "09:00",
+          "end": "17:00",
+          "pause": 45
+        }
+      },
+      "modified_at": "2026-10-07T18:45:00Z"
+    }
   }
 }

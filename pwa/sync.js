@@ -22,10 +22,10 @@ const TOKEN_RE = /^[A-Za-z0-9_-]{16,256}$/;
 const KEY_RE = /^[A-Za-z0-9_-]{43}$/;                            // 32 Bytes, base64url ohne Padding
 
 export class SyncError extends Error {
-  constructor({ kind, status = 0, code = '', message = '', needsRepair = false, retryable = false, day = null, dayKind = null, supportedProtocol = null }) {
+  constructor({ kind, status = 0, code = '', message = '', needsRepair = false, retryable = false, day = null, dayKind = null, setting = null, supportedProtocol = null }) {
     super(message);
     this.name = 'SyncError';
-    Object.assign(this, { kind, status, code, needsRepair, retryable, day, dayKind, supportedProtocol });
+    Object.assign(this, { kind, status, code, needsRepair, retryable, day, dayKind, setting, supportedProtocol });
   }
 }
 
@@ -64,13 +64,15 @@ export function classifyHttpError(status, body) {
   const named = kind === 'invalid_entry' ? /^(Reservierung )?(\d{4}-\d{2}-\d{2}):/.exec(message) : null;
   const day = named?.[2] ?? null;
   const dayKind = day ? (named[1] ? 'reservation' : 'entry') : null;
+  // Eine abgelehnte Einstellung nennt der Desktop vorn: „Einstellung categories: …“.
+  const setting = kind === 'invalid_entry' ? (/^Einstellung (categories|category_times):/.exec(message)?.[1] ?? null) : null;
   const protocolNumber = detail.supported_protocol;
   const supportedProtocol = code === 'invalid_protocol' && Number.isInteger(protocolNumber) && protocolNumber > 0 && protocolNumber < 1000 ? protocolNumber : null;
   return new SyncError({
     kind, status, code, message,
     needsRepair: REPAIR_KINDS.has(kind),
     retryable: kind === 'transient' || kind === 'server',
-    day, dayKind, supportedProtocol,
+    day, dayKind, setting, supportedProtocol,
   });
 }
 
@@ -163,6 +165,7 @@ export function parseSyncResponse(raw) {
     categories: [...raw.categories], token: raw.token, expires_at: raw.expires_at,
     defaults: parseDefaults(raw.defaults), desktop: parseDesktopInfo(raw.desktop),
     reservations: parseReservations(raw.reservations),
+    writable_settings: Array.isArray(raw.writable_settings) ? raw.writable_settings.filter((key) => typeof key === 'string') : [],
   };
 }
 
@@ -314,7 +317,7 @@ export class SyncClient {
   async _run() {
     let total = { sent: 0, conflicts: 0, excluded: false };
     const done = new Set();         // schon gesendet: bei `excluded` bleiben sie „offen“, gingen sonst endlos hinaus
-    let first = true;               // Reservierungen gehen nur im ersten Päckchen hinaus
+    let first = true;               // Reservierungen und Einstellungen gehen nur im ersten Päckchen hinaus
     for (;;) {
       const result = await this._runOnce(MAX_DAYS_PER_REQUEST, done, first);
       first = false;
@@ -325,7 +328,7 @@ export class SyncClient {
     }
   }
 
-  async _runOnce(limit, done, withReservations = false) {
+  async _runOnce(limit, done, first = false) {
     const meta = this._store.getMeta();
     if (!meta.address || !meta.token) throw new SyncError({ kind: 'not_paired', message: 'Noch nicht gekoppelt.' });
     if (!KEY_RE.test(meta.key || '')) {
@@ -333,8 +336,10 @@ export class SyncClient {
         message: 'Diese Kopplung ist noch nicht verschlüsselt. Bitte neu koppeln.' });
     }
     const snapshot = this._store.snapshotDirty(limit, done);
-    Object.assign(snapshot, withReservations
+    Object.assign(snapshot, first
       ? this._store.snapshotReservations() : { reservations: {}, reservationVersions: {} });
+    const settings = first ? this._store.snapshotSettings() : null;
+    if (settings) Object.assign(snapshot, settings); else snapshot.settingsVersion = undefined;
     const now = this._now();
     const wishSent = meta.window_wish ?? 90;
     // Den Zähler VOR dem Senden dauerhaft ablegen: ein Absturz mitten im Request darf ihn nie
@@ -348,7 +353,8 @@ export class SyncClient {
         token: meta.token, requestKey, responseKey, aadRequest: meta.device_id, aadResponse: meta.device_id, seq,
         payload: { protocol: PROTOCOL, client_time: utcStamp(now), last_pull_at: meta.last_pull_at || '',
           window_days: wishSent, entries: snapshot.entries,
-          ...(Object.keys(snapshot.reservations).length > 0 ? { reservations: snapshot.reservations } : {}) } });
+          ...(Object.keys(snapshot.reservations).length > 0 ? { reservations: snapshot.reservations } : {}),
+          ...(settings ? { settings: settings.settings } : {}) } });
     } catch (error) {
       // Währenddessen neu gekoppelt: der Fehler gehört zum alten Server/Token und darf weder
       // den Zustand der neuen Kopplung markieren noch als deren Fehler erscheinen.
@@ -359,6 +365,9 @@ export class SyncClient {
         } else {
           await this._store.markDayError(error.day, error.message, snapshot.versions[error.day]);
         }
+      }
+      if (error instanceof SyncError && error.kind === 'invalid_entry' && error.setting) {
+        await this._store.markSettingsError(error.message, snapshot.settingsVersion);
       }
       throw error;
     }

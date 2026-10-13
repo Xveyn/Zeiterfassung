@@ -168,6 +168,15 @@ bietet sie nur an, wenn „Reservierungen verwenden“ an ist.
   Empfangszeitpunkt (`ReservationStore.merge_phone`); die Antwort kann daher
   einen neueren `modified_at` tragen als gesendet.
 
+## Einstellungen im Abgleich
+
+Der Kategorien-Block (`categories` + `category_times`, ein gemeinsamer Stempel) geht als
+`settings` im **ersten** Päckchen eines Abgleichs hinaus, zusammen mit den Reservierungen,
+und nur, wenn er geändert und nicht abgelehnt ist. Ob der Desktop ihn annimmt, sagt
+`writable_settings` der Antwort (Feature-Erkennung; fehlt das Feld, ist die Liste leer). Ein
+`422` mit `Einstellung categories:`/`Einstellung category_times:` setzt `SyncError.setting`
+und markiert nur den Block (`markSettingsError`), keinen Tag.
+
 ## Lesefenster (#250)
 
 Die PWA sieht standardmäßig die letzten 90 Tage (Standardfenster **90 Tage**,
