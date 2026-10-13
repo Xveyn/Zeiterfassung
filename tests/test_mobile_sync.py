@@ -10,6 +10,7 @@ import pytest
 from src import mobile_sync, sync_history, sync_journal
 from src.conflicts_store import ConflictsStore
 from src.mobile_sync import SyncError
+from src.reservations import ReservationStore
 from src.settings import Settings
 from src.storage import Storage
 
@@ -328,6 +329,48 @@ def test_the_excluded_flag_and_categories_are_passed_through():
     assert response["excluded"] is True and response["categories"] == ["A", "B"]
 
 
+# --- Reservierungen -------------------------------------------------------------------------------
+
+RES = {"start": "09:00", "end": "12:00", "kategorie": "Projekt"}
+
+
+def res_day(*, slots=(RES,), modified_at="2026-10-08T11:00:00Z", deleted=False):
+    return {"slots": list(slots), "modified_at": modified_at, "deleted": deleted}
+
+
+def test_reservations_are_parsed_next_to_the_entries():
+    request = mobile_sync.parse_request(
+        body({}, reservations={"2026-10-20": res_day()}), now=NOW, today=TODAY)
+
+    assert request.reservations == {"2026-10-20": res_day()}
+
+
+def test_a_request_without_reservations_has_none():
+    assert parse({}).reservations == {}
+
+
+def test_a_bad_reservation_is_422_invalid_entry_and_names_the_day():
+    error = rejected(body({}, reservations={"2026-10-01": res_day()}))   # vor TODAY
+
+    assert (error.status, error.code) == (422, "invalid_entry")
+    assert "2026-10-01" in error.message
+
+
+def test_the_clock_check_comes_before_the_reservations():
+    error = rejected(body({}, client_time="2026-10-08T13:00:00Z",
+                          reservations={"2026-10-01": res_day()}))
+
+    assert error.code == "clock_skew"
+
+
+def test_reservations_are_ignored_not_rejected_when_the_feature_is_off():
+    request = mobile_sync.parse_request(
+        body({}, reservations={"2026-10-01": res_day(), "x": 1}), now=NOW, today=TODAY,
+        accept_reservations=False)
+
+    assert request.reservations == {}
+
+
 # --- perform_sync ---------------------------------------------------------------------------------
 
 PHONE = "phone-0001"
@@ -585,3 +628,90 @@ def test_perform_sync_reads_the_setting_on_every_call(env):
     assert run(env, {}, wish=365)["window_days"] == 365
     env.settings.set("mobile_window_max_days", 30)
     assert run(env, {}, wish=365)["window_days"] == 30
+
+
+# --- perform_sync mit Reservierungen --------------------------------------------------------------
+
+def run_res(env, store, reservations, *, report=None, data_lock=None, accept=True):
+    request = mobile_sync.parse_request(
+        body({}, reservations=reservations), now=NOW, today=TODAY, accept_reservations=accept)
+    return mobile_sync.perform_sync(
+        request, device_id=PHONE, device_name="Pixel", last_pull_at="", categories=["Projekt"],
+        storage=env.storage, settings=env.settings, conflicts_store=env.conflicts,
+        base=env.base, now=NOW, today=TODAY, desktop=DESKTOP, data_lock=data_lock,
+        reservation_store=store, report=report)
+
+
+@pytest.fixture
+def res_store(env):
+    return ReservationStore(os.path.join(env.base, "reservations.json"))
+
+
+def test_perform_sync_merges_reservations_and_returns_the_active_days(env, res_store):
+    env.settings.set_many({"reservations_enabled": True})
+    report = mobile_sync.SyncReport()
+
+    response = run_res(env, res_store, {"2026-10-20": res_day()}, report=report)
+
+    assert report.reservations_changed is True
+    assert response["reservations"] == {"2026-10-20": res_day()}
+    assert res_store.get("2026-10-20") is not None
+
+
+def test_perform_sync_repeating_the_same_request_reports_no_change(env, res_store):
+    env.settings.set_many({"reservations_enabled": True})
+    run_res(env, res_store, {"2026-10-20": res_day()})
+    report = mobile_sync.SyncReport()
+
+    run_res(env, res_store, {"2026-10-20": res_day()}, report=report)
+
+    assert report.reservations_changed is False
+
+
+def test_perform_sync_leaves_reservations_alone_when_the_feature_is_off(env, res_store):
+    report = mobile_sync.SyncReport()
+
+    response = run_res(env, res_store, {"2026-10-20": res_day()}, report=report)
+
+    assert "reservations" not in response
+    assert report.reservations_changed is False
+    assert res_store.get_all_raw() == {}
+
+
+def test_perform_sync_with_the_feature_off_does_not_reject_garbage(env, res_store):
+    response = run_res(env, res_store, {"2026-10-01": "kaputt"}, accept=False)
+
+    assert "reservations" not in response
+
+
+def test_perform_sync_without_a_store_has_no_reservations_field(env):
+    env.settings.set_many({"reservations_enabled": True})
+
+    assert "reservations" not in run(env, {})
+
+
+def test_perform_sync_writes_reservations_inside_the_data_lock(env, res_store):
+    env.settings.set_many({"reservations_enabled": True})
+    inside = []
+    real = res_store.merge_phone
+
+    class Spy:
+        def __init__(self):
+            self.depth = 0
+
+        def __enter__(self):
+            self.depth += 1
+
+        def __exit__(self, *exc):
+            self.depth -= 1
+
+    spy = Spy()
+
+    def merge(days):
+        inside.append(spy.depth)
+        return real(days)
+
+    res_store.merge_phone = merge
+    run_res(env, res_store, {"2026-10-20": res_day()}, data_lock=spy)
+
+    assert inside == [1]

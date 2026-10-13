@@ -26,17 +26,19 @@ import os
 import re
 import threading
 from collections.abc import Iterable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
-from src import mobile_pairing, sync, sync_history, sync_journal
+from src import mobile_pairing, mobile_reservations, sync, sync_history, sync_journal
 from src.api_entry_write import WriteError, check_date_range, load_json_body, parse_slots
 from src.devices import sanitize_registry, with_own_entry
+from src.reservations import reservations_active
 from src.settings import WEEKDAY_KEYS
 from src.storage import sanitize_slot
 
 if TYPE_CHECKING:
     from src.conflicts_store import ConflictsStore
+    from src.reservations import ReservationStore
     from src.settings import Settings
     from src.storage import Storage
 
@@ -71,6 +73,16 @@ class SyncRequest:
     # `perform_sync` aus dem Token, nie aus dem Body.
     entries: dict[str, dict[str, Any]]
     window_days: int | None = None      # Wunsch des Handys (#250); `None` = keiner/ungültig
+    # {date: {slots, modified_at, deleted}} der Reservierungen; leer, wenn das Handy keine
+    # sendet oder der Desktop sie nicht annimmt (`accept_reservations=False`).
+    reservations: dict[str, dict[str, Any]] = field(default_factory=dict)
+
+
+@dataclass
+class SyncReport:
+    """Was `perform_sync` außer der Antwort bewirkt hat — für den Aufrufer, der nach der
+    Freigabe aller Sperren reagiert. Nicht Teil der Antwort ans Handy."""
+    reservations_changed: bool = False
 
 
 def _parse_utc(text: object) -> datetime.datetime | None:
@@ -126,8 +138,12 @@ def _parse_entry(date: str, raw: object, now_dt: datetime.datetime) -> dict[str,
     return {"slots": slots, "modified_at": str(raw["modified_at"]), "deleted": deleted}
 
 
-def parse_request(body: bytes, *, now: str) -> SyncRequest:
-    """Body → geprüfte Einträge. `now` ist die Desktop-Zeit (UTC-Text). Wirft `SyncError`."""
+def parse_request(body: bytes, *, now: str, today: datetime.date | None = None,
+                  accept_reservations: bool = True) -> SyncRequest:
+    """Body → geprüfte Einträge. `now` ist die Desktop-Zeit (UTC-Text), `today` sein lokales
+    Datum (Standard: das UTC-Datum von `now`). Mit `accept_reservations=False` wird das Feld
+    `reservations` gar nicht gelesen — ein Desktop mit ausgeschalteten Reservierungen ignoriert
+    es, statt es abzulehnen. Wirft `SyncError`."""
     try:
         data = load_json_body(body)
     except WriteError as error:
@@ -154,9 +170,17 @@ def parse_request(body: bytes, *, now: str) -> SyncRequest:
     if len(raw_entries) > MAX_ENTRIES:
         raise SyncError(422, "invalid_entry", f"Höchstens {MAX_ENTRIES} Tage je Anfrage.")
     entries = {date: _parse_entry(date, raw, now_dt) for date, raw in raw_entries.items()}
+    reservations: dict[str, dict[str, Any]] = {}
+    if accept_reservations and "reservations" in data:
+        try:
+            reservations = mobile_reservations.parse_reservations(
+                data["reservations"], today=today or now_dt.date(), now_dt=now_dt,
+                parse_utc=_parse_utc, skew_limit=CLOCK_SKEW_LIMIT)
+        except mobile_reservations.ReservationError as error:
+            raise SyncError(422, "invalid_entry", error.message) from None
     wish = data.get("window_days")
     window_days = wish if isinstance(wish, int) and not isinstance(wish, bool) and wish >= 1 else None
-    return SyncRequest(str(data["client_time"]), entries, window_days)
+    return SyncRequest(str(data["client_time"]), entries, window_days, reservations)
 
 
 def window_cap(raw: object) -> int:
@@ -327,7 +351,8 @@ def build_response(merged: Mapping[str, Any], *, sent_dates: Iterable[str],
                    today: datetime.date, now: str, excluded: bool,
                    categories: list[str], defaults: Mapping[str, Any],
                    desktop: Mapping[str, str], window_days: int,
-                   window_max_days: int) -> dict[str, Any]:
+                   window_max_days: int,
+                   reservations: Mapping[str, Any] | None = None) -> dict[str, Any]:
     """Die Antwort des Abgleichs aus dem Merge-Ergebnis, ohne `token`/`expires_at`
     (die ergänzt die Route). Fenster `[heute − Fenster, heute]` (heute ist das lokale
     Datum des Desktops) plus alle gesendeten Tage — beides für Einträge **und**
@@ -358,7 +383,7 @@ def build_response(merged: Mapping[str, Any], *, sent_dates: Iterable[str],
         return date in sent or first <= date <= last
 
     entries = {date: clean for date, clean in sorted(clean_entries.items()) if visible(date)}
-    return {
+    response: dict[str, Any] = {
         "protocol": PROTOCOL,
         "server_time": now,
         "last_pull_at": now,
@@ -371,6 +396,9 @@ def build_response(merged: Mapping[str, Any], *, sent_dates: Iterable[str],
         "defaults": dict(defaults),
         "desktop": dict(desktop),
     }
+    if reservations is not None:       # nur bei eingeschalteten Reservierungen (Feature-Erkennung)
+        response["reservations"] = dict(reservations)
+    return response
 
 
 def _phone_doc(request: SyncRequest, device_id: str, device_name: str, now: str,
@@ -405,7 +433,9 @@ def perform_sync(request: SyncRequest, *, device_id: str, device_name: str,
                  settings: Settings, conflicts_store: ConflictsStore, base: str,
                  now: str, today: datetime.date, desktop: Mapping[str, str],
                  data_lock: threading.RLock | None = None,
-                 sync_guard: threading.Lock | None = None) -> dict[str, Any]:
+                 sync_guard: threading.Lock | None = None,
+                 reservation_store: ReservationStore | None = None,
+                 report: SyncReport | None = None) -> dict[str, Any]:
     """Wendet den Abgleich an und liefert die Antwort (ohne `token`/`expires_at`).
 
     `last_pull_at` ist der Stand aus dem Gerätespeicher des Desktops, nie der Wert
@@ -418,6 +448,7 @@ def perform_sync(request: SyncRequest, *, device_id: str, device_name: str,
     `merge` dedupliziert gleichwertige offene Konflikte)."""
     if sync_guard is not None and not sync_guard.acquire(blocking=False):
         raise SyncError(503, "busy", "Ein anderer Abgleich läuft gerade. Bitte später erneut versuchen.")
+    active = False
     try:
         with (data_lock if data_lock is not None else contextlib.nullcontext()):
             desktop_doc = sync.build_local_doc(storage, settings, conflicts_store)
@@ -434,12 +465,23 @@ def perform_sync(request: SyncRequest, *, device_id: str, device_name: str,
             # Der Startup-Sweep verwirft Tombstones auf Rechnern, die „nie gesynct"
             # haben: nach einem Abgleich mit dem Handy haben sie einen Abnehmer.
             sync_history.mark_synced(base)
+            # Reservierungen gehören nicht in `sync.merge` (eigener Store, kein Drive-Sync),
+            # liegen aber im selben Lock: eine Anfrage wird als Ganzes sichtbar.
+            if reservation_store is not None and reservations_active(reservation_store, settings):
+                active = True
+                if request.reservations:
+                    changed = reservation_store.merge_phone(request.reservations)
+                    if report is not None:
+                        report.reservations_changed = changed
+        reservations = (mobile_reservations.build_reservations(
+            reservation_store.get_all_raw(), today=today)
+            if active and reservation_store is not None else None)
         cap = window_cap(settings.get("mobile_window_max_days"))
         return build_response(merged, sent_dates=request.entries, today=today, now=now,
                               excluded=excluded, categories=categories,
                               defaults=build_defaults(settings, categories), desktop=desktop,
                               window_days=grant_window(request.window_days, cap),
-                              window_max_days=cap)
+                              window_max_days=cap, reservations=reservations)
     finally:
         if sync_guard is not None:
             sync_guard.release()

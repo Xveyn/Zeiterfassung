@@ -253,3 +253,13 @@ def test_the_live_request_example_carries_the_wish_the_server_reads():
     parsed = mobile_sync.parse_request(json.dumps(example).encode(), now=example["client_time"])
 
     assert parsed.window_days == example["window_days"]
+
+
+def test_the_desktop_still_accepts_the_request_of_a_phone_without_reservations():
+    example = load("compat/sync-request-pre-reservations.json")
+    assert "reservations" not in example
+
+    parsed = mobile_sync.parse_request(json.dumps(example).encode(), now=example["client_time"])
+
+    assert sorted(parsed.entries) == sorted(example["entries"])
+    assert parsed.reservations == {}
