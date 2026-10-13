@@ -4,6 +4,7 @@
 // `messages.js`); hier wird nur zusammengesteckt.
 import { addDays, formatDateDe, localIsoDate, mondayOf } from './minutes.js';
 import { weekdayKey } from './defaults.js';
+import { reservationBlockVisible } from './reservations.js';
 import { DEFAULT_WISH, olderState } from './window-policy.js';
 import { deviceNameFromUserAgent, parseHostPort, parsePairFragment } from './pairing.js';
 import { openDatabase, requestPersistentStorage } from './db.js';
@@ -12,7 +13,8 @@ import { SyncClient, SyncError, clockSkewMs } from './sync.js';
 import { shouldQueue, shouldSync } from './sync-policy.js';
 import { shouldApplyUpdate, shouldCheckForUpdate } from './update-policy.js';
 import {
-  conflictsModel, dayChanged, desktopHint, editorRows, focusKeyToRestore, hintsModel, olderModel, rowsToSlots, statusModel, validateRows, weekModel,
+  conflictsModel, dayChanged, desktopHint, editorRows, focusKeyToRestore, hintsModel, olderModel, reservationRows,
+  reservationRowsToSlots, rowsToSlots, statusModel, validateReservationRows, validateRows, weekModel,
 } from './view-model.js';
 import { BUILD } from './sw-core.js';
 import { clear, focusByKey, focusState, h } from './dom.js';
@@ -206,6 +208,7 @@ class App {
     const model = weekModel({
       getDay: (date) => this.store.getDay(date), anchor: this.anchor, today: localIsoDate(new Date()),
       conflictDates: conflicts.map((conflict) => conflict.date), windowDays: meta.window_days,
+      getReservation: (date) => this.store.getReservation(date), reservationsEnabled: meta.reservations_enabled,
     });
     model.older = olderModel(olderState({
       firstDay: model.days[0].date, today: localIsoDate(new Date()), windowDays: meta.window_days,
@@ -214,7 +217,7 @@ class App {
     const hints = hintsModel({
       lastError: this.lastError, excluded: meta.excluded, skewMs: this.skewMs, persistent: this.persistent,
       updateReady: this.updateReady, conflictCount: conflicts.length,
-      errorDays: this.store.days().filter((date) => this.store.getDay(date).error).length,
+      errorDays: this.store.errorCount(),
     });
     if (!this.shell) this.shell = this.buildShell();
     patchHints(this.shell.hints, hints, this.hintHandlers);
@@ -226,7 +229,7 @@ class App {
       older: (wish) => this.loadOlder(wish),
     }));
     this.shell.status.update(statusModel({
-      paired: this.paired, online: this.online, syncing: this.syncing, pending: this.store.dirtyDates().length,
+      paired: this.paired, online: this.online, syncing: this.syncing, pending: this.store.pendingCount(),
       lastSyncAt: meta.server_time,
     }));
     this.lastFocusKey = focusByKey(this.root, focusKey) ? focusKey : null;
@@ -273,38 +276,69 @@ class App {
     const returnKey = focusState(this.root).activeKey;
     let baseline = day;         // Stand beim Öffnen: Speichern prüft, ob der Tag inzwischen anders ist
     const outsideWindow = date > addDays(today, 1) || date < addDays(today, -meta.window_days);
+    // Reservierungen nur, wenn der Desktop sie anbietet und der Tag heute oder später ist.
+    const reservationOn = meta.reservations_enabled && reservationBlockVisible(date, today);
+    const reservation = reservationOn ? this.store.getReservation(date) : null;
+    let reservationBaseline = reservation;
+    // An Tagen nach heute öffnet der Editor bei der Reservierung: die Ist-Zeilen sind mit den
+    // Standardzeiten vorbelegt, ein Speichern dort legte sonst still eine Ist-Zeit an.
+    const startWith = reservationOn && date > today ? 'reservation' : 'work';
     const dialog = editorDialog({
       title: `${formatDateDe(date)}`,
       rows: editorRows(day, meta.defaults, weekdayKey(date)),
       categories: meta.categories,
       defaults: meta.defaults,
       weekday: weekdayKey(date),
-      error: day?.error ?? null,
+      error: (startWith === 'reservation' ? reservation?.error : day?.error) ?? null,
       outsideWindow,
       canClear: Boolean(day && !day.deleted),
       validate: (rows) => validateRows(rows),
+      reservation: reservationOn ? {
+        rows: reservationRows(reservation, meta.defaults, weekdayKey(date)),
+        canClear: Boolean(reservation && !reservation.deleted),
+        validate: (rows) => validateReservationRows(rows),
+      } : null,
+      startWith,
     }, {
-      save: async (rows) => {
-        const current = this.store.getDay(date);
-        if (dayChanged(baseline, current)) {
-          baseline = current;   // bewusst gewarnt: das nächste Speichern überschreibt
-          return 'Dieser Tag wurde inzwischen aktualisiert (Abgleich). Nochmaliges Speichern überschreibt die neuere Fassung.';
-        }
-        try {
-          await this.store.saveDay(date, rowsToSlots(rows));
-        } catch (error) {
-          return String(error?.message ?? error);
+      save: async (kind, rows) => {
+        if (kind === 'reservation') {
+          const current = this.store.getReservation(date);
+          if (dayChanged(reservationBaseline, current)) {
+            reservationBaseline = current;   // bewusst gewarnt: das nächste Speichern überschreibt
+            return 'Diese Reservierung wurde inzwischen aktualisiert (Abgleich). Nochmaliges Speichern überschreibt die neuere Fassung.';
+          }
+          try {
+            await this.store.saveReservation(date, reservationRowsToSlots(rows));
+          } catch (error) {
+            return String(error?.message ?? error);
+          }
+        } else {
+          const current = this.store.getDay(date);
+          if (dayChanged(baseline, current)) {
+            baseline = current;   // bewusst gewarnt: das nächste Speichern überschreibt
+            return 'Dieser Tag wurde inzwischen aktualisiert (Abgleich). Nochmaliges Speichern überschreibt die neuere Fassung.';
+          }
+          try {
+            await this.store.saveDay(date, rowsToSlots(rows));
+          } catch (error) {
+            return String(error?.message ?? error);
+          }
         }
         this.render();
         this.scheduleSyncAfterSave();
         return null;
       },
-      clear: (dialog) => confirmDialog({
+      clear: (kind, dialog) => confirmDialog(kind === 'reservation' ? {
+        title: 'Reservierung löschen?',
+        text: `Die Reservierung vom ${formatDateDe(date)} wird gelöscht (beim nächsten Abgleich auch am Desktop).`,
+        confirmLabel: 'Reservierung löschen',
+      } : {
         title: 'Tag leeren?', text: `Alle Einträge vom ${formatDateDe(date)} werden gelöscht (beim nächsten Abgleich auch am Desktop).`,
         confirmLabel: 'Tag leeren',
       }, async () => {
         try {
-          await this.store.clearDay(date);
+          if (kind === 'reservation') await this.store.clearReservation(date);
+          else await this.store.clearDay(date);
         } catch (error) {
           dialog.querySelector('.error-text').textContent = String(error?.message ?? error);
           return;

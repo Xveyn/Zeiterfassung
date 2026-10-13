@@ -259,6 +259,12 @@ export class Store {
     };
   }
 
+  /** Nicht übertragene Änderungen: Ist-Zeiten und Reservierungen zusammen (Statuszeile). */
+  pendingCount() {
+    return this.dirtyDates().length
+      + [...this._reservations.values()].filter((record) => isDirty(record)).length;
+  }
+
   /** Tage mit abgelehntem Stand, Ist-Zeiten und Reservierungen zusammen. */
   errorCount() {
     return [...this._days.values(), ...this._reservations.values()].filter((record) => record.error).length;

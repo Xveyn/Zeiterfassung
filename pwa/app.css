@@ -115,3 +115,10 @@ label.check { display: flex; align-items: center; gap: 8px; min-height: var(--ta
 label.check input { width: auto; min-height: 0; flex: none; }
 
 .hint.older { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+
+/* Reservierungen (zukünftige Soll-Zeiten) */
+.day .content { grid-column: 2; min-width: 0; }
+.day .slots.reserved { color: var(--muted); font-style: italic; }
+.tabs { display: flex; gap: 8px; margin: 0 0 12px; }
+.tabs button { flex: 1; }
+.tabs button[aria-selected="true"] { background: var(--accent); color: #fff; font-weight: 600; }

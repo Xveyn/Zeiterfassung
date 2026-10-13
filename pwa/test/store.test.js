@@ -684,3 +684,11 @@ test('a broken stored reservation row is skipped, not thrown', async () => {
 
   assert.deepEqual(store.reservationDates(), []);
 });
+
+test('the pending count includes dirty days and dirty reservations', async () => {
+  const { store } = await make();
+  await store.saveDay('2026-10-07', [SLOT]);
+  await store.saveReservation('2026-10-20', [RES]);
+
+  assert.equal(store.pendingCount(), 2);
+});
