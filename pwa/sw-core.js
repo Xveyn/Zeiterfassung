@@ -28,6 +28,7 @@ export const PRECACHE = [
   './window-policy.js',
   './minutes.js',
   './reservations.js',
+  './categories.js',
   './defaults.js',
   './pairing.js',
   './crypto.js',
