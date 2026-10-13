@@ -83,6 +83,12 @@ for (const [label, rows, part] of [
   });
 }
 
+test('an end not after the start says what to do about it', () => {
+  const check = validateCategoryRows([row({ start: '12:00', end: '09:00' })]);
+  assert.match(check.message, /Ende muss nach dem Start liegen/);
+  assert.match(check.message, /tauschen oder eine Zeit leeren/);
+});
+
 test('start and end alone are fine, a per_day row is not checked for times', () => {
   assert.equal(validateCategoryRows([row({ start: '08:00' }), row({ name: 'B', end: '16:00' })]).ok, true);
   assert.equal(validateCategoryRows([row({ name: 'P', mode: 'per_day', raw: PER_DAY })]).ok, true);

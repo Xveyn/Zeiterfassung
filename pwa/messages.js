@@ -21,7 +21,7 @@ export function describeError(error) {
     case 'offline':
       return { text: 'Der Desktop ist nicht erreichbar. Läuft die App am Rechner, und sind Handy und Rechner im selben WLAN?', action: 'rescan' };
     case 'timeout':
-      return { text: 'Zeitüberschreitung: der Desktop hat nicht rechtzeitig geantwortet. Läuft die App am Rechner, und ist das WLAN stabil? Bei einem großen Verlauf kann auch die Datenmenge der Grund sein: unter „Verbindung“ lässt er sich auf 90 Tage zurücksetzen.', action: 'retry' };
+      return { text: 'Zeitüberschreitung: der Desktop hat nicht rechtzeitig geantwortet. Läuft die App am Rechner, und ist das WLAN stabil? Bei einem großen Verlauf kann auch die Datenmenge der Grund sein: unter Einstellungen → Verbindung lässt er sich auf 90 Tage zurücksetzen.', action: 'retry' };
     case 'address':
       return { text: 'Falscher Desktop oder falsche Adresse. Den QR-Code am Desktop neu scannen.', action: 'rescan' };
     case 'repair':

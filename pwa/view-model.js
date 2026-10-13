@@ -326,11 +326,15 @@ export function categoryRemovalText(name) {
 export function categoriesModel({ categories, defaults, writable, edit }) {
   const rows = categoryRows(categories, defaults?.category_times ?? {}).map((row) => ({
     ...row, summary: timesSummary(row) }));
-  const editable = Boolean(writable) && defaults !== null && defaults !== undefined;
+  const synced = defaults !== null && defaults !== undefined;
+  const editable = Boolean(writable) && synced;
+  let hint = '';
+  if (!writable) hint = 'Die Desktop-App ist älter als diese Seite: Kategorien lassen sich nur dort bearbeiten. Bitte die Desktop-App aktualisieren.';
+  else if (!synced) hint = 'Die Kategorien sind noch nicht abgeglichen. Bitte erst abgleichen.';
   return {
     rows,
     editable,
-    hint: editable ? '' : 'Die Desktop-App ist älter als diese Seite: Kategorien lassen sich nur dort bearbeiten. Bitte die Desktop-App aktualisieren.',
+    hint,
     error: edit?.error ?? null,
     dirty: Boolean(edit) && edit.dirty_version > edit.synced_version,
   };

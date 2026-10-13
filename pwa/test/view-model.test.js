@@ -536,6 +536,13 @@ test('without any defaults the list is still readable', () => {
   assert.equal(model.rows[0].summary, '—');
 });
 
+test('a writable desktop without defaults yet asks for a sync instead of blaming an older desktop', () => {
+  const model = categoriesModel({ categories: ['A'], writable: true, defaults: null, edit: null });
+  assert.equal(model.editable, false);
+  assert.equal(model.hint, 'Die Kategorien sind noch nicht abgeglichen. Bitte erst abgleichen.');
+  assert.doesNotMatch(model.hint, /älter/);
+});
+
 test('the model reports a dirty and a rejected block', () => {
   const model = categoriesModel({ categories: ['A'], writable: true, defaults: { category_times: {} },
     edit: { modified_at: 'x', dirty_version: 2, synced_version: 1, error: 'Einstellung categories: zu viele' } });

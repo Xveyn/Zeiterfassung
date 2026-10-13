@@ -73,7 +73,7 @@ export function validateCategoryRows(rows) {
     if (row.start !== '' && start === null) return { ok: false, message: `„${name}“: Start muss HH:MM sein.` };
     if (row.end !== '' && end === null) return { ok: false, message: `„${name}“: Ende muss HH:MM sein.` };
     if (start !== null && end !== null && end <= start) {
-      return { ok: false, message: `„${name}“: Ende muss nach dem Start liegen.` };
+      return { ok: false, message: `„${name}“: Ende muss nach dem Start liegen. Ende und Start tauschen oder eine Zeit leeren.` };
     }
     if (row.pause !== '') {
       const pause = Number(row.pause);

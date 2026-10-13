@@ -12,15 +12,16 @@ import { Store } from './store.js';
 import { SyncClient, SyncError, clockSkewMs } from './sync.js';
 import { shouldQueue, shouldSync } from './sync-policy.js';
 import { shouldApplyUpdate, shouldCheckForUpdate } from './update-policy.js';
+import { blockSignature, rowsToBlock } from './categories.js';
 import {
-  conflictsModel, dayChanged, desktopHint, editorRows, focusKeyToRestore, hintsModel, olderModel, reservationRows,
+  categoriesModel, conflictsModel, dayChanged, desktopHint, editorRows, focusKeyToRestore, hintsModel, olderModel, reservationRows,
   reservationRowsToSlots, rowsToSlots, statusModel, validateReservationRows, validateRows, weekModel,
 } from './view-model.js';
 import { BUILD } from './sw-core.js';
 import { clear, focusByKey, focusState, h } from './dom.js';
 import {
-  conflictsDialog, confirmDialog, connectionDialog, editorDialog, fatalView, hintsHost, pairView,
-  patchHints, scanDialog, statusBar, weekView,
+  conflictsDialog, confirmDialog, editorDialog, fatalView, hintsHost, pairView,
+  patchHints, scanDialog, settingsDialog, statusBar, weekView,
 } from './views.js';
 import { canScan, scanForPairLink } from './scanner.js';
 import { describeError } from './messages.js';
@@ -240,23 +241,31 @@ class App {
     clear(this.root);
     const hints = hintsHost();
     const week = h('div', {});
-    const status = statusBar({ sync: () => this.trigger('manual'), connection: () => this.openConnection() });
+    const status = statusBar({ sync: () => this.trigger('manual'), settings: () => this.openSettings() });
     this.root.append(h('main', {}, hints, week), status.element);
     return { hints, week, status };
   }
 
-  openConnection() {
+  openSettings(initialTab = 'connection') {
     const meta = this.store.getMeta();
-    connectionDialog({
-      desktopName: meta.desktop_name,
-      desktop: meta.desktop,
-      update: { state: this.updateState, auto: Boolean(meta.auto_update) },
-      window: { days: meta.window_days, max: meta.window_max, wish: meta.window_wish },
-      hint: desktopHint(meta),
-      address: meta.address ? `${meta.address.host}:${meta.address.port}` : '',
-      build: BUILD,
-      persistent: this.persistent,
-      tokenUntil: meta.token_expires_at ? formatDateDe(meta.token_expires_at.slice(0, 10)) : '',
+    const returnKey = focusState(this.root).activeKey;
+    const signature = (m) => blockSignature(m.categories, m.defaults?.category_times ?? {});
+    let baseline = signature(meta);   // Stand beim Öffnen: Speichern prüft, ob der Abgleich ihn inzwischen geändert hat
+    const dialog = settingsDialog({
+      tab: initialTab,
+      connection: {
+        desktopName: meta.desktop_name,
+        desktop: meta.desktop,
+        window: { days: meta.window_days, max: meta.window_max, wish: meta.window_wish },
+        hint: desktopHint(meta),
+        address: meta.address ? `${meta.address.host}:${meta.address.port}` : '',
+        persistent: this.persistent,
+        tokenUntil: meta.token_expires_at ? formatDateDe(meta.token_expires_at.slice(0, 10)) : '',
+      },
+      updates: { build: BUILD, update: { state: this.updateState, auto: Boolean(meta.auto_update) } },
+      categories: categoriesModel({
+        categories: meta.categories, defaults: meta.defaults, writable: meta.settings_writable, edit: meta.categories_edit,
+      }),
     }, {
       pair: () => { this.screen = 'pair'; this.render(); },
       checkUpdate: () => this.checkForUpdate('manual'),
@@ -266,7 +275,24 @@ class App {
         await this.store.setMeta({ auto_update: on });
         this.maybeApplyUpdate();
       },
+      saveCategories: async (rows) => {
+        const current = signature(this.store.getMeta());
+        if (current !== baseline) {
+          baseline = current;   // bewusst gewarnt: das nächste Speichern überschreibt
+          return 'Die Kategorien wurden inzwischen aktualisiert (Abgleich). Nochmaliges Speichern überschreibt die neuere Fassung.';
+        }
+        try {
+          await this.store.saveCategories(rowsToBlock(rows));
+        } catch (error) {
+          return String(error?.message ?? error);
+        }
+        baseline = signature(this.store.getMeta());
+        this.render();
+        this.scheduleSyncAfterSave();
+        return null;
+      },
     });
+    dialog.addEventListener('close', () => { focusByKey(this.root, returnKey); });
   }
 
   openDay(date) {
