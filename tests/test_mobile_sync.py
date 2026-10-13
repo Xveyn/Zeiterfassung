@@ -805,6 +805,19 @@ def test_the_same_request_twice_changes_nothing_and_makes_no_second_conflict(env
     assert again["categories"] == first["categories"]
 
 
+def test_a_retry_after_a_lost_response_adds_no_conflict_and_keeps_the_value(env):
+    desktop_setting(env, "categories", ["Alt"], "2026-10-01T10:00:00Z")
+    run_settings(env, {"categories": setting(["Neu"])}, last_pull_at="2026-10-05T00:00:00Z")
+    stored = (env.settings.get("categories"), len(env.conflicts.get_all()))
+
+    # Die erste Antwort ging verloren, die Route hat aber `last_pull_at` schon vorgerückt: das Handy
+    # schickt denselben Block noch einmal, jetzt mit dem neuen Abgleichstand.
+    again = run_settings(env, {"categories": setting(["Neu"])}, last_pull_at="2026-10-08T11:59:00Z")
+
+    assert (env.settings.get("categories"), len(env.conflicts.get_all())) == stored
+    assert again["categories"] == ["Neu"]
+
+
 def test_a_per_day_category_the_phone_sends_back_stays_bit_identical(env):
     times = {"Support": {"mode": "per_day", "pause": 15,
                          "days": {"fri": {"start": "07:00", "end": "11:00"}}},

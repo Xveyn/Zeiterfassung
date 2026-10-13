@@ -100,7 +100,7 @@ def _parse_categories(value: object) -> list[str]:
     for item in value:
         name = _name(item, where)
         if name in names:
-            raise SettingsError(f"{where}: {_label(name)!s} kommt doppelt vor.")
+            raise SettingsError(f"{where}: {_label(name)} kommt doppelt vor.")
         names.append(name)
     return names
 
@@ -129,6 +129,8 @@ def _parse_category_times(value: object) -> dict[str, dict[str, Any]]:
     out: dict[str, dict[str, Any]] = {}
     for raw_name, raw in value.items():
         name = _name(raw_name, where)
+        if name in out:      # zwei Schlüssel, die nach dem Trimmen gleich sind (wie bei `categories`)
+            raise SettingsError(f"{where}: {_label(name)} kommt doppelt vor.")
         entry_where = f"{where} {_label(name)}"
         if not isinstance(raw, dict):
             raise SettingsError(f"{entry_where}: Eintrag muss ein Objekt sein.")

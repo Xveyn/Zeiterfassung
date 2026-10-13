@@ -145,3 +145,12 @@ def test_the_moved_helpers_behave_as_before():
     assert ms.pause(30) == 30 and ms.pause("45") == 45 and ms.pause(True) is None
     assert ms.pause(1441) is None and ms.pause(-1) is None
     assert ms.clean_category_times({"start": "09:00", "pause": "x", "foo": 1}) == {"start": "09:00"}
+
+
+def test_category_times_keys_that_collide_after_trimming_are_rejected():
+    message = bad({"category_times": block({"A": {"pause": 5}, "  A ": {"pause": 10}})})
+    assert "doppelt" in message
+
+
+def test_a_whitespace_only_category_times_key_is_rejected():
+    bad({"category_times": block({"   ": {"pause": 5}})})

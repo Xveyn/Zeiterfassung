@@ -981,8 +981,3 @@ def test_a_forbidden_setting_is_an_encrypted_422_and_changes_nothing(env):
     assert response.status == 422 and error_code(response) == "invalid_entry"
     assert "2026-10-07" not in env.ctx.storage.get_all_raw()
     assert env.ctx.settings.get("hourly_rate") != 100
-
-
-def test_the_route_does_not_pin_the_categories_before_applying(env):
-    import inspect
-    assert "categories=category_names" not in inspect.getsource(mobile_routes._sync)
