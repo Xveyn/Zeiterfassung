@@ -54,7 +54,11 @@ def test_apply_api_setting_delegates_to_the_service():
     assert _self_calls(_function("_apply_api_setting"), "_api", "apply")
 
 
-def test_every_exit_path_shuts_the_api_down():
+def test_the_three_wired_exit_paths_shut_the_api_down():
+    # Nicht jeder Weg aus der App: `tab_updates._apply` beendet per `quit()` bzw.
+    # `os.execv` ohne `shutdown()`. Das ist folgenlos (Prozessende und `exec`
+    # schließen den Socket) und steht deshalb bewusst nicht in dieser Liste.
+    # Wer einen weiteren Weg baut, der die App am Leben lässt, trägt ihn hier ein.
     for name in ("_quit_with_sync_push", "remove_application", "restart_for_scaling"):
         assert _self_calls(_function(name), "_api", "shutdown"), (
             f"{name} muss self._api.shutdown() rufen")

@@ -123,6 +123,25 @@ def test_a_bad_category_is_422(category):
     assert (error.status, error.code) == (422, "invalid_category")
 
 
+@pytest.mark.parametrize("category", ["Office*", "*", "Office * ", "(ohne Kategorie)"])
+def test_a_category_the_ui_would_rewrite_is_422(category):
+    error = error_of(w.parse_day_body, body([{"start": "08:00", "end": "12:00",
+                                              "kategorie": category}]))
+    assert (error.status, error.code) == (422, "invalid_category")
+
+
+@pytest.mark.parametrize("category", ["Office*x", "a*b", "Ohne Kategorie", "(ohne Kategorie) 2"])
+def test_a_star_or_the_placeholder_inside_a_name_is_fine(category):
+    slots = w.parse_day_body(body([{"start": "08:00", "end": "12:00", "kategorie": category}]))
+    assert slots[0]["kategorie"] == category
+
+
+def test_the_mirrored_ui_constants_match_the_originals():
+    slot_rows = pytest.importorskip("src.dialogs.slot_rows")
+    assert w._OVERRIDE_MARKER == slot_rows.OVERRIDE_MARKER
+    assert w._NO_CATEGORY_LABEL == slot_rows.NO_CATEGORY_LABEL
+
+
 def test_a_category_of_exactly_100_characters_is_fine():
     slots = w.parse_day_body(body([{"start": "08:00", "end": "12:00", "kategorie": "x" * 100}]))
     assert len(slots[0]["kategorie"]) == 100

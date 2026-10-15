@@ -777,7 +777,7 @@ Wert.
   **Fremddaten** und bildet die Regeln nach, die die UI an ihren Eingängen durchsetzt und
   `Storage` nicht kennt. `parse_day_body` (strenges JSON — kein `NaN`, keine doppelten
   Schlüssel, `RecursionError` ist 400, UTF-8 mit oder ohne BOM —, genau `HH:MM`, nur die vier
-  Felder, Kategorie ohne Unicode-Klassen `Cc`/`Cs`: ein einzelnes Surrogat ließe sich nicht
+  Felder, Kategorie ohne Unicode-Klassen `Cc`/`Cs` und ohne Endung `*` bzw. den Text „(ohne Kategorie)“ (die UI macht beides beim nächsten Speichern rückgängig, `slot_rows.category_from_display`; die Konstanten sind in `api_entry_write` gespiegelt, ein Test hält sie gleich): ein einzelnes Surrogat ließe sich nicht
   als UTF-8 schreiben und machte jedes spätere Speichern des Stores unmöglich — `validate_slots`),
   `check_date_range` (2000–2100), `check_day_writable` (ungelöster Sync-Konflikt: `PUT` und
   `DELETE`; Urlaubsminuten > 0: nur `PUT`, 0-Minuten-Tage bleiben frei) und `warnings_for`
