@@ -214,6 +214,27 @@ def test_protocol_errors_get_a_json_error_not_html(server):
     assert b"<html" not in raw.lower()
 
 
+@pytest.mark.parametrize("request_line, status", [
+    (b"GARBAGE\r\n\r\n", b"HTTP/1.0 400"),
+    (b"GET /v1/status HTTP/2.0\r\n\r\n", b"HTTP/1.0 505"),
+])
+def test_errors_in_the_request_line_still_carry_a_status_line(server, request_line, status):
+    # Die stdlib steht dort noch auf HTTP/0.9 und schriebe ohne Gegenmaßnahme
+    # weder Statuszeile noch Header, nur den nackten JSON-Body.
+    sock = socket.create_connection(("127.0.0.1", server.port), timeout=5)
+    try:
+        sock.sendall(request_line)
+        raw = b""
+        while chunk := sock.recv(4096):
+            raw += chunk
+    finally:
+        sock.close()
+    head, _, payload = raw.partition(b"\r\n\r\n")
+    assert head.startswith(status)
+    assert b"content-type: application/json" in head.lower()
+    assert json.loads(payload)["error"]["code"] == "http_error"
+
+
 def test_path_forms_are_not_reinterpreted(server):
     # Host explizit setzen: `http.client` leitet ihn bei einer absoluten URL
     # sonst aus der URL ab (evil.example) und der Test träfe 403 statt 404.
@@ -335,6 +356,38 @@ def test_stop_is_idempotent_and_port_needs_a_running_server(tmp_path):
     srv.stop()
     with pytest.raises(RuntimeError):
         _ = srv.port
+
+
+def _free_port():
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        return probe.getsockname()[1]
+
+
+def _assert_port_is_free(port):
+    # Unter Windows (SO_EXCLUSIVEADDRUSE) scheitert das Binden, solange das
+    # Socket des Servers noch offen ist.
+    with socket.socket() as again:
+        again.bind(("127.0.0.1", port))
+
+
+def test_a_failing_thread_start_releases_the_port(tmp_path, monkeypatch):
+    port = _free_port()
+    srv = ApiServer(make_context(tmp_path), single_token_verifier(TOKEN), port=port)
+
+    def boom(self):
+        raise RuntimeError("can't start new thread")
+
+    monkeypatch.setattr(threading.Thread, "start", boom)
+    with pytest.raises(RuntimeError):
+        srv.start()
+    monkeypatch.undo()
+
+    with pytest.raises(RuntimeError):
+        _ = srv.port                            # kein halb gestarteter Server
+    _assert_port_is_free(port)
+    srv.start()                                 # und ein neuer Start gelingt
+    srv.stop()
 
 
 def test_start_twice_is_a_programming_error(server):

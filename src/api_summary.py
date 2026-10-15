@@ -33,6 +33,20 @@ if TYPE_CHECKING:  # nur für die Signaturen
 _log = logging.getLogger(__name__)
 
 _DAY_KEY_RE = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
+_MINUTES_PER_DAY = 24 * 60
+
+
+def _is_day_key(key: Any) -> bool:
+    """Ein echter Kalendertag in ISO-Form. Die Form allein reicht nicht:
+    `2025-12-32` passt auf die Regex, läge als String im Bereich und zählte in
+    `days[]` und `total_minutes`, während `weeks[]` ihn nie sieht."""
+    if not isinstance(key, str) or not _DAY_KEY_RE.fullmatch(key):
+        return False
+    try:
+        datetime.date.fromisoformat(key)
+    except ValueError:
+        return False
+    return True
 _MONTH_RE = re.compile(r"([0-9]{4})-([0-9]{2})")
 _WEEK_RE = re.compile(r"([0-9]{4})-W([0-9]{2})")
 _YEAR_RE = re.compile(r"[0-9]{4}")
@@ -197,9 +211,12 @@ def _vacation_part(vacation_days: Mapping[str, int], first: str, last: str,
     """(Urlaubsminuten nach Kappung, gekappte Tage). Gekappt wird wie in Mail,
     PDF und Webhook gegen die erfasste Ist-Zeit desselben Ausschnitts, damit ein
     Kalendertag nie mehr Stunden hat, als er hat (`vacations.cap_by_worktime`)."""
+    # Höchstens ein Kalendertag: negative oder riesige Werte (kaputtes
+    # vacations.json) würden sonst in die Summe und in `vacation_capped_days` laufen.
     days = {key: minutes for key, minutes in vacation_days.items()
-            if _DAY_KEY_RE.fullmatch(key) and first <= key <= last
-            and isinstance(minutes, int) and not isinstance(minutes, bool)}
+            if _is_day_key(key) and first <= key <= last
+            and isinstance(minutes, int) and not isinstance(minutes, bool)
+            and 0 <= minutes <= _MINUTES_PER_DAY}
     try:
         capped, hits = cap_by_worktime(days, work)
     except Exception:
@@ -223,7 +240,7 @@ def summarize(date_from: datetime.date, date_to: datetime.date,
     auch wenn der Monat sie nur teilweise enthält."""
     first, last = date_from.isoformat(), date_to.isoformat()
     in_range = {key: entry for key, entry in entries.items()
-                if _DAY_KEY_RE.fullmatch(key) and first <= key <= last
+                if _is_day_key(key) and first <= key <= last
                 and _slots_of(entry)}
     cache: dict[str, list[tuple[dict[str, Any], int]]] = {}
     days = []
