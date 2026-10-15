@@ -1,5 +1,6 @@
 # tests/test_api_service.py
 import http.client
+import json
 import socket
 import threading
 import time
@@ -14,7 +15,7 @@ from src.api_service import (
     STATE_RUNNING, STATE_STARTING, ApiService, ApiStatus, RefreshCoalescer, RotateResult,
     parse_port,
 )
-from src.settings import DEFAULTS
+from src.settings import DEFAULTS, Settings
 from src.storage import Storage
 
 
@@ -155,6 +156,32 @@ def test_invalid_port_is_an_error_status_without_server_or_token(tmp_path, bad):
 
     assert service.status == ApiStatus(STATE_ERROR, None, REASON_INVALID_PORT)
     assert service._server is None
+    assert not (tmp_path / "api-token").exists()
+
+def real_settings(tmp_path, **values):
+    # Die Tests oben füttern rohe dicts. Eine echte `Settings` castet beim Laden auf den
+    # Typ des Defaults: ein Text als Port wird zum Default, `invalid_port` entsteht real
+    # nur für Ints außerhalb des erlaubten Bereichs.
+    path = tmp_path / "settings.json"
+    path.write_text(json.dumps(values), encoding="utf-8")
+    return Settings(str(path))
+
+
+@pytest.mark.parametrize("stored", ["abc", "17653.5", None, [1]])
+def test_a_stored_port_that_is_not_a_number_becomes_the_default(tmp_path, stored):
+    settings = real_settings(tmp_path, api_enabled=True, api_port=stored)
+
+    assert settings.get("api_port") == DEFAULT_PORT
+
+
+@pytest.mark.parametrize("stored", [80, 70000, -5, 0])
+def test_a_stored_port_out_of_range_reaches_the_service_as_invalid_port(tmp_path, stored):
+    settings = real_settings(tmp_path, api_enabled=True, api_port=stored)
+    service = make_service(tmp_path, settings)
+
+    service.apply()
+
+    assert service.status == ApiStatus(STATE_ERROR, None, REASON_INVALID_PORT)
     assert not (tmp_path / "api-token").exists()
 
 

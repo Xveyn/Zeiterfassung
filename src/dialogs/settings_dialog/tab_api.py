@@ -100,11 +100,21 @@ class ApiTab:
                   "im Tab „App“. Das Token verlässt diese Maske nur über die "
                   "Zwischenablage.")
 
+        def _show_port_hint():
+            # Ohne Hinweis bliebe eine Leerzeile unter dem Port-Feld stehen.
+            text = port_hint(port_var.get())
+            port_hint_label.config(text=text)
+            if text:
+                port_hint_label.grid()
+            else:
+                port_hint_label.grid_remove()
+
         def _on_port(*_args):
-            port_hint_label.config(text=port_hint(port_var.get()))
+            _show_port_hint()
             example_label.config(text=curl_example(port_var.get()))
 
         port_var.trace_add("write", _on_port)
+        _show_port_hint()
         enabled_var.trace_add("write", lambda *_args: self._sync_buttons())
 
         fields = FieldSet()

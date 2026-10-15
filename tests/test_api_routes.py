@@ -320,6 +320,24 @@ def test_put_replaces_the_whole_day(env):
         {"start": "09:00", "end": "10:00", "pause": 0, "kategorie": ""}]
 
 
+def test_a_put_with_the_slots_of_a_deleted_day_revives_it(env):
+    # Ein Tombstone zählt nie als "gleich": `storage.get` liefert ihn als None,
+    # also ist der Tag geändert. Mit `get_all_raw()` statt `get()` wäre der PUT
+    # ein stilles No-op und der Tag bliebe gelöscht.
+    # Der heikle Fall: ein Tombstone, der dieselben Slots behalten hat (`delete()`
+    # leert sie, ein Tombstone aus dem Sync muss das nicht tun).
+    env.put(SLOTS_BODY)
+    env.storage._data[DAY]["deleted"] = True
+    assert env.storage.get(DAY) is None
+    changes_before = env.changes
+
+    response = env.put(SLOTS_BODY)
+
+    assert response.body["changed"] is True
+    assert env.storage.get(DAY)["slots"] == response.body["slots"]
+    assert env.changes == changes_before + 1
+
+
 def test_an_identical_put_neither_saves_nor_notifies(env, monkeypatch):
     env.put(SLOTS_BODY)
     saves = []

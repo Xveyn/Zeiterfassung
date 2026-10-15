@@ -344,7 +344,7 @@ curl -H "Authorization: Bearer <Token>" http://127.0.0.1:17653/v1/summary/month/
 | `GET /v1/categories` | die in den Einstellungen konfigurierten Kategorien |
 | `GET /v1/holidays/{YYYY}` | Feiertage des eingestellten Bundeslands (leer, solange keins gesetzt ist) |
 
-Einen Tag eintragen (ersetzt den ganzen Tag; `pause` in Minuten und `kategorie` sind optional):
+Einen Tag eintragen (ersetzt den ganzen Tag; `pause` in Minuten und `kategorie` sind optional; eine Kategorie darf nicht auf `*` enden und nicht „(ohne Kategorie)“ heißen — die App zeigt beides anders an, als sie es speichert, die API lehnt es mit `422 invalid_category` ab):
 
 ~~~
 curl -X PUT -H "Authorization: Bearer <Token>" -H "Content-Type: application/json" \

@@ -47,6 +47,11 @@ MAX_CATEGORY_LEN = 100
 # `parse_time` akzeptiert "8:00" — gespeichert werden soll genau "08:00".
 _TIME_RE = re.compile(r"[0-9]{2}:[0-9]{2}")
 _SLOT_KEYS = frozenset({"start", "end", "pause", "kategorie"})
+# Spiegel von `dialogs.slot_rows.OVERRIDE_MARKER`/`NO_CATEGORY_LABEL`: dieses
+# Modul bleibt Tk-frei und darf `slot_rows` nicht importieren.
+# `tests/test_api_entry_write.py` hält beide Paare gleich.
+_OVERRIDE_MARKER = "*"
+_NO_CATEGORY_LABEL = "(ohne Kategorie)"
 _REQUIRED_KEYS = frozenset({"start", "end"})
 
 
@@ -109,6 +114,16 @@ def _parse_category(value: Any, index: int) -> str:
         raise WriteError(422, "invalid_category",
                          f"Slot {index}: kategorie darf keine Steuerzeichen oder "
                          "ungültigen Unicode-Zeichen enthalten.")
+    # Die UI hängt in der Kategorie-Auswahl ein Sternchen an (abweichende
+    # Standardzeiten) und zeigt "" als Platzhalter. `category_from_display`
+    # macht beides beim nächsten Speichern rückgängig: "Office*" würde zu
+    # "Office", "(ohne Kategorie)" zu "". Was die UI nicht stabil hält, nimmt
+    # die API gar nicht erst an.
+    if value.endswith(_OVERRIDE_MARKER) or value == _NO_CATEGORY_LABEL:
+        raise WriteError(422, "invalid_category",
+                         f"Slot {index}: kategorie darf nicht auf \"{_OVERRIDE_MARKER}\" "
+                         f"enden und nicht \"{_NO_CATEGORY_LABEL}\" heißen "
+                         "(die App zeigt beides anders an, als sie es speichert).")
     return value
 
 
