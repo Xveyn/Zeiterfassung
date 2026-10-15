@@ -158,6 +158,13 @@ class _Handler(http.server.BaseHTTPRequestHandler):
             phrase = http.HTTPStatus(code).phrase
         except ValueError:
             phrase = "Fehler"
+        if self.request_version == "HTTP/0.9" and not self.command:
+            # Fehler schon in der Anfragezeile (`GARBAGE`, `HTTP/2.0`): die
+            # stdlib steht dann noch auf ihrem Default HTTP/0.9, und
+            # `send_response` schriebe weder Statuszeile noch Header — der
+            # Client bekäme einen nackten JSON-Body. Ein echtes 0.9-Request
+            # (`GET /pfad`) hat einen `command` und bleibt unberührt.
+            self.request_version = "HTTP/1.0"
         self._send(error_response(code, "http_error", phrase))
 
     def _send(self, response: ApiResponse) -> None:
@@ -313,7 +320,13 @@ class _ApiHTTPServer(http.server.ThreadingHTTPServer):
         self.policy: Policy
         self._slots = threading.BoundedSemaphore(self.max_connections)
         super().__init__(address, _Handler)
-        self.policy = policy_for_port(self.server_address[1])
+        try:
+            self.policy = policy_for_port(self.server_address[1])
+        except BaseException:
+            # Gebunden ist der Port schon: ohne das Schließen bliebe er belegt,
+            # bis der Garbage Collector das Socket findet.
+            self.server_close()
+            raise
 
     def server_bind(self) -> None:
         if sys.platform == "win32":
@@ -400,12 +413,18 @@ class ApiServer:
         bind_host = self._policy_for_port(self._requested_port).bind_host
         httpd = _ApiHTTPServer((bind_host, self._requested_port), self._policy_for_port,
                                self._verifier, self._surface)
-        self._httpd = httpd
         self._stop_event.clear()
         thread = threading.Thread(target=self._serve_loop, args=(httpd,),
                                   name="api-server", daemon=True)
+        try:
+            thread.start()
+        except BaseException:
+            # Kein Thread, der je accept()t: Socket schließen, sonst bliebe der
+            # Port gebunden und `_httpd` stünde auf einem toten Server.
+            httpd.server_close()
+            raise
+        self._httpd = httpd
         self._thread = thread
-        thread.start()
 
     def _serve_loop(self, httpd: _ApiHTTPServer) -> None:
         while not self._stop_event.is_set():

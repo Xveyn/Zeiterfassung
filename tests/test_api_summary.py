@@ -317,6 +317,40 @@ def test_junk_vacation_values_are_ignored():
     assert run({}, vacation=vacation)["vacation_minutes"] == 60
 
 
+@pytest.mark.parametrize("key", ["2026-01-32", "2026-02-30", "2026-02-31", "2026-03-32"])
+def test_keys_that_are_not_calendar_days_are_ignored(key):
+    # Die Form passt, der Tag gibt es nicht. Als String liegt der Schlüssel im
+    # Bereich und zählte sonst in days[] und total_minutes, aber nie in weeks[].
+    entries = {key: day(ist_slot("08:00", "09:00")),
+               "2026-01-05": day(ist_slot("08:00", "09:00"))}
+
+    result = run(entries, span=(D(2026, 1, 1), D(2026, 4, 30)))
+
+    assert [d["date"] for d in result["days"]] == ["2026-01-05"]
+    assert result["total_minutes"] == 60
+
+
+def test_vacation_days_that_are_not_calendar_days_are_ignored():
+    vacation = {"2026-01-32": 480, "2026-01-15": 60}
+    assert run({}, vacation=vacation)["vacation_minutes"] == 60
+
+
+@pytest.mark.parametrize("minutes", [-480, -1, 1441, 10**9])
+def test_vacation_minutes_outside_one_day_are_ignored(minutes):
+    # Ein Kalendertag hat 1440 Minuten; ein kaputtes vacations.json darf weder
+    # die Summe verfälschen noch in vacation_capped_days auftauchen.
+    entries = {"2026-01-15": day(ist_slot("08:00", "09:00"))}
+    result = run(entries, vacation={"2026-01-15": minutes, "2026-01-16": 60})
+
+    assert result["vacation_minutes"] == 60
+    assert result["vacation_capped_days"] == []
+
+
+def test_vacation_minutes_at_the_bounds_still_count():
+    result = run({}, vacation={"2026-01-15": 0, "2026-01-16": 1440})
+    assert result["vacation_minutes"] == 1440
+
+
 # --- Fremddaten ----------------------------------------------------------------------------------------
 
 def test_an_odd_stored_slot_counts_zero_and_never_raises(caplog):

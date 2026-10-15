@@ -21,6 +21,7 @@ reist NICHT per Drive-Sync und trägt daher — wie `reservations.py` — kein
 from __future__ import annotations
 
 import datetime
+import logging
 import secrets
 import threading
 from dataclasses import dataclass
@@ -31,6 +32,8 @@ from src.json_store import atomic_write_json, load_json_or_quarantine
 from src.time_utils import (
     calculate_hours, format_iso_date, hours_to_minutes, utc_now_iso,
 )
+
+_log = logging.getLogger(__name__)
 
 # JSON-getragener Record (Audit N8): Werte sind heterogen → Any.
 Vacation = dict[str, Any]
@@ -407,7 +410,15 @@ class VacationStore:
             for period in self._data.values():
                 if period.get("deleted"):
                     continue
-                for day, minutes in period.get("days", {}).items():
+                days = period.get("days")
+                if not isinstance(days, dict):
+                    # Beschädigte Datei (z.B. von Hand bearbeitet): die Periode
+                    # liefert keine Tage, statt jeden Bericht und jede
+                    # Auswertung der API mit einem 500 zu sprengen.
+                    _log.warning("Urlaub: Periode %r ohne lesbare Tage übersprungen",
+                                 period.get("id"))
+                    continue
+                for day, minutes in days.items():
                     out[day] = minutes
             return out
 

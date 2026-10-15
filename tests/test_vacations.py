@@ -109,6 +109,23 @@ def test_day_minutes_excludes_tombstones(store):
     assert store.day_minutes() == {}
 
 
+@pytest.mark.parametrize("days", ["kaputt", None, 7, ["2026-07-01"]])
+def test_day_minutes_skips_a_period_with_unreadable_days(tmp_path, days):
+    # Von Hand bearbeitet oder beschädigt: eine Periode ohne lesbare `days` darf
+    # weder Berichte noch die Auswertungen der API mit einem 500 sprengen.
+    path = tmp_path / "vacations.json"
+    store = VacationStore(str(path))
+    store.save(None, "Gut", "2026-08-03", "2026-08-03", _days(("2026-08-03", 240)))
+    data = json.loads(path.read_text(encoding="utf-8"))
+    data["kaputt"] = {"id": "kaputt", "name": "X", "from": "2026-07-01",
+                                 "to": "2026-07-01", "days": days, "deleted": False}
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+    reloaded = VacationStore(str(path))
+
+    assert reloaded.day_minutes() == {"2026-08-03": 240}
+
+
 def test_period_for_date_finds_the_period(store):
     pid = store.save(None, "Sommer", "2026-07-01", "2026-07-03",
                      _days(("2026-07-01", 480), ("2026-07-02", 480),
