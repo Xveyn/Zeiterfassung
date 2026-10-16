@@ -411,7 +411,9 @@ def test_a_clean_file_has_no_repair_notice(tmp_path):
 def test_a_repair_leaves_a_notice_pointing_at_the_backup(tmp_path):
     path = write(tmp_path, {"2026-01-05": None})
 
-    problems, backup = Storage(path, device_id="dev").repair_notice
+    notice = Storage(path, device_id="dev").repair_notice
+    assert notice is not None
+    problems, backup = notice
 
     assert "ohne Objektform" in problems
     (name,) = backups(tmp_path)
@@ -428,7 +430,9 @@ def test_a_repair_without_backup_leaves_a_notice_without_path(tmp_path, monkeypa
     monkeypatch.setattr(storage_module, "backup_corrupt", fail)
     path = write(tmp_path, {"2026-01-05": None})
 
-    problems, backup = Storage(path, device_id="dev").repair_notice
+    notice = Storage(path, device_id="dev").repair_notice
+    assert notice is not None
+    problems, backup = notice
 
     assert backup is None
     title, text = repair_notice_text(problems, backup)
