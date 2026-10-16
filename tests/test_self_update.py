@@ -146,6 +146,16 @@ def test_plan_update_blocks_on_linux_without_appimage_env():
     blocked = plan_update(_release(), "Linux", "x86_64", True, "", "/tmp/x")
     assert isinstance(blocked, UpdateBlocked)
     assert "AppImage" in blocked.reason
+    # Nutzertext ohne Umgebungsvariable, mit Ausweg: der Tab öffnet danach
+    # den Browser-Download (Xveyn#295).
+    assert "$APPIMAGE" not in blocked.reason
+    assert "Browser" in blocked.reason
+
+
+def test_plan_update_blocked_outside_installed_version_names_the_browser():
+    blocked = plan_update(_release(), "Linux", "x86_64", False, "", "/usr/bin/python")
+    assert isinstance(blocked, UpdateBlocked)
+    assert "Browser" in blocked.reason
 
 
 # === Tests für download_to und fetch_text ===
