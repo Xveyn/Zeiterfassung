@@ -65,7 +65,7 @@ export function classifyHttpError(status, body) {
   const day = named?.[2] ?? null;
   const dayKind = day ? (named[1] ? 'reservation' : 'entry') : null;
   // Eine abgelehnte Einstellung nennt der Desktop vorn: „Einstellung categories: …“.
-  const setting = kind === 'invalid_entry' ? (/^Einstellung (categories|category_times):/.exec(message)?.[1] ?? null) : null;
+  const setting = kind === 'invalid_entry' ? (/^Einstellung (categories|category_times)[: ]/.exec(message)?.[1] ?? null) : null;
   const protocolNumber = detail.supported_protocol;
   const supportedProtocol = code === 'invalid_protocol' && Number.isInteger(protocolNumber) && protocolNumber > 0 && protocolNumber < 1000 ? protocolNumber : null;
   return new SyncError({
@@ -366,7 +366,7 @@ export class SyncClient {
           await this._store.markDayError(error.day, error.message, snapshot.versions[error.day]);
         }
       }
-      if (error instanceof SyncError && error.kind === 'invalid_entry' && error.setting) {
+      if (error instanceof SyncError && error.kind === 'invalid_entry' && error.setting && snapshot.settingsVersion !== undefined) {
         await this._store.markSettingsError(error.message, snapshot.settingsVersion);
       }
       throw error;

@@ -975,9 +975,15 @@ test('the response lists the writable settings; a response without the field giv
 });
 
 test('a rejected setting is told apart from a rejected day', () => {
-  const error = classifyHttpError(422, { error: { code: 'invalid_entry', message: 'Einstellung category_times: Pause ist ungültig.' } });
-  assert.deepEqual([error.setting, error.day, error.dayKind], ['category_times', null, null]);
-  assert.equal(classifyHttpError(422, { error: { code: 'invalid_entry', message: '2026-10-07: kaputt' } }).setting, null);
+  const reject = (message) => classifyHttpError(422, { error: { code: 'invalid_entry', message } });
+  for (const [message, key] of [
+    ['Einstellung categories: höchstens 100 Kategorien.', 'categories'],
+    ['Einstellung category_times Foo: pause muss eine ganze Zahl von 0 bis 1440 sein.', 'category_times'],
+  ]) {
+    const error = reject(message);
+    assert.deepEqual([error.setting, error.day, error.dayKind], [key, null, null], message);
+  }
+  assert.equal(reject('2026-10-07: kaputt').setting, null);
 });
 
 test('a dirty category block goes out in the first request only, with one stamp for both keys', async () => {
@@ -1015,6 +1021,25 @@ test('a 422 for the block marks only the block; the next sync goes through witho
   await store.saveCategories({ categories: ['Neu'], category_times: {} });
 
   await assert.rejects(() => client.sync(), (error) => error.kind === 'invalid_entry' && error.setting === 'categories');
+  assert.equal(store.getMeta().categories_edit.error !== null, true);
+
+  await client.sync();
+  assert.equal('settings' in fetchFn.calls[1].plain, false);
+});
+
+test('a 422 in the per-entry form also marks the block; the next sync goes through without it', async () => {
+  let n = 0;
+  const { store, client, fetchFn } = await make({ handler: () => {
+    n += 1;
+    return n === 1
+      ? reply(422, { error: { code: 'invalid_entry', message: 'Einstellung category_times Foo: pause muss eine ganze Zahl von 0 bis 1440 sein.' } }, { sealed: true })
+      : reply(200, fixture('sync-response.json'));
+  } });
+  await store.applyResponse(parseSyncResponse(fixture('sync-response.json')),
+    { entries: {}, versions: {}, reservations: {}, reservationVersions: {} }, '2026-10-08');
+  await store.saveCategories({ categories: ['Foo'], category_times: { Foo: { start: '09:00' } } });
+
+  await assert.rejects(() => client.sync(), (error) => error.setting === 'category_times');
   assert.equal(store.getMeta().categories_edit.error !== null, true);
 
   await client.sync();
