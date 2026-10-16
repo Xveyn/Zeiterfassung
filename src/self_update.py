@@ -192,7 +192,7 @@ def plan_update(release: Any, system: str, machine: str, frozen: bool,
                 "der Download öffnet sich im Browser.")
         return UpdateBlocked(
             "Das Update aus der App heraus gibt es nur in der installierten "
-            "Version.")
+            "Version. Der Download öffnet sich im Browser.")
 
     asset_url = pick_asset_url(release.assets, system, release.version, machine)
     if asset_url is None:
@@ -213,8 +213,8 @@ def plan_update(release: Any, system: str, machine: str, frozen: bool,
     if system == "Linux":
         if not appimage:
             return UpdateBlocked(
-                "Der Pfad der laufenden AppImage ist unbekannt "
-                "($APPIMAGE nicht gesetzt).")
+                "Die App läuft nicht als AppImage — nur dort kann sie sich "
+                "selbst aktualisieren. Der Download öffnet sich im Browser.")
         target = appimage
     else:
         target = executable

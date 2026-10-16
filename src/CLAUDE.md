@@ -644,6 +644,11 @@ Wert.
   `__init__.py` re-exportiert die Oberfläche. Wer etwas ergänzt, legt es ins passende
   Teilmodul und trägt es dort nach.
 
+  **Parent darf ein beliebiges Widget sein** (Xveyn#295): `center_dialog_on_parent`
+  und `workarea_for` lösen ihn zuerst auf sein Toplevel auf, denn `transient` und
+  `wm_maxsize` kennen nur Fenster. Aufrufer aus Reitern übergeben trotzdem
+  `frame.winfo_toplevel()` (`tests/test_dialog_parent.py`).
+
   **`create_dialog` und `center_dialog_on_parent` sind ein Paar** (Xveyn#34):
   der Dialog entsteht verborgen (`withdraw`) und wird erst beim Zentrieren
   sichtbar gemacht, wenn seine Titelleiste schon dunkel ist. Ohne den zweiten
