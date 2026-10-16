@@ -136,7 +136,8 @@ class App:
                        conflicts_store=self.conflicts_store,
                        vacation_store=self.vacation_store,
                        reservation_store=self.reservation_store,
-                       on_reservations_change=self._on_remote_reservations_changed,
+                       on_reservations_change=self._on_remote_calendar_data_changed,
+                       on_vacations_change=self._on_remote_calendar_data_changed,
                        on_change=self._api_refresh.request),
             run=self._bg.run)
         # Handy-Instanz (#221): gleiche Bauart wie die lokale API, aber im LAN und mit
@@ -156,7 +157,7 @@ class App:
                     data_lock=self._data_lock, sync_guard=self._sync_guard,
                     reservation_store=self.reservation_store,
                     on_change=self._api_refresh.request,
-                    on_reservations_change=self._on_remote_reservations_changed),
+                    on_reservations_change=self._on_remote_calendar_data_changed),
                 run=self._bg.run)
         self._renderer = GridRenderer(
             self.root, self.storage, self.settings, self.reservation_store,
@@ -602,10 +603,9 @@ class App:
         self._refresh()
         self._bg.trigger_reconcile(self._on_reconcile_done)
 
-    def _on_remote_reservations_changed(self):
-        """Das Handy oder die lokale API hat Reservierungen verändert: Kalender-Push
-        anstoßen. Läuft im
-        Server-Thread, deshalb über `_marshal_to_ui`; `trigger_reconcile` gatet selbst
+    def _on_remote_calendar_data_changed(self):
+        """Das Handy oder die lokale API hat Reservierungen oder Urlaub verändert:
+        Kalender-Push anstoßen. Läuft im Server-Thread, deshalb über `_marshal_to_ui`; `trigger_reconcile` gatet selbst
         auf `gcal_enabled`. Das Neuzeichnen kommt schon über `on_change`."""
         self._marshal_to_ui(lambda: self._bg.trigger_reconcile(self._on_reconcile_done))
 

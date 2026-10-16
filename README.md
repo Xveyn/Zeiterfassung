@@ -343,6 +343,10 @@ curl -H "Authorization: Bearer <Token>" http://127.0.0.1:17653/v1/summary/month/
 | `GET /v1/reservations/{YYYY-MM-DD}` | ein Tag (404, wenn es keine Reservierung gibt) |
 | `PUT /v1/reservations/{YYYY-MM-DD}` | Tag **ersetzen**, Body `{"slots": [...]}`; stößt wie die App den Google-Kalender-Abgleich an |
 | `DELETE /v1/reservations/{YYYY-MM-DD}` | Reservierung des Tages löschen (404, wenn es keine gibt) |
+| `GET /v1/vacations?from=…&to=…` | Urlaubsperioden dieses Geräts, die den Zeitraum berühren: `{id, name, from, to, days, total_minutes}` mit den Tagesminuten (ungekappt) |
+| `GET /v1/vacations/{id}` | eine Periode (404, wenn es sie nicht gibt) |
+| `POST /v1/vacations` | Urlaub anlegen (`201`), Body siehe unten; stößt wie die App den Kalender-Abgleich an |
+| `DELETE /v1/vacations/{id}` | die **ganze** Periode löschen (404, wenn es sie nicht gibt) |
 | `GET /v1/summary/week/{YYYY-Www}` | Auswertung einer ISO-Woche (z. B. `2026-W41`) |
 | `GET /v1/summary/month/{YYYY-MM}` | Auswertung eines Monats (z. B. `2026-10`) |
 | `GET /v1/categories` | die in den Einstellungen konfigurierten Kategorien |
@@ -361,6 +365,16 @@ Fehler: `400` kaputtes JSON oder falsche Form, `422` ungültiger Slot oder Datum
 Die Antwort enthält `warnings`, die **nie** blockieren: `{"code": "weekly_limit", "iso_year", "iso_week", "total_minutes", "limit_minutes"}` (Werkstudenten-Limit) und `{"code": "pause_requirement", "worked_minutes", "actual_pause_minutes", "required_pause_minutes"}` (§ 4 ArbZG). `kategorie` ist frei (höchstens 100 Zeichen, ohne Steuer- und ungültige Unicode-Zeichen, umgebende Leerzeichen werden entfernt), `pause` muss eine ganze Zahl sein (`30.0` ist ein Fehler). Der Body muss UTF-8 sein, ein BOM ist erlaubt. `DELETE` entfernt nur die **Ist-Zeit** des Tages, keine Reservierung und keinen Urlaub.
 
 **Reservierungen** *(ab --VERSION--)* — Lesen geht immer, **Schreiben nur, wenn Reservierungen in der App eingeschaltet sind** (Einstellungen → Arbeitszeit → „Reservierungen verwenden“); sonst antwortet die API `409 reservations_disabled` mit genau diesem Hinweis, statt Tage anzulegen, die die App nicht zeigt. Der Body gleicht dem der Ist-Zeiten, aber ohne `pause`: `{"slots": [{"start": "08:00", "end": "12:00", "kategorie": "Projekt"}]}`. Erlaubt sind heute bis 365 Tage voraus (`422 date_in_past` / `date_too_far`); `DELETE` räumt auch vergangene Tage auf. An einem Urlaubstag mit Stunden gibt es `409 vacation_day`. `send_reminder_minutes` (0–120 oder `null`, an höchstens einem Slot je Tag) ist die Sende-Erinnerung: **nennt der Body das Feld nirgends, bleibt die bisherige Markierung des Tages erhalten** (positionsweise), ein ausdrückliches `null` löscht sie. Ein `PUT` mit anderer Slot-Reihenfolge ordnet die Kalender-Events anders zu (der Abgleich aktualisiert sie statt neue anzulegen). Die Kalender-IDs selbst erscheinen nie in der API.
+
+**Urlaub** *(ab --VERSION--)* — Ein Urlaub ist ein Zeitraum, kein Tag; die App berechnet die Tagesminuten selbst (Arbeitstage, Feiertage des eingestellten Bundeslands und Wochenenden mit 0, Verteilung von Gesamtstunden) — die API liefert genau dieselben Werte wie der Dialog. Body von `POST`: `name`, `from`, `to` und **genau eines** von `hours_per_day` (Stunden je Arbeitstag) oder `total_hours` (auf die Arbeitstage verteilt, auf die Minute genau), dazu optional `day_hours` (`{"2026-07-10": 4}`, einzelne Tage überschreiben den berechneten Wert; Tage außerhalb des Zeitraums sind ein Fehler):
+
+~~~
+curl -X POST -H "Authorization: Bearer <Token>" -H "Content-Type: application/json" \
+     -d '{"name": "Sommer", "from": "2026-07-06", "to": "2026-07-17", "hours_per_day": 8}' \
+     http://127.0.0.1:17653/v1/vacations
+~~~
+
+Fehler: `422 invalid_vacation` mit der Meldung der App (mehr als 24 h je Tag, Bis vor Von, kein Arbeitstag im Zeitraum …), `409 vacation_overlap` (der Zeitraum schneidet einen anderen Urlaub), `409 work_on_vacation_days` (an Tagen mit Urlaubsstunden liegt schon Ist-Zeit oder eine eingeschaltete Reservierung — Urlaub und Arbeitszeit schließen sich aus; Wochenenden und Feiertage mit 0 Minuten zählen nicht), `422 period_too_long` (höchstens 366 Tage). Ist **kein Bundesland** eingestellt, kennt die App keine Feiertage: die Antwort trägt dann `warnings: [{"code": "no_state", …}]`, und ein Weihnachtsurlaub bekommt für den 25./26.12. volle Stunden. Löschen entfernt immer die ganze Periode; zum Ändern löschen und neu anlegen. Urlaub ist **gerätelokal** (reist nicht per Drive-Sync) — die Antwort gilt nur für dieses Gerät.
 
 Die Auswertungen rechnen wie die App in **ganzen Minuten**: `total_minutes` (Ist-Zeit), `days[]` (je Tag mit Ist-Zeit), `by_category[]` (absteigend; `""` heißt „ohne Kategorie“), `weeks[]` (jede ISO-Woche, die der Zeitraum berührt, mit der Summe der **ganzen** Woche und `limit_minutes` (`null` ohne aktives Werkstudenten-Limit) und `exceeded`) und `pause_warnings[]`. Dazu der **Urlaub dieses Geräts**: `vacation_minutes` (um die am selben Tag erfasste Ist-Zeit gekappt, die betroffenen Tage stehen in `vacation_capped_days`) und `payable_minutes` („Zu vergüten gesamt“, Ist-Zeit plus Urlaub). Es gelten die Jahre 2000–2100: Jahre außerhalb davon sind `422`, ungültige Pfade `400` (bei Wochen und Monaten gehören Jahr `0000` und `9999` dazu; `/v1/holidays/0000` und `/9999` sind `422`). Bei einem Monat kann `weeks[]` eine Woche des Vorjahres enthalten (KW 52/1999 bei `2000-01`), die `/v1/summary/week/…` selbst ablehnt.
 

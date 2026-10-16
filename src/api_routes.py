@@ -17,6 +17,9 @@ Auswertungen: `GET /v1/summary/week/{YYYY-Www}`, `/v1/summary/month/{YYYY-MM}`,
 Reservierungen (#239): `GET /v1/reservations[/{date}]`, `PUT`/`DELETE
 /v1/reservations/{date}` (Regeln in `api_reservation_write`; Schreiben nur mit
 eingeschalteten Reservierungen, danach der Kalender-Abgleich der UI).
+Urlaub (#239): `GET /v1/vacations[/{id}]`, `POST /v1/vacations`, `DELETE
+/v1/vacations/{id}` (Body-Regeln in `api_vacation_write`, gerechnet wird in
+`vacation_plan`, derselben Planung wie im Dialog).
 Wire-Format der Ist-Zeit-Slots: `{start, end, pause, kategorie}` (Share v3), der
 Reservierungs-Slots: `{start, end, kategorie, send_reminder_minutes}`.
 
@@ -39,10 +42,13 @@ from src.api_entry_write import (
     warnings_for,
 )
 from src.api_reservation_write import check_reservation_day, parse_reservation_body
+from src.api_vacation_write import parse_vacation_body
 from src.api_summary import (
     category_names, holidays_for, parse_month, parse_week, parse_year, summarize,
 )
+from src.reservations import reservations_active
 from src.time_utils import utc_now_iso
+from src.vacation_plan import blocking_days, plan_vacation_save
 
 if TYPE_CHECKING:  # nur für die Signaturen
     from src.settings import SettingsLike
@@ -109,6 +115,9 @@ class ApiContext:
     # lokale Datum, injizierbar für die Tests.
     reservation_store: Any = None
     on_reservations_change: Callable[[], None] = _no_change
+    # Urlaub (#239): derselbe Kalender-Abgleich wie bei den Reservierungen
+    # (`App._on_vacation_change` ohne das Neuzeichnen, das `on_change` schon macht).
+    on_vacations_change: Callable[[], None] = _no_change
     today: Callable[[], datetime.date] = datetime.date.today
     on_change: Callable[[], None] = _no_change
     # Wahr, sobald die App beendet oder entfernt wird: schreibende Routen
@@ -268,13 +277,18 @@ def _refuse_while_closing(ctx: ApiContext) -> None:
         raise _ApiError(503, "shutting_down", "Die App wird gerade beendet.")
 
 
-def _notify(ctx: ApiContext) -> None:
+def _call_hook(hook: Callable[[], None], what: str) -> None:
     try:
-        ctx.on_change()
+        hook()
     except Exception:
-        # Die Daten sind gespeichert; ein Fehler beim Neuzeichnen darf daraus
-        # keine 500 machen (der Client würde den Schreibzugriff wiederholen).
-        _log.exception("Lokale API: on_change nach dem Schreiben fehlgeschlagen")
+        # Die Daten sind gespeichert; ein Fehler beim Neuzeichnen oder beim Anstoßen
+        # des Kalender-Abgleichs darf daraus keine 500 machen (der Client würde den
+        # Schreibzugriff wiederholen).
+        _log.exception("Lokale API: %s nach dem Schreiben fehlgeschlagen", what)
+
+
+def _notify(ctx: ApiContext) -> None:
+    _call_hook(ctx.on_change, "on_change")
 
 
 def _write_day(match: re.Match[str]) -> str:
@@ -388,12 +402,7 @@ def _notify_reservations(ctx: ApiContext) -> None:
     """Neuzeichnen und Kalender-Abgleich, beide nach dem Lock. Die UI stößt nach
     jedem Speichern oder Löschen denselben Abgleich an — die API ist kein Sonderweg."""
     _notify(ctx)
-    try:
-        ctx.on_reservations_change()
-    except Exception:
-        # Wie bei `_notify`: gespeichert ist gespeichert, der Client soll nicht
-        # wiederholen, nur weil der Abgleich nicht angestoßen werden konnte.
-        _log.exception("Lokale API: Kalender-Abgleich nach dem Schreiben nicht angestoßen")
+    _call_hook(ctx.on_reservations_change, "Kalender-Abgleich")
 
 
 def _carry_reminder(slots: list[dict[str, Any]], existing: dict[str, Any] | None) -> None:
@@ -457,6 +466,128 @@ def _delete_reservation(request: ApiRequest, ctx: ApiContext, match: re.Match[st
     return ApiResponse(200, {"date": day_key, "deleted": True})
 
 
+# --- Urlaub (#239) --------------------------------------------------------------
+
+_NO_STATE_WARNING = {
+    "code": "no_state",
+    "message": ("Es ist kein Bundesland eingestellt: Feiertage sind nicht berücksichtigt, "
+                "ein Weihnachtsurlaub trägt für den 25./26.12. volle Stunden. Das Bundesland "
+                "in der App setzen und den Urlaub neu anlegen."),
+}
+_MAX_LISTED_DAYS = 10
+
+
+def _vacation_store(ctx: ApiContext) -> Any:
+    if ctx.vacation_store is None:
+        raise _ApiError(409, "vacations_unavailable", "Urlaub ist in dieser App nicht verfügbar.")
+    return ctx.vacation_store
+
+
+def _wire_vacation(period: Mapping[str, Any]) -> dict[str, Any] | None:
+    """Die API-Form einer Periode (Minuten, nie die Kalender-ID) — oder None für
+    einen Record, dem Name, Zeitraum oder Tage fehlen (gespeicherte Perioden sind
+    Fremddaten)."""
+    days = period.get("days")
+    if not (isinstance(period.get("id"), str) and isinstance(period.get("from"), str)
+            and isinstance(period.get("to"), str) and isinstance(days, dict)):
+        return None
+    clean = {day: minutes for day, minutes in days.items()
+             if isinstance(day, str) and isinstance(minutes, int) and not isinstance(minutes, bool)}
+    name = period.get("name")
+    return {"id": period["id"], "name": name if isinstance(name, str) else "",
+            "from": period["from"], "to": period["to"], "days": dict(sorted(clean.items())),
+            "total_minutes": sum(clean.values())}
+
+
+def _vacations(request: ApiRequest, ctx: ApiContext, _match: re.Match[str]) -> ApiResponse:
+    start, end = _query_range(request.query)
+    store = _vacation_store(ctx)
+    found = []
+    for period_id, period in store.get_all().items():
+        wire = _wire_vacation({**period, "id": period_id})
+        if wire is None:
+            continue
+        # Überlappung statt „liegt ganz drin“: ein Urlaub über den Monatswechsel
+        # gehört in beide Monate.
+        if (end is not None and wire["from"] > end.isoformat()) or (
+                start is not None and wire["to"] < start.isoformat()):
+            continue
+        found.append(wire)
+    found.sort(key=lambda item: (item["from"], item["id"]))
+    return ApiResponse(200, {"vacations": found})
+
+
+def _vacation(request: ApiRequest, ctx: ApiContext, match: re.Match[str]) -> ApiResponse:
+    _only_params(request.query, frozenset())
+    period_id = match.group(1)
+    period = _vacation_store(ctx).get(period_id)
+    wire = _wire_vacation({**period, "id": period_id}) if period else None
+    if wire is None:
+        raise _ApiError(404, "not_found", "Diesen Urlaub gibt es nicht.")
+    return ApiResponse(200, wire)
+
+
+def _blocked_message(blocked: list[str]) -> str:
+    shown = ", ".join(blocked[:_MAX_LISTED_DAYS])
+    rest = len(blocked) - _MAX_LISTED_DAYS
+    if rest > 0:
+        shown += f" … und {rest} weitere"
+    return ("An diesen Tagen ist bereits Arbeitszeit oder eine Reservierung erfasst: "
+            f"{shown}. Urlaub und Arbeitszeit schließen sich am selben Tag aus; zuerst die "
+            "Einträge löschen oder einen anderen Zeitraum wählen.")
+
+
+def _notify_vacations(ctx: ApiContext) -> None:
+    _notify(ctx)
+    _call_hook(ctx.on_vacations_change, "Kalender-Abgleich")
+
+
+def _post_vacation(request: ApiRequest, ctx: ApiContext, _match: re.Match[str]) -> ApiResponse:
+    _only_params(request.query, frozenset())
+    store = _vacation_store(ctx)
+    parsed = parse_vacation_body(request.body)
+    state = ctx.settings.get("state") or ""
+    plan = plan_vacation_save(parsed.name, parsed.date_from, parsed.date_to, parsed.mode,
+                              parsed.value, parsed.overrides, state)
+    if plan["error"]:
+        raise _ApiError(422, "invalid_vacation", plan["error"])
+    with _locked(ctx):
+        _refuse_while_closing(ctx)
+        reservations = (ctx.reservation_store.get_all()
+                        if reservations_active(ctx.reservation_store, ctx.settings) else None)
+        blocked = blocking_days(plan["days"], ctx.storage.get_all(), reservations, ctx.settings)
+        if blocked:
+            raise _ApiError(409, "work_on_vacation_days", _blocked_message(blocked))
+        try:
+            period_id = store.save(None, parsed.name, parsed.date_from, parsed.date_to,
+                                   plan["days"])
+        except ValueError as exc:
+            raise _ApiError(409, "vacation_overlap", str(exc)) from None
+        saved = store.get(period_id)
+    _notify_vacations(ctx)
+    wire = _wire_vacation({**(saved or {}), "id": period_id}) or {"id": period_id}
+    return ApiResponse(201, {**wire, "warnings": [] if state else [dict(_NO_STATE_WARNING)]})
+
+
+def _delete_vacation(request: ApiRequest, ctx: ApiContext, match: re.Match[str]) -> ApiResponse:
+    _only_params(request.query, frozenset())
+    store = _vacation_store(ctx)
+    period_id = match.group(1)
+    with _locked(ctx):
+        _refuse_while_closing(ctx)
+        period = store.get(period_id)
+        if period is None:
+            raise _ApiError(404, "not_found", "Diesen Urlaub gibt es nicht.")
+        # Wie die UI: ein Abgleich ist nur nötig, wenn draußen ein Event hing.
+        had_event = bool(period.get("gcal_event_id"))
+        store.delete(period_id)
+    if had_event:
+        _notify_vacations(ctx)
+    else:
+        _notify(ctx)
+    return ApiResponse(200, {"id": period_id, "deleted": True})
+
+
 @dataclass(frozen=True)
 class Route:
     method: str
@@ -475,6 +606,10 @@ ROUTES: tuple[Route, ...] = (
     Route("GET", re.compile(r"/v1/reservations/([^/]+)"), _reservation, SCOPE_LOCAL),
     Route("PUT", re.compile(r"/v1/reservations/([^/]+)"), _put_reservation, SCOPE_LOCAL),
     Route("DELETE", re.compile(r"/v1/reservations/([^/]+)"), _delete_reservation, SCOPE_LOCAL),
+    Route("GET", re.compile(r"/v1/vacations"), _vacations, SCOPE_LOCAL),
+    Route("POST", re.compile(r"/v1/vacations"), _post_vacation, SCOPE_LOCAL),
+    Route("GET", re.compile(r"/v1/vacations/([^/]+)"), _vacation, SCOPE_LOCAL),
+    Route("DELETE", re.compile(r"/v1/vacations/([^/]+)"), _delete_vacation, SCOPE_LOCAL),
     Route("GET", re.compile(r"/v1/summary/week/([^/]+)"), _summary_week, SCOPE_LOCAL),
     Route("GET", re.compile(r"/v1/summary/month/([^/]+)"), _summary_month, SCOPE_LOCAL),
     Route("GET", re.compile(r"/v1/categories"), _categories, SCOPE_LOCAL),
