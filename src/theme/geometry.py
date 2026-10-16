@@ -26,7 +26,11 @@ def workarea_for(parent):
 
     macOS/Linux: Multi-Monitor-Workarea ist ohne externe Lib nicht sauber
     aus Tk abrufbar — Fallback auf den Primärmonitor (`wm_maxsize`).
+
+    `parent` darf ein beliebiges Widget sein: `wm_maxsize` gibt es nur auf
+    Fenstern, deshalb wird zuerst auf das Toplevel aufgelöst (Xveyn#295).
     """
+    parent = parent.winfo_toplevel()
     if platform.system() == "Windows":
         try:
             import ctypes
@@ -165,6 +169,10 @@ def center_dialog_on_parent(dialog, parent):
     dem sichtbaren Bereich schiebt und gleichzeitig auf demselben Bildschirm
     bleibt wie der Parent (siehe `workarea_for`).
 
+    `parent` darf ein beliebiges Widget sein (etwa ein Reiter-Frame); gebunden
+    und zentriert wird am zugehörigen Toplevel — `transient` und `wm_maxsize`
+    kennen nur Fenster (Xveyn#295).
+
     Muss gerufen werden, nachdem alle Widgets erstellt sind, damit
     winfo_reqwidth/reqheight die finale Größe liefern.
 
@@ -177,6 +185,7 @@ def center_dialog_on_parent(dialog, parent):
     er versteckt, bleibt der Dialog ein eigenständiges Top-Level und wird unten
     selbst in den Vordergrund geholt und fokussiert.
     """
+    parent = parent.winfo_toplevel()
     parent_viewable = bool(parent.winfo_viewable())
     if parent_viewable:
         dialog.transient(parent)

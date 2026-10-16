@@ -342,7 +342,9 @@ class UpdatesTab:
             getattr(sys, "frozen", False),
             os.environ.get("APPIMAGE", ""), sys.executable)
         if isinstance(plan, UpdateBlocked):
-            themed_showerror(self.frame, "Update nicht möglich", plan.reason)
+            themed_showerror(
+                self.frame.winfo_toplevel(), "Update nicht möglich",
+                plan.reason)
             self._open_download(release)
             return
 
@@ -415,7 +417,8 @@ class UpdatesTab:
         set_primary_button_enabled(self._check_btn, True)
         set_secondary_button_enabled(self._download_btn, True)
         self._status_label.config(text="Update fehlgeschlagen")
-        themed_showerror(self.frame, "Update fehlgeschlagen", message)
+        themed_showerror(
+            self.frame.winfo_toplevel(), "Update fehlgeschlagen", message)
 
     def _apply(self, plan, local, expected_sha256):
         """Anwenden und die App beenden bzw. neu starten.
