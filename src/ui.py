@@ -244,7 +244,9 @@ class App:
                 self._webhook_store, self._on_secrets_migrated),
         )
         self._bg.fetch_sender_email()
-        self._notify_storage_repaired()
+        # Erst in der Hauptschleife: main() minimiert das Fenster (--minimized) erst
+        # NACH App(); ein Dialog hier liefe modal mitten im Aufbau, vor dem Mappen.
+        self.root.after(300, self._notify_storage_repaired)
         self._updates.start()
         self._bg.reconcile_on_start(on_ok=self._on_reconcile_start_done)
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
