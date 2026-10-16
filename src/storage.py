@@ -85,6 +85,28 @@ def _scrub_surrogates(value: Any) -> Any:
     return value
 
 
+def repair_notice_text(problems: str, backup_path: str | None) -> tuple[str, str]:
+    """Titel und Text des einmaligen Hinweises nach einer Lade-Reparatur (#242):
+    sagt, was verworfen wurde und wo die unveränderte Kopie liegt."""
+    if backup_path:
+        where = ("Die ursprüngliche Datei wurde gesichert:\n"
+                 f"{backup_path}\n\nFehlen Stunden, stehen sie dort noch drin.")
+    else:
+        where = ("Eine Sicherung war nicht möglich. Die Datei auf der Platte bleibt "
+                 "unverändert, bis die nächste Speicherung sie überschreibt.")
+    return ("Zeiterfassungsdaten repariert",
+            "Beim Start waren Teile der Zeiterfassungsdaten unbrauchbar und wurden "
+            f"verworfen bzw. repariert:\n{problems}\n\n{where}")
+
+
+def repair_toast_text(backup_path: str | None) -> str:
+    """Kurzform für den Tray-Toast (Start mit --minimized)."""
+    if backup_path:
+        return ("Zeiterfassungsdaten repariert, Sicherung: "
+                f"{os.path.basename(backup_path)}")
+    return "Zeiterfassungsdaten repariert, aber ohne Sicherung (siehe Log)."
+
+
 class Storage:
     def __init__(self, filepath: str = "zeiterfassung.json", device_id: str = "",
                  lock: threading.RLock | None = None) -> None:
@@ -97,6 +119,9 @@ class Storage:
         self._lock = lock if lock is not None else threading.RLock()
         self._data: dict[str, Entry] = {}
         self._backup_pending: str | None = None     # Grund der noch fehlenden Sicherung
+        # Gesetzt, wenn _load() etwas repariert hat: (Problembeschreibung, Pfad der
+        # Sicherung oder None, falls keine möglich war). Die App zeigt das einmal an (#242).
+        self.repair_notice: tuple[str, str | None] | None = None
         self._load()
 
     def _load(self) -> None:
@@ -183,8 +208,9 @@ class Storage:
         Ohne Sicherung wird nicht geschrieben (nichts geht still verloren); der
         reparierte Stand gilt dann nur im Speicher."""
         try:
-            backup_corrupt(self.filepath, problems)
+            backup_path = backup_corrupt(self.filepath, problems)
         except OSError:
+            self.repair_notice = (problems, None)
             # Ohne Sicherung nicht schreiben. Der nächste normale Schreibvorgang
             # holt sie nach, bevor er die Datei überschreibt (`_save_to_disk`).
             self._backup_pending = problems
@@ -192,6 +218,7 @@ class Storage:
                         "möglich), der Stand gilt nur im Speicher",
                         os.path.basename(self.filepath), exc_info=True)
             return
+        self.repair_notice = (problems, backup_path)
         try:
             self._save_to_disk()
         except (OSError, ValueError):

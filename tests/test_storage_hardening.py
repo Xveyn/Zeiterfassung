@@ -12,7 +12,9 @@ import os
 
 import pytest
 
-from src.storage import MAX_PAUSE_MINUTES, Storage, sanitize_slot
+from src.storage import (
+    MAX_PAUSE_MINUTES, Storage, repair_notice_text, repair_toast_text, sanitize_slot,
+)
 from tests.conftest import ist_slot
 
 DAY = "2026-01-05"
@@ -399,3 +401,46 @@ def test_the_missing_backup_is_reported_once_not_on_every_save(tmp_path, monkeyp
         storage.save("2026-01-08", [ist_slot("08:00", "09:00")])
 
     assert "ohne Sicherung" not in caplog.text
+
+
+def test_a_clean_file_has_no_repair_notice(tmp_path):
+    path = write(tmp_path, {"2026-01-05": entry([ist_slot("08:00", "09:00")])})
+    assert Storage(path, device_id="dev").repair_notice is None
+
+
+def test_a_repair_leaves_a_notice_pointing_at_the_backup(tmp_path):
+    path = write(tmp_path, {"2026-01-05": None})
+
+    notice = Storage(path, device_id="dev").repair_notice
+    assert notice is not None
+    problems, backup = notice
+
+    assert "ohne Objektform" in problems
+    (name,) = backups(tmp_path)
+    assert backup == str(tmp_path / name)
+    # Zweiter Start: Datei ist geheilt, kein erneuter Hinweis.
+    assert Storage(path, device_id="dev").repair_notice is None
+
+
+def test_a_repair_without_backup_leaves_a_notice_without_path(tmp_path, monkeypatch):
+    import src.storage as storage_module
+
+    def fail(*_args, **_kwargs):
+        raise OSError("gesperrt")
+    monkeypatch.setattr(storage_module, "backup_corrupt", fail)
+    path = write(tmp_path, {"2026-01-05": None})
+
+    notice = Storage(path, device_id="dev").repair_notice
+    assert notice is not None
+    problems, backup = notice
+
+    assert backup is None
+    title, text = repair_notice_text(problems, backup)
+    assert "nicht möglich" in text and title
+    assert "ohne Sicherung" in repair_toast_text(None)
+
+
+def test_notice_text_names_the_backup_file():
+    title, text = repair_notice_text("1 Eintrag/Einträge ohne Objektform", "/d/z.json.corrupt-1")
+    assert "/d/z.json.corrupt-1" in text and "ohne Objektform" in text
+    assert "z.json.corrupt-1" in repair_toast_text("/d/z.json.corrupt-1")
