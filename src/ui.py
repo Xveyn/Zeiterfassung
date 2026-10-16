@@ -25,6 +25,7 @@ from src.mobile_routes import MobileContext
 from src.mobile_service import MobileService
 from src.weekly_limit import format_limit_warnings
 from src.reservations import reservations_active
+from src.storage import repair_notice_text, repair_toast_text
 from src.grid_renderer import GridRenderer
 from src.paths import get_resource_path, relaunch_command, relaunch_env
 from src.mail import friendly_token_message
@@ -243,6 +244,7 @@ class App:
                 self._webhook_store, self._on_secrets_migrated),
         )
         self._bg.fetch_sender_email()
+        self._notify_storage_repaired()
         self._updates.start()
         self._bg.reconcile_on_start(on_ok=self._on_reconcile_start_done)
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
@@ -384,6 +386,22 @@ class App:
         else:
             logging.getLogger(__name__).info(
                 "Zugangsdaten in den Schlüsselbund umgezogen")
+
+    def _notify_storage_repaired(self):
+        """Einmaliger Hinweis, wenn der Store beim Laden repariert wurde (#242),
+        damit verschwundene Stunden auf die Sicherung zeigen. Wie
+        `_on_secrets_migrated`: Dialog / Tray-Toast / nur Log."""
+        notice = self.storage.repair_notice
+        if notice is None:
+            return
+        problems, backup_path = notice
+        if self.root.state() in ("normal", "zoomed"):
+            themed_showwarning(self.root, *repair_notice_text(problems, backup_path))
+        elif self._tray is not None:
+            self._tray.notify(repair_toast_text(backup_path))
+        else:
+            logging.getLogger(__name__).info(
+                "Zeiterfassungsdaten repariert (Sicherung: %s)", backup_path)
 
     def _show_limit_warnings(self, warnings):
         if not warnings:
