@@ -125,6 +125,11 @@ def test_the_request_example_is_accepted_by_the_server_parser():
     assert sorted(parsed.entries) == sorted(example["entries"])
 
 
+def test_the_response_example_lists_the_writable_settings():
+    example = load("sync-response.json")
+    assert example["writable_settings"] == ["categories", "category_times"]
+
+
 def test_the_response_example_has_the_shape_the_server_really_sends(tmp_path):
     example = load("sync-response.json")
     env = mr.make_env(tmp_path)
@@ -157,9 +162,20 @@ def test_the_sync_request_example_has_the_shape_the_phone_sends(tmp_path):
     sent = mr.sync_doc(env, {"2026-10-07": mr.day(), "2026-10-06": mr.day(slots=(), deleted=True)})
     sent["last_pull_at"] = example["last_pull_at"]
 
-    # `reservations` sendet die PWA nur mit nicht übertragenen Reservierungen; die Form prüft der JS-Test
+    # `reservations`/`settings` sendet die PWA nur mit nicht übertragenen Reservierungen bzw. geändertem Kategorien-Block; die Form prüft der JS-Test
     # (`sync.test.js`), und dass der Desktop sie liest, `test_the_live_request_example_carries_…`.
-    assert set(sent) == set(example) - {"reservations"} and sent["protocol"] == example["protocol"] == 2
+    assert set(sent) == set(example) - {"reservations", "settings"} and sent["protocol"] == example["protocol"] == 2
+
+
+def test_the_live_request_example_carries_settings_the_server_reads():
+    example = load("sync-request.json")
+    assert example["settings"]
+
+    parsed = mobile_sync.parse_request(
+        json.dumps(example).encode(), now=example["client_time"],
+        today=datetime.date.fromisoformat(example["client_time"][:10]))
+
+    assert sorted(parsed.settings) == ["categories", "category_times"]
 
 
 def test_the_pair_examples_have_the_shape_the_server_expects_and_sends(tmp_path):

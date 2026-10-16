@@ -339,6 +339,10 @@ test('a sync sends bearer, request shape and the dirty days, then applies the an
   await store.clearDay('2026-10-06');                                // Tombstone
   await store.saveReservation('2026-10-15', [RES]);
   await store.clearReservation('2026-10-16');                        // Tombstone der Reservierung
+  await store.applyResponse(parseSyncResponse(fixture('sync-response.json')),   // Desktop bietet Kategorien an
+    { entries: {}, versions: {}, reservations: {}, reservationVersions: {} }, '2026-10-08');
+  await store.setMeta({ token: 'T0', last_pull_at: '' });          // die Hilfsantwort hat beides verstellt
+  await store.saveCategories({ categories: ['Neu'], category_times: { Neu: { start: '09:00' } } });
 
   const result = await client.sync();
 
@@ -360,6 +364,10 @@ test('a sync sends bearer, request shape and the dirty days, then applies the an
   assert.deepEqual(Object.keys(call.plain.reservations).sort(), Object.keys(example.reservations).sort());
   for (const date of Object.keys(example.reservations)) {
     assert.deepEqual(keysOf(call.plain.reservations[date]), keysOf(example.reservations[date]), date);
+  }
+  assert.deepEqual(Object.keys(call.plain.settings).sort(), Object.keys(example.settings).sort());
+  for (const key of Object.keys(example.settings)) {
+    assert.deepEqual(keysOf(call.plain.settings[key]), keysOf(example.settings[key]), key);
   }
   assert.deepEqual(call.plain.reservations['2026-10-15'].slots, [RES]);
   assert.equal(call.plain.reservations['2026-10-16'].deleted, true);
@@ -956,4 +964,84 @@ test('a work-day 422 still marks the work day', async () => {
 
   await assert.rejects(() => client.sync(), (error) => error.dayKind === 'entry');
   assert.ok(store.getDay('2026-10-07').error);
+});
+
+// --- Einstellungen ----------------------------------------------------------------------------------
+
+test('the response lists the writable settings; a response without the field gives an empty list', () => {
+  assert.deepEqual(parseSyncResponse(fixture('sync-response.json')).writable_settings, ['categories', 'category_times']);
+  assert.deepEqual(parseSyncResponse(fixture('compat/sync-response-pre-settings.json')).writable_settings, []);
+  assert.deepEqual(parseSyncResponse({ ...fixture('sync-response.json'), writable_settings: ['x', 5] }).writable_settings, ['x']);
+});
+
+test('a rejected setting is told apart from a rejected day', () => {
+  const reject = (message) => classifyHttpError(422, { error: { code: 'invalid_entry', message } });
+  for (const [message, key] of [
+    ['Einstellung categories: höchstens 100 Kategorien.', 'categories'],
+    ['Einstellung category_times Foo: pause muss eine ganze Zahl von 0 bis 1440 sein.', 'category_times'],
+  ]) {
+    const error = reject(message);
+    assert.deepEqual([error.setting, error.day, error.dayKind], [key, null, null], message);
+  }
+  assert.equal(reject('2026-10-07: kaputt').setting, null);
+});
+
+test('a dirty category block goes out in the first request only, with one stamp for both keys', async () => {
+  const { store, client, fetchFn } = await make();
+  await store.applyResponse(parseSyncResponse(fixture('sync-response.json')),
+    { entries: {}, versions: {}, reservations: {}, reservationVersions: {} }, '2026-10-08');
+  await store.saveCategories({ categories: ['Neu'], category_times: { Neu: { start: '09:00' } } });
+
+  await client.sync();
+
+  const sent = fetchFn.calls[0].plain.settings;
+  assert.deepEqual(Object.keys(sent).sort(), ['categories', 'category_times']);
+  assert.deepEqual(sent.categories.value, ['Neu']);
+  assert.equal(sent.categories.modified_at, sent.category_times.modified_at);
+  assert.equal(store.categoriesDirty(), false);
+});
+
+test('a sync without a dirty block sends no settings field', async () => {
+  const { store, client, fetchFn } = await make();
+  await store.saveDay('2026-10-07', [SLOT]);
+  await client.sync();
+  assert.equal('settings' in fetchFn.calls[0].plain, false);
+});
+
+test('a 422 for the block marks only the block; the next sync goes through without it', async () => {
+  let n = 0;
+  const { store, client, fetchFn } = await make({ handler: () => {
+    n += 1;
+    return n === 1
+      ? reply(422, { error: { code: 'invalid_entry', message: 'Einstellung categories: höchstens 100 Kategorien.' } }, { sealed: true })
+      : reply(200, fixture('sync-response.json'));
+  } });
+  await store.applyResponse(parseSyncResponse(fixture('sync-response.json')),
+    { entries: {}, versions: {}, reservations: {}, reservationVersions: {} }, '2026-10-08');
+  await store.saveCategories({ categories: ['Neu'], category_times: {} });
+
+  await assert.rejects(() => client.sync(), (error) => error.kind === 'invalid_entry' && error.setting === 'categories');
+  assert.equal(store.getMeta().categories_edit.error !== null, true);
+
+  await client.sync();
+  assert.equal('settings' in fetchFn.calls[1].plain, false);
+});
+
+test('a 422 in the per-entry form also marks the block; the next sync goes through without it', async () => {
+  let n = 0;
+  const { store, client, fetchFn } = await make({ handler: () => {
+    n += 1;
+    return n === 1
+      ? reply(422, { error: { code: 'invalid_entry', message: 'Einstellung category_times Foo: pause muss eine ganze Zahl von 0 bis 1440 sein.' } }, { sealed: true })
+      : reply(200, fixture('sync-response.json'));
+  } });
+  await store.applyResponse(parseSyncResponse(fixture('sync-response.json')),
+    { entries: {}, versions: {}, reservations: {}, reservationVersions: {} }, '2026-10-08');
+  await store.saveCategories({ categories: ['Foo'], category_times: { Foo: { start: '09:00' } } });
+
+  await assert.rejects(() => client.sync(), (error) => error.setting === 'category_times');
+  assert.equal(store.getMeta().categories_edit.error !== null, true);
+
+  await client.sync();
+  assert.equal('settings' in fetchFn.calls[1].plain, false);
 });

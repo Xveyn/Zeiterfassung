@@ -71,7 +71,7 @@ export function parseDefaults(raw) {
   return { pause, weekdays, category_times };
 }
 
-/** Name, Version und Plattform des Desktops für den Verbindungsdialog; Ungültiges wird leer. */
+/** Name, Version und Plattform des Desktops für den Reiter „Verbindung“ der Einstellungen; Ungültiges wird leer. */
 export function parseDesktopInfo(raw) {
   const text = (value) => (typeof value === 'string' && value.length <= MAX_TEXT ? value : '');
   const info = isObject(raw) ? raw : {};

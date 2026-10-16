@@ -2,10 +2,14 @@
 // Dünne DOM-Schicht: macht aus den Modellen von `view-model.js` Elemente. Keine Logik, die
 // sich ohne Browser testen ließe — die steckt in `view-model.js`. Jede Funktion bekommt ihre
 // Handler als Parameter; nichts hier kennt den Store oder das Netz.
-import { h } from './dom.js';
+import { focusByKey, h } from './dom.js';
 import { MAX_CATEGORY_LENGTH } from './minutes.js';
 import { updateStatusText } from './update-policy.js';
-import { categoryLabel, categoryOptions, hintKey, nextRow, pickCategory, windowRow } from './view-model.js';
+import { MAX_NAME_LENGTH, blockSignature, moveRow, rowsToBlock, timesSummary, validateCategoryRows } from './categories.js';
+import {
+  SETTINGS_TABS, categoryLabel, categoryOptions, categoryRemovalText, categoryRenameHint, hintKey, nextRow, pickCategory,
+  settingsTabLabel, windowRow,
+} from './view-model.js';
 
 const button = (label, onclick, className = '', extra = {}) =>
   h('button', { type: 'button', class: className, onclick, ...extra }, label);
@@ -50,7 +54,7 @@ export function statusBar(handlers) {
   const sync = button('Jetzt abgleichen', handlers.sync, 'primary', { 'data-focus': 'sync' });
   const element = h('footer', { class: 'statusbar' },
     h('div', { class: 'text', 'aria-live': 'polite' }, connection, pending, last),
-    button('Verbindung', handlers.connection, '', { 'data-focus': 'connection' }),
+    button('Einstellungen', handlers.settings, '', { 'data-focus': 'settings' }),
     sync);
   const setText = (node, text) => { if (node.textContent !== text) node.textContent = text; };
   const update = (status) => {
@@ -293,13 +297,31 @@ export function conflictsDialog(conflicts, handlers) {
   return openDialog(dialog);
 }
 
-export function connectionDialog({ desktopName, desktop, hint = '', address, build, persistent, tokenUntil, update, window: windowInfo }, handlers) {
+// --- Einstellungen -----------------------------------------------------------------------------------
+
+/** Reiter „Verbindung“: Stand der Kopplung und des Desktops, Verlauf, Neu koppeln. */
+function connectionPanel({ desktopName, desktop, hint = '', address, persistent, tokenUntil, window: windowInfo }, { closeThen, handlers }) {
   const windowState = windowRow(windowInfo);
-  const resetWindow = button('Auf 90 Tage zurücksetzen', () => { dialog.close(); handlers.resetWindow(); });
+  const resetWindow = button('Auf 90 Tage zurücksetzen', () => closeThen(() => handlers.resetWindow()), '', { 'data-focus': 'reset-window' });
   resetWindow.hidden = !windowState.canReset;
-  const windowCell = h('dd', {}, windowState.text, ' ', resetWindow);
+  return h('div', {},
+    h('dl', {},
+      h('dt', { class: 'muted' }, 'Desktop'), h('dd', {}, desktopName || '—'),
+      h('dt', { class: 'muted' }, 'Desktop-Version'), h('dd', {}, desktop?.version || '—'),
+      h('dt', { class: 'muted' }, 'Plattform'), h('dd', {}, desktop?.platform || '—'),
+      h('dt', { class: 'muted' }, 'Adresse'), h('dd', {}, address || '—'),
+      h('dt', { class: 'muted' }, 'Kopplung gültig bis'), h('dd', {}, tokenUntil || '—'),
+      h('dt', { class: 'muted' }, 'Dauerhafter Speicher'), h('dd', {}, persistent === null ? 'unbekannt' : persistent ? 'ja' : 'nein'),
+      h('dt', { class: 'muted' }, 'Verlauf'), h('dd', {}, windowState.text, ' ', resetWindow)),
+    hint && h('p', { class: 'hint warn', role: 'status' }, hint),
+    h('div', { class: 'buttons' },
+      button('QR neu scannen / Neu koppeln', () => closeThen(() => handlers.pair()), '', { 'data-focus': 'pair' })));
+}
+
+/** Reiter „Updates“: Version der Handy-App, Suche, Neuladen, automatisches Einspielen. */
+function updatesPanel({ build, update }, { guard, handlers }) {
   const updateStatus = h('dd', { role: 'status' }, updateStatusText(update.state));
-  const apply = button('Jetzt neu laden', () => handlers.applyUpdate(), 'primary');
+  const apply = button('Jetzt neu laden', () => guard(() => handlers.applyUpdate()), 'primary', { 'data-focus': 'apply-update' });
   apply.hidden = update.state !== 'available';
   const check = button('Nach Updates suchen', async () => {
     check.disabled = true;
@@ -308,27 +330,193 @@ export function connectionDialog({ desktopName, desktop, hint = '', address, bui
     updateStatus.textContent = updateStatusText(state);
     apply.hidden = state !== 'available';
     check.disabled = false;
-  });
+  }, '', { 'data-focus': 'check-update' });
   const auto = h('input', { id: 'auto-update', type: 'checkbox', checked: update.auto,
     onchange: () => handlers.setAutoUpdate(auto.checked) });
-  const dialog = h('dialog', { 'aria-labelledby': 'connection-title' },
-    h('h2', { id: 'connection-title' }, 'Verbindung'),
+  return h('div', {},
     h('dl', {},
-      h('dt', { class: 'muted' }, 'Desktop'), h('dd', {}, desktopName || '—'),
-      h('dt', { class: 'muted' }, 'Desktop-Version'), h('dd', {}, desktop?.version || '—'),
-      h('dt', { class: 'muted' }, 'Plattform'), h('dd', {}, desktop?.platform || '—'),
-      h('dt', { class: 'muted' }, 'Adresse'), h('dd', {}, address || '—'),
-      h('dt', { class: 'muted' }, 'Kopplung gültig bis'), h('dd', {}, tokenUntil || '—'),
-      h('dt', { class: 'muted' }, 'Dauerhafter Speicher'), h('dd', {}, persistent === null ? 'unbekannt' : persistent ? 'ja' : 'nein'),
       h('dt', { class: 'muted' }, 'Handy-App'), h('dd', {}, build),
-      h('dt', { class: 'muted' }, 'Updates'), updateStatus,
-      h('dt', { class: 'muted' }, 'Verlauf'), windowCell),
+      h('dt', { class: 'muted' }, 'Updates'), updateStatus),
     h('div', { class: 'buttons' }, check, apply),
-    h('label', { class: 'check', for: 'auto-update' }, auto, ' Updates automatisch einspielen'),
-    hint && h('p', { class: 'hint warn', role: 'status' }, hint),
-    h('div', { class: 'buttons' },
-      button('QR neu scannen / Neu koppeln', () => { dialog.close(); handlers.pair(); }),
-      button('Schließen', () => dialog.close(), 'primary')));
+    h('label', { class: 'check', for: 'auto-update' }, auto, ' Updates automatisch einspielen'));
+}
+
+const signatureOf = (rows) => {
+  const block = rowsToBlock(rows);
+  return blockSignature(block.categories, block.category_times);
+};
+const emptyCategoryRow = () => ({ name: '', mode: 'general', start: '', end: '', pause: '', raw: null });
+
+/** Reiter „Kategorien“. Hält die Zeilen als eigenen Zustand (eine Kopie des Modells): jede Änderung
+ *  bleibt hier, bis „Speichern“ sie an `handlers.saveCategories(rows)` gibt (liefert `null` oder eine
+ *  Meldung). `dirty()` sagt dem Dialog, ob beim Schließen nachgefragt werden muss. */
+function categoriesPanel(model, handlers) {
+  let rows = model.rows.map(({ summary, ...row }) => ({ ...row, raw: row.raw && structuredClone(row.raw) }));
+  let saved = signatureOf(rows);
+  const list = h('ul', { class: 'categories' });
+  const storedError = h('p', { class: 'hint error', role: 'alert' }, model.error || '');
+  storedError.hidden = !model.error;
+  const pending = h('p', { class: 'muted', role: 'status', tabindex: -1, 'data-focus': 'categories-status' }, 'Noch nicht an den Desktop übertragen.');
+  pending.hidden = !model.dirty;
+  const message = h('div', { class: 'error-text', role: 'alert' }, '');
+  const save = button('Speichern', async () => {
+    save.disabled = true;
+    const failure = await handlers.saveCategories(rows.map((row) => ({ ...row })));
+    if (failure) {
+      message.textContent = failure;
+      save.disabled = false;
+      return;
+    }
+    saved = signatureOf(rows);
+    storedError.hidden = true;                    // ein neuer Stand ersetzt den abgelehnten
+    pending.textContent = 'Gespeichert — wird beim nächsten Abgleich an den Desktop übertragen.';
+    pending.hidden = false;
+    refresh();
+    pending.focus();                              // „Speichern“ ist jetzt gesperrt und hielte den Fokus nicht
+  }, 'primary', { 'data-focus': 'categories-save' });
+  const dirty = () => signatureOf(rows) !== saved;
+  const refresh = () => {
+    const check = validateCategoryRows(rows);
+    save.disabled = !model.editable || !dirty() || !check.ok;
+    message.textContent = check.ok ? '' : check.message;
+  };
+  // Jede Änderung baut die Liste neu, der fokussierte Knopf verschwindet dabei: danach den ersten
+  // passenden (nicht gesperrten) Schlüssel fokussieren.
+  const change = (next, focusKeys = []) => {
+    rows = next;
+    build();
+    refresh();
+    focusKeys.some((key) => focusByKey(element, key));
+  };
+  const move = (index, direction) => {
+    const target = index + direction;
+    const [same, other] = direction < 0 ? ['up', 'down'] : ['down', 'up'];
+    change(moveRow(rows, index, direction), [`category-${target}-${same}`, `category-${target}-${other}`]);
+  };
+  const edit = (index) => categoryEditDialog(rows[index], {
+    onDone: (row) => change(rows.map((current, i) => (i === index ? row : current)), [`category-${index}`]),
+    onRemove: () => {
+      const next = rows.filter((_, i) => i !== index);
+      change(next, [`category-${Math.min(index, next.length - 1)}`, 'category-add']);
+    },
+  });
+  const rowElement = (row, index) => {
+    const info = [h('strong', { class: 'name' }, row.name.trim() || '(ohne Namen)'), h('span', { class: 'muted summary' }, timesSummary(row))];
+    if (!model.editable) return h('li', { class: 'category' }, h('div', { class: 'info' }, info));
+    return h('li', { class: 'category' },
+      button(info, () => edit(index), 'info', { 'aria-label': `Kategorie „${row.name.trim()}“ bearbeiten`, 'data-focus': `category-${index}` }),
+      button('▲', () => move(index, -1), 'move', { 'aria-label': 'Nach oben', disabled: index === 0, 'data-focus': `category-${index}-up` }),
+      button('▼', () => move(index, +1), 'move', { 'aria-label': 'Nach unten', disabled: index === rows.length - 1, 'data-focus': `category-${index}-down` }));
+  };
+  const build = () => {
+    list.replaceChildren(...rows.map(rowElement));
+    if (rows.length === 0) list.append(h('li', { class: 'muted' }, 'Keine Kategorien.'));
+  };
+  build();
+  refresh();
+  const element = h('div', {},
+    model.hint && h('p', { class: 'hint warn', role: 'status' }, model.hint),
+    storedError,
+    list,
+    pending,
+    model.editable && h('div', { class: 'buttons' },
+      button('+ Kategorie', () => categoryEditDialog(emptyCategoryRow(), {
+        isNew: true, onDone: (row) => change([...rows, row], [`category-${rows.length}`]),
+      }), '', { 'data-focus': 'category-add' }),
+      save),
+    message);
+  return { element, dirty };
+}
+
+/** Einstellungen mit drei Reitern (Verbindung / Kategorien / Updates). Die Bereiche werden nur
+ *  verborgen, nicht neu gebaut: Eingaben überstehen den Reiterwechsel. Schließen mit ungespeicherten
+ *  Kategorien fragt nach. */
+export function settingsDialog({ tab = 'connection', connection, updates, categories }, handlers) {
+  const dialog = h('dialog', { 'aria-labelledby': 'settings-title', class: 'settings-dialog' });
+  let cats = null;
+  const guard = (then) => {
+    if (!cats?.dirty()) { then(); return; }
+    confirmDialog({ title: 'Änderungen verwerfen?', text: 'Die Änderungen an den Kategorien sind noch nicht gespeichert.',
+      confirmLabel: 'Verwerfen' }, then);
+  };
+  const closeThen = (then = () => {}) => guard(() => { dialog.close(); then(); });
+  cats = categoriesPanel(categories, handlers);
+  const panels = {
+    connection: connectionPanel(connection, { closeThen, handlers }),
+    categories: cats.element,
+    updates: updatesPanel(updates, { guard, handlers }),
+  };
+  const tabs = Object.fromEntries(SETTINGS_TABS.map((key) => [key,
+    h('button', { type: 'button', role: 'tab', id: `settings-tab-${key}`, 'aria-controls': `settings-panel-${key}`,
+      'data-focus': `settings-tab-${key}`, onclick: () => show(key) }, settingsTabLabel(key))]));
+  for (const key of SETTINGS_TABS) {
+    panels[key].setAttribute('role', 'tabpanel');
+    panels[key].id = `settings-panel-${key}`;
+    panels[key].setAttribute('aria-labelledby', `settings-tab-${key}`);
+  }
+  const show = (key) => {
+    for (const other of SETTINGS_TABS) {
+      panels[other].hidden = other !== key;
+      tabs[other].setAttribute('aria-selected', String(other === key));
+    }
+  };
+  // Escape schließt einen Dialog von sich aus; mit ungespeicherten Kategorien erst nachfragen.
+  dialog.addEventListener('cancel', (event) => {
+    if (!cats.dirty()) return;
+    event.preventDefault();
+    closeThen();
+  });
+  dialog.append(
+    h('h2', { id: 'settings-title' }, 'Einstellungen'),
+    h('div', { class: 'tabs', role: 'tablist' }, SETTINGS_TABS.map((key) => tabs[key])),
+    ...SETTINGS_TABS.map((key) => panels[key]),
+    h('div', { class: 'buttons' }, button('Schließen', () => closeThen(), '', { 'data-focus': 'settings-close' })));
+  show(SETTINGS_TABS.includes(tab) ? tab : 'connection');
+  return openDialog(dialog);
+}
+
+/** Eine Kategorie bearbeiten (Unterdialog). Arbeitet auf einer Kopie; „Fertig“ gibt sie an
+ *  `onDone(row)`, „Löschen“ fragt nach und ruft `onRemove()`. Eine Kategorie „pro Wochentag“ lässt
+ *  hier nur Name und Löschen zu, ihre Zeiten wandern unverändert durch. */
+export function categoryEditDialog(row, { onDone, onRemove, isNew = false }) {
+  const dialog = h('dialog', { 'aria-labelledby': 'category-edit-title', class: 'category-edit-dialog' });
+  const draft = { ...row, raw: row.raw && structuredClone(row.raw) };
+  const message = h('div', { class: 'error-text', role: 'alert' }, '');
+  const done = button('Fertig', () => { dialog.close(); onDone(draft); }, 'primary', { 'data-focus': 'category-done' });
+  const refresh = () => {
+    const check = validateCategoryRows([draft]);
+    done.disabled = !check.ok;
+    message.textContent = check.ok ? '' : check.message;
+  };
+  const field = (key, label, attrs) => {
+    const id = `category-edit-${key}`;
+    const input = h('input', { id, value: draft[key], ...attrs, oninput: () => { draft[key] = input.value; refresh(); } });
+    return h('div', {}, h('label', { for: id }, label), input);
+  };
+  const times = draft.mode === 'per_day'
+    ? h('p', { class: 'hint info' }, 'Pro Wochentag eingestellt — am Desktop bearbeiten.')
+    : h('div', {},
+      h('p', { class: 'muted' }, 'Leere Felder: der allgemeine Standard gilt.'),
+      h('div', { class: 'row' },
+        field('start', 'Start', { type: 'time', step: 60, placeholder: 'Standard' }),
+        field('end', 'Ende', { type: 'time', step: 60, placeholder: 'Standard' })),
+      field('pause', 'Pause (Min)', { type: 'number', inputmode: 'numeric', min: 0, step: 1, placeholder: 'Standard' }));
+  const remove = !isNew && button('Löschen', () => confirmDialog({
+    title: 'Kategorie löschen?', text: categoryRemovalText(row.name), confirmLabel: 'Löschen',
+  }, () => { dialog.close(); onRemove(); }), 'link', { 'data-focus': 'category-remove' });
+  dialog.append(
+    h('form', { class: 'category-form', onsubmit: (event) => { event.preventDefault(); if (!done.disabled) done.click(); } },
+      h('h2', { id: 'category-edit-title' }, isNew ? 'Neue Kategorie' : 'Kategorie bearbeiten'),
+      field('name', 'Name', { type: 'text', maxlength: MAX_NAME_LENGTH, autocomplete: 'off' }),
+      !isNew && h('p', { class: 'muted' }, categoryRenameHint),
+      times,
+      message,
+      h('div', { class: 'buttons' },
+        remove,
+        button('Abbrechen', () => dialog.close()),
+        done)));
+  refresh();
+  if (isNew) message.textContent = '';             // ein leerer Name ist hier noch kein Fehler
   return openDialog(dialog);
 }
 

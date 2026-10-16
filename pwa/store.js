@@ -19,6 +19,7 @@ import {
   RESERVATION_HORIZON_DAYS, normalizeReservationSlots, reservationEditable, reservationSignature,
   validateReservationSlots,
 } from './reservations.js';
+import { blockSignature, categoryRows, validateCategoryRows } from './categories.js';
 
 const DEFAULT_META = Object.freeze({
   address: null,
@@ -39,6 +40,8 @@ const DEFAULT_META = Object.freeze({
   window_max_known: false, // erst nach der ersten angewandten Antwort wahr; vorher weiß man nichts
   auto_update: false,      // Updates der PWA automatisch einspielen (#290); gerätelokal, Standard aus
   reservations_enabled: false, // Desktop bietet Reservierungen an (Feld in der Antwort); fehlt es, bleibt alles verborgen
+  settings_writable: false,   // Desktop versteht `settings` (Feld `writable_settings` in der Antwort); sonst ist das Bearbeiten aus
+  categories_edit: null,      // Kategorien-Block des Handys: { modified_at, dirty_version, synced_version, error } oder null
   excluded: false,
   conflicts: [],
   server_time: '',
@@ -48,6 +51,7 @@ const MAX_RESERVATIONS_PER_REQUEST = 400;      // Gegenstück zu `MAX_RESERVATIO
 const FUTURE_LIMIT_MS = 14 * 60 * 1000;
 const isObject = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
 const isDirty = (record) => record.dirty_version > record.synced_version;
+const editDirty = (edit) => Boolean(edit) && edit.dirty_version > edit.synced_version;
 
 function signature(slots) {
   // Reihenfolge der Slots ist keine Änderung (wie am Desktop).
@@ -262,8 +266,9 @@ export class Store {
 
   /** Nicht übertragene Änderungen: Ist-Zeiten und Reservierungen zusammen (Statuszeile). */
   pendingCount() {
-    if (!this._meta.reservations_enabled) return this.dirtyDates().length;
-    return this.dirtyDates().length
+    const block = this._meta.settings_writable && editDirty(this._meta.categories_edit) ? 1 : 0;
+    if (!this._meta.reservations_enabled) return this.dirtyDates().length + block;
+    return this.dirtyDates().length + block
       + [...this._reservations.values()].filter((record) => isDirty(record)).length;
   }
 
@@ -271,7 +276,56 @@ export class Store {
    *  (der Desktop bietet sie nicht an), zählen Reservierungen nicht: man könnte sie nicht ansehen. */
   errorCount() {
     const reservations = this._meta.reservations_enabled ? [...this._reservations.values()] : [];
-    return [...this._days.values(), ...reservations].filter((record) => record.error).length;
+    const block = this._meta.settings_writable && this._meta.categories_edit?.error ? 1 : 0;
+    return [...this._days.values(), ...reservations].filter((record) => record.error).length + block;
+  }
+
+  // --- Kategorien (Einstellungen) --------------------------------------------------------------
+
+  categoriesDirty() {
+    return editDirty(this._meta.categories_edit);
+  }
+
+  /** Speichert den Kategorien-Block (Namen und Standardzeiten zusammen). Die lokale Ansicht
+   *  (`categories`, `defaults.category_times`) ändert sich sofort; der Abgleich schickt den Block. */
+  async saveCategories({ categories, category_times: categoryTimes }) {
+    if (!this._meta.settings_writable || !this._meta.defaults) {
+      throw new Error('Der Desktop unterstützt das Bearbeiten der Kategorien nicht. Bitte die Desktop-App aktualisieren.');
+    }
+    const check = validateCategoryRows(categoryRows(categories, categoryTimes));
+    if (!check.ok) throw new Error(check.message);
+    if (blockSignature(categories, categoryTimes)
+      === blockSignature(this._meta.categories, this._meta.defaults.category_times)) return;
+    const old = this._meta.categories_edit;
+    await this.setMeta({
+      categories: structuredClone(categories),
+      defaults: { ...this._meta.defaults, category_times: structuredClone(categoryTimes) },
+      categories_edit: {
+        modified_at: this._stampAfter(old?.modified_at),
+        dirty_version: (old ? old.dirty_version : 0) + 1,
+        synced_version: old ? old.synced_version : 0,
+        error: null,
+      },
+    });
+  }
+
+  /** Der Block für den nächsten Abgleich (`null`: nichts zu senden, abgelehnt oder Desktop versteht es nicht). */
+  snapshotSettings() {
+    const edit = this._meta.categories_edit;
+    if (!this._meta.settings_writable || !editDirty(edit) || edit.error || !this._meta.defaults) return null;
+    return {
+      settings: {
+        categories: { value: structuredClone(this._meta.categories), modified_at: edit.modified_at },
+        category_times: { value: structuredClone(this._meta.defaults.category_times), modified_at: edit.modified_at },
+      },
+      settingsVersion: edit.dirty_version,
+    };
+  }
+
+  async markSettingsError(message, version) {
+    const edit = this._meta.categories_edit;
+    if (!edit || (version !== undefined && edit.dirty_version !== version)) return;
+    await this.setMeta({ categories_edit: { ...edit, error: String(message) } });
   }
 
   /** Speichert die Reservierung eines Tages. Wirft bei ungültigen Slots oder Datum. */
@@ -450,13 +504,27 @@ export class Store {
 
     this._applyReservations(parsed, snapshot, today, ops);
 
+    // Kategorien-Block: bestätigt, wenn genau der gesendete Stand noch gilt; ein dirty, nicht
+    // (mehr) gesendeter Block bleibt lokal stehen, der Desktop-Stand ersetzt ihn dann nicht.
+    const edit = this._meta.categories_edit;
+    const sentSettings = snapshot.settingsVersion;
+    const confirmed = editDirty(edit) && sentSettings !== undefined && sentSettings === edit.dirty_version;
+    const keepLocal = editDirty(edit) && !confirmed;
+    const nextDefaults = structuredClone(parsed.defaults ?? null);
+    if (keepLocal && nextDefaults && this._meta.defaults) {
+      nextDefaults.category_times = structuredClone(this._meta.defaults.category_times);
+    }
+
     this._meta = {
       ...this._meta,
       reservations_enabled: parsed.reservations !== null && parsed.reservations !== undefined,
       last_pull_at: parsed.last_pull_at,
       server_time: parsed.server_time,
-      categories: [...parsed.categories],
-      defaults: structuredClone(parsed.defaults ?? null),
+      settings_writable: Array.isArray(parsed.writable_settings)
+        && parsed.writable_settings.includes('categories') && parsed.writable_settings.includes('category_times'),
+      categories: keepLocal ? this._meta.categories : [...parsed.categories],
+      defaults: nextDefaults,
+      categories_edit: confirmed ? { ...edit, synced_version: edit.dirty_version, error: null } : edit,
       desktop: { ...parsed.desktop },
       window_days: parsed.window_days,
       window_max: parsed.window_max ?? null,

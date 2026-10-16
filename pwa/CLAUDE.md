@@ -24,6 +24,12 @@ ES-Module flach im Ordner:
   Block erscheint (`reservationBlockVisible`, Gleichlauf mit
   `reservation_block_visible` über `test/fixtures/reservation-visibility-cases.json`),
   Slot-Normalisierung und -Prüfung ohne Pause (s. „Reservierungen“).
+- `categories.js` — Kategorien-Verwaltung ohne DOM: Zeilen aus `categories` +
+  `category_times` (`categoryRows`), zurück in den Block (`rowsToBlock`),
+  Prüfung (`validateCategoryRows`), Kurzfassung der Zeiten (`timesSummary`),
+  Sortieren (`moveRow`) und die Signatur zum Vergleichen (`blockSignature`).
+  `per_day`-Kategorien laufen als `raw` durch und werden nie verändert (s.
+  „Einstellungen und Kategorien“).
 - `pairing.js` — Kopplungscode, Koppel-Link, Adressregel.
 - `store.js` — lokaler Zustand: erfasste Tage und Reservierungen (zwei
   Sammlungen), `dirty_version`/`synced_version`, Anwenden der Sync-Antwort,
@@ -113,6 +119,15 @@ Desktop) ist seltener, kommt aber vor. Sechs Regeln:
    (`compat/*-pre-250.json`, ohne `window_days`/`window_max_days`) und der Stand vor den
    Reservierungen (`compat/*-pre-reservations.json`, ohne `reservations`) und der Stand vor den
    Einstellungen (`compat/*-pre-settings.json`, ohne `settings`).
+7. **Neue PWA, alter Desktop.** Ein Desktop vor #311 ignoriert `settings` in der
+   Anfrage und kennt `writable_settings` nicht. Die PWA bietet das Bearbeiten
+   der Kategorien deshalb nur an, wenn die Antwort `writable_settings` mit
+   `categories` und `category_times` nennt; sonst sind die Kategorien lesbar,
+   aber nicht bearbeitbar (Hinweis „Desktop aktualisieren“). Das Feld statt
+   „Antwort ohne `category_times`“, weil `defaults.category_times` schon seit
+   #288 existiert und ein Desktop davor/danach nichts über das Schreiben sagte.
+   Die IndexedDB-`VERSION` bleibt 2: der Block liegt in der Meta, kein neuer
+   Object Store.
 5. **Die Meldung nennt die ältere Seite.** Antwortet der Desktop auf einen
    falschen Umschlag mit `invalid_protocol`, steht im Klartext-Fehler
    `supported_protocol`; daraus macht `messages.js` „Desktop-App ist älter“
@@ -120,7 +135,7 @@ Desktop) ist seltener, kommt aber vor. Sechs Regeln:
    Zahl kommt im Klartext und ist nur ein Hinweis, kein Beleg. Fehlt sie
    (Desktop vor dieser Änderung), bleibt der allgemeine Text.
 6. **Ein älterer Desktop wird angezeigt.** Schickt er weder `desktop` noch
-   `defaults`, sagt der Verbindungsdialog das (`desktopHint`).
+   `defaults`, sagt der Reiter „Verbindung“ der Einstellungen das (`desktopHint`).
 
 ## Reservierungen
 
@@ -168,6 +183,65 @@ bietet sie nur an, wenn „Reservierungen verwenden“ an ist.
   Empfangszeitpunkt (`ReservationStore.merge_phone`); die Antwort kann daher
   einen neueren `modified_at` tragen als gesendet.
 
+## Einstellungen und Kategorien
+
+Der Button unten links heißt „Einstellungen“. `settingsDialog` (ersetzt den
+früheren Verbindungsdialog) hat drei Reiter (`role="tablist"`): **Verbindung**
+(Desktop, Adresse, Kopplung, Speicher, Verlauf, Hinweis zum älteren Desktop,
+„Neu koppeln“), **Kategorien** und **Updates** (Version, „Nach Updates suchen“,
+automatisch einspielen). Der Dialog hält den Zustand jedes Reiters selbst; ein
+Wechsel verliert keine Eingaben.
+
+**Kategorien-Reiter.** Eine Zeile je Kategorie (Name, Kurzfassung der Zeiten),
+Hoch/Runter zum Sortieren, Antippen öffnet `categoryEditDialog` (Name, Start,
+Ende, Pause; leere Zeitfelder heißen „globaler Standard“), „+ Kategorie“, Löschen
+mit Nachfrage. Das Handy schreibt `categories` und `category_times` zurück an
+den Desktop (Desktop-Seite: #311, `src/CLAUDE.md`).
+
+- **Der Block** `categories_edit` (`{modified_at, dirty_version, synced_version,
+  error}`) liegt in der **Meta**, zusammen mit `settings_writable`; die Meta
+  wird ohnehin in der Transaktion der Antwort geschrieben, ein eigener Object
+  Store samt IndexedDB-Upgrade ist nicht nötig. `saveCategories` setzt ihn
+  (Stempel nach `_stampAfter`), `snapshotSettings` liefert `{settings,
+  settingsVersion}` für den Abgleich, `markSettingsError(message, version)`
+  den abgelehnten Block.
+- **Senden.** `settings` geht im **ersten** Päckchen eines Abgleichs hinaus
+  (zusammen mit den Reservierungen), nur bei geändertem, nicht abgelehntem
+  Block und nur wenn `settings_writable`. **Ein Stempel für beide Schlüssel**:
+  `categories` und `category_times` tragen dasselbe `modified_at`.
+- **Bestätigung.** Nach der Antwort ersetzt der Desktop-Stand die lokale
+  Fassung — **außer** der Block wurde seit dem Senden erneut geändert („während
+  des Requests geändert“, Vergleich über `settingsVersion`): dann bleibt er
+  dirty und geht im nächsten Abgleich hinaus. Hat sich der Stand seit dem
+  Öffnen des Reiters durch einen Abgleich geändert, warnt der Dialog wie bei
+  den Tagen („inzwischen aktualisiert … nochmaliges Speichern überschreibt“).
+- **`422` je Block.** `Einstellung <Schlüssel>: …` setzt `SyncError.setting`
+  und markiert nur den Block (`markSettingsError`), keinen Tag; er wird erst
+  nach erneutem Speichern wieder gesendet und blockiert die Tage nicht
+  dauerhaft (wie `markDayError`).
+- **Feature-Erkennung über `writable_settings`.** Nennt die Antwort die beiden
+  Schlüssel, ist das Bearbeiten an (Meta `settings_writable`). Fehlt das Feld
+  (älterer Desktop), ist die Liste leer: die Kategorien sind lesbar, aber nicht
+  bearbeitbar, und ein dirty Block bleibt liegen, **ohne** als nicht
+  übertragen zu zählen (kein Sync-Badge, kein Dauerwarten).
+- **`per_day` wird nie verändert.** Kategorien im Modus „pro Wochentag“
+  (am Desktop eingestellt) sind umbenenn-, sortier- und löschbar, ihre Zeiten
+  stehen als „pro Wochentag, am Desktop bearbeiten“ und gehen als `raw`
+  unverändert zurück.
+- **Umbenennen und Löschen schreiben nichts um.** Bestehende Einträge behalten
+  den alten Namen (Kategorien sind am Desktop freier Text); der Dialog sagt es.
+- **Grenzen** wie am Desktop (`mobile_settings.py`): Name nicht leer, ≤ 100
+  Zeichen, eindeutig, ≤ 100 Kategorien, Zeiten `HH:MM`, Pause 0–1440
+  (`MAX_CATEGORIES`/`MAX_NAME_LENGTH`/`MAX_PAUSE`). Nur die PWA prüft zusätzlich
+  **Ende nach Start**, wenn beide gesetzt sind.
+- **Konflikte nur am Desktop.** Haben Desktop und Handy die Einstellung nach
+  dem letzten Abgleich geändert, entsteht ein Konflikt `kind: "setting"`, den
+  nur der Desktop-Dialog löst; die Antwort trägt ihn nicht, die PWA zeigt keinen.
+- **Zwei Uhren.** Geht die Handy-Uhr vor (Stempel bis 15 Minuten in der Zukunft
+  sind erlaubt), kann ein zweites Speichern kurz nach dem Abgleich einen
+  Konflikt „Handy gegen Handy“ erzeugen; der neuere Stand gewinnt vorläufig,
+  Daten gehen nicht verloren (wie bei den Tagen).
+
 ## Lesefenster (#250)
 
 Die PWA sieht standardmäßig die letzten 90 Tage (Standardfenster **90 Tage**,
@@ -185,7 +259,7 @@ Desktop deckelt:**
 - Die PWA kennt die Stufen **90 / 180 / 365** Tage (`WINDOW_STEPS`). „Ältere Zeiten
   laden“ erscheint, wenn der Wochenanfang vor dem Fenster liegt, und wählt die
   kleinste Stufe, die die Woche abdeckt, höchstens `window_max_days`. Das
-  Wunschfenster bleibt auf dem Handy; der Verbindungsdialog zeigt es in der
+  Wunschfenster bleibt auf dem Handy; der Reiter „Verbindung“ zeigt es in der
   Zeile „Verlauf“ mit „Auf 90 Tage zurücksetzen“.
 - **Fehlt `window_max_days`** (älterer Desktop), ändert die PWA ihr Fenster nie
   und erklärt das, statt einen wirkungslosen Knopf zu zeigen (Feature-Erkennung).
@@ -224,11 +298,11 @@ Der Browser prüft `sw.js` von sich aus nur bei einer Navigation und höchstens
 alle 24 Stunden. Die App stößt die Prüfung deshalb selbst an
 (`update-policy.js`): beim Start und beim Zurückkehren in den Vordergrund,
 höchstens alle 30 Minuten (`UPDATE_CHECK_INTERVAL_MS`), und auf Knopfdruck im
-Verbindungsdialog („Nach Updates suchen“; Zustände wird geprüft / aktuell /
+Reiter „Updates“ der Einstellungen („Nach Updates suchen“; Zustände wird geprüft / aktuell /
 Update verfügbar / offline). Ein neuer Worker wartet, bis die Seite ihn
 freigibt (`SKIP_WAITING`) — nie mitten in einer Eingabe.
 
-**Automatisch einspielen** ist ein Schalter im Verbindungsdialog (Meta
+**Automatisch einspielen** ist ein Schalter im Reiter „Updates“ (Meta
 `auto_update`, gerätelokal, Standard **aus**; dann bleibt es beim Hinweis
 „Neue Version verfügbar“ mit „Neu laden“). Ist er an, spielt die PWA ein
 wartendes Update nur an einem sicheren Zeitpunkt ein (`shouldApplyUpdate`):
@@ -291,3 +365,8 @@ LAN-Adresse (`--address` nur mit einer privaten Adresse).
 
 `--reservations` schaltet den Reservierungs-Abgleich ein (wie „Reservierungen verwenden“
 am Desktop); ohne den Schalter fehlt das Feld `reservations` in der Antwort.
+
+Der Dev-Server legt Kategorien mit Standardzeiten an (Projekt mit festen
+Zeiten, Intern ohne Eintrag, Support als `per_day`) und nennt die Einstellungen
+der Antwort `writable_settings`; damit lässt sich der Kategorien-Reiter samt
+Rückweg zum Desktop ausprobieren.

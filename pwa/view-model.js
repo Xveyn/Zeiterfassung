@@ -6,6 +6,7 @@ import {
   addDays, dayMinutes, formatDateDe, formatMinutes, isoWeek, mondayOf, normalizeSlots,
   validateSlots, weekDays,
 } from './minutes.js';
+import { categoryRows, timesSummary } from './categories.js';
 import { resolveSlotDefaults } from './defaults.js';
 import { describeError } from './messages.js';
 import { normalizeReservationSlots, reservationBlockVisible, validateReservationSlots } from './reservations.js';
@@ -262,9 +263,9 @@ export function focusKeyToRestore({ activeKey, inRoot, isBody, last }) {
   return isBody ? last : null;
 }
 
-// --- Verbindungsdialog ---------------------------------------------------------------------------
+// --- Reiter „Verbindung“ ---------------------------------------------------------------------------
 
-/** Hinweis für den Verbindungsdialog, wenn der Desktop älter ist als diese Seite: er schickt weder
+/** Hinweis für den Reiter „Verbindung“ der Einstellungen, wenn der Desktop älter ist als diese Seite: er schickt weder
  *  `desktop` noch `defaults` (#288). Erkannt wird das an den fehlenden Feldern, nicht an einer Version
  *  (Feature-Erkennung, s. pwa/CLAUDE.md „Kompatibilität“). Vor dem ersten Abgleich weiß man nichts. */
 export function desktopHint(meta) {
@@ -296,7 +297,7 @@ export function olderModel(state) {
   }
 }
 
-/** Die Zeile „Verlauf“ im Verbindungsdialog. */
+/** Die Zeile „Verlauf“ im Reiter „Verbindung“. */
 export function windowRow({ days, max, wish }) {
   const parts = [];
   if (Number.isInteger(wish) && wish !== days) parts.push(`gewünscht ${wish}`);
@@ -304,5 +305,37 @@ export function windowRow({ days, max, wish }) {
   return {
     text: parts.length ? `${days} Tage (${parts.join(', ')})` : `${days} Tage`,
     canReset: Number.isInteger(wish) && wish > 90,
+  };
+}
+
+// --- Einstellungen ---------------------------------------------------------------------------------
+
+export const SETTINGS_TABS = ['connection', 'categories', 'updates'];
+const TAB_LABELS = { connection: 'Verbindung', categories: 'Kategorien', updates: 'Updates' };
+export const settingsTabLabel = (key) => TAB_LABELS[key];
+
+export const categoryRenameHint = 'Bestehende Einträge behalten den alten Namen.';
+
+export function categoryRemovalText(name) {
+  return `Die Kategorie „${name}“ wird gelöscht. Bestehende Einträge behalten ihren Namen, sie erscheint nur nicht mehr in der Auswahl.`;
+}
+
+/** Der Reiter „Kategorien“: Zeilen mit Kurzfassung, ob bearbeitet werden darf (der Desktop versteht
+ *  `settings`) und der Zustand des Blocks. Ein älterer Desktop lässt die Liste lesbar, aber nicht
+ *  bearbeitbar (Feature-Erkennung wie bei den Reservierungen). */
+export function categoriesModel({ categories, defaults, writable, edit }) {
+  const rows = categoryRows(categories, defaults?.category_times ?? {}).map((row) => ({
+    ...row, summary: timesSummary(row) }));
+  const synced = defaults !== null && defaults !== undefined;
+  const editable = Boolean(writable) && synced;
+  let hint = '';
+  if (!writable) hint = 'Die Desktop-App ist älter als diese Seite: Kategorien lassen sich nur dort bearbeiten. Bitte die Desktop-App aktualisieren.';
+  else if (!synced) hint = 'Die Kategorien sind noch nicht abgeglichen. Bitte erst abgleichen.';
+  return {
+    rows,
+    editable,
+    hint,
+    error: edit?.error ?? null,
+    dirty: Boolean(edit) && edit.dirty_version > edit.synced_version,
   };
 }

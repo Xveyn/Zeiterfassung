@@ -398,9 +398,10 @@ Zeitraum und welche Kategorien der Bericht gefiltert ist.
   `parse_settings` gegeneinander. Die Antwort berechnet `categories` und `defaults` **nach** dem Anwenden
   (`perform_sync(categories=None)`; die Route übergibt nichts mehr, sonst hätte sie den Stand vor dem Merge
   gebaut). Eine `per_day`-Kategorie, die das Handy unverändert zurückschickt, bleibt erhalten. Die PWA sendet
-  noch keine Einstellungen (späterer PR). Geht die Handy-Uhr vor (Stempel bis 15 Minuten in der Zukunft sind
+  `settings` seit PR 2 (`pwa/CLAUDE.md`, „Einstellungen und Kategorien“). Geht die Handy-Uhr vor (Stempel bis 15 Minuten in der Zukunft sind
   erlaubt), kann ein zweites Speichern kurz nach dem Abgleich einen Konflikt `setting` „Handy gegen Handy“
   erzeugen; der neuere Stand gewinnt vorläufig, Daten gehen nicht verloren (bei Einträgen ist es dasselbe).
+  Die Antwort trägt `writable_settings` (Feature-Erkennung der PWA: nur wenn sie die Schlüssel nennt, bietet das Handy das Bearbeiten an).
   `mobile_settings.py` — Prüfung und Helfer der Einstellungen im Handy-Abgleich, Tk-frei und ohne I/O.
   `parse_settings` → `{key: {value, modified_at}}` oder `SettingsError` (`mobile_sync` macht daraus `422
   invalid_entry`, ein eigener Code brauchte einen Eintrag in `pwa/test/fixtures/errors.json`). Grenzen: höchstens
