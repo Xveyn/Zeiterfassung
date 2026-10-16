@@ -599,7 +599,7 @@ def test_allow_is_path_aware_and_falls_back_to_the_union_for_unknown_paths(serve
     with_query, _, _ = http_call(server, "PATCH", "/v1/status?x=1")
 
     assert known.getheader("Allow") == "DELETE, GET, PUT"
-    assert unknown.getheader("Allow") == "DELETE, GET, PUT"        # unbekannt: Vereinigung aller Routen
+    assert unknown.getheader("Allow") == "DELETE, GET, POST, PUT"        # unbekannt: Vereinigung aller Routen
     assert with_query.getheader("Allow") == "GET"                  # die Query zählt nicht zum Pfad
 
 

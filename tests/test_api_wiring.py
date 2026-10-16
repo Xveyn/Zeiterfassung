@@ -237,4 +237,5 @@ def test_app_passes_the_reservation_store_and_the_hook_to_the_api_context():
     source = UI.read_text(encoding="utf-8")
     context = source.split("ApiContext(")[1].split("run=self._bg.run")[0]
     assert "reservation_store=self.reservation_store" in context
-    assert "on_reservations_change=self._on_remote_reservations_changed" in context
+    assert "on_reservations_change=self._on_remote_calendar_data_changed" in context
+    assert "on_vacations_change=self._on_remote_calendar_data_changed" in context
