@@ -231,3 +231,10 @@ def test_api_refreshes_are_coalesced_and_marshalled_to_the_ui_thread():
              if isinstance(n, ast.Assign)
              and any(isinstance(t, ast.Attribute) and t.attr == "_api_refresh" for t in n.targets)]
     assert built == ["RefreshCoalescer(self._marshal_to_ui, self._refresh)"]
+
+
+def test_app_passes_the_reservation_store_and_the_hook_to_the_api_context():
+    source = UI.read_text(encoding="utf-8")
+    context = source.split("ApiContext(")[1].split("run=self._bg.run")[0]
+    assert "reservation_store=self.reservation_store" in context
+    assert "on_reservations_change=self._on_remote_reservations_changed" in context

@@ -64,6 +64,7 @@ ANNOTATED_MODULES = [
     "src/api_server.py",
     "src/api_service.py",
     "src/api_entry_write.py",
+    "src/api_reservation_write.py",
     "src/api_summary.py",
     "src/qr.py",
     "src/mobile_routes.py",
