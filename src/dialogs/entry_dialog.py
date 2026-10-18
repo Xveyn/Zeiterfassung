@@ -537,6 +537,8 @@ def open_entry_dialog(parent, date_str, storage, settings, on_change,
     save_frame.pack(fill="x", pady=(12, 0))
     save_btn = primary_button(save_frame, "Speichern", save_all)
     save_btn.pack(side=tk.LEFT, padx=2)
+    secondary_button(save_frame, "Abbrechen", dialog.destroy).pack(
+        side=tk.LEFT, padx=2)
     refresh_save_state()  # startet gesperrt (Cooldown)
     dialog.after(int(STRAY_CLICK_GUARD_S * 1000), unlock_save)
 
