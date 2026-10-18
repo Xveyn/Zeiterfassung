@@ -394,6 +394,6 @@ def open_category_dialog(parent, settings, on_change=None):
     save_row = tk.Frame(outer, bg=BG)
     save_row.pack(fill="x")
     primary_button(save_row, "Speichern", on_save).pack(side=tk.LEFT, padx=2)
-    secondary_button(save_row, "Schließen", dialog.destroy).pack(side=tk.LEFT, padx=2)
+    secondary_button(save_row, "Abbrechen", dialog.destroy).pack(side=tk.LEFT, padx=2)
 
     center_dialog_on_parent(dialog, parent)
