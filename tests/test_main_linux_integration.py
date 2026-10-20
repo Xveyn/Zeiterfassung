@@ -41,7 +41,46 @@ def test_noop_on_windows(linux_frozen, monkeypatch):
     assert calls == []
 
 
-def test_noop_without_appimage_env(linux_frozen, monkeypatch):
+def test_writes_menu_entry_for_plain_binary_without_appimage(
+        linux_frozen, monkeypatch):
+    """#298: das gefrorene Binary ohne `$APPIMAGE` (z. B. in ~/.local/bin)
+    bekommt seinen Menüeintrag auf `sys.executable`."""
+    monkeypatch.delenv("APPIMAGE", raising=False)
+    monkeypatch.setattr("src.main.sys.executable",
+                        "/home/sven/.local/bin/Zeiterfassung")
+    calls = []
+    monkeypatch.setattr("src.main.refresh_linux_target", lambda base: None)
+    monkeypatch.setattr("src.main.ensure_icon",
+                        lambda res, data: "/data/icon.png")
+    monkeypatch.setattr("src.main.write_menu_entry",
+                        lambda target, icon: calls.append((target, icon)))
+
+    _refresh_linux_integration(str(linux_frozen))
+
+    assert calls == [("/home/sven/.local/bin/Zeiterfassung", "/data/icon.png")]
+
+
+def test_backup_sweep_stays_appimage_only(linux_frozen, monkeypatch):
+    """Die `.old`-Rollback-Datei gibt es nur beim AppImage-Update."""
+    swept = []
+    monkeypatch.setattr("src.self_update.sweep_appimage_backup",
+                        lambda path: swept.append(path) or False)
+    monkeypatch.setattr("src.main.refresh_linux_target", lambda base: None)
+    monkeypatch.setattr("src.main.ensure_icon", lambda res, data: None)
+    monkeypatch.setattr("src.main.write_menu_entry", lambda target, icon: None)
+
+    _refresh_linux_integration(str(linux_frozen))
+    assert swept == ["/home/sven/Zeiterfassung-2.0.0.AppImage"]
+
+    swept.clear()
+    monkeypatch.delenv("APPIMAGE", raising=False)
+    _refresh_linux_integration(str(linux_frozen))
+    assert swept == []
+
+
+def test_noop_when_not_frozen(linux_frozen, monkeypatch):
+    """Repo-Modus: `sys.executable` ist der Interpreter, nie ein Menüziel."""
+    monkeypatch.setattr("src.main.sys.frozen", False, raising=False)
     monkeypatch.delenv("APPIMAGE", raising=False)
     calls = []
     monkeypatch.setattr("src.main.write_menu_entry",
