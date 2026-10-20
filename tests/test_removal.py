@@ -206,8 +206,25 @@ def test_app_file_hint_linux():
             == "/home/u/Apps/Zeiterfassung-1.0-x86_64.AppImage")
 
 
-def test_app_file_hint_linux_without_appimage():
-    assert removal.app_file_hint("Linux", {}, "/opt/z/Zeiterfassung") is None
+def test_app_file_hint_linux_frozen_binary_without_appimage():
+    """#298: das gefrorene Binary ohne `$APPIMAGE` ist die Programmdatei."""
+    assert (removal.app_file_hint("Linux", {}, "/home/u/.local/bin/Zeiterfassung",
+                                  frozen=True)
+            == "/home/u/.local/bin/Zeiterfassung")
+
+
+def test_app_file_hint_linux_appimage_wins_over_executable():
+    env = {"APPIMAGE": "/home/u/Apps/Z.AppImage"}
+    assert (removal.app_file_hint("Linux", env, "/tmp/.mount_x/Zeiterfassung",
+                                  frozen=True) == "/home/u/Apps/Z.AppImage")
+
+
+def test_app_file_hint_linux_not_frozen_is_none():
+    """Repo-Modus: `sys.executable` ist der Interpreter — daraus darf kein
+    `rm -- /usr/bin/python3` werden."""
+    assert removal.app_file_hint("Linux", {}, "/usr/bin/python3") is None
+    assert removal.app_file_hint("Linux", {}, "/usr/bin/python3",
+                                 frozen=False) is None
 
 
 def test_app_file_hint_macos_walks_up_to_bundle():

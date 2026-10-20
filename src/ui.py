@@ -1094,7 +1094,9 @@ class App:
         system = platform.system()
         pending = self.settings.get("pending_update_path") or ""
         had_token = os.path.exists(os.path.join(base, "token.json"))
-        app_file = removal.app_file_hint(system, os.environ, sys.executable)
+        app_file = removal.app_file_hint(
+            system, os.environ, sys.executable,
+            frozen=getattr(sys, "frozen", False))
         command = removal.app_file_command(system, app_file)
         translocated = removal.is_translocated(system, sys.executable)
 

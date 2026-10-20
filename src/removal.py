@@ -258,11 +258,15 @@ def execute_removal(base_path: str, with_data: bool, system: str,
 
 
 def app_file_hint(system: str, environ: Mapping[str, str],
-                  executable: str) -> str | None:
+                  executable: str, frozen: bool = False) -> str | None:
     """Die Programmdatei, die der Nutzer selbst löschen muss — oder `None`,
-    wenn sie sich nicht bestimmen lässt."""
+    wenn sie sich nicht bestimmen lässt.
+
+    Linux: `$APPIMAGE`, sonst bei einem gefrorenen Build das Binary selbst
+    (#298). Nur gefroren: im Repo-Modus ist `executable` der Interpreter, und
+    `app_file_command` machte daraus ein `rm` auf ihn."""
     if system == "Linux":
-        return environ.get("APPIMAGE") or None
+        return environ.get("APPIMAGE") or (executable if frozen else None)
     if system == "Darwin":
         if is_translocated(system, executable):
             return None
@@ -284,7 +288,8 @@ def is_translocated(system: str, executable: str) -> bool:
 
 
 def app_file_command(system: str, app_file: str | None) -> str | None:
-    """Terminal-Befehl, der die Programmdatei löscht — nur für die AppImage.
+    """Terminal-Befehl, der die Programmdatei löscht — unter Linux (AppImage
+    oder Binary).
     Distributionsunabhängig: eine einzelne Datei, kein Paketmanager im Spiel.
     macOS bleibt beim Papierkorb (ein `rm -rf` auf ein Bundle wäre ungeprüft)."""
     if system == "Linux" and app_file:

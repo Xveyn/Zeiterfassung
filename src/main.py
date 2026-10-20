@@ -194,7 +194,8 @@ def _refresh_linux_integration(base):
 
     Zwei Selbstheilungen mit derselben Ursache: wer die AppImage von Hand
     herunterlädt, bekommt eine Datei mit der Version im Namen — Menüeintrag
-    und Autostart zeigten sonst auf die alte. (Das In-App-Update ersetzt
+    und Autostart zeigten sonst auf die alte. Der Menüeintrag entsteht auch
+    für ein Binary ohne AppImage (Ziel dann `sys.executable`, #298). (Das In-App-Update ersetzt
     dagegen `$APPIMAGE` an Ort und Stelle, dort ändert sich der Pfad nicht.)
 
     Dazu wird ein `<name>.old` weggeräumt, das das In-App-Update als Rollback
@@ -214,16 +215,18 @@ def _refresh_linux_integration(base):
     if platform.system() != "Linux" or not getattr(sys, "frozen", False):
         return
     appimage = os.environ.get("APPIMAGE")
-    if not appimage:
-        return
+    if appimage:
+        from src.self_update import sweep_appimage_backup
+        if sweep_appimage_backup(appimage):
+            logging.getLogger(__name__).info(
+                "Rollback-Datei des letzten Updates entfernt")
 
-    from src.self_update import sweep_appimage_backup
-    if sweep_appimage_backup(appimage):
-        logging.getLogger(__name__).info(
-            "Rollback-Datei des letzten Updates entfernt")
-
+    # Ohne `$APPIMAGE` ist der gefrorene Build die Programmdatei selbst
+    # (z. B. ein Binary in ~/.local/bin) — dasselbe Ziel wie beim Autostart
+    # (`resolve_autostart_target`), sonst fehlte er im Anwendungsmenü (#298).
     try:
-        write_menu_entry(appimage, ensure_icon(get_resource_path(), base))
+        write_menu_entry(appimage or sys.executable,
+                         ensure_icon(get_resource_path(), base))
     except Exception:
         logging.getLogger(__name__).warning(
             "Menüeintrag konnte nicht geschrieben werden", exc_info=True)
