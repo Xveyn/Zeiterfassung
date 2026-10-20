@@ -233,14 +233,18 @@ def _disable_linux() -> None:
 
 
 def refresh_linux_target(base_path: str) -> None:
-    """Zieht die Autostart-Datei auf den aktuellen `$APPIMAGE`-Pfad nach.
+    """Zieht die Autostart-Datei auf den aktuellen Programmpfad nach.
+
+    Ziel ist `resolve_autostart_target`: `$APPIMAGE`, sonst bei einem
+    gefrorenen Build `sys.executable` (ein Binary ohne AppImage, z. B. in
+    `~/.local/bin`, #323 — wie beim Menüeintrag, `main._refresh_linux_integration`).
 
     Gebraucht wird das für den **manuellen** Update-Weg: die Assets tragen die
     Version im Dateinamen, eine im Browser geladene AppImage liegt also unter
     einem neuen Pfad. Ohne diesen Schritt zeigt
     `~/.config/autostart/Zeiterfassung.desktop` danach weiter auf die alte
     Datei — der Nutzer startet bei jeder Anmeldung stillschweigend die
-    Vorgängerversion.
+    Vorgängerversion. Ebenso nach dem Verschieben eines Binarys.
 
     Das **Selbst-Update** (seit 1.23.0, `self_update.apply_linux`) braucht ihn
     nicht: es ersetzt die laufende AppImage per `os.replace` an **demselben**
@@ -248,20 +252,25 @@ def refresh_linux_target(base_path: str) -> None:
     nicht — er schreibt denselben Pfad zurück. Beide Wege existieren
     nebeneinander, deshalb bleibt die Funktion.
 
-    Vier Gates, alle müssen zutreffen:
+    Drei Gates, alle müssen zutreffen:
     1. frozen — im Repo-Modus zeigte das Ziel sonst auf python.exe + Repo
        (dieselbe Selbstbeschädigung, gegen die migrate_legacy_autostart
        gegated ist).
     2. Linux.
-    3. `$APPIMAGE` gesetzt — die nackte PyInstaller-Ausgabe hat das nicht.
-    4. Die Datei existiert bereits — wer keinen Autostart eingeschaltet hat,
+    3. Die Datei existiert bereits — wer keinen Autostart eingeschaltet hat,
        bekommt hier auch keinen.
+
+    Bewusst kein Gate mehr auf `$APPIMAGE` (bis #323): es sollte verhindern,
+    dass die nackte PyInstaller-Ausgabe eines Test-Builds (`build.yml`) einen
+    bestehenden Autostart auf sich umbiegt. Dafür blieb ein gefrorenes Binary
+    ohne AppImage nach jedem Verschieben auf dem alten Pfad hängen — der
+    häufigere Fall. Wer ein Test-Binary startet, biegt seinen Autostart (wie
+    den Menüeintrag) auf dessen Pfad um; der nächste Start der Installation
+    stellt ihn wieder her.
     """
     if not getattr(sys, "frozen", False):
         return
     if platform.system() != "Linux":
-        return
-    if not os.environ.get("APPIMAGE"):
         return
     if not os.path.exists(_linux_desktop_path()):
         return
