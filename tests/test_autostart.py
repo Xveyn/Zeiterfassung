@@ -329,15 +329,28 @@ class TestRefreshLinuxTarget:
         content = open(_linux_desktop_path(), encoding="utf-8").read()
         assert "1.0.0" in content
 
-    def test_noop_without_appimage_env(self, frozen_linux, monkeypatch):
-        """Nackte PyInstaller-Ausgabe aus build.yml: kein stabiler Pfad, auf den
-        man zeigen könnte."""
+    def test_rewrites_stale_exec_line_for_plain_binary(
+            self, frozen_linux, monkeypatch):
+        """#323: ein gefrorenes Binary ohne `$APPIMAGE` (z. B. in ~/.local/bin)
+        zieht seinen Autostart auf `sys.executable` nach — wie der Menüeintrag."""
         from src.autostart import refresh_linux_target
-        enable_autostart("/home/sven/Zeiterfassung-1.0.0.AppImage", "--minimized")
+        enable_autostart("/home/sven/old/Zeiterfassung", "--minimized")
         monkeypatch.delenv("APPIMAGE", raising=False)
+        monkeypatch.setattr("src.autostart.sys.executable",
+                            "/home/sven/.local/bin/Zeiterfassung")
         refresh_linux_target(str(frozen_linux))
         content = open(_linux_desktop_path(), encoding="utf-8").read()
-        assert "1.0.0" in content
+        assert "Exec=/home/sven/.local/bin/Zeiterfassung --minimized" in content
+        assert "/old/" not in content
+
+    def test_plain_binary_without_autostart_stays_without(
+            self, frozen_linux, monkeypatch):
+        """Auch ohne AppImage legt der Nachzieh-Schritt nie erstmals einen
+        Autostart an."""
+        from src.autostart import refresh_linux_target
+        monkeypatch.delenv("APPIMAGE", raising=False)
+        refresh_linux_target(str(frozen_linux))
+        assert not os.path.exists(_linux_desktop_path())
 
 
 def test_disable_autostart_uses_injected_system_over_platform():
