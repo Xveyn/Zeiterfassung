@@ -228,6 +228,34 @@ def test_the_preflight_answers_the_private_network_request(make_server):
     assert response.getheader("Access-Control-Allow-Private-Network") == "true"
 
 
+def test_the_preflight_private_network_header_is_case_insensitive(make_server):
+    server = make_server(cors=True)
+
+    response, _, _ = preflight(server, headers={"Access-Control-Request-Private-Network": "TRUE"})
+    other, _, _ = preflight(server, headers={"Access-Control-Request-Private-Network": "yes"})
+
+    assert response.getheader("Access-Control-Allow-Private-Network") == "true"
+    assert other.getheader("Access-Control-Allow-Private-Network") is None
+
+
+def test_the_preflight_trims_http_whitespace_around_the_host(make_server):
+    server = make_server(cors=True)
+
+    response, _, _ = preflight(server, headers={"Host": f"127.0.0.1:{server.port}\t "})
+
+    assert response.status == 204
+
+
+def test_the_preflight_405_names_the_methods_of_the_route(make_server):
+    server = make_server(cors=True)
+
+    response, body, _ = preflight(server, method="DELETE")
+
+    assert response.status == 405 and code(body) == "method_not_allowed"
+    assert response.getheader("Allow") == "POST"            # `/v1/sync` kennt nur POST
+    assert response.getheader("Access-Control-Allow-Origin") is None
+
+
 @pytest.mark.parametrize("kwargs,status", [
     ({"headers": {"Origin": "https://evil.example"}}, 403),
     ({"drop": ("Origin",)}, 403),
@@ -340,4 +368,5 @@ def test_a_preflight_204_carries_no_bytes_after_the_headers(make_server):
     assert head.startswith(b"HTTP/1.0 204") and rest == b""
     lines = [line.lower() for line in head.split(b"\r\n")]
     assert not any(line.startswith(b"content-type:") for line in lines)
-    assert b"content-length: 0" in lines
+    # RFC 9110 §8.6: kein Content-Length an einer 204.
+    assert not any(line.startswith(b"content-length:") for line in lines)
