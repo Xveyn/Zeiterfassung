@@ -237,6 +237,26 @@ def _is_json(content_type: str | None) -> bool:
     return content_type.split(";", 1)[0].strip().lower() == "application/json"
 
 
+def check_host_origin(h: Mapping[str, str], policy: Policy, *,
+                      require_origin: bool) -> AuthResult | None:
+    """Host- und Origin-Prüfung, die einzige Kopie: `_gate` (Anfragen) und der
+    Preflight des Servers rufen sie. `h` hat kleingeschriebene Namen; `None`
+    heißt: durch. Eine Anfrage ohne `Origin` ist ein Nicht-Browser und darf
+    durch; ein Preflight kommt immer von einem Browser und verlangt sie
+    (`require_origin`)."""
+    # Nur HTTP-OWS (Leerzeichen, Tab) abschneiden: `str.strip()` nähme auch NBSP,
+    # U+2028 und \x85.
+    if h.get("host", "").strip(" \t").lower() not in policy.allowed_hosts:
+        return AuthResult(403, "bad_host")
+    origin = h.get("origin")
+    if origin is None:
+        if require_origin:
+            return AuthResult(403, "bad_origin")
+    elif origin not in policy.allowed_origins:
+        return AuthResult(403, "bad_origin")
+    return None
+
+
 def _gate(method: str, h: Mapping[str, str], policy: Policy) -> AuthResult | None:
     """Die Tore vor dem Token, gemeinsam für `authorize` und `authorize_public`;
     `h` hat kleingeschriebene Namen. `None` heißt: durch."""
@@ -245,13 +265,9 @@ def _gate(method: str, h: Mapping[str, str], policy: Policy) -> AuthResult | Non
     # zwei Wahrheiten über dieselbe Anfrage.
     if method not in ALLOWED_METHODS:
         return AuthResult(405, "method_not_allowed")
-    # Nur HTTP-OWS (Leerzeichen, Tab) abschneiden: `str.strip()` nähme auch NBSP,
-    # U+2028 und \x85.
-    if h.get("host", "").strip(" \t").lower() not in policy.allowed_hosts:
-        return AuthResult(403, "bad_host")
-    origin = h.get("origin")
-    if origin is not None and origin not in policy.allowed_origins:
-        return AuthResult(403, "bad_origin")
+    refused = check_host_origin(h, policy, require_origin=False)
+    if refused is not None:
+        return refused
     if "sec-fetch-site" in h:
         return AuthResult(403, "browser_request")
     return None

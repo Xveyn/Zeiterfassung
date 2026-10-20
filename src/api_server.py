@@ -37,6 +37,7 @@ from urllib.parse import parse_qs
 
 from src.api_auth import (
     AuthResult, Policy, Principal, TokenVerifier, authorize, authorize_public,
+    check_host_origin,
 )
 from src.api_routes import (
     ApiContext, ApiRequest, ApiResponse, error_response, handle, methods_for_path,
@@ -171,14 +172,15 @@ class _Handler(http.server.BaseHTTPRequestHandler):
         # ensure_ascii (Standard): ein Lone Surrogate in gespeicherten Daten
         # (korrupte Datei, Sync) würde sonst beim UTF-8-Encode werfen — außerhalb
         # jedes try, der Client bekäme eine leere Antwort.
-        # 204 (Preflight) trägt nie einen Body und keinen Content-Type.
+        # 204 (Preflight) trägt nie einen Body, keinen Content-Type und keinen
+        # Content-Length (RFC 9110 §8.6).
         payload = b"" if response.status == 204 else json.dumps(response.body).encode("utf-8")
         self.close_connection = True
         try:
             self.send_response(response.status)
             if response.status != 204:
                 self.send_header("Content-Type", "application/json; charset=utf-8")
-            self.send_header("Content-Length", str(len(payload)))
+                self.send_header("Content-Length", str(len(payload)))
             self.send_header("Cache-Control", "no-store")
             self.send_header("X-Content-Type-Options", "nosniff")
             self.send_header("Connection", "close")
@@ -222,11 +224,9 @@ class _Handler(http.server.BaseHTTPRequestHandler):
         keinen Store."""
         server = cast("_ApiHTTPServer", self.server)
         h = {name.lower(): value for name, value in headers.items()}
-        if h.get("host", "").strip(" \t").lower() not in server.policy.allowed_hosts:
-            return _auth_error(AuthResult(403, "bad_host"), server.surface.methods)
-        origin = h.get("origin")
-        if origin is None or origin not in server.policy.allowed_origins:
-            return _auth_error(AuthResult(403, "bad_origin"), server.surface.methods)
+        refused = check_host_origin(h, server.policy, require_origin=True)
+        if refused is not None:
+            return _auth_error(refused, server.surface.methods)
         methods = server.surface.route_methods(path)
         if not methods:
             return error_response(404, "not_found", "Unbekannter Pfad.")

@@ -14,7 +14,7 @@ import pytest
 from src import api_auth, secure_file
 from src.api_auth import (
     ALLOWED_METHODS, ANONYMOUS, SCOPE_LOCAL, SCOPE_MOBILE, TOKEN_FILENAME, AuthResult,
-    Denied, Policy, Principal, authorize, authorize_public, generate_token,
+    Denied, Policy, Principal, authorize, authorize_public, check_host_origin, generate_token,
     load_or_create_token, read_token, require_scope, rotate_token, single_token_verifier,
 )
 
@@ -840,3 +840,21 @@ def test_two_simultaneous_first_starts_agree_on_one_token(tmp_path, monkeypatch)
 
     assert len(results) == 2 and results[0] == results[1]
     assert (tmp_path / TOKEN_FILENAME).read_text(encoding="ascii") == results[0]
+
+
+def test_check_host_origin_requires_an_origin_only_on_request():
+    """Der Preflight (`require_origin=True`) kommt immer von einem Browser; eine
+    Anfrage ohne Origin ist ein Nicht-Browser und darf durch."""
+    policy = Policy(allowed_hosts=frozenset({"127.0.0.1:1"}),
+                    allowed_origins=frozenset({"https://pwa.example"}))
+    h = {"host": "127.0.0.1:1"}
+
+    assert check_host_origin(h, policy, require_origin=False) is None
+    refused = check_host_origin(h, policy, require_origin=True)
+    assert (refused.status, refused.code) == (403, "bad_origin")
+    assert check_host_origin({**h, "origin": "https://pwa.example"}, policy,
+                             require_origin=True) is None
+    assert check_host_origin({**h, "origin": "https://evil.example"}, policy,
+                             require_origin=False).code == "bad_origin"
+    assert check_host_origin({"host": "evil.example"}, policy,
+                             require_origin=True).code == "bad_host"   # Host zuerst
