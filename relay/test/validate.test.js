@@ -19,6 +19,31 @@ test('rejects a non-https endpoint', () => {
   assert.throws(() => parseSubscription(sub({ endpoint: 'not a url' })), InvalidRequest);
 });
 
+test('accepts the endpoints of the known push services', () => {
+  for (const endpoint of ['https://fcm.googleapis.com/fcm/send/abc',
+    'https://updates.push.services.mozilla.com/wpush/v2/xyz',
+    'https://foo.push.services.mozilla.com/wpush/v2/xyz',
+    'https://web.push.apple.com/QGx', 'https://wns2-par02p.notify.windows.com/w/?token=abc']) {
+    assert.equal(parseSubscription(sub({ endpoint })).endpoint, endpoint);
+  }
+});
+
+test('rejects endpoints of unknown hosts, so the relay is no open POST proxy', () => {
+  for (const endpoint of ['https://evil.example/x', 'https://fcm.googleapis.com.evil.example/x',
+    'https://evilfcm.googleapis.com/x', 'https://push.services.mozilla.com.evil.example/x',
+    'https://notpush.apple.com/x', 'https://169.254.169.254/latest', 'https://localhost/x']) {
+    assert.throws(() => parseSubscription(sub({ endpoint })), InvalidRequest, endpoint);
+  }
+});
+
+test('rejects userinfo, explicit ports, IP literals and overlong endpoints', () => {
+  for (const endpoint of ['https://fcm.googleapis.com@evil.example/x', 'https://user:pw@fcm.googleapis.com/x',
+    'https://fcm.googleapis.com:8443/x', 'https://[::1]/x', 'https://1.2.3.4/x',
+    `https://fcm.googleapis.com/${'a'.repeat(2048)}`]) {
+    assert.throws(() => parseSubscription(sub({ endpoint })), InvalidRequest, endpoint.slice(0, 60));
+  }
+});
+
 test('accepts a well-formed subscription and returns only the three fields', () => {
   const parsed = parseSubscription({ ...sub(), expirationTime: null, extra: 1 });
   assert.deepEqual(parsed, sub());

@@ -14,6 +14,13 @@ const BASE64URL = /^[A-Za-z0-9_-]+$/;
 const STAMP = /^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$/;
 const ID = /^[A-Za-z0-9_-]{1,64}$/;
 
+// Der Relay schickt einen POST (mit einem von uns signierten VAPID-Token) an das Abo-Ziel. Ohne Liste
+// wäre er ein offener Absender an jede https-Adresse: nur die Push-Dienste der Browser sind erlaubt.
+// Genauer Treffer oder Endung an einer Label-Grenze (`.push.apple.com`, nie `evilpush.apple.com`).
+const PUSH_HOSTS = ['fcm.googleapis.com'];
+const PUSH_HOST_SUFFIXES = ['.push.services.mozilla.com', '.push.apple.com', '.notify.windows.com'];
+const MAX_ENDPOINT = 2048;
+
 export class InvalidRequest extends Error {}
 
 const isObject = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -42,6 +49,10 @@ export function parseSubscription(body) {
     throw new InvalidRequest('endpoint ist keine URL.');
   }
   if (url.protocol !== 'https:') throw new InvalidRequest('endpoint muss https sein.');
+  const known = PUSH_HOSTS.includes(url.hostname) || PUSH_HOST_SUFFIXES.some((end) => url.hostname.endsWith(end));
+  if (!known || url.port || url.username || url.password || body.endpoint.length > MAX_ENDPOINT) {
+    throw new InvalidRequest('endpoint ist kein bekannter Push-Dienst (FCM, Mozilla, Apple, Windows).');
+  }
   if (!isObject(body.keys)) throw new InvalidRequest('keys fehlt.');
   return {
     endpoint: body.endpoint,
