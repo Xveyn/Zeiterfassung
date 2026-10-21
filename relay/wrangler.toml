@@ -1,0 +1,17 @@
+name = "zeiterfassung-push"
+main = "src/worker.js"
+compatibility_date = "2026-10-01"
+
+[[durable_objects.bindings]]
+name = "DEVICE"
+class_name = "Device"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Device"]
+
+[vars]
+# Nur für die lokale Entwicklung (Origin des Dev-Servers der PWA); im Betrieb leer.
+DEV_ORIGIN = ""
+# VAPID_SUBJECT (mailto:…) und das Secret VAPID_PRIVATE setzt man beim Einrichten, s. README.md;
+# VAPID_PUBLIC steht öffentlich in der PWA und hier nach dem Einrichten.

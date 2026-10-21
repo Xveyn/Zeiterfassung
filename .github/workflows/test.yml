@@ -240,3 +240,22 @@ jobs:
           node-version: '22'
       - run: node --test
         working-directory: pwa
+
+  relay:
+    # Tests des Push-Relays (relay/, Cloudflare Worker): reine Module, `node --test`, ohne
+    # wrangler. Gleiche Gate-Logik wie `pwa`; bewusst KEIN Required Check in der CLAUDE.md-Liste,
+    # die Aufnahme entscheidet der Maintainer (das Ruleset liegt außerhalb des Repos).
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: relay/package-lock.json
+      - run: npm ci
+        working-directory: relay
+      - run: node --test
+        working-directory: relay
