@@ -487,6 +487,11 @@ Augenhöhe mit den anderen beiden Plattformen.
 - **Die erlaubte Origin gilt für alle GitHub-Pages-Seiten des Kontos.** Der Server lässt
   `https://xveyn.github.io` zu, ohne Pfad; jede andere Pages-Seite unter diesem Nutzernamen
   könnte ihn per Browser ansprechen. Sie bräuchte dafür den Kopplungscode des gerade offenen Koppel-Dialogs (die Kopplung ist verschlüsselt, ohne den Code geht nichts) oder ein gültiges Gerätetoken **und** den Geräteschlüssel.
+- **Verbindungsplätze.** Die Handy-Instanz nimmt höchstens 32 gleichzeitige Verbindungen an, davon höchstens 8 je
+  Absender-Adresse; weitere werden sofort geschlossen (angenommen wird vor der Anmeldung). Das bremst ein einzelnes
+  Gerät im WLAN, das Plätze belegt. Wer mehrere Adressen im Netz nutzt, kann trotzdem alle 32 halten (je Verbindung
+  höchstens 15 s): der Abgleich vom Handy scheitert dann zeitweise und gelingt beim nächsten Versuch. Betroffen ist
+  nur die Verfügbarkeit, kein Datenzugriff, und die Desktop-App bleibt bedienbar.
 - **Nur solange die App läuft** und Handy und Rechner im selben Netz sind. Wechselt die
   Adresse des Rechners (anderes WLAN, DHCP), meldet die App bei **fest gewählter** Adresse
   `address_gone` und tauscht sie nicht still aus; bei „Automatisch“ nimmt sie beim nächsten

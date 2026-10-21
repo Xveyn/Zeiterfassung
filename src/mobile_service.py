@@ -52,6 +52,11 @@ REASON_PORT_IN_USE = "port_in_use"
 REASON_START_FAILED = "start_failed"
 REASON_CLOSED = "closed"
 
+# Anteil der 32 Verbindungsplätze (api_server._MAX_CONNECTIONS), den eine einzelne
+# Absender-IP belegen darf: ein Gerät im WLAN soll nicht ohne Token alle Plätze halten.
+# Bremst ein Gerät, keinen Angreifer mit mehreren Adressen (docs/known-limitations.md).
+MAX_CONNECTIONS_PER_CLIENT = 8
+
 # Windows meldet einen belegten Port mit WSAEADDRINUSE (10048), einen mit
 # SO_EXCLUSIVEADDRUSE fremd gebundenen mit WSAEACCES (10013).
 _WINERRORS_IN_USE = (10048, 10013)
@@ -219,7 +224,8 @@ class MobileService:
 
         server = ApiServer(None, mobile_routes.make_verifier(context.devices, context.now),
                            port=port, policy_for_port=policy_for_port,
-                           surface=mobile_routes.surface(context))
+                           surface=mobile_routes.surface(context),
+                           max_per_client=MAX_CONNECTIONS_PER_CLIENT)
         try:
             server.start()
         except OSError as exc:
