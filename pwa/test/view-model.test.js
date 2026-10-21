@@ -467,6 +467,36 @@ test('a reservation shows on today and future days when the feature is on, and n
   assert.equal(week.totalMinutes, week.days[3].minutes);
 });
 
+const pendingWeek = (reservationMap, extra = {}) => weekModel({
+  getDay: days(extra.days ?? {}), anchor: '2026-10-08', today: '2026-10-08',
+  getReservation: reservations(reservationMap), reservationsEnabled: extra.enabled ?? true });
+
+test('the week lists what is still pending from reservations, kept out of the total (#329)', () => {
+  const week = pendingWeek({ '2026-10-09': reserved([RES_SLOT]), '2026-10-10': reserved([RES_SLOT, { start: '13:00', end: '14:30' }]) });
+  assert.equal(week.pendingMinutes, 3 * 60 + 4.5 * 60);
+  assert.equal(week.pendingLabel, '7:30');
+  assert.equal(week.totalMinutes, 0);
+});
+
+test('nothing pending means no pending figure (#329)', () => {
+  assert.equal(pendingWeek({}).pendingMinutes, 0);
+  assert.equal(pendingWeek({ '2026-10-09': reserved([RES_SLOT]) }, { enabled: false }).pendingMinutes, 0);
+  assert.equal(pendingWeek({ '2026-10-07': reserved([RES_SLOT]) }).pendingMinutes, 0);        // gestern
+  assert.equal(pendingWeek({ '2026-10-09': reserved([], { deleted: true }) }).pendingMinutes, 0);
+});
+
+test('today only a reservation slot without matching actual time is pending (#329)', () => {
+  const afternoon = { start: '13:00', end: '17:00', kategorie: 'Projekt' };
+  const reservation = { '2026-10-08': reserved([RES_SLOT, afternoon]) };
+  // Vormittag schon erfasst (leicht abweichend): nur der Nachmittag steht noch aus.
+  const partly = pendingWeek(reservation, { days: { '2026-10-08': live([{ start: '09:05', end: '11:50', pause: 0, kategorie: 'Projekt' }]) } });
+  assert.equal(partly.pendingMinutes, 4 * 60);
+  assert.equal(pendingWeek(reservation).pendingMinutes, 7 * 60);
+  // An einem künftigen Tag zählt Ist-Zeit nie.
+  assert.equal(pendingWeek({ '2026-10-09': reserved([RES_SLOT]) },
+    { days: { '2026-10-09': live([SLOT]) } }).pendingMinutes, 3 * 60);
+});
+
 test('reservations are hidden when the feature is off or the day is in the past', () => {
   const get = reservations({ '2026-10-07': reserved([RES_SLOT]), '2026-10-09': reserved([RES_SLOT]) });
   const off = weekModel({ getDay: days({}), anchor: '2026-10-08', today: '2026-10-08', getReservation: get, reservationsEnabled: false });

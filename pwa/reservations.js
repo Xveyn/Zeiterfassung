@@ -3,7 +3,7 @@
 // aussehen und geprüft werden. Gegenstück zu `reservation_block_visible` (Sichtbarkeit,
 // Gleichlauf über `test/fixtures/reservation-visibility-cases.json`) und zu
 // `src/mobile_reservations.py` (Form auf dem Draht).
-import { addDays, normalizeSlots, validateSlots } from './minutes.js';
+import { addDays, normalizeSlots, parseTime, slotMinutes, validateSlots } from './minutes.js';
 
 /** So weit voraus nimmt der Desktop Reservierungen an und liefert sie zurück. */
 export const RESERVATION_HORIZON_DAYS = 365;
@@ -38,4 +38,20 @@ export function validateReservationSlots(slots) {
 /** Reihenfolge der Slots ist keine Änderung. */
 export function reservationSignature(slots) {
   return JSON.stringify(slots.map((s) => [s.start, s.end, s.kategorie]).sort());
+}
+
+/** Minuten einer Reservierung, die noch ausstehen. An künftigen Tagen ist es die ganze Reservierung;
+ *  heute fällt ein Slot weg, sobald ein Ist-Slot des Tages ihn zeitlich überlappt (ein leicht
+ *  abweichend erfasster Slot gilt als erledigt). */
+export function pendingReservationMinutes(reservationSlots, actualSlots, isToday) {
+  return reservationSlots.reduce((sum, slot) => {
+    if (isToday && actualSlots.some((actual) => overlaps(slot, actual))) return sum;
+    return sum + slotMinutes({ start: slot.start, end: slot.end });
+  }, 0);
+}
+
+function overlaps(a, b) {
+  const [aStart, aEnd, bStart, bEnd] = [parseTime(a?.start), parseTime(a?.end), parseTime(b?.start), parseTime(b?.end)];
+  if ([aStart, aEnd, bStart, bEnd].includes(null)) return false;
+  return aStart < bEnd && bStart < aEnd;
 }

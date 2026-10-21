@@ -129,7 +129,9 @@ export function weekView(model, handlers) {
     model.older && h('div', { class: 'hint older' },
       h('span', {}, model.older.text),
       model.older.action === 'older' && button(model.older.buttonText, () => handlers.older(model.older.wish), 'link', { 'data-focus': 'older' })),
-    h('div', { class: 'total' }, h('span', {}, 'Woche gesamt'), h('span', {}, model.totalLabel)));
+    h('div', { class: 'total' }, h('span', {}, 'Woche gesamt'), h('span', {}, model.totalLabel)),
+    model.pendingMinutes > 0 && h('div', { class: 'total pending' },
+      h('span', {}, 'Noch ausstehend'), h('span', {}, model.pendingLabel)));
 }
 
 // --- Dialoge -----------------------------------------------------------------------------------------------

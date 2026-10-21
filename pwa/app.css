@@ -87,6 +87,7 @@ button.option.active { background: var(--accent); color: #fff; font-weight: 600;
 .day.cleared .slots li { color: var(--muted); text-decoration: line-through; }
 .day.future { opacity: .75; }
 .total { display: flex; justify-content: space-between; padding: 8px 12px; font-weight: 700; }
+.total.pending { padding-top: 0; font-size: .85rem; font-weight: 400; color: var(--muted); }
 
 .statusbar {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 5;

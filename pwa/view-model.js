@@ -9,7 +9,7 @@ import {
 import { categoryRows, timesSummary } from './categories.js';
 import { resolveSlotDefaults } from './defaults.js';
 import { describeError } from './messages.js';
-import { normalizeReservationSlots, reservationBlockVisible, validateReservationSlots } from './reservations.js';
+import { normalizeReservationSlots, pendingReservationMinutes, reservationBlockVisible, validateReservationSlots } from './reservations.js';
 
 export const WEEKDAYS = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
 const SKEW_WARN_MS = 120000;
@@ -83,9 +83,11 @@ export function weekModel({ getDay, anchor, today, conflictDates = [], windowDay
       reservationVisible: visible,
       reservation: reservation && {
         slots: reservation.slots.map(slotText), dirty: reservation.dirty, error: reservation.error },
+      pendingMinutes: reservation ? pendingReservationMinutes(reservation.slots, slots, date === today) : 0,
     };
   });
   const total = week.reduce((sum, day) => sum + day.minutes, 0);
+  const pending = week.reduce((sum, day) => sum + day.pendingMinutes, 0);
   return {
     title: `KW ${isoWeek(anchor).week}`,
     range: `${formatDateDe(dates[0]).slice(0, 6)}–${formatDateDe(dates[6])}`,
@@ -94,6 +96,8 @@ export function weekModel({ getDay, anchor, today, conflictDates = [], windowDay
     days: week,
     totalMinutes: total,
     totalLabel: formatMinutes(total),
+    pendingMinutes: pending,
+    pendingLabel: formatMinutes(pending),
   };
 }
 
