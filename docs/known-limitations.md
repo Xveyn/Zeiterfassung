@@ -487,6 +487,17 @@ Augenhöhe mit den anderen beiden Plattformen.
 - **Die erlaubte Origin gilt für alle GitHub-Pages-Seiten des Kontos.** Der Server lässt
   `https://xveyn.github.io` zu, ohne Pfad; jede andere Pages-Seite unter diesem Nutzernamen
   könnte ihn per Browser ansprechen. Sie bräuchte dafür den Kopplungscode des gerade offenen Koppel-Dialogs (die Kopplung ist verschlüsselt, ohne den Code geht nichts) oder ein gültiges Gerätetoken **und** den Geräteschlüssel.
+  **Aber:** Browser-Speicher gehört zur ganzen Origin, nicht zum Pfad `/Zeiterfassung/`. Die
+  Daten der PWA sind damit für Skripte anderer Seiten dieser Origin grundsätzlich erreichbar,
+  die Pfadtrennung schützt dagegen nicht. Geprüft am 2026-10-21 (Stand `main`, gelesen, nicht
+  ausgeführt): die beiden anderen Projekte der Origin (`mathe-tools`, `BaluHost-Plugin-Market`)
+  laden nichts von Dritten und nutzen weder IndexedDB noch localStorage; der Markt
+  veröffentlicht nur `index.json` und Archive, keine Seiten. Heute besteht diese Grenze also
+  nur in der Theorie, auch eine Kollision beim DB-Namen `zeiterfassung` gibt es nicht.
+  **Regel:** unter `xveyn.github.io` kein Projekt veröffentlichen, das Fremdcode (CDN, Pakete)
+  lädt, ohne vorher diese Grenze neu zu bewerten. Entfällt sie, ist die eigene Origin für die
+  PWA die einzige strukturelle Lösung (`PWA_ORIGIN`/`PWA_URL` in `src/mobile_routes.py`, alle
+  Handys müssten neu koppeln); ein anderer DB-Name allein schützt nicht.
 - **Verbindungsplätze.** Die Handy-Instanz nimmt höchstens 32 gleichzeitige Verbindungen an, davon höchstens 8 je
   Absender-Adresse; weitere werden sofort geschlossen (angenommen wird vor der Anmeldung). Das bremst ein einzelnes
   Gerät im WLAN, das Plätze belegt. Wer mehrere Adressen im Netz nutzt, kann trotzdem alle 32 halten (je Verbindung
