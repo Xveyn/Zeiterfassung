@@ -1171,6 +1171,7 @@ Die Test-Deps sind **exakt gepinnt** (Audit N25) — beim Bump gegen Python 3.12
 - **test-macos** / **test-windows** — Plattform-Verifikation (je 3.12; macOS zieht zusätzlich `pyobjc-framework-Cocoa`).
 - **lint** — `ruff check .`. **typecheck** — `pyright` (gepinnt `1.1.411`).
 - **pwa** — `node --test` im Ordner `pwa/` (Node 22, `actions/setup-node`), hinter `changes` wie die übrigen Jobs. Bewusst **nicht** in der Liste der Required Checks oben: das Ruleset liegt außerhalb des Repos, die Aufnahme entscheidet der Maintainer (dann beides abgleichen, s. „Branch Protection"). `pwa/**` zählt als Code (nicht als Doku) und löst die ganze Matrix aus.
+- **relay** — `npm ci` und `node --test` im Ordner `relay/` (Node 22, `actions/setup-node`), hinter `changes` wie `pwa`. Ebenfalls **nicht** in der Liste der Required Checks (Aufnahme entscheidet der Maintainer, dann beides abgleichen). `relay/**` zählt als Code und löst die ganze Matrix aus.
 
 Lokal: `pytest` aus dem Repo-Root (Coverage: `pytest --cov=src --cov-report=term-missing`). Alle Tests müssen vor dem PR-Merge grün sein.
 
@@ -1552,6 +1553,7 @@ nicht mehr als „offen" führen — der Verweis lautet auf diese Grenze.
 - `src/tooltip.py` — UI-Hilfe (`_hover`-Overlays)
 - `src/version.py` — Einzige Quelle für die App-Version (von Workflow & `installer.iss` gelesen); ordnet Release-Kennungen (`parse_release_id`, `X.Y.Z[-pre.N]`) und kennt die Build-Identität (`installed_release_id` aus dem `RELEASE_TAG`-Stempel)
 - `pwa/` — die Handy-PWA der Handy-Erfassung (#221), reines JavaScript ohne Build, wird **nicht** in die App gebündelt und von keinem Python-Modul importiert. Module (u. a. Kategorien-Verwaltung `categories.js`), Vertrag gegen Drift (Fixtures), Verschlüsselung, Veröffentlichung über Pages und Dev-Server stehen in **`pwa/CLAUDE.md`**; die Serverseite in `src/CLAUDE.md`. Den Vertrag gegen die PWA hält `tests/test_mobile_contract.py`.
+- `relay/` — der Push-Relay (#331): ein Cloudflare Worker mit einem Durable Object je Handy, der Erinnerungen zur Fälligkeit als Web-Push an die PWA sendet, auch wenn der Desktop aus ist. Reines JavaScript, wird **nicht** in die App gebündelt und von keinem Python-Modul importiert. Modell, Regeln (kein Logging, Abo-Ziel nur bei bekannten Push-Diensten) und Einrichtung stehen in **`relay/CLAUDE.md`** und `relay/README.md`; das Design in `docs/superpowers/specs/2026-10-21-pwa-push-erinnerungen-design.md`.
 - `installer.iss` — Inno Setup Script, Version wird per `/DAppVer=...` vom Workflow übergeben.
   `AppMutex=ZeiterfassungAppMutex` (muss exakt zu `main.py::_APP_MUTEX_NAME` passen) lässt Setup
   eine laufende Instanz erkennen und den User per Retry-Dialog zum manuellen Schließen auffordern;
