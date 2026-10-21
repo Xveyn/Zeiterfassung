@@ -818,7 +818,7 @@ Wert.
   CORS-Header. **Last:** höchstens 32 gleichzeitige Verbindungen (darüber wird
   im Accept-Thread sofort geschlossen — angenommen wird vor der Auth, ohne die
   Grenze könnte ein lokaler Prozess Threads und Dateihandles der ganzen App
-  aufzehren), 15 s Gesamtfrist je Verbindung (das Socket-Timeout gilt nur je
+  aufzehren; die Handy-Instanz zusätzlich höchstens `mobile_service.MAX_CONNECTIONS_PER_CLIENT` (8) je Absender-IP, `ApiServer(max_per_client=…)`, gezählt im Accept-Thread unter eigenem Lock, der Eintrag verschwindet mit der letzten Verbindung; bremst ein Gerät, keinen Angreifer mit mehreren Adressen), 15 s Gesamtfrist je Verbindung (das Socket-Timeout gilt nur je
   `recv()`), Lingering close (erst `SHUT_WR`, dann kurz leer lesen: kein RST mit
   ungelesenem Body, kein `TIME_WAIT` auf dem API-Port). Verbindungsabbrüche und
   Timeouts loggen nur auf DEBUG; ein Body-Timeout ist 408. `set_verifier` tauscht den Prüfer ohne Neustart (Token-Rotation).

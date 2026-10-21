@@ -498,6 +498,83 @@ def test_connections_beyond_the_cap_are_closed_at_once(tmp_path, monkeypatch):
         srv.stop()
 
 
+def _closed_at_once(port):
+    extra = socket.create_connection(("127.0.0.1", port), timeout=5)
+    try:
+        extra.settimeout(2)
+        return extra.recv(10) == b""
+    finally:
+        extra.close()
+
+
+def test_one_client_cannot_exceed_its_share_of_the_slots(tmp_path):
+    srv = ApiServer(make_context(tmp_path), single_token_verifier(TOKEN), max_per_client=2)
+    srv.start()
+    idle = []
+    try:
+        for _ in range(2):
+            idle.append(socket.create_connection(("127.0.0.1", srv.port), timeout=5))
+        time.sleep(0.3)                           # die zwei halten ihren Anteil
+        assert _closed_at_once(srv.port)          # der dritte vom selben Absender ist zu
+        for sock in idle:
+            sock.close()
+        time.sleep(0.4)                           # Anteil wird frei
+        assert http_call(srv, "GET", "/v1/status")[0].status == 200
+    finally:
+        for sock in idle:
+            sock.close()
+        srv.stop()
+
+
+def test_the_per_client_count_is_dropped_when_connections_end(tmp_path):
+    # Ein Eintrag je Absender-IP darf nicht bleiben: sonst wüchse das Dict mit jeder
+    # Adresse, die je verbunden war.
+    srv = ApiServer(make_context(tmp_path), single_token_verifier(TOKEN), max_per_client=2)
+    srv.start()
+    try:
+        assert http_call(srv, "GET", "/v1/status")[0].status == 200
+        time.sleep(0.4)
+        assert srv._httpd is not None and srv._httpd._per_client == {}
+    finally:
+        srv.stop()
+
+
+def test_a_failed_thread_start_gives_back_the_client_share(tmp_path, monkeypatch):
+    srv = ApiServer(make_context(tmp_path), single_token_verifier(TOKEN), max_per_client=2)
+    srv.start()
+    try:
+        httpd = srv._httpd
+        assert httpd is not None
+
+        def boom(self, request, client_address):
+            raise RuntimeError("Thread-Start scheitert")
+
+        monkeypatch.setattr(api_server.socketserver.ThreadingMixIn, "process_request", boom)
+        with pytest.raises(RuntimeError):
+            httpd.process_request(socket.socket(), ("10.0.0.5", 1234))
+        assert httpd._per_client == {}
+        assert httpd._slots.acquire(blocking=False)   # auch der globale Platz ist zurück
+        httpd._slots.release()
+    finally:
+        srv.stop()
+
+
+def test_without_a_per_client_limit_one_client_may_use_all_slots(tmp_path, monkeypatch):
+    monkeypatch.setattr(api_server._ApiHTTPServer, "max_connections", 3)
+    srv = ApiServer(make_context(tmp_path), single_token_verifier(TOKEN))
+    srv.start()
+    idle = []
+    try:
+        for _ in range(3):
+            idle.append(socket.create_connection(("127.0.0.1", srv.port), timeout=5))
+        time.sleep(0.3)
+        assert srv._httpd is not None and srv._httpd._per_client_limit is None
+    finally:
+        for sock in idle:
+            sock.close()
+        srv.stop()
+
+
 def test_a_trickling_client_hits_the_total_request_deadline(server, monkeypatch):
     # Das Socket-Timeout gilt je recv(): ein Byte alle 0,2 s hielte die
     # Verbindung ewig offen. Die Gesamtfrist kappt sie.

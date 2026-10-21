@@ -314,11 +314,17 @@ class _ApiHTTPServer(http.server.ThreadingHTTPServer):
 
     def __init__(self, address: tuple[str, int],
                  policy_for_port: Callable[[int], Policy],
-                 verifier: TokenVerifier, surface: Surface) -> None:
+                 verifier: TokenVerifier, surface: Surface,
+                 max_per_client: int | None = None) -> None:
         self.verifier = verifier
         self.surface = surface
         self.policy: Policy
         self._slots = threading.BoundedSemaphore(self.max_connections)
+        # Anteil je Absender-IP, gezählt neben dem globalen Semaphor. Der Eintrag
+        # verschwindet mit der letzten Verbindung, das Dict wächst nicht mit.
+        self._per_client_limit = max_per_client
+        self._per_client: dict[str, int] = {}
+        self._per_client_lock = threading.Lock()
         super().__init__(address, _Handler)
         try:
             self.policy = policy_for_port(self.server_address[1])
@@ -338,21 +344,50 @@ class _ApiHTTPServer(http.server.ThreadingHTTPServer):
         self.server_name = str(host)
         self.server_port = port
 
+    def _claim_client(self, client_address: Any) -> bool:
+        if self._per_client_limit is None:
+            return True
+        ip = str(client_address[0])
+        with self._per_client_lock:
+            used = self._per_client.get(ip, 0)
+            if used >= self._per_client_limit:
+                return False
+            self._per_client[ip] = used + 1
+            return True
+
+    def _release_client(self, client_address: Any) -> None:
+        if self._per_client_limit is None:
+            return
+        ip = str(client_address[0])
+        with self._per_client_lock:
+            left = self._per_client.get(ip, 0) - 1
+            if left > 0:
+                self._per_client[ip] = left
+            else:
+                self._per_client.pop(ip, None)
+
     def process_request(self, request: Any, client_address: Any) -> None:
         if not self._slots.acquire(blocking=False):
             # Voll: sofort schließen, kein Thread, kein Warten im Accept-Thread.
             self.close_request(request)
             return
+        if not self._claim_client(client_address):
+            # Dieser Absender hat seinen Anteil: andere behalten ihre Plätze.
+            self._slots.release()
+            self.close_request(request)
+            return
         try:
             super().process_request(request, client_address)
         except BaseException:
-            self._slots.release()                # Thread-Start gescheitert
+            self._release_client(client_address)  # Thread-Start gescheitert
+            self._slots.release()
             raise
 
     def process_request_thread(self, request: Any, client_address: Any) -> None:
         try:
             super().process_request_thread(request, client_address)
         finally:
+            self._release_client(client_address)
             self._slots.release()
 
     def shutdown_request(self, request: Any) -> None:
@@ -386,7 +421,8 @@ class _ApiHTTPServer(http.server.ThreadingHTTPServer):
 class ApiServer:
     def __init__(self, context: ApiContext | None, verifier: TokenVerifier, *, port: int = 0,
                  policy_for_port: Callable[[int], Policy] = Policy.loopback,
-                 surface: Surface | None = None) -> None:
+                 surface: Surface | None = None,
+                 max_per_client: int | None = None) -> None:
         if surface is None:
             if context is None:
                 raise ValueError("ApiServer braucht einen Kontext oder eine Surface")
@@ -395,6 +431,7 @@ class ApiServer:
         self._verifier = verifier
         self._requested_port = port
         self._policy_for_port = policy_for_port
+        self._max_per_client = max_per_client
         self._httpd: _ApiHTTPServer | None = None
         self._thread: threading.Thread | None = None
         self._stop_event = threading.Event()
@@ -412,7 +449,7 @@ class ApiServer:
             raise RuntimeError("Server läuft bereits")
         bind_host = self._policy_for_port(self._requested_port).bind_host
         httpd = _ApiHTTPServer((bind_host, self._requested_port), self._policy_for_port,
-                               self._verifier, self._surface)
+                               self._verifier, self._surface, self._max_per_client)
         self._stop_event.clear()
         thread = threading.Thread(target=self._serve_loop, args=(httpd,),
                                   name="api-server", daemon=True)

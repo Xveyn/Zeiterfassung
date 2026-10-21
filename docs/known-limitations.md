@@ -498,6 +498,11 @@ Augenhöhe mit den anderen beiden Plattformen.
   lädt, ohne vorher diese Grenze neu zu bewerten. Entfällt sie, ist die eigene Origin für die
   PWA die einzige strukturelle Lösung (`PWA_ORIGIN`/`PWA_URL` in `src/mobile_routes.py`, alle
   Handys müssten neu koppeln); ein anderer DB-Name allein schützt nicht.
+- **Verbindungsplätze.** Die Handy-Instanz nimmt höchstens 32 gleichzeitige Verbindungen an, davon höchstens 8 je
+  Absender-Adresse; weitere werden sofort geschlossen (angenommen wird vor der Anmeldung). Das bremst ein einzelnes
+  Gerät im WLAN, das Plätze belegt. Wer mehrere Adressen im Netz nutzt, kann trotzdem alle 32 halten (je Verbindung
+  höchstens 15 s): der Abgleich vom Handy scheitert dann zeitweise und gelingt beim nächsten Versuch. Betroffen ist
+  nur die Verfügbarkeit, kein Datenzugriff, und die Desktop-App bleibt bedienbar.
 - **Nur solange die App läuft** und Handy und Rechner im selben Netz sind. Wechselt die
   Adresse des Rechners (anderes WLAN, DHCP), meldet die App bei **fest gewählter** Adresse
   `address_gone` und tauscht sie nicht still aus; bei „Automatisch“ nimmt sie beim nächsten

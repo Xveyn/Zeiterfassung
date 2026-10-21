@@ -7,7 +7,7 @@ import time
 
 import pytest
 
-from src import mobile_keys, mobile_pairing, mobile_routes
+from src import mobile_keys, mobile_pairing, mobile_routes, mobile_service
 from src.api_auth import ANONYMOUS
 from src.api_routes import ApiRequest
 from src.conflicts_store import ConflictsStore
@@ -139,6 +139,24 @@ def test_an_enabled_service_binds_the_chosen_address_and_answers(started):
 
     assert response.status == 200 and body["protocol"] == 2
     assert response.getheader("Access-Control-Allow-Origin") == ORIGIN
+
+
+def test_one_phone_address_cannot_hold_more_than_its_share_of_connections(started):
+    service, _settings, _ctx = started
+    port = service.status.port
+    idle = [socket.create_connection((LOOPBACK, port), timeout=5)
+            for _ in range(mobile_service.MAX_CONNECTIONS_PER_CLIENT)]
+    try:
+        time.sleep(0.3)
+        extra = socket.create_connection((LOOPBACK, port), timeout=5)
+        try:
+            extra.settimeout(2)
+            assert extra.recv(10) == b""          # der neunte vom selben Absender ist sofort zu
+        finally:
+            extra.close()
+    finally:
+        for sock in idle:
+            sock.close()
 
 
 def test_the_server_only_accepts_the_exact_host_and_origin(started):
