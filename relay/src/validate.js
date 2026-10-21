@@ -25,8 +25,17 @@ export class InvalidRequest extends Error {}
 
 const isObject = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
 
+// `Buffer` gibt es in Workers nur mit nodejs_compat; `atob` genügt für die Länge.
+function decodedLength(text) {
+  try {
+    return atob(text.replace(/-/g, '+').replace(/_/g, '/').padEnd(Math.ceil(text.length / 4) * 4, '=')).length;
+  } catch {
+    return -1;
+  }
+}
+
 function bytes(text, length, name) {
-  if (typeof text !== 'string' || !BASE64URL.test(text) || Buffer.from(text, 'base64url').length !== length) {
+  if (typeof text !== 'string' || !BASE64URL.test(text) || decodedLength(text) !== length) {
     throw new InvalidRequest(`${name} ist kein Base64url-Wert mit ${length} Bytes.`);
   }
   return text;
