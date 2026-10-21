@@ -545,6 +545,28 @@ Augenhöhe mit den anderen beiden Plattformen.
   wäre nur ein Hebel, mit dem jemand im selben WLAN die Kopplung dauerhaft verhindern könnte.
   Ein Fremder kann den Server mit Fehlversuchen beschäftigen, nicht aber koppeln.
 
+## Push-Relay (#331): ein neuer Vertrauens-Ort
+
+Die Handy-Erfassung kennt bisher nur GitHub Pages (statische PWA) und die LAN-Verbindung zum
+Desktop. Erinnerungen als Push auf dem Handy brauchen einen Dienst im Internet, den **Relay**
+(`relay/`, ein Cloudflare Worker). Das ist die erste Stelle, an der etwas außerhalb des eigenen Netzes
+läuft.
+
+- **Was der Relay sieht:** den Endpoint des Push-Dienstes (und damit den Browser-Anbieter), die
+  Abo-Schlüssel, das Zufallsgeheimnis des Handys (gespeichert nur als Hash, der Worker sieht es aber bei jeder Anfrage im Klartext), die Zeitpunkte der Erinnerungen und ein
+  verschlüsseltes Blob. Das genügt für „es gibt ein Gerät, das zu diesen Zeiten benachrichtigt wird".
+- **Was er nicht sieht:** Arbeitszeiten, Kategorien, Namen. Der Text der Benachrichtigung ist mit einem
+  Schlüssel verschlüsselt, den nur Handy und Service Worker kennen. Die Push-Dienste (Google, Mozilla)
+  sehen zusätzlich Metadaten, den Inhalt nicht.
+- **Abhängigkeit:** Cloudflare (Free-Plan: 100.000 Anfragen/Tag, 10 ms CPU je Anfrage) und der Betreiber,
+  der den Worker veröffentlicht. Fällt der Relay aus, kommen keine Push-Erinnerungen; alles andere läuft wie
+  bisher (Desktop-Toasts, Erfassung, Abgleich).
+- **Keine Konten:** das Geheimnis erzeugt das Handy. Es gibt kein Passwort, das man verlieren könnte, aber
+  auch keinen Weg, ein verlorenes Gerät vom Relay aus zu sperren; der Desktop löscht (mit dem Desktop-Teil von #331, noch nicht gebaut) beim Widerruf eines
+  Geräts dessen Relay-Objekt (best effort), sonst räumt es sich nach 90 Tagen selbst auf.
+- **Nur Push-Dienste der Browser:** der Relay sendet nur an FCM, Mozilla, Apple und Windows (Liste in
+  `relay/src/validate.js`). Ein neuer Dienst wird dort eingetragen.
+
 ## Beschädigte oder fremde Daten (Storage)
 
 - **Ungültige Slot-Werte werden beim Lesen ersetzt, nicht repariert.** Eine gespeicherte Pause, die keine ganze Zahl von 0 bis 1440 ist (`null`, Text, `30.5`, negativ, `inf`), zählt `0`; `start`/`end` ohne Text zählen als leer, eine Kategorie ohne Text als „ohne Kategorie“. Die Datei behält den Originalwert, bis der Tag neu gespeichert wird.
