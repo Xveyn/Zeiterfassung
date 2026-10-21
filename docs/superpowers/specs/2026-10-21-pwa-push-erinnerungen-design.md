@@ -197,6 +197,29 @@ Fällt **1, 2 oder 3** durch (z. B. CPU über dem Limit, Alarme unzuverlässig),
 Entscheidung zurück zu dir, bevor irgendetwas gebaut wird. Ein Wechsel auf den bezahlten Plan oder auf
 Cron ist **deine** Entscheidung, keine des Builders.
 
+## Spike-Ergebnis (2026-10-21, lokal mit `wrangler dev`, Chrome und Firefox)
+
+- **Bestanden:** Ein Worker sendet verschlüsselte Pushes an **FCM** und **Mozilla** (beide HTTP 201),
+  sofort und per Durable-Object-Alarm (3 ms Verspätung lokal). `@block65/webcrypto-web-push`
+  2.0.0 genügt (aes128gcm, VAPID `vapid t=…, k=…`), keine eigene Kryptographie nötig.
+- **Bestanden:** Der Service Worker liest den Blob-Schlüssel aus IndexedDB (nicht extrahierbarer
+  `CryptoKey`) und entschlüsselt ein vom Relay durchgereichtes Blob — in Chrome und Firefox.
+- **Offen bis zum ersten Deploy:** CPU-Zeit gegen das 10-ms-Limit des Free-Plans (lokal nicht
+  messbar: `Date.now()` rückt in Workers nur bei I/O vor) und das Alarmverhalten auf dem
+  Free-Plan. Beides wird im Relay-PR gemessen; fällt es durch, entscheidet der Nutzer.
+- **Gestrichen: die Quittung im LAN** (ehem. Spike 5). Ein durch Push gestarteter Service Worker
+  kann die Berechtigung für Zugriffe im lokalen Netz nicht abfragen; es bleibt bei dem einfachen
+  Schalter. (Der Absatz „Doppelte Meldung“ oben nennt sie nur noch als Möglichkeit.)
+- **Werkzeug:** `wrangler` verlangt Node ≥ 22 (lokal Node 20 → Node 22 per npm-Paket `node@22`).
+
+## Abhängigkeit: Firefox
+
+Der Relay stellt in Firefox zu, aber die PWA kann sich dort heute **nicht mit dem Desktop koppeln
+oder abgleichen** (Mixed Content, `docs/known-limitations.md`, #249). Ohne Abgleich gibt es keine
+Reservierungen und keine Sende-Zeitpunkte vom Desktop. Push in Firefox ist damit erst dann
+nützlich, wenn der Desktop per HTTPS erreichbar ist (#249). Chrome auf Android ist der Weg der
+ersten Stufe.
+
 ## Plattform-Grenzen (Stand der Recherche, nicht alles aus Primärquellen)
 
 - **Free-Plan (offiziell):** 100.000 Anfragen/Tag, 10 ms CPU je Anfrage, 50 Unteranfragen je
