@@ -553,7 +553,7 @@ Desktop. Erinnerungen als Push auf dem Handy brauchen einen Dienst im Internet, 
 läuft.
 
 - **Was der Relay sieht:** den Endpoint des Push-Dienstes (und damit den Browser-Anbieter), die
-  Abo-Schlüssel, ein Zufallsgeheimnis (nur als Hash), die Zeitpunkte der Erinnerungen und ein
+  Abo-Schlüssel, das Zufallsgeheimnis des Handys (gespeichert nur als Hash, der Worker sieht es aber bei jeder Anfrage im Klartext), die Zeitpunkte der Erinnerungen und ein
   verschlüsseltes Blob. Das genügt für „es gibt ein Gerät, das zu diesen Zeiten benachrichtigt wird".
 - **Was er nicht sieht:** Arbeitszeiten, Kategorien, Namen. Der Text der Benachrichtigung ist mit einem
   Schlüssel verschlüsselt, den nur Handy und Service Worker kennen. Die Push-Dienste (Google, Mozilla)

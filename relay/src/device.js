@@ -56,9 +56,11 @@ export class Device {
   }
 
   async #replaceSchedule(request) {
+    // Erst den Body lesen (auch für die 409-Antwort: ein ungelesener Body löst in workerd einen Fehler aus),
+    // dann ohne weiteres Warten auf Netz oder Body prüfen und schreiben: nur Speicherzugriffe sind atomar.
+    const items = parseSchedule(await readJson(request), this.now());
     const { storage } = this.ctx;
     if (!(await storage.get('sub'))) return json(409, { error: 'no_subscription' });
-    const items = parseSchedule(await readJson(request), this.now());
     await storage.put('items', items);
     await storage.put('idle', idleAt(this.now()));
     await this.#arm(items);
@@ -98,15 +100,20 @@ export class Device {
 
   async #run() {
     const { storage } = this.ctx;
-    const now = this.now();
+    const start = this.now();
     const idle = (await storage.get('idle')) ?? 0;
     const subscription = await storage.get('sub');
-    if (!subscription || now >= idle) {
+    if (!subscription || start >= idle) {
       await this.#wipe();
       return;
     }
-    const plan = planAlarm((await storage.get('items')) ?? [], now, idle);
-    const remaining = [...plan.keep];
+    const plan = planAlarm((await storage.get('items')) ?? [], start, idle);
+
+    // Während des Sendens warten wir auf das Netz, und andere Anfragen (neuer Zeitplan, neues Abo, Löschen)
+    // laufen dazwischen. Deshalb nur merken, was geschah, und danach gegen den aktuellen Stand anwenden.
+    const sent = new Set();
+    const retries = [];
+    let gone = false;
     for (const item of plan.due) {
       let result;
       try {
@@ -114,16 +121,33 @@ export class Device {
       } catch {
         result = 'retry';      // `sendPush` wirft nie; ein Ersatz, der es tut, soll die übrigen nicht stoppen
       }
+      sent.add(`${item.id}@${item.fireAt}`);
       if (result === 'gone') {
-        await this.#wipe();
-        return;
+        gone = true;
+        break;
       }
       if (result === 'retry') {
-        const again = afterFailure(item, now);
-        if (again) remaining.push(again);
+        const again = afterFailure(item, start);
+        if (again) retries.push(again);
       }
     }
-    await storage.put('items', remaining);
-    await storage.setAlarm(planAlarm(remaining, now, idle).alarmAt);
+
+    const current = await storage.get('sub');
+    if (!current) return;                       // zwischenzeitlich gelöscht: nichts wieder anlegen
+    if (gone && current.endpoint === subscription.endpoint) {
+      await this.#wipe();
+      return;
+    }
+    if (gone) return;                           // das Abo wurde inzwischen erneuert; der alte Endpoint ist egal
+    const stored = (await storage.get('items')) ?? [];
+    const items = stored.filter((item) => !sent.has(`${item.id}@${item.fireAt}`));
+    for (const again of retries) {
+      if (!items.some((item) => item.id === again.id)) items.push(again);
+    }
+    const now = this.now();
+    // Abgelaufene Einträge entfallen hier; was inzwischen fällig wurde (neuer Zeitplan), bleibt und klingelt gleich.
+    const next = planAlarm(items, now, (await storage.get('idle')) ?? idle);
+    await storage.put('items', [...next.due, ...next.keep]);
+    await storage.setAlarm(next.due.length > 0 ? now : next.alarmAt);
   }
 }

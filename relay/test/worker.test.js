@@ -118,3 +118,25 @@ test('no request path logs the secret', async () => {
   }
   assert.ok(seen.every((line) => !line.includes(secret(3))), seen.join('\n'));
 });
+
+test('a body over 300 KB is 413 without touching a device, with or without Content-Length (I4)', async () => {
+  const { call, touched } = setup();
+  const auth = `Bearer ${secret(1)}`;
+  const big = 'x'.repeat(300_001);
+  const declared = await call('PUT', '/v1/schedule', { auth, body: big });
+  assert.equal(declared.status, 413);
+  assert.deepEqual(await declared.json(), { error: 'too_large' });
+  const stream = new ReadableStream({ start(controller) { controller.enqueue(new TextEncoder().encode(big)); controller.close(); } });
+  const streamed = await worker.fetch(new Request('https://relay.example/v1/schedule', {
+    method: 'PUT', headers: { authorization: auth }, body: stream, duplex: 'half' }), { DEVICE: { idFromName: (n) => n, get: () => { throw new Error('touched'); } } });
+  assert.equal(streamed.status, 413);
+  assert.deepEqual(touched, []);
+  assert.equal((await call('PUT', '/v1/schedule', { auth, body: 'x'.repeat(300_000) })).status, 204);
+});
+
+test('the Authorization header is not forwarded to the device', async () => {
+  let forwarded;
+  const { call } = setup({}, (request) => { forwarded = request.headers.get('authorization'); return new Response(null, { status: 204 }); });
+  await call('PUT', '/v1/device', { auth: `Bearer ${secret(1)}`, body: '{}' });
+  assert.equal(forwarded, null);
+});

@@ -44,6 +44,19 @@ test('rejects userinfo, explicit ports, IP literals and overlong endpoints', () 
   }
 });
 
+test('rejects an endpoint that is not a string, so arrays cannot bypass the length cap (I2)', () => {
+  const url = 'https://fcm.googleapis.com/fcm/send/abc';
+  for (const endpoint of [[url], { toString: () => url }, 5, null, undefined]) {
+    assert.throws(() => parseSubscription(sub({ endpoint })), InvalidRequest, String(endpoint));
+  }
+  assert.throws(() => parseSubscription(sub({ endpoint: [`https://fcm.googleapis.com/${'a'.repeat(5000)}`] })), InvalidRequest);
+});
+
+test('stores the normalized URL that was validated, not the raw input (I2)', () => {
+  const parsed = parseSubscription(sub({ endpoint: 'HTTPS://FCM.googleapis.com/fcm/send/abc' }));
+  assert.equal(parsed.endpoint, 'https://fcm.googleapis.com/fcm/send/abc');
+});
+
 test('accepts a well-formed subscription and returns only the three fields', () => {
   const parsed = parseSubscription({ ...sub(), expirationTime: null, extra: 1 });
   assert.deepEqual(parsed, sub());

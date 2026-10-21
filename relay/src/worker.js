@@ -2,7 +2,7 @@
 // Die Haustür: Routen, Auth und CORS. Das Geheimnis des Handys wählt das Durable Object (benannt nach
 // seinem SHA-256), es gibt keine getrennte Geräte-ID. Alles Fachliche steckt in `device.js`.
 // Kein Logging: weder Geheimnis noch Abo oder Zeitplan gehören in ein Log.
-import { InvalidRequest, parseSecret } from './validate.js';
+import { InvalidRequest, LIMITS, parseSecret } from './validate.js';
 
 export { Device } from './device.js';
 
@@ -13,6 +13,28 @@ const ROUTES = { '/v1/device': ['PUT', 'DELETE'], '/v1/schedule': ['PUT'] };
 export async function objectName(secret) {
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(secret));
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
+/** Liest den Body höchstens bis `LIMITS.maxBody` Bytes; `null`, wenn er größer ist. Ohne diese Grenze
+ *  puffert `request.json()` im Durable Object beliebig viel. */
+async function readBody(request) {
+  const declared = Number(request.headers.get('content-length'));
+  if (declared > LIMITS.maxBody) return null;
+  if (!request.body) return '';
+  const reader = request.body.getReader();
+  const chunks = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > LIMITS.maxBody) {
+      await reader.cancel();
+      return null;
+    }
+    chunks.push(value);
+  }
+  return new TextDecoder().decode(await new Blob(chunks).arrayBuffer());
 }
 
 function corsHeaders(request, env) {
@@ -56,8 +78,15 @@ export default {
     }
 
     try {
+      const text = await readBody(request);
+      if (text === null) return reply(request, env, 413, { error: 'too_large' });
       const stub = env.DEVICE.get(env.DEVICE.idFromName(await objectName(secret)));
-      const answer = await stub.fetch(request);
+      // Das Geheimnis wählt nur das Objekt; es geht nicht weiter, auch nicht als Header.
+      const forwarded = new Request(request.url, {
+        method: request.method, headers: { 'content-type': 'application/json' },
+        body: request.method === 'DELETE' ? undefined : text,
+      });
+      const answer = await stub.fetch(forwarded);
       const headers = new Headers(answer.headers);
       for (const [name, value] of Object.entries(corsHeaders(request, env))) headers.set(name, value);
       return new Response(answer.body, { status: answer.status, headers });

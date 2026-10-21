@@ -5,6 +5,7 @@ export const LIMITS = {
   maxItems: 200,
   maxAheadDays: 90,
   maxBlob: 1024,
+  maxBody: 300_000,        // Bytes eines Request-Bodys; 200 Einträge mit vollem Blob liegen bei ca. 235 KB
   graceSeconds: 900,       // so lange nach `fire_at` wird eine Erinnerung noch gesendet
   idleDays: 90,            // so lange nach der letzten Aktualisierung räumt sich ein Gerät selbst auf
 };
@@ -51,6 +52,8 @@ export function parseSecret(header) {
 /** Das Abo, wie `PushSubscription.toJSON()` es liefert; übernommen werden nur diese drei Werte. */
 export function parseSubscription(body) {
   if (!isObject(body)) throw new InvalidRequest('Der Body muss ein Objekt sein.');
+  // `new URL([..])` und `new URL({toString})` akzeptieren Nicht-Strings, die Längenprüfung unten täte es auch.
+  if (typeof body.endpoint !== 'string') throw new InvalidRequest('endpoint muss ein Text sein.');
   let url;
   try {
     url = new URL(body.endpoint);
@@ -64,7 +67,7 @@ export function parseSubscription(body) {
   }
   if (!isObject(body.keys)) throw new InvalidRequest('keys fehlt.');
   return {
-    endpoint: body.endpoint,
+    endpoint: url.href,                // gespeichert wird, was geprüft wurde
     keys: { p256dh: bytes(body.keys.p256dh, 65, 'keys.p256dh'), auth: bytes(body.keys.auth, 16, 'keys.auth') },
   };
 }

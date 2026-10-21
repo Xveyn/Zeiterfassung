@@ -182,3 +182,67 @@ test('schedule update moves the idle expiry', async () => {
   await call('PUT', '/v1/schedule', { items: [] });
   assert.equal(await storage.getAlarm(), IDLE + 10 * 86_400_000);
 });
+
+// --- Nebenläufigkeit: während `send` auf das Netz wartet, laufen andere Anfragen (offene Eingabe-Schranke).
+function gated() {
+  const ctx = setup();
+  let release;
+  const gate = new Promise((resolve) => { release = resolve; });
+  const device = new Device({ storage: ctx.storage }, {}, {
+    now: () => ctx.clock.now,
+    send: async (sub, blob) => { ctx.sent.push(blob); await gate; return ctx.answers[blob] ?? 'ok'; },
+  });
+  const call = (method, path, body) => device.fetch(new Request(`https://relay${path}`, {
+    method, body: body === undefined ? undefined : JSON.stringify(body) }));
+  return { ...ctx, device, call, release };
+}
+
+test('a schedule uploaded while a push is in flight survives the alarm (I1)', async () => {
+  const { call, items, clock, storage, device, release } = gated();
+  await call('PUT', '/v1/device', SUB);
+  await call('PUT', '/v1/schedule', items(['a', MIN]));
+  clock.now = T0 + MIN;
+  const running = device.alarm();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal((await call('PUT', '/v1/schedule', items(['n1', 10 * MIN]))).status, 204);
+  release();
+  await running;
+  assert.deepEqual((await storage.get('items')).map((i) => i.id), ['n1']);
+  assert.equal(await storage.getAlarm(), T0 + 10 * MIN);
+});
+
+test('a gone for the old endpoint does not wipe a subscription registered meanwhile (I1)', async () => {
+  const { call, items, clock, storage, device, release, answers } = gated();
+  await call('PUT', '/v1/device', SUB);
+  await call('PUT', '/v1/schedule', items(['a', MIN]));
+  answers.a = 'gone';
+  clock.now = T0 + MIN;
+  const running = device.alarm();
+  await new Promise((resolve) => setImmediate(resolve));
+  const fresh = { ...SUB, endpoint: 'https://fcm.googleapis.com/fcm/send/rotated' };
+  await call('PUT', '/v1/device', fresh);
+  release();
+  await running;
+  assert.equal((await storage.get('sub')).endpoint, fresh.endpoint);
+});
+
+test('a delete during an alarm leaves nothing behind (I1)', async () => {
+  const { call, items, clock, storage, device, release } = gated();
+  await call('PUT', '/v1/device', SUB);
+  await call('PUT', '/v1/schedule', items(['a', MIN], ['b', 20 * MIN]));
+  clock.now = T0 + MIN;
+  const running = device.alarm();
+  await new Promise((resolve) => setImmediate(resolve));
+  await call('DELETE', '/v1/device');
+  release();
+  await running;
+  assert.deepEqual(storage.keys(), []);
+  assert.equal(await storage.getAlarm(), null);
+});
+
+test('the 409 answer still reads the request body (I3)', async () => {
+  const { device } = setup();
+  const request = new Request('https://relay/v1/schedule', { method: 'PUT', body: '{"items":[]}' });
+  assert.equal((await device.fetch(request)).status, 409);
+  assert.equal(request.bodyUsed, true);
+});
