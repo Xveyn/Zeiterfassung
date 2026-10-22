@@ -208,3 +208,45 @@ def test_day_reminder_does_not_need_the_calendar():
                    "send_reminder_last_fired_month": "2026-07"},
                   tray, _res_store("2026-07-15", "17:00", 15))
     assert sched.poll(_now(15, 16, 45)) is True
+
+
+# --- Handy deckt den Toast ab (#331) ---------------------------------------------------------
+
+def _covered(settings_data, tray, covers, reservation_store=None):
+    sched = _make(settings_data, tray, reservation_store)
+    sched._phone_covers = covers
+    return sched
+
+
+_MONTHLY = {"send_reminder_day": 15, "send_reminder_time": "18:00", "send_reminder_last_fired_month": ""}
+
+
+def test_no_monthly_toast_when_the_phone_covers_it_but_the_month_is_marked():
+    tray = _FakeTray()
+    settings_data = dict(_MONTHLY)
+    asked = []
+    sched = _covered(settings_data, tray, lambda kind: (asked.append(kind), True)[1])
+    assert sched.poll(_now(15, 18, 0)) is True
+    assert tray.messages == [] and asked == ["send"]
+    assert settings_data["send_reminder_last_fired_month"] == "2026-07"      # sonst käme er später nach
+
+
+def test_the_monthly_toast_comes_when_the_phone_does_not_cover():
+    tray = _FakeTray()
+    sched = _covered(dict(_MONTHLY), tray, lambda kind: False)
+    sched.poll(_now(15, 18, 0))
+    assert len(tray.messages) == 1
+
+
+def test_no_day_bound_toast_when_the_phone_covers_it_but_it_counts_as_fired():
+    tray = _FakeTray()
+    settings_data = {**_MONTHLY, "send_reminder_last_fired_month": "2026-07",
+                     "send_reminder_reservations_enabled": True, "reservations_enabled": True}
+    store = _FakeReservationStore({"2026-07-02": {"slots": [
+        {"start": "09:00", "end": "17:00", "kategorie": "A", "send_reminder_minutes": 10}]}})
+    covers = {"on": True}
+    sched = _covered(settings_data, tray, lambda kind: covers["on"], store)
+    assert sched.poll(_now(2, 16, 55)) is True
+    covers["on"] = False
+    assert sched.poll(_now(2, 16, 58)) is False
+    assert tray.messages == []

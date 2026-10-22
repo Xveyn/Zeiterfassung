@@ -19,13 +19,16 @@ _INTERVAL_MS = 60_000      # danach minütlich.
 
 class ReminderScheduler:
     def __init__(self, root, settings, storage, reservation_store, get_tray,
-                 now_provider=datetime.datetime.now):
+                 now_provider=datetime.datetime.now, phone_covers=None):
         self._root = root
         self._settings = settings
         self._storage = storage
         self._reservation_store = reservation_store
         self._get_tray = get_tray
         self._now = now_provider
+        # `phone_covers(kind)` (#331): wahr, wenn das Handy diese Erinnerung sicher bekommt und der
+        # Toast entfallen darf. Ohne die Angabe kommt der Toast immer.
+        self._phone_covers = phone_covers or (lambda kind: False)
         self._after_id = None
         self._fired = set()
         self._fired_date = None
@@ -81,7 +84,10 @@ class ReminderScheduler:
         due = reminders.due_reminders(
             reserved_slots, logged, now_dt, minutes, self._fired)
         for rem in due:
-            tray.notify(_toast_text(rem))
+            # Auch ein vom Handy abgedeckter Reminder gilt als gefeuert: fiele die Deckung später
+            # weg, käme der Toast sonst nachträglich für einen längst gemeldeten Termin.
+            if not self._phone_covers("reservation"):
+                tray.notify(_toast_text(rem))
             self._fired.add(rem.key)
         return due
 

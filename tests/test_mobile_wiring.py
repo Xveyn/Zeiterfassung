@@ -121,3 +121,11 @@ def test_the_relay_store_is_built_in_main_and_reaches_the_mobile_context():
     assert "mobile_relay_store=mobile_relay_store" in main_source
     assert "mobile_relay_store=None" in ui_source
     assert "relay_store=mobile_relay_store" in ui_source
+
+
+def test_both_reminder_schedulers_ask_the_app_whether_the_phone_covers_them():
+    source = UI.read_text(encoding="utf-8")
+    assert source.count("phone_covers=self._phone_covers") == 2
+    body = ast.get_source_segment(source, _function("_phone_covers"))
+    assert "self._relay_store.known_ids()" in body
+    assert 'r.get("revoked")' in body
