@@ -144,6 +144,8 @@ def test_the_response_example_has_the_shape_the_server_really_sends(tmp_path):
                "2026-10-05": mr.day(modified_at="2026-10-07T18:30:00Z")}
     mr.with_reservations(env, tmp_path)         # Schalter an: erst dann trägt die Antwort das Feld
     reservations = {"2026-10-15": mr.RES_DAY}
+    env.ctx.settings.set("mobile_push_enabled", True)       # sonst bliebe `reminders.send.at` leer
+    env.ctx.settings.set("send_reminder_enabled", True)
 
     raw = mr.call(env, "POST", "/v1/sync",
                   body=mr.sync_body(env, entries, reservations=reservations), token=token)
@@ -351,3 +353,30 @@ def test_reminder_plan_matches_due_reminders(case):
         wanted = (item["kind"], item["category"], item["end"])
         assert wanted in due_at(slots, logged, fire)
         assert wanted not in due_at(slots, logged, fire - datetime.timedelta(minutes=1))
+
+
+# --- Erinnerungen: der Block der Antwort und das Geheimnis der Anfrage (#331) ----------------
+
+def test_reminders_block_has_the_shape_the_phone_reads(tmp_path):
+    from src.mobile_reminders import build_block
+    from src.settings import Settings
+
+    example = load("reminders-contract.json")["response_reminders"]
+    settings = Settings(str(tmp_path / "settings.json"))
+    settings.set("mobile_push_enabled", True)
+    settings.set("send_reminder_enabled", True)
+    built = build_block(settings, None, datetime.datetime(2026, 10, 22, 8, 0),
+                        tz=datetime.timezone.utc)
+    assert set(built) == set(example)
+    assert set(built["reservation"]) == set(example["reservation"])
+    assert set(built["send"]) == set(example["send"])
+    assert built["send"]["at"] and all(
+        isinstance(stamp, str) and len(stamp) == len("2026-11-02T07:00:00Z") and stamp.endswith("Z")
+        for stamp in built["send"]["at"])
+
+
+def test_the_relay_secret_of_the_example_request_is_accepted():
+    from src.mobile_reminders import parse_push
+
+    example = load("reminders-contract.json")["request_push"]
+    assert parse_push(example) == example["relay_secret"]

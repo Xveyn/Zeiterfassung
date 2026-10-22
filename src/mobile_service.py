@@ -28,7 +28,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-from src import mobile_pairing, mobile_routes, netinfo
+from src import mobile_pairing, mobile_routes, netinfo, push_relay
 from src.api_auth import Policy
 from src.api_server import ApiServer
 from src.api_service import parse_port
@@ -134,6 +134,11 @@ class MobileService:
             _log.warning("Handy-Erfassung: Gerätedatei nicht gelesen — Schlüssel werden nicht aufgeräumt")
         else:
             steps.insert(0, ("retain", lambda: keys.retain([r["id"] for r in self._context.devices.get_all()])))
+            relay_store = self._context.relay_store
+            if relay_store is not None:
+                # Geheimnisse vergessener Geräte lokal weg; ihre Relay-Objekte verfallen dort nach 90 Tagen.
+                steps.append(("relay", lambda: relay_store.retain(
+                    [r["id"] for r in self._context.devices.get_all()])))
         for name, step in steps:
             if self._closed:
                 return
@@ -289,6 +294,8 @@ class MobileService:
             self._context.devices.save(mobile_pairing.revoke(record))
         # Außerhalb der Gerätesperre: der Schlüsselbund kann blockieren (Worker).
         self._context.keys.remove(device_id)
+        self._drop_relay_objects(lambda store: {device_id: secret}
+                                 if (secret := store.remove(device_id)) else {})
         return True
 
     def revoke_all(self) -> int:
@@ -298,7 +305,29 @@ class MobileService:
             records = self._context.devices.get_all()
             self._context.devices.replace_all([mobile_pairing.revoke(r) for r in records])
         self._context.keys.retain([])
+        self._drop_relay_objects(lambda store: store.retain([]))
         return len(records)
+
+    def _drop_relay_objects(self, take: Callable[[Any], dict[str, str]]) -> None:
+        """Räumt die Relay-Objekte widerrufener Geräte ab: erst die lokalen Geheimnisse
+        herausnehmen (`take` liefert `{id: Geheimnis}`), dann je Geheimnis `DELETE` am Relay.
+        Best effort — außerhalb der Gerätesperre (Netz, Datei) und ohne den Widerruf je zu
+        gefährden: das Gerät ist schon widerrufen, ein Fehler hier bleibt ein Logeintrag, das
+        Objekt verfällt am Relay nach 90 Tagen von selbst."""
+        store = self._context.relay_store
+        if store is None:
+            return
+        try:
+            secrets = take(store)
+        except Exception:
+            _log.warning("Handy-Erfassung: Relay-Geheimnisse nicht abgelegt", exc_info=True)
+            return
+        for secret in secrets.values():
+            try:
+                push_relay.delete_device(secret)
+            except Exception:
+                # `delete_device` wirft nie; dieser Zweig fängt nur, was künftig dazukäme.
+                _log.warning("Handy-Erfassung: Relay-Objekt nicht gelöscht", exc_info=False)
 
     def pair_link(self, code: str) -> str | None:
         """Der Link im QR-Code: `<PWA>#pair=<ip>:<port>:<code>`. Das Fragment geht nie

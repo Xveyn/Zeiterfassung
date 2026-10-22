@@ -112,3 +112,20 @@ def test_app_passes_the_reservation_store_and_the_hook_to_the_mobile_context():
     context = source.split("MobileContext(")[1].split("run=self._bg.run")[0]
     assert "reservation_store=self.reservation_store" in context
     assert "on_reservations_change=self._on_remote_calendar_data_changed" in context
+
+
+def test_the_relay_store_is_built_in_main_and_reaches_the_mobile_context():
+    main_source = MAIN.read_text(encoding="utf-8")
+    ui_source = UI.read_text(encoding="utf-8")
+    assert 'MobileRelayStore(os.path.join(base, "mobile_relay.json"))' in main_source
+    assert "mobile_relay_store=mobile_relay_store" in main_source
+    assert "mobile_relay_store=None" in ui_source
+    assert "relay_store=mobile_relay_store" in ui_source
+
+
+def test_both_reminder_schedulers_ask_the_app_whether_the_phone_covers_them():
+    source = UI.read_text(encoding="utf-8")
+    assert source.count("phone_covers=self._phone_covers") == 2
+    body = ast.get_source_segment(source, _function("_phone_covers"))
+    assert "self._relay_store.known_ids()" in body
+    assert 'r.get("revoked")' in body

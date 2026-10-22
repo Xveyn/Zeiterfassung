@@ -170,6 +170,8 @@ REMINDER_KEYS = (
     "send_reminder_enabled", "send_reminder_day", "send_reminder_time",
     "send_reminder_weekend_shift", "send_reminder_shift_holidays",
     "send_reminder_reservations_enabled", "send_reminder_default_minutes",
+    "mobile_push_enabled", "mobile_push_reservation", "mobile_push_send",
+    "mobile_push_suppress_toast",
 )
 
 
@@ -205,7 +207,22 @@ def reminders_updates(raw: Mapping[str, Any]) -> dict[str, Any]:
         "send_reminder_reservations_enabled": bool(
             raw["send_reminder_reservations_enabled"]),
         "send_reminder_default_minutes": int(raw["send_reminder_default_minutes"]),
+        "mobile_push_enabled": bool(raw["mobile_push_enabled"]),
+        "mobile_push_reservation": bool(raw["mobile_push_reservation"]),
+        "mobile_push_send": bool(raw["mobile_push_send"]),
+        "mobile_push_suppress_toast": bool(raw["mobile_push_suppress_toast"]),
     }
+
+
+def phone_hint(device_count: int) -> str:
+    """Die Zeile unter dem Handy-Schalter im Reiter „Erinnerungen“ (#331): wie viele Handys
+    gekoppelt sind und wo die Erlaubnis für Benachrichtigungen erteilt wird. Die gilt je Gerät
+    und Browser und lässt sich vom Desktop aus nicht setzen."""
+    where = "Benachrichtigungen erlaubt man in der Handy-App (Einstellungen → Verbindung)."
+    if device_count <= 0:
+        return f"Noch kein Handy gekoppelt (Reiter „Mobil“). {where}"
+    noun = "Handy" if device_count == 1 else "Handys"
+    return f"{device_count} {noun} gekoppelt. {where}"
 
 
 # ---- App -----------------------------------------------------------------

@@ -27,6 +27,8 @@ mobile_devices.json
 mobile_devices.json.corrupt-*
 mobile_keys.json
 mobile_keys.json.corrupt-*
+mobile_relay.json
+mobile_relay.json.corrupt-*
 .smtp-*.tmp
 logs/
 dist/

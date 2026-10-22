@@ -413,6 +413,20 @@ Zeitraum und welche Kategorien der Bericht gefiltert ist.
   `check_times_names` verlangt, dass jede Kategorie in `category_times` bekannt ist. Dazu die Helfer
   `clock`/`pause`/`clean_category_times`, die vorher in `mobile_sync` lagen und die Antwort (`build_defaults`)
   bereinigen.
+  **Erinnerungen reisen additiv mit** (#331, `PROTOCOL` bleibt 2): die Antwort trägt **immer** den Block
+  `reminders` (`{reservation: {enabled, minutes_before}, send: {enabled, at: [UTC…]}}`) — ausgeschaltet mit leeren
+  Werten, nicht ohne Block, sonst bliebe der alte Plan am Relay stehen. Gebaut von `mobile_reminders.build_block`
+  **nach** dem Anwenden (`perform_sync(local_now=…)`); die Sende-Zeitpunkte der nächsten 62 Tage rechnet
+  `send_reminder.upcoming_send_times` (Feiertage, Verschiebung, markierte Reservierungs-Slots), das Handy plant
+  daraus und aus den Reservierungen selbst (`pwa/CLAUDE.md`, „Benachrichtigungen“). Die Anfrage kann `push:
+  {relay_secret}` tragen (`mobile_reminders.parse_push`, Fremddaten: Unbrauchbares gilt als nicht gesendet, kein
+  Fehler); der Handler legt es **nach** der Freigabe der Gerätesperre unter dem Gerät des Tokens ab
+  (`MobileContext.relay_store`, `mobile_relay_store.MobileRelayStore`: gehärtet, nur bei Änderung geschrieben, nie
+  im Log). `MobileService.revoke`/`revoke_all` nehmen das Geheimnis heraus und rufen `push_relay.delete_device`
+  (best effort, außerhalb der Sperre, im Worker); `_maintain_keys` räumt Geheimnisse vergessener Geräte lokal ab.
+  Die Einstellungen `mobile_push_enabled`/`_reservation`/`_send`/`_suppress_toast` sind gerätelokal. Der Desktop-Toast
+  entfällt nur, wenn `App._phone_covers` (Speicher, UI-Thread) wahr liefert — beide Scheduler markieren einen
+  abgedeckten Termin trotzdem als gefeuert.
   `build_response` ist rein: Fenster `[heute − Fenster, heute]` (gewährt über `grant_window`, vom Budget `fit_window` gekürzt, #250/#292) plus gesendete Tage, offene Eintrags-Konflikte
   mit Gerätenamen aus der Registry, alle Slots über `storage.sanitize_slot`. `on_change` ruft die Route
   nach Freigabe von Guard und Lock.

@@ -31,12 +31,15 @@ _INTERVAL_MS = 60_000      # danach minütlich.
 
 class SendReminderScheduler:
     def __init__(self, root, settings, get_tray, reservation_store=None,
-                 now_provider=datetime.datetime.now):
+                 now_provider=datetime.datetime.now, phone_covers=None):
         self._root = root
         self._settings = settings
         self._get_tray = get_tray
         self._reservation_store = reservation_store
         self._now = now_provider
+        # `phone_covers(kind)` (#331): wahr, wenn das Handy diese Erinnerung sicher bekommt und der
+        # Toast entfallen darf. Ohne die Angabe kommt der Toast immer.
+        self._phone_covers = phone_covers or (lambda kind: False)
         self._after_id = None
         # Tagesbezogener Kanal: Dedup nur im Speicher, tageweise
         # zurückgesetzt (Muster von ReminderScheduler). Ein persistierter
@@ -97,7 +100,10 @@ class SendReminderScheduler:
         if not send_reminder.is_due(now_dt, day, time_str, last_fired,
                                     shift_mode, free_dates):
             return False
-        tray.notify(_toast_text(now_dt))
+        # Auch ein vom Handy abgedeckter Termin gilt als gefeuert (Monat markiert), sonst käme
+        # der Toast nachträglich, sobald die Deckung wegfällt.
+        if not self._phone_covers("send"):
+            tray.notify(_toast_text(now_dt))
         self._settings.set(
             "send_reminder_last_fired_month",
             f"{now_dt.year:04d}-{now_dt.month:02d}",
@@ -126,7 +132,8 @@ class SendReminderScheduler:
         rem = send_reminder.due_day_reminder(slots, now_dt)
         if rem is None:
             return False
-        tray.notify(_day_toast_text(rem))
+        if not self._phone_covers("send"):
+            tray.notify(_day_toast_text(rem))
         self._day_fired = True
         return True
 

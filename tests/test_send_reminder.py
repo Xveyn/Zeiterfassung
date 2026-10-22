@@ -283,3 +283,93 @@ def test_default_send_period_starts_day_after_anchor():
 def test_default_send_period_none_without_anchor():
     from src.send_reminder import default_send_period
     assert default_send_period(datetime.date(2026, 9, 5), [], []) is None
+
+
+# --- Sende-Zeitpunkte für das Handy (#331) -------------------------------------------------
+
+import pytest  # noqa: E402
+
+from src.send_reminder import upcoming_send_times  # noqa: E402
+
+PLUS2 = datetime.timezone(datetime.timedelta(hours=2))
+NOW = datetime.datetime(2026, 10, 22, 8, 0)
+
+
+def monthly(**over):
+    return {"day": 28, "time": "18:00", "shift": "none", "state": "", "holidays": False, **over}
+
+
+def times(**kwargs):
+    kwargs.setdefault("monthly", None)
+    kwargs.setdefault("daily_slots", [])
+    kwargs.setdefault("tz", PLUS2)
+    return upcoming_send_times(kwargs.pop("now", NOW), **kwargs)
+
+
+def test_nothing_configured_means_no_times():
+    assert times() == []
+
+
+def test_the_monthly_time_is_sent_as_utc_stamp():
+    assert times(monthly=monthly())[:2] == ["2026-10-28T16:00:00Z", "2026-11-28T16:00:00Z"]
+
+
+def test_times_in_the_past_are_dropped():
+    assert times(monthly=monthly(day=10))[0] == "2026-11-10T16:00:00Z"
+
+
+def test_only_the_next_62_days_are_covered():
+    # 62 Tage nach dem 22.10. 08:00 ist der 23.12.: der 24.12. liegt dahinter.
+    assert times(monthly=monthly(day=24)) == ["2026-10-24T16:00:00Z", "2026-11-24T16:00:00Z"]
+    assert times(monthly=monthly(day=23, time="07:00"))[-1] == "2026-12-23T05:00:00Z"
+
+
+def test_day_31_is_clamped_to_the_month_length():
+    out = times(monthly=monthly(day=31), now=datetime.datetime(2026, 1, 30, 8, 0))
+    assert out[:2] == ["2026-01-31T16:00:00Z", "2026-02-28T16:00:00Z"]
+
+
+def test_a_weekend_shift_stays_in_the_target_month():
+    # 28.2.2026 ist ein Samstag; nach vorn (Freitag 27.) bleibt im Februar.
+    out = times(monthly=monthly(day=28, shift="backward"), now=datetime.datetime(2026, 2, 1, 8, 0))
+    assert out[0] == "2026-02-27T16:00:00Z"
+
+
+def test_a_marked_reservation_slot_sends_before_its_end():
+    slots = [(datetime.date(2026, 10, 23), "12:00", 30)]
+    assert times(daily_slots=slots) == ["2026-10-23T09:30:00Z"]
+
+
+def test_the_same_moment_from_both_sources_appears_once():
+    slots = [(datetime.date(2026, 10, 28), "18:30", 30)]
+    out = times(monthly=monthly(), daily_slots=slots)
+    assert out.count("2026-10-28T16:00:00Z") == 1
+
+
+def test_slots_beyond_the_window_or_with_bad_end_are_ignored():
+    slots = [(datetime.date(2026, 12, 30), "12:00", 0), (datetime.date(2026, 10, 25), "kaputt", 0)]
+    assert times(daily_slots=slots) == []
+
+
+def test_the_result_is_sorted_and_capped():
+    slots = [(datetime.date(2026, 10, 22) + datetime.timedelta(days=i % 60), f"{9 + i % 12:02d}:{i % 60:02d}", 0)
+             for i in range(400)]
+    out = times(daily_slots=slots)
+    assert out == sorted(out)
+    assert len(out) == len(set(out)) <= 200
+
+
+def test_a_time_in_the_skipped_dst_hour_neither_raises_nor_doubles():
+    zoneinfo = pytest.importorskip("zoneinfo")
+    try:
+        berlin = zoneinfo.ZoneInfo("Europe/Berlin")
+    except zoneinfo.ZoneInfoNotFoundError:
+        pytest.skip("keine Zeitzonendaten")
+    out = upcoming_send_times(datetime.datetime(2026, 3, 20, 8, 0), monthly=None,
+                              daily_slots=[(datetime.date(2026, 3, 29), "03:00", 30)], tz=berlin)
+    assert len(out) == 1
+
+
+def test_the_system_zone_is_used_without_tz():
+    out = upcoming_send_times(NOW, monthly=monthly(), daily_slots=[])
+    assert len(out) == 2 and all(stamp.endswith("Z") for stamp in out)

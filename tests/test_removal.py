@@ -601,3 +601,7 @@ def test_the_mobile_devices_file_is_removed_and_ignored():
     lines = ignore.read_text(encoding="utf-8").splitlines()
     assert "mobile_devices.json" in lines and "mobile_devices.json.corrupt-*" in lines
     assert "mobile_keys.json" in lines and "mobile_keys.json.corrupt-*" in lines
+    assert "mobile_relay.json" in removal.CREDENTIAL_FILES
+    assert "mobile_relay.json" in lines and "mobile_relay.json.corrupt-*" in lines
+    installer = (pathlib.Path(__file__).resolve().parent.parent / "installer.iss").read_text(encoding="utf-8")
+    assert '{app}\\mobile_relay.json' in installer

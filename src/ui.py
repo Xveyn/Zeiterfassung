@@ -21,6 +21,7 @@ from src.api_routes import ApiContext
 from src.api_service import ApiService, RefreshCoalescer
 from src.devices import default_device_name
 from src.mobile_pairing import PairingSession
+from src.mobile_reminders import phone_covers
 from src.mobile_routes import MobileContext
 from src.mobile_service import MobileService
 from src.weekly_limit import format_limit_warnings
@@ -73,7 +74,8 @@ class App:
     def __init__(self, root, storage, settings, base_path=".", conflicts_store=None,
                  reservation_store=None, single_instance=None,
                  data_lock=None, sync_guard=None, webhook_store=None,
-                 vacation_store=None, smtp_store=None, mobile_store=None, mobile_keys=None):
+                 vacation_store=None, smtp_store=None, mobile_store=None, mobile_keys=None,
+                 mobile_relay_store=None):
         self.root = root
         self.storage = storage
         self.settings = settings
@@ -157,6 +159,7 @@ class App:
                     desktop_name=lambda: self.settings.get("device_name") or default_device_name(),
                     data_lock=self._data_lock, sync_guard=self._sync_guard,
                     reservation_store=self.reservation_store,
+                    relay_store=mobile_relay_store,
                     on_change=self._api_refresh.request,
                     on_reservations_change=self._on_remote_calendar_data_changed),
                 run=self._bg.run)
@@ -166,13 +169,16 @@ class App:
             self._reservations_active,
             vacation_store=self.vacation_store,
         )
+        self._relay_store = mobile_relay_store
         self._reminders = ReminderScheduler(
             self.root, self.settings, self.storage,
             self.reservation_store, lambda: self._tray,
+            phone_covers=self._phone_covers,
         )
         self._send_reminders = SendReminderScheduler(
             self.root, self.settings, lambda: self._tray,
             reservation_store=self.reservation_store,
+            phone_covers=self._phone_covers,
         )
         self._update_banner = UpdateBanner(
             self.root, self.settings, lambda: self._renderer.grid_container,
@@ -317,6 +323,16 @@ class App:
         iso = today.isocalendar()
         self.iso_year = iso[0]
         self.current_week = iso[1]
+
+    def _phone_covers(self, kind):
+        """Darf der Desktop-Toast dieser Art entfallen, weil das Handy die Erinnerung bekommt (#331)?
+        Nur mit mindestens einem gekoppelten, nicht widerrufenen Handy, dessen Relay-Geheimnis
+        bekannt ist; die übrigen Bedingungen prüft `mobile_reminders.phone_covers`. Liest nur
+        Speicher (läuft im UI-Thread)."""
+        if self._mobile is None or self._relay_store is None:
+            return False
+        active = {r["id"] for r in self._mobile.list_devices() if not r.get("revoked")}
+        return phone_covers(self.settings, self._relay_store.known_ids() & active, kind)
 
     def _reservations_active(self):
         """True, wenn Reservierungen angezeigt/bearbeitet werden dürfen: ein

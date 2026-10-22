@@ -280,9 +280,12 @@ ist nie Voraussetzung: ohne ihn läuft alles wie vorher, ein Fehler bleibt ein H
 
 **Feature-Erkennung.** Ohne `reminders` in der Antwort (älterer Desktop, oder am Desktop aus) plant die
 PWA nichts und schickt dem Desktop auch kein Relay-Geheimnis: die Anfrage trägt `push:
-{relay_secret}` nur, wenn die letzte Antwort einen `reminders`-Block hatte (Gegenstück am Desktop: PR 4
-von #331). Die Fixtures dazu liegen nur auf der JS-Seite (`test/fixtures/reminders-contract.json`) und
-ziehen mit dem Desktop-Teil in den Vertrag um; eingefroren sind `compat/*-pre-reminders.json`.
+{relay_secret}` nur, wenn die letzte Antwort einen `reminders`-Block hatte. Gegenstück am Desktop:
+`src/mobile_reminders.py` (Block bauen, Geheimnis lesen), `src/mobile_relay_store.py` (Ablage),
+`src/CLAUDE.md`. Der Desktop sendet den Block **immer**, auch ausgeschaltet (leer): fehlte er dann, bliebe
+der alte Plan am Relay stehen. Vertrag: `test/fixtures/reminders-contract.json` (Python:
+`tests/test_mobile_contract.py`) und das Beispiel `reminders` in `sync-response.json`; eingefroren sind
+`compat/*-pre-reminders.json`.
 
 **Berechtigung ist pro Gerät** und braucht eine Nutzergeste (Knopf „Benachrichtigungen erlauben“ im
 Reiter „Verbindung“). Ausschalten meldet das Abo ab und löscht das Objekt am Relay.

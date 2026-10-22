@@ -19,6 +19,7 @@ import stat
 import pytest
 
 from src import api_auth, oauth_utils, secure_file, single_instance
+from src.mobile_relay_store import MobileRelayStore
 from src.smtp_store import SmtpStore
 from src.webhook_store import WebhookStore
 from tests.test_smtp_store import _record as smtp_record
@@ -57,6 +58,12 @@ def _smtp(directory):
     return path
 
 
+def _relay_secrets(directory):
+    path = directory / "mobile_relay.json"
+    MobileRelayStore(str(path)).set("phone-0001", os.urandom(32).hex()[:43])
+    return path
+
+
 def _api_token(directory):
     api_auth.rotate_token(str(directory))
     return directory / api_auth.TOKEN_FILENAME
@@ -69,7 +76,7 @@ def _instance_secret(directory):
 
 
 WRITERS = {"bytes": _bytes, "json": _json, "token.json": _token_json, "webhooks": _webhooks,
-           "smtp": _smtp, "api-token": _api_token, "instance-secret": _instance_secret}
+           "smtp": _smtp, "relay-secrets": _relay_secrets, "api-token": _api_token, "instance-secret": _instance_secret}
 writers = pytest.mark.parametrize("write", WRITERS.values(), ids=WRITERS.keys())
 
 

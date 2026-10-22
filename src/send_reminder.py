@@ -12,7 +12,7 @@ from __future__ import annotations
 import calendar
 import datetime
 from collections import namedtuple
-from typing import Any, Collection, Iterable
+from typing import Any, Collection, Iterable, Mapping
 
 
 def scheduled_datetime(year: int, month: int, day: int, time_str: Any,
@@ -240,3 +240,48 @@ def default_send_period(today: datetime.date,
     if anchor is None:
         return None
     return anchor + datetime.timedelta(days=1), today
+
+
+MAX_SEND_TIMES = 200
+
+
+def upcoming_send_times(now: datetime.datetime, *, monthly: Mapping[str, Any] | None,
+                        daily_slots: Iterable[tuple[datetime.date, str, int]],
+                        days: int = 62, tz: datetime.tzinfo | None = None) -> list[str]:
+    """Die Sende-Erinnerungen der nächsten `days` Tage als UTC-Stempel
+    (`YYYY-MM-DDTHH:MM:SSZ`) für das Handy (#331): der Desktop kennt Feiertage und
+    Verschiebung, das Handy bekommt fertige Zeitpunkte.
+
+    `now` ist die lokale (naive) Desktop-Zeit. `monthly` ist `{day, time, shift, state,
+    holidays}` der monatlichen Erinnerung oder `None`; `daily_slots` sind
+    `(Datum, Ende 'HH:MM', Minuten)` der markierten Reservierungs-Slots. Nur Zukünftiges,
+    sortiert, ohne Doppelte, höchstens `MAX_SEND_TIMES`. `tz=None` heißt Systemzone; eine
+    Zeit in der übersprungenen Stunde der Sommerzeit-Umstellung wird nicht geworfen,
+    sondern mit dem Versatz vor der Umstellung umgerechnet.
+    """
+    horizon = now + datetime.timedelta(days=days)
+    local: set[datetime.datetime] = set()
+
+    if monthly is not None:
+        year, month = now.year, now.month
+        while (year, month) <= (horizon.year, horizon.month):
+            free = free_dates_for_month(year, month, monthly.get("state", ""),
+                                        bool(monthly.get("holidays")))
+            due = scheduled_datetime(year, month, int(monthly.get("day", 1)),
+                                     monthly.get("time"), monthly.get("shift", "none"), free)
+            if due is not None:
+                local.add(due)
+            year, month = (year + 1, 1) if month == 12 else (year, month + 1)
+
+    for date, end, minutes in daily_slots:
+        end_dt = _parse_hhmm_on(date, end)
+        if end_dt is not None:
+            local.add(end_dt - datetime.timedelta(minutes=minutes))
+
+    stamps = set()
+    for moment in sorted(local):
+        if not now < moment <= horizon:
+            continue
+        aware = moment.replace(tzinfo=tz) if tz is not None else moment.astimezone()
+        stamps.add(aware.astimezone(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"))
+    return sorted(stamps)[:MAX_SEND_TIMES]
