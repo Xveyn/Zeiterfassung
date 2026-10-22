@@ -246,3 +246,96 @@ test('the 409 answer still reads the request body (I3)', async () => {
   assert.equal((await device.fetch(request)).status, 409);
   assert.equal(request.bodyUsed, true);
 });
+
+// --- Testroute (#340) ---------------------------------------------------------------------------
+
+import { TEST_PAYLOAD } from '../src/push.js';
+
+test('a test push sends the fixed payload at once and leaves schedule and alarm alone', async () => {
+  const { call, sent, storage, items } = setup();
+  await call('PUT', '/v1/device', SUB);
+  await call('PUT', '/v1/schedule', items(['a', 5 * MIN]));
+  const before = { items: await storage.get('items'), alarm: await storage.getAlarm(), idle: await storage.get('idle') };
+  const response = await call('POST', '/v1/test');
+  assert.equal(response.status, 204);
+  assert.deepEqual(sent, [TEST_PAYLOAD]);
+  assert.deepEqual(await storage.get('items'), before.items);
+  assert.equal(await storage.getAlarm(), before.alarm);
+  assert.equal(await storage.get('idle'), before.idle);
+});
+
+test('a test push without a subscription is 409 and sends nothing', async () => {
+  const { call, sent, storage } = setup();
+  const response = await call('POST', '/v1/test');
+  assert.equal(response.status, 409);
+  assert.deepEqual(await response.json(), { error: 'no_subscription' });
+  assert.deepEqual(sent, []);
+  assert.deepEqual(storage.keys(), []);
+});
+
+test('a dead subscription is 410 and the object cleans up', async () => {
+  const { call, answers, storage } = setup();
+  await call('PUT', '/v1/device', SUB);
+  answers[TEST_PAYLOAD] = 'gone';
+  const response = await call('POST', '/v1/test');
+  assert.equal(response.status, 410);
+  assert.deepEqual(await response.json(), { error: 'gone' });
+  assert.deepEqual(storage.keys(), []);
+  assert.equal(await storage.getAlarm(), null);
+});
+
+test('a push service that refuses or fails is 502 and the subscription stays', async () => {
+  for (const answer of ['retry', 'drop', new Error('kaputt')]) {
+    const { call, answers, storage } = setup();
+    await call('PUT', '/v1/device', SUB);
+    answers[TEST_PAYLOAD] = answer;
+    const response = await call('POST', '/v1/test');
+    assert.equal(response.status, 502);
+    assert.deepEqual(await response.json(), { error: 'push_failed' });
+    assert.ok(await storage.get('sub'));
+  }
+});
+
+test('a second test within ten seconds is 429 too_soon and sends nothing', async () => {
+  const { call, sent, clock } = setup();
+  await call('PUT', '/v1/device', SUB);
+  assert.equal((await call('POST', '/v1/test')).status, 204);
+  clock.now += 9_000;
+  const again = await call('POST', '/v1/test');
+  assert.equal(again.status, 429);
+  assert.deepEqual(await again.json(), { error: 'too_soon' });
+  assert.equal(sent.length, 1);
+  clock.now += 1_000;
+  assert.equal((await call('POST', '/v1/test')).status, 204);
+  assert.equal(sent.length, 2);
+});
+
+test('the cooldown belongs to the object: another device can test right away', async () => {
+  const one = setup();
+  const two = setup();
+  await one.call('PUT', '/v1/device', SUB);
+  await two.call('PUT', '/v1/device', SUB);
+  assert.equal((await one.call('POST', '/v1/test')).status, 204);
+  assert.equal((await two.call('POST', '/v1/test')).status, 204);
+});
+
+test('a failed test does not start the cooldown, so the next try goes through', async () => {
+  const { call, answers, clock } = setup();
+  await call('PUT', '/v1/device', SUB);
+  answers[TEST_PAYLOAD] = 'retry';
+  assert.equal((await call('POST', '/v1/test')).status, 502);
+  delete answers[TEST_PAYLOAD];
+  clock.now += 1_000;
+  assert.equal((await call('POST', '/v1/test')).status, 204);
+});
+
+test('the test route ignores a body and still answers', async () => {
+  const { call } = setup();
+  await call('PUT', '/v1/device', SUB);
+  assert.equal((await call('POST', '/v1/test', { egal: true })).status, 204);
+});
+
+test('the other methods on the test path are unknown', async () => {
+  const { call } = setup();
+  assert.equal((await call('GET', '/v1/test')).status, 404);
+});

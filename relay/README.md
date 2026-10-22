@@ -31,6 +31,10 @@ Das braucht nur, wer den Relay selbst betreibt. Für die Entwicklung und die Tes
    die Konto-ID als Repo-Secrets `CLOUDFLARE_API_TOKEN` und `CLOUDFLARE_ACCOUNT_ID`) und eine
    Rate-Limit-Regel im Dashboard gegen Massen-Registrierung.
 
+## Aktualisieren
+
+Nach einer Änderung am Relay (`git pull`, dann `cd relay && npm ci && npx wrangler deploy`) **zuerst den Relay ausrollen**, erst dann Web-App und Desktop: neue Routen (zuletzt `POST /v1/test`) kennt ein alter Relay nicht und antwortet `404 not_found`; Web-App und Desktop melden das als „Der Relay kennt den Test noch nicht“. Die Secrets (`VAPID_PRIVATE`, `VAPID_SUBJECT`) und die Durable-Object-Daten bleiben beim Deploy erhalten.
+
 ## Lokal ausprobieren
 
 `.dev.vars` (ignoriert) mit `VAPID_PUBLIC`, `VAPID_PRIVATE`, `VAPID_SUBJECT` anlegen, dann `npx wrangler dev`.

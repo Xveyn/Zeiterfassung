@@ -7,7 +7,7 @@ import { InvalidRequest, LIMITS, parseSecret } from './validate.js';
 export { Device } from './device.js';
 
 const PAGES_ORIGIN = 'https://xveyn.github.io';
-const ROUTES = { '/v1/device': ['PUT', 'DELETE'], '/v1/schedule': ['PUT'] };
+const ROUTES = { '/v1/device': ['PUT', 'DELETE'], '/v1/schedule': ['PUT'], '/v1/test': ['POST'] };
 
 /** SHA-256 des Geheimnisses als Hex: so wählt nie der Rohwert das Objekt. */
 export async function objectName(secret) {
