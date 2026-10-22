@@ -2,9 +2,14 @@
 // Verdrahtung: Zustand der Oberfläche, Ereignisse, Abgleich-Auslöser, Service Worker. Die
 // Entscheidungen stehen in den getesteten Modulen (`view-model.js`, `sync-policy.js`,
 // `messages.js`); hier wird nur zusammengesteckt.
-import { addDays, formatDateDe, localIsoDate, mondayOf } from './minutes.js';
+import { addDays, formatDateDe, isIsoDate, localIsoDate, mondayOf, utcStamp } from './minutes.js';
 import { weekdayKey } from './defaults.js';
 import { reservationEditable } from './reservations.js';
+import { planReminders, signature } from './reminders-plan.js';
+import { messageFor } from './push-message.js';
+import { idbKeyStore, seal } from './push-blob.js';
+import { permissionState, shouldSchedule } from './push-policy.js';
+import { RelayClient, RelayError, VAPID_PUBLIC, newSecret, syncSchedule } from './relay-client.js';
 import { DEFAULT_WISH, olderState } from './window-policy.js';
 import { deviceNameFromUserAgent, parseHostPort, parsePairFragment } from './pairing.js';
 import { openDatabase, requestPersistentStorage } from './db.js';
@@ -14,7 +19,7 @@ import { shouldQueue, shouldSync } from './sync-policy.js';
 import { shouldApplyUpdate, shouldCheckForUpdate } from './update-policy.js';
 import { blockSignature, rowsToBlock } from './categories.js';
 import {
-  categoriesModel, conflictsModel, dayChanged, desktopHint, editorRows, focusKeyToRestore, hintsModel, olderModel, reservationRows,
+  categoriesModel, conflictsModel, dayChanged, desktopHint, editorRows, focusKeyToRestore, hintsModel, olderModel, pushModel, reservationRows,
   reservationRowsToSlots, rowsToSlots, statusModel, validateReservationRows, validateRows, weekModel,
 } from './view-model.js';
 import { BUILD } from './sw-core.js';
@@ -49,6 +54,11 @@ class App {
     this.applyRequested = false;     // für den wartenden Worker ist SKIP_WAITING schon raus (keine Neulade-Schleife)
     this.pairing = { address: '', code: '', deviceName: '', busy: false, error: '' };
     this.saveTimer = null;
+    this.pushTimer = null;
+    this.pushBusy = false;
+    this.pushError = null;
+    this.relay = new RelayClient();
+    this.keys = idbKeyStore();
     this.queued = false;
     this.reloading = false;
     this.shell = null;          // persistente Teile der Wochenansicht (Hinweise, Statuszeile)
@@ -77,6 +87,7 @@ class App {
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState !== 'visible') return;
       this.trigger('visible');
+      this.updatePushSchedule();
       this.checkForUpdate('visible');
       this.maybeApplyUpdate();
     });
@@ -84,10 +95,125 @@ class App {
     // `close` bubbelt nicht: Capture fängt es am Dokument.
     document.addEventListener('close', () => this.maybeApplyUpdate(), true);
     this.registerServiceWorker();
+    this.listenForNotificationClicks();
     this.render();
     this.persistent = await requestPersistentStorage();
     this.render();
     this.trigger('start');
+    this.updatePushSchedule();
+    this.openDayFromLink();
+  }
+
+  // --- Benachrichtigungen (#331) -----------------------------------------------------------------
+
+  /** Ein Klick auf eine Benachrichtigung öffnet die App mit `?open=<Tag>`, eine schon offene bekommt
+   *  den Tag als Nachricht des Service Workers. */
+  openDayFromLink() {
+    const date = new URLSearchParams(location.search).get('open');
+    if (date === null) return;
+    history.replaceState(null, '', location.pathname + location.hash);
+    if (isIsoDate(date) && this.paired && this.screen === 'week') this.openDay(date);
+  }
+
+  listenForNotificationClicks() {
+    if (!('serviceWorker' in navigator)) return;
+    navigator.serviceWorker.addEventListener('message', (event) => {
+      const data = event.data;
+      if (data && data.type === 'OPEN_DAY' && isIsoDate(data.date) && this.paired && this.screen === 'week') this.openDay(data.date);
+    });
+  }
+
+  pushSupported() {
+    return 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+  }
+
+  async subscription() {
+    if (!this.pushSupported()) return null;
+    const registration = await navigator.serviceWorker.getRegistration();
+    return registration ? registration.pushManager.getSubscription() : null;
+  }
+
+  async pushState() {
+    const supported = this.pushSupported();
+    return permissionState({
+      supported, permission: supported ? Notification.permission : 'default',
+      subscribed: supported && Boolean(await this.subscription()), enabled: Boolean(this.store.getMeta().push_enabled),
+    });
+  }
+
+  async pushModelNow() {
+    return pushModel({ state: await this.pushState(), lastError: this.pushError, desktopReady: Boolean(this.store.getMeta().reminders) });
+  }
+
+  /** Einschalten (aus einem Klick): Erlaubnis holen, Abo anlegen, am Relay anmelden, Plan senden. */
+  async enablePush() {
+    this.pushError = null;
+    try {
+      if (!this.pushSupported() || (await Notification.requestPermission()) !== 'granted') return;
+      const registration = await navigator.serviceWorker.ready;
+      const subscription = (await registration.pushManager.getSubscription())
+        ?? await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: base64UrlToBytes(VAPID_PUBLIC) });
+      const secret = this.store.getMeta().relay_secret || newSecret();
+      await this.store.setMeta({ push_enabled: true, relay_secret: secret, push_signature: null, push_sent_at: 0 });
+      await this.relay.registerDevice(secret, subscription.toJSON());
+      await this.updatePushSchedule();
+      this.trigger('manual');                       // der Desktop erfährt das Geheimnis im nächsten Abgleich
+    } catch (error) {
+      this.pushError = error instanceof RelayError ? error.message : 'Die Benachrichtigungen ließen sich nicht einschalten.';
+    }
+  }
+
+  async disablePush() {
+    this.pushError = null;
+    const { relay_secret: secret } = this.store.getMeta();
+    try {
+      (await this.subscription())?.unsubscribe();
+      if (secret) await this.relay.deleteDevice(secret);
+    } catch (error) {
+      // Ein nicht erreichbarer Relay lässt das Objekt dort stehen; es räumt sich nach 90 Tagen selbst auf.
+      this.pushError = error instanceof RelayError ? error.message : null;
+    }
+    await this.store.setMeta({ push_enabled: false, push_signature: null, push_sent_at: 0 });
+  }
+
+  /** Kurz nach einer Änderung neu planen, statt bei jedem Tastendruck des Nutzers. */
+  schedulePushUpdate() {
+    clearTimeout(this.pushTimer);
+    this.pushTimer = setTimeout(() => this.updatePushSchedule(), SAVE_SYNC_DELAY_MS);
+  }
+
+  /** Plan neu berechnen und, wenn er sich geändert hat, verschlüsselt an den Relay schicken. Scheitert
+   *  der Relay, bleibt es ein Hinweis im Reiter: Speichern und Abgleich laufen unabhängig davon. */
+  async updatePushSchedule() {
+    if (this.pushBusy) return;
+    this.pushBusy = true;
+    try {
+      const meta = this.store.getMeta();
+      const state = await this.pushState();
+      if (state !== 'on' || !meta.reminders || !meta.relay_secret) return;
+      const today = localIsoDate(new Date());
+      const since = (dates) => dates.filter((date) => date >= today);
+      const items = planReminders({
+        reservations: meta.reservations_enabled
+          ? Object.fromEntries(since(this.store.reservationDates()).map((date) => [date, this.store.getReservation(date)])) : {},
+        entries: Object.fromEntries(since(this.store.days()).map((date) => [date, this.store.getDay(date)])),
+        reminders: meta.reminders, now: new Date(),
+      });
+      const plan = signature(items);
+      const now = Date.now();
+      if (!shouldSchedule({ state, remindersPresent: true, lastSignature: meta.push_signature, signature: plan,
+        lastSentAt: meta.push_sent_at, now })) return;
+      const subscription = await this.subscription();
+      const blobs = [];
+      for (const item of items) blobs.push({ id: item.id, fire_at: utcStamp(item.fireAt), blob: await seal(this.keys, messageFor(item)) });
+      await syncSchedule({ client: this.relay, secret: meta.relay_secret, subscription: subscription.toJSON(), items: blobs });
+      await this.store.setMeta({ push_signature: plan, push_sent_at: now });
+      this.pushError = null;
+    } catch (error) {
+      this.pushError = error instanceof RelayError ? error.message : 'Der Zeitplan für die Benachrichtigungen ließ sich nicht senden.';
+    } finally {
+      this.pushBusy = false;
+    }
   }
 
   // --- Koppeln über den Link -------------------------------------------------------------------
@@ -154,6 +280,7 @@ class App {
   scheduleSyncAfterSave() {
     clearTimeout(this.saveTimer);
     this.saveTimer = setTimeout(() => this.trigger('save'), SAVE_SYNC_DELAY_MS);
+    this.schedulePushUpdate();                            // auch ohne Netz zum Desktop: der Relay ist ein anderer Weg
   }
 
   async runSync() {
@@ -164,6 +291,7 @@ class App {
       const result = await this.client.sync();
       this.lastError = null;
       if (!result.discarded) this.skewMs = clockSkewMs(this.store.getMeta().server_time, new Date());
+      this.updatePushSchedule();
     } catch (error) {
       this.lastError = error instanceof SyncError ? error
         : new SyncError({ kind: 'client_error', message: String(error?.message ?? error) });
@@ -246,8 +374,9 @@ class App {
     return { hints, week, status };
   }
 
-  openSettings(initialTab = 'connection') {
+  async openSettings(initialTab = 'connection') {
     const meta = this.store.getMeta();
+    const push = await this.pushModelNow();
     const returnKey = focusState(this.root).activeKey;
     const signature = (m) => blockSignature(m.categories, m.defaults?.category_times ?? {});
     let baseline = signature(meta);   // Stand beim Öffnen: Speichern prüft, ob der Abgleich ihn inzwischen geändert hat
@@ -261,6 +390,7 @@ class App {
         address: meta.address ? `${meta.address.host}:${meta.address.port}` : '',
         persistent: this.persistent,
         tokenUntil: meta.token_expires_at ? formatDateDe(meta.token_expires_at.slice(0, 10)) : '',
+        push,
       },
       updates: { build: BUILD, update: { state: this.updateState, auto: Boolean(meta.auto_update) } },
       categories: categoriesModel({
@@ -270,6 +400,10 @@ class App {
       pair: () => { this.screen = 'pair'; this.render(); },
       checkUpdate: () => this.checkForUpdate('manual'),
       resetWindow: () => this.resetWindow(),
+      setPush: async (on) => {
+        if (on) await this.enablePush(); else await this.disablePush();
+        return this.pushModelNow();
+      },
       applyUpdate: () => this.reloadForUpdate(),
       setAutoUpdate: async (on) => {
         await this.store.setMeta({ auto_update: on });
@@ -469,6 +603,11 @@ class App {
     this.reloading = true;
     registration.waiting.postMessage({ type: 'SKIP_WAITING' });
   }
+}
+
+function base64UrlToBytes(text) {
+  const raw = atob(text.replace(/-/g, '+').replace(/_/g, '/'));
+  return Uint8Array.from(raw, (char) => char.charCodeAt(0));
 }
 
 async function main() {

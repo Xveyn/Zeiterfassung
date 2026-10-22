@@ -585,3 +585,32 @@ test('removing and renaming say that existing entries keep the old name', () => 
   assert.match(categoryRemovalText('Projekt'), /behalten/);
   assert.match(categoryRenameHint, /alten Namen/);
 });
+
+// --- Benachrichtigungen (#331) -------------------------------------------------------------------
+
+import { pushModel } from '../view-model.js';
+
+test('the push model offers enabling when off and disabling when on', () => {
+  assert.deepEqual(pushModel({ state: 'off', lastError: null, desktopReady: true }).action, 'enable');
+  assert.equal(pushModel({ state: 'off', lastError: null, desktopReady: true }).actionLabel, 'Benachrichtigungen erlauben');
+  assert.equal(pushModel({ state: 'on', lastError: null, desktopReady: true }).action, 'disable');
+  assert.equal(pushModel({ state: 'on', lastError: null, desktopReady: true }).actionLabel, 'Ausschalten');
+});
+
+test('a denied or unsupported browser offers no button', () => {
+  for (const state of ['denied', 'unsupported']) {
+    const model = pushModel({ state, lastError: null, desktopReady: true });
+    assert.equal(model.action, null);
+    assert.equal(model.actionLabel, '');
+  }
+});
+
+test('a relay error is shown with the state', () => {
+  assert.match(pushModel({ state: 'on', lastError: 'Der Relay ist nicht erreichbar.', desktopReady: true }).text, /nicht erreichbar/);
+});
+
+test('switched on but the desktop sends no reminders yet: the text says what is missing', () => {
+  const model = pushModel({ state: 'on', lastError: null, desktopReady: false });
+  assert.match(model.text, /Desktop/);
+  assert.doesNotMatch(pushModel({ state: 'on', lastError: null, desktopReady: true }).text, /Desktop-App/);
+});

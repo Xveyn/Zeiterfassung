@@ -137,3 +137,6 @@ label.check input { width: auto; min-height: 0; flex: none; }
 .category .info .name { overflow-wrap: anywhere; }
 .category .info .summary { font-size: .85rem; }
 .category button.move { min-width: var(--tap); padding: 0; flex: none; }
+
+.push { margin-top: 1rem; }
+.push h3 { margin: 0 0 0.25rem; font-size: 1rem; }
