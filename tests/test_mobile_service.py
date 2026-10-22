@@ -51,7 +51,7 @@ def sync_run(fn, on_done=None):
 
 
 def make_service(tmp_path, *, enabled=True, port=None, address="", candidates=(LOOPBACK,),
-                 run=sync_run, statuses=None):
+                 run=sync_run, statuses=None, relay_store=None):
     settings = Settings(str(tmp_path / "settings.json"))
     settings.device_id_for_sync = "DESK"
     settings.set_many({"mobile_enabled": enabled, "mobile_port": port or free_port(),
@@ -64,7 +64,7 @@ def make_service(tmp_path, *, enabled=True, port=None, address="", candidates=(L
         storage=Storage(str(tmp_path / "zeiterfassung.json"), device_id="DESK"),
         settings=settings,
         conflicts_store=ConflictsStore(str(tmp_path / "conflicts.json")),
-        base=str(tmp_path), desktop_name=lambda: "Desktop")
+        base=str(tmp_path), desktop_name=lambda: "Desktop", relay_store=relay_store)
     on_status = statuses.append if statuses is not None else None
     service = MobileService(settings, ctx, run=run, on_status=on_status,
                             lan_candidates=lambda: list(candidates))
@@ -633,3 +633,94 @@ def test_a_slow_reconcile_that_outlives_shutdown_still_stops_the_server(tmp_path
 
     assert port_is_closed(port)
     assert service.status.state == STATE_OFF
+
+
+# --- Relay-Objekt beim Widerruf (#331) ---------------------------------------------------------------
+
+SECRET_A = "A" * 43
+SECRET_B = "B" * 43
+
+
+@pytest.fixture
+def relay(tmp_path, monkeypatch):
+    from src.mobile_relay_store import MobileRelayStore
+    calls = []
+    monkeypatch.setattr(mobile_service.push_relay, "delete_device",
+                        lambda secret, **_kw: (calls.append(secret), True)[1])
+    store = MobileRelayStore(str(tmp_path / "mobile_relay.json"))
+    service, _settings, ctx = make_service(tmp_path, relay_store=store)
+    for device_id, secret in (("phone-aaaa", SECRET_A), ("phone-bbbb", SECRET_B)):
+        record, _token = mobile_pairing.issue_device(device_id, device_id, utc_now_iso())
+        ctx.devices.save(record)
+        store.set(device_id, secret)
+    return service, ctx, store, calls
+
+
+def test_revoking_a_device_deletes_its_relay_object_and_its_local_secret(relay):
+    service, _ctx, store, calls = relay
+    assert service.revoke("phone-aaaa") is True
+    assert calls == [SECRET_A]
+    assert store.known_ids() == {"phone-bbbb"}
+
+
+def test_revoking_does_not_hold_the_devices_lock_while_the_relay_is_called(relay, monkeypatch):
+    service, ctx, _store, _calls = relay
+    held = []
+    monkeypatch.setattr(mobile_service.push_relay, "delete_device",
+                        lambda secret, **_kw: (held.append(ctx.devices_lock.acquire(blocking=False)),
+                                                ctx.devices_lock.release() if held[-1] else None, True)[2])
+    service.revoke("phone-aaaa")
+    assert held == [True]
+
+
+def test_a_failing_relay_call_still_revokes_the_device(relay, monkeypatch):
+    service, ctx, store, _calls = relay
+    monkeypatch.setattr(mobile_service.push_relay, "delete_device", lambda secret, **_kw: False)
+    assert service.revoke("phone-aaaa") is True
+    assert ctx.devices.get("phone-aaaa")["revoked"] is True
+    assert store.get("phone-aaaa") is None
+
+
+def test_an_unexpected_error_in_the_relay_step_does_not_fail_the_revoke(relay, monkeypatch):
+    service, ctx, _store, _calls = relay
+    monkeypatch.setattr(mobile_service.push_relay, "delete_device",
+                        lambda secret, **_kw: (_ for _ in ()).throw(RuntimeError("kaputt")))
+    assert service.revoke("phone-aaaa") is True
+    assert ctx.devices.get("phone-aaaa")["revoked"] is True
+
+
+def test_a_device_without_a_secret_calls_nothing(relay):
+    service, ctx, _store, calls = relay
+    record, _token = mobile_pairing.issue_device("phone-cccc", "C", utc_now_iso())
+    ctx.devices.save(record)
+    assert service.revoke("phone-cccc") is True
+    assert calls == []
+
+
+def test_an_unknown_device_calls_nothing(relay):
+    service, _ctx, store, calls = relay
+    assert service.revoke("unbekannt") is False
+    assert calls == [] and store.known_ids() == {"phone-aaaa", "phone-bbbb"}
+
+
+def test_revoke_all_deletes_every_relay_object(relay):
+    service, _ctx, store, calls = relay
+    assert service.revoke_all() == 2
+    assert sorted(calls) == [SECRET_A, SECRET_B]
+    assert store.known_ids() == set()
+
+
+def test_without_a_relay_store_revoking_works_as_before(tmp_path):
+    service, _settings, ctx = make_service(tmp_path)
+    record, _token = mobile_pairing.issue_device("phone-aaaa", "A", utc_now_iso())
+    ctx.devices.save(record)
+    assert service.revoke("phone-aaaa") is True
+    assert service.revoke_all() == 1
+
+
+def test_maintaining_the_keys_drops_secrets_of_devices_that_no_longer_exist(relay):
+    service, ctx, store, calls = relay
+    store.set("phone-gone", "C" * 43)
+    service._maintain_keys()
+    assert store.known_ids() == {"phone-aaaa", "phone-bbbb"}
+    assert calls == []                      # verwaiste Objekte verfallen am Relay von selbst

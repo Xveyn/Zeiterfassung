@@ -73,6 +73,7 @@ ANNOTATED_MODULES = [
     "src/netinfo.py",
     "src/mobile_reservations.py",
     "src/mobile_relay_store.py",
+    "src/push_relay.py",
     "src/mobile_reminders.py",
     "src/mobile_settings.py",
     "src/mobile_sync.py",
