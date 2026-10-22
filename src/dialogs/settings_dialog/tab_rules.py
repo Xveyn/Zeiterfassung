@@ -170,6 +170,8 @@ REMINDER_KEYS = (
     "send_reminder_enabled", "send_reminder_day", "send_reminder_time",
     "send_reminder_weekend_shift", "send_reminder_shift_holidays",
     "send_reminder_reservations_enabled", "send_reminder_default_minutes",
+    "mobile_push_enabled", "mobile_push_reservation", "mobile_push_send",
+    "mobile_push_suppress_toast",
 )
 
 
@@ -205,6 +207,10 @@ def reminders_updates(raw: Mapping[str, Any]) -> dict[str, Any]:
         "send_reminder_reservations_enabled": bool(
             raw["send_reminder_reservations_enabled"]),
         "send_reminder_default_minutes": int(raw["send_reminder_default_minutes"]),
+        "mobile_push_enabled": bool(raw["mobile_push_enabled"]),
+        "mobile_push_reservation": bool(raw["mobile_push_reservation"]),
+        "mobile_push_send": bool(raw["mobile_push_send"]),
+        "mobile_push_suppress_toast": bool(raw["mobile_push_suppress_toast"]),
     }
 
 

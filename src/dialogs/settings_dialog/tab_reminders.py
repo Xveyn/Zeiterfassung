@@ -89,6 +89,12 @@ class RemindersTab:
                     body, default_minutes_var, _MINUTES, width=4))
                 form.hint("Welche Tage erinnern, legst du im Tages-Dialog fest.")
 
+        # --- Handy (Push über den Relay, #331) ---
+        push_var = tk.BooleanVar(value=settings.get("mobile_push_enabled"))
+        push_res_var = tk.BooleanVar(value=settings.get("mobile_push_reservation"))
+        push_send_var = tk.BooleanVar(value=settings.get("mobile_push_send"))
+        push_suppress_var = tk.BooleanVar(value=settings.get("mobile_push_suppress_toast"))
+
         fields = FieldSet()
         fields.add("reminders_enabled", reminders_var)
         fields.add("reminder_minutes_before", minutes_var)
@@ -99,6 +105,10 @@ class RemindersTab:
         fields.add("send_reminder_shift_holidays", holidays_var)
         fields.add("send_reminder_reservations_enabled", res_var)
         fields.add("send_reminder_default_minutes", default_minutes_var)
+        fields.add("mobile_push_enabled", push_var)
+        fields.add("mobile_push_reservation", push_res_var)
+        fields.add("mobile_push_send", push_send_var)
+        fields.add("mobile_push_suppress_toast", push_suppress_var)
         self.fields = fields
 
     def values(self):

@@ -140,6 +140,8 @@ def reminders_raw(**overrides):
         "send_reminder_shift_holidays": False,
         "send_reminder_reservations_enabled": True,
         "send_reminder_default_minutes": "30",
+        "mobile_push_enabled": True, "mobile_push_reservation": True,
+        "mobile_push_send": False, "mobile_push_suppress_toast": False,
     }
     raw.update(overrides)
     return raw
@@ -173,6 +175,14 @@ def test_reminders_updates_converts():
     assert upd["send_reminder_day"] == 28
     assert upd["send_reminder_weekend_shift"] == "backward"
     assert upd["send_reminder_default_minutes"] == 30
+
+
+def test_reminders_updates_carry_the_phone_keys():
+    upd = tr.reminders_updates(reminders_raw())
+    assert upd["mobile_push_enabled"] is True
+    assert upd["mobile_push_reservation"] is True
+    assert upd["mobile_push_send"] is False
+    assert upd["mobile_push_suppress_toast"] is False
 
 
 def test_reminders_updates_keeps_values_of_disabled_options():
@@ -259,6 +269,8 @@ _legacy_keys_base = {
     "werkstudent_limit_start", "werkstudent_limit_end",
     "werkstudent_limit_max_hours", "pause_warning_enabled", "workweek_only",
     "device_name", "auto_update_enabled", "reservations_enabled",
+    "mobile_push_enabled", "mobile_push_reservation", "mobile_push_send",
+    "mobile_push_suppress_toast",
 }
 LEGACY_KEYS = (
     _legacy_keys_base |

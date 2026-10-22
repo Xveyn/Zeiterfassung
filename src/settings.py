@@ -76,6 +76,14 @@ DEFAULTS = {
     # Obergrenze des Lesefensters der Handy-PWA in Tagen (#250): 30/90/180/365. Gerätelokal wie
     # die übrigen mobile_*; das Handy wünscht, der Desktop deckelt.
     "mobile_window_max_days": 365,
+    # Erinnerungen auch aufs Handy (Push über den Relay, #331). Alle gerätelokal wie die übrigen
+    # mobile_*: der Relay kennt nur dieses Handy, und ein Schalter, den Geräte teilen, schaltete
+    # auch Rechner ein, die gar nicht gekoppelt sind. „Unterdrücken“ bleibt standardmäßig aus —
+    # schlimmstenfalls zwei Meldungen, nie keine.
+    "mobile_push_enabled": False,
+    "mobile_push_reservation": True,
+    "mobile_push_send": True,
+    "mobile_push_suppress_toast": False,
     # Alle drei gerätelokal wie auto_update_enabled: ein Pfad aus dem %TEMP%
     # eines anderen Rechners wäre dort sinnlos und im schlimmsten Fall
     # irreführend. `pending_update_release_id` sagt, zu welchem Release die

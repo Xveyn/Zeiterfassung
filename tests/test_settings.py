@@ -910,3 +910,17 @@ def test_the_first_enable_notice_is_remembered_device_locally():
     from src.settings import DEFAULTS, SYNCED_SETTING_KEYS
     assert DEFAULTS["mobile_notice_accepted"] is False
     assert "mobile_notice_accepted" not in SYNCED_SETTING_KEYS
+
+
+def test_mobile_push_defaults(tmp_path):
+    settings = Settings(str(tmp_path / "settings.json"))
+    assert settings.get("mobile_push_enabled") is False
+    assert settings.get("mobile_push_reservation") is True
+    assert settings.get("mobile_push_send") is True
+    assert settings.get("mobile_push_suppress_toast") is False
+
+
+def test_mobile_push_keys_are_device_local():
+    for key in ("mobile_push_enabled", "mobile_push_reservation", "mobile_push_send",
+                "mobile_push_suppress_toast"):
+        assert key not in SYNCED_SETTING_KEYS
