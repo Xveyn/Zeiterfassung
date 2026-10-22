@@ -373,3 +373,40 @@ def test_a_time_in_the_skipped_dst_hour_neither_raises_nor_doubles():
 def test_the_system_zone_is_used_without_tz():
     out = upcoming_send_times(NOW, monthly=monthly(), daily_slots=[])
     assert len(out) == 2 and all(stamp.endswith("Z") for stamp in out)
+
+
+# --- Markierung im Kalender (#340) -------------------------------------------------------------
+
+from src.send_reminder import marked_slot, reminder_tooltip_line  # noqa: E402
+
+
+def slot(end="17:35", minutes=None):
+    return {"start": "08:00", "end": end, "kategorie": "P", "send_reminder_minutes": minutes}
+
+
+def test_marked_slot_returns_end_and_minutes_of_the_marked_slot():
+    assert marked_slot([slot("12:00"), slot("17:35", 15)]) == ("17:35", 15)
+    assert marked_slot([slot("17:35", 0)]) == ("17:35", 0)
+    assert marked_slot([slot("12:00", 10), slot("17:35", 15)]) == ("12:00", 10)
+
+
+def test_marked_slot_is_none_without_a_valid_mark():
+    assert marked_slot([]) is None
+    assert marked_slot([slot()]) is None
+    for bad in (True, "5", -1, 121, 1.5, None):
+        assert marked_slot([slot("17:35", bad)]) is None, bad
+
+
+def test_marked_slot_skips_a_marked_slot_without_a_usable_end():
+    assert marked_slot([slot(None, 15), slot("17:35", 10)]) == ("17:35", 10)
+    assert marked_slot([slot("kaputt", 15)]) is None
+
+
+def test_the_tooltip_line_names_the_time_of_the_reminder():
+    assert reminder_tooltip_line("17:35", 15) == "Erinnerung ans Verschicken: 15 min vor Ende (17:20 Uhr)"
+    assert reminder_tooltip_line("17:35", 0) == "Erinnerung ans Verschicken: zum Ende (17:35 Uhr)"
+    assert reminder_tooltip_line("00:10", 30) == "Erinnerung ans Verschicken: 30 min vor Ende (23:40 Uhr)"
+
+
+def test_the_tooltip_line_survives_a_bad_end():
+    assert reminder_tooltip_line("kaputt", 15) == "Erinnerung ans Verschicken: 15 min vor Ende"

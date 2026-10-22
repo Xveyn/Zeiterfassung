@@ -33,3 +33,12 @@ def test_hover_without_overlays_does_not_fail():
     GridRenderer._hover(frame, "#000000", day)
     assert frame.bg == "#000000"
     assert day.bg == "#000000"
+
+
+def test_hover_also_colors_the_reminder_marker():
+    frame = _FakeWidget()
+    frame._reminder_marker = _FakeWidget()
+    frame._reservation_marker = _FakeWidget()
+    GridRenderer._hover(frame, "#abcdef")
+    assert frame._reminder_marker.bg == "#abcdef"
+    assert frame._reservation_marker.bg == "#abcdef"

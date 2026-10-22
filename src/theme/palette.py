@@ -41,6 +41,11 @@ HOLIDAY_ACCENT = "#4ade80"  # gleicher Grünton wie STATUS_OK
 # der roten Ist-Zeit-Zelle und der grünen Feiertagszelle)
 RESERVATION_ACCENT = "#a78bfa"
 
+# Zweiter Eck-Punkt: an diesem Tag hängt die Sende-Erinnerung an einer Reservierung (#340).
+# Bernstein, weil Grün (Feiertag), Türkis (Urlaub), Blau (heute), Orange (Konflikt) und
+# Violett (Reservierung) vergeben sind.
+REMINDER_ACCENT = "#fbbf24"
+
 # Urlaubszelle — türkis, klar abgesetzt von rotem Eintrag, grünem Feiertag,
 # violetter Reservierung, blauem Heute-Rahmen und orangem Konflikt-Rand.
 VACATION_BG = "#134e4a"
