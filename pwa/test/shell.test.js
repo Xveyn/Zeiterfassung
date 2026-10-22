@@ -202,3 +202,15 @@ test('native append/replaceChildren never receive an un-spread array from .map()
     assert.deepEqual(unspreadMapArguments(read(file), file), []);
   }
 });
+
+test('the service worker shows a notification for every push and handles the click', () => {
+  const worker = read('sw.js');
+  assert.match(worker, /addEventListener\('push'/);
+  assert.match(worker, /addEventListener\('notificationclick'/);
+  // Chrome verlangt eine sichtbare Benachrichtigung je Push (userVisibleOnly): der Fehlerpfad der
+  // Entschlüsselung darf sie nicht auslassen.
+  const push = worker.slice(worker.indexOf("addEventListener('push'"), worker.indexOf("addEventListener('notificationclick'"));
+  assert.match(push, /catch/);
+  assert.match(push, /showNotification/);
+  assert.ok(push.indexOf('catch') < push.indexOf('showNotification'));
+});
