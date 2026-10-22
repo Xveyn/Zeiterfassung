@@ -340,15 +340,14 @@ def test_reminder_plan_matches_due_reminders(case):
     davor nicht (`src/reminders.py::due_reminders` ist die Quelle der Regeln)."""
     from src.reminders import due_reminders
 
+    def due_at(slots, logged, moment):
+        found = due_reminders(slots, logged, moment, case["minutes_before"], set())
+        return {(r.kind, r.kategorie, r.end) for r in found}
+
     for item in case["expected"]:
         slots = case["reservations"][item["date"]]["slots"]
         logged = _logged_categories(case["entries"].get(item["date"]))
         fire = datetime.datetime.fromisoformat(item["fire"])
-
-        def due_at(moment):
-            found = due_reminders(slots, logged, moment, case["minutes_before"], set())
-            return {(r.kind, r.kategorie, r.end) for r in found}
-
         wanted = (item["kind"], item["category"], item["end"])
-        assert wanted in due_at(fire)
-        assert wanted not in due_at(fire - datetime.timedelta(minutes=1))
+        assert wanted in due_at(slots, logged, fire)
+        assert wanted not in due_at(slots, logged, fire - datetime.timedelta(minutes=1))
