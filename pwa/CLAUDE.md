@@ -278,6 +278,8 @@ ist nie Voraussetzung: ohne ihn läuft alles wie vorher, ein Fehler bleibt ein H
   Entscheidung, wann gesendet wird: nur bei `on` und vorhandenem `reminders`-Block, bei neuer
   Signatur oder nach 12 h.
 
+**Testbenachrichtigung (#340).** Im Abschnitt „Benachrichtigungen“ (nur im Zustand `on` mit Relay-Geheimnis) sendet „Testbenachrichtigung senden“ über `RelayClient.sendTest` (`POST /v1/test`) sofort einen Push, ohne den Zeitplan anzufassen. Der Relay schickt die feste, unverschlüsselte Nutzlast `TEST_PAYLOAD` (`push-message.js`, ein Test hält sie gleich der des Relays, s. `relay/CLAUDE.md`); der Service Worker erkennt sie **vor** dem Entschlüsseln und zeigt `describeTest()`, eine ältere Web-App zeigt die allgemeine Benachrichtigung. Das Ergebnis steht als Text im Abschnitt (`testResultText`, gleiche Texte wie am Desktop, `tab_rules.test_push_text`). Die `RelayError`-Arten der Testroute: `gone`, `too_soon`, `rate_limited`, `unknown_route` (alter Relay), `push_failed`; die beiden `429` trennt der Fehlercode im Body.
+
 **Feature-Erkennung.** Ohne `reminders` in der Antwort (älterer Desktop, oder am Desktop aus) plant die
 PWA nichts und schickt dem Desktop auch kein Relay-Geheimnis: die Anfrage trägt `push:
 {relay_secret}` nur, wenn die letzte Antwort einen `reminders`-Block hatte. Gegenstück am Desktop:

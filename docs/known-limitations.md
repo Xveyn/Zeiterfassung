@@ -581,6 +581,7 @@ läuft.
   Handy die Erinnerung bekommt (Schalter an, Art angehakt, ein gekoppeltes Gerät mit bekanntem Relay-Geheimnis).
   Ob das Handy sie wirklich anzeigt (Berechtigung, Browser offen, Energiesparmodus), weiß der Desktop nicht;
   deshalb ist das Unterdrücken standardmäßig aus.
+- **Die Testbenachrichtigung prüft nur die Zustellung:** sie zeigt, dass Relay, Push-Dienst und Service Worker das Handy erreichen, nicht dass ein Zeitplan angekommen ist. Pro Gerät höchstens alle 10 Sekunden. Gegen einen Relay, der noch nicht neu ausgerollt wurde, meldet sie „Der Relay kennt den Test noch nicht“ — erst `wrangler deploy`, dann Web-App und Desktop.
 - **Nur Push-Dienste der Browser:** der Relay sendet nur an FCM, Mozilla, Apple und Windows (Liste in
   `relay/src/validate.js`). Ein neuer Dienst wird dort eingetragen.
 
