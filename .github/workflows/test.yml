@@ -259,3 +259,9 @@ jobs:
         working-directory: relay
       - run: node --test
         working-directory: relay
+      # Konfiguration prüfen (Bindings, Migration, Einstiegspunkt), ohne Token und ohne etwas zu
+      # veröffentlichen: ein Fehler in wrangler.toml fiele sonst erst beim Deploy auf master auf.
+      - run: npx wrangler deploy --dry-run
+        working-directory: relay
+        env:
+          WRANGLER_SEND_METRICS: 'false'
