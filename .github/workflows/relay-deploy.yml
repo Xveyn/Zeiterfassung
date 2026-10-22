@@ -1,0 +1,70 @@
+name: Relay veröffentlichen
+
+# Rollt den Push-Relay (relay/, ein Cloudflare Worker) nach einem Merge auf master aus (#343).
+# Das Gate ist der Merge selbst: Merges auf master gibt der Maintainer von Hand frei (Ruleset:
+# PR-Pflicht, Required Checks), eine zweite Freigabe je Deploy gibt es nicht. Das Environment
+# `relay-production` trägt nur die Secrets und beschränkt sie auf master — Einrichtung in
+# relay/README.md (Environment anlegen, CLOUDFLARE_API_TOKEN und CLOUDFLARE_ACCOUNT_ID dort
+# setzen). Die Worker-Secrets (VAPID_PRIVATE, VAPID_SUBJECT) liegen bei Cloudflare und werden
+# vom Deploy nicht angefasst. Der Workflow pusht NICHTS nach master und läuft nie auf einem PR.
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'relay/**'
+      - '.github/workflows/relay-deploy.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Ein Deploy nach dem anderen; ein laufender wird nicht abgebrochen (halb ausgerollt wäre
+# schlimmer als verzögert).
+concurrency:
+  group: relay-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: relay-production
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: relay/package-lock.json
+      - run: npm ci
+        working-directory: relay
+      - run: node --test
+        working-directory: relay
+      - name: Ausrollen
+        working-directory: relay
+        # Der Token steht nur in diesem Schritt: npm ci und die Tests laufen Code aus node_modules.
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          WRANGLER_SEND_METRICS: 'false'
+        run: |
+          set -euo pipefail
+          if [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
+            echo "::error::CLOUDFLARE_API_TOKEN oder CLOUDFLARE_ACCOUNT_ID fehlt im Environment relay-production (relay/README.md)."
+            exit 1
+          fi
+          npx wrangler deploy
+      - name: Erreichbar und geschützt?
+        # Dieselbe Adresse wie im Desktop (src/push_relay.py), nicht ein zweites Mal getippt. Ohne
+        # Authorization muss der Relay mit 401 antworten; ein paar Versuche, bis der Deploy greift.
+        run: |
+          set -euo pipefail
+          url=$(sed -n 's/^RELAY_URL = "\(.*\)"$/\1/p' src/push_relay.py)
+          test -n "$url"
+          for attempt in 1 2 3 4 5 6; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' -X PUT "$url/v1/device" || true)
+            if [ "$code" = "401" ]; then echo "Relay antwortet mit 401 (Versuch $attempt)"; exit 0; fi
+            sleep 5
+          done
+          echo "::error::Der Relay unter $url antwortet nicht mit 401 (zuletzt: ${code:-keine Antwort})."
+          exit 1

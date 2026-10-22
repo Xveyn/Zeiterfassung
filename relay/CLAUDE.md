@@ -48,6 +48,7 @@ Fehler: `401 unauthorized` (Geheimnis fehlt/ungültig), `400 invalid_request` (m
 - **Kein `Buffer`** im Laufzeitcode: Workers kennt es nur mit `nodejs_compat`. Test-Code darf es.
 - **KV ist ungeeignet** (laut Sekundärquellen nur 1.000 Schreibvorgänge/Tag auf dem Free-Plan);
   Zustand liegt im SQLite-gestützten Durable Object.
+- **Ausgerollt wird von `.github/workflows/relay-deploy.yml`** nach dem Merge auf `master` (Environment `relay-production`, Secrets `CLOUDFLARE_API_TOKEN`/`CLOUDFLARE_ACCOUNT_ID` nur im Schritt „Ausrollen“; Einrichtung in `README.md`). Ein Test hält die Sicherheitsmerkmale fest (`tests/test_relay_deploy.py`). Von Hand geht `npx wrangler deploy` weiter.
 - Die Tests laufen mit `node --test` ohne `wrangler`; `device.js` wird mit einem In-Memory-Speicher
   (`test/fake-storage.js`) getestet. `wrangler dev` braucht **Node ≥ 22** (`engines`).
 - Wer eine Konstante in `LIMITS` oder die Routen ändert, zieht die PWA und das Design mit.
