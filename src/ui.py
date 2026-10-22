@@ -73,7 +73,8 @@ class App:
     def __init__(self, root, storage, settings, base_path=".", conflicts_store=None,
                  reservation_store=None, single_instance=None,
                  data_lock=None, sync_guard=None, webhook_store=None,
-                 vacation_store=None, smtp_store=None, mobile_store=None, mobile_keys=None):
+                 vacation_store=None, smtp_store=None, mobile_store=None, mobile_keys=None,
+                 mobile_relay_store=None):
         self.root = root
         self.storage = storage
         self.settings = settings
@@ -157,6 +158,7 @@ class App:
                     desktop_name=lambda: self.settings.get("device_name") or default_device_name(),
                     data_lock=self._data_lock, sync_guard=self._sync_guard,
                     reservation_store=self.reservation_store,
+                    relay_store=mobile_relay_store,
                     on_change=self._api_refresh.request,
                     on_reservations_change=self._on_remote_calendar_data_changed),
                 run=self._bg.run)

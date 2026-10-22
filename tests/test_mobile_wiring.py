@@ -112,3 +112,12 @@ def test_app_passes_the_reservation_store_and_the_hook_to_the_mobile_context():
     context = source.split("MobileContext(")[1].split("run=self._bg.run")[0]
     assert "reservation_store=self.reservation_store" in context
     assert "on_reservations_change=self._on_remote_calendar_data_changed" in context
+
+
+def test_the_relay_store_is_built_in_main_and_reaches_the_mobile_context():
+    main_source = MAIN.read_text(encoding="utf-8")
+    ui_source = UI.read_text(encoding="utf-8")
+    assert 'MobileRelayStore(os.path.join(base, "mobile_relay.json"))' in main_source
+    assert "mobile_relay_store=mobile_relay_store" in main_source
+    assert "mobile_relay_store=None" in ui_source
+    assert "relay_store=mobile_relay_store" in ui_source

@@ -40,6 +40,7 @@ log = logging.getLogger(__name__)
 CREDENTIAL_FILES: tuple[str, ...] = (
     "token.json", "instance-secret", "webhooks.json", "smtp.json",
     "credentials.json", "api-token", "mobile_devices.json", "mobile_keys.json",
+    "mobile_relay.json",
 )
 USER_DATA_FILES: tuple[str, ...] = (
     "zeiterfassung.json", "reservations.json", "vacations.json",
