@@ -1,0 +1,97 @@
+[
+  {
+    "name": "vor Ende und verpasst für einen Slot mit Kategorie",
+    "now": "2026-10-22T08:00", "minutes_before": 15,
+    "reservations": {"2026-10-22": {"slots": [{"start": "09:00", "end": "12:00", "kategorie": "Projekt"}], "deleted": false}},
+    "entries": {}, "send_at": [],
+    "expected": [
+      {"kind": "upcoming", "date": "2026-10-22", "category": "Projekt", "end": "12:00", "fire": "2026-10-22T11:45"},
+      {"kind": "missed", "date": "2026-10-22", "category": "Projekt", "end": "12:00", "fire": "2026-10-22T12:00"}
+    ]
+  },
+  {
+    "name": "kurzer Slot: vor Ende nie vor dem Start",
+    "now": "2026-10-22T08:00", "minutes_before": 15,
+    "reservations": {"2026-10-22": {"slots": [{"start": "09:00", "end": "09:10", "kategorie": "Projekt"}], "deleted": false}},
+    "entries": {}, "send_at": [],
+    "expected": [
+      {"kind": "upcoming", "date": "2026-10-22", "category": "Projekt", "end": "09:10", "fire": "2026-10-22T09:00"},
+      {"kind": "missed", "date": "2026-10-22", "category": "Projekt", "end": "09:10", "fire": "2026-10-22T09:10"}
+    ]
+  },
+  {
+    "name": "Kategorie am Tag als Ist-Zeit erfasst: nichts",
+    "now": "2026-10-22T08:00", "minutes_before": 15,
+    "reservations": {"2026-10-22": {"slots": [{"start": "09:00", "end": "12:00", "kategorie": "Projekt"}], "deleted": false}},
+    "entries": {"2026-10-22": {"slots": [{"start": "08:00", "end": "08:30", "pause": 0, "kategorie": "Projekt"}], "deleted": false}},
+    "send_at": [], "expected": []
+  },
+  {
+    "name": "gelöschte Ist-Zeit zählt nicht als erfasst",
+    "now": "2026-10-22T08:00", "minutes_before": 15,
+    "reservations": {"2026-10-22": {"slots": [{"start": "09:00", "end": "12:00", "kategorie": "Projekt"}], "deleted": false}},
+    "entries": {"2026-10-22": {"slots": [{"start": "08:00", "end": "08:30", "pause": 0, "kategorie": "Projekt"}], "deleted": true}},
+    "send_at": [],
+    "expected": [
+      {"kind": "upcoming", "date": "2026-10-22", "category": "Projekt", "end": "12:00", "fire": "2026-10-22T11:45"},
+      {"kind": "missed", "date": "2026-10-22", "category": "Projekt", "end": "12:00", "fire": "2026-10-22T12:00"}
+    ]
+  },
+  {
+    "name": "andere Kategorie erfasst: Erinnerung bleibt",
+    "now": "2026-10-22T08:00", "minutes_before": 15,
+    "reservations": {"2026-10-22": {"slots": [{"start": "09:00", "end": "12:00", "kategorie": "Projekt"}], "deleted": false}},
+    "entries": {"2026-10-22": {"slots": [{"start": "08:00", "end": "08:30", "pause": 0, "kategorie": "Intern"}], "deleted": false}},
+    "send_at": [],
+    "expected": [
+      {"kind": "upcoming", "date": "2026-10-22", "category": "Projekt", "end": "12:00", "fire": "2026-10-22T11:45"},
+      {"kind": "missed", "date": "2026-10-22", "category": "Projekt", "end": "12:00", "fire": "2026-10-22T12:00"}
+    ]
+  },
+  {
+    "name": "0 Minuten vor Ende: nur verpasst",
+    "now": "2026-10-22T08:00", "minutes_before": 0,
+    "reservations": {"2026-10-22": {"slots": [{"start": "09:00", "end": "12:00", "kategorie": "Projekt"}], "deleted": false}},
+    "entries": {}, "send_at": [],
+    "expected": [
+      {"kind": "missed", "date": "2026-10-22", "category": "Projekt", "end": "12:00", "fire": "2026-10-22T12:00"}
+    ]
+  },
+  {
+    "name": "schon Vergangenes wird nicht nachgeholt",
+    "now": "2026-10-22T11:50", "minutes_before": 15,
+    "reservations": {"2026-10-22": {"slots": [{"start": "09:00", "end": "12:00", "kategorie": "Projekt"}], "deleted": false}},
+    "entries": {}, "send_at": [],
+    "expected": [
+      {"kind": "missed", "date": "2026-10-22", "category": "Projekt", "end": "12:00", "fire": "2026-10-22T12:00"}
+    ]
+  },
+  {
+    "name": "Slot ohne Kategorie und gelöschter Tag",
+    "now": "2026-10-22T08:00", "minutes_before": 15,
+    "reservations": {
+      "2026-10-22": {"slots": [{"start": "09:00", "end": "12:00", "kategorie": ""}], "deleted": false},
+      "2026-10-23": {"slots": [{"start": "09:00", "end": "12:00", "kategorie": "Projekt"}], "deleted": true}
+    },
+    "entries": {}, "send_at": [], "expected": []
+  },
+  {
+    "name": "Tage jenseits von heute + 14 entfallen",
+    "now": "2026-10-22T08:00", "minutes_before": 15,
+    "reservations": {
+      "2026-11-05": {"slots": [{"start": "09:00", "end": "10:00", "kategorie": "Projekt"}], "deleted": false},
+      "2026-11-06": {"slots": [{"start": "09:00", "end": "10:00", "kategorie": "Projekt"}], "deleted": false}
+    },
+    "entries": {}, "send_at": [],
+    "expected": [
+      {"kind": "upcoming", "date": "2026-11-05", "category": "Projekt", "end": "10:00", "fire": "2026-11-05T09:45"},
+      {"kind": "missed", "date": "2026-11-05", "category": "Projekt", "end": "10:00", "fire": "2026-11-05T10:00"}
+    ]
+  },
+  {
+    "name": "Reservierungs-Erinnerung am Desktop aus",
+    "now": "2026-10-22T08:00", "minutes_before": 15, "reservation_enabled": false,
+    "reservations": {"2026-10-22": {"slots": [{"start": "09:00", "end": "12:00", "kategorie": "Projekt"}], "deleted": false}},
+    "entries": {}, "send_at": [], "expected": []
+  }
+]

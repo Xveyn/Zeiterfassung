@@ -324,3 +324,31 @@ def test_the_desktop_still_accepts_the_request_of_a_phone_without_settings():
 
     assert sorted(parsed.entries) == sorted(example["entries"])
     assert parsed.settings == {}
+
+
+# --- Erinnerungen: Zeitplan der PWA gegen die Fälligkeit am Desktop ---------------------------
+
+def _logged_categories(entry):
+    if not entry or entry.get("deleted"):
+        return set()
+    return {(s.get("kategorie") or "").strip() for s in entry.get("slots", [])} - {""}
+
+
+@pytest.mark.parametrize("case", load("reminder-plan-cases.json"), ids=lambda c: c["name"])
+def test_reminder_plan_matches_due_reminders(case):
+    """Jeder Eintrag des JS-Plans wird am Desktop genau zu seinem Zeitpunkt fällig, eine Minute
+    davor nicht (`src/reminders.py::due_reminders` ist die Quelle der Regeln)."""
+    from src.reminders import due_reminders
+
+    for item in case["expected"]:
+        slots = case["reservations"][item["date"]]["slots"]
+        logged = _logged_categories(case["entries"].get(item["date"]))
+        fire = datetime.datetime.fromisoformat(item["fire"])
+
+        def due_at(moment):
+            found = due_reminders(slots, logged, moment, case["minutes_before"], set())
+            return {(r.kind, r.kategorie, r.end) for r in found}
+
+        wanted = (item["kind"], item["category"], item["end"])
+        assert wanted in due_at(fire)
+        assert wanted not in due_at(fire - datetime.timedelta(minutes=1))
