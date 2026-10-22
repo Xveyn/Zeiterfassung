@@ -302,7 +302,7 @@ export function conflictsDialog(conflicts, handlers) {
 // --- Einstellungen -----------------------------------------------------------------------------------
 
 /** Reiter „Verbindung“: Stand der Kopplung und des Desktops, Verlauf, Neu koppeln. */
-function connectionPanel({ desktopName, desktop, hint = '', address, persistent, tokenUntil, window: windowInfo }, { closeThen, handlers }) {
+function connectionPanel({ desktopName, desktop, hint = '', address, persistent, tokenUntil, window: windowInfo, push }, { closeThen, handlers }) {
   const windowState = windowRow(windowInfo);
   const resetWindow = button('Auf 90 Tage zurücksetzen', () => closeThen(() => handlers.resetWindow()), '', { 'data-focus': 'reset-window' });
   resetWindow.hidden = !windowState.canReset;
@@ -315,9 +315,28 @@ function connectionPanel({ desktopName, desktop, hint = '', address, persistent,
       h('dt', { class: 'muted' }, 'Kopplung gültig bis'), h('dd', {}, tokenUntil || '—'),
       h('dt', { class: 'muted' }, 'Dauerhafter Speicher'), h('dd', {}, persistent === null ? 'unbekannt' : persistent ? 'ja' : 'nein'),
       h('dt', { class: 'muted' }, 'Verlauf'), h('dd', {}, windowState.text, ' ', resetWindow)),
+    pushSection(push, handlers),
     hint && h('p', { class: 'hint warn', role: 'status' }, hint),
     h('div', { class: 'buttons' },
       button('QR neu scannen / Neu koppeln', () => closeThen(() => handlers.pair()), '', { 'data-focus': 'pair' })));
+}
+
+/** Abschnitt „Benachrichtigungen“: Zustand als Text, ein Knopf zum Erlauben oder Ausschalten. Der
+ *  Knopf ruft `handlers.setPush(on)` (in der Klick-Geste: die Erlaubnis verlangt sie) und bekommt den
+ *  neuen Zustand zurück. */
+function pushSection(model, handlers) {
+  const text = h('p', { role: 'status', class: 'push-state' }, model.text);
+  const action = button(model.actionLabel, async () => {
+    action.disabled = true;
+    const next = await handlers.setPush(model.action === 'enable');
+    model = next;
+    text.textContent = next.text;
+    action.textContent = next.actionLabel;
+    action.hidden = !next.action;
+    action.disabled = false;
+  }, '', { 'data-focus': 'push-toggle' });
+  action.hidden = !model.action;
+  return h('section', { class: 'push' }, h('h3', {}, 'Benachrichtigungen'), text, h('div', { class: 'buttons' }, action));
 }
 
 /** Reiter „Updates“: Version der Handy-App, Suche, Neuladen, automatisches Einspielen. */

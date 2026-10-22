@@ -10,6 +10,7 @@ import { categoryRows, timesSummary } from './categories.js';
 import { resolveSlotDefaults } from './defaults.js';
 import { describeError } from './messages.js';
 import { normalizeReservationSlots, pendingReservationMinutes, reservationBlockVisible, validateReservationSlots } from './reservations.js';
+import { describeState } from './push-policy.js';
 
 export const WEEKDAYS = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
 const SKEW_WARN_MS = 120000;
@@ -342,4 +343,18 @@ export function categoriesModel({ categories, defaults, writable, edit }) {
     error: edit?.error ?? null,
     dirty: Boolean(edit) && edit.dirty_version > edit.synced_version,
   };
+}
+
+// --- Benachrichtigungen (#331) -------------------------------------------------------------------
+
+const PUSH_LABELS = { enable: 'Benachrichtigungen erlauben', disable: 'Ausschalten' };
+
+/** Anzeige des Abschnitts „Benachrichtigungen“ im Reiter Verbindung. `desktopReady` heißt: die letzte
+ *  Antwort trug einen `reminders`-Block (der Desktop kennt die Handy-Erinnerungen). */
+export function pushModel({ state, lastError, desktopReady }) {
+  const { text, action } = describeState(state, lastError);
+  const hint = state === 'on' && !desktopReady
+    ? ' Der Desktop sendet noch keine Erinnerungen für das Handy: dort „Auch aufs Handy senden“ einschalten und die Desktop-App aktualisieren.'
+    : '';
+  return { text: `${text}${hint}`, action, actionLabel: action ? PUSH_LABELS[action] : '' };
 }

@@ -3,6 +3,8 @@
 // Die Entscheidungen stehen in `sw-core.js` (getestet). Ein neuer Service Worker wartet, bis die
 // Seite „Neu laden“ bestätigt (Nachricht `SKIP_WAITING`) — nie mitten in einer Eingabe.
 import { CACHE_NAME, CACHE_PREFIX, PRECACHE, shouldHandle } from './sw-core.js';
+import { idbKeyStore, open } from './push-blob.js';
+import { clickTarget, describe } from './push-message.js';
 
 // `cache: 'reload'` umgeht den HTTP-Cache (GitHub Pages: max-age=600): sonst könnte ein neuer
 // Worker Dateien aus dem Cache der vorigen Installation einsammeln und eine Mischung aus alten
@@ -36,5 +38,41 @@ self.addEventListener('fetch', (event) => {
       if (shell) return shell;
     }
     return fetch(request);
+  })());
+});
+
+// Push vom Relay (Erinnerungen). Chrome verlangt je Push eine sichtbare Benachrichtigung
+// (`userVisibleOnly`): ist das Entschlüsseln gescheitert (Schlüssel fehlt, Blob beschädigt), zeigt
+// `describe(null)` die allgemeine. Der gleiche `tag` ersetzt eine Benachrichtigung, statt sie zu verdoppeln.
+self.addEventListener('push', (event) => {
+  event.waitUntil((async () => {
+    let plain = null;
+    try {
+      plain = await open(idbKeyStore(), event.data ? event.data.text() : '');
+    } catch {
+      // Kein Schlüssel oder fremder Blob: bewusst keine Details, es folgt die allgemeine Anzeige.
+    }
+    const { title, body, tag } = describe(plain);
+    await self.registration.showNotification(title, {
+      body, tag, renotify: false, data: plain, icon: new URL('./icons/icon-192.png', self.registration.scope).href,
+    });
+  })());
+});
+
+// Klick: ein offenes Fenster bekommt den Tag per Nachricht, sonst öffnet sich die App am Tag.
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const scope = self.registration.scope;
+  const target = clickTarget(event.notification.data, scope);
+  event.waitUntil((async () => {
+    const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    const mine = windows.find((client) => client.url.startsWith(scope));
+    if (!mine) {
+      await self.clients.openWindow(target);
+      return;
+    }
+    await mine.focus();
+    const date = new URL(target).searchParams.get('open');
+    if (date) mine.postMessage({ type: 'OPEN_DAY', date });
   })());
 });

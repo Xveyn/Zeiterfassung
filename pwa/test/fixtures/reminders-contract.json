@@ -1,0 +1,7 @@
+{
+  "response_reminders": {
+    "reservation": {"enabled": true, "minutes_before": 15},
+    "send": {"enabled": true, "at": ["2026-11-02T07:00:00Z", "2026-12-01T07:00:00Z"]}
+  },
+  "request_push": {"relay_secret": "Q2hhbmdlTWVRMmhhbmdlTWVRMmhhbmdlTWVRMmhhbmd"}
+}
