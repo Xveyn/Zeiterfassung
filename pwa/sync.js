@@ -130,6 +130,26 @@ function parseReservations(raw) {
   return out;
 }
 
+const MAX_SEND_TIMES = 200;
+const MAX_MINUTES_BEFORE = 1440;
+
+/** Der Block `reminders` der Antwort (#331): `null`, wenn er fehlt oder kein Objekt ist (älterer Desktop,
+ *  Feature-Erkennung). Unbrauchbare Teile schalten nur diesen Teil aus, die Antwort kippt deshalb nie. */
+function parseReminders(raw) {
+  if (!isObject(raw)) return null;
+  const reservation = isObject(raw.reservation) ? raw.reservation : {};
+  const send = isObject(raw.send) ? raw.send : {};
+  const minutes = reservation.minutes_before;
+  const valid = Number.isInteger(minutes) && minutes >= 0 && minutes <= MAX_MINUTES_BEFORE;
+  const at = Array.isArray(send.at)
+    ? [...new Set(send.at.filter((stamp) => typeof stamp === 'string' && STAMP_RE.test(stamp)))].sort().slice(0, MAX_SEND_TIMES)
+    : [];
+  return {
+    reservation: { enabled: reservation.enabled === true && valid, minutes_before: valid ? minutes : 0 },
+    send: { enabled: send.enabled === true, at: send.enabled === true ? at : [] },
+  };
+}
+
 /** Prüft eine Sync-Antwort vollständig, BEVOR sie den Zustand anfasst. Die Antwort kommt vom
  *  Desktop, kann aber von einer anderen Version stammen; eine halbe Anwendung wäre schlimmer
  *  als eine Ablehnung. Unbekannte Felder werden verworfen. */
@@ -164,7 +184,7 @@ export function parseSyncResponse(raw) {
     excluded: raw.excluded, window_days: raw.window_days, window_max: windowMax, entries, conflicts,
     categories: [...raw.categories], token: raw.token, expires_at: raw.expires_at,
     defaults: parseDefaults(raw.defaults), desktop: parseDesktopInfo(raw.desktop),
-    reservations: parseReservations(raw.reservations),
+    reservations: parseReservations(raw.reservations), reminders: parseReminders(raw.reminders),
     writable_settings: Array.isArray(raw.writable_settings) ? raw.writable_settings.filter((key) => typeof key === 'string') : [],
   };
 }
@@ -354,7 +374,9 @@ export class SyncClient {
         payload: { protocol: PROTOCOL, client_time: utcStamp(now), last_pull_at: meta.last_pull_at || '',
           window_days: wishSent, entries: snapshot.entries,
           ...(Object.keys(snapshot.reservations).length > 0 ? { reservations: snapshot.reservations } : {}),
-          ...(settings ? { settings: settings.settings } : {}) } });
+          ...(settings ? { settings: settings.settings } : {}),
+          // Das Relay-Geheimnis geht nur an einen Desktop, der das Feld kennt (er sendet `reminders`).
+          ...(first && meta.reminders && meta.relay_secret ? { push: { relay_secret: meta.relay_secret } } : {}) } });
     } catch (error) {
       // Währenddessen neu gekoppelt: der Fehler gehört zum alten Server/Token und darf weder
       // den Zustand der neuen Kopplung markieren noch als deren Fehler erscheinen.

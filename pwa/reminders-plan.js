@@ -8,6 +8,7 @@ import { addDays, localIsoDate, parseTime } from './minutes.js';
 
 export const MAX_ITEMS = 200;        // Grenze des Relays (`LIMITS.maxItems`)
 export const HORIZON_DAYS = 14;
+const MAX_AHEAD_MS = 89 * 86400000;   // der Relay lehnt `fire_at` über 90 Tage voraus samt Zeitplan ab (`LIMITS.maxAheadDays`)
 
 /** Wanduhrzeit `HH:MM` am ISO-Tag als lokales `Date`. */
 function wallTime(iso, minutes) {
@@ -54,7 +55,7 @@ function sendItems(at, now) {
   const items = [];
   for (const stamp of at ?? []) {
     const fireAt = new Date(stamp);
-    if (Number.isNaN(fireAt.getTime()) || fireAt <= now) continue;
+    if (Number.isNaN(fireAt.getTime()) || fireAt <= now || fireAt - now > MAX_AHEAD_MS) continue;
     items.push({ id: `s${Math.floor(fireAt.getTime() / 1000)}`, fireAt, kind: 'send', date: '', category: '', end: '' });
   }
   return items;

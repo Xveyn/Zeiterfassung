@@ -41,6 +41,8 @@ const DEFAULT_META = Object.freeze({
   auto_update: false,      // Updates der PWA automatisch einspielen (#290); gerätelokal, Standard aus
   reservations_enabled: false, // Desktop bietet Reservierungen an (Feld in der Antwort); fehlt es, bleibt alles verborgen
   settings_writable: false,   // Desktop versteht `settings` (Feld `writable_settings` in der Antwort); sonst ist das Bearbeiten aus
+  reminders: null,            // Block `reminders` der letzten Antwort (#331); null = Desktop kennt ihn nicht
+  relay_secret: '',           // Geheimnis dieses Handys beim Push-Relay (Identität und Bearer); gerätelokal
   categories_edit: null,      // Kategorien-Block des Handys: { modified_at, dirty_version, synced_version, error } oder null
   excluded: false,
   conflicts: [],
@@ -517,6 +519,7 @@ export class Store {
 
     this._meta = {
       ...this._meta,
+      reminders: parsed.reminders ? structuredClone(parsed.reminders) : null,
       reservations_enabled: parsed.reservations !== null && parsed.reservations !== undefined,
       last_pull_at: parsed.last_pull_at,
       server_time: parsed.server_time,

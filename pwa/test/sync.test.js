@@ -1045,3 +1045,78 @@ test('a 422 in the per-entry form also marks the block; the next sync goes throu
   await client.sync();
   assert.equal('settings' in fetchFn.calls[1].plain, false);
 });
+
+// --- Erinnerungen (#331) ----------------------------------------------------------------------------
+
+const REMINDERS = fixture('reminders-contract.json').response_reminders;
+const withReminders = (value) => ({ ...fixture('sync-response.json'), reminders: value });
+
+test('a response of a desktop before the reminders has no reminders block', () => {
+  const doc = fixture('compat/sync-response-pre-reminders.json');
+  assert.ok(!('reminders' in doc));
+  assert.equal(parseSyncResponse(doc).reminders, null);
+});
+
+test('the reminders block is read as the desktop sends it', () => {
+  assert.deepEqual(parseSyncResponse(withReminders(REMINDERS)).reminders, REMINDERS);
+});
+
+test('a reminders block that is not an object counts as absent', () => {
+  for (const bad of [undefined, null, 5, 'x', [1]]) assert.equal(parseSyncResponse(withReminders(bad)).reminders, null, String(bad));
+});
+
+test('unusable parts of the reminders block switch that part off instead of failing the sync', () => {
+  const parsed = parseSyncResponse(withReminders({
+    reservation: { enabled: true, minutes_before: -5 }, send: { enabled: 'ja', at: 'bald' } })).reminders;
+  assert.deepEqual(parsed, { reservation: { enabled: false, minutes_before: 0 }, send: { enabled: false, at: [] } });
+  assert.deepEqual(parseSyncResponse(withReminders({})).reminders,
+    { reservation: { enabled: false, minutes_before: 0 }, send: { enabled: false, at: [] } });
+});
+
+test('send times are valid stamps, unique, sorted and at most 200', () => {
+  const at = ['2026-12-01T07:00:00Z', 'kaputt', '2026-11-02T07:00:00Z', '2026-12-01T07:00:00Z', 7,
+    ...Array.from({ length: 300 }, (_, i) => new Date(Date.UTC(2027, 0, 1, 0, i)).toISOString().replace(/\.\d+Z$/, 'Z'))];
+  const parsed = parseSyncResponse(withReminders({ send: { enabled: true, at } })).reminders.send.at;
+  assert.equal(parsed.length, 200);
+  assert.deepEqual(parsed.slice(0, 2), ['2026-11-02T07:00:00Z', '2026-12-01T07:00:00Z']);
+  assert.deepEqual(parsed, [...parsed].sort());
+});
+
+test('minutes before is a whole number from 0 to 1440', () => {
+  const minutes = (value) => parseSyncResponse(withReminders({ reservation: { enabled: true, minutes_before: value } }))
+    .reminders.reservation.minutes_before;
+  assert.equal(minutes(0), 0);
+  assert.equal(minutes(1440), 1440);
+  assert.equal(minutes(1441), 0);
+  assert.equal(minutes(7.5), 0);
+});
+
+test('the store keeps the last block and forgets it when the desktop stops sending one', async () => {
+  const { store } = await make();
+  const empty = { entries: {}, versions: {}, reservations: {}, reservationVersions: {} };
+  await store.applyResponse(parseSyncResponse(withReminders(REMINDERS)), empty, '2026-10-08');
+  assert.deepEqual(store.getMeta().reminders, REMINDERS);
+  await store.applyResponse(parseSyncResponse(fixture('sync-response.json')), empty, '2026-10-08');
+  assert.equal(store.getMeta().reminders, null);
+});
+
+async function pushOf(setup) {
+  const { store, client, fetchFn } = await make();
+  const empty = { entries: {}, versions: {}, reservations: {}, reservationVersions: {} };
+  await store.applyResponse(parseSyncResponse(withReminders(setup.block)), empty, '2026-10-08');
+  await store.setMeta({ token: 'T0', last_pull_at: '', relay_secret: setup.secret });
+  await client.sync();
+  return fetchFn.calls[0].plain;
+}
+
+test('the relay secret goes to the desktop only after it has sent a reminders block', async () => {
+  const secret = fixture('reminders-contract.json').request_push.relay_secret;
+  assert.deepEqual((await pushOf({ block: REMINDERS, secret })).push, { relay_secret: secret });
+  assert.ok(!('push' in await pushOf({ block: undefined, secret })));
+  assert.ok(!('push' in await pushOf({ block: REMINDERS, secret: '' })));
+});
+
+test('the request before the reminders had no push field and the live example still has none', () => {
+  assert.ok(!('push' in fixture('compat/sync-request-pre-reminders.json')));
+  assert.ok(!('push' in fixture('sync-request.json')));
+});

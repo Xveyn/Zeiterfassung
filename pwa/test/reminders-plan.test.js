@@ -75,3 +75,10 @@ test('slots with an unusable time are skipped instead of throwing', () => {
   const reservations = { '2026-10-22': { slots: [{ start: 'kaputt', end: '12:00', kategorie: 'Projekt' }], deleted: false } };
   assert.deepEqual(planReminders({ reservations, entries: {}, reminders, now: wall('2026-10-22T08:00') }), []);
 });
+
+test('nothing further than 89 days ahead is planned: the relay would refuse the whole schedule', () => {
+  const now = new Date('2026-10-22T06:00:00Z');
+  const at = ['2027-01-15T07:00:00Z', '2027-01-21T07:00:00Z'];     // +85 und +91 Tage
+  const items = planReminders({ reservations: {}, entries: {}, reminders: { ...reminders, send: { enabled: true, at } }, now });
+  assert.deepEqual(items.map((i) => i.fireAt.toISOString()), ['2027-01-15T07:00:00.000Z']);
+});
