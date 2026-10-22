@@ -214,6 +214,17 @@ def reminders_updates(raw: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
+def phone_hint(device_count: int) -> str:
+    """Die Zeile unter dem Handy-Schalter im Reiter „Erinnerungen“ (#331): wie viele Handys
+    gekoppelt sind und wo die Erlaubnis für Benachrichtigungen erteilt wird. Die gilt je Gerät
+    und Browser und lässt sich vom Desktop aus nicht setzen."""
+    where = "Benachrichtigungen erlaubt man in der Handy-App (Einstellungen → Verbindung)."
+    if device_count <= 0:
+        return f"Noch kein Handy gekoppelt (Reiter „Mobil“). {where}"
+    noun = "Handy" if device_count == 1 else "Handys"
+    return f"{device_count} {noun} gekoppelt. {where}"
+
+
 # ---- App -----------------------------------------------------------------
 
 def slider_percent(value: float) -> int:

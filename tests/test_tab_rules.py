@@ -756,3 +756,16 @@ def test_paired_notice_warns_when_a_live_device_was_replaced():
     assert notice.warn is True
     assert "erfolgreich gekoppelt" in notice.text
     assert "„Alt“" in notice.text and "widerrufen" in notice.text
+
+
+# --- Handy-Erinnerungen (#331) -----------------------------------------------------------------
+
+def test_phone_hint_counts_the_coupled_phones():
+    assert "Noch kein Handy gekoppelt" in tr.phone_hint(0)
+    assert tr.phone_hint(1).startswith("1 Handy gekoppelt.")
+    assert tr.phone_hint(3).startswith("3 Handys gekoppelt.")
+
+
+def test_phone_hint_always_says_where_the_permission_is_given():
+    for count in (0, 1, 2):
+        assert "Handy-App" in tr.phone_hint(count)

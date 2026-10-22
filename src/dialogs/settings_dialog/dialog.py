@@ -80,7 +80,7 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
     work = WorkTab(frames["work"], dialog, settings, vacation_store,
                    on_vacation_change, storage, reservation_store, runner,
                    on_vacation_display_change)
-    reminders = RemindersTab(frames["reminders"], settings)
+    reminders = RemindersTab(frames["reminders"], settings, mobile_service)
     sending = SendingTab(frames["sending"], dialog, settings, webhook_store,
                          smtp_store, runner, parent)
     google = GoogleTab(
