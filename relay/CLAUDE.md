@@ -16,6 +16,7 @@ kennt, erreicht das Objekt nicht und kann es nicht besetzen.
 | `PUT /v1/device` | Abo (`endpoint`, `keys.p256dh`, `keys.auth`) registrieren oder erneuern |
 | `PUT /v1/schedule` | Zeitplan **ersetzen**: `{items: [{id, fire_at, blob}]}` |
 | `DELETE /v1/device` | alles löschen |
+| `POST /v1/test` | sofort einen Test-Push mit der festen Nutzlast `TEST_PAYLOAD` (`push.js`) senden, ohne Zeitplan und Alarm anzufassen. Je Gerät höchstens alle `LIMITS.testCooldownSeconds` (10 s). Antworten: `204` gesendet · `409 no_subscription` · `410 gone` (Abo tot, Objekt geräumt) · `429 too_soon` · `502 push_failed` (Push-Dienst nahm es nicht an; ein misslungener Versuch startet die Abkühlzeit nicht). Die Web-App erkennt die Nutzlast im Service Worker (`pwa/push-message.js`, ein Test hält die Konstante gleich) und der Desktop ruft die Route aus Einstellungen → Mobil (`src/push_relay.py`) |
 
 Fehler: `401 unauthorized` (Geheimnis fehlt/ungültig), `400 invalid_request` (mit deutscher
 `message`), `409 no_subscription` (Zeitplan vor Abo), `404`, `405`, `500 internal` (ohne Details).

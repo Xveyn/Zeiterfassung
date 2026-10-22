@@ -769,3 +769,27 @@ def test_phone_hint_counts_the_coupled_phones():
 def test_phone_hint_always_says_where_the_permission_is_given():
     for count in (0, 1, 2):
         assert "Handy-App" in tr.phone_hint(count)
+
+
+# --- Testbenachrichtigung (#340) -----------------------------------------------------------------
+
+@pytest.mark.parametrize("kind", ["ok", "no_secret", "no_subscription", "gone", "too_soon", "rate_limited",
+                                  "unknown_route", "offline", "push_failed", "unauthorized", "server"])
+def test_every_outcome_of_the_test_has_a_text(kind):
+    text = tr.test_push_text(kind)
+    assert len(text) > 15 and "Q" * 10 not in text
+
+
+def test_the_known_texts_are_the_agreed_ones():
+    assert tr.test_push_text("ok") == "Testbenachrichtigung gesendet. Sie sollte in wenigen Sekunden erscheinen."
+    assert tr.test_push_text("no_secret") == (
+        "Das Handy hat Benachrichtigungen noch nicht eingeschaltet oder noch nicht abgeglichen.")
+    assert tr.test_push_text("too_soon") == "Bitte einen Moment warten und dann erneut versuchen."
+    assert tr.test_push_text("etwas Neues") == tr.test_push_text("server")
+
+
+def test_the_test_outcome_never_raises():
+    def boom():
+        raise RuntimeError("kaputt")
+    assert tr.test_push_outcome(boom) == "server"
+    assert tr.test_push_outcome(lambda: "gone") == "gone"

@@ -614,3 +614,11 @@ test('switched on but the desktop sends no reminders yet: the text says what is 
   assert.match(model.text, /Desktop/);
   assert.doesNotMatch(pushModel({ state: 'on', lastError: null, desktopReady: true }).text, /Desktop-App/);
 });
+
+test('the push model offers the test only when on and the secret exists', () => {
+  assert.equal(pushModel({ state: 'on', lastError: null, desktopReady: true, canTest: true }).canTest, true);
+  assert.equal(pushModel({ state: 'on', lastError: null, desktopReady: true, canTest: false }).canTest, false);
+  for (const state of ['off', 'denied', 'unsupported', 'needs_resubscribe']) {
+    assert.equal(pushModel({ state, lastError: null, desktopReady: true, canTest: true }).canTest, false, state);
+  }
+});

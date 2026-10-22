@@ -92,3 +92,65 @@ def test_the_relay_url_matches_the_one_in_the_pwa():
     match = re.search(r"export const RELAY_URL = '([^']+)'", source)
     assert match is not None
     assert push_relay.RELAY_URL == match.group(1)
+
+
+# --- Testbenachrichtigung (#340) ----------------------------------------------------------------
+
+import io  # noqa: E402
+
+
+def http_error(status, code=None, body=None):
+    raw = body if body is not None else (b'{"error": "%s"}' % code.encode() if code else b"")
+    return urllib.error.HTTPError("u", status, "x", {}, io.BytesIO(raw))
+
+
+def send(result, **kwargs):
+    opener = FakeOpener(FakeResponse(204) if result is None else result)
+    return push_relay.send_test(SECRET, opener=opener, **kwargs), opener
+
+
+def test_the_test_request_is_a_post_with_the_secret_as_bearer_and_no_body():
+    kind, opener = send(None)
+    request, timeout = opener.requests[0]
+    assert kind == "ok"
+    assert request.get_method() == "POST"
+    assert request.full_url == f"{push_relay.RELAY_URL}/v1/test"
+    assert request.get_header("Authorization") == f"Bearer {SECRET}"
+    assert request.data is None
+    assert timeout == push_relay.TIMEOUT_S
+
+
+@pytest.mark.parametrize("error, kind", [
+    (http_error(409, "no_subscription"), "no_subscription"),
+    (http_error(410, "gone"), "gone"),
+    (http_error(429, "too_soon"), "too_soon"),
+    (http_error(429, "rate_limited"), "rate_limited"),
+    (http_error(429), "rate_limited"),
+    (http_error(404, "not_found"), "unknown_route"),
+    (http_error(502, "push_failed"), "push_failed"),
+    (http_error(401, "unauthorized"), "unauthorized"),
+    (http_error(500, "internal"), "server"),
+    (http_error(400, body=b"kein json"), "server"),
+    (http_error(301), "server"),
+    (urllib.error.URLError("kein Netz"), "offline"),
+    (TimeoutError("zu langsam"), "offline"),
+    (ConnectionResetError("weg"), "offline"),
+    (OSError("kaputt"), "offline"),
+    (ValueError("komisch"), "server"),
+])
+def test_the_answer_of_the_relay_becomes_one_kind_and_nothing_raises(error, kind):
+    assert send(error)[0] == kind
+
+
+def test_the_test_never_logs_the_secret(caplog):
+    with caplog.at_level(logging.DEBUG):
+        send(urllib.error.URLError(f"Fehler bei {SECRET}"))
+        send(http_error(500, body=f"Boom {SECRET}".encode()))
+    assert SECRET not in caplog.text
+
+
+def test_the_desktop_does_not_know_the_test_payload():
+    source = (ROOT / "src" / "push_relay.py").read_text(encoding="utf-8")
+    relay = (ROOT / "relay" / "src" / "push.js").read_text(encoding="utf-8")
+    payload = re.search(r"export const TEST_PAYLOAD = '([^']+)'", relay).group(1)
+    assert payload not in source

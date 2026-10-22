@@ -100,3 +100,13 @@ def test_the_pair_dialog_imports_on_its_own():
         [sys.executable, "-c", "import src.dialogs.mobile_pair_dialog"],
         cwd=SRC.parent, capture_output=True, text=True)
     assert result.returncode == 0, result.stderr
+
+
+def test_the_test_button_goes_through_the_runner_and_the_service():
+    source = TAB.read_text(encoding="utf-8")
+    assert '("Testbenachrichtigung", self._test)' in source
+    assert "self._service.send_test(device_id)" in source
+    assert "test_push_outcome" in source and "test_push_text" in source
+    assert "self._service.can_test(" in source
+    # läuft im Worker, nie im Tk-Callback
+    assert "self._runner.run(" in source.split("def _test(self):")[1].split("def _tested")[0]

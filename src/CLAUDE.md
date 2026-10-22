@@ -44,6 +44,7 @@ Rendering der Monats-/Wochenansicht inkl. Double-Buffer und Fenster-Geometrie.
   `App._refresh()` ist nur ein dünner Shim, der diese 5 Werte weiterreicht — er ist der
   **eine** Render-Eintritt für alle Aufrufer (Navigation, Dialog-`on_change`, Sync-/
   Reconcile-Callbacks `on_refresh`/`on_ok`).
+- **Zwei Eck-Punkte für Reservierungen (#340):** der violette (`_add_reservation_marker`) zeigt „der Tag hat eine Reservierung“, der bernsteinfarbene (`_add_reminder_marker`, `REMINDER_ACCENT`, links daneben) „an einem Slot hängt die Sende-Erinnerung“. Letzterer erscheint nur bei aktiver Funktion (`_reminder_for`: `send_reminder_enabled` ∧ `send_reminder_reservations_enabled`, ein Slot mit gültigem `send_reminder_minutes`, `send_reminder.marked_slot`) und der Tooltip trägt dazu die Zeile `Erinnerung ans Verschicken: 15 min vor Ende (17:20 Uhr)` (`_build_tooltip_text(reminder=…)`). `_hover` färbt beide mit; das macOS-✕ sitzt oben links und bleibt frei.
 - **Interaktion injiziert:** `on_cell_click` (= `App._open_dialog`), `on_cell_right_click`
   (= `App._delete_day`), `reservations_active` (= `App._reservations_active`, d. h. Store vorhanden und `reservations_enabled`). Die Zellen
   binden diese Callbacks, nicht App-Methoden direkt.
@@ -424,6 +425,7 @@ Zeitraum und welche Kategorien der Bericht gefiltert ist.
   (`MobileContext.relay_store`, `mobile_relay_store.MobileRelayStore`: gehärtet, nur bei Änderung geschrieben, nie
   im Log). `MobileService.revoke`/`revoke_all` nehmen das Geheimnis heraus und rufen `push_relay.delete_device`
   (best effort, außerhalb der Sperre, im Worker); `_maintain_keys` räumt Geheimnisse vergessener Geräte lokal ab.
+  **Testbenachrichtigung (#340):** `MobileService.send_test(device_id)` ruft `push_relay.send_test` mit dem Relay-Geheimnis des Geräts (`no_secret` ohne eins, bei widerrufenen oder unbekannten Geräten; `can_test` liest nur Speicher und darf im UI-Thread laufen). Der Relay sendet bei `POST /v1/test` sofort die feste Nutzlast, ohne den Zeitplan des Handys anzufassen (10 s Abkühlzeit je Gerät, `relay/CLAUDE.md`); Knopf und Ergebnistext im Reiter „Mobil“ (`tab_mobile._test`, Worker über den Runner, Texte `tab_rules.test_push_text`). Ein Relay vor #340 antwortet `404`: `unknown_route`.
   Die Einstellungen `mobile_push_enabled`/`_reservation`/`_send`/`_suppress_toast` sind gerätelokal. Der Desktop-Toast
   entfällt nur, wenn `App._phone_covers` (Speicher, UI-Thread) wahr liefert — beide Scheduler markieren einen
   abgedeckten Termin trotzdem als gefeuert.

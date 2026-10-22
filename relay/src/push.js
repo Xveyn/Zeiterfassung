@@ -5,6 +5,11 @@ import { buildPushPayload } from '@block65/webcrypto-web-push';
 
 const TTL_SECONDS = 300;
 
+/** Die feste Nutzlast der Testroute (`POST /v1/test`). Unverschlüsselt im Sinn der PWA: der Service Worker
+ *  erkennt sie vor dem Entschlüsseln. Sie verrät nichts; nur der Relay mit dem VAPID-Schlüssel kann senden.
+ *  Gleichlauf mit `pwa/push-message.js`, ein Test hält beide zusammen. */
+export const TEST_PAYLOAD = 'zeiterfassung-test';
+
 /** `ok` gesendet · `gone` Abo ist tot (404/410) · `retry` später noch einmal (429, 5xx, Netzfehler) ·
  *  `drop` der Dienst lehnt diese Nachricht ab (übrige 4xx), ein Wiederholen ändert nichts. */
 export async function sendPush(subscription, blob, env, fetchFn = fetch) {

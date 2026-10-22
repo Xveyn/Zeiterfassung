@@ -93,3 +93,35 @@ test('other errors are passed on without re-registering', async () => {
     (error) => error.kind === 'rate_limited');
   assert.equal(fetchFn.calls.length, 1);
 });
+
+// --- Testroute (#340) ---------------------------------------------------------------------------
+
+test('the test call is a POST to /v1/test with the bearer and no body', async () => {
+  const fetchFn = fakeFetch(204);
+  await new RelayClient({ fetchFn }).sendTest(SECRET);
+  assert.deepEqual(fetchFn.calls.map((c) => [c.method, c.url, c.auth, c.body]),
+    [['POST', `${RELAY_URL}/v1/test`, `Bearer ${SECRET}`, undefined]]);
+});
+
+for (const [status, body, kind] of [
+  [409, { error: 'no_subscription' }, 'no_subscription'], [410, { error: 'gone' }, 'gone'],
+  [429, { error: 'too_soon' }, 'too_soon'], [429, { error: 'rate_limited' }, 'rate_limited'],
+  [429, null, 'rate_limited'], [404, { error: 'not_found' }, 'unknown_route'],
+  [502, { error: 'push_failed' }, 'push_failed'], [401, { error: 'unauthorized' }, 'unauthorized'],
+  [500, { error: 'internal' }, 'server'],
+]) {
+  test(`the test call: ${status} ${body?.error ?? '(ohne Body)'} is ${kind}`, async () => {
+    const client = new RelayClient({ fetchFn: fakeFetch([status, body]) });
+    await assert.rejects(client.sendTest(SECRET), (error) => error instanceof RelayError && error.kind === kind);
+  });
+}
+
+test('the test call: a network error is offline', async () => {
+  const client = new RelayClient({ fetchFn: fakeFetch(new TypeError('Failed to fetch')) });
+  await assert.rejects(client.sendTest(SECRET), (error) => error.kind === 'offline');
+});
+
+test('a 410 or 404 on the other calls keeps its old meaning', async () => {
+  const client = new RelayClient({ fetchFn: fakeFetch([404, { error: 'not_found' }]) });
+  await assert.rejects(client.putSchedule(SECRET, ITEMS), (error) => error.kind === 'invalid');
+});

@@ -285,3 +285,35 @@ def upcoming_send_times(now: datetime.datetime, *, monthly: Mapping[str, Any] | 
         aware = moment.replace(tzinfo=tz) if tz is not None else moment.astimezone()
         stamps.add(aware.astimezone(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"))
     return sorted(stamps)[:MAX_SEND_TIMES]
+
+
+# --- Markierung im Kalender (#340) -----------------------------------------------------------
+
+def marked_slot(slots: Iterable[Mapping[str, Any]]) -> tuple[str, int] | None:
+    """`(Ende 'HH:MM', Minuten)` des ersten Slots mit gültiger Sende-Erinnerung, sonst `None`.
+
+    Gültig wie in `due_day_reminder`: ganze Zahl von 0 bis 120 (kein `bool`) und ein lesbares
+    Ende. Ein markierter Slot ohne lesbares Ende wird übersprungen — der Kalender-Punkt soll nur
+    erscheinen, wo die Erinnerung auch auslösen kann."""
+    for slot in slots:
+        minutes = slot.get("send_reminder_minutes")
+        if isinstance(minutes, bool) or not isinstance(minutes, int) or not 0 <= minutes <= 120:
+            continue
+        end = slot.get("end")
+        if _parse_hhmm(end) is not None:
+            return str(end), minutes
+    return None
+
+
+def reminder_tooltip_line(end: str, minutes: int) -> str:
+    """Die Zeile im Tooltip der Kalenderzelle, z. B. `Erinnerung ans Verschicken: 15 min vor Ende
+    (17:20 Uhr)`. Bei 0 Minuten `zum Ende`; ein unlesbares Ende lässt die Uhrzeit weg."""
+    hh_mm = _parse_hhmm(end)
+    head = "Erinnerung ans Verschicken: "
+    if hh_mm is None:
+        return f"{head}{minutes} min vor Ende" if minutes else f"{head}zum Ende"
+    total = (hh_mm[0] * 60 + hh_mm[1] - minutes) % (24 * 60)
+    at = f"{total // 60:02d}:{total % 60:02d}"
+    if minutes == 0:
+        return f"{head}zum Ende ({at} Uhr)"
+    return f"{head}{minutes} min vor Ende ({at} Uhr)"

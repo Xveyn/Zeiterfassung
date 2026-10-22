@@ -15,21 +15,30 @@ const MESSAGES = {
   invalid: 'Der Relay hat den Zeitplan abgelehnt.',
   server: 'Der Relay antwortet gerade nicht.',
   offline: 'Der Relay ist nicht erreichbar.',
+  gone: 'Das Abo dieses Geräts ist abgelaufen.',
+  too_soon: 'Bitte einen Moment warten.',
+  unknown_route: 'Der Relay kennt diese Funktion noch nicht.',
+  push_failed: 'Der Push-Dienst hat die Nachricht nicht angenommen.',
 };
 
 export class RelayError extends Error {
-  constructor(kind) {
+  constructor(kind, status) {
     super(MESSAGES[kind] ?? MESSAGES.server);
     this.name = 'RelayError';
     this.kind = kind;
+    this.status = status;       // HTTP-Status der Antwort; fehlt bei `offline`
   }
 }
 
-function kindOf(status) {
+/** Die Art des Fehlers aus Status und Fehlercode des Relays (`{error: 'too_soon'}` …). Der Code
+ *  unterscheidet nur, was der Status allein nicht trennt: die beiden `429` und `410`/`502` der Testroute. */
+function kindOf(status, code) {
   if (status === 401) return 'unauthorized';
   if (status === 409) return 'no_subscription';
+  if (status === 410) return 'gone';
   if (status === 413) return 'too_large';
-  if (status === 429) return 'rate_limited';
+  if (status === 429) return code === 'too_soon' ? 'too_soon' : 'rate_limited';
+  if (status === 502 && code === 'push_failed') return 'push_failed';
   if (status >= 400 && status < 500) return 'invalid';
   return 'server';
 }
@@ -58,7 +67,10 @@ export class RelayClient {
     } catch {
       throw new RelayError('offline');
     }
-    if (!response.ok) throw new RelayError(kindOf(response.status));
+    if (!response.ok) {
+      const code = await response.json().then((body) => body?.error, () => undefined);
+      throw new RelayError(kindOf(response.status, code), response.status);
+    }
   }
 
   registerDevice(secret, subscription) {
@@ -71,6 +83,19 @@ export class RelayClient {
 
   deleteDevice(secret) {
     return this._call('DELETE', '/v1/device', secret);
+  }
+
+  /** Lässt den Relay sofort eine Testbenachrichtigung senden (`POST /v1/test`), ohne den Zeitplan
+   *  anzufassen. Ein alter Relay kennt die Route nicht (`404`): `unknown_route`. */
+  async sendTest(secret) {
+    try {
+      await this._call('POST', '/v1/test', secret);
+    } catch (error) {
+      if (error instanceof RelayError && error.status === 404) {
+        throw new RelayError('unknown_route');
+      }
+      throw error;
+    }
   }
 }
 

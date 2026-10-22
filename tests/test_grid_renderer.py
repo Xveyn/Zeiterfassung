@@ -317,3 +317,50 @@ def test_tooltip_combines_all_units_in_order():
     assert text.index("Reservierung:") < text.index("Urlaub:")
     assert text.index("Urlaub:") < text.index("Feiertag: Neujahr")
     assert text.endswith("Konflikt — bitte auflösen")
+
+
+# --- Sende-Erinnerung im Tooltip (#340) --------------------------------------------------------
+
+def test_the_reminder_line_sits_under_the_reservation_block():
+    text = GridRenderer._build_tooltip_text(
+        None, {"slots": [{"start": "08:00", "end": "17:35"}]}, None,
+        reminder=("17:35", 15))
+    assert text == ("Reservierung:\n08:00-17:35\n"
+                    "Erinnerung ans Verschicken: 15 min vor Ende (17:20 Uhr)")
+
+
+def test_without_a_reminder_the_tooltip_is_unchanged():
+    reservation = {"slots": [{"start": "08:00", "end": "17:35"}]}
+    assert GridRenderer._build_tooltip_text(None, reservation, None) == "Reservierung:\n08:00-17:35"
+    assert GridRenderer._build_tooltip_text(None, reservation, None, reminder=None) == "Reservierung:\n08:00-17:35"
+
+
+def test_a_reminder_without_a_reservation_adds_nothing():
+    assert GridRenderer._build_tooltip_text(None, None, None, reminder=("17:35", 15)) == ""
+
+
+def test_the_reminder_line_comes_before_vacation_holiday_and_conflict():
+    text = GridRenderer._build_tooltip_text(
+        {"slots": [{"start": "08:00", "end": "09:00"}]},
+        {"slots": [{"start": "08:00", "end": "17:35"}]}, "Neujahr",
+        has_conflict=True, reminder=("17:35", 0))
+    lines = text.split("\n")
+    assert lines.index("Erinnerung ans Verschicken: zum Ende (17:35 Uhr)") == lines.index("Reservierung:") + 2
+    assert lines[-1] == "Konflikt — bitte auflösen"
+
+
+def test_the_marker_is_active_only_for_a_marked_slot_with_the_feature_on():
+    reservation = {"slots": [{"start": "08:00", "end": "17:35", "send_reminder_minutes": 15}]}
+    unmarked = {"slots": [{"start": "08:00", "end": "17:35", "send_reminder_minutes": None}]}
+
+    def settings(**values):
+        base = {"send_reminder_enabled": True, "send_reminder_reservations_enabled": True}
+        base.update(values)
+        return type("S", (), {"get": staticmethod(lambda key: base[key])})()
+
+    active = GridRenderer._reminder_for(settings(), reservation)
+    assert active == ("17:35", 15)
+    assert GridRenderer._reminder_for(settings(), unmarked) is None
+    assert GridRenderer._reminder_for(settings(), None) is None
+    assert GridRenderer._reminder_for(settings(send_reminder_enabled=False), reservation) is None
+    assert GridRenderer._reminder_for(settings(send_reminder_reservations_enabled=False), reservation) is None

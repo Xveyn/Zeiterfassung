@@ -3,9 +3,9 @@
 // nächsten fälligen Eintrag (sonst auf dem Leerlauf-Ablauf). Die Entscheidungen stecken in `validate.js`
 // und `schedule.js`; hier wird nur gespeichert, gesendet und der Alarm gesetzt.
 // Kein Logging: Abo, Blob und Zeitplan gehören nicht in ein Log.
-import { sendPush } from './push.js';
+import { TEST_PAYLOAD, sendPush } from './push.js';
 import { afterFailure, idleAt, planAlarm } from './schedule.js';
-import { InvalidRequest, parseSchedule, parseSubscription } from './validate.js';
+import { InvalidRequest, LIMITS, parseSchedule, parseSubscription } from './validate.js';
 
 const RETRY_AFTER_CRASH_MS = 30_000;
 const MAX_CRASH_RETRIES = 5;
@@ -35,6 +35,7 @@ export class Device {
     try {
       if (pathname === '/v1/device' && request.method === 'PUT') return await this.#register(request);
       if (pathname === '/v1/schedule' && request.method === 'PUT') return await this.#replaceSchedule(request);
+      if (pathname === '/v1/test' && request.method === 'POST') return await this.#test(request);
       if (pathname === '/v1/device' && request.method === 'DELETE') {
         await this.#wipe();
         return empty();
@@ -65,6 +66,36 @@ export class Device {
     await storage.put('idle', idleAt(this.now()));
     await this.#arm(items);
     return empty();
+  }
+
+  /** Sendet sofort die feste Test-Nutzlast, ohne Zeitplan und Alarm anzufassen. Je Gerät höchstens alle
+   *  `testCooldownSeconds`: `lastTest` wird vor dem Senden gesetzt (während des Netzaufrufs laufen andere
+   *  Anfragen weiter) und bei einem Fehlschlag zurückgenommen, damit ein misslungener Versuch nicht sperrt. */
+  async #test(request) {
+    await request.text().catch(() => '');           // ein Body ist unnötig; lesen, damit workerd nicht klagt
+    const { storage } = this.ctx;
+    const subscription = await storage.get('sub');
+    if (!subscription) return json(409, { error: 'no_subscription' });
+    const now = this.now();
+    const previous = await storage.get('lastTest');
+    if (previous !== undefined && now - previous < LIMITS.testCooldownSeconds * 1000) {
+      return json(429, { error: 'too_soon' });
+    }
+    await storage.put('lastTest', now);
+    let result;
+    try {
+      result = await this.send(subscription, TEST_PAYLOAD, this.env);
+    } catch {
+      result = 'retry';
+    }
+    if (result === 'ok') return empty();
+    const current = await storage.get('sub');
+    if (result === 'gone' && current && current.endpoint === subscription.endpoint) {
+      await this.#wipe();
+      return json(410, { error: 'gone' });
+    }
+    if (previous === undefined) await storage.delete('lastTest'); else await storage.put('lastTest', previous);
+    return result === 'gone' ? json(410, { error: 'gone' }) : json(502, { error: 'push_failed' });
   }
 
   /** Der Alarm steht auf „jetzt“, wenn schon etwas fällig ist, sonst auf dem nächsten Eintrag. */

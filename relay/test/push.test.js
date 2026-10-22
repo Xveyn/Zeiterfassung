@@ -72,3 +72,14 @@ test('does not throw for a malformed key', async () => {
   const result = await sendPush(sub, 'blob', await makeEnv(), answering(201).fetchFn);
   assert.ok(['drop', 'retry'].includes(result));
 });
+
+// --- Test-Nutzlast (#340) -----------------------------------------------------------------------
+
+import { TEST_PAYLOAD } from '../src/push.js';
+import { LIMITS } from '../src/validate.js';
+
+test('the test payload is a short fixed text', () => {
+  assert.equal(TEST_PAYLOAD, 'zeiterfassung-test');
+  assert.ok(TEST_PAYLOAD.length > 0 && TEST_PAYLOAD.length <= LIMITS.maxBlob);
+  assert.equal(LIMITS.testCooldownSeconds, 10);
+});

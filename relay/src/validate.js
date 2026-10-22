@@ -8,6 +8,7 @@ export const LIMITS = {
   maxBody: 300_000,        // Bytes eines Request-Bodys; 200 Einträge mit vollem Blob liegen bei ca. 235 KB
   graceSeconds: 900,       // so lange nach `fire_at` wird eine Erinnerung noch gesendet
   idleDays: 90,            // so lange nach der letzten Aktualisierung räumt sich ein Gerät selbst auf
+  testCooldownSeconds: 10, // so lange nach einem gelungenen Test sperrt die Testroute dieses Gerät
 };
 
 const DAY_MS = 86_400_000;

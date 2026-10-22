@@ -15,6 +15,7 @@ from src.time_utils import (
     calculate_hours, format_hours_colon, format_iso_date, format_minutes_hm,
     get_week_dates, get_week_label, hours_to_minutes, week_spans_months,
 )
+from src import send_reminder
 from src.holidays_de import get_holidays
 from src.tooltip import attach_tooltip
 from src.vacations import period_for_day
@@ -22,7 +23,7 @@ from src.theme import (
     BG, CELL_BG, WEEKEND_BG, ACCENT, TEXT, TEXT_MUTED,
     ENTRY_BG, WEEKEND_ENTRY_BG, WEEKEND_FG,
     HOLIDAY_BG, HOLIDAY_BG_HOVER, HOLIDAY_ACCENT,
-    RESERVATION_ACCENT, TODAY_ACCENT,
+    REMINDER_ACCENT, RESERVATION_ACCENT, TODAY_ACCENT,
     VACATION_BG, VACATION_BG_HOVER, VACATION_ACCENT,
     CELL_BG_HOVER, WEEKEND_BG_HOVER, ENTRY_BG_HOVER, WEEKEND_ENTRY_BG_HOVER,
     FONT, FONT_BOLD, FONT_TINY, FONT_SMALL, FONT_HEADER, FONT_HEADER_SMALL,
@@ -394,8 +395,21 @@ class GridRenderer:
                     or has_conflict)
 
     @staticmethod
+    def _reminder_for(settings, reservation):
+        """`(Ende, Minuten)` der Sende-Erinnerung dieser Reservierung, wenn sie im Kalender
+        erscheinen soll (#340), sonst `None`. Nur bei aktiver Funktion — `send_reminder_enabled`
+        und die Kopplung an Reservierungen, wie `entry_dialog.reminder_block_visible`: sonst
+        deutete der Punkt auf eine Erinnerung, die nie auslöst."""
+        if reservation is None:
+            return None
+        if not (settings.get("send_reminder_enabled")
+                and settings.get("send_reminder_reservations_enabled")):
+            return None
+        return send_reminder.marked_slot(reservation.get("slots", []))
+
+    @staticmethod
     def _build_tooltip_text(entry, reservation, holiday_name, has_conflict=False,
-                            vacation=None, vacation_minutes=0):
+                            vacation=None, vacation_minutes=0, reminder=None):
         """Baut den kombinierten Hover-Tooltip aus den vorhandenen Einheiten.
 
         Reine Funktion (Tk-frei, testbar): entscheidet, WELCHE Blöcke der
@@ -416,6 +430,9 @@ class GridRenderer:
         has_conflict: der Konflikt-Hinweis wird in DENSELBEN Tooltip gefaltet
         (Audit M11) — ein zweiter attach_tooltip am selben Widget verletzte den
         'genau EIN Tooltip pro Zelle'-Invariant.
+
+        reminder: `(Ende, Minuten)` der Sende-Erinnerung an der Reservierung (#340, aus
+        `_reminder_for`); die Zeile steht im Reservierungs-Block, ohne Reservierung entfällt sie.
         """
         parts = []
         if entry and entry.get("slots"):
@@ -424,11 +441,10 @@ class GridRenderer:
                 + "\n".join(
                     GridRenderer._fmt_slot_line(s) for s in entry["slots"]))
         if reservation is not None:
-            parts.append(
-                "Reservierung:\n"
-                + "\n".join(
-                    GridRenderer._fmt_slot_line(s)
-                    for s in reservation.get("slots", [])))
+            lines = [GridRenderer._fmt_slot_line(s) for s in reservation.get("slots", [])]
+            if reminder is not None:
+                lines.append(send_reminder.reminder_tooltip_line(*reminder))
+            parts.append("Reservierung:\n" + "\n".join(lines))
         if vacation is not None:
             span = (f"{format_iso_date(vacation.get('from'))} – "
                     f"{format_iso_date(vacation.get('to'))}")
@@ -466,6 +482,24 @@ class GridRenderer:
         )
         marker.place(relx=1.0, x=-px(3), y=px(3), anchor="ne")
         cell._reservation_marker = marker
+
+    def _add_reminder_marker(self, cell):
+        """Bernsteinfarbener Eck-Punkt links neben dem violetten: an diesem Tag hängt die
+        Sende-Erinnerung an einer Reservierung (#340). Gleiche Technik wie
+        `_add_reservation_marker` (Canvas-Oval, `place()`, `px()` zur Laufzeit); getaggt als
+        `cell._reminder_marker`, damit `_hover` ihn mitfärbt. Oben links bleibt das macOS-✕ frei."""
+        box, dot = px(12), px(7)
+        marker = tk.Canvas(
+            cell, width=box, height=box, bg=cell.cget("bg"),
+            highlightthickness=0, cursor="hand2",
+        )
+        inset = (box - dot) // 2
+        marker.create_oval(
+            inset, inset, inset + dot, inset + dot,
+            fill=REMINDER_ACCENT, outline="",
+        )
+        marker.place(relx=1.0, x=-(px(3) + box), y=px(3), anchor="ne")
+        cell._reminder_marker = marker
 
     def _add_delete_button(self, cell, date_str):
         """macOS-only: kleines ✕ oben links, das den Lösch-Pfad auslöst.
@@ -587,13 +621,16 @@ class GridRenderer:
         # Feiertag OHNE Eintrag/Reservierung/Urlaub/Konflikt zeigt seinen Namen
         # weiterhin als Zelltext (Holiday-Zelle) bzw. eigenen Tooltip
         # (name_tooltip) und kommt hier NICHT rein (_holiday_in_combined_tip).
+        reminder = self._reminder_for(self._settings, reservation)
         if reservation is not None:
             self._add_reservation_marker(cell)
+        if reminder is not None:
+            self._add_reminder_marker(cell)
         tip_text = self._build_tooltip_text(
             entry, reservation,
             holidays_map[day_date] if is_holiday else None,
             has_conflict=has_conflict,
-            vacation=vacation, vacation_minutes=vacation_minutes)
+            vacation=vacation, vacation_minutes=vacation_minutes, reminder=reminder)
         if tip_text:
             attach_tooltip(cell, tip_text)
 
@@ -936,7 +973,7 @@ class GridRenderer:
         frame.config(bg=bg)
         for lbl in labels:
             lbl.config(bg=bg)
-        for attr in ("_reservation_marker", "_delete_button"):
+        for attr in ("_reservation_marker", "_reminder_marker", "_delete_button"):
             w = getattr(frame, attr, None)
             if w is not None:
                 w.config(bg=bg)

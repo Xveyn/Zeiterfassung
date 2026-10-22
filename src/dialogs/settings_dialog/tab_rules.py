@@ -561,6 +561,39 @@ REVOKE_ERROR_TEXT = (
     "bleibt weiterhin gekoppelt und kann sich abgleichen.")
 
 
+_TEST_PUSH_TEXTS = {
+    "ok": "Testbenachrichtigung gesendet. Sie sollte in wenigen Sekunden erscheinen.",
+    "no_secret": "Das Handy hat Benachrichtigungen noch nicht eingeschaltet oder noch nicht abgeglichen.",
+    "no_subscription": "Der Relay kennt dieses Gerät nicht (mehr). Am Handy die Benachrichtigungen "
+                       "aus- und wieder einschalten.",
+    "gone": "Das Abo des Handys ist abgelaufen. Am Handy die Benachrichtigungen neu erlauben.",
+    "too_soon": "Bitte einen Moment warten und dann erneut versuchen.",
+    "rate_limited": "Zu viele Anfragen an den Relay, später erneut versuchen.",
+    "unknown_route": "Der Relay kennt den Test noch nicht (muss neu ausgerollt werden).",
+    "offline": "Der Relay ist nicht erreichbar.",
+    "push_failed": "Der Push-Dienst hat die Nachricht nicht angenommen.",
+    "unauthorized": "Der Relay hat das Gerät nicht erkannt. Am Handy die Benachrichtigungen "
+                    "aus- und wieder einschalten.",
+    "server": "Der Relay antwortet gerade nicht.",
+}
+
+
+def test_push_text(kind: str) -> str:
+    """Der Text zum Ergebnis von „Testbenachrichtigung“ (`MobileService.send_test`); eine unbekannte
+    Art (ein künftiger Relay) wird zu „antwortet nicht“. Dieselben Texte nutzt die Web-App."""
+    return _TEST_PUSH_TEXTS.get(kind, _TEST_PUSH_TEXTS["server"])
+
+
+def test_push_outcome(action: Callable[[], str]) -> str:
+    """Der Worker hinter „Testbenachrichtigung“: liefert die Art, wirft nie. Ohne diese Hülle ruft
+    der Runner bei einer Ausnahme `on_done` nie, und der Reiter bliebe gesperrt."""
+    try:
+        return action()
+    except Exception:
+        _log.warning("Testbenachrichtigung fehlgeschlagen", exc_info=True)
+        return "server"
+
+
 def revoke_outcome(action: Callable[[], Any]) -> dict[str, Any]:
     """Der Worker hinter „Widerrufen": `{"ok": True, "result": …}` oder
     `{"ok": False, "error": e}` für die erwarteten Schreibfehler (Schreibschutz,

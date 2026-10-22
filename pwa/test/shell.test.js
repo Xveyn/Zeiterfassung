@@ -212,5 +212,13 @@ test('the service worker shows a notification for every push and handles the cli
   const push = worker.slice(worker.indexOf("addEventListener('push'"), worker.indexOf("addEventListener('notificationclick'"));
   assert.match(push, /catch/);
   assert.match(push, /showNotification/);
-  assert.ok(push.indexOf('catch') < push.indexOf('showNotification'));
+  assert.ok(push.indexOf('catch') < push.lastIndexOf('showNotification'), 'nach dem Fehlerpfad folgt die Anzeige');
+});
+
+test('the service worker recognises the test payload before it tries to decrypt', () => {
+  const worker = read('sw.js');
+  const push = worker.slice(worker.indexOf("addEventListener('push'"), worker.indexOf("addEventListener('notificationclick'"));
+  assert.match(push, /TEST_PAYLOAD/);
+  assert.match(push, /describeTest/);
+  assert.ok(push.indexOf('TEST_PAYLOAD') < push.indexOf('open('), 'erst die Test-Nutzlast, dann das Entschlüsseln');
 });

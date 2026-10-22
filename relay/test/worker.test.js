@@ -211,3 +211,29 @@ test('IPv6 addresses of one /64 share one limit key, other networks and IPv4 kee
   assert.equal(keys[6], '203.0.113.7');
   assert.equal(new Set(keys).size, 4);
 });
+
+// --- Testroute (#340) ---------------------------------------------------------------------------
+
+test('POST /v1/test is routed to the device named after the secret hash', async () => {
+  const { call, touched } = setup();
+  const auth = `Bearer ${secret(1)}`;
+  assert.equal((await call('POST', '/v1/test', { auth })).status, 204);
+  assert.deepEqual(touched.map((t) => [t.id, t.method, t.path]),
+    [[await objectName(secret(1)), 'POST', '/v1/test']]);
+});
+
+test('the test route needs the bearer like the others and allows POST only', async () => {
+  const { call, touched } = setup();
+  assert.equal((await call('POST', '/v1/test', {})).status, 401);
+  const wrong = await call('PUT', '/v1/test', { auth: `Bearer ${secret(1)}`, body: '{}' });
+  assert.equal(wrong.status, 405);
+  assert.equal(wrong.headers.get('allow'), 'POST');
+  assert.deepEqual(touched, []);
+});
+
+test('the preflight for the test route allows POST', async () => {
+  const { call } = setup();
+  const ok = await call('OPTIONS', '/v1/test', { origin: PAGES });
+  assert.equal(ok.status, 204);
+  assert.match(ok.headers.get('access-control-allow-methods'), /POST/);
+});

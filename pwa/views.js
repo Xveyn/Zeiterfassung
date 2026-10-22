@@ -326,6 +326,13 @@ function connectionPanel({ desktopName, desktop, hint = '', address, persistent,
  *  neuen Zustand zurück. */
 function pushSection(model, handlers) {
   const text = h('p', { role: 'status', class: 'push-state' }, model.text);
+  const test = button('Testbenachrichtigung senden', async () => {
+    test.disabled = true;
+    text.textContent = 'Sendet …';
+    text.textContent = await handlers.testPush();
+    test.disabled = false;
+  }, '', { 'data-focus': 'push-test' });
+  test.hidden = !model.canTest;
   const action = button(model.actionLabel, async () => {
     action.disabled = true;
     const next = await handlers.setPush(model.action === 'enable');
@@ -333,10 +340,12 @@ function pushSection(model, handlers) {
     text.textContent = next.text;
     action.textContent = next.actionLabel;
     action.hidden = !next.action;
+    test.hidden = !next.canTest;
     action.disabled = false;
   }, '', { 'data-focus': 'push-toggle' });
   action.hidden = !model.action;
-  return h('section', { class: 'push' }, h('h3', {}, 'Benachrichtigungen'), text, h('div', { class: 'buttons' }, action));
+  return h('section', { class: 'push' }, h('h3', {}, 'Benachrichtigungen'), text,
+    h('div', { class: 'buttons' }, action, test));
 }
 
 /** Reiter „Updates“: Version der Handy-App, Suche, Neuladen, automatisches Einspielen. */

@@ -308,6 +308,24 @@ class MobileService:
         self._drop_relay_objects(lambda store: store.retain([]))
         return len(records)
 
+    def can_test(self, device_id: str) -> bool:
+        """Kann an dieses Gerät eine Testbenachrichtigung gehen? Nur wenn es gekoppelt, nicht
+        widerrufen ist und sein Relay-Geheimnis bekannt ist. Liest nur Speicher (UI-Thread)."""
+        store = self._context.relay_store
+        if store is None:
+            return False
+        record = self._context.devices.get(device_id)
+        return record is not None and not record.get("revoked") and store.get(device_id) is not None
+
+    def send_test(self, device_id: str) -> str:
+        """Schickt eine Testbenachrichtigung an das Handy (`push_relay.send_test`); `no_secret`,
+        wenn es keins gibt (nicht gekoppelt, widerrufen, Benachrichtigungen nicht eingeschaltet oder
+        noch nicht abgeglichen). Netz: im Worker aufrufen, nie unter der Gerätesperre."""
+        if not self.can_test(device_id):
+            return "no_secret"
+        secret = self._context.relay_store.get(device_id)
+        return push_relay.send_test(secret) if secret else "no_secret"
+
     def _drop_relay_objects(self, take: Callable[[Any], dict[str, str]]) -> None:
         """Räumt die Relay-Objekte widerrufener Geräte ab: erst die lokalen Geheimnisse
         herausnehmen (`take` liefert `{id: Geheimnis}`), dann je Geheimnis `DELETE` am Relay.

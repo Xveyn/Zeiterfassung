@@ -4,7 +4,7 @@
 // Seite „Neu laden“ bestätigt (Nachricht `SKIP_WAITING`) — nie mitten in einer Eingabe.
 import { CACHE_NAME, CACHE_PREFIX, PRECACHE, shouldHandle } from './sw-core.js';
 import { idbKeyStore, open } from './push-blob.js';
-import { clickTarget, describe } from './push-message.js';
+import { TEST_PAYLOAD, clickTarget, describe, describeTest } from './push-message.js';
 
 // `cache: 'reload'` umgeht den HTTP-Cache (GitHub Pages: max-age=600): sonst könnte ein neuer
 // Worker Dateien aus dem Cache der vorigen Installation einsammeln und eine Mischung aus alten
@@ -46,9 +46,16 @@ self.addEventListener('fetch', (event) => {
 // `describe(null)` die allgemeine. Der gleiche `tag` ersetzt eine Benachrichtigung, statt sie zu verdoppeln.
 self.addEventListener('push', (event) => {
   event.waitUntil((async () => {
+    const text = event.data ? event.data.text() : '';
+    if (text === TEST_PAYLOAD) {                       // Testbenachrichtigung vom Relay: unverschlüsselt, fest
+      const { title, body, tag } = describeTest();
+      await self.registration.showNotification(title, {
+        body, tag, data: null, icon: new URL('./icons/icon-192.png', self.registration.scope).href });
+      return;
+    }
     let plain = null;
     try {
-      plain = await open(idbKeyStore(), event.data ? event.data.text() : '');
+      plain = await open(idbKeyStore(), text);
     } catch {
       // Kein Schlüssel oder fremder Blob: bewusst keine Details, es folgt die allgemeine Anzeige.
     }
