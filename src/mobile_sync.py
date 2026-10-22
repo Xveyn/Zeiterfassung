@@ -29,7 +29,10 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
-from src import mobile_pairing, mobile_reservations, mobile_settings, sync, sync_history, sync_journal
+from src import (
+    mobile_pairing, mobile_reminders, mobile_reservations, mobile_settings, sync, sync_history,
+    sync_journal,
+)
 from src.api_entry_write import WriteError, check_date_range, load_json_body, parse_slots
 from src.api_summary import category_names
 from src.devices import sanitize_registry, with_own_entry
@@ -81,6 +84,9 @@ class SyncRequest:
     # {key: {value, modified_at}} der Einstellungen, die das Handy setzen darf (`categories`,
     # `category_times`); leer, wenn es keine sendet. Geprüft von `mobile_settings.parse_settings`.
     settings: dict[str, dict[str, Any]] = field(default_factory=dict)
+    # Das Relay-Geheimnis des Handys (Teil `push` der Anfrage, #331); `None`, wenn keins kam oder
+    # es unbrauchbar war. Der Handler legt es beim Gerät ab, `perform_sync` fasst es nicht an.
+    relay_secret: str | None = None
 
 
 @dataclass
@@ -193,7 +199,8 @@ def parse_request(body: bytes, *, now: str, today: datetime.date | None = None,
             raise SyncError(422, "invalid_entry", error.message) from None
     wish = data.get("window_days")
     window_days = wish if isinstance(wish, int) and not isinstance(wish, bool) and wish >= 1 else None
-    return SyncRequest(str(data["client_time"]), entries, window_days, reservations, settings)
+    return SyncRequest(str(data["client_time"]), entries, window_days, reservations, settings,
+                       mobile_reminders.parse_push(data.get("push")))
 
 
 def window_cap(raw: object) -> int:
@@ -325,7 +332,8 @@ def build_response(merged: Mapping[str, Any], *, sent_dates: Iterable[str],
                    categories: list[str], defaults: Mapping[str, Any],
                    desktop: Mapping[str, str], window_days: int,
                    window_max_days: int,
-                   reservations: Mapping[str, Any] | None = None) -> dict[str, Any]:
+                   reservations: Mapping[str, Any] | None = None,
+                   reminders: Mapping[str, Any] | None = None) -> dict[str, Any]:
     """Die Antwort des Abgleichs aus dem Merge-Ergebnis, ohne `token`/`expires_at`
     (die ergänzt die Route). Fenster `[heute − Fenster, heute]` (heute ist das lokale
     Datum des Desktops) plus alle gesendeten Tage — beides für Einträge **und**
@@ -374,6 +382,8 @@ def build_response(merged: Mapping[str, Any], *, sent_dates: Iterable[str],
     }
     if reservations is not None:       # nur bei eingeschalteten Reservierungen (Feature-Erkennung)
         response["reservations"] = dict(reservations)
+    if reminders is not None:          # Feature-Erkennung der PWA; ausgeschaltet ein leerer Block (#331)
+        response["reminders"] = dict(reminders)
     return response
 
 
@@ -417,7 +427,8 @@ def perform_sync(request: SyncRequest, *, device_id: str, device_name: str,
                  sync_guard: threading.Lock | None = None,
                  reservation_store: ReservationStore | None = None,
                  report: SyncReport | None = None,
-                 categories: list[str] | None = None) -> dict[str, Any]:
+                 categories: list[str] | None = None,
+                 local_now: datetime.datetime | None = None) -> dict[str, Any]:
     """Wendet den Abgleich an und liefert die Antwort (ohne `token`/`expires_at`).
 
     `last_pull_at` ist der Stand aus dem Gerätespeicher des Desktops, nie der Wert
@@ -471,11 +482,15 @@ def perform_sync(request: SyncRequest, *, device_id: str, device_name: str,
             if active and reservation_store is not None else None)
         names = categories if categories is not None else category_names(settings)
         cap = window_cap(settings.get("mobile_window_max_days"))
+        # `local_now`: die lokale (naive) Desktop-Zeit für die Sende-Zeitpunkte; die Tests setzen sie.
+        reminders = mobile_reminders.build_block(
+            settings, reservation_store, local_now or datetime.datetime.now())
         return build_response(merged, sent_dates=request.entries, today=today, now=now,
                               excluded=excluded, categories=names,
                               defaults=build_defaults(settings, names), desktop=desktop,
                               window_days=grant_window(request.window_days, cap),
-                              window_max_days=cap, reservations=reservations)
+                              window_max_days=cap, reservations=reservations,
+                              reminders=reminders)
     finally:
         if sync_guard is not None:
             sync_guard.release()

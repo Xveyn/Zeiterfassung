@@ -144,6 +144,8 @@ def test_the_response_example_has_the_shape_the_server_really_sends(tmp_path):
                "2026-10-05": mr.day(modified_at="2026-10-07T18:30:00Z")}
     mr.with_reservations(env, tmp_path)         # Schalter an: erst dann trägt die Antwort das Feld
     reservations = {"2026-10-15": mr.RES_DAY}
+    env.ctx.settings.set("mobile_push_enabled", True)       # sonst bliebe `reminders.send.at` leer
+    env.ctx.settings.set("send_reminder_enabled", True)
 
     raw = mr.call(env, "POST", "/v1/sync",
                   body=mr.sync_body(env, entries, reservations=reservations), token=token)

@@ -98,6 +98,10 @@ class MobileContext:
     # Nach einer erfolgreichen Kopplung, außerhalb der Sperren: der Dienst zieht den Schlüssel
     # damit im Worker in den Schlüsselbund um (`MobileKeyStore.migrate`).
     on_paired: Callable[[], None] = _no_change
+    # Ablage der Relay-Geheimnisse der Handys (`MobileRelayStore`, #331); `None` ohne Push.
+    # Geschrieben wird erst nach der Freigabe der Gerätesperre: die Datei wird gehärtet
+    # (unter Windows `icacls`) und darf `devices_lock` nicht halten.
+    relay_store: Any = None
 
 
 class _MobileError(Exception):
@@ -347,11 +351,26 @@ def _sync(request: ApiRequest, ctx: MobileContext, principal: Principal) -> ApiR
         notify = True
     response["token"] = token
     response["expires_at"] = renewed["expires_at"]
+    _file_relay_secret(ctx, record["id"], parsed.relay_secret)
     if notify:
         _notify(ctx)
         if report.reservations_changed:
             _notify_reservations(ctx)
     return _sealed(response_key, path="/v1/sync", device_id=record["id"], seq=seq, payload=response)
+
+
+def _file_relay_secret(ctx: MobileContext, device_id: str, secret: str | None) -> None:
+    """Legt das Relay-Geheimnis des Handys beim Gerät ab (nur bei einer Änderung schreibt der
+    Speicher). Der Abgleich ist angewendet: scheitert das Ablegen, geht es im nächsten Abgleich
+    erneut, und der Abgleich selbst darf deshalb nicht scheitern."""
+    if not secret or ctx.relay_store is None:
+        return
+    try:
+        ctx.relay_store.set(device_id, secret)
+    except Exception:
+        # Ohne Geheimnis im Log: es steht nur im Ausnahmetext des Speichers, nicht hier.
+        _log.warning("Relay-Geheimnis von Gerät %s konnte nicht abgelegt werden", device_id,
+                     exc_info=False)
 
 
 @dataclass(frozen=True)

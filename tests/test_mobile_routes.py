@@ -981,3 +981,58 @@ def test_a_forbidden_setting_is_an_encrypted_422_and_changes_nothing(env):
     assert response.status == 422 and error_code(response) == "invalid_entry"
     assert "2026-10-07" not in env.ctx.storage.get_all_raw()
     assert env.ctx.settings.get("hourly_rate") != 100
+
+
+# --- Relay-Geheimnis (#331) ---------------------------------------------------------------------
+
+SECRET = "Q" * 43
+
+
+class FakeRelayStore:
+    def __init__(self, fail=False):
+        self.items, self.calls, self.fail = {}, [], fail
+
+    def set(self, device_id, secret):
+        self.calls.append((device_id, secret))
+        if self.fail:
+            raise OSError("Platte voll")
+        changed = self.items.get(device_id) != secret
+        self.items[device_id] = secret
+        return changed
+
+
+def test_the_relay_secret_is_filed_under_the_device_of_the_token(env):
+    env.ctx = dataclasses.replace(env.ctx, relay_store=FakeRelayStore())
+    _record, token = add_device(env)
+    response = sync(env, token, push={"relay_secret": SECRET})
+    assert response.status == 200
+    assert env.ctx.relay_store.items == {PHONE: SECRET}
+    assert SECRET not in json.dumps(response.body)
+
+
+def test_a_sync_without_a_secret_files_nothing(env):
+    env.ctx = dataclasses.replace(env.ctx, relay_store=FakeRelayStore())
+    _record, token = add_device(env)
+    assert sync(env, token).status == 200
+    assert env.ctx.relay_store.calls == []
+
+
+def test_an_unusable_secret_is_not_filed_and_does_not_fail_the_sync(env):
+    env.ctx = dataclasses.replace(env.ctx, relay_store=FakeRelayStore())
+    _record, token = add_device(env)
+    assert sync(env, token, push={"relay_secret": "kurz"}).status == 200
+    assert env.ctx.relay_store.calls == []
+
+
+def test_a_failing_relay_store_does_not_fail_the_sync_and_does_not_log_the_secret(env, caplog):
+    env.ctx = dataclasses.replace(env.ctx, relay_store=FakeRelayStore(fail=True))
+    _record, token = add_device(env)
+    with caplog.at_level(logging.DEBUG):
+        response = sync(env, token, push={"relay_secret": SECRET})
+    assert response.status == 200
+    assert SECRET not in caplog.text
+
+
+def test_a_sync_without_a_relay_store_ignores_the_secret(env):
+    _record, token = add_device(env)
+    assert sync(env, token, push={"relay_secret": SECRET}).status == 200

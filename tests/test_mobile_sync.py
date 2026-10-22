@@ -856,3 +856,41 @@ def test_category_times_alone_with_an_unknown_name_is_422_and_applies_nothing(en
 def test_without_a_categories_argument_the_response_reads_the_settings(env):
     desktop_setting(env, "categories", ["Aus den Einstellungen"], "2026-10-01T10:00:00Z")
     assert run_settings(env, {})["categories"] == ["Aus den Einstellungen"]
+
+
+# --- Erinnerungen (#331) --------------------------------------------------------------------------
+
+SECRET = "Q" * 43
+
+
+def test_a_valid_relay_secret_is_read_from_the_push_part():
+    assert parse(push={"relay_secret": SECRET}).relay_secret == SECRET
+
+
+@pytest.mark.parametrize("push", [None, 5, "x", [], {}, {"relay_secret": 5}, {"relay_secret": "kurz"},
+                                  {"relay_secret": "Q" * 44}])
+def test_an_unusable_push_part_is_discarded_without_failing_the_request(push):
+    assert parse(push=push).relay_secret is None
+
+
+def test_a_request_without_a_push_part_has_no_secret():
+    assert parse().relay_secret is None
+
+
+def test_the_response_carries_the_reminders_block_even_when_everything_is_off(env):
+    response = run(env, {})
+    assert response["reminders"] == {
+        "reservation": {"enabled": False, "minutes_before": 15}, "send": {"enabled": False, "at": []}}
+
+
+def test_the_reminders_block_follows_the_settings_after_applying(env):
+    env.settings.set("mobile_push_enabled", True)
+    env.settings.set("send_reminder_enabled", True)
+    env.settings.set("send_reminder_day", 28)
+    response = run(env, {}, local_now=datetime.datetime(2026, 10, 8, 8, 0))
+    assert response["reminders"]["send"]["enabled"] is True
+    assert response["reminders"]["send"]["at"]
+
+
+def test_build_response_leaves_the_block_out_when_none_is_given():
+    assert "reminders" not in respond({})

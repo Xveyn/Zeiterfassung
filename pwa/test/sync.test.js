@@ -1096,7 +1096,7 @@ test('the store keeps the last block and forgets it when the desktop stops sendi
   const empty = { entries: {}, versions: {}, reservations: {}, reservationVersions: {} };
   await store.applyResponse(parseSyncResponse(withReminders(REMINDERS)), empty, '2026-10-08');
   assert.deepEqual(store.getMeta().reminders, REMINDERS);
-  await store.applyResponse(parseSyncResponse(fixture('sync-response.json')), empty, '2026-10-08');
+  await store.applyResponse(parseSyncResponse(fixture('compat/sync-response-pre-reminders.json')), empty, '2026-10-08');
   assert.equal(store.getMeta().reminders, null);
 });
 

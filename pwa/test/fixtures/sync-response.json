@@ -124,5 +124,9 @@
       "modified_at": "2026-10-07T18:40:00Z",
       "deleted": false
     }
+  },
+  "reminders": {
+    "reservation": {"enabled": true, "minutes_before": 15},
+    "send": {"enabled": true, "at": ["2026-11-02T07:00:00Z", "2026-12-01T07:00:00Z"]}
   }
 }
