@@ -42,3 +42,35 @@ test('the click opens the day for reservation reminders and the app otherwise', 
   assert.equal(clickTarget({ k: 'upcoming', d: 'morgen' }, SCOPE), SCOPE);
   assert.equal(clickTarget(null, SCOPE), SCOPE);
 });
+
+// --- Testbenachrichtigung (#340) ----------------------------------------------------------------
+
+import { TEST_PAYLOAD, describeTest, testResultText } from '../push-message.js';
+import { readFileSync } from 'node:fs';
+
+test('the test notification has its own title, text and tag', () => {
+  assert.deepEqual(describeTest(), {
+    title: 'Testbenachrichtigung', body: 'Der Weg Relay → Handy funktioniert.', tag: 'test' });
+});
+
+test('the test payload is the one the relay sends', () => {
+  const source = readFileSync(new URL('../../relay/src/push.js', import.meta.url), 'utf8');
+  const match = source.match(/export const TEST_PAYLOAD = '([^']+)'/);
+  assert.ok(match);
+  assert.equal(TEST_PAYLOAD, match[1]);
+});
+
+test('every outcome of the test has a text', () => {
+  assert.equal(testResultText('ok'), 'Testbenachrichtigung gesendet. Sie sollte in wenigen Sekunden erscheinen.');
+  assert.equal(testResultText('no_subscription'),
+    'Der Relay kennt dieses Gerät nicht (mehr). Am Handy die Benachrichtigungen aus- und wieder einschalten.');
+  assert.equal(testResultText('gone'),
+    'Das Abo des Handys ist abgelaufen. Am Handy die Benachrichtigungen neu erlauben.');
+  assert.equal(testResultText('too_soon'), 'Bitte einen Moment warten und dann erneut versuchen.');
+  assert.equal(testResultText('rate_limited'), 'Zu viele Anfragen an den Relay, später erneut versuchen.');
+  assert.equal(testResultText('unknown_route'),
+    'Der Relay kennt den Test noch nicht (muss neu ausgerollt werden).');
+  assert.equal(testResultText('offline'), 'Der Relay ist nicht erreichbar.');
+  assert.equal(testResultText('push_failed'), 'Der Push-Dienst hat die Nachricht nicht angenommen.');
+  for (const kind of ['unauthorized', 'server', 'irgendwas']) assert.ok(testResultText(kind).length > 10, kind);
+});

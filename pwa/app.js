@@ -6,7 +6,7 @@ import { addDays, formatDateDe, isIsoDate, localIsoDate, mondayOf, utcStamp } fr
 import { weekdayKey } from './defaults.js';
 import { reservationEditable } from './reservations.js';
 import { planReminders, signature } from './reminders-plan.js';
-import { messageFor } from './push-message.js';
+import { messageFor, testResultText } from './push-message.js';
 import { idbKeyStore, seal } from './push-blob.js';
 import { permissionState, shouldSchedule } from './push-policy.js';
 import { RelayClient, RelayError, VAPID_PUBLIC, newSecret, syncSchedule } from './relay-client.js';
@@ -142,7 +142,11 @@ class App {
   }
 
   async pushModelNow() {
-    return pushModel({ state: await this.pushState(), lastError: this.pushError, desktopReady: Boolean(this.store.getMeta().reminders) });
+    const meta = this.store.getMeta();
+    return pushModel({
+      state: await this.pushState(), lastError: this.pushError, desktopReady: Boolean(meta.reminders),
+      canTest: Boolean(meta.relay_secret),
+    });
   }
 
   /** Einschalten (aus einem Klick): Erlaubnis holen, Abo anlegen, am Relay anmelden, Plan senden. */
@@ -160,6 +164,18 @@ class App {
       this.trigger('manual');                       // der Desktop erfährt das Geheimnis im nächsten Abgleich
     } catch (error) {
       this.pushError = error instanceof RelayError ? error.message : 'Die Benachrichtigungen ließen sich nicht einschalten.';
+    }
+  }
+
+  /** Lässt den Relay sofort eine Testbenachrichtigung senden; liefert den Text für die Anzeige. Wirft nie. */
+  async sendTestPush() {
+    const { relay_secret: secret } = this.store.getMeta();
+    if (!secret) return testResultText('no_subscription');
+    try {
+      await this.relay.sendTest(secret);
+      return testResultText('ok');
+    } catch (error) {
+      return testResultText(error instanceof RelayError ? error.kind : 'server');
     }
   }
 
@@ -400,6 +416,7 @@ class App {
       pair: () => { this.screen = 'pair'; this.render(); },
       checkUpdate: () => this.checkForUpdate('manual'),
       resetWindow: () => this.resetWindow(),
+      testPush: () => this.sendTestPush(),
       setPush: async (on) => {
         if (on) await this.enablePush(); else await this.disablePush();
         return this.pushModelNow();

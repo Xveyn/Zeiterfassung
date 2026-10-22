@@ -351,10 +351,10 @@ const PUSH_LABELS = { enable: 'Benachrichtigungen erlauben', disable: 'Ausschalt
 
 /** Anzeige des Abschnitts „Benachrichtigungen“ im Reiter Verbindung. `desktopReady` heißt: die letzte
  *  Antwort trug einen `reminders`-Block (der Desktop kennt die Handy-Erinnerungen). */
-export function pushModel({ state, lastError, desktopReady }) {
+export function pushModel({ state, lastError, desktopReady, canTest = false }) {
   const { text, action } = describeState(state, lastError);
   const hint = state === 'on' && !desktopReady
     ? ' Der Desktop sendet noch keine Erinnerungen für das Handy: dort „Auch aufs Handy senden“ einschalten und die Desktop-App aktualisieren.'
     : '';
-  return { text: `${text}${hint}`, action, actionLabel: action ? PUSH_LABELS[action] : '' };
+  return { text: `${text}${hint}`, action, actionLabel: action ? PUSH_LABELS[action] : '', canTest: state === 'on' && canTest };
 }

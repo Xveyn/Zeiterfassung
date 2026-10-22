@@ -43,3 +43,30 @@ export function clickTarget(plain, scope) {
   if ((plain?.k === 'upcoming' || plain?.k === 'missed') && isIsoDate(plain.d)) return `${scope}?open=${plain.d}`;
   return scope;
 }
+
+// --- Testbenachrichtigung (#340) -----------------------------------------------------------------
+
+/** Die feste Nutzlast, die der Relay bei `POST /v1/test` sendet (`relay/src/push.js`; ein Test hält
+ *  beide gleich). Der Service Worker erkennt sie vor dem Entschlüsseln. */
+export const TEST_PAYLOAD = 'zeiterfassung-test';
+
+export function describeTest() {
+  return { title: 'Testbenachrichtigung', body: 'Der Weg Relay → Handy funktioniert.', tag: 'test' };
+}
+
+const TEST_TEXTS = {
+  ok: 'Testbenachrichtigung gesendet. Sie sollte in wenigen Sekunden erscheinen.',
+  no_subscription: 'Der Relay kennt dieses Gerät nicht (mehr). Am Handy die Benachrichtigungen aus- und wieder einschalten.',
+  gone: 'Das Abo des Handys ist abgelaufen. Am Handy die Benachrichtigungen neu erlauben.',
+  too_soon: 'Bitte einen Moment warten und dann erneut versuchen.',
+  rate_limited: 'Zu viele Anfragen an den Relay, später erneut versuchen.',
+  unknown_route: 'Der Relay kennt den Test noch nicht (muss neu ausgerollt werden).',
+  offline: 'Der Relay ist nicht erreichbar.',
+  push_failed: 'Der Push-Dienst hat die Nachricht nicht angenommen.',
+  unauthorized: 'Der Relay hat das Gerät nicht erkannt. Benachrichtigungen aus- und wieder einschalten.',
+};
+
+/** Der Text zum Ergebnis des Tests (`ok` oder die `kind` eines `RelayError`). */
+export function testResultText(kind) {
+  return TEST_TEXTS[kind] ?? 'Der Relay antwortet gerade nicht.';
+}
