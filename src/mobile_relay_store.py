@@ -71,11 +71,15 @@ class MobileRelayStore:
         raw = data.get("secrets")
         if not isinstance(raw, dict):
             return
+        skipped = 0
         for device_id, secret in raw.items():
             if normalize_device_id(device_id) is None or not _valid(secret):
-                log.warning("mobile_relay.json: Eintrag übersprungen (id=%r)", str(device_id)[:70])
+                skipped += 1
                 continue
             self._secrets[device_id] = secret
+        if skipped:
+            # Nur die Zahl: die Einträge stehen neben Geheimnissen, und ein Log ist kein Ort dafür.
+            log.warning("mobile_relay.json: %d unbrauchbare Einträge übersprungen", skipped)
 
     def _save_locked(self) -> None:
         if self._readonly:

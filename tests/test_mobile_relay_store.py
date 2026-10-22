@@ -129,3 +129,14 @@ def test_nothing_in_the_log_carries_a_secret(tmp_path, caplog):
         s = MobileRelayStore(str(path))
         s.set("phone-0003", B)
     assert A not in caplog.text and B not in caplog.text
+
+
+def test_skipped_entries_are_counted_in_the_log_without_naming_them(tmp_path, caplog):
+    import logging
+    path = tmp_path / "mobile_relay.json"
+    path.write_text(json.dumps({"schema_version": 1, "secrets": {
+        "phone-0001": A, "kurz": B, "phone-0003": "zu-kurz"}}), encoding="utf-8")
+    with caplog.at_level(logging.WARNING):
+        MobileRelayStore(str(path))
+    assert "2 unbrauchbare Einträge" in caplog.text
+    assert "kurz" not in caplog.text.replace("unbrauchbare", "") and "phone-0003" not in caplog.text
