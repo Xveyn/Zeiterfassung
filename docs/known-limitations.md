@@ -562,8 +562,10 @@ läuft.
   der den Worker veröffentlicht. Fällt der Relay aus, kommen keine Push-Erinnerungen; alles andere läuft wie
   bisher (Desktop-Toasts, Erfassung, Abgleich).
 - **Keine Konten:** das Geheimnis erzeugt das Handy. Es gibt kein Passwort, das man verlieren könnte, aber
-  auch keinen Weg, ein verlorenes Gerät vom Relay aus zu sperren; der Desktop löscht (mit dem Desktop-Teil von #331, noch nicht gebaut) beim Widerruf eines
-  Geräts dessen Relay-Objekt (best effort), sonst räumt es sich nach 90 Tagen selbst auf.
+  auch keinen Weg, ein verlorenes Gerät vom Relay aus zu sperren; der Desktop löscht beim Widerruf eines
+  Geräts dessen Relay-Objekt (best effort), sonst räumt es sich nach 90 Tagen selbst auf. Das gilt nicht für
+  Geräte, die der Desktop nach 30 Tagen über den Ablauf hinaus vergisst: ihr Geheimnis wird lokal entfernt,
+  das Objekt verfällt am Relay nach 90 Tagen.
 - **Missbrauch ist begrenzt, nicht verhindert:** jede Absender-Adresse darf höchstens 30 Anfragen pro
   Minute stellen (Rate-Limit-Binding, zählt je Cloudflare-Standort und großzügig). Das hält Einzelne vom
   Massenanlegen von Geräten ab. Viele verteilte Adressen können das Tageslimit von 100.000 Anfragen trotzdem
@@ -575,6 +577,10 @@ läuft.
 - **Eine Reservierung, die am Desktop als Ist-Zeit erfasst wurde, meldet sich noch einmal**, bis der nächste
   Abgleich den Plan korrigiert (das Handy weiß es vorher nicht). Die Erlaubnis für Benachrichtigungen
   gilt je Gerät und Browser.
+- **Der Desktop-Toast entfällt nur mit Sicherheit:** „Toast am Desktop unterdrücken“ greift nur, wenn das
+  Handy die Erinnerung bekommt (Schalter an, Art angehakt, ein gekoppeltes Gerät mit bekanntem Relay-Geheimnis).
+  Ob das Handy sie wirklich anzeigt (Berechtigung, Browser offen, Energiesparmodus), weiß der Desktop nicht;
+  deshalb ist das Unterdrücken standardmäßig aus.
 - **Nur Push-Dienste der Browser:** der Relay sendet nur an FCM, Mozilla, Apple und Windows (Liste in
   `relay/src/validate.js`). Ein neuer Dienst wird dort eingetragen.
 
