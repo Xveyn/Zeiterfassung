@@ -32,6 +32,7 @@ export const PRECACHE = [
   './push-blob.js',
   './push-message.js',
   './relay-client.js',
+  './push-policy.js',
   './categories.js',
   './defaults.js',
   './pairing.js',
