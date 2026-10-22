@@ -140,3 +140,59 @@ test('the Authorization header is not forwarded to the device', async () => {
   await call('PUT', '/v1/device', { auth: `Bearer ${secret(1)}`, body: '{}' });
   assert.equal(forwarded, null);
 });
+
+function limiter(allow) {
+  const keys = [];
+  return { keys, binding: { limit: async ({ key }) => { keys.push(key); return { success: allow(key) }; } } };
+}
+
+function callFrom(ip, env) {
+  const { call, touched } = setup(env);
+  const send = (auth) => worker.fetch(new Request('https://relay.example/v1/device', {
+    method: 'PUT', headers: { ...(auth ? { authorization: auth } : {}), ...(ip ? { 'cf-connecting-ip': ip } : {}) }, body: '{}',
+  }), { DEVICE: { idFromName: (n) => n, get: () => ({ fetch: async () => new Response(null, { status: 204 }) }) }, ...env });
+  return { send, call, touched };
+}
+
+test('a blocked client gets 429 before auth and before any device is touched', async () => {
+  const { binding } = limiter(() => false);
+  const { call, touched } = setup({ LIMITER: binding });
+  const response = await call('PUT', '/v1/device', { auth: `Bearer ${secret(1)}`, body: '{}' });
+  assert.equal(response.status, 429);
+  assert.deepEqual(await response.json(), { error: 'rate_limited' });
+  assert.equal((await call('PUT', '/v1/device', { body: '{}' })).status, 429);
+  assert.deepEqual(touched, []);
+});
+
+test('the limit is keyed by the client address, not by the secret', async () => {
+  const { keys, binding } = limiter(() => true);
+  const env = { LIMITER: binding };
+  await callFrom('203.0.113.7', env).send(`Bearer ${secret(1)}`);
+  await callFrom('203.0.113.7', env).send(`Bearer ${secret(2)}`);
+  assert.deepEqual(keys, ['203.0.113.7', '203.0.113.7']);
+});
+
+test('only the blocked address is refused', async () => {
+  const { binding } = limiter((key) => key !== '198.51.100.9');
+  const env = { LIMITER: binding };
+  assert.equal((await callFrom('198.51.100.9', env).send(`Bearer ${secret(1)}`)).status, 429);
+  assert.equal((await callFrom('203.0.113.7', env).send(`Bearer ${secret(1)}`)).status, 204);
+});
+
+test('a preflight does not use up the limit', async () => {
+  const { keys, binding } = limiter(() => false);
+  const { call } = setup({ LIMITER: binding });
+  assert.equal((await call('OPTIONS', '/v1/device', { origin: PAGES })).status, 204);
+  assert.deepEqual(keys, []);
+});
+
+test('a broken limiter does not take the relay down', async () => {
+  const binding = { limit: async () => { throw new Error('limiter down'); } };
+  const { send } = callFrom('203.0.113.7', { LIMITER: binding });
+  assert.equal((await send(`Bearer ${secret(1)}`)).status, 204);
+});
+
+test('without a limiter binding (local dev) requests pass', async () => {
+  const { send } = callFrom('203.0.113.7', {});
+  assert.equal((await send(`Bearer ${secret(1)}`)).status, 204);
+});

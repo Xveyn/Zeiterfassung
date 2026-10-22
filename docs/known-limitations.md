@@ -564,6 +564,11 @@ läuft.
 - **Keine Konten:** das Geheimnis erzeugt das Handy. Es gibt kein Passwort, das man verlieren könnte, aber
   auch keinen Weg, ein verlorenes Gerät vom Relay aus zu sperren; der Desktop löscht (mit dem Desktop-Teil von #331, noch nicht gebaut) beim Widerruf eines
   Geräts dessen Relay-Objekt (best effort), sonst räumt es sich nach 90 Tagen selbst auf.
+- **Missbrauch ist begrenzt, nicht verhindert:** jede Absender-Adresse darf höchstens 30 Anfragen pro
+  Minute stellen (Rate-Limit-Binding, zählt je Cloudflare-Standort und großzügig). Das hält Einzelne vom
+  Massenanlegen von Geräten ab. Viele verteilte Adressen können das Tageslimit von 100.000 Anfragen trotzdem
+  aufbrauchen; dann antwortet der Relay nicht mehr, bis der Tag um ist. Ein Gerät belegt höchstens rund
+  200 KB, verwaiste verfallen nach 90 Tagen.
 - **Nur Push-Dienste der Browser:** der Relay sendet nur an FCM, Mozilla, Apple und Windows (Liste in
   `relay/src/validate.js`). Ein neuer Dienst wird dort eingetragen.
 

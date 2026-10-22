@@ -48,6 +48,19 @@ function reply(request, env, status, body, extra = {}) {
   return body === null ? new Response(null, { status, headers }) : Response.json(body, { status, headers });
 }
 
+/** Pro Absender-Adresse, nicht pro Geheimnis: wer beliebig viele Geheimnisse erfindet, soll nicht
+ *  beliebig viele Objekte anlegen. Fehlt das Binding (lokale Entwicklung) oder wirft es, geht die
+ *  Anfrage durch — ein ausgefallener Zähler darf den Relay nicht abschalten. */
+async function withinLimit(request, env) {
+  if (!env.LIMITER) return true;
+  try {
+    const { success } = await env.LIMITER.limit({ key: request.headers.get('cf-connecting-ip') ?? 'unknown' });
+    return success;
+  } catch {
+    return true;
+  }
+}
+
 export default {
   async fetch(request, env) {
     const { pathname } = new URL(request.url);
@@ -68,6 +81,8 @@ export default {
     if (!methods.includes(request.method)) {
       return reply(request, env, 405, { error: 'method_not_allowed' }, { allow: methods.join(', ') });
     }
+
+    if (!(await withinLimit(request, env))) return reply(request, env, 429, { error: 'rate_limited' });
 
     let secret;
     try {
