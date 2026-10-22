@@ -35,7 +35,7 @@ Fehler: `401 unauthorized` (Geheimnis fehlt/ungültig), `400 invalid_request` (m
   berechnet** (nie im Konstruktor gesetzt), `alarm()` wirft nie (die Plattform begrenzt
   Wiederholungen auf 6; ein unbegrenzter Neustart verbrauchte die Anfragen des Free-Plans).
 - `src/worker.js` — Routen, Auth, CORS. CORS nur für `https://xveyn.github.io` (und `DEV_ORIGIN`).
-  Davor das Rate-Limit je Absender-Adresse (Binding `LIMITER`, 30 Anfragen/60 s; fehlt es oder wirft es,
+  Davor das Rate-Limit je Absender-Adresse, IPv6 als /64 (Binding `LIMITER`, 30 Anfragen/60 s; fehlt es oder wirft es,
   geht die Anfrage durch). Je Adresse, nicht je Geheimnis — ein Angreifer erfindet beliebig viele Geheimnisse.
   Eine WAF-Regel im Dashboard geht hier nicht: sie braucht eine Zone, `workers.dev` ist keine.
 - `scripts/gen-vapid.mjs` — erzeugt das VAPID-Paar.

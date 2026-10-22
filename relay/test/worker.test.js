@@ -196,3 +196,18 @@ test('without a limiter binding (local dev) requests pass', async () => {
   const { send } = callFrom('203.0.113.7', {});
   assert.equal((await send(`Bearer ${secret(1)}`)).status, 204);
 });
+
+test('IPv6 addresses of one /64 share one limit key, other networks and IPv4 keep their own', async () => {
+  const { keys, binding } = limiter(() => true);
+  const env = { LIMITER: binding };
+  for (const ip of ['2001:db8:1:2:aaaa:bbbb:cccc:dddd', '2001:DB8:1:2::1', '2001:db8:1:2:0:0:0:0', '2001:db8:1:3::1',
+    '::1', '203.0.113.7', '::ffff:203.0.113.7']) {
+    await callFrom(ip, env).send(`Bearer ${secret(1)}`);
+  }
+  assert.equal(keys[0], keys[1]);
+  assert.equal(keys[1], keys[2]);
+  assert.notEqual(keys[2], keys[3]);
+  assert.equal(keys[5], '203.0.113.7');
+  assert.equal(keys[6], '203.0.113.7');
+  assert.equal(new Set(keys).size, 4);
+});
