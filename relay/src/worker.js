@@ -48,6 +48,35 @@ function reply(request, env, status, body, extra = {}) {
   return body === null ? new Response(null, { status, headers }) : Response.json(body, { status, headers });
 }
 
+/** Schlüssel des Limits: IPv4 ganz, IPv6 nur als /64 (so viel bekommt ein Anschluss meist, sonst
+ *  umginge man das Limit mit wechselnden Adressen), IPv4-in-IPv6 als die IPv4-Adresse. */
+export function limitKey(ip) {
+  if (!ip) return 'unknown';
+  const address = ip.toLowerCase();
+  const mapped = address.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/);
+  if (mapped) return mapped[1];
+  if (!address.includes(':')) return address;
+  const [head, tail = ''] = address.split('::');
+  const groups = (text) => (text ? text.split(':') : []);
+  const front = groups(head);
+  const back = address.includes('::') ? groups(tail) : [];
+  const all = [...front, ...Array(Math.max(0, 8 - front.length - back.length)).fill('0'), ...back];
+  return `${all.slice(0, 4).map((group) => group.replace(/^0+(?=.)/, '')).join(':')}::/64`;
+}
+
+/** Pro Absender-Adresse, nicht pro Geheimnis: wer beliebig viele Geheimnisse erfindet, soll nicht
+ *  beliebig viele Objekte anlegen. Fehlt das Binding (lokale Entwicklung) oder wirft es, geht die
+ *  Anfrage durch — ein ausgefallener Zähler darf den Relay nicht abschalten. */
+async function withinLimit(request, env) {
+  if (!env.LIMITER) return true;
+  try {
+    const { success } = await env.LIMITER.limit({ key: limitKey(request.headers.get('cf-connecting-ip')) });
+    return success;
+  } catch {
+    return true;
+  }
+}
+
 export default {
   async fetch(request, env) {
     const { pathname } = new URL(request.url);
@@ -68,6 +97,8 @@ export default {
     if (!methods.includes(request.method)) {
       return reply(request, env, 405, { error: 'method_not_allowed' }, { allow: methods.join(', ') });
     }
+
+    if (!(await withinLimit(request, env))) return reply(request, env, 429, { error: 'rate_limited' });
 
     let secret;
     try {

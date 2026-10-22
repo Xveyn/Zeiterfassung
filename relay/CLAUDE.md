@@ -35,6 +35,9 @@ Fehler: `401 unauthorized` (Geheimnis fehlt/ungültig), `400 invalid_request` (m
   berechnet** (nie im Konstruktor gesetzt), `alarm()` wirft nie (die Plattform begrenzt
   Wiederholungen auf 6; ein unbegrenzter Neustart verbrauchte die Anfragen des Free-Plans).
 - `src/worker.js` — Routen, Auth, CORS. CORS nur für `https://xveyn.github.io` (und `DEV_ORIGIN`).
+  Davor das Rate-Limit je Absender-Adresse, IPv6 als /64 (Binding `LIMITER`, 30 Anfragen/60 s; fehlt es oder wirft es,
+  geht die Anfrage durch). Je Adresse, nicht je Geheimnis — ein Angreifer erfindet beliebig viele Geheimnisse.
+  Eine WAF-Regel im Dashboard geht hier nicht: sie braucht eine Zone, `workers.dev` ist keine.
 - `scripts/gen-vapid.mjs` — erzeugt das VAPID-Paar.
 
 ## Regeln
@@ -50,5 +53,12 @@ Fehler: `401 unauthorized` (Geheimnis fehlt/ungültig), `400 invalid_request` (m
 
 ## Gemessen
 
-Offen bis zum ersten Deploy (`README.md`, Schritt „Messen"): CPU-Zeit gegen das Limit von 10 ms je
-Anfrage (Free-Plan) und das Alarmverhalten dort. Hier eintragen, sobald gemessen.
+Am 2026-10-22 auf dem Free-Plan, Chrome (FCM): ein Gerät, erst 1 Erinnerung (`jetzt + 60 s`), dann der
+Worst Case aus 200 Erinnerungen zu je 1024 Zeichen (erste nach 60 s, weitere im 5-s-Takt).
+
+- **CPU-Zeit** (Dashboard, Worker): P50 3,3 ms, P90/P99/P999 je 3,47 ms — unter dem Limit von 10 ms.
+- **Wall-Time** P99 5,1 s (Warten auf den Push-Dienst, auf Free nicht begrenzt), **Speicher** P99 2,1 MB.
+- **Fehler:** 0 (kein `exceededCpu`). Ob alle 200 Benachrichtigungen ankamen, wurde nicht Stück für Stück gezählt.
+
+Gemessen mit einer lokalen Testseite gegen den deployten Relay, nicht mit dem Ablauf der PWA: Blob
+und Zeitplan waren Platzhalter. Ändern sich Blobgröße, Anzahl oder Sendeweg, neu messen.

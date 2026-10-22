@@ -10,8 +10,16 @@ class_name = "Device"
 tag = "v1"
 new_sqlite_classes = ["Device"]
 
+# Obergrenze je Absender-Adresse (s. `withinLimit` in src/worker.js). Zählt je Cloudflare-Standort und
+# großzügig — gegen Massenanlegen von Geräten, keine exakte Buchhaltung. `period` ist 10 oder 60.
+[[ratelimits]]
+name = "LIMITER"
+namespace_id = "1001"
+simple = { limit = 30, period = 60 }
+
 [vars]
 # Nur für die lokale Entwicklung (Origin des Dev-Servers der PWA); im Betrieb leer.
 DEV_ORIGIN = ""
-# VAPID_SUBJECT (mailto:…) und das Secret VAPID_PRIVATE setzt man beim Einrichten, s. README.md;
-# VAPID_PUBLIC steht öffentlich in der PWA und hier nach dem Einrichten.
+# Der öffentliche VAPID-Schlüssel steht auch in der PWA und darf nie gewechselt werden: alle Abos
+# hängen an ihm. VAPID_PRIVATE und VAPID_SUBJECT (mailto:…) sind Secrets, s. README.md.
+VAPID_PUBLIC = "BMZUZQIW3QNwt2vJp3q47zAAx4lLADWA0_r3kQQeyMT3d_GXsyyTjNlgBd1fOMtuZvlJhsLu1QRbHsT0hQHzC20"

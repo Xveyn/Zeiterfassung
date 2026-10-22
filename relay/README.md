@@ -8,16 +8,21 @@ Das braucht nur, wer den Relay selbst betreibt. Für die Entwicklung und die Tes
 (`cd relay && npm ci && node --test`).
 
 1. **Cloudflare-Konto** (kostenlos) auf dash.cloudflare.com anlegen.
-2. **workers.dev-Subdomain wählen** (Dashboard → Workers & Pages → Subdomain, einmalig). Daraus
-   entsteht `https://zeiterfassung-push.<subdomain>.workers.dev`.
-3. **Node ≥ 22 und `wrangler`**: `cd relay && npm ci`, dann `npx wrangler login` (öffnet den Browser).
-4. **VAPID-Schlüssel erzeugen:** `node scripts/gen-vapid.mjs`. Der **öffentliche** Schlüssel
+2. **Node ≥ 22 und `wrangler`**: `cd relay && npm ci`, dann `npx wrangler login` (öffnet den Browser).
+   Hat der Rechner nur Node 20: `npm i --no-save node@22` legt Node 22 nach `node_modules/node/bin`, das
+   man für die `wrangler`-Befehle vorn in den `PATH` setzt.
+3. **VAPID-Schlüssel erzeugen:** `node scripts/gen-vapid.mjs`. Der **öffentliche** Schlüssel
    (`VAPID_PUBLIC`) kommt in `wrangler.toml` unter `[vars]` und in die PWA, der **private** nur als
-   Secret: `npx wrangler secret put VAPID_PRIVATE`. Den privaten Schlüssel nie einchecken, und nach dem
-   Veröffentlichen **nie wechseln**: alle Abos hängen am öffentlichen.
-5. **Kontakt festlegen:** `npx wrangler secret put VAPID_SUBJECT` mit `mailto:<adresse>`. Push-Dienste
-   dürfen den Betreiber darüber erreichen; die Adresse sollte öffentlich sein dürfen.
-6. **Veröffentlichen:** `npx wrangler deploy`. Die ausgegebene URL ist die des Relays.
+   Secret (Schritt 5). Den privaten Schlüssel nie einchecken und nicht in ein Chatfenster kopieren, und nach
+   dem Veröffentlichen **nie wechseln**: alle Abos hängen am öffentlichen.
+4. **Veröffentlichen:** `npx wrangler deploy`. Beim ersten Mal fragt `wrangler` nach der
+   workers.dev-Subdomain (einmalig, ein frei gewählter Name); daraus entsteht
+   `https://zeiterfassung-push.<subdomain>.workers.dev`, die ausgegebene URL ist die des Relays.
+   Zuerst veröffentlichen, dann die Secrets setzen: sie gehören zu einem bestehenden Worker.
+5. **Secrets setzen:** `npx wrangler secret put VAPID_PRIVATE` (den privaten Schlüssel einfügen) und
+   `npx wrangler secret put VAPID_SUBJECT` mit `mailto:<adresse>` (Push-Dienste dürfen den Betreiber
+   darüber erreichen; die Adresse sollte öffentlich sein dürfen). Secrets wirken ohne erneutes `deploy`.
+6. **Prüfen:** `curl -i -X PUT <url>/v1/device` ohne Header muss `401 {"error":"unauthorized"}` liefern.
 7. **Messen** (einmalig, bevor die PWA ihn benutzt): ein Testgerät registrieren und einen Zeitplan
    `jetzt + 60 s` senden — der Push muss ankommen. Im Dashboard (Workers → zeiterfassung-push →
    Metrics) die **CPU-Zeit** je Anfrage und je Alarm ablesen (Free-Plan: 10 ms je HTTP-Anfrage) und in
