@@ -44,6 +44,8 @@ ES-Module flach im Ordner:
   am Fensterrand (s. „Lesefenster“).
 - `view-model.js`, `messages.js`, `sync-policy.js`, `update-policy.js` —
   Anzeige- und Entscheidungslogik, DOM-frei und getestet.
+- `reminders-plan.js`, `push-blob.js`, `push-message.js`, `relay-client.js`, `push-policy.js` —
+  Benachrichtigungen (#331), DOM-frei und getestet, s. „Benachrichtigungen“.
 - `dom.js`, `views.js`, `scanner.js`, `app.js` — die DOM-Schicht. Sie baut
   Elemente **nur** über `createElement` und Textknoten (ein Test verbietet
   `innerHTML` & Co.; Namen, Kategorien und Fehlertexte sind Fremddaten).
@@ -241,6 +243,49 @@ den Desktop (Desktop-Seite: #311, `src/CLAUDE.md`).
   sind erlaubt), kann ein zweites Speichern kurz nach dem Abgleich einen
   Konflikt „Handy gegen Handy“ erzeugen; der neuere Stand gewinnt vorläufig,
   Daten gehen nicht verloren (wie bei den Tagen).
+
+## Benachrichtigungen (#331)
+
+Erinnerungen kommen als Web-Push **auch ohne laufenden Desktop**. Der Weg: die PWA berechnet ihren
+Zeitplan und ersetzt ihn beim **Push-Relay** (`relay/`, ein Cloudflare Worker); der Relay sendet zur
+Fälligkeit an den Push-Dienst des Browsers, der Service Worker zeigt die Benachrichtigung. Der Relay
+ist nie Voraussetzung: ohne ihn läuft alles wie vorher, ein Fehler bleibt ein Hinweis im Reiter
+„Verbindung“.
+
+- **`reminders-plan.js`** — `planReminders` baut den Plan aus Reservierungen, Ist-Zeiten und dem
+  `reminders`-Block des Desktops: je Reservierungs-Slot „vor Ende“ bei `max(start, Ende − N)` und
+  „verpasst“ bei `Ende`, nur mit Kategorie und nur, solange die Kategorie am Tag nicht als Ist-Zeit
+  erfasst ist; heute bis heute + 14, nur Zukünftiges, höchstens 200 Einträge (die frühesten), nichts
+  über 89 Tage voraus (der Relay lehnte sonst den ganzen Plan ab). Bei N = 0 gibt es nur „verpasst“.
+  **Gleichlauf mit `src/reminders.py::due_reminders`** über `test/fixtures/reminder-plan-cases.json`:
+  der Python-Test in `tests/test_mobile_contract.py` prüft, dass jeder Eintrag am Desktop genau zu seinem
+  Zeitpunkt fällig wird und eine Minute davor nicht. Gerechnet wird in der Zeitzone des Handys, bei
+  jedem Abgleich und jeder Änderung neu. Die **Sende-Zeitpunkte** rechnet der Desktop (Feiertage,
+  Wochenend-Verschiebung) und schickt sie als UTC-Liste.
+- **`push-blob.js`** — der Text einer Benachrichtigung reist als AES-256-GCM-Blob durch den Relay,
+  mit einem eigenen, nicht extrahierbaren Schlüssel in der eigenen IndexedDB `zeiterfassung-push`
+  (Seite **und** Service Worker lesen sie; die Haupt-Datenbank behält ihre `VERSION`). Bewusst nicht
+  `k_dev`: der Desktop braucht diesen Schlüssel nie.
+- **`push-message.js`** — Klartext des Blobs (`{k, c, e, d}` bzw. `{k:'send', t}`), Texte und Klick-Ziel.
+  Der Service Worker zeigt **immer** eine Benachrichtigung (Chrome verlangt das, `userVisibleOnly`):
+  ist das Entschlüsseln gescheitert, die allgemeine „Erinnerung“. Gleicher `tag` ersetzt, statt zu
+  verdoppeln. Ein Klick öffnet die App am Tag (`?open=<Tag>`, eine offene bekommt `OPEN_DAY`).
+- **`relay-client.js`** — `RELAY_URL`, `VAPID_PUBLIC` (nie wechseln, alle Abos hängen daran), die drei
+  Aufrufe und `syncSchedule` (bei `409 no_subscription` einmal neu anmelden und wiederholen). Das
+  Geheimnis dieses Handys (`relay_secret` in der Meta) ist Identität und Bearer und steht in keinem
+  Fehlertext.
+- **`push-policy.js`** — Zustand (`unsupported`/`denied`/`off`/`needs_resubscribe`/`on`) und die
+  Entscheidung, wann gesendet wird: nur bei `on` und vorhandenem `reminders`-Block, bei neuer
+  Signatur oder nach 12 h.
+
+**Feature-Erkennung.** Ohne `reminders` in der Antwort (älterer Desktop, oder am Desktop aus) plant die
+PWA nichts und schickt dem Desktop auch kein Relay-Geheimnis: die Anfrage trägt `push:
+{relay_secret}` nur, wenn die letzte Antwort einen `reminders`-Block hatte (Gegenstück am Desktop: PR 4
+von #331). Die Fixtures dazu liegen nur auf der JS-Seite (`test/fixtures/reminders-contract.json`) und
+ziehen mit dem Desktop-Teil in den Vertrag um; eingefroren sind `compat/*-pre-reminders.json`.
+
+**Berechtigung ist pro Gerät** und braucht eine Nutzergeste (Knopf „Benachrichtigungen erlauben“ im
+Reiter „Verbindung“). Ausschalten meldet das Abo ab und löscht das Objekt am Relay.
 
 ## Lesefenster (#250)
 

@@ -569,6 +569,12 @@ läuft.
   Massenanlegen von Geräten ab. Viele verteilte Adressen können das Tageslimit von 100.000 Anfragen trotzdem
   aufbrauchen; dann antwortet der Relay nicht mehr, bis der Tag um ist. Ein Gerät belegt höchstens rund
   200 KB, verwaiste verfallen nach 90 Tagen.
+- **Firefox und iOS haben vorerst nichts davon:** der Zeitplan entsteht in der PWA aus dem Abgleich mit
+  dem Desktop (Reservierungen, Sende-Zeitpunkte). Wo der Abgleich nicht geht (Mixed Content, s. oben),
+  gibt es keinen Plan und damit keine Push-Erinnerung; Chrome auf Android ist der Weg der ersten Stufe.
+- **Eine Reservierung, die am Desktop als Ist-Zeit erfasst wurde, meldet sich noch einmal**, bis der nächste
+  Abgleich den Plan korrigiert (das Handy weiß es vorher nicht). Die Erlaubnis für Benachrichtigungen
+  gilt je Gerät und Browser.
 - **Nur Push-Dienste der Browser:** der Relay sendet nur an FCM, Mozilla, Apple und Windows (Liste in
   `relay/src/validate.js`). Ein neuer Dienst wird dort eingetragen.
 
