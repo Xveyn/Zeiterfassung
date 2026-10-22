@@ -20,7 +20,8 @@ from src.dialogs.settings_dialog.form_model import SaveOutcome
 from src.dialogs.settings_dialog.tab_rules import (
     FIRST_ENABLE_NOTICE, REVOKE_ERROR_TEXT, address_options, address_to_choice,
     device_row_text, keystore_summary, mobile_status_view, mobile_updates, revoke_outcome,
-    validate_mobile, visible_devices, window_cap_options, window_cap_to_choice,
+    test_push_outcome, test_push_text, validate_mobile, visible_devices, window_cap_options,
+    window_cap_to_choice,
 )
 from src.theme import (
     ACCENT, BG, ENTRY_BG, FONT, STATUS_OK, STATUS_WARN, TEXT, TEXT_MUTED, Form, dark_combo,
@@ -93,12 +94,15 @@ class MobileTab:
         self._empty = empty_state(box, "Noch kein Handy gekoppelt.", bg=ENTRY_BG)
         self._empty.grid(row=0, column=0, sticky="nsew")
         form.block(box)
-        self._pair_btn, self._revoke_btn, self._revoke_all_btn = form.buttons(
+        (self._pair_btn, self._revoke_btn, self._revoke_all_btn,
+         self._test_btn) = form.buttons(
             ("Gerät koppeln", self._pair),
             ("Widerrufen", self._revoke),
-            ("Alle widerrufen", self._revoke_all))
+            ("Alle widerrufen", self._revoke_all),
+            ("Testbenachrichtigung", self._test))
+        self._test_label = form.hint("")
         self._keystore_label = form.hint("")
-        self._listbox.bind("<<ListboxSelect>>", lambda _e: self._sync_buttons())
+        self._listbox.bind("<<ListboxSelect>>", self._on_select)
 
         port_var.trace_add("write", lambda *_args: self._sync_buttons())
         enabled_var.trace_add("write", self._on_enabled_changed)
@@ -213,6 +217,19 @@ class MobileTab:
         set_secondary_button_enabled(self._pair_btn, running and not self._busy)
         set_secondary_button_enabled(self._revoke_btn, has_selection and not self._busy)
         set_secondary_button_enabled(self._revoke_all_btn, has_devices and not self._busy)
+        selected = self._selected_id()
+        set_secondary_button_enabled(
+            self._test_btn,
+            selected is not None and self._service.can_test(selected) and not self._busy)
+
+    def _on_select(self, _event=None):
+        """Wählt man ein Gerät ohne Relay-Geheimnis, steht da, warum der Test aus ist."""
+        selected = self._selected_id()
+        if selected is None or self._service.can_test(selected):
+            self._test_label.config(text="")
+        else:
+            self._test_label.config(text=test_push_text("no_secret"))
+        self._sync_buttons()
 
     # --- Aktionen ---------------------------------------------------------------------
 
@@ -240,6 +257,28 @@ class MobileTab:
         self._sync_buttons()
         self._runner.run(
             lambda: revoke_outcome(lambda: self._service.revoke(device_id)), self._revoked)
+
+    def _test(self):
+        """Schickt eine Testbenachrichtigung an das gewählte Handy (Relay, Worker); das Ergebnis
+        steht als Text unter den Knöpfen."""
+        device_id = self._selected_id()
+        if device_id is None or self._busy or not self._service.can_test(device_id):
+            return
+        self._busy = True
+        self._test_label.config(text="Sendet …")
+        self._sync_buttons()
+        self._runner.run(
+            lambda: test_push_outcome(lambda: self._service.send_test(device_id)), self._tested)
+
+    def _tested(self, kind):
+        self._busy = False
+        if not self._alive:
+            return
+        try:
+            self._test_label.config(text=test_push_text(kind))
+            self._sync_buttons()
+        except tk.TclError:
+            self._alive = False
 
     def _revoke_all(self):
         if not self._rows or self._busy:

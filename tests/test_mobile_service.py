@@ -724,3 +724,62 @@ def test_maintaining_the_keys_drops_secrets_of_devices_that_no_longer_exist(rela
     service._maintain_keys()
     assert store.known_ids() == {"phone-aaaa", "phone-bbbb"}
     assert calls == []                      # verwaiste Objekte verfallen am Relay von selbst
+
+
+# --- Testbenachrichtigung (#340) ----------------------------------------------------------------
+
+def test_send_test_calls_the_relay_with_the_secret_of_the_device(relay, monkeypatch):
+    service, _ctx, _store, _calls = relay
+    seen = []
+    monkeypatch.setattr(mobile_service.push_relay, "send_test",
+                        lambda secret, **_kw: (seen.append(secret), "ok")[1])
+    assert service.send_test("phone-aaaa") == "ok"
+    assert seen == [SECRET_A]
+
+
+def test_send_test_passes_the_answer_of_the_relay_on(relay, monkeypatch):
+    service, _ctx, _store, _calls = relay
+    monkeypatch.setattr(mobile_service.push_relay, "send_test", lambda secret, **_kw: "gone")
+    assert service.send_test("phone-bbbb") == "gone"
+
+
+def test_send_test_without_a_secret_does_not_call_the_relay(relay, monkeypatch):
+    service, ctx, _store, _calls = relay
+    record, _token = mobile_pairing.issue_device("phone-cccc", "C", utc_now_iso())
+    ctx.devices.save(record)
+    monkeypatch.setattr(mobile_service.push_relay, "send_test",
+                        lambda secret, **_kw: pytest.fail("Relay gerufen"))
+    assert service.send_test("phone-cccc") == "no_secret"
+    assert service.send_test("unbekannt") == "no_secret"
+
+
+def test_send_test_without_a_relay_store_is_no_secret(tmp_path):
+    service, _settings, _ctx = make_service(tmp_path)
+    assert service.send_test("phone-aaaa") == "no_secret"
+    assert service.can_test("phone-aaaa") is False
+
+
+def test_send_test_does_not_hold_the_devices_lock(relay, monkeypatch):
+    service, ctx, _store, _calls = relay
+    held = []
+    monkeypatch.setattr(mobile_service.push_relay, "send_test",
+                        lambda secret, **_kw: (held.append(ctx.devices_lock.acquire(blocking=False)),
+                                               ctx.devices_lock.release() if held[-1] else None, "ok")[2])
+    service.send_test("phone-aaaa")
+    assert held == [True]
+
+
+def test_can_test_follows_the_known_secrets(relay):
+    service, ctx, _store, _calls = relay
+    assert service.can_test("phone-aaaa") is True
+    record, _token = mobile_pairing.issue_device("phone-cccc", "C", utc_now_iso())
+    ctx.devices.save(record)
+    assert service.can_test("phone-cccc") is False
+    assert service.can_test("unbekannt") is False
+
+
+def test_a_revoked_device_cannot_be_tested(relay):
+    service, _ctx, _store, _calls = relay
+    service.revoke("phone-aaaa")
+    assert service.can_test("phone-aaaa") is False
+    assert service.send_test("phone-aaaa") == "no_secret"
