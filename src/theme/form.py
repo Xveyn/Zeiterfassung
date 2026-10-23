@@ -22,7 +22,7 @@ from src.theme.palette import BG, CELL_BG, SEPARATOR, TEXT, TEXT_DISABLED, TEXT_
 from src.theme.fonts import FONT, FONT_BOLD, FONT_SMALL, current_scale, px
 from src.theme.widgets import _LabelButton, _ToggleColors, secondary_button
 from src.theme.form_logic import (
-    WHEEL_STEP, body_height, enabled_states, hint_wrap, is_descendant,
+    WHEEL_STEP, body_height, enabled_states, hint_wrap, in_popdown, is_descendant,
     pane_width, scroll_target, scroll_units, wheel_route,
 )
 
@@ -524,6 +524,20 @@ class Form:
         if units:
             self._canvas.yview_scroll(units, "units")
 
+    def _popdown_open(self):
+        """Ob gerade die Auswahlliste einer Combobox offen ist (sie hält den Tk-Grab).
+
+        Solange sie offen ist, scrollt das Formular nicht: die Liste ist ein eigenes
+        Fenster, das nicht mitwandert, und das Feld rutschte unter ihr weg
+        (Erinnerungen, „Fällt er aufs Wochenende"). Windows liefert das Rad an das
+        Fenster unter dem Zeiger — auch an Feld und Seite neben der Liste —, der Pfad
+        des Ereignisses allein reicht daher nicht."""
+        try:
+            return in_popdown(self._canvas.tk.eval("grab current"))
+        except tk.TclError:
+            log.debug("Grab nicht abfragbar", exc_info=True)
+            return False
+
     def _on_wheel(self, event):
         canvas = self._canvas
         widget = event.widget
@@ -533,6 +547,8 @@ class Form:
             return None
         try:
             if not canvas.winfo_exists():
+                return None
+            if in_popdown(str(widget)) or self._popdown_open():
                 return None
             inside = is_descendant(str(widget), str(canvas))
             cls = widget.winfo_class()
@@ -569,7 +585,8 @@ class Form:
             canvas.yview_moveto(target)
 
     def _on_blocked_wheel(self, event):
-        self._scroll(event)
+        if not self._popdown_open():
+            self._scroll(event)
         return "break"
 
 
