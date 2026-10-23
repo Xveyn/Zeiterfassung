@@ -513,6 +513,13 @@ Augenhöhe mit den anderen beiden Plattformen.
   Zusatzweg). Was erst ein Test mit echtem Gerät klärt — Berechtigung für Zugriffe im
   lokalen Netz, Verhalten bei abgelehnter Berechtigung, QR-Scan in der Web-App, Installation
   als App —, steht in der Prüfliste vor dem Release (#267).
+- **QR-Scan in der Web-App ohne `BarcodeDetector`.** Wo der Browser keinen Barcode-Leser hat
+  (Firefox, Safari), liest ein eigener Decoder (`pwa/qr-decode.js`, #326) Bilder aus dem Video.
+  Er ist nur mit gerenderten Bildern geprüft, **nicht mit echten Kameras**: bei Moiré vom
+  Abfilmen eines Bildschirms, Reflexen und Modulen unter etwa 4 Kamerapixeln kann der Scan
+  scheitern. Dann hilft näher heran, anderer Winkel, der Desktop-Dialog (größerer QR-Code)
+  oder das Abtippen von Adresse und Code. Dass der Scan geht, heißt nicht, dass das Handy den
+  Desktop danach erreicht — das entscheidet der Browser (iOS: s. o.).
 - **Lokaler Speicher kann verloren gehen.** Löscht du die Website-Daten oder räumt Android
   bei Platzmangel auf, sind nicht übertragene Einträge weg. Die Web-App bittet um
   dauerhaften Speicher, zeigt einen Zähler „n Änderungen nicht übertragen" und warnt, wenn
