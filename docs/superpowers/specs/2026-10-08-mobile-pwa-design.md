@@ -96,7 +96,7 @@ Request:
    `{"protocol": 1, "server_time", "last_pull_at": "<server_time>", "excluded": false, "window_days": 90, "entries": {...}, "conflicts": [...], "categories": [...], "token": "<erneuert>", "expires_at"}`.
    `entries` sind die Tage des Fensters `[heute − 90, heute]` samt Tombstones (heute ist das lokale Datum des Desktops) **und** alle vom Handy geschickten Tage (das Merge-Ergebnis, auch außerhalb des Fensters). `conflicts`: offene Einträge-Konflikte im Fenster als `{"id", "date", "versions": [{"device", "name", "modified_at", "slots"}]}`. `excluded: true` heißt: das Handy war länger offline als die letzte Kompaktierung.
 
-**Wiederholbar:** derselbe Request liefert dasselbe Ergebnis (Merge ist idempotent). Das erneuerte Token ersetzt das alte; das alte gilt weiter, bis die nächste Erneuerung es ersetzt, höchstens bis zum neuen Ablauf (verlorene Antwort; ab #253, vorher 10 Minuten).
+**Wiederholbar:** derselbe Request liefert dasselbe Ergebnis (Merge ist idempotent). Das erneuerte Token ersetzt das alte; das alte gilt weiter, bis die nächste Erneuerung es ersetzt, höchstens 7 Tage (verlorene Antwort; ab #253, vorher 10 Minuten).
 
 ### Statuscodes
 

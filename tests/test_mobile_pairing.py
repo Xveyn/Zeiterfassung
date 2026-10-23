@@ -279,24 +279,35 @@ def test_renew_issues_a_new_token_and_extends_the_expiry():
     assert record["token_hash"] == mp.hash_token(token)                    # das Original bleibt unverändert
 
 
-def test_the_previous_token_works_until_the_new_one_replaces_it_not_for_ten_minutes():
+def test_the_previous_token_works_for_hours_not_just_ten_minutes():
     # Die Antwort mit T2 geht verloren; der nächste Abgleich kommt erst Stunden später (#253).
     record, token = mp.issue_device("device-0001", "Pixel", NOW)
     renewed, _ = mp.renew(record, NOW)
 
-    hours_later = mp.authenticate([renewed], token, "2026-10-08T18:00:00Z")
-    days_later = mp.authenticate([renewed], token, "2026-11-06T12:00:00Z")
+    outcome = mp.authenticate([renewed], token, "2026-10-08T23:59:00Z")
+    next_day = mp.authenticate([renewed], token, "2026-10-09T12:00:00Z")
 
-    assert hours_later.ok and hours_later.via_previous
-    assert days_later.ok and days_later.via_previous
+    assert outcome.ok and outcome.via_previous and next_day.ok
 
 
-def test_the_previous_token_ends_with_the_expiry_of_the_renewed_one():
+def test_the_previous_token_ends_after_the_grace_of_seven_days():
     record, token = mp.issue_device("device-0001", "Pixel", NOW)
-    renewed, _ = mp.renew(record, NOW)                                     # läuft 2026-11-07T12:00:00Z ab
+    renewed, _ = mp.renew(record, NOW)
 
-    assert mp.authenticate([renewed], token, "2026-11-07T11:59:59Z").ok
-    assert mp.authenticate([renewed], token, "2026-11-07T12:00:00Z").status == "expired"
+    assert renewed["previous_valid_until"] == "2026-10-15T12:00:00Z"
+    assert mp.authenticate([renewed], token, "2026-10-15T12:00:00Z").ok
+    assert mp.authenticate([renewed], token, "2026-10-15T12:00:01Z").status == "unauthorized"
+
+
+def test_renewing_via_the_previous_token_does_not_extend_its_deadline():
+    record, t1 = mp.issue_device("device-0001", "Pixel", NOW)
+    second, _t2 = mp.renew(record, NOW)
+    outcome = mp.authenticate([second], t1, "2026-10-14T12:00:00Z")
+
+    third, _t3 = mp.renew(outcome.record, "2026-10-14T12:00:00Z", keep_previous=outcome.via_previous)
+
+    assert third["previous_valid_until"] == "2026-10-15T12:00:00Z"          # die erste Frist, nicht +7 Tage
+    assert mp.authenticate([third], t1, "2026-10-15T12:00:01Z").status == "unauthorized"
 
 
 def test_a_stored_ten_minute_grace_of_an_older_record_is_still_honoured():

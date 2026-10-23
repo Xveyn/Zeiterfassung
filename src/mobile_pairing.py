@@ -15,7 +15,7 @@ Zwei Dinge liegen hier:
 - **Das Gerätetoken** (`issue_device`, `renew`, `authenticate`): 256 Bit Zufall,
   im Datensatz nur als SHA-256-Hash. 30 Tage ab der letzten Nutzung (Sliding
   Expiration); jede Erneuerung lässt das alte Token weiter gelten, bis die nächste
-  Erneuerung es ersetzt (höchstens bis zum Ablauf), damit eine verlorene Antwort das
+  Erneuerung es ersetzt, höchstens 7 Tage (`PREVIOUS_TOKEN_GRACE`), damit eine verlorene Antwort das
   Handy nicht aussperrt — auch wenn der nächste Abgleich erst Stunden später kommt.
 
 Geräte-ID, Name und Token kommen vom Handy — Fremddaten.
@@ -141,6 +141,7 @@ class PairingSession:
 # --- Gerätetoken und -datensätze ---------------------------------------------------------------------
 
 TOKEN_LIFETIME = datetime.timedelta(days=30)
+PREVIOUS_TOKEN_GRACE = datetime.timedelta(days=7)
 _TIME_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
 _TIME_RE = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z")
 _MAX_TOKEN_LENGTH = 512
@@ -232,8 +233,8 @@ def with_seq(record: Mapping[str, Any], seq: int) -> Record:
 def renew(record: Mapping[str, Any], now: str, *,
           keep_previous: bool = False) -> tuple[Record, str]:
     """Erneuert das Token (Sliding Expiration): neues Token, Ablauf 30 Tage ab `now`.
-    Das bisherige gilt weiter, bis die nächste Erneuerung es ersetzt, höchstens bis zum
-    neuen Ablauf (#253): kommt der nächste Abgleich erst Stunden nach einer verlorenen
+    Das bisherige gilt weiter, bis die nächste Erneuerung es ersetzt, höchstens
+    `PREVIOUS_TOKEN_GRACE` (#253): kommt der nächste Abgleich erst Stunden nach einer verlorenen
     Antwort, darf er nicht an einer Frist von Minuten scheitern. Kam die Anfrage selbst mit dem **alten**
     Token (`keep_previous`: die Antwort mit dem neuen ging verloren), bleibt dieses
     alte als „vorheriges" erhalten, statt vom noch nie übergebenen aktuellen
@@ -244,7 +245,10 @@ def renew(record: Mapping[str, Any], now: str, *,
         updated["previous_token_hash"] = str(record["token_hash"])
     updated["token_hash"] = hash_token(token)
     updated["expires_at"] = shift(now, TOKEN_LIFETIME)
-    updated["previous_valid_until"] = updated["expires_at"]
+    if not (keep_previous and record.get("previous_valid_until")):
+        # Mit `keep_previous` bleibt die erste Frist stehen: das alte Token erneuert sich nicht
+        # selbst über die Grenze hinaus.
+        updated["previous_valid_until"] = min(shift(now, PREVIOUS_TOKEN_GRACE), updated["expires_at"])
     updated["last_seen"] = now
     return updated, token
 

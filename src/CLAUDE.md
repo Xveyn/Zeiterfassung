@@ -336,7 +336,7 @@ Zeitraum und welche Kategorien der Bericht gefiltert ist.
   einlösbar, **ohne Sperre** (eine Sperre wäre nur ein DoS-Hebel für Fremde im WLAN), nur im Hauptspeicher; `try_open` **benutzt** den Code
   als Schlüsselmaterial, statt ihn zu vergleichen — er steht nie im Netz) und das Gerätetoken (`issue_device`/`renew`/`revoke`/
   `authenticate`: 30 Tage ab der letzten Nutzung, ein erneuertes Token lässt das alte weiter gelten, bis
-  die nächste Erneuerung es ersetzt (höchstens bis zum Ablauf, #253 — eine verlorene Antwort sperrt
+  die nächste Erneuerung es ersetzt (höchstens 7 Tage ab der ersten Erneuerung, #253 — eine verlorene Antwort sperrt
   das Handy auch dann nicht aus, wenn der nächste Abgleich erst Stunden später kommt); ein widerrufener Datensatz bleibt erhalten, damit die Antwort `token_revoked` lauten
   kann; `pair_count` zählt jedes Koppeln hoch, nie einen Abgleich — daran erkennt der Koppel-Dialog ein
   Ersetzen). Geräte-ID, Name und Token kommen vom Handy — Fremddaten (`normalize_device_id`,
