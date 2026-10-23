@@ -413,6 +413,11 @@ einen Koppel-Link mit frischem Code — auch für Browser-Tests mit Playwright.
 Die PWA lehnt Loopback-Adressen ab; der Server bindet deshalb an die
 LAN-Adresse (`--address` nur mit einer privaten Adresse).
 
+Der Dev-Server stempelt `__BUILD__` in `sw-core.js` beim Ausliefern selbst
+(`dev-<Hash>` aus Pfad, Größe und mtime der App-Dateien, #272). Eine Änderung
+unter `pwa/` löst damit den normalen Update-Weg aus: der neue Worker wartet,
+„Neu laden“ übernimmt ihn — ohne Worker abzumelden oder Caches zu leeren.
+
 `--reservations` schaltet den Reservierungs-Abgleich ein (wie „Reservierungen verwenden“
 am Desktop); ohne den Schalter fehlt das Feld `reservations` in der Antwort.
 

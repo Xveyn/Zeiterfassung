@@ -32,6 +32,26 @@ def test_the_static_server_serves_the_pwa_with_module_friendly_types(devserver, 
         assert headers["Cache-Control"] == "no-store"
 
 
+def test_the_dev_worker_gets_a_build_id_instead_of_the_placeholder(devserver, tmp_path):
+    with devserver.running(tmp_path, web_port=0, api_port=0, address="127.0.0.1") as dev:
+        body = get(f"http://127.0.0.1:{dev.web_port}/sw-core.js")[2].decode()
+        assert "__BUILD__" not in body
+        assert f"BUILD = '{devserver.build_id(devserver.PWA)}'" in body
+        assert devserver.build_id(devserver.PWA).startswith("dev-")
+
+
+def test_the_build_id_changes_with_the_files_and_only_then(devserver, tmp_path):
+    (tmp_path / "app.js").write_text("a")
+    (tmp_path / "test").mkdir()
+    (tmp_path / "test" / "x.js").write_text("t")
+    first = devserver.build_id(tmp_path)
+    assert devserver.build_id(tmp_path) == first
+    (tmp_path / "test" / "x.js").write_text("tt")           # Tests gehören nicht zur App
+    assert devserver.build_id(tmp_path) == first
+    (tmp_path / "app.js").write_text("bb")
+    assert devserver.build_id(tmp_path) != first
+
+
 def test_the_static_server_does_not_leak_outside_the_pwa_folder(devserver, tmp_path):
     with devserver.running(tmp_path, web_port=0, api_port=0, address="127.0.0.1") as dev:
         for path in ("/../src/main.py", "/%2e%2e/src/main.py", "/test/../../README.md"):

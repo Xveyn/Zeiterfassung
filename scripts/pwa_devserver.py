@@ -19,6 +19,7 @@ import argparse
 import contextlib
 import datetime
 import functools
+import hashlib
 import http.server
 import pathlib
 import sys
@@ -41,10 +42,35 @@ from src.settings import Settings  # noqa: E402
 from src.storage import Storage  # noqa: E402
 
 
+def build_id(directory: pathlib.Path) -> str:
+    """Kennung des Dev-Stands: Hash aus Pfad, Größe und mtime aller App-Dateien (ohne `test/`).
+    Der Pages-Workflow stempelt `__BUILD__` nur beim Deploy; im Dev bliebe der Cache-Name sonst
+    ewig gleich und der Service Worker lieferte veraltete Dateien (#272)."""
+    digest = hashlib.sha256()
+    for path in sorted(directory.rglob("*")):
+        relative = path.relative_to(directory)
+        if not path.is_file() or relative.parts[0] in ("test", "node_modules"):
+            continue
+        stat = path.stat()
+        digest.update(f"{relative.as_posix()}:{stat.st_size}:{stat.st_mtime_ns}\n".encode())
+    return f"dev-{digest.hexdigest()[:10]}"
+
+
 class _Handler(http.server.SimpleHTTPRequestHandler):
     extensions_map = {**http.server.SimpleHTTPRequestHandler.extensions_map,
                       ".webmanifest": "application/manifest+json", ".js": "text/javascript",
                       ".mjs": "text/javascript", ".json": "application/json", ".png": "image/png"}
+
+    def do_GET(self) -> None:
+        if self.path.split("?", 1)[0] != "/sw-core.js":
+            return super().do_GET()
+        body = (PWA / "sw-core.js").read_text(encoding="utf-8").replace(
+            "__BUILD__", build_id(PWA)).encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", "text/javascript")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
 
     def end_headers(self) -> None:
         self.send_header("Cache-Control", "no-store")            # Dev: immer frisch
