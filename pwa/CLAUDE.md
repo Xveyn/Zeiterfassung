@@ -47,7 +47,7 @@ ES-Module flach im Ordner:
 - `reminders-plan.js`, `push-blob.js`, `push-message.js`, `relay-client.js`, `push-policy.js` —
   Benachrichtigungen (#331), DOM-frei und getestet, s. „Benachrichtigungen“.
 - `qr-decode.js` — QR-Decoder in reinem JavaScript (#326), DOM-frei: Graubild rein, Text oder
-  `null` raus (s. „QR-Decoder“). Noch nicht in `scanner.js` eingebunden.
+  `null` raus (s. „QR-Decoder“). `scanner.js` nutzt ihn, wo der `BarcodeDetector` fehlt.
 - `dom.js`, `views.js`, `scanner.js`, `app.js` — die DOM-Schicht. Sie baut
   Elemente **nur** über `createElement` und Textknoten (ein Test verbietet
   `innerHTML` & Co.; Namen, Kategorien und Fehlertexte sind Fremddaten).
@@ -316,6 +316,14 @@ ISO/IEC 18004, ZXing und jsQR (beide Apache-2.0) und dem Thonky-Tutorial.
   der Decoder probiert deshalb die nächsten drei Kantenlängen, und Format- und Fehlerkorrektur
   entscheiden — statt der mod-4-Regel allein. Abgetastet wird das binarisierte Bild (Mehrheit aus
   fünf Punkten je Modul), nicht das Graubild.
+- **Einbindung (`scanner.js`).** `BarcodeDetector` bleibt der bevorzugte Weg, **wenn** er QR-Codes liest
+  (`getSupportedFormats`) und sich bauen lässt; sonst liest `canvas.getImageData` Bilder aus dem Video
+  (auf höchstens 640 px Kantenlänge verkleinert, nach jedem Bild 200 ms Pause) und `decodeQr` dekodiert
+  sie auf dem Hauptthread. `canScan` ist wahr, sobald Kamera und Canvas da sind. Das Ergebnis läuft
+  weiter durch `parseQrText` (nur private IPv4). Das Video wird vor `play()` per Eigenschaft stumm
+  gesetzt und trägt `playsinline`: das Attribut `muted` wirkt nur beim Parsen, Safari braucht beides.
+  Die Umgebung (`navigator`, `document`, `BarcodeDetector`, Wartezeit) kommt als Parameter herein;
+  `test/scanner.test.js` spielt damit eine Kamera mit gerenderten Bildern.
 - **Alle Schleifen sind beschränkt** (Kandidaten, Dreiergruppen, Dimensionen): die Eingabe ist ein
   Kamerabild. Fehlschlag heißt `null`, der Aufrufer nimmt das nächste Videobild.
 - **Tests.** `test/qr-decode.test.js` (Reed-Solomon mit eigenem Encoder und dem Thonky-Vektor,
