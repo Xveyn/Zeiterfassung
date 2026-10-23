@@ -14,8 +14,9 @@ Zwei Dinge liegen hier:
   und geht nie über das Netz: er verschlüsselt die Kopplung (`mobile_crypto`).
 - **Das Gerätetoken** (`issue_device`, `renew`, `authenticate`): 256 Bit Zufall,
   im Datensatz nur als SHA-256-Hash. 30 Tage ab der letzten Nutzung (Sliding
-  Expiration); jede Erneuerung lässt das alte Token noch 10 Minuten gelten, damit
-  eine verlorene Antwort das Handy nicht aussperrt.
+  Expiration); jede Erneuerung lässt das alte Token weiter gelten, bis die nächste
+  Erneuerung es ersetzt (höchstens bis zum Ablauf), damit eine verlorene Antwort das
+  Handy nicht aussperrt — auch wenn der nächste Abgleich erst Stunden später kommt.
 
 Geräte-ID, Name und Token kommen vom Handy — Fremddaten.
 """
@@ -29,6 +30,7 @@ import re
 import secrets
 import threading
 import time
+import unicodedata
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from typing import Any, TypeVar
@@ -139,8 +141,8 @@ class PairingSession:
 # --- Gerätetoken und -datensätze ---------------------------------------------------------------------
 
 TOKEN_LIFETIME = datetime.timedelta(days=30)
-PREVIOUS_TOKEN_GRACE = datetime.timedelta(minutes=10)
 _TIME_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
+_TIME_RE = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z")
 _MAX_TOKEN_LENGTH = 512
 MAX_NAME_LENGTH = 60
 DEFAULT_DEVICE_NAME = "Handy"
@@ -173,7 +175,10 @@ def clean_device_name(raw: object) -> str:
     `MAX_NAME_LENGTH` Zeichen; leer oder kein Text wird `Handy`."""
     if not isinstance(raw, str):
         return DEFAULT_DEVICE_NAME
-    name = "".join(ch for ch in raw if ch.isprintable()).strip()[:MAX_NAME_LENGTH].strip()
+    # Leerzeichen-Varianten (NBSP, U+3000 …) bleiben Leerzeichen, statt zu verschwinden; Steuerzeichen
+    # (auch Zeilenumbruch und Tab) fallen danach über `isprintable` weg.
+    spaced = "".join(" " if unicodedata.category(ch) == "Zs" else ch for ch in raw)
+    name = "".join(ch for ch in spaced if ch.isprintable()).strip()[:MAX_NAME_LENGTH].strip()
     return name or DEFAULT_DEVICE_NAME
 
 
@@ -227,7 +232,9 @@ def with_seq(record: Mapping[str, Any], seq: int) -> Record:
 def renew(record: Mapping[str, Any], now: str, *,
           keep_previous: bool = False) -> tuple[Record, str]:
     """Erneuert das Token (Sliding Expiration): neues Token, Ablauf 30 Tage ab `now`.
-    Das bisherige gilt noch 10 Minuten. Kam die Anfrage selbst mit dem **alten**
+    Das bisherige gilt weiter, bis die nächste Erneuerung es ersetzt, höchstens bis zum
+    neuen Ablauf (#253): kommt der nächste Abgleich erst Stunden nach einer verlorenen
+    Antwort, darf er nicht an einer Frist von Minuten scheitern. Kam die Anfrage selbst mit dem **alten**
     Token (`keep_previous`: die Antwort mit dem neuen ging verloren), bleibt dieses
     alte als „vorheriges" erhalten, statt vom noch nie übergebenen aktuellen
     verdrängt zu werden — sonst sperrte ein zweiter Verlust das Handy aus."""
@@ -235,9 +242,9 @@ def renew(record: Mapping[str, Any], now: str, *,
     updated: Record = dict(record)
     if not keep_previous:
         updated["previous_token_hash"] = str(record["token_hash"])
-    updated["previous_valid_until"] = shift(now, PREVIOUS_TOKEN_GRACE)
     updated["token_hash"] = hash_token(token)
     updated["expires_at"] = shift(now, TOKEN_LIFETIME)
+    updated["previous_valid_until"] = updated["expires_at"]
     updated["last_seen"] = now
     return updated, token
 
@@ -265,8 +272,12 @@ class AuthOutcome:
 
 def authenticate(records: Iterable[Mapping[str, Any]], token: object, now: str) -> AuthOutcome:
     """Ordnet ein Token einem Gerät zu. Verglichen wird gegen alle Datensätze (kein
-    früher Abbruch), konstantzeitig je Hash."""
+    früher Abbruch), konstantzeitig je Hash. Ohne gültige Uhrzeit (`now` im Format
+    `YYYY-MM-DDTHH:MM:SSZ`) gilt kein Token: der String-Vergleich der Fristen ließe sonst
+    mit `""` jedes abgelaufene Token durch."""
     unknown = AuthOutcome("unauthorized")
+    if not _TIME_RE.fullmatch(now):
+        return unknown
     if not isinstance(token, str) or not token or len(token) > _MAX_TOKEN_LENGTH:
         return unknown
     candidate = hash_token(token).encode("ascii")

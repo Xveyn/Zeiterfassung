@@ -476,16 +476,14 @@ def test_a_wrong_protocol_names_the_protocol_the_desktop_speaks(env):
         assert response.body["error"]["supported_protocol"] == mc.PROTOCOL
 
 
-def test_the_old_token_works_for_ten_minutes_after_the_renewal_and_the_new_one_always(env):
+def test_the_old_token_works_hours_after_the_renewal_and_the_new_one_always(env):
     _record, old = add_device(env)
     new = sync(env, old).body["token"]
 
-    env.clock["now"] = "2026-10-08T12:10:00Z"
-    inside = principal_for(env, old)
-    env.clock["now"] = "2026-10-08T12:10:01Z"
+    env.clock["now"] = "2026-10-08T18:00:00Z"                # Stunden später, nicht nur Minuten (#253)
 
-    assert isinstance(inside, MobilePrincipal) and inside.via_previous is True
-    assert principal_for(env, old) is None
+    later = principal_for(env, old)
+    assert isinstance(later, MobilePrincipal) and later.via_previous is True
     assert isinstance(principal_for(env, new), MobilePrincipal)
 
 
