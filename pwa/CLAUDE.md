@@ -46,6 +46,8 @@ ES-Module flach im Ordner:
   Anzeige- und Entscheidungslogik, DOM-frei und getestet.
 - `reminders-plan.js`, `push-blob.js`, `push-message.js`, `relay-client.js`, `push-policy.js` —
   Benachrichtigungen (#331), DOM-frei und getestet, s. „Benachrichtigungen“.
+- `qr-decode.js` — QR-Decoder in reinem JavaScript (#326), DOM-frei: Graubild rein, Text oder
+  `null` raus (s. „QR-Decoder“). Noch nicht in `scanner.js` eingebunden.
 - `dom.js`, `views.js`, `scanner.js`, `app.js` — die DOM-Schicht. Sie baut
   Elemente **nur** über `createElement` und Textknoten (ein Test verbietet
   `innerHTML` & Co.; Namen, Kategorien und Fehlertexte sind Fremddaten).
@@ -291,6 +293,42 @@ der alte Plan am Relay stehen. Vertrag: `test/fixtures/reminders-contract.json` 
 
 **Berechtigung ist pro Gerät** und braucht eine Nutzergeste (Knopf „Benachrichtigungen erlauben“ im
 Reiter „Verbindung“). Ausschalten meldet das Abo ab und löscht das Objekt am Relay.
+
+## QR-Decoder (#326)
+
+`qr-decode.js` liest den Koppel-QR-Code dort, wo es keinen `BarcodeDetector` gibt (Firefox,
+Safari/iOS). Aus der Spezifikation geschrieben, ohne Fremdcode; Algorithmen und Konstanten nach
+ISO/IEC 18004, ZXing und jsQR (beide Apache-2.0) und dem Thonky-Tutorial.
+
+- **Umfang.** QR Model 2, Versionen 1–10, alle EC-Stufen und Masken, beliebige Drehung und
+  Perspektive. Nur der **Byte-Modus**: ECI, Kanji, Numerisch, Alphanumerisch und Structured Append
+  liefern `null`. Der Koppel-Link (93 Zeichen) ist bei EC `M` Version 6 (41×41 Module).
+- **Schnittstelle.** `decodeQr(luminance, width, height)` → Text oder `null`, wirft nie.
+  `decodeMatrix(matrix)` liest eine bereits abgetastete Matrix. Die Tabellen (`EC_TABLE`,
+  `ALIGNMENT_CENTERS`) sind gegen `segno` geprüft und nicht von Hand zu ändern.
+- **Ablauf.** Hybrid-Binarisierung (Blöcke 8×8, Mittel über 5×5, Kontrastgrenze 24) → Finder-Suche
+  (1:1:3:1:1, quer bestätigt) → Ausrichtung per Kreuzprodukt → Dimension aus den Finder-Abständen,
+  gemessen **entlang der Symbolachse** (die Läufe der Zeilensuche sind bei Drehung bis zu √2-mal
+  zu lang) → Alignment-Muster (Fenster 4/8/16 Modulgrößen, sonst Parallelogramm) → Perspektive →
+  Format-/Versionsinformation (BCH) → Entmaskieren → Reed-Solomon je Block (Euklid, Chien,
+  Forney, danach Syndrome erneut geprüft) → Segmente.
+- **Bewusst anders als ZXing.** Die Dimension aus den Finder-Abständen ist auf ±1–2 Module genau;
+  der Decoder probiert deshalb die nächsten drei Kantenlängen, und Format- und Fehlerkorrektur
+  entscheiden — statt der mod-4-Regel allein. Abgetastet wird das binarisierte Bild (Mehrheit aus
+  fünf Punkten je Modul), nicht das Graubild.
+- **Alle Schleifen sind beschränkt** (Kandidaten, Dreiergruppen, Dimensionen): die Eingabe ist ein
+  Kamerabild. Fehlschlag heißt `null`, der Aufrufer nimmt das nächste Videobild.
+- **Tests.** `test/qr-decode.test.js` (Reed-Solomon mit eigenem Encoder und dem Thonky-Vektor,
+  alle Fixture-Matrizen, Format-/Versionsinfo) und `test/qr-image.test.js` (gerenderte und
+  verschlechterte Bilder; der Renderer `test/qr-render.js` ist ein Testhelfer, kein Test). Ground
+  Truth sind Matrizen aus `segno` in `test/fixtures/qr-matrices.json`; erzeugt von
+  `scripts/qr_fixtures.py`, gegen `src.qr.qr_matrix` und die installierte `segno`-Version gehalten
+  von `tests/test_qr_fixtures.py` (nach einem `segno`-Bump die Datei neu erzeugen).
+- **Gemessene Grenze** (Renderer, zufällige Mischung aus Drehung, Perspektive, Rauschen,
+  Helligkeitsverlauf, Unschärfe; Koppel-Link): ab 5 Pixeln je Modul praktisch immer, bei 3–4 Pixeln
+  mit Unschärfe und Rauschen gelingt etwa jedes vierte Bild nicht. Version 1 hat kein
+  Alignment-Muster und verträgt starke Perspektive schlechter. Echte Kameraaufnahmen sind nicht
+  belegt — das klärt der Gerätetest (#267).
 
 ## Lesefenster (#250)
 

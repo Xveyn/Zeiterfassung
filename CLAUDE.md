@@ -1605,6 +1605,10 @@ seinen Pfad, nicht per Import.
   `coverage.json` (`coverage`-Job in `test.yml`; s. „Coverage-Untergrenze: nur
   Tk-frei"). Reine stdlib, braucht keinen Root-Bootstrap: es importiert nichts
   aus `src/`, sondern liest die Quelltexte als Text.
+- `scripts/qr_fixtures.py` — erzeugt `pwa/test/fixtures/qr-matrices.json`, die Referenz-Matrizen
+  für den QR-Decoder der Handy-PWA (#326), mit `segno` (Versionen 1–10, alle EC-Stufen und
+  Masken, der Koppel-Link, nicht unterstützte Modi). Deterministisch; `tests/test_qr_fixtures.py`
+  hält die Datei gegen `src.qr.qr_matrix` und gegen das Skript.
 - `scripts/webhook_testserver.py` — lokaler Test-Empfänger für den
   Webhook-Versand: zeigt Content-Type, Auth-Header, HMAC-Prüfung und den Body
   (JSON/PDF/multipart aufgetrennt), und kann Fehlerfälle simulieren
