@@ -26,10 +26,16 @@ from src.oauth_utils import (
 from src.sync_runtime import run_compaction_blocking
 from src.theme import (
     ACCENT, BG, FONT, FONT_SMALL, STATUS_OK, STATUS_WARN, TEXT_MUTED, Form,
-    dark_combo, dark_entry, secondary_button, themed_askyesno, themed_showerror,
+    dark_combo, dark_entry, px, secondary_button, themed_askyesno, themed_showerror,
     themed_showinfo, themed_showwarning,
 )
 from src.time_utils import format_date, local_date_of_iso
+
+# Umbruchbreite der Absender-Adresse (#232). Der Dialog nagelt seine Breite beim Öffnen
+# fest (`pin_notebook_width`), und neben dem Label sitzt der Knopf „Aktualisieren“: eine
+# Adresse ab etwa 45 Zeichen schöbe ihn über den Rand, wo er nicht mehr erreichbar ist
+# (gemessen im echten Dialog, 100 % wie 200 %). Bis etwa 42 Zeichen bleibt es eine Zeile.
+_SENDER_WRAP_PX = 260
 
 # Zeichen + Farbe je Zustand aus mail.scope_summary — dieselbe Sprache
 # wie die credentials.json-Zeile darüber (✓ grün / ✗ rot).
@@ -147,6 +153,7 @@ class GoogleTab:
             sender_row,
             text=settings.get("sender_email") or "(noch nicht ermittelt)",
             font=FONT, bg=BG, fg=TEXT_MUTED,
+            wraplength=px(_SENDER_WRAP_PX), justify="left",
         )
         self._sender_label.pack(side=tk.LEFT)
         self._sender_btn = secondary_button(
