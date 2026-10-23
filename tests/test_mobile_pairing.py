@@ -191,6 +191,7 @@ def test_an_implausible_device_id_is_rejected(raw):
 def test_a_device_name_is_cleaned():
     assert mp.clean_device_name("  Pixel von Sven ") == "Pixel von Sven"
     assert mp.clean_device_name("Pi\nxel\x00\x07") == "Pixel"
+    assert mp.clean_device_name("Pixel\u00a0von\u3000Sven") == "Pixel von Sven"   # Leerraum bleibt Leerraum
     assert mp.clean_device_name("x" * 500) == "x" * mp.MAX_NAME_LENGTH
     for junk in (None, 5, "", "   ", "\n\x00"):
         assert mp.clean_device_name(junk) == mp.DEFAULT_DEVICE_NAME
@@ -278,15 +279,64 @@ def test_renew_issues_a_new_token_and_extends_the_expiry():
     assert record["token_hash"] == mp.hash_token(token)                    # das Original bleibt unverändert
 
 
-def test_the_previous_token_works_for_ten_minutes_after_a_renewal():
+def test_the_previous_token_works_for_hours_not_just_ten_minutes():
+    # Die Antwort mit T2 geht verloren; der nächste Abgleich kommt erst Stunden später (#253).
     record, token = mp.issue_device("device-0001", "Pixel", NOW)
     renewed, _ = mp.renew(record, NOW)
 
-    inside = mp.authenticate([renewed], token, "2026-10-08T12:10:00Z")
-    outside = mp.authenticate([renewed], token, "2026-10-08T12:10:01Z")
+    outcome = mp.authenticate([renewed], token, "2026-10-08T23:59:00Z")
+    next_day = mp.authenticate([renewed], token, "2026-10-09T12:00:00Z")
 
-    assert inside.ok and inside.via_previous
-    assert outside.status == "unauthorized"
+    assert outcome.ok and outcome.via_previous and next_day.ok
+
+
+def test_the_previous_token_ends_after_the_grace_of_seven_days():
+    record, token = mp.issue_device("device-0001", "Pixel", NOW)
+    renewed, _ = mp.renew(record, NOW)
+
+    assert renewed["previous_valid_until"] == "2026-10-15T12:00:00Z"
+    assert mp.authenticate([renewed], token, "2026-10-15T12:00:00Z").ok
+    assert mp.authenticate([renewed], token, "2026-10-15T12:00:01Z").status == "unauthorized"
+
+
+def test_renewing_via_the_previous_token_does_not_extend_its_deadline():
+    record, t1 = mp.issue_device("device-0001", "Pixel", NOW)
+    second, _t2 = mp.renew(record, NOW)
+    outcome = mp.authenticate([second], t1, "2026-10-14T12:00:00Z")
+
+    third, _t3 = mp.renew(outcome.record, "2026-10-14T12:00:00Z", keep_previous=outcome.via_previous)
+
+    assert third["previous_valid_until"] == "2026-10-15T12:00:00Z"          # die erste Frist, nicht +7 Tage
+    assert mp.authenticate([third], t1, "2026-10-15T12:00:01Z").status == "unauthorized"
+
+
+def test_a_stored_ten_minute_grace_of_an_older_record_is_still_honoured():
+    record, token = mp.issue_device("device-0001", "Pixel", NOW)
+    renewed, _ = mp.renew(record, NOW)
+    renewed["previous_valid_until"] = "2026-10-08T12:10:00Z"                # Datei von vor #253
+
+    assert mp.authenticate([renewed], token, "2026-10-08T12:10:00Z").ok
+    assert mp.authenticate([renewed], token, "2026-10-08T12:10:01Z").status == "unauthorized"
+
+
+@pytest.mark.parametrize("now", ["", "gestern", "2026-10-08 12:00:00", "2026-10-08T12:00:00"])
+def test_authenticate_refuses_everything_without_a_valid_clock_reading(now):
+    record, token = mp.issue_device("device-0001", "Pixel", NOW)
+    renewed, _ = mp.renew(record, NOW)
+
+    assert mp.authenticate([renewed], token, now).status == "unauthorized"
+    assert mp.authenticate([record], token, now).status == "unauthorized"
+
+
+def test_an_overlong_token_is_refused_before_it_is_hashed(monkeypatch):
+    record, _ = mp.issue_device("device-0001", "Pixel", NOW)
+    hashed = []
+    monkeypatch.setattr(mp, "hash_token", lambda t: hashed.append(t) or "0" * 64)
+
+    assert mp.authenticate([record], "a" * 513, NOW).status == "unauthorized"
+    assert hashed == []
+    mp.authenticate([record], "a" * 512, NOW)
+    assert len(hashed) == 1
 
 
 def test_a_lost_answer_twice_does_not_lock_the_phone_out():

@@ -24,7 +24,9 @@ import re
 import threading
 from typing import Any
 
-from src.json_store import atomic_write_json, load_json_or_quarantine, quarantine_corrupt
+from src.json_store import (
+    atomic_write_json, backup_corrupt, load_json_or_quarantine, quarantine_corrupt,
+)
 from src.mobile_pairing import Record, shift
 
 log = logging.getLogger(__name__)
@@ -116,8 +118,15 @@ class MobileStore:
         if data is None:
             return
         if not isinstance(data, dict):
-            quarantine_corrupt(self.filepath,
-                               f"Top-Level ist {type(data).__name__}, erwartet ein Objekt")
+            try:
+                quarantine_corrupt(self.filepath,
+                                   f"Top-Level ist {type(data).__name__}, erwartet ein Objekt")
+            except OSError:
+                # Wie oben: ohne Quarantäne nicht überschreiben, lieber ohne Geräte laufen.
+                self._readonly = True
+                log.warning("mobile_devices.json: Datei liess sich nicht in Quarantäne "
+                            "verschieben — starte ohne gekoppelte Geräte, die Datei wird "
+                            "nicht überschrieben", exc_info=True)
             return
         version = data.get("schema_version")
         if isinstance(version, int) and not isinstance(version, bool) and version > SCHEMA_VERSION:
@@ -130,6 +139,7 @@ class MobileStore:
         if not isinstance(raw, list):
             return
         seen: set[str] = set()
+        skipped = False
         for record in raw:
             if _is_wellformed(record) and record["id"] not in seen:
                 # Doppelte IDs behielten sonst zwei Token, von denen ein Widerruf nur
@@ -138,10 +148,25 @@ class MobileStore:
                 record.setdefault("last_seq", 0)
                 self._devices.append(record)
             else:
+                skipped = True
                 # Nie den Datensatz loggen (er trägt Token-Hashes), nur id und Name.
                 log.warning("mobile_devices.json: Datensatz übersprungen (id=%r, name=%r)",
                             record.get("id") if isinstance(record, dict) else None,
                             record.get("name") if isinstance(record, dict) else None)
+
+        if skipped:
+            self._back_up_skipped()
+
+    def _back_up_skipped(self) -> None:
+        """Das nächste `save` schreibt nur die brauchbaren Datensätze zurück: vorher eine
+        Sicherung der Datei, damit Verworfenes nicht still verloren geht. Scheitert sie,
+        bleibt die Datei unberührt (read-only), wie beim gesperrten Lesen."""
+        try:
+            backup_corrupt(self.filepath, "Datensätze übersprungen")
+        except OSError:
+            self._readonly = True
+            log.warning("mobile_devices.json: Sicherung vor dem Reparieren nicht möglich — "
+                        "die Datei wird nicht überschrieben", exc_info=True)
 
     def _save_to_disk(self) -> None:
         if self._readonly:

@@ -138,6 +138,15 @@ def test_prune_without_a_hit_does_not_write(path, monkeypatch):
 
 # --- kaputte oder fremde Dateien ---------------------------------------------------------------------
 
+def test_prune_keeps_a_device_that_expired_exactly_thirty_days_ago(path):
+    store = MobileStore(path)
+    edge, _ = make_record("device-edge", now="2026-08-09T12:00:00Z")      # läuft 2026-09-08T12:00:00Z ab
+    store.save(edge)
+
+    assert store.prune(NOW) == 0                                          # Grenze selbst bleibt
+    assert store.prune("2026-10-08T12:00:01Z") == 1
+
+
 def test_unparsable_json_is_quarantined(path):
     open(path, "w", encoding="utf-8").write("{ kaputt")
     store = MobileStore(path)
@@ -154,6 +163,45 @@ def test_a_non_object_top_level_is_quarantined(path, content, caplog):
         store = MobileStore(path)
     assert store.get_all() == [] and len(backups(path)) == 1
     assert "Top-Level" in caplog.text
+
+
+def test_a_non_object_top_level_that_cannot_be_moved_starts_read_only(path, monkeypatch):
+    open(path, "w", encoding="utf-8").write("[]")
+    monkeypatch.setattr(mobile_store, "quarantine_corrupt",
+                        lambda *a, **k: (_ for _ in ()).throw(PermissionError("gesperrt")))
+
+    store = MobileStore(path)                                             # wirft nicht
+
+    assert store.read_only and store.get_all() == []
+    with pytest.raises(MobileStoreReadOnly):
+        store.save(make_record()[0])
+    assert open(path, encoding="utf-8").read() == "[]"
+
+
+def test_skipped_records_are_backed_up_before_the_next_save_drops_them(path):
+    good, _ = make_record("device-good")
+    broken = dict(good, id="device-bad1", token_hash="xyz")
+    open(path, "w", encoding="utf-8").write(
+        json.dumps({"schema_version": 1, "devices": [broken, good]}))
+
+    store = MobileStore(path)
+    store.save(good)                                                      # überschreibt die Datei
+
+    saved = backups(path)
+    assert len(saved) == 1 and "device-bad1" in open(os.path.join(os.path.dirname(path), saved[0]), encoding="utf-8").read()
+
+
+def test_unreadable_backup_of_skipped_records_keeps_the_file_untouched(path, monkeypatch):
+    good, _ = make_record("device-good")
+    broken = dict(good, id="device-bad1", token_hash="xyz")
+    raw = json.dumps({"schema_version": 1, "devices": [broken, good]})
+    open(path, "w", encoding="utf-8").write(raw)
+    monkeypatch.setattr(mobile_store, "backup_corrupt",
+                        lambda *a, **k: (_ for _ in ()).throw(OSError("voll")))
+
+    store = MobileStore(path)
+
+    assert store.read_only and open(path, encoding="utf-8").read() == raw
 
 
 def test_malformed_records_are_skipped_and_never_logged_in_full(path, caplog):
