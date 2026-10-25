@@ -12,6 +12,7 @@ from src.theme.form_logic import (
     enabled_states,
     scroll_target,
     scroll_units,
+    in_popdown,
     is_descendant,
     wheel_route,
     wheel_units,
@@ -108,6 +109,29 @@ def test_spinbox_is_protected():
 def test_everything_else_scrolls_the_form():
     for cls in ("Label", "Frame", "Entry", "Checkbutton", "Canvas", "TScrollbar"):
         assert wheel_route(cls) == "form"
+
+
+# --- in_popdown -------------------------------------------------------------
+
+def test_the_list_of_a_combobox_is_a_popdown():
+    # Die Auswahlliste heißt `<combobox>.popdown` und hängt damit im Tk-Pfad UNTER dem
+    # Formular, obwohl sie ein eigenes Fenster ist. Ein Mausrad-Schritt dort darf das
+    # Formular nicht unter der offenen Liste wegscrollen (die Liste bliebe stehen).
+    assert in_popdown(".!toplevel.!notebook.!frame2.!frame.!canvas.!frame.!combobox4.popdown.f.l")
+    assert in_popdown(".dlg.canvas.frame.combobox.popdown")
+    assert in_popdown(".dlg.canvas.frame.combobox.popdown.f.sb")
+
+
+def test_ordinary_form_widgets_are_not_a_popdown():
+    assert not in_popdown(".!toplevel.!notebook.!frame2.!frame.!canvas.!frame.!combobox4")
+    assert not in_popdown(".!toplevel.!notebook.!frame2.!frame.!canvas.!frame.!listbox")
+    assert not in_popdown(".")
+    assert not in_popdown("")
+
+
+def test_only_a_whole_path_component_counts_as_popdown():
+    assert not in_popdown(".dlg.canvas.my_popdown_field")
+    assert not in_popdown(".dlg.canvas.popdowns.x")
 
 
 # --- is_descendant ----------------------------------------------------------

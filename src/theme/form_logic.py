@@ -151,6 +151,18 @@ def wheel_route(widget_class: str, can_scroll: bool = True) -> WheelRoute:
     return "form"
 
 
+def in_popdown(path: str) -> bool:
+    """True, wenn der Tk-Pfad in der Auswahlliste einer Combobox liegt.
+
+    Die Liste (`<combobox>.popdown`) ist ein eigenes Fenster, hängt im Pfad aber
+    UNTER der Combobox und damit unter dem Formular — `is_descendant` hielte sie
+    für einen Teil davon. Ein Mausrad-Schritt dort darf das Formular nicht
+    scrollen: die offene Liste bliebe stehen, und das Feld rutschte unter ihr weg
+    (bei einer Liste ohne Überlauf, die das Rad nach `wheel_route` ans Formular
+    abgäbe — Erinnerungen, „Fällt er aufs Wochenende")."""
+    return "popdown" in path.split(".")
+
+
 def is_descendant(path: str, ancestor: str) -> bool:
     """True, wenn der Tk-Pfad `path` das Widget `ancestor` selbst oder eines
     seiner Kinder bezeichnet. Verglichen wird komponentenweise — `.!canvas2`
