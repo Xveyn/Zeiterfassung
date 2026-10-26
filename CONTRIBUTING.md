@@ -202,7 +202,7 @@ Zeiterfassung/
 │   ├── webhook_testserver.py  # lokaler Test-Empfänger für den Webhook-Versand
 │   └── smtp_testserver.py     # lokaler Test-Mailserver für den SMTP-Versand
 ├── .github/workflows/     # CI: test.yml, build.yml, release.yml, pages.yml (PWA veröffentlichen),
-│                          #   pwa-version.yml, readme-version.yml, relay-deploy.yml (Relay ausrollen)
+│                          #   readme-version.yml, relay-deploy.yml (Relay ausrollen)
 ├── installer.iss          # Inno Setup Script (Windows-Installer)
 ├── requirements.txt       # Python-Abhängigkeiten (App-Laufzeit, exakt gepinnt)
 ├── requirements-test.txt  # Test-/CI-Abhängigkeiten (pytest & Co., exakt gepinnt)
