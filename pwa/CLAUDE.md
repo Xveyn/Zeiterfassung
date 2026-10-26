@@ -56,7 +56,9 @@ ES-Module flach im Ordner:
 - `sw.js` — Service Worker (ES-Modul) mit dem getesteten Kern `sw-core.js`:
   Cache-Name, Vorab-Cache-Liste `PRECACHE`, `shouldHandle` (nur eigene, vorab
   gecachte GET-Anfragen). **API-Antworten und Anfragen an den Desktop gehen nie
-  durch den Service Worker.**
+  durch den Service Worker.** Seit #331 trägt `sw.js` auch die Handler für `push`
+  (zeigt **immer** eine Benachrichtigung) und `notificationclick` (öffnet die App am
+  Tag), s. „Benachrichtigungen“. `sw.js` selbst ist nicht in `PRECACHE`.
 
 `PRECACHE` und die Dateien unter `pwa/` müssen übereinstimmen: der Test
 `test/shell.test.js` verlangt, dass jede Laufzeitdatei gelistet ist. Nicht
@@ -90,13 +92,17 @@ Regeln, die nur in der PWA gelten:
   Rest „nicht übertragen“ bis zum nächsten Lauf.
 - Fehlende Tage werden nur im **inneren** Lesefenster lokal gelöscht (Randtage
   gehören dem Desktop).
+- **Ein gelöschter Tag sieht aus wie ein leerer Tag** (#353). Am Desktop gelöscht oder am Handy
+  geleert ist ein Tombstone (`deleted: true`), der im Lesefenster bis zur Kompaktierung am Desktop
+  stehen bleibt; `weekModel` macht daraus `state: 'empty'`, ohne Text und Durchstreichung. Der
+  Datensatz bleibt für den Sync unverändert.
 
 ## Kompatibilität zu älteren und neueren Desktops
 
 Die PWA kommt per Pages sofort bei jedem an, der Desktop hängt hinterher
 (macOS hat kein Selbst-Update, Nutzer lassen Updates liegen). Der häufige Fall
 ist also **neue PWA, alter Desktop**; der umgekehrte (gecachte alte PWA, neuer
-Desktop) ist seltener, kommt aber vor. Sechs Regeln:
+Desktop) ist seltener, kommt aber vor. Sieben Regeln:
 
 1. **Zwei Arten von Änderungen.** *Additiv* (ein neues Feld in Antwort oder
    Anfrage) ändert `PROTOCOL` nicht: beide Seiten ignorieren Unbekanntes und
@@ -123,7 +129,7 @@ Desktop) ist seltener, kommt aber vor. Sechs Regeln:
    (`compat/*-pre-250.json`, ohne `window_days`/`window_max_days`) und der Stand vor den
    Reservierungen (`compat/*-pre-reservations.json`, ohne `reservations`) und der Stand vor den
    Einstellungen (`compat/*-pre-settings.json`, ohne `settings`).
-7. **Neue PWA, alter Desktop.** Ein Desktop vor #311 ignoriert `settings` in der
+5. **Neue PWA, alter Desktop.** Ein Desktop vor #311 ignoriert `settings` in der
    Anfrage und kennt `writable_settings` nicht. Die PWA bietet das Bearbeiten
    der Kategorien deshalb nur an, wenn die Antwort `writable_settings` mit
    `categories` und `category_times` nennt; sonst sind die Kategorien lesbar,
@@ -132,13 +138,13 @@ Desktop) ist seltener, kommt aber vor. Sechs Regeln:
    #288 existiert und ein Desktop davor/danach nichts über das Schreiben sagte.
    Die IndexedDB-`VERSION` bleibt 2: der Block liegt in der Meta, kein neuer
    Object Store.
-5. **Die Meldung nennt die ältere Seite.** Antwortet der Desktop auf einen
+6. **Die Meldung nennt die ältere Seite.** Antwortet der Desktop auf einen
    falschen Umschlag mit `invalid_protocol`, steht im Klartext-Fehler
    `supported_protocol`; daraus macht `messages.js` „Desktop-App ist älter“
    (Desktop aktualisieren) bzw. „Desktop-App ist neuer“ (Seite neu laden). Die
    Zahl kommt im Klartext und ist nur ein Hinweis, kein Beleg. Fehlt sie
    (Desktop vor dieser Änderung), bleibt der allgemeine Text.
-6. **Ein älterer Desktop wird angezeigt.** Schickt er weder `desktop` noch
+7. **Ein älterer Desktop wird angezeigt.** Schickt er weder `desktop` noch
    `defaults`, sagt der Reiter „Verbindung“ der Einstellungen das (`desktopHint`).
 
 ## Reservierungen
@@ -170,7 +176,10 @@ bietet sie nur an, wenn „Reservierungen verwenden“ an ist.
   auch keine vorhandene Reservierung. Der Editor öffnet an Tagen **nach heute**
   bei der Reservierung (die Ist-Zeilen sind mit Standardzeiten vorbelegt, ein
   Speichern dort legte sonst still eine Ist-Zeit an), heute bei der Arbeitszeit.
-  Reservierungen zählen nicht in die Wochensumme.
+  Reservierungen zählen nicht in die Wochensumme; stattdessen zeigt der Wochenfuß unter
+  „Woche gesamt“ eine Zeile **„Noch ausstehend“** (#329, `pendingLabel` in `view-model.js`): die
+  reservierte Zeit, die noch nicht erledigt ist — an künftigen Tagen die ganze Reservierung,
+  heute nur die Slots, die kein Ist-Slot zeitlich überlappt (`pendingReservationMinutes`).
 - **Nur, was der Desktop annimmt.** Der Desktop lehnt hinter heute + 365 die **ganze**
   Anfrage ab (auch die Ist-Zeiten). Die PWA lässt deshalb nur bis heute + 364 zu
   (`reservationEditable`, ein Tag Reserve für eine vorgehende Handy-Uhr); `saveReservation` wirft
@@ -272,6 +281,12 @@ ist nie Voraussetzung: ohne ihn läuft alles wie vorher, ein Fehler bleibt ein H
   Der Service Worker zeigt **immer** eine Benachrichtigung (Chrome verlangt das, `userVisibleOnly`):
   ist das Entschlüsseln gescheitert, die allgemeine „Erinnerung“. Gleicher `tag` ersetzt, statt zu
   verdoppeln. Ein Klick öffnet die App am Tag (`?open=<Tag>`, eine offene bekommt `OPEN_DAY`).
+  **Bewusst kein `icon`** an `showNotification` (#355/#356): Chrome unter Android zeigt in der
+  Kopfzeile ohnehin das App-Icon der installierten Web-App, das große `icon-192` erschien rechts
+  ein zweites Mal. Seitdem erscheint dort ein grauer Kreis mit „X“ (vermutlich Chromes
+  Buchstaben-Platzhalter aus der Domain `xveyn.github.io`, nicht belegt); Lösungen und das
+  Verhalten in Firefox und Safari stehen in #357. Ein monochromes `badge` steuert nur das kleine
+  Statusleisten-Icon.
 - **`relay-client.js`** — `RELAY_URL`, `VAPID_PUBLIC` (nie wechseln, alle Abos hängen daran), die drei
   Aufrufe und `syncSchedule` (bei `409 no_subscription` einmal neu anmelden und wiederholen). Das
   Geheimnis dieses Handys (`relay_secret` in der Meta) ist Identität und Bearer und steht in keinem
@@ -297,7 +312,9 @@ Reiter „Verbindung“). Ausschalten meldet das Abo ab und löscht das Objekt a
 ## QR-Decoder (#326)
 
 `qr-decode.js` liest den Koppel-QR-Code dort, wo es keinen `BarcodeDetector` gibt (Firefox,
-Safari/iOS). Aus der Spezifikation geschrieben, ohne Fremdcode; Algorithmen und Konstanten nach
+Safari/iOS). **Der Scan klappt dort, der Abgleich danach nicht:** Safari und Firefox sperren den
+Zugriff der `https`-Seite auf `http://<LAN-IP>` (Mixed Content, #358); auf einem iPhone mit Safari
+am 2026-10-26 beobachtet. Die PWA ist unter iOS deshalb noch nicht vollständig funktionsfähig. Aus der Spezifikation geschrieben, ohne Fremdcode; Algorithmen und Konstanten nach
 ISO/IEC 18004, ZXing und jsQR (beide Apache-2.0) und dem Thonky-Tutorial.
 
 - **Umfang.** QR Model 2, Versionen 1–10, alle EC-Stufen und Masken, beliebige Drehung und
@@ -448,7 +465,9 @@ Workflow ist erst nach dem Merge nach `master` über „Run workflow“ erreichb
 
 Die Adresse `https://xveyn.github.io/Zeiterfassung/` steht als `PWA_ORIGIN`/
 `PWA_URL` in `src/mobile_routes.py` (einzig erlaubte Origin des Handy-Servers,
-Basis des Koppel-Links); zieht das Repo um, müssen beide mit.
+Basis des Koppel-Links); zieht das Repo um, müssen beide mit. Die Adresse ist **case-sensitiv**
+(großes „Z“): `…/zeiterfassung/` oder die Domain ohne Pfad liefert GitHubs 404-Seite „There isn't a
+GitHub Pages site here“.
 
 ## Entwickeln und prüfen
 

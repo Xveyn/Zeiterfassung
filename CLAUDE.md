@@ -1307,7 +1307,7 @@ nicht mehr als „offen" führen — der Verweis lautet auf diese Grenze.
 
 - `src/main.py` — Einstiegspunkt, **reiner Bootstrap**; baut `Tk`-Root, instanziert `Storage`/`Settings`/`App`, behandelt `--minimized`. Fachliche Sync-Flows gehören nach `sync_runtime.py` (R1, margenheld/Zeiterfassung#181 bzw. Xveyn#49)
 - `src/ui.py` — Tkinter-GUI; `App` ist schlanker Koordinator über `GridRenderer`/`BackgroundTaskRunner`/`SyncOrchestrator`/`UpdateBanner`/`UpdateCoordinator` (siehe `src/CLAUDE.md`)
-- `src/dialogs/` — Modal-Dialoge (`entry_dialog`, `send_dialog`, `settings_dialog`)
+- `src/dialogs/` — Modal-Dialoge; Beschreibung, Verträge und Reihenfolge der Settings-Tabs in `src/CLAUDE.md`, Abschnitt „Dialoge“. Module: `entry_dialog` (Tages-Dialog), `slot_rows` (Slot-Zeilenliste), `category_dialog` (Kategorien samt Standardzeiten), `conflicts_dialog` (Sync-Konflikte), `date_row` (Tag/Monat/Jahr-Widget), `period_picker` (Zeitraum-Auswahl mit Vorschau), `send_dialog` + `send_task` (Versand, Worker-Kern Tk-frei), `export_dialog` + `export_task` (PDF-Export), `share_dialog` + `share_task` (Teilen), `import_dialog` (Import), `mail_task` (gemeinsamer Fehler-Klassifikator der Mail-Kerne), `smtp_dialog`, `webhook_dialog`, `vacation_dialog` (Urlaub verwalten), `scopes_dialog` (gewährte OAuth-Scopes), `mobile_pair_dialog` (Koppel-Dialog Handy), `removal_dialog` (Rückfrage „Zeiterfassung entfernen“), `settings_dialog/` (Paket, ein Modul je Tab)
 - `src/json_store.py` — gemeinsame Mechanik der lokalen JSON-Stores und einziger Ort der beiden Regeln N1 (`atomic_write_json`: fsync vor `os.replace`) und N4 (`load_json_or_quarantine`: korrupte Datei nach `.corrupt-<stamp>` statt stillem Verwerfen). Neue Stores nutzen die beiden Funktionen, statt die Mechanik zu kopieren
 - `src/storage.py` — JSON-Persistenz der Zeiteinträge (Schlüssel: ISO-Datum). Gelesen wird nur bereinigt (`sanitize_slot`), eine beschädigte Datei wird beim Laden mit Sicherung repariert (s. `src/CLAUDE.md`)
 - `src/settings.py` — Benutzereinstellungen mit Defaults
@@ -1502,6 +1502,9 @@ nicht mehr als „offen" führen — der Verweis lautet auf diese Grenze.
 - `src/tray/mac.py` — natives macOS-Tray (NSStatusItem, Main-Thread); dormant bis zum Mac-Gate (Opt-in `ZEIT_MACOS_TRAY=1`, margenheld/Zeiterfassung#88)
 - `src/tray/linux.py` — Linux-Tray über StatusNotifierItem + `com.canonical.dbusmenu` (D-Bus via `dbus-fast`, kein GTK/GI); seit 1.23.2 an, sobald die Sitzung einen StatusNotifierWatcher hat (`watcher_available`, Plasma-Gate bestanden, margenheld/Zeiterfassung#42). Menü-Logik D-Bus-frei in `MenuState`
 - `src/time_utils.py` — Stundenberechnung, KW-Labels
+- `src/category_defaults.py` — pure Logik der Per-Kategorie-Standardzeiten (`category_times`: ein Satz für alle Wochentage oder `mode: per_day`; fehlende Felder fallen je Feld auf den globalen Standard zurück). Tk-frei
+- `src/desktop_entry.py` — Freedesktop-`.desktop`-Dateien: schreibt den Menüeintrag (`write_menu_entry`, `ensure_icon`) und besitzt die `Exec=`-Quoting-Regel (`exec_line`), die auch `autostart.py` benutzt. Tk-frei, stdlib-only
+- `src/ui_queue.py` — Tk-freie, thread-sichere Übergabe von Callbacks aus Worker-Threads an den UI-Thread (`UiQueue`, Poll alle 50 ms per `root.after`); `App._marshal_to_ui` läuft darüber, weil `root.after` vor der Mainloop nicht aus Workern kommen darf (Xveyn#244; s. `src/CLAUDE.md`, „Threading-Modell“)
 - `src/holidays_de.py` — Feiertags-Lookup (über `holidays`-Lib)
 - `src/paths.py` — `get_base_path()` dispatched über `platform.system()` und Frozen- vs. Repo-Modus; `relaunch_command()` baut das Neustart-Kommando (Exe im Frozen-Build, `python -m src.main` im Repo)
 - `src/dpi.py` — Systemfaktor der UI-Skalierung: Windows-DPI-Awareness (#157)
@@ -1527,6 +1530,7 @@ nicht mehr als „offen" führen — der Verweis lautet auf diese Grenze.
   Server im Daemon-Thread (die lokale Instanz nur Loopback, `authorize` vor dem Routing,
   nie ein CORS-Header; die Handy-Instanz über eine eigene `Surface`) und Lebenszyklus über `api_enabled`/`api_port` (gerätelokal,
   Default aus) mit Statusgrund. Beschreibung und Verträge: `src/CLAUDE.md`.
+- `src/api_entry_write.py` — Schreibpfad der Ist-Zeiten-Routen der lokalen API (#92): nimmt Fremddaten und bildet die Regeln nach, die die UI an ihren Eingängen durchsetzt (Slot-Validierung über `time_utils.validate_slots`, Sperren bei ungelöstem Sync-Konflikt und Urlaubsminuten > 0, Warnungen zu Wochenlimit und Pausenpflicht); Verträge in `src/CLAUDE.md`.
 - `src/api_reservation_write.py` — Schreibpfad der Reservierungs-Routen der lokalen API (#239): Body-Parser und Datumsregeln; Verträge in `src/CLAUDE.md`.
 - `src/api_vacation_write.py`, `src/vacation_plan.py` — Urlaubs-Routen der lokalen API (#239): Body-Parser bzw. die aus dem Dialog gezogene Tk-freie Planung (`plan_vacation_save`, `blocking_days`); Verträge in `src/CLAUDE.md`.
 - `src/api_summary.py` — Rechnung der Auswertungen der lokalen API (rein, über Minuten je Slot; s. `src/CLAUDE.md`).
@@ -1604,6 +1608,8 @@ seinen Pfad, nicht per Import.
   für den QR-Decoder der Handy-PWA (#326), mit `segno` (Versionen 1–10, alle EC-Stufen und
   Masken, der Koppel-Link, nicht unterstützte Modi). Deterministisch; `tests/test_qr_fixtures.py`
   hält die Datei gegen `src.qr.qr_matrix` und gegen das Skript.
+- `scripts/pwa_devserver.py` — Dev-Server für die Handy-PWA: startet die echte Handy-Instanz (`MobileService`) auf einer temporären Datenablage und serviert `pwa/` unter `http://localhost:8099/` (Option `--address`); druckt Adresse, einen Koppel-Link mit frischem Code und den Ordner der Desktop-Daten. Auch für Browser-Tests; Details in `pwa/CLAUDE.md`, „Entwickeln und prüfen“. Reine stdlib plus App-Module.
+- `scripts/pwa_icons.py` — erzeugt `pwa/icons/` (`icon-192.png`, `icon-512.png`, `icon-maskable-512.png`) aus dem Markenbild `assets/margenheld-icon.png` (Pillow). Das Quellbild ist klein (300 × 297), die 512er sind hochskaliert.
 - `scripts/webhook_testserver.py` — lokaler Test-Empfänger für den
   Webhook-Versand: zeigt Content-Type, Auth-Header, HMAC-Prüfung und den Body
   (JSON/PDF/multipart aufgetrennt), und kann Fehlerfälle simulieren

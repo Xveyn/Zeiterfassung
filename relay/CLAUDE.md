@@ -18,8 +18,39 @@ kennt, erreicht das Objekt nicht und kann es nicht besetzen.
 | `DELETE /v1/device` | alles löschen |
 | `POST /v1/test` | sofort einen Test-Push mit der festen Nutzlast `TEST_PAYLOAD` (`push.js`) senden, ohne Zeitplan und Alarm anzufassen. Je Gerät höchstens alle `LIMITS.testCooldownSeconds` (10 s). Antworten: `204` gesendet · `409 no_subscription` · `410 gone` (Abo tot, Objekt geräumt) · `429 too_soon` · `502 push_failed` (Push-Dienst nahm es nicht an; ein misslungener Versuch startet die Abkühlzeit nicht). Die Web-App erkennt die Nutzlast im Service Worker (`pwa/push-message.js`, ein Test hält die Konstante gleich) und der Desktop ruft die Route aus Einstellungen → Mobil (`src/push_relay.py`) |
 
-Fehler: `401 unauthorized` (Geheimnis fehlt/ungültig), `400 invalid_request` (mit deutscher
-`message`), `409 no_subscription` (Zeitplan vor Abo), `404`, `405`, `500 internal` (ohne Details).
+Fehler (alle als `{error: …}`): `401 unauthorized` (Geheimnis fehlt/ungültig), `400 invalid_request`
+(mit deutscher `message`), `409 no_subscription` (Zeitplan vor Abo), `404 not_found`,
+`405 method_not_allowed` (mit `Allow`), `413 too_large` (Body über `LIMITS.maxBody`),
+`429 rate_limited` (Rate-Limit je Absender-Adresse, `worker.js`) bzw. `429 too_soon` (Abkühlzeit von
+`POST /v1/test`, `device.js`), `500 internal` (ohne Details); dazu `410 gone` und `502 push_failed`
+von `POST /v1/test`. Reihenfolge im Worker: Route, `OPTIONS`, Methode, Rate-Limit, Geheimnis, Body.
+
+### Grenzen (`LIMITS` in `src/validate.js`)
+
+| Konstante | Wert | Bedeutung |
+|---|---|---|
+| `maxItems` | 200 | Einträge je Zeitplan |
+| `maxAheadDays` | 90 | `fire_at` höchstens so viele Tage voraus, sonst wird der Zeitplan abgelehnt |
+| `maxBlob` | 1024 | Zeichen des verschlüsselten `blob` je Eintrag |
+| `maxBody` | 300 000 | Bytes eines Request-Bodys (200 Einträge mit vollem Blob liegen bei ca. 235 KB) |
+| `graceSeconds` | 900 | so lange nach `fire_at` (bzw. der ersten Fälligkeit) wird noch gesendet |
+| `idleDays` | 90 | so lange nach der letzten Aktualisierung räumt sich ein Gerät selbst auf |
+| `testCooldownSeconds` | 10 | Sperre von `POST /v1/test` nach einem gelungenen Test |
+
+Wiederholung nach einem Fehlschlag (`BACKOFF_SECONDS` in `src/schedule.js`): nach 30 s, 2 min und
+10 min; danach, oder wenn der Versuch hinter der Frist läge, wird der Eintrag aufgegeben.
+
+**Konstante ändern heißt PWA mitziehen:** `pwa/reminders-plan.js` spiegelt `maxItems` als `MAX_ITEMS`
+(200) und `maxAheadDays` als `MAX_AHEAD_MS` (89 Tage, einen Tag unter der Grenze). Das Rate-Limit (30 Anfragen/60 s) steht in `wrangler.toml`.
+
+### Werte, die zusammenpassen müssen
+
+- `[vars] VAPID_PUBLIC` in `wrangler.toml` = `VAPID_PUBLIC` in `pwa/relay-client.js`. Nie wechseln:
+  alle Abos hängen am öffentlichen Schlüssel. Kein Test hält die beiden zusammen.
+- `PAGES_ORIGIN` (`https://xveyn.github.io`) in `src/worker.js` ist die einzige erlaubte CORS-Origin
+  (dazu `DEV_ORIGIN` aus `[vars]`, im Betrieb leer); zieht die PWA um, muss sie mit.
+- `RELAY_URL` in `pwa/relay-client.js` = `RELAY_URL` in `src/push_relay.py` (Test in
+  `tests/test_push_relay.py`).
 
 ## Dateien
 
@@ -51,7 +82,7 @@ Fehler: `401 unauthorized` (Geheimnis fehlt/ungültig), `400 invalid_request` (m
 - **Ausgerollt wird von `.github/workflows/relay-deploy.yml`** nach dem Merge auf `master` (Environment `relay-production`, Secrets `CLOUDFLARE_API_TOKEN`/`CLOUDFLARE_ACCOUNT_ID` nur im Schritt „Ausrollen“; Einrichtung in `README.md`). Ein Test hält die Sicherheitsmerkmale fest (`tests/test_relay_deploy.py`). Von Hand geht `npx wrangler deploy` weiter.
 - Die Tests laufen mit `node --test` ohne `wrangler`; `device.js` wird mit einem In-Memory-Speicher
   (`test/fake-storage.js`) getestet. `wrangler dev` braucht **Node ≥ 22** (`engines`).
-- Wer eine Konstante in `LIMITS` oder die Routen ändert, zieht die PWA und das Design mit.
+- Wer eine Konstante in `LIMITS` oder die Routen ändert, zieht die PWA und das Design mit (s. „Konstante ändern heißt PWA mitziehen“ oben).
 
 ## Gemessen
 

@@ -9,7 +9,10 @@ gilt für
   öffnen kann: der lokalen API (nur Loopback) und der Handy-Instanz (nur die
   gewählte LAN-Adresse). Beide sind standardmäßig **aus**,
 - die **Handy-PWA** der Handy-Erfassung (Verzeichnis `pwa/`), die im Browser des
-  Handys läuft und mit der Handy-Instanz des Desktops spricht.
+  Handys läuft und mit der Handy-Instanz des Desktops spricht,
+- den **Push-Relay** (Verzeichnis `relay/`), einen Cloudflare Worker im Internet, der
+  Erinnerungen als Push an die PWA weiterleitet. Er ist optional und der einzige Teil,
+  der nicht im eigenen Netz läuft.
 
 ## Unterstützte Versionen
 
@@ -23,10 +26,15 @@ unterscheidet sich zwischen Desktop und PWA:
 | Desktop-App | ältere Releases | ❌ |
 | Handy-PWA | die ausgelieferte Version unter `https://xveyn.github.io/Zeiterfassung/` | ✅ |
 | Handy-PWA | ältere, noch gecachte Stände | ❌ |
+| Push-Relay | der ausgerollte Stand des Workers | ✅ |
 
 **Desktop:** Updates kommen als Release. Windows und Linux können sich selbst
 aktualisieren, unter macOS ist der Download manuell. Bitte vor einer Meldung auf
 das neueste Release aktualisieren.
+
+**Relay:** Er hat kein Release. Jeder Merge auf `master` mit Änderungen unter `relay/**`
+rollt ihn nach grünen Tests automatisch aus (`.github/workflows/relay-deploy.yml`);
+ein Fix erreicht ihn damit sofort.
 
 **PWA:** Sie hat kein Release. Jeder Push auf `master` mit Änderungen unter
 `pwa/**` wird über GitHub Pages veröffentlicht, und die PWA zieht sich die neue
@@ -48,7 +56,7 @@ dieses Repositorys („Report a vulnerability").
 
 Hilfreich für eine schnelle Einschätzung:
 
-- Betroffener Teil: Desktop-App, lokale API, Handy-Instanz oder PWA
+- Betroffener Teil: Desktop-App, lokale API, Handy-Instanz, PWA oder Push-Relay
 - Version und Plattform (Windows / macOS / Linux); bei der PWA zusätzlich die
   Build-Kennung und der Browser auf dem Handy
 - Beschreibung der Schwachstelle und der möglichen Auswirkung
@@ -78,7 +86,7 @@ kann es vermeiden:
   für den eigenen Benutzer lesbar gemacht; unter Windows setzt die App per
   `icacls` eine explizite ACL (geerbte Rechte entfernt, nur das eigene
   Benutzerkonto bleibt berechtigt). Dasselbe gilt für `webhooks.json`,
-  `smtp.json`, `api-token` und `mobile_keys.json`. Das ist Zugriffsschutz auf
+  `smtp.json`, `api-token`, `mobile_keys.json` und `mobile_relay.json`. Das ist Zugriffsschutz auf
   Dateiebene, **keine** Verschlüsselung. **Wer den Daten- bzw. Installationsordner
   kopiert, sichert oder in die Cloud synchronisiert, nimmt die dort verbliebenen
   Klartext-Secrets mit** — den Ordner entsprechend vertraulich behandeln.
@@ -116,7 +124,19 @@ ausschalten. Im Einzelnen:
 - **Am Handy** liegen die erfassten Tage in der IndexedDB des Browsers, dazu das
   Gerätetoken und der Geräteschlüssel. Das ist der Speicher der Web-App und
   hängt an der Browser-Sicherheit des Handys (Bildschirmsperre, Geräteverschlüsselung).
-  Wer das Handy verliert, widerruft das Gerät im Tab „Mobil“ der Desktop-App.
+  Wer das Handy verliert, widerruft das Gerät im Tab „Mobil“ der Desktop-App (das löscht auch dessen Relay-Objekt).
+- **Push-Erinnerungen und Relay** (optional, nur wenn am Desktop „Auch aufs Handy
+  senden“ und am Handy Benachrichtigungen eingeschaltet sind). Der Relay sieht den
+  Endpoint des Push-Dienstes des Browsers, die Abo-Schlüssel, das Zufallsgeheimnis des
+  Handys (nur als Hash gespeichert, der Worker sieht es aber bei jeder Anfrage im
+  Klartext), die Zeitpunkte der Erinnerungen und einen Text, den nur das Handy
+  entschlüsseln kann. Er sieht keine Arbeitszeiten, Kategorien oder Namen. Die
+  Push-Dienste (Google, Mozilla, Apple, Microsoft) sehen Metadaten, nicht den Inhalt.
+  Das Geheimnis liegt am Desktop in `mobile_relay.json`. Beim Widerruf eines Handys
+  löscht der Desktop dessen Relay-Objekt (best effort), sonst verfällt es nach 90 Tagen.
+  Fällt der Relay aus oder wird er missbraucht, entfallen nur die Push-Erinnerungen
+  (Rate-Limit je Absender-Adresse, kein Konto). Details: `relay/CLAUDE.md` und
+  [`docs/known-limitations.md`](docs/known-limitations.md#push-relay-331-ein-neuer-vertrauens-ort).
 - **Updates der PWA** laufen über GitHub Pages. Vertrauensanker ist TLS zu
   `xveyn.github.io`; der ausgelieferte Code ist nicht signiert.
 
