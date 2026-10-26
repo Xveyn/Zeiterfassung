@@ -356,9 +356,10 @@ AUTO_ADDRESS = "Automatisch"
 
 FIRST_ENABLE_NOTICE = (
     "Die Handy-Erfassung öffnet einen Server in Ihrem WLAN/LAN. Die Verbindung zum Handy "
-    "ist unverschlüsselt: wer im selben Netz mitlauscht, kann das Gerätetoken mitlesen "
-    "und damit Arbeitszeiten lesen und eintragen. Nutzen Sie die Funktion nur in einem "
-    "vertrauenswürdigen Netz.\n\n"
+    "läuft nicht über HTTPS, die Daten sind aber Ende-zu-Ende verschlüsselt: wer im selben "
+    "Netz mitliest, sieht keine Arbeitszeiten, erkennt aber, dass ein Handy mit Ihrem "
+    "Rechner spricht, und kann den Abgleich stören. Nutzen Sie die Funktion trotzdem nur "
+    "in einem vertrauenswürdigen Netz.\n\n"
     "Die App muss laufen, damit sich das Handy abgleichen kann; ein Autostart "
     "(Tab „App“) wird empfohlen. Unter Windows fragt die Firewall beim ersten Mal, ob "
     "die App im privaten Netz Verbindungen annehmen darf.\n\n"

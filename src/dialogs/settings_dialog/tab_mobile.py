@@ -8,7 +8,7 @@ günstig (der Store hält sie im Speicher) und geschieht im Poll. Den Status lie
 `after`-Poll aus `MobileService.status` — wie im API-Tab ein Poll, der mit dem Tab
 stirbt, statt eines Callbacks, der nach dem Schließen zurückkommen könnte.
 
-Das erste Einschalten fragt nach (unverschlüsselte Verbindung, vertrauenswürdiges Netz,
+Das erste Einschalten fragt nach (kein HTTPS, vertrauenswürdiges Netz,
 App muss laufen); erst die Zustimmung wird gemerkt (`mobile_notice_accepted`).
 """
 
@@ -66,9 +66,9 @@ class MobileTab:
 
         form.section("Handy-Erfassung")
         form.hint("Zeiten unterwegs auf dem Handy nachtragen — auch ohne Verbindung — und im "
-                  "selben WLAN mit dieser App abgleichen. Die Verbindung ist unverschlüsselt "
-                  "(nur in vertrauenswürdigen Netzen nutzen), die App muss laufen. Unter "
-                  "Windows fragt die Firewall beim ersten Einschalten nach.")
+                  "selben WLAN mit dieser App abgleichen. Die Verbindung ist Ende-zu-Ende "
+                  "verschlüsselt (nur in vertrauenswürdigen Netzen nutzen), die App muss "
+                  "laufen. Unter Windows fragt die Firewall beim ersten Einschalten nach.")
         form.check("Handy-Erfassung aktivieren", enabled_var)
         with form.depends_on(enabled_var):
             form.row("Port:", dark_entry(body, port_var, width=7))

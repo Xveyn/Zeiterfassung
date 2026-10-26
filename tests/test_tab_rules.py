@@ -604,9 +604,17 @@ def test_the_countdown(seconds, expected):
 
 def test_the_first_enable_notice_names_the_three_things_the_spec_demands():
     notice = tr.FIRST_ENABLE_NOTICE
-    assert "unverschlüsselt" in notice
+    assert "Ende-zu-Ende verschlüsselt" in notice
     assert "vertrauenswürdig" in notice
     assert "Autostart" in notice
+
+
+def test_the_first_enable_notice_does_not_claim_the_connection_is_unencrypted():
+    """Seit #249 laufen Kopplung und Abgleich als AES-256-GCM-Umschläge; das Gerätetoken im Header ist
+    ohne den Schlüssel wertlos. Der Hinweis darf das nicht mehr als Mitlesegefahr darstellen (#361)."""
+    notice = tr.FIRST_ENABLE_NOTICE
+    assert "unverschlüsselt" not in notice
+    assert "mitlesen" not in notice
 
 
 def dev(device_id, token_hash, name="P", revoked=False, previous="", count=1):
