@@ -106,7 +106,7 @@ function dayRow(day, handlers) {
     'data-focus': `day-${day.date}`, onclick: () => handlers.openDay(day.date) },
     h('span', {}, h('div', { class: 'wd' }, day.weekday), h('div', { class: 'date' }, day.label.slice(0, 6))),
     h('div', { class: 'content' },
-      h('ul', { class: 'slots' }, day.state === 'cleared' ? h('li', {}, 'geleert') : day.slots.map((text) => h('li', {}, text))),
+      h('ul', { class: 'slots' }, day.slots.map((text) => h('li', {}, text))),
       day.reservation && h('ul', { class: 'slots reserved' },
         day.reservation.slots.map((text) => h('li', {}, `geplant ${text}`)))),
     h('span', { class: 'sum' }, day.minutesLabel),
