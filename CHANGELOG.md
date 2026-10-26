@@ -2,6 +2,97 @@
 
 Ältere Versionen stehen im [Archiv](CHANGELOG-archive.md).
 
+## 1.25.0 — 2026-10-26
+
+Zwei neue Schnittstellen, beide standardmäßig aus: eine lokale HTTP-API für
+Skripte und eine Handy-Erfassung per Web-App, die im WLAN mit der App abgleicht
+und auf Wunsch Erinnerungen als Push aufs Handy schickt. Reservierungen gehen
+jetzt auch ohne Google-Kalender, und beschädigte Zeitdaten bringen die App nicht
+mehr zum Absturz. Dazu kommen Korrekturen an „Zeiterfassung entfernen“, am
+Einstellungen-Dialog und für Linux ohne AppImage.
+
+### Hinzugefügt
+- **Handy-Erfassung per Web-App**: Zeiten unterwegs auf dem Handy nachtragen,
+  auch ohne Verbindung, und im selben WLAN mit der App abgleichen. Die Web-App
+  läuft im Browser (`https://xveyn.github.io/Zeiterfassung/`, groß geschrieben),
+  gekoppelt wird per QR-Code (Einstellungen → Mobil). Abgeglichen werden
+  Ist-Zeiten, Reservierungen und die Kategorien samt Standardzeiten, jeweils in
+  beide Richtungen; das Handy sieht standardmäßig die letzten 90 Tage und lädt
+  ältere bis zu einer Obergrenze nach, die du am Rechner einstellst (höchstens
+  365 Tage). Die Wochenansicht zeigt unter „Woche gesamt“ die noch ausstehende
+  reservierte Zeit. Die Verbindung ist Ende-zu-Ende verschlüsselt; Geräte sind
+  einzeln widerrufbar. **Chrome auf Android ist der unterstützte Weg**: Safari
+  und Firefox öffnen die Seite und scannen den Code (auch ohne Barcode-Leser des
+  Browsers), erreichen den Rechner danach aber nicht, iOS ist für die Web-App
+  noch nicht vollständig funktionsfähig. Das Feature ist standardmäßig aus.
+- **Erinnerungen als Push aufs Handy**: Reservierungs- und Sende-Erinnerungen
+  kommen auf Wunsch als Benachrichtigung aufs Handy, auch wenn der Rechner aus
+  ist (Einstellungen → Erinnerungen → „Handy“). Dafür läuft ein kleiner
+  Weiterleitungsdienst im Internet, ein Cloudflare Worker (`relay/`); er kennt
+  nur Zeitpunkte und einen Text, den nur das Handy entschlüsselt, keine
+  Arbeitszeiten. Nur Chrome auf Android. Eine Testbenachrichtigung (Einstellungen
+  → Mobil am Rechner oder in der Web-App) prüft den Weg.
+- **Sende-Erinnerung im Kalender sichtbar**: Hängt an einer Reservierung die
+  Erinnerung ans Verschicken, trägt die Tageszelle neben dem violetten einen
+  bernsteinfarbenen Punkt; der Tooltip nennt Minuten und Uhrzeit.
+- **Reservierungen ohne Google-Kalender**: „Reservierungen verwenden“ (Einstellungen
+  → Arbeitszeit) schaltet die zukünftigen Soll-Zeiten ein, auch ohne Google.
+  Ohne den Schalter sind sie in der App, der API und am Handy unsichtbar.
+- **Lokale HTTP-API** (Einstellungen → API): Ein Server nur auf `127.0.0.1`, über
+  den Skripte oder Taskplaner Zeiten lesen und eintragen, dazu Reservierungen,
+  Urlaub und Auswertungen (Woche, Monat, Kategorien, Feiertage). Zugriff nur mit
+  Token, nie aus dem Browser; standardmäßig aus. Beschreibung im README.
+- **Hinweis nach Reparatur beschädigter Zeitdaten**: Repariert die App beim Start
+  eine beschädigte Zeitdatei, sagt sie es einmal (Dialog, bei minimiertem Start
+  ein Tray-Hinweis) und nennt, wo die Sicherungskopie liegt.
+
+### Geändert
+- **Tages-Dialog**: Neben „Speichern“ steht „Abbrechen“. Im Kategorien-Dialog
+  heißt „Schließen“ jetzt „Abbrechen“, weil es ungespeicherte Änderungen
+  verwirft.
+
+### Behoben
+- **Beschädigte oder fremde Zeitdaten**: Eine Zeitdatei, die kein JSON-Objekt war
+  (Handbearbeitung, fremder Sync), verhinderte den Start; einzelne kaputte
+  Einträge ließen Kalender, Berichte und Auswertungen abstürzen. Die App repariert
+  beim Laden und legt vorher eine Sicherung ab (`zeiterfassung.json.corrupt-…`,
+  die letzten fünf bleiben). Eine Datei aus dem Windows-Editor mit BOM gilt nicht
+  mehr als beschädigt, eine kaputte Uhrzeit erscheint als `?-12:00`.
+- **Zeiterfassung entfernen**: Unter macOS App Translocation nennt der Hinweis
+  keinen unbrauchbaren Pfad mehr; ein vorgemerktes Update bleibt nicht in den
+  Einstellungen zurück; der Bestätigungsdialog ist kurz gesperrt wie die
+  Lösch-Rückfragen; ein zweiter Aufruf meldet keinen Sync mehr, den es nicht gibt.
+- **App-Start**: Hintergrundaufgaben, die vor dem Fenster fertig wurden, gingen
+  mit einem `RuntimeError` verloren, etwa der Umzug von Zugangsdaten in den
+  Schlüsselbund.
+- **Hauptfenster**: Es war rund 60 px zu breit. Die Kopfzeile zentriert sich jetzt
+  im freien Platz zwischen den Knopfgruppen; der Titel versetzt sich leicht,
+  sobald die Sync-Gruppe erscheint.
+- **Einstellungen**: Der Dialog behält seine Breite, wenn sich ein Reiter nach dem
+  Öffnen ändert; eine lange Absender-Adresse im Google-Reiter bricht um; das
+  Mausrad scrollt das Formular nicht mehr unter einer offenen Auswahlliste.
+- **„Update installieren“**: Der Fehlerdialog stürzte beim Anzeigen ab, sodass
+  Grund und Browser-Download verloren gingen.
+- **Linux ohne AppImage**: Menüeintrag, Hinweis beim Entfernen und Autostart-Pfad
+  funktionieren auch mit einer gewöhnlichen Binärdatei.
+
+### Intern
+- **Dev-Builds prüfen nie auf Updates**: Ein Start aus dem Quellcode oder ein Build
+  aus `build.yml` trägt die Version des letzten Releases, aber neueren Code, und
+  bot sonst ein Pre-Release derselben Version als „Update“ an.
+- **Zugangsdaten**: Alle Secret-Dateien laufen über einen Schreibpfad, der die
+  Datei härtet, bevor das Geheimnis hineinkommt (unter Windows vorher geerbte
+  Rechte). Die JSON-Stores schreiben unter Windows LF statt CRLF.
+- **Relay**: Wird nach einem Merge auf `master` automatisch ausgerollt
+  (`relay-deploy.yml`, Environment `relay-production`).
+- **Web-App**: Build-Kennung `N/X.Y.Z (sha)` (Commits unter `pwa/` seit dem letzten
+  Release, dessen Version, Commit); Veröffentlichung über GitHub Pages; der
+  Dev-Server stempelt die Kennung selbst.
+- **Abhängigkeiten und CI**: Pillow 13.0.0, Node 22 im PWA-Job.
+- **Doku**: README, `SECURITY.md`, `CONTRIBUTING.md`, `docs/known-limitations.md`
+  und die `CLAUDE.md`-Dateien zu Handy-Erfassung, Relay und API; neue Screenshots
+  von Desktop und Web-App.
+
 ## 1.24.0 — 2026-10-06
 
 Die App folgt jetzt der Anzeigeskalierung des Systems — unter Windows scharf,

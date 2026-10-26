@@ -18,7 +18,7 @@ Desktop-App zur Erfassung von Arbeitszeiten: im Kern Kalenderansicht und PDF-Ber
 
 [![Release](https://img.shields.io/github/v/release/Xveyn/Zeiterfassung?label=Release&color=success&logo=github)](https://github.com/Xveyn/Zeiterfassung/releases/latest) ![Python](https://img.shields.io/badge/Python-3.12+-blue) ![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow)](LICENSE)
 
-![Monatsansicht der Zeiterfassung mit erfassten Arbeitszeiten, Urlaub und den Punkten für Reservierung und Sende-Erinnerung](docs/screenshots/kalender-v--VERSION--.png)
+![Monatsansicht der Zeiterfassung mit erfassten Arbeitszeiten, Urlaub und den Punkten für Reservierung und Sende-Erinnerung](docs/screenshots/kalender-v1.25.0.png)
 
 <sub>Aus welcher Version ein Screenshot stammt, steht in seinem Dateinamen (`…-v<version>.png`), siehe [`docs/screenshots/`](docs/screenshots/).</sub>
 
@@ -39,15 +39,15 @@ Desktop-App zur Erfassung von Arbeitszeiten: im Kern Kalenderansicht und PDF-Ber
 
 - **Kalenderansicht** — Monats- und Wochenansicht mit Tageseinträgen (Start, Ende, Pause) und Netto-Stunden je Tag; Stunden durchgehend in Stunden/Minuten statt dezimal
 - **Kategorien** — Mehrere Zeitblöcke pro Tag mit eigenen Kategorien; Standard-Start/-Ende pro Kategorie, optional pro Wochentag
-- **Reservierungen & Google-Kalender** — Zukünftige Arbeitszeiten pro Tag reservieren (in den Einstellungen einschaltbar, auch ohne Google *(ab --VERSION--)*, eigenes Konzept neben den Ist-Zeiten, im Kalender als violetter Eck-Punkt markiert, mit Sende-Erinnerung zusätzlich ein bernsteinfarbener *(ab --VERSION--)*); optionaler Abgleich mit einem wählbaren Google Kalender
-- **Reservierungs-Erinnerungen** — Optionale Toast-Benachrichtigung, wenn ein für heute reservierter Slot fällig wird und noch keine Ist-Zeit erfasst ist (konfigurierbare Vorlaufzeit); auf Wunsch zusätzlich als Push aufs Handy, auch wenn der Rechner aus ist *(ab --VERSION--)*, siehe [Handy-Erfassung](#handy-erfassung-optional)
+- **Reservierungen & Google-Kalender** — Zukünftige Arbeitszeiten pro Tag reservieren (in den Einstellungen einschaltbar, auch ohne Google *(ab 1.25.0)*, eigenes Konzept neben den Ist-Zeiten, im Kalender als violetter Eck-Punkt markiert, mit Sende-Erinnerung zusätzlich ein bernsteinfarbener *(ab 1.25.0)*); optionaler Abgleich mit einem wählbaren Google Kalender
+- **Reservierungs-Erinnerungen** — Optionale Toast-Benachrichtigung, wenn ein für heute reservierter Slot fällig wird und noch keine Ist-Zeit erfasst ist (konfigurierbare Vorlaufzeit); auf Wunsch zusätzlich als Push aufs Handy, auch wenn der Rechner aus ist *(ab 1.25.0)*, siehe [Handy-Erfassung](#handy-erfassung-optional)
 - **Urlaub** — Urlaubszeiträume als Einheit eintragen (Name, Von/Bis, Stunden pro Tag oder Gesamtstunden auf die Arbeitstage verteilt); im Kalender ein durchgehender türkiser Block über Wochenenden und Feiertage hinweg, einzelne Tage nachträglich anpassbar (halbe Urlaubstage). Urlaub und Arbeitszeit schließen sich am selben Tag aus — ein Urlaubstag nimmt keine Arbeitszeit an, und ein Urlaub lässt sich nicht über bereits erfasste Tage legen. Die Stundenzeile in der Kalenderzelle („4:00 h") lässt sich im Dialog „Urlaub verwalten" abschalten *(ab 1.23.0)* — der Zeitraum bleibt dann als Block mit „Urlaub" stehen, die Stunden stehen weiterhin im Tooltip. Optional als Ganztags-Termine im Google Kalender — im Dialog „Urlaub verwalten" ein- und ausschaltbar; beim Ausschalten räumt die App ihre Termine auf Wunsch wieder weg. Gerätelokal — Urlaub reist **nicht** über den Drive-Sync mit
 - **Feiertage** — Feiertage des gewählten Bundeslands sind im Kalender markiert und werden beim Anlegen eines Eintrags nachgefragt
 - **Nur Werktage** — Optional lässt sich das Wochenende komplett deaktivieren: Sa/So verschwinden aus Kalender, Standardzeiten, Bericht, Mailversand und PDF-Export. Vorhandene Wochenend-Einträge bleiben gespeichert und sind sofort wieder da, wenn die Einstellung zurückgenommen wird
 - **Wochenstunden-Limit** — Optionales Werkstudenten-Limit über einen konfigurierbaren Zeitraum mit Warnung beim Überschreiten
 - **Pausenpflicht-Warnung** — Hinweis beim Speichern, wenn die eingetragene Pause die gesetzliche Mindestpause nach § 4 ArbZG unterschreitet (30 Min ab >6 h, 45 Min ab >9 h); standardmäßig aktiv, abschaltbar. Grobe Näherung, keine rechtliche Bewertung
 
-![Tages-Dialog mit Arbeitszeit, Reservierung und Erinnerung](docs/screenshots/tagesdialog-v--VERSION--.png)
+![Tages-Dialog mit Arbeitszeit, Reservierung und Erinnerung](docs/screenshots/tagesdialog-v1.25.0.png)
 
 *Ein Tag im Detail: erfasste Ist-Zeit, geplante Reservierung und die Erinnerung ans Verschicken. Linksklick auf einen Kalendertag öffnet den Dialog; gelöscht wird im Kalender selbst (Rechtsklick, unter macOS über das ✕ in der Tageszelle).*
 
@@ -75,9 +75,9 @@ Desktop-App zur Erfassung von Arbeitszeiten: im Kern Kalenderansicht und PDF-Ber
 
 - **Multi-Device-Sync** — Optionale Synchronisation von Zeiteinträgen und Mail-Vorlagen über Google Drive (`appDataFolder`), inklusive Konflikt-Auflösung wenn dasselbe Datum offline auf mehreren Geräten bearbeitet wurde — per Linksklick direkt auf den betroffenen Kalendertag oder gesammelt in den Einstellungen
 - **Einstellungen** — In Tabs gegliedert (Arbeitszeit / Erinnerungen / Versand / Google / API / Mobil / App / Updates); Standardzeiten und Pause, Erinnerungen, E-Mail-Vorlagen mit Platzhaltern, Empfänger, SMTP-Konten und Webhooks, Update-Einstellungen
-- **Lokale HTTP-API** *(ab --VERSION--)* — Optional (Standard: aus): ein Server nur auf `127.0.0.1`, über den Skripte, Taskplaner oder andere Programme auf diesem Rechner deine Zeiten lesen und eintragen können — nur mit Token (Einstellungen → API), nie aus dem Browser; siehe [Lokale HTTP-API](#lokale-http-api-optional)
-- **Handy-Erfassung** *(ab --VERSION--)* — Optional (Standard: aus): Zeiten unterwegs auf dem Handy nachtragen — auch ohne Verbindung — und im selben WLAN mit der App abgleichen. Läuft als Web-App (PWA) im Browser des Handys, gekoppelt per QR-Code; keine App-Installation aus einem Store. Der Abgleich mit dem Rechner klappt derzeit nur mit Chrome auf Android; iOS ist für die Web-App noch nicht vollständig funktionsfähig (Safari sperrt den Zugriff auf eine Adresse im WLAN, siehe unten). Die Verbindung im WLAN ist **Ende-zu-Ende verschlüsselt**, die Desktop-App muss laufen; siehe [Handy-Erfassung](#handy-erfassung-optional)
-- **Schutz vor beschädigten Zeitdaten** *(ab --VERSION--)* — Ist die Zeitdatei beschädigt (Handbearbeitung, fremder Sync), repariert die App sie beim Start: Unbrauchbares wird verworfen, vorher liegt eine Kopie als `zeiterfassung.json.corrupt-<Zeitstempel>` daneben (die letzten fünf bleiben), und ein einmaliger Hinweis sagt, was passiert ist und wo die Kopie liegt
+- **Lokale HTTP-API** *(ab 1.25.0)* — Optional (Standard: aus): ein Server nur auf `127.0.0.1`, über den Skripte, Taskplaner oder andere Programme auf diesem Rechner deine Zeiten lesen und eintragen können — nur mit Token (Einstellungen → API), nie aus dem Browser; siehe [Lokale HTTP-API](#lokale-http-api-optional)
+- **Handy-Erfassung** *(ab 1.25.0)* — Optional (Standard: aus): Zeiten unterwegs auf dem Handy nachtragen — auch ohne Verbindung — und im selben WLAN mit der App abgleichen. Läuft als Web-App (PWA) im Browser des Handys, gekoppelt per QR-Code; keine App-Installation aus einem Store. Der Abgleich mit dem Rechner klappt derzeit nur mit Chrome auf Android; iOS ist für die Web-App noch nicht vollständig funktionsfähig (Safari sperrt den Zugriff auf eine Adresse im WLAN, siehe unten). Die Verbindung im WLAN ist **Ende-zu-Ende verschlüsselt**, die Desktop-App muss laufen; siehe [Handy-Erfassung](#handy-erfassung-optional)
+- **Schutz vor beschädigten Zeitdaten** *(ab 1.25.0)* — Ist die Zeitdatei beschädigt (Handbearbeitung, fremder Sync), repariert die App sie beim Start: Unbrauchbares wird verworfen, vorher liegt eine Kopie als `zeiterfassung.json.corrupt-<Zeitstempel>` daneben (die letzten fünf bleiben), und ein einmaliger Hinweis sagt, was passiert ist und wo die Kopie liegt
 - **Autostart & Einzelinstanz** — Optionaler minimierter Start bei Anmeldung (Windows, macOS, Linux); es läuft immer nur eine Instanz — ein zweiter Start holt das vorhandene Fenster nach vorn
 - **Entfernen aus der App** *(ab 1.24.0)* — Unter macOS und Linux räumt „Zeiterfassung entfernen“ (Einstellungen → App) Schlüsselbund, Zugangsdaten, Autostart und Menüeintrag ab, auf Wunsch auch Zeiten und Einstellungen; die Programmdatei löschst du danach selbst
 - **Update-Check** — Konfigurierbare Hintergrund-Prüfung auf neue Releases; Updates-Tab mit manuellem Check, Changelog und Direkt-Download, bei aktivem Tray als einmaliger Toast statt Banner. Läuft die App im Infobereich, stößt **„Nach Updates suchen"** im Tray-Menü die Prüfung direkt an — das Ergebnis kommt als Toast, auch wenn alles aktuell ist. Optional lassen sich auch Vorabversionen (Pre-Releases) anbieten — Testbuilds vor dem echten Release
@@ -86,11 +86,11 @@ Desktop-App zur Erfassung von Arbeitszeiten: im Kern Kalenderansicht und PDF-Ber
 - **UI-Skalierung** — Stufenloser Skalierungsfaktor für die Oberfläche (gerätelokal). Unter Windows und Linux folgt die App zusätzlich der Anzeigeskalierung des Systems *(ab 1.24.0)* — unter Windows bleibt sie dabei scharf, unter Linux ist sie auf skalierten X11-Desktops nicht mehr winzig; der Faktor gilt dann obendrauf
 - **Cross-Platform-Installer** — Per PyInstaller gebaut, als Setup-Exe (Windows), DMG (macOS) und AppImage (Linux) paketierbar
 
-![Einstellungs-Dialog, Tab Arbeitszeit](docs/screenshots/einstellungen-v--VERSION--.png)
+![Einstellungs-Dialog, Tab Arbeitszeit](docs/screenshots/einstellungen-v1.25.0.png)
 
 *Die Einstellungen, hier der Tab „Arbeitszeit" mit Standardzeiten, Pausenpflicht und Werkstudenten-Limit.*
 
-![Einstellungs-Dialog, Tab Erinnerungen mit dem Abschnitt Handy](docs/screenshots/einstellungen-erinnerungen-v--VERSION--.png)
+![Einstellungs-Dialog, Tab Erinnerungen mit dem Abschnitt Handy](docs/screenshots/einstellungen-erinnerungen-v1.25.0.png)
 
 *Tab „Erinnerungen“: Toast am Rechner, Erinnerung ans Verschicken und, mit eingeschalteter Handy-Erfassung, der Abschnitt „Handy“ für Push-Erinnerungen aufs Handy. Screenshots stammen aus Demo-Daten.*
 
@@ -324,7 +324,7 @@ Reservierungen anlegen und den Abgleich über die App-Oberfläche aktivieren; be
 
 ## Lokale HTTP-API (optional)
 
-**Lokale HTTP-API** *(ab --VERSION--)* — Eine kleine Schnittstelle nur auf deinem Rechner (`127.0.0.1`), über die Skripte, Taskplaner oder andere Programme deine Zeiten lesen und eintragen können. Standardmäßig **aus**.
+**Lokale HTTP-API** *(ab 1.25.0)* — Eine kleine Schnittstelle nur auf deinem Rechner (`127.0.0.1`), über die Skripte, Taskplaner oder andere Programme deine Zeiten lesen und eintragen können. Standardmäßig **aus**.
 
 1. Einstellungen → **API** → „Lokale API aktivieren“, speichern. Der Standard-Port ist 17653; die Statuszeile zeigt, ob die API läuft.
 2. **Token kopieren** — jeder Zugriff braucht es als `Authorization: Bearer <Token>`. „Neu erzeugen …“ sperrt alle Programme aus, die das alte Token benutzen.
@@ -369,9 +369,9 @@ Fehler: `400` kaputtes JSON oder falsche Form, `422` ungültiger Slot oder Datum
 
 Die Antwort enthält `warnings`, die **nie** blockieren: `{"code": "weekly_limit", "iso_year", "iso_week", "total_minutes", "limit_minutes"}` (Werkstudenten-Limit) und `{"code": "pause_requirement", "worked_minutes", "actual_pause_minutes", "required_pause_minutes"}` (§ 4 ArbZG). `kategorie` ist frei (höchstens 100 Zeichen, ohne Steuer- und ungültige Unicode-Zeichen, umgebende Leerzeichen werden entfernt), `pause` muss eine ganze Zahl sein (`30.0` ist ein Fehler). Der Body muss UTF-8 sein, ein BOM ist erlaubt. `DELETE` entfernt nur die **Ist-Zeit** des Tages, keine Reservierung und keinen Urlaub.
 
-**Reservierungen** *(ab --VERSION--)* — Lesen geht immer, **Schreiben nur, wenn Reservierungen in der App eingeschaltet sind** (Einstellungen → Arbeitszeit → „Reservierungen verwenden“); sonst antwortet die API `409 reservations_disabled` mit genau diesem Hinweis, statt Tage anzulegen, die die App nicht zeigt. Der Body gleicht dem der Ist-Zeiten, aber ohne `pause`: `{"slots": [{"start": "08:00", "end": "12:00", "kategorie": "Projekt"}]}`. Erlaubt sind heute bis 365 Tage voraus (`422 date_in_past` / `date_too_far`); `DELETE` räumt auch vergangene Tage auf. An einem Urlaubstag mit Stunden gibt es `409 vacation_day`. `send_reminder_minutes` (0–120 oder `null`, an höchstens einem Slot je Tag) ist die Sende-Erinnerung: **nennt der Body das Feld nirgends, bleibt die bisherige Markierung des Tages erhalten** (positionsweise), ein ausdrückliches `null` löscht sie. Ein `PUT` mit anderer Slot-Reihenfolge ordnet die Kalender-Events anders zu (der Abgleich aktualisiert sie statt neue anzulegen). Die Kalender-IDs selbst erscheinen nie in der API.
+**Reservierungen** *(ab 1.25.0)* — Lesen geht immer, **Schreiben nur, wenn Reservierungen in der App eingeschaltet sind** (Einstellungen → Arbeitszeit → „Reservierungen verwenden“); sonst antwortet die API `409 reservations_disabled` mit genau diesem Hinweis, statt Tage anzulegen, die die App nicht zeigt. Der Body gleicht dem der Ist-Zeiten, aber ohne `pause`: `{"slots": [{"start": "08:00", "end": "12:00", "kategorie": "Projekt"}]}`. Erlaubt sind heute bis 365 Tage voraus (`422 date_in_past` / `date_too_far`); `DELETE` räumt auch vergangene Tage auf. An einem Urlaubstag mit Stunden gibt es `409 vacation_day`. `send_reminder_minutes` (0–120 oder `null`, an höchstens einem Slot je Tag) ist die Sende-Erinnerung: **nennt der Body das Feld nirgends, bleibt die bisherige Markierung des Tages erhalten** (positionsweise), ein ausdrückliches `null` löscht sie. Ein `PUT` mit anderer Slot-Reihenfolge ordnet die Kalender-Events anders zu (der Abgleich aktualisiert sie statt neue anzulegen). Die Kalender-IDs selbst erscheinen nie in der API.
 
-**Urlaub** *(ab --VERSION--)* — Ein Urlaub ist ein Zeitraum, kein Tag; die App berechnet die Tagesminuten selbst (Arbeitstage, Feiertage des eingestellten Bundeslands und Wochenenden mit 0, Verteilung von Gesamtstunden) — die API liefert genau dieselben Werte wie der Dialog. Body von `POST`: `name`, `from`, `to` und **genau eines** von `hours_per_day` (Stunden je Arbeitstag) oder `total_hours` (auf die Arbeitstage verteilt, auf die Minute genau), dazu optional `day_hours` (`{"2026-07-10": 4}`, einzelne Tage überschreiben den berechneten Wert; Tage außerhalb des Zeitraums sind ein Fehler):
+**Urlaub** *(ab 1.25.0)* — Ein Urlaub ist ein Zeitraum, kein Tag; die App berechnet die Tagesminuten selbst (Arbeitstage, Feiertage des eingestellten Bundeslands und Wochenenden mit 0, Verteilung von Gesamtstunden) — die API liefert genau dieselben Werte wie der Dialog. Body von `POST`: `name`, `from`, `to` und **genau eines** von `hours_per_day` (Stunden je Arbeitstag) oder `total_hours` (auf die Arbeitstage verteilt, auf die Minute genau), dazu optional `day_hours` (`{"2026-07-10": 4}`, einzelne Tage überschreiben den berechneten Wert; Tage außerhalb des Zeitraums sind ein Fehler):
 
 ~~~
 curl -X POST -H "Authorization: Bearer <Token>" -H "Content-Type: application/json" \
@@ -389,7 +389,7 @@ Die API läuft nur, solange die App läuft (Autostart hilft), nimmt nur Anfragen
 
 ## Handy-Erfassung (optional)
 
-**Handy-Erfassung** *(ab --VERSION--)* — Du trägst Arbeitszeiten auf dem Handy ein, auch unterwegs ohne Verbindung. Im selben WLAN gleicht das Handy sie mit dieser App ab. Standardmäßig **aus**.
+**Handy-Erfassung** *(ab 1.25.0)* — Du trägst Arbeitszeiten auf dem Handy ein, auch unterwegs ohne Verbindung. Im selben WLAN gleicht das Handy sie mit dieser App ab. Standardmäßig **aus**.
 
 **Voraussetzungen:** Handy und Rechner im selben WLAN, die Desktop-App läuft, auf dem Handy ein aktueller Chrome (Android). Die Web-App liegt unter `https://xveyn.github.io/Zeiterfassung/` — genau so geschrieben, der Pfad unterscheidet **Groß- und Kleinschreibung** (`…/zeiterfassung/` liefert eine 404-Seite von GitHub). Der Rechner stellt nur die Abgleich-Schnittstelle bereit, nicht die Seite.
 
@@ -399,39 +399,39 @@ Die API läuft nur, solange die App läuft (Autostart hilft), nimmt nur Anfragen
 |---|---|---|---|
 | Web-App öffnen | ✓ | ✓ (iPhone geprüft) | nicht geprüft |
 | Als App installieren | ✓ | nicht geprüft | nicht geprüft |
-| QR-Code in der Web-App scannen | ✓ | ✓ *(ab --VERSION--)*, auf einem iPhone einmal geprüft | nicht geprüft |
+| QR-Code in der Web-App scannen | ✓ | ✓ *(ab 1.25.0)*, auf einem iPhone einmal geprüft | nicht geprüft |
 | Abgleich mit dem Rechner | ✓ | ✗ | ✗ (aus demselben Grund erwartet, nicht ausprobiert) |
 | Push-Erinnerungen | ✓ | ✗ | ✗ |
 
 Der Abgleich scheitert in Safari, weil der Browser den Zugriff einer `https`-Seite auf eine `http://`-Adresse im WLAN sperrt („Mixed Content“). Auf dem iPhone lässt sich die Seite also öffnen und der Code scannen, danach meldet die Web-App aber, der Rechner sei nicht erreichbar; ohne Abgleich entsteht auch kein Zeitplan für Push-Erinnerungen. Daran ändern weder der Code noch die Adresse etwas. Ein Weg für iOS ist noch nicht gebaut ([#358](https://github.com/Xveyn/Zeiterfassung/issues/358)); bis dahin ist die Handy-Erfassung auf Chrome unter Android ausgelegt.
 
 1. Einstellungen → **Mobil** → „Handy-Erfassung aktivieren". Beim ersten Einschalten erklärt die App die Folgen (kein HTTPS, aber Ende-zu-Ende verschlüsselt; die App muss laufen). Unter Windows fragt die Firewall nach; erlaube den Zugriff für dein WLAN (stuft Windows es als „öffentlich“ ein, muss es dafür freigegeben sein — auf echter Windows-Hardware ist das noch nicht abschließend geprüft, [#267](https://github.com/Xveyn/Zeiterfassung/issues/267)). Der Standard-Port ist 17654; die Adresse wählt die App aus deinen Netzwerken („Automatisch“), du kannst sie fest vorgeben. Danach **speichern**: „Gerät koppeln“ ist erst aktiv, wenn der Server läuft.
-2. **„Gerät koppeln"** zeigt einen QR-Code und darunter Adresse und **Kopplungscode** (28 Zeichen, in Gruppen zu vier) als Text. Scanne den QR-Code mit dem Handy (Kamera-App oder in der Web-App) oder tippe Adresse und Kopplungscode ein. Der Scan in der Web-App geht in jedem Browser mit Kamera, auch ohne den Barcode-Leser des Browsers (Firefox, Safari) *(ab --VERSION--)*. Der Code ist **fünf Minuten** gültig, gilt einmal und verschlüsselt die Verbindung — zeige ihn nur dem eigenen Handy.
+2. **„Gerät koppeln"** zeigt einen QR-Code und darunter Adresse und **Kopplungscode** (28 Zeichen, in Gruppen zu vier) als Text. Scanne den QR-Code mit dem Handy (Kamera-App oder in der Web-App) oder tippe Adresse und Kopplungscode ein. Der Scan in der Web-App geht in jedem Browser mit Kamera, auch ohne den Barcode-Leser des Browsers (Firefox, Safari) *(ab 1.25.0)*. Der Code ist **fünf Minuten** gültig, gilt einmal und verschlüsselt die Verbindung — zeige ihn nur dem eigenen Handy.
 3. Auf dem Handy erscheint die Wochenansicht. Tag antippen → Zeiten, Pause und Kategorie eintragen → „Speichern". Der Abgleich läuft beim Start, beim Zurückkehren in die App, bei wiederhergestellter Verbindung, kurz nach dem Speichern und auf Knopfdruck („Jetzt abgleichen"). Die Statuszeile zeigt, ob Änderungen noch nicht übertragen sind.
 4. Optional zur Startseite hinzufügen (Chrome-Menü → „App installieren“): dann startet die Web-App wie eine App und lässt sich auch ohne Verbindung öffnen. Installation als App und QR-Scan in der Web-App sind noch nicht auf allen Geräten geprüft ([#267](https://github.com/Xveyn/Zeiterfassung/issues/267); der Scan ist auf einem iPhone mit Safari einmal erfolgreich gelaufen). Die Kamera-App des Handys und die Eingabe von Adresse und Code funktionieren unabhängig davon.
 
-**Was abgeglichen wird:** Ist-Zeiten, Reservierungen *(ab --VERSION--)* und die Kategorien samt Standardzeiten *(ab --VERSION--)*, jeweils in beide Richtungen. Reservierungen erscheinen am Handy nur, wenn „Reservierungen verwenden“ am Rechner an ist (heute bis 365 Tage voraus, vergangene entfallen). Urlaub, Zugangsdaten und die übrigen Einstellungen bleiben auf dem Rechner. Das Handy sieht standardmäßig die letzten 90 Tage; ältere Zeiten lädt es auf Antippen nach („Ältere Zeiten laden“), bis zur Obergrenze, die du unter Einstellungen → Mobil einstellst (höchstens 365 Tage). Dasselbe Zusammenführen wie beim Drive-Sync: hat nur eine Seite einen Tag geändert, gilt ihr Stand; haben beide ihn geändert, entsteht ein Konflikt in der Konfliktliste der App (Einstellungen → Google → „Konflikte ansehen (n)“, erscheint nur bei offenen Konflikten), bis zur Auflösung gilt der neuere Stand. Die Web-App zeigt Konflikte nur an.
+**Was abgeglichen wird:** Ist-Zeiten, Reservierungen *(ab 1.25.0)* und die Kategorien samt Standardzeiten *(ab 1.25.0)*, jeweils in beide Richtungen. Reservierungen erscheinen am Handy nur, wenn „Reservierungen verwenden“ am Rechner an ist (heute bis 365 Tage voraus, vergangene entfallen). Urlaub, Zugangsdaten und die übrigen Einstellungen bleiben auf dem Rechner. Das Handy sieht standardmäßig die letzten 90 Tage; ältere Zeiten lädt es auf Antippen nach („Ältere Zeiten laden“), bis zur Obergrenze, die du unter Einstellungen → Mobil einstellst (höchstens 365 Tage). Dasselbe Zusammenführen wie beim Drive-Sync: hat nur eine Seite einen Tag geändert, gilt ihr Stand; haben beide ihn geändert, entsteht ein Konflikt in der Konfliktliste der App (Einstellungen → Google → „Konflikte ansehen (n)“, erscheint nur bei offenen Konflikten), bis zur Auflösung gilt der neuere Stand. Die Web-App zeigt Konflikte nur an.
 
 <table>
 <tr>
-<td><img src="docs/screenshots/handy-woche-v--VERSION--.png" alt="Wochenansicht der Web-App mit einer Reservierung und der Zeile Noch ausstehend" width="200"></td>
-<td><img src="docs/screenshots/handy-editor-v--VERSION--.png" alt="Tages-Editor der Web-App, Reiter Reservierung" width="200"></td>
-<td><img src="docs/screenshots/handy-verbindung-v--VERSION--.png" alt="Einstellungen der Web-App, Reiter Verbindung mit Benachrichtigungen" width="200"></td>
-<td><img src="docs/screenshots/handy-kategorien-v--VERSION--.png" alt="Einstellungen der Web-App, Reiter Kategorien" width="200"></td>
+<td><img src="docs/screenshots/handy-woche-v1.25.0.png" alt="Wochenansicht der Web-App mit einer Reservierung und der Zeile Noch ausstehend" width="200"></td>
+<td><img src="docs/screenshots/handy-editor-v1.25.0.png" alt="Tages-Editor der Web-App, Reiter Reservierung" width="200"></td>
+<td><img src="docs/screenshots/handy-verbindung-v1.25.0.png" alt="Einstellungen der Web-App, Reiter Verbindung mit Benachrichtigungen" width="200"></td>
+<td><img src="docs/screenshots/handy-kategorien-v1.25.0.png" alt="Einstellungen der Web-App, Reiter Kategorien" width="200"></td>
 </tr>
 </table>
 
 *Die Web-App im Browser (von links): Woche mit „Noch ausstehend“, Tages-Editor (hier der Reiter „Reservierung“), Einstellungen → Verbindung, Einstellungen → Kategorien. Aufgenommen in Chrome am Rechner mit Demo-Daten.*
 
-![Einstellungen am Rechner, Tab Mobil mit einem gekoppelten Demo-Handy](docs/screenshots/einstellungen-mobil-v--VERSION--.png)
+![Einstellungen am Rechner, Tab Mobil mit einem gekoppelten Demo-Handy](docs/screenshots/einstellungen-mobil-v1.25.0.png)
 
 *Der Tab „Mobil“ am Rechner: Handy-Erfassung ein- und ausschalten, Port und Adresse, gekoppelte Geräte, Koppeln und Widerrufen.*
 
-**Auf dem Handy** *(ab --VERSION--)* — Die Wochenansicht zeigt je Tag die Zeiten und die Tagessumme, unten die Wochensumme; liegen Reservierungen in der Woche, steht darunter „Noch ausstehend“: die reservierte Zeit, die noch nicht erledigt ist (an künftigen Tagen die ganze Reservierung, heute nur die Slots, zu denen es noch keine überlappende Ist-Zeit gibt). Ein Tag antippen öffnet den Editor (Ist-Zeit, ab morgen standardmäßig die Reservierung); „Tag leeren“ löscht ihn beim nächsten Abgleich auch am Rechner. Ein am Rechner gelöschter Tag erscheint am Handy als leerer Tag. Unter Einstellungen (Zahnrad) findest du die Reiter Verbindung (Adresse, Kopplung, Verlauf, Benachrichtigungen, Testbenachrichtigung), Kategorien und Updates mit der Build-Kennung der Web-App.
+**Auf dem Handy** *(ab 1.25.0)* — Die Wochenansicht zeigt je Tag die Zeiten und die Tagessumme, unten die Wochensumme; liegen Reservierungen in der Woche, steht darunter „Noch ausstehend“: die reservierte Zeit, die noch nicht erledigt ist (an künftigen Tagen die ganze Reservierung, heute nur die Slots, zu denen es noch keine überlappende Ist-Zeit gibt). Ein Tag antippen öffnet den Editor (Ist-Zeit, ab morgen standardmäßig die Reservierung); „Tag leeren“ löscht ihn beim nächsten Abgleich auch am Rechner. Ein am Rechner gelöschter Tag erscheint am Handy als leerer Tag. Unter Einstellungen (Zahnrad) findest du die Reiter Verbindung (Adresse, Kopplung, Verlauf, Benachrichtigungen, Testbenachrichtigung), Kategorien und Updates mit der Build-Kennung der Web-App.
 
-**Kategorien am Handy** *(ab --VERSION--)* — Kategorien samt Standardzeiten lassen sich auch auf dem Handy verwalten (Einstellungen → Kategorien); sie werden beim nächsten Abgleich zur App zurückgeschrieben.
+**Kategorien am Handy** *(ab 1.25.0)* — Kategorien samt Standardzeiten lassen sich auch auf dem Handy verwalten (Einstellungen → Kategorien); sie werden beim nächsten Abgleich zur App zurückgeschrieben.
 
-**Erinnerungen aufs Handy** *(ab --VERSION--)* — Die Erinnerungen (Reservierung, monatliche und tagesbezogene Sende-Erinnerung) kommen auf Wunsch als Push-Benachrichtigung aufs Handy, **auch wenn der Rechner aus ist**. Einschalten: Einstellungen → Erinnerungen → „Auch aufs Handy senden“, danach in der Web-App (Einstellungen → Verbindung) „Benachrichtigungen erlauben“. Ob alles ankommt, prüfst du mit „Testbenachrichtigung“ (Einstellungen → Mobil am Rechner oder Einstellungen → Verbindung in der Web-App) *(ab --VERSION--)*. Dafür läuft ein kleiner Weiterleitungsdienst im Internet (der **Push-Relay**, ein Cloudflare Worker, Quelltext in `relay/`). Er kennt nur Zeitpunkte, das Abo deines Browsers und einen Text, den nur dein Handy entschlüsseln kann — keine Arbeitszeiten, Kategorien oder Namen. Fällt er aus, kommen keine Push-Erinnerungen; alles andere läuft weiter. Bekannt: Unter Android/Chrome zeigt die Benachrichtigung neben dem Logo der Web-App rechts einen grauen Kreis mit einem „X“ (vermutlich ein Platzhalter von Chrome, siehe [#357](https://github.com/Xveyn/Zeiterfassung/issues/357)). Nur Chrome auf Android (siehe Tabelle oben); Details, was der Relay sieht, und die Grenzen: [Bekannte Einschränkungen](docs/known-limitations.md#push-relay-331-ein-neuer-vertrauens-ort). Wer den Relay selbst betreiben möchte (eigenes Cloudflare-Konto, kostenloser Plan), findet die Einrichtung in [`relay/README.md`](relay/README.md).
+**Erinnerungen aufs Handy** *(ab 1.25.0)* — Die Erinnerungen (Reservierung, monatliche und tagesbezogene Sende-Erinnerung) kommen auf Wunsch als Push-Benachrichtigung aufs Handy, **auch wenn der Rechner aus ist**. Einschalten: Einstellungen → Erinnerungen → „Auch aufs Handy senden“, danach in der Web-App (Einstellungen → Verbindung) „Benachrichtigungen erlauben“. Ob alles ankommt, prüfst du mit „Testbenachrichtigung“ (Einstellungen → Mobil am Rechner oder Einstellungen → Verbindung in der Web-App) *(ab 1.25.0)*. Dafür läuft ein kleiner Weiterleitungsdienst im Internet (der **Push-Relay**, ein Cloudflare Worker, Quelltext in `relay/`). Er kennt nur Zeitpunkte, das Abo deines Browsers und einen Text, den nur dein Handy entschlüsseln kann — keine Arbeitszeiten, Kategorien oder Namen. Fällt er aus, kommen keine Push-Erinnerungen; alles andere läuft weiter. Bekannt: Unter Android/Chrome zeigt die Benachrichtigung neben dem Logo der Web-App rechts einen grauen Kreis mit einem „X“ (vermutlich ein Platzhalter von Chrome, siehe [#357](https://github.com/Xveyn/Zeiterfassung/issues/357)). Nur Chrome auf Android (siehe Tabelle oben); Details, was der Relay sieht, und die Grenzen: [Bekannte Einschränkungen](docs/known-limitations.md#push-relay-331-ein-neuer-vertrauens-ort). Wer den Relay selbst betreiben möchte (eigenes Cloudflare-Konto, kostenloser Plan), findet die Einrichtung in [`relay/README.md`](relay/README.md).
 
 **Geräte verwalten:** Einstellungen → Mobil zeigt die gekoppelten Handys mit „zuletzt …“ und „gültig bis …“. Ein Gerät ist 30 Tage ab seinem letzten Abgleich gekoppelt, danach koppelst du neu (die Einträge auf dem Handy bleiben dabei erhalten). „Widerrufen" und „Alle widerrufen" sperren Handys sofort aus; widerrufene Geräte verschwinden aus der Liste (das Handy meldet beim nächsten Abgleich, dass es neu gekoppelt werden muss).
 
@@ -455,10 +455,10 @@ Der Abgleich scheitert in Safari, weil der Browser den Zugriff einer `https`-Sei
 | **Inhalt** | E-Mail-Body mit Platzhaltern |
 | **Grußformel** | Abschluss der E-Mail (Zeilenumbrüche mit `\n`) |
 | **Autostart** | App minimiert bei Systemanmeldung starten (Windows/macOS/Linux) |
-| **Lokale API** *(ab --VERSION--)* | Tab „API“: lokale HTTP-API ein-/ausschalten, Port, Status, Token kopieren oder neu erzeugen (Standard: aus, gerätelokal) |
-| **Erinnerungen** | Tab „Erinnerungen“: Toast bei fälligen Reservierungen (Vorlaufzeit) und Erinnerung ans Verschicken; im Abschnitt „Handy“ *(ab --VERSION--)* „Auch aufs Handy senden“ (Push über den Relay, nur mit eingeschalteter Handy-Erfassung) und optional „Toast am Desktop unterdrücken“ |
+| **Lokale API** *(ab 1.25.0)* | Tab „API“: lokale HTTP-API ein-/ausschalten, Port, Status, Token kopieren oder neu erzeugen (Standard: aus, gerätelokal) |
+| **Erinnerungen** | Tab „Erinnerungen“: Toast bei fälligen Reservierungen (Vorlaufzeit) und Erinnerung ans Verschicken; im Abschnitt „Handy“ *(ab 1.25.0)* „Auch aufs Handy senden“ (Push über den Relay, nur mit eingeschalteter Handy-Erfassung) und optional „Toast am Desktop unterdrücken“ |
 | **Reservierungen verwenden** | Tab „Arbeitszeit“: schaltet die zukünftigen Soll-Zeiten ein (auch ohne Google-Kalender); ohne den Schalter sind Reservierungen in der App, der API und am Handy unsichtbar |
-| **Mobil** *(ab --VERSION--)* | Tab „Mobil“: Handy-Erfassung ein-/ausschalten, Port, Adresse, Obergrenze des Verlaufs („Verlauf bis zu“, höchstens 365 Tage), Status, gekoppelte Geräte, Koppeln und Widerrufen, Testbenachrichtigung ans gewählte Handy *(ab --VERSION--)* (Standard: aus, gerätelokal) |
+| **Mobil** *(ab 1.25.0)* | Tab „Mobil“: Handy-Erfassung ein-/ausschalten, Port, Adresse, Obergrenze des Verlaufs („Verlauf bis zu“, höchstens 365 Tage), Status, gekoppelte Geräte, Koppeln und Widerrufen, Testbenachrichtigung ans gewählte Handy *(ab 1.25.0)* (Standard: aus, gerätelokal) |
 | **Synchronisation** | Multi-Device-Sync via Google Drive aktivieren (siehe Abschnitt oben) |
 | **Berechtigungen** | Zeigt, welche Google-Berechtigungen (OAuth-Scopes) das Konto der App gewährt hat — inkl. solcher, die noch gewährt, aber zurzeit ungenutzt sind. Daneben steht auf einen Blick „n von m Berechtigungen": ✓ alles da, ○ eine zuschaltbare Funktion wartet noch auf ihre Freigabe, ✗ eine Grundberechtigung fehlt (dann klappt auch der Mail-Versand nicht) |
 | **Anmeldung** *(ab 1.23.1)* | Ob die Google-Anmeldung noch trägt: ✓ gültig, „nicht angemeldet", ⚠ abgelaufen (dann „Google neu verbinden") oder „nicht prüfbar (offline)". Ergänzt die Zeile darüber: die sagt, *welche* Freigaben erteilt sind, diese, *ob* die Anmeldung noch funktioniert — beides kann auseinanderfallen. Wird beim Öffnen geprüft, ohne Browser; lässt sich die Anmeldung still erneuern, passiert das dabei |
@@ -486,7 +486,7 @@ Die App läuft auf **Windows, macOS und Linux**. Plattformspezifische Features w
 | Infobereich-Icon (Tray) | ✓ (pystray) | ○ (NSStatusItem, Opt-in `ZEIT_MACOS_TRAY=1`) | ✓ (StatusNotifierItem) *(ab 1.23.2)* |
 | Standalone-Binary (PyInstaller) | ✓ (`.exe`) | ✓ (`.app` Bundle) | ✓ (AppImage) |
 | Update aus der App | ✓ (lädt, prüft, installiert; per Knopf mit Neustart, beim Beenden ohne) | — (Download im Browser) | ✓ (lädt, prüft, ersetzt die AppImage; per Knopf mit Neustart, beim Beenden ohne) |
-| Handy-Erfassung (Server in der App) *(ab --VERSION--)* | ✓ (Firewall fragt beim ersten Einschalten) | ✓ | ✓ |
+| Handy-Erfassung (Server in der App) *(ab 1.25.0)* | ✓ (Firewall fragt beim ersten Einschalten) | ✓ | ✓ |
 
 ○ = implementiert, aber bis zum manuellen Plattform-Test dormant. Das Linux-Tray
 spricht StatusNotifierItem über D-Bus (KDE Plasma, XFCE, GNOME mit
@@ -511,7 +511,7 @@ Das meiste sind JSON-Dateien — `instance-secret`, `api-token` und das Protokol
 - **sync-apply.journal** — Write-Ahead-Journal des Sync-Abgleichs; existiert nur währenddessen. Stürzt die App mittendrin ab, holt der nächste Start den Abgleich darüber nach
 - **logs/zeiterfassung.log** — Protokoll
 
-Neben diesen Dateien kann `<datei>.corrupt-<Zeitstempel>` liegen *(ab --VERSION--)*: die Sicherung vor einer Reparatur beschädigter Zeitdaten (es bleiben die neuesten fünf je Datei). Sie ist eine volle Kopie deiner Zeiten, behandle sie wie die Hauptdatei; Deinstallation und „Zeiterfassung entfernen“ räumen sie mit ab.
+Neben diesen Dateien kann `<datei>.corrupt-<Zeitstempel>` liegen *(ab 1.25.0)*: die Sicherung vor einer Reparatur beschädigter Zeitdaten (es bleiben die neuesten fünf je Datei). Sie ist eine volle Kopie deiner Zeiten, behandle sie wie die Hauptdatei; Deinstallation und „Zeiterfassung entfernen“ räumen sie mit ab.
 
 **Zugangsdaten** (siehe Sicherheitshinweis unten):
 
@@ -520,10 +520,10 @@ Neben diesen Dateien kann `<datei>.corrupt-<Zeitstempel>` liegen *(ab --VERSION-
 - **webhooks.json** — Webhook-Konfiguration **inklusive** Zugangstoken bzw. HMAC-Schlüssel. Gerätelokal: reist bewusst **nicht** über den Drive-Sync mit
 - **smtp.json** — SMTP-Kontokonfiguration; das Passwort liegt darin nur, wenn kein Schlüsselbund verfügbar war (Datei-Fallback, dann im Klartext). Gerätelokal: reist bewusst **nicht** über den Drive-Sync mit
 - **instance-secret** — schützt den lokalen Kanal, über den eine zweite Instanz das vorhandene Fenster nach vorn holt
-- **api-token** *(ab --VERSION--)* — Zugriffstoken der lokalen HTTP-API; nur vorhanden, wenn die API einmal eingeschaltet war. Gerätelokal: reist bewusst **nicht** über den Drive-Sync mit
-- **mobile_devices.json** *(ab --VERSION--)* — die gekoppelten Handys der Handy-Erfassung: Name, Zeitpunkte und nur ein **Hash** des Gerätetokens, nie das Token selbst. Gerätelokal: reist bewusst **nicht** über den Drive-Sync mit
-- **mobile_keys.json** *(ab --VERSION--)* — wo der Schlüssel eines gekoppelten Handys liegt: im Schlüsselbund des Betriebssystems oder, wenn keiner verfügbar ist, in dieser Datei selbst (dann nur für dein Benutzerkonto lesbar). Gerätelokal: reist bewusst **nicht** über den Drive-Sync mit
-- **mobile_relay.json** *(ab --VERSION--)* — je gekoppeltem Handy das Zufallsgeheimnis, mit dem der Push-Relay das Handy erkennt (nur vorhanden, wenn Push-Erinnerungen eingerichtet wurden; nur für dein Benutzerkonto lesbar). Gerätelokal: reist bewusst **nicht** über den Drive-Sync mit
+- **api-token** *(ab 1.25.0)* — Zugriffstoken der lokalen HTTP-API; nur vorhanden, wenn die API einmal eingeschaltet war. Gerätelokal: reist bewusst **nicht** über den Drive-Sync mit
+- **mobile_devices.json** *(ab 1.25.0)* — die gekoppelten Handys der Handy-Erfassung: Name, Zeitpunkte und nur ein **Hash** des Gerätetokens, nie das Token selbst. Gerätelokal: reist bewusst **nicht** über den Drive-Sync mit
+- **mobile_keys.json** *(ab 1.25.0)* — wo der Schlüssel eines gekoppelten Handys liegt: im Schlüsselbund des Betriebssystems oder, wenn keiner verfügbar ist, in dieser Datei selbst (dann nur für dein Benutzerkonto lesbar). Gerätelokal: reist bewusst **nicht** über den Drive-Sync mit
+- **mobile_relay.json** *(ab 1.25.0)* — je gekoppeltem Handy das Zufallsgeheimnis, mit dem der Push-Relay das Handy erkennt (nur vorhanden, wenn Push-Erinnerungen eingerichtet wurden; nur für dein Benutzerkonto lesbar). Gerätelokal: reist bewusst **nicht** über den Drive-Sync mit
 
 Bei aktivem Sync liegt zusätzlich in deinem Google Drive eine versteckte Datei `zeiterfassung-sync.json` im `appDataFolder` — nicht über die Drive-Web-Oberfläche sichtbar, nur die App kommt dran.
 
