@@ -36,7 +36,7 @@ bekommt es an einem sicheren Zeitpunkt ohne Rückfrage. Ein Fix erreicht die PWA
 damit sofort, den Desktop erst mit dem nächsten Release. Beide Seiten können also
 unterschiedlich alt sein; die Verträge zwischen ihnen sind darauf ausgelegt
 (`pwa/CLAUDE.md`, Abschnitt „Kompatibilität“). Die Build-Kennung der PWA
-(`P-N/X.Y.Z (sha)`: PWA-Version, Änderungen seit dem Desktop-Release, dessen Version, Commit) steht im Verbindungsdialog der PWA.
+(`N/X.Y.Z (sha)`: Änderungen seit dem Desktop-Release, dessen Version, Commit) steht im Verbindungsdialog der PWA.
 
 ## Schwachstelle melden
 

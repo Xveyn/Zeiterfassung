@@ -337,7 +337,7 @@ jobs:
             exit 1
           fi
 
-      # Ein Release setzt den Zaehler N der PWA-Build-Kennung (`P-N/X.Y.Z`) auf 0
+      # Ein Release setzt den Zaehler N der PWA-Build-Kennung (`N/X.Y.Z`) auf 0
       # und aendert deren Anker X.Y.Z. pages.yml laeuft aber nur bei Pushes mit
       # Aenderungen unter pwa/**; der Release-PR deployt beim Merge VOR dem Tag
       # (alter Anker), und ein mit GITHUB_TOKEN gepushter Tag loest keinen
