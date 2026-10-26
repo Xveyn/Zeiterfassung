@@ -1171,7 +1171,7 @@ Die Test-Deps sind **exakt gepinnt** (Audit N25) — beim Bump gegen Python 3.12
 - **test-macos** / **test-windows** — Plattform-Verifikation (je 3.12; macOS zieht zusätzlich `pyobjc-framework-Cocoa`).
 - **lint** — `ruff check .`. **typecheck** — `pyright` (gepinnt `1.1.411`).
 - **pwa** — `node --test` im Ordner `pwa/` (Node 22, `actions/setup-node`), hinter `changes` wie die übrigen Jobs. Bewusst **nicht** in der Liste der Required Checks oben: das Ruleset liegt außerhalb des Repos, die Aufnahme entscheidet der Maintainer (dann beides abgleichen, s. „Branch Protection"). `pwa/**` zählt als Code (nicht als Doku) und löst die ganze Matrix aus.
-- **relay** — `npm ci` und `node --test` im Ordner `relay/` (Node 22, `actions/setup-node`), hinter `changes` wie `pwa`. Ebenfalls **nicht** in der Liste der Required Checks (Aufnahme entscheidet der Maintainer, dann beides abgleichen). `relay/**` zählt als Code und löst die ganze Matrix aus.
+- **relay** — `npm ci` und `node --test` im Ordner `relay/` (Node 22, `actions/setup-node`), hinter `changes` wie `pwa`. Ebenfalls **nicht** in der Liste der Required Checks (Aufnahme entscheidet der Maintainer, dann beides abgleichen). `relay/**` zählt als Code und löst die ganze Matrix aus. Der Job prüft zusätzlich die Konfiguration mit `wrangler deploy --dry-run` (ohne Token). Ausgerollt wird nicht hier, sondern von **`relay-deploy.yml`** nach dem Merge auf `master` (Environment `relay-production` mit den Cloudflare-Secrets, nur `master`, ohne zweite Freigabe — der Merge ist das Gate; Einrichtung in `relay/README.md`).
 
 Lokal: `pytest` aus dem Repo-Root (Coverage: `pytest --cov=src --cov-report=term-missing`). Alle Tests müssen vor dem PR-Merge grün sein.
 
