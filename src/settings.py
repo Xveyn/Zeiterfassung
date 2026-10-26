@@ -70,7 +70,7 @@ DEFAULTS = {
     "mobile_enabled": False,
     "mobile_port": 17654,
     "mobile_address": "",
-    # Der Hinweis beim ersten Einschalten (unverschlüsselte Verbindung, vertrauenswürdiges
+    # Der Hinweis beim ersten Einschalten (kein HTTPS, vertrauenswürdiges
     # Netz, App muss laufen) wurde bestätigt. Gerätelokal wie die übrigen mobile_*.
     "mobile_notice_accepted": False,
     # Obergrenze des Lesefensters der Handy-PWA in Tagen (#250): 30/90/180/365. Gerätelokal wie

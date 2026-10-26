@@ -4,10 +4,10 @@ Hygiene-Befunde aus dem Review vom 2026-05-17. Priorisiert nach Hebelwirkung
 (großer Effekt / kleiner Aufwand zuerst). Reine Hygiene-Punkte — Kernfunktionalität
 ist stabil, das hier sind keine Bug-Reports.
 
-> **Stand nachgeprüft am 2026-09-12.** Acht der zehn Punkte hat die Zeit
-> erledigt — die großen Umbauten danach (R1 `sync_runtime`, R2 `json_store`,
+> **Stand nachgeprüft am 2026-09-12, offene Punkte am 2026-10-26 erneut.**
+> Neun der zehn Punkte hat die Zeit erledigt (der Font im Settings-Dialog zuletzt) — die großen Umbauten danach (R1 `sync_runtime`, R2 `json_store`,
 > R3 `theme/`, die `GridRenderer`-Extraktion, Audit N17) haben den Code an
-> genau diesen Stellen ohnehin angefasst. Zwei stehen noch, beide klein.
+> genau diesen Stellen ohnehin angefasst. Einer steht noch, und er ist klein.
 > Die Zeilennummern von 2026-05-17 waren durchweg verrutscht und sind
 > nachgezogen; wo eine Datei seither Paket geworden ist, steht der neue Pfad.
 
@@ -34,12 +34,12 @@ ist stabil, das hier sind keine Bug-Reports.
 ## Verdächtige Stellen (Klärung nötig)
 
 - [ ] **`_strip_for_candidate` ist ein No-op**
-  `src/sync.py:164` ist `{k: v for k, v in item.items()}`, also nur ein
+  `src/sync.py:200` ist `{k: v for k, v in item.items()}`, also nur ein
   shallow copy. Der Name impliziert Filter-Logik, die fehlt. Einziger
-  Aufrufer ist `sync.py:153` (Aufbau von `conflict["candidates"]`). Entweder
+  Aufrufer ist `sync.py:189` (Aufbau von `conflict["candidates"]`). Entweder
   Funktion löschen und die Callsite auf `dict(...)` ändern, oder fehlende
   Strip-Logik nachziehen. Vorher klären, ob Strip versehentlich entfernt wurde.
-  **Weiterhin offen** — unverändert seit dem Review.
+  **Weiterhin offen** — am 2026-10-26 gegengeprüft, die Funktion ist unverändert ein reiner Shallow-Copy.
 
 - [x] **`_measure_max_width` greift auf `settings._data` direkt** — erledigt.
   Die Messung liegt in `grid_renderer.py`; ein Zugriff auf `settings._data`
@@ -60,22 +60,19 @@ ist stabil, das hier sind keine Bug-Reports.
 - [x] **Magic numbers ohne Kommentar** (`height=3`/`height=5`) —
   gegenstandslos, siehe Probe-Label-Block oben.
 
-- [ ] **Hardcoded Font im Settings-Dialog**
-  `src/dialogs/settings_dialog/tab_mail.py:47` nutzt `("Segoe UI", 8)` direkt
-  statt `FONT_SMALL` aus `src.theme` — das Modul importiert den Namen nicht
-  einmal. Plattforminkonsistent (auf macOS/Linux wäre die Font-Wahl anders)
-  und immun gegen die UI-Skalierung, die `theme.fonts` sonst überall trägt.
-  **Weiterhin offen**, nur umgezogen: der Dialog ist seit Audit H4 ein Paket,
-  die Stelle sitzt jetzt im Mail-Tab.
+- [x] **Hardcoded Font im Settings-Dialog** — gegenstandslos.
+  `tab_mail.py` gibt es nicht mehr (die Tabs heißen `tab_sending` & Co.), und
+  `grep -rn "Segoe UI" src/dialogs` findet nichts mehr.
 
 ## Bewusst nicht angefasst
 
-- **`src/ui.py`** war beim Review ~1050 Zeilen; heute sind es ~1170 — aber die
+- **`src/ui.py`** war beim Review ~1050 Zeilen; heute sind es ~1200 — aber die
   damals genannte Sorge hat sich anders aufgelöst als vorgeschlagen: statt
   eines Mixins sind die Sync-Methoden in die eigene Komponente
   `sync_orchestrator.py` gewandert (dazu `grid_renderer.py`,
   `background_tasks.py`, `update_banner.py`, seit R11 `update_coordinator.py`). `App` ist seither Koordinator,
   keine God-Class — die Zeilen sind Chrome-Aufbau und Dialog-Routing. Der
   Schnitt steht in [`src/CLAUDE.md`](../src/CLAUDE.md).
-- **Fehlender „Abbrechen"-Button im Entry-Dialog** ist Design (Fenster zu =
-  Abbrechen), nicht Hygiene.
+- ~~Fehlender „Abbrechen"-Button im Entry-Dialog~~ — überholt: seit #320
+  (Commit 361d904) hat der Tages-Dialog einen „Abbrechen"-Knopf
+  (`src/dialogs/entry_dialog.py`).

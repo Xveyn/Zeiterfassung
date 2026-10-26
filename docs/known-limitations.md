@@ -471,7 +471,7 @@ Augenhöhe mit den anderen beiden Plattformen.
   nichts lesen oder schreiben. Das Gerätetoken steht weiter im Klartext-Header, ist aber ohne den
   Schlüssel wertlos. Weitere Maßnahmen: Funktion standardmäßig aus, Bindung nur an die gewählte
   Adresse, Token pro Gerät (nur als Hash gespeichert, widerrufbar, 30 Tage ab letztem Abgleich),
-  kurzlebiger, einmaliger Kopplungscode. Nicht gelöst: Firefox und iOS (Mixed Content, s. u.);
+  kurzlebiger, einmaliger Kopplungscode. Nicht gelöst: Firefox und iOS (Mixed Content, s. u., #358);
   HTTPS direkt vom Desktop bleibt als Alternative offen (#249).
 - **Wo der Geräteschlüssel am Rechner liegt.** Im Schlüsselbund des Betriebssystems (Windows
   Credential Manager, macOS Keychain, Linux Secret Service). **Nur ohne Schlüsselbund** (Linux
@@ -508,18 +508,33 @@ Augenhöhe mit den anderen beiden Plattformen.
   `address_gone` und tauscht sie nicht still aus; bei „Automatisch“ nimmt sie beim nächsten
   Start (oder Speichern) die neue Adresse. In beiden Fällen muss das Handy neu gekoppelt werden
   (eine feste Adresse im Router hilft).
-- **Android/Chrome.** Entwickelt und geprüft wird auf Android mit Chrome. iOS ist nicht
-  vorgesehen (kein Zugriff auf `http://` im WLAN aus einer `https`-Seite ohne
-  Zusatzweg). Was erst ein Test mit echtem Gerät klärt — Berechtigung für Zugriffe im
-  lokalen Netz, Verhalten bei abgelehnter Berechtigung, QR-Scan in der Web-App, Installation
-  als App —, steht in der Prüfliste vor dem Release (#267).
+- **Nur Chrome auf Android gleicht ab; iOS ist für die Web-App noch nicht vollständig
+  funktionsfähig (#358).** Entwickelt und geprüft wird auf Android mit Chrome. Auf **Safari
+  (iPhone)** lassen sich die Web-App öffnen und der Koppel-Code scannen; Installation als App und
+  der Rest sind dort nicht geprüft. **Safari und Firefox** erreichen den Rechner nach dem Koppeln nicht: sie sperren den Zugriff einer `https`-Seite auf eine
+  `http://`-Adresse im WLAN („Mixed Content“); auf einem iPhone mit Safari am 2026-10-26
+  beobachtet, bei Firefox aus demselben Mechanismus geschlossen, nicht ausprobiert. Die Web-App
+  meldet dann nur „Desktop nicht erreichbar“, ohne die Ursache zu nennen (#275). Wege für iOS
+  (Web-App vom Rechner ausliefern, https am Rechner, Zwischenstation über den Relay) sind in
+  #358 gesammelt, nichts davon ist gebaut. Was erst ein Test mit echtem Gerät klärt —
+  Berechtigung für Zugriffe im lokalen Netz, Verhalten bei abgelehnter Berechtigung,
+  Installation als App —, steht in der Prüfliste vor dem Release (#267).
+- **Die Adresse der Web-App unterscheidet Groß- und Kleinschreibung.** Sie lautet
+  `https://xveyn.github.io/Zeiterfassung/` mit großem „Z“. `…/zeiterfassung/` oder die Domain
+  ohne Pfad liefert die Seite „There isn't a GitHub Pages site here“ (404). Der Koppel-QR-Code
+  trägt die richtige Adresse; Probleme macht nur Abtippen oder ein von Hand angelegtes Lesezeichen.
 - **QR-Scan in der Web-App ohne `BarcodeDetector`.** Wo der Browser keinen Barcode-Leser hat
   (Firefox, Safari), liest ein eigener Decoder (`pwa/qr-decode.js`, #326) Bilder aus dem Video.
-  Er ist nur mit gerenderten Bildern geprüft, **nicht mit echten Kameras**: bei Moiré vom
+  Er ist überwiegend mit gerenderten Bildern geprüft; mit einer echten Kamera ist er bisher
+  einmal gelaufen (iPhone, Safari, 2026-10-26: erkannt). **Eine breite Prüfung auf echten Kameras
+  steht aus (#267)**: bei Moiré vom
   Abfilmen eines Bildschirms, Reflexen und Modulen unter etwa 4 Kamerapixeln kann der Scan
   scheitern. Dann hilft näher heran, anderer Winkel, der Desktop-Dialog (größerer QR-Code)
   oder das Abtippen von Adresse und Code. Dass der Scan geht, heißt nicht, dass das Handy den
-  Desktop danach erreicht — das entscheidet der Browser (iOS: s. o.).
+  Desktop danach erreicht — das entscheidet der Browser (Safari und Firefox: s. o.). Die Taste
+  „QR-Code scannen“ erscheint nur, wenn der Browser `getUserMedia` anbietet; eine alte, noch
+  gecachte Fassung der Web-App (vor #326) zeigt sie in Safari nicht — „Neu laden“ in den
+  Einstellungen → Updates holt den neuen Stand.
 - **Lokaler Speicher kann verloren gehen.** Löscht du die Website-Daten oder räumt Android
   bei Platzmangel auf, sind nicht übertragene Einträge weg. Die Web-App bittet um
   dauerhaften Speicher, zeigt einen Zähler „n Änderungen nicht übertragen" und warnt, wenn
@@ -535,11 +550,13 @@ Augenhöhe mit den anderen beiden Plattformen.
   wieder vom Handy (#265, #273, #250). Bei sehr großen Beständen (viele Slots je Tag) kürzt der
   Desktop das Fenster auf ein Datenbudget von 768 KiB; die Wochenansicht sagt dann „wegen der
   Datenmenge“. Mehr als 365 Tage gibt es nur am Desktop.
-- **Mehr als 400 nicht übertragene Tage** auf einmal lehnt der Server ab; der Abgleich
-  scheitert dann bei jedem Versuch, bis weniger offen sind (Aufteilen steht aus, #262).
+- **Mehr als 400 nicht übertragene Tage** gehen in Päckchen zu höchstens 400 innerhalb eines
+  Abgleichs hinaus (`MAX_DAYS_PER_REQUEST`, neueste zuerst); der Server lehnt mehr als 400 je
+  Anfrage weiter ab. Scheitert ein späteres Päckchen, bleiben die vorherigen angewendet und der
+  Rest „nicht übertragen“ bis zum nächsten Lauf. Offene Review-Reste dazu: #262.
 - **Geräteverwaltung und Urlaub sind gerätelokal.** Die Liste der gekoppelten Handys
-  und der Urlaub reisen nicht per Drive-Sync; das Handy zeigt keinen Urlaub und keine
-  Reservierungen.
+  und der Urlaub reisen nicht per Drive-Sync; das Handy zeigt keinen Urlaub. Reservierungen
+  zeigt und bearbeitet es, sofern „Reservierungen verwenden“ am Rechner an ist.
 - **Konflikte löst nur die App.** Das Handy zeigt beide Fassungen an, die Auswahl trifft
   man am Rechner.
 - **Mehrere Tabs der PWA.** Schickt ein Tab „Neu laden" (`SKIP_WAITING`), übernimmt der neue
@@ -577,7 +594,7 @@ läuft.
   Minute stellen (Rate-Limit-Binding, zählt je Cloudflare-Standort und großzügig). Das hält Einzelne vom
   Massenanlegen von Geräten ab. Viele verteilte Adressen können das Tageslimit von 100.000 Anfragen trotzdem
   aufbrauchen; dann antwortet der Relay nicht mehr, bis der Tag um ist. Ein Gerät belegt höchstens rund
-  200 KB, verwaiste verfallen nach 90 Tagen.
+  235 KB (200 Einträge mit vollem Text, `relay/src/validate.js`), verwaiste verfallen nach 90 Tagen.
 - **Firefox und iOS haben vorerst nichts davon:** der Zeitplan entsteht in der PWA aus dem Abgleich mit
   dem Desktop (Reservierungen, Sende-Zeitpunkte). Wo der Abgleich nicht geht (Mixed Content, s. oben),
   gibt es keinen Plan und damit keine Push-Erinnerung; Chrome auf Android ist der Weg der ersten Stufe.
@@ -597,4 +614,4 @@ läuft.
 - **Ungültige Slot-Werte werden beim Lesen ersetzt, nicht repariert.** Eine gespeicherte Pause, die keine ganze Zahl von 0 bis 1440 ist (`null`, Text, `30.5`, negativ, `inf`), zählt `0`; `start`/`end` ohne Text zählen als leer, eine Kategorie ohne Text als „ohne Kategorie“. Die Datei behält den Originalwert, bis der Tag neu gespeichert wird.
 - **Was beim Laden nicht Objekt-förmig ist, wird verworfen.** Das betrifft nur Einträge und Slots, die kein JSON-Objekt sind (Handbearbeitung, Fremd-Sync). Außerdem wird ein `slots`, das keine Liste ist, zu `[]`, und ein Top-Level, das kein Objekt ist, wird wie eine unparsebare Datei quarantäniert (die Datei startet leer). Vorher liegt eine Kopie als `zeiterfassung.json.corrupt-<Zeitstempel>` neben der Datei; es bleiben die neuesten fünf Sicherungen. Scheitert die Kopie, bleibt die Datei unverändert und der reparierte Stand gilt zunächst nur im Speicher; beim nächsten Speichern wird die Sicherung noch einmal versucht, und gelingt sie auch dann nicht, steht im Log „Schreiben ohne Sicherung“ und die verworfenen Einträge sind weg. Die Sicherungen sind volle Kopien der Nutzerdaten: „Meine Daten löschen“ im Uninstaller und „Zeiterfassung entfernen“ räumen sie mit ab.
 - **Ein Remote-Doc mit einem Nicht-Objekt in `slots` ist ungültig** und wird wie andere Strukturfehler behandelt (Remote quarantänen, lokaler Stand wird neue Wahrheit).
-- **Reservierungen und Urlaub** haben diese Härtung noch nicht (Follow-up über #239).
+- **Reservierungen und Urlaub** haben diese Härtung noch nicht: sie quarantänieren eine unparsebare Datei (`json_store.load_json_or_quarantine`), reparieren aber keine einzelnen beschädigten Einträge wie `zeiterfassung.json` (kein Reparatur-Hinweis, keine Sicherung vor dem Reparieren). Ein Issue dafür gibt es nicht; #239 (API für Reservierungen und Urlaub) ist abgeschlossen.

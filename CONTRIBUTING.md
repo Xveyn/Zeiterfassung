@@ -94,17 +94,21 @@ Zeiterfassung/
 │   ├── sync_orchestrator.py # Drive-Sync-Steuerung (manuell/Tray/Pull/Quit, Fehler-Aufbereitung)
 │   ├── update_banner.py   # GitHub-Release-Hinweis-Banner
 │   ├── update_coordinator.py # Update-Lebenszyklus: Start-Check, Toast/Banner, Tray-Check, Anwenden beim Beenden
-│   ├── dialogs/           # Modal-Dialoge (entry, send, export, settings [inkl. SMTP-Tab], share, import, conflicts, category, scopes, webhook, smtp, vacation) + geteilter period_picker
+│   ├── dialogs/           # Modal-Dialoge (entry, send, export, settings [Paket, ein Modul je Tab; SMTP und Webhooks im Versand-Tab], share, import, conflicts, category, scopes, webhook, smtp, vacation, mobile_pair, removal) + geteilte Bausteine (period_picker, date_row, slot_rows)
 │   ├── json_store.py      # Gemeinsame Mechanik der lokalen JSON-Stores (atomares Schreiben, Quarantäne)
 │   ├── storage.py         # JSON-Persistenz der Zeiteinträge
 │   ├── settings.py        # Einstellungen mit Standardwerten
-│   ├── category_defaults.py # Default-Kategorien für Zeit-Slots
+│   ├── category_defaults.py # Per-Kategorie-Standardzeiten (allgemein oder je Wochentag), pure Logik
 │   ├── report.py          # HTML- & PDF-Reportgenerierung
 │   ├── mime_message.py    # Gemeinsamer MIME-Bau für Gmail-API und SMTP (UTF-8-Charset, Betreff-Header, Header-Injection-Abwehr)
 │   ├── mail.py            # Gmail OAuth2-Authentifizierung & Versand
 │   ├── smtp.py            # SMTP-Versand (smtplib/ssl), Verbindungstest, eigene Fehlerklassifikation
 │   ├── smtp_store.py      # Gerätelokale Persistenz der SMTP-Konten (gehärtet geschrieben, kein Sync)
-│   ├── keyring_store.py   # SMTP-Passwörter im OS-Schlüsselbund, mit Datei-Fallback
+│   ├── keyring_store.py   # Passwörter und Geheimnisse im OS-Schlüsselbund (30-s-Watchdog), mit Datei-Fallback
+│   ├── token_store.py     # OAuth-Credentials laden/speichern, Refresh-Token im Schlüsselbund
+│   ├── webhook_secrets.py # Webhook-Secrets im Schlüsselbund
+│   ├── secret_migration.py # Klartext-Secrets beim Start in den Schlüsselbund umziehen; Aufräumen bei der Deinstallation
+│   ├── topmost_relief.py  # „Immer im Vordergrund" kurz aufheben, solange der Schlüsselbund fragt
 │   ├── webhook.py         # Webhook-Versand (URL-Prüfung, Auth/HMAC, Payload, POST), pure Logik
 │   ├── webhook_store.py   # Gerätelokale Persistenz der Webhooks (gehärtet geschrieben, kein Sync)
 │   ├── drive.py           # Google Drive API-Wrapper (Multi-Device-Sync)
@@ -114,6 +118,7 @@ Zeiterfassung/
 │   ├── sync_history.py    # Persistenter „hat je gesynct/abgeglichen"-Marker (Tombstone-Schutz)
 │   ├── conflicts_store.py # Lokale Persistenz der Konfliktliste
 │   ├── share.py           # Export/Import von Arbeitszeiten als Share-JSON
+│   ├── share_message.py   # Mail zum Teilen: Betreff, HTML-Body, Anhangsname
 │   ├── reservations.py    # Reservierungen (zukünftige Soll-Zeiten)
 │   ├── reservations_sync.py # Abgleich der Reservierungen mit Google Kalender
 │   ├── vacations.py       # Urlaubsperioden (Regeln + Persistenz, gerätelokal)
@@ -137,6 +142,33 @@ Zeiterfassung/
 │   ├── single_instance.py # Single-Instance-Guard (verhindert parallele Instanzen)
 │   ├── device_id.py       # Stabile, hardware-abgeleitete Geräte-ID für installierte Builds (Sync)
 │   ├── devices.py         # Lesbare Gerätenamen (Registry im Sync-Doc) für den Konflikt-Dialog
+│   ├── api_auth.py        # Lokale HTTP-API (#92): Token und Zugangsprüfung
+│   ├── api_server.py      # … Server im Daemon-Thread (Loopback bzw. Handy-Instanz)
+│   ├── api_service.py     # … Lebenszyklus (api_enabled/api_port)
+│   ├── api_routes.py      # … Routing und Antworten
+│   ├── api_summary.py     # … Auswertungen (Summen, Kategorien, Limit, Urlaub)
+│   ├── api_entry_write.py # … Schreibpfad der Ist-Zeiten
+│   ├── api_reservation_write.py # … Schreibpfad der Reservierungen
+│   ├── api_vacation_write.py # … Schreibpfad des Urlaubs
+│   ├── vacation_plan.py   # Planung beim Anlegen einer Urlaubsperiode (aus dem Dialog gezogen, auch von der API genutzt)
+│   ├── mobile_service.py  # Handy-Erfassung (#221): Lebenszyklus der LAN-Instanz
+│   ├── mobile_routes.py   # … Routen (/v1/pair, /v1/ping, /v1/sync) als verschlüsselte Umschläge
+│   ├── mobile_sync.py     # … fachlicher Kern des Abgleichs
+│   ├── mobile_reservations.py # … Reservierungen im Abgleich
+│   ├── mobile_settings.py # … Einstellungen (Kategorien, Standardzeiten) im Abgleich
+│   ├── mobile_reminders.py # … Erinnerungen: Block der Antwort, Relay-Geheimnis
+│   ├── mobile_pairing.py  # … Kopplungscode und Gerätetoken
+│   ├── mobile_store.py    # … gekoppelte Handys (gerätelokal, nur Token-Hashes)
+│   ├── mobile_crypto.py   # … Ende-zu-Ende-Verschlüsselung (AES-GCM/HKDF), Gegenstück pwa/crypto.js
+│   ├── mobile_keys.py     # … Geräteschlüssel im Schlüsselbund, Datei als Fallback
+│   ├── mobile_relay_store.py # … Relay-Geheimnisse der Handys (gehärtet)
+│   ├── push_relay.py      # Spricht den Push-Relay an (Abräumen beim Widerruf, Testbenachrichtigung)
+│   ├── netinfo.py         # LAN-Adressen (nur RFC 1918) für die Handy-Erfassung
+│   ├── qr.py              # QR-Code-Matrix für den Koppel-Dialog (segno)
+│   ├── removal.py         # „Zeiterfassung entfernen" (macOS/Linux): Plan und Ausführung
+│   ├── dpi.py             # Systemfaktor der UI-Skalierung (Windows-DPI-Awareness, Linux-Xft.dpi)
+│   ├── ui_queue.py        # Thread-sichere Übergabe von Worker-Callbacks an den UI-Thread
+│   ├── auto_update.py     # Auto-Update-Policy (stiller Download, Vormerken bis zum Beenden)
 │   ├── updater.py         # GitHub-Releases-Check (stdlib-only, Frequenz konfigurierbar)
 │   ├── self_update.py     # Update laden, gegen SHA256SUMS prüfen und installieren (Windows/Linux)
 │   ├── changelog.py       # Lädt/parst den Changelog-Abschnitt einer Release-Version
@@ -150,6 +182,8 @@ Zeiterfassung/
 │   ├── tooltip.py         # Tooltip-Helfer
 │   ├── version.py         # Einzige Quelle der App-Version
 │   └── paths.py           # Pfadauflösung (Script- vs. Frozen-Modus)
+├── pwa/                   # Handy-Web-App (reines JavaScript, kein Build), s. pwa/CLAUDE.md
+├── relay/                 # Push-Relay (Cloudflare Worker + Durable Object), s. relay/CLAUDE.md
 ├── tests/                 # pytest-Testdateien
 ├── assets/
 │   └── margenheld-icon    # App-Icon (.png + .ico + .icns)
@@ -160,9 +194,15 @@ Zeiterfassung/
 │   ├── release_notes.py   # Release-Body aus dem CHANGELOG-Abschnitt
 │   ├── archive_changelog.py   # ältere CHANGELOG-Abschnitte ins Archiv
 │   ├── coverage_gate.py   # Coverage-Untergrenze für die Tk-freien Module (CI)
+│   ├── pwa_devserver.py   # Dev-Server: echte Handy-Instanz plus pwa/ auf localhost:8099
+│   ├── pwa_icons.py       # erzeugt pwa/icons aus dem Markenbild
+│   ├── pwa_stamp.py       # stempelt die Build-Kennung der Handy-PWA (pages.yml)
+│   ├── qr_fixtures.py     # Referenz-Matrizen für den QR-Decoder der PWA
 │   ├── demo_data.py       # Demo-Daten für Screenshots und zum Ausprobieren
 │   ├── webhook_testserver.py  # lokaler Test-Empfänger für den Webhook-Versand
 │   └── smtp_testserver.py     # lokaler Test-Mailserver für den SMTP-Versand
+├── .github/workflows/     # CI: test.yml, build.yml, release.yml, pages.yml (PWA veröffentlichen),
+│                          #   readme-version.yml, relay-deploy.yml (Relay ausrollen)
 ├── installer.iss          # Inno Setup Script (Windows-Installer)
 ├── requirements.txt       # Python-Abhängigkeiten (App-Laufzeit, exakt gepinnt)
 ├── requirements-test.txt  # Test-/CI-Abhängigkeiten (pytest & Co., exakt gepinnt)
@@ -209,7 +249,7 @@ und macOS; dazu kommen `ruff check .` (Lint) und `pyright` (Typen).
 
 ### PWA (`pwa/`)
 
-Die Handy-Web-App ist reines JavaScript ohne Build und ohne npm-Abhängigkeiten. Tests laufen mit dem eingebauten Runner von Node (Node 22 oder neuer):
+Die Handy-Web-App ist reines JavaScript ohne Build und ohne npm-Abhängigkeiten (`pwa/` hat keine; der Relay unten schon). Tests laufen mit dem eingebauten Runner von Node (Node 22 oder neuer):
 
 ```
 cd pwa && node --test
@@ -217,11 +257,27 @@ cd pwa && node --test
 
 Die JSON-Beispiele in `pwa/test/fixtures/` sind der Vertrag zum Python-Server: Dieselben Dateien lesen die JS-Tests und `tests/test_mobile_contract.py`. Ändert sich Request, Response oder ein Fehlercode des Servers, ändern sich die Beispiele mit — sonst wird einer der beiden Tests rot.
 
-Zum Ausprobieren im Browser startet `python scripts/pwa_devserver.py` die echte Handy-Instanz der App und dazu `pwa/` auf `http://localhost:8099/`; er druckt einen Koppel-Link mit frischem Code. Der Koppel-Link akzeptiert nur private IPv4-Adressen: Standard ist die erste gefundene LAN-Adresse; fällt der Server auf `127.0.0.1` zurück (kein LAN), startest du ihn mit `--address <LAN-IP>`. Der Service Worker cached im Dev dauerhaft (#272): nach Änderungen an `pwa/` in den Browser-Werkzeugen den Worker abmelden und die Caches leeren.
+Zum Ausprobieren im Browser startet `python scripts/pwa_devserver.py` die echte Handy-Instanz der App und dazu `pwa/` auf `http://localhost:8099/`; er druckt einen Koppel-Link mit frischem Code. Der Koppel-Link akzeptiert nur private IPv4-Adressen: Standard ist die erste gefundene LAN-Adresse; fällt der Server auf `127.0.0.1` zurück (kein LAN), startest du ihn mit `--address <LAN-IP>`. Der Dev-Server stempelt `__BUILD__` in `sw-core.js` selbst (`dev-<Hash>` über die App-Dateien, #272): eine Änderung unter `pwa/` löst den normalen Update-Weg aus, „Neu laden“ übernimmt den neuen Worker — Worker abmelden oder Caches leeren ist nicht nötig (`pwa/CLAUDE.md`, „Entwickeln und prüfen“).
 
 **Kryptografie ändert man immer auf beiden Seiten:** `src/mobile_crypto.py` und `pwa/crypto.js` müssen byte-genau dasselbe tun (Ableitung, Zusatzdaten, Umschlag). Gemeinsame Testvektoren liegen in `pwa/test/fixtures/crypto-vectors.json`; wer etwas daran ändert, erzeugt sie neu (Skript im Plan `docs/superpowers/plans/2026-10-10-pwa-verschluesselung.md`, Task 1) und lässt beide Testsuiten laufen.
 
 Veröffentlicht wird `pwa/` von `.github/workflows/pages.yml` (Details in der `CLAUDE.md`).
+
+### Relay (`relay/`)
+
+Der Push-Relay ist ein Cloudflare Worker mit einem Durable Object je Handy und sendet die Erinnerungen der Handy-PWA als Web-Push, auch wenn der Desktop aus ist. Wie `pwa/` wird er nicht in die App gebündelt. Modell, Regeln und Grenzen: [`relay/CLAUDE.md`](relay/CLAUDE.md); Einrichtung eines eigenen Relays: [`relay/README.md`](relay/README.md).
+
+```
+cd relay && npm ci && node --test
+```
+
+Node 22 oder neuer (`engines` in `relay/package.json`). Die Tests brauchen kein `wrangler` und kein Cloudflare-Konto. Die CI führt sie im Job `relay` von `test.yml` aus und prüft dort zusätzlich die Konfiguration mit `wrangler deploy --dry-run` (ohne Token).
+
+**Ausgerollt wird automatisch:** `.github/workflows/relay-deploy.yml` läuft nach einem Merge auf `master`, der etwas unter `relay/` (oder den Workflow) ändert, und führt `npm ci`, `node --test` und `wrangler deploy` aus, danach einen Smoke-Check (`PUT /v1/device` ohne Header muss `401` liefern). Der Job läuft im Environment `relay-production` (nur `master`), das die Secrets `CLOUDFLARE_API_TOKEN` und `CLOUDFLARE_ACCOUNT_ID` trägt. Das ersetzt keinen ersten manuellen Deploy: Worker, workers.dev-Subdomain und die Worker-Secrets (`VAPID_PRIVATE`, `VAPID_SUBJECT`) legt man einmal von Hand an (`relay/README.md`).
+
+**Drei Werte müssen übereinstimmen:** `RELAY_URL` in `pwa/relay-client.js` und `src/push_relay.py` (ein Test in `tests/test_push_relay.py` hält beide zusammen) sowie `VAPID_PUBLIC` in `relay/wrangler.toml` und `pwa/relay-client.js` (kein Test; wechseln darf man ihn nie, alle Abos hängen daran).
+
+Zusätzliche Abhängigkeiten, nur für `relay/` (`relay/package.json`, exakt gepinnt): `@block65/webcrypto-web-push` 2.0.0 (Web-Push mit VAPID) und `wrangler` 4.151.3 (Dev-Dependency, Deploy und `wrangler dev`).
 
 ## Build
 

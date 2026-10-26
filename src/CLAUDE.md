@@ -93,7 +93,7 @@ Thread-Mechanik **und** die proaktiven Startup-Tasks.
 
 ### SyncOrchestrator (`sync_orchestrator.py`)
 Drive-Sync: manueller Sync, Tray-Sync, Pull-Callbacks, Status-Label, Quit-Push, Fehler-
-Aufbereitung (`_classify_sync_error`/`_friendly_sync_message`/`_show_sync_error` — auch von
+Aufbereitung (`classify_sync_error`/`_friendly_sync_message`/`_show_sync_error` — auch von
 Tests genutzt). Reine Formatier-Helfer `_status_view`/`_tray_toast` sind ohne Tk testbar.
 - **Das Status-Label sagt, ob HEUTE gesynct wurde**, nicht bloß wann zuletzt: `_status_view`
   liefert `(Text, Farbe, Tooltip)` und vergibt das ✓ nur für den heutigen Tag — alles andere
@@ -170,12 +170,20 @@ selbst per `root.after`.
 ## Threading-Modell
 
 Genau ein Muster: Hintergrundarbeit über `BackgroundTaskRunner.run(fn, on_done)`; jede
-State-/Widget-Mutation aus einem Worker läuft über `App._marshal_to_ui` (`root.after(0, …)`,
-gegen `TclError` abgesichert, falls das Fenster zwischenzeitlich zu ist). Keine direkten
+State-/Widget-Mutation aus einem Worker läuft über `App._marshal_to_ui` (legt den Callback in die
+`UiQueue`, s. unten; gegen `TclError` abgesichert, falls das Fenster zwischenzeitlich zu ist). Keine direkten
 `threading.Thread`-Aufrufe in `ui.py` **oder den Dialogen** mehr — auch `settings_dialog`
 routet seine Worker seit Audit H5 über einen injizierten `BackgroundTaskRunner`
 (`open_settings_dialog(..., runner=App._bg)`): Persistenz im Worker (überlebt
 Dialog-Close), UI-Feedback im `winfo_exists`-geschützten `on_done`.
+
+**`ui_queue.UiQueue` (Xveyn#244, Tk-frei)** ist die Übergabe vom Worker an den UI-Thread:
+`put(fn)` legt den Callback in eine `queue.SimpleQueue` (thread-sicher), `start(root.after)`
+läuft auf dem UI-Thread und leert sie alle `POLL_MS` (50 ms) per `drain()`; ein werfender
+Callback wird geloggt und hält den Poll nicht an, scheitert der Scheduler (Tk zerstört), endet
+der Poll leise. Grund: Worker dürfen `root.after` nicht aufrufen, solange die Mainloop nicht
+läuft (`RuntimeError: main thread is not in main loop`) — die Queue kennt Tk nicht, nur der
+Poll auf dem UI-Thread tut es. Der Preis ist bis zu 50 ms Latenz je Rückmeldung.
 
 Ebenso routen `send_dialog`/`share_dialog`/`export_dialog` ihre blockierenden
 Operationen (PDF-Erzeugung, `get_gmail_service` inkl. OAuth, `send_email`) über
@@ -206,7 +214,7 @@ sich einen in `main()` erzeugten `RLock` (Konstruktor-Param `lock=`; ohne
 Injektion legt jeder Store einen eigenen an — Tests bleiben unverändert); nur
 `webhook_store`, `smtp_store` und `mobile_store` bringen bewusst ihren eigenen mit (s. „Daten- &
 Persistenz-Schicht" unten). Die Sync-Flows
-(`_run_pull_in_background`/`run_push_blocking`/`_run_compaction_blocking`/
+(`run_pull_in_background`/`run_push_blocking`/`run_compaction_blocking`, alle in `sync_runtime.py`/
 `reconcile_reservations`) klammern Snapshot→Merge→Apply mit diesem `data_lock`
 — **nie über Netzwerk-Calls**. Ein separater plain `threading.Lock`
 (`sync_guard`) serialisiert alle Drive-Sync-Einstiege (Startup-Pull, Manual-,
@@ -497,7 +505,7 @@ Zeitraum und welche Kategorien der Bericht gefiltert ist.
   **Tombstone-Lebenszyklus (Audit N6).** Ein Tombstone (`deleted: True`) hat
   genau einen Zweck: beim Merge ein veraltetes Save eines anderen Geräts zu
   schlagen. Er wird auf drei Wegen wieder los — und nur auf diesen:
-  1. **Kompaktierung** (`compact_local` via `main._run_compaction_blocking`) —
+  1. **Kompaktierung** (`compact_local` via `sync_runtime.run_compaction_blocking`) —
      setzt das `gc_watermark` und strippt settled Tombstones lokal wie remote.
      Der einzige Weg für Geräte, die am Sync teilnehmen; der Button hängt
      deshalb an „hat je gesynct", nicht an `sync_enabled` (sonst säßen
@@ -945,6 +953,17 @@ Zeit-/Kategorieänderungen. Dort liegen auch die Tk-freien Anzeige-Helfer
 über `smtp_store.validate_record`, Verbindungstest über `smtp.test_connection`, beide
 Tk-frei; das Passwort geht über `keyring_store` in den Schlüsselbund bzw. bei fehlendem
 Schlüsselbund unverändert in den Datensatz für `smtp_store`),
+`date_row` (Audit M14: das gemeinsame Tag/Monat/Jahr-Widget `build_date_row`, vorher
+dreifach mit divergierender Robustheit; genutzt von `period_picker`, `import_dialog`,
+`share_dialog`, `vacation_dialog` und `settings_dialog/tab_work`; die Monatslänge
+`max_day_for` ist Tk-frei und fällt bei ungültigem Monat/Jahr auf 31 zurück),
+`removal_dialog` (`ask_removal`, #50: Rückfrage vor „Zeiterfassung entfernen“ mit dem
+Häkchen „Auch Zeiten, Einstellungen und Protokoll löschen“; Rückgabe `True` = mit
+Nutzerdaten, `False` = nur Zugangsdaten und Integration, `None` = abgebrochen. Der Knopf
+„Entfernen“ ist `LOCK_MS` (600 ms) gesperrt. Reiner Aufbau: aufgerufen aus
+`tab_app._request_removal`, das bei Bestätigung `App.remove_application(with_data)`
+anstößt; was gelöscht wird, in welcher Reihenfolge und wie `RemovalState` den Sync sperrt,
+steht in `removal.py` und dem Docstring von `ui.App.remove_application`),
 `settings_dialog/` (Paket, Audit H4: `dialog.py` trägt Chrome und verdrahtet das
 **Speichern je Tab** (#132); je Tab eine Klasse in `tab_work`/`tab_reminders`/
 `tab_sending`/`tab_google`/`tab_api`/`tab_mobile`/`tab_app`/`tab_updates`.py, alle gebaut mit
