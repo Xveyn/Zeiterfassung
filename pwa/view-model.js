@@ -76,7 +76,8 @@ export function weekModel({ getDay, anchor, today, conflictDates = [], windowDay
       slots: slots.map(slotText),
       minutes,
       minutesLabel: minutes > 0 ? formatMinutes(minutes) : '',
-      state: !day ? 'empty' : cleared ? 'cleared' : 'filled',
+      // Ein Tombstone (am Desktop oder hier geleert) sieht aus wie ein leerer Tag (#353).
+      state: !day || cleared ? 'empty' : 'filled',
       dirty: Boolean(day?.dirty),
       error: day?.error ?? null,
       conflict: conflicts.has(date),

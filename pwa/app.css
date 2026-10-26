@@ -84,7 +84,6 @@ button.option.active { background: var(--accent); color: #fff; font-weight: 600;
 .day .err { grid-column: 2 / 4; color: var(--accent); font-size: .9rem; }
 .mark-dirty { color: var(--warn); }
 .mark-conflict { color: var(--warn); font-weight: 700; }
-.day.cleared .slots li { color: var(--muted); text-decoration: line-through; }
 .day.future { opacity: .75; }
 .total { display: flex; justify-content: space-between; padding: 8px 12px; font-weight: 700; }
 .total.pending { padding-top: 0; font-size: .85rem; font-weight: 400; color: var(--muted); }

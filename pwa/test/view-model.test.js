@@ -54,14 +54,14 @@ test('sums are whole minutes per day and for the week', () => {
   assert.equal(week.days[2].minutesLabel, '');
 });
 
-test('day states: empty, filled, cleared; flags for pending, error and conflict', () => {
+test('day states: empty, filled; a cleared day looks empty; flags for pending, error and conflict', () => {
   const getDay = days({
     '2026-10-05': live([SLOT], { dirty: true }),
     '2026-10-06': live([], { deleted: true }),
     '2026-10-07': live([SLOT], { error: 'abgelehnt' }),
   });
   const week = weekModel({ getDay, anchor: '2026-10-05', today: '2026-10-08', conflictDates: ['2026-10-07'] });
-  assert.deepEqual(week.days.slice(0, 4).map((d) => d.state), ['filled', 'cleared', 'filled', 'empty']);
+  assert.deepEqual(week.days.slice(0, 4).map((d) => d.state), ['filled', 'empty', 'filled', 'empty']);
   assert.equal(week.days[0].dirty, true);
   assert.equal(week.days[1].minutes, 0);
   assert.equal(week.days[2].error, 'abgelehnt');
