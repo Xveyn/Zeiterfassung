@@ -222,3 +222,9 @@ test('the service worker recognises the test payload before it tries to decrypt'
   assert.match(push, /describeTest/);
   assert.ok(push.indexOf('TEST_PAYLOAD') < push.indexOf('open('), 'erst die Test-Nutzlast, dann das Entschlüsseln');
 });
+
+test('notifications carry no large icon: Chrome on Android already shows the app icon in the header (#355)', () => {
+  const worker = read('sw.js');
+  const push = worker.slice(worker.indexOf("addEventListener('push'"), worker.indexOf("addEventListener('notificationclick'"));
+  assert.doesNotMatch(push, /\bicon\s*:/);
+});

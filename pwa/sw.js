@@ -44,13 +44,13 @@ self.addEventListener('fetch', (event) => {
 // Push vom Relay (Erinnerungen). Chrome verlangt je Push eine sichtbare Benachrichtigung
 // (`userVisibleOnly`): ist das Entschlüsseln gescheitert (Schlüssel fehlt, Blob beschädigt), zeigt
 // `describe(null)` die allgemeine. Der gleiche `tag` ersetzt eine Benachrichtigung, statt sie zu verdoppeln.
+// Bewusst kein `icon`: Chrome zeigt in der Kopfzeile schon das App-Icon, das große käme doppelt dazu (#355).
 self.addEventListener('push', (event) => {
   event.waitUntil((async () => {
     const text = event.data ? event.data.text() : '';
     if (text === TEST_PAYLOAD) {                       // Testbenachrichtigung vom Relay: unverschlüsselt, fest
       const { title, body, tag } = describeTest();
-      await self.registration.showNotification(title, {
-        body, tag, data: null, icon: new URL('./icons/icon-192.png', self.registration.scope).href });
+      await self.registration.showNotification(title, { body, tag, data: null });
       return;
     }
     let plain = null;
@@ -60,9 +60,7 @@ self.addEventListener('push', (event) => {
       // Kein Schlüssel oder fremder Blob: bewusst keine Details, es folgt die allgemeine Anzeige.
     }
     const { title, body, tag } = describe(plain);
-    await self.registration.showNotification(title, {
-      body, tag, renotify: false, data: plain, icon: new URL('./icons/icon-192.png', self.registration.scope).href,
-    });
+    await self.registration.showNotification(title, { body, tag, renotify: false, data: plain });
   })());
 });
 
