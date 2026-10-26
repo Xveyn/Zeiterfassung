@@ -260,8 +260,8 @@ erst ab dem Veröffentlichen:
 `relay/**` zählt als Code (nicht als Doku) und löst die ganze Matrix aus. Der Relay bekommt
 einen eigenen Job `relay` in `test.yml` (Node 22, hinter `changes`, wie `pwa`), **nicht**
 in den Required Checks (die Entscheidung liegt beim Maintainer, wie bei `pwa`). `wrangler` ist
-Deploy-Werkzeug, die Tests laufen ohne ihn. Die Versionsregeln für die PWA
-(`pwa-version.yml`) gelten, sobald `pwa/` sich ändert. *Meine Festlegung.*
+Deploy-Werkzeug, die Tests laufen ohne ihn. Die Build-Kennung der PWA
+(`N/X.Y.Z`) zählt jede Änderung unter `pwa/` mit. *Meine Festlegung.*
 
 ## Umsetzungsreihenfolge (je ein PR)
 

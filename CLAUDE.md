@@ -24,12 +24,9 @@ Releases werden automatisch von `.github/workflows/release.yml` erzeugt, sobald 
 
 Ablauf vor dem Merge:
 1. `src/version.py` im PR auf die neue Version setzen (z.B. `VERSION = "1.5.0"`).
-   **Und `pwa/package.json` (`version`) ebenfalls bumpen**, auch wenn sich unter
-   `pwa/` nichts geändert hat: die Build-Kennung der Handy-PWA ist
-   `P-N/X.Y.Z (sha)` (P = diese Version, N = Commits unter `pwa/` seit dem
-   letzten Release, X.Y.Z = Desktop-Version), und ein Release setzt N zurück.
-   Der Workflow `pwa-version.yml` hält jeden PR mit `release:*`-Label an, solange
-   P nicht größer ist als am letzten Release-Tag (`pwa_stamp.py --check`).
+   Die Handy-PWA hat keine eigene Versionsnummer, hier ist nichts zu bumpen: ihre
+   Build-Kennung ist `N/X.Y.Z (sha)` (N = Commits unter `pwa/` seit dem letzten
+   echten Release, X.Y.Z = dessen Version), und ein Release setzt N zurück.
    Nach dem Release stößt der `publish`-Job `pages.yml` neu an, damit die
    Kennung sofort stimmt (der Release-PR deployt beim Merge noch mit altem Anker,
    und ein mit `GITHUB_TOKEN` gepushter Tag löst selbst nichts aus).
@@ -1594,13 +1591,11 @@ seinen Pfad, nicht per Import.
   Flag schreibt es, `--check` zeigt nur an. Idempotent, derselbe
   Root-Bootstrap, reine stdlib.
 - `scripts/pwa_stamp.py` — stempelt die Build-Kennung der Handy-PWA
-  `P-N/X.Y.Z (sha)` (#280, #304) in `sw-core.js` und Manifest (`pages.yml`):
-  P = eigene PWA-Version aus `pwa/package.json` (Semver, im Release-PR von Hand
-  gebumpt), N = Commits unter `pwa/` seit dem letzten echten Release-Tag,
+  `N/X.Y.Z (sha)` (#280, #359) in `sw-core.js` und Manifest (`pages.yml`):
+  N = Commits unter `pwa/` seit dem letzten echten Release-Tag,
   X.Y.Z = dessen Version (vom Tag, nicht aus `src/version.py`; Pre-Releases
-  zählen nicht). `--check` ist der Wächter von `pwa-version.yml` (P gegenüber
-  dem letzten Tag gebumpt?). Braucht den Checkout mit ganzer Historie und
-  Tags. Reine stdlib.
+  zählen nicht). Keine eigene PWA-Version, kein Bump im Release-PR. Braucht
+  den Checkout mit ganzer Historie und Tags. Reine stdlib.
 - `scripts/coverage_gate.py` — Coverage-Untergrenze der Tk-freien Module aus
   `coverage.json` (`coverage`-Job in `test.yml`; s. „Coverage-Untergrenze: nur
   Tk-frei"). Reine stdlib, braucht keinen Root-Bootstrap: es importiert nichts
