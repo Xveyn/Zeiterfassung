@@ -228,3 +228,12 @@ test('notifications carry no large icon: Chrome on Android already shows the app
   const push = worker.slice(worker.indexOf("addEventListener('push'"), worker.indexOf("addEventListener('notificationclick'"));
   assert.doesNotMatch(push, /\bicon\s*:/);
 });
+
+test('the settings tabs can shrink below their text width so three of them fit a 360 px phone (#363)', () => {
+  const css = read('app.css');
+  const rule = css.match(/^\.tabs button \{([^}]*)\}/m);
+  assert.ok(rule, 'Regel ".tabs button" nicht gefunden');
+  // Ohne `min-width: 0` lässt `flex: 1` die Knöpfe nicht unter ihre Textbreite schrumpfen: bei 360–390 px
+  // ragt der dritte Reiter aus dem Dialog und der Dialog scrollt waagerecht.
+  assert.match(rule[1], /min-width:\s*0/);
+});

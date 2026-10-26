@@ -120,10 +120,12 @@ label.check input { width: auto; min-height: 0; flex: none; }
 .day .content { grid-column: 2; min-width: 0; }
 .day .slots.reserved { color: var(--muted); font-style: italic; }
 .tabs { display: flex; gap: 8px; margin: 0 0 12px; }
-.tabs button { flex: 1; }
+.tabs button { flex: 1; min-width: 0; padding-left: 4px; padding-right: 4px; }
 .tabs button[aria-selected="true"] { background: var(--accent); color: #fff; font-weight: 600; }
 
 /* Einstellungen (Reiter wie im Tages-Editor: .tabs) */
+/* Drei Reiter müssen bei 360 px in den Dialog passen (#363): kleinere Schrift als im Tages-Editor. */
+.settings-dialog .tabs button { font-size: .85rem; }
 .settings-dialog, .category-edit-dialog { max-height: 90vh; overflow-y: auto; }
 .settings-dialog dl { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; margin: 0 0 12px; }
 .settings-dialog dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
