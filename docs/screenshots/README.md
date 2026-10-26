@@ -9,17 +9,17 @@ aktuelle Oberfläche zeigt oder eine drei Releases alte.
 
 | Datei | Motiv |
 |-------|-------|
-| `kalender-v--VERSION--.png` | Monatsansicht (Hero-Bild) mit Urlaub, violettem Punkt (Reservierung) und bernsteinfarbenem Punkt (Sende-Erinnerung) |
-| `tagesdialog-v--VERSION--.png` | Tages-Dialog: Ist-Zeit, Reservierung, Erinnerung |
+| `kalender-v1.25.0.png` | Monatsansicht (Hero-Bild) mit Urlaub, violettem Punkt (Reservierung) und bernsteinfarbenem Punkt (Sende-Erinnerung) |
+| `tagesdialog-v1.25.0.png` | Tages-Dialog: Ist-Zeit, Reservierung, Erinnerung |
 | `senden-v1.23.3.png` | Sende-Dialog mit Zeitraum- und Kategoriewahl |
 | `bericht-v1.23.3.png` | Erzeugter PDF-Bericht, Seite 1 |
-| `einstellungen-v--VERSION--.png` | Einstellungen, Tab „Arbeitszeit" |
-| `einstellungen-erinnerungen-v--VERSION--.png` | Einstellungen, Tab „Erinnerungen" mit dem Abschnitt „Handy" |
-| `einstellungen-mobil-v--VERSION--.png` | Einstellungen, Tab „Mobil" mit einem gekoppelten Demo-Handy |
-| `handy-woche-v--VERSION--.png` | Handy-Web-App: Woche mit Reservierung und „Noch ausstehend" |
-| `handy-editor-v--VERSION--.png` | Handy-Web-App: Tages-Editor, Reiter „Reservierung" |
-| `handy-verbindung-v--VERSION--.png` | Handy-Web-App: Einstellungen → Verbindung (Benachrichtigungen) |
-| `handy-kategorien-v--VERSION--.png` | Handy-Web-App: Einstellungen → Kategorien |
+| `einstellungen-v1.25.0.png` | Einstellungen, Tab „Arbeitszeit" |
+| `einstellungen-erinnerungen-v1.25.0.png` | Einstellungen, Tab „Erinnerungen" mit dem Abschnitt „Handy" |
+| `einstellungen-mobil-v1.25.0.png` | Einstellungen, Tab „Mobil" mit einem gekoppelten Demo-Handy |
+| `handy-woche-v1.25.0.png` | Handy-Web-App: Woche mit Reservierung und „Noch ausstehend" |
+| `handy-editor-v1.25.0.png` | Handy-Web-App: Tages-Editor, Reiter „Reservierung" |
+| `handy-verbindung-v1.25.0.png` | Handy-Web-App: Einstellungen → Verbindung (Benachrichtigungen) |
+| `handy-kategorien-v1.25.0.png` | Handy-Web-App: Einstellungen → Kategorien |
 
 ## Neue Screenshots aufnehmen
 
