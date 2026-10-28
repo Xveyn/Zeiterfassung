@@ -1,0 +1,30 @@
+# gitleaks-Konfiguration (s. CLAUDE.md, „Tests / CI", Job `gitleaks`).
+#
+# Basis sind die Standardregeln; hier steht nur, was bewusst kein Geheimnis ist.
+# Die Ausnahmen sind eng gehalten: jede gilt nur für die Regel `generic-api-key`
+# und nur für den genannten Pfad bzw. Wert — ein echtes Token woanders im Repo
+# fiele weiterhin auf.
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Testvektoren und Beispielantworten der Handy-PWA: erfundene Tokens und Schlüssel"
+condition = "OR"
+regexTarget = "match"
+paths = [
+  '''^pwa/test/fixtures/''',
+]
+
+[[allowlists]]
+description = "Pläne zitieren dieselben erfundenen Fixture-Tokens"
+paths = [
+  '''^docs/superpowers/plans/''',
+]
+
+[[allowlists]]
+description = "Öffentlicher VAPID-Schlüssel des Relays (steht bewusst in PWA und wrangler.toml)"
+regexTarget = "match"
+regexes = [
+  '''VAPID_PUBLIC\s*=\s*["']BMZUZQIW3QNwt2vJp3q47zAAx4lLADWA0_r3kQQeyMT3d_GXsyyTjNlgBd1fOMtuZvlJhsLu1QRbHsT0hQHzC20["']''',
+]

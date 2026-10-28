@@ -1,0 +1,43 @@
+name: Gitleaks
+
+# Sucht in Push und PR samt ganzer Historie nach eingecheckten Secrets
+# (s. CLAUDE.md, „Tests / CI").
+#
+# WARUM EINE EIGENE DATEI statt eines Jobs in test.yml: dort überspringt der
+# Torwächter `changes` reine Doku-PRs. Ein Secret in einer Markdown-Datei ist
+# genauso eines, der Scan darf also nie wegfallen.
+#
+# WARUM DAS BINARY statt gitleaks/gitleaks-action: die Action verlangt für
+# Repos in Organisationen eine Lizenz. Das Release-Binary ist frei, und der Pin
+# samt SHA256-Prüfung entspricht der Supply-Chain-Linie des Repos (kein `latest`).
+#
+# Bewusst KEIN Required Check: ob er ins Ruleset kommt, entscheidet der
+# Maintainer (das Ruleset liegt außerhalb des Repos, s. „Branch Protection").
+
+on: [push, pull_request]
+
+permissions:
+  contents: read
+
+jobs:
+  gitleaks:
+    runs-on: ubuntu-latest
+    env:
+      GITLEAKS_VERSION: 8.30.1
+      # SHA256 von gitleaks_<Version>_linux_x64.tar.gz aus der checksums.txt des Releases.
+      GITLEAKS_SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+    steps:
+      # Ganze Historie: ein Secret, das später wieder gelöscht wurde, steht
+      # weiter im Verlauf und ist trotzdem kompromittiert.
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: gitleaks installieren
+        run: |
+          curl -sSfL -o gitleaks.tar.gz \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          echo "${GITLEAKS_SHA256}  gitleaks.tar.gz" | sha256sum -c -
+          tar xzf gitleaks.tar.gz gitleaks
+      # --redact: Fundstellen erscheinen im öffentlichen Log nie im Klartext.
+      - name: Historie scannen
+        run: ./gitleaks git --redact --no-banner --verbose
