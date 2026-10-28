@@ -185,6 +185,14 @@ bietet sie nur an, wenn „Reservierungen verwenden“ an ist.
   (`reservationEditable`, ein Tag Reserve für eine vorgehende Handy-Uhr); `saveReservation` wirft
   sonst. Ein abgelehnter Tag, der inzwischen vergangen ist, wird aufgeräumt; ist die Funktion
   verborgen, zählen Reservierungen weder als „nicht übertragen“ noch als „abgelehnt“.
+- **Vorschlag für die Ist-Zeit** (#376, wie `entry_dialog` am Desktop): hat ein Tag eine Reservierung, aber noch
+  keine Ist-Zeit, ist die Zeile im Reiter „Arbeitszeit“ daraus vorbelegt — Start/Ende vom ersten Slot, Pause aus dem
+  Standard, die Kategorie nur bei **genau einem** Slot (`suggest_ist_category`). `editorRows(…, reservation)` in
+  `view-model.js`; gespeicherte Ist-Zeiten gewinnen immer.
+- **Override-Sternchen** (#376): das Kategorie-Label trägt ein `*` (`Projekt*`), wenn Start/Ende (bei Ist-Zeit auch
+  die Pause) von den Standardzeiten der Kategorie abweichen (`categoryDisplay`, Gegenstück zu
+  `slot_category_display`). Reine Anzeige, `row.kategorie` und das Gespeicherte bleiben der Klarname; ohne
+  `defaults` (älterer Desktop) nie ein Sternchen. `views.js` zieht das Label bei jeder Zeiteingabe nach.
 - **Löschen** wie bei den Ist-Zeiten: „Tag leeren“ (am Reiter „Reservierung“
   mit eigener Bestätigung) schreibt einen Tombstone — außer der Desktop kennt den Tag nie
   (`synced_version` 0): dann wird er nur lokal verworfen.

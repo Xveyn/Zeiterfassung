@@ -462,7 +462,7 @@ class App {
     const startWith = reservationOn && date > today ? 'reservation' : 'work';
     const dialog = editorDialog({
       title: `${formatDateDe(date)}`,
-      rows: editorRows(day, meta.defaults, weekdayKey(date)),
+      rows: editorRows(day, meta.defaults, weekdayKey(date), reservation),
       categories: meta.categories,
       defaults: meta.defaults,
       weekday: weekdayKey(date),
