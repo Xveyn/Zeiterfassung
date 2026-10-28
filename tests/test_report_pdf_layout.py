@@ -86,25 +86,24 @@ def test_no_vacation_block_means_no_keep_paragraph():
     assert _build_vacation_summary({}, 0, PDF_STYLE) == ""
 
 
-def test_generate_pdf_keeps_the_summary_but_not_the_day_table_together():
-    html = _pdf_html(_entries(5, ("Aream", "Intern")))
-    assert html.count(KEEP) == 1, "genau ein Absatz: vor der Summentabelle"
-    # Der Absatz steht unmittelbar vor der Tabelle, nicht irgendwo davor.
+def test_generate_pdf_keeps_the_summary_table_right_after_a_keep_paragraph():
+    html = _pdf_html(_entries(5, ("Aream", "Intern")))      # 01.09.–07.09.: zwei Kalenderwochen (KW 36, 37)
+    weeks = len(_day_tables(html))
+    assert html.count(KEEP) == weeks + 1, "ein Absatz je Woche und einer vor der Summentabelle"
+    # Der Absatz der Summentabelle steht unmittelbar vor ihr, nicht irgendwo davor.
     assert report_mod._KEEP_WITH_NEXT + "<table" in html
-    # Die Tagestabelle beginnt nach der Überschrift und darf teilen (Wochen können lang sein).
-    day_table = html.index("<table")
-    assert html.index(KEEP) > day_table
+    assert html.rindex(KEEP) > html.rindex("Summe KW")
 
 
-def test_generate_pdf_without_category_breakdown_has_no_keep_paragraph():
+def test_generate_pdf_without_category_breakdown_keeps_only_the_weeks_together():
     html = _pdf_html(_entries(5, ("Aream", "Intern")), category_breakdown=False)
-    assert KEEP not in html
+    assert html.count(KEEP) == len(_day_tables(html))
 
 
 def test_generate_pdf_with_vacation_keeps_both_summary_tables():
     html = _pdf_html(_entries(5, ("Aream", "Intern")),
                      vacation_days={"2026-10-12": 480, "2026-10-13": 480})
-    assert html.count(KEEP) == 2
+    assert html.count(KEEP) == len(_day_tables(html)) + 2
     assert html.index("Urlaub</th>") > html.index("Kategorie</th>")
 
 
@@ -162,3 +161,89 @@ def test_the_reported_report_keeps_its_summary_on_one_page(tmp_path):
     summary_pages = [i for i, page in enumerate(pages) if "Aream" in page and re.search(r"Kategorie\s+Stunden", page)]
     data_pages = [i for i, page in enumerate(pages) if re.search(r"Aream\s+54\.0h", page)]
     assert summary_pages and summary_pages == data_pages, "Kopfzeile und Datenzeile stehen auf derselben Seite"
+
+
+# --- Wochenblöcke (#370) --------------------------------------------------------------------------------
+# Die Tagestabelle besteht im PDF aus einer Tabelle je Kalenderwoche, damit KW-Kopf, Tage und Wochensumme
+# nicht an einer Seitengrenze auseinanderfallen. Das Mail-HTML bleibt eine Tabelle.
+
+
+def _day_tables(html):
+    """Die Tabellen der Tagestabelle: alle `<table>` bis auf die Summentabellen."""
+    tables = re.findall(r"<table.*?</table>", html, re.S)
+    return [t for t in tables if "Summe KW" in t or "Datum</th>" in t]
+
+
+def test_the_pdf_has_one_day_table_per_calendar_week():
+    html = _pdf_html(_entries(11, ("Aream", "Intern")))     # 01.09.–15.09.: drei Kalenderwochen
+    tables = _day_tables(html)
+    assert len(tables) == 3
+    assert [t.count("Summe KW") for t in tables] == [1, 1, 1], "jede Woche trägt ihre eigene Summe"
+
+
+def test_the_column_header_stands_only_in_the_first_week_table():
+    tables = _day_tables(_pdf_html(_entries(11)))
+    assert "Datum</th>" in tables[0]
+    assert all("Datum</th>" not in t for t in tables[1:])
+
+
+def test_the_grand_total_stands_in_the_last_week_table_only():
+    tables = _day_tables(_pdf_html(_entries(11)))
+    assert "Gesamt" in tables[-1]
+    assert all("Gesamt" not in t for t in tables[:-1])
+
+
+def test_every_week_table_is_kept_together_with_a_keep_paragraph():
+    html = _pdf_html(_entries(11))
+    for table in _day_tables(html):
+        at = html.index(table)
+        assert html[:at].endswith(report_mod._KEEP_WITH_NEXT), "der Absatz steht unmittelbar vor der Woche"
+
+
+def test_the_week_tables_carry_the_same_column_widths_as_the_old_single_table():
+    tables = _day_tables(_pdf_html(_entries(11)))
+    for table in tables:
+        assert "width:15%" in table and "width:25%" in table, "feste Spaltenbreiten an jeder Zelle"
+
+
+def test_the_mail_html_keeps_a_single_day_table():
+    html, _ = report_mod.generate_report(datetime.date(2026, 9, 1), datetime.date(2026, 10, 31),
+                                         _entries(11))
+    assert len(_day_tables(html)) == 1
+    assert html.count("Summe KW") == 3
+
+
+def test_the_total_does_not_depend_on_how_the_table_is_split():
+    entries = _entries(11)
+    _html, total = report_mod.generate_report(datetime.date(2026, 9, 1), datetime.date(2026, 10, 31), entries)
+    assert f"{total}h" in _pdf_html(entries)
+
+
+def _is_edge_orphan(last, first):
+    """Eine lose Zeile an der Seitengrenze: KW-Kopf/Tabellenkopf unten, Wochen- oder Gesamtsumme oben."""
+    if re.match(r"(KW \d+|Datum\s+Tag)", last):
+        return "KW-Kopf oder Tabellenkopf allein am Seitenende"
+    if re.match(r"(Summe KW|Gesamt)", first):
+        return "Summe KW oder Gesamt allein am Seitenanfang"
+    return None
+
+
+@needs_renderer
+@pytest.mark.parametrize("count", [10, 11, 25, 40, 41, 45])
+@pytest.mark.parametrize("categories", [("Aream",), ("Aream", "Intern", "Support")])
+def test_no_loose_row_at_a_page_boundary(count, categories, tmp_path):
+    """Die Eintragsmengen, bei denen die Seitengrenze vor #370 eine lose Zeile erzeugte."""
+    pages = _render_pages(_entries(count, categories), tmp_path)
+    for last, first in _edge_lines(pages):
+        assert _is_edge_orphan(last, first) is None, (
+            f"{_is_edge_orphan(last, first)} bei {count} Einträgen / {len(categories)} Kategorien: "
+            f"{last!r} | {first!r}")
+
+
+@needs_renderer
+def test_a_week_longer_than_one_page_still_renders_and_may_split(tmp_path):
+    """Ein Wochenblock, der nicht auf eine Seite passt, darf sich teilen — kein Fehler, keine Endlosschleife."""
+    many = {"2026-09-02": _entry([_slot(start=f"{h:02d}:00", end=f"{h:02d}:30", pause=0) for h in range(0, 24)] * 3)}
+    pages = _render_pages(many, tmp_path)
+    assert len(pages) >= 2
+    assert "Summe KW" in "".join(pages)
