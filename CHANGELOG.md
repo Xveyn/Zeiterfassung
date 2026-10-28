@@ -2,6 +2,30 @@
 
 Ältere Versionen stehen im [Archiv](CHANGELOG-archive.md).
 
+## 1.25.1 — 2026-10-29
+
+Ein Wartungs-Release: Der PDF-Bericht bricht an Seitengrenzen nicht mehr mitten
+in Tabellen um, und die Handy-Web-App schlägt die Ist-Zeit aus einer
+Reservierung vor, wie es die App am Rechner tut.
+
+### Behoben
+- **PDF-Bericht: Summentabellen bleiben zusammen**: Die „Summe je Kategorie“ und
+  der Urlaubs-Block konnten am Seitenende zerrissen werden, die Kopfzeile stand
+  dann auf der einen, die Zeilen auf der nächsten Seite. Eine solche Tabelle
+  beginnt jetzt als Ganzes auf der nächsten Seite, wenn sie nicht mehr passt.
+  Die Mail ist unverändert.
+- **PDF-Bericht: Wochen bleiben zusammen**: Die Kopfzeile „KW …“, die Tage, die
+  „Summe KW“ und die Gesamtzeile konnten an Seitengrenzen von ihren Tagen
+  getrennt werden. Jede Kalenderwoche steht jetzt zusammen auf einer Seite, die
+  Gesamtzeile in der letzten Woche.
+- **Handy-Web-App: Ist-Zeit aus der Reservierung vorschlagen**: Hat ein Tag eine
+  Reservierung, aber noch keine Ist-Zeit, ist der Reiter „Arbeitszeit“ daraus
+  vorbelegt: Start und Ende vom ersten Slot, die Kategorie bei genau einem Slot.
+  Vorher war er leer und ohne Kategorie. Außerdem zeigt die Kategorie wie am
+  Rechner ein `*` (`Projekt*`), wenn die Zeiten von den Standardzeiten der
+  Kategorie abweichen. Das Sternchen ist nur Anzeige, gespeichert wird der
+  Name ohne.
+
 ## 1.25.0 — 2026-10-26
 
 Zwei neue Schnittstellen, beide standardmäßig aus: eine lokale HTTP-API für
