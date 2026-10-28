@@ -38,6 +38,7 @@ _PDF_COL_WIDTHS = ["15%", "8%", "25%", "16%", "16%", "20%"]
 # Style-Dict pro Render-Ziel. Felder werden direkt als CSS-Strings in die
 # Inline-Styles der Zellen geschrieben.
 HTML_STYLE = {
+    "keep_together": False,
     "col_widths":  ["", "", "", "", "", ""],
     "table_extra": "border-radius:8px;overflow:hidden;",
     "th_row":      "background:#1e293b;",
@@ -62,6 +63,7 @@ HTML_STYLE = {
 }
 
 PDF_STYLE = {
+    "keep_together": True,
     "col_widths":  _PDF_COL_WIDTHS,
     "table_extra": "",
     "th_row":      "background:#1e293b;",
@@ -266,6 +268,23 @@ def _build_table(groups: WeekGroups, style: dict[str, Any]) -> tuple[str, int]:
     return table, total_minutes
 
 
+# xhtml2pdf teilt Tabellen zeilenweise und kennt kein `page-break-inside`. Ein Absatz mit
+# `-pdf-keep-with-next` wird dagegen mit dem folgenden Element zusammengehalten: passt die ganze
+# Tabelle nicht mehr auf die Seite, beginnt sie auf der nächsten — statt mit der Kopfzeile am
+# Seitenende und den Zeilen darunter zu zerreißen (#368). Der Absatz ist unsichtbar (1 px).
+_KEEP_WITH_NEXT = ('<p style="-pdf-keep-with-next:true;margin:0;padding:0;'
+                   'font-size:1px;line-height:1px;">&nbsp;</p>')
+
+
+def _keep_together(html: str, style: dict[str, Any]) -> str:
+    """`html` (eine Tabelle) so voranstellen, dass das PDF sie nicht über eine
+    Seitengrenze zerreißt. Nur der PDF-Stil tut das; das Mail-HTML bleibt unverändert
+    (ein Mail-Client paginiert nicht). Leeres HTML bleibt leer."""
+    if html and style.get("keep_together"):
+        return _KEEP_WITH_NEXT + html
+    return html
+
+
 def _build_category_summary(range_entries: dict[str, Any],
                             style: dict[str, Any]) -> str:
     """„Summe je Kategorie"-Tabelle über den (gefilterten) Zeitraum. Leerer
@@ -302,14 +321,15 @@ def _build_category_summary(range_entries: dict[str, Any],
             f"</tr>"
         )
 
-    return (
+    return _keep_together(
         f'<table style="border-collapse:collapse;width:100%;margin-top:16px;{s["table_extra"]}">'
         f'<tr style="{s["th_row"]}">'
         f'<th style="{s["th_cell"]}">Kategorie</th>'
         f'<th style="{s["th_cell"]}">Stunden</th>'
         f'</tr>'
         f'{"".join(rows)}'
-        f'</table>'
+        f'</table>',
+        s,
     )
 
 
@@ -392,7 +412,7 @@ def _build_vacation_summary(vacation_days: dict[str, int],
             f"</tr>"
         )
 
-    return (
+    return _keep_together(
         f'<table style="border-collapse:collapse;width:100%;margin-top:16px;{s["table_extra"]}">'
         f'<tr style="{s["th_row"]}">'
         f'<th style="{s["th_cell"]}">Urlaub</th>'
@@ -404,9 +424,9 @@ def _build_vacation_summary(vacation_days: dict[str, int],
         f'<td style="{s["total_hrs"]}">'
         f'{_minutes_as_hours(work_minutes + vacation_minutes)}h</td>'
         f'</tr>'
-        f'</table>'
-        f'{_cap_footnote(capped_days, s)}'
-    )
+        f'</table>',
+        s,
+    ) + _cap_footnote(capped_days, s)
 
 
 def _cap_footnote(capped_days: list[CappedDay] | None,
