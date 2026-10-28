@@ -255,17 +255,32 @@ def _build_table(groups: WeekGroups, style: dict[str, Any]) -> tuple[str, int]:
         for label, w in zip(COLUMN_LABELS, s["col_widths"], strict=False)
     )
 
-    table = (
-        f'<table style="border-collapse:collapse;width:100%;{s["table_extra"]}">'
-        f'<tr style="{s["th_row"]}">{th_cells}</tr>'
-        f'{"".join(week_blocks)}'
+    header_row = f'<tr style="{s["th_row"]}">{th_cells}</tr>'
+    total_row = (
         f'<tr style="{s["total_row"]}">'
         f'<td colspan="5" style="{s["total_lbl"]}">Gesamt</td>'
         f'<td style="{s["total_hrs"]}">{_minutes_as_hours(total_minutes)}h</td>'
         f'</tr>'
-        f'</table>'
     )
-    return table, total_minutes
+    table_open = f'<table style="border-collapse:collapse;width:100%;{s["table_extra"]}">'
+    if not s.get("keep_together"):
+        return (f'{table_open}{header_row}{"".join(week_blocks)}{total_row}</table>',
+                total_minutes)
+
+    # PDF: je Kalenderwoche eine eigene Tabelle, damit KW-Kopf, Tage und Wochensumme nicht an einer
+    # Seitengrenze auseinanderfallen (#370). Eine einzige Tabelle teilt xhtml2pdf an beliebiger Zeile.
+    # Den Spaltenkopf trägt nur die erste, die Gesamtzeile nur die letzte; die festen Spaltenbreiten
+    # stehen an jeder Zelle, die Tabellen fluchten also. Ein Block, der länger als eine Seite ist,
+    # darf sich weiter teilen.
+    last = len(week_blocks) - 1
+    tables = [
+        _keep_together(
+            f'{table_open}{header_row if i == 0 else ""}{block}{total_row if i == last else ""}</table>',
+            s,
+        )
+        for i, block in enumerate(week_blocks)
+    ]
+    return "\n".join(tables), total_minutes
 
 
 # xhtml2pdf teilt Tabellen zeilenweise und kennt kein `page-break-inside`. Ein Absatz mit
