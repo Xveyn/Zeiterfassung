@@ -277,7 +277,7 @@ Node 22 oder neuer (`engines` in `relay/package.json`). Die Tests brauchen kein 
 
 **Drei Werte müssen übereinstimmen:** `RELAY_URL` in `pwa/relay-client.js` und `src/push_relay.py` (ein Test in `tests/test_push_relay.py` hält beide zusammen) sowie `VAPID_PUBLIC` in `relay/wrangler.toml` und `pwa/relay-client.js` (kein Test; wechseln darf man ihn nie, alle Abos hängen daran).
 
-Zusätzliche Abhängigkeiten, nur für `relay/` (`relay/package.json`, exakt gepinnt): `@block65/webcrypto-web-push` 2.0.0 (Web-Push mit VAPID) und `wrangler` 4.151.3 (Dev-Dependency, Deploy und `wrangler dev`).
+Zusätzliche Abhängigkeiten, nur für `relay/` (`relay/package.json`, exakt gepinnt): `@block65/webcrypto-web-push` 2.0.0 (Web-Push mit VAPID) und `wrangler` 4.153.0 (Dev-Dependency, Deploy und `wrangler dev`).
 
 ## Build
 
