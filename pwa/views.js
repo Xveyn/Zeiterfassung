@@ -7,7 +7,7 @@ import { MAX_CATEGORY_LENGTH } from './minutes.js';
 import { updateStatusText } from './update-policy.js';
 import { MAX_NAME_LENGTH, blockSignature, moveRow, rowsToBlock, timesSummary, validateCategoryRows } from './categories.js';
 import {
-  SETTINGS_TABS, categoryLabel, categoryOptions, categoryRemovalText, categoryRenameHint, hintKey, nextRow, pickCategory,
+  SETTINGS_TABS, categoryDisplay, categoryOptions, categoryRemovalText, categoryRenameHint, hintKey, nextRow, pickCategory,
   settingsTabLabel, windowRow,
 } from './view-model.js';
 
@@ -150,17 +150,24 @@ function slotSection({ rows, categories, defaults, weekday, withPause, onChange 
   const list = h('div', {});
   const state = rows.map((row) => ({ ...row, base: row.base && { ...row.base } }));
   const prefix = withPause ? 'slot' : 'res';       // die Ids beider Abschnitte dürfen nicht kollidieren
+  const labels = [];                                // Kategorie-Label je Zeile; das `*` folgt jeder Zeiteingabe
+  const showCategory = (index) => categoryDisplay(state[index], defaults, weekday, withPause);
   const field = (index, key, label, attrs) => {
     const id = `${prefix}-${index}-${key}`;
     const input = h('input', { id, value: state[index][key], ...attrs,
-      oninput: () => { state[index][key] = input.value; onChange(); } });
+      oninput: () => {
+        state[index][key] = input.value;
+        if (labels[index]) labels[index].textContent = showCategory(index);
+        onChange();
+      } });
     return h('div', {}, h('label', { for: id }, label), input);
   };
   // Modal statt <datalist>: auf dem Handy zeigt ein Datalist erst nach Eingabe etwas und filtert nach
   // dem Feldinhalt, und Chips blähen den Editor bei mehreren Slots auf.
   const categoryField = (index) => {
     const id = `${prefix}-${index}-kategorie`;
-    const text = h('span', { class: 'text' }, categoryLabel(state[index].kategorie));
+    const text = h('span', { class: 'text' }, showCategory(index));
+    labels[index] = text;
     const picker = button([text, h('span', { 'aria-hidden': 'true' }, '▾')], () => {
       categoryPickerDialog({ categories, current: state[index].kategorie }, (name) => {
         pickCategory(state[index], name, defaults, weekday);

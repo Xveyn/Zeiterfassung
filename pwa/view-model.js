@@ -38,6 +38,19 @@ export function categoryLabel(current) {
   return current ? current : 'Wählen';
 }
 
+/** Label des Kategorie-Buttons einer Zeile. Wie `slot_category_display` am Desktop hängt es ein `*`
+ *  an, wenn Start/Ende (bei Ist-Zeit mit `withPause` auch die Pause) von den Standardzeiten der
+ *  Kategorie abweichen. Reine Anzeige: `row.kategorie` und das Gespeicherte bleiben der Klarname.
+ *  Ohne Standardwerte (älterer Desktop) gibt es nie ein Sternchen. */
+export function categoryDisplay(row, defaults, weekday, withPause) {
+  const name = categoryLabel(row.kategorie);
+  if (!row.kategorie || !defaults) return name;
+  const target = resolveSlotDefaults(defaults, row.kategorie, weekday);
+  const overridden = row.start !== target.start || row.end !== target.end
+    || (withPause && String(row.pause) !== String(target.pause));
+  return overridden ? `${name}*` : name;
+}
+
 export function localTime(iso, timeZone) {
   const time = Date.parse(iso);
   if (Number.isNaN(time)) return '';
@@ -181,8 +194,26 @@ function freshRow(defaults, weekday) {
   return { ...row, base: { start: row.start, end: row.end, pause: row.pause } };
 }
 
-export function editorRows(day, defaults = null, weekday = '') {
-  if (!day || day.deleted || day.slots.length === 0) return [freshRow(defaults, weekday)];
+/** Ist-Zeile aus einer Reservierung (wie `entry_dialog` am Desktop): Zeiten des ersten Slots, Pause aus
+ *  dem Standard, die Kategorie nur bei genau einem Slot (`suggest_ist_category`) — bei mehreren wäre
+ *  unklar, welcher gemeint ist. `base` steht auf dem Vorschlag, eine später gewählte Kategorie zieht
+ *  also wie bei jeder frischen Zeile ihre Standardzeiten nach. */
+function suggestedRow(slots, defaults, weekday) {
+  const row = freshRow(defaults, weekday);
+  row.start = slots[0].start ?? '';
+  row.end = slots[0].end ?? '';
+  row.kategorie = slots.length === 1 ? slots[0].kategorie ?? '' : '';
+  row.base = { start: row.start, end: row.end, pause: row.pause };
+  return row;
+}
+
+/** Zeilen des Ist-Zeit-Reiters. Ohne gespeicherte Ist-Zeit schlägt eine vorhandene Reservierung
+ *  (`reservation`, nur wenn der Tag sie zeigt) die Zeile vor, sonst gilt die Standardzeile. */
+export function editorRows(day, defaults = null, weekday = '', reservation = null) {
+  if (!day || day.deleted || day.slots.length === 0) {
+    const planned = reservation && !reservation.deleted && reservation.slots.length > 0;
+    return [planned ? suggestedRow(reservation.slots, defaults, weekday) : freshRow(defaults, weekday)];
+  }
   return day.slots.map((slot) => ({
     start: slot.start, end: slot.end, pause: String(slot.pause ?? 0), kategorie: slot.kategorie ?? '',
   }));

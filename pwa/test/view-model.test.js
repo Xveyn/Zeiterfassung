@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 
 import {
   SETTINGS_TABS, categoriesModel, categoryRemovalText, categoryRenameHint, settingsTabLabel,
-  WEEKDAYS, categoryLabel, categoryOptions, conflictsModel, dayChanged, editorRows, focusKeyToRestore, hintKey, hintsModel, desktopHint, localTime, nextRow, olderModel, pickCategory, rowsToSlots, slotText,
+  WEEKDAYS, categoryDisplay, categoryLabel, categoryOptions, conflictsModel, dayChanged, editorRows, focusKeyToRestore, hintKey, hintsModel, desktopHint, localTime, nextRow, olderModel, pickCategory, rowsToSlots, slotText,
   statusModel, validateRows, weekModel, windowRow, reservationRows, reservationRowsToSlots, validateReservationRows,
 } from '../view-model.js';
 import { SyncError } from '../sync.js';
@@ -621,4 +621,66 @@ test('the push model offers the test only when on and the secret exists', () => 
   for (const state of ['off', 'denied', 'unsupported', 'needs_resubscribe']) {
     assert.equal(pushModel({ state, lastError: null, desktopReady: true, canTest: true }).canTest, false, state);
   }
+});
+
+// --- Vorschlag aus der Reservierung und Override-Sternchen (#376) ---------------------------------
+
+const plain3 = (row) => ({ start: row.start, end: row.end, pause: row.pause, kategorie: row.kategorie });
+const resv = (slots, over = {}) => ({ slots, deleted: false, dirty: false, error: null, modified_at: 'x', ...over });
+
+test('a day with a reservation but no actual time suggests its first slot, category included', () => {
+  const [row] = editorRows(null, DEFAULTS, 'mon', resv([{ start: '10:00', end: '14:00', kategorie: 'Büro' }]));
+  assert.deepEqual(plain3(row), { start: '10:00', end: '14:00', pause: '30', kategorie: 'Büro' });
+});
+
+test('with several reservation slots the times come from the first, the category stays open', () => {
+  const [row] = editorRows(null, DEFAULTS, 'mon', resv([
+    { start: '10:00', end: '12:00', kategorie: 'Büro' }, { start: '13:00', end: '15:00', kategorie: 'Büro' }]));
+  assert.deepEqual(plain3(row), { start: '10:00', end: '12:00', pause: '30', kategorie: '' });
+});
+
+test('the suggestion keeps a blank category and works without defaults', () => {
+  const [row] = editorRows(null, null, 'mon', resv([{ start: '10:00', end: '14:00', kategorie: '' }]));
+  assert.deepEqual(plain3(row), { start: '10:00', end: '14:00', pause: '0', kategorie: '' });
+});
+
+test('a deleted or empty reservation suggests nothing', () => {
+  assert.equal(editorRows(null, DEFAULTS, 'mon', resv([{ start: '10:00', end: '14:00', kategorie: 'Büro' }], { deleted: true }))[0].start, '08:00');
+  assert.equal(editorRows(null, DEFAULTS, 'mon', resv([]))[0].start, '08:00');
+});
+
+test('saved actual time wins over the reservation and stays untouched', () => {
+  const rows = editorRows(live([SLOT]), DEFAULTS, 'mon', resv([{ start: '10:00', end: '14:00', kategorie: 'Büro' }]));
+  assert.deepEqual(rows.map(plain3), [{ start: '08:00', end: '12:00', pause: '0', kategorie: 'Projekt' }]);
+  assert.equal(rows[0].base, undefined);
+});
+
+test('a suggested row still takes the defaults of a newly picked category', () => {
+  const [row] = editorRows(null, DEFAULTS, 'mon', resv([{ start: '10:00', end: '14:00', kategorie: 'Büro' }]));
+  pickCategory(row, 'Büro', DEFAULTS, 'mon');
+  assert.deepEqual(plain3(row), { start: '09:00', end: '17:00', pause: '45', kategorie: 'Büro' });
+});
+
+test('the category label carries a star when times differ from the category defaults', () => {
+  const row = { start: '09:00', end: '17:00', pause: '45', kategorie: 'Büro' };
+  assert.equal(categoryDisplay(row, DEFAULTS, 'mon', true), 'Büro');
+  assert.equal(categoryDisplay({ ...row, start: '09:30' }, DEFAULTS, 'mon', true), 'Büro*');
+  assert.equal(categoryDisplay({ ...row, end: '18:00' }, DEFAULTS, 'mon', true), 'Büro*');
+  assert.equal(categoryDisplay({ ...row, pause: '30' }, DEFAULTS, 'mon', true), 'Büro*');
+});
+
+test('the pause only counts for actual time, not for reservations', () => {
+  const row = { start: '09:00', end: '17:00', pause: '0', kategorie: 'Büro' };
+  assert.equal(categoryDisplay(row, DEFAULTS, 'mon', false), 'Büro');
+});
+
+test('no category reads Wählen, and without defaults there is never a star', () => {
+  assert.equal(categoryDisplay({ start: '08:00', end: '16:00', pause: '30', kategorie: '' }, DEFAULTS, 'mon', true), 'Wählen');
+  assert.equal(categoryDisplay({ start: '01:00', end: '02:00', pause: '0', kategorie: 'Büro' }, null, 'mon', true), 'Büro');
+});
+
+test('a category unknown to the defaults compares against the weekday defaults', () => {
+  const row = { start: '08:00', end: '16:00', pause: '30', kategorie: 'Frei' };
+  assert.equal(categoryDisplay(row, DEFAULTS, 'mon', true), 'Frei');
+  assert.equal(categoryDisplay({ ...row, end: '15:00' }, DEFAULTS, 'mon', true), 'Frei*');
 });
