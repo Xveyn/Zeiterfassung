@@ -42,6 +42,12 @@ ES-Module flach im Ordner:
   „Verschlüsselung“.
 - `window-policy.js` — Lesefenster (#250): Stufen, Wunsch, die Entscheidung der Wochenansicht
   am Fensterrand (s. „Lesefenster“).
+- `swipe-policy.js` — Wisch nach links/rechts wechselt die Woche (#381): `swipeDirection` entscheidet aus
+  Start, Ende und Dauer (nur Finger/Stift, waagerecht mindestens doppelt so stark wie senkrecht, ≥ 60 px
+  oder Flick ≥ 30 px in ≤ 150 ms, Start im 24-px-Randstreifen zählt nie — der gehört der System-Zurück-Geste).
+  `app.js` (`watchSwipe`) bindet Pointer-Events einmal am `main`, `touch-action: pan-y` lässt das senkrechte
+  Scrollen beim Browser; nur auf dem Wochen-Screen ohne offenen Dialog, ein Klick direkt nach dem Wisch wird
+  verworfen. Wechsel beim Loslassen, die Woche folgt dem Finger nicht. Auf iOS ungeprüft (#358).
 - `view-model.js`, `messages.js`, `sync-policy.js`, `update-policy.js` —
   Anzeige- und Entscheidungslogik, DOM-frei und getestet.
 - `reminders-plan.js`, `push-blob.js`, `push-message.js`, `relay-client.js`, `push-policy.js` —
