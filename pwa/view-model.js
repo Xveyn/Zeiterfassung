@@ -11,7 +11,7 @@ import { resolveSlotDefaults } from './defaults.js';
 import { describeError } from './messages.js';
 import { normalizeReservationSlots, pendingReservationMinutes, reservationBlockVisible, validateReservationSlots } from './reservations.js';
 import { describeState } from './push-policy.js';
-import { LEGACY_AHEAD_DAYS } from './window-policy.js';
+import { LEGACY_AHEAD_DAYS, aheadDays, olderState } from './window-policy.js';
 
 export const WEEKDAYS = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
 const SKEW_WARN_MS = 120000;
@@ -333,6 +333,29 @@ export function olderModel(state) {
     default:
       return null;
   }
+}
+
+/** Darf die Arbeitszeit dieses Tages hier bearbeitet werden? `null` ja, sonst Sperre mit Text und, wo es
+ *  einen Ausweg gibt, der Aktion „Ältere Zeiten laden“ (#273).
+ *
+ *  Das Handy kennt vom Desktop nur `[heute − Fenster, heute + Vorschau]`. Ein Tag dahinter sieht leer aus,
+ *  obwohl der Desktop dort Einträge haben kann, und ein Speichern ersetzte sie ohne Konflikt (der Desktop
+ *  nimmt an, das Handy habe alles seit dem letzten Abgleich gesehen). Deshalb gesperrt — außer das Handy hält
+ *  den Tag schon (`hasRecord`: auch ein nicht übertragener oder geleerter Tag muss korrigierbar bleiben).
+ *  Reservierungen haben ein eigenes Fenster und sind davon nicht betroffen. */
+export function editLock({ date, today, meta, hasRecord = false }) {
+  if (hasRecord) return null;
+  const ahead = aheadDays(meta.window_ahead);
+  if (date > addDays(today, ahead)) {
+    return { kind: 'future', action: null,
+      text: `Dieser Tag lässt sich hier nicht bearbeiten: die Arbeitszeit geht nur bis ${ahead === 1 ? '1 Tag' : `${ahead} Tage`} im Voraus.` };
+  }
+  const state = olderState({ firstDay: date, today, windowDays: meta.window_days, windowMax: meta.window_max,
+    maxKnown: meta.window_max_known, acked: meta.window_wish_acked });
+  const older = olderModel(state);
+  if (!older) return null;
+  return { kind: 'older', action: older.action, wish: older.wish, buttonText: older.buttonText,
+    text: `Dieser Tag liegt vor dem Zeitraum, den das Handy vom Desktop kennt, und lässt sich hier nicht bearbeiten, damit kein Eintrag am Desktop überschrieben wird. ${older.text}` };
 }
 
 /** Die Zeile „Verlauf“ im Reiter „Verbindung“. */
