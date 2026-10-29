@@ -16,6 +16,7 @@ import { openDatabase, requestPersistentStorage } from './db.js';
 import { Store } from './store.js';
 import { SyncClient, SyncError, clockSkewMs } from './sync.js';
 import { shouldQueue, shouldSync } from './sync-policy.js';
+import { errorDetail, logFailure, withDetail } from './diagnose.js';
 import { swipeDirection } from './swipe-policy.js';
 import { shouldApplyUpdate, shouldCheckForUpdate } from './update-policy.js';
 import { blockSignature, rowsToBlock } from './categories.js';
@@ -51,6 +52,7 @@ class App {
     this.updateReady = false;
     this.registration = null;
     this.updateState = 'serviceWorker' in navigator ? 'idle' : 'unsupported';
+    this.updateDetail = '';
     this.lastUpdateCheckAt = 0;
     this.checkingUpdate = false;
     this.applyRequested = false;     // für den wartenden Worker ist SKIP_WAITING schon raus (keine Neulade-Schleife)
@@ -165,7 +167,8 @@ class App {
       await this.updatePushSchedule();
       this.trigger('manual');                       // der Desktop erfährt das Geheimnis im nächsten Abgleich
     } catch (error) {
-      this.pushError = error instanceof RelayError ? error.message : 'Die Benachrichtigungen ließen sich nicht einschalten.';
+      if (!(error instanceof RelayError)) logFailure('Benachrichtigungen einschalten', error);
+      this.pushError = error instanceof RelayError ? error.message : withDetail('Die Benachrichtigungen ließen sich nicht einschalten.', error);
     }
   }
 
@@ -189,6 +192,7 @@ class App {
       if (secret) await this.relay.deleteDevice(secret);
     } catch (error) {
       // Ein nicht erreichbarer Relay lässt das Objekt dort stehen; es räumt sich nach 90 Tagen selbst auf.
+      if (!(error instanceof RelayError)) logFailure('Benachrichtigungen ausschalten', error);
       this.pushError = error instanceof RelayError ? error.message : null;
     }
     await this.store.setMeta({ push_enabled: false, push_signature: null, push_sent_at: 0 });
@@ -228,7 +232,8 @@ class App {
       await this.store.setMeta({ push_signature: plan, push_sent_at: now });
       this.pushError = null;
     } catch (error) {
-      this.pushError = error instanceof RelayError ? error.message : 'Der Zeitplan für die Benachrichtigungen ließ sich nicht senden.';
+      if (!(error instanceof RelayError)) logFailure('Benachrichtigungs-Zeitplan senden', error);
+      this.pushError = error instanceof RelayError ? error.message : withDetail('Der Zeitplan für die Benachrichtigungen ließ sich nicht senden.', error);
     } finally {
       this.pushBusy = false;
     }
@@ -279,8 +284,9 @@ class App {
         this.pairing = { ...this.pairing, address: `${link.host}:${link.port}`, code: link.code, error: '' };
         this.render();
       }
-    } catch {
-      message.textContent = 'Die Kamera ist nicht verfügbar oder nicht freigegeben. Bitte Adresse und Code eintippen oder die Kamera-App benutzen.';
+    } catch (error) {
+      logFailure('Kamera beim Koppeln', error);
+      message.textContent = withDetail('Die Kamera ist nicht verfügbar oder nicht freigegeben. Bitte Adresse und Code eintippen oder die Kamera-App benutzen.', error);
     }
   }
 
@@ -445,13 +451,13 @@ class App {
         tokenUntil: meta.token_expires_at ? formatDateDe(meta.token_expires_at.slice(0, 10)) : '',
         push,
       },
-      updates: { build: BUILD, update: { state: this.updateState, auto: Boolean(meta.auto_update) } },
+      updates: { build: BUILD, update: { state: this.updateState, detail: this.updateDetail, auto: Boolean(meta.auto_update) } },
       categories: categoriesModel({
         categories: meta.categories, defaults: meta.defaults, writable: meta.settings_writable, edit: meta.categories_edit,
       }),
     }, {
       pair: () => { this.screen = 'pair'; this.render(); },
-      checkUpdate: () => this.checkForUpdate('manual'),
+      checkUpdate: async () => ({ state: await this.checkForUpdate('manual'), detail: this.updateDetail }),
       resetWindow: () => this.resetWindow(),
       testPush: () => this.sendTestPush(),
       setPush: async (on) => {
@@ -581,9 +587,11 @@ class App {
       registration.addEventListener('updatefound', () => watch(registration.installing));
       navigator.serviceWorker.addEventListener('controllerchange', () => { if (this.reloading) location.reload(); });
       this.checkForUpdate('start');
-    } catch {
+    } catch (error) {
       // Ohne Service Worker läuft die App online weiter; offline starten kann sie dann nicht.
-      this.updateState = 'unsupported';
+      logFailure('Service Worker registrieren', error);
+      this.updateState = 'error';
+      this.updateDetail = errorDetail(error);
     }
   }
 
@@ -605,6 +613,7 @@ class App {
     this.checkingUpdate = true;
     this.lastUpdateCheckAt = Date.now();
     this.updateState = 'checking';
+    this.updateDetail = '';
     try {
       await this.registration.update();
       const worker = this.registration.installing;
@@ -617,8 +626,10 @@ class App {
       }
       if (this.updateReady || this.registration.waiting) this.markUpdateReady();
       else this.updateState = 'current';
-    } catch {
+    } catch (error) {
+      logFailure('Update-Suche', error);
       this.updateState = navigator.onLine === false ? 'offline' : 'error';
+      this.updateDetail = errorDetail(error);
     } finally {
       this.checkingUpdate = false;
     }
@@ -670,8 +681,9 @@ async function main() {
   try {
     store = new Store(await openDatabase());
     await store.load();
-  } catch {
-    root.append(fatalView('Der Speicher des Browsers ist nicht verfügbar (privates Fenster oder gesperrt?). Ohne ihn kann diese App keine Einträge sichern.'));
+  } catch (error) {
+    logFailure('Speicher des Browsers öffnen', error);
+    root.append(fatalView(withDetail('Der Speicher des Browsers ist nicht verfügbar (privates Fenster oder gesperrt?). Ohne ihn kann diese App keine Einträge sichern.', error)));
     return;
   }
   await new App(root, store, new SyncClient({ store })).start();
