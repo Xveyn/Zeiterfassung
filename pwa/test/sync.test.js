@@ -762,6 +762,18 @@ test('parseSyncResponse reads the maximum tolerantly', () => {
   }
 });
 
+test('parseSyncResponse reads the forward window tolerantly (#265)', () => {
+  assert.equal(parseSyncResponse(fixture('sync-response.json')).window_ahead, 14);
+  for (const bad of [undefined, null, -1, 'x', 1.5, 99999, true]) {
+    const copy = fixture('sync-response.json');
+    if (bad === undefined) delete copy.window_ahead_days; else copy.window_ahead_days = bad;
+    assert.equal(parseSyncResponse(copy).window_ahead, null, String(bad));
+  }
+  const zero = fixture('sync-response.json');
+  zero.window_ahead_days = 0;
+  assert.equal(parseSyncResponse(zero).window_ahead, 0);
+});
+
 test('a timeout is its own kind, so the message can point at the history size (#292)', () => {
   const result = classifyNetworkError(new DOMException('x', 'TimeoutError'));
   assert.equal(result.kind, 'timeout');

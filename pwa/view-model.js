@@ -11,11 +11,10 @@ import { resolveSlotDefaults } from './defaults.js';
 import { describeError } from './messages.js';
 import { normalizeReservationSlots, pendingReservationMinutes, reservationBlockVisible, validateReservationSlots } from './reservations.js';
 import { describeState } from './push-policy.js';
+import { LEGACY_AHEAD_DAYS } from './window-policy.js';
 
 export const WEEKDAYS = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
 const SKEW_WARN_MS = 120000;
-// Wie `store.js`: Tage nach heute + 1 räumt der Abgleich am Handy wieder auf (#265).
-const VISIBLE_AHEAD_DAYS = 1;
 
 const isObject = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
 
@@ -64,7 +63,9 @@ function stampLabel(iso, timeZone) {
 
 // --- Woche ---------------------------------------------------------------------------------------
 
-export function weekModel({ getDay, anchor, today, conflictDates = [], windowDays = 0,
+// `aheadDays`: wie weit nach heute das Handy Ist-Zeiten kennt (`window-policy.aheadDays`, #265); Tage dahinter räumt der
+// Abgleich wieder auf.
+export function weekModel({ getDay, anchor, today, conflictDates = [], windowDays = 0, aheadDays = LEGACY_AHEAD_DAYS,
   getReservation = () => null, reservationsEnabled = false }) {
   const conflicts = new Set(conflictDates);
   const dates = weekDays(anchor);
@@ -82,10 +83,10 @@ export function weekModel({ getDay, anchor, today, conflictDates = [], windowDay
       label: formatDateDe(date),
       isToday: date === today,
       isWeekend: index >= 5,
-      beyondWindow: date > addDays(today, VISIBLE_AHEAD_DAYS),
+      beyondWindow: date > addDays(today, aheadDays),
       // Außerhalb dessen, was das Handy vom Desktop kennt: ein leer wirkender Tag kann dort Einträge
       // haben, und Speichern ersetzt sie (der Handy-Stand gewinnt ohne Konflikt).
-      outsideWindow: date > addDays(today, VISIBLE_AHEAD_DAYS) || (windowDays > 0 && date < addDays(today, -windowDays)),
+      outsideWindow: date > addDays(today, aheadDays) || (windowDays > 0 && date < addDays(today, -windowDays)),
       slots: slots.map(slotText),
       minutes,
       minutesLabel: minutes > 0 ? formatMinutes(minutes) : '',
@@ -335,12 +336,13 @@ export function olderModel(state) {
 }
 
 /** Die Zeile „Verlauf“ im Reiter „Verbindung“. */
-export function windowRow({ days, max, wish }) {
+export function windowRow({ days, max, wish, ahead = null }) {
   const parts = [];
   if (Number.isInteger(wish) && wish !== days) parts.push(`gewünscht ${wish}`);
   if (Number.isInteger(max)) parts.push(`Desktop erlaubt bis ${max}`);
   return {
-    text: parts.length ? `${days} Tage (${parts.join(', ')})` : `${days} Tage`,
+    text: (parts.length ? `${days} Tage (${parts.join(', ')})` : `${days} Tage`)
+      + (Number.isInteger(ahead) && ahead > 0 ? `, dazu ${ahead} Tage voraus` : ''),
     canReset: Number.isInteger(wish) && wish > 90,
   };
 }

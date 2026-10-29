@@ -138,8 +138,9 @@ Desktop) ist seltener, kommt aber vor. Sieben Regeln:
    Protokoll 2 vor #288 (ohne `defaults`/`desktop`); Protokoll 1 war nie in
    einem echten Release. Dazu kommt der Stand vor dem Lesefenster
    (`compat/*-pre-250.json`, ohne `window_days`/`window_max_days`) und der Stand vor den
-   Reservierungen (`compat/*-pre-reservations.json`, ohne `reservations`) und der Stand vor den
-   Einstellungen (`compat/*-pre-settings.json`, ohne `settings`).
+   Reservierungen (`compat/*-pre-reservations.json`, ohne `reservations`) der Stand vor den
+   Einstellungen (`compat/*-pre-settings.json`, ohne `settings`) und der Stand vor dem Fenster nach
+   vorn (`compat/sync-response-pre-ahead.json`, ohne `window_ahead_days`).
 5. **Neue PWA, alter Desktop.** Ein Desktop vor #311 ignoriert `settings` in der
    Anfrage und kennt `writable_settings` nicht. Die PWA bietet das Bearbeiten
    der Kategorien deshalb nur an, wenn die Antwort `writable_settings` mit
@@ -375,6 +376,18 @@ ISO/IEC 18004, ZXing und jsQR (beide Apache-2.0) und dem Thonky-Tutorial.
   belegt — das klärt der Gerätetest (#267).
 
 ## Lesefenster (#250)
+
+**Nach vorn (#265).** Das Fenster reicht auch **14 Tage nach heute** (`WINDOW_AHEAD_DAYS` am Desktop,
+fest, nicht einstellbar): Ist-Zeiten, die am Desktop für spätere Tage stehen (vorgetragener Urlaub,
+Termine), sieht das Handy, und am Handy für diese Tage eingetragene bleiben nach dem Abgleich stehen.
+Die Antwort nennt es additiv als `window_ahead_days` (`PROTOCOL` bleibt 2); die Tage zählen **nicht**
+ins Mengenbudget (`fit_window` rechnet nur nach hinten, vorn sind es höchstens 14). Die PWA hält das als
+`window_ahead` in der Meta; `window-policy.aheadDays` liefert die Grenze für Anzeige und Aufräumen
+(Randtag `heute + 14` gehört dem Desktop, wie der Wochenanfang des Fensters). Ein Tag dahinter ist
+„außerhalb des Fensters“ und abgedunkelt; sonst sehen Einträge nach heute aus wie alle anderen. **Ältere
+Desktops** schicken das Feld nicht: die Grenze bleibt heute + 1 wie bisher (Feature-Erkennung, eingefroren
+als `compat/sync-response-pre-ahead.json`). Der Reiter „Verbindung“ nennt es in der Zeile „Verlauf“
+(„… , dazu 14 Tage voraus“). Reservierungen haben ihr eigenes Fenster (365 Tage) und sind unberührt.
 
 Die PWA sieht standardmäßig die letzten 90 Tage (Standardfenster **90 Tage**,
 `WINDOW_DAYS` am Desktop, `DEFAULT_WISH` im Handy). **Das Handy wünscht, der

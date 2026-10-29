@@ -19,6 +19,7 @@ import {
   RESERVATION_HORIZON_DAYS, normalizeReservationSlots, reservationEditable, reservationSignature,
   validateReservationSlots,
 } from './reservations.js';
+import { aheadDays } from './window-policy.js';
 import { blockSignature, categoryRows, validateCategoryRows } from './categories.js';
 
 const DEFAULT_META = Object.freeze({
@@ -36,6 +37,7 @@ const DEFAULT_META = Object.freeze({
   window_days: 90,
   window_wish: 90,         // gewünschtes Fenster in Tagen (#250); der Desktop deckelt
   window_wish_acked: 90,   // der Wunsch, zu dem die letzte angewandte Antwort gehört (#292)
+  window_ahead: null,      // Tage nach heute, die der Desktop mitschickt (#265); null = älterer Desktop
   window_max: null,        // Obergrenze des Desktops; null = kam nicht mit (älterer Desktop)
   window_max_known: false, // erst nach der ersten angewandten Antwort wahr; vorher weiß man nichts
   auto_update: false,      // Updates der PWA automatisch einspielen (#290); gerätelokal, Standard aus
@@ -466,9 +468,10 @@ export class Store {
     const remote = new Map(Object.entries(parsed.entries));
     const windowStart = addDays(today, -parsed.window_days);
     const innerFrom = addDays(windowStart, 1);
-    const innerTo = addDays(today, -1);
+    // Nach vorn gilt das Fenster des Desktops (#265); ohne das Feld liefert er nichts nach heute.
+    const innerTo = addDays(today, (parsed.window_ahead ?? 0) - 1);
     const pruneBefore = addDays(windowStart, -1);
-    const pruneAfter = addDays(today, 1);
+    const pruneAfter = addDays(today, aheadDays(parsed.window_ahead));
 
     for (const [date, entry] of remote) {
       if (!isIsoDate(date)) continue;
@@ -533,6 +536,7 @@ export class Store {
       categories_edit: confirmed ? { ...edit, synced_version: edit.dirty_version, error: null } : edit,
       desktop: { ...parsed.desktop },
       window_days: parsed.window_days,
+      window_ahead: parsed.window_ahead ?? null,
       window_max: parsed.window_max ?? null,
       window_max_known: true,
       window_wish_acked: parsed.window_wish_sent ?? this._meta.window_wish_acked,

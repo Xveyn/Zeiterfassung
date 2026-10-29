@@ -877,3 +877,39 @@ test('the category block survives a reload', async () => {
   assert.deepEqual(second.getMeta().categories, ['Neu']);
   assert.equal(second.categoriesDirty(), true);
 });
+
+test('a desktop with a forward window keeps clean days up to that many days after today (#265)', async () => {
+  const { store } = await make();
+  await store.applyResponse(parsedResponse({ window_ahead: 14,
+    entries: { '2026-10-09': remoteDay(), '2026-10-22': remoteDay(), '2026-10-23': remoteDay() } }),
+  store.snapshotDirty(), TODAY);
+  assert.notEqual(store.getDay('2026-10-09'), null);
+  assert.notEqual(store.getDay('2026-10-22'), null);                 // heute + 14: noch im Fenster
+  assert.equal(store.getDay('2026-10-23'), null);                    // heute + 15: dahinter, aufgeräumt
+  assert.equal(store.getMeta().window_ahead, 14);
+});
+
+test('a clean future day the desktop no longer lists is removed inside the forward window, not at its edge (#265)', async () => {
+  const { store } = await make();
+  await store.applyResponse(parsedResponse({ window_ahead: 14,
+    entries: { '2026-10-12': remoteDay(), '2026-10-22': remoteDay() } }), store.snapshotDirty(), TODAY);
+  await store.applyResponse(parsedResponse({ window_ahead: 14, entries: {} }), store.snapshotDirty(), TODAY);
+  assert.equal(store.getDay('2026-10-12'), null);                    // innen: der Desktop hat ihn nicht mehr
+  assert.notEqual(store.getDay('2026-10-22'), null);                 // Randtag gehört dem Desktop
+});
+
+test('an unsent future day stays even when the desktop does not list it (#265)', async () => {
+  const { store } = await make();
+  await store.saveDay('2026-10-12', [SLOT]);
+  await store.applyResponse(parsedResponse({ window_ahead: 14, entries: {} }), { entries: {}, versions: {} }, TODAY);
+  assert.equal(store.getDay('2026-10-12').dirty, true);
+});
+
+test('without a forward window (older desktop) future days after tomorrow are still pruned (#265)', async () => {
+  const { store } = await make();
+  await store.applyResponse(parsedResponse({ window_ahead: null,
+    entries: { '2026-10-09': remoteDay(), '2026-10-10': remoteDay() } }), store.snapshotDirty(), TODAY);
+  assert.notEqual(store.getDay('2026-10-09'), null);
+  assert.equal(store.getDay('2026-10-10'), null);
+  assert.equal(store.getMeta().window_ahead, null);
+});

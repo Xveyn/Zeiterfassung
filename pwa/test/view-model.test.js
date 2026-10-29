@@ -74,6 +74,15 @@ test('days after tomorrow are marked as beyond the window', () => {
   assert.deepEqual(week.days.map((d) => d.beyondWindow), [false, false, false, false, false, true, true]);
 });
 
+test('with a forward window the days inside it are shown like any other day (#265)', () => {
+  const week = weekModel({ getDay: days({}), anchor: '2026-10-08', today: '2026-10-08', aheadDays: 14 });
+  assert.deepEqual(week.days.map((d) => d.beyondWindow), [false, false, false, false, false, false, false]);
+  assert.deepEqual(week.days.map((d) => d.outsideWindow), [false, false, false, false, false, false, false]);
+  const far = weekModel({ getDay: days({}), anchor: '2026-10-19', today: '2026-10-08', aheadDays: 14 });
+  assert.deepEqual(far.days.map((d) => d.beyondWindow), [false, false, false, false, true, true, true]);   // ab 23.10.
+  assert.deepEqual(far.days.map((d) => d.outsideWindow), [false, false, false, false, true, true, true]);
+});
+
 test('the sum ignores broken stored slots instead of throwing', () => {
   const getDay = days({ '2026-10-05': live([{ start: 'x', end: null, pause: 'a' }, SLOT]) });
   assert.equal(weekModel({ getDay, anchor: '2026-10-05', today: '2026-10-05' }).totalMinutes, 240);
@@ -441,6 +450,13 @@ test('the connection row reads the window and offers a reset only when it is abo
   assert.deepEqual(windowRow({ days: 90, max: null, wish: 90 }), { text: '90 Tage', canReset: false });
   assert.deepEqual(windowRow({ days: 120, max: 365, wish: 365 }),
     { text: '120 Tage (gewünscht 365, Desktop erlaubt bis 365)', canReset: true });
+});
+
+test('the connection row names the forward window when the desktop has one (#265)', () => {
+  assert.equal(windowRow({ days: 90, max: 365, wish: 90, ahead: 14 }).text, '90 Tage (Desktop erlaubt bis 365), dazu 14 Tage voraus');
+  assert.equal(windowRow({ days: 90, max: null, wish: 90, ahead: 14 }).text, '90 Tage, dazu 14 Tage voraus');
+  assert.equal(windowRow({ days: 90, max: 365, wish: 90, ahead: null }).text, '90 Tage (Desktop erlaubt bis 365)');
+  assert.equal(windowRow({ days: 90, max: 365, wish: 90, ahead: 0 }).text, '90 Tage (Desktop erlaubt bis 365)');
 });
 
 test('an unknown maximum asks for a sync first instead of blaming the desktop (#292)', () => {

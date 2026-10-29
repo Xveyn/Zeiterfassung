@@ -49,6 +49,7 @@ if TYPE_CHECKING:
 
 PROTOCOL = 2                  # Protokoll v2 (#249): verschlüsselt, s. `mobile_crypto`
 WINDOW_DAYS = 90                    # Standardfenster, wenn das Handy keinen Wunsch äußert
+WINDOW_AHEAD_DAYS = 14              # Tage nach heute, die das Handy zusätzlich sieht (#265); fest, nicht im Budget
 HARD_MAX_WINDOW_DAYS = 365          # weiter geht kein Fenster, auch nicht per Einstellung
 WINDOW_CAP_CHOICES = (30, 90, 180, 365)
 MAX_RESPONSE_ENTRY_BYTES = 768 * 1024   # Klartext der Einträge im Fenster; s. fit_window
@@ -335,7 +336,7 @@ def build_response(merged: Mapping[str, Any], *, sent_dates: Iterable[str],
                    reservations: Mapping[str, Any] | None = None,
                    reminders: Mapping[str, Any] | None = None) -> dict[str, Any]:
     """Die Antwort des Abgleichs aus dem Merge-Ergebnis, ohne `token`/`expires_at`
-    (die ergänzt die Route). Fenster `[heute − Fenster, heute]` (heute ist das lokale
+    (die ergänzt die Route). Fenster `[heute − Fenster, heute + WINDOW_AHEAD_DAYS]` (heute ist das lokale
     Datum des Desktops) plus alle gesendeten Tage — beides für Einträge **und**
     Konflikte: ein Konflikt auf einem gesendeten Tag außerhalb des Fensters bliebe
     sonst unsichtbar. Ein gesendeter Tag, den der Merge verworfen hat (Self-Heal bei
@@ -345,7 +346,7 @@ def build_response(merged: Mapping[str, Any], *, sent_dates: Iterable[str],
     wenn die Einträge mehr als `MAX_RESPONSE_ENTRY_BYTES` ergäben (#250). Die Antwort
     nennt das Fenster, das tatsächlich gilt."""
     sent = set(sent_dates)
-    last = today.isoformat()
+    last = (today + datetime.timedelta(days=WINDOW_AHEAD_DAYS)).isoformat()
 
     clean_entries: dict[str, dict[str, Any]] = {}
     for date, entry in (merged.get("entries") or {}).items():
@@ -370,6 +371,7 @@ def build_response(merged: Mapping[str, Any], *, sent_dates: Iterable[str],
         "last_pull_at": now,
         "excluded": excluded,
         "window_days": granted,
+        "window_ahead_days": WINDOW_AHEAD_DAYS,
         "window_max_days": window_max_days,
         "entries": entries,
         "conflicts": _conflict_views(merged, visible),

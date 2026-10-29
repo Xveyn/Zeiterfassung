@@ -10,7 +10,7 @@ import { messageFor, testResultText } from './push-message.js';
 import { idbKeyStore, seal } from './push-blob.js';
 import { permissionState, shouldSchedule } from './push-policy.js';
 import { RelayClient, RelayError, VAPID_PUBLIC, newSecret, syncSchedule } from './relay-client.js';
-import { DEFAULT_WISH, olderState } from './window-policy.js';
+import { DEFAULT_WISH, aheadDays, olderState } from './window-policy.js';
 import { deviceNameFromUserAgent, parseHostPort, parsePairFragment } from './pairing.js';
 import { openDatabase, requestPersistentStorage } from './db.js';
 import { Store } from './store.js';
@@ -360,7 +360,7 @@ class App {
     const conflicts = this.conflictList();
     const model = weekModel({
       getDay: (date) => this.store.getDay(date), anchor: this.anchor, today: localIsoDate(new Date()),
-      conflictDates: conflicts.map((conflict) => conflict.date), windowDays: meta.window_days,
+      conflictDates: conflicts.map((conflict) => conflict.date), windowDays: meta.window_days, aheadDays: aheadDays(meta.window_ahead),
       getReservation: (date) => this.store.getReservation(date), reservationsEnabled: meta.reservations_enabled,
     });
     model.older = olderModel(olderState({
@@ -444,7 +444,7 @@ class App {
       connection: {
         desktopName: meta.desktop_name,
         desktop: meta.desktop,
-        window: { days: meta.window_days, max: meta.window_max, wish: meta.window_wish },
+        window: { days: meta.window_days, max: meta.window_max, wish: meta.window_wish, ahead: meta.window_ahead },
         hint: desktopHint(meta),
         address: meta.address ? `${meta.address.host}:${meta.address.port}` : '',
         persistent: this.persistent,
@@ -495,7 +495,7 @@ class App {
     const today = localIsoDate(new Date());
     const returnKey = focusState(this.root).activeKey;
     let baseline = day;         // Stand beim Öffnen: Speichern prüft, ob der Tag inzwischen anders ist
-    const outsideWindow = date > addDays(today, 1) || date < addDays(today, -meta.window_days);
+    const outsideWindow = date > addDays(today, aheadDays(meta.window_ahead)) || date < addDays(today, -meta.window_days);
     // Reservierungen nur, wenn der Desktop sie anbietet und der Tag heute oder später ist.
     const reservationOn = meta.reservations_enabled && reservationEditable(date, today);
     const reservation = reservationOn ? this.store.getReservation(date) : null;

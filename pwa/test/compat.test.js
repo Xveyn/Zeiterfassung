@@ -50,3 +50,11 @@ test('the response of a desktop before the settings is still understood and offe
   assert.deepEqual(parsed.writable_settings, []);
   assert.deepEqual(Object.keys(parsed.entries), ['2026-10-07', '2026-10-06']);
 });
+
+test('the response of a desktop before the forward window (#265) is still understood and shows no future days', () => {
+  const doc = frozen('sync-response-pre-ahead.json');
+  assert.ok(!('window_ahead_days' in doc));
+  const parsed = parseSyncResponse(doc);
+  assert.equal(parsed.window_ahead, null);               // unbekannt = älterer Desktop
+  assert.deepEqual(Object.keys(parsed.entries), ['2026-10-07', '2026-10-06']);
+});

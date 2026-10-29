@@ -191,22 +191,42 @@ def test_the_response_carries_the_protocol_fields_and_no_token():
 
     assert response == {
         "protocol": 2, "server_time": NOW, "last_pull_at": NOW, "excluded": False,
-        "window_days": 90, "window_max_days": 365, "entries": {}, "conflicts": [],
-        "categories": ["Projekt"],
+        "window_days": 90, "window_ahead_days": 14, "window_max_days": 365, "entries": {},
+        "conflicts": [], "categories": ["Projekt"],
         "defaults": DEFAULTS, "desktop": DESKTOP,
         "writable_settings": ["categories", "category_times"]}
 
 
-def test_the_window_is_today_minus_90_days_through_today():
+def test_the_window_is_today_minus_90_days_through_today_plus_14_days():
     merged = {"entries": {
         _iso(-91): _entry(_iso(-91)), _iso(-90): _entry(_iso(-90)),
         _iso(0): _entry(_iso(0)), _iso(1): _entry(_iso(1)),
+        _iso(14): _entry(_iso(14)), _iso(15): _entry(_iso(15)),
         _iso(-30): _entry(_iso(-30), slots=(), deleted=True)}}
 
-    entries = respond(merged)["entries"]
+    response = respond(merged)
 
-    assert sorted(entries) == sorted([_iso(-90), _iso(-30), _iso(0)])
-    assert entries[_iso(-30)]["deleted"] is True            # Tombstones im Fenster reisen mit
+    assert sorted(response["entries"]) == sorted([_iso(-90), _iso(-30), _iso(0), _iso(1), _iso(14)])
+    assert response["entries"][_iso(-30)]["deleted"] is True    # Tombstones im Fenster reisen mit
+    assert response["window_ahead_days"] == mobile_sync.WINDOW_AHEAD_DAYS == 14
+
+
+def test_future_days_do_not_count_against_the_byte_budget():
+    # Das Budget kürzt den Verlauf nach hinten; die 14 Tage nach vorn sind klein und fest.
+    big = tuple({"start": "08:00", "end": "09:00", "pause": 0, "kategorie": "K" * 100} for _ in range(50))
+    merged = {"entries": {_iso(offset): _entry(_iso(offset), slots=big) for offset in range(1, 15)}}
+
+    response = respond(merged)
+
+    assert len(response["entries"]) == 14 and response["window_days"] == 90
+
+
+def test_a_conflict_on_a_future_day_inside_the_forward_window_is_visible():
+    merged = {"entries": {_iso(5): _entry(_iso(5))},
+              "conflicts": [{"kind": "entry", "id": "c1", "key": _iso(5), "candidates": [
+                  {"device_id": "DESK", "modified_at": "2026-10-01T10:00:00Z", "slots": [dict(SLOT)]}]}]}
+
+    assert [c["date"] for c in respond(merged)["conflicts"]] == [_iso(5)]
 
 
 def test_days_the_phone_sent_are_included_outside_the_window():
