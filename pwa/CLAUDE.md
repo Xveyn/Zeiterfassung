@@ -49,7 +49,7 @@ ES-Module flach im Ordner:
   Scrollen beim Browser; nur auf dem Wochen-Screen ohne offenen Dialog, ein Klick direkt nach dem Wisch wird
   verworfen. Wechsel beim Loslassen, die Woche folgt dem Finger nicht. Auf iOS ungeprüft (#358).
 - `diagnose.js` — Ursache statt nur „fehlgeschlagen“ (#383): `errorDetail` (Name + Meldung, eine Zeile,
-  höchstens 160 Zeichen), `withDetail` (Meldungstext mit der Ursache dahinter) und `logFailure`
+  höchstens 240 Zeichen, Chromes Standardtext vor dem Grund eines fehlgeschlagenen `registration.update()` verdichtet), `withDetail` (Meldungstext mit der Ursache dahinter) und `logFailure`
   (`console.warn`, am Handy über `chrome://inspect` lesbar). Nur für Fehler der Browser-Schnittstellen
   (Service Worker, Push-Abo, Kamera, Speicher); `SyncError`/`RelayError` haben eigene kuratierte Texte und
   gehen hier nicht hinein. Wer einen neuen Catch-all in `app.js` baut, loggt oder zeigt die Ursache.
