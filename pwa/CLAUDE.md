@@ -48,6 +48,11 @@ ES-Module flach im Ordner:
   `app.js` (`watchSwipe`) bindet Pointer-Events einmal am `main`, `touch-action: pan-y` lässt das senkrechte
   Scrollen beim Browser; nur auf dem Wochen-Screen ohne offenen Dialog, ein Klick direkt nach dem Wisch wird
   verworfen. Wechsel beim Loslassen, die Woche folgt dem Finger nicht. Auf iOS ungeprüft (#358).
+- `browser-policy.js` — Engine hinter dem Browser (`browserKind`: chromium / firefox / ios / safari / unknown;
+  jeder Browser auf dem iPhone ist WebKit) und `blocksLan` (sperrt eine https-Seite den Zugriff auf
+  `http://<LAN-IP>`?). Nur dazu, die Meldung „Desktop nicht erreichbar“ **nach** einem Fehlschlag um die
+  wahrscheinliche Ursache und den Test `http://<Adresse>/v1/ping` zu ergänzen (#275, `messages.describeError(error,
+  { browser, address })`); ein `fetch`-Fehler verrät den Grund nicht, vorab gewarnt wird nie.
 - `diagnose.js` — Ursache statt nur „fehlgeschlagen“ (#383): `errorDetail` (Name + Meldung, eine Zeile,
   höchstens 240 Zeichen, Chromes Standardtext vor dem Grund eines fehlgeschlagenen `registration.update()` verdichtet), `withDetail` (Meldungstext mit der Ursache dahinter) und `logFailure`
   (`console.warn`, am Handy über `chrome://inspect` lesbar). Nur für Fehler der Browser-Schnittstellen

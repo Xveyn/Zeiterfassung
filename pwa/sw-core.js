@@ -28,6 +28,7 @@ export const PRECACHE = [
   './update-policy.js',
   './window-policy.js',
   './swipe-policy.js',
+  './browser-policy.js',
   './diagnose.js',
   './minutes.js',
   './reservations.js',

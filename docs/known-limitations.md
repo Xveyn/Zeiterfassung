@@ -513,8 +513,12 @@ Augenhöhe mit den anderen beiden Plattformen.
   (iPhone)** lassen sich die Web-App öffnen und der Koppel-Code scannen; Installation als App und
   der Rest sind dort nicht geprüft. **Safari und Firefox** erreichen den Rechner nach dem Koppeln nicht: sie sperren den Zugriff einer `https`-Seite auf eine
   `http://`-Adresse im WLAN („Mixed Content“); auf einem iPhone mit Safari am 2026-10-26
-  beobachtet, bei Firefox aus demselben Mechanismus geschlossen, nicht ausprobiert. Die Web-App
-  meldet dann nur „Desktop nicht erreichbar“, ohne die Ursache zu nennen (#275). Wege für iOS
+  beobachtet, bei Firefox aus demselben Mechanismus geschlossen, nicht ausprobiert. Ein Netzfehler
+  verrät der Seite den Grund nicht (Rechner aus oder Browser sperrt). Die Web-App meldet deshalb nach einem
+  Fehlschlag „Desktop nicht erreichbar“ und nennt in Firefox, Safari und auf dem iPhone zusätzlich die
+  vermutliche Ursache samt Hinweis auf Chrome auf Android (#275); in jedem Browser steht ein Test dabei
+  (`http://<Adresse>/v1/ping` im Browser des Handys öffnen — ein Fehlercode wie 401 heißt: Netz in
+  Ordnung). Vorab gewarnt wird nicht. Wege für iOS
   (Web-App vom Rechner ausliefern, https am Rechner, Zwischenstation über den Relay) sind in
   #358 gesammelt, nichts davon ist gebaut. Was erst ein Test mit echtem Gerät klärt —
   Berechtigung für Zugriffe im lokalen Netz, Verhalten bei abgelehnter Berechtigung,

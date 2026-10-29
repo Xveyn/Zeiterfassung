@@ -31,6 +31,7 @@ import {
   patchHints, scanDialog, settingsDialog, statusBar, weekView,
 } from './views.js';
 import { canScan, scanForPairLink } from './scanner.js';
+import { browserKind } from './browser-policy.js';
 import { describeError } from './messages.js';
 
 const SAVE_SYNC_DELAY_MS = 2000;
@@ -269,7 +270,7 @@ class App {
       this.render();
       this.trigger('manual');
     } catch (error) {
-      this.pairing = { address, code, deviceName, busy: false, error: describeError(error).text };
+      this.pairing = { address, code, deviceName, busy: false, error: describeError(error, this.errorEnv(address)).text };
       this.render();
     }
   }
@@ -370,7 +371,7 @@ class App {
     const hints = hintsModel({
       lastError: this.lastError, excluded: meta.excluded, skewMs: this.skewMs, persistent: this.persistent,
       updateReady: this.updateReady, conflictCount: conflicts.length,
-      errorDays: this.store.errorCount(),
+      errorDays: this.store.errorCount(), errorEnv: this.errorEnv(meta.address ? `${meta.address.host}:${meta.address.port}` : ''),
     });
     if (!this.shell) this.shell = this.buildShell();
     patchHints(this.shell.hints, hints, this.hintHandlers);
@@ -398,6 +399,11 @@ class App {
     this.watchSwipe(main);
     this.root.append(main, status.element);
     return { hints, week, status };
+  }
+
+  /** Was die Fehlermeldung über Browser und Adresse wissen darf (#275). */
+  errorEnv(address) {
+    return { browser: browserKind(navigator.userAgent, navigator.userAgentData), address };
   }
 
   shiftWeek(weeks) {
