@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { DEFAULT_WISH, WINDOW_STEPS, daysBack, olderState, stepFor } from '../window-policy.js';
+import { DEFAULT_WISH, WINDOW_STEPS, aheadDays, daysBack, olderState, stepFor } from '../window-policy.js';
 
 const TODAY = '2026-10-08';
 
@@ -80,4 +80,10 @@ test('absurd inputs never throw', () => {
   }
   assert.deepEqual(olderState({ ...base, windowDays: 'x', firstDay: '2026-07-06' }), { kind: 'none' });
   assert.deepEqual(olderState({ ...base, acked: 'x', firstDay: '2026-07-06' }), { kind: 'load', wish: 180 });
+});
+
+test('aheadDays is the desktop forward window, one day for an older desktop (#265)', () => {
+  assert.equal(aheadDays(14), 14);
+  assert.equal(aheadDays(0), 1);
+  for (const unknown of [null, undefined, -1, 1.5, 'x']) assert.equal(aheadDays(unknown), 1, String(unknown));
 });

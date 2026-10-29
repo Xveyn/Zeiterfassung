@@ -8,6 +8,14 @@ import { isIsoDate } from './minutes.js';
 export const WINDOW_STEPS = [90, 180, 365];
 export const DEFAULT_WISH = 90;
 
+/** Wie weit nach heute das Handy Ist-Zeiten kennt (#265): das Fenster nach vorn, das der Desktop
+ *  mitschickt (`window_ahead_days`). Ein Desktop ohne das Feld liefert nichts nach heute; die PWA
+ *  zeigt und behält dann nur noch heute + 1 (Spielraum für eine um einen Tag vorgehende Handy-Uhr). */
+export const LEGACY_AHEAD_DAYS = 1;
+export function aheadDays(value) {
+  return Number.isInteger(value) && value >= 1 ? value : LEGACY_AHEAD_DAYS;
+}
+
 /** Kalendertage von `iso` bis `today` (positiv = in der Vergangenheit). */
 export function daysBack(today, iso) {
   return Math.round((Date.parse(`${today}T00:00:00Z`) - Date.parse(`${iso}T00:00:00Z`)) / 86400000);

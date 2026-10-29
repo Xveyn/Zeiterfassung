@@ -179,9 +179,11 @@ export function parseSyncResponse(raw) {
   });
   const max = raw.window_max_days;
   const windowMax = Number.isInteger(max) && max >= 1 && max <= MAX_WINDOW_DAYS ? max : null;   // fehlt bei älterem Desktop
+  const ahead = raw.window_ahead_days;
+  const windowAhead = Number.isInteger(ahead) && ahead >= 0 && ahead <= MAX_WINDOW_DAYS ? ahead : null;   // fehlt bei älterem Desktop (#265)
   return {
     protocol: PROTOCOL, server_time: raw.server_time, last_pull_at: raw.last_pull_at,
-    excluded: raw.excluded, window_days: raw.window_days, window_max: windowMax, entries, conflicts,
+    excluded: raw.excluded, window_days: raw.window_days, window_ahead: windowAhead, window_max: windowMax, entries, conflicts,
     categories: [...raw.categories], token: raw.token, expires_at: raw.expires_at,
     defaults: parseDefaults(raw.defaults), desktop: parseDesktopInfo(raw.desktop),
     reservations: parseReservations(raw.reservations), reminders: parseReminders(raw.reminders),
