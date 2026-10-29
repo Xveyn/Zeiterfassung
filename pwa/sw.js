@@ -4,6 +4,7 @@
 // Seite „Neu laden“ bestätigt (Nachricht `SKIP_WAITING`) — nie mitten in einer Eingabe.
 import { CACHE_NAME, CACHE_PREFIX, PRECACHE, shouldHandle } from './sw-core.js';
 import { idbKeyStore, open } from './push-blob.js';
+import { logFailure } from './diagnose.js';
 import { TEST_PAYLOAD, clickTarget, describe, describeTest } from './push-message.js';
 
 // `cache: 'reload'` umgeht den HTTP-Cache (GitHub Pages: max-age=600): sonst könnte ein neuer
@@ -56,8 +57,9 @@ self.addEventListener('push', (event) => {
     let plain = null;
     try {
       plain = await open(idbKeyStore(), text);
-    } catch {
-      // Kein Schlüssel oder fremder Blob: bewusst keine Details, es folgt die allgemeine Anzeige.
+    } catch (error) {
+      // Kein Schlüssel oder fremder Blob: der Nutzer sieht die allgemeine Anzeige, die Ursache nur das Log.
+      logFailure('Push entschlüsseln', error);
     }
     const { title, body, tag } = describe(plain);
     await self.registration.showNotification(title, { body, tag, renotify: false, data: plain });

@@ -48,6 +48,11 @@ ES-Module flach im Ordner:
   `app.js` (`watchSwipe`) bindet Pointer-Events einmal am `main`, `touch-action: pan-y` lässt das senkrechte
   Scrollen beim Browser; nur auf dem Wochen-Screen ohne offenen Dialog, ein Klick direkt nach dem Wisch wird
   verworfen. Wechsel beim Loslassen, die Woche folgt dem Finger nicht. Auf iOS ungeprüft (#358).
+- `diagnose.js` — Ursache statt nur „fehlgeschlagen“ (#383): `errorDetail` (Name + Meldung, eine Zeile,
+  höchstens 160 Zeichen), `withDetail` (Meldungstext mit der Ursache dahinter) und `logFailure`
+  (`console.warn`, am Handy über `chrome://inspect` lesbar). Nur für Fehler der Browser-Schnittstellen
+  (Service Worker, Push-Abo, Kamera, Speicher); `SyncError`/`RelayError` haben eigene kuratierte Texte und
+  gehen hier nicht hinein. Wer einen neuen Catch-all in `app.js` baut, loggt oder zeigt die Ursache.
 - `view-model.js`, `messages.js`, `sync-policy.js`, `update-policy.js` —
   Anzeige- und Entscheidungslogik, DOM-frei und getestet.
 - `reminders-plan.js`, `push-blob.js`, `push-message.js`, `relay-client.js`, `push-policy.js` —

@@ -357,14 +357,14 @@ function pushSection(model, handlers) {
 
 /** Reiter „Updates“: Version der Handy-App, Suche, Neuladen, automatisches Einspielen. */
 function updatesPanel({ build, update }, { guard, handlers }) {
-  const updateStatus = h('dd', { role: 'status' }, updateStatusText(update.state));
+  const updateStatus = h('dd', { role: 'status' }, updateStatusText(update.state, update.detail));
   const apply = button('Jetzt neu laden', () => guard(() => handlers.applyUpdate()), 'primary', { 'data-focus': 'apply-update' });
   apply.hidden = update.state !== 'available';
   const check = button('Nach Updates suchen', async () => {
     check.disabled = true;
     updateStatus.textContent = updateStatusText('checking');
-    const state = await handlers.checkUpdate();
-    updateStatus.textContent = updateStatusText(state);
+    const { state, detail } = await handlers.checkUpdate();
+    updateStatus.textContent = updateStatusText(state, detail);
     apply.hidden = state !== 'available';
     check.disabled = false;
   }, '', { 'data-focus': 'check-update' });

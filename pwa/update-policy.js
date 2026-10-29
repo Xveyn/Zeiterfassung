@@ -34,6 +34,8 @@ const STATUS = {
   unsupported: 'Dieser Browser unterstützt keine Updates im Hintergrund.',
 };
 
-export function updateStatusText(state) {
+/** `detail` (die Ursache, s. `diagnose.js`) hängt nur an einer fehlgeschlagenen Suche. */
+export function updateStatusText(state, detail = '') {
+  if (state === 'error' && detail) return `${STATUS.error.replace(/\.$/, '')} (${detail}).`;
   return STATUS[state] ?? STATUS.idle;
 }
