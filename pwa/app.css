@@ -23,7 +23,7 @@ body {
   padding-bottom: env(safe-area-inset-bottom);
 }
 #app { min-height: 100vh; display: flex; flex-direction: column; }
-main { flex: 1; padding: var(--gutter); padding-bottom: calc(var(--gutter) + 120px); max-width: 640px; width: 100%; margin: 0 auto; }
+main { flex: 1; padding: var(--gutter); padding-bottom: calc(var(--gutter) + 120px); max-width: 640px; width: 100%; margin: 0 auto; touch-action: pan-y; }
 h1, h2 { font-size: 1.15rem; margin: 0 0 8px; }
 p { margin: 0 0 12px; }
 .muted { color: var(--muted); }

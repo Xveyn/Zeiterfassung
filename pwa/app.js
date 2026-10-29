@@ -16,6 +16,7 @@ import { openDatabase, requestPersistentStorage } from './db.js';
 import { Store } from './store.js';
 import { SyncClient, SyncError, clockSkewMs } from './sync.js';
 import { shouldQueue, shouldSync } from './sync-policy.js';
+import { swipeDirection } from './swipe-policy.js';
 import { shouldApplyUpdate, shouldCheckForUpdate } from './update-policy.js';
 import { blockSignature, rowsToBlock } from './categories.js';
 import {
@@ -32,6 +33,7 @@ import { canScan, scanForPairLink } from './scanner.js';
 import { describeError } from './messages.js';
 
 const SAVE_SYNC_DELAY_MS = 2000;
+const SWIPE_CLICK_GUARD_MS = 400;
 
 class App {
   constructor(root, store, client) {
@@ -367,8 +369,8 @@ class App {
     if (!this.shell) this.shell = this.buildShell();
     patchHints(this.shell.hints, hints, this.hintHandlers);
     this.shell.week.replaceChildren(weekView(model, {
-      previous: () => { this.anchor = addDays(this.anchor, -7); this.render(); },
-      next: () => { this.anchor = addDays(this.anchor, 7); this.render(); },
+      previous: () => this.shiftWeek(-1),
+      next: () => this.shiftWeek(1),
       today: () => { this.anchor = localIsoDate(new Date()); this.render(); },
       openDay: (date) => this.openDay(date),
       older: (wish) => this.loadOlder(wish),
@@ -386,8 +388,43 @@ class App {
     const hints = hintsHost();
     const week = h('div', {});
     const status = statusBar({ sync: () => this.trigger('manual'), settings: () => this.openSettings() });
-    this.root.append(h('main', {}, hints, week), status.element);
+    const main = h('main', {}, hints, week);
+    this.watchSwipe(main);
+    this.root.append(main, status.element);
     return { hints, week, status };
+  }
+
+  shiftWeek(weeks) {
+    this.anchor = addDays(this.anchor, weeks * 7);
+    this.render();
+  }
+
+  /** Wisch nach links/rechts wechselt die Woche wie ‹ und ›. Die Buttons bleiben; entschieden wird in
+   *  `swipe-policy.js`. Einmal am `main` gebunden, es überlebt das Neuzeichnen der Woche. */
+  watchSwipe(main) {
+    let start = null;
+    let swipedAt = -Infinity;
+    main.addEventListener('pointerdown', (event) => {
+      const idle = this.screen === 'week' && !document.querySelector('dialog[open]');
+      start = idle && event.isPrimary ? { x: event.clientX, y: event.clientY, at: event.timeStamp } : null;
+    });
+    main.addEventListener('pointercancel', () => { start = null; });
+    main.addEventListener('pointerup', (event) => {
+      const from = start;
+      start = null;
+      if (!from) return;
+      const direction = swipeDirection({
+        pointerType: event.pointerType, width: main.clientWidth, startX: from.x, startY: from.y,
+        endX: event.clientX, endY: event.clientY, durationMs: event.timeStamp - from.at,
+      });
+      if (!direction) return;
+      swipedAt = event.timeStamp;
+      this.shiftWeek(direction === 'next' ? 1 : -1);
+    });
+    // Ein Wisch, der auf einem Tag endet, darf dessen Editor nicht öffnen.
+    main.addEventListener('click', (event) => {
+      if (event.timeStamp - swipedAt < SWIPE_CLICK_GUARD_MS) { event.stopPropagation(); event.preventDefault(); }
+    }, true);
   }
 
   async openSettings(initialTab = 'connection') {
