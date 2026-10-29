@@ -21,7 +21,7 @@ import { swipeDirection } from './swipe-policy.js';
 import { shouldApplyUpdate, shouldCheckForUpdate } from './update-policy.js';
 import { blockSignature, rowsToBlock } from './categories.js';
 import {
-  categoriesModel, conflictsModel, dayChanged, desktopHint, editorRows, focusKeyToRestore, hintsModel, olderModel, pushModel, reservationRows,
+  categoriesModel, conflictsModel, dayChanged, desktopHint, editLock, editorRows, focusKeyToRestore, hintsModel, olderModel, pushModel, reservationRows,
   reservationRowsToSlots, rowsToSlots, statusModel, validateReservationRows, validateRows, weekModel,
 } from './view-model.js';
 import { BUILD } from './sw-core.js';
@@ -495,7 +495,8 @@ class App {
     const today = localIsoDate(new Date());
     const returnKey = focusState(this.root).activeKey;
     let baseline = day;         // Stand beim Öffnen: Speichern prüft, ob der Tag inzwischen anders ist
-    const outsideWindow = date > addDays(today, aheadDays(meta.window_ahead)) || date < addDays(today, -meta.window_days);
+    // Außerhalb dessen, was das Handy vom Desktop kennt, ist die Arbeitszeit gesperrt (#273).
+    const lock = editLock({ date, today, meta, hasRecord: Boolean(day) });
     // Reservierungen nur, wenn der Desktop sie anbietet und der Tag heute oder später ist.
     const reservationOn = meta.reservations_enabled && reservationEditable(date, today);
     const reservation = reservationOn ? this.store.getReservation(date) : null;
@@ -510,7 +511,7 @@ class App {
       defaults: meta.defaults,
       weekday: weekdayKey(date),
       errors: { work: day?.error ?? null, reservation: reservation?.error ?? null },
-      outsideWindow,
+      lock,
       canClear: Boolean(day && !day.deleted),
       validate: (rows) => validateRows(rows),
       reservation: reservationOn ? {
@@ -520,6 +521,7 @@ class App {
       } : null,
       startWith,
     }, {
+      loadOlder: () => { dialog.close(); this.loadOlder(lock.wish); },
       save: async (kind, rows) => {
         if (kind === 'reservation') {
           const current = this.store.getReservation(date);
@@ -533,6 +535,7 @@ class App {
             return String(error?.message ?? error);
           }
         } else {
+          if (lock) return lock.text;          // der Editor sperrt schon; hier die zweite Sicherung
           const current = this.store.getDay(date);
           if (dayChanged(baseline, current)) {
             baseline = current;   // bewusst gewarnt: das nächste Speichern überschreibt

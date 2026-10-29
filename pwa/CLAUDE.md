@@ -422,6 +422,17 @@ Desktop deckelt:**
   90 Tage zurücksetzen lässt. Einen automatischen Rückfall gibt es bewusst nicht
   (er träfe auch den schlafenden Desktop).
 
+**Bearbeiten außerhalb des Fensters (#273).** Die **Arbeitszeit** eines Tages, den das Handy nicht kennt (vor
+`heute − Fenster` oder nach `heute + Vorschau`), ist **gesperrt** (`view-model.editLock`): der Desktop nimmt an,
+das Handy habe alles seit dem letzten Abgleich gesehen, ein Speichern ersetzte einen unsichtbaren Desktop-Eintrag
+also **ohne Konflikt** (im Browser nachgewiesen: 9 h wurden zu 1 h). Statt der Zeilen zeigt der Editor einen
+Hinweis; vor dem Fenster mit dem Ausweg „Ältere Zeiten laden (bis N Tage)" (schließt den Dialog, wünscht die
+nächste Stufe, danach den Tag neu öffnen), sonst — Obergrenze, Datenmenge, älterer Desktop, noch kein Abgleich,
+zu weit in der Zukunft — mit dem Grund (`olderModel`-Texte). **Nicht gesperrt:** ein Tag, zu dem das Handy einen
+Datensatz hält (auch nicht übertragen oder geleert: er muss korrigierbar bleiben), und der Reiter
+„Reservierung" (eigenes Fenster). `App.openDay` prüft beim Speichern ein zweites Mal. Serverseitig bleibt die
+Lücke für veraltete PWA-Stände offen (Konflikt statt stilles LWW wäre ein eigenes Issue).
+
 **Datenmenge.** Jede Antwort enthält das ganze Fenster, kein Delta. Gemessen
 (verschlüsselt auf dem Draht): realistisch 365 Tage ≈ 90 KB, 50 Slots je Tag
 (`MAX_SLOTS`) und 365 Tage ≈ 1,8 MB, mit langen Kategorien ≈ 4 MB. Rechnen und

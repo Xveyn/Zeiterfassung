@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 
 import {
   SETTINGS_TABS, categoriesModel, categoryRemovalText, categoryRenameHint, settingsTabLabel,
-  WEEKDAYS, categoryDisplay, categoryLabel, categoryOptions, conflictsModel, dayChanged, editorRows, focusKeyToRestore, hintKey, hintsModel, desktopHint, localTime, nextRow, olderModel, pickCategory, rowsToSlots, slotText,
+  WEEKDAYS, categoryDisplay, categoryLabel, categoryOptions, conflictsModel, dayChanged, editLock, editorRows, focusKeyToRestore, hintKey, hintsModel, desktopHint, localTime, nextRow, olderModel, pickCategory, rowsToSlots, slotText,
   statusModel, validateRows, weekModel, windowRow, reservationRows, reservationRowsToSlots, validateReservationRows,
 } from '../view-model.js';
 import { SyncError } from '../sync.js';
@@ -699,4 +699,65 @@ test('a category unknown to the defaults compares against the weekday defaults',
   const row = { start: '08:00', end: '16:00', pause: '30', kategorie: 'Frei' };
   assert.equal(categoryDisplay(row, DEFAULTS, 'mon', true), 'Frei');
   assert.equal(categoryDisplay({ ...row, end: '15:00' }, DEFAULTS, 'mon', true), 'Frei*');
+});
+
+// --- Bearbeiten außerhalb des Fensters (#273) ------------------------------------------------------------
+
+const LOCK_TODAY = '2026-10-08';
+const lockMeta = (over = {}) => ({ window_days: 90, window_ahead: 14, window_max: 365, window_max_known: true,
+  window_wish_acked: 90, ...over });
+const lock = (date, over = {}, hasRecord = false) => editLock({ date, today: LOCK_TODAY, meta: lockMeta(over), hasRecord });
+
+test('a day inside the window, including both edges, is editable', () => {
+  assert.equal(lock('2026-10-08'), null);
+  assert.equal(lock('2026-07-10'), null);                 // heute − 90
+  assert.equal(lock('2026-10-22'), null);                 // heute + 14
+});
+
+test('a day before the window is locked with the way out: load older times (#273)', () => {
+  const model = lock('2026-07-09');                       // heute − 91
+  assert.equal(model.kind, 'older');
+  assert.equal(model.action, 'older');
+  assert.equal(model.wish, 180);
+  assert.equal(model.buttonText, 'Ältere Zeiten laden (bis 180 Tage)');
+  assert.match(model.text, /lässt sich hier nicht bearbeiten/);
+  assert.match(model.text, /nicht geladen/);
+  assert.equal(lock('2026-01-01').wish, 365);             // 280 Tage zurück: die kleinste Stufe, die reicht
+});
+
+test('a day before the window the desktop will not deliver can only be edited there', () => {
+  const capped = lock('2026-01-01', { window_days: 180, window_max: 180 });
+  assert.equal(capped.action, null);
+  assert.match(capped.text, /höchstens 180 Tage/);
+  const atMaximum = lock('2025-01-01', { window_days: 365 });
+  assert.equal(atMaximum.action, null);
+  assert.match(atMaximum.text, /nur am Desktop/);
+  const trimmed = lock('2026-04-01', { window_days: 120, window_wish_acked: 365 });
+  assert.equal(trimmed.action, null);
+  assert.match(trimmed.text, /wegen der Datenmenge nur 120 Tage/);
+  const old = lock('2026-07-09', { window_max: null });
+  assert.equal(old.action, null);
+  assert.match(old.text, /Desktop-App aktualisieren/);
+});
+
+test('before the first sync the lock asks for a sync instead of blaming the desktop', () => {
+  const model = lock('2026-07-09', { window_max_known: false, window_max: null });
+  assert.equal(model.action, null);
+  assert.match(model.text, /Abgleich/);
+  assert.doesNotMatch(model.text, /aktualisieren/);
+});
+
+test('a day after the forward window is locked and names the limit (#265, #273)', () => {
+  const model = lock('2026-10-23');                       // heute + 15
+  assert.equal(model.kind, 'future');
+  assert.equal(model.action, null);
+  assert.match(model.text, /14 Tage im Voraus/);
+  const older = lock('2026-10-10', { window_ahead: null });   // ältere Desktop: nur bis morgen
+  assert.match(older.text, /1 Tag im Voraus/);
+  assert.equal(lock('2026-10-09', { window_ahead: null }), null);
+});
+
+test('a day the phone already holds stays editable even outside the window', () => {
+  assert.equal(lock('2026-05-01', {}, true), null);
+  assert.equal(lock('2026-12-01', {}, true), null);
 });
