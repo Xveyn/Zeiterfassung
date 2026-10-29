@@ -53,6 +53,12 @@ ES-Module flach im Ordner:
   `http://<LAN-IP>`?). Nur dazu, die Meldung „Desktop nicht erreichbar“ **nach** einem Fehlschlag um die
   wahrscheinliche Ursache und den Test `http://<Adresse>/v1/ping` zu ergänzen (#275, `messages.describeError(error,
   { browser, address })`); ein `fetch`-Fehler verrät den Grund nicht, vorab gewarnt wird nie.
+- `sw-repair.js` — „Reparieren“ im Reiter „Updates“ (#390): den Service Worker neu einrichten, wenn Chrome ihn
+  nicht starten kann („ServiceWorker cannot be started“). `repairServiceWorker` prüft **zuerst** (online, `sw.js`
+  abrufbar — sonst wird nichts verändert, denn ein abgemeldeter Worker ohne Cache heißt: offline startet die
+  Web-App nicht mehr), meldet dann alle Registrierungen ab, löscht nur die eigenen Caches (`zeiterfassung-pwa-*`)
+  und registriert neu; danach lädt die Seite neu. Einträge und Kopplung liegen in IndexedDB und bleiben
+  unberührt. Fehlerarten `offline`/`unreachable`/`unsupported`/`failed`, Texte in `describeRepair`.
 - `diagnose.js` — Ursache statt nur „fehlgeschlagen“ (#383): `errorDetail` (Name + Meldung, eine Zeile,
   höchstens 240 Zeichen, Chromes Standardtext vor dem Grund eines fehlgeschlagenen `registration.update()` verdichtet), `withDetail` (Meldungstext mit der Ursache dahinter) und `logFailure`
   (`console.warn`, am Handy über `chrome://inspect` lesbar). Nur für Fehler der Browser-Schnittstellen
