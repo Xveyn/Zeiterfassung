@@ -3,6 +3,7 @@
 // Ausweg. Die Arten stehen in `test/fixtures/errors.json`; der Test verlangt für jede einen
 // eigenen Text, damit ein neuer Fehlercode im Server nicht als „unbekannter Fehler" endet.
 
+import { blocksLan } from './browser-policy.js';
 import { PROTOCOL } from './pairing.js';
 
 const DEFAULT = { text: 'Der Abgleich ist fehlgeschlagen. Bitte später erneut versuchen.', action: 'retry' };
@@ -13,13 +14,28 @@ const REPAIR = {
 };
 const REPAIR_FALLBACK = 'Die Kopplung wird vom Desktop nicht mehr akzeptiert (neu gekoppelt?). Bitte neu koppeln — Ihre nicht übertragenen Einträge bleiben erhalten.';
 
-/** @param {unknown} error */
-export function describeError(error) {
+const OFFLINE = 'Der Desktop ist nicht erreichbar. Läuft die App am Rechner, und sind Handy und Rechner im selben WLAN?';
+const BLOCKED = 'Der Desktop ist nicht erreichbar. Läuft die App am Rechner und sind beide im selben WLAN, sperrt dieser Browser vermutlich die Verbindung: die Seite kommt über https, der Rechner spricht http. Bitte Chrome auf Android verwenden.';
+const ADDRESS_RE = /^\d{1,3}(\.\d{1,3}){3}:\d{1,5}$/;
+
+/** Text für „offline“. Ein Netzfehler verrät den Grund nicht (Rechner aus oder Browser sperrt): der Text nennt
+ *  deshalb beides, bei einem Browser, der den Zugriff bekanntermaßen sperrt, die wahrscheinlichere Ursache
+ *  zuerst, und einen Test, der die beiden trennt (#275). Die Adresse erscheint nur in der Form `host:port`. */
+function offlineText({ browser, address } = {}) {
+  const base = blocksLan(browser) ? BLOCKED : OFFLINE;
+  if (typeof address !== 'string' || !ADDRESS_RE.test(address) || Number(address.split(':')[1]) > 65535) return base;
+  return `${base} Zum Prüfen im Browser des Handys http://${address}/v1/ping öffnen: antwortet er mit einem Fehlercode (z. B. 401), ist das Netz in Ordnung.`;
+}
+
+/** @param {unknown} error
+ *  @param {{browser?: string, address?: string}} [env] Browser-Art (`browser-policy.browserKind`) und
+ *  Adresse des Desktops; nur der Text für „offline“ nutzt sie. */
+export function describeError(error, env = {}) {
   if (!error || typeof error !== 'object' || typeof error.kind !== 'string') return DEFAULT;
   const server = typeof error.message === 'string' ? error.message : '';
   switch (error.kind) {
     case 'offline':
-      return { text: 'Der Desktop ist nicht erreichbar. Läuft die App am Rechner, und sind Handy und Rechner im selben WLAN?', action: 'rescan' };
+      return { text: offlineText(env), action: 'rescan' };
     case 'timeout':
       return { text: 'Zeitüberschreitung: der Desktop hat nicht rechtzeitig geantwortet. Läuft die App am Rechner, und ist das WLAN stabil? Bei einem großen Verlauf kann auch die Datenmenge der Grund sein: unter Einstellungen → Verbindung lässt er sich auf 90 Tage zurücksetzen.', action: 'retry' };
     case 'address':

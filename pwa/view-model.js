@@ -131,10 +131,10 @@ export function statusModel({ paired, online, syncing, pending, lastSyncAt, time
   };
 }
 
-export function hintsModel({ lastError, excluded, skewMs, persistent, updateReady, conflictCount, errorDays }) {
+export function hintsModel({ lastError, excluded, skewMs, persistent, updateReady, conflictCount, errorDays, errorEnv = {} }) {
   const hints = [];
   if (lastError) {
-    const { text, action } = describeError(lastError);
+    const { text, action } = describeError(lastError, errorEnv);
     hints.push({ id: 'error', kind: 'error', text, action });
   }
   if (updateReady) hints.push({ id: 'update', kind: 'info', text: 'Neue Version verfügbar.', action: 'reload' });

@@ -761,3 +761,12 @@ test('a day the phone already holds stays editable even outside the window', () 
   assert.equal(lock('2026-05-01', {}, true), null);
   assert.equal(lock('2026-12-01', {}, true), null);
 });
+
+test('the error hint passes the browser and address on to the message (#275)', () => {
+  const none = { lastError: new SyncError({ kind: 'offline' }), excluded: false, skewMs: 0, persistent: true,
+    updateReady: false, conflictCount: 0, errorDays: 0 };
+  const hint = hintsModel({ ...none, errorEnv: { browser: 'firefox', address: '192.168.178.20:17654' } }).find((h) => h.id === 'error');
+  assert.match(hint.text, /vermutlich/);
+  assert.match(hint.text, /192\.168\.178\.20:17654\/v1\/ping/);
+  assert.match(hintsModel(none).find((h) => h.id === 'error').text, /nicht erreichbar/);
+});

@@ -108,3 +108,43 @@ test('a timeout names both likely causes and where the history can be reset (#29
   assert.match(text, /90 Tage/);
   assert.equal(action, 'retry');
 });
+
+// --- Netzfehler: Browser und Adresse (#275) ---------------------------------------------------------
+
+const offline = new SyncError({ kind: 'offline' });
+
+test('an unreachable desktop offers the ping check when the address is known', () => {
+  const { text, action } = describeError(offline, { browser: 'chromium', address: '192.168.178.20:17654' });
+  assert.match(text, /nicht erreichbar/);
+  assert.match(text, /http:\/\/192\.168\.178\.20:17654\/v1\/ping/);
+  assert.match(text, /401/);
+  assert.doesNotMatch(text, /Browser sperrt/);
+  assert.equal(action, 'rescan');
+});
+
+test('without an address or browser the text stays what it was', () => {
+  const plain = describeError(offline).text;
+  assert.equal(plain, 'Der Desktop ist nicht erreichbar. Läuft die App am Rechner, und sind Handy und Rechner im selben WLAN?');
+  assert.equal(describeError(offline, { browser: 'unknown' }).text, plain);
+});
+
+test('in Firefox and on iOS the text names the likely cause and a browser that works', () => {
+  for (const browser of ['firefox', 'ios', 'safari']) {
+    const { text, action } = describeError(offline, { browser, address: '192.168.178.20:17654' });
+    assert.match(text, /vermutlich/, browser);
+    assert.match(text, /Chrome auf Android/, browser);
+    assert.match(text, /\/v1\/ping/, browser);                  // der Netz-Test gilt auch dort
+    assert.equal(action, 'rescan', browser);
+  }
+});
+
+test('an address that is not host:port never reaches the text', () => {
+  for (const address of ['<img src=x>', 'javascript:alert(1)', '', null, undefined, 'a.b:99999999']) {
+    assert.doesNotMatch(describeError(offline, { browser: 'chromium', address }).text, /ping|<img|javascript/, String(address));
+  }
+});
+
+test('only the offline text changes with the browser, a timeout keeps its own', () => {
+  const timeout = new SyncError({ kind: 'timeout' });
+  assert.equal(describeError(timeout, { browser: 'firefox' }).text, describeError(timeout).text);
+});
