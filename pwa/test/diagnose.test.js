@@ -47,3 +47,13 @@ test('withDetail puts the reason behind a message, before its final full stop', 
   assert.equal(withDetail('Es ging schief', new Error('x')), 'Es ging schief (Error: x).');
   assert.equal(withDetail('Es ging schief.', undefined), 'Es ging schief.');
 });
+
+test('Chromes failed service worker update keeps its reason after the boilerplate', () => {
+  const chrome = new TypeError("Failed to update a ServiceWorker for scope ('https://xveyn.github.io/Zeiterfassung/') "
+    + "with script ('https://xveyn.github.io/Zeiterfassung/sw.js'): A bad HTTP response code (503) was received when fetching the script.");
+  assert.equal(errorDetail(chrome),
+    'TypeError: Failed to update a ServiceWorker: A bad HTTP response code (503) was received when fetching the script.');
+  const network = new TypeError("Failed to update a ServiceWorker for scope ('https://xveyn.github.io/Zeiterfassung/') "
+    + "with script ('https://xveyn.github.io/Zeiterfassung/sw.js'): Failed to fetch");
+  assert.equal(errorDetail(network), 'TypeError: Failed to update a ServiceWorker: Failed to fetch');
+});

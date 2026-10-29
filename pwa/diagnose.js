@@ -7,7 +7,11 @@
 // Desktops und des Relays (`SyncError`, `RelayError`) haben eigene, kuratierte Texte und kommen
 // hier nicht hinein.
 
-export const MAX_DETAIL_LENGTH = 160;
+export const MAX_DETAIL_LENGTH = 240;
+
+// Chrome stellt jeder Meldung eines fehlgeschlagenen `registration.update()` rund 150 Zeichen Scope
+// und Skript-URL voran; der Grund steht erst dahinter und fiele sonst der Kürzung zum Opfer.
+const SW_UPDATE_BOILERPLATE = /Failed to update a ServiceWorker for scope \([^)]*\) with script \([^)]*\): /;
 
 /** „Name: Meldung“ in einer Zeile und gekürzt; leer, wenn es nichts zu sagen gibt. */
 export function errorDetail(error) {
@@ -19,7 +23,7 @@ export function errorDetail(error) {
     const message = typeof error.message === 'string' ? error.message : '';
     text = name && message ? `${name}: ${message}` : name || message;
   }
-  text = text.replace(/\s+/g, ' ').trim();
+  text = text.replace(/\s+/g, ' ').replace(SW_UPDATE_BOILERPLATE, 'Failed to update a ServiceWorker: ').trim();
   return text.length > MAX_DETAIL_LENGTH ? `${text.slice(0, MAX_DETAIL_LENGTH - 1)}…` : text;
 }
 
