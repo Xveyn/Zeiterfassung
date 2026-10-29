@@ -372,13 +372,26 @@ function updatesPanel({ build, update }, { guard, handlers }) {
     apply.hidden = state !== 'available';
     check.disabled = false;
   }, '', { 'data-focus': 'check-update' });
+  // Meldet die Suche einen Fehler wie „ServiceWorker cannot be started“, richtet das den Worker neu ein (#390).
+  const repair = button('Reparieren', async () => {
+    repair.disabled = true;
+    check.disabled = true;
+    updateStatus.textContent = 'Wird repariert …';
+    const result = await handlers.repairUpdates();
+    if (result.ok) return;                       // die Seite lädt neu
+    updateStatus.textContent = result.text;
+    repair.disabled = false;
+    check.disabled = false;
+  }, '', { 'data-focus': 'repair-sw' });
+  repair.hidden = update.state === 'unsupported';
   const auto = h('input', { id: 'auto-update', type: 'checkbox', checked: update.auto,
     onchange: () => handlers.setAutoUpdate(auto.checked) });
   return h('div', {},
     h('dl', {},
       h('dt', { class: 'muted' }, 'Handy-App'), h('dd', {}, build),
       h('dt', { class: 'muted' }, 'Updates'), updateStatus),
-    h('div', { class: 'buttons' }, check, apply),
+    h('div', { class: 'buttons' }, check, apply, repair),
+    h('p', { class: 'muted' }, 'Meldet die Suche einen Fehler wie „ServiceWorker cannot be started“, hilft „Reparieren“: der Service Worker wird neu eingerichtet und die Seite lädt neu. Einträge und Kopplung bleiben erhalten. Braucht eine Internetverbindung.'),
     h('label', { class: 'check', for: 'auto-update' }, auto, ' Updates automatisch einspielen'));
 }
 

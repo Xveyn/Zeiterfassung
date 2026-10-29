@@ -24,7 +24,8 @@ import {
   categoriesModel, conflictsModel, dayChanged, desktopHint, editLock, editorRows, focusKeyToRestore, hintsModel, olderModel, pushModel, reservationRows,
   reservationRowsToSlots, rowsToSlots, statusModel, validateReservationRows, validateRows, weekModel,
 } from './view-model.js';
-import { BUILD } from './sw-core.js';
+import { BUILD, CACHE_PREFIX } from './sw-core.js';
+import { describeRepair, repairServiceWorker } from './sw-repair.js';
 import { clear, focusByKey, focusState, h } from './dom.js';
 import {
   conflictsDialog, confirmDialog, editorDialog, fatalView, hintsHost, pairView,
@@ -463,6 +464,7 @@ class App {
       }),
     }, {
       pair: () => { this.screen = 'pair'; this.render(); },
+      repairUpdates: () => this.repairServiceWorker(),
       checkUpdate: async () => ({ state: await this.checkForUpdate('manual'), detail: this.updateDetail }),
       resetWindow: () => this.resetWindow(),
       testPush: () => this.sendTestPush(),
@@ -602,6 +604,22 @@ class App {
       this.updateState = 'error';
       this.updateDetail = errorDetail(error);
     }
+  }
+
+  /** „Reparieren“ (#390): Service Worker neu einrichten, Einträge und Kopplung bleiben. Bei Erfolg lädt die Seite
+   *  neu (der neue Worker übernimmt sie); sonst `{ ok: false, text }`. */
+  async repairServiceWorker() {
+    try {
+      await repairServiceWorker({
+        serviceWorker: navigator.serviceWorker, cacheStorage: globalThis.caches, prefix: CACHE_PREFIX,
+        scriptUrl: './sw.js', fetchFn: (url, options) => fetch(url, options), online: navigator.onLine,
+      });
+    } catch (error) {
+      logFailure('Service Worker reparieren', error.cause ?? error);
+      return { ok: false, text: describeRepair(error) };
+    }
+    location.reload();
+    return { ok: true, text: '' };
   }
 
   markUpdateReady() {
