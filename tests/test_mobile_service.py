@@ -1,4 +1,5 @@
 # tests/test_mobile_service.py
+import errno
 import http.client
 import json
 import socket
@@ -837,3 +838,118 @@ def test_retain_without_a_lock_still_takes_a_plain_list(tmp_path, ring):
     assert sorted(store.stale_ids(["a" * 8])) == ["b" * 8]
     store.retain(lambda: ["a" * 8])
     assert store.get("a" * 8) == KEY and store.get("b" * 8) is None
+
+
+# --- Testlücken aus dem Review zu Routen und Dienst (#258) -------------------------------------------------
+
+@pytest.mark.parametrize("exc", [
+    OSError(errno.EADDRINUSE, "in use"),
+    OSError(errno.EACCES, "denied"),
+])
+def test_port_in_use_recognises_the_errno_codes(exc):
+    assert mobile_service._port_in_use(exc) is True
+
+
+@pytest.mark.parametrize("winerror", [10048, 10013])
+def test_port_in_use_recognises_the_windows_codes(winerror):
+    exc = OSError("winsock")
+    exc.winerror = winerror
+    assert mobile_service._port_in_use(exc) is True
+
+
+@pytest.mark.parametrize("make_exc", [
+    lambda: OSError(errno.ENOENT, "no such file"),
+    lambda: OSError("no code at all"),
+])
+def test_port_in_use_ignores_other_errors(make_exc):
+    assert mobile_service._port_in_use(make_exc()) is False
+
+
+def test_port_in_use_ignores_an_unrelated_windows_error():
+    exc = OSError("winsock")
+    exc.winerror = 10061
+    assert mobile_service._port_in_use(exc) is False
+
+
+@pytest.mark.parametrize("exc, reason", [
+    (OSError(errno.EADDRINUSE, "in use"), REASON_PORT_IN_USE),
+    (OSError(errno.EACCES, "denied"), REASON_PORT_IN_USE),
+    (OSError(errno.ENETDOWN, "network down"), mobile_service.REASON_START_FAILED),
+])
+def test_a_failed_bind_becomes_the_matching_reason(tmp_path, monkeypatch, exc, reason):
+    service, _settings, _ctx = make_service(tmp_path)
+
+    def refuse(self):
+        raise exc
+    monkeypatch.setattr(mobile_service.ApiServer, "start", refuse)
+
+    service.apply()
+
+    assert service.status.state == STATE_ERROR and service.status.reason == reason
+
+
+def test_the_server_accepts_only_its_own_address_and_the_pages_origin(started):
+    service, _settings, _ctx = started
+    port = service.status.port
+
+    policy = service._server._policy_for_port(port)
+
+    assert policy.allowed_hosts == frozenset({f"{LOOPBACK}:{port}"})       # kein localhost, kein Platzhalter
+    assert policy.allowed_origins == frozenset({ORIGIN})
+    assert policy.bind_host == LOOPBACK
+
+
+def test_a_shutdown_during_the_restart_never_starts_the_new_server(tmp_path, monkeypatch):
+    # Läuft schon auf einem anderen Port; das Beenden kommt zwischen Stoppen und Neustart.
+    service, settings, _ctx = make_service(tmp_path)
+    service.apply()
+    new_port = free_port()
+    settings.set_many({"mobile_port": new_port})
+    original_stop = service._stop_server
+
+    def stop_then_close():
+        original_stop()
+        service._closed = True
+    monkeypatch.setattr(service, "_stop_server", stop_then_close)
+    starts = []
+    real_start = mobile_service.ApiServer.start
+    monkeypatch.setattr(mobile_service.ApiServer, "start",
+                        lambda self: (starts.append(1), real_start(self))[1])
+
+    service._reconcile()
+
+    assert starts == [] and port_is_closed(new_port)
+
+
+def test_an_already_running_server_overwrites_a_stale_starting_status(started):
+    # `apply()` schreibt „startet“, bevor der Worker läuft; der „läuft schon“-Zweig muss das zurücknehmen.
+    service, _settings, _ctx = started
+    port = service.status.port
+    service._status = MobileStatus(STATE_STARTING, None, port)
+
+    service._reconcile()
+
+    assert service.status == MobileStatus(STATE_RUNNING, LOOPBACK, port)
+
+
+def test_pairing_waits_for_the_devices_lock(tmp_path):
+    # Koppeln gegen gleichzeitigen Widerruf: Schlüssel und Datensatz entstehen unter der Gerätesperre.
+    service, _settings, ctx = make_service(tmp_path)
+    service.apply()
+    try:
+        code = mobile_pairing.normalize_code(service.pairing.open())
+        request = ApiRequest("POST", "/v1/pair", {}, json.dumps(Phone().pair_request(code)).encode())
+        responses = []
+        with ctx.devices_lock:                           # ein Widerruf hält die Sperre
+            worker = threading.Thread(
+                target=lambda: responses.append(mobile_routes.dispatch(request, service._context, ANONYMOUS)))
+            worker.start()
+            worker.join(0.3)
+            assert worker.is_alive() and responses == []
+            assert ctx.devices.get("phone-0001") is None
+        worker.join(5)
+
+        assert responses[0].status == 200
+        assert ctx.devices.get("phone-0001") is not None
+    finally:
+        service.shutdown()
