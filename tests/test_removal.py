@@ -289,11 +289,16 @@ def test_credential_files_match_installer():
     assert names == set(removal.CREDENTIAL_FILES)
 
 
+def _proc_body(text, name):
+    start = text.index(f"procedure {name}()")
+    return text[start:text.index("end;", start)]
+
+
 def test_credential_backups_match_installer():
     """#286: `<datei>.corrupt-<stamp>` der Zugangsdaten trägt dieselben Secrets;
     der Uninstaller räumt sie wie `removal._credential_paths` mit ab."""
-    names = set(re.findall(r'Type: files; Name: "\{app\}\\([^"*]+)\.corrupt-\*"',
-                           _installer()))
+    body = _proc_body(_installer(), "DeleteCredentialBackups")
+    names = set(re.findall(r"DeleteMatching\('([^']+)\.corrupt-\*'\)", body))
     assert names == set(removal.CREDENTIAL_FILES)
 
 
@@ -306,7 +311,8 @@ def test_user_data_files_match_installer():
 def test_user_data_backups_match_installer():
     """#242: die Sicherungen (`<datei>.corrupt-*`) sind volle Kopien der Nutzerdaten;
     „meine Daten löschen" muss sie genauso mitnehmen wie `removal.py`."""
-    names = set(re.findall(r"DeleteMatching\('([^']+)\.corrupt-\*'\)", _installer()))
+    body = _proc_body(_installer(), "DeleteUserData")
+    names = set(re.findall(r"DeleteMatching\('([^']+)\.corrupt-\*'\)", body))
     assert names == {*removal.USER_DATA_FILES, removal.SETTINGS_FILE}
 
 
