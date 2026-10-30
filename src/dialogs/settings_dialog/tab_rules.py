@@ -539,14 +539,24 @@ def paired_notice(changes: PairChanges) -> PairedNotice:
     return PairedNotice("Handy gekoppelt", text, True)
 
 
-def pair_poll_view(*, active: bool, seconds_left: int, paired: bool) -> tuple[str, str]:
+PAIR_FAILED_TEXT = (
+    "Das Koppeln ist fehlgeschlagen: das Gerät ließ sich nicht speichern (Zugriffsrechte oder "
+    "freier Platz im Datenordner?). Der Code ist verbraucht — „Neuer Code“.")
+
+
+def pair_poll_view(*, active: bool, seconds_left: int, paired: bool,
+                   failed: bool = False) -> tuple[str, str]:
     """Was der Koppel-Dialog bei einem Poll zeigt: `(Zustand, Text)` mit dem Zustand
-    `paired`, `counting` oder `expired`. Ein Koppeln geht vor: es kann in der letzten
-    Sekunde geschehen, wenn der Code schon nicht mehr aktiv ist. Solange der Code aktiv
-    ist, läuft der Countdown — auch bei `0:00` (`seconds_left` schneidet Sekundenbruchteile
-    ab), sonst bliebe „0:01“ stehen und „abgelaufen“ käme nie."""
+    `paired`, `failed`, `counting` oder `expired`. Ein Koppeln geht vor: es kann in der letzten
+    Sekunde geschehen, wenn der Code schon nicht mehr aktiv ist. `failed` heißt: der Code wurde
+    eingelöst, aber das Gerät ließ sich nicht speichern — ohne den Zustand zeigte der Dialog nur
+    „abgelaufen“. Solange der Code aktiv ist, läuft der Countdown — auch bei `0:00`
+    (`seconds_left` schneidet Sekundenbruchteile ab), sonst bliebe „0:01“ stehen und
+    „abgelaufen“ käme nie."""
     if paired:
         return "paired", ""
+    if failed:
+        return "failed", PAIR_FAILED_TEXT
     if active:
         return "counting", f"Gültig noch {format_countdown(seconds_left)}"
     return "expired", "Der Code ist abgelaufen — „Neuer Code“."

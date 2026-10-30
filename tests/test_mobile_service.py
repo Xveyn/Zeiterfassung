@@ -953,3 +953,55 @@ def test_pairing_waits_for_the_devices_lock(tmp_path):
         assert ctx.devices.get("phone-0001") is not None
     finally:
         service.shutdown()
+
+
+def _dispatch_pair(service):
+    code = mobile_pairing.normalize_code(service.pairing.open())
+    request = ApiRequest("POST", "/v1/pair", {}, json.dumps(Phone().pair_request(code)).encode())
+    return mobile_routes.dispatch(request, service._context, ANONYMOUS)
+
+
+def test_a_pairing_whose_device_cannot_be_saved_is_counted_for_the_dialog(tmp_path, monkeypatch):
+    # Der Code ist dann verbraucht; ohne den Zähler zeigte der Koppel-Dialog nur „abgelaufen“ (#258).
+    service, _settings, ctx = make_service(tmp_path)
+    service.apply()
+    try:
+        def broken(_record):
+            raise OSError("Platte voll")
+        monkeypatch.setattr(ctx.devices, "save", broken)
+        assert service.pair_failures == 0
+
+        with pytest.raises(OSError):                        # der Server macht daraus die allgemeine 500
+            _dispatch_pair(service)
+
+        assert service.pair_failures == 1
+        assert not service.pairing.is_active()              # verbraucht
+        assert ctx.devices.get("phone-0001") is None
+    finally:
+        service.shutdown()
+
+
+def test_a_successful_pairing_does_not_count_as_a_failure(tmp_path):
+    service, _settings, _ctx = make_service(tmp_path)
+    service.apply()
+    try:
+        assert _dispatch_pair(service).status == 200
+        assert service.pair_failures == 0
+    finally:
+        service.shutdown()
+
+
+def test_a_failing_pair_failed_hook_does_not_hide_the_original_error(tmp_path, monkeypatch):
+    service, _settings, ctx = make_service(tmp_path)
+    service.apply()
+    try:
+        monkeypatch.setattr(ctx.devices, "save", lambda _r: (_ for _ in ()).throw(OSError("voll")))
+
+        def boom():
+            raise RuntimeError("Hook")
+        service._on_pair_failed_outer = boom
+
+        with pytest.raises(OSError):
+            _dispatch_pair(service)
+    finally:
+        service.shutdown()

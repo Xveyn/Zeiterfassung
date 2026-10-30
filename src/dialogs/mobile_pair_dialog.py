@@ -36,6 +36,7 @@ class _PairDialog:
         self._alive = True
         self._poll_id = None
         self._before = service.list_devices()
+        self._failures_before = service.pair_failures
         self._dialog = dialog = create_dialog(parent, "Handy koppeln")
 
         tk.Label(
@@ -103,6 +104,7 @@ class _PairDialog:
             self._canvas.config(width=1, height=1)
             return
         self._before = self._service.list_devices()
+        self._failures_before = self._service.pair_failures
         code = self._service.pairing.open()
         link = self._service.pair_link(code)
         self._address.config(text=f"Adresse: {status.address}:{status.port}")
@@ -152,9 +154,12 @@ class _PairDialog:
             state, text = pair_poll_view(
                 active=self._service.pairing.is_active(),
                 seconds_left=self._service.pairing.seconds_left(),
-                paired=not changes.empty)
+                paired=not changes.empty,
+                failed=self._service.pair_failures > self._failures_before)
             if state == "paired":
                 self._show_paired(changes)
+            elif state == "failed":
+                self._show_failed(text)
             elif state == "counting":
                 self._countdown.config(text=text)
             else:
@@ -170,6 +175,14 @@ class _PairDialog:
         self._blank_canvas()
         self._clear_code()
         self._countdown.config(text=text)
+
+    def _show_failed(self, text):
+        """Der Code wurde eingelöst, das Gerät aber nicht gespeichert: Code und QR-Code sind
+        verbraucht, der Dialog bleibt für „Neuer Code“ offen und sagt, was passiert ist."""
+        self._blank_canvas()
+        self._clear_code()
+        self._countdown.config(text="")
+        self._result.config(text=text, fg=STATUS_WARN)
 
     def _show_paired(self, changes):
         """Das Koppeln ist durch: der Dialog mit dem QR-Code geht zu, eine themed
