@@ -92,6 +92,7 @@ Type: files; Name: "{app}\mobile_keys.json"
 Type: files; Name: "{app}\mobile_relay.json"
 
 
+
 [Run]
 Filename: "{app}\Zeiterfassung.exe"; Description: "Zeiterfassung jetzt starten"; Flags: nowait postinstall skipifsilent
 
@@ -125,6 +126,24 @@ begin
   finally
     FindClose(FindRec);
   end;
+end;
+
+// Quarantäne-Kopien der Zugangsdaten (`json_store`, N4, #286): tragen dieselben
+// Secrets wie die Datei, die sie ersetzen (z. B. `token.json.corrupt-<stamp>` mit dem
+// Refresh-Token). Hier statt als Wildcard in [UninstallDelete]: dort ist ein `*`
+// bewusst verboten (tests/test_installer.py). Gleiche Liste wie
+// `removal.CREDENTIAL_FILES`.
+procedure DeleteCredentialBackups();
+begin
+  DeleteMatching('token.json.corrupt-*');
+  DeleteMatching('instance-secret.corrupt-*');
+  DeleteMatching('webhooks.json.corrupt-*');
+  DeleteMatching('credentials.json.corrupt-*');
+  DeleteMatching('smtp.json.corrupt-*');
+  DeleteMatching('api-token.corrupt-*');
+  DeleteMatching('mobile_devices.json.corrupt-*');
+  DeleteMatching('mobile_keys.json.corrupt-*');
+  DeleteMatching('mobile_relay.json.corrupt-*');
 end;
 
 procedure DeleteUserData();
@@ -161,6 +180,10 @@ begin
     // läuft die Deinstallation trotzdem weiter.
     Exec(ExpandConstant('{app}\Zeiterfassung.exe'), '--forget-secrets', '',
          SW_HIDE, ewWaitUntilTerminated, ResultCode);
+
+    // Nach --forget-secrets (die Exe liest nur die token.json selbst), unabhängig
+    // vom Setup und ohne Rückfrage wie die Dateien in [UninstallDelete] (#286).
+    DeleteCredentialBackups();
 
     // usUninstall feuert, BEVOR die Dateien entfernt werden — hier ist die
     // token.json also noch da und die Frage nach den Nutzerdaten kann noch
