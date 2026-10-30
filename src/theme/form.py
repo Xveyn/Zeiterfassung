@@ -194,7 +194,7 @@ class Form:
     höchstens `form_logic.body_height` hoch, die Leiste erscheint nur, wenn
     der Inhalt nicht hineinpasst. Das Mausrad scrollt das Formular, außer über
     Widgets, die selbst scrollen (Text, Listbox); über einer Combobox scrollt
-    das Formular, und die Combobox ändert ihren Wert nicht.
+    das Formular, außer sie hat den Fokus: dann ändert das Rad ihren Wert.
 
     **Lebensdauer-Vertrag:** Ein `Form` lebt so lange wie sein Dialog. Die
     Mausrad-Bindung am Toplevel (`scroll=True`) und die Variablen-Traces aus
@@ -344,7 +344,7 @@ class Form:
         `widget` einmalig beim Aufruf, um Comboboxen gegen das Mausrad zu
         schützen (s. `_guard_value_wheel`). Erst danach hinzugefügte
         Comboboxen sind NICHT geschützt — ein Rad-Ereignis über ihnen würde
-        dann versehentlich ihren Wert ändern statt das Formular zu scrollen."""
+        dann auch ohne Fokus ihren Wert ändern statt das Formular zu scrollen."""
         widget.grid(row=self._next_row(), column=0, columnspan=2, sticky="ew",
                     padx=(self._indent(), _EDGE), pady=pady)
         self._register(widget)
@@ -421,9 +421,10 @@ class Form:
 
     def _guard_value_wheel(self, widget):
         """Widgets, die beim Rad ihren Wert ändern (Combobox), bekommen eine
-        eigene Bindung, die das Formular scrollt und mit "break" das
-        Klassen-Binding überspringt — die Toplevel-Bindung käme zu spät, die
-        Klasse hätte den Wert dann schon verstellt."""
+        eigene Bindung, die ohne Fokus das Formular scrollt und mit "break"
+        das Klassen-Binding überspringt — die Toplevel-Bindung käme zu spät,
+        die Klasse hätte den Wert dann schon verstellt. Mit Fokus lässt sie
+        das Klassen-Binding durch."""
         if wheel_route(widget.winfo_class()) == "form_block":
             for seq in _wheel_sequences(widget):
                 # add="+" statt Ersetzen: wie jede andere Bindung in diesem
@@ -585,9 +586,21 @@ class Form:
             canvas.yview_moveto(target)
 
     def _on_blocked_wheel(self, event):
+        """Rad über einer Combobox/Spinbox: mit Fokus (roter Rand) schaltet es
+        den Wert, ohne scrollt das Formular. Ohne Fokus-Abfrage verstellte man
+        beim Scrollen durchs Formular versehentlich Werte."""
+        if self._has_focus(event.widget):
+            return None  # Klassen-Binding schaltet den Wert (inkl. <<ComboboxSelected>>)
         if not self._popdown_open():
             self._scroll(event)
         return "break"
+
+    def _has_focus(self, widget):
+        try:
+            return widget.focus_get() is widget
+        except (tk.TclError, KeyError):
+            log.debug("Fokus nicht abfragbar", exc_info=True)
+            return False
 
 
 def pin_notebook_width(notebook):
