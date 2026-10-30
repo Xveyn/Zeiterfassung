@@ -285,7 +285,15 @@ def _installer():
 
 
 def test_credential_files_match_installer():
-    names = set(re.findall(r'Type: files; Name: "\{app\}\\([^"]+)"', _installer()))
+    names = set(re.findall(r'Type: files; Name: "\{app\}\\([^"*]+)"', _installer()))
+    assert names == set(removal.CREDENTIAL_FILES)
+
+
+def test_credential_backups_match_installer():
+    """#286: `<datei>.corrupt-<stamp>` der Zugangsdaten trägt dieselben Secrets;
+    der Uninstaller räumt sie wie `removal._credential_paths` mit ab."""
+    names = set(re.findall(r'Type: files; Name: "\{app\}\\([^"*]+)\.corrupt-\*"',
+                           _installer()))
     assert names == set(removal.CREDENTIAL_FILES)
 
 

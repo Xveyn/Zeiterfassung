@@ -90,6 +90,18 @@ Type: files; Name: "{app}\api-token"
 Type: files; Name: "{app}\mobile_devices.json"
 Type: files; Name: "{app}\mobile_keys.json"
 Type: files; Name: "{app}\mobile_relay.json"
+; Quarantäne-Kopien (`json_store`, N4) tragen dieselben Secrets wie die Datei, die sie ersetzen
+; (z. B. `token.json.corrupt-<stamp>` mit dem Refresh-Token). Fester Name geht nicht, der Suffix
+; ist ein Zeitstempel; Wildcard bleibt aber auf den Dateinamen beschränkt (#286).
+Type: files; Name: "{app}\token.json.corrupt-*"
+Type: files; Name: "{app}\instance-secret.corrupt-*"
+Type: files; Name: "{app}\webhooks.json.corrupt-*"
+Type: files; Name: "{app}\credentials.json.corrupt-*"
+Type: files; Name: "{app}\smtp.json.corrupt-*"
+Type: files; Name: "{app}\api-token.corrupt-*"
+Type: files; Name: "{app}\mobile_devices.json.corrupt-*"
+Type: files; Name: "{app}\mobile_keys.json.corrupt-*"
+Type: files; Name: "{app}\mobile_relay.json.corrupt-*"
 
 
 [Run]
