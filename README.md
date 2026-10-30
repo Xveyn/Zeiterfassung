@@ -251,7 +251,7 @@ Oder manuell: **Menü ☰ → Google Auth Platform → Data Access**.
 
 Solange die alte `token.json` (nur mit `gmail.send`-Scope) existiert, läuft kein neuer Consent-Flow.
 
-**Empfohlener Weg** *(ab 1.23.2)*: Einstellungen → Google → „Google neu
+**Empfohlener Weg**: Einstellungen → Google → „Google neu
 verbinden" — das räumt dabei auch einen eventuellen Schlüsselbund-Eintrag des
 Refresh-Tokens mit ab.
 
@@ -483,7 +483,7 @@ Die App läuft auf **Windows, macOS und Linux**. Plattformspezifische Features w
 | Window-Icon | ✓ (`.ico`) | ✓ (`.png` Fallback) | ✓ (`.png` Fallback) |
 | Autostart bei Anmeldung | ✓ (Registry HKCU Run) | ✓ (LaunchAgent plist) | ✓ (`.desktop`-Datei) |
 | Eintrag im Anwendungsmenü | ✓ (Startmenü, vom Setup) | ✓ (`Zeiterfassung.app` in `/Applications`) | ✓ (`.desktop` in `~/.local/share/applications/`, von der App beim Start geschrieben) |
-| Infobereich-Icon (Tray) | ✓ (pystray) | ○ (NSStatusItem, Opt-in `ZEIT_MACOS_TRAY=1`) | ✓ (StatusNotifierItem) *(ab 1.23.2)* |
+| Infobereich-Icon (Tray) | ✓ (pystray) | ○ (NSStatusItem, Opt-in `ZEIT_MACOS_TRAY=1`) | ✓ (StatusNotifierItem) |
 | Standalone-Binary (PyInstaller) | ✓ (`.exe`) | ✓ (`.app` Bundle) | ✓ (AppImage) |
 | Update aus der App | ✓ (lädt, prüft, installiert; per Knopf mit Neustart, beim Beenden ohne) | — (Download im Browser) | ✓ (lädt, prüft, ersetzt die AppImage; per Knopf mit Neustart, beim Beenden ohne) |
 | Handy-Erfassung (Server in der App) *(ab 1.25.0)* | ✓ (Firewall fragt beim ersten Einschalten) | ✓ | ✓ |
@@ -546,7 +546,7 @@ Speicherort je nach Plattform:
 > Zugang zur lokalen API, `mobile_keys.json` (nur im Datei-Fallback) enthält die
 > Schlüssel der gekoppelten Handys und `mobile_relay.json` deren Relay-Geheimnisse.
 >
-> **Mit verfügbarem Schlüsselbund** *(ab 1.23.2)* (Windows
+> **Mit verfügbarem Schlüsselbund** (Windows
 > Anmeldeinformationsverwaltung / macOS-Schlüsselbund / Linux Secret Service)
 > liegen Refresh-Token,
 > Webhook-Secrets, SMTP-Passwort und die Geräteschlüssel der gekoppelten Handys
