@@ -28,7 +28,8 @@ import logging
 import re
 import threading
 import time
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
+from contextlib import AbstractContextManager, nullcontext
 from typing import Any
 
 from src import keyring_store
@@ -300,10 +301,24 @@ class MobileKeyStore:
         if entry is not None:
             keyring_store.remove(keyring_key(device_id))
 
-    def retain(self, device_ids: Iterable[str]) -> None:
-        """Räumt die Schlüssel aller Geräte ab, die nicht in `device_ids` stehen (blockiert)."""
+    def stale_ids(self, device_ids: Iterable[str]) -> list[str]:
+        """Die Geräte-IDs, deren Schlüssel nicht zu `device_ids` gehören. Liest nur Datei-
+        Stand und Cache, blockiert nie — darf also unter der Gerätesperre laufen."""
         keep = set(device_ids)
         with self._lock:
-            stale = [device_id for device_id in self._entries if device_id not in keep]
+            return [device_id for device_id in self._entries if device_id not in keep]
+
+    def retain(self, device_ids: Iterable[str] | Callable[[], Iterable[str]], *,
+               snapshot_lock: AbstractContextManager[Any] | None = None) -> None:
+        """Räumt die Schlüssel aller Geräte ab, die nicht in `device_ids` stehen (blockiert).
+
+        Wer die Liste der Geräte erst beim Aufruf kennt, übergibt sie als Callable und die
+        Gerätesperre als `snapshot_lock`: Geräteliste **und** Abräum-Liste entstehen dann unter
+        ihr. `_pair` legt Schlüssel und Datensatz unter derselben Sperre ab, ein Handy, das
+        gerade koppelt, steht damit entweder schon in der Liste oder noch nicht in der
+        Abräum-Liste — nie dazwischen (#277). Entfernt wird danach **ohne** Sperre: der
+        Schlüsselbund darf blockieren."""
+        with snapshot_lock if snapshot_lock is not None else nullcontext():
+            stale = self.stale_ids(device_ids() if callable(device_ids) else device_ids)
         for device_id in stale:
             self.remove(device_id)

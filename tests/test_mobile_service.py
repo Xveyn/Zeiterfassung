@@ -783,3 +783,57 @@ def test_a_revoked_device_cannot_be_tested(relay):
     service.revoke("phone-aaaa")
     assert service.can_test("phone-aaaa") is False
     assert service.send_test("phone-aaaa") == "no_secret"
+
+
+def test_key_maintenance_waits_for_a_pairing_in_flight(tmp_path, ring):
+    # `_pair` legt Schlüssel und Datensatz unter der Gerätesperre ab. Läuft das Aufräumen in diesem Fenster,
+    # sah es einen Schlüssel ohne Gerät und löschte ihn: das frisch gekoppelte Handy hatte keinen Schlüssel (#277).
+    service, _settings, ctx = make_service(tmp_path)
+    key_stored, finish = threading.Event(), threading.Event()
+
+    def pair():
+        with ctx.devices_lock:
+            ctx.keys.put("phone-new0", KEY)
+            key_stored.set()
+            assert finish.wait(5)
+            record, _token = mobile_pairing.issue_device("phone-new0", "Pixel", utc_now_iso())
+            ctx.devices.save(record)
+
+    pairing = threading.Thread(target=pair)
+    pairing.start()
+    assert key_stored.wait(5)
+    maintenance = threading.Thread(target=service._maintain_keys)
+    maintenance.start()
+    time.sleep(0.2)                                   # das Aufräumen steht an der Gerätesperre
+    finish.set()
+    pairing.join(5)
+    maintenance.join(5)
+
+    assert ctx.keys.get("phone-new0") == KEY
+    assert ctx.devices.get("phone-new0") is not None
+
+
+def test_revoke_all_picks_the_keys_to_drop_under_the_devices_lock(tmp_path, ring):
+    service, _settings, ctx = make_service(tmp_path)
+    add_keyed_device(ctx, "phone-0001")
+    owned = []
+    original = ctx.keys.stale_ids
+
+    def spy(device_ids):
+        owned.append(ctx.devices_lock._is_owned())
+        return original(device_ids)
+    ctx.keys.stale_ids = spy
+
+    service.revoke_all()
+
+    assert owned == [True]
+    assert ctx.keys.get("phone-0001") is None
+
+
+def test_retain_without_a_lock_still_takes_a_plain_list(tmp_path, ring):
+    store = MobileKeyStore(str(tmp_path / "mobile_keys.json"))
+    store.put("a" * 8, KEY)
+    store.put("b" * 8, KEY)
+    assert sorted(store.stale_ids(["a" * 8])) == ["b" * 8]
+    store.retain(lambda: ["a" * 8])
+    assert store.get("a" * 8) == KEY and store.get("b" * 8) is None
