@@ -2,6 +2,52 @@
 
 Ältere Versionen stehen im [Archiv](CHANGELOG-archive.md).
 
+## 1.25.2 — 2026-10-30
+
+Ein Wartungs-Release: Die Handy-Kopplung ist gegen gleichzeitige Zugriffe
+abgesichert, die Handy-Web-App bekommt Wischgeste, ein größeres Lesefenster und
+klarere Fehlermeldungen, und der Uninstaller räumt Sicherungskopien der
+Zugangsdaten ab.
+
+### Hinzugefügt
+- **Handy-Web-App: Woche per Wischgeste wechseln**: In der Wochenansicht blättert
+  ein Wisch nach links oder rechts zur nächsten bzw. vorigen Woche.
+- **Handy-Web-App: Ist-Zeiten bis 14 Tage nach heute**: Das Handy sieht und
+  behält Ist-Zeiten auch für die nächsten 14 Tage, nicht nur bis heute.
+- **Handy-Web-App: Netzfehler nennen die Ursache**: Erreicht das Handy den
+  Rechner nicht, nennt die Meldung die wahrscheinliche Ursache und wie man sie
+  prüft.
+- **Handy-Web-App: Service Worker reparieren**: Meldet Chrome bei der
+  Update-Suche „ServiceWorker cannot be started“, richtet der Knopf „Reparieren“
+  im Reiter „Updates“ nur den Service Worker neu ein. Einträge und Kopplung
+  bleiben unberührt.
+
+### Geändert
+- **Handy-Web-App: Arbeitszeit außerhalb des Lesefensters gesperrt**: Ein Tag,
+  den das Handy vom Rechner nicht kennt, sah leer aus, obwohl dort Einträge
+  liegen konnten, und Speichern ersetzte sie ohne Konflikt. Jetzt ist die
+  Arbeitszeit dort gesperrt; die Web-App bietet „Ältere Zeiten laden“ an oder
+  nennt den Grund.
+
+### Behoben
+- **Handy-Kopplung bei gleichzeitigen Zugriffen**: Das Aufräumen von Schlüsseln
+  und „Alle widerrufen“ lief nicht abgesichert neben dem Koppeln eines Geräts; ein
+  Handy, das in diesem Fenster koppelte, verlor seinen frischen Schlüssel und
+  musste neu koppeln. Beides läuft jetzt unter der Gerätesperre.
+- **Koppel-Dialog**: Scheitert das Speichern des Geräts, sagt der Dialog es, statt
+  ein Handy als gekoppelt zu zeigen, das die App nicht kennt.
+- **Handy-Web-App, Abgleich über mehrere Tabs**: Ein zweiter Tab sendete
+  denselben Zähler („neu koppeln“) und schrieb Zähler und Token des anderen
+  zurück. Der Abgleich läuft jetzt unter einer Sperre und liest den Stand frisch.
+- **Handy-Web-App, Fehlerdiagnose**: Bei abgefangenen Fehlern erscheint die
+  Ursache und steht im Log; Chromes Update-Fehler wird nicht mehr vor dem Grund
+  abgeschnitten.
+- **Einstellungen**: Das Mausrad schaltet den Wert einer Combobox, sobald sie
+  den Fokus hat; vorher scrollte es stets das Formular. Ohne Fokus scrollt weiter
+  das Formular.
+- **Deinstallation**: Der Uninstaller entfernt auch die `.corrupt-*`-Kopien der
+  Zugangsdaten.
+
 ## 1.25.1 — 2026-10-29
 
 Ein Wartungs-Release: Der PDF-Bericht bricht an Seitengrenzen nicht mehr mitten
