@@ -80,7 +80,7 @@ async function make({ handler = () => reply(200, fixture('sync-response.json')),
       address: { host: '192.168.1.20', port: 17654 } });
   }
   const fetchFn = fakeFetch(handler);
-  const client = new SyncClient({ store, fetchFn, now: () => new Date(NOW), timeoutMs: 1000 });
+  const client = new SyncClient({ store, fetchFn, now: () => new Date(NOW), timeoutMs: 1000, locks: null });
   return { store, client, fetchFn };
 }
 
@@ -281,7 +281,7 @@ test('a pair answer sealed with the wrong key is a crypto error and changes noth
 test('a plaintext pair answer is a protocol error', async () => {
   const { store } = await make({ paired: false });
   const fetchFn = async () => ({ ok: true, status: 200, json: async () => PAIR_ANSWER() });
-  const client = new SyncClient({ store, fetchFn, now: () => new Date(NOW), timeoutMs: 1000 });
+  const client = new SyncClient({ store, fetchFn, now: () => new Date(NOW), timeoutMs: 1000, locks: null });
   await assert.rejects(client.pair({ host: '192.168.1.20', port: 17654, code: CODE, deviceName: 'P' }),
     (e) => e.kind === 'protocol');
   assert.equal(store.getMeta().token, '');
@@ -602,6 +602,45 @@ test('the request counter is stored before the request goes out and grows with e
   assert.equal(store.getMeta().seq, 2);
 });
 
+/** Web Locks im Kleinen: Anfragen mit demselben Namen laufen nacheinander (Gegenstück zu `navigator.locks`). */
+function fakeLocks() {
+  let tail = Promise.resolve();
+  return {
+    request(_name, callback) {
+      const run = tail.then(callback);
+      tail = run.catch(() => {});
+      return run;
+    },
+  };
+}
+
+test('two tabs syncing at once never send the same counter (#277)', async () => {
+  const adapter = createMemoryAdapter();
+  const locks = fakeLocks();
+  const first = await make({ adapter });
+  const second = await make({ adapter, paired: false });         // zweiter Tab: lädt dieselbe Datenbank
+  await second.store.load();
+  first.client = new SyncClient({ store: first.store, fetchFn: first.fetchFn, now: () => new Date(NOW), locks });
+  second.client = new SyncClient({ store: second.store, fetchFn: second.fetchFn, now: () => new Date(NOW), locks });
+
+  await Promise.all([first.client.sync(), second.client.sync()]);
+
+  const seqs = [...first.fetchFn.calls, ...second.fetchFn.calls].map((call) => call.seq).sort();
+  assert.deepEqual(seqs, [1, 2]);
+  const stored = (await adapter.getAll('meta')).find((row) => row.key === 'meta');
+  assert.equal(stored.value.seq, 2);                             // die Datenbank trägt den höchsten Zähler
+  assert.equal(second.store.getMeta().seq, 2);                   // der zweite Tab hat den Zähler des ersten gesehen
+});
+
+test('without Web Locks the sync keeps its old flow and does not reload the store', async () => {
+  const { store, client } = await make();
+  let loads = 0;
+  const load = store.load.bind(store);
+  store.load = async () => { loads += 1; return load(); };
+  await client.sync();
+  assert.equal(loads, 0);
+});
+
 test('a failed request still consumed its counter: it is never used again', async () => {
   let attempt = 0;
   const { store, client, fetchFn } = await make({ handler: () => {
@@ -643,7 +682,7 @@ test('an error envelope that does not open is a crypto error, not a classified s
   const forged = await seal(new Uint8Array(32), { direction: 'res', method: 'POST', path: '/v1/sync',
     deviceId: DEVICE_ID, seq: 1, plaintext: utf8({ error: { code: 'invalid_entry', message: '2026-10-07: x' } }) });
   const fetchFn = async () => ({ ok: false, status: 422, json: async () => forged });
-  const client = new SyncClient({ store, fetchFn, now: () => new Date(NOW), timeoutMs: 1000 });
+  const client = new SyncClient({ store, fetchFn, now: () => new Date(NOW), timeoutMs: 1000, locks: null });
   await assert.rejects(client.sync(), (e) => e.kind === 'crypto' && e.needsRepair === true);
   assert.equal(store.getDay('2026-10-07').error, null);                                // nichts markiert
   assert.deepEqual(store.dirtyDates(), ['2026-10-07']);
@@ -656,7 +695,7 @@ test('an answer sealed for another request counter is a crypto error and changes
   const wrongSeq = await seal(responseKey, { direction: 'res', method: 'POST', path: '/v1/sync',
     deviceId: DEVICE_ID, seq: 99, plaintext: utf8(fixture('sync-response.json')) });
   const fetchFn = async () => ({ ok: true, status: 200, json: async () => wrongSeq });
-  const client = new SyncClient({ store, fetchFn, now: () => new Date(NOW), timeoutMs: 1000 });
+  const client = new SyncClient({ store, fetchFn, now: () => new Date(NOW), timeoutMs: 1000, locks: null });
   await assert.rejects(client.sync(), (e) => e.kind === 'crypto');
   assert.equal(store.getMeta().token, 'T0');
   assert.deepEqual(store.dirtyDates(), ['2026-10-07']);
@@ -666,7 +705,7 @@ test('a plaintext answer to a sync is refused: the token inside must not be trus
   const { store } = await make();
   await store.saveDay('2026-10-07', [SLOT]);
   const fetchFn = async () => ({ ok: true, status: 200, json: async () => fixture('sync-response.json') });
-  const client = new SyncClient({ store, fetchFn, now: () => new Date(NOW), timeoutMs: 1000 });
+  const client = new SyncClient({ store, fetchFn, now: () => new Date(NOW), timeoutMs: 1000, locks: null });
   await assert.rejects(client.sync(), (e) => e.kind === 'protocol');
   assert.equal(store.getMeta().token, 'T0');
   assert.deepEqual(store.dirtyDates(), ['2026-10-07']);

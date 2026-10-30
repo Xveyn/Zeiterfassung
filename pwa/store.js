@@ -85,7 +85,9 @@ export class Store {
   /** Liest alles aus dem Adapter. Unbrauchbare Datensätze werden übersprungen, nie geworfen:
    *  eine kaputte Zeile darf die App nicht am Start hindern. */
   async load() {
-    this._days.clear();
+    // Erst in lokale Maps lesen, dann tauschen: `load()` läuft auch mitten im Betrieb (Abgleich unter
+    // dem Tab-Lock, s. `SyncClient.sync`), eine Ansicht dazwischen darf keinen leeren Stand sehen.
+    const days = new Map();
     for (const { key, value } of await this._adapter.getAll('entries')) {
       const record = isObject(value) ? {
         entry: value.entry,
@@ -93,9 +95,9 @@ export class Store {
         synced_version: Number.isInteger(value.synced_version) ? value.synced_version : 0,
         error: typeof value.error === 'string' ? value.error : null,
       } : null;
-      if (record && validRecord(key, record)) this._days.set(key, record);
+      if (record && validRecord(key, record)) days.set(key, record);
     }
-    this._reservations.clear();
+    const reservations = new Map();
     for (const { key, value } of await this._adapter.getAll('reservations')) {
       const record = isObject(value) ? {
         entry: value.entry,
@@ -103,9 +105,11 @@ export class Store {
         synced_version: Number.isInteger(value.synced_version) ? value.synced_version : 0,
         error: typeof value.error === 'string' ? value.error : null,
       } : null;
-      if (record && validRecord(key, record)) this._reservations.set(key, record);
+      if (record && validRecord(key, record)) reservations.set(key, record);
     }
     const stored = (await this._adapter.getAll('meta')).find((row) => row.key === 'meta');
+    this._days = days;
+    this._reservations = reservations;
     this._meta = { ...structuredClone(DEFAULT_META), ...(stored && isObject(stored.value) ? stored.value : {}) };
   }
 

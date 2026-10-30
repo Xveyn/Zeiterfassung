@@ -29,6 +29,9 @@ export class SyncError extends Error {
   }
 }
 
+// Name der Web-Locks-Sperre, die den Abgleich über alle Tabs serialisiert (#277).
+const SYNC_LOCK = 'zeiterfassung-sync';
+
 // Code → Art. Alles, was hier fehlt, ordnet der Rückfall nach Statusbereich ein.
 const KINDS = {
   incomplete_body: 'transient', request_timeout: 'transient', busy: 'transient', shutting_down: 'transient',
@@ -199,11 +202,13 @@ export function clockSkewMs(serverTime, now) {
 const DISCARDED = () => ({ sent: 0, conflicts: 0, excluded: false, discarded: true });
 
 export class SyncClient {
-  constructor({ store, fetchFn = (...args) => globalThis.fetch(...args), now = () => new Date(), timeoutMs = 15000 }) {
+  constructor({ store, fetchFn = (...args) => globalThis.fetch(...args), now = () => new Date(), timeoutMs = 15000,
+    locks = globalThis.navigator?.locks ?? null }) {
     this._store = store;
     this._fetch = fetchFn;
     this._now = now;
     this._timeoutMs = timeoutMs;
+    this._locks = locks;
     this._running = null;
   }
 
@@ -321,9 +326,21 @@ export class SyncClient {
   /** Gleicht ab. Gleichzeitige Aufrufe teilen sich EINEN Request. */
   sync() {
     if (!this._running) {
-      this._running = this._run().finally(() => { this._running = null; });
+      this._running = this._runExclusive().finally(() => { this._running = null; });
     }
     return this._running;
+  }
+
+  /** Über alle Tabs und Fenster dieser Web-App nur ein Abgleich zugleich (Web Locks), und der Stand
+   *  kommt unter der Sperre frisch aus der Datenbank: jeder Tab lädt `meta` nur einmal, ein zweiter
+   *  sendete sonst denselben Zähler (`409 replay` → „neu koppeln“) und schriebe Zähler und Token des
+   *  anderen zurück (#277). Ohne Web Locks (ältere Browser, Tests) bleibt es beim bisherigen Ablauf. */
+  async _runExclusive() {
+    if (!this._locks) return this._run();
+    return this._locks.request(SYNC_LOCK, async () => {
+      await this._store.load();
+      return this._run();
+    });
   }
 
   _pairingChanged(meta) {
