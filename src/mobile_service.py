@@ -133,7 +133,11 @@ class MobileService:
             # Aufräumen gegen diese Liste löschte jeden Schlüssel (und mit ihm jede Kopplung).
             _log.warning("Handy-Erfassung: Gerätedatei nicht gelesen — Schlüssel werden nicht aufgeräumt")
         else:
-            steps.insert(0, ("retain", lambda: keys.retain([r["id"] for r in self._context.devices.get_all()])))
+            # Geräteliste und Abräum-Liste unter der Gerätesperre: ein Handy, das gerade koppelt
+            # (Schlüssel vor Datensatz, ebenfalls unter ihr), verliert sonst seinen frischen Schlüssel (#277).
+            steps.insert(0, ("retain", lambda: keys.retain(
+                lambda: [r["id"] for r in self._context.devices.get_all()],
+                snapshot_lock=self._context.devices_lock)))
             relay_store = self._context.relay_store
             if relay_store is not None:
                 # Geheimnisse vergessener Geräte lokal weg; ihre Relay-Objekte verfallen dort nach 90 Tagen.
@@ -304,7 +308,12 @@ class MobileService:
         with self._context.devices_lock:
             records = self._context.devices.get_all()
             self._context.devices.replace_all([mobile_pairing.revoke(r) for r in records])
-        self._context.keys.retain([])
+            # Die Abräum-Liste noch unter der Sperre: ein Handy, das danach koppelt, steht nicht
+            # darin und behält seinen Schlüssel (#277).
+            stale = self._context.keys.stale_ids(())
+        # Außerhalb der Gerätesperre: der Schlüsselbund kann blockieren (Worker).
+        for device_id in stale:
+            self._context.keys.remove(device_id)
         self._drop_relay_objects(lambda store: store.retain([]))
         return len(records)
 

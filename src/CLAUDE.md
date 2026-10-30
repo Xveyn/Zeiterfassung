@@ -369,7 +369,7 @@ Zeitraum und welche Kategorien der Bericht gefiltert ist.
   `remove` und `retain` blockieren und laufen im Worker (`MobileService._maintain_keys` nach jedem
   `apply()`, `_migrate_keys` nach einer Kopplung). `request_load` lädt einen fehlenden Schlüssel
   gedrosselt (60 s) im Hintergrund nach; solange er fehlt, antwortet der Server `503
-  key_unavailable`. Wer einen weiteren Schlüsselbund-Eintrag anlegt, trägt ihn in
+  key_unavailable`. `retain` bestimmt die Abräum-Liste (`stale_ids`, nur Cache, blockiert nie) unter der Gerätesperre, die auch `_pair` für Schlüssel und Datensatz nimmt (#277): ein Handy, das gerade koppelt, verliert so nie seinen frischen Schlüssel; `revoke_all` tut dasselbe, entfernt aber erst nach der Sperre. Wer einen weiteren Schlüsselbund-Eintrag anlegt, trägt ihn in
   `secret_migration.forget_all` ein.
 
   `mobile_sync.py` — Abgleich mit dem Handy (`POST /v1/sync`), Tk-frei, ohne Socket. Der Body ist
