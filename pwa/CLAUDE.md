@@ -494,6 +494,13 @@ abgelegt, und die PWA glaubt im Klartext nur, was der Desktop vor dem
 Entschlüsseln sendet (`invalid_entry`/`clock_skew`/`busy` nur als Umschlag —
 sonst könnte ein Dritter im WLAN einen Tag als abgelehnt markieren lassen).
 
+**Mehrere Tabs (#277).** Jeder Tab lädt die Meta einmal; ein zweiter sendete denselben `seq`
+(`409 replay` → „neu koppeln“) und schriebe Zähler und Token des anderen zurück. `SyncClient.sync` läuft
+deshalb unter einer Web-Locks-Sperre (`navigator.locks`, Name `zeiterfassung-sync`) und lädt den Stand
+darunter frisch aus IndexedDB (`Store.load` tauscht die Maps atomar). Ohne Web Locks bleibt der alte
+Ablauf; Tests übergeben `locks` (`null` oder eine Attrappe), damit sie nicht von der Node-Version abhängen.
+Offen: andere Schreibwege eines veralteten Tabs (Tag speichern, Einstellungen) lesen den Stand weiter nur einmal.
+
 ## Veröffentlichung
 
 `.github/workflows/pages.yml` (Push auf `master` mit Änderungen unter `pwa/**`,
