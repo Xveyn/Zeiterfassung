@@ -98,6 +98,10 @@ class MobileContext:
     # Nach einer erfolgreichen Kopplung, außerhalb der Sperren: der Dienst zieht den Schlüssel
     # damit im Worker in den Schlüsselbund um (`MobileKeyStore.migrate`).
     on_paired: Callable[[], None] = _no_change
+    # Beim Koppeln ging etwas schief, nachdem der Code verbraucht war (Gerätedatei nicht
+    # schreibbar), außerhalb der Sperren: der Koppel-Dialog zeigt es, sonst sähe der Nutzer
+    # nur einen Code, der „abgelaufen“ ist.
+    on_pair_failed: Callable[[], None] = _no_change
     # Ablage der Relay-Geheimnisse der Handys (`MobileRelayStore`, #331); `None` ohne Push.
     # Geschrieben wird erst nach der Freigabe der Gerätesperre: die Datei wird gehärtet
     # (unter Windows `icacls`) und darf `devices_lock` nicht halten.
@@ -218,12 +222,19 @@ def _pair(request: ApiRequest, ctx: MobileContext, principal: Principal) -> ApiR
         # Falsch, abgelaufen, verbraucht und „kein Code aktiv“ sind dieselbe Antwort.
         raise _MobileError(403, "invalid_code", "Der Code ist ungültig oder abgelaufen.")
     key = mc.new_device_key()
-    with ctx.devices_lock:
-        # Cache und gehärtete Datei, schnell; der Umzug in den Schlüsselbund folgt im Worker.
-        ctx.keys.put(opened["device_id"], key)
-        record, token = mobile_pairing.issue_device(
-            opened["device_id"], opened["name"], ctx.now(), ctx.devices.get(opened["device_id"]))
-        ctx.devices.save(record)
+    try:
+        with ctx.devices_lock:
+            # Cache und gehärtete Datei, schnell; der Umzug in den Schlüsselbund folgt im Worker.
+            ctx.keys.put(opened["device_id"], key)
+            record, token = mobile_pairing.issue_device(
+                opened["device_id"], opened["name"], ctx.now(), ctx.devices.get(opened["device_id"]))
+            ctx.devices.save(record)
+    except Exception:
+        # Der Code ist verbraucht (Ruling aus #258), das Handy bekommt die allgemeine 500. Der
+        # Schlüssel ohne Gerät bleibt bis zum nächsten Aufräumen (`_maintain_keys`) liegen.
+        _log.exception("Handy-Kopplung: Gerät nicht gespeichert")
+        _notify_pair_failed(ctx)
+        raise
     _log.info("Handy gekoppelt: %s (%s)", record["id"], record["name"])
     _notify_paired(ctx)
     _, response_key = mc.pair_keys(opened["code"])
@@ -239,6 +250,13 @@ def _notify_paired(ctx: MobileContext) -> None:
         # Die Kopplung ist gespeichert; der Umzug des Schlüssels in den Schlüsselbund holt
         # der nächste Start nach. Ein Fehler hier darf sie nicht zur 500 machen.
         _log.exception("Handy-Kopplung: on_paired fehlgeschlagen")
+
+
+def _notify_pair_failed(ctx: MobileContext) -> None:
+    try:
+        ctx.on_pair_failed()
+    except Exception:
+        _log.exception("Handy-Kopplung: on_pair_failed fehlgeschlagen")
 
 
 def _notify(ctx: MobileContext) -> None:

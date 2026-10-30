@@ -84,8 +84,11 @@ class MobileService:
         # Die Routen fragen `closing` unter dem Lock: nach `shutdown()` (Beenden,
         # Entfernen, Neustart) koppelt und gleicht keine Route mehr ab.
         self._on_paired_outer = context.on_paired
+        self._on_pair_failed_outer = context.on_pair_failed
+        self._pair_failures = 0
         self._context = dataclasses.replace(context, closing=lambda: self._closed,
-                                            on_paired=self._on_paired)
+                                            on_paired=self._on_paired,
+                                            on_pair_failed=self._on_pair_failed)
         self._run = run
         self._on_status = on_status
         self._lan_candidates = lan_candidates
@@ -150,6 +153,17 @@ class MobileService:
                 step()
             except Exception:
                 _log.warning("Handy-Erfassung: Schlüssel (%s) nicht bearbeitet", name, exc_info=True)
+
+    @property
+    def pair_failures(self) -> int:
+        """Wie oft ein Koppeln scheiterte, nachdem der Code verbraucht war (Gerätedatei nicht
+        schreibbar). Der Koppel-Dialog merkt sich den Stand beim Öffnen eines Codes und zeigt
+        es bei einem Anstieg."""
+        return self._pair_failures
+
+    def _on_pair_failed(self) -> None:
+        self._pair_failures += 1                       # nur Server-Threads, ein Zähler genügt
+        self._on_pair_failed_outer()
 
     def _on_paired(self) -> None:
         """Nach einer Kopplung (Server-Thread, außerhalb der Sperren): der Schlüssel liegt

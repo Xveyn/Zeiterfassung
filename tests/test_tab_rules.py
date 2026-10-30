@@ -697,10 +697,21 @@ def test_the_pair_poll_view(active, left, paired, state, text):
     assert got_state == state and text in got_text
 
 
+def test_a_failed_pairing_is_not_shown_as_an_expired_code():
+    # Der Code ist eingelöst (nicht mehr aktiv), das Gerät aber nicht gespeichert.
+    state, text = tr.pair_poll_view(active=False, seconds_left=0, paired=False, failed=True)
+    assert state == "failed" and "fehlgeschlagen" in text and "Neuer Code" in text
+
+
+def test_a_pairing_that_did_succeed_wins_over_a_failure_flag():
+    assert tr.pair_poll_view(active=False, seconds_left=0, paired=True, failed=True)[0] == "paired"
+
+
 def test_only_a_counting_code_keeps_the_poll_running():
     assert tr.pair_poll_keeps_running("counting") is True
     assert tr.pair_poll_keeps_running("expired") is False
     assert tr.pair_poll_keeps_running("paired") is False
+    assert tr.pair_poll_keeps_running("failed") is False
 
 
 def test_revoke_outcome_reports_success_and_expected_write_errors():
