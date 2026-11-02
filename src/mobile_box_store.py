@@ -19,6 +19,20 @@ Fehler zu fälschen — aber weder Inhalte zu lesen noch zu synchronisieren: das
 darauf darf der Verbindungs-Thread nicht warten. Ein späterer Wechsel ist ein Backend-Tausch hinter
 derselben API (`_load`/`_save_locked`/`_commit_locked`).
 
+Lebenszyklus des offenen Geheimnisses (Regeln für die Verbindungsschicht, PR 3b):
+
+- Der Kopplungscode lebt nur im Speicher (`PairingSession`). Nach einem Neustart ist ein `pending` in der
+  Datei **verwaist**: kein Code kann es je einlösen. Beim Start und wenn der Koppel-Dialog schließt oder der
+  Code abläuft: `clear_pending()` und die Box am Relay löschen (`box_relay.delete_box`). Nie mit einer
+  offenen Box verbinden, ohne dass eine Kopplungssitzung offen ist.
+- Die Geräte-ID für `bind(device_id, expected=…)` liefert `RelayAdapter.process` als
+  `RelayResult.paired_device_id`.
+- Scheitert `bind` nach einer gelungenen Kopplung (`OSError`), ist das Gerät gekoppelt, seine Box aber noch
+  `pending`. Das nächste `open_pending` gäbe sie als „altes“ Geheimnis zurück; wer es löscht, löscht die Box,
+  die das Handy benutzt (heilbar durch Neu-Koppeln). Deshalb: den Fehlschlag loggen, `bind` mit der
+  `paired_device_id` einer erneuten Zustellung wiederholen (über `expected` idempotent) und das „alte“
+  Geheimnis eines `open_pending` nie löschen, solange es gebunden oder in Benutzung ist.
+
 Beim Laden verworfene Einträge (ungültiges Geheimnis, kaputtes `pending`) verschwinden beim nächsten
 Schreiben von der Platte: ein Geheimnis, das je am Relay angelegt wurde, kann so zur Waise werden, von
 der der Aufrufer nie erfährt.

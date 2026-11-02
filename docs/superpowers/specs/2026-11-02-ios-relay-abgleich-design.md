@@ -249,7 +249,23 @@ Code geprüft). Zu beachten ist grundsätzlich:
   nicht die ganze Routenebene importiert.
 - **PR 3b:** die Koppel-Anfrage kommt auf einer Box an; gebunden wird das offene Geheimnis mit
   `MobileBoxStore.bind(device_id, expected=<Geheimnis der Box, auf der die Anfrage ankam>)`, damit ein
-  zwischenzeitlich neu geöffnetes Pairing unangetastet bleibt.
+  zwischenzeitlich neu geöffnetes Pairing unangetastet bleibt. Die Geräte-ID dafür liefert
+  `RelayAdapter.process(payload)` als `RelayResult.paired_device_id` (nur nach einer gelungenen Kopplung, auch bei
+  der erneuten Zustellung aus dem Zwischenspeicher).
+- **PR 3b, Lebenszyklus des offenen Geheimnisses:** der Kopplungscode lebt nur im Speicher; nach einem Neustart ist
+  ein `pending` in `mobile_box.json` verwaist. 3b ruft beim Start und wenn der Koppel-Dialog schließt oder der Code
+  abläuft `clear_pending()` und `box_relay.delete_box(...)` und verbindet sich nie mit einer offenen Box ohne offene
+  Kopplungssitzung.
+- **PR 3b, gescheitertes `bind`:** scheitert `bind` nach gelungener Kopplung (`OSError`), ist das Gerät gekoppelt,
+  die Box aber noch `pending`; das nächste `open_pending` gäbe sie als „altes“ Geheimnis zurück. 3b loggt den
+  Fehlschlag, wiederholt `bind` mit der `paired_device_id` einer erneuten Zustellung und löscht das „alte“
+  Geheimnis nie, solange es gebunden oder in Benutzung ist (sonst verliert das Handy seine Box; heilbar durch
+  Neu-Koppeln).
+- **PR 3b/PR 4, `have`:** wird `have` gleich nach dem Lesen eines `req` gespeichert, stellt die Box dieses `req`
+  nach einem `503 shutting_down` oder einem Absturz nie wieder zu — das Handy muss mit einem **neuen** `seq` neu
+  senden (die PWA zählt `seq` je Versuch hoch).
+- **PR 3c:** `mobile_relay_codec.relay_link` liest `pwa_constants.PWA_URL` und folgt **nicht** der Überschreibung von
+  `mobile_routes.PWA_URL` durch den Dev-Server; den `#relay=`-QR des Dev-Servers regelt 3c.
 - **PR 4:** `response_too_large` (Desktop) und `RelayFrameError('too_large')` (Handy, Anfrage zu groß) auf
   `SyncError`s mit Hinweis abbilden (`KINDS`/`messages.js`, `pwa/test/fixtures/errors.json`) — nicht in PR 2.
 - **PR 4:** jedes nicht dekodierbare oder fremde `res` (kaputtes JSON, falsches `n`, `isEnvelope` scheitert) wird

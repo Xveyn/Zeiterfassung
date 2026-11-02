@@ -87,8 +87,8 @@ Offen (PR 5). Vorab, was der Relay festlegt: ein Slot je Richtung (Ersetzen stat
 Der Relay hält keine Schlüssel, es gibt keine Wiederherstellung durch uns. Die Geräteschlüssel liegen am
 Desktop im Schlüsselbund (Datei als Fallback), das Box-Geheimnis in `mobile_box.json` (s. 2.). Wer das
 Box-Geheimnis kennt (sieht den QR-Code, Betreiber des Relays), kann den Slot des Gegenübers lesen (Gerätetoken im
-Klartext, den versiegelten Umschlag), Slots überschreiben, den Desktop von der Box verdrängen und unversiegelte
-Fehler fälschen, `DELETE /v1/box` auslösen. Er kann **nicht** Inhalte lesen oder synchronisieren: das braucht den
+Klartext, den versiegelten Umschlag), Slots überschreiben, den Desktop von der Box verdrängen, unversiegelte
+Fehler fälschen und `DELETE /v1/box` auslösen. Er kann **nicht** Inhalte lesen oder synchronisieren: das braucht den
 Geräteschlüssel. Das ist ein Störer- und Metadatenrisiko, kein Inhaltsleck.
 Offen (PR 3b, PR 3c): Geht das Handy verloren, widerruft der Nutzer die Kopplung am Desktop; die Box wird dabei
 mit gelöscht (ab PR 3b) und der Dialog sagt es (PR 3c).
