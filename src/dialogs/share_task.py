@@ -25,6 +25,7 @@ log = logging.getLogger(__name__)
 def perform_share(*, payload, filename, credentials_path, token_path,
                   recipient, subject, html, sync_enabled, gcal_enabled,
                   save_default, settings, transport=None):
+    way = "Gmail" if transport is None else "SMTP"
     if transport is None:
         result = _share_via_gmail(
             payload=payload, filename=filename,
@@ -38,6 +39,8 @@ def perform_share(*, payload, filename, credentials_path, token_path,
 
     if not result["ok"]:
         return result
+    # Nur der Weg, nie der Empfänger (Adresse = personenbezogen).
+    log.info("Teilen ok (über %s)", way)
     if save_default:
         settings.set("share_recipient", recipient)
     return result

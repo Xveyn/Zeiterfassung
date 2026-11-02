@@ -10,6 +10,7 @@ Dialog-Close.
 
 import json as _json
 import logging
+import time
 import traceback
 
 from src import keyring_store, smtp, webhook, webhook_secrets
@@ -104,6 +105,37 @@ def _send_smtp(*, record, subject, html, pdf_bytes, pdf_filename):
     return {"ok": True}
 
 
+def summarize_results(results):
+    """Eine Zeile je Versand: Kanal → `ok/gesamt` und die Fehlerarten.
+
+    Nur Kanal, Zählwerte und `kind` — kein Empfänger, kein Kontoname (die
+    Kennung der Mail ist die Adresse, die des SMTP-Kontos trägt sie mit)."""
+    if not results:
+        return "kein Kanal gewählt"
+    parts = []
+    for channel in ("mail", "smtp", "webhook"):
+        rows = [r for r in results if r.get("channel") == channel]
+        if not rows:
+            continue
+        text = "%s %d/%d ok" % (channel, sum(1 for r in rows if r.get("ok")),
+                                len(rows))
+        kinds = sorted({str(r.get("kind") or "error")
+                        for r in rows if not r.get("ok")})
+        if kinds:
+            text += " (Fehler: %s)" % ", ".join(kinds)
+        parts.append(text)
+    return "; ".join(parts)
+
+
+def _log_summary(results, started):
+    """INFO bei lauter Erfolg, sonst WARNING — der Traceback steht schon bei
+    der jeweiligen Fehlerstelle."""
+    level = (logging.INFO if all(r.get("ok") for r in results)
+             else logging.WARNING)
+    log.log(level, "Versand: %s in %.1f s",
+            summarize_results(results), time.monotonic() - started)
+
+
 def perform_send(*, date_from, date_to, entries, name, categories,
                  category_breakdown, send_mail, mail, webhooks,
                  smtp_accounts=None, pdf_filename, settings,
@@ -115,6 +147,7 @@ def perform_send(*, date_from, date_to, entries, name, categories,
     ggf. übersteuerte Format-Wahl. `smtp_accounts` ist eine Liste fertiger
     SMTP-Record-Dicts.
     """
+    started = time.monotonic()
     results = []
     smtp_accounts = list(smtp_accounts or [])
 
@@ -251,6 +284,7 @@ def perform_send(*, date_from, date_to, entries, name, categories,
         results.append({"channel": "webhook",
                         "name": record.get("name", ""), **res})
 
+    _log_summary(results, started)
     return {"results": results}
 
 
