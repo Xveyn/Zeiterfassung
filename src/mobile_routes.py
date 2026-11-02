@@ -42,6 +42,8 @@ from src.api_routes import ApiRequest, ApiResponse, error_response
 from src.api_server import Surface
 from src.mobile_sync import SyncError, grant_window, window_cap
 from src.reservations import reservations_active
+from src.pwa_constants import PWA_ORIGIN as _PWA_ORIGIN
+from src.pwa_constants import PWA_URL as _PWA_URL
 from src.time_utils import utc_now_iso
 from src.version import version_label
 
@@ -52,9 +54,10 @@ if TYPE_CHECKING:
 
 _log = logging.getLogger(__name__)
 
-# Die gehostete PWA. Zieht das Repo um, müssen beide Konstanten (und die Doku) mit.
-PWA_ORIGIN = "https://xveyn.github.io"
-PWA_URL = "https://xveyn.github.io/Zeiterfassung/"
+# Die gehostete PWA: Werte in src/pwa_constants.py, hier unter den alten Namen
+# erhalten (das Dev-Skript und die Tests ueberschreiben sie auf diesem Modul).
+PWA_ORIGIN = _PWA_ORIGIN
+PWA_URL = _PWA_URL
 
 
 def _no_change() -> None:

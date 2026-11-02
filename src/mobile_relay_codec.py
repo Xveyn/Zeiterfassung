@@ -31,7 +31,7 @@ from dataclasses import dataclass
 from typing import Any, Final, NoReturn
 
 from src import mobile_pairing
-from src.mobile_routes import PWA_URL
+from src.pwa_constants import PWA_URL
 
 SUBPROTOCOL: Final[str] = "zeit.v1"
 MAX_FRAME: Final[int] = 1_048_576          # ganze Nachricht samt Typ-Byte
