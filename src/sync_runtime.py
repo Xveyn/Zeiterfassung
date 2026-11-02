@@ -47,6 +47,26 @@ def _parse_remote_or_quarantine(content_bytes, file_id, on_corrupt):
         return {"schema_version": 1, "entries": {}, "settings": {}, "conflicts": []}
 
 
+def _log_failure(what, error):
+    """Loggt das Scheitern eines Sync-/Reconcile-Flows (Xveyn#401).
+
+    Ein **erwarteter** Auth-Fall — Token widerrufen/abgelaufen
+    (`DriveAuthError`/`CalendarAuthError`) oder Schlüsselbund nicht erreichbar —
+    ist ein Zustand, kein Programmfehler: eine WARNING-Zeile genügt, die UI zeigt
+    dazu den Hinweis „Google-Verbindung erneuern". Der volle Traceback bei jedem
+    Start und Pull verdrängte über die Rotation die echten Fehler. Alles
+    andere behält den Traceback. Imports lazy (CI ohne Google-Libs)."""
+    from src.drive import DriveAuthError
+    from src.gcal import CalendarAuthError
+    from src.oauth_utils import is_keyring_unavailable
+    log = logging.getLogger(__name__)
+    if (isinstance(error, (DriveAuthError, CalendarAuthError))
+            or is_keyring_unavailable(error)):
+        log.warning("%s: %s", what, error)
+    else:
+        log.error("%s", what, exc_info=error)
+
+
 def _lock_ctx(lock):
     """Context-Manager-Shim für den optionalen Daten-Lock: `with _lock_ctx(l)`
     lockt, wenn ein Lock übergeben wurde, und ist sonst ein No-op (Tests,
@@ -130,7 +150,7 @@ def run_pull_in_background(storage, settings, conflicts_store, base, ui_callback
             ui_callback(ok=True, error=None, tb="")
         except Exception as e:
             tb = traceback.format_exc()
-            logging.getLogger(__name__).exception("Sync pull failed")
+            _log_failure("Sync pull failed", e)
             ui_callback(ok=False, error=e, tb=tb)
     finally:
         if sync_guard is not None:
@@ -222,7 +242,7 @@ def run_push_blocking(storage, settings, conflicts_store, base, timeout_seconds=
                 sync_history.mark_synced(base)
                 result["ok"] = True
             except Exception as e:
-                logging.getLogger(__name__).exception("Sync push failed: %s", e)
+                _log_failure("Sync push failed", e)
                 result["ok"] = False
                 result["error"] = str(e)
                 result["tb"] = traceback.format_exc()
@@ -317,7 +337,7 @@ def run_compaction_blocking(storage, settings, conflicts_store, base, timeout_se
                 sync_history.mark_synced(base)
                 result.update({"ok": True})
             except Exception as e:
-                logging.getLogger(__name__).exception("Kompaktierung fehlgeschlagen")
+                _log_failure("Kompaktierung fehlgeschlagen", e)
                 result.update({"ok": False, "error": str(e), "tb": traceback.format_exc()})
         finally:
             if sync_guard is not None:
@@ -363,7 +383,7 @@ def run_vacation_purge(settings, base, vacation_store, data_lock=None):
                               data_lock=data_lock)
         return {"ok": True, "error": "", "tb": ""}
     except Exception as e:
-        logging.getLogger(__name__).exception("Urlaubs-Aufräumen fehlgeschlagen")
+        _log_failure("Urlaubs-Aufräumen fehlgeschlagen", e)
         return {"ok": False, "error": str(e), "tb": traceback.format_exc()}
 
 
@@ -435,6 +455,6 @@ def run_calendar_reconcile(reservation_store, settings, base, storage,
                     "Urlaubs-Push fehlgeschlagen (nicht-fatal)")
         return {"ok": True, "error": "", "tb": "", "limit_warnings": limit_warnings}
     except Exception as e:
-        logging.getLogger(__name__).exception("Kalender-Reconcile fehlgeschlagen")
+        _log_failure("Kalender-Reconcile fehlgeschlagen", e)
         return {"ok": False, "error": f"{type(e).__name__}: {e}",
                 "tb": traceback.format_exc(), "limit_warnings": []}
