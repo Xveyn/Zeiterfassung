@@ -10,6 +10,10 @@ const T0 = Date.parse('2026-11-02T12:00:00Z');
 const DAY = 86_400_000;
 const IDLE = T0 + LIMITS.idleDays * DAY;
 
+// Erwarteter `ver` des ersten put zum Zeitpunkt `ms` (Uhr als Untergrenze, s. VER_EPOCH in box.js).
+const verAt = (ms) => Math.max(1, Math.floor((ms - Date.UTC(2026, 0, 1)) / 1000));
+const V0 = verAt(T0);
+
 const put = (...bytes) => new Uint8Array([FRAME.put, ...bytes]).buffer;
 
 function setup() {
@@ -66,10 +70,10 @@ const scenarios = {
     const phone = await connect('phone');
     await box.webSocketMessage(phone, put(7, 8, 9));
     const stored = await ctx.storage.get('req');
-    assert.equal(stored.ver, 1);
+    assert.equal(stored.ver, V0);
     assert.deepEqual([...stored.data], [7, 8, 9]);
-    assert.deepEqual(phone.sent, [encodeOk(1)]);
-    assert.deepEqual(desktop.sent, [encodeSlot(1, new Uint8Array([7, 8, 9]))]);
+    assert.deepEqual(phone.sent, [encodeOk(V0)]);
+    assert.deepEqual(desktop.sent, [encodeSlot(V0, new Uint8Array([7, 8, 9]))]);
   },
 
   async 'second put replaces: ver 2, storage holds only the newer payload'() {
@@ -78,29 +82,29 @@ const scenarios = {
     await box.webSocketMessage(phone, put(1));
     await box.webSocketMessage(phone, put(2, 2));
     const stored = await ctx.storage.get('req');
-    assert.equal(stored.ver, 2);
+    assert.equal(stored.ver, V0 + 1);
     assert.deepEqual([...stored.data], [2, 2]);
     assert.deepEqual(ctx.storage.keys().sort(), ['idle', 'req']);
-    assert.deepEqual(phone.sent.at(-1), encodeOk(2));
+    assert.deepEqual(phone.sent.at(-1), encodeOk(V0 + 1));
   },
 
   async 'put with no peer connected stores and acks; peer connecting later gets the slot'() {
     const { box, connect } = setup();
     const phone = await connect('phone');
     await box.webSocketMessage(phone, put(5));
-    assert.deepEqual(phone.sent, [encodeOk(1)]);
+    assert.deepEqual(phone.sent, [encodeOk(V0)]);
     const desktop = await connect('desktop');
-    assert.deepEqual(desktop.sent, [encodeSlot(1, new Uint8Array([5]))]);
+    assert.deepEqual(desktop.sent, [encodeSlot(V0, new Uint8Array([5]))]);
   },
 
   async 'connecting with have >= ver delivers nothing; have < ver delivers once'() {
     const { box, connect } = setup();
     const phone = await connect('phone');
     await box.webSocketMessage(phone, put(1));
-    await box.webSocketMessage(phone, put(2));                // ver 2
-    assert.deepEqual((await connect('desktop', 2)).sent, []);
-    assert.deepEqual((await connect('desktop', 3)).sent, []);
-    assert.deepEqual((await connect('desktop', 1)).sent, [encodeSlot(2, new Uint8Array([2]))]);
+    await box.webSocketMessage(phone, put(2));                // ver V0 + 1
+    assert.deepEqual((await connect('desktop', V0 + 1)).sent, []);
+    assert.deepEqual((await connect('desktop', V0 + 2)).sent, []);
+    assert.deepEqual((await connect('desktop', V0)).sent, [encodeSlot(V0 + 1, new Uint8Array([2]))]);
   },
 
   async 'desktop put writes res and goes to the phone, never to the desktop itself'() {
@@ -108,10 +112,10 @@ const scenarios = {
     const phone = await connect('phone');
     const desktop = await connect('desktop');
     await box.webSocketMessage(desktop, put(4, 4));
-    assert.equal((await ctx.storage.get('res')).ver, 1);
+    assert.equal((await ctx.storage.get('res')).ver, V0);
     assert.equal(await ctx.storage.get('req'), undefined);
-    assert.deepEqual(phone.sent, [encodeSlot(1, new Uint8Array([4, 4]))]);
-    assert.deepEqual(desktop.sent, [encodeOk(1)]);
+    assert.deepEqual(phone.sent, [encodeSlot(V0, new Uint8Array([4, 4]))]);
+    assert.deepEqual(desktop.sent, [encodeOk(V0)]);
   },
 
   async 'second connection of the same role closes the first with 1000 and keeps slots'() {
@@ -123,14 +127,14 @@ const scenarios = {
     assert.deepEqual(first.closed, [1000, 'replaced']);
     assert.equal(second.closed, null);
     assert.equal(desktop.closed, null);
-    assert.deepEqual(second.sent, [encodeSlot(1, new Uint8Array([3]))]);
-    assert.equal((await ctx.storage.get('res')).ver, 1);
+    assert.deepEqual(second.sent, [encodeSlot(V0, new Uint8Array([3]))]);
+    assert.equal((await ctx.storage.get('res')).ver, V0);
     // Die Plattform meldet das Schließen des ersetzten Sockets: harmlos.
     await box.webSocketClose(first, 1000, 'replaced', true);
     assert.equal(second.closed, null);
-    assert.equal((await ctx.storage.get('res')).ver, 1);
+    assert.equal((await ctx.storage.get('res')).ver, V0);
     await box.webSocketMessage(desktop, put(6));
-    assert.deepEqual(second.sent.at(-1), encodeSlot(2, new Uint8Array([6])));
+    assert.deepEqual(second.sent.at(-1), encodeSlot(V0 + 1, new Uint8Array([6])));
     assert.equal(first.sent.length, 1);
   },
 
@@ -203,7 +207,7 @@ const scenarios = {
     clock.now = IDLE - 1;
     await box.alarm();
     assert.equal(await ctx.storage.getAlarm(), IDLE);
-    assert.equal((await ctx.storage.get('req')).ver, 1);
+    assert.equal((await ctx.storage.get('req')).ver, V0);
     assert.equal(phone.closed, null);
     clock.now = IDLE;
     await box.alarm();
@@ -231,15 +235,39 @@ const scenarios = {
     assert.deepEqual(ctx.storage.keys(), []);
   },
 
-  async 'messages after a wipe on a still-open socket start again at ver 1'() {
-    const { box, ctx, connect, request } = setup();
+  async 'ver after an idle wipe or DELETE /v1/box is greater than any ver before it'() {
+    const { box, ctx, clock, connect, request } = setup();
+    const phone = await connect('phone');
+    for (let i = 0; i < 40; i += 1) await box.webSocketMessage(phone, put(i));
+    const before = (await ctx.storage.get('req')).ver;          // V0 + 39
+    assert.equal(before, V0 + 39);
+
+    clock.now = IDLE;                                           // Leerlauf: alles wird geräumt
+    await box.alarm();
+    assert.deepEqual(ctx.storage.keys(), []);
+    const afterIdle = await connect('phone');
+    const desktop = await connect('desktop', before);           // `have` aus der Zeit vor dem Aufräumen
+    await box.webSocketMessage(afterIdle, put(1));
+    const idleVer = (await ctx.storage.get('req')).ver;
+    assert.ok(idleVer > before);
+    assert.deepEqual(desktop.sent, [encodeSlot(idleVer, new Uint8Array([1]))]);
+    assert.deepEqual((await connect('desktop', before)).sent, [encodeSlot(idleVer, new Uint8Array([1]))]);
+
+    clock.now += 1000;
+    await request('DELETE', '/v1/box');
+    const afterDelete = await connect('phone');
+    await box.webSocketMessage(afterDelete, put(2));
+    assert.ok((await ctx.storage.get('req')).ver > idleVer);
+  },
+
+  async 'two puts within the same second get strictly increasing ver'() {
+    const { box, ctx, clock, connect } = setup();
     const phone = await connect('phone');
     await box.webSocketMessage(phone, put(1));
+    clock.now = T0 + 999;                                        // dieselbe Sekunde
     await box.webSocketMessage(phone, put(2));
-    await request('DELETE', '/v1/box');
-    const again = await connect('phone');
-    await box.webSocketMessage(again, put(3));
-    assert.equal((await ctx.storage.get('req')).ver, 1);
+    assert.equal((await ctx.storage.get('req')).ver, V0 + 1);
+    assert.deepEqual(phone.sent, [encodeOk(V0), encodeOk(V0 + 1)]);
   },
 };
 

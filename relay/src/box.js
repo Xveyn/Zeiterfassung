@@ -13,6 +13,13 @@ const PROTOCOL = 'zeit.v1';
 const SLOT = { phone: 'req', desktop: 'res' };
 const PEER = { phone: 'desktop', desktop: 'phone' };
 
+// Untergrenze für `ver`: Sekunden seit diesem Zeitpunkt. Das Aufräumen (Leerlauf, `DELETE /v1/box`) löscht
+// die Slots samt Zähler, das Objekt (sha256 des Geheimnisses) und das `have` der Clients bleiben aber.
+// Finge `ver` danach wieder bei 1 an, hielte ein Client mit `have = 40` jeden neuen Slot für bekannt und
+// der Abgleich stünde still. Mit der Uhr als Untergrenze bleibt `ver` monoton, ohne dass eine Zeile das
+// Aufräumen überlebt oder ein weiterer Schreibvorgang anfällt. Bis ca. 2094 unter 2^31 (Grenze von `have`).
+const VER_EPOCH = Date.UTC(2026, 0, 1);
+
 const json = (status, body) => Response.json(body, { status });
 
 /** Schließt einen Socket, ohne zu werfen: er kann schon zu sein (ersetzt, vom Gegenüber geschlossen). */
@@ -91,7 +98,8 @@ export class Box {
     if (!role) return;
     const { storage } = this.ctx;
     const key = SLOT[role];
-    const ver = ((await storage.get(key))?.ver ?? 0) + 1;
+    const floor = Math.max(1, Math.floor((this.now() - VER_EPOCH) / 1000));
+    const ver = Math.max(((await storage.get(key))?.ver ?? 0) + 1, floor);
     await storage.put(key, { ver, data });
     await this.#touch();
     sendQuietly(ws, encodeOk(ver));
