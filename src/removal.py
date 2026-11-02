@@ -40,7 +40,7 @@ log = logging.getLogger(__name__)
 CREDENTIAL_FILES: tuple[str, ...] = (
     "token.json", "instance-secret", "webhooks.json", "smtp.json",
     "credentials.json", "api-token", "mobile_devices.json", "mobile_keys.json",
-    "mobile_relay.json",
+    "mobile_relay.json", "mobile_box.json",
 )
 USER_DATA_FILES: tuple[str, ...] = (
     "zeiterfassung.json", "reservations.json", "vacations.json",
@@ -113,8 +113,9 @@ def _credential_paths(base_path: str) -> list[str]:
     # (`oauth_utils.write_token_json`) tragen dieselben Secrets.
     for name in CREDENTIAL_FILES:
         paths.extend(_glob(base_path, f"{glob.escape(name)}.corrupt-*"))
-    # mkstemp-Reste der Secret-Schreiber: `.<stem>-*.tmp` (token, webhooks,
-    # smtp, instance-secret) — im Datei-Fallback tragen sie Klartext.
+    # mkstemp-Reste der Secret-Schreiber (`secure_file`): `.<stem>-*.tmp` (token, webhooks,
+    # smtp, instance-secret, api-token, mobile_keys, mobile_relay, mobile_box) — sie können
+    # Secrets im Klartext tragen. Der Präfix des Schreibers muss dazu passen (Test in test_removal).
     for name in CREDENTIAL_FILES:
         stem = name.removesuffix(".json")
         paths.extend(_glob(base_path, f".{glob.escape(stem)}-*.tmp"))

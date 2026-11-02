@@ -19,6 +19,7 @@ import stat
 import pytest
 
 from src import api_auth, oauth_utils, secure_file, single_instance
+from src.mobile_box_store import MobileBoxStore
 from src.mobile_relay_store import MobileRelayStore
 from src.smtp_store import SmtpStore
 from src.webhook_store import WebhookStore
@@ -64,6 +65,12 @@ def _relay_secrets(directory):
     return path
 
 
+def _box_secrets(directory):
+    path = directory / "mobile_box.json"
+    MobileBoxStore(str(path)).open_pending("2026-11-02T10:00:00Z")
+    return path
+
+
 def _api_token(directory):
     api_auth.rotate_token(str(directory))
     return directory / api_auth.TOKEN_FILENAME
@@ -76,7 +83,7 @@ def _instance_secret(directory):
 
 
 WRITERS = {"bytes": _bytes, "json": _json, "token.json": _token_json, "webhooks": _webhooks,
-           "smtp": _smtp, "relay-secrets": _relay_secrets, "api-token": _api_token, "instance-secret": _instance_secret}
+           "smtp": _smtp, "relay-secrets": _relay_secrets, "box-secrets": _box_secrets, "api-token": _api_token, "instance-secret": _instance_secret}
 writers = pytest.mark.parametrize("write", WRITERS.values(), ids=WRITERS.keys())
 
 

@@ -81,10 +81,10 @@ def test_the_documented_dev_port_is_the_devserver_default():
 def test_the_documented_pages_address_is_the_one_in_mobile_routes():
     documented = _claim(r"Die Adresse `(https://[^`]+)` steht als `PWA_ORIGIN`/ ?`PWA_URL`",
                         "die Pages-Adresse").group(1)
-    source = _read("src/mobile_routes.py")
-    url = re.search(r'^PWA_URL = "([^"]+)"', source, re.M)
-    origin = re.search(r'^PWA_ORIGIN = "([^"]+)"', source, re.M)
-    assert url and origin, "Parser gescheitert: PWA_URL/PWA_ORIGIN in src/mobile_routes.py"
+    source = _read("src/pwa_constants.py")
+    url = re.search(r'^PWA_URL: str = "([^"]+)"', source, re.M)
+    origin = re.search(r'^PWA_ORIGIN: str = "([^"]+)"', source, re.M)
+    assert url and origin, "Parser gescheitert: PWA_URL/PWA_ORIGIN in src/pwa_constants.py"
     assert url.group(1) == documented, f"pwa/CLAUDE.md: {documented}, PWA_URL: {url.group(1)}"
     assert documented.startswith(origin.group(1) + "/"), (
         f"PWA_ORIGIN {origin.group(1)} passt nicht zur dokumentierten Adresse {documented}")

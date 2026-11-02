@@ -7,6 +7,7 @@ coverage.json
 zeiterfassung.json
 credentials.json
 token.json
+.token-*.tmp
 settings.json
 conflicts.json
 reservations.json*
@@ -27,8 +28,13 @@ mobile_devices.json
 mobile_devices.json.corrupt-*
 mobile_keys.json
 mobile_keys.json.corrupt-*
+.mobile_keys-*.tmp
 mobile_relay.json
 mobile_relay.json.corrupt-*
+.mobile_relay-*.tmp
+mobile_box.json
+mobile_box.json.corrupt-*
+.mobile_box-*.tmp
 .smtp-*.tmp
 logs/
 dist/

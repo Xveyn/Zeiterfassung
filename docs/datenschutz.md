@@ -5,7 +5,7 @@
 Dieses Dokument sagt, **wer was bekommt, wo es liegt, wie lange und wie es gelöscht wird**. Es ist die
 Quelle für Hinweistexte in der App. Die Zahlen darin prüft `tests/test_datenschutz_claims.py` gegen
 `relay/src/validate.js`. Jeder PR der Kette (#358) ergänzt seinen Teil; was noch nicht festliegt, steht als
-`Offen (PR n)`. Stand: PR 2 (Relay-Teil und Nachrichtenrahmen).
+`Offen (PR n)`. Stand: PR 3a (Relay-Teil, Nachrichtenrahmen und Desktop-Kern).
 
 ## 1. Was der Relay sieht, und was nicht
 
@@ -28,7 +28,7 @@ Namen und Einstellungen. Er ist Ende-zu-Ende verschlüsselt, der Relay hält kei
 keinen Klartext-Pfad für Inhalte (kein Vorschau-Feld, kein Debug-Dump).
 
 Dasselbe gilt für jeden, der das Geheimnis der Box kennt (wer den QR-Code sieht, der Betreiber des Relays):
-er sieht die Slots wie der Relay, also auch das Gerätetoken, aber nie den Inhalt. Offen (PR 5): was das für
+er sieht die Slots wie der Relay, also auch das Gerätetoken, aber nie den Inhalt. Offen (PR 3c, PR 5): was das für
 die Kopplung über das Internet heißt (Erweiterung des Vertrauens gegenüber dem LAN), steht dann hier.
 
 ## 2. Aufbewahrung und Löschung
@@ -37,7 +37,12 @@ die Kopplung über das Internet heißt (Erweiterung des Vertrauens gegenüber de
   keine Historie.
 - Aufbewahrung im Leerlauf: 90 Tage. Danach räumt sich die Box selbst auf (Alarm, `idleDays`).
 - `DELETE /v1/box` löscht sofort alles und schließt die Verbindungen.
-- Offen (PR 3): „Kopplung entfernen“, „Zeiterfassung entfernen“ und `--forget-secrets` räumen die Box mit ab.
+- Das Box-Geheimnis liegt am Desktop gerätelokal in `mobile_box.json`: gehärtet geschrieben (nur für den
+  Nutzer lesbar, unter Windows per ACL), **nicht** im Schlüsselbund und nicht per Drive-Sync. Der Desktop
+  kann eine Box mit `DELETE /v1/box` löschen (`box_relay.delete_box`, best effort: ist der Relay nicht
+  erreichbar, bleibt das Lösen gültig und die Box verfällt von selbst).
+- Offen (PR 3b): „Kopplung entfernen“, „Zeiterfassung entfernen“ und `--forget-secrets` räumen die Box mit ab.
+  Bis dahin ruft nichts in der App das Löschen auf; eine Box bleibt dann höchstens 90 Tage im Leerlauf.
 
 ## 3. Plattform-Logs
 
@@ -79,7 +84,14 @@ Offen (PR 5). Vorab, was der Relay festlegt: ein Slot je Richtung (Ersetzen stat
 
 ## 9. Schlüssel und Wiederherstellung
 
-Offen (PR 3).
+Der Relay hält keine Schlüssel, es gibt keine Wiederherstellung durch uns. Die Geräteschlüssel liegen am
+Desktop im Schlüsselbund (Datei als Fallback), das Box-Geheimnis in `mobile_box.json` (s. 2.). Wer das
+Box-Geheimnis kennt (sieht den QR-Code, Betreiber des Relays), kann den Slot des Gegenübers lesen (Gerätetoken im
+Klartext, den versiegelten Umschlag), Slots überschreiben, den Desktop von der Box verdrängen, unversiegelte
+Fehler fälschen und `DELETE /v1/box` auslösen. Er kann **nicht** Inhalte lesen oder synchronisieren: das braucht den
+Geräteschlüssel. Das ist ein Störer- und Metadatenrisiko, kein Inhaltsleck.
+Offen (PR 3b, PR 3c): Geht das Handy verloren, widerruft der Nutzer die Kopplung am Desktop; die Box wird dabei
+mit gelöscht (ab PR 3b) und der Dialog sagt es (PR 3c).
 
 ## 10. Push getrennt halten
 
