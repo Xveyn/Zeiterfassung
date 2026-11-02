@@ -109,7 +109,8 @@ Relay ersetzt den Slot der Absender-Rolle, zählt `ver` hoch, stellt dem Gegenü
   geloggt** (das Geheimnis steht im Header). „Kein Logging“ gilt für unseren Code; was die Plattform
   mitschreibt, steht in `docs/datenschutz.md`.
 - **Konstante ändern heißt PWA/Desktop mitziehen:** `zeit.v1`, die Typ-Bytes, die Byte-Reihenfolge von `ver`,
-  `maxFrame`, `putsPerMinute`, `ping`/`pong` und die Schließ-Codes (s. „Für die Clients“) stehen auf beiden Seiten (Desktop `relay_link.py` und PWA `RelayTransport`, spätere PRs).
+  `maxFrame`, `putsPerMinute`, `ping`/`pong` und die Schließ-Codes (s. „Für die Clients“) stehen auch in den Codecs der Clients (`src/mobile_relay_codec.py`, `pwa/relay-frame.js`) und in der Fixture
+  `pwa/test/fixtures/relay-frames.json`.
 
 ### Für die Clients
 
@@ -125,10 +126,23 @@ Schließ-Codes der Box (`box.js`) und was der Client darauf tun muss:
 | 1011 | (leer) | Fehler am Socket (`webSocketError`); mit Backoff neu verbinden |
 
 - **`have` ist der `ver` des zuletzt empfangenen `slot`** des Gegenübers, **nicht** der `ver` aus einem `ok`:
-  die beiden Slots zählen unabhängig.
+  die beiden Slots zählen unabhängig. **Beide Seiten speichern `have` dauerhaft** (Handy in der Meta, Desktop in
+  einer gerätelokalen Ablage); sonst stellt die Box nach jedem Neustart den letzten Slot erneut zu.
+- **Antwort gehört zur Anfrage nur über `n`:** die Antwort-Nutzlast `{v, status, seq, n, body}` gibt die Nonce
+  des Anfrage-Umschlags als `n` zurück, in jeder Antwort, auch in unversiegelten Fehlern. Das Handy prüft
+  `isCurrentResponse(frame, pendingN)` (`frame.n === pendingN`), nicht `seq` (Kopplung und erster Abgleich tragen
+  beide `seq` 1); eine Antwort mit `n: null` ist nie aktuell.
+- **Der Desktop beantwortet nur `seq > last_seq`** (`should_answer`), mit dem **gespeicherten**
+  `record["last_seq"]` des Geräts, nie einem Zähler im Speicher: sonst beantwortete er nach einem Neustart ein
+  erneut zugestelltes, schon angewendetes `req` mit `409 replay` und überschriebe das gute `res`.
+- **Zu große Antwort:** passt die versiegelte Antwort nicht in `maxFrame − 1`, sendet der Desktop
+  `413 response_too_large` (`encode_too_large_response`).
 - Rahmen-Typen vom Relay, die der Client nicht kennt, **muss** er übergehen — so kann später z. B. ein
   `0x04 peer` (Anwesenheit) dazukommen, ohne alte Clients zu brechen.
 - PR 4 (Aufteilung großer Nachrichten) muss seinen Takt **unter** `putsPerMinute` (60/min) halten.
+- **Gegenstücke der Rahmen:** `pwa/relay-frame.js` und `src/mobile_relay_codec.py` kodieren und dekodieren sie, die
+  Fixture `pwa/test/fixtures/relay-frames.json` hält beide zusammen; `relay/test/frames-contract.test.js` prüft den
+  Relay gegen dieselbe Fixture. Konstante ändern heißt beide Codecs und die Fixture mitziehen.
 
 - Ablauf-Test: `node scripts/box-smoke.mjs [baseUrl]` gegen `npx wrangler dev --var BOX_JURISDICTION:none` prüft Zustellung, Wiederaufnahme
   mit `have`, falsches Subprotocol, `maxFrame + 1` und `DELETE`. Ein vom Server ausgelöstes Schließen

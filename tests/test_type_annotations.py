@@ -78,6 +78,7 @@ ANNOTATED_MODULES = [
     "src/mobile_settings.py",
     "src/mobile_sync.py",
     "src/mobile_crypto.py",
+    "src/mobile_relay_codec.py",
     "src/mobile_keys.py",
     "src/mobile_pairing.py",
     "src/mobile_store.py",

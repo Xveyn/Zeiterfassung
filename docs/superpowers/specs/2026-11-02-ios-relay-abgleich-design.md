@@ -6,7 +6,8 @@ Stand: 2026-11-02 · Entwurf, nach Code-Prüfung überarbeitet · Issue #358 · 
 
 Die Handy-PWA gleicht auch dann mit dem Desktop ab, wenn sie keine `http://<LAN-IP>`-Verbindung
 aufbauen darf (iOS/Safari: Mixed Content; Firefox ebenso). Der Weg läuft über den bestehenden Cloudflare
-Worker (`relay/`), **Ende-zu-Ende verschlüsselt**; der Relay sieht nur Chiffretext. Das LAN-Verfahren
+Worker (`relay/`), **Ende-zu-Ende verschlüsselt**; der Relay sieht Pfad, Statuscode, `seq`, `n`, Nonce,
+Feldnamen, Größe, Zeitpunkte, IP, und das Gerätetoken im Klartext; nie den Inhalt. Das LAN-Verfahren
 bleibt für Android/Chrome unverändert. Für iOS ist der Relay-Weg Pflicht, sonst optional.
 
 Nicht Ziel: der Relay versteht, merged oder speichert Zeiteinträge im Klartext; ein Konto-System;
@@ -26,11 +27,19 @@ alles mit `dirty_version > synced_version` geht in jede Anfrage, bestätigt wird
 Antwort (`store.applyResponse`); `perform_sync` ist idempotent, die Antwort ein Fenster, kein Delta.
 Daraus folgen vier Regeln für den Tunnel:
 
+**Beide Seiten speichern `have` dauerhaft** (Handy in der Meta, Desktop in einer gerätelokalen Ablage), also den
+`ver` des zuletzt empfangenen `slot`. Ohne das stellt die Box nach jedem Neustart den letzten Slot erneut zu; mit
+ihm sind die Regeln 2 und 3 nur noch Gürtel und Hosenträger für den Fall, dass `have` verloren geht.
+
 1. **Veraltetes `res` nie an `openEnvelope`.** Die Antwort-AAD enthält die `seq` der Anfrage; ein spätes `res`
-   zu seq N nach dem Senden von N+1 ließe `open` mit `needsRepair` scheitern („neu koppeln“). Der Transport
-   vergleicht die Klartext-`seq` des `res` mit der offenen Anfrage und verwirft Abweichendes.
+   zu einer älteren Anfrage ließe `open` mit `needsRepair` scheitern („neu koppeln“). Der Transport vergleicht
+   das Klartext-Feld `n` des `res` (die vom Desktop zurückgegebene Nonce) mit der Nonce der offenen Anfrage und
+   verwirft Abweichendes (`isCurrentResponse`). Nicht `seq`: Kopplung und erster Abgleich tragen beide `seq` 1.
 2. **Der Desktop überspringt ein `req` mit `seq <= last_seq` ohne zu antworten**, sonst überschreibt ein
-   unverschlüsseltes `409 replay` das gute `res`.
+   unverschlüsseltes `409 replay` das gute `res`. `last_seq` ist dabei das **gespeicherte** `record["last_seq"]`
+   des Gerätedatensatzes (nach jedem entschlüsselten Paket geschrieben), nie ein Zähler im Speicher: nach
+   Absturz und Neustart beantwortete der Desktop ein erneut zugestelltes, schon angewendetes `req` sonst mit
+   `409 replay` und überschriebe das gute `res`.
 3. **Pairing ist nicht wiederholbar** (`try_open` verbraucht den Code vor der Zustellung). Der Desktop-Adapter
    hält die versiegelte Pair-Antwort vor und liefert sie bei identischem `req` erneut aus.
 4. **Token, Methode und Pfad reisen neben dem Umschlag** (`{path, token, envelope}`; Token steht nur im
@@ -55,7 +64,14 @@ Daraus folgen vier Regeln für den Tunnel:
    DO. Schreiben (`put`) und Zustellung laufen als WebSocket-Nachrichten (Eingang 1/20 Anfrage, Ausgang frei).
    Heartbeat über `setWebSocketAutoResponse`.
 3. **Ereignisgetrieben**: Last entsteht nur, wenn jemand abgleicht.
-4. **Opake Bytes**, binär gerahmt; Gzip vor dem Verschlüsseln (Client), damit ein Monat weit unter 1 MiB bleibt.
+4. **Opake Bytes**, binär gerahmt; ein **Größenwächter** statt Kompression: Kodieren wirft `FrameTooLarge`
+   (`RelayFrameError('too_large')` in der PWA), wenn die Nutzlast `MAX_PAYLOAD` (1 048 575 Bytes) überschreitet.
+   Grund: eine Anfrage trägt höchstens `MAX_DAYS_PER_REQUEST = 400` Tage, **typisch** rund 100 KB gegen 1 MiB.
+   Das ist nicht die Obergrenze: im Extremfall (400 gesendete Tage × 50 Slots, die gesendeten Tage zählen nicht
+   ins 768-KiB-Budget des Fensters, `pwa/CLAUDE.md` „Datenmenge“) kommt eine **Antwort** auf rund 5,4 MB. Passt
+   die versiegelte Antwort nicht in `MAX_PAYLOAD`, schickt der Desktop stattdessen den Ersatzrahmen
+   `encode_too_large_response(seq, n)`: `413` mit `{"error": {"code": "response_too_large", "message": …}}`
+   (deutscher Hinweis, passt immer). Gzip nur, wenn eine Messung es verlangt.
 
 Größenordnung (Schätzung): ~20 Anfragen je aktivem Nutzer und Tag tragen mehrere Tausend Nutzer; wird es knapp,
 ist der Paid-Plan die Antwort, nicht ein anderes Design.
@@ -113,10 +129,26 @@ Selbstreinigung: Alarm alle `idleDays`, höchstens einmal am Tag neu gesetzt.
 
 ## Sicherheit
 
-- Der Relay sieht Größe, Zeitpunkte und das Gerätetoken, nie Inhalt oder Schlüssel. AAD, `seq`-Replay-Schutz und
-  Token-Rotation des Desktops gelten unverändert.
-- Das Geheimnis steht im QR-Code; wer ihn sieht, kann Slots überschreiben (nicht lesen). Das ist ein Störer-,
-  kein Datenleck-Risiko, und der Code läuft ohnehin ab. Härtung durch Austausch nach dem Koppeln: spätere Option.
+- Der Relay sieht Pfad, Statuscode, `seq`, `n`, Nonce, Feldnamen, Größe, Zeitpunkte, IP, und das Gerätetoken im
+  Klartext; nie den Inhalt, nie einen Schlüssel. AAD, `seq`-Replay-Schutz und Token-Rotation des Desktops gelten
+  unverändert.
+- **Wer das Geheimnis der Box kennt** (wer den QR-Code sieht, der Betreiber des Relays), kann sich als jede der
+  beiden Rollen verbinden und damit:
+  - den Slot des Gegenübers **empfangen**: das Gerätetoken im Klartext und den versiegelten Umschlag, nicht dessen
+    Inhalt;
+  - Slots überschreiben;
+  - den echten Desktop verdrängen (Schließen mit `1000 replaced`, auf das Clients **nicht** automatisch neu
+    verbinden): der Abgleich steht, bis jemand von Hand neu verbindet;
+  - unversiegelte Fehlerantworten fälschen. Mit der `n`-Regel muss er dafür zuerst das offene `req` lesen — was
+    er kann;
+  - `DELETE /v1/box` auslösen.
+  Ein Leck des Inhalts entsteht nicht: `c` ist Ende-zu-Ende verschlüsselt. Es ist ein Störer- und
+  Metadatenrisiko.
+- **Das Ablaufen des Kopplungscodes (5 Minuten) begrenzt das Geheimnis der Box nicht**; es gilt, bis die Box
+  gelöscht oder (spätere Härtung) nach dem Koppeln ausgetauscht wird.
+- **Ein fotografierter QR-Code erlaubt das Koppeln von überall im Internet**, solange der Code gilt; der LAN-QR
+  verlangte Zugang zum LAN. Das ist eine Erweiterung des Vertrauens gegenüber dem LAN und gehört in den
+  Koppel-Dialog (PR 3) sowie in `known-limitations.md` und `docs/datenschutz.md` (PR 5).
 - Kein Logging des Geheimnisses (auch nicht im Subprotocol/URL), kein Push-Bezug.
 
 ## Datenschutz
@@ -127,9 +159,9 @@ wie lange, wie wird es gelöscht. Die Datei ist die Quelle für Hinweistexte in 
 nicht auseinanderlaufen (Muster `tests/test_claude_md_claims.py`: Zahlen wie 90 Tage und 1 MiB werden gegen den
 Code geprüft). Zu beachten ist grundsätzlich:
 
-1. **Was der Relay sieht — und was nicht.** Chiffretext (≤ 1 MiB je Slot), Zeitpunkte, Größen, das
-   Gerätetoken im Rahmen, die IP-Adresse der Verbindung (Rate-Limit, Cloudflare-Plattform). Nie Einträge, Kategorien,
-   Namen. Arbeitszeiten sind Beschäftigtendaten; Ende-zu-Ende ist die Hauptmaßnahme, und genau deshalb darf kein
+1. **Was der Relay sieht — und was nicht.** Pfad, Statuscode, `seq`, `n`, Nonce, Feldnamen, Größe (≤ 1 MiB je
+   Slot), Zeitpunkte, IP (Rate-Limit, Cloudflare-Plattform), und das Gerätetoken im Klartext; nie den Inhalt
+   (Einträge, Kategorien, Namen). Arbeitszeiten sind Beschäftigtendaten; Ende-zu-Ende ist die Hauptmaßnahme, und genau deshalb darf kein
    Klartext-Pfad entstehen (kein „Vorschau“-Feld, kein Debug-Dump).
 2. **Aufbewahrung und Löschung.** Slots liegen höchstens bis zum Ersetzen, längstens `idleDays` (90) ohne
    Aktivität; `DELETE /v1/box` und „Kopplung entfernen“ löschen sofort; „Zeiterfassung entfernen“ (`removal.py`)
@@ -155,7 +187,7 @@ Code geprüft). Zu beachten ist grundsätzlich:
 7. **Freiwilligkeit und Transparenz.** Opt-in je Gerät, klare Sprache vor dem Einschalten (was geht über wen, was
    nicht), Ausschalten und Löschen jederzeit; auf iOS ist der Relay Pflicht für die Handy-Erfassung, das muss dort
    ehrlich so stehen („ohne Relay kein Abgleich“), nicht als Wahl getarnt.
-8. **Datensparsamkeit.** Nur ein Slot je Richtung (Ersetzen statt Historie), Gzip, kein zusätzliches Konto, keine
+8. **Datensparsamkeit.** Nur ein Slot je Richtung (Ersetzen statt Historie), kein zusätzliches Konto, keine
    Geräte-ID im Klartext außer dem Gerätetoken im Rahmen. Das Gerätetoken ist ein Auth-Mittel, kein Identifikator
    des Menschen — aber der Relay kann Verbindungen über Zeit verknüpfen; das ist als Metadatenrisiko zu benennen.
 9. **Schlüssel und Wiederherstellung.** Geht das Handy verloren, wird die Kopplung am Desktop widerrufen (Token
@@ -164,13 +196,51 @@ Code geprüft). Zu beachten ist grundsätzlich:
 10. **Push getrennt halten.** `Device` (Push) und `Box` (Abgleich) bleiben getrennte Objekte mit getrennten
     Geheimnissen; wer beides nutzt, gibt dem Relay zwei unverknüpfte Handles, nicht eins.
 
+## Vertrag der Nutzlast (PR 2)
+
+- **Anfrage:** `{"v":1,"path":"/v1/pair"|"/v1/sync","token":<String|null>,"envelope":{…}}`. Im Relay-Weg gibt es
+  nur `/v1/pair` und `/v1/sync`, kein `/v1/ping`.
+- **Antwort:** `{"v":1,"status":<100–599>,"seq":<Ganzzahl|null>,"n":<String|null>,"body":{…}}` (Reihenfolge
+  v, status, seq, n, body). `seq` ist das `seq` des Anfrage-Umschlags, zurückgespiegelt, `null`, wenn die Anfrage
+  kein gültiges `seq` trug; es ist nur noch Auskunft. `n` ist die Nonce des Anfrage-Umschlags (12 Byte, Base64url,
+  genau 16 Zeichen `^[A-Za-z0-9_-]{16}$`), vom Desktop in **jeder** Antwort zurückgegeben, auch in unversiegelten
+  Fehlern (401/409/400/413 …), sobald sich der Anfrage-Rahmen dekodieren ließ; `null` nur, wenn der Umschlag keine
+  gültige Nonce trug (`envelope_nonce`/`envelopeNonce`, `RelayRequest.n`).
+- **Link:** `https://xveyn.github.io/Zeiterfassung/#relay=<43 Zeichen Geheimnis>:<28 Zeichen Code>`.
+- **Regel 1** `isCurrentResponse(frame, pendingN)`: genau dann, wenn `pendingN` eine gültige Nonce ist und
+  `frame.n === pendingN`. `pendingN` ist das `n` aus dem Umschlag der offenen Anfrage, nie `null`. Es gibt
+  **keine** Ausnahme mehr für Fehler ohne `seq`: eine Antwort mit `n: null` ist nie aktuell (sonst ließe sich
+  ein unversiegeltes `401 token_revoked` unterschieben).
+- **Regel 2** `should_answer(seq, last_seq)` (Desktop): beantwortet wird nur, was neuer ist als das zuletzt
+  Beantwortete; `last_seq` ist das gespeicherte `record["last_seq"]` (s. Leitidee).
+- **Zu große Antwort:** `encode_response` wirft `FrameTooLarge`; der Desktop schickt dann
+  `encode_too_large_response(seq, n)` (`413 response_too_large`, s. Budget Punkt 4).
+- **Byte-genaue Vektoren:** Fixture-Zeilen mit `"canonical": true` sind genau das, was unsere Kodierer
+  ausgeben (kompakte Trenner, feste Schlüsselreihenfolge, `ensure_ascii=False`, UTF-8); JS prüft
+  `encodeRequest`, Python `encode_response` byte-genau dagegen.
+- Größe: siehe Budget Punkt 4 (Größenwächter).
+
+### Hinweise für PR 3 und PR 4
+
+- **PR 3:** `PWA_URL` in eine kleine Konstantenmodul-Datei verschieben, damit `mobile_relay_codec` nicht die ganze
+  Routenebene importiert.
+- **PR 4:** `response_too_large` (Desktop) und `RelayFrameError('too_large')` (Handy, Anfrage zu groß) auf
+  `SyncError`s mit Hinweis abbilden (`KINDS`/`messages.js`, `pwa/test/fixtures/errors.json`) — nicht in PR 2.
+- **PR 4:** jedes nicht dekodierbare oder fremde `res` (kaputtes JSON, falsches `n`, `isEnvelope` scheitert) wird
+  übergangen und geloggt, nie ein fataler `SyncError`.
+- **PR 4:** `SyncClient.ping()` und die Uhrzeit-Prüfung im Reiter „Verbindung“ haben keine Relay-Route:
+  `server_time` aus der Sync-Antwort ableiten oder die Prüfung ausblenden.
+- **PR 4:** `pair()` verlangt `isLanAddress(host)`; die Kopplung über den Relay braucht einen eigenen Einstieg
+  ohne Host und Port.
+
 ## Tests
 
 - Relay: `node --test` mit In-Memory-Speicher und gefälschten WebSockets (`getWebSockets`/`acceptWebSocket`) —
   Slot-Semantik, Zustellung, Wiederaufnahme mit `have`, Größen, Auth, Alarm höchstens einmal am Tag, „kein Logging“.
   Hibernation und Quoten nur **gemessen** (`wrangler dev` für den Ablauf, deployter Relay für Zahlen), wie das
   `## Gemessen` in `relay/CLAUDE.md`.
-- Protokoll: bestehende Vektoren bleiben; der Rahmen `{path, token, envelope}` bekommt Fixtures für beide Seiten.
+- Protokoll: bestehende Vektoren bleiben; der Rahmen `{path, token, envelope}` hat Fixtures für beide Seiten
+  (`pwa/test/fixtures/relay-frames.json`, auch vom Relay-Test geprüft).
 - Desktop: `relay_link` Tk-frei mit gefälschter WebSocket; `tests/test_mobile_contract.py` um den Relay-Weg ergänzen.
 - Echtgerät: iPhone über Pre-Release (Abgleich, Desktop offline, App-Neustart, Push); macOS bleibt nicht Pflicht.
 
@@ -188,8 +258,9 @@ Code geprüft). Zu beachten ist grundsätzlich:
 
 1. **Relay: `Box`-DO**, WebSocket-Route, EU-Jurisdiktion, `observability` aus, Tests, Messung, Skelett
    `docs/datenschutz.md` (Plan: `docs/superpowers/plans/2026-11-02-relay-box.md`).
-2. Protokoll: Rahmen `{path, token, envelope}`, Gzip, Fixtures (Python + JS).
-3. Desktop: `relay_link`, Kopplung über Relay, Einstellungen (minimal), WebSocket-Abhängigkeit.
+2. Protokoll und Vertrag — **umgesetzt in diesem Branch**: `src/mobile_relay_codec.py`, `pwa/relay-frame.js` und die
+   Fixture `pwa/test/fixtures/relay-frames.json` (Python + JS, Rahmen `{path, token, envelope}`, Größenwächter statt Gzip).
+3. Desktop: Netzwerk-Modul `relay_link.py`, Kopplung über Relay, Einstellungen (minimal), WebSocket-Abhängigkeit.
 4. PWA: `RelayTransport`, iOS-Hinweise, Fehlermeldung, einstellbares Timeout.
 5. Doku (`known-limitations.md`, READMEs, CHANGELOG), Pre-Release-Test auf dem iPhone, `Closes #358`.
 

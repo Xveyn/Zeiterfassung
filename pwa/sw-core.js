@@ -41,6 +41,7 @@ export const PRECACHE = [
   './categories.js',
   './defaults.js',
   './pairing.js',
+  './relay-frame.js',
   './crypto.js',
   './store.js',
   './db.js',

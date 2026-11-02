@@ -5,19 +5,31 @@
 Dieses Dokument sagt, **wer was bekommt, wo es liegt, wie lange und wie es gelöscht wird**. Es ist die
 Quelle für Hinweistexte in der App. Die Zahlen darin prüft `tests/test_datenschutz_claims.py` gegen
 `relay/src/validate.js`. Jeder PR der Kette (#358) ergänzt seinen Teil; was noch nicht festliegt, steht als
-`Offen (PR n)`. Stand: PR 1 (der Relay-Teil, die Box).
+`Offen (PR n)`. Stand: PR 2 (Relay-Teil und Nachrichtenrahmen).
 
 ## 1. Was der Relay sieht, und was nicht
 
-Der Relay sieht:
+Der Relay sieht: Pfad, Statuscode, `seq`, `n`, Nonce, Feldnamen, Größe, Zeitpunkte, IP, und das
+Gerätetoken im Klartext; nie den Inhalt. Im Einzelnen:
 
-- verschlüsselte Daten (Chiffretext). Größe je Nachricht: höchstens 1 MiB (1048576 Bytes),
-- Zeitpunkte der Nachrichten und deren Größen,
-- das Gerätetoken im Nachrichtenrahmen (Offen, PR 3: der Rahmeninhalt kommt mit Desktop und PWA),
+- die Rahmen-Metadaten der Nutzlast im Klartext: den Pfad (Kopplung oder Abgleich), den Statuscode der
+  Antwort, den Zähler `seq`, das Feld `n` der Antwort (die zurückgegebene Nonce der Anfrage), die Nonce
+  und die Feldnamen des Umschlags,
+- das Gerätetoken im Klartext der Nutzlast, neben dem Umschlag. Der Relay kann damit nichts entschlüsseln.
+  Erneuert wird es nur nach einem **erfolgreichen** Abgleich; bis dahin, und danach bis die nächste Anfrage
+  den Slot ersetzt, liegt es im Slot `req` (längstens bis zur Selbstreinigung nach 90 Tagen Leerlauf). Im LAN
+  ist dasselbe Token zugleich gültiger Bearer für `GET /v1/ping` (Protokoll, Uhrzeit des Desktops,
+  Standardfenster, und damit, ob die Kopplung noch gilt),
+- Zeitpunkte der Nachrichten und deren Größen. Größe je Nachricht: höchstens 1 MiB (1048576 Bytes),
 - die IP-Adresse der Verbindung (Rate-Limit und Cloudflare-Plattform).
 
-Der Relay sieht **nie** Einträge, Kategorien oder Namen: die Nutzbytes sind Ende-zu-Ende verschlüsselt, der
-Relay hält keinen Schlüssel. Es gibt bewusst keinen Klartext-Pfad (kein Vorschau-Feld, kein Debug-Dump).
+Der Relay sieht **nie** den Inhalt: Der Chiffretext `c` des Umschlags verbirgt alle Einträge, Kategorien,
+Namen und Einstellungen. Er ist Ende-zu-Ende verschlüsselt, der Relay hält keinen Schlüssel. Es gibt bewusst
+keinen Klartext-Pfad für Inhalte (kein Vorschau-Feld, kein Debug-Dump).
+
+Dasselbe gilt für jeden, der das Geheimnis der Box kennt (wer den QR-Code sieht, der Betreiber des Relays):
+er sieht die Slots wie der Relay, also auch das Gerätetoken, aber nie den Inhalt. Offen (PR 5): was das für
+die Kopplung über das Internet heißt (Erweiterung des Vertrauens gegenüber dem LAN), steht dann hier.
 
 ## 2. Aufbewahrung und Löschung
 
