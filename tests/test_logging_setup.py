@@ -6,7 +6,9 @@ from logging.handlers import RotatingFileHandler
 
 import pytest
 
-from src.logging_setup import setup_logging, get_log_path, LOG_SUBDIR, LOGFILE_NAME
+from src.logging_setup import (
+    setup_logging, get_log_path, LOG_SUBDIR, LOGFILE_NAME, QUIET_LOGGERS,
+)
 
 
 @pytest.fixture
@@ -15,6 +17,7 @@ def isolated_logging():
     root = logging.getLogger()
     saved_handlers = root.handlers[:]
     saved_level = root.level
+    saved_quiet = {n: logging.getLogger(n).level for n in QUIET_LOGGERS}
     saved_excepthook = sys.excepthook
     saved_tk_hook = tk.Tk.report_callback_exception
     yield
@@ -24,6 +27,8 @@ def isolated_logging():
             handler.close()
     root.handlers = saved_handlers
     root.setLevel(saved_level)
+    for name, level in saved_quiet.items():
+        logging.getLogger(name).setLevel(level)
     sys.excepthook = saved_excepthook
     tk.Tk.report_callback_exception = saved_tk_hook
 
@@ -113,3 +118,23 @@ def test_log_level_env_invalid_falls_back_to_default(
     monkeypatch.setenv("ZEITERFASSUNG_LOG_LEVEL", value)
     setup_logging(str(tmp_path), console=False)
     assert logging.getLogger().level == logging.INFO
+
+
+def test_noisy_third_party_loggers_are_quieted(tmp_path, isolated_logging):
+    setup_logging(str(tmp_path), console=False)
+    for name, level in QUIET_LOGGERS.items():
+        assert logging.getLogger(name).level == level
+
+
+def test_noisy_loggers_stay_loud_under_debug(tmp_path, isolated_logging, monkeypatch):
+    for name in QUIET_LOGGERS:
+        logging.getLogger(name).setLevel(logging.NOTSET)
+    monkeypatch.setenv("ZEITERFASSUNG_LOG_LEVEL", "DEBUG")
+    setup_logging(str(tmp_path), console=False)
+    for name in QUIET_LOGGERS:
+        assert logging.getLogger(name).level == logging.NOTSET
+
+
+def test_googleapiclient_http_is_not_quieted():
+    # Die 403-Warnungen dort sind das Signal für einen fehlenden Scope (#45).
+    assert "googleapiclient.http" not in QUIET_LOGGERS

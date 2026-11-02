@@ -167,7 +167,7 @@ def fetch_user_email(token_path="token.json", sync_enabled=False, gcal_enabled=F
             import json as _json
             with open(token_path, "r", encoding="utf-8") as f:
                 _td = _json.load(f)
-            log.info("fetch_user_email: granted scopes = %r", _td.get("scopes"))
+            log.debug("fetch_user_email: granted scopes = %r", _td.get("scopes"))
         except Exception:
             # N13: reine Diagnose — Fehler darf den Flow nicht kippen, aber auch
             # nicht spurlos verschwinden.
@@ -195,7 +195,7 @@ def fetch_user_email(token_path="token.json", sync_enabled=False, gcal_enabled=F
             "https://oauth2.googleapis.com/tokeninfo", data=body, method="POST")
         with urllib.request.urlopen(req, timeout=10) as resp:
             data = json.load(resp)
-        log.info("fetch_user_email: tokeninfo response keys = %r", list(data.keys()))
+        log.debug("fetch_user_email: tokeninfo response keys = %r", list(data.keys()))
         return (data.get("email") or "")
     except Exception:
         log.exception("fetch_user_email: tokeninfo lookup failed")
