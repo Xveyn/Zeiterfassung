@@ -21,6 +21,17 @@ BACKUP_COUNT = 3
 DEFAULT_LEVEL = logging.INFO
 LEVEL_ENV = "ZEITERFASSUNG_LOG_LEVEL"
 
+# Fremd-Logger, die das Logfile ohne Erkenntnis fluten (Xveyn#401): der
+# discovery_cache meldet bei jedem `build()` „file_cache is only supported
+# with oauth2client<4.0.0" (1800 Zeilen in rund 500 Starts), und der OAuth-Flow
+# schreibt die komplette Autorisierungs-URL auf INFO. Unter DEBUG bleibt alles
+# sichtbar. `googleapiclient.http` ist bewusst NICHT hier: seine 403-Warnungen
+# sind das Signal für einen fehlenden Scope (#45).
+QUIET_LOGGERS = {
+    "googleapiclient.discovery_cache": logging.ERROR,
+    "google_auth_oauthlib.flow": logging.WARNING,
+}
+
 
 def _resolve_level() -> int:
     """Log-Level: `ZEITERFASSUNG_LOG_LEVEL` (z.B. `DEBUG`) überschreibt den
@@ -62,6 +73,9 @@ def setup_logging(base_path: str, console: bool | None = None) -> str:
 
     root = logging.getLogger()
     root.setLevel(_resolve_level())
+    if root.level > logging.DEBUG:
+        for name, level in QUIET_LOGGERS.items():
+            logging.getLogger(name).setLevel(level)
     if not any(isinstance(h, RotatingFileHandler) for h in root.handlers):
         handler = RotatingFileHandler(
             log_path,
