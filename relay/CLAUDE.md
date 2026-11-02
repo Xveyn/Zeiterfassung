@@ -181,3 +181,11 @@ Worst Case aus 200 Erinnerungen zu je 1024 Zeichen (erste nach 60 s, weitere im 
 
 Gemessen mit einer lokalen Testseite gegen den deployten Relay, nicht mit dem Ablauf der PWA: Blob
 und Zeitplan waren Platzhalter. Ändern sich Blobgröße, Anzahl oder Sendeweg, neu messen.
+
+Am 2026-11-02 gegen den deployten Relay (Node-Client, `wss://`, 25 min untätig, je eine Box-Verbindung):
+
+- **Heartbeat:** Text `ping` wird immer mit `pong` beantwortet (49/49 bei 30 s, 24/24 bei 60 s, 12/12 bei 120 s).
+- **Leerlauf:** Verbindungen **ohne** Heartbeat blieben die 25 min offen; die Plattform schließt eine ruhende Box-WebSocket nicht von sich aus. Ein Lauf verlor die 60-s-Verbindung nach 1417 s mit 1006 (Verbindungsabbruch, nicht vom Relay) — Clients müssen jederzeit wiederverbinden (mit `have`). Ein Heartbeat von 60–120 s ist für Mobilnetze und NAT sinnvoll, der Relay braucht ihn nicht.
+- **Serverseitiges Schließen** (`DELETE /v1/box`) erreicht den Client erst nach rund 10 s (auch deployt).
+- **Smoke-Test** (`scripts/box-smoke.mjs`, deployt): alle Prüfungen bestanden, 1-MiB-Nachricht, EU-Jurisdiktion ohne Fehler.
+- **Nicht gemessen** (Dashboard nötig): CPU-Zeit je Nachricht (Grenze 10 ms), Dauer im Leerlauf, ob Heartbeats und DO-Anfragen gegen die 100 000 Anfragen/Tag zählen.

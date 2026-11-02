@@ -177,8 +177,7 @@ Code geprüft). Zu beachten ist grundsätzlich:
 ## Offene Punkte
 
 1. Zählen DO-Anfragen gegen die 100 000 Workers-Anfragen/Tag? Doku sagt es nicht; im Zweifel doppelt rechnen.
-2. Zählen Auto-Response-Heartbeats gegen das 20:1-Kontingent, und welches Intervall hält iOS-Safari/NAT-Router
-   offen? Messen.
+2. ~~Heartbeat-Intervall~~ **Gemessen (2026-11-02):** `ping`→`pong` funktioniert, auch ohne Heartbeat blieben Verbindungen 25 min offen; Clients verbinden bei Abbruch (1006) mit `have` neu, Heartbeat 60–120 s ist Empfehlung. Offen: zählen Auto-Responses gegen das 20:1-Kontingent (Dashboard).
 3. Schließt iOS-Safari die WebSocket beim Hintergrund-Wechsel sauber? Annahme: ja, Wiederverbinden beim Öffnen
    mit `have`. Auf dem iPhone prüfen.
 4. Soll der Desktop den Push-Zeitplan künftig selbst beim Relay ablegen? Eigene Entscheidung, nicht Teil von PR 1–4.
