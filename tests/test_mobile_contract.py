@@ -380,3 +380,18 @@ def test_the_relay_secret_of_the_example_request_is_accepted():
 
     example = load("reminders-contract.json")["request_push"]
     assert parse_push(example) == example["relay_secret"]
+
+
+# --- Relay-Abgleich (#358): Naht zwischen Codec und dispatch -------------------------------------
+
+def test_the_relay_request_decoder_yields_what_dispatch_expects():
+    from src import mobile_relay_codec as codec
+    from src import mobile_routes
+    from src.api_routes import ApiRequest
+
+    rows = [r for r in load("relay-frames.json")["requests"] if r["ok"] and r["seq"] is not None]
+    assert rows  # Umschläge mit ungültigem seq lehnt dispatch selbst ab (invalid_envelope)
+    for row in rows:
+        request = codec.decode_request(row["json"].encode())
+        api_request = ApiRequest("POST", request.path, {}, json.dumps(request.envelope).encode())
+        assert mobile_routes._envelope(api_request.body) == request.envelope
