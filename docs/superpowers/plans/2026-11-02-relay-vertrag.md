@@ -2,6 +2,8 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+> **Nachtrag nach der Ausführung (2026-11-02):** Das kritische Abschluss-Review änderte den Vertrag. Maßgeblich ist die Spec (Abschnitt „Vertrag der Nutzlast (PR 2)“) und der Code; wo dieser Plan davon abweicht, steht „Nachtrag“ an der Stelle. Die Änderungen im Überblick: (1) die **Antwort** lautet `{"v":1,"status":…,"seq":…,"n":…,"body":…}`, `n` = Nonce des Anfrage-Umschlags (16 Zeichen Base64url) wird in **jeder** Antwort zurückgegeben; (2) `isCurrentResponse(frame, pendingN)` vergleicht nur `n` — die Ausnahme „`null`-`seq` ab Status 400“ entfällt, weil sie eine gefälschte 401-Antwort durchließ und `seq 1` bei Kopplung und erstem Abgleich nicht unterscheidet; (3) `encode_response(status, body, seq, n)` hat vier Parameter, dazu `encode_too_large_response(seq, n)` (413 `response_too_large`); (4) fehlt der Schlüssel `token`, lehnt der Python-Decoder ab (wie JS); (5) Fixture-Zeilen mit `canonical: true` binden die Kodierer byte-genau; (6) `./relay-frame.js` steht im `PRECACHE` von `pwa/sw-core.js`; (7) beide Seiten müssen `have` dauerhaft speichern, der Desktop nutzt das gespeicherte `last_seq`.
+
 **Goal:** Der Vertrag zwischen Handy (PWA) und Desktop für den Abgleich über die Relay-Box steht als reine, getestete Codecs auf beiden Seiten: Nachrichtenrahmen der Box, Nutzlast `{path, token, envelope}` / `{status, seq, n, body}`, Kopplungs-Link `#relay=…` und die Regeln „veraltetes `res` verwerfen“ und „`req` mit `seq <= last_seq` nicht beantworten“. Kein Netzwerk, keine UI.
 
 **Architecture:** Eine geteilte, handgeschriebene Fixture-Datei (`pwa/test/fixtures/relay-frames.json`) legt das Format fest; drei Implementierungen lesen sie: `relay/src/frames.js` (Referenz, nur Test), das neue `pwa/relay-frame.js` und das neue `src/mobile_relay_codec.py`. Nur das **Dekodieren** ist byte-genau gebunden (JSON-Schlüsselreihenfolge und Unicode-Escapes sind zwischen Python und JS nicht deckungsgleich), das Kodieren wird per Rundlauf mit dem eigenen Dekoder geprüft. **Nachtrag (finale Fix-Welle):** Fixture-Zeilen mit `"canonical": true` binden zusätzlich die Kodierer byte-genau (JS `encodeRequest`, Python `encode_response`); die Antwort trägt `n` (Nonce der Anfrage), `isCurrentResponse` vergleicht nur noch `n`, und `encode_too_large_response` liefert `413 response_too_large`. Maßgeblich ist die Spec, Abschnitt „Vertrag der Nutzlast (PR 2)“.
@@ -81,7 +83,7 @@
   - `decodeMessage(data: ArrayBuffer | Uint8Array | string): {kind: 'slot', ver: number, data: Uint8Array} | {kind: 'ok', ver: number} | null` — `null` für Text, unbekannte Typen, abgeschnitten, leer; `ver` als `DataView.getUint32(1, false)`; der Rückgabewert `data` ist eine Kopie.
   - `encodeRequest({path, token, envelope}): Uint8Array` — UTF-8 von `{"v":1,"path":…,"token":…,"envelope":…}` (Reihenfolge der Schlüssel fest); prüft dieselben Regeln wie `decodeRequest`; wirft `RelayFrameError('invalid_frame')`/`('too_large')` (Größe in **Bytes**).
   - `decodeRequest(bytes: Uint8Array): {path: string, token: string | null, envelope: object, seq: number | null}` (nur für Tests und Rundlauf; der Desktop dekodiert in Python) — wirft `RelayFrameError('invalid_frame')` bei allem, was in der Fixture `ok: false` ist.
-  - `decodeResponse(bytes: Uint8Array): {status: number, seq: number | null, body: object}` — wirft `RelayFrameError('invalid_frame')`; `seq` gültig nur als ganze Zahl `1…Number.MAX_SAFE_INTEGER` (kein `true`, kein Text, keine Bruchzahl), sonst im **Request** `null`, im **Response** ungültig = Fehler (ein `seq` im Response ist entweder `null` oder gültig).
+  - `decodeResponse(bytes: Uint8Array): {status: number, seq: number | null, n: string | null, body: object}` (Nachtrag: ursprünglich ohne `n`) — wirft `RelayFrameError('invalid_frame')`; `seq` gültig nur als ganze Zahl `1…Number.MAX_SAFE_INTEGER` (kein `true`, kein Text, keine Bruchzahl), sonst im **Request** `null`, im **Response** ungültig = Fehler (ein `seq` im Response ist entweder `null` oder gültig).
   - `envelopeSeq(envelope: unknown): number | null` — das gültige `seq` eines Umschlags oder `null`.
   - `isCurrentResponse(frame: {status: number, seq: number | null, n: string | null}, pendingN: string): boolean` — `pendingN` gültige Nonce und `frame.n === pendingN` (Nachtrag; ursprünglich `pendingSeq`).
   - Alle Pfade außer `/v1/pair`, `/v1/sync` sind ungültig (`PATHS = new Set([...])`); Token-Regel `/^[\x21-\x7e]{1,512}$/` oder `null`; `token` darf nur bei `/v1/pair` `null` sein.
@@ -94,7 +96,7 @@
   - `decodeResponse accepts every ok:true fixture response and rejects every ok:false one`
   - `encodeRequest then decodeRequest round-trips, counts UTF-8 bytes against MAX_PAYLOAD` (Umlaute, ein Envelope, das in Zeichen knapp, in Bytes über der Grenze liegt → `too_large`) (Review Focus 2)
   - `envelopeSeq rejects 0, -1, "1", 1.5, true, 2**53, NaN` (Review Focus 3)
-  - `isCurrentResponse: equal seq true, different seq false, null seq only with status >= 400` (Review Focus 4)
+  - ~~`isCurrentResponse: equal seq true, different seq false, null seq only with status >= 400`~~ (Nachtrag: ersetzt durch Tests auf `n`: gleiche `n` wahr, andere `n` falsch, `n: null` nie aktuell, zwei Antworten mit `seq 1` und verschiedener `n`) (Review Focus 4)
 - [ ] **Step 2: Run** `cd pwa ; node --test test/relay-frame.test.js` — Expected: FAIL (Modul fehlt).
 - [ ] **Step 3: Implement** `pwa/relay-frame.js` (reine Funktionen, `TextEncoder`/`TextDecoder`, `DataView`; keine Abhängigkeiten, kein `Buffer`).
 - [ ] **Step 4: Run** `cd pwa ; node --test` — Expected: alles PASS.
@@ -127,7 +129,7 @@
   - `test_decode_request_accepts_every_ok_fixture_case` / `test_decode_request_rejects_every_bad_fixture_case_with_frame_error_only` (Review Focus 1: `pytest.raises(FrameError)` und zusätzlich: die Ausnahme ist **genau** `FrameError`/Unterklasse)
   - `test_envelope_seq_rejects_bool_zero_negative_text_float_and_huge` (Review Focus 3, inkl. `True`)
   - `test_encode_response_round_trips_with_the_fixture_response_shape` (decodiert mit `json.loads` und prüft Form; kein Byte-Vergleich mit JS)
-  - `test_encode_response_rejects_bad_status_and_seq`
+  - `test_encode_response_rejects_bad_status_and_seq` (Nachtrag: auch `n`; `encode_response` hat vier Parameter)
   - `test_should_answer` (Review Focus 4: `seq <= last_seq` → `False`; `None` → `False`; `last_seq + 1` → `True`)
   - `test_generate_box_secret_has_43_base64url_chars_and_differs_each_time`
   - `test_relay_link_matches_every_fixture_relay_link_and_rejects_bad_ones` (Review Focus 5: für jeden `relay`-Fall aus der Fixture `relay_link(secret, code) == url`; für ungültige Geheimnisse/Codes `None`)
@@ -159,7 +161,7 @@
 **Files:**
 - Modify: `docs/superpowers/specs/2026-11-02-ios-relay-abgleich-design.md`, `relay/CLAUDE.md`, `CLAUDE.md` (Struktur-Abschnitt), `pwa/CLAUDE.md`, `docs/datenschutz.md`
 
-- [ ] **Step 1: Spec:** „Gzip“ aus Leitidee Regel 4, Budget Punkt 4 und PR-Schnitt streichen und durch den **Größenwächter** (`FrameTooLarge`, Begründung 400 Tage ≈ 100 KB) ersetzen; die Nutzlast-Formate (`{v:1, path, token, envelope}` / `{v:1, status, seq, body}`), den Link `#relay=<Geheimnis>:<Code>` und `isCurrentResponse`/`should_answer` knapp beschreiben; PR 3 nennt `relay_link.py` als Netzwerk-Modul, PR 2 `mobile_relay_codec.py`/`relay-frame.js` als Vertrag.
+- [ ] **Step 1: Spec:** „Gzip“ aus Leitidee Regel 4, Budget Punkt 4 und PR-Schnitt streichen und durch den **Größenwächter** (`FrameTooLarge`, Begründung 400 Tage ≈ 100 KB) ersetzen; die Nutzlast-Formate (`{v:1, path, token, envelope}` / `{v:1, status, seq, n, body}` (Nachtrag: `n` kam nach dem Abschluss-Review dazu)), den Link `#relay=<Geheimnis>:<Code>` und `isCurrentResponse`/`should_answer` knapp beschreiben; PR 3 nennt `relay_link.py` als Netzwerk-Modul, PR 2 `mobile_relay_codec.py`/`relay-frame.js` als Vertrag.
 - [ ] **Step 2: `relay/CLAUDE.md`** („Für die Clients“): ein Verweis auf `pwa/relay-frame.js`, `src/mobile_relay_codec.py` und die Fixture `pwa/test/fixtures/relay-frames.json` als Gegenstücke, plus der Satz „Konstante ändern heißt beide Codecs und die Fixture mitziehen“.
 - [ ] **Step 3: `CLAUDE.md`** (Struktur): je ein Eintrag `src/mobile_relay_codec.py` und `pwa/relay-frame.js` mit einem Satz zur Rolle; Wortlaut so, dass `tests/test_claude_md_claims.py` grün bleibt.
 - [ ] **Step 4: `docs/datenschutz.md`:** Abschnitt „Was der Relay sieht“ um das Gerätetoken im Rahmen ergänzen (Token liegt im Klartext der Nutzlast neben dem verschlüsselten Umschlag; der Relay kann damit nichts entschlüsseln; Token wird bei jedem Abgleich erneuert), Aussage „Gzip“ falls vorhanden entfernen.
