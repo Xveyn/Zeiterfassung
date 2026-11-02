@@ -86,7 +86,7 @@ kann es vermeiden:
   für den eigenen Benutzer lesbar gemacht; unter Windows setzt die App per
   `icacls` eine explizite ACL (geerbte Rechte entfernt, nur das eigene
   Benutzerkonto bleibt berechtigt). Dasselbe gilt für `webhooks.json`,
-  `smtp.json`, `api-token`, `mobile_keys.json` und `mobile_relay.json`. Das ist Zugriffsschutz auf
+  `smtp.json`, `api-token`, `mobile_keys.json`, `mobile_relay.json` und `mobile_box.json`. Das ist Zugriffsschutz auf
   Dateiebene, **keine** Verschlüsselung. **Wer den Daten- bzw. Installationsordner
   kopiert, sichert oder in die Cloud synchronisiert, nimmt die dort verbliebenen
   Klartext-Secrets mit** — den Ordner entsprechend vertraulich behandeln.
@@ -132,7 +132,7 @@ ausschalten. Im Einzelnen:
   Klartext), die Zeitpunkte der Erinnerungen und einen Text, den nur das Handy
   entschlüsseln kann. Er sieht keine Arbeitszeiten, Kategorien oder Namen. Die
   Push-Dienste (Google, Mozilla, Apple, Microsoft) sehen Metadaten, nicht den Inhalt.
-  Das Geheimnis liegt am Desktop in `mobile_relay.json`. Beim Widerruf eines Handys
+  Das Geheimnis liegt am Desktop in `mobile_relay.json`; die Box-Geheimnisse der Handy-Erfassung über den Relay liegen getrennt davon in `mobile_box.json` (ebenfalls gehärtet geschrieben, nicht im Drive-Sync). Beim Widerruf eines Handys
   löscht der Desktop dessen Relay-Objekt (best effort), sonst verfällt es nach 90 Tagen.
   Fällt der Relay aus oder wird er missbraucht, entfallen nur die Push-Erinnerungen
   (Rate-Limit je Absender-Adresse, kein Konto). Details: `relay/CLAUDE.md` und

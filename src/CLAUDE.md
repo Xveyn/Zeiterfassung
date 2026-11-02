@@ -372,6 +372,8 @@ Zeitraum und welche Kategorien der Bericht gefiltert ist.
   key_unavailable`. `retain` bestimmt die Abräum-Liste (`stale_ids`, nur Cache, blockiert nie) unter der Gerätesperre, die auch `_pair` für Schlüssel und Datensatz nimmt (#277): ein Handy, das gerade koppelt, verliert so nie seinen frischen Schlüssel; `revoke_all` tut dasselbe, entfernt aber erst nach der Sperre. Wer einen weiteren Schlüsselbund-Eintrag anlegt, trägt ihn in
   `secret_migration.forget_all` ein.
 
+  `mobile_box_store.py` — Box-Geheimnisse der Handy-Erfassung über den Relay (`mobile_box.json`, #358), gerätelokal und über `secure_file.write_secret_json` gehärtet geschrieben, nur bei einer Änderung; ein offenes Geheimnis beim Koppeln (`open_pending`) wandert per `bind` zum Gerät, eigener Lock, schreibgeschützt bei neuerem Schema (`MobileBoxReadOnly`), reist nicht per Drive-Sync und ist vom Push-Speicher `mobile_relay.json` getrennt; steht in `removal.CREDENTIAL_FILES`, `installer.iss` und `.gitignore`.
+
   `mobile_sync.py` — Abgleich mit dem Handy (`POST /v1/sync`), Tk-frei, ohne Socket. Der Body ist
   Fremddaten: `parse_request` prüft ihn mit den Regeln der lokalen API (`api_entry_write.parse_slots`),
   dazu Datum, Zeitstempel, höchstens 400 Tage, die Uhr (15 Minuten, **vor** den Einträgen, damit ein
@@ -739,7 +741,7 @@ Wert.
   `webhooks.json` (`webhook_store._save_to_disk` — enthält Auth-Token/HMAC-Secrets der
   konfigurierten Webhooks), `smtp.json` (`smtp_store._save_to_disk` — enthält, nur ohne
   Schlüsselbund, das SMTP-Passwort im Klartext), `api-token` (`api_auth._write_token_atomic`
-  — Bearer-Token der lokalen API) und `mobile_keys.json` (`mobile_keys`). **Alle laufen über
+  — Bearer-Token der lokalen API) `mobile_keys.json` (`mobile_keys`), `mobile_relay.json` (`mobile_relay_store`) und `mobile_box.json` (`mobile_box_store`). **Alle laufen über
   einen Helfer, `write_secret_bytes`** (`write_secret_text`/`write_secret_json` bauen darauf
   auf; #246): Temp-Datei anlegen und schließen → `chmod 0600` → `harden_windows_acl` →
   **erst dann** schreiben (`flush` + `fsync`) → `os.replace` (5× Retry bei

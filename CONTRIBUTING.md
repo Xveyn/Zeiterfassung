@@ -162,6 +162,7 @@ Zeiterfassung/
 │   ├── mobile_crypto.py   # … Ende-zu-Ende-Verschlüsselung (AES-GCM/HKDF), Gegenstück pwa/crypto.js
 │   ├── mobile_keys.py     # … Geräteschlüssel im Schlüsselbund, Datei als Fallback
 │   ├── mobile_relay_store.py # … Relay-Geheimnisse der Handys (gehärtet)
+│   ├── mobile_box_store.py # … Box-Geheimnisse der Relay-Kopplung (gehärtet)
 │   ├── push_relay.py      # Spricht den Push-Relay an (Abräumen beim Widerruf, Testbenachrichtigung)
 │   ├── netinfo.py         # LAN-Adressen (nur RFC 1918) für die Handy-Erfassung
 │   ├── qr.py              # QR-Code-Matrix für den Koppel-Dialog (segno)

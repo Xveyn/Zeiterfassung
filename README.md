@@ -524,6 +524,7 @@ Neben diesen Dateien kann `<datei>.corrupt-<Zeitstempel>` liegen *(ab 1.25.0)*: 
 - **mobile_devices.json** *(ab 1.25.0)* — die gekoppelten Handys der Handy-Erfassung: Name, Zeitpunkte und nur ein **Hash** des Gerätetokens, nie das Token selbst. Gerätelokal: reist bewusst **nicht** über den Drive-Sync mit
 - **mobile_keys.json** *(ab 1.25.0)* — wo der Schlüssel eines gekoppelten Handys liegt: im Schlüsselbund des Betriebssystems oder, wenn keiner verfügbar ist, in dieser Datei selbst (dann nur für dein Benutzerkonto lesbar). Gerätelokal: reist bewusst **nicht** über den Drive-Sync mit
 - **mobile_relay.json** *(ab 1.25.0)* — je gekoppeltem Handy das Zufallsgeheimnis, mit dem der Push-Relay das Handy erkennt (nur vorhanden, wenn Push-Erinnerungen eingerichtet wurden; nur für dein Benutzerkonto lesbar). Gerätelokal: reist bewusst **nicht** über den Drive-Sync mit
+- **mobile_box.json** *(ab --VERSION--)* — die Box-Geheimnisse der Handy-Erfassung über den Relay (je gekoppeltem Handy eines, dazu ein offenes beim Koppeln); getrennt von `mobile_relay.json`, nur für dein Benutzerkonto lesbar. Gerätelokal: reist bewusst **nicht** über den Drive-Sync mit
 
 Bei aktivem Sync liegt zusätzlich in deinem Google Drive eine versteckte Datei `zeiterfassung-sync.json` im `appDataFolder` — nicht über die Drive-Web-Oberfläche sichtbar, nur die App kommt dran.
 
@@ -544,7 +545,7 @@ Speicherort je nach Plattform:
 > enthält die SMTP-Kontodaten und, nur im Datei-Fallback, das Mail-Passwort.
 > `instance-secret` schützt den lokalen Single-Instance-Kanal. `api-token` ist der
 > Zugang zur lokalen API, `mobile_keys.json` (nur im Datei-Fallback) enthält die
-> Schlüssel der gekoppelten Handys und `mobile_relay.json` deren Relay-Geheimnisse.
+> Schlüssel der gekoppelten Handys `mobile_relay.json` deren Relay-Geheimnisse und `mobile_box.json` deren Box-Geheimnisse.
 >
 > **Mit verfügbarem Schlüsselbund** (Windows
 > Anmeldeinformationsverwaltung / macOS-Schlüsselbund / Linux Secret Service)

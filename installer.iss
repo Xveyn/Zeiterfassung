@@ -90,6 +90,7 @@ Type: files; Name: "{app}\api-token"
 Type: files; Name: "{app}\mobile_devices.json"
 Type: files; Name: "{app}\mobile_keys.json"
 Type: files; Name: "{app}\mobile_relay.json"
+Type: files; Name: "{app}\mobile_box.json"
 
 
 
@@ -144,6 +145,7 @@ begin
   DeleteMatching('mobile_devices.json.corrupt-*');
   DeleteMatching('mobile_keys.json.corrupt-*');
   DeleteMatching('mobile_relay.json.corrupt-*');
+  DeleteMatching('mobile_box.json.corrupt-*');
 end;
 
 procedure DeleteUserData();
