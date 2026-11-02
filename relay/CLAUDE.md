@@ -132,7 +132,7 @@ Schließ-Codes der Box (`box.js`) und was der Client darauf tun muss:
 
 - Ablauf-Test: `node scripts/box-smoke.mjs [baseUrl]` gegen `npx wrangler dev --var BOX_JURISDICTION:none` prüft Zustellung, Wiederaufnahme
   mit `have`, falsches Subprotocol, `maxFrame + 1` und `DELETE`. Ein vom Server ausgelöstes Schließen
-  (`DELETE`) sieht der Client in `wrangler dev` (so beobachtet) erst nach rund 10 s.
+  (`DELETE`) sieht der Client erst nach rund 10 s (in `wrangler dev` und auf dem deployten Relay beobachtet, 2026-11-02).
 
 ## Dateien
 

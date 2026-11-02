@@ -4,12 +4,13 @@
 // Reines Node >= 22 (globales WebSocket), keine Abhängigkeiten. Exit 1, sobald eine Prüfung fehlschlägt.
 import { randomBytes } from 'node:crypto';
 import http from 'node:http';
+import https from 'node:https';
 
 const base = (process.argv[2] ?? 'http://127.0.0.1:8787').replace(/\/$/, '');
 const wsBase = base.replace(/^http/, 'ws');
 const MAX_FRAME = 1_048_576;   // = LIMITS.maxFrame in src/validate.js: eine ganze Nachricht samt Typ-Byte
 const WAIT_MS = 8000;
-// Vom Server ausgelöstes Schließen (DELETE) dauert in `wrangler dev` rund 10 s, bis der Client es sieht.
+// Vom Server ausgelöstes Schließen (DELETE) braucht rund 10 s, bis der Client es sieht (in `wrangler dev` und auf dem deployten Relay beobachtet).
 const SERVER_CLOSE_WAIT_MS = 20_000;
 
 let failed = 0;
@@ -120,7 +121,7 @@ await run('(d) falsches Subprotocol', async () => {
   check(outcome !== 'open', `(d) Verbindung mit ungültigem Geheimnis abgelehnt (${outcome})`);
   // `fetch` darf `Upgrade` nicht setzen, deshalb der rohe Upgrade-Versuch über node:http.
   const status = await new Promise((resolve, reject) => {
-    const req = http.request(`${base}/v1/box/ws?role=phone`, {
+    const req = (base.startsWith('https') ? https : http).request(`${base}/v1/box/ws?role=phone`, {
       headers: { connection: 'Upgrade', upgrade: 'websocket', 'sec-websocket-version': '13',
         'sec-websocket-key': randomBytes(16).toString('base64'), 'sec-websocket-protocol': 'zeit.v1, zu-kurz' },
     }, (res) => { res.resume(); resolve(res.statusCode); });
