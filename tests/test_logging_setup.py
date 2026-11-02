@@ -152,3 +152,11 @@ def test_log_lines_carry_the_thread_name(tmp_path, isolated_logging):
     with open(log_path, "r", encoding="utf-8") as f:
         content = f.read()
     assert "[INFO] sync-worker t: aus dem worker" in content
+
+
+def test_get_log_dir_is_the_parent_of_the_log_path(tmp_path):
+    from src.logging_setup import get_log_dir
+    import os
+    assert get_log_dir(str(tmp_path)) == str(tmp_path / LOG_SUBDIR)
+    assert os.path.dirname(get_log_path(str(tmp_path))) == get_log_dir(str(tmp_path))
+    assert not (tmp_path / LOG_SUBDIR).exists()

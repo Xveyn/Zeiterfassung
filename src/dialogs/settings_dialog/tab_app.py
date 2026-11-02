@@ -1,6 +1,7 @@
 """Tab „App": Fenster, Darstellung (Skalierung) und Daten (Datenordner, Import)."""
 
 import logging
+import os
 import platform
 import sys
 import tkinter as tk
@@ -17,10 +18,11 @@ from src.dialogs.settings_dialog.form_model import SaveOutcome
 from src.dialogs.settings_dialog.tab_rules import (
     app_updates, slider_percent,
 )
+from src.logging_setup import get_log_dir
 from src.platform_open import open_folder
 from src.theme import (
     ACCENT, BG, CELL_BG, FONT, TEXT_MUTED, Form, px, scaled_window_fits,
-    themed_askyesno, themed_showerror, workarea_for,
+    themed_askyesno, themed_showerror, themed_showinfo, workarea_for,
 )
 
 
@@ -102,13 +104,17 @@ class AppTab:
 
         # --- Daten ---
         form.section("Daten")
-        specs = [("Datenordner öffnen", self._open_data_folder)]
+        # Zwei Reihen statt einer: drei Knöpfe nebeneinander würden bei großer
+        # Skalierung den Dialog verbreitern.
+        form.buttons(("Datenordner öffnen", self._open_data_folder),
+                     ("Log-Ordner öffnen", self._open_log_folder))
         if storage is not None:
-            specs.append(("Daten importieren", self._open_import_dialog))
-        form.buttons(*specs)
+            form.buttons(("Daten importieren", self._open_import_dialog))
         form.hint("Im Datenordner liegen Einträge, Einstellungen und "
                   "credentials.json. Importiert werden geteilte Arbeitszeiten "
-                  "(JSON-Datei aus „Teilen“).")
+                  "(JSON-Datei aus „Teilen“). Das Log "
+                  "(zeiterfassung.log) liegt im Unterordner „logs“ — für die "
+                  "Fehlersuche, etwa in einem Issue.")
         if on_request_removal is not None and removal.is_available(
                 platform.system(), getattr(sys, "frozen", False)):
             form.buttons(("Zeiterfassung entfernen", self._request_removal))
@@ -175,11 +181,25 @@ class AppTab:
         return SaveOutcome(saved=True, restart=new_scale != old_scale)
 
     def _open_data_folder(self):
+        self._open_folder(self._base_path, "Datenordner")
+
+    def _open_log_folder(self):
+        folder = get_log_dir(self._base_path)
+        if not os.path.isdir(folder):
+            # Bekannter Fall (das Logging-Setup ist nicht-fatal, s. `main()`):
+            # kurze, kuratierte Meldung statt Traceback.
+            themed_showinfo(
+                self._dialog, "Kein Log vorhanden",
+                "Es wurde noch kein Log geschrieben.")
+            return
+        self._open_folder(folder, "Log-Ordner")
+
+    def _open_folder(self, path, what):
         try:
-            open_folder(self._base_path)
+            open_folder(path)
         except Exception as e:
             logging.getLogger(__name__).exception(
-                "Datenordner konnte nicht geöffnet werden")
+                "%s konnte nicht geöffnet werden", what)
             messagebox.showerror(
                 "Ordner konnte nicht geöffnet werden",
                 f"{type(e).__name__}: {e}\n\n{traceback.format_exc()}",
