@@ -24,6 +24,7 @@ import contextlib
 import logging
 import os
 import threading
+import time
 import traceback
 
 from src import sync_history
@@ -67,6 +68,23 @@ def _log_failure(what, error):
         log.error("%s", what, exc_info=error)
 
 
+def _log_ok(what, started, merged=None):
+    """Eine INFO-Zeile für einen gelungenen Sync-Flow (Xveyn#401): ohne sie ist
+    „Sync lief, nichts zu tun" im Log nicht von „Sync lief nicht" zu
+    unterscheiden. Nur Zählwerte und Dauer, nie Inhalte."""
+    detail = ""
+    if merged is not None:
+        detail = " (%d Einträge, %d Konflikte)" % (
+            len(merged.get("entries") or {}), len(merged.get("conflicts") or []))
+    logging.getLogger(__name__).info(
+        "%s%s in %.1f s", what, detail, time.monotonic() - started)
+
+
+def _log_skipped(what):
+    """Läuft schon ein Sync, wird still übersprungen — auf DEBUG vermerkt."""
+    logging.getLogger(__name__).debug("%s übersprungen: anderer Sync läuft", what)
+
+
 def _lock_ctx(lock):
     """Context-Manager-Shim für den optionalen Daten-Lock: `with _lock_ctx(l)`
     lockt, wenn ein Lock übergeben wurde, und ist sonst ein No-op (Tests,
@@ -87,7 +105,9 @@ def run_pull_in_background(storage, settings, conflicts_store, base, ui_callback
     den Download gehalten."""
     from src import drive, sync, sync_journal
     if sync_guard is not None and not sync_guard.acquire(blocking=False):
+        _log_skipped("Sync pull")
         return
+    started = time.monotonic()
     try:
         try:
             service = drive.get_drive_service(
@@ -147,6 +167,7 @@ def run_pull_in_background(storage, settings, conflicts_store, base, ui_callback
                     "drive_etag": etag,
                 })
                 sync_history.mark_synced(base)
+            _log_ok("Sync pull ok", started, merged)
             ui_callback(ok=True, error=None, tb="")
         except Exception as e:
             tb = traceback.format_exc()
@@ -181,9 +202,11 @@ def run_push_blocking(storage, settings, conflicts_store, base, timeout_seconds=
             got = (sync_guard.acquire(timeout=guard_timeout) if guard_timeout > 0
                    else sync_guard.acquire(blocking=False))
             if not got:
+                _log_skipped("Sync push")
                 result["ok"] = False
                 result["skipped"] = True
                 return
+        started = time.monotonic()
         try:
             try:
                 service = drive.get_drive_service(
@@ -240,6 +263,7 @@ def run_push_blocking(storage, settings, conflicts_store, base, timeout_seconds=
                     "drive_etag": new_etag,
                 })
                 sync_history.mark_synced(base)
+                _log_ok("Sync push ok", started, merged)
                 result["ok"] = True
             except Exception as e:
                 _log_failure("Sync push failed", e)
@@ -280,9 +304,11 @@ def run_compaction_blocking(storage, settings, conflicts_store, base, timeout_se
 
     def _do():
         if sync_guard is not None and not sync_guard.acquire(blocking=False):
+            _log_skipped("Kompaktierung")
             result["ok"] = False
             result["skipped"] = True
             return
+        started = time.monotonic()
         try:
             try:
                 service = drive.get_drive_service(
@@ -335,6 +361,7 @@ def run_compaction_blocking(storage, settings, conflicts_store, base, timeout_se
                 new_id, new_etag = drive.upload(service, payload, file_id)
                 settings.set("drive_etag", new_etag)
                 sync_history.mark_synced(base)
+                _log_ok("Kompaktierung ok", started, doc)
                 result.update({"ok": True})
             except Exception as e:
                 _log_failure("Kompaktierung fehlgeschlagen", e)
@@ -424,6 +451,7 @@ def run_calendar_reconcile(reservation_store, settings, base, storage,
     if not calendar_id:
         return {"ok": True, "error": "", "tb": "", "limit_warnings": []}
 
+    started = time.monotonic()
     try:
         service = gcal.get_calendar_service(
             os.path.join(base, "credentials.json"),
@@ -431,10 +459,12 @@ def run_calendar_reconcile(reservation_store, settings, base, storage,
             sync_enabled=settings.get("sync_enabled"),
         )
         limit_warnings: list = []
+        imported = None
         if reservation_store is not None:
             result = reconcile_reservations(service, calendar_id, reservation_store,
                                             settings, data_lock=data_lock)
             sync_history.mark_reconciled(base)
+            imported = len(result["imported_dates"])
             limit_warnings = check_dates_for_warnings(
                 settings, storage.get_all(), result["imported_dates"])
         # Urlaubs-Push zuletzt und bewusst NICHT-FATAL: derselbe Service,
@@ -453,6 +483,12 @@ def run_calendar_reconcile(reservation_store, settings, base, storage,
             except Exception:
                 logging.getLogger(__name__).exception(
                     "Urlaubs-Push fehlgeschlagen (nicht-fatal)")
+        logging.getLogger(__name__).info(
+            "Kalender-Reconcile ok (Reservierungen: %s, Urlaub-Push: %s) in %.1f s",
+            "aus" if imported is None else "%d Tage importiert" % imported,
+            "an" if (vacation_store is not None
+                     and settings.get("vacation_gcal_enabled")) else "aus",
+            time.monotonic() - started)
         return {"ok": True, "error": "", "tb": "", "limit_warnings": limit_warnings}
     except Exception as e:
         _log_failure("Kalender-Reconcile fehlgeschlagen", e)
