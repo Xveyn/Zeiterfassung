@@ -50,4 +50,5 @@ Nach einer Änderung am Relay **zuerst den Relay ausrollen** (hast du Schritt 8 
 ## Lokal ausprobieren
 
 `.dev.vars` (ignoriert) mit `VAPID_PUBLIC`, `VAPID_PRIVATE`, `VAPID_SUBJECT` anlegen, dann `npx wrangler dev`.
+Den Ablauf der Box (WebSocket, Slots, `have`, `DELETE`) prüft in einem zweiten Terminal `node scripts/box-smoke.mjs` gegen `wrangler dev` (Details und eine Einschränkung zur EU-Jurisdiktion: `CLAUDE.md`, „Box“).
 Für die PWA vom Dev-Server (`http://localhost:8099`) `DEV_ORIGIN` setzen.

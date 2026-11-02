@@ -36,11 +36,12 @@ von `POST /v1/test`. Reihenfolge im Worker: Route, `OPTIONS`, Methode, Rate-Limi
 | `graceSeconds` | 900 | so lange nach `fire_at` (bzw. der ersten Fälligkeit) wird noch gesendet |
 | `idleDays` | 90 | so lange nach der letzten Aktualisierung räumt sich ein Gerät selbst auf |
 | `testCooldownSeconds` | 10 | Sperre von `POST /v1/test` nach einem gelungenen Test |
+| `maxFrame` | 1 048 576 | Bytes einer WebSocket-Nachricht der Box, **ganz** (Typ-Byte inklusive; Nutzbytes also höchstens `maxFrame − 1`) |
 
 Wiederholung nach einem Fehlschlag (`BACKOFF_SECONDS` in `src/schedule.js`): nach 30 s, 2 min und
 10 min; danach, oder wenn der Versuch hinter der Frist läge, wird der Eintrag aufgegeben.
 
-**Konstante ändern heißt PWA mitziehen:** `pwa/reminders-plan.js` spiegelt `maxItems` als `MAX_ITEMS`
+**Konstante ändern heißt PWA/Desktop mitziehen:** `pwa/reminders-plan.js` spiegelt `maxItems` als `MAX_ITEMS`
 (200) und `maxAheadDays` als `MAX_AHEAD_MS` (89 Tage, einen Tag unter der Grenze). Das Rate-Limit (30 Anfragen/60 s) steht in `wrangler.toml`.
 
 ### Werte, die zusammenpassen müssen
@@ -51,6 +52,52 @@ Wiederholung nach einem Fehlschlag (`BACKOFF_SECONDS` in `src/schedule.js`): nac
   (dazu `DEV_ORIGIN` aus `[vars]`, im Betrieb leer); zieht die PWA um, muss sie mit.
 - `RELAY_URL` in `pwa/relay-client.js` = `RELAY_URL` in `src/push_relay.py` (Test in
   `tests/test_push_relay.py`).
+
+## Box (Handy-Abgleich)
+
+Das Durable Object `Box` (Binding `BOX`, Migration `v2`) ist ein Tunnel für den Abgleich zwischen Handy
+und Desktop, wenn kein LAN dazwischen liegt (iOS, #358; Design `docs/superpowers/specs/2026-11-02-ios-relay-abgleich-design.md`).
+Es hält **zwei ersetzbare Slots**: `req` (schreibt das Handy) und `res` (schreibt der Desktop), je
+`{ver, data}`; es gibt keine Historie. Beide Seiten halten eine WebSocket über die **Hibernation API**
+(Rolle = Tag am Socket, je Rolle höchstens eine Verbindung, eine neue ersetzt die alte). Die Nutzbytes sind
+opak: kein JSON, keine Kryptografie im Relay, kein Logging.
+
+**Ein** Geheimnis je Kopplung (43 Zeichen Base64url), das Objekt heißt `sha256(Geheimnis)`. Es steht im
+Header `Sec-WebSocket-Protocol: zeit.v1, <Geheimnis>` (Browser können keine Header setzen); der Relay
+antwortet `zeit.v1`.
+
+| Route | Zweck |
+|---|---|
+| `GET /v1/box/ws?role=phone\|desktop[&have=<ver>]` | WebSocket-Upgrade. Beim Verbinden schickt der Relay den Slot des Gegenübers, wenn dessen `ver` größer als `have` ist (Standard 0). Fehler: `401 unauthorized`, `400 invalid_request`, `403 forbidden_origin`, `426 upgrade_required`, `429 rate_limited` |
+| `DELETE /v1/box` | alles löschen (`Authorization: Bearer <Geheimnis>`), schließt beide Verbindungen |
+
+Nachrichten sind binär, das erste Byte ist der Typ: `0x01 put` (Client → Relay, danach die Nutzbytes; der
+Relay ersetzt den Slot der Absender-Rolle, zählt `ver` hoch, stellt dem Gegenüber zu und quittiert),
+`0x02 slot` (Relay → Gegenüber: `ver` als 4 Byte big-endian + Nutzbytes), `0x03 ok` (Relay → Absender: `ver`
+4 Byte big-endian). Unbekannte Typen werden still übergangen, Text schließt mit 1003.
+
+- **`maxFrame`** (`LIMITS.maxFrame`, 1 048 576) gilt für die **ganze** Nachricht samt Typ-Byte; die Nutzbytes
+  eines `put` sind also höchstens `maxFrame − 1`. Größer schließt mit 1009 (die Laufzeit kann schon früher
+  mit 1009 schließen).
+- **`ver` ist monoton und zeitbasiert:** mindestens Sekunden seit 2026-01-01 UTC (`VER_EPOCH` in `box.js`),
+  sonst Vorgänger + 1. Grund: das Aufräumen (Leerlauf, `DELETE /v1/box`) löscht den Zähler, das `have` der
+  Clients bleibt; finge `ver` wieder bei 1 an, hielte ein Client jeden neuen Slot für bekannt. **Clients
+  dürfen keine +1-Schritte annehmen**, nur „größer“ (bis ca. 2094 unter 2^31, der Grenze von `have`).
+- **EU-Jurisdiktion:** das Objekt wird **nur** über `env.BOX.jurisdiction('eu')` gewählt, nie über
+  `idFromName` direkt. Das ist **nicht nachrüstbar** (gleicher Name = andere ID, die alten Slots wären
+  weg). Der Worker selbst läuft pro Anfrage am nächsten Rand; die IP wird dort verarbeitet. Achtung:
+  lokales `wrangler dev` (workerd) kennt `jurisdiction` nicht („Jurisdiction restrictions are not
+  implemented in workerd“, `500 internal`) — der Smoke-Test läuft dort nur mit einer lokalen Umgehung.
+- **Selbstreinigung:** Alarm nach `idleDays` (90) ohne Aktivität, höchstens einmal am Tag neu gesetzt (jeder
+  `setAlarm` ist ein Schreibvorgang im Kontingent).
+- **`observability` bleibt aus** (`wrangler.toml`), und **das Subprotocol und die Query werden nie
+  geloggt** (das Geheimnis steht im Header). „Kein Logging“ gilt für unseren Code; was die Plattform
+  mitschreibt, steht in `docs/datenschutz.md`.
+- **Konstante ändern heißt PWA/Desktop mitziehen:** `zeit.v1`, die Typ-Bytes, die Byte-Reihenfolge von `ver`
+  und `maxFrame` stehen auf beiden Seiten (Desktop `relay_link.py` und PWA `RelayTransport`, spätere PRs).
+- Ablauf-Test: `node scripts/box-smoke.mjs [baseUrl]` gegen `npx wrangler dev` prüft Zustellung, Wiederaufnahme
+  mit `have`, falsches Subprotocol, `maxFrame + 1` und `DELETE`. Ein vom Server ausgelöstes Schließen
+  (`DELETE`) sieht der Client in `wrangler dev` erst nach rund 10 s.
 
 ## Dateien
 
@@ -66,7 +113,11 @@ Wiederholung nach einem Fehlschlag (`BACKOFF_SECONDS` in `src/schedule.js`): nac
 - `src/device.js` — das Durable Object. Der Alarm wird **immer aus dem gespeicherten Zustand neu
   berechnet** (nie im Konstruktor gesetzt), `alarm()` wirft nie (die Plattform begrenzt
   Wiederholungen auf 6; ein unbegrenzter Neustart verbrauchte die Anfragen des Free-Plans).
-- `src/worker.js` — Routen, Auth, CORS. CORS nur für `https://xveyn.github.io` (und `DEV_ORIGIN`).
+- `src/box.js` — das Durable Object `Box` (Handy-Abgleich, s. „Box“ unten).
+- `src/frames.js` — Nachrichtenrahmen der Box (`put`/`slot`/`ok`); nur `Uint8Array`/`DataView`.
+- `src/ws-platform.js` — die zwei Plattformaufrufe, die Node nicht kennt (`WebSocketPair`, `Response` mit Status 101); die Tests ersetzen sie durch `test/box-fakes.js`.
+- `scripts/box-smoke.mjs` — Ablauf-Test der Box gegen ein laufendes `npx wrangler dev` (echtes workerd; die Unit-Tests nutzen Fakes).
+- `src/worker.js` — Routen, Auth, CORS. CORS (Antwort-Header) nur für `https://xveyn.github.io` (und `DEV_ORIGIN`); beim WebSocket-Upgrade der Box gilt dieselbe Liste als Origin-Prüfung (fremde Origin → `403 forbidden_origin`, keine Origin = Desktop erlaubt).
   Davor das Rate-Limit je Absender-Adresse, IPv6 als /64 (Binding `LIMITER`, 30 Anfragen/60 s; fehlt es oder wirft es,
   geht die Anfrage durch). Je Adresse, nicht je Geheimnis — ein Angreifer erfindet beliebig viele Geheimnisse.
   Eine WAF-Regel im Dashboard geht hier nicht: sie braucht eine Zone, `workers.dev` ist keine.
