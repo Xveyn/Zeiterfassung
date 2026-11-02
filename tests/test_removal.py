@@ -1,6 +1,9 @@
 """„Zeiterfassung entfernen" (#50): Plan, Ausführung, Hinweise — Tk-frei."""
 
+import ast
+import importlib
 import os
+import pathlib
 import re
 
 import pytest
@@ -623,3 +626,76 @@ def test_the_mobile_devices_file_is_removed_and_ignored():
     assert "mobile_box.json" in lines and "mobile_box.json.corrupt-*" in lines
     assert '{app}\\mobile_box.json' in installer
     assert "DeleteMatching('mobile_box.json.corrupt-*')" in installer
+
+
+# --- Temp-Präfixe der Secret-Schreiber passen zur Aufräum-Suche (#358) -------
+
+# Welche Credential-Datei schreibt welches Modul über `secure_file.write_secret_*`.
+_SECRET_WRITERS = {
+    "token.json": "src.oauth_utils",
+    "instance-secret": "src.single_instance",
+    "webhooks.json": "src.webhook_store",
+    "smtp.json": "src.smtp_store",
+    "api-token": "src.api_auth",
+    "mobile_keys.json": "src.mobile_keys",
+    "mobile_relay.json": "src.mobile_relay_store",
+    "mobile_box.json": "src.mobile_box_store",
+}
+# Nicht über `secure_file` geschrieben: vom Nutzer abgelegt bzw. nur Token-Hashes (`json_store`).
+_NOT_SECRET_WRITTEN = {"credentials.json", "mobile_devices.json"}
+_WRITER_FUNCS = {"write_secret_bytes", "write_secret_text", "write_secret_json"}
+
+
+def _resolve_prefix(node, module_name):
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return node.value
+    if isinstance(node, ast.JoinedStr):
+        module = importlib.import_module(module_name)
+        parts = []
+        for value in node.values:
+            if isinstance(value, ast.Constant):
+                parts.append(str(value.value))
+            elif isinstance(value, ast.FormattedValue) and isinstance(value.value, ast.Name):
+                parts.append(str(getattr(module, value.value.id)))
+            else:
+                raise AssertionError(f"{module_name}: Präfix nicht auflösbar")
+        return "".join(parts)
+    raise AssertionError(f"{module_name}: Präfix ist kein Literal")
+
+
+def _secret_writer_prefixes():
+    """{Modul: Präfix} aller Aufrufe von `write_secret_*` mit `prefix=` in `src/` (außer `secure_file`)."""
+    root = pathlib.Path(__file__).resolve().parent.parent
+    found = {}
+    for path in sorted((root / "src").rglob("*.py")):
+        rel = path.relative_to(root).with_suffix("")
+        module_name = ".".join(rel.parts)
+        if module_name == "src.secure_file":
+            continue
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            if not isinstance(node, ast.Call):
+                continue
+            func = node.func
+            name = func.id if isinstance(func, ast.Name) else getattr(func, "attr", None)
+            if name not in _WRITER_FUNCS:
+                continue
+            for keyword in node.keywords:
+                if keyword.arg == "prefix":
+                    found.setdefault(module_name, set()).add(_resolve_prefix(keyword.value, module_name))
+    return found
+
+
+def test_every_credential_file_is_classified_for_the_temp_sweep():
+    assert set(_SECRET_WRITERS) | _NOT_SECRET_WRITTEN == set(removal.CREDENTIAL_FILES)
+    assert set(_secret_writer_prefixes()) == set(_SECRET_WRITERS.values())
+
+
+@pytest.mark.parametrize("filename, module_name", sorted(_SECRET_WRITERS.items()))
+def test_a_leftover_temp_file_of_every_secret_writer_is_swept(tmp_path, filename, module_name):
+    prefixes = _secret_writer_prefixes().get(module_name)
+    assert prefixes, f"{module_name} ruft write_secret_* nicht mit prefix= auf"
+    for prefix in prefixes:
+        leftover = tmp_path / f"{prefix}k3j9_x2.tmp"            # so benennt mkstemp(prefix, ".tmp")
+        _touch(leftover)
+
+        assert str(leftover) in removal._credential_paths(str(tmp_path)), (filename, prefix)

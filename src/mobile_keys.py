@@ -136,7 +136,7 @@ class MobileKeyStore:
         if self._readonly:
             raise MobileKeysReadOnly(self.filepath)
         write_secret_json(self.filepath, {"schema_version": SCHEMA_VERSION, "keys": self._entries},
-                          prefix=".mobile-keys-")
+                          prefix=".mobile_keys-")
 
     # --- Heißer Pfad ----------------------------------------------------------------------------
 

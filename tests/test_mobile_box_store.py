@@ -185,7 +185,7 @@ def test_the_file_is_written_through_write_secret_json_and_survives_a_reload(tmp
                         lambda *a, **k: (calls.append((a, k)), real(*a, **k))[1])
     s = store(tmp_path)
     secret, _ = s.open_pending(NOW)
-    assert len(calls) == 1 and calls[0][1]["prefix"] == ".mobile-box-"
+    assert len(calls) == 1 and calls[0][1]["prefix"] == ".mobile_box-"
     data = json.loads((tmp_path / "mobile_box.json").read_text(encoding="utf-8"))
     assert data == {"schema_version": 1, "pending": {"secret": secret, "created_at": NOW}, "devices": {}}
     s.bind("phone-0001")

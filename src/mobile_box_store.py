@@ -125,7 +125,7 @@ class MobileBoxStore:
             "pending": self._pending,
             "devices": {i: {"secret": s} for i, s in self._devices.items()},
         }
-        write_secret_json(self.filepath, document, prefix=".mobile-box-")
+        write_secret_json(self.filepath, document, prefix=".mobile_box-")
 
     def _commit_locked(self, snapshot: tuple[dict[str, str] | None, dict[str, str]]) -> None:
         """Schreibt den geänderten Stand; bei jedem Fehler zurückrollen (Muster `storage`) und

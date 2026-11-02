@@ -86,7 +86,7 @@ class MobileRelayStore:
             raise MobileRelayReadOnly(self.filepath)
         write_secret_json(self.filepath,
                           {"schema_version": SCHEMA_VERSION, "secrets": self._secrets},
-                          prefix=".mobile-relay-")
+                          prefix=".mobile_relay-")
 
     def get(self, device_id: str) -> str | None:
         with self._lock:
