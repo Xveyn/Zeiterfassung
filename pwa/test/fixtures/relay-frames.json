@@ -1,0 +1,380 @@
+{
+  "constants": {
+    "subprotocol": "zeit.v1",
+    "max_frame": 1048576,
+    "max_payload": 1048575,
+    "puts_per_minute": 60,
+    "types": {
+      "put": 1,
+      "slot": 2,
+      "ok": 3
+    }
+  },
+  "messages": [
+    {
+      "name": "ok with ver 258",
+      "hex": "0300000102",
+      "decoded": {
+        "kind": "ok",
+        "ver": 258,
+        "data_hex": null
+      }
+    },
+    {
+      "name": "slot with max ver and payload 0102",
+      "hex": "02ffffffff0102",
+      "decoded": {
+        "kind": "slot",
+        "ver": 4294967295,
+        "data_hex": "0102"
+      }
+    },
+    {
+      "name": "slot without payload",
+      "hex": "0200000001",
+      "decoded": {
+        "kind": "slot",
+        "ver": 1,
+        "data_hex": null
+      }
+    },
+    {
+      "name": "unknown type 0x09 is ignored",
+      "hex": "0900000001ff",
+      "decoded": null
+    },
+    {
+      "name": "empty message is ignored",
+      "hex": "",
+      "decoded": null
+    },
+    {
+      "name": "truncated slot (4 bytes) is ignored",
+      "hex": "02000000",
+      "decoded": null
+    },
+    {
+      "name": "truncated ok (3 bytes) is ignored",
+      "hex": "030000",
+      "decoded": null
+    }
+  ],
+  "puts": [
+    {
+      "name": "empty payload",
+      "payload_hex": "",
+      "hex": "01"
+    },
+    {
+      "name": "payload abcdef",
+      "payload_hex": "abcdef",
+      "hex": "01abcdef"
+    }
+  ],
+  "requests": [
+    {
+      "name": "sync with token and envelope",
+      "json": "{\"v\":1,\"path\":\"/v1/sync\",\"token\":\"Zm9vYmFyYmF6cXV4Zm9vYmFyYmF6cXV4Zm9vYmFyYmE\",\"envelope\":{\"v\":2,\"seq\":7,\"n\":\"AAECAwQFBgcICQoL\",\"c\":\"q83vASNFZ4mrze8BI0VniQ\"}}",
+      "ok": true,
+      "path": "/v1/sync",
+      "token": "Zm9vYmFyYmF6cXV4Zm9vYmFyYmF6cXV4Zm9vYmFyYmE",
+      "seq": 7
+    },
+    {
+      "name": "pair with null token",
+      "json": "{\"v\":1,\"path\":\"/v1/pair\",\"token\":null,\"envelope\":{\"v\":2,\"seq\":1,\"n\":\"AAECAwQFBgcICQoL\",\"c\":\"q83vASNFZ4mrze8BI0VniQ\"}}",
+      "ok": true,
+      "path": "/v1/pair",
+      "token": null,
+      "seq": 1
+    },
+    {
+      "name": "envelope seq 0 gives seq null",
+      "json": "{\"v\":1,\"path\":\"/v1/sync\",\"token\":\"Zm9vYmFyYmF6cXV4Zm9vYmFyYmF6cXV4Zm9vYmFyYmE\",\"envelope\":{\"v\":2,\"seq\":0,\"n\":\"AAECAwQFBgcICQoL\",\"c\":\"q83vASNFZ4mrze8BI0VniQ\"}}",
+      "ok": true,
+      "path": "/v1/sync",
+      "token": "Zm9vYmFyYmF6cXV4Zm9vYmFyYmF6cXV4Zm9vYmFyYmE",
+      "seq": null
+    },
+    {
+      "name": "envelope seq true gives seq null",
+      "json": "{\"v\":1,\"path\":\"/v1/sync\",\"token\":\"Zm9vYmFyYmF6cXV4Zm9vYmFyYmF6cXV4Zm9vYmFyYmE\",\"envelope\":{\"v\":2,\"seq\":true,\"n\":\"AAECAwQFBgcICQoL\",\"c\":\"q83vASNFZ4mrze8BI0VniQ\"}}",
+      "ok": true,
+      "path": "/v1/sync",
+      "token": "Zm9vYmFyYmF6cXV4Zm9vYmFyYmF6cXV4Zm9vYmFyYmE",
+      "seq": null
+    },
+    {
+      "name": "not json",
+      "json": "not json",
+      "ok": false
+    },
+    {
+      "name": "json list",
+      "json": "[]",
+      "ok": false
+    },
+    {
+      "name": "v 2",
+      "json": "{\"v\":2,\"path\":\"/v1/sync\",\"token\":\"Zm9vYmFyYmF6cXV4Zm9vYmFyYmF6cXV4Zm9vYmFyYmE\",\"envelope\":{\"v\":2,\"seq\":7,\"n\":\"AAECAwQFBgcICQoL\",\"c\":\"q83vASNFZ4mrze8BI0VniQ\"}}",
+      "ok": false
+    },
+    {
+      "name": "path missing",
+      "json": "{\"v\":1,\"token\":\"Zm9vYmFyYmF6cXV4Zm9vYmFyYmF6cXV4Zm9vYmFyYmE\",\"envelope\":{\"v\":2,\"seq\":7,\"n\":\"AAECAwQFBgcICQoL\",\"c\":\"q83vASNFZ4mrze8BI0VniQ\"}}",
+      "ok": false
+    },
+    {
+      "name": "path /v1/ping",
+      "json": "{\"v\":1,\"path\":\"/v1/ping\",\"token\":\"Zm9vYmFyYmF6cXV4Zm9vYmFyYmF6cXV4Zm9vYmFyYmE\",\"envelope\":{\"v\":2,\"seq\":7,\"n\":\"AAECAwQFBgcICQoL\",\"c\":\"q83vASNFZ4mrze8BI0VniQ\"}}",
+      "ok": false
+    },
+    {
+      "name": "path /v1/sync?x=1",
+      "json": "{\"v\":1,\"path\":\"/v1/sync?x=1\",\"token\":\"Zm9vYmFyYmF6cXV4Zm9vYmFyYmF6cXV4Zm9vYmFyYmE\",\"envelope\":{\"v\":2,\"seq\":7,\"n\":\"AAECAwQFBgcICQoL\",\"c\":\"q83vASNFZ4mrze8BI0VniQ\"}}",
+      "ok": false
+    },
+    {
+      "name": "path ../v1/sync",
+      "json": "{\"v\":1,\"path\":\"../v1/sync\",\"token\":\"Zm9vYmFyYmF6cXV4Zm9vYmFyYmF6cXV4Zm9vYmFyYmE\",\"envelope\":{\"v\":2,\"seq\":7,\"n\":\"AAECAwQFBgcICQoL\",\"c\":\"q83vASNFZ4mrze8BI0VniQ\"}}",
+      "ok": false
+    },
+    {
+      "name": "path https://evil/v1/sync",
+      "json": "{\"v\":1,\"path\":\"https://evil/v1/sync\",\"token\":\"Zm9vYmFyYmF6cXV4Zm9vYmFyYmF6cXV4Zm9vYmFyYmE\",\"envelope\":{\"v\":2,\"seq\":7,\"n\":\"AAECAwQFBgcICQoL\",\"c\":\"q83vASNFZ4mrze8BI0VniQ\"}}",
+      "ok": false
+    },
+    {
+      "name": "path empty",
+      "json": "{\"v\":1,\"path\":\"\",\"token\":\"Zm9vYmFyYmF6cXV4Zm9vYmFyYmF6cXV4Zm9vYmFyYmE\",\"envelope\":{\"v\":2,\"seq\":7,\"n\":\"AAECAwQFBgcICQoL\",\"c\":\"q83vASNFZ4mrze8BI0VniQ\"}}",
+      "ok": false
+    },
+    {
+      "name": "path /v1/sync with token null",
+      "json": "{\"v\":1,\"path\":\"/v1/sync\",\"token\":null,\"envelope\":{\"v\":2,\"seq\":7,\"n\":\"AAECAwQFBgcICQoL\",\"c\":\"q83vASNFZ4mrze8BI0VniQ\"}}",
+      "ok": false
+    },
+    {
+      "name": "envelope list",
+      "json": "{\"v\":1,\"path\":\"/v1/sync\",\"token\":\"Zm9vYmFyYmF6cXV4Zm9vYmFyYmF6cXV4Zm9vYmFyYmE\",\"envelope\":[1,2]}",
+      "ok": false
+    },
+    {
+      "name": "envelope text",
+      "json": "{\"v\":1,\"path\":\"/v1/sync\",\"token\":\"Zm9vYmFyYmF6cXV4Zm9vYmFyYmF6cXV4Zm9vYmFyYmE\",\"envelope\":\"text\"}",
+      "ok": false
+    },
+    {
+      "name": "envelope null",
+      "json": "{\"v\":1,\"path\":\"/v1/sync\",\"token\":\"Zm9vYmFyYmF6cXV4Zm9vYmFyYmF6cXV4Zm9vYmFyYmE\",\"envelope\":null}",
+      "ok": false
+    },
+    {
+      "name": "token with space",
+      "json": "{\"v\":1,\"path\":\"/v1/sync\",\"token\":\"Zm9vYmFyYmF6cXV4Zm9v mFyYmF6cXV4Zm9vYmFyYmE\",\"envelope\":{\"v\":2,\"seq\":7,\"n\":\"AAECAwQFBgcICQoL\",\"c\":\"q83vASNFZ4mrze8BI0VniQ\"}}",
+      "ok": false
+    },
+    {
+      "name": "token empty",
+      "json": "{\"v\":1,\"path\":\"/v1/sync\",\"token\":\"\",\"envelope\":{\"v\":2,\"seq\":7,\"n\":\"AAECAwQFBgcICQoL\",\"c\":\"q83vASNFZ4mrze8BI0VniQ\"}}",
+      "ok": false
+    },
+    {
+      "name": "token 513 chars",
+      "json": "{\"v\":1,\"path\":\"/v1/sync\",\"token\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"envelope\":{\"v\":2,\"seq\":7,\"n\":\"AAECAwQFBgcICQoL\",\"c\":\"q83vASNFZ4mrze8BI0VniQ\"}}",
+      "ok": false
+    },
+    {
+      "name": "token missing",
+      "json": "{\"v\":1,\"path\":\"/v1/sync\",\"envelope\":{\"v\":2,\"seq\":7,\"n\":\"AAECAwQFBgcICQoL\",\"c\":\"q83vASNFZ4mrze8BI0VniQ\"}}",
+      "ok": false
+    }
+  ],
+  "responses": [
+    {
+      "name": "200 with envelope body",
+      "json": "{\"v\":1,\"status\":200,\"seq\":7,\"body\":{\"v\":2,\"seq\":7,\"n\":\"AAECAwQFBgcICQoL\",\"c\":\"q83vASNFZ4mrze8BI0VniQ\"}}",
+      "ok": true,
+      "status": 200,
+      "seq": 7,
+      "body": {
+        "v": 2,
+        "seq": 7,
+        "n": "AAECAwQFBgcICQoL",
+        "c": "q83vASNFZ4mrze8BI0VniQ"
+      }
+    },
+    {
+      "name": "401 with null seq",
+      "json": "{\"v\":1,\"status\":401,\"seq\":null,\"body\":{\"error\":{\"code\":\"unauthorized\",\"message\":\"Nicht autorisiert\"}}}",
+      "ok": true,
+      "status": 401,
+      "seq": null,
+      "body": {
+        "error": {
+          "code": "unauthorized",
+          "message": "Nicht autorisiert"
+        }
+      }
+    },
+    {
+      "name": "409 with seq 7",
+      "json": "{\"v\":1,\"status\":409,\"seq\":7,\"body\":{\"error\":{\"code\":\"conflict\",\"message\":\"Konflikt\"}}}",
+      "ok": true,
+      "status": 409,
+      "seq": 7,
+      "body": {
+        "error": {
+          "code": "conflict",
+          "message": "Konflikt"
+        }
+      }
+    },
+    {
+      "name": "umlaut in error body",
+      "json": "{\"v\":1,\"status\":400,\"seq\":null,\"body\":{\"error\":{\"code\":\"x\",\"message\":\"Größe\"}}}",
+      "ok": true,
+      "status": 400,
+      "seq": null,
+      "body": {
+        "error": {
+          "code": "x",
+          "message": "Größe"
+        }
+      }
+    },
+    {
+      "name": "status 99",
+      "json": "{\"v\":1,\"status\":99,\"seq\":7,\"body\":{\"v\":2,\"seq\":7,\"n\":\"AAECAwQFBgcICQoL\",\"c\":\"q83vASNFZ4mrze8BI0VniQ\"}}",
+      "ok": false
+    },
+    {
+      "name": "status 600",
+      "json": "{\"v\":1,\"status\":600,\"seq\":7,\"body\":{\"v\":2,\"seq\":7,\"n\":\"AAECAwQFBgcICQoL\",\"c\":\"q83vASNFZ4mrze8BI0VniQ\"}}",
+      "ok": false
+    },
+    {
+      "name": "status \"200\"",
+      "json": "{\"v\":1,\"status\":\"200\",\"seq\":7,\"body\":{\"v\":2,\"seq\":7,\"n\":\"AAECAwQFBgcICQoL\",\"c\":\"q83vASNFZ4mrze8BI0VniQ\"}}",
+      "ok": false
+    },
+    {
+      "name": "status missing",
+      "json": "{\"v\":1,\"seq\":7,\"body\":{\"v\":2,\"seq\":7,\"n\":\"AAECAwQFBgcICQoL\",\"c\":\"q83vASNFZ4mrze8BI0VniQ\"}}",
+      "ok": false
+    },
+    {
+      "name": "seq 0",
+      "json": "{\"v\":1,\"status\":200,\"seq\":0,\"body\":{\"v\":2,\"seq\":7,\"n\":\"AAECAwQFBgcICQoL\",\"c\":\"q83vASNFZ4mrze8BI0VniQ\"}}",
+      "ok": false
+    },
+    {
+      "name": "seq \"7\"",
+      "json": "{\"v\":1,\"status\":200,\"seq\":\"7\",\"body\":{\"v\":2,\"seq\":7,\"n\":\"AAECAwQFBgcICQoL\",\"c\":\"q83vASNFZ4mrze8BI0VniQ\"}}",
+      "ok": false
+    },
+    {
+      "name": "seq 1.5",
+      "json": "{\"v\":1,\"status\":200,\"seq\":1.5,\"body\":{\"v\":2,\"seq\":7,\"n\":\"AAECAwQFBgcICQoL\",\"c\":\"q83vASNFZ4mrze8BI0VniQ\"}}",
+      "ok": false
+    },
+    {
+      "name": "body list",
+      "json": "{\"v\":1,\"status\":200,\"seq\":7,\"body\":[1]}",
+      "ok": false
+    },
+    {
+      "name": "body missing",
+      "json": "{\"v\":1,\"status\":200,\"seq\":7}",
+      "ok": false
+    },
+    {
+      "name": "body null",
+      "json": "{\"v\":1,\"status\":200,\"seq\":7,\"body\":null}",
+      "ok": false
+    },
+    {
+      "name": "v 2",
+      "json": "{\"v\":2,\"status\":200,\"seq\":7,\"body\":{\"v\":2,\"seq\":7,\"n\":\"AAECAwQFBgcICQoL\",\"c\":\"q83vASNFZ4mrze8BI0VniQ\"}}",
+      "ok": false
+    },
+    {
+      "name": "not json",
+      "json": "{nope",
+      "ok": false
+    }
+  ],
+  "links": [
+    {
+      "url": "https://xveyn.github.io/Zeiterfassung/#relay=Zm9vYmFyYmF6cXV4Zm9vYmFyYmF6cXV4Zm9vYmFyYmE:K7M29QXAK7M29QXAK7M29QXAK7M2",
+      "kind": "relay",
+      "secret": "Zm9vYmFyYmF6cXV4Zm9vYmFyYmF6cXV4Zm9vYmFyYmE",
+      "code": "K7M29QXAK7M29QXAK7M29QXAK7M2"
+    },
+    {
+      "url": "#relay=Zm9vYmFyYmF6cXV4Zm9vYmFyYmF6cXV4Zm9vYmFyYmE:K7M29QXAK7M29QXAK7M29QXAK7M2",
+      "kind": "relay",
+      "secret": "Zm9vYmFyYmF6cXV4Zm9vYmFyYmF6cXV4Zm9vYmFyYmE",
+      "code": "K7M29QXAK7M29QXAK7M29QXAK7M2"
+    },
+    {
+      "url": "https://xveyn.github.io/Zeiterfassung/#pair=192.168.178.20:17654:K7M29QXAK7M29QXAK7M29QXAK7M2",
+      "kind": "lan",
+      "host": "192.168.178.20",
+      "port": 17654,
+      "code": "K7M29QXAK7M29QXAK7M29QXAK7M2"
+    },
+    {
+      "url": "https://xveyn.github.io/Zeiterfassung/#relay=Zm9vYmFyYmF6cXV4Zm9vYmFyYmF6cXV4Zm9vYmFyYm:K7M29QXAK7M29QXAK7M29QXAK7M2",
+      "kind": null
+    },
+    {
+      "url": "https://xveyn.github.io/Zeiterfassung/#relay=Zm9vYmFyYmF6cXV4Zm9vYmFyYmF6cXV4Zm9vYmFyYmEA:K7M29QXAK7M29QXAK7M29QXAK7M2",
+      "kind": null
+    },
+    {
+      "url": "https://xveyn.github.io/Zeiterfassung/#relay=Zm9vYmFyYmF6cXV4Zm9vYmFyYmF6cXV4Zm9vYmFyYmE:K7M29QXAK7M29QXAK7M29QXAK7M0",
+      "kind": null
+    },
+    {
+      "url": "https://xveyn.github.io/Zeiterfassung/#relay=Zm9vYmFyYmF6cXV4Zm9vYmFyYmF6cXV4Zm9vYmFyYmE:K7M29QXAK7M29QXAK7M29QXAK7MO",
+      "kind": null
+    },
+    {
+      "url": "https://xveyn.github.io/Zeiterfassung/#relay=Zm9vYmFyYmF6cXV4Zm9vYmFyYmF6cXV4Zm9vYmFyYmE:K7M29QXAK7M29QXAK7M29QXAK7M1",
+      "kind": null
+    },
+    {
+      "url": "https://xveyn.github.io/Zeiterfassung/#relay=Zm9vYmFyYmF6cXV4Zm9vYmFyYmF6cXV4Zm9vYmFyYmE:K7M29QXAK7M29QXAK7M29QXAK7MI",
+      "kind": null
+    },
+    {
+      "url": "https://xveyn.github.io/Zeiterfassung/#relay=Zm9vYmFyYmF6cXV4Zm9vYmFyYmF6cXV4Zm9vYmFyYmE:K7M29QXAK7M29QXAK7M29QXAK7ML",
+      "kind": null
+    },
+    {
+      "url": "https://xveyn.github.io/Zeiterfassung/#relay=Zm9vYmFyYmF6cXV4Zm9vYmFyYmF6cXV4Zm9vYmFyYmE:k7m29qxak7m29qxak7m29qxak7m2",
+      "kind": null
+    },
+    {
+      "url": "https://xveyn.github.io/Zeiterfassung/#relay=Zm9vYmFyYmF6cXV4Zm9vYmFyYmF6cXV4Zm9vYmFyYmE:K7M29QXAK7M29QXAK7M29QXAK7M2:K7M29QXAK7M29QXAK7M29QXAK7M2",
+      "kind": null
+    },
+    {
+      "url": "https://xveyn.github.io/Zeiterfassung/#relay=Zm9vYmFyYmF6cXV4Zm9vYmFyYmF6cXV4Zm9vYmFyYmE:K7M29QXAK7M29QXAK7M29QXAK7M2 ",
+      "kind": null
+    },
+    {
+      "url": "https://xveyn.github.io/Zeiterfassung/#relay=",
+      "kind": null
+    },
+    {
+      "url": "https://xveyn.github.io/Zeiterfassung/#relay=Zm9vYmFyYmF6cXV4Zm9vYmFyYmF6cXV4Zm9vYmFyYmE:K7M29QXAK7M29QXAK7M29QXAK7M2AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      "kind": null
+    },
+    {
+      "url": "https://xveyn.github.io/Zeiterfassung/#pair=relay:Zm9vYmFyYmF6cXV4Zm9vYmFyYmF6cXV4Zm9vYmFyYmE:K7M29QXAK7M29QXAK7M29QXAK7M2",
+      "kind": null
+    }
+  ]
+}
