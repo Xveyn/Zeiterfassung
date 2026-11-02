@@ -32,6 +32,10 @@ enabled = false
 [vars]
 # Nur für die lokale Entwicklung (Origin des Dev-Servers der PWA); im Betrieb leer.
 DEV_ORIGIN = ""
+# Jurisdiktion der Box. Produktion bleibt "eu" und darf nie "none" sein: die Jurisdiktion lässt sich später
+# nicht nachziehen (gleicher Name = andere ID, die Slots wären weg). "none" nur für `wrangler dev`
+# (`--var BOX_JURISDICTION:none`), weil das lokale workerd keine Jurisdiktionen kennt.
+BOX_JURISDICTION = "eu"
 # Der öffentliche VAPID-Schlüssel steht auch in der PWA und darf nie gewechselt werden: alle Abos
 # hängen an ihm. VAPID_PRIVATE und VAPID_SUBJECT (mailto:…) sind Secrets, s. README.md.
 VAPID_PUBLIC = "BMZUZQIW3QNwt2vJp3q47zAAx4lLADWA0_r3kQQeyMT3d_GXsyyTjNlgBd1fOMtuZvlJhsLu1QRbHsT0hQHzC20"

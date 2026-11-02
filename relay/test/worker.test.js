@@ -373,6 +373,39 @@ test('box objects are chosen through jurisdiction("eu") only', async () => {
   assert.equal(direct(), 0);
 });
 
+test('BOX_JURISDICTION eu behaves like the default', async () => {
+  const { ws, jurisdictions, direct } = boxSetup({ BOX_JURISDICTION: 'eu' });
+  await ws();
+  assert.deepEqual(jurisdictions, ['eu']);
+  assert.equal(direct(), 0);
+});
+
+test('BOX_JURISDICTION none picks the object directly and never asks for a jurisdiction', async () => {
+  const seen = [];
+  const BOX = {
+    idFromName: (n) => n,
+    get: (id) => ({ fetch: async (request) => { seen.push(id); return new Response(null, { status: 204 }); } }),
+    jurisdiction: () => { throw new Error('jurisdiction'); },
+  };
+  const response = await worker.fetch(new Request('https://relay.example/v1/box/ws?role=phone', {
+    headers: { upgrade: 'websocket', 'sec-websocket-protocol': `zeit.v1, ${secret(1)}` },
+  }), { BOX, BOX_JURISDICTION: 'none' });
+  assert.equal(response.status, 204);
+  assert.equal(seen.length, 1);
+});
+
+for (const value of ['US', '', 'fedramp']) {
+  test(`BOX_JURISDICTION ${JSON.stringify(value)} is a 500 and the box stays untouched`, async () => {
+    const { ws, seen, jurisdictions, direct } = boxSetup({ BOX_JURISDICTION: value });
+    const response = await ws();
+    assert.equal(response.status, 500);
+    assert.deepEqual(await response.json(), { error: 'internal' });
+    assert.deepEqual(seen, []);
+    assert.deepEqual(jurisdictions, []);
+    assert.equal(direct(), 0);
+  });
+}
+
 test('a throwing box is 500 without details and the box routes do not log', async () => {
   const logged = [];
   const originals = {};
@@ -395,6 +428,7 @@ test('wrangler.toml disables observability', async () => {
   const { readFile } = await import('node:fs/promises');
   const toml = await readFile(new URL('../wrangler.toml', import.meta.url), 'utf8');
   assert.match(toml, /\[observability\]\s*\nenabled = false/);
+  assert.match(toml, /^BOX_JURISDICTION = "eu"[\r]?$/m);
   assert.match(toml, /name = "BOX"\s*\nclass_name = "Box"/);
   assert.match(toml, /tag = "v2"\s*\nnew_sqlite_classes = \["Box"\]/);
 });

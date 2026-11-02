@@ -1,5 +1,5 @@
 // relay/scripts/box-smoke.mjs
-// Ablauf-Test der Box gegen einen laufenden `npx wrangler dev` (echtes workerd, nicht die Fakes der
+// Ablauf-Test der Box gegen einen laufenden `npx wrangler dev --var BOX_JURISDICTION:none` (echtes workerd, nicht die Fakes der
 // Unit-Tests). Aufruf: `node scripts/box-smoke.mjs [baseUrl]`, Standard http://127.0.0.1:8787.
 // Reines Node >= 22 (globales WebSocket), keine Abhängigkeiten. Exit 1, sobald eine Prüfung fehlschlägt.
 import { randomBytes } from 'node:crypto';

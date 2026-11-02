@@ -79,9 +79,13 @@ async function withinLimit(request, env) {
   }
 }
 
-/** Das Objekt der Box: nur über die EU-Jurisdiktion gewählt, nie direkt über `env.BOX.idFromName`. */
+/** Das Objekt der Box: in Produktion nur über die EU-Jurisdiktion gewählt, nie direkt über
+ *  `env.BOX.idFromName`. `BOX_JURISDICTION` = `none` gibt es nur für `wrangler dev` (lokales workerd kennt keine
+ *  Jurisdiktionen); jeder andere Wert wirft und endet im 500 `internal`. */
 async function boxStub(env, secret) {
-  const box = env.BOX.jurisdiction('eu');
+  const mode = env.BOX_JURISDICTION ?? 'eu';
+  if (mode !== 'eu' && mode !== 'none') throw new Error('BOX_JURISDICTION ist ungültig.');
+  const box = mode === 'eu' ? env.BOX.jurisdiction('eu') : env.BOX;
   return box.get(box.idFromName(await objectName(secret)));
 }
 

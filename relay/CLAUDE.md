@@ -83,11 +83,12 @@ Relay ersetzt den Slot der Absender-Rolle, zählt `ver` hoch, stellt dem Gegenü
   sonst Vorgänger + 1. Grund: das Aufräumen (Leerlauf, `DELETE /v1/box`) löscht den Zähler, das `have` der
   Clients bleibt; finge `ver` wieder bei 1 an, hielte ein Client jeden neuen Slot für bekannt. **Clients
   dürfen keine +1-Schritte annehmen**, nur „größer“ (bis ca. 2094 unter 2^31, der Grenze von `have`).
-- **EU-Jurisdiktion:** das Objekt wird **nur** über `env.BOX.jurisdiction('eu')` gewählt, nie über
+- **EU-Jurisdiktion:** das Objekt wird in Produktion **nur** über `env.BOX.jurisdiction('eu')` gewählt, nie über
   `idFromName` direkt. Das ist **nicht nachrüstbar** (gleicher Name = andere ID, die alten Slots wären
-  weg). Der Worker selbst läuft pro Anfrage am nächsten Rand; die IP wird dort verarbeitet. Achtung:
-  lokales `wrangler dev` (workerd) kennt `jurisdiction` nicht („Jurisdiction restrictions are not
-  implemented in workerd“, `500 internal`) — der Smoke-Test läuft dort nur mit einer lokalen Umgehung.
+  weg). Der Worker selbst läuft pro Anfrage am nächsten Rand; die IP wird dort verarbeitet. Gesteuert über
+  `[vars] BOX_JURISDICTION = "eu"` (`wrangler.toml`, Test hält es fest): `eu` (Standard) oder `none`, jeder
+  andere Wert wirft (`500 internal`). `none` gibt es **nur** für `wrangler dev --var BOX_JURISDICTION:none`,
+  weil das lokale workerd keine Jurisdiktionen kennt („not implemented in workerd“). **Produktion nie `none`.**
 - **Selbstreinigung:** Alarm nach `idleDays` (90) ohne Aktivität, höchstens einmal am Tag neu gesetzt (jeder
   `setAlarm` ist ein Schreibvorgang im Kontingent).
 - **`observability` bleibt aus** (`wrangler.toml`), und **das Subprotocol und die Query werden nie
@@ -95,9 +96,9 @@ Relay ersetzt den Slot der Absender-Rolle, zählt `ver` hoch, stellt dem Gegenü
   mitschreibt, steht in `docs/datenschutz.md`.
 - **Konstante ändern heißt PWA/Desktop mitziehen:** `zeit.v1`, die Typ-Bytes, die Byte-Reihenfolge von `ver`
   und `maxFrame` stehen auf beiden Seiten (Desktop `relay_link.py` und PWA `RelayTransport`, spätere PRs).
-- Ablauf-Test: `node scripts/box-smoke.mjs [baseUrl]` gegen `npx wrangler dev` prüft Zustellung, Wiederaufnahme
+- Ablauf-Test: `node scripts/box-smoke.mjs [baseUrl]` gegen `npx wrangler dev --var BOX_JURISDICTION:none` prüft Zustellung, Wiederaufnahme
   mit `have`, falsches Subprotocol, `maxFrame + 1` und `DELETE`. Ein vom Server ausgelöstes Schließen
-  (`DELETE`) sieht der Client in `wrangler dev` erst nach rund 10 s.
+  (`DELETE`) sieht der Client in `wrangler dev` (so beobachtet) erst nach rund 10 s.
 
 ## Dateien
 
