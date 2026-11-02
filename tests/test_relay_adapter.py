@@ -14,7 +14,7 @@ import pytest
 from src import api_server, mobile_crypto as mc, mobile_keys, mobile_pairing, mobile_routes
 from src.api_routes import ApiResponse
 from src.mobile_relay_codec import MAX_PAYLOAD, encode_too_large_response
-from src.relay_adapter import RelayAdapter
+from src.relay_adapter import RelayAdapter, RelayResult
 from src.time_utils import utc_now_iso
 from tests.mobile_phone import FakeRing, Phone
 from tests.test_mobile_service import make_service
@@ -527,3 +527,128 @@ def test_the_adapter_logs_no_token_envelope_or_secret(ctx, monkeypatch, caplog):
             text += repr(record.exc_info[1])
         for secret in secrets:
             assert secret not in text, record.name
+
+
+# --- process(): welches Gerät hat gekoppelt ---------------------------------------------------------
+
+def test_a_successful_pair_reports_the_new_device_id(ctx):
+    adapter = RelayAdapter(ctx)
+    phone = Phone("phone-0042")
+    code, _env, payload = pair_payload(ctx, phone)
+
+    result = adapter.process(payload)
+
+    assert isinstance(result, RelayResult)
+    assert result.paired_device_id == "phone-0042"
+    assert answer(result.frame)["status"] == 200
+    phone.open_pair_response(code, answer(result.frame)["body"])
+
+
+def test_a_failed_pair_reports_no_device_id(ctx):
+    adapter = RelayAdapter(ctx)
+    ctx.pairing.open()
+    wrong = frame("/v1/pair", None, Phone().pair_request(mobile_pairing.generate_code()))
+
+    result = adapter.process(wrong)
+
+    assert answer(result.frame)["status"] == 403 and result.paired_device_id is None
+
+
+def test_a_cached_pair_redelivery_reports_the_same_device_id(ctx, monkeypatch):
+    adapter = RelayAdapter(ctx)
+    _code, _env, payload = pair_payload(ctx, Phone("phone-0007"))
+    first = adapter.process(payload)
+    calls = counting_dispatch(monkeypatch)
+
+    again = adapter.process(payload)
+
+    assert calls == [] and again == first
+    assert again.paired_device_id == "phone-0007"
+
+
+def test_a_repair_of_an_existing_device_reports_its_id(ctx):
+    adapter = RelayAdapter(ctx)
+    phone = paired(ctx, adapter, Phone("phone-0001"))
+    paired(ctx, adapter, Phone("phone-0002"))
+    _code, _env, payload = pair_payload(ctx, phone)
+
+    result = adapter.process(payload)
+
+    assert result.paired_device_id == "phone-0001"
+    assert mobile_pairing.pair_count(ctx.devices.get("phone-0001")) == 2
+
+
+def test_sync_and_errors_report_no_device_id(ctx, monkeypatch):
+    adapter = RelayAdapter(ctx)
+    phone = paired(ctx, adapter)
+    _env, sync_frame = sync_payload(phone)
+
+    synced = adapter.process(sync_frame)
+    replayed = adapter.process(sync_frame)
+    junk = adapter.process(b"not json")
+    monkeypatch.setattr(ctx.devices, "get_all", lambda: (_ for _ in ()).throw(OSError("x")))
+    broken = adapter.process(pair_payload(ctx, Phone("phone-0003"))[2])
+
+    assert answer(synced.frame)["status"] == 200 and synced.paired_device_id is None
+    assert replayed == RelayResult(None, None) and junk == RelayResult(None, None)
+    assert answer(broken.frame)["status"] == 500 and broken.paired_device_id is None
+
+
+def test_handle_is_the_frame_of_process(ctx, monkeypatch):
+    adapter = RelayAdapter(ctx)
+    seen = []
+    real_process = adapter.process
+
+    def spy(payload):
+        result = real_process(payload)
+        seen.append(result)
+        return result
+    monkeypatch.setattr(adapter, "process", spy)
+    _code, _env, payload = pair_payload(ctx, Phone())
+
+    frame_bytes = adapter.handle(payload)
+
+    assert len(seen) == 1 and frame_bytes == seen[0].frame and frame_bytes is not None
+    assert adapter.handle(b"") is None
+
+
+def test_an_ambiguous_pair_count_change_reports_none(ctx, monkeypatch):
+    adapter = RelayAdapter(ctx)
+    real_get_all = ctx.devices.get_all
+    calls = []
+
+    def two_changed():
+        calls.append(1)
+        records = real_get_all()
+        if len(calls) > 1:                                       # nach dem dispatch: ein zweites Gerät
+            records.append({"id": "phone-other", "pair_count": 1})
+        return records
+    monkeypatch.setattr(ctx.devices, "get_all", two_changed)
+
+    result = adapter.process(pair_payload(ctx, Phone("phone-0001"))[2])
+
+    assert answer(result.frame)["status"] == 200 and result.paired_device_id is None
+    assert len(calls) == 2
+
+
+def test_a_large_non_ascii_envelope_is_not_expanded_before_dispatch(ctx, monkeypatch):
+    adapter = RelayAdapter(ctx)
+    phone = paired(ctx, adapter)
+    envelope, _payload = sync_payload(phone)
+    hostile = dict(envelope, x="ä" * 300_000)                    # ~600 KB UTF-8
+    payload = json.dumps({"v": 1, "path": "/v1/sync", "token": phone.token, "envelope": hostile},
+                         ensure_ascii=False).encode("utf-8")
+    bodies = []
+    real_dispatch = mobile_routes.dispatch
+
+    def spy(request, context, principal):
+        bodies.append(len(request.body))
+        return real_dispatch(request, context, principal)
+    monkeypatch.setattr(mobile_routes, "dispatch", spy)
+
+    res = answer(adapter.handle(payload))
+
+    assert bodies and bodies[0] <= len(json.dumps(hostile, ensure_ascii=False).encode("utf-8"))
+    assert bodies[0] < len(payload)
+    assert res["status"] == 400 and res["body"]["error"]["code"] == "invalid_envelope"
+    assert ctx.devices.get(phone.device_id)["last_seq"] == 0
