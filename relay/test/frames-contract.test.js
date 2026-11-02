@@ -16,7 +16,12 @@ const fromHex = (hex) => Uint8Array.from(Buffer.from(hex, 'hex'));
 
 test('the fixture constants match the relay', () => {
   const c = fixture.constants;
-  assert.equal(c.subprotocol, 'zeit.v1');
+  // Das Subprotocol ist in box.js nicht exportiert: aus dem Quelltext lesen. Findet die Regex
+  // nichts, schlägt der Test fehl (kein stilles Überspringen).
+  const box = readFileSync(new URL('../src/box.js', import.meta.url), 'utf8');
+  const protocol = /const PROTOCOL = '([^']+)'/.exec(box);
+  assert.ok(protocol, 'const PROTOCOL in relay/src/box.js nicht gefunden');
+  assert.equal(c.subprotocol, protocol[1]);
   assert.equal(c.max_frame, LIMITS.maxFrame);
   assert.equal(c.max_payload, LIMITS.maxFrame - 1);
   assert.equal(c.puts_per_minute, LIMITS.putsPerMinute);

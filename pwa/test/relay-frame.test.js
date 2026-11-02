@@ -5,7 +5,8 @@ import { readFileSync } from 'node:fs';
 
 import {
   MAX_FRAME, MAX_PAYLOAD, PUTS_PER_MINUTE, RelayFrameError, SUBPROTOCOL, TYPE,
-  decodeMessage, decodeRequest, decodeResponse, encodePut, encodeRequest, envelopeSeq, isCurrentResponse,
+  decodeMessage, decodeRequest, decodeResponse, encodePut, encodeRequest, envelopeNonce, envelopeSeq,
+  isCurrentResponse,
 } from '../relay-frame.js';
 
 const fixture = JSON.parse(readFileSync(new URL('./fixtures/relay-frames.json', import.meta.url)));
@@ -16,7 +17,8 @@ const isInvalid = (error) => error instanceof RelayFrameError && error.code === 
 const isTooLarge = (error) => error instanceof RelayFrameError && error.code === 'too_large';
 
 const TOKEN = 'Zm9vYmFyYmF6cXV4Zm9vYmFyYmF6cXV4Zm9vYmFyYmE';
-const ENVELOPE = { v: 2, seq: 7, n: 'AAECAwQFBgcICQoL', c: 'q83vASNFZ4mrze8BI0VniQ' };
+const N = 'AAECAwQFBgcICQoL';
+const ENVELOPE = { v: 2, seq: 7, n: N, c: 'q83vASNFZ4mrze8BI0VniQ' };
 const requestBytes = (envelope, path = '/v1/sync', token = TOKEN) =>
   enc.encode(JSON.stringify({ v: 1, path, token, envelope }));
 
@@ -72,13 +74,24 @@ test('decodeMessage ignores strings and never throws', () => {
   for (const junk of ['ping', '', null, undefined, 5, {}, [], true]) assert.equal(decodeMessage(junk), null);
 });
 
-test('decodeRequest accepts every ok:true fixture request and returns path, token, seq', () => {
+test('decodeRequest accepts every ok:true fixture request and returns path, token, seq, n', () => {
   for (const row of fixture.requests.filter((r) => r.ok)) {
     const got = decodeRequest(enc.encode(row.json));
     assert.equal(got.path, row.path, row.name);
     assert.equal(got.token, row.token, row.name);
     assert.equal(got.seq, row.seq, row.name);
+    assert.equal(got.n, row.n, row.name);
     assert.equal(typeof got.envelope, 'object', row.name);
+  }
+});
+
+test('encodeRequest emits exactly the canonical fixture bytes', () => {
+  const rows = fixture.requests.filter((r) => r.ok && r.canonical);
+  assert.ok(rows.length >= 3);
+  for (const row of rows) {
+    const envelope = JSON.parse(row.json).envelope;
+    const bytes = encodeRequest({ path: row.path, token: row.token, envelope });
+    assert.equal(new TextDecoder().decode(bytes), row.json, row.name);
   }
 });
 
@@ -109,6 +122,7 @@ test('decodeResponse accepts every ok:true fixture response and rejects every ok
       const got = decodeResponse(enc.encode(row.json));
       assert.equal(got.status, row.status, row.name);
       assert.equal(got.seq, row.seq, row.name);
+      assert.equal(got.n, row.n, row.name);
       assert.deepEqual(got.body, row.body, row.name);
     } else {
       assert.throws(() => decodeResponse(enc.encode(row.json)), isInvalid, row.name);
@@ -116,10 +130,16 @@ test('decodeResponse accepts every ok:true fixture response and rejects every ok
   }
 });
 
-test('decodeResponse rejects invalid seq values and never leaks foreign exceptions', () => {
-  const make = (seq) => enc.encode(JSON.stringify({ v: 1, status: 200, seq, body: {} }));
+test('decodeResponse rejects invalid seq and n values and never leaks foreign exceptions', () => {
+  const make = (seq, n = N) => enc.encode(JSON.stringify({ v: 1, status: 200, seq, n, body: {} }));
   for (const seq of [0, -1, '1', 1.5, true, 2 ** 53]) assert.throws(() => decodeResponse(make(seq)), isInvalid, String(seq));
   assert.equal(decodeResponse(make(2 ** 53 - 1)).seq, 2 ** 53 - 1);
+  for (const n of [N.slice(1), `${N}A`, `${N.slice(1)}+`, `${N.slice(1)}/`, '', 7, true, [], {}]) {
+    assert.throws(() => decodeResponse(make(7, n)), isInvalid, String(n));
+  }
+  assert.throws(() => decodeResponse(enc.encode('{"v":1,"status":200,"seq":7,"body":{}}')), isInvalid, 'n fehlt');
+  assert.equal(decodeResponse(make(7, null)).n, null);
+  assert.equal(decodeResponse(make(7, '-_0123456789abcd')).n, '-_0123456789abcd');
   for (const bytes of [new Uint8Array(0), Uint8Array.of(0xff), enc.encode('null'), null, 'x']) {
     assert.throws(() => decodeResponse(bytes), isInvalid);
   }
@@ -129,7 +149,7 @@ test('encodeRequest then decodeRequest round-trips, counts UTF-8 bytes against M
   const envelope = { ...ENVELOPE, c: 'Größe €' };
   const bytes = encodeRequest({ path: '/v1/sync', token: TOKEN, envelope });
   assert.equal(new TextDecoder().decode(bytes).startsWith('{"v":1,"path":"/v1/sync","token":"'), true);
-  assert.deepEqual(decodeRequest(bytes), { path: '/v1/sync', token: TOKEN, envelope, seq: 7 });
+  assert.deepEqual(decodeRequest(bytes), { path: '/v1/sync', token: TOKEN, envelope, seq: 7, n: N });
   const pair = decodeRequest(encodeRequest({ path: '/v1/pair', token: null, envelope }));
   assert.equal(pair.token, null);
 
@@ -172,11 +192,37 @@ test('envelopeSeq rejects 0, -1, "1", 1.5, true, 2**53, NaN', () => {
   assert.equal(envelopeSeq({ seq: Number.MAX_SAFE_INTEGER }), Number.MAX_SAFE_INTEGER);
 });
 
-test('isCurrentResponse: equal seq true, different seq false, null seq only with status >= 400', () => {
-  assert.equal(isCurrentResponse({ status: 200, seq: 5 }, 5), true);
-  assert.equal(isCurrentResponse({ status: 200, seq: 4 }, 5), false);
-  assert.equal(isCurrentResponse({ status: 200, seq: null }, 5), false);
-  assert.equal(isCurrentResponse({ status: 399, seq: null }, 5), false);
-  assert.equal(isCurrentResponse({ status: 400, seq: null }, 5), true);
-  assert.equal(isCurrentResponse({ status: 401, seq: 4 }, 5), false);
+test('envelopeNonce accepts exactly 16 base64url characters', () => {
+  assert.equal(envelopeNonce(ENVELOPE), N);
+  assert.equal(envelopeNonce({ n: '-_0123456789abcd' }), '-_0123456789abcd');
+  for (const n of [N.slice(1), `${N}A`, `${N.slice(1)}+`, `${N.slice(1)}=`, `${N.slice(1)}\n`, '', 7, null, undefined, [N], {}]) {
+    assert.equal(envelopeNonce({ n }), null, String(n));
+  }
+  for (const junk of [null, undefined, 5, N, [N]]) assert.equal(envelopeNonce(junk), null);
+});
+
+test('isCurrentResponse: only a frame echoing the pending nonce is current', () => {
+  const other = 'BBECAwQFBgcICQoL';
+  assert.equal(isCurrentResponse({ status: 200, seq: 5, n: N }, N), true);
+  assert.equal(isCurrentResponse({ status: 200, seq: 5, n: other }, N), false);
+  // Kein Ausnahmefall mehr für unversiegelte Fehler: ohne Nonce nie aktuell, auch nicht bei 401.
+  for (const status of [200, 400, 401, 409, 413]) {
+    assert.equal(isCurrentResponse({ status, seq: null, n: null }, N), false, String(status));
+  }
+  assert.equal(isCurrentResponse({ status: 401, seq: null, n: N }, N), true);
+  // pendingN muss eine gültige Nonce sein; null/ungültig ist nie aktuell (auch nicht gegen n: null).
+  assert.equal(isCurrentResponse({ status: 401, seq: null, n: null }, null), false);
+  assert.equal(isCurrentResponse({ status: 200, seq: 1, n: 'x' }, 'x'), false);
+  assert.equal(isCurrentResponse({ status: 200, seq: 1, n: undefined }, undefined), false);
+});
+
+test('isCurrentResponse: the seq-1 collision between pair and the first sync is resolved by n', () => {
+  const pairN = 'cGFpcnBhaXJwYWly';
+  const syncN = 'c3luY3N5bmNzeW5j';
+  const pairRes = decodeResponse(enc.encode(JSON.stringify({ v: 1, status: 200, seq: 1, n: pairN, body: {} })));
+  const syncRes = decodeResponse(enc.encode(JSON.stringify({ v: 1, status: 200, seq: 1, n: syncN, body: {} })));
+  assert.equal(isCurrentResponse(pairRes, syncN), false);
+  assert.equal(isCurrentResponse(syncRes, syncN), true);
+  assert.equal(isCurrentResponse(pairRes, pairN), true);
+  assert.equal(isCurrentResponse(syncRes, pairN), false);
 });

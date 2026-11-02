@@ -389,8 +389,11 @@ def test_the_relay_request_decoder_yields_what_dispatch_expects():
     from src import mobile_routes
     from src.api_routes import ApiRequest
 
-    rows = [r for r in load("relay-frames.json")["requests"] if r["ok"] and r["seq"] is not None]
-    assert rows  # Umschläge mit ungültigem seq lehnt dispatch selbst ab (invalid_envelope)
+    rows = [r for r in load("relay-frames.json")["requests"]
+            if r["ok"] and r["seq"] is not None and r["n"] is not None]
+    assert rows  # Umschläge mit ungültigem seq oder n lehnt dispatch selbst ab (400)
+    for row in rows:
+        assert codec.decode_request(row["json"].encode()).n == row["n"]
     for row in rows:
         request = codec.decode_request(row["json"].encode())
         api_request = ApiRequest("POST", request.path, {}, json.dumps(request.envelope).encode())

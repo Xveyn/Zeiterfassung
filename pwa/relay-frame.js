@@ -11,6 +11,7 @@ export const TYPE = { put: 1, slot: 2, ok: 3 };
 
 const PATHS = new Set(['/v1/pair', '/v1/sync']);
 const TOKEN_RE = /^[\x21-\x7e]{1,512}$/;
+const NONCE_RE = /^[A-Za-z0-9_-]{16}$/;      // 12 Byte Nonce, Base64url ohne Auffüllung
 
 const encoder = new TextEncoder();
 
@@ -37,6 +38,16 @@ function isValidSeq(value) {
 export function envelopeSeq(envelope) {
   if (!isPlainObject(envelope)) return null;
   return isValidSeq(envelope.seq) ? envelope.seq : null;
+}
+
+function isValidNonce(value) {
+  return typeof value === 'string' && NONCE_RE.test(value);
+}
+
+/** Die gültige Nonce `n` eines Umschlags (genau 16 Zeichen Base64url) oder `null`. */
+export function envelopeNonce(envelope) {
+  if (!isPlainObject(envelope)) return null;
+  return isValidNonce(envelope.n) ? envelope.n : null;
 }
 
 /** Typ-Byte + Nutzlast. Größer als `MAX_PAYLOAD` Bytes wirft `too_large`. */
@@ -107,30 +118,39 @@ export function encodeRequest(request) {
   return bytes;
 }
 
-/** Anfrage lesen (Tests und Rundlauf). Ungültiges `seq` im Umschlag ergibt `seq: null`, keinen Fehler. */
+/**
+ * Anfrage lesen (Tests und Rundlauf). Ungültiges `seq` oder `n` im Umschlag ergibt `seq: null` bzw.
+ * `n: null`, keinen Fehler.
+ */
 export function decodeRequest(bytes) {
   const value = parseJson(bytes);
   if (value.v !== 1) throw invalid('v muss 1 sein');
   const { path, token, envelope } = value;
   checkRequest(path, token, envelope);
-  return { path, token, envelope, seq: envelopeSeq(envelope) };
-}
-
-/** Antwort lesen. `seq` ist `null` oder gültig; `status` ganze Zahl 100…599. */
-export function decodeResponse(bytes) {
-  const value = parseJson(bytes);
-  if (value.v !== 1) throw invalid('v muss 1 sein');
-  const { status, seq, body } = value;
-  if (!Number.isInteger(status) || status < 100 || status > 599) throw invalid('status ungültig');
-  if (seq !== null && !isValidSeq(seq)) throw invalid('seq ungültig');
-  if (!isPlainObject(body)) throw invalid('body muss ein Objekt sein');
-  return { status, seq, body };
+  return { path, token, envelope, seq: envelopeSeq(envelope), n: envelopeNonce(envelope) };
 }
 
 /**
- * Gehört die Antwort zur offenen Anfrage? Ein `null`-`seq` gilt nur bei Fehlerstatus (>= 400).
- * `pendingSeq` muss ein gültiges `seq` sein, nie `null`/`undefined`.
+ * Antwort lesen. `status` ganze Zahl 100…599, `seq` `null` oder gültig, `n` `null` oder 16 Zeichen
+ * Base64url (die Nonce der beantworteten Anfrage, vom Desktop zurückgegeben).
  */
-export function isCurrentResponse(frame, pendingSeq) {
-  return frame.seq === pendingSeq || (frame.seq === null && frame.status >= 400);
+export function decodeResponse(bytes) {
+  const value = parseJson(bytes);
+  if (value.v !== 1) throw invalid('v muss 1 sein');
+  const { status, seq, n, body } = value;
+  if (!Number.isInteger(status) || status < 100 || status > 599) throw invalid('status ungültig');
+  if (seq !== null && !isValidSeq(seq)) throw invalid('seq ungültig');
+  if (n !== null && !isValidNonce(n)) throw invalid('n ungültig');
+  if (!isPlainObject(body)) throw invalid('body muss ein Objekt sein');
+  return { status, seq, n, body };
+}
+
+/**
+ * Gehört die Antwort zur offenen Anfrage? Nur, wenn sie deren Nonce zurückgibt (`frame.n === pendingN`).
+ * `pendingN` ist das `n` aus dem Umschlag der offenen Anfrage (`envelopeNonce`), nie `null`. Eine
+ * Antwort mit `n: null` ist nie aktuell, auch nicht als Fehlerstatus. `seq` spielt hier keine Rolle:
+ * Kopplung und erster Abgleich tragen beide `seq` 1.
+ */
+export function isCurrentResponse(frame, pendingN) {
+  return isValidNonce(pendingN) && isPlainObject(frame) && frame.n === pendingN;
 }

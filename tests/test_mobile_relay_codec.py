@@ -12,9 +12,11 @@ from src.mobile_routes import PWA_URL
 from tests.test_mobile_contract import load
 
 FX = load("relay-frames.json")
+assert FX["requests"] and FX["responses"] and FX["links"] and FX["messages"] and FX["puts"]
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 TOKEN = "Zm9vYmFyYmF6cXV4Zm9vYmFyYmF6cXV4Zm9vYmFyYmE"
-ENV = {"v": 2, "seq": 7, "n": "AAECAwQFBgcICQoL", "c": "q83vASNFZ4mrze8BI0VniQ"}
+N = "AAECAwQFBgcICQoL"
+ENV = {"v": 2, "seq": 7, "n": N, "c": "q83vASNFZ4mrze8BI0VniQ"}
 
 
 def _req(**over):
@@ -55,12 +57,12 @@ def test_encode_put_limits():
         codec.encode_put("text")  # type: ignore[arg-type]
     # Bytes statt Zeichen: Umlaute zaehlen doppelt
     with pytest.raises(FrameTooLarge):
-        codec.encode_response(200, {"t": "ö" * (codec.MAX_PAYLOAD // 2)}, 1)
-    overhead = len(b'{"v":1,"status":200,"seq":1,"body":{"t":""}}')
+        codec.encode_response(200, {"t": "ö" * (codec.MAX_PAYLOAD // 2)}, 1, N)
+    overhead = len(b'{"v":1,"status":200,"seq":1,"n":"AAECAwQFBgcICQoL","body":{"t":""}}')
     fill = "a" * (codec.MAX_PAYLOAD - overhead)
-    assert len(codec.encode_response(200, {"t": fill}, 1)) == codec.MAX_PAYLOAD
+    assert len(codec.encode_response(200, {"t": fill}, 1, N)) == codec.MAX_PAYLOAD
     with pytest.raises(FrameTooLarge):
-        codec.encode_response(200, {"t": fill + "a"}, 1)
+        codec.encode_response(200, {"t": fill + "a"}, 1, N)
 
 
 @pytest.mark.parametrize("row", FX["messages"], ids=lambda r: r["name"])
@@ -90,6 +92,7 @@ def test_decode_request_accepts_every_ok_fixture_case(row):
     assert req.path == row["path"]
     assert req.token == row["token"]
     assert req.seq == row["seq"]
+    assert req.n == row["n"]
     assert isinstance(req.envelope, dict)
 
 
@@ -97,7 +100,7 @@ def test_decode_request_accepts_every_ok_fixture_case(row):
 def test_decode_request_rejects_every_bad_fixture_case_with_frame_error_only(row):
     with pytest.raises(FrameError) as exc:
         codec.decode_request(row["json"].encode())
-    assert type(exc.value) in (FrameError, FrameTooLarge)
+    assert type(exc.value) is FrameError
 
 
 HOSTILE = [
@@ -158,6 +161,10 @@ def test_bad_tokens_are_rejected(token):
 
 def test_token_null_only_for_pair_and_boundaries():
     assert codec.decode_request(_req(path="/v1/pair", token=None)).token is None
+    absent = json.dumps({"v": 1, "path": "/v1/pair", "envelope": dict(ENV)}).encode()
+    with pytest.raises(FrameError) as exc:
+        codec.decode_request(absent)  # Schlüssel fehlt ist nicht dasselbe wie null
+    assert type(exc.value) is FrameError
     with pytest.raises(FrameError):
         codec.decode_request(_req(path="/v1/sync", token=None))
     assert codec.decode_request(_req(token="x" * 512)).token == "x" * 512
@@ -166,33 +173,87 @@ def test_token_null_only_for_pair_and_boundaries():
 
 @pytest.mark.parametrize("row", [r for r in FX["responses"] if r["ok"]], ids=lambda r: r["name"])
 def test_encode_response_round_trips_with_the_fixture_response_shape(row):
-    out = codec.encode_response(row["status"], row["body"], row["seq"])
+    out = codec.encode_response(row["status"], row["body"], row["seq"], row["n"])
     parsed = json.loads(out.decode("utf-8"))
-    assert parsed == {"v": 1, "status": row["status"], "seq": row["seq"], "body": row["body"]}
-    assert list(parsed) == ["v", "status", "seq", "body"]
-    assert out.startswith(b'{"v":1,"status":')
-    if "Größe" in row["json"]:
-        assert "Größe".encode() in out  # ensure_ascii=False
+    assert parsed == {"v": 1, "status": row["status"], "seq": row["seq"], "n": row["n"],
+                      "body": row["body"]}
+    assert list(parsed) == ["v", "status", "seq", "n", "body"]
+
+
+CANONICAL_RESPONSES = [r for r in FX["responses"] if r["ok"] and r.get("canonical")]
+
+
+def test_canonical_response_rows_cover_umlaut_and_too_large():
+    assert len(CANONICAL_RESPONSES) >= 3
+    assert any("Größe" in r["json"] for r in CANONICAL_RESPONSES)
+    assert any(r["status"] == 413 for r in CANONICAL_RESPONSES)
+
+
+@pytest.mark.parametrize("row", CANONICAL_RESPONSES, ids=lambda r: r["name"])
+def test_encode_response_emits_exactly_the_canonical_fixture_bytes(row):
+    # Byte-genau: kompakte Trenner, Reihenfolge v,status,seq,n,body, ensure_ascii=False, UTF-8.
+    out = codec.encode_response(row["status"], row["body"], row["seq"], row["n"])
+    assert out == row["json"].encode("utf-8")
 
 
 @pytest.mark.parametrize("status", [99, 600, True, "200", 200.0, None, -1])
 def test_encode_response_rejects_bad_status(status):
     with pytest.raises(FrameError):
-        codec.encode_response(status, {}, 1)
+        codec.encode_response(status, {}, 1, N)
 
 
 @pytest.mark.parametrize("seq", [0, -1, True, 1.5, "7", 2**53])
 def test_encode_response_rejects_bad_seq(seq):
     with pytest.raises(FrameError):
-        codec.encode_response(200, {}, seq)
+        codec.encode_response(200, {}, seq, N)
+
+
+@pytest.mark.parametrize("n", [N[:-1], N + "A", N[:-1] + "+", N[:-1] + "=", N[:-1] + "\n", N + "\n",
+                               "", 7, True, [N]])
+def test_encode_response_rejects_bad_nonce(n):
+    with pytest.raises(FrameError):
+        codec.encode_response(200, {}, 1, n)
 
 
 def test_encode_response_rejects_unserialisable_bodies_and_accepts_edges():
     for body in (object(), {"x": float("nan")}, {1, 2}):
         with pytest.raises(FrameError):
-            codec.encode_response(200, body, 1)
-    assert codec.encode_response(100, {}, None)
-    assert codec.encode_response(599, {}, 2**53 - 1)
+            codec.encode_response(200, body, 1, N)
+    assert codec.encode_response(100, {}, None, None)
+    assert codec.encode_response(599, {}, 2**53 - 1, "-_0123456789abcd")
+
+
+def test_envelope_nonce_accepts_exactly_16_base64url_chars():
+    assert codec.envelope_nonce(ENV) == N
+    assert codec.envelope_nonce({"n": "-_0123456789abcd"}) == "-_0123456789abcd"
+    for bad in (N[:-1], N + "A", N[:-1] + "+", N[:-1] + "=", N[:-1] + "\n", N + "\n", "", 7, None,
+                True, [N], {}):
+        assert codec.envelope_nonce({"n": bad}) is None
+    for junk in (None, 5, N, [N], {}):
+        assert codec.envelope_nonce(junk) is None
+
+
+def test_request_with_invalid_nonce_is_valid_with_n_none():
+    for bad in (N + "A", N[:-1], 7, None):
+        req = codec.decode_request(_req(envelope=dict(ENV, n=bad)))
+        assert req.n is None
+        assert req.seq == 7
+    assert codec.decode_request(_req()).n == N
+
+
+def test_too_large_response_matches_the_fixture_and_always_fits():
+    row = next(r for r in FX["responses"] if r["ok"] and r["status"] == 413)
+    out = codec.encode_too_large_response(row["seq"], row["n"])
+    assert out == row["json"].encode("utf-8")
+    parsed = json.loads(out.decode("utf-8"))
+    assert parsed["body"]["error"]["code"] == "response_too_large"
+    assert len(out) <= codec.MAX_PAYLOAD
+    assert len(codec.encode_too_large_response(2**53 - 1, N)) < 1024
+    assert json.loads(codec.encode_too_large_response(None, None))["n"] is None
+    with pytest.raises(FrameError):
+        codec.encode_too_large_response(0, N)
+    with pytest.raises(FrameError):
+        codec.encode_too_large_response(7, "kurz")
 
 
 def test_should_answer():

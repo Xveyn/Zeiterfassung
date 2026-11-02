@@ -6,13 +6,18 @@ Zwei Schichten:
 - **Nachrichtenrahmen** der Box (WebSocket): `put` = Typ-Byte 1 + Nutzbytes (Desktop -> Box),
   `slot` = 2 + `ver` (uint32, big-endian) + Nutzbytes und `ok` = 3 + `ver` (Box -> Desktop).
 - **Nutzlast** einer Anfrage/Antwort: UTF-8-JSON `{v:1, path, token, envelope}` bzw.
-  `{v:1, status, seq, body}`. Der Umschlag selbst ist der verschlüsselte der lokalen Handy-Instanz
-  (`mobile_crypto`); hier wird er nur transportiert.
+  `{v:1, status, seq, n, body}`. Der Umschlag selbst ist der verschlüsselte der lokalen Handy-Instanz
+  (`mobile_crypto`); hier wird er nur transportiert. `n` der Antwort ist die Nonce aus dem Umschlag
+  der beantworteten Anfrage (`envelope_nonce`), in **jeder** Antwort zurückgegeben, auch in
+  unversiegelten Fehlern; `None` nur, wenn die Anfrage keine gültige Nonce trug. Daran erkennt das
+  Handy, ob eine Antwort zu seiner offenen Anfrage gehört (`seq` reicht nicht: Kopplung und erster
+  Abgleich tragen beide `seq` 1).
 
 Gegenstück der PWA: `pwa/relay-frame.js`; den Gleichlauf hält `pwa/test/fixtures/relay-frames.json`.
 Der Python-Dekodierer ist strenger als der JS-Dekodierer: ganzzahlige Floats wie `"v":1.0` oder
-`"status":200.0` lehnt er ab (`JSON.parse` kann sie nicht von Ganzzahlen unterscheiden); unsere
-Kodierer erzeugen sie nie.
+`"status":200.0` lehnt er ab (`JSON.parse` kann sie nicht von Ganzzahlen unterscheiden), und ein
+UTF-8-BOM am Anfang ebenso (der `TextDecoder` der PWA entfernt ihn still); unsere Kodierer erzeugen
+beides nie.
 Größen zählen in **Bytes** der kodierten Nutzlast. Nach außen kommen aus den Dekodierern und
 Kodierern nur `FrameError`/`FrameTooLarge`. Nichts hier loggt.
 """
@@ -39,7 +44,12 @@ TYPE_OK: Final[int] = 3
 MAX_SEQ: Final[int] = 2**53 - 1
 BOX_SECRET_RE: Final[re.Pattern[str]] = re.compile(r"[A-Za-z0-9_-]{43}")
 _TOKEN_RE: Final[re.Pattern[str]] = re.compile(r"[\x21-\x7e]{1,512}")
+_NONCE_RE: Final[re.Pattern[str]] = re.compile(r"[A-Za-z0-9_-]{16}")   # 12 Byte, Base64url
 _PATHS: Final[frozenset[str]] = frozenset({"/v1/pair", "/v1/sync"})
+TOO_LARGE_CODE: Final[str] = "response_too_large"
+TOO_LARGE_MESSAGE: Final[str] = (
+    "Die Antwort des Desktops ist zu groß für den Relay. "
+    "Verlauf im Fenster verkleinern oder weniger Tage auf einmal abgleichen.")
 
 
 class FrameError(ValueError):
@@ -71,6 +81,11 @@ class RelayRequest:
     def seq(self) -> int | None:
         return envelope_seq(self.envelope)
 
+    @property
+    def n(self) -> str | None:
+        """Die Nonce des Umschlags; jede Antwort auf diese Anfrage gibt sie als `n` zurück."""
+        return envelope_nonce(self.envelope)
+
 
 def _is_int(value: object) -> bool:
     # `bool` ist in Python ein `int`: True == 1 darf nie als Zahl durchgehen.
@@ -89,6 +104,22 @@ def envelope_seq(envelope: object) -> int | None:
     if _valid_seq(seq):
         assert isinstance(seq, int)
         return seq
+    return None
+
+
+def _valid_nonce(value: object) -> bool:
+    # `fullmatch` statt `$`: `$` ließe einen abschließenden Zeilenumbruch durch.
+    return isinstance(value, str) and _NONCE_RE.fullmatch(value) is not None
+
+
+def envelope_nonce(envelope: object) -> str | None:
+    """Die gültige Nonce `n` eines Umschlags (genau 16 Zeichen Base64url) oder `None`."""
+    if not isinstance(envelope, dict):
+        return None
+    n = envelope.get("n")
+    if _valid_nonce(n):
+        assert isinstance(n, str)
+        return n
     return None
 
 
@@ -150,6 +181,9 @@ def decode_request(payload: bytes) -> RelayRequest:
     envelope = value.get("envelope")
     if not isinstance(path, str) or path not in _PATHS:
         raise FrameError("Pfad nicht erlaubt")
+    if "token" not in value:
+        # Ein fehlender Schlüssel ist nicht `null` (wie in der PWA): auch `/v1/pair` muss ihn nennen.
+        raise FrameError("Token fehlt")
     if token is None:
         if path != "/v1/pair":
             raise FrameError("Token fehlt")
@@ -160,13 +194,21 @@ def decode_request(payload: bytes) -> RelayRequest:
     return RelayRequest(path, token, envelope)
 
 
-def encode_response(status: int, body: Any, seq: int | None) -> bytes:
+def encode_response(status: int, body: Any, seq: int | None, n: str | None) -> bytes:
+    """Antwort-Nutzlast `{v, status, seq, n, body}` (Schlüsselreihenfolge fest, kompakt, UTF-8).
+
+    `n` ist die Nonce der beantworteten Anfrage (`RelayRequest.n`), `None` nur, wenn sie keine
+    gültige trug. Größer als `MAX_PAYLOAD` wirft `FrameTooLarge`; der Desktop schickt dann
+    `encode_too_large_response` statt der Antwort.
+    """
     if not _is_int(status) or not 100 <= status <= 599:
         raise FrameError("status ungültig")
     if seq is not None and not (_is_int(seq) and _valid_seq(seq)):
         raise FrameError("seq ungültig")
+    if n is not None and not _valid_nonce(n):
+        raise FrameError("n ungültig")
     try:
-        text = json.dumps({"v": 1, "status": status, "seq": seq, "body": body},
+        text = json.dumps({"v": 1, "status": status, "seq": seq, "n": n, "body": body},
                           ensure_ascii=False, separators=(",", ":"), allow_nan=False)
         encoded = text.encode("utf-8")
     except (TypeError, ValueError, RecursionError):
@@ -175,6 +217,16 @@ def encode_response(status: int, body: Any, seq: int | None) -> bytes:
     if len(encoded) > MAX_PAYLOAD:
         raise FrameTooLarge("Nutzlast zu groß")
     return encoded
+
+
+def encode_too_large_response(seq: int | None, n: str | None) -> bytes:
+    """Ersatzantwort `413 response_too_large`, wenn die versiegelte Antwort nicht in `MAX_PAYLOAD` passt.
+
+    Der Body ist fest und klein (unter 1 KiB), passt also immer. Ungültiges `seq`/`n` ist ein
+    Aufruferfehler (`FrameError`) wie bei `encode_response`.
+    """
+    body = {"error": {"code": TOO_LARGE_CODE, "message": TOO_LARGE_MESSAGE}}
+    return encode_response(413, body, seq, n)
 
 
 def generate_box_secret() -> str:
