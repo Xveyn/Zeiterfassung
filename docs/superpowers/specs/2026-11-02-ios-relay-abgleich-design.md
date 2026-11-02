@@ -76,9 +76,17 @@ Nachrichten (binär, 1 Byte Typ):
 
 | Richtung | Typ | Inhalt |
 |---|---|---|
-| Client → Relay | `0x01 put` | Nutzbytes (≤ 1 MiB). Der Relay schreibt sie in den Slot der Absender-Rolle (`phone`→`req`, `desktop`→`res`), zählt `ver` hoch, stellt sie dem Gegenüber zu und quittiert. |
+| Client → Relay | `0x01 put` | Nutzbytes (höchstens `maxFrame − 1` = 1 048 575 Bytes; die ganze Nachricht samt Typ-Byte höchstens 1 MiB). Der Relay schreibt sie in den Slot der Absender-Rolle (`phone`→`req`, `desktop`→`res`), vergibt ein neues, größeres `ver` (s. u.), stellt sie dem Gegenüber zu und quittiert. |
 | Relay → Gegenüber | `0x02 slot` | `ver` (4 Byte, big-endian) + Nutzbytes |
 | Relay → Absender | `0x03 ok` | `ver` (4 Byte, big-endian) |
+
+**`ver` ist zeitbasiert:** mindestens die Sekunden seit 2026-01-01 UTC, sonst Vorgänger + 1. So bleibt es auch
+über das Aufräumen (Leerlauf, `DELETE`) hinweg monoton, obwohl der Zähler dabei mit gelöscht wird und das `have`
+der Clients bleibt. Clients dürfen nur „größer“ annehmen, keine +1-Schritte; `have` ist auf 2^31 − 1 begrenzt,
+das reicht bis ca. 2094.
+
+**Put-Drossel:** höchstens 60 `put` je Socket und Minute (`putsPerMinute`, Token-Eimer); darüber wird nicht
+geschrieben und die Box schließt mit 1008.
 
 Beim Verbinden schickt der Relay den Slot des Gegenübers, wenn dessen `ver` größer ist als `have` (Standard 0).
 Ist das Gegenüber offline, bleibt der Slot liegen und kommt beim nächsten Verbinden. Fehler beim Aufbau:

@@ -10,6 +10,10 @@ export const LIMITS = {
   idleDays: 90,            // so lange nach der letzten Aktualisierung räumt sich ein Gerät selbst auf
   testCooldownSeconds: 10, // so lange nach einem gelungenen Test sperrt die Testroute dieses Gerät
   maxFrame: 1_048_576,     // Bytes einer WebSocket-Nachricht der Box
+  // `put` je Socket und Minute (Token-Eimer, Stoß bis zu diesem Wert). Ein Socket mit gültigem Geheimnis
+  // könnte sonst das gemeinsame Schreibkontingent des Free-Plans (100 000 Zeilen/Tag) leeren und das
+  // Objekt dauerhaft wach halten. Darüber schließt die Box mit 1008.
+  putsPerMinute: 60,
 };
 
 const SECRET = /^[A-Za-z0-9_-]{43}$/;

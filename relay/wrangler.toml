@@ -34,7 +34,8 @@ enabled = false
 DEV_ORIGIN = ""
 # Jurisdiktion der Box. Produktion bleibt "eu" und darf nie "none" sein: die Jurisdiktion lässt sich später
 # nicht nachziehen (gleicher Name = andere ID, die Slots wären weg). "none" nur für `wrangler dev`
-# (`--var BOX_JURISDICTION:none`), weil das lokale workerd keine Jurisdiktionen kennt.
+# (`--var BOX_JURISDICTION:none`), weil das lokale workerd keine Jurisdiktionen kennt. Nie im Dashboard setzen:
+# das nächste `wrangler deploy` setzt ihn zurück, bis dahin lägen neue Objekte mit "none" aber außerhalb der EU.
 BOX_JURISDICTION = "eu"
 # Der öffentliche VAPID-Schlüssel steht auch in der PWA und darf nie gewechselt werden: alle Abos
 # hängen an ihm. VAPID_PRIVATE und VAPID_SUBJECT (mailto:…) sind Secrets, s. README.md.

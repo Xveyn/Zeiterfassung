@@ -269,6 +269,86 @@ const scenarios = {
     assert.equal((await ctx.storage.get('req')).ver, V0 + 1);
     assert.deepEqual(phone.sent, [encodeOk(V0), encodeOk(V0 + 1)]);
   },
+
+  async 'verAt pins VER_EPOCH to 2026-01-01 UTC'() {
+    // Fester Wert für die Testuhr (2026-11-02T12:00:00Z = 305,5 Tage nach 2026-01-01): hält VER_EPOCH in box.js fest.
+    assert.equal(verAt(T0), 26_395_200);
+    const { box, ctx, connect } = setup();
+    await box.webSocketMessage(await connect('phone'), put(1));
+    assert.equal((await ctx.storage.get('req')).ver, 26_395_200);
+  },
+
+  async 'put over putsPerMinute closes 1008 and writes nothing'() {
+    const { box, ctx, connect } = setup();
+    const phone = await connect('phone');
+    const desktop = await connect('desktop');
+    for (let i = 0; i < LIMITS.putsPerMinute; i += 1) await box.webSocketMessage(phone, put(i));
+    assert.equal(phone.closed, null);
+    const last = await ctx.storage.get('req');
+    let reads = 0;
+    const realGet = ctx.storage.get;
+    ctx.storage.get = async (key) => { reads += 1; return realGet(key); };
+    await box.webSocketMessage(phone, put(0xff));
+    assert.deepEqual(phone.closed, [1008, 'too many']);
+    assert.equal(reads, 0);
+    ctx.storage.get = realGet;
+    assert.deepEqual(await ctx.storage.get('req'), last);
+    assert.equal(desktop.sent.length, LIMITS.putsPerMinute);
+    assert.equal(phone.sent.length, LIMITS.putsPerMinute);
+  },
+
+  async 'budget refills over time (a put after 60 s is accepted again)'() {
+    const { box, ctx, clock, connect } = setup();
+    const phone = await connect('phone');
+    for (let i = 0; i < LIMITS.putsPerMinute; i += 1) await box.webSocketMessage(phone, put(i));
+    clock.now = T0 + 60_000;
+    for (let i = 0; i < LIMITS.putsPerMinute; i += 1) await box.webSocketMessage(phone, put(i));
+    assert.equal(phone.closed, null);
+    assert.equal(phone.sent.length, 2 * LIMITS.putsPerMinute);
+    clock.now += 1_000;                                          // eine Sekunde = ein Token
+    await box.webSocketMessage(phone, put(1));
+    assert.equal(phone.closed, null);
+    await box.webSocketMessage(phone, put(2));
+    assert.deepEqual(phone.closed, [1008, 'too many']);
+    assert.equal(phone.sent.length, 2 * LIMITS.putsPerMinute + 1);
+    assert.ok((await ctx.storage.get('req')) !== undefined);
+  },
+
+  async 'the budget is per socket (a second socket is not throttled by the first)'() {
+    const { box, ctx, connect } = setup();
+    const phone = await connect('phone');
+    const desktop = await connect('desktop');
+    for (let i = 0; i <= LIMITS.putsPerMinute; i += 1) await box.webSocketMessage(phone, put(i));
+    assert.deepEqual(phone.closed, [1008, 'too many']);
+    await box.webSocketMessage(desktop, put(9));
+    assert.equal(desktop.closed, null);
+    assert.equal((await ctx.storage.get('res')).ver, V0);
+    // Auch ein neuer Socket derselben Rolle beginnt mit vollem Eimer.
+    const again = await connect('phone');
+    await box.webSocketMessage(again, put(7));
+    assert.equal(again.closed, null);
+    assert.deepEqual([...(await ctx.storage.get('req')).data], [7]);
+  },
+
+  async 'no throttle state survives closing a socket'() {
+    const { box, connect, request } = setup();
+    const a = await connect('phone');
+    const b = await connect('desktop');
+    await box.webSocketMessage(a, put(1));
+    await box.webSocketMessage(b, put(1));
+    assert.equal(box.buckets.size, 2);
+    await box.webSocketClose(a, 1000, '', true);
+    await box.webSocketError(b);
+    assert.equal(box.buckets.size, 0);
+    const c = await connect('phone');
+    await box.webSocketMessage(c, put(1));
+    await connect('phone');                                      // ersetzt c
+    assert.equal(box.buckets.size, 0);
+    const d = await connect('desktop');
+    await box.webSocketMessage(d, put(1));
+    await request('DELETE', '/v1/box');
+    assert.equal(box.buckets.size, 0);
+  },
 };
 
 for (const [name, run] of Object.entries(scenarios)) test(name, run);

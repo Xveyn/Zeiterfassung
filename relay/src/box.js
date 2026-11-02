@@ -20,6 +20,8 @@ const PEER = { phone: 'desktop', desktop: 'phone' };
 // Aufräumen überlebt oder ein weiterer Schreibvorgang anfällt. Bis ca. 2094 unter 2^31 (Grenze von `have`).
 const VER_EPOCH = Date.UTC(2026, 0, 1);
 
+const MINUTE_MS = 60_000;
+
 const json = (status, body) => Response.json(body, { status });
 
 /** Schließt einen Socket, ohne zu werfen: er kann schon zu sein (ersetzt, vom Gegenüber geschlossen). */
@@ -46,6 +48,11 @@ export class Box {
     this.env = env;
     this.now = now;
     this.platform = platform;
+    // Put-Drossel je Socket: Token-Eimer `{tokens, at}`, Schlüssel ist das Socket-Objekt. Bewusst nur im
+    // Speicher (kein Schreibvorgang): verliert ein Ruhezustand den Stand, beginnt der Eimer voll, und das
+    // ist harmlos — wer in Drossel-Tempo sendet, hält das Objekt ohnehin wach. Ping/Pong beantwortet die
+    // Plattform selbst, sie erreichen `webSocketMessage` nie und zählen nicht.
+    this.buckets = new Map();
     // Heartbeat ohne Aufwecken: die Plattform beantwortet „ping“ selbst. In Node gibt es beides nicht.
     if (typeof WebSocketRequestResponsePair !== 'undefined' && typeof ctx.setWebSocketAutoResponse === 'function') {
       ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair('ping', 'pong'));
@@ -74,7 +81,10 @@ export class Box {
     const role = parseRole(url.searchParams.get('role'));
     const have = parseHave(url.searchParams.get('have'));
     // Je Rolle höchstens eine Verbindung: erst die alte schließen, dann die neue annehmen.
-    for (const old of this.ctx.getWebSockets(role)) closeQuietly(old, 1000, 'replaced');
+    for (const old of this.ctx.getWebSockets(role)) {
+      this.buckets.delete(old);
+      closeQuietly(old, 1000, 'replaced');
+    }
     const { client, server } = this.platform.open();
     this.ctx.acceptWebSocket(server, [role]);
     const slot = await this.ctx.storage.get(SLOT[PEER[role]]);
@@ -94,8 +104,14 @@ export class Box {
     }
     const data = decodePut(message);
     if (data === null) return;                         // unbekannter Typ: still übergehen
-    const role = this.ctx.getTags(ws).find((tag) => tag in SLOT);
+    const role = this.ctx.getTags(ws).find((tag) => Object.hasOwn(SLOT, tag));
     if (!role) return;
+    // Auch die Drossel vor jedem Speicherzugriff: ein `put` über dem Budget wird weder geschrieben noch zugestellt.
+    if (!this.#spend(ws)) {
+      this.buckets.delete(ws);
+      closeQuietly(ws, 1008, 'too many');
+      return;
+    }
     const { storage } = this.ctx;
     const key = SLOT[role];
     const floor = Math.max(1, Math.floor((this.now() - VER_EPOCH) / 1000));
@@ -107,12 +123,28 @@ export class Box {
     for (const peer of this.ctx.getWebSockets(PEER[role])) sendQuietly(peer, frame);
   }
 
+  /** Ein Token aus dem Eimer des Sockets; der Eimer füllt sich laufend auf (`putsPerMinute` je Minute). */
+  #spend(ws) {
+    const now = this.now();
+    const rate = LIMITS.putsPerMinute;
+    const bucket = this.buckets.get(ws) ?? { tokens: rate, at: now };
+    const tokens = Math.min(rate, bucket.tokens + ((now - bucket.at) * rate) / MINUTE_MS);
+    if (tokens < 1) {
+      this.buckets.set(ws, { tokens, at: now });
+      return false;
+    }
+    this.buckets.set(ws, { tokens: tokens - 1, at: now });
+    return true;
+  }
+
   /** Die Plattform beantwortet das Schließen selbst; hier bleibt nichts zu tun außer, es nicht zu stören. */
   async webSocketClose(ws) {
+    this.buckets.delete(ws);
     closeQuietly(ws, 1000, '');
   }
 
   async webSocketError(ws) {
+    this.buckets.delete(ws);
     closeQuietly(ws, 1011, '');
   }
 
@@ -140,5 +172,6 @@ export class Box {
     await this.ctx.storage.deleteAll();
     await this.ctx.storage.deleteAlarm();              // `deleteAll` lässt den Alarm stehen
     for (const ws of this.ctx.getWebSockets()) closeQuietly(ws, 1000, 'wiped');
+    this.buckets.clear();
   }
 }

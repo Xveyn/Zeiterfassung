@@ -169,6 +169,10 @@ test('parseHave: null → 0, "0" → 0, "7" → 7, "2147483647" ok; "-1", "1.5",
   for (const value of ['-1', '1.5', 'abc', '2147483648', '']) assert.throws(() => parseHave(value), InvalidRequest);
 });
 
+test('LIMITS.putsPerMinute is 60', () => {
+  assert.equal(LIMITS.putsPerMinute, 60);
+});
+
 test('LIMITS.maxFrame is 1048576', () => {
   assert.equal(LIMITS.maxFrame, 1_048_576);
 });

@@ -39,7 +39,9 @@ Query trägt nur `role` und `have`; das Geheimnis steht im Header `Sec-WebSocket
 Das Durable Object der Box liegt in der EU-Jurisdiktion von Cloudflare (Ausführung und Speicherung).
 **Nicht** davon erfasst ist der Worker selbst: er läuft pro Anfrage am nächstgelegenen Rand, die IP-Adresse
 wird dort verarbeitet. Die Jurisdiktion lässt sich nachträglich nicht ändern, deshalb war das eine Entscheidung
-von Anfang an. Das bestehende Push-Objekt (Erinnerungen) bleibt, wie es ist.
+von Anfang an. Das bestehende Push-Objekt (Erinnerungen) bleibt, wie es ist. Der Schalter dafür steht in
+`relay/wrangler.toml` und wird nie im Cloudflare-Dashboard gesetzt: bis zum nächsten Ausrollen lägen neue
+Objekte sonst womöglich außerhalb der EU-Jurisdiktion.
 
 ## 5. Beteiligte und Drittländer
 
