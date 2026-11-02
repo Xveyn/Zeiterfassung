@@ -9,7 +9,15 @@ export const LIMITS = {
   graceSeconds: 900,       // so lange nach `fire_at` wird eine Erinnerung noch gesendet
   idleDays: 90,            // so lange nach der letzten Aktualisierung räumt sich ein Gerät selbst auf
   testCooldownSeconds: 10, // so lange nach einem gelungenen Test sperrt die Testroute dieses Gerät
+  maxFrame: 1_048_576,     // Bytes einer WebSocket-Nachricht der Box
+  // `put` je Socket und Minute (Token-Eimer, Stoß bis zu diesem Wert). Ein Socket mit gültigem Geheimnis
+  // könnte sonst das gemeinsame Schreibkontingent des Free-Plans (100 000 Zeilen/Tag) leeren und das
+  // Objekt dauerhaft wach halten. Darüber schließt die Box mit 1008.
+  putsPerMinute: 60,
 };
+
+const SECRET = /^[A-Za-z0-9_-]{43}$/;
+const MAX_HAVE = 2_147_483_647;
 
 const DAY_MS = 86_400_000;
 const BASE64URL = /^[A-Za-z0-9_-]+$/;
@@ -106,4 +114,30 @@ export function parseSchedule(body, now) {
     out.push({ id: raw.id, fireAt, blob: raw.blob });
   }
   return out;
+}
+
+/** `Sec-WebSocket-Protocol: zeit.v1, <Geheimnis>` (Reihenfolge egal) → das Geheimnis. */
+export function parseSubprotocol(header) {
+  if (typeof header !== 'string') throw new InvalidRequest('Sec-WebSocket-Protocol fehlt.');
+  const entries = header.split(',').map((part) => part.trim());
+  const secrets = entries.filter((entry) => SECRET.test(entry));
+  if (entries.filter((entry) => entry === 'zeit.v1').length !== 1 || secrets.length !== 1 || entries.length !== 2) {
+    throw new InvalidRequest('Sec-WebSocket-Protocol muss zeit.v1 und genau ein Geheimnis enthalten.');
+  }
+  return secrets[0];
+}
+
+/** Query-Parameter `role`: `phone` oder `desktop`. */
+export function parseRole(value) {
+  if (value !== 'phone' && value !== 'desktop') throw new InvalidRequest('role muss phone oder desktop sein.');
+  return value;
+}
+
+/** Query-Parameter `have`: zuletzt bekannter Zähler; fehlt er, gilt 0. */
+export function parseHave(value) {
+  if (value === null) return 0;
+  if (typeof value !== 'string' || !/^[0-9]{1,10}$/.test(value) || Number(value) > MAX_HAVE) {
+    throw new InvalidRequest(`have muss eine ganze Zahl von 0 bis ${MAX_HAVE} sein.`);
+  }
+  return Number(value);
 }

@@ -237,3 +237,198 @@ test('the preflight for the test route allows POST', async () => {
   assert.equal(ok.status, 204);
   assert.match(ok.headers.get('access-control-allow-methods'), /POST/);
 });
+
+// --- Box (#358) ---------------------------------------------------------------------------------
+
+function boxSetup(env = {}, answer = () => new Response(null, { status: 204 })) {
+  const seen = [];
+  const jurisdictions = [];
+  let direct = 0;
+  const BOX = {
+    idFromName: () => { direct += 1; return 'direct'; },
+    jurisdiction: (name) => {
+      jurisdictions.push(name);
+      return { idFromName: (n) => n, get: (id) => ({ fetch: async (request) => {
+        seen.push({ id, request, body: await request.text() });
+        return answer(request);
+      } }) };
+    },
+  };
+  const call = (method, path, { headers = {}, origin } = {}) => worker.fetch(new Request(`https://relay.example${path}`, {
+    method, headers: { ...headers, ...(origin ? { origin } : {}) },
+  }), { BOX, DEVICE: { idFromName: (n) => n, get: () => { throw new Error('device'); } }, ...env });
+  const ws = (query = '?role=phone', extra = {}, o = {}) => call('GET', `/v1/box/ws${query}`, {
+    headers: { upgrade: 'websocket', 'sec-websocket-protocol': `zeit.v1, ${secret(1)}`, ...extra }, ...o });
+  return { call, ws, seen, jurisdictions, direct: () => direct };
+}
+
+test('ws route with valid subprotocol reaches the box named after sha256(secret); the 101 answer is returned as is (same object)', async () => {
+  const answer = new Response(null, { status: 204 });
+  const { ws, seen } = boxSetup({}, () => answer);
+  const response = await ws('?role=desktop&have=7');
+  assert.equal(response, answer);
+  assert.equal(seen.length, 1);
+  assert.equal(seen[0].id, await objectName(secret(1)));
+  const url = new URL(seen[0].request.url);
+  assert.equal(url.pathname, '/v1/box/ws');
+  assert.equal(url.searchParams.get('role'), 'desktop');
+  assert.equal(url.searchParams.get('have'), '7');
+  assert.equal(seen[0].request.headers.get('upgrade'), 'websocket');
+});
+
+test('have is omitted when absent and the raw query is not forwarded', async () => {
+  const { ws, seen } = boxSetup();
+  await ws('?role=phone&junk=1');
+  assert.equal(new URL(seen[0].request.url).search, '?role=phone');
+});
+
+test('response protocol is exactly "zeit.v1" and the secret appears in no response header', async () => {
+  const answer = new Response(null, { status: 204, headers: { 'sec-websocket-protocol': 'zeit.v1' } });
+  const { ws } = boxSetup({}, () => answer);
+  const response = await ws();
+  assert.equal(response.headers.get('sec-websocket-protocol'), 'zeit.v1');
+  for (const [, value] of response.headers) assert.ok(!value.includes(secret(1)));
+});
+
+test('the request forwarded to the box has no authorization/protocol header containing the secret and no body', async () => {
+  const { ws, call, seen } = boxSetup();
+  await ws();
+  await call('DELETE', '/v1/box', { headers: { authorization: `Bearer ${secret(1)}` } });
+  assert.equal(seen.length, 2);
+  for (const { request, body } of seen) {
+    assert.equal(request.headers.get('authorization'), null);
+    assert.equal(request.headers.get('sec-websocket-protocol'), null);
+    for (const [, value] of request.headers) assert.ok(!value.includes(secret(1)));
+    assert.ok(!request.url.includes(secret(1)));
+    assert.equal(body, '');
+  }
+});
+
+test('ws without upgrade header is 426; missing/invalid subprotocol is 401; invalid role/have is 400', async () => {
+  const { call, ws, seen } = boxSetup();
+  const noUpgrade = await call('GET', '/v1/box/ws?role=phone', { headers: { 'sec-websocket-protocol': `zeit.v1, ${secret(1)}` } });
+  assert.equal(noUpgrade.status, 426);
+  assert.deepEqual(await noUpgrade.json(), { error: 'upgrade_required' });
+  for (const protocol of [undefined, `${secret(1)}`, 'zeit.v1', `zeit.v1, ${'a'.repeat(42)}`]) {
+    const headers = { upgrade: 'websocket', ...(protocol === undefined ? {} : { 'sec-websocket-protocol': protocol }) };
+    const response = await call('GET', '/v1/box/ws?role=phone', { headers });
+    assert.equal(response.status, 401, String(protocol));
+    assert.deepEqual(await response.json(), { error: 'unauthorized' });
+  }
+  for (const query of ['', '?role=x', '?role=phone&have=-1', '?role=phone&have=abc']) {
+    const response = await ws(query);
+    assert.equal(response.status, 400, query);
+    assert.deepEqual(await response.json(), { error: 'invalid_request' });
+  }
+  assert.deepEqual(seen, []);
+});
+
+test('foreign Origin is 403; no Origin is allowed; PAGES_ORIGIN is allowed', async () => {
+  const { ws, seen } = boxSetup({ DEV_ORIGIN: 'http://localhost:8099' });
+  const foreign = await ws('?role=phone', {}, { origin: 'https://evil.example' });
+  assert.equal(foreign.status, 403);
+  assert.deepEqual(await foreign.json(), { error: 'forbidden_origin' });
+  assert.equal(seen.length, 0);
+  assert.equal((await ws()).status, 204);
+  assert.equal((await ws('?role=phone', {}, { origin: PAGES })).status, 204);
+  assert.equal((await ws('?role=phone', {}, { origin: 'http://localhost:8099' })).status, 204);
+});
+
+test('rate limit applies: LIMITER failing -> 429 before any box access', async () => {
+  const { binding } = limiter(() => false);
+  const { ws, call, seen, jurisdictions } = boxSetup({ LIMITER: binding });
+  assert.equal((await ws()).status, 429);
+  assert.equal((await call('DELETE', '/v1/box', { headers: { authorization: `Bearer ${secret(1)}` } })).status, 429);
+  assert.deepEqual(seen, []);
+  assert.deepEqual(jurisdictions, []);
+});
+
+test('DELETE /v1/box with bearer secret is forwarded; without it 401', async () => {
+  const { call, seen } = boxSetup();
+  const ok = await call('DELETE', '/v1/box', { headers: { authorization: `Bearer ${secret(1)}` }, origin: PAGES });
+  assert.equal(ok.status, 204);
+  assert.equal(ok.headers.get('access-control-allow-origin'), PAGES);
+  assert.equal(seen[0].request.method, 'DELETE');
+  assert.equal(new URL(seen[0].request.url).pathname, '/v1/box');
+  assert.equal(seen[0].id, await objectName(secret(1)));
+  const denied = await call('DELETE', '/v1/box');
+  assert.equal(denied.status, 401);
+  assert.equal(seen.length, 1);
+});
+
+test('wrong method on /v1/box/ws is 405 with Allow: GET', async () => {
+  const { call, seen } = boxSetup();
+  const response = await call('POST', '/v1/box/ws', { headers: { authorization: `Bearer ${secret(1)}` } });
+  assert.equal(response.status, 405);
+  assert.equal(response.headers.get('allow'), 'GET');
+  assert.equal((await call('GET', '/v1/box')).status, 405);
+  assert.deepEqual(seen, []);
+});
+
+test('box objects are chosen through jurisdiction("eu") only', async () => {
+  const { ws, call, jurisdictions, direct } = boxSetup();
+  await ws();
+  await call('DELETE', '/v1/box', { headers: { authorization: `Bearer ${secret(2)}` } });
+  assert.deepEqual(jurisdictions, ['eu', 'eu']);
+  assert.equal(direct(), 0);
+});
+
+test('BOX_JURISDICTION eu behaves like the default', async () => {
+  const { ws, jurisdictions, direct } = boxSetup({ BOX_JURISDICTION: 'eu' });
+  await ws();
+  assert.deepEqual(jurisdictions, ['eu']);
+  assert.equal(direct(), 0);
+});
+
+test('BOX_JURISDICTION none picks the object directly and never asks for a jurisdiction', async () => {
+  const seen = [];
+  const BOX = {
+    idFromName: (n) => n,
+    get: (id) => ({ fetch: async (request) => { seen.push(id); return new Response(null, { status: 204 }); } }),
+    jurisdiction: () => { throw new Error('jurisdiction'); },
+  };
+  const response = await worker.fetch(new Request('https://relay.example/v1/box/ws?role=phone', {
+    headers: { upgrade: 'websocket', 'sec-websocket-protocol': `zeit.v1, ${secret(1)}` },
+  }), { BOX, BOX_JURISDICTION: 'none' });
+  assert.equal(response.status, 204);
+  assert.equal(seen.length, 1);
+});
+
+for (const value of ['US', '', 'fedramp']) {
+  test(`BOX_JURISDICTION ${JSON.stringify(value)} is a 500 and the box stays untouched`, async () => {
+    const { ws, seen, jurisdictions, direct } = boxSetup({ BOX_JURISDICTION: value });
+    const response = await ws();
+    assert.equal(response.status, 500);
+    assert.deepEqual(await response.json(), { error: 'internal' });
+    assert.deepEqual(seen, []);
+    assert.deepEqual(jurisdictions, []);
+    assert.equal(direct(), 0);
+  });
+}
+
+test('a throwing box is 500 without details and the box routes do not log', async () => {
+  const logged = [];
+  const originals = {};
+  for (const level of ['log', 'info', 'warn', 'error', 'debug']) {
+    originals[level] = console[level];
+    console[level] = (...args) => logged.push(args.join(' '));
+  }
+  try {
+    const { ws } = boxSetup({}, () => { throw new Error(`kaputt ${secret(1)}`); });
+    const response = await ws();
+    assert.equal(response.status, 500);
+    assert.deepEqual(await response.json(), { error: 'internal' });
+  } finally {
+    Object.assign(console, originals);
+  }
+  assert.deepEqual(logged, []);
+});
+
+test('wrangler.toml disables observability', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const toml = await readFile(new URL('../wrangler.toml', import.meta.url), 'utf8');
+  assert.match(toml, /\[observability\]\s*\nenabled = false/);
+  assert.match(toml, /^BOX_JURISDICTION = "eu"[\r]?$/m);
+  assert.match(toml, /name = "BOX"\s*\nclass_name = "Box"/);
+  assert.match(toml, /tag = "v2"\s*\nnew_sqlite_classes = \["Box"\]/);
+});
