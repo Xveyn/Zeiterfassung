@@ -376,3 +376,15 @@ def test_manual_outcome(ok, dialog_alive, expected):
     from src.auto_update import manual_outcome
 
     assert manual_outcome(ok, dialog_alive) == expected
+
+
+def test_the_silent_download_logs_start_and_ready(monkeypatch, caplog):
+    """Xveyn#401: Start und Ende des stillen Downloads stehen im Log."""
+    import logging
+    updater, _, runner, _, _ = _updater(monkeypatch, {"auto_update_enabled": True})
+    with caplog.at_level(logging.INFO, logger="src.auto_update"):
+        assert updater.maybe_start(_Rel()) == "started"
+        runner.flush()
+    assert [r.getMessage() for r in caplog.records] == [
+        "Automatisches Update: Download von 1.9.0 gestartet",
+        "Automatisches Update: 1.9.0 geladen und geprüft, wird beim Beenden installiert"]

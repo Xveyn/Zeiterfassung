@@ -140,6 +140,7 @@ class AutoUpdater:
         # Pro Lauf ein eigener Zielname (s. `self_update.download_dest`).
         local = download_dest(platform.system(), plan.asset_name, plan.target,
                               tempfile.gettempdir())
+        log.info("Automatisches Update: Download von %s gestartet", release.release_id)
         self._busy = True
         self._auto_running = True
         self._finish_listeners = [on_finished] if on_finished else []
@@ -174,6 +175,8 @@ class AutoUpdater:
                     "pending_update_sha256": result.sha256,
                     "pending_update_release_id": release.release_id,
                 })
+                log.info("Automatisches Update: %s geladen und geprüft, wird beim "
+                         "Beenden installiert", release.release_id)
                 self._on_ready(release)
             for listener in listeners:
                 listener(ok)
