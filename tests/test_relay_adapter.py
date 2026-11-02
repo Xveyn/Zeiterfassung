@@ -6,6 +6,8 @@ from __future__ import annotations
 import dataclasses
 import json
 import logging
+import threading
+import time
 
 import pytest
 
@@ -232,6 +234,8 @@ def test_last_seq_comes_from_the_device_record_not_from_the_adapter(ctx):
 
 
 def test_sync_with_an_invalid_envelope_seq_gets_no_answer(ctx, monkeypatch):
+    """Gilt für ein **angemeldetes** Gerät (gültiges Token): die `seq`-Regel kommt nach der Anmeldung;
+    ein unbekanntes Token bekommt sein 401 (s. `test_a_bad_token_with_an_invalid_seq_…`)."""
     adapter = RelayAdapter(ctx)
     phone = paired(ctx, adapter)
     envelope, _payload = sync_payload(phone)
@@ -270,7 +274,7 @@ def test_a_revoked_or_expired_token_gets_a_plain_401_with_the_nonce(ctx, monkeyp
     assert calls == []
 
 
-def test_a_device_record_gone_after_the_check_is_unauthorized(ctx, monkeypatch):
+def test_a_device_record_gone_after_the_check_is_token_revoked_like_on_the_lan(ctx, monkeypatch):
     adapter = RelayAdapter(ctx)
     phone = paired(ctx, adapter)
     envelope, payload = sync_payload(phone)
@@ -278,8 +282,106 @@ def test_a_device_record_gone_after_the_check_is_unauthorized(ctx, monkeypatch):
 
     res = answer(adapter.handle(payload))
 
+    assert res["status"] == 401
+    assert res["body"] == {"error": {"code": "token_revoked",
+                                     "message": api_server._AUTH_MESSAGES["token_revoked"]}}
+    assert res["n"] == envelope["n"] and res["seq"] == envelope["seq"]
+
+
+def test_a_bad_token_with_an_invalid_seq_is_answered_401_with_a_null_seq_and_the_nonce(ctx):
+    """Die Anmeldung kommt vor der `seq`-Regel: „ungültiges seq → keine Antwort“ gilt nur für ein
+    angemeldetes Gerät; ein unbekanntes Token bekommt sein 401 auch ohne gültiges `seq`."""
+    adapter = RelayAdapter(ctx)
+    phone = paired(ctx, adapter)
+    envelope, _payload = sync_payload(phone)
+    no_seq = {k: v for k, v in envelope.items() if k != "seq"}
+
+    res = answer(adapter.handle(frame("/v1/sync", "unknown-token", no_seq)))
+
     assert res["status"] == 401 and res["body"]["error"]["code"] == "unauthorized"
-    assert res["n"] == envelope["n"]
+    assert res["seq"] is None and res["n"] == envelope["n"]
+
+
+def test_a_409_replay_from_dispatch_gets_no_answer(ctx, monkeypatch):
+    adapter = RelayAdapter(ctx)
+    phone = paired(ctx, adapter)
+    envelope, payload = sync_payload(phone)
+    real_dispatch = mobile_routes.dispatch
+    statuses = []
+
+    def applied_in_between(request, context, principal):
+        # Dieselbe Anfrage wurde nach der Prüfung des Adapters schon angewendet (anderer Weg).
+        statuses.append(real_dispatch(request, context, principal).status)
+        second = real_dispatch(request, context, principal)
+        statuses.append(second.status)
+        return second
+    monkeypatch.setattr(mobile_routes, "dispatch", applied_in_between)
+
+    assert adapter.handle(payload) is None
+    assert statuses == [200, 409]
+    assert ctx.devices.get(phone.device_id)["last_seq"] == envelope["seq"]
+
+
+def test_two_threads_with_the_same_sync_payload_give_one_answer_and_no_409(ctx, monkeypatch):
+    adapter = RelayAdapter(ctx)
+    phone = paired(ctx, adapter)
+    _envelope, payload = sync_payload(phone)
+    real_dispatch = mobile_routes.dispatch
+    gate = threading.Barrier(2)
+
+    def slow(request, context, principal):
+        time.sleep(0.2)                                          # beide haben die seq-Prüfung hinter sich
+        return real_dispatch(request, context, principal)
+    monkeypatch.setattr(mobile_routes, "dispatch", slow)
+    results = []
+
+    def run():
+        gate.wait()
+        results.append(adapter.handle(payload))
+    threads = [threading.Thread(target=run) for _ in range(2)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(5)
+
+    assert len(results) == 2 and results.count(None) == 1
+    assert answer(next(r for r in results if r is not None))["status"] == 200
+
+
+def test_an_exception_in_the_verifier_or_the_device_store_becomes_a_500_with_the_nonce(
+        ctx, monkeypatch, caplog):
+    adapter = RelayAdapter(ctx)
+    phone = paired(ctx, adapter)
+
+    def broken(*_args):
+        raise OSError("secret-details")
+    raws = []
+    with caplog.at_level(logging.DEBUG):
+        for attr in ("get", "get_all"):                         # Gerätespeicher bzw. Prüfer
+            with monkeypatch.context() as m:
+                m.setattr(ctx.devices, attr, broken)
+                envelope, payload = sync_payload(phone)
+                raws.append((adapter.handle(payload), envelope))
+
+    for raw, envelope in raws:
+        assert raw is not None and b"secret-details" not in raw
+        res = answer(raw)
+        assert res["status"] == 500 and res["body"]["error"]["code"] == "internal"
+        assert res["n"] == envelope["n"] and res["seq"] == envelope["seq"]
+    assert "OSError" in caplog.text and "secret-details" not in caplog.text
+    assert all(record.exc_info is None for record in caplog.records)
+
+
+def test_a_base_exception_is_not_swallowed(ctx, monkeypatch):
+    adapter = RelayAdapter(ctx)
+    phone = paired(ctx, adapter)
+
+    def interrupted(*_args):
+        raise KeyboardInterrupt
+    monkeypatch.setattr(mobile_routes, "dispatch", interrupted)
+
+    with pytest.raises(KeyboardInterrupt):
+        adapter.handle(sync_payload(phone)[1])
 
 
 def test_protocol_errors_of_dispatch_pass_through_with_the_nonce(ctx):

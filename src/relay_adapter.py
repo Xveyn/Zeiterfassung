@@ -10,6 +10,8 @@ verlangt (Regeln der Leitidee in `docs/superpowers/specs/2026-11-02-ios-relay-ab
   nur einen Platz, ein `409 replay` überschriebe dort die gute Antwort auf dieselbe Anfrage. `last_seq`
   ist das gespeicherte `record["last_seq"]` des Gerätedatensatzes, nie ein Zähler im Adapter — sonst
   beantwortete der Desktop nach einem Neustart ein erneut zugestelltes, schon angewendetes `req`.
+  Meldet `dispatch` selbst `409 replay` (der Zähler stieg zwischen der Prüfung hier und der unter der
+  Gerätesperre), gilt dasselbe: keine Antwort.
 - **Regel 3:** eine Kopplung lässt sich nicht wiederholen (`try_open` verbraucht den Code). Die
   Erfolgsantwort wird deshalb in einem kleinen, befristeten Zwischenspeicher unter dem SHA-256 der
   Nutzlast-Bytes gehalten und bei identischem `req` unverändert erneut ausgeliefert. Fehler werden
@@ -21,9 +23,23 @@ dass eine Antwort zu seiner offenen Anfrage gehört (`seq` reicht nicht, Kopplun
 tragen beide 1). Ohne gültiges `n` wird nicht geantwortet — eine solche Antwort verwürfe das Handy
 ohnehin, und **keine** Antwort ist besser als eine, die den Platz einer guten belegt.
 
-Geloggt werden nur Status, Fehlercodes und Ausnahmetypen, nie Token, Umschlag oder Ausnahmetext.
-`handle` läuft später in einem Arbeits-Thread; der Zwischenspeicher hat deshalb eine eigene Sperre,
-die nie über `dispatch` hinweg gehalten wird.
+`handle` wirft nie eine `Exception`: alles nach dem Dekodieren ist abgesichert und wird im Fehlerfall
+eine `500 internal` mit `n` (sonst wartete das Handy bis zum Timeout). Geloggt werden nur Status,
+Fehlercodes und Ausnahmetypen, nie Token, Umschlag oder Ausnahmetext.
+
+Grenzen, die der Aufrufer kennen muss:
+
+- **Ein Adapter je `MobileContext`, `handle` aus genau einem Arbeits-Thread.** Gleiche
+  Kopplungs-Nutzlasten aus mehreren Threads gleichzeitig werden nicht zusammengelegt (die zweite
+  bekäme `403 invalid_code`); die Verbindungsschicht (PR 3b) ruft `handle` deshalb nacheinander. Die
+  Sperre des Zwischenspeichers wird nie über `dispatch` gehalten.
+- **Kopplung nach einem Fehlschlag, der den Code schon verbraucht hat** (Gerät nicht speicherbar):
+  eine erneute Zustellung bekommt `403 invalid_code` mit demselben `n`. Das Handy zeigt dann „Code
+  ungültig“, der Koppel-Dialog am Desktop den Fehlschlag.
+- **Zu große Antwort:** das `413`-Ersatzframe geht raus, obwohl die Anfrage schon angewendet ist
+  (`last_seq` vorgerückt, Token erneuert). Das Handy arbeitet mit dem alten Token weiter, solange es
+  als vorheriges gilt (rund 7 Tage ab der ersten Erneuerung); das `413` wiederholt sich bei jedem
+  Abgleich, bis der Nutzer das Fenster verkleinert. Danach muss das Handy neu koppeln.
 """
 from __future__ import annotations
 
@@ -34,6 +50,7 @@ import threading
 import time
 from collections import OrderedDict
 from collections.abc import Callable
+from typing import Any
 
 from src import mobile_routes
 from src.api_auth import ANONYMOUS, Denied, Principal
@@ -58,6 +75,13 @@ def _unauthorized(code: str) -> ApiResponse:
     return error_response(401, code, _AUTH_MESSAGES[code])
 
 
+def _error_code(body: Any) -> str | None:
+    """Der Fehlercode eines unversiegelten Fehler-Bodys `{"error": {"code": …}}`, sonst `None`."""
+    error = body.get("error") if isinstance(body, dict) else None
+    code = error.get("code") if isinstance(error, dict) else None
+    return code if isinstance(code, str) else None
+
+
 class RelayAdapter:
     """Nutzlast einer Relay-Anfrage → Nutzlast der Antwort, oder `None` für „nicht antworten“."""
 
@@ -72,7 +96,7 @@ class RelayAdapter:
         self._lock = threading.Lock()
 
     def handle(self, payload: bytes) -> bytes | None:
-        """Beantwortet eine Nutzlast. Wirft nie; `None` heißt: nichts in die Box legen."""
+        """Beantwortet eine Nutzlast. Wirft nie eine `Exception`; `None` heißt: nichts in die Box legen."""
         try:
             request = decode_request(payload)
         except FrameError as exc:
@@ -81,9 +105,17 @@ class RelayAdapter:
         if request.n is None:
             _log.debug("Relay-Anfrage ohne gültige Nonce verworfen")
             return None
-        if request.path == "/v1/pair":
-            return self._pair(payload, request)
-        return self._sync(request)
+        try:
+            if request.path == "/v1/pair":
+                return self._pair(payload, request)
+            return self._sync(request)
+        except Exception as exc:
+            # Wie der LAN-Server: ein Programmfehler (Prüfer, Gerätespeicher, `dispatch`, Kodieren)
+            # wird eine 500 ohne Details. Nur der Typ ins Log, der Ausnahmetext kann Inhalte tragen.
+            # `BaseException` (Strg+C, SystemExit) läuft bewusst durch.
+            _log.warning("Relay-Anfrage %s: %s", request.path, type(exc).__name__)
+            return encode_response(500, error_response(500, "internal", _INTERNAL_MESSAGE).body,
+                                   request.seq, request.n)
 
     # --- Kopplung -----------------------------------------------------------------------------------
     def _pair(self, payload: bytes, request: RelayRequest) -> bytes:
@@ -135,25 +167,24 @@ class RelayAdapter:
             return self._encode(_unauthorized("unauthorized"), request)
         record = self._ctx.devices.get(outcome.name)
         if record is None:
-            # Zwischen Prüfer und hier gelöscht: wie ein unbekanntes Token.
-            _log.debug("Relay-Abgleich abgelehnt: unauthorized (Datensatz fehlt)")
-            return self._encode(_unauthorized("unauthorized"), request)
+            # Zwischen Prüfer und hier verschwunden: wie `_sync` im LAN-Weg ein Widerruf.
+            _log.debug("Relay-Abgleich abgelehnt: token_revoked (Datensatz fehlt)")
+            return self._encode(_unauthorized("token_revoked"), request)
         if not should_answer(request.seq, int(record.get("last_seq", 0))):
             _log.debug("Relay-Abgleich übersprungen: seq nicht neuer als last_seq")
             return None
-        return self._encode(self._dispatch(request, outcome), request)
+        response = self._dispatch(request, outcome)
+        if response.status == 409 and _error_code(response.body) == "replay":
+            # Der Zähler stieg zwischen der Prüfung oben und der unter der Gerätesperre (gleiche
+            # Anfrage parallel beantwortet): Regel 2, das 409 überschriebe die gute Antwort.
+            _log.debug("Relay-Abgleich übersprungen: 409 replay aus dispatch")
+            return None
+        return self._encode(response, request)
 
     # --- Gemeinsam ----------------------------------------------------------------------------------
     def _dispatch(self, request: RelayRequest, principal: Principal) -> ApiResponse:
         api_request = ApiRequest("POST", request.path, {}, json.dumps(request.envelope).encode("utf-8"))
-        try:
-            return mobile_routes.dispatch(api_request, self._ctx, principal)
-        except Exception as exc:
-            # Wie der LAN-Server: ein Programmfehler wird eine 500 ohne Details. Nur der Typ ins Log,
-            # der Ausnahmetext kann Inhalte tragen. Die Antwort trägt `n`, sonst wartete das Handy
-            # bis zum Timeout.
-            _log.warning("Relay-Anfrage %s: %s in dispatch", request.path, type(exc).__name__)
-            return error_response(500, "internal", _INTERNAL_MESSAGE)
+        return mobile_routes.dispatch(api_request, self._ctx, principal)
 
     def _encode(self, response: ApiResponse, request: RelayRequest) -> bytes:
         _log.debug("Relay-Antwort %s: %d", request.path, response.status)
@@ -162,8 +193,3 @@ class RelayAdapter:
         except FrameTooLarge:
             _log.warning("Relay-Antwort %s zu groß, sende 413", request.path)
             return encode_too_large_response(request.seq, request.n)
-        except FrameError:
-            # Nicht serialisierbarer Body (Programmfehler der Route): wie eine Ausnahme in `dispatch`.
-            _log.warning("Relay-Antwort %s nicht kodierbar, sende 500", request.path)
-            return encode_response(500, error_response(500, "internal", _INTERNAL_MESSAGE).body,
-                                   request.seq, request.n)
