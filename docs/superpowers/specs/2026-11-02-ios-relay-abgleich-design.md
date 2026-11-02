@@ -55,7 +55,10 @@ Daraus folgen vier Regeln für den Tunnel:
    DO. Schreiben (`put`) und Zustellung laufen als WebSocket-Nachrichten (Eingang 1/20 Anfrage, Ausgang frei).
    Heartbeat über `setWebSocketAutoResponse`.
 3. **Ereignisgetrieben**: Last entsteht nur, wenn jemand abgleicht.
-4. **Opake Bytes**, binär gerahmt; Gzip vor dem Verschlüsseln (Client), damit ein Monat weit unter 1 MiB bleibt.
+4. **Opake Bytes**, binär gerahmt; ein **Größenwächter** statt Kompression: Kodieren wirft `FrameTooLarge`
+   (`RelayFrameError('too_large')` in der PWA), wenn die Nutzlast `MAX_PAYLOAD` (1 048 575 Bytes) überschreitet.
+   Grund: eine Anfrage trägt höchstens `MAX_DAYS_PER_REQUEST = 400` Tage (rund 100 KB) gegen 1 MiB. Gzip nur,
+   wenn eine Messung es verlangt.
 
 Größenordnung (Schätzung): ~20 Anfragen je aktivem Nutzer und Tag tragen mehrere Tausend Nutzer; wird es knapp,
 ist der Paid-Plan die Antwort, nicht ein anderes Design.
@@ -155,7 +158,7 @@ Code geprüft). Zu beachten ist grundsätzlich:
 7. **Freiwilligkeit und Transparenz.** Opt-in je Gerät, klare Sprache vor dem Einschalten (was geht über wen, was
    nicht), Ausschalten und Löschen jederzeit; auf iOS ist der Relay Pflicht für die Handy-Erfassung, das muss dort
    ehrlich so stehen („ohne Relay kein Abgleich“), nicht als Wahl getarnt.
-8. **Datensparsamkeit.** Nur ein Slot je Richtung (Ersetzen statt Historie), Gzip, kein zusätzliches Konto, keine
+8. **Datensparsamkeit.** Nur ein Slot je Richtung (Ersetzen statt Historie), kein zusätzliches Konto, keine
    Geräte-ID im Klartext außer dem Gerätetoken im Rahmen. Das Gerätetoken ist ein Auth-Mittel, kein Identifikator
    des Menschen — aber der Relay kann Verbindungen über Zeit verknüpfen; das ist als Metadatenrisiko zu benennen.
 9. **Schlüssel und Wiederherstellung.** Geht das Handy verloren, wird die Kopplung am Desktop widerrufen (Token
@@ -164,13 +167,27 @@ Code geprüft). Zu beachten ist grundsätzlich:
 10. **Push getrennt halten.** `Device` (Push) und `Box` (Abgleich) bleiben getrennte Objekte mit getrennten
     Geheimnissen; wer beides nutzt, gibt dem Relay zwei unverknüpfte Handles, nicht eins.
 
+## Vertrag der Nutzlast (PR 2)
+
+- **Anfrage:** `{"v":1,"path":"/v1/pair"|"/v1/sync","token":<String|null>,"envelope":{…}}`. Im Relay-Weg gibt es
+  nur `/v1/pair` und `/v1/sync`, kein `/v1/ping`.
+- **Antwort:** `{"v":1,"status":<100–599>,"seq":<Ganzzahl|null>,"body":{…}}`; `seq` ist das `seq` des
+  Anfrage-Umschlags, zurückgespiegelt, `null`, wenn die Anfrage kein gültiges `seq` trug.
+- **Link:** `https://xveyn.github.io/Zeiterfassung/#relay=<43 Zeichen Geheimnis>:<28 Zeichen Code>`.
+- **Regel 1** `isCurrentResponse(frame, pendingSeq)`: gleiches `seq`, oder `seq === null` und `status >= 400`.
+  `pendingSeq` ist immer ein gültiges `seq`, nie `null`.
+- **Regel 2** `should_answer(seq, last_seq)` (Desktop): beantwortet wird nur, was neuer ist als das zuletzt
+  Beantwortete.
+- Größe: siehe Budget Punkt 4 (Größenwächter).
+
 ## Tests
 
 - Relay: `node --test` mit In-Memory-Speicher und gefälschten WebSockets (`getWebSockets`/`acceptWebSocket`) —
   Slot-Semantik, Zustellung, Wiederaufnahme mit `have`, Größen, Auth, Alarm höchstens einmal am Tag, „kein Logging“.
   Hibernation und Quoten nur **gemessen** (`wrangler dev` für den Ablauf, deployter Relay für Zahlen), wie das
   `## Gemessen` in `relay/CLAUDE.md`.
-- Protokoll: bestehende Vektoren bleiben; der Rahmen `{path, token, envelope}` bekommt Fixtures für beide Seiten.
+- Protokoll: bestehende Vektoren bleiben; der Rahmen `{path, token, envelope}` hat Fixtures für beide Seiten
+  (`pwa/test/fixtures/relay-frames.json`, auch vom Relay-Test geprüft).
 - Desktop: `relay_link` Tk-frei mit gefälschter WebSocket; `tests/test_mobile_contract.py` um den Relay-Weg ergänzen.
 - Echtgerät: iPhone über Pre-Release (Abgleich, Desktop offline, App-Neustart, Push); macOS bleibt nicht Pflicht.
 
@@ -188,8 +205,9 @@ Code geprüft). Zu beachten ist grundsätzlich:
 
 1. **Relay: `Box`-DO**, WebSocket-Route, EU-Jurisdiktion, `observability` aus, Tests, Messung, Skelett
    `docs/datenschutz.md` (Plan: `docs/superpowers/plans/2026-11-02-relay-box.md`).
-2. Protokoll: Rahmen `{path, token, envelope}`, Gzip, Fixtures (Python + JS).
-3. Desktop: `relay_link`, Kopplung über Relay, Einstellungen (minimal), WebSocket-Abhängigkeit.
+2. Protokoll und Vertrag — **umgesetzt in diesem Branch**: `src/mobile_relay_codec.py`, `pwa/relay-frame.js` und die
+   Fixture `pwa/test/fixtures/relay-frames.json` (Python + JS, Rahmen `{path, token, envelope}`, Größenwächter statt Gzip).
+3. Desktop: Netzwerk-Modul `relay_link.py`, Kopplung über Relay, Einstellungen (minimal), WebSocket-Abhängigkeit.
 4. PWA: `RelayTransport`, iOS-Hinweise, Fehlermeldung, einstellbares Timeout.
 5. Doku (`known-limitations.md`, READMEs, CHANGELOG), Pre-Release-Test auf dem iPhone, `Closes #358`.
 

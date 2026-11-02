@@ -129,6 +129,9 @@ Schließ-Codes der Box (`box.js`) und was der Client darauf tun muss:
 - Rahmen-Typen vom Relay, die der Client nicht kennt, **muss** er übergehen — so kann später z. B. ein
   `0x04 peer` (Anwesenheit) dazukommen, ohne alte Clients zu brechen.
 - PR 4 (Aufteilung großer Nachrichten) muss seinen Takt **unter** `putsPerMinute` (60/min) halten.
+- **Gegenstücke der Rahmen:** `pwa/relay-frame.js` und `src/mobile_relay_codec.py` kodieren und dekodieren sie, die
+  Fixture `pwa/test/fixtures/relay-frames.json` hält beide zusammen; `relay/test/frames-contract.test.js` prüft den
+  Relay gegen dieselbe Fixture. Konstante ändern heißt beide Codecs und die Fixture mitziehen.
 
 - Ablauf-Test: `node scripts/box-smoke.mjs [baseUrl]` gegen `npx wrangler dev --var BOX_JURISDICTION:none` prüft Zustellung, Wiederaufnahme
   mit `have`, falsches Subprotocol, `maxFrame + 1` und `DELETE`. Ein vom Server ausgelöstes Schließen

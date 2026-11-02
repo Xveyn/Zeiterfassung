@@ -10,6 +10,9 @@ Zwei Schichten:
   (`mobile_crypto`); hier wird er nur transportiert.
 
 Gegenstück der PWA: `pwa/relay-frame.js`; den Gleichlauf hält `pwa/test/fixtures/relay-frames.json`.
+Der Python-Dekodierer ist strenger als der JS-Dekodierer: ganzzahlige Floats wie `"v":1.0` oder
+`"status":200.0` lehnt er ab (`JSON.parse` kann sie nicht von Ganzzahlen unterscheiden); unsere
+Kodierer erzeugen sie nie.
 Größen zählen in **Bytes** der kodierten Nutzlast. Nach außen kommen aus den Dekodierern und
 Kodierern nur `FrameError`/`FrameTooLarge`. Nichts hier loggt.
 """

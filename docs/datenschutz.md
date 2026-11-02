@@ -13,10 +13,11 @@ Der Relay sieht:
 
 - verschlüsselte Daten (Chiffretext). Größe je Nachricht: höchstens 1 MiB (1048576 Bytes),
 - Zeitpunkte der Nachrichten und deren Größen,
-- das Gerätetoken im Nachrichtenrahmen (Offen, PR 3: der Rahmeninhalt kommt mit Desktop und PWA),
+- das Gerätetoken im Klartext der Nutzlast, neben dem verschlüsselten Umschlag. Der Relay kann damit nichts
+  entschlüsseln; das Token wird bei jedem Abgleich erneuert,
 - die IP-Adresse der Verbindung (Rate-Limit und Cloudflare-Plattform).
 
-Der Relay sieht **nie** Einträge, Kategorien oder Namen: die Nutzbytes sind Ende-zu-Ende verschlüsselt, der
+Vom Umschlag selbst ist nichts lesbar (kein Inhalt, keine Feldnamen). Der Relay sieht **nie** Einträge, Kategorien oder Namen: die Nutzbytes sind Ende-zu-Ende verschlüsselt, der
 Relay hält keinen Schlüssel. Es gibt bewusst keinen Klartext-Pfad (kein Vorschau-Feld, kein Debug-Dump).
 
 ## 2. Aufbewahrung und Löschung

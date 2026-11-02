@@ -127,7 +127,10 @@ export function decodeResponse(bytes) {
   return { status, seq, body };
 }
 
-/** Gehört die Antwort zur offenen Anfrage? Ein `null`-`seq` gilt nur bei Fehlerstatus (>= 400). */
+/**
+ * Gehört die Antwort zur offenen Anfrage? Ein `null`-`seq` gilt nur bei Fehlerstatus (>= 400).
+ * `pendingSeq` muss ein gültiges `seq` sein, nie `null`/`undefined`.
+ */
 export function isCurrentResponse(frame, pendingSeq) {
   return frame.seq === pendingSeq || (frame.seq === null && frame.status >= 400);
 }
