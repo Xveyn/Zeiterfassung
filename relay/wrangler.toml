@@ -6,9 +6,17 @@ compatibility_date = "2026-10-01"
 name = "DEVICE"
 class_name = "Device"
 
+[[durable_objects.bindings]]
+name = "BOX"
+class_name = "Box"
+
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["Device"]
+
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["Box"]
 
 # Obergrenze je Absender-Adresse (s. `withinLimit` in src/worker.js). Zählt je Cloudflare-Standort und
 # großzügig — gegen Massenanlegen von Geräten, keine exakte Buchhaltung. `period` ist 10 oder 60.
@@ -16,6 +24,10 @@ new_sqlite_classes = ["Device"]
 name = "LIMITER"
 namespace_id = "1001"
 simple = { limit = 30, period = 60 }
+
+# Kein Workers-Logging: Geheimnisse und Abgleich-Daten gehoeren in kein Log.
+[observability]
+enabled = false
 
 [vars]
 # Nur für die lokale Entwicklung (Origin des Dev-Servers der PWA); im Betrieb leer.
