@@ -11,6 +11,18 @@ geschrieben über `secure_file.write_secret_json` (0600 / ACL) und **nur bei ein
 Getrennt vom Push-Speicher `mobile_relay.json` (`mobile_relay_store`): anderes Geheimnis, anderer
 Zweck. Reist nicht per Drive-Sync. Kein Schlüsselbund, wie dort.
 
+Warum eine gehärtete Datei und kein Schlüsselbund (wie beim Push-Geheimnis, #331, `mobile_relay_store`):
+ein geleaktes Box-Geheimnis erlaubt, den Slot der Gegenseite zu lesen (Gerätetoken im Klartext plus
+versiegelter Umschlag), Slots zu überschreiben, den Desktop von der Box zu verdrängen und unversiegelte
+Fehler zu fälschen — aber weder Inhalte zu lesen noch zu synchronisieren: das braucht den Geräteschlüssel
+`k_dev` aus dem Schlüsselbund (`mobile_keys`). Ein Schlüsselbund-Zugriff blockiert bis zum 30-s-Watchdog,
+darauf darf der Verbindungs-Thread nicht warten. Ein späterer Wechsel ist ein Backend-Tausch hinter
+derselben API (`_load`/`_save_locked`/`_commit_locked`).
+
+Beim Laden verworfene Einträge (ungültiges Geheimnis, kaputtes `pending`) verschwinden beim nächsten
+Schreiben von der Platte: ein Geheimnis, das je am Relay angelegt wurde, kann so zur Waise werden, von
+der der Aufrufer nie erfährt.
+
 Eigener Lock. Unbrauchbare Einträge werden übersprungen, eine kaputte Datei wird quarantäniert,
 eine neuere `schema_version` oder ein Lesefehler macht den Store read-only: jede ändernde Methode
 wirft dann `MobileBoxReadOnly`, bevor sie den Speicher anfasst. Schreibfehler rollen den Speicher
@@ -171,15 +183,19 @@ class MobileBoxStore:
             self._commit_locked(snapshot)
             return secret
 
-    def bind(self, device_id: str) -> tuple[str | None, str | None]:
+    def bind(self, device_id: str, expected: str | None = None) -> tuple[str | None, str | None]:
         """Verschiebt das offene Geheimnis zum Gerät. Liefert `(gebundenes, ersetztes_altes_des_Geräts)`;
         ohne offenes Geheimnis `(None, None)` ohne Schreiben. Wirft `ValueError` bei unbrauchbarer ID
-        (es ändert sich nichts)."""
+        (es ändert sich nichts). Mit `expected` wird nur gebunden, wenn es dem offenen Geheimnis
+        entspricht — die Verbindungsschicht übergibt das Geheimnis der Box, auf der die Koppel-Anfrage
+        ankam; ein zwischenzeitlich neu geöffnetes Pairing bleibt so unangetastet (`(None, None)`)."""
         with self._lock:
             self._check_writable()
             if normalize_device_id(device_id) is None:
                 raise ValueError("Ungültige Geräte-ID.")
             if self._pending is None:
+                return None, None
+            if expected is not None and expected != self._pending["secret"]:
                 return None, None
             snapshot = self._snapshot()
             secret = self._pending["secret"]
@@ -202,9 +218,9 @@ class MobileBoxStore:
 
     def retain(self, ids: Iterable[str]) -> dict[str, str]:
         """Behält nur die genannten Geräte; liefert die entfernten `{id: Geheimnis}`."""
-        keep = set(ids)
         with self._lock:
             self._check_writable()
+            keep = set(ids)
             dropped = {i: s for i, s in self._devices.items() if i not in keep}
             if not dropped:
                 return {}

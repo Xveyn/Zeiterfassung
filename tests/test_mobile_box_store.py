@@ -66,6 +66,30 @@ def test_bind_without_pending_does_nothing(tmp_path, monkeypatch):
     assert s.known_ids() == []
 
 
+def test_bind_with_a_matching_expected_secret_binds(tmp_path):
+    s = store(tmp_path)
+    secret, _ = s.open_pending(NOW)
+    assert s.bind("phone-0001", secret) == (secret, None)
+    assert s.get("phone-0001") == secret and s.pending() is None
+
+
+def test_bind_with_a_stale_expected_secret_does_nothing_and_keeps_the_pending_one(tmp_path, monkeypatch):
+    s = store(tmp_path)
+    old, _ = s.open_pending(NOW)
+    new, _ = s.open_pending(NOW)
+    writes = counting_writes(monkeypatch)
+    assert s.bind("phone-0001", old) == (None, None)
+    assert writes == []
+    assert s.pending() == new and s.known_ids() == []
+
+
+def test_bind_with_expected_but_no_pending_does_nothing(tmp_path, monkeypatch):
+    s = store(tmp_path)
+    writes = counting_writes(monkeypatch)
+    assert s.bind("phone-0001", A) == (None, None)
+    assert writes == [] and s.known_ids() == []
+
+
 def test_bind_rejects_an_invalid_device_id_and_changes_nothing(tmp_path):
     s = store(tmp_path)
     secret, _ = s.open_pending(NOW)

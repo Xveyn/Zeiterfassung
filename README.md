@@ -545,7 +545,7 @@ Speicherort je nach Plattform:
 > enthält die SMTP-Kontodaten und, nur im Datei-Fallback, das Mail-Passwort.
 > `instance-secret` schützt den lokalen Single-Instance-Kanal. `api-token` ist der
 > Zugang zur lokalen API, `mobile_keys.json` (nur im Datei-Fallback) enthält die
-> Schlüssel der gekoppelten Handys `mobile_relay.json` deren Relay-Geheimnisse und `mobile_box.json` deren Box-Geheimnisse.
+> Schlüssel der gekoppelten Handys, `mobile_relay.json` deren Relay-Geheimnisse und `mobile_box.json` deren Box-Geheimnisse.
 >
 > **Mit verfügbarem Schlüsselbund** (Windows
 > Anmeldeinformationsverwaltung / macOS-Schlüsselbund / Linux Secret Service)
