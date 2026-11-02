@@ -79,6 +79,27 @@ export function parseQrText(text) {
   return hash === -1 ? null : parsePairFragment(text.slice(hash));
 }
 
+const RELAY_SECRET_RE = /^[A-Za-z0-9_-]{43}$/;
+const RELAY_PREFIX = 'relay=';
+
+/** Gescannter oder eingefügter Koppel-Link → `{kind: 'lan', host, port, code}`,
+ *  `{kind: 'relay', secret, code}` oder `null`. Der Relay-Link trägt hinter dem ersten `#`
+ *  genau `relay=<43 Base64url>:<28 Zeichen Code>`; der Code muss schon kanonisch (Großbuchstaben)
+ *  sein, Leerraum ist nirgends erlaubt. Alles andere ist der LAN-Link (`parseQrText`). */
+export function parsePairLink(text) {
+  if (typeof text !== 'string' || text.length > 512) return null;
+  const hash = text.indexOf('#');
+  if (hash !== -1 && text.startsWith(RELAY_PREFIX, hash + 1)) {
+    const parts = text.slice(hash + 1 + RELAY_PREFIX.length).split(':');
+    if (parts.length !== 2 || !RELAY_SECRET_RE.test(parts[0])) return null;
+    const code = normalizeCode(parts[1]);
+    if (code === null || code !== parts[1]) return null;
+    return { kind: 'relay', secret: parts[0], code };
+  }
+  const lan = parseQrText(text);
+  return lan === null ? null : { kind: 'lan', ...lan };
+}
+
 export function baseUrl({ host, port }) {
   return `http://${host}:${port}`;
 }

@@ -30,7 +30,12 @@ ES-Module flach im Ordner:
   Sortieren (`moveRow`) und die Signatur zum Vergleichen (`blockSignature`).
   `per_day`-Kategorien laufen als `raw` durch und werden nie verändert (s.
   „Einstellungen und Kategorien“).
-- `pairing.js` — Kopplungscode, Koppel-Link, Adressregel.
+- `pairing.js` — Kopplungscode, Koppel-Link, Adressregel. `parsePairLink` erkennt beide Links: den LAN-Link
+  (`#pair=…`, delegiert an `parseQrText`, Ergebnis `kind: 'lan'`) und den Relay-Link
+  (`#relay=<43 Base64url>:<28 Zeichen Code>`, `kind: 'relay'`; Code schon in Großbuchstaben, kein Leerraum,
+  der ganze Text höchstens 512 Zeichen). `parseQrText` bleibt unverändert und liefert für einen Relay-Link `null`.
+- `relay-frame.js` — reiner Codec des Relay-Abgleichs: Nachrichtenrahmen, Nutzlast, Regeln. Gegenstück
+  `src/mobile_relay_codec.py`; der Gleichlauf hängt an `test/fixtures/relay-frames.json`.
 - `store.js` — lokaler Zustand: erfasste Tage und Reservierungen (zwei
   Sammlungen), `dirty_version`/`synced_version`, Anwenden der Sync-Antwort,
   Lesefenster. Mit

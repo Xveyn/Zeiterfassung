@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs';
 
 import {
   CODE_ALPHABET, CODE_LENGTH, DEFAULT_PORT, PROTOCOL, baseUrl, deviceNameFromUserAgent, isLanAddress,
-  isValidDeviceId, newDeviceId, normalizeCode, pairRequestBody, parseHostPort, parsePairFragment, parseQrText,
+  isValidDeviceId, newDeviceId, normalizeCode, pairRequestBody, parseHostPort, parsePairFragment, parsePairLink, parseQrText,
 } from '../pairing.js';
 
 const cases = JSON.parse(readFileSync(new URL('./fixtures/pairing-cases.json', import.meta.url)));
@@ -123,4 +123,55 @@ test('a scanned QR text is the full link; only its fragment counts', () => {
     null, undefined, 5, 'http://[::1', 'a'.repeat(5000)]) {
     assert.equal(parseQrText(bad), null, String(bad).slice(0, 30));
   }
+});
+
+const relayFrames = JSON.parse(readFileSync(new URL('./fixtures/relay-frames.json', import.meta.url)));
+const RELAY_SECRET = 'Zm9vYmFyYmF6cXV4Zm9vYmFyYmF6cXV4Zm9vYmFyYmE';
+const RELAY_CODE = 'K7M29QXAK7M29QXAK7M29QXAK7M2';
+const RELAY_BASE = 'https://xveyn.github.io/Zeiterfassung/';
+
+test('parsePairLink matches every fixture link (lan, relay, null)', () => {
+  assert.ok(relayFrames.links.length > 0);
+  for (const row of relayFrames.links) {
+    const result = parsePairLink(row.url);
+    if (row.kind === 'lan') {
+      assert.deepEqual(result, { kind: 'lan', host: row.host, port: row.port, code: row.code }, row.url);
+    } else if (row.kind === 'relay') {
+      assert.deepEqual(result, { kind: 'relay', secret: row.secret, code: row.code }, row.url);
+    } else {
+      assert.equal(result, null, row.url.slice(0, 80));
+    }
+  }
+});
+
+test('parsePairLink leaves parseQrText untouched: a relay link still yields null from parseQrText', () => {
+  const link = `${RELAY_BASE}#relay=${RELAY_SECRET}:${RELAY_CODE}`;
+  assert.equal(parseQrText(link), null);
+  assert.equal(parsePairFragment(`#relay=${RELAY_SECRET}:${RELAY_CODE}`), null);
+  assert.deepEqual(parsePairLink(link), { kind: 'relay', secret: RELAY_SECRET, code: RELAY_CODE });
+});
+
+test('parsePairLink rejects longer than 512 characters', () => {
+  const tail = `#relay=${RELAY_SECRET}:${RELAY_CODE}`;
+  const fits = RELAY_BASE + 'x'.repeat(512 - RELAY_BASE.length - tail.length) + tail;
+  assert.equal(fits.length, 512);
+  assert.deepEqual(parsePairLink(fits), { kind: 'relay', secret: RELAY_SECRET, code: RELAY_CODE });
+  const tooLong = RELAY_BASE + 'x'.repeat(513 - RELAY_BASE.length - tail.length) + tail;
+  assert.equal(tooLong.length, 513);
+  assert.equal(parsePairLink(tooLong), null);
+  for (const junk of [null, undefined, 5, {}, '']) assert.equal(parsePairLink(junk), null);
+});
+
+test('parsePairLink rejects whitespace inside the relay fragment', () => {
+  const head = `${RELAY_BASE}#relay=${RELAY_SECRET}:`;
+  assert.equal(parsePairLink(`${head}${RELAY_CODE.slice(0, 10)} ${RELAY_CODE.slice(10)}`), null);
+  assert.equal(parsePairLink(`${head}${RELAY_CODE}\n`), null);
+  assert.equal(parsePairLink(`${head}${RELAY_CODE.toLowerCase()}`), null);
+});
+
+test('an LAN link keeps parsing as lan with the same host, port and code as before', () => {
+  const link = `${RELAY_BASE}#pair=192.168.178.20:17654:${RELAY_CODE}`;
+  const before = parseQrText(link);
+  assert.deepEqual(parsePairLink(link), { kind: 'lan', ...before });
+  assert.equal(parsePairLink(`${RELAY_BASE}#pair=8.8.8.8:17654:${RELAY_CODE}`), null);
 });
