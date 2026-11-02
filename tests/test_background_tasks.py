@@ -463,3 +463,55 @@ def test_reconcile_on_start_passes_store_only_when_reservations_enabled(monkeypa
         r.reconcile_on_start(on_ok=lambda result, got=got: got.set())
         assert got.wait(timeout=5)
         assert captured["store"] is expected
+
+
+# --- Log (Xveyn#401): Ergebnis des Update-Checks --------------------------------------------------
+
+
+class _Rel:
+    release_id = "9.9.9"
+
+
+def _check_with(monkeypatch, release, installed="1.0.0"):
+    monkeypatch.setattr(bg, "should_check", lambda last, freq: True)
+    monkeypatch.setattr(bg, "check_for_update", lambda repo, include: release)
+    monkeypatch.setattr(bg, "installed_release_id", lambda: installed)
+    r = _runner(settings={"last_update_check_at": None,
+                          "update_check_frequency": "daily",
+                          "prerelease_updates_enabled": False})
+    r.run = _run_inline
+    r.check_update(on_result=lambda rel, newer: None)
+
+
+def test_check_update_logs_newer_release(monkeypatch, caplog):
+    import logging
+    with caplog.at_level(logging.INFO, logger="src.background_tasks"):
+        _check_with(monkeypatch, _Rel())
+    assert [r.getMessage() for r in caplog.records] == [
+        "Update-Check: installiert 1.0.0, neueste 9.9.9 (neuer)"]
+
+
+def test_check_update_logs_up_to_date(monkeypatch, caplog):
+    import logging
+    with caplog.at_level(logging.INFO, logger="src.background_tasks"):
+        _check_with(monkeypatch, _Rel(), installed="9.9.9")
+    assert [r.getMessage() for r in caplog.records] == [
+        "Update-Check: installiert 9.9.9, neueste 9.9.9 (aktuell)"]
+
+
+def test_check_update_logs_when_no_release_found(monkeypatch, caplog):
+    import logging
+    with caplog.at_level(logging.INFO, logger="src.background_tasks"):
+        _check_with(monkeypatch, None)
+    assert [r.getMessage() for r in caplog.records] == [
+        "Update-Check: keine Veröffentlichung gefunden"]
+
+
+def test_check_update_throttle_is_only_debug(monkeypatch, caplog):
+    import logging
+    monkeypatch.setattr(bg, "should_check", lambda last, freq: False)
+    r = _runner(settings={"last_update_check_at": None,
+                          "update_check_frequency": "weekly"})
+    with caplog.at_level(logging.DEBUG, logger="src.background_tasks"):
+        r.check_update(on_result=lambda rel, newer: None)
+    assert [x.levelno for x in caplog.records] == [logging.DEBUG]

@@ -29,6 +29,7 @@ import json
 import logging
 import platform
 import threading
+import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
@@ -311,6 +312,7 @@ def _sync(request: ApiRequest, ctx: MobileContext, principal: Principal) -> ApiR
     envelope = _envelope(request.body)
     now = ctx.now()
     notify = False
+    started = time.monotonic()
     with ctx.devices_lock:
         # Die Prüfung oben lief vor dem Lock: ein hier wartender Abgleich darf nach dem
         # finalen Quit-Push nicht mehr anwenden (die Daten blieben lokal, bis zum nächsten Start).
@@ -369,6 +371,10 @@ def _sync(request: ApiRequest, ctx: MobileContext, principal: Principal) -> ApiR
         notify = True
     response["token"] = token
     response["expires_at"] = renewed["expires_at"]
+    # Nur die ID und Zählwerte, nie Namen oder Inhalte (Xveyn#401).
+    _log.info("Handy-Abgleich ok (Gerät %s): %d Tage, %d Reservierungen, %d Einstellungen "
+              "empfangen in %.1f s", record["id"], len(parsed.entries),
+              len(parsed.reservations), len(parsed.settings), time.monotonic() - started)
     _file_relay_secret(ctx, record["id"], parsed.relay_secret)
     if notify:
         _notify(ctx)

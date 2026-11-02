@@ -1034,3 +1034,27 @@ def test_a_failing_relay_store_does_not_fail_the_sync_and_does_not_log_the_secre
 def test_a_sync_without_a_relay_store_ignores_the_secret(env):
     _record, token = add_device(env)
     assert sync(env, token, push={"relay_secret": SECRET}).status == 200
+
+
+# --- Log (Xveyn#401): eine Zeile je gelungenem Abgleich, nie Namen oder Inhalte --------------------
+
+
+def test_a_successful_sync_logs_one_info_line_without_name_or_content(env, caplog):
+    _record, token = add_device(env, name="Svens Pixel")
+    with caplog.at_level(logging.INFO, logger="src.mobile_routes"):
+        response = sync(env, token, {"2026-10-07": day()})
+    assert response.status == 200
+    lines = [r.getMessage() for r in caplog.records
+             if r.name == "src.mobile_routes" and r.getMessage().startswith("Handy-Abgleich ok")]
+    assert len(lines) == 1
+    assert PHONE in lines[0] and "1 Tage, 0 Reservierungen, 0 Einstellungen" in lines[0]
+    assert "Svens Pixel" not in lines[0] and "2026-10-07" not in lines[0]
+
+
+def test_a_refused_sync_logs_no_ok_line(env, caplog):
+    _record, token = add_device(env)
+    closing = dataclasses.replace(env.ctx, closing=lambda: True)
+    with caplog.at_level(logging.INFO, logger="src.mobile_routes"):
+        mobile_routes.dispatch(
+            ApiRequest("POST", "/v1/sync", {}, sync_body(env)), closing, principal_for(env, token))
+    assert not [r for r in caplog.records if "Handy-Abgleich ok" in r.getMessage()]

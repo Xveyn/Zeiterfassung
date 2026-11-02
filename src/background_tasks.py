@@ -190,9 +190,11 @@ class BackgroundTaskRunner:
         ausführt. Fehler still. Dev-/Source-Builds prüfen nie
         (`version.updates_supported`)."""
         if not updates_supported():
+            log.debug("Update-Check übersprungen: Dev-/Source-Build")
             return
         frequency = self._settings.get("update_check_frequency")
         if not should_check(self._settings.get("last_update_check_at"), frequency):
+            log.debug("Update-Check übersprungen: Frequenz '%s' noch nicht erreicht", frequency)
             return
         include_prereleases = bool(self._settings.get("prerelease_updates_enabled"))
 
@@ -200,8 +202,13 @@ class BackgroundTaskRunner:
             try:
                 release = check_for_update(REPO, include_prereleases)
                 if release is None:
+                    log.info("Update-Check: keine Veröffentlichung gefunden")
                     return None
-                return (release, is_newer(installed_release_id(), release.release_id))
+                newer = is_newer(installed_release_id(), release.release_id)
+                log.info("Update-Check: installiert %s, neueste %s (%s)",
+                         installed_release_id(), release.release_id,
+                         "neuer" if newer else "aktuell")
+                return (release, newer)
             except Exception:
                 log.exception("Update-Check fehlgeschlagen")
                 return None
