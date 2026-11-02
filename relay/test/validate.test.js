@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
-  InvalidRequest, LIMITS, parseSchedule, parseSecret, parseSubscription,
+  InvalidRequest, LIMITS, parseHave, parseRole, parseSchedule, parseSecret, parseSubprotocol, parseSubscription,
 } from '../src/validate.js';
 
 const NOW = Date.parse('2026-10-21T12:00:00Z');
@@ -137,4 +137,38 @@ test('parseSecret rejects a short, long or non-base64url secret', () => {
     assert.throws(() => parseSecret(header), InvalidRequest, String(header));
   }
   function secret(n) { return `Bearer ${'a'.repeat(n)}`; }
+});
+
+const SECRET43 = 'A'.repeat(43);
+
+test('parseSubprotocol accepts "zeit.v1, <43 chars>" in either order and returns the secret', () => {
+  assert.equal(parseSubprotocol(`zeit.v1, ${SECRET43}`), SECRET43);
+  assert.equal(parseSubprotocol(`${SECRET43},zeit.v1`), SECRET43);
+});
+
+test('parseSubprotocol rejects: null, missing zeit.v1, missing secret, secret of 42/44 chars, two secrets', () => {
+  for (const header of [
+    null, SECRET43, 'zeit.v1', `zeit.v1, ${'A'.repeat(42)}`, `zeit.v1, ${'A'.repeat(44)}`,
+    `zeit.v1, ${SECRET43}, ${'B'.repeat(43)}`,
+  ]) {
+    assert.throws(() => parseSubprotocol(header), InvalidRequest);
+  }
+});
+
+test('parseRole accepts phone and desktop, rejects null, "", "PHONE", "admin"', () => {
+  assert.equal(parseRole('phone'), 'phone');
+  assert.equal(parseRole('desktop'), 'desktop');
+  for (const value of [null, '', 'PHONE', 'admin']) assert.throws(() => parseRole(value), InvalidRequest);
+});
+
+test('parseHave: null → 0, "0" → 0, "7" → 7, "2147483647" ok; "-1", "1.5", "abc", "2147483648", "" throw', () => {
+  assert.equal(parseHave(null), 0);
+  assert.equal(parseHave('0'), 0);
+  assert.equal(parseHave('7'), 7);
+  assert.equal(parseHave('2147483647'), 2_147_483_647);
+  for (const value of ['-1', '1.5', 'abc', '2147483648', '']) assert.throws(() => parseHave(value), InvalidRequest);
+});
+
+test('LIMITS.maxFrame is 1048576', () => {
+  assert.equal(LIMITS.maxFrame, 1_048_576);
 });
