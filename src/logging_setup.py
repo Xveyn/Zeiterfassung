@@ -20,6 +20,8 @@ MAX_BYTES = 1_000_000
 BACKUP_COUNT = 3
 DEFAULT_LEVEL = logging.INFO
 LEVEL_ENV = "ZEITERFASSUNG_LOG_LEVEL"
+# Mit Thread-Namen: die Worker laufen nebenläufig (Sync, Versand, Handy-Server).
+LOG_FORMAT = "%(asctime)s [%(levelname)s] %(threadName)s %(name)s: %(message)s"
 
 # Fremd-Logger, die das Logfile ohne Erkenntnis fluten (Xveyn#401): der
 # discovery_cache meldet bei jedem `build()` „file_cache is only supported
@@ -84,7 +86,7 @@ def setup_logging(base_path: str, console: bool | None = None) -> str:
             encoding="utf-8",
         )
         handler.setFormatter(logging.Formatter(
-            "%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+            LOG_FORMAT,
         ))
         root.addHandler(handler)
 
@@ -94,7 +96,7 @@ def setup_logging(base_path: str, console: bool | None = None) -> str:
             type(h) is logging.StreamHandler for h in root.handlers):
         console_handler = logging.StreamHandler()
         console_handler.setFormatter(logging.Formatter(
-            "%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+            LOG_FORMAT,
         ))
         root.addHandler(console_handler)
 

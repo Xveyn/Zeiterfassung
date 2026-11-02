@@ -138,3 +138,17 @@ def test_noisy_loggers_stay_loud_under_debug(tmp_path, isolated_logging, monkeyp
 def test_googleapiclient_http_is_not_quieted():
     # Die 403-Warnungen dort sind das Signal für einen fehlenden Scope (#45).
     assert "googleapiclient.http" not in QUIET_LOGGERS
+
+
+def test_log_lines_carry_the_thread_name(tmp_path, isolated_logging):
+    import threading
+    log_path = setup_logging(str(tmp_path), console=False)
+    t = threading.Thread(target=lambda: logging.getLogger("t").info("aus dem worker"),
+                         name="sync-worker")
+    t.start()
+    t.join()
+    for h in logging.getLogger().handlers:
+        h.flush()
+    with open(log_path, "r", encoding="utf-8") as f:
+        content = f.read()
+    assert "[INFO] sync-worker t: aus dem worker" in content

@@ -33,10 +33,11 @@ from src.reservations import ReservationStore, migrate_reservations_enabled
 from src.settings import Settings, clamp_ui_scale
 from src.storage import Storage
 from src.vacations import VacationStore
+from src.startup_info import describe_environment, describe_features
 from src.sync_runtime import run_pull_in_background
 from src.theme import apply_widget_defaults, init_fonts
 from src.ui import App
-from src.version import VERSION
+from src.version import build_channel, version_label
 from src.webhook_store import WebhookStore
 from src.smtp_store import SmtpStore
 from src.mobile_keys import MobileKeyStore
@@ -237,7 +238,11 @@ def main():
     base = get_base_path()
     try:
         setup_logging(base)
-        logging.getLogger(__name__).info("Zeiterfassung v%s gestartet", VERSION)
+        logging.getLogger(__name__).info("%s", describe_environment(
+            label=version_label(), channel=build_channel(),
+            frozen=bool(getattr(sys, "frozen", False)), system=platform.system(),
+            platform_text=platform.platform(), machine=platform.machine(),
+            python=platform.python_version(), tk=tk.TkVersion, env=os.environ))
     except Exception:
         # N13: bewusst still — schlägt das Logging-Setup selbst fehl, gibt es
         # keinen Kanal, in den man den Fehler schreiben könnte (und --noconsole
@@ -291,6 +296,12 @@ def main():
     device_id = _ensure_device_id(settings)
     settings.device_id_for_sync = device_id
     _ensure_device_name(settings)
+    try:
+        logging.getLogger(__name__).info("%s", describe_features(settings.get))
+    except Exception:
+        # Reine Diagnose: darf den Start nie verhindern.
+        logging.getLogger(__name__).debug(
+            "Funktionsübersicht konnte nicht gebaut werden", exc_info=True)
 
     storage = Storage(os.path.join(base, "zeiterfassung.json"),
                       device_id=device_id, lock=data_lock)
