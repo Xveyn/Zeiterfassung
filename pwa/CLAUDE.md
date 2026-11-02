@@ -34,7 +34,8 @@ ES-Module flach im Ordner:
   (`#pair=…`, delegiert an `parseQrText`, Ergebnis `kind: 'lan'`) und den Relay-Link
   (`#relay=<43 Base64url>:<28 Zeichen Code>`, `kind: 'relay'`; Code schon in Großbuchstaben, kein Leerraum,
   der ganze Text höchstens 512 Zeichen). `parseQrText` bleibt unverändert und liefert für einen Relay-Link `null`.
-- `relay-frame.js` — reiner Codec des Relay-Abgleichs: Nachrichtenrahmen, Nutzlast, Regeln. Gegenstück
+- `relay-frame.js` — reiner Codec des Relay-Abgleichs: Nachrichtenrahmen, Nutzlast, Regeln (`isCurrentResponse`
+  vergleicht die zurückgegebene Nonce `n`, nicht `seq`). Gegenstück
   `src/mobile_relay_codec.py`; der Gleichlauf hängt an `test/fixtures/relay-frames.json`.
 - `store.js` — lokaler Zustand: erfasste Tage und Reservierungen (zwei
   Sammlungen), `dirty_version`/`synced_version`, Anwenden der Sync-Antwort,
@@ -106,7 +107,13 @@ Die JSON-Beispiele in `test/fixtures/` lesen die JS-Tests **und**
 `tests/test_mobile_contract.py`: Validierung/Minuten, Code- und Adressregel,
 Request/Response von `/v1/pair` und `/v1/sync`, die Liste aller Fehlercodes
 (der Python-Test scannt die Server-Quellen nach `(Status, Code)`-Paaren und
-verlangt sie in `errors.json`).
+verlangt sie in `errors.json`). Den Relay-Abgleich (#358) hält
+`test/fixtures/relay-frames.json` zusammen: Nachrichtenrahmen, Anfrage
+`{v, path, token, envelope}` und Antwort `{v, status, seq, n, body}`, Koppel-Links;
+Zeilen mit `"canonical": true` sind byte-genaue Kodierer-Vektoren. Drei
+Implementierungen lesen sie: `relay-frame.js` (`test/relay-frame.test.js`),
+`src/mobile_relay_codec.py` (`tests/test_mobile_relay_codec.py`) und der Relay
+(`relay/test/frames-contract.test.js`).
 
 Regeln, die nur in der PWA gelten:
 

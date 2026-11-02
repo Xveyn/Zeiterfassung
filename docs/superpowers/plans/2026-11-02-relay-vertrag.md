@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Der Vertrag zwischen Handy (PWA) und Desktop für den Abgleich über die Relay-Box steht als reine, getestete Codecs auf beiden Seiten: Nachrichtenrahmen der Box, Nutzlast `{path, token, envelope}` / `{status, seq, body}`, Kopplungs-Link `#relay=…` und die Regeln „veraltetes `res` verwerfen“ und „`req` mit `seq <= last_seq` nicht beantworten“. Kein Netzwerk, keine UI.
+**Goal:** Der Vertrag zwischen Handy (PWA) und Desktop für den Abgleich über die Relay-Box steht als reine, getestete Codecs auf beiden Seiten: Nachrichtenrahmen der Box, Nutzlast `{path, token, envelope}` / `{status, seq, n, body}`, Kopplungs-Link `#relay=…` und die Regeln „veraltetes `res` verwerfen“ und „`req` mit `seq <= last_seq` nicht beantworten“. Kein Netzwerk, keine UI.
 
-**Architecture:** Eine geteilte, handgeschriebene Fixture-Datei (`pwa/test/fixtures/relay-frames.json`) legt das Format fest; drei Implementierungen lesen sie: `relay/src/frames.js` (Referenz, nur Test), das neue `pwa/relay-frame.js` und das neue `src/mobile_relay_codec.py`. Nur das **Dekodieren** ist byte-genau gebunden (JSON-Schlüsselreihenfolge und Unicode-Escapes sind zwischen Python und JS nicht deckungsgleich), das Kodieren wird per Rundlauf mit dem eigenen Dekoder geprüft.
+**Architecture:** Eine geteilte, handgeschriebene Fixture-Datei (`pwa/test/fixtures/relay-frames.json`) legt das Format fest; drei Implementierungen lesen sie: `relay/src/frames.js` (Referenz, nur Test), das neue `pwa/relay-frame.js` und das neue `src/mobile_relay_codec.py`. Nur das **Dekodieren** ist byte-genau gebunden (JSON-Schlüsselreihenfolge und Unicode-Escapes sind zwischen Python und JS nicht deckungsgleich), das Kodieren wird per Rundlauf mit dem eigenen Dekoder geprüft. **Nachtrag (finale Fix-Welle):** Fixture-Zeilen mit `"canonical": true` binden zusätzlich die Kodierer byte-genau (JS `encodeRequest`, Python `encode_response`); die Antwort trägt `n` (Nonce der Anfrage), `isCurrentResponse` vergleicht nur noch `n`, und `encode_too_large_response` liefert `413 response_too_large`. Maßgeblich ist die Spec, Abschnitt „Vertrag der Nutzlast (PR 2)“.
 
 **Tech Stack:** Python 3.12 (Tk-frei, vollständig annotiert, stdlib), reines JavaScript ohne Build (`node --test`), Relay `node --test`.
 
@@ -27,7 +27,7 @@
 1. **Feindliche Nutzlasten:** kein JSON, kein Objekt, falsches `v`, Pfad außerhalb von `/v1/pair`/`/v1/sync` (`/v1/ping`, `/v1/sync?x=1`, `../x`, `https://evil`, leer), `envelope` kein Objekt, Token > 512 Zeichen oder mit Leerzeichen/Steuerzeichen, `status` außerhalb 100–599 → immer der **eigene** Fehlertyp (`FrameError`/`RelayFrameError`), nie `TypeError`/`KeyError` (Task 2, 3).
 2. **Größe:** Nutzlast genau `MAX_PAYLOAD` wird kodiert, `+1` wirft `FrameTooLarge`; gezählt werden **Bytes (UTF-8)**, nicht Zeichen (Task 2, 3).
 3. **`seq`-Echo:** `0`, `-1`, `"1"`, `1.5`, `true`/`True` (in Python ist `bool` ein `int`!), größer als `2^53−1` → `None`/`null`, nie eine Zahl (Task 2, 3).
-4. **Veraltetes `res`:** `isCurrentResponse` ist `false` bei abweichendem `seq`; ein `null`-`seq` gilt **nur** bei `status >= 400` als aktuell; `should_answer` ist `false` bei `seq <= last_seq` und bei ungültigem `seq` (Task 2, 3).
+4. **Veraltetes `res`:** `isCurrentResponse` ist nur `true`, wenn `frame.n` gleich der Nonce der offenen Anfrage ist (Nachtrag: ursprünglich `seq`-Vergleich mit Ausnahme für `null`-`seq` bei `status >= 400`, beides entfallen); `should_answer` ist `false` bei `seq <= last_seq` und bei ungültigem `seq` (Task 2, 3).
 5. **Kopplungs-Link:** Geheimnis mit 42/44 Zeichen, Code mit verbotenen Buchstaben (`0 O 1 I L`) oder Kleinbuchstaben, zusätzliche Doppelpunkte, Leerzeichen, > 512 Zeichen → `null`; der LAN-Link `#pair=…` bleibt unverändert LAN; der Relay-Link passt in QR-Version ≤ 10 (Decoder der PWA unterstützt 1–10) (Task 4).
 
 ## File Structure
@@ -83,7 +83,7 @@
   - `decodeRequest(bytes: Uint8Array): {path: string, token: string | null, envelope: object, seq: number | null}` (nur für Tests und Rundlauf; der Desktop dekodiert in Python) — wirft `RelayFrameError('invalid_frame')` bei allem, was in der Fixture `ok: false` ist.
   - `decodeResponse(bytes: Uint8Array): {status: number, seq: number | null, body: object}` — wirft `RelayFrameError('invalid_frame')`; `seq` gültig nur als ganze Zahl `1…Number.MAX_SAFE_INTEGER` (kein `true`, kein Text, keine Bruchzahl), sonst im **Request** `null`, im **Response** ungültig = Fehler (ein `seq` im Response ist entweder `null` oder gültig).
   - `envelopeSeq(envelope: unknown): number | null` — das gültige `seq` eines Umschlags oder `null`.
-  - `isCurrentResponse(frame: {status: number, seq: number | null}, pendingSeq: number): boolean` — `frame.seq === pendingSeq`, oder `frame.seq === null && frame.status >= 400`.
+  - `isCurrentResponse(frame: {status: number, seq: number | null, n: string | null}, pendingN: string): boolean` — `pendingN` gültige Nonce und `frame.n === pendingN` (Nachtrag; ursprünglich `pendingSeq`).
   - Alle Pfade außer `/v1/pair`, `/v1/sync` sind ungültig (`PATHS = new Set([...])`); Token-Regel `/^[\x21-\x7e]{1,512}$/` oder `null`; `token` darf nur bei `/v1/pair` `null` sein.
 
 - [ ] **Step 1: Failing tests** in `relay-frame.test.js` (Namen):
@@ -114,7 +114,7 @@
   - `@dataclass(frozen=True) class RelayMessage`: `kind: str` (`"slot"`/`"ok"`), `ver: int`, `data: bytes`.
   - `@dataclass(frozen=True) class RelayRequest`: `path: str`, `token: str | None`, `envelope: dict[str, Any]`; Eigenschaft `seq -> int | None` (über `envelope_seq`).
   - `encode_put(payload: bytes) -> bytes` (wirft `FrameTooLarge`); `decode_message(data: bytes | str) -> RelayMessage | None` (Text/unbekannt/abgeschnitten → `None`).
-  - `decode_request(payload: bytes) -> RelayRequest` (wirft `FrameError` für alles `ok: false` der Fixture, **nur** `FrameError`, nie `TypeError`/`KeyError`/`UnicodeDecodeError`/`json.JSONDecodeError` nach außen); `encode_response(status: int, body: Any, seq: int | None) -> bytes` (UTF-8 mit `ensure_ascii=False`, `separators=(",", ":")`, Schlüsselreihenfolge `v, status, seq, body`; prüft `status` 100–599 und `seq` gültig/`None`; wirft `FrameTooLarge`/`FrameError`).
+  - `decode_request(payload: bytes) -> RelayRequest` (wirft `FrameError` für alles `ok: false` der Fixture, **nur** `FrameError`, nie `TypeError`/`KeyError`/`UnicodeDecodeError`/`json.JSONDecodeError` nach außen); `encode_response(status: int, body: Any, seq: int | None, n: str | None) -> bytes` (UTF-8 mit `ensure_ascii=False`, `separators=(",", ":")`, Schlüsselreihenfolge `v, status, seq, n, body` — `n` ist Nachtrag; prüft `status` 100–599 und `seq` gültig/`None`; wirft `FrameTooLarge`/`FrameError`).
   - `envelope_seq(envelope: object) -> int | None` — gültig nur `int`, **nicht** `bool`, `1 <= seq <= 2**53 - 1`.
   - `should_answer(seq: int | None, last_seq: int) -> bool` — `True` nur bei gültigem `seq > last_seq`.
   - `generate_box_secret() -> str` — 43 Zeichen Base64url (`secrets.token_urlsafe(32)`), `BOX_SECRET_RE` (`^[A-Za-z0-9_-]{43}$`).

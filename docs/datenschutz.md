@@ -9,18 +9,27 @@ Quelle für Hinweistexte in der App. Die Zahlen darin prüft `tests/test_datensc
 
 ## 1. Was der Relay sieht, und was nicht
 
-Der Relay sieht:
+Der Relay sieht: Pfad, Statuscode, `seq`, `n`, Nonce, Feldnamen, Größe, Zeitpunkte, IP, und das
+Gerätetoken im Klartext; nie den Inhalt. Im Einzelnen:
 
 - die Rahmen-Metadaten der Nutzlast im Klartext: den Pfad (Kopplung oder Abgleich), den Statuscode der
-  Antwort, den Zähler `seq`, die Nonce und die Feldnamen des Umschlags,
-- das Gerätetoken im Klartext der Nutzlast, neben dem Umschlag. Der Relay kann damit nichts entschlüsseln;
-  das Token wird bei jedem Abgleich erneuert,
+  Antwort, den Zähler `seq`, das Feld `n` der Antwort (die zurückgegebene Nonce der Anfrage), die Nonce
+  und die Feldnamen des Umschlags,
+- das Gerätetoken im Klartext der Nutzlast, neben dem Umschlag. Der Relay kann damit nichts entschlüsseln.
+  Erneuert wird es nur nach einem **erfolgreichen** Abgleich; bis dahin, und danach bis die nächste Anfrage
+  den Slot ersetzt, liegt es im Slot `req` (längstens bis zur Selbstreinigung nach 90 Tagen Leerlauf). Im LAN
+  ist dasselbe Token zugleich gültiger Bearer für `GET /v1/ping` (Protokoll, Uhrzeit des Desktops,
+  Standardfenster, und damit, ob die Kopplung noch gilt),
 - Zeitpunkte der Nachrichten und deren Größen. Größe je Nachricht: höchstens 1 MiB (1048576 Bytes),
 - die IP-Adresse der Verbindung (Rate-Limit und Cloudflare-Plattform).
 
 Der Relay sieht **nie** den Inhalt: Der Chiffretext `c` des Umschlags verbirgt alle Einträge, Kategorien,
 Namen und Einstellungen. Er ist Ende-zu-Ende verschlüsselt, der Relay hält keinen Schlüssel. Es gibt bewusst
 keinen Klartext-Pfad für Inhalte (kein Vorschau-Feld, kein Debug-Dump).
+
+Dasselbe gilt für jeden, der das Geheimnis der Box kennt (wer den QR-Code sieht, der Betreiber des Relays):
+er sieht die Slots wie der Relay, also auch das Gerätetoken, aber nie den Inhalt. Offen (PR 5): was das für
+die Kopplung über das Internet heißt (Erweiterung des Vertrauens gegenüber dem LAN), steht dann hier.
 
 ## 2. Aufbewahrung und Löschung
 
