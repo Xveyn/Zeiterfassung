@@ -44,9 +44,14 @@ def _resolve_level() -> int:
     return level if isinstance(level, int) else DEFAULT_LEVEL
 
 
+def get_log_dir(base_path: str) -> str:
+    """Ordner mit dem Logfile und seinen Rotations-Backups, ohne ihn anzulegen."""
+    return os.path.join(base_path, LOG_SUBDIR)
+
+
 def get_log_path(base_path: str) -> str:
     """Pfad zum Logfile, ohne das Verzeichnis anzulegen."""
-    return os.path.join(base_path, LOG_SUBDIR, LOGFILE_NAME)
+    return os.path.join(get_log_dir(base_path), LOGFILE_NAME)
 
 
 def _console_wanted() -> bool:
