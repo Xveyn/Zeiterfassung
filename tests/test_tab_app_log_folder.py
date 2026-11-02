@@ -1,4 +1,4 @@
-"""„Protokollordner öffnen" im App-Tab (Xveyn#409): öffnet `logs/`, meldet kuratiert,
+"""„Log-Ordner öffnen" im App-Tab (Xveyn#409): öffnet `logs/`, meldet kuratiert,
 wenn es ihn noch nicht gibt, und behandelt Fehler wie der Datenordner-Knopf."""
 import types
 
@@ -39,7 +39,7 @@ def test_missing_logs_folder_is_a_curated_info_not_a_traceback(tmp_path, calls):
     assert calls.errors == []
     assert len(calls.info) == 1
     assert calls.info[0][0] == "dialog"
-    assert "Protokoll" in calls.info[0][2]
+    assert "Log" in calls.info[0][2]
 
 
 def test_open_failure_shows_the_native_error_with_traceback(tmp_path, calls, monkeypatch):

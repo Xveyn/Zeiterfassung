@@ -509,7 +509,7 @@ Das meiste sind JSON-Dateien — `instance-secret`, `api-token` und das Protokol
 - **conflicts.json** — Lokaler Spiegel der Sync-Konflikte (nur vorhanden bei mindestens einem registrierten Konflikt — aus dem Drive-Sync oder der Handy-Erfassung)
 - **sync_history.json** — Marker „wurde auf diesem Gerät je synchronisiert/abgeglichen"; schützt gelöschte Tage davor, nach einer beschädigten `settings.json` zurückzukehren
 - **sync-apply.journal** — Write-Ahead-Journal des Sync-Abgleichs; existiert nur währenddessen. Stürzt die App mittendrin ab, holt der nächste Start den Abgleich darüber nach
-- **logs/zeiterfassung.log** — Protokoll *(ab --VERSION--)*: Einstellungen → App → „Protokollordner öffnen“ führt direkt hin
+- **logs/zeiterfassung.log** — Protokoll *(ab --VERSION--)*: Einstellungen → App → „Log-Ordner öffnen“ führt direkt hin
 
 Neben diesen Dateien kann `<datei>.corrupt-<Zeitstempel>` liegen *(ab 1.25.0)*: die Sicherung vor einer Reparatur beschädigter Zeitdaten (es bleiben die neuesten fünf je Datei). Sie ist eine volle Kopie deiner Zeiten, behandle sie wie die Hauptdatei; Deinstallation und „Zeiterfassung entfernen“ räumen sie mit ab.
 

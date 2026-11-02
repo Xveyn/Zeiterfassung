@@ -107,12 +107,12 @@ class AppTab:
         # Zwei Reihen statt einer: drei Knöpfe nebeneinander würden bei großer
         # Skalierung den Dialog verbreitern.
         form.buttons(("Datenordner öffnen", self._open_data_folder),
-                     ("Protokollordner öffnen", self._open_log_folder))
+                     ("Log-Ordner öffnen", self._open_log_folder))
         if storage is not None:
             form.buttons(("Daten importieren", self._open_import_dialog))
         form.hint("Im Datenordner liegen Einträge, Einstellungen und "
                   "credentials.json. Importiert werden geteilte Arbeitszeiten "
-                  "(JSON-Datei aus „Teilen“). Das Protokoll "
+                  "(JSON-Datei aus „Teilen“). Das Log "
                   "(zeiterfassung.log) liegt im Unterordner „logs“ — für die "
                   "Fehlersuche, etwa in einem Issue.")
         if on_request_removal is not None and removal.is_available(
@@ -189,10 +189,10 @@ class AppTab:
             # Bekannter Fall (das Logging-Setup ist nicht-fatal, s. `main()`):
             # kurze, kuratierte Meldung statt Traceback.
             themed_showinfo(
-                self._dialog, "Kein Protokoll vorhanden",
-                "Es wurde noch kein Protokoll geschrieben.")
+                self._dialog, "Kein Log vorhanden",
+                "Es wurde noch kein Log geschrieben.")
             return
-        self._open_folder(folder, "Protokollordner")
+        self._open_folder(folder, "Log-Ordner")
 
     def _open_folder(self, path, what):
         try:
