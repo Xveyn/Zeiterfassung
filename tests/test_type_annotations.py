@@ -92,6 +92,7 @@ ANNOTATED_MODULES = [
     "src/smtp_store.py",
     "src/sync.py",
     "src/sync_history.py",
+    "src/startup_info.py",
     "src/json_store.py",
     "src/webhook_store.py",
     "src/webhook_secrets.py",
