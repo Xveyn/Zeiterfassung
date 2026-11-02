@@ -113,10 +113,33 @@ Selbstreinigung: Alarm alle `idleDays`, höchstens einmal am Tag neu gesetzt.
 
 ## Desktop
 
-- Tk-freier Baustein (Arbeitstitel `relay_link.py`): hält die WebSocket (Wiederverbinden mit Backoff), baut aus
-  jedem `req` einen `ApiRequest`, ruft `mobile_routes.dispatch`, verpackt die Antwort als `res`. Regeln 2 und 3 oben.
-  Lebenszyklus wie `MobileService`; braucht einen WebSocket-Client (neue, gepinnte Abhängigkeit, 3.12-Gegencheck,
-  Eintrag in `CONTRIBUTING.md`).
+- Tk-freier Baustein (Arbeitstitel `relay_link.py`, PR 3b): hält die WebSocket (Wiederverbinden mit Backoff), baut
+  aus jedem `req` einen `ApiRequest`, ruft `mobile_routes.dispatch`, verpackt die Antwort als `res`. Regeln 2 und 3
+  oben. Lebenszyklus wie `MobileService`; braucht einen WebSocket-Client (neue, gepinnte Abhängigkeit,
+  3.12-Gegencheck, Eintrag in `CONTRIBUTING.md`).
+- **Der Antwort-Kern ist PR 3a** (`src/relay_adapter.py`, `RelayAdapter.handle(payload) -> bytes | None`): Regeln 2
+  und 3, `n` in jeder Antwort, 413-Ersatzrahmen; noch nicht verdrahtet. `src/box_relay.py` löscht eine Box
+  (`DELETE /v1/box`, best effort), `src/mobile_box_store.py` hält die Box-Geheimnisse, `src/pwa_constants.py` die
+  Adresse der PWA.
+- **Thread-Modell (3b): Leser-Thread plus ein Arbeits-Thread.** Der Leser liest die WebSocket und ruft **nie**
+  `dispatch`/`perform_sync`: er muss den Text `ping` alle 60–120 s senden und Schließen/Fehler bemerken, und ein
+  Abgleich kann Sekunden dauern. Er legt das `req` in **einen einzelnen Slot** („neuester gewinnt“, ein älteres,
+  noch nicht begonnenes `req` fällt weg; die PWA sendet zustandsbasiert, das verliert nichts). Ein Arbeits-Thread
+  holt es ab und ruft `RelayAdapter.handle` **nacheinander**.
+- **Der Thread liegt außerhalb von `BackgroundTaskRunner`**: ein dritter Thread-Ort neben dem API-Server und
+  `single_instance`, mit eigenem Lebenszyklus. `shutdown()` schließt den Socket und wartet kurz auf den Thread;
+  `BackgroundTaskRunner.wait_idle` wartet **nicht** auf ihn.
+- **Voraussetzungen, die der Adapter nennt:** ein Adapter je `MobileContext`; `handle` wird aus **genau einem**
+  Thread gerufen. Gleichzeitige gleiche Kopplungs-Nutzlasten werden nicht zusammengelegt (die zweite bekäme
+  `403 invalid_code`); die Serialisierung ist Sache der Verbindungsschicht.
+- **Schließcodes der Box (für 3b):** `1000 replaced` ⇒ **nicht** automatisch neu verbinden; `1008` (Put-Drossel) ⇒
+  mindestens 60 s warten; `wiped` ⇒ `have` zurücksetzen (die Box wurde geleert, ihr `ver` beginnt neu).
+- **Entscheidung: Box-Geheimnis in gehärteter Datei (`mobile_box.json`), nicht im Schlüsselbund.** Gründe: wie das
+  Push-Geheimnis (#331, `mobile_relay.json`); ein geleaktes Box-Geheimnis erlaubt, den Slot des Gegenübers zu
+  lesen (Gerätetoken im Klartext, versiegelter Umschlag), Slots zu überschreiben, den Desktop zu verdrängen und
+  unversiegelte Fehler zu fälschen — **nicht**, Inhalte zu lesen oder zu synchronisieren: das braucht `k_dev`, und
+  der liegt im Schlüsselbund. Ein Schlüsselbund-Zugriff blockiert bis zu 30 s und darf den Verbindungs-Thread
+  nicht aufhalten. Ein späterer Wechsel ist ein Backend-Tausch hinter derselben API von `MobileBoxStore`.
 - Einstellungen → Mobil: Verbindungsart (LAN / Relay) je Kopplung; Aufteilung Android/iOS **später**.
 - `RELAY_URL` bleibt Konstante.
 
@@ -148,7 +171,7 @@ Selbstreinigung: Alarm alle `idleDays`, höchstens einmal am Tag neu gesetzt.
   gelöscht oder (spätere Härtung) nach dem Koppeln ausgetauscht wird.
 - **Ein fotografierter QR-Code erlaubt das Koppeln von überall im Internet**, solange der Code gilt; der LAN-QR
   verlangte Zugang zum LAN. Das ist eine Erweiterung des Vertrauens gegenüber dem LAN und gehört in den
-  Koppel-Dialog (PR 3) sowie in `known-limitations.md` und `docs/datenschutz.md` (PR 5).
+  Koppel-Dialog (PR 3c) sowie in `known-limitations.md` und `docs/datenschutz.md` (PR 5).
 - Kein Logging des Geheimnisses (auch nicht im Subprotocol/URL), kein Push-Bezug.
 
 ## Datenschutz
@@ -165,7 +188,7 @@ Code geprüft). Zu beachten ist grundsätzlich:
    Klartext-Pfad entstehen (kein „Vorschau“-Feld, kein Debug-Dump).
 2. **Aufbewahrung und Löschung.** Slots liegen höchstens bis zum Ersetzen, längstens `idleDays` (90) ohne
    Aktivität; `DELETE /v1/box` und „Kopplung entfernen“ löschen sofort; „Zeiterfassung entfernen“ (`removal.py`)
-   und `--forget-secrets` müssen die Box mit abräumen (PR 3). Der Nutzer muss das im Dialog nachlesen können.
+   und `--forget-secrets` müssen die Box mit abräumen (PR 3b). Der Nutzer muss das im Dialog nachlesen können.
 3. **Plattform-Logs.** Cloudflare schreibt auf Wunsch Aufruf-Logs (URL, Metadaten, bis 7 Tage). Die Query trägt
    `role` und `have`, nie das Geheimnis (das steht im Subprotocol-Header), trotzdem: `observability` im Worker
    **ausdrücklich aus** (`wrangler.toml`), „kein Logging“ ist sonst nur halb wahr. Die App-Regel „kein Logging“
@@ -220,10 +243,13 @@ Code geprüft). Zu beachten ist grundsätzlich:
   `encodeRequest`, Python `encode_response` byte-genau dagegen.
 - Größe: siehe Budget Punkt 4 (Größenwächter).
 
-### Hinweise für PR 3 und PR 4
+### Hinweise für PR 3 (3a–3c) und PR 4
 
-- **PR 3:** `PWA_URL` in eine kleine Konstantenmodul-Datei verschieben, damit `mobile_relay_codec` nicht die ganze
-  Routenebene importiert.
+- **PR 3a (umgesetzt):** `PWA_URL` und `PWA_ORIGIN` liegen in `src/pwa_constants.py`, damit `mobile_relay_codec`
+  nicht die ganze Routenebene importiert.
+- **PR 3b:** die Koppel-Anfrage kommt auf einer Box an; gebunden wird das offene Geheimnis mit
+  `MobileBoxStore.bind(device_id, expected=<Geheimnis der Box, auf der die Anfrage ankam>)`, damit ein
+  zwischenzeitlich neu geöffnetes Pairing unangetastet bleibt.
 - **PR 4:** `response_too_large` (Desktop) und `RelayFrameError('too_large')` (Handy, Anfrage zu groß) auf
   `SyncError`s mit Hinweis abbilden (`KINDS`/`messages.js`, `pwa/test/fixtures/errors.json`) — nicht in PR 2.
 - **PR 4:** jedes nicht dekodierbare oder fremde `res` (kaputtes JSON, falsches `n`, `isEnvelope` scheitert) wird
@@ -252,7 +278,7 @@ Code geprüft). Zu beachten ist grundsätzlich:
    mit `have`. Auf dem iPhone prüfen.
 4. Soll der Desktop den Push-Zeitplan künftig selbst beim Relay ablegen? Eigene Entscheidung, nicht Teil von PR 1–4.
 5. WebSocket-Client für den Desktop (`websockets` vs. `websocket-client`): Auswahl und Bündelung mit PyInstaller
-   auf allen drei Plattformen im Plan zu PR 3.
+   auf allen drei Plattformen im Plan zu PR 3b.
 
 ## PR-Schnitt (`Refs #358`, der letzte `Closes #358`)
 
@@ -260,8 +286,21 @@ Code geprüft). Zu beachten ist grundsätzlich:
    `docs/datenschutz.md` (Plan: `docs/superpowers/plans/2026-11-02-relay-box.md`).
 2. Protokoll und Vertrag — **umgesetzt in diesem Branch**: `src/mobile_relay_codec.py`, `pwa/relay-frame.js` und die
    Fixture `pwa/test/fixtures/relay-frames.json` (Python + JS, Rahmen `{path, token, envelope}`, Größenwächter statt Gzip).
-3. Desktop: Netzwerk-Modul `relay_link.py`, Kopplung über Relay, Einstellungen (minimal), WebSocket-Abhängigkeit.
+3. Desktop, in drei Schritten:
+   - **3a Desktop-Kern** — **umgesetzt in diesem Branch**: `src/pwa_constants.py`, `src/mobile_box_store.py`,
+     `src/box_relay.py`, `src/relay_adapter.py`. Noch von keinem Aufrufer verwendet (kein Netz, kein Thread).
+   - **3b Verbindung:** WebSocket-Bibliothek samt Auswahl und kurzem Spike (kein `Origin`-Header, Subprotocol
+     `zeit.v1, <Geheimnis>`, Ping/Close, TLS-Prüfung an, Proxy-Verhalten, PyInstaller-Bündelung auf allen drei
+     Plattformen); Thread `relay_link.py` (Leser-Thread plus **ein** Arbeits-Thread, „neuester gewinnt“ in einem
+     Slot); Dienst und Verdrahtung in `App`/`main` an den drei Stellen `_quit_with_sync_push`,
+     `remove_application` und `restart_for_scaling` samt `reopen`; `have` dauerhaft speichern; Binden der offenen
+     Box über `MobileBoxStore.bind(..., expected=…)`; Widerruf, „Zeiterfassung entfernen“ und `--forget-secrets`
+     löschen die Boxen über `box_relay.delete_box`; Abhängigkeit in `requirements.txt`, `CONTRIBUTING.md`,
+     `scripts/build.py`, `Zeiterfassung.spec`; Pre-Release auf allen drei Plattformen.
+   - **3c Oberfläche:** Einstellungen → Mobil, Koppel-Dialog mit dem `#relay=`-QR und dem Hinweis „ein
+     fotografierter QR erlaubt das Koppeln von überall“, `FIRST_ENABLE_NOTICE`, Statusanzeige, Anpassung von
+     `test_tab_rules`.
 4. PWA: `RelayTransport`, iOS-Hinweise, Fehlermeldung, einstellbares Timeout.
 5. Doku (`known-limitations.md`, READMEs, CHANGELOG), Pre-Release-Test auf dem iPhone, `Closes #358`.
 
-Pläne zu 2–5 entstehen nach PR 1, weil Messwerte (Offene Punkte 1–3) ihre Parameter bestimmen.
+Pläne zu 3b–5 entstehen nach PR 1, weil Messwerte (Offene Punkte 1–3) ihre Parameter bestimmen.
