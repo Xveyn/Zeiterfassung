@@ -5,20 +5,22 @@
 Dieses Dokument sagt, **wer was bekommt, wo es liegt, wie lange und wie es gelöscht wird**. Es ist die
 Quelle für Hinweistexte in der App. Die Zahlen darin prüft `tests/test_datenschutz_claims.py` gegen
 `relay/src/validate.js`. Jeder PR der Kette (#358) ergänzt seinen Teil; was noch nicht festliegt, steht als
-`Offen (PR n)`. Stand: PR 1 (der Relay-Teil, die Box).
+`Offen (PR n)`. Stand: PR 2 (Relay-Teil und Nachrichtenrahmen).
 
 ## 1. Was der Relay sieht, und was nicht
 
 Der Relay sieht:
 
-- verschlüsselte Daten (Chiffretext). Größe je Nachricht: höchstens 1 MiB (1048576 Bytes),
-- Zeitpunkte der Nachrichten und deren Größen,
-- das Gerätetoken im Klartext der Nutzlast, neben dem verschlüsselten Umschlag. Der Relay kann damit nichts
-  entschlüsseln; das Token wird bei jedem Abgleich erneuert,
+- die Rahmen-Metadaten der Nutzlast im Klartext: den Pfad (Kopplung oder Abgleich), den Statuscode der
+  Antwort, den Zähler `seq`, die Nonce und die Feldnamen des Umschlags,
+- das Gerätetoken im Klartext der Nutzlast, neben dem Umschlag. Der Relay kann damit nichts entschlüsseln;
+  das Token wird bei jedem Abgleich erneuert,
+- Zeitpunkte der Nachrichten und deren Größen. Größe je Nachricht: höchstens 1 MiB (1048576 Bytes),
 - die IP-Adresse der Verbindung (Rate-Limit und Cloudflare-Plattform).
 
-Vom Umschlag selbst ist nichts lesbar (kein Inhalt, keine Feldnamen). Der Relay sieht **nie** Einträge, Kategorien oder Namen: die Nutzbytes sind Ende-zu-Ende verschlüsselt, der
-Relay hält keinen Schlüssel. Es gibt bewusst keinen Klartext-Pfad (kein Vorschau-Feld, kein Debug-Dump).
+Der Relay sieht **nie** den Inhalt: Der Chiffretext `c` des Umschlags verbirgt alle Einträge, Kategorien,
+Namen und Einstellungen. Er ist Ende-zu-Ende verschlüsselt, der Relay hält keinen Schlüssel. Es gibt bewusst
+keinen Klartext-Pfad für Inhalte (kein Vorschau-Feld, kein Debug-Dump).
 
 ## 2. Aufbewahrung und Löschung
 

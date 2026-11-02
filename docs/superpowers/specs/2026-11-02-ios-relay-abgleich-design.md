@@ -6,7 +6,7 @@ Stand: 2026-11-02 · Entwurf, nach Code-Prüfung überarbeitet · Issue #358 · 
 
 Die Handy-PWA gleicht auch dann mit dem Desktop ab, wenn sie keine `http://<LAN-IP>`-Verbindung
 aufbauen darf (iOS/Safari: Mixed Content; Firefox ebenso). Der Weg läuft über den bestehenden Cloudflare
-Worker (`relay/`), **Ende-zu-Ende verschlüsselt**; der Relay sieht nur Chiffretext. Das LAN-Verfahren
+Worker (`relay/`), **Ende-zu-Ende verschlüsselt**; der Relay sieht nur Chiffretext und Rahmen-Metadaten (Pfad, Status, `seq`, Nonce, Größe, Zeitpunkte), nie Inhalte. Das LAN-Verfahren
 bleibt für Android/Chrome unverändert. Für iOS ist der Relay-Weg Pflicht, sonst optional.
 
 Nicht Ziel: der Relay versteht, merged oder speichert Zeiteinträge im Klartext; ein Konto-System;
