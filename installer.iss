@@ -91,6 +91,7 @@ Type: files; Name: "{app}\mobile_devices.json"
 Type: files; Name: "{app}\mobile_keys.json"
 Type: files; Name: "{app}\mobile_relay.json"
 Type: files; Name: "{app}\mobile_box.json"
+Type: files; Name: "{app}\mobile_box_cursor.json"
 
 
 
@@ -146,6 +147,7 @@ begin
   DeleteMatching('mobile_keys.json.corrupt-*');
   DeleteMatching('mobile_relay.json.corrupt-*');
   DeleteMatching('mobile_box.json.corrupt-*');
+  DeleteMatching('mobile_box_cursor.json.corrupt-*');
 end;
 
 procedure DeleteUserData();

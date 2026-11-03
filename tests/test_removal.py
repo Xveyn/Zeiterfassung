@@ -642,7 +642,7 @@ _SECRET_WRITERS = {
     "mobile_box.json": "src.mobile_box_store",
 }
 # Nicht über `secure_file` geschrieben: vom Nutzer abgelegt bzw. nur Token-Hashes (`json_store`).
-_NOT_SECRET_WRITTEN = {"credentials.json", "mobile_devices.json"}
+_NOT_SECRET_WRITTEN = {"credentials.json", "mobile_devices.json", "mobile_box_cursor.json"}
 _WRITER_FUNCS = {"write_secret_bytes", "write_secret_text", "write_secret_json"}
 
 

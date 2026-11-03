@@ -74,6 +74,7 @@ ANNOTATED_MODULES = [
     "src/mobile_reservations.py",
     "src/mobile_relay_store.py",
     "src/mobile_box_store.py",
+    "src/mobile_box_cursor.py",
     "src/push_relay.py",
     "src/box_relay.py",
     "src/mobile_reminders.py",
