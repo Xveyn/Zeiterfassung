@@ -158,7 +158,8 @@ class RelayService:
         with self._pair_lock:
             replaced = self._retry_unbound_locked()
             if self._unbound:
-                self._context.pairing.close()
+                # Keine Sitzung schließen: geöffnet hat dieser Aufruf noch keine, eine offene gehört
+                # einem anderen Weg (LAN-Koppeldialog).
                 log.warning("Relay-Kopplung abgelehnt: eine gekoppelte Box ist noch nicht gebunden")
             else:
                 secret, code, previous = self._open_pending_locked()

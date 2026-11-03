@@ -230,6 +230,32 @@ def test_switching_off_stops_the_server_and_closes_the_pairing_session(tmp_path)
     assert port_is_closed(port) and not service.pairing.is_active()
 
 
+def test_without_a_lan_address_an_open_pairing_session_stays_open(tmp_path):
+    """Kein Server lief (keine LAN-Adresse): die Sitzung gehört dann dem Relay-Weg und bleibt offen."""
+    service, _settings, _ctx = make_service(tmp_path, candidates=())
+    service.pairing.open()
+
+    service.apply()
+    service.apply()
+
+    assert service.status.reason == REASON_NO_ADDRESS
+    assert service.pairing.is_active()
+
+
+def test_losing_the_address_of_a_running_server_closes_the_pairing_session(tmp_path):
+    candidates = [LOOPBACK]
+    service, _settings, _ctx = make_service(tmp_path, candidates=candidates)
+    service.apply()
+    port = service.status.port
+    service.pairing.open()
+
+    candidates.clear()
+    service.apply()
+
+    assert service.status.reason == REASON_NO_ADDRESS
+    assert port_is_closed(port) and not service.pairing.is_active()
+
+
 def test_changing_the_port_restarts_on_the_new_one(tmp_path):
     service, settings, _ctx = make_service(tmp_path)
     service.apply()
@@ -954,8 +980,8 @@ def test_a_shutdown_during_the_restart_never_starts_the_new_server(tmp_path, mon
     settings.set_many({"mobile_port": new_port})
     original_stop = service._stop_server
 
-    def stop_then_close():
-        original_stop()
+    def stop_then_close(**kwargs):
+        original_stop(**kwargs)
         service._closed = True
     monkeypatch.setattr(service, "_stop_server", stop_then_close)
     starts = []

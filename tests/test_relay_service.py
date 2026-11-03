@@ -242,6 +242,21 @@ def test_open_pairing_deletes_previous_pending_but_not_unbound_leftover(env, mon
     assert second in env.link.boxes
 
 
+def test_a_refused_open_pairing_leaves_a_foreign_lan_session_open(env, monkeypatch):
+    """Die Ablehnung schließt keine Sitzung, die dieser Aufruf nicht geöffnet hat (LAN-Dialog)."""
+    _l, second, code = env.open()
+
+    def failing_bind(device_id, expected=None):
+        raise OSError("Platte voll")
+    monkeypatch.setattr(env.boxes, "bind", failing_bind)
+    _phone, payload = env.pair_payload(code)
+    env.link.handler(second, payload)          # ungebundener Rest entsteht
+    lan_code = env.ctx.pairing.open()          # der LAN-Koppeldialog öffnet seine Sitzung
+
+    assert env.relay.open_pairing() is None
+    assert env.ctx.pairing.is_active() and lan_code
+
+
 def test_open_pairing_is_refused_while_mobile_is_off(env):
     env.settings.set_many({"mobile_enabled": False})
     assert env.relay.open_pairing() is None

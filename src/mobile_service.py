@@ -9,8 +9,9 @@ ein `MobileStatus` samt Grund, den der Tab „Mobil" (PR 5) anzeigt.
 Gebunden wird nur auf die gewählte LAN-Adresse (`netinfo.pick_address`), nie auf
 `0.0.0.0`. Fehlt die gewählte Adresse (DHCP, anderes WLAN), ist der Zustand `error`
 mit dem Grund `address_gone` und es läuft nichts: die Adresse wird nie still durch
-eine andere ersetzt. Bei jedem Statuswechsel weg von „läuft" wird die offene
-Kopplungssitzung geschlossen — ein Code ohne Server ist nutzlos.
+eine andere ersetzt. Wird ein laufender Server gestoppt (oder die Handy-Erfassung
+ausgeschaltet), schließt das die offene Kopplungssitzung — der QR-Code nannte dessen
+Adresse. Lief keiner, bleibt sie offen: sie kann dem Relay-Weg gehören.
 
 Die Geräteverwaltung (`list_devices`, `revoke`, `revoke_all`) und `pair_link` liegen
 hier, weil sie sich den `devices_lock` mit den Routen teilen müssen. `revoke` und
@@ -225,14 +226,14 @@ class MobileService:
         (sonst bliebe der Port offen und der Skalierungs-Neustart träfe `port_in_use`).
         Der Aufrufer hält `_lock`."""
         if self._closed:
-            self._stop_server()
+            self._stop_server(close_pairing=True)
             self._status = MobileStatus(STATE_OFF)
 
     def _reconcile_locked(self) -> MobileStatus:
         if self._closed:
             return self._status
         if not self._settings.get("mobile_enabled"):
-            self._stop_server()
+            self._stop_server(close_pairing=True)       # Handy-Erfassung ganz aus: auch der Relay-Weg
             self._status = MobileStatus(STATE_OFF)
             return self._status
         port = parse_port(self._settings.get("mobile_port"))
@@ -280,14 +281,16 @@ class MobileService:
         self._status = MobileStatus(STATE_RUNNING, address, server.port)
         return self._status
 
-    def _stop_server(self) -> None:
+    def _stop_server(self, *, close_pairing: bool = False) -> None:
+        """Stoppt einen laufenden Server. Die Kopplungssitzung schließt es nur, wenn wirklich ein
+        Server lief (der QR-Code nannte dessen Adresse und Port) oder `close_pairing` es verlangt:
+        ohne LAN-Server gehört eine offene Sitzung dem Relay-Weg (`RelayService.open_pairing`)."""
         server, self._server = self._server, None
         self._running = None
         if server is not None:
             server.stop()
-        # Ein Code ohne Server ist nutzlos, und beim Neustart auf anderer Adresse oder
-        # anderem Port stimmte der QR-Code nicht mehr.
-        self._context.pairing.close()
+        if server is not None or close_pairing:
+            self._context.pairing.close()
 
     def shutdown(self, lock_timeout: float = 1.0) -> None:
         """Stoppt den Server und sperrt weitere Starts. Blockiert höchstens
@@ -298,7 +301,7 @@ class MobileService:
             _log.warning("Handy-Instanz: Beenden wartet nicht auf einen laufenden Start")
             return
         try:
-            self._stop_server()
+            self._stop_server(close_pairing=True)
             self._status = MobileStatus(STATE_OFF)
         finally:
             self._lock.release()
