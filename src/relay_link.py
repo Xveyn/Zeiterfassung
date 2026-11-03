@@ -72,7 +72,7 @@ from typing import TypeVar
 
 from src.mobile_box_cursor import MobileBoxCursor
 from src.mobile_relay_codec import FrameError, FrameTooLarge, decode_message, encode_put
-from src.ws_client import Connect, Socket, SocketClosed, SocketTimeout
+from src.ws_client import ConnectFailed, Connect, Socket, SocketClosed, SocketTimeout
 
 log = logging.getLogger(__name__)
 
@@ -132,6 +132,12 @@ def _guarded(what: str, mark: str, fn: Callable[[], _T]) -> _T | None:
         # Ausnahme kann das Geheimnis oder Inhalte tragen, deshalb auch kein `exc_info`.
         log.error("Relay-Box %s: %s scheiterte (%s)", mark, what, type(exc).__name__)
         return None
+
+
+def _failure_kind(exc: OSError) -> str:
+    """Art eines Verbindungsfehlers fürs Log: `ConnectFailed.kind` oder der Typname, nie der Text."""
+    kind = exc.kind if isinstance(exc, ConnectFailed) else ""
+    return kind or type(exc).__name__
 
 
 class _PongMissing(Exception):
@@ -339,7 +345,7 @@ class RelayLink:
         except SocketClosed as exc:
             return self._closed_outcome(box, exc), False
         except OSError as exc:
-            self._report_failure(box, type(exc).__name__)
+            self._report_failure(box, _failure_kind(exc))
             return _OUT_ERROR, False
         with self._cond:
             stale = box.stop.is_set() or self._closed

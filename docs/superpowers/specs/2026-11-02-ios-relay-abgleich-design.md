@@ -313,7 +313,7 @@ Code geprüft). Zu beachten ist grundsätzlich:
      `remove_application` und `restart_for_scaling` samt `reopen`; `have` dauerhaft speichern; Binden der offenen
      Box über `MobileBoxStore.bind(..., expected=…)`; Widerruf, „Zeiterfassung entfernen“ und `--forget-secrets`
      löschen die Boxen über `box_relay.delete_box`; Abhängigkeit in `requirements.txt`, `CONTRIBUTING.md`,
-     `scripts/build.py`, `Zeiterfassung.spec`; Pre-Release auf allen drei Plattformen.
+     `scripts/build.py`; Pre-Release auf allen drei Plattformen.
    - **3c Oberfläche:** Einstellungen → Mobil, Koppel-Dialog mit dem `#relay=`-QR und dem Hinweis „ein
      fotografierter QR erlaubt das Koppeln von überall“, `FIRST_ENABLE_NOTICE`, Statusanzeige, Anpassung von
      `test_tab_rules`.

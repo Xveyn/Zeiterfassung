@@ -628,6 +628,24 @@ def test_the_mobile_devices_file_is_removed_and_ignored():
     assert "DeleteMatching('mobile_box.json.corrupt-*')" in installer
 
 
+def test_the_cursor_temp_file_is_ignored_removed_and_uninstalled(tmp_path, quiet):
+    """`json_store.atomic_write_json` legt `mobile_box_cursor.json.<zufall>.tmp` an."""
+    import pathlib
+    import tempfile
+    root = pathlib.Path(__file__).resolve().parent.parent
+    lines = (root / ".gitignore").read_text(encoding="utf-8").splitlines()
+    assert "mobile_box_cursor.json.*.tmp" in lines
+    installer = (root / "installer.iss").read_text(encoding="utf-8")
+    assert "DeleteMatching('mobile_box_cursor.json.*.tmp')" in installer
+    fd, leftover = tempfile.mkstemp(dir=str(tmp_path), prefix="mobile_box_cursor.json.",
+                                    suffix=".tmp")
+    os.close(fd)
+
+    removal.execute_removal(str(tmp_path), False, "Linux")
+
+    assert not os.path.exists(leftover)
+
+
 # --- Temp-Präfixe der Secret-Schreiber passen zur Aufräum-Suche (#358) -------
 
 # Welche Credential-Datei schreibt welches Modul über `secure_file.write_secret_*`.

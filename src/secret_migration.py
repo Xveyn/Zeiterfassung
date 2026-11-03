@@ -206,8 +206,9 @@ def _forget_mobile_keys(path: str) -> None:
 
 def forget_boxes(path: str) -> int:
     """Die Boxen der Handy-Erfassung (#358) am Relay löschen: je Geheimnis aus `mobile_box.json`
-    (offenes eingeschlossen) ein `box_relay.delete_box`, nacheinander (je Box höchstens `TIMEOUT_S`).
-    Liefert die Zahl der **nicht** erreichten Boxen (sie verfallen am Relay nach 90 Tagen von selbst).
+    (offenes eingeschlossen) ein `box_relay.delete_box`, nacheinander, nach der ersten nicht
+    erreichten keine weitere (höchstens einmal `TIMEOUT_S`). Liefert die Zahl der **nicht**
+    erreichten Boxen (sie verfallen am Relay nach 90 Tagen von selbst).
     Wirft nie und liest die Datei nur — der Store schreibt hier nichts; eine nicht lesbare Datei
     bleibt unberührt. Blockiert (Netz): nur im Worker bzw. im Deinstaller. Loggt nie ein Geheimnis."""
     if not os.path.exists(path):
@@ -219,16 +220,20 @@ def forget_boxes(path: str) -> int:
         log.warning("mobile_box.json beim Abräumen nicht lesbar", exc_info=True)
         return 0
     missed = 0
-    for secret in secrets:
+    for index, secret in enumerate(secrets):
         try:
             ok = box_relay.delete_box(secret)
         except Exception as exc:
             # Bewusst alles: eine Box darf scheitern, die übrigen laufen weiter. Nur der Typ,
             # der Text einer Ausnahme könnte das Geheimnis tragen.
             log.warning("Box am Relay löschen: %s", type(exc).__name__)
-            ok = False
-        if not ok:
             missed += 1
+            continue
+        if not ok:
+            # Relay nicht erreicht: bei totem Netz kostete jede weitere Box eine volle Frist
+            # (Deinstaller, Entfernen-Schritt). Die übrigen zählen gleich als nicht erreicht.
+            missed += len(secrets) - index
+            break
     if missed:
         log.info("%d von %d Boxen am Relay nicht erreicht", missed, len(secrets))
     return missed

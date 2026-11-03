@@ -147,6 +147,15 @@ def test_error_text_never_contains_secret():
     assert info.value.__cause__ is None and info.value.__suppress_context__
 
 
+def test_a_network_error_names_its_kind_but_not_its_text():
+    with pytest.raises(OSError) as info:
+        ws_client.connect(SECRET, 3, base_url=f"http://127.0.0.1:{_dead_port()}", open_timeout=2)
+    kind = getattr(info.value, "kind", None)
+    assert kind in ("ConnectionRefusedError", "TimeoutError")
+    assert str(info.value) == f"{ws_client.FAILED_TEXT} ({kind})"
+    assert info.value.__cause__ is None and info.value.__suppress_context__
+
+
 def test_failed_handshake_hides_secret():
     secret = "REJECT" + "y" * 37
     listener = socket.socket()

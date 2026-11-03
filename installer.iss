@@ -148,6 +148,8 @@ begin
   DeleteMatching('mobile_relay.json.corrupt-*');
   DeleteMatching('mobile_box.json.corrupt-*');
   DeleteMatching('mobile_box_cursor.json.corrupt-*');
+  // Temp-Rest von `json_store.atomic_write_json` (`<datei>.<zufall>.tmp`).
+  DeleteMatching('mobile_box_cursor.json.*.tmp');
 end;
 
 procedure DeleteUserData();

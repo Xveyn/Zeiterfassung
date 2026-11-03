@@ -425,6 +425,19 @@ def test_forget_all_goes_on_when_delete_box_raises(tmp_path, monkeypatch):
     assert len(calls) == 2
 
 
+def test_forget_boxes_stops_after_the_first_unreached_box(tmp_path, monkeypatch):
+    """Nicht erreicht (offline, Zeitüberschreitung): die übrigen Boxen warten nicht je eine volle
+    Frist, sondern zählen gleich als nicht erreicht."""
+    from src.mobile_relay_codec import generate_box_secret
+    _box_file(tmp_path, generate_box_secret(), generate_box_secret())
+    calls = []
+    monkeypatch.setattr("src.box_relay.delete_box", lambda s: calls.append(s) and False)
+
+    missed = sm.forget_boxes(str(tmp_path / "mobile_box.json"))
+
+    assert len(calls) == 1 and missed == 2
+
+
 def test_forget_all_without_boxes_flag_skips_boxes(tmp_path, monkeypatch):
     from src.mobile_relay_codec import generate_box_secret
     _box_file(tmp_path, generate_box_secret(), generate_box_secret())

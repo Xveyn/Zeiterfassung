@@ -51,6 +51,15 @@ class SocketClosed(Exception):
         self.reason = reason
 
 
+class ConnectFailed(OSError):
+    """Verbindungsaufbau gescheitert. `kind` ist der Klassenname der Ursache (z. B. `gaierror`,
+    `SSLCertVerificationError`), nie ihr Text: der kann URL und Header, also das Geheimnis, tragen."""
+
+    def __init__(self, kind: str) -> None:
+        super().__init__(f"{FAILED_TEXT} ({kind})")
+        self.kind = kind
+
+
 class SocketTimeout(Exception):
     """`recv` hat in der gegebenen Zeit nichts erhalten."""
 
@@ -190,8 +199,8 @@ def connect(secret: str, have: int, *, base_url: str = RELAY_URL,
     except WebSocketException:
         # Handshake abgelehnt (z. B. 403/1008); der Text der Ausnahme kann das Geheimnis tragen.
         raise SocketClosed(None, "handshake") from None
-    except OSError:
-        raise OSError(FAILED_TEXT) from None
+    except OSError as exc:
+        raise ConnectFailed(type(exc).__name__) from None
     except ValueError:
         # Die Bibliothek nennt bei ungueltigen Argumenten das Geheimnis im Text; verwerfen.
         raise OSError(FAILED_TEXT) from None

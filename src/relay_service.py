@@ -198,8 +198,15 @@ class RelayService:
             except _STORE_ERRORS as exc:
                 log.warning("Relay: offenes Geheimnis nicht verworfen (%s)", type(exc).__name__)
                 return
+            self._sync_boxes_locked()             # erst trennen, dann am Relay löschen
+            keep = self._known_secrets_locked()
         if secret is not None:
+            self._cursor.retain(keep)
             self._delete_box(secret)
+
+    def _known_secrets_locked(self) -> list[str]:
+        """Alle Geheimnisse, deren Cursor bleiben muss (gebunden, offen, ungebundene Reste)."""
+        return self._boxes.all_secrets() + list(self._unbound.values())
 
     # --- Arbeits-Thread des Links -------------------------------------------------------------
 
@@ -209,12 +216,15 @@ class RelayService:
         if _is_pair_request(payload):
             with self._pair_lock:
                 result = self._adapter.process(payload)
+                # Beendet/entfernt, während die Anfrage lief: `mobile_box.json` nicht neu schreiben.
+                if self._closed:
+                    return
                 if result.paired_device_id is not None:
                     replaced = self._bind_locked(result.paired_device_id, secret)
                     self._sync_boxes_locked()
         else:
             result = self._adapter.process(payload)
-        if result.frame is not None:
+        if result.frame is not None and not self._closed:
             self._link.put(secret, result.frame)
         self._drop_remote(replaced)
 
@@ -258,16 +268,19 @@ class RelayService:
         """Nach dem Lock: Cursor nicht mehr bekannter Boxen verwerfen, die Boxen am Relay löschen."""
         if not secrets:
             return
-        self._cursor.retain(self._boxes.all_secrets() + list(self._unbound.values()))
+        with self._pair_lock:
+            keep = self._known_secrets_locked()
+        self._cursor.retain(keep)
         for secret in secrets:
             self._delete_box(secret)
 
     def _on_idle(self) -> None:
         """Alle `idle_tick_s` im Arbeits-Thread: Reste binden, abgelaufenes Pairing abräumen."""
-        if self._closed:
+        if not self._active():
             return
         with self._pair_lock:
             replaced = self._retry_unbound_locked()
+            self._sync_boxes_locked()             # eine ersetzte Box erst trennen, dann löschen
         self._drop_remote(replaced)
         self._clean_pending()
         self._sync_boxes()
@@ -301,11 +314,11 @@ class RelayService:
             except _STORE_ERRORS as exc:
                 log.warning("Relay: Boxen widerrufener Geräte nicht abgelegt (%s)",
                             type(exc).__name__)
-            keep = self._boxes.all_secrets() + list(self._unbound.values())
+            keep = self._known_secrets_locked()
+            self._sync_boxes_locked()             # erst trennen, dann am Relay löschen
         self._cursor.retain(keep)
         for secret in dropped:
             self._delete_box(secret)
-        self._sync_boxes()
 
     def _forgettable(self, device_id: str) -> bool:
         record = self._context.devices.get(device_id)

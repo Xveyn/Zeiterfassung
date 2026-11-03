@@ -365,6 +365,19 @@ def test_secret_never_logged(make_link, caplog):
     assert all(SECRET not in t.name for t in threading.enumerate())
 
 
+def test_a_failed_connect_logs_its_kind(make_link, caplog):
+    from src.ws_client import ConnectFailed
+    caplog.set_level(logging.DEBUG, logger="src.relay_link")
+    connect = FakeConnect()
+    connect.always_fail = ConnectFailed("gaierror")
+    link = make_link(connect, timing=LinkTiming(backoff=(0.001,), join_s=1.0))
+    link.set_boxes([SECRET])
+    assert connect.wait_calls(2)
+    warnings = [r.getMessage() for r in caplog.records
+                if r.name == "src.relay_link" and r.levelno >= logging.WARNING]
+    assert warnings and "gaierror" in warnings[0]
+
+
 def test_offline_logs_once_per_state_change(make_link, caplog):
     caplog.set_level(logging.DEBUG, logger="src.relay_link")
     connect = FakeConnect()

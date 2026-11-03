@@ -130,6 +130,8 @@ def _credential_paths(base_path: str) -> list[str]:
     for name in CREDENTIAL_FILES:
         stem = name.removesuffix(".json")
         paths.extend(_glob(base_path, f".{glob.escape(stem)}-*.tmp"))
+    # Temp-Rest von `json_store.atomic_write_json` (`<datei>.<zufall>.tmp`) des Cursors.
+    paths.extend(_glob(base_path, "mobile_box_cursor.json.*.tmp"))
     return paths
 
 

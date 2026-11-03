@@ -74,7 +74,8 @@ class Env:
         self.ctx = self.mobile.context
         self.box_path = str(tmp_path / "mobile_box.json")
         self.boxes = MobileBoxStore(self.box_path)
-        self.cursor = MobileBoxCursor(str(tmp_path / "mobile_box_cursor.json"))
+        self.cursor_path = str(tmp_path / "mobile_box_cursor.json")
+        self.cursor = MobileBoxCursor(self.cursor_path)
         self.deleted: list[str] = []
         self.relay = RelayService(self.settings, self.ctx, self.boxes, self.cursor, run=run,
                                   delete_box=self._delete, now=lambda: NOW)
@@ -167,10 +168,11 @@ def test_offline_relay_holds_neither_start_nor_shutdown(tmp_path, monkeypatch):
     assert entered.wait(5)                     # der Worker hängt im Netz
     env.relay.shutdown()                       # kehrt trotzdem zurück
     assert env.link.closed and workers[0].is_alive()
+    before = len(env.link.history)             # getrennt wird vor dem Löschen am Relay
     release.set()
     workers[0].join(5)
     assert not workers[0].is_alive()
-    assert env.link.history == []              # nach `shutdown` keine Boxen mehr gesetzt
+    assert len(env.link.history) == before     # nach `shutdown` keine Boxen mehr gesetzt
 
 
 def test_disabled_setting_disconnects_all(env):
@@ -420,6 +422,66 @@ def test_expired_code_cleans_pending_after_handler(env, monkeypatch):
 
     assert env.boxes.get(phone.device_id) == secret and env.boxes.pending() is None
     assert env.deleted == [] and secret in env.link.boxes
+
+
+def test_on_idle_does_nothing_while_mobile_is_off(env):
+    """Ausgeschaltet spricht die App den Relay nicht an, auch nicht aus dem Leerlauf-Takt."""
+    orphan, _old = env.boxes.open_pending(NOW)
+    env.settings.set_many({"mobile_enabled": False})
+
+    env.link.on_idle()
+
+    assert env.deleted == [] and env.boxes.pending() == orphan and env.link.history == []
+
+
+def test_boxes_are_disconnected_before_they_are_deleted_at_the_relay(env):
+    """Erst `set_boxes`, dann `delete_box`: sonst bekäme der noch verbundene Leser `wiped` und
+    verbände sich neu mit der gerade gelöschten Box."""
+    connected_at_delete = []
+
+    def delete(secret):
+        connected_at_delete.append(secret in (env.link.boxes or set()))
+        return True
+    env.relay._delete_box = delete
+    _l, _secret, _code = env.open()
+    env.ctx.pairing.close()                    # Code abgelaufen
+    env.link.on_idle()                         # räumt das offene Geheimnis ab
+    bind_device(env.boxes, "phone-aaaa")
+    env.relay.apply()
+    env.relay.forget_devices(["phone-aaaa"])
+
+    assert connected_at_delete == [False, False]
+
+
+def test_discarding_the_pending_box_drops_its_cursor(env):
+    _l, secret, _code = env.open()
+    env.cursor.advance(secret, 2)              # eine gescheiterte Kopplungsanfrage kam an
+
+    env.relay.close_pairing()
+
+    assert env.deleted == [secret] and env.cursor.get(secret) == 0
+    assert MobileBoxCursor(env.cursor_path).get(secret) == 0      # auch in der Datei verworfen
+
+
+def test_a_pair_request_in_flight_during_shutdown_neither_binds_nor_answers(env, monkeypatch):
+    """Eine Kopplung, die beim Entfernen schon verarbeitet wird, schreibt `mobile_box.json` danach
+    nicht neu."""
+    _l, secret, code = env.open()
+    phone, payload = env.pair_payload(code)
+    original = env.relay._adapter.process
+
+    def process_then_shutdown(data):
+        result = original(data)
+        env.relay.shutdown()                   # Entfernen kommt dazwischen
+        return result
+    monkeypatch.setattr(env.relay._adapter, "process", process_then_shutdown)
+    writes = []
+    monkeypatch.setattr(env.boxes, "bind", lambda *a, **k: writes.append(a))
+
+    env.link.handler(secret, payload)
+
+    assert writes == [] and env.link.puts == []
+    assert env.boxes.get(phone.device_id) is None
 
 
 # --- Widerruf -------------------------------------------------------------------------------------
