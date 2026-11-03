@@ -723,12 +723,15 @@ oder in eine Spec unter `docs/superpowers/specs/`, nicht in einen Docstring.
 
 - die Begründung in einem Catch-all-Handler (s. oben, der Test verlangt sie),
 - `# noqa`, `# type:`, `# pyright:` und Encoding-Kopfzeilen,
+- Docstrings, die zur Laufzeit gelesen werden (`__doc__`, etwa als
+  `--help`-Text eines Skripts): ihre Kürzung ändert die Ausgabe,
 - Docstrings, auf die diese Datei oder `src/CLAUDE.md` ausdrücklich zeigen
   (Beispiel: die Begründung des Push-Fensters in `drive.py::upload`). Vor dem
   Kürzen in beiden Dateien nach dem Funktionsnamen suchen.
 
 Eine reine Text-Änderung lässt sich mechanisch belegen: der AST ohne
-Docstrings ist vor und nach dem PR identisch. PRs, die Kommentare straffen,
+Docstrings ist vor und nach dem PR identisch (`__doc__`-Nutzer erkennt das
+nicht, s. o.). PRs, die Kommentare straffen,
 ändern **nur** Text — kein Umbenennen, kein Umsortieren, keine Logik.
 
 ## UTF-8 im Mail-Pipeline

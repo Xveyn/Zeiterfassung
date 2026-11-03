@@ -6,16 +6,10 @@ import subprocess
 import sys
 from datetime import datetime, timezone
 
-# Dieses Skript liegt in scripts/, gehört aber zum Repo-Root: es importiert aus
-# `src/` und arbeitet durchgehend mit Pfaden relativ zur Wurzel (`dist/`,
-# `assets/`, `installer.iss`, `src/build_info.py`). Beim Aufruf
-# `python scripts/build.py` steht aber `scripts/` auf sys.path[0] und das
-# Arbeitsverzeichnis ist das des Aufrufers — ohne diesen Bootstrap scheitert
-# schon der Import unten mit `ModuleNotFoundError: No module named 'src'`.
-#
-# Der `chdir` macht den Aufruf zusätzlich unabhängig davon, aus welchem
-# Verzeichnis gestartet wird; sonst liefe der Build je nach Aufrufort in
-# „dist not found" statt zu bauen.
+# Liegt in scripts/, gehört aber zum Repo-Root: alle Pfade (`dist/`, `assets/`,
+# `installer.iss`, `src/build_info.py`) sind relativ zur Wurzel. Ohne den
+# sys.path-Eintrag scheitert der Import von `src`; der `chdir` macht den Build
+# unabhängig vom Aufrufort (sonst „dist not found").
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, _ROOT)
 os.chdir(_ROOT)
@@ -132,12 +126,10 @@ def _find_inno_compiler():
 def _inno_defines(label, sha):
     """Die /D-Defines für `installer.iss`.
 
-    `AppVer` bleibt die reine VERSION; `AppLabel` ist das Label, das die App
-    im Fenstertitel zeigt (`1.24.0-pre.2`, `1.24.0-dev (abc1234)`) und das
-    Setup-Assistent und „Apps & Features" als Version anzeigen; `AppBuild`
-    trägt zusätzlich den Commit (Datei-Eigenschaften der Setup.exe). Ohne die
-    beiden wüsste ein gebauter Installer weder, ob er ein Pre-Release ist,
-    noch, von welchem Commit er stammt."""
+    `AppVer` bleibt die reine VERSION; `AppLabel` ist das Label des
+    Fenstertitels (`1.24.0-pre.2`, `1.24.0-dev (abc1234)`), das Setup-Assistent
+    und „Apps & Features" als Version anzeigen; `AppBuild` trägt zusätzlich den
+    Commit (Datei-Eigenschaften der Setup.exe)."""
     label = label or VERSION
     build = f"{label} ({sha})" if sha and sha not in label else label
     return [f"/DAppVer={VERSION}", f"/DAppLabel={label}", f"/DAppBuild={build}"]
@@ -146,14 +138,10 @@ def _inno_defines(label, sha):
 def build_windows(label=None, sha=""):
     print(f"Building Zeiterfassung v{VERSION} (Windows) ...")
     # --onedir statt --onefile (#118): Onefile entpackt bei JEDEM Start alle
-    # DLLs frisch in einen _MEIxxxxxx-Tempordner. Dieses Zeitfenster ist die
-    # Wurzel einer ganzen Fehlerklasse — der Bootloader kann python310.dll
-    # transient nicht laden ("Failed to load Python DLL", #118), holidays fand
-    # de.mo transient nicht (#116), und der Skalierungs-Neustart musste den
-    # _MEIPASS-Erbgang per PYINSTALLER_RESET_ENVIRONMENT umgehen (ui.py). Onedir
-    # legt die Dateien einmalig entpackt ins Installationsverzeichnis
-    # (Exe + _internal/) — kein Extraktions-Race pro Start mehr. macOS baut
-    # ohnehin schon -D. installer.iss shippt entsprechend den ganzen Ordner.
+    # DLLs in einen _MEIxxxxxx-Tempordner; in diesem Zeitfenster lud der
+    # Bootloader python310.dll bzw. `holidays` de.mo transient nicht (#118,
+    # #116). Onedir legt Exe + _internal/ einmalig entpackt ab; installer.iss
+    # shippt entsprechend den ganzen Ordner.
     cmd = _pyinstaller_common([
         "--onedir",
         "--noconsole",
@@ -273,20 +261,17 @@ def build_linux():
 
 
 def generate_build_info():
-    """Schreibt src/build_info.py mit dem Build-Kanal-Stempel (#45). Wird beim
-    Build erzeugt (gitignored) und von PyInstaller mitgebündelt — daher VOR dem
-    eigentlichen Build aufrufen.
+    """Schreibt src/build_info.py mit dem Build-Kanal-Stempel (#45). Die Datei
+    ist gitignored und wird von PyInstaller mitgebündelt — daher VOR dem Build
+    aufrufen.
 
-    Der Release-Workflow setzt ZEIT_RELEASE=1 → CHANNEL='release'; für einen
-    Pre-Release-Lauf zusätzlich ZEIT_PRERELEASE=1 → CHANNEL='prerelease' (Vorrang
-    vor 'release'). Lokales `python build.py` ohne Flag → 'dev' + Commit-Hash.
-    Der Release-Tag taugt nicht zur Kanal-Erkennung (er wird erst nach dem Build
-    gepusht) — daher die expliziten Flags. Für die Update-Prüfung reicht der
-    Workflow ihn aber als ZEIT_RELEASE_TAG durch (Job `pre-check` berechnet ihn
-    vor den Build-Jobs); ohne die Variable bleibt RELEASE_TAG leer.
+    ZEIT_RELEASE=1 → CHANNEL='release'; zusätzlich ZEIT_PRERELEASE=1 →
+    'prerelease' (Vorrang). Ohne Flag → 'dev' + Commit-Hash. Der Release-Tag
+    taugt nicht zur Kanal-Erkennung (er wird erst nach dem Build gepusht);
+    für die Update-Prüfung reicht der Workflow ihn als ZEIT_RELEASE_TAG durch,
+    ohne die Variable bleibt RELEASE_TAG leer.
 
-    Liefert `(label, sha)` — das Versions-Label wie die App es im Titel zeigt
-    und den Kurz-Commit — für die Beschriftung des Windows-Installers."""
+    Liefert `(label, sha)` für die Beschriftung des Windows-Installers."""
     if os.environ.get("ZEIT_PRERELEASE") == "1":
         channel = "prerelease"
     elif os.environ.get("ZEIT_RELEASE") == "1":

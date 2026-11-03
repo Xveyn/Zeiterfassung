@@ -6,11 +6,9 @@ N ist die Zahl der Commits unter `pwa/` seit dem letzten **echten** Release,
 X.Y.Z dessen Version — gelesen vom Tag, nicht aus `src/version.py`: auf master
 kann dort schon die nächste, noch unveröffentlichte Version stehen. Pre-Releases
 zählen nicht als Anker. Die PWA hat keine eigene Versionsnummer: Desktop-Release
-und PWA sind nur über diesen Anker verbunden (bis #359 stand davor ein `P` aus
-`pwa/package.json`, das in jedem Release-PR gebumpt werden musste). Der
-Platzhalter `__BUILD__` steht in `sw-core.js` (Cache-Name, Anzeige im
-Verbindungs-Dialog) und im Manifest (`version`); ein Deploy bekommt dadurch
-immer einen eigenen Cache.
+und PWA sind nur über diesen Anker verbunden. Der Platzhalter `__BUILD__` steht
+in `sw-core.js` (Cache-Name, Anzeige im Verbindungs-Dialog) und im Manifest
+(`version`); ein Deploy bekommt dadurch immer einen eigenen Cache.
 
 Weil jede Änderung unter `pwa/` sofort live geht, zählt N sie einzeln; ein
 Release setzt N auf 0 zurück (der `publish`-Job stößt dafür `pages.yml` neu an).
