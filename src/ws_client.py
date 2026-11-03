@@ -12,10 +12,10 @@ Die Bibliothek loggt im DEBUG-Modus jede Kopfzeile des Handshakes, darunter
 Traceback ihrer Sicherheitsnetze), trägt keine Kopfzeilen. `ZEITERFASSUNG_LOG_LEVEL=DEBUG` ändert
 daran nichts, weil das Level des Loggers selbst gesetzt ist.
 
-`close()` kehrt zügig zurück: der Close-Handshake wartet höchstens `CLOSE_TIMEOUT_S`, und hängt ein
-`send` (voller Sendepuffer bei totem Netz) und hält die Sperre der Bibliothek, bricht ein Wächter
-nach `ABORT_AFTER_S` die Verbindung hart ab (`close_socket`: Socket zu, ein hängendes `send`/`recv`
-wacht mit `SocketClosed` auf).
+Ein hängendes `send` (voller Sendepuffer bei totem Netz) hält die Sperre der Bibliothek. Zwei
+Wächter brechen die Verbindung dann hart ab (`_abort`, ein hängendes `send`/`recv` wacht mit
+`SocketClosed` auf): der des `send` selbst nach `SEND_TIMEOUT_S`, der von `close()` nach
+`ABORT_AFTER_S` (der Close-Handshake wartet höchstens `CLOSE_TIMEOUT_S`).
 """
 from __future__ import annotations
 
@@ -36,6 +36,7 @@ _LIB_LOG.setLevel(logging.WARNING)
 
 CLOSE_TIMEOUT_S = 1.0      # Wartezeit des Close-Handshakes
 ABORT_AFTER_S = 1.5        # danach bricht der Wächter von `close()` die Verbindung hart ab
+SEND_TIMEOUT_S = 30.0      # danach bricht der Wächter eines hängenden `send` die Verbindung ab
 
 WS_PATH = "/v1/box/ws"
 FAILED_TEXT = "Verbindung zum Relay fehlgeschlagen"
@@ -101,10 +102,34 @@ class _LibSocket:
 
     def send(self, data: bytes | str) -> None:
         from websockets.exceptions import ConnectionClosed
+        done = self._arm_watchdog(SEND_TIMEOUT_S, "relay-ws-send")
         try:
             self._conn.send(data)
         except ConnectionClosed as exc:
             raise self._closed(exc) from None
+        finally:
+            done.set()
+
+    def _arm_watchdog(self, after: float, name: str) -> threading.Event:
+        """Bricht die Verbindung nach `after` hart ab, wenn das gelieferte Ereignis bis dahin nicht
+        gesetzt ist. Ein hängendes `send` (voller Sendepuffer bei totem Netz) hält sonst die Sperre
+        der Bibliothek und damit Heartbeat und Arbeits-Thread bis zum TCP-Timeout des Systems."""
+        done = threading.Event()
+
+        def watchdog() -> None:
+            if done.wait(after):
+                return
+            try:
+                self._abort()
+            except Exception as exc:
+                # Daemon-Wächter: ein Fehler im Abbruch (auch ein `AssertionError` der Bibliothek,
+                # `close_socket` prüft den Zustand per `assert`) darf nur geloggt werden, nie den
+                # Prozess stören; nur der Typ, der Text könnte Verbindungsdaten tragen.
+                log.warning("Harter Abbruch der Relay-Verbindung scheiterte (%s)",
+                            type(exc).__name__)
+
+        threading.Thread(target=watchdog, name=name, daemon=True).start()
+        return done
 
     def _abort(self) -> None:
         """Harter Abbruch, ohne Sperre der Bibliothek.
@@ -127,21 +152,7 @@ class _LibSocket:
         self._conn.close_socket()
 
     def close(self) -> None:
-        done = threading.Event()
-
-        def watchdog() -> None:
-            if done.wait(self._abort_after):
-                return
-            try:
-                self._abort()
-            except Exception as exc:
-                # Daemon-Wächter: ein Fehler im Abbruch (auch ein `AssertionError` der Bibliothek,
-                # `close_socket` prüft den Zustand per `assert`) darf nur geloggt werden, nie den
-                # Prozess stören; nur der Typ, der Text könnte Verbindungsdaten tragen.
-                log.warning("Harter Abbruch der Relay-Verbindung scheiterte (%s)",
-                            type(exc).__name__)
-
-        threading.Thread(target=watchdog, name="relay-ws-close", daemon=True).start()
+        done = self._arm_watchdog(self._abort_after, "relay-ws-close")
         try:
             # Wartet auf die Sperre der Bibliothek; hält sie ein hängendes `send`, löst der Wächter sie.
             self._conn.close()

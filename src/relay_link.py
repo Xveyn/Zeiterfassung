@@ -22,7 +22,9 @@ Thread-Regeln (wer ruft was aus welchem Thread)
   `on_idle` beendet ihn nicht (nur der Ausnahme-Typ geht ins Log).
 - **`put`** darf aus jedem Thread kommen (gedacht: der Handler im Arbeits-Thread). Gesendet wird
   unter dem **Sendesperr-Lock der Box**, den auch der Heartbeat des Lesers nimmt — ein Socket hat so
-  nie zwei gleichzeitige Schreiber. `put` wirft nie.
+  nie zwei gleichzeitige Schreiber. `put` wirft nie; hängt das Senden an einem toten Netz, bricht
+  der Sende-Wächter des Sockets (`ws_client.SEND_TIMEOUT_S`) die Verbindung ab, `put` liefert
+  `False`, und der Leser verbindet über den Backoff neu.
 - **`set_boxes`, `states`, `shutdown`** dürfen aus jedem Thread kommen (gedacht: der Dienst im
   Worker bzw. beim Beenden). `set_boxes` blockiert nicht: es startet fehlende Leser und schließt die
   Sockets entfernter Boxen auf kurzlebigen Daemon-Threads (`relay-close`), ohne auf sie oder die

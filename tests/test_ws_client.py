@@ -325,6 +325,59 @@ def test_close_wakes_a_hung_send(silent):
     assert isinstance(progress["error"], ws_client.SocketClosed)
 
 
+def test_hung_send_aborts_itself_without_close(silent, monkeypatch):
+    """Ohne `close()` von außen: der Sende-Wächter bricht ein hängendes `send` nach
+    `SEND_TIMEOUT_S` hart ab, `send` wirft `SocketClosed`."""
+    monkeypatch.setattr(ws_client, "SEND_TIMEOUT_S", 1.5)
+    sock = ws_client.connect(SECRET, 0, base_url=silent.url)
+    try:
+        sock._conn.socket.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 4096)
+        progress = {"sent": 0, "error": None}
+        sender = _flood_until_send_hangs(sock.send, progress)
+        sender.join(5)
+        assert not sender.is_alive(), "das hängende send wachte nicht von selbst auf"
+        assert isinstance(progress["error"], ws_client.SocketClosed)
+    finally:
+        sock.close()
+
+
+def test_relay_link_put_wakes_by_itself_on_hung_send(silent, tmp_path, monkeypatch):
+    """`put` hängt im `sendall`; ohne `shutdown`/`close` von außen liefert es nach dem Sende-Wächter
+    `False`, und der Leser verlässt die tote Verbindung."""
+    from functools import partial
+
+    from src.mobile_box_cursor import MobileBoxCursor
+    from src.relay_link import LinkTiming, RelayLink
+
+    monkeypatch.setattr(ws_client, "SEND_TIMEOUT_S", 1.5)
+
+    def connect(secret, have):
+        sock = ws_client.connect(secret, have, base_url=silent.url)
+        sock._conn.socket.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 4096)
+        return sock
+
+    link = RelayLink(connect, lambda s, p: None, MobileBoxCursor(str(tmp_path / "c.json")),
+                     timing=LinkTiming(heartbeat_s=60.0, join_s=0.5, backoff=(30.0,)))
+    try:
+        link.set_boxes([SECRET])
+        deadline = time.monotonic() + 5
+        while link.states().get(SECRET) != "connected" and time.monotonic() < deadline:
+            time.sleep(0.01)
+        assert link.states().get(SECRET) == "connected"
+        progress = {"sent": 0, "error": None}
+        sender = _flood_until_send_hangs(partial(link.put, SECRET), progress,
+                                         frame=b"x" * 65536)
+        sender.join(5)
+        assert not sender.is_alive(), "das hängende put wachte nicht von selbst auf"
+        assert progress["error"] is False
+        deadline = time.monotonic() + 5
+        while link.states().get(SECRET) == "connected" and time.monotonic() < deadline:
+            time.sleep(0.01)
+        assert link.states().get(SECRET) != "connected"
+    finally:
+        link.shutdown()
+
+
 def test_relay_link_shutdown_with_real_hung_put(silent, tmp_path):
     """Ganze Kette mit echtem Socket: `put` hängt im `sendall`, `shutdown` hält seine Frist, und das
     hängende `put` wacht über den harten Abbruch von `_LibSocket.close` mit `False` auf."""
