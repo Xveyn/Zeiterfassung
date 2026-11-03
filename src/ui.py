@@ -24,6 +24,7 @@ from src.mobile_pairing import PairingSession
 from src.mobile_reminders import phone_covers
 from src.mobile_routes import MobileContext
 from src.mobile_service import MobileService
+from src.relay_service import RelayService
 from src.weekly_limit import format_limit_warnings
 from src.reservations import reservations_active
 from src.storage import repair_notice_text, repair_toast_text
@@ -75,7 +76,8 @@ class App:
                  reservation_store=None, single_instance=None,
                  data_lock=None, sync_guard=None, webhook_store=None,
                  vacation_store=None, smtp_store=None, mobile_store=None, mobile_keys=None,
-                 mobile_relay_store=None):
+                 mobile_relay_store=None, mobile_box_store=None,
+                 mobile_box_cursor=None):
         self.root = root
         self.storage = storage
         self.settings = settings
@@ -163,6 +165,15 @@ class App:
                     on_change=self._api_refresh.request,
                     on_reservations_change=self._on_remote_calendar_data_changed),
                 run=self._bg.run)
+        # Relay-Abgleich (#358): braucht den Kontext der Handy-Instanz, deshalb erst
+        # danach. Ohne Handy-Instanz oder einen der beiden Stores gibt es ihn nicht.
+        self._relay = None
+        if (self._mobile is not None and mobile_box_store is not None
+                and mobile_box_cursor is not None):
+            self._relay = RelayService(
+                self.settings, self._mobile.context, mobile_box_store,
+                mobile_box_cursor, run=self._bg.run)
+            self._mobile.set_box_cleanup(self._relay.forget_devices)
         self._renderer = GridRenderer(
             self.root, self.storage, self.settings, self.reservation_store,
             self.conflicts_store, self._open_dialog, self._delete_day,
@@ -776,6 +787,8 @@ class App:
         im Worker (Adressauflösung kann blockieren); hier wird nur angestoßen."""
         if self._mobile is not None:
             self._mobile.apply()
+        if self._relay is not None:
+            self._relay.apply()
 
     def _apply_send_reminder_setting(self):
         """Startet/stoppt den Sende-Reminder-Poll abhängig vom Setting.
@@ -1046,6 +1059,8 @@ class App:
         self._api.shutdown()
         if self._mobile is not None:
             self._mobile.shutdown()
+        if self._relay is not None:
+            self._relay.shutdown()
         self._sync.push_on_quit()
         if self._tray is not None:
             self._tray.stop()
@@ -1100,6 +1115,8 @@ class App:
         self._api.shutdown()
         if self._mobile is not None:
             self._mobile.shutdown()
+        if self._relay is not None:
+            self._relay.shutdown()
         if self._tray is not None:
             self._tray.stop()
         self._reminders.stop()
@@ -1162,6 +1179,8 @@ class App:
         self._api.shutdown()
         if self._mobile is not None:
             self._mobile.shutdown()
+        if self._relay is not None:
+            self._relay.shutdown()
         if self._single_instance is not None:
             self._single_instance.release()
         # Port VOR dem Spawn freigeben, sonst fände die neue Instanz ihn noch
@@ -1192,6 +1211,9 @@ class App:
             if self._mobile is not None:
                 self._mobile.reopen()
                 self._mobile.apply()
+            if self._relay is not None:
+                self._relay.reopen()
+                self._relay.apply()
             themed_showinfo(
                 self.root,
                 "Neustart nötig",
