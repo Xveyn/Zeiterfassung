@@ -172,3 +172,13 @@ def test_failed_handshake_hides_secret():
 def test_https_maps_to_wss():
     assert ws_client._ws_url("https://example.org", 5) == "wss://example.org/v1/box/ws?role=desktop&have=5"
     assert ws_client._ws_url("http://127.0.0.1:1", 0) == "ws://127.0.0.1:1/v1/box/ws?role=desktop&have=0"
+
+
+@pytest.mark.parametrize("bad", ["a b" + "x" * 40, "a,b" + "x" * 40, "\u00e4" * 43, "ab\ncd" + "x" * 38, ""])
+def test_invalid_secret_raises_oserror_without_secret(bad):
+    with pytest.raises(OSError) as info:
+        ws_client.connect(bad, 1, base_url=f"http://127.0.0.1:{_dead_port()}", open_timeout=2)
+    exc = info.value
+    if bad:
+        assert bad not in str(exc) and bad not in repr(exc)
+    assert exc.__cause__ is None and exc.__context__ is None

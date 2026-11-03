@@ -12,12 +12,13 @@ import logging
 from typing import Any, Callable, Protocol
 from urllib.parse import urlsplit, urlunsplit
 
-from src.mobile_relay_codec import MAX_FRAME, SUBPROTOCOL
+from src.mobile_relay_codec import BOX_SECRET_RE, MAX_FRAME, SUBPROTOCOL
 from src.push_relay import RELAY_URL
 
 log = logging.getLogger(__name__)
 
 WS_PATH = "/v1/box/ws"
+FAILED_TEXT = "Verbindung zum Relay fehlgeschlagen"
 
 
 class SocketClosed(Exception):
@@ -97,6 +98,9 @@ def connect(secret: str, have: int, *, base_url: str = RELAY_URL,
     (Netz, TLS, Zeit), beide ohne das Geheimnis im Text."""
     from websockets.exceptions import ConnectionClosed, WebSocketException
     from websockets.sync.client import connect as lib_connect
+    if not isinstance(secret, str) or BOX_SECRET_RE.fullmatch(secret) is None:
+        # Kein gueltiges Subprotocol-Token: die Bibliothek wuerfe ValueError mit dem Geheimnis im Text.
+        raise OSError(FAILED_TEXT) from None
     try:
         conn = lib_connect(
             _ws_url(base_url, have),
@@ -114,5 +118,8 @@ def connect(secret: str, have: int, *, base_url: str = RELAY_URL,
         # Handshake abgelehnt (z. B. 403/1008); der Text der Ausnahme kann das Geheimnis tragen.
         raise SocketClosed(None, "handshake") from None
     except OSError:
-        raise OSError("Verbindung zum Relay fehlgeschlagen") from None
+        raise OSError(FAILED_TEXT) from None
+    except ValueError:
+        # Die Bibliothek nennt bei ungueltigen Argumenten das Geheimnis im Text; verwerfen.
+        raise OSError(FAILED_TEXT) from None
     return _LibSocket(conn)
