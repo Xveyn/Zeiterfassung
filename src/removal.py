@@ -55,6 +55,7 @@ KEYRING_HINT = (
     "Der Schlüsselbund wird nicht nachgeprüft: Bleibt dort ein Eintrag "
     "„Zeiterfassung“ stehen, entferne ihn von Hand.")
 KEYRING_STEP = "Schlüsselbund-Einträge"
+BOX_STEP = "Relay-Boxen"
 GOOGLE_PERMISSIONS_URL = "https://myaccount.google.com/permissions"
 TRANSLOCATION_MARKER = "/AppTranslocation/"
 TRANSLOCATION_HINT = (
@@ -100,6 +101,17 @@ def _remove_all(paths: Iterable[str]) -> None:
             failures.append(f"{os.path.basename(path)}: {e}")
     if failures:
         raise OSError("; ".join(failures))
+
+
+def _forget_boxes(base_path: str) -> str | None:
+    """Löscht die Boxen am Relay (Netz — nur über `run_removal` im Worker, nie beim Planen).
+    Ein Hinweis, wenn Boxen nicht erreicht wurden: sie verfallen am Relay von selbst."""
+    missed = secret_migration.forget_boxes(os.path.join(base_path, "mobile_box.json"))
+    if not missed:
+        return None
+    noun = "Box" if missed == 1 else "Boxen"
+    return (f"{missed} {noun} am Relay nicht erreicht — "
+            f"{'sie verfällt' if missed == 1 else 'sie verfallen'} nach 90 Tagen von selbst")
 
 
 def _glob(base_path: str, pattern: str) -> list[str]:
@@ -207,7 +219,9 @@ def plan_removal(base_path: str, with_data: bool, system: str,
     if system not in ("Darwin", "Linux"):
         return []
     steps: list[Step] = [
-        (KEYRING_STEP, lambda: secret_migration.forget_all(base_path)),
+        (KEYRING_STEP, lambda: secret_migration.forget_all(base_path, boxes=False)),
+        # Vor dem Löschen der Zugangsdaten: `mobile_box.json` trägt die Geheimnisse.
+        (BOX_STEP, lambda: _forget_boxes(base_path)),
         ("Autostart",
          _remove_macos_autostart if system == "Darwin"
          else lambda: disable_autostart(system)),
