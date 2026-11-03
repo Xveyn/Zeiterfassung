@@ -220,7 +220,19 @@ Vom Spec angedeutet, von keinem Task-Test selbstverständlich abgedeckt — jede
 
 ## Spike-Ergebnis
 
-_Wird in Task 1 ausgefüllt._
+Gemessen am 2026-11-03 unter Windows 11, Python 3.13.2, `websockets` 17.4 (Wegwerfskript, nicht committet).
+
+**Entscheidung: `websockets==17.4`** (`websockets.sync.client`), nicht `websocket-client`.
+
+- **Handshake:** kein `Origin`-Header (mit `origin=None`), `Sec-WebSocket-Protocol: zeit.v1, <43 Zeichen>`; es geht zusätzlich `Sec-WebSocket-Extensions: permessage-deflate` und `User-Agent: Python/3.13 websockets/17.4` mit. Keine `suppress_origin`-Variante nötig, kein Wechsel der Bibliothek.
+- **Abweichung für `ws_client.py` (Task 3): `connect(..., legacy=True)` übergeben** (und im `finally` `close()`). Ohne `legacy=True` warnt 17.x bei jedem direkten `connect()` mit einer `DeprecationWarning` („must be used as a context manager“); `legacy=True` ist die dokumentierte Form für die Nutzung ohne `with` und warnungsfrei (im PyInstaller-Test mit `warnings.simplefilter("error")` gelaufen). Alternativ `with connect(...) as ws:` über die ganze Lebensdauer der Verbindung. `compression=None` ist optional (Frames sind verschlüsselt, Kompression bringt nichts), im Spike nicht nötig.
+- **TLS:** selbstsigniertes Zertifikat ⇒ `ssl.SSLCertVerificationError` (Prüfung ist ohne `ssl=` an). Echter Relay (`wss`, erfundene 43-Zeichen-Box): Verbindung steht, `subprotocol == "zeit.v1"`, `recv(timeout=2)` liefert nichts (`TimeoutError`), Text `ping` ⇒ Text `pong`; danach `box_relay.delete_box` ⇒ `True`.
+- **Close-Codes:** der Client sieht `ConnectionClosed.rcvd.code == 1000`, `.reason == "replaced"`.
+- **Parallelität:** `send` aus Thread B, während Thread A in `recv(timeout=3)` steht, läuft ohne `ConcurrencyError` (die Pong-Antwort kam in Thread A an). Zwei gleichzeitige `send` ohne Lock wurden nicht geprüft; Task 4 serialisiert weiter.
+- **Proxy:** Standard der Bibliothek (`proxy=True`) liest `HTTPS_PROXY`: mit `HTTPS_PROXY=http://127.0.0.1:9` scheitert der Verbindungsversuch (`ConnectionRefusedError`, WinError 10061), mit `proxy=None` kommt die Verbindung zustande. **Plan: Standard beibehalten (Proxy mitnutzen)**, damit Firmennetze nicht still scheitern; kein `proxy=`-Argument setzen. (Ausnahme-Meldungen der Proxy-Stufe können Hostnamen enthalten, nie das Geheimnis; trotzdem nur die Art loggen.)
+- **Python-Gegencheck:** `websockets==17.4`, `Requires-Python >=3.11`. Binäre Wheels (`pip download --only-binary=:all: --no-deps`) vorhanden für cp312/cp313(win)/cp314 auf `win_amd64`, `macosx_11_0_arm64` und `manylinux x86_64` (cp312: Windows, macOS arm64, Linux x86_64 alle bestätigt; zusätzlich cp314 alle drei, cp313 nur Windows geprüft). Die Bibliothek hat zudem einen reinen Python-Rückfall (die C-Beschleunigung ist optional), fehlt ein Wheel, läuft sie trotzdem. Keine Transitiven: `websockets` hat keine Abhängigkeiten.
+- **Bündelung (Windows):** Mini-Exe mit `pyinstaller --onedir` (PyInstaller 6.20.0, nur `from websockets.sync.client import connect`, **ohne** `--collect-*`/Hidden Imports) startet, verbindet gegen den echten Relay, `ping` ⇒ `pong`. Kein `--collect-submodules websockets` in `scripts/build.py` nötig. **Offen:** macOS und Linux (Workflow **Build**, Task 8) sind von hier nicht auslösbar; dort mit dem Import in `ws_client.py` prüfen.
+- Die Pin-Zeile gehört in `requirements.txt` und `requirements-test.txt` (Task 3/8), `CONTRIBUTING.md`-Tabelle ergänzen.
 
 ## Offene Fragen, die das Bauen klärt
 
