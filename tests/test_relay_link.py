@@ -569,24 +569,36 @@ def test_set_boxes_does_not_block_when_close_hangs(make_link):
         sock.hang_close.set()
 
 
-def test_hung_put_wakes_on_close_and_returns_false(make_link):
+def test_shutdown_in_time_while_put_and_close_hang(make_link):
+    """Wie ein echter Socket hinter der Sperre der Bibliothek: `send` hängt, `close` hängt ebenfalls
+    und weckt `send` nicht — nur ein harter Abbruch täte das (`ws_client`, getestet dort mit echtem
+    Server). `shutdown` hält trotzdem seine Frist; nach dem Abbruch liefert `put` `False`."""
     connect = FakeConnect()
     sock = FakeSocket()
     sock.hang_send = True
+    sock.close_wakes_send = False
+    sock.hang_close = threading.Event()
     connect.plan(sock)
-    link = make_link(connect, timing=LinkTiming(join_s=0.5))
+    link = make_link(connect, timing=LinkTiming(join_s=0.3))
     link.set_boxes([SECRET])
     assert connected(link)
     result: list[bool] = []
     putter = threading.Thread(target=lambda: result.append(link.put(SECRET, b"antwort")),
                               daemon=True)
     putter.start()
-    assert sock.send_entered.wait(LIMIT_S)
-    start = time.monotonic()
-    link.shutdown()
-    assert time.monotonic() - start < 0.5 + 0.5
-    putter.join(LIMIT_S)
-    assert result == [False]
+    try:
+        assert sock.send_entered.wait(LIMIT_S)
+        start = time.monotonic()
+        link.shutdown()
+        assert time.monotonic() - start < 0.3 + 0.5
+        assert sock.close_entered.wait(LIMIT_S)
+        assert putter.is_alive() and result == []       # `put` hängt noch: nur der Abbruch weckt
+        sock.wake_send.set()                             # harter Abbruch des echten Sockets
+        putter.join(LIMIT_S)
+        assert result == [False]
+    finally:
+        sock.wake_send.set()
+        sock.hang_close.set()
 
 
 def test_readd_while_old_connect_hangs_keeps_new_connection(make_link):
@@ -620,3 +632,56 @@ def test_on_idle_not_called_after_shutdown(make_link):
     count = len(calls)
     time.sleep(0.05)
     assert len(calls) == count
+
+
+def _churn(link: RelayLink) -> None:
+    """set_boxes([S]) mit hängendem connect A, dann [] ; [S] ; [] ; [S] (Fund des Re-Reviews)."""
+    link.set_boxes([])
+    link.set_boxes([SECRET])
+    time.sleep(0.05)
+    link.set_boxes([])
+    time.sleep(0.05)
+    link.set_boxes([SECRET])
+    time.sleep(0.1)
+
+
+def test_churn_never_runs_two_connects_for_one_secret(make_link):
+    connect = FakeConnect()
+    connect.gate = threading.Event()
+    link = make_link(connect)
+    link.set_boxes([SECRET])
+    assert connect.wait_calls(1)
+    try:
+        _churn(link)
+        assert len(connect.calls) == 1                  # alle Nachfolger warten auf A
+        assert connect.max_in_flight == 1
+    finally:
+        connect.gate.set()
+    assert connect.wait_calls(2)
+    assert connected(link)
+    time.sleep(0.1)
+    assert connect.max_in_flight == 1
+    assert len(connect.calls) == 2
+    assert link.states() == {SECRET: "connected"}
+    assert wait_until(lambda: len(connect.open_sockets()) == 1)
+    assert connect.socket(0).closed_event.is_set()       # spät geöffnete Verbindung von A verworfen
+    assert connect.open_sockets() == [connect.socket(1)]
+
+
+def test_churn_ending_removed_leaves_nothing_after_release(make_link):
+    connect = FakeConnect()
+    connect.gate = threading.Event()
+    link = make_link(connect)
+    link.set_boxes([SECRET])
+    assert connect.wait_calls(1)
+    try:
+        _churn(link)
+        link.set_boxes([])
+    finally:
+        connect.gate.set()
+    assert connect.socket(0).closed_event.wait(LIMIT_S)
+    time.sleep(0.1)
+    assert len(connect.calls) == 1
+    assert link.states() == {}
+    assert connect.open_sockets() == []
+    assert wait_until(lambda: link._live == {})          # kein Leser des Geheimnisses läuft mehr

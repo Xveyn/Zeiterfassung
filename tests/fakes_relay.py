@@ -44,9 +44,12 @@ class FakeSocket:
         self.sent: list[bytes | str] = []
         self.recv_threads: set[threading.Thread] = set()
         self.closed_event = threading.Event()
-        # Hängende Aufrufe (wie bei totem Netz): `send` hängt, bis `close` es weckt; `close` hängt,
-        # bis der Test `release_close` setzt.
+        # Hängende Aufrufe (wie bei totem Netz): `send` hängt, bis `wake_send` gesetzt ist; `close`
+        # setzt es nur mit `close_wakes_send` (sonst weckt es erst ein separater harter Abbruch,
+        # den `relay_link` gar nicht kennt). `close` hängt, bis der Test `hang_close` setzt.
         self.hang_send = False
+        self.wake_send = threading.Event()
+        self.close_wakes_send = True
         self.hang_close: threading.Event | None = None
         self.send_entered = threading.Event()
         self.close_entered = threading.Event()
@@ -107,7 +110,7 @@ class FakeSocket:
     def send(self, data: bytes | str) -> None:
         if self.hang_send and data != "ping":
             self.send_entered.set()
-            self.closed_event.wait(LIMIT_S)
+            self.wake_send.wait(LIMIT_S)
             raise SocketClosed(None, "")
         with self._cond:
             if self._closed:
@@ -119,6 +122,8 @@ class FakeSocket:
 
     def close(self) -> None:
         self.close_entered.set()
+        if self.close_wakes_send:
+            self.wake_send.set()
         if self.hang_close is not None:
             self.hang_close.wait(LIMIT_S)
         with self._cond:
@@ -147,6 +152,8 @@ class FakeConnect:
         self.always_fail: BaseException | None = None
         self.gate: threading.Event | None = None   # gesetzt: `connect` wartet darauf (≤ 5 s)
         self.auto_pong = True
+        self.in_flight = 0            # gerade laufende `connect`-Aufrufe
+        self.max_in_flight = 0
 
     def plan(self, *items: object) -> None:
         with self._cond:
@@ -155,11 +162,14 @@ class FakeConnect:
     def __call__(self, secret: str, have: int) -> FakeSocket:
         with self._cond:
             self.calls.append(ConnectCall(secret, have, time.monotonic()))
+            self.in_flight += 1
+            self.max_in_flight = max(self.max_in_flight, self.in_flight)
             self._cond.notify_all()
             gate = self.gate
         if gate is not None:
             gate.wait(LIMIT_S)
         with self._cond:
+            self.in_flight -= 1
             item: object
             if self._plan:
                 item = self._plan.popleft()
@@ -177,6 +187,10 @@ class FakeConnect:
     def wait_calls(self, count: int, timeout: float = LIMIT_S) -> bool:
         with self._cond:
             return self._cond.wait_for(lambda: len(self.calls) >= count, timeout)
+
+    def open_sockets(self) -> list[FakeSocket]:
+        with self._cond:
+            return [s for s in self.sockets if not s.closed_event.is_set()]
 
     def socket(self, index: int, timeout: float = LIMIT_S) -> FakeSocket:
         with self._cond:

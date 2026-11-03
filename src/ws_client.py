@@ -20,6 +20,7 @@ wacht mit `SocketClosed` auf).
 from __future__ import annotations
 
 import logging
+import socket
 import threading
 from typing import Any, Callable, Protocol
 from urllib.parse import urlsplit, urlunsplit
@@ -106,18 +107,39 @@ class _LibSocket:
             raise self._closed(exc) from None
 
     def _abort(self) -> None:
-        try:
-            # Socket zu (weckt ein hängendes sendall/select), Zustand CLOSED; idempotent.
-            self._conn.close_socket()
-        except (OSError, RuntimeError):
-            log.debug("Harter Abbruch der Relay-Verbindung scheiterte", exc_info=False)
+        """Harter Abbruch, ohne Sperre der Bibliothek.
+
+        websockets 17.4 hält `protocol_mutex` über das ganze `sendall` eines `send`
+        (`send_context` → `send_data`), und der Socket ist nach dem Handshake blockierend
+        (`settimeout(None)`). Ein hängendes `send` wacht unter POSIX nur durch
+        `shutdown(SHUT_RDWR)` auf (ein `close(fd)` aus einem anderen Thread weckt einen blockierten
+        Syscall dort nicht); unter Windows tun es beide. Deshalb zuerst `shutdown`: der Sender
+        bekommt einen Fehler, verlässt `send_context` und gibt die Sperre frei; `recv_events` sieht
+        EOF. Erst danach `close_socket()` — das schließt den Socket und nimmt am Ende die Sperre,
+        die dann frei ist (sonst warteten Wächter und Sender aufeinander)."""
+        sock = getattr(self._conn, "socket", None)
+        if sock is not None:
+            try:
+                sock.shutdown(socket.SHUT_RDWR)
+            except OSError:
+                # Schon geschlossen oder nie verbunden (ENOTCONN/EBADF): dann hängt dort nichts.
+                log.debug("shutdown der Relay-Verbindung nicht möglich", exc_info=False)
+        self._conn.close_socket()
 
     def close(self) -> None:
         done = threading.Event()
 
         def watchdog() -> None:
-            if not done.wait(self._abort_after):
+            if done.wait(self._abort_after):
+                return
+            try:
                 self._abort()
+            except Exception as exc:
+                # Daemon-Wächter: ein Fehler im Abbruch (auch ein `AssertionError` der Bibliothek,
+                # `close_socket` prüft den Zustand per `assert`) darf nur geloggt werden, nie den
+                # Prozess stören; nur der Typ, der Text könnte Verbindungsdaten tragen.
+                log.warning("Harter Abbruch der Relay-Verbindung scheiterte (%s)",
+                            type(exc).__name__)
 
         threading.Thread(target=watchdog, name="relay-ws-close", daemon=True).start()
         try:

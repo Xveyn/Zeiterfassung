@@ -201,7 +201,6 @@ def test_debug_log_never_contains_secret(harness, caplog):
     # Der lokale Testserver (Logger `websockets.server`) spielt den Relay und loggt selbst; geprüft
     # wird alles, was die Client-Seite schreibt.
     client = [r for r in caplog.records if not r.name.startswith("websockets.server")]
-    assert client is not None
     for record in client:
         assert secret not in record.getMessage()
         assert secret not in str(record.args)
@@ -219,6 +218,9 @@ class SilentServer:
         self._b64 = base64
         self._sha1 = hashlib.sha1
         self.listener = socket.socket()
+        # kleiner Empfangspuffer schon am Listener (vererbt sich auf die angenommene Verbindung):
+        # der Server liest nie, der Puffer ist schnell voll und `send` des Clients blockiert
+        self.listener.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 4096)
         self.listener.bind(("127.0.0.1", 0))
         self.listener.listen(1)
         self.port = self.listener.getsockname()[1]
@@ -273,22 +275,22 @@ def test_close_returns_quickly_when_server_ignores_close(silent):
     assert elapsed < ws_client.ABORT_AFTER_S + 1.0, elapsed
 
 
-def test_close_wakes_a_hung_send(silent):
-    sock = ws_client.connect(SECRET, 0, base_url=silent.url)
-    progress = {"sent": 0, "error": None}
-    frame = b"\x01" + b"x" * (MAX_FRAME - 1)
+def _flood_until_send_hangs(send, progress, frame=b"" + b"x" * (MAX_FRAME - 1)):
+    """Sendet große Rahmen in einem Thread, bis `send` blockiert (0,5 s ohne Fortschritt)."""
 
     def flood():
         try:
             while True:
-                sock.send(frame)
+                result = send(frame)
+                if result is False:          # `RelayLink.put`: wirft nie, meldet `False`
+                    progress["error"] = False
+                    return
                 progress["sent"] += 1
         except Exception as exc:  # Ergebnis des Tests, nicht verschluckt
             progress["error"] = exc
 
     sender = threading.Thread(target=flood, daemon=True)
     sender.start()
-    # warten, bis der Sendepuffer voll ist und `send` hängt (kein Fortschritt mehr)
     deadline = time.monotonic() + 20
     last, stalled_since = -1, time.monotonic()
     while time.monotonic() < deadline:
@@ -297,10 +299,61 @@ def test_close_wakes_a_hung_send(silent):
         elif time.monotonic() - stalled_since > 0.5:
             break
         time.sleep(0.02)
-    assert sender.is_alive(), "send hing nie"
+    assert sender.is_alive() and progress["error"] is None, "send hing nie"
+    return sender
+
+
+def _returns_within(fn, limit):
+    """Ruft `fn` in einem Hilfsthread; `True`, wenn es in `limit` zurückkehrt (Fehlschlag statt Hang)."""
+    worker = threading.Thread(target=fn, daemon=True)
+    worker.start()
+    worker.join(limit)
+    return not worker.is_alive()
+
+
+def test_close_wakes_a_hung_send(silent):
+    sock = ws_client.connect(SECRET, 0, base_url=silent.url)
+    # kleiner Sendepuffer am Client, damit `sendall` sicher im Syscall blockiert
+    sock._conn.socket.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 4096)
+    progress = {"sent": 0, "error": None}
+    sender = _flood_until_send_hangs(sock.send, progress)
     started = time.monotonic()
-    sock.close()
+    assert _returns_within(sock.close, ws_client.ABORT_AFTER_S + 3.0), "close() hing"
     assert time.monotonic() - started < ws_client.ABORT_AFTER_S + 1.5
     sender.join(5)
-    assert not sender.is_alive()
+    assert not sender.is_alive(), "das hängende send wachte nicht auf"
     assert isinstance(progress["error"], ws_client.SocketClosed)
+
+
+def test_relay_link_shutdown_with_real_hung_put(silent, tmp_path):
+    """Ganze Kette mit echtem Socket: `put` hängt im `sendall`, `shutdown` hält seine Frist, und das
+    hängende `put` wacht über den harten Abbruch von `_LibSocket.close` mit `False` auf."""
+    from functools import partial
+
+    from src.mobile_box_cursor import MobileBoxCursor
+    from src.relay_link import LinkTiming, RelayLink
+
+    def connect(secret, have):
+        sock = ws_client.connect(secret, have, base_url=silent.url)
+        sock._conn.socket.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 4096)
+        return sock
+
+    link = RelayLink(connect, lambda s, p: None, MobileBoxCursor(str(tmp_path / "c.json")),
+                     timing=LinkTiming(heartbeat_s=60.0, join_s=0.5))
+    try:
+        link.set_boxes([SECRET])
+        deadline = time.monotonic() + 5
+        while link.states().get(SECRET) != "connected" and time.monotonic() < deadline:
+            time.sleep(0.01)
+        assert link.states().get(SECRET) == "connected"
+        progress = {"sent": 0, "error": None}
+        sender = _flood_until_send_hangs(partial(link.put, SECRET), progress,
+                                         frame=b"x" * 65536)
+        started = time.monotonic()
+        assert _returns_within(link.shutdown, 3.0), "shutdown hing"
+        assert time.monotonic() - started < 0.5 + 0.5
+        sender.join(ws_client.ABORT_AFTER_S + 3.0)
+        assert not sender.is_alive(), "das hängende put wachte nicht auf"
+        assert progress["error"] is False
+    finally:
+        link.shutdown()

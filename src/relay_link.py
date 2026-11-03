@@ -26,9 +26,11 @@ Thread-Regeln (wer ruft was aus welchem Thread)
 - **`set_boxes`, `states`, `shutdown`** dürfen aus jedem Thread kommen (gedacht: der Dienst im
   Worker bzw. beim Beenden). `set_boxes` blockiert nicht: es startet fehlende Leser und schließt die
   Sockets entfernter Boxen auf kurzlebigen Daemon-Threads (`relay-close`), ohne auf sie oder die
-  Leser zu warten. Wird ein Geheimnis entfernt und wieder genannt, solange sein alter Leser noch
-  läuft (z. B. in einem hängenden `connect`), wartet der neue Leser, bis der alte beendet ist; die
-  spät geöffnete Verbindung des alten wird verworfen. Sonst verdrängte sie die neue (`replaced`).
+  Leser zu warten. Wird ein Geheimnis entfernt und wieder genannt, solange alte Leser noch laufen
+  (z. B. in einem hängenden `connect`), wartet der neue, bis **alle** beim Anlegen laufenden Leser
+  dieses Geheimnisses beendet sind (`_live`, ein Leser verlässt die Menge erst an seinem Ende); die
+  spät geöffnete Verbindung eines alten wird verworfen. So gibt es je Geheimnis nie zwei
+  gleichzeitige `connect`, sonst verdrängte die alte die neue Verbindung (`replaced`).
 - **`shutdown`** schließt alle Sockets auf `relay-close`-Threads (weckt ein wartendes `recv` und ein
   hängendes `send`; der Aufrufer wartet nie auf einen langsamen Close-Handshake), setzt die
   Stopp-Ereignisse (weckt jede Wartezeit des Backoffs) und den Arbeits-Thread, und wartet insgesamt
@@ -138,10 +140,11 @@ class _Box:
     """Zustand einer Box. Felder außer `reported` nur unter `RelayLink._cond` ändern;
     `reported` gehört allein dem Leser-Thread der Box."""
 
-    def __init__(self, secret: str, predecessor: _Box | None = None) -> None:
+    def __init__(self, secret: str, predecessors: frozenset[_Box] = frozenset()) -> None:
         self.secret = secret
-        self.predecessor = predecessor      # alter Leser desselben Geheimnisses, der erst enden muss
-        self.finished = False               # Leser beendet (unter `_cond`, mit `notify_all`)
+        # Alle beim Anlegen noch laufenden Leser desselben Geheimnisses; dieser startet erst, wenn
+        # keiner davon mehr läuft (`RelayLink._live`).
+        self.predecessors = predecessors
         self.mark = short_mark(secret)
         self.stop = threading.Event()
         self.send_lock = threading.Lock()
@@ -164,7 +167,9 @@ class RelayLink:
         self._boxes: dict[str, _Box] = {}
         self._ready: deque[str] = deque()
         self._readers: list[threading.Thread] = []
-        self._last: dict[str, _Box] = {}    # jüngste Box je Geheimnis, auch nach dem Entfernen
+        # Je Geheimnis die Boxen, deren Leser-Thread noch läuft (auch entfernte). Ein Leser verlässt
+        # die Menge erst an seinem tatsächlichen Ende, also nach `connect` und Schließen.
+        self._live: dict[str, set[_Box]] = {}
         self._closed = False
         self._worker = threading.Thread(target=self._work, name="relay-worker", daemon=True)
         self._worker.start()
@@ -185,13 +190,13 @@ class RelayLink:
                 if box.sock is not None:
                     closing.append(box.sock)
             self._readers = [t for t in self._readers if t.is_alive()]
-            self._last = {s: b for s, b in self._last.items() if not b.finished}
             for secret in wanted:
                 if secret in self._boxes:
                     continue
-                box = _Box(secret, self._last.get(secret))
+                running = self._live.setdefault(secret, set())
+                box = _Box(secret, frozenset(running))
+                running.add(box)
                 self._boxes[secret] = box
-                self._last[secret] = box
                 thread = threading.Thread(target=self._read, args=(box,),
                                           name=f"relay-box-{box.mark}", daemon=True)
                 self._readers.append(thread)
@@ -280,16 +285,21 @@ class RelayLink:
                 self._run_box(box)
         finally:
             with self._cond:
-                box.finished = True
+                running = self._live.get(box.secret)
+                if running is not None:
+                    running.discard(box)
+                    if not running:
+                        del self._live[box.secret]
                 self._cond.notify_all()
 
     def _await_predecessor(self, box: _Box) -> bool:
-        """Wartet, bis der alte Leser desselben Geheimnisses beendet ist (sonst verdrängte dessen
-        noch laufendes `connect` die neue Verbindung, `1000 replaced`). `False` bei `stop`."""
-        old = box.predecessor
+        """Wartet, bis keiner der beim Anlegen laufenden Leser desselben Geheimnisses mehr läuft
+        (sonst verdrängte dessen noch laufendes `connect` die neue Verbindung, `1000 replaced`).
+        `False` bei `stop`: dann endet dieser Leser sofort, ohne je verbunden zu haben."""
         with self._cond:
-            self._cond.wait_for(lambda: box.stop.is_set() or old is None or old.finished)
-            box.predecessor = None
+            self._cond.wait_for(lambda: box.stop.is_set() or not (
+                box.predecessors & self._live.get(box.secret, set())))
+            box.predecessors = frozenset()
             return not box.stop.is_set()
 
     def _run_box(self, box: _Box) -> None:
