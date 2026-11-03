@@ -476,6 +476,53 @@ def test_a_revoke_does_not_hold_the_devices_lock_while_the_keyring_works(tmp_pat
     assert held == [True]
 
 
+def test_mobile_service_revoke_calls_box_cleanup_outside_lock(tmp_path):
+    service, _settings, ctx = make_service(tmp_path)
+    add_keyed_device(ctx, "phone-aaaa")
+    add_keyed_device(ctx, "phone-bbbb")
+    calls = []
+
+    def lock_is_free():
+        # Aus einem anderen Thread geprüft: ein RLock, den der Aufrufer hält, wäre für ihn
+        # selbst immer wieder erwerbbar.
+        free = []
+
+        def probe():
+            got = ctx.devices_lock.acquire(blocking=False)
+            if got:
+                ctx.devices_lock.release()
+            free.append(got)
+        thread = threading.Thread(target=probe)
+        thread.start()
+        thread.join()
+        return free == [True]
+
+    def cleanup(ids):
+        calls.append((None if ids is None else list(ids), lock_is_free(),
+                      ctx.devices.get("phone-aaaa")["revoked"]))
+    assert service.context is not None and service.context.pairing is ctx.pairing
+    service.set_box_cleanup(cleanup)
+
+    assert service.revoke("phone-aaaa") is True
+    assert service.revoke("unbekannt") is False                 # kein Gerät, kein Aufräumen
+    assert service.revoke_all() == 2
+
+    assert calls == [(["phone-aaaa"], True, True), (None, True, True)]
+
+
+def test_a_failing_box_cleanup_does_not_fail_the_revoke(tmp_path):
+    service, _settings, ctx = make_service(tmp_path)
+    add_keyed_device(ctx, "phone-aaaa")
+
+    def broken(ids):
+        raise RuntimeError("kaputt")
+    service = MobileService(ctx.settings, ctx, run=sync_run, box_cleanup=broken)
+
+    assert service.revoke("phone-aaaa") is True
+    assert ctx.devices.get("phone-aaaa")["revoked"]
+    assert service.revoke_all() == 1
+
+
 def test_apply_retains_loads_and_migrates_after_the_server_is_up(tmp_path, ring):
     order = []
     service, _settings, ctx = make_service(tmp_path)
