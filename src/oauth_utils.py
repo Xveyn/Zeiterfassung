@@ -1,7 +1,7 @@
 """Gemeinsame OAuth-Helfer für die Google-API-Wrapper (mail/drive/gcal).
 
-Zentralisiert den zuvor mehrfach kopierten Boilerplate (Issue #47):
-Token-Persistenz mit restriktiven Permissions und die Scope-Upgrade-Erkennung.
+Token-Persistenz mit restriktiven Permissions und die Scope-Upgrade-Erkennung,
+zentral statt je Wrapper (#47).
 
 Reine stdlib — **keine** Google-Imports auf Modulebene. Damit bleibt die
 Lazy-Import-Konvention der Wrapper erhalten (CI installiert kein
@@ -32,22 +32,13 @@ TOKEN_LOCK = threading.RLock()
 
 
 def write_token_json(json_text: str, token_path: str) -> None:
-    """Persistiere fertigen JSON-Text atomar und setze restriktive Permissions.
-
-    Schreibt fertigen JSON-Text; `write_token` und `token_store.save_credentials`
-    liefern ihn.
-
-    Geschrieben wird in eine Temp-Datei im selben Verzeichnis, dann via
-    `os.replace` atomar an die Zielstelle bewegt — so kann ein abgebrochener
-    Schreibvorgang nie eine halbe Token-Datei hinterlassen.
-
-    Die Permissions werden auf `0o600` gesetzt. Auf Windows ist das chmod ein
-    No-op (keine POSIX-Permissions); `try/except OSError` deckt zusätzlich
-    exotische Filesystems (sshfs, FAT32) ab, wo chmod fehlschlagen kann. Dort
-    übernimmt stattdessen `secure_file.harden_windows_acl` (Audit M8).
+    """Persistiert fertigen JSON-Text (von `write_token` und
+    `token_store.save_credentials`) atomar mit restriktiven Permissions.
 
     Der Ablauf (Temp-Datei, härten, dann erst schreiben, ersetzen) steht in
-    `secure_file.write_secret_bytes`.
+    `secure_file.write_secret_bytes`: ein abgebrochener Schreibvorgang
+    hinterlässt nie eine halbe Token-Datei, `chmod 0600` bzw. unter Windows
+    die ACL schützen sie.
     """
     write_secret_text(os.fspath(token_path), json_text, prefix=".token-")
 
@@ -217,8 +208,7 @@ def discard_token_for_scope_upgrade(token_path: str,
     `token_lacks_scopes` und melden den Auth-Fall.
 
     Bei Lesefehlern (kein/defektes JSON) konservativ `False`: der Token bleibt
-    unangetastet, statt einen womöglich gültigen Token wegzuwerfen. Spiegelt
-    das frühere `except Exception: pass` in den Wrappern.
+    unangetastet, statt einen womöglich gültigen Token wegzuwerfen.
     """
     if not token_lacks_scopes(token_path, scopes):
         return False

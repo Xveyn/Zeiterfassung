@@ -1,14 +1,8 @@
 # src/json_store.py
 """Gemeinsame Persistenz-Mechanik der lokalen JSON-Stores.
 
-Bis Issue #51 (R2) stand dieselbe Mechanik mehrfach wortgleich im Repo:
-`_save_to_disk` viermal (`storage.py`, `reservations.py`, `conflicts_store.py`,
-`settings.py`), der Quarantäne-Block beim Laden dreimal. Damit musste man die
-N1-Durability-Regel an vier und die N4-Quarantäne-Regel an drei Stellen
-mitpflegen — die Sorte Duplikat, bei der die nächste Kopie irgendwann das
-`fsync` vergisst.
-
-Die beiden Regeln stehen deshalb hier, und zwar nur hier:
+Zwei Regeln stehen hier, und zwar nur hier — als Kopien in jedem Store
+vergäße die nächste irgendwann das `fsync`:
 
 - **N1 (Durability):** `fsync` VOR `os.replace`. Ohne den fsync kann das
   Rename durabel sein, während die Datenblöcke noch im OS-Cache stehen — nach
@@ -20,14 +14,13 @@ Die beiden Regeln stehen deshalb hier, und zwar nur hier:
 
 **Bewusst NICHT hier:**
 
-- `settings.py::_quarantine_corrupt` bleibt eigen. Es quarantäniert auch bei
-  einem nicht-Dict-Toplevel (nicht nur bei Parse-Fehlern) und **schluckt** einen
-  fehlgeschlagenen Rename, damit der Start mit Defaults weiterläuft statt zu
-  crashen. Die Stores hier lassen den `OSError` bewusst hochlaufen.
-- `sync_journal.py::_atomic_write_json` schreibt über `tempfile.mkstemp` statt
-  über einen festen `.tmp`-Namen und räumt bei `BaseException` auf. Das ist die
-  Crash-Recovery-Schicht; sie in einem Refactoring-PR mit umzustellen hieße,
-  ausgerechnet den Pfad anzufassen, der die Wiederherstellung trägt.
+- `settings.py::_quarantine_corrupt` bleibt eigen: es quarantäniert auch bei
+  einem nicht-Dict-Toplevel und **schluckt** einen fehlgeschlagenen Rename,
+  damit der Start mit Defaults weiterläuft. Die Stores hier lassen den
+  `OSError` bewusst hochlaufen.
+- `sync_journal.py::_atomic_write_json` ist die Crash-Recovery-Schicht selbst
+  (`tempfile.mkstemp`, Aufräumen bei `BaseException`) und wird nicht mit
+  umgestellt.
 - `webhook_store.py`/`oauth_utils.py`/`single_instance.py` schreiben Secrets und
   brauchen zusätzlich ACL-Härtung plus Rename-Retry (siehe `secure_file.py`).
 """
@@ -183,10 +176,8 @@ def load_json_or_quarantine(path: str) -> Any:
     über `quarantine_corrupt` weggeräumt). Der Aufrufer setzt daraufhin seinen
     leeren Startzustand — welcher das ist, weiß nur er (`{}`, `[]`, Defaults).
 
-    `None` deckt damit auch den entarteten Fall ab, dass die Datei zwar
-    gültiges JSON, aber `null` enthält: vorher landete dieses `None` ungeprüft
-    im `_data` des Stores und ließ die anschließende Migration mit einem
-    `AttributeError` auflaufen.
+    `None` deckt auch den Fall ab, dass die Datei gültiges JSON, aber `null`
+    enthält — sonst landete es ungeprüft im Store.
     """
     if not os.path.exists(path):
         return None

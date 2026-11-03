@@ -142,19 +142,18 @@ def save_with_secret(store: Any, candidate: dict[str, Any], typed: str,
     Schlüsselbund stehen.
 
     Neuer Webhook (`stored is None`): es gibt noch keinen aktuellen
-    Datensatz, gerechnet wird mit `stored`. Bestehender Webhook, der
-    inzwischen gelöscht wurde (`stored is not None`, aber kein aktueller
-    Datensatz mehr): nichts wird gespeichert, `False` — sonst belebte ein
-    bedingungsloses `save` ihn wieder (Xveyn#173, Abschluss-Review). Sonst
-    wird über `WebhookStore.save_if_unchanged` gegen den aktuellen Datensatz
-    geschrieben; gewinnt dabei ein zwischenzeitliches Löschen, wird ein eben
-    erst abgelegtes Secret wieder abgeräumt und `False` geliefert.
+    Datensatz, gerechnet wird mit `stored`. Ein bestehender Webhook, der
+    inzwischen gelöscht wurde, wird nicht wieder angelegt: nichts wird
+    gespeichert, `False` — ein bedingungsloses `save` belebte ihn sonst
+    wieder. Sonst wird über `WebhookStore.save_if_unchanged` gegen den
+    aktuellen Datensatz geschrieben; gewinnt dabei ein zwischenzeitliches
+    Löschen, wird ein eben erst abgelegtes Secret wieder abgeräumt und `False`
+    geliefert.
 
-    Liefert `True`, wenn gespeichert wurde, sonst `False`.
-
-    Wirft Schreibfehler von `store.save`/`store.save_if_unchanged` und
-    `ValueError` von `persist` durch; abgeräumt wird dann nichts. Blockierend
-    (Schlüsselbund, icacls) — gehört in einen Worker."""
+    Liefert `True`, wenn gespeichert wurde, sonst `False`. Wirft Schreibfehler
+    von `store.save`/`store.save_if_unchanged` und `ValueError` von `persist`
+    durch; abgeräumt wird dann nichts. Blockierend (Schlüsselbund, icacls) —
+    gehört in einen Worker."""
     with SECRETS_LOCK:
         current = next((r for r in store.get_all()
                         if r.get("id") == candidate.get("id")), None)
