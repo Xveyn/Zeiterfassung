@@ -77,6 +77,7 @@ ANNOTATED_MODULES = [
     "src/mobile_box_cursor.py",
     "src/push_relay.py",
     "src/box_relay.py",
+    "src/ws_client.py",
     "src/mobile_reminders.py",
     "src/mobile_settings.py",
     "src/mobile_sync.py",
