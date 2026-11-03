@@ -683,6 +683,54 @@ korrekten — reines Rauschen mit anschließender `noqa`-Flut. Der Test prüft
 stattdessen genau die vier Punkte oben. Muster wie
 `tests/test_type_annotations.py`.
 
+## Kommentare und Docstrings: das Warum, nicht die Geschichte
+
+Ein Kommentar oder Docstring sagt, **was heute gilt und warum**. Wie der Code
+dorthin kam, steht in Commit, PR und Spec — nicht im Code. Ein Text, der
+Historie erzählt, veraltet beim nächsten Refactoring lautlos und kostet bei
+jedem Lesen Zeit (Sammelissue Xveyn#414).
+
+**Behalten:**
+
+- das **Warum**, das der Code nicht zeigt: Plattform-Fallen, Races,
+  Invarianten, Sicherheitsbegründungen, bewusst akzeptierte Trade-offs;
+- den **Vertrag** einer öffentlichen Funktion: was sie liefert, wann sie
+  wirft, in welchem Thread sie läuft, welches Lock sie nimmt.
+
+**Nicht schreiben:**
+
+- Historie („bis R1 lag das in `main.py`", „vorher", „früher") und Prozess
+  („Task 8", „Stufe 2"). Der Anker bleibt als ein kurzes `(Xveyn#NNN)` an der
+  Stelle, ohne die Erzählung dazu.
+- Verweise auf Testdateien („getestet in `tests/…`"). Der Test findet sich über
+  den Namen; im Docstring veraltet der Verweis beim ersten Umbenennen.
+- Was der Code selbst ausdrückt, und Randfälle, die ein Test festhält.
+- Inhaltsverzeichnisse im Modul-Docstring (Nachbarmodule, Testdateien). Die
+  Modul-Liste steht unter „Struktur".
+
+**Länge.** Ein Docstring ist in der Regel nicht länger als acht Zeilen. Ist er
+länger als sein Rumpf, ist das der Anlass nachzusehen, ob er Historie oder eine
+Doppelung trägt — kein Verbot, wenn dort ein echter Vertrag oder Trade-off
+steht. Eine Quote gibt es bewusst nicht: sie ließe sich erfüllen, indem man
+gute Kommentare löscht.
+
+**Eine Begründung, eine Stelle.** Steht sie schon in dieser Datei oder in
+`src/CLAUDE.md`, verweist der Docstring darauf, statt sie zu wiederholen — und
+umgekehrt. Wertvolles, aber Langes gehört nach `docs/known-limitations.md`
+oder in eine Spec unter `docs/superpowers/specs/`, nicht in einen Docstring.
+
+**Nicht kürzen:**
+
+- die Begründung in einem Catch-all-Handler (s. oben, der Test verlangt sie),
+- `# noqa`, `# type:`, `# pyright:` und Encoding-Kopfzeilen,
+- Docstrings, auf die diese Datei oder `src/CLAUDE.md` ausdrücklich zeigen
+  (Beispiel: die Begründung des Push-Fensters in `drive.py::upload`). Vor dem
+  Kürzen in beiden Dateien nach dem Funktionsnamen suchen.
+
+Eine reine Text-Änderung lässt sich mechanisch belegen: der AST ohne
+Docstrings ist vor und nach dem PR identisch. PRs, die Kommentare straffen,
+ändern **nur** Text — kein Umbenennen, kein Umsortieren, keine Logik.
+
 ## UTF-8 im Mail-Pipeline
 
 Damit Umlaute/ß nicht als Mojibake ankommen, gelten drei Pflichten:
