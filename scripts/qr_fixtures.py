@@ -5,8 +5,7 @@
 
 Schreibt `pwa/test/fixtures/qr-matrices.json`. Die Matrizen stammen aus `segno`, dem
 Encoder des Desktops — die Ground Truth ist also nicht von Hand gerechnet. Der Node-Test
-`pwa/test/qr-decode.test.js` liest die Datei, `tests/test_qr_fixtures.py` hält sie gegen
-`src.qr.qr_matrix` und gegen die installierte `segno`-Version zusammen.
+`pwa/test/qr-decode.test.js` liest die Datei.
 
 Nicht Teil der App, nicht gebündelt. Die Ausgabe ist deterministisch (fester Zufallsstart):
 ein erneuter Lauf ändert die Datei nur, wenn sich `segno` ändert.
@@ -74,8 +73,7 @@ def build() -> dict:
         capacity = _byte_capacity(version, "L")
         cases.append(_case(f"v{version}-L-full", _text(rng, capacity), version, "L", None))
 
-    # Wie `src.qr.qr_matrix`: dieselben Argumente, damit es die Matrix ist, die der Dialog zeichnet
-    # (`tests/test_qr_fixtures.py` hält beides zusammen).
+    # Wie `src.qr.qr_matrix`: dieselben Argumente, damit es die Matrix ist, die der Dialog zeichnet.
     link_code = segno.make(LINK, error="m", micro=False, boost_error=False)
     unsupported = []
     for name, text, mode, eci in (

@@ -1,12 +1,9 @@
 """Pflegt die Versionsmarker der README.
 
-Hintergrund steht in CLAUDE.md, „README-Zeilen für Unveröffentlichtes
-markieren": `master` ist der Default-Branch, die README also die Startseite
-des Repos — und sie beschreibt den Stand von `master`, nicht den des letzten
-Releases. Wer ein noch nicht veröffentlichtes Feature dokumentiert, schreibt
-deshalb `*(ab --VERSION--)*` statt die kommende Version zu raten. Geraten wird
-sie sonst falsch, sobald ein Patch dazwischenkommt — und dann steht die
-falsche Zahl dauerhaft auf der Startseite.
+Die README beschreibt den Stand von `master`. Wer ein noch nicht
+veröffentlichtes Feature dokumentiert, schreibt `*(ab --VERSION--)*` statt die
+kommende Version zu raten; Hintergrund: CLAUDE.md, „README-Zeilen für
+Unveröffentlichtes markieren".
 
 Drei Modi:
 
@@ -39,14 +36,9 @@ import re
 import subprocess
 import sys
 
-# Dieses Skript liegt in scripts/, gehört aber zum Repo-Root: es importiert aus
-# `src/` und liest `README.md` aus der Wurzel. Ohne den sys.path-Eintrag
-# scheitert schon der Import unten mit `ModuleNotFoundError: No module named
-# 'src'` (vgl. scripts/build.py).
-#
-# Anders als build.py **kein** `os.chdir(_ROOT)`: alle Pfade hier werden von
-# `_ROOT` abgeleitet, ein Verzeichniswechsel bräuchte es dafür nicht — und er
-# wäre ein Seiteneffekt beim Laden, den tests/test_readme_version.py mitträge.
+# Liegt in scripts/, gehört aber zum Repo-Root: ohne den sys.path-Eintrag
+# scheitert der Import von `src`. Kein `os.chdir` — alle Pfade leiten sich
+# von `_ROOT` ab.
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)

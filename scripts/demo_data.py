@@ -17,20 +17,16 @@ Projekt-Root (alle Dateien dort sind gitignored) bzw. `ZEITERFASSUNG_DATA_DIR`.
 Liegen dort schon Daten, bricht das Skript ab; `--force` ersetzt sie.
 
 **Kein Zugriff auf den Schlüsselbund** — weder hier noch beim nächsten
-App-Start. Die SMTP-Konten tragen ihr Passwort im Datensatz
-(`password_location="file"`, dann fragt `keyring_store.get_secret` den
-Schlüsselbund gar nicht), die Webhooks haben keine Authentifizierung (ohne
-Secret zieht `secret_migration` beim Start nichts um), und es gibt kein
-`token.json`. Was ihn trotzdem anfasst, sind Handgriffe in der App: ein
-Demo-Konto oder einen Demo-Webhook **löschen** (räumt den zugehörigen
-Eintrag ab) und im SMTP-Dialog ein Passwort **eintippen und speichern**.
+App-Start: die SMTP-Konten tragen ihr Passwort im Datensatz
+(`password_location="file"`), die Webhooks haben keine Authentifizierung (es
+gibt nichts, was `secret_migration` umzöge), und es gibt kein `token.json`.
+Anfassen tun ihn erst Handgriffe in der App: ein Demo-Konto oder einen
+Demo-Webhook **löschen** oder im SMTP-Dialog ein Passwort **speichern**.
 
-**Reservierungen** sind eingeschaltet (`reservations_enabled`); der
-Kalender-Abgleich ist ein Zusatz und standardmäßig an. Ohne Google-Anmeldung
-meldet die App dann nach jedem Speichern einer Reservierung oder eines
-Urlaubs „Google-Verbindung abgelaufen" (lokal ist gespeichert), und der
-Google-Tab zeigt „Kalenderliste nicht geladen". `--ohne-kalender` schaltet
-ihn aus; die Reservierungen bleiben.
+**Reservierungen** sind eingeschaltet, der Kalender-Abgleich standardmäßig an.
+Ohne Google-Anmeldung meldet die App dann nach dem Speichern einer
+Reservierung oder eines Urlaubs „Google-Verbindung abgelaufen" (lokal ist
+gespeichert). `--ohne-kalender` schaltet den Abgleich aus.
 
 Adressen und URLs stammen ausschließlich aus den reservierten
 Beispiel-Domains (RFC 2606, `example.com`/`example.org`).
@@ -41,10 +37,9 @@ import datetime
 import os
 import sys
 
-# Dieses Skript liegt in scripts/, gehört aber zum Repo-Root: es importiert
-# aus `src/`. Ohne den sys.path-Eintrag scheitert schon der Import unten
-# (vgl. scripts/release_notes.py). Kein `os.chdir` — der Zielordner kommt
-# aus `paths.get_base_path()`.
+# Liegt in scripts/, gehört aber zum Repo-Root: ohne den sys.path-Eintrag
+# scheitert der Import von `src`. Kein `os.chdir` — der Zielordner kommt aus
+# `paths.get_base_path()`.
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)

@@ -1,10 +1,8 @@
 """Verschiebt ältere Versionen aus CHANGELOG.md nach CHANGELOG-archive.md.
 
-CHANGELOG.md wächst mit jedem Release um einen ausführlichen Abschnitt und
-war nach 46 Versionen bei rund 800 Zeilen. Wer dort nachsieht, will fast immer
-wissen, was die letzten Releases gebracht haben. Deshalb behält die Datei nur
-die neuesten `KEEP_RELEASES` Abschnitte, alles Ältere steht — wortgleich,
-neueste zuerst — im Archiv, auf das CHANGELOG.md oben verlinkt.
+CHANGELOG.md behält nur die neuesten `KEEP_RELEASES` Abschnitte (gelesen wird
+fast immer nur der Anfang); alles Ältere steht — wortgleich, neueste zuerst —
+im Archiv, auf das CHANGELOG.md oben verlinkt.
 
 Zwei Modi:
 
@@ -14,21 +12,16 @@ Zwei Modi:
 Läuft nach jedem echten Release im Job `changelog-archive` von `release.yml`
 und öffnet einen PR (kein Push nach `master`, s. CLAUDE.md, „CHANGELOG-Archiv").
 
-Warum das niemandem etwas wegnimmt: Der Updates-Tab lädt CHANGELOG.md vom Tag
-`v<version>` und sucht dort nur den Abschnitt genau dieser Version — an ihrem
-eigenen Tag steht sie immer ganz oben. Ebenso liest `release_notes.py` nur den
-Abschnitt der aktuellen Version, und zwar vor dem Archivieren.
+Nichts geht verloren: Der Updates-Tab lädt CHANGELOG.md vom Tag seiner Version,
+dort steht sie immer ganz oben; `release_notes.py` liest vor dem Archivieren.
 """
 
 import os
 import sys
 
-# Dieses Skript liegt in scripts/, gehoert aber zum Repo-Root: es importiert
-# aus `src/` und liest `CHANGELOG.md` aus der Wurzel. Ohne den sys.path-Eintrag
-# scheitert schon der Import unten (vgl. scripts/build.py). Kein `os.chdir` —
-# alle Pfade werden von `_ROOT` abgeleitet, und ein Verzeichniswechsel beim
-# Laden traege tests/test_archive_changelog.py mit (vgl.
-# scripts/release_notes.py).
+# Liegt in scripts/, gehoert aber zum Repo-Root: ohne den sys.path-Eintrag
+# scheitert der Import von `src`. Kein `os.chdir` — alle Pfade leiten sich
+# von `_ROOT` ab.
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)

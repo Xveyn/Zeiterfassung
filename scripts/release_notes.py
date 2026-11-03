@@ -1,12 +1,7 @@
 """Baut den Release-Body eines echten Releases aus CHANGELOG.md.
 
-Bis 1.23.0 bestand der Body aus der von GitHub generierten PR-Liste
-(`gh release create --generate-notes`). Die beschreibt aber die Arbeit, nicht
-die Aenderung: „fix(urlaub): Urlaub und Ist-Zeit am selben Tag nicht doppelt
-verguetet" sagt einem Nutzer weniger als der kuratierte CHANGELOG-Eintrag, der
-danebensteht und ohnehin fuer jedes Release geschrieben wird. Also steht er
-jetzt direkt auf der Release-Seite, statt dass der Leser ihn sich im Repo
-sucht.
+Der Body ist der kuratierte CHANGELOG-Abschnitt, nicht die von GitHub
+generierte PR-Liste: die beschreibt die Arbeit, nicht die Aenderung.
 
 Zwei Modi:
 
@@ -27,12 +22,9 @@ import os
 import re
 import sys
 
-# Dieses Skript liegt in scripts/, gehoert aber zum Repo-Root: es importiert
-# aus `src/` und liest `CHANGELOG.md` aus der Wurzel. Ohne den sys.path-Eintrag
-# scheitert schon der Import unten mit `ModuleNotFoundError: No module named
-# 'src'` (vgl. scripts/build.py). Kein `os.chdir` — alle Pfade hier werden von
-# `_ROOT` abgeleitet, und ein Verzeichniswechsel beim Laden traege
-# tests/test_release_notes.py mit (vgl. scripts/resolve_readme_version.py).
+# Liegt in scripts/, gehoert aber zum Repo-Root: ohne den sys.path-Eintrag
+# scheitert der Import von `src`. Kein `os.chdir` — alle Pfade leiten sich
+# von `_ROOT` ab.
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
@@ -45,20 +37,11 @@ CHANGELOG_PATH = os.path.join(_ROOT, "CHANGELOG.md")
 
 def body_for(changelog_text, version):
     """Liefert den Release-Body zu `version` — den CHANGELOG-Abschnitt ohne
-    seine Versionsueberschrift. None, wenn es den Abschnitt nicht gibt oder
-    unter der Ueberschrift nichts steht.
+    seine Versionsueberschrift (Titel und Datum zeigt GitHub selbst). None,
+    wenn es den Abschnitt nicht gibt oder unter der Ueberschrift nichts steht.
 
-    Der Ausschnitt kommt aus `src.changelog.extract_version_section`, also aus
-    derselben Funktion, mit der die App den Eintrag im Updates-Tab anzeigt —
-    ein zweiter Parser fuer dieselbe Datei wuerde lautlos auseinanderlaufen.
-
-    Die Ueberschrift faellt weg, weil der Release-Titel die Version schon
-    nennt („Zeiterfassung v1.24.0") und GitHub das Datum selbst anzeigt; sie
-    stuende sonst ein drittes Mal auf derselben Seite.
-
-    Ein leerer Rest ist derselbe Fehlerfall wie ein fehlender Abschnitt: ein
-    Release mit leerem Body ist fuer den Leser von einem Fehler nicht zu
-    unterscheiden.
+    Der Ausschnitt kommt aus `src.changelog.extract_version_section`, derselben
+    Funktion wie im Updates-Tab — ein zweiter Parser liefe lautlos auseinander.
     """
     section = extract_version_section(changelog_text, version)
     if section is None:
