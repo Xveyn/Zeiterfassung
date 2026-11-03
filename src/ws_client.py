@@ -5,10 +5,22 @@
 oder einer URL im Log: Bibliotheksausnahmen koennen URL und Header tragen, deshalb wird jede in
 `SocketClosed`/`OSError` mit festem Text uebersetzt (`from None`, die Kette bleibt leer).
 Blockiert (Netz): nur im Worker aufrufen.
+
+Die Bibliothek loggt im DEBUG-Modus jede Kopfzeile des Handshakes, darunter
+`Sec-WebSocket-Protocol: zeit.v1, <Geheimnis>`. Sie bekommt deshalb einen eigenen Logger
+(`src.ws_client.lib`), fest auf WARNING: was die Bibliothek darüber noch meldet (Fehler mit
+Traceback ihrer Sicherheitsnetze), trägt keine Kopfzeilen. `ZEITERFASSUNG_LOG_LEVEL=DEBUG` ändert
+daran nichts, weil das Level des Loggers selbst gesetzt ist.
+
+`close()` kehrt zügig zurück: der Close-Handshake wartet höchstens `CLOSE_TIMEOUT_S`, und hängt ein
+`send` (voller Sendepuffer bei totem Netz) und hält die Sperre der Bibliothek, bricht ein Wächter
+nach `ABORT_AFTER_S` die Verbindung hart ab (`close_socket`: Socket zu, ein hängendes `send`/`recv`
+wacht mit `SocketClosed` auf).
 """
 from __future__ import annotations
 
 import logging
+import threading
 from typing import Any, Callable, Protocol
 from urllib.parse import urlsplit, urlunsplit
 
@@ -16,6 +28,13 @@ from src.mobile_relay_codec import BOX_SECRET_RE, MAX_FRAME, SUBPROTOCOL
 from src.push_relay import RELAY_URL
 
 log = logging.getLogger(__name__)
+
+# Eigener Logger der Bibliothek, fest auf WARNING (kein Geheimnis aus den Handshake-Kopfzeilen im Log).
+_LIB_LOG = logging.getLogger(__name__ + ".lib")
+_LIB_LOG.setLevel(logging.WARNING)
+
+CLOSE_TIMEOUT_S = 1.0      # Wartezeit des Close-Handshakes
+ABORT_AFTER_S = 1.5        # danach bricht der Wächter von `close()` die Verbindung hart ab
 
 WS_PATH = "/v1/box/ws"
 FAILED_TEXT = "Verbindung zum Relay fehlgeschlagen"
@@ -44,7 +63,8 @@ class Socket(Protocol):
         ...
 
     def close(self) -> None:
-        """Schliesst; wirft nie, aus jedem Thread aufrufbar, weckt ein wartendes `recv`."""
+        """Schliesst; wirft nie, aus jedem Thread aufrufbar, weckt ein wartendes `recv` und ein
+        hängendes `send` und kehrt zügig zurück (echter Socket: höchstens rund `ABORT_AFTER_S`)."""
         ...
 
 
@@ -60,8 +80,9 @@ def _ws_url(base_url: str, have: int) -> str:
 class _LibSocket:
     """`Socket` ueber eine `websockets.sync`-Verbindung."""
 
-    def __init__(self, conn: Any) -> None:
+    def __init__(self, conn: Any, abort_after: float = ABORT_AFTER_S) -> None:
         self._conn = conn
+        self._abort_after = abort_after
 
     @staticmethod
     def _closed(exc: Any) -> SocketClosed:
@@ -84,12 +105,29 @@ class _LibSocket:
         except ConnectionClosed as exc:
             raise self._closed(exc) from None
 
-    def close(self) -> None:
+    def _abort(self) -> None:
         try:
+            # Socket zu (weckt ein hängendes sendall/select), Zustand CLOSED; idempotent.
+            self._conn.close_socket()
+        except (OSError, RuntimeError):
+            log.debug("Harter Abbruch der Relay-Verbindung scheiterte", exc_info=False)
+
+    def close(self) -> None:
+        done = threading.Event()
+
+        def watchdog() -> None:
+            if not done.wait(self._abort_after):
+                self._abort()
+
+        threading.Thread(target=watchdog, name="relay-ws-close", daemon=True).start()
+        try:
+            # Wartet auf die Sperre der Bibliothek; hält sie ein hängendes `send`, löst der Wächter sie.
             self._conn.close()
         except (OSError, RuntimeError):
             # Schliessen darf nie werfen; eine halb tote Verbindung ist ohnehin zu.
             log.debug("Schliessen der Relay-Verbindung scheiterte", exc_info=False)
+        finally:
+            done.set()
 
 
 def connect(secret: str, have: int, *, base_url: str = RELAY_URL,
@@ -110,6 +148,8 @@ def connect(secret: str, have: int, *, base_url: str = RELAY_URL,
             ping_interval=None,      # der Heartbeat ist der Text `ping`
             max_size=MAX_FRAME + 16,
             open_timeout=open_timeout,
+            close_timeout=CLOSE_TIMEOUT_S,
+            logger=_LIB_LOG,
             legacy=True,             # sonst DeprecationWarning in 17.x ohne `with`
         )
     except ConnectionClosed as exc:

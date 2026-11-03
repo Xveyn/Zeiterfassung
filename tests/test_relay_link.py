@@ -20,6 +20,7 @@ from tests.fakes_relay import LIMIT_S, FakeConnect, FakeSocket, wait_until
 
 SECRET = "S" * 20 + "ecret_" + "x" * 17          # 43 Zeichen, Form eines Box-Geheimnisses
 OTHER = "O" * 43
+TOL = 0.01          # Uhr und Event.wait: Untergrenzen mit ca. 10 ms Spielraum
 assert len(SECRET) == 43
 
 FAST = LinkTiming(heartbeat_s=5.0, pong_wait_s=5.0, backoff=(0.01,), throttled_wait_s=0.05,
@@ -302,7 +303,7 @@ def test_throttle_close_waits_at_least_throttled_wait(make_link):
     closed_at = time.monotonic()
     connect.socket(0).close_from_server(1008, "")
     assert connect.wait_calls(2)
-    assert connect.calls[1].at - closed_at >= 0.3
+    assert connect.calls[1].at - closed_at >= 0.3 - TOL
 
 
 def test_handshake_throttle_also_waits(make_link):
@@ -313,7 +314,7 @@ def test_handshake_throttle_also_waits(make_link):
     link = make_link(connect, timing=timing)
     link.set_boxes([SECRET])
     assert connect.wait_calls(2)
-    assert connect.calls[1].at - connect.calls[0].at >= 0.3
+    assert connect.calls[1].at - connect.calls[0].at >= 0.3 - TOL
 
 
 def test_other_close_uses_backoff_and_resets_after_success(make_link):
@@ -324,8 +325,8 @@ def test_other_close_uses_backoff_and_resets_after_success(make_link):
     link.set_boxes([SECRET])
     assert connect.wait_calls(3)
     calls = connect.calls
-    assert calls[1].at - calls[0].at >= 0.01
-    assert calls[2].at - calls[1].at >= 0.4           # zweite Stufe
+    assert calls[1].at - calls[0].at >= 0.01 - TOL
+    assert calls[2].at - calls[1].at >= 0.4 - TOL         # zweite Stufe
     assert connected(link)
     connect.socket(0).close_from_server(1006, "")
     assert connect.wait_calls(4)
@@ -528,3 +529,94 @@ def test_fake_socket_is_a_socket():
     from src.ws_client import Socket
     sock: Socket = FakeSocket()
     sock.close()
+
+
+# --- Fix-Runde 1: hängendes close/send, Wiederaufnahme während eines Connects ---------------
+
+
+def test_shutdown_returns_within_join_when_close_hangs(make_link):
+    connect = FakeConnect()
+    sock = FakeSocket()
+    sock.hang_close = threading.Event()
+    connect.plan(sock)
+    link = make_link(connect, timing=LinkTiming(join_s=0.2))
+    link.set_boxes([SECRET])
+    assert connected(link)
+    try:
+        start = time.monotonic()
+        link.shutdown()
+        assert time.monotonic() - start < 0.2 + 0.5
+        assert sock.close_entered.is_set()
+    finally:
+        sock.hang_close.set()
+
+
+def test_set_boxes_does_not_block_when_close_hangs(make_link):
+    connect = FakeConnect()
+    sock = FakeSocket()
+    sock.hang_close = threading.Event()
+    connect.plan(sock)
+    link = make_link(connect)
+    link.set_boxes([SECRET])
+    assert connected(link)
+    try:
+        start = time.monotonic()
+        link.set_boxes([])
+        assert time.monotonic() - start < 0.5
+        assert sock.close_entered.wait(LIMIT_S)
+        assert link.states() == {}
+    finally:
+        sock.hang_close.set()
+
+
+def test_hung_put_wakes_on_close_and_returns_false(make_link):
+    connect = FakeConnect()
+    sock = FakeSocket()
+    sock.hang_send = True
+    connect.plan(sock)
+    link = make_link(connect, timing=LinkTiming(join_s=0.5))
+    link.set_boxes([SECRET])
+    assert connected(link)
+    result: list[bool] = []
+    putter = threading.Thread(target=lambda: result.append(link.put(SECRET, b"antwort")),
+                              daemon=True)
+    putter.start()
+    assert sock.send_entered.wait(LIMIT_S)
+    start = time.monotonic()
+    link.shutdown()
+    assert time.monotonic() - start < 0.5 + 0.5
+    putter.join(LIMIT_S)
+    assert result == [False]
+
+
+def test_readd_while_old_connect_hangs_keeps_new_connection(make_link):
+    connect = FakeConnect()
+    connect.gate = threading.Event()
+    link = make_link(connect)
+    link.set_boxes([SECRET])
+    assert connect.wait_calls(1)                     # alter Leser hängt in `connect`
+    link.set_boxes([])
+    link.set_boxes([SECRET])
+    time.sleep(0.05)
+    assert len(connect.calls) == 1                   # der neue wartet auf das Ende des alten
+    connect.gate.set()
+    assert connect.wait_calls(2)
+    old, new = connect.socket(0), connect.socket(1)
+    assert old.closed_event.wait(LIMIT_S)            # späte Verbindung des alten verworfen
+    assert connected(link)
+    time.sleep(0.05)
+    assert link.states() == {SECRET: "connected"}
+    assert not new.closed_event.is_set()
+    assert len(connect.calls) == 2
+
+
+def test_on_idle_not_called_after_shutdown(make_link):
+    connect = FakeConnect()
+    calls: list[float] = []
+    link = make_link(connect, on_idle=lambda: calls.append(time.monotonic()),
+                     timing=LinkTiming(idle_tick_s=0.01, join_s=1.0))
+    assert wait_until(lambda: len(calls) >= 2)
+    link.shutdown()
+    count = len(calls)
+    time.sleep(0.05)
+    assert len(calls) == count

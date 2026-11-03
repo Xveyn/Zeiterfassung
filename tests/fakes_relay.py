@@ -44,6 +44,12 @@ class FakeSocket:
         self.sent: list[bytes | str] = []
         self.recv_threads: set[threading.Thread] = set()
         self.closed_event = threading.Event()
+        # Hängende Aufrufe (wie bei totem Netz): `send` hängt, bis `close` es weckt; `close` hängt,
+        # bis der Test `release_close` setzt.
+        self.hang_send = False
+        self.hang_close: threading.Event | None = None
+        self.send_entered = threading.Event()
+        self.close_entered = threading.Event()
 
     # --- Steuerung durch den Test -------------------------------------------------------
     def feed(self, data: bytes | str) -> None:
@@ -99,6 +105,10 @@ class FakeSocket:
                 self._cond.wait(remaining)
 
     def send(self, data: bytes | str) -> None:
+        if self.hang_send and data != "ping":
+            self.send_entered.set()
+            self.closed_event.wait(LIMIT_S)
+            raise SocketClosed(None, "")
         with self._cond:
             if self._closed:
                 raise SocketClosed(None, "")
@@ -108,6 +118,9 @@ class FakeSocket:
             self._cond.notify_all()
 
     def close(self) -> None:
+        self.close_entered.set()
+        if self.hang_close is not None:
+            self.hang_close.wait(LIMIT_S)
         with self._cond:
             if not self._closed:
                 self._closed = True

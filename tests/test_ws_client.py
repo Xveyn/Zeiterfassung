@@ -182,3 +182,125 @@ def test_invalid_secret_raises_oserror_without_secret(bad):
     if bad:
         assert bad not in str(exc) and bad not in repr(exc)
     assert exc.__cause__ is None and exc.__context__ is None
+
+
+# --- Fix-Runde 1: DEBUG-Leck, zeitbegrenztes Schliessen ------------------------------------
+
+
+def test_debug_log_never_contains_secret(harness, caplog):
+    import logging
+    caplog.set_level(logging.DEBUG)
+    secret = "DEBUGLEAK" + "z" * 34
+    h = harness(lambda conn: conn.send(conn.recv()))
+    sock = ws_client.connect(secret, 4, base_url=h.url)
+    try:
+        sock.send(b"\x01abc")
+        assert sock.recv(2.0) == b"\x01abc"
+    finally:
+        sock.close()
+    # Der lokale Testserver (Logger `websockets.server`) spielt den Relay und loggt selbst; geprüft
+    # wird alles, was die Client-Seite schreibt.
+    client = [r for r in caplog.records if not r.name.startswith("websockets.server")]
+    assert client is not None
+    for record in client:
+        assert secret not in record.getMessage()
+        assert secret not in str(record.args)
+        if record.exc_info:
+            assert secret not in logging.Formatter().formatException(record.exc_info)
+    assert not [r for r in client if r.name.startswith("websockets")]
+
+
+class SilentServer:
+    """Nimmt den WebSocket-Handshake an und liest danach nie wieder (Server hängt)."""
+
+    def __init__(self):
+        import base64
+        import hashlib
+        self._b64 = base64
+        self._sha1 = hashlib.sha1
+        self.listener = socket.socket()
+        self.listener.bind(("127.0.0.1", 0))
+        self.listener.listen(1)
+        self.port = self.listener.getsockname()[1]
+        self.release = threading.Event()
+        self.conns = []
+        threading.Thread(target=self._run, daemon=True).start()
+
+    def _run(self):
+        conn, _ = self.listener.accept()
+        self.conns.append(conn)
+        conn.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 4096)
+        data = b""
+        while b"\r\n\r\n" not in data:
+            chunk = conn.recv(4096)
+            if not chunk:
+                return
+            data += chunk
+        key = ""
+        for line in data.decode("latin-1").split("\r\n"):
+            if line.lower().startswith("sec-websocket-key:"):
+                key = line.split(":", 1)[1].strip()
+        accept = self._b64.b64encode(self._sha1(
+            (key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11").encode()).digest()).decode()
+        conn.sendall(("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\n"
+                      "Connection: Upgrade\r\nSec-WebSocket-Accept: " + accept + "\r\n"
+                      "Sec-WebSocket-Protocol: " + SUBPROTOCOL + "\r\n\r\n").encode())
+        self.release.wait(30)
+
+    @property
+    def url(self):
+        return f"http://127.0.0.1:{self.port}"
+
+    def stop(self):
+        self.release.set()
+        for conn in self.conns:
+            conn.close()
+        self.listener.close()
+
+
+@pytest.fixture
+def silent():
+    server = SilentServer()
+    yield server
+    server.stop()
+
+
+def test_close_returns_quickly_when_server_ignores_close(silent):
+    sock = ws_client.connect(SECRET, 0, base_url=silent.url)
+    started = time.monotonic()
+    sock.close()
+    elapsed = time.monotonic() - started
+    assert elapsed < ws_client.ABORT_AFTER_S + 1.0, elapsed
+
+
+def test_close_wakes_a_hung_send(silent):
+    sock = ws_client.connect(SECRET, 0, base_url=silent.url)
+    progress = {"sent": 0, "error": None}
+    frame = b"\x01" + b"x" * (MAX_FRAME - 1)
+
+    def flood():
+        try:
+            while True:
+                sock.send(frame)
+                progress["sent"] += 1
+        except Exception as exc:  # Ergebnis des Tests, nicht verschluckt
+            progress["error"] = exc
+
+    sender = threading.Thread(target=flood, daemon=True)
+    sender.start()
+    # warten, bis der Sendepuffer voll ist und `send` hängt (kein Fortschritt mehr)
+    deadline = time.monotonic() + 20
+    last, stalled_since = -1, time.monotonic()
+    while time.monotonic() < deadline:
+        if progress["sent"] != last:
+            last, stalled_since = progress["sent"], time.monotonic()
+        elif time.monotonic() - stalled_since > 0.5:
+            break
+        time.sleep(0.02)
+    assert sender.is_alive(), "send hing nie"
+    started = time.monotonic()
+    sock.close()
+    assert time.monotonic() - started < ws_client.ABORT_AFTER_S + 1.5
+    sender.join(5)
+    assert not sender.is_alive()
+    assert isinstance(progress["error"], ws_client.SocketClosed)

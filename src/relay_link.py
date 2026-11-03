@@ -25,14 +25,20 @@ Thread-Regeln (wer ruft was aus welchem Thread)
   nie zwei gleichzeitige Schreiber. `put` wirft nie.
 - **`set_boxes`, `states`, `shutdown`** dürfen aus jedem Thread kommen (gedacht: der Dienst im
   Worker bzw. beim Beenden). `set_boxes` blockiert nicht: es startet fehlende Leser und schließt die
-  Sockets entfernter Boxen, ohne auf deren Threads zu warten.
-- **`shutdown`** schließt alle Sockets (weckt ein wartendes `recv`), setzt die Stopp-Ereignisse
-  (weckt jede Wartezeit des Backoffs) und den Arbeits-Thread, und wartet insgesamt höchstens `join_s`
-  auf alle Threads. Ein hängendes `connect` oder ein langsamer Handler halten es also nicht auf;
-  die Threads sind Daemons und enden von selbst (ein spät geöffneter Socket wird sofort geschlossen).
-  Aus dem Handler gerufen wartet es nicht auf den eigenen Thread.
+  Sockets entfernter Boxen auf kurzlebigen Daemon-Threads (`relay-close`), ohne auf sie oder die
+  Leser zu warten. Wird ein Geheimnis entfernt und wieder genannt, solange sein alter Leser noch
+  läuft (z. B. in einem hängenden `connect`), wartet der neue Leser, bis der alte beendet ist; die
+  spät geöffnete Verbindung des alten wird verworfen. Sonst verdrängte sie die neue (`replaced`).
+- **`shutdown`** schließt alle Sockets auf `relay-close`-Threads (weckt ein wartendes `recv` und ein
+  hängendes `send`; der Aufrufer wartet nie auf einen langsamen Close-Handshake), setzt die
+  Stopp-Ereignisse (weckt jede Wartezeit des Backoffs) und den Arbeits-Thread, und wartet insgesamt
+  höchstens `join_s` auf alle Threads samt Schließern. Ein hängendes `connect`, `close` oder ein
+  langsamer Handler halten es also nicht auf; `on_idle` läuft danach nicht mehr. Die Threads sind
+  Daemons und enden von selbst (ein spät geöffneter Socket wird sofort geschlossen). Aus dem Handler
+  gerufen wartet es nicht auf den eigenen Thread.
 - Die Threads liegen **außerhalb** von `BackgroundTaskRunner`; `wait_idle` wartet nicht auf sie.
-- Gewartet wird nur über `threading.Event.wait` bzw. `Condition.wait` mit Frist, nie über `sleep`.
+- Gewartet wird nur über `threading.Event.wait` bzw. `Condition.wait` (mit Frist oder geweckt durch
+  `notify_all` bei jedem Stopp und jedem Leser-Ende), nie über `sleep`.
 - Eine Sperre (`_cond`) schützt Boxen, Zustände und Slots; sie wird nie über `connect`, `recv`,
   `send`, den Handler oder `on_idle` gehalten. Reihenfolge: `_cond` vor der Sperre des Cursors.
 
@@ -104,6 +110,14 @@ def short_mark(secret: str) -> str:
     return hashlib.sha256(str(secret).encode("utf-8", "replace")).hexdigest()[:6]
 
 
+def _close_async(sock: Socket) -> threading.Thread:
+    """Schließt `sock` auf einem kurzlebigen Daemon-Thread: der Aufrufer wartet nie auf ein
+    langsames `close()` (Close-Handshake, ein hängendes `send` hinter der Sperre der Bibliothek)."""
+    thread = threading.Thread(target=sock.close, name="relay-close", daemon=True)
+    thread.start()
+    return thread
+
+
 def _guarded(what: str, mark: str, fn: Callable[[], _T]) -> _T | None:
     """Ruft `fn`; jede `Exception` wird mit Typ geloggt und ergibt `None`."""
     try:
@@ -124,8 +138,10 @@ class _Box:
     """Zustand einer Box. Felder außer `reported` nur unter `RelayLink._cond` ändern;
     `reported` gehört allein dem Leser-Thread der Box."""
 
-    def __init__(self, secret: str) -> None:
+    def __init__(self, secret: str, predecessor: _Box | None = None) -> None:
         self.secret = secret
+        self.predecessor = predecessor      # alter Leser desselben Geheimnisses, der erst enden muss
+        self.finished = False               # Leser beendet (unter `_cond`, mit `notify_all`)
         self.mark = short_mark(secret)
         self.stop = threading.Event()
         self.send_lock = threading.Lock()
@@ -148,6 +164,7 @@ class RelayLink:
         self._boxes: dict[str, _Box] = {}
         self._ready: deque[str] = deque()
         self._readers: list[threading.Thread] = []
+        self._last: dict[str, _Box] = {}    # jüngste Box je Geheimnis, auch nach dem Entfernen
         self._closed = False
         self._worker = threading.Thread(target=self._work, name="relay-worker", daemon=True)
         self._worker.start()
@@ -168,18 +185,21 @@ class RelayLink:
                 if box.sock is not None:
                     closing.append(box.sock)
             self._readers = [t for t in self._readers if t.is_alive()]
+            self._last = {s: b for s, b in self._last.items() if not b.finished}
             for secret in wanted:
                 if secret in self._boxes:
                     continue
-                box = _Box(secret)
+                box = _Box(secret, self._last.get(secret))
                 self._boxes[secret] = box
+                self._last[secret] = box
                 thread = threading.Thread(target=self._read, args=(box,),
                                           name=f"relay-box-{box.mark}", daemon=True)
                 self._readers.append(thread)
                 # unter der Sperre gestartet: `shutdown` sieht nie einen ungestarteten Thread
                 thread.start()
+            self._cond.notify_all()           # ein wartender Nachfolger sieht sein `stop`
         for sock in closing:
-            sock.close()
+            _close_async(sock)
 
     def put(self, secret: str, frame: bytes) -> bool:
         """Legt `frame` als `put` in die Box. `False`, wenn nicht verbunden oder zu groß; wirft nie."""
@@ -226,8 +246,7 @@ class RelayLink:
             self._ready.clear()
             threads = [*self._readers, self._worker]
             self._cond.notify_all()
-        for sock in sockets:
-            sock.close()
+        threads += [_close_async(sock) for sock in sockets]
         deadline = time.monotonic() + self._timing.join_s
         current = threading.current_thread()
         for thread in threads:
@@ -256,6 +275,24 @@ class RelayLink:
             log.info("Relay-Box %s verbunden", box.mark)
 
     def _read(self, box: _Box) -> None:
+        try:
+            if self._await_predecessor(box):
+                self._run_box(box)
+        finally:
+            with self._cond:
+                box.finished = True
+                self._cond.notify_all()
+
+    def _await_predecessor(self, box: _Box) -> bool:
+        """Wartet, bis der alte Leser desselben Geheimnisses beendet ist (sonst verdrängte dessen
+        noch laufendes `connect` die neue Verbindung, `1000 replaced`). `False` bei `stop`."""
+        old = box.predecessor
+        with self._cond:
+            self._cond.wait_for(lambda: box.stop.is_set() or old is None or old.finished)
+            box.predecessor = None
+            return not box.stop.is_set()
+
+    def _run_box(self, box: _Box) -> None:
         timing = self._timing
         steps = timing.backoff or (1.0,)
         attempt = 0
@@ -396,5 +433,5 @@ class RelayLink:
             now = time.monotonic()
             if now >= next_idle:
                 next_idle = now + tick
-                if self._on_idle is not None:
+                if self._on_idle is not None and not self._closed:
                     _guarded("on_idle", "-", self._on_idle)
