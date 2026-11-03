@@ -20,7 +20,9 @@ from tests.fakes_relay import LIMIT_S, FakeConnect, FakeSocket, wait_until
 
 SECRET = "S" * 20 + "ecret_" + "x" * 17          # 43 Zeichen, Form eines Box-Geheimnisses
 OTHER = "O" * 43
-TOL = 0.01          # Uhr und Event.wait: Untergrenzen mit ca. 10 ms Spielraum
+TOL = 0.05          # Untergrenzen mit 50 ms Spielraum: unter Windows tickt time.monotonic()
+                    # bzw. der Timer nur alle ca. 15,6 ms, CI-Runner sind zudem langsamer;
+                    # 10 ms lagen unter einem Tick und liessen 0,390 s statt 0,4 s durch
 assert len(SECRET) == 43
 
 FAST = LinkTiming(heartbeat_s=5.0, pong_wait_s=5.0, backoff=(0.01,), throttled_wait_s=0.05,
