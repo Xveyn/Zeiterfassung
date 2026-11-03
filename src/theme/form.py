@@ -240,12 +240,7 @@ class Form:
             self._body_window = self._canvas.create_window(
                 (0, 0), window=self.body, anchor="nw")
             self.body.bind("<Configure>", self._fit_canvas, add="+")
-            # Ohne das hier bliebe der Körper auf seiner reqwidth stehen,
-            # sobald der Canvas breiter zugewiesen bekommt als er selbst
-            # angefordert hat (z.B. im Notebook-Tab neben einer breiteren
-            # Seite): die Trennlinie der Abschnitte reichte dann nicht bis
-            # zum rechten Rand, und `_rewrap` läse weiterhin die alte,
-            # schmale `body.winfo_width()`.
+            # Körper auf die Canvas-Breite strecken (Begründung: `_fit_body_width`).
             self._canvas.bind("<Configure>", self._fit_body_width, add="+")
             # Am Toplevel statt per <Enter>/<Leave>: die feuern auch beim
             # Wechsel auf ein Kind-Widget. Jedes Form prüft selbst, ob das

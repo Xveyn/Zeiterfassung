@@ -2,10 +2,8 @@
 """Dark-Theme der App — Palette, Fonts, Widget-Fabriken, Fenster-Chrome,
 themed Messageboxen und Dialog-Geometrie.
 
-Bis Issue #51 (R3) war das eine Datei mit 1075 Zeilen und fünf inhaltlich
-zusammenhanglosen Blöcken. Der Schnitt ist eine reine Umsortierung: dieses
-`__init__` re-exportiert die bisherige Oberfläche, alle 25 Aufrufstellen
-(`from src.theme import ...`) bleiben unverändert.
+Dieses `__init__` re-exportiert die Oberfläche der Teilmodule; Aufrufer
+importieren `from src.theme import ...`, nicht aus den Teilmodulen.
 
 Schichtung — zyklenfrei und in dieser Reihenfolge importierbar:
 

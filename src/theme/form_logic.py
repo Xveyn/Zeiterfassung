@@ -1,9 +1,9 @@
 # src/theme/form_logic.py
 """Tk-freie Entscheidungen der Formular-Bausteine (`theme/form.py`, #132).
 
-Was hier liegt, braucht kein Fenster und ist deshalb getestet
-(`tests/test_form_logic.py`): welche abhängigen Optionen aktiv sind, wohin ein
-Mausrad-Schritt geht und wie hoch ein scrollbarer Tab-Körper werden darf.
+Was hier liegt, braucht kein Fenster und ist deshalb testbar: welche
+abhängigen Optionen aktiv sind, wohin ein Mausrad-Schritt geht und wie hoch
+ein scrollbarer Tab-Körper werden darf.
 `form.py` ruft nur noch hierher und setzt das Ergebnis in Tk um.
 
 Unterste Schicht neben `palette`: reine stdlib, hängt an nichts.
@@ -12,18 +12,15 @@ Unterste Schicht neben `palette`: reine stdlib, hängt an nichts.
 from collections.abc import Mapping, Sequence
 from typing import Literal
 
-# Höhe eines scrollbaren Formular-Körpers bei 100 % Skalierung. 600 px
-# entsprachen unter Windows etwa dem Tab-Körper des alten App-Tabs; unter
-# Linux ist der Dialog damit etwas höher als vor #132 (Spec, PR 3,
-# Abweichung 6).
+# Höhe eines scrollbaren Formular-Körpers bei 100 % Skalierung (unter Windows
+# etwa der Tab-Körper des alten App-Tabs).
 BODY_MAX_HEIGHT = 600
 # Abstand, den der Körper zum Bildschirmrand lassen muss, in zwei Teilen:
 # `SCREEN_MARGIN` für Titelleiste und Taskleiste — die wachsen NICHT mit der
 # App-Skalierung —, `DIALOG_CHROME` (mitskaliert) für Reiterleiste und
-# Knopfreihe des Dialogs. Vorher ein einziger skalierter Wert (160): bei 100 %
-# ragte der Dialog auf einem 768p-Schirm unter die Taskleiste, bei 200 % war
-# die Reserve doppelt so groß wie nötig. Die Messwerte hält
-# `test_dialog_fits_on_screen_with_taskbar` fest.
+# Knopfreihe des Dialogs. Ein einziger skalierter Wert wäre bei 100 % auf einem
+# 768p-Schirm zu knapp (der Dialog ragte unter die Taskleiste) und bei 200 %
+# doppelt so groß wie nötig.
 SCREEN_MARGIN = 100
 DIALOG_CHROME = 110
 # Untergrenze auf winzigen Bildschirmen — darunter wäre der Körper nicht
