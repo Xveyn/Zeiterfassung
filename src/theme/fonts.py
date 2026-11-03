@@ -118,8 +118,8 @@ def init_fonts(root, scale):
     """Legt die App-named-fonts an (Basisgröße × scale) und skaliert die
     Standard-Tk-Fonts mit. MUSS nach der Root-Erzeugung und VOR dem Aufbau der
     App-Widgets laufen, damit measure_max_width die skalierten Fonts misst und die
-    Fenstergeometrie korrekt pinnt. Ersetzt das frühere `tk scaling`, das auf
-    macOS/Aqua wirkungslos war (skaliert dort die Punkt-Fonts nicht).
+    Fenstergeometrie korrekt pinnt. Skaliert über Punktgrößen statt über
+    `tk scaling`, das auf macOS/Aqua die Punkt-Fonts nicht skaliert.
 
     Merkt den Faktor zusätzlich für `px()` — Schrift und Layout-Pixel hängen am
     selben Hebel, sonst wächst nur die eine Hälfte."""

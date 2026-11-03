@@ -82,15 +82,14 @@ def apply_dark_titlebar(window):
     **Nur noch für das Hauptfenster** (`ui.py`). Dialoge gehen seit Xveyn#34
     über `reveal_dialog`, das `_apply_dark_titlebar_now` synchron ruft.
 
-    Der `after(100, …)`-Aufschub hier ist ein Rateversuch, und man sollte
-    wissen worauf: Tk **erzeugt das Win32-Fenster während des Aufbaus neu**
-    (messbar am wechselnden HWND — zuletzt bei `transient()`). Ein vorher
-    gesetztes DWM-Attribut hängt danach an einem toten Handle; das ist das
-    „Clobbern", von dem dieser Docstring früher sprach. Für ein Toplevel,
-    das man verborgen aufbauen kann, ist Raten unnötig — deshalb der eigene
-    Weg für Dialoge. Das Hauptfenster hat diese Klammer nicht: es ist von
-    Anfang an sichtbar, und es verborgen zu starten wäre eine andere
-    Baustelle (s. Xveyn#34, Tray-Restore).
+    Der `after(100, …)`-Aufschub hier ist ein Rateversuch auf den Zeitpunkt,
+    zu dem Tk mit dem Neuerzeugen des Win32-Fensters fertig ist (messbar am
+    wechselnden HWND, zuletzt bei `transient()`); ein vorher gesetztes
+    DWM-Attribut hängt sonst an einem toten Handle. Für ein Toplevel, das
+    man verborgen aufbauen kann, ist Raten unnötig — deshalb der eigene Weg
+    für Dialoge. Das Hauptfenster hat diese Klammer nicht: es ist von Anfang
+    an sichtbar, und es verborgen zu starten wäre eine andere Baustelle
+    (Xveyn#34, Tray-Restore).
 
     SET allein triggert auf Win11 24H2 keinen Frame-Redraw, also explizit per
     `SetWindowPos(SWP_FRAMECHANGED)` nachschieben.
@@ -169,10 +168,7 @@ def disable_min_max(window):
 
     **Synchron, nicht deferred** (Xveyn#34): gerufen wird das aus
     `reveal_dialog`, wenn der Dialog noch verborgen ist und sein HWND
-    endgültig feststeht. Der frühere `after(100, …)`-Aufschub war ein
-    Rateversuch auf den Zeitpunkt, zu dem Tk mit dem Neuerzeugen des
-    Fensters fertig ist — und der Grund, warum der Dialog vorher sichtbar
-    wurde, als er noch hell war.
+    endgültig feststeht.
     """
     if platform.system() != "Windows":
         return
@@ -237,27 +233,20 @@ def _disable_min_max_now(window):
 def create_dialog(parent, title, *, resizable=False, modal=True,
                   escape_closes=True):
     """Erzeugt einen konventionskonformen Dialog-Toplevel — DER Einstieg
-    für neue Dialoge (ersetzt die frühere 8-Zeilen-Chrome-Boilerplate).
+    für neue Dialoge.
 
     Chrome in fester Reihenfolge: withdraw → title → resizable(False, False)
     → configure(bg=BG) → apply_app_icon → <Escape>-Bind auf destroy.
 
     **Der Dialog wird verborgen erzeugt** und erst von
-    `center_dialog_on_parent` sichtbar gemacht (Xveyn#34). Grund ist der
-    Handle-Wechsel: Tk erzeugt das Win32-Fenster während des Aufbaus neu —
-    zuletzt bei `transient()`, das `center_dialog_on_parent` setzt. Ein
-    DWM-Farbattribut, das vorher gesetzt wurde, hängt danach an einem toten
-    HWND. Früher hat `apply_dark_titlebar` deshalb per `after(100, …)` eine
-    Zeit *geraten*, zu der Tk fertig sein dürfte — und in genau diesem
-    Ratefenster stand der Dialog schon sichtbar mit heller Titelleiste da.
-    Verborgen aufgebaut gibt es nichts mehr zu raten: beim Sichtbarmachen
-    ist der Handle endgültig, das Attribut wird synchron gesetzt.
+    `center_dialog_on_parent` sichtbar gemacht (Xveyn#34): Tk erzeugt das
+    Win32-Fenster während des Aufbaus neu (zuletzt bei `transient()`), ein
+    vorher gesetztes DWM-Farbattribut hängt danach an einem toten HWND.
+    Verborgen aufgebaut ist beim Sichtbarmachen der Handle endgültig, das
+    Attribut wird synchron gesetzt (CLAUDE.md, „Dialog-Styling").
 
     Daraus folgt die **Paarungs-Regel**: wer `create_dialog` ruft, MUSS
     `center_dialog_on_parent` rufen — sonst bleibt der Dialog unsichtbar.
-    Alle Aufrufer tun das ohnehin (es war schon vorher Konvention);
-    `tests/test_dialog_reveal.py` nagelt es fest.
-
     `grab_set`/`focus_set` wandern mit ins Sichtbarmachen: ein verborgenes
     Fenster kann keinen Grab nehmen (`TclError: grab failed: window not
     viewable`).
@@ -284,11 +273,8 @@ def create_dialog(parent, title, *, resizable=False, modal=True,
     apply_app_icon(dialog)
     if escape_closes:
         dialog.bind("<Escape>", lambda _e: dialog.destroy())
-    # Fremdattribut auf einer stdlib-Klasse: pyright kennt es nicht (`dialog`
-    # ist hier als `tk.Toplevel` typisiert), `setattr` verbietet ruff als B010.
-    # Also Punkt-Zuweisung plus gezieltes ignore — dasselbe Mittel wie bei den
-    # plattform-optionalen Lazy-Imports. Auf der Leseseite (`geometry.py`)
-    # fällt nichts an: der Parameter ist dort unannotiert (Tk-Schicht).
+    # Fremdattribut auf einer stdlib-Klasse: pyright kennt es nicht, `setattr`
+    # verbietet ruff als B010 — also Punkt-Zuweisung plus gezieltes ignore.
     dialog._zeit_reveal = (  # pyright: ignore[reportAttributeAccessIssue]
         lambda: reveal_dialog(dialog, modal=modal))
     return dialog

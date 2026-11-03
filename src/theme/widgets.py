@@ -42,8 +42,7 @@ def apply_widget_defaults(root):
     `highlightbackground` der helle Tk-Standard ist. Unter X11 (Linux) zeichnet
     Tk ihn sichtbar als weißen Rand um Kästchen samt Text; unter Windows fiel
     er nie auf. Über die Option-Datenbank gilt die Vorgabe für jedes später
-    erzeugte Widget, auch in Dialogen — statt an jedem Aufruf einzeln
-    (`period_picker` setzte `highlightthickness=0` bisher von Hand)."""
+    erzeugte Widget, auch in Dialogen — statt an jedem Aufruf einzeln."""
     for cls in ("Checkbutton", "Radiobutton"):
         root.option_add(f"*{cls}.highlightThickness", 0)
 
@@ -289,9 +288,8 @@ def set_button_text(btn, text):
 def set_secondary_button_enabled(btn, enabled):
     """Pendant zu set_primary_button_enabled für `secondary_button`:
     deaktiviert = gedämpfte Schrift (TEXT_MUTED) + Pfeil-Cursor, kein
-    Hover-Wechsel. Mutiert `_colors` (Enter/Leave lesen frisch daraus).
-    Wichtig: nur die OPTIK — die `command`/on_click-Bindung bleibt aktiv,
-    daher muss der Callback selbst bei disabled ein No-op machen."""
+    Hover-Wechsel. Nur die Optik: der Callback muss bei disabled selbst ein
+    No-op machen (s. set_primary_button_enabled)."""
     cursor = "hand2" if enabled else "arrow"
     c = (
         {"bg": CELL_BG, "fg": TEXT,
@@ -403,9 +401,8 @@ def set_icon_button_enabled(btn, enabled, *, fg=ACCENT):
     Hover-Wechsel; aktiviert zurück auf `fg` (Default ACCENT wie icon_button).
 
     Ein `icon_button` ist ein `_LabelButton` (Frame) und kennt KEIN `-state` —
-    `btn.config(state=...)` wirft `TclError`. Darum diese Optik-only-Variante.
-    Wie bei set_primary_button_enabled bleibt die `command`/on_click-Bindung
-    aktiv, der Callback muss bei disabled also selbst ein No-op machen."""
+    `btn.config(state=...)` wirft `TclError`. Darum diese Optik-only-Variante;
+    der Callback muss bei disabled selbst ein No-op machen."""
     cursor = "hand2" if enabled else "arrow"
     c = (
         {"bg": CELL_BG, "fg": fg,

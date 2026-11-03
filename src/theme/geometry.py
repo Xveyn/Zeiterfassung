@@ -5,9 +5,7 @@
 Arbeitsflächen-Ermittlung darunter (auch vom Einstellungen-Dialog genutzt);
 `_stray_click_suppressed` (Streuklick-Guard), `_should_show_delete_button`
 (macOS-✕-Regel) und `scaled_window_fits` (passt die gewählte UI-Skalierung
-noch auf den Bildschirm?) sind Tk-freie Policy-Funktionen und werden direkt
-getestet (`tests/test_click_guard.py`, `tests/test_delete_button.py`,
-`tests/test_scaling_fit.py`).
+noch auf den Bildschirm?) sind Tk-freie Policy-Funktionen.
 """
 
 import platform
@@ -52,7 +50,7 @@ def workarea_for(parent):
             # argtypes/restype explizit setzen — ohne das ist restype c_int
             # (32 Bit), und ein HMONITOR auf 64-Bit-Windows kann darüber
             # liegen → truncated → GetMonitorInfo bekommt einen ungültigen
-            # Handle → Fallback auf Primärmonitor (genau der bisherige Bug).
+            # Handle → Fallback auf Primärmonitor.
             user32.MonitorFromPoint.argtypes = [wintypes.POINT, wintypes.DWORD]
             user32.MonitorFromPoint.restype = wintypes.HANDLE
             user32.GetMonitorInfoW.argtypes = [
@@ -95,9 +93,7 @@ def _stray_click_suppressed(closed_at, now, window=STRAY_CLICK_GUARD_S):
     eine Kalenderzelle durch (#44).
 
     `closed_at` ist ein `time.monotonic()`-Wert oder 0/None (nie ein Dialog
-    geschlossen). Grenze offen: genau bei `window` wird nicht mehr unterdrückt.
-    now < closed_at (Uhr-Anomalie, mit monotonic praktisch unmöglich) → nicht
-    unterdrücken.
+    geschlossen); die Grenze ist offen.
     """
     if not closed_at:
         return False
@@ -108,11 +104,7 @@ def _should_show_delete_button(is_macos, has_entry, has_reservation,
                                has_vacation=False):
     """macOS-only Lösch-Button (✕) in der Tageszelle: nur auf macOS und nur,
     wenn der Tag löschbare Einheiten hat — Ist-Zeit, aktive Reservierung ODER
-    Urlaub. Reine Logik, damit aus den Tests ohne Tk/UI-Deps prüfbar (vgl.
-    _stray_click_suppressed).
-
-    has_vacation hat einen Default, damit bestehende Aufrufer unverändert
-    bleiben."""
+    Urlaub."""
     return is_macos and (has_entry or has_reservation or has_vacation)
 
 
@@ -130,23 +122,20 @@ def scaled_window_fits(current_height, current_scale, new_scale,
     passt. Returns `(geschätzte Höhe, passt)`.
 
     Das Hauptfenster ist `resizable(False, False)` und wird von
-    `grid_renderer.repin_geometry` auf seine angeforderte Größe gepinnt, ohne
-    die Bildschirmgröße je zu prüfen. Bei einer zu großen Skalierung ist die
-    Fußzeile damit abgeschnitten. Der Aufrufer (Einstellungen-Dialog) warnt
-    daraufhin — verhindert wird nichts: die Entscheidung gehört dem Nutzer,
-    und sie ist umkehrbar, weil das Zahnrad im Header sitzt.
+    `grid_renderer.repin_geometry` ohne Blick auf die Bildschirmgröße
+    gepinnt; bei zu großer Skalierung ist die Fußzeile abgeschnitten. Der
+    Aufrufer (Einstellungen-Dialog) warnt daraufhin — verhindert wird nichts,
+    die Entscheidung gehört dem Nutzer und ist umkehrbar (das Zahnrad sitzt im
+    Header).
 
-    Geschätzt wird **proportional**, und das ist seit `fonts.px()` strukturell
-    richtig: Schrift und Layout-Pixel hängen am selben Faktor, das Fenster
-    wächst also in beiden Achsen mit. Exakt wäre nur ein zweiter Aufbau der
-    gesamten UI mit den neuen Fonts — den Preis ist eine Warnung nicht wert.
+    Geschätzt wird **proportional**: seit `fonts.px()` hängen Schrift und
+    Layout-Pixel am selben Faktor. Exakt wäre nur ein zweiter Aufbau der
+    gesamten UI — den Preis ist eine Warnung nicht wert.
 
-    Ohne belastbare Eingaben (Fenster noch nicht gemappt, kaputter `ui_scale`
-    aus einer verfälschten settings.json, Arbeitsfläche nicht ermittelbar)
-    gibt es `(0, True)` zurück: keine Aussage, also keine Warnung. Eine
-    Warnung ins Blaue wäre schlimmer als gar keine — sie erschiene bei jedem
-    Speichern und wäre nach dem dritten Mal weggeklickt, bevor sie gelesen
-    wird."""
+    Ohne belastbare Eingaben (Fenster noch nicht gemappt, kaputter `ui_scale`,
+    Arbeitsfläche nicht ermittelbar) gibt es `(0, True)` zurück: keine Aussage,
+    also keine Warnung. Eine Warnung ins Blaue erschiene bei jedem Speichern
+    und wäre nach dem dritten Mal weggeklickt."""
     if current_height <= 0 or current_scale <= 0 or workarea_height <= 0:
         return 0, True
     estimated = round(current_height * new_scale / current_scale)
@@ -157,17 +146,11 @@ def center_dialog_on_parent(dialog, parent):
     """Position a Toplevel dialog over its parent's screen rect.
 
     Tk-Default platziert Toplevels auf dem Primärmonitor — bei Multi-Monitor-
-    Setups öffnet sich der Dialog daher nicht beim Parent. transient() bindet
-    den Dialog zusätzlich an den Parent (Icon, Z-Order, gemeinsam minimieren).
-
-    Wenn der Dialog größer als der Parent ist (z.B. Settings-Modal über
-    kleinem App-Fenster), wird statt zentriert auf Parent-Top-Left
-    ausgerichtet — sonst rutscht die Titlebar oberhalb des Monitorrands.
-
-    Danach wird die Position an die Arbeitsfläche **des Parent-Monitors**
-    geklammert, damit ein Parent am unteren/oberen Rand den Dialog nicht aus
-    dem sichtbaren Bereich schiebt und gleichzeitig auf demselben Bildschirm
-    bleibt wie der Parent (siehe `workarea_for`).
+    Setups öffnet sich der Dialog daher nicht beim Parent. Ist der Dialog
+    größer als der Parent (z.B. Settings-Modal über kleinem App-Fenster), wird
+    statt zentriert auf Parent-Top-Left ausgerichtet, sonst rutscht die
+    Titlebar oberhalb des Monitorrands. Danach wird die Position an die
+    Arbeitsfläche **des Parent-Monitors** geklammert (siehe `workarea_for`).
 
     `parent` darf ein beliebiges Widget sein (etwa ein Reiter-Frame); gebunden
     und zentriert wird am zugehörigen Toplevel — `transient` und `wm_maxsize`
