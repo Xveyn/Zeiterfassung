@@ -293,8 +293,9 @@ Code geprüft). Zu beachten ist grundsätzlich:
 3. Schließt iOS-Safari die WebSocket beim Hintergrund-Wechsel sauber? Annahme: ja, Wiederverbinden beim Öffnen
    mit `have`. Auf dem iPhone prüfen.
 4. Soll der Desktop den Push-Zeitplan künftig selbst beim Relay ablegen? Eigene Entscheidung, nicht Teil von PR 1–4.
-5. WebSocket-Client für den Desktop (`websockets` vs. `websocket-client`): Auswahl und Bündelung mit PyInstaller
-   auf allen drei Plattformen im Plan zu PR 3b.
+5. ~~WebSocket-Client für den Desktop~~ — **entschieden: `websockets==17.4`** (`websockets.sync.client`, `legacy=True`), nach Spike
+   (kein `Origin`-Header, Subprotocol, TLS-Prüfung, Proxy, Windows-PyInstaller ohne Hidden Imports; Plan `2026-11-03-relay-verbindung.md`).
+   Offen bleibt die Bündelung auf macOS/Linux (Workflow **Build**, Pre-Release) und der Test mit einem echten Gerät.
 
 ## PR-Schnitt (`Refs #358`, der letzte `Closes #358`)
 
@@ -305,7 +306,7 @@ Code geprüft). Zu beachten ist grundsätzlich:
 3. Desktop, in drei Schritten:
    - **3a Desktop-Kern** — **umgesetzt in diesem Branch**: `src/pwa_constants.py`, `src/mobile_box_store.py`,
      `src/box_relay.py`, `src/relay_adapter.py`. Noch von keinem Aufrufer verwendet (kein Netz, kein Thread).
-   - **3b Verbindung:** WebSocket-Bibliothek samt Auswahl und kurzem Spike (kein `Origin`-Header, Subprotocol
+   - **3b Verbindung** — **umgesetzt in diesem Branch** (Pre-Release-Gates offen, s. u.): WebSocket-Bibliothek samt Auswahl und kurzem Spike (kein `Origin`-Header, Subprotocol
      `zeit.v1, <Geheimnis>`, Ping/Close, TLS-Prüfung an, Proxy-Verhalten, PyInstaller-Bündelung auf allen drei
      Plattformen); Thread `relay_link.py` (Leser-Thread plus **ein** Arbeits-Thread, „neuester gewinnt“ in einem
      Slot); Dienst und Verdrahtung in `App`/`main` an den drei Stellen `_quit_with_sync_push`,
