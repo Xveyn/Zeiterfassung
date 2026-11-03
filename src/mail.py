@@ -127,10 +127,8 @@ def fetch_user_email(token_path="token.json", sync_enabled=False, gcal_enabled=F
     """Liest die E-Mail-Adresse des authentifizierten Users.
 
     Nutzt den `tokeninfo`-Endpoint, der die E-Mail aus dem Access-Token meldet,
-    sofern der `userinfo.email`-Scope autorisiert ist. (Ein früher zuerst
-    versuchter Gmail-`users().getProfile()`-Call ist mit dem `gmail.send`-Scope
-    nicht erlaubt und warf jedes Mal nur ein 403 insufficientPermissions in den
-    Log — die E-Mail kommt ohnehin aus tokeninfo, siehe #136.)
+    sofern der `userinfo.email`-Scope autorisiert ist. Gmails `getProfile()`
+    taugt dafür nicht: mit dem `gmail.send`-Scope ist es nicht erlaubt (#136).
 
     Liefert die E-Mail oder leeren String bei fehlendem/ungültigem Token
     oder Fehler. Diese Funktion soll im Hintergrundthread laufen, weil sie

@@ -119,15 +119,12 @@ def _call_guarded_inner(work: Callable[[], Any]) -> tuple[bool, Any]:
         try:
             box["value"] = work()
         except BaseException as exc:  # bewusst alles — wird unten weitergereicht
-            # Asymmetrisch zu den drei öffentlichen Funktionen (die fangen nur
-            # `Exception`): das ist Absicht, nicht ein übersehener Fall. Hier
-            # muss JEDE Exception aus dem Sekundär-Thread eingefangen werden,
-            # sonst entkäme sie unbehandelt aus einem Thread ohne eigenen
-            # Excepthook. Der Aufrufer (set_secret/get_secret/delete_secret)
-            # fängt dagegen bewusst nur `Exception` und lässt
-            # KeyboardInterrupt/SystemExit durch — die sollen nicht als "kein
-            # Schlüsselbund verfügbar" verschluckt werden, sondern die App wie
-            # gewohnt beenden.
+            # Asymmetrisch zu den öffentlichen Funktionen (die fangen nur
+            # `Exception`) mit Absicht: JEDE Exception aus dem Sekundär-Thread
+            # muss eingefangen werden, sonst entkäme sie einem Thread ohne
+            # eigenen Excepthook. Der Aufrufer lässt KeyboardInterrupt/
+            # SystemExit dagegen durch — sie sollen nicht als „kein
+            # Schlüsselbund verfügbar" verschluckt werden.
             box["error"] = exc
 
     thread = threading.Thread(target=runner, daemon=True,
@@ -179,14 +176,11 @@ def get_secret(record: dict[str, Any]) -> str | None:
     Für den Schlüsselbund-Fall liefert die Funktion **`None`**, wenn sich
     NICHT ermitteln ließ, ob ein Passwort existiert (Timeout oder eine
     Exception aus `work`) UND `record` keine lokale Fallback-Kopie trägt.
-    Das ist bewusst von einem tatsächlich leeren Passwort unterschieden
-    (`""`, wenn der Schlüsselbund erfolgreich geantwortet und „nichts
-    gespeichert" gesagt hat): ein Aufrufer, der `None` mit `""` verwechselt,
-    meldet sich sonst mit einem leeren Passwort beim Server an — der Server
-    antwortet 535, und der Nutzer sucht beim Passwort, obwohl der
-    Schlüsselbund das Problem war (genau der Fehler, der `WATCHDOG_TIMEOUT`
-    beim Hochsetzen abgefangen werden sollte, aber allein nicht abfängt).
-    Jeder Aufrufer MUSS `None` prüfen und darf sich damit nicht anmelden.
+    Das ist von einem tatsächlich leeren Passwort zu unterscheiden (`""`: der
+    Schlüsselbund hat geantwortet, es ist nichts gespeichert): wer beides
+    verwechselt, meldet sich mit leerem Passwort an, der Server antwortet 535,
+    und der Nutzer sucht beim Passwort statt beim Schlüsselbund. Jeder
+    Aufrufer MUSS `None` prüfen und darf sich damit nicht anmelden.
     """
     if record.get("password_location") == "file":
         return record.get("password") or ""

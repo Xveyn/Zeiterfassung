@@ -1,20 +1,15 @@
 # src/secure_file.py
 """Zugriffsschutz für lokal abgelegte Secrets (Audit M8).
 
-Die App schreibt sensible Dateien neben die Nutzerdaten: `token.json`
-(OAuth-Refresh-Token, `oauth_utils.write_token`), `instance-secret`
-(Shared Secret des Single-Instance-Handshakes, `single_instance`),
-`webhooks.json` (Webhook-Konfiguration inkl. Auth-Token/HMAC-Secrets,
-`webhook_store`), `smtp.json` (SMTP-Kontokonfiguration inkl. Passwort im
-Datei-Fallback ohne Schlüsselbund, `smtp_store`) und `api-token` (Bearer-Token
-der lokalen HTTP-API, `api_auth`) und `mobile_keys.json` (Geräteschlüssel,
-`mobile_keys`). Alle werden über **`write_secret_bytes`** geschrieben (s. dort): atomar
-über Temp-Datei + `os.replace`, mit `chmod 0600` — unter Windows ist das chmod
-allerdings ein No-op.
+Die App schreibt sensible Dateien neben die Nutzerdaten (`token.json`,
+`instance-secret`, `webhooks.json`, `smtp.json`, `api-token`,
+`mobile_keys.json` u. a.; die Liste steht in `src/CLAUDE.md`). Alle werden über
+**`write_secret_bytes`** geschrieben (s. dort): atomar über Temp-Datei +
+`os.replace`, mit `chmod 0600` — unter Windows ist das chmod allerdings ein
+No-op.
 
 Dieses Modul liefert das Windows-Gegenstück. Es ist bewusst ein eigenes,
-stdlib-only Modul und hängt an keinem der Aufrufer: `oauth_utils`,
-`single_instance`, `webhook_store` und `smtp_store` sollen nichts
+stdlib-only Modul und hängt an keinem der Aufrufer: sie sollen nichts
 voneinander importieren müssen, und private Namen modulübergreifend zu
 nutzen ist im Projekt ausdrücklich unerwünscht (Audit N17).
 """
@@ -106,7 +101,7 @@ def write_secret_bytes(path: str, data: bytes, *, prefix: str) -> None:
 
     `prefix` ist der Temp-Name (`.token-` …); `removal._credential_paths` kennt ihn für
     liegengebliebene Dateien. Wer ein neues Secret ablegt, nimmt diese Funktion und baut
-    keinen eigenen Ablauf — `tests/test_secret_writers.py` hält die Reihenfolge fest."""
+    keinen eigenen Ablauf."""
     directory = os.path.dirname(os.path.abspath(path))
     fd, tmp_path = tempfile.mkstemp(dir=directory, prefix=prefix, suffix=".tmp")
     try:

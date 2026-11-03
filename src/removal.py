@@ -3,8 +3,7 @@
 
 Tk-frei. Der Windows-Uninstaller (`installer.iss`) ist die Vorlage:
 Zugangsdaten gehen immer, Nutzerdaten nur auf ausdrückliche Nachfrage. Die
-Dateilisten hier spiegeln seine — `tests/test_removal.py` hält beide
-zusammen.
+Dateilisten hier spiegeln seine.
 
 **Reihenfolge ist der Punkt:** der Schlüsselbund zuerst, denn die Schlüssel
 stehen in `token.json`/`webhooks.json`/`smtp.json` (`secret_migration.
