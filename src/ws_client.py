@@ -1,21 +1,11 @@
-"""WebSocket-Adapter zum Relay (#358), Tk-frei, ohne Logik des Abgleichs.
+"""WebSocket-Adapter zum Relay (#358), Tk-frei, die einzige Stelle der Bibliothek `websockets`.
 
-`relay_link` programmiert nur gegen `Socket` und `Connect`, nie gegen die Bibliothek
-(`websockets`, sync-Client). Das Box-Geheimnis steht nie in einem Log, einer Ausnahme-Meldung
-oder einer URL im Log: Bibliotheksausnahmen koennen URL und Header tragen, deshalb wird jede in
-`SocketClosed`/`OSError` mit festem Text uebersetzt (`from None`, die Kette bleibt leer).
-Blockiert (Netz): nur im Worker aufrufen.
-
-Die Bibliothek loggt im DEBUG-Modus jede Kopfzeile des Handshakes, darunter
-`Sec-WebSocket-Protocol: zeit.v1, <Geheimnis>`. Sie bekommt deshalb einen eigenen Logger
-(`src.ws_client.lib`), fest auf WARNING: was die Bibliothek darüber noch meldet (Fehler mit
-Traceback ihrer Sicherheitsnetze), trägt keine Kopfzeilen. `ZEITERFASSUNG_LOG_LEVEL=DEBUG` ändert
-daran nichts, weil das Level des Loggers selbst gesetzt ist.
-
-Ein hängendes `send` (voller Sendepuffer bei totem Netz) hält die Sperre der Bibliothek. Zwei
-Wächter brechen die Verbindung dann hart ab (`_abort`, ein hängendes `send`/`recv` wacht mit
-`SocketClosed` auf): der des `send` selbst nach `SEND_TIMEOUT_S`, der von `close()` nach
-`ABORT_AFTER_S` (der Close-Handshake wartet höchstens `CLOSE_TIMEOUT_S`).
+Bibliotheksausnahmen können URL und Header, also das Box-Geheimnis, tragen: jede wird mit festem
+Text übersetzt (`from None`). Aus demselben Grund loggt die Bibliothek über einen eigenen Logger,
+fest auf WARNING — im DEBUG schriebe sie die Kopfzeilen des Handshakes, auch bei
+`ZEITERFASSUNG_LOG_LEVEL=DEBUG`. Ein hängendes `send` hält die Sperre der Bibliothek; Wächter
+brechen die Verbindung dann hart ab (`SEND_TIMEOUT_S`, beim `close()` `ABORT_AFTER_S`). Blockiert
+(Netz): nur im Worker. Vertrag: `src/CLAUDE.md`, Eintrag `ws_client.py`.
 """
 from __future__ import annotations
 
@@ -174,8 +164,8 @@ class _LibSocket:
 
 def connect(secret: str, have: int, *, base_url: str = RELAY_URL,
             open_timeout: float = 10.0) -> Socket:
-    """Oeffnet die Verbindung zur Box. Wirft `SocketClosed` (Handshake abgelehnt) oder `OSError`
-    (Netz, TLS, Zeit), beide ohne das Geheimnis im Text."""
+    """Oeffnet die Verbindung zur Box. Wirft `SocketClosed` (Handshake abgelehnt), `ConnectFailed`
+    (Netz, TLS, Zeit) oder `OSError` (ungültiges Geheimnis), alle ohne das Geheimnis im Text."""
     from websockets.exceptions import ConnectionClosed, WebSocketException
     from websockets.sync.client import connect as lib_connect
     if not isinstance(secret, str) or BOX_SECRET_RE.fullmatch(secret) is None:

@@ -1,53 +1,11 @@
-"""Dienst über der Relay-Verbindung der Handy-Erfassung (#358, PR 3b), Tk-frei.
+"""Dienst über der Relay-Verbindung der Handy-Erfassung (#358), Tk-frei.
 
-`RelayLink` hält die Sockets; dieser Dienst hält die **Regeln**: welche Boxen verbunden sind, wann
-das offene Geheimnis (`MobileBoxStore.pending`) gebunden, verbunden oder abgeräumt wird, und der
-Lebenszyklus wie bei `MobileService` (`apply`/`shutdown`/`reopen`).
-
-Welche Boxen verbunden sind (`_wanted`)
----------------------------------------
-Bei `mobile_enabled` aus, beim Beenden (`context.closing()`) oder nach `shutdown`: keine. Sonst die
-gebundenen Geheimnisse, das offene nur bei aktiver Kopplungssitzung (`PairingSession.is_active`), und
-die **ungebundenen Reste** (s. u.), weil das Handy sie schon benutzt.
-
-Das offene Geheimnis (Regeln aus `mobile_box_store`)
----------------------------------------------------
-- Nach einem Neustart ist ein `pending` verwaist (der Code lebte nur im Speicher): der erste
-  `apply` mit eingeschalteter Handy-Erfassung räumt es ab (`clear_pending` und `delete_box`).
-- `close_pairing` (Dialog zu) und `_on_idle` (alle `idle_tick_s` im Arbeits-Thread, fängt den
-  stillen Ablauf des Codes) räumen ein `pending` ohne aktive Sitzung ebenso ab.
-- Eine Koppel-Anfrage bindet im Arbeits-Thread: `RelayAdapter.process` → `bind(id, expected=<Box der
-  Anfrage>)`. Ein zwischendurch neu geöffnetes Pairing bleibt so unangetastet.
-- Koppelt ein Gerät erneut, gibt `bind` seine alte Box zurück: sie wird nach dem Lock am Relay
-  gelöscht und ihr Cursor verworfen (sonst läge sie 90 Tage verwaist dort).
-- **Gescheitertes `bind`** (`OSError`, `MobileBoxReadOnly`): das Gerät ist gekoppelt, die Box noch
-  `pending`. `(id, Geheimnis)` landet als ungebundener Rest im Speicher, bleibt verbunden, wird von
-  keinem Aufräumen gelöscht und in jedem `_on_idle` (und vor jedem `open_pairing`) erneut gebunden.
-  Solange ein Rest besteht, lehnt `open_pairing` ab: ein neues `open_pending` verdrängte ihn sonst
-  aus dem Store, und er ließe sich nie mehr binden.
-
-Thread-Regeln
--------------
-- `apply` im UI-Thread, die Arbeit im Worker (`run`); `open_pairing`, `close_pairing` und
-  `forget_devices` im Worker. `_handle` und `_on_idle` ruft der Link aus seinem **einen**
-  Arbeits-Thread; nur dort läuft `RelayAdapter.process` (ein Adapter je Dienst-Instanz).
-- `_pair_lock` serialisiert „Koppel-Anfrage verarbeiten und binden“ gegen jedes Öffnen, Schließen
-  und Abräumen des offenen Geheimnisses: der Code kann ablaufen und der Dialog schließen, während
-  eine Koppel-Anfrage läuft — geräumt wird erst nach dem Binden, das Geheimnis geht nicht verloren
-  (Review Focus 7). Unter ihm laufen Store-Aufrufe (Datei), nie ein Netzaufruf (`delete_box`,
-  `put`); unter einem Lock des Stores läuft nichts von hier.
-- **Schnappschuss und `set_boxes` sind eine Einheit unter `_pair_lock`** (`_sync_boxes_locked`): sonst
-  läse ein Thread `pending == P`, ein Binden machte P zur gebundenen Box, und das veraltete
-  `set_boxes` (P weder offen-aktiv noch gebunden gesehen) trennte P — die Antwort der Kopplung ginge
-  verloren. `RelayLink.set_boxes` blockiert nie (nur seine kurze Sperre `_cond`).
-- **Sperrreihenfolge:** `_pair_lock` → (`devices_lock` → `sync_guard` → `data_lock` in
-  `RelayAdapter.process`) bzw. Store-Lock bzw. `PairingSession`-Lock bzw. `RelayLink._cond`. Keiner
-  dieser Locks wird gehalten, während etwas von hier gerufen wird: der Link ruft Handler und
-  `on_idle` ohne `_cond`, `MobileService` ruft `forget_devices` erst nach der Gerätesperre,
-  `shutdown` nimmt `_pair_lock` nicht.
-- `shutdown` blockiert höchstens die Frist des Links (`LinkTiming.join_s`).
-
-Das Box-Geheimnis steht nie in einem Log oder Statusfeld; Logs nennen `relay_link.short_mark`.
+`RelayLink` hält die Sockets, dieser Dienst die **Regeln**: welche Boxen verbunden sind, wann das
+offene Geheimnis (`MobileBoxStore.pending`) gebunden, verbunden oder abgeräumt wird, und der
+Lebenszyklus wie bei `MobileService` (`apply`/`shutdown`/`reopen`). `_pair_lock` serialisiert
+Kopplung und Binden gegen Öffnen, Schließen und Abräumen, nie über einem Netzaufruf. Regeln,
+Threads und Sperrreihenfolge: `src/CLAUDE.md`, „Threading-Modell“, „Regeln der Relay-Verbindung“.
+Das Geheimnis steht nie in Log oder Statusfeld (`relay_link.short_mark`).
 """
 from __future__ import annotations
 
@@ -260,7 +218,7 @@ class RelayService:
                 self._drop_unbound_locked(device_id)          # anderswo schon gebunden
             elif self._boxes.pending() == secret:
                 replaced += self._bind_locked(device_id, secret)
-            # sonst: verdrängt (seit der Ablehnung in `open_pairing` nur noch theoretisch),
+            # sonst: verdrängt (nur theoretisch, `open_pairing` lehnt bei einem Rest ab),
             # bleibt für diese Sitzung verbunden
         return replaced
 

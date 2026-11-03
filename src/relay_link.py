@@ -1,62 +1,11 @@
-"""Verbindungsschicht zum Relay-Abgleich (#358, PR 3b), Tk-frei.
+"""Verbindungsschicht zum Relay-Abgleich (#358), Tk-frei.
 
-Hält je Box (= je Box-Geheimnis) eine WebSocket zum Relay, liest deren Slot und reicht jede
-Anfrage des Handys an **einen** Handler weiter; die Antwort legt der Handler über `put` ab.
-Programmiert nur gegen `ws_client.Socket`/`Connect`, nie gegen die Bibliothek; kennt weder App
-noch Tk noch Settings.
-
-Thread-Regeln (wer ruft was aus welchem Thread)
------------------------------------------------
-- **Leser-Thread je Box** (`relay-box-<marke>`, Daemon): verbindet (`connect(secret, have)`, `have`
-  aus dem Cursor), liest mit `recv(timeout=heartbeat_s)`, sendet bei Stille den Text `ping` und
-  wartet dann höchstens `pong_wait_s` auf irgendeine Nachricht (sonst: Verbindung tot, neu
-  verbinden). Ein `slot` landet im Slot seiner Box (je Box höchstens ein wartendes `(ver, payload)`,
-  „neuester gewinnt“: ein noch nicht begonnenes älteres fällt weg). `ok` und Text werden ignoriert.
-  Der Leser ruft **nie** den Handler, `on_idle` oder den Cursor zum Vorrücken — ein Abgleich kann
-  Sekunden dauern, der Heartbeat darf nicht warten.
-- **Ein Arbeits-Thread** (`relay-worker`, Daemon, gestartet im Konstruktor) für alle Boxen: holt
-  die wartenden Slots reihum ab, rückt **vorher** den Cursor vor (`cursor.advance`, unter der Sperre
-  zusammen mit dem Abholen, damit ein gleichzeitiges `wiped` nie von einem alten `ver`
-  überschrieben wird) und ruft dann `handler(secret, payload)` — immer nacheinander, nie
-  gleichzeitig. Alle `idle_tick_s` ruft er außerdem `on_idle`. Ein werfender Handler oder
-  `on_idle` beendet ihn nicht (nur der Ausnahme-Typ geht ins Log).
-- **`put`** darf aus jedem Thread kommen (gedacht: der Handler im Arbeits-Thread). Gesendet wird
-  unter dem **Sendesperr-Lock der Box**, den auch der Heartbeat des Lesers nimmt — ein Socket hat so
-  nie zwei gleichzeitige Schreiber. `put` wirft nie; hängt das Senden an einem toten Netz, bricht
-  der Sende-Wächter des Sockets (`ws_client.SEND_TIMEOUT_S`) die Verbindung ab, `put` liefert
-  `False`, und der Leser verbindet über den Backoff neu.
-- **`set_boxes`, `states`, `shutdown`** dürfen aus jedem Thread kommen (gedacht: der Dienst im
-  Worker bzw. beim Beenden). `set_boxes` blockiert nicht: es startet fehlende Leser und schließt die
-  Sockets entfernter Boxen auf kurzlebigen Daemon-Threads (`relay-close`), ohne auf sie oder die
-  Leser zu warten. Wird ein Geheimnis entfernt und wieder genannt, solange alte Leser noch laufen
-  (z. B. in einem hängenden `connect`), wartet der neue, bis **alle** beim Anlegen laufenden Leser
-  dieses Geheimnisses beendet sind (`_live`, ein Leser verlässt die Menge erst an seinem Ende); die
-  spät geöffnete Verbindung eines alten wird verworfen. So gibt es je Geheimnis nie zwei
-  gleichzeitige `connect`, sonst verdrängte die alte die neue Verbindung (`replaced`).
-- **`shutdown`** schließt alle Sockets auf `relay-close`-Threads (weckt ein wartendes `recv` und ein
-  hängendes `send`; der Aufrufer wartet nie auf einen langsamen Close-Handshake), setzt die
-  Stopp-Ereignisse (weckt jede Wartezeit des Backoffs) und den Arbeits-Thread, und wartet insgesamt
-  höchstens `join_s` auf alle Threads samt Schließern. Ein hängendes `connect`, `close` oder ein
-  langsamer Handler halten es also nicht auf; `on_idle` läuft danach nicht mehr. Die Threads sind
-  Daemons und enden von selbst (ein spät geöffneter Socket wird sofort geschlossen). Aus dem Handler
-  gerufen wartet es nicht auf den eigenen Thread.
-- Die Threads liegen **außerhalb** von `BackgroundTaskRunner`; `wait_idle` wartet nicht auf sie.
-- Gewartet wird nur über `threading.Event.wait` bzw. `Condition.wait` (mit Frist oder geweckt durch
-  `notify_all` bei jedem Stopp und jedem Leser-Ende), nie über `sleep`.
-- Eine Sperre (`_cond`) schützt Boxen, Zustände und Slots; sie wird nie über `connect`, `recv`,
-  `send`, den Handler oder `on_idle` gehalten. Reihenfolge: `_cond` vor der Sperre des Cursors.
-
-Schließcodes der Box: `1000` mit Grund `replaced` ⇒ kein automatisches Neuverbinden (Zustand
-`replaced`; erst `set_boxes` ohne und danach wieder mit dem Geheimnis startet die Box neu), `1000`
-mit `wiped` ⇒ Cursor auf 0 (`cursor.reset`) und neu verbinden, `1008` ⇒ mindestens
-`throttled_wait_s` warten, alles andere ⇒ Backoff (`backoff`, nach einer gelungenen Verbindung
-wieder ab der ersten Stufe).
-
-Das Box-Geheimnis steht nie in einer Logzeile, einem Thread-Namen oder einem Statusfeld nach außen
-(`states` ist nur intern, der Dienst übersetzt). Logs nennen die Kurzmarke `short_mark` (erste
-sechs Zeichen von sha256(Geheimnis)) und von Ausnahmen nur den Typ, nie den Text. Offline loggt
-eine Box höchstens eine Warnung je Zustandswechsel (verbunden → gestört), jeder weitere
-Fehlversuch nur auf DEBUG.
+Hält je Box (= je Box-Geheimnis) eine WebSocket zum Relay und reicht jede Anfrage des Handys an
+**einen** Handler im einen Arbeits-Thread weiter; die Antwort legt er über `put` ab. Der Leser je
+Box ruft nie Handler, `on_idle` oder Cursor: ein Abgleich dauert Sekunden, der Heartbeat darf nicht
+warten. Programmiert nur gegen `ws_client.Socket`/`Connect`. Das Geheimnis steht nie in Log,
+Thread-Name oder Status (`short_mark`). Thread-Regeln, Sperren, Schließcodes: `src/CLAUDE.md`,
+„Threading-Modell“, „Regeln der Relay-Verbindung“.
 """
 from __future__ import annotations
 

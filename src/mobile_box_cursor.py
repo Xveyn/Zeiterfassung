@@ -1,14 +1,10 @@
 """Cursor der Boxen am Relay (`have`, dauerhaft), #358.
 
-Je Box merkt sich der Desktop, bis zu welcher Version (`ver`) er den Slot der Gegenseite schon
-verarbeitet hat; beim nächsten Verbinden meldet er das als `have`. Datei `mobile_box_cursor.json`:
-`{"schema_version": 1, "have": {sha256(secret) hex: ver}}`.
-
-Die Datei trägt **kein Geheimnis** (nur den Digest des Box-Geheimnisses, daraus lässt es sich nicht
-herleiten) und wird bei jedem Abgleich geschrieben; deshalb `json_store.atomic_write_json` ohne
-ACL-Härtung, wie `mobile_store`. Eigener Lock. Eine kaputte Datei wird quarantäniert. Ein Schreibfehler
-wirft nie: der Wert bleibt im Speicher, schlimmstenfalls kommt eine Antwort nach einem Neustart noch
-einmal an (der Adapter ist dagegen über `last_seq` gesichert). Nichts hier loggt ein Geheimnis.
+Je Box die Version (`ver`) des zuletzt verarbeiteten Slots; beim Verbinden als `have` gemeldet. Die
+Datei trägt nur sha256 der Geheimnisse und wird bei jedem Abgleich geschrieben, deshalb ohne
+ACL-Härtung (wie `mobile_store`). Ein Schreibfehler wirft nie: schlimmstenfalls kommt eine Antwort
+nach einem Neustart noch einmal (der Adapter ist über `last_seq` gesichert). Format und Vertrag:
+`src/CLAUDE.md`, Eintrag `mobile_box_cursor.py`.
 """
 from __future__ import annotations
 
