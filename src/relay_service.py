@@ -18,11 +18,13 @@ Das offene Geheimnis (Regeln aus `mobile_box_store`)
   stillen Ablauf des Codes) räumen ein `pending` ohne aktive Sitzung ebenso ab.
 - Eine Koppel-Anfrage bindet im Arbeits-Thread: `RelayAdapter.process` → `bind(id, expected=<Box der
   Anfrage>)`. Ein zwischendurch neu geöffnetes Pairing bleibt so unangetastet.
+- Koppelt ein Gerät erneut, gibt `bind` seine alte Box zurück: sie wird nach dem Lock am Relay
+  gelöscht und ihr Cursor verworfen (sonst läge sie 90 Tage verwaist dort).
 - **Gescheitertes `bind`** (`OSError`, `MobileBoxReadOnly`): das Gerät ist gekoppelt, die Box noch
   `pending`. `(id, Geheimnis)` landet als ungebundener Rest im Speicher, bleibt verbunden, wird von
   keinem Aufräumen gelöscht und in jedem `_on_idle` (und vor jedem `open_pairing`) erneut gebunden.
-  Ein Rest, den ein neues `open_pairing` aus dem Store verdrängt hat, bleibt für diese Sitzung
-  verbunden, lässt sich aber nicht mehr binden (nach einem Neustart: neu koppeln).
+  Solange ein Rest besteht, lehnt `open_pairing` ab: ein neues `open_pending` verdrängte ihn sonst
+  aus dem Store, und er ließe sich nie mehr binden.
 
 Thread-Regeln
 -------------
@@ -34,6 +36,15 @@ Thread-Regeln
   eine Koppel-Anfrage läuft — geräumt wird erst nach dem Binden, das Geheimnis geht nicht verloren
   (Review Focus 7). Unter ihm laufen Store-Aufrufe (Datei), nie ein Netzaufruf (`delete_box`,
   `put`); unter einem Lock des Stores läuft nichts von hier.
+- **Schnappschuss und `set_boxes` sind eine Einheit unter `_pair_lock`** (`_sync_boxes_locked`): sonst
+  läse ein Thread `pending == P`, ein Binden machte P zur gebundenen Box, und das veraltete
+  `set_boxes` (P weder offen-aktiv noch gebunden gesehen) trennte P — die Antwort der Kopplung ginge
+  verloren. `RelayLink.set_boxes` blockiert nie (nur seine kurze Sperre `_cond`).
+- **Sperrreihenfolge:** `_pair_lock` → (`devices_lock` → `sync_guard` → `data_lock` in
+  `RelayAdapter.process`) bzw. Store-Lock bzw. `PairingSession`-Lock bzw. `RelayLink._cond`. Keiner
+  dieser Locks wird gehalten, während etwas von hier gerufen wird: der Link ruft Handler und
+  `on_idle` ohne `_cond`, `MobileService` ruft `forget_devices` erst nach der Gerätesperre,
+  `shutdown` nimmt `_pair_lock` nicht.
 - `shutdown` blockiert höchstens die Frist des Links (`LinkTiming.join_s`).
 
 Das Box-Geheimnis steht nie in einem Log oder Statusfeld; Logs nennen `relay_link.short_mark`.
@@ -137,29 +148,36 @@ class RelayService:
 
     def open_pairing(self) -> str | None:
         """Öffnet eine Kopplungssitzung samt neuem offenen Geheimnis und liefert den Koppel-Link
-        `<PWA>#relay=<Geheimnis>:<Code>`; `None`, wenn der Store nicht schreibbar ist."""
-        if self._closed:
+        `<PWA>#relay=<Geheimnis>:<Code>`. `None` (ohne Sitzung): Dienst geschlossen, Handy-Erfassung
+        aus, Store nicht schreibbar oder ein ungebundener Rest wartet noch aufs Binden."""
+        if not self._active():
             return None
+        secret: str | None = None
+        code: str | None = None
         previous: str | None = None
         with self._pair_lock:
-            self._retry_unbound_locked()
-            code = self._context.pairing.open()
-            try:
-                secret, previous = self._boxes.open_pending(self._now())
-            except _STORE_ERRORS as exc:
+            replaced = self._retry_unbound_locked()
+            if self._unbound:
                 self._context.pairing.close()
-                log.warning("Relay-Kopplung: offenes Geheimnis nicht angelegt (%s)",
-                            type(exc).__name__)
-                return None
-            if previous is not None and previous in self._unbound.values():
-                # Ein gekoppeltes Handy benutzt diese Box schon (Binden scheiterte): nie löschen.
-                log.warning("Relay-Box %s: ungebundener Rest bleibt für diese Sitzung verbunden",
-                            short_mark(previous))
-                previous = None
-        if previous is not None:
-            self._delete_box(previous)
-        self._sync_boxes()
+                log.warning("Relay-Kopplung abgelehnt: eine gekoppelte Box ist noch nicht gebunden")
+            else:
+                secret, code, previous = self._open_pending_locked()
+            self._sync_boxes_locked()
+        self._drop_remote(replaced + ([previous] if previous is not None else []))
+        if secret is None or code is None:
+            return None
         return relay_link(secret, code)
+
+    def _open_pending_locked(self) -> tuple[str | None, str | None, str | None]:
+        """Öffnet Sitzung und offenes Geheimnis; `(Geheimnis, Code, altes_zum_Löschen)`."""
+        code = self._context.pairing.open()
+        try:
+            secret, previous = self._boxes.open_pending(self._now())
+        except _STORE_ERRORS as exc:
+            self._context.pairing.close()
+            log.warning("Relay-Kopplung: offenes Geheimnis nicht angelegt (%s)", type(exc).__name__)
+            return None, None, None
+        return secret, code, previous
 
     def close_pairing(self) -> None:
         """Schließt die Kopplungssitzung und räumt das offene Geheimnis ab (Dialog zu)."""
@@ -186,31 +204,36 @@ class RelayService:
 
     def _handle(self, secret: str, payload: bytes) -> None:
         """Beantwortet eine Anfrage (Arbeits-Thread des Links): Verarbeiten → Binden → Antworten."""
+        replaced: list[str] = []
         if _is_pair_request(payload):
             with self._pair_lock:
                 result = self._adapter.process(payload)
                 if result.paired_device_id is not None:
-                    self._bind_locked(result.paired_device_id, secret)
+                    replaced = self._bind_locked(result.paired_device_id, secret)
+                    self._sync_boxes_locked()
         else:
             result = self._adapter.process(payload)
         if result.frame is not None:
             self._link.put(secret, result.frame)
+        self._drop_remote(replaced)
 
-    def _bind_locked(self, device_id: str, secret: str) -> bool:
-        """Bindet das offene Geheimnis `secret` an das Gerät. `True`, wenn erledigt (gebunden oder
-        nicht mehr bindbar); bei einem Schreibfehler wird es ein ungebundener Rest."""
+    def _bind_locked(self, device_id: str, secret: str) -> list[str]:
+        """Bindet das offene Geheimnis `secret` an das Gerät; bei einem Schreibfehler wird es ein
+        ungebundener Rest. Liefert die dabei ersetzte alte Box des Geräts (nach dem Lock am Relay
+        löschen), sonst eine leere Liste."""
+        replaced: str | None = None
         try:
-            self._boxes.bind(device_id, expected=secret)
+            _bound, replaced = self._boxes.bind(device_id, expected=secret)
         except _STORE_ERRORS as exc:
             if self._unbound.get(device_id) != secret:
                 log.warning("Relay-Box %s: Binden nach der Kopplung gescheitert (%s), "
                             "neuer Versuch folgt", short_mark(secret), type(exc).__name__)
             self._unbound = {**self._unbound, device_id: secret}
-            return False
+            return []
         except ValueError:
             log.warning("Relay-Box %s: Geräte-ID nicht bindbar", short_mark(secret))
         self._drop_unbound_locked(device_id)
-        return True
+        return [replaced] if replaced is not None and replaced != secret else []
 
     def _drop_unbound_locked(self, device_id: str) -> str | None:
         secret = self._unbound.get(device_id)
@@ -218,28 +241,45 @@ class RelayService:
             self._unbound = {k: v for k, v in self._unbound.items() if k != device_id}
         return secret
 
-    def _retry_unbound_locked(self) -> None:
+    def _retry_unbound_locked(self) -> list[str]:
+        """Bindet die ungebundenen Reste erneut; liefert die dabei ersetzten alten Boxen."""
+        replaced: list[str] = []
         for device_id, secret in list(self._unbound.items()):
             if self._boxes.get(device_id) == secret:
                 self._drop_unbound_locked(device_id)          # anderswo schon gebunden
             elif self._boxes.pending() == secret:
-                self._bind_locked(device_id, secret)
-            # sonst: verdrängt, bleibt für diese Sitzung verbunden
+                replaced += self._bind_locked(device_id, secret)
+            # sonst: verdrängt (seit der Ablehnung in `open_pairing` nur noch theoretisch),
+            # bleibt für diese Sitzung verbunden
+        return replaced
+
+    def _drop_remote(self, secrets: list[str]) -> None:
+        """Nach dem Lock: Cursor nicht mehr bekannter Boxen verwerfen, die Boxen am Relay löschen."""
+        if not secrets:
+            return
+        self._cursor.retain(self._boxes.all_secrets() + list(self._unbound.values()))
+        for secret in secrets:
+            self._delete_box(secret)
 
     def _on_idle(self) -> None:
         """Alle `idle_tick_s` im Arbeits-Thread: Reste binden, abgelaufenes Pairing abräumen."""
         if self._closed:
             return
         with self._pair_lock:
-            self._retry_unbound_locked()
+            replaced = self._retry_unbound_locked()
+        self._drop_remote(replaced)
         self._clean_pending()
         self._sync_boxes()
 
     # --- Widerruf (Worker) --------------------------------------------------------------------
 
     def forget_devices(self, ids: Iterable[str] | None) -> None:
-        """Räumt die Boxen widerrufener Geräte ab (`None` = alle widerrufenen bzw. unbekannten).
-        Ein Gerät, das inzwischen (wieder) gekoppelt und nicht widerrufen ist, bleibt."""
+        """Räumt die Boxen widerrufener Geräte ab (Hook von `MobileService.revoke`/`revoke_all`).
+        Ein Gerät, das inzwischen (wieder) gekoppelt und nicht widerrufen ist, bleibt.
+
+        **`None` heißt „alle widerrufenen oder unbekannten“, nicht „alle“.** Ein bedingungsloses
+        Abräumen („Zeiterfassung entfernen“, `--forget-secrets`) nutzt `MobileBoxStore` und
+        `box_relay.delete_box` direkt."""
         dropped: list[str] = []
         with self._pair_lock:
             known = set(self._boxes.known_ids()) | set(self._unbound)
@@ -273,6 +313,7 @@ class RelayService:
     # --- Zustand ------------------------------------------------------------------------------
 
     def _wanted(self) -> list[str]:
+        """Nur unter `_pair_lock` (reines Speicherlesen)."""
         if not self._active():
             return []
         pending = self._boxes.pending()
@@ -284,6 +325,11 @@ class RelayService:
         return wanted
 
     def _sync_boxes(self) -> None:
+        with self._pair_lock:
+            self._sync_boxes_locked()
+
+    def _sync_boxes_locked(self) -> None:
+        """Schnappschuss und `set_boxes` in einem Zug unter `_pair_lock` (blockiert nie)."""
         if self._closed:
             return
         self._link.set_boxes(self._wanted())

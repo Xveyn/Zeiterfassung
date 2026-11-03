@@ -235,9 +235,64 @@ def test_open_pairing_deletes_previous_pending_but_not_unbound_leftover(env, mon
     env.link.handler(second, payload)
     assert env.boxes.pending() == second
 
-    _l, third, _c = env.open()
-    assert second not in env.deleted
-    assert {second, third} <= env.link.boxes
+    # Ein neues Koppeln würde den Rest aus dem Store verdrängen: abgelehnt, ohne Sitzung.
+    assert env.relay.open_pairing() is None
+    assert not env.ctx.pairing.is_active()
+    assert second not in env.deleted and env.boxes.pending() == second
+    assert second in env.link.boxes
+
+
+def test_open_pairing_is_refused_while_mobile_is_off(env):
+    env.settings.set_many({"mobile_enabled": False})
+    assert env.relay.open_pairing() is None
+    assert not env.ctx.pairing.is_active() and env.boxes.pending() is None
+
+
+def test_repairing_a_device_deletes_its_old_box_and_cursor(env):
+    phone = Phone()
+    _l, old, code = env.open()
+    _phone, payload = env.pair_payload(code, phone)
+    env.link.handler(old, payload)
+    assert env.boxes.get(phone.device_id) == old
+    env.cursor.advance(old, 7)
+
+    _l, new, code = env.open()                 # dasselbe Handy koppelt erneut
+    _phone, payload = env.pair_payload(code, phone)
+    env.link.handler(new, payload)
+
+    assert env.boxes.get(phone.device_id) == new
+    assert env.deleted == [old] and env.cursor.get(old) == 0
+    assert new in env.link.boxes and old not in env.link.boxes
+
+
+def test_a_concurrent_snapshot_never_drops_the_box_being_bound(env, monkeypatch):
+    """Fix-Runde 1: ein `set_boxes` aus einem anderen Thread (hier `apply` im Worker) darf zwischen
+    Verarbeiten und Binden der Kopplung keinen Schnappschuss nehmen, der P weder offen-aktiv noch
+    gebunden sieht — P fiele sonst aus den Boxen und die Antwort der Kopplung ginge verloren."""
+    _l, secret, code = env.open()
+    phone, payload = env.pair_payload(code)
+    original = env.relay._adapter.process
+    other: list[threading.Thread] = []
+    env.relay.apply()                          # Start-Aufräumen erledigt: nur noch Schnappschuss
+    seen_at = len(env.link.history)
+
+    def process_then_race(data):
+        result = original(data)                # Code verbraucht, P noch `pending`
+        thread = threading.Thread(target=env.relay._reconcile, daemon=True)
+        thread.start()
+        other.append(thread)
+        thread.join(0.2)                       # mit dem Fix wartet er auf das Binden
+        return result
+    monkeypatch.setattr(env.relay._adapter, "process", process_then_race)
+
+    env.link.handler(secret, payload)
+    other[0].join(5)
+    assert not other[0].is_alive()
+
+    assert env.boxes.get(phone.device_id) == secret
+    assert len(env.link.history) > seen_at
+    assert all(secret in boxes for boxes in env.link.history[seen_at:])
+    assert env.link.puts and env.link.puts[-1][0] == secret
 
 
 @pytest.mark.parametrize("error", [MobileBoxReadOnly("x"), OSError("x")])
