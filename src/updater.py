@@ -184,12 +184,10 @@ def pick_asset_url(assets: Any, system: str, latest_version: str,
 
     `machine` ist `platform.machine()`. Die Prüfung ist nicht kosmetisch: die
     Asset-Namen tragen die Architektur fest verdrahtet (`-arm64.dmg`,
-    `-x86_64.AppImage`), und weil das Release genau diese Dateien führt,
-    passten die Namen vorher IMMER — ein Intel-Mac bekam die arm64-DMG
-    angeboten, ein arm64-Linux die x86_64-AppImage. Beide laufen dort nicht.
-    Mit dem In-App-Update wäre daraus eine automatische Fehlinstallation
-    geworden, deshalb sagt die Funktion jetzt lieber None; der Aufrufer fällt
-    dann auf die Release-Seite zurück.
+    `-x86_64.AppImage`), ein Intel-Mac bekäme sonst die arm64-DMG angeboten,
+    ein arm64-Linux die x86_64-AppImage — beide laufen dort nicht, und mit dem
+    In-App-Update wäre es eine automatische Fehlinstallation. Lieber `None`;
+    der Aufrufer fällt auf die Release-Seite zurück.
 
     Windows ist ausgenommen: `Zeiterfassung_Setup.exe` trägt keine
     Architektur im Namen, und es gibt nur den x64-Build.

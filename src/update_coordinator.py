@@ -2,16 +2,13 @@
 
 Start-Check, Toast-vs.-Banner-Routing seines Ergebnisses, der manuelle Check
 aus dem Tray-Menü und das Anwenden eines still vorbereiteten Updates beim
-Beenden. Bis R11 lag das alles in `ui.App`; gebaut ist die Komponente wie
-`SyncOrchestrator`: Konstruktor-Injektion, `get_tray` lazy (die einzige Quelle
-bleibt `App._tray`), kein Import von `src.ui`.
-
-Einen Schritt weiter als `SyncOrchestrator`: Tk-frei. Den Banner baut `App`
-(er braucht `root`, den Renderer und `_open_settings`) und reicht ihn fertig
+Beenden. Gebaut wie `SyncOrchestrator` (Konstruktor-Injektion, `get_tray`
+lazy, kein Import von `src.ui`), aber Tk-frei: den Banner baut `App` (er
+braucht `root`, den Renderer und `_open_settings`) und reicht ihn fertig
 herein; die Tray-Callbacks marshallt `App` selbst per `root.after`.
 
-Die Auto-Update-Policy (R9) gehört dem `AutoUpdater`, den der Coordinator
-baut und als `auto_updater` für den Einstellungsdialog bereithält.
+Die Auto-Update-Policy gehört dem `AutoUpdater`, den der Coordinator baut und
+als `auto_updater` für den Einstellungsdialog bereithält.
 
 Der Gurt vor `root.destroy()` bleibt bewusst in `App._quit_with_sync_push`:
 die Zusage „nichts darf das Beenden aufhalten" gilt dem `destroy()`, und der
@@ -116,12 +113,10 @@ class UpdateCoordinator:
             self._settings.set("update_toast_shown_version", release.release_id)
         elif action == "banner":
             self._banner.show_if_newer(release)
-        # Derselbe Check, der den Nutzer über Toast/Banner informiert, löst
-        # bei aktivem Automatik-Schalter zusätzlich den stillen Hintergrund-
-        # Download aus — kein eigener Timer (Design-Regel 1: "vorhandener
-        # Update-Check"). Läuft unabhängig von der toast/banner-Routing-
-        # Entscheidung oben, deshalb hier und nicht in einem der beiden Zweige.
-        # Die Policy selbst liegt in `auto_update.AutoUpdater` (R9).
+        # Derselbe Check, der Toast/Banner auslöst, startet bei aktivem
+        # Automatik-Schalter den stillen Download — kein eigener Timer. Läuft
+        # unabhängig vom Routing oben, deshalb hier und nicht in einem der
+        # beiden Zweige. Die Policy liegt in `auto_update.AutoUpdater`.
         self.auto_updater.maybe_start(release)
 
     def tray_check(self) -> None:
@@ -193,11 +188,9 @@ class UpdateCoordinator:
         das Beenden NIE aufhalten (der Aufrufer sichert das zusätzlich ab).
 
         Gemeldet wird hier NICHTS: die App macht gerade zu, ein Dialog hätte
-        kein Gegenüber mehr. Jeder Fehlerpfad geht ins Log — und räumt
-        seine Datei weg. Seit `download_dest` jedem Download-Lauf einen
-        eigenen Namen gibt, überschreibt sie kein späterer Lauf mehr; wer
-        sie hier liegen lässt, lässt dauerhaft ~65 MB liegen
-        (`sweep_appimage_backup` räumt nur `.old`).
+        kein Gegenüber mehr. Jeder Fehlerpfad geht ins Log und räumt seine
+        Datei weg (`self_update.discard_download`); kein späterer Lauf
+        überschriebe sie, `sweep_appimage_backup` räumt nur `.old`.
         """
         expected = self._settings.get("pending_update_sha256")
         self._settings.set_many({"pending_update_path": "",

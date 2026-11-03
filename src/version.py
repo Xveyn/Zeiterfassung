@@ -17,9 +17,9 @@ def parse_release_id(release_id: str | None) -> tuple[int, int, int, int] | None
     Ein echtes Release bekommt `pre_rank = 0`, `-pre.N` den Rang `N`. Damit
     gilt `1.19.0 < 1.19.0-pre.1 < 1.19.1` — die Umkehrung der Semver-Regel,
     aber die Praxis dieses Repos: ein Pre-Release wird IMMER nach dem
-    gleichnamigen echten Release aus neuerem Code gebaut (v1.18.2 am
-    2026-07-16, v1.18.2-pre.1 am 2026-07-20). Wer daran etwas ändert, muss
-    diese Ordnung mitändern — s. CLAUDE.md, Abschnitt Pre-Releases.
+    gleichnamigen echten Release aus neuerem Code gebaut. Wer daran etwas
+    ändert, muss diese Ordnung mitändern — s. CLAUDE.md, Abschnitt
+    Pre-Releases.
     """
     match = _RELEASE_ID.match(release_id or "")
     if match is None:

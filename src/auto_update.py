@@ -2,21 +2,17 @@
 
 Zwei Stellen lösen den stillen Hintergrund-Download aus: der Update-Check der
 App beim Start (`UpdateCoordinator.on_check_result`) und der Check des
-Updates-Tabs beim Öffnen oder bei „Jetzt prüfen". Bis R9 entschied jede
-Stelle selbst — mit eigenem Laufguard, der den anderen nicht kannte. Klickte
-der Nutzer während des Start-Downloads auf „Update installieren" im Banner,
-öffnete das den Tab, und dessen Check lud dieselben ~65 MB ein zweites Mal
-(`pending_update_path` war ja noch leer). Die Datei des Verlierers blieb in
-%TEMP% liegen; seit `self_update.download_dest` jedem Lauf einen eigenen
-Namen gibt, räumt sie auch kein späterer Lauf mehr weg.
+Updates-Tabs beim Öffnen oder bei „Jetzt prüfen". Entschiede jede selbst, mit
+eigenem Laufguard, lüde ein Klick auf „Update installieren" im Banner während
+des Start-Downloads dieselben ~65 MB ein zweites Mal.
 
 Deshalb hier: die Entscheidung (Häkchen, Plattform, vorbereitete Datei,
 Guard, `plan_update`), der Lauf und sein Abschluss (persistieren, Banner) —
 und **ein** Guard für **jeden** Update-Download, auch den manuellen
 Ein-Klick-Weg im Tab (`acquire_manual`/`release_manual`).
 
-Die Mechanik (Laden, Prüfen, Anwenden) liegt weiter in `self_update.py`.
-Tk-frei: der Runner (`App._bg`) und der Banner kommen als Callables herein.
+Die Mechanik (Laden, Prüfen, Anwenden) liegt in `self_update.py`. Tk-frei: der
+Runner (`App._bg`) und der Banner kommen als Callables herein.
 """
 
 import logging
@@ -113,12 +109,10 @@ class AutoUpdater:
             # Nur, wenn die vorgemerkte Datei zu DIESEM Release gehört
             # (Xveyn#176): sonst zeigte der Banner „1.24.0 bereit", während
             # beim Beenden die Datei von 1.23.5 installiert würde. Eine
-            # Datei ohne Kennung (vor dem Fix vorgemerkt) gilt als fremd.
-            # Bei Abweichung lädt der Lauf unten das aktuelle Release; die
-            # alte Datei bleibt bis dahin vorgemerkt und wird erst nach dem
-            # erfolgreichen Laden ersetzt (`done`) — scheitert der neue
-            # Download, bleibt es bei einem gültigen, ehrlich angezeigten
-            # Update statt bei keinem.
+            # Datei ohne Kennung gilt als fremd. Bei Abweichung lädt der Lauf
+            # unten das aktuelle Release; die alte Datei bleibt bis zum
+            # erfolgreichen Laden vorgemerkt (`done`), damit ein gescheiterter
+            # Download kein gültiges Update kostet.
             self._on_ready(release)
             return "pending"
         if self._busy:

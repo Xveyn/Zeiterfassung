@@ -114,9 +114,9 @@ _FULL_CHANGELOG_LINE = re.compile(r"^\*\*Full Changelog\*\*:.*$", re.MULTILINE)
 _WHATS_CHANGED_HEADING = re.compile(r"^##\s+What's Changed\s*$", re.MULTILINE)
 # "… by @user in <url>" am Zeilenende: Autorenangabe plus PR-Link.
 _AUTHOR_SUFFIX = re.compile(r"\s+by\s+@\S+\s+in\s+\S+\s*$", re.MULTILINE)
-# Blanke URLs. `_LINK` oben fasst nur [text](url) — GitHub schreibt aber blank,
-# und genau dadurch stand die Begründung von `_LINK` (nicht klickbar, bricht
-# im 58 Zeichen schmalen Feld nur um) für die generierten Notes auf dem Kopf.
+# Blanke URLs. `_LINK` oben fasst nur [text](url); GitHub schreibt die URLs in
+# den generierten Notes aber blank, mit derselben Begründung (nicht klickbar,
+# bricht im 58 Zeichen schmalen Feld nur um).
 _BARE_URL = re.compile(r"\s*https?://\S+")
 
 
@@ -174,14 +174,12 @@ def parse_changelog_markdown(text: str) -> list[dict[str, Any]]:
     deren umgebrochene Folgezeilen unter dem Text (nicht unter dem `•`)
     einrücken sollen.
     """
-    # HTML-Kommentare raus. GitHub stellt generierten Release-Notes seit dem
-    # Anlegen von `.github/release.yml` einen Hinweis voran:
-    #   <!-- Release notes generated using configuration in
-    #        .github/release.yml at v1.20.0-pre.2 -->
-    # Für Pre-Releases IST dieser Body die Changelog-Quelle
-    # (updater.resolve_check_result) — ungefiltert stünde der Kommentar roh im
-    # Updates-Tab. Das abschließende strip() nimmt die Leerzeile mit, die er
-    # hinterlässt; sonst begänne die Anzeige mit einem Absatzabstand.
+    # HTML-Kommentare raus: GitHub stellt generierten Release-Notes einen
+    # Hinweis voran (`<!-- Release notes generated using configuration in
+    # .github/release.yml at v1.20.0-pre.2 -->`), der ungefiltert roh im
+    # Updates-Tab stünde (Pre-Release-Notes sind dort die Changelog-Quelle,
+    # s. updater.resolve_check_result). Das abschließende strip() nimmt die
+    # Leerzeile mit, die er hinterlässt.
     text = _HTML_COMMENT.sub("", text).strip()
 
     raw_lines = text.splitlines()
@@ -194,19 +192,13 @@ def parse_changelog_markdown(text: str) -> list[dict[str, Any]]:
     blocks = []
     for raw in raw_lines:
         line = raw.strip()
-        # Blockquote-Marker abstreifen, BEVOR klassifiziert wird. Die
-        # Reihenfolge ist der ganze Punkt:
-        #   - vor dem Leerzeilen-Zweig, damit eine Zeile aus nur ">" (der
-        #     Absatztrenner innerhalb eines Zitats) zur Absatzlücke wird und
-        #     nicht als Textblock mit Inhalt ">" durchrutscht;
-        #   - vor den Überschrift-/Bullet-Zweigen, damit "> ### Titel" und
-        #     "> - Punkt" als solche erkannt werden.
-        # Ohne den Strip landete der Marker im Text — und weil hart
-        # umgebrochene Fortsetzungszeilen unten zu EINER logischen Zeile
-        # zusammengeführt werden, standen die ">" der Folgezeilen mitten im
-        # Satz. `while` statt `if` wegen verschachtelter Zitate (">>").
-        # Nur der Zeilenanfang zählt: ein ">" im Fliesstext (etwa in einem
-        # generierten PR-Titel) bleibt unberührt.
+        # Blockquote-Marker abstreifen, BEVOR klassifiziert wird: vor dem
+        # Leerzeilen-Zweig, damit eine Zeile aus nur ">" zur Absatzlücke wird,
+        # und vor den Überschrift-/Bullet-Zweigen, damit "> ### Titel" und
+        # "> - Punkt" erkannt werden. Ohne den Strip standen die ">" der
+        # Folgezeilen mitten im zusammengeführten Satz. `while` wegen
+        # verschachtelter Zitate (">>"); nur der Zeilenanfang zählt, ein ">"
+        # im Fliesstext (etwa in einem PR-Titel) bleibt unberührt.
         while line.startswith(">"):
             line = line[1:].lstrip()
         if not line:

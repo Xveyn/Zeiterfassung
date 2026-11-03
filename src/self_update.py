@@ -1,18 +1,15 @@
 """In-App-Update für Windows und Linux: reine Logik, Tk-frei, stdlib-only.
 
 Die App lädt das Plattform-Asset selbst, prüft es gegen den `SHA256SUMS` des
-Releases und installiert es. macOS ist bewusst NICHT dabei — das Bundle ist
-weder signiert noch notarisiert, und der Weg über DMG-Mount und
-`/Applications` ist auf der Windows-Entwicklungsmaschine nicht verifizierbar
+Releases und installiert es. macOS ist bewusst NICHT dabei: das Bundle ist
+weder signiert noch notarisiert, und der DMG-Weg ist nicht verifizierbar
 (s. `docs/known-limitations.md`).
 
 **Was die Hash-Prüfung leistet und was nicht.** `SHA256SUMS` schützt gegen
-abgebrochene und verfälschte Übertragung. Es schützt NICHT gegen ein
-kompromittiertes Release: die Datei ist selbst unsigniert und liegt neben den
-Assets, die sie beschreibt. Vertrauensanker bleibt TLS zu GitHub — derselbe
-wie beim manuellen Download im Browser. Das löst den Audit-Vermerk M9 ein
-(„ein In-App-Auto-Download OHNE Verifikation wäre eine echte Lücke"), ohne
-mehr zu behaupten, als es trägt.
+abgebrochene und verfälschte Übertragung, NICHT gegen ein kompromittiertes
+Release: die Datei ist unsigniert und liegt neben den Assets, die sie
+beschreibt. Vertrauensanker bleibt TLS zu GitHub, derselbe wie beim manuellen
+Download im Browser (CLAUDE.md, „Update-Weg").
 """
 from __future__ import annotations
 
@@ -102,10 +99,9 @@ class UpdateBlocked:
 class DownloadedUpdate:
     """Ergebnis eines erfolgreichen `download_and_verify_update`-Laufs.
 
-    `sha256` wird separat mitgegeben (statt den Aufrufer die Prüfsummen-Datei
-    ein zweites Mal laden zu lassen): der stille Automatik-Pfad
-    (`auto_update.py`)
-    braucht ihn, um ihn als `pending_update_sha256` zu persistieren."""
+    `sha256` kommt mit, damit der stille Automatik-Pfad (`auto_update.py`) ihn
+    als `pending_update_sha256` persistieren kann, ohne die Prüfsummen-Datei
+    erneut zu laden."""
 
     path: str
     sha256: str
@@ -114,27 +110,19 @@ class DownloadedUpdate:
 def download_and_verify_update(
         plan: UpdatePlan, dest: str,
         on_progress: Callable[[str], None] | None = None) -> DownloadedUpdate | str:
-    """Lädt und prüft ein Update — der gemeinsame Kern für BEIDE Aufrufer:
-    den Ein-Klick-Weg im Updates-Tab (mit Fortschrittsanzeige) und den
-    stillen Automatik-Pfad (`auto_update.py`, Fortschritt nur, wenn der
-    Updates-Tab zuschaut).
-
-    Absichtlich EINE Funktion statt zwei ähnlicher Implementierungen (Task 8
-    hat aus demselben Grund den Banner an den Updates-Tab delegieren lassen,
-    statt einen zweiten Update-Ablauf zu bauen): zwei Stellen, die dasselbe
-    tun, laufen früher oder später auseinander.
+    """Lädt und prüft ein Update — der gemeinsame Kern für BEIDE Aufrufer: den
+    Ein-Klick-Weg im Updates-Tab (mit Fortschrittsanzeige) und den stillen
+    Automatik-Pfad (`auto_update.py`). Eine Funktion statt zwei, damit sie
+    nicht auseinanderlaufen.
 
     Holt zuerst `SHA256SUMS`, lädt dann `plan.asset_url` nach `dest` und
     verifiziert das Ergebnis gegen den erwarteten Hash. `on_progress(text)`
-    bekommt fertig formatierte, deutschsprachige Fortschrittstexte ("Lade …
-    42 %", "Prüfe Prüfsumme …") — beide Aufrufer zeigen so denselben Text,
-    ohne die Formatierung zu duplizieren; der stille Pfad lässt den Parameter
-    einfach weg.
+    bekommt fertig formatierte Fortschrittstexte ("Lade … 42 %", "Prüfe
+    Prüfsumme …"); der stille Pfad lässt den Parameter weg.
 
     Liefert ein `DownloadedUpdate` bei Erfolg, sonst einen anzeigbaren
     Fehlertext. Bei jedem Fehlschlag bleibt keine (halbe oder falsch
-    geprüfte) Datei unter `dest` liegen: `download_to` räumt seinen eigenen
-    Fehlerfall selbst auf, ein Hash-Mismatch wird hier zusätzlich entfernt.
+    geprüfte) Datei unter `dest` liegen.
     """
     sums_text = fetch_text(plan.sums_url)
     if sums_text is None:
@@ -301,28 +289,20 @@ def download_dest(system: str, asset_name: str, target: str,
                   tempdir: str) -> str:
     """Zielpfad für EINEN Download-Lauf — pro Aufruf ein anderer.
 
-    **Die Eindeutigkeit ist der ganze Zweck dieser Funktion.** Es gibt zwei
-    Wege, die laden: den Ein-Klick-Weg im Updates-Tab und den stillen
-    Automatik-Pfad in `auto_update.py`. Bauten beide denselben Namen (fester
-    Asset-Name im %TEMP% bzw. derselbe PID-Name neben der AppImage), könnten
-    sie sich begegnen: zwei Threads schreiben truncierend in dieselbe Datei,
-    und der Sofort-Weg beendet den Prozess unmittelbar nach seiner
-    Hash-Prüfung — der andere Thread stirbt dabei mitten im Schreiben und
-    kann die eben geprüfte Datei noch anschneiden. Eine weitere Prüfung
-    könnte das nicht schließen (sie läge wieder VOR dem Zeitfenster); ein
-    eigener Name pro Lauf lässt die Rennklasse gar nicht erst entstehen.
+    **Die Eindeutigkeit ist der Zweck.** Zwei Wege laden (der Ein-Klick-Weg im
+    Updates-Tab und der stille Pfad in `auto_update.py`). Mit einem festen
+    Namen schrieben beide truncierend in dieselbe Datei, und der Sofort-Weg
+    beendet den Prozess gleich nach seiner Hash-Prüfung — der andere Thread
+    könnte die geprüfte Datei dabei noch anschneiden. Eine weitere Prüfung
+    schlösse das Fenster nicht (sie läge davor); ein eigener Name pro Lauf
+    lässt es nicht entstehen.
 
-    Der Preis sind mehr Leichen: jeder Fehlerpfad muss seine Datei selbst
-    wegräumen (`download_and_verify_update`, `UpdatesTab._apply`,
-    `UpdateCoordinator._apply_pending_update`) — es gibt keinen festen Namen mehr, den ein
-    späterer Lauf überschriebe.
+    Der Preis: jeder Fehlerpfad räumt seine Datei selbst weg
+    (`discard_download`), kein späterer Lauf überschriebe sie.
 
-    `target` ist `plan.target` (Linux: `$APPIMAGE`), `tempdir` der
-    Temp-Ordner des Systems (nur Windows relevant). Bewusst `posixpath` für
-    den Linux-Zweig: `$APPIMAGE` ist immer ein POSIX-Pfad, und die
-    Unit-Tests laufen auch auf der Windows-Entwicklungsmaschine — dort würde
-    `os.path.join` mit `\\` verketten und einen Pfad liefern, der mit keinem
-    realen Linux-Pfad mehr übereinstimmt.
+    `target` ist `plan.target` (Linux: `$APPIMAGE`), `tempdir` der Temp-Ordner
+    des Systems (nur Windows). Im Linux-Zweig `posixpath`, weil `$APPIMAGE`
+    immer ein POSIX-Pfad ist und die Tests auch unter Windows laufen.
     """
     token = f"{os.getpid()}-{uuid.uuid4().hex[:8]}"
     if system == "Linux":
@@ -339,14 +319,10 @@ def download_dest(system: str, asset_name: str, target: str,
 def discard_download(path: str) -> None:
     """Räumt eine nicht (mehr) verwendbare Update-Datei weg (best-effort).
 
-    **Die eine Stelle für die Zusage aus `download_dest`:** seit jeder
-    Download-Lauf einen eigenen Namen trägt, überschreibt kein späterer Lauf
-    mehr eine liegengebliebene Datei — aus jedem Fehlerpfad, der nicht
-    aufräumt, werden dauerhaft ~65 MB im %TEMP% bzw. neben der AppImage.
-    Aufrufer sind `UpdatesTab._apply`/`_start_self_update` und
-    `UpdateCoordinator._apply_pending_update`; dieselbe Aufräum-Regel wie in `download_to`.
-
-    Bestes Bemühen: ein Fehlschlag beim Aufräumen darf nie die eigentliche
+    **Die eine Stelle für die Zusage aus `download_dest`:** kein späterer Lauf
+    überschreibt eine liegengebliebene Datei, jeder Fehlerpfad räumt also
+    selbst auf — sonst bleiben dauerhaft ~65 MB im %TEMP% bzw. neben der
+    AppImage liegen. Ein Fehlschlag beim Aufräumen darf nie die eigentliche
     Fehlerbehandlung stören.
     """
     try:
@@ -425,22 +401,14 @@ def windows_helper_script(pid: int, setup_path: str, exe_path: str,
          `[Run]`-Eintrag in `installer.iss` trägt `skipifsilent` und feuert im
          stillen Lauf nicht, der Start hinge also allein an dieser Zeile.
 
-    **Die zwei Fälle von `restart`:**
-
-    - `True` — der **Sofort-Weg** (`UpdatesTab._apply`): der Nutzer hat eben
-      „Update installieren" geklickt und will danach weiterarbeiten. Ohne
-      Neustart verschwände die App unter seinen Händen.
-    - `False` — der **Beenden-Weg** (`UpdateCoordinator._apply_pending_update`, das
-      still vorbereitete Automatik-Update): wer die App beendet, will sie
-      beendet haben. Sie eine Minute später unaufgefordert wieder auf dem
-      Bildschirm zu haben, wäre das Gegenteil der Zusage „nie mitten in der
-      Arbeit". Linux verhält sich dort schon so — der Beenden-Pfad ersetzt
-      nur die AppImage und `exec`t sich NICHT neu.
+    **`restart`:** `True` im Sofort-Weg (der Nutzer hat „Update installieren"
+    geklickt und arbeitet weiter), `False` beim Anwenden beim Beenden — wer
+    beendet, will beendet haben; Linux verhält sich dort genauso (CLAUDE.md,
+    „Update-Weg").
 
     Der Exit-Code des Installers landet im Log neben der App: scheitert der
     Lauf, ist das die einzige Spur. Im Sofort-Weg wird die App danach in
-    JEDEM Fall gestartet — auch nach einem Fehlschlag ist eine laufende alte
-    Version besser als gar keine.
+    JEDEM Fall gestartet — eine laufende alte Version ist besser als gar keine.
 
     Alle Pfade sind gequotet: `D:\\Programme (x86)\\…` ist hier der Normalfall.
     """
