@@ -326,3 +326,50 @@ def test_no_secret_reaches_the_log(tmp_path, caplog, monkeypatch):
         if secret:
             assert secret not in text
     assert "1 unbrauchbare" in caplog.text
+
+
+def test_reads_never_wait_for_a_write_in_progress(tmp_path, monkeypatch):
+    """Der Mobil-Tab liest im UI-Poll (`RelayService.states_by_device`); ein Schreibvorgang unter
+    Windows läuft durch `icacls` und darf ihn nicht anhalten."""
+    import threading
+    s = store(tmp_path)
+    s.open_pending(NOW)
+    s.bind("phone-0001")
+    inside, release = threading.Event(), threading.Event()
+    real = secure_file.write_secret_json
+
+    def slow(*args, **kwargs):
+        inside.set()
+        release.wait(5)
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(mobile_box_store, "write_secret_json", slow)
+    writer = threading.Thread(target=lambda: s.open_pending(NOW), daemon=True)
+    writer.start()
+    assert inside.wait(5)
+    seen = {}
+    reader = threading.Thread(target=lambda: seen.update(
+        ids=s.known_ids(), secret=s.get("phone-0001"), pending=s.pending(),
+        every=s.all_secrets()), daemon=True)
+    reader.start()
+    reader.join(1)
+    release.set()
+    writer.join(5)
+    assert not reader.is_alive(), "ein Lesezugriff wartet auf den Schreibvorgang"
+    assert seen["ids"] == ["phone-0001"] and seen["pending"] is None   # Stand vor dem Schreiben
+
+
+def test_reads_follow_every_committed_change_and_not_a_failed_one(tmp_path, monkeypatch):
+    s = store(tmp_path)
+    secret, _ = s.open_pending(NOW)
+    assert s.pending() == secret
+    s.bind("phone-0001")
+    assert s.pending() is None and s.get("phone-0001") == secret
+    monkeypatch.setattr(mobile_box_store, "write_secret_json",
+                        lambda *a, **k: (_ for _ in ()).throw(OSError("voll")))
+    with pytest.raises(OSError):
+        s.remove("phone-0001")
+    assert s.known_ids() == ["phone-0001"]                  # gescheitert: Lesestand unverändert
+    monkeypatch.undo()
+    s.remove("phone-0001")
+    assert s.known_ids() == [] and s.get("phone-0001") is None

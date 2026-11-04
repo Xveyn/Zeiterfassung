@@ -76,6 +76,11 @@ class MobileBoxStore:
         self._devices: dict[str, str] = {}
         self._readonly = False
         self._load()
+        # Lesestand für Aufrufer ohne Sperre (UI-Poll): nach jedem gelungenen Schreiben als neues,
+        # danach nie mehr verändertes Tupel veröffentlicht. Der Schreibvorgang hält `_lock` über
+        # `write_secret_json` (unter Windows `icacls`), und das UI darf darauf nicht warten.
+        self._view: tuple[str | None, dict[str, str]] = (None, {})
+        self._publish()
 
     @property
     def read_only(self) -> bool:
@@ -141,6 +146,10 @@ class MobileBoxStore:
         }
         write_secret_json(self.filepath, document, prefix=".mobile_box-")
 
+    def _publish(self) -> None:
+        self._view = (self._pending["secret"] if self._pending is not None else None,
+                      dict(self._devices))
+
     def _commit_locked(self, snapshot: tuple[dict[str, str] | None, dict[str, str]]) -> None:
         """Schreibt den geänderten Stand; bei jedem Fehler zurückrollen (Muster `storage`) und
         weiterreichen, sonst läuft der Speicher dem Stand der Platte voraus."""
@@ -149,29 +158,29 @@ class MobileBoxStore:
         except BaseException:
             self._restore(snapshot)
             raise
+        self._publish()
+
+    # Die vier Leser nehmen keine Sperre: sie sehen den Stand des letzten gelungenen Schreibens.
 
     def pending(self) -> str | None:
-        with self._lock:
-            return self._pending["secret"] if self._pending is not None else None
+        return self._view[0]
 
     def get(self, device_id: str) -> str | None:
-        with self._lock:
-            return self._devices.get(device_id)
+        return self._view[1].get(device_id)
 
     def known_ids(self) -> list[str]:
-        with self._lock:
-            return sorted(self._devices)
+        return sorted(self._view[1])
 
     def all_secrets(self) -> list[str]:
         """Offenes und gebundene Geheimnisse ohne Duplikate (offenes zuerst, Geräte nach ID)."""
-        with self._lock:
-            result: list[str] = []
-            if self._pending is not None:
-                result.append(self._pending["secret"])
-            for device_id in sorted(self._devices):
-                if self._devices[device_id] not in result:
-                    result.append(self._devices[device_id])
-            return result
+        pending, devices = self._view
+        result: list[str] = []
+        if pending is not None:
+            result.append(pending)
+        for device_id in sorted(devices):
+            if devices[device_id] not in result:
+                result.append(devices[device_id])
+        return result
 
     def open_pending(self, now: str) -> tuple[str, str | None]:
         """Legt ein neues offenes Geheimnis an; liefert `(neues, altes_oder_None)` — das alte
