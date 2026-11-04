@@ -175,3 +175,12 @@ test('an LAN link keeps parsing as lan with the same host, port and code as befo
   assert.deepEqual(parsePairLink(link), { kind: 'lan', ...before });
   assert.equal(parsePairLink(`${RELAY_BASE}#pair=8.8.8.8:17654:${RELAY_CODE}`), null);
 });
+
+test('parsePairLink also takes a bare fragment, as location.hash gives it', () => {
+  assert.deepEqual(parsePairLink(`#relay=${RELAY_SECRET}:${RELAY_CODE}`),
+    { kind: 'relay', secret: RELAY_SECRET, code: RELAY_CODE });
+  assert.deepEqual(parsePairLink(`#pair=192.168.178.20:17654:${RELAY_CODE}`),
+    { kind: 'lan', host: '192.168.178.20', port: 17654, code: RELAY_CODE });
+  assert.equal(parsePairLink('#relay='), null);
+  assert.equal(parsePairLink('#'), null);
+});

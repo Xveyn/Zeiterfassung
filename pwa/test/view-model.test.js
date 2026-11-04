@@ -770,3 +770,22 @@ test('the error hint passes the browser and address on to the message (#275)', (
   assert.match(hint.text, /192\.168\.178\.20:17654\/v1\/ping/);
   assert.match(hintsModel(none).find((h) => h.id === 'error').text, /nicht erreichbar/);
 });
+
+// --- Relay: Koppel-Seite und Verbindungsanzeige (#358) -----------------------------------------------
+
+import { connectionLabel, pairFields } from '../view-model.js';
+
+test('the pair page of a relay link has neither an address nor a code field', () => {
+  assert.deepEqual(pairFields({ relay: true }), { address: false, code: false });
+  assert.deepEqual(pairFields({ relay: false }), { address: true, code: true });
+  assert.deepEqual(pairFields({}), { address: true, code: true });
+});
+
+test('connectionLabel names the way, never the secret', () => {
+  const secret = 'S'.repeat(43);
+  assert.equal(connectionLabel({ transport: 'relay', box_secret: secret, address: null }), 'Relay (über das Internet)');
+  assert.equal(connectionLabel({ transport: 'lan', address: { host: '192.168.1.2', port: 17654 } }), '192.168.1.2:17654');
+  assert.equal(connectionLabel({ address: { host: '192.168.1.2', port: 17654 } }), '192.168.1.2:17654');
+  assert.equal(connectionLabel({ transport: 'lan', address: null }), '');
+  assert.equal(connectionLabel({ transport: 'relay', box_secret: secret }).includes(secret), false);
+});

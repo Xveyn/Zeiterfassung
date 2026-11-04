@@ -10,7 +10,9 @@ import { render } from './qr-render.js';
 
 const fixture = JSON.parse(readFileSync(new URL('./fixtures/qr-matrices.json', import.meta.url)));
 const link = fixture.link.rows.map((row) => Array.from(row, (ch) => ch === '1'));
-const PAIR = { host: '192.168.178.20', port: 17654, code: 'K7M29QXAK7M29QXAK7M29QXAK7M2' };
+const PAIR = { kind: 'lan', host: '192.168.178.20', port: 17654, code: 'K7M29QXAK7M29QXAK7M29QXAK7M2' };
+const RELAY_SECRET = 'AbCdEfGhIjKlMnOpQrStUvWxYz0123456789_-AbCde';
+const RELAY_LINK = `https://xveyn.github.io/Zeiterfassung/#relay=${RELAY_SECRET}:K7M29QXAK7M29QXAK7M29QXAK7M2`;
 
 // --- Hilfsfunktionen ------------------------------------------------------------------------------
 
@@ -191,4 +193,34 @@ test('scanForPairLink skips frames while the video has no picture yet', async ()
   Object.defineProperty(video, 'videoWidth', { get() { calls += 1; return calls < 3 ? 0 : grey({ px: 5 }).width; } });
   assert.deepEqual(await scanForPairLink(video, signal, () => {}, env), PAIR);
   assert.ok(log.drawn >= 1);
+});
+
+/** Eine Kamera mit BarcodeDetector, der nacheinander `texts` liest; bricht von selbst ab (nie endlos). */
+function detectorCamera(texts) {
+  const controller = new AbortController();
+  let calls = 0;
+  let waits = 0;
+  class Detector {
+    static async getSupportedFormats() { return ['qr_code']; }
+    async detect() { calls += 1; return calls <= texts.length ? [{ rawValue: texts[calls - 1] }] : []; }
+  }
+  const camera = fakeCamera([grey({ px: 5 })], { env: {
+    BarcodeDetector: Detector,
+    wait: async () => { waits += 1; if (waits > texts.length + 2) controller.abort(); },
+  } });
+  return { ...camera, signal: controller.signal };
+}
+
+test('scanForPairLink recognises a relay link and hands over secret and code', async () => {
+  const { video, env, signal } = detectorCamera([RELAY_LINK]);
+  assert.deepEqual(await scanForPairLink(video, signal, () => {}, env),
+    { kind: 'relay', secret: RELAY_SECRET, code: 'K7M29QXAK7M29QXAK7M29QXAK7M2' });
+});
+
+test('scanForPairLink says foreign text and a broken relay link are no pairing code, and goes on', async () => {
+  const statuses = [];
+  const { video, env, signal } = detectorCamera(['https://example.org/', RELAY_LINK.replace(RELAY_SECRET, 'zu-kurz'), RELAY_LINK]);
+  const result = await scanForPairLink(video, signal, (text) => statuses.push(text), env);
+  assert.equal(result.kind, 'relay');
+  assert.equal(statuses.filter((text) => text === 'Das ist kein Koppel-Code dieser App.').length, 2);
 });

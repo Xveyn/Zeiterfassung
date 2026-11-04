@@ -312,6 +312,18 @@ export function desktopHint(meta) {
   return known ? '' : 'Die Desktop-App ist älter als diese Seite, einige Funktionen fehlen (z. B. die Vorbelegung der Zeiten). Bitte die Desktop-App aktualisieren.';
 }
 
+/** Welche Felder die Koppel-Seite zeigt: ein Relay-Link bringt Geheimnis und Code mit, beides bleibt
+ *  unsichtbar (das Geheimnis steht nie auf dem Bildschirm); bei LAN werden Adresse und Code getippt. */
+export function pairFields({ relay = false } = {}) {
+  return { address: !relay, code: !relay };
+}
+
+/** Der Weg zum Desktop als Anzeige: die LAN-Adresse (`host:port`) oder „Relay“, nie das Geheimnis. */
+export function connectionLabel(meta) {
+  if (meta?.transport === 'relay') return 'Relay (über das Internet)';
+  return meta?.address ? `${meta.address.host}:${meta.address.port}` : '';
+}
+
 // --- Lesefenster (#250) --------------------------------------------------------------------------
 
 /** Text und Aktion für den Rand des Fensters (`window-policy.olderState`); `null`, wenn nichts zu sagen ist. */
