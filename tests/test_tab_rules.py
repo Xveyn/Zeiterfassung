@@ -885,3 +885,39 @@ def test_the_relay_state_keys_match_the_link_and_service_constants():
 def test_the_first_enable_notice_names_the_relay_and_what_it_cannot_see():
     notice = tr.FIRST_ENABLE_NOTICE
     assert "Relay" in notice and "nie den Inhalt" in notice
+
+
+# --- Widerruf-Hinweis zur Box am Relay (#358) --------------------------------------------------------
+
+
+def test_revoke_prompt_without_a_box_is_the_old_text():
+    text = tr.revoke_prompt("Pixel", has_box=False)
+    assert "„Pixel“ wird ausgesperrt" in text
+    assert "Relay" not in text and "Box" not in text
+    assert text.endswith("Fortfahren?")
+
+
+def test_revoke_prompt_with_a_box_names_the_relay_the_deletion_and_the_phones_message():
+    text = tr.revoke_prompt("iPad", has_box=True)
+    assert "„iPad“ wird ausgesperrt" in text
+    for fragment in ("Relay", "gelöscht", "90 Tage", "Desktop antwortet nicht", "neu gekoppelt"):
+        assert fragment in text, fragment
+    assert text.endswith("Fortfahren?")
+
+
+def test_revoke_all_prompt_counts_the_boxes():
+    assert "Relay" not in tr.revoke_all_prompt(boxes=0)
+    assert tr.revoke_all_prompt(boxes=0).endswith("Fortfahren?")
+    one = tr.revoke_all_prompt(boxes=1)
+    assert "Relay" in one and "Desktop antwortet nicht" in one
+    three = tr.revoke_all_prompt(boxes=3)
+    assert "Relay" in three and "3" in three
+    assert three.endswith("Fortfahren?")
+
+
+def test_the_revoke_prompts_never_contain_a_secret_shaped_string():
+    import re
+    shaped = re.compile(r"[A-Za-z0-9_-]{43}")
+    for text in (tr.revoke_prompt("iPad", has_box=True), tr.revoke_prompt("x", has_box=False),
+                 tr.revoke_all_prompt(boxes=2), tr.revoke_all_prompt(boxes=0)):
+        assert shaped.search(text) is None

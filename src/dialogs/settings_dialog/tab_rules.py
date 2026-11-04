@@ -613,6 +613,28 @@ REVOKE_ERROR_TEXT = (
     "Das Gerät konnte nicht widerrufen werden (Zugriffsrechte des Datenordners?). Es "
     "bleibt weiterhin gekoppelt und kann sich abgleichen.")
 
+_BOX_NOTICE = (
+    "die Box am Relay gelöscht (ist der Relay nicht erreichbar, verfällt sie nach 90 Tagen von selbst). "
+    "Das Handy meldet danach „Desktop antwortet nicht“, bis es neu gekoppelt ist.")
+
+
+def revoke_prompt(name: str, *, has_box: bool) -> str:
+    """Rückfrage vor dem Widerruf eines Geräts. Mit Relay-Box (`has_box`) sagt sie, dass auch die Box am Relay
+    gelöscht wird und was das Handy danach zeigt: es bekommt keine Antwort mit `token_revoked` mehr."""
+    text = f"„{name}“ wird ausgesperrt und muss neu gekoppelt werden."
+    if has_box:
+        text += f"\n\nDabei wird auch {_BOX_NOTICE}"
+    return text + "\n\nFortfahren?"
+
+
+def revoke_all_prompt(*, boxes: int) -> str:
+    """Rückfrage vor „Alle widerrufen“; `boxes` ist die Zahl der Geräte mit Relay-Box."""
+    text = "Alle gekoppelten Handys werden ausgesperrt und müssen neu gekoppelt werden."
+    if boxes > 0:
+        label = "die Box" if boxes == 1 else f"die {boxes} Boxen"
+        text += f"\n\nDabei wird auch {_BOX_NOTICE.replace('die Box', label, 1)}"
+    return text + "\n\nFortfahren?"
+
 
 _TEST_PUSH_TEXTS = {
     "ok": "Testbenachrichtigung gesendet. Sie sollte in wenigen Sekunden erscheinen.",
