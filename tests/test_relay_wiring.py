@@ -103,3 +103,26 @@ def test_relay_none_without_stores():
     assert "self._relay = None" in source
     assert "self._mobile is not None and mobile_box_store is not None" in source
     assert "and mobile_box_cursor is not None):" in source
+
+
+def test_the_settings_dialog_gets_the_relay_service():
+    for node in ast.walk(TREE):
+        if (isinstance(node, ast.Call) and getattr(node.func, "id", None) == "open_settings_dialog"):
+            kwargs = {k.arg: ast.unparse(k.value) for k in node.keywords}
+            assert kwargs.get("relay_service") == "self._relay"
+            return
+    raise AssertionError("open_settings_dialog wird in src/ui.py nicht aufgerufen")
+
+
+def test_the_relay_pair_dialog_closes_through_the_worker():
+    """`close_pairing` blockiert (Datei, Netz): im Koppel-Dialog nur als Argument von
+    `runner.run(...)`, nie als direkter Aufruf im UI-Thread."""
+    path = ROOT / "dialogs" / "mobile_pair_dialog.py"
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    parents = {id(c): n for n in ast.walk(tree) for c in ast.iter_child_nodes(n)}
+    uses = [n for n in ast.walk(tree) if isinstance(n, ast.Attribute) and n.attr == "close_pairing"]
+    assert uses, "der Dialog räumt die Relay-Seite nicht ab"
+    for use in uses:
+        call = parents[id(use)]
+        assert isinstance(call, ast.Call) and use in call.args, "close_pairing direkt aufgerufen"
+        assert ast.unparse(call.func) == "self._runner.run"

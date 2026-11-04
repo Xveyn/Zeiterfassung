@@ -5,7 +5,7 @@
 Dieses Dokument sagt, **wer was bekommt, wo es liegt, wie lange und wie es gelöscht wird**. Es ist die
 Quelle für Hinweistexte in der App. Die Zahlen darin prüft `tests/test_datenschutz_claims.py` gegen
 `relay/src/validate.js`. Jeder PR der Kette (#358) ergänzt seinen Teil; was noch nicht festliegt, steht als
-`Offen (PR n)`. Stand: PR 3b (Verbindung des Desktops zum Relay, Löschen der Boxen).
+`Offen (PR n)`. Stand: PR 3c (Oberfläche: Koppeln über den Relay, Zustand je Gerät).
 
 ## 1. Was der Relay sieht, und was nicht
 
@@ -28,8 +28,13 @@ Namen und Einstellungen. Er ist Ende-zu-Ende verschlüsselt, der Relay hält kei
 keinen Klartext-Pfad für Inhalte (kein Vorschau-Feld, kein Debug-Dump).
 
 Dasselbe gilt für jeden, der das Geheimnis der Box kennt (wer den QR-Code sieht, der Betreiber des Relays):
-er sieht die Slots wie der Relay, also auch das Gerätetoken, aber nie den Inhalt. Offen (PR 3c, PR 5): was das für
-die Kopplung über das Internet heißt (Erweiterung des Vertrauens gegenüber dem LAN), steht dann hier.
+er sieht die Slots wie der Relay, also auch das Gerätetoken, aber nie den Inhalt.
+
+**Koppeln über das Internet:** der QR-Code des Relay-Koppel-Dialogs trägt das Geheimnis der Box. Wer ihn
+fotografiert, kann sich von überall im Internet koppeln, solange der Kopplungscode gilt (fünf Minuten);
+der LAN-QR verlangte Zugang zum Netz. Das ist eine Erweiterung des Vertrauens gegenüber dem LAN. Der Dialog
+sagt es dauerhaft (`tab_rules.RELAY_PAIR_HINT`), zeigt das Geheimnis nie als Text und der Einschalt-Hinweis
+der Handy-Erfassung nennt den Relay. Offen (PR 5): derselbe Hinweis in `known-limitations.md`.
 
 ## 2. Aufbewahrung und Löschung
 
