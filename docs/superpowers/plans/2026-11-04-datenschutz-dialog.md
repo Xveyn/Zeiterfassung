@@ -25,7 +25,7 @@
 ## Entscheidungen, die der Plan trifft
 
 - **Die Datei wird gebündelt, nicht kopiert.** `docs/datenschutz.md` geht per `--add-data docs/datenschutz.md<sep>docs` in den Build (eine Stelle: `_pyinstaller_common`, gilt für alle drei Plattformen); gelesen wird `Path(get_resource_path()) / "docs" / "datenschutz.md"`. Im Repo-Modus ist das Repo-Root. Ein zweiter Text im Code würde auseinanderlaufen.
-- **Inhalt unverändert.** Das Dokument nennt auch Dateinamen und Bezeichner (`mobile_box.json`, `DELETE /v1/box`, `RELAY_PAIR_HINT`); sie erscheinen als Code-Auszeichnung (gedämpfte Farbe, hinterlegt), nicht entfernt. Wer das Dokument nutzerfreundlicher will, ändert die Quelle, nicht den Dialog.
+- **Inhalt unverändert.** Das Dokument nennt auch Dateinamen und Bezeichner (`mobile_box.json`, `DELETE /v1/box`, `RELAY_PAIR_HINT`); sie erscheinen als Code-Auszeichnung (nur gedämpfte Schriftfarbe; ein hinterlegter Kasten ragte bei einzelnen Wörtern über die Zeilenhöhe hinaus), nicht entfernt. Wer das Dokument nutzerfreundlicher will, ändert die Quelle, nicht den Dialog.
 - **Doku-Pfad, der die App verändert, ist keine Doku mehr.** Der `changes`-Job in `.github/workflows/test.yml` und der Absatz „Doku-only-PRs überspringen die Tests“ in der Wurzel-`CLAUDE.md` zählen `docs/**` als Doku. `docs/datenschutz.md` wird jetzt gebündelt **und** vom Parser-Test geprüft: ein PR, der nur diese Datei ändert, darf die Tests nicht überspringen. Der Job nimmt sie deshalb aus dem Doku-Muster aus.
 - **Kein Neuladen zur Laufzeit, keine Übersetzung.** Der Dialog liest die Datei einmal beim Öffnen.
 - **Platz im Tab:** neuer Abschnitt „Datenschutz“ nach „Daten“ (nicht in „Daten“ selbst: das Wort ist dort schon durch Dateien belegt).

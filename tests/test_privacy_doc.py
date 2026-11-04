@@ -126,3 +126,13 @@ def test_the_fallback_names_the_document_and_links_to_it():
     links = [s for s in blocks[0]["segments"] if s["style"] == "link"]
     assert [s["url"] for s in links] == [pd.PRIVACY_DOC_URL]
     assert "nicht geladen" in pd.plain_text(blocks)
+
+
+def test_a_utf8_bom_does_not_turn_the_title_into_a_paragraph(tmp_path):
+    """Ein Windows-Editor speichert gern „UTF-8 mit BOM“; `str.strip()` entfernt U+FEFF nicht, und der Titel
+    erschiene roh als `# …`."""
+    (tmp_path / "docs").mkdir()
+    (tmp_path / "docs" / "datenschutz.md").write_bytes(b"\xef\xbb\xbf# Titel\n\nText\n")
+    blocks = pd.parse_privacy_markdown(pd.load_privacy_doc(str(tmp_path)))
+    assert kinds(blocks) == ["title", "paragraph"]
+    assert text_of(blocks[0]) == "Titel"

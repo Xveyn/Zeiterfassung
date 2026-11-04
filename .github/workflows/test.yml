@@ -64,7 +64,8 @@ jobs:
             range="$BEFORE..HEAD"
           fi
           if [ -n "$range" ]; then
-            if files=$(git diff --name-only "$range") && [ -n "$files" ]; then
+            # `--no-renames`: sonst nennt eine Umbenennung nur den neuen Pfad.
+            if files=$(git diff --name-only --no-renames "$range") && [ -n "$files" ]; then
               echo "Geänderte Dateien:"
               echo "$files" | sed 's/^/  /'
               # Alles, was NICHT auf ein Doku-Muster passt, ist Code.

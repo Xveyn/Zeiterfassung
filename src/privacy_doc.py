@@ -148,7 +148,7 @@ def load_privacy_doc(resource_dir: str) -> str | None:
     `fallback_blocks()`. Wirft nie."""
     path = os.path.join(resource_dir, *PRIVACY_DOC_RELATIVE)
     try:
-        with open(path, encoding="utf-8") as handle:
+        with open(path, encoding="utf-8-sig") as handle:       # ein BOM aus einem Windows-Editor ist kein Text
             return handle.read()
     except (OSError, UnicodeDecodeError) as exc:
         log.warning("Datenschutzhinweise nicht geladen (%s)", type(exc).__name__)

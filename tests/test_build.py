@@ -148,7 +148,7 @@ def test_all_platforms_bundle_the_privacy_document(monkeypatch):
     Ersatztext."""
     import os
     wanted = f"docs{os.sep}datenschutz.md{os.pathsep}docs"
-    for build_fn in (build.build_windows, build.build_linux):
+    for build_fn in (build.build_windows, build.build_macos, build.build_linux):
         cmd = _capture_pyinstaller_cmd(monkeypatch, build_fn)
         pairs = [cmd[i + 1] for i, part in enumerate(cmd[:-1]) if part == "--add-data"]
         assert wanted in pairs, f"{build_fn.__name__}: {pairs}"

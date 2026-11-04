@@ -6,6 +6,8 @@ prüft den Parser gegen die echte Datei. Ein PR nur auf diese Datei darf die Tes
 
 Der Test liest das Muster aus der Workflow-Datei (statt es zu kopieren) und rechnet die Entscheidung nach:
 findet er Muster oder Ausnahme nicht mehr, ist er rot, nicht grün (Muster wie `test_claude_md_claims`).
+Grenze: er hält Muster und Ausnahme gegen Drift fest; die Kontrollfluss-Logik der Shell (`if`/`elif`) rechnet
+der Test nach und kann ein vertauschtes `elif` im Workflow nicht erkennen.
 """
 import pathlib
 import re
@@ -54,3 +56,11 @@ def test_the_bundled_privacy_document_counts_as_code():
 def test_source_and_workflow_changes_count_as_code():
     for files in (["src/privacy_doc.py"], [".github/workflows/test.yml"], ["pwa/app.js"], ["docs/a.md", "src/x.py"]):
         assert touches_code(files) is True, files
+
+
+def test_the_diff_lists_renamed_files_under_both_names():
+    """Ohne `--no-renames` nennt `git diff --name-only` bei einer Umbenennung nur den neuen Pfad: aus
+    `docs/datenschutz.md → docs/privacy.md` würde „reine Doku“, obwohl Build und Parser-Test an der alten Datei
+    hängen."""
+    job = _changes_job()
+    assert "git diff --name-only --no-renames" in job
