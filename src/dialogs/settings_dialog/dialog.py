@@ -28,7 +28,7 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
                          vacation_store=None, on_vacation_change=None,
                          on_vacation_display_change=None, initial_tab=None,
                          on_request_removal=None, api_service=None,
-                         mobile_service=None):
+                         mobile_service=None, relay_service=None):
     """Modaler Dialog zum Bearbeiten der App-Einstellungen, aufgeteilt auf acht
     Tabs (Arbeitszeit / Erinnerungen / Versand / Google / API / Mobil / App / Updates).
 
@@ -60,6 +60,8 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
     keinen Tab „API".
     mobile_service: der `mobile_service.MobileService` der App (#221); ohne ihn gibt es
     keinen Tab „Mobil".
+    relay_service: der `relay_service.RelayService` der App (#358); ohne ihn fehlt im Tab
+    „Mobil" der Knopf „Über Relay koppeln".
     """
     dialog = create_dialog(parent, "Einstellungen", escape_closes=False)
 
@@ -91,7 +93,8 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
         api = ApiTab(frames["api"], dialog, settings, api_service, runner)
     mobile = None
     if mobile_service is not None:
-        mobile = MobileTab(frames["mobile"], dialog, settings, mobile_service, runner)
+        mobile = MobileTab(frames["mobile"], dialog, settings, mobile_service, runner,
+                           relay_service)
     def _remove(with_data):
         if on_request_removal is None:
             return
