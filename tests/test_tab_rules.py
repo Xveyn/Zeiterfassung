@@ -937,7 +937,8 @@ def test_the_relay_pair_dialog_tells_to_scan_inside_the_installed_web_app():
     text = tr.PAIR_INTRO_RELAY
     assert "installierten Web-App" in text
     assert "QR-Code scannen" in text
-    assert "nicht mit der Kamera-App" in text
+    assert "Kamera-App" in text and "nicht immer" in text     # die Kamera-App geht (iPhone geprüft), je nach iOS aber nicht immer
+    assert "nicht mit der Kamera-App" not in text
     assert "Adresse" not in text                       # kein Abtippen im Relay-Weg
 
 

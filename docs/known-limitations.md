@@ -519,7 +519,8 @@ Augenhöhe mit den anderen beiden Plattformen.
   in jedem Browser steht ein Test dabei (`http://<Adresse>/v1/ping` im Browser des Handys öffnen — ein
   Fehlercode wie 401 heißt: Netz in Ordnung). Vorab gewarnt wird nicht. **Der Weg über den Relay** steht im
   Abschnitt „Abgleich über den Relay“ weiter unten. Geprüft: Safari auf einem iPad als installierte Web-App
-  (Kopplung, Abgleich von Einträgen und Einstellungen, 2026-11-04). Was erst ein Test mit echtem Gerät
+  (Kopplung, Abgleich von Einträgen und Einstellungen, 2026-11-04) und auf einem aktuellen iPhone (Einträge und
+  Reservierungen in beide Richtungen, Benachrichtigungen, dauerhafter Speicher, auch über Mobilfunk). Was erst ein Test mit echtem Gerät
   klärt — Berechtigung für Zugriffe im lokalen Netz, Verhalten bei abgelehnter Berechtigung, Installation
   als App auf Android —, steht in der Prüfliste vor dem Release (#267).
 - **Die Adresse der Web-App unterscheidet Groß- und Kleinschreibung.** Sie lautet
@@ -598,10 +599,11 @@ läuft.
   Massenanlegen von Geräten ab. Viele verteilte Adressen können das Tageslimit von 100.000 Anfragen trotzdem
   aufbrauchen; dann antwortet der Relay nicht mehr, bis der Tag um ist. Ein Gerät belegt höchstens rund
   235 KB (200 Einträge mit vollem Text, `relay/src/validate.js`), verwaiste verfallen nach 90 Tagen.
-- **Firefox und iOS: Push ist nicht geprüft.** Der Zeitplan entsteht in der PWA aus dem Abgleich mit
+- **Push auf iOS ist geprüft, auf Firefox nicht.** Der Zeitplan entsteht in der PWA aus dem Abgleich mit
   dem Desktop (Reservierungen, Sende-Zeitpunkte). Im WLAN geht der Abgleich dort nicht (Mixed Content);
-  über den Relay (s. u.) entsteht ein Plan, **ob die Benachrichtigung auf iOS ankommt, ist nicht geprüft**
-  (Web-Push braucht dort die installierte Web-App). Chrome auf Android ist der geprüfte Weg.
+  über den Relay (s. u.) entsteht ein Plan. Auf einem aktuellen iPhone kommen die Benachrichtigungen an
+  (als Web-App installiert; Web-Push braucht dort die installierte Web-App). Firefox ist nicht geprüft,
+  Chrome auf Android ist der bisher geprüfte Weg.
 - **Eine Reservierung, die am Desktop als Ist-Zeit erfasst wurde, meldet sich noch einmal**, bis der nächste
   Abgleich den Plan korrigiert (das Handy weiß es vorher nicht). Die Erlaubnis für Benachrichtigungen
   gilt je Gerät und Browser.
@@ -649,10 +651,11 @@ Spec: `docs/superpowers/specs/2026-11-02-ios-relay-abgleich-design.md`; Datenfl�
   Relay nicht mehr, bis der Tag um ist. Zahlen des `Box`-Objekts im Dashboard (CPU je 1-MiB-`put`, GB-s im
   Leerlauf) sind **nicht gemessen**.
 - **iOS-Eigenheit:** Safari-Tab und installierte Web-App haben getrennten Speicher, und iOS löscht den Speicher
-  im Tab nach sieben Tagen ohne Nutzung. Die Kamera-App öffnet den QR-Link im Browser, nicht in der installierten
-  Web-App: gekoppelt wird deshalb mit „QR-Code scannen“ **in** der Web-App. Die Web-App weist darauf hin.
+  im Tab nach sieben Tagen ohne Nutzung. Auf einem aktuellen iPhone hat das Koppeln mit der Kamera-App
+  funktioniert; je nach iOS-Version öffnet sie den QR-Link aber im Browser statt in der installierten Web-App.
+  Der sichere Weg ist „QR-Code scannen“ **in** der Web-App. Die Web-App weist darauf hin.
 - **Nicht geprüft:** Safari im Hintergrund (schließt es die WebSocket sauber, Wiederverbinden), Neustart der
-  installierten Web-App, Push auf iOS, der Desktop unter Linux und macOS (#421; Windows ist bestätigt),
+  installierten Web-App, der Desktop unter Linux und macOS (#421; Windows ist bestätigt),
   Android und Firefox über den Relay.
 - **Offene Randfälle:** #422 (Koppel-Dialog), #423 („verdrängt“ ohne Ausweg), #425 und #426 (Relay-Transport der
   Web-App, Tests und Doku).
