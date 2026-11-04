@@ -43,11 +43,17 @@ test('hints break long unbroken text such as an address instead of running out o
   assert.match(rule('.hint'), /overflow-wrap:\s*anywhere/);
 });
 
-test('the dialog buttons stay in view when the dialog scrolls (landscape phones)', () => {
-  const buttons = rule('dialog .buttons');
-  assert.match(buttons, /position:\s*sticky/);
-  assert.match(buttons, /bottom:/);
-  assert.match(buttons, /background:/);
+test('only the footer buttons of a dialog stay in view when it scrolls (landscape phones)', () => {
+  const footer = rule('dialog > .buttons, dialog > form > .buttons');
+  assert.match(footer, /position:\s*sticky/);
+  assert.match(footer, /bottom:/);
+  assert.match(footer, /background:/);
+});
+
+test('button groups inside a panel (updates, connection, categories) do not stick: they would cover the text below', () => {
+  // Der Fehler: `dialog .buttons` galt für jede Gruppe, auch die „Nach Updates suchen / Reparieren“ im Reiter
+  // „Updates“; sie klebte am Rand und deckte den Hinweis darunter ab.
+  assert.doesNotMatch(rule('dialog .buttons'), /position:\s*sticky/);
 });
 
 test('time inputs step in five minutes and snap on change', () => {
