@@ -992,7 +992,7 @@ Schlüsselbund unverändert in den Datensatz für `smtp_store`),
 dreifach mit divergierender Robustheit; genutzt von `period_picker`, `import_dialog`,
 `share_dialog`, `vacation_dialog` und `settings_dialog/tab_work`; die Monatslänge
 `max_day_for` ist Tk-frei und fällt bei ungültigem Monat/Jahr auf 31 zurück),
-`privacy_dialog` (`open_privacy_dialog`: Einstellungen → App → „Datenschutzhinweise“, schreibgeschütztes Text-Widget mit Tags nach dem Muster des Changelog-Felds; Inhalt aus der gebündelten `docs/datenschutz.md` über `privacy_doc`, Höhe an der Arbeitsfläche begrenzt (`visible_lines`), Ersatztext statt Traceback, wenn die Datei fehlt),
+`privacy_dialog` (`open_privacy_dialog`: Einstellungen → App → „Datenschutzhinweise“, schreibgeschütztes Text-Widget mit Tags nach dem Muster des Changelog-Felds; Inhalt aus der gebündelten `docs/datenschutz.md` über `privacy_doc` (angezeigt ab dem ersten Abschnitt, `sections_only`; die Web-App-Seite `pwa/datenschutz.html` hält dieselbe Regel), Höhe an der Arbeitsfläche begrenzt (`visible_lines`), Ersatztext statt Traceback, wenn die Datei fehlt),
 `removal_dialog` (`ask_removal`, #50: Rückfrage vor „Zeiterfassung entfernen“ mit dem
 Häkchen „Auch Zeiten, Einstellungen und Protokoll löschen“; Rückgabe `True` = mit
 Nutzerdaten, `False` = nur Zugangsdaten und Integration, `None` = abgebrochen. Der Knopf

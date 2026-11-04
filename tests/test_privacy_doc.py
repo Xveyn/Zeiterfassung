@@ -144,12 +144,13 @@ PWA = ROOT / "pwa"
 
 
 def test_the_web_app_links_the_same_document_the_desktop_shows():
-    """`PRIVACY_URL` der PWA und `PRIVACY_DOC_URL` des Desktops sind dieselbe Adresse (zwei Konstanten, ein Ziel)."""
+    """`PRIVACY_SOURCE_URL` der PWA (Ersatzlink ihrer Datenschutzseite) und `PRIVACY_DOC_URL` des Desktops sind
+    dieselbe Adresse (zwei Konstanten, ein Ziel)."""
     import re
 
     source = (PWA / "relay-client.js").read_text(encoding="utf-8")
-    match = re.search(r"export const PRIVACY_URL = '([^']+)';", source)
-    assert match, "PRIVACY_URL fehlt in pwa/relay-client.js"
+    match = re.search(r"export const PRIVACY_SOURCE_URL = '([^']+)';", source)
+    assert match, "PRIVACY_SOURCE_URL fehlt in pwa/relay-client.js"
     assert match.group(1) == pd.PRIVACY_DOC_URL
 
 
@@ -159,3 +160,27 @@ def test_the_document_names_the_contact_and_no_longer_calls_the_notice_open():
     assert "https://github.com/Xveyn/Zeiterfassung/security/advisories/new" in text
     assert "https://github.com/Xveyn/Zeiterfassung/issues" in text
     assert "keine personenbezogenen Daten" in text
+
+
+def test_the_dialog_starts_at_the_first_section():
+    blocks = pd.sections_only(pd.parse_privacy_markdown(REAL))
+    assert blocks[0]["kind"] == "heading"
+    assert text_of(blocks[0]).startswith("1. Was der Relay sieht")
+    assert "title" not in kinds(blocks)
+    assert "Beschreibung von Datenflüssen" not in pd.plain_text(blocks)
+
+
+def test_without_a_section_heading_everything_is_kept():
+    blocks = pd.parse_privacy_markdown("# Titel\n\nnur Text\n")
+    assert pd.sections_only(blocks) == blocks
+
+
+def test_the_web_app_parser_gives_the_same_blocks():
+    """Gleichlauf mit `pwa/privacy-doc.js`: die Fixture trägt die Blöcke dieses Parsers (der Node-Test liest sie)."""
+    import json
+
+    fixture = json.loads((PWA / "test" / "fixtures" / "privacy-blocks.json").read_text(encoding="utf-8"))
+    assert fixture["document"] == pd.sections_only(pd.parse_privacy_markdown(REAL)), (
+        "Fixture veraltet: python scripts/privacy_fixtures.py")
+    for case in fixture["cases"]:
+        assert case["blocks"] == pd.sections_only(pd.parse_privacy_markdown(case["markdown"])), case["markdown"]

@@ -101,7 +101,9 @@ def parse_privacy_markdown(text: str) -> list[Block]:
     """Das Dokument als Blöcke in Dokumentreihenfolge. Fortsetzungszeilen eines Absatzes, Zitats oder
     Bullets werden mit einem Leerzeichen zu einem Block zusammengeführt (das Dokument ist hart umgebrochen,
     das Text-Widget bricht selbst um)."""
-    text = _HTML_COMMENT.sub("", text)
+    previous = None
+    while previous != text:         # bis zum Fixpunkt: verschachtelte Kommentare setzen sich sonst neu zusammen
+        previous, text = text, _HTML_COMMENT.sub("", text)
     blocks: list[tuple[str, int, list[str]]] = []
     open_last = False               # darf die nächste Zeile den letzten Block fortsetzen?
 
@@ -136,6 +138,16 @@ def parse_privacy_markdown(text: str) -> list[Block]:
             blocks.append(("paragraph", 0, [stripped]))
             open_last = True
     return [_block(kind, " ".join(parts), level) for kind, level, parts in blocks]
+
+
+def sections_only(blocks: list[Block]) -> list[Block]:
+    """Ab der ersten Abschnittsüberschrift (`## …`): Titel, Zitat und Einleitung des Dokuments sind für das
+    Repository geschrieben, nicht für die Anzeige. Ohne Überschrift bleibt alles stehen (nie ein leeres Fenster).
+    Die PWA-Seite hält dieselbe Regel (`pwa/privacy-doc.js`, Fixture `privacy-blocks.json`)."""
+    for index, block in enumerate(blocks):
+        if block["kind"] == "heading":
+            return blocks[index:]
+    return blocks
 
 
 def plain_text(blocks: list[Block]) -> str:

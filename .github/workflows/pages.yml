@@ -10,6 +10,7 @@ on:
     branches: [master]
     paths:
       - 'pwa/**'
+      - 'docs/datenschutz.md'      # Quelle der Seite datenschutz.html
       - '.github/workflows/pages.yml'
   workflow_dispatch:
 
@@ -41,6 +42,8 @@ jobs:
           mkdir _site
           # Nur, was die App zur Laufzeit braucht: kein test/, kein package.json.
           rsync -a --exclude 'test/' --exclude 'package.json' --exclude '*.md' --exclude 'memory-adapter.js' --exclude 'node_modules/' pwa/ _site/
+          # Die Datenschutzseite liest docs/datenschutz.md zur Laufzeit (eine Quelle für Desktop und Web-App).
+          cp docs/datenschutz.md _site/datenschutz.md
           # Build-Kennung „N/X.Y.Z (sha)“ einsetzen (Platzhalter __BUILD__ in sw-core.js und
           # Manifest); jeder Deploy bekommt damit einen eigenen Cache.
           python3 scripts/pwa_stamp.py _site

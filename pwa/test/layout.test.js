@@ -84,6 +84,7 @@ test('a day whose reservation is done shows no planned list', () => {
 test('the privacy notice is linked from the pairing screen and the connection tab, opening safely in a new tab', () => {
   assert.match(views, /import \{ PRIVACY_URL \} from '\.\/relay-client\.js'/);
   assert.match(views, /href: PRIVACY_URL, target: '_blank', rel: 'noopener noreferrer'/);
+  assert.match(readFileSync(new URL('../relay-client.js', import.meta.url), 'utf8'), /export const PRIVACY_URL = '\.\/datenschutz\.html';/);
   // Beide Stellen rufen den Helfer: der Koppel-Bildschirm und der Reiter Verbindung.
   const pair = /export function pairView[\s\S]*?\n\}\r?\n/.exec(views)[0];
   const connection = /function connectionPanel[\s\S]*?\n\}\r?\n/.exec(views)[0];

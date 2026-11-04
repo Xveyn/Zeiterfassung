@@ -1,0 +1,1300 @@
+{
+ "document": [
+  {
+   "kind": "heading",
+   "segments": [
+    {
+     "text": "1. Was der Relay sieht, und was nicht",
+     "style": "plain",
+     "url": null
+    }
+   ],
+   "level": 0
+  },
+  {
+   "kind": "paragraph",
+   "segments": [
+    {
+     "text": "Der Relay sieht: Pfad, Statuscode, ",
+     "style": "plain",
+     "url": null
+    },
+    {
+     "text": "seq",
+     "style": "code",
+     "url": null
+    },
+    {
+     "text": ", ",
+     "style": "plain",
+     "url": null
+    },
+    {
+     "text": "n",
+     "style": "code",
+     "url": null
+    },
+    {
+     "text": ", Nonce, Feldnamen, Größe, Zeitpunkte, IP, und das Gerätetoken im Klartext; nie den Inhalt. Im Einzelnen:",
+     "style": "plain",
+     "url": null
+    }
+   ],
+   "level": 0
+  },
+  {
+   "kind": "bullet",
+   "segments": [
+    {
+     "text": "die Rahmen-Metadaten der Nutzlast im Klartext: den Pfad (Kopplung oder Abgleich), den Statuscode der Antwort, den Zähler ",
+     "style": "plain",
+     "url": null
+    },
+    {
+     "text": "seq",
+     "style": "code",
+     "url": null
+    },
+    {
+     "text": ", das Feld ",
+     "style": "plain",
+     "url": null
+    },
+    {
+     "text": "n",
+     "style": "code",
+     "url": null
+    },
+    {
+     "text": " der Antwort (die zurückgegebene Nonce der Anfrage), die Nonce und die Feldnamen des Umschlags,",
+     "style": "plain",
+     "url": null
+    }
+   ],
+   "level": 0
+  },
+  {
+   "kind": "bullet",
+   "segments": [
+    {
+     "text": "das Gerätetoken im Klartext der Nutzlast, neben dem Umschlag. Der Relay kann damit nichts entschlüsseln. Erneuert wird es nur nach einem ",
+     "style": "plain",
+     "url": null
+    },
+    {
+     "text": "erfolgreichen",
+     "style": "bold",
+     "url": null
+    },
+    {
+     "text": " Abgleich; bis dahin, und danach bis die nächste Anfrage den Slot ersetzt, liegt es im Slot ",
+     "style": "plain",
+     "url": null
+    },
+    {
+     "text": "req",
+     "style": "code",
+     "url": null
+    },
+    {
+     "text": " (längstens bis zur Selbstreinigung nach 90 Tagen Leerlauf). Im LAN ist dasselbe Token zugleich gültiger Bearer für ",
+     "style": "plain",
+     "url": null
+    },
+    {
+     "text": "GET /v1/ping",
+     "style": "code",
+     "url": null
+    },
+    {
+     "text": " (Protokoll, Uhrzeit des Desktops, Standardfenster, und damit, ob die Kopplung noch gilt),",
+     "style": "plain",
+     "url": null
+    }
+   ],
+   "level": 0
+  },
+  {
+   "kind": "bullet",
+   "segments": [
+    {
+     "text": "Zeitpunkte der Nachrichten und deren Größen. Größe je Nachricht: höchstens 1 MiB (1048576 Bytes),",
+     "style": "plain",
+     "url": null
+    }
+   ],
+   "level": 0
+  },
+  {
+   "kind": "bullet",
+   "segments": [
+    {
+     "text": "die IP-Adresse der Verbindung (Rate-Limit und Cloudflare-Plattform).",
+     "style": "plain",
+     "url": null
+    }
+   ],
+   "level": 0
+  },
+  {
+   "kind": "paragraph",
+   "segments": [
+    {
+     "text": "Der Relay sieht ",
+     "style": "plain",
+     "url": null
+    },
+    {
+     "text": "nie",
+     "style": "bold",
+     "url": null
+    },
+    {
+     "text": " den Inhalt: Der Chiffretext ",
+     "style": "plain",
+     "url": null
+    },
+    {
+     "text": "c",
+     "style": "code",
+     "url": null
+    },
+    {
+     "text": " des Umschlags verbirgt alle Einträge, Kategorien, Namen und Einstellungen. Er ist Ende-zu-Ende verschlüsselt, der Relay hält keinen Schlüssel. Es gibt bewusst keinen Klartext-Pfad für Inhalte (kein Vorschau-Feld, kein Debug-Dump).",
+     "style": "plain",
+     "url": null
+    }
+   ],
+   "level": 0
+  },
+  {
+   "kind": "paragraph",
+   "segments": [
+    {
+     "text": "Dasselbe gilt für jeden, der das Geheimnis der Box kennt (wer den QR-Code sieht, der Betreiber des Relays): er sieht die Slots wie der Relay, also auch das Gerätetoken, aber nie den Inhalt.",
+     "style": "plain",
+     "url": null
+    }
+   ],
+   "level": 0
+  },
+  {
+   "kind": "paragraph",
+   "segments": [
+    {
+     "text": "Koppeln über das Internet:",
+     "style": "bold",
+     "url": null
+    },
+    {
+     "text": " der QR-Code des Relay-Koppel-Dialogs trägt das Geheimnis der Box. Wer ihn fotografiert, kann sich von überall im Internet koppeln, solange der Kopplungscode gilt (fünf Minuten); der LAN-QR verlangte Zugang zum Netz. Das ist eine Erweiterung des Vertrauens gegenüber dem LAN. Der Dialog sagt es, solange ein QR-Code steht (",
+     "style": "plain",
+     "url": null
+    },
+    {
+     "text": "tab_rules.RELAY_PAIR_HINT",
+     "style": "code",
+     "url": null
+    },
+    {
+     "text": "), zeigt das Geheimnis nie als Text und der Einschalt-Hinweis der Handy-Erfassung nennt den Relay. Derselbe Hinweis steht in ",
+     "style": "plain",
+     "url": null
+    },
+    {
+     "text": "known-limitations.md",
+     "style": "code",
+     "url": null
+    },
+    {
+     "text": ", Abschnitt „Abgleich über den Relay“.",
+     "style": "plain",
+     "url": null
+    }
+   ],
+   "level": 0
+  },
+  {
+   "kind": "heading",
+   "segments": [
+    {
+     "text": "2. Aufbewahrung und Löschung",
+     "style": "plain",
+     "url": null
+    }
+   ],
+   "level": 0
+  },
+  {
+   "kind": "bullet",
+   "segments": [
+    {
+     "text": "Ein Slot liegt höchstens bis zum Ersetzen: jede neue Nachricht überschreibt den Slot ihrer Richtung, es gibt keine Historie.",
+     "style": "plain",
+     "url": null
+    }
+   ],
+   "level": 0
+  },
+  {
+   "kind": "bullet",
+   "segments": [
+    {
+     "text": "Aufbewahrung im Leerlauf: 90 Tage. Danach räumt sich die Box selbst auf (Alarm, ",
+     "style": "plain",
+     "url": null
+    },
+    {
+     "text": "idleDays",
+     "style": "code",
+     "url": null
+    },
+    {
+     "text": ").",
+     "style": "plain",
+     "url": null
+    }
+   ],
+   "level": 0
+  },
+  {
+   "kind": "bullet",
+   "segments": [
+    {
+     "text": "DELETE /v1/box",
+     "style": "code",
+     "url": null
+    },
+    {
+     "text": " löscht sofort alles und schließt die Verbindungen.",
+     "style": "plain",
+     "url": null
+    }
+   ],
+   "level": 0
+  },
+  {
+   "kind": "bullet",
+   "segments": [
+    {
+     "text": "Das Box-Geheimnis liegt am Desktop gerätelokal in ",
+     "style": "plain",
+     "url": null
+    },
+    {
+     "text": "mobile_box.json",
+     "style": "code",
+     "url": null
+    },
+    {
+     "text": ": gehärtet geschrieben (nur für den Nutzer lesbar, unter Windows per ACL), ",
+     "style": "plain",
+     "url": null
+    },
+    {
+     "text": "nicht",
+     "style": "bold",
+     "url": null
+    },
+    {
+     "text": " im Schlüsselbund und nicht per Drive-Sync. Der Desktop kann eine Box mit ",
+     "style": "plain",
+     "url": null
+    },
+    {
+     "text": "DELETE /v1/box",
+     "style": "code",
+     "url": null
+    },
+    {
+     "text": " löschen (",
+     "style": "plain",
+     "url": null
+    },
+    {
+     "text": "box_relay.delete_box",
+     "style": "code",
+     "url": null
+    },
+    {
+     "text": ", best effort: ist der Relay nicht erreichbar, bleibt das Lösen gültig und die Box verfällt von selbst).",
+     "style": "plain",
+     "url": null
+    }
+   ],
+   "level": 0
+  },
+  {
+   "kind": "bullet",
+   "segments": [
+    {
+     "text": "Die App löscht eine Box selbst, sobald sie nicht mehr gebraucht wird:",
+     "style": "plain",
+     "url": null
+    }
+   ],
+   "level": 0
+  },
+  {
+   "kind": "bullet",
+   "segments": [
+    {
+     "text": "beim ",
+     "style": "plain",
+     "url": null
+    },
+    {
+     "text": "Widerruf",
+     "style": "bold",
+     "url": null
+    },
+    {
+     "text": " einer Kopplung (die Boxen widerrufener Geräte),",
+     "style": "plain",
+     "url": null
+    }
+   ],
+   "level": 1
+  },
+  {
+   "kind": "bullet",
+   "segments": [
+    {
+     "text": "wenn ein Gerät ",
+     "style": "plain",
+     "url": null
+    },
+    {
+     "text": "erneut gekoppelt",
+     "style": "bold",
+     "url": null
+    },
+    {
+     "text": " wird (seine alte Box) und wenn ein offener Kopplungscode verfällt oder der Koppel-Dialog schließt, ohne dass ein Handy gekoppelt hat (die dafür angelegte Box),",
+     "style": "plain",
+     "url": null
+    }
+   ],
+   "level": 1
+  },
+  {
+   "kind": "bullet",
+   "segments": [
+    {
+     "text": "bei ",
+     "style": "plain",
+     "url": null
+    },
+    {
+     "text": "„Zeiterfassung entfernen“",
+     "style": "bold",
+     "url": null
+    },
+    {
+     "text": " (macOS/Linux) im Schritt „Relay-Boxen“, vor dem Löschen der Zugangsdaten,",
+     "style": "plain",
+     "url": null
+    }
+   ],
+   "level": 1
+  },
+  {
+   "kind": "bullet",
+   "segments": [
+    {
+     "text": "bei der ",
+     "style": "plain",
+     "url": null
+    },
+    {
+     "text": "Deinstallation unter Windows",
+     "style": "bold",
+     "url": null
+    },
+    {
+     "text": " über ",
+     "style": "plain",
+     "url": null
+    },
+    {
+     "text": "--forget-secrets",
+     "style": "code",
+     "url": null
+    },
+    {
+     "text": ", ebenfalls bevor die Dateien gelöscht werden.",
+     "style": "plain",
+     "url": null
+    }
+   ],
+   "level": 1
+  },
+  {
+   "kind": "bullet",
+   "segments": [
+    {
+     "text": "Alles davon ist best effort: ist der Relay nicht erreichbar, wird lokal trotzdem aufgeräumt, und eine nicht erreichte Box verfällt nach 90 Tagen Leerlauf von selbst. Der Schritt „Relay-Boxen“ nennt die Zahl der nicht erreichten Boxen. Nach dem ersten Ausfall versucht er die übrigen nicht mehr einzeln (sonst dauerte das Entfernen bei totem Netz je Box eine volle Wartezeit) und zählt sie mit.",
+     "style": "plain",
+     "url": null
+    }
+   ],
+   "level": 0
+  },
+  {
+   "kind": "bullet",
+   "segments": [
+    {
+     "text": "Die Oberfläche sagt es: der Widerruf-Dialog nennt die Box am Relay (mit der Frist von 90 Tagen, falls der Relay nicht erreichbar ist) und was das Handy danach zeigt; der Koppel-Dialog warnt vor dem fotografierten QR-Code.",
+     "style": "plain",
+     "url": null
+    }
+   ],
+   "level": 0
+  },
+  {
+   "kind": "heading",
+   "segments": [
+    {
+     "text": "3. Plattform-Logs",
+     "style": "plain",
+     "url": null
+    }
+   ],
+   "level": 0
+  },
+  {
+   "kind": "paragraph",
+   "segments": [
+    {
+     "text": "Der eigene Code des Relays schreibt nichts mit (kein Geheimnis, keine Query, keine Nutzbytes). Die Plattform kann von sich aus Aufruf-Logs führen: Cloudflare speichert sie, ",
+     "style": "plain",
+     "url": null
+    },
+    {
+     "text": "wenn sie aktiviert sind",
+     "style": "bold",
+     "url": null
+    },
+    {
+     "text": ", bis zu 7 Tage (URL und Metadaten). Im Worker ist ",
+     "style": "plain",
+     "url": null
+    },
+    {
+     "text": "observability",
+     "style": "code",
+     "url": null
+    },
+    {
+     "text": " ausdrücklich ausgeschaltet (",
+     "style": "plain",
+     "url": null
+    },
+    {
+     "text": "relay/wrangler.toml",
+     "style": "code",
+     "url": null
+    },
+    {
+     "text": "). Die Query trägt nur ",
+     "style": "plain",
+     "url": null
+    },
+    {
+     "text": "role",
+     "style": "code",
+     "url": null
+    },
+    {
+     "text": " und ",
+     "style": "plain",
+     "url": null
+    },
+    {
+     "text": "have",
+     "style": "code",
+     "url": null
+    },
+    {
+     "text": "; das Geheimnis steht im Header ",
+     "style": "plain",
+     "url": null
+    },
+    {
+     "text": "Sec-WebSocket-Protocol",
+     "style": "code",
+     "url": null
+    },
+    {
+     "text": ", nicht in der URL.",
+     "style": "plain",
+     "url": null
+    }
+   ],
+   "level": 0
+  },
+  {
+   "kind": "heading",
+   "segments": [
+    {
+     "text": "4. Standort",
+     "style": "plain",
+     "url": null
+    }
+   ],
+   "level": 0
+  },
+  {
+   "kind": "paragraph",
+   "segments": [
+    {
+     "text": "Das Durable Object der Box liegt in der EU-Jurisdiktion von Cloudflare (Ausführung und Speicherung). ",
+     "style": "plain",
+     "url": null
+    },
+    {
+     "text": "Nicht",
+     "style": "bold",
+     "url": null
+    },
+    {
+     "text": " davon erfasst ist der Worker selbst: er läuft pro Anfrage am nächstgelegenen Rand, die IP-Adresse wird dort verarbeitet. Die Jurisdiktion lässt sich nachträglich nicht ändern, deshalb war das eine Entscheidung von Anfang an. Das bestehende Push-Objekt (Erinnerungen) bleibt, wie es ist. Der Schalter dafür steht in ",
+     "style": "plain",
+     "url": null
+    },
+    {
+     "text": "relay/wrangler.toml",
+     "style": "code",
+     "url": null
+    },
+    {
+     "text": " und wird nie im Cloudflare-Dashboard gesetzt: bis zum nächsten Ausrollen lägen neue Objekte sonst womöglich außerhalb der EU-Jurisdiktion.",
+     "style": "plain",
+     "url": null
+    }
+   ],
+   "level": 0
+  },
+  {
+   "kind": "heading",
+   "segments": [
+    {
+     "text": "5. Beteiligte und Drittländer",
+     "style": "plain",
+     "url": null
+    }
+   ],
+   "level": 0
+  },
+  {
+   "kind": "bullet",
+   "segments": [
+    {
+     "text": "Cloudflare: Betrieb des Relays (Worker und Durable Object). ",
+     "style": "plain",
+     "url": null
+    },
+    {
+     "text": "Datenschutzerklärung",
+     "style": "link",
+     "url": "https://www.cloudflare.com/privacypolicy/"
+    },
+    {
+     "text": ", ",
+     "style": "plain",
+     "url": null
+    },
+    {
+     "text": "Data Processing Addendum",
+     "style": "link",
+     "url": "https://www.cloudflare.com/cloudflare-customer-dpa/"
+    },
+    {
+     "text": ".",
+     "style": "plain",
+     "url": null
+    }
+   ],
+   "level": 0
+  },
+  {
+   "kind": "bullet",
+   "segments": [
+    {
+     "text": "GitHub (Microsoft): Auslieferung der Handy-Web-App über GitHub Pages; dabei sieht GitHub die IP-Adresse des Handys. ",
+     "style": "plain",
+     "url": null
+    },
+    {
+     "text": "Datenschutzerklärung",
+     "style": "link",
+     "url": "https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement"
+    },
+    {
+     "text": ".",
+     "style": "plain",
+     "url": null
+    }
+   ],
+   "level": 0
+  },
+  {
+   "kind": "bullet",
+   "segments": [
+    {
+     "text": "Apple, Google, Mozilla: Web-Push-Dienste (nur für Erinnerungen); sie kennen den Abo-Endpunkt des Handys. ",
+     "style": "plain",
+     "url": null
+    },
+    {
+     "text": "Apple",
+     "style": "link",
+     "url": "https://www.apple.com/legal/privacy/"
+    },
+    {
+     "text": ", ",
+     "style": "plain",
+     "url": null
+    },
+    {
+     "text": "Google",
+     "style": "link",
+     "url": "https://policies.google.com/privacy"
+    },
+    {
+     "text": ", ",
+     "style": "plain",
+     "url": null
+    },
+    {
+     "text": "Mozilla",
+     "style": "link",
+     "url": "https://www.mozilla.org/privacy/"
+    },
+    {
+     "text": ".",
+     "style": "plain",
+     "url": null
+    }
+   ],
+   "level": 0
+  },
+  {
+   "kind": "paragraph",
+   "segments": [
+    {
+     "text": "Ob für einen Nutzer ein Auftragsverarbeitungsvertrag nötig ist, hängt davon ab, wer die App wofür einsetzt (privat, Werkstudent mit eigener Erfassung, Arbeitgeber). Das ist ein Hinweis, keine Zusage und keine Rechtsberatung; die Verweise oben führen zu den Bedingungen der Anbieter.",
+     "style": "plain",
+     "url": null
+    }
+   ],
+   "level": 0
+  },
+  {
+   "kind": "heading",
+   "segments": [
+    {
+     "text": "6. Verantwortlichkeit",
+     "style": "plain",
+     "url": null
+    }
+   ],
+   "level": 0
+  },
+  {
+   "kind": "paragraph",
+   "segments": [
+    {
+     "text": "Der Betreiber des öffentlichen Relays ist der Maintainer des Repositories. Der Relay verarbeitet zumindest IP-Adressen und die Metadaten aus Abschnitt 1 (bei Erinnerungen zusätzlich den Abo-Endpunkt und verschlüsselten Text). Diese Hinweise sind die Datenschutzerklärung dazu; die Web-App und der Koppel-Dialog verweisen auf sie.",
+     "style": "plain",
+     "url": null
+    }
+   ],
+   "level": 0
+  },
+  {
+   "kind": "paragraph",
+   "segments": [
+    {
+     "text": "Kontakt",
+     "style": "bold",
+     "url": null
+    },
+    {
+     "text": " für Fragen, Auskunft und Löschung: über GitHub. Allgemeine Fragen am besten als ",
+     "style": "plain",
+     "url": null
+    },
+    {
+     "text": "Issue",
+     "style": "link",
+     "url": "https://github.com/Xveyn/Zeiterfassung/issues"
+    },
+    {
+     "text": " (öffentlich: bitte keine personenbezogenen Daten, keine Box-Geheimnisse und keine Adressen angeben). Alles Vertrauliche über die privaten ",
+     "style": "plain",
+     "url": null
+    },
+    {
+     "text": "Security Advisories",
+     "style": "link",
+     "url": "https://github.com/Xveyn/Zeiterfassung/security/advisories/new"
+    },
+    {
+     "text": " („Report a vulnerability“), wie in ",
+     "style": "plain",
+     "url": null
+    },
+    {
+     "text": "SECURITY.md",
+     "style": "code",
+     "url": null
+    },
+    {
+     "text": " beschrieben. Eine Postanschrift oder E-Mail-Adresse nennt dieses Projekt nicht. Selbst-Hosting ist möglich, aber nicht vorgesehen: den Relay in einem eigenen Cloudflare-Konto zu betreiben beschreibt ",
+     "style": "plain",
+     "url": null
+    },
+    {
+     "text": "relay/README.md",
+     "style": "code",
+     "url": null
+    },
+    {
+     "text": "; die App darauf umzustellen geht heute nicht (",
+     "style": "plain",
+     "url": null
+    },
+    {
+     "text": "RELAY_URL",
+     "style": "code",
+     "url": null
+    },
+    {
+     "text": " ist eine Konstante in ",
+     "style": "plain",
+     "url": null
+    },
+    {
+     "text": "pwa/relay-client.js",
+     "style": "code",
+     "url": null
+    },
+    {
+     "text": " und ",
+     "style": "plain",
+     "url": null
+    },
+    {
+     "text": "src/push_relay.py",
+     "style": "code",
+     "url": null
+    },
+    {
+     "text": ").",
+     "style": "plain",
+     "url": null
+    }
+   ],
+   "level": 0
+  },
+  {
+   "kind": "heading",
+   "segments": [
+    {
+     "text": "7. Freiwilligkeit und Transparenz",
+     "style": "plain",
+     "url": null
+    }
+   ],
+   "level": 0
+  },
+  {
+   "kind": "paragraph",
+   "segments": [
+    {
+     "text": "Der Abgleich über den Relay ist ",
+     "style": "plain",
+     "url": null
+    },
+    {
+     "text": "Opt-in je Gerät",
+     "style": "bold",
+     "url": null
+    },
+    {
+     "text": ": er entsteht nur, wenn der Nutzer am Rechner die Handy-Erfassung einschaltet (der Einschalt-Hinweis nennt den Relay und was er nicht sieht) und ausdrücklich „Über Relay koppeln“ wählt (der Koppel-Dialog warnt vor dem fotografierten QR-Code). Ausschalten und Löschen gehen jederzeit: Handy-Erfassung ausschalten trennt die Verbindungen, Widerruf, erneutes Koppeln und „Zeiterfassung entfernen“ löschen die Box (Abschnitt 2). ",
+     "style": "plain",
+     "url": null
+    },
+    {
+     "text": "Auf dem iPhone und iPad ist der Relay Pflicht für die Handy-Erfassung",
+     "style": "bold",
+     "url": null
+    },
+    {
+     "text": " (Safari erreicht den Rechner im WLAN nicht): ohne Relay gibt es dort keinen Abgleich. Das steht so in der README und in den Hinweisen der App; es ist keine Wahl, die als solche getarnt wäre.",
+     "style": "plain",
+     "url": null
+    }
+   ],
+   "level": 0
+  },
+  {
+   "kind": "heading",
+   "segments": [
+    {
+     "text": "8. Datensparsamkeit",
+     "style": "plain",
+     "url": null
+    }
+   ],
+   "level": 0
+  },
+  {
+   "kind": "paragraph",
+   "segments": [
+    {
+     "text": "Nur ein Slot je Richtung (Ersetzen statt Historie), kein Konto, keine Geräte-ID im Klartext außer dem Gerätetoken im Rahmen der Anfrage. Das Gerätetoken ist ein Authentisierungsmittel, kein Kennzeichen des Menschen, aber der Relay kann Verbindungen über die Zeit verknüpfen (Metadatenrisiko, Abschnitt 1). Inhalte bleiben Ende-zu-Ende verschlüsselt; für die Erinnerungen gilt dasselbe mit einem eigenen Schlüssel.",
+     "style": "plain",
+     "url": null
+    }
+   ],
+   "level": 0
+  },
+  {
+   "kind": "heading",
+   "segments": [
+    {
+     "text": "9. Schlüssel und Wiederherstellung",
+     "style": "plain",
+     "url": null
+    }
+   ],
+   "level": 0
+  },
+  {
+   "kind": "paragraph",
+   "segments": [
+    {
+     "text": "Der Relay hält keine Schlüssel, es gibt keine Wiederherstellung durch uns. Die Geräteschlüssel liegen am Desktop im Schlüsselbund (Datei als Fallback), das Box-Geheimnis in ",
+     "style": "plain",
+     "url": null
+    },
+    {
+     "text": "mobile_box.json",
+     "style": "code",
+     "url": null
+    },
+    {
+     "text": " (s. 2.). Wer das Box-Geheimnis kennt (sieht den QR-Code, Betreiber des Relays), kann den Slot des Gegenübers lesen (Gerätetoken im Klartext, den versiegelten Umschlag), Slots überschreiben, den Desktop von der Box verdrängen, unversiegelte Fehler fälschen und ",
+     "style": "plain",
+     "url": null
+    },
+    {
+     "text": "DELETE /v1/box",
+     "style": "code",
+     "url": null
+    },
+    {
+     "text": " auslösen. Er kann ",
+     "style": "plain",
+     "url": null
+    },
+    {
+     "text": "nicht",
+     "style": "bold",
+     "url": null
+    },
+    {
+     "text": " Inhalte lesen oder synchronisieren: das braucht den Geräteschlüssel. Das ist ein Störer- und Metadatenrisiko, kein Inhaltsleck. Geht das Handy verloren, widerruft der Nutzer die Kopplung am Desktop; die Box wird dabei am Relay mit gelöscht (best effort, s. 2.); der Widerruf-Dialog sagt es vorher.",
+     "style": "plain",
+     "url": null
+    }
+   ],
+   "level": 0
+  },
+  {
+   "kind": "paragraph",
+   "segments": [
+    {
+     "text": "Auf dem Handy",
+     "style": "bold",
+     "url": null
+    },
+    {
+     "text": " liegt das Box-Geheimnis (",
+     "style": "plain",
+     "url": null
+    },
+    {
+     "text": "box_secret",
+     "style": "code",
+     "url": null
+    },
+    {
+     "text": ") wie das Gerätetoken und der Geräteschlüssel in der IndexedDB der Web-App; die PWA zeigt es nie an und schreibt es in kein Log und keinen Fehlertext. Sie sendet nur an die Adresse des Relays (",
+     "style": "plain",
+     "url": null
+    },
+    {
+     "text": "RELAY_URL",
+     "style": "code",
+     "url": null
+    },
+    {
+     "text": ") und an den Desktop im eigenen WLAN. Der Koppel-Link trägt Geheimnis und Kopplungscode im Fragment (",
+     "style": "plain",
+     "url": null
+    },
+    {
+     "text": "#relay=",
+     "style": "code",
+     "url": null
+    },
+    {
+     "text": "); die PWA entfernt es nach dem Lesen aus Adresszeile und Verlauf. Auf iOS löscht das System den Speicher einer Seite im Browser-Tab nach sieben Tagen ohne Nutzung; die installierte Web-App ist davon ausgenommen (die PWA weist darauf hin).",
+     "style": "plain",
+     "url": null
+    }
+   ],
+   "level": 0
+  },
+  {
+   "kind": "heading",
+   "segments": [
+    {
+     "text": "10. Push getrennt halten",
+     "style": "plain",
+     "url": null
+    }
+   ],
+   "level": 0
+  },
+  {
+   "kind": "paragraph",
+   "segments": [
+    {
+     "text": "Push (",
+     "style": "plain",
+     "url": null
+    },
+    {
+     "text": "Device",
+     "style": "code",
+     "url": null
+    },
+    {
+     "text": ") und Abgleich (",
+     "style": "plain",
+     "url": null
+    },
+    {
+     "text": "Box",
+     "style": "code",
+     "url": null
+    },
+    {
+     "text": ") sind getrennte Objekte mit getrennten Geheimnissen (",
+     "style": "plain",
+     "url": null
+    },
+    {
+     "text": "mobile_relay.json",
+     "style": "code",
+     "url": null
+    },
+    {
+     "text": " und ",
+     "style": "plain",
+     "url": null
+    },
+    {
+     "text": "mobile_box.json",
+     "style": "code",
+     "url": null
+    },
+    {
+     "text": " am Rechner, ",
+     "style": "plain",
+     "url": null
+    },
+    {
+     "text": "relay_secret",
+     "style": "code",
+     "url": null
+    },
+    {
+     "text": " und ",
+     "style": "plain",
+     "url": null
+    },
+    {
+     "text": "box_secret",
+     "style": "code",
+     "url": null
+    },
+    {
+     "text": " auf dem Handy). Wer beides nutzt, gibt dem Relay zwei unverknüpfte Handles, nicht eines; der Relay kann sie von sich aus nicht einem Handy zuordnen (außer über Metadaten wie die IP-Adresse).",
+     "style": "plain",
+     "url": null
+    }
+   ],
+   "level": 0
+  }
+ ],
+ "cases": [
+  {
+   "markdown": "# Titel\n\n> Zitat\n> zweite Zeile\n\nEinleitung.\n\n## 1. Abschnitt\n\nText mit **fett**, `code` und [Link](https://x.example/a).\n",
+   "blocks": [
+    {
+     "kind": "heading",
+     "segments": [
+      {
+       "text": "1. Abschnitt",
+       "style": "plain",
+       "url": null
+      }
+     ],
+     "level": 0
+    },
+    {
+     "kind": "paragraph",
+     "segments": [
+      {
+       "text": "Text mit ",
+       "style": "plain",
+       "url": null
+      },
+      {
+       "text": "fett",
+       "style": "bold",
+       "url": null
+      },
+      {
+       "text": ", ",
+       "style": "plain",
+       "url": null
+      },
+      {
+       "text": "code",
+       "style": "code",
+       "url": null
+      },
+      {
+       "text": " und ",
+       "style": "plain",
+       "url": null
+      },
+      {
+       "text": "Link",
+       "style": "link",
+       "url": "https://x.example/a"
+      },
+      {
+       "text": ".",
+       "style": "plain",
+       "url": null
+      }
+     ],
+     "level": 0
+    }
+   ]
+  },
+  {
+   "markdown": "- eins\n  weiter\n  - unter\n    - ganz unten\n- zwei\n",
+   "blocks": [
+    {
+     "kind": "bullet",
+     "segments": [
+      {
+       "text": "eins weiter",
+       "style": "plain",
+       "url": null
+      }
+     ],
+     "level": 0
+    },
+    {
+     "kind": "bullet",
+     "segments": [
+      {
+       "text": "unter",
+       "style": "plain",
+       "url": null
+      }
+     ],
+     "level": 1
+    },
+    {
+     "kind": "bullet",
+     "segments": [
+      {
+       "text": "ganz unten",
+       "style": "plain",
+       "url": null
+      }
+     ],
+     "level": 2
+    },
+    {
+     "kind": "bullet",
+     "segments": [
+      {
+       "text": "zwei",
+       "style": "plain",
+       "url": null
+      }
+     ],
+     "level": 0
+    }
+   ]
+  },
+  {
+   "markdown": "[x](javascript:alert(1)) [y](docs/a.md) [](https://x.example) **offen `offen [offen](\n",
+   "blocks": [
+    {
+     "kind": "paragraph",
+     "segments": [
+      {
+       "text": "x y  **offen `offen [offen](",
+       "style": "plain",
+       "url": null
+      }
+     ],
+     "level": 0
+    }
+   ]
+  },
+  {
+   "markdown": "| a | b |\n\n1. eins\n\n```\ncode\n```\n\n<b>x</b>\n",
+   "blocks": [
+    {
+     "kind": "paragraph",
+     "segments": [
+      {
+       "text": "| a | b |",
+       "style": "plain",
+       "url": null
+      }
+     ],
+     "level": 0
+    },
+    {
+     "kind": "paragraph",
+     "segments": [
+      {
+       "text": "1. eins",
+       "style": "plain",
+       "url": null
+      }
+     ],
+     "level": 0
+    },
+    {
+     "kind": "paragraph",
+     "segments": [
+      {
+       "text": "```",
+       "style": "plain",
+       "url": null
+      }
+     ],
+     "level": 0
+    },
+    {
+     "kind": "paragraph",
+     "segments": [
+      {
+       "text": "code",
+       "style": "plain",
+       "url": null
+      }
+     ],
+     "level": 0
+    },
+    {
+     "kind": "paragraph",
+     "segments": [
+      {
+       "text": "```",
+       "style": "plain",
+       "url": null
+      }
+     ],
+     "level": 0
+    },
+    {
+     "kind": "paragraph",
+     "segments": [
+      {
+       "text": "<b>x</b>",
+       "style": "plain",
+       "url": null
+      }
+     ],
+     "level": 0
+    }
+   ]
+  },
+  {
+   "markdown": "a\n<!-- weg\nauch weg -->\n\nb\n",
+   "blocks": [
+    {
+     "kind": "paragraph",
+     "segments": [
+      {
+       "text": "a",
+       "style": "plain",
+       "url": null
+      }
+     ],
+     "level": 0
+    },
+    {
+     "kind": "paragraph",
+     "segments": [
+      {
+       "text": "b",
+       "style": "plain",
+       "url": null
+      }
+     ],
+     "level": 0
+    }
+   ]
+  },
+  {
+   "markdown": "a<<!-- x -->!-- y -->b\n",
+   "blocks": [
+    {
+     "kind": "paragraph",
+     "segments": [
+      {
+       "text": "ab",
+       "style": "plain",
+       "url": null
+      }
+     ],
+     "level": 0
+    }
+   ]
+  },
+  {
+   "markdown": "kein Abschnitt, nur Text\n",
+   "blocks": [
+    {
+     "kind": "paragraph",
+     "segments": [
+      {
+       "text": "kein Abschnitt, nur Text",
+       "style": "plain",
+       "url": null
+      }
+     ],
+     "level": 0
+    }
+   ]
+  }
+ ]
+}
