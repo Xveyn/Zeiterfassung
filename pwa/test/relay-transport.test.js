@@ -237,3 +237,46 @@ test('the socket is closed on every outcome', async () => {
   await failed.run().catch(() => {});
   assert.ok(failed.sockets.every((s) => s.closed));
 });
+
+function throwing({ factory = null, send = null } = {}) {
+  const logs = [];
+  const sockets = [];
+  const boom = () => Object.assign(new Error(`Failed with ${SECRET} in the message`), { name: 'SecurityError' });
+  const transport = new RelayTransport({
+    webSocketFactory: factory === 'throw' ? () => { throw boom(); }
+      : (url, protocols) => { const s = new FakeSocket(url, protocols); if (send === 'throw') s.send = () => { throw boom(); }; sockets.push(s); return s; },
+    relayUrl: RELAY, timeoutMs: 40, attempts: 1, log: (what, error) => logs.push([what, error]) });
+  const run = () => transport.exchange({ method: 'POST', path: '/v1/sync', token: 'T'.repeat(20), body: ENVELOPE,
+    endpoint: { kind: 'relay', secret: SECRET, have: 0 } });
+  return { logs, sockets, run };
+}
+
+test('a throwing WebSocket constructor is logged by name only and still reads as unreachable (#425)', async () => {
+  const { logs, run } = throwing({ factory: 'throw' });
+  await assert.rejects(run(), (error) => error.code === 'relay_unreachable');
+  assert.equal(logs.length, 1);
+  assert.equal(logs[0][1].name, 'SecurityError');
+  assert.equal(JSON.stringify(logs).includes(SECRET), false);       // Chromes Meldung kann das Subprotocol nennen
+});
+
+test('a throwing send is logged by name only and still reads as unreachable (#425)', async () => {
+  const { logs, sockets, run } = throwing({ send: 'throw' });
+  const pending = run();
+  sockets[0].open();
+  await assert.rejects(pending, (error) => error.code === 'relay_unreachable');
+  assert.equal(logs.length, 1);
+  assert.equal(logs[0][1].name, 'SecurityError');
+  assert.equal(JSON.stringify(logs).includes(SECRET), false);
+});
+
+// 3) `ok` gilt nur für den letzten Versuch --------------------------------------------------------------
+test('an ok from an earlier attempt does not make a later unreachable relay look like a silent desktop (#425)', async () => {
+  const { sockets, run } = setup({ timeoutMs: 2000, attempts: 2 });
+  const pending = run();
+  sockets[0].open();
+  sockets[0].ok(1);                                                 // der Relay nahm die Anfrage an …
+  sockets[0].serverClose(1006);                                     // … und riss ab
+  await tick();
+  sockets[1].serverClose(1006);                                     // der zweite Versuch kommt nicht einmal an
+  await assert.rejects(pending, (error) => error.code === 'relay_unreachable' && error.kind === 'offline');
+});

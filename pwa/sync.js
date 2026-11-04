@@ -273,11 +273,15 @@ export class SyncClient {
 
   /** Wohin die Kopplung spricht; `have` der Box wird dabei dauerhaft mitgeführt. */
   _endpoint(meta) {
-    return endpointOf(meta, { onHave: (ver) => this._rememberHave(ver) });
+    return endpointOf(meta, { onHave: (ver) => this._rememberHave(ver, meta.box_secret) });
   }
 
-  _rememberHave(ver) {
-    const current = this._store.getMeta().box_have;
+  /** `secret` ist die Box, zu der der laufende Abgleich gehört: koppelt der Nutzer währenddessen neu, darf ein
+   *  spätes `slot` der alten Box das `box_have` der neuen nicht setzen. */
+  _rememberHave(ver, secret) {
+    const meta = this._store.getMeta();
+    if (meta.box_secret !== secret) return;
+    const current = meta.box_have;
     if (ver !== 0 && !(ver > current)) return;
     this._store.setMeta({ box_have: ver }).catch((error) => logFailure('Relay: have nicht gespeichert', error));
   }

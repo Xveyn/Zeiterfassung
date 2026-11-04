@@ -393,11 +393,17 @@ Spec: `docs/superpowers/specs/2026-11-02-ios-relay-abgleich-design.md`.
   ohne „WLAN“), Desktop antwortet nicht (`ok` kam, kein `res`; `desktop_silent`), Box drosselt (`throttled`),
   Antwort bzw. Anfrage zu groß (`too_large`, Code `response_too_large` aus dem Ersatzrahmen des Desktops bzw.
   `request_too_large`). Der Text für „offline“ in Browsern, die das LAN sperren, nennt zusätzlich „Über Relay
-  koppeln“ als Ausweg.
+  koppeln“ als Ausweg. `ok` gilt **je Versuch**: ein `ok` des ersten und ein unerreichbarer zweiter Versuch ergibt
+  „Relay nicht erreichbar“, nicht „Desktop antwortet nicht“. Wirft der WebSocket-Konstruktor oder `send`
+  (CSP, `SecurityError`, ungültige URL), steht im Log nur der **Name** des Fehlers: Chromes Meldungstext kann das
+  Subprotocol, also das Geheimnis, nennen.
 - **Koppel-Link.** Gelesen von `parsePairLink` (`pairing.js`), im Scanner **und** aus `location.hash`;
   `scanForPairLink` liefert `{kind: 'lan', …}` oder `{kind: 'relay', secret, code}`. Ein `#pair=`- oder `#relay=`-Fragment
   wird nach dem Lesen **immer** aus Adresszeile und Verlauf entfernt (auch bei unbrauchbarem Inhalt und bei
-  schon gekoppelter Seite): es trägt Code und Geheimnis. Die Koppel-Seite zeigt bei einem Relay-Link nur den
+  schon gekoppelter Seite): es trägt Code und Geheimnis. Das geschieht in `main()` **vor** dem Öffnen des Speichers
+  (`scrubPairFragment`, sonst bliebe es bei einem privaten Fenster stehen, in dem `fatalView` erscheint); das
+  gelesene Fragment geht als `startHash` an die `App`. `box_have` einer laufenden Anfrage wird nur gemerkt, wenn
+  die Kopplung noch dieselbe Box ist (`SyncClient._rememberHave`). Die Koppel-Seite zeigt bei einem Relay-Link nur den
   Gerätenamen, kein Adress- oder Code-Feld; das Geheimnis liegt nur im Speicher von `App.pairing`. Eine Kopplung
   über den Relay gibt es nur per Link, nicht per Eingabe von Hand.
 - **`ping()`** hat im Relay-Weg keine Route und liefert ohne Netzanfrage `{skewMs: 0, skewWarning: false}`; die
