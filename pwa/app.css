@@ -57,7 +57,7 @@ button.option.active { background: var(--accent); color: #fff; font-weight: 600;
 .picker-dialog .custom { display: flex; gap: 8px; align-items: flex-start; }
 .picker-dialog .custom input { flex: 1; min-width: 0; }
 
-.hint { padding: 10px 12px; border-radius: 8px; margin: 0 0 8px; background: var(--cell); border-left: 4px solid var(--muted); }
+.hint { padding: 10px 12px; border-radius: 8px; margin: 0 0 8px; background: var(--cell); border-left: 4px solid var(--muted); overflow-wrap: anywhere; }
 .hint.error { border-color: var(--accent); }
 .hint.warn { border-color: var(--warn); }
 .hint.info { border-color: #60a5fa; }
@@ -103,9 +103,16 @@ dialog {
   border-radius: 12px; background: var(--bg); color: var(--text);
 }
 dialog::backdrop { background: rgba(0, 0, 0, .65); }
-dialog .buttons { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; margin-top: 12px; }
+/* Bei wenig Höhe (Handy im Querformat) scrollt der Dialog; die Knöpfe bleiben am unteren Rand sichtbar. */
+dialog .buttons {
+  display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap;
+  position: sticky; bottom: calc(-1 * var(--gutter)); background: var(--bg);
+  margin: 12px calc(-1 * var(--gutter)) calc(-1 * var(--gutter)); padding: 8px var(--gutter) var(--gutter);
+}
 .slot { border: 1px solid #2a3a5a; border-radius: 8px; padding: 10px; margin-bottom: 10px; }
-.slot .remove { float: right; }
+/* Kopfzeile statt schwebendem ×: der Knopf nähme sonst der Zeile von/bis Breite weg (bei 320 px blieben 74 px je Zeitfeld). */
+.slot-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 4px; }
+.slot .remove { min-width: var(--tap); padding: 0; }
 .error-text { color: var(--accent); min-height: 1.4em; }
 .version { background: var(--cell); border-radius: 8px; padding: 10px; margin-bottom: 8px; }
 .version ul { margin: 4px 0 0; padding-left: 18px; }
@@ -129,6 +136,16 @@ label.check input { width: auto; min-height: 0; flex: none; }
 .settings-dialog, .category-edit-dialog { max-height: 90vh; overflow-y: auto; }
 .settings-dialog dl { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; margin: 0 0 12px; }
 .settings-dialog dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+/* Schmale Handys: Beschriftung über dem Wert, sonst bricht der Wert Zeichen für Zeichen um. */
+@media (max-width: 420px) {
+  .settings-dialog dl { grid-template-columns: 1fr; gap: 0; }
+  .settings-dialog dt { margin-top: 8px; font-size: .85rem; }
+}
+/* Sehr schmal: die drei Reiter behalten ihren vollen Text, und Abbrechen/Speichern bleiben in einer Zeile. */
+@media (max-width: 340px) {
+  .settings-dialog .tabs button { font-size: .75rem; padding-left: 2px; padding-right: 2px; }
+  dialog .buttons button { padding: 0 12px; }
+}
 .categories { list-style: none; margin: 0 0 12px; padding: 0; }
 .category { display: flex; gap: 6px; align-items: stretch; margin-bottom: 6px; }
 .category .info {
