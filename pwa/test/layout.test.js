@@ -59,8 +59,13 @@ test('button groups inside a panel (updates, connection, categories) do not stic
 test('time inputs step in five minutes and snap on change', () => {
   assert.doesNotMatch(views, /type: 'time', step: 60/);
   assert.match(views, /TIME_STEP_MINUTES \* 60/);
-  assert.match(views, /snapTime\(/);
+  assert.match(views, /\? snapTime :/);
   assert.match(views, /onchange/);
+});
+
+test('the pause fields step in five minutes and snap on change like the desktop picker', () => {
+  assert.match(views, /\? snapPause :/);
+  assert.equal((views.match(/'Pause \(Min\)', \{[^}]*step: TIME_STEP_MINUTES/g) || []).length, 2);
 });
 
 test('on narrow phones the dialog buttons use less padding so Cancel and Save stay on one row', () => {

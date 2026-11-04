@@ -15,7 +15,7 @@ ES-Module flach im Ordner:
   ganze Minuten. `snapTime`/`TIME_STEP_MINUTES`: die Zeitauswahl rastet auf **5 Minuten** wie die Auswahl am
   Desktop (`theme.palette.TIME_VALUES`): `step` 300 am `<input type="time">`, gerundet wird beim Übernehmen
   (`change`), nicht beim Tippen; bereits gespeicherte Zeiten (z. B. 08:03 vom Desktop) bleiben unverändert, bis das
-  Feld geändert wird. Die Pause bleibt in Einserschritten.
+  Feld geändert wird. Die Pause rastet ebenso (`snapPause`, `step` 5, Desktop: `PAUSE_VALUES`).
 - `defaults.js` — Vorbelegung der Zeiten aus den Standardzeiten des Desktops
   (#288). `resolveSlotDefaults` ist das Gegenstück zu
   `category_defaults.resolve_slot_defaults`; der **Gleichlauf** hängt an
