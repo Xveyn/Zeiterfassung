@@ -5,7 +5,7 @@
 Dieses Dokument sagt, **wer was bekommt, wo es liegt, wie lange und wie es gelöscht wird**. Es ist die
 Quelle für Hinweistexte in der App. Die Zahlen darin prüft `tests/test_datenschutz_claims.py` gegen
 `relay/src/validate.js`. Jeder PR der Kette (#358) ergänzt seinen Teil; was noch nicht festliegt, steht als
-`Offen (PR n)`. Stand: PR 3c (Oberfläche: Koppeln über den Relay, Zustand je Gerät).
+`Offen (PR n)`. Stand: PR 4 (PWA: Koppeln und Abgleich über den Relay, iOS-Hinweise).
 
 ## 1. Was der Relay sieht, und was nicht
 
@@ -107,7 +107,14 @@ Klartext, den versiegelten Umschlag), Slots überschreiben, den Desktop von der 
 Fehler fälschen und `DELETE /v1/box` auslösen. Er kann **nicht** Inhalte lesen oder synchronisieren: das braucht den
 Geräteschlüssel. Das ist ein Störer- und Metadatenrisiko, kein Inhaltsleck.
 Geht das Handy verloren, widerruft der Nutzer die Kopplung am Desktop; die Box wird dabei am Relay mit
-gelöscht (best effort, s. 2.). Offen (PR 3c): der Widerruf-Dialog sagt es.
+gelöscht (best effort, s. 2.). Offen (PR 5): der Widerruf-Dialog sagt es.
+
+**Auf dem Handy** liegt das Box-Geheimnis (`box_secret`) wie das Gerätetoken und der Geräteschlüssel in der
+IndexedDB der Web-App; die PWA zeigt es nie an und schreibt es in kein Log und keinen Fehlertext. Sie sendet
+nur an die Adresse des Relays (`RELAY_URL`) und an den Desktop im eigenen WLAN. Der Koppel-Link trägt
+Geheimnis und Kopplungscode im Fragment (`#relay=`); die PWA entfernt es nach dem Lesen aus Adresszeile und
+Verlauf. Auf iOS löscht das System den Speicher einer Seite im Browser-Tab nach sieben Tagen ohne Nutzung;
+die installierte Web-App ist davon ausgenommen (die PWA weist darauf hin).
 
 ## 10. Push getrennt halten
 
