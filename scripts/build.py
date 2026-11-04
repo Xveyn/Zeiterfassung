@@ -84,6 +84,9 @@ def _pyinstaller_common(extra_args):
     # PyInstaller's --add-data separator: ';' on Windows, ':' elsewhere.
     # os.pathsep happens to match, so we use it.
     add_data = f"assets{os.pathsep}assets"
+    # Die Datenschutzhinweise der App (Dialog Einstellungen → App) lesen diese Datei aus dem
+    # Ressourcenordner; ohne sie zeigt der gebaute Dialog nur den Ersatztext.
+    privacy_data = f"docs{os.sep}datenschutz.md{os.pathsep}docs"
     return [
         sys.executable, "-m", "PyInstaller",
         "--noconfirm",
@@ -93,6 +96,7 @@ def _pyinstaller_common(extra_args):
         # damit der Release-Kanal-Stempel im Artefakt landet.
         "--hidden-import", "src.build_info",
         "--add-data", add_data,
+        "--add-data", privacy_data,
         "--collect-all", "xhtml2pdf",
         "--collect-all", "reportlab",
         "--collect-all", "holidays",

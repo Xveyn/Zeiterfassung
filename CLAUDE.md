@@ -1238,7 +1238,11 @@ Netto-Änderung gegen den Base-Branch, bei `push` der Bereich seit
 
 Als Dokumentation gilt: `*.md` (überall), `docs/**`, `.superpowers/**`,
 `LICENSE`. **Alles andere ist Code** — insbesondere `.github/**`: eine
-Workflow-Änderung muss sich selbst testen.
+Workflow-Änderung muss sich selbst testen. **Ausnahme: `docs/datenschutz.md`.**
+Die App bündelt sie (`scripts/build.py`), der Dialog „Datenschutzhinweise“ zeigt
+sie, und `tests/test_privacy_doc.py` prüft den Parser gegen die echte Datei;
+ein PR nur auf diese Datei läuft deshalb mit Tests (`tests/test_ci_doc_patterns.py`
+hält die Ausnahme am Workflow fest).
 
 Zwei Dinge daran sind nicht verhandelbar:
 
@@ -1360,7 +1364,7 @@ nicht mehr als „offen" führen — der Verweis lautet auf diese Grenze.
 
 - `src/main.py` — Einstiegspunkt, **reiner Bootstrap**; baut `Tk`-Root, instanziert `Storage`/`Settings`/`App`, behandelt `--minimized`. Fachliche Sync-Flows gehören nach `sync_runtime.py` (R1, margenheld/Zeiterfassung#181 bzw. Xveyn#49)
 - `src/ui.py` — Tkinter-GUI; `App` ist schlanker Koordinator über `GridRenderer`/`BackgroundTaskRunner`/`SyncOrchestrator`/`UpdateBanner`/`UpdateCoordinator` (siehe `src/CLAUDE.md`)
-- `src/dialogs/` — Modal-Dialoge; Beschreibung, Verträge und Reihenfolge der Settings-Tabs in `src/CLAUDE.md`, Abschnitt „Dialoge“. Module: `entry_dialog` (Tages-Dialog), `slot_rows` (Slot-Zeilenliste), `category_dialog` (Kategorien samt Standardzeiten), `conflicts_dialog` (Sync-Konflikte), `date_row` (Tag/Monat/Jahr-Widget), `period_picker` (Zeitraum-Auswahl mit Vorschau), `send_dialog` + `send_task` (Versand, Worker-Kern Tk-frei), `export_dialog` + `export_task` (PDF-Export), `share_dialog` + `share_task` (Teilen), `import_dialog` (Import), `mail_task` (gemeinsamer Fehler-Klassifikator der Mail-Kerne), `smtp_dialog`, `webhook_dialog`, `vacation_dialog` (Urlaub verwalten), `scopes_dialog` (gewährte OAuth-Scopes), `mobile_pair_dialog` (Koppel-Dialog Handy), `removal_dialog` (Rückfrage „Zeiterfassung entfernen“), `settings_dialog/` (Paket, ein Modul je Tab)
+- `src/dialogs/` — Modal-Dialoge; Beschreibung, Verträge und Reihenfolge der Settings-Tabs in `src/CLAUDE.md`, Abschnitt „Dialoge“. Module: `entry_dialog` (Tages-Dialog), `slot_rows` (Slot-Zeilenliste), `category_dialog` (Kategorien samt Standardzeiten), `conflicts_dialog` (Sync-Konflikte), `date_row` (Tag/Monat/Jahr-Widget), `period_picker` (Zeitraum-Auswahl mit Vorschau), `send_dialog` + `send_task` (Versand, Worker-Kern Tk-frei), `export_dialog` + `export_task` (PDF-Export), `share_dialog` + `share_task` (Teilen), `import_dialog` (Import), `mail_task` (gemeinsamer Fehler-Klassifikator der Mail-Kerne), `smtp_dialog`, `webhook_dialog`, `vacation_dialog` (Urlaub verwalten), `scopes_dialog` (gewährte OAuth-Scopes), `mobile_pair_dialog` (Koppel-Dialog Handy), `removal_dialog` (Rückfrage „Zeiterfassung entfernen“), `privacy_dialog` (Datenschutzhinweise, Einstellungen → App), `settings_dialog/` (Paket, ein Modul je Tab)
 - `src/json_store.py` — gemeinsame Mechanik der lokalen JSON-Stores und einziger Ort der beiden Regeln N1 (`atomic_write_json`: fsync vor `os.replace`) und N4 (`load_json_or_quarantine`: korrupte Datei nach `.corrupt-<stamp>` statt stillem Verwerfen). Neue Stores nutzen die beiden Funktionen, statt die Mechanik zu kopieren
 - `src/storage.py` — JSON-Persistenz der Zeiteinträge (Schlüssel: ISO-Datum). Gelesen wird nur bereinigt (`sanitize_slot`), eine beschädigte Datei wird beim Laden mit Sicherung repariert (s. `src/CLAUDE.md`)
 - `src/settings.py` — Benutzereinstellungen mit Defaults
@@ -1619,6 +1623,7 @@ nicht mehr als „offen" führen — der Verweis lautet auf diese Grenze.
 - `src/platform_open.py` — `os.startfile`/`open`/`xdg-open`-Wrapper
 - `src/startup_info.py` — die zwei Startzeilen des Logs (Xveyn#401): Build/Kanal/Plattform/Python/Tk (`describe_environment`, vor den Stores) und die an/aus-Schalter (`describe_features`, nach dem Laden der Settings). Tk-frei, alles als Argument; nie Namen, Pfade oder Adressen im Log
 - `src/logging_setup.py` — File-Logging + globaler Excepthook (Setup-Fehler sind **nicht-fatal**, siehe `main.py`); aus dem Quellcode (`python -m src.main`, nicht frozen) loggt es zusätzlich nach stderr; `ZEITERFASSUNG_LOG_LEVEL=DEBUG` hebt das Level an (Konsole und Logfile)
+- `src/privacy_doc.py` — die Datenschutzhinweise der App, Tk-frei: parst die gebündelte `docs/datenschutz.md` in anzeigefertige Blöcke (Titel, Überschriften, Absätze, Listen, Zitat, fett, Code, Links; Unbekanntes bleibt lesbarer Text), Links nur für `http(s)` (`is_web_url`), `load_privacy_doc` (wirft nie, `None` bei fehlender Datei) und `fallback_blocks` (Ersatztext mit Link auf das Dokument im Projekt). Die Datei geht per `--add-data` in jeden Build; Anzeige: `src/dialogs/privacy_dialog.py`
 - `src/theme/` — Dark-Theme als Paket (R3): `palette` (Konstanten), `fonts` (benannte Tk-Fonts + Skalierung), `widgets` (Widget-Fabriken, ttk-Styles), `geometry` (Zentrierung + die Tk-freien Prädikate `_stray_click_suppressed`/`_should_show_delete_button`), `chrome` (Win32-Fensterchrome, `create_dialog`), `messagebox` (themed Drop-ins), `form` (Formular-Bausteine `Form`/`set_enabled`/`empty_state`, #132) mit der Tk-freien Logik in `form_logic`. `__init__.py` re-exportiert die Oberfläche — Aufrufer importieren unverändert `from src.theme import …`, nicht aus den Teilmodulen
 - `src/tooltip.py` — UI-Hilfe (`_hover`-Overlays)
 - `src/version.py` — Einzige Quelle für die App-Version (von Workflow & `installer.iss` gelesen); ordnet Release-Kennungen (`parse_release_id`, `X.Y.Z[-pre.N]`) und kennt die Build-Identität (`installed_release_id` aus dem `RELEASE_TAG`-Stempel)
