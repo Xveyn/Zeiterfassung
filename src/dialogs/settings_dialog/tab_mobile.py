@@ -20,8 +20,8 @@ from src.dialogs.settings_dialog.form_model import SaveOutcome
 from src.dialogs.settings_dialog.tab_rules import (
     FIRST_ENABLE_NOTICE, REVOKE_ERROR_TEXT, address_options, address_to_choice,
     device_row_text, keystore_summary, mobile_status_view, mobile_updates, relay_pair_enabled,
-    revoke_outcome, test_push_outcome, test_push_text, validate_mobile, visible_devices,
-    window_cap_options, window_cap_to_choice,
+    revoke_all_prompt, revoke_outcome, revoke_prompt, test_push_outcome, test_push_text, validate_mobile,
+    visible_devices, window_cap_options, window_cap_to_choice,
 )
 from src.theme import (
     ACCENT, BG, ENTRY_BG, FONT, STATUS_OK, STATUS_WARN, TEXT, TEXT_MUTED, Form, dark_combo,
@@ -267,15 +267,18 @@ class MobileTab:
         if self._alive:
             self._refresh_devices()
 
+    def _relay_states(self):
+        """Geräte-ID → Zustand für die Geräte mit Relay-Box (nur Speicher); ohne Relay-Dienst leer."""
+        return self._relay.states_by_device() if self._relay is not None else {}
+
     def _revoke(self):
         device_id = self._selected_id()
         if device_id is None or self._busy:
             return
         name = next((r["name"] for r in self._rows if r["id"] == device_id), device_id)
+        has_box = device_id in self._relay_states()
         if not themed_askyesno(
-                self._dialog, "Gerät widerrufen",
-                f"„{name}“ wird ausgesperrt und muss neu gekoppelt werden.\n\nFortfahren?",
-                lock_ms=600):
+                self._dialog, "Gerät widerrufen", revoke_prompt(name, has_box=has_box), lock_ms=600):
             return
         self._busy = True
         self._sync_buttons()
@@ -307,10 +310,10 @@ class MobileTab:
     def _revoke_all(self):
         if not self._rows or self._busy:
             return
+        states = self._relay_states()
+        boxes = sum(1 for record in self._rows if record["id"] in states)
         if not themed_askyesno(
-                self._dialog, "Alle Geräte widerrufen",
-                "Alle gekoppelten Handys werden ausgesperrt und müssen neu gekoppelt "
-                "werden.\n\nFortfahren?", lock_ms=600):
+                self._dialog, "Alle Geräte widerrufen", revoke_all_prompt(boxes=boxes), lock_ms=600):
             return
         self._busy = True
         self._sync_buttons()

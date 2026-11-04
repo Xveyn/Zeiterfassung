@@ -19,8 +19,8 @@ import tkinter as tk
 
 from src import qr
 from src.dialogs.settings_dialog.tab_rules import (
-    RELAY_PAIR_HINT, RELAY_PAIR_REFUSED_TEXT, format_countdown, pair_changes,
-    pair_poll_keeps_running, pair_poll_view, paired_notice,
+    PAIR_INTRO_LAN, PAIR_INTRO_RELAY, RELAY_PAIR_HINT, RELAY_PAIR_REFUSED_TEXT, format_countdown,
+    pair_changes, pair_poll_keeps_running, pair_poll_view, paired_notice,
 )
 from src.theme import (
     BG, FONT, FONT_BOLD, STATUS_OK, STATUS_WARN, TEXT, TEXT_MUTED, center_dialog_on_parent,
@@ -50,12 +50,8 @@ class _PairDialog:
         self._dialog = dialog = create_dialog(
             parent, "Handy über Relay koppeln" if self._relay_mode else "Handy koppeln")
 
-        intro = ("Kamera-App des Handys öffnen und den QR-Code scannen."
-                 if self._relay_mode else
-                 "Kamera-App des Handys öffnen und den QR-Code scannen — oder "
-                 "die Adresse im Browser öffnen und den Kopplungscode eintippen.")
         tk.Label(
-            dialog, text=intro,
+            dialog, text=PAIR_INTRO_RELAY if self._relay_mode else PAIR_INTRO_LAN,
             font=FONT, bg=BG, fg=TEXT, justify="left", anchor="w",
             wraplength=px(_WRAP_PX)).pack(padx=16, pady=(14, 8), anchor="w")
 
