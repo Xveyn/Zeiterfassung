@@ -19,9 +19,9 @@ from src.dialogs.settings_dialog.fields import FieldSet
 from src.dialogs.settings_dialog.form_model import SaveOutcome
 from src.dialogs.settings_dialog.tab_rules import (
     FIRST_ENABLE_NOTICE, REVOKE_ERROR_TEXT, address_options, address_to_choice,
-    device_row_text, keystore_summary, mobile_status_view, mobile_updates, revoke_outcome,
-    test_push_outcome, test_push_text, validate_mobile, visible_devices, window_cap_options,
-    window_cap_to_choice,
+    device_row_text, keystore_summary, mobile_status_view, mobile_updates, relay_pair_enabled,
+    revoke_outcome, test_push_outcome, test_push_text, validate_mobile, visible_devices,
+    window_cap_options, window_cap_to_choice,
 )
 from src.theme import (
     ACCENT, BG, ENTRY_BG, FONT, STATUS_OK, STATUS_WARN, TEXT, TEXT_MUTED, Form, dark_combo,
@@ -38,13 +38,14 @@ _STATUS_COLORS = {"ok": STATUS_OK, "muted": TEXT_MUTED, "error": STATUS_WARN}
 class MobileTab:
     """Baut den Mobil-Tab; Tab-Schnittstelle für den `SaveCoordinator`."""
 
-    def __init__(self, frame, dialog, settings, mobile_service, runner):
+    def __init__(self, frame, dialog, settings, mobile_service, runner, relay_service=None):
         self.frame = frame
         self.title = "Mobil"
         self._dialog = dialog
         self._settings = settings
         self._service = mobile_service
         self._runner = runner
+        self._relay = relay_service
         self._alive = True
         self._busy = False                  # Widerruf läuft
         self._poll_id = None
@@ -100,6 +101,11 @@ class MobileTab:
             ("Widerrufen", self._revoke),
             ("Alle widerrufen", self._revoke_all),
             ("Testbenachrichtigung", self._test))
+        self._relay_btn = None
+        if self._relay is not None:
+            (self._relay_btn,) = form.buttons(("Über Relay koppeln (iPhone)", self._pair_relay))
+            form.hint("iPhone und Co.: der Abgleich läuft über den Relay-Dienst, nicht über "
+                      "das WLAN.")
         self._test_label = form.hint("")
         self._keystore_label = form.hint("")
         self._listbox.bind("<<ListboxSelect>>", self._on_select)
@@ -187,7 +193,9 @@ class MobileTab:
         self._keystore_label.config(text=keystore_summary(self._service.key_locations()))
         records = visible_devices(self._service.list_devices())
         now = utc_now_iso()
-        texts = [device_row_text(record, now) for record in records]
+        relay_states = self._relay.states_by_device() if self._relay is not None else {}
+        texts = [device_row_text(record, now, relay_states.get(record["id"]))
+                 for record in records]
         if texts == self._row_texts:
             return                          # nichts geändert: die Auswahl bleibt
         selected = self._selected_id()
@@ -215,6 +223,8 @@ class MobileTab:
         has_devices = bool(self._rows)
         has_selection = self._selected_id() is not None
         set_secondary_button_enabled(self._pair_btn, running and not self._busy)
+        if self._relay_btn is not None:
+            set_secondary_button_enabled(self._relay_btn, self._relay_pair_possible())
         set_secondary_button_enabled(self._revoke_btn, has_selection and not self._busy)
         set_secondary_button_enabled(self._revoke_all_btn, has_devices and not self._busy)
         selected = self._selected_id()
@@ -240,6 +250,20 @@ class MobileTab:
         # ein Importzyklus (Dialog → Paket → tab_mobile → Dialog).
         from src.dialogs.mobile_pair_dialog import open_pair_dialog
         open_pair_dialog(self._dialog, self._service)
+        if self._alive:
+            self._refresh_devices()
+
+    def _relay_pair_possible(self):
+        # Gespeicherter Stand, nicht das Formular: der Dienst liest die Settings.
+        return relay_pair_enabled(saved_enabled=bool(self._settings.get("mobile_enabled")),
+                                  has_relay=self._relay is not None, busy=self._busy)
+
+    def _pair_relay(self):
+        if not self._relay_pair_possible():
+            return
+        from src.dialogs.mobile_pair_dialog import open_pair_dialog     # Importzyklus, s. `_pair`
+        open_pair_dialog(self._dialog, self._service, relay=self._relay, runner=self._runner,
+                         mode="relay")
         if self._alive:
             self._refresh_devices()
 

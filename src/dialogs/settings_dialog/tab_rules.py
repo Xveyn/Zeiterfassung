@@ -363,6 +363,9 @@ FIRST_ENABLE_NOTICE = (
     "Die App muss laufen, damit sich das Handy abgleichen kann; ein Autostart "
     "(Tab „App“) wird empfohlen. Unter Windows fragt die Firewall beim ersten Mal, ob "
     "die App im privaten Netz Verbindungen annehmen darf.\n\n"
+    "Für iPhones kann der Abgleich optional über einen Relay-Dienst im Internet laufen. Er "
+    "sieht, dass und wann ein Handy abgleicht und wie groß die Daten sind, nie den Inhalt. "
+    "Dazu wird erst gekoppelt, wenn Sie „Über Relay koppeln“ wählen.\n\n"
     "Jetzt einschalten?")
 
 _MOBILE_ERRORS = {
@@ -454,16 +457,55 @@ def visible_devices(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return [record for record in records if not record.get("revoked")]
 
 
-def device_row_text(record: Mapping[str, Any], now: str) -> str:
+# Zustände der Relay-Box (`relay_link.STATE_*`, dazu `relay_service.STATE_OFF`) als Text. Die
+# Schlüssel sind Literale: dieses Modul darf `relay_link` (und damit die WebSocket-Bibliothek)
+# nicht importieren; ein Test hält sie gegen die Konstanten.
+_RELAY_STATE_TEXTS = {
+    "connecting": "verbindet …",
+    "connected": "verbunden",
+    "backoff": "keine Verbindung, neuer Versuch folgt",
+    "replaced": "verdrängt — der Abgleich steht, bis der Desktop neu verbinden darf",
+    "stopped": "angehalten",
+    "off": "getrennt",
+}
+
+RELAY_PAIR_HINT = (
+    "Der Abgleich läuft über den Relay-Dienst im Internet. Er sieht Metadaten (dass und wann "
+    "ein Handy abgleicht, Größen, IP-Adressen), nie den Inhalt: der bleibt Ende-zu-Ende "
+    "verschlüsselt. Wer den QR-Code fotografiert, kann sich von überall im Internet koppeln, "
+    "solange der Code gilt — nur dem eigenen Handy zeigen.")
+
+RELAY_PAIR_REFUSED_TEXT = (
+    "Das Koppeln über den Relay ist gerade nicht möglich: die Handy-Erfassung ist aus, die "
+    "Gerätedatei ist nicht schreibbar oder eine frühere Kopplung wird noch abgeschlossen. "
+    "Später erneut versuchen („Neuer Code“).")
+
+
+def relay_state_text(state: str) -> str:
+    """Kurztext zum Zustand der Relay-Box eines Geräts; Unbekanntes bekommt einen Ersatztext."""
+    return _RELAY_STATE_TEXTS.get(state, "Zustand unbekannt")
+
+
+def relay_pair_enabled(*, saved_enabled: bool, has_relay: bool, busy: bool) -> bool:
+    """Ob „Über Relay koppeln“ greift: der gespeicherte Stand zählt (der Dienst liest die
+    Settings), nicht das ungespeicherte Formular, und der LAN-Status spielt keine Rolle."""
+    return saved_enabled and has_relay and not busy
+
+
+def device_row_text(record: Mapping[str, Any], now: str, relay_state: str | None = None) -> str:
     """Eine Zeile der Geräteliste: Name, zuletzt gesehen, gültig bis; abgelaufen ist markiert.
-    Widerrufene Geräte kommen hier nicht an (`visible_devices`)."""
+    Widerrufene Geräte kommen hier nicht an (`visible_devices`). `relay_state` (nur Geräte mit
+    Box) hängt den Zustand der Relay-Verbindung an."""
     name = str(record.get("name") or record.get("id") or "?")
     mark = ""
     if str(record.get("expires_at") or "9999") <= now:
         mark = "  (abgelaufen)"
     seen = format_iso_datetime(record.get("last_seen"))
     until = format_iso_date(record.get("expires_at"))
-    return f"{name}{mark}  —  zuletzt {seen}, gültig bis {until}"
+    text = f"{name}{mark}  —  zuletzt {seen}, gültig bis {until}"
+    if relay_state is not None:
+        text += f"  —  Relay: {relay_state_text(relay_state)}"
+    return text
 
 
 def keystore_summary(where: Mapping[str, str]) -> str:

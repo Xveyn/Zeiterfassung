@@ -637,6 +637,7 @@ class App:
             on_vacation_display_change=self._refresh,
             api_service=self._api,
             mobile_service=self._mobile,
+            relay_service=self._relay,
             initial_tab=initial_tab,
             auto_updater=self._updates.auto_updater,
             on_request_removal=self.remove_application,

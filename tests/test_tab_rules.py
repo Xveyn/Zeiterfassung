@@ -812,3 +812,76 @@ def test_the_test_outcome_never_raises():
         raise RuntimeError("kaputt")
     assert tr.test_push_outcome(boom) == "server"
     assert tr.test_push_outcome(lambda: "gone") == "gone"
+
+
+# --- Relay (#358, PR 3c) ---------------------------------------------------------------
+
+RELAY_STATES = ("connecting", "connected", "backoff", "replaced", "stopped", "off")
+
+
+def test_relay_state_text_covers_every_state():
+    texts = [tr.relay_state_text(state) for state in RELAY_STATES]
+    assert all(texts)
+    assert len(set(texts)) == len(texts)
+    assert tr.relay_state_text("irgendwas")           # unbekannt: Ersatztext, kein Fehler
+
+
+def test_the_replaced_state_says_the_sync_is_standing():
+    text = tr.relay_state_text("replaced")
+    assert "steht" in text and "verbinden" in text
+
+
+def test_a_device_row_without_relay_state_is_unchanged():
+    assert tr.device_row_text(device(), NOW_ISO) == tr.device_row_text(device(), NOW_ISO, None)
+    assert "Relay" not in tr.device_row_text(device(), NOW_ISO)
+
+
+def test_a_device_row_with_relay_state_appends_it_after_the_expiry():
+    text = tr.device_row_text(device(), NOW_ISO, "connected")
+    assert text.index("gültig bis") < text.index("Relay")
+    assert text.endswith(tr.relay_state_text("connected"))
+
+
+def test_only_the_device_with_a_box_carries_a_relay_suffix():
+    states = {"a": "connected"}
+    with_box = tr.device_row_text(device(id="a"), NOW_ISO, states.get("a"))
+    without = tr.device_row_text(device(id="b"), NOW_ISO, states.get("b"))
+    assert "Relay" in with_box and "Relay" not in without
+
+
+@pytest.mark.parametrize("saved,has_relay,busy,expected", [
+    (True, True, False, True),
+    (False, True, False, False),
+    (True, False, False, False),
+    (True, True, True, False),
+    (False, False, False, False),
+    (False, True, True, False),
+    (True, False, True, False),
+    (False, False, True, False),
+])
+def test_relay_pair_enabled_truth_table(saved, has_relay, busy, expected):
+    assert tr.relay_pair_enabled(
+        saved_enabled=saved, has_relay=has_relay, busy=busy) is expected
+
+
+def test_the_relay_pair_hint_warns_about_photographed_qr_and_names_the_limits():
+    hint = tr.RELAY_PAIR_HINT
+    assert "fotografiert" in hint and "Metadaten" in hint and "Inhalt" in hint
+    assert "unverschlüsselt" not in hint
+
+
+def test_the_refusal_text_names_all_three_causes():
+    text = tr.RELAY_PAIR_REFUSED_TEXT
+    assert "aus" in text and "schreibbar" in text and "abgeschlossen" in text
+
+
+def test_the_relay_state_keys_match_the_link_and_service_constants():
+    from src import relay_link, relay_service
+    keys = {relay_link.STATE_CONNECTING, relay_link.STATE_CONNECTED, relay_link.STATE_BACKOFF,
+            relay_link.STATE_REPLACED, relay_link.STATE_STOPPED, relay_service.STATE_OFF}
+    assert keys == set(tr._RELAY_STATE_TEXTS)
+
+
+def test_the_first_enable_notice_names_the_relay_and_what_it_cannot_see():
+    notice = tr.FIRST_ENABLE_NOTICE
+    assert "Relay" in notice and "nie den Inhalt" in notice

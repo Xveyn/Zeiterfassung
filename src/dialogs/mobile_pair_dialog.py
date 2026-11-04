@@ -8,6 +8,10 @@ ein Einmalpasswort, das niemand sieht. Der Dialog erkennt ein Koppeln am Geräte
 (vorher/nachher) und warnt, wenn dabei ein vorhandenes, nicht widerrufenes Gerät ersetzt
 wurde (jemand hat sich mit dessen `device_id` gekoppelt).
 
+Im Modus „relay“ (#358) kommt der Link vom `RelayService` (Worker: Datei und Netz) und steht
+nur als QR-Code da: das Box-Geheimnis darin soll nie als Text auf dem Bildschirm stehen, und der
+Code allein nützt ohne es nichts. Die Sitzung schließt synchron, der Relay räumt im Worker auf.
+
 Der Poll läuft per `after` am Dialog und stirbt mit ihm.
 """
 import logging
@@ -15,7 +19,8 @@ import tkinter as tk
 
 from src import qr
 from src.dialogs.settings_dialog.tab_rules import (
-    format_countdown, pair_changes, pair_poll_keeps_running, pair_poll_view, paired_notice,
+    RELAY_PAIR_HINT, RELAY_PAIR_REFUSED_TEXT, format_countdown, pair_changes,
+    pair_poll_keeps_running, pair_poll_view, paired_notice,
 )
 from src.theme import (
     BG, FONT, FONT_BOLD, STATUS_OK, STATUS_WARN, TEXT, TEXT_MUTED, center_dialog_on_parent,
@@ -30,18 +35,27 @@ _MODULE_PX = 6           # Kantenlänge eines Moduls bei 100 %; skaliert über p
 
 
 class _PairDialog:
-    def __init__(self, parent, service):
+    def __init__(self, parent, service, relay=None, runner=None, mode="lan"):
         self._service = service
         self._parent = parent
+        self._relay = relay
+        self._runner = runner
+        self._relay_mode = mode == "relay"
+        self._relay_closed = False
+        self._waiting = False               # Relay: `open_pairing` läuft im Worker
         self._alive = True
         self._poll_id = None
         self._before = service.list_devices()
         self._failures_before = service.pair_failures
-        self._dialog = dialog = create_dialog(parent, "Handy koppeln")
+        self._dialog = dialog = create_dialog(
+            parent, "Handy über Relay koppeln" if self._relay_mode else "Handy koppeln")
 
+        intro = ("Kamera-App des Handys öffnen und den QR-Code scannen."
+                 if self._relay_mode else
+                 "Kamera-App des Handys öffnen und den QR-Code scannen — oder "
+                 "die Adresse im Browser öffnen und den Kopplungscode eintippen.")
         tk.Label(
-            dialog, text=("Kamera-App des Handys öffnen und den QR-Code scannen — oder "
-                          "die Adresse im Browser öffnen und den Kopplungscode eintippen."),
+            dialog, text=intro,
             font=FONT, bg=BG, fg=TEXT, justify="left", anchor="w",
             wraplength=px(_WRAP_PX)).pack(padx=16, pady=(14, 8), anchor="w")
 
@@ -50,11 +64,12 @@ class _PairDialog:
         self._canvas.pack(pady=4)
 
         self._address = tk.Label(dialog, text="", font=FONT, bg=BG, fg=TEXT_MUTED)
-        self._address.pack(pady=(6, 0))
         self._code_title = tk.Label(dialog, text="", font=FONT, bg=BG, fg=TEXT_MUTED)
-        self._code_title.pack()
         self._code = tk.Label(dialog, text="", font=FONT_BOLD, bg=BG, fg=TEXT)
-        self._code.pack()
+        if not self._relay_mode:            # Relay: nie Adresse oder Code als Text
+            self._address.pack(pady=(6, 0))
+            self._code_title.pack()
+            self._code.pack()
         self._hint = tk.Label(
             dialog, text="", font=FONT, bg=BG, fg=TEXT_MUTED, justify="center",
             wraplength=px(_WRAP_PX))
@@ -89,6 +104,9 @@ class _PairDialog:
         self._hint.config(text="")
 
     def _new_code(self):
+        if self._relay_mode:
+            self._new_relay_code()
+            return
         status = self._service.status
         self._canvas.delete("all")
         self._result.config(text="")
@@ -118,6 +136,46 @@ class _PairDialog:
         self._draw(link)
         self._schedule_poll()
 
+    def _new_relay_code(self):
+        if self._waiting:
+            return
+        self._blank_canvas()
+        self._clear_code()
+        self._result.config(text="")
+        self._countdown.config(text="Öffnet …")
+        self._waiting = True
+        self._runner.run(self._relay.open_pairing, self._relay_opened)
+
+    def _relay_opened(self, link):
+        """Ergebnis von `RelayService.open_pairing` (UI-Thread). `None`: abgelehnt, ohne Grund."""
+        self._waiting = False
+        if not self._alive:
+            # Der Dialog ging zu, während der Worker öffnete: die Sitzung wäre sonst verwaist.
+            # Die Worker laufen ungeordnet, ein früheres `close_pairing` kann vorausgelaufen sein.
+            if link is not None:
+                self._runner.run(self._relay.close_pairing)
+            return
+        try:
+            if link is None:
+                self._countdown.config(text="")
+                self._result.config(text=RELAY_PAIR_REFUSED_TEXT, fg=STATUS_WARN)
+                return
+            self._before = self._service.list_devices()
+            self._failures_before = self._service.pair_failures
+            self._hint.config(text=RELAY_PAIR_HINT)
+            self._countdown.config(
+                text=f"Gültig noch {format_countdown(self._service.pairing.seconds_left())}")
+            self._draw(link)
+            self._schedule_poll()
+        except tk.TclError:
+            self._alive = False
+
+    def _release_relay(self):
+        """Räumt die Relay-Seite beim Verlassen ab: einmal, im Worker (Datei, Netz)."""
+        if self._relay_mode and not self._relay_closed:
+            self._relay_closed = True
+            self._runner.run(self._relay.close_pairing)
+
     def _draw(self, link):
         scale = px(_MODULE_PX)
         try:
@@ -133,8 +191,11 @@ class _PairDialog:
             matrix = None
         if matrix is None:
             self._canvas.config(width=1, height=1)
-            self._result.config(text="Der QR-Code konnte nicht erzeugt werden — bitte "
-                                     "Adresse und Code von Hand eintippen.", fg=STATUS_WARN)
+            text = ("Der QR-Code konnte nicht erzeugt werden. Das Koppeln über den Relay "
+                    "braucht ihn." if self._relay_mode else
+                    "Der QR-Code konnte nicht erzeugt werden — bitte Adresse und Code von "
+                    "Hand eintippen.")
+            self._result.config(text=text, fg=STATUS_WARN)
             return
         size = qr.canvas_size(len(matrix), scale)
         self._canvas.config(width=size, height=size)
@@ -148,6 +209,9 @@ class _PairDialog:
     def _poll(self):
         self._poll_id = None
         if not self._alive:
+            return
+        if self._waiting:                   # Relay öffnet gerade: noch nichts zu prüfen
+            self._schedule_poll()
             return
         try:
             changes = pair_changes(self._before, self._service.list_devices())
@@ -197,6 +261,7 @@ class _PairDialog:
 
     def _close(self):
         self._service.pairing.close()
+        self._release_relay()
         if self._dialog.winfo_exists():
             self._dialog.destroy()
 
@@ -205,6 +270,7 @@ class _PairDialog:
             return
         self._alive = False
         self._service.pairing.close()
+        self._release_relay()
         if self._poll_id is not None:
             try:
                 self._dialog.after_cancel(self._poll_id)
@@ -212,6 +278,9 @@ class _PairDialog:
                 pass                        # Fenster schon weg: nichts mehr zu stornieren
 
 
-def open_pair_dialog(parent, service):
-    """Öffnet den Koppel-Dialog (modal). Schließt die Kopplungssitzung beim Verlassen."""
-    _PairDialog(parent, service)
+def open_pair_dialog(parent, service, *, relay=None, runner=None, mode="lan"):
+    """Öffnet den Koppel-Dialog (modal). Schließt die Kopplungssitzung beim Verlassen.
+    `mode="relay"` verlangt `relay` (`RelayService`) und `runner` (`BackgroundTaskRunner`)."""
+    if mode == "relay" and (relay is None or runner is None):
+        raise ValueError("Der Relay-Modus braucht relay und runner")
+    _PairDialog(parent, service, relay, runner, mode)
