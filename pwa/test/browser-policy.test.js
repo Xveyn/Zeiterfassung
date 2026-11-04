@@ -46,3 +46,13 @@ test('only the engines known to block http in the local network count as blockin
   for (const kind of ['firefox', 'ios', 'safari']) assert.equal(blocksLan(kind), true, kind);
   for (const kind of ['chromium', 'unknown', undefined]) assert.equal(blocksLan(kind), false, String(kind));
 });
+
+test('isStandalone is true when either iOS or the display mode says the web app is installed', async () => {
+  const { isStandalone } = await import('../browser-policy.js');
+  assert.equal(isStandalone({ navigatorStandalone: true, displayModeStandalone: false }), true);
+  assert.equal(isStandalone({ navigatorStandalone: false, displayModeStandalone: true }), true);
+  assert.equal(isStandalone({ navigatorStandalone: true, displayModeStandalone: true }), true);
+  assert.equal(isStandalone({ navigatorStandalone: false, displayModeStandalone: false }), false);
+  assert.equal(isStandalone({}), false);
+  assert.equal(isStandalone(), false);
+});

@@ -5,13 +5,13 @@ import { readFileSync } from 'node:fs';
 
 import { describeError } from '../messages.js';
 import { PROTOCOL } from '../pairing.js';
-import { SyncError } from '../sync.js';
+import { SyncError, classifyHttpError } from '../sync.js';
 
 const errors = JSON.parse(readFileSync(new URL('./fixtures/errors.json', import.meta.url)));
 
 test('every error kind the server can produce has its own text', () => {
   const kinds = new Set(errors.map((row) => row.kind));
-  for (const extra of ['offline', 'not_paired', 'timeout']) kinds.add(extra);
+  for (const extra of ['offline', 'not_paired', 'timeout', 'desktop_silent', 'throttled', 'too_large']) kinds.add(extra);
   const fallback = describeError(new SyncError({ kind: 'völlig_neu' })).text;
   for (const kind of kinds) {
     const { text } = describeError(new SyncError({ kind, message: 'Text vom Server', code: '' }));
@@ -147,4 +147,72 @@ test('an address that is not host:port never reaches the text', () => {
 test('only the offline text changes with the browser, a timeout keeps its own', () => {
   const timeout = new SyncError({ kind: 'timeout' });
   assert.equal(describeError(timeout, { browser: 'firefox' }).text, describeError(timeout).text);
+});
+
+// --- Relay-Weg (#358) ----------------------------------------------------------------------------
+
+test('the relay failures have their own texts and say what to do', () => {
+  const silent = describeError(new SyncError({ kind: 'desktop_silent', code: 'desktop_silent' }));
+  assert.match(silent.text, /Desktop/);
+  assert.match(silent.text, /nicht geantwortet/);
+  assert.equal(silent.action, 'retry');
+  const throttled = describeError(new SyncError({ kind: 'throttled', code: 'throttled' }));
+  assert.match(throttled.text, /Minute/);
+  assert.equal(throttled.action, 'retry');
+  const replaced = describeError(new SyncError({ kind: 'transient', code: 'replaced' }));
+  assert.match(replaced.text, /zweite Verbindung/);
+  assert.equal(replaced.action, 'retry');
+});
+
+test('too large says whether the answer or the request was too large', () => {
+  const answer = describeError(new SyncError({ kind: 'too_large', code: 'response_too_large' }));
+  assert.match(answer.text, /Antwort/);
+  assert.match(answer.text, /90 Tage/);
+  const request = describeError(new SyncError({ kind: 'too_large', code: 'request_too_large' }));
+  assert.match(request.text, /zu viele/);
+  assert.notEqual(answer.text, request.text);
+  assert.ok(describeError(new SyncError({ kind: 'too_large' })).text.length > 10);
+});
+
+test('offline over the relay is about the internet, not the WLAN or the browser', () => {
+  const result = describeError(new SyncError({ kind: 'offline', code: 'relay_unreachable' }), { transport: 'relay', browser: 'ios' });
+  assert.match(result.text, /Relay/);
+  assert.match(result.text, /Internet/);
+  assert.doesNotMatch(result.text, /WLAN|Chrome/);
+  assert.equal(result.action, 'retry');
+});
+
+test('a browser that blocks the LAN points to the relay as the way out', () => {
+  for (const browser of ['ios', 'safari', 'firefox']) {
+    const { text } = describeError(new SyncError({ kind: 'offline' }), { browser });
+    assert.match(text, /Über Relay koppeln/, browser);
+  }
+  assert.doesNotMatch(describeError(new SyncError({ kind: 'offline' }), { browser: 'chromium' }).text, /Über Relay koppeln/);
+});
+
+test('the relay texts differ from each other', () => {
+  const texts = [
+    describeError(new SyncError({ kind: 'desktop_silent' })).text,
+    describeError(new SyncError({ kind: 'throttled' })).text,
+    describeError(new SyncError({ kind: 'transient', code: 'replaced' })).text,
+    describeError(new SyncError({ kind: 'too_large', code: 'response_too_large' })).text,
+    describeError(new SyncError({ kind: 'too_large', code: 'request_too_large' })).text,
+    describeError(new SyncError({ kind: 'offline' }), { transport: 'relay' }).text,
+  ];
+  assert.equal(new Set(texts).size, texts.length);
+});
+
+test('a too large answer is classified as too_large and does not ask for re-pairing', () => {
+  const error = classifyHttpError(413, { error: { code: 'response_too_large', message: 'zu groß' } });
+  assert.equal(error.kind, 'too_large');
+  assert.equal(error.needsRepair, false);
+  assert.equal(error.retryable, false);
+});
+
+test('a silent desktop over the relay also names a revoked or re-paired phone and the way out', () => {
+  const { text, action } = describeError(new SyncError({ kind: 'desktop_silent', code: 'desktop_silent' }));
+  assert.match(text, /widerrufen/);
+  assert.match(text, /neu gekoppelt/);
+  assert.match(text, /neu koppeln/);
+  assert.equal(action, 'retry');
 });

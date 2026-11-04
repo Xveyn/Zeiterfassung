@@ -24,3 +24,9 @@ export function browserKind(userAgent, userAgentData) {
 export function blocksLan(kind) {
   return kind === 'firefox' || kind === 'ios' || kind === 'safari';
 }
+
+/** Läuft die Seite als installierte Web-App (Home-Bildschirm)? iOS meldet es über `navigator.standalone`,
+ *  alle anderen über den Anzeigemodus `standalone`; beide Werte kommen als Parameter herein. */
+export function isStandalone({ navigatorStandalone = false, displayModeStandalone = false } = {}) {
+  return navigatorStandalone === true || displayModeStandalone === true;
+}

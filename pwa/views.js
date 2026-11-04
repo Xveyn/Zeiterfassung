@@ -8,7 +8,7 @@ import { updateStatusText } from './update-policy.js';
 import { MAX_NAME_LENGTH, blockSignature, moveRow, rowsToBlock, timesSummary, validateCategoryRows } from './categories.js';
 import {
   SETTINGS_TABS, categoryDisplay, categoryOptions, categoryRemovalText, categoryRenameHint, hintKey, nextRow, pickCategory,
-  settingsTabLabel, windowRow,
+  pairFields, settingsTabLabel, windowRow,
 } from './view-model.js';
 
 const button = (label, onclick, className = '', extra = {}) =>
@@ -70,7 +70,8 @@ export function statusBar(handlers) {
 
 // --- Koppeln ----------------------------------------------------------------------------------------
 
-export function pairView({ address, code, deviceName, busy, canScan, canCancel, error }, handlers) {
+export function pairView({ address, code, deviceName, busy, canScan, canCancel, error, relay = false, installHint = '' }, handlers) {
+  const fields = pairFields({ relay });
   const addressInput = h('input', { id: 'pair-address', name: 'address', value: address, inputmode: 'decimal',
     autocomplete: 'off', placeholder: '192.168.178.20:17654', required: true, 'data-focus': 'pair-address' });
   const codeInput = h('input', { id: 'pair-code', name: 'code', value: code, autocapitalize: 'characters',
@@ -82,14 +83,18 @@ export function pairView({ address, code, deviceName, busy, canScan, canCancel, 
   for (const [input, field] of [[addressInput, 'address'], [codeInput, 'code'], [nameInput, 'deviceName']]) {
     input.addEventListener('input', () => handlers.change(field, input.value));
   }
+  const intro = relay
+    ? 'Der QR-Code vom Desktop (Einstellungen → Mobil → „Über Relay koppeln“) wurde gelesen. Es fehlt nur noch der Name dieses Handys. Der Abgleich läuft dann verschlüsselt über das Internet.'
+    : 'Am Desktop: Einstellungen → Mobil → „Gerät koppeln …“ (im selben WLAN) oder „Über Relay koppeln“ (über das Internet, z. B. für iPhone und iPad). Dann den QR-Code scannen oder, im WLAN, Adresse und Kopplungscode eintippen.';
   return h('main', {},
-    h('h1', {}, 'Mit dem Desktop koppeln'),
-    h('p', { class: 'muted' }, 'Am Desktop: Einstellungen → Mobil → „Gerät koppeln …“. Dann den QR-Code scannen oder Adresse und Kopplungscode eintippen.'),
-    canScan && button('QR-Code scannen', handlers.scan, 'primary'),
+    h('h1', {}, relay ? 'Über den Relay koppeln' : 'Mit dem Desktop koppeln'),
+    installHint && h('p', { class: 'hint warn', role: 'status' }, installHint),
+    h('p', { class: 'muted' }, intro),
+    canScan && button(relay ? 'Anderen QR-Code scannen' : 'QR-Code scannen', handlers.scan, relay ? '' : 'primary'),
     h('form', { onsubmit: (event) => { event.preventDefault(); handlers.submit({ address: addressInput.value, code: codeInput.value, deviceName: nameInput.value }); } },
-      h('label', { for: 'pair-address' }, 'Adresse des Desktops'), addressInput,
-      h('label', { for: 'pair-code' }, 'Kopplungscode'), codeInput,
-      h('p', { class: 'muted' }, 'Den Code zeigt der Desktop unter dem QR-Code. Er verschlüsselt die Verbindung.'),
+      fields.address && h('label', { for: 'pair-address' }, 'Adresse des Desktops'), fields.address && addressInput,
+      fields.code && h('label', { for: 'pair-code' }, 'Kopplungscode'), fields.code && codeInput,
+      fields.code && h('p', { class: 'muted' }, 'Den Code zeigt der Desktop unter dem QR-Code. Er verschlüsselt die Verbindung.'),
       h('label', { for: 'pair-name' }, 'Name dieses Handys'), nameInput,
       h('div', { class: 'error-text', role: 'alert', id: 'pair-error' }, error || ''),
       h('div', { class: 'buttons' },
@@ -313,7 +318,7 @@ export function conflictsDialog(conflicts, handlers) {
 // --- Einstellungen -----------------------------------------------------------------------------------
 
 /** Reiter „Verbindung“: Stand der Kopplung und des Desktops, Verlauf, Neu koppeln. */
-function connectionPanel({ desktopName, desktop, hint = '', address, persistent, tokenUntil, window: windowInfo, push }, { closeThen, handlers }) {
+function connectionPanel({ desktopName, desktop, hint = '', address, transport = 'lan', persistent, tokenUntil, window: windowInfo, push }, { closeThen, handlers }) {
   const windowState = windowRow(windowInfo);
   const resetWindow = button('Auf 90 Tage zurücksetzen', () => closeThen(() => handlers.resetWindow()), '', { 'data-focus': 'reset-window' });
   resetWindow.hidden = !windowState.canReset;
@@ -322,7 +327,7 @@ function connectionPanel({ desktopName, desktop, hint = '', address, persistent,
       h('dt', { class: 'muted' }, 'Desktop'), h('dd', {}, desktopName || '—'),
       h('dt', { class: 'muted' }, 'Desktop-Version'), h('dd', {}, desktop?.version || '—'),
       h('dt', { class: 'muted' }, 'Plattform'), h('dd', {}, desktop?.platform || '—'),
-      h('dt', { class: 'muted' }, 'Adresse'), h('dd', {}, address || '—'),
+      h('dt', { class: 'muted' }, transport === 'relay' ? 'Verbindung' : 'Adresse'), h('dd', {}, address || '—'),
       h('dt', { class: 'muted' }, 'Kopplung gültig bis'), h('dd', {}, tokenUntil || '—'),
       h('dt', { class: 'muted' }, 'Dauerhafter Speicher'), h('dd', {}, persistent === null ? 'unbekannt' : persistent ? 'ja' : 'nein'),
       h('dt', { class: 'muted' }, 'Verlauf'), h('dd', {}, windowState.text, ' ', resetWindow)),

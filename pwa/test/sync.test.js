@@ -4,6 +4,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 import { Store } from '../store.js';
+import { decodeRequest } from '../relay-frame.js';
+import { endpointOf, isPaired } from '../transport.js';
 import { createMemoryAdapter } from '../memory-adapter.js';
 import { b64d, b64e, deviceKeys, isEnvelope, openEnvelope, pairKeys, seal } from '../crypto.js';
 import {
@@ -1170,4 +1172,178 @@ test('the relay secret goes to the desktop only after it has sent a reminders bl
 test('the request before the reminders had no push field and the live example still has none', () => {
   assert.ok(!('push' in fixture('compat/sync-request-pre-reminders.json')));
   assert.ok(!('push' in fixture('sync-request.json')));
+});
+
+// --- Abgleich über den Relay (#358) -------------------------------------------------------------
+
+const BOX = 'B'.repeat(43);
+const BOX2 = 'C'.repeat(43);
+
+function relayBytes(type, ver, payload) {
+  const out = new Uint8Array(5 + payload.length);
+  out[0] = type;
+  new DataView(out.buffer).setUint32(1, ver, false);
+  out.set(payload, 5);
+  return out.buffer;
+}
+
+/** Eine WebSocket-Attrappe, hinter der der Fake-Server von `fakeFetch` als Desktop antwortet: sie nimmt
+ *  das `put`, lässt `fakeFetch` die Anfrage öffnen und beantworten und stellt `ok` und `res` (mit dem `n`
+ *  der Anfrage) zu. */
+function relayFactory(fetchFn, sockets) {
+  let ver = 0;
+  return (url, protocols) => {
+    const listeners = {};
+    const ws = {
+      url, protocols, closed: false, binaryType: '',
+      addEventListener(type, fn) { (listeners[type] ??= []).push(fn); },
+      close() { ws.closed = true; },
+      emit(type, event = {}) { for (const fn of listeners[type] ?? []) fn(event); },
+      async send(data) {
+        const request = decodeRequest(data.subarray(1));
+        const response = await fetchFn(`http://relay${request.path}`, {
+          method: 'POST', headers: request.token ? { Authorization: `Bearer ${request.token}` } : {},
+          body: JSON.stringify(request.envelope) });
+        let body = {};
+        try { body = await response.json(); } catch { body = {}; }
+        const bytes = new TextEncoder().encode(JSON.stringify({
+          v: 1, status: response.status, seq: request.seq, n: request.n, body }));
+        ver += 1;
+        ws.emit('message', { data: relayBytes(3, ver, new Uint8Array(0)) });
+        ver += 1;
+        ws.emit('message', { data: relayBytes(2, ver, bytes) });
+      },
+    };
+    sockets.push(ws);
+    queueMicrotask(() => ws.emit('open'));
+    return ws;
+  };
+}
+
+async function makeRelay({ handler = () => reply(200, fixture('sync-response.json')), paired = true } = {}) {
+  const store = new Store(createMemoryAdapter(), () => new Date(NOW));
+  await store.load();
+  if (paired) {
+    await store.setMeta({ device_id: DEVICE_ID, token: 'T0', key: KEY_TEXT, seq: 0,
+      transport: 'relay', box_secret: BOX, box_have: 0, address: null });
+  }
+  const fetchFn = fakeFetch(handler);
+  const sockets = [];
+  const client = new SyncClient({ store, fetchFn, webSocketFactory: relayFactory(fetchFn, sockets),
+    now: () => new Date(NOW), timeoutMs: 1000, locks: null });
+  return { store, client, fetchFn, sockets };
+}
+
+const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+test('pairRelay stores a relay pairing and leaves no address', async () => {
+  const { store, client, fetchFn, sockets } = await makeRelay({
+    paired: false, handler: () => reply(200, PAIR_ANSWER()) });
+
+  const result = await client.pairRelay({ secret: BOX, code: CODE.toLowerCase(), deviceName: 'iPad' });
+
+  assert.equal(result.desktopName, 'Desktop');
+  const call = fetchFn.calls[0];
+  assert.equal(call.url, 'http://relay/v1/pair');
+  assert.equal('Authorization' in call.init.headers, false);
+  assert.equal(call.seq, 1);
+  assert.equal(JSON.stringify(call.body).includes(BOX), false);          // das Geheimnis steht nie im Umschlag
+  assert.deepEqual(sockets[0].protocols, ['zeit.v1', BOX]);
+  const meta = store.getMeta();
+  assert.equal(meta.transport, 'relay');
+  assert.equal(meta.box_secret, BOX);
+  assert.equal(meta.address, null);
+  assert.equal(meta.token, fixture('pair-response.json').token);
+  assert.equal(meta.key, b64e(NEW_KEY));
+  assert.equal(meta.seq, 0);
+  assert.equal(meta.box_have, 2);                                         // ok (1) und slot (2) der Attrappe
+  assert.equal(isPaired(meta), true);
+});
+
+test('a relay pairing syncs, counts seq per attempt and keeps have', async () => {
+  const { store, client, fetchFn } = await makeRelay();
+  await store.saveDay('2026-10-07', [SLOT]);
+
+  const first = await client.sync();
+  await client.sync();
+  await settle();
+
+  assert.equal(first.sent, 1);
+  assert.deepEqual(fetchFn.calls.map((c) => c.seq), [1, 2]);
+  assert.equal(fetchFn.calls[0].url, 'http://relay/v1/sync');
+  assert.equal(fetchFn.calls[0].init.headers.Authorization, 'Bearer T0');
+  const meta = store.getMeta();
+  assert.equal(meta.seq, 2);
+  assert.equal(meta.box_have, 4);
+});
+
+test('switching between LAN and relay clears the other side and keeps unsent days', async () => {
+  const { store, client } = await makeRelay({ paired: false, handler: () => reply(200, PAIR_ANSWER()) });
+  await store.saveDay('2026-10-07', [SLOT]);
+
+  await client.pair({ host: '192.168.1.20', port: 17654, code: CODE, deviceName: 'P' });
+  assert.deepEqual(
+    { t: store.getMeta().transport, s: store.getMeta().box_secret, h: store.getMeta().box_have },
+    { t: 'lan', s: '', h: 0 });
+
+  await client.pairRelay({ secret: BOX, code: CODE, deviceName: 'P' });
+  assert.equal(store.getMeta().transport, 'relay');
+  assert.equal(store.getMeta().address, null);
+  assert.equal(store.getMeta().seq, 0);
+
+  await client.pair({ host: '192.168.1.21', port: 17655, code: CODE, deviceName: 'P' });
+  const meta = store.getMeta();
+  assert.deepEqual([meta.transport, meta.box_secret, meta.box_have], ['lan', '', 0]);
+  assert.deepEqual(meta.address, { host: '192.168.1.21', port: 17655 });
+  assert.deepEqual(store.dirtyDates(), ['2026-10-07']);
+});
+
+test('pairRelay refuses a bad secret or code without any network', async () => {
+  const { client, fetchFn, sockets } = await makeRelay({ paired: false });
+  for (const secret of ['kurz', `${BOX}x`, `${'B'.repeat(42)} `, '', null]) {
+    await assert.rejects(client.pairRelay({ secret, code: CODE, deviceName: 'P' }),
+      (error) => error instanceof SyncError && error.kind === 'invalid_code');
+  }
+  await assert.rejects(client.pairRelay({ secret: BOX, code: `${CODE.slice(0, -1)}0`, deviceName: 'P' }),
+    (error) => error.kind === 'invalid_code');
+  assert.equal(fetchFn.calls.length, 0);
+  assert.equal(sockets.length, 0);
+});
+
+test('endpointOf gives a relay endpoint for a relay pairing and a LAN one for an old meta', () => {
+  const onHave = () => {};
+  assert.deepEqual(
+    endpointOf({ token: 'x', transport: 'relay', box_secret: BOX, box_have: 3 }, { onHave }),
+    { kind: 'relay', secret: BOX, have: 3, onHave });
+  assert.equal(endpointOf({ token: 'x', transport: 'relay', box_secret: 'kurz' }), null);
+  assert.equal(endpointOf({ token: '', transport: 'relay', box_secret: BOX }), null);
+  assert.deepEqual(endpointOf({ token: 'x', address: { host: '192.168.1.2', port: 17654 } }),
+    { kind: 'lan', host: '192.168.1.2', port: 17654 });
+});
+
+test('ping on a relay pairing makes no request and reports no skew', async () => {
+  const { client, fetchFn, sockets } = await makeRelay();
+  assert.deepEqual(await client.ping(), { skewMs: 0, skewWarning: false });
+  assert.equal(fetchFn.calls.length, 0);
+  assert.equal(sockets.length, 0);
+});
+
+test('re-pairing during a running relay sync discards the old answer', async () => {
+  let release;
+  const gate = new Promise((resolve) => { release = resolve; });
+  const { store, client } = await makeRelay({ handler: async (url) => {
+    if (url.endsWith('/v1/pair')) return reply(200, PAIR_ANSWER());
+    await gate;
+    return reply(200, fixture('sync-response.json'));
+  } });
+  await store.saveDay('2026-10-07', [SLOT]);
+
+  const running = client.sync();
+  await client.pairRelay({ secret: BOX2, code: CODE, deviceName: 'P' });
+  release();
+  const result = await running;
+
+  assert.equal(result.discarded, true);
+  assert.equal(store.getMeta().box_secret, BOX2);
+  assert.deepEqual(store.dirtyDates(), ['2026-10-07']);
 });

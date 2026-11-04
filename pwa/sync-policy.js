@@ -6,6 +6,7 @@
 export const AUTO_COOLDOWN_MS = 5000;
 export const OFFLINE_BACKOFF_MS = 30000;
 const AUTOMATIC = new Set(['start', 'visible', 'online']);
+const BACKOFF_KINDS = new Set(['offline', 'timeout', 'desktop_silent']);
 
 /** Ein „Speichern“ oder „Jetzt abgleichen“ während eines laufenden Abgleichs darf nicht
  *  verloren gehen: die App merkt es sich und startet nach dem Ende einen weiteren Lauf. */
@@ -20,8 +21,8 @@ export function shouldSync({ trigger, paired, syncing, online, now, lastAttemptA
   if (lastError?.needsRepair) return false;                          // totes Token: erst neu koppeln
   if (trigger !== 'online' && !online) return false;
   if (now - lastAttemptAt < AUTO_COOLDOWN_MS) return false;
-  if (trigger !== 'online' && (lastError?.kind === 'offline' || lastError?.kind === 'timeout')
-    && now - lastAttemptAt < OFFLINE_BACKOFF_MS) {
+  // `desktop_silent` (Relay-Weg: die Box hat angenommen, der Desktop antwortet nicht) kostet jedes Mal die volle Frist.
+  if (trigger !== 'online' && BACKOFF_KINDS.has(lastError?.kind) && now - lastAttemptAt < OFFLINE_BACKOFF_MS) {
     return false;
   }
   return true;

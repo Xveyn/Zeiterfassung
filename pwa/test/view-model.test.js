@@ -770,3 +770,59 @@ test('the error hint passes the browser and address on to the message (#275)', (
   assert.match(hint.text, /192\.168\.178\.20:17654\/v1\/ping/);
   assert.match(hintsModel(none).find((h) => h.id === 'error').text, /nicht erreichbar/);
 });
+
+// --- Relay: Koppel-Seite und Verbindungsanzeige (#358) -----------------------------------------------
+
+import { connectionLabel, pairFields } from '../view-model.js';
+
+test('the pair page of a relay link has neither an address nor a code field', () => {
+  assert.deepEqual(pairFields({ relay: true }), { address: false, code: false });
+  assert.deepEqual(pairFields({ relay: false }), { address: true, code: true });
+  assert.deepEqual(pairFields({}), { address: true, code: true });
+});
+
+test('connectionLabel names the way, never the secret', () => {
+  const secret = 'S'.repeat(43);
+  assert.equal(connectionLabel({ transport: 'relay', box_secret: secret, address: null }), 'Relay (über das Internet)');
+  assert.equal(connectionLabel({ transport: 'lan', address: { host: '192.168.1.2', port: 17654 } }), '192.168.1.2:17654');
+  assert.equal(connectionLabel({ address: { host: '192.168.1.2', port: 17654 } }), '192.168.1.2:17654');
+  assert.equal(connectionLabel({ transport: 'lan', address: null }), '');
+  assert.equal(connectionLabel({ transport: 'relay', box_secret: secret }).includes(secret), false);
+});
+
+// --- iOS: Installation auf den Home-Bildschirm (#358) -------------------------------------------------
+
+import { iosInstallHint } from '../view-model.js';
+
+test('iOS in a browser tab is told to install first, and why', () => {
+  const text = iosInstallHint({ browser: 'ios', standalone: false });
+  assert.match(text, /Home-Bildschirm/);
+  assert.match(text, /sieben Tage/);
+  assert.match(text, /koppeln/);
+});
+
+test('no install hint in the installed web app, on other browsers or when the mode is unknown', () => {
+  assert.equal(iosInstallHint({ browser: 'ios', standalone: true }), '');
+  for (const browser of ['chromium', 'firefox', 'safari', 'unknown', undefined]) {
+    assert.equal(iosInstallHint({ browser, standalone: false }), '', String(browser));
+  }
+  assert.equal(iosInstallHint({ browser: 'ios' }), '');
+  assert.equal(iosInstallHint(), '');
+});
+
+test('hintsModel carries the install hint as an info hint without action, only where it applies', () => {
+  const none = { lastError: null, excluded: false, skewMs: 0, persistent: true, updateReady: false, conflictCount: 0, errorDays: 0 };
+  const hint = hintsModel({ ...none, errorEnv: { browser: 'ios', standalone: false } }).find((item) => item.id === 'ios-install');
+  assert.equal(hint.kind, 'info');
+  assert.equal(hint.action, null);
+  assert.match(hint.text, /Home-Bildschirm/);
+  for (const env of [{ browser: 'ios', standalone: true }, { browser: 'chromium', standalone: false }, { browser: 'firefox', standalone: false }, {}]) {
+    assert.equal(hintsModel({ ...none, errorEnv: env }).some((item) => item.id === 'ios-install'), false, JSON.stringify(env));
+  }
+});
+
+test('the iOS install hint says to scan inside the installed app, not with the camera app', () => {
+  const text = iosInstallHint({ browser: 'ios', standalone: false });
+  assert.match(text, /QR-Code scannen/);
+  assert.match(text, /Kamera-App/);
+});

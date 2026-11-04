@@ -48,6 +48,9 @@ const DEFAULT_META = Object.freeze({
   push_signature: null,       // Signatur des zuletzt an den Relay gesendeten Plans
   push_sent_at: 0,            // wann das war (ms); nach 12 h wird auch ein unveränderter Plan erneuert
   relay_secret: '',           // Geheimnis dieses Handys beim Push-Relay (Identität und Bearer); gerätelokal
+  transport: 'lan',           // Weg zum Desktop (#358): 'lan' (HTTP im WLAN) oder 'relay' (Box des Relays); ältere Stände: 'lan'
+  box_secret: '',             // Geheimnis der Box bei transport 'relay' (Subprotocol der WebSocket); sonst leer, nie angezeigt
+  box_have: 0,                // `ver` des zuletzt empfangenen `slot` der Box; wächst nur, bei `wiped` wieder 0
   categories_edit: null,      // Kategorien-Block des Handys: { modified_at, dirty_version, synced_version, error } oder null
   excluded: false,
   conflicts: [],

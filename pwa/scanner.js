@@ -1,9 +1,9 @@
 // pwa/scanner.js
 // QR-Scan über die Kamera. Bevorzugt den `BarcodeDetector` des Browsers (Chrome auf Android); wo er
 // fehlt oder keine QR-Codes liest (Firefox, Safari/iOS), liest der eigene Decoder (`qr-decode.js`)
-// Bilder aus dem Video. Das Ergebnis läuft in beiden Fällen durch `parseQrText`: nur ein Koppel-Link
-// mit privater IPv4-Adresse zählt.
-import { parseQrText } from './pairing.js';
+// Bilder aus dem Video. Das Ergebnis läuft in beiden Fällen durch `parsePairLink`: nur ein Koppel-Link
+// zählt (LAN mit privater IPv4-Adresse, oder Relay mit dem Geheimnis der Box, #358).
+import { parsePairLink } from './pairing.js';
 import { decodeQr } from './qr-decode.js';
 
 /** Längste Kante eines Bildes für den eigenen Decoder: größer bringt nichts, kostet nur Zeit. */
@@ -60,7 +60,8 @@ async function detectorReadsQr(env) {
 }
 
 /** Liest Bilder aus `video`, bis ein Koppel-Link erkannt wird oder `signal` abbricht.
- *  Löst mit `{host, port, code}` auf, wirft bei fehlender Kamera oder Berechtigung. */
+ *  Löst mit `{kind: 'lan', host, port, code}` oder `{kind: 'relay', secret, code}` auf, wirft bei fehlender
+ *  Kamera oder Berechtigung. */
 export async function scanForPairLink(video, signal, onStatus = () => {}, env = liveEnv()) {
   if (scanMethod(env) === null) throw new Error('no_scanner');
   const stream = await env.navigator.mediaDevices.getUserMedia({
@@ -79,7 +80,7 @@ export async function scanForPairLink(video, signal, onStatus = () => {}, env = 
     while (!signal.aborted) {
       const text = await readFrame();
       if (text !== null) {
-        const link = parseQrText(text);
+        const link = parsePairLink(text);
         if (link) return link;
         onStatus('Das ist kein Koppel-Code dieser App.');
       }

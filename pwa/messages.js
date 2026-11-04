@@ -15,7 +15,13 @@ const REPAIR = {
 const REPAIR_FALLBACK = 'Die Kopplung wird vom Desktop nicht mehr akzeptiert (neu gekoppelt?). Bitte neu koppeln — Ihre nicht übertragenen Einträge bleiben erhalten.';
 
 const OFFLINE = 'Der Desktop ist nicht erreichbar. Läuft die App am Rechner, und sind Handy und Rechner im selben WLAN?';
-const BLOCKED = 'Der Desktop ist nicht erreichbar. Läuft die App am Rechner und sind beide im selben WLAN, sperrt dieser Browser vermutlich die Verbindung: die Seite kommt über https, der Rechner spricht http. Bitte Chrome auf Android verwenden.';
+const BLOCKED = 'Der Desktop ist nicht erreichbar. Läuft die App am Rechner und sind beide im selben WLAN, sperrt dieser Browser vermutlich die Verbindung: die Seite kommt über https, der Rechner spricht http. Bitte Chrome auf Android verwenden — oder am Desktop unter Einstellungen → Mobil „Über Relay koppeln“ wählen und dieses Handy dort neu koppeln.';
+const RELAY_OFFLINE = 'Der Relay ist nicht erreichbar. Bitte die Internetverbindung des Handys prüfen und erneut versuchen.';
+const DESKTOP_SILENT = 'Der Relay hat die Anfrage angenommen, aber der Desktop hat nicht geantwortet. Läuft die Zeiterfassung am Rechner (nicht im Ruhezustand), und ist dort die Handy-Erfassung eingeschaltet? Wurde dieses Handy am Desktop widerrufen oder neu gekoppelt, hilft nur neu koppeln: Einstellungen → Verbindung → „QR neu scannen / Neu koppeln“.';
+const THROTTLED = 'Zu viele Anfragen auf einmal. Bitte eine Minute warten und erneut versuchen.';
+const REPLACED = 'Eine zweite Verbindung dieser Web-App hat übernommen. Bitte erneut versuchen.';
+const TOO_LARGE_ANSWER = 'Die Antwort des Desktops ist für den Relay zu groß. Unter Einstellungen → Verbindung lässt sich der Verlauf auf 90 Tage zurücksetzen.';
+const TOO_LARGE_REQUEST = 'Es sind zu viele nicht übertragene Änderungen auf einmal. Bitte später erneut versuchen.';
 const ADDRESS_RE = /^\d{1,3}(\.\d{1,3}){3}:\d{1,5}$/;
 
 /** Text für „offline“. Ein Netzfehler verrät den Grund nicht (Rechner aus oder Browser sperrt): der Text nennt
@@ -35,7 +41,14 @@ export function describeError(error, env = {}) {
   const server = typeof error.message === 'string' ? error.message : '';
   switch (error.kind) {
     case 'offline':
+      if (env.transport === 'relay') return { text: RELAY_OFFLINE, action: 'retry' };
       return { text: offlineText(env), action: 'rescan' };
+    case 'desktop_silent':
+      return { text: DESKTOP_SILENT, action: 'retry' };
+    case 'throttled':
+      return { text: THROTTLED, action: 'retry' };
+    case 'too_large':
+      return { text: error.code === 'request_too_large' ? TOO_LARGE_REQUEST : TOO_LARGE_ANSWER, action: null };
     case 'timeout':
       return { text: 'Zeitüberschreitung: der Desktop hat nicht rechtzeitig geantwortet. Läuft die App am Rechner, und ist das WLAN stabil? Bei einem großen Verlauf kann auch die Datenmenge der Grund sein: unter Einstellungen → Verbindung lässt er sich auf 90 Tage zurücksetzen.', action: 'retry' };
     case 'address':
@@ -57,6 +70,7 @@ export function describeError(error, env = {}) {
     case 'encryption':
       return { text: 'Diese Kopplung ist noch nicht verschlüsselt. Bitte neu koppeln — Ihre nicht übertragenen Einträge bleiben erhalten.', action: 'pair' };
     case 'transient':
+      if (error.code === 'replaced') return { text: REPLACED, action: 'retry' };
       if (error.code === 'key_unavailable') {
         return { text: 'Der Schlüsselbund am Rechner antwortet gerade nicht (gesperrt?). Bitte gleich erneut versuchen.', action: 'retry' };
       }

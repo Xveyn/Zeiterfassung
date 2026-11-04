@@ -11,18 +11,19 @@ import { idbKeyStore, seal } from './push-blob.js';
 import { permissionState, shouldSchedule } from './push-policy.js';
 import { RelayClient, RelayError, VAPID_PUBLIC, newSecret, syncSchedule } from './relay-client.js';
 import { DEFAULT_WISH, aheadDays, olderState } from './window-policy.js';
-import { deviceNameFromUserAgent, parseHostPort, parsePairFragment } from './pairing.js';
+import { deviceNameFromUserAgent, parseHostPort, parsePairLink } from './pairing.js';
 import { openDatabase, requestPersistentStorage } from './db.js';
 import { Store } from './store.js';
 import { SyncClient, SyncError, clockSkewMs } from './sync.js';
+import { isPaired } from './transport.js';
 import { shouldQueue, shouldSync } from './sync-policy.js';
 import { errorDetail, logFailure, withDetail } from './diagnose.js';
 import { swipeDirection } from './swipe-policy.js';
 import { shouldApplyUpdate, shouldCheckForUpdate } from './update-policy.js';
 import { blockSignature, rowsToBlock } from './categories.js';
 import {
-  categoriesModel, conflictsModel, dayChanged, desktopHint, editLock, editorRows, focusKeyToRestore, hintsModel, olderModel, pushModel, reservationRows,
-  reservationRowsToSlots, rowsToSlots, statusModel, validateReservationRows, validateRows, weekModel,
+  categoriesModel, conflictsModel, connectionLabel, dayChanged, desktopHint, editLock, editorRows, focusKeyToRestore, hintsModel, olderModel, pushModel, reservationRows,
+  iosInstallHint, reservationRowsToSlots, rowsToSlots, statusModel, validateReservationRows, validateRows, weekModel,
 } from './view-model.js';
 import { BUILD, CACHE_PREFIX } from './sw-core.js';
 import { describeRepair, repairServiceWorker } from './sw-repair.js';
@@ -32,7 +33,7 @@ import {
   patchHints, scanDialog, settingsDialog, statusBar, weekView,
 } from './views.js';
 import { canScan, scanForPairLink } from './scanner.js';
-import { browserKind } from './browser-policy.js';
+import { browserKind, isStandalone } from './browser-policy.js';
 import { describeError } from './messages.js';
 
 const SAVE_SYNC_DELAY_MS = 2000;
@@ -58,7 +59,7 @@ class App {
     this.lastUpdateCheckAt = 0;
     this.checkingUpdate = false;
     this.applyRequested = false;     // für den wartenden Worker ist SKIP_WAITING schon raus (keine Neulade-Schleife)
-    this.pairing = { address: '', code: '', deviceName: '', busy: false, error: '' };
+    this.pairing = { address: '', code: '', deviceName: '', busy: false, error: '', relay: null };
     this.saveTimer = null;
     this.pushTimer = null;
     this.pushBusy = false;
@@ -80,8 +81,7 @@ class App {
   }
 
   get paired() {
-    const meta = this.store.getMeta();
-    return Boolean(meta.token && meta.address);
+    return isPaired(this.store.getMeta());
   }
 
   async start() {
@@ -244,34 +244,51 @@ class App {
   // --- Koppeln über den Link -------------------------------------------------------------------
 
   captureFragment() {
-    const link = parsePairFragment(location.hash);
+    const hash = location.hash;
+    const link = parsePairLink(hash);
+    // Das Fragment trägt den Einmalcode und bei einem Relay-Link das Geheimnis der Box: nie in der
+    // Adresszeile oder im Verlauf stehen lassen, auch wenn der Link unbrauchbar ist.
+    if (/^#(pair|relay)=/.test(hash)) history.replaceState(null, '', location.pathname + location.search);
     if (!link) return false;
-    this.pairing = { ...this.pairing, address: `${link.host}:${link.port}`, code: link.code, error: '' };
+    this.applyPairLink(link);
     this.screen = 'pair';
-    // Das Fragment trägt den Einmalcode: nicht in der Adresszeile oder im Verlauf stehen lassen.
-    history.replaceState(null, '', location.pathname + location.search);
     return true;
   }
 
+  /** Ein gelesener Koppel-Link (aus der Adresszeile oder dem Scanner) füllt die Koppel-Seite: ein
+   *  Relay-Link merkt sich das Geheimnis nur im Speicher, die Seite zeigt es nie. */
+  applyPairLink(link) {
+    if (link.kind === 'relay') {
+      this.pairing = { ...this.pairing, address: '', code: link.code, relay: { secret: link.secret }, error: '' };
+    } else {
+      this.pairing = { ...this.pairing, address: `${link.host}:${link.port}`, code: link.code, relay: null, error: '' };
+    }
+  }
+
   async submitPairing({ address, code, deviceName }) {
-    const target = parseHostPort(address);
-    if (!target) {
-      this.pairing = { address, code, deviceName, busy: false, error: 'Die Adresse muss eine private IPv4-Adresse sein, zum Beispiel 192.168.178.20:17654.' };
+    const relay = this.pairing.relay;
+    const target = relay ? null : parseHostPort(address);
+    if (!relay && !target) {
+      this.pairing = { ...this.pairing, address, code, deviceName, busy: false, error: 'Die Adresse muss eine private IPv4-Adresse sein, zum Beispiel 192.168.178.20:17654.' };
       this.render();
       return;
     }
-    this.pairing = { address, code, deviceName, busy: true, error: '' };
+    const usedCode = relay ? this.pairing.code : code;
+    this.pairing = { ...this.pairing, address, code: usedCode, deviceName, busy: true, error: '' };
     this.render();
     try {
-      await this.client.pair({ host: target.host, port: target.port, code, deviceName: deviceName.trim() || 'Android-Handy' });
+      const name = deviceName.trim() || 'Android-Handy';
+      if (relay) await this.client.pairRelay({ secret: relay.secret, code: usedCode, deviceName: name });
+      else await this.client.pair({ host: target.host, port: target.port, code, deviceName: name });
       await this.store.setMeta({ device_name: deviceName.trim() });
-      this.pairing = { address: '', code: '', deviceName: '', busy: false, error: '' };
+      this.pairing = { address: '', code: '', deviceName: '', busy: false, error: '', relay: null };
       this.lastError = null;
       this.screen = 'week';
       this.render();
       this.trigger('manual');
     } catch (error) {
-      this.pairing = { address, code, deviceName, busy: false, error: describeError(error, this.errorEnv(address)).text };
+      this.pairing = { ...this.pairing, address, code: usedCode, deviceName, busy: false,
+        error: describeError(error, this.errorEnv(address, relay ? 'relay' : 'lan')).text };
       this.render();
     }
   }
@@ -283,7 +300,7 @@ class App {
       const link = await scanForPairLink(video, abort.signal, (text) => { message.textContent = text; });
       if (link) {
         document.querySelector('dialog[open]')?.close();
-        this.pairing = { ...this.pairing, address: `${link.host}:${link.port}`, code: link.code, error: '' };
+        this.applyPairLink(link);
         this.render();
       }
     } catch (error) {
@@ -348,7 +365,8 @@ class App {
         address: this.pairing.address, code: this.pairing.code,
         deviceName: this.pairing.deviceName || this.store.getMeta().device_name || deviceNameFromUserAgent(navigator.userAgent),
         error: this.pairing.error,
-        busy: this.pairing.busy, canScan: canScan(), canCancel: this.paired,
+        busy: this.pairing.busy, canScan: canScan(), canCancel: this.paired, relay: Boolean(this.pairing.relay),
+        installHint: iosInstallHint(this.errorEnv('')),
       }, {
         submit: (values) => this.submitPairing(values),
         change: (field, value) => { this.pairing[field] = value; },
@@ -372,7 +390,7 @@ class App {
     const hints = hintsModel({
       lastError: this.lastError, excluded: meta.excluded, skewMs: this.skewMs, persistent: this.persistent,
       updateReady: this.updateReady, conflictCount: conflicts.length,
-      errorDays: this.store.errorCount(), errorEnv: this.errorEnv(meta.address ? `${meta.address.host}:${meta.address.port}` : ''),
+      errorDays: this.store.errorCount(), errorEnv: this.errorEnv(meta.address ? `${meta.address.host}:${meta.address.port}` : '', meta.transport),
     });
     if (!this.shell) this.shell = this.buildShell();
     patchHints(this.shell.hints, hints, this.hintHandlers);
@@ -402,9 +420,13 @@ class App {
     return { hints, week, status };
   }
 
-  /** Was die Fehlermeldung über Browser und Adresse wissen darf (#275). */
-  errorEnv(address) {
-    return { browser: browserKind(navigator.userAgent, navigator.userAgentData), address };
+  /** Was die Fehlermeldung über Browser, Adresse und Weg zum Desktop wissen darf (#275, #358). */
+  errorEnv(address, transport = this.store.getMeta().transport) {
+    const standalone = isStandalone({
+      navigatorStandalone: navigator.standalone,
+      displayModeStandalone: globalThis.matchMedia?.('(display-mode: standalone)')?.matches,
+    });
+    return { browser: browserKind(navigator.userAgent, navigator.userAgentData), address, transport, standalone };
   }
 
   shiftWeek(weeks) {
@@ -453,7 +475,8 @@ class App {
         desktop: meta.desktop,
         window: { days: meta.window_days, max: meta.window_max, wish: meta.window_wish, ahead: meta.window_ahead },
         hint: desktopHint(meta),
-        address: meta.address ? `${meta.address.host}:${meta.address.port}` : '',
+        address: connectionLabel(meta),
+        transport: meta.transport,
         persistent: this.persistent,
         tokenUntil: meta.token_expires_at ? formatDateDe(meta.token_expires_at.slice(0, 10)) : '',
         push,

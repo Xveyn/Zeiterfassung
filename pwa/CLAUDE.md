@@ -42,8 +42,11 @@ ES-Module flach im Ordner:
   Lesefenster. Mit
   `memory-adapter.js` (Tests) und `db.js` (IndexedDB-Adapter, eine Transaktion
   je `batch`).
-- `sync.js` — Client: Koppeln, Ping, Abgleich, Einordnung der Server-Fehler in
-  `SyncError.kind`.
+- `sync.js` — Client: Koppeln (`pair` im LAN, `pairRelay` über die Box), Ping, Abgleich; schickt jede
+  verschlüsselte Anfrage über einen Transport. `sync-errors.js` — `SyncError` und die Einordnung der
+  Server-Fehler in `SyncError.kind` (`sync.js` führt die Namen weiter aus). `transport.js` — `LanTransport`
+  (HTTP im WLAN) sowie `endpointOf(meta, {onHave})`/`isPaired(meta)`: wohin eine Kopplung spricht und ob es sie gibt.
+  `relay-transport.js` — `RelayTransport`, der Weg über die Box (s. „Relay-Abgleich“).
 - `crypto.js` — Gegenstück zu `src/mobile_crypto.py` (WebCrypto), s.
   „Verschlüsselung“.
 - `window-policy.js` — Lesefenster (#250): Stufen, Wunsch, die Entscheidung der Wochenansicht
@@ -352,12 +355,62 @@ der alte Plan am Relay stehen. Vertrag: `test/fixtures/reminders-contract.json` 
 **Berechtigung ist pro Gerät** und braucht eine Nutzergeste (Knopf „Benachrichtigungen erlauben“ im
 Reiter „Verbindung“). Ausschalten meldet das Abo ab und löscht das Objekt am Relay.
 
+## Relay-Abgleich (#358)
+
+Safari/iOS und Firefox sperren den Zugriff der `https`-Seite auf `http://<LAN-IP>` (Mixed Content). Für sie
+läuft der Abgleich über die **Box** des Relays (`relay/`, Cloudflare Worker): das Handy legt die
+verschlüsselte Anfrage dort ab, der Desktop holt sie ab und legt die Antwort ab. Verschlüsselung, Zähler `seq`,
+Merge und Protokoll sind dieselben wie im LAN (`crypto.js`, `src/mobile_sync.py`); neu ist nur der **Transport**.
+Spec: `docs/superpowers/specs/2026-11-02-ios-relay-abgleich-design.md`.
+
+- **Transport-Naht.** `SyncClient._request` ruft `transports[endpoint.kind].exchange({method, path, token, body,
+  endpoint})` und bekommt `{status, json}`; Fehlerstatus ordnet weiter `SyncClient` ein (`classifyHttpError`),
+  ein Netzfehler kommt als `SyncError` aus dem Transport. `endpointOf(meta)` liefert `{kind: 'lan', host, port}`
+  oder `{kind: 'relay', secret, have, onHave}`; **jede** Stelle, die „gekoppelt?“ wissen will, fragt `isPaired(meta)`
+  (nicht mehr `meta.address`). Die Zeitüberschreitung ist ein Parameter (`timeoutMs`, Standard 15 s) des Clients und
+  der Transporte.
+- **Meta.** `transport` (`'lan'` | `'relay'`, ältere Stände `'lan'`), `box_secret` (Geheimnis der Box, nur bei
+  `relay`, **nie** angezeigt oder geloggt), `box_have`. Ein erneutes Koppeln setzt die jeweils andere Seite zurück
+  (`pair` leert `box_*`, `pairRelay` die `address`) und den Zähler `seq` auf 0; nicht übertragene Tage bleiben.
+- **`RelayTransport`.** Je Austausch eine WebSocket (`wss://<Relay>/v1/box/ws?role=phone[&have=<ver>]`,
+  Subprotocol `['zeit.v1', <Geheimnis>]`, das Geheimnis steht nur dort): bei `open` ein `put` mit
+  `encodeRequest({path, token, envelope})`, dann warten auf ein `slot`, dessen `res` die Nonce `n` der Anfrage
+  zurückgibt (`isCurrentResponse`, Regel 1 der Spec). Fremde, veraltete oder unlesbare `res` werden übergangen
+  und geloggt, nie ein Fehler. `have` rückt mit **jedem** empfangenen `slot` vor (auch einem fremden), nur nach oben,
+  höchstens 2^31 − 1, bei `1000 wiped` auf 0. Reißt die Verbindung vor der Antwort ab, geht beim zweiten Versuch
+  **dieselbe** Anfrage (identische Bytes) noch einmal hinaus: der Desktop liefert die versiegelte Kopplungsantwort
+  nur bei identischem `req` erneut aus (Regel 3). Schließcodes: `1008` → Art `throttled`, `1000 replaced` →
+  `transient`/`replaced` (nicht automatisch neu verbinden), `1009`/`1003` → `protocol`, alles andere →
+  Wiederverbinden.
+- **Fehlerarten** (`messages.js`): Relay nicht erreichbar (kein `ok`; `offline`, Code `relay_unreachable`, Text
+  ohne „WLAN“), Desktop antwortet nicht (`ok` kam, kein `res`; `desktop_silent`), Box drosselt (`throttled`),
+  Antwort bzw. Anfrage zu groß (`too_large`, Code `response_too_large` aus dem Ersatzrahmen des Desktops bzw.
+  `request_too_large`). Der Text für „offline“ in Browsern, die das LAN sperren, nennt zusätzlich „Über Relay
+  koppeln“ als Ausweg.
+- **Koppel-Link.** Gelesen von `parsePairLink` (`pairing.js`), im Scanner **und** aus `location.hash`;
+  `scanForPairLink` liefert `{kind: 'lan', …}` oder `{kind: 'relay', secret, code}`. Ein `#pair=`- oder `#relay=`-Fragment
+  wird nach dem Lesen **immer** aus Adresszeile und Verlauf entfernt (auch bei unbrauchbarem Inhalt und bei
+  schon gekoppelter Seite): es trägt Code und Geheimnis. Die Koppel-Seite zeigt bei einem Relay-Link nur den
+  Gerätenamen, kein Adress- oder Code-Feld; das Geheimnis liegt nur im Speicher von `App.pairing`. Eine Kopplung
+  über den Relay gibt es nur per Link, nicht per Eingabe von Hand.
+- **`ping()`** hat im Relay-Weg keine Route und liefert ohne Netzanfrage `{skewMs: 0, skewWarning: false}`; die
+  Uhrprüfung kommt aus `server_time` der Abgleich-Antwort (`app.js`).
+- **iOS.** Safari-Tab und installierte Web-App haben getrennten Speicher, und iOS löscht den Speicher im Tab nach
+  sieben Tagen ohne Nutzung. `iosInstallHint` (`view-model.js`, nur wenn `browser === 'ios'` und `standalone === false`)
+  zeigt deshalb vor dem Koppeln (Koppel-Seite) und im Wochenbild den Hinweis „zum Home-Bildschirm hinzufügen“;
+  `browser-policy.isStandalone` entscheidet aus `navigator.standalone` und `display-mode`. Push braucht die
+  installierte Web-App ebenfalls.
+- **Entwickeln.** Die Box lässt nur die Pages-Origin zu; der Dev-Server (`scripts/pwa_devserver.py`, nur LAN)
+  kann den Relay-Weg nicht ausprobieren. Geprüft wird er mit der gehosteten PWA gegen einen Desktop mit eingeschalteter
+  Handy-Erfassung („Über Relay koppeln“). Die Tests fahren eine WebSocket-Attrappe
+  (`test/relay-transport.test.js`) und einen Fake-Desktop hinter `fakeFetch` (`test/sync.test.js`, „Abgleich über den Relay“).
+
 ## QR-Decoder (#326)
 
 `qr-decode.js` liest den Koppel-QR-Code dort, wo es keinen `BarcodeDetector` gibt (Firefox,
-Safari/iOS). **Der Scan klappt dort, der Abgleich danach nicht:** Safari und Firefox sperren den
+Safari/iOS). **Der Scan klappt dort, der Abgleich im LAN danach nicht:** Safari und Firefox sperren den
 Zugriff der `https`-Seite auf `http://<LAN-IP>` (Mixed Content, #358); auf einem iPhone mit Safari
-am 2026-10-26 beobachtet. Die PWA ist unter iOS deshalb noch nicht vollständig funktionsfähig. Aus der Spezifikation geschrieben, ohne Fremdcode; Algorithmen und Konstanten nach
+am 2026-10-26 beobachtet. Der Relay-QR-Code (s. „Relay-Abgleich“) braucht den LAN-Zugriff nicht. Aus der Spezifikation geschrieben, ohne Fremdcode; Algorithmen und Konstanten nach
 ISO/IEC 18004, ZXing und jsQR (beide Apache-2.0) und dem Thonky-Tutorial.
 
 - **Umfang.** QR Model 2, Versionen 1–10, alle EC-Stufen und Masken, beliebige Drehung und
