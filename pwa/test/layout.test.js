@@ -66,3 +66,8 @@ test('time inputs step in five minutes and snap on change', () => {
 test('on narrow phones the dialog buttons use less padding so Cancel and Save stay on one row', () => {
   assert.match(css, /@media \(max-width: 3\d\dpx\)\s*\{[^@]*?dialog \.buttons button\s*\{[^}]*padding/);
 });
+
+test('the page behind an open dialog does not scroll', () => {
+  assert.match(css, /html:has\(dialog\[open\]\)\s*\{[^}]*overflow:\s*hidden/);
+  assert.match(rule('dialog'), /overscroll-behavior:\s*contain/);
+});
