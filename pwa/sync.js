@@ -11,8 +11,12 @@ import { CryptoFailure, b64d, deviceKeys, isEnvelope, openEnvelope, pairKeys, se
 import { parseDefaults, parseDesktopInfo } from './defaults.js';
 import { isIsoDate, localIsoDate, utcStamp } from './minutes.js';
 import {
-  PROTOCOL, baseUrl, isLanAddress, isValidDeviceId, newDeviceId, normalizeCode, pairRequestBody,
+  PROTOCOL, isLanAddress, isValidDeviceId, newDeviceId, normalizeCode, pairRequestBody,
 } from './pairing.js';
+import { SyncError, classifyHttpError, classifyNetworkError } from './sync-errors.js';
+import { LanTransport, endpointOf, isPaired } from './transport.js';
+
+export { SyncError, classifyHttpError, classifyNetworkError };
 
 export const SKEW_WARN_MS = 120000;
 const MAX_WINDOW_DAYS = 3650;
@@ -21,74 +25,13 @@ const STAMP_RE = /^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$/;
 const TOKEN_RE = /^[A-Za-z0-9_-]{16,256}$/;
 const KEY_RE = /^[A-Za-z0-9_-]{43}$/;                            // 32 Bytes, base64url ohne Padding
 
-export class SyncError extends Error {
-  constructor({ kind, status = 0, code = '', message = '', needsRepair = false, retryable = false, day = null, dayKind = null, setting = null, supportedProtocol = null }) {
-    super(message);
-    this.name = 'SyncError';
-    Object.assign(this, { kind, status, code, needsRepair, retryable, day, dayKind, setting, supportedProtocol });
-  }
-}
-
 // Name der Web-Locks-Sperre, die den Abgleich über alle Tabs serialisiert (#277).
 const SYNC_LOCK = 'zeiterfassung-sync';
 
-// Code → Art. Alles, was hier fehlt, ordnet der Rückfall nach Statusbereich ein.
-const KINDS = {
-  incomplete_body: 'transient', request_timeout: 'transient', busy: 'transient', shutting_down: 'transient',
-  unauthorized: 'repair', token_expired: 'repair', token_revoked: 'repair',
-  bad_host: 'address', bad_origin: 'address', browser_request: 'browser',
-  invalid_code: 'invalid_code', clock_skew: 'clock_skew',
-  invalid_entry: 'invalid_entry', invalid_protocol: 'protocol', not_found: 'protocol',
-  method_not_allowed: 'protocol', internal_error: 'server',
-  // Verschlüsselung (#249): ein Umschlag, den der Desktop nicht öffnen kann, ein wiedereingespielter
-  // Zähler, eine Kopplung ohne Schlüssel — in allen drei Fällen hilft nur neu koppeln.
-  invalid_envelope: 'protocol', decrypt_failed: 'crypto', replay: 'crypto', encryption_required: 'encryption',
-  key_unavailable: 'transient',
-};
-const REPAIR_KINDS = new Set(['repair', 'crypto', 'encryption']);
 // Diese Codes entstehen am Desktop erst NACH dem Entschlüsseln und gehen deshalb nur als Umschlag
 // zurück. Im Klartext kämen sie von einem Dritten im WLAN: geglaubt, markierte `invalid_entry` einen
 // Tag als abgelehnt (er würde nicht mehr gesendet) und `clock_skew`/`busy` führten in die Irre.
 const SEALED_ONLY_CODES = new Set(['invalid_entry', 'clock_skew', 'busy']);
-
-function fallbackKind(status) {
-  if (status === 401) return 'repair';
-  if (status >= 500) return 'server';
-  return 'client_error';
-}
-
-/** Antwort mit Fehlerstatus → `SyncError`. Der Text kommt vom Server (deutsch). */
-export function classifyHttpError(status, body) {
-  const detail = body && typeof body === 'object' && body.error && typeof body.error === 'object' ? body.error : {};
-  const code = typeof detail.code === 'string' ? detail.code : '';
-  const message = typeof detail.message === 'string' ? detail.message : '';
-  const kind = KINDS[code] ?? fallbackKind(status);
-  // Der Desktop nennt den Tag vorn in der Meldung; eine Reservierung mit dem Vorsatz „Reservierung“.
-  const named = kind === 'invalid_entry' ? /^(Reservierung )?(\d{4}-\d{2}-\d{2}):/.exec(message) : null;
-  const day = named?.[2] ?? null;
-  const dayKind = day ? (named[1] ? 'reservation' : 'entry') : null;
-  // Eine abgelehnte Einstellung nennt der Desktop vorn: „Einstellung categories: …“.
-  const setting = kind === 'invalid_entry' ? (/^Einstellung (categories|category_times)[: ]/.exec(message)?.[1] ?? null) : null;
-  const protocolNumber = detail.supported_protocol;
-  const supportedProtocol = code === 'invalid_protocol' && Number.isInteger(protocolNumber) && protocolNumber > 0 && protocolNumber < 1000 ? protocolNumber : null;
-  return new SyncError({
-    kind, status, code, message,
-    needsRepair: REPAIR_KINDS.has(kind),
-    retryable: kind === 'transient' || kind === 'server',
-    day, dayKind, setting, supportedProtocol,
-  });
-}
-
-/** Keine Antwort (Verbindung, Abbruch) → `offline`, nie ein Absturz. Eine Zeitüberschreitung hat eine
- *  eigene Art (#292): dahinter steckt entweder ein unerreichbarer Desktop oder eine zu große Antwort bei
- *  schwachem WLAN — der Text nennt beides und zeigt, wo sich der Verlauf verkleinern lässt. */
-export function classifyNetworkError(error) {
-  const timedOut = error?.name === 'TimeoutError';
-  return new SyncError({
-    kind: timedOut ? 'timeout' : 'offline', message: 'Der Desktop ist nicht erreichbar.', retryable: true,
-    code: error?.name ?? '',
-  });
-}
 
 const isObject = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
 const protocolError = (message) => new SyncError({ kind: 'protocol', message });
@@ -203,39 +146,21 @@ const DISCARDED = () => ({ sent: 0, conflicts: 0, excluded: false, discarded: tr
 
 export class SyncClient {
   constructor({ store, fetchFn = (...args) => globalThis.fetch(...args), now = () => new Date(), timeoutMs = 15000,
-    locks = globalThis.navigator?.locks ?? null }) {
+    locks = globalThis.navigator?.locks ?? null, transports = null }) {
     this._store = store;
-    this._fetch = fetchFn;
     this._now = now;
-    this._timeoutMs = timeoutMs;
+    // Je Art der Kopplung ein Transport (`endpoint.kind`); die Zeitüberschreitung gehört dem Transport.
+    this._transports = transports ?? { lan: new LanTransport({ fetchFn, timeoutMs }) };
     this._locks = locks;
     this._running = null;
   }
 
-  async _request(method, path, address, { token = null, body = null, openError = null } = {}) {
-    const headers = { Accept: 'application/json' };
-    if (token) headers.Authorization = `Bearer ${token}`;
-    if (body !== null) headers['Content-Type'] = 'application/json';
-    let response;
-    try {
-      response = await this._fetch(`${baseUrl(address)}${path}`, {
-        method, headers, body: body === null ? undefined : JSON.stringify(body),
-        cache: 'no-store', credentials: 'omit',
-        signal: AbortSignal.timeout(this._timeoutMs),
-        targetAddressSpace: 'local',
-      });
-    } catch (error) {
-      throw classifyNetworkError(error);
-    }
-    let json = null;
-    try {
-      json = await response.json();
-    } catch {
-      json = null;                                  // kein JSON: der Statuscode entscheidet
-    }
-    if (!response.ok) {
+  async _request(method, path, endpoint, { token = null, body = null, openError = null } = {}) {
+    const transport = this._transports[endpoint.kind];
+    const { status, json } = await transport.exchange({ method, path, token, body, endpoint });
+    if (status < 200 || status > 299) {
       // Fehler nach dem Entschlüsseln gehen verschlüsselt zurück: erst öffnen, dann einordnen.
-      throw classifyHttpError(response.status, openError ? await openError(json) : json);
+      throw classifyHttpError(status, openError ? await openError(json) : json);
     }
     return json;
   }
@@ -245,7 +170,7 @@ export class SyncClient {
    *  Liefert den entschlüsselten Klartext (Objekt) der Erfolgsantwort; ein Fehler-Umschlag wird
    *  geöffnet und als `SyncError` geworfen. Was nicht zu öffnen ist, ist `crypto` — nie ein
    *  Klartext, dem man glauben dürfte. */
-  async _sealedPost(path, address, { token, requestKey, responseKey, aadRequest, aadResponse, seq, payload }) {
+  async _sealedPost(path, endpoint, { token, requestKey, responseKey, aadRequest, aadResponse, seq, payload }) {
     const envelope = await seal(requestKey, {
       direction: 'req', method: 'POST', path, deviceId: aadRequest, seq,
       plaintext: new TextEncoder().encode(JSON.stringify(payload)),
@@ -272,7 +197,7 @@ export class SyncClient {
       }
       return json;                                     // Fehler vor dem Entschlüsseln: nur der Grund
     };
-    const answer = await this._request('POST', path, address, { token, body: envelope, openError });
+    const answer = await this._request('POST', path, endpoint, { token, body: envelope, openError });
     if (!isEnvelope(answer)) throw protocolError('Die Antwort des Desktops ist nicht verschlüsselt.');
     return open(answer);
   }
@@ -295,7 +220,7 @@ export class SyncClient {
       await this._store.setMeta({ device_id: deviceId });
     }
     const [requestKey, responseKey] = await pairKeys(normalized);
-    const answer = await this._sealedPost('/v1/pair', { host, port }, {
+    const answer = await this._sealedPost('/v1/pair', { kind: 'lan', host, port }, {
       token: null, requestKey, responseKey, aadRequest: '-', aadResponse: deviceId, seq: 1,
       payload: pairRequestBody({ deviceName, deviceId }) });
     if (!isObject(answer) || answer.protocol !== PROTOCOL || typeof answer.token !== 'string'
@@ -314,8 +239,8 @@ export class SyncClient {
   /** Erreichbarkeits- und Uhrprüfung. */
   async ping() {
     const meta = this._store.getMeta();
-    if (!meta.address || !meta.token) throw new SyncError({ kind: 'not_paired', message: 'Noch nicht gekoppelt.' });
-    const answer = await this._request('GET', '/v1/ping', meta.address, { token: meta.token });
+    if (!isPaired(meta)) throw new SyncError({ kind: 'not_paired', message: 'Noch nicht gekoppelt.' });
+    const answer = await this._request('GET', '/v1/ping', endpointOf(meta), { token: meta.token });
     if (!isObject(answer) || answer.protocol !== PROTOCOL || typeof answer.server_time !== 'string'
       || !STAMP_RE.test(answer.server_time)) throw protocolError('Ungültige Antwort auf die Erreichbarkeitsprüfung.');
     const skewMs = clockSkewMs(answer.server_time, this._now());
@@ -369,7 +294,7 @@ export class SyncClient {
 
   async _runOnce(limit, done, first = false) {
     const meta = this._store.getMeta();
-    if (!meta.address || !meta.token) throw new SyncError({ kind: 'not_paired', message: 'Noch nicht gekoppelt.' });
+    if (!isPaired(meta)) throw new SyncError({ kind: 'not_paired', message: 'Noch nicht gekoppelt.' });
     if (!KEY_RE.test(meta.key || '')) {
       throw new SyncError({ kind: 'encryption', needsRepair: true,
         message: 'Diese Kopplung ist noch nicht verschlüsselt. Bitte neu koppeln.' });
@@ -388,7 +313,7 @@ export class SyncClient {
     const [requestKey, responseKey] = await deviceKeys(b64d(meta.key));
     let raw;
     try {
-      raw = await this._sealedPost('/v1/sync', meta.address, {
+      raw = await this._sealedPost('/v1/sync', endpointOf(meta), {
         token: meta.token, requestKey, responseKey, aadRequest: meta.device_id, aadResponse: meta.device_id, seq,
         payload: { protocol: PROTOCOL, client_time: utcStamp(now), last_pull_at: meta.last_pull_at || '',
           window_days: wishSent, entries: snapshot.entries,

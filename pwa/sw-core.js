@@ -46,6 +46,8 @@ export const PRECACHE = [
   './store.js',
   './db.js',
   './sync.js',
+  './sync-errors.js',
+  './transport.js',
   './sw-core.js',
   './icons/icon-192.png',
   './icons/icon-512.png',
