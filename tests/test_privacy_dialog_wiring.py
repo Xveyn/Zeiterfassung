@@ -73,3 +73,16 @@ def test_visible_lines_shrinks_the_text_to_the_screen_but_keeps_a_minimum():
     assert visible_lines(400, 20) == 20             # knapp: so viele Zeilen, wie hineinpassen
     assert visible_lines(50, 20) == 8               # sehr knapp: nie unter dem Minimum
     assert visible_lines(400, 0) == 26              # unbekannte Zeilenhöhe: bevorzugte Höhe
+
+
+def test_the_text_shows_no_focus_frame_and_stays_out_of_the_tab_order():
+    """`dark_text` zeichnet einen Fokusrahmen in der Akzentfarbe (für Eingabefelder gedacht). Die Hinweise sind
+    nur zum Lesen: kein Rahmen, kein Tab-Stopp; Mausrad, Auswahl und Kopieren bleiben."""
+    tree = _tree(DIALOG)
+    configured = {}
+    for call in _calls(tree, "text.configure"):
+        for keyword in call.keywords:
+            if keyword.arg:
+                configured[keyword.arg] = ast.unparse(keyword.value)
+    assert configured.get("highlightthickness") == "0"
+    assert configured.get("takefocus") == "0"

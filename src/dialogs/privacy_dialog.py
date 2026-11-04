@@ -109,7 +109,9 @@ def open_privacy_dialog(parent):
     scrollbar.pack(side="right", fill="y")
 
     render_blocks(text, _blocks())
-    text.configure(state="disabled")      # schreibgeschützt; Auswahl und Kopieren bleiben möglich
+    # Schreibgeschützt; Auswahl und Kopieren bleiben möglich. Kein Fokusrahmen (`dark_text` zeichnet ihn in der
+    # Akzentfarbe, für Eingabefelder gedacht) und kein Tab-Stopp: das Fenster ist nur zum Lesen.
+    text.configure(state="disabled", highlightthickness=0, takefocus=0)
 
     buttons = tk.Frame(dialog, bg=BG)
     buttons.pack(pady=(4, 12))
