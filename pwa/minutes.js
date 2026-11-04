@@ -23,6 +23,18 @@ export function parseTime(text) {
   return hours * 60 + minutes;
 }
 
+/** Schrittweite der Zeitauswahl: 5 Minuten wie am Desktop (`theme.palette.TIME_VALUES`). */
+export const TIME_STEP_MINUTES = 5;
+
+/** Rundet `HH:MM` auf das nächste Vielfache von `step` Minuten; nach 23:55 gibt es keinen Schritt mehr
+ *  (`24:00` ist keine Uhrzeit). Leeres oder unbrauchbares bleibt unverändert, das prüft die Validierung. */
+export function snapTime(text, step = TIME_STEP_MINUTES) {
+  const total = parseTime(text);
+  if (total === null) return text;
+  const snapped = Math.min(Math.round(total / step) * step, Math.floor(1439 / step) * step);
+  return `${String(Math.floor(snapped / 60)).padStart(2, '0')}:${String(snapped % 60).padStart(2, '0')}`;
+}
+
 function usablePause(pause) {
   return Number.isInteger(pause) && pause >= 0 && pause <= MAX_PAUSE_MINUTES ? pause : 0;
 }

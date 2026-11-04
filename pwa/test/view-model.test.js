@@ -825,4 +825,6 @@ test('the iOS install hint says to scan inside the installed app, not with the c
   const text = iosInstallHint({ browser: 'ios', standalone: false });
   assert.match(text, /QR-Code scannen/);
   assert.match(text, /Kamera-App/);
+  assert.match(text, /nicht immer/);             // die Kamera-App geht (iPhone geprüft), je nach iOS aber nicht immer
+  assert.doesNotMatch(text, /nicht mit der Kamera-App/);
 });

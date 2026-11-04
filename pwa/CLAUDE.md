@@ -12,7 +12,10 @@ Vertrag zwischen beiden.
 ES-Module flach im Ordner:
 
 - `minutes.js` — Zeiten, Minuten, Validierung, ISO-Wochen. Summen nur über
-  ganze Minuten.
+  ganze Minuten. `snapTime`/`TIME_STEP_MINUTES`: die Zeitauswahl rastet auf **5 Minuten** wie die Auswahl am
+  Desktop (`theme.palette.TIME_VALUES`): `step` 300 am `<input type="time">`, gerundet wird beim Übernehmen
+  (`change`), nicht beim Tippen; bereits gespeicherte Zeiten (z. B. 08:03 vom Desktop) bleiben unverändert, bis das
+  Feld geändert wird. Die Pause bleibt in Einserschritten.
 - `defaults.js` — Vorbelegung der Zeiten aus den Standardzeiten des Desktops
   (#288). `resolveSlotDefaults` ist das Gegenstück zu
   `category_defaults.resolve_slot_defaults`; der **Gleichlauf** hängt an
@@ -596,6 +599,16 @@ Basis des Koppel-Links); zieht das Repo um, müssen beide mit. Die Adresse ist *
 GitHub Pages site here“.
 
 ## Entwickeln und prüfen
+
+**Layout prüfen (Playwright gegen den Dev-Server).** Breiten von 280 bis 1024 px, dazu Querformat (667 × 375);
+Zustände: Woche, Tages-Editor mit mehreren Slots (beide Reiter), Einstellungen (alle drei Reiter), Fehlerhinweis.
+Bei jedem Zustand prüfen: Zeitfelder breit genug für `08:00` (bei 320 px mindestens ~95 px), keine abgeschnittenen
+Reiter oder Knöpfe, kein waagerechtes Scrollen, Aktionsknöpfe der Dialoge sichtbar. Fallen, die schon Zeit kosteten:
+der Service Worker und der HTTP-Cache liefern nach einer Änderung die alte Fassung (vorher
+`navigator.serviceWorker.getRegistrations()` abmelden, `caches` leeren und neu laden), und ein `goto` mit anderem
+Hash lädt die Seite nicht neu. `test/layout.test.js` hält die Ursachen der gefundenen Fehler am Quelltext fest
+(schwebender ×-Knopf im Slot, zweispaltige Liste der Einstellungen bei schmalen Breiten, nicht sichtbare Fußknöpfe
+eines scrollenden Dialogs, überlaufende Hinweise).
 
 `python scripts/pwa_devserver.py` startet die echte Handy-Instanz
 (`MobileService`, Dev-Origin statt Pages) plus `pwa/` statisch auf

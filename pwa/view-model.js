@@ -320,7 +320,7 @@ export function desktopHint(meta) {
  *  heißt kein Hinweis). */
 export function iosInstallHint({ browser, standalone } = {}) {
   if (browser !== 'ios' || standalone !== false) return '';
-  return 'Auf dem iPhone und iPad zuerst zum Home-Bildschirm hinzufügen (Teilen → „Zum Home-Bildschirm“) und von dort öffnen, dann dort mit „QR-Code scannen“ koppeln (nicht mit der Kamera-App: sie öffnet den Link im Browser, nicht in der installierten Web-App). Im Browser gespeicherte Daten gehören nicht zur installierten Web-App, und iOS löscht sie dort nach sieben Tagen ohne Nutzung.';
+  return 'Auf dem iPhone und iPad zuerst zum Home-Bildschirm hinzufügen (Teilen → „Zum Home-Bildschirm“) und von dort öffnen, dann dort mit „QR-Code scannen“ koppeln (die Kamera-App geht oft auch, aber nicht immer: je nach iOS-Version öffnet sie den Link im Browser statt in der installierten Web-App). Im Browser gespeicherte Daten gehören nicht zur installierten Web-App, und iOS löscht sie dort nach sieben Tagen ohne Nutzung.';
 }
 
 /** Welche Felder die Koppel-Seite zeigt: ein Relay-Link bringt Geheimnis und Code mit, beides bleibt

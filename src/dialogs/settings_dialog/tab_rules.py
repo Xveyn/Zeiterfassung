@@ -474,10 +474,12 @@ PAIR_INTRO_LAN = (
     "Kamera-App des Handys öffnen und den QR-Code scannen — oder die Adresse im Browser öffnen und den "
     "Kopplungscode eintippen.")
 
-# Auf iOS öffnet die Kamera-App den Link im Browser; dessen Speicher gehört nicht zur installierten Web-App.
+# Die Kamera-App funktioniert auf einem aktuellen iPhone, je nach iOS-Version öffnet sie den Link aber im
+# Browser; dessen Speicher gehört nicht zur installierten Web-App. Der sichere Weg ist der Scan in der Web-App.
 PAIR_INTRO_RELAY = (
-    "In der installierten Web-App „QR-Code scannen“ wählen und den QR-Code scannen — nicht mit der "
-    "Kamera-App: sie öffnet den Link im Browser, dessen Speicher nicht zur installierten Web-App gehört.")
+    "In der installierten Web-App „QR-Code scannen“ wählen und den QR-Code scannen. Die Kamera-App geht oft "
+    "auch, aber nicht immer: je nach iOS-Version öffnet sie den Link im Browser, dessen Speicher nicht zur "
+    "installierten Web-App gehört.")
 
 RELAY_PAIR_HINT = (
     "Der Abgleich läuft über den Relay-Dienst im Internet. Er sieht Metadaten (dass und wann "

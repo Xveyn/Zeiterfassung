@@ -4,8 +4,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 import {
-  MAX_SLOTS, addDays, dayMinutes, formatDateDe, formatMinutes, isIsoDate, isoWeek, localIsoDate,
-  mondayOf, normalizeSlots, parseTime, slotMinutes, utcStamp, validateSlots, weekDays,
+  MAX_SLOTS, TIME_STEP_MINUTES, addDays, dayMinutes, formatDateDe, formatMinutes, isIsoDate, isoWeek, localIsoDate,
+  mondayOf, normalizeSlots, parseTime, slotMinutes, snapTime, utcStamp, validateSlots, weekDays,
 } from '../minutes.js';
 
 const cases = JSON.parse(readFileSync(new URL('./fixtures/minutes-cases.json', import.meta.url)));
@@ -121,4 +121,41 @@ test('German date format and the two clock helpers', () => {
   assert.equal(utcStamp(new Date(Date.UTC(2026, 9, 8, 12, 0, 5, 999))), '2026-10-08T12:00:05Z');
   assert.equal(localIsoDate(new Date(2026, 9, 8, 23, 59, 59)), '2026-10-08');
   assert.equal(localIsoDate(new Date(2026, 0, 5, 0, 0, 0)), '2026-01-05');
+});
+
+// --- Zeitauswahl in 5-Minuten-Schritten wie am Desktop (`theme.palette.TIME_VALUES`) ----------------
+
+test('the time step is five minutes like the desktop picker', () => {
+  assert.equal(TIME_STEP_MINUTES, 5);
+});
+
+test('snapTime rounds to the nearest step and keeps what is already on the grid', () => {
+  const table = [
+    ['08:00', '08:00'], ['08:05', '08:05'], ['08:01', '08:00'], ['08:02', '08:00'], ['08:03', '08:05'],
+    ['08:04', '08:05'], ['08:07', '08:05'], ['08:08', '08:10'], ['08:58', '09:00'], ['00:01', '00:00'],
+    ['12:57', '12:55'], ['12:58', '13:00'], ['23:55', '23:55'], ['23:56', '23:55'], ['23:58', '23:55'], ['23:59', '23:55'],
+  ];
+  for (const [input, expected] of table) assert.equal(snapTime(input), expected, input);
+});
+
+test('snapTime never leaves the day and never produces 24:00', () => {
+  for (let minutes = 0; minutes < 1440; minutes += 1) {
+    const text = `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
+    const snapped = snapTime(text);
+    const total = Number(snapped.slice(0, 2)) * 60 + Number(snapped.slice(3));
+    assert.ok(total >= 0 && total <= 1435, text);
+    assert.equal(total % 5, 0, text);
+    assert.ok(Math.abs(total - minutes) <= 4, `${text} → ${snapped}`);       // 23:59 → 23:55 ist der weiteste Sprung
+  }
+});
+
+test('snapTime leaves empty or unusable input alone (the field is validated elsewhere)', () => {
+  for (const value of ['', 'abc', '8:3', '25:00', '12:60', '08:00:30', null, undefined, 5]) {
+    assert.equal(snapTime(value), value, String(value));
+  }
+});
+
+test('snapTime takes another step', () => {
+  assert.equal(snapTime('08:08', 15), '08:15');
+  assert.equal(snapTime('08:07', 15), '08:00');
 });
