@@ -340,7 +340,7 @@ ist nie Voraussetzung: ohne ihn läuft alles wie vorher, ein Fehler bleibt ein H
   Buchstaben-Platzhalter aus der Domain `xveyn.github.io`, nicht belegt); Lösungen und das
   Verhalten in Firefox und Safari stehen in #357. Ein monochromes `badge` steuert nur das kleine
   Statusleisten-Icon.
-- **`relay-client.js`** — `RELAY_URL`, `VAPID_PUBLIC` (nie wechseln, alle Abos hängen daran), die drei
+- **`relay-client.js`** — `RELAY_URL`, `PRIVACY_URL` (Link auf `docs/datenschutz.md` im Koppel-Bildschirm und im Reiter Verbindung, dieselbe Adresse wie `privacy_doc.PRIVACY_DOC_URL` am Desktop, ein Test hält beide zusammen; Kontakt über GitHub, s. Abschnitt 6 des Dokuments), `VAPID_PUBLIC` (nie wechseln, alle Abos hängen daran), die drei
   Aufrufe und `syncSchedule` (bei `409 no_subscription` einmal neu anmelden und wiederholen). Das
   Geheimnis dieses Handys (`relay_secret` in der Meta) ist Identität und Bearer und steht in keinem
   Fehlertext.

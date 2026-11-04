@@ -3,6 +3,8 @@
 // ersetzen, alles löschen. Das Geheimnis dieses Handys ist Identität und Bearer zugleich; es
 // kommt in keinen Fehlertext. Fehler bleiben lokal: der Relay ist nie Voraussetzung.
 export const RELAY_URL = 'https://zeiterfassung-push.svenbirkendahl.workers.dev';
+// Die Datenschutzhinweise zum Relay (`docs/datenschutz.md`); dieselbe Adresse wie `PRIVACY_DOC_URL` am Desktop.
+export const PRIVACY_URL = 'https://github.com/Xveyn/Zeiterfassung/blob/master/docs/datenschutz.md';
 // Der öffentliche VAPID-Schlüssel des Relays. Alle Abos hängen an ihm: nie wechseln (`relay/README.md`).
 export const VAPID_PUBLIC = 'BMZUZQIW3QNwt2vJp3q47zAAx4lLADWA0_r3kQQeyMT3d_GXsyyTjNlgBd1fOMtuZvlJhsLu1QRbHsT0hQHzC20';
 const TIMEOUT_MS = 15000;

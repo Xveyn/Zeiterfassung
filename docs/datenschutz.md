@@ -95,8 +95,13 @@ Rechtsberatung; die Verweise oben führen zu den Bedingungen der Anbieter.
 
 Der Betreiber des öffentlichen Relays ist der Maintainer des Repositories. Der Relay verarbeitet zumindest
 IP-Adressen und die Metadaten aus Abschnitt 1 (bei Erinnerungen zusätzlich den Abo-Endpunkt und verschlüsselten
-Text). **Offen:** eine Datenschutzerklärung mit Kontaktangabe am Auftritt der Web-App fehlt; wo und in welchem
-Umfang sie steht, entscheidet der Maintainer ([#428](https://github.com/Xveyn/Zeiterfassung/issues/428)).
+Text). Diese Hinweise sind die Datenschutzerklärung dazu; die Web-App und der Koppel-Dialog verweisen auf sie.
+
+**Kontakt** für Fragen, Auskunft und Löschung: über GitHub. Allgemeine Fragen am besten als
+[Issue](https://github.com/Xveyn/Zeiterfassung/issues) (öffentlich: bitte keine personenbezogenen Daten,
+keine Box-Geheimnisse und keine Adressen angeben). Alles Vertrauliche über die privaten
+[Security Advisories](https://github.com/Xveyn/Zeiterfassung/security/advisories/new) („Report a vulnerability“),
+wie in `SECURITY.md` beschrieben. Eine Postanschrift oder E-Mail-Adresse nennt dieses Projekt nicht.
 Selbst-Hosting ist möglich, aber nicht vorgesehen: den Relay in einem eigenen Cloudflare-Konto zu betreiben
 beschreibt `relay/README.md`; die App darauf umzustellen geht heute nicht (`RELAY_URL` ist eine Konstante in
 `pwa/relay-client.js` und `src/push_relay.py`).
