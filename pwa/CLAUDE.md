@@ -340,7 +340,7 @@ ist nie Voraussetzung: ohne ihn läuft alles wie vorher, ein Fehler bleibt ein H
   Buchstaben-Platzhalter aus der Domain `xveyn.github.io`, nicht belegt); Lösungen und das
   Verhalten in Firefox und Safari stehen in #357. Ein monochromes `badge` steuert nur das kleine
   Statusleisten-Icon.
-- **`relay-client.js`** — `RELAY_URL`, `PRIVACY_URL` (Link auf `docs/datenschutz.md` im Koppel-Bildschirm und im Reiter Verbindung, dieselbe Adresse wie `privacy_doc.PRIVACY_DOC_URL` am Desktop, ein Test hält beide zusammen; Kontakt über GitHub, s. Abschnitt 6 des Dokuments), `VAPID_PUBLIC` (nie wechseln, alle Abos hängen daran), die drei
+- **`relay-client.js`** — `RELAY_URL`, `PRIVACY_URL` (`./datenschutz.html`, die eigene Datenschutzseite; Link im Koppel-Bildschirm und im Reiter Verbindung, s. „Datenschutzseite“), `PRIVACY_SOURCE_URL` (das Dokument im Projekt, Ersatz der Seite; dieselbe Adresse wie `privacy_doc.PRIVACY_DOC_URL` am Desktop, ein Test hält beide zusammen; Kontakt über GitHub, s. Abschnitt 6 des Dokuments), `VAPID_PUBLIC` (nie wechseln, alle Abos hängen daran), die drei
   Aufrufe und `syncSchedule` (bei `409 no_subscription` einmal neu anmelden und wiederholen). Das
   Geheimnis dieses Handys (`relay_secret` in der Meta) ist Identität und Bearer und steht in keinem
   Fehlertext.
@@ -361,6 +361,23 @@ der alte Plan am Relay stehen. Vertrag: `test/fixtures/reminders-contract.json` 
 
 **Berechtigung ist pro Gerät** und braucht eine Nutzergeste (Knopf „Benachrichtigungen erlauben“ im
 Reiter „Verbindung“). Ausschalten meldet das Abo ab und löscht das Objekt am Relay.
+
+## Datenschutzseite
+
+`datenschutz.html` zeigt `docs/datenschutz.md` ab Abschnitt 1 (Titel, Zitat und Einleitung sind fürs Repository
+geschrieben; der Desktop-Dialog macht es ebenso, `privacy_doc.sections_only`). `privacy-view.js` lädt
+`./datenschutz.md`, zerlegt es mit `privacy-doc.js` und baut die Elemente über `dom.js` (Links nur `http(s)`,
+`noopener`); scheitert das Laden, steht ein Ersatztext mit Link auf `PRIVACY_SOURCE_URL` da.
+
+- **Eine Quelle.** `pages.yml` kopiert `docs/datenschutz.md` nach `_site/datenschutz.md` (nicht aus `pwa/`:
+  Markdown ist vom rsync ausgenommen) und läuft auch bei Änderungen allein an dieser Datei. Im Dev-Server
+  fehlt die Datei: dort erscheint der Ersatztext.
+- **Gleichlauf der Parser.** `privacy-doc.js` ist das Gegenstück zu `src/privacy_doc.py`; die Blöcke des echten
+  Dokuments und einiger Grenzfälle stehen in `test/fixtures/privacy-blocks.json` (erzeugt von
+  `scripts/privacy_fixtures.py`, gelesen von `test/privacy-doc.test.js` und `tests/test_privacy_doc.py`). Wer
+  das Dokument oder einen Parser ändert, erzeugt die Datei neu.
+- **Offline.** Seite und Module sind in `PRECACHE`, das Dokument selbst nicht (es kommt per `fetch` mit
+  `no-cache`); ohne Netz erscheint der Ersatztext.
 
 ## Relay-Abgleich (#358)
 

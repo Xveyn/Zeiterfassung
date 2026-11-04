@@ -12,7 +12,9 @@ from tkinter import font as tkfont
 from tkinter import ttk
 
 from src.paths import get_resource_path
-from src.privacy_doc import fallback_blocks, is_web_url, load_privacy_doc, parse_privacy_markdown
+from src.privacy_doc import (
+    fallback_blocks, is_web_url, load_privacy_doc, parse_privacy_markdown, sections_only,
+)
 from src.theme import (
     ACCENT, BG, FONT, FONT_BOLD, FONT_HEADER_SMALL, TEXT_MUTED, apply_combobox_style,
     center_dialog_on_parent, create_dialog, dark_text, px, secondary_button, workarea_for,
@@ -28,7 +30,7 @@ _BULLETS = ("•", "–", "·")
 
 def _blocks():
     text = load_privacy_doc(get_resource_path())
-    blocks = parse_privacy_markdown(text) if text is not None else []
+    blocks = sections_only(parse_privacy_markdown(text)) if text is not None else []
     return blocks or fallback_blocks()
 
 

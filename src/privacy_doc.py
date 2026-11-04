@@ -138,6 +138,16 @@ def parse_privacy_markdown(text: str) -> list[Block]:
     return [_block(kind, " ".join(parts), level) for kind, level, parts in blocks]
 
 
+def sections_only(blocks: list[Block]) -> list[Block]:
+    """Ab der ersten Abschnittsüberschrift (`## …`): Titel, Zitat und Einleitung des Dokuments sind für das
+    Repository geschrieben, nicht für die Anzeige. Ohne Überschrift bleibt alles stehen (nie ein leeres Fenster).
+    Die PWA-Seite hält dieselbe Regel (`pwa/privacy-doc.js`, Fixture `privacy-blocks.json`)."""
+    for index, block in enumerate(blocks):
+        if block["kind"] == "heading":
+            return blocks[index:]
+    return blocks
+
+
 def plain_text(blocks: list[Block]) -> str:
     """Der sichtbare Text, Blöcke durch Zeilenumbruch getrennt (Tests, Ersatzanzeige)."""
     return "\n".join("".join(s["text"] for s in block["segments"]) for block in blocks)

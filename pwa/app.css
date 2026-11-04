@@ -163,3 +163,13 @@ label.check input { width: auto; min-height: 0; flex: none; }
 
 .push { margin-top: 1rem; }
 .push h3 { margin: 0 0 0.25rem; font-size: 1rem; }
+
+/* Seite „Datenschutzhinweise“ (datenschutz.html) */
+.privacy h2 { margin-top: 20px; }
+.privacy blockquote { margin: 0 0 12px; padding-left: 12px; border-left: 3px solid var(--muted); color: var(--muted); }
+.privacy .privacy-list { margin: 0 0 12px; padding-left: 20px; }
+.privacy .privacy-list li { margin-bottom: 4px; }
+.privacy .privacy-list li.level1 { margin-left: 18px; }
+.privacy .privacy-list li.level2 { margin-left: 36px; }
+.privacy code { color: var(--muted); overflow-wrap: anywhere; }
+.privacy a { overflow-wrap: anywhere; }

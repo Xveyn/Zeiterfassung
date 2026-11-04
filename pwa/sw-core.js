@@ -15,6 +15,9 @@ export const CACHE_NAME = `${CACHE_PREFIX}${BUILD}`;
 export const PRECACHE = [
   './',
   './index.html',
+  './datenschutz.html',
+  './privacy-view.js',
+  './privacy-doc.js',
   './app.css',
   './manifest.webmanifest',
   './app.js',
