@@ -471,8 +471,9 @@ Augenhöhe mit den anderen beiden Plattformen.
   nichts lesen oder schreiben. Das Gerätetoken steht weiter im Klartext-Header, ist aber ohne den
   Schlüssel wertlos. Weitere Maßnahmen: Funktion standardmäßig aus, Bindung nur an die gewählte
   Adresse, Token pro Gerät (nur als Hash gespeichert, widerrufbar, 30 Tage ab letztem Abgleich),
-  kurzlebiger, einmaliger Kopplungscode. Nicht gelöst: Firefox und iOS (Mixed Content, s. u., #358);
-  HTTPS direkt vom Desktop bleibt als Alternative offen (#249).
+  kurzlebiger, einmaliger Kopplungscode. Im WLAN nicht möglich bleibt Firefox und iOS (Mixed Content, s. u.);
+  dafür gibt es den Weg über den Relay (Abschnitt „Abgleich über den Relay“ unten, #358). HTTPS direkt vom
+  Desktop bleibt als Alternative offen (#249).
 - **Wo der Geräteschlüssel am Rechner liegt.** Im Schlüsselbund des Betriebssystems (Windows
   Credential Manager, macOS Keychain, Linux Secret Service). **Nur ohne Schlüsselbund** (Linux
   ohne Secret Service, gesperrt oder nicht antwortend) steht er in `mobile_keys.json` im
@@ -508,21 +509,19 @@ Augenhöhe mit den anderen beiden Plattformen.
   `address_gone` und tauscht sie nicht still aus; bei „Automatisch“ nimmt sie beim nächsten
   Start (oder Speichern) die neue Adresse. In beiden Fällen muss das Handy neu gekoppelt werden
   (eine feste Adresse im Router hilft).
-- **Nur Chrome auf Android gleicht ab; iOS ist für die Web-App noch nicht vollständig
-  funktionsfähig (#358).** Entwickelt und geprüft wird auf Android mit Chrome. Auf **Safari
-  (iPhone)** lassen sich die Web-App öffnen und der Koppel-Code scannen; Installation als App und
-  der Rest sind dort nicht geprüft. **Safari und Firefox** erreichen den Rechner nach dem Koppeln nicht: sie sperren den Zugriff einer `https`-Seite auf eine
-  `http://`-Adresse im WLAN („Mixed Content“); auf einem iPhone mit Safari am 2026-10-26
-  beobachtet, bei Firefox aus demselben Mechanismus geschlossen, nicht ausprobiert. Ein Netzfehler
-  verrät der Seite den Grund nicht (Rechner aus oder Browser sperrt). Die Web-App meldet deshalb nach einem
-  Fehlschlag „Desktop nicht erreichbar“ und nennt in Firefox, Safari und auf dem iPhone zusätzlich die
-  vermutliche Ursache samt Hinweis auf Chrome auf Android (#275); in jedem Browser steht ein Test dabei
-  (`http://<Adresse>/v1/ping` im Browser des Handys öffnen — ein Fehlercode wie 401 heißt: Netz in
-  Ordnung). Vorab gewarnt wird nicht. Wege für iOS
-  (Web-App vom Rechner ausliefern, https am Rechner, Zwischenstation über den Relay) sind in
-  #358 gesammelt, nichts davon ist gebaut. Was erst ein Test mit echtem Gerät klärt —
-  Berechtigung für Zugriffe im lokalen Netz, Verhalten bei abgelehnter Berechtigung,
-  Installation als App —, steht in der Prüfliste vor dem Release (#267).
+- **Im WLAN gleicht nur Chrome auf Android ab; iPhone, iPad und Firefox brauchen den Relay (#358).**
+  Entwickelt und geprüft wird im WLAN auf Android mit Chrome. **Safari und Firefox** erreichen den Rechner
+  im WLAN nicht: sie sperren den Zugriff einer `https`-Seite auf eine `http://`-Adresse („Mixed Content“);
+  auf einem iPhone mit Safari am 2026-10-26 beobachtet, bei Firefox aus demselben Mechanismus geschlossen,
+  nicht ausprobiert. Ein Netzfehler verrät der Seite den Grund nicht (Rechner aus oder Browser sperrt). Die
+  Web-App meldet deshalb nach einem Fehlschlag im WLAN „Desktop nicht erreichbar“ und nennt in Firefox,
+  Safari und auf dem iPhone zusätzlich die vermutliche Ursache samt dem Ausweg „Über Relay koppeln“ (#275);
+  in jedem Browser steht ein Test dabei (`http://<Adresse>/v1/ping` im Browser des Handys öffnen — ein
+  Fehlercode wie 401 heißt: Netz in Ordnung). Vorab gewarnt wird nicht. **Der Weg über den Relay** steht im
+  Abschnitt „Abgleich über den Relay“ weiter unten. Geprüft: Safari auf einem iPad als installierte Web-App
+  (Kopplung, Abgleich von Einträgen und Einstellungen, 2026-11-04). Was erst ein Test mit echtem Gerät
+  klärt — Berechtigung für Zugriffe im lokalen Netz, Verhalten bei abgelehnter Berechtigung, Installation
+  als App auf Android —, steht in der Prüfliste vor dem Release (#267).
 - **Die Adresse der Web-App unterscheidet Groß- und Kleinschreibung.** Sie lautet
   `https://xveyn.github.io/Zeiterfassung/` mit großem „Z“. `…/zeiterfassung/` oder die Domain
   ohne Pfad liefert die Seite „There isn't a GitHub Pages site here“ (404). Der Koppel-QR-Code
@@ -599,9 +598,10 @@ läuft.
   Massenanlegen von Geräten ab. Viele verteilte Adressen können das Tageslimit von 100.000 Anfragen trotzdem
   aufbrauchen; dann antwortet der Relay nicht mehr, bis der Tag um ist. Ein Gerät belegt höchstens rund
   235 KB (200 Einträge mit vollem Text, `relay/src/validate.js`), verwaiste verfallen nach 90 Tagen.
-- **Firefox und iOS haben vorerst nichts davon:** der Zeitplan entsteht in der PWA aus dem Abgleich mit
-  dem Desktop (Reservierungen, Sende-Zeitpunkte). Wo der Abgleich nicht geht (Mixed Content, s. oben),
-  gibt es keinen Plan und damit keine Push-Erinnerung; Chrome auf Android ist der Weg der ersten Stufe.
+- **Firefox und iOS: Push ist nicht geprüft.** Der Zeitplan entsteht in der PWA aus dem Abgleich mit
+  dem Desktop (Reservierungen, Sende-Zeitpunkte). Im WLAN geht der Abgleich dort nicht (Mixed Content);
+  über den Relay (s. u.) entsteht ein Plan, **ob die Benachrichtigung auf iOS ankommt, ist nicht geprüft**
+  (Web-Push braucht dort die installierte Web-App). Chrome auf Android ist der geprüfte Weg.
 - **Eine Reservierung, die am Desktop als Ist-Zeit erfasst wurde, meldet sich noch einmal**, bis der nächste
   Abgleich den Plan korrigiert (das Handy weiß es vorher nicht). Die Erlaubnis für Benachrichtigungen
   gilt je Gerät und Browser.
@@ -612,6 +612,49 @@ läuft.
 - **Die Testbenachrichtigung prüft nur die Zustellung:** sie zeigt, dass Relay, Push-Dienst und Service Worker das Handy erreichen, nicht dass ein Zeitplan angekommen ist. Pro Gerät höchstens alle 10 Sekunden. Gegen einen Relay, der noch nicht neu ausgerollt wurde, meldet sie „Der Relay kennt den Test noch nicht“ — erst `wrangler deploy`, dann Web-App und Desktop.
 - **Nur Push-Dienste der Browser:** der Relay sendet nur an FCM, Mozilla, Apple und Windows (Liste in
   `relay/src/validate.js`). Ein neuer Dienst wird dort eingetragen.
+
+## Abgleich über den Relay (#358): ein zweiter Vertrauens-Ort
+
+Safari (iPhone, iPad) und Firefox erreichen den Rechner im WLAN nicht (Mixed Content, s. „Handy-Erfassung“).
+Für sie läuft der Abgleich optional über die **Box** desselben Relays wie die Push-Erinnerungen (`relay/`,
+ein Cloudflare Worker): das Handy legt die verschlüsselte Anfrage dort ab, der Desktop holt sie ab und legt
+die Antwort ab. Verschlüsselung, Zähler und Abgleich sind dieselben wie im WLAN; neu ist nur der Transport.
+Spec: `docs/superpowers/specs/2026-11-02-ios-relay-abgleich-design.md`; Datenflüsse im Einzelnen:
+`docs/datenschutz.md`.
+
+- **Was der Relay sieht:** Pfad, Statuscode, Zähler, Nonce, Feldnamen, Größe, Zeitpunkte, die IP-Adresse
+  und das Gerätetoken im Klartext. **Nie** Einträge, Kategorien, Namen oder Einstellungen: sie liegen
+  Ende-zu-Ende verschlüsselt im Umschlag, der Relay hält keinen Schlüssel. Er kann Verbindungen über die
+  Zeit verknüpfen (Metadatenrisiko).
+- **Ein fotografierter QR-Code erlaubt das Koppeln von überall im Internet**, solange der Kopplungscode
+  gilt (fünf Minuten). Der LAN-QR verlangte Zugang zum Netz. Das Geheimnis der Box im QR-Code gilt, bis die
+  Box gelöscht wird (Widerruf, erneutes Koppeln, „Zeiterfassung entfernen“, 90 Tage Leerlauf); wer es kennt,
+  kann Slots überschreiben, den Desktop verdrängen, unversiegelte Fehler fälschen und die Box löschen —
+  Inhalte lesen oder synchronisieren kann er nicht (das braucht den Geräteschlüssel). Der Koppel-Dialog zeigt
+  das Geheimnis nie als Text, nur als QR-Code, und warnt.
+- **Der Desktop muss laufen.** Ist er aus oder im Ruhezustand, meldet die Web-App nach höchstens 15 s
+  „Desktop hat nicht geantwortet“ (die Box hat die Anfrage angenommen, es kam keine Antwort); automatische
+  Abgleiche pausieren dann 30 s. Die Anfrage bleibt in der Box und wird beim nächsten Verbinden des Desktops
+  zugestellt; die Änderungen bleiben auf dem Handy, bis ein Abgleich gelingt.
+- **Nach einem Widerruf meldet das Handy dasselbe**, nicht „widerrufen“: der Desktop löscht beim Widerruf die
+  Box, und eine gelöschte Box antwortet nie. Der Hinweistext sagt, dass nur neu koppeln hilft, und der
+  Widerruf-Dialog am Desktop kündigt es an.
+- **Grenzen:** höchstens 1 MiB je Nachricht (passt eine Antwort nicht hinein, meldet das Handy „Antwort zu
+  groß“ mit dem Hinweis, den Verlauf auf 90 Tage zurückzusetzen), höchstens 60 Nachrichten je Minute und
+  Verbindung, je Rolle eine Verbindung (zwei Tabs der Web-App verdrängen sich, die Meldung nennt es), ein
+  Handy je Kopplung.
+- **Kontingent:** der kostenlose Cloudflare-Plan erlaubt 100 000 Worker-Anfragen am Tag **für alle Nutzer
+  zusammen** (wie beim Push); je Austausch fällt eine Verbindung an. Ist es aufgebraucht, antwortet der
+  Relay nicht mehr, bis der Tag um ist. Zahlen des `Box`-Objekts im Dashboard (CPU je 1-MiB-`put`, GB-s im
+  Leerlauf) sind **nicht gemessen**.
+- **iOS-Eigenheit:** Safari-Tab und installierte Web-App haben getrennten Speicher, und iOS löscht den Speicher
+  im Tab nach sieben Tagen ohne Nutzung. Die Kamera-App öffnet den QR-Link im Browser, nicht in der installierten
+  Web-App: gekoppelt wird deshalb mit „QR-Code scannen“ **in** der Web-App. Die Web-App weist darauf hin.
+- **Nicht geprüft:** Safari im Hintergrund (schließt es die WebSocket sauber, Wiederverbinden), Neustart der
+  installierten Web-App, Push auf iOS, der Desktop unter Linux und macOS (#421; Windows ist bestätigt),
+  Android und Firefox über den Relay.
+- **Offene Randfälle:** #422 (Koppel-Dialog), #423 („verdrängt“ ohne Ausweg), #425 und #426 (Relay-Transport der
+  Web-App, Tests und Doku).
 
 ## Beschädigte oder fremde Daten (Storage)
 
