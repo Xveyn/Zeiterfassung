@@ -4,8 +4,7 @@
 
 Dieses Dokument sagt, **wer was bekommt, wo es liegt, wie lange und wie es gelöscht wird**. Es ist die
 Quelle für Hinweistexte in der App. Die Zahlen darin prüft `tests/test_datenschutz_claims.py` gegen
-`relay/src/validate.js`. Jeder PR der Kette (#358) ergänzt seinen Teil; was noch nicht festliegt, steht als
-`Offen (PR n)`. Stand: PR 4 (PWA: Koppeln und Abgleich über den Relay, iOS-Hinweise).
+`relay/src/validate.js`. Stand: PR 5 (Abschluss der Kette #358); was noch nicht festliegt, steht als `Offen` mit Verweis auf ein Issue.
 
 ## 1. Was der Relay sieht, und was nicht
 
@@ -34,7 +33,7 @@ er sieht die Slots wie der Relay, also auch das Gerätetoken, aber nie den Inhal
 fotografiert, kann sich von überall im Internet koppeln, solange der Kopplungscode gilt (fünf Minuten);
 der LAN-QR verlangte Zugang zum Netz. Das ist eine Erweiterung des Vertrauens gegenüber dem LAN. Der Dialog
 sagt es, solange ein QR-Code steht (`tab_rules.RELAY_PAIR_HINT`), zeigt das Geheimnis nie als Text und der Einschalt-Hinweis
-der Handy-Erfassung nennt den Relay. Offen (PR 5): derselbe Hinweis in `known-limitations.md`.
+der Handy-Erfassung nennt den Relay. Derselbe Hinweis steht in `known-limitations.md`, Abschnitt „Abgleich über den Relay“.
 
 ## 2. Aufbewahrung und Löschung
 
@@ -58,7 +57,8 @@ der Handy-Erfassung nennt den Relay. Offen (PR 5): derselbe Hinweis in `known-li
   erreichte Box verfällt nach 90 Tagen Leerlauf von selbst. Der Schritt „Relay-Boxen“ nennt die Zahl der
   nicht erreichten Boxen. Nach dem ersten Ausfall versucht er die übrigen nicht mehr einzeln (sonst dauerte
   das Entfernen bei totem Netz je Box eine volle Wartezeit) und zählt sie mit.
-- Offen (PR 3c): die Hinweistexte dazu in der Oberfläche (Widerruf, Koppel-Dialog).
+- Die Oberfläche sagt es: der Widerruf-Dialog nennt die Box am Relay (mit der Frist von 90 Tagen, falls der
+  Relay nicht erreichbar ist) und was das Handy danach zeigt; der Koppel-Dialog warnt vor dem fotografierten QR-Code.
 
 ## 3. Plattform-Logs
 
@@ -79,24 +79,44 @@ Objekte sonst womöglich außerhalb der EU-Jurisdiktion.
 ## 5. Beteiligte und Drittländer
 
 - Cloudflare: Betrieb des Relays (Worker und Durable Object).
+  [Datenschutzerklärung](https://www.cloudflare.com/privacypolicy/),
+  [Data Processing Addendum](https://www.cloudflare.com/cloudflare-customer-dpa/).
 - GitHub (Microsoft): Auslieferung der Handy-Web-App über GitHub Pages; dabei sieht GitHub die IP-Adresse
-  des Handys.
+  des Handys. [Datenschutzerklärung](https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement).
 - Apple, Google, Mozilla: Web-Push-Dienste (nur für Erinnerungen); sie kennen den Abo-Endpunkt des Handys.
+  [Apple](https://www.apple.com/legal/privacy/), [Google](https://policies.google.com/privacy),
+  [Mozilla](https://www.mozilla.org/privacy/).
 
-Offen (PR 5): Verweise auf die jeweiligen Bedingungen und der Hinweis, wann ein Auftragsverarbeitungsvertrag
-nötig sein kann (hängt davon ab, wer die App wofür einsetzt).
+Ob für einen Nutzer ein Auftragsverarbeitungsvertrag nötig ist, hängt davon ab, wer die App wofür einsetzt
+(privat, Werkstudent mit eigener Erfassung, Arbeitgeber). Das ist ein Hinweis, keine Zusage und keine
+Rechtsberatung; die Verweise oben führen zu den Bedingungen der Anbieter.
 
 ## 6. Verantwortlichkeit
 
-Offen (PR 5).
+Der Betreiber des öffentlichen Relays ist der Maintainer des Repositories. Der Relay verarbeitet zumindest
+IP-Adressen und die Metadaten aus Abschnitt 1 (bei Erinnerungen zusätzlich den Abo-Endpunkt und verschlüsselten
+Text). **Offen:** eine Datenschutzerklärung mit Kontaktangabe am Auftritt der Web-App fehlt; wo und in welchem
+Umfang sie steht, entscheidet der Maintainer ([#428](https://github.com/Xveyn/Zeiterfassung/issues/428)).
+Selbst-Hosting ist möglich, aber nicht vorgesehen: den Relay in einem eigenen Cloudflare-Konto zu betreiben
+beschreibt `relay/README.md`; die App darauf umzustellen geht heute nicht (`RELAY_URL` ist eine Konstante in
+`pwa/relay-client.js` und `src/push_relay.py`).
 
 ## 7. Freiwilligkeit und Transparenz
 
-Offen (PR 4).
+Der Abgleich über den Relay ist **Opt-in je Gerät**: er entsteht nur, wenn der Nutzer am Rechner die
+Handy-Erfassung einschaltet (der Einschalt-Hinweis nennt den Relay und was er nicht sieht) und ausdrücklich
+„Über Relay koppeln“ wählt (der Koppel-Dialog warnt vor dem fotografierten QR-Code). Ausschalten und Löschen
+gehen jederzeit: Handy-Erfassung ausschalten trennt die Verbindungen, Widerruf, erneutes Koppeln und „Zeiterfassung
+entfernen“ löschen die Box (Abschnitt 2). **Auf dem iPhone und iPad ist der Relay Pflicht für die
+Handy-Erfassung** (Safari erreicht den Rechner im WLAN nicht): ohne Relay gibt es dort keinen Abgleich. Das steht
+so in der README und in den Hinweisen der App; es ist keine Wahl, die als solche getarnt wäre.
 
 ## 8. Datensparsamkeit
 
-Offen (PR 5). Vorab, was der Relay festlegt: ein Slot je Richtung (Ersetzen statt Historie), kein Konto.
+Nur ein Slot je Richtung (Ersetzen statt Historie), kein Konto, keine Geräte-ID im Klartext außer dem
+Gerätetoken im Rahmen der Anfrage. Das Gerätetoken ist ein Authentisierungsmittel, kein Kennzeichen des Menschen,
+aber der Relay kann Verbindungen über die Zeit verknüpfen (Metadatenrisiko, Abschnitt 1). Inhalte bleiben
+Ende-zu-Ende verschlüsselt; für die Erinnerungen gilt dasselbe mit einem eigenen Schlüssel.
 
 ## 9. Schlüssel und Wiederherstellung
 
@@ -107,7 +127,7 @@ Klartext, den versiegelten Umschlag), Slots überschreiben, den Desktop von der 
 Fehler fälschen und `DELETE /v1/box` auslösen. Er kann **nicht** Inhalte lesen oder synchronisieren: das braucht den
 Geräteschlüssel. Das ist ein Störer- und Metadatenrisiko, kein Inhaltsleck.
 Geht das Handy verloren, widerruft der Nutzer die Kopplung am Desktop; die Box wird dabei am Relay mit
-gelöscht (best effort, s. 2.). Offen (PR 5): der Widerruf-Dialog sagt es.
+gelöscht (best effort, s. 2.); der Widerruf-Dialog sagt es vorher.
 
 **Auf dem Handy** liegt das Box-Geheimnis (`box_secret`) wie das Gerätetoken und der Geräteschlüssel in der
 IndexedDB der Web-App; die PWA zeigt es nie an und schreibt es in kein Log und keinen Fehlertext. Sie sendet
@@ -118,4 +138,7 @@ die installierte Web-App ist davon ausgenommen (die PWA weist darauf hin).
 
 ## 10. Push getrennt halten
 
-Offen (PR 5). Vorab: Push (`Device`) und Abgleich (`Box`) sind getrennte Objekte mit getrennten Geheimnissen.
+Push (`Device`) und Abgleich (`Box`) sind getrennte Objekte mit getrennten Geheimnissen (`mobile_relay.json` und
+`mobile_box.json` am Rechner, `relay_secret` und `box_secret` auf dem Handy). Wer beides nutzt, gibt dem Relay zwei
+unverknüpfte Handles, nicht eines; der Relay kann sie von sich aus nicht einem Handy zuordnen (außer über
+Metadaten wie die IP-Adresse).
