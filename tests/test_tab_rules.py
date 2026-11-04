@@ -880,3 +880,8 @@ def test_the_relay_state_keys_match_the_link_and_service_constants():
     keys = {relay_link.STATE_CONNECTING, relay_link.STATE_CONNECTED, relay_link.STATE_BACKOFF,
             relay_link.STATE_REPLACED, relay_link.STATE_STOPPED, relay_service.STATE_OFF}
     assert keys == set(tr._RELAY_STATE_TEXTS)
+
+
+def test_the_first_enable_notice_names_the_relay_and_what_it_cannot_see():
+    notice = tr.FIRST_ENABLE_NOTICE
+    assert "Relay" in notice and "nie den Inhalt" in notice

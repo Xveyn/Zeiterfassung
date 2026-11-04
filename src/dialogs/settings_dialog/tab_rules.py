@@ -363,6 +363,9 @@ FIRST_ENABLE_NOTICE = (
     "Die App muss laufen, damit sich das Handy abgleichen kann; ein Autostart "
     "(Tab „App“) wird empfohlen. Unter Windows fragt die Firewall beim ersten Mal, ob "
     "die App im privaten Netz Verbindungen annehmen darf.\n\n"
+    "Für iPhones kann der Abgleich optional über einen Relay-Dienst im Internet laufen. Er "
+    "sieht, dass und wann ein Handy abgleicht und wie groß die Daten sind, nie den Inhalt. "
+    "Dazu wird erst gekoppelt, wenn Sie „Über Relay koppeln“ wählen.\n\n"
     "Jetzt einschalten?")
 
 _MOBILE_ERRORS = {
