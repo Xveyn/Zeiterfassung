@@ -29,6 +29,7 @@ CASES = [
     "[x](javascript:alert(1)) [y](docs/a.md) [](https://x.example) **offen `offen [offen](\n",
     "| a | b |\n\n1. eins\n\n```\ncode\n```\n\n<b>x</b>\n",
     "a\n<!-- weg\nauch weg -->\n\nb\n",
+    "a<<!-- x -->!-- y -->b\n",
     "kein Abschnitt, nur Text\n",
 ]
 

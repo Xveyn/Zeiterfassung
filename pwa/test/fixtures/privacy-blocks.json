@@ -1265,6 +1265,22 @@
    ]
   },
   {
+   "markdown": "a<<!-- x -->!-- y -->b\n",
+   "blocks": [
+    {
+     "kind": "paragraph",
+     "segments": [
+      {
+       "text": "ab",
+       "style": "plain",
+       "url": null
+      }
+     ],
+     "level": 0
+    }
+   ]
+  },
+  {
    "markdown": "kein Abschnitt, nur Text\n",
    "blocks": [
     {

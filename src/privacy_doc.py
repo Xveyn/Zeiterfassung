@@ -101,7 +101,9 @@ def parse_privacy_markdown(text: str) -> list[Block]:
     """Das Dokument als Blöcke in Dokumentreihenfolge. Fortsetzungszeilen eines Absatzes, Zitats oder
     Bullets werden mit einem Leerzeichen zu einem Block zusammengeführt (das Dokument ist hart umgebrochen,
     das Text-Widget bricht selbst um)."""
-    text = _HTML_COMMENT.sub("", text)
+    previous = None
+    while previous != text:         # bis zum Fixpunkt: verschachtelte Kommentare setzen sich sonst neu zusammen
+        previous, text = text, _HTML_COMMENT.sub("", text)
     blocks: list[tuple[str, int, list[str]]] = []
     open_last = False               # darf die nächste Zeile den letzten Block fortsetzen?
 

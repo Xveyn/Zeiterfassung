@@ -71,7 +71,13 @@ const block = (kind, text, level = 0) => ({ kind, segments: parseInline(text), l
 /** Das Dokument als Blöcke in Dokumentreihenfolge; Fortsetzungszeilen werden mit einem Leerzeichen
  *  zusammengeführt. */
 export function parsePrivacyMarkdown(source) {
-  const text = source.replace(/^﻿/, '').replace(HTML_COMMENT, '');
+  // Wiederholt bis zum Fixpunkt: ein einmaliges Entfernen kann aus verschachteltem Text (`<<!-- x -->!-- y -->`)
+  // einen neuen Kommentar zusammensetzen.
+  let text = source.replace(/^﻿/, '');
+  for (let previous = null; previous !== text;) {
+    previous = text;
+    text = text.replace(HTML_COMMENT, '');
+  }
   const blocks = [];                              // [kind, level, teile[]]
   let openLast = false;                           // darf die nächste Zeile den letzten Block fortsetzen?
   for (const raw of text.split(/\r\n|\r|\n/)) {
