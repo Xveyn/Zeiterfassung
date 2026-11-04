@@ -136,3 +136,26 @@ def test_a_utf8_bom_does_not_turn_the_title_into_a_paragraph(tmp_path):
     blocks = pd.parse_privacy_markdown(pd.load_privacy_doc(str(tmp_path)))
     assert kinds(blocks) == ["title", "paragraph"]
     assert text_of(blocks[0]) == "Titel"
+
+
+# --- Datenschutz in der Web-App (#428) -----------------------------------------------------------------
+
+PWA = ROOT / "pwa"
+
+
+def test_the_web_app_links_the_same_document_the_desktop_shows():
+    """`PRIVACY_URL` der PWA und `PRIVACY_DOC_URL` des Desktops sind dieselbe Adresse (zwei Konstanten, ein Ziel)."""
+    import re
+
+    source = (PWA / "relay-client.js").read_text(encoding="utf-8")
+    match = re.search(r"export const PRIVACY_URL = '([^']+)';", source)
+    assert match, "PRIVACY_URL fehlt in pwa/relay-client.js"
+    assert match.group(1) == pd.PRIVACY_DOC_URL
+
+
+def test_the_document_names_the_contact_and_no_longer_calls_the_notice_open():
+    text = REAL
+    assert "Offen:" not in text, "der Hinweis auf die fehlende Datenschutzerklärung (#428) steht noch im Dokument"
+    assert "https://github.com/Xveyn/Zeiterfassung/security/advisories/new" in text
+    assert "https://github.com/Xveyn/Zeiterfassung/issues" in text
+    assert "keine personenbezogenen Daten" in text

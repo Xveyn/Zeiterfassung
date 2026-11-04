@@ -80,3 +80,17 @@ test('the page behind an open dialog does not scroll', () => {
 test('a day whose reservation is done shows no planned list', () => {
   assert.match(views, /day\.reservation\?\.slots\.length > 0/);
 });
+
+test('the privacy notice is linked from the pairing screen and the connection tab, opening safely in a new tab', () => {
+  assert.match(views, /import \{ PRIVACY_URL \} from '\.\/relay-client\.js'/);
+  assert.match(views, /href: PRIVACY_URL, target: '_blank', rel: 'noopener noreferrer'/);
+  // Beide Stellen rufen den Helfer: der Koppel-Bildschirm und der Reiter Verbindung.
+  const pair = /export function pairView[\s\S]*?\n\}\r?\n/.exec(views)[0];
+  const connection = /function connectionPanel[\s\S]*?\n\}\r?\n/.exec(views)[0];
+  assert.match(pair, /privacyLink\(\)/);
+  assert.match(connection, /privacyLink\(\)/);
+});
+
+test('links in the web app use the accent colour, not the browser default', () => {
+  assert.match(css, /(?:^|\n)a\s*\{[^}]*color:\s*var\(--accent\)/);
+});

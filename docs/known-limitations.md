@@ -638,8 +638,8 @@ wird derselbe Mechanismus erwartet, ist aber nicht ausprobiert. Für iPhone und 
 über die **Box** desselben Relays wie die Push-Erinnerungen (`relay/`,
 ein Cloudflare Worker): das Handy legt die verschlüsselte Anfrage dort ab, der Desktop holt sie ab und legt
 die Antwort ab. Verschlüsselung, Zähler und Abgleich sind dieselben wie im WLAN; neu ist nur der Transport.
-Spec: `docs/superpowers/specs/2026-11-02-ios-relay-abgleich-design.md`; Datenflüsse im Einzelnen:
-`docs/datenschutz.md`.
+Spec: `docs/superpowers/specs/2026-11-02-ios-relay-abgleich-design.md`; Datenflüsse im Einzelnen und Kontakt
+für Fragen: `docs/datenschutz.md` (die Web-App verlinkt es im Koppel-Bildschirm und unter Einstellungen → Verbindung, der Desktop zeigt es unter Einstellungen → App).
 
 - **Was der Relay sieht:** Pfad, Statuscode, Zähler, Nonce, Feldnamen, Größe, Zeitpunkte, die IP-Adresse
   und das Gerätetoken im Klartext. **Nie** Einträge, Kategorien, Namen oder Einstellungen: sie liegen

@@ -36,6 +36,7 @@ button {
 button:hover { background: var(--cell-hover); }
 button.primary { background: var(--accent); color: #fff; font-weight: 600; }
 button.primary:hover { background: var(--accent-hover); }
+a { color: var(--accent); }
 button.link { background: none; color: var(--accent); min-height: var(--tap); padding: 0 8px; text-decoration: underline; }
 button:disabled { opacity: .5; cursor: default; }
 :focus-visible { outline: 2px solid var(--warn); outline-offset: 2px; }

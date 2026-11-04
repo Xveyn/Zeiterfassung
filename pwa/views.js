@@ -5,6 +5,7 @@
 import { focusByKey, h } from './dom.js';
 import { MAX_CATEGORY_LENGTH, TIME_STEP_MINUTES, snapPause, snapTime } from './minutes.js';
 import { updateStatusText } from './update-policy.js';
+import { PRIVACY_URL } from './relay-client.js';
 import { MAX_NAME_LENGTH, blockSignature, moveRow, rowsToBlock, timesSummary, validateCategoryRows } from './categories.js';
 import {
   SETTINGS_TABS, categoryDisplay, categoryOptions, categoryRemovalText, categoryRenameHint, hintKey, nextRow, pickCategory,
@@ -70,6 +71,11 @@ export function statusBar(handlers) {
 
 // --- Koppeln ----------------------------------------------------------------------------------------
 
+/** Link auf die Datenschutzhinweise; öffnet in einem neuen Tab, damit die Web-App (und ein halb ausgefülltes
+ *  Koppel-Formular) stehen bleibt. */
+const privacyLink = (label = 'Datenschutzhinweise') =>
+  h('a', { href: PRIVACY_URL, target: '_blank', rel: 'noopener noreferrer' }, label);
+
 export function pairView({ address, code, deviceName, busy, canScan, canCancel, error, relay = false, installHint = '' }, handlers) {
   const fields = pairFields({ relay });
   const addressInput = h('input', { id: 'pair-address', name: 'address', value: address, inputmode: 'decimal',
@@ -90,6 +96,7 @@ export function pairView({ address, code, deviceName, busy, canScan, canCancel, 
     h('h1', {}, relay ? 'Über den Relay koppeln' : 'Mit dem Desktop koppeln'),
     installHint && h('p', { class: 'hint warn', role: 'status' }, installHint),
     h('p', { class: 'muted' }, intro),
+    h('p', { class: 'muted' }, 'Der Abgleich über den Relay und Benachrichtigungen laufen über einen öffentlichen Dienst. Was er verarbeitet: ', privacyLink(), '.'),
     canScan && button(relay ? 'Anderen QR-Code scannen' : 'QR-Code scannen', handlers.scan, relay ? '' : 'primary'),
     h('form', { onsubmit: (event) => { event.preventDefault(); handlers.submit({ address: addressInput.value, code: codeInput.value, deviceName: nameInput.value }); } },
       fields.address && h('label', { for: 'pair-address' }, 'Adresse des Desktops'), fields.address && addressInput,
@@ -343,6 +350,7 @@ function connectionPanel({ desktopName, desktop, hint = '', address, transport =
       h('dt', { class: 'muted' }, 'Verlauf'), h('dd', {}, windowState.text, ' ', resetWindow)),
     pushSection(push, handlers),
     hint && h('p', { class: 'hint warn', role: 'status' }, hint),
+    h('p', { class: 'muted' }, 'Relay und Benachrichtigungen: ', privacyLink(), '.'),
     h('div', { class: 'buttons' },
       button('QR neu scannen / Neu koppeln', () => closeThen(() => handlers.pair()), '', { 'data-focus': 'pair' })));
 }
