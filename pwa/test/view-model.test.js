@@ -828,3 +828,30 @@ test('the iOS install hint says to scan inside the installed app, not with the c
   assert.match(text, /nicht immer/);             // die Kamera-App geht (iPhone geprüft), je nach iOS aber nicht immer
   assert.doesNotMatch(text, /nicht mit der Kamera-App/);
 });
+
+test('today the planned line goes away once actual time with that category exists, whatever the time', () => {
+  const week = pendingWeek({ '2026-10-08': reserved([RES_SLOT], { dirty: true }) },
+    { days: { '2026-10-08': live([{ start: '13:00', end: '17:00', pause: 0, kategorie: 'Projekt' }]) } });
+  const today = week.days[3];
+  assert.deepEqual(today.reservation.slots, []);
+  assert.equal(today.reservation.dirty, true);          // die Markierung „nicht übertragen“ bleibt
+  assert.equal(today.pendingMinutes, 0);
+  assert.equal(week.pendingMinutes, 0);
+});
+
+test('today the planned line stays for another category and for the slot nothing has completed', () => {
+  const afternoon = { start: '13:00', end: '17:00', kategorie: 'Projekt' };
+  const other = pendingWeek({ '2026-10-08': reserved([RES_SLOT]) },
+    { days: { '2026-10-08': live([{ start: '09:00', end: '12:00', pause: 0, kategorie: 'Support' }]) } });
+  assert.deepEqual(other.days[3].reservation.slots, ['09:00–12:00 · Projekt']);
+  assert.equal(other.pendingMinutes, 3 * 60);
+  const partly = pendingWeek({ '2026-10-08': reserved([RES_SLOT, afternoon]) },
+    { days: { '2026-10-08': live([{ start: '15:00', end: '18:00', pause: 0, kategorie: 'Projekt' }]) } });
+  assert.deepEqual(partly.days[3].reservation.slots, ['13:00–17:00 · Projekt']);
+});
+
+test('a future day keeps its planned line even with actual time of that category', () => {
+  const week = pendingWeek({ '2026-10-09': reserved([RES_SLOT]) },
+    { days: { '2026-10-09': live([{ start: '09:00', end: '12:00', pause: 0, kategorie: 'Projekt' }]) } });
+  assert.deepEqual(week.days[4].reservation.slots, ['09:00–12:00 · Projekt']);
+});

@@ -76,3 +76,7 @@ test('the page behind an open dialog does not scroll', () => {
   assert.match(css, /html:has\(dialog\[open\]\)\s*\{[^}]*overflow:\s*hidden/);
   assert.match(rule('dialog'), /overscroll-behavior:\s*contain/);
 });
+
+test('a day whose reservation is done shows no planned list', () => {
+  assert.match(views, /day\.reservation\?\.slots\.length > 0/);
+});

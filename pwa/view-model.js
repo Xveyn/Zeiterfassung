@@ -9,7 +9,7 @@ import {
 import { categoryRows, timesSummary } from './categories.js';
 import { resolveSlotDefaults } from './defaults.js';
 import { describeError } from './messages.js';
-import { normalizeReservationSlots, pendingReservationMinutes, reservationBlockVisible, validateReservationSlots } from './reservations.js';
+import { normalizeReservationSlots, openReservationSlots, pendingReservationMinutes, reservationBlockVisible, validateReservationSlots } from './reservations.js';
 import { describeState } from './push-policy.js';
 import { LEGACY_AHEAD_DAYS, aheadDays, olderState } from './window-policy.js';
 
@@ -98,7 +98,7 @@ export function weekModel({ getDay, anchor, today, conflictDates = [], windowDay
       // Reservierungen zählen nicht in `minutes`/`totalMinutes`; vergangene Tage zeigen nie eine.
       reservationVisible: visible,
       reservation: reservation && {
-        slots: reservation.slots.map(slotText), dirty: reservation.dirty, error: reservation.error },
+        slots: openReservationSlots(reservation.slots, slots, date === today).map(slotText), dirty: reservation.dirty, error: reservation.error },
       pendingMinutes: reservation ? pendingReservationMinutes(reservation.slots, slots, date === today) : 0,
     };
   });

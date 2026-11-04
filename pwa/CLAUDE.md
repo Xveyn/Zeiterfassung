@@ -220,7 +220,11 @@ bietet sie nur an, wenn „Reservierungen verwenden“ an ist.
   Reservierungen zählen nicht in die Wochensumme; stattdessen zeigt der Wochenfuß unter
   „Woche gesamt“ eine Zeile **„Noch ausstehend“** (#329, `pendingLabel` in `view-model.js`): die
   reservierte Zeit, die noch nicht erledigt ist — an künftigen Tagen die ganze Reservierung,
-  heute nur die Slots, die kein Ist-Slot zeitlich überlappt (`pendingReservationMinutes`).
+  heute nur die offenen Slots (`openReservationSlots`, `pendingReservationMinutes`): ein Ist-Slot derselben
+  Kategorie erledigt je einen Reservierungs-Slot, **gleich zu welcher Zeit** (die Kategorie, im Editor als
+  `Kategorie*` bei Abweichung, ist die Verknüpfung; ohne Kategorie keine). Erledigte Slots verschwinden aus
+  „geplant …“; gelöscht wird nichts, die Reservierung bleibt im Speicher und am Desktop unverändert. Der
+  frühere Slot einer Kategorie wird zuerst erledigt. An künftigen Tagen zählt Ist-Zeit nie.
 - **Nur, was der Desktop annimmt.** Der Desktop lehnt hinter heute + 365 die **ganze**
   Anfrage ab (auch die Ist-Zeiten). Die PWA lässt deshalb nur bis heute + 364 zu
   (`reservationEditable`, ein Tag Reserve für eine vorgehende Handy-Uhr); `saveReservation` wirft
