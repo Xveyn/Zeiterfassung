@@ -19,6 +19,8 @@ const KINDS = {
   invalid_code: 'invalid_code', clock_skew: 'clock_skew',
   invalid_entry: 'invalid_entry', invalid_protocol: 'protocol', not_found: 'protocol',
   method_not_allowed: 'protocol', internal_error: 'server',
+  // Relay-Weg (#358): die versiegelte Antwort passte nicht in eine Nachricht der Box (`413` des Desktops).
+  response_too_large: 'too_large',
   // Verschlüsselung (#249): ein Umschlag, den der Desktop nicht öffnen kann, ein wiedereingespielter
   // Zähler, eine Kopplung ohne Schlüssel — in allen drei Fällen hilft nur neu koppeln.
   invalid_envelope: 'protocol', decrypt_failed: 'crypto', replay: 'crypto', encryption_required: 'encryption',
