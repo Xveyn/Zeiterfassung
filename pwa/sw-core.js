@@ -48,6 +48,7 @@ export const PRECACHE = [
   './sync.js',
   './sync-errors.js',
   './transport.js',
+  './relay-transport.js',
   './sw-core.js',
   './icons/icon-192.png',
   './icons/icon-512.png',
