@@ -35,6 +35,9 @@ mobile_relay.json.corrupt-*
 mobile_box.json
 mobile_box.json.corrupt-*
 .mobile_box-*.tmp
+mobile_box_cursor.json
+mobile_box_cursor.json.corrupt-*
+mobile_box_cursor.json.*.tmp
 .smtp-*.tmp
 logs/
 dist/

@@ -41,6 +41,8 @@ from src.version import build_channel, version_label
 from src.webhook_store import WebhookStore
 from src.smtp_store import SmtpStore
 from src.mobile_keys import MobileKeyStore
+from src.mobile_box_cursor import MobileBoxCursor
+from src.mobile_box_store import MobileBoxStore
 from src.mobile_relay_store import MobileRelayStore
 from src.mobile_store import MobileStore
 
@@ -345,6 +347,8 @@ def main():
     mobile_store = MobileStore(os.path.join(base, "mobile_devices.json"))
     mobile_keys = MobileKeyStore(os.path.join(base, "mobile_keys.json"))
     mobile_relay_store = MobileRelayStore(os.path.join(base, "mobile_relay.json"))
+    mobile_box_store = MobileBoxStore(os.path.join(base, "mobile_box.json"))
+    mobile_box_cursor = MobileBoxCursor(os.path.join(base, "mobile_box_cursor.json"))
 
     # M6: Ein unvollständig gebliebener Sync-Apply eines vorherigen Laufs
     # (Crash zwischen den Store-Writes) wird jetzt idempotent nachgeholt —
@@ -392,7 +396,9 @@ def main():
               data_lock=data_lock, sync_guard=sync_guard, webhook_store=webhook_store,
               vacation_store=vacation_store, smtp_store=smtp_store,
               mobile_store=mobile_store, mobile_keys=mobile_keys,
-              mobile_relay_store=mobile_relay_store)
+              mobile_relay_store=mobile_relay_store,
+              mobile_box_store=mobile_box_store,
+              mobile_box_cursor=mobile_box_cursor)
 
     if "--minimized" in sys.argv:
         root.iconify()

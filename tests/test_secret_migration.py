@@ -382,3 +382,66 @@ def test_forget_all_survives_a_broken_mobile_keys_file(tmp_path, monkeypatch):
     monkeypatch.setattr("src.keyring_store.remove", lambda key: None)
     (tmp_path / "mobile_keys.json").write_text("{kaputt", encoding="utf-8")
     sm.forget_all(str(tmp_path))                     # wirft nicht
+
+
+def _box_file(tmp_path, pending, device):
+    (tmp_path / "mobile_box.json").write_text(json.dumps({
+        "schema_version": 1,
+        "pending": {"secret": pending, "created_at": "2026-11-03T10:00:00Z"},
+        "devices": {"phone-0001": {"secret": device}}}), encoding="utf-8")
+
+
+def test_forget_all_deletes_boxes(tmp_path, monkeypatch):
+    from src.mobile_relay_codec import generate_box_secret
+    pending, device = generate_box_secret(), generate_box_secret()
+    _box_file(tmp_path, pending, device)
+    monkeypatch.setattr("src.keyring_store.remove", lambda key: None)
+    deleted = []
+    monkeypatch.setattr("src.box_relay.delete_box", lambda s: deleted.append(s) or True)
+    sm.forget_all(str(tmp_path))
+    assert deleted == [pending, device]
+
+
+def test_forget_all_survives_corrupt_box_file(tmp_path, monkeypatch):
+    monkeypatch.setattr("src.keyring_store.remove", lambda key: None)
+    monkeypatch.setattr("src.box_relay.delete_box",
+                        lambda s: (_ for _ in ()).throw(AssertionError("kein Netz")))
+    (tmp_path / "mobile_box.json").write_text("{kaputt", encoding="utf-8")
+    sm.forget_all(str(tmp_path))                     # wirft nicht
+
+
+def test_forget_all_goes_on_when_delete_box_raises(tmp_path, monkeypatch):
+    from src.mobile_relay_codec import generate_box_secret
+    _box_file(tmp_path, generate_box_secret(), generate_box_secret())
+    monkeypatch.setattr("src.keyring_store.remove", lambda key: None)
+    calls = []
+
+    def boom(s):
+        calls.append(s)
+        raise RuntimeError("x")
+
+    monkeypatch.setattr("src.box_relay.delete_box", boom)
+    sm.forget_all(str(tmp_path))
+    assert len(calls) == 2
+
+
+def test_forget_boxes_stops_after_the_first_unreached_box(tmp_path, monkeypatch):
+    """Nicht erreicht (offline, Zeitüberschreitung): die übrigen Boxen warten nicht je eine volle
+    Frist, sondern zählen gleich als nicht erreicht."""
+    from src.mobile_relay_codec import generate_box_secret
+    _box_file(tmp_path, generate_box_secret(), generate_box_secret())
+    calls = []
+    monkeypatch.setattr("src.box_relay.delete_box", lambda s: calls.append(s) and False)
+
+    missed = sm.forget_boxes(str(tmp_path / "mobile_box.json"))
+
+    assert len(calls) == 1 and missed == 2
+
+
+def test_forget_all_without_boxes_flag_skips_boxes(tmp_path, monkeypatch):
+    from src.mobile_relay_codec import generate_box_secret
+    _box_file(tmp_path, generate_box_secret(), generate_box_secret())
+    monkeypatch.setattr("src.keyring_store.remove", lambda key: None)
+    monkeypatch.setattr("src.box_relay.delete_box",
+                        lambda s: (_ for _ in ()).throw(AssertionError("kein Netz")))
+    sm.forget_all(str(tmp_path), boxes=False)

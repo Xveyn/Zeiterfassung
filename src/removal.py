@@ -39,7 +39,7 @@ log = logging.getLogger(__name__)
 CREDENTIAL_FILES: tuple[str, ...] = (
     "token.json", "instance-secret", "webhooks.json", "smtp.json",
     "credentials.json", "api-token", "mobile_devices.json", "mobile_keys.json",
-    "mobile_relay.json", "mobile_box.json",
+    "mobile_relay.json", "mobile_box.json", "mobile_box_cursor.json",
 )
 USER_DATA_FILES: tuple[str, ...] = (
     "zeiterfassung.json", "reservations.json", "vacations.json",
@@ -55,6 +55,7 @@ KEYRING_HINT = (
     "Der Schlüsselbund wird nicht nachgeprüft: Bleibt dort ein Eintrag "
     "„Zeiterfassung“ stehen, entferne ihn von Hand.")
 KEYRING_STEP = "Schlüsselbund-Einträge"
+BOX_STEP = "Relay-Boxen"
 GOOGLE_PERMISSIONS_URL = "https://myaccount.google.com/permissions"
 TRANSLOCATION_MARKER = "/AppTranslocation/"
 TRANSLOCATION_HINT = (
@@ -102,6 +103,17 @@ def _remove_all(paths: Iterable[str]) -> None:
         raise OSError("; ".join(failures))
 
 
+def _forget_boxes(base_path: str) -> str | None:
+    """Löscht die Boxen am Relay (Netz — nur über `run_removal` im Worker, nie beim Planen).
+    Ein Hinweis, wenn Boxen nicht erreicht wurden: sie verfallen am Relay von selbst."""
+    missed = secret_migration.forget_boxes(os.path.join(base_path, "mobile_box.json"))
+    if not missed:
+        return None
+    noun = "Box" if missed == 1 else "Boxen"
+    return (f"{missed} {noun} am Relay nicht erreicht — "
+            f"{'sie verfällt' if missed == 1 else 'sie verfallen'} nach 90 Tagen von selbst")
+
+
 def _glob(base_path: str, pattern: str) -> list[str]:
     return glob.glob(os.path.join(glob.escape(base_path), pattern))
 
@@ -118,6 +130,8 @@ def _credential_paths(base_path: str) -> list[str]:
     for name in CREDENTIAL_FILES:
         stem = name.removesuffix(".json")
         paths.extend(_glob(base_path, f".{glob.escape(stem)}-*.tmp"))
+    # Temp-Rest von `json_store.atomic_write_json` (`<datei>.<zufall>.tmp`) des Cursors.
+    paths.extend(_glob(base_path, "mobile_box_cursor.json.*.tmp"))
     return paths
 
 
@@ -207,7 +221,9 @@ def plan_removal(base_path: str, with_data: bool, system: str,
     if system not in ("Darwin", "Linux"):
         return []
     steps: list[Step] = [
-        (KEYRING_STEP, lambda: secret_migration.forget_all(base_path)),
+        (KEYRING_STEP, lambda: secret_migration.forget_all(base_path, boxes=False)),
+        # Vor dem Löschen der Zugangsdaten: `mobile_box.json` trägt die Geheimnisse.
+        (BOX_STEP, lambda: _forget_boxes(base_path)),
         ("Autostart",
          _remove_macos_autostart if system == "Darwin"
          else lambda: disable_autostart(system)),

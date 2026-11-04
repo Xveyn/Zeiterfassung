@@ -9,8 +9,9 @@ ein `MobileStatus` samt Grund, den der Tab „Mobil" (PR 5) anzeigt.
 Gebunden wird nur auf die gewählte LAN-Adresse (`netinfo.pick_address`), nie auf
 `0.0.0.0`. Fehlt die gewählte Adresse (DHCP, anderes WLAN), ist der Zustand `error`
 mit dem Grund `address_gone` und es läuft nichts: die Adresse wird nie still durch
-eine andere ersetzt. Bei jedem Statuswechsel weg von „läuft" wird die offene
-Kopplungssitzung geschlossen — ein Code ohne Server ist nutzlos.
+eine andere ersetzt. Wird ein laufender Server gestoppt (oder die Handy-Erfassung
+ausgeschaltet), schließt das die offene Kopplungssitzung — der QR-Code nannte dessen
+Adresse. Lief keiner, bleibt sie offen: sie kann dem Relay-Weg gehören.
 
 Die Geräteverwaltung (`list_devices`, `revoke`, `revoke_all`) und `pair_link` liegen
 hier, weil sie sich den `devices_lock` mit den Routen teilen müssen. `revoke` und
@@ -24,7 +25,7 @@ import dataclasses
 import errno
 import logging
 import threading
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
@@ -62,6 +63,9 @@ MAX_CONNECTIONS_PER_CLIENT = 8
 _WINERRORS_IN_USE = (10048, 10013)
 
 
+BoxCleanup = Callable[[Iterable[str] | None], None]
+
+
 @dataclass(frozen=True)
 class MobileStatus:
     state: str
@@ -79,8 +83,12 @@ class MobileService:
     def __init__(self, settings: Any, context: mobile_routes.MobileContext, *,
                  run: Callable[..., None],
                  on_status: Callable[[MobileStatus], None] | None = None,
-                 lan_candidates: Callable[[], list[str]] = netinfo.lan_candidates) -> None:
+                 lan_candidates: Callable[[], list[str]] = netinfo.lan_candidates,
+                 box_cleanup: BoxCleanup | None = None) -> None:
         self._settings = settings
+        # Räumt nach einem Widerruf die Relay-Boxen ab (`RelayService.forget_devices`, #358);
+        # gesetzt über `set_box_cleanup`, weil der Relay-Dienst erst mit `context` gebaut wird.
+        self._box_cleanup = box_cleanup
         # Die Routen fragen `closing` unter dem Lock: nach `shutdown()` (Beenden,
         # Entfernen, Neustart) koppelt und gleicht keine Route mehr ab.
         self._on_paired_outer = context.on_paired
@@ -105,6 +113,17 @@ class MobileService:
     @property
     def pairing(self) -> mobile_pairing.PairingSession:
         return self._context.pairing
+
+    @property
+    def context(self) -> mobile_routes.MobileContext:
+        """Der Kontext der Routen, mit `closing`/`on_paired`/`on_pair_failed` dieses Dienstes —
+        derselbe, den der Relay-Abgleich (`RelayService`) seinem Adapter gibt."""
+        return self._context
+
+    def set_box_cleanup(self, cleanup: BoxCleanup | None) -> None:
+        """Setzt den Aufräumer der Relay-Boxen: `revoke(id)` ruft ihn mit `[id]`, `revoke_all()`
+        mit `None`, jeweils nach der Gerätesperre (Worker)."""
+        self._box_cleanup = cleanup
 
     def apply(self) -> None:
         """Bringt den Server in den Zustand der Settings. Im UI-Thread aufrufen; die
@@ -207,14 +226,14 @@ class MobileService:
         (sonst bliebe der Port offen und der Skalierungs-Neustart träfe `port_in_use`).
         Der Aufrufer hält `_lock`."""
         if self._closed:
-            self._stop_server()
+            self._stop_server(close_pairing=True)
             self._status = MobileStatus(STATE_OFF)
 
     def _reconcile_locked(self) -> MobileStatus:
         if self._closed:
             return self._status
         if not self._settings.get("mobile_enabled"):
-            self._stop_server()
+            self._stop_server(close_pairing=True)       # Handy-Erfassung ganz aus: auch der Relay-Weg
             self._status = MobileStatus(STATE_OFF)
             return self._status
         port = parse_port(self._settings.get("mobile_port"))
@@ -262,14 +281,16 @@ class MobileService:
         self._status = MobileStatus(STATE_RUNNING, address, server.port)
         return self._status
 
-    def _stop_server(self) -> None:
+    def _stop_server(self, *, close_pairing: bool = False) -> None:
+        """Stoppt einen laufenden Server. Die Kopplungssitzung schließt es nur, wenn wirklich ein
+        Server lief (der QR-Code nannte dessen Adresse und Port) oder `close_pairing` es verlangt:
+        ohne LAN-Server gehört eine offene Sitzung dem Relay-Weg (`RelayService.open_pairing`)."""
         server, self._server = self._server, None
         self._running = None
         if server is not None:
             server.stop()
-        # Ein Code ohne Server ist nutzlos, und beim Neustart auf anderer Adresse oder
-        # anderem Port stimmte der QR-Code nicht mehr.
-        self._context.pairing.close()
+        if server is not None or close_pairing:
+            self._context.pairing.close()
 
     def shutdown(self, lock_timeout: float = 1.0) -> None:
         """Stoppt den Server und sperrt weitere Starts. Blockiert höchstens
@@ -280,7 +301,7 @@ class MobileService:
             _log.warning("Handy-Instanz: Beenden wartet nicht auf einen laufenden Start")
             return
         try:
-            self._stop_server()
+            self._stop_server(close_pairing=True)
             self._status = MobileStatus(STATE_OFF)
         finally:
             self._lock.release()
@@ -314,6 +335,7 @@ class MobileService:
         self._context.keys.remove(device_id)
         self._drop_relay_objects(lambda store: {device_id: secret}
                                  if (secret := store.remove(device_id)) else {})
+        self._clean_boxes([device_id])
         return True
 
     def revoke_all(self) -> int:
@@ -329,7 +351,21 @@ class MobileService:
         for device_id in stale:
             self._context.keys.remove(device_id)
         self._drop_relay_objects(lambda store: store.retain([]))
+        self._clean_boxes(None)
         return len(records)
+
+    def _clean_boxes(self, ids: Iterable[str] | None) -> None:
+        """Ruft den Aufräumer der Relay-Boxen, best effort und außerhalb der Gerätesperre: das Gerät
+        ist schon widerrufen, ein Fehler hier bleibt ein Logeintrag."""
+        cleanup = self._box_cleanup
+        if cleanup is None:
+            return
+        try:
+            cleanup(ids)
+        except Exception as exc:
+            # Der Widerruf ist geschrieben; eine nicht gelöschte Box verfällt am Relay nach 90 Tagen.
+            # Nur der Typ: der Text könnte ein Geheimnis tragen.
+            _log.warning("Handy-Erfassung: Relay-Boxen nicht abgeräumt (%s)", type(exc).__name__)
 
     def can_test(self, device_id: str) -> bool:
         """Kann an dieses Gerät eine Testbenachrichtigung gehen? Nur wenn es gekoppelt, nicht

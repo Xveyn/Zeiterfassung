@@ -5,7 +5,7 @@
 Dieses Dokument sagt, **wer was bekommt, wo es liegt, wie lange und wie es gelöscht wird**. Es ist die
 Quelle für Hinweistexte in der App. Die Zahlen darin prüft `tests/test_datenschutz_claims.py` gegen
 `relay/src/validate.js`. Jeder PR der Kette (#358) ergänzt seinen Teil; was noch nicht festliegt, steht als
-`Offen (PR n)`. Stand: PR 3a (Relay-Teil, Nachrichtenrahmen und Desktop-Kern).
+`Offen (PR n)`. Stand: PR 3b (Verbindung des Desktops zum Relay, Löschen der Boxen).
 
 ## 1. Was der Relay sieht, und was nicht
 
@@ -41,8 +41,19 @@ die Kopplung über das Internet heißt (Erweiterung des Vertrauens gegenüber de
   Nutzer lesbar, unter Windows per ACL), **nicht** im Schlüsselbund und nicht per Drive-Sync. Der Desktop
   kann eine Box mit `DELETE /v1/box` löschen (`box_relay.delete_box`, best effort: ist der Relay nicht
   erreichbar, bleibt das Lösen gültig und die Box verfällt von selbst).
-- Offen (PR 3b): „Kopplung entfernen“, „Zeiterfassung entfernen“ und `--forget-secrets` räumen die Box mit ab.
-  Bis dahin ruft nichts in der App das Löschen auf; eine Box bleibt dann höchstens 90 Tage im Leerlauf.
+- Die App löscht eine Box selbst, sobald sie nicht mehr gebraucht wird:
+  - beim **Widerruf** einer Kopplung (die Boxen widerrufener Geräte),
+  - wenn ein Gerät **erneut gekoppelt** wird (seine alte Box) und wenn ein offener Kopplungscode verfällt
+    oder der Koppel-Dialog schließt, ohne dass ein Handy gekoppelt hat (die dafür angelegte Box),
+  - bei **„Zeiterfassung entfernen“** (macOS/Linux) im Schritt „Relay-Boxen“, vor dem Löschen der
+    Zugangsdaten,
+  - bei der **Deinstallation unter Windows** über `--forget-secrets`, ebenfalls bevor die Dateien gelöscht
+    werden.
+- Alles davon ist best effort: ist der Relay nicht erreichbar, wird lokal trotzdem aufgeräumt, und eine nicht
+  erreichte Box verfällt nach 90 Tagen Leerlauf von selbst. Der Schritt „Relay-Boxen“ nennt die Zahl der
+  nicht erreichten Boxen. Nach dem ersten Ausfall versucht er die übrigen nicht mehr einzeln (sonst dauerte
+  das Entfernen bei totem Netz je Box eine volle Wartezeit) und zählt sie mit.
+- Offen (PR 3c): die Hinweistexte dazu in der Oberfläche (Widerruf, Koppel-Dialog).
 
 ## 3. Plattform-Logs
 
@@ -90,8 +101,8 @@ Box-Geheimnis kennt (sieht den QR-Code, Betreiber des Relays), kann den Slot des
 Klartext, den versiegelten Umschlag), Slots überschreiben, den Desktop von der Box verdrängen, unversiegelte
 Fehler fälschen und `DELETE /v1/box` auslösen. Er kann **nicht** Inhalte lesen oder synchronisieren: das braucht den
 Geräteschlüssel. Das ist ein Störer- und Metadatenrisiko, kein Inhaltsleck.
-Offen (PR 3b, PR 3c): Geht das Handy verloren, widerruft der Nutzer die Kopplung am Desktop; die Box wird dabei
-mit gelöscht (ab PR 3b) und der Dialog sagt es (PR 3c).
+Geht das Handy verloren, widerruft der Nutzer die Kopplung am Desktop; die Box wird dabei am Relay mit
+gelöscht (best effort, s. 2.). Offen (PR 3c): der Widerruf-Dialog sagt es.
 
 ## 10. Push getrennt halten
 

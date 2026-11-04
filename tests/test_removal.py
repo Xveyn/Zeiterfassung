@@ -8,7 +8,7 @@ import re
 
 import pytest
 
-from src import removal
+from src import box_relay, removal
 from src.removal import StepResult
 
 
@@ -30,7 +30,7 @@ def _populate(base, *, credentials=True, data=True):
 @pytest.fixture
 def quiet(monkeypatch):
     """Schlüsselbund und Autostart sind hier nicht das Thema."""
-    monkeypatch.setattr(removal.secret_migration, "forget_all", lambda base: None)
+    monkeypatch.setattr(removal.secret_migration, "forget_all", lambda base, **_: None)
     monkeypatch.setattr(removal, "disable_autostart", lambda system=None: None)
 
 
@@ -58,7 +58,7 @@ def test_plan_linux_with_data_in_order(tmp_path):
     steps = removal.plan_removal(str(tmp_path), True, "Linux",
                                  pending_update_path="/x/.u")
     assert _names(steps) == [
-        "Schlüsselbund-Einträge", "Autostart", "Menüeintrag",
+        "Schlüsselbund-Einträge", "Relay-Boxen", "Autostart", "Menüeintrag",
         "Vorbereitetes Update", "Zugangsdaten",
         "Zeiten, Einstellungen und Protokoll", "Datenordner",
     ]
@@ -66,7 +66,7 @@ def test_plan_linux_with_data_in_order(tmp_path):
 
 def test_plan_macos_has_no_menu_entry_step(tmp_path):
     steps = removal.plan_removal(str(tmp_path), False, "Darwin")
-    assert _names(steps) == ["Schlüsselbund-Einträge", "Autostart", "Zugangsdaten"]
+    assert _names(steps) == ["Schlüsselbund-Einträge", "Relay-Boxen", "Autostart", "Zugangsdaten"]
 
 
 def test_plan_without_data_skips_data_and_folder(tmp_path):
@@ -81,7 +81,7 @@ def test_keyring_runs_before_any_file_is_deleted(tmp_path, monkeypatch):
     _populate(tmp_path)
     seen = {}
     monkeypatch.setattr(removal.secret_migration, "forget_all",
-                        lambda base: seen.update(token=(tmp_path / "token.json").exists()))
+                        lambda base, **_: seen.update(token=(tmp_path / "token.json").exists()))
     monkeypatch.setattr(removal, "disable_autostart", lambda system=None: None)
 
     removal.execute_removal(str(tmp_path), True, "Linux")
@@ -326,7 +326,7 @@ def test_macos_autostart_removes_plist_without_launchctl(tmp_path, monkeypatch):
     also die App selbst. Auf macOS wird nur die plist gelöscht."""
     plist = tmp_path / "LaunchAgents" / "com.margenheld.zeiterfassung.plist"
     _touch(plist)
-    monkeypatch.setattr(removal.secret_migration, "forget_all", lambda base: None)
+    monkeypatch.setattr(removal.secret_migration, "forget_all", lambda base, **_: None)
     monkeypatch.setattr(removal, "macos_plist_path", lambda: str(plist))
 
     def unload():
@@ -342,7 +342,7 @@ def test_macos_autostart_removes_plist_without_launchctl(tmp_path, monkeypatch):
 
 def test_linux_autostart_still_uses_disable_autostart(tmp_path, monkeypatch):
     calls = []
-    monkeypatch.setattr(removal.secret_migration, "forget_all", lambda base: None)
+    monkeypatch.setattr(removal.secret_migration, "forget_all", lambda base, **_: None)
     monkeypatch.setattr(removal, "disable_autostart", calls.append)
 
     removal.execute_removal(str(tmp_path), False, "Linux")
@@ -628,6 +628,24 @@ def test_the_mobile_devices_file_is_removed_and_ignored():
     assert "DeleteMatching('mobile_box.json.corrupt-*')" in installer
 
 
+def test_the_cursor_temp_file_is_ignored_removed_and_uninstalled(tmp_path, quiet):
+    """`json_store.atomic_write_json` legt `mobile_box_cursor.json.<zufall>.tmp` an."""
+    import pathlib
+    import tempfile
+    root = pathlib.Path(__file__).resolve().parent.parent
+    lines = (root / ".gitignore").read_text(encoding="utf-8").splitlines()
+    assert "mobile_box_cursor.json.*.tmp" in lines
+    installer = (root / "installer.iss").read_text(encoding="utf-8")
+    assert "DeleteMatching('mobile_box_cursor.json.*.tmp')" in installer
+    fd, leftover = tempfile.mkstemp(dir=str(tmp_path), prefix="mobile_box_cursor.json.",
+                                    suffix=".tmp")
+    os.close(fd)
+
+    removal.execute_removal(str(tmp_path), False, "Linux")
+
+    assert not os.path.exists(leftover)
+
+
 # --- Temp-Präfixe der Secret-Schreiber passen zur Aufräum-Suche (#358) -------
 
 # Welche Credential-Datei schreibt welches Modul über `secure_file.write_secret_*`.
@@ -642,7 +660,7 @@ _SECRET_WRITERS = {
     "mobile_box.json": "src.mobile_box_store",
 }
 # Nicht über `secure_file` geschrieben: vom Nutzer abgelegt bzw. nur Token-Hashes (`json_store`).
-_NOT_SECRET_WRITTEN = {"credentials.json", "mobile_devices.json"}
+_NOT_SECRET_WRITTEN = {"credentials.json", "mobile_devices.json", "mobile_box_cursor.json"}
 _WRITER_FUNCS = {"write_secret_bytes", "write_secret_text", "write_secret_json"}
 
 
@@ -699,3 +717,94 @@ def test_a_leftover_temp_file_of_every_secret_writer_is_swept(tmp_path, filename
         _touch(leftover)
 
         assert str(leftover) in removal._credential_paths(str(tmp_path)), (filename, prefix)
+
+
+# --- Boxen am Relay (#358) ---------------------------------------------------
+
+def _box_secrets():
+    from src.mobile_relay_codec import generate_box_secret
+    return generate_box_secret(), generate_box_secret()
+
+
+def _write_boxes(base, pending, device):
+    import json
+    _touch(base / "mobile_box.json", json.dumps({
+        "schema_version": 1,
+        "pending": {"secret": pending, "created_at": "2026-11-03T10:00:00Z"},
+        "devices": {"phone-0001": {"secret": device}}}))
+
+
+def test_removal_deletes_all_boxes_before_credentials(tmp_path, quiet, monkeypatch):
+    pending, device = _box_secrets()
+    _populate(tmp_path)
+    _write_boxes(tmp_path, pending, device)
+    seen = []
+    monkeypatch.setattr(box_relay, "delete_box",
+                        lambda s: seen.append((s, (tmp_path / "mobile_box.json").exists())) or True)
+
+    results = removal.execute_removal(str(tmp_path), False, "Linux")
+
+    assert seen == [(pending, True), (device, True)]
+    assert all(r.ok for r in results), results
+    assert not (tmp_path / "mobile_box.json").exists()
+    assert [r.name for r in results].index(removal.BOX_STEP) < [r.name for r in results].index("Zugangsdaten")
+
+
+def test_removal_continues_when_relay_unreachable(tmp_path, quiet, monkeypatch):
+    pending, device = _box_secrets()
+    _populate(tmp_path)
+    _write_boxes(tmp_path, pending, device)
+    monkeypatch.setattr(box_relay, "delete_box", lambda s: False)
+
+    results = removal.execute_removal(str(tmp_path), True, "Linux")
+
+    assert all(r.ok for r in results), results
+    assert not (tmp_path / "token.json").exists()
+    box = next(r for r in results if r.name == removal.BOX_STEP)
+    assert "2" in box.note and "90 Tagen" in box.note
+    text = removal.format_summary(results, None, False)
+    assert "90 Tagen" in text
+    assert pending not in text and device not in text
+
+
+def test_removal_with_unreadable_box_file_does_not_overwrite_it(tmp_path, quiet, monkeypatch):
+    pending, device = _box_secrets()
+    _write_boxes(tmp_path, pending, device)
+    before = (tmp_path / "mobile_box.json").read_bytes()
+    calls = []
+    monkeypatch.setattr(box_relay, "delete_box", lambda s: calls.append(s) or True)
+
+    def boom(path):
+        raise OSError("gesperrt")
+
+    monkeypatch.setattr("src.mobile_box_store.load_json_or_quarantine", boom)
+    steps = dict(removal.plan_removal(str(tmp_path), False, "Linux"))
+    steps[removal.BOX_STEP]()                    # wirft nicht, Datei bleibt unberührt
+    assert calls == []
+    assert (tmp_path / "mobile_box.json").read_bytes() == before
+
+
+def test_removal_without_box_file_makes_no_network_call(tmp_path, quiet, monkeypatch):
+    monkeypatch.setattr(box_relay, "delete_box",
+                        lambda s: (_ for _ in ()).throw(AssertionError("Netz")))
+    results = removal.execute_removal(str(tmp_path), False, "Linux")
+    assert all(r.ok and not r.note for r in results if r.name == removal.BOX_STEP)
+
+
+def test_plan_removal_makes_no_network_call(tmp_path, quiet, monkeypatch):
+    pending, device = _box_secrets()
+    _write_boxes(tmp_path, pending, device)
+    monkeypatch.setattr(box_relay, "delete_box",
+                        lambda s: (_ for _ in ()).throw(AssertionError("Netz beim Planen")))
+    removal.plan_removal(str(tmp_path), False, "Linux")
+
+
+def test_removal_never_shows_or_logs_box_secrets(tmp_path, quiet, monkeypatch, caplog):
+    import logging
+    pending, device = _box_secrets()
+    _write_boxes(tmp_path, pending, device)
+    monkeypatch.setattr(box_relay, "delete_box", lambda s: False)
+    with caplog.at_level(logging.DEBUG):
+        results = removal.execute_removal(str(tmp_path), False, "Linux")
+    blob = repr(results) + caplog.text
+    assert pending not in blob and device not in blob

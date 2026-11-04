@@ -648,7 +648,7 @@ Traceback-/Catch-all-Ausgabe → nativ.
 
 ### Ein Catch-all loggt, meldet oder trägt eine Begründung (Xveyn#73)
 
-`src/` hält rund 140 Handler auf `except Exception` / `except BaseException`.
+`src/` hält rund 155 Handler auf `except Exception` / `except BaseException`.
 Die **Dichte ist unkritisch und gewollt**: sie sitzen im Bootstrap, an
 Threading-Rändern und an Best-Effort-Plattformaufrufen — genau dort, wo ein
 Catch-all hingehört. Eine Bestandsaufnahme über alle Handler ergab, dass 96 %
@@ -1450,8 +1450,12 @@ nicht mehr als „offen" führen — der Verweis lautet auf diese Grenze.
 - `src/mobile_relay_store.py` — Relay-Geheimnisse der gekoppelten Handys (`mobile_relay.json`, #331): gehärtet über `secure_file.write_secret_json`, nur bei einer Änderung geschrieben (nie je Abgleich), eigener Lock; Datei in `removal.CREDENTIAL_FILES`, `installer.iss` und `.gitignore`
 - `src/mobile_box_store.py` — Box-Geheimnisse der Handy-Erfassung über den Relay (`mobile_box.json`, #358): ein offenes Geheimnis beim Koppeln (`open_pending`/`bind`) und je Gerät eines, gehärtet über `secure_file.write_secret_json`, nur bei einer Änderung geschrieben, eigener Lock, reist nicht per Drive-Sync, getrennt vom Push-Speicher `mobile_relay.json`; Datei in `removal.CREDENTIAL_FILES`, `installer.iss` und `.gitignore`
 - `src/pwa_constants.py` — `PWA_ORIGIN`/`PWA_URL` der gehosteten Handy-PWA an einer Stelle, ohne Importe aus `src` (Routenebene und Relay-Codec teilen sie)
-- `src/box_relay.py` — `delete_box(secret)`: löscht die Box eines Handys am Relay (`DELETE /v1/box`), best effort, wirft nie, Tk-frei und stdlib-only; Aufrufer folgen mit der Verbindungsschicht (PR 3b)
-- `src/relay_adapter.py` — `RelayAdapter.handle`: beantwortet die Nutzlast einer Relay-Anfrage über `mobile_routes.dispatch` (jede Antwort trägt `n`, `seq <= last_seq` und `409 replay` bleiben ohne Antwort, die Kopplungsantwort wird kurz zwischengespeichert); Tk-frei, ohne I/O, noch nicht verdrahtet (PR 3b, Details in `src/CLAUDE.md`)
+- `src/box_relay.py` — `delete_box(secret)`: löscht die Box eines Handys am Relay (`DELETE /v1/box`), best effort, wirft nie, Tk-frei und stdlib-only; Aufrufer: `relay_service`, `removal`, `secret_migration.forget_all`
+- `src/relay_adapter.py` — `RelayAdapter.handle`: beantwortet die Nutzlast einer Relay-Anfrage über `mobile_routes.dispatch` (jede Antwort trägt `n`, `seq <= last_seq` und `409 replay` bleiben ohne Antwort, die Kopplungsantwort wird kurz zwischengespeichert); Tk-frei, ohne I/O, seit PR 3b von `relay_service` verdrahtet (Details in `src/CLAUDE.md`)
+- `src/ws_client.py` — WebSocket-Adapter zum Relay (#358): die einzige Stelle der Bibliothek `websockets` (gepinnt, sync-Client), `connect(secret, have)` → `Socket`; übersetzt jede Bibliotheksausnahme mit festem Text (das Box-Geheimnis steht nie in Log oder Meldung), eigener Logger auf WARNING, harter Abbruch hängender Verbindungen
+- `src/relay_link.py` — Verbindungsschicht zum Relay (#358, PR 3b): je Box ein Leser-Thread, ein gemeinsamer Arbeits-Thread (nacheinander, „neuester gewinnt“), Heartbeat, Backoff, Schließcodes `replaced`/`wiped`/1008; Tk-frei, kennt keine App. Thread-Regeln in `src/CLAUDE.md`, „Threading-Modell“
+- `src/relay_service.py` — Regeln und Lebenszyklus über dem Link (`apply`/`shutdown`/`reopen` wie `MobileService`): welche Boxen verbunden sind, Binden des offenen Geheimnisses, Abräumen, Löschen ersetzter Boxen; von `ui.App` an denselben drei Stellen wie die Handy-Instanz beendet. Die Oberfläche folgt mit PR 3c
+- `src/mobile_box_cursor.py` — `have` je Box, dauerhaft in `mobile_box_cursor.json` (nur Hashes, kein Geheimnis; Datei in `removal.py`, `installer.iss` und `.gitignore`)
 - `src/push_relay.py` — spricht den Push-Relay an: räumt beim Widerruf eines Geräts dessen Objekt ab (`delete_device`, `DELETE /v1/device`) und schickt die Testbenachrichtigung aus Einstellungen → Mobil (`send_test`, `POST /v1/test`, liefert genau eine Art wie `ok`/`gone`/`too_soon`/`unknown_route`; die Texte dazu stehen in `tab_rules.test_push_text`). Beides best effort, wirft nie, loggt das Geheimnis nie; `RELAY_URL` muss zu `pwa/relay-client.js` passen (ein Test hält beide zusammen)
 - `src/keyring_store.py` — Passwörter im OS-Schlüsselbund, mit Datei-Fallback
   wenn keiner verfügbar ist. `import keyring` lazy in den Funktionen (CI),
@@ -1494,13 +1498,16 @@ nicht mehr als „offen" führen — der Verweis lautet auf diese Grenze.
   Datei gültig, der nächste Start holt nach. Trägt `token.json` schon einen
   `refresh_token_key` (Datei-Fallback), nimmt der Umzug denselben Schlüssel
   statt eines neuen; `forget_all` räumt jeden Schlüssel ab, den die Datei
-  trägt, unabhängig von `refresh_token_location`. Einmaliger Hinweis danach
+  trägt, unabhängig von `refresh_token_location`. `forget_boxes(path)` löscht die Boxen
+  der Handy-Erfassung am Relay (`box_relay.delete_box`), `forget_all(boxes=…)` ruft es
+  mit. Einmaliger Hinweis danach
   (`ui.App._on_secrets_migrated`, Dialog/Toast/Log je nach Fenstersichtbarkeit)
 - `src/removal.py` — „Zeiterfassung entfernen" (macOS/Linux, #50): Dateilisten
   (Spiegel von `installer.iss`, `tests/test_removal.py` hält sie zusammen),
   `plan_removal`/`run_removal`/`execute_removal` (**wirft nie** — `on_done` des
   Runners feuert bei einer Exception nie) und die Hinweise für den Abschluss.
-  Reihenfolge: Schlüsselbund → Autostart/Menüeintrag → Zugangsdaten →
+  Reihenfolge: Schlüsselbund → Relay-Boxen (`BOX_STEP`, `delete_box` je Box, best effort; nicht
+  erreichte Boxen verfallen nach 90 Tagen, der Schritt nennt ihre Zahl) → Autostart/Menüeintrag → Zugangsdaten →
   (nur mit Häkchen) Nutzerdaten, `settings.json` zuletzt → Datenordner nur
   wenn leer. Die App löscht ihre Programmdatei nicht, sie nennt sie
   — außer unter macOS App Translocation (`is_translocated`): der Pfad dort ist

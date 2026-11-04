@@ -21,11 +21,12 @@ import os
 from dataclasses import dataclass
 from typing import Any
 
-from src import keyring_store, webhook_secrets
+from src import box_relay, keyring_store, webhook_secrets
 from src.oauth_utils import (
     REFRESH_TOKEN_KEY, REFRESH_TOKEN_LOCATION, new_token_keyring_key,
     read_token_meta, token_in_keyring, write_token_json,
 )
+from src.mobile_box_store import MobileBoxStore
 from src.smtp_store import SmtpStore
 from src.token_store import TOKEN_LOCK
 from src.webhook_store import WebhookStore, WebhookStoreReadOnly
@@ -203,13 +204,50 @@ def _forget_mobile_keys(path: str) -> None:
             keyring_store.remove(f"mobile:{device_id}")
 
 
-def forget_all(base_path: str) -> None:
+def forget_boxes(path: str) -> int:
+    """Die Boxen der Handy-Erfassung (#358) am Relay löschen: je Geheimnis aus `mobile_box.json`
+    (offenes eingeschlossen) ein `box_relay.delete_box`, nacheinander, nach der ersten nicht
+    erreichten keine weitere (höchstens einmal `TIMEOUT_S`). Liefert die Zahl der **nicht**
+    erreichten Boxen (sie verfallen am Relay nach 90 Tagen von selbst).
+    Wirft nie und liest die Datei nur — der Store schreibt hier nichts; eine nicht lesbare Datei
+    bleibt unberührt. Blockiert (Netz): nur im Worker bzw. im Deinstaller. Loggt nie ein Geheimnis."""
+    if not os.path.exists(path):
+        return 0
+    try:
+        secrets = MobileBoxStore(path).all_secrets()
+    except Exception:
+        # Bewusst alles: kaputte/fremde Datei — die übrigen Quellen trotzdem.
+        log.warning("mobile_box.json beim Abräumen nicht lesbar", exc_info=True)
+        return 0
+    missed = 0
+    for index, secret in enumerate(secrets):
+        try:
+            ok = box_relay.delete_box(secret)
+        except Exception as exc:
+            # Bewusst alles: eine Box darf scheitern, die übrigen laufen weiter. Nur der Typ,
+            # der Text einer Ausnahme könnte das Geheimnis tragen.
+            log.warning("Box am Relay löschen: %s", type(exc).__name__)
+            missed += 1
+            continue
+        if not ok:
+            # Relay nicht erreicht: bei totem Netz kostete jede weitere Box eine volle Frist
+            # (Deinstaller, Entfernen-Schritt). Die übrigen zählen gleich als nicht erreicht.
+            missed += len(secrets) - index
+            break
+    if missed:
+        log.info("%d von %d Boxen am Relay nicht erreicht", missed, len(secrets))
+    return missed
+
+
+def forget_all(base_path: str, boxes: bool = True) -> None:
     """Deinstallation (#101): alle Schlüsselbund-Einträge dieses
     Datenverzeichnisses abräumen — Refresh-Token, Webhook- und SMTP-Secrets.
 
     Gerufen vom Uninstaller (`Zeiterfassung.exe --forget-secrets`) BEVOR er
     die Dateien löscht: aus ihnen stammen die Schlüssel. Wirft nie — jede
-    Quelle einzeln, ein Fehler in einer hält die übrigen nicht auf.
+    Quelle einzeln, ein Fehler in einer hält die übrigen nicht auf. Löscht auch die
+    Relay-Boxen der Handys (`forget_boxes`); `boxes=False` lässt sie aus, wo der Aufrufer
+    sie selbst abräumt und das Ergebnis braucht („Zeiterfassung entfernen“).
     """
     meta = read_token_meta(os.path.join(base_path, "token.json"))
     # Jeder Schlüssel in der Datei, auch im Datei-Modus: nach einem
@@ -237,3 +275,5 @@ def forget_all(base_path: str) -> None:
         if account.get("password_location") == "keyring":
             keyring_store.delete_secret(account["id"])
     _forget_mobile_keys(os.path.join(base_path, "mobile_keys.json"))
+    if boxes:
+        forget_boxes(os.path.join(base_path, "mobile_box.json"))

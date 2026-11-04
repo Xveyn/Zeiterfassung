@@ -230,6 +230,32 @@ def test_switching_off_stops_the_server_and_closes_the_pairing_session(tmp_path)
     assert port_is_closed(port) and not service.pairing.is_active()
 
 
+def test_without_a_lan_address_an_open_pairing_session_stays_open(tmp_path):
+    """Kein Server lief (keine LAN-Adresse): die Sitzung gehört dann dem Relay-Weg und bleibt offen."""
+    service, _settings, _ctx = make_service(tmp_path, candidates=())
+    service.pairing.open()
+
+    service.apply()
+    service.apply()
+
+    assert service.status.reason == REASON_NO_ADDRESS
+    assert service.pairing.is_active()
+
+
+def test_losing_the_address_of_a_running_server_closes_the_pairing_session(tmp_path):
+    candidates = [LOOPBACK]
+    service, _settings, _ctx = make_service(tmp_path, candidates=candidates)
+    service.apply()
+    port = service.status.port
+    service.pairing.open()
+
+    candidates.clear()
+    service.apply()
+
+    assert service.status.reason == REASON_NO_ADDRESS
+    assert port_is_closed(port) and not service.pairing.is_active()
+
+
 def test_changing_the_port_restarts_on_the_new_one(tmp_path):
     service, settings, _ctx = make_service(tmp_path)
     service.apply()
@@ -474,6 +500,53 @@ def test_a_revoke_does_not_hold_the_devices_lock_while_the_keyring_works(tmp_pat
     ring.remove = slow_remove
     service.revoke("phone-0001")
     assert held == [True]
+
+
+def test_mobile_service_revoke_calls_box_cleanup_outside_lock(tmp_path):
+    service, _settings, ctx = make_service(tmp_path)
+    add_keyed_device(ctx, "phone-aaaa")
+    add_keyed_device(ctx, "phone-bbbb")
+    calls = []
+
+    def lock_is_free():
+        # Aus einem anderen Thread geprüft: ein RLock, den der Aufrufer hält, wäre für ihn
+        # selbst immer wieder erwerbbar.
+        free = []
+
+        def probe():
+            got = ctx.devices_lock.acquire(blocking=False)
+            if got:
+                ctx.devices_lock.release()
+            free.append(got)
+        thread = threading.Thread(target=probe)
+        thread.start()
+        thread.join()
+        return free == [True]
+
+    def cleanup(ids):
+        calls.append((None if ids is None else list(ids), lock_is_free(),
+                      ctx.devices.get("phone-aaaa")["revoked"]))
+    assert service.context is not None and service.context.pairing is ctx.pairing
+    service.set_box_cleanup(cleanup)
+
+    assert service.revoke("phone-aaaa") is True
+    assert service.revoke("unbekannt") is False                 # kein Gerät, kein Aufräumen
+    assert service.revoke_all() == 2
+
+    assert calls == [(["phone-aaaa"], True, True), (None, True, True)]
+
+
+def test_a_failing_box_cleanup_does_not_fail_the_revoke(tmp_path):
+    service, _settings, ctx = make_service(tmp_path)
+    add_keyed_device(ctx, "phone-aaaa")
+
+    def broken(ids):
+        raise RuntimeError("kaputt")
+    service = MobileService(ctx.settings, ctx, run=sync_run, box_cleanup=broken)
+
+    assert service.revoke("phone-aaaa") is True
+    assert ctx.devices.get("phone-aaaa")["revoked"]
+    assert service.revoke_all() == 1
 
 
 def test_apply_retains_loads_and_migrates_after_the_server_is_up(tmp_path, ring):
@@ -907,8 +980,8 @@ def test_a_shutdown_during_the_restart_never_starts_the_new_server(tmp_path, mon
     settings.set_many({"mobile_port": new_port})
     original_stop = service._stop_server
 
-    def stop_then_close():
-        original_stop()
+    def stop_then_close(**kwargs):
+        original_stop(**kwargs)
         service._closed = True
     monkeypatch.setattr(service, "_stop_server", stop_then_close)
     starts = []
