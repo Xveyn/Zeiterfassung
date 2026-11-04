@@ -70,7 +70,7 @@ export function statusBar(handlers) {
 
 // --- Koppeln ----------------------------------------------------------------------------------------
 
-export function pairView({ address, code, deviceName, busy, canScan, canCancel, error, relay = false }, handlers) {
+export function pairView({ address, code, deviceName, busy, canScan, canCancel, error, relay = false, installHint = '' }, handlers) {
   const fields = pairFields({ relay });
   const addressInput = h('input', { id: 'pair-address', name: 'address', value: address, inputmode: 'decimal',
     autocomplete: 'off', placeholder: '192.168.178.20:17654', required: true, 'data-focus': 'pair-address' });
@@ -88,6 +88,7 @@ export function pairView({ address, code, deviceName, busy, canScan, canCancel, 
     : 'Am Desktop: Einstellungen → Mobil → „Gerät koppeln …“ (im selben WLAN) oder „Über Relay koppeln“ (über das Internet, z. B. für iPhone und iPad). Dann den QR-Code scannen oder, im WLAN, Adresse und Kopplungscode eintippen.';
   return h('main', {},
     h('h1', {}, relay ? 'Über den Relay koppeln' : 'Mit dem Desktop koppeln'),
+    installHint && h('p', { class: 'hint warn', role: 'status' }, installHint),
     h('p', { class: 'muted' }, intro),
     canScan && button(relay ? 'Anderen QR-Code scannen' : 'QR-Code scannen', handlers.scan, relay ? '' : 'primary'),
     h('form', { onsubmit: (event) => { event.preventDefault(); handlers.submit({ address: addressInput.value, code: codeInput.value, deviceName: nameInput.value }); } },

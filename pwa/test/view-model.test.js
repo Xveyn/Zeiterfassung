@@ -789,3 +789,34 @@ test('connectionLabel names the way, never the secret', () => {
   assert.equal(connectionLabel({ transport: 'lan', address: null }), '');
   assert.equal(connectionLabel({ transport: 'relay', box_secret: secret }).includes(secret), false);
 });
+
+// --- iOS: Installation auf den Home-Bildschirm (#358) -------------------------------------------------
+
+import { iosInstallHint } from '../view-model.js';
+
+test('iOS in a browser tab is told to install first, and why', () => {
+  const text = iosInstallHint({ browser: 'ios', standalone: false });
+  assert.match(text, /Home-Bildschirm/);
+  assert.match(text, /sieben Tage/);
+  assert.match(text, /koppeln/);
+});
+
+test('no install hint in the installed web app, on other browsers or when the mode is unknown', () => {
+  assert.equal(iosInstallHint({ browser: 'ios', standalone: true }), '');
+  for (const browser of ['chromium', 'firefox', 'safari', 'unknown', undefined]) {
+    assert.equal(iosInstallHint({ browser, standalone: false }), '', String(browser));
+  }
+  assert.equal(iosInstallHint({ browser: 'ios' }), '');
+  assert.equal(iosInstallHint(), '');
+});
+
+test('hintsModel carries the install hint as an info hint without action, only where it applies', () => {
+  const none = { lastError: null, excluded: false, skewMs: 0, persistent: true, updateReady: false, conflictCount: 0, errorDays: 0 };
+  const hint = hintsModel({ ...none, errorEnv: { browser: 'ios', standalone: false } }).find((item) => item.id === 'ios-install');
+  assert.equal(hint.kind, 'info');
+  assert.equal(hint.action, null);
+  assert.match(hint.text, /Home-Bildschirm/);
+  for (const env of [{ browser: 'ios', standalone: true }, { browser: 'chromium', standalone: false }, { browser: 'firefox', standalone: false }, {}]) {
+    assert.equal(hintsModel({ ...none, errorEnv: env }).some((item) => item.id === 'ios-install'), false, JSON.stringify(env));
+  }
+});

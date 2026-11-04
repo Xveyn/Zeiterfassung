@@ -23,7 +23,7 @@ import { shouldApplyUpdate, shouldCheckForUpdate } from './update-policy.js';
 import { blockSignature, rowsToBlock } from './categories.js';
 import {
   categoriesModel, conflictsModel, connectionLabel, dayChanged, desktopHint, editLock, editorRows, focusKeyToRestore, hintsModel, olderModel, pushModel, reservationRows,
-  reservationRowsToSlots, rowsToSlots, statusModel, validateReservationRows, validateRows, weekModel,
+  iosInstallHint, reservationRowsToSlots, rowsToSlots, statusModel, validateReservationRows, validateRows, weekModel,
 } from './view-model.js';
 import { BUILD, CACHE_PREFIX } from './sw-core.js';
 import { describeRepair, repairServiceWorker } from './sw-repair.js';
@@ -33,7 +33,7 @@ import {
   patchHints, scanDialog, settingsDialog, statusBar, weekView,
 } from './views.js';
 import { canScan, scanForPairLink } from './scanner.js';
-import { browserKind } from './browser-policy.js';
+import { browserKind, isStandalone } from './browser-policy.js';
 import { describeError } from './messages.js';
 
 const SAVE_SYNC_DELAY_MS = 2000;
@@ -366,6 +366,7 @@ class App {
         deviceName: this.pairing.deviceName || this.store.getMeta().device_name || deviceNameFromUserAgent(navigator.userAgent),
         error: this.pairing.error,
         busy: this.pairing.busy, canScan: canScan(), canCancel: this.paired, relay: Boolean(this.pairing.relay),
+        installHint: iosInstallHint(this.errorEnv('')),
       }, {
         submit: (values) => this.submitPairing(values),
         change: (field, value) => { this.pairing[field] = value; },
@@ -421,7 +422,11 @@ class App {
 
   /** Was die Fehlermeldung über Browser, Adresse und Weg zum Desktop wissen darf (#275, #358). */
   errorEnv(address, transport = this.store.getMeta().transport) {
-    return { browser: browserKind(navigator.userAgent, navigator.userAgentData), address, transport };
+    const standalone = isStandalone({
+      navigatorStandalone: navigator.standalone,
+      displayModeStandalone: globalThis.matchMedia?.('(display-mode: standalone)')?.matches,
+    });
+    return { browser: browserKind(navigator.userAgent, navigator.userAgentData), address, transport, standalone };
   }
 
   shiftWeek(weeks) {

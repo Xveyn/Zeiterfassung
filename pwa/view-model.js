@@ -133,6 +133,8 @@ export function statusModel({ paired, online, syncing, pending, lastSyncAt, time
 
 export function hintsModel({ lastError, excluded, skewMs, persistent, updateReady, conflictCount, errorDays, errorEnv = {} }) {
   const hints = [];
+  const install = iosInstallHint(errorEnv);
+  if (install) hints.push({ id: 'ios-install', kind: 'info', text: install, action: null });
   if (lastError) {
     const { text, action } = describeError(lastError, errorEnv);
     hints.push({ id: 'error', kind: 'error', text, action });
@@ -310,6 +312,15 @@ export function desktopHint(meta) {
   if (!meta || !meta.last_pull_at) return '';
   const known = Boolean(meta.desktop && meta.desktop.version);
   return known ? '' : 'Die Desktop-App ist älter als diese Seite, einige Funktionen fehlen (z. B. die Vorbelegung der Zeiten). Bitte die Desktop-App aktualisieren.';
+}
+
+/** Auf iOS gehören Safari-Tab und installierte Web-App nicht zusammen (getrennter Speicher), und iOS löscht
+ *  den Speicher im Tab nach sieben Tagen ohne Nutzung. Der Hinweis steht deshalb vor dem Koppeln und im
+ *  Wochenbild, solange die Seite im Browser läuft; `standalone` muss ausdrücklich `false` sein (unbekannt
+ *  heißt kein Hinweis). */
+export function iosInstallHint({ browser, standalone } = {}) {
+  if (browser !== 'ios' || standalone !== false) return '';
+  return 'Auf dem iPhone und iPad zuerst zum Home-Bildschirm hinzufügen (Teilen → „Zum Home-Bildschirm“) und von dort öffnen, dann koppeln. Im Browser gespeicherte Daten gehören nicht zur installierten Web-App, und iOS löscht sie dort nach sieben Tagen ohne Nutzung.';
 }
 
 /** Welche Felder die Koppel-Seite zeigt: ein Relay-Link bringt Geheimnis und Code mit, beides bleibt
