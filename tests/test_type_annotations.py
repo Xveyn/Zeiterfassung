@@ -41,6 +41,7 @@ ANNOTATED_MODULES = [
     "src/auto_update.py",
     "src/update_coordinator.py",
     "src/mime_message.py",
+    "src/privacy_doc.py",
     # Infra-/Plattform-Schicht
     "src/paths.py",
     "src/dpi.py",

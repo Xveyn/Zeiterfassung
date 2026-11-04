@@ -140,3 +140,16 @@ def test_windows_does_not_bundle_dbus_fast(monkeypatch):
     das --collect-all ein Build-Fehler."""
     cmd = _capture_pyinstaller_cmd(monkeypatch, build.build_windows)
     assert "dbus_fast" not in cmd
+
+
+def test_all_platforms_bundle_the_privacy_document(monkeypatch):
+    """Der Dialog „Datenschutzhinweise“ liest `docs/datenschutz.md` aus dem gebündelten Ressourcenordner
+    (`get_resource_path()/docs/datenschutz.md`). Fehlt `--add-data`, zeigt der gebaute Dialog stumm nur den
+    Ersatztext."""
+    import os
+    wanted = f"docs{os.sep}datenschutz.md{os.pathsep}docs"
+    for build_fn in (build.build_windows, build.build_macos, build.build_linux):
+        cmd = _capture_pyinstaller_cmd(monkeypatch, build_fn)
+        pairs = [cmd[i + 1] for i, part in enumerate(cmd[:-1]) if part == "--add-data"]
+        assert wanted in pairs, f"{build_fn.__name__}: {pairs}"
+        assert (_BUILD_PY.parent.parent / "docs" / "datenschutz.md").is_file()

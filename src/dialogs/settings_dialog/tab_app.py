@@ -122,6 +122,11 @@ class AppTab:
                       "Menüeintrag ab und beendet die App. Die Programmdatei "
                       "löschst du danach selbst.")
 
+        # --- Datenschutz ---
+        form.section("Datenschutz")
+        form.buttons(("Datenschutzhinweise", self._open_privacy))
+        form.hint("Was die Handy-Erfassung über den Relay weitergibt und wo es liegt.")
+
         self.autostart_var = autostart_var
         self.always_on_top_var = always_on_top_var
         self.minimize_to_tray_var = minimize_to_tray_var
@@ -221,6 +226,11 @@ class AppTab:
         # Änderungen (dialog.py::_remove) — ein Speichern danach legte
         # settings.json neu an.
         callback(with_data)
+
+    def _open_privacy(self):
+        from src.dialogs.privacy_dialog import open_privacy_dialog
+
+        open_privacy_dialog(self._dialog)
 
     def _open_import_dialog(self):
         from src.dialogs.import_dialog import open_import_dialog

@@ -64,13 +64,22 @@ jobs:
             range="$BEFORE..HEAD"
           fi
           if [ -n "$range" ]; then
-            if files=$(git diff --name-only "$range") && [ -n "$files" ]; then
+            # `--no-renames`: sonst nennt eine Umbenennung nur den neuen Pfad.
+            if files=$(git diff --name-only --no-renames "$range") && [ -n "$files" ]; then
               echo "Geänderte Dateien:"
               echo "$files" | sed 's/^/  /'
               # Alles, was NICHT auf ein Doku-Muster passt, ist Code.
               # `.github/` ist bewusst Code: eine Workflow-Änderung muss sich
               # selbst testen.
-              if ! echo "$files" | grep -qvE '(^|/)[^/]+\.md$|^docs/|^\.superpowers/|^LICENSE$'; then
+              #
+              # Ausnahme: `docs/datenschutz.md` ist keine Doku mehr. Die App
+              # bündelt sie (scripts/build.py), der Dialog „Datenschutzhinweise"
+              # zeigt sie, und tests/test_privacy_doc.py prüft den Parser gegen
+              # die echte Datei. Ein PR nur auf diese Datei muss die Tests
+              # laufen lassen, sonst bliebe ein kaputter Dialog unbemerkt.
+              if echo "$files" | grep -qxF 'docs/datenschutz.md'; then
+                :
+              elif ! echo "$files" | grep -qvE '(^|/)[^/]+\.md$|^docs/|^\.superpowers/|^LICENSE$'; then
                 code=false
               fi
             fi

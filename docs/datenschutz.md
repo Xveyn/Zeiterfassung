@@ -3,7 +3,7 @@
 > Beschreibung von Datenflüssen, keine Rechtsberatung.
 
 Dieses Dokument sagt, **wer was bekommt, wo es liegt, wie lange und wie es gelöscht wird**. Es ist die
-Quelle für Hinweistexte in der App. Die Zahlen darin prüft `tests/test_datenschutz_claims.py` gegen
+Quelle für Hinweistexte in der App; der Dialog Einstellungen → App → „Datenschutzhinweise“ zeigt dieses Dokument. Die Zahlen darin prüft `tests/test_datenschutz_claims.py` gegen
 `relay/src/validate.js`. Stand: PR 5 (Abschluss der Kette #358); was noch nicht festliegt, steht als `Offen` mit Verweis auf ein Issue.
 
 ## 1. Was der Relay sieht, und was nicht
