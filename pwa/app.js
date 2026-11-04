@@ -11,7 +11,7 @@ import { idbKeyStore, seal } from './push-blob.js';
 import { permissionState, shouldSchedule } from './push-policy.js';
 import { RelayClient, RelayError, VAPID_PUBLIC, newSecret, syncSchedule } from './relay-client.js';
 import { DEFAULT_WISH, aheadDays, olderState } from './window-policy.js';
-import { deviceNameFromUserAgent, parseHostPort, parsePairLink } from './pairing.js';
+import { DEFAULT_DEVICE_NAME, deviceNameFromUserAgent, parseHostPort, parsePairLink } from './pairing.js';
 import { openDatabase, requestPersistentStorage } from './db.js';
 import { Store } from './store.js';
 import { SyncClient, SyncError, clockSkewMs } from './sync.js';
@@ -50,6 +50,7 @@ class App {
     this.syncing = false;
     this.lastError = null;
     this.lastAttemptAt = 0;
+    this.deviceModel = '';
     this.skewMs = 0;
     this.persistent = null;
     this.updateReady = false;
@@ -87,6 +88,7 @@ class App {
   async start() {
     this.captureFragment();
     if (!this.paired) this.screen = 'pair';
+    if (!this.paired) this.loadDeviceModel();
     window.addEventListener('online', () => { this.online = true; this.trigger('online'); this.render(); });
     window.addEventListener('hashchange', () => { if (this.captureFragment()) this.render(); });
     window.addEventListener('offline', () => { this.online = false; this.render(); });
@@ -277,7 +279,7 @@ class App {
     this.pairing = { ...this.pairing, address, code: usedCode, deviceName, busy: true, error: '' };
     this.render();
     try {
-      const name = deviceName.trim() || 'Android-Handy';
+      const name = deviceName.trim() || DEFAULT_DEVICE_NAME;
       if (relay) await this.client.pairRelay({ secret: relay.secret, code: usedCode, deviceName: name });
       else await this.client.pair({ host: target.host, port: target.port, code, deviceName: name });
       await this.store.setMeta({ device_name: deviceName.trim() });
@@ -352,6 +354,24 @@ class App {
 
   // --- Anzeige -----------------------------------------------------------------------------------
 
+  /** Vorschlag für das Namensfeld; das Modell aus den Client-Hinweisen kommt erst asynchron (`loadDeviceModel`). */
+  suggestedDeviceName() {
+    return deviceNameFromUserAgent(navigator.userAgent, { maxTouchPoints: navigator.maxTouchPoints, model: this.deviceModel });
+  }
+
+  /** Chrome versteckt das Modell im User-Agent; die Client-Hinweise liefern es, nur auf Anfrage. Fehlen sie
+   *  (Safari, Firefox) oder scheitert die Anfrage, bleibt es beim Vorschlag ohne Modell. */
+  async loadDeviceModel() {
+    try {
+      const values = await navigator.userAgentData?.getHighEntropyValues?.(['model']);
+      this.deviceModel = values?.model || '';
+    } catch {
+      this.deviceModel = ''; // Hinweise verweigert: der Name bleibt der neutrale Vorschlag
+    }
+    // Nur das noch unberührte Pairing-Formular nachziehen; ein getippter Name bleibt stehen.
+    if (this.deviceModel && this.screen === 'pair' && !this.pairing.deviceName) this.render();
+  }
+
   conflictList() {
     return conflictsModel(this.store.getMeta().conflicts);
   }
@@ -363,7 +383,7 @@ class App {
       clear(this.root);
       this.root.append(pairView({
         address: this.pairing.address, code: this.pairing.code,
-        deviceName: this.pairing.deviceName || this.store.getMeta().device_name || deviceNameFromUserAgent(navigator.userAgent),
+        deviceName: this.pairing.deviceName || this.store.getMeta().device_name || this.suggestedDeviceName(),
         error: this.pairing.error,
         busy: this.pairing.busy, canScan: canScan(), canCancel: this.paired, relay: Boolean(this.pairing.relay),
         installHint: iosInstallHint(this.errorEnv('')),
