@@ -473,7 +473,7 @@ Augenhöhe mit den anderen beiden Plattformen.
   Adresse, Token pro Gerät (nur als Hash gespeichert, widerrufbar, 30 Tage ab letztem Abgleich),
   kurzlebiger, einmaliger Kopplungscode. Im WLAN nicht möglich bleibt Firefox und iOS (Mixed Content, s. u.);
   dafür gibt es den Weg über den Relay (Abschnitt „Abgleich über den Relay“ unten, #358). HTTPS direkt vom
-  Desktop bleibt als Alternative offen (#249).
+  Desktop (die frühere Alternative aus #249) ist nicht geplant: der Relay ist der Weg dafür.
 - **Wo der Geräteschlüssel am Rechner liegt.** Im Schlüsselbund des Betriebssystems (Windows
   Credential Manager, macOS Keychain, Linux Secret Service). **Nur ohne Schlüsselbund** (Linux
   ohne Secret Service, gesperrt oder nicht antwortend) steht er in `mobile_keys.json` im
