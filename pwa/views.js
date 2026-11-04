@@ -3,7 +3,7 @@
 // sich ohne Browser testen ließe — die steckt in `view-model.js`. Jede Funktion bekommt ihre
 // Handler als Parameter; nichts hier kennt den Store oder das Netz.
 import { focusByKey, h } from './dom.js';
-import { MAX_CATEGORY_LENGTH, TIME_STEP_MINUTES, snapTime } from './minutes.js';
+import { MAX_CATEGORY_LENGTH, TIME_STEP_MINUTES, snapPause, snapTime } from './minutes.js';
 import { updateStatusText } from './update-policy.js';
 import { MAX_NAME_LENGTH, blockSignature, moveRow, rowsToBlock, timesSummary, validateCategoryRows } from './categories.js';
 import {
@@ -164,14 +164,15 @@ function slotSection({ rows, categories, defaults, weekday, withPause, onChange 
       if (labels[index]) labels[index].textContent = showCategory(index);
       onChange();
     };
-    // Zeiten rasten auf 5 Minuten wie die Auswahl am Desktop: beim Tippen (`input`) bleibt der Wert, wie
-    // er ist; erst beim Übernehmen (`change`) wird gerundet.
+    // Zeiten und Pause rasten auf 5 Minuten wie die Auswahl am Desktop: beim Tippen (`input`) bleibt der
+    // Wert, wie er ist; erst beim Übernehmen (`change`) wird gerundet.
+    const snapper = key === 'pause' ? snapPause : attrs.type === 'time' ? snapTime : null;
     const snap = () => {
-      const snapped = snapTime(input.value);
+      const snapped = snapper(input.value);
       if (snapped !== input.value) { input.value = snapped; apply(); }
     };
     const input = h('input', { id, value: state[index][key], ...attrs, oninput: apply,
-      ...(attrs.type === 'time' ? { onchange: snap } : {}) });
+      ...(snapper ? { onchange: snap } : {}) });
     return h('div', {}, h('label', { for: id }, label), input);
   };
   // Modal statt <datalist>: auf dem Handy zeigt ein Datalist erst nach Eingabe etwas und filtert nach
@@ -199,7 +200,7 @@ function slotSection({ rows, categories, defaults, weekday, withPause, onChange 
         field(index, 'start', 'von', { type: 'time', step: TIME_STEP_MINUTES * 60 }),
         field(index, 'end', 'bis', { type: 'time', step: TIME_STEP_MINUTES * 60 })),
       h('div', { class: 'row' },
-        withPause && field(index, 'pause', 'Pause (Min)', { type: 'number', inputmode: 'numeric', min: 0, step: 1 }),
+        withPause && field(index, 'pause', 'Pause (Min)', { type: 'number', inputmode: 'numeric', min: 0, step: TIME_STEP_MINUTES }),
         categoryField(index)))));
   };
   build();
@@ -558,12 +559,13 @@ export function categoryEditDialog(row, { onDone, onRemove, isNew = false }) {
   };
   const field = (key, label, attrs) => {
     const id = `category-edit-${key}`;
+    const snapper = key === 'pause' ? snapPause : attrs.type === 'time' ? snapTime : null;
     const snap = () => {
-      const snapped = snapTime(input.value);
+      const snapped = snapper(input.value);
       if (snapped !== input.value) { input.value = snapped; draft[key] = snapped; refresh(); }
     };
     const input = h('input', { id, value: draft[key], ...attrs, oninput: () => { draft[key] = input.value; refresh(); },
-      ...(attrs.type === 'time' ? { onchange: snap } : {}) });
+      ...(snapper ? { onchange: snap } : {}) });
     return h('div', {}, h('label', { for: id }, label), input);
   };
   const times = draft.mode === 'per_day'
@@ -573,7 +575,7 @@ export function categoryEditDialog(row, { onDone, onRemove, isNew = false }) {
       h('div', { class: 'row' },
         field('start', 'Start', { type: 'time', step: TIME_STEP_MINUTES * 60, placeholder: 'Standard' }),
         field('end', 'Ende', { type: 'time', step: TIME_STEP_MINUTES * 60, placeholder: 'Standard' })),
-      field('pause', 'Pause (Min)', { type: 'number', inputmode: 'numeric', min: 0, step: 1, placeholder: 'Standard' }));
+      field('pause', 'Pause (Min)', { type: 'number', inputmode: 'numeric', min: 0, step: TIME_STEP_MINUTES, placeholder: 'Standard' }));
   const remove = !isNew && button('Löschen', () => confirmDialog({
     title: 'Kategorie löschen?', text: categoryRemovalText(row.name), confirmLabel: 'Löschen',
   }, () => { dialog.close(); onRemove(); }), 'link', { 'data-focus': 'category-remove' });

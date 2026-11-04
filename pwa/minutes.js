@@ -35,6 +35,13 @@ export function snapTime(text, step = TIME_STEP_MINUTES) {
   return `${String(Math.floor(snapped / 60)).padStart(2, '0')}:${String(snapped % 60).padStart(2, '0')}`;
 }
 
+/** Rundet eine Pause in ganzen Minuten auf das nächste Vielfache von `step` (Desktop: 0–120 in 5er-Schritten,
+ *  `theme.palette.PAUSE_VALUES`). Leeres oder unbrauchbares bleibt unverändert, das prüft die Validierung. */
+export function snapPause(text, step = TIME_STEP_MINUTES) {
+  if (typeof text !== 'string' || !/^\d+$/.test(text)) return text;
+  return String(Math.round(Number(text) / step) * step);
+}
+
 function usablePause(pause) {
   return Number.isInteger(pause) && pause >= 0 && pause <= MAX_PAUSE_MINUTES ? pause : 0;
 }

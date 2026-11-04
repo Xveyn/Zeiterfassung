@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs';
 
 import {
   MAX_SLOTS, TIME_STEP_MINUTES, addDays, dayMinutes, formatDateDe, formatMinutes, isIsoDate, isoWeek, localIsoDate,
-  mondayOf, normalizeSlots, parseTime, slotMinutes, snapTime, utcStamp, validateSlots, weekDays,
+  mondayOf, normalizeSlots, parseTime, slotMinutes, snapPause, snapTime, utcStamp, validateSlots, weekDays,
 } from '../minutes.js';
 
 const cases = JSON.parse(readFileSync(new URL('./fixtures/minutes-cases.json', import.meta.url)));
@@ -158,4 +158,14 @@ test('snapTime leaves empty or unusable input alone (the field is validated else
 test('snapTime takes another step', () => {
   assert.equal(snapTime('08:08', 15), '08:15');
   assert.equal(snapTime('08:07', 15), '08:00');
+});
+
+test('snapPause rounds whole minutes to the step and keeps what is on the grid', () => {
+  const table = [['0', '0'], ['5', '5'], ['30', '30'], ['1', '0'], ['2', '0'], ['3', '5'], ['7', '5'], ['8', '10'], ['44', '45'], ['120', '120']];
+  for (const [input, expected] of table) assert.equal(snapPause(input), expected, input);
+  assert.equal(snapPause('8', 15), '15');
+});
+
+test('snapPause leaves empty or unusable input alone (validated elsewhere)', () => {
+  for (const value of ['', ' ', 'abc', '-5', '7.5', '1e2', null, undefined, 5]) assert.equal(snapPause(value), value, String(value));
 });
