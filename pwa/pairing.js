@@ -124,15 +124,29 @@ export function newDeviceId(cryptoObject = globalThis.crypto) {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
-/** Vorschlag für den Gerätenamen aus dem User-Agent („Pixel 7"); Chromes reduzierter
- *  User-Agent liefert nur „K", dann bleibt der Standardname. */
-export function deviceNameFromUserAgent(userAgent) {
-  const fallback = 'Android-Handy';
-  if (typeof userAgent !== 'string') return fallback;
+/** Name, wenn sich das Gerät nicht erkennen lässt: neutral, denn das Handy kann ein iPhone oder ein
+ *  Android-Gerät sein und steht so in der Geräteliste am Desktop. */
+export const DEFAULT_DEVICE_NAME = 'Handy';
+
+function cleanModel(text) {
+  return typeof text === 'string' ? text.replace(/\s+Build\/\S+/, '').replace(/;\s*wv$/, '').trim().slice(0, MAX_DEVICE_NAME) : '';
+}
+
+/** Vorschlag für den Gerätenamen („Pixel 7", „iPhone", „iPad"). `env` trägt, was nur der Browser kennt:
+ *  `maxTouchPoints` (ein iPad meldet sich standardmäßig als Mac, nur die Touch-Punkte verraten es) und
+ *  `model` (Client-Hinweis von Chrome; dessen reduzierter User-Agent liefert statt des Modells nur „K“).
+ *  Alles Unbekannte heißt `DEFAULT_DEVICE_NAME`. */
+export function deviceNameFromUserAgent(userAgent, env = {}) {
+  if (typeof userAgent !== 'string') return DEFAULT_DEVICE_NAME;
+  const { maxTouchPoints = 0, model = '' } = env || {};
+  if (/\biPhone\b/.test(userAgent)) return 'iPhone';
+  if (/\biPad\b/.test(userAgent) || (/\bMacintosh\b/.test(userAgent) && maxTouchPoints > 1)) return 'iPad';
   const match = /\(Linux; Android [^;)]+; ([^)]+)\)/.exec(userAgent);
-  if (!match) return fallback;
-  const model = match[1].replace(/\s+Build\/\S+/, '').replace(/;\s*wv$/, '').trim().slice(0, MAX_DEVICE_NAME);
-  return model.length > 1 ? model : fallback;
+  if (!match) return DEFAULT_DEVICE_NAME;
+  const fromAgent = cleanModel(match[1]);
+  if (fromAgent.length > 1) return fromAgent;
+  const fromHint = cleanModel(model);
+  return fromHint.length > 1 ? fromHint : DEFAULT_DEVICE_NAME;
 }
 
 /** Der Klartext der Kopplungsanfrage — er wird verschlüsselt gesendet; der Code selbst ist nur
