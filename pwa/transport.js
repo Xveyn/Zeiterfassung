@@ -3,7 +3,7 @@
 // und, in `relay-transport.js`, der Weg über die Box des Relays (#358). Beide liefern `{status, json}`;
 // die Einordnung von Fehlerstatus und die Verschlüsselung bleiben im `SyncClient`. Ein Netzfehler wird
 // als `SyncError` geworfen, ein Fehlerstatus nicht.
-import { baseUrl } from './pairing.js';
+import { baseUrl, isBoxSecret } from './pairing.js';
 import { classifyNetworkError } from './sync-errors.js';
 
 export class LanTransport {
@@ -39,9 +39,15 @@ export class LanTransport {
   }
 }
 
-/** Wohin eine Kopplung spricht: `{kind: 'lan', host, port}` oder `null` (nicht gekoppelt). */
-export function endpointOf(meta) {
-  if (!meta || !meta.token || !meta.address) return null;
+/** Wohin eine Kopplung spricht: `{kind: 'lan', host, port}`, `{kind: 'relay', secret, have, onHave}` oder
+ *  `null` (nicht gekoppelt). `onHave` (nur Relay) reicht der Aufrufer herein: er weiß, wo `have` landet. */
+export function endpointOf(meta, { onHave } = {}) {
+  if (!meta || !meta.token) return null;
+  if (meta.transport === 'relay') {
+    if (!isBoxSecret(meta.box_secret)) return null;
+    return { kind: 'relay', secret: meta.box_secret, have: Number.isInteger(meta.box_have) ? meta.box_have : 0, onHave };
+  }
+  if (!meta.address) return null;
   return { kind: 'lan', host: meta.address.host, port: meta.address.port };
 }
 

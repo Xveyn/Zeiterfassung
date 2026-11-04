@@ -11,8 +11,10 @@ import { CryptoFailure, b64d, deviceKeys, isEnvelope, openEnvelope, pairKeys, se
 import { parseDefaults, parseDesktopInfo } from './defaults.js';
 import { isIsoDate, localIsoDate, utcStamp } from './minutes.js';
 import {
-  PROTOCOL, isLanAddress, isValidDeviceId, newDeviceId, normalizeCode, pairRequestBody,
+  PROTOCOL, isBoxSecret, isLanAddress, isValidDeviceId, newDeviceId, normalizeCode, pairRequestBody,
 } from './pairing.js';
+import { logFailure } from './diagnose.js';
+import { RelayTransport } from './relay-transport.js';
 import { SyncError, classifyHttpError, classifyNetworkError } from './sync-errors.js';
 import { LanTransport, endpointOf, isPaired } from './transport.js';
 
@@ -142,15 +144,24 @@ export function clockSkewMs(serverTime, now) {
   return Date.parse(serverTime) - now.getTime();
 }
 
+/** Was eine gelungene Kopplung in der Meta ablegt (gleich für beide Wege); der Zähler beginnt neu. */
+const pairingMeta = (answer) => ({
+  token: answer.token, token_expires_at: answer.expires_at, desktop_name: answer.desktop_name,
+  window_days: answer.window_days, key: answer.key, seq: 0,
+});
+
 const DISCARDED = () => ({ sent: 0, conflicts: 0, excluded: false, discarded: true });
 
 export class SyncClient {
   constructor({ store, fetchFn = (...args) => globalThis.fetch(...args), now = () => new Date(), timeoutMs = 15000,
-    locks = globalThis.navigator?.locks ?? null, transports = null }) {
+    locks = globalThis.navigator?.locks ?? null, transports = null, webSocketFactory = undefined }) {
     this._store = store;
     this._now = now;
     // Je Art der Kopplung ein Transport (`endpoint.kind`); die Zeitüberschreitung gehört dem Transport.
-    this._transports = transports ?? { lan: new LanTransport({ fetchFn, timeoutMs }) };
+    this._transports = transports ?? {
+      lan: new LanTransport({ fetchFn, timeoutMs }),
+      relay: new RelayTransport({ webSocketFactory, timeoutMs }),
+    };
     this._locks = locks;
     this._running = null;
   }
@@ -214,13 +225,41 @@ export class SyncClient {
     if (!isLanAddress(host)) {
       throw new SyncError({ kind: 'address', message: 'Die Adresse muss im privaten Netz liegen.' });
     }
+    const answer = await this._pairExchange({ kind: 'lan', host, port }, normalized, deviceName);
+    await this._store.setMeta({
+      transport: 'lan', box_secret: '', box_have: 0, address: { host, port }, ...pairingMeta(answer),
+    });
+    return { desktopName: answer.desktop_name };
+  }
+
+  /** Koppelt über die Box des Relays (#358): `secret` und `code` stammen aus dem Koppel-Link. Sonst wie
+   *  `pair`; die Kopplung hat danach keine Adresse, dafür Geheimnis und `have` der Box. */
+  async pairRelay({ secret, code, deviceName }) {
+    const normalized = normalizeCode(code);
+    if (normalized === null) {
+      throw new SyncError({ kind: 'invalid_code', message: 'Der Code hat nicht das richtige Format.' });
+    }
+    if (!isBoxSecret(secret)) {
+      throw new SyncError({ kind: 'invalid_code', message: 'Der Koppel-Link ist ungültig.' });
+    }
+    let have = 0;
+    const endpoint = { kind: 'relay', secret, have: 0, onHave: (ver) => { have = ver === 0 ? 0 : Math.max(have, ver); } };
+    const answer = await this._pairExchange(endpoint, normalized, deviceName);
+    await this._store.setMeta({
+      transport: 'relay', box_secret: secret, box_have: have, address: null, ...pairingMeta(answer),
+    });
+    return { desktopName: answer.desktop_name };
+  }
+
+  /** Der gemeinsame Teil der beiden Wege: Geräte-ID sichern, Pair-Umschlag senden, Antwort prüfen. */
+  async _pairExchange(endpoint, normalizedCode, deviceName) {
     let { device_id: deviceId } = this._store.getMeta();
     if (!isValidDeviceId(deviceId)) {
       deviceId = newDeviceId();
       await this._store.setMeta({ device_id: deviceId });
     }
-    const [requestKey, responseKey] = await pairKeys(normalized);
-    const answer = await this._sealedPost('/v1/pair', { kind: 'lan', host, port }, {
+    const [requestKey, responseKey] = await pairKeys(normalizedCode);
+    const answer = await this._sealedPost('/v1/pair', endpoint, {
       token: null, requestKey, responseKey, aadRequest: '-', aadResponse: deviceId, seq: 1,
       payload: pairRequestBody({ deviceName, deviceId }) });
     if (!isObject(answer) || answer.protocol !== PROTOCOL || typeof answer.token !== 'string'
@@ -229,18 +268,28 @@ export class SyncClient {
       || typeof answer.key !== 'string' || !KEY_RE.test(answer.key) || b64d(answer.key).length !== 32) {
       throw protocolError('Ungültige Antwort beim Koppeln.');
     }
-    await this._store.setMeta({
-      address: { host, port }, token: answer.token, token_expires_at: answer.expires_at,
-      desktop_name: answer.desktop_name, window_days: answer.window_days, key: answer.key, seq: 0,
-    });
-    return { desktopName: answer.desktop_name };
+    return answer;
+  }
+
+  /** Wohin die Kopplung spricht; `have` der Box wird dabei dauerhaft mitgeführt. */
+  _endpoint(meta) {
+    return endpointOf(meta, { onHave: (ver) => this._rememberHave(ver) });
+  }
+
+  _rememberHave(ver) {
+    const current = this._store.getMeta().box_have;
+    if (ver !== 0 && !(ver > current)) return;
+    this._store.setMeta({ box_have: ver }).catch((error) => logFailure('Relay: have nicht gespeichert', error));
   }
 
   /** Erreichbarkeits- und Uhrprüfung. */
   async ping() {
     const meta = this._store.getMeta();
     if (!isPaired(meta)) throw new SyncError({ kind: 'not_paired', message: 'Noch nicht gekoppelt.' });
-    const answer = await this._request('GET', '/v1/ping', endpointOf(meta), { token: meta.token });
+    const endpoint = this._endpoint(meta);
+    // Der Relay-Weg hat keine Ping-Route; den Versatz der Uhren liefert die Antwort des Abgleichs (`server_time`).
+    if (endpoint.kind === 'relay') return { skewMs: 0, skewWarning: false };
+    const answer = await this._request('GET', '/v1/ping', endpoint, { token: meta.token });
     if (!isObject(answer) || answer.protocol !== PROTOCOL || typeof answer.server_time !== 'string'
       || !STAMP_RE.test(answer.server_time)) throw protocolError('Ungültige Antwort auf die Erreichbarkeitsprüfung.');
     const skewMs = clockSkewMs(answer.server_time, this._now());
@@ -270,8 +319,11 @@ export class SyncClient {
 
   _pairingChanged(meta) {
     const current = this._store.getMeta();
-    return current.token !== meta.token || current.address?.host !== meta.address.host
-      || current.address?.port !== meta.address.port;
+    if (current.token !== meta.token) return true;
+    const relay = meta.transport === 'relay';
+    if ((current.transport === 'relay') !== relay) return true;
+    if (relay) return current.box_secret !== meta.box_secret;
+    return current.address?.host !== meta.address?.host || current.address?.port !== meta.address?.port;
   }
 
   /** Alle nicht übertragenen Tage, in Päckchen zu höchstens `MAX_DAYS_PER_REQUEST` (der Desktop
@@ -313,7 +365,7 @@ export class SyncClient {
     const [requestKey, responseKey] = await deviceKeys(b64d(meta.key));
     let raw;
     try {
-      raw = await this._sealedPost('/v1/sync', endpointOf(meta), {
+      raw = await this._sealedPost('/v1/sync', this._endpoint(meta), {
         token: meta.token, requestKey, responseKey, aadRequest: meta.device_id, aadResponse: meta.device_id, seq,
         payload: { protocol: PROTOCOL, client_time: utcStamp(now), last_pull_at: meta.last_pull_at || '',
           window_days: wishSent, entries: snapshot.entries,

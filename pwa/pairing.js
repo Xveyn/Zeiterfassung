@@ -82,6 +82,11 @@ export function parseQrText(text) {
 const RELAY_SECRET_RE = /^[A-Za-z0-9_-]{43}$/;
 const RELAY_PREFIX = 'relay=';
 
+/** Das Geheimnis einer Box: 43 Zeichen Base64url (256 Bit). */
+export function isBoxSecret(text) {
+  return typeof text === 'string' && RELAY_SECRET_RE.test(text);
+}
+
 /** Gescannter oder eingefügter Koppel-Link → `{kind: 'lan', host, port, code}`,
  *  `{kind: 'relay', secret, code}` oder `null`. Der Relay-Link trägt hinter dem ersten `#`
  *  genau `relay=<43 Base64url>:<28 Zeichen Code>`; der Code muss schon kanonisch (Großbuchstaben)

@@ -913,3 +913,17 @@ test('without a forward window (older desktop) future days after tomorrow are st
   assert.equal(store.getDay('2026-10-10'), null);
   assert.equal(store.getMeta().window_ahead, null);
 });
+
+test('the relay pairing fields have defaults, also for a stored meta from before', async () => {
+  const adapter = createMemoryAdapter();
+  const first = new Store(adapter, () => new Date('2026-10-08T12:00:00Z'));
+  await first.load();
+  assert.deepEqual(
+    { t: first.getMeta().transport, s: first.getMeta().box_secret, h: first.getMeta().box_have },
+    { t: 'lan', s: '', h: 0 });
+  await first.setMeta({ token: 'x', address: { host: '192.168.1.2', port: 17654 } });
+  const second = new Store(adapter, () => new Date('2026-10-08T12:00:00Z'));
+  await second.load();
+  assert.equal(second.getMeta().transport, 'lan');
+  assert.equal(second.getMeta().box_have, 0);
+});
