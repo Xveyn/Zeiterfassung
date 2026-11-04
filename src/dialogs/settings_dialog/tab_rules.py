@@ -363,9 +363,10 @@ FIRST_ENABLE_NOTICE = (
     "Die App muss laufen, damit sich das Handy abgleichen kann; ein Autostart "
     "(Tab „App“) wird empfohlen. Unter Windows fragt die Firewall beim ersten Mal, ob "
     "die App im privaten Netz Verbindungen annehmen darf.\n\n"
-    "Für iPhones kann der Abgleich optional über einen Relay-Dienst im Internet laufen. Er "
-    "sieht, dass und wann ein Handy abgleicht und wie groß die Daten sind, nie den Inhalt. "
-    "Dazu wird erst gekoppelt, wenn Sie „Über Relay koppeln“ wählen.\n\n"
+    "Auf iPhone und iPad ist der Abgleich über einen Relay-Dienst im Internet der einzige Weg (Safari "
+    "erreicht den Rechner im WLAN nicht). Der Relay sieht, dass und wann ein Handy abgleicht, wie groß "
+    "die Daten sind und IP-Adressen, nie den Inhalt. Dazu wird erst gekoppelt, wenn Sie „Über Relay "
+    "koppeln“ wählen.\n\n"
     "Jetzt einschalten?")
 
 _MOBILE_ERRORS = {
@@ -468,6 +469,15 @@ _RELAY_STATE_TEXTS = {
     "stopped": "angehalten",
     "off": "getrennt",
 }
+
+PAIR_INTRO_LAN = (
+    "Kamera-App des Handys öffnen und den QR-Code scannen — oder die Adresse im Browser öffnen und den "
+    "Kopplungscode eintippen.")
+
+# Auf iOS öffnet die Kamera-App den Link im Browser; dessen Speicher gehört nicht zur installierten Web-App.
+PAIR_INTRO_RELAY = (
+    "In der installierten Web-App „QR-Code scannen“ wählen und den QR-Code scannen — nicht mit der "
+    "Kamera-App: sie öffnet den Link im Browser, dessen Speicher nicht zur installierten Web-App gehört.")
 
 RELAY_PAIR_HINT = (
     "Der Abgleich läuft über den Relay-Dienst im Internet. Er sieht Metadaten (dass und wann "
@@ -613,26 +623,32 @@ REVOKE_ERROR_TEXT = (
     "Das Gerät konnte nicht widerrufen werden (Zugriffsrechte des Datenordners?). Es "
     "bleibt weiterhin gekoppelt und kann sich abgleichen.")
 
-_BOX_NOTICE = (
-    "die Box am Relay gelöscht (ist der Relay nicht erreichbar, verfällt sie nach 90 Tagen von selbst). "
-    "Das Handy meldet danach „Desktop antwortet nicht“, bis es neu gekoppelt ist.")
+_BOX_NOTICE_ONE = (
+    "Dabei wird auch die Box am Relay gelöscht (ist der Relay nicht erreichbar, verfällt sie nach 90 Tagen "
+    "ohne Nutzung von selbst). Das Handy meldet danach „Der Desktop hat nicht geantwortet“, bis es neu "
+    "gekoppelt ist.")
 
 
 def revoke_prompt(name: str, *, has_box: bool) -> str:
     """Rückfrage vor dem Widerruf eines Geräts. Mit Relay-Box (`has_box`) sagt sie, dass auch die Box am Relay
-    gelöscht wird und was das Handy danach zeigt: es bekommt keine Antwort mit `token_revoked` mehr."""
+    gelöscht wird und was das Handy danach zeigt: es bekommt keine Antwort mit `token_revoked` mehr, sondern
+    die Meldung der Web-App „Der Desktop hat nicht geantwortet“."""
     text = f"„{name}“ wird ausgesperrt und muss neu gekoppelt werden."
     if has_box:
-        text += f"\n\nDabei wird auch {_BOX_NOTICE}"
+        text += f"\n\n{_BOX_NOTICE_ONE}"
     return text + "\n\nFortfahren?"
 
 
 def revoke_all_prompt(*, boxes: int) -> str:
     """Rückfrage vor „Alle widerrufen“; `boxes` ist die Zahl der Geräte mit Relay-Box."""
     text = "Alle gekoppelten Handys werden ausgesperrt und müssen neu gekoppelt werden."
-    if boxes > 0:
-        label = "die Box" if boxes == 1 else f"die {boxes} Boxen"
-        text += f"\n\nDabei wird auch {_BOX_NOTICE.replace('die Box', label, 1)}"
+    if boxes == 1:
+        text += f"\n\n{_BOX_NOTICE_ONE}"
+    elif boxes > 1:
+        text += (
+            f"\n\nDabei werden auch die {boxes} Boxen am Relay gelöscht (ist der Relay nicht erreichbar, "
+            "verfallen sie nach 90 Tagen ohne Nutzung von selbst). Die Handys melden danach „Der Desktop "
+            "hat nicht geantwortet“, bis sie neu gekoppelt sind.")
     return text + "\n\nFortfahren?"
 
 

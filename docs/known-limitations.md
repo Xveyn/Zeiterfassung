@@ -509,7 +509,7 @@ Augenhöhe mit den anderen beiden Plattformen.
   `address_gone` und tauscht sie nicht still aus; bei „Automatisch“ nimmt sie beim nächsten
   Start (oder Speichern) die neue Adresse. In beiden Fällen muss das Handy neu gekoppelt werden
   (eine feste Adresse im Router hilft).
-- **Im WLAN gleicht nur Chrome auf Android ab; iPhone, iPad und Firefox brauchen den Relay (#358).**
+- **Im WLAN gleicht nur Chrome auf Android ab; iPhone und iPad brauchen den Relay, Firefox vermutlich ebenso (#358).**
   Entwickelt und geprüft wird im WLAN auf Android mit Chrome. **Safari und Firefox** erreichen den Rechner
   im WLAN nicht: sie sperren den Zugriff einer `https`-Seite auf eine `http://`-Adresse („Mixed Content“);
   auf einem iPhone mit Safari am 2026-10-26 beobachtet, bei Firefox aus demselben Mechanismus geschlossen,
@@ -615,8 +615,9 @@ läuft.
 
 ## Abgleich über den Relay (#358): ein zweiter Vertrauens-Ort
 
-Safari (iPhone, iPad) und Firefox erreichen den Rechner im WLAN nicht (Mixed Content, s. „Handy-Erfassung“).
-Für sie läuft der Abgleich optional über die **Box** desselben Relays wie die Push-Erinnerungen (`relay/`,
+Safari (iPhone, iPad) erreicht den Rechner im WLAN nicht (Mixed Content, s. „Handy-Erfassung“); bei Firefox
+wird derselbe Mechanismus erwartet, ist aber nicht ausprobiert. Für iPhone und iPad läuft der Abgleich deshalb
+über die **Box** desselben Relays wie die Push-Erinnerungen (`relay/`,
 ein Cloudflare Worker): das Handy legt die verschlüsselte Anfrage dort ab, der Desktop holt sie ab und legt
 die Antwort ab. Verschlüsselung, Zähler und Abgleich sind dieselben wie im WLAN; neu ist nur der Transport.
 Spec: `docs/superpowers/specs/2026-11-02-ios-relay-abgleich-design.md`; Datenflüsse im Einzelnen:
