@@ -3,7 +3,7 @@
 // aussehen und geprüft werden. Gegenstück zu `reservation_block_visible` (Sichtbarkeit,
 // Gleichlauf über `test/fixtures/reservation-visibility-cases.json`) und zu
 // `src/mobile_reservations.py` (Form auf dem Draht).
-import { addDays, normalizeSlots, parseTime, slotMinutes, validateSlots } from './minutes.js';
+import { addDays, normalizeSlots, slotMinutes, validateSlots } from './minutes.js';
 
 /** So weit voraus nimmt der Desktop Reservierungen an und liefert sie zurück. */
 export const RESERVATION_HORIZON_DAYS = 365;
@@ -40,18 +40,29 @@ export function reservationSignature(slots) {
   return JSON.stringify(slots.map((s) => [s.start, s.end, s.kategorie]).sort());
 }
 
-/** Minuten einer Reservierung, die noch ausstehen. An künftigen Tagen ist es die ganze Reservierung;
- *  heute fällt ein Slot weg, sobald ein Ist-Slot des Tages ihn zeitlich überlappt (ein leicht
- *  abweichend erfasster Slot gilt als erledigt). */
-export function pendingReservationMinutes(reservationSlots, actualSlots, isToday) {
-  return reservationSlots.reduce((sum, slot) => {
-    if (isToday && actualSlots.some((actual) => overlaps(slot, actual))) return sum;
-    return sum + slotMinutes({ start: slot.start, end: slot.end });
-  }, 0);
+/** Die Slots einer Reservierung, die noch offen sind. Heute erledigt ein Ist-Slot derselben Kategorie genau
+ *  einen Reservierungs-Slot, gleich zu welcher Zeit: Kategorie und das `*` der Abweichung sind die
+ *  Verknüpfung, der Nutzer hat bewusst reserviert. Ohne Kategorie gibt es keine Verknüpfung; an künftigen
+ *  Tagen zählt Ist-Zeit nie. Die Reihenfolge der Slots bleibt erhalten. */
+export function openReservationSlots(reservationSlots, actualSlots, isToday) {
+  if (!isToday) return reservationSlots;
+  const unused = actualSlots.map((slot) => slot?.kategorie);
+  const done = new Set();
+  // Der früheste Slot einer Kategorie wird zuerst erledigt, gleich in welcher Reihenfolge sie vorliegen.
+  const byStart = reservationSlots.map((slot, index) => ({ slot, index }))
+    .sort((a, b) => String(a.slot.start).localeCompare(String(b.slot.start)));
+  for (const { slot, index } of byStart) {
+    if (!slot.kategorie) continue;
+    const match = unused.indexOf(slot.kategorie);
+    if (match < 0) continue;
+    unused[match] = undefined;
+    done.add(index);
+  }
+  return reservationSlots.filter((_slot, index) => !done.has(index));
 }
 
-function overlaps(a, b) {
-  const [aStart, aEnd, bStart, bEnd] = [parseTime(a?.start), parseTime(a?.end), parseTime(b?.start), parseTime(b?.end)];
-  if ([aStart, aEnd, bStart, bEnd].includes(null)) return false;
-  return aStart < bEnd && bStart < aEnd;
+/** Minuten einer Reservierung, die noch ausstehen (nur die offenen Slots). */
+export function pendingReservationMinutes(reservationSlots, actualSlots, isToday) {
+  return openReservationSlots(reservationSlots, actualSlots, isToday)
+    .reduce((sum, slot) => sum + slotMinutes({ start: slot.start, end: slot.end }), 0);
 }

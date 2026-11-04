@@ -572,6 +572,22 @@ Augenhöhe mit den anderen beiden Plattformen.
   einmal; Gerätetoken und Geräteschlüssel haben 256 Bit. Eine Sperre schützte vor nichts und
   wäre nur ein Hebel, mit dem jemand im selben WLAN die Kopplung dauerhaft verhindern könnte.
   Ein Fremder kann den Server mit Fehlversuchen beschäftigen, nicht aber koppeln.
+- **„Geplant“ verschwindet am Handy, die Reservierung bleibt.** Heute erledigt ein Ist-Slot derselben
+  Kategorie je einen Reservierungs-Slot, **gleich zu welcher Zeit** — das `*` an der Kategorie zeigt die
+  Abweichung, die Kategorie ist die einzige Verknüpfung. Gemeint ist: wer reserviert, tut das bewusst.
+  Daraus folgt:
+  - **Nur die Anzeige der Web-App ändert sich.** Die Zeile „geplant …“ und „Noch ausstehend“ entfallen,
+    gelöscht oder umgeschrieben wird nichts. Die Reservierung bleibt gespeichert, am Desktop als Marker an der
+    Zelle stehen und im Kalender. Wer sie los sein will, löscht sie wie bisher (Rechtsklick im Kalender).
+  - **Dieselbe Verknüpfung gilt schon bei den Reservierungs-Erinnerungen** (Desktop und Handy): Ist-Zeit der
+    Kategorie am Tag unterdrückt die Erinnerung für den Slot, gleich zu welcher Zeit. Dort zählt die Kategorie
+    am Tag, nicht je Slot — bei zwei Reservierungen derselben Kategorie schweigt die Erinnerung für beide,
+    die Anzeige am Handy lässt den zweiten Slot offen.
+  - **Zu kurz oder ganz woanders zählt trotzdem als erledigt.** Es gibt keine Prüfung von Dauer oder
+    Uhrzeit und keine Rückfrage: eine halbe Stunde Kategorie X erledigt eine Reservierung über vier Stunden.
+  - **Ohne Kategorie keine Verknüpfung**, und eine andere Kategorie erledigt nichts.
+  - **Ein Slot je Ist-Slot:** bei zwei Reservierungen derselben Kategorie und einer Ist-Zeit bleibt die
+    spätere offen. Künftige Tage zählen nie, dort steht die Reservierung, bis der Tag heute ist.
 
 ## Push-Relay (#331): ein neuer Vertrauens-Ort
 

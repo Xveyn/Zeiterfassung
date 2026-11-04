@@ -112,7 +112,7 @@ function dayRow(day, handlers) {
     h('span', {}, h('div', { class: 'wd' }, day.weekday), h('div', { class: 'date' }, day.label.slice(0, 6))),
     h('div', { class: 'content' },
       h('ul', { class: 'slots' }, day.slots.map((text) => h('li', {}, text))),
-      day.reservation && h('ul', { class: 'slots reserved' },
+      day.reservation?.slots.length > 0 && h('ul', { class: 'slots reserved' },
         day.reservation.slots.map((text) => h('li', {}, `geplant ${text}`)))),
     h('span', { class: 'sum' }, day.minutesLabel),
     h('span', { class: 'marks' },
