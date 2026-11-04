@@ -103,38 +103,38 @@ def parse_privacy_markdown(text: str) -> list[Block]:
     das Text-Widget bricht selbst um)."""
     text = _HTML_COMMENT.sub("", text)
     blocks: list[tuple[str, int, list[str]]] = []
-    current: tuple[str, int, list[str]] | None = None
-
-    def start(kind: str, level: int, line: str, *, open_: bool) -> None:
-        nonlocal current
-        entry = (kind, level, [line])
-        blocks.append(entry)
-        current = entry if open_ else None
+    open_last = False               # darf die nächste Zeile den letzten Block fortsetzen?
 
     for raw in text.splitlines():
         line = raw.rstrip()
         stripped = line.strip()
         if not stripped:
-            current = None
+            open_last = False
             continue
         heading = _HEADING.match(stripped)
+        bullet = _BULLET.match(line)
         if heading and not line.startswith(" "):
-            start("title" if len(heading.group(1)) == 1 else "heading", 0, heading.group(2).strip(),
-                  open_=False)
+            kind = "title" if len(heading.group(1)) == 1 else "heading"
+            blocks.append((kind, 0, [heading.group(2).strip()]))
+            open_last = False
         elif stripped.startswith(">"):
             body = stripped.lstrip(">").strip()
-            if current is not None and current[0] == "quote":
-                current[2].append(body)
+            if open_last and blocks[-1][0] == "quote":
+                blocks[-1][2].append(body)
             else:
-                start("quote", 0, body, open_=True)
-        elif (bullet := _BULLET.match(line)):
-            start("bullet", min(len(bullet.group(1)) // 2, 2), bullet.group(2).strip(), open_=True)
+                blocks.append(("quote", 0, [body]))
+                open_last = True
+        elif bullet:
+            blocks.append(("bullet", min(len(bullet.group(1)) // 2, 2), [bullet.group(2).strip()]))
+            open_last = True
         elif _UNKNOWN.match(stripped):
-            start("paragraph", 0, stripped, open_=False)
-        elif current is not None:
-            current[2].append(stripped)
+            blocks.append(("paragraph", 0, [stripped]))
+            open_last = False
+        elif open_last:
+            blocks[-1][2].append(stripped)
         else:
-            start("paragraph", 0, stripped, open_=True)
+            blocks.append(("paragraph", 0, [stripped]))
+            open_last = True
     return [_block(kind, " ".join(parts), level) for kind, level, parts in blocks]
 
 
