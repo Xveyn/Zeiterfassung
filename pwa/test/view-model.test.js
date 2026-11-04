@@ -820,3 +820,9 @@ test('hintsModel carries the install hint as an info hint without action, only w
     assert.equal(hintsModel({ ...none, errorEnv: env }).some((item) => item.id === 'ios-install'), false, JSON.stringify(env));
   }
 });
+
+test('the iOS install hint says to scan inside the installed app, not with the camera app', () => {
+  const text = iosInstallHint({ browser: 'ios', standalone: false });
+  assert.match(text, /QR-Code scannen/);
+  assert.match(text, /Kamera-App/);
+});

@@ -208,3 +208,11 @@ test('a too large answer is classified as too_large and does not ask for re-pair
   assert.equal(error.needsRepair, false);
   assert.equal(error.retryable, false);
 });
+
+test('a silent desktop over the relay also names a revoked or re-paired phone and the way out', () => {
+  const { text, action } = describeError(new SyncError({ kind: 'desktop_silent', code: 'desktop_silent' }));
+  assert.match(text, /widerrufen/);
+  assert.match(text, /neu gekoppelt/);
+  assert.match(text, /neu koppeln/);
+  assert.equal(action, 'retry');
+});

@@ -74,3 +74,14 @@ test('a timeout backs off like a missing answer (#292)', () => {
   assert.equal(ask({ trigger: 'start', lastError, lastAttemptAt: recent }), false);
   assert.equal(ask({ trigger: 'start', lastError, lastAttemptAt: base.now - OFFLINE_BACKOFF_MS }), true);
 });
+
+test('a silent desktop over the relay backs off like a timeout, but the online event and a click still go through (#358)', () => {
+  const lastError = { kind: 'desktop_silent', needsRepair: false };
+  const recent = base.now - (OFFLINE_BACKOFF_MS - 1000);
+  for (const trigger of ['start', 'visible']) {
+    assert.equal(ask({ trigger, lastError, lastAttemptAt: recent }), false, trigger);
+    assert.equal(ask({ trigger, lastError, lastAttemptAt: base.now - OFFLINE_BACKOFF_MS }), true, trigger);
+  }
+  assert.equal(ask({ trigger: 'online', lastError, lastAttemptAt: recent }), true);
+  assert.equal(ask({ trigger: 'manual', lastError, lastAttemptAt: recent }), true);
+});
