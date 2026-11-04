@@ -103,9 +103,11 @@ dialog {
   border-radius: 12px; background: var(--bg); color: var(--text);
 }
 dialog::backdrop { background: rgba(0, 0, 0, .65); }
-/* Bei wenig Höhe (Handy im Querformat) scrollt der Dialog; die Knöpfe bleiben am unteren Rand sichtbar. */
-dialog .buttons {
-  display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap;
+dialog .buttons { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; margin-top: 12px; }
+/* Bei wenig Höhe (Handy im Querformat) scrollt der Dialog; NUR die Fußknöpfe (direkte Kinder des Dialogs oder
+   seines Formulars) bleiben am unteren Rand sichtbar. Gruppen innerhalb eines Reiters (Updates, Verbindung,
+   Kategorien) kleben nicht: sie deckten sonst den Text darunter ab. */
+dialog > .buttons, dialog > form > .buttons {
   position: sticky; bottom: calc(-1 * var(--gutter)); background: var(--bg);
   margin: 12px calc(-1 * var(--gutter)) calc(-1 * var(--gutter)); padding: 8px var(--gutter) var(--gutter);
 }
