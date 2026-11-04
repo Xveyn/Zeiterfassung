@@ -86,3 +86,15 @@ def test_the_text_shows_no_focus_frame_and_stays_out_of_the_tab_order():
                 configured[keyword.arg] = ast.unparse(keyword.value)
     assert configured.get("highlightthickness") == "0"
     assert configured.get("takefocus") == "0"
+
+
+def test_code_spans_are_set_apart_by_colour_only_without_a_background_box():
+    """Ein hinterlegter Kasten reicht bei einzelnen Wörtern über die Zeilenhöhe hinaus und wirkt wie ein
+    heller Fleck im Fließtext; Code hebt sich allein durch die gedämpfte Schriftfarbe ab."""
+    tree = _tree(DIALOG)
+    code_tags = [call for call in _calls(tree, "text.tag_configure")
+                 if call.args and ast.unparse(call.args[0]) == "'code'"]
+    assert len(code_tags) == 1
+    options = {keyword.arg for keyword in code_tags[0].keywords}
+    assert "foreground" in options
+    assert "background" not in options

@@ -14,7 +14,7 @@ from tkinter import ttk
 from src.paths import get_resource_path
 from src.privacy_doc import fallback_blocks, is_web_url, load_privacy_doc, parse_privacy_markdown
 from src.theme import (
-    ACCENT, BG, ENTRY_BG, FONT, FONT_BOLD, FONT_HEADER_SMALL, TEXT_MUTED, apply_combobox_style,
+    ACCENT, BG, FONT, FONT_BOLD, FONT_HEADER_SMALL, TEXT_MUTED, apply_combobox_style,
     center_dialog_on_parent, create_dialog, dark_text, px, secondary_button, workarea_for,
 )
 
@@ -62,7 +62,7 @@ def _configure_tags(text):
         text.tag_configure(f"bullet{level}", lmargin1=px(8 + 16 * level), lmargin2=px(22 + 16 * level),
                            spacing3=px(4))
     text.tag_configure("bold", font=FONT_BOLD)
-    text.tag_configure("code", foreground=TEXT_MUTED, background=ENTRY_BG)
+    text.tag_configure("code", foreground=TEXT_MUTED)
     text.tag_configure("link", foreground=ACCENT, underline=True)
 
 
