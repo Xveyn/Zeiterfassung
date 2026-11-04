@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs';
 
 import {
   CODE_ALPHABET, CODE_LENGTH, DEFAULT_DEVICE_NAME, DEFAULT_PORT, PROTOCOL, baseUrl, deviceNameFromUserAgent, isLanAddress,
-  isValidDeviceId, newDeviceId, normalizeCode, pairRequestBody, parseHostPort, parsePairFragment, parsePairLink, parseQrText,
+  isPairFragment, isValidDeviceId, newDeviceId, normalizeCode, pairRequestBody, parseHostPort, parsePairFragment, parsePairLink, parseQrText,
 } from '../pairing.js';
 
 const cases = JSON.parse(readFileSync(new URL('./fixtures/pairing-cases.json', import.meta.url)));
@@ -216,4 +216,19 @@ test('parsePairLink also takes a bare fragment, as location.hash gives it', () =
     { kind: 'lan', host: '192.168.178.20', port: 17654, code: RELAY_CODE });
   assert.equal(parsePairLink('#relay='), null);
   assert.equal(parsePairLink('#'), null);
+});
+
+test('isPairFragment recognises exactly the fragments that carry a code or a box secret (#425)', () => {
+  for (const hash of ['#pair=192.168.1.2:17654:AAAA', '#relay=abc', '#pair=', '#relay=']) assert.equal(isPairFragment(hash), true, hash);
+  for (const hash of ['', '#', '#settings', '#pairing=x', 'pair=x', ' #pair=x', null, undefined, 5]) assert.equal(isPairFragment(hash), false, String(hash));
+});
+
+test('the start takes the pairing fragment out of the address bar before the storage is opened (#425)', () => {
+  const app = readFileSync(new URL('../app.js', import.meta.url), 'utf8');
+  const main = app.slice(app.indexOf('async function main()'));
+  const scrub = main.indexOf('scrubPairFragment()');
+  assert.ok(scrub >= 0, 'main() räumt das Fragment nicht ab');
+  assert.ok(scrub < main.indexOf('openDatabase('), 'das Fragment bleibt bei scheiterndem Speicher in der Adresszeile');
+  // Der Link geht dabei nicht verloren: main reicht das gelesene Fragment an die App weiter.
+  assert.match(main, /new App\(.*startHash\)/);
 });

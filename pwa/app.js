@@ -11,7 +11,7 @@ import { idbKeyStore, seal } from './push-blob.js';
 import { permissionState, shouldSchedule } from './push-policy.js';
 import { RelayClient, RelayError, VAPID_PUBLIC, newSecret, syncSchedule } from './relay-client.js';
 import { DEFAULT_WISH, aheadDays, olderState } from './window-policy.js';
-import { DEFAULT_DEVICE_NAME, deviceNameFromUserAgent, parseHostPort, parsePairLink } from './pairing.js';
+import { DEFAULT_DEVICE_NAME, deviceNameFromUserAgent, isPairFragment, parseHostPort, parsePairLink } from './pairing.js';
 import { openDatabase, requestPersistentStorage } from './db.js';
 import { Store } from './store.js';
 import { SyncClient, SyncError, clockSkewMs } from './sync.js';
@@ -40,7 +40,8 @@ const SAVE_SYNC_DELAY_MS = 2000;
 const SWIPE_CLICK_GUARD_MS = 400;
 
 class App {
-  constructor(root, store, client) {
+  constructor(root, store, client, initialHash = location.hash) {
+    this.initialHash = initialHash;
     this.root = root;
     this.store = store;
     this.client = client;
@@ -86,7 +87,7 @@ class App {
   }
 
   async start() {
-    this.captureFragment();
+    this.captureFragment(this.initialHash);
     if (!this.paired) this.screen = 'pair';
     if (!this.paired) this.loadDeviceModel();
     window.addEventListener('online', () => { this.online = true; this.trigger('online'); this.render(); });
@@ -245,12 +246,11 @@ class App {
 
   // --- Koppeln über den Link -------------------------------------------------------------------
 
-  captureFragment() {
-    const hash = location.hash;
+  /** `hash` ist das Fragment, das der Start schon vor dem Öffnen des Speichers aus der Adresszeile genommen
+   *  hat (`main`); sonst das aktuelle. */
+  captureFragment(hash = location.hash) {
     const link = parsePairLink(hash);
-    // Das Fragment trägt den Einmalcode und bei einem Relay-Link das Geheimnis der Box: nie in der
-    // Adresszeile oder im Verlauf stehen lassen, auch wenn der Link unbrauchbar ist.
-    if (/^#(pair|relay)=/.test(hash)) history.replaceState(null, '', location.pathname + location.search);
+    scrubPairFragment();
     if (!link) return false;
     this.applyPairLink(link);
     this.screen = 'pair';
@@ -745,8 +745,18 @@ function base64UrlToBytes(text) {
   return Uint8Array.from(raw, (char) => char.charCodeAt(0));
 }
 
+/** Das Fragment trägt den Einmalcode und bei einem Relay-Link das Geheimnis der Box: nie in der Adresszeile oder
+ *  im Verlauf stehen lassen, auch wenn der Link unbrauchbar ist. */
+function scrubPairFragment() {
+  if (isPairFragment(location.hash)) history.replaceState(null, '', location.pathname + location.search);
+}
+
 async function main() {
   const root = document.getElementById('app');
+  // Vor allem anderen: scheitert der Speicher (privates Fenster), zeigt `fatalView` die Seite, und das Fragment
+  // stünde sonst weiter in der Adresszeile. Der Link selbst geht an die App, sie koppelt daraus.
+  const startHash = location.hash;
+  scrubPairFragment();
   let store;
   try {
     store = new Store(await openDatabase());
@@ -756,7 +766,7 @@ async function main() {
     root.append(fatalView(withDetail('Der Speicher des Browsers ist nicht verfügbar (privates Fenster oder gesperrt?). Ohne ihn kann diese App keine Einträge sichern.', error)));
     return;
   }
-  await new App(root, store, new SyncClient({ store })).start();
+  await new App(root, store, new SyncClient({ store }), startHash).start();
 }
 
 main();

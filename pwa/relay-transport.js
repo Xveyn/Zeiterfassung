@@ -19,6 +19,10 @@ import { SyncError } from './sync-errors.js';
 
 const MAX_HAVE = 2 ** 31 - 1;                 // `have` ist auf 2^31 − 1 begrenzt (Spec)
 
+/** Nur der Name des Fehlers geht ins Log: Chromes Meldungstext zu einer WebSocket kann das Subprotocol nennen,
+ *  also das Geheimnis. Der Name (`SecurityError`, `SyntaxError`) reicht, um zu sehen, woran es liegt. */
+const nameOnly = (error) => ({ name: typeof error?.name === 'string' ? error.name : 'Error' });
+
 const failure = (kind, code, message, retryable = false) => new SyncError({ kind, code, message, retryable });
 
 const ERRORS = {
@@ -68,6 +72,9 @@ export class RelayTransport {
     for (let attempt = 0; attempt < this._attempts; attempt += 1) {
       const remaining = deadline - Date.now();
       if (remaining <= 0) break;
+      // `ok` gilt für diesen Versuch: ein früheres `ok` macht einen nun unerreichbaren Relay nicht zum
+      // schweigenden Desktop.
+      state.accepted = false;
       const outcome = await this._attempt({ endpoint, payload, nonce, state, remaining });
       if (outcome.response) return outcome.response;
       if (outcome.timedOut) break;
@@ -101,7 +108,8 @@ export class RelayTransport {
       };
       try {
         socket = this._factory(socketUrl(this._relayUrl, state.have), [SUBPROTOCOL, endpoint.secret]);
-      } catch {
+      } catch (error) {
+        this._log('Relay: WebSocket nicht aufgebaut', nameOnly(error));
         resolve({ dropped: true });
         return;
       }
@@ -110,7 +118,8 @@ export class RelayTransport {
       socket.addEventListener('open', () => {
         try {
           socket.send(payload);
-        } catch {
+        } catch (error) {
+          this._log('Relay: Senden fehlgeschlagen', nameOnly(error));
           finish(() => resolve({ dropped: true }));
         }
       });

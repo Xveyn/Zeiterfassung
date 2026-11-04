@@ -79,6 +79,12 @@ export function parseQrText(text) {
   return hash === -1 ? null : parsePairFragment(text.slice(hash));
 }
 
+/** Trägt das Fragment einen Einmalcode oder das Geheimnis einer Box? Dann gehört es nach dem Lesen aus der
+ *  Adresszeile (Reload, Teilen, Verlauf), auch wenn der Link unbrauchbar ist. */
+export function isPairFragment(hash) {
+  return typeof hash === 'string' && /^#(pair|relay)=/.test(hash);
+}
+
 const RELAY_SECRET_RE = /^[A-Za-z0-9_-]{43}$/;
 const RELAY_PREFIX = 'relay=';
 

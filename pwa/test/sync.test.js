@@ -1347,3 +1347,23 @@ test('re-pairing during a running relay sync discards the old answer', async () 
   assert.equal(store.getMeta().box_secret, BOX2);
   assert.deepEqual(store.dirtyDates(), ['2026-10-07']);
 });
+
+test('a late have of the old box never lands on a new pairing (#425)', async () => {
+  const { store, client } = await makeRelay();
+  const endpoint = client._endpoint(store.getMeta());               // Abgleich der alten Box läuft
+  await store.setMeta({ box_secret: 'N'.repeat(43), box_have: 0 });  // der Nutzer koppelt neu
+
+  endpoint.onHave(9);                                               // ein spätes `slot` der alten Box
+  await settle();
+
+  assert.equal(store.getMeta().box_have, 0);
+  assert.equal(store.getMeta().box_secret, 'N'.repeat(43));
+});
+
+test('the have of the current box is still remembered (#425)', async () => {
+  const { store, client } = await makeRelay();
+  const endpoint = client._endpoint(store.getMeta());
+  endpoint.onHave(5);
+  await settle();
+  assert.equal(store.getMeta().box_have, 5);
+});
