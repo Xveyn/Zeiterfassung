@@ -7,7 +7,6 @@ from unittest.mock import MagicMock
 
 import pytest
 
-import src.dialogs.settings_dialog.tab_updates as tab_module
 from src.dialogs.settings_dialog.tab_updates import UpdatesTab
 from src.self_update import DownloadedUpdate, UpdatePlan
 
@@ -70,8 +69,6 @@ def test_startup_check_and_updates_tab_never_download_twice(monkeypatch):
     monkeypatch.setattr(coordinator_module, "today_iso", lambda: "2026-09-18")
     monkeypatch.setattr(auto_update, "supports_self_update", lambda *a, **k: True)
     monkeypatch.setattr(auto_update, "plan_update", lambda *a, **k: _PLAN)
-    monkeypatch.setattr(tab_module, "set_secondary_button_enabled",
-                        lambda *a, **k: None)
     downloads = []
 
     def fake_download(plan, dest, on_progress=None):
@@ -100,8 +97,8 @@ def test_startup_check_and_updates_tab_never_download_twice(monkeypatch):
 
     assert len(downloads) == 1
     assert settings.get("pending_update_path") == downloads[0]
-    tab._status_label.config.assert_called_with(
-        text="Update bereit — wird beim Beenden installiert")
+    tab._set_status.assert_called_with(
+        "Update bereit — wird beim Beenden installiert", "ready")
 
 
 # --- AutoUpdater: die eine Policy ------------------------------------------

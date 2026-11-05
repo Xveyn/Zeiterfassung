@@ -89,6 +89,7 @@ from src.theme.widgets import (  # noqa: F401
     secondary_button,
     set_button_text,
     set_icon_button_enabled,
+    set_button_style,
     set_primary_button_enabled,
     set_secondary_button_enabled,
     set_toggle_active,
@@ -140,7 +141,8 @@ __all__ = [
     "apply_combobox_style", "apply_notebook_style", "attach_unfocus_on_click",
     "dark_combo", "dark_entry", "dark_text", "icon_button", "label_button",
     "primary_button", "secondary_button", "set_button_text", "set_icon_button_enabled",
-    "set_primary_button_enabled", "set_secondary_button_enabled", "set_toggle_active",
+    "set_button_style", "set_primary_button_enabled", "set_secondary_button_enabled",
+    "set_toggle_active",
     "toggle_button", "_click_keeps_focus",
     # form
     "Form", "empty_state", "pin_notebook_width", "set_enabled",

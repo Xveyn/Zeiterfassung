@@ -271,6 +271,68 @@ def update_tab_updates(raw: Mapping[str, Any]) -> dict[str, Any]:
     return updates
 
 
+def last_check_text(last_check: str | None) -> str:
+    """Anzeige der letzten erfolgreichen Update-Prüfung (`last_update_check_at`,
+    nur ein Datum): „TT.MM.JJJJ" bzw. „noch nie"."""
+    return format_iso_date(last_check, fallback="noch nie")
+
+
+# Symbol je Statusart. Bewusst nur Zeichen aus Pfeile/Dingbats/Verschiedene
+# Symbole (U+2190–27BF): Segoe UI Symbol, DejaVu Sans und die macOS-
+# Fallbackfonts haben sie; das Symbol trägt die Aussage auch ohne Farbe.
+UPDATE_STATUS_SYMBOLS = {
+    "current": "✓",
+    "ready": "✓",
+    "available": "↑",
+    "failed": "⚠",
+}
+
+
+def update_status_kind(release: Any, show_download: bool) -> str:
+    """Art des Prüfergebnisses für die Statuszeile: `failed` (kein Release),
+    `available` (neuere Version) oder `current`."""
+    if release is None:
+        return "failed"
+    return "available" if show_download else "current"
+
+
+def update_status_text(kind: str, text: str) -> str:
+    """Statustext mit Symbol; neutrale Texte (`muted`: Prüfe…, Fortschritt)
+    bleiben ohne."""
+    symbol = UPDATE_STATUS_SYMBOLS.get(kind)
+    return f"{symbol} {text}" if symbol else text
+
+
+@dataclass(frozen=True)
+class ButtonView:
+    primary: bool    # Hauptaktion (rot) oder Nebenaktion
+    enabled: bool    # sonst gedämpft
+
+
+def update_button_views(*, available: bool, checking: bool, updating: bool,
+                        download_busy: bool) -> tuple[ButtonView, ButtonView]:
+    """Rolle und Zustand von (Prüfen-, Installieren-/Download-)Knopf.
+
+    Die Hauptaktion folgt dem Zustand: ist ein Update da, ist es das
+    Installieren, sonst das Prüfen. Gedämpft ist der Prüfen-Knopf während
+    eines Checks oder Updates, der andere während Update oder stillem
+    Download. (Die Knöpfe sperren nur optisch — die Callbacks tragen ihre
+    eigenen Guards.)"""
+    check = ButtonView(primary=not available,
+                       enabled=not (checking or updating))
+    install = ButtonView(primary=available,
+                         enabled=not (updating or download_busy))
+    return check, install
+
+
+def changelog_expected(result: Mapping[str, Any]) -> bool:
+    """Ob zu einem Prüfergebnis (`updater.resolve_check_result`) überhaupt ein
+    Changelog angezeigt werden kann. Nach einem gescheiterten Abruf gibt es
+    weder eine Version zum Nachladen noch Release-Notes — die Box bliebe leer
+    und wird dann ausgeblendet."""
+    return bool(result["changelog_version"] or result["changelog_notes"])
+
+
 # ---- API (#92) --------------------------------------------------------------
 
 # Bereich, aus dem `single_instance` den Port je Installationsordner ableitet

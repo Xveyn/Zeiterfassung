@@ -14,21 +14,24 @@ from src.changelog import (
 )
 from src.dialogs.settings_dialog.fields import FieldSet
 from src.dialogs.settings_dialog.form_model import SaveOutcome
-from src.dialogs.settings_dialog.tab_rules import update_tab_updates
+from src.dialogs.settings_dialog.tab_rules import (
+    changelog_expected, last_check_text, update_button_views,
+    update_status_kind, update_status_text, update_tab_updates,
+)
 from src.self_update import (
     UpdateBlocked, apply_linux, apply_windows, discard_download,
     download_and_verify_update, download_dest, plan_update,
     supports_self_update, verify_file,
 )
 from src.theme import (
-    BG, FONT, FONT_BOLD, TEXT, TEXT_MUTED, Form,
+    BG, FONT, FONT_BOLD, STATUS_OK, STATUS_WARN, TEXT, TEXT_MUTED, TODAY_ACCENT,
+    Form, px,
     dark_combo, dark_text, primary_button, secondary_button,
-    set_button_text, set_primary_button_enabled, set_secondary_button_enabled,
-    themed_showerror,
+    set_button_style, set_button_text, themed_showerror,
 )
 from src.updater import (
-    FREQUENCY_OPTIONS, REPO, check_for_update, pick_asset_url,
-    resolve_check_result,
+    FREQUENCY_OPTIONS, REPO, check_for_update_outcome, pick_asset_url,
+    resolve_check_result, today_iso,
 )
 from src.version import (
     UPDATES_UNSUPPORTED_HINT, installed_release_id, updates_supported,
@@ -48,6 +51,21 @@ _LABEL_DOWNLOAD = "Download"
 
 _STATUS_READY = "Update bereit — wird beim Beenden installiert"
 
+# Farbe der Statuszeile je Art (nur Palette-Farben). `muted` ist der Normalfall
+# (Prüfe…, Fortschritt); die übrigen tragen das Prüfergebnis, jeweils mit einem
+# Symbol (`tab_rules.update_status_text`), damit es nicht nur an der Farbe hängt.
+_STATUS_COLORS = {
+    "muted": TEXT_MUTED,
+    "current": STATUS_OK,
+    "ready": STATUS_OK,
+    "available": TODAY_ACCENT,
+    "failed": STATUS_WARN,
+}
+
+# Umbruchbreite der Statuszeile: die Fehlertexte sind Sätze, und ohne Umbruch
+# bestimmten sie die Breite des Reiters (wie im API-Tab, 380 px bei 100 %).
+_WRAP_PX = 380
+
 
 class UpdatesTab:
     """Baut den Updates-Tab; Tab-Schnittstelle für den `SaveCoordinator`
@@ -64,6 +82,9 @@ class UpdatesTab:
         self._checked = False
         self._checking = False
         self._updating = False
+        # Läuft der stille Hintergrund-Download (Auto-Update)? Dämpft den
+        # Installationsknopf, ohne dass der Tab selbst gerade lädt.
+        self._download_busy = False
 
         form = Form(frame, scroll=True)
         form.frame.pack(fill="both", expand=True)
@@ -71,10 +92,16 @@ class UpdatesTab:
 
         form.row("Installierte Version:", tk.Label(
             body, text=installed_release_id(), font=FONT, bg=BG, fg=TEXT))
+        # Datum der letzten ERFOLGREICHEN Prüfung (ein fehlgeschlagener Abruf
+        # lässt es stehen). Dev-/Source-Builds prüfen nie, dort entfällt die Zeile.
+        self._last_check_label = tk.Label(
+            body, text=last_check_text(settings.get("last_update_check_at")),
+            font=FONT, bg=BG, fg=TEXT)
+        self._last_check_row = form.row("Zuletzt geprüft:", self._last_check_label)
 
         self._status_label = tk.Label(
             body, text="", font=FONT, bg=BG, fg=TEXT_MUTED, anchor="w",
-            justify="left",
+            justify="left", wraplength=px(_WRAP_PX),
         )
         form.block(self._status_label)
 
@@ -94,13 +121,16 @@ class UpdatesTab:
         if self._updates_supported:
             form.block(btn_row)
         else:
-            self._status_label.config(text=UPDATES_UNSUPPORTED_HINT)
+            self._set_status(UPDATES_UNSUPPORTED_HINT)
+            self._last_check_row.show(False)
+        self._restyle_buttons()
 
         # Direkt unter Status und Knöpfen (#132): bisher trennten drei
-        # Optionszeilen den Changelog von dem, wozu er gehört. Label + Text
-        # bleiben immer gegridded (nie grid_remove()) — sonst verschwindet
-        # ihr Breitenbeitrag kurzzeitig während eines Checks und die
-        # Dialogbreite bricht ein.
+        # Optionszeilen den Changelog von dem, wozu er gehört. Beim Aufbau
+        # bleiben Label + Text gegridded: ihre Breite fließt in die einmal
+        # festgenagelte Reiterbreite (`pin_notebook_width`) ein. Ausgeblendet
+        # werden sie erst, wenn ein Prüfergebnis ohne Changelog eintrifft
+        # (`_show_changelog`) — das läuft immer nach dem Dialogaufbau.
         self._changelog_label = tk.Label(
             body, text=_LABEL_CHANGELOG, font=FONT, bg=BG, fg=TEXT, anchor="w",
         )
@@ -172,8 +202,36 @@ class UpdatesTab:
 
     def _finish_checking(self):
         self._checking = False
-        set_primary_button_enabled(self._check_btn, True)
         set_button_text(self._check_btn, "Jetzt prüfen")
+        self._restyle_buttons()
+
+    def _restyle_buttons(self):
+        """Hauptaktion und Dämpfung beider Knöpfe aus dem Tab-Zustand
+        (`tab_rules.update_button_views`): ist ein Update da, ist das
+        Installieren der rote Knopf, sonst das Prüfen."""
+        check, install = update_button_views(
+            available=self._latest_release is not None,
+            checking=self._checking, updating=self._updating,
+            download_busy=self._download_busy)
+        set_button_style(self._check_btn, primary=check.primary,
+                         enabled=check.enabled)
+        set_button_style(self._download_btn, primary=install.primary,
+                         enabled=install.enabled)
+
+    def _set_status(self, text, kind="muted"):
+        """Statuszeile setzen: Text (mit Symbol je Art) und Farbe."""
+        self._status_label.config(text=update_status_text(kind, text),
+                                  fg=_STATUS_COLORS[kind])
+
+    def _show_changelog(self, visible):
+        """Blendet Changelog-Label und -Box ein bzw. aus. `grid_remove` merkt
+        sich die Grid-Optionen, `grid()` stellt sie wieder her."""
+        if visible:
+            self._changelog_label.grid()
+            self._changelog_text.grid()
+        else:
+            self._changelog_label.grid_remove()
+            self._changelog_text.grid_remove()
 
     def _set_changelog(self, text):
         self._changelog_text.config(state="normal")
@@ -202,9 +260,9 @@ class UpdatesTab:
             return
         self._checking = True
         self._latest_release = None
-        set_primary_button_enabled(self._check_btn, False)
         set_button_text(self._check_btn, "Prüfe…")
-        self._status_label.config(text="Prüfe…")
+        self._restyle_buttons()
+        self._set_status("Prüfe…")
         self._download_btn.pack_forget()
         # Zurücksetzen, sonst bliebe die Pre-Release-Beschriftung stehen,
         # wenn jemand das Häkchen abwählt und erneut prüft.
@@ -218,16 +276,26 @@ class UpdatesTab:
         include_prereleases = bool(self.prerelease_var.get())
 
         def fn():
-            return check_for_update(REPO, include_prereleases)
+            return check_for_update_outcome(REPO, include_prereleases)
 
-        def on_done(release):
+        def on_done(outcome):
             if not self.frame.winfo_exists():
                 return
-            result = resolve_check_result(installed_release_id(), release)
+            result = resolve_check_result(
+                installed_release_id(), outcome.release, outcome.failure)
             self._latest_release = result["latest_release"]
-            self._status_label.config(text=result["status_text"])
+            self._set_status(
+                result["status_text"],
+                update_status_kind(outcome.release, result["show_download"]))
+            if outcome.release is not None:
+                # Erfolgreich geprüft (auch wenn nichts Neues da ist): das
+                # Datum gilt wie beim Tray-Check auch für den Hintergrund-Check.
+                self._settings.set("last_update_check_at", today_iso())
+                self._last_check_label.config(
+                    text=last_check_text(today_iso()))
             if result["show_download"]:
                 self._download_btn.pack(side=tk.LEFT, padx=(8, 0))
+            self._restyle_buttons()
             if result["persist"]:
                 self._settings.set_many(result["persist"])
             if self._latest_release is not None:
@@ -236,6 +304,13 @@ class UpdatesTab:
                 # Hintergrund-Download aus — kein eigener Timer (Regel 1 aus
                 # dem Design: "vorhandener Update-Check").
                 self._maybe_start_auto_update(self._latest_release)
+            if not changelog_expected(result):
+                # Abruf gescheitert (oder Pre-Release ohne Notes): eine leere
+                # Box wäre nur Rauschen.
+                self._finish_checking()
+                self._show_changelog(False)
+                return
+            self._show_changelog(True)
             if result["changelog_notes"] is not None:
                 # Pre-Release: die Notes liegen dem Payload bereits bei,
                 # kein zweiter Netzwerk-Call nötig. Es ist aber der
@@ -248,9 +323,6 @@ class UpdatesTab:
                 self._changelog_label.config(text=_LABEL_PRERELEASE)
                 self._set_changelog(
                     release_notes_for_display(result["changelog_notes"]))
-                return
-            if result["changelog_version"] is None:
-                self._finish_checking()
                 return
             self._fetch_changelog(result["changelog_version"])
 
@@ -269,7 +341,7 @@ class UpdatesTab:
         self._runner.run(fn, on_done)
 
     def _open_latest_download(self):
-        # `set_secondary_button_enabled` graut den Knopf nur optisch aus, die
+        # `set_button_style` graut den Knopf nur optisch aus, die
         # Bindung feuert weiter (s. dessen Docstring) — der Guard hier ist
         # das, was einen zweiten Klick während des Downloads wirklich stoppt.
         if self._latest_release is None or self._updating:
@@ -291,23 +363,27 @@ class UpdatesTab:
             release, on_progress=self._report_status,
             on_finished=self._on_auto_update_finished)
         if outcome == "pending":
-            self._status_label.config(text=_STATUS_READY)
+            self._set_status(_STATUS_READY, "ready")
         elif outcome in ("started", "busy"):
-            # Nur optisch (s. `set_secondary_button_enabled`) — ein Klick
-            # landet trotzdem in `_start_self_update`, und dort stoppt ihn
-            # der gemeinsame Guard.
-            set_secondary_button_enabled(self._download_btn, False)
+            # Nur optisch (s. `set_button_style`) — ein Klick landet trotzdem
+            # in `_start_self_update`, und dort stoppt ihn der gemeinsame
+            # Guard.
+            self._download_busy = True
+            self._restyle_buttons()
 
     def _on_auto_update_finished(self, ok):
         # Der Runner ist `App._bg` und überlebt den Dialog: persistiert hat
         # der AutoUpdater bereits, hier bleibt nur die Anzeige.
         if not self.frame.winfo_exists():
             return
-        set_secondary_button_enabled(self._download_btn, True)
-        self._status_label.config(
-            text=_STATUS_READY if ok else
-            "Automatischer Download fehlgeschlagen — neuer Versuch beim "
-            "nächsten Check")
+        self._download_busy = False
+        self._restyle_buttons()
+        if ok:
+            self._set_status(_STATUS_READY, "ready")
+        else:
+            self._set_status(
+                "Automatischer Download fehlgeschlagen — neuer Versuch beim "
+                "nächsten Check", "failed")
 
     def _report_status(self, text):
         """Fortschrittstext aus dem Worker-Thread in die Statuszeile."""
@@ -322,7 +398,7 @@ class UpdatesTab:
         # Hintergrund weiterläuft — ohne Guard dutzende Popups.
         def apply_text():
             try:
-                self._status_label.config(text=text)
+                self._set_status(text)
             except tk.TclError:
                 pass  # Dialog schon zu, die Meldung hat kein Ziel mehr
         try:
@@ -352,17 +428,14 @@ class UpdatesTab:
             # Der stille Download (Start-Check der App oder dieser Tab) läuft
             # schon. Ein zweiter daneben liesse beim sofortigen Installieren
             # den halben stillen Download in %TEMP% zurück (R9).
-            self._status_label.config(
-                text="Update wird bereits im Hintergrund geladen …")
+            self._set_status("Update wird bereits im Hintergrund geladen …")
             return
 
-        set_primary_button_enabled(self._check_btn, False)
-        # ACHTUNG: `set_secondary_button_enabled` ändert laut seinem Docstring
-        # NUR die Optik — die Klick-Bindung bleibt aktiv. Der Callback muss
-        # deshalb selbst ein No-op machen, siehe `self._updating`-Guard oben in
-        # `_open_latest_download`.
-        set_secondary_button_enabled(self._download_btn, False)
+        # ACHTUNG: `set_button_style` ändert NUR die Optik — die Klick-Bindung
+        # bleibt aktiv. Der Callback muss deshalb selbst ein No-op machen,
+        # siehe `self._updating`-Guard oben in `_open_latest_download`.
         self._updating = True
+        self._restyle_buttons()
 
         # Pro Lauf ein eigener Zielname (s. `download_dest`).
         local = download_dest(platform.system(), plan.asset_name, plan.target,
@@ -398,7 +471,7 @@ class UpdatesTab:
                     "Downloads geschlossen")
                 discard_download(result.path)
                 return
-            self._status_label.config(text="Installiere …")
+            self._set_status("Installiere …")
             self._apply(plan, result.path, result.sha256)
 
         self._runner.run(work, done)
@@ -414,9 +487,8 @@ class UpdatesTab:
         hängen und blockt jeden weiteren Klick, während "Jetzt prüfen"
         zusätzlich optisch tot bliebe."""
         self._updating = False
-        set_primary_button_enabled(self._check_btn, True)
-        set_secondary_button_enabled(self._download_btn, True)
-        self._status_label.config(text="Update fehlgeschlagen")
+        self._restyle_buttons()
+        self._set_status("Update fehlgeschlagen", "failed")
         themed_showerror(
             self.frame.winfo_toplevel(), "Update fehlgeschlagen", message)
 

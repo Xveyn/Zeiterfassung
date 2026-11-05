@@ -5,8 +5,11 @@ from io import BytesIO
 from unittest.mock import patch
 from urllib.error import HTTPError, URLError
 
+import pytest
+
 from src.updater import (
-    Asset, Release, check_for_update, check_latest_release, frequency_for_label,
+    FAILURE_TEXTS, Asset, CheckOutcome, Release, check_for_update,
+    check_for_update_outcome, classify_fetch_error, check_latest_release, frequency_for_label,
     is_newer, manual_check_toast_text, pick_asset_url, release_from_payload,
     resolve_check_result, select_newest_payload, should_check, today_iso,
     update_toast_text,
@@ -254,7 +257,7 @@ class TestResolveCheckResult:
     def test_no_connection_returns_failure_status_without_changelog(self):
         result = resolve_check_result("1.18.0", None)
         assert result == {
-            "status_text": "Prüfung fehlgeschlagen — keine Verbindung?",
+            "status_text": FAILURE_TEXTS["other"],
             "show_download": False,
             "changelog_version": None,
             "changelog_notes": None,
@@ -506,8 +509,11 @@ class TestManualCheckToastText:
     verstecktem Fenster ist der Toast die einzige Antwortmöglichkeit."""
 
     def test_failed_fetch_says_so(self):
-        assert manual_check_toast_text("1.19.1", None) == (
-            "Prüfung fehlgeschlagen — keine Verbindung?")
+        assert manual_check_toast_text("1.19.1", None) == FAILURE_TEXTS["other"]
+
+    def test_failed_fetch_names_the_reason(self):
+        assert manual_check_toast_text(
+            "1.19.1", None, "offline") == FAILURE_TEXTS["offline"]
 
     def test_up_to_date_names_the_installed_build(self):
         release = Release(version="1.19.1", html_url="https://x", assets=())
@@ -550,3 +556,94 @@ class TestFetchFailureIsLogged:
                 caplog.at_level("WARNING", logger="src.updater"):
             assert check_for_update("any/repo", True) is None
         assert "403" in caplog.text
+
+
+def _http(code):
+    return HTTPError(url="x", code=code, msg="m", hdrs=None, fp=None)
+
+
+class TestClassifyFetchError:
+    @pytest.mark.parametrize("exc,kind", [
+        (_http(403), "rate_limited"),
+        (_http(429), "rate_limited"),
+        (_http(500), "server"),
+        (_http(503), "server"),
+        (_http(404), "other"),
+        (URLError("offline"), "offline"),
+        (socket.timeout(), "offline"),
+        (OSError("boom"), "offline"),
+        (json.JSONDecodeError("bad", "", 0), "other"),
+        (KeyError("tag_name"), "other"),
+    ])
+    def test_kind(self, exc, kind):
+        assert classify_fetch_error(exc) == kind
+
+    def test_http_error_is_not_mistaken_for_offline(self):
+        """HTTPError ist selbst ein URLError/OSError — die Reihenfolge der
+        Prüfung entscheidet, ob aus „GitHub antwortet 500" ein „offline" wird."""
+        assert isinstance(_http(500), OSError)
+        assert classify_fetch_error(_http(500)) != "offline"
+
+
+class TestCheckOutcome:
+    def test_rate_limit_is_reported_with_its_kind(self):
+        with patch("src.updater.urlopen", side_effect=_http(403)):
+            assert check_for_update_outcome("any/repo", False) == CheckOutcome(
+                None, "rate_limited")
+
+    def test_offline_is_reported_with_its_kind(self):
+        with patch("src.updater.urlopen", side_effect=URLError("x")):
+            assert check_for_update_outcome("any/repo", True).failure == "offline"
+
+    def test_empty_release_list_is_other_not_a_silent_none(self):
+        resp = BytesIO(b"[]")
+        resp.__enter__ = lambda self: self  # type: ignore[method-assign]
+        resp.__exit__ = lambda *a: False  # type: ignore[method-assign]
+        with patch("src.updater.urlopen", return_value=resp):
+            outcome = check_for_update_outcome("any/repo", True)
+        assert outcome == CheckOutcome(None, "other")
+
+    def test_success_has_release_and_no_failure(self):
+        payload = {"tag_name": "v1.9.0", "html_url": "https://x", "assets": []}
+        resp = BytesIO(json.dumps(payload).encode())
+        resp.__enter__ = lambda self: self  # type: ignore[method-assign]
+        resp.__exit__ = lambda *a: False  # type: ignore[method-assign]
+        with patch("src.updater.urlopen", return_value=resp):
+            outcome = check_for_update_outcome("any/repo", False)
+        assert outcome.failure is None
+        assert outcome.release is not None and outcome.release.version == "1.9.0"
+
+    def test_check_for_update_keeps_returning_only_the_release(self):
+        with patch("src.updater.urlopen", side_effect=_http(403)):
+            assert check_for_update("any/repo", False) is None
+
+
+class TestFailureTexts:
+    def test_every_kind_has_its_own_text(self):
+        assert set(FAILURE_TEXTS) == {"offline", "rate_limited", "server", "other"}
+        assert len(set(FAILURE_TEXTS.values())) == 4
+
+    def test_texts_are_for_users_not_for_logs(self):
+        for text in FAILURE_TEXTS.values():
+            for technical in ("HTTP", "403", "429", "500", "Exception", "URLError",
+                              "api.github.com"):
+                assert technical not in text
+
+    def test_only_the_offline_text_talks_about_the_connection(self):
+        for kind, text in FAILURE_TEXTS.items():
+            assert ("Verbindung" in text) == (kind == "offline")
+
+    def test_resolve_uses_the_text_of_the_failure(self):
+        result = resolve_check_result("1.18.0", None, "rate_limited")
+        assert result["status_text"] == FAILURE_TEXTS["rate_limited"]
+        assert result["latest_release"] is None
+        assert result["show_download"] is False
+
+    def test_resolve_without_reason_falls_back_to_the_generic_text(self):
+        assert resolve_check_result("1.18.0", None)["status_text"] == (
+            FAILURE_TEXTS["other"])
+
+    def test_failure_reason_is_ignored_when_a_release_was_found(self):
+        release = Release(version="1.19.0", html_url="https://x", assets=())
+        result = resolve_check_result("1.18.0", release, "offline")
+        assert result["status_text"] == "Version 1.19.0 verfügbar"

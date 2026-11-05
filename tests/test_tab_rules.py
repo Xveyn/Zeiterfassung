@@ -1007,3 +1007,96 @@ def test_api_route_summary_matches_the_readme():
     for path, _what in tr.API_ROUTES:
         base = re.search(r"/v1/[a-z]+(?:/[a-z]+)?", path).group(0)
         assert base in readme, path
+
+
+# --- Updates-Tab: letzte Prüfung und Changelog-Sichtbarkeit -----------------
+
+def test_last_check_text_shows_the_date_in_german_format():
+    assert tr.last_check_text("2026-11-05") == "05.11.2026"
+
+
+@pytest.mark.parametrize("value", ["", None])
+def test_last_check_text_says_never_without_a_date(value):
+    assert tr.last_check_text(value) == "noch nie"
+
+
+def _result(**over):
+    base = {"changelog_version": None, "changelog_notes": None}
+    base.update(over)
+    return base
+
+
+@pytest.mark.parametrize("result,expected", [
+    # Abruf gescheitert: weder Version noch Notes -> keine leere Box zeigen.
+    (_result(), False),
+    # Echtes Release (neu oder aktuell): der Changelog wird nachgeladen.
+    (_result(changelog_version="1.26.0"), True),
+    # Pre-Release: die Notes liegen bei.
+    (_result(changelog_notes="- fix: x"), True),
+    # Pre-Release ohne Text: nichts zu zeigen.
+    (_result(changelog_notes=""), False),
+])
+def test_changelog_expected(result, expected):
+    assert tr.changelog_expected(result) is expected
+
+
+# --- Updates-Tab: Statusart, Darstellung, Knopfrollen -----------------------
+
+@pytest.mark.parametrize("release,show_download,kind", [
+    (None, False, "failed"),
+    (object(), True, "available"),
+    (object(), False, "current"),
+])
+def test_update_status_kind(release, show_download, kind):
+    assert tr.update_status_kind(release, show_download) == kind
+
+
+@pytest.mark.parametrize("kind,symbol", [
+    ("current", "✓"), ("ready", "✓"), ("available", "↑"), ("failed", "⚠"),
+])
+def test_update_status_text_prefixes_a_symbol(kind, symbol):
+    """Das Symbol trägt die Aussage auch ohne Farbe (Farbenblindheit)."""
+    assert tr.update_status_text(kind, "Text") == f"{symbol} Text"
+
+
+def test_update_status_text_leaves_neutral_text_alone():
+    assert tr.update_status_text("muted", "Prüfe…") == "Prüfe…"
+
+
+def test_update_status_symbols_exist_in_common_fonts():
+    """Nur Zeichen aus Pfeile/Dingbats/Verschiedene Symbole — sie liegen in
+    Segoe UI Symbol, DejaVu Sans und den macOS-Fallbackfonts. Ein exotisches
+    Zeichen (z. B. ⬆, U+2B06) wäre unter Linux ein Kästchen."""
+    for symbol in tr.UPDATE_STATUS_SYMBOLS.values():
+        assert 0x2190 <= ord(symbol) <= 0x27BF
+
+
+def _views(**kw):
+    base = dict(available=False, checking=False, updating=False, download_busy=False)
+    base.update(kw)
+    return tr.update_button_views(**base)
+
+
+def test_check_is_the_main_action_without_update():
+    check, install = _views()
+    assert check == tr.ButtonView(primary=True, enabled=True)
+    assert install.primary is False
+
+
+def test_install_is_the_main_action_when_an_update_is_available():
+    check, install = _views(available=True)
+    assert install == tr.ButtonView(primary=True, enabled=True)
+    assert check == tr.ButtonView(primary=False, enabled=True)
+
+
+def test_check_is_dimmed_while_checking_or_updating():
+    assert _views(checking=True)[0].enabled is False
+    assert _views(updating=True)[0].enabled is False
+    assert _views(available=True, checking=True)[0].enabled is False
+
+
+def test_install_is_dimmed_while_updating_or_background_download():
+    assert _views(available=True, updating=True)[1].enabled is False
+    assert _views(available=True, download_busy=True)[1].enabled is False
+    # Ein laufender Check sperrt den Installationsknopf nicht.
+    assert _views(available=True, checking=True)[1].enabled is True
