@@ -205,6 +205,8 @@ function suggestedRow(slots, defaults, weekday) {
   const row = freshRow(defaults, weekday);
   row.start = slots[0].start ?? '';
   row.end = slots[0].end ?? '';
+  // Eine geplante Pause (#455) gilt; ältere Reservierungen tragen 0 und behalten die Standardpause.
+  if (Number.isInteger(slots[0].pause) && slots[0].pause > 0) row.pause = String(slots[0].pause);
   row.kategorie = slots.length === 1 ? slots[0].kategorie ?? '' : '';
   row.base = { start: row.start, end: row.end, pause: row.pause };
   return row;
@@ -222,21 +224,30 @@ export function editorRows(day, defaults = null, weekday = '', reservation = nul
   }));
 }
 
-/** Zeilen der Reservierung: wie `editorRows`. Die Pause bleibt im Zustand (die Vorbelegung liefert
- *  sie), wird aber nie angezeigt und nie gespeichert. */
-export function reservationRows(reservation, defaults = null, weekday = '') {
-  return editorRows(reservation, defaults, weekday);
+/** Zeilen der Reservierung: wie `editorRows`. Die Standardpause belegt eine neue Zeile nur mit dem Flag
+ *  (`pauseEnabled`, #455); ohne es steht die Pause auf 0 und geht nie in einen Slot. */
+export function reservationRows(reservation, defaults = null, weekday = '', { pauseEnabled = false } = {}) {
+  const rows = editorRows(reservation, defaults, weekday);
+  if (pauseEnabled) return rows;
+  return rows.map((row) => ({ ...row, pause: '0', base: row.base && { ...row.base, pause: '0' } }));
 }
 
 const isBlankReservation = (row) => row.start === '' && row.end === '' && row.kategorie === '';
 
-export function reservationRowsToSlots(rows) {
+const pauseMinutes = (text) => {
+  const value = text === '' ? 0 : Number(text);
+  return Number.isFinite(value) ? value : 0;
+};
+
+/** Mit `pauseEnabled` trägt der Slot die Pause (leer oder Text = 0), sonst genau `{start, end, kategorie}`. */
+export function reservationRowsToSlots(rows, { pauseEnabled = false } = {}) {
   return rows.filter((row) => !isBlankReservation(row)).map((row) => ({
-    start: row.start, end: row.end, kategorie: row.kategorie }));
+    start: row.start, end: row.end, kategorie: row.kategorie,
+    ...(pauseEnabled ? { pause: pauseMinutes(row.pause) } : {}) }));
 }
 
-export function validateReservationRows(rows) {
-  return validateReservationSlots(normalizeReservationSlots(reservationRowsToSlots(rows)));
+export function validateReservationRows(rows, { pauseEnabled = false } = {}) {
+  return validateReservationSlots(normalizeReservationSlots(reservationRowsToSlots(rows, { pauseEnabled })));
 }
 
 /** „+ Slot“: der Start ist das Ende des vorigen und wird von einer Kategorie nie überschrieben. */

@@ -68,6 +68,19 @@ test('the pause fields step in five minutes and snap on change like the desktop 
   assert.equal((views.match(/'Pause \(Min\)', \{[^}]*step: TIME_STEP_MINUTES/g) || []).length, 2);
 });
 
+test('the reservation pause field is the same field as the actual-time one, shown only with the flag', () => {
+  // Ein Feld, eine Zeile: gleiche Breitenregeln, gleiche Rasterung; nur die Bedingung unterscheidet sich.
+  assert.match(views, /\(withPause \|\| pauseEnabled\) && field\(index, 'pause', 'Pause \(Min\)', \{ type: 'number', inputmode: 'numeric', min: 0, step: TIME_STEP_MINUTES \}\)/);
+  assert.equal((views.match(/field\(index, 'pause'/g) || []).length, 1);
+});
+
+test('the calendar note sits only in the reservation tab and only with the flag', () => {
+  assert.equal((views.match(/RESERVATION_CALENDAR_NOTE/g) || []).length, 2);     // Import + eine Verwendung
+  assert.match(views, /!withPause && pauseEnabled && h\('p', \{ class: 'muted'[^)]*RESERVATION_CALENDAR_NOTE/);
+  assert.match(views, /withPause: false, pauseEnabled/);
+  assert.match(views, /withPause: true,\s*pauseEnabled: false/);
+});
+
 test('on narrow phones the dialog buttons use less padding so Cancel and Save stay on one row', () => {
   assert.match(css, /@media \(max-width: 3\d\dpx\)\s*\{[^@]*?dialog \.buttons button\s*\{[^}]*padding/);
 });

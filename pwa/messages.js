@@ -95,3 +95,6 @@ export function describeError(error, env = {}) {
       return DEFAULT;
   }
 }
+
+/** Hinweis unter dem Reservierungsblock (nur mit Pause, #455): der Kalendertermin kennt die Pause nicht. */
+export const RESERVATION_CALENDAR_NOTE = 'Der Google-Kalender-Termin zeigt die volle Zeitspanne, die Pause wird dort nicht abgezogen.';

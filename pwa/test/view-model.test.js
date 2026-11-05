@@ -8,6 +8,7 @@ import {
   statusModel, validateRows, weekModel, windowRow, reservationRows, reservationRowsToSlots, validateReservationRows,
 } from '../view-model.js';
 import { SyncError } from '../sync.js';
+import { formatMinutes } from '../minutes.js';
 
 const SLOT = { start: '08:00', end: '12:00', pause: 0, kategorie: 'Projekt' };
 const days = (map) => (date) => map[date] ?? null;
@@ -531,11 +532,18 @@ test('a cleared reservation is not shown', () => {
   assert.equal(week.days[4].reservation, null);
 });
 
-test('reservation rows start from the weekday defaults and carry no pause on save', () => {
-  const defaults = { pause: 30, weekdays: { fr: { start: '09:00', end: '17:00' } }, category_times: {} };
-  const rows = reservationRows(null, defaults, 'fr');
-  assert.equal(rows.length, 1);
-  assert.deepEqual(reservationRowsToSlots(rows), [{ start: '09:00', end: '17:00', kategorie: '' }]);
+const PAUSE_DEFAULTS = { pause: 30, weekdays: { fr: { start: '09:00', end: '17:00' } }, category_times: {} };
+
+test('new reservation rows carry the default pause only with the flag, and nothing is stored without it', () => {
+  const on = reservationRows(null, PAUSE_DEFAULTS, 'fr', { pauseEnabled: true });
+  assert.equal(on[0].pause, '30');
+  assert.deepEqual(reservationRowsToSlots(on, { pauseEnabled: true }),
+    [{ start: '09:00', end: '17:00', kategorie: '', pause: 30 }]);
+  const off = reservationRows(null, PAUSE_DEFAULTS, 'fr');
+  assert.equal(off[0].pause, '0');
+  assert.deepEqual(reservationRowsToSlots(off), [{ start: '09:00', end: '17:00', kategorie: '' }]);
+  // Auch eine von Hand befüllte Pause geht ohne Flag nie in den Slot.
+  assert.deepEqual(Object.keys(reservationRowsToSlots(on)[0]).sort(), ['end', 'kategorie', 'start']);
 });
 
 test('saved reservation rows show their slots and a blank new row is dropped', () => {
@@ -546,9 +554,46 @@ test('saved reservation rows show their slots and a blank new row is dropped', (
   assert.equal(validateReservationRows(added).ok, true);
 });
 
-test('a reservation row with times but a stray default pause validates', () => {
+test('reservation pause rows: empty and zero become 0, text input never yields NaN', () => {
+  const row = (pause) => ({ start: '09:00', end: '12:00', pause, kategorie: '' });
+  const pauseOf = (pause) => reservationRowsToSlots([row(pause)], { pauseEnabled: true })[0].pause;
+  assert.equal(pauseOf(''), 0);
+  assert.equal(pauseOf('0'), 0);
+  assert.equal(pauseOf('30'), 30);
+  assert.equal(pauseOf('abc'), 0);
+});
+
+test('a stray pause validates without the flag, and with it must be shorter than the span', () => {
   const rows = [{ start: '09:00', end: '10:00', pause: '30', kategorie: '' }];
-  assert.equal(validateReservationRows(rows).ok, true);          // die Pause zählt bei Reservierungen nicht
+  assert.equal(validateReservationRows(rows).ok, true);
+  assert.equal(validateReservationRows(rows, { pauseEnabled: true }).ok, true);
+  const long = [{ start: '09:00', end: '10:00', pause: '60', kategorie: '' }];
+  const bad = validateReservationRows(long, { pauseEnabled: true });
+  assert.equal(bad.ok, false);
+  assert.equal(bad.message, validateRows(long).message);
+});
+
+test('slotText names the pause of a reservation slot like an actual slot', () => {
+  assert.equal(slotText({ start: '08:00', end: '15:30', kategorie: 'Projekt', pause: 30 }), '08:00–15:30 · 30 min Pause · Projekt');
+  assert.equal(slotText({ start: '08:00', end: '15:30', kategorie: 'Projekt', pause: 0 }), '08:00–15:30 · Projekt');
+  assert.equal(slotText({ start: '08:00', end: '15:30', kategorie: 'Projekt' }), '08:00–15:30 · Projekt');
+});
+
+test('the actual-time suggestion takes the reservation pause, or the default for older reservations', () => {
+  const pauseOfSuggestion = (slot) => editorRows(null, PAUSE_DEFAULTS, 'fr', reserved([slot]))[0].pause;
+  assert.equal(pauseOfSuggestion({ start: '08:00', end: '15:30', kategorie: '', pause: 45 }), '45');
+  assert.equal(pauseOfSuggestion({ start: '08:00', end: '15:30', kategorie: '', pause: 0 }), '30');
+  assert.equal(pauseOfSuggestion({ start: '08:00', end: '15:30', kategorie: '' }), '30');
+  const row = editorRows(null, PAUSE_DEFAULTS, 'fr', reserved([{ start: '08:00', end: '15:30', kategorie: '', pause: 45 }]))[0];
+  assert.equal(row.base.pause, '45');
+});
+
+test('the week nets the pause of reservations in "Noch ausstehend"', () => {
+  const slot = (end) => ({ start: '08:00', end, kategorie: 'Projekt', pause: 30 });
+  const week = pendingWeek({ '2026-10-09': reserved([slot('15:30')]), '2026-10-10': reserved([slot('15:30')]),
+    '2026-10-11': reserved([slot('14:30')]) });
+  assert.equal(week.pendingMinutes, 1200);
+  assert.equal(week.pendingLabel, formatMinutes(1200));
 });
 
 // --- Einstellungen / Kategorien -----------------------------------------------------------------------
