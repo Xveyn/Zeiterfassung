@@ -93,7 +93,7 @@ class ApiTab:
         # Außerhalb der Gruppe (siehe Moduldocstring); Zustand: `_sync_buttons`.
         self._copy_btn, self._rotate_btn = form.buttons(
             ("Token kopieren", self._copy_token),
-            ("Neu erzeugen …", self._rotate))
+            ("Neu erzeugen", self._rotate))
         with form.depends_on(enabled_var):
             example_label = form.hint(curl_example(port_var.get()))
         form.hint("Die API läuft nur, solange die App läuft — Autostart gibt es "
