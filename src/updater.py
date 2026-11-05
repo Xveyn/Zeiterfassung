@@ -9,7 +9,7 @@ import logging
 from dataclasses import dataclass
 from typing import Any
 from datetime import date
-from urllib.error import URLError
+from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 from src.version import VERSION, base_version, parse_release_id, strip_tag_prefix
@@ -98,6 +98,59 @@ class Release:
             object.__setattr__(self, "release_id", self.version)
 
 
+# Art eines gescheiterten Release-Abrufs. Für die Oberfläche gedacht: das Log
+# behält die technische Zeile (`_log_fetch_failure`), der Nutzer bekommt den
+# Satz aus FAILURE_TEXTS — ohne Statuscodes, Ausnahmenamen oder URLs.
+FAILURE_OFFLINE = "offline"
+FAILURE_RATE_LIMITED = "rate_limited"
+FAILURE_SERVER = "server"
+FAILURE_OTHER = "other"
+
+FAILURE_TEXTS: dict[str, str] = {
+    FAILURE_OFFLINE: (
+        "Keine Verbindung zu GitHub. Prüfe deine Internetverbindung "
+        "(auch Proxy oder Firewall) und versuche es erneut."),
+    FAILURE_RATE_LIMITED: (
+        "GitHub hat die Anfrage abgelehnt, meist weil aus deinem Netzwerk "
+        "gerade zu viele Anfragen kamen. Versuche es später erneut."),
+    FAILURE_SERVER: (
+        "GitHub antwortet gerade nicht richtig. Versuche es später erneut."),
+    FAILURE_OTHER: (
+        "Die Prüfung auf Updates ist fehlgeschlagen. "
+        "Versuche es später erneut."),
+}
+
+
+def failure_text(failure: str | None) -> str:
+    """Nutzertext zu einer Fehlerart; unbekannt oder `None` -> der allgemeine."""
+    return FAILURE_TEXTS.get(failure or "", FAILURE_TEXTS[FAILURE_OTHER])
+
+
+def classify_fetch_error(exc: BaseException) -> str:
+    """Fehlerart eines gescheiterten Abrufs. GitHub meldet ein Rate-Limit je
+    nach Art als 403 oder 429; ein 403 kann auch andere Gründe haben, der Text
+    sagt deshalb „meist". `HTTPError` ist selbst ein `URLError` und `OSError` —
+    die Prüfung muss vor „offline" stehen, sonst wird aus „GitHub antwortet
+    500" ein falsches „keine Verbindung"."""
+    if isinstance(exc, HTTPError):
+        if exc.code in (403, 429):
+            return FAILURE_RATE_LIMITED
+        if exc.code >= 500:
+            return FAILURE_SERVER
+        return FAILURE_OTHER
+    if isinstance(exc, OSError):  # URLError ist ein OSError, ebenso Timeouts
+        return FAILURE_OFFLINE
+    return FAILURE_OTHER
+
+
+@dataclass(frozen=True)
+class CheckOutcome:
+    """Ergebnis eines Release-Abrufs: entweder ein Release oder die Art des
+    Fehlers (`failure`, einer der FAILURE_*-Werte). Nie beides, nie keines."""
+    release: "Release | None"
+    failure: str | None = None
+
+
 def update_toast_text(release: "Release") -> str:
     """Deutscher Toast-Text für ein gefundenes Update (kein Klick-Handler —
     der Toast verweist auf den Updates-Tab)."""
@@ -108,7 +161,8 @@ def update_toast_text(release: "Release") -> str:
     )
 
 
-def manual_check_toast_text(installed_id: str, release: "Release | None") -> str:
+def manual_check_toast_text(installed_id: str, release: "Release | None",
+                            failure: str | None = None) -> str:
     """Toast-Text für den manuell aus dem Tray angestoßenen Update-Check.
 
     Anders als der Hintergrund-Check meldet sich der manuelle in **jedem** Fall:
@@ -120,14 +174,15 @@ def manual_check_toast_text(installed_id: str, release: "Release | None") -> str
     Source of Truth, dieselben Texte wie im Updates-Tab); nur der Fund einer
     neueren Version bekommt den toast-spezifischen Verweis auf den Tab.
     """
-    result = resolve_check_result(installed_id, release)
+    result = resolve_check_result(installed_id, release, failure)
     found = result["latest_release"]
     if found is not None:
         return update_toast_text(found)
     return result["status_text"]
 
 
-def resolve_check_result(installed_id: str, release: "Release | None") -> dict:
+def resolve_check_result(installed_id: str, release: "Release | None",
+                         failure: str | None = None) -> dict:
     """Reine Entscheidungslogik für das Ergebnis eines Update-Checks.
 
     `installed_id` ist die Kennung des laufenden Builds
@@ -139,10 +194,13 @@ def resolve_check_result(installed_id: str, release: "Release | None") -> dict:
     Payload bereits bei). CHANGELOG.md kennt am Pre-Tag nur die zuletzt
     veröffentlichte Version — also genau das, was der Nutzer schon hat.
 
+    `failure` ist die Fehlerart eines gescheiterten Abrufs (nur bei `release
+    is None` ausgewertet); der Status nennt sie in Nutzerworten.
+
     Tk-frei, daher ohne Widgets testbar."""
     if release is None:
         return {
-            "status_text": "Prüfung fehlgeschlagen — keine Verbindung?",
+            "status_text": failure_text(failure),
             "show_download": False,
             "changelog_version": None,
             "changelog_notes": None,
@@ -285,6 +343,34 @@ def select_newest_payload(payloads: Any) -> dict | None:
     return best
 
 
+def _latest_outcome(repo: str, timeout: float) -> CheckOutcome:
+    url = f"{_API_ROOT}/{repo}/releases/latest"
+    try:
+        release = release_from_payload(_fetch_json(url, timeout))
+    except _FETCH_ERRORS as exc:
+        _log_fetch_failure(url, exc)
+        return CheckOutcome(None, classify_fetch_error(exc))
+    if release is None:
+        log.warning("Update-Check: Antwort von %s enthält kein auswertbares Release", url)
+        return CheckOutcome(None, FAILURE_OTHER)
+    return CheckOutcome(release)
+
+
+def _any_outcome(repo: str, timeout: float) -> CheckOutcome:
+    url = f"{_API_ROOT}/{repo}/releases?per_page=10"
+    try:
+        payloads = _fetch_json(url, timeout)
+        newest = select_newest_payload(payloads) if isinstance(payloads, list) else None
+        release = release_from_payload(newest) if newest is not None else None
+    except _FETCH_ERRORS as exc:
+        _log_fetch_failure(url, exc)
+        return CheckOutcome(None, classify_fetch_error(exc))
+    if release is None:
+        log.warning("Update-Check: Antwort von %s enthält kein auswertbares Release", url)
+        return CheckOutcome(None, FAILURE_OTHER)
+    return CheckOutcome(release)
+
+
 def check_latest_release(repo: str, timeout: float = 5.0) -> Release | None:
     """Fragt die GitHub-API nach dem neuesten ECHTEN Release (Pre-Releases
     liefert /releases/latest nie mit).
@@ -294,12 +380,7 @@ def check_latest_release(repo: str, timeout: float = 5.0) -> Release | None:
     Caller darf sich darauf verlassen, dass keine Exception bubbled —
     Update-Hinweis ist nice-to-have.
     """
-    url = f"{_API_ROOT}/{repo}/releases/latest"
-    try:
-        return release_from_payload(_fetch_json(url, timeout))
-    except _FETCH_ERRORS as exc:
-        _log_fetch_failure(url, exc)
-        return None
+    return _latest_outcome(repo, timeout).release
 
 
 def check_latest_release_any(repo: str, timeout: float = 5.0) -> Release | None:
@@ -309,22 +390,22 @@ def check_latest_release_any(repo: str, timeout: float = 5.0) -> Release | None:
     per_page=10 deckt bei der Release-Kadenz dieses Repos mehrere Wochen bis
     Monate ab — dass das neueste Release außerhalb der ersten Seite liegt, ist
     praktisch ausgeschlossen."""
-    url = f"{_API_ROOT}/{repo}/releases?per_page=10"
-    try:
-        payloads = _fetch_json(url, timeout)
-        if not isinstance(payloads, list):
-            return None
-        newest = select_newest_payload(payloads)
-        return release_from_payload(newest) if newest is not None else None
-    except _FETCH_ERRORS as exc:
-        _log_fetch_failure(url, exc)
-        return None
+    return _any_outcome(repo, timeout).release
+
+
+def check_for_update_outcome(repo: str, include_prereleases: bool,
+                             timeout: float = 5.0) -> CheckOutcome:
+    """Der Einstieg für Aufrufer, die einem Nutzer sagen müssen, WARUM ein
+    Abruf scheiterte (Updates-Tab, Tray-Check). Wirft nie. Ohne Opt-in bleibt
+    es bei /releases/latest."""
+    if include_prereleases:
+        return _any_outcome(repo, timeout)
+    return _latest_outcome(repo, timeout)
 
 
 def check_for_update(repo: str, include_prereleases: bool,
                      timeout: float = 5.0) -> Release | None:
-    """Der eine Einstieg für beide Aufrufer (Updates-Tab + Hintergrund-Check).
-    Ohne Opt-in bleibt es exakt beim bisherigen /releases/latest."""
-    if include_prereleases:
-        return check_latest_release_any(repo, timeout)
-    return check_latest_release(repo, timeout)
+    """Wie `check_for_update_outcome`, aber nur das Release (`None` bei jedem
+    Fehler) — für den stillen Hintergrund-Check, der keinem Nutzer etwas
+    erklären muss."""
+    return check_for_update_outcome(repo, include_prereleases, timeout).release

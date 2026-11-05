@@ -261,6 +261,41 @@ def secondary_button(parent, text, command, font=FONT, padx=16, pady=4):
     )
 
 
+def button_colors(*, primary: bool, enabled: bool) -> _ToggleColors:
+    """Farben eines Label-Buttons nach Rolle und Zustand — die eine Quelle für
+    `set_primary_button_enabled`, `set_secondary_button_enabled` und
+    `set_button_style`. Deaktiviert heißt: kein Hover-Wechsel, Schrift
+    gedämpft (beim Primärknopf zusätzlich ein gedämpfter Rotton)."""
+    if primary:
+        if enabled:
+            return {"bg": ACCENT, "fg": "#ffffff",
+                    "hover_bg": ACCENT_HOVER, "hover_fg": "#ffffff"}
+        return {"bg": ACCENT_DISABLED, "fg": TEXT_MUTED,
+                "hover_bg": ACCENT_DISABLED, "hover_fg": TEXT_MUTED}
+    if enabled:
+        return {"bg": CELL_BG, "fg": TEXT,
+                "hover_bg": ENTRY_BG, "hover_fg": TEXT}
+    return {"bg": CELL_BG, "fg": TEXT_MUTED,
+            "hover_bg": CELL_BG, "hover_fg": TEXT_MUTED}
+
+
+def _apply_button_colors(btn, c, cursor):
+    btn._colors = c
+    btn.config(bg=c["bg"], cursor=cursor)
+    btn._label.config(bg=c["bg"], fg=c["fg"], cursor=cursor)
+
+
+def set_button_style(btn, *, primary, enabled=True):
+    """Stellt einen label_button auf Haupt- oder Nebenaktion um (Farben und
+    Schriftstärke) — für Knöpfe, deren Rolle vom Zustand abhängt (Updates-Tab:
+    „Jetzt prüfen" bzw. „Update installieren"). Nur die Optik: der Callback
+    braucht seinen eigenen Guard (s. `set_primary_button_enabled`)."""
+    _apply_button_colors(
+        btn, button_colors(primary=primary, enabled=enabled),
+        "hand2" if enabled else "arrow")
+    btn._label.config(font=FONT_BOLD if primary else FONT)
+
+
 def set_primary_button_enabled(btn, enabled):
     """Schaltet einen `primary_button` optisch aktiv/inaktiv: deaktiviert =
     gedämpfter Rotton (ACCENT_DISABLED) + Pfeil-Cursor, kein Hover-Wechsel.
@@ -269,17 +304,8 @@ def set_primary_button_enabled(btn, enabled):
     set_toggle_active. Wichtig: nur die OPTIK — die `command`/on_click-Bindung
     bleibt aktiv, daher muss der Callback selbst bei disabled ein No-op machen
     (Klick auf einen optisch deaktivierten Button soll nichts tun)."""
-    cursor = "hand2" if enabled else "arrow"
-    c = (
-        {"bg": ACCENT, "fg": "#ffffff",
-         "hover_bg": ACCENT_HOVER, "hover_fg": "#ffffff"}
-        if enabled else
-        {"bg": ACCENT_DISABLED, "fg": TEXT_MUTED,
-         "hover_bg": ACCENT_DISABLED, "hover_fg": TEXT_MUTED}
-    )
-    btn._colors = c
-    btn.config(bg=c["bg"], cursor=cursor)
-    btn._label.config(bg=c["bg"], fg=c["fg"], cursor=cursor)
+    _apply_button_colors(btn, button_colors(primary=True, enabled=enabled),
+                         "hand2" if enabled else "arrow")
 
 
 def set_button_text(btn, text):
@@ -294,17 +320,8 @@ def set_secondary_button_enabled(btn, enabled):
     deaktiviert = gedämpfte Schrift (TEXT_MUTED) + Pfeil-Cursor, kein
     Hover-Wechsel. Nur die Optik: der Callback muss bei disabled selbst ein
     No-op machen (s. set_primary_button_enabled)."""
-    cursor = "hand2" if enabled else "arrow"
-    c = (
-        {"bg": CELL_BG, "fg": TEXT,
-         "hover_bg": ENTRY_BG, "hover_fg": TEXT}
-        if enabled else
-        {"bg": CELL_BG, "fg": TEXT_MUTED,
-         "hover_bg": CELL_BG, "hover_fg": TEXT_MUTED}
-    )
-    btn._colors = c
-    btn.config(bg=c["bg"], cursor=cursor)
-    btn._label.config(bg=c["bg"], fg=c["fg"], cursor=cursor)
+    _apply_button_colors(btn, button_colors(primary=False, enabled=enabled),
+                         "hand2" if enabled else "arrow")
 
 
 def _toggle_colors(active) -> _ToggleColors:

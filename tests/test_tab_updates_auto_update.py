@@ -68,10 +68,6 @@ def _manual_tab(monkeypatch, tmp_path, *, runner, dialog_alive=True):
     import src.dialogs.settings_dialog.tab_updates as tab_updates_module
 
     monkeypatch.setattr(platform, "system", lambda: "Windows")
-    monkeypatch.setattr(tab_updates_module, "set_primary_button_enabled",
-                        lambda *a, **k: None)
-    monkeypatch.setattr(tab_updates_module, "set_secondary_button_enabled",
-                        lambda *a, **k: None)
     monkeypatch.setattr(tab_updates_module, "plan_update", lambda *a, **k: _PLAN)
 
     local = tmp_path / "Zeiterfassung_Setup-4711-ab12cd34.exe"

@@ -46,10 +46,6 @@ def _fake_tab():
 
 
 def _patch_widget_calls(monkeypatch, apply_windows_calls=None, apply_linux_calls=None):
-    monkeypatch.setattr(tab_updates_module, "set_primary_button_enabled",
-                        lambda *a, **k: None)
-    monkeypatch.setattr(tab_updates_module, "set_secondary_button_enabled",
-                        lambda *a, **k: None)
     if apply_windows_calls is not None:
         monkeypatch.setattr(
             tab_updates_module, "apply_windows",
@@ -208,3 +204,34 @@ def test_apply_removes_the_download_when_the_helper_cannot_be_started(
     assert not local.exists(), (
         "die Datei bleibt sonst dauerhaft liegen — niemand kennt ihren "
         "Pfad noch")
+
+
+def test_fail_update_releases_the_guard_and_reports_a_failed_status(monkeypatch):
+    """Der eine Ausstiegspunkt nach einem Fehler: Guard frei, Knöpfe aus dem
+    Zustand neu gestylt, Status als Fehler (Farbe und Symbol)."""
+    errors = []
+    monkeypatch.setattr(tab_updates_module, "themed_showerror",
+                        lambda parent, title, message: errors.append(message))
+    fake = _fake_tab()
+    fake._updating = True
+
+    fake._fail_update("kaputt")
+
+    assert fake._updating is False
+    fake._restyle_buttons.assert_called_once_with()
+    fake._set_status.assert_called_once_with("Update fehlgeschlagen", "failed")
+    assert errors == ["kaputt"]
+
+
+def test_failed_background_download_is_reported_as_a_failure():
+    fake = _fake_tab()
+    fake._on_auto_update_finished = MethodType(
+        UpdatesTab._on_auto_update_finished, fake)
+    fake._download_busy = True
+
+    fake._on_auto_update_finished(False)
+
+    assert fake._download_busy is False
+    fake._restyle_buttons.assert_called_once_with()
+    text, kind = fake._set_status.call_args.args
+    assert kind == "failed" and "fehlgeschlagen" in text

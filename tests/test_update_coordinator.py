@@ -9,6 +9,7 @@ wortgleich geblieben — nur Aufbau und Aufruf haben sich geändert.
 from unittest.mock import MagicMock
 
 from src.update_coordinator import UpdateCoordinator, route_update_notification
+from src.updater import FAILURE_TEXTS, CheckOutcome
 
 
 class _Rel:
@@ -171,7 +172,8 @@ def test_on_update_check_result_persists_release_id_not_base_version(monkeypatch
 
 # --- Tray-Menüpunkt „Nach Updates suchen" ---------------------------------
 
-def _tray_app(monkeypatch, release, installed="1.19.1", settings_data=None):
+def _tray_app(monkeypatch, release, installed="1.19.1", settings_data=None,
+              failure="other"):
     """Coordinator-Harness mit gestubbtem Update-Check. `release` ist das
     Ergebnis von check_for_update — eine Release, None (kein Fund/kein Netz)
     oder eine Exception-Instanz, die der Stub wirft."""
@@ -183,9 +185,11 @@ def _tray_app(monkeypatch, release, installed="1.19.1", settings_data=None):
     def fake_check(repo, include_prereleases, **kwargs):
         if isinstance(release, Exception):
             raise release
-        return release
+        if release is None:
+            return CheckOutcome(None, failure)
+        return CheckOutcome(release)
 
-    monkeypatch.setattr(coordinator_module, "check_for_update", fake_check)
+    monkeypatch.setattr(coordinator_module, "check_for_update_outcome", fake_check)
     fake = _Harness(tray=_FakeTray(), settings_data=settings_data or {})
     return fake
 
@@ -225,7 +229,17 @@ def test_tray_check_reports_failure_without_burning_the_check_date(monkeypatch):
     fake.coordinator.tray_check()
     fake._bg.flush()
 
-    assert fake._tray.messages == ["Prüfung fehlgeschlagen — keine Verbindung?"]
+    assert fake._tray.messages == [FAILURE_TEXTS["other"]]
+    assert fake.settings.get("last_update_check_at") == ""
+
+
+def test_tray_check_toast_names_the_reason_of_the_failure(monkeypatch):
+    fake = _tray_app(monkeypatch, None, settings_data={}, failure="rate_limited")
+
+    fake.coordinator.tray_check()
+    fake._bg.flush()
+
+    assert fake._tray.messages == [FAILURE_TEXTS["rate_limited"]]
     assert fake.settings.get("last_update_check_at") == ""
 
 

@@ -24,8 +24,8 @@ from typing import Any, Callable, Protocol
 from src.auto_update import AutoUpdater
 from src.self_update import apply_linux, apply_windows, discard_download, verify_file
 from src.updater import (
-    REPO, check_for_update, is_newer, manual_check_toast_text, today_iso,
-    update_toast_text,
+    FAILURE_OTHER, REPO, CheckOutcome, check_for_update_outcome, is_newer,
+    manual_check_toast_text, today_iso, update_toast_text,
 )
 from src.version import (
     UPDATES_UNSUPPORTED_HINT, installed_release_id, updates_supported,
@@ -135,17 +135,17 @@ class UpdateCoordinator:
         self._update_check_running = True
         include_prereleases = bool(self._settings.get("prerelease_updates_enabled"))
 
-        def fn() -> Any:
+        def fn() -> CheckOutcome:
             try:
-                return check_for_update(REPO, include_prereleases)
+                return check_for_update_outcome(REPO, include_prereleases)
             except Exception:
                 logging.getLogger(__name__).exception(
                     "Manueller Update-Check fehlgeschlagen")
-                return None
+                return CheckOutcome(None, FAILURE_OTHER)
 
         self._runner.run(fn, self._on_tray_check_result)
 
-    def _on_tray_check_result(self, release: Any) -> None:
+    def _on_tray_check_result(self, outcome: CheckOutcome) -> None:
         """Ergebnis des manuellen Checks im UI-Thread: immer ein Toast.
 
         Das Lauf-Flag wird als Erstes freigegeben — auch im Fehlerfall, sonst
@@ -153,6 +153,7 @@ class UpdateCoordinator:
         """
         self._update_check_running = False
         installed = installed_release_id()
+        release = outcome.release
         if release is not None:
             # Nur eine erfolgreiche Abfrage zählt als „heute geprüft"; sonst
             # schwiege nach einem Fehlversuch auch der Hintergrund-Check.
@@ -163,7 +164,7 @@ class UpdateCoordinator:
                 self._settings.set("update_toast_shown_version", release.release_id)
         tray = self._get_tray()
         if tray is not None:
-            tray.notify(manual_check_toast_text(installed, release))
+            tray.notify(manual_check_toast_text(installed, release, outcome.failure))
 
     def apply_pending_on_quit(self) -> None:
         """Wendet ein vorbereitetes Update beim Beenden an, falls eines liegt.
