@@ -251,7 +251,7 @@ def test_reconcile_preserves_concurrent_local_save(tmp_path, monkeypatch):
 
     reservations_sync.reconcile_reservations(object(), "cal-1", store, settings)
 
-    assert store.get("2026-07-01") == {"slots": [{"start": "10:00", "end": "18:00", "kategorie": "", "send_reminder_minutes": None}]}
+    assert store.get("2026-07-01") == {"slots": [{"start": "10:00", "end": "18:00", "kategorie": "", "send_reminder_minutes": None, "pause": 0}]}
 
 
 def test_reconcile_returns_imported_dates(tmp_path, monkeypatch):

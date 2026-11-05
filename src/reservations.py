@@ -6,11 +6,14 @@ Google Kalender abgeglichen — NICHT über die Drive-Multi-Device-Sync. Daher
 fehlt hier (anders als bei `Storage`) das `device_id`-Feld.
 
 Schema pro Tag (ISO-Datum als Schlüssel):
-    {slots: [{start, end, kategorie, gcal_event_id, send_reminder_minutes}], modified_at, deleted}
+    {slots: [{start, end, kategorie, gcal_event_id, send_reminder_minutes, pause}],
+     modified_at, deleted}
 `gcal_event_id` ist None, bis der Slot erstmals in den Kalender gepusht wurde.
 `send_reminder_minutes` ist None oder die Minuten vor Slot-Ende, zu denen an
 das Verschicken der Arbeitszeiten erinnert wird — höchstens ein Slot pro Tag
 trägt einen Wert.
+`pause` ist die Pause in Minuten (ganze Zahl 0–1440, Default 0); ein fehlender
+Schlüssel an einem eingehenden Slot heißt „nicht angegeben“, nicht 0 (s. `inherit_pause`).
 Eine gelöschte Reservierung bleibt als Tombstone (deleted=True, slots=[])
 erhalten, bis der Reconcile die zugehörigen Events entfernt hat.
 """
@@ -27,7 +30,7 @@ from src.json_store import atomic_write_json, load_json_or_quarantine
 from src.time_utils import utc_now_iso
 
 # JSON-getragene Records (Audit N8): ein Slot {start, end, kategorie,
-# gcal_event_id}; ein Reservierungs-Record {slots, modified_at, deleted};
+# gcal_event_id, send_reminder_minutes, pause}; ein Reservierungs-Record {slots, modified_at, deleted};
 # der Store hält {ISO-Datum: Reservation}. Werte sind heterogen → Any.
 Slot = dict[str, Any]
 Reservation = dict[str, Any]
@@ -47,11 +50,37 @@ def _normalize_reminder_minutes(value: Any) -> int | None:
     return value if 0 <= value <= 120 else None
 
 
+def normalize_pause(value: Any) -> int:
+    """Pause in Minuten: int in [0, 1440]. Alles andere (bool, float, String,
+    negativ, zu groß) wird zu 0."""
+    if isinstance(value, bool) or not isinstance(value, int):
+        return 0
+    return value if 0 <= value <= 1440 else 0
+
+
+def inherit_pause(old_slots: list[Slot], new_slots: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Füllt `pause` an neuen Slots OHNE `pause`-Schlüssel: vom alten Slot
+    gleichen Index, wenn `start` und `end` übereinstimmen, sonst 0. Slots mit
+    `pause`-Schlüssel (auch 0) bleiben unverändert. Gibt neue Dicts zurück."""
+    result: list[dict[str, Any]] = []
+    for i, slot in enumerate(new_slots):
+        if "pause" in slot:
+            result.append(slot)
+            continue
+        pause = 0
+        if i < len(old_slots):
+            old = old_slots[i]
+            if old.get("start") == slot.get("start") and old.get("end") == slot.get("end"):
+                pause = normalize_pause(old.get("pause"))
+        result.append({**slot, "pause": pause})
+    return result
+
+
 def _normalize_slot(slot: Slot) -> Slot:
     """Vervollständigt einen Reservierungs-Slot auf
-    {start, end, kategorie, gcal_event_id, send_reminder_minutes}. Fehlende
-    `kategorie` → "", fehlende `gcal_event_id` → None, fehlende/ungültige
-    `send_reminder_minutes` → None."""
+    {start, end, kategorie, gcal_event_id, send_reminder_minutes, pause}.
+    Fehlende `kategorie` → "", fehlende `gcal_event_id` → None, fehlende/
+    ungültige `send_reminder_minutes` → None, fehlende/ungültige `pause` → 0."""
     return {
         "start": slot.get("start"),
         "end": slot.get("end"),
@@ -59,6 +88,7 @@ def _normalize_slot(slot: Slot) -> Slot:
         "gcal_event_id": slot.get("gcal_event_id"),
         "send_reminder_minutes": _normalize_reminder_minutes(
             slot.get("send_reminder_minutes")),
+        "pause": normalize_pause(slot.get("pause")),
     }
 
 
@@ -108,6 +138,7 @@ class ReservationStore:
                     "kategorie": "",
                     "gcal_event_id": entry.get("gcal_event_id"),
                     "send_reminder_minutes": None,
+                    "pause": 0,
                 }]
             entry.pop("start", None)
             entry.pop("end", None)
@@ -126,12 +157,13 @@ class ReservationStore:
         Tages-Dialog zeigt es an, und der Teil-Lösch-Pfad in ui.py speichert
         die verbleibenden Slots aus genau dieser Shape zurück — fehlte das
         Feld hier, ginge die Markierung beim Löschen eines anderen Slots
-        verloren.
+        verloren. Gleiches gilt für `pause`.
         """
         return {"slots": [
             {"start": s.get("start"), "end": s.get("end"),
              "kategorie": s.get("kategorie", ""),
-             "send_reminder_minutes": s.get("send_reminder_minutes")}
+             "send_reminder_minutes": s.get("send_reminder_minutes"),
+             "pause": normalize_pause(s.get("pause"))}
             for s in entry.get("slots", [])
         ]}
 
@@ -197,10 +229,12 @@ class ReservationStore:
     def _phone_key(entry: Reservation) -> tuple[str, str]:
         """Ordnung für den LWW-Vergleich mit dem Handy: Zeitstempel, dann der Inhalt.
         Ohne den zweiten Teil entschiede bei gleicher Sekunde die Reihenfolge der
-        Aufrufe (vgl. `sync._lww_key`). Nur Felder, die das Handy kennt: `gcal_event_id`
+        Aufrufe (vgl. `sync._lww_key`). Nur Felder, die das Handy kennt (inkl. `pause`; ein fehlender
+        Schlüssel zählt als 0): `gcal_event_id`
         und `send_reminder_minutes` gehören dem Desktop und zählen nicht."""
         slots = [{"start": s.get("start"), "end": s.get("end"),
-                  "kategorie": s.get("kategorie", "")} for s in entry.get("slots", [])]
+                  "kategorie": s.get("kategorie", ""),
+                  "pause": normalize_pause(s.get("pause"))} for s in entry.get("slots", [])]
         content = json.dumps({"slots": slots, "deleted": entry.get("deleted") is True},
                              sort_keys=True, ensure_ascii=False)
         return (str(entry.get("modified_at") or ""), content)
@@ -234,6 +268,9 @@ class ReservationStore:
             for date, incoming in days.items():
                 incoming = {**incoming, "modified_at": max(incoming["modified_at"], floor)}
                 current = merged.get(date)
+                if incoming.get("deleted") is not True:
+                    incoming["slots"] = inherit_pause(
+                        (current or {}).get("slots", []), incoming["slots"])
                 if incoming.get("deleted") is True and current is None:
                     continue
                 if current is not None and self._phone_key(incoming) <= self._phone_key(current):

@@ -165,7 +165,7 @@ def test_put_creates_the_day_and_triggers_refresh_then_calendar_reconcile(env):
 
     assert response.status == 200
     assert response.body == {"date": DAY, "slots": [slot()], "changed": True}
-    assert env.reservations.get(DAY)["slots"] == [slot()]
+    assert env.reservations.get(DAY)["slots"] == [{**slot(), "pause": 0}]
     assert env.events == ["change", "reconcile"]
 
 
