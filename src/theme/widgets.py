@@ -56,6 +56,10 @@ def apply_combobox_style(dialog):
         foreground=TEXT, arrowcolor=ACCENT,
         bordercolor=TEXT_MUTED, lightcolor=CELL_BG, darkcolor=CELL_BG,
         selectbackground=ENTRY_BG, selectforeground=TEXT,
+        # Luft um den Text und ein größerer Pfeil-Button: ohne beides klebt der
+        # Wert am Rand und das Feld wirkt gequetscht. Über px(), damit es mit
+        # der UI-Skalierung mitwächst.
+        padding=(px(6), px(4)), arrowsize=px(16),
     )
     # background MUSS für readonly explizit gemappt werden — sonst rendert
     # clam den Pfeil-Button (Combobox.downarrow) im System-Default-Hell statt

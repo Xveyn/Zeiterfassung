@@ -14,7 +14,7 @@ from src.settings import WEEKDAY_KEYS
 from src.theme import (
     BG, FONT, FONT_BOLD, PAUSE_VALUES, TEXT, TEXT_MUTED, TIME_VALUES,
     attach_unfocus_on_click, center_dialog_on_parent, create_dialog,
-    dark_combo, dark_entry, primary_button, secondary_button, themed_askyesno,
+    dark_combo, dark_entry, px, primary_button, secondary_button, themed_askyesno,
 )
 from src.time_utils import DAYS_DE
 
@@ -160,13 +160,13 @@ def open_category_dialog(parent, settings, on_change=None):
     tk.Label(head, text="Name", font=FONT, bg=BG, fg=TEXT_MUTED,
              width=15, anchor="w").pack(side=tk.LEFT, padx=2)
     tk.Label(head, text="Modus", font=FONT, bg=BG, fg=TEXT_MUTED,
-             width=10, anchor="w").pack(side=tk.LEFT, padx=2)
+             width=12, anchor="w").pack(side=tk.LEFT, padx=4)
     tk.Label(head, text="Start", font=FONT, bg=BG, fg=TEXT_MUTED,
-             width=11, anchor="w").pack(side=tk.LEFT, padx=2)
+             width=13, anchor="w").pack(side=tk.LEFT, padx=4)
     tk.Label(head, text="Ende", font=FONT, bg=BG, fg=TEXT_MUTED,
-             width=13, anchor="w").pack(side=tk.LEFT, padx=2)
+             width=15, anchor="w").pack(side=tk.LEFT, padx=4)
     tk.Label(head, text="Pause", font=FONT, bg=BG, fg=TEXT_MUTED,
-             width=11, anchor="w").pack(side=tk.LEFT, padx=2)
+             width=13, anchor="w").pack(side=tk.LEFT, padx=4)
 
     rows_frame = tk.Frame(outer, bg=BG)
     rows_frame.pack(fill="x")
@@ -185,16 +185,16 @@ def open_category_dialog(parent, settings, on_change=None):
     std_pause = str(settings.get("default_pause"))
 
     std_row = tk.Frame(rows_frame, bg=BG)
-    std_row.pack(fill="x", pady=2)
+    std_row.pack(fill="x", pady=3)
     for text, w, fg in (
         ("Standard", 15, TEXT_MUTED),
-        ("", 10, TEXT_MUTED),  # Spacer für Modus-Spalte
-        (std_start, 11, TEXT),
-        (std_end, 13, TEXT),
-        (std_pause, 11, TEXT),
+        ("", 12, TEXT_MUTED),  # Spacer für Modus-Spalte
+        (std_start, 13, TEXT),
+        (std_end, 15, TEXT),
+        (std_pause, 13, TEXT),
     ):
         tk.Label(std_row, text=text, font=FONT, bg=BG, fg=fg,
-                 width=w, anchor="w").pack(side=tk.LEFT, padx=2)
+                 width=w, anchor="w").pack(side=tk.LEFT, padx=4)
 
     # Bei abweichenden Wochentagen zeigen Start/Ende „variabel". Ein Toggle
     # klappt — wie in den Einstellungen — die echten Zeiten je Tag inline aus
@@ -234,7 +234,7 @@ def open_category_dialog(parent, settings, on_change=None):
 
         # Container hält row + day_frame als Geschwister (pack-Reihenfolge).
         container = tk.Frame(rows_frame, bg=BG)
-        container.pack(fill="x", pady=2)
+        container.pack(fill="x", pady=4)
         row = tk.Frame(container, bg=BG)
         row.pack(fill="x")
 
@@ -246,23 +246,23 @@ def open_category_dialog(parent, settings, on_change=None):
         pause_var = tk.StringVar(value=defaults["pause"])
 
         # Name-Entry
-        dark_entry(row, nv, width=15).pack(side=tk.LEFT, padx=2)
+        dark_entry(row, nv, width=15).pack(side=tk.LEFT, padx=4, ipady=px(3))
         # Modus-Combo
         mode_combo = dark_combo(row, mode_var, ["Allgemein", "Tageweise"], width=10)
-        mode_combo.pack(side=tk.LEFT, padx=2)
+        mode_combo.pack(side=tk.LEFT, padx=4)
 
         # general_frame mit Start–Ende — Sichtbarkeit via _apply_mode
         general_frame = tk.Frame(row, bg=BG)
         dark_combo(general_frame, start_var,
-                   [STANDARD, *TIME_VALUES], width=11).pack(side=tk.LEFT, padx=2)
+                   [STANDARD, *TIME_VALUES], width=11).pack(side=tk.LEFT, padx=4)
         tk.Label(general_frame, text="–",
                  font=FONT, bg=BG, fg=TEXT_MUTED).pack(side=tk.LEFT)
         dark_combo(general_frame, end_var,
-                   [STANDARD, *TIME_VALUES], width=11).pack(side=tk.LEFT, padx=2)
+                   [STANDARD, *TIME_VALUES], width=11).pack(side=tk.LEFT, padx=4)
 
         # Pause-Combo (immer sichtbar, bleibt in row)
         pause_combo = dark_combo(row, pause_var, [STANDARD, *PAUSE_VALUES], width=11)
-        pause_combo.pack(side=tk.LEFT, padx=2)
+        pause_combo.pack(side=tk.LEFT, padx=4)
 
         # 7-Tage-Grid — Sichtbarkeit via _apply_mode
         day_vars = {}
@@ -274,13 +274,13 @@ def open_category_dialog(parent, settings, on_change=None):
             day_vars[key] = {"start": sv, "end": ev}
             tk.Label(day_frame, text=lbl, font=FONT, bg=BG, fg=TEXT,
                      width=4, anchor="w").grid(row=i, column=0,
-                                               padx=(16, 4), pady=1, sticky="w")
+                                               padx=(16, 4), pady=3, sticky="w")
             dark_combo(day_frame, sv, [STANDARD, *TIME_VALUES], width=11).grid(
-                row=i, column=1, padx=2, pady=1)
+                row=i, column=1, padx=4, pady=3)
             tk.Label(day_frame, text="–", font=FONT, bg=BG, fg=TEXT_MUTED).grid(
-                row=i, column=2, pady=1)
+                row=i, column=2, pady=3)
             dark_combo(day_frame, ev, [STANDARD, *TIME_VALUES], width=11).grid(
-                row=i, column=3, padx=2, pady=1)
+                row=i, column=3, padx=4, pady=3)
 
         # Toggle-Button für das Tages-Grid (analog zur Referenzzeile _toggle_daygrid).
         # Anfangs nicht gepackt; _apply_mode steuert Sichtbarkeit.
@@ -305,7 +305,7 @@ def open_category_dialog(parent, settings, on_change=None):
                         day_vars[tag]["start"].set(start_var.get())
                         day_vars[tag]["end"].set(end_var.get())
                 general_frame.pack_forget()
-                row_toggle_holder["btn"].pack(side=tk.LEFT, padx=2, before=pause_combo)
+                row_toggle_holder["btn"].pack(side=tk.LEFT, padx=4, before=pause_combo)
                 if expand:
                     day_frame.pack(after=row, anchor="w", pady=(0, 4))
                     row_toggle_holder["btn"]._label.config(text="Pro Tag ▼")
@@ -323,7 +323,7 @@ def open_category_dialog(parent, settings, on_change=None):
                 day_frame.pack_forget()
                 row_toggle_holder["btn"].pack_forget()
                 general_frame.pack(in_=row, side=tk.LEFT,
-                                   padx=2, before=pause_combo)
+                                   padx=4, before=pause_combo)
 
         record = {
             "frame": row, "name": nv, "mode": mode_var,
@@ -335,7 +335,7 @@ def open_category_dialog(parent, settings, on_change=None):
             container.destroy()
             rows.remove(record)
 
-        secondary_button(row, "×", remove, padx=8, pady=0).pack(side=tk.LEFT, padx=2)
+        secondary_button(row, "×", remove, padx=8, pady=0).pack(side=tk.LEFT, padx=4)
         rows.append(record)
 
         # Initialen Modus setzen + Sichtbarkeit herstellen.

@@ -145,7 +145,7 @@ class SlotRowList:
         führen dort `send_reminder_minutes` mit).
         """
         row = tk.Frame(parent if parent is not None else self._frame, bg=BG)
-        row.pack(fill="x", pady=2)
+        row.pack(fill="x", pady=3)
 
         sv = tk.StringVar(value=start)
         ev = tk.StringVar(value=end)
@@ -160,13 +160,13 @@ class SlotRowList:
         if pv is not None:
             base["pause"] = str(pause)
 
-        dark_combo(row, sv, TIME_VALUES, width=6).pack(side=tk.LEFT, padx=2)
+        dark_combo(row, sv, TIME_VALUES, width=6).pack(side=tk.LEFT, padx=4)
         tk.Label(row, text="–", font=FONT, bg=BG, fg=TEXT_MUTED).pack(side=tk.LEFT)
-        dark_combo(row, ev, TIME_VALUES, width=6).pack(side=tk.LEFT, padx=2)
+        dark_combo(row, ev, TIME_VALUES, width=6).pack(side=tk.LEFT, padx=4)
         if pv is not None:
-            dark_combo(row, pv, PAUSE_VALUES, width=4).pack(side=tk.LEFT, padx=2)
+            dark_combo(row, pv, PAUSE_VALUES, width=4).pack(side=tk.LEFT, padx=4)
         cat_combo = dark_combo(row, kv, self._choices(), width=18)
-        cat_combo.pack(side=tk.LEFT, padx=2)
+        cat_combo.pack(side=tk.LEFT, padx=4)
 
         # Als ERSTER Handler gebunden: bei „Neue Kategorie" den alten Wert
         # zurückholen, bevor die übrigen Handler die Auswahl auswerten.
@@ -289,7 +289,7 @@ class SlotRowList:
         # persistierten Zeilen.
         if removable:
             secondary_button(row, "×", remove, padx=8, pady=0).pack(
-                side=tk.LEFT, padx=2)
+                side=tk.LEFT, padx=6)
 
         self.rows.append(record)
         self._on_rows_changed()

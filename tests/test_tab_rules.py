@@ -951,3 +951,15 @@ def test_the_first_enable_notice_says_the_relay_is_the_only_way_on_ios_and_names
     assert "einzige Weg" in notice
     assert "IP-Adressen" in notice
     assert "optional" not in notice
+
+
+def test_api_route_summary_matches_the_readme():
+    # Die Kurzfassung im API-Tab darf keine Route nennen, die die README nicht kennt.
+    import re
+    from pathlib import Path
+
+    readme = (Path(__file__).resolve().parent.parent / "README.md").read_text(
+        encoding="utf-8")
+    for path, _what in tr.API_ROUTES:
+        base = re.search(r"/v1/[a-z]+(?:/[a-z]+)?", path).group(0)
+        assert base in readme, path
