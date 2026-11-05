@@ -41,7 +41,48 @@ def test_parse_event_roundtrips_payload_with_kategorie():
     assert parsed == {
         "date": "2026-06-01", "start": "09:00", "end": "17:00",
         "kategorie": "Büro", "modified_at": "2026-05-20T10:00:00Z", "event_id": "ev-42",
+        "pause": 0,
     }
+
+
+def test_event_payload_with_pause_stays_gross_and_notes_pause():
+    body = gcal.event_payload("2026-06-01", "09:00", "17:00", "Büro",
+                              "2026-05-20T10:00:00Z", pause=30)
+    assert "Zeitspanne brutto, Pause 30 min nicht abgezogen" in body["description"]
+    assert body["extendedProperties"]["private"]["pause"] == "30"
+    assert body["summary"] == f"{gcal.EVENT_SUMMARY} — Büro"
+    assert body["start"]["dateTime"].startswith("2026-06-01T09:00:00")
+    assert body["end"]["dateTime"].startswith("2026-06-01T17:00:00")
+
+
+def test_event_payload_without_pause_has_no_pause_property():
+    body = gcal.event_payload("2026-06-01", "09:00", "17:00", "", "2026-05-20T10:00:00Z")
+    assert body["description"] == gcal.EVENT_DESCRIPTION
+    assert "pause" not in body["extendedProperties"]["private"]
+
+
+def test_parse_event_reads_pause_roundtrip():
+    body = gcal.event_payload("2026-06-01", "09:00", "17:00", "", "x", pause=45)
+    body["id"] = "e"
+    assert gcal.parse_event(body)["pause"] == 45
+
+
+@pytest.mark.parametrize("raw", [None, "", "abc", "-5", "1.5"])
+def test_parse_event_missing_or_invalid_pause_is_zero(raw):
+    body = gcal.event_payload("2026-06-01", "09:00", "17:00", "", "x")
+    body["id"] = "e"
+    if raw is not None:
+        body["extendedProperties"]["private"]["pause"] = raw
+    assert gcal.parse_event(body)["pause"] == 0
+
+
+def test_create_and_update_event_send_pause():
+    recorder = []
+    service = _FakeService(recorder)
+    gcal.create_event(service, "c", "2026-06-01", "09:00", "17:00", "", "m", 30)
+    gcal.update_event(service, "c", "e", "2026-06-01", "09:00", "17:00", "", "m", 20)
+    assert recorder[0][1]["body"]["extendedProperties"]["private"]["pause"] == "30"
+    assert recorder[1][1]["body"]["extendedProperties"]["private"]["pause"] == "20"
 
 
 def test_parse_event_missing_kategorie_defaults_empty():

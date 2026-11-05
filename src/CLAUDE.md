@@ -634,6 +634,8 @@ Zeitraum und welche Kategorien der Bericht gefiltert ist.
 `vacations_sync.py` (Einwegs-Push der Urlaubsperioden). Alle teilen
 denselben OAuth-Token; Scope-Upgrade erzwingt frischen Consent.
 
+**Pause im Kalender (#455):** Der Termin bleibt brutto (start–end). Eine Pause > 0 reist als private Property `pause` (String) plus Hinweis in der Beschreibung; ohne Pause fehlt beides, ein Termin ohne Property gilt als Pause 0 (kein Massen-Update nach dem Release). Die Plan-Einträge von `reservations_sync` tragen `pause` nur bei > 0; gewinnt der Kalender und fehlt dort die Property, bleibt die lokale Pause über die `event_id` erhalten (`_pauses_by_event_id`).
+
 Gemeinsamer Schreibpfad des Tokens ist `oauth_utils.write_token_json` (genutzt von
 `write_token`, `token_store` und `secret_migration`), immer unter `TOKEN_LOCK`: Temp-Datei →
 Härtung → `os.replace` (mit `PermissionError`-Retry, margenheld/Zeiterfassung#135). Zur Härtung siehe
