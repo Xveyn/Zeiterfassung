@@ -30,7 +30,8 @@
         {
           "start": "09:00",
           "end": "12:00",
-          "kategorie": "Projekt"
+          "kategorie": "Projekt",
+          "pause": 15
         }
       ],
       "modified_at": "2026-10-07T18:40:00Z",

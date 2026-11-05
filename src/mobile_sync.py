@@ -384,6 +384,7 @@ def build_response(merged: Mapping[str, Any], *, sent_dates: Iterable[str],
     }
     if reservations is not None:       # nur bei eingeschalteten Reservierungen (Feature-Erkennung)
         response["reservations"] = dict(reservations)
+        response["reservation_pause"] = True   # Fähigkeit: Slots tragen `pause` (PWA-Erkennung)
     if reminders is not None:          # Feature-Erkennung der PWA; ausgeschaltet ein leerer Block (#331)
         response["reminders"] = dict(reminders)
     return response

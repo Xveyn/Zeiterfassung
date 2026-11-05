@@ -676,7 +676,10 @@ def test_perform_sync_merges_reservations_and_returns_the_active_days(env, res_s
 
     assert report.reservations_changed is True
     # Der Tag trägt den Empfangszeitpunkt als Stempel (NOW), nicht den älteren des Handys.
-    assert response["reservations"] == {"2026-10-20": res_day(modified_at=NOW)}
+    expected = res_day(modified_at=NOW)
+    expected["slots"] = [{**slot, "pause": 0} for slot in expected["slots"]]   # Antwort trägt immer `pause`
+    assert response["reservations"] == {"2026-10-20": expected}
+    assert response["reservation_pause"] is True
     assert res_store.get("2026-10-20") is not None
 
 

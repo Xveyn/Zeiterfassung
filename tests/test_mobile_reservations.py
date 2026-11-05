@@ -27,10 +27,40 @@ def day(*slots, modified_at=STAMP, deleted=False, **extra):
     return {"slots": list(slots), "modified_at": modified_at, "deleted": deleted, **extra}
 
 
-def test_a_valid_day_is_parsed_to_the_three_phone_fields():
-    out = parse({"2026-10-20": day({**SLOT, "pause": 30})})
+def test_a_valid_day_is_parsed_to_the_phone_fields():
+    out = parse({"2026-10-20": day(SLOT)})
 
     assert out == {"2026-10-20": {"slots": [SLOT], "modified_at": STAMP, "deleted": False}}
+
+
+def test_parse_keeps_pause_when_given():
+    out = parse({"2026-10-20": day({**SLOT, "pause": 30})})
+
+    assert out == {"2026-10-20": {"slots": [{**SLOT, "pause": 30}],
+                                  "modified_at": STAMP, "deleted": False}}
+
+
+def test_parse_leaves_pause_absent_when_not_given():
+    out = parse({"2026-10-20": day(SLOT, {**SLOT, "start": "13:00", "end": "14:00", "pause": 0})})
+
+    first, second = out["2026-10-20"]["slots"]
+    assert "pause" not in first
+    assert second["pause"] == 0
+
+
+@pytest.mark.parametrize("bad", [-1, True, 30.0, "30", 180])
+def test_parse_rejects_bad_pause(bad):
+    with pytest.raises(mr.ReservationError, match=r"^Reservierung 2026-10-20: "):
+        parse({"2026-10-20": day({**SLOT, "pause": bad})})
+
+
+def test_build_always_returns_pause():
+    store = {"2026-10-13": {"slots": [dict(SLOT), dict(SLOT, start="13:00", end="14:00", pause=15)],
+                            "modified_at": STAMP, "deleted": False}}
+
+    slots = mr.build_reservations(store, today=TODAY)["2026-10-13"]["slots"]
+
+    assert [s["pause"] for s in slots] == [0, 15]
 
 
 def test_unknown_day_fields_are_dropped():
@@ -96,7 +126,8 @@ def test_build_returns_active_days_from_today_through_the_horizon_only():
 
     out = mr.build_reservations(store, today=TODAY)
 
-    assert out == {"2026-10-13": {"slots": [SLOT], "modified_at": STAMP, "deleted": False}}
+    assert out == {"2026-10-13": {"slots": [{**SLOT, "pause": 0}], "modified_at": STAMP,
+                                  "deleted": False}}
 
 
 def test_build_drops_unusable_slots_and_days_and_never_leaks_desktop_fields():
@@ -111,5 +142,5 @@ def test_build_drops_unusable_slots_and_days_and_never_leaks_desktop_fields():
 
     out = mr.build_reservations(store, today=TODAY)
 
-    assert out == {"2026-10-20": {"slots": [{"start": "10:00", "end": "11:00", "kategorie": ""}],
+    assert out == {"2026-10-20": {"slots": [{"start": "10:00", "end": "11:00", "kategorie": "", "pause": 0}],
                                   "modified_at": STAMP, "deleted": False}}

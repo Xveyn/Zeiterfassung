@@ -257,7 +257,9 @@ class ReservationStore:
         käme sonst mit altem Stempel und ginge dort verloren.
 
         Slots erben `gcal_event_id` und `send_reminder_minutes` per Index (wie
-        `save`). Ein Tombstone für einen unbekannten Tag wird verworfen: es gibt
+        `save`); `pause` erbt ein Slot ohne `pause`-Schlüssel nur bei gleichem
+        `start`/`end` (`inherit_pause`, vor dem LWW-Vergleich) — ein älteres Handy
+        kennt die Pause nicht und darf sie nicht löschen. Ein Tombstone für einen unbekannten Tag wird verworfen: es gibt
         draußen nichts aufzuräumen. Geschrieben wird erst auf die Platte, dann in den
         Speicher — scheitert das Schreiben, bleibt der Stand unverändert.
         Liefert, ob sich etwas geändert hat."""
