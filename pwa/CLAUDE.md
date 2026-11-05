@@ -26,7 +26,8 @@ ES-Module flach im Ordner:
 - `reservations.js` — Reservierungen (zukünftige Soll-Zeiten) ohne DOM: wann der
   Block erscheint (`reservationBlockVisible`, Gleichlauf mit
   `reservation_block_visible` über `test/fixtures/reservation-visibility-cases.json`),
-  Slot-Normalisierung und -Prüfung ohne Pause (s. „Reservierungen“).
+  Slot-Normalisierung und -Prüfung samt Pause (ganze Zahl ≥ 0, sonst 0; geprüft wie bei Ist-Zeiten),
+  Signatur und die Netto-Rechnung für „Noch ausstehend“ (s. „Reservierungen“).
 - `categories.js` — Kategorien-Verwaltung ohne DOM: Zeilen aus `categories` +
   `category_times` (`categoryRows`), zurück in den Block (`rowsToBlock`),
   Prüfung (`validateCategoryRows`), Kurzfassung der Zeiten (`timesSummary`),
@@ -171,7 +172,13 @@ Desktop) ist seltener, kommt aber vor. Sieben Regeln:
    (`compat/*-pre-250.json`, ohne `window_days`/`window_max_days`) und der Stand vor den
    Reservierungen (`compat/*-pre-reservations.json`, ohne `reservations`) der Stand vor den
    Einstellungen (`compat/*-pre-settings.json`, ohne `settings`) und der Stand vor dem Fenster nach
-   vorn (`compat/sync-response-pre-ahead.json`, ohne `window_ahead_days`).
+   vorn (`compat/sync-response-pre-ahead.json`, ohne `window_ahead_days`) und der Stand vor der Pause an
+   Reservierungen (`compat/*-pre-pause.json`, ohne `reservation_pause` und ohne `pause` an Reservierungs-Slots;
+   die PWA muss die Antwort verstehen, `test/compat.test.js`; dass ohne Flag keine `pause` auf den Draht geht, prüfen
+   `test/sync.test.js` und `test/store.test.js`, den ganzen Zyklus mit der echten Handy-Instanz
+   `tests/test_mobile_reservation_pause_e2e.py` über `tests/mobile_session_probe.mjs`).
+   Die Fähigkeit `reservation_pause` ist Feature-Erkennung nach Regel 2: nicht „Desktop ≥ 1.27“, sondern
+   „steht das Feld in der Antwort“.
 5. **Neue PWA, alter Desktop.** Ein Desktop vor #311 ignoriert `settings` in der
    Anfrage und kennt `writable_settings` nicht. Die PWA bietet das Bearbeiten
    der Kategorien deshalb nur an, wenn die Antwort `writable_settings` mit
@@ -203,10 +210,24 @@ bietet sie nur an, wenn „Reservierungen verwenden“ an ist.
   Reservierungen werden dabei nie gelöscht**, nicht übertragene gehen beim
   Wiedereinschalten hinaus. `parseReservations` liefert dafür `null`.
 - **Form auf dem Draht** wie in der Anfrage des Desktops:
-  `{ISO: {slots: [{start, end, kategorie}], modified_at, deleted}}`, ohne
-  `device_id`, ohne `pause`; der Desktop lehnt jedes weitere Feld am Slot ab.
-  Gesendet wird im ersten Päckchen eines Abgleichs und nur, wenn welche
-  nicht übertragen sind.
+  `{ISO: {slots: [{start, end, kategorie, pause}], modified_at, deleted}}`, ohne
+  `device_id`; `pause` sind Minuten (#455). Gesendet wird im ersten Päckchen eines
+  Abgleichs und nur, wenn welche nicht übertragen sind.
+- **Pause nur mit Fähigkeit** (#455). Die Antwort trägt `reservation_pause: true`, wenn der Desktop
+  `pause` an Reservierungs-Slots versteht (Meta `reservation_pause`, bei jeder Antwort neu gesetzt;
+  `PROTOCOL` bleibt 2). Ein älterer Desktop lehnt jedes weitere Feld am Slot ab, deshalb lässt
+  `Store.snapshotReservations` `pause` ohne das Flag weg. Das Flag ist erst nach der ersten Antwort
+  bekannt: die **erste Anfrage nach einer frischen Kopplung** geht noch ohne Pause hinaus. Gespeichert bleibt eine Pause immer: verliert die PWA das Flag
+  (Desktop-Downgrade), werden gespeicherte Pausen **nie gelöscht**, nicht gesendet, aber weiter netto
+  gerechnet. Fehlt `pause` an einem Slot der Antwort, ist es 0.
+- **Netto-Rechnung.** „Noch ausstehend“ zählt je offenem Slot Spanne minus Pause
+  (`pendingReservationMinutes`, nie negativ: eine Pause ab der Spanne aus Fremddaten zählt 0); die
+  Tageszeile zeigt `08:00–15:30 · 30 min Pause`. Der **Google-Kalendertermin** bleibt brutto (volle
+  Spanne), darauf weist unter dem Reservierungsblock ein Hinweis hin
+  (`RESERVATION_CALENDAR_NOTE`, nur mit Flag).
+- **Eingabefeld.** Das Feld „Pause (Min)“ erscheint im Reiter „Reservierung“ nur mit dem Flag
+  (`pauseEnabled`); eine neue Zeile bekommt nur dann die Standardpause, ohne Flag steht sie auf 0 und
+  geht nie in einen Slot (`reservationRows`/`reservationRowsToSlots`).
 - **Anwenden** (`Store._applyReservations`, in derselben Transaktion wie der
   Rest der Antwort): ein gesendeter, unveränderter Tag wird vom Desktop-Stand
   ersetzt, ein inzwischen geänderter bleibt lokal. Ein sauberer Tag, den die
@@ -234,12 +255,14 @@ bietet sie nur an, wenn „Reservierungen verwenden“ an ist.
   verborgen, zählen Reservierungen weder als „nicht übertragen“ noch als „abgelehnt“.
 - **Vorschlag für die Ist-Zeit** (#376, wie `entry_dialog` am Desktop): hat ein Tag eine Reservierung, aber noch
   keine Ist-Zeit, ist die Zeile im Reiter „Arbeitszeit“ daraus vorbelegt — Start/Ende vom ersten Slot, Pause aus dem
-  Standard, die Kategorie nur bei **genau einem** Slot (`suggest_ist_category`). `editorRows(…, reservation)` in
+  Standard — oder die geplante Pause, wenn der erste Slot eine > 0 trägt (#455) —, die Kategorie nur bei
+  **genau einem** Slot (`suggest_ist_category`). `editorRows(…, reservation)` in
   `view-model.js`; gespeicherte Ist-Zeiten gewinnen immer.
 - **Override-Sternchen** (#376): das Kategorie-Label trägt ein `*` (`Projekt*`), wenn Start/Ende (bei Ist-Zeit auch
   die Pause) von den Standardzeiten der Kategorie abweichen (`categoryDisplay`, Gegenstück zu
   `slot_category_display`). Reine Anzeige, `row.kategorie` und das Gespeicherte bleiben der Klarname; ohne
-  `defaults` (älterer Desktop) nie ein Sternchen. `views.js` zieht das Label bei jeder Zeiteingabe nach.
+  `defaults` (älterer Desktop) nie ein Sternchen. Die Pause einer **Reservierung** setzt nie ein `*`
+  (`withPause` ist dort falsch). `views.js` zieht das Label bei jeder Zeiteingabe nach.
 - **Löschen** wie bei den Ist-Zeiten: „Tag leeren“ (am Reiter „Reservierung“
   mit eigener Bestätigung) schreibt einen Tombstone — außer der Desktop kennt den Tag nie
   (`synced_version` 0): dann wird er nur lokal verworfen.
