@@ -370,12 +370,12 @@ class GridRenderer:
         return cell
 
     @staticmethod
-    def _fmt_slot_line(slot):
+    def _fmt_slot_line(slot, with_pause=False):
         """Eine Tooltip-Zeile für einen Slot: 'HH:MM-HH:MM  Kategorie'
-        (Kategorie weggelassen, wenn leer), bei Pause > 0 zusätzlich
-        '  · N min Pause'."""
+        (Kategorie weggelassen, wenn leer), mit `with_pause`
+        (nur Reservierungen) bei Pause > 0 zusätzlich '  · N min Pause'."""
         kat = f"  {slot['kategorie']}" if slot.get("kategorie") else ""
-        pause = slot.get("pause", 0) or 0
+        pause = (slot.get("pause", 0) or 0) if with_pause else 0
         pz = f"  \u00b7 {pause} min Pause" if pause > 0 else ""
         return f"{GridRenderer._fmt_slot_time(slot)}{kat}{pz}"
 
@@ -444,7 +444,8 @@ class GridRenderer:
                 + "\n".join(
                     GridRenderer._fmt_slot_line(s) for s in entry["slots"]))
         if reservation is not None:
-            lines = [GridRenderer._fmt_slot_line(s) for s in reservation.get("slots", [])]
+            lines = [GridRenderer._fmt_slot_line(s, with_pause=True)
+                     for s in reservation.get("slots", [])]
             if reminder is not None:
                 lines.append(send_reminder.reminder_tooltip_line(*reminder))
             parts.append("Reservierung:\n" + "\n".join(lines))
