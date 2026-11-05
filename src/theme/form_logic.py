@@ -160,6 +160,17 @@ def in_popdown(path: str) -> bool:
     return "popdown" in path.split(".")
 
 
+def focus_scrolls(path: str, body: str) -> bool:
+    """Ob ein FocusIn auf `path` das Formular zum Feld scrollen darf.
+
+    Nur für echte Kinder des Körpers `body`. Der Körper selbst bekommt beim
+    Fokuswechsel ebenfalls ein FocusIn (Oberkante 0, Höhe = Gesamthöhe) —
+    `scroll_target` spränge dafür ohne Übergang nach oben. Die Auswahlliste
+    einer Combobox hängt im Pfad unter dem Körper, ist aber ein eigenes Fenster
+    (s. `in_popdown`)."""
+    return path != body and is_descendant(path, body) and not in_popdown(path)
+
+
 def is_descendant(path: str, ancestor: str) -> bool:
     """True, wenn der Tk-Pfad `path` das Widget `ancestor` selbst oder eines
     seiner Kinder bezeichnet. Verglichen wird komponentenweise — `.!canvas2`
