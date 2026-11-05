@@ -228,6 +228,26 @@ aus dem Termin und übernimmt `pause` aus der privaten Eigenschaft, hilfsweise
   Slot-Form (`build_block` liest nur markierte Slots für die Sende-Zeitpunkte),
   `reminders-contract.json` ändert sich nicht.
 
+## Ergänzungen nach dem Plan-Review (meine Calls)
+
+- **Vorbelegung neuer Reservierungszeilen:** mit Pausenfeld bekommen sie die
+  Standardpause (Kategorie, sonst global) wie eine Ist-Zeile. Ohne Flag (PWA,
+  älterer Desktop) wird **keine** Pause gespeichert. Der Ist-Vorschlag aus einer
+  Reservierung mit `pause: 0` nimmt weiter die Standardpause (Bestandsschutz,
+  ältere Reservierungen tragen 0), mit `pause > 0` deren Wert.
+- **Alte Handy-Version ändert Start/Ende:** die Pause dieses Slots ist danach 0
+  (kein Erben bei geänderter Zeit). Das steht im CHANGELOG.
+- **Share-Import** setzt die Pause eines importierten Tages auf 0 (der Export
+  trägt keine). Festgehalten in einem Test und im CHANGELOG.
+- **Gleichstand im LWW:** `pause` zählt in `_phone_key` mit (Alt-Slot ohne
+  Schlüssel = 0); bei exakt gleichem Stempel entscheidet weiter die JSON-Ordnung
+  des Inhalts. Nicht gelöst, nur in einem Test festgehalten.
+- **Branch-Struktur:** `feat/reservierung-pause` trägt nur den Desktop-Strang und
+  wird der Release-PR. Der PWA-Strang liegt auf `feat/reservierung-pause-pwa`
+  (abgezweigt von dessen Spitze, wegen Dev-Server und Ende-zu-Ende-Test) und wird
+  nach der Veröffentlichung von 1.27.0 per `rebase --onto master` ein reiner
+  PWA-PR. Die Live-Fixtures ändert nur der Desktop-Strang.
+
 ## Offen für den Bauenden
 
 - Konkrete Texte der Hinweise.
