@@ -10,6 +10,7 @@ from src.theme.form_logic import (
     SCREEN_MARGIN,
     body_height,
     enabled_states,
+    focus_scrolls,
     scroll_target,
     scroll_units,
     in_popdown,
@@ -240,6 +241,33 @@ def test_scroll_target_item_taller_than_view_aligns_top():
 
 def test_scroll_target_degenerate_total():
     assert scroll_target(0, 10, 0.0, 1.0, 0) is None
+
+
+# --- focus_scrolls ----------------------------------------------------------
+
+BODY = ".dlg.nb.tab.canvas.body"
+
+
+def test_focus_scrolls_for_field_in_body():
+    assert focus_scrolls(BODY + ".entry3", BODY)
+    assert focus_scrolls(BODY + ".row.entry3", BODY)
+
+
+def test_focus_ignores_the_body_itself():
+    # Das FocusIn des Körpers selbst hätte Oberkante 0 und Gesamthöhe —
+    # scroll_target spränge dafür ganz nach oben.
+    assert not focus_scrolls(BODY, BODY)
+
+
+def test_focus_ignores_widgets_outside_the_body():
+    assert not focus_scrolls(".dlg.nb.tab.canvas", BODY)
+    assert not focus_scrolls(BODY + "2.entry", BODY)
+
+
+def test_focus_ignores_combobox_popdown():
+    # Die Auswahlliste ist ein eigenes Fenster, das im Pfad unter der Combobox
+    # (und damit unter dem Körper) hängt.
+    assert not focus_scrolls(BODY + ".combo.popdown.f.l", BODY)
 
 
 # --- pane_width / hint_wrap (#206) -----------------------------------------

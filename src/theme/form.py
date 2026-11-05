@@ -22,8 +22,8 @@ from src.theme.palette import BG, CELL_BG, SEPARATOR, TEXT, TEXT_DISABLED, TEXT_
 from src.theme.fonts import FONT, FONT_BOLD, FONT_SMALL, current_scale, px
 from src.theme.widgets import _LabelButton, _ToggleColors, secondary_button
 from src.theme.form_logic import (
-    WHEEL_STEP, body_height, enabled_states, hint_wrap, in_popdown, is_descendant,
-    pane_width, scroll_target, scroll_units, wheel_route,
+    WHEEL_STEP, body_height, enabled_states, focus_scrolls, hint_wrap, in_popdown,
+    is_descendant, pane_width, scroll_target, scroll_units, wheel_route,
 )
 
 log = logging.getLogger(__name__)
@@ -567,7 +567,7 @@ class Form:
         if canvas is None or not self._scrollable or isinstance(widget, str):
             return
         try:
-            if not is_descendant(str(widget), str(self.body)):
+            if not focus_scrolls(str(widget), str(self.body)):
                 return
             top = widget.winfo_rooty() - self.body.winfo_rooty()
             height = widget.winfo_height()
