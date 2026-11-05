@@ -62,9 +62,9 @@ def code(response):
     return response.body["error"]["code"]
 
 
-def slot(start="08:00", end="12:00", kategorie="Projekt", reminder=None):
+def slot(start="08:00", end="12:00", kategorie="Projekt", reminder=None, pause=0):
     return {"start": start, "end": end, "kategorie": kategorie,
-            "send_reminder_minutes": reminder}
+            "send_reminder_minutes": reminder, "pause": pause}
 
 
 # --- Schalter aus: eine ordentliche Meldung -----------------------------------
@@ -268,12 +268,80 @@ def test_put_today_is_allowed(env):
 @pytest.mark.parametrize("raw,status,error", [
     (b"{", 400, "invalid_json"),
     (b'{"slots": []}', 422, "empty_slots"),
-    (b'{"slots": [{"start": "08:00", "end": "12:00", "pause": 5}]}', 422, "invalid_slot"),
+    (b'{"slots": [{"start": "08:00", "end": "12:00", "pause": -5}]}', 422, "invalid_pause"),
+    (b'{"slots": [{"start": "08:00", "end": "12:00", "pause": true}]}', 422, "invalid_pause"),
+    (b'{"slots": [{"start": "08:00", "end": "12:00", "pause": 30.0}]}', 422, "invalid_pause"),
+    (b'{"slots": [{"start": "08:00", "end": "12:00", "pause": "30"}]}', 422, "invalid_pause"),
+    (b'{"slots": [{"start": "08:00", "end": "09:00", "pause": 60}]}', 422, "invalid_slots"),
 ])
 def test_put_maps_body_errors(env, raw, status, error):
     response = env.put(raw)
     assert (response.status, code(response)) == (status, error)
     assert env.reservations.get(DAY) is None
+
+
+def put_slots(env, slots):
+    return env.put(json.dumps({"slots": slots}).encode())
+
+
+def test_put_accepts_pause_and_returns_it(env):
+    response = put_slots(env, [{"start": "08:00", "end": "12:00", "pause": 30}])
+
+    assert response.status == 200
+    assert response.body["slots"] == [slot(kategorie="", pause=30)]
+    assert env.reservations.get(DAY)["slots"][0]["pause"] == 30
+
+
+def test_get_returns_pause(env):
+    put_slots(env, [{"start": "08:00", "end": "12:00", "pause": 30}])
+
+    assert env.get().body["slots"] == [slot(kategorie="", pause=30)]
+    listing = env.call("GET", "/v1/reservations").body["reservations"]
+    assert listing[DAY]["slots"] == [slot(kategorie="", pause=30)]
+
+
+def test_put_without_pause_inherits_for_unchanged_slot(env):
+    put_slots(env, [{"start": "08:00", "end": "12:00", "pause": 30}])
+
+    response = put_slots(env, [{"start": "08:00", "end": "12:00", "kategorie": "Neu"}])
+
+    assert response.body["slots"] == [slot(kategorie="Neu", pause=30)]
+    assert response.body["changed"] is True
+
+
+def test_put_with_inserted_slot_inherits_nothing(env):
+    put_slots(env, [{"start": "08:00", "end": "12:00", "pause": 30}])
+
+    response = put_slots(env, [{"start": "06:00", "end": "07:00"},
+                               {"start": "08:00", "end": "12:00"}])
+
+    assert [s["pause"] for s in response.body["slots"]] == [0, 0]
+
+
+def test_put_with_changed_times_inherits_nothing(env):
+    put_slots(env, [{"start": "08:00", "end": "12:00", "pause": 30}])
+
+    response = put_slots(env, [{"start": "08:00", "end": "13:00"}])
+
+    assert response.body["slots"] == [slot(end="13:00", kategorie="")]
+
+
+def test_put_explicit_zero_overrides_inheritance(env):
+    put_slots(env, [{"start": "08:00", "end": "12:00", "pause": 30}])
+
+    response = put_slots(env, [{"start": "08:00", "end": "12:00", "pause": 0}])
+
+    assert response.body["slots"] == [slot(kategorie="")]
+
+
+def test_put_unchanged_body_with_same_pause_is_not_a_change(env):
+    body = [{"start": "08:00", "end": "12:00", "pause": 30}]
+    put_slots(env, body)
+    env.events.clear()
+
+    assert put_slots(env, body).body["changed"] is False
+    assert put_slots(env, [{"start": "08:00", "end": "12:00"}]).body["changed"] is False
+    assert env.events == []
 
 
 def test_put_takes_no_query(env):

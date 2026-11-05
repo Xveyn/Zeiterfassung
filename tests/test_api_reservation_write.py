@@ -28,7 +28,7 @@ def fails(slots_or_bytes, status, code):
     assert (info.value.status, info.value.code) == (status, code)
 
 
-def test_a_slot_gets_the_three_reservation_fields_and_no_pause():
+def test_a_slot_without_pause_carries_no_pause_key():
     slots, given = parse([{"start": "08:00", "end": "12:00", "kategorie": "Projekt"}])
 
     assert slots == [{"start": "08:00", "end": "12:00", "kategorie": "Projekt",
@@ -68,8 +68,22 @@ def test_at_most_one_slot_per_day_may_carry_a_reminder():
           422, "invalid_reminder")
 
 
-def test_pause_does_not_exist_for_reservations():
-    fails([{"start": "08:00", "end": "12:00", "pause": 30}], 422, "invalid_slot")
+def test_parse_accepts_pause():
+    slots, _ = parse([{"start": "08:00", "end": "12:00", "pause": 30},
+                      {"start": "13:00", "end": "17:00", "pause": 0},
+                      {"start": "18:00", "end": "19:00"}])
+
+    assert [s.get("pause") for s in slots] == [30, 0, None]
+    assert "pause" not in slots[2]
+
+
+@pytest.mark.parametrize("value", [-1, True, 30.0, "30", None])
+def test_parse_rejects_bad_pause(value):
+    fails([{"start": "08:00", "end": "12:00", "pause": value}], 422, "invalid_pause")
+
+
+def test_parse_rejects_pause_not_shorter_than_the_span():
+    fails([{"start": "08:00", "end": "09:00", "pause": 60}], 422, "invalid_slots")
 
 
 def test_gcal_event_id_is_never_accepted():

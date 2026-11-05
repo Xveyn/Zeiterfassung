@@ -5,7 +5,9 @@ Wie `api_entry_write` nimmt dieses Modul **Fremddaten** (der Body kommt von eine
 Skript). Die Slot-Regeln sind die der Ist-Zeiten (`api_entry_write.parse_slots`);
 dazu kommt, was nur Reservierungen kennen:
 
-- kein `pause` (Reservierungen haben keine Pause-Spalte) und nie `gcal_event_id`
+- `pause` ist optional (ganze Minuten >= 0, kürzer als die Spanne); fehlt der
+  Schlüssel, bleibt er auch im Ergebnis weg, damit die Route die Pause des
+  bisherigen Slots erben kann (`reservations.inherit_pause`). Nie `gcal_event_id`
   (die Kalender-IDs gehören dem Abgleich);
 - `send_reminder_minutes`: ganze Zahl 0–120 oder `null`, höchstens an **einem**
   Slot je Tag (die Sende-Erinnerung hängt an genau einem Slot);
@@ -44,8 +46,8 @@ def _parse_reminder(value: Any, index: int) -> int | None:
 
 
 def parse_reservation_body(body: bytes) -> tuple[list[dict[str, Any]], bool]:
-    """Body → (geprüfte Slots `{start, end, kategorie, send_reminder_minutes}`,
-    `reminder_given`). Wirft `WriteError`: 400 bei kaputtem JSON oder falscher Form,
+    """Body → (geprüfte Slots `{start, end, kategorie, send_reminder_minutes}` plus
+    `pause`, wo der Body sie nennt, `reminder_given`). Wirft `WriteError`: 400 bei kaputtem JSON oder falscher Form,
     422 bei ungültigem Slot."""
     data = load_json_body(body)
     if not isinstance(data, dict) or set(data) != {"slots"} or not isinstance(data["slots"], list):
@@ -63,9 +65,6 @@ def parse_reservation_body(body: bytes) -> tuple[list[dict[str, Any]], bool]:
     for index, item in enumerate(raw, start=1):
         if not isinstance(item, dict):
             raise WriteError(422, "invalid_slot", f"Slot {index} muss ein Objekt sein.")
-        if "pause" in item:
-            raise WriteError(422, "invalid_slot",
-                             f"Slot {index}: Reservierungen haben keine Pause.")
         reminder_given = reminder_given or _REMINDER_KEY in item
         reminders.append(_parse_reminder(item.get(_REMINDER_KEY), index))
         plain.append({key: value for key, value in item.items() if key != _REMINDER_KEY})
@@ -74,9 +73,15 @@ def parse_reservation_body(body: bytes) -> tuple[list[dict[str, Any]], bool]:
                          "send_reminder_minutes darf an höchstens einem Slot je Tag stehen.")
 
     parsed = parse_slots(plain)
-    slots = [{"start": slot["start"], "end": slot["end"], "kategorie": slot["kategorie"],
-              _REMINDER_KEY: reminder}
-             for slot, reminder in zip(parsed, reminders, strict=True)]
+    slots: list[dict[str, Any]] = []
+    for slot, reminder, raw_item in zip(parsed, reminders, raw, strict=True):
+        out = {"start": slot["start"], "end": slot["end"], "kategorie": slot["kategorie"],
+               _REMINDER_KEY: reminder}
+        # `parse_slots` liefert `pause` immer (Default 0); ob der Body es nannte,
+        # zeigt nur der rohe Slot an derselben Stelle.
+        if "pause" in raw_item:
+            out["pause"] = slot["pause"]
+        slots.append(out)
     return slots, reminder_given
 
 
