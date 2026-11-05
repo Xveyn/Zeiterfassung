@@ -215,16 +215,22 @@ bietet sie nur an, wenn „Reservierungen verwenden“ an ist.
   Abgleichs und nur, wenn welche nicht übertragen sind.
 - **Pause nur mit Fähigkeit** (#455). Die Antwort trägt `reservation_pause: true`, wenn der Desktop
   `pause` an Reservierungs-Slots versteht (Meta `reservation_pause`, bei jeder Antwort neu gesetzt;
-  `PROTOCOL` bleibt 2). Ein älterer Desktop lehnt jedes weitere Feld am Slot ab, deshalb lässt
-  `Store.snapshotReservations` `pause` ohne das Flag weg. Das Flag ist erst nach der ersten Antwort
-  bekannt: die **erste Anfrage nach einer frischen Kopplung** geht noch ohne Pause hinaus. Gespeichert bleibt eine Pause immer: verliert die PWA das Flag
-  (Desktop-Downgrade), werden gespeicherte Pausen **nie gelöscht**, nicht gesendet, aber weiter netto
-  gerechnet. Fehlt `pause` an einem Slot der Antwort, ist es 0.
+  `PROTOCOL` bleibt 2). Ein älterer Desktop lehnt `pause` nicht ab, **verwirft sie aber still**
+  (er liest nur `start`/`end`/`kategorie`), und der pausenlose Echo-Stand ersetzt danach den Slot der PWA;
+  deshalb lässt `Store.snapshotReservations` `pause` ohne das Flag weg und bietet das Eingabefeld nicht an.
+  Das Flag ist erst nach der ersten Antwort bekannt: auf einer **frischen Installation** geht die erste Anfrage
+  noch ohne Pause hinaus (`pairingMeta` setzt das Flag bei einer erneuten Kopplung nicht zurück, dort gilt der alte Stand).
+  **Nur eine Antwort mit `reservations` ändert das Flag** (ohne `reservation_pause: true` darin: aus); fehlt der
+  Block, weil Reservierungen am Desktop vorübergehend aus sind, bleibt das Flag stehen — sonst ginge eine
+  nicht übertragene Pause beim Wiedereinschalten ohne Pause hinaus und käme als 0 zurück. Ehrlich zum
+  Downgrade (Reservierungen an, Flag fehlt): ein noch nicht gesendeter Tag behält seine Pause lokal (nicht gesendet,
+  weiter netto gerechnet), aber das nächste Echo eines pausenlosen Desktops ersetzt saubere Reservierungen durch
+  Pause 0. Fehlt `pause` an einem Slot der Antwort, ist es 0.
 - **Netto-Rechnung.** „Noch ausstehend“ zählt je offenem Slot Spanne minus Pause
   (`pendingReservationMinutes`, nie negativ: eine Pause ab der Spanne aus Fremddaten zählt 0); die
   Tageszeile zeigt `08:00–15:30 · 30 min Pause`. Der **Google-Kalendertermin** bleibt brutto (volle
   Spanne), darauf weist unter dem Reservierungsblock ein Hinweis hin
-  (`RESERVATION_CALENDAR_NOTE`, nur mit Flag).
+  (`RESERVATION_CALENDAR_NOTE`, nur mit Flag; bewusst bedingt formuliert „Falls dein Desktop mit dem Google-Kalender abgleicht …“, weil die PWA nicht weiß, ob der Abgleich an ist — anders als die Desktop-Konstante).
 - **Eingabefeld.** Das Feld „Pause (Min)“ erscheint im Reiter „Reservierung“ nur mit dem Flag
   (`pauseEnabled`); eine neue Zeile bekommt nur dann die Standardpause, ohne Flag steht sie auf 0 und
   geht nie in einen Slot (`reservationRows`/`reservationRowsToSlots`).

@@ -23,7 +23,7 @@ export function reservationEditable(day, today) {
 }
 
 /** `start`, `end`, `kategorie` und `pause` (wie am Desktop; ganze Zahl >= 0, sonst 0). Andere Felder
- *  (etwa `gcal_event_id`) gehören nicht auf den Draht, der Desktop lehnt jedes weitere Feld am Slot ab. */
+ *  (etwa `gcal_event_id`) gehören nicht auf den Draht (der Desktop liest nur diese Felder, ein älterer verwirft `pause` still). */
 export function normalizeReservationSlots(raw) {
   return normalizeSlots(raw).map((slot) => (slot !== null && typeof slot === 'object'
     ? {

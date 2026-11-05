@@ -395,8 +395,8 @@ export class Store {
   /** Was der nächste Abgleich an Reservierungen schickt: dirty Tage ohne Fehler, neueste zuerst,
    *  höchstens `limit` (der Desktop nimmt höchstens 400). Form der Anfrage: `{slots, modified_at,
    *  deleted}` — ohne `device_id`. `pause` steht an den Slots nur, wenn der Desktop sie versteht
-   *  (`reservation_pause`); ein älterer lehnt jedes weitere Feld am Slot ab. Gespeichert bleibt sie
-   *  trotzdem, nur der Draht lässt sie weg. */
+   *  (`reservation_pause`); ein älterer nimmt sie an, verwirft sie aber still, und nach seinem Echo
+   *  ersetzt der pausenlose Stand den Slot. Lokal bleibt sie bis dahin, nur der Draht lässt sie weg. */
   snapshotReservations(limit = MAX_RESERVATIONS_PER_REQUEST) {
     const reservations = {};
     const reservationVersions = {};
@@ -540,7 +540,10 @@ export class Store {
       ...this._meta,
       reminders: parsed.reminders ? structuredClone(parsed.reminders) : null,
       reservations_enabled: parsed.reservations !== null && parsed.reservations !== undefined,
-      reservation_pause: parsed.reservation_pause === true,
+      // Nur eine Antwort MIT `reservations` sagt etwas über die Fähigkeit; fehlt der Block (Reservierungen am
+      // Desktop vorübergehend aus), bleibt das Flag stehen — sonst ginge eine dirty Pause beim Wiedereinschalten
+      // ohne Pause hinaus und käme als 0 zurück.
+      reservation_pause: parsed.reservations != null ? parsed.reservation_pause === true : this._meta.reservation_pause,
       last_pull_at: parsed.last_pull_at,
       server_time: parsed.server_time,
       settings_writable: Array.isArray(parsed.writable_settings)

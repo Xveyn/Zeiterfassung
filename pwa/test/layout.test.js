@@ -8,6 +8,7 @@ import { readFileSync } from 'node:fs';
 
 const css = readFileSync(new URL('../app.css', import.meta.url), 'utf8');
 const views = readFileSync(new URL('../views.js', import.meta.url), 'utf8');
+const app = readFileSync(new URL('../app.js', import.meta.url), 'utf8');
 
 /** Der Rumpf der ersten Regel mit genau diesem Selektor, sonst Fehler (ein Test, der sein Ziel nicht mehr
  *  findet, ist rot). */
@@ -74,7 +75,15 @@ test('the reservation pause field is the same field as the actual-time one, show
   assert.equal((views.match(/field\(index, 'pause'/g) || []).length, 1);
 });
 
+test('app.js hands pauseEnabled to the rows, the validation, the save and the editor', () => {
+  assert.match(app, /reservationRows\(reservation, meta\.defaults, weekdayKey\(date\), \{ pauseEnabled \}\)/);
+  assert.match(app, /validateReservationRows\(rows, \{ pauseEnabled \}\)/);
+  assert.match(app, /reservationRowsToSlots\(rows, \{ pauseEnabled \}\)/);
+  assert.match(app, /startWith,\s*pauseEnabled,/);
+});
+
 test('the calendar note sits only in the reservation tab and only with the flag', () => {
+  assert.match(readFileSync(new URL('../messages.js', import.meta.url), 'utf8'), /RESERVATION_CALENDAR_NOTE = 'Falls dein Desktop mit dem Google-Kalender abgleicht: Der Termin zeigt die volle Zeitspanne, die Pause wird dort nicht abgezogen\.'/);
   assert.equal((views.match(/RESERVATION_CALENDAR_NOTE/g) || []).length, 2);     // Import + eine Verwendung
   assert.match(views, /!withPause && pauseEnabled && h\('p', \{ class: 'muted'[^)]*RESERVATION_CALENDAR_NOTE/);
   assert.match(views, /withPause: false, pauseEnabled/);

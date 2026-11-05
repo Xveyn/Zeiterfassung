@@ -968,7 +968,7 @@ test('the snapshot carries the pause with the capability and omits it without', 
     ['end', 'kategorie', 'start']);
 });
 
-test('losing the capability keeps the stored pause local: not sent, still netted', async () => {
+test('losing the capability keeps a dirty pause local until it is sent; the pause-less echo then replaces it with 0', async () => {
   const { store } = await make();
   await store.applyResponse(parseSyncResponse(liveResponse()), emptySnapshot(), '2026-10-08');
   await store.saveReservation('2026-10-20', [{ ...RES, pause: 30 }]);
@@ -978,6 +978,36 @@ test('losing the capability keeps the stored pause local: not sent, still netted
   assert.equal(stored.slots[0].pause, 30);
   assert.equal('pause' in store.snapshotReservations().reservations['2026-10-20'].slots[0], false);
   assert.equal(pendingReservationMinutes(stored.slots, [], false), 150);
+
+  // Der ältere Desktop verwirft die Pause und echot den Slot ohne sie: danach ist sie weg (echtes Verhalten).
+  const snapshot = store.snapshotReservations();
+  await store.applyResponse(parsedWith({ '2026-10-20': { slots: [{ ...RES, pause: 0 }], modified_at: snapshot.reservations['2026-10-20'].modified_at } }),
+    { ...emptySnapshot(), ...snapshot }, RES_TODAY);
+  assert.equal(store.getReservation('2026-10-20').slots[0].pause, 0);
+});
+
+test('a response without reservations does not drop the capability: a dirty pause survives desktop off/on', async () => {
+  const { store } = await make();
+  await store.applyResponse(parseSyncResponse(liveResponse()), emptySnapshot(), '2026-10-08');
+  await store.saveReservation('2026-10-20', [{ ...RES, pause: 30 }]);
+  // Reservierungen am Desktop aus: weder `reservations` noch das Flag in der Antwort.
+  await store.applyResponse(parsedWith(null), emptySnapshot(), RES_TODAY);
+  assert.equal(store.getMeta().reservation_pause, true);
+  assert.equal(store.getMeta().reservations_enabled, false);
+  // Wieder an: die Pause geht hinaus und kommt als 30 zurück.
+  await store.applyResponse(parsedWith({}, { reservation_pause: true }), emptySnapshot(), RES_TODAY);
+  const snapshot = store.snapshotReservations();
+  assert.equal(snapshot.reservations['2026-10-20'].slots[0].pause, 30);
+  await store.applyResponse(parsedWith({ '2026-10-20': { slots: [{ ...RES, pause: 30 }], modified_at: snapshot.reservations['2026-10-20'].modified_at } },
+    { reservation_pause: true }), { ...emptySnapshot(), ...snapshot }, RES_TODAY);
+  assert.equal(store.getReservation('2026-10-20').slots[0].pause, 30);
+});
+
+test('a response with reservations but without the flag clears the capability', async () => {
+  const { store } = await make();
+  await store.applyResponse(parseSyncResponse(liveResponse()), emptySnapshot(), '2026-10-08');
+  await store.applyResponse(parsedWith({}), emptySnapshot(), RES_TODAY);
+  assert.equal(store.getMeta().reservation_pause, false);
 });
 
 test('a desktop answer replaces the slot with its pause while the day is not dirty locally', async () => {

@@ -149,8 +149,8 @@ den lokalen Slot (s. „Ergänzungen nach dem Plan-Review“).
   führen `pause` mit; `validateReservationSlots` prüft sie wie bei Ist-Zeiten
   (Pause ≥ 0, < Arbeitszeit) statt sie auf 0 zu setzen;
   `pendingReservationMinutes` rechnet `slotMinutes({start, end, pause})` (netto).
-  Der Kommentar „der Desktop lehnt jedes weitere Feld ab“ stimmt dann nicht mehr
-  und wird korrigiert.
+  Der Kommentar „der Desktop lehnt jedes weitere Feld ab“ stimmt für den Handy-Abgleich
+  nicht: ein älterer Desktop verwirft `pause` still; nach dem Echo ist sie weg.
 - `sync.js`: `parseReservations` übernimmt `pause` (Ganzzahl, sonst 0). Das
   Feature-Flag `reservation_pause` aus der Antwort geht in die Meta.
 - `view-model.js` und `views.js`: Reiter „Reservierung“ mit Pause-Feld (`step`
@@ -230,6 +230,13 @@ den lokalen Slot (s. „Ergänzungen nach dem Plan-Review“).
   `reminders-contract.json` ändert sich nicht.
 
 ## Ergänzungen nach dem Plan-Review (meine Calls)
+
+- **Verfeinerung zu „Fehlt `reservation_pause`…“:** Das Fehlen von `reservations` in einer
+  Antwort (Reservierungen am Desktop vorübergehend aus) gilt **nicht** als Verlust der Fähigkeit; nur eine
+  Antwort, die `reservations` trägt, aber nicht `reservation_pause: true`, löscht das Flag der PWA. Sonst ginge
+  eine nicht übertragene Pause nach Aus/An ohne Pause hinaus und käme als 0 zurück.
+- **Ungültige Pause in der PWA** wird wie bei Ist-Zeiten gemeldet (negativ, nicht ganzzahlig), nicht zu 0
+  gemacht; leer bleibt 0.
 
 - **Vorbelegung neuer Reservierungszeilen:** mit Pausenfeld bekommen sie die
   Standardpause (Kategorie, sonst global) wie eine Ist-Zeile. Ohne Flag (PWA,

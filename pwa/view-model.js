@@ -9,7 +9,7 @@ import {
 import { categoryRows, timesSummary } from './categories.js';
 import { resolveSlotDefaults } from './defaults.js';
 import { describeError } from './messages.js';
-import { normalizeReservationSlots, openReservationSlots, pendingReservationMinutes, reservationBlockVisible, validateReservationSlots } from './reservations.js';
+import { openReservationSlots, pendingReservationMinutes, reservationBlockVisible, validateReservationSlots } from './reservations.js';
 import { describeState } from './push-policy.js';
 import { LEGACY_AHEAD_DAYS, aheadDays, olderState } from './window-policy.js';
 
@@ -234,10 +234,9 @@ export function reservationRows(reservation, defaults = null, weekday = '', { pa
 
 const isBlankReservation = (row) => row.start === '' && row.end === '' && row.kategorie === '';
 
-const pauseMinutes = (text) => {
-  const value = text === '' ? 0 : Number(text);
-  return Number.isFinite(value) ? value : 0;
-};
+// Leer heißt 0; sonst gilt, was getippt wurde (wie `rowsToSlots` der Ist-Zeit) — ungültige Eingabe
+// (-30, 12.5, Text) bleibt ungültig und fällt der Prüfung auf, statt zu 0 zu werden.
+const pauseMinutes = (text) => (String(text).trim() === '' ? 0 : Number(text));
 
 /** Mit `pauseEnabled` trägt der Slot die Pause (leer oder Text = 0), sonst genau `{start, end, kategorie}`. */
 export function reservationRowsToSlots(rows, { pauseEnabled = false } = {}) {
@@ -247,7 +246,7 @@ export function reservationRowsToSlots(rows, { pauseEnabled = false } = {}) {
 }
 
 export function validateReservationRows(rows, { pauseEnabled = false } = {}) {
-  return validateReservationSlots(normalizeReservationSlots(reservationRowsToSlots(rows, { pauseEnabled })));
+  return validateReservationSlots(normalizeSlots(reservationRowsToSlots(rows, { pauseEnabled })));
 }
 
 /** „+ Slot“: der Start ist das Ende des vorigen und wird von einer Kategorie nie überschrieben. */

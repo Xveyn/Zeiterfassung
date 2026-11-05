@@ -560,7 +560,18 @@ test('reservation pause rows: empty and zero become 0, text input never yields N
   assert.equal(pauseOf(''), 0);
   assert.equal(pauseOf('0'), 0);
   assert.equal(pauseOf('30'), 30);
-  assert.equal(pauseOf('abc'), 0);
+  assert.equal(pauseOf('  '), 0);
+});
+
+test('an invalid reservation pause errors like the Ist tab instead of becoming 0', () => {
+  const rows = (pause) => [{ start: '09:00', end: '12:00', pause, kategorie: '' }];
+  for (const pause of ['-30', '12.5', 'abc']) {
+    const res = validateReservationRows(rows(pause), { pauseEnabled: true });
+    assert.equal(res.ok, false, pause);
+    assert.equal(res.message, validateRows(rows(pause)).message, pause);
+  }
+  assert.equal(validateReservationRows(rows(''), { pauseEnabled: true }).ok, true);
+  assert.equal(validateReservationRows(rows('-30')).ok, true);       // ohne Flag zählt die Pause nicht
 });
 
 test('a stray pause validates without the flag, and with it must be shorter than the span', () => {
