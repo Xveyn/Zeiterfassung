@@ -77,6 +77,26 @@ def test_pixel_options_go_through_px():
         "UI-Skalierung ein:\n  " + "\n  ".join(offenders))
 
 
+def test_no_raw_font_tuples():
+    """Kein `font=(Familie, Punkt)` im Quelltext: ein rohes Tupel ist nie
+    skaliert (Tooltip blieb so bei jeder UI-Skalierung auf 9 pt). Schrift
+    gehört in einen benannten Font aus `theme.fonts`, den `init_fonts`
+    mitskaliert."""
+    offenders = []
+    for path in _source_files():
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            for kw in node.keywords:
+                if kw.arg == "font" and isinstance(kw.value, (ast.Tuple, ast.List)):
+                    rel = path.relative_to(REPO).as_posix()
+                    offenders.append(f"{rel}:{kw.value.lineno}")
+    assert not offenders, (
+        "Rohe Font-Tupel skalieren nicht mit — benannten Font aus theme.fonts "
+        "nehmen:\n  " + "\n  ".join(offenders))
+
+
 @pytest.mark.parametrize("value,scale,expected", [
     (380, 1.0, 380),
     (380, 2.0, 760),

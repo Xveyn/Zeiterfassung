@@ -67,6 +67,7 @@ from src.theme.fonts import (  # noqa: F401
     FONT_HEADER,
     FONT_HEADER_SMALL,
     FONT_SMALL,
+    FONT_TOOLTIP,
     FONT_TINY,
     init_fonts,
     px,
