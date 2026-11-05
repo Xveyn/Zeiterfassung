@@ -325,6 +325,39 @@ def update_button_views(*, available: bool, checking: bool, updating: bool,
     return check, install
 
 
+def last_check_line(last_check: str | None) -> str:
+    """Metazeile unter den Knöpfen: „Zuletzt geprüft: 05.11.2026"."""
+    return f"Zuletzt geprüft: {last_check_text(last_check)}"
+
+
+CHANGELOG_DEFAULT_HEADING = "Changelog:"
+
+# Höhe der Changelog-Box in Zeilen: folgt dem Inhalt, aber nie kürzer als
+# MIN (eine fast leere Box wirkt kaputt) und nie höher als MAX (darüber
+# scrollt sie).
+CHANGELOG_MIN_LINES = 4
+CHANGELOG_MAX_LINES = 12
+
+
+def changelog_heading(result: Mapping[str, Any], installed_id: str) -> str:
+    """Überschrift der Changelog-Box: sagt, zu welcher Version der Text
+    gehört. Pre-Releases tragen generierte Notes und behaupten deshalb keinen
+    „Changelog"."""
+    if result["changelog_notes"] is not None:
+        return "Enthaltene Änderungen:"
+    release = result.get("latest_release")
+    if release is not None and result["changelog_version"]:
+        return f"Neu in {release.release_id}:"
+    if result["changelog_version"]:
+        return f"Änderungen in {result['changelog_version']}:"
+    return CHANGELOG_DEFAULT_HEADING
+
+
+def changelog_box_lines(content_lines: int) -> int:
+    """Sichtbare Zeilen der Changelog-Box zu `content_lines` Anzeigezeilen."""
+    return max(CHANGELOG_MIN_LINES, min(CHANGELOG_MAX_LINES, content_lines))
+
+
 def changelog_expected(result: Mapping[str, Any]) -> bool:
     """Ob zu einem Prüfergebnis (`updater.resolve_check_result`) überhaupt ein
     Changelog angezeigt werden kann. Nach einem gescheiterten Abruf gibt es
