@@ -5,11 +5,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
-import { join, relative } from 'node:path';
+import { join, relative, sep } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import { BUILD, CACHE_NAME, CACHE_PREFIX, PRECACHE, shouldHandle } from '../sw-core.js';
 
-const root = new URL('..', import.meta.url).pathname;
+// `fileURLToPath` statt `.pathname`: unter Windows liefert `.pathname` `/D:/…` (und kodiert Leerzeichen als `%20`).
+const root = fileURLToPath(new URL('..', import.meta.url));
 const read = (name) => readFileSync(join(root, name), 'utf8');
 
 function walk(dir) {
@@ -21,7 +23,7 @@ function walk(dir) {
 
 const EXCLUDED = new Set(['package.json', 'sw.js', 'memory-adapter.js']);
 const runtimeFiles = () => walk(root)
-  .map((path) => relative(root, path))
+  .map((path) => relative(root, path).split(sep).join('/'))   // Vorab-Cache-Einträge und Vergleiche sind POSIX-Pfade
   .filter((path) => !path.startsWith('test/') && !path.startsWith('node_modules/') && !path.endsWith('.md')
     && !EXCLUDED.has(path))
   .sort();

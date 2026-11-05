@@ -140,6 +140,22 @@ test('wiped resets have to 0 and the exchange goes on with a new attempt', async
   assert.deepEqual(haves, [0, 1]);
 });
 
+test('after a dropped connection the second socket connects with the advanced have', async () => {
+  const { sockets, haves, run } = setup({ have: 4 });
+  const pending = run();
+  assert.equal(new URL(sockets[0].url).searchParams.get('have'), '4');
+  sockets[0].open();
+  sockets[0].slot(6, answer({ n: 'BBBBBBBBBBBBBBBB' }));         // fremd: schreibt have trotzdem fort
+  sockets[0].serverClose(1006);
+  await tick();
+  assert.equal(sockets.length, 2);
+  assert.equal(new URL(sockets[1].url).searchParams.get('have'), '6');
+  sockets[1].open();
+  sockets[1].slot(7, answer());
+  await pending;
+  assert.deepEqual(haves, [6, 7]);
+});
+
 test('a dropped connection resends the identical bytes', async () => {
   const { sockets, run } = setup();
   const pending = run();

@@ -3,9 +3,10 @@
 // verlieren: sie steht im Log und, wo ein Text angezeigt wird, kurz daneben. Ohne Browser-API
 // (getestet in test/diagnose.test.js).
 //
-// Nur für Fehler der Browser-Schnittstellen (Service Worker, Push, Kamera, Speicher). Fehler des
+// Für Fehler der Browser-Schnittstellen (Service Worker, Push, Kamera, Speicher). Fehler des
 // Desktops und des Relays (`SyncError`, `RelayError`) haben eigene, kuratierte Texte und kommen
-// hier nicht hinein.
+// hier nicht hinein. Einzige Ausnahme: `relay-transport.js` loggt damit übergangene Relay-Antworten
+// (`RelayFrameError`, nur der feste Text, nie Geheimnis oder Inhalt).
 
 export const MAX_DETAIL_LENGTH = 240;
 
