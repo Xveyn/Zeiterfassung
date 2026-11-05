@@ -60,21 +60,20 @@ def env(tmp_path):
         conflicts=ConflictsStore(str(tmp_path / "conflicts.json")), base=str(tmp_path))
 
 
-def sync(env, phone: OldPhone, now: str = NOW) -> dict:
-    body = json.dumps({"protocol": 2, "client_time": now, "last_pull_at": "", "entries": {},
+def sync(env, phone: OldPhone, now: str = NOW, last_pull_at: str = "") -> tuple[dict, mobile_sync.SyncReport]:
+    body = json.dumps({"protocol": 2, "client_time": now, "last_pull_at": last_pull_at, "entries": {},
                        "reservations": phone.days}).encode()
     request = mobile_sync.parse_request(body, now=now, today=TODAY)
     report = mobile_sync.SyncReport()
     response = mobile_sync.perform_sync(
-        request, device_id="phone-0001", device_name="Pixel", last_pull_at="", categories=["P"],
+        request, device_id="phone-0001", device_name="Pixel", last_pull_at=last_pull_at, categories=["P"],
         storage=env.storage, settings=env.settings, conflicts_store=env.conflicts, base=env.base,
         now=now, today=TODAY, desktop=DESKTOP, reservation_store=env.store, report=report)
     if report.reservations_changed:   # so stößt die Route den Kalender-Abgleich an
         env.calendar_calls.append(now)
-    env.last_report = report
     response = json.loads(json.dumps(response))
     phone.learn(response)
-    return response
+    return response, report
 
 
 def store_pauses(env) -> list[int]:
@@ -89,8 +88,8 @@ def test_old_phone_three_syncs_keep_desktop_pause(env):
     phone = OldPhone()
     changed = []
     for _ in range(3):
-        response = sync(env, phone)
-        changed.append(env.last_report.reservations_changed)
+        response, report = sync(env, phone)
+        changed.append(report.reservations_changed)
         assert store_pauses(env) == [30]
         assert response_pauses(response) == [30]
     assert changed[1:] == [False, False]
@@ -98,17 +97,36 @@ def test_old_phone_three_syncs_keep_desktop_pause(env):
     assert phone.days[DAY]["slots"] == [{"start": "09:00", "end": "10:00", "kategorie": "P"}]
 
 
+def test_old_phone_resend_with_newer_stamp_keeps_desktop_pause(env):
+    """Stempel höher (Berührung, oder `floor` = last_pull_at + 1 s): ohne `inherit_pause` gewänne der Slot
+    mit Pause 0 und löschte die Pause."""
+    phone = OldPhone()
+    pull = ""
+    for step, now in enumerate(["2026-10-08T12:00:00Z", "2026-10-08T12:10:00Z", "2026-10-08T12:20:00Z"]):
+        if step:   # unverändert, aber neuer Stempel
+            phone.days[DAY]["modified_at"] = now
+        response, report = sync(env, phone, now, last_pull_at=pull)
+        pull = response["server_time"]
+        assert store_pauses(env) == [30]
+        assert response_pauses(response) == [30]
+        if step == 2:
+            assert report.reservations_changed is True   # Stempel wandert, Inhalt bleibt
+    # identischer Folge-Abgleich: No-op
+    _, report = sync(env, phone, "2026-10-08T12:30:00Z", last_pull_at=pull)
+    assert store_pauses(env) == [30]
+
+
 def test_old_phone_edit_category_keeps_pause_edit_time_loses_it(env):
     phone = OldPhone()
     sync(env, phone)
 
     phone.edit(DAY, "2026-10-08T12:05:00Z", kategorie="Q")
-    response = sync(env, phone, "2026-10-08T12:10:00Z")
+    response, _ = sync(env, phone, "2026-10-08T12:10:00Z")
     assert env.store.get_all_raw()[DAY]["slots"][0]["kategorie"] == "Q"
     assert store_pauses(env) == [30] and response_pauses(response) == [30]
 
     phone.edit(DAY, "2026-10-08T12:20:00Z", end="11:00")
-    response = sync(env, phone, "2026-10-08T12:25:00Z")
+    response, _ = sync(env, phone, "2026-10-08T12:25:00Z")
     assert env.store.get_all_raw()[DAY]["slots"][0]["end"] == "11:00"
     assert store_pauses(env) == [0] and response_pauses(response) == [0]
     sync(env, phone, "2026-10-08T12:30:00Z")
@@ -120,8 +138,8 @@ def test_old_phone_new_day_gets_zero_pause(env):
     sync(env, phone)
     phone.edit("2026-10-21", "2026-10-08T12:05:00Z")
 
-    first = sync(env, phone, "2026-10-08T12:10:00Z")
-    second = sync(env, phone, "2026-10-08T12:15:00Z")
+    first, _ = sync(env, phone, "2026-10-08T12:10:00Z")
+    second, _ = sync(env, phone, "2026-10-08T12:15:00Z")
 
     assert [s["pause"] for s in env.store.get_all_raw()["2026-10-21"]["slots"]] == [0]
     assert first["reservations"]["2026-10-21"]["slots"][0]["pause"] == 0
@@ -132,7 +150,7 @@ def test_old_phone_new_day_gets_zero_pause(env):
 def test_new_desktop_response_carries_flag_and_pause(env):
     phone = OldPhone()
 
-    response = sync(env, phone)
+    response, _ = sync(env, phone)
 
     assert response["reservation_pause"] is True
     assert response_pauses(response) == [30]
