@@ -323,7 +323,6 @@ def test_remote_only_date_has_no_marker():
     assert res["merged"]["2026-06-01"]["slots"][0]["send_reminder_minutes"] is None
 
 
-
 # --- Pause (#455): Termin bleibt brutto, Pause reist als Property ---
 
 
@@ -366,18 +365,14 @@ def test_remote_wins_takes_pause_from_event_property():
     assert res["merged"]["2026-06-01"]["slots"][0]["pause"] == 30
 
 
-def test_remote_wins_without_property_falls_back_to_local_pause_via_event_id():
+def test_remote_wins_without_property_yields_pause_zero():
     res = merge_reservations(
         {"2026-06-01": _local(slots=[
-            _lslot(start="08:00", end="12:00", event_id="ev1", pause=15),
-            _lslot(start="13:00", end="17:00", event_id="ev2", pause=0)])},
-        [_remote(start="13:00", end="17:00", event_id="ev2",
-                 modified_at="2026-05-21T10:00:00Z"),
-         _remote(start="08:00", end="12:00", event_id="ev1",
+            _lslot(start="08:00", end="12:00", event_id="ev1", pause=15)])},
+        [_remote(start="08:00", end="12:00", event_id="ev1",
                  modified_at="2026-05-21T10:00:00Z")],
         "2026-05-19T00:00:00Z")
-    slots = res["merged"]["2026-06-01"]["slots"]
-    assert [(x["start"], x["pause"]) for x in slots] == [("13:00", 0), ("08:00", 15)]
+    assert res["merged"]["2026-06-01"]["slots"][0]["pause"] == 0
 
 
 def test_new_remote_event_without_local_slot_has_pause_zero():
@@ -428,13 +423,11 @@ class _FakeCalendar:
         return self
 
     def list(self, **kw):
-        outer = self
         items = [dict(b, id=i) for i, b in self.events_by_id.items()]
 
         class _R:
             def execute(self_inner):
                 return {"items": items}
-        del outer
         return _R()
 
     def insert(self, calendarId, body):
@@ -505,9 +498,14 @@ def test_local_wins_run_keeps_pause_in_store(tmp_path):
     assert store.get_all_raw()["2026-06-01"]["slots"][0]["pause"] == 30
 
 
-def test_remote_wins_run_without_property_keeps_local_pause_via_event_id(tmp_path):
+def test_remote_wins_run_without_property_adopts_pause_zero_no_pingpong(tmp_path):
+    """Gerät B setzt Pause 30 -> 0 (Event neuer, ohne Property); Gerät A mit
+    älterer lokaler Pause 30 übernimmt 0 und schreibt 30 nie zurück."""
     from src import reservations_sync
     store, settings, cal = _setup(tmp_path, pause=30, local_mod="2026-05-01T10:00:00Z",
                                   event_mod="2026-05-20T10:00:00Z")
     reservations_sync.reconcile_reservations(cal, "c", store, settings)
-    assert store.get_all_raw()["2026-06-01"]["slots"][0]["pause"] == 30
+    assert store.get_all_raw()["2026-06-01"]["slots"][0]["pause"] == 0
+    reservations_sync.reconcile_reservations(cal, "c", store, settings)
+    assert cal.updates == 0
+    assert "pause" not in cal.events_by_id["ev1"]["extendedProperties"]["private"]

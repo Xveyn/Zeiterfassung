@@ -67,10 +67,10 @@ def event_payload(date_str, start, end, kategorie, modified_at, pause=0):
         "modified_at": modified_at,
     }
     description = EVENT_DESCRIPTION
-    if pause and pause > 0:
-        private["pause"] = str(int(pause))
+    if pause > 0:
+        private["pause"] = str(pause)
         description = (f"{EVENT_DESCRIPTION}\n"
-                       f"Zeitspanne brutto, Pause {int(pause)} min nicht abgezogen.")
+                       f"Zeitspanne brutto, Pause {pause} min nicht abgezogen.")
     return {
         "summary": summary,
         "description": description,
@@ -81,8 +81,11 @@ def event_payload(date_str, start, end, kategorie, modified_at, pause=0):
 
 
 def _parse_pause(raw):
-    """Pause-Property → ganze Minuten ≥ 0; fehlend/ungültig → 0."""
-    if not isinstance(raw, str) or not (raw.isascii() and raw.isdigit()):
+    """Pause-Property → ganze Minuten ≥ 0; fehlend/ungültig → 0.
+
+    Höchstens 4 Ziffern: Fremddaten, und `int()` wirft ab ~4300 Stellen."""
+    if (not isinstance(raw, str) or len(raw) > 4
+            or not (raw.isascii() and raw.isdigit())):
         return 0
     return int(raw)
 

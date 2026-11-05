@@ -67,7 +67,8 @@ def test_parse_event_reads_pause_roundtrip():
     assert gcal.parse_event(body)["pause"] == 45
 
 
-@pytest.mark.parametrize("raw", [None, "", "abc", "-5", "1.5"])
+@pytest.mark.parametrize("raw", [None, "", "abc", "-5", "1.5", "9" * 5000, "12345"],
+                         ids=["none", "empty", "abc", "neg", "float", "huge", "5digits"])
 def test_parse_event_missing_or_invalid_pause_is_zero(raw):
     body = gcal.event_payload("2026-06-01", "09:00", "17:00", "", "x")
     body["id"] = "e"

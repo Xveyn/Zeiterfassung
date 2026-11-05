@@ -13,34 +13,19 @@ import contextlib
 from src.time_utils import utc_now_iso
 
 
-def _slot_from_event(ev, reminder_minutes=None, pause=None):
+def _slot_from_event(ev, reminder_minutes=None):
     """Reservierungs-Slot aus einem geparsten Kalender-Event.
 
     `reminder_minutes` kommt aus dem lokalen Slot mit derselben event_id — der
     Kalender kennt das Feld nicht, es würde beim Remote-gewinnt-Merge sonst
-    verloren gehen. `pause=None` nimmt die Pause aus dem Event (`ev["pause"]`).
+    verloren gehen. Die Pause kommt aus dem Event (fehlende Property = 0).
     """
-    if pause is None:
-        pause = ev.get("pause", 0)
     return {
         "start": ev["start"], "end": ev["end"],
         "kategorie": ev.get("kategorie", ""), "gcal_event_id": ev["event_id"],
         "send_reminder_minutes": reminder_minutes,
-        "pause": pause,
+        "pause": ev.get("pause", 0),
     }
-
-
-def _pauses_by_event_id(local):
-    """{event_id: pause} aus den lokalen Slots (Zuordnung über die Event-ID,
-    nicht über die Position — wie bei `_reminders_by_event_id`)."""
-    if local is None:
-        return {}
-    out = {}
-    for slot in local.get("slots", []):
-        event_id = slot.get("gcal_event_id")
-        if event_id:
-            out[event_id] = slot.get("pause", 0)
-    return out
 
 
 def _plan_fields(date, s, modified_at):
@@ -75,15 +60,13 @@ def _reminders_by_event_id(local):
 
 def _adopt_remote(date, remotes, merged, imported_dates, local=None):
     """Remote gewinnt: die Slots des Tages = die Remote-Events. Ein lokal
-    gesetzter Erinnerungs-Marker wandert über die event_id mit; die Pause
-    kommt aus der Event-Property und fällt ohne sie (Termin einer älteren
-    Version) auf die lokale Pause desselben Events zurück."""
+    gesetzter Erinnerungs-Marker wandert über die event_id mit. Die Pause
+    nicht: der Termin ist maßgeblich, eine fehlende Property heißt 0 (jede
+    lokale Pause-Änderung stempelt neu, ein neuerer Termin ohne Property ist
+    also ein neuerer Stand ohne Pause)."""
     reminders = _reminders_by_event_id(local)
-    pauses = _pauses_by_event_id(local)
     merged[date] = {
-        "slots": [_slot_from_event(
-                      ev, reminders.get(ev["event_id"]),
-                      ev.get("pause", 0) or pauses.get(ev["event_id"], 0))
+        "slots": [_slot_from_event(ev, reminders.get(ev["event_id"]))
                   for ev in remotes],
         "modified_at": max(ev["modified_at"] for ev in remotes),
         "deleted": False,
