@@ -16,6 +16,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Any
 
+from src.default_times import MODE_GENERAL, mode_code, spread
 from src.devices import sanitize_device_name
 from src.api_service import (
     DEFAULT_PORT, MAX_PORT, MIN_PORT, REASON_INVALID_PORT, REASON_PORT_IN_USE,
@@ -66,11 +67,16 @@ def _wsl_date(raw: Mapping[str, Any], which: str) -> str | None:
 
 
 def validate_work(raw: Mapping[str, Any]) -> tuple[str, str] | None:
-    for key, label in zip(WEEKDAY_KEYS, DAYS_DE, strict=True):
-        ok, msg = validate_entry(raw[f"default_start_{key}"],
-                                 raw[f"default_end_{key}"])
+    if mode_code(raw["default_times_mode"]) == MODE_GENERAL:
+        ok, msg = validate_entry(raw["default_start_all"], raw["default_end_all"])
         if not ok:
-            return "Standard-Arbeitszeit ungültig", f"{label}: {msg}"
+            return "Standard-Arbeitszeit ungültig", msg
+    else:
+        for key, label in zip(WEEKDAY_KEYS, DAYS_DE, strict=True):
+            ok, msg = validate_entry(raw[f"default_start_{key}"],
+                                     raw[f"default_end_{key}"])
+            if not ok:
+                return "Standard-Arbeitszeit ungültig", f"{label}: {msg}"
     # Der Zeitraum zählt nur, wenn das Limit an ist — wie bisher.
     if raw["werkstudent_limit_enabled"]:
         start, end = _wsl_date(raw, "start"), _wsl_date(raw, "end")
@@ -107,11 +113,19 @@ def work_updates(raw: Mapping[str, Any],
         "state": code_for_state_label(raw["state"]),
         "show_weekend": bool(raw["show_weekend"]),
     }
-    # Alle sieben Tage, auch Sa/So bei „Nur Werktage": die Werte bleiben so
-    # erhalten und sind sofort wieder da, wenn der Modus zurückgenommen wird.
-    for key in WEEKDAY_KEYS:
-        updates[f"default_start_{key}"] = raw[f"default_start_{key}"]
-        updates[f"default_end_{key}"] = raw[f"default_end_{key}"]
+    mode = mode_code(raw["default_times_mode"])
+    updates["default_times_mode"] = mode
+    if mode == MODE_GENERAL:
+        # Ein Paar für alle sieben Tage — auch für die bei „Nur Werktage"
+        # ausgeblendeten, damit kein Tag einen alten Wert behält.
+        updates.update(spread(raw["default_start_all"], raw["default_end_all"]))
+    else:
+        # Alle sieben Tage, auch Sa/So bei „Nur Werktage": die Werte bleiben
+        # so erhalten und sind sofort wieder da, wenn der Modus zurückgenommen
+        # wird.
+        for key in WEEKDAY_KEYS:
+            updates[f"default_start_{key}"] = raw[f"default_start_{key}"]
+            updates[f"default_end_{key}"] = raw[f"default_end_{key}"]
     return updates
 
 

@@ -31,6 +31,9 @@ def work_raw(**overrides):
     for key in WEEKDAY_KEYS:
         raw[f"default_start_{key}"] = "08:00"
         raw[f"default_end_{key}"] = "16:00"
+    raw["default_times_mode"] = "Tageweise"
+    raw["default_start_all"] = "08:00"
+    raw["default_end_all"] = "16:00"
     raw.update(overrides)
     return raw
 
@@ -256,6 +259,47 @@ def test_work_updates_writes_reservations_enabled():
         "reservations_enabled"] is False
 
 
+def test_validate_work_general_checks_the_single_pair():
+    raw = work_raw(default_times_mode="Allgemein",
+                   default_start_all="17:00", default_end_all="09:00")
+    result = tr.validate_work(raw)
+    assert result is not None
+    assert result[0] == "Standard-Arbeitszeit ungültig"
+    assert "Endzeit" in result[1]
+
+
+def test_validate_work_general_ignores_stale_day_values():
+    # Im Modus Allgemein zählt nur das Paar, nicht das ausgeblendete Raster.
+    raw = work_raw(default_times_mode="Allgemein",
+                   default_start_wed="17:00", default_end_wed="09:00")
+    assert tr.validate_work(raw) is None
+
+
+def test_validate_work_per_day_ignores_the_general_pair():
+    raw = work_raw(default_start_all="17:00", default_end_all="09:00")
+    assert tr.validate_work(raw) is None
+
+
+def test_work_updates_general_spreads_one_pair_over_all_days():
+    raw = work_raw(default_times_mode="Allgemein",
+                   default_start_all="09:30", default_end_all="17:45",
+                   default_start_wed="07:00")
+    upd = tr.work_updates(raw, OLD_WSL)
+    assert upd["default_times_mode"] == "general"
+    for key in WEEKDAY_KEYS:
+        assert upd[f"default_start_{key}"] == "09:30"
+        assert upd[f"default_end_{key}"] == "17:45"
+
+
+def test_work_updates_per_day_keeps_each_day():
+    raw = work_raw(default_start_wed="07:00", default_end_fri="12:00")
+    upd = tr.work_updates(raw, OLD_WSL)
+    assert upd["default_times_mode"] == "per_day"
+    assert upd["default_start_wed"] == "07:00"
+    assert upd["default_end_fri"] == "12:00"
+    assert upd["default_start_mon"] == "08:00"
+
+
 _legacy_keys_base = {
     "autostart", "default_pause", "recipient", "name", "mail_subject",
     "mail_greeting", "mail_content", "mail_closing", "hourly_rate", "state",
@@ -270,7 +314,7 @@ _legacy_keys_base = {
     "werkstudent_limit_max_hours", "pause_warning_enabled", "workweek_only",
     "device_name", "auto_update_enabled", "reservations_enabled",
     "mobile_push_enabled", "mobile_push_reservation", "mobile_push_send",
-    "mobile_push_suppress_toast",
+    "mobile_push_suppress_toast", "default_times_mode",
 }
 LEGACY_KEYS = (
     _legacy_keys_base |

@@ -4,6 +4,7 @@ Werkstudenten-Limit, Kategorien und Urlaub."""
 import datetime
 import tkinter as tk
 
+from src import default_times as dt
 from src.dialogs.category_dialog import open_category_dialog
 from src.dialogs.date_row import build_date_row
 from src.dialogs.settings_dialog.fields import FieldSet
@@ -16,7 +17,7 @@ from src.holidays_de import STATES
 from src.settings import WEEKDAY_KEYS
 from src.theme import (
     BG, FONT, PAUSE_VALUES, TEXT_MUTED, TIME_VALUES, Form, dark_combo,
-    dark_entry, themed_showwarning,
+    dark_entry, themed_askyesno, themed_showwarning,
 )
 from src.time_utils import DAYS_DE
 from src.weekly_limit import (
@@ -63,9 +64,31 @@ class WorkTab:
         # ausgeblendeten: `save` schreibt unverändert alle Wochentage zurück,
         # damit die Werte für Sa/So erhalten bleiben und sofort wieder da
         # sind, wenn "Nur Werktage" zurückgenommen wird.
-        for key, lbl in zip(WEEKDAY_KEYS, DAYS_DE, strict=True):
+        for key in WEEKDAY_KEYS:
             start_vars[key] = tk.StringVar(value=settings.get(f"default_start_{key}"))
             end_vars[key] = tk.StringVar(value=settings.get(f"default_end_{key}"))
+
+        # Allgemein = ein Paar für alle Tage, Tageweise = das 7-Tage-Raster
+        # (wie bei den Kategorien). Gespeichert werden in beiden Fällen die
+        # 14 Tages-Keys, siehe src/default_times.py.
+        mode = dt.resolve_mode(
+            settings.get("default_times_mode"),
+            {k: v.get() for k, v in start_vars.items()},
+            {k: v.get() for k, v in end_vars.items()})
+        mode_var = tk.StringVar(value=dt.mode_label(mode))
+        all_start_var = tk.StringVar(value=start_vars["mon"].get())
+        all_end_var = tk.StringVar(value=end_vars["mon"].get())
+
+        form.row("Modus:", dark_combo(
+            body, mode_var, list(dt.MODE_LABELS.values()), width=12))
+        general_cell = tk.Frame(body, bg=BG)
+        dark_combo(general_cell, all_start_var, TIME_VALUES).pack(side=tk.LEFT)
+        tk.Label(general_cell, text="–", font=FONT, bg=BG, fg=TEXT_MUTED).pack(
+            side=tk.LEFT, padx=6)
+        dark_combo(general_cell, all_end_var, TIME_VALUES).pack(side=tk.LEFT)
+        general_row = form.row("Alle Tage:", general_cell)
+
+        for key, lbl in zip(WEEKDAY_KEYS, DAYS_DE, strict=True):
             cell = tk.Frame(body, bg=BG)
             dark_combo(cell, start_vars[key], TIME_VALUES).pack(side=tk.LEFT)
             tk.Label(cell, text="–", font=FONT, bg=BG, fg=TEXT_MUTED).pack(
@@ -73,15 +96,36 @@ class WorkTab:
             dark_combo(cell, end_vars[key], TIME_VALUES).pack(side=tk.LEFT)
             day_rows[key] = form.row(f"{lbl}:", cell)
 
-        def _apply_workweek(*_args):
+        def _apply_visibility(*_args):
             # Sofort statt erst beim nächsten Öffnen (#132) — auch beim
-            # Verwerfen, das die Variable über FieldSet.load zurücksetzt.
-            visible = not workweek_only_var.get()
-            for key in ("sat", "sun"):
-                day_rows[key].show(visible)
+            # Verwerfen, das die Variablen über FieldSet.load zurücksetzt.
+            per_day = dt.mode_code(mode_var.get()) == dt.MODE_PER_DAY
+            general_row.show(not per_day)
+            weekend = not workweek_only_var.get()
+            for key, row in day_rows.items():
+                row.show(per_day and (weekend or key not in ("sat", "sun")))
 
-        workweek_only_var.trace_add("write", _apply_workweek)
-        _apply_workweek()
+        def _on_mode_change(*_args):
+            # Werte mitnehmen, damit ein Wechsel nichts Eingegebenes kostet.
+            if dt.mode_code(mode_var.get()) == dt.MODE_PER_DAY:
+                starts, ends = dt.days_for_per_day(
+                    {k: v.get() for k, v in start_vars.items()},
+                    {k: v.get() for k, v in end_vars.items()},
+                    all_start_var.get(), all_end_var.get())
+                for key in WEEKDAY_KEYS:
+                    start_vars[key].set(starts[key])
+                    end_vars[key].set(ends[key])
+            else:
+                start, end = dt.general_from_days(
+                    {k: v.get() for k, v in start_vars.items()},
+                    {k: v.get() for k, v in end_vars.items()})
+                all_start_var.set(start)
+                all_end_var.set(end)
+            _apply_visibility()
+
+        workweek_only_var.trace_add("write", _apply_visibility)
+        mode_var.trace_add("write", _on_mode_change)
+        _apply_visibility()
 
         pause_var = tk.StringVar(value=str(settings.get("default_pause")))
         form.row("Standard-Pause (Min):", dark_combo(body, pause_var, PAUSE_VALUES))
@@ -150,6 +194,9 @@ class WorkTab:
 
         self.start_vars = start_vars
         self.end_vars = end_vars
+        self.mode_var = mode_var
+        self.all_start_var = all_start_var
+        self.all_end_var = all_end_var
         self.pause_var = pause_var
         self.pause_warning_var = pause_warning_var
         self.reservations_var = reservations_var
@@ -171,6 +218,9 @@ class WorkTab:
         fields.add("workweek_only", workweek_only_var)
         fields.add("show_weekend", show_weekend_var)
         fields.add("state", state_var)
+        fields.add("default_times_mode", mode_var)
+        fields.add("default_start_all", all_start_var)
+        fields.add("default_end_all", all_end_var)
         for key in WEEKDAY_KEYS:
             fields.add(f"default_start_{key}", start_vars[key])
             fields.add(f"default_end_{key}", end_vars[key])
@@ -202,9 +252,26 @@ class WorkTab:
 
     def save(self):
         settings = self._settings
+        raw = self.values()
+        if dt.mode_code(raw["default_times_mode"]) == dt.MODE_GENERAL and (
+                dt.days_differ(
+                    {k: raw[f"default_start_{k}"] for k in WEEKDAY_KEYS},
+                    {k: raw[f"default_end_{k}"] for k in WEEKDAY_KEYS})):
+            # Wie im Kategorien-Dialog: Tageswerte gehen nur nach Rückfrage.
+            if not themed_askyesno(
+                    self._dialog, "Tageszeiten verwerfen?",
+                    "Die tageweise gesetzten Standardzeiten gehen verloren, "
+                    "wenn als „Allgemein“ gespeichert wird.\n\n"
+                    "Trotzdem speichern?"):
+                return SaveOutcome(saved=False)
         old = {key: settings.get(key) for key in WSL_KEYS}
         updates = work_updates(self.values(), old)
         settings.apply_updates(updates)
+        # Das Raster zeigt nach „Allgemein" den gespeicherten Stand; so
+        # stimmt die Baseline des Coordinators mit den Settings überein.
+        for key in WEEKDAY_KEYS:
+            self.start_vars[key].set(updates[f"default_start_{key}"])
+            self.end_vars[key].set(updates[f"default_end_{key}"])
         # Geänderter Limit-Zeitraum: bereits erfasste Wochen darin prüfen —
         # sonst fiele eine Überschreitung erst beim nächsten Eintrag auf.
         if self._storage is not None and period_scan_needed(
