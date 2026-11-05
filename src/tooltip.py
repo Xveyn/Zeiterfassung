@@ -1,7 +1,7 @@
 import tkinter as tk
 from typing import Callable, Optional, Union
 
-from src.theme import FONT_FAMILY, workarea_for
+from src.theme import FONT_TOOLTIP, px, workarea_for
 
 # Ein Tooltip-Text ist entweder fix oder wird beim Anzeigen berechnet.
 # Dynamisch braucht es z.B. die Header-Pfeile: dieselben Buttons blättern
@@ -27,7 +27,8 @@ TIP_BG = "#1e293b"
 # folgt der nächste sofort (s. `_show_delay_ms`).
 SHOW_DELAY_MS = 400
 
-# Lage des Tooltips zum Anker-Widget: eingerückt und knapp darunter.
+# Lage des Tooltips zum Anker-Widget: eingerückt und knapp darunter. Pixelwerte
+# bei 100 %; `_tip_position` und der Label-Bau skalieren sie über `px()`.
 TIP_OFFSET_X = 20
 TIP_GAP_Y = 4
 
@@ -109,7 +110,8 @@ def _tip_position(anchor, size, workarea):
     Anker-Widget `anchor` (x, y, w, h), geklemmt an `workarea`
     (left, top, right, bottom) — alles in Screen-Koordinaten.
 
-    Normal steht es `TIP_OFFSET_X` eingerückt `TIP_GAP_Y` unter dem Anker.
+    Normal steht es `TIP_OFFSET_X` eingerückt `TIP_GAP_Y` unter dem Anker
+    (beides skaliert mit der UI, `px()`).
     Ragt es rechts hinaus, rückt es nach links, bis es bündig abschließt;
     ragt es unten hinaus, wandert es über den Anker (#185). Das Fenster ist
     `overrideredirect`, kein Window-Manager korrigiert die Lage. Passt es gar
@@ -120,13 +122,14 @@ def _tip_position(anchor, size, workarea):
     ax, ay, _aw, ah = anchor
     w, h = size
     left, top, right, bottom = workarea
-    x = ax + TIP_OFFSET_X
+    x = ax + px(TIP_OFFSET_X)
     if x + w > right:
         x = right - w
     x = max(left, x)
-    y = ay + ah + TIP_GAP_Y
+    gap = px(TIP_GAP_Y)
+    y = ay + ah + gap
     if y + h > bottom:
-        y = ay - TIP_GAP_Y - h
+        y = ay - gap - h
     y = max(top, y)
     return x, y
 
@@ -167,9 +170,9 @@ class _TipWindow:
             foreground="#e0e0e0",
             relief="solid",
             borderwidth=1,
-            padx=8,
-            pady=4,
-            font=(FONT_FAMILY, 9),
+            padx=px(8),
+            pady=px(4),
+            font=FONT_TOOLTIP,
         )
         self.label.pack()
 

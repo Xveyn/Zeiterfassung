@@ -33,6 +33,7 @@ FONT_BOLD = "AppFontBold"
 FONT_HEADER = "AppFontHeader"
 FONT_HEADER_SMALL = "AppFontHeaderSmall"
 FONT_FOOTER = "AppFontFooter"
+FONT_TOOLTIP = "AppFontTooltip"
 
 # name → (Basis-Punktgröße, weight); die Größe wird in init_fonts × Faktor gesetzt.
 _APP_FONTS: dict[str, tuple[int, Literal["normal", "bold"]]] = {
@@ -43,6 +44,7 @@ _APP_FONTS: dict[str, tuple[int, Literal["normal", "bold"]]] = {
     FONT_HEADER: (16, "bold"),
     FONT_HEADER_SMALL: (12, "bold"),
     FONT_FOOTER: (12, "bold"),
+    FONT_TOOLTIP: (9, "normal"),
 }
 
 # Standard-Tk-Fonts werden mitskaliert, damit Widgets ohne explizites font=…

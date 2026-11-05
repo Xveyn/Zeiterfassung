@@ -1072,6 +1072,12 @@ Pixel), das wäre aus dem AST heraus geraten — dort bleibt es Handarbeit.
 Buttons der App laufen darüber, **kein** direkter `tk.Button`), und
 `apply_notebook_style` die Maße der Reiter.
 
+**Schrift gehört in einen benannten Font, nie in ein Tupel.** Nur die Fonts aus
+`theme/fonts.py` skaliert `init_fonts` mit; ein rohes `font=(Familie, 9)` blieb
+bei jeder Skalierung auf 9 pt (so geschehen beim Tooltip, `FONT_TOOLTIP`).
+`tests/test_pixel_scaling.py` verbietet Font-Tupel im Quelltext. Das Tooltip
+skaliert außerdem Innenabstand, Einrückung und Abstand über `px()`.
+
 **Passt die Skalierung auf den Bildschirm?** Das Hauptfenster ist
 `resizable(False, False)` und wird von `grid_renderer.repin_geometry` auf seine
 angeforderte Größe gepinnt — die Bildschirmgröße sieht diese Funktion nie an.

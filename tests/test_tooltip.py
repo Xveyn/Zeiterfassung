@@ -181,6 +181,34 @@ def test_position_default_below_and_offset_right():
     assert tooltip._tip_position((500, 300, 80, 30), (200, 40), _WA) == (520, 334)
 
 
+def test_position_offsets_follow_ui_scale(monkeypatch):
+    """Einrückung und Abstand sind Pixel und wachsen mit der UI-Skalierung mit
+    (`px()`); bei 100 % bleiben es 20 bzw. 4 (s. Test darüber)."""
+    from src.theme import fonts
+
+    monkeypatch.setattr(fonts, "_scale", 2.0)
+    assert tooltip._tip_position((500, 300, 80, 30), (200, 40), _WA) == (540, 338)
+
+
+def test_position_below_gap_follows_scale_when_flipped_above(monkeypatch):
+    """Auch der Abstand beim Hochklappen über den Anker wird skaliert."""
+    from src.theme import fonts
+
+    monkeypatch.setattr(fonts, "_scale", 2.0)
+    _, y = tooltip._tip_position((500, 1000, 80, 30), (200, 40), _WA)
+    assert y == 1000 - 8 - 40
+
+
+def test_tooltip_font_is_a_scaled_named_font():
+    """Das Label nimmt einen benannten App-Font, kein rohes (Familie, Punkt)-
+    Tupel: nur benannte Fonts skaliert `init_fonts` mit."""
+    from src.theme import fonts
+
+    assert tooltip.FONT_TOOLTIP == fonts.FONT_TOOLTIP
+    assert fonts.FONT_TOOLTIP in fonts._APP_FONTS
+    assert fonts._APP_FONTS[fonts.FONT_TOOLTIP] == (9, "normal")
+
+
 def test_position_shifted_left_at_right_edge():
     """Ragt der Tooltip rechts über die Arbeitsfläche, schließt er bündig mit
     ihr ab — statt abgeschnitten zu werden (#185)."""
