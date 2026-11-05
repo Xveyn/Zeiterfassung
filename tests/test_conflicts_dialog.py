@@ -2,9 +2,7 @@ import types
 from unittest.mock import MagicMock
 
 from src.dialogs import conflicts_dialog
-from src.dialogs.conflicts_dialog import (
-    ConflictsDialog, _entry_chosen, _fmt_entry_candidate, _fmt_setting_candidate,
-)
+from src.dialogs.conflicts_dialog import ConflictsDialog, _entry_chosen
 
 
 def _cand(slots=None, deleted=False, modified_at="2026-05-20T10:00:00Z", device_id="devABCDEF"):
@@ -32,48 +30,6 @@ def test_entry_chosen_deleted_candidate():
     assert _entry_chosen(_cand(slots=[], deleted=True)) == {"slots": [], "deleted": True}
 
 
-def test_fmt_entry_candidate_lists_slots():
-    cand = _cand(slots=[{"start": "08:00", "end": "12:00", "pause": 0, "kategorie": "Büro"},
-                        {"start": "13:00", "end": "17:00", "pause": 30, "kategorie": ""}])
-    text = _fmt_entry_candidate(cand, {})
-    assert "08:00—12:00" in text
-    assert "Büro" in text
-    assert "13:00—17:00" in text
-
-
-def test_fmt_entry_candidate_deleted():
-    assert "GELÖSCHT" in _fmt_entry_candidate(_cand(slots=[], deleted=True), {})
-
-
-# --- Gerätename statt nackter ID (Registry aus dem Sync-Doc) ----------------
-
-_REGISTRY = {"devABCDEF12": {"name": "Laptop Arbeit", "updated_at": "2026-05-01T00:00:00Z"}}
-
-
-def test_fmt_entry_candidate_shows_device_name():
-    text = _fmt_entry_candidate(_cand(slots=[], device_id="devABCDEF12"), _REGISTRY)
-    assert "Laptop Arbeit" in text
-    assert "devABCDE…" in text
-
-
-def test_fmt_entry_candidate_falls_back_to_short_id():
-    """Unbekanntes Gerät (nie gepusht, alter Stand): exakt wie vor dem Feature."""
-    text = _fmt_entry_candidate(_cand(slots=[], device_id="fremdes-geraet"), _REGISTRY)
-    assert "fremdes-…" in text
-    assert "·" not in text
-
-
-def test_fmt_deleted_candidate_shows_device_name():
-    cand = _cand(slots=[], deleted=True, device_id="devABCDEF12")
-    assert "Laptop Arbeit" in _fmt_entry_candidate(cand, _REGISTRY)
-
-
-def test_fmt_setting_candidate_shows_device_name():
-    cand = {"value": "a@b.de", "modified_at": "2026-05-20T10:00:00Z",
-            "device_id": "devABCDEF12"}
-    assert "Laptop Arbeit" in _fmt_setting_candidate(cand, _REGISTRY)
-
-
 # --- Doppel-Resolve-Guard (Follow-up #134 / Audit H3) -----------------------
 # Seit #122 sind die A/B-Buttons nur noch OPTISCH disabled — der command feuert
 # weiter. Gegen einen zweiten Klick auf den bereits aufgelösten Konflikt schützt
@@ -92,17 +48,19 @@ def _dialog_stub(selected, filter_key=None):
         conflicts_store=MagicMock(),
         top=MagicMock(),
         listbox=MagicMock(),
-        btn_a=MagicMock(),
-        btn_b=MagicMock(),
-        detail_label=MagicMock(),
+        _unresolved=[selected] if selected is not None else [],
+        _rows=[],
         _refresh_list=MagicMock(),
         _on_resolved=MagicMock(),
+        _show_message=MagicMock(),
     )
     stub.settings.get.return_value = "devABCDEF"
-    # _refresh_list ruft self._on_select(idx) auf — die echte Implementierung
-    # binden, damit _selected/detail_label nach der Vorselektion prüfbar sind
-    # (nicht die _refresh_list-Mock-Konvention der Resolve-Tests oben).
-    stub._on_select = lambda idx=None: ConflictsDialog._on_select(stub, idx)
+    stub.listbox.size.return_value = 0
+    # _refresh_list ruft self._on_select(pos) auf — die echte Implementierung
+    # binden, damit _selected nach der Vorselektion prüfbar ist.
+    stub._show_conflict = MagicMock()
+    stub._select_pos = MagicMock()
+    stub._on_select = lambda pos=None: ConflictsDialog._on_select(stub, pos)
     return stub
 
 
@@ -127,8 +85,6 @@ def test_resolve_noop_when_nothing_selected(monkeypatch):
 def test_resolve_resets_selected_after_success(monkeypatch):
     monkeypatch.setattr(conflicts_dialog.sync, "resolve_conflict",
                         lambda *a, **k: None)
-    monkeypatch.setattr(conflicts_dialog, "set_secondary_button_enabled",
-                        lambda *a, **k: None)
     stub = _dialog_stub(selected=_setting_conflict())
 
     ConflictsDialog._resolve_with_candidate(stub, 0)
@@ -143,8 +99,6 @@ def test_resolve_success_notifies_on_resolved(monkeypatch):
     bekommen — sonst zeigt die Zelle hinter dem Dialog weiter den alten
     Konflikt-Hinweis/die alte Ist-Zeit."""
     monkeypatch.setattr(conflicts_dialog.sync, "resolve_conflict",
-                        lambda *a, **k: None)
-    monkeypatch.setattr(conflicts_dialog, "set_secondary_button_enabled",
                         lambda *a, **k: None)
     stub = _dialog_stub(selected=_setting_conflict())
 
@@ -168,8 +122,6 @@ def test_second_resolve_is_noop(monkeypatch):
     calls = []
     monkeypatch.setattr(conflicts_dialog.sync, "resolve_conflict",
                         lambda *a, **k: calls.append(1))
-    monkeypatch.setattr(conflicts_dialog, "set_secondary_button_enabled",
-                        lambda *a, **k: None)
     stub = _dialog_stub(selected=_setting_conflict())
 
     ConflictsDialog._resolve_with_candidate(stub, 0)  # löst auf
@@ -210,8 +162,6 @@ def _entry_conflict(key, cid):
 
 
 def test_refresh_list_filters_to_matching_key(monkeypatch):
-    monkeypatch.setattr(conflicts_dialog, "set_secondary_button_enabled",
-                        lambda *a, **k: None)
     stub = _dialog_stub(selected=None, filter_key="2026-06-03")
     stub.conflicts_store.get_all.return_value = [
         _entry_conflict("2026-06-02", "c1"),
@@ -225,6 +175,7 @@ def test_refresh_list_filters_to_matching_key(monkeypatch):
     assert [c["id"] for c in stub._unresolved] == ["c2"]
     stub.listbox.selection_set.assert_called_once_with(0)
     assert stub._selected["id"] == "c2"
+    stub._show_conflict.assert_called_once_with(stub._selected)
 
 
 def test_refresh_list_without_filter_key_keeps_full_list():
@@ -251,3 +202,106 @@ def test_refresh_list_filter_key_not_found_selects_nothing():
     assert stub._unresolved == []
     stub.listbox.selection_set.assert_not_called()
     assert stub._selected is None
+
+
+# --- Gruppierte Liste und Weiterspringen -------------------------------------
+
+def _store_with(*conflicts):
+    store = MagicMock()
+    store.get_all.return_value = list(conflicts)
+    return store
+
+
+def _setting_c(key, cid):
+    return {"id": cid, "kind": "setting", "key": key,
+            "candidates": [{"value": True, "device_id": "a"},
+                           {"value": False, "device_id": "b"}]}
+
+
+def test_refresh_list_groups_days_before_settings_with_counts():
+    stub = _dialog_stub(selected=None)
+    stub.conflicts_store.get_all.return_value = [
+        _setting_c("workweek_only", "s1"),
+        _entry_conflict("2026-06-12", "c2"),
+        _entry_conflict("2026-06-02", "c1"),
+    ]
+
+    ConflictsDialog._refresh_list(stub)
+
+    shown = [c[0][0] for c in stub.listbox.insert.call_args_list]  # (index, text)
+    texts = [c[0][1] for c in stub.listbox.insert.call_args_list]
+    assert shown == ["end"] * 5
+    assert texts == ["ZEITEN · 2", "  Di, 02.06.2026", "  Fr, 12.06.2026",
+                     "EINSTELLUNGEN · 1", "  Nur Werktage"]
+    assert [c["id"] for c in stub._unresolved] == ["c1", "c2", "s1"]
+
+
+def test_refresh_list_after_resolving_selects_the_next_one():
+    stub = _dialog_stub(selected=None)
+    stub.conflicts_store.get_all.return_value = [
+        _entry_conflict("2026-06-02", "c1"), _entry_conflict("2026-06-03", "c2"),
+    ]
+
+    ConflictsDialog._refresh_list(stub, keep_pos=1)
+
+    stub._select_pos.assert_called_once_with(1)
+
+
+def test_refresh_list_after_resolving_the_last_one_clamps_the_position():
+    stub = _dialog_stub(selected=None)
+    stub.conflicts_store.get_all.return_value = [_entry_conflict("2026-06-02", "c1")]
+
+    ConflictsDialog._refresh_list(stub, keep_pos=5)
+
+    stub._select_pos.assert_called_once_with(0)
+
+
+def test_refresh_list_says_done_when_nothing_is_left():
+    stub = _dialog_stub(selected=None)
+    stub.conflicts_store.get_all.return_value = []
+
+    ConflictsDialog._refresh_list(stub, keep_pos=0)
+
+    stub._show_message.assert_called_once_with(conflicts_dialog.DONE_TEXT)
+    assert stub._selected is None
+
+
+def test_resolve_passes_the_position_so_the_next_conflict(monkeypatch):
+    monkeypatch.setattr(conflicts_dialog.sync, "resolve_conflict",
+                        lambda *a, **k: None)
+    first, second = _entry_conflict("2026-06-02", "c1"), _entry_conflict("2026-06-03", "c2")
+    stub = _dialog_stub(selected=second)
+    stub._unresolved = [first, second]
+
+    ConflictsDialog._resolve_with_candidate(stub, 1)
+
+    stub._refresh_list.assert_called_once_with(keep_pos=1)
+
+
+def test_resolve_uses_the_candidate_index_not_the_card_position(monkeypatch):
+    # Die Karten sind sortiert (eigenes Gerät zuerst); gewählt wird über den
+    # Index des Kandidaten, nicht über die Spalte.
+    seen = {}
+    monkeypatch.setattr(conflicts_dialog.sync, "resolve_conflict",
+                        lambda cid, chosen, *a, **k: seen.update(chosen=chosen))
+    conflict = _entry_conflict("2026-06-02", "c1")
+    stub = _dialog_stub(selected=conflict)
+
+    ConflictsDialog._resolve_with_candidate(stub, 1)
+
+    assert seen["chosen"]["slots"] == conflict["candidates"][1]["slots"]
+
+
+def test_header_row_is_not_selectable():
+    conflict = _entry_conflict("2026-06-02", "c1")
+    stub = _dialog_stub(selected=conflict)
+    stub._unresolved = [conflict]
+    stub._rows = [("header", "Zeiten · 1"), ("conflict", conflict)]
+    stub._row_of = lambda pos: ConflictsDialog._row_of(stub, pos)
+    stub.listbox.curselection.return_value = (0,)
+
+    ConflictsDialog._on_select(stub)
+
+    # Auswahl zurück auf die Zeile des angezeigten Konflikts, nichts neu gezeigt.
+    stub.listbox.selection_set.assert_called_once_with(1)
+    stub._show_conflict.assert_not_called()

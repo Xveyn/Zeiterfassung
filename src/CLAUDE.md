@@ -494,7 +494,7 @@ Zeitraum und welche Kategorien der Bericht gefiltert ist.
   bauen.
 - `devices.py` — **Geräte-Registry** für die Anzeige: `{device_id: {name, updated_at}}`,
   im Sync-Doc unter `devices`. Übersetzt die `device_id` in einen lesbaren Namen
-  (Konfliktdialog, `_fmt_*_candidate`). Tk- und I/O-frei; der eigene Name steht
+  (Konfliktdialog, `conflict_view.build_cards`). Tk- und I/O-frei; der eigene Name steht
   gerätelokal in `settings.device_name`, der Spiegel der anderen in
   `settings.known_devices` — **nicht** in `SYNCED_SETTING_KEYS` (ein
   synchronisierter Key wäre ein einziger globaler Wert, die Geräte würden ihn
