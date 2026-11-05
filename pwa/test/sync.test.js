@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 import { Store } from '../store.js';
+import { pendingReservationMinutes } from '../reservations.js';
 import { decodeRequest } from '../relay-frame.js';
 import { endpointOf, isPaired } from '../transport.js';
 import { createMemoryAdapter } from '../memory-adapter.js';
@@ -371,7 +372,9 @@ test('a sync sends bearer, request shape and the dirty days, then applies the an
   for (const key of Object.keys(example.settings)) {
     assert.deepEqual(keysOf(call.plain.settings[key]), keysOf(example.settings[key]), key);
   }
-  assert.deepEqual(call.plain.reservations['2026-10-15'].slots, [RES]);
+  assert.deepEqual(call.plain.reservations['2026-10-15'].slots, [{ ...RES, pause: 0 }]);   // Antwort trug die Fähigkeit
+  assert.deepEqual(keysOf(call.plain.reservations['2026-10-15'].slots[0]),
+    keysOf(example.reservations['2026-10-15'].slots[0]));
   assert.equal(call.plain.reservations['2026-10-16'].deleted, true);
   assert.equal(call.plain.entries['2026-10-06'].deleted, true);
   assert.deepEqual(call.plain.entries['2026-10-06'].slots, []);
@@ -942,7 +945,7 @@ test('a response without reservations parses to null: the feature stays hidden',
   assert.equal(parseSyncResponse(fixture('compat/sync-response-pre-reservations.json')).reservations, null);
 });
 
-test('reservations in the response are cleaned: three slot fields, valid stamps, active days only', () => {
+test('reservations in the response are cleaned: four slot fields, valid stamps, active days only', () => {
   const raw = { ...fixture('sync-response.json'), reservations: {
     '2026-10-15': { slots: [{ start: '09:00', end: '12:00', kategorie: 'Projekt', pause: 99, gcal_event_id: 'x' }],
       modified_at: '2026-10-08T11:00:00Z', deleted: false },
@@ -952,7 +955,7 @@ test('reservations in the response are cleaned: three slot fields, valid stamps,
   } };
 
   assert.deepEqual(parseSyncResponse(raw).reservations, {
-    '2026-10-15': { slots: [RES], modified_at: '2026-10-08T11:00:00Z' } });
+    '2026-10-15': { slots: [{ ...RES, pause: 99 }], modified_at: '2026-10-08T11:00:00Z' } });
 });
 
 test('a reservations field that is not an object counts as absent', () => {
@@ -1366,4 +1369,37 @@ test('the have of the current box is still remembered (#425)', async () => {
   endpoint.onHave(5);
   await settle();
   assert.equal(store.getMeta().box_have, 5);
+});
+
+// --- Pause an Reservierungen (#455): Übergang mit und ohne Fähigkeit --------------------------------
+
+test('parseReservations takes the pause per slot: integer >= 0, else 0', () => {
+  const raw = { ...fixture('sync-response.json'), reservations: { '2026-10-15': { slots: [
+    { ...RES, pause: 30 }, { ...RES, pause: 'x' }, { ...RES }, { ...RES, pause: -5 }, { ...RES, pause: 1.5 }],
+    modified_at: '2026-10-07T18:40:00Z' } } };
+  assert.deepEqual(parseSyncResponse(raw).reservations['2026-10-15'].slots.map((s) => s.pause), [30, 0, 0, 0, 0]);
+});
+
+test('without the capability the pause never goes on the wire; with it, it does', async () => {
+  for (const [name, response, expected] of [
+    ['frozen', () => fixture('compat/sync-response-pre-pause.json'), ['end', 'kategorie', 'start']],
+    ['live', () => fixture('sync-response.json'), ['end', 'kategorie', 'pause', 'start']],
+  ]) {
+    const { store, client, fetchFn } = await make({ handler: () => reply(200, response()) });
+    const day = '2026-10-20';
+    await store.saveReservation(day, [{ ...RES, pause: 30 }]);
+    await client.sync();
+    await store.saveReservation(day, [{ ...RES, start: '10:00', pause: 30 }]);   // die Antwort kennt den Tag nicht: erledigt, also neu angelegt
+    assert.equal(pendingReservationMinutes(store.getReservation(day).slots, [], false), 90, name);
+    await client.sync();
+
+    assert.equal(fetchFn.calls.length, 2, name);
+    // Die Fähigkeit kennt das Handy erst aus der ersten Antwort: die allererste Anfrage geht ohne Pause.
+    assert.deepEqual(keysOf(fetchFn.calls[0].plain.reservations[day].slots[0]), ['end', 'kategorie', 'start'], name);
+    assert.deepEqual(keysOf(fetchFn.calls[1].plain.reservations[day].slots[0]), expected, name);
+    if (name === 'live') assert.equal(fetchFn.calls[1].plain.reservations[day].slots[0].pause, 30);
+    else {
+      assert.equal(store.getMeta().reservation_pause, false);
+    }
+  }
 });
