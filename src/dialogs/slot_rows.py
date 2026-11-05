@@ -75,6 +75,16 @@ def pause_choices(current, values):
     return sorted({int(v) for v in values} | {int(current)})
 
 
+def marker_pause(pause_text, in_marker):
+    """Pause, die in den Override-Marker (`*`) der Kategorie eingeht: die
+    Zeilenpause bei Ist-Zeiten, `None` bei Reservierungen (deren Pause setzt
+    nie ein `*`, sonst öffneten alle Altbestände mit Pause 0 als „Kategorie*").
+    Tk-frei."""
+    if pause_text is None or not in_marker:
+        return None
+    return pause_text
+
+
 def slot_category_display(kategorie, start, end, pause, category_times, weekday_key,
                           default_start, default_end, default_pause):
     """Anzeige-Label fürs Kategorie-Dropdown eines Slots: Kategorie-Name, mit
@@ -112,13 +122,15 @@ class SlotRowList:
 
     def __init__(self, frame, *, with_pause, categories, category_times,
                  weekday_key, default_start, default_end, default_pause,
-                 on_rows_changed, on_value_changed=None, on_new_category=None):
+                 on_rows_changed, on_value_changed=None, on_new_category=None,
+                 pause_in_marker=True):
         self.rows = []
         # on_new_category(on_saved): öffnet den Kategorien-Dialog; on_saved
         # wird nach dem Speichern gerufen. None = kein „Neue Kategorie"-Eintrag.
         self._on_new_category = on_new_category
         self._frame = frame
         self._with_pause = with_pause
+        self._pause_in_marker = pause_in_marker
         self._categories = categories
         self._category_times = category_times
         self._weekday_key = weekday_key
@@ -234,7 +246,8 @@ class SlotRowList:
             kategorie_value = category_from_display(kv.get())
             display = slot_category_display(
                 kategorie_value, sv.get(), ev.get(),
-                pv.get() if pv is not None else None,
+                marker_pause(pv.get() if pv is not None else None,
+                             self._pause_in_marker),
                 self._category_times, self._weekday_key,
                 self._default_start, self._default_end, self._default_pause,
             )
@@ -250,7 +263,9 @@ class SlotRowList:
             ev.trace_add("write", self._on_value_changed)
 
         def on_cat_change(*_a):
-            # Reservierungen haben keine Pause → dort nur Start/Ende anwenden.
+            # Start/Ende immer; die Pause der Kategorie nur, wenn die Zeile
+            # eine Pause-Spalte hat (auch Reservierungen). Wirkt nur bei neuen
+            # (entfernbaren) Zeilen, gespeicherte bleiben unangetastet.
             t_start, t_end, t_pause = resolve_slot_defaults(
                 self._category_times, category_from_display(kv.get()),
                 self._weekday_key,

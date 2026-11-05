@@ -323,7 +323,7 @@ def open_entry_dialog(parent, date_str, storage, settings, on_change,
             _reminder_changed()
 
         res_list = SlotRowList(
-            res_rows_frame, with_pause=True, categories=categories,
+            res_rows_frame, with_pause=True, pause_in_marker=False, categories=categories,
             on_new_category=open_new_category,
             category_times=category_times, weekday_key=weekday_key,
             default_start=default_start, default_end=default_end,

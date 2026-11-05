@@ -26,12 +26,15 @@ dabei brutto.
   `reservation_pause`, an der ein Handy erkennt, dass der Desktop Pausen kennt
   (das Protokoll bleibt bei Version 2). Fehlt `pause` an einem Slot, erbt er die
   bisherige Pause nur, wenn am selben Platz ein Slot mit gleichem Start und Ende
-  steht, sonst 0; eine ungültige Pause ist `422 invalid_pause`.
+  steht, sonst 0; in der lokalen API ist eine ungültige Pause `422 invalid_pause`
+  (im Handy-Abgleich `422 invalid_entry`).
 
 ### Bekannte Grenzen
 - Eine ältere Handy-Version kennt die Pause nicht: ändert sie Start oder Ende
   einer Reservierung, wird deren Pause auf 0 gesetzt. Bleibt die Zeit gleich,
-  bleibt die Pause erhalten.
+  bleibt die Pause erhalten. Ebenso verliert die Pause der Slots, die nachrücken,
+  wenn eine ältere Handy-Version einen Slot löscht, einfügt oder umsortiert (geerbt
+  wird nur am selben Platz bei gleichem Start und Ende).
 - Teilen überträgt keine Pause, ein Import setzt die Pause des importierten
   Tages auf 0.
 - Ein älterer Desktop gibt die Pause beim Umschreiben von Kalenderterminen nicht

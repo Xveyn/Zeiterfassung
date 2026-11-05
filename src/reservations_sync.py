@@ -10,6 +10,7 @@ pull → merge → push und schreibt neue event_ids pro Slot zurück.
 
 import contextlib
 
+from src.reservations import normalize_pause
 from src.time_utils import utc_now_iso
 
 
@@ -24,7 +25,7 @@ def _slot_from_event(ev, reminder_minutes=None):
         "start": ev["start"], "end": ev["end"],
         "kategorie": ev.get("kategorie", ""), "gcal_event_id": ev["event_id"],
         "send_reminder_minutes": reminder_minutes,
-        "pause": ev.get("pause", 0),
+        "pause": normalize_pause(ev.get("pause")),
     }
 
 
@@ -35,8 +36,9 @@ def _plan_fields(date, s, modified_at):
         "date": date, "start": s["start"], "end": s["end"],
         "kategorie": s.get("kategorie", ""), "modified_at": modified_at,
     }
-    if s.get("pause", 0) > 0:
-        item["pause"] = s["pause"]
+    pause = normalize_pause(s.get("pause"))
+    if pause > 0:
+        item["pause"] = pause
     return item
 
 
@@ -142,7 +144,7 @@ def _merge_one_date(date, local, remotes, watermark, merged, plan, imported_date
             ev = remote_by_id[eid]
             if (s["start"] != ev["start"] or s["end"] != ev["end"]
                     or s.get("kategorie", "") != ev.get("kategorie", "")
-                    or s.get("pause", 0) != ev.get("pause", 0)):
+                    or normalize_pause(s.get("pause")) != normalize_pause(ev.get("pause"))):
                 plan["update"].append({
                     "event_id": eid, **_plan_fields(date, s, local_mod),
                 })

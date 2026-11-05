@@ -100,6 +100,28 @@ def test_local_wins_equal_values_no_update():
     assert res["merged"]["2026-06-01"]["slots"][0]["gcal_event_id"] == "ev1"
 
 
+import pytest
+
+
+@pytest.mark.parametrize("bad", [None, "30", 30.0, True, -5])
+def test_malformed_stored_pause_neither_raises_nor_updates_forever(bad):
+    res = merge_reservations(
+        {"2026-06-01": _local(slots=[_lslot(event_id="ev1", pause=bad)],
+                              modified_at="2026-05-21T10:00:00Z")},
+        [_remote(modified_at="2026-05-20T10:00:00Z", event_id="ev1")],
+        "2026-05-19T00:00:00Z")
+    assert res["plan"]["update"] == []
+
+
+def test_malformed_event_pause_counts_as_zero():
+    res = merge_reservations(
+        {"2026-06-01": _local(slots=[_lslot(event_id="ev1")],
+                              modified_at="2026-05-21T10:00:00Z")},
+        [_remote(modified_at="2026-05-20T10:00:00Z", event_id="ev1", pause=None)],
+        "2026-05-19T00:00:00Z")
+    assert res["plan"]["update"] == []
+
+
 def test_local_wins_new_slot_creates_extra_event():
     res = merge_reservations(
         {"2026-06-01": _local(

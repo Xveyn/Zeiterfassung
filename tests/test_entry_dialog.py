@@ -6,7 +6,7 @@ from src.dialogs.entry_dialog import (
     plan_entry_save, reservation_block_visible, reservation_note_visible,
     slot_category_display, suggest_ist_category,
 )
-from src.dialogs.slot_rows import pause_choices
+from src.dialogs.slot_rows import marker_pause, pause_choices
 from src.theme import PAUSE_VALUES
 
 
@@ -292,7 +292,7 @@ class TestReservationPause:
         values = [int(v) for v in PAUSE_VALUES]
         assert pause_choices(30, values) == values
 
-    def test_free_pause_value_roundtrips(self):
+    def test_pause_choices_lists_free_value_between_neighbours(self):
         # Die Zeile hält 37 als String-Variable; die Auswahlliste führt 37
         # mit, der Wert wird beim Speichern unverändert (nicht 35/40) gelesen.
         values = [int(v) for v in PAUSE_VALUES]
@@ -325,3 +325,20 @@ class TestCalendarNote:
         assert reservation_note_visible({"gcal_enabled": True}) is True
         assert reservation_note_visible({"gcal_enabled": False}) is False
         assert reservation_note_visible({}) is False
+
+
+class TestMarkerPauseWiring:
+    def _display(self, pause_text, in_marker):
+        return slot_category_display(
+            "Office", "08:00", "16:00", marker_pause(pause_text, in_marker),
+            {}, "mon", "08:00", "16:00", 30,
+        )
+
+    def test_reservation_row_pause_zero_vs_default_30_has_no_marker(self):
+        assert self._display("0", False) == "Office"
+
+    def test_ist_row_pause_differing_still_marked(self):
+        assert self._display("0", True) == "Office*"
+
+    def test_ist_row_pause_equal_not_marked(self):
+        assert self._display("30", True) == "Office"
