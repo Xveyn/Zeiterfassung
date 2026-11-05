@@ -105,6 +105,11 @@ DEFAULTS = {
     "default_end_fri": "16:00",
     "default_end_sat": "16:00",
     "default_end_sun": "16:00",
+    # Darstellung der Standardzeiten im Arbeitszeit-Tab: "general" (ein Paar für
+    # alle Tage) oder "per_day". "" = noch nie gewählt, der Tab leitet es aus
+    # den Zeiten ab. Gerätelokal wie die Zeiten selbst; die 14 Tages-Keys
+    # bleiben die einzige Quelle für alle Leser (src/default_times.py).
+    "default_times_mode": "",
     "show_weekend": True,
     "workweek_only": False,
     "always_on_top": False,
