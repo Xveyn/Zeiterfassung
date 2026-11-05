@@ -139,8 +139,9 @@ Technisch: `gcal.event_payload` bekommt `pause` als Parameter und legt sie in
 `extendedProperties.private` ab. `parse_event` liest sie. In
 `reservations_sync` gilt: der **Update-Vergleich** schließt `pause` ein (sonst gäbe
 es bei einer reinen Pausen-Änderung kein Update), `_adopt_remote` baut den Slot
-aus dem Termin und übernimmt `pause` aus der privaten Eigenschaft, hilfsweise
-über die `event_id` vom lokalen Slot (wie `send_reminder_minutes`).
+aus dem Termin und übernimmt `pause` aus der privaten Eigenschaft. Der Termin ist dabei
+maßgeblich: fehlt die Eigenschaft, ist die Pause 0, es gibt keinen Rückgriff auf
+den lokalen Slot (s. „Ergänzungen nach dem Plan-Review“).
 
 ## Änderungen in der PWA
 
@@ -242,6 +243,12 @@ aus dem Termin und übernimmt `pause` aus der privaten Eigenschaft, hilfsweise
 - **Gleichstand im LWW:** `pause` zählt in `_phone_key` mit (Alt-Slot ohne
   Schlüssel = 0); bei exakt gleichem Stempel entscheidet weiter die JSON-Ordnung
   des Inhalts. Nicht gelöst, nur in einem Test festgehalten.
+- **`_adopt_remote`: der Termin ist maßgeblich.** Gewinnt der Remote-Termin,
+  gilt seine Pause; fehlt die private Eigenschaft, ist sie 0 — kein Rückgriff über
+  die `event_id` auf den lokalen Slot. Grund: jede lokale Pausen-Änderung hebt das
+  lokale `modified_at`, ein neuerer Remote-Termin ohne Eigenschaft ist also ein
+  neuerer Stand; ein Rückgriff würde eine veraltete Pause geräteübergreifend
+  wiederbeleben. (Entscheidung der Steuerung, ersetzt die frühere „hilfsweise“-Fassung.)
 - **Branch-Struktur:** `feat/reservierung-pause` trägt nur den Desktop-Strang und
   wird der Release-PR. Der PWA-Strang liegt auf `feat/reservierung-pause-pwa`
   (abgezweigt von dessen Spitze, wegen Dev-Server und Ende-zu-Ende-Test) und wird
