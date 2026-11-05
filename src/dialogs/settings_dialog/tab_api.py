@@ -21,11 +21,11 @@ import tkinter as tk
 from src.dialogs.settings_dialog.fields import FieldSet
 from src.dialogs.settings_dialog.form_model import SaveOutcome
 from src.dialogs.settings_dialog.tab_rules import (
-    api_updates, curl_example, port_hint, status_view, token_buttons_enabled,
+    API_AUTH_HINT, API_ROUTES, api_updates, curl_example, port_hint, status_view, token_buttons_enabled,
     token_label_view, validate_api,
 )
 from src.theme import (
-    BG, FONT, STATUS_OK, STATUS_WARN, TEXT_MUTED, Form, dark_entry, px,
+    BG, FONT, FONT_SMALL, STATUS_OK, STATUS_WARN, TEXT, TEXT_MUTED, Form, dark_entry, px,
     set_secondary_button_enabled, themed_askyesno, themed_showerror,
     themed_showinfo,
 )
@@ -99,6 +99,16 @@ class ApiTab:
         form.hint("Die API läuft nur, solange die App läuft — Autostart gibt es "
                   "im Tab „App“. Das Token verlässt diese Maske nur über die "
                   "Zwischenablage.")
+
+        form.section("So sprichst du sie an")
+        form.hint(API_AUTH_HINT)
+        routes = tk.Frame(body, bg=BG)
+        for i, (path, what) in enumerate(API_ROUTES):
+            tk.Label(routes, text=path, font=FONT_SMALL, bg=BG, fg=TEXT,
+                     anchor="w").grid(row=i, column=0, sticky="w", padx=(0, 14))
+            tk.Label(routes, text=what, font=FONT_SMALL, bg=BG, fg=TEXT_MUTED,
+                     anchor="w").grid(row=i, column=1, sticky="w")
+        form.block(routes, pady=(0, 4))
 
         def _show_port_hint():
             # Ohne Hinweis bliebe eine Leerzeile unter dem Port-Feld stehen.

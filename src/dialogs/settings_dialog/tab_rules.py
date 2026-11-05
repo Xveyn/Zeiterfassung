@@ -328,6 +328,26 @@ def curl_example(raw_port: Any) -> str:
     return f'curl -H "Authorization: Bearer <Token>" http://127.0.0.1:{port}/v1/status'
 
 
+# Kurzfassung der Routen für den API-Tab: (Pfad, was dahinter liegt). Die
+# vollständige Tabelle samt Bodies steht in der README („Lokale HTTP-API“); ein
+# Test hält beide zusammen. Platzhalter sind deutsch: JJJJ-MM-TT, JJJJ-Www, …
+API_ROUTES: tuple[tuple[str, str], ...] = (
+    ("GET /v1/status", "Version, Gerätename"),
+    ("/v1/entries[/JJJJ-MM-TT]", "Ist-Zeiten (GET, PUT, DELETE)"),
+    ("/v1/reservations[/JJJJ-MM-TT]", "Reservierungen (GET, PUT, DELETE)"),
+    ("/v1/vacations[/id]", "Urlaub (GET, POST, DELETE)"),
+    ("GET /v1/summary/week/JJJJ-Www", "Auswertung einer Woche"),
+    ("GET /v1/summary/month/JJJJ-MM", "Auswertung eines Monats"),
+    ("GET /v1/categories", "Kategorien"),
+    ("GET /v1/holidays/JJJJ", "Feiertage"),
+)
+API_AUTH_HINT = (
+    "Jede Anfrage braucht den Kopf Authorization: Bearer <Token> "
+    "(Token kopieren). Antworten und Bodies sind JSON. Alle Pfade mit "
+    "Beispielen: README, Abschnitt „Lokale HTTP-API“."
+)
+
+
 TOKEN_MASK = "•" * 24
 TOKEN_MISSING = "Kein lesbares Token — wird beim Einschalten der API erzeugt."
 

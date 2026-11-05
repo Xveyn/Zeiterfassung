@@ -327,7 +327,7 @@ Reservierungen anlegen und den Abgleich über die App-Oberfläche aktivieren; be
 **Lokale HTTP-API** *(ab 1.25.0)* — Eine kleine Schnittstelle nur auf deinem Rechner (`127.0.0.1`), über die Skripte, Taskplaner oder andere Programme deine Zeiten lesen und eintragen können. Standardmäßig **aus**.
 
 1. Einstellungen → **API** → „Lokale API aktivieren“, speichern. Der Standard-Port ist 17653; die Statuszeile zeigt, ob die API läuft.
-2. **Token kopieren** — jeder Zugriff braucht es als `Authorization: Bearer <Token>`. „Neu erzeugen …“ sperrt alle Programme aus, die das alte Token benutzen.
+2. **Token kopieren** — jeder Zugriff braucht es als `Authorization: Bearer <Token>`. „Neu erzeugen“ sperrt alle Programme aus, die das alte Token benutzen.
 3. Abfragen, zum Beispiel:
 
 ~~~
