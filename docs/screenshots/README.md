@@ -10,15 +10,16 @@ aktuelle Oberfläche zeigt oder eine drei Releases alte.
 | Datei | Motiv |
 |-------|-------|
 | `kalender-v1.25.0.png` | Monatsansicht (Hero-Bild) mit Urlaub, violettem Punkt (Reservierung) und bernsteinfarbenem Punkt (Sende-Erinnerung) |
-| `tagesdialog-v1.25.0.png` | Tages-Dialog: Ist-Zeit, Reservierung, Erinnerung |
+| `tagesdialog-v1.26.0.png` | Tages-Dialog: Ist-Zeit, Reservierung, Erinnerung |
 | `senden-v1.23.3.png` | Sende-Dialog mit Zeitraum- und Kategoriewahl |
 | `bericht-v1.23.3.png` | Erzeugter PDF-Bericht, Seite 1 |
-| `einstellungen-v1.25.0.png` | Einstellungen, Tab „Arbeitszeit" |
-| `einstellungen-erinnerungen-v1.25.0.png` | Einstellungen, Tab „Erinnerungen" mit dem Abschnitt „Handy" |
-| `einstellungen-mobil-v1.25.0.png` | Einstellungen, Tab „Mobil" mit einem gekoppelten Demo-Handy |
+| `einstellungen-v1.26.0.png` | Einstellungen, Tab „Arbeitszeit" mit der Moduswahl der Standardzeiten |
+| `konflikte-v1.26.0.png` | Konfliktdialog: zwei Karten, links die gruppierte Liste |
+| `einstellungen-erinnerungen-v1.26.0.png` | Einstellungen, Tab „Erinnerungen" mit dem Abschnitt „Handy" |
+| `einstellungen-mobil-v1.26.0.png` | Einstellungen, Tab „Mobil" mit einem gekoppelten Demo-Handy |
 | `handy-woche-v1.25.0.png` | Handy-Web-App: Woche mit Reservierung und „Noch ausstehend" |
 | `handy-editor-v1.25.0.png` | Handy-Web-App: Tages-Editor, Reiter „Reservierung" |
-| `handy-verbindung-v1.25.0.png` | Handy-Web-App: Einstellungen → Verbindung (Benachrichtigungen) |
+| `handy-verbindung-v1.26.0.png` | Handy-Web-App: Einstellungen → Verbindung (Benachrichtigungen) |
 | `handy-kategorien-v1.25.0.png` | Handy-Web-App: Einstellungen → Kategorien |
 
 ## Neue Screenshots aufnehmen
