@@ -187,14 +187,24 @@ class BackgroundTaskRunner:
         `prerelease_updates_enabled`: ohne Opt-in nur echte Releases.
         `is_newer` wird bereits im Worker ausgewertet, damit
         on_result(release, newer) im UI-Thread keine ungeschützte Logik mehr
-        ausführt. Fehler still. Dev-/Source-Builds prüfen nie
+        ausführt. Jeder Ausgang hinterlässt eine eigene Logzeile (Drossel,
+        ausgeschaltet, Abruf fehlgeschlagen, nichts gefunden, Ergebnis); kein
+        Fehler erreicht den Nutzer. Dev-/Source-Builds prüfen nie
         (`version.updates_supported`)."""
         if not updates_supported():
             log.debug("Update-Check übersprungen: Dev-/Source-Build")
             return
         frequency = self._settings.get("update_check_frequency")
-        if not should_check(self._settings.get("last_update_check_at"), frequency):
-            log.debug("Update-Check übersprungen: Frequenz '%s' noch nicht erreicht", frequency)
+        last_check = self._settings.get("last_update_check_at")
+        if not should_check(last_check, frequency):
+            # Zwei verschiedene Gründe, die im Log unterscheidbar sein müssen:
+            # ausgeschaltet vs. heute schon geprüft (ein Release nach dem
+            # Check wird so erst am nächsten Intervall gefunden).
+            if frequency == "never":
+                log.info("Update-Check übersprungen: ausgeschaltet (Frequenz 'never')")
+            else:
+                log.info("Update-Check übersprungen: Drossel, Frequenz '%s', "
+                         "zuletzt geprüft %s", frequency, last_check)
             return
         include_prereleases = bool(self._settings.get("prerelease_updates_enabled"))
 
