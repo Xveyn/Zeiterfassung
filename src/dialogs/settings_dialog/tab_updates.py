@@ -15,7 +15,8 @@ from src.changelog import (
 from src.dialogs.settings_dialog.fields import FieldSet
 from src.dialogs.settings_dialog.form_model import SaveOutcome
 from src.dialogs.settings_dialog.tab_rules import (
-    changelog_expected, last_check_text, update_button_views,
+    CHANGELOG_DEFAULT_HEADING, changelog_box_lines, changelog_expected,
+    changelog_heading, last_check_line, update_button_views,
     update_status_kind, update_status_text, update_tab_updates,
 )
 from src.self_update import (
@@ -24,7 +25,7 @@ from src.self_update import (
     supports_self_update, verify_file,
 )
 from src.theme import (
-    BG, FONT, FONT_BOLD, STATUS_OK, STATUS_WARN, TEXT, TEXT_MUTED, TODAY_ACCENT,
+    BG, FONT, FONT_BOLD, FONT_SMALL, STATUS_OK, STATUS_WARN, TEXT, TEXT_MUTED, TODAY_ACCENT,
     Form, px,
     dark_combo, dark_text, primary_button, secondary_button,
     set_button_style, set_button_text, themed_showerror,
@@ -41,8 +42,6 @@ from src.version import (
 # Beschriftung der Changelog-Box. Ein Pre-Release hat bewusst KEINEN
 # kuratierten Changelog-Eintrag — dort stehen die generierten Release-Notes,
 # und die Box sagt das auch, statt "Changelog" zu behaupten.
-_LABEL_CHANGELOG = "Changelog:"
-_LABEL_PRERELEASE = "Enthaltene Änderungen:"
 
 # Der Knopf heißt nur dort "Update installieren", wo die App das auch kann.
 # Sonst bleibt es beim bisherigen Browser-Download.
@@ -92,12 +91,12 @@ class UpdatesTab:
 
         form.row("Installierte Version:", tk.Label(
             body, text=installed_release_id(), font=FONT, bg=BG, fg=TEXT))
-        # Datum der letzten ERFOLGREICHEN Prüfung (ein fehlgeschlagener Abruf
-        # lässt es stehen). Dev-/Source-Builds prüfen nie, dort entfällt die Zeile.
+        # Metazeile unter den Knöpfen: Datum der letzten ERFOLGREICHEN Prüfung
+        # (ein fehlgeschlagener Abruf lässt es stehen). Dev-/Source-Builds
+        # prüfen nie, dort wird sie nicht platziert.
         self._last_check_label = tk.Label(
-            body, text=last_check_text(settings.get("last_update_check_at")),
-            font=FONT, bg=BG, fg=TEXT)
-        self._last_check_row = form.row("Zuletzt geprüft:", self._last_check_label)
+            body, text=last_check_line(settings.get("last_update_check_at")),
+            font=FONT_SMALL, bg=BG, fg=TEXT_MUTED, anchor="w")
 
         self._status_label = tk.Label(
             body, text="", font=FONT, bg=BG, fg=TEXT_MUTED, anchor="w",
@@ -120,9 +119,9 @@ class UpdatesTab:
         self._updates_supported = updates_supported()
         if self._updates_supported:
             form.block(btn_row)
+            form.block(self._last_check_label, pady=(0, 4))
         else:
             self._set_status(UPDATES_UNSUPPORTED_HINT)
-            self._last_check_row.show(False)
         self._restyle_buttons()
 
         # Direkt unter Status und Knöpfen (#132): bisher trennten drei
@@ -132,7 +131,8 @@ class UpdatesTab:
         # werden sie erst, wenn ein Prüfergebnis ohne Changelog eintrifft
         # (`_show_changelog`) — das läuft immer nach dem Dialogaufbau.
         self._changelog_label = tk.Label(
-            body, text=_LABEL_CHANGELOG, font=FONT, bg=BG, fg=TEXT, anchor="w",
+            body, text=CHANGELOG_DEFAULT_HEADING, font=FONT, bg=BG, fg=TEXT,
+            anchor="w",
         )
         # Bei Dev-/Source-Builds ganz weg: es gibt keinen Check und damit
         # nichts, was die Box füllen könnte (leer wirkte sie kaputt).
@@ -155,15 +155,9 @@ class UpdatesTab:
         form.row("Automatisch prüfen:", dark_combo(
             body, self.frequency_var, [lbl for _, lbl in FREQUENCY_OPTIONS], width=14))
 
-        # Opt-in für Pre-Releases: ohne Häkchen verhält sich der Tab exakt wie
-        # bisher (nur echte Releases über /releases/latest).
-        self.prerelease_var = tk.BooleanVar(
-            value=settings.get("prerelease_updates_enabled"))
-        form.check("Auch Vorabversionen (Pre-Releases) anbieten", self.prerelease_var)
-        form.hint("Testbuilds vor dem echten Release — können Fehler enthalten.")
-
         # Nur bauen, wo Selbst-Update überhaupt möglich ist — ein Schalter
-        # für ein Feature, das die Plattform nicht hat, ist Rauschen.
+        # für ein Feature, das die Plattform nicht hat, ist Rauschen. Steht vor
+        # den Vorabversionen: er gehört zur Aktion „Update installieren".
         self.auto_update_var = None
         if self._can_self_update:
             self.auto_update_var = tk.BooleanVar(
@@ -171,6 +165,14 @@ class UpdatesTab:
             form.check("Updates automatisch installieren", self.auto_update_var)
             form.hint("Lädt im Hintergrund und installiert beim nächsten "
                       "Beenden — nie mitten in der Arbeit.")
+
+        # Opt-in für Pre-Releases (Experten-Schalter, deshalb zuletzt): ohne
+        # Häkchen verhält sich der Tab exakt wie bisher (nur echte Releases
+        # über /releases/latest).
+        self.prerelease_var = tk.BooleanVar(
+            value=settings.get("prerelease_updates_enabled"))
+        form.check("Auch Vorabversionen (Pre-Releases) anbieten", self.prerelease_var)
+        form.hint("Testbuilds vor dem echten Release — können Fehler enthalten.")
 
         self.title = "Updates"
         fields = FieldSet()
@@ -250,6 +252,16 @@ class UpdatesTab:
                 self._changelog_text.tag_add("hanging_indent", line_start, "end-1c")
             self._changelog_text.insert("end", "\n")
         self._changelog_text.config(state="disabled")
+        self._fit_changelog_height()
+
+    def _fit_changelog_height(self):
+        """Höhe der Box an den Inhalt anpassen (`tab_rules.changelog_box_lines`).
+        Gezählt werden Anzeigezeilen, also mit Umbruch; dafür muss die Box
+        ihre Breite kennen, deshalb vorher `update_idletasks`."""
+        self._changelog_text.update_idletasks()
+        counted = self._changelog_text.count("1.0", "end-1c", "displaylines")
+        lines = counted[0] if isinstance(counted, tuple) else int(counted or 0)
+        self._changelog_text.config(height=changelog_box_lines(lines))
 
     def _check_now(self):
         # self._updating: während ein Selbst-Update läuft (Download/Prüf-
@@ -266,7 +278,7 @@ class UpdatesTab:
         self._download_btn.pack_forget()
         # Zurücksetzen, sonst bliebe die Pre-Release-Beschriftung stehen,
         # wenn jemand das Häkchen abwählt und erneut prüft.
-        self._changelog_label.config(text=_LABEL_CHANGELOG)
+        self._changelog_label.config(text=CHANGELOG_DEFAULT_HEADING)
         self._set_changelog("")
 
         # Tk-Variable im UI-Thread lesen und als Wert in die Closure geben —
@@ -292,7 +304,7 @@ class UpdatesTab:
                 # Datum gilt wie beim Tray-Check auch für den Hintergrund-Check.
                 self._settings.set("last_update_check_at", today_iso())
                 self._last_check_label.config(
-                    text=last_check_text(today_iso()))
+                    text=last_check_line(today_iso()))
             if result["show_download"]:
                 self._download_btn.pack(side=tk.LEFT, padx=(8, 0))
             self._restyle_buttons()
@@ -311,6 +323,8 @@ class UpdatesTab:
                 self._show_changelog(False)
                 return
             self._show_changelog(True)
+            self._changelog_label.config(
+                text=changelog_heading(result, installed_release_id()))
             if result["changelog_notes"] is not None:
                 # Pre-Release: die Notes liegen dem Payload bereits bei,
                 # kein zweiter Netzwerk-Call nötig. Es ist aber der
@@ -320,7 +334,6 @@ class UpdatesTab:
                 # Text-Widget ohne Klick-Ziele nichts), und das Label
                 # behauptet kein "Changelog".
                 self._finish_checking()
-                self._changelog_label.config(text=_LABEL_PRERELEASE)
                 self._set_changelog(
                     release_notes_for_display(result["changelog_notes"]))
                 return

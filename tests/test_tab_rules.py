@@ -1100,3 +1100,38 @@ def test_install_is_dimmed_while_updating_or_background_download():
     assert _views(available=True, download_busy=True)[1].enabled is False
     # Ein laufender Check sperrt den Installationsknopf nicht.
     assert _views(available=True, checking=True)[1].enabled is True
+
+
+# --- Updates-Tab: Changelog-Überschrift, Boxhöhe, Metazeile -----------------
+
+def test_last_check_line_names_the_label():
+    assert tr.last_check_line("2026-11-05") == "Zuletzt geprüft: 05.11.2026"
+    assert tr.last_check_line("") == "Zuletzt geprüft: noch nie"
+
+
+class _Rel:
+    release_id = "1.26.0"
+
+
+@pytest.mark.parametrize("result,installed,expected", [
+    # Neuere Version: der Changelog gehört zu ihr.
+    (_result(changelog_version="1.26.0", latest_release=_Rel()), "1.25.2",
+     "Neu in 1.26.0:"),
+    # Aktuell: der Changelog der installierten Version.
+    (_result(changelog_version="1.25.2", latest_release=None), "1.25.2",
+     "Änderungen in 1.25.2:"),
+    # Pre-Release: generierte Notes, kein „Changelog".
+    (_result(changelog_notes="- fix: x", latest_release=_Rel()), "1.25.2",
+     "Enthaltene Änderungen:"),
+    # Nichts zu zeigen: die neutrale Vorgabe.
+    (_result(latest_release=None), "1.25.2", "Changelog:"),
+])
+def test_changelog_heading_says_whose_changelog_it_is(result, installed, expected):
+    assert tr.changelog_heading(result, installed) == expected
+
+
+@pytest.mark.parametrize("lines,expected", [
+    (0, 4), (1, 4), (4, 4), (7, 7), (12, 12), (40, 12),
+])
+def test_changelog_box_lines_follow_the_content_within_limits(lines, expected):
+    assert tr.changelog_box_lines(lines) == expected
