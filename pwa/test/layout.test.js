@@ -78,7 +78,7 @@ test('the calendar note sits only in the reservation tab and only with the flag'
   assert.equal((views.match(/RESERVATION_CALENDAR_NOTE/g) || []).length, 2);     // Import + eine Verwendung
   assert.match(views, /!withPause && pauseEnabled && h\('p', \{ class: 'muted'[^)]*RESERVATION_CALENDAR_NOTE/);
   assert.match(views, /withPause: false, pauseEnabled/);
-  assert.match(views, /withPause: true,\s*pauseEnabled: false/);
+  assert.match(views, /categoryDisplay\(state\[index\], defaults, weekday, withPause\);/);   // Reservierungspause setzt kein `*`
 });
 
 test('on narrow phones the dialog buttons use less padding so Cancel and Save stay on one row', () => {

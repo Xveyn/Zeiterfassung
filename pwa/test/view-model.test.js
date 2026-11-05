@@ -900,3 +900,12 @@ test('a future day keeps its planned line even with actual time of that category
     { days: { '2026-10-09': live([{ start: '09:00', end: '12:00', pause: 0, kategorie: 'Projekt' }]) } });
   assert.deepEqual(week.days[4].reservation.slots, ['09:00–12:00 · Projekt']);
 });
+
+test('in the reservation tab (withPause false) the pause never sets the category asterisk', () => {
+  const defaults = { pause: 0, weekdays: {}, category_times: { Projekt: { mode: 'general', start: '09:00', end: '12:00', pause: 30 } } };
+  const row = (pause) => ({ start: '09:00', end: '12:00', pause, kategorie: 'Projekt' });
+  assert.equal(categoryDisplay(row('0'), defaults, 'mo', false), 'Projekt');
+  assert.equal(categoryDisplay(row('45'), defaults, 'mo', false), 'Projekt');
+  assert.equal(categoryDisplay(row('0'), defaults, 'mo', true), 'Projekt*');
+  assert.equal(categoryDisplay({ ...row('30'), start: '10:00' }, defaults, 'mo', false), 'Projekt*');
+});

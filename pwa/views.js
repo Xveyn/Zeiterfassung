@@ -164,7 +164,7 @@ function slotSection({ rows, categories, defaults, weekday, withPause, pauseEnab
   const state = rows.map((row) => ({ ...row, base: row.base && { ...row.base } }));
   const prefix = withPause ? 'slot' : 'res';       // die Ids beider Abschnitte dürfen nicht kollidieren
   const labels = [];                                // Kategorie-Label je Zeile; das `*` folgt jeder Zeiteingabe
-  const showCategory = (index) => categoryDisplay(state[index], defaults, weekday, withPause || pauseEnabled);
+  const showCategory = (index) => categoryDisplay(state[index], defaults, weekday, withPause);
   const field = (index, key, label, attrs) => {
     const id = `${prefix}-${index}-${key}`;
     const apply = () => {
@@ -239,7 +239,7 @@ export function editorDialog({ title, rows, categories, defaults = null, weekday
     else message.textContent = check.ok ? '' : check.message;
   };
   const work = slotSection({ rows, categories, defaults, weekday, withPause: true,
-    pauseEnabled: false, onChange: () => { edited.work = true; refresh(); } });
+    onChange: () => { edited.work = true; refresh(); } });
   const res = reservation && slotSection({ rows: reservation.rows, categories, defaults, weekday,
     withPause: false, pauseEnabled, onChange: () => { edited.reservation = true; refresh(); } });
   const clearButton = button('Tag leeren', () => handlers.clear(active, dialog), 'link');
