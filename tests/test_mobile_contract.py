@@ -289,6 +289,31 @@ def test_the_desktop_still_accepts_the_request_of_a_phone_without_reservations()
     assert parsed.reservations == {}
 
 
+def test_pre_pause_request_still_accepted():
+    # Eingefrorener Stand vor `pause` an Reservierungs-Slots: nie ändern.
+    example = load("compat/sync-request-pre-pause.json")
+
+    parsed = mobile_sync.parse_request(
+        json.dumps(example).encode(), now=example["client_time"],
+        today=datetime.date.fromisoformat(example["client_time"][:10]))
+
+    assert parsed.reservations
+    for rec in parsed.reservations.values():
+        for slot in rec["slots"]:
+            assert "pause" not in slot
+
+
+def test_pre_pause_fixtures_are_really_pre_pause():
+    request = load("compat/sync-request-pre-pause.json")
+    response = load("compat/sync-response-pre-pause.json")
+
+    for reservations in (request["reservations"], response["reservations"]):
+        slots = [s for rec in reservations.values() for s in rec["slots"]]
+        assert slots
+        assert all("pause" not in s for s in slots)
+    assert "reservation_pause" not in response
+
+
 def test_the_live_response_example_has_the_shape_build_reservations_emits():
     example = load("sync-response.json")
     today = datetime.date.fromisoformat(example["server_time"][:10])
