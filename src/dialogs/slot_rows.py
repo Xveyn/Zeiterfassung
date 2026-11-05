@@ -67,6 +67,14 @@ def category_from_display(display):
     return display
 
 
+def pause_choices(current, values):
+    """Auswahlliste der Pause-Combobox: `values` plus `current`, falls dort
+    nicht enthalten, aufsteigend — damit ein freier Wert (z.B. 37 aus dem
+    Handy) angezeigt und beim Speichern nicht auf 35/40 gerundet wird.
+    Tk-frei."""
+    return sorted({int(v) for v in values} | {int(current)})
+
+
 def slot_category_display(kategorie, start, end, pause, category_times, weekday_key,
                           default_start, default_end, default_pause):
     """Anzeige-Label fürs Kategorie-Dropdown eines Slots: Kategorie-Name, mit
@@ -164,7 +172,8 @@ class SlotRowList:
         tk.Label(row, text="–", font=FONT, bg=BG, fg=TEXT_MUTED).pack(side=tk.LEFT)
         dark_combo(row, ev, TIME_VALUES, width=6).pack(side=tk.LEFT, padx=4)
         if pv is not None:
-            dark_combo(row, pv, PAUSE_VALUES, width=4).pack(side=tk.LEFT, padx=4)
+            dark_combo(row, pv, [str(v) for v in pause_choices(
+                int(pause or 0), [int(x) for x in PAUSE_VALUES])], width=4).pack(side=tk.LEFT, padx=4)
         cat_combo = dark_combo(row, kv, self._choices(), width=18)
         cat_combo.pack(side=tk.LEFT, padx=4)
 

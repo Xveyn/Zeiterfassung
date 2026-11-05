@@ -36,6 +36,18 @@ def test_fmt_slot_line_without_category():
         {"start": "08:00", "end": "12:00"}) == "08:00-12:00"
 
 
+def test_fmt_slot_line_with_pause():
+    line = GridRenderer._fmt_slot_line(
+        {"start": "08:00", "end": "15:30", "kategorie": "A", "pause": 30})
+    assert line == "08:00-15:30  A  \u00b7 30 min Pause"
+    assert "30 min Pause" in line
+
+
+def test_fmt_slot_line_zero_pause_unchanged():
+    assert GridRenderer._fmt_slot_line(
+        {"start": "08:00", "end": "12:00", "kategorie": "B", "pause": 0}) == "08:00-12:00  B"
+
+
 def test_a_slot_with_a_broken_time_never_shows_none():
     assert GridRenderer._fmt_slot_line({"start": None, "end": "12:00"}) == "?-12:00"
     assert GridRenderer._fmt_slot_line({"start": "08:00", "end": None}) == "08:00-?"

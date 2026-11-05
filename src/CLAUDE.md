@@ -977,8 +977,13 @@ ein Snapshot vom Tray-Start.
 
 Modale Tk-Dialoge, von `App` geroutet (Klick-Modell: Linksklick = bearbeiten, Rechtsklick =
 löschen — siehe Root-`CLAUDE.md`): `entry_dialog` (Tages-Dialog, rein zum Speichern;
-die Slot-Zeilen beider Blöcke baut seit R5 `slot_rows.SlotRowList` — Ist-Zeit mit,
-Reservierung ohne Pause-Spalte, `on_value_changed` hängt den Erinnerungs-Block an
+die Slot-Zeilen beider Blöcke baut seit R5 `slot_rows.SlotRowList` — beide
+Blöcke mit Pause-Spalte (Reservierung seit #455; `slot_rows.pause_choices` führt einen
+freien Wert wie 37 in der Auswahl mit, statt ihn zu runden; die Ist-Vorbelegung aus
+einer Reservierung nimmt deren Pause, wenn > 0 — `ist_prefill_pause`; bei aktivem
+Kalender-Abgleich zeigt der Reservierungs-Block `RESERVATION_CALENDAR_NOTE`, weil der
+Termin die volle Spanne zeigt; `slot_category_display` bekommt für Reservierungen
+weiter `pause=None`, deren Pause setzt kein `*`), `on_value_changed` hängt den Erinnerungs-Block an
 Zeit-/Kategorieänderungen. Dort liegen auch die Tk-freien Anzeige-Helfer
 `category_*`/`slot_category_display`, die `entry_dialog` re-exportiert),
 `send_dialog`, `export_dialog` (Zeitraum-Modal → PDF lokal speichern),

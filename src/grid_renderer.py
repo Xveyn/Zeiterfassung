@@ -372,9 +372,12 @@ class GridRenderer:
     @staticmethod
     def _fmt_slot_line(slot):
         """Eine Tooltip-Zeile für einen Slot: 'HH:MM-HH:MM  Kategorie'
-        (Kategorie weggelassen, wenn leer)."""
+        (Kategorie weggelassen, wenn leer), bei Pause > 0 zusätzlich
+        '  · N min Pause'."""
         kat = f"  {slot['kategorie']}" if slot.get("kategorie") else ""
-        return f"{GridRenderer._fmt_slot_time(slot)}{kat}"
+        pause = slot.get("pause", 0) or 0
+        pz = f"  \u00b7 {pause} min Pause" if pause > 0 else ""
+        return f"{GridRenderer._fmt_slot_time(slot)}{kat}{pz}"
 
     @staticmethod
     def _fmt_slot_time(slot):
