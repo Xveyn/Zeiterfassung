@@ -525,3 +525,28 @@ class TestManualCheckToastText:
                           release_id="1.19.1-pre.1", is_prerelease=True)
         assert manual_check_toast_text("1.19.1", release).startswith(
             "Vorabversion 1.19.1-pre.1 verfügbar")
+
+
+class TestFetchFailureIsLogged:
+    """Ein gescheiterter Release-Abruf hinterlässt eine Spur mit Grund
+    (sonst ist „Update nicht gefunden" im --noconsole-Build unauffindbar)."""
+
+    def test_http_403_logged_with_status(self, caplog):
+        err = HTTPError(url="x", code=403, msg="rate limit exceeded", hdrs=None, fp=None)
+        with patch("src.updater.urlopen", side_effect=err), \
+                caplog.at_level("WARNING", logger="src.updater"):
+            assert check_latest_release("any/repo") is None
+        assert "403" in caplog.text
+
+    def test_offline_logged_with_exception_type(self, caplog):
+        with patch("src.updater.urlopen", side_effect=URLError("offline")), \
+                caplog.at_level("WARNING", logger="src.updater"):
+            assert check_latest_release("any/repo") is None
+        assert "URLError" in caplog.text
+
+    def test_any_variant_logged(self, caplog):
+        err = HTTPError(url="x", code=403, msg="rate limit exceeded", hdrs=None, fp=None)
+        with patch("src.updater.urlopen", side_effect=err), \
+                caplog.at_level("WARNING", logger="src.updater"):
+            assert check_for_update("any/repo", True) is None
+        assert "403" in caplog.text

@@ -507,11 +507,83 @@ def test_check_update_logs_when_no_release_found(monkeypatch, caplog):
         "Update-Check: keine Veröffentlichung gefunden"]
 
 
-def test_check_update_throttle_is_only_debug(monkeypatch, caplog):
+def test_check_update_logs_throttle_with_last_check(monkeypatch, caplog):
+    import logging
+    monkeypatch.setattr(bg, "should_check", lambda last, freq: False)
+    r = _runner(settings={"last_update_check_at": "2026-11-05",
+                          "update_check_frequency": "daily"})
+    with caplog.at_level(logging.INFO, logger="src.background_tasks"):
+        r.check_update(on_result=lambda rel, newer: None)
+    assert [x.getMessage() for x in caplog.records] == [
+        "Update-Check übersprungen: Drossel, Frequenz 'daily', "
+        "zuletzt geprüft 2026-11-05"]
+
+
+def test_check_update_logs_disabled_differently_from_throttle(monkeypatch, caplog):
     import logging
     monkeypatch.setattr(bg, "should_check", lambda last, freq: False)
     r = _runner(settings={"last_update_check_at": None,
-                          "update_check_frequency": "weekly"})
-    with caplog.at_level(logging.DEBUG, logger="src.background_tasks"):
+                          "update_check_frequency": "never"})
+    with caplog.at_level(logging.INFO, logger="src.background_tasks"):
         r.check_update(on_result=lambda rel, newer: None)
-    assert [x.levelno for x in caplog.records] == [logging.DEBUG]
+    assert [x.getMessage() for x in caplog.records] == [
+        "Update-Check übersprungen: ausgeschaltet (Frequenz 'never')"]
+
+
+def _messages(caplog):
+    return [(x.levelname, x.getMessage()) for x in caplog.records]
+
+
+def test_check_update_outcomes_are_told_apart_in_the_log(monkeypatch, caplog):
+    """Drossel, ausgeschaltet, Abruf fehlgeschlagen: drei verschiedene Zeilen.
+    Der Abruf läuft durch das echte `updater` (nur `urlopen` ist ersetzt),
+    sonst prüfte der Test nicht, dass Ursache *und* Folgezeile erscheinen."""
+    import logging
+    from urllib.error import HTTPError
+
+    monkeypatch.setattr(bg, "installed_release_id", lambda: "1.0.0")
+    texts = {}
+
+    def run_case(name, frequency, should, fetch_error=None):
+        monkeypatch.setattr(bg, "should_check", lambda last, freq: should)
+        if fetch_error is not None:
+            monkeypatch.setattr("src.updater.urlopen",
+                                lambda *a, **k: (_ for _ in ()).throw(fetch_error))
+        r = _runner(settings={"last_update_check_at": "2026-11-05",
+                              "update_check_frequency": frequency,
+                              "prerelease_updates_enabled": False})
+        r.run = _run_inline
+        caplog.clear()
+        with caplog.at_level(logging.INFO):
+            r.check_update(on_result=lambda rel, newer: None)
+        texts[name] = _messages(caplog)
+
+    run_case("throttle", "daily", False)
+    run_case("never", "never", False)
+    run_case("http403", "daily", True,
+             HTTPError(url="x", code=403, msg="rate limit", hdrs=None, fp=None))
+
+    assert len(texts["throttle"]) == 1 and "Drossel" in texts["throttle"][0][1]
+    assert len(texts["never"]) == 1 and "ausgeschaltet" in texts["never"][0][1]
+    # Fehlschlag: erst die Ursache (WARNING, mit Status), dann das Ergebnis.
+    assert [lvl for lvl, _ in texts["http403"]] == ["WARNING", "INFO"]
+    assert "HTTP 403" in texts["http403"][0][1]
+    assert "keine Veröffentlichung" in texts["http403"][1][1]
+    assert len({m for t in texts.values() for _, m in t}) == 4
+
+
+def test_check_update_log_does_not_leak_exception_text(monkeypatch, caplog):
+    import logging
+    from urllib.error import URLError
+
+    monkeypatch.setattr(bg, "should_check", lambda last, freq: True)
+    monkeypatch.setattr("src.updater.urlopen", lambda *a, **k: (_ for _ in ()).throw(
+        URLError("proxy-auth user:hunter2@proxy.example")))
+    r = _runner(settings={"last_update_check_at": None,
+                          "update_check_frequency": "daily",
+                          "prerelease_updates_enabled": False})
+    r.run = _run_inline
+    with caplog.at_level(logging.DEBUG):
+        r.check_update(on_result=lambda rel, newer: None)
+    assert "URLError" in caplog.text
+    assert "hunter2" not in caplog.text

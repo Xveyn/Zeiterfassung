@@ -5,6 +5,7 @@ Keine Tk-Imports; UI-Layer ruft die Funktionen aus einem Worker-Thread.
 """
 
 import json
+import logging
 from dataclasses import dataclass
 from typing import Any
 from datetime import date
@@ -12,6 +13,8 @@ from urllib.error import URLError
 from urllib.request import Request, urlopen
 
 from src.version import VERSION, base_version, parse_release_id, strip_tag_prefix
+
+log = logging.getLogger(__name__)
 
 
 def is_newer(current: str, latest: str) -> bool:
@@ -230,6 +233,15 @@ def _fetch_json(url: str, timeout: float) -> Any:
         return json.loads(response.read().decode("utf-8"))
 
 
+def _log_fetch_failure(url: str, exc: BaseException) -> None:
+    """Spur für einen gescheiterten Release-Abruf: Art und (bei HTTP) Status,
+    nie Header oder Antwortinhalt. Ohne sie bleibt ein 403 (Rate-Limit) oder
+    ein Proxy-Problem im --noconsole-Build unsichtbar."""
+    code = getattr(exc, "code", None)
+    detail = f"HTTP {code}" if code is not None else type(exc).__name__
+    log.warning("Update-Check: Abruf von %s fehlgeschlagen (%s)", url, detail)
+
+
 def release_from_payload(payload: Any) -> Release | None:
     """Ein Release-Objekt der GitHub-API -> Release. None, wenn Tag oder
     html_url fehlen. Tk-frei und ohne Netzwerk testbar."""
@@ -278,12 +290,15 @@ def check_latest_release(repo: str, timeout: float = 5.0) -> Release | None:
     liefert /releases/latest nie mit).
 
     Liefert `None` bei jedem Fehler (Netzwerk, Timeout, kaputtes JSON,
-    fehlendes `tag_name`). Caller darf sich darauf verlassen, dass keine
-    Exception bubbled — Update-Hinweis ist nice-to-have.
+    fehlendes `tag_name`) und loggt dann Art bzw. HTTP-Status als WARNING.
+    Caller darf sich darauf verlassen, dass keine Exception bubbled —
+    Update-Hinweis ist nice-to-have.
     """
+    url = f"{_API_ROOT}/{repo}/releases/latest"
     try:
-        return release_from_payload(_fetch_json(f"{_API_ROOT}/{repo}/releases/latest", timeout))
-    except _FETCH_ERRORS:
+        return release_from_payload(_fetch_json(url, timeout))
+    except _FETCH_ERRORS as exc:
+        _log_fetch_failure(url, exc)
         return None
 
 
@@ -294,13 +309,15 @@ def check_latest_release_any(repo: str, timeout: float = 5.0) -> Release | None:
     per_page=10 deckt bei der Release-Kadenz dieses Repos mehrere Wochen bis
     Monate ab — dass das neueste Release außerhalb der ersten Seite liegt, ist
     praktisch ausgeschlossen."""
+    url = f"{_API_ROOT}/{repo}/releases?per_page=10"
     try:
-        payloads = _fetch_json(f"{_API_ROOT}/{repo}/releases?per_page=10", timeout)
+        payloads = _fetch_json(url, timeout)
         if not isinstance(payloads, list):
             return None
         newest = select_newest_payload(payloads)
         return release_from_payload(newest) if newest is not None else None
-    except _FETCH_ERRORS:
+    except _FETCH_ERRORS as exc:
+        _log_fetch_failure(url, exc)
         return None
 
 
