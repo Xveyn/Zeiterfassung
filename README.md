@@ -47,7 +47,7 @@ Desktop-App zur Erfassung von Arbeitszeiten: im Kern Kalenderansicht und PDF-Ber
 - **Wochenstunden-Limit** — Optionales Werkstudenten-Limit über einen konfigurierbaren Zeitraum mit Warnung beim Überschreiten
 - **Pausenpflicht-Warnung** — Hinweis beim Speichern, wenn die eingetragene Pause die gesetzliche Mindestpause nach § 4 ArbZG unterschreitet (30 Min ab >6 h, 45 Min ab >9 h); standardmäßig aktiv, abschaltbar. Grobe Näherung, keine rechtliche Bewertung
 
-![Tages-Dialog mit Arbeitszeit, Reservierung und Erinnerung](docs/screenshots/tagesdialog-v1.25.0.png)
+![Tages-Dialog mit Arbeitszeit, Reservierung und Erinnerung](docs/screenshots/tagesdialog-v1.26.0.png)
 
 *Ein Tag im Detail: erfasste Ist-Zeit, geplante Reservierung und die Erinnerung ans Verschicken. Linksklick auf einen Kalendertag öffnet den Dialog; gelöscht wird im Kalender selbst (Rechtsklick, unter macOS über das ✕ in der Tageszelle).*
 
@@ -74,9 +74,9 @@ Desktop-App zur Erfassung von Arbeitszeiten: im Kern Kalenderansicht und PDF-Ber
 ### App & Umgebung
 
 - **Multi-Device-Sync** — Optionale Synchronisation von Zeiteinträgen und Mail-Vorlagen über Google Drive (`appDataFolder`), inklusive Konflikt-Auflösung wenn dasselbe Datum offline auf mehreren Geräten bearbeitet wurde — per Linksklick direkt auf den betroffenen Kalendertag oder gesammelt in den Einstellungen
-- **Einstellungen** — In Tabs gegliedert (Arbeitszeit / Erinnerungen / Versand / Google / API / Mobil / App / Updates); Standardzeiten (allgemein oder je Wochentag *(ab --VERSION--)*) und Pause, Erinnerungen, E-Mail-Vorlagen mit Platzhaltern, Empfänger, SMTP-Konten und Webhooks, Update-Einstellungen
+- **Einstellungen** — In Tabs gegliedert (Arbeitszeit / Erinnerungen / Versand / Google / API / Mobil / App / Updates); Standardzeiten (allgemein oder je Wochentag *(ab 1.26.0)*) und Pause, Erinnerungen, E-Mail-Vorlagen mit Platzhaltern, Empfänger, SMTP-Konten und Webhooks, Update-Einstellungen
 - **Lokale HTTP-API** *(ab 1.25.0)* — Optional (Standard: aus): ein Server nur auf `127.0.0.1`, über den Skripte, Taskplaner oder andere Programme auf diesem Rechner deine Zeiten lesen und eintragen können — nur mit Token (Einstellungen → API), nie aus dem Browser; siehe [Lokale HTTP-API](#lokale-http-api-optional)
-- **Handy-Erfassung** *(ab 1.25.0)* — Optional (Standard: aus): Zeiten unterwegs auf dem Handy nachtragen — auch ohne Verbindung — und im selben WLAN mit der App abgleichen. Läuft als Web-App (PWA) im Browser des Handys, gekoppelt per QR-Code; keine App-Installation aus einem Store. Im WLAN gleicht Chrome auf Android ab; für iPhone und iPad läuft der Abgleich **über einen Relay im Internet** *(ab --VERSION--)*, weil Safari den Zugriff auf eine Adresse im WLAN sperrt (dort der einzige Weg; Firefox: vermutlich derselbe Weg, nicht geprüft). Beide Wege sind **Ende-zu-Ende verschlüsselt**, die Desktop-App muss laufen; siehe [Handy-Erfassung](#handy-erfassung-optional)
+- **Handy-Erfassung** *(ab 1.25.0)* — Optional (Standard: aus): Zeiten unterwegs auf dem Handy nachtragen — auch ohne Verbindung — und im selben WLAN mit der App abgleichen. Läuft als Web-App (PWA) im Browser des Handys, gekoppelt per QR-Code; keine App-Installation aus einem Store. Im WLAN gleicht Chrome auf Android ab; für iPhone und iPad läuft der Abgleich **über einen Relay im Internet** *(ab 1.26.0)*, weil Safari den Zugriff auf eine Adresse im WLAN sperrt (dort der einzige Weg; Firefox: vermutlich derselbe Weg, nicht geprüft). Beide Wege sind **Ende-zu-Ende verschlüsselt**, die Desktop-App muss laufen; siehe [Handy-Erfassung](#handy-erfassung-optional)
 - **Schutz vor beschädigten Zeitdaten** *(ab 1.25.0)* — Ist die Zeitdatei beschädigt (Handbearbeitung, fremder Sync), repariert die App sie beim Start: Unbrauchbares wird verworfen, vorher liegt eine Kopie als `zeiterfassung.json.corrupt-<Zeitstempel>` daneben (die letzten fünf bleiben), und ein einmaliger Hinweis sagt, was passiert ist und wo die Kopie liegt
 - **Autostart & Einzelinstanz** — Optionaler minimierter Start bei Anmeldung (Windows, macOS, Linux); es läuft immer nur eine Instanz — ein zweiter Start holt das vorhandene Fenster nach vorn
 - **Entfernen aus der App** *(ab 1.24.0)* — Unter macOS und Linux räumt „Zeiterfassung entfernen“ (Einstellungen → App) Schlüsselbund, Zugangsdaten, Autostart und Menüeintrag ab, auf Wunsch auch Zeiten und Einstellungen; die Programmdatei löschst du danach selbst
@@ -86,11 +86,11 @@ Desktop-App zur Erfassung von Arbeitszeiten: im Kern Kalenderansicht und PDF-Ber
 - **UI-Skalierung** — Stufenloser Skalierungsfaktor für die Oberfläche (gerätelokal). Unter Windows und Linux folgt die App zusätzlich der Anzeigeskalierung des Systems *(ab 1.24.0)* — unter Windows bleibt sie dabei scharf, unter Linux ist sie auf skalierten X11-Desktops nicht mehr winzig; der Faktor gilt dann obendrauf
 - **Cross-Platform-Installer** — Per PyInstaller gebaut, als Setup-Exe (Windows), DMG (macOS) und AppImage (Linux) paketierbar
 
-![Einstellungs-Dialog, Tab Arbeitszeit](docs/screenshots/einstellungen-v1.25.0.png)
+![Einstellungs-Dialog, Tab Arbeitszeit](docs/screenshots/einstellungen-v1.26.0.png)
 
 *Die Einstellungen, hier der Tab „Arbeitszeit" mit Standardzeiten, Pausenpflicht und Werkstudenten-Limit.*
 
-![Einstellungs-Dialog, Tab Erinnerungen mit dem Abschnitt Handy](docs/screenshots/einstellungen-erinnerungen-v1.25.0.png)
+![Einstellungs-Dialog, Tab Erinnerungen mit dem Abschnitt Handy](docs/screenshots/einstellungen-erinnerungen-v1.26.0.png)
 
 *Tab „Erinnerungen“: Toast am Rechner, Erinnerung ans Verschicken und, mit eingeschalteter Handy-Erfassung, der Abschnitt „Handy“ für Push-Erinnerungen aufs Handy. Screenshots stammen aus Demo-Daten.*
 
@@ -282,7 +282,11 @@ Wiederhole Schritte 3-4 auf jedem weiteren Gerät mit demselben Google-Konto.
 - **Pull beim App-Start** — sobald Sync aktiv und Netz da ist, werden Drive-Änderungen anderer Geräte im Hintergrund eingespielt
 - **Push beim App-Schließen** — lokale Änderungen werden vor dem Beenden hochgeladen (5s Timeout)
 - **Manueller Sync** — der `⟳`-Button im Header triggert sofortigen Push
-- **Konflikte** — wird ein Tag offline auf zwei Geräten unterschiedlich bearbeitet, erscheint nach dem Sync ein Warn-Icon auf dem Tag und ein „⚠ N Konflikte"-Status. Klick auf **Konflikte ansehen** in den Einstellungen öffnet einen Dialog, in dem du Version A, B oder einen eigenen Wert übernehmen kannst
+- **Konflikte** — wird ein Tag offline auf zwei Geräten unterschiedlich bearbeitet, erscheint nach dem Sync ein Warn-Icon auf dem Tag und ein „⚠ N Konflikte"-Status. Klick auf **Konflikte ansehen** in den Einstellungen öffnet einen Dialog, der beide Stände als zwei Karten nebeneinander zeigt *(ab 1.26.0)* — „Dieses Gerät“ und das andere Gerät mit seinem Namen, Unterschiede gelb markiert, der jüngere Stand mit „● neuer“ —; du behältst einen der beiden Stände
+
+![Konfliktdialog mit zwei Karten: Dieses Gerät und ein anderes Gerät, Unterschiede gelb markiert](docs/screenshots/konflikte-v1.26.0.png)
+
+*Der Konfliktdialog — beide Stände nebeneinander, Unterschiede gelb, der jüngere mit „● neuer“.*
 
 ### Hinweise zum Sync
 
@@ -389,9 +393,9 @@ Die API läuft nur, solange die App läuft (Autostart hilft), nimmt nur Anfragen
 
 ## Handy-Erfassung (optional)
 
-**Handy-Erfassung** *(ab 1.25.0)* — Du trägst Arbeitszeiten auf dem Handy ein, auch unterwegs ohne Verbindung. Im selben WLAN — oder, für iPhone und iPad, über einen Relay im Internet *(ab --VERSION--)* — gleicht das Handy sie mit dieser App ab. Standardmäßig **aus**.
+**Handy-Erfassung** *(ab 1.25.0)* — Du trägst Arbeitszeiten auf dem Handy ein, auch unterwegs ohne Verbindung. Im selben WLAN — oder, für iPhone und iPad, über einen Relay im Internet *(ab 1.26.0)* — gleicht das Handy sie mit dieser App ab. Standardmäßig **aus**.
 
-**Voraussetzungen:** die Desktop-App läuft. Im WLAN: Handy und Rechner im selben Netz und auf dem Handy ein aktueller Chrome (Android). Über den Relay *(ab --VERSION--)*: iPhone oder iPad (Safari, als Web-App installiert) und eine Internetverbindung. Die Web-App liegt unter `https://xveyn.github.io/Zeiterfassung/` — genau so geschrieben, der Pfad unterscheidet **Groß- und Kleinschreibung** (`…/zeiterfassung/` liefert eine 404-Seite von GitHub). Der Rechner stellt nur die Abgleich-Schnittstelle bereit, nicht die Seite.
+**Voraussetzungen:** die Desktop-App läuft. Im WLAN: Handy und Rechner im selben Netz und auf dem Handy ein aktueller Chrome (Android). Über den Relay *(ab 1.26.0)*: iPhone oder iPad (Safari, als Web-App installiert) und eine Internetverbindung. Die Web-App liegt unter `https://xveyn.github.io/Zeiterfassung/` — genau so geschrieben, der Pfad unterscheidet **Groß- und Kleinschreibung** (`…/zeiterfassung/` liefert eine 404-Seite von GitHub). Der Rechner stellt nur die Abgleich-Schnittstelle bereit, nicht die Seite.
 
 **Welcher Browser was kann:**
 
@@ -401,17 +405,17 @@ Die API läuft nur, solange die App läuft (Autostart hilft), nimmt nur Anfragen
 | Als App installieren | ✓ | ✓ (iPhone und iPad geprüft) | nicht geprüft |
 | QR-Code in der Web-App scannen | ✓ | ✓ *(ab 1.25.0)*, auf iPhone und iPad geprüft | nicht geprüft |
 | Abgleich im WLAN | ✓ | ✗ | ✗ (aus demselben Grund erwartet, nicht ausprobiert) |
-| Abgleich über den Relay *(ab --VERSION--)* | nicht geprüft | ✓ (iPhone und iPad geprüft, auch über Mobilfunk) | nicht geprüft |
+| Abgleich über den Relay *(ab 1.26.0)* | nicht geprüft | ✓ (iPhone und iPad geprüft, auch über Mobilfunk) | nicht geprüft |
 | Push-Erinnerungen | ✓ | ✓ (iPhone geprüft, als Web-App installiert) | nicht geprüft |
 
-Im WLAN scheitert der Abgleich in Safari, weil der Browser den Zugriff einer `https`-Seite auf eine `http://`-Adresse im WLAN sperrt („Mixed Content“). Daran ändern weder der Code noch die Adresse etwas. Für iPhone und iPad gibt es deshalb den **Relay-Weg** *(ab --VERSION--)* ([#358](https://github.com/Xveyn/Zeiterfassung/issues/358)): siehe „Über den Relay koppeln“ unten. Ob Push-Erinnerungen auf iOS ankommen, ist noch nicht geprüft.
+Im WLAN scheitert der Abgleich in Safari, weil der Browser den Zugriff einer `https`-Seite auf eine `http://`-Adresse im WLAN sperrt („Mixed Content“). Daran ändern weder der Code noch die Adresse etwas. Für iPhone und iPad gibt es deshalb den **Relay-Weg** *(ab 1.26.0)* ([#358](https://github.com/Xveyn/Zeiterfassung/issues/358)): siehe „Über den Relay koppeln“ unten. Ob Push-Erinnerungen auf iOS ankommen, ist noch nicht geprüft.
 
 1. Einstellungen → **Mobil** → „Handy-Erfassung aktivieren". Beim ersten Einschalten erklärt die App die Folgen (kein HTTPS, aber Ende-zu-Ende verschlüsselt; die App muss laufen). Unter Windows fragt die Firewall nach; erlaube den Zugriff für dein WLAN (stuft Windows es als „öffentlich“ ein, muss es dafür freigegeben sein — auf echter Windows-Hardware ist das noch nicht abschließend geprüft, [#267](https://github.com/Xveyn/Zeiterfassung/issues/267)). Der Standard-Port ist 17654; die Adresse wählt die App aus deinen Netzwerken („Automatisch“), du kannst sie fest vorgeben. Danach **speichern**: „Gerät koppeln“ ist erst aktiv, wenn der Server läuft.
 2. **„Gerät koppeln"** zeigt einen QR-Code und darunter Adresse und **Kopplungscode** (28 Zeichen, in Gruppen zu vier) als Text. Scanne den QR-Code mit dem Handy (Kamera-App oder in der Web-App) oder tippe Adresse und Kopplungscode ein. Der Scan in der Web-App geht in jedem Browser mit Kamera, auch ohne den Barcode-Leser des Browsers (Firefox, Safari) *(ab 1.25.0)*. Der Code ist **fünf Minuten** gültig, gilt einmal und verschlüsselt die Verbindung — zeige ihn nur dem eigenen Handy.
 3. Auf dem Handy erscheint die Wochenansicht. Tag antippen → Zeiten, Pause und Kategorie eintragen → „Speichern". Der Abgleich läuft beim Start, beim Zurückkehren in die App, bei wiederhergestellter Verbindung, kurz nach dem Speichern und auf Knopfdruck („Jetzt abgleichen"). Die Statuszeile zeigt, ob Änderungen noch nicht übertragen sind.
 4. Optional zur Startseite hinzufügen (Chrome-Menü → „App installieren“): dann startet die Web-App wie eine App und lässt sich auch ohne Verbindung öffnen. Installation als App und QR-Scan in der Web-App sind noch nicht auf allen Geräten geprüft ([#267](https://github.com/Xveyn/Zeiterfassung/issues/267); der Scan ist auf einem iPhone mit Safari einmal erfolgreich gelaufen). Die Kamera-App des Handys und die Eingabe von Adresse und Code funktionieren unabhängig davon.
 
-**Über den Relay koppeln (iPhone, iPad)** *(ab --VERSION--)* — Das iPhone oder iPad erreicht den Rechner nicht im WLAN, sondern über einen kleinen Vermittlungsdienst im Internet (den **Relay**, ein Cloudflare Worker). Alles bleibt **Ende-zu-Ende verschlüsselt**: der Relay sieht nie Einträge, Kategorien oder Namen, nur dass und wann ein Handy abgleicht, wie groß die Daten sind und IP-Adressen.
+**Über den Relay koppeln (iPhone, iPad)** *(ab 1.26.0)* — Das iPhone oder iPad erreicht den Rechner nicht im WLAN, sondern über einen kleinen Vermittlungsdienst im Internet (den **Relay**, ein Cloudflare Worker). Alles bleibt **Ende-zu-Ende verschlüsselt**: der Relay sieht nie Einträge, Kategorien oder Namen, nur dass und wann ein Handy abgleicht, wie groß die Daten sind und IP-Adressen.
 
 1. Am iPhone oder iPad die Web-App in Safari öffnen und über „Teilen → Zum Home-Bildschirm“ **installieren**; ab jetzt immer von dort öffnen. (Safari-Tab und installierte Web-App haben getrennten Speicher, und iOS löscht den Speicher im Tab nach sieben Tagen ohne Nutzung.)
 2. Am Rechner: Einstellungen → **Mobil** → „Handy-Erfassung aktivieren“ und speichern, dann **„Über Relay koppeln (iPhone)“**. Es erscheint ein QR-Code (ohne Adresse und Code zum Abtippen).
@@ -426,14 +430,14 @@ Im WLAN scheitert der Abgleich in Safari, weil der Browser den Zugriff einer `ht
 <tr>
 <td><img src="docs/screenshots/handy-woche-v1.25.0.png" alt="Wochenansicht der Web-App mit einer Reservierung und der Zeile Noch ausstehend" width="200"></td>
 <td><img src="docs/screenshots/handy-editor-v1.25.0.png" alt="Tages-Editor der Web-App, Reiter Reservierung" width="200"></td>
-<td><img src="docs/screenshots/handy-verbindung-v1.25.0.png" alt="Einstellungen der Web-App, Reiter Verbindung mit Benachrichtigungen" width="200"></td>
+<td><img src="docs/screenshots/handy-verbindung-v1.26.0.png" alt="Einstellungen der Web-App, Reiter Verbindung mit Benachrichtigungen" width="200"></td>
 <td><img src="docs/screenshots/handy-kategorien-v1.25.0.png" alt="Einstellungen der Web-App, Reiter Kategorien" width="200"></td>
 </tr>
 </table>
 
 *Die Web-App im Browser (von links): Woche mit „Noch ausstehend“, Tages-Editor (hier der Reiter „Reservierung“), Einstellungen → Verbindung, Einstellungen → Kategorien. Aufgenommen in Chrome am Rechner mit Demo-Daten.*
 
-![Einstellungen am Rechner, Tab Mobil mit einem gekoppelten Demo-Handy](docs/screenshots/einstellungen-mobil-v1.25.0.png)
+![Einstellungen am Rechner, Tab Mobil mit einem gekoppelten Demo-Handy](docs/screenshots/einstellungen-mobil-v1.26.0.png)
 
 *Der Tab „Mobil“ am Rechner: Handy-Erfassung ein- und ausschalten, Port und Adresse, gekoppelte Geräte, Koppeln und Widerrufen.*
 
@@ -445,7 +449,7 @@ Im WLAN scheitert der Abgleich in Safari, weil der Browser den Zugriff einer `ht
 
 **Geräte verwalten:** Einstellungen → Mobil zeigt die gekoppelten Handys mit „zuletzt …“ und „gültig bis …“. Ein Gerät ist 30 Tage ab seinem letzten Abgleich gekoppelt, danach koppelst du neu (die Einträge auf dem Handy bleiben dabei erhalten). „Widerrufen" und „Alle widerrufen" sperren Handys sofort aus; widerrufene Geräte verschwinden aus der Liste (das Handy meldet beim nächsten Abgleich, dass es neu gekoppelt werden muss).
 
-**Sicherheit in Kürze:** Die Verbindung im WLAN ist nicht per HTTPS gesichert, aber **Ende-zu-Ende verschlüsselt** (AES-256-GCM): wer im selben WLAN mitliest, sieht weder Einträge noch Kategorien noch das Gerätetoken im Klartext und kann Anfragen weder fälschen noch wiedereinspielen. Sichtbar bleibt, dass ein Handy mit deinem Rechner spricht, wann und wie viel. Der Schlüssel entsteht beim Koppeln und liegt nur auf Handy und Rechner — am Rechner im Schlüsselbund des Betriebssystems, ohne Schlüsselbund in einer nur für dein Benutzerkonto lesbaren Datei. Der Rechner speichert vom Gerätetoken nur einen Hash, lauscht nur auf der gewählten Adresse, und die Funktion lässt sich jederzeit ausschalten. Die Push-Erinnerungen und der Relay-Weg für iPhone und iPad *(ab --VERSION--)* sind eine Ausnahme vom „bleibt im WLAN“: dafür spricht dein Handy mit dem Relay im Internet (Cloudflare) — er sieht bei den Push-Erinnerungen Zeitpunkte und verschlüsselten Text, beim Abgleich Metadaten (dass und wann, wie groß, IP-Adressen), nie Arbeitszeiten. Datenflüsse im Einzelnen: [`docs/datenschutz.md`](docs/datenschutz.md). Grenzen: [`docs/known-limitations.md`](docs/known-limitations.md#handy-erfassung-221-bekannte-grenzen) und für den Relay-Weg [`docs/known-limitations.md`](docs/known-limitations.md#abgleich-über-den-relay-358-ein-zweiter-vertrauens-ort).
+**Sicherheit in Kürze:** Die Verbindung im WLAN ist nicht per HTTPS gesichert, aber **Ende-zu-Ende verschlüsselt** (AES-256-GCM): wer im selben WLAN mitliest, sieht weder Einträge noch Kategorien noch das Gerätetoken im Klartext und kann Anfragen weder fälschen noch wiedereinspielen. Sichtbar bleibt, dass ein Handy mit deinem Rechner spricht, wann und wie viel. Der Schlüssel entsteht beim Koppeln und liegt nur auf Handy und Rechner — am Rechner im Schlüsselbund des Betriebssystems, ohne Schlüsselbund in einer nur für dein Benutzerkonto lesbaren Datei. Der Rechner speichert vom Gerätetoken nur einen Hash, lauscht nur auf der gewählten Adresse, und die Funktion lässt sich jederzeit ausschalten. Die Push-Erinnerungen und der Relay-Weg für iPhone und iPad *(ab 1.26.0)* sind eine Ausnahme vom „bleibt im WLAN“: dafür spricht dein Handy mit dem Relay im Internet (Cloudflare) — er sieht bei den Push-Erinnerungen Zeitpunkte und verschlüsselten Text, beim Abgleich Metadaten (dass und wann, wie groß, IP-Adressen), nie Arbeitszeiten. Datenflüsse im Einzelnen: [`docs/datenschutz.md`](docs/datenschutz.md). Grenzen: [`docs/known-limitations.md`](docs/known-limitations.md#handy-erfassung-221-bekannte-grenzen) und für den Relay-Weg [`docs/known-limitations.md`](docs/known-limitations.md#abgleich-über-den-relay-358-ein-zweiter-vertrauens-ort).
 
 ## Einstellungen
 
@@ -519,7 +523,7 @@ Das meiste sind JSON-Dateien — `instance-secret`, `api-token` und das Protokol
 - **conflicts.json** — Lokaler Spiegel der Sync-Konflikte (nur vorhanden bei mindestens einem registrierten Konflikt — aus dem Drive-Sync oder der Handy-Erfassung)
 - **sync_history.json** — Marker „wurde auf diesem Gerät je synchronisiert/abgeglichen"; schützt gelöschte Tage davor, nach einer beschädigten `settings.json` zurückzukehren
 - **sync-apply.journal** — Write-Ahead-Journal des Sync-Abgleichs; existiert nur währenddessen. Stürzt die App mittendrin ab, holt der nächste Start den Abgleich darüber nach
-- **logs/zeiterfassung.log** — Protokoll *(ab --VERSION--)*: Einstellungen → App → „Log-Ordner öffnen“ führt direkt hin
+- **logs/zeiterfassung.log** — Protokoll *(ab 1.26.0)*: Einstellungen → App → „Log-Ordner öffnen“ führt direkt hin
 
 Neben diesen Dateien kann `<datei>.corrupt-<Zeitstempel>` liegen *(ab 1.25.0)*: die Sicherung vor einer Reparatur beschädigter Zeitdaten (es bleiben die neuesten fünf je Datei). Sie ist eine volle Kopie deiner Zeiten, behandle sie wie die Hauptdatei; Deinstallation und „Zeiterfassung entfernen“ räumen sie mit ab.
 
@@ -534,7 +538,7 @@ Neben diesen Dateien kann `<datei>.corrupt-<Zeitstempel>` liegen *(ab 1.25.0)*: 
 - **mobile_devices.json** *(ab 1.25.0)* — die gekoppelten Handys der Handy-Erfassung: Name, Zeitpunkte und nur ein **Hash** des Gerätetokens, nie das Token selbst. Gerätelokal: reist bewusst **nicht** über den Drive-Sync mit
 - **mobile_keys.json** *(ab 1.25.0)* — wo der Schlüssel eines gekoppelten Handys liegt: im Schlüsselbund des Betriebssystems oder, wenn keiner verfügbar ist, in dieser Datei selbst (dann nur für dein Benutzerkonto lesbar). Gerätelokal: reist bewusst **nicht** über den Drive-Sync mit
 - **mobile_relay.json** *(ab 1.25.0)* — je gekoppeltem Handy das Zufallsgeheimnis, mit dem der Push-Relay das Handy erkennt (nur vorhanden, wenn Push-Erinnerungen eingerichtet wurden; nur für dein Benutzerkonto lesbar). Gerätelokal: reist bewusst **nicht** über den Drive-Sync mit
-- **mobile_box.json** *(ab --VERSION--)* — die Box-Geheimnisse der Handy-Erfassung über den Relay (je gekoppeltem Handy eines, dazu ein offenes beim Koppeln); getrennt von `mobile_relay.json`, nur für dein Benutzerkonto lesbar. Gerätelokal: reist bewusst **nicht** über den Drive-Sync mit
+- **mobile_box.json** *(ab 1.26.0)* — die Box-Geheimnisse der Handy-Erfassung über den Relay (je gekoppeltem Handy eines, dazu ein offenes beim Koppeln); getrennt von `mobile_relay.json`, nur für dein Benutzerkonto lesbar. Gerätelokal: reist bewusst **nicht** über den Drive-Sync mit
 
 Bei aktivem Sync liegt zusätzlich in deinem Google Drive eine versteckte Datei `zeiterfassung-sync.json` im `appDataFolder` — nicht über die Drive-Web-Oberfläche sichtbar, nur die App kommt dran.
 

@@ -2,6 +2,79 @@
 
 Ältere Versionen stehen im [Archiv](CHANGELOG-archive.md).
 
+## 1.26.0 — 2026-11-05
+
+Die Handy-Web-App läuft jetzt auch auf dem iPhone und iPad: Dort gleicht sie
+über einen Relay im Internet mit der App ab, Ende-zu-Ende verschlüsselt, weil
+Safari den Zugriff auf eine Adresse im WLAN sperrt. Dazu kommen
+Datenschutzhinweise in der App und in der Web-App, Standardzeiten wahlweise
+allgemein oder je Wochentag, ein neu gestalteter Konfliktdialog und ein
+aufgeräumteres Protokoll.
+
+### Hinzugefügt
+- **Handy-Abgleich über einen Relay (iPhone und iPad)**: Die Web-App gleicht
+  Ist-Zeiten, Reservierungen und Kategorien über einen Relay im Internet mit der
+  App ab. Der Relay reicht nur verschlüsselte Nachrichten weiter (AES-256-GCM,
+  Ende-zu-Ende) und sieht keine Inhalte; die App muss dafür laufen. Auf iPhone
+  und iPad ist das der einzige Weg, im WLAN bleibt der bisherige Abgleich
+  unverändert. Geprüft mit Safari auf iPhone und iPad, als Web-App installiert,
+  auch über Mobilfunk, einschließlich Benachrichtigungen auf dem iPhone. Nicht
+  geprüft: Ruhezustand des Rechners, Android und Firefox über den Relay.
+- **Einstellungen → Mobil: „Über Relay koppeln“**: Der Dialog zeigt einen
+  QR-Code, den die installierte Web-App scannt (die Kamera-App geht oft, aber
+  nicht immer). Die Geräteliste zeigt bei Geräten am Relay den
+  Verbindungszustand. „Widerrufen“ löscht auch die Box am Relay; ohne Netz
+  verfällt sie nach 90 Tagen ohne Nutzung.
+- **Datenschutzhinweise**: Einstellungen → App → „Datenschutzhinweise“ zeigt,
+  welche Daten der Relay verarbeitet und welche nicht. Die Web-App hat dazu eine
+  eigene Seite, verlinkt im Koppel-Bildschirm und unter Einstellungen →
+  Verbindung. Kontakt läuft über GitHub.
+- **Standardzeiten allgemein oder je Wochentag**: Unter Einstellungen →
+  Arbeitszeit lässt sich wie bei den Kategorien zwischen „Allgemein“ (ein
+  Start–Ende-Paar für alle Tage) und „Tageweise“ wählen. Bestehende
+  Wochenpläne bleiben sichtbar; wer von Tageweise auf Allgemein speichert,
+  obwohl Tage abweichen, wird vorher gefragt.
+- **Einstellungen → App: „Log-Ordner öffnen“**: Der Knopf öffnet den Ordner mit
+  `zeiterfassung.log`, etwa für die Fehlersuche in einem Issue.
+- **Einstellungen → API: Routenübersicht**: Der Tab erklärt unter „So sprichst
+  du sie an“ die Anmeldung per Token und listet die Routen.
+
+### Geändert
+- **Konfliktdialog**: Beide Stände stehen als zwei Karten nebeneinander:
+  „Dieses Gerät“ links, das andere Gerät rechts mit seinem Namen. Unterschiede
+  sind gelb markiert, der jüngere Stand trägt „● neuer“. Die Liste ist in Zeiten
+  und Einstellungen gruppiert, Tage mit Wochentag, Einstellungen im Klartext;
+  nach dem Auflösen springt die Auswahl zum nächsten Konflikt.
+- **Handy-Web-App: Zeiten in 5-Minuten-Schritten**: Start, Ende und Pause rasten
+  wie am Desktop auf 5 Minuten. Bereits gespeicherte Werte bleiben, bis das Feld
+  geändert wird.
+- **Handy-Web-App: Reservierung gilt heute als erledigt**, sobald eine Ist-Zeit
+  derselben Kategorie existiert, auch zu anderer Uhrzeit. Wer eine Reservierung
+  nur verschiebt, sieht sie nicht mehr als „geplant“ und „noch ausstehend“.
+- **Einstellungen**: Dropdowns haben mehr Innenabstand und einen größeren
+  Pfeil-Knopf, der Kategorien-Dialog und die Zeilen im Tages-Dialog mehr Luft.
+  Der Knopf im API-Tab heißt „Neu erzeugen“.
+- **Protokoll**: Fremd-Rauschen und Debug-Reste fehlen, erwartete
+  Anmeldefehler im Sync stehen als eine Zeile statt als Traceback. Neu sind
+  Erfolg und Dauer von Sync, Kalender-Abgleich, Versand, Teilen, PDF-Export,
+  Handy-Abgleich, Update-Check und Update-Download. Die Startzeilen nennen
+  Version, Kanal, Plattform, Python und Tk sowie die eingeschalteten
+  Funktionen, ohne Namen, Pfade oder Adressen; jede Zeile trägt den
+  Thread-Namen.
+
+### Behoben
+- **Einstellungen**: Das Formular sprang beim Fokussieren eines Felds ohne
+  Übergang nach oben, und die Liste eines Dropdowns löste sich teils vom Feld.
+- **Handy-Web-App, Gerätename beim Koppeln**: Vorgeschlagen wurde auf jedem
+  Gerät „Android-Handy“. Jetzt erkennt sie iPhone, iPad und das Android-Modell;
+  ohne Treffer steht „Handy“ im Feld.
+- **Handy-Web-App, Seite hinter einem Dialog**: Bei offenen Einstellungen oder
+  dem Zeiteditor ließ sich die Seite dahinter weiter scrollen.
+- **Handy-Web-App, schmale Bildschirme**: Im Tages-Editor quetschte der
+  ×-Knopf ab zwei Slots die Zeitfelder, in Einstellungen → Verbindung brachen
+  Werte Zeichen für Zeichen um, und lange Adressen liefen aus der Karte.
+  „Abbrechen“ und „Speichern“ bleiben jetzt auch im Querformat sichtbar.
+
 ## 1.25.2 — 2026-10-30
 
 Ein Wartungs-Release: Die Handy-Kopplung ist gegen gleichzeitige Zugriffe
