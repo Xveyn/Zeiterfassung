@@ -22,6 +22,7 @@ export const PRECACHE = [
   './manifest.webmanifest',
   './app.js',
   './views.js',
+  './dialog-history.js',
   './dom.js',
   './scanner.js',
   './qr-decode.js',
