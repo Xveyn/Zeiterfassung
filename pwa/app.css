@@ -173,3 +173,20 @@ label.check input { width: auto; min-height: 0; flex: none; }
 .privacy .privacy-list li.level2 { margin-left: 36px; }
 .privacy code { color: var(--muted); overflow-wrap: anywhere; }
 .privacy a { overflow-wrap: anywhere; }
+
+/* Editor (#461): Schnellwahl, Feldfehler, Netto, Tagessumme. */
+.chips { display: flex; gap: 6px; flex-wrap: wrap; margin: -4px 0 10px; }
+.chips button.chip { min-height: 36px; padding: 0 12px; font-size: .85rem; border-radius: 18px; border: 1px solid #2a3a5a; }
+.chips button.chip[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+.slot.bad { border-color: var(--accent); }
+.slot input[aria-invalid="true"] { border-color: var(--accent); }
+.field-error { color: var(--accent); font-size: .85rem; min-height: 0; margin: -8px 0 8px; }
+.field-error:empty { display: none; }
+.slot .net { display: flex; justify-content: space-between; font-size: .85rem; color: var(--muted); }
+.slot .net b { color: var(--ok); font-weight: 600; }
+.daysum { display: flex; justify-content: space-between; font-weight: 700; padding: 4px 2px 0; }
+.note { font-size: .85rem; margin-top: 10px; }
+/* Pause als Zahleneingabe ohne Spinner: Schnellwahl und Tastatur reichen, die Pfeile fressen Platz. */
+input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
+input[type="number"]::-webkit-inner-spin-button, input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+.daysum[hidden], .slot .net[hidden] { display: none; }

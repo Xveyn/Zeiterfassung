@@ -4,7 +4,7 @@
 // Elemente. Summen nur über ganze Minuten (`minutes.js`).
 import {
   addDays, dayMinutes, formatDateDe, formatMinutes, isoWeek, mondayOf, normalizeSlots,
-  validateSlots, weekDays,
+  parseTime, slotMinutes, snapTime, validateSlots, weekDays,
 } from './minutes.js';
 import { categoryRows, timesSummary } from './categories.js';
 import { resolveSlotDefaults } from './defaults.js';
@@ -286,6 +286,55 @@ export function rowsToSlots(rows) {
 
 export function validateRows(rows) {
   return validateSlots(normalizeSlots(rowsToSlots(rows)));
+}
+
+// --- Editor: Netto, Feldfehler, Schnellwahl (#461) ---------------------------------------------------
+
+/** Schnellwahl für das Ende (Minuten nach dem Start) und für die Pause. */
+export const QUICK_END_MINUTES = [30, 60, 240, 480];
+export const QUICK_PAUSES = [0, 30, 45];
+
+const isBlankRow = (row) => row.start === '' && row.end === '' && row.kategorie === ''
+  && (row.pause === '' || row.pause === '0');
+
+/** Netto-Minuten einer Formularzeile (Spanne minus Pause), `null` solange Start oder Ende unbrauchbar sind.
+ *  Eine Pause, die keine Zahl ist, zählt 0 — die Prüfung beim Speichern meldet sie. */
+export function rowNetMinutes(row) {
+  if (parseTime(row.start) === null || parseTime(row.end) === null) return null;
+  const pause = Number(row.pause);
+  return slotMinutes({ start: row.start, end: row.end, pause: Number.isInteger(pause) ? pause : 0 });
+}
+
+/** Summe der brauchbaren Zeilen in ganzen Minuten. `withPause: false` (Reservierung ohne Pausenfeld) zählt die Pause nicht. */
+export function dayNetMinutes(rows, { withPause = true } = {}) {
+  return rows.reduce((sum, row) => sum + (rowNetMinutes(withPause ? row : { ...row, pause: '0' }) ?? 0), 0);
+}
+
+/** Feldfehler einer nicht leeren Zeile: `{start?, end?}` mit dem Text für das Feld. Die vollständige Prüfung
+ *  bleibt `validateRows`; das hier sagt nur, *welches* Feld fehlt. */
+export function rowProblems(row) {
+  if (isBlankRow(row)) return {};
+  const problems = {};
+  const start = parseTime(row.start);
+  const end = parseTime(row.end);
+  if (row.start === '') problems.start = 'Start fehlt';
+  if (row.end === '') problems.end = 'Ende fehlt';
+  else if (start !== null && end !== null && end <= start) problems.end = 'Ende muss nach dem Start liegen';
+  return problems;
+}
+
+/** Start plus Minuten als `HH:MM`, höchstens 23:55 (wie `snapTime`); `''` ohne brauchbaren Start. */
+export function addToTime(start, minutes) {
+  const base = parseTime(start);
+  if (base === null) return '';
+  const total = Math.min(base + minutes, 1439);
+  return snapTime(`${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`);
+}
+
+/** Dialogtitel: das Datum, bei zwei Reitern mit dem aktiven Typ dahinter. */
+export function editorTitle(date, kind, hasBoth) {
+  if (!hasBoth) return date;
+  return `${date} · ${kind === 'reservation' ? 'Reservierung' : 'Arbeitszeit'}`;
 }
 
 // --- Tag seit dem Öffnen des Editors geändert? -----------------------------------------------------
