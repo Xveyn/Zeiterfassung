@@ -5,10 +5,12 @@
   --cell-hover: #1e2d52;
   --weekend: #0f3460;
   --entry: #1a3a5c;
-  --accent: #e94560;
-  --accent-hover: #c73550;
+  --accent: #d63a56;            /* Flächen mit weißer Schrift (4,5:1), Rahmen und Markierungen */
+  --accent-hover: #b52f48;
+  --accent-text: #fa7f98;       /* Text und Links in Rot auf dunklem Grund (mindestens 4,5:1 auf allen Flächen) */
+  --line: #60709a;              /* Rahmen von Feldern und Schalter-Spur (3:1 gegen die Seite) */
   --text: #e0e0e0;
-  --muted: #8a8a9a;
+  --muted: #a8a8ba;
   --ok: #4ade80;
   --warn: #fbbf24;
   --gutter: 16px;
@@ -36,20 +38,20 @@ button {
 button:hover { background: var(--cell-hover); }
 button.primary { background: var(--accent); color: #fff; font-weight: 600; }
 button.primary:hover { background: var(--accent-hover); }
-a { color: var(--accent); }
-button.link { background: none; color: var(--accent); min-height: var(--tap); padding: 0 8px; text-decoration: underline; }
+a { color: var(--accent-text); }
+button.link { background: none; color: var(--accent-text); min-height: var(--tap); padding: 0 8px; text-decoration: underline; }
 button:disabled { opacity: .5; cursor: default; }
 :focus-visible { outline: 2px solid var(--warn); outline-offset: 2px; }
 
 label { display: block; margin: 0 0 4px; font-size: .9rem; color: var(--muted); }
 input, select {
-  width: 100%; min-height: var(--tap); padding: 0 10px; border: 1px solid #2a3a5a; border-radius: 8px;
+  width: 100%; min-height: var(--tap); padding: 0 10px; border: 1px solid var(--line); border-radius: 8px;
   background: var(--cell); margin-bottom: 12px;
 }
 input[type="time"], input[type="number"] { min-width: 0; }
 form .row { display: flex; gap: 8px; }
 form .row > div { flex: 1; min-width: 0; }
-button.picker { width: 100%; min-height: var(--tap); margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; gap: 8px; text-align: left; border: 1px solid #2a3a5a; }
+button.picker { width: 100%; min-height: var(--tap); margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; gap: 8px; text-align: left; border: 1px solid var(--line); }
 button.picker .text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .picker-dialog .options { list-style: none; margin: 0 0 12px; padding: 0; max-height: 50vh; overflow-y: auto; }
 .picker-dialog .options li + li { margin-top: 6px; }
@@ -82,7 +84,7 @@ button.option.active { background: var(--accent); color: #fff; font-weight: 600;
 .day .slots { grid-column: 2; margin: 0; padding: 0; list-style: none; font-size: .95rem; }
 .day .sum { grid-column: 3; grid-row: 1; font-weight: 700; align-self: start; }
 .day .marks { grid-column: 3; grid-row: 2; justify-self: end; font-size: .85rem; }
-.day .err { grid-column: 2 / 4; color: var(--accent); font-size: .9rem; }
+.day .err { grid-column: 2 / 4; color: var(--accent-text); font-size: .9rem; }
 .mark-dirty { color: var(--warn); }
 .mark-conflict { color: var(--warn); font-weight: 700; }
 .day.future { opacity: .75; }
@@ -118,7 +120,7 @@ dialog > .buttons, dialog > form > .buttons {
 /* Kopfzeile statt schwebendem ×: der Knopf nähme sonst der Zeile von/bis Breite weg (bei 320 px blieben 74 px je Zeitfeld). */
 .slot-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 4px; }
 .slot .remove { min-width: var(--tap); padding: 0; }
-.error-text { color: var(--accent); min-height: 1.4em; }
+.error-text { color: var(--accent-text); min-height: 1.4em; }
 .version { background: var(--cell); border-radius: 8px; padding: 10px; margin-bottom: 8px; }
 .version ul { margin: 4px 0 0; padding-left: 18px; }
 video { width: 100%; border-radius: 8px; background: #000; }
@@ -179,15 +181,15 @@ label.check input { width: auto; min-height: 0; flex: none; }
 .hint .dismiss { position: absolute; top: 0; right: 0; min-width: var(--tap); padding: 0; background: none; color: var(--muted); }
 .day .tag { display: inline-block; margin-top: 2px; padding: 0 6px; border-radius: 4px; background: var(--accent); color: #fff; font-size: .7rem; font-weight: 600; }
 .day .add { font-size: .9rem; }
-.day .plus { color: var(--accent); font-size: 1.3rem; font-weight: 700; }
+.day .plus { color: var(--accent-text); font-size: 1.3rem; font-weight: 700; }
 
 /* Editor (#461): Schnellwahl, Feldfehler, Netto, Tagessumme. */
 .chips { display: flex; gap: 6px; flex-wrap: wrap; margin: -4px 0 10px; }
-.chips button.chip { min-height: 36px; padding: 0 12px; font-size: .85rem; border-radius: 18px; border: 1px solid #2a3a5a; }
+.chips button.chip { min-height: 36px; padding: 0 12px; font-size: .85rem; border-radius: 18px; border: 1px solid var(--line); }
 .chips button.chip[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
 .slot.bad { border-color: var(--accent); }
 .slot input[aria-invalid="true"] { border-color: var(--accent); }
-.field-error { color: var(--accent); font-size: .85rem; min-height: 0; margin: -8px 0 8px; }
+.field-error { color: var(--accent-text); font-size: .85rem; min-height: 0; margin: -8px 0 8px; }
 .field-error:empty { display: none; }
 .slot .net { display: flex; justify-content: space-between; font-size: .85rem; color: var(--muted); }
 .slot .net b { color: var(--ok); font-weight: 600; }
@@ -211,7 +213,7 @@ main .buttons { display: flex; gap: 8px; flex-wrap: wrap; }
 .pill.ok { background: #14351f; color: var(--ok); }
 .pill.warn { background: #3a2f10; color: var(--warn); }
 label.switch { display: flex; justify-content: space-between; align-items: center; gap: 12px; min-height: var(--tap); margin: 0; color: var(--text); font-size: 1rem; }
-input.switch-input { appearance: none; -webkit-appearance: none; flex: none; width: 46px; height: 26px; min-height: 0; margin: 0; padding: 0; border: 0; border-radius: 13px; background: #2a3a5a; position: relative; cursor: pointer; }
+input.switch-input { appearance: none; -webkit-appearance: none; flex: none; width: 46px; height: 26px; min-height: 0; margin: 0; padding: 0; border: 0; border-radius: 13px; background: var(--line); position: relative; cursor: pointer; }
 input.switch-input::after { content: ""; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%; background: #fff; transition: left .15s; }
 input.switch-input:checked { background: var(--ok); }
 input.switch-input:checked::after { left: 23px; }
