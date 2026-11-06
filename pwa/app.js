@@ -19,7 +19,7 @@ import { isPaired } from './transport.js';
 import { shouldQueue, shouldSync } from './sync-policy.js';
 import { errorDetail, logFailure, setLogSink, withDetail } from './diagnose.js';
 import { createDebugLog, deliverExport, formatExport } from './debug-log.js';
-import { describeEnvironment } from './debug-info.js';
+import { capped, describeEnvironment, workerFromRegistration } from './debug-info.js';
 import { idbLogStore } from './log-store.js';
 import { swipeDirection } from './swipe-policy.js';
 import { shouldApplyUpdate, shouldCheckForUpdate } from './update-policy.js';
@@ -478,48 +478,43 @@ class App {
     return { browser: browserKind(navigator.userAgent, navigator.userAgentData), address, transport, standalone };
   }
 
-  /** Parameter für `describeEnvironment` (Debug-Reiter). Jede Abfrage für sich: scheitert oder fehlt eine, ist sie
-   *  `null`, nie eine Ausnahme. Asynchrone Abfragen warten höchstens 2 s (ein hängender Browser-Aufruf soll den
-   *  Reiter nicht blockieren). Vom Gerät nur `platformVersion` — das Modell steht nie im Bericht. */
+  /** Parameter für `describeEnvironment` (Debug-Reiter). Jede Abfrage für sich und alle nebeneinander: scheitert oder
+   *  fehlt eine, ist sie `null`, nie eine Ausnahme; jede wartet höchstens 2 s (`capped`), die Gesamtdauer liegt also
+   *  ebenfalls bei etwa 2 s. Vom Gerät nur `platformVersion` — das Modell steht nie im Bericht. */
   async collectDebugEnv() {
-    const attempt = async (lookup) => {
-      let timer;
-      try {
-        const timeout = new Promise((resolve) => { timer = setTimeout(() => resolve(null), 2000); });
-        return (await Promise.race([Promise.resolve().then(lookup), timeout])) ?? null;
-      } catch {
-        return null; // Abfrage nicht verfügbar oder verweigert
-      } finally {
-        clearTimeout(timer);
-      }
-    };
-    const registration = await attempt(() => navigator.serviceWorker.getRegistration());
-    const permission = await attempt(() => Notification.permission);
-    const persisted = await attempt(() => navigator.storage.persisted());
-    const usage = await attempt(async () => (await navigator.storage.estimate()).usage);
-    const meta = await attempt(() => this.store.getMeta());
-    const subscribed = registration
-      ? await attempt(async () => Boolean(await registration.pushManager.getSubscription()))
-      : null;
-    const platformVersion = await attempt(async () => {
-      const values = await navigator.userAgentData.getHighEntropyValues(['platformVersion']);
-      return values.platformVersion || null;
-    });
-    const brands = await attempt(() => navigator.userAgentData.brands.map(({ brand, version }) => ({ brand, version })));
-    const standalone = await attempt(() => isStandalone({
-      navigatorStandalone: navigator.standalone,
-      displayModeStandalone: globalThis.matchMedia('(display-mode: standalone)').matches,
-    }));
+    const known = (lookup) => capped(lookup).then((value) => value ?? null);
+    const registrationLookup = capped(() => navigator.serviceWorker.getRegistration());
+    const [registration, permission, persisted, usage, meta, subscribed, platformVersion, standalone, userAgent, online,
+      language, screenSize, build] = await Promise.all([
+      registrationLookup,
+      known(() => Notification.permission),
+      known(() => navigator.storage.persisted()),
+      known(async () => (await navigator.storage.estimate()).usage),
+      known(() => this.store.getMeta()),
+      registrationLookup.then((reg) => (reg ? known(async () => Boolean(await reg.pushManager.getSubscription())) : null)),
+      known(async () => {
+        const values = await navigator.userAgentData.getHighEntropyValues(['platformVersion']);
+        return values.platformVersion || null;
+      }),
+      known(() => isStandalone({
+        navigatorStandalone: navigator.standalone,
+        displayModeStandalone: globalThis.matchMedia('(display-mode: standalone)').matches,
+      })),
+      known(() => navigator.userAgent),
+      known(() => navigator.onLine !== false && this.online),
+      known(() => navigator.language),
+      known(() => ({ width: screen.width, height: screen.height })),
+      known(() => BUILD),
+    ]);
     return {
-      userAgent: await attempt(() => navigator.userAgent),
-      userAgentData: brands ? { brands } : null,
+      userAgent,
       platformVersion,
       standalone,
-      online: await attempt(() => navigator.onLine !== false && this.online),
-      language: await attempt(() => navigator.language),
-      screen: await attempt(() => ({ width: screen.width, height: screen.height })),
-      build: await attempt(() => BUILD),
-      worker: registration ? { active: Boolean(registration.active), waiting: Boolean(registration.waiting) } : null,
+      online,
+      language,
+      screen: screenSize,
+      build,
+      worker: workerFromRegistration(registration),
       notification: permission,
       subscribed,
       storage: persisted === null && usage === null ? null : { persisted, usage },
@@ -561,46 +556,71 @@ class App {
     }, true);
   }
 
-  /** Modell des Debug-Reiters. Scheitert etwas, öffnet der Dialog trotzdem, mit leerem Block. */
-  async debugModel() {
+  /** Export-Text samt Datei, vorab gebaut: Kopieren und Teilen brauchen die Nutzergeste, und Safari/iOS verwirft sie
+   *  nach einem `await`. Neu gebaut bei jedem Laden, Löschen und Haltezeit-Wechsel. */
+  buildDebugExport(info, entries) {
+    const text = formatExport({ info, entries });
+    this.debugExport = { text, file: new File([text], 'zeiterfassung-debug.txt', { type: 'text/plain' }) };
+  }
+
+  /** Modell des Debug-Reiters, beim Zeigen des Reiters geladen. Wirft nie: scheitert etwas, bleibt der Block leer. */
+  async loadDebug() {
+    let info = [{ label: 'Zustand', value: 'unbekannt' }];
+    let entries = [];
+    let retention = 7;
     try {
-      const env = await this.collectDebugEnv();
-      return {
-        info: describeEnvironment(env), entries: await this.debugLog.entries(),
-        retention: await this.debugLog.retentionDays(), persistent: this.debugLog.isPersistent(),
-      };
+      info = describeEnvironment(await this.collectDebugEnv());
+      entries = await this.debugLog.entries();
+      retention = await this.debugLog.retentionDays();
     } catch {
-      return { info: [{ label: 'Zustand', value: 'unbekannt' }], entries: [], retention: 7, persistent: true };
+      // Der Reiter zeigt, was er hat; kopiert wird dann ebenfalls nur das.
     }
+    this.debugInfo = info;
+    this.buildDebugExport(info, entries);
+    return { info, entries, retention, persistent: this.debugLog.isPersistent() };
   }
 
-  async debugExportText() {
-    const info = describeEnvironment(await this.collectDebugEnv());
-    return formatExport({ info, entries: await this.debugLog.entries() });
+  async refreshDebug() {
+    const entries = await this.debugLog.entries();
+    this.buildDebugExport(this.debugInfo ?? [], entries);
+    return { entries, persistent: this.debugLog.isPersistent() };
   }
 
-  async copyDebug() {
-    try {
-      const text = await this.debugExportText();
+  async clearDebug() {
+    await this.debugLog.clear();
+    this.buildDebugExport(this.debugInfo ?? [], []);
+  }
+
+  /** Läuft synchron bis zum Aufruf der Zwischenablage (keine Wartepunkte davor). */
+  copyDebug() {
+    const text = this.debugExport?.text;
+    if (text == null) return Promise.resolve('failed');
+    const fallback = () => {
       try {
-        await navigator.clipboard.writeText(text);
-      } catch {
+        // Im Dialog, nicht im body: außerhalb eines offenen modalen Dialogs ist alles inert und `select()` greift nicht.
+        const host = [...document.querySelectorAll('dialog[open]')].pop() ?? document.body;
         const area = h('textarea', { readonly: true, class: 'clipboard-proxy' }, text);
-        document.body.append(area);
+        host.append(area);
         area.select();
         const ok = document.execCommand('copy');
         area.remove();
-        if (!ok) return 'failed';
+        return ok ? 'copied' : 'failed';
+      } catch {
+        return 'failed';
       }
-      return 'copied';
+    };
+    if (!navigator.clipboard?.writeText) return Promise.resolve(fallback());
+    try {
+      return navigator.clipboard.writeText(text).then(() => 'copied', fallback);
     } catch {
-      return 'failed';
+      return Promise.resolve(fallback());
     }
   }
 
-  async shareDebug() {
-    const text = await this.debugExportText();
-    const file = new File([text], 'zeiterfassung-debug.txt', { type: 'text/plain' });
+  /** Wie `copyDebug`: `canShare`/`share` laufen vor jedem Wartepunkt. */
+  shareDebug() {
+    const { text, file } = this.debugExport ?? {};
+    if (!file) return Promise.reject(new Error('Kein Export vorbereitet'));
     return deliverExport(text, {
       canShare: () => Boolean(navigator.canShare?.({ files: [file] })),
       share: () => navigator.share({ files: [file] }),
@@ -618,7 +638,6 @@ class App {
   async openSettings(initialTab = 'connection') {
     const meta = this.store.getMeta();
     const push = await this.pushModelNow();
-    const debug = await this.debugModel();
     const returnKey = focusState(this.root).activeKey;
     const signature = (m) => blockSignature(m.categories, m.defaults?.category_times ?? {});
     let baseline = signature(meta);   // Stand beim Öffnen: Speichern prüft, ob der Abgleich ihn inzwischen geändert hat
@@ -640,13 +659,13 @@ class App {
       categories: categoriesModel({
         categories: meta.categories, defaults: meta.defaults, writable: meta.settings_writable, edit: meta.categories_edit,
       }),
-      debug,
     }, {
+      loadDebug: () => this.loadDebug(),
       copyDebug: () => this.copyDebug(),
       shareDebug: () => this.shareDebug(),
-      clearDebug: () => this.debugLog.clear(),
+      clearDebug: () => this.clearDebug(),
       setRetention: (days) => this.debugLog.setRetentionDays(days),
-      refreshDebug: async () => ({ entries: await this.debugLog.entries(), persistent: this.debugLog.isPersistent() }),
+      refreshDebug: () => this.refreshDebug(),
       pair: () => { this.screen = 'pair'; this.render(); },
       repairUpdates: () => this.repairServiceWorker(),
       checkUpdate: async () => ({ state: await this.checkForUpdate('manual'), detail: this.updateDetail }),

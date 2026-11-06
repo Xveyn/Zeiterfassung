@@ -5,6 +5,28 @@
 
 const UNKNOWN = 'unbekannt';
 
+/** Eine Browser-Abfrage mit Obergrenze: Ergebnis (auch `undefined`), bei Fehler, Verweigerung oder Zeitüberschreitung
+ *  `null` — nie eine Ausnahme und nie länger als `ms`. */
+export async function capped(lookup, ms = 2000) {
+  let timer;
+  try {
+    const timeout = new Promise((resolve) => { timer = setTimeout(() => resolve(null), ms); });
+    return await Promise.race([Promise.resolve().then(lookup), timeout]);
+  } catch {
+    return null; // Abfrage nicht verfügbar oder verweigert
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** `getRegistration()` liefert `undefined`, wenn nichts registriert ist (das ist eine Auskunft), `null` steht für
+ *  eine gescheiterte Abfrage (`capped`). */
+export function workerFromRegistration(registration) {
+  if (registration === null) return null;
+  if (registration === undefined) return { active: false, waiting: false };
+  return { active: Boolean(registration.active), waiting: Boolean(registration.waiting) };
+}
+
 const text = (value) => (typeof value === 'string' && value.trim() ? value.trim() : null);
 
 /** Name und Hauptversion aus dem User-Agent. Reihenfolge zählt: Edge, Opera und Samsung tragen auch `Chrome/`. */

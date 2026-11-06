@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { describeEnvironment } from '../debug-info.js';
+import { capped, describeEnvironment, workerFromRegistration } from '../debug-info.js';
 
 const CHROME_ANDROID = 'Mozilla/5.0 (Linux; Android 10; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36';
 const FIREFOX_ANDROID = 'Mozilla/5.0 (Android 13; Mobile; SM-S918B; rv:128.0) Gecko/128.0 Firefox/128.0';
@@ -85,4 +85,26 @@ test('keine Adresse, URL oder IP in den Werten', () => {
   for (const { value } of lines) {
     assert.doesNotMatch(value, /http|:\d{2,5}\b|\d+\.\d+\.\d+\.\d+/);
   }
+});
+
+test('workerFromRegistration: keine Registrierung ist etwas anderes als eine gescheiterte Abfrage', () => {
+  const state = (reg) => asMap(describeEnvironment({ worker: workerFromRegistration(reg) }))['Service Worker'];
+  assert.equal(state(undefined), 'nicht registriert');
+  assert.equal(state(null), 'unbekannt');
+  assert.equal(state({ active: {}, waiting: null }), 'aktiv');
+  assert.equal(state({ active: {}, waiting: {} }), 'wartet auf Neustart');
+});
+
+test('capped: Ergebnis, undefined bleibt undefined, Fehler und Zeitüberschreitung ergeben null', async () => {
+  assert.equal(await capped(async () => 5, 50), 5);
+  assert.equal(await capped(() => undefined, 50), undefined);
+  assert.equal(await capped(() => { throw new Error('x'); }, 50), null);
+  assert.equal(await capped(() => new Promise(() => {}), 20), null);
+});
+
+test('capped: unabhängige Abfragen laufen nebeneinander, die Grenze gilt für alle zusammen', async () => {
+  const start = Date.now();
+  const hang = () => new Promise(() => {});
+  await Promise.all([capped(hang, 100), capped(hang, 100), capped(hang, 100), capped(hang, 100)]);
+  assert.ok(Date.now() - start < 250);
 });

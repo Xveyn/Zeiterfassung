@@ -395,10 +395,11 @@ sind von der Regel ausgenommen.
 ## Einstellungen und Kategorien
 
 Der Button unten links heißt „Einstellungen“. `settingsDialog` (ersetzt den
-früheren Verbindungsdialog) hat drei Reiter (`role="tablist"`): **Verbindung**
+früheren Verbindungsdialog) hat vier Reiter (`role="tablist"`): **Verbindung**
 (Desktop, Adresse, Kopplung, Speicher, Verlauf, Hinweis zum älteren Desktop,
-„Neu koppeln“), **Kategorien** und **Updates** (Version, „Nach Updates suchen“,
-automatisch einspielen). Der Dialog hält den Zustand jedes Reiters selbst; ein
+„Neu koppeln“), **Kategorien**, **Updates** (Version, „Nach Updates suchen“,
+automatisch einspielen) und **Debug** (Zustand, Protokoll, s. „Debug-Protokoll“). Der Dialog hält den
+Zustand jedes Reiters selbst; ein
 Wechsel verliert keine Eingaben.
 
 **Kategorien-Reiter.** Eine Zeile je Kategorie (Name, Kurzfassung der Zeiten),
@@ -524,19 +525,23 @@ in `docs/datenschutz.md`, Abschnitt 11 (die Zusage zu den Geheimnissen in Abschn
   von `log-store.js`), nicht in der der Einträge: der Service Worker liest sie dort. Aufgeräumt wird beim Start und
   beim Schreiben, zusätzlich höchstens `MAX_ENTRIES` (500), älteste zuerst.
 - **Schreiben wirft nie.** Bei einem Speicherfehler (kein IndexedDB, privates Fenster) wechselt der Kern auf ein
-  Array im Speicher, der Reiter sagt es. Grenze: `clear()` leert in diesem Modus nur den Speicher der Seite, schon
-  gespeicherte Einträge in IndexedDB tauchen wieder auf.
+  Array im Speicher, der Reiter sagt es. `clear()` versucht auch in diesem Modus, den Speicher zu leeren
+  (best effort).
 - **Der Service Worker schreibt nur Fehler** und ist ein eigener, einzeln rückbaubarer Schritt: Chrome holt bei
   jeder Update-Prüfung **alle** statischen Imports des Modul-Workers neu, jede weitere Datei im Import-Graphen von
   `sw.js` kostet dort Abrufe (Verdacht auf Zusammenhang mit dem offenen Update-Problem #390). Deshalb eine
   Positivliste der Imports von `sw.js` in `test/log-contexts.test.js` (`sw-core`, `push-blob`, `diagnose`,
   `push-message`, `debug-log`, `log-store`; `log-scrub` kommt über `debug-log`). Wer einen Import ergänzt,
   begründet ihn dort.
+- **Laden und Export.** Der Debug-Reiter lädt seine Daten erst, wenn er gezeigt wird (`handlers.loadDebug`, bei
+  jedem Zeigen neu); der Dialog öffnet ohne Wartezeit. `collectDebugEnv` fragt alles nebeneinander ab, je Abfrage
+  höchstens 2 s (`capped`). Den Export-Text baut die App vorab (beim Laden, Löschen, Haltezeit-Wechsel), damit
+  Kopieren und Teilen ohne Wartepunkt vor dem Aufruf von Zwischenablage bzw. `navigator.share` laufen — Safari
+  verwirft sonst die Nutzergeste. Der Zwischenablage-Ersatz hängt sein Textfeld in den offenen Dialog.
 - **Löschen und Export.** „Löschen“ fragt über `confirmDialog` nach und leert sofort. Export ist Text (Zustand,
   dann eine Zeile je Eintrag); „Teilen“ nimmt die Web-Share-API mit Datei, sonst Download, „Kopieren“ die
   Zwischenablage mit Fallback (`deliverExport`).
-- **Bekannte Grenzen.** `result` eines Abgleichs mit fremdem Fehler verliert seinen Namen (`RESULT_RE` lässt
-  nur `[a-z_]` zu; wird nachgezogen). Bei mehreren Paketen summiert die Zusammenfassung nur `sent`, `received`,
+- **Bekannte Grenzen.** Bei mehreren Paketen summiert die Zusammenfassung nur `sent`, `received`,
   `window` und `conflicts` stammen vom letzten Paket. Der Fehler beim Öffnen des Browser-Speichers in `main()`
   entsteht vor der App und steht nicht im Protokoll (er ist auf dem Bildschirm).
 
@@ -810,7 +815,7 @@ GitHub Pages site here“.
 ## Entwickeln und prüfen
 
 **Layout prüfen (Playwright gegen den Dev-Server).** Breiten von 280 bis 1024 px, dazu Querformat (667 × 375);
-Zustände: Woche, Tages-Editor mit mehreren Slots (beide Reiter), Einstellungen (alle drei Reiter), Fehlerhinweis.
+Zustände: Woche, Tages-Editor mit mehreren Slots (beide Reiter), Einstellungen (alle vier Reiter), Fehlerhinweis.
 Bei jedem Zustand prüfen: Zeitfelder breit genug für `08:00` (bei 320 px mindestens ~95 px), keine abgeschnittenen
 Reiter oder Knöpfe, kein waagerechtes Scrollen, Aktionsknöpfe der Dialoge sichtbar. Fallen, die schon Zeit kosteten:
 der Service Worker und der HTTP-Cache liefern nach einer Änderung die alte Fassung (vorher
