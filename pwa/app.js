@@ -586,9 +586,11 @@ class App {
     return { entries, persistent: this.debugLog.isPersistent() };
   }
 
+  /** `true`, wenn das Protokoll wirklich leer ist; sonst bleibt der Export-Text, bis `refreshDebug` neu liest. */
   async clearDebug() {
-    await this.debugLog.clear();
-    this.buildDebugExport(this.debugInfo ?? [], []);
+    const cleared = await this.debugLog.clear();
+    if (cleared) this.buildDebugExport(this.debugInfo ?? [], []);
+    return cleared;
   }
 
   /** Läuft synchron bis zum Aufruf der Zwischenablage (keine Wartepunkte davor). */

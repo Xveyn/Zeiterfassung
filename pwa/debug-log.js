@@ -131,11 +131,12 @@ export function createDebugLog({ store, now = () => new Date() }) {
     async clear() {
       memory = [];
       // Auch im Speicher-Modus: der Ausfall kann vorübergehend gewesen sein, dann liegen in IndexedDB noch Einträge,
-      // die sonst nach einem Neuladen wieder auftauchten. Scheitert es erneut, bleibt nur der Speicher geleert.
+      // die sonst nach einem Neuladen wieder auftauchten. Liefert `true`, wenn der Speicher wirklich geleert ist, sonst `false`.
       try {
         await store.clear();
+        return true;
       } catch {
-        // best effort
+        return false; // der Aufrufer meldet „nicht gelöscht“, die Einträge im Speicher sind trotzdem weg
       }
     },
     retentionDays,

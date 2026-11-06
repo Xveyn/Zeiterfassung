@@ -538,7 +538,7 @@ in `docs/datenschutz.md`, Abschnitt 11 (die Zusage zu den Geheimnissen in Abschn
   höchstens 2 s (`capped`). Den Export-Text baut die App vorab (beim Laden, Löschen, Haltezeit-Wechsel), damit
   Kopieren und Teilen ohne Wartepunkt vor dem Aufruf von Zwischenablage bzw. `navigator.share` laufen — Safari
   verwirft sonst die Nutzergeste. Der Zwischenablage-Ersatz hängt sein Textfeld in den offenen Dialog.
-- **Löschen und Export.** „Löschen“ fragt über `confirmDialog` nach und leert sofort. Export ist Text (Zustand,
+- **Löschen und Export.** „Löschen“ fragt über `confirmDialog` nach und leert sofort (`clear()` liefert `false`, wenn der Speicher nicht geleert werden konnte; der Reiter meldet dann „Löschen fehlgeschlagen.“). Export ist Text (Zustand,
   dann eine Zeile je Eintrag); „Teilen“ nimmt die Web-Share-API mit Datei, sonst Download, „Kopieren“ die
   Zwischenablage mit Fallback (`deliverExport`).
 - **Bekannte Grenzen.** Bei mehreren Paketen summiert die Zusammenfassung nur `sent`, `received`,

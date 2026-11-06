@@ -560,6 +560,7 @@ function debugPanel({ handlers }) {
   const status = h('p', { class: 'muted', role: 'status' }, '');
   let stored = DEFAULT_RETENTION_DAYS;
   const select = h('select', { id: 'debug-retention', onchange: async () => {
+    status.textContent = '';
     select.disabled = true;
     try {
       try {
@@ -581,6 +582,7 @@ function debugPanel({ handlers }) {
   };
   // Der Export liegt erst nach dem Laden vor; bis dahin sind Kopieren und Teilen aus.
   const run = (control, action, failure) => async () => {
+    status.textContent = '';
     control.disabled = true;
     try { await action(); } catch { status.textContent = failure; } finally { control.disabled = false; }
   };
@@ -593,19 +595,21 @@ function debugPanel({ handlers }) {
   }, 'Teilen nicht möglich.')(), '', { 'data-focus': 'debug-share' });
   const clearLog = button('Löschen', () => confirmDialog({ title: 'Protokoll löschen?',
     text: 'Alle Einträge des Protokolls werden von diesem Gerät entfernt.', confirmLabel: 'Löschen' }, async () => {
+    status.textContent = '';
+    let cleared = false;
     try {
-      await handlers.clearDebug();
+      cleared = (await handlers.clearDebug()) === true;
     } catch {
-      status.textContent = 'Löschen fehlgeschlagen.';
-      return;
+      cleared = false;
     }
-    status.textContent = 'Protokoll gelöscht.';
-    try { await refresh(); } catch { fill([], true); }
+    try { await refresh(); } catch { if (cleared) fill([], true); }
+    status.textContent = cleared ? 'Protokoll gelöscht.' : 'Löschen fehlgeschlagen.';
   }), '', { 'data-focus': 'debug-clear' });
   for (const control of [copy, share, clearLog, select]) control.disabled = true;
   let latest = 0;
   const load = async () => {
     const mine = ++latest;
+    status.textContent = '';
     loading.hidden = false;
     let model;
     try {
@@ -628,7 +632,7 @@ function debugPanel({ handlers }) {
     h('label', { for: 'debug-retention' }, 'Einträge aufbewahren'), select,
     h('div', { class: 'buttons' }, copy, share, clearLog),
     status,
-    h('p', { class: 'muted' }, 'Nichts davon verlässt dieses Gerät, solange Sie nicht kopieren oder teilen. Das Protokoll enthält keine Adressen, Namen oder Zeiten von Einträgen.'));
+    h('p', { class: 'muted' }, 'Nichts davon verlässt dieses Gerät, solange Sie nicht kopieren oder teilen. Die App übergibt dem Protokoll keine Namen, Kategorien oder Einträge; Meldungen werden zusätzlich gefiltert.'));
   return { element, load };
 }
 

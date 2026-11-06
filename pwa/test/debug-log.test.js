@@ -190,8 +190,14 @@ test('clear survives a failing store.clear', async () => {
   store.clear = async () => { throw new Error('gone'); };
   const log = createDebugLog({ store, now: () => NOW });
   await log.recordError('c', new Error('x'));
-  await log.clear();
-  assert.deepEqual(await log.entries(), []);
+  assert.equal(await log.clear(), false);       // der Speicher blieb ungeleert: ehrlich melden
+  assert.deepEqual(await log.entries(), []);    // der Speicher der Seite ist trotzdem leer
+});
+
+test('clear resolves to true when the store was cleared', async () => {
+  const log = createDebugLog({ store: fakeStore(), now: () => NOW });
+  await log.recordError('c', new Error('x'));
+  assert.equal(await log.clear(), true);
 });
 
 test('foreign error names stay as the sync result, garbage does not', () => {
