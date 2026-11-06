@@ -758,6 +758,10 @@ altem Anker und altem N im Netz.
 Source „GitHub Actions“ (#266). Ohne sie scheitert der Deploy, und der
 Workflow ist erst nach dem Merge nach `master` über „Run workflow“ erreichbar.
 
+**Die README zeigt die Kennung live** (Abschnitt „Handy-Erfassung“): ein shields.io-Badge liest das Feld `version` des veröffentlichten
+`manifest.webmanifest` (`$.version`). Das Feld muss deshalb im Manifest bleiben und `__BUILD__` tragen; der Test `tests/test_readme_pwa_badge.py`
+hält Badge, Adresse und Feld zusammen. Ein fester Wert in der README wäre nach dem nächsten Merge unter `pwa/` falsch (der Workflow pusht nichts nach `master`).
+
 Die Adresse `https://xveyn.github.io/Zeiterfassung/` steht als `PWA_ORIGIN`/
 `PWA_URL` in `src/mobile_routes.py` (einzig erlaubte Origin des Handy-Servers,
 Basis des Koppel-Links); zieht das Repo um, müssen beide mit. Die Adresse ist **case-sensitiv**

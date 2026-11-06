@@ -397,6 +397,8 @@ Die API läuft nur, solange die App läuft (Autostart hilft), nimmt nur Anfragen
 
 **Voraussetzungen:** die Desktop-App läuft. Im WLAN: Handy und Rechner im selben Netz und auf dem Handy ein aktueller Chrome (Android). Über den Relay *(ab 1.26.0)*: iPhone oder iPad (Safari, als Web-App installiert) und eine Internetverbindung. Die Web-App liegt unter `https://xveyn.github.io/Zeiterfassung/` — genau so geschrieben, der Pfad unterscheidet **Groß- und Kleinschreibung** (`…/zeiterfassung/` liefert eine 404-Seite von GitHub). Der Rechner stellt nur die Abgleich-Schnittstelle bereit, nicht die Seite.
 
+**Version der Web-App:** ![Aktuelle Kennung der Web-App](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fxveyn.github.io%2FZeiterfassung%2Fmanifest.webmanifest&query=%24.version&label=Web-App&color=blue) — Die Web-App hat keine eigene Versionsnummer, ihre Kennung hat die Form `N/X.Y.Z (Commit)`: `X.Y.Z` ist das letzte Desktop-Release, `N` die Zahl der Änderungen an der Web-App seitdem (ein Release setzt `N` auf 0), dahinter steht der Commit. Dieselbe Kennung zeigt die Web-App unter Einstellungen → Updates; das Badge liest sie live von der veröffentlichten Seite (über shields.io, beim Anzeigen dieser Seite, nicht in der App). Die Web-App kommt sofort bei jedem an, die Desktop-App nur mit einem Release; deshalb kann die Web-App neuer sein als der Desktop (die Web-App zeigt es an, wenn der Desktop älter ist).
+
 **Welcher Browser was kann:**
 
 | | Chrome (Android) | Safari (iPhone/iPad) | Firefox |
