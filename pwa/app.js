@@ -11,7 +11,7 @@ import { idbKeyStore, seal } from './push-blob.js';
 import { permissionState, shouldSchedule } from './push-policy.js';
 import { RelayClient, RelayError, VAPID_PUBLIC, newSecret, syncSchedule } from './relay-client.js';
 import { DEFAULT_WISH, aheadDays, olderState } from './window-policy.js';
-import { DEFAULT_DEVICE_NAME, deviceNameFromUserAgent, isPairFragment, parseHostPort, parsePairLink } from './pairing.js';
+import { DEFAULT_DEVICE_NAME, PROTOCOL, deviceNameFromUserAgent, isPairFragment, parseHostPort, parsePairLink } from './pairing.js';
 import { openDatabase, requestPersistentStorage } from './db.js';
 import { Store } from './store.js';
 import { SyncClient, SyncError, clockSkewMs } from './sync.js';
@@ -475,6 +475,56 @@ class App {
       displayModeStandalone: globalThis.matchMedia?.('(display-mode: standalone)')?.matches,
     });
     return { browser: browserKind(navigator.userAgent, navigator.userAgentData), address, transport, standalone };
+  }
+
+  /** Parameter für `describeEnvironment` (Debug-Reiter). Jede Abfrage für sich: scheitert oder fehlt eine, ist sie
+   *  `null`, nie eine Ausnahme. Asynchrone Abfragen warten höchstens 2 s (ein hängender Browser-Aufruf soll den
+   *  Reiter nicht blockieren). Vom Gerät nur `platformVersion` — das Modell steht nie im Bericht. */
+  async collectDebugEnv() {
+    const attempt = async (lookup) => {
+      let timer;
+      try {
+        const timeout = new Promise((resolve) => { timer = setTimeout(() => resolve(null), 2000); });
+        return (await Promise.race([Promise.resolve().then(lookup), timeout])) ?? null;
+      } catch {
+        return null; // Abfrage nicht verfügbar oder verweigert
+      } finally {
+        clearTimeout(timer);
+      }
+    };
+    const registration = await attempt(() => navigator.serviceWorker.getRegistration());
+    const permission = await attempt(() => Notification.permission);
+    const persisted = await attempt(() => navigator.storage.persisted());
+    const usage = await attempt(async () => (await navigator.storage.estimate()).usage);
+    const meta = await attempt(() => this.store.getMeta());
+    const subscribed = registration
+      ? await attempt(async () => Boolean(await registration.pushManager.getSubscription()))
+      : null;
+    const platformVersion = await attempt(async () => {
+      const values = await navigator.userAgentData.getHighEntropyValues(['platformVersion']);
+      return values.platformVersion || null;
+    });
+    const brands = await attempt(() => navigator.userAgentData.brands.map(({ brand, version }) => ({ brand, version })));
+    const standalone = await attempt(() => isStandalone({
+      navigatorStandalone: navigator.standalone,
+      displayModeStandalone: globalThis.matchMedia('(display-mode: standalone)').matches,
+    }));
+    return {
+      userAgent: await attempt(() => navigator.userAgent),
+      userAgentData: brands ? { brands } : null,
+      platformVersion,
+      standalone,
+      online: await attempt(() => navigator.onLine !== false && this.online),
+      language: await attempt(() => navigator.language),
+      screen: await attempt(() => ({ width: screen.width, height: screen.height })),
+      build: await attempt(() => BUILD),
+      worker: registration ? { active: Boolean(registration.active), waiting: Boolean(registration.waiting) } : null,
+      notification: permission,
+      subscribed,
+      storage: persisted === null && usage === null ? null : { persisted, usage },
+      pairing: meta?.transport === 'relay' ? 'relay' : (meta && isPaired(meta) ? 'lan' : null),
+      protocol: PROTOCOL,
+    };
   }
 
   shiftWeek(weeks) {

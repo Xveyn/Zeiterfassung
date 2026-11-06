@@ -33,6 +33,7 @@ export const PRECACHE = [
   './window-policy.js',
   './swipe-policy.js',
   './browser-policy.js',
+  './debug-info.js',
   './diagnose.js',
   './debug-log.js',
   './log-store.js',
