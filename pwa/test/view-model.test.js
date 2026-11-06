@@ -635,7 +635,7 @@ test('an older desktop leaves the list readable but not editable, with a hint', 
 test('without any defaults the list is still readable', () => {
   const model = categoriesModel({ categories: ['A'], writable: true, defaults: null, edit: null });
   assert.equal(model.editable, false);
-  assert.equal(model.rows[0].summary, '—');
+  assert.equal(model.rows[0].summary, 'Keine Standardzeiten');
 });
 
 test('a writable desktop without defaults yet asks for a sync instead of blaming an older desktop', () => {

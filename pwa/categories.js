@@ -85,15 +85,51 @@ export function validateCategoryRows(rows) {
   return { ok: true, message: '' };
 }
 
-/** Die Zeiten einer Zeile in einer kurzen Zeile. */
+const DAY_NAMES = { mon: 'Mo', tue: 'Di', wed: 'Mi', thu: 'Do', fri: 'Fr', sat: 'Sa', sun: 'So' };
+const DAY_ORDER = Object.keys(DAY_NAMES);
+
+function clockText(day) {
+  if (day.start && day.end) return `${day.start}–${day.end}`;
+  if (day.start) return `ab ${day.start}`;
+  if (day.end) return `bis ${day.end}`;
+  return '';
+}
+
+/** Tage mit gleichen Zeiten zusammengefasst, aufeinanderfolgende als Bereich: „Mo–Do 09:00–17:00 · Fr 07:00–11:00“,
+ *  „Mo, Mi 09:00–17:00“. Nur Tage mit eigenen Zeiten (für die übrigen gilt der globale Standard); `''` ohne solche.
+ *  Fremddaten: wirft nie. */
+function perDayText(raw) {
+  const days = isObject(raw?.days) ? raw.days : {};
+  const groups = new Map();
+  DAY_ORDER.forEach((key, index) => {
+    const text = isObject(days[key]) ? clockText(days[key]) : '';
+    if (text) groups.set(text, [...(groups.get(text) ?? []), index]);
+  });
+  const names = (indexes) => {
+    const runs = [];
+    for (const index of indexes) {
+      const run = runs.at(-1);
+      if (run && run.at(-1) === index - 1) run.push(index); else runs.push([index]);
+    }
+    return runs.map((run) => (run.length > 2 ? `${DAY_NAMES[DAY_ORDER[run[0]]]}–${DAY_NAMES[DAY_ORDER[run.at(-1)]]}`
+      : run.map((index) => DAY_NAMES[DAY_ORDER[index]]).join(', '))).join(', ');
+  };
+  return [...groups].map(([text, indexes]) => `${names(indexes)} ${text}`).join(' · ');
+}
+
+/** Die Zeiten einer Zeile in einer kurzen Zeile. Auch „pro Wochentag“ ist lesbar (am Handy nicht bearbeitbar). */
 export function timesSummary(row) {
-  if (row.mode === 'per_day') return 'pro Wochentag';
+  if (row.mode === 'per_day') {
+    const parts = [perDayText(row.raw) || 'pro Wochentag'];
+    if (Number.isInteger(row.raw?.pause)) parts.push(`${row.raw.pause} min Pause`);
+    return parts.join(', ');
+  }
   const parts = [];
   if (row.start && row.end) parts.push(`${row.start}–${row.end}`);
   else if (row.start) parts.push(`ab ${row.start}`);
   else if (row.end) parts.push(`bis ${row.end}`);
   if (row.pause !== '') parts.push(`${row.pause} min Pause`);
-  return parts.length ? parts.join(', ') : '—';
+  return parts.length ? parts.join(', ') : 'Keine Standardzeiten';
 }
 
 /** Vertauscht die Zeile mit ihrem Nachbarn; eine ungültige Bewegung gibt das Original zurück. */
