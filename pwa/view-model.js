@@ -3,17 +3,24 @@
 // Konfliktliste, Editor-Zeilen. Kein DOM — die dünne Schicht in `views.js` macht daraus
 // Elemente. Summen nur über ganze Minuten (`minutes.js`).
 import {
-  addDays, dayMinutes, formatDateDe, formatMinutes, isoWeek, mondayOf, normalizeSlots,
+  addDays, dayMinutes, formatDateDe, formatMinutes, isIsoDate, isoWeek, mondayOf, normalizeSlots,
   parseTime, slotMinutes, snapTime, validateSlots, weekDays,
 } from './minutes.js';
 import { categoryRows, timesSummary } from './categories.js';
-import { resolveSlotDefaults } from './defaults.js';
+import { WEEKDAY_KEYS, resolveSlotDefaults, weekdayKey } from './defaults.js';
 import { describeError } from './messages.js';
 import { openReservationSlots, pendingReservationMinutes, reservationBlockVisible, validateReservationSlots } from './reservations.js';
 import { describeState } from './push-policy.js';
 import { LEGACY_AHEAD_DAYS, aheadDays, olderState } from './window-policy.js';
 
 export const WEEKDAYS = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
+
+/** Titel des Tages-Editors: Wochentag (Kurzform wie in der Wochenliste) und deutsches Datum,
+ *  `Mi, 04.11.2026`. Was kein ISO-Datum ist, bleibt, wie es ist. */
+export function dayTitle(iso) {
+  if (!isIsoDate(iso)) return iso;
+  return `${WEEKDAYS[WEEKDAY_KEYS.indexOf(weekdayKey(iso))]}, ${formatDateDe(iso)}`;
+}
 const SKEW_WARN_MS = 120000;
 
 const isObject = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);

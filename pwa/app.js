@@ -25,7 +25,7 @@ import { swipeDirection } from './swipe-policy.js';
 import { shouldApplyUpdate, shouldCheckForUpdate } from './update-policy.js';
 import { blockSignature, rowsToBlock } from './categories.js';
 import {
-  categoriesModel, conflictsModel, connectionLabel, dayChanged, desktopHint, editLock, editorRows, focusKeyToRestore, hintsModel, olderModel, pushModel, reservationRows,
+  categoriesModel, conflictsModel, connectionLabel, dayChanged, dayTitle, desktopHint, editLock, editorRows, focusKeyToRestore, hintsModel, olderModel, pushModel, reservationRows,
   iosInstallHint, reservationRowsToSlots, rowsToSlots, statusModel, validateReservationRows, validateRows, weekModel,
 } from './view-model.js';
 import { BUILD, CACHE_PREFIX } from './sw-core.js';
@@ -722,7 +722,7 @@ class App {
     // Standardzeiten vorbelegt, ein Speichern dort legte sonst still eine Ist-Zeit an.
     const startWith = reservationOn && date > today ? 'reservation' : 'work';
     const dialog = editorDialog({
-      title: `${formatDateDe(date)}`,
+      title: dayTitle(date),
       rows: editorRows(day, meta.defaults, weekdayKey(date), reservation),
       categories: meta.categories,
       defaults: meta.defaults,

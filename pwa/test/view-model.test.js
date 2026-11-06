@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 
 import {
   SETTINGS_TABS, categoriesModel, categoryRemovalText, categoryRenameHint, settingsTabLabel, retentionLabel,
-  WEEKDAYS, categoryDisplay, categoryLabel, categoryOptions, conflictsModel, dayChanged, editLock, editorRows, focusKeyToRestore, hintKey, hintsModel, desktopHint, localTime, nextRow, olderModel, pickCategory, rowsToSlots, slotText,
+  WEEKDAYS, dayTitle, categoryDisplay, categoryLabel, categoryOptions, conflictsModel, dayChanged, editLock, editorRows, focusKeyToRestore, hintKey, hintsModel, desktopHint, localTime, nextRow, olderModel, pickCategory, rowsToSlots, slotText,
   statusModel, validateRows, weekModel, windowRow, reservationRows, reservationRowsToSlots, validateReservationRows,
 } from '../view-model.js';
 import { SyncError } from '../sync.js';
@@ -13,6 +13,25 @@ import { formatMinutes } from '../minutes.js';
 const SLOT = { start: '08:00', end: '12:00', pause: 0, kategorie: 'Projekt' };
 const days = (map) => (date) => map[date] ?? null;
 const live = (slots, over = {}) => ({ slots, deleted: false, dirty: false, error: null, modified_at: 'x', ...over });
+
+// --- Titel des Tages-Editors ---------------------------------------------------------------------
+
+test('the editor title names the weekday next to the German date', () => {
+  assert.equal(dayTitle('2026-11-02'), 'Mo, 02.11.2026');
+  assert.equal(dayTitle('2026-11-04'), 'Mi, 04.11.2026');
+  assert.equal(dayTitle('2026-11-08'), 'So, 08.11.2026');
+  assert.equal(dayTitle('2024-02-29'), 'Do, 29.02.2024');          // Schaltjahr
+});
+
+test('the editor title agrees with the weekday of the week list for every day of a week', () => {
+  const week = weekModel({ getDay: days({}), anchor: '2026-11-04', today: '2026-11-04' });
+  for (const day of week.days) assert.equal(dayTitle(day.date), `${day.weekday}, ${day.label}`);
+});
+
+test('the editor title falls back to the plain text for something that is no ISO date', () => {
+  assert.equal(dayTitle('kaputt'), 'kaputt');
+  assert.equal(dayTitle(''), '');
+});
 
 // --- Woche -----------------------------------------------------------------------------------------
 
