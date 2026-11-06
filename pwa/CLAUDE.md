@@ -79,6 +79,10 @@ ES-Module flach im Ordner:
   gehen hier nicht hinein — einzige Ausnahme: `relay-transport.js` loggt damit eine übergangene Relay-Antwort
   (`RelayFrameError`, nur der feste Text, nie Geheimnis oder Inhalt). Wer einen neuen Catch-all in `app.js` baut,
   loggt oder zeigt die Ursache.
+- `log-scrub.js`, `debug-log.js`, `log-store.js`, `debug-info.js` — das Debug-Protokoll (#477), DOM-frei und
+  getestet, s. „Debug-Protokoll“: `scrubText` (Adressen, Schlüssel, Daten, Uhrzeiten, Pfade → Platzhalter, höchstens
+  240 Zeichen), `createDebugLog` (Ereignisse `error`/`sync`, Haltezeit, Export), `idbLogStore` (Datenbank
+  `zeiterfassung-log`) und `describeEnvironment` (technischer Zustand aus Parametern, nie aus `navigator`).
 - `view-model.js`, `messages.js`, `sync-policy.js`, `update-policy.js` —
   Anzeige- und Entscheidungslogik, DOM-frei und getestet.
 - `reminders-plan.js`, `push-blob.js`, `push-message.js`, `relay-client.js`, `push-policy.js` —
@@ -391,10 +395,11 @@ sind von der Regel ausgenommen.
 ## Einstellungen und Kategorien
 
 Der Button unten links heißt „Einstellungen“. `settingsDialog` (ersetzt den
-früheren Verbindungsdialog) hat drei Reiter (`role="tablist"`): **Verbindung**
+früheren Verbindungsdialog) hat vier Reiter (`role="tablist"`): **Verbindung**
 (Desktop, Adresse, Kopplung, Speicher, Verlauf, Hinweis zum älteren Desktop,
-„Neu koppeln“), **Kategorien** und **Updates** (Version, „Nach Updates suchen“,
-automatisch einspielen). Der Dialog hält den Zustand jedes Reiters selbst; ein
+„Neu koppeln“), **Kategorien**, **Updates** (Version, „Nach Updates suchen“,
+automatisch einspielen) und **Debug** (Zustand, Protokoll, s. „Debug-Protokoll“). Der Dialog hält den
+Zustand jedes Reiters selbst; ein
 Wechsel verliert keine Eingaben.
 
 **Kategorien-Reiter.** Eine Zeile je Kategorie (Name, Kurzfassung der Zeiten),
@@ -500,6 +505,45 @@ der alte Plan am Relay stehen. Vertrag: `test/fixtures/reminders-contract.json` 
 
 **Berechtigung ist pro Gerät** und braucht eine Nutzergeste (Knopf „Benachrichtigungen erlauben“ im
 Reiter „Verbindung“). Ausschalten meldet das Abo ab und löscht das Objekt am Relay.
+
+## Debug-Protokoll (#477)
+
+Reiter „Debug“ (vierter in den Einstellungen): technischer Zustand, Protokoll der letzten Fehler und Abgleiche,
+Kopieren, Teilen als Datei, Löschen, Haltezeit. Nichts davon verlässt das Gerät von selbst; die Aussage dazu steht
+in `docs/datenschutz.md`, Abschnitt 11 (die Zusage zu den Geheimnissen in Abschnitt 9 bleibt wahr).
+
+- **`context` von `logFailure` ist ein Textliteral.** `diagnose.js` hat eine Senke (`setLogSink`), die Seite
+  (`app.js`) und der Service Worker (`sw.js`) setzen sie beim Start; jeder `logFailure`-Aufruf landet so im
+  Protokoll. `test/log-contexts.test.js` hält am Quelltext fest, dass der Kontext in `app.js`, `sw.js`, `sync.js`
+  (und `relay-transport.js`) ein Literal bleibt — über ihn darf nie ein Name oder Wert ins Protokoll.
+- **Namen lassen sich nicht per Muster entfernen.** Der Schutz ist die Bauform: feste Kontexte, Positivliste der
+  Ereignisse (`error`: `context`/`name`/`detail`; `sync`: `result`, `ms`, `sent`, `received`, `conflicts`, `window`,
+  die Zahlen nur als Zahlen), unbekannte Felder fallen weg, `detail` kommt nur aus Browser- und Laufzeitfehlern
+  (`errorDetail`). Meldungen aus eigenem Code mit Eingaben (Kategorienamen in Prüftexten) gehen nie an
+  `logFailure`. Der Export läuft erneut durch `scrubText`.
+- **Haltezeit** `log_retention_days` (1/7/30, Standard 7) liegt **in der Log-Datenbank** (Konfigurationsspeicher
+  von `log-store.js`), nicht in der der Einträge: der Service Worker liest sie dort. Aufgeräumt wird beim Start und
+  beim Schreiben, zusätzlich höchstens `MAX_ENTRIES` (500), älteste zuerst.
+- **Schreiben wirft nie.** Bei einem Speicherfehler (kein IndexedDB, privates Fenster) wechselt der Kern auf ein
+  Array im Speicher, der Reiter sagt es. `clear()` versucht auch in diesem Modus, den Speicher zu leeren
+  (best effort).
+- **Der Service Worker schreibt nur Fehler** und ist ein eigener, einzeln rückbaubarer Schritt: Chrome holt bei
+  jeder Update-Prüfung **alle** statischen Imports des Modul-Workers neu, jede weitere Datei im Import-Graphen von
+  `sw.js` kostet dort Abrufe (Verdacht auf Zusammenhang mit dem offenen Update-Problem #390). Deshalb eine
+  Positivliste der Imports von `sw.js` in `test/log-contexts.test.js` (`sw-core`, `push-blob`, `diagnose`,
+  `push-message`, `debug-log`, `log-store`; `log-scrub` kommt über `debug-log`). Wer einen Import ergänzt,
+  begründet ihn dort.
+- **Laden und Export.** Der Debug-Reiter lädt seine Daten erst, wenn er gezeigt wird (`handlers.loadDebug`, bei
+  jedem Zeigen neu); der Dialog öffnet ohne Wartezeit. `collectDebugEnv` fragt alles nebeneinander ab, je Abfrage
+  höchstens 2 s (`capped`). Den Export-Text baut die App vorab (beim Laden, Löschen, Haltezeit-Wechsel), damit
+  Kopieren und Teilen ohne Wartepunkt vor dem Aufruf von Zwischenablage bzw. `navigator.share` laufen — Safari
+  verwirft sonst die Nutzergeste. Der Zwischenablage-Ersatz hängt sein Textfeld in den offenen Dialog.
+- **Löschen und Export.** „Löschen“ fragt über `confirmDialog` nach und leert sofort (`clear()` liefert `false`, wenn der Speicher nicht geleert werden konnte; der Reiter meldet dann „Löschen fehlgeschlagen.“). Export ist Text (Zustand,
+  dann eine Zeile je Eintrag); „Teilen“ nimmt die Web-Share-API mit Datei, sonst Download, „Kopieren“ die
+  Zwischenablage mit Fallback (`deliverExport`).
+- **Bekannte Grenzen.** Bei mehreren Paketen summiert die Zusammenfassung nur `sent`, `received`,
+  `window` und `conflicts` stammen vom letzten Paket. Der Fehler beim Öffnen des Browser-Speichers in `main()`
+  entsteht vor der App und steht nicht im Protokoll (er ist auf dem Bildschirm).
 
 ## Datenschutzseite
 
@@ -771,7 +815,7 @@ GitHub Pages site here“.
 ## Entwickeln und prüfen
 
 **Layout prüfen (Playwright gegen den Dev-Server).** Breiten von 280 bis 1024 px, dazu Querformat (667 × 375);
-Zustände: Woche, Tages-Editor mit mehreren Slots (beide Reiter), Einstellungen (alle drei Reiter), Fehlerhinweis.
+Zustände: Woche, Tages-Editor mit mehreren Slots (beide Reiter), Einstellungen (alle vier Reiter), Fehlerhinweis.
 Bei jedem Zustand prüfen: Zeitfelder breit genug für `08:00` (bei 320 px mindestens ~95 px), keine abgeschnittenen
 Reiter oder Knöpfe, kein waagerechtes Scrollen, Aktionsknöpfe der Dialoge sichtbar. Fallen, die schon Zeit kosteten:
 der Service Worker und der HTTP-Cache liefern nach einer Änderung die alte Fassung (vorher

@@ -34,11 +34,24 @@ export function withDetail(text, error) {
   return detail ? `${text.replace(/\.$/, '')} (${detail}).` : text;
 }
 
-/** Die Ursache in die Konsole (`chrome://inspect` am Handy). Wirft nie. */
+let sink = null;
+
+/** Zweite Senke für `logFailure` (das Debug-Protokoll der Seite). Hier nur ein Hook: dieses Modul
+ *  läuft auch im Service Worker und bleibt frei von Abhängigkeiten. */
+export function setLogSink(next) {
+  sink = typeof next === 'function' ? next : null;
+}
+
+/** Die Ursache in die Konsole (`chrome://inspect` am Handy) und an die Senke. Wirft nie. */
 export function logFailure(context, error, log = globalThis.console) {
   try {
     log.warn(`[Zeiterfassung] ${context}: ${errorDetail(error)}`);
   } catch {
     // Die Diagnose darf den Pfad, den sie beschreibt, nicht selbst zum Absturz bringen.
+  }
+  try {
+    if (sink) sink(context, error);
+  } catch {
+    // Auch eine kaputte Senke bricht den fehlgeschlagenen Pfad nicht weiter auf.
   }
 }

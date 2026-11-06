@@ -11,13 +11,16 @@ import { idbKeyStore, seal } from './push-blob.js';
 import { permissionState, shouldSchedule } from './push-policy.js';
 import { RelayClient, RelayError, VAPID_PUBLIC, newSecret, syncSchedule } from './relay-client.js';
 import { DEFAULT_WISH, aheadDays, olderState } from './window-policy.js';
-import { DEFAULT_DEVICE_NAME, deviceNameFromUserAgent, isPairFragment, parseHostPort, parsePairLink } from './pairing.js';
+import { DEFAULT_DEVICE_NAME, PROTOCOL, deviceNameFromUserAgent, isPairFragment, parseHostPort, parsePairLink } from './pairing.js';
 import { openDatabase, requestPersistentStorage } from './db.js';
 import { Store } from './store.js';
 import { SyncClient, SyncError, clockSkewMs } from './sync.js';
 import { isPaired } from './transport.js';
 import { shouldQueue, shouldSync } from './sync-policy.js';
-import { errorDetail, logFailure, withDetail } from './diagnose.js';
+import { errorDetail, logFailure, setLogSink, withDetail } from './diagnose.js';
+import { createDebugLog, deliverExport, formatExport } from './debug-log.js';
+import { capped, describeEnvironment, workerFromRegistration } from './debug-info.js';
+import { idbLogStore } from './log-store.js';
 import { swipeDirection } from './swipe-policy.js';
 import { shouldApplyUpdate, shouldCheckForUpdate } from './update-policy.js';
 import { blockSignature, rowsToBlock } from './categories.js';
@@ -42,6 +45,10 @@ const SWIPE_CLICK_GUARD_MS = 400;
 class App {
   constructor(root, store, client, initialHash = location.hash) {
     this.initialHash = initialHash;
+    // Vor allem anderen: ab hier landet jedes `logFailure` auch im Protokoll.
+    this.debugLog = createDebugLog({ store: idbLogStore() });
+    setLogSink((context, error) => this.debugLog.recordError(context, error));
+    this.debugLog.prune();
     this.root = root;
     this.store = store;
     this.client = client;
@@ -350,12 +357,15 @@ class App {
     this.syncing = true;
     this.lastAttemptAt = Date.now();
     this.render();
+    const startedAt = Date.now();
     try {
       const result = await this.client.sync();
+      if (!result.discarded) this.debugLog.recordSync({ result: 'ok', ms: Date.now() - startedAt, ...result });
       this.lastError = null;
       if (!result.discarded) this.skewMs = clockSkewMs(this.store.getMeta().server_time, new Date());
       this.updatePushSchedule();
     } catch (error) {
+      this.debugLog.recordSync({ result: error?.kind ?? error?.name, ms: Date.now() - startedAt });
       this.lastError = error instanceof SyncError ? error
         : new SyncError({ kind: 'client_error', message: String(error?.message ?? error) });
     } finally {
@@ -468,6 +478,51 @@ class App {
     return { browser: browserKind(navigator.userAgent, navigator.userAgentData), address, transport, standalone };
   }
 
+  /** Parameter für `describeEnvironment` (Debug-Reiter). Jede Abfrage für sich und alle nebeneinander: scheitert oder
+   *  fehlt eine, ist sie `null`, nie eine Ausnahme; jede wartet höchstens 2 s (`capped`), die Gesamtdauer liegt also
+   *  ebenfalls bei etwa 2 s. Vom Gerät nur `platformVersion` — das Modell steht nie im Bericht. */
+  async collectDebugEnv() {
+    const known = (lookup) => capped(lookup).then((value) => value ?? null);
+    const registrationLookup = capped(() => navigator.serviceWorker.getRegistration());
+    const [registration, permission, persisted, usage, meta, subscribed, platformVersion, standalone, userAgent, online,
+      language, screenSize, build] = await Promise.all([
+      registrationLookup,
+      known(() => Notification.permission),
+      known(() => navigator.storage.persisted()),
+      known(async () => (await navigator.storage.estimate()).usage),
+      known(() => this.store.getMeta()),
+      registrationLookup.then((reg) => (reg ? known(async () => Boolean(await reg.pushManager.getSubscription())) : null)),
+      known(async () => {
+        const values = await navigator.userAgentData.getHighEntropyValues(['platformVersion']);
+        return values.platformVersion || null;
+      }),
+      known(() => isStandalone({
+        navigatorStandalone: navigator.standalone,
+        displayModeStandalone: globalThis.matchMedia('(display-mode: standalone)').matches,
+      })),
+      known(() => navigator.userAgent),
+      known(() => navigator.onLine !== false && this.online),
+      known(() => navigator.language),
+      known(() => ({ width: screen.width, height: screen.height })),
+      known(() => BUILD),
+    ]);
+    return {
+      userAgent,
+      platformVersion,
+      standalone,
+      online,
+      language,
+      screen: screenSize,
+      build,
+      worker: workerFromRegistration(registration),
+      notification: permission,
+      subscribed,
+      storage: persisted === null && usage === null ? null : { persisted, usage },
+      pairing: meta?.transport === 'relay' ? 'relay' : (meta && isPaired(meta) ? 'lan' : null),
+      protocol: PROTOCOL,
+    };
+  }
+
   shiftWeek(weeks) {
     this.anchor = addDays(this.anchor, weeks * 7);
     this.render();
@@ -501,6 +556,87 @@ class App {
     }, true);
   }
 
+  /** Export-Text samt Datei, vorab gebaut: Kopieren und Teilen brauchen die Nutzergeste, und Safari/iOS verwirft sie
+   *  nach einem `await`. Neu gebaut bei jedem Laden, Löschen und Haltezeit-Wechsel. */
+  buildDebugExport(info, entries) {
+    const text = formatExport({ info, entries });
+    this.debugExport = { text, file: new File([text], 'zeiterfassung-debug.txt', { type: 'text/plain' }) };
+  }
+
+  /** Modell des Debug-Reiters, beim Zeigen des Reiters geladen. Wirft nie: scheitert etwas, bleibt der Block leer. */
+  async loadDebug() {
+    let info = [{ label: 'Zustand', value: 'unbekannt' }];
+    let entries = [];
+    let retention = 7;
+    try {
+      info = describeEnvironment(await this.collectDebugEnv());
+      entries = await this.debugLog.entries();
+      retention = await this.debugLog.retentionDays();
+    } catch {
+      // Der Reiter zeigt, was er hat; kopiert wird dann ebenfalls nur das.
+    }
+    this.debugInfo = info;
+    this.buildDebugExport(info, entries);
+    return { info, entries, retention, persistent: this.debugLog.isPersistent() };
+  }
+
+  async refreshDebug() {
+    const entries = await this.debugLog.entries();
+    this.buildDebugExport(this.debugInfo ?? [], entries);
+    return { entries, persistent: this.debugLog.isPersistent() };
+  }
+
+  /** `true`, wenn das Protokoll wirklich leer ist; sonst bleibt der Export-Text, bis `refreshDebug` neu liest. */
+  async clearDebug() {
+    const cleared = await this.debugLog.clear();
+    if (cleared) this.buildDebugExport(this.debugInfo ?? [], []);
+    return cleared;
+  }
+
+  /** Läuft synchron bis zum Aufruf der Zwischenablage (keine Wartepunkte davor). */
+  copyDebug() {
+    const text = this.debugExport?.text;
+    if (text == null) return Promise.resolve('failed');
+    const fallback = () => {
+      try {
+        // Im Dialog, nicht im body: außerhalb eines offenen modalen Dialogs ist alles inert und `select()` greift nicht.
+        const host = [...document.querySelectorAll('dialog[open]')].pop() ?? document.body;
+        const area = h('textarea', { readonly: true, class: 'clipboard-proxy' }, text);
+        host.append(area);
+        area.select();
+        const ok = document.execCommand('copy');
+        area.remove();
+        return ok ? 'copied' : 'failed';
+      } catch {
+        return 'failed';
+      }
+    };
+    if (!navigator.clipboard?.writeText) return Promise.resolve(fallback());
+    try {
+      return navigator.clipboard.writeText(text).then(() => 'copied', fallback);
+    } catch {
+      return Promise.resolve(fallback());
+    }
+  }
+
+  /** Wie `copyDebug`: `canShare`/`share` laufen vor jedem Wartepunkt. */
+  shareDebug() {
+    const { text, file } = this.debugExport ?? {};
+    if (!file) return Promise.reject(new Error('Kein Export vorbereitet'));
+    return deliverExport(text, {
+      canShare: () => Boolean(navigator.canShare?.({ files: [file] })),
+      share: () => navigator.share({ files: [file] }),
+      download: () => {
+        const url = URL.createObjectURL(file);
+        const link = h('a', { href: url, download: file.name });
+        document.body.append(link);
+        link.click();
+        link.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+      },
+    });
+  }
+
   async openSettings(initialTab = 'connection') {
     const meta = this.store.getMeta();
     const push = await this.pushModelNow();
@@ -526,6 +662,12 @@ class App {
         categories: meta.categories, defaults: meta.defaults, writable: meta.settings_writable, edit: meta.categories_edit,
       }),
     }, {
+      loadDebug: () => this.loadDebug(),
+      copyDebug: () => this.copyDebug(),
+      shareDebug: () => this.shareDebug(),
+      clearDebug: () => this.clearDebug(),
+      setRetention: (days) => this.debugLog.setRetentionDays(days),
+      refreshDebug: () => this.refreshDebug(),
       pair: () => { this.screen = 'pair'; this.render(); },
       repairUpdates: () => this.repairServiceWorker(),
       checkUpdate: async () => ({ state: await this.checkForUpdate('manual'), detail: this.updateDetail }),

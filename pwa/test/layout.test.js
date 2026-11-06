@@ -263,3 +263,17 @@ test('hover colours only apply where hovering exists; on touch a tap leaves :hov
   assert.match(block[1], /button:hover \{ background: var\(--cell-hover\); \}/);
   assert.match(block[1], /button\.primary:hover \{ background: var\(--accent-hover\); \}/);
 });
+
+test('the four settings tabs are sized by their text, not in equal boxes (Verbindung is wider than Debug)', () => {
+  // Der Fehler: `.tabs button { flex: 1 }` macht alle Reiter gleich breit; bei vier Reitern auf 280 px ist die Box
+  // schmaler als „Verbindung“, der Text läuft in den Nachbarn.
+  assert.match(rule('.settings-dialog .tabs'), /gap:\s*[0-4]px/);
+  assert.match(rule('.settings-dialog .tabs button'), /flex:\s*1 1 auto/);
+});
+
+test('below 340 px the settings tabs get a smaller font and a tighter gap', () => {
+  const media = /@media \(max-width: 340px\) \{\n([\s\S]*?)\n\}/.exec(css);
+  assert.ok(media, 'keine Regel für sehr schmale Breiten');
+  assert.match(media[1], /\.settings-dialog \.tabs button\s*\{[^}]*font-size:\s*\.7rem/);
+  assert.match(media[1], /\.settings-dialog \.tabs\s*\{[^}]*gap:\s*[0-3]px/);
+});

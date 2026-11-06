@@ -143,8 +143,10 @@ label.check input { width: auto; min-height: 0; flex: none; }
 .tabs button[aria-selected="true"] { background: var(--accent); color: #fff; font-weight: 600; }
 
 /* Einstellungen (Reiter wie im Tages-Editor: .tabs) */
-/* Drei Reiter müssen bei 360 px in den Dialog passen (#363): kleinere Schrift als im Tages-Editor. */
-.settings-dialog .tabs button { font-size: .85rem; }
+/* Vier Reiter müssen bei 280 px in den Dialog passen (#363): kleinere Schrift als im Tages-Editor, und die Breite
+   richtet sich nach dem Text (`flex: 1 1 auto`) statt gleicher Boxen, sonst ist „Verbindung“ breiter als seine Box. */
+.settings-dialog .tabs { gap: 4px; }
+.settings-dialog .tabs button { font-size: .85rem; flex: 1 1 auto; }
 .settings-dialog, .category-edit-dialog { max-height: 90vh; overflow-y: auto; }
 .settings-dialog dl { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; margin: 0 0 12px; }
 .settings-dialog dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
@@ -153,9 +155,10 @@ label.check input { width: auto; min-height: 0; flex: none; }
   .settings-dialog dl { grid-template-columns: 1fr; gap: 0; }
   .settings-dialog dt { margin-top: 8px; font-size: .85rem; }
 }
-/* Sehr schmal: die drei Reiter behalten ihren vollen Text, und Abbrechen/Speichern bleiben in einer Zeile. */
+/* Sehr schmal: die vier Reiter behalten ihren vollen Text, und Abbrechen/Speichern bleiben in einer Zeile. */
 @media (max-width: 340px) {
-  .settings-dialog .tabs button { font-size: .75rem; padding-left: 2px; padding-right: 2px; }
+  .settings-dialog .tabs { gap: 2px; }
+  .settings-dialog .tabs button { font-size: .7rem; padding-left: 2px; padding-right: 2px; }
   dialog .buttons button { padding: 0 12px; }
 }
 .categories { list-style: none; margin: 0 0 12px; padding: 0; }
@@ -265,3 +268,7 @@ dialog[open]::backdrop { animation: backdrop-in .18s ease-out; }
 /* Fußzeile mit Löschen (Tages-Editor, Kategorie bearbeiten): Löschen links, Abbrechen und Speichern als eine Gruppe rechts. */
 .buttons .destructive { margin-right: auto; }
 .buttons .button-group { display: flex; gap: 8px; }
+
+.debug-log { list-style: none; margin: 0 0 12px; padding: 8px; max-height: 40vh; overflow: auto; border-radius: 8px; background: var(--cell); font-family: ui-monospace, monospace; font-size: .8rem; }
+.debug-log li { padding: 2px 0; overflow-wrap: anywhere; }
+.clipboard-proxy { position: fixed; opacity: 0; pointer-events: none; }

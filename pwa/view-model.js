@@ -462,8 +462,9 @@ export function windowRow({ days, max, wish, ahead = null }) {
 
 // --- Einstellungen ---------------------------------------------------------------------------------
 
-export const SETTINGS_TABS = ['connection', 'categories', 'updates'];
-const TAB_LABELS = { connection: 'Verbindung', categories: 'Kategorien', updates: 'Updates' };
+export const SETTINGS_TABS = ['connection', 'categories', 'updates', 'debug'];
+const TAB_LABELS = { connection: 'Verbindung', categories: 'Kategorien', updates: 'Updates', debug: 'Debug' };
+export const retentionLabel = (days) => (days === 1 ? '1 Tag' : `${days} Tage`);
 export const settingsTabLabel = (key) => TAB_LABELS[key];
 
 export const categoryRenameHint = 'Bestehende Einträge behalten den alten Namen.';
