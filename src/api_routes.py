@@ -21,7 +21,7 @@ Urlaub (#239): `GET /v1/vacations[/{id}]`, `POST /v1/vacations`, `DELETE
 /v1/vacations/{id}` (Body-Regeln in `api_vacation_write`, gerechnet wird in
 `vacation_plan`, derselben Planung wie im Dialog).
 Wire-Format der Ist-Zeit-Slots: `{start, end, pause, kategorie}` (Share v3), der
-Reservierungs-Slots: `{start, end, kategorie, send_reminder_minutes}`.
+Reservierungs-Slots: `{start, end, kategorie, send_reminder_minutes, pause}`.
 
 Ein Programmfehler in einem Handler wirft hier durch; den macht der Server zu
 einer 500-Antwort ohne Details.
@@ -46,7 +46,7 @@ from src.api_vacation_write import parse_vacation_body
 from src.api_summary import (
     category_names, holidays_for, parse_month, parse_week, parse_year, summarize,
 )
-from src.reservations import reservations_active
+from src.reservations import inherit_pause, normalize_pause, reservations_active
 from src.time_utils import utc_now_iso
 from src.vacation_plan import blocking_days, plan_vacation_save
 
@@ -353,7 +353,7 @@ def _reservation_store(ctx: ApiContext, *, writing: bool) -> Any:
 
 
 def _wire_reservation_slots(slots: Any) -> list[dict[str, Any]]:
-    """Nur die vier Felder der API, nie `gcal_event_id`. Gespeicherte Slots sind
+    """Nur die fünf Felder der API (inkl. `pause`), nie `gcal_event_id`. Gespeicherte Slots sind
     Fremddaten (Kalender-Abgleich, Handbearbeitung): ohne Textzeiten entfällt der
     Slot, ein falscher Typ wird zum Leerwert."""
     out: list[dict[str, Any]] = []
@@ -366,6 +366,7 @@ def _wire_reservation_slots(slots: Any) -> list[dict[str, Any]]:
         out.append({
             "start": slot["start"], "end": slot["end"],
             "kategorie": category if isinstance(category, str) else "",
+            "pause": normalize_pause(slot.get("pause")),
             "send_reminder_minutes": (reminder if isinstance(reminder, int)
                                       and not isinstance(reminder, bool) else None),
         })
@@ -427,6 +428,9 @@ def _put_reservation(request: ApiRequest, ctx: ApiContext, match: re.Match[str])
         existing = store.get(day_key)
         if not reminder_given:
             _carry_reminder(slots, existing)
+        # Ohne `pause` im Body erbt der Slot die des bisherigen — vor dem Vergleich,
+        # damit ein unveränderter Body keine Änderung ist.
+        slots = inherit_pause(existing["slots"] if existing else [], slots)
         existing_slots = _wire_reservation_slots(existing["slots"]) if existing else None
         changed = existing_slots != slots
         if changed:

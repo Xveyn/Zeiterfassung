@@ -7,11 +7,12 @@ Zwei Dinge liegen hier, beide für `mobile_sync`:
 - `parse_reservations`: der Teil `reservations` der Anfrage ist **Fremddaten**
   (Tage vor heute entfallen still, hinter heute + 365 sind ein Fehler). Die
   Slot-Regeln sind die der Ist-Zeiten (`api_entry_write.parse_slots`); übernommen
-  werden nur `start`, `end`, `kategorie` — `pause` gibt es bei Reservierungen nicht,
-  `gcal_event_id` und `send_reminder_minutes` gehören dem Desktop und werden vom
-  Slot-Parser als unbekannte Felder abgelehnt.
+  werden `start`, `end`, `kategorie` und — nur, wenn die Anfrage den Schlüssel nannte —
+  `pause` (ein älteres Handy kennt sie nicht und lässt sie weg; dann erbt der Store sie
+  per `reservations.inherit_pause`). `gcal_event_id` und `send_reminder_minutes`
+  gehören dem Desktop und werden vom Slot-Parser als unbekannte Felder abgelehnt.
 - `build_reservations`: die Antwort aus dem Store, nur aktive Tage von heute bis
-  heute + `HORIZON_DAYS`, in derselben Form wie die Anfrage.
+  heute + `HORIZON_DAYS`, in derselben Form wie die Anfrage; `pause` steht immer drin.
 
 Den Merge macht `ReservationStore.merge_phone`; der Fehler hier ist ein
 `ReservationError`, den `mobile_sync` in `SyncError(422, "invalid_entry", …)` übersetzt
@@ -25,6 +26,7 @@ from collections.abc import Callable, Mapping
 from typing import Any
 
 from src.api_entry_write import WriteError, parse_slots
+from src.reservations import normalize_pause
 
 MAX_RESERVATIONS = 400
 HORIZON_DAYS = 365
@@ -85,8 +87,14 @@ def _parse_day(date: str, raw: object, *, today: datetime.date, now_dt: datetime
             parsed = parse_slots(slots_raw)
         except WriteError as error:
             raise bad(error.message) from None
-        slots = [{"start": s["start"], "end": s["end"], "kategorie": s["kategorie"]}
-                 for s in parsed]
+        # `parse_slots` liefert `pause` immer (Default 0); ob das Handy es nannte,
+        # zeigt nur der rohe Slot an derselben Stelle.
+        slots = []
+        for item, raw_item in zip(parsed, slots_raw, strict=True):
+            slot = {"start": item["start"], "end": item["end"], "kategorie": item["kategorie"]}
+            if "pause" in raw_item:
+                slot["pause"] = item["pause"]
+            slots.append(slot)
     return {"slots": slots, "modified_at": str(raw["modified_at"]), "deleted": deleted}
 
 
@@ -111,9 +119,9 @@ def parse_reservations(raw: object, *, today: datetime.date, now_dt: datetime.da
             if datetime.date.fromisoformat(date) >= today}
 
 
-def _clean_slots(raw: object) -> list[dict[str, str]]:
+def _clean_slots(raw: object) -> list[dict[str, Any]]:
     """Gespeicherte Slots sind Fremddaten (Handbearbeitung, Kalender-Abgleich): nur die
-    drei Felder des Protokolls, und nur mit gültiger Uhrzeit."""
+    Felder des Protokolls (`pause` immer, als ganze Minuten), und nur mit gültiger Uhrzeit."""
     if not isinstance(raw, list):
         return []
     slots = []
@@ -126,7 +134,8 @@ def _clean_slots(raw: object) -> list[dict[str, str]]:
             continue
         category = item.get("kategorie")
         slots.append({"start": start, "end": end,
-                      "kategorie": category if isinstance(category, str) else ""})
+                      "kategorie": category if isinstance(category, str) else "",
+                      "pause": normalize_pause(item.get("pause"))})
     return slots
 
 

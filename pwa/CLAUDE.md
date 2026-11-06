@@ -160,7 +160,7 @@ Desktop) ist seltener, kommt aber vor. Sieben Regeln:
    das alt **und** neu spricht, dann die PWA mit dem Neuen, später das Alte
    entfernen. Umgekehrt ginge es nicht, weil sich der Desktop-Bestand nicht
    zwingen lässt.
-4. **Eingefrorene Vorgänger.** `test/fixtures/compat/` enthält Kopien der
+4. **Eingefrorene Vorgänger.** (Das Live-Beispiel `sync-request.json` zeigt den **neuen** Vertrag inkl. `pause` an Reservierungen, das die ausgelieferte PWA noch nicht sendet; was sie heute schickt, steht in `compat/sync-request-pre-pause.json`.) `test/fixtures/compat/` enthält Kopien der
    Vertragsbeispiele zu dem Zeitpunkt, an dem die Form galt. Sie werden **nie**
    mitgezogen, wenn sich das Live-Beispiel ändert: die PWA muss die alte Antwort
    weiter verstehen (`test/compat.test.js`), der Desktop die alte Anfrage

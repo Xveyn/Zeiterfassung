@@ -635,3 +635,33 @@ def test_share_diff_survives_slots_of_mixed_types():
     b = {"slots": list(reversed(a["slots"]))}
     assert _entries_equal(a, b) is True
     assert _entries_equal(a, {"slots": a["slots"][:1]}) is False
+
+
+# --- Pause an Reservierungen: Teilen bleibt ohne Pause (#455) ------------------------------------
+
+def test_export_does_not_leak_pause(tmp_path):
+    from src.reservations import ReservationStore
+
+    store = ReservationStore(str(tmp_path / "res.json"))
+    store.save("2026-08-31", [{"start": "08:00", "end": "12:00", "kategorie": "Office",
+                               "pause": 30}])
+    assert store.get("2026-08-31")["slots"][0]["pause"] == 30
+    doc = build_share_doc(_FakeStorage({}), "a@b.de", reservation_store=store,
+                          include_entries=False, include_reservations=True)
+    slot = doc["reservations"]["2026-08-31"]["slots"][0]
+    assert slot == {"start": "08:00", "end": "12:00", "kategorie": "Office"}
+    parse_share_doc(serialize_share_doc(doc))
+
+
+def test_import_overwrites_desktop_pause_with_zero(tmp_path):
+    # Festgehalten, nicht gewollt: Design-Entscheidung "Teilen bleibt ohne Pause".
+    # Das Share-Doc kennt keine Pause, ein Import ersetzt den Tag samt Pause durch 0.
+    from src.reservations import ReservationStore
+
+    store = ReservationStore(str(tmp_path / "res.json"))
+    store.save("2026-08-31", [{"start": "08:00", "end": "12:00", "kategorie": "Office",
+                               "pause": 30}])
+    apply_reservation_import(store, [
+        {"date": "2026-08-31", "entry": _erec(_rslot("08:00", "12:00", "Office"))},
+    ])
+    assert store.get("2026-08-31")["slots"][0]["pause"] == 0

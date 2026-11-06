@@ -1,10 +1,13 @@
 import datetime
 
 from src.dialogs.entry_dialog import (
-    NO_CATEGORY_LABEL, category_choices, category_from_display,
-    category_to_display, plan_entry_save, reservation_block_visible,
+    NO_CATEGORY_LABEL, RESERVATION_CALENDAR_NOTE, category_choices,
+    category_from_display, category_to_display, ist_prefill_pause,
+    plan_entry_save, reservation_block_visible, reservation_note_visible,
     slot_category_display, suggest_ist_category,
 )
+from src.dialogs.slot_rows import marker_pause, pause_choices
+from src.theme import PAUSE_VALUES
 
 
 TODAY = datetime.date(2026, 6, 26)
@@ -264,3 +267,78 @@ def test_reminder_slot_labels_are_unique_and_ordered():
     assert labels == ["1. 08:00–12:00  Office", "2. 08:00–12:00  Office",
                       "3. 13:00–17:00"]
     assert len(set(labels)) == 3
+
+
+class TestReservationPause:
+    def test_reservation_pause_not_shorter_than_span(self):
+        slot = {"start": "08:00", "end": "09:00", "pause": 60, "kategorie": ""}
+        result = plan_entry_save([], [slot], show_reservation=True)
+        assert result["save_reservation"] is False
+        assert result["error"].startswith("Reservierung: ")
+
+    def test_reservation_pause_30_in_long_span_allowed(self):
+        slot = {"start": "08:00", "end": "15:30", "pause": 30, "kategorie": ""}
+        result = plan_entry_save([], [slot], show_reservation=True)
+        assert result == {"error": None, "save_ist": False, "save_reservation": True}
+
+    def test_pause_choices_adds_free_value_ascending(self):
+        values = [int(v) for v in PAUSE_VALUES]
+        out = pause_choices(37, values)
+        assert 37 in out
+        assert set(values) <= set(out)
+        assert out == sorted(out)
+
+    def test_pause_choices_keeps_standard_values_unchanged(self):
+        values = [int(v) for v in PAUSE_VALUES]
+        assert pause_choices(30, values) == values
+
+    def test_pause_choices_lists_free_value_between_neighbours(self):
+        # Die Zeile hält 37 als String-Variable; die Auswahlliste führt 37
+        # mit, der Wert wird beim Speichern unverändert (nicht 35/40) gelesen.
+        values = [int(v) for v in PAUSE_VALUES]
+        shown = [str(v) for v in pause_choices(37, values)]
+        assert "37" in shown and shown.index("35") < shown.index("37") < shown.index("40")
+
+    def test_ist_prefill_takes_reservation_pause(self):
+        assert ist_prefill_pause({"pause": 30}, 45) == 30
+
+    def test_ist_prefill_falls_back_to_default_without_pause(self):
+        assert ist_prefill_pause({"pause": 0}, 45) == 45
+        assert ist_prefill_pause({}, 45) == 45
+
+    def test_reservation_pause_differing_from_default_adds_no_marker(self):
+        result = slot_category_display(
+            "Office", "09:00", "17:00", None,
+            {"Office": {"start": "09:00", "end": "17:00", "pause": 30}}, "mon",
+            "08:00", "16:00", 30,
+        )
+        assert result == "Office"
+
+
+class TestCalendarNote:
+    def test_note_text(self):
+        assert RESERVATION_CALENDAR_NOTE == (
+            "Der Google-Kalender-Termin zeigt die volle Zeitspanne, "
+            "die Pause wird dort nicht abgezogen.")
+
+    def test_visible_only_with_calendar_sync(self):
+        assert reservation_note_visible({"gcal_enabled": True}) is True
+        assert reservation_note_visible({"gcal_enabled": False}) is False
+        assert reservation_note_visible({}) is False
+
+
+class TestMarkerPauseWiring:
+    def _display(self, pause_text, in_marker):
+        return slot_category_display(
+            "Office", "08:00", "16:00", marker_pause(pause_text, in_marker),
+            {}, "mon", "08:00", "16:00", 30,
+        )
+
+    def test_reservation_row_pause_zero_vs_default_30_has_no_marker(self):
+        assert self._display("0", False) == "Office"
+
+    def test_ist_row_pause_differing_still_marked(self):
+        assert self._display("0", True) == "Office*"
+
+    def test_ist_row_pause_equal_not_marked(self):
+        assert self._display("30", True) == "Office"

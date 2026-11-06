@@ -157,6 +157,37 @@ def test_the_response_example_has_the_shape_the_server_really_sends(tmp_path):
     assert response.body["protocol"] == example["protocol"] == 2
 
 
+def test_the_response_carries_reservation_pause_only_with_reservations_enabled(tmp_path):
+    env = mr.make_env(tmp_path)
+    _record, token = mr.add_device(env, mr.PHONE, "Pixel")
+    off = mr.sync(env, token)
+    assert "reservations" not in off.body and "reservation_pause" not in off.body
+
+    mr.with_reservations(env, tmp_path)
+    on = mr.sync(env, token)
+    assert on.body["reservation_pause"] is True
+    assert "reservations" in on.body
+
+
+def test_old_pwa_request_keeps_desktop_pause(tmp_path):
+    env = mr.make_env(tmp_path)
+    _record, token = mr.add_device(env, mr.PHONE, "Pixel")
+    store, _calls = mr.with_reservations(env, tmp_path)
+    store.merge_phone({"2026-10-20": {
+        "slots": [{"start": "09:00", "end": "12:00", "kategorie": "Projekt", "pause": 30}],
+        "modified_at": "2026-10-08T10:00:00Z", "deleted": False}}, now="2026-10-08T10:00:00Z")
+    old = load("compat/sync-request-pre-pause.json")
+    slot = next(iter(old["reservations"].values()))["slots"][0]
+    assert "pause" not in slot
+    day = {"slots": [{"start": "09:00", "end": "12:00", "kategorie": "Projekt"}],
+           "modified_at": "2026-10-08T11:30:00Z", "deleted": False}
+
+    response = mr.sync(env, token, reservations={"2026-10-20": day})
+
+    assert store.get_all_raw()["2026-10-20"]["slots"][0]["pause"] == 30
+    assert response.body["reservations"]["2026-10-20"]["slots"][0]["pause"] == 30
+
+
 def test_the_sync_request_example_has_the_shape_the_phone_sends(tmp_path):
     example = load("sync-request.json")
     env = mr.make_env(tmp_path)
@@ -287,6 +318,31 @@ def test_the_desktop_still_accepts_the_request_of_a_phone_without_reservations()
 
     assert sorted(parsed.entries) == sorted(example["entries"])
     assert parsed.reservations == {}
+
+
+def test_pre_pause_request_still_accepted():
+    # Eingefrorener Stand vor `pause` an Reservierungs-Slots: nie ändern.
+    example = load("compat/sync-request-pre-pause.json")
+
+    parsed = mobile_sync.parse_request(
+        json.dumps(example).encode(), now=example["client_time"],
+        today=datetime.date.fromisoformat(example["client_time"][:10]))
+
+    assert parsed.reservations
+    for rec in parsed.reservations.values():
+        for slot in rec["slots"]:
+            assert "pause" not in slot
+
+
+def test_pre_pause_fixtures_are_really_pre_pause():
+    request = load("compat/sync-request-pre-pause.json")
+    response = load("compat/sync-response-pre-pause.json")
+
+    for reservations in (request["reservations"], response["reservations"]):
+        slots = [s for rec in reservations.values() for s in rec["slots"]]
+        assert slots
+        assert all("pause" not in s for s in slots)
+    assert "reservation_pause" not in response
 
 
 def test_the_live_response_example_has_the_shape_build_reservations_emits():

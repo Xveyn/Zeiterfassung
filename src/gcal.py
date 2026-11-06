@@ -43,13 +43,17 @@ class CalendarAuthError(Exception):
     unterscheiden kann."""
 
 
-def event_payload(date_str, start, end, kategorie, modified_at):
+def event_payload(date_str, start, end, kategorie, modified_at, pause=0):
     """Baut den Calendar-API-Event-Body aus einem Reservierungs-Slot.
 
     date_str ISO ('YYYY-MM-DD'), start/end 'HH:MM'. Die dateTime-Werte tragen
     den lokalen UTC-Offset (`astimezone()`) — kein IANA-Zeitzonenname nötig.
     Die Kategorie steht im Titel (für die Kalender-Anzeige) UND als private
     Property (damit parse_event sie verlustfrei zurückliest).
+
+    Der Termin bleibt BRUTTO (start–end, die Pause wird nicht abgezogen). Eine
+    Pause > 0 reist als private Property `pause` (String) und als Hinweis in
+    der Beschreibung; ohne Pause fehlt beides.
     """
     day = datetime.date.fromisoformat(date_str)
     sh, sm = (int(p) for p in start.split(":"))
@@ -57,25 +61,39 @@ def event_payload(date_str, start, end, kategorie, modified_at):
     start_dt = datetime.datetime(day.year, day.month, day.day, sh, sm).astimezone()
     end_dt = datetime.datetime(day.year, day.month, day.day, eh, em).astimezone()
     summary = f"{EVENT_SUMMARY} — {kategorie}" if kategorie else EVENT_SUMMARY
+    private = {
+        APP_MARKER_KEY: APP_MARKER_VALUE,
+        "kategorie": kategorie,
+        "modified_at": modified_at,
+    }
+    description = EVENT_DESCRIPTION
+    if pause > 0:
+        private["pause"] = str(pause)
+        description = (f"{EVENT_DESCRIPTION}\n"
+                       f"Zeitspanne brutto, Pause {pause} min nicht abgezogen.")
     return {
         "summary": summary,
-        "description": EVENT_DESCRIPTION,
+        "description": description,
         "start": {"dateTime": start_dt.isoformat()},
         "end": {"dateTime": end_dt.isoformat()},
-        "extendedProperties": {
-            "private": {
-                APP_MARKER_KEY: APP_MARKER_VALUE,
-                "kategorie": kategorie,
-                "modified_at": modified_at,
-            },
-        },
+        "extendedProperties": {"private": private},
     }
+
+
+def _parse_pause(raw):
+    """Pause-Property → ganze Minuten ≥ 0; fehlend/ungültig → 0.
+
+    Höchstens 4 Ziffern: Fremddaten, und `int()` wirft ab ~4300 Stellen."""
+    if (not isinstance(raw, str) or len(raw) > 4
+            or not (raw.isascii() and raw.isdigit())):
+        return 0
+    return int(raw)
 
 
 def parse_event(event):
     """Wandelt ein Calendar-API-Event in die Reservierungs-Form um.
 
-    Liefert {date, start, end, modified_at, event_id} oder None, wenn das Event
+    Liefert {date, start, end, kategorie, modified_at, event_id, pause} oder None, wenn das Event
     nicht den App-Marker trägt oder kein dateTime-Event ist (Ganztags-Events
     haben nur `date`).
     """
@@ -97,6 +115,7 @@ def parse_event(event):
         "kategorie": private.get("kategorie", ""),
         "modified_at": private.get("modified_at", ""),
         "event_id": event.get("id", ""),
+        "pause": _parse_pause(private.get("pause")),
     }
 
 
@@ -213,16 +232,18 @@ def list_app_events(service, calendar_id):
     return events
 
 
-def create_event(service, calendar_id, date_str, start, end, kategorie, modified_at):
+def create_event(service, calendar_id, date_str, start, end, kategorie, modified_at,
+                 pause=0):
     """Legt ein Event an und liefert dessen event_id."""
-    body = event_payload(date_str, start, end, kategorie, modified_at)
+    body = event_payload(date_str, start, end, kategorie, modified_at, pause)
     created = service.events().insert(calendarId=calendar_id, body=body).execute()
     return created["id"]
 
 
-def update_event(service, calendar_id, event_id, date_str, start, end, kategorie, modified_at):
+def update_event(service, calendar_id, event_id, date_str, start, end, kategorie,
+                 modified_at, pause=0):
     """Überschreibt ein bestehendes Event mit den Reservierungs-Werten."""
-    body = event_payload(date_str, start, end, kategorie, modified_at)
+    body = event_payload(date_str, start, end, kategorie, modified_at, pause)
     service.events().update(
         calendarId=calendar_id, eventId=event_id, body=body,
     ).execute()

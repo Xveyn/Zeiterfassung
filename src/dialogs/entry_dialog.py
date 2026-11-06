@@ -11,7 +11,7 @@ from src.holidays_de import get_holidays
 from src.settings import WEEKDAY_KEYS, parse_reminder_minutes
 from src.theme import (
     BG, CELL_BG, FONT, FONT_BOLD, FONT_SMALL,
-    STRAY_CLICK_GUARD_S, TEXT, TEXT_MUTED,
+    STRAY_CLICK_GUARD_S, TEXT, TEXT_MUTED, px,
     apply_combobox_style, attach_unfocus_on_click,
     center_dialog_on_parent, create_dialog, dark_combo,
     primary_button, secondary_button,
@@ -48,6 +48,26 @@ def suggest_ist_category(reservation_slots):
     return reservation_slots[0].get("kategorie", "")
 
 
+RESERVATION_CALENDAR_NOTE = (
+    "Der Google-Kalender-Termin zeigt die volle Zeitspanne, "
+    "die Pause wird dort nicht abgezogen."
+)
+
+
+def reservation_note_visible(settings):
+    """True, wenn der Kalender-Hinweis im Reservierungs-Block erscheint: nur
+    bei aktivem Kalender-Abgleich (`gcal_enabled`, wie
+    `App._calendar_push_active`). Tk-frei."""
+    return bool(settings.get("gcal_enabled"))
+
+
+def ist_prefill_pause(reservation_slot, default_pause):
+    """Pause für die Ist-Zeit-Vorbelegung aus einer Reservierung: deren Pause,
+    wenn sie > 0 ist, sonst der Standard (Bestandsschutz). Tk-frei."""
+    pause = reservation_slot.get("pause", 0) or 0
+    return pause if pause > 0 else default_pause
+
+
 def plan_entry_save(ist_slots, res_slots, show_reservation):
     """Entscheidungslogik für den einen kombinierten Speichern-Button im
     Tages-Dialog: validiert Ist-Zeit- und (falls sichtbar) Reservierungs-
@@ -68,7 +88,7 @@ def plan_entry_save(ist_slots, res_slots, show_reservation):
                 "save_reservation": False,
             }
     if show_reservation and res_slots:
-        ok, msg = validate_slots(res_slots, with_pause=False)
+        ok, msg = validate_slots(res_slots, with_pause=True)
         if not ok:
             return {
                 "error": f"Reservierung: {msg}",
@@ -276,7 +296,8 @@ def open_entry_dialog(parent, date_str, storage, settings, on_change,
         # → entfernbar. Kategorie wird mitvorgeschlagen (suggest_ist_category:
         # nur bei genau einem Reservierungs-Slot).
         first = existing_reservation["slots"][0]
-        add_ist_row(first["start"], first["end"], default_pause,
+        add_ist_row(first["start"], first["end"],
+                    ist_prefill_pause(first, default_pause),
                     suggest_ist_category(existing_reservation["slots"]))
 
     ist_btns = tk.Frame(outer, bg=BG)
@@ -302,7 +323,7 @@ def open_entry_dialog(parent, date_str, storage, settings, on_change,
             _reminder_changed()
 
         res_list = SlotRowList(
-            res_rows_frame, with_pause=False, categories=categories,
+            res_rows_frame, with_pause=True, pause_in_marker=False, categories=categories,
             on_new_category=open_new_category,
             category_times=category_times, weekday_key=weekday_key,
             default_start=default_start, default_end=default_end,
@@ -312,28 +333,33 @@ def open_entry_dialog(parent, date_str, storage, settings, on_change,
         )
         res_rows = res_list.rows  # ersetzt die leere Liste von oben
 
-        def add_res_row(start, end, kategorie, removable=True,
+        def add_res_row(start, end, pause, kategorie, removable=True,
                         send_reminder_minutes=None):
             # send_reminder_minutes ist in der Zeile nicht editierbar — nur
             # mitgeführt, damit ein bestehender Marker das Speichern überlebt,
             # auch wenn der Erinnerungs-Block gar nicht sichtbar ist.
-            res_list.add(start, end, kategorie, removable=removable,
+            res_list.add(start, end, kategorie, pause=pause, removable=removable,
                          extra={"send_reminder_minutes": send_reminder_minutes})
 
         # Bestehende Reservierung → Zeilen. Sonst leer: nur der „+ Slot"-Button
         # (an der Stelle, wo sonst die Default-Zeile stünde), keine Vorbelegung.
         if existing_reservation and existing_reservation["slots"]:
             for s in existing_reservation["slots"]:
-                add_res_row(s["start"], s["end"], s.get("kategorie", ""),
-                            removable=False,
+                add_res_row(s["start"], s["end"], s.get("pause", 0),
+                            s.get("kategorie", ""), removable=False,
                             send_reminder_minutes=s.get("send_reminder_minutes"))
 
         res_btns = tk.Frame(outer, bg=BG)
         res_btns.pack(fill="x", pady=(2, 8))
         secondary_button(
             res_btns, "+ Slot",
-            lambda: add_res_row(default_start, default_end, ""),
+            lambda: add_res_row(default_start, default_end, default_pause, ""),
         ).pack(side=tk.LEFT, padx=2)
+        if reservation_note_visible(settings):
+            tk.Label(
+                outer, text=RESERVATION_CALENDAR_NOTE, font=FONT, bg=BG,
+                fg=TEXT_MUTED, justify="left", wraplength=px(380),
+            ).pack(anchor="w", padx=2, pady=(0, 4))
 
     # ---------- Erinnerung an eine Reservierung ----------
     # Bewusst auf Funktionsebene, NICHT im if show_reservation: — sonst wäre
@@ -454,6 +480,7 @@ def open_entry_dialog(parent, date_str, storage, settings, on_change,
         res_slots = [{
             "start": r["start"].get(),
             "end": r["end"].get(),
+            "pause": int(r["pause"].get() or 0),
             "kategorie": category_from_display(r["kategorie"].get()),
             "send_reminder_minutes": r["send_reminder_minutes"],
         } for r in res_rows]

@@ -10,6 +10,7 @@ pull → merge → push und schreibt neue event_ids pro Slot zurück.
 
 import contextlib
 
+from src.reservations import fit_pause, normalize_pause
 from src.time_utils import utc_now_iso
 
 
@@ -18,13 +19,28 @@ def _slot_from_event(ev, reminder_minutes=None):
 
     `reminder_minutes` kommt aus dem lokalen Slot mit derselben event_id — der
     Kalender kennt das Feld nicht, es würde beim Remote-gewinnt-Merge sonst
-    verloren gehen.
+    verloren gehen. Die Pause kommt aus dem Event (fehlende Property = 0; eine Pause, die
+    die Zeitspanne nicht unterschreitet, wird 0).
     """
     return {
         "start": ev["start"], "end": ev["end"],
         "kategorie": ev.get("kategorie", ""), "gcal_event_id": ev["event_id"],
         "send_reminder_minutes": reminder_minutes,
+        "pause": fit_pause(ev.get("pause"), ev["start"], ev["end"]),
     }
+
+
+def _plan_fields(date, s, modified_at):
+    """Gemeinsame Felder eines create/update-Plan-Eintrags. `pause` steht nur
+    bei > 0 darin (Pause 0 = Eigenschaft fehlt am Termin)."""
+    item = {
+        "date": date, "start": s["start"], "end": s["end"],
+        "kategorie": s.get("kategorie", ""), "modified_at": modified_at,
+    }
+    pause = normalize_pause(s.get("pause"))
+    if pause > 0:
+        item["pause"] = pause
+    return item
 
 
 def _reminders_by_event_id(local):
@@ -47,7 +63,10 @@ def _reminders_by_event_id(local):
 
 def _adopt_remote(date, remotes, merged, imported_dates, local=None):
     """Remote gewinnt: die Slots des Tages = die Remote-Events. Ein lokal
-    gesetzter Erinnerungs-Marker wandert über die event_id mit."""
+    gesetzter Erinnerungs-Marker wandert über die event_id mit. Die Pause
+    nicht: der Termin ist maßgeblich, eine fehlende Property heißt 0 (jede
+    lokale Pause-Änderung stempelt neu, ein neuerer Termin ohne Property ist
+    also ein neuerer Stand ohne Pause)."""
     reminders = _reminders_by_event_id(local)
     merged[date] = {
         "slots": [_slot_from_event(ev, reminders.get(ev["event_id"]))
@@ -100,9 +119,7 @@ def _merge_one_date(date, local, remotes, watermark, merged, plan, imported_date
             }
             for i, s in enumerate(local["slots"]):
                 plan["create"].append({
-                    "date": date, "slot_index": i,
-                    "start": s["start"], "end": s["end"],
-                    "kategorie": s.get("kategorie", ""), "modified_at": local_mod,
+                    "slot_index": i, **_plan_fields(date, s, local_mod),
                 })
         # sonst: war beim letzten Sync da, remote jetzt weg → verwerfen.
         return
@@ -127,19 +144,16 @@ def _merge_one_date(date, local, remotes, watermark, merged, plan, imported_date
             matched_ids.add(eid)
             ev = remote_by_id[eid]
             if (s["start"] != ev["start"] or s["end"] != ev["end"]
-                    or s.get("kategorie", "") != ev.get("kategorie", "")):
+                    or s.get("kategorie", "") != ev.get("kategorie", "")
+                    or normalize_pause(s.get("pause")) != normalize_pause(ev.get("pause"))):
                 plan["update"].append({
-                    "event_id": eid, "date": date,
-                    "start": s["start"], "end": s["end"],
-                    "kategorie": s.get("kategorie", ""), "modified_at": local_mod,
+                    "event_id": eid, **_plan_fields(date, s, local_mod),
                 })
         else:
             # Neuer Slot (noch kein Event oder verwaiste id) → create.
             slot_copy["gcal_event_id"] = None
             plan["create"].append({
-                "date": date, "slot_index": i,
-                "start": s["start"], "end": s["end"],
-                "kategorie": s.get("kategorie", ""), "modified_at": local_mod,
+                "slot_index": i, **_plan_fields(date, s, local_mod),
             })
         merged_slots.append(slot_copy)
 
@@ -242,14 +256,14 @@ def reconcile_reservations(service, calendar_id, store, settings, data_lock=None
         gcal.update_event(
             service, calendar_id, item["event_id"],
             item["date"], item["start"], item["end"],
-            item["kategorie"], item["modified_at"],
+            item["kategorie"], item["modified_at"], item.get("pause", 0),
         )
 
     for item in plan["create"]:
         event_id = gcal.create_event(
             service, calendar_id,
             item["date"], item["start"], item["end"],
-            item["kategorie"], item["modified_at"],
+            item["kategorie"], item["modified_at"], item.get("pause", 0),
         )
         merged[item["date"]]["slots"][item["slot_index"]]["gcal_event_id"] = event_id
 

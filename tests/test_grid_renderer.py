@@ -36,6 +36,30 @@ def test_fmt_slot_line_without_category():
         {"start": "08:00", "end": "12:00"}) == "08:00-12:00"
 
 
+def test_fmt_slot_line_reservation_with_pause():
+    line = GridRenderer._fmt_slot_line(
+        {"start": "08:00", "end": "15:30", "kategorie": "A", "pause": 30}, with_pause=True)
+    assert line == "08:00-15:30  A  \u00b7 30 min Pause"
+
+
+def test_fmt_slot_line_ist_with_pause_unchanged():
+    assert GridRenderer._fmt_slot_line(
+        {"start": "08:00", "end": "15:30", "kategorie": "A", "pause": 30}) == "08:00-15:30  A"
+
+
+def test_fmt_slot_line_zero_pause_unchanged_for_both():
+    slot = {"start": "08:00", "end": "12:00", "kategorie": "B", "pause": 0}
+    assert GridRenderer._fmt_slot_line(slot) == "08:00-12:00  B"
+    assert GridRenderer._fmt_slot_line(slot, with_pause=True) == "08:00-12:00  B"
+
+
+def test_tooltip_pause_only_on_reservation_block():
+    entry = {"slots": [{"start": "08:00", "end": "12:00", "kategorie": "", "pause": 30}]}
+    res = {"slots": [{"start": "09:00", "end": "13:00", "kategorie": "", "pause": 20}]}
+    text = GridRenderer._build_tooltip_text(entry, res, None)
+    assert text.count("Pause") == 1 and "20 min Pause" in text
+
+
 def test_a_slot_with_a_broken_time_never_shows_none():
     assert GridRenderer._fmt_slot_line({"start": None, "end": "12:00"}) == "?-12:00"
     assert GridRenderer._fmt_slot_line({"start": "08:00", "end": None}) == "08:00-?"

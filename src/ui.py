@@ -892,7 +892,7 @@ class App:
                 options.append(("reservation:all", "Reservierung"))
             else:
                 for i, s in enumerate(res_slots):
-                    options.append((f"reservation:{i}", f"Reservierung  {GridRenderer._fmt_slot_line(s)}"))
+                    options.append((f"reservation:{i}", f"Reservierung  {GridRenderer._fmt_slot_line(s, with_pause=True)}"))
         if vacation is not None:
             # Gelöscht wird IMMER die ganze Periode. Einzelne Tage aus der
             # Mitte herauszubrechen würde den Zeitraum zerreißen und die

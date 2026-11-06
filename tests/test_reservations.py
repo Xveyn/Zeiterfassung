@@ -1,9 +1,12 @@
+import json
 import logging
 from unittest import mock
 
 import pytest
 from src.reservations import (
-    ReservationStore, migrate_reservations_enabled, reservations_active,
+    fit_pause,
+    ReservationStore, inherit_pause, migrate_reservations_enabled, normalize_pause,
+    reservations_active,
 )
 from src.settings import SYNCED_SETTING_KEYS, Settings
 
@@ -24,7 +27,8 @@ def _ushape(*slots):
     """Erwartete User-Shape: slots ohne gcal_event_id."""
     return {"slots": [{"start": s["start"], "end": s["end"],
                        "kategorie": s["kategorie"],
-                       "send_reminder_minutes": s.get("send_reminder_minutes")}
+                       "send_reminder_minutes": s.get("send_reminder_minutes"),
+                       "pause": s.get("pause", 0)}
                       for s in slots]}
 
 
@@ -91,7 +95,7 @@ def test_slot_defaults_kategorie_and_event_id(store):
 
 def test_user_shape_excludes_event_id(store):
     store.save("2026-06-01", [_slot("09:00", "17:00", "Büro", "ev-1")])
-    assert store.get("2026-06-01") == {"slots": [{"start": "09:00", "end": "17:00", "kategorie": "Büro", "send_reminder_minutes": None}]}
+    assert store.get("2026-06-01") == {"slots": [{"start": "09:00", "end": "17:00", "kategorie": "Büro", "send_reminder_minutes": None, "pause": 0}]}
 
 
 def test_delete_writes_empty_slots_tombstone(store):
@@ -281,7 +285,8 @@ def test_merge_phone_adds_a_new_day_with_the_phones_timestamp(tmp_path):
     assert raw["modified_at"] == "2026-10-13T10:00:00Z"
     assert raw["deleted"] is False
     assert raw["slots"] == [{"start": "09:00", "end": "12:00", "kategorie": "Projekt",
-                             "gcal_event_id": None, "send_reminder_minutes": None}]
+                             "gcal_event_id": None, "send_reminder_minutes": None,
+                             "pause": 0}]
 
 
 def test_merge_phone_is_idempotent(tmp_path):
@@ -395,3 +400,167 @@ def test_merge_phone_stays_idempotent_with_the_receipt_stamp(tmp_path):
     again = store.merge_phone(day, floor="2026-10-13T09:00:01Z", now="2026-10-13T10:20:00Z")
 
     assert again is False
+
+
+# --- Pause an Reservierungen (#455) -------------------------------------------------------------
+
+def test_slot_defaults_pause_to_zero(tmp_path):
+    path = tmp_path / "res.json"
+    path.write_text(json.dumps({"2026-12-01": {
+        "slots": [{"start": "08:00", "end": "12:00", "kategorie": "A",
+                   "gcal_event_id": None, "send_reminder_minutes": None}],
+        "modified_at": "2026-11-01T10:00:00Z", "deleted": False}}), encoding="utf-8")
+    store = ReservationStore(str(path))
+    assert store.get("2026-12-01")["slots"][0]["pause"] == 0
+
+
+def test_save_keeps_pause_and_get_all_returns_it(store):
+    store.save("2026-12-01", [{"start": "08:00", "end": "15:30", "kategorie": "A", "pause": 30}])
+    assert store.get_all()["2026-12-01"]["slots"][0]["pause"] == 30
+    assert store.get_all_raw()["2026-12-01"]["slots"][0]["pause"] == 30
+
+
+def test_normalize_pause_rejects_bad_values():
+    for bad in (True, 30.0, "30", -1, 1441, None):
+        assert normalize_pause(bad) == 0
+    assert normalize_pause(30) == 30
+    assert normalize_pause(0) == 0
+    assert normalize_pause(1440) == 1440
+
+
+def _old(start, end, pause=None):
+    s = {"start": start, "end": end, "kategorie": "A"}
+    if pause is not None:
+        s["pause"] = pause
+    return s
+
+
+def test_inherit_pause_same_index_same_times():
+    out = inherit_pause([_old("08:00", "12:00", 30)], [{"start": "08:00", "end": "12:00"}])
+    assert out[0]["pause"] == 30
+
+
+def test_inherit_pause_not_for_inserted_slot():
+    out = inherit_pause([_old("08:00", "12:00", 30)],
+                        [{"start": "06:00", "end": "07:00", "kategorie": "B"},
+                         {"start": "08:00", "end": "12:00", "kategorie": "A"}])
+    assert [s["pause"] for s in out] == [0, 0]
+
+
+@pytest.mark.parametrize("pause,start,end,expected", [
+    (19, "08:00", "08:20", 19), (20, "08:00", "08:20", 0), (0, "08:00", "08:20", 0),
+    (30, "22:00", "02:00", 0), (30, "08:00", "08:00", 0),
+    (True, "08:00", "12:00", 0), (30.0, "08:00", "12:00", 0),
+    (30, None, "12:00", 30), (30, "aa:bb", "12:00", 30),
+])
+def test_fit_pause(pause, start, end, expected):
+    assert fit_pause(pause, start, end) == expected
+
+
+def test_inherit_drops_pause_not_below_span():
+    out = inherit_pause([_old("08:00", "08:20", 30)], [{"start": "08:00", "end": "08:20"}])
+    assert out[0]["pause"] == 0
+
+
+def test_inherit_keeps_explicit_zero():
+    out = inherit_pause([_old("08:00", "12:00", 30)],
+                        [{"start": "08:00", "end": "12:00", "pause": 0}])
+    assert out[0]["pause"] == 0
+
+
+@pytest.mark.parametrize("old,new,expected", [
+    ([_old("08:00", "12:00", 30)], [{"start": "08:00", "end": "12:00"}], [30]),
+    ([_old("08:00", "12:00", 30)],
+     [{"start": "08:00", "end": "12:00", "kategorie": "Neu"}], [30]),
+    ([_old("08:00", "12:00", 30)], [{"start": "08:00", "end": "13:00"}], [0]),
+    ([_old("08:00", "12:00", 30), _old("13:00", "17:00", 45)],
+     [{"start": "13:00", "end": "17:00"}, {"start": "08:00", "end": "12:00"}], [0, 0]),
+    ([_old("08:00", "12:00", 30), _old("13:00", "17:00", 45)],
+     [{"start": "13:00", "end": "17:00"}], [0]),
+    ([_old("08:00", "12:00", 30)],
+     [{"start": "08:00", "end": "12:00"}, {"start": "13:00", "end": "17:00"}], [30, 0]),
+    ([_old("08:00", "12:00")], [{"start": "08:00", "end": "12:00"}], [0]),
+    ([_old("08:00", "12:00", 30)], [{"start": "08:00", "end": "12:00", "pause": 0}], [0]),
+])
+def test_inherit_pause_cases(old, new, expected):
+    assert [s["pause"] for s in inherit_pause(old, new)] == expected
+
+
+def test_inherit_pause_does_not_mutate_input():
+    new = [{"start": "08:00", "end": "12:00"}]
+    inherit_pause([_old("08:00", "12:00", 30)], new)
+    assert "pause" not in new[0]
+
+
+def _store_with_pause(tmp_path, pause):
+    store = _phone_store(tmp_path)
+    store.apply_reconciled({"2026-10-20": {
+        "slots": [{"start": "09:00", "end": "12:00", "kategorie": "Projekt",
+                   "gcal_event_id": None, "send_reminder_minutes": None, "pause": pause}],
+        "modified_at": "2026-10-13T09:00:00Z", "deleted": False}})
+    return store
+
+
+def test_merge_phone_inherits_pause_when_absent(tmp_path):
+    store = _store_with_pause(tmp_path, 30)
+    changed = store.merge_phone({"2026-10-20": _phone(
+        PHONE_SLOT, modified_at="2026-10-13T10:00:00Z")}, now="2026-10-13T10:05:00Z")
+    assert changed is True
+    assert store.get_all_raw()["2026-10-20"]["slots"][0]["pause"] == 30
+
+
+def test_merge_phone_takes_explicit_pause(tmp_path):
+    store = _store_with_pause(tmp_path, 30)
+    store.merge_phone({"2026-10-20": _phone(
+        {**PHONE_SLOT, "pause": 45}, modified_at="2026-10-13T10:00:00Z")},
+        now="2026-10-13T10:05:00Z")
+    assert store.get_all_raw()["2026-10-20"]["slots"][0]["pause"] == 45
+
+
+def test_phone_key_old_slot_without_key_equals_zero(tmp_path):
+    path = tmp_path / "reservations.json"
+    path.write_text(json.dumps({"2026-10-20": {
+        "slots": [{"start": "09:00", "end": "12:00", "kategorie": "Projekt",
+                   "gcal_event_id": None, "send_reminder_minutes": None}],
+        "modified_at": "2026-10-13T10:00:00Z", "deleted": False}}), encoding="utf-8")
+    store = ReservationStore(str(path))
+    before_bytes = path.read_bytes()
+    before_mtime = path.stat().st_mtime_ns
+    changed = store.merge_phone({"2026-10-20": _phone(
+        {**PHONE_SLOT, "pause": 0}, modified_at="2026-10-13T10:00:00Z")})
+    assert changed is False
+    assert path.read_bytes() == before_bytes
+    assert path.stat().st_mtime_ns == before_mtime
+
+
+def test_phone_key_bigger_phone_pause_wins_at_equal_stamp(tmp_path):
+    store = _store_with_pause(tmp_path, 30)
+    changed = store.merge_phone({"2026-10-20": _phone(
+        {**PHONE_SLOT, "pause": 45}, modified_at="2026-10-13T09:00:00Z")},
+        now="2026-10-13T09:00:00Z")
+    assert changed is True
+    assert store.get_all_raw()["2026-10-20"]["slots"][0]["pause"] == 45
+
+
+def test_phone_key_smaller_phone_pause_loses_at_equal_stamp(tmp_path):
+    # Bekannte Eigenheit: bei Gleichstand der Stempel gewinnt nach JSON-Ordnung die
+    # groessere Pause, hier also der Store (30 gegen 0).
+    store = _store_with_pause(tmp_path, 30)
+    changed = store.merge_phone({"2026-10-20": _phone(
+        {**PHONE_SLOT, "pause": 0}, modified_at="2026-10-13T09:00:00Z")},
+        now="2026-10-13T09:00:00Z")
+    assert changed is False
+    assert store.get_all_raw()["2026-10-20"]["slots"][0]["pause"] == 30
+
+
+def test_partial_delete_keeps_other_slots_pause(store):
+    from src.ui import _delete_action
+    store.save("2026-12-01", [
+        {"start": "08:00", "end": "12:00", "kategorie": "A", "pause": 30},
+        {"start": "13:00", "end": "17:00", "kategorie": "B", "pause": 45}])
+    res_slots = store.get("2026-12-01")["slots"]
+    action, keep = _delete_action(res_slots, {"reservation:0"}, "reservation")
+    assert action == "save"
+    store.save("2026-12-01", keep)
+    after = store.get("2026-12-01")["slots"]
+    assert [(s["start"], s["pause"]) for s in after] == [("13:00", 45)]

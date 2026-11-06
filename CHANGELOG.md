@@ -2,6 +2,46 @@
 
 Ältere Versionen stehen im [Archiv](CHANGELOG-archive.md).
 
+## 1.27.0 — 2026-11-05
+
+Reservierungen tragen jetzt eine Pause. Sie steht im Tages-Dialog, im Tooltip,
+im Handy-Abgleich und in der lokalen API; der Google-Kalender-Termin bleibt
+dabei brutto.
+
+### Hinzugefügt
+- **Pause an Reservierungen**: Jeder Reservierungs-Slot hat eine optionale Pause
+  (ganze Minuten, Standard 0, kürzer als die Zeitspanne). Der Tages-Dialog zeigt
+  im Reservierungs-Block eine Pausenspalte, der Kalender-Tooltip nennt die Pause
+  ab 1 Minute. Neue Zeilen bekommen die Standardpause der Kategorie bzw. die
+  allgemeine; der Vorschlag für eine Ist-Zeit aus einer Reservierung übernimmt
+  deren Pause.
+- **Google-Kalender-Termin bleibt brutto**: Der Termin deckt weiter Start bis
+  Ende ab, die Pause wird nicht abgezogen. Die Beschreibung nennt sie
+  („Zeitspanne brutto, Pause N min nicht abgezogen“), die Pause selbst liegt in
+  einer privaten Eigenschaft des Termins. Gewinnt beim Abgleich der Termin, gilt
+  seine Pause; fehlt die Eigenschaft (bestehende Termine) oder ist sie nicht kleiner
+  als die Zeitspanne (Termin in Google gekürzt), ist sie 0. Beim ersten
+  Abgleich nach dem Update wird kein Termin umgeschrieben.
+- **Handy-Abgleich und lokale API**: Beide nehmen `pause` je Reservierungs-Slot
+  an und liefern sie immer mit. Die Sync-Antwort trägt die neue Fähigkeit
+  `reservation_pause`, an der ein Handy erkennt, dass der Desktop Pausen kennt
+  (das Protokoll bleibt bei Version 2). Fehlt `pause` an einem Slot, erbt er die
+  bisherige Pause nur, wenn am selben Platz ein Slot mit gleichem Start und Ende
+  steht, sonst 0; in der lokalen API ist eine ungültige Pause `422 invalid_pause`
+  (im Handy-Abgleich `422 invalid_entry`).
+
+### Bekannte Grenzen
+- Eine ältere Handy-Version kennt die Pause nicht: ändert sie Start oder Ende
+  einer Reservierung, wird deren Pause auf 0 gesetzt. Bleibt die Zeit gleich,
+  bleibt die Pause erhalten. Ebenso verliert die Pause der Slots, die nachrücken,
+  wenn eine ältere Handy-Version einen Slot löscht, einfügt oder umsortiert (geerbt
+  wird nur am selben Platz bei gleichem Start und Ende).
+- Teilen überträgt keine Pause, ein Import setzt die Pause des importierten
+  Tages auf 0.
+- Ein älterer Desktop gibt die Pause beim Umschreiben von Kalenderterminen nicht
+  weiter; wer zwei Desktops in unterschiedlichen Versionen nutzt, sollte beide
+  aktualisieren.
+
 ## 1.26.0 — 2026-11-05
 
 Die Handy-Web-App läuft jetzt auch auf dem iPhone und iPad: Dort gleicht sie
