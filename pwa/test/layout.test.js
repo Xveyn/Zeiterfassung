@@ -209,3 +209,15 @@ test('dialogs and their backdrop fade in; only the hints host animates new hints
   assert.doesNotMatch(css, /(?:^|\n)\.hint \{[^}]*animation/);
   assert.doesNotMatch(css, /\.week[^{]*\{[^}]*animation/);
 });
+
+test('a dialog footer with a delete button keeps Cancel and Save together: delete on the left, the pair wraps as one', () => {
+  assert.match(rule('.buttons .destructive'), /margin-right:\s*auto/);
+  assert.match(rule('.buttons .button-group'), /display:\s*flex/);
+  // Der Tages-Editor und „Kategorie bearbeiten“ bauen ihre Fußzeile über denselben Helfer.
+  assert.match(views, /function footerButtons\(destructive, cancel, primary\)/);
+  assert.equal((views.match(/footerButtons\(/g) || []).length, 3);               // Definition + zwei Aufrufer
+  assert.match(views, /footerButtons\(\s*clearButton,/);
+  assert.match(views, /footerButtons\(\s*remove,/);
+  assert.match(views, /button\('Tag leeren', \(\) => handlers\.clear\(active, dialog\), 'link destructive'\)/);
+  assert.match(views, /'link destructive', \{ 'data-focus': 'category-remove' \}/);
+});

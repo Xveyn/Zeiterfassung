@@ -240,3 +240,7 @@ dialog[open]::backdrop { animation: backdrop-in .18s ease-out; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after, ::backdrop { animation: none !important; transition: none !important; }
 }
+
+/* Fußzeile mit Löschen (Tages-Editor, Kategorie bearbeiten): Löschen links, Abbrechen und Speichern als eine Gruppe rechts. */
+.buttons .destructive { margin-right: auto; }
+.buttons .button-group { display: flex; gap: 8px; }
