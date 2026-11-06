@@ -330,6 +330,23 @@ Kopplung gültig bis), dann folgen der Speicher-Hinweis, die Benachrichtigungen,
   verlangt weiter eine Klick-Geste: der Schalter ruft `setPush` im `change`-Ereignis.
 - **Native `replaceChildren` macht aus `null` den Text „null“** (anders als `h()`): nur echte Knoten übergeben.
 
+## Zurück-Geste und Vollbild-Einstellungen (#461)
+
+- **Jeder Dialog hängt am Browser-Verlauf** (`dialog-history.js`, angebunden in `views.js::openDialog`, dem einzigen `showModal()`):
+  beim Öffnen ein `pushState`-Eintrag, beim Schließen (gleich wodurch) ein `history.back()`. Die **Zurück-Geste schließt den
+  obersten Dialog** — Android: System-Zurück, iOS: Wisch vom linken Rand (der Randstreifen gehört deshalb der Geste, s.
+  `swipe-policy.js`). Auch der Tages-Editor und die Rückfragen schließen so, nicht nur die Einstellungen.
+- **Die Geste darf widersprechen:** sie löst ein abbrechbares `cancel` aus wie Escape. Die Einstellungen fragen so bei ungespeicherten
+  Kategorien nach; bleibt der Dialog offen, ist der Verlaufseintrag schon wieder da (er wird *vor* dem `cancel` zurückgestellt),
+  die nächste Geste fragt erneut. Eigene `history.back()` zählt das Modul mit Ablaufzeit mit, damit ihr `popstate` nicht als Geste gilt
+  und ein ausbleibendes nie die nächste echte verschluckt.
+- **Schmale Bildschirme (≤ 600 px):** der Einstellungen-Dialog füllt den Schirm (`100dvh`), oben eine feste Kopfzeile mit ‹ und
+  Titel, der Inhalt (`.settings-body`) scrollt, „Schließen“ unten entfällt. Breit bleibt es ein Dialog (‹ verborgen).
+- **Grenzen:** auf iOS ungeprüft (kein Gerät; die Wischgeste vom Rand löst dort `history.back()` aus, wie in Safari üblich).
+  Nach einem Neuladen mit offenem Dialog bleibt dessen Verlaufseintrag stehen, die erste Zurück-Geste bewirkt dann nichts.
+- **Testen im Browser:** `element.click()` aus `evaluate` ist keine Nutzeraktion (Chrome behandelt die Verlaufseinträge dann
+  anders); für Zurück-Szenarien echte Klicks (`locator.click()`) und `page.goBack()` benutzen.
+
 ## Einstellungen und Kategorien
 
 Der Button unten links heißt „Einstellungen“. `settingsDialog` (ersetzt den

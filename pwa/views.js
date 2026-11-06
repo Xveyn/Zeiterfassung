@@ -5,6 +5,7 @@
 import { focusByKey, h } from './dom.js';
 import { MAX_CATEGORY_LENGTH, TIME_STEP_MINUTES, formatMinutes, snapPause, snapTime } from './minutes.js';
 import { updateStatusText } from './update-policy.js';
+import { createDialogHistory } from './dialog-history.js';
 import { PRIVACY_URL } from './relay-client.js';
 import { RESERVATION_CALENDAR_NOTE } from './messages.js';
 import { MAX_NAME_LENGTH, blockSignature, moveRow, rowsToBlock, timesSummary, validateCategoryRows } from './categories.js';
@@ -153,7 +154,13 @@ export function weekView(model, handlers) {
 
 // --- Dialoge -----------------------------------------------------------------------------------------------
 
+// Zurück-Geste/-Taste schließt den obersten Dialog (`dialog-history.js`). Erst beim ersten Dialog gebaut: das Modul
+// soll sich auch ohne `window` laden lassen.
+let dialogHistory = null;
+
 function openDialog(dialog) {
+  dialogHistory ??= createDialogHistory({ history: window.history, addPopListener: (listener) => window.addEventListener('popstate', listener) });
+  dialogHistory.attach(dialog);
   document.body.append(dialog);
   dialog.addEventListener('close', () => dialog.remove());
   dialog.showModal();
@@ -652,12 +659,18 @@ export function settingsDialog({ tab = 'connection', connection, updates, catego
     event.preventDefault();
     closeThen();
   });
+  // Kopfzeile mit ‹ (auf schmalen Bildschirmen füllt der Dialog den Schirm, dort ersetzt sie „Schließen“ unten); der Inhalt scrollt.
   dialog.append(
-    h('h2', { id: 'settings-title' }, 'Einstellungen'),
-    h('div', { class: 'tabs', role: 'tablist' }, SETTINGS_TABS.map((key) => tabs[key])),
-    ...SETTINGS_TABS.map((key) => panels[key]),
+    h('div', { class: 'settings-head' },
+      button('‹', () => closeThen(), 'back', { 'aria-label': 'Zurück', 'data-focus': 'settings-back' }),
+      h('h2', { id: 'settings-title' }, 'Einstellungen')),
+    h('div', { class: 'settings-body' },
+      h('div', { class: 'tabs', role: 'tablist' }, SETTINGS_TABS.map((key) => tabs[key])),
+      ...SETTINGS_TABS.map((key) => panels[key])),
     h('div', { class: 'buttons' }, button('Schließen', () => closeThen(), '', { 'data-focus': 'settings-close' })));
-  show(SETTINGS_TABS.includes(tab) ? tab : 'connection');
+  const initial = SETTINGS_TABS.includes(tab) ? tab : 'connection';
+  show(initial);
+  tabs[initial].autofocus = true;                 // Anfangsfokus auf den Reiter, nicht auf das ‹ in der Kopfzeile
   return openDialog(dialog);
 }
 

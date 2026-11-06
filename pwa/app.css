@@ -220,3 +220,18 @@ details.tech { background: var(--cell); border-radius: 8px; padding: 0 12px; mar
 details.tech summary { min-height: var(--tap); display: flex; align-items: center; cursor: pointer; }
 details.tech dl { margin-top: 0; }
 .push p.push-state { margin: 4px 0 8px; font-size: .9rem; }
+
+/* Einstellungen auf dem Handy (#461): der Dialog füllt den Schirm, oben ‹ und Titel, der Inhalt scrollt. Auf breiten
+   Bildschirmen bleibt es ein Dialog; die Kopfzeile zeigt dort nur den Titel. */
+.settings-head { display: flex; align-items: center; gap: 4px; }
+.settings-head h2 { flex: 1; }
+.settings-head .back { display: none; min-width: var(--tap); padding: 0; font-size: 1.3rem; }
+@media (max-width: 600px) {
+  .settings-dialog { width: 100vw; max-width: none; height: 100dvh; max-height: none; margin: 0; border: 0; border-radius: 0; padding: 0; overflow: hidden; }
+  .settings-dialog[open] { display: flex; flex-direction: column; }
+  .settings-head { flex: none; padding: 8px; border-bottom: 1px solid #2a3a5a; background: #101a30; }
+  .settings-head h2 { margin: 0; }
+  .settings-head .back { display: block; }
+  .settings-body { flex: 1; min-height: 0; overflow-y: auto; padding: var(--gutter); }
+  .settings-dialog > .buttons { display: none; }
+}

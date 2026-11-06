@@ -168,3 +168,30 @@ test('technical details are folded away; the state card and the storage notice c
 test('the storage notice never hands null to the native replaceChildren (it would print “null”)', () => {
   assert.match(views, /replaceChildren\(\.\.\.\[h\('div', \{\}, model\.text\)[^\]]*\]\.filter\(Boolean\)\)/);
 });
+
+test('on phones the settings dialog fills the screen with a header and a scrolling body; on wide screens it stays a dialog', () => {
+  const media = /@media \(max-width: 600px\) \{([\s\S]*?)\n\}/.exec(css.slice(css.indexOf('Einstellungen auf dem Handy')));
+  assert.ok(media, 'Media-Query für schmale Bildschirme fehlt');
+  assert.match(media[1], /\.settings-dialog \{[^}]*width: 100vw[^}]*height: 100dvh/);
+  assert.match(media[1], /\.settings-dialog\[open\] \{ display: flex/);       // nur offen: `display` überstimmt sonst das Verborgene des geschlossenen Dialogs
+  assert.match(media[1], /\.settings-body \{[^}]*overflow-y: auto/);
+  assert.match(media[1], /\.settings-dialog > \.buttons \{ display: none; \}/);
+  assert.match(css, /\.settings-head \.back \{ display: none;/);               // breit: kein ‹
+  assert.match(views, /h\('div', \{ class: 'settings-head' \}/);
+  assert.match(views, /'aria-label': 'Zurück', 'data-focus': 'settings-back'/);
+});
+
+test('every dialog opens through openDialog, which ties it to the browser history (back gesture closes it)', () => {
+  assert.equal((views.match(/\.showModal\(\)/g) || []).length, 1);
+  assert.match(views, /dialogHistory\.attach\(dialog\);\s*\n\s*document\.body\.append\(dialog\);/);
+  assert.match(views, /window\.addEventListener\('popstate', listener\)/);
+});
+
+test('the settings dialog still asks before it closes with unsaved categories, also for the back gesture (cancel event)', () => {
+  const settings = /export function settingsDialog[\s\S]*?\n\}\r?\n/.exec(views)[0];
+  assert.match(settings, /dialog\.addEventListener\('cancel', \(event\) => \{\s*\n\s*if \(!cats\.dirty\(\)\) return;\s*\n\s*event\.preventDefault\(\);\s*\n\s*closeThen\(\);/);
+});
+
+test('the settings dialog starts with focus on the active tab, not on the back button in the header', () => {
+  assert.match(views, /tabs\[initial\]\.autofocus = true;/);
+});
