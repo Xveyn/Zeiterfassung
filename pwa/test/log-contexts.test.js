@@ -44,9 +44,28 @@ test('relay-transport.js: every log call gets a text literal as context', () => 
 const SW_IMPORTS = ['./sw-core.js', './push-blob.js', './diagnose.js', './push-message.js',
   './debug-log.js', './log-store.js'];
 
+function staticSpecifiers(source) {
+  const forms = /^\s*(?:(?:import|export)\b[^'"]*?from|import)\s*['"]([^'"]+)['"]/gm;
+  return [...source.matchAll(forms)].map((m) => m[1]);
+}
+
+test('staticSpecifiers: finds every static module specifier form', () => {
+  const source = [
+    "import './side.js';",
+    "export { x } from './reexport.js';",
+    'import {',
+    '  a,',
+    '  b,',
+    "} from './multi.js';",
+    "import def from './default.js';",
+  ].join('\n');
+  assert.deepEqual(staticSpecifiers(source).sort(),
+    ['./default.js', './multi.js', './reexport.js', './side.js']);
+});
+
 test('sw.js: static imports stay within the allowed set', () => {
   const source = readFileSync(new URL('sw.js', root), 'utf8');
-  const specs = [...source.matchAll(/^\s*import\b[^'"]*?from\s*['"]([^'"]+)['"]/gm)].map((m) => m[1]);
+  const specs = staticSpecifiers(source);
   assert.ok(specs.length > 0, 'keine Imports gefunden: Muster veraltet?');
   assert.deepEqual(specs.filter((s) => !SW_IMPORTS.includes(s)), []);
   assert.ok(!/\bimport\s*\(/.test(source), 'dynamisches import() ist im Service Worker verboten');
