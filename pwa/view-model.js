@@ -166,11 +166,7 @@ export function hintsModel({ lastError, excluded, skewMs, persistent, updateRead
   // Eine Uhr, die hinter den Zeitpunkt des Schließens zurückgestellt wurde, verbirgt den Hinweis nicht für immer.
   const quiet = dismissedAt > 0 && dismissedAt <= now && now - dismissedAt < STORAGE_HINT_QUIET_MS;
   if (persistent === false && !quiet) {
-    hints.push(persistRefused
-      ? { id: 'storage', kind: 'warn', action: null, dismissible: true,
-        text: 'Der Browser hat die Anfrage abgelehnt. Hilfreich: die App zum Startbildschirm hinzufügen und regelmäßig abgleichen.' }
-      : { id: 'storage', kind: 'warn', action: 'persist', dismissible: true,
-        text: 'Der Browser sichert die Daten nicht dauerhaft. Nicht übertragene Einträge können bei Speichermangel verloren gehen.' });
+    hints.push({ id: 'storage', kind: 'warn', dismissible: true, ...storageNotice(false, { refused: persistRefused }) });
   }
   return hints;
 }
@@ -507,5 +503,24 @@ export function pushModel({ state, lastError, desktopReady, canTest = false }) {
   const hint = state === 'on' && !desktopReady
     ? ' Der Desktop sendet noch keine Erinnerungen für das Handy: dort „Auch aufs Handy senden“ einschalten und die Desktop-App aktualisieren.'
     : '';
-  return { text: `${text}${hint}`, action, actionLabel: action ? PUSH_LABELS[action] : '', canTest: state === 'on' && canTest };
+  return { text: `${text}${hint}`, action, actionLabel: action ? PUSH_LABELS[action] : '', canTest: state === 'on' && canTest,
+    // Schalter: Stellung und ob er sich umlegen lässt (gesperrt/nicht unterstützt: nur der Text).
+    on: state === 'on', toggle: action !== null };
+}
+
+/** Kopf des Reiters „Verbindung“: erst der Zustand, dann der Desktop und wann zuletzt abgeglichen wurde. */
+export function connectionSummary({ online, desktopName, lastSyncAt, tokenUntil, timeZone }) {
+  const last = lastSyncAt ? localTime(lastSyncAt, timeZone) : '';
+  const parts = [last ? `zuletzt abgeglichen um ${last}` : 'noch nicht abgeglichen'];
+  if (tokenUntil) parts.push(`Kopplung gültig bis ${tokenUntil}`);
+  return { pill: online ? 'Verbunden' : 'Offline', kind: online ? 'ok' : 'warn', name: desktopName || 'Desktop', detail: parts.join(' · ') };
+}
+
+/** Warnung im Reiter „Verbindung“, wenn der Browser die Daten nicht dauerhaft sichert (`persistent === false`);
+ *  `refused`: die erneute Anfrage wurde abgelehnt, dann gibt es keinen Knopf mehr. */
+export function storageNotice(persistent, { refused = false } = {}) {
+  if (persistent !== false) return null;
+  return refused
+    ? { text: 'Der Browser hat die Anfrage abgelehnt. Hilfreich: die App zum Startbildschirm hinzufügen und regelmäßig abgleichen.', action: null }
+    : { text: 'Der Browser sichert die Daten nicht dauerhaft. Nicht übertragene Einträge können bei Speichermangel verloren gehen.', action: 'persist' };
 }
