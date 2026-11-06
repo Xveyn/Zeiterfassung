@@ -248,3 +248,18 @@ test('a dialog footer with a delete button keeps Cancel and Save together: delet
   assert.match(views, /button\('Tag leeren', \(\) => handlers\.clear\(active, dialog\), 'link destructive'\)/);
   assert.match(views, /'link destructive', \{ 'data-focus': 'category-remove' \}/);
 });
+
+// --- Antippen auf Touch-Geräten ---------------------------------------------------------------------------------
+
+test('no native tap highlight: Android would flash the tapped day and leave it lingering over the opening dialog', () => {
+  assert.match(rule(':root'), /-webkit-tap-highlight-color:\s*transparent/);
+});
+
+test('hover colours only apply where hovering exists; on touch a tap leaves :hover stuck on the element', () => {
+  assert.doesNotMatch(css, /(?:^|\n)button:hover/);
+  assert.doesNotMatch(css, /(?:^|\n)button\.primary:hover/);
+  const block = /@media \(hover: hover\) \{([\s\S]*?)\n\}/.exec(css);
+  assert.ok(block, 'Block für Geräte mit Hover fehlt');
+  assert.match(block[1], /button:hover \{ background: var\(--cell-hover\); \}/);
+  assert.match(block[1], /button\.primary:hover \{ background: var\(--accent-hover\); \}/);
+});
