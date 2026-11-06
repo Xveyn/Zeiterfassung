@@ -3,14 +3,15 @@
 // sich ohne Browser testen ließe — die steckt in `view-model.js`. Jede Funktion bekommt ihre
 // Handler als Parameter; nichts hier kennt den Store oder das Netz.
 import { focusByKey, h } from './dom.js';
-import { MAX_CATEGORY_LENGTH, TIME_STEP_MINUTES, snapPause, snapTime } from './minutes.js';
+import { MAX_CATEGORY_LENGTH, TIME_STEP_MINUTES, formatMinutes, snapPause, snapTime } from './minutes.js';
 import { updateStatusText } from './update-policy.js';
 import { PRIVACY_URL } from './relay-client.js';
 import { RESERVATION_CALENDAR_NOTE } from './messages.js';
 import { MAX_NAME_LENGTH, blockSignature, moveRow, rowsToBlock, timesSummary, validateCategoryRows } from './categories.js';
 import {
-  SETTINGS_TABS, categoryDisplay, categoryOptions, categoryRemovalText, categoryRenameHint, hintKey, nextRow, pickCategory,
-  pairFields, settingsTabLabel, windowRow,
+  QUICK_END_MINUTES, QUICK_PAUSES, SETTINGS_TABS, addToTime, categoryDisplay, categoryOptions, categoryRemovalText,
+  categoryRenameHint, dayNetMinutes, editorTitle, hintKey, nextRow, pickCategory, pairFields, rowNetMinutes, rowProblems,
+  settingsTabLabel, windowRow,
 } from './view-model.js';
 
 const button = (label, onclick, className = '', extra = {}) =>
@@ -167,12 +168,38 @@ function slotSection({ rows, categories, defaults, weekday, withPause, pauseEnab
   const state = rows.map((row) => ({ ...row, base: row.base && { ...row.base } }));
   const prefix = withPause ? 'slot' : 'res';       // die Ids beider Abschnitte dürfen nicht kollidieren
   const labels = [];                                // Kategorie-Label je Zeile; das `*` folgt jeder Zeiteingabe
+  const showPause = withPause || pauseEnabled;
+  const refs = [];                                  // je Zeile: Felder, Fehlertext, Netto, Schnellwahl
+  const touched = new Set();                        // Zeilen, deren Zeitfeld schon verlassen wurde
+  let revealed = false;                             // nach einem Speicherversuch zeigen alle Zeilen ihre Fehler
+  const total = h('span', {}, '');
+  const totalRow = h('div', { class: 'daysum' }, h('span', {}, 'Tag gesamt'), total);
+  // Fehler am Feld, Netto und Schnellwahl folgen jeder Eingabe, ohne die Zeilen neu zu bauen (der Fokus bliebe sonst nicht).
+  const update = () => {
+    state.forEach((row, index) => {
+      const ref = refs[index];
+      if (!ref) return;
+      const problems = revealed || touched.has(row) ? rowProblems(row) : {};
+      ref.start.setAttribute('aria-invalid', String(Boolean(problems.start)));
+      ref.end.setAttribute('aria-invalid', String(Boolean(problems.end)));
+      ref.error.textContent = problems.start ?? problems.end ?? '';
+      ref.fieldset.classList.toggle('bad', Boolean(problems.start || problems.end));
+      const net = rowNetMinutes(showPause ? row : { ...row, pause: '0' });
+      ref.net.hidden = net === null;
+      ref.netValue.textContent = net === null ? '' : `${formatMinutes(net)} h`;
+      ref.endChips.forEach(({ chip, minutes }) => { chip.disabled = addToTime(row.start, minutes) === ''; });
+      ref.pauseChips.forEach(({ chip, minutes }) => chip.setAttribute('aria-pressed', String(row.pause === String(minutes))));
+    });
+    totalRow.hidden = state.length < 2;
+    total.textContent = formatMinutes(dayNetMinutes(state, { withPause: showPause }));
+  };
   const showCategory = (index) => categoryDisplay(state[index], defaults, weekday, withPause);
   const field = (index, key, label, attrs) => {
     const id = `${prefix}-${index}-${key}`;
     const apply = () => {
       state[index][key] = input.value;
       if (labels[index]) labels[index].textContent = showCategory(index);
+      update();
       onChange();
     };
     // Zeiten und Pause rasten auf 5 Minuten wie die Auswahl am Desktop: beim Tippen (`input`) bleibt der
@@ -183,7 +210,9 @@ function slotSection({ rows, categories, defaults, weekday, withPause, pauseEnab
       if (snapped !== input.value) { input.value = snapped; apply(); }
     };
     const input = h('input', { id, value: state[index][key], ...attrs, oninput: apply,
-      ...(snapper ? { onchange: snap } : {}) });
+      ...(snapper ? { onchange: snap } : {}),
+      onblur: () => { touched.add(state[index]); update(); } });
+    if (refs[index]) refs[index][key] = input;
     return h('div', {}, h('label', { for: id }, label), input);
   };
   // Modal statt <datalist>: auf dem Handy zeigt ein Datalist erst nach Eingabe etwas und filtert nach
@@ -202,23 +231,60 @@ function slotSection({ rows, categories, defaults, weekday, withPause, pauseEnab
     }, 'picker', { id });
     return h('div', {}, h('label', { for: id }, 'Kategorie'), picker);
   };
+  // Eine Schnellwahl schreibt in die Zeile und baut neu; die Felder zeigen den neuen Wert.
+  const chipLabel = (minutes) => (minutes < 60 ? `+${minutes} min` : `+${minutes / 60} h`);
   const build = () => {
-    list.replaceChildren(...state.map((_, index) => h('fieldset', { class: 'slot' },
-      state.length > 1 && h('div', { class: 'slot-head' },
-        h('span', { class: 'muted' }, `Slot ${index + 1}`),
-        button('×', () => { state.splice(index, 1); build(); onChange(); }, 'remove', { 'aria-label': `Slot ${index + 1} entfernen` })),
-      h('div', { class: 'row' },
-        field(index, 'start', 'von', { type: 'time', step: TIME_STEP_MINUTES * 60 }),
-        field(index, 'end', 'bis', { type: 'time', step: TIME_STEP_MINUTES * 60 })),
-      h('div', { class: 'row' },
-        (withPause || pauseEnabled) && field(index, 'pause', 'Pause (Min)', { type: 'number', inputmode: 'numeric', min: 0, step: TIME_STEP_MINUTES }),
-        categoryField(index)))));
+    refs.length = 0;
+    list.replaceChildren(...state.map((row, index) => {
+      const ref = { start: null, end: null, endChips: [], pauseChips: [] };
+      refs[index] = ref;
+      const startField = field(index, 'start', 'von', { type: 'time', step: TIME_STEP_MINUTES * 60 });
+      const endField = field(index, 'end', 'bis', { type: 'time', step: TIME_STEP_MINUTES * 60 });
+      const endChips = QUICK_END_MINUTES.map((minutes) => {
+        const chip = button(chipLabel(minutes), () => {
+          row.end = addToTime(row.start, minutes);
+          touched.add(row);
+          build();
+          onChange();
+        }, 'chip', { 'aria-label': `Ende ${chipLabel(minutes)} nach dem Start` });
+        ref.endChips.push({ chip, minutes });
+        return chip;
+      });
+      const pauseChips = showPause ? QUICK_PAUSES.map((minutes) => {
+        const chip = button(String(minutes), () => {
+          row.pause = String(minutes);
+          build();
+          onChange();
+        }, 'chip', { 'aria-label': `Pause ${minutes} Minuten` });
+        ref.pauseChips.push({ chip, minutes });
+        return chip;
+      }) : [];
+      ref.error = h('div', { class: 'field-error', role: 'status' }, '');
+      ref.netValue = h('b', {}, '');
+      ref.net = h('div', { class: 'net' }, h('span', {}, 'Netto'), ref.netValue);
+      ref.fieldset = h('fieldset', { class: 'slot' },
+        state.length > 1 && h('div', { class: 'slot-head' },
+          h('span', { class: 'muted' }, `Slot ${index + 1}`),
+          button('×', () => { state.splice(index, 1); build(); onChange(); }, 'remove', { 'aria-label': `Slot ${index + 1} entfernen` })),
+        h('div', { class: 'row' }, startField, endField),
+        h('div', { class: 'chips', role: 'group', 'aria-label': 'Ende setzen' }, ...endChips),
+        ref.error,
+        h('div', { class: 'row' },
+          showPause && field(index, 'pause', 'Pause (Min)', { type: 'number', inputmode: 'numeric', min: 0, step: TIME_STEP_MINUTES }),
+          categoryField(index)),
+        pauseChips.length > 0 && h('div', { class: 'chips', role: 'group', 'aria-label': 'Pause setzen' }, ...pauseChips),
+        ref.net);
+      return ref.fieldset;
+    }));
+    update();
   };
   build();
   const element = h('div', {}, list,
-    !withPause && pauseEnabled && h('p', { class: 'muted' }, RESERVATION_CALENDAR_NOTE),
-    button('+ Slot', () => { state.push(nextRow(state.at(-1))); build(); onChange(); }));
-  return { element, state };
+    button('+ Slot', () => { state.push(nextRow(state.at(-1))); build(); onChange(); }, 'link'),
+    totalRow,
+    !withPause && pauseEnabled && h('p', { class: 'muted note' }, 'ⓘ ', RESERVATION_CALENDAR_NOTE));
+  update();
+  return { element, state, reveal: () => { revealed = true; update(); } };
 }
 
 /** Tag bearbeiten. Mit `reservation` hat der Dialog zwei Reiter (Arbeitszeit / Reservierung); jeder
@@ -234,17 +300,22 @@ export function editorDialog({ title, rows, categories, defaults = null, weekday
 
   // Der gespeicherte Fehler gehört zu seinem Reiter und bleibt stehen, bis dort etwas geändert wird.
   const edited = { work: false, reservation: false };
+  const attempted = { work: false, reservation: false };   // erst nach einem Speicherversuch steht die Meldung unten
+  const current = () => (active === 'work' ? work : res);
+  const check = () => (active === 'work' ? validate(work.state) : reservation.validate(res.state));
   const refresh = () => {
-    const check = active === 'work' ? validate(work.state) : reservation.validate(res.state);
-    save.disabled = !check.ok || (active === 'work' && Boolean(lock));
+    // „Speichern“ bleibt anklickbar: ein stummes Grau erklärt nicht, was fehlt. Nur die Sperre (#273) deaktiviert es.
+    save.disabled = active === 'work' && Boolean(lock);
+    const result = check();
     if (active === 'work' && lock) message.textContent = '';
     else if (errors[active] && !edited[active]) message.textContent = errors[active];
-    else message.textContent = check.ok ? '' : check.message;
+    else message.textContent = attempted[active] && !result.ok ? result.message : '';
   };
   const work = slotSection({ rows, categories, defaults, weekday, withPause: true,
     onChange: () => { edited.work = true; refresh(); } });
   const res = reservation && slotSection({ rows: reservation.rows, categories, defaults, weekday,
     withPause: false, pauseEnabled, onChange: () => { edited.reservation = true; refresh(); } });
+  const heading = h('h2', { id: 'editor-title' }, title);
   const clearButton = button('Tag leeren', () => handlers.clear(active, dialog), 'link');
   // Gesperrte Arbeitszeit (#273): statt der Zeilen ein Hinweis, mit dem Ausweg „Ältere Zeiten laden“, wo es ihn gibt.
   const windowHint = lock && h('div', { class: 'hint warn', 'data-focus': 'edit-lock' },
@@ -265,16 +336,23 @@ export function editorDialog({ title, rows, categories, defaults = null, weekday
     }
     clearButton.textContent = kind === 'work' ? 'Tag leeren' : 'Reservierung löschen';
     clearButton.hidden = !(kind === 'work' ? canClear : reservation.canClear);
+    heading.textContent = editorTitle(title, kind, Boolean(reservation));
     refresh();
   };
 
   dialog.append(
     h('form', { method: 'dialog', onsubmit: async (event) => {
       event.preventDefault();
+      if (!check().ok) {
+        attempted[active] = true;
+        current().reveal();
+        refresh();
+        return;
+      }
       const failure = await handlers.save(active, active === 'work' ? work.state : res.state);
       if (failure) message.textContent = failure; else dialog.close();
     } },
-      h('h2', { id: 'editor-title' }, title),
+      heading,
       tabs && h('div', { class: 'tabs', role: 'tablist' }, tabs.work, tabs.reservation),
       windowHint,
       work.element,

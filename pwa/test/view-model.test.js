@@ -969,3 +969,43 @@ test('a cleared day also invites, a day with only a reservation does not', () =>
     getReservation: (date) => (date === '2026-10-09' ? live([SLOT]) : null) });
   assert.equal(planned.days.find((item) => item.date === '2026-10-09').addHint, '');
 });
+
+// --- Editor: Netto, Feldfehler, Schnellwahl (#461) -------------------------------------------------
+
+import { QUICK_END_MINUTES, QUICK_PAUSES, addToTime, dayNetMinutes, rowNetMinutes, rowProblems, editorTitle } from '../view-model.js';
+
+test('the net minutes of a row are span minus pause, never negative, null while unusable', () => {
+  assert.equal(rowNetMinutes({ start: '08:00', end: '16:00', pause: '30' }), 450);
+  assert.equal(rowNetMinutes({ start: '08:00', end: '08:30', pause: '45' }), 0);
+  assert.equal(rowNetMinutes({ start: '08:00', end: '', pause: '0' }), null);
+  assert.equal(rowNetMinutes({ start: '08:00', end: '09:00', pause: 'x' }), 60);
+});
+
+test('the day total sums whole minutes of the usable rows, and ignores the pause without the flag', () => {
+  const rows = [{ start: '08:00', end: '12:00', pause: '0' }, { start: '12:30', end: '17:00', pause: '30' }, { start: '17:00', end: '', pause: '0' }];
+  assert.equal(dayNetMinutes(rows), 240 + 240);
+  assert.equal(dayNetMinutes(rows, { withPause: false }), 240 + 270);
+});
+
+test('row problems name the field: missing start or end, end not after start; blank rows have none', () => {
+  assert.deepEqual(rowProblems({ start: '', end: '', pause: '0', kategorie: '' }), {});
+  assert.deepEqual(rowProblems({ start: '16:00', end: '', pause: '0', kategorie: '' }), { end: 'Ende fehlt' });
+  assert.deepEqual(rowProblems({ start: '', end: '16:00', pause: '0', kategorie: '' }), { start: 'Start fehlt' });
+  assert.deepEqual(rowProblems({ start: '16:00', end: '15:00', pause: '0', kategorie: '' }), { end: 'Ende muss nach dem Start liegen' });
+  assert.deepEqual(rowProblems({ start: '08:00', end: '16:00', pause: '0', kategorie: '' }), {});
+});
+
+test('quick end adds minutes to the start and stops at 23:55', () => {
+  assert.deepEqual(QUICK_END_MINUTES, [30, 60, 240, 480]);
+  assert.deepEqual(QUICK_PAUSES, [0, 30, 45]);
+  assert.equal(addToTime('08:00', 480), '16:00');
+  assert.equal(addToTime('08:00', 30), '08:30');
+  assert.equal(addToTime('20:00', 480), '23:55');
+  assert.equal(addToTime('', 60), '');
+});
+
+test('the editor title names the type only where both exist', () => {
+  assert.equal(editorTitle('07.11.2026', 'work', false), '07.11.2026');
+  assert.equal(editorTitle('07.11.2026', 'reservation', true), '07.11.2026 · Reservierung');
+  assert.equal(editorTitle('07.11.2026', 'work', true), '07.11.2026 · Arbeitszeit');
+});
