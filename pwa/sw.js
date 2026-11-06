@@ -4,8 +4,15 @@
 // Seite „Neu laden“ bestätigt (Nachricht `SKIP_WAITING`) — nie mitten in einer Eingabe.
 import { CACHE_NAME, CACHE_PREFIX, PRECACHE, shouldHandle } from './sw-core.js';
 import { idbKeyStore, open } from './push-blob.js';
-import { logFailure } from './diagnose.js';
+import { logFailure, setLogSink } from './diagnose.js';
 import { TEST_PAYLOAD, clickTarget, describe, describeTest } from './push-message.js';
+import { createDebugLog } from './debug-log.js';
+import { idbLogStore } from './log-store.js';
+
+// Gleiche Datenbank wie die Seite; geöffnet wird erst beim ersten Schreiben, ein Kaltstart
+// des Workers zahlt also nichts.
+const debugLog = createDebugLog({ store: idbLogStore() });
+setLogSink((context, error) => debugLog.recordError(context, error));
 
 // `cache: 'reload'` umgeht den HTTP-Cache (GitHub Pages: max-age=600): sonst könnte ein neuer
 // Worker Dateien aus dem Cache der vorigen Installation einsammeln und eine Mischung aus alten

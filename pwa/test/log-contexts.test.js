@@ -38,3 +38,23 @@ test('relay-transport.js: every log call gets a text literal as context', () => 
     assert.match(first.trim(), /^'(?:[^'\\\n]|\\.)*'$|^"(?:[^"\\\n]|\\.)*"$/, first);
   }
 });
+
+// Chrome holt beim Update-Check Skript und alle Imports des Service Workers; der Import-Baum bleibt
+// deshalb auf diese Module beschränkt (log-scrub.js kommt über debug-log.js).
+const SW_IMPORTS = ['./sw-core.js', './push-blob.js', './diagnose.js', './push-message.js',
+  './debug-log.js', './log-store.js'];
+
+test('sw.js: static imports stay within the allowed set', () => {
+  const source = readFileSync(new URL('sw.js', root), 'utf8');
+  const specs = [...source.matchAll(/^\s*import\b[^'"]*?from\s*['"]([^'"]+)['"]/gm)].map((m) => m[1]);
+  assert.ok(specs.length > 0, 'keine Imports gefunden: Muster veraltet?');
+  assert.deepEqual(specs.filter((s) => !SW_IMPORTS.includes(s)), []);
+  assert.ok(!/\bimport\s*\(/.test(source), 'dynamisches import() ist im Service Worker verboten');
+});
+
+test('sw.js: feeds a debug log through setLogSink', () => {
+  const source = readFileSync(new URL('sw.js', root), 'utf8');
+  for (const call of ['setLogSink(', 'createDebugLog(', 'idbLogStore(']) {
+    assert.ok(source.includes(call), `${call} fehlt`);
+  }
+});
