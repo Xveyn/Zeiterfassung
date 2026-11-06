@@ -1009,3 +1009,38 @@ test('the editor title names the type only where both exist', () => {
   assert.equal(editorTitle('07.11.2026', 'reservation', true), '07.11.2026 · Reservierung');
   assert.equal(editorTitle('07.11.2026', 'work', true), '07.11.2026 · Arbeitszeit');
 });
+
+// --- Einstellungen › Verbindung (#461) -------------------------------------------------------------
+
+import { connectionSummary, storageNotice } from '../view-model.js';
+
+test('the connection summary says the state first: connected or offline, then when it last synced', () => {
+  const ok = connectionSummary({ online: true, desktopName: 'Desktop (Dev)', lastSyncAt: '2026-11-06T16:36:00Z', tokenUntil: '06.12.2026', timeZone: 'UTC' });
+  assert.equal(ok.pill, 'Verbunden');
+  assert.equal(ok.kind, 'ok');
+  assert.equal(ok.name, 'Desktop (Dev)');
+  assert.equal(ok.detail, 'zuletzt abgeglichen um 16:36 · Kopplung gültig bis 06.12.2026');
+  const off = connectionSummary({ online: false, desktopName: '', lastSyncAt: '', tokenUntil: '' });
+  assert.equal(off.pill, 'Offline');
+  assert.equal(off.kind, 'warn');
+  assert.equal(off.name, 'Desktop');                                                   // ohne Namen nicht leer
+  assert.equal(off.detail, 'noch nicht abgeglichen');
+});
+
+test('the storage notice appears only when the browser refuses to keep the data, with the way out', () => {
+  assert.equal(storageNotice(true), null);
+  assert.equal(storageNotice(null), null);                                              // noch nicht gefragt
+  const notice = storageNotice(false);
+  assert.equal(notice.action, 'persist');
+  assert.match(notice.text, /nicht dauerhaft/);
+  assert.match(storageNotice(false, { refused: true }).text, /abgelehnt/);
+  assert.equal(storageNotice(false, { refused: true }).action, null);
+});
+
+test('the push model exposes the switch position and whether it can be flipped', () => {
+  const base = { desktopReady: true };
+  assert.deepEqual([pushModel({ ...base, state: 'on' }).on, pushModel({ ...base, state: 'on' }).toggle], [true, true]);
+  assert.deepEqual([pushModel({ ...base, state: 'off' }).on, pushModel({ ...base, state: 'off' }).toggle], [false, true]);
+  assert.deepEqual([pushModel({ ...base, state: 'denied' }).on, pushModel({ ...base, state: 'denied' }).toggle], [false, false]);
+  assert.deepEqual([pushModel({ ...base, state: 'unsupported' }).on, pushModel({ ...base, state: 'unsupported' }).toggle], [false, false]);
+});

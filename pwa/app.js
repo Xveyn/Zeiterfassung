@@ -90,6 +90,7 @@ class App {
     this.persistent = await requestPersistentStorage();
     this.persistRefused = !this.persistent;
     this.render();
+    return this.persistent;
   }
 
   /** Schließt einen schließbaren Hinweis. Bisher gibt es nur den Speicher-Hinweis; er bleibt 7 Tage weg. */
@@ -517,6 +518,7 @@ class App {
         transport: meta.transport,
         persistent: this.persistent,
         tokenUntil: meta.token_expires_at ? formatDateDe(meta.token_expires_at.slice(0, 10)) : '',
+        online: this.online, lastSyncAt: meta.server_time,
         push,
       },
       updates: { build: BUILD, update: { state: this.updateState, detail: this.updateDetail, auto: Boolean(meta.auto_update) } },
@@ -529,6 +531,7 @@ class App {
       checkUpdate: async () => ({ state: await this.checkForUpdate('manual'), detail: this.updateDetail }),
       resetWindow: () => this.resetWindow(),
       testPush: () => this.sendTestPush(),
+      persist: () => this.askPersistentStorage(),
       setPush: async (on) => {
         if (on) await this.enablePush(); else await this.disablePush();
         return this.pushModelNow();

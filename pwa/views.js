@@ -10,8 +10,8 @@ import { RESERVATION_CALENDAR_NOTE } from './messages.js';
 import { MAX_NAME_LENGTH, blockSignature, moveRow, rowsToBlock, timesSummary, validateCategoryRows } from './categories.js';
 import {
   QUICK_END_MINUTES, QUICK_PAUSES, SETTINGS_TABS, addToTime, categoryDisplay, categoryOptions, categoryRemovalText,
-  categoryRenameHint, dayNetMinutes, editorTitle, hintKey, nextRow, pickCategory, pairFields, rowNetMinutes, rowProblems,
-  settingsTabLabel, windowRow,
+  categoryRenameHint, connectionSummary, dayNetMinutes, editorTitle, hintKey, nextRow, pickCategory, pairFields, rowNetMinutes, rowProblems,
+  settingsTabLabel, storageNotice, windowRow,
 } from './view-model.js';
 
 const button = (label, onclick, className = '', extra = {}) =>
@@ -419,31 +419,52 @@ export function conflictsDialog(conflicts, handlers) {
 // --- Einstellungen -----------------------------------------------------------------------------------
 
 /** Reiter „Verbindung“: Stand der Kopplung und des Desktops, Verlauf, Neu koppeln. */
-function connectionPanel({ desktopName, desktop, hint = '', address, transport = 'lan', persistent, tokenUntil, window: windowInfo, push }, { closeThen, handlers }) {
+function connectionPanel({ desktopName, desktop, hint = '', address, transport = 'lan', persistent, tokenUntil, window: windowInfo, push,
+  online = true, lastSyncAt = '' }, { closeThen, handlers }) {
   const windowState = windowRow(windowInfo);
   const resetWindow = button('Auf 90 Tage zurücksetzen', () => closeThen(() => handlers.resetWindow()), '', { 'data-focus': 'reset-window' });
   resetWindow.hidden = !windowState.canReset;
+  const summary = connectionSummary({ online, desktopName, lastSyncAt, tokenUntil });
+  const notice = h('div', { class: 'hint warn', role: 'status', 'data-focus': 'storage-notice' });
+  const showNotice = (refused) => {
+    const model = storageNotice(persistent, { refused });
+    notice.hidden = !model;
+    if (!model) return;
+    const ask = model.action && button('Dauerhaft sichern', async () => {
+      ask.disabled = true;
+      persistent = await handlers.persist();
+      showNotice(!persistent);
+    }, 'link', { 'data-focus': 'persist' });
+    // Nativ `replaceChildren` macht aus `null` den Text „null“: nur echte Knoten übergeben.
+    notice.replaceChildren(...[h('div', {}, model.text), ask ? h('div', { class: 'actions' }, ask) : null].filter(Boolean));
+  };
+  showNotice(false);
   return h('div', {},
-    h('dl', {},
-      h('dt', { class: 'muted' }, 'Desktop'), h('dd', {}, desktopName || '—'),
-      h('dt', { class: 'muted' }, 'Desktop-Version'), h('dd', {}, desktop?.version || '—'),
-      h('dt', { class: 'muted' }, 'Plattform'), h('dd', {}, desktop?.platform || '—'),
-      h('dt', { class: 'muted' }, transport === 'relay' ? 'Verbindung' : 'Adresse'), h('dd', {}, address || '—'),
-      h('dt', { class: 'muted' }, 'Kopplung gültig bis'), h('dd', {}, tokenUntil || '—'),
-      h('dt', { class: 'muted' }, 'Dauerhafter Speicher'), h('dd', {}, persistent === null ? 'unbekannt' : persistent ? 'ja' : 'nein'),
-      h('dt', { class: 'muted' }, 'Verlauf'), h('dd', {}, windowState.text, ' ', resetWindow)),
-    pushSection(push, handlers),
+    h('section', { class: 'status-card' },
+      h('span', { class: `pill ${summary.kind}` }, `● ${summary.pill}`),
+      h('div', { class: 'name' }, summary.name),
+      h('div', { class: 'muted' }, summary.detail)),
+    notice,
     hint && h('p', { class: 'hint warn', role: 'status' }, hint),
+    pushSection(push, handlers),
     h('p', { class: 'muted' }, 'Relay und Benachrichtigungen: ', privacyLink(), '.'),
+    h('details', { class: 'tech' },
+      h('summary', {}, 'Technische Details'),
+      h('dl', {},
+        h('dt', { class: 'muted' }, 'Desktop-Version'), h('dd', {}, desktop?.version || '—'),
+        h('dt', { class: 'muted' }, 'Plattform'), h('dd', {}, desktop?.platform || '—'),
+        h('dt', { class: 'muted' }, transport === 'relay' ? 'Verbindung' : 'Adresse'), h('dd', {}, address || '—'),
+        h('dt', { class: 'muted' }, 'Dauerhafter Speicher'), h('dd', {}, persistent === null ? 'unbekannt' : persistent ? 'ja' : 'nein'),
+        h('dt', { class: 'muted' }, 'Verlauf'), h('dd', {}, windowState.text, ' ', resetWindow))),
     h('div', { class: 'buttons' },
       button('QR neu scannen / Neu koppeln', () => closeThen(() => handlers.pair()), '', { 'data-focus': 'pair' })));
 }
 
-/** Abschnitt „Benachrichtigungen“: Zustand als Text, ein Knopf zum Erlauben oder Ausschalten. Der
- *  Knopf ruft `handlers.setPush(on)` (in der Klick-Geste: die Erlaubnis verlangt sie) und bekommt den
- *  neuen Zustand zurück. */
+/** Abschnitt „Benachrichtigungen“: ein Schalter mit Statuszeile. Der Schalter ruft `handlers.setPush(on)` (in der
+ *  Klick-Geste: die Erlaubnis verlangt sie) und bekommt den neuen Zustand zurück; gesperrt oder nicht
+ *  unterstützt ist er ausgegraut, und der Text sagt warum. */
 function pushSection(model, handlers) {
-  const text = h('p', { role: 'status', class: 'push-state' }, model.text);
+  const text = h('p', { role: 'status', class: 'push-state muted' }, model.text);
   const test = button('Testbenachrichtigung senden', async () => {
     test.disabled = true;
     text.textContent = 'Sendet …';
@@ -451,19 +472,20 @@ function pushSection(model, handlers) {
     test.disabled = false;
   }, '', { 'data-focus': 'push-test' });
   test.hidden = !model.canTest;
-  const action = button(model.actionLabel, async () => {
-    action.disabled = true;
-    const next = await handlers.setPush(model.action === 'enable');
-    model = next;
-    text.textContent = next.text;
-    action.textContent = next.actionLabel;
-    action.hidden = !next.action;
-    test.hidden = !next.canTest;
-    action.disabled = false;
-  }, '', { 'data-focus': 'push-toggle' });
-  action.hidden = !model.action;
-  return h('section', { class: 'push' }, h('h3', {}, 'Benachrichtigungen'), text,
-    h('div', { class: 'buttons' }, action, test));
+  const toggle = h('input', { id: 'push-toggle', type: 'checkbox', role: 'switch', class: 'switch-input', checked: model.on,
+    disabled: !model.toggle, 'data-focus': 'push-toggle',
+    onchange: async () => {
+      toggle.disabled = true;
+      const next = await handlers.setPush(toggle.checked);
+      toggle.checked = next.on;
+      toggle.disabled = !next.toggle;
+      text.textContent = next.text;
+      test.hidden = !next.canTest;
+    } });
+  return h('section', { class: 'push' },
+    h('h3', {}, 'Benachrichtigungen'),
+    h('label', { class: 'switch', for: 'push-toggle' }, h('span', {}, 'Erinnerungen auf diesem Handy'), toggle),
+    text, test);
 }
 
 /** Reiter „Updates“: Version der Handy-App, Suche, Neuladen, automatisches Einspielen. */
