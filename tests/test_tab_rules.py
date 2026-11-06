@@ -851,6 +851,16 @@ def test_the_known_texts_are_the_agreed_ones():
     assert tr.test_push_text("etwas Neues") == tr.test_push_text("server")
 
 
+def test_push_failed_names_what_went_wrong():
+    base = "Der Push-Dienst hat die Nachricht nicht angenommen"
+    assert tr.test_push_text("push_failed") == base + "."
+    assert tr.test_push_text("push_failed:403") == base + " (Antwort 403)."
+    assert tr.test_push_text("push_failed:network") == base + " (nicht erreichbar)."
+    assert tr.test_push_text("push_failed:build") == base + " (Schlüssel des Relays unbrauchbar)."
+    assert tr.test_push_text("push_failed:irgendwas") == base + "."
+    assert tr.test_push_text("gone:403") == tr.test_push_text("server")
+
+
 def test_the_test_outcome_never_raises():
     def boom():
         raise RuntimeError("kaputt")

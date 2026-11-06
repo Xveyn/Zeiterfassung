@@ -26,11 +26,12 @@ const MESSAGES = {
 };
 
 export class RelayError extends Error {
-  constructor(kind, status) {
+  constructor(kind, status, cause) {
     super(MESSAGES[kind] ?? MESSAGES.server);
     this.name = 'RelayError';
     this.kind = kind;
     this.status = status;       // HTTP-Status der Antwort; fehlt bei `offline`
+    this.cause = cause;         // nur bei `push_failed`: Status des Push-Dienstes, `network` oder `build`
   }
 }
 
@@ -45,6 +46,13 @@ function kindOf(status, code) {
   if (status === 502 && code === 'push_failed') return 'push_failed';
   if (status >= 400 && status < 500) return 'invalid';
   return 'server';
+}
+
+/** Die Ursache aus der Antwort der Testroute; nur ein HTTP-Status, `network` oder `build` zählt. */
+function causeOf(body) {
+  const cause = body?.cause;
+  if (Number.isInteger(cause) && cause >= 100 && cause <= 599) return cause;
+  return cause === 'network' || cause === 'build' ? cause : undefined;
 }
 
 /** 32 Zufallsbytes als base64url (43 Zeichen): die Form, die der Relay als Bearer erwartet. */
@@ -72,8 +80,9 @@ export class RelayClient {
       throw new RelayError('offline');
     }
     if (!response.ok) {
-      const code = await response.json().then((body) => body?.error, () => undefined);
-      throw new RelayError(kindOf(response.status, code), response.status);
+      const body = await response.json().catch(() => undefined);
+      const kind = kindOf(response.status, body?.error);
+      throw new RelayError(kind, response.status, kind === 'push_failed' ? causeOf(body) : undefined);
     }
   }
 

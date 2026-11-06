@@ -14,8 +14,10 @@ function setup() {
   const clock = { now: T0 };
   const sent = [];
   const answers = {};                                   // blob → Ergebnis, sonst 'ok'
-  const send = async (sub, blob) => {
+  const causes = {};                                    // blob → Ursache, die der Fake meldet
+  const send = async (sub, blob, env, report) => {
     sent.push(blob);
+    if (causes[blob] !== undefined) report?.(causes[blob]);
     if (answers[blob] instanceof Error) throw answers[blob];
     return answers[blob] ?? 'ok';
   };
@@ -24,7 +26,7 @@ function setup() {
   const call = (method, path, body) => device.fetch(new Request(`https://relay${path}`, {
     method, body: body === undefined ? undefined : JSON.stringify(body) }));
   const items = (...list) => ({ items: list.map(([id, offsetMs]) => ({ id, fire_at: stamp(T0 + offsetMs), blob: id })) });
-  return { clock, sent, answers, storage, device, call, items };
+  return { clock, sent, answers, causes, storage, device, call, items };
 }
 
 const IDLE = T0 + 90 * 86_400_000;
@@ -294,6 +296,26 @@ test('a push service that refuses or fails is 502 and the subscription stays', a
     assert.deepEqual(await response.json(), { error: 'push_failed' });
     assert.ok(await storage.get('sub'));
   }
+});
+
+test('a failing push service reports its cause in the 502 body, never more', async () => {
+  for (const cause of [403, 503, 'network', 'build']) {
+    const { call, answers, causes } = setup();
+    await call('PUT', '/v1/device', SUB);
+    answers[TEST_PAYLOAD] = 'drop';
+    causes[TEST_PAYLOAD] = cause;
+    const response = await call('POST', '/v1/test');
+    assert.equal(response.status, 502);
+    assert.deepEqual(await response.json(), { error: 'push_failed', cause });
+  }
+});
+
+test('a cause that is neither an HTTP status nor network or build is left out', async () => {
+  const { call, answers, causes } = setup();
+  await call('PUT', '/v1/device', SUB);
+  answers[TEST_PAYLOAD] = 'drop';
+  causes[TEST_PAYLOAD] = 'https://push.example/secret-endpoint';
+  assert.deepEqual(await (await call('POST', '/v1/test')).json(), { error: 'push_failed' });
 });
 
 test('a second test within ten seconds is 429 too_soon and sends nothing', async () => {

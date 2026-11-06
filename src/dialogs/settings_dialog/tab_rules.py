@@ -800,10 +800,19 @@ _TEST_PUSH_TEXTS = {
 }
 
 
+_PUSH_CAUSE_TEXTS = {"network": "nicht erreichbar", "build": "Schlüssel des Relays unbrauchbar"}
+
+
 def test_push_text(kind: str) -> str:
     """Der Text zum Ergebnis von „Testbenachrichtigung“ (`MobileService.send_test`); eine unbekannte
-    Art (ein künftiger Relay) wird zu „antwortet nicht“. Dieselben Texte nutzt die Web-App."""
-    return _TEST_PUSH_TEXTS.get(kind, _TEST_PUSH_TEXTS["server"])
+    Art (ein künftiger Relay) wird zu „antwortet nicht“. `push_failed:<Ursache>` nennt, woran es lag
+    (Status des Push-Dienstes, `network`, `build`). Dieselben Texte nutzt die Web-App."""
+    base, _, cause = kind.partition(":")
+    text = _TEST_PUSH_TEXTS.get(base if not cause or base == "push_failed" else kind, _TEST_PUSH_TEXTS["server"])
+    if base != "push_failed" or not cause:
+        return text
+    detail = f"Antwort {cause}" if cause.isascii() and cause.isdigit() else _PUSH_CAUSE_TEXTS.get(cause)
+    return text if detail is None else f"{text[:-1]} ({detail})."
 
 
 def test_push_outcome(action: Callable[[], str]) -> str:

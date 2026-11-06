@@ -66,7 +66,13 @@ const TEST_TEXTS = {
   unauthorized: 'Der Relay hat das Gerät nicht erkannt. Benachrichtigungen aus- und wieder einschalten.',
 };
 
-/** Der Text zum Ergebnis des Tests (`ok` oder die `kind` eines `RelayError`). */
-export function testResultText(kind) {
-  return TEST_TEXTS[kind] ?? 'Der Relay antwortet gerade nicht.';
+const CAUSE_TEXTS = { network: 'nicht erreichbar', build: 'Schlüssel des Relays unbrauchbar' };
+
+/** Der Text zum Ergebnis des Tests (`ok` oder die `kind` eines `RelayError`). Bei `push_failed` nennt
+ *  `cause` (Status des Push-Dienstes, `network`, `build`), woran es lag; Gleichlauf mit `tab_rules.test_push_text`. */
+export function testResultText(kind, cause) {
+  const text = TEST_TEXTS[kind] ?? 'Der Relay antwortet gerade nicht.';
+  if (kind !== 'push_failed') return text;
+  const detail = Number.isInteger(cause) ? `Antwort ${cause}` : CAUSE_TEXTS[cause];
+  return detail === undefined ? text : `${text.slice(0, -1)} (${detail}).`;
 }

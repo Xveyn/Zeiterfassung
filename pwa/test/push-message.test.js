@@ -72,5 +72,12 @@ test('every outcome of the test has a text', () => {
     'Der Relay kennt den Test noch nicht (muss neu ausgerollt werden).');
   assert.equal(testResultText('offline'), 'Der Relay ist nicht erreichbar.');
   assert.equal(testResultText('push_failed'), 'Der Push-Dienst hat die Nachricht nicht angenommen.');
+  assert.equal(testResultText('push_failed', 403), 'Der Push-Dienst hat die Nachricht nicht angenommen (Antwort 403).');
+  assert.equal(testResultText('push_failed', 503), 'Der Push-Dienst hat die Nachricht nicht angenommen (Antwort 503).');
+  assert.equal(testResultText('push_failed', 'network'), 'Der Push-Dienst hat die Nachricht nicht angenommen (nicht erreichbar).');
+  assert.equal(testResultText('push_failed', 'build'),
+    'Der Push-Dienst hat die Nachricht nicht angenommen (Schlüssel des Relays unbrauchbar).');
+  assert.equal(testResultText('push_failed', 'irgendwas'), 'Der Push-Dienst hat die Nachricht nicht angenommen.');
+  assert.equal(testResultText('gone', 403), 'Das Abo des Handys ist abgelaufen. Am Handy die Benachrichtigungen neu erlauben.');
   for (const kind of ['unauthorized', 'server', 'irgendwas']) assert.ok(testResultText(kind).length > 10, kind);
 });

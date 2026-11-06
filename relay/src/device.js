@@ -13,6 +13,13 @@ const MAX_CRASH_RETRIES = 5;
 const json = (status, body) => Response.json(body, { status });
 const empty = () => new Response(null, { status: 204 });
 
+/** Nur HTTP-Status 100–599, `network` und `build` verlassen den Relay; alles andere (auch ein Ersatz-`send`)
+ *  wird weggelassen, damit nie ein Endpoint oder Text in der Antwort landet. */
+function publicCause(cause) {
+  if (Number.isInteger(cause) && cause >= 100 && cause <= 599) return cause;
+  return cause === 'network' || cause === 'build' ? cause : undefined;
+}
+
 async function readJson(request) {
   try {
     return await request.json();
@@ -22,7 +29,7 @@ async function readJson(request) {
 }
 
 export class Device {
-  constructor(ctx, env, { now = Date.now, send = sendPush } = {}) {
+  constructor(ctx, env, { now = Date.now, send = (sub, blob, vars, report) => sendPush(sub, blob, vars, fetch, report) } = {}) {
     this.ctx = ctx;
     this.env = env;
     this.now = now;
@@ -83,8 +90,9 @@ export class Device {
     }
     await storage.put('lastTest', now);
     let result;
+    let cause;
     try {
-      result = await this.send(subscription, TEST_PAYLOAD, this.env);
+      result = await this.send(subscription, TEST_PAYLOAD, this.env, (value) => { cause = value; });
     } catch {
       result = 'retry';
     }
@@ -95,7 +103,7 @@ export class Device {
       return json(410, { error: 'gone' });
     }
     if (previous === undefined) await storage.delete('lastTest'); else await storage.put('lastTest', previous);
-    return result === 'gone' ? json(410, { error: 'gone' }) : json(502, { error: 'push_failed' });
+    return result === 'gone' ? json(410, { error: 'gone' }) : json(502, publicCause(cause) === undefined ? { error: 'push_failed' } : { error: 'push_failed', cause });
   }
 
   /** Der Alarm steht auf „jetzt“, wenn schon etwas fällig ist, sonst auf dem nächsten Eintrag. */

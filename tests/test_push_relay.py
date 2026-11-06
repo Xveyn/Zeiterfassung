@@ -97,6 +97,7 @@ def test_the_relay_url_matches_the_one_in_the_pwa():
 # --- Testbenachrichtigung (#340) ----------------------------------------------------------------
 
 import io  # noqa: E402
+import json  # noqa: E402
 
 
 def http_error(status, code=None, body=None):
@@ -140,6 +141,25 @@ def test_the_test_request_is_a_post_with_the_secret_as_bearer_and_no_body():
 ])
 def test_the_answer_of_the_relay_becomes_one_kind_and_nothing_raises(error, kind):
     assert send(error)[0] == kind
+
+
+def cause_error(cause):
+    return http_error(502, body=json.dumps({"error": "push_failed", "cause": cause}).encode())
+
+
+@pytest.mark.parametrize("cause, kind", [
+    (403, "push_failed:403"), (503, "push_failed:503"), (100, "push_failed:100"), (599, "push_failed:599"),
+    ("network", "push_failed:network"), ("build", "push_failed:build"),
+    ("https://push.example/geheim", "push_failed"), (99, "push_failed"), (600, "push_failed"),
+    (4.5, "push_failed"), (True, "push_failed"), (None, "push_failed"), ({}, "push_failed"),
+])
+def test_push_failed_carries_the_cause_the_relay_names_and_nothing_else(cause, kind):
+    assert send(cause_error(cause))[0] == kind
+
+
+def test_a_cause_on_another_error_is_ignored():
+    error = http_error(410, body=b'{"error": "gone", "cause": 403}')
+    assert send(error)[0] == "gone"
 
 
 def test_the_test_never_logs_the_secret(caplog):
