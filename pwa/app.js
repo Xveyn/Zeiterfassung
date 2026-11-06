@@ -54,6 +54,7 @@ class App {
     this.deviceModel = '';
     this.skewMs = 0;
     this.persistent = null;
+    this.persistRefused = false;
     this.updateReady = false;
     this.registration = null;
     this.updateState = 'serviceWorker' in navigator ? 'idle' : 'unsupported';
@@ -79,7 +80,23 @@ class App {
       reload: () => this.reloadForUpdate(),
       // Hinweise bleiben über Renders stehen: der Stand wird beim Klick gelesen, nicht beim Bau.
       conflicts: () => conflictsDialog(this.conflictList(), { openDay: (date) => this.openDay(date) }),
+      persist: () => this.askPersistentStorage(),
+      dismiss: (id) => this.dismissHint(id),
     };
+  }
+
+  /** „Dauerhaft sichern“: der Browser entscheidet selbst, die Anfrage kommt hier aus einer Nutzergeste. */
+  async askPersistentStorage() {
+    this.persistent = await requestPersistentStorage();
+    this.persistRefused = !this.persistent;
+    this.render();
+  }
+
+  /** Schließt einen schließbaren Hinweis. Bisher gibt es nur den Speicher-Hinweis; er bleibt 7 Tage weg. */
+  async dismissHint(id) {
+    if (id !== 'storage') return;
+    await this.store.setMeta({ storage_hint_dismissed_at: Date.now() });
+    this.render();
   }
 
   get paired() {
@@ -409,6 +426,7 @@ class App {
     }));
     const hints = hintsModel({
       lastError: this.lastError, excluded: meta.excluded, skewMs: this.skewMs, persistent: this.persistent,
+      dismissedAt: meta.storage_hint_dismissed_at, persistRefused: this.persistRefused,
       updateReady: this.updateReady, conflictCount: conflicts.length,
       errorDays: this.store.errorCount(), errorEnv: this.errorEnv(meta.address ? `${meta.address.host}:${meta.address.port}` : '', meta.transport),
     });

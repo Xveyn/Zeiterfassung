@@ -173,3 +173,10 @@ label.check input { width: auto; min-height: 0; flex: none; }
 .privacy .privacy-list li.level2 { margin-left: 36px; }
 .privacy code { color: var(--muted); overflow-wrap: anywhere; }
 .privacy a { overflow-wrap: anywhere; }
+
+/* Woche (#461): schließbarer Hinweis, Label „heute“, Einladung auf leeren Tagen. */
+.hint.dismissible { position: relative; padding-right: 52px; }
+.hint .dismiss { position: absolute; top: 0; right: 0; min-width: var(--tap); padding: 0; background: none; color: var(--muted); }
+.day .tag { display: inline-block; margin-top: 2px; padding: 0 6px; border-radius: 4px; background: var(--accent); color: #fff; font-size: .7rem; font-weight: 600; }
+.day .add { font-size: .9rem; }
+.day .plus { color: var(--accent); font-size: 1.3rem; font-weight: 700; }

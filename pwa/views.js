@@ -18,7 +18,7 @@ const button = (label, onclick, className = '', extra = {}) =>
 
 // --- Hinweise und Statuszeile -----------------------------------------------------------------------
 
-const ACTION_LABELS = { pair: 'Neu koppeln', rescan: 'QR neu scannen', retry: 'Erneut versuchen', reload: 'Neu laden', conflicts: 'Anzeigen' };
+const ACTION_LABELS = { pair: 'Neu koppeln', rescan: 'QR neu scannen', retry: 'Erneut versuchen', reload: 'Neu laden', conflicts: 'Anzeigen', persist: 'Dauerhaft sichern' };
 
 /** Persistenter Container der Hinweise. Er bleibt über alle Renders im Dokument, damit Screenreader
  *  Änderungen ansagen; `patchHints` tauscht nur, was sich geändert hat. */
@@ -27,10 +27,11 @@ export function hintsHost() {
 }
 
 function hintElement(hint, handlers) {
-  return h('div', { class: `hint ${hint.kind}`, role: hint.kind === 'error' ? 'alert' : 'status', 'data-key': hintKey(hint) },
+  return h('div', { class: `hint ${hint.kind}${hint.dismissible ? ' dismissible' : ''}`, role: hint.kind === 'error' ? 'alert' : 'status', 'data-key': hintKey(hint) },
     h('div', {}, hint.text),
     hint.action && h('div', { class: 'actions' },
-      button(ACTION_LABELS[hint.action], () => handlers[hint.action](), 'link', { 'data-focus': `hint-${hint.action}` })));
+      button(ACTION_LABELS[hint.action], () => handlers[hint.action](), 'link', { 'data-focus': `hint-${hint.action}` })),
+    hint.dismissible && button('✕', () => handlers.dismiss(hint.id), 'dismiss', { 'aria-label': 'Hinweis schließen', 'data-focus': `hint-dismiss-${hint.id}` }));
 }
 
 /** Gleicht die Hinweise im Container mit der Liste ab: unveränderte bleiben stehen (nicht erneut
@@ -115,14 +116,16 @@ export function pairView({ address, code, deviceName, busy, canScan, canCancel, 
 function dayRow(day, handlers) {
   const classes = ['day', day.state, day.isWeekend && 'weekend', day.isToday && 'today', day.beyondWindow && 'future'];
   return h('li', {}, h('button', { type: 'button', class: classes.filter(Boolean).join(' '),
-    'aria-label': `${day.weekday} ${day.label}${day.minutesLabel ? `, ${day.minutesLabel} Stunden` : ''}`,
+    'aria-label': `${day.weekday} ${day.label}${day.isToday ? ', heute' : ''}${day.minutesLabel ? `, ${day.minutesLabel} Stunden` : ''}`,
     'data-focus': `day-${day.date}`, onclick: () => handlers.openDay(day.date) },
-    h('span', {}, h('div', { class: 'wd' }, day.weekday), h('div', { class: 'date' }, day.label.slice(0, 6))),
+    h('span', {}, h('div', { class: 'wd' }, day.weekday), h('div', { class: 'date' }, day.label.slice(0, 6)),
+      day.isToday && h('div', { class: 'tag' }, 'heute')),
     h('div', { class: 'content' },
+      day.addHint && h('div', { class: 'add muted' }, day.addHint),
       h('ul', { class: 'slots' }, day.slots.map((text) => h('li', {}, text))),
       day.reservation?.slots.length > 0 && h('ul', { class: 'slots reserved' },
         day.reservation.slots.map((text) => h('li', {}, `geplant ${text}`)))),
-    h('span', { class: 'sum' }, day.minutesLabel),
+    h('span', { class: 'sum' }, day.minutesLabel, day.addHint && h('span', { class: 'plus', 'aria-hidden': 'true' }, '+')),
     h('span', { class: 'marks' },
       day.dirty && h('span', { class: 'mark-dirty', title: 'nicht übertragen' }, '● '),
       day.reservation?.dirty && h('span', { class: 'mark-dirty', title: 'Reservierung nicht übertragen' }, '○ '),

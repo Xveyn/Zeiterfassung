@@ -95,6 +95,9 @@ export function weekModel({ getDay, anchor, today, conflictDates = [], windowDay
       dirty: Boolean(day?.dirty),
       error: day?.error ?? null,
       conflict: conflicts.has(date),
+      // Einladung auf leeren Tagen, an denen Eintragen geht (nicht außerhalb des Fensters, nicht mit Reservierung).
+      addHint: (!day || cleared) && !reservation && !(date > addDays(today, aheadDays) || (windowDays > 0 && date < addDays(today, -windowDays)))
+        ? (visible ? 'Eintragen oder planen' : 'Eintragen') : '',
       // Reservierungen zählen nicht in `minutes`/`totalMinutes`; vergangene Tage zeigen nie eine.
       reservationVisible: visible,
       reservation: reservation && {
@@ -131,7 +134,11 @@ export function statusModel({ paired, online, syncing, pending, lastSyncAt, time
   };
 }
 
-export function hintsModel({ lastError, excluded, skewMs, persistent, updateReady, conflictCount, errorDays, errorEnv = {} }) {
+/** So lange bleibt der geschlossene Speicher-Hinweis weg (danach erinnert er wieder, solange der Zustand besteht). */
+export const STORAGE_HINT_QUIET_MS = 7 * 86400000;
+
+export function hintsModel({ lastError, excluded, skewMs, persistent, updateReady, conflictCount, errorDays, errorEnv = {},
+  dismissedAt = 0, now = Date.now(), persistRefused = false }) {
   const hints = [];
   const install = iosInstallHint(errorEnv);
   if (install) hints.push({ id: 'ios-install', kind: 'info', text: install, action: null });
@@ -156,9 +163,14 @@ export function hintsModel({ lastError, excluded, skewMs, persistent, updateRead
     hints.push({ id: 'skew', kind: 'warn', action: null,
       text: `Die Uhr des Handys weicht um etwa ${Math.round(Math.abs(skewMs) / 60000)} Minuten von der des Desktops ab. Datum und Uhrzeit am Handy prüfen.` });
   }
-  if (persistent === false) {
-    hints.push({ id: 'storage', kind: 'warn', action: null,
-      text: 'Der Browser sichert die Daten nicht dauerhaft. Nicht übertragene Einträge können bei Speichermangel verloren gehen.' });
+  // Eine Uhr, die hinter den Zeitpunkt des Schließens zurückgestellt wurde, verbirgt den Hinweis nicht für immer.
+  const quiet = dismissedAt > 0 && dismissedAt <= now && now - dismissedAt < STORAGE_HINT_QUIET_MS;
+  if (persistent === false && !quiet) {
+    hints.push(persistRefused
+      ? { id: 'storage', kind: 'warn', action: null, dismissible: true,
+        text: 'Der Browser hat die Anfrage abgelehnt. Hilfreich: die App zum Startbildschirm hinzufügen und regelmäßig abgleichen.' }
+      : { id: 'storage', kind: 'warn', action: 'persist', dismissible: true,
+        text: 'Der Browser sichert die Daten nicht dauerhaft. Nicht übertragene Einträge können bei Speichermangel verloren gehen.' });
   }
   return hints;
 }

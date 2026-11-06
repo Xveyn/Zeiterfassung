@@ -117,3 +117,16 @@ test('the privacy notice is linked from the pairing screen and the connection ta
 test('links in the web app use the accent colour, not the browser default', () => {
   assert.match(css, /(?:^|\n)a\s*\{[^}]*color:\s*var\(--accent\)/);
 });
+
+test('a dismissible hint leaves room for its close button so the text never runs under it', () => {
+  assert.match(rule('.hint.dismissible'), /padding-right:\s*52px/);          // Knopf 44 px + Rand
+  assert.match(rule('.hint .dismiss'), /min-width:\s*var\(--tap\)/);
+  assert.match(views, /hint\.dismissible && button\('✕'/);
+  assert.match(views, /'aria-label': 'Hinweis schließen'/);
+});
+
+test('the “heute” label sits in the date column, not beside the weekday (the column is only 48 px wide)', () => {
+  assert.match(views, /day\.isToday && h\('div', \{ class: 'tag' \}, 'heute'\)/);
+  assert.match(css, /\.day \.tag \{[^}]*display: inline-block/);
+  assert.match(css, /grid-template-columns: 48px 1fr auto/);
+});
