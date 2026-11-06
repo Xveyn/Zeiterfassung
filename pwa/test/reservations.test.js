@@ -25,8 +25,8 @@ test('normalising keeps start, end, a trimmed category and the pause', () => {
     normalizeReservationSlots([{ start: '09:00', end: '12:00', pause: 30, kategorie: ' Projekt ', gcal_event_id: 'x' }]),
     [{ start: '09:00', end: '12:00', kategorie: 'Projekt', pause: 30 }]);
   assert.deepEqual(normalizeReservationSlots([{ start: '09:00', end: '12:00' }]),
-    [{ start: '09:00', end: '12:00', kategorie: '', pause: 0 }]);
-  for (const bad of ['30', -5, 1.5, undefined, null, NaN]) {
+    [{ start: '09:00', end: '12:00', kategorie: '' }]);
+  for (const bad of ['30', -5, 1.5, null, NaN]) {
     assert.equal(normalizeReservationSlots([{ start: '09:00', end: '12:00', pause: bad }])[0].pause, 0, String(bad));
   }
   assert.deepEqual(normalizeReservationSlots('kaputt'), []);

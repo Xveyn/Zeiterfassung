@@ -678,7 +678,7 @@ test('reservations survive a reload', async () => {
   const second = new Store(adapter);
   await second.load();
 
-  assert.deepEqual(second.getReservation('2026-10-20').slots, [{ ...RES, pause: 0 }]);
+  assert.deepEqual(second.getReservation('2026-10-20').slots, [RES]);
 });
 
 test('a broken stored reservation row is skipped, not thrown', async () => {
@@ -966,6 +966,14 @@ test('the snapshot carries the pause with the capability and omits it without', 
   assert.deepEqual(store.snapshotReservations().reservations['2026-10-20'].slots, [RES]);
   assert.deepEqual(Object.keys(store.snapshotReservations().reservations['2026-10-20'].slots[0]).sort(),
     ['end', 'kategorie', 'start']);
+});
+
+test('a slot saved without pause stays "not given" and is sent without it once the capability arrives', async () => {
+  const { store } = await make();
+  await store.saveReservation('2026-10-20', [RES]);
+  await store.applyResponse(parseSyncResponse(liveResponse()), emptySnapshot(), '2026-10-08');
+  assert.equal(store.getMeta().reservation_pause, true);
+  assert.deepEqual(JSON.parse(JSON.stringify(store.snapshotReservations().reservations['2026-10-20'].slots)), [RES]);
 });
 
 test('losing the capability keeps a dirty pause local until it is sent; the pause-less echo then replaces it with 0', async () => {

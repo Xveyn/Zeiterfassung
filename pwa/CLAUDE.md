@@ -214,7 +214,7 @@ bietet sie nur an, wenn „Reservierungen verwenden“ an ist.
   `device_id`; `pause` sind Minuten (#455). Gesendet wird im ersten Päckchen eines
   Abgleichs und nur, wenn welche nicht übertragen sind.
 - **Pause nur mit Fähigkeit** (#455). Die Antwort trägt `reservation_pause: true`, wenn der Desktop
-  `pause` an Reservierungs-Slots versteht (Meta `reservation_pause`, bei jeder Antwort neu gesetzt;
+  `pause` an Reservierungs-Slots versteht (Meta `reservation_pause`, nur von einer Antwort mit `reservations` neu gesetzt;
   `PROTOCOL` bleibt 2). Ein älterer Desktop lehnt `pause` nicht ab, **verwirft sie aber still**
   (er liest nur `start`/`end`/`kategorie`), und der pausenlose Echo-Stand ersetzt danach den Slot der PWA;
   deshalb lässt `Store.snapshotReservations` `pause` ohne das Flag weg und bietet das Eingabefeld nicht an.

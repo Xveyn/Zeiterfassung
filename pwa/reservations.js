@@ -22,22 +22,23 @@ export function reservationEditable(day, today) {
   return reservationBlockVisible(day, today) && day <= addDays(today, RESERVATION_HORIZON_DAYS - 1);
 }
 
-/** `start`, `end`, `kategorie` und `pause` (wie am Desktop; ganze Zahl >= 0, sonst 0). Andere Felder
+/** `start`, `end`, `kategorie` und `pause` (wie am Desktop; ganze Zahl >= 0, sonst 0). Ohne `pause`-Schlüssel
+ *  bleibt der Slot ohne: „nicht angegeben“ ist nicht 0, der Desktop erbt dann die bisherige Pause. Andere Felder
  *  (etwa `gcal_event_id`) gehören nicht auf den Draht (der Desktop liest nur diese Felder, ein älterer verwirft `pause` still). */
 export function normalizeReservationSlots(raw) {
-  return normalizeSlots(raw).map((slot) => (slot !== null && typeof slot === 'object'
+  return normalizeSlots(raw).map((slot, i) => (slot !== null && typeof slot === 'object'
     ? {
       start: slot.start,
       end: slot.end,
       kategorie: slot.kategorie,
-      pause: Number.isInteger(slot.pause) && slot.pause >= 0 ? slot.pause : 0,
+      ...(raw[i].pause !== undefined ? { pause: Number.isInteger(slot.pause) && slot.pause >= 0 ? slot.pause : 0 } : {}),
     }
     : slot));
 }
 
 /** Die Pause wird wie bei Ist-Zeiten geprüft (kleiner als die Arbeitszeit, Obergrenze). */
 export function validateReservationSlots(slots) {
-  return validateSlots(slots);
+  return validateSlots(slots.map((s) => (s !== null && typeof s === 'object' && s.pause === undefined ? { ...s, pause: 0 } : s)));
 }
 
 /** Reihenfolge der Slots ist keine Änderung. */

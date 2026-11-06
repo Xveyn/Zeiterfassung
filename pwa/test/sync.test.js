@@ -340,7 +340,7 @@ test('a sync sends bearer, request shape and the dirty days, then applies the an
   await store.saveDay('2026-10-07', [SLOT]);
   await store.saveDay('2026-10-06', [SLOT]);
   await store.clearDay('2026-10-06');                                // Tombstone
-  await store.saveReservation('2026-10-15', [RES]);
+  await store.saveReservation('2026-10-15', [{ ...RES, pause: 0 }]);
   await store.clearReservation('2026-10-16');                        // Tombstone der Reservierung
   await store.applyResponse(parseSyncResponse(fixture('sync-response.json')),   // Desktop bietet Kategorien an
     { entries: {}, versions: {}, reservations: {}, reservationVersions: {} }, '2026-10-08');
@@ -372,7 +372,7 @@ test('a sync sends bearer, request shape and the dirty days, then applies the an
   for (const key of Object.keys(example.settings)) {
     assert.deepEqual(keysOf(call.plain.settings[key]), keysOf(example.settings[key]), key);
   }
-  assert.deepEqual(call.plain.reservations['2026-10-15'].slots, [{ ...RES, pause: 0 }]);   // Antwort trug die Fähigkeit
+  assert.deepEqual(call.plain.reservations['2026-10-15'].slots, [{ ...RES, pause: 0 }]);   // ausdrücklich gespeichert, Antwort trug die Fähigkeit
   assert.deepEqual(keysOf(call.plain.reservations['2026-10-15'].slots[0]),
     keysOf(example.reservations['2026-10-15'].slots[0]));
   assert.equal(call.plain.reservations['2026-10-16'].deleted, true);
