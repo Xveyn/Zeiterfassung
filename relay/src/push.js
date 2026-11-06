@@ -1,7 +1,7 @@
 // relay/src/push.js
 // Sendet eine Web-Push-Nachricht (RFC 8291 aes128gcm, VAPID nach RFC 8292) und ordnet die Antwort des
 // Push-Dienstes für das Durable Object ein. Wirft nie: ein Fehler ist ein Ergebnis, kein Absturz.
-import { buildPushPayload } from '@block65/webcrypto-web-push';
+import { encryptNotification, vapidHeaders } from '@block65/webcrypto-web-push';
 
 const TTL_SECONDS = 300;
 
@@ -9,6 +9,27 @@ const TTL_SECONDS = 300;
  *  erkennt sie vor dem Entschlüsseln. Sie verrät nichts; nur der Relay mit dem VAPID-Schlüssel kann senden.
  *  Gleichlauf mit `pwa/push-message.js`, ein Test hält beide zusammen. */
 export const TEST_PAYLOAD = 'zeiterfassung-test';
+
+/** Die Anfrage an den Push-Dienst, RFC 8291 (aes128gcm) mit VAPID. **Ohne Auffüllen:** `buildPushPayload` der
+ *  Bibliothek füllt jede Nachricht auf einen Body von 4096 Byte auf und bietet dafür keinen Schalter; Mozillas
+ *  Autopush lehnt das mit 413 ab (FCM nimmt es an). Das Auffüllen verbirgt nur die Länge der Nachricht. */
+async function buildRequest(subscription, blob, env) {
+  const target = { endpoint: subscription.endpoint, expirationTime: null, keys: subscription.keys };
+  const { headers } = await vapidHeaders(target, { subject: env.VAPID_SUBJECT, publicKey: env.VAPID_PUBLIC, privateKey: env.VAPID_PRIVATE });
+  const body = await encryptNotification(target, new TextEncoder().encode(blob), { pad: false });
+  return {
+    method: 'POST',
+    headers: {
+      ...headers,
+      ttl: String(TTL_SECONDS),
+      urgency: 'high',
+      'content-encoding': 'aes128gcm',
+      'content-length': String(body.byteLength),
+      'content-type': 'application/octet-stream',
+    },
+    body,
+  };
+}
 
 /** `report(cause)` wird bei `retry` und `drop` einmal gerufen: mit dem HTTP-Status des Push-Dienstes, `network`
  *  (kein Status) oder `build` (Nachricht nicht baubar). Nie Text, Endpoint oder Header: der Relay loggt nichts,
@@ -19,11 +40,7 @@ export const TEST_PAYLOAD = 'zeiterfassung-test';
 export async function sendPush(subscription, blob, env, fetchFn = fetch, report = () => {}) {
   let request;
   try {
-    request = await buildPushPayload(
-      { data: blob, options: { ttl: TTL_SECONDS, urgency: 'high' } },
-      { endpoint: subscription.endpoint, expirationTime: null, keys: subscription.keys },
-      { subject: env.VAPID_SUBJECT, publicKey: env.VAPID_PUBLIC, privateKey: env.VAPID_PRIVATE },
-    );
+    request = await buildRequest(subscription, blob, env);
   } catch {
     report('build');
     return 'drop';          // unbrauchbare Schlüssel: ein Wiederholen ändert nichts
