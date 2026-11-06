@@ -12,7 +12,9 @@ export const TEST_PAYLOAD = 'zeiterfassung-test';
 
 /** Die Anfrage an den Push-Dienst, RFC 8291 (aes128gcm) mit VAPID. **Ohne Auffüllen:** `buildPushPayload` der
  *  Bibliothek füllt jede Nachricht auf einen Body von 4096 Byte auf und bietet dafür keinen Schalter; Mozillas
- *  Autopush lehnt das mit 413 ab (FCM nimmt es an). Das Auffüllen verbirgt nur die Länge der Nachricht. */
+ *  Autopush lehnt das mit 413 ab, sobald es das Abo über seine FCM-Brücke bedient (Firefox auf Android): der
+ *  Router prüft den als JSON verpackten, Base64-codierten Body gegen 4096 Zeichen (`message_size_check`,
+ *  `routers/fcm/settings.rs`), 4096 Byte Body ergeben rund 5500. Das Auffüllen verbirgt nur die Länge der Nachricht. */
 async function buildRequest(subscription, blob, env) {
   const target = { endpoint: subscription.endpoint, expirationTime: null, keys: subscription.keys };
   const { headers } = await vapidHeaders(target, { subject: env.VAPID_SUBJECT, publicKey: env.VAPID_PUBLIC, privateKey: env.VAPID_PRIVATE });

@@ -157,7 +157,7 @@ Schließ-Codes der Box (`box.js`) und was der Client darauf tun muss:
   VAPID-Token anspricht. Ein neuer Push-Dienst muss hier eingetragen werden.
 - `src/schedule.js` — was ist fällig, wann klingelt es, was nach einem Fehlschlag. Die **15 Minuten**
   Frist zählen ab der ersten Fälligkeit (`dueAt`), nicht ab einem Wiederholungsversuch.
-- `src/push.js` — `sendPush` → `ok` / `gone` (404, 410) / `retry` (429, 5xx, Netzfehler) / `drop`. Die Anfrage baut `buildRequest` aus `vapidHeaders` und `encryptNotification(…, {pad: false})` selbst, **nicht** über `buildPushPayload`: der füllt jede Nachricht auf einen 4096-Byte-Body auf, und Mozillas Autopush lehnt das mit 413 ab (FCM nicht; #475).
+- `src/push.js` — `sendPush` → `ok` / `gone` (404, 410) / `retry` (429, 5xx, Netzfehler) / `drop`. Die Anfrage baut `buildRequest` aus `vapidHeaders` und `encryptNotification(…, {pad: false})` selbst, **nicht** über `buildPushPayload`: der füllt jede Nachricht auf einen 4096-Byte-Body auf, und Mozillas Autopush lehnt das über seine FCM-Brücke (Firefox auf Android) mit 413 ab: der Router prüft den Base64-codierten Body in JSON gegen 4096 Zeichen, nutzbar sind also rund 2900 Byte (Desktop-Firefox, Standard 5630, wäre durchgekommen; #475).
   Wirft nie.
 - `src/device.js` — das Durable Object. Der Alarm wird **immer aus dem gespeicherten Zustand neu
   berechnet** (nie im Konstruktor gesetzt), `alarm()` wirft nie (die Plattform begrenzt
