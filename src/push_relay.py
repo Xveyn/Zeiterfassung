@@ -61,20 +61,30 @@ def delete_device(secret: str, *, opener: Any = None, timeout: float = TIMEOUT_S
 
 # --- Testbenachrichtigung (#340) -----------------------------------------------------------------
 
-def _error_code(error: urllib.error.HTTPError) -> str | None:
-    """Der Fehlercode im Body des Relays (`{"error": "too_soon"}`), sonst `None`. Liest höchstens
-    1 KiB; was kein JSON-Objekt ist (eine Fehlerseite von Cloudflare), gilt als ohne Code."""
+def _error_body(error: urllib.error.HTTPError) -> dict[str, Any]:
+    """Der Body des Relays als Objekt (`{"error": "too_soon"}`), sonst `{}`. Liest höchstens 1 KiB;
+    was kein JSON-Objekt ist (eine Fehlerseite von Cloudflare), gilt als leer."""
     try:
         body = json.loads(error.read(1024))
     except Exception:
         # Kein lesbarer Body (leer, kein JSON, Verbindung weg): der Status allein entscheidet.
-        return None
-    code = body.get("error") if isinstance(body, dict) else None
-    return code if isinstance(code, str) else None
+        return {}
+    return body if isinstance(body, dict) else {}
 
 
-def _kind_of(status: int, code: str | None) -> str:
-    """Status und Fehlercode des Relays → die Art, die der Reiter in einen Text übersetzt."""
+def _cause_of(body: dict[str, Any]) -> str | None:
+    """Warum der Push-Dienst ablehnte: sein HTTP-Status (100–599), `network` oder `build`. Alles
+    andere (ein künftiger Relay, Fremdtext) entfällt, damit kein Text des Relays in der Oberfläche landet."""
+    cause = body.get("cause")
+    if isinstance(cause, int) and not isinstance(cause, bool) and 100 <= cause <= 599:
+        return str(cause)
+    return cause if cause in ("network", "build") else None
+
+
+def _kind_of(status: int, body: dict[str, Any]) -> str:
+    """Status und Body des Relays → die Art, die der Reiter in einen Text übersetzt. `push_failed`
+    trägt die Ursache hinter einem Doppelpunkt (`push_failed:403`), wenn der Relay sie nennt."""
+    code = body.get("error")
     if status == 401:
         return "unauthorized"
     if status == 404:
@@ -86,7 +96,8 @@ def _kind_of(status: int, code: str | None) -> str:
     if status == 429:
         return "too_soon" if code == "too_soon" else "rate_limited"
     if status == 502 and code == "push_failed":
-        return "push_failed"
+        cause = _cause_of(body)
+        return "push_failed" if cause is None else f"push_failed:{cause}"
     return "server"
 
 
@@ -95,7 +106,7 @@ def send_test(secret: str, *, opener: Any = None, timeout: float = TIMEOUT_S,
     """Lässt den Relay sofort eine Testbenachrichtigung an das Handy dieses Geheimnisses senden
     (`POST /v1/test`, ohne Body; die Nutzlast kennt nur der Relay). Liefert genau eine Art:
     `ok`, `no_subscription`, `gone`, `too_soon`, `rate_limited`, `unknown_route`, `offline`,
-    `push_failed`, `unauthorized` oder `server`. Wirft nie, loggt weder Geheimnis noch Ausnahmetext."""
+    `push_failed` (ggf. `push_failed:<Status|network|build>`), `unauthorized` oder `server`. Wirft nie, loggt weder Geheimnis noch Ausnahmetext."""
     request = urllib.request.Request(f"{base_url}/v1/test", method="POST")
     request.add_header("Authorization", f"Bearer {secret}")
     request.add_header("User-Agent", USER_AGENT)
@@ -104,8 +115,9 @@ def send_test(secret: str, *, opener: Any = None, timeout: float = TIMEOUT_S,
             status = getattr(response, "status", None) or response.getcode()
             return "ok" if 200 <= status < 300 else "server"
     except urllib.error.HTTPError as error:
-        log.warning("Relay: Testbenachrichtigung abgelehnt (HTTP %s)", error.code)
-        return _kind_of(error.code, _error_code(error))
+        kind = _kind_of(error.code, _error_body(error))
+        log.warning("Relay: Testbenachrichtigung abgelehnt (HTTP %s, %s)", error.code, kind)
+        return kind
     except OSError as error:
         # Offline, Zeitüberschreitung, TLS, Verbindung zurückgesetzt: nur die Art, nie der Text.
         log.warning("Relay: Testbenachrichtigung nicht gesendet (%s)", type(error).__name__)

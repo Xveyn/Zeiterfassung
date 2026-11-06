@@ -203,7 +203,7 @@ class App {
       await this.relay.sendTest(secret);
       return testResultText('ok');
     } catch (error) {
-      return testResultText(error instanceof RelayError ? error.kind : 'server');
+      return error instanceof RelayError ? testResultText(error.kind, error.cause) : testResultText('server');
     }
   }
 

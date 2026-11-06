@@ -10,9 +10,13 @@ const TTL_SECONDS = 300;
  *  Gleichlauf mit `pwa/push-message.js`, ein Test hält beide zusammen. */
 export const TEST_PAYLOAD = 'zeiterfassung-test';
 
-/** `ok` gesendet · `gone` Abo ist tot (404/410) · `retry` später noch einmal (429, 5xx, Netzfehler) ·
+/** `report(cause)` wird bei `retry` und `drop` einmal gerufen: mit dem HTTP-Status des Push-Dienstes, `network`
+ *  (kein Status) oder `build` (Nachricht nicht baubar). Nie Text, Endpoint oder Header: der Relay loggt nichts,
+ *  und die Ursache ist das Einzige, das die Testroute dem Nutzer verrät.
+ *
+ *  `ok` gesendet · `gone` Abo ist tot (404/410) · `retry` später noch einmal (429, 5xx, Netzfehler) ·
  *  `drop` der Dienst lehnt diese Nachricht ab (übrige 4xx), ein Wiederholen ändert nichts. */
-export async function sendPush(subscription, blob, env, fetchFn = fetch) {
+export async function sendPush(subscription, blob, env, fetchFn = fetch, report = () => {}) {
   let request;
   try {
     request = await buildPushPayload(
@@ -21,16 +25,19 @@ export async function sendPush(subscription, blob, env, fetchFn = fetch) {
       { subject: env.VAPID_SUBJECT, publicKey: env.VAPID_PUBLIC, privateKey: env.VAPID_PRIVATE },
     );
   } catch {
+    report('build');
     return 'drop';          // unbrauchbare Schlüssel: ein Wiederholen ändert nichts
   }
   let response;
   try {
     response = await fetchFn(subscription.endpoint, request);
   } catch {
+    report('network');
     return 'retry';         // Netzfehler: ein kurzer Ausfall des Push-Dienstes soll die Erinnerung nicht kosten
   }
   if (response.ok) return 'ok';
   if (response.status === 404 || response.status === 410) return 'gone';
+  report(response.status);
   if (response.status === 429 || response.status >= 500) return 'retry';
   return 'drop';
 }

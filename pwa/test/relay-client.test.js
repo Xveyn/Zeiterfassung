@@ -116,6 +116,20 @@ for (const [status, body, kind] of [
   });
 }
 
+for (const cause of [403, 503, 'network', 'build']) {
+  test(`the test call: push_failed carries the cause ${cause}`, async () => {
+    const client = new RelayClient({ fetchFn: fakeFetch([502, { error: 'push_failed', cause }]) });
+    await assert.rejects(client.sendTest(SECRET), (error) => error.kind === 'push_failed' && error.cause === cause);
+  });
+}
+
+test('the test call: a cause that is no status, network or build is dropped', async () => {
+  for (const cause of ['https://push.example/x', 99, 600, 4.5, null, {}]) {
+    const client = new RelayClient({ fetchFn: fakeFetch([502, { error: 'push_failed', cause }]) });
+    await assert.rejects(client.sendTest(SECRET), (error) => error.kind === 'push_failed' && error.cause === undefined, String(cause));
+  }
+});
+
 test('the test call: a network error is offline', async () => {
   const client = new RelayClient({ fetchFn: fakeFetch(new TypeError('Failed to fetch')) });
   await assert.rejects(client.sendTest(SECRET), (error) => error.kind === 'offline');

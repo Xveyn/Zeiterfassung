@@ -52,6 +52,29 @@ test('maps a thrown fetch to retry', async () => {
   assert.equal(await sendPush(await makeSubscription(), 'blob', await makeEnv(), fetchFn), 'retry');
 });
 
+test('reports the status of a refusing or failing push service, and only then', async () => {
+  for (const [status, result] of [[403, 'drop'], [401, 'drop'], [503, 'retry'], [429, 'retry']]) {
+    const causes = [];
+    const got = await sendPush(await makeSubscription(), 'blob', await makeEnv(), answering(status).fetchFn, (cause) => causes.push(cause));
+    assert.equal(got, result);
+    assert.deepEqual(causes, [status], String(status));
+  }
+  for (const status of [201, 404, 410]) {
+    const causes = [];
+    await sendPush(await makeSubscription(), 'blob', await makeEnv(), answering(status).fetchFn, (cause) => causes.push(cause));
+    assert.deepEqual(causes, [], String(status));
+  }
+});
+
+test('reports network for a thrown fetch and build for unusable keys, never the error text', async () => {
+  const causes = [];
+  const down = async () => { throw new TypeError('network down https://secret.example/endpoint'); };
+  await sendPush(await makeSubscription(), 'blob', await makeEnv(), down, (cause) => causes.push(cause));
+  const broken = { VAPID_PUBLIC: 'x', VAPID_PRIVATE: 'y', VAPID_SUBJECT: 'mailto:test@example.com' };
+  assert.equal(await sendPush(await makeSubscription(), 'blob', broken, answering(201).fetchFn, (cause) => causes.push(cause)), 'drop');
+  assert.deepEqual(causes, ['network', 'build']);
+});
+
 test('sends an aes128gcm body with a vapid authorization header', async () => {
   const env = await makeEnv();
   const sub = await makeSubscription('https://updates.push.services.mozilla.com/wpush/v2/xyz');
