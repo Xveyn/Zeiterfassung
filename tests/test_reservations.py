@@ -4,6 +4,7 @@ from unittest import mock
 
 import pytest
 from src.reservations import (
+    fit_pause,
     ReservationStore, inherit_pause, migrate_reservations_enabled, normalize_pause,
     reservations_active,
 )
@@ -444,6 +445,16 @@ def test_inherit_pause_not_for_inserted_slot():
                         [{"start": "06:00", "end": "07:00", "kategorie": "B"},
                          {"start": "08:00", "end": "12:00", "kategorie": "A"}])
     assert [s["pause"] for s in out] == [0, 0]
+
+
+@pytest.mark.parametrize("pause,start,end,expected", [
+    (19, "08:00", "08:20", 19), (20, "08:00", "08:20", 0), (0, "08:00", "08:20", 0),
+    (30, "22:00", "02:00", 0), (30, "08:00", "08:00", 0),
+    (True, "08:00", "12:00", 0), (30.0, "08:00", "12:00", 0),
+    (30, None, "12:00", 30), (30, "aa:bb", "12:00", 30),
+])
+def test_fit_pause(pause, start, end, expected):
+    assert fit_pause(pause, start, end) == expected
 
 
 def test_inherit_drops_pause_not_below_span():

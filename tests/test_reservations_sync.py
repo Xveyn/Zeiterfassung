@@ -398,6 +398,23 @@ def test_remote_wins_pause_must_stay_below_shortened_span(pause, expected):
     assert res["merged"]["2026-06-01"]["slots"][0]["pause"] == expected
 
 
+def test_shortened_event_settles_after_one_update():
+    first = merge_reservations(
+        {"2026-06-01": _local(slots=[
+            _lslot(start="08:00", end="08:40", event_id="ev1", pause=30)])},
+        [_remote(start="08:00", end="08:20", event_id="ev1", pause=30,
+                 modified_at="2026-05-21T10:00:00Z")],
+        "2026-05-19T00:00:00Z")
+    merged = first["merged"]["2026-06-01"]
+    again = merge_reservations(
+        {"2026-06-01": merged},
+        [_remote(start="08:00", end="08:20", event_id="ev1", pause=30,
+                 modified_at=merged["modified_at"])],
+        "2026-05-19T00:00:00Z")
+    assert len(again["plan"]["update"]) <= 1
+    assert "pause" not in (again["plan"]["update"] or [{}])[0]
+
+
 def test_remote_wins_without_property_yields_pause_zero():
     res = merge_reservations(
         {"2026-06-01": _local(slots=[
