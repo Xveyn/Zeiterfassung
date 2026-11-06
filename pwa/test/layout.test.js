@@ -71,7 +71,8 @@ test('the pause fields step in five minutes and snap on change like the desktop 
 
 test('the reservation pause field is the same field as the actual-time one, shown only with the flag', () => {
   // Ein Feld, eine Zeile: gleiche Breitenregeln, gleiche Rasterung; nur die Bedingung unterscheidet sich.
-  assert.match(views, /\(withPause \|\| pauseEnabled\) && field\(index, 'pause', 'Pause \(Min\)', \{ type: 'number', inputmode: 'numeric', min: 0, step: TIME_STEP_MINUTES \}\)/);
+  assert.match(views, /const showPause = withPause \|\| pauseEnabled;/);
+  assert.match(views, /showPause && field\(index, 'pause', 'Pause \(Min\)', \{ type: 'number', inputmode: 'numeric', min: 0, step: TIME_STEP_MINUTES \}\)/);
   assert.equal((views.match(/field\(index, 'pause'/g) || []).length, 1);
 });
 
@@ -85,7 +86,7 @@ test('app.js hands pauseEnabled to the rows, the validation, the save and the ed
 test('the calendar note sits only in the reservation tab and only with the flag', () => {
   assert.match(readFileSync(new URL('../messages.js', import.meta.url), 'utf8'), /RESERVATION_CALENDAR_NOTE = 'Falls dein Desktop mit dem Google-Kalender abgleicht: Der Termin zeigt die volle Zeitspanne, die Pause wird dort nicht abgezogen\.'/);
   assert.equal((views.match(/RESERVATION_CALENDAR_NOTE/g) || []).length, 2);     // Import + eine Verwendung
-  assert.match(views, /!withPause && pauseEnabled && h\('p', \{ class: 'muted'[^)]*RESERVATION_CALENDAR_NOTE/);
+  assert.match(views, /!withPause && pauseEnabled && h\('p', \{ class: 'muted note' \}, 'ⓘ ', RESERVATION_CALENDAR_NOTE/);
   assert.match(views, /withPause: false, pauseEnabled/);
   assert.match(views, /categoryDisplay\(state\[index\], defaults, weekday, withPause\);/);   // Reservierungspause setzt kein `*`
 });
@@ -116,4 +117,10 @@ test('the privacy notice is linked from the pairing screen and the connection ta
 
 test('links in the web app use the accent colour, not the browser default', () => {
   assert.match(css, /(?:^|\n)a\s*\{[^}]*color:\s*var\(--accent\)/);
+});
+
+test('the editor rows that use display:flex still honour [hidden] (day total, net line)', () => {
+  const css = readFileSync(new URL('../app.css', import.meta.url), 'utf8');
+  assert.match(css, /\.daysum\[hidden\][^{]*\{ display: none; \}/);
+  assert.match(css, /\.slot \.net\[hidden\]/);
 });

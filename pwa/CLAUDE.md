@@ -280,6 +280,20 @@ bietet sie nur an, wenn „Reservierungen verwenden“ an ist.
   Empfangszeitpunkt (`ReservationStore.merge_phone`); die Antwort kann daher
   einen neueren `modified_at` tragen als gesendet.
 
+## Tages-Editor (#461)
+
+Die Logik liegt DOM-frei in `view-model.js`, `views.js` verdrahtet sie: `rowNetMinutes`/`dayNetMinutes` (Netto je Zeile
+und „Tag gesamt“, nur über ganze Minuten; ohne Pausenfeld zählt die Pause nicht), `rowProblems` (welches Feld fehlt:
+„Start fehlt“, „Ende fehlt“, „Ende muss nach dem Start liegen“), `addToTime` und `QUICK_END_MINUTES`/`QUICK_PAUSES`
+(Schnellwahl, Ende höchstens 23:55), `editorTitle` (Typ hinter dem Datum, nur mit zwei Reitern).
+
+- **„Speichern“ bleibt anklickbar**, außer bei der Sperre außerhalb des Fensters (#273). Ein ungültiger Stand zeigt
+  beim Klick die Fehler am Feld und unten die ausführliche Meldung, ohne zu speichern; vorher erscheint ein Feldfehler
+  erst, wenn das Zeitfeld verlassen wurde.
+- **Eine Schnellwahl schreibt in die Zeile und baut neu** — wie die Kategorie-Wahl; Fehler, Netto und Pressed-Zustand
+  folgen jeder Eingabe über `update()`, ohne die Zeilen neu zu bauen (der Fokus bliebe sonst nicht).
+- **`display: flex` überstimmt `hidden`**: Zeilen, die per `hidden` verschwinden sollen, brauchen ein eigenes `[hidden]`-Rechteck in `app.css`.
+
 ## Einstellungen und Kategorien
 
 Der Button unten links heißt „Einstellungen“. `settingsDialog` (ersetzt den
