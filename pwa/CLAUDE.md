@@ -330,6 +330,19 @@ Kopplung gültig bis), dann folgen der Speicher-Hinweis, die Benachrichtigungen,
   verlangt weiter eine Klick-Geste: der Schalter ruft `setPush` im `change`-Ereignis.
 - **Native `replaceChildren` macht aus `null` den Text „null“** (anders als `h()`): nur echte Knoten übergeben.
 
+## Übergänge (#461)
+
+Reines CSS am Ende von `app.css`, ohne JavaScript. Regeln, die `test/layout.test.js` festhält:
+
+- **Höchstens 200 ms** je Animation und Übergang (die App wird im Vorbeigehen bedient); **Keyframes bewegen nur `transform` und `opacity`**.
+- **`prefers-reduced-motion: reduce` schaltet alles ab** (`animation`/`transition: none !important`, auch Pseudo-Elemente und Backdrop).
+- **Eingeblendet werden Dialoge samt Backdrop und neue Hinweise im Hinweis-Container der Woche** (`.hints .hint`). Nicht die Woche und
+  nicht `.hint` allgemein: `weekView` wird bei jedem Rendern ersetzt, jede Animation dort liefe bei jedem Abgleich neu und flackerte.
+- **Ausgeblendet wird nichts**: `openDialog` entfernt den Dialog beim `close` sofort; ein Ausblenden bräuchte JavaScript (Schließen verzögern).
+- **Aufklappen der „Technischen Details“** nur progressiv (`@supports (interpolate-size: allow-keywords)`, `::details-content`); ohne Support klappt es ohne Animation auf.
+- **Testen im Browser:** Ein Headless-/Hintergrund-Tab erzeugt keine Frames, die Animation bleibt bei Zeit 0 stehen (wie hängende Screenshots).
+  Mit einem Screenshot lassen sich Frames erzwingen; `page.emulateMedia({ reducedMotion: 'reduce' })` prüft den Ausschalter.
+
 ## Einstellungen und Kategorien
 
 Der Button unten links heißt „Einstellungen“. `settingsDialog` (ersetzt den

@@ -168,3 +168,44 @@ test('technical details are folded away; the state card and the storage notice c
 test('the storage notice never hands null to the native replaceChildren (it would print “null”)', () => {
   assert.match(views, /replaceChildren\(\.\.\.\[h\('div', \{\}, model\.text\)[^\]]*\]\.filter\(Boolean\)\)/);
 });
+
+// --- Übergänge (#461) ------------------------------------------------------------------------------------------
+
+/** Alle Zeitangaben (ms) hinter `animation:`/`transition:` im Stylesheet. */
+function motionDurations() {
+  const found = [];
+  for (const [, value] of css.matchAll(/(?:^|[;{\s])(?:animation|transition)\s*:\s*([^;}]+)/g)) {
+    for (const [, number, unit] of value.matchAll(/(?<![\w.-])(\d*\.?\d+)(ms|s)\b/g)) found.push(Number(number) * (unit === 's' ? 1000 : 1));
+  }
+  return found;
+}
+
+test('every animation and transition is short: at most 200 ms (the app is used in passing)', () => {
+  const durations = motionDurations();
+  assert.ok(durations.length >= 4, 'es gibt Übergänge');
+  assert.ok(durations.every((ms) => ms <= 200), `zu lang: ${durations.filter((ms) => ms > 200)}`);
+});
+
+test('keyframes move only transform and opacity (cheap on weak phones, no layout work)', () => {
+  const blocks = [...css.matchAll(/@keyframes\s+([\w-]+)\s*\{((?:[^{}]*\{[^}]*\})*)\s*\}/g)];
+  assert.ok(blocks.length >= 3, 'es gibt Keyframes');
+  for (const [, name, body] of blocks) {
+    const properties = [...body.matchAll(/([\w-]+)\s*:/g)].map((match) => match[1]);
+    assert.ok(properties.every((property) => ['opacity', 'transform'].includes(property)), `${name}: ${properties}`);
+  }
+});
+
+test('reduced motion switches all animations and transitions off', () => {
+  const block = /@media \(prefers-reduced-motion: reduce\) \{([\s\S]*?)\n\}/.exec(css);
+  assert.ok(block, 'Block für reduzierte Bewegung fehlt');
+  assert.match(block[1], /animation:\s*none\s*!important/);
+  assert.match(block[1], /transition:\s*none\s*!important/);
+});
+
+test('dialogs and their backdrop fade in; only the hints host animates new hints, not the week (it is rebuilt on every render)', () => {
+  assert.match(css, /dialog\[open\] \{ animation: dialog-in/);
+  assert.match(css, /dialog\[open\]::backdrop \{ animation: backdrop-in/);
+  assert.match(css, /\.hints \.hint \{ animation: hint-in/);
+  assert.doesNotMatch(css, /(?:^|\n)\.hint \{[^}]*animation/);
+  assert.doesNotMatch(css, /\.week[^{]*\{[^}]*animation/);
+});
