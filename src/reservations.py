@@ -58,6 +58,23 @@ def normalize_pause(value: Any) -> int:
     return value if 0 <= value <= 1440 else 0
 
 
+def fit_pause(pause: Any, start: Any, end: Any) -> int:
+    """`normalize_pause`, aber 0, wenn die Pause die Zeitspanne nicht unterschreitet.
+
+    Für Pausen, die nicht aus einer geprüften Eingabe stammen (Kalendertermin,
+    vererbter Wert): ein gekürzter Slot darf keine Pause tragen, die ihn für
+    `validate_slots` ungültig macht."""
+    value = normalize_pause(pause)
+    if value == 0:
+        return 0
+    try:
+        h1, m1 = (int(x) for x in str(start).split(":"))
+        h2, m2 = (int(x) for x in str(end).split(":"))
+    except ValueError:
+        return value
+    return value if value < (h2 * 60 + m2) - (h1 * 60 + m1) else 0
+
+
 def inherit_pause(old_slots: list[Slot], new_slots: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Füllt `pause` an neuen Slots OHNE `pause`-Schlüssel: vom alten Slot
     gleichen Index, wenn `start` und `end` übereinstimmen, sonst 0. Slots mit
@@ -71,7 +88,7 @@ def inherit_pause(old_slots: list[Slot], new_slots: list[dict[str, Any]]) -> lis
         if i < len(old_slots):
             old = old_slots[i]
             if old.get("start") == slot.get("start") and old.get("end") == slot.get("end"):
-                pause = normalize_pause(old.get("pause"))
+                pause = fit_pause(old.get("pause"), slot.get("start"), slot.get("end"))
         result.append({**slot, "pause": pause})
     return result
 

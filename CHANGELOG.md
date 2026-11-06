@@ -19,7 +19,8 @@ dabei brutto.
   Ende ab, die Pause wird nicht abgezogen. Die Beschreibung nennt sie
   („Zeitspanne brutto, Pause N min nicht abgezogen“), die Pause selbst liegt in
   einer privaten Eigenschaft des Termins. Gewinnt beim Abgleich der Termin, gilt
-  seine Pause; fehlt die Eigenschaft (bestehende Termine), ist sie 0. Beim ersten
+  seine Pause; fehlt die Eigenschaft (bestehende Termine) oder ist sie nicht kleiner
+  als die Zeitspanne (Termin in Google gekürzt), ist sie 0. Beim ersten
   Abgleich nach dem Update wird kein Termin umgeschrieben.
 - **Handy-Abgleich und lokale API**: Beide nehmen `pause` je Reservierungs-Slot
   an und liefern sie immer mit. Die Sync-Antwort trägt die neue Fähigkeit

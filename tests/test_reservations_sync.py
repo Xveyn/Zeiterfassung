@@ -387,6 +387,17 @@ def test_remote_wins_takes_pause_from_event_property():
     assert res["merged"]["2026-06-01"]["slots"][0]["pause"] == 30
 
 
+@pytest.mark.parametrize("pause,expected", [(19, 19), (20, 0), (30, 0)])
+def test_remote_wins_pause_must_stay_below_shortened_span(pause, expected):
+    res = merge_reservations(
+        {"2026-06-01": _local(slots=[
+            _lslot(start="08:00", end="08:40", event_id="ev1", pause=30)])},
+        [_remote(start="08:00", end="08:20", event_id="ev1", pause=pause,
+                 modified_at="2026-05-21T10:00:00Z")],
+        "2026-05-19T00:00:00Z")
+    assert res["merged"]["2026-06-01"]["slots"][0]["pause"] == expected
+
+
 def test_remote_wins_without_property_yields_pause_zero():
     res = merge_reservations(
         {"2026-06-01": _local(slots=[

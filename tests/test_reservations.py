@@ -446,6 +446,11 @@ def test_inherit_pause_not_for_inserted_slot():
     assert [s["pause"] for s in out] == [0, 0]
 
 
+def test_inherit_drops_pause_not_below_span():
+    out = inherit_pause([_old("08:00", "08:20", 30)], [{"start": "08:00", "end": "08:20"}])
+    assert out[0]["pause"] == 0
+
+
 def test_inherit_keeps_explicit_zero():
     out = inherit_pause([_old("08:00", "12:00", 30)],
                         [{"start": "08:00", "end": "12:00", "pause": 0}])

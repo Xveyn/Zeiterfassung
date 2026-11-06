@@ -10,7 +10,7 @@ pull → merge → push und schreibt neue event_ids pro Slot zurück.
 
 import contextlib
 
-from src.reservations import normalize_pause
+from src.reservations import fit_pause, normalize_pause
 from src.time_utils import utc_now_iso
 
 
@@ -19,13 +19,14 @@ def _slot_from_event(ev, reminder_minutes=None):
 
     `reminder_minutes` kommt aus dem lokalen Slot mit derselben event_id — der
     Kalender kennt das Feld nicht, es würde beim Remote-gewinnt-Merge sonst
-    verloren gehen. Die Pause kommt aus dem Event (fehlende Property = 0).
+    verloren gehen. Die Pause kommt aus dem Event (fehlende Property = 0; eine Pause, die
+    die Zeitspanne nicht unterschreitet, wird 0).
     """
     return {
         "start": ev["start"], "end": ev["end"],
         "kategorie": ev.get("kategorie", ""), "gcal_event_id": ev["event_id"],
         "send_reminder_minutes": reminder_minutes,
-        "pause": normalize_pause(ev.get("pause")),
+        "pause": fit_pause(ev.get("pause"), ev["start"], ev["end"]),
     }
 
 
