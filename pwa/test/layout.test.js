@@ -149,3 +149,22 @@ test('the unsaved-categories bar sits above the list, carries the save button an
 test('buttons outside dialogs (pairing screen) keep a gap so Cancel and Pair do not read as one button', () => {
   assert.match(rule('main .buttons'), /gap:\s*8px/);
 });
+
+test('the push switch is a real checkbox with role switch, fixed size, and does not inherit the full-width input style', () => {
+  assert.match(views, /type: 'checkbox', role: 'switch', class: 'switch-input'/);
+  assert.match(rule('input.switch-input'), /width:\s*46px/);
+  assert.match(rule('input.switch-input'), /appearance:\s*none/);
+  assert.match(views, /h\('label', \{ class: 'switch', for: 'push-toggle' \}/);   // das Label macht die ganze Zeile antippbar
+});
+
+test('technical details are folded away; the state card and the storage notice come first', () => {
+  const panel = /function connectionPanel[\s\S]*?\n\}\r?\n/.exec(views)[0];
+  assert.ok(panel.indexOf("class: 'status-card'") < panel.indexOf('notice,'));
+  assert.ok(panel.indexOf('notice,') < panel.indexOf('pushSection(push, handlers)'));
+  assert.ok(panel.indexOf("h('details', { class: 'tech' }") > panel.indexOf('pushSection(push, handlers)'));
+  assert.match(panel, /h\('summary', \{\}, 'Technische Details'\)/);
+});
+
+test('the storage notice never hands null to the native replaceChildren (it would print “null”)', () => {
+  assert.match(views, /replaceChildren\(\.\.\.\[h\('div', \{\}, model\.text\)[^\]]*\]\.filter\(Boolean\)\)/);
+});

@@ -317,6 +317,19 @@ und „Tag gesamt“, nur über ganze Minuten; ohne Pausenfeld zählt die Pause 
   Zeiten heißt „Keine Standardzeiten“ (früher „—“).
 - Buttons außerhalb von Dialogen (Koppel-Seite) haben einen Abstand (`main .buttons`).
 
+## Einstellungen › Verbindung (#461)
+
+Der Reiter beginnt mit dem Zustand (`connectionSummary`: „● Verbunden“/„● Offline“, Desktopname, wann zuletzt abgeglichen,
+Kopplung gültig bis), dann folgen der Speicher-Hinweis, die Benachrichtigungen, der Datenschutz-Link und, **eingeklappt**
+(`<details>`), die „Technischen Details“ (Desktop-Version, Plattform, Adresse, Speicher, Verlauf).
+
+- **Speicher-Hinweis** (`storageNotice`): dieselbe Quelle und derselbe Text wie in der Wochenansicht (`hintsModel`), mit
+  „Dauerhaft sichern“ (`handlers.persist` → `App.askPersistentStorage`); nach einer Ablehnung steht der Text ohne Knopf da.
+- **Benachrichtigungen sind ein Schalter** (`<input type="checkbox" role="switch">`, `pushModel.on`/`toggle`), kein Knopf
+  „erlauben/ausschalten“ mehr; gesperrt oder nicht unterstützt ist er ausgegraut, die Statuszeile sagt warum. Die Erlaubnis
+  verlangt weiter eine Klick-Geste: der Schalter ruft `setPush` im `change`-Ereignis.
+- **Native `replaceChildren` macht aus `null` den Text „null“** (anders als `h()`): nur echte Knoten übergeben.
+
 ## Einstellungen und Kategorien
 
 Der Button unten links heißt „Einstellungen“. `settingsDialog` (ersetzt den
