@@ -116,7 +116,7 @@ test('the privacy notice is linked from the pairing screen and the connection ta
 });
 
 test('links in the web app use the accent colour, not the browser default', () => {
-  assert.match(css, /(?:^|\n)a\s*\{[^}]*color:\s*var\(--accent\)/);
+  assert.match(css, /(?:^|\n)a\s*\{[^}]*color:\s*var\(--accent-text\)/);
 });
 
 test('a dismissible hint leaves room for its close button so the text never runs under it', () => {

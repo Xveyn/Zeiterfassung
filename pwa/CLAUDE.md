@@ -363,6 +363,21 @@ Reines CSS am Ende von `app.css`, ohne JavaScript. Regeln, die `test/layout.test
 - **Testen im Browser:** Ein Headless-/Hintergrund-Tab erzeugt keine Frames, die Animation bleibt bei Zeit 0 stehen (wie hängende Screenshots).
   Mit einem Screenshot lassen sich Frames erzwingen; `page.emulateMedia({ reducedMotion: 'reduce' })` prüft den Ausschalter.
 
+## Kontrast (#461)
+
+Farben stehen als Tokens in `:root` von `app.css`, `test/contrast.test.js` misst sie nach WCAG 2.x am echten Stylesheet
+(Normaltext ≥ 4,5:1 auf **jeder** Fläche, auf der er steht; Rahmen und Schalter-Spur ≥ 3:1). Drei Rollen, nicht verwechseln:
+
+- **`--accent`** (`#d63a56`) und `--accent-hover`: **Flächen mit weißer Schrift** (Primärknopf, aktiver Reiter, Chip, „heute“-Label) und Rahmen.
+  Dunkel genug für 4,5:1 mit Weiß, hell genug für 3:1 als Rand auf der Seite.
+- **`--accent-text`** (`#fa7f98`): **Text und Links in Rot** (Links, Fehler, „+“). Nie `color: var(--accent)` — ein Test verbietet es;
+  das ursprüngliche Rot erreichte als Text auf den Tageskacheln nur 3,0:1.
+- **`--muted`** (`#a8a8ba`): graue Beschriftungen; auch auf den hellsten Flächen (Eintrags-Kachel, Speichern-Leiste) ≥ 4,5:1.
+- **`--line`** (`#60709a`): Rahmen von Feldern, Auswahl und Chips, Spur des Schalters. Dekorative Rahmen (Dialog, Slot-Kasten, Statusleiste) bleiben bei `#2a3a5a`.
+
+Wer eine Farbe oder eine neue Fläche ergänzt, trägt die Fläche in `surfaces()` des Tests ein. Ausgegraute Bedienelemente (`opacity: .5`)
+sind von der Regel ausgenommen.
+
 ## Einstellungen und Kategorien
 
 Der Button unten links heißt „Einstellungen“. `settingsDialog` (ersetzt den
