@@ -113,6 +113,16 @@ test('the body is as small as the message, not padded to 4096 bytes (Mozilla ans
   assert.equal(new Headers(headers).get('content-length'), String(body.byteLength));
 });
 
+// Autopush bedient Firefox auf Android über FCM und prüft dort den Base64-codierten, als JSON verpackten Body
+// gegen 4096 Zeichen (`routers/fcm/settings.rs`). Wer `maxBlob` erhöht oder das Auffüllen wieder einschaltet,
+// bricht Firefox für Android still: dieser Test hält den größten erlaubten Eintrag mit Luft unter der Grenze.
+test('the largest allowed blob stays well below the 4096 characters Autopush allows for FCM', async () => {
+  const { fetchFn, calls } = answering(201);
+  await sendPush(await makeSubscription(), 'x'.repeat(LIMITS.maxBlob), await makeEnv(), fetchFn);
+  const base64Length = Math.ceil(calls[0].init.body.byteLength / 3) * 4;
+  assert.ok(base64Length <= 4096 - 512, `${base64Length} Zeichen Base64 für ${LIMITS.maxBlob} Zeichen Blob`);
+});
+
 test('the message still decrypts at the subscriber, also a long one', async () => {
   for (const message of ['zeiterfassung-test', 'Ü'.repeat(1500)]) {
     const sub = await makeSubscription();
