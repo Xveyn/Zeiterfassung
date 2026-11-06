@@ -378,6 +378,16 @@ Farben stehen als Tokens in `:root` von `app.css`, `test/contrast.test.js` misst
 Wer eine Farbe oder eine neue Fläche ergänzt, trägt die Fläche in `surfaces()` des Tests ein. Ausgegraute Bedienelemente (`opacity: .5`)
 sind von der Regel ausgenommen.
 
+## Antippen auf Touch-Geräten
+
+- **Hover-Farben stehen in `@media (hover: hover)`** (`button:hover`, `button.primary:hover`). Auf Touch bleibt `:hover` nach dem Antippen an
+  dem Element hängen: ein leerer Werktag oder „Einstellungen“ wechselte die Farbe und behielt sie, auch über dem sich öffnenden Dialog und
+  nach dessen Schließen. Ein Test verbietet die Hover-Regeln außerhalb des Blocks.
+- **`-webkit-tap-highlight-color: transparent`** auf `:root`: Android zeichnet sonst ein eigenes, kurzes Aufleuchten auf jeden angetippten Knopf.
+  Eine eigene `:active`-Rückmeldung gibt es bewusst nicht; das Öffnen (Dialog blendet ein) oder der geänderte Inhalt ist die Rückmeldung.
+- **Prüfen:** Playwright mit `newContext({ hasTouch: true, isMobile: true })` und `touchscreen.tap`; `:hover` und die berechnete Hintergrundfarbe vor
+  dem Tippen, nach dem Tippen und nach dem Schließen des Dialogs vergleichen. Das native Tap-Highlight bildet der Test-Browser nicht ab.
+
 ## Einstellungen und Kategorien
 
 Der Button unten links heißt „Einstellungen“. `settingsDialog` (ersetzt den

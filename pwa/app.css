@@ -16,6 +16,7 @@
   --gutter: 16px;
   --tap: 44px;
   color-scheme: dark;
+  -webkit-tap-highlight-color: transparent;   /* Android zeichnet sonst ein eigenes Aufleuchten auf den angetippten Knopf */
 }
 * { box-sizing: border-box; }
 html { -webkit-text-size-adjust: 100%; }
@@ -35,9 +36,13 @@ button {
   min-height: var(--tap); padding: 0 16px; border: 0; border-radius: 8px;
   background: var(--cell); color: var(--text); cursor: pointer;
 }
-button:hover { background: var(--cell-hover); }
 button.primary { background: var(--accent); color: #fff; font-weight: 600; }
-button.primary:hover { background: var(--accent-hover); }
+/* Hover nur, wo es ihn gibt: auf Touch-Geräten bleibt :hover nach dem Antippen an dem Element hängen (der Tag „leuchtete“
+   weiter, auch über dem sich öffnenden Dialog). */
+@media (hover: hover) {
+  button:hover { background: var(--cell-hover); }
+  button.primary:hover { background: var(--accent-hover); }
+}
 a { color: var(--accent-text); }
 button.link { background: none; color: var(--accent-text); min-height: var(--tap); padding: 0 8px; text-decoration: underline; }
 button:disabled { opacity: .5; cursor: default; }
