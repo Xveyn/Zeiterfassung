@@ -17,7 +17,9 @@ import { Store } from './store.js';
 import { SyncClient, SyncError, clockSkewMs } from './sync.js';
 import { isPaired } from './transport.js';
 import { shouldQueue, shouldSync } from './sync-policy.js';
-import { errorDetail, logFailure, withDetail } from './diagnose.js';
+import { errorDetail, logFailure, setLogSink, withDetail } from './diagnose.js';
+import { createDebugLog } from './debug-log.js';
+import { idbLogStore } from './log-store.js';
 import { swipeDirection } from './swipe-policy.js';
 import { shouldApplyUpdate, shouldCheckForUpdate } from './update-policy.js';
 import { blockSignature, rowsToBlock } from './categories.js';
@@ -42,6 +44,10 @@ const SWIPE_CLICK_GUARD_MS = 400;
 class App {
   constructor(root, store, client, initialHash = location.hash) {
     this.initialHash = initialHash;
+    // Vor allem anderen: ab hier landet jedes `logFailure` auch im Protokoll.
+    this.debugLog = createDebugLog({ store: idbLogStore() });
+    setLogSink((context, error) => this.debugLog.recordError(context, error));
+    this.debugLog.prune();
     this.root = root;
     this.store = store;
     this.client = client;
@@ -350,12 +356,15 @@ class App {
     this.syncing = true;
     this.lastAttemptAt = Date.now();
     this.render();
+    const startedAt = Date.now();
     try {
       const result = await this.client.sync();
+      if (!result.discarded) this.debugLog.recordSync({ result: 'ok', ms: Date.now() - startedAt, ...result });
       this.lastError = null;
       if (!result.discarded) this.skewMs = clockSkewMs(this.store.getMeta().server_time, new Date());
       this.updatePushSchedule();
     } catch (error) {
+      this.debugLog.recordSync({ result: error?.kind ?? error?.name, ms: Date.now() - startedAt });
       this.lastError = error instanceof SyncError ? error
         : new SyncError({ kind: 'client_error', message: String(error?.message ?? error) });
     } finally {

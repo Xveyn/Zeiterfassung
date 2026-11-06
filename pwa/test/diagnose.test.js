@@ -1,8 +1,8 @@
 // pwa/test/diagnose.test.js
-import { test } from 'node:test';
+import { afterEach, test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { MAX_DETAIL_LENGTH, errorDetail, logFailure, withDetail } from '../diagnose.js';
+import { MAX_DETAIL_LENGTH, errorDetail, logFailure, setLogSink, withDetail } from '../diagnose.js';
 import { updateStatusText } from '../update-policy.js';
 
 test('errorDetail names the error and keeps its message', () => {
@@ -56,4 +56,30 @@ test('Chromes failed service worker update keeps its reason after the boilerplat
   const network = new TypeError("Failed to update a ServiceWorker for scope ('https://xveyn.github.io/Zeiterfassung/') "
     + "with script ('https://xveyn.github.io/Zeiterfassung/sw.js'): Failed to fetch");
   assert.equal(errorDetail(network), 'TypeError: Failed to update a ServiceWorker: Failed to fetch');
+});
+
+// --- Senke fürs Debug-Protokoll ---------------------------------------------------------------
+
+afterEach(() => setLogSink(null));
+const silentLog = { warn() {} };
+
+test('logFailure hands context and error to the sink exactly once', () => {
+  const calls = [];
+  setLogSink((context, error) => calls.push([context, error]));
+  const err = new Error('x');
+  logFailure('K', err, silentLog);
+  assert.deepEqual(calls, [['K', err]]);
+});
+
+test('a throwing sink never breaks logFailure', () => {
+  setLogSink(() => { throw new Error('Senke kaputt'); });
+  assert.doesNotThrow(() => logFailure('K', new Error('x'), silentLog));
+});
+
+test('without a sink logFailure does not call the former one', () => {
+  let n = 0;
+  setLogSink(() => { n += 1; });
+  setLogSink(null);
+  logFailure('K', new Error('x'), silentLog);
+  assert.equal(n, 0);
 });

@@ -405,6 +405,9 @@ export class SyncClient {
     }
     await this._store.applyResponse(parsed, snapshot, localIsoDate(now));
     for (const date of Object.keys(snapshot.entries)) done.add(date);
-    return { sent: Object.keys(snapshot.entries).length, conflicts: parsed.conflicts.length, excluded: parsed.excluded };
+    return {
+      sent: Object.keys(snapshot.entries).length, conflicts: parsed.conflicts.length, excluded: parsed.excluded,
+      received: Object.keys(parsed.entries).length, window: parsed.window_days,   // fürs Debug-Protokoll
+    };
   }
 }

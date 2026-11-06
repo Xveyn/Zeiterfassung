@@ -380,7 +380,9 @@ test('a sync sends bearer, request shape and the dirty days, then applies the an
   assert.deepEqual(call.plain.entries['2026-10-06'].slots, []);
   assert.equal(call.plain.client_time, NOW);
   assert.equal(call.plain.protocol, 2);
-  assert.deepEqual(result, { sent: 2, conflicts: 1, excluded: false });
+  const response = fixture('sync-response.json');
+  assert.deepEqual(result, { sent: 2, conflicts: 1, excluded: false,
+    received: Object.keys(response.entries).length, window: response.window_days });
   assert.equal(store.getMeta().token, fixture('sync-response.json').token);   // erneuert
   assert.deepEqual(store.dirtyDates(), []);
 });
