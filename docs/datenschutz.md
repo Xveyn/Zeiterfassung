@@ -154,11 +154,18 @@ Die Web-App führt ein kleines Protokoll für die Fehlersuche (Einstellungen ›
 im Speicher des Browsers (eigene IndexedDB-Datenbank, getrennt von den Einträgen), und wird nirgendwohin
 gesendet: es verlässt das Gerät nur, wenn der Nutzer es kopiert oder teilt.
 
-Aufgezeichnet werden nur Fehler (Art und eine bereinigte Meldung des Browsers) und je Abgleich eine
-Zusammenfassung: Ergebnis, Dauer, Zahl der Tage und Zahl der Konflikte. Adressen, Namen, Kategorien und Zeiten von
-Einträgen stehen nicht darin; ein Filter ersetzt Adressen, Schlüssel, Daten und Uhrzeiten in Meldungen durch
-Platzhalter, und die Beschreibung eines Fehlers hat feste Felder. Geheimnisse (Abschnitt 9) schreibt die Web-App
-auch hier in keinen Text.
+Aufgezeichnet werden nur Fehler (Art und eine Meldung des Browsers) und je Abgleich eine Zusammenfassung:
+Ergebnis, Dauer, Zahl der Tage und Zahl der Konflikte. Die App übergibt dem Protokoll keine Namen, Kategorien oder
+Einträge, nur feste Texte und Fehlermeldungen des Browsers; diese Meldungen werden zusätzlich gefiltert (Adressen,
+Schlüssel, Daten, Uhrzeiten und Pfade werden durch Platzhalter ersetzt). Der Filter erkennt Muster und ist
+deshalb kein Beweis, dass nichts Persönliches darin steht. Geheimnisse (Abschnitt 9) schreibt die Web-App auch
+hier in keinen Text.
+
+Kopieren und Teilen geben außer den Einträgen den technischen Zustand der Web-App mit: Browser und Betriebssystem
+mit Hauptversion, ob sie als App installiert ist, Online-Zustand, Sprache, Bildschirmgröße, Build-Kennung, Zustand
+des Service Workers, Erlaubnis und Abo für Benachrichtigungen (ja/nein), Speicher (dauerhaft ja/nein, Größe),
+Kopplungsweg (LAN oder Relay) und Protokollversion. Gerätemodell, Gerätename, Adressen und Geräte-ID gehören nicht
+dazu. Wer das Protokoll in ein Ticket kopiert, gibt diese Angaben weiter.
 
 Einträge werden nach 1, 7 oder 30 Tagen gelöscht (Standard 7 Tage), höchstens 500 bleiben erhalten. Im Reiter „Debug“
 lässt sich das Protokoll jederzeit sofort löschen.

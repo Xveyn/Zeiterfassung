@@ -54,3 +54,23 @@ test('scrubText ist idempotent', () => {
   const long = scrubText('x'.repeat(1000));
   assert.equal(scrubText(long), long);
 });
+
+const PATH_CASES = [
+  ['Cannot read /home/max/notes.txt', 'Cannot read <pfad>'],
+  ['open /var/log/x failed', 'open <pfad> failed'],
+  ['file C:\\Users\\Max\\a.txt failed', 'file <pfad> failed'],
+  ['at C:/Users/Max/x', 'at <pfad>'],
+  ['share \\\\server\\share\\x ok', 'share <pfad> ok'],
+  ['und/oder a/b', 'und/oder a/b'],
+  ['sw.js app.js /sw.js', 'sw.js app.js /sw.js'],
+  ['Chrome 131.0.6778 port 8099 status 404', 'Chrome 131.0.6778 port 8099 status 404'],
+  ['12/1.27.0 (a1b2c3d) 1/7/30', '12/1.27.0 (a1b2c3d) 1/7/30'],
+  ['fetch https://x.example/a/b/c failed', 'fetch <url> failed'],
+];
+
+test('scrubText: Pfade werden Platzhalter, Dateinamen und Verhältnisse bleiben', () => {
+  for (const [input, expected] of PATH_CASES) {
+    assert.equal(scrubText(input), expected, input);
+    assert.equal(scrubText(scrubText(input)), scrubText(input), input);
+  }
+});

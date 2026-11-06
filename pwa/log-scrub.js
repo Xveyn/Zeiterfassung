@@ -9,6 +9,10 @@ export const DEFAULT_MAX_LENGTH = 240;
 const FILE_EXTENSIONS = new Set(['js', 'mjs', 'json', 'css', 'html', 'txt']);
 
 const URL_RE = /\b[a-z][a-z0-9+.-]*:\/\/[^\s"'<>)]+/gi;
+// Pfade nach den URLs (deren Pfadteil ist dann schon weg). Unix: absolut, mindestens zwei Segmente (`and/or`, `/sw.js` bleiben).
+const UNIX_PATH_RE = /(?<![\w<>.:/\\-])\/(?:[^\s/"'<>]+\/)+[^\s/"'<>]+/g;
+const WIN_PATH_RE = /(?<![\w])[A-Za-z]:[\\/][^\s"'<>]+/g;
+const UNC_PATH_RE = /\\\\[^\s\\"'<>]+\\[^\s"'<>]+/g;
 const MAIL_RE = /[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+/g;
 const IPV6_BRACKET_RE = /\[[0-9a-fA-F:.]+\](?::\d{1,5})?/g;
 // Auch IPv4-gemappt (`::ffff:1.2.3.4`). Kandidaten aus Hex und Doppelpunkten; nur mit `::` oder allen acht Gruppen eine Adresse,
@@ -28,11 +32,14 @@ function isIpv6(candidate) {
   return candidate.includes('::') || candidate.split(':').length === 8;
 }
 
-/** Text ohne Adressen, Mails, Hosts, Schlüssel, Daten und Zeiten, in einer Zeile und gekürzt. */
+/** Text ohne Adressen, Mails, Hosts, Schlüssel, Pfade, Daten und Zeiten, in einer Zeile und gekürzt. */
 export function scrubText(value, maxLength = DEFAULT_MAX_LENGTH) {
   if (typeof value !== 'string') return '';
   let text = value
     .replace(URL_RE, '<url>')
+    .replace(UNC_PATH_RE, '<pfad>')
+    .replace(WIN_PATH_RE, '<pfad>')
+    .replace(UNIX_PATH_RE, '<pfad>')
     .replace(MAIL_RE, '<mail>')
     .replace(IPV6_BRACKET_RE, '<ip>')
     .replace(IPV6_RE, (m) => (isIpv6(m) ? '<ip>' : m))
