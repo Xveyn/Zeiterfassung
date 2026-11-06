@@ -17,10 +17,10 @@ aktuelle Oberfläche zeigt oder eine drei Releases alte.
 | `konflikte-v1.26.0.png` | Konfliktdialog: zwei Karten, links die gruppierte Liste |
 | `einstellungen-erinnerungen-v1.26.0.png` | Einstellungen, Tab „Erinnerungen" mit dem Abschnitt „Handy" |
 | `einstellungen-mobil-v1.26.0.png` | Einstellungen, Tab „Mobil" mit einem gekoppelten Demo-Handy |
-| `handy-woche-v1.25.0.png` | Handy-Web-App: Woche mit Reservierung und „Noch ausstehend" |
-| `handy-editor-v1.25.0.png` | Handy-Web-App: Tages-Editor, Reiter „Reservierung" |
-| `handy-verbindung-v1.26.0.png` | Handy-Web-App: Einstellungen → Verbindung (Benachrichtigungen) |
-| `handy-kategorien-v1.25.0.png` | Handy-Web-App: Einstellungen → Kategorien |
+| `handy-woche-v--VERSION--.png` | Handy-Web-App: Woche mit heutigem Tag, Reservierung und „Noch ausstehend" |
+| `handy-editor-v--VERSION--.png` | Handy-Web-App: Tages-Editor, Reiter „Reservierung" mit Schnellwahl und Netto |
+| `handy-verbindung-v--VERSION--.png` | Handy-Web-App: Einstellungen → Verbindung (Zustandskarte, Benachrichtigungen) |
+| `handy-kategorien-v--VERSION--.png` | Handy-Web-App: Einstellungen → Kategorien |
 
 ## Neue Screenshots aufnehmen
 
@@ -61,9 +61,27 @@ bzw. `App._open_settings(initial_tab=…)` ruft und das Fenster aufnimmt (unter 
 `convert … -channel A -threshold 98% +channel -trim +repage` abschneiden).
 
 **Handy-Ansichten** entstehen im Browser am Rechner, nicht auf einem Handy:
-`python scripts/pwa_devserver.py --seed-days 21 --reservations --api-port <frei>` startet die
-echte Handy-Instanz und die Web-App, der ausgegebene Koppel-Link koppelt einen Chrome mit
-390×844 Pixeln Fenstergröße. Vor der Aufnahme von Hand bereinigt: der Hinweis „Der Browser
-sichert die Daten nicht dauerhaft“ (der Test-Browser bekommt keinen dauerhaften Speicher) und
-die eigene LAN-Adresse, die der Reiter „Verbindung“ zeigt (durch eine Beispiel-Adresse ersetzt).
+`python scripts/pwa_devserver.py --reservations --api-port <frei>` startet die echte Handy-Instanz und die
+Web-App, der ausgegebene Koppel-Link koppelt einen Chrome mit **390×844 Pixeln** Fenstergröße. Alle vier Bilder
+sind 390 Pixel breit und zeigen den Zustand ohne Dialog-Animation (Playwright: `animations: 'disabled'`).
+
+Die Demo-Woche stammt nicht von `--seed-days` (das legt gleichförmige Ein-Stunden-Tage an), sondern von einem kleinen
+Skript, das `pwa_devserver.running(...)` startet und mit `dev.storage.apply_merge(...)` Einträge für Montag bis
+heute schreibt (Mo `08:00–16:30`, 30 min Pause; Di zwei Slots Projekt/Intern; Mi Support und Projekt; Do `08:00–16:00`;
+heute `08:00–12:00`); die Reservierung für heute (`13:00–17:00`, Support) kommt über den Editor der Web-App, weil der
+Reservierungs-Speicher der Handy-Instanz im Server liegt. Heute sollte ein Werktag mit Ist-Zeit am Vormittag sein,
+damit „heute“ und „Noch ausstehend“ im Bild stehen.
+
+Was sich beim Aufnehmen ändert, ohne dass es im Bild stehen soll:
+
+- **Speicher-Hinweis:** der Test-Browser bekommt keinen dauerhaften Speicher, die Web-App zeigt dann ihre Warnung.
+  Vor dem Laden `navigator.storage.persist` auf „gewährt“ setzen (`page.addInitScript`), dann erscheint sie nicht.
+- **Fokusrahmen:** ein Dialog setzt beim Öffnen den Fokus auf den ersten Knopf, im Bild steht dann ein gelber
+  Rahmen. Per eingeschleustem CSS ausblenden (`:focus, :focus-visible { outline: none !important }`); `blur()` am
+  fokussierten Knopf lässt den Screenshot in Playwright hängen.
+- **Desktop-Name:** der Dev-Server nennt den Desktop „Desktop (Dev)“; im Reiter „Verbindung“ vor der Aufnahme durch
+  „Arbeitsrechner“ ersetzen. Die LAN-Adresse steht nur unter „Technische Details“ (eingeklappt, also nicht im Bild);
+  wer sie aufklappt, ersetzt sie durch eine Beispiel-Adresse.
+- **Service Worker:** Worker und Caches vor dem Koppeln abmelden/leeren, sonst zeigt der Browser eine ältere Fassung der Seite.
+
 Den Kopplungscode zeigt kein Bild.
