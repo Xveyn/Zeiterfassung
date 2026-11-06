@@ -42,6 +42,7 @@ const DEFAULT_META = Object.freeze({
   window_max_known: false, // erst nach der ersten angewandten Antwort wahr; vorher weiß man nichts
   auto_update: false,      // Updates der PWA automatisch einspielen (#290); gerätelokal, Standard aus
   reservations_enabled: false, // Desktop bietet Reservierungen an (Feld in der Antwort); fehlt es, bleibt alles verborgen
+  reservation_pause: false,   // Desktop versteht `pause` an Reservierungs-Slots (Feld `reservation_pause`, #455); sonst geht sie nie auf den Draht
   settings_writable: false,   // Desktop versteht `settings` (Feld `writable_settings` in der Antwort); sonst ist das Bearbeiten aus
   reminders: null,            // Block `reminders` der letzten Antwort (#331); null = Desktop kennt ihn nicht
   push_enabled: false,        // Benachrichtigungen in diesem Gerät eingeschaltet (#331); die Erlaubnis selbst liegt im Browser
@@ -393,7 +394,9 @@ export class Store {
 
   /** Was der nächste Abgleich an Reservierungen schickt: dirty Tage ohne Fehler, neueste zuerst,
    *  höchstens `limit` (der Desktop nimmt höchstens 400). Form der Anfrage: `{slots, modified_at,
-   *  deleted}` — ohne `device_id`, ohne `pause`. */
+   *  deleted}` — ohne `device_id`. `pause` steht an den Slots nur, wenn der Desktop sie versteht
+   *  (`reservation_pause`); ein älterer nimmt sie an, verwirft sie aber still, und nach seinem Echo
+   *  ersetzt der pausenlose Stand den Slot. Lokal bleibt sie bis dahin, nur der Draht lässt sie weg. */
   snapshotReservations(limit = MAX_RESERVATIONS_PER_REQUEST) {
     const reservations = {};
     const reservationVersions = {};
@@ -402,7 +405,10 @@ export class Store {
       if (!isDirty(record) || record.error) continue;
       if (Object.keys(reservations).length >= limit) break;
       reservations[date] = {
-        slots: structuredClone(record.entry.slots),
+        slots: record.entry.slots.map((slot) => {
+          const { pause, ...bare } = slot;
+          return this._meta.reservation_pause ? { ...bare, pause } : bare;
+        }),
         modified_at: record.entry.modified_at,
         deleted: record.entry.deleted,
       };
@@ -534,6 +540,10 @@ export class Store {
       ...this._meta,
       reminders: parsed.reminders ? structuredClone(parsed.reminders) : null,
       reservations_enabled: parsed.reservations !== null && parsed.reservations !== undefined,
+      // Nur eine Antwort MIT `reservations` sagt etwas über die Fähigkeit; fehlt der Block (Reservierungen am
+      // Desktop vorübergehend aus), bleibt das Flag stehen — sonst ginge eine dirty Pause beim Wiedereinschalten
+      // ohne Pause hinaus und käme als 0 zurück.
+      reservation_pause: parsed.reservations != null ? parsed.reservation_pause === true : this._meta.reservation_pause,
       last_pull_at: parsed.last_pull_at,
       server_time: parsed.server_time,
       settings_writable: Array.isArray(parsed.writable_settings)

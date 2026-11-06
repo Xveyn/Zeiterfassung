@@ -58,3 +58,17 @@ test('the response of a desktop before the forward window (#265) is still unders
   assert.equal(parsed.window_ahead, null);               // unbekannt = älterer Desktop
   assert.deepEqual(Object.keys(parsed.entries), ['2026-10-07', '2026-10-06']);
 });
+
+test('the response of a desktop before the reservation pause is still understood and sends no pause', () => {
+  const doc = frozen('sync-response-pre-pause.json');
+  assert.ok(!('reservation_pause' in doc));
+  assert.ok(Object.keys(doc.reservations).length > 0);
+  for (const day of Object.values(doc.reservations)) {
+    for (const slot of day.slots) assert.ok(!('pause' in slot));
+  }
+  const parsed = parseSyncResponse(doc);
+  assert.equal(parsed.reservation_pause, false);
+  for (const day of Object.values(parsed.reservations)) {
+    for (const slot of day.slots) assert.equal(slot.pause, 0);
+  }
+});

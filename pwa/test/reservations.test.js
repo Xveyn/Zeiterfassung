@@ -20,17 +20,24 @@ test('the horizon is a year', () => {
   assert.equal(RESERVATION_HORIZON_DAYS, 365);
 });
 
-test('normalising keeps exactly start, end and a trimmed category', () => {
+test('normalising keeps start, end, a trimmed category and the pause', () => {
   assert.deepEqual(
     normalizeReservationSlots([{ start: '09:00', end: '12:00', pause: 30, kategorie: ' Projekt ', gcal_event_id: 'x' }]),
-    [{ start: '09:00', end: '12:00', kategorie: 'Projekt' }]);
+    [{ start: '09:00', end: '12:00', kategorie: 'Projekt', pause: 30 }]);
   assert.deepEqual(normalizeReservationSlots([{ start: '09:00', end: '12:00' }]),
     [{ start: '09:00', end: '12:00', kategorie: '' }]);
+  for (const bad of ['30', -5, 1.5, null, NaN]) {
+    assert.equal(normalizeReservationSlots([{ start: '09:00', end: '12:00', pause: bad }])[0].pause, 0, String(bad));
+  }
   assert.deepEqual(normalizeReservationSlots('kaputt'), []);
 });
 
-test('validation reuses the slot rules without a pause', () => {
-  assert.equal(validateReservationSlots([{ start: '09:00', end: '12:00', kategorie: '' }]).ok, true);
+test('validation reuses the slot rules including the pause', () => {
+  assert.equal(validateReservationSlots([{ start: '09:00', end: '12:00', kategorie: '', pause: 0 }]).ok, true);
+  assert.equal(validateReservationSlots([{ start: '09:00', end: '12:00', kategorie: '', pause: 30 }]).ok, true);
+  const short = validateReservationSlots([{ start: '08:00', end: '08:30', kategorie: 'A', pause: 30 }]);
+  assert.equal(short.ok, false);
+  assert.match(short.message ?? short.error ?? JSON.stringify(short), /Pause \(30 Min\) muss kleiner als die Arbeitszeit/);
   assert.equal(validateReservationSlots([]).ok, false);
   assert.equal(validateReservationSlots([{ start: '12:00', end: '09:00', kategorie: '' }]).ok, false);
   assert.equal(validateReservationSlots([
@@ -42,6 +49,7 @@ test('the signature ignores the order of slots', () => {
   const b = { start: '11:00', end: '12:00', kategorie: 'B' };
   assert.equal(reservationSignature([a, b]), reservationSignature([b, a]));
   assert.notEqual(reservationSignature([a]), reservationSignature([b]));
+  assert.notEqual(reservationSignature([{ ...a, pause: 0 }]), reservationSignature([{ ...a, pause: 30 }]));
 });
 
 test('the phone only offers days the desktop will accept, with a day of margin for clock differences', () => {
@@ -85,4 +93,32 @@ test('pending minutes count only the open slots', () => {
   const slots = [planned('08:00', '10:00', 'Projekt'), planned('13:00', '15:30', 'Support')];
   assert.equal(pendingReservationMinutes(slots, [actual('18:00', '19:00', 'Projekt')], true), 150);
   assert.equal(pendingReservationMinutes(slots, [], true), 270);
+});
+
+test('pending minutes are net of the pause', () => {
+  const slots = [
+    { start: '08:00', end: '15:30', kategorie: 'A', pause: 30 },
+    { start: '08:00', end: '15:30', kategorie: 'B', pause: 30 },
+    { start: '08:00', end: '14:30', kategorie: 'C', pause: 30 },
+  ];
+  assert.equal(pendingReservationMinutes(slots, [], false), 1200);
+  assert.equal(pendingReservationMinutes(slots.map(({ pause: _p, ...rest }) => rest), [], false), 1290);
+});
+
+test('today pending minutes are net and only count the open slot', () => {
+  const slots = [
+    { start: '08:00', end: '12:00', kategorie: 'A', pause: 30 },
+    { start: '13:00', end: '17:00', kategorie: 'A', pause: 15 },
+  ];
+  assert.equal(pendingReservationMinutes(slots, [actual('08:00', '12:00', 'A')], true), 225);
+});
+
+test('a foreign pause never makes pending minutes negative or NaN', () => {
+  const mk = (pause) => [{ start: '09:00', end: '10:00', kategorie: '', pause }];
+  for (const pause of [60, 90, 1e9, -1, 'x', null, undefined, NaN]) {
+    const v = pendingReservationMinutes(mk(pause), [], false);
+    assert.ok(Number.isFinite(v) && v >= 0, String(pause));
+  }
+  assert.equal(pendingReservationMinutes(mk(60), [], false), 0);
+  assert.equal(pendingReservationMinutes(mk(1e9), [], false), 0);
 });

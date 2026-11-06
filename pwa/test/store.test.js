@@ -2,6 +2,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
+import { readFileSync } from 'node:fs';
+import { parseSyncResponse } from '../sync.js';
+import { pendingReservationMinutes } from '../reservations.js';
 import { Store } from '../store.js';
 import { createMemoryAdapter } from '../memory-adapter.js';
 
@@ -534,12 +537,12 @@ const RES_TODAY = '2026-10-13';
 const parsedWith = (reservations, over = {}) => parsedResponse({ reservations, ...over });
 const emptySnapshot = (extra = {}) => ({ entries: {}, versions: {}, reservations: {}, reservationVersions: {}, ...extra });
 
-test('saving a reservation marks it dirty, strips everything but the three fields and stamps it', async () => {
+test('saving a reservation marks it dirty, strips everything but the four fields and stamps it', async () => {
   const { store } = await make();
   await store.saveReservation('2026-10-20', [{ ...RES, pause: 30, gcal_event_id: 'x' }]);
 
   const day = store.getReservation('2026-10-20');
-  assert.deepEqual(day.slots, [RES]);
+  assert.deepEqual(day.slots, [{ ...RES, pause: 30 }]);
   assert.equal(day.dirty, true);
   assert.equal(day.deleted, false);
   assert.match(day.modified_at, /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$/);
@@ -926,4 +929,105 @@ test('the relay pairing fields have defaults, also for a stored meta from before
   await second.load();
   assert.equal(second.getMeta().transport, 'lan');
   assert.equal(second.getMeta().box_have, 0);
+});
+
+// --- Pause an Reservierungen: Fähigkeit `reservation_pause` (#455) ----------------------------------
+
+const liveResponse = () => JSON.parse(readFileSync(new URL('./fixtures/sync-response.json', import.meta.url)));
+const frozenResponse = () => JSON.parse(readFileSync(new URL('./fixtures/compat/sync-response-pre-pause.json', import.meta.url)));
+
+test('the real parser chain carries the capability: live response true, frozen response false', async () => {
+  const { store } = await make();
+  const live = parseSyncResponse(liveResponse());
+  assert.equal(live.reservation_pause, true);
+  assert.equal(live.reservations['2026-10-15'].slots[0].pause, 15);
+  const old = parseSyncResponse(frozenResponse());
+  assert.equal(old.reservation_pause, false);
+  assert.equal(old.reservations['2026-10-15'].slots[0].pause, 0);
+
+  await store.applyResponse(live, emptySnapshot(), '2026-10-08');
+  assert.equal(store.getMeta().reservation_pause, true);
+  await store.applyResponse(old, emptySnapshot(), '2026-10-08');
+  assert.equal(store.getMeta().reservation_pause, false);
+});
+
+test('the capability defaults to false before any response', async () => {
+  const { store } = await make();
+  assert.equal(store.getMeta().reservation_pause, false);
+});
+
+test('the snapshot carries the pause with the capability and omits it without', async () => {
+  const { store } = await make();
+  await store.applyResponse(parseSyncResponse(liveResponse()), emptySnapshot(), '2026-10-08');
+  await store.saveReservation('2026-10-20', [{ ...RES, pause: 30 }]);
+  assert.deepEqual(store.snapshotReservations().reservations['2026-10-20'].slots, [{ ...RES, pause: 30 }]);
+
+  await store.applyResponse(parseSyncResponse(frozenResponse()), emptySnapshot(), '2026-10-08');
+  assert.deepEqual(store.snapshotReservations().reservations['2026-10-20'].slots, [RES]);
+  assert.deepEqual(Object.keys(store.snapshotReservations().reservations['2026-10-20'].slots[0]).sort(),
+    ['end', 'kategorie', 'start']);
+});
+
+test('a slot saved without pause stays "not given" and is sent without it once the capability arrives', async () => {
+  const { store } = await make();
+  await store.saveReservation('2026-10-20', [RES]);
+  await store.applyResponse(parseSyncResponse(liveResponse()), emptySnapshot(), '2026-10-08');
+  assert.equal(store.getMeta().reservation_pause, true);
+  assert.deepEqual(JSON.parse(JSON.stringify(store.snapshotReservations().reservations['2026-10-20'].slots)), [RES]);
+});
+
+test('losing the capability keeps a dirty pause local until it is sent; the pause-less echo then replaces it with 0', async () => {
+  const { store } = await make();
+  await store.applyResponse(parseSyncResponse(liveResponse()), emptySnapshot(), '2026-10-08');
+  await store.saveReservation('2026-10-20', [{ ...RES, pause: 30 }]);
+  await store.applyResponse(parseSyncResponse(frozenResponse()), emptySnapshot(), '2026-10-08');
+
+  const stored = store.getReservation('2026-10-20');
+  assert.equal(stored.slots[0].pause, 30);
+  assert.equal('pause' in store.snapshotReservations().reservations['2026-10-20'].slots[0], false);
+  assert.equal(pendingReservationMinutes(stored.slots, [], false), 150);
+
+  // Der ältere Desktop verwirft die Pause und echot den Slot ohne sie: danach ist sie weg (echtes Verhalten).
+  const snapshot = store.snapshotReservations();
+  await store.applyResponse(parsedWith({ '2026-10-20': { slots: [{ ...RES, pause: 0 }], modified_at: snapshot.reservations['2026-10-20'].modified_at } }),
+    { ...emptySnapshot(), ...snapshot }, RES_TODAY);
+  assert.equal(store.getReservation('2026-10-20').slots[0].pause, 0);
+});
+
+test('a response without reservations does not drop the capability: a dirty pause survives desktop off/on', async () => {
+  const { store } = await make();
+  await store.applyResponse(parseSyncResponse(liveResponse()), emptySnapshot(), '2026-10-08');
+  await store.saveReservation('2026-10-20', [{ ...RES, pause: 30 }]);
+  // Reservierungen am Desktop aus: weder `reservations` noch das Flag in der Antwort.
+  await store.applyResponse(parsedWith(null), emptySnapshot(), RES_TODAY);
+  assert.equal(store.getMeta().reservation_pause, true);
+  assert.equal(store.getMeta().reservations_enabled, false);
+  // Wieder an: die Pause geht hinaus und kommt als 30 zurück.
+  await store.applyResponse(parsedWith({}, { reservation_pause: true }), emptySnapshot(), RES_TODAY);
+  const snapshot = store.snapshotReservations();
+  assert.equal(snapshot.reservations['2026-10-20'].slots[0].pause, 30);
+  await store.applyResponse(parsedWith({ '2026-10-20': { slots: [{ ...RES, pause: 30 }], modified_at: snapshot.reservations['2026-10-20'].modified_at } },
+    { reservation_pause: true }), { ...emptySnapshot(), ...snapshot }, RES_TODAY);
+  assert.equal(store.getReservation('2026-10-20').slots[0].pause, 30);
+});
+
+test('a response with reservations but without the flag clears the capability', async () => {
+  const { store } = await make();
+  await store.applyResponse(parseSyncResponse(liveResponse()), emptySnapshot(), '2026-10-08');
+  await store.applyResponse(parsedWith({}), emptySnapshot(), RES_TODAY);
+  assert.equal(store.getMeta().reservation_pause, false);
+});
+
+test('a desktop answer replaces the slot with its pause while the day is not dirty locally', async () => {
+  const { store } = await make();
+  const answer = (pause) => parsedWith({ '2026-10-20': {
+    slots: [{ ...RES, pause }], modified_at: '2026-10-13T12:00:00Z' } }, { reservation_pause: true });
+  await store.applyResponse(answer(15), emptySnapshot(), RES_TODAY);
+  assert.equal(store.getReservation('2026-10-20').slots[0].pause, 15);
+  await store.applyResponse(answer(45), emptySnapshot(), RES_TODAY);
+  assert.equal(store.getReservation('2026-10-20').slots[0].pause, 45);
+
+  await store.saveReservation('2026-10-20', [{ ...RES, pause: 10 }]);           // lokal geändert: bleibt
+  await store.applyResponse(answer(60), emptySnapshot(), RES_TODAY);
+  assert.equal(store.getReservation('2026-10-20').slots[0].pause, 10);
 });

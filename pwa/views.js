@@ -6,6 +6,7 @@ import { focusByKey, h } from './dom.js';
 import { MAX_CATEGORY_LENGTH, TIME_STEP_MINUTES, snapPause, snapTime } from './minutes.js';
 import { updateStatusText } from './update-policy.js';
 import { PRIVACY_URL } from './relay-client.js';
+import { RESERVATION_CALENDAR_NOTE } from './messages.js';
 import { MAX_NAME_LENGTH, blockSignature, moveRow, rowsToBlock, timesSummary, validateCategoryRows } from './categories.js';
 import {
   SETTINGS_TABS, categoryDisplay, categoryOptions, categoryRemovalText, categoryRenameHint, hintKey, nextRow, pickCategory,
@@ -158,7 +159,7 @@ function openDialog(dialog) {
 /** Eine Liste von Slot-Zeilen (Arbeitszeit mit Pause, Reservierung ohne). Der Abschnitt hält seinen
  *  Zustand selbst: Eingaben gehen bei Hintergrund-Renders und beim Wechsel des Reiters nicht verloren.
  *  `onChange` meldet jede Eingabe (der Dialog prüft dann neu). */
-function slotSection({ rows, categories, defaults, weekday, withPause, onChange }) {
+function slotSection({ rows, categories, defaults, weekday, withPause, pauseEnabled = false, onChange }) {
   const list = h('div', {});
   const state = rows.map((row) => ({ ...row, base: row.base && { ...row.base } }));
   const prefix = withPause ? 'slot' : 'res';       // die Ids beider Abschnitte dürfen nicht kollidieren
@@ -207,11 +208,13 @@ function slotSection({ rows, categories, defaults, weekday, withPause, onChange 
         field(index, 'start', 'von', { type: 'time', step: TIME_STEP_MINUTES * 60 }),
         field(index, 'end', 'bis', { type: 'time', step: TIME_STEP_MINUTES * 60 })),
       h('div', { class: 'row' },
-        withPause && field(index, 'pause', 'Pause (Min)', { type: 'number', inputmode: 'numeric', min: 0, step: TIME_STEP_MINUTES }),
+        (withPause || pauseEnabled) && field(index, 'pause', 'Pause (Min)', { type: 'number', inputmode: 'numeric', min: 0, step: TIME_STEP_MINUTES }),
         categoryField(index)))));
   };
   build();
-  const element = h('div', {}, list, button('+ Slot', () => { state.push(nextRow(state.at(-1))); build(); onChange(); }));
+  const element = h('div', {}, list,
+    !withPause && pauseEnabled && h('p', { class: 'muted' }, RESERVATION_CALENDAR_NOTE),
+    button('+ Slot', () => { state.push(nextRow(state.at(-1))); build(); onChange(); }));
   return { element, state };
 }
 
@@ -220,7 +223,7 @@ function slotSection({ rows, categories, defaults, weekday, withPause, onChange 
  *  `handlers.save(kind, rows)` liefert `null` bei Erfolg oder eine Fehlermeldung; `kind` ist
  *  `'work'` oder `'reservation'`. */
 export function editorDialog({ title, rows, categories, defaults = null, weekday = '', errors = {}, lock = null, canClear, validate,
-  reservation = null, startWith = 'work' }, handlers) {
+  reservation = null, startWith = 'work', pauseEnabled = false }, handlers) {
   const message = h('div', { class: 'error-text', role: 'alert' }, '');
   const save = h('button', { type: 'submit', class: 'primary' }, 'Speichern');
   const dialog = h('dialog', { 'aria-labelledby': 'editor-title' });
@@ -238,7 +241,7 @@ export function editorDialog({ title, rows, categories, defaults = null, weekday
   const work = slotSection({ rows, categories, defaults, weekday, withPause: true,
     onChange: () => { edited.work = true; refresh(); } });
   const res = reservation && slotSection({ rows: reservation.rows, categories, defaults, weekday,
-    withPause: false, onChange: () => { edited.reservation = true; refresh(); } });
+    withPause: false, pauseEnabled, onChange: () => { edited.reservation = true; refresh(); } });
   const clearButton = button('Tag leeren', () => handlers.clear(active, dialog), 'link');
   // Gesperrte Arbeitszeit (#273): statt der Zeilen ein Hinweis, mit dem Ausweg „Ältere Zeiten laden“, wo es ihn gibt.
   const windowHint = lock && h('div', { class: 'hint warn', 'data-focus': 'edit-lock' },

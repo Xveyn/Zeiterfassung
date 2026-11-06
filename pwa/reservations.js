@@ -22,22 +22,28 @@ export function reservationEditable(day, today) {
   return reservationBlockVisible(day, today) && day <= addDays(today, RESERVATION_HORIZON_DAYS - 1);
 }
 
-/** Nur `start`, `end`, `kategorie`: `pause` gibt es bei Reservierungen nicht, und der Desktop
- *  lehnt jedes weitere Feld am Slot ab. */
+/** `start`, `end`, `kategorie` und `pause` (wie am Desktop; ganze Zahl >= 0, sonst 0). Ohne `pause`-Schlüssel
+ *  bleibt der Slot ohne: „nicht angegeben“ ist nicht 0, der Desktop erbt dann die bisherige Pause. Andere Felder
+ *  (etwa `gcal_event_id`) gehören nicht auf den Draht (der Desktop liest nur diese Felder, ein älterer verwirft `pause` still). */
 export function normalizeReservationSlots(raw) {
-  return normalizeSlots(raw).map((slot) => (slot !== null && typeof slot === 'object'
-    ? { start: slot.start, end: slot.end, kategorie: slot.kategorie }
+  return normalizeSlots(raw).map((slot, i) => (slot !== null && typeof slot === 'object'
+    ? {
+      start: slot.start,
+      end: slot.end,
+      kategorie: slot.kategorie,
+      ...(raw[i].pause !== undefined ? { pause: Number.isInteger(slot.pause) && slot.pause >= 0 ? slot.pause : 0 } : {}),
+    }
     : slot));
 }
 
+/** Die Pause wird wie bei Ist-Zeiten geprüft (kleiner als die Arbeitszeit, Obergrenze). */
 export function validateReservationSlots(slots) {
-  if (!Array.isArray(slots)) return validateSlots(slots);
-  return validateSlots(slots.map((slot) => (slot !== null && typeof slot === 'object' ? { ...slot, pause: 0 } : slot)));
+  return validateSlots(slots.map((s) => (s !== null && typeof s === 'object' && s.pause === undefined ? { ...s, pause: 0 } : s)));
 }
 
 /** Reihenfolge der Slots ist keine Änderung. */
 export function reservationSignature(slots) {
-  return JSON.stringify(slots.map((s) => [s.start, s.end, s.kategorie]).sort());
+  return JSON.stringify(slots.map((s) => [s.start, s.end, s.kategorie, s.pause ?? 0]).sort());
 }
 
 /** Die Slots einer Reservierung, die noch offen sind. Heute erledigt ein Ist-Slot derselben Kategorie genau
@@ -61,8 +67,15 @@ export function openReservationSlots(reservationSlots, actualSlots, isToday) {
   return reservationSlots.filter((_slot, index) => !done.has(index));
 }
 
-/** Minuten einer Reservierung, die noch ausstehen (nur die offenen Slots). */
+/** Netto-Minuten eines Slots. Eine Pause ab der Spanne (Fremddaten) lässt den Slot 0 zählen, nie negativ. */
+function netMinutes(slot) {
+  const gross = slotMinutes({ start: slot.start, end: slot.end });
+  if (Number.isInteger(slot.pause) && slot.pause >= gross) return 0;
+  return slotMinutes({ start: slot.start, end: slot.end, pause: slot.pause });
+}
+
+/** Minuten einer Reservierung, die noch ausstehen (nur die offenen Slots, netto nach Pause). */
 export function pendingReservationMinutes(reservationSlots, actualSlots, isToday) {
   return openReservationSlots(reservationSlots, actualSlots, isToday)
-    .reduce((sum, slot) => sum + slotMinutes({ start: slot.start, end: slot.end }), 0);
+    .reduce((sum, slot) => sum + netMinutes(slot), 0);
 }

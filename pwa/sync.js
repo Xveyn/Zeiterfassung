@@ -71,7 +71,8 @@ function parseReservations(raw) {
   for (const [date, entry] of Object.entries(raw)) {
     if (!isIsoDate(date) || !isObject(entry) || !Array.isArray(entry.slots)) continue;
     const slots = entry.slots.filter(isObject).map((slot) => ({
-      start: text(slot.start), end: text(slot.end), kategorie: text(slot.kategorie) }));
+      start: text(slot.start), end: text(slot.end), kategorie: text(slot.kategorie),
+      pause: Number.isInteger(slot.pause) && slot.pause >= 0 ? slot.pause : 0 }));
     if (slots.length === 0) continue;
     out[date] = { slots, modified_at: cleanStamp(entry.modified_at) };
   }
@@ -134,7 +135,8 @@ export function parseSyncResponse(raw) {
     excluded: raw.excluded, window_days: raw.window_days, window_ahead: windowAhead, window_max: windowMax, entries, conflicts,
     categories: [...raw.categories], token: raw.token, expires_at: raw.expires_at,
     defaults: parseDefaults(raw.defaults), desktop: parseDesktopInfo(raw.desktop),
-    reservations: parseReservations(raw.reservations), reminders: parseReminders(raw.reminders),
+    reservations: parseReservations(raw.reservations), reservation_pause: raw.reservation_pause === true,
+    reminders: parseReminders(raw.reminders),
     writable_settings: Array.isArray(raw.writable_settings) ? raw.writable_settings.filter((key) => typeof key === 'string') : [],
   };
 }

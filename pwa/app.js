@@ -552,6 +552,9 @@ class App {
     const reservationOn = meta.reservations_enabled && reservationEditable(date, today);
     const reservation = reservationOn ? this.store.getReservation(date) : null;
     let reservationBaseline = reservation;
+    // Desktop versteht die Pause an Reservierungen (#455). Der Wert bleibt bei geöffnetem Dialog fest: ein Abgleich,
+    // der das Flag dreht, ändert ihn nicht (der Draht ist getrennt in `snapshotReservations` gesperrt).
+    const pauseEnabled = Boolean(meta.reservation_pause);
     // An Tagen nach heute öffnet der Editor bei der Reservierung: die Ist-Zeilen sind mit den
     // Standardzeiten vorbelegt, ein Speichern dort legte sonst still eine Ist-Zeit an.
     const startWith = reservationOn && date > today ? 'reservation' : 'work';
@@ -566,11 +569,12 @@ class App {
       canClear: Boolean(day && !day.deleted),
       validate: (rows) => validateRows(rows),
       reservation: reservationOn ? {
-        rows: reservationRows(reservation, meta.defaults, weekdayKey(date)),
+        rows: reservationRows(reservation, meta.defaults, weekdayKey(date), { pauseEnabled }),
         canClear: Boolean(reservation && !reservation.deleted),
-        validate: (rows) => validateReservationRows(rows),
+        validate: (rows) => validateReservationRows(rows, { pauseEnabled }),
       } : null,
       startWith,
+      pauseEnabled,
     }, {
       loadOlder: () => { dialog.close(); this.loadOlder(lock.wish); },
       save: async (kind, rows) => {
@@ -581,7 +585,7 @@ class App {
             return 'Diese Reservierung wurde inzwischen aktualisiert (Abgleich). Nochmaliges Speichern überschreibt die neuere Fassung.';
           }
           try {
-            await this.store.saveReservation(date, reservationRowsToSlots(rows));
+            await this.store.saveReservation(date, reservationRowsToSlots(rows, { pauseEnabled }));
           } catch (error) {
             return String(error?.message ?? error);
           }
