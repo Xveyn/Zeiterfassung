@@ -234,4 +234,23 @@ details.tech dl { margin-top: 0; }
   .settings-head .back { display: block; }
   .settings-body { flex: 1; min-height: 0; overflow-y: auto; padding: var(--gutter); }
   .settings-dialog > .buttons { display: none; }
+
+/* Übergänge (#461): kurz (höchstens 200 ms), Keyframes nur transform/opacity. Ausgeblendet wird nichts: ein
+   geschlossener Dialog wird sofort aus dem Dokument genommen. */
+button, input, select { transition: background-color .15s, border-color .15s, color .15s; }
+@keyframes dialog-in { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+@keyframes backdrop-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes hint-in { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
+dialog[open] { animation: dialog-in .18s ease-out; }
+dialog[open]::backdrop { animation: backdrop-in .18s ease-out; }
+/* Nur im Hinweis-Container der Woche: `patchHints` fügt dort Neues ein, die Woche selbst wird bei jedem Rendern ersetzt. */
+.hints .hint { animation: hint-in .18s ease-out; }
+/* Aufklappen der technischen Details, wo der Browser es kann; sonst klappt es ohne Animation auf. */
+@supports (interpolate-size: allow-keywords) {
+  details.tech { interpolate-size: allow-keywords; }
+  details.tech::details-content { block-size: 0; overflow: hidden; transition: block-size .18s, content-visibility .18s allow-discrete; }
+  details.tech[open]::details-content { block-size: auto; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after, ::backdrop { animation: none !important; transition: none !important; }
 }
