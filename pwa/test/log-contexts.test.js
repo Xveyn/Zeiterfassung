@@ -3,32 +3,57 @@
 // Protokoll gelangen (Namen, Adressen, Geheimnisse). Geprüft wird am Quelltext.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 
 const root = new URL('../', import.meta.url);
 const LITERAL = /^(?:'(?:[^'\\\n]|\\.)*'|"(?:[^"\\\n]|\\.)*"|`(?:[^`\\$]|\\.|\$(?!\{))*`)\s*[,)]/;
 
-function offenders(file, callee) {
-  const source = readFileSync(new URL(file, root), 'utf8');
+function scan(source, callee) {
   const call = new RegExp(`(?<![\\w.])${callee}\\(`, 'g');
   const bad = [];
   let found = 0;
   for (const match of source.matchAll(call)) {
     const rest = source.slice(match.index + match[0].length).trimStart();
-    if (/^(?:async\s+)?(?:function|\w+\s*\{)/.test(rest)) continue;   // eine Deklaration, kein Aufruf
+    if (/\bfunction\s*$/.test(source.slice(0, match.index))) continue;   // eine Deklaration, kein Aufruf
     found += 1;
     if (!LITERAL.test(rest)) bad.push(rest.slice(0, 60));
   }
   return { bad, found };
 }
 
-for (const file of ['app.js', 'sw.js', 'sync.js']) {
+const offenders = (file, callee) => scan(readFileSync(new URL(file, root), 'utf8'), callee);
+
+test('scan: literals pass, variables and templates with values fail, declarations are skipped', () => {
+  const source = [
+    "export function logFailure(context, error) {}",
+    "logFailure('Abgleich', e);",
+    'logFailure(`fest`, e);',
+    'logFailure(name, e);',
+    'logFailure(`wert ${name}`, e);',
+  ].join('\n');
+  const { bad, found } = scan(source, 'logFailure');
+  assert.equal(found, 4);
+  assert.equal(bad.length, 2);
+});
+
+// Jede Quelldatei der PWA (nicht die Tests): ein neuer Aufrufer in einer bisher unbeteiligten Datei fällt so auf.
+const sources = readdirSync(root).filter((f) => f.endsWith('.js'));
+
+test('the scan covers the files that log today', () => {
+  for (const file of ['app.js', 'sw.js', 'sync.js']) assert.ok(sources.includes(file), file);
+});
+
+for (const file of sources) {
   test(`${file}: logFailure gets a text literal as context`, () => {
-    const { bad, found } = offenders(file, 'logFailure');
-    assert.ok(found > 0, 'keine Aufrufe gefunden: Muster veraltet?');
+    const { bad } = offenders(file, 'logFailure');
     assert.deepEqual(bad, []);
   });
 }
+
+test('logFailure is called somewhere (pattern not stale)', () => {
+  const total = sources.reduce((n, file) => n + offenders(file, 'logFailure').found, 0);
+  assert.ok(total > 0, 'keine Aufrufe gefunden: Muster veraltet?');
+});
 
 test('relay-transport.js: every log call gets a text literal as context', () => {
   const source = readFileSync(new URL('relay-transport.js', root), 'utf8');

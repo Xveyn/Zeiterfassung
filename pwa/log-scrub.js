@@ -23,6 +23,8 @@ const HOST_RE = /\b(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+([a-z]{2,})\b(?::\d{1,5
 const LOCALHOST_RE = /\blocalhost\b(?::\d{1,5})?/gi;
 // Mindestens eine Ziffer: ohne sie träfe die Regel lange Bezeichner wie `ServiceWorkerRegistration`.
 const KEY_RE = /(?<![A-Za-z0-9_-])[A-Za-z0-9_-]{20,}(?![A-Za-z0-9_-])/g;
+// Fehlercodes wie `ERR_HTTP2_PROTOCOL_ERROR` sind genau das, was das Protokoll lesbar halten soll; Schlüssel (base64url, Hex) tragen keinen Unterstrich in Großschreibung.
+const ERROR_CODE_RE = /^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+$/;
 const ISO_DATE_RE = /(?<!\d)\d{4}-\d{2}-\d{2}(?!\d)/g;
 const DE_DATE_RE = /\b\d{1,2}\.\d{1,2}\.\d{4}\b/g;
 const TIME_RE = /(?<!\d)\d{1,2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?!\d)/g;
@@ -46,7 +48,7 @@ export function scrubText(value, maxLength = DEFAULT_MAX_LENGTH) {
     .replace(IPV4_RE, '<ip>')
     .replace(HOST_RE, (m, tld) => (FILE_EXTENSIONS.has(tld.toLowerCase()) ? m : '<host>'))
     .replace(LOCALHOST_RE, '<host>')
-    .replace(KEY_RE, (m) => (/\d/.test(m) ? '<schlüssel>' : m))
+    .replace(KEY_RE, (m) => (/\d/.test(m) && !ERROR_CODE_RE.test(m) ? '<schlüssel>' : m))
     .replace(ISO_DATE_RE, '<datum>')
     .replace(DE_DATE_RE, '<datum>')
     .replace(TIME_RE, '<zeit>')

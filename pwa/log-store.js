@@ -23,6 +23,8 @@ export function idbLogStore(indexedDB = globalThis.indexedDB) {
         const db = request.result;
         // Ein Versionssprung anderswo darf nicht an unserer offenen Verbindung hängen bleiben.
         db.onversionchange = () => { db.close(); opening = null; };
+        // Schließt der Browser die Verbindung (Speicherdruck, Profil gelöscht), wäre das Handle sonst dauerhaft tot.
+        db.onclose = () => { opening = null; };
         resolve(db);
       };
       request.onerror = () => reject(request.error);
@@ -41,8 +43,10 @@ export function idbLogStore(indexedDB = globalThis.indexedDB) {
       const request = work(tx);
       if (request) request.onsuccess = () => { result = request.result; };
       tx.oncomplete = () => resolve(result);
-      tx.onerror = () => reject(tx.error);
-      tx.onabort = () => reject(tx.error);
+      // Der Grund hängt je nach Browser an der Anfrage (event.target) statt an der Transaktion.
+      const fail = (event) => reject(event?.target?.error ?? tx.error);
+      tx.onerror = fail;
+      tx.onabort = fail;
     });
   };
 

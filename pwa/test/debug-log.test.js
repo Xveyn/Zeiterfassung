@@ -173,3 +173,61 @@ test('deliverExport', async () => {
   assert.equal(await deliverExport('t', { canShare: () => true, share: async () => {}, download }), 'shared');
   assert.equal(downloads, 2);
 });
+
+test('clear in fallback mode still empties the stored entries', async () => {
+  const store = fakeStore({ failAdd: true });
+  store.rows.push({ id: 7, at: at(0), kind: 'error', fields: { context: 'c', name: '', detail: 'alt' } });
+  const log = createDebugLog({ store, now: () => NOW });
+  await log.recordError('c', new Error('x'));   // add scheitert: Wechsel in den Speicher
+  assert.equal(log.isPersistent(), false);
+  await log.clear();
+  assert.equal(store.rows.length, 0);
+  assert.deepEqual(await log.entries(), []);
+});
+
+test('clear survives a failing store.clear', async () => {
+  const store = fakeStore({ failAdd: true });
+  store.clear = async () => { throw new Error('gone'); };
+  const log = createDebugLog({ store, now: () => NOW });
+  await log.recordError('c', new Error('x'));
+  await log.clear();
+  assert.deepEqual(await log.entries(), []);
+});
+
+test('foreign error names stay as the sync result, garbage does not', () => {
+  assert.equal(syncEvent({ result: 'TypeError' }).fields.result, 'TypeError');
+  assert.equal(syncEvent({ result: 'client_error' }).fields.result, 'client_error');
+  assert.equal(syncEvent({ result: 'Bad Value!' }).fields.result, 'error');
+  assert.equal(syncEvent({ result: '1abc' }).fields.result, 'error');
+});
+
+test('error names never carry dots (no host names through the name field)', () => {
+  assert.equal(errorEvent('c', { name: 'xveyn.github.io', message: 'x' }).fields.name, '');
+  assert.equal(errorEvent('c', { name: 'TypeError', message: 'x' }).fields.name, 'TypeError');
+});
+
+test('end to end: the whole export contains none of the hostile substrings', async () => {
+  const store = fakeStore();
+  const log = createDebugLog({ store, now: () => NOW });
+  const hostile = [
+    'Failed https://updates.example.org/wpush/v2/AbCdEf0123456789?token=SECRETTOKEN#frag',
+    'connect [::1]:8080 and fe80::1ff:fe23:4567:890a refused',
+    'host:port meinrechner.local:17654 down',
+    'mail max.mustermann@example.com',
+    'am 2026-11-05T08:15:00Z und 05.11.2026 um 08:15 bis 17:30',
+    'file /home/max/projekte/zeit.json and C:\\Users\\Max\\zeit.json',
+    `Unexpected token 'S', "Sende Max" is not valid JSON`,
+  ];
+  for (const message of hostile) await log.recordError('ctx', { name: 'SyntaxError', message });
+  await log.recordSync({ result: 'ok', ms: 5, sent: 1, extra: 'max@example.com', note: '/home/max/x/y', url: 'https://a.b/c' });
+  const text = formatExport({ info: [{ label: 'Build', value: '1' }], entries: await log.entries() });
+  const entriesPart = text.split('\n\n')[1];
+  for (const bad of ['updates.example.org', 'SECRETTOKEN', 'frag', '::1', 'fe80', '8080', 'meinrechner', 'local:',
+    '17654', 'max.mustermann', 'example.com', '2026-11-05', '05.11.2026', '08:15', '17:30', '/home/max', 'C:\\Users',
+    'zeit.json', 'Sende Max', 'AbCdEf0123456789', 'a.b/c', 'extra']) {
+    assert.ok(!entriesPart.includes(bad), `${bad} im Export: ${entriesPart}`);
+  }
+  for (const placeholder of ['<url>', '<ip>', '<mail>', '<datum>', '<zeit>', '<pfad>', '<text>']) {
+    assert.ok(entriesPart.includes(placeholder), `${placeholder} fehlt: ${entriesPart}`);
+  }
+});

@@ -9,7 +9,10 @@ function fakeFactory({ failOpen = false } = {}) {
   const calls = [];
   return {
     calls,
+    dbsOpened: [],
+    failRequests: false,
     open(name, version) {
+      const self = this;
       calls.push([name, version]);
       const request = {};
       setTimeout(() => {
@@ -21,8 +24,10 @@ function fakeFactory({ failOpen = false } = {}) {
         let data = dbs.get(name);
         const fresh = !data;
         if (fresh) { data = { stores: new Map() }; dbs.set(name, data); }
+        const factory = self;
         const db = {
           onversionchange: null,
+          onclose: null,
           close() { this.closed = true; },
           createObjectStore(storeName, opts = {}) {
             data.stores.set(storeName, { keyPath: opts.keyPath, auto: !!opts.autoIncrement, rows: new Map(), next: 1 });
@@ -44,6 +49,14 @@ function fakeFactory({ failOpen = false } = {}) {
                 const r = {};
                 tx.pending++;
                 setTimeout(() => {
+                  if (factory.failRequests) {
+                    // Wie IndexedDB: der Fehler hängt an der Anfrage (event.target), `tx.error` bleibt leer.
+                    r.error = new Error('request failed');
+                    tx.finished = true;
+                    tx.onerror?.({ target: r });
+                    tx.onabort?.({ target: r });
+                    return;
+                  }
                   r.result = fn();
                   r.onsuccess?.();
                   tx.pending--;
@@ -77,6 +90,7 @@ function fakeFactory({ failOpen = false } = {}) {
           },
         };
         request.result = db;
+        self.dbsOpened.push(db);
         if (fresh) request.onupgradeneeded?.();
         request.onsuccess?.();
       }, 0);
@@ -165,4 +179,21 @@ test('indexedDB: nach gescheitertem Öffnen ist ein neuer Versuch möglich', asy
   await assert.rejects(store.all());
   await assert.rejects(store.all());
   assert.equal(factory.calls.length, 2);
+});
+
+test('indexedDB: eine vom Browser geschlossene Verbindung wird beim nächsten Aufruf neu geöffnet', async () => {
+  const factory = fakeFactory();
+  const store = idbLogStore(factory);
+  await store.add({ at: 0, kind: 'a', fields: {} });
+  factory.dbsOpened[0].onclose();
+  assert.equal((await store.all()).length, 1);
+  assert.equal(factory.calls.length, 2);
+});
+
+test('indexedDB: der Fehler einer Anfrage kommt aus event.target.error', async () => {
+  const factory = fakeFactory();
+  const store = idbLogStore(factory);
+  await store.all();
+  factory.failRequests = true;
+  await assert.rejects(store.add({ at: 0, kind: 'a', fields: {} }), (e) => e instanceof Error && e.message === 'request failed');
 });

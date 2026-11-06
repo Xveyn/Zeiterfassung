@@ -10,8 +10,8 @@ export const MAX_ENTRIES = 500;
 
 const RETENTION_KEY = 'log_retention_days';
 const DAY_MS = 86_400_000;
-const NAME_RE = /^[A-Za-z][A-Za-z0-9_.]{0,59}$/;
-const RESULT_RE = /^[a-z_]{1,40}$/;
+const NAME_RE = /^[A-Za-z][A-Za-z0-9_]{0,59}$/;
+const RESULT_RE = /^[A-Za-z][A-Za-z0-9_]{0,39}$/;
 const SYNC_NUMBERS = ['ms', 'sent', 'received', 'conflicts', 'window'];
 
 function count(value) {
@@ -130,11 +130,12 @@ export function createDebugLog({ store, now = () => new Date() }) {
     },
     async clear() {
       memory = [];
-      if (!persistent) return;
+      // Auch im Speicher-Modus: der Ausfall kann vorübergehend gewesen sein, dann liegen in IndexedDB noch Einträge,
+      // die sonst nach einem Neuladen wieder auftauchten. Scheitert es erneut, bleibt nur der Speicher geleert.
       try {
         await store.clear();
       } catch {
-        fallBack();
+        // best effort
       }
     },
     retentionDays,

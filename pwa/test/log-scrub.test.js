@@ -74,3 +74,9 @@ test('scrubText: Pfade werden Platzhalter, Dateinamen und Verhältnisse bleiben'
     assert.equal(scrubText(scrubText(input)), scrubText(input), input);
   }
 });
+
+test('ALL_CAPS error codes stay readable, real keys do not', () => {
+  assert.equal(scrubText('net::ERR_HTTP2_PROTOCOL_ERROR'), 'net::ERR_HTTP2_PROTOCOL_ERROR');
+  assert.equal(scrubText('ERR_CONNECTION_REFUSED'), 'ERR_CONNECTION_REFUSED');
+  assert.equal(scrubText('0123456789ABCDEF0123456789ABCDEF'), '<schlüssel>');
+});
