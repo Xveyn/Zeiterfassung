@@ -40,6 +40,7 @@ const DEFAULT_META = Object.freeze({
   window_ahead: null,      // Tage nach heute, die der Desktop mitschickt (#265); null = älterer Desktop
   window_max: null,        // Obergrenze des Desktops; null = kam nicht mit (älterer Desktop)
   window_max_known: false, // erst nach der ersten angewandten Antwort wahr; vorher weiß man nichts
+  storage_hint_dismissed_at: 0, // wann der Speicher-Hinweis geschlossen wurde (ms); gerätelokal, 7 Tage Ruhe
   auto_update: false,      // Updates der PWA automatisch einspielen (#290); gerätelokal, Standard aus
   reservations_enabled: false, // Desktop bietet Reservierungen an (Feld in der Antwort); fehlt es, bleibt alles verborgen
   reservation_pause: false,   // Desktop versteht `pause` an Reservierungs-Slots (Feld `reservation_pause`, #455); sonst geht sie nie auf den Draht

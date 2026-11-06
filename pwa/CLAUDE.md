@@ -280,6 +280,18 @@ bietet sie nur an, wenn „Reservierungen verwenden“ an ist.
   Empfangszeitpunkt (`ReservationStore.merge_phone`); die Antwort kann daher
   einen neueren `modified_at` tragen als gesendet.
 
+## Wochenansicht: Hinweise und leere Tage (#461)
+
+- **Der Speicher-Hinweis ist schließbar** (`dismissible`, ✕-Knopf) und bleibt danach 7 Tage weg
+  (`STORAGE_HINT_QUIET_MS`, Meta `storage_hint_dismissed_at`, gerätelokal). Eine Uhr, die hinter den Zeitpunkt des
+  Schließens zurückgestellt wird, verbirgt ihn nicht für immer. Andere Hinweise sind nicht schließbar.
+- **„Dauerhaft sichern“** fragt `navigator.storage.persist()` aus einer Nutzergeste erneut an (`App.askPersistentStorage`).
+  Lehnt der Browser ab, ersetzt ein Text ohne Knopf den Hinweis („App zum Startbildschirm hinzufügen“).
+- **Leere Tage laden ein** (`weekModel` → `day.addHint`): „Eintragen“, mit Reservierungen „Eintragen oder planen“, dazu ein „+“.
+  Nicht auf Tagen außerhalb des Fensters (dort ist die Arbeitszeit gesperrt, `editLock`) und nicht auf Tagen mit Reservierung.
+- **Der heutige Tag trägt das Label „heute“** in der Datumsspalte (die Spalte ist 48 px breit, daneben ist kein Platz).
+  „Zur aktuellen Woche“ gab es schon und bleibt der Sprung zurück.
+
 ## Tages-Editor (#461)
 
 Die Logik liegt DOM-frei in `view-model.js`, `views.js` verdrahtet sie: `rowNetMinutes`/`dayNetMinutes` (Netto je Zeile

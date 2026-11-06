@@ -921,6 +921,55 @@ test('in the reservation tab (withPause false) the pause never sets the category
   assert.equal(categoryDisplay({ ...row('30'), start: '10:00' }, defaults, 'mo', false), 'Projekt*');
 });
 
+// --- Woche: Speicher-Hinweis schließbar, leere Tage laden ein (#461) -----------------------------
+
+const DAY_MS_T = 86400000;
+
+test('the storage hint can be dismissed and offers to ask the browser again', () => {
+  const find = (over) => hintsModel({ ...none, persistent: false, now: 10 * DAY_MS_T, ...over }).find((hint) => hint.id === 'storage');
+  const hint = find({});
+  assert.equal(hint.dismissible, true);
+  assert.equal(hint.action, 'persist');
+  assert.equal(find({ dismissedAt: 10 * DAY_MS_T - DAY_MS_T }), undefined);                  // gestern geschlossen: bleibt weg
+  assert.equal(find({ dismissedAt: 10 * DAY_MS_T - 7 * DAY_MS_T + 1 }), undefined);          // knapp unter 7 Tage
+  assert.ok(find({ dismissedAt: 10 * DAY_MS_T - 7 * DAY_MS_T }));                            // nach 7 Tagen wieder da
+  assert.ok(find({ dismissedAt: 11 * DAY_MS_T }));                                           // Uhr zurückgestellt: nie ewig verborgen
+});
+
+test('after the browser refuses, the storage hint says what helps instead of offering the same button', () => {
+  const hint = hintsModel({ ...none, persistent: false, persistRefused: true }).find((item) => item.id === 'storage');
+  assert.equal(hint.action, null);
+  assert.equal(hint.dismissible, true);
+  assert.match(hint.text, /abgelehnt/);
+  assert.match(hint.text, /Startbildschirm/);
+});
+
+test('other hints are not dismissible', () => {
+  const hints = hintsModel({ ...none, conflictCount: 1, excluded: true });
+  assert.ok(hints.length > 0);
+  assert.ok(hints.every((hint) => !hint.dismissible));
+});
+
+test('empty days invite to add something, only where adding is possible', () => {
+  const week = (over = {}) => weekModel({ getDay: days({ '2026-10-08': live([SLOT]) }), anchor: '2026-10-08', today: '2026-10-08',
+    windowDays: 90, ...over });
+  const day = (model, date) => model.days.find((item) => item.date === date);
+  assert.equal(day(week(), '2026-10-09').addHint, 'Eintragen');                              // leer, in der Zukunft, ohne Reservierungen
+  assert.equal(day(week(), '2026-10-08').addHint, '');                                       // gefüllt
+  assert.equal(day(week({ reservationsEnabled: true }), '2026-10-09').addHint, 'Eintragen oder planen');
+  assert.equal(day(week({ reservationsEnabled: true }), '2026-10-06').addHint, 'Eintragen'); // vergangen: keine Reservierung möglich
+  assert.equal(day(week({ windowDays: 2 }), '2026-10-05').addHint, '');                      // außerhalb des Fensters: gesperrt
+  assert.equal(day(week({ aheadDays: 0 }), '2026-10-10').addHint, '');                       // hinter dem Vorschaufenster
+});
+
+test('a cleared day also invites, a day with only a reservation does not', () => {
+  const cleared = weekModel({ getDay: days({ '2026-10-08': live([], { deleted: true }) }), anchor: '2026-10-08', today: '2026-10-08', windowDays: 90 });
+  assert.equal(cleared.days.find((item) => item.date === '2026-10-08').addHint, 'Eintragen');
+  const planned = weekModel({ getDay: days({}), anchor: '2026-10-08', today: '2026-10-07', windowDays: 90, reservationsEnabled: true,
+    getReservation: (date) => (date === '2026-10-09' ? live([SLOT]) : null) });
+  assert.equal(planned.days.find((item) => item.date === '2026-10-09').addHint, '');
+});
+
 // --- Editor: Netto, Feldfehler, Schnellwahl (#461) -------------------------------------------------
 
 import { QUICK_END_MINUTES, QUICK_PAUSES, addToTime, dayNetMinutes, rowNetMinutes, rowProblems, editorTitle } from '../view-model.js';
