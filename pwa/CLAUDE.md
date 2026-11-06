@@ -305,6 +305,9 @@ und „Tag gesamt“, nur über ganze Minuten; ohne Pausenfeld zählt die Pause 
 - **Eine Schnellwahl schreibt in die Zeile und baut neu** — wie die Kategorie-Wahl; Fehler, Netto und Pressed-Zustand
   folgen jeder Eingabe über `update()`, ohne die Zeilen neu zu bauen (der Fokus bliebe sonst nicht).
 - **`display: flex` überstimmt `hidden`**: Zeilen, die per `hidden` verschwinden sollen, brauchen ein eigenes `[hidden]`-Rechteck in `app.css`.
+- **Fußzeile mit Löschen** (`footerButtons`, auch „Kategorie bearbeiten“): „Tag leeren“/„Reservierung löschen“/„Löschen“ links
+  (`.destructive`), „Abbrechen“ und der Hauptknopf als **eine** Gruppe (`.button-group`) rechts. Bei Platzmangel (390 px, langer Text)
+  bricht die Gruppe als Ganzes um; als einzelne Flex-Kinder stand „Speichern“ allein unter „Abbrechen“.
 
 ## Einstellungen › Kategorien: Anzeige (#461)
 

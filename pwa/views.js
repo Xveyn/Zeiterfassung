@@ -167,6 +167,13 @@ function openDialog(dialog) {
   return dialog;
 }
 
+/** Fußzeile eines Dialogs mit „Löschen“: das Löschen links, „Abbrechen“ und der Hauptknopf rechts als **eine** Gruppe.
+ *  Passt alles nicht in eine Zeile (schmales Handy, langer Text wie „Reservierung löschen“), bricht die Gruppe als Ganzes um;
+ *  sonst stünde „Speichern“ allein unter „Abbrechen“. `destructive` darf fehlen oder verborgen sein. */
+function footerButtons(destructive, cancel, primary) {
+  return h('div', { class: 'buttons' }, destructive, h('div', { class: 'button-group' }, cancel, primary));
+}
+
 /** Eine Liste von Slot-Zeilen (Arbeitszeit mit Pause, Reservierung ohne). Der Abschnitt hält seinen
  *  Zustand selbst: Eingaben gehen bei Hintergrund-Renders und beim Wechsel des Reiters nicht verloren.
  *  `onChange` meldet jede Eingabe (der Dialog prüft dann neu). */
@@ -323,7 +330,7 @@ export function editorDialog({ title, rows, categories, defaults = null, weekday
   const res = reservation && slotSection({ rows: reservation.rows, categories, defaults, weekday,
     withPause: false, pauseEnabled, onChange: () => { edited.reservation = true; refresh(); } });
   const heading = h('h2', { id: 'editor-title' }, title);
-  const clearButton = button('Tag leeren', () => handlers.clear(active, dialog), 'link');
+  const clearButton = button('Tag leeren', () => handlers.clear(active, dialog), 'link destructive');
   // Gesperrte Arbeitszeit (#273): statt der Zeilen ein Hinweis, mit dem Ausweg „Ältere Zeiten laden“, wo es ihn gibt.
   const windowHint = lock && h('div', { class: 'hint warn', 'data-focus': 'edit-lock' },
     h('p', {}, lock.text),
@@ -365,7 +372,7 @@ export function editorDialog({ title, rows, categories, defaults = null, weekday
       work.element,
       res && res.element,
       message,
-      h('div', { class: 'buttons' },
+      footerButtons(
         clearButton,
         button('Abbrechen', () => dialog.close()),
         save)));
@@ -708,7 +715,7 @@ export function categoryEditDialog(row, { onDone, onRemove, isNew = false }) {
       field('pause', 'Pause (Min)', { type: 'number', inputmode: 'numeric', min: 0, step: TIME_STEP_MINUTES, placeholder: 'Standard' }));
   const remove = !isNew && button('Löschen', () => confirmDialog({
     title: 'Kategorie löschen?', text: categoryRemovalText(row.name), confirmLabel: 'Löschen',
-  }, () => { dialog.close(); onRemove(); }), 'link', { 'data-focus': 'category-remove' });
+  }, () => { dialog.close(); onRemove(); }), 'link destructive', { 'data-focus': 'category-remove' });
   dialog.append(
     h('form', { class: 'category-form', onsubmit: (event) => { event.preventDefault(); if (!done.disabled) done.click(); } },
       h('h2', { id: 'category-edit-title' }, isNew ? 'Neue Kategorie' : 'Kategorie bearbeiten'),
@@ -716,7 +723,7 @@ export function categoryEditDialog(row, { onDone, onRemove, isNew = false }) {
       !isNew && h('p', { class: 'muted' }, categoryRenameHint),
       times,
       message,
-      h('div', { class: 'buttons' },
+      footerButtons(
         remove,
         button('Abbrechen', () => dialog.close()),
         done)));
