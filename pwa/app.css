@@ -265,3 +265,7 @@ dialog[open]::backdrop { animation: backdrop-in .18s ease-out; }
 /* Fußzeile mit Löschen (Tages-Editor, Kategorie bearbeiten): Löschen links, Abbrechen und Speichern als eine Gruppe rechts. */
 .buttons .destructive { margin-right: auto; }
 .buttons .button-group { display: flex; gap: 8px; }
+
+.debug-log { list-style: none; margin: 0 0 12px; padding: 8px; max-height: 40vh; overflow: auto; border-radius: 8px; background: var(--cell); font-family: ui-monospace, monospace; font-size: .8rem; }
+.debug-log li { padding: 2px 0; overflow-wrap: anywhere; }
+.clipboard-proxy { position: fixed; opacity: 0; pointer-events: none; }

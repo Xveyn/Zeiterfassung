@@ -2,6 +2,7 @@
 // Dünne DOM-Schicht: macht aus den Modellen von `view-model.js` Elemente. Keine Logik, die
 // sich ohne Browser testen ließe — die steckt in `view-model.js`. Jede Funktion bekommt ihre
 // Handler als Parameter; nichts hier kennt den Store oder das Netz.
+import { RETENTION_CHOICES, formatEntry } from './debug-log.js';
 import { focusByKey, h } from './dom.js';
 import { MAX_CATEGORY_LENGTH, TIME_STEP_MINUTES, formatMinutes, snapPause, snapTime } from './minutes.js';
 import { updateStatusText } from './update-policy.js';
@@ -12,7 +13,7 @@ import { MAX_NAME_LENGTH, blockSignature, moveRow, rowsToBlock, timesSummary, va
 import {
   QUICK_END_MINUTES, QUICK_PAUSES, SETTINGS_TABS, addToTime, categoryDisplay, categoryOptions, categoryRemovalText,
   categoryRenameHint, connectionSummary, dayNetMinutes, editorTitle, hintKey, nextRow, pickCategory, pairFields, rowNetMinutes, rowProblems,
-  settingsTabLabel, storageNotice, windowRow,
+  retentionLabel, settingsTabLabel, storageNotice, windowRow,
 } from './view-model.js';
 
 const button = (label, onclick, className = '', extra = {}) =>
@@ -538,6 +539,58 @@ function updatesPanel({ build, update }, { guard, handlers }) {
     h('label', { class: 'check', for: 'auto-update' }, auto, ' Updates automatisch einspielen'));
 }
 
+/** Reiter „Debug“: technischer Zustand, Protokoll (neueste zuerst), Haltezeit, Kopieren/Teilen/Löschen.
+ *  Die Liste wird nach Löschen und Haltezeit-Wechsel über `handlers.refreshDebug()` neu gelesen. */
+function debugPanel({ info, entries, retention, persistent }, { handlers }) {
+  const list = h('ol', { class: 'debug-log', tabindex: 0, 'aria-label': 'Protokoll' });
+  const empty = h('p', { class: 'muted' }, 'Keine Einträge im Protokoll.');
+  const memoryNote = h('p', { class: 'hint warn' }, 'Das Protokoll liegt nur im Speicher dieser Seite.');
+  const fill = (rows, isPersistent) => {
+    list.replaceChildren(...rows.map((entry) => h('li', {}, formatEntry(entry))));
+    list.hidden = rows.length === 0;
+    empty.hidden = rows.length > 0;
+    memoryNote.hidden = isPersistent !== false;
+  };
+  fill(entries, persistent);
+  const status = h('p', { class: 'muted', role: 'status' }, '');
+  const refresh = async () => {
+    const next = await handlers.refreshDebug();
+    fill(next.entries, next.persistent);
+  };
+  const select = h('select', { id: 'debug-retention', onchange: async () => {
+    select.disabled = true;
+    try {
+      await handlers.setRetention(Number(select.value));
+      await refresh();
+    } finally { select.disabled = false; }
+  } }, RETENTION_CHOICES.map((days) => h('option', { value: String(days), selected: days === retention }, retentionLabel(days))));
+  const run = (control, action) => async () => {
+    control.disabled = true;
+    try { await action(); } finally { control.disabled = false; }
+  };
+  const copy = button('Kopieren', () => run(copy, async () => {
+    status.textContent = (await handlers.copyDebug()) === 'copied' ? 'In die Zwischenablage kopiert.' : 'Kopieren nicht möglich.';
+  })(), '', { 'data-focus': 'debug-copy' });
+  const share = button('Als Datei teilen', () => run(share, async () => {
+    const result = await handlers.shareDebug();
+    status.textContent = { shared: 'Geteilt.', downloaded: 'Als Datei heruntergeladen.', cancelled: 'Abgebrochen.' }[result] ?? '';
+  })(), '', { 'data-focus': 'debug-share' });
+  const clearLog = button('Löschen', () => confirmDialog({ title: 'Protokoll löschen?',
+    text: 'Alle Einträge des Protokolls werden von diesem Gerät entfernt.', confirmLabel: 'Löschen' }, async () => {
+    await handlers.clearDebug();
+    await refresh();
+    status.textContent = 'Protokoll gelöscht.';
+  }), '', { 'data-focus': 'debug-clear' });
+  return h('div', {},
+    h('dl', {}, info.flatMap(({ label, value }) => [h('dt', { class: 'muted' }, label), h('dd', {}, value)])),
+    h('h3', {}, 'Protokoll'),
+    memoryNote, empty, list,
+    h('label', { for: 'debug-retention' }, 'Einträge aufbewahren'), select,
+    h('div', { class: 'buttons' }, copy, share, clearLog),
+    status,
+    h('p', { class: 'muted' }, 'Nichts davon verlässt dieses Gerät, solange Sie nicht kopieren oder teilen. Das Protokoll enthält keine Adressen, Namen oder Zeiten von Einträgen.'));
+}
+
 const signatureOf = (rows) => {
   const block = rowsToBlock(rows);
   return blockSignature(block.categories, block.category_times);
@@ -628,10 +681,10 @@ function categoriesPanel(model, handlers) {
   return { element, dirty };
 }
 
-/** Einstellungen mit drei Reitern (Verbindung / Kategorien / Updates). Die Bereiche werden nur
+/** Einstellungen mit vier Reitern (Verbindung / Kategorien / Updates / Debug). Die Bereiche werden nur
  *  verborgen, nicht neu gebaut: Eingaben überstehen den Reiterwechsel. Schließen mit ungespeicherten
  *  Kategorien fragt nach. */
-export function settingsDialog({ tab = 'connection', connection, updates, categories }, handlers) {
+export function settingsDialog({ tab = 'connection', connection, updates, categories, debug }, handlers) {
   const dialog = h('dialog', { 'aria-labelledby': 'settings-title', class: 'settings-dialog' });
   let cats = null;
   const guard = (then) => {
@@ -645,6 +698,7 @@ export function settingsDialog({ tab = 'connection', connection, updates, catego
     connection: connectionPanel(connection, { closeThen, handlers }),
     categories: cats.element,
     updates: updatesPanel(updates, { guard, handlers }),
+    debug: debugPanel(debug, { handlers }),
   };
   const tabs = Object.fromEntries(SETTINGS_TABS.map((key) => [key,
     h('button', { type: 'button', role: 'tab', id: `settings-tab-${key}`, 'aria-controls': `settings-panel-${key}`,

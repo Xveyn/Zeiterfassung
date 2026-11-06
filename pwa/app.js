@@ -18,7 +18,8 @@ import { SyncClient, SyncError, clockSkewMs } from './sync.js';
 import { isPaired } from './transport.js';
 import { shouldQueue, shouldSync } from './sync-policy.js';
 import { errorDetail, logFailure, setLogSink, withDetail } from './diagnose.js';
-import { createDebugLog } from './debug-log.js';
+import { createDebugLog, deliverExport, formatExport } from './debug-log.js';
+import { describeEnvironment } from './debug-info.js';
 import { idbLogStore } from './log-store.js';
 import { swipeDirection } from './swipe-policy.js';
 import { shouldApplyUpdate, shouldCheckForUpdate } from './update-policy.js';
@@ -560,9 +561,64 @@ class App {
     }, true);
   }
 
+  /** Modell des Debug-Reiters. Scheitert etwas, öffnet der Dialog trotzdem, mit leerem Block. */
+  async debugModel() {
+    try {
+      const env = await this.collectDebugEnv();
+      return {
+        info: describeEnvironment(env), entries: await this.debugLog.entries(),
+        retention: await this.debugLog.retentionDays(), persistent: this.debugLog.isPersistent(),
+      };
+    } catch {
+      return { info: [{ label: 'Zustand', value: 'unbekannt' }], entries: [], retention: 7, persistent: true };
+    }
+  }
+
+  async debugExportText() {
+    const info = describeEnvironment(await this.collectDebugEnv());
+    return formatExport({ info, entries: await this.debugLog.entries() });
+  }
+
+  async copyDebug() {
+    try {
+      const text = await this.debugExportText();
+      try {
+        await navigator.clipboard.writeText(text);
+      } catch {
+        const area = h('textarea', { readonly: true, class: 'clipboard-proxy' }, text);
+        document.body.append(area);
+        area.select();
+        const ok = document.execCommand('copy');
+        area.remove();
+        if (!ok) return 'failed';
+      }
+      return 'copied';
+    } catch {
+      return 'failed';
+    }
+  }
+
+  async shareDebug() {
+    const text = await this.debugExportText();
+    const file = new File([text], 'zeiterfassung-debug.txt', { type: 'text/plain' });
+    return deliverExport(text, {
+      canShare: () => Boolean(navigator.canShare?.({ files: [file] })),
+      share: () => navigator.share({ files: [file] }),
+      download: () => {
+        const url = URL.createObjectURL(file);
+        const link = h('a', { href: url, download: file.name });
+        document.body.append(link);
+        link.click();
+        link.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+      },
+    });
+  }
+
   async openSettings(initialTab = 'connection') {
     const meta = this.store.getMeta();
     const push = await this.pushModelNow();
+    const debug = await this.debugModel();
     const returnKey = focusState(this.root).activeKey;
     const signature = (m) => blockSignature(m.categories, m.defaults?.category_times ?? {});
     let baseline = signature(meta);   // Stand beim Öffnen: Speichern prüft, ob der Abgleich ihn inzwischen geändert hat
@@ -584,7 +640,13 @@ class App {
       categories: categoriesModel({
         categories: meta.categories, defaults: meta.defaults, writable: meta.settings_writable, edit: meta.categories_edit,
       }),
+      debug,
     }, {
+      copyDebug: () => this.copyDebug(),
+      shareDebug: () => this.shareDebug(),
+      clearDebug: () => this.debugLog.clear(),
+      setRetention: (days) => this.debugLog.setRetentionDays(days),
+      refreshDebug: async () => ({ entries: await this.debugLog.entries(), persistent: this.debugLog.isPersistent() }),
       pair: () => { this.screen = 'pair'; this.render(); },
       repairUpdates: () => this.repairServiceWorker(),
       checkUpdate: async () => ({ state: await this.checkForUpdate('manual'), detail: this.updateDetail }),

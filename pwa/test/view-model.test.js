@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
-  SETTINGS_TABS, categoriesModel, categoryRemovalText, categoryRenameHint, settingsTabLabel,
+  SETTINGS_TABS, categoriesModel, categoryRemovalText, categoryRenameHint, settingsTabLabel, retentionLabel,
   WEEKDAYS, categoryDisplay, categoryLabel, categoryOptions, conflictsModel, dayChanged, editLock, editorRows, focusKeyToRestore, hintKey, hintsModel, desktopHint, localTime, nextRow, olderModel, pickCategory, rowsToSlots, slotText,
   statusModel, validateRows, weekModel, windowRow, reservationRows, reservationRowsToSlots, validateReservationRows,
 } from '../view-model.js';
@@ -609,9 +609,13 @@ test('the week nets the pause of reservations in "Noch ausstehend"', () => {
 
 // --- Einstellungen / Kategorien -----------------------------------------------------------------------
 
-test('the settings tabs are connection, categories, updates, in that order, with German labels', () => {
-  assert.deepEqual(SETTINGS_TABS, ['connection', 'categories', 'updates']);
-  assert.deepEqual(SETTINGS_TABS.map(settingsTabLabel), ['Verbindung', 'Kategorien', 'Updates']);
+test('the settings tabs are connection, categories, updates, debug, in that order, with German labels', () => {
+  assert.deepEqual(SETTINGS_TABS, ['connection', 'categories', 'updates', 'debug']);
+  assert.deepEqual(SETTINGS_TABS.map(settingsTabLabel), ['Verbindung', 'Kategorien', 'Updates', 'Debug']);
+});
+
+test('retention labels use singular for one day', () => {
+  assert.deepEqual([1, 7, 30].map(retentionLabel), ['1 Tag', '7 Tage', '30 Tage']);
 });
 
 test('the categories model lists rows with a summary and is editable with a writable desktop', () => {
