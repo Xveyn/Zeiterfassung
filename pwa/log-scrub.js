@@ -11,17 +11,17 @@ const FILE_EXTENSIONS = new Set(['js', 'mjs', 'json', 'css', 'html', 'txt']);
 const URL_RE = /\b[a-z][a-z0-9+.-]*:\/\/[^\s"'<>)]+/gi;
 const MAIL_RE = /[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+/g;
 const IPV6_BRACKET_RE = /\[[0-9a-fA-F:.]+\](?::\d{1,5})?/g;
-// Kandidaten aus Hex und Doppelpunkten; nur mit `::` oder allen acht Gruppen eine Adresse,
+// Auch IPv4-gemappt (`::ffff:1.2.3.4`). Kandidaten aus Hex und Doppelpunkten; nur mit `::` oder allen acht Gruppen eine Adresse,
 // sonst wäre `08:00:30` eine.
-const IPV6_RE = /(?<![\w:])(?:[0-9a-f]{0,4}:){2,7}[0-9a-f]{0,4}(?![\w:])/gi;
+const IPV6_RE = /(?<![\w:])(?:[0-9a-f]{0,4}:){2,7}(?:\d{1,3}(?:\.\d{1,3}){3}|[0-9a-f]{0,4})(?![\w:])/gi;
 const IPV4_RE = /\b(?:\d{1,3}\.){3}\d{1,3}(?::\d{1,5})?\b/g;
 const HOST_RE = /\b(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+([a-z]{2,})\b(?::\d{1,5})?/gi;
 const LOCALHOST_RE = /\blocalhost\b(?::\d{1,5})?/gi;
 // Mindestens eine Ziffer: ohne sie träfe die Regel lange Bezeichner wie `ServiceWorkerRegistration`.
 const KEY_RE = /(?<![A-Za-z0-9_-])[A-Za-z0-9_-]{20,}(?![A-Za-z0-9_-])/g;
-const ISO_DATE_RE = /\b\d{4}-\d{2}-\d{2}\b/g;
+const ISO_DATE_RE = /(?<!\d)\d{4}-\d{2}-\d{2}(?!\d)/g;
 const DE_DATE_RE = /\b\d{1,2}\.\d{1,2}\.\d{4}\b/g;
-const TIME_RE = /\b\d{1,2}:\d{2}(?::\d{2})?\b/g;
+const TIME_RE = /(?<!\d)\d{1,2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?!\d)/g;
 const QUOTED_RE = /"[^"]*"/g;
 
 function isIpv6(candidate) {
