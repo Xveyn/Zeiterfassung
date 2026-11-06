@@ -147,3 +147,18 @@ Push (`Device`) und Abgleich (`Box`) sind getrennte Objekte mit getrennten Gehei
 `mobile_box.json` am Rechner, `relay_secret` und `box_secret` auf dem Handy). Wer beides nutzt, gibt dem Relay zwei
 unverknüpfte Handles, nicht eines; der Relay kann sie von sich aus nicht einem Handy zuordnen (außer über
 Metadaten wie die IP-Adresse).
+
+## 11. Protokoll der Web-App
+
+Die Web-App führt ein kleines Protokoll für die Fehlersuche (Einstellungen › Debug). Es liegt nur auf dem Handy,
+im Speicher des Browsers (eigene IndexedDB-Datenbank, getrennt von den Einträgen), und wird nirgendwohin
+gesendet: es verlässt das Gerät nur, wenn der Nutzer es kopiert oder teilt.
+
+Aufgezeichnet werden nur Fehler (Art und eine bereinigte Meldung des Browsers) und je Abgleich eine
+Zusammenfassung: Ergebnis, Dauer, Zahl der Tage und Zahl der Konflikte. Adressen, Namen, Kategorien und Zeiten von
+Einträgen stehen nicht darin; ein Filter ersetzt Adressen, Schlüssel, Daten und Uhrzeiten in Meldungen durch
+Platzhalter, und die Beschreibung eines Fehlers hat feste Felder. Geheimnisse (Abschnitt 9) schreibt die Web-App
+auch hier in keinen Text.
+
+Einträge werden nach 1, 7 oder 30 Tagen gelöscht (Standard 7 Tage), höchstens 500 bleiben erhalten. Im Reiter „Debug“
+lässt sich das Protokoll jederzeit sofort löschen.

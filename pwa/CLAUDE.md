@@ -79,6 +79,10 @@ ES-Module flach im Ordner:
   gehen hier nicht hinein — einzige Ausnahme: `relay-transport.js` loggt damit eine übergangene Relay-Antwort
   (`RelayFrameError`, nur der feste Text, nie Geheimnis oder Inhalt). Wer einen neuen Catch-all in `app.js` baut,
   loggt oder zeigt die Ursache.
+- `log-scrub.js`, `debug-log.js`, `log-store.js`, `debug-info.js` — das Debug-Protokoll (#477), DOM-frei und
+  getestet, s. „Debug-Protokoll“: `scrubText` (Adressen, Schlüssel, Daten, Uhrzeiten, Pfade → Platzhalter, höchstens
+  240 Zeichen), `createDebugLog` (Ereignisse `error`/`sync`, Haltezeit, Export), `idbLogStore` (Datenbank
+  `zeiterfassung-log`) und `describeEnvironment` (technischer Zustand aus Parametern, nie aus `navigator`).
 - `view-model.js`, `messages.js`, `sync-policy.js`, `update-policy.js` —
   Anzeige- und Entscheidungslogik, DOM-frei und getestet.
 - `reminders-plan.js`, `push-blob.js`, `push-message.js`, `relay-client.js`, `push-policy.js` —
@@ -500,6 +504,41 @@ der alte Plan am Relay stehen. Vertrag: `test/fixtures/reminders-contract.json` 
 
 **Berechtigung ist pro Gerät** und braucht eine Nutzergeste (Knopf „Benachrichtigungen erlauben“ im
 Reiter „Verbindung“). Ausschalten meldet das Abo ab und löscht das Objekt am Relay.
+
+## Debug-Protokoll (#477)
+
+Reiter „Debug“ (vierter in den Einstellungen): technischer Zustand, Protokoll der letzten Fehler und Abgleiche,
+Kopieren, Teilen als Datei, Löschen, Haltezeit. Nichts davon verlässt das Gerät von selbst; die Aussage dazu steht
+in `docs/datenschutz.md`, Abschnitt 11 (die Zusage zu den Geheimnissen in Abschnitt 9 bleibt wahr).
+
+- **`context` von `logFailure` ist ein Textliteral.** `diagnose.js` hat eine Senke (`setLogSink`), die Seite
+  (`app.js`) und der Service Worker (`sw.js`) setzen sie beim Start; jeder `logFailure`-Aufruf landet so im
+  Protokoll. `test/log-contexts.test.js` hält am Quelltext fest, dass der Kontext in `app.js`, `sw.js`, `sync.js`
+  (und `relay-transport.js`) ein Literal bleibt — über ihn darf nie ein Name oder Wert ins Protokoll.
+- **Namen lassen sich nicht per Muster entfernen.** Der Schutz ist die Bauform: feste Kontexte, Positivliste der
+  Ereignisse (`error`: `context`/`name`/`detail`; `sync`: `result`, `ms`, `sent`, `received`, `conflicts`, `window`,
+  die Zahlen nur als Zahlen), unbekannte Felder fallen weg, `detail` kommt nur aus Browser- und Laufzeitfehlern
+  (`errorDetail`). Meldungen aus eigenem Code mit Eingaben (Kategorienamen in Prüftexten) gehen nie an
+  `logFailure`. Der Export läuft erneut durch `scrubText`.
+- **Haltezeit** `log_retention_days` (1/7/30, Standard 7) liegt **in der Log-Datenbank** (Konfigurationsspeicher
+  von `log-store.js`), nicht in der der Einträge: der Service Worker liest sie dort. Aufgeräumt wird beim Start und
+  beim Schreiben, zusätzlich höchstens `MAX_ENTRIES` (500), älteste zuerst.
+- **Schreiben wirft nie.** Bei einem Speicherfehler (kein IndexedDB, privates Fenster) wechselt der Kern auf ein
+  Array im Speicher, der Reiter sagt es. Grenze: `clear()` leert in diesem Modus nur den Speicher der Seite, schon
+  gespeicherte Einträge in IndexedDB tauchen wieder auf.
+- **Der Service Worker schreibt nur Fehler** und ist ein eigener, einzeln rückbaubarer Schritt: Chrome holt bei
+  jeder Update-Prüfung **alle** statischen Imports des Modul-Workers neu, jede weitere Datei im Import-Graphen von
+  `sw.js` kostet dort Abrufe (Verdacht auf Zusammenhang mit dem offenen Update-Problem #390). Deshalb eine
+  Positivliste der Imports von `sw.js` in `test/log-contexts.test.js` (`sw-core`, `push-blob`, `diagnose`,
+  `push-message`, `debug-log`, `log-store`; `log-scrub` kommt über `debug-log`). Wer einen Import ergänzt,
+  begründet ihn dort.
+- **Löschen und Export.** „Löschen“ fragt über `confirmDialog` nach und leert sofort. Export ist Text (Zustand,
+  dann eine Zeile je Eintrag); „Teilen“ nimmt die Web-Share-API mit Datei, sonst Download, „Kopieren“ die
+  Zwischenablage mit Fallback (`deliverExport`).
+- **Bekannte Grenzen.** `result` eines Abgleichs mit fremdem Fehler verliert seinen Namen (`RESULT_RE` lässt
+  nur `[a-z_]` zu; wird nachgezogen). Bei mehreren Paketen summiert die Zusammenfassung nur `sent`, `received`,
+  `window` und `conflicts` stammen vom letzten Paket. Der Fehler beim Öffnen des Browser-Speichers in `main()`
+  entsteht vor der App und steht nicht im Protokoll (er ist auf dem Bildschirm).
 
 ## Datenschutzseite
 
