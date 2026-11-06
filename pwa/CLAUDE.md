@@ -306,6 +306,17 @@ und „Tag gesamt“, nur über ganze Minuten; ohne Pausenfeld zählt die Pause 
   folgen jeder Eingabe über `update()`, ohne die Zeilen neu zu bauen (der Fokus bliebe sonst nicht).
 - **`display: flex` überstimmt `hidden`**: Zeilen, die per `hidden` verschwinden sollen, brauchen ein eigenes `[hidden]`-Rechteck in `app.css`.
 
+## Einstellungen › Kategorien: Anzeige (#461)
+
+- **Leiste „Änderungen nicht gespeichert“** oben im Reiter, mit dem Knopf „Speichern“ (er sitzt nicht mehr unten neben „+ Kategorie“);
+  sie erscheint, sobald der Stand vom gespeicherten abweicht, und verschwindet nach dem Speichern. Ungültige Eingaben lassen den
+  Knopf gesperrt, die Meldung steht darunter. `display: flex` überstimmt `hidden`: `.dirty[hidden]` ist eigens geregelt.
+- **`timesSummary`** (`categories.js`): „pro Wochentag“-Kategorien zeigen ihre Zeiten, gruppiert nach gleichen Zeiten
+  („Mo–Do 09:00–17:00 · Fr 07:00–11:00, 15 min Pause“); Tage ohne eigene Zeiten fehlen (dort gilt der globale Standard), ganz ohne
+  steht „pro Wochentag“. Bearbeitet wird weiter nur am Desktop, `raw` bleibt unverändert. Fremddaten: wirft nie. Eine Kategorie ohne
+  Zeiten heißt „Keine Standardzeiten“ (früher „—“).
+- Buttons außerhalb von Dialogen (Koppel-Seite) haben einen Abstand (`main .buttons`).
+
 ## Einstellungen › Verbindung (#461)
 
 Der Reiter beginnt mit dem Zustand (`connectionSummary`: „● Verbunden“/„● Offline“, Desktopname, wann zuletzt abgeglichen,

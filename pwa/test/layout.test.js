@@ -138,6 +138,18 @@ test('the editor rows that use display:flex still honour [hidden] (day total, ne
   assert.match(css, /\.slot \.net\[hidden\]/);
 });
 
+test('the unsaved-categories bar sits above the list, carries the save button and honours [hidden]', () => {
+  const panel = /function categoriesPanel[\s\S]*?\n\}\r?\n/.exec(views)[0];
+  assert.match(panel, /h\('div', \{ class: 'dirty', role: 'status' \}, h\('span', \{\}, 'Änderungen nicht gespeichert'\), save\)/);
+  assert.ok(panel.indexOf('dirtyBar,') < panel.indexOf('    list,'));
+  assert.match(panel, /dirtyBar\.hidden = !\(model\.editable && dirty\(\)\)/);
+  assert.match(css, /\.dirty\[hidden\] \{ display: none; \}/);                // display:flex überstimmt sonst `hidden`
+});
+
+test('buttons outside dialogs (pairing screen) keep a gap so Cancel and Pair do not read as one button', () => {
+  assert.match(rule('main .buttons'), /gap:\s*8px/);
+});
+
 test('the push switch is a real checkbox with role switch, fixed size, and does not inherit the full-width input style', () => {
   assert.match(views, /type: 'checkbox', role: 'switch', class: 'switch-input'/);
   assert.match(rule('input.switch-input'), /width:\s*46px/);

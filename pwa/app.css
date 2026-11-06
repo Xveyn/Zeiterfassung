@@ -198,6 +198,12 @@ input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
 input[type="number"]::-webkit-inner-spin-button, input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
 .daysum[hidden], .slot .net[hidden] { display: none; }
 
+/* Einstellungen › Kategorien (#461): Leiste „nicht gespeichert“; Knöpfe außerhalb von Dialogen mit Abstand (Koppel-Seite). */
+.dirty { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 8px; background: #3a2f10; border-left: 4px solid var(--warn); margin-bottom: 10px; font-size: .9rem; }
+.dirty[hidden] { display: none; }
+.dirty button { min-height: 36px; }
+main .buttons { display: flex; gap: 8px; flex-wrap: wrap; }
+
 /* Einstellungen › Verbindung (#461): Zustandskarte, Schalter, eingeklappte Technik. */
 .status-card { background: var(--cell); border-radius: 10px; padding: 12px; margin-bottom: 12px; }
 .status-card .name { font-weight: 600; margin: 4px 0; overflow-wrap: anywhere; }

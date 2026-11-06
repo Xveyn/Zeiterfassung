@@ -99,12 +99,26 @@ test('the summary reads the times in one short line', () => {
   assert.equal(timesSummary(row({ start: '08:00' })), 'ab 08:00');
   assert.equal(timesSummary(row({ end: '16:00' })), 'bis 16:00');
   assert.equal(timesSummary(row({ pause: '0' })), '0 min Pause');
-  assert.equal(timesSummary(row()), '—');
-  assert.equal(timesSummary(row({ mode: 'per_day', raw: PER_DAY })), 'pro Wochentag');
+  assert.equal(timesSummary(row()), 'Keine Standardzeiten');
+  assert.equal(timesSummary(row({ mode: 'per_day', raw: PER_DAY })), 'Fr 07:00–11:00, 15 min Pause');
 });
 
 test('the signature depends on the order of names but not on the key order of the times', () => {
   assert.equal(blockSignature(['A', 'B'], { A: { start: '08:00', end: '09:00' } }),
     blockSignature(['A', 'B'], { A: { end: '09:00', start: '08:00' } }));
   assert.notEqual(blockSignature(['A', 'B'], {}), blockSignature(['B', 'A'], {}));
+});
+
+test('per-day times read as grouped weekdays, only days that carry their own times', () => {
+  const sum = (raw) => timesSummary({ mode: 'per_day', start: '', end: '', pause: '', raw });
+  const week = { mode: 'per_day', days: { mon: { start: '09:00', end: '17:00' }, tue: { start: '09:00', end: '17:00' },
+    wed: { start: '09:00', end: '17:00' }, thu: { start: '09:00', end: '17:00' }, fri: { start: '07:00', end: '11:00' } } };
+  assert.equal(sum(week), 'Mo–Do 09:00–17:00 · Fr 07:00–11:00');
+  assert.equal(sum({ mode: 'per_day', days: { mon: { start: '09:00', end: '17:00' }, wed: { start: '09:00', end: '17:00' } } }), 'Mo, Mi 09:00–17:00');
+  assert.equal(sum({ mode: 'per_day', pause: 30, days: { sat: { start: '10:00' }, sun: { end: '12:00' } } }), 'Sa ab 10:00 · So bis 12:00, 30 min Pause');
+  assert.equal(sum({ mode: 'per_day', days: { mon: {}, tue: { start: '', end: '' } } }), 'pro Wochentag');   // nichts Eigenes: globale Zeiten
+  assert.equal(sum({ mode: 'per_day' }), 'pro Wochentag');
+  assert.equal(sum(null), 'pro Wochentag');                                                              // Fremddaten: nie werfen
+  assert.equal(sum({ mode: 'per_day', days: { xyz: { start: '09:00', end: '17:00' } } }), 'pro Wochentag'); // unbekannter Schlüssel
+  assert.equal(sum({ mode: 'per_day', pause: 0, days: {} }), 'pro Wochentag, 0 min Pause');
 });

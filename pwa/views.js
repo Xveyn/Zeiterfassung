@@ -558,9 +558,12 @@ function categoriesPanel(model, handlers) {
     pending.focus();                              // „Speichern“ ist jetzt gesperrt und hielte den Fokus nicht
   }, 'primary', { 'data-focus': 'categories-save' });
   const dirty = () => signatureOf(rows) !== saved;
+  // Die Leiste steht oben und trägt „Speichern“ — sichtbar, sobald etwas geändert ist (der Knopf unten war grau und unscheinbar).
+  const dirtyBar = h('div', { class: 'dirty', role: 'status' }, h('span', {}, 'Änderungen nicht gespeichert'), save);
   const refresh = () => {
     const check = validateCategoryRows(rows);
     save.disabled = !model.editable || !dirty() || !check.ok;
+    dirtyBar.hidden = !(model.editable && dirty());
     message.textContent = check.ok ? '' : check.message;
   };
   // Jede Änderung baut die Liste neu, der fokussierte Knopf verschwindet dabei: danach den ersten
@@ -600,14 +603,14 @@ function categoriesPanel(model, handlers) {
   const element = h('div', {},
     model.hint && h('p', { class: 'hint warn', role: 'status' }, model.hint),
     storedError,
+    dirtyBar,
     list,
     pending,
+    message,
     model.editable && h('div', { class: 'buttons' },
       button('+ Kategorie', () => categoryEditDialog(emptyCategoryRow(), {
         isNew: true, onDone: (row) => change([...rows, row], [`category-${rows.length}`]),
-      }), '', { 'data-focus': 'category-add' }),
-      save),
-    message);
+      }), '', { 'data-focus': 'category-add' })));
   return { element, dirty };
 }
 
