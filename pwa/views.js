@@ -434,7 +434,7 @@ export function conflictsDialog(conflicts, handlers) {
 // --- Einstellungen -----------------------------------------------------------------------------------
 
 /** Reiter „Verbindung“: Stand der Kopplung und des Desktops, Verlauf, Neu koppeln. */
-function connectionPanel({ desktopName, desktop, hint = '', address, transport = 'lan', persistent, tokenUntil, window: windowInfo, push,
+function connectionPanel({ desktopName, desktop, hint = '', address, transport = 'lan', persistent, tokenUntil, window: windowInfo, push, lock,
   online = true, lastSyncAt = '' }, { closeThen, handlers }) {
   const windowState = windowRow(windowInfo);
   const resetWindow = button('Auf 90 Tage zurücksetzen', () => closeThen(() => handlers.resetWindow()), '', { 'data-focus': 'reset-window' });
@@ -462,6 +462,7 @@ function connectionPanel({ desktopName, desktop, hint = '', address, transport =
     notice,
     hint && h('p', { class: 'hint warn', role: 'status' }, hint),
     pushSection(push, handlers),
+    lock && lockSection(lock, handlers),
     h('p', { class: 'muted' }, 'Relay und Benachrichtigungen: ', privacyLink(), '.'),
     h('details', { class: 'tech' },
       h('summary', {}, 'Technische Details'),
@@ -501,6 +502,119 @@ function pushSection(model, handlers) {
     h('h3', {}, 'Benachrichtigungen'),
     h('label', { class: 'switch', for: 'push-toggle' }, h('span', {}, 'Erinnerungen auf diesem Handy'), toggle),
     text, test);
+}
+
+/** Abschnitt „Sperre“ (#490): Schalter, Frist und der Hinweis, dass es eine Komfort-Sperre ist. Einschalten legt den Passkey an
+ *  und verlangt danach eine Probe-Entsperrung mit frischer Nutzergeste, erst dann gilt die Sperre: Safari verlangt eine Geste
+ *  je Abfrage, und eine Sperre, die sich nicht öffnen lässt, wäre eine Falle. Ausschalten verlangt ebenfalls die Entsperrung. */
+function lockSection(initial, handlers) {
+  let model = initial;
+  let pendingId = null;
+  const note = h('p', { class: 'muted' });
+  const status = h('p', { class: 'muted', role: 'status' });
+  const message = h('p', { class: 'hint error', role: 'alert' });
+  const toggle = h('input', { id: 'lock-toggle', type: 'checkbox', role: 'switch', class: 'switch-input', 'data-focus': 'lock-toggle' });
+  const delay = h('select', { id: 'lock-delay', 'data-focus': 'lock-delay' },
+    model.delayOptions.map((option) => h('option', { value: String(option.value) }, option.label)));
+  const confirm = button('Entsperrung prüfen', () => {}, 'primary', { 'data-focus': 'lock-confirm' });
+  const cancel = button('Abbrechen', () => {}, '', { 'data-focus': 'lock-cancel' });
+  const pending = h('div', { class: 'buttons' }, confirm, cancel);
+  const show = (next, { error = '', info = '' } = {}) => {
+    model = next;
+    toggle.checked = model.on;
+    toggle.disabled = !model.canChange || pendingId !== null;
+    delay.value = String(model.delayMs);
+    delay.disabled = model.delayDisabled || pendingId !== null;
+    note.textContent = model.available ? model.note : model.hint;
+    status.textContent = info;
+    status.hidden = !info;
+    message.textContent = error;
+    message.hidden = !error;
+    pending.hidden = pendingId === null;
+  };
+  toggle.addEventListener('change', async () => {
+    toggle.disabled = true;
+    if (!toggle.checked) {
+      const result = await handlers.removeLock();
+      show(result.model ?? model, { error: result.error });
+      toggle.focus();
+      return;
+    }
+    const created = await handlers.createLock();
+    if (!created.ok) {
+      show(model, { error: created.error });
+      toggle.focus();
+      return;
+    }
+    pendingId = created.id;
+    show(model, { info: 'Passkey angelegt. Zum Einschalten die Entsperrung einmal bestätigen.' });
+    confirm.focus();
+  });
+  confirm.addEventListener('click', async () => {
+    confirm.disabled = true;
+    const result = await handlers.confirmLock(pendingId);
+    confirm.disabled = false;
+    if (!result.ok) {
+      show(model, { error: result.error, info: 'Passkey angelegt. Zum Einschalten die Entsperrung einmal bestätigen.' });
+      return;
+    }
+    pendingId = null;
+    show(result.model);
+    toggle.focus();
+  });
+  cancel.addEventListener('click', () => {
+    pendingId = null;
+    show(model);
+    toggle.focus();
+  });
+  delay.addEventListener('change', async () => {
+    delay.disabled = true;
+    show(await handlers.setLockDelay(Number(delay.value)));
+    delay.focus();
+  });
+  show(model);
+  return h('section', { class: 'lock' },
+    h('h3', {}, 'Sperre'),
+    h('label', { class: 'switch', for: 'lock-toggle' }, h('span', {}, 'App mit Geräte-Entsperrung sperren'), toggle),
+    h('label', { for: 'lock-delay' }, 'Sperren'), delay,
+    note, status, message, pending);
+}
+
+/** Die Sperre selbst: ein Dialog über allem, was offen ist (ein später geöffneter modaler Dialog liegt weiter oben in der
+ *  Top-Layer-Reihenfolge, darunter bleiben Zustand und Eingaben eines geöffneten Editors erhalten). Bewusst **nicht** über
+ *  `openDialog`: der hängt jeden Dialog an den Browser-Verlauf, und die Zurück-Geste schlösse dann auch die Sperre.
+ *  Escape schließt sie nicht; ein zweites Escape, das Chrome trotz `preventDefault` durchlässt, öffnet sie sofort wieder. */
+export function lockDialog(handlers) {
+  const message = h('p', { class: 'hint error', role: 'alert' });
+  message.hidden = true;
+  const unlock = button('Entsperren', async () => {
+    unlock.disabled = true;
+    const result = await handlers.unlock();
+    unlock.disabled = false;
+    if (result.ok) return;
+    message.textContent = result.text;
+    message.hidden = false;
+    reset.hidden = false;
+    unlock.focus();
+  }, 'primary', { 'data-focus': 'unlock' });
+  const reset = button('Entsperren nicht möglich? Neu koppeln', () => confirmDialog({
+    title: 'Neu koppeln?',
+    text: 'Alle lokalen Daten dieser Web-App werden gelöscht, auch nicht übertragene Einträge. Danach koppelst du dieses Handy neu mit dem Desktop.',
+    confirmLabel: 'Löschen und neu koppeln',
+  }, handlers.reset), 'link', { 'data-focus': 'lock-reset' });
+  reset.hidden = true;
+  const dialog = h('dialog', { 'aria-labelledby': 'lock-title', class: 'lock-dialog' },
+    h('h2', { id: 'lock-title' }, 'Zeiterfassung ist gesperrt'),
+    h('p', {}, 'Zum Öffnen die Geräte-Entsperrung bestätigen.'),
+    message,
+    h('div', { class: 'buttons' }, unlock),
+    h('div', { class: 'buttons' }, reset));
+  dialog.addEventListener('cancel', (event) => event.preventDefault());
+  dialog.addEventListener('close', () => { if (handlers.isLocked()) dialog.showModal(); });
+  document.body.append(dialog);
+  dialog.showModal();
+  unlock.focus();
+  return dialog;
 }
 
 /** Reiter „Updates“: Version der Handy-App, Suche, Neuladen, automatisches Einspielen. */

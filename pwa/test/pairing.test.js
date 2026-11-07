@@ -230,5 +230,5 @@ test('the start takes the pairing fragment out of the address bar before the sto
   assert.ok(scrub >= 0, 'main() räumt das Fragment nicht ab');
   assert.ok(scrub < main.indexOf('openDatabase('), 'das Fragment bleibt bei scheiterndem Speicher in der Adresszeile');
   // Der Link geht dabei nicht verloren: main reicht das gelesene Fragment an die App weiter.
-  assert.match(main, /new App\(.*startHash\)/);
+  assert.match(main, /new App\(.*startHash\b/);
 });

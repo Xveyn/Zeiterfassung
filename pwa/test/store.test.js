@@ -1031,3 +1031,16 @@ test('a desktop answer replaces the slot with its pause while the day is not dir
   await store.applyResponse(answer(60), emptySnapshot(), RES_TODAY);
   assert.equal(store.getReservation('2026-10-20').slots[0].pause, 10);
 });
+
+
+test('the lock settings are device-local and default to off with a one-minute delay', async () => {
+  const { store } = await make();
+  const meta = store.getMeta();
+  assert.equal(meta.lock_enabled, false);
+  assert.equal(meta.lock_credential, '');
+  assert.equal(meta.lock_delay_ms, 60000);
+  await store.setMeta({ lock_enabled: true, lock_credential: 'abc', lock_delay_ms: 300000 });
+  const reloaded = new Store(store._adapter, () => new Date());
+  await reloaded.load();
+  assert.deepEqual([reloaded.getMeta().lock_enabled, reloaded.getMeta().lock_credential, reloaded.getMeta().lock_delay_ms], [true, 'abc', 300000]);
+});

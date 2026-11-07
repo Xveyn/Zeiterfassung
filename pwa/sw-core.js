@@ -54,6 +54,7 @@ export const PRECACHE = [
   './store.js',
   './db.js',
   './vault.js',
+  './lock.js',
   './sync.js',
   './sync-errors.js',
   './transport.js',

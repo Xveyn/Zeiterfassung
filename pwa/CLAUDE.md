@@ -51,6 +51,9 @@ ES-Module flach im Ordner:
   Server-Fehler in `SyncError.kind` (`sync.js` führt die Namen weiter aus). `transport.js` — `LanTransport`
   (HTTP im WLAN) sowie `endpointOf(meta, {onHave})`/`isPaired(meta)`: wohin eine Kopplung spricht und ob es sie gibt.
   `relay-transport.js` — `RelayTransport`, der Weg über die Box (s. „Relay-Abgleich“).
+- `lock.js` — App-Sperre über die Geräte-Entsperrung (#490, Stufe 2), DOM-frei und getestet, s. „App-Sperre“: Frist
+  (`shouldLock`, `normalizeLockDelay`), WebAuthn (`lockSupport`, `createLockCredential`, `unlockWithCredential`), der Ablauf ohne
+  Oberfläche (`createLockController`, `enableLock`, `disableLock`), Text und Modell des Abschnitts (`lockErrorText`, `lockModel`).
 - `vault.js` — Verschlüsselung der lokalen IndexedDB-Inhalte (#490, Stufe 1), DOM-frei und getestet, s. „Lokale
   Verschlüsselung“: `createVaultAdapter` legt sich um den Adapter des Stores, dazu `idbVaultKeyStore`/`memoryVaultKeyStore`,
   `VaultError`, `isSealed`.
@@ -342,7 +345,8 @@ Kopplung gültig bis), dann folgen der Speicher-Hinweis, die Benachrichtigungen,
 
 ## Zurück-Geste und Vollbild-Einstellungen (#461)
 
-- **Jeder Dialog hängt am Browser-Verlauf** (`dialog-history.js`, angebunden in `views.js::openDialog`, dem einzigen `showModal()`):
+- **Jeder Dialog hängt am Browser-Verlauf** (`dialog-history.js`, angebunden in `views.js::openDialog`; einzige Ausnahme ist die Sperre,
+  s. „App-Sperre“, sonst schlösse die Zurück-Geste auch sie):
   beim Öffnen ein `pushState`-Eintrag, beim Schließen (gleich wodurch) ein `history.back()`. Die **Zurück-Geste schließt den
   obersten Dialog** — Android: System-Zurück, iOS: Wisch vom linken Rand (der Randstreifen gehört deshalb der Geste, s.
   `swipe-policy.js`). Auch der Tages-Editor und die Rückfragen schließen so, nicht nur die Einstellungen.
@@ -361,6 +365,8 @@ Kopplung gültig bis), dann folgen der Speicher-Hinweis, die Benachrichtigungen,
 
 Reines CSS am Ende von `app.css`, ohne JavaScript. Regeln, die `test/layout.test.js` festhält:
 
+- **`app.css` muss alle Blöcke schließen** (`layout.test.js` zählt die Klammern ohne Kommentare und Strings): eine fehlende Klammer
+  macht alles dahinter zum Inhalt des letzten `@media`.
 - **Höchstens 200 ms** je Animation und Übergang (die App wird im Vorbeigehen bedient); **Keyframes bewegen nur `transform` und `opacity`**.
 - **`prefers-reduced-motion: reduce` schaltet alles ab** (`animation`/`transition: none !important`, auch Pseudo-Elemente und Backdrop).
 - **Eingeblendet werden Dialoge samt Backdrop und neue Hinweise im Hinweis-Container der Woche** (`.hints .hint`). Nicht die Woche und
@@ -547,6 +553,55 @@ in `docs/datenschutz.md`, Abschnitt 11 (die Zusage zu den Geheimnissen in Abschn
 - **Bekannte Grenzen.** Bei mehreren Paketen summiert die Zusammenfassung nur `sent`, `received`,
   `window` und `conflicts` stammen vom letzten Paket. Der Fehler beim Öffnen des Browser-Speichers in `main()`
   entsteht vor der App und steht nicht im Protokoll (er ist auf dem Bildschirm).
+
+## App-Sperre (#490)
+
+Eine **Komfort-Sperre** für die Oberfläche, kein Schutz der gespeicherten Daten (die Verschlüsselung ist `vault.js`, getrennt und
+noch aus). `lock.js` hält die Regeln **und den Ablauf** (`createLockController`: Start, Verlassen/Zurückkehren, Entsperren, vorgemerkter Tag),
+`views.js::lockSection`/`lockDialog` und `app.js` nur die Oberfläche. Sie verlässt sich auf WebAuthn mit
+einem Plattform-Authenticator und `userVerification: required`; Verifizierung kann auch die Geräte-PIN sein, die Texte sagen darum
+„Geräte-Entsperrung“, nie „Biometrie“.
+
+- **Meta** (gerätelokal): `lock_enabled`, `lock_credential` (Credential-ID, base64url), `lock_delay_ms` (0, 60 000 oder 300 000, sonst
+  die Standardfrist). Die Sperre gilt nur mit Schalter **und** ID (`lockActive`). `rpId` ist `location.hostname`: ein Wechsel des Hosts
+  macht den Passkey unbrauchbar.
+- **Einschalten** in zwei Schritten: `createLock` legt den Passkey an, danach bestätigt der Nutzer in einem **eigenen Tipp** die
+  Entsperrung („Entsperrung prüfen“, `confirmLock`); erst dann gilt die Sperre. Grund: Safari verlangt eine Nutzergeste je Abfrage, und eine
+  Sperre, die sich nicht öffnen lässt, wäre eine Falle. Bricht der Nutzer ab, bleibt die Sperre aus (ein angelegter Passkey liegt dann
+  ungenutzt im Passwortmanager). **Ausschalten** verlangt die Entsperrung (`removeLock`), scheitert sie, bleibt die Sperre an.
+- **Wann gesperrt wird:** bei jedem Start, sobald sie eingeschaltet ist, und nach dem Zurückkehren (`visibilitychange`, dazu
+  `pagehide`/`pageshow` für den Back-Forward-Cache), wenn die Frist abgelaufen ist (`shouldLock`; eine zurückgestellte Uhr sperrt). Gesperrt
+  löst das Zurückkehren keinen Abgleich aus; das Entsperren holt ihn nach. Ein erfolgreiches Entsperren löscht die Verlassen-Zeit: zeigt der
+  Browser während der Abfrage `hidden` und danach `visible`, sperrte „Sofort“ sonst gleich wieder.
+- **Nichts öffnet sich über der Sperre.** Ein später geöffneter modaler Dialog läge über ihr. Deshalb merkt `openDay` den Tag vor, und
+  `openSettings` bricht nach seinem `await` ab, wenn inzwischen gesperrt ist (Fenster: Klick auf „Einstellungen“ und im selben Zug Verlassen
+  und Zurückkehren). Wer künftig nach einem `await` einen Dialog öffnet, prüft `this.locked` ebenso.
+- **Hängt die Abfrage,** beendet `unlockWithCredential` sie nach 65 s als „abgebrochen“ (ein Browser, der `timeout` ignoriert, ließe sonst
+  „Entsperren“ deaktiviert und den Notausgang unsichtbar). Die Einstellungen warten höchstens 1 s auf die Frage, ob das Gerät die Sperre anbietet
+  (`pending`), sie läuft seit dem Start im Hintergrund.
+- **Die Sperre ist ein Dialog über allem** und läuft bewusst **nicht** über `openDialog`: der hängt jeden Dialog an den Verlauf, die
+  Zurück-Geste schlösse die Sperre (`layout.test.js` hält das fest). Escape (`cancel`) schließt sie nicht; ein zweites Escape, das Chrome
+  trotz `preventDefault` durchlässt, öffnet sie über den `close`-Handler sofort wieder. Ein bereits offener Dialog bleibt darunter mit
+  allen Eingaben erhalten und ist nach dem Entsperren wieder bedienbar (in Chromium mit Mausklicks geprüft). Ein Klick auf eine
+  Benachrichtigung während der Sperre öffnet den Tag erst danach (`pendingDay`), sonst läge der Editor über der Sperre.
+- **Geprüft wird** (`unlockWithCredential`): Challenge, Typ `webauthn.get`, Credential-ID, der rpId-Hash der Authenticator-Daten und die
+  Flags „Anwesenheit“ **und** „Verifizierung“. **Nicht** die Signatur: ohne Server gäbe es niemanden, dem sie etwas belegte, und Skript in
+  der Seite umgeht die Sperre ohnehin.
+- **Notausgang: nur „Neu koppeln“.** Nach dem ersten Fehlversuch erscheint „Entsperren nicht möglich? Neu koppeln“ (Rückfrage, dann
+  `resetLocalData` aus `main()`, derselbe Weg wie beim Fehlerbildschirm von `vault.js`: alle lokalen Daten weg, nicht übertragene Tage
+  gehen verloren). Es gibt bewusst kein „Sperre zurücksetzen, Daten bleiben“: Browser liefern für „abgebrochen“ und „Passkey nicht
+  gefunden“ denselben Fehler, die App kann beides nicht trennen, und wer das Handy in der Hand hat, käme so an die Einträge.
+- **Grenzen.** Kein Schutz der gespeicherten Daten und nicht vor Skript im selben Ursprung. Die Vorschau im App-Wechsler wird nicht
+  verdeckt. **iOS ist ungeprüft** (kein Gerät): ob der Passkey-Dialog in einer installierten Web-App zuverlässig erscheint, und ob ein
+  Fehlschlag im Standalone-Modus zum Notausgang führt, bleibt offen. Ebenso der Back-Forward-Cache und Firefox.
+- **Fehler im Debug-Protokoll:** `onError` von `createLockCredential`/`unlockWithCredential` reicht jede unerwartete Ausnahme (nicht
+  „abgebrochen“) an `logFailure` (`Sperre: Passkey anlegen`, `Sperre: Entsperren`): auf iOS, das ungeprüft ist, bliebe sonst keine Spur.
+- **Geprüft** in Node (`test/lock.test.js`: Frist, Unterstützung, Anlegen und Entsperren gegen eine `credentials`-Attrappe mit echter
+  Form der Antwort, der Ablauf des Controllers, Ein- und Ausschalten, Modell, Texte; ohne Test bleiben `views.js` und `app.js`) und im echten Chromium mit einem **virtuellen Authenticator** (CDP `WebAuthn.addVirtualAuthenticator`
+  mit `transport: 'internal'`, `hasUserVerification`, `isUserVerified`): Einschalten mit Probe, Start gesperrt, Escape und Zurück,
+  Fehlversuch und Notausgang, Frist, Benachrichtigungsklick, Ausschalten. Echte Biometrie war nicht dabei. Beim Prüfen: die Sichtbarkeit lässt
+  sich mit `Object.defineProperty(document, 'visibilityState', …)` und einem `visibilitychange` nachstellen; `locator.click()` hängt in
+  Tabs ohne Frames in der Stabilitätsprüfung, dann `page.mouse.click(x, y)`.
 
 ## Datenschutzseite
 
