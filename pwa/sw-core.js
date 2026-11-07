@@ -53,6 +53,7 @@ export const PRECACHE = [
   './crypto.js',
   './store.js',
   './db.js',
+  './vault.js',
   './sync.js',
   './sync-errors.js',
   './transport.js',

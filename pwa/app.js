@@ -13,6 +13,7 @@ import { RelayClient, RelayError, VAPID_PUBLIC, newSecret, syncSchedule } from '
 import { DEFAULT_WISH, aheadDays, olderState } from './window-policy.js';
 import { DEFAULT_DEVICE_NAME, PROTOCOL, deviceNameFromUserAgent, isPairFragment, parseHostPort, parsePairLink } from './pairing.js';
 import { openDatabase, requestPersistentStorage } from './db.js';
+import { VaultError, createVaultAdapter, idbVaultKeyStore } from './vault.js';
 import { Store } from './store.js';
 import { SyncClient, SyncError, clockSkewMs } from './sync.js';
 import { isPaired } from './transport.js';
@@ -33,11 +34,11 @@ import { describeRepair, repairServiceWorker } from './sw-repair.js';
 import { clear, focusByKey, focusState, h } from './dom.js';
 import {
   conflictsDialog, confirmDialog, editorDialog, fatalView, hintsHost, pairView,
-  patchHints, scanDialog, settingsDialog, statusBar, weekView,
+  patchHints, scanDialog, settingsDialog, statusBar, vaultView, weekView,
 } from './views.js';
 import { canScan, scanForPairLink } from './scanner.js';
 import { browserKind, isStandalone } from './browser-policy.js';
-import { describeError } from './messages.js';
+import { describeError, describeVaultError } from './messages.js';
 
 const SAVE_SYNC_DELAY_MS = 2000;
 const SWIPE_CLICK_GUARD_MS = 400;
@@ -925,13 +926,39 @@ async function main() {
   const startHash = location.hash;
   scrubPairFragment();
   let store;
+  let vault;
   try {
-    store = new Store(await openDatabase());
+    vault = createVaultAdapter(await openDatabase(), { keys: idbVaultKeyStore() });
+    store = new Store(vault);
     await store.load();
   } catch (error) {
+    if (error instanceof VaultError) {
+      // Verschlüsselte Daten ohne passenden Schlüssel: nie als „leer“ weiterlaufen, der nächste Speichervorgang
+      // überschriebe sie. Der Nutzer entscheidet, ob er neu koppelt (löscht die lokalen Daten).
+      logFailure('Verschlüsselte Daten öffnen', error);
+      root.append(vaultView(describeVaultError(error), {
+        reload: () => location.reload(),
+        reset: async () => {
+          try {
+            await vault.wipe();
+          } catch (wipeError) {
+            logFailure('Lokale Daten löschen', wipeError);
+          }
+          location.reload();
+        },
+      }));
+      return;
+    }
     logFailure('Speicher des Browsers öffnen', error);
     root.append(fatalView(withDetail('Der Speicher des Browsers ist nicht verfügbar (privates Fenster oder gesperrt?). Ohne ihn kann diese App keine Einträge sichern.', error)));
     return;
+  }
+  if (vault.encrypting) {
+    try {
+      await vault.migrate();
+    } catch (error) {
+      logFailure('Vorhandene Daten verschlüsseln', error);       // kein Grund, die App nicht zu starten: es bleibt Klartext
+    }
   }
   await new App(root, store, new SyncClient({ store }), startHash).start();
 }

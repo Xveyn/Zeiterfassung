@@ -33,6 +33,20 @@ function offlineText({ browser, address } = {}) {
   return `${base} Zum Prüfen im Browser des Handys http://${address}/v1/ping öffnen: antwortet er mit einem Fehlercode (z. B. 401), ist das Netz in Ordnung.`;
 }
 
+const VAULT_TEXTS = {
+  key_unavailable: 'Die lokalen Daten sind verschlüsselt, der Schlüssel dafür fehlt auf diesem Gerät (zum Beispiel, weil Website-Daten teilweise gelöscht wurden). Sie lassen sich nicht mehr lesen. Nicht übertragene Einträge gehen verloren. Zum Weiterarbeiten musst du dieses Handy neu koppeln.',
+  unreadable: 'Ein Teil der lokalen Daten ist beschädigt und lässt sich nicht lesen. Nicht übertragene Einträge daraus gehen verloren. Zum Weiterarbeiten musst du dieses Handy neu koppeln.',
+  unsupported: 'Die lokalen Daten stammen von einer neueren Version der Web-App. Bitte die Seite neu laden, damit die neue Version geladen wird.',
+};
+
+/** Text und Ausweg, wenn der Speicher verschlüsselte Daten enthält, die sich nicht öffnen lassen (`vault.js`).
+ *  `canReset`: Neu koppeln (löscht die lokalen Daten) ist sinnvoll; bei einem neueren Format nicht, dort hilft nur
+ *  die neue Version. Ein unbekannter Fehler bietet das Neu-Koppeln an, damit der Nutzer nie in einer Sackgasse landet. */
+export function describeVaultError(error) {
+  const code = error && typeof error === 'object' ? error.code : undefined;
+  return { text: VAULT_TEXTS[code] ?? VAULT_TEXTS.unreadable, canReset: code !== 'unsupported' };
+}
+
 /** @param {unknown} error
  *  @param {{browser?: string, address?: string}} [env] Browser-Art (`browser-policy.browserKind`) und
  *  Adresse des Desktops; nur der Text für „offline“ nutzt sie. */

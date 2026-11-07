@@ -51,6 +51,9 @@ ES-Module flach im Ordner:
   Server-Fehler in `SyncError.kind` (`sync.js` führt die Namen weiter aus). `transport.js` — `LanTransport`
   (HTTP im WLAN) sowie `endpointOf(meta, {onHave})`/`isPaired(meta)`: wohin eine Kopplung spricht und ob es sie gibt.
   `relay-transport.js` — `RelayTransport`, der Weg über die Box (s. „Relay-Abgleich“).
+- `vault.js` — Verschlüsselung der lokalen IndexedDB-Inhalte (#490, Stufe 1), DOM-frei und getestet, s. „Lokale
+  Verschlüsselung“: `createVaultAdapter` legt sich um den Adapter des Stores, dazu `idbVaultKeyStore`/`memoryVaultKeyStore`,
+  `VaultError`, `isSealed`.
 - `crypto.js` — Gegenstück zu `src/mobile_crypto.py` (WebCrypto), s.
   „Verschlüsselung“.
 - `window-policy.js` — Lesefenster (#250): Stufen, Wunsch, die Entscheidung der Wochenansicht
@@ -765,6 +768,50 @@ Das Einspielen prüft **nicht**, ob die neue PWA dasselbe Protokoll spricht wie
 der gekoppelte Desktop: die Seite kann das Protokoll des wartenden Workers
 nicht sicher lesen, und die Regeln oben (Desktop zuerst, Meldung nennt die
 ältere Seite) fangen den Fall ab.
+
+## Lokale Verschlüsselung (#490)
+
+Schutz dessen, was **auf dem Handy liegt** (der Transport ist #249): `vault.js` legt sich als Adapter um `db.js` bzw.
+`memory-adapter.js`; `store.js` kennt es nicht (er spricht nur über `getAll`/`batch`). Entwurf und Stufen:
+Issue #490.
+
+- **Format.** Ein Datensatz wird zu `{vault: 1, kid, iv, ct}`: AES-256-GCM, je Schreiben eine frische 96-Bit-IV, die
+  Zusatzdaten (AAD) binden Store und Schlüssel (`zeit-vault/1/<store>/<key>`), ein Datensatz lässt sich also nicht an einen
+  anderen Tag oder in einen anderen Store verschieben. Verschlüsselt werden Einträge, Reservierungen **und** Meta (Token,
+  `k_dev`, `box_secret`, `relay_secret`); die Tagesdaten als Schlüssel bleiben lesbar. Ein Wert mit `vault`-Feld gilt immer
+  als versiegelt, auch in einem unbekannten Format (`unsupported`): er darf nie als Klartext durchgehen.
+  Serialisiert wird als JSON, nicht als structured clone: ein `undefined`-Feld entfällt (der Store mischt die Meta ohnehin mit den
+  Standardwerten, eine Abweichung ist nicht beobachtet; die ganze PWA-Suite läuft mit eingeschalteter Verschlüsselung identisch).
+- **Schlüssel.** Ein nicht extrahierbarer AES-GCM-Schlüssel in der eigenen Datenbank `zeiterfassung-vault` (Store `keys`,
+  Schlüssel `data`, Wert `{kid, key}`, wie der Push-Schlüssel in `push-blob.js`). `putIfAbsent` ist eine Transaktion: zwei Tabs, die
+  gleichzeitig den ersten Schlüssel anlegen, behalten denselben (sonst wäre alles, was der unterlegene Tab schrieb,
+  unlesbar). `kid` (`dev1`) steht im Format, damit spätere Schlüssel nebeneinander lesbar sind. Eine Datenbank ohne Object Store
+  (entsteht, wenn jemand sie ohne Version öffnet, `indexedDB.open('zeiterfassung-vault')`) legt der Schlüsselspeicher selbst neu an:
+  darin kann kein Schlüssel liegen. Beim Nachsehen im Browser sie trotzdem mit Version öffnen und Verbindungen schließen.
+- **Zweistufig ausgerollt.** `ENCRYPT_AT_REST` ist `false`: Lesen geht immer, Schreiben schreibt Klartext und legt keinen
+  Schlüssel an. Der Grund ist der Stand vor diesem Modul: `Store.load` mischt eine unbekannte Meta mit den Standardwerten
+  (`token: ''`), die App zeigt „nicht gekoppelt“, und das nächste `setMeta` schreibt diese Klartext-Standardwerte über die
+  verschlüsselte Meta. Ein noch gecachter älterer Stand (oder ein Rollback von Pages) würde die Kopplung also vernichten.
+  Ein Folge-PR schaltet die Konstante an (und den Test `writing stays off …` um), **nachdem** der lesefähige Stand
+  ausgeliefert ist — Expand/Contract wie in „Kompatibilität“, Regel 3. Bis dahin ändert sich für Nutzer nichts.
+- **Bestand.** Gemischt lesbar: Klartext-Datensätze passieren unverändert, jedes Schreiben verwendet das aktuelle Format. Mit
+  eingeschalteter Verschlüsselung schreibt `migrate()` (beim Start in `main()`) den Rest einmal versiegelt zurück; scheitert das,
+  bleibt es Klartext und die App startet trotzdem. **Offen, vor dem Einschalten zu lösen:** `migrate` liest und schreibt in zwei
+  Schritten; schreibt ein zweiter offener Tab dazwischen denselben Schlüssel, überschreibt `migrate` ihn mit dem alten Stand
+  (in Node nachgestellt). Nötig ist ein Schreiben mit Vergleich (compare-and-put in einer Transaktion von `db.js`) oder ein anderer Weg;
+  solange `ENCRYPT_AT_REST` aus ist, ruft nichts `migrate` auf.
+- **Schlüssel fehlt oder Datensatz nicht lesbar.** `getAll` wirft `VaultError` (`key_unavailable`, `unreadable`,
+  `unsupported`), ein solcher Datensatz gilt nie als leer. `main()` zeigt dann `vaultView` (Text aus
+  `messages.describeVaultError`) statt der App: bei `key_unavailable`/`unreadable` „Neu koppeln“ mit Rückfrage (`wipe()`
+  löscht Daten **und** Schlüssel, danach Neuladen; nicht übertragene Tage gehen verloren), bei `unsupported` nur „Seite neu laden“.
+  Nichts wird still gelöscht.
+- **Grenzen.** Das ist Schutz vor einer **Kopie des Speichers**, nicht vor Skript im selben Ursprung: der Schlüssel lässt sich dort
+  benutzen, nur nicht auslesen. Token, `box_secret` und `relay_secret` müssen als Text vorliegen, solange die App läuft
+  (Bearer, WebSocket-Subprotocol). Der Push-Schlüssel (`push-blob.js`) bleibt getrennt und außerhalb: der Service Worker hat kein
+  `navigator.credentials` und muss im Hintergrund entschlüsseln können.
+- **Geprüft.** Die Logik in Node (`test/vault.test.js`: Memory-Adapter, IndexedDB-Attrappe). Im echten Chromium von Hand: Schlüssel
+  überlebt das Neuladen, ohne ihn kommt `key_unavailable`, das Rennen zweier Tabs, `wipe`, und die App mit eingeschaltetem
+  Schreiben (Koppeln, Abgleich, Neuladen, Fehlerbildschirm, „Neu koppeln“). **iOS ist ungeprüft** (kein Gerät).
 
 ## Verschlüsselung (#249)
 
