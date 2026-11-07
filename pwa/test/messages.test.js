@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
-import { describeError } from '../messages.js';
+import { describeError, describeVaultError } from '../messages.js';
 import { PROTOCOL } from '../pairing.js';
 import { SyncError, classifyHttpError } from '../sync.js';
 
@@ -215,4 +215,21 @@ test('a silent desktop over the relay also names a revoked or re-paired phone an
   assert.match(text, /neu gekoppelt/);
   assert.match(text, /neu koppeln/);
   assert.equal(action, 'retry');
+});
+
+
+test('a lost key says the data is unreadable and offers re-pairing; a newer format only asks for a reload', () => {
+  const lost = describeVaultError({ code: 'key_unavailable' });
+  assert.equal(lost.canReset, true);
+  assert.match(lost.text, /nicht (mehr )?lesen/);
+  assert.match(lost.text, /Nicht übertragene Einträge gehen verloren/);
+
+  const newer = describeVaultError({ code: 'unsupported' });
+  assert.equal(newer.canReset, false);
+  assert.match(newer.text, /neu laden/);
+
+  const broken = describeVaultError({ code: 'unreadable' });
+  assert.equal(broken.canReset, true);
+  assert.notEqual(broken.text, lost.text);
+  assert.equal(describeVaultError(null).canReset, true);                // unbekannt: nie in einer Sackgasse
 });

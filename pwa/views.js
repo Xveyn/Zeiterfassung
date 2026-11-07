@@ -847,3 +847,16 @@ export function scanDialog(onClose) {
 export function fatalView(text) {
   return h('main', {}, h('h1', {}, 'Zeiterfassung'), h('p', { class: 'hint error', role: 'alert' }, text));
 }
+
+/** Der Speicher enthält verschlüsselte Daten, die sich nicht öffnen lassen (`vault.js`, `describeVaultError`).
+ *  Nichts wird still gelöscht: „Neu koppeln“ fragt nach und verwirft die lokalen Daten erst dann. */
+export function vaultView({ text, canReset }, handlers) {
+  return h('main', {}, h('h1', {}, 'Zeiterfassung'), h('p', { class: 'hint error', role: 'alert' }, text),
+    h('div', { class: 'buttons' },
+      button('Seite neu laden', handlers.reload),
+      canReset && button('Neu koppeln', () => confirmDialog({
+        title: 'Neu koppeln?',
+        text: 'Alle lokalen Daten dieser Web-App werden gelöscht, auch nicht übertragene Einträge. Danach koppelst du dieses Handy neu mit dem Desktop.',
+        confirmLabel: 'Löschen und neu koppeln',
+      }, handlers.reset), 'primary')));
+}
