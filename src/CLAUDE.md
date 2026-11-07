@@ -764,7 +764,7 @@ Wert.
   aber weiterhin selbst (andere Keys, kein gemeinsamer Renderer). `ensure_icon`
   legt eine persistente Icon-Kopie im Datenverzeichnis ab, weil `Icon=` den
   AppImage-Mount überleben muss.
-- `autostart.py` — plattformabhängig (Windows-Registry HKCU Run / macOS-LaunchAgent / Linux-.desktop).
+- `autostart.py` — plattformabhängig (Windows-Registry HKCU Run / macOS-LaunchAgent / Linux-.desktop). Der Linux-Eintrag liegt in `$XDG_CONFIG_HOME/autostart` (nur absolute Werte, sonst `~/.config`; `linux_desktop_path()`, im App-Tab als „Eintrag: …“ unter dem Schalter); Ausschalten und „Zeiterfassung entfernen“ räumen zusätzlich `~/.config/autostart` ab, wo bei abweichendem `XDG_CONFIG_HOME` ein wirkungsloser Eintrag stehen kann.
   Windows-Backend nutzt den **Registry-Wert `Zeiterfassung`** (Wertname = `installer.iss` → strukturell
   ein Eintrag); `import winreg` lazy (CI-Ubuntu). `is_autostart_enabled()` liest den echten Zustand
   (Registry-Wert **oder** Alt-Startup-Shortcut als Fallback, falls Migration scheitert).

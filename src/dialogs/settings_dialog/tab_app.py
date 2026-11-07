@@ -10,13 +10,13 @@ from tkinter import messagebox, ttk
 
 from src import dpi, removal
 from src.autostart import (
-    disable_autostart, enable_autostart, is_autostart_enabled,
+    disable_autostart, enable_autostart, is_autostart_enabled, linux_desktop_path,
     resolve_autostart_target,
 )
 from src.dialogs.settings_dialog.fields import FieldSet
 from src.dialogs.settings_dialog.form_model import SaveOutcome
 from src.dialogs.settings_dialog.tab_rules import (
-    app_updates, slider_percent,
+    app_updates, autostart_path_hint, slider_percent,
 )
 from src.logging_setup import get_log_dir
 from src.platform_open import open_folder
@@ -46,6 +46,9 @@ class AppTab:
         minimize_to_tray_var = tk.BooleanVar(value=settings.get("minimize_to_tray"))
         form.section("Fenster")
         form.check("Autostart (minimiert bei Anmeldung)", autostart_var)
+        path_hint = autostart_path_hint(platform.system(), linux_desktop_path())
+        if path_hint is not None:
+            form.hint(path_hint)
         form.check("Immer im Vordergrund", always_on_top_var)
         form.check("Beim Schließen in den Infobereich minimieren", minimize_to_tray_var)
 

@@ -85,11 +85,28 @@ def macos_plist_path() -> str:
     return _macos_plist_path()
 
 
+def _xdg_config_home() -> str:
+    """`$XDG_CONFIG_HOME`, wenn gesetzt und absolut (so verlangt es die XDG-Spezifikation:
+    alles andere gilt als nicht gesetzt), sonst `~/.config`."""
+    xdg = os.environ.get("XDG_CONFIG_HOME", "")
+    if xdg and os.path.isabs(xdg):
+        return xdg
+    return os.path.join(os.path.expanduser("~"), ".config")
+
+
+def _autostart_entry(config_home: str) -> str:
+    return os.path.join(config_home, "autostart", "Zeiterfassung.desktop")
+
+
 def _linux_desktop_path() -> str:
-    return os.path.join(
-        os.path.expanduser("~"),
-        ".config", "autostart", "Zeiterfassung.desktop",
-    )
+    """Die Desktop-Umgebung liest `<XDG_CONFIG_HOME>/autostart`; ein Eintrag an anderer
+    Stelle startet nie."""
+    return _autostart_entry(_xdg_config_home())
+
+
+def linux_desktop_path() -> str:
+    """Öffentlich für die Anzeige im App-Tab: wo der Autostart-Eintrag liegt bzw. angelegt wird."""
+    return _linux_desktop_path()
 
 
 def enable_autostart(target: str, arguments: str = "") -> None:
@@ -225,8 +242,10 @@ def _enable_linux(target: str, arguments: str) -> None:
 
 
 def _disable_linux() -> None:
-    desktop_path = _linux_desktop_path()
-    if os.path.exists(desktop_path):
+    # Auch `~/.config/autostart`: ein Eintrag dort ist bei abweichendem `XDG_CONFIG_HOME` wirkungslos,
+    # startete aber wieder, sobald die Variable zurückgestellt wird.
+    home_default = _autostart_entry(os.path.join(os.path.expanduser("~"), ".config"))
+    for desktop_path in dict.fromkeys((_linux_desktop_path(), home_default)):
         try:
             os.remove(desktop_path)
         except FileNotFoundError:
@@ -243,7 +262,7 @@ def refresh_linux_target(base_path: str) -> None:
     Gebraucht wird das für den **manuellen** Update-Weg: die Assets tragen die
     Version im Dateinamen, eine im Browser geladene AppImage liegt also unter
     einem neuen Pfad. Ohne diesen Schritt zeigt
-    `~/.config/autostart/Zeiterfassung.desktop` danach weiter auf die alte
+    die Autostart-Datei danach weiter auf die alte
     Datei — der Nutzer startet bei jeder Anmeldung stillschweigend die
     Vorgängerversion. Ebenso nach dem Verschieben eines Binarys.
 
