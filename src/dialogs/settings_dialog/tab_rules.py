@@ -654,6 +654,13 @@ def relay_open_view(*, alive: bool, code: str | None, failed: bool,
     return RelayOpenView(False, RELAY_PAIR_ERROR_TEXT if failed else RELAY_PAIR_REFUSED_TEXT, old)
 
 
+def autostart_path_hint(system: str, path: str) -> str | None:
+    """Zeile unter dem Autostart-Schalter: wo der Eintrag liegt bzw. angelegt wird. Nur Linux: dort
+    hängt der Ort an `XDG_CONFIG_HOME`; unter Windows ist es ein Registry-Wert, unter macOS eine
+    feste Plist."""
+    return f"Eintrag: {path}" if system == "Linux" else None
+
+
 def relay_state_text(state: str) -> str:
     """Kurztext zum Zustand der Relay-Box eines Geräts; Unbekanntes bekommt einen Ersatztext."""
     return _RELAY_STATE_TEXTS.get(state, "Zustand unbekannt")

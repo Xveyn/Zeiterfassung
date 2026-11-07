@@ -624,8 +624,9 @@ Datenordners laufen, denn die Schlüssel stehen in den Dateien dort):
    - macOS: `~/Library/LaunchAgents/com.margenheld.zeiterfassung.plist` — vorher
      `launchctl unload` darauf ausführen, sonst bleibt der Dienst bis zur nächsten
      Abmeldung geladen.
-   - Linux: `~/.config/autostart/Zeiterfassung.desktop` (Autostart) und
-     `$XDG_DATA_HOME/applications/Zeiterfassung.desktop` (Fallback
+   - Linux: `$XDG_CONFIG_HOME/autostart/Zeiterfassung.desktop` (Fallback
+     `~/.config/autostart/`, Autostart; der genaue Ort steht in Einstellungen → App unter
+     „Autostart“) und `$XDG_DATA_HOME/applications/Zeiterfassung.desktop` (Fallback
      `~/.local/share/applications/`, Anwendungsmenü). Wer `appimaged` oder
      AppImageLauncher nutzt, findet dort zusätzlich einen Eintrag
      `appimagekit_<hash>-Zeiterfassung.desktop`.

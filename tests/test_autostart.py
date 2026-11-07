@@ -9,8 +9,15 @@ from src.autostart import (
     _macos_plist_path,
     _linux_desktop_path,
     is_autostart_enabled,
+    linux_desktop_path,
     _windows_run_command,
 )
+
+
+@pytest.fixture(autouse=True)
+def _no_xdg_config_home(monkeypatch):
+    """Ein auf dem Entwicklungsrechner gesetztes `XDG_CONFIG_HOME` verschöbe den Autostart-Pfad aller Tests."""
+    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
 
 
 def test_windows_run_command_matches_installer_format():
@@ -160,6 +167,50 @@ class TestLinuxAutostart:
             str(fake_home), ".config", "autostart", "Zeiterfassung.desktop"
         )
         assert _linux_desktop_path() == expected
+
+    def test_desktop_path_honors_xdg_config_home(self, fake_home, monkeypatch):
+        """Die Desktop-Umgebung liest `$XDG_CONFIG_HOME/autostart`: ein Eintrag unter `~/.config`
+        startete bei gesetztem, abweichendem `XDG_CONFIG_HOME` nie."""
+        custom = fake_home / "cfg"
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(custom))
+        assert _linux_desktop_path() == os.path.join(str(custom), "autostart", "Zeiterfassung.desktop")
+        assert linux_desktop_path() == _linux_desktop_path()
+
+    @pytest.mark.parametrize("value", ["", "relative/config", "~/cfg"])
+    def test_empty_or_relative_xdg_config_home_falls_back_to_home(self, fake_home, monkeypatch, value):
+        """Die XDG-Spezifikation lässt nur absolute Pfade zu; alles andere gilt als nicht gesetzt."""
+        monkeypatch.setenv("XDG_CONFIG_HOME", value)
+        assert _linux_desktop_path() == os.path.join(
+            str(fake_home), ".config", "autostart", "Zeiterfassung.desktop")
+
+    def test_enable_and_state_use_the_xdg_location(self, fake_home, monkeypatch):
+        custom = fake_home / "cfg"
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(custom))
+        assert not is_autostart_enabled()
+        enable_autostart("/opt/Zeiterfassung.AppImage", "--minimized")
+        assert (custom / "autostart" / "Zeiterfassung.desktop").exists()
+        assert not (fake_home / ".config" / "autostart" / "Zeiterfassung.desktop").exists()
+        assert is_autostart_enabled()
+
+    def test_an_entry_under_home_does_not_count_while_xdg_config_home_points_elsewhere(
+            self, fake_home, monkeypatch):
+        """Frühere Versionen schrieben auch dann nach `~/.config`; die Datei ist dort wirkungslos."""
+        legacy = fake_home / ".config" / "autostart" / "Zeiterfassung.desktop"
+        legacy.parent.mkdir(parents=True)
+        legacy.write_text("fake")
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(fake_home / "cfg"))
+        assert not is_autostart_enabled()
+
+    def test_disable_also_removes_the_legacy_entry_under_home(self, fake_home, monkeypatch):
+        custom = fake_home / "cfg"
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(custom))
+        legacy = fake_home / ".config" / "autostart" / "Zeiterfassung.desktop"
+        current = custom / "autostart" / "Zeiterfassung.desktop"
+        for path in (legacy, current):
+            path.parent.mkdir(parents=True)
+            path.write_text("fake")
+        disable_autostart()
+        assert not legacy.exists() and not current.exists()
 
     def test_enable_writes_desktop_file(self, fake_home):
         enable_autostart("/opt/Zeiterfassung.AppImage", "--minimized")

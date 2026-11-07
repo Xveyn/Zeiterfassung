@@ -1187,3 +1187,10 @@ def test_changelog_heading_says_whose_changelog_it_is(result, installed, expecte
 ])
 def test_changelog_box_lines_follow_the_content_within_limits(lines, expected):
     assert tr.changelog_box_lines(lines) == expected
+
+
+def test_autostart_path_hint_names_the_entry_on_linux_only():
+    path = "/home/u/.config/autostart/Zeiterfassung.desktop"
+    assert tr.autostart_path_hint("Linux", path) == f"Eintrag: {path}"
+    assert tr.autostart_path_hint("Windows", path) is None      # Registry-Wert, kein Pfad
+    assert tr.autostart_path_hint("Darwin", path) is None       # feste LaunchAgents-Plist, nichts zu verstellen
