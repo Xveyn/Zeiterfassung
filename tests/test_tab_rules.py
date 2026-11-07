@@ -880,9 +880,14 @@ def test_relay_state_text_covers_every_state():
     assert tr.relay_state_text("irgendwas")           # unbekannt: Ersatztext, kein Fehler
 
 
-def test_the_replaced_state_says_the_sync_is_standing():
+def test_the_replaced_state_names_the_cause_and_both_ways_out():
+    """Die Box verbindet nach `1000 replaced` nie von selbst neu (`relay_link`): der Text sagt, was los
+    ist und was hilft."""
     text = tr.relay_state_text("replaced")
-    assert "steht" in text and "verbinden" in text
+    assert "steht" in text
+    assert "anderer Desktop" in text
+    assert "neu gestartet" in text and "neu gekoppelt" in text
+    assert "verbinden darf" not in text               # suggerierte ein Neuverbinden von selbst
 
 
 def test_a_device_row_without_relay_state_is_unchanged():
