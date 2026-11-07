@@ -1,3 +1,4 @@
+# pyright: reportOptionalMemberAccess=true
 """Die Box eines Handys am Relay löschen (#358), Tk-frei, stdlib-only.
 
 Der Relay (`relay/`) hält je Kopplung eine Box (Postfach des Handy-Abgleichs). Sie verfällt nach

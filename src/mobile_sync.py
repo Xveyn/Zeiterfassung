@@ -1,4 +1,5 @@
 # src/mobile_sync.py
+# pyright: reportOptionalMemberAccess=true
 """Fachlicher Kern von `POST /v1/sync` der Handy-Erfassung (#221), Tk-frei, ohne Socket.
 
 Drei Dinge liegen hier:

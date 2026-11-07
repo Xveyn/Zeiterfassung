@@ -1,3 +1,4 @@
+# pyright: reportOptionalMemberAccess=true
 """Crash-Recovery für `sync.apply_merged_doc` (Audit M6).
 
 `apply_merged_doc` schreibt das Merge-Ergebnis in mehrere separate Stores

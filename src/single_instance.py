@@ -1,4 +1,5 @@
 # src/single_instance.py
+# pyright: reportOptionalMemberAccess=true
 """Single-Instance-Guard (Tk-frei). Erstinstanz bindet einen pro-Nutzer
 abgeleiteten Localhost-Port; Folgeinstanzen melden sich per Socket und beenden
 sich. Blockiert den Start nie — jeder Fehlerpfad endet im (ggf. ungeschützten)

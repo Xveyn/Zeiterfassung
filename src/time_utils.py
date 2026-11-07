@@ -1,3 +1,4 @@
+# pyright: reportOptionalMemberAccess=true
 from __future__ import annotations
 
 import datetime
@@ -41,6 +42,8 @@ def utc_now_iso() -> str:
 
 def parse_time(time_str: str | None) -> tuple[int, int] | None:
     """Parse HH:MM string. Returns (hours, minutes) or None if invalid."""
+    if time_str is None:
+        return None
     try:
         parts = time_str.split(":")
         if len(parts) != 2:
@@ -50,6 +53,7 @@ def parse_time(time_str: str | None) -> tuple[int, int] | None:
             return None
         return (h, m)
     except (ValueError, AttributeError):
+        # AttributeError: gespeicherte Fremddaten ohne Text, z. B. eine Zahl.
         return None
 
 def calculate_hours(start_str: str | None, end_str: str | None,

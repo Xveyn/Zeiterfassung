@@ -1,3 +1,4 @@
+# pyright: reportOptionalMemberAccess=true
 """Aufbau der Mail-Nachricht — gemeinsam für Gmail-API und SMTP.
 
 Tk-frei, stdlib-only, ohne Google-Import. Hier liegen ZWEI der drei

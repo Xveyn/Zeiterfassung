@@ -1,3 +1,4 @@
+# pyright: reportOptionalMemberAccess=true
 """Pure Logik des Webhook-Versands (Tk-frei, stdlib-only).
 
 Kein tkinter, keine Google-Imports, keine dritte Dependency — dieses Modul
@@ -144,7 +145,8 @@ def auth_headers(auth: dict[str, Any] | None, body: bytes) -> dict[str, str]:
     über die rohen Body-Bytes — exakt die Bytes, die über die Leitung gehen,
     sonst kann der Empfänger nicht verifizieren.
     """
-    mode = (auth or {}).get("mode", "none")
+    auth = auth or {}
+    mode = auth.get("mode", "none")
     if mode == "none":
         return {}
     if mode == "header":

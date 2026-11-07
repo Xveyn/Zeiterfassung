@@ -1,3 +1,4 @@
+# pyright: reportOptionalMemberAccess=true
 """Sync-Engine: pure Funktionen ohne I/O. Drive-Calls leben in src/drive.py.
 
 Doc-Struktur (Sync-File und Zwischenformate), Stand SCHEMA_VERSION = 4:

@@ -1,3 +1,4 @@
+# pyright: reportOptionalMemberAccess=true
 """Persistenter 'hat je gesynct/abgeglichen'-Marker (Audit N6 / Folge-Fix F).
 
 Der Startup-Sweep (`main._sweep_orphan_tombstones`) verwirft verwaiste

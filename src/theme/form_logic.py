@@ -1,4 +1,5 @@
 # src/theme/form_logic.py
+# pyright: reportOptionalMemberAccess=true
 """Tk-freie Entscheidungen der Formular-Bausteine (`theme/form.py`, #132).
 
 Was hier liegt, braucht kein Fenster und ist deshalb testbar: welche

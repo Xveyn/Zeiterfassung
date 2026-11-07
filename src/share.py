@@ -1,3 +1,4 @@
+# pyright: reportOptionalMemberAccess=true
 """Arbeitszeiten teilen + importieren — pure functions, kein UI-Import.
 
 Wire-Format v3 (Slot-Listen):

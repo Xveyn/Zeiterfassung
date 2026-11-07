@@ -1,4 +1,5 @@
 # src/mobile_store.py
+# pyright: reportOptionalMemberAccess=true
 """Gerätelokale Persistenz der gekoppelten Handys (#221), Tk-frei und stdlib-only.
 
 `mobile_devices.json` liegt neben `smtp.json` im Datenverzeichnis, reist aber weder

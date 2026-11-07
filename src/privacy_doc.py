@@ -1,3 +1,4 @@
+# pyright: reportOptionalMemberAccess=true
 """Die Datenschutzhinweise der App, Tk-frei: `docs/datenschutz.md` wird gebündelt und hier in anzeigefertige
 Blöcke für den Dialog zerlegt (Einstellungen → App → „Datenschutzhinweise“).
 

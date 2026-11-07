@@ -1,3 +1,4 @@
+# pyright: reportOptionalMemberAccess=true
 """Einstellungen im Abgleich mit dem Handy (PWA-Einstellungen), Tk-frei und ohne I/O.
 
 Das Handy darf genau zwei Einstellungen setzen: `categories` und `category_times`. Der Teil

@@ -1,4 +1,5 @@
 # src/dpi.py
+# pyright: reportOptionalMemberAccess=true
 """Systemskalierung: DPI-Awareness unter Windows (#157), `Xft.dpi` unter
 Linux (Xveyn#167) und der Systemfaktor daraus.
 

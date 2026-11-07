@@ -1313,6 +1313,16 @@ verzeichnisgebunden — die Tk-freien Module liegen aber flach in `src/` neben
 `ui.py`/`theme/`. Ein Modul in die Whitelist einzutragen ist eine Zusage: die
 Annotationen müssen **richtig** sein, eine falsche ist schlimmer als keine.
 
+**Dieselbe Whitelist schaltet `reportOptionalMemberAccess` wieder an** (Xveyn#143).
+Das Projekt hat die Regel wegen der Tk-Schicht aus; jedes Whitelist-Modul trägt
+deshalb die Zeile `# pyright: reportOptionalMemberAccess=true` — eine
+Direktive in der Datei braucht kein Verzeichnis, `standard` allein brächte hier
+nichts (gemessen: dieselben Treffer wie `basic`). `reportAttributeAccessIssue`
+bleibt bewusst eine Warnung: fast alles dort sind Windows-APIs (`winreg`,
+`windll`), die auf dem Linux-Runner unbekannt sind. Ein Modul in die Whitelist
+aufzunehmen heißt also auch, die Zeile zu setzen und die Treffer zu beheben;
+der Test verlangt sie.
+
 ### Harte Behauptungen dieser Datei sind Assertions (Xveyn#110)
 
 Einige Stellen hier nennen **exakte** Werte, die woanders im Repo noch einmal

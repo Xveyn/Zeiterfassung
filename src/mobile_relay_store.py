@@ -1,3 +1,4 @@
+# pyright: reportOptionalMemberAccess=true
 """Relay-Geheimnisse der gekoppelten Handys (#331), gerätelokal und gehärtet.
 
 Das Geheimnis ist Identität und Bearer des Handys beim Push-Relay (`relay/`): wer es kennt, kann dessen

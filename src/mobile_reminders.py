@@ -1,3 +1,4 @@
+# pyright: reportOptionalMemberAccess=true
 """Erinnerungen auf dem Handy (#331), Tk-frei und ohne I/O: der Block `reminders` der
 Abgleich-Antwort, das Relay-Geheimnis der Anfrage und die Frage, ob der Desktop-Toast
 entfallen darf.

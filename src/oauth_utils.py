@@ -1,3 +1,4 @@
+# pyright: reportOptionalMemberAccess=true
 """Gemeinsame OAuth-Helfer für die Google-API-Wrapper (mail/drive/gcal).
 
 Token-Persistenz mit restriktiven Permissions und die Scope-Upgrade-Erkennung,

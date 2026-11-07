@@ -1,4 +1,5 @@
 # src/device_id.py
+# pyright: reportOptionalMemberAccess=true
 """Stabile Geräte-ID für den Multi-Device-Sync.
 
 Installierte Builds (frozen): abgeleitet von einer stabilen, pro OS-Installation

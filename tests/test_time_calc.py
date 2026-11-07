@@ -10,6 +10,11 @@ def test_parse_invalid_time():
     assert parse_time("12:60") is None
     assert parse_time("") is None
 
+def test_parse_time_tolerates_none_and_non_text():
+    """Zeiten kommen aus gespeicherten Daten und Fremddaten: kein Text ist keine Zeit, kein Fehler."""
+    assert parse_time(None) is None
+    assert parse_time(830) is None  # type: ignore[arg-type]
+
 def test_calculate_hours():
     assert calculate_hours("08:00", "16:30") == 8.5
     assert calculate_hours("09:00", "17:00") == 8.0

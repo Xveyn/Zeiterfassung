@@ -1,3 +1,4 @@
+# pyright: reportOptionalMemberAccess=true
 """Passwörter im OS-Schlüsselbund, mit Datei-Fallback (Tk-frei).
 
 Windows Credential Manager / macOS Keychain / Linux Secret Service. Ist kein

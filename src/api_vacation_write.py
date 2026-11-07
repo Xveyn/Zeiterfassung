@@ -1,4 +1,5 @@
 # src/api_vacation_write.py
+# pyright: reportOptionalMemberAccess=true
 """Schreibpfad der lokalen API für Urlaub (#239, PR 7), Tk-frei und ohne Socket.
 
 Der Body von `POST /v1/vacations` ist **Fremddaten**. Dieses Modul prüft nur Form

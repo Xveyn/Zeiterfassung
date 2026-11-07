@@ -1,3 +1,4 @@
+# pyright: reportOptionalMemberAccess=true
 """Der Update-Lebenszyklus der App — fünfte App-Komponente (R11, Xveyn#123).
 
 Start-Check, Toast-vs.-Banner-Routing seines Ergebnisses, der manuelle Check

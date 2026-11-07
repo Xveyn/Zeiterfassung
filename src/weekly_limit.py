@@ -1,3 +1,4 @@
+# pyright: reportOptionalMemberAccess=true
 """Wochenstunden-Limit für einen konfigurierbaren Zeitraum (z.B. das
 Werkstudenten-Privileg während der Vorlesungszeit, § 6 Abs. 1 Nr. 3 SGB V).
 

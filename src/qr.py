@@ -1,4 +1,5 @@
 # src/qr.py
+# pyright: reportOptionalMemberAccess=true
 """QR-Code für den Koppel-Dialog (#221), Tk-frei.
 
 `segno` (reines Python, BSD) liefert die Matrix; gezeichnet wird sie vom Dialog auf

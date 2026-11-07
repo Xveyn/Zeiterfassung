@@ -1,4 +1,5 @@
 # src/devices.py
+# pyright: reportOptionalMemberAccess=true
 """Gerätenamen für die Sync-Anzeige — reine Logik, kein Tk, kein I/O.
 
 Die `device_id` (s. `device_id.py`) ist stabil und eindeutig, aber als

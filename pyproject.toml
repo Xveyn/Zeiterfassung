@@ -51,7 +51,10 @@ extraPaths = ["."]
 
 # Tkinter-typisches Rauschen: viele Widgets/Vars werden mit None initialisiert
 # und erst spaeter gesetzt; pyright kann dieses Narrowing nicht nachvollziehen.
-# Reiner False-Positive -> ganz aus.
+# Reiner False-Positive -> ganz aus. Die vollstaendig annotierten Tk-freien Module
+# schalten sie per `# pyright: reportOptionalMemberAccess=true` in der Datei wieder
+# an (Whitelist in tests/test_type_annotations.py): executionEnvironments sind
+# verzeichnisgebunden, diese Module liegen aber flach neben ui.py.
 reportOptionalMemberAccess = "none"
 # Gemischt: teils Monkeypatch-FP (z.B. _was_in_grid), teils echte Fragilitaet
 # (Lib-Internals, build-generierte Importe). Sichtbar lassen, aber entschaerfen.

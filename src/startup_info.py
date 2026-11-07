@@ -1,4 +1,5 @@
 # src/startup_info.py
+# pyright: reportOptionalMemberAccess=true
 """Die Startzeilen des Logs (Xveyn#401): welcher Build läuft wo, und welche
 Funktionen sind an.
 

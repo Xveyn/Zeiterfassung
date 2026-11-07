@@ -1,3 +1,4 @@
+# pyright: reportOptionalMemberAccess=true
 """Das Relay-Objekt eines Handys abräumen (#331), Tk-frei, stdlib-only.
 
 Der Push-Relay (`relay/`, ein Cloudflare Worker) hält je Handy ein Objekt mit Abo und Zeitplan. Es

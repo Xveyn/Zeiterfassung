@@ -1,4 +1,5 @@
 # src/relay_adapter.py
+# pyright: reportOptionalMemberAccess=true
 """Beantwortet Anfragen des Handys, die über die Box des Relays kommen (#358), Tk-frei, ohne I/O.
 
 Der Relay ist ein **Tunnel für das bestehende Protokoll**: die Nutzlast `{v, path, token, envelope}`

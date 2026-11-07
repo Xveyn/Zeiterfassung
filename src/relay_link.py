@@ -1,3 +1,4 @@
+# pyright: reportOptionalMemberAccess=true
 """Verbindungsschicht zum Relay-Abgleich (#358), Tk-frei.
 
 Hält je Box (= je Box-Geheimnis) eine WebSocket zum Relay und reicht jede Anfrage des Handys an

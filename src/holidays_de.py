@@ -1,3 +1,4 @@
+# pyright: reportOptionalMemberAccess=true
 import logging
 import time
 from datetime import date

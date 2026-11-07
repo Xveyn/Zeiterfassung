@@ -1,3 +1,4 @@
+# pyright: reportOptionalMemberAccess=true
 """Gerätelokale Persistenz der Webhook-Konfiguration (Tk-frei, stdlib-only).
 
 `webhooks.json` liegt neben `token.json` im Datenverzeichnis und enthält

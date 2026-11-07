@@ -1,4 +1,5 @@
 # src/mobile_crypto.py
+# pyright: reportOptionalMemberAccess=true
 """Ende-zu-Ende-Verschlüsselung der Handy-Erfassung (#249), Tk-frei, ohne I/O.
 
 AES-256-GCM (`cryptography`) mit HKDF-SHA-256-Schlüsseln. Zwei Schlüsselpaare:

@@ -113,6 +113,8 @@ def test_sign_hmac_matches_rfc4231_test_case_2():
 
 def test_auth_none_sends_no_header():
     assert auth_headers({"mode": "none"}, b"body") == {}
+    assert auth_headers(None, b"body") == {}
+    assert auth_headers({}, b"body") == {}
 
 
 def test_auth_header_mode_passes_value_through():

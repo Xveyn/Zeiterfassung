@@ -1,3 +1,4 @@
+# pyright: reportOptionalMemberAccess=true
 """In-App-Update für Windows und Linux: reine Logik, Tk-frei, stdlib-only.
 
 Die App lädt das Plattform-Asset selbst, prüft es gegen den `SHA256SUMS` des

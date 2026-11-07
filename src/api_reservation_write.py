@@ -1,4 +1,5 @@
 # src/api_reservation_write.py
+# pyright: reportOptionalMemberAccess=true
 """Schreibpfad der lokalen API für Reservierungen (#239, PR 6), Tk-frei und ohne Socket.
 
 Wie `api_entry_write` nimmt dieses Modul **Fremddaten** (der Body kommt von einem

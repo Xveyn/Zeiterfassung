@@ -1,4 +1,5 @@
 # src/platform_open.py
+# pyright: reportOptionalMemberAccess=true
 import os
 import platform
 import subprocess

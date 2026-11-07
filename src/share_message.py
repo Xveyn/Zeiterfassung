@@ -1,3 +1,4 @@
+# pyright: reportOptionalMemberAccess=true
 """Die Mail zum Teilen von Arbeitszeiten/Reservierungen (R10, Xveyn#123).
 
 Betreff, HTML-Body und Dateiname des Anhangs — bis R10 inline im

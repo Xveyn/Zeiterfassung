@@ -1,3 +1,4 @@
+# pyright: reportOptionalMemberAccess=true
 """Thread-sichere Übergabe von Callbacks an den UI-Thread (Tk-frei).
 
 Worker dürfen `root.after` nicht aufrufen, solange die Mainloop nicht läuft

@@ -1,4 +1,5 @@
 # src/mobile_keys.py
+# pyright: reportOptionalMemberAccess=true
 """Geräteschlüssel `k_dev` der Handy-Erfassung (#249): Ablage im OS-Schlüsselbund, Datei als Fallback.
 
 `mobile_keys.json` hält je Gerät nur den **Ort**: `{"location": "keyring"}` (der Schlüssel liegt
