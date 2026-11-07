@@ -16,6 +16,8 @@ import json
 import pathlib
 import shutil
 import subprocess
+import time
+from collections.abc import Iterator
 from typing import Any
 
 import pytest
@@ -28,6 +30,10 @@ from tests.test_mobile_service import make_service
 
 PROBE = pathlib.Path(__file__).resolve().parent / "mobile_relay_probe.mjs"
 SECRET = "B" * 43
+# Erfolgsfälle bekommen die Frist der echten PWA. Ein Test, der auf das Schweigen des Desktops wartet,
+# dauert so lang wie seine Frist; sie muss die erste Verarbeitung (fsync der Stores) noch einschließen.
+PHONE_TIMEOUT_MS = 15_000
+SILENT_TIMEOUT_MS = 3_000
 FOREIGN_NONCE = "AAAAAAAAAAAAAAAA"
 
 pytestmark = pytest.mark.skipif(shutil.which("node") is None, reason="Node fehlt")
@@ -74,24 +80,35 @@ class FakeBox:
             deliver.append({"type": "slot", "ver": self.slot[0], "hex": self.slot[1].hex()})
         return {"deliver": deliver, "close": None}
 
-    def on_put(self, payload: bytes) -> dict[str, Any]:
+    def on_put(self, payload: bytes) -> Iterator[dict[str, Any]]:
+        """Erst das `ok`, dann (nach der Verarbeitung des Desktops) die Antwort: die echte Box bestätigt
+        ein `put` sofort, unabhängig davon, wie lange der Desktop braucht."""
         self.puts.append(payload)
         self.req_ver += 1
-        deliver: list[dict[str, Any]] = [{"type": "ok", "ver": self.req_ver}]
+        yield {"deliver": [{"type": "ok", "ver": self.req_ver}], "close": None, "more": True}
         result = self.adapter.process(payload)
         self.results.append(result)
         if result.frame is None:
-            return {"deliver": deliver, "close": None}
+            yield {"deliver": [], "close": None}
+            return
         self.res_ver += 1
         self.slot = (self.res_ver, result.frame)
         if self.lose_next_response:
             self.lose_next_response = False
             if self.wipe_when_lost:
                 self.slot = None
-                return {"deliver": deliver, "close": {"code": 1000, "reason": "wiped"}}
-            return {"deliver": deliver, "close": {"code": 1006, "reason": ""}}
-        deliver.append({"type": "slot", "ver": self.res_ver, "hex": result.frame.hex()})
-        return {"deliver": deliver, "close": None}
+                yield {"deliver": [], "close": {"code": 1000, "reason": "wiped"}}
+            else:
+                yield {"deliver": [], "close": {"code": 1006, "reason": ""}}
+            return
+        yield {"deliver": [{"type": "slot", "ver": self.res_ver, "hex": result.frame.hex()}], "close": None}
+
+    def put(self, payload: bytes) -> dict[str, Any]:
+        """Wie `on_put`, alles auf einmal (für Tests, die direkt in die Box legen)."""
+        deliver: list[dict[str, Any]] = []
+        for reply in self.on_put(payload):
+            deliver.extend(reply["deliver"])
+        return {"deliver": deliver}
 
 
 class Phone:
@@ -124,7 +141,8 @@ class Phone:
                 if event["type"] == "connect":
                     self._send(self.box.on_connect(event["have"]))
                 else:
-                    self._send(self.box.on_put(bytes.fromhex(event["hex"])))
+                    for reply in self.box.on_put(bytes.fromhex(event["hex"])):
+                        self._send(reply)
             elif "error" in out:
                 raise AssertionError(out["error"])
             else:
@@ -156,7 +174,7 @@ def world(tmp_path, monkeypatch):
         calls.append(request.path)
         return original(request, context, principal)
     monkeypatch.setattr(mobile_routes, "dispatch", spy)
-    phone = Phone(box, timeout_ms=1500)
+    phone = Phone(box, timeout_ms=PHONE_TIMEOUT_MS)
     yield type("World", (), {"ctx": ctx, "box": box, "phone": phone, "calls": calls})
     phone.close()
 
@@ -209,6 +227,27 @@ def test_pairing_and_two_syncs_run_through_the_box(world):
     assert state["seq"] == 2 == last_seq(world)
     assert state["box_have"] == world.box.res_ver             # jedes `slot` hat `have` vorgerückt, `ok` nicht
     assert world.ctx.storage.get_all_raw()[day()]["slots"][0]["end"] == "12:00"
+
+
+# --- Zeitverhalten ----------------------------------------------------------------------------------
+
+def test_a_slow_desktop_is_silent_not_unreachable(world, monkeypatch):
+    """Die echte Box bestätigt ein `put` sofort mit `ok`, unabhängig davon, wie lange der Desktop zum
+    Antworten braucht. Ein langsamer Desktop (fsync der Stores auf einem belasteten Rechner) ist
+    deshalb „Desktop antwortet nicht“, nie „Relay nicht erreichbar“."""
+    paired(world)
+    save_day(world)
+    original = world.box.adapter.process
+
+    def slow(payload):
+        time.sleep(1.2)
+        return original(payload)
+    monkeypatch.setattr(world.box.adapter, "process", slow)
+    world.phone.call("timeout", timeoutMs=500)
+
+    failed = world.phone.call("sync")
+
+    assert failed == {"failed": {"kind": "desktop_silent", "code": "desktop_silent"}}
 
 
 # --- Regel 3: Kopplung genau einmal ---------------------------------------------------------------
@@ -267,6 +306,7 @@ def test_a_replay_after_the_box_was_wiped_leaves_the_phone_waiting_and_the_next_
     save_day(world)
     world.box.lose_next_response = True
     world.box.wipe_when_lost = True          # `1000 wiped`: der Slot ist weg, `have` fällt auf 0
+    world.phone.call("timeout", timeoutMs=SILENT_TIMEOUT_MS)
 
     failed = world.phone.call("sync")
 
@@ -295,6 +335,7 @@ def test_a_409_replay_from_dispatch_gets_no_answer(world, monkeypatch):
         statuses.append(second.status)
         return second
     monkeypatch.setattr(mobile_routes, "dispatch", applied_in_between)
+    world.phone.call("timeout", timeoutMs=SILENT_TIMEOUT_MS)
 
     failed = world.phone.call("sync")
 
@@ -312,7 +353,7 @@ def test_last_seq_is_read_from_the_device_record_not_kept_in_the_adapter(world):
     world.box.adapter = RelayAdapter(world.ctx)                  # „Neustart“: kein Zustand im Speicher
     world.calls.clear()
 
-    again = world.box.on_put(request)                            # dieselbe Anfrage wird erneut zugestellt
+    again = world.box.put(request)                            # dieselbe Anfrage wird erneut zugestellt
 
     assert [m["type"] for m in again["deliver"]] == ["ok"]       # keine Antwort
     assert world.calls == [] and last_seq(world) == 1

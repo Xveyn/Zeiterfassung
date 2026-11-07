@@ -7,10 +7,12 @@
 //   Python → Node   {cmd, ...}                          ein Befehl; Antwort ist {ok} oder {error}
 //   Node → Python   {event: 'connect', have}            eine WebSocket wurde geöffnet
 //                   {event: 'put', hex}                 das Handy legt eine Anfrage in die Box
-//   Python → Node   {deliver: [{type, ver, hex?}], close: null | {code, reason}}
-//                   die Antwort auf genau eine Rückfrage: was die Box dem Handy zustellt
+//   Python → Node   {deliver: [{type, ver, hex?}], close: null | {code, reason}, more?: true}
+//                   die Antwort auf eine Rückfrage: was die Box dem Handy zustellt; mit `more` folgt
+//                   eine weitere Zeile zum selben `put` (erst `ok`, dann die Antwort des Desktops)
 // Befehle:
 //   setup {timeoutMs}              Store und Client anlegen
+//   timeout {timeoutMs}            Zeitüberschreitung des Clients ändern (Kopplung und Tage bleiben)
 //   pair {secret, code}            über den Relay koppeln          -> {desktopName} | {failed: {kind, code}}
 //   save {date, slots}             Tag speichern
 //   sync {}                        abgleichen                      -> {sent, received, ...} | {failed: ...}
@@ -20,21 +22,29 @@ import { Store } from '../pwa/store.js';
 import { createMemoryAdapter } from '../pwa/memory-adapter.js';
 import { SyncClient, SyncError } from '../pwa/sync.js';
 
-// Eigene Warteschlange statt `for await`: mitten in einem Befehl wird zusätzlich auf Antworten gewartet, und
-// die Reihenfolge der Leser muss die der Zeilen sein.
-const queue = [];
-const waiters = [];
+// Eigene Warteschlangen statt `for await`: mitten in einem Befehl wird zusätzlich auf Antworten gewartet.
+// Befehle (`cmd`) und Antworten der Box (`deliver`) laufen getrennt: ein Abgleich kann enden, bevor
+// Python die letzten Zeilen zu einem `put` geschickt hat, und der Hauptloop darf sie nicht für den
+// nächsten Befehl halten.
+const makeQueue = () => ({ items: [], waiters: [] });
+const commands = makeQueue();
+const replies = makeQueue();
+const push = (queue, value) => {
+  const waiter = queue.waiters.shift();
+  if (waiter) waiter(value); else queue.items.push(value);
+};
+const next = (queue) => new Promise((resolve) => (queue.items.length ? resolve(queue.items.shift()) : queue.waiters.push(resolve)));
 const rl = createInterface({ input: process.stdin });
 rl.on('line', (line) => {
   if (!line.trim()) return;
   const value = JSON.parse(line);
-  const waiter = waiters.shift();
-  if (waiter) waiter(value); else queue.push(value);
+  push('cmd' in value ? commands : replies, value);
 });
-rl.on('close', () => { while (waiters.length) waiters.shift()(null); });
-const nextLine = () => new Promise((resolve) => (queue.length ? resolve(queue.shift()) : waiters.push(resolve)));
+rl.on('close', () => { for (const queue of [commands, replies]) while (queue.waiters.length) queue.waiters.shift()(null); });
+const nextCommand = () => next(commands);
+const nextReply = () => next(replies);
 const emit = (value) => process.stdout.write(`${JSON.stringify(value)}\n`);
-const ask = (event) => { emit({ event }); return nextLine(); };
+const ask = (event) => { emit({ event }); return nextReply(); };
 
 const toHex = (bytes) => Buffer.from(bytes).toString('hex');
 const fromHex = (hex) => new Uint8Array(Buffer.from(hex, 'hex'));
@@ -64,7 +74,12 @@ function webSocketFactory(url) {
       if (reply.close) ws.fire('close', reply.close);
     },
     async send(data) {
-      ws.play(await ask({ type: 'put', hex: toHex(data.subarray(1)) }));
+      let reply = await ask({ type: 'put', hex: toHex(data.subarray(1)) });
+      ws.play(reply);
+      while (reply.more) {              // das `ok` kommt zuerst, die Antwort des Desktops später
+        reply = await nextReply();
+        ws.play(reply);
+      }
     },
   };
   queueMicrotask(async () => {
@@ -96,6 +111,10 @@ const handlers = {
     client = new SyncClient({ store, webSocketFactory, timeoutMs, locks: null });
     return {};
   },
+  async timeout({ timeoutMs }) {
+    client = new SyncClient({ store, webSocketFactory, timeoutMs, locks: null });
+    return {};
+  },
   async pair({ secret, code }) {
     try { return await client.pairRelay({ secret, code, deviceName: 'Pixel' }); } catch (error) { return failed(error); }
   },
@@ -107,7 +126,7 @@ const handlers = {
 };
 
 for (;;) {
-  const message = await nextLine();
+  const message = await nextCommand();
   if (message === null) break;
   const { cmd, ...args } = message;
   try { emit({ ok: await handlers[cmd](args) }); } catch (error) { emit({ error: String(error.stack || error) }); }
