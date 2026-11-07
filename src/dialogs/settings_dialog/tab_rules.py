@@ -594,7 +594,8 @@ _RELAY_STATE_TEXTS = {
     "connecting": "verbindet …",
     "connected": "verbunden",
     "backoff": "keine Verbindung, neuer Versuch folgt",
-    "replaced": "verdrängt — der Abgleich steht, bis der Desktop neu verbinden darf",
+    "replaced": ("verdrängt (ein anderer Desktop nutzt diese Box) — der Abgleich steht, "
+                 "bis die App neu gestartet oder das Handy neu gekoppelt wird"),
     "stopped": "angehalten",
     "off": "getrennt",
 }
