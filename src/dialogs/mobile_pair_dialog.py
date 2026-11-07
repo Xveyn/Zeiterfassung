@@ -173,7 +173,7 @@ class _PairDialog:
                 self._session_code = None
                 self._cancel_poll()         # die alte Sitzung ist zu: kein Countdown dazu
                 self._countdown.config(text="")
-                self._result.config(text=view.message, fg=STATUS_WARN)
+                self._result.config(text=view.message or "", fg=STATUS_WARN)
                 return
             self._session_code = pairing.code
             self._before = self._service.list_devices()
