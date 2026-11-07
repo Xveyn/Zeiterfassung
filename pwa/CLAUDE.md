@@ -617,6 +617,10 @@ Spec: `docs/superpowers/specs/2026-11-02-ios-relay-abgleich-design.md`.
   kann den Relay-Weg nicht ausprobieren. Geprüft wird er mit der gehosteten PWA gegen einen Desktop mit eingeschalteter
   Handy-Erfassung („Über Relay koppeln“). Die Tests fahren eine WebSocket-Attrappe
   (`test/relay-transport.test.js`) und einen Fake-Desktop hinter `fakeFetch` (`test/sync.test.js`, „Abgleich über den Relay“).
+  Beide Fakes beantworten jedes `put` sofort; die Regeln des Adapters (Replay ohne Antwort, Zwischenspeicher der
+  Kopplungsantwort, fremdes `res` beim Verbinden) laufen erst in `tests/test_mobile_relay_e2e.py` gegeneinander: der echte
+  `RelayAdapter` in pytest, die echte PWA-Logik in Node (`tests/mobile_relay_probe.mjs`), dazwischen eine Box-Attrappe
+  (nur Slot und `have`). Ohne Node wird übersprungen.
 
 ## QR-Decoder (#326)
 
