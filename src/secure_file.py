@@ -1,4 +1,5 @@
 # src/secure_file.py
+# pyright: reportOptionalMemberAccess=true
 """Zugriffsschutz für lokal abgelegte Secrets (Audit M8).
 
 Die App schreibt sensible Dateien neben die Nutzerdaten (`token.json`,

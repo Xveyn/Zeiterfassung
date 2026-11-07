@@ -1,3 +1,4 @@
+# pyright: reportOptionalMemberAccess=true
 """Box-Geheimnisse der Handy-Erfassung über den Relay (#358), gerätelokal und gehärtet.
 
 Eine „Box" ist das Postfach am Relay, über das Handy und Desktop ihre verschlüsselten Umschläge

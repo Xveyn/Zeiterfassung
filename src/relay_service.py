@@ -1,3 +1,4 @@
+# pyright: reportOptionalMemberAccess=true
 """Dienst über der Relay-Verbindung der Handy-Erfassung (#358), Tk-frei.
 
 `RelayLink` hält die Sockets, dieser Dienst die **Regeln**: welche Boxen verbunden sind, wann das

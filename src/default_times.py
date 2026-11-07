@@ -1,3 +1,4 @@
+# pyright: reportOptionalMemberAccess=true
 """Pure Logik der globalen Standardzeiten: Allgemein oder Tageweise.
 
 Gespeichert werden immer die 14 Schlüssel `default_start_<tag>`/

@@ -1,4 +1,5 @@
 # src/desktop_entry.py
+# pyright: reportOptionalMemberAccess=true
 """Freedesktop-`.desktop`-Dateien: schreibt den Menüeintrag und besitzt die
 `Exec=`-Quoting-Regel.
 

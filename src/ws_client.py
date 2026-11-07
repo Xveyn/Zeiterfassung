@@ -1,3 +1,4 @@
+# pyright: reportOptionalMemberAccess=true
 """WebSocket-Adapter zum Relay (#358), Tk-frei, die einzige Stelle der Bibliothek `websockets`.
 
 Bibliotheksausnahmen können URL und Header, also das Box-Geheimnis, tragen: jede wird mit festem

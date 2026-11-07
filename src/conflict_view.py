@@ -1,3 +1,4 @@
+# pyright: reportOptionalMemberAccess=true
 """Anzeige-Modell des Konfliktdialogs — rein, ohne Tk und ohne I/O.
 
 Der Dialog zeigt zwei Stände nebeneinander („Dieses Gerät" gegen ein anderes).

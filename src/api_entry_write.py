@@ -1,4 +1,5 @@
 # src/api_entry_write.py
+# pyright: reportOptionalMemberAccess=true
 """Schreibpfad der lokalen API für Ist-Zeiten (#92, PR 4), Tk-frei und ohne Socket.
 
 Dieses Modul **nimmt Fremddaten** (der Body kommt von einem Skript) und bildet

@@ -1,4 +1,5 @@
 # src/api_auth.py
+# pyright: reportOptionalMemberAccess=true
 """Authentifizierung der lokalen HTTP-API (#92, Stufe 1). Tk-frei, ohne Socket.
 
 Dieses Modul kennt weder Server noch Routen: es erzeugt und speichert das

@@ -1,3 +1,4 @@
+# pyright: reportOptionalMemberAccess=true
 """Adresse der gehosteten Handy-PWA, an genau einer Stelle.
 
 Eigenes Modul, stdlib-frei und ohne Importe aus ``src``: so koennen die

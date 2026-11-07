@@ -1,3 +1,4 @@
+# pyright: reportOptionalMemberAccess=true
 """Push der Urlaubsperioden in einen Google Kalender.
 
 EINWEGS-PUSH: die App ist die Quelle, der Kalender die Kopie. Nur von der App

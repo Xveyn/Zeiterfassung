@@ -1,4 +1,5 @@
 # src/netinfo.py
+# pyright: reportOptionalMemberAccess=true
 """LAN-Adressen des Rechners für die Handy-Erfassung (#221), Tk-frei, stdlib-only.
 
 Die App bindet den Handy-Server nie auf `0.0.0.0`, sondern auf **eine** gewählte

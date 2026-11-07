@@ -1,3 +1,4 @@
+# pyright: reportOptionalMemberAccess=true
 """Pure Reminder-Entscheidungslogik (Tk-frei, keine datetime.now()-Bindung).
 
 Ermittelt, für welche heutigen reservierten Slots eine Toast-Erinnerung fällig

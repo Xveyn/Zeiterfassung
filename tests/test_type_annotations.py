@@ -9,8 +9,8 @@ werden mit `None` initialisiert und später gesetzt, s. `pyproject.toml`).
 Global scharf zu schalten färbte die UI-Schicht rot.
 
 Der Test hält stattdessen eine explizite Whitelist: was einmal annotiert ist,
-bleibt es. Die Liste wächst pro PR mit — Muster wie
-`test_sync_reexports_settings_whitelist`.
+bleibt es — und dieselben Module prüfen `reportOptionalMemberAccess` (s. unten).
+Die Liste wächst pro PR mit — Muster wie `test_sync_reexports_settings_whitelist`.
 
 **Ein Modul hier einzutragen ist eine Zusage**, keine Formalie: Rückgabetyp und
 alle Parameter, und zwar die *richtigen* — eine falsche Annotation ist
@@ -18,7 +18,9 @@ schlimmer als keine, weil sich der nächste Leser darauf verlässt.
 """
 
 import ast
+import io
 import pathlib
+import tokenize
 
 import pytest
 
@@ -176,3 +178,33 @@ def test_annotated_modules_stay_tk_free(module):
 
 def test_whitelist_has_no_duplicates():
     assert len(ANNOTATED_MODULES) == len(set(ANNOTATED_MODULES))
+
+
+OPTIONAL_ACCESS_DIRECTIVE = "# pyright: reportOptionalMemberAccess=true"
+
+
+def _has_directive(source: str) -> bool:
+    """Ob die Direktive als **Kommentar** im Quelltext steht. Pyright wertet sie nur dort aus: dieselbe
+    Zeile in einem Docstring oder String-Literal schaltet nichts an."""
+    return any(tok.type == tokenize.COMMENT and tok.string == OPTIONAL_ACCESS_DIRECTIVE
+               for tok in tokenize.generate_tokens(io.StringIO(source).readline))
+
+
+def test_the_directive_check_counts_comments_only():
+    code = "x = 1\n"
+    assert _has_directive(f"{OPTIONAL_ACCESS_DIRECTIVE}\n{code}")
+    assert _has_directive(f"{code}{OPTIONAL_ACCESS_DIRECTIVE}\n")                 # überall in der Datei
+    assert not _has_directive(f'"""Doc.\n\n{OPTIONAL_ACCESS_DIRECTIVE}\n"""\n{code}')
+    assert not _has_directive(f's = "{OPTIONAL_ACCESS_DIRECTIVE}"\n')
+    assert not _has_directive(f"{OPTIONAL_ACCESS_DIRECTIVE} \n{code}")             # Leerraum am Ende zählt nicht
+    assert not _has_directive("# pyright: reportOptionalMemberAccess = true\n")    # andere Schreibweise
+
+
+@pytest.mark.parametrize("module", ANNOTATED_MODULES)
+def test_annotated_modules_check_optional_member_access(module):
+    """Das Projekt schaltet `reportOptionalMemberAccess` wegen der Tk-Schicht aus (`pyproject.toml`).
+    Die vollständig annotierten Tk-freien Module schalten sie per Direktive in der Datei wieder an:
+    `executionEnvironments` sind verzeichnisgebunden, diese Module liegen aber flach neben `ui.py`."""
+    source = (REPO_ROOT / module).read_text(encoding="utf-8")
+    assert _has_directive(source), (
+        f"{module} steht in ANNOTATED_MODULES, es fehlt aber der Kommentar {OPTIONAL_ACCESS_DIRECTIVE!r}")

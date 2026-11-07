@@ -1,3 +1,4 @@
+# pyright: reportOptionalMemberAccess=true
 from __future__ import annotations
 
 import re

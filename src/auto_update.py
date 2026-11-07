@@ -1,3 +1,4 @@
+# pyright: reportOptionalMemberAccess=true
 """Die Auto-Update-Policy — genau einmal (R9, Xveyn#123).
 
 Zwei Stellen lösen den stillen Hintergrund-Download aus: der Update-Check der

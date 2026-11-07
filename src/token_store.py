@@ -1,3 +1,4 @@
+# pyright: reportOptionalMemberAccess=true
 """OAuth-Credentials laden und speichern — Refresh-Token im Schlüsselbund (#101).
 
 Einzige Stelle, die OAuth-Credentials lädt und speichert. token.json bleibt

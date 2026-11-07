@@ -1,4 +1,5 @@
 # src/mobile_service.py
+# pyright: reportOptionalMemberAccess=true
 """Lebenszyklus der Handy-Instanz (#221), Tk-frei.
 
 `MobileService.apply()` liest `mobile_enabled`/`mobile_port`/`mobile_address` aus den

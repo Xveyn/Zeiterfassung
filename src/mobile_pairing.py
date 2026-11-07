@@ -1,4 +1,5 @@
 # src/mobile_pairing.py
+# pyright: reportOptionalMemberAccess=true
 """Pairing-Code und Gerätetoken der Handy-Erfassung (#221), Tk-frei und stdlib-only.
 
 Rein: kein Dateizugriff, kein Socket. Die Uhr kommt als Parameter herein

@@ -1,3 +1,4 @@
+# pyright: reportOptionalMemberAccess=true
 """Pure Fälligkeits-Logik für den monatlichen Sende-Reminder (Tk-frei).
 
 Ermittelt, ob am `now_dt` der konfigurierte Tag/Uhrzeit für die Erinnerung

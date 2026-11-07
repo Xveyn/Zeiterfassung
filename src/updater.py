@@ -1,3 +1,4 @@
+# pyright: reportOptionalMemberAccess=true
 """Update-Check gegen GitHub-Releases (stdlib-only).
 
 Single Purpose: Netzwerk-Call, Versions-Vergleich, Asset-Match, Throttle.

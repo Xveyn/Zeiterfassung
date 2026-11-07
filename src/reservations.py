@@ -1,3 +1,4 @@
+# pyright: reportOptionalMemberAccess=true
 """JSON-Persistenz der Reservierungen (geplante Arbeitszeiten).
 
 Reservierungen sind ein eigenständiges Konzept neben den erfassten Ist-Zeiten

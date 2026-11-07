@@ -1,3 +1,4 @@
+# pyright: reportOptionalMemberAccess=true
 """Webhook-Secrets im Schlüsselbund (#101) — das SMTP-Muster für webhooks.json.
 
 `auth.value` (Token im Header) bzw. `auth.secret` (HMAC) wandern in den

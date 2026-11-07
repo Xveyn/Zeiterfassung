@@ -1,4 +1,5 @@
 # src/api_routes.py
+# pyright: reportOptionalMemberAccess=true
 """Routing und Antworten der lokalen HTTP-API (#92), Tk-frei und ohne Socket.
 
 `handle(request, ctx, principal)` bekommt eine bereits authentifizierte Anfrage

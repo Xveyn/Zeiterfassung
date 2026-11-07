@@ -1,3 +1,4 @@
+# pyright: reportOptionalMemberAccess=true
 """Nur-Werktage-Modus: Wochenende (Sa/So) überall deaktivieren.
 
 Pure Logik, Tk-frei — wie `weekly_limit.py`/`pause_requirement.py`. Die

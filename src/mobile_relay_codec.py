@@ -1,4 +1,5 @@
 # src/mobile_relay_codec.py
+# pyright: reportOptionalMemberAccess=true
 """Codec für den Abgleich Handy <-> Desktop über die Box des Relays (#358), Tk-frei, ohne I/O.
 
 Zwei Schichten:

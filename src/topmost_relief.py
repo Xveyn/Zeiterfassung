@@ -1,3 +1,4 @@
+# pyright: reportOptionalMemberAccess=true
 """„Immer im Vordergrund" kurz aufheben, solange der Schlüsselbund fragt
 (Xveyn#186).
 

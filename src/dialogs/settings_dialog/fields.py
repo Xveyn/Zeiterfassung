@@ -1,3 +1,4 @@
+# pyright: reportOptionalMemberAccess=true
 """Die Formularfelder eines Einstellungs-Tabs als ein Dict (#132).
 
 Ein Tab registriert seine Tk-Variablen und Textfelder unter einem Schlüssel;

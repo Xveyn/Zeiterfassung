@@ -1,4 +1,5 @@
 # src/json_store.py
+# pyright: reportOptionalMemberAccess=true
 """Gemeinsame Persistenz-Mechanik der lokalen JSON-Stores.
 
 Zwei Regeln stehen hier, und zwar nur hier — als Kopien in jedem Store

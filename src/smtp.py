@@ -1,3 +1,4 @@
+# pyright: reportOptionalMemberAccess=true
 """SMTP-Versand (Tk-frei).
 
 Der zweite Mailweg neben der Gmail-API. Die Nachricht selbst baut

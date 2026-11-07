@@ -1,3 +1,4 @@
+# pyright: reportOptionalMemberAccess=true
 """Changelog-Eintrag einer Release-Version laden (stdlib-only, Tk-frei).
 
 CHANGELOG.md wird im Repo gepflegt und ist im gebauten Artefakt auf dem

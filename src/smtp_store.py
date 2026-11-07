@@ -1,3 +1,4 @@
+# pyright: reportOptionalMemberAccess=true
 """Gerätelokale Persistenz der SMTP-Konten (Tk-frei, stdlib-only).
 
 `smtp.json` liegt neben `token.json` im Datenverzeichnis. Sie enthält

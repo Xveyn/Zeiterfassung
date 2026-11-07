@@ -1,3 +1,4 @@
+# pyright: reportOptionalMemberAccess=true
 """Urlaubsperioden: reine Regeln und JSON-Persistenz.
 
 Urlaub ist ein eigenständiges Konzept neben Ist-Zeiten (`storage.py`) und

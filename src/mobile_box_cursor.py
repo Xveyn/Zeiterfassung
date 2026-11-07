@@ -1,3 +1,4 @@
+# pyright: reportOptionalMemberAccess=true
 """Cursor der Boxen am Relay (`have`, dauerhaft), #358.
 
 Je Box die Version (`ver`) des zuletzt verarbeiteten Slots; beim Verbinden als `have` gemeldet. Die

@@ -1,4 +1,5 @@
 # src/api_summary.py
+# pyright: reportOptionalMemberAccess=true
 """Auswertungen der lokalen HTTP-API (#92), Tk-frei, rein und ohne Socket.
 
 Summen, Kategorien, Wochenlimit, Pausenpflicht und Urlaub für einen Zeitraum

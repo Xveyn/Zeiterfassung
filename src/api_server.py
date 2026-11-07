@@ -1,4 +1,5 @@
 # src/api_server.py
+# pyright: reportOptionalMemberAccess=true
 """HTTP-Server der lokalen API (#92), Tk-frei. Kein Fachwissen: er nimmt eine
 Anfrage entgegen, lässt `api_auth.authorize` entscheiden, übergibt an
 `api_routes.handle` und schreibt die Antwort.

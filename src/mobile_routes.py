@@ -1,4 +1,5 @@
 # src/mobile_routes.py
+# pyright: reportOptionalMemberAccess=true
 """Routen der Handy-Instanz (#221), Tk-frei und ohne Socket.
 
 Die zweite `ApiServer`-Instanz (LAN, Gerätetoken) liefert nur diese drei Routen:

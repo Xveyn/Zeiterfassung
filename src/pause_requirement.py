@@ -1,3 +1,4 @@
+# pyright: reportOptionalMemberAccess=true
 """Pausenpflicht nach § 4 ArbZG: Warnung, wenn die für einen Tag eingetragene
 Pause die gesetzliche Mindestpause für die geleistete Netto-Arbeitszeit
 unterschreitet.

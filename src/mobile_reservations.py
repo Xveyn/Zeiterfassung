@@ -1,4 +1,5 @@
 # src/mobile_reservations.py
+# pyright: reportOptionalMemberAccess=true
 """Reservierungen im Abgleich mit dem Handy (PR 2/3 von „Reservierungen ohne Google“),
 Tk-frei und ohne I/O.
 

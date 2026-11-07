@@ -1,4 +1,5 @@
 # src/removal.py
+# pyright: reportOptionalMemberAccess=true
 """„Zeiterfassung entfernen" (macOS/Linux, #50): Plan und Ausführung.
 
 Tk-frei. Der Windows-Uninstaller (`installer.iss`) ist die Vorlage:

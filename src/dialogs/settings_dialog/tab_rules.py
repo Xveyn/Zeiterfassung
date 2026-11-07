@@ -1,3 +1,4 @@
+# pyright: reportOptionalMemberAccess=true
 """Prüfung und Umrechnung des Formularstands je Einstellungs-Tab (#132).
 
 Der Inhalt des früheren `dialog.save_settings`, aufgeteilt auf die Tabs,

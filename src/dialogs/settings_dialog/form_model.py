@@ -1,3 +1,4 @@
+# pyright: reportOptionalMemberAccess=true
 """Tk-freie Logik des Einstellungs-Dialogs (#132).
 
 Hier entscheidet sich, ob ein Tab ungespeicherte Änderungen hat

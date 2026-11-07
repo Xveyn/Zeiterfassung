@@ -1,3 +1,4 @@
+# pyright: reportOptionalMemberAccess=true
 """Umzug der Zugangsdaten in den Schlüsselbund beim Start (#101) — und das
 Abräumen bei der Deinstallation (`forget_all`).
 

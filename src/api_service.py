@@ -1,4 +1,5 @@
 # src/api_service.py
+# pyright: reportOptionalMemberAccess=true
 """Lebenszyklus der lokalen HTTP-API (#92), Tk-frei.
 
 `ApiService.apply()` liest `api_enabled`/`api_port` aus den Settings und bringt
