@@ -931,7 +931,44 @@ def test_the_relay_pair_hint_warns_about_photographed_qr_and_names_the_limits():
 
 def test_the_refusal_text_names_all_three_causes():
     text = tr.RELAY_PAIR_REFUSED_TEXT
-    assert "aus" in text and "schreibbar" in text and "abgeschlossen" in text
+    assert "Handy-Erfassung ist aus" in text
+    assert "Gerätedatei ist nicht schreibbar" in text
+    assert "frühere Kopplung wird noch abgeschlossen" in text
+
+
+def test_the_error_text_is_not_the_refusal_text():
+    """Eine Ausnahme beim Öffnen hat keine der drei Ursachen der Ablehnung."""
+    assert tr.RELAY_PAIR_ERROR_TEXT != tr.RELAY_PAIR_REFUSED_TEXT
+    assert "Protokoll" in tr.RELAY_PAIR_ERROR_TEXT
+
+
+def test_relay_open_view_shows_a_new_code_and_closes_nothing():
+    view = tr.relay_open_view(alive=True, code="NEW", failed=False, own_code="OLD")
+    assert view.show and view.message is None and view.close_codes == ()
+
+
+def test_relay_open_view_refusal_closes_the_dialogs_own_old_session():
+    view = tr.relay_open_view(alive=True, code=None, failed=False, own_code="OLD")
+    assert not view.show and view.message == tr.RELAY_PAIR_REFUSED_TEXT
+    assert view.close_codes == ("OLD",)
+
+
+def test_relay_open_view_refusal_without_an_own_session_closes_nothing():
+    view = tr.relay_open_view(alive=True, code=None, failed=False, own_code=None)
+    assert view.message == tr.RELAY_PAIR_REFUSED_TEXT and view.close_codes == ()
+
+
+def test_relay_open_view_failure_shows_the_error_text_and_closes_the_own_session():
+    view = tr.relay_open_view(alive=True, code=None, failed=True, own_code="OLD")
+    assert not view.show and view.message == tr.RELAY_PAIR_ERROR_TEXT
+    assert view.close_codes == ("OLD",)
+
+
+def test_relay_open_view_after_the_dialog_closed_closes_the_late_session_only():
+    late = tr.relay_open_view(alive=False, code="NEW", failed=False, own_code=None)
+    assert not late.show and late.message is None and late.close_codes == ("NEW",)
+    nothing = tr.relay_open_view(alive=False, code=None, failed=False, own_code=None)
+    assert nothing.close_codes == ()
 
 
 def test_the_relay_state_keys_match_the_link_and_service_constants():

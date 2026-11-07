@@ -12,9 +12,9 @@ from __future__ import annotations
 import logging
 import threading
 from collections.abc import Callable, Iterable
-from typing import Any
+from typing import Any, NamedTuple
 
-from src import box_relay, ws_client
+from src import box_relay, mobile_pairing, ws_client
 from src.mobile_box_cursor import MobileBoxCursor
 from src.mobile_box_store import MobileBoxReadOnly, MobileBoxStore
 from src.mobile_relay_codec import FrameError, decode_request, relay_link
@@ -36,6 +36,13 @@ def _is_pair_request(payload: bytes) -> bool:
         return decode_request(payload).path == "/v1/pair"
     except FrameError:
         return False                 # der Adapter verwirft die Nutzlast ohnehin
+
+
+class RelayPairing(NamedTuple):
+    """Eine geöffnete Relay-Kopplung: der Koppel-Link und der Code ihrer Sitzung (kanonisch). Mit dem
+    Code schließt der Aufrufer genau diese Sitzung (`RelayService.close_pairing`)."""
+    link: str
+    code: str
 
 
 class RelayService:
@@ -104,10 +111,11 @@ class RelayService:
 
     # --- Kopplung (Worker) --------------------------------------------------------------------
 
-    def open_pairing(self) -> str | None:
-        """Öffnet eine Kopplungssitzung samt neuem offenen Geheimnis und liefert den Koppel-Link
-        `<PWA>#relay=<Geheimnis>:<Code>`. `None` (ohne Sitzung): Dienst geschlossen, Handy-Erfassung
-        aus, Store nicht schreibbar oder ein ungebundener Rest wartet noch aufs Binden."""
+    def open_pairing(self) -> RelayPairing | None:
+        """Öffnet eine Kopplungssitzung samt neuem offenen Geheimnis und liefert Koppel-Link
+        `<PWA>#relay=<Geheimnis>:<Code>` und Code. `None` (ohne Sitzung): Dienst geschlossen,
+        Handy-Erfassung aus, Store nicht schreibbar oder ein ungebundener Rest wartet noch aufs
+        Binden."""
         if not self._active():
             return None
         secret: str | None = None
@@ -125,7 +133,11 @@ class RelayService:
         self._drop_remote(replaced + ([previous] if previous is not None else []))
         if secret is None or code is None:
             return None
-        return relay_link(secret, code)
+        link = relay_link(secret, code)
+        canonical = mobile_pairing.normalize_code(code)
+        if link is None or canonical is None:
+            return None
+        return RelayPairing(link, canonical)
 
     def _open_pending_locked(self) -> tuple[str | None, str | None, str | None]:
         """Öffnet Sitzung und offenes Geheimnis; `(Geheimnis, Code, altes_zum_Löschen)`."""
@@ -138,9 +150,11 @@ class RelayService:
             return None, None, None
         return secret, code, previous
 
-    def close_pairing(self) -> None:
-        """Schließt die Kopplungssitzung und räumt das offene Geheimnis ab (Dialog zu)."""
-        self._context.pairing.close()
+    def close_pairing(self, code: str) -> None:
+        """Schließt die Kopplungssitzung mit diesem Code (Dialog zu) und räumt ein offenes Geheimnis
+        ohne aktive Sitzung ab. Eine Sitzung mit anderem Code bleibt offen: die Worker laufen
+        ungeordnet, und inzwischen kann ein anderer Dialog seine eigene geöffnet haben."""
+        self._context.pairing.close_if(code)
         self._clean_pending()
         self._sync_boxes()
 

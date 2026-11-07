@@ -114,15 +114,62 @@ def test_the_settings_dialog_gets_the_relay_service():
     raise AssertionError("open_settings_dialog wird in src/ui.py nicht aufgerufen")
 
 
-def test_the_relay_pair_dialog_closes_through_the_worker():
-    """`close_pairing` blockiert (Datei, Netz): im Koppel-Dialog nur als Argument von
-    `runner.run(...)`, nie als direkter Aufruf im UI-Thread."""
+def _dialog_tree():
     path = ROOT / "dialogs" / "mobile_pair_dialog.py"
     tree = ast.parse(path.read_text(encoding="utf-8"))
     parents = {id(c): n for n in ast.walk(tree) for c in ast.iter_child_nodes(n)}
+    return tree, parents
+
+
+def test_the_relay_pair_dialog_closes_through_the_worker():
+    """`close_pairing` blockiert (Datei, Netz): im Koppel-Dialog nur als Argument von
+    `partial(...)`, das `runner.run(...)` bekommt (`run` reicht keine Argumente durch), nie als
+    direkter Aufruf im UI-Thread."""
+    tree, parents = _dialog_tree()
     uses = [n for n in ast.walk(tree) if isinstance(n, ast.Attribute) and n.attr == "close_pairing"]
     assert uses, "der Dialog räumt die Relay-Seite nicht ab"
     for use in uses:
+        partial = parents[id(use)]
+        assert isinstance(partial, ast.Call) and use in partial.args, "close_pairing direkt aufgerufen"
+        assert ast.unparse(partial.func) == "partial"
+        run = parents[id(partial)]
+        assert isinstance(run, ast.Call) and partial in run.args
+        assert ast.unparse(run.func) == "self._runner.run"
+
+
+def test_the_relay_pair_dialog_opens_through_the_worker():
+    """`open_pairing` blockiert ebenso (Datei, `icacls`): nur im Rumpf von `_open_relay_pairing`, und
+    diese Methode wird im Dialog nur als Argument von `runner.run(...)` benutzt."""
+    tree, parents = _dialog_tree()
+    uses = [n for n in ast.walk(tree) if isinstance(n, ast.Attribute) and n.attr == "open_pairing"]
+    assert uses, "der Dialog öffnet die Relay-Kopplung nicht"
+    for use in uses:
+        node = use
+        while not isinstance(node, ast.FunctionDef):
+            node = parents[id(node)]
+        assert node.name == "_open_relay_pairing", "open_pairing außerhalb des Worker-Rumpfs"
+    wrapped = [n for n in ast.walk(tree) if isinstance(n, ast.Attribute) and n.attr == "_open_relay_pairing"]
+    assert wrapped
+    for use in wrapped:
         call = parents[id(use)]
-        assert isinstance(call, ast.Call) and use in call.args, "close_pairing direkt aufgerufen"
+        assert isinstance(call, ast.Call) and use in call.args, "_open_relay_pairing direkt aufgerufen"
         assert ast.unparse(call.func) == "self._runner.run"
+
+
+def test_a_widget_attribute_of_the_pair_dialog_is_never_reassigned():
+    """Der Dialog wird nicht automatisch getestet: ein Attribut, das ein Widget hält, darf an keiner
+    anderen Stelle einen anderen Wert bekommen (der Sitzungscode hieß einmal `_code` wie das Label
+    und überschrieb es)."""
+    tree, _parents = _dialog_tree()
+    cls = next(n for n in ast.walk(tree) if isinstance(n, ast.ClassDef) and n.name == "_PairDialog")
+    assigned: dict[str, list[ast.expr]] = {}
+    for node in ast.walk(cls):
+        targets = node.targets if isinstance(node, ast.Assign) else []
+        for target in targets:
+            if (isinstance(target, ast.Attribute) and isinstance(target.value, ast.Name)
+                    and target.value.id == "self"):
+                assigned.setdefault(target.attr, []).append(node.value)
+    for name, values in assigned.items():
+        widget = any(isinstance(v, ast.Call) and ast.unparse(v.func).startswith(("tk.", "primary_button",
+                     "secondary_button")) for v in values)
+        assert not widget or len(values) == 1, f"self.{name} hält ein Widget und wird neu zugewiesen"

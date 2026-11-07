@@ -90,10 +90,11 @@ class Env:
 
     def open(self):
         """`open_pairing` und die Teile des Koppel-Links: (Link, Geheimnis, Code)."""
-        link = self.relay.open_pairing()
-        assert link is not None
-        secret, code = link.split("#relay=", 1)[1].split(":", 1)
-        return link, secret, code
+        pairing = self.relay.open_pairing()
+        assert pairing is not None
+        secret, code = pairing.link.split("#relay=", 1)[1].split(":", 1)
+        assert pairing.code == code
+        return pairing.link, secret, code
 
     def pair_payload(self, code, phone=None):
         phone = phone or Phone()
@@ -216,8 +217,8 @@ def test_pending_only_connected_while_pairing_active(env):
 
 
 def test_close_pairing_clears_pending_and_deletes_the_box(env):
-    _link, secret, _code = env.open()
-    env.relay.close_pairing()
+    _link, secret, code = env.open()
+    env.relay.close_pairing(code)
 
     assert not env.ctx.pairing.is_active()
     assert env.boxes.pending() is None and env.deleted == [secret]
@@ -257,6 +258,47 @@ def test_a_refused_open_pairing_leaves_a_foreign_lan_session_open(env, monkeypat
 
     assert env.relay.open_pairing() is None
     assert env.ctx.pairing.is_active() and lan_code
+
+
+def test_open_pairing_returns_the_canonical_code_of_its_own_session(env):
+    pairing = env.relay.open_pairing()
+
+    assert pairing is not None
+    assert pairing.code == mobile_pairing.normalize_code(pairing.code)
+    assert pairing.link == relay_link(env.boxes.pending(), pairing.code)
+
+
+def test_close_pairing_closes_only_the_session_with_the_given_code(env):
+    """Der Dialog schließt im Worker, `open_pairing`/`close_pairing` laufen ungeordnet: ein spätes
+    Schließen darf die Sitzung eines inzwischen geöffneten anderen Dialogs nicht treffen (#422)."""
+    _l, _secret, old_code = env.open()
+    lan_code = env.ctx.pairing.open()                 # ein anderer Dialog öffnet seine Sitzung
+
+    env.relay.close_pairing(old_code)                 # das späte Schließen des ersten
+
+    assert env.ctx.pairing.is_active()
+    assert env.ctx.pairing.seconds_left() > 0 and lan_code
+
+
+def test_a_late_close_after_a_newer_relay_session_keeps_that_session_and_its_box(env):
+    _l, first, first_code = env.open()
+    _l, second, _second_code = env.open()             # der zweite Dialog öffnet; die erste Box ist weg
+
+    env.relay.close_pairing(first_code)
+
+    assert env.ctx.pairing.is_active()
+    assert env.boxes.pending() == second and second in env.link.boxes
+    assert env.deleted == [first]
+
+
+def test_close_pairing_still_cleans_up_after_the_session_ran_out(env):
+    _l, secret, code = env.open()
+    env.ctx.pairing.close()                           # Code abgelaufen, bevor der Dialog schloss
+
+    env.relay.close_pairing(code)
+
+    assert env.boxes.pending() is None and env.deleted == [secret]
+    assert secret not in env.link.boxes
 
 
 def test_open_pairing_is_refused_while_mobile_is_off(env):
@@ -356,7 +398,7 @@ def test_bind_failure_is_retried_on_idle_and_never_deleted(env, monkeypatch):
     env.link.handler(secret, payload)
     assert env.link.puts                       # das Handy bekommt seine Antwort trotzdem
     env.ctx.pairing.close()                    # Code abgelaufen
-    env.relay.close_pairing()
+    env.relay.close_pairing(code)
     env.link.on_idle()
     assert env.boxes.pending() == secret and env.deleted == []
     assert secret in env.link.boxes            # das Handy benutzt die Box schon
@@ -407,7 +449,7 @@ def test_expired_code_cleans_pending_after_handler(env, monkeypatch):
     def process_and_expire(data):
         result = original(data)
         env.ctx.pairing.close()                # Code läuft ab
-        thread = threading.Thread(target=env.relay.close_pairing, daemon=True)
+        thread = threading.Thread(target=env.relay.close_pairing, args=(code,), daemon=True)
         thread.start()                         # Dialog schließt im Worker
         closer.append(thread)
         thread.join(0.2)
@@ -454,10 +496,10 @@ def test_boxes_are_disconnected_before_they_are_deleted_at_the_relay(env):
 
 
 def test_discarding_the_pending_box_drops_its_cursor(env):
-    _l, secret, _code = env.open()
+    _l, secret, code = env.open()
     env.cursor.advance(secret, 2)              # eine gescheiterte Kopplungsanfrage kam an
 
-    env.relay.close_pairing()
+    env.relay.close_pairing(code)
 
     assert env.deleted == [secret] and env.cursor.get(secret) == 0
     assert MobileBoxCursor(env.cursor_path).get(secret) == 0      # auch in der Datei verworfen
@@ -555,9 +597,9 @@ def test_a_pair_over_the_real_link_binds_and_answers(tmp_path):
                          delete_box=lambda s: True, now=lambda: NOW,
                          timing=LinkTiming(idle_tick_s=0.05, join_s=1.0))
     try:
-        link = relay.open_pairing()
-        assert link is not None
-        secret, code = link.split("#relay=", 1)[1].split(":", 1)
+        pairing = relay.open_pairing()
+        assert pairing is not None
+        secret, code = pairing.link.split("#relay=", 1)[1].split(":", 1)
         sock = connect.socket(0)
         assert connect.calls[0].secret == secret
         phone = Phone()
@@ -569,7 +611,7 @@ def test_a_pair_over_the_real_link_binds_and_answers(tmp_path):
                                       for m in sock.sent))
         assert wait_until(lambda: boxes.get(phone.device_id) == secret)
         assert cursor.get(secret) == 1
-        relay.close_pairing()                  # Dialog zu: die gebundene Box bleibt verbunden
+        relay.close_pairing(code)              # Dialog zu: die gebundene Box bleibt verbunden
         assert relay.states_by_device() == {phone.device_id: "connected"}
         assert sock in connect.open_sockets()
     finally:

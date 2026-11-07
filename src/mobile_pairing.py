@@ -105,6 +105,17 @@ class PairingSession:
         with self._lock:
             self._code = None
 
+    def close_if(self, code: object) -> None:
+        """Schließt die Sitzung nur, wenn sie noch diesen Code trägt. Wer asynchron schließt (Dialog
+        im Worker), trifft so nie die Sitzung, die inzwischen ein anderer geöffnet hat. Schreibweise
+        egal wie bei `normalize_code`; ein unbrauchbarer Wert ändert nichts."""
+        canonical = normalize_code(code)
+        if canonical is None:
+            return
+        with self._lock:
+            if self._code == canonical:
+                self._code = None
+
     def is_active(self) -> bool:
         with self._lock:
             return self._active_locked()
