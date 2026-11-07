@@ -181,10 +181,44 @@ test('on phones the settings dialog fills the screen with a header and a scrolli
   assert.match(views, /'aria-label': 'Zurück', 'data-focus': 'settings-back'/);
 });
 
-test('every dialog opens through openDialog, which ties it to the browser history (back gesture closes it)', () => {
-  assert.equal((views.match(/\.showModal\(\)/g) || []).length, 1);
+test('every dialog opens through openDialog, which ties it to the browser history (back gesture closes it) — except the lock', () => {
+  // Drei Aufrufe von `showModal()`: `openDialog`, die Sperre und deren Wiederöffnen. Die Sperre darf nicht am Verlauf hängen,
+  // sonst schlösse sie die Zurück-Geste.
+  assert.equal((views.match(/\.showModal\(\)/g) || []).length, 3);
   assert.match(views, /dialogHistory\.attach\(dialog\);\s*\n\s*document\.body\.append\(dialog\);/);
   assert.match(views, /window\.addEventListener\('popstate', listener\)/);
+});
+
+test('the lock dialog stays out of the browser history and cannot be dismissed', () => {
+  const source = /export function lockDialog[\s\S]*?\n}\n/.exec(views)?.[0];
+  assert.ok(source, 'lockDialog fehlt');
+  assert.doesNotMatch(source, /openDialog\(|dialogHistory|history\./);
+  assert.match(source, /dialog\.addEventListener\('cancel', \(event\) => event\.preventDefault\(\)\)/);
+  assert.match(source, /dialog\.addEventListener\('close', \(\) => \{ if \(handlers\.isLocked\(\)\) dialog\.showModal\(\); \}\)/);
+});
+
+test('the stylesheet closes every block: a missing brace would swallow the rest of the file into the last @media query', () => {
+  const code = css.replace(/\/\*[\s\S]*?\*\//g, '').replace(/"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'/g, '""');
+  let depth = 0;
+  for (const char of code) {
+    if (char === '{') depth += 1;
+    if (char === '}') depth -= 1;
+    assert.ok(depth >= 0, 'eine schließende Klammer zu viel');
+  }
+  assert.equal(depth, 0, 'am Dateiende ist ein Block offen (alles dahinter gilt nur innerhalb von dessen @media)');
+});
+
+test('the hidden button groups of the lock section really disappear (display: flex would override `hidden`)', () => {
+  assert.match(rule('.lock .buttons[hidden]'), /display:\s*none/);
+  assert.match(rule('.lock-dialog .buttons[hidden]'), /display:\s*none/);
+  assert.match(rule('.lock-dialog button[hidden]'), /display:\s*none/);
+});
+
+test('the lock dialog covers the whole screen on every width', () => {
+  assert.match(rule('.lock-dialog'), /width:\s*100vw/);
+  assert.match(rule('.lock-dialog'), /height:\s*100dvh/);
+  assert.match(rule('.lock-dialog'), /border-radius:\s*0/);
+  assert.match(rule('.lock-dialog[open]'), /display:\s*flex/);       // nur offen: `display` überstimmt sonst das Verborgene des geschlossenen Dialogs
 });
 
 test('the settings dialog still asks before it closes with unsaved categories, also for the back gesture (cancel event)', () => {

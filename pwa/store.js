@@ -42,6 +42,9 @@ const DEFAULT_META = Object.freeze({
   window_max_known: false, // erst nach der ersten angewandten Antwort wahr; vorher weiß man nichts
   storage_hint_dismissed_at: 0, // wann der Speicher-Hinweis geschlossen wurde (ms); gerätelokal, 7 Tage Ruhe
   auto_update: false,      // Updates der PWA automatisch einspielen (#290); gerätelokal, Standard aus
+  lock_enabled: false,     // App-Sperre über die Geräte-Entsperrung (#490); gerätelokal, Standard aus
+  lock_credential: '',     // Credential-ID (base64url) des Passkeys der Sperre; ohne sie gilt die Sperre nicht
+  lock_delay_ms: 60000,    // Frist nach dem Verlassen der App, vor der gesperrt wird (0, 1 Minute, 5 Minuten)
   reservations_enabled: false, // Desktop bietet Reservierungen an (Feld in der Antwort); fehlt es, bleibt alles verborgen
   reservation_pause: false,   // Desktop versteht `pause` an Reservierungs-Slots (Feld `reservation_pause`, #455); sonst geht sie nie auf den Draht
   settings_writable: false,   // Desktop versteht `settings` (Feld `writable_settings` in der Antwort); sonst ist das Bearbeiten aus

@@ -34,18 +34,23 @@ import { describeRepair, repairServiceWorker } from './sw-repair.js';
 import { clear, focusByKey, focusState, h } from './dom.js';
 import {
   conflictsDialog, confirmDialog, editorDialog, fatalView, hintsHost, pairView,
-  patchHints, scanDialog, settingsDialog, statusBar, vaultView, weekView,
+  lockDialog, patchHints, scanDialog, settingsDialog, statusBar, vaultView, weekView,
 } from './views.js';
 import { canScan, scanForPairLink } from './scanner.js';
 import { browserKind, isStandalone } from './browser-policy.js';
 import { describeError, describeVaultError } from './messages.js';
+import {
+  createLockController, createLockCredential, disableLock, enableLock, lockErrorText, lockModel, lockSupport, normalizeLockDelay,
+  unlockWithCredential,
+} from './lock.js';
 
 const SAVE_SYNC_DELAY_MS = 2000;
 const SWIPE_CLICK_GUARD_MS = 400;
 
 class App {
-  constructor(root, store, client, initialHash = location.hash) {
+  constructor(root, store, client, initialHash = location.hash, { resetLocalData = async () => {} } = {}) {
     this.initialHash = initialHash;
+    this.resetLocalData = resetLocalData;       // löscht alle lokalen Daten und lädt neu (Notausgang der Sperre)
     // Vor allem anderen: ab hier landet jedes `logFailure` auch im Protokoll.
     this.debugLog = createDebugLog({ store: idbLogStore() });
     setLogSink((context, error) => this.debugLog.recordError(context, error));
@@ -74,6 +79,15 @@ class App {
     this.saveTimer = null;
     this.pushTimer = null;
     this.pushBusy = false;
+    this.lockElement = null;               // die Sperre (#490) liegt als Dialog über allem
+    this.lockCtl = createLockController({
+      getMeta: () => this.store.getMeta(),
+      now: () => Date.now(),
+      unlockCredential: (id) => this.unlockCredential(id),
+      onLock: () => this.showLock(),
+      onUnlock: (day) => this.afterUnlock(day),
+    });
+    this.lockSupportState = { available: false, reason: 'pending' };
     this.pushError = null;
     this.relay = new RelayClient();
     this.keys = idbKeyStore();
@@ -120,23 +134,111 @@ class App {
     window.addEventListener('hashchange', () => { if (this.captureFragment()) this.render(); });
     window.addEventListener('offline', () => { this.online = false; this.render(); });
     document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState !== 'visible') return;
-      this.trigger('visible');
+      if (document.visibilityState !== 'visible') { this.lockCtl.hidden(); return; }
+      this.lockCtl.visible();
+      if (!this.locked) this.trigger('visible');       // gesperrt: kein Abgleich; das Entsperren holt ihn nach
       this.updatePushSchedule();
       this.checkForUpdate('visible');
       this.maybeApplyUpdate();
     });
+    // Zurück aus dem Back-Forward-Cache gibt es kein `visibilitychange`, das die Frist prüft.
+    window.addEventListener('pagehide', () => this.lockCtl.hidden());
+    window.addEventListener('pageshow', (event) => { if (event.persisted) this.lockCtl.visible(); });
     // Ein Dialog, der sich schließt, kann der letzte Grund gewesen sein, ein wartendes Update aufzuschieben.
     // `close` bubbelt nicht: Capture fängt es am Dokument.
     document.addEventListener('close', () => this.maybeApplyUpdate(), true);
     this.registerServiceWorker();
     this.listenForNotificationClicks();
     this.render();
+    // Bei jedem Start gesperrt, sobald die Sperre eingeschaltet ist: im selben Zug wie das erste Rendern, ohne Blitz.
+    this.lockCtl.start();
+    this.lockSupportNow();            // im Hintergrund: die Einstellungen warten höchstens kurz darauf
     this.persistent = await requestPersistentStorage();
     this.render();
     this.trigger('start');
     this.updatePushSchedule();
     this.openDayFromLink();
+  }
+
+  // --- Sperre (#490) -----------------------------------------------------------------------------
+
+  /** Kann dieses Gerät die Sperre anbieten? Bei jedem Öffnen der Einstellungen neu gefragt (lokal und billig): wer während der
+   *  Sitzung Bildschirmsperre oder Biometrie einrichtet, soll dafür nicht neu laden müssen. */
+  lockSupportNow() {
+    return lockSupport({
+      credentials: navigator.credentials, publicKeyCredential: globalThis.PublicKeyCredential, secure: window.isSecureContext,
+    }).then((support) => { this.lockSupportState = support; return support; });
+  }
+
+  lockModelNow() {
+    return lockModel({ meta: this.store.getMeta(), support: this.lockSupportState });
+  }
+
+  get locked() {
+    return this.lockCtl.locked;
+  }
+
+  unlockCredential(id) {
+    return unlockWithCredential({
+      credentials: navigator.credentials, rpId: location.hostname, id,
+      onError: (error) => logFailure('Sperre: Entsperren', error),
+    });
+  }
+
+  showLock() {
+    this.lockElement = lockDialog({
+      isLocked: () => this.locked,
+      unlock: () => this.unlockFromDialog(),
+      reset: () => this.resetLocalData(),
+    });
+  }
+
+  async unlockFromDialog() {
+    let result;
+    try {
+      result = await this.lockCtl.unlock();
+    } catch (error) {
+      // `unlockWithCredential` wirft nie; ein Fehler im Ablauf selbst darf die Sperre nicht ohne Meldung und Notausgang lassen.
+      logFailure('Sperre: Entsperren', error);
+      result = { ok: false, reason: 'failed' };
+    }
+    return result.ok ? { ok: true } : { ok: false, text: lockErrorText(result.reason) };
+  }
+
+  /** Läuft, nachdem der Controller entsperrt hat (`locked` ist schon falsch, sonst öffnete sich der Dialog im `close`-Handler wieder). */
+  afterUnlock(day) {
+    this.lockElement?.close();
+    this.lockElement?.remove();
+    this.lockElement = null;
+    this.trigger('visible');                   // der Abgleich, den das Zurückkehren gesperrt ausgelassen hat
+    if (day) this.showDay(day);
+  }
+
+  async createLock() {
+    const created = await createLockCredential({
+      credentials: navigator.credentials, rpId: location.hostname,
+      onError: (error) => logFailure('Sperre: Passkey anlegen', error),
+    });
+    return created.ok ? { ok: true, id: created.id } : { ok: false, error: lockErrorText(created.reason) };
+  }
+
+  /** Probe-Entsperrung des neuen Passkeys; erst danach gilt die Sperre. */
+  async confirmLock(id) {
+    const result = await enableLock({ id, probe: (credential) => this.unlockCredential(credential), setMeta: (patch) => this.store.setMeta(patch) });
+    if (!result.ok) return { ok: false, error: `${lockErrorText(result.reason)} Die Sperre bleibt aus.` };
+    return { ok: true, model: this.lockModelNow() };
+  }
+
+  async removeLock() {
+    const result = await disableLock({
+      meta: this.store.getMeta(), probe: (credential) => this.unlockCredential(credential), setMeta: (patch) => this.store.setMeta(patch) });
+    if (!result.ok) return { ok: false, model: this.lockModelNow(), error: `${lockErrorText(result.reason)} Die Sperre bleibt an.` };
+    return { ok: true, model: this.lockModelNow() };
+  }
+
+  async setLockDelay(ms) {
+    await this.store.setMeta({ lock_delay_ms: normalizeLockDelay(ms) });
+    return this.lockModelNow();
   }
 
   // --- Benachrichtigungen (#331) -----------------------------------------------------------------
@@ -641,6 +743,9 @@ class App {
   async openSettings(initialTab = 'connection') {
     const meta = this.store.getMeta();
     const push = await this.pushModelNow();
+    // Höchstens kurz: ein Browser, der die Abfrage nicht beantwortet, soll die Einstellungen (Neu koppeln, Updates) nicht sperren.
+    await Promise.race([this.lockSupportNow(), new Promise((resolve) => setTimeout(resolve, 1000))]);
+    if (this.locked) return;              // während des Wartens gesperrt: ein Dialog läge über der Sperre
     const returnKey = focusState(this.root).activeKey;
     const signature = (m) => blockSignature(m.categories, m.defaults?.category_times ?? {});
     let baseline = signature(meta);   // Stand beim Öffnen: Speichern prüft, ob der Abgleich ihn inzwischen geändert hat
@@ -657,6 +762,7 @@ class App {
         tokenUntil: meta.token_expires_at ? formatDateDe(meta.token_expires_at.slice(0, 10)) : '',
         online: this.online, lastSyncAt: meta.server_time,
         push,
+        lock: this.lockModelNow(),
       },
       updates: { build: BUILD, update: { state: this.updateState, detail: this.updateDetail, auto: Boolean(meta.auto_update) } },
       categories: categoriesModel({
@@ -679,6 +785,10 @@ class App {
         if (on) await this.enablePush(); else await this.disablePush();
         return this.pushModelNow();
       },
+      createLock: () => this.createLock(),
+      confirmLock: (id) => this.confirmLock(id),
+      removeLock: () => this.removeLock(),
+      setLockDelay: (ms) => this.setLockDelay(ms),
       applyUpdate: () => this.reloadForUpdate(),
       setAutoUpdate: async (on) => {
         await this.store.setMeta({ auto_update: on });
@@ -704,7 +814,12 @@ class App {
     dialog.addEventListener('close', () => { focusByKey(this.root, returnKey); });
   }
 
+  /** Ein später geöffneter modaler Dialog läge über der Sperre: gesperrt wird der Tag erst nach dem Entsperren geöffnet. */
   openDay(date) {
+    this.lockCtl.openDay(date, (day) => this.showDay(day));
+  }
+
+  showDay(date) {
     const day = this.store.getDay(date);
     const meta = this.store.getMeta();
     const today = localIsoDate(new Date());
@@ -927,6 +1042,15 @@ async function main() {
   scrubPairFragment();
   let store;
   let vault;
+  // Notausgang des Fehlerbildschirms und der Sperre: alles Lokale löschen, dann neu laden (nicht übertragene Tage gehen verloren).
+  const resetLocalData = async () => {
+    try {
+      await vault.wipe();
+    } catch (wipeError) {
+      logFailure('Lokale Daten löschen', wipeError);
+    }
+    location.reload();
+  };
   try {
     vault = createVaultAdapter(await openDatabase(), { keys: idbVaultKeyStore() });
     store = new Store(vault);
@@ -936,17 +1060,7 @@ async function main() {
       // Verschlüsselte Daten ohne passenden Schlüssel: nie als „leer“ weiterlaufen, der nächste Speichervorgang
       // überschriebe sie. Der Nutzer entscheidet, ob er neu koppelt (löscht die lokalen Daten).
       logFailure('Verschlüsselte Daten öffnen', error);
-      root.append(vaultView(describeVaultError(error), {
-        reload: () => location.reload(),
-        reset: async () => {
-          try {
-            await vault.wipe();
-          } catch (wipeError) {
-            logFailure('Lokale Daten löschen', wipeError);
-          }
-          location.reload();
-        },
-      }));
+      root.append(vaultView(describeVaultError(error), { reload: () => location.reload(), reset: resetLocalData }));
       return;
     }
     logFailure('Speicher des Browsers öffnen', error);
@@ -960,7 +1074,7 @@ async function main() {
       logFailure('Vorhandene Daten verschlüsseln', error);       // kein Grund, die App nicht zu starten: es bleibt Klartext
     }
   }
-  await new App(root, store, new SyncClient({ store }), startHash).start();
+  await new App(root, store, new SyncClient({ store }), startHash, { resetLocalData }).start();
 }
 
 main();
