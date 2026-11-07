@@ -622,6 +622,36 @@ RELAY_PAIR_REFUSED_TEXT = (
     "Gerätedatei ist nicht schreibbar oder eine frühere Kopplung wird noch abgeschlossen. "
     "Später erneut versuchen („Neuer Code“).")
 
+RELAY_PAIR_ERROR_TEXT = (
+    "Beim Öffnen der Kopplung ist ein unerwarteter Fehler aufgetreten. Details stehen im "
+    "Protokoll. Später erneut versuchen („Neuer Code“).")
+
+
+@dataclass(frozen=True)
+class RelayOpenView:
+    """Was der Koppel-Dialog mit dem Ergebnis von `open_pairing` tut: `show` zeichnet den QR-Code,
+    `message` ist der Text bei Ablehnung oder Fehler, `close_codes` sind die Sitzungen, die er im
+    Worker schließt."""
+    show: bool
+    message: str | None
+    close_codes: tuple[str, ...]
+
+
+def relay_open_view(*, alive: bool, code: str | None, failed: bool,
+                    own_code: str | None) -> RelayOpenView:
+    """Entscheidet über das Ergebnis von `RelayService.open_pairing` (UI-Thread). `code` ist der
+    Code der neuen Sitzung (`None`: abgelehnt oder `failed`), `own_code` der der bisherigen Sitzung
+    dieses Dialogs. Geschlossen wird nur, was dieser Dialog selbst geöffnet hat: eine
+    Ablehnung lässt eine alte Sitzung sonst neben dem Ablehnungstext weiterlaufen (der QR-Code ist
+    weg, das Handy könnte ihn noch einlösen), und ein Dialog, der inzwischen zu ist, räumt die
+    gerade geöffnete Sitzung ab."""
+    if not alive:
+        return RelayOpenView(False, None, (code,) if code else ())
+    old = (own_code,) if own_code else ()
+    if code is not None and not failed:
+        return RelayOpenView(True, None, ())
+    return RelayOpenView(False, RELAY_PAIR_ERROR_TEXT if failed else RELAY_PAIR_REFUSED_TEXT, old)
+
 
 def relay_state_text(state: str) -> str:
     """Kurztext zum Zustand der Relay-Box eines Geräts; Unbekanntes bekommt einen Ersatztext."""

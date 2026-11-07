@@ -10,17 +10,20 @@ wurde (jemand hat sich mit dessen `device_id` gekoppelt).
 
 Im Modus „relay“ (#358) kommt der Link vom `RelayService` (Worker: Datei und Netz) und steht
 nur als QR-Code da: das Box-Geheimnis darin soll nie als Text auf dem Bildschirm stehen, und der
-Code allein nützt ohne es nichts. Die Sitzung schließt synchron, der Relay räumt im Worker auf.
+Code allein nützt ohne es nichts. Der Dialog schließt nur die Sitzung, die er selbst geöffnet hat
+(über deren Code): die Sitzung synchron, der Relay räumt im Worker auf, und die Worker laufen
+ungeordnet.
 
 Der Poll läuft per `after` am Dialog und stirbt mit ihm.
 """
 import logging
 import tkinter as tk
+from functools import partial
 
 from src import qr
 from src.dialogs.settings_dialog.tab_rules import (
-    PAIR_INTRO_LAN, PAIR_INTRO_RELAY, RELAY_PAIR_HINT, RELAY_PAIR_REFUSED_TEXT, format_countdown,
-    pair_changes, pair_poll_keeps_running, pair_poll_view, paired_notice,
+    PAIR_INTRO_LAN, PAIR_INTRO_RELAY, RELAY_PAIR_HINT, format_countdown, pair_changes,
+    pair_poll_keeps_running, pair_poll_view, paired_notice, relay_open_view,
 )
 from src.theme import (
     BG, FONT, FONT_BOLD, STATUS_OK, STATUS_WARN, TEXT, TEXT_MUTED, center_dialog_on_parent,
@@ -32,6 +35,7 @@ log = logging.getLogger(__name__)
 _POLL_MS = 1000
 _WRAP_PX = 380
 _MODULE_PX = 6           # Kantenlänge eines Moduls bei 100 %; skaliert über px()
+_FAILED = object()       # `_open_relay_pairing` scheiterte mit einer Ausnahme (None heißt: abgelehnt)
 
 
 class _PairDialog:
@@ -43,6 +47,7 @@ class _PairDialog:
         self._relay_mode = mode == "relay"
         self._relay_closed = False
         self._waiting = False               # Relay: `open_pairing` läuft im Worker
+        self._session_code = None           # Relay: Code der eigenen Sitzung, nur die schließt der Dialog
         self._alive = True
         self._poll_id = None
         self._before = service.list_devices()
@@ -140,37 +145,66 @@ class _PairDialog:
         self._result.config(text="")
         self._countdown.config(text="Öffnet …")
         self._waiting = True
-        self._runner.run(self._relay.open_pairing, self._relay_opened)
+        self._runner.run(self._open_relay_pairing, self._relay_opened)
 
-    def _relay_opened(self, link):
-        """Ergebnis von `RelayService.open_pairing` (UI-Thread). `None`: abgelehnt, ohne Grund."""
+    def _open_relay_pairing(self):
+        """Worker: `RelayService.open_pairing`. Der Runner ruft `on_done` bei einer Ausnahme nie, der
+        Dialog bliebe auf „Öffnet …“: sie wird zum Wert `_FAILED` (nur der Typ ins Log, nie der Link)."""
+        try:
+            return self._relay.open_pairing()
+        except Exception as exc:
+            log.warning("Relay-Kopplung: Öffnen scheiterte (%s)", type(exc).__name__)
+            return _FAILED
+
+    def _relay_opened(self, result):
+        """Ergebnis von `_open_relay_pairing` (UI-Thread): `RelayPairing`, `None` (abgelehnt, ohne
+        Grund) oder `_FAILED`. Was geschlossen wird, entscheidet `relay_open_view`."""
         self._waiting = False
+        failed = result is _FAILED
+        pairing = None if failed else result
+        view = relay_open_view(alive=self._alive, code=pairing.code if pairing is not None else None,
+                               failed=failed, own_code=self._session_code)
+        for code in view.close_codes:
+            self._close_relay_session(code)
         if not self._alive:
-            # Der Dialog ging zu, während der Worker öffnete: die Sitzung wäre sonst verwaist.
-            # Die Worker laufen ungeordnet, ein früheres `close_pairing` kann vorausgelaufen sein.
-            if link is not None:
-                self._runner.run(self._relay.close_pairing)
             return
         try:
-            if link is None:
+            if not view.show:
+                self._session_code = None
+                self._cancel_poll()         # die alte Sitzung ist zu: kein Countdown dazu
                 self._countdown.config(text="")
-                self._result.config(text=RELAY_PAIR_REFUSED_TEXT, fg=STATUS_WARN)
+                self._result.config(text=view.message or "", fg=STATUS_WARN)
                 return
+            self._session_code = pairing.code
             self._before = self._service.list_devices()
             self._failures_before = self._service.pair_failures
             self._hint.config(text=RELAY_PAIR_HINT)
             self._countdown.config(
                 text=f"Gültig noch {format_countdown(self._service.pairing.seconds_left())}")
-            self._draw(link)
+            self._draw(pairing.link)
             self._schedule_poll()
         except tk.TclError:
             self._alive = False
 
+    def _close_relay_session(self, code):
+        """Schließt die Relay-Sitzung mit diesem Code im Worker (Datei, Netz)."""
+        self._runner.run(partial(self._relay.close_pairing, code))
+
     def _release_relay(self):
-        """Räumt die Relay-Seite beim Verlassen ab: einmal, im Worker (Datei, Netz)."""
+        """Räumt die eigene Relay-Seite beim Verlassen ab: einmal, im Worker. Ein Öffnen, das noch
+        läuft, räumt `_relay_opened` ab, sobald es ankommt."""
         if self._relay_mode and not self._relay_closed:
             self._relay_closed = True
-            self._runner.run(self._relay.close_pairing)
+            if self._session_code is not None:
+                self._close_relay_session(self._session_code)
+
+    def _close_own_session(self):
+        """Schließt nur die Sitzung dieses Dialogs. Im Relay-Modus über den eigenen Code: ein
+        spät laufendes Öffnen darf keine fremde treffen."""
+        if self._relay_mode:
+            self._service.pairing.close_if(self._session_code)
+        else:
+            self._service.pairing.close()
 
     def _draw(self, link):
         scale = px(_MODULE_PX)
@@ -201,6 +235,14 @@ class _PairDialog:
     def _schedule_poll(self):
         if self._poll_id is None:
             self._poll_id = self._dialog.after(_POLL_MS, self._poll)
+
+    def _cancel_poll(self):
+        if self._poll_id is not None:
+            try:
+                self._dialog.after_cancel(self._poll_id)
+            except tk.TclError:
+                pass                        # Fenster schon weg: nichts mehr zu stornieren
+            self._poll_id = None
 
     def _poll(self):
         self._poll_id = None
@@ -256,7 +298,7 @@ class _PairDialog:
     # --- Schließen -------------------------------------------------------------------
 
     def _close(self):
-        self._service.pairing.close()
+        self._close_own_session()
         self._release_relay()
         if self._dialog.winfo_exists():
             self._dialog.destroy()
@@ -265,13 +307,9 @@ class _PairDialog:
         if event.widget is not self._dialog:
             return
         self._alive = False
-        self._service.pairing.close()
+        self._close_own_session()
         self._release_relay()
-        if self._poll_id is not None:
-            try:
-                self._dialog.after_cancel(self._poll_id)
-            except tk.TclError:
-                pass                        # Fenster schon weg: nichts mehr zu stornieren
+        self._cancel_poll()
 
 
 def open_pair_dialog(parent, service, *, relay=None, runner=None, mode="lan"):

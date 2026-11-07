@@ -130,6 +130,30 @@ def test_close_invalidates_the_code():
     assert session.try_open(lambda c: {"code": c}) == (RedeemResult.INVALID, None)
 
 
+def test_close_if_closes_only_the_session_with_that_code():
+    session = PairingSession(FakeClock())
+    code = session.open()
+
+    session.close_if(mp.generate_code())              # ein anderer Code: nichts passiert
+    session.close_if(None)
+    session.close_if("Müll")
+    assert session.is_active()
+
+    session.close_if(code.lower())                    # formatiert oder kanonisch, Schreibweise egal
+    assert not session.is_active()
+    assert session.try_open(lambda c: {"code": c}) == (RedeemResult.INVALID, None)
+
+
+def test_close_if_leaves_a_newer_session_alone():
+    session = PairingSession(FakeClock())
+    old = session.open()
+    session.open()                                    # ein anderer Dialog öffnet seine Sitzung
+
+    session.close_if(old)
+
+    assert session.is_active()
+
+
 def test_reopening_replaces_the_old_code():
     session = PairingSession(FakeClock())
     first = session.open()
