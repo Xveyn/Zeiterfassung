@@ -479,7 +479,8 @@ export function unpairDialog({ retry, confirm }) {
     if (running) lines.push(h('p', { class: 'muted', role: 'status' }, 'Trennt …'));
     if (error) lines.push(h('div', { class: 'hint error', role: 'alert' }, error));
     body.replaceChildren(...lines);
-    retryButton.hidden = !(model?.canRetry && !running);
+    // Nach einem Fehler beim Löschen kein erneuter Abgleich: ein weiterer `put` ersetzte die schon eingereihte Abmeldung.
+    retryButton.hidden = !(model?.canRetry && next === 'ready');
     retryButton.disabled = busy;
     cancel.disabled = running;
     confirmButton.disabled = busy || !model;

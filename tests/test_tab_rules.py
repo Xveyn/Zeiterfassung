@@ -1233,3 +1233,9 @@ def test_the_revoke_button_reads_entfernen_for_a_device_unpaired_row():
     assert tr.revoke_button_label(device(**UNPAIRED)) == "Entfernen"
     assert tr.revoke_button_label(device()) == "Widerrufen"
     assert tr.revoke_button_label(None) == "Widerrufen"
+
+
+def test_revoke_all_has_something_to_do_only_with_an_active_device():
+    assert tr.has_revocable([device(), device(id="b", **UNPAIRED)]) is True
+    assert tr.has_revocable([device(id="b", **UNPAIRED)]) is False      # nur vom Handy getrennte: nichts mehr zu widerrufen
+    assert tr.has_revocable([]) is False

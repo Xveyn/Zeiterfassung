@@ -48,6 +48,7 @@ import {
 const LOCK_LEFT_KEY = 'zeiterfassung-lock-left-at';   // wann die entsperrte Seite zuletzt verlassen wurde (nur dieser Tab)
 const SAVE_SYNC_DELAY_MS = 2000;
 const SWIPE_CLICK_GUARD_MS = 400;
+const PUSH_JOB_WAIT_MS = 3000;          // so lange wartet das Trennen auf einen laufenden Zeitplan-Versand
 
 class App {
   constructor(root, store, client, initialHash = location.hash,
@@ -85,6 +86,7 @@ class App {
     this.saveTimer = null;
     this.pushTimer = null;
     this.pushBusy = false;
+    this.pushJob = null;                   // läuft `updatePushSchedule`, dessen Ende (Trennen wartet darauf)
     this.lockElement = null;               // die Sperre (#490) liegt als Dialog über allem
     this.lockSlot = createSessionSlot(() => sessionStorage, LOCK_LEFT_KEY);
     this.lockCtl = createLockController({
@@ -345,16 +347,19 @@ class App {
     });
     const check = async () => {
       dialog.update({ phase: 'checking' });
-      let syncOk = true;
+      // Erreicht heißt: der Desktop hat geantwortet, oder der Relay hat die Anfrage angenommen und nur der Desktop
+      // schweigt (`desktop_silent`): dann läge die Abmeldung in der Box. Alles andere (Relay oder Desktop nicht
+      // erreichbar, Fehler am Handy) lässt sie verloren gehen. Der Grund des Scheiterns bleibt unprotokolliert: der
+      // Abgleich läuft hier am normalen Weg (Reiter, Debug-Protokoll) vorbei, die Rückfrage braucht nur „erreicht oder nicht“.
+      let reached = true;
       try {
         const result = await this.client.sync();
-        syncOk = !result.discarded;
-      } catch {
-        syncOk = false;               // der Grund steht im Reiter und im Protokoll; hier zählt nur: erreicht oder nicht
+        reached = !result.discarded;
+      } catch (error) {
+        reached = error instanceof SyncError && error.kind === 'desktop_silent';
       }
       const meta = this.store.getMeta();
-      model = unpairDialogModel({
-        transport: meta.transport, syncOk, openDays: this.store.pendingCount(), desktopUnpair: meta.desktop_unpair });
+      model = unpairDialogModel({ reached, openDays: this.store.pendingCount(), desktopUnpair: meta.desktop_unpair });
       dialog.update({ phase: 'ready', model });
     };
     const confirm = async () => {
@@ -362,9 +367,11 @@ class App {
       clearTimeout(this.saveTimer);
       clearTimeout(this.pushTimer);
       dialog.update({ phase: 'running', model });
+      // Ein laufender Zeitplan-Versand legte das Relay-Objekt nach dem Löschen neu an und schriebe Meta in den geleerten Vault.
+      if (this.pushJob) await Promise.race([this.pushJob, new Promise((resolve) => setTimeout(resolve, PUSH_JOB_WAIT_MS))]);
       const result = await runner();
       if (!result.ok) {
-        this.unpairing = false;
+        // `unpairing` bleibt gesetzt: die Abmeldung liegt womöglich schon in der Box, ein weiterer Abgleich ersetzte sie.
         dialog.update({ phase: 'error', model,
           error: 'Die lokalen Daten ließen sich nicht löschen. Bitte erneut versuchen.' });
       }
@@ -378,7 +385,7 @@ class App {
     this.pushError = null;
     const { relay_secret: secret } = this.store.getMeta();
     try {
-      (await this.subscription())?.unsubscribe();
+      await (await this.subscription())?.unsubscribe();
       if (secret) await this.relay.deleteDevice(secret);
     } catch (error) {
       // Ein nicht erreichbarer Relay lässt das Objekt dort stehen; es räumt sich nach 90 Tagen selbst auf.
@@ -399,6 +406,8 @@ class App {
   async updatePushSchedule() {
     if (this.pushBusy) return;
     this.pushBusy = true;
+    let release;
+    this.pushJob = new Promise((resolve) => { release = resolve; });     // `openUnpair` wartet darauf, bevor es löscht
     try {
       const meta = this.store.getMeta();
       const state = await this.pushState();
@@ -426,6 +435,7 @@ class App {
       this.pushError = error instanceof RelayError ? error.message : withDetail('Der Zeitplan für die Benachrichtigungen ließ sich nicht senden.', error);
     } finally {
       this.pushBusy = false;
+      release();
     }
   }
 

@@ -116,3 +116,10 @@ def test_a_device_unpaired_row_is_dismissed_through_the_runner():
     source = TAB.read_text(encoding="utf-8")
     assert "is_device_unpaired" in source and "self._service.dismiss(device_id)" in source
     assert "revoke_button_label" in source
+
+
+def test_the_tab_sets_the_button_text_through_the_theme_helper_not_the_private_label():
+    source = TAB.read_text(encoding="utf-8")
+    assert "set_button_text(self._revoke_btn" in source
+    assert "_revoke_btn._label" not in source
+    assert "has_revocable" in source

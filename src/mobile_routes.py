@@ -65,6 +65,11 @@ def _no_change() -> None:
     return None
 
 
+# So lange wartet eine Abmeldung auf einen noch nicht geladenen Schlüsselbund-Schlüssel. Über den Relay
+# bekommt sie keine zweite Chance (der Cursor rückt vor dem Handler vor, das Handy ist gelöscht).
+KEY_WAIT_SECONDS = 5.0
+
+
 def _no_unpaired(device_id: str, name: str) -> None:
     return None
 
@@ -405,6 +410,7 @@ def _unpair(request: ApiRequest, ctx: MobileContext, principal: Principal) -> Ap
     _refuse_while_closing(ctx)
     envelope = _envelope(request.body)
     now = ctx.now()
+    _await_key(ctx, principal.name)                  # vor der Sperre: das Warten darf sie nicht halten
     with ctx.devices_lock:
         _refuse_while_closing(ctx)
         record = ctx.devices.get(principal.name)
@@ -413,6 +419,9 @@ def _unpair(request: ApiRequest, ctx: MobileContext, principal: Principal) -> Ap
                                "Das Token wurde widerrufen. Das Gerät muss neu gekoppelt werden.")
         key = ctx.keys.get(record["id"])
         if key is None:
+            if record["id"] in ctx.keys.where():
+                raise _MobileError(503, "key_unavailable",
+                                   "Der Schlüsselbund am Rechner antwortet gerade nicht.")
             raise _MobileError(401, "encryption_required",
                                "Diese Kopplung ist nicht verschlüsselt. Das Gerät muss neu koppeln.")
         _still_valid(principal, record, now)
@@ -434,6 +443,18 @@ def _unpair(request: ApiRequest, ctx: MobileContext, principal: Principal) -> Ap
                        payload={"ok": True})
     _notify_unpaired(ctx, device_id, name)
     return response
+
+
+def _await_key(ctx: MobileContext, device_id: str) -> None:
+    """Stößt das Nachladen eines Schlüssels aus dem Schlüsselbund an und wartet höchstens
+    `KEY_WAIT_SECONDS` darauf. Kurz nach dem Start läuft der Relay-Abgleich vor dem Laden der
+    Schlüssel; eine Abmeldung würde sonst beantwortet, aber nie wieder zugestellt."""
+    if ctx.keys.get(device_id) is not None or device_id not in ctx.keys.where():
+        return
+    ctx.keys.request_load(device_id)
+    deadline = time.monotonic() + KEY_WAIT_SECONDS
+    while ctx.keys.get(device_id) is None and time.monotonic() < deadline:
+        time.sleep(0.02)
 
 
 def _notify_unpaired(ctx: MobileContext, device_id: str, name: str) -> None:

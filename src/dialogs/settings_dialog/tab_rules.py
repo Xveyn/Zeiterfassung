@@ -597,6 +597,12 @@ def visible_devices(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
             if not record.get("revoked") or is_device_unpaired(record)]
 
 
+def has_revocable(records: list[dict[str, Any]]) -> bool:
+    """Gibt es ein Gerät, das „Alle widerrufen“ noch erreicht? Vom Handy getrennte stehen nur noch in der
+    Liste, bis sie entfernt werden; widerrufen ist an ihnen nichts mehr."""
+    return any(not is_device_unpaired(record) for record in records)
+
+
 def revoke_button_label(record: Mapping[str, Any] | None) -> str:
     """Beschriftung des Knopfes unter der Liste: ein getrenntes Gerät gibt es nur noch zu entfernen."""
     return "Entfernen" if record is not None and is_device_unpaired(record) else "Widerrufen"

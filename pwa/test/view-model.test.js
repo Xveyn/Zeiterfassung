@@ -1190,7 +1190,8 @@ test('back copes with a missing or odd state', () => {
 
 // --- Trennen: Rückfrage (#499) --------------------------------------------------------------------------
 
-const unpairInput = (over = {}) => ({ transport: 'relay', syncOk: true, openDays: 0, desktopUnpair: true, ...over });
+// `reached`: der Abgleich davor hat den Desktop erreicht (LAN) bzw. der Relay hat die Anfrage angenommen.
+const unpairInput = (over = {}) => ({ reached: true, openDays: 0, desktopUnpair: true, ...over });
 
 test('nothing open: green summary, the normal confirm label, no retry, the desktop is told', () => {
   const model = unpairDialogModel(unpairInput());
@@ -1203,8 +1204,8 @@ test('nothing open: green summary, the normal confirm label, no retry, the deskt
 });
 
 test('open days name their number in singular and plural and switch to Trotzdem löschen with a retry', () => {
-  const one = unpairDialogModel(unpairInput({ syncOk: false, openDays: 1 }));
-  const three = unpairDialogModel(unpairInput({ syncOk: false, openDays: 3 }));
+  const one = unpairDialogModel(unpairInput({ reached: false, openDays: 1 }));
+  const three = unpairDialogModel(unpairInput({ reached: false, openDays: 3 }));
 
   assert.deepEqual(one.summary, { kind: 'warn', text: '1 Tag ist noch nicht am Desktop.' });
   assert.deepEqual(three.summary, { kind: 'warn', text: '3 Tage sind noch nicht am Desktop.' });
@@ -1212,27 +1213,21 @@ test('open days name their number in singular and plural and switch to Trotzdem 
   assert.equal(three.canRetry, true);
 });
 
-test('over the relay the unpair is queued even when the sync failed', () => {
-  const model = unpairDialogModel(unpairInput({ transport: 'relay', syncOk: false, openDays: 2 }));
+test('a silent desktop behind an accepting relay still gets the queued unpair, even with open days', () => {
+  const model = unpairDialogModel(unpairInput({ reached: true, openDays: 2 }));
 
   assert.equal(model.notifiesDesktop, true);
   assert.equal(model.warnDesktop, null);
 });
 
-test('over LAN a failed sync means the desktop will not hear about it, and the dialog says so', () => {
-  const model = unpairDialogModel(unpairInput({ transport: 'lan', syncOk: false, openDays: 0 }));
+test('when neither the desktop nor the relay was reached the dialog warns, over the relay too', () => {
+  const model = unpairDialogModel(unpairInput({ reached: false }));
 
   assert.equal(model.notifiesDesktop, false);
   assert.match(model.warnDesktop, /erfährt nichts vom Trennen/);
 });
 
-test('over LAN with a working sync the desktop is told', () => {
-  const model = unpairDialogModel(unpairInput({ transport: 'lan', syncOk: true }));
-
-  assert.equal(model.notifiesDesktop, true);
-});
-
-test('a desktop without the capability is never told, over the relay too', () => {
+test('a desktop without the capability is never told, whatever was reached', () => {
   const model = unpairDialogModel(unpairInput({ desktopUnpair: false }));
 
   assert.equal(model.notifiesDesktop, false);

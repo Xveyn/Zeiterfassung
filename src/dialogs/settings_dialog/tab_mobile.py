@@ -19,13 +19,13 @@ from src.dialogs.settings_dialog.fields import FieldSet
 from src.dialogs.settings_dialog.form_model import SaveOutcome
 from src.dialogs.settings_dialog.tab_rules import (
     FIRST_ENABLE_NOTICE, REVOKE_ERROR_TEXT, address_options, address_to_choice,
-    device_row_text, is_device_unpaired, keystore_summary, mobile_status_view, mobile_updates,
+    device_row_text, has_revocable, is_device_unpaired, keystore_summary, mobile_status_view, mobile_updates,
     relay_pair_enabled, revoke_all_prompt, revoke_button_label, revoke_outcome, revoke_prompt, test_push_outcome, test_push_text, validate_mobile,
     visible_devices, window_cap_options, window_cap_to_choice,
 )
 from src.theme import (
     ACCENT, BG, ENTRY_BG, FONT, STATUS_OK, STATUS_WARN, TEXT, TEXT_MUTED, Form, dark_combo,
-    dark_entry, empty_state, px, set_secondary_button_enabled, themed_askyesno,
+    dark_entry, empty_state, px, set_button_text, set_secondary_button_enabled, themed_askyesno,
     themed_showerror,
 )
 from src.time_utils import utc_now_iso
@@ -224,13 +224,13 @@ class MobileTab:
 
     def _sync_buttons(self):
         running = self._service.status.state == "running"
-        has_devices = bool(self._rows)
+        has_devices = has_revocable(self._rows)
         has_selection = self._selected_id() is not None
         set_secondary_button_enabled(self._pair_btn, running and not self._busy)
         if self._relay_btn is not None:
             set_secondary_button_enabled(self._relay_btn, self._relay_pair_possible())
         set_secondary_button_enabled(self._revoke_btn, has_selection and not self._busy)
-        self._revoke_btn._label.config(text=revoke_button_label(self._selected_record()))
+        set_button_text(self._revoke_btn, revoke_button_label(self._selected_record()))
         set_secondary_button_enabled(self._revoke_all_btn, has_devices and not self._busy)
         selected = self._selected_id()
         set_secondary_button_enabled(

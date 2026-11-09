@@ -668,7 +668,8 @@ Rückfrage (`unpairDialog`), nichts wird sofort gelöscht. Spec: `docs/superpowe
   `test/fixtures/relay-frames.json` hält beide zusammen.
 - **Was gelöscht wird:** alle Stores des Vaults samt Schlüssel (`vault.wipe()`, darin auch Sperre-Einstellungen,
   Kopplung, Relay-Geheimnis), das Protokoll (`debugLog.clear()`), der Sitzungsmerker der Sperre, das Push-Abo samt
-  Relay-Objekt. Passkeys der Sperre und der Service-Worker-Cache bleiben (aus dem Web nicht löschbar bzw. ohne
+  Relay-Objekt. Der Nachrichtenschlüssel der Benachrichtigungen (IndexedDB `zeiterfassung-push`, `push-blob.js`) bleibt: er
+  ist nicht auslesbar und ohne Personenbezug. Passkeys der Sperre und der Service-Worker-Cache bleiben (aus dem Web nicht löschbar bzw. ohne
   Personenbezug).
 
 ## Datenschutzseite

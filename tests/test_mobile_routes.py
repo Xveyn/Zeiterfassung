@@ -1147,3 +1147,34 @@ def test_unpair_is_refused_while_the_app_closes(env):
 
     assert response.status == 503 and error_code(response) == "shutting_down"
     assert env.ctx.devices.get(PHONE)["revoked"] is False
+
+
+def test_unpair_waits_for_a_keyring_key_that_is_not_loaded_yet_instead_of_losing_the_request(env):
+    # Über den Relay gibt es keine zweite Chance: der Cursor rückt vor dem Handler vor, das Handy ist weg.
+    _record, token = add_device(env)
+    env.ctx.keys.migrate()
+    fresh = MobileKeyStore(str(env.keys_path))                              # Neustart: Cache leer
+    env.ctx = dataclasses.replace(env.ctx, keys=fresh)
+
+    response = call(env, "POST", "/v1/unpair", body=unpair_body(env), token=token)
+
+    assert response.status == 200
+    assert env.ctx.devices.get(PHONE)["revoked_by"] == "device"
+
+
+def test_unpair_with_a_keyring_that_never_answers_is_503_after_a_bounded_wait(env, monkeypatch):
+    _record, token = add_device(env)
+    env.ctx.keys.migrate()
+    env.ctx = dataclasses.replace(env.ctx, keys=MobileKeyStore(str(env.keys_path)))
+    release = threading.Event()
+    original = env.ring.fetch
+    env.ring.fetch = lambda key: (release.wait(5), original(key))[1]
+    monkeypatch.setattr(mobile_routes, "KEY_WAIT_SECONDS", 0.2)
+    try:
+        started = time.time()
+        response = call(env, "POST", "/v1/unpair", body=unpair_body(env), token=token)
+        assert (response.status, error_code(response)) == (503, "key_unavailable")
+        assert time.time() - started < 2
+    finally:
+        release.set()
+    assert env.ctx.devices.get(PHONE)["revoked"] is False
