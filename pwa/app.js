@@ -27,14 +27,15 @@ import { shouldApplyUpdate, shouldCheckForUpdate } from './update-policy.js';
 import { blockSignature, rowsToBlock } from './categories.js';
 import {
   categoriesModel, conflictsModel, connectionLabel, dayChanged, dayTitle, desktopHint, editLock, editorRows, focusKeyToRestore, hintsModel, olderModel, pushModel, reservationRows,
-  iosInstallHint, isSetupPhase, pairingAfterBack, reservationRowsToSlots, rowsToSlots, setupModel, statusModel, validateReservationRows, validateRows, weekModel,
+  iosInstallHint, isSetupPhase, pairingAfterBack, reservationRowsToSlots, rowsToSlots, setupModel, statusModel, unpairDialogModel, validateReservationRows, validateRows, weekModel,
 } from './view-model.js';
 import { BUILD, CACHE_PREFIX } from './sw-core.js';
 import { describeRepair, repairServiceWorker } from './sw-repair.js';
+import { createUnpairRunner } from './unpair.js';
 import { clear, focusByKey, focusState, h } from './dom.js';
 import {
   conflictsDialog, confirmDialog, editorDialog, fatalView, hintsHost, pairView,
-  lockDialog, patchHints, scanDialog, settingsDialog, statusBar, vaultView, weekView,
+  lockDialog, patchHints, scanDialog, settingsDialog, statusBar, unpairDialog, vaultView, weekView,
 } from './views.js';
 import { canScan, scanForPairLink } from './scanner.js';
 import { browserKind, isStandalone } from './browser-policy.js';
@@ -49,9 +50,13 @@ const SAVE_SYNC_DELAY_MS = 2000;
 const SWIPE_CLICK_GUARD_MS = 400;
 
 class App {
-  constructor(root, store, client, initialHash = location.hash, { resetLocalData = async () => {} } = {}) {
+  constructor(root, store, client, initialHash = location.hash,
+    { resetLocalData = async () => {}, wipeLocalData = async () => {}, reload = () => location.reload() } = {}) {
     this.initialHash = initialHash;
     this.resetLocalData = resetLocalData;       // löscht alle lokalen Daten und lädt neu (Notausgang der Sperre)
+    this.wipeLocalData = wipeLocalData;         // nur das Löschen, wirft bei einem Fehler (Trennen, #499)
+    this.reload = reload;
+    this.unpairing = false;                     // ab der Bestätigung geht nichts mehr an den Desktop (ein `put` ersetzte die Abmeldung)
     // Vor allem anderen: ab hier landet jedes `logFailure` auch im Protokoll.
     this.debugLog = createDebugLog({ store: idbLogStore() });
     setLogSink((context, error) => this.debugLog.recordError(context, error));
@@ -81,6 +86,7 @@ class App {
     this.pushTimer = null;
     this.pushBusy = false;
     this.lockElement = null;               // die Sperre (#490) liegt als Dialog über allem
+    this.lockSlot = createSessionSlot(() => sessionStorage, LOCK_LEFT_KEY);
     this.lockCtl = createLockController({
       getMeta: () => this.store.getMeta(),
       now: () => Date.now(),
@@ -88,7 +94,7 @@ class App {
       onLock: () => this.showLock(),
       onUnlock: (day) => this.afterUnlock(day),
       // Ein Neuladen (Wischen zum Aktualisieren) innerhalb der Frist fragt nicht erneut; `sessionStorage` gilt je Tab.
-      session: createSessionSlot(() => sessionStorage, LOCK_LEFT_KEY),
+      session: this.lockSlot,
     });
     this.lockSupportState = { available: false, reason: 'pending' };
     this.pushError = null;
@@ -320,6 +326,54 @@ class App {
     }
   }
 
+  // --- Trennen (#499) ------------------------------------------------------------------------------
+
+  /** Die Rückfrage vor „Trennen und lokale Daten löschen“. Beim Öffnen läuft immer ein Abgleich (im WLAN die einzige
+   *  Erreichbarkeitsprüfung, außerdem frischt er die Fähigkeit des Desktops auf); ein laufender wird abgewartet. Erst
+   *  „Ja, trennen und löschen“ führt aus: Abmeldung, Push, Sitzungsmerker, Protokoll, `wipe()`, Neuladen. */
+  openUnpair() {
+    let dialog;
+    let model = null;
+    const runner = createUnpairRunner({
+      notifyDesktop: async () => (await this.client.unpair()).state,
+      disablePush: () => this.disablePush(),
+      clearSession: () => this.lockSlot.write(null),
+      clearDebug: async () => { if (!(await this.debugLog.clear())) throw new Error('Protokoll nicht geleert'); },
+      wipe: () => this.wipeLocalData(),
+      reload: () => this.reload(),
+      log: (_step, error) => logFailure('Trennen und lokale Daten löschen', error),
+    });
+    const check = async () => {
+      dialog.update({ phase: 'checking' });
+      let syncOk = true;
+      try {
+        const result = await this.client.sync();
+        syncOk = !result.discarded;
+      } catch {
+        syncOk = false;               // der Grund steht im Reiter und im Protokoll; hier zählt nur: erreicht oder nicht
+      }
+      const meta = this.store.getMeta();
+      model = unpairDialogModel({
+        transport: meta.transport, syncOk, openDays: this.store.pendingCount(), desktopUnpair: meta.desktop_unpair });
+      dialog.update({ phase: 'ready', model });
+    };
+    const confirm = async () => {
+      this.unpairing = true;
+      clearTimeout(this.saveTimer);
+      clearTimeout(this.pushTimer);
+      dialog.update({ phase: 'running', model });
+      const result = await runner();
+      if (!result.ok) {
+        this.unpairing = false;
+        dialog.update({ phase: 'error', model,
+          error: 'Die lokalen Daten ließen sich nicht löschen. Bitte erneut versuchen.' });
+      }
+    };
+    dialog = unpairDialog({ retry: check, confirm });
+    check();
+    return dialog;
+  }
+
   async disablePush() {
     this.pushError = null;
     const { relay_secret: secret } = this.store.getMeta();
@@ -445,6 +499,7 @@ class App {
   // --- Abgleich ----------------------------------------------------------------------------------
 
   trigger(name) {
+    if (this.unpairing) return;
     const allowed = shouldSync({
       trigger: name, paired: this.paired, syncing: this.syncing, online: this.online,
       now: Date.now(), lastAttemptAt: this.lastAttemptAt, lastError: this.lastError,
@@ -792,6 +847,7 @@ class App {
         if (on) await this.enablePush(); else await this.disablePush();
         return this.pushModelNow();
       },
+      unpair: () => this.openUnpair(),
       createLock: () => this.createLock(),
       confirmLock: (id) => this.confirmLock(id),
       removeLock: () => this.removeLock(),
@@ -1081,7 +1137,8 @@ async function main() {
       logFailure('Vorhandene Daten verschlüsseln', error);       // kein Grund, die App nicht zu starten: es bleibt Klartext
     }
   }
-  await new App(root, store, new SyncClient({ store }), startHash, { resetLocalData }).start();
+  await new App(root, store, new SyncClient({ store }), startHash,
+    { resetLocalData, wipeLocalData: () => vault.wipe() }).start();
 }
 
 main();
