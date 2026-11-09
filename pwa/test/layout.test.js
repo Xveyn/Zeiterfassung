@@ -311,3 +311,21 @@ test('below 340 px the settings tabs get a smaller font and a tighter gap', () =
   assert.match(media[1], /\.settings-dialog \.tabs button\s*\{[^}]*font-size:\s*\.7rem/);
   assert.match(media[1], /\.settings-dialog \.tabs\s*\{[^}]*gap:\s*[0-3]px/);
 });
+
+// --- Einrichtungs-Screen (#496) ---------------------------------------------------------------------
+
+test('the setup screen has no opacity: later steps stay readable, only their number turns grey', () => {
+  const rules = [...css.matchAll(/(^|\n)(\.setup[^{]*)\{([^}]*)\}/g)];
+  assert.ok(rules.length > 10, 'the setup rules exist');
+  for (const [, , selector, body] of rules) assert.doesNotMatch(body, /opacity/, selector);
+  assert.match(css, /\.setup-step\.later \.num \{ background: var\(--line\); \}/);
+});
+
+test('the privacy link of the setup screen is grey, so the main button is the only red target', () => {
+  assert.match(css, /\.setup-foot a \{ color: var\(--muted\); \}/);
+  assert.doesNotMatch(css, /\.setup[^{]*\{[^}]*color:\s*var\(--accent-text\)/);
+});
+
+test('the scrollbar gutter stays reserved, so the page does not jump sideways when content grows past the screen', () => {
+  assert.match(rule('html'), /scrollbar-gutter:\s*stable/);
+});

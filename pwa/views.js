@@ -81,7 +81,39 @@ export function statusBar(handlers) {
 const privacyLink = (label = 'Datenschutzhinweise') =>
   h('a', { href: PRIVACY_URL, target: '_blank', rel: 'noopener noreferrer' }, label);
 
-export function pairView({ address, code, deviceName, busy, canScan, canCancel, error, relay = false, installHint = '' }, handlers) {
+/** Der Einrichtungs-Screen (#496): Logo, Titel, nummerierte Schritte, der eine rote Knopf und, grau und
+ *  eingeklappt, die Nebenwege. Ein Nebenweg mit `action` ist ein Knopf, einer ohne nur ein Hinweis. */
+function setupView(model, { canCancel }, handlers) {
+  const alternative = (alt) => {
+    const label = h('span', {}, alt.title, h('small', {}, alt.text));
+    return alt.action
+      ? h('button', { type: 'button', class: 'alt', onclick: () => handlers[alt.action](), 'data-focus': `setup-${alt.id}` },
+        label, h('span', { class: 'chev', 'aria-hidden': 'true' }, '›'))
+      : h('div', { class: 'alt info' }, label);
+  };
+  return h('main', { class: 'setup' },
+    h('div', { class: 'setup-hero' },
+      h('img', { src: 'icons/icon-192.png', alt: '', width: 84, height: 84 }),
+      h('h1', {}, model.title),
+      h('p', { class: 'muted' }, model.lead)),
+    h('h2', { class: 'setup-heading' }, `Einrichtung · ${model.steps.length} Schritte`),
+    h('ol', { class: 'setup-steps' }, model.steps.map((step, index) =>
+      h('li', { class: `setup-step ${step.state}` },
+        h('span', { class: 'num', 'aria-hidden': 'true' }, String(index + 1)),
+        h('div', {}, h('b', {}, step.title), h('span', {}, step.text))))),
+    model.scan && button('QR-Code scannen', handlers.scan, 'primary', { 'data-focus': 'setup-scan' }),
+    model.note && h('p', { class: `hint ${model.note.kind}`, role: 'status' }, model.note.text),
+    model.alternatives.length > 0 && h('details', { class: 'setup-more' },
+      h('summary', { 'data-focus': 'setup-more' }, 'Andere Möglichkeiten'),
+      model.alternatives.map(alternative)),
+    canCancel && h('div', { class: 'buttons' }, button('Abbrechen', handlers.cancel, '', { 'data-focus': 'setup-cancel' })),
+    h('p', { class: 'setup-foot' }, 'Was der Relay verarbeitet: ', privacyLink()));
+}
+
+/** Die Koppel-Seite. Mit `setup` (Modell aus `setupModel`) erscheint der Einrichtungs-Screen, sonst das Formular
+ *  (Link gelesen, Adresse und Code von Hand, Fehler); „Zurück“ (`canBack`) führt von dort zum Einrichtungs-Screen. */
+export function pairView({ address, code, deviceName, busy, canScan, canCancel, canBack = false, error, relay = false, installHint = '', setup = null }, handlers) {
+  if (setup) return setupView(setup, { canCancel }, handlers);
   const fields = pairFields({ relay });
   const addressInput = h('input', { id: 'pair-address', name: 'address', value: address, inputmode: 'decimal',
     autocomplete: 'off', placeholder: '192.168.178.20:17654', required: true, 'data-focus': 'pair-address' });
@@ -111,6 +143,7 @@ export function pairView({ address, code, deviceName, busy, canScan, canCancel, 
       h('div', { class: 'error-text', role: 'alert', id: 'pair-error' }, error || ''),
       h('div', { class: 'buttons' },
         canCancel && button('Abbrechen', handlers.cancel),
+        canBack && button('Zurück', handlers.back, '', { disabled: busy, 'data-focus': 'pair-back' }),
         h('button', { type: 'submit', class: 'primary', disabled: busy, 'data-focus': 'pair-submit' }, busy ? 'Koppele …' : 'Koppeln'))));
 }
 

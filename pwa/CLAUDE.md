@@ -401,6 +401,36 @@ sind von der Regel ausgenommen.
 - **Prüfen:** Playwright mit `newContext({ hasTouch: true, isMobile: true })` und `touchscreen.tap`; `:hover` und die berechnete Hintergrundfarbe vor
   dem Tippen, nach dem Tippen und nach dem Schließen des Dialogs vergleichen. Das native Tap-Highlight bildet der Test-Browser nicht ab.
 
+## Einrichtungs-Screen (#496)
+
+Wer noch nichts eingerichtet hat, sieht keinen Formularkopf mehr, sondern einen kleinen Einrichtungs-Screen: Roboter-Logo
+(`icons/icon-192.png`, schon im `PRECACHE`), Titel „Zeiterfassung App“, ein Satz, nummerierte Schritte, **ein** roter
+Hauptknopf („QR-Code scannen“) und, grau hinter `<details>` „Andere Möglichkeiten“, die Nebenwege. Die Wahl liegt DOM-frei in
+`view-model.js`, `views.js::setupView` baut nur die Elemente.
+
+- **Zwei Phasen derselben Seite.** `isSetupPhase(this.pairing)` ist wahr, solange nichts gelesen, getippt oder fehlgeschlagen
+  ist. Ein gescannter Link (`applyPairLink`), „Adresse und Code eintippen“ (`pairing.manual`), eine laufende oder gescheiterte
+  Kopplung zeigen das bisherige Formular (`pairView` ohne `setup`) mit Gerätename und „Koppeln“. Die Kopplungslogik
+  (`submitPairing`, Relay-Link, Fehlertexte) ist unverändert. **„Zurück“** im Formular (`canBack`, nur ohne bestehende Kopplung;
+  mit einer gilt „Abbrechen“) führt zum Einrichtungs-Screen: `pairingAfterBack` verwirft Eingetipptes, den gelesenen Link samt
+  Relay-Geheimnis und den Fehler, nur der Gerätename bleibt.
+- **Drei Varianten** (`setupModel({browser, standalone, canScan})`): `lan` (Chromium, unbekannt; Nebenwege „Nicht im selben
+  WLAN?“ als reiner Hinweis und „Adresse und Code eintippen“), `relay` (`blocksLan`: Firefox, Safari; keine Eingabe von Hand,
+  Hinweis zum Internet-Weg) und `install` (iOS im Browser-Tab, `standalone === false`: vier Schritte, der erste hervorgehoben,
+  kein Hauptknopf; „Trotzdem im Browser koppeln“ bleibt als grauer Nebenweg). Ein unbekannter Anzeigemodus gilt nicht als „nicht
+  installiert“. Ohne Kamera entfällt der Hauptknopf, der Schritt nennt die Kamera-App.
+- **Der Relay-Weg hat keine Eingabe von Hand**, nur den QR-Link des Desktops; „Über Relay koppeln“ ist deshalb in der
+  `lan`-Variante ein Text, kein Knopf.
+- **`html { scrollbar-gutter: stable }`** hält den Platz der senkrechten Scrollleiste frei (Desktop-Browser, klassische Leisten):
+  sonst sprang der Screen beim Ausklappen von „Andere Möglichkeiten“ seitwärts (Logo 7 px, Hauptknopf 15 px schmaler), sobald die
+  Seite höher als der Bildschirm wurde. Gilt für die ganze App und verhindert denselben Sprung, wenn ein Dialog `overflow: hidden`
+  setzt. Auf Handys mit überlagernden Leisten ohne Wirkung.
+- **Genau ein rotes Klickziel.** Nebenwege und der Datenschutz-Link sind grau (`--muted`, `--line`), nie `--accent-text`.
+  Spätere Schritte werden nicht mit `opacity` gedimmt (der Text bliebe sonst unter dem Kontrast), nur ihre Nummer wird grau;
+  `test/layout.test.js` hält beides fest.
+- **Geprüft** in Node (`test/view-model.test.js`: Varianten, Phasen) und im Browser mit überschriebenem User-Agent (Chrome,
+  Firefox, iPhone) bei 280, 320 und 1024 px. **iOS und Safari sind ungeprüft** (kein Gerät).
+
 ## Einstellungen und Kategorien
 
 Der Button unten links heißt „Einstellungen“. `settingsDialog` (ersetzt den

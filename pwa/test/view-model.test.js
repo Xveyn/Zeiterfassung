@@ -1067,3 +1067,122 @@ test('the push model exposes the switch position and whether it can be flipped',
   assert.deepEqual([pushModel({ ...base, state: 'denied' }).on, pushModel({ ...base, state: 'denied' }).toggle], [false, false]);
   assert.deepEqual([pushModel({ ...base, state: 'unsupported' }).on, pushModel({ ...base, state: 'unsupported' }).toggle], [false, false]);
 });
+
+// --- Einrichtungs-Screen (#496) ------------------------------------------------------------------------
+
+import { isSetupPhase, setupModel } from '../view-model.js';
+
+const stepTitles = (model) => model.steps.map((step) => step.title);
+
+test('setup: title and lead sentence are the same on every platform', () => {
+  for (const browser of ['chromium', 'firefox', 'ios', 'safari', 'unknown']) {
+    const model = setupModel({ browser, standalone: false, canScan: true });
+    assert.equal(model.title, 'Zeiterfassung App', browser);
+    assert.match(model.lead, /Der Desktop bleibt die Quelle/, browser);
+  }
+});
+
+test('setup: Chromium and unknown browsers get the LAN variant with one scan button and two ways out', () => {
+  for (const browser of ['chromium', 'unknown', undefined]) {
+    const model = setupModel({ browser, standalone: false, canScan: true });
+    assert.equal(model.variant, 'lan', String(browser));
+    assert.deepEqual(stepTitles(model), ['Am Desktop öffnen', 'QR-Code scannen', 'Handy benennen']);
+    assert.match(model.steps[0].text, /„Gerät koppeln“/);
+    assert.equal(model.steps[1].state, 'focus');
+    assert.equal(model.scan, true);
+    assert.deepEqual(model.alternatives.map((a) => [a.id, a.action]), [['relay-hint', null], ['manual', 'manual']]);
+    assert.match(model.alternatives[0].text, /Über Relay koppeln/);
+    assert.equal(model.note, null);
+  }
+});
+
+test('setup: where the browser blocks the LAN only the relay way is offered, and it says why', () => {
+  for (const [browser, standalone] of [['firefox', false], ['safari', false], ['ios', true]]) {
+    const model = setupModel({ browser, standalone, canScan: true });
+    assert.equal(model.variant, 'relay', browser);
+    assert.match(model.steps[0].text, /„Über Relay koppeln“/);
+    assert.equal(model.alternatives.some((a) => a.id === 'manual'), false, 'no typing of address and code');
+    assert.equal(model.scan, true);
+    assert.equal(model.note.kind, 'info');
+    assert.match(model.note.text, /Internet/);
+  }
+});
+
+test('setup: iOS in a browser tab installs first, the rest waits, and scanning stays reachable in a grey entry', () => {
+  const model = setupModel({ browser: 'ios', standalone: false, canScan: true });
+  assert.equal(model.variant, 'install');
+  assert.deepEqual(stepTitles(model),
+    ['Zum Home-Bildschirm', 'Am Desktop öffnen', 'QR-Code scannen', 'Handy benennen']);
+  assert.deepEqual(model.steps.map((step) => step.state), ['focus', 'later', 'later', 'later']);
+  assert.match(model.steps[0].text, /Teilen/);
+  assert.match(model.steps[2].text, /Web-App/);
+  assert.equal(model.scan, false, 'no red main button before installing');
+  assert.deepEqual(model.alternatives.map((a) => [a.id, a.action]), [['browser-anyway', 'scan']]);
+  assert.equal(model.note.kind, 'warn');
+  assert.match(model.note.text, /7 Tagen/);
+});
+
+test('setup: an installed iOS web app counts as normal relay variant, a missing mode as not installed', () => {
+  assert.equal(setupModel({ browser: 'ios', standalone: true, canScan: true }).variant, 'relay');
+  assert.equal(setupModel({ browser: 'ios', canScan: true }).variant, 'relay', 'unknown mode: no install nagging');
+});
+
+test('setup: without a camera there is no scan button and the step says what to do instead', () => {
+  const lan = setupModel({ browser: 'chromium', standalone: false, canScan: false });
+  assert.equal(lan.scan, false);
+  assert.match(lan.steps[1].text, /Kamera-App/);
+  assert.equal(lan.alternatives.some((a) => a.id === 'manual'), true, 'typing still works');
+  const relay = setupModel({ browser: 'firefox', standalone: false, canScan: false });
+  assert.equal(relay.scan, false);
+  assert.match(relay.steps[1].text, /Kamera-App/);
+});
+
+test('setup: every step has a title, a text and a known state; alternatives have an action or none', () => {
+  for (const browser of ['chromium', 'firefox', 'ios', 'safari', 'unknown']) {
+    for (const standalone of [true, false]) {
+      for (const canScan of [true, false]) {
+        const model = setupModel({ browser, standalone, canScan });
+        for (const step of model.steps) {
+          assert.ok(step.title && step.text, `${browser}/${standalone}/${canScan}`);
+          assert.ok(['todo', 'focus', 'later'].includes(step.state));
+        }
+        for (const alt of model.alternatives) assert.ok([null, 'scan', 'manual'].includes(alt.action));
+      }
+    }
+  }
+});
+
+test('setup phase: only while nothing is entered, scanned or failed', () => {
+  assert.equal(isSetupPhase({}), true);
+  assert.equal(isSetupPhase(), true);
+  assert.equal(isSetupPhase({ address: '', code: '', relay: null, manual: false, busy: false, error: '' }), true);
+  assert.equal(isSetupPhase({ relay: { secret: 'x' } }), false, 'a scanned relay link goes to the name form');
+  assert.equal(isSetupPhase({ address: '192.168.1.2:17654' }), false);
+  assert.equal(isSetupPhase({ code: 'ABCD' }), false);
+  assert.equal(isSetupPhase({ manual: true }), false, 'typing by hand shows the fields');
+  assert.equal(isSetupPhase({ busy: true }), false);
+  assert.equal(isSetupPhase({ error: 'Falscher Code' }), false, 'an error stays next to the fields it belongs to');
+});
+
+import { pairingAfterBack } from '../view-model.js';
+
+test('back from the pairing form returns to the setup screen and drops what was entered or scanned', () => {
+  const entered = { address: '192.168.1.2:17654', code: 'ABCD', deviceName: 'Pixel', busy: false, error: 'Falscher Code', relay: null, manual: true };
+  const back = pairingAfterBack(entered);
+  assert.equal(isSetupPhase(back), true);
+  assert.deepEqual(back, { address: '', code: '', deviceName: 'Pixel', busy: false, error: '', relay: null, manual: false });
+});
+
+test('back drops a scanned relay secret but keeps the name the user typed', () => {
+  const scanned = { address: '', code: 'ABCD', deviceName: 'Mein Handy', busy: false, error: '', relay: { secret: 'S'.repeat(43) } };
+  const back = pairingAfterBack(scanned);
+  assert.equal(back.relay, null);
+  assert.equal(back.code, '');
+  assert.equal(back.deviceName, 'Mein Handy');
+  assert.equal(JSON.stringify(back).includes('S'.repeat(43)), false, 'the secret is gone');
+});
+
+test('back copes with a missing or odd state', () => {
+  assert.equal(isSetupPhase(pairingAfterBack()), true);
+  assert.equal(pairingAfterBack({ deviceName: 42 }).deviceName, '');
+});
