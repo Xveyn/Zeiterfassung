@@ -339,3 +339,37 @@ def test_neutralize_xft_dpi_survives_an_unwritable_directory(tmp_path, monkeypat
     missing = str(tmp_path / "gibt-es-nicht")
     assert dpi.neutralize_xft_dpi("Linux", directory=missing) is None
     assert "XENVIRONMENT" not in os.environ
+
+
+# --- Wechsel des Systemfaktors zur Laufzeit (Xveyn#201) ---------------------
+
+@pytest.mark.parametrize("now,expected", [
+    (96, False),    # unverändert
+    (240, True),    # 4K @ 250 %
+    (90, False),    # unter 96 ergibt wie beim Start 1,0
+    (None, False),  # nicht lesbar: kein Alarm
+])
+def test_system_scale_changed_compares_with_start_factor(monkeypatch, now, expected):
+    _linux(monkeypatch, 96)
+    assert dpi.system_scale_changed(lambda: now) is expected
+
+
+def test_system_scale_changed_after_4k_start_detects_return_to_wqhd(monkeypatch):
+    """Der gemeldete Fall: Start auf 4K (240 dpi), danach Monitor mit 96 dpi."""
+    _linux(monkeypatch, 240)
+    assert dpi.system_scale_changed(lambda: 240) is False
+    assert dpi.system_scale_changed(lambda: 96) is True
+
+
+def test_system_scale_changed_needs_a_start_reading(monkeypatch):
+    """Ohne gefundenes `Xft.dpi` beim Start (Windows, macOS, Tk 9) wird nie gemeldet."""
+    _linux(monkeypatch, None)
+    assert dpi.system_scale_changed(_fail) is False
+
+
+def test_system_scale_changed_survives_a_failing_lookup(monkeypatch):
+    _linux(monkeypatch, 96)
+
+    def boom():
+        raise OSError("libX11 weg")
+    assert dpi.system_scale_changed(boom) is False

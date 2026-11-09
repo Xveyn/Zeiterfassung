@@ -37,6 +37,7 @@ ANNOTATED_MODULES = [
     "src/default_times.py",
     "src/conflict_view.py",
     "src/reminders.py",
+    "src/scale_watch.py",
     "src/pause_requirement.py",
     "src/weekly_limit.py",
     "src/send_reminder.py",

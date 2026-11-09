@@ -255,6 +255,7 @@ def app_updates(raw: Mapping[str, Any]) -> dict[str, Any]:
         "always_on_top": bool(raw["always_on_top"]),
         "minimize_to_tray": bool(raw["minimize_to_tray"]),
         "ui_scale": clamp_ui_scale(slider_percent(float(raw["ui_scale"])) / 100),
+        "auto_scale_restart": bool(raw.get("auto_scale_restart", False)),
     }
 
 

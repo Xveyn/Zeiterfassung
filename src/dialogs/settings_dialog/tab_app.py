@@ -101,6 +101,17 @@ class AppTab:
         scale_value_label.pack(side=tk.LEFT, padx=(8, 0))
         form.row("Skalierung:", scale_cell)
         form.hint("Änderung startet die App neu.")
+        auto_scale_var = tk.BooleanVar(
+            value=bool(settings.get("auto_scale_restart")))
+        # Nur unter Linux: nur dort erkennt die App den Monitorwechsel
+        # (Xveyn#201; Windows Xveyn#493).
+        if platform.system() == "Linux":
+            form.check("Skalierung bei Monitorwechsel automatisch anpassen",
+                       auto_scale_var)
+            form.hint("Startet die App neu, wenn der Monitor eine andere "
+                      "Skalierung hat — erst, wenn kein Dialog offen ist "
+                      "und nichts im Hintergrund läuft. Ohne Haken erscheint "
+                      "stattdessen ein Hinweis mit Neustart-Knopf.")
         system_hint = dpi.scale_hint(dpi.system_scale())
         if system_hint:
             form.hint(system_hint)
@@ -134,6 +145,7 @@ class AppTab:
         self.always_on_top_var = always_on_top_var
         self.minimize_to_tray_var = minimize_to_tray_var
         self.scale_var = scale_var
+        self.auto_scale_var = auto_scale_var
 
         self.title = "App"
         self._settings = settings
@@ -148,6 +160,7 @@ class AppTab:
         # Gerastert gelesen: ein hin- und zurückgezogener Regler ist keine
         # Änderung.
         fields.add("ui_scale", scale_var, read=slider_percent)
+        fields.add("auto_scale_restart", auto_scale_var)
         self.fields = fields
 
     def values(self):
