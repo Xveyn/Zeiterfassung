@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import {
   SETTINGS_TABS, categoriesModel, categoryRemovalText, categoryRenameHint, settingsTabLabel, retentionLabel,
   WEEKDAYS, dayTitle, categoryDisplay, categoryLabel, categoryOptions, conflictsModel, dayChanged, editLock, editorRows, focusKeyToRestore, hintKey, hintsModel, desktopHint, localTime, nextRow, olderModel, pickCategory, rowsToSlots, slotText,
-  unpairDialogModel, statusModel, validateRows, weekModel, windowRow, reservationRows, reservationRowsToSlots, validateReservationRows,
+  reachedAfterSyncError, unpairDialogModel, statusModel, validateRows, weekModel, windowRow, reservationRows, reservationRowsToSlots, validateReservationRows,
 } from '../view-model.js';
 import { SyncError } from '../sync.js';
 import { formatMinutes } from '../minutes.js';
@@ -1207,8 +1207,8 @@ test('open days name their number in singular and plural and switch to Trotzdem 
   const one = unpairDialogModel(unpairInput({ reached: false, openDays: 1 }));
   const three = unpairDialogModel(unpairInput({ reached: false, openDays: 3 }));
 
-  assert.deepEqual(one.summary, { kind: 'warn', text: '1 Tag ist noch nicht am Desktop.' });
-  assert.deepEqual(three.summary, { kind: 'warn', text: '3 Tage sind noch nicht am Desktop.' });
+  assert.deepEqual(one.summary, { kind: 'warn', text: '1 Änderung ist noch nicht am Desktop.' });
+  assert.deepEqual(three.summary, { kind: 'warn', text: '3 Änderungen sind noch nicht am Desktop.' });
   assert.equal(three.confirmLabel, 'Trotzdem löschen');
   assert.equal(three.canRetry, true);
 });
@@ -1240,4 +1240,27 @@ test('unknown inputs fall back to the careful reading', () => {
   assert.equal(model.notifiesDesktop, false);
   assert.equal(typeof model.warnDesktop, 'string');
   assert.equal(model.summary.kind, 'ok');
+});
+
+// --- Erreicht der Abgleich den Desktop? ----------------------------------------------------------------
+
+const syncError = (over) => Object.assign(new Error('x'), { kind: 'client_error', status: 0, code: '', ...over });
+
+test('an answer with a status means the desktop was reached, whatever it said', () => {
+  for (const [status, code] of [[503, 'busy'], [503, 'key_unavailable'], [422, 'clock_skew'], [409, 'replay'], [500, 'internal_error']]) {
+    assert.equal(reachedAfterSyncError(syncError({ status, code, kind: 'transient' })), true, `${status} ${code}`);
+  }
+});
+
+test('a silent desktop behind an accepting relay counts as reached: the unpair would wait in the box', () => {
+  assert.equal(reachedAfterSyncError(syncError({ kind: 'desktop_silent' })), true);
+});
+
+test('no answer at all, or an answer that says the token is gone, is not reached', () => {
+  assert.equal(reachedAfterSyncError(syncError({ kind: 'offline' })), false);
+  assert.equal(reachedAfterSyncError(syncError({ kind: 'offline', code: 'relay_unreachable' })), false);
+  assert.equal(reachedAfterSyncError(syncError({ status: 401, code: 'token_expired', kind: 'repair' })), false);
+  assert.equal(reachedAfterSyncError(syncError({ status: 401, code: 'token_revoked', kind: 'repair' })), false);
+  assert.equal(reachedAfterSyncError(new TypeError('Failed to fetch')), false);
+  assert.equal(reachedAfterSyncError(null), false);
 });

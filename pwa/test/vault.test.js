@@ -348,3 +348,21 @@ test('after a wipe a fresh store is unpaired and empty: the setup screen is what
   }
   assert.equal(meta.lock_enabled, false);
 });
+
+test('a frozen store writes nothing after the wipe: a late setMeta, saveDay or batch cannot bring the pairing back (#499)', async () => {
+  const { vault, inner } = make();
+  const store = new Store(vault, () => new Date('2026-10-08T12:00:00Z'));
+  await store.load();
+  await store.setMeta({ device_id: 'phone-0001', token: 'T0', key: 'a'.repeat(43) });
+  await vault.wipe();
+
+  store.freeze();
+  await store.setMeta({ push_signature: 'spät', push_sent_at: 1 });       // z. B. ein Zeitplan-Versand, der erst jetzt fertig wird
+  await store.saveDay('2026-10-07', [SLOT]);
+
+  assert.deepEqual(await inner.getAll('meta'), []);
+  assert.deepEqual(await inner.getAll('entries'), []);
+  const fresh = new Store(vault, () => new Date('2026-10-08T12:00:00Z'));
+  await fresh.load();
+  assert.equal(isPaired(fresh.getMeta()), false);
+});

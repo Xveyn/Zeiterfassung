@@ -1239,3 +1239,7 @@ def test_revoke_all_has_something_to_do_only_with_an_active_device():
     assert tr.has_revocable([device(), device(id="b", **UNPAIRED)]) is True
     assert tr.has_revocable([device(id="b", **UNPAIRED)]) is False      # nur vom Handy getrennte: nichts mehr zu widerrufen
     assert tr.has_revocable([]) is False
+
+
+def test_the_dismiss_error_text_does_not_say_the_device_can_still_sync():
+    assert "gekoppelt" not in tr.DISMISS_ERROR_TEXT and tr.DISMISS_ERROR_TEXT

@@ -811,6 +811,11 @@ def pair_poll_keeps_running(state: str) -> bool:
     return state == "counting"
 
 
+DISMISS_ERROR_TEXT = (
+    "Der Eintrag konnte nicht entfernt werden: die Gerätedatei ist nicht schreibbar. "
+    "Das Gerät hat sich getrennt und kann sich nicht mehr abgleichen; der Eintrag bleibt nur in der Liste."
+)
+
 REVOKE_ERROR_TEXT = (
     "Das Gerät konnte nicht widerrufen werden (Zugriffsrechte des Datenordners?). Es "
     "bleibt weiterhin gekoppelt und kann sich abgleichen.")

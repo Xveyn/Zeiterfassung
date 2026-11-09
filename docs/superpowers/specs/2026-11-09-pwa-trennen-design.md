@@ -49,7 +49,7 @@ Anti-Ziele (Misserfolg, auch wenn es technisch läuft)
 2. **Rückfrage** (Dialog), je nach Lage (Mockups: `.superpowers/brainstorm/…/trennen-dialog.html`):
    - *Alles übertragen* (Abgleich gelang oder nichts offen): Folgen, grüner Hinweis, „Abbrechen“ /
      „Ja, trennen und löschen“.
-   - *Abgleich gescheitert, N Tage offen*: gelbe Warnung mit der Zahl, „Erneut abgleichen“,
+   - *Abgleich gescheitert, N Änderungen offen* (gezählt wird `pendingCount()`: Tage, Reservierungen und der Kategorien-Block): gelbe Warnung mit der Zahl, „Erneut abgleichen“,
      „Abbrechen“ / „Trotzdem löschen“.
    - *LAN-Kopplung, Desktop nicht erreichbar*: Warnung, dass der Desktop nichts erfährt und das Gerät dort
      widerrufen werden muss.

@@ -27,7 +27,7 @@ import { shouldApplyUpdate, shouldCheckForUpdate } from './update-policy.js';
 import { blockSignature, rowsToBlock } from './categories.js';
 import {
   categoriesModel, conflictsModel, connectionLabel, dayChanged, dayTitle, desktopHint, editLock, editorRows, focusKeyToRestore, hintsModel, olderModel, pushModel, reservationRows,
-  iosInstallHint, isSetupPhase, pairingAfterBack, reservationRowsToSlots, rowsToSlots, setupModel, statusModel, unpairDialogModel, validateReservationRows, validateRows, weekModel,
+  iosInstallHint, isSetupPhase, pairingAfterBack, reservationRowsToSlots, rowsToSlots, setupModel, statusModel, reachedAfterSyncError, unpairDialogModel, validateReservationRows, validateRows, weekModel,
 } from './view-model.js';
 import { BUILD, CACHE_PREFIX } from './sw-core.js';
 import { describeRepair, repairServiceWorker } from './sw-repair.js';
@@ -341,7 +341,7 @@ class App {
       disablePush: () => this.disablePush(),
       clearSession: () => this.lockSlot.write(null),
       clearDebug: async () => { if (!(await this.debugLog.clear())) throw new Error('Protokoll nicht geleert'); },
-      wipe: () => this.wipeLocalData(),
+      wipe: async () => { await this.wipeLocalData(); this.store.freeze(); },
       reload: () => this.reload(),
       // Der Schritt steht im Text: `logFailure` verlangt ein festes Wort als Kontext, die Schrittnamen sind feste Wörter.
       log: (step, error) => logFailure('Trennen und lokale Daten löschen', new Error(`${step}: ${errorDetail(error)}`)),
@@ -357,7 +357,7 @@ class App {
         const result = await this.client.sync();
         reached = !result.discarded;
       } catch (error) {
-        reached = error instanceof SyncError && error.kind === 'desktop_silent';
+        reached = reachedAfterSyncError(error);
       }
       const meta = this.store.getMeta();
       model = unpairDialogModel({ reached, openDays: this.store.pendingCount(), desktopUnpair: meta.desktop_unpair });
@@ -405,7 +405,7 @@ class App {
   /** Plan neu berechnen und, wenn er sich geändert hat, verschlüsselt an den Relay schicken. Scheitert
    *  der Relay, bleibt es ein Hinweis im Reiter: Speichern und Abgleich laufen unabhängig davon. */
   async updatePushSchedule() {
-    if (this.pushBusy) return;
+    if (this.pushBusy || this.unpairing) return;
     this.pushBusy = true;
     let release;
     this.pushJob = new Promise((resolve) => { release = resolve; });     // `openUnpair` wartet darauf, bevor es löscht
@@ -428,7 +428,9 @@ class App {
       const subscription = await this.subscription();
       const blobs = [];
       for (const item of items) blobs.push({ id: item.id, fire_at: utcStamp(item.fireAt), blob: await seal(this.keys, messageFor(item)) });
+      if (this.unpairing) return;                          // inzwischen getrennt: kein Relay-Objekt neu anlegen
       await syncSchedule({ client: this.relay, secret: meta.relay_secret, subscription: subscription.toJSON(), items: blobs });
+      if (this.unpairing) return;
       await this.store.setMeta({ push_signature: plan, push_sent_at: now });
       this.pushError = null;
     } catch (error) {

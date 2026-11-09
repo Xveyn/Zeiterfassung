@@ -123,3 +123,8 @@ def test_the_tab_sets_the_button_text_through_the_theme_helper_not_the_private_l
     assert "set_button_text(self._revoke_btn" in source
     assert "_revoke_btn._label" not in source
     assert "has_revocable" in source
+
+
+def test_a_failed_dismiss_does_not_claim_the_device_stays_paired():
+    source = TAB.read_text(encoding="utf-8")
+    assert "DISMISS_ERROR_TEXT" in source and "Entfernen fehlgeschlagen" in source

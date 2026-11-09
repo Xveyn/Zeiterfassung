@@ -91,6 +91,13 @@ export class Store {
     this._meta = structuredClone(DEFAULT_META);
   }
 
+  /** Ab jetzt schreibt dieser Store nichts mehr (Trennen, #499): `setMeta` und alle anderen Schreibwege legten sonst
+   *  nach dem `wipe()` die ganze Meta (Schlüssel, Token) aus dem Speicher zurück in die Datenbank, etwa ein
+   *  Zeitplan-Versand, der erst jetzt fertig wird. Gelesen wird weiter nichts: der Store gilt als verworfen. */
+  freeze() {
+    this._adapter = { getAll: async () => [], batch: async () => {} };
+  }
+
   /** Liest alles aus dem Adapter. Unbrauchbare Datensätze werden übersprungen, nie geworfen:
    *  eine kaputte Zeile darf die App nicht am Start hindern. */
   async load() {

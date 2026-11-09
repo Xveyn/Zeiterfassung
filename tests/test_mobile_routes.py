@@ -1178,3 +1178,37 @@ def test_unpair_with_a_keyring_that_never_answers_is_503_after_a_bounded_wait(en
     finally:
         release.set()
     assert env.ctx.devices.get(PHONE)["revoked"] is False
+
+
+def test_unpair_does_not_wait_when_no_load_is_running_and_the_retry_is_throttled(env, monkeypatch):
+    # Der Schlüsselbund wurde eben erst (erfolglos) gefragt; ein weiteres Warten im gemeinsamen Relay-Thread brächte nichts.
+    _record, token = add_device(env)
+    env.ctx.keys.migrate()
+    fresh = MobileKeyStore(str(env.keys_path))
+    env.ctx = dataclasses.replace(env.ctx, keys=fresh)
+    env.ring.fetch = lambda key: None                                       # nicht lesbar: der Versuch endet sofort
+    fresh.request_load(PHONE)
+    deadline = time.time() + 2
+    while fresh.is_loading(PHONE) and time.time() < deadline:
+        time.sleep(0.01)
+    monkeypatch.setattr(mobile_routes, "KEY_WAIT_SECONDS", 3.0)
+
+    started = time.time()
+    response = call(env, "POST", "/v1/unpair", body=unpair_body(env), token=token)
+
+    assert (response.status, error_code(response)) == (503, "key_unavailable")
+    assert time.time() - started < 1.0
+
+
+def test_unpair_with_the_previous_token_after_a_renewal_revokes_the_device(env):
+    # Geht die Antwort des Abgleichs vor der Rückfrage verloren, hält das Handy noch das vorherige Token.
+    record, old_token = add_device(env)
+    renewed, _new_token = mobile_pairing.renew(env.ctx.devices.get(PHONE), NOW, keep_previous=False)
+    env.ctx.devices.save(renewed)
+    principal = principal_for(env, old_token)
+    assert principal.via_previous is True
+
+    response = call(env, "POST", "/v1/unpair", body=unpair_body(env), principal=principal)
+
+    assert response.status == 200
+    assert env.ctx.devices.get(PHONE)["revoked_by"] == "device"

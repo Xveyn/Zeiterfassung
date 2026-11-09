@@ -453,7 +453,8 @@ def _await_key(ctx: MobileContext, device_id: str) -> None:
         return
     ctx.keys.request_load(device_id)
     deadline = time.monotonic() + KEY_WAIT_SECONDS
-    while ctx.keys.get(device_id) is None and time.monotonic() < deadline:
+    # Nur warten, solange wirklich geladen wird: ein gedrosselter Versuch kommt nicht, und der Relay-Thread gehört allen Boxen.
+    while ctx.keys.is_loading(device_id) and ctx.keys.get(device_id) is None and time.monotonic() < deadline:
         time.sleep(0.02)
 
 

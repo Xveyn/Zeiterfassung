@@ -18,7 +18,7 @@ from src import netinfo
 from src.dialogs.settings_dialog.fields import FieldSet
 from src.dialogs.settings_dialog.form_model import SaveOutcome
 from src.dialogs.settings_dialog.tab_rules import (
-    FIRST_ENABLE_NOTICE, REVOKE_ERROR_TEXT, address_options, address_to_choice,
+    DISMISS_ERROR_TEXT, FIRST_ENABLE_NOTICE, REVOKE_ERROR_TEXT, address_options, address_to_choice,
     device_row_text, has_revocable, is_device_unpaired, keystore_summary, mobile_status_view, mobile_updates,
     relay_pair_enabled, revoke_all_prompt, revoke_button_label, revoke_outcome, revoke_prompt, test_push_outcome, test_push_text, validate_mobile,
     visible_devices, window_cap_options, window_cap_to_choice,
@@ -287,7 +287,8 @@ class MobileTab:
             self._busy = True
             self._sync_buttons()
             self._runner.run(
-                lambda: revoke_outcome(lambda: self._service.dismiss(device_id)), self._revoked)
+                lambda: revoke_outcome(lambda: self._service.dismiss(device_id)),
+                lambda outcome: self._revoked(outcome, dismissed=True))
             return
         name = next((r["name"] for r in self._rows if r["id"] == device_id), device_id)
         has_box = device_id in self._relay_states()
@@ -334,7 +335,7 @@ class MobileTab:
         self._runner.run(
             lambda: revoke_outcome(self._service.revoke_all), self._revoked)
 
-    def _revoked(self, outcome):
+    def _revoked(self, outcome, dismissed=False):
         self._busy = False
         if not self._alive:
             return
@@ -342,6 +343,9 @@ class MobileTab:
             self._refresh_devices()
             self._sync_buttons()
             if not outcome["ok"]:
-                themed_showerror(self._dialog, "Widerruf fehlgeschlagen", REVOKE_ERROR_TEXT)
+                if dismissed:
+                    themed_showerror(self._dialog, "Entfernen fehlgeschlagen", DISMISS_ERROR_TEXT)
+                else:
+                    themed_showerror(self._dialog, "Widerruf fehlgeschlagen", REVOKE_ERROR_TEXT)
         except tk.TclError:
             self._alive = False

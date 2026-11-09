@@ -1,6 +1,6 @@
 // pwa/unpair.js
 // Der Ablauf von „Trennen und lokale Daten löschen“ (#499), ohne DOM: die Schritte kommen als Funktionen herein,
-// die Reihenfolge und die Fehlerregeln stehen hier und sind in Node getestet (test/unpair.test.js).
+// die Reihenfolge und die Fehlerregeln stehen hier.
 
 /** `steps`: `notifyDesktop() → 'sent' | 'queued' | 'failed'`, `disablePush()`, `clearSession()`, `clearDebug()`,
  *  `wipe()`, `reload()`, `log(label, error)`. Liefert `run()`: `{ ok, notified }` oder `{ ok: false, error }`.

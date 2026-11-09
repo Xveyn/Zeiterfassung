@@ -598,6 +598,17 @@ export function connectionSummary({ online, desktopName, lastSyncAt, tokenUntil,
   return { pill: online ? 'Verbunden' : 'Offline', kind: online ? 'ok' : 'warn', name: desktopName || 'Desktop', detail: parts.join(' · ') };
 }
 
+/** Hat der Abgleich vor dem Trennen den Desktop erreicht? Ja, wenn er mit einem Status geantwortet hat (auch mit
+ *  einem Fehler wie „beschäftigt“ oder „Uhr weicht ab“: die Abmeldung käme an) und wenn der Relay die Anfrage
+ *  angenommen hat, der Desktop aber schweigt (`desktop_silent`: sie liegt dann in der Box). Nein bei keiner Antwort
+ *  und wenn die Antwort sagt, dass das Token nicht mehr gilt: dann widerrüfe der Desktop nichts. */
+export function reachedAfterSyncError(error) {
+  if (!error || typeof error !== 'object') return false;
+  if (error.kind === 'desktop_silent') return true;
+  if (error.code === 'token_expired' || error.code === 'token_revoked') return false;
+  return Number.isInteger(error.status) && error.status > 0;
+}
+
 /** Die Rückfrage vor „Trennen und lokale Daten löschen“ (#499). `reached`: der Abgleich davor hat den Desktop erreicht
  *  (LAN) oder der Relay hat die Anfrage angenommen (auch wenn der Desktop schwieg: die Abmeldung liegt dann in der Box);
  *  `openDays`: danach noch nicht übertragene Tage; `desktopUnpair`: der Desktop kennt die Abmeldung. Der Desktop erfährt
@@ -605,7 +616,7 @@ export function connectionSummary({ online, desktopName, lastSyncAt, tokenUntil,
 export function unpairDialogModel({ reached, openDays = 0, desktopUnpair = false } = {}) {
   const open = Number.isInteger(openDays) && openDays > 0 ? openDays : 0;
   const summary = open > 0
-    ? { kind: 'warn', text: open === 1 ? '1 Tag ist noch nicht am Desktop.' : `${open} Tage sind noch nicht am Desktop.` }
+    ? { kind: 'warn', text: open === 1 ? '1 Änderung ist noch nicht am Desktop.' : `${open} Änderungen sind noch nicht am Desktop.` }
     : { kind: 'ok', text: 'Alle Tage sind am Desktop gesichert.' };
   const notifiesDesktop = desktopUnpair === true && reached === true;
   return {
