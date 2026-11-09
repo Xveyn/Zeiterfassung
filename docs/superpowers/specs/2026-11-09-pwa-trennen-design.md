@@ -54,21 +54,22 @@ Anti-Ziele (Misserfolg, auch wenn es technisch läuft)
    - *LAN-Kopplung, Desktop nicht erreichbar*: Warnung, dass der Desktop nichts erfährt und das Gerät dort
      widerrufen werden muss.
    „Abbrechen“ ist vorausgewählt; der Löschknopf ist rot. Escape und Klick auf den Hintergrund brechen ab.
-3. **Abgleich zuerst:** Beim Öffnen der Rückfrage läuft ein Abgleich (bestehender `SyncClient`-Weg), die
-   Rückfrage zeigt „gleicht ab …“, bis das Ergebnis da ist. Gibt es keine nicht übertragenen Tage
-   (`dirty_version > synced_version`, auch `categories_edit`), entfällt er.
+3. **Abgleich zuerst:** Beim Öffnen der Rückfrage läuft **immer** ein Abgleich (bestehender `SyncClient`-Weg), die
+   Rückfrage zeigt „gleicht ab …“, bis das Ergebnis da ist. Auch ohne offene Tage: im WLAN ist er die einzige
+   Erreichbarkeitsprüfung und frischt die Fähigkeit des Desktops auf.
 4. **Nach der Bestätigung**, in dieser Reihenfolge, jeder Schritt best effort außer dem letzten:
    1. Abmeldung an den Desktop (s. u.).
    2. Push abmelden: Abo kündigen, `DELETE /v1/device` am Relay (wie „Benachrichtigungen aus“).
    3. Sperre: ihre Einstellungen und der Slot in `sessionStorage` (`lock.js`).
    4. Protokoll (`log-store`) und Debug-Daten.
    5. `vault.wipe()`, dann `location.reload()` → Einrichtungs-Screen.
-   Ein Fehler in 1–4 wird geloggt und bricht nie ab; scheitert `wipe()`, zeigt die App den Fehler und bietet
-   den bestehenden Notausgang an (der Nutzer hat bestätigt, Löschen ist das Ziel).
+   Ein Fehler in 1–4 wird geloggt und bricht nie ab; scheitert `wipe()`, wird nicht neu geladen, der Dialog zeigt
+   „Die lokalen Daten ließen sich nicht löschen. Bitte erneut versuchen.“ und gibt die Knöpfe frei.
 5. Während des Ablaufs sind alle Knöpfe des Dialogs gesperrt (kein Doppelklick).
 
 ## Abmeldung über den Relay
 
+- **Relay-Pfade:** `/v1/unpair` steht zusätzlich in den Pfad-Listen beider Relay-Codecs (`src/mobile_relay_codec.py`, `pwa/relay-frame.js`), sonst käme die Anfrage nie an.
 - **Neue Route** `POST /v1/unpair` (Arbeitstitel), gleicher verschlüsselter Umschlag und gleiche Auth wie
   `/v1/sync` (`{v: 2, seq, n, c}`, AAD aus Methode, Pfad, Geräte-ID, Zähler); Anfrage ohne Inhalt, Antwort
   `{ok: true}`. Additiv, `PROTOCOL` bleibt 2, keine Schema-Änderung des Sync-Dokuments.
@@ -97,8 +98,9 @@ Anti-Ziele (Misserfolg, auch wenn es technisch läuft)
 - **Hinweis an den Nutzer** (`ui.App`, Aufruf aus dem Server-/Relay-Thread über `_marshal_to_ui`), Weg wie
   `_notify_storage_repaired`: Dialog bei sichtbarem Fenster, Tray-Toast bei verstecktem Fenster, sonst Log.
   Text nennt nur den Gerätenamen, nie Token, Geräte-ID, Box- oder Push-Geheimnis.
-- **Geräteliste** (Einstellungen → Mobil): ein von Handy getrenntes Gerät zeigt „vom Handy getrennt am …“
-  statt nur „widerrufen“.
+- **Geräteliste** (Einstellungen → Mobil): ein vom Handy getrenntes Gerät bleibt sichtbar („vom Handy getrennt am …“)
+  und lässt sich mit „Entfernen“ aus der Liste nehmen. Das ist neu gebaut: die Liste blendete bisher alle widerrufenen
+  Geräte aus (`visible_devices`), vom Desktop widerrufene bleiben weiter verborgen.
 
 ### Toast je Plattform (Verhalten, das ein Test festhält)
 

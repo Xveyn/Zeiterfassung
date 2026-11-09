@@ -54,6 +54,8 @@ ES-Module flach im Ordner:
 - `lock.js` — App-Sperre über die Geräte-Entsperrung (#490, Stufe 2), DOM-frei und getestet, s. „App-Sperre“: Frist
   (`shouldLock`, `normalizeLockDelay`), WebAuthn (`lockSupport`, `createLockCredential`, `unlockWithCredential`), der Ablauf ohne
   Oberfläche (`createLockController`, `enableLock`, `disableLock`), Text und Modell des Abschnitts (`lockErrorText`, `lockModel`).
+- `unpair.js` — Ablauf von „Trennen und lokale Daten löschen“ (#499), DOM-frei und getestet, s. „Trennen“:
+  `createUnpairRunner` (Reihenfolge der Schritte, Fehlerregeln, ein geteilter Lauf).
 - `vault.js` — Verschlüsselung der lokalen IndexedDB-Inhalte (#490, Stufe 1), DOM-frei und getestet, s. „Lokale
   Verschlüsselung“: `createVaultAdapter` legt sich um den Adapter des Stores, dazu `idbVaultKeyStore`/`memoryVaultKeyStore`,
   `VaultError`, `isSealed`.
@@ -639,6 +641,35 @@ einem Plattform-Authenticator und `userVerification: required`; Verifizierung ka
   Fehlversuch und Notausgang, Frist, Benachrichtigungsklick, Ausschalten. Echte Biometrie war nicht dabei. Beim Prüfen: die Sichtbarkeit lässt
   sich mit `Object.defineProperty(document, 'visibilityState', …)` und einem `visibilitychange` nachstellen; `locator.click()` hängt in
   Tabs ohne Frames in der Stabilitätsprüfung, dann `page.mouse.click(x, y)`.
+
+## Trennen und lokale Daten löschen (#499)
+
+Im Reiter „Verbindung“ gibt es unten den Abschnitt „Trennen“ (`unpairSection`, `views.js`); der Knopf öffnet nur die
+Rückfrage (`unpairDialog`), nichts wird sofort gelöscht. Spec: `docs/superpowers/specs/2026-11-09-pwa-trennen-design.md`.
+
+- **Rückfrage.** Beim Öffnen läuft **immer** ein Abgleich (`client.sync()`, ein laufender wird abgewartet): im WLAN ist er
+  die einzige Erreichbarkeitsprüfung, und er frischt `meta.desktop_unpair` auf. Danach zeigt `unpairDialogModel`
+  (`view-model.js`) die Lage: alles übertragen (grün) oder N offene Einträge (gelb, „Erneut abgleichen“, „Trotzdem löschen“),
+  dazu die Warnung „Der Desktop erfährt nichts vom Trennen“, wenn die Abmeldung nicht ankommen kann. „Abbrechen“ hat den
+  Anfangsfokus. Ab „Ja, trennen und löschen“ ist der Dialog nicht mehr schließbar (`cancel`-Ereignis wird verworfen, Knöpfe
+  gesperrt); `App.unpairing` sperrt zusätzlich `trigger()`, denn ein weiterer `put` ersetzte die Abmeldung im `req`-Slot.
+- **Ablauf** (`createUnpairRunner`, `unpair.js`): Abmeldung am Desktop → Push abmelden (`disablePush`) →
+  Sitzungsmerker der Sperre → Protokoll → `wipe()` → Neuladen. Die ersten vier Schritte sind best effort (Fehler wird
+  geloggt, nichts hält auf); scheitert `wipe()`, wird nicht neu geladen und der Dialog zeigt den Fehler. Ein zweiter Aufruf
+  teilt den laufenden Lauf (Doppelklick sendet einmal).
+- **Abmeldung.** `SyncClient.unpair()` → `{state: 'sent' | 'queued' | 'failed'}`, wirft nie; `POST /v1/unpair`, Klartext
+  `{}`, unter derselben Sperre wie der Abgleich, `seq` zählt vor dem Senden. LAN: `sent`, wenn der Desktop antwortet. Relay:
+  `RelayTransport.exchange({ackOnly: true})` löst beim `ok` des Relays mit `202` auf (`queued`): die Anfrage liegt in der
+  Box, der Desktop holt sie beim Verbinden ab; die PWA wartet nicht auf seine Antwort und löscht die Box nicht selbst. Jeder
+  Fehler (auch `404` eines älteren Desktops, `401`, Zeitüberschreitung) ist `failed`, gelöscht wird trotzdem.
+- **Fähigkeit.** Die Sync-Antwort trägt `unpair: true`, `parseSyncResponse` liest sie, `Store.applyResponse` legt sie als
+  `meta.desktop_unpair` ab; ohne sie warnt die Rückfrage vorab (älterer Desktop).
+- **Relay-Pfade.** `relay-frame.js` (`PATHS`) und `src/mobile_relay_codec.py` (`_PATHS`) erlauben `/v1/unpair`; Fixture
+  `test/fixtures/relay-frames.json` hält beide zusammen.
+- **Was gelöscht wird:** alle Stores des Vaults samt Schlüssel (`vault.wipe()`, darin auch Sperre-Einstellungen,
+  Kopplung, Relay-Geheimnis), das Protokoll (`debugLog.clear()`), der Sitzungsmerker der Sperre, das Push-Abo samt
+  Relay-Objekt. Passkeys der Sperre und der Service-Worker-Cache bleiben (aus dem Web nicht löschbar bzw. ohne
+  Personenbezug).
 
 ## Datenschutzseite
 

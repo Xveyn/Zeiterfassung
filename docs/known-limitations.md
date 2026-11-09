@@ -609,6 +609,25 @@ Augenhöhe mit den anderen beiden Plattformen.
   - **Ein Slot je Ist-Slot:** bei zwei Reservierungen derselben Kategorie und einer Ist-Zeit bleibt die
     spätere offen. Künftige Tage zählen nie, dort steht die Reservierung, bis der Tag heute ist.
 
+## Handy trennen (#499): bekannte Grenzen
+
+„Trennen und lokale Daten löschen“ in der Handy-Web-App meldet das Handy am Desktop ab und löscht seine lokalen Daten.
+
+- **Im WLAN gibt es keinen Zwischenspeicher.** Ist der Desktop beim Trennen nicht erreichbar, erfährt er nichts; das
+  Gerät bleibt in Einstellungen → Mobil als gekoppelt stehen, bis es dort widerrufen wird. Die Rückfrage am Handy sagt das
+  vorher. Über den Relay liegt die Abmeldung in der Box, bis sich der Desktop verbindet (läuft er nie, verfällt die Box
+  nach 90 Tagen).
+- **Ältere Desktops kennen die Abmeldung nicht** (`404`); die Rückfrage warnt vorab, wenn die Sync-Antwort die Fähigkeit
+  `unpair` nicht trägt.
+- **Nicht übertragene Einträge gehen verloren**, wenn der Abgleich vor dem Löschen scheitert und der Nutzer trotzdem
+  bestätigt; die Rückfrage nennt die Zahl.
+- **Der Toast am Desktop hängt am Tray.** Windows und Linux (mit StatusNotifierWatcher) zeigen ihn nur, solange das Tray-Icon
+  läuft (`minimize_to_tray` oder Erinnerungen an); macOS hat das Tray noch hinter `ZEIT_MACOS_TRAY=1`, dort gibt es ohne
+  Opt-in keinen Toast. Ohne Toast bleibt ein sichtbares Fenster (Dialog), sonst ein Logeintrag, und das getrennte Gerät
+  steht in der Geräteliste.
+- **Passkeys der App-Sperre** bleiben auf dem Handy: aus dem Web lässt sich ein Passkey nicht löschen.
+- **iOS:** Safari-Tab und installierte App haben getrennten Speicher; gelöscht wird nur der, in dem man gerade ist.
+
 ## Push-Relay (#331): ein neuer Vertrauens-Ort
 
 Die Handy-Erfassung kennt bisher nur GitHub Pages (statische PWA) und die LAN-Verbindung zum
