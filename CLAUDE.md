@@ -1052,7 +1052,7 @@ Einstellungen → App „Skalierung bei Monitorwechsel automatisch anpassen“
 bekommt zusätzlich den Neustart von selbst — aber nur, wenn
 `scale_watch.may_auto_restart` es erlaubt: kein Dialog offen (Grab oder
 sichtbares Toplevel), kein Hintergrundjob (`BackgroundTaskRunner.wait_idle(0)`),
-mindestens `MIN_UPTIME_S` (60 s) nach dem Start (Schutz vor einer Schleife bei
+mindestens `MIN_UPTIME_S` (15 s) nach dem Start (Schutz vor einer Schleife bei
 flatterndem `Xft.dpi`). Sonst wiederholt `App._auto_scale_restart_tick` alle
 2 s. War das Fenster versteckt (Tray), startet die neue Instanz mit
 `--minimized` (`restart_for_scaling(keep_hidden=True)`). Xveyn#201;

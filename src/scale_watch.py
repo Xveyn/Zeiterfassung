@@ -15,7 +15,7 @@ _INTERVAL_MS = 5000
 
 # Frühestens so lange nach dem Start darf die App sich selbst neu starten:
 # flattert `Xft.dpi`, wäre es sonst eine Neustart-Schleife.
-MIN_UPTIME_S = 60
+MIN_UPTIME_S = 15
 
 
 def may_auto_restart(enabled: bool, mismatch: bool, dialog_open: bool,
