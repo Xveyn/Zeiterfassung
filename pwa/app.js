@@ -40,10 +40,11 @@ import { canScan, scanForPairLink } from './scanner.js';
 import { browserKind, isStandalone } from './browser-policy.js';
 import { describeError, describeVaultError } from './messages.js';
 import {
-  createLockController, createLockCredential, disableLock, enableLock, lockErrorText, lockModel, lockSupport, normalizeLockDelay,
+  createLockController, createLockCredential, createSessionSlot, disableLock, enableLock, lockErrorText, lockModel, lockSupport, normalizeLockDelay,
   unlockWithCredential,
 } from './lock.js';
 
+const LOCK_LEFT_KEY = 'zeiterfassung-lock-left-at';   // wann die entsperrte Seite zuletzt verlassen wurde (nur dieser Tab)
 const SAVE_SYNC_DELAY_MS = 2000;
 const SWIPE_CLICK_GUARD_MS = 400;
 
@@ -86,6 +87,8 @@ class App {
       unlockCredential: (id) => this.unlockCredential(id),
       onLock: () => this.showLock(),
       onUnlock: (day) => this.afterUnlock(day),
+      // Ein Neuladen (Wischen zum Aktualisieren) innerhalb der Frist fragt nicht erneut; `sessionStorage` gilt je Tab.
+      session: createSessionSlot(() => sessionStorage, LOCK_LEFT_KEY),
     });
     this.lockSupportState = { available: false, reason: 'pending' };
     this.pushError = null;

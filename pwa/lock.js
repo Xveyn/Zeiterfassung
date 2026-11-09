@@ -155,13 +155,50 @@ export async function disableLock({ meta, probe, setMeta }) {
   return { ok: true };
 }
 
+/** Ein Merker für eine Zahl (ms) in `sessionStorage`: überlebt das Neuladen des Tabs, nicht sein Schließen. `getStorage`
+ *  liefert den Speicher (oder wirft, etwa im privaten Fenster); jeder Fehler heißt „nichts gemerkt“. Gelesen wird nur eine
+ *  endliche Zahl. */
+export function createSessionSlot(getStorage, key) {
+  return {
+    read() {
+      try {
+        const raw = getStorage().getItem(key);
+        if (raw === null || raw === '') return null;
+        const value = Number(raw);
+        return Number.isFinite(value) ? value : null;
+      } catch {
+        return null;
+      }
+    },
+    write(value) {
+      try {
+        const storage = getStorage();
+        if (value === null) storage.removeItem(key);
+        else storage.setItem(key, String(value));
+      } catch {
+        // Kein Speicher: dann sperrt ein Neuladen wie bisher.
+      }
+    },
+  };
+}
+
 /** Der Ablauf der Sperre ohne Oberfläche: wann gesperrt wird, was ein Entsperren tut, und ein Tag, der währenddessen geöffnet
  *  werden soll. Die Oberfläche hängt sich über `onLock`/`onUnlock` ein; `onUnlock(day)` läuft, **nachdem** `locked` falsch ist
  *  (der Dialog öffnet sich sonst in seinem `close`-Handler wieder). `now` ist die Uhr (ms). */
-export function createLockController({ getMeta, now, unlockCredential, onLock, onUnlock }) {
+export function createLockController({ getMeta, now, unlockCredential, onLock, onUnlock, session = null }) {
   let locked = false;
   let hiddenAt = null;
   let pendingDay = null;
+  // `session` (Merker, der ein Neuladen des Tabs übersteht, `createSessionSlot`) hält fest, **wann die entsperrte Seite
+  // verlassen wurde**. Ein Neuladen (Wischen zum Aktualisieren) gilt dann wie ein Zurückkehren: innerhalb der Frist keine neue
+  // Abfrage. Er wird beim Start, beim Zurückkehren und beim Entsperren verbraucht; gesperrt wird nie etwas gemerkt, und ein
+  // Fehler des Speichers heißt immer „nichts gemerkt“ (also sperren).
+  const remember = (value) => {
+    try { session?.write(value); } catch { /* Speicher gesperrt oder privates Fenster: dann gilt der Start wie bisher */ }
+  };
+  const recall = () => {
+    try { return session?.read() ?? null; } catch { return null; }
+  };
   const lock = () => {
     if (locked) return;
     locked = true;
@@ -169,17 +206,29 @@ export function createLockController({ getMeta, now, unlockCredential, onLock, o
   };
   return {
     get locked() { return locked; },
-    /** Bei jedem Start: gesperrt, sobald die Sperre eingeschaltet ist. */
+    /** Bei einem Start: gesperrt, sobald die Sperre eingeschaltet ist — außer dies ist ein Neuladen innerhalb der Frist
+     *  (die entsperrte Seite wurde gerade erst verlassen). */
     start() {
-      if (lockActive(getMeta())) lock();
+      const meta = getMeta();
+      if (!lockActive(meta)) return locked;
+      const leftAt = recall();
+      remember(null);
+      // Nur eine echte Zahl zählt: `shouldLock` liest eine unbrauchbare Zeit als „nie verlassen“ und sperrte dann nicht.
+      const resumed = typeof leftAt === 'number' && Number.isFinite(leftAt)
+        && !shouldLock({ active: true, hiddenAt: leftAt, now: now(), delayMs: meta.lock_delay_ms });
+      if (!resumed) lock();
       return locked;
     },
-    hidden() { hiddenAt = now(); },
+    hidden() {
+      hiddenAt = now();
+      remember(locked ? null : hiddenAt);
+    },
     /** Nach dem Zurückkehren: ist die Frist abgelaufen, sperrt es. Die Verlassen-Zeit gilt danach als verbraucht. */
     visible() {
       const meta = getMeta();
       if (shouldLock({ active: lockActive(meta), hiddenAt, now: now(), delayMs: meta.lock_delay_ms })) lock();
       hiddenAt = null;
+      remember(null);
       return locked;
     },
     async unlock() {
@@ -188,6 +237,7 @@ export function createLockController({ getMeta, now, unlockCredential, onLock, o
       locked = false;
       // Zeigt der Browser während der Abfrage `hidden` und danach `visible`, würde „Sofort“ sonst gleich wieder sperren.
       hiddenAt = null;
+      remember(null);
       const day = pendingDay;
       pendingDay = null;
       onUnlock(day);
