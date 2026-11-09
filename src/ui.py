@@ -24,6 +24,7 @@ from src.mobile_pairing import PairingSession
 from src.mobile_reminders import phone_covers
 from src.mobile_routes import MobileContext
 from src.mobile_service import MobileService
+from src.unpair_notice import unpair_notice_channel, unpair_notice_text, unpair_toast_text
 from src.relay_service import RelayService
 from src.weekly_limit import format_limit_warnings
 from src.reservations import reservations_active
@@ -165,7 +166,8 @@ class App:
                     reservation_store=self.reservation_store,
                     relay_store=mobile_relay_store,
                     on_change=self._api_refresh.request,
-                    on_reservations_change=self._on_remote_calendar_data_changed),
+                    on_reservations_change=self._on_remote_calendar_data_changed,
+                    on_unpaired=self._on_mobile_unpaired),
                 run=self._bg.run)
         # Relay-Abgleich (#358): braucht den Kontext der Handy-Instanz, deshalb erst
         # danach. Ohne Handy-Instanz oder einen der beiden Stores gibt es ihn nicht.
@@ -431,6 +433,30 @@ class App:
         else:
             logging.getLogger(__name__).info(
                 "Zugangsdaten in den Schlüsselbund umgezogen")
+
+    def _on_mobile_unpaired(self, device_id, name):
+        """Ein Handy hat sich getrennt (#499). Kommt aus einem Server-/Relay-Thread, die
+        Anzeige läuft deshalb auf dem UI-Thread."""
+        self._marshal_to_ui(lambda: self._show_unpair_notice(device_id, name))
+
+    def _show_unpair_notice(self, device_id, name):
+        """Dialog / Tray-Toast / nur Log, wie `_on_secrets_migrated`. Jeder Zweig fängt seinen
+        Fehler: der Widerruf ist geschrieben, ein defekter Tray oder ein zerstörtes Fenster darf
+        daraus nichts machen. Ins Log nur die ID, nie der Name."""
+        log = logging.getLogger(__name__)
+        channel = unpair_notice_channel(
+            window_visible=self.root.state() in ("normal", "zoomed"),
+            tray_available=self._tray is not None)
+        try:
+            if channel == "dialog":
+                title, text = unpair_notice_text(name)
+                themed_showinfo(self.root, title, text)
+            elif channel == "toast":
+                self._tray.notify(unpair_toast_text(name))
+            else:
+                log.info("Handy %s hat sich getrennt", device_id)
+        except Exception:
+            log.warning("Hinweis zur Abmeldung von Handy %s nicht angezeigt", device_id, exc_info=True)
 
     def _notify_storage_repaired(self):
         """Einmaliger Hinweis, wenn der Store beim Laden repariert wurde (#242),
