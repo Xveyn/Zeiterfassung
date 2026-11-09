@@ -990,7 +990,9 @@ Verhältnis alt/neu heraus. Drei Dinge daran:
 - **system-aware, nicht per-monitor.** Tk 8.6 kennt keinen DPI-Wechsel
   zwischen Bildschirmen; auf einem zweiten Monitor mit anderer Skalierung
   streckt Windows weiter, wie bisher. Ein Wechsel der Windows-Skalierung
-  wirkt erst nach einem Neustart der App.
+  wirkt erst nach einem Neustart der App. Einen Hinweis beim Monitorwechsel
+  gibt es hier **nicht** (anders als unter Linux): `GetDpiForSystem` ändert
+  sich bis zum Login nicht, ein Neustart liest denselben Wert (Xveyn#493).
 - **Ohne gesetzte Awareness bleibt der Systemfaktor 1,0** — sonst streckte
   Windows und die App skalierte obendrauf. macOS löst Retina selbst, dort ist
   der Weg ein No-op.
@@ -1039,7 +1041,13 @@ Fünf Dinge daran:
 
 Grenzen: die X11-Themes von Tk sind nicht HiDPI-fähig (Häkchen, Scrollbalken
 bleiben klein), GNOME auf Xorg meldet bei gebrochenen Stufen teils 200 %, und
-ein Wechsel der Desktop-Skalierung wirkt erst nach einem Neustart.
+ein Wechsel der Desktop-Skalierung wirkt erst nach einem Neustart der App.
+Beim **Monitorwechsel** bei laufender App erkennt das `dpi.system_scale_changed`
+(`Xft.dpi` neu lesen, Vergleich mit dem Startfaktor, Poll alle 5 s über
+`scale_watch.ScaleWatcher`, nur unter Linux gestartet) und `scale_banner.ScaleBanner`
+zeigt „Skalierung passt nicht zum Monitor" mit Neustart-Knopf
+(`App.restart_for_scaling`); nie automatisch (Xveyn#201). Windows: Xveyn#493,
+macOS ungeprüft (kein Testgerät).
 
 Daraus folgt die Regel, an der jede Layout-Angabe hängt:
 
@@ -1600,6 +1608,7 @@ nicht mehr als „offen" führen — der Verweis lautet auf diese Grenze.
   und Linux-`Xft.dpi` samt einmaliger `ui_scale`-Umrechnung (Xveyn#167; s.
   „UI-Skalierung"). Tk-frei, die Plattform-Aufrufe kommen als Argumente
   herein; unter macOS ein No-op mit Faktor 1,0
+- `src/scale_watch.py` — `ScaleWatcher`: periodischer Check (5 s, `root.after`), ob `dpi.system_scale_changed` einen Monitorwechsel meldet; meldet nur Zustandswechsel, Tk-frei. Nur unter Linux gestartet (Xveyn#201, Windows Xveyn#493); `src/scale_banner.py` — der Banner „Skalierung passt nicfeatured zum Monitor" mit Neustart-Knopf
 - `src/autostart.py` — plattformabhängiger Autostart (Windows-**Registry** HKCU Run, gleicher Wertname `Zeiterfassung` wie `installer.iss` → strukturell ein Eintrag; macOS-LaunchAgent / Linux `.desktop`). `is_autostart_enabled()` liest den echten Zustand, `migrate_legacy_autostart()` überführt Alt-Startup-Shortcuts frozen-gated in die Registry
 - `src/secure_file.py` — Zugriffsschutz für die lokal abgelegten Secrets (`token.json`, `instance-secret`, `webhooks.json`, `smtp.json`, `api-token`): unter Windows `icacls`-ACL statt des dort wirkungslosen `chmod 0600` (Audit M8); best-effort, scheitert nie den Schreibvorgang. Mit verfügbarem Schlüsselbund (#101) tragen diese Dateien den Refresh-Token bzw. die Webhook-Secrets ohnehin nicht mehr im Klartext — die Härtung bleibt für den Datei-Fallback und die übrigen Felder (Konfiguration, `instance-secret`) unverändert nötig
 - `src/api_auth.py` — Token und Zugangsprüfung der lokalen HTTP-API (#92): Datei

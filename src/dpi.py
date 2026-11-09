@@ -212,6 +212,26 @@ def system_scale() -> float:
     return _system_scale
 
 
+def system_scale_changed(
+        get_xft_dpi: Callable[[], Optional[float]] = _xft_dpi) -> bool:
+    """Ob `Xft.dpi` jetzt einen anderen Faktor ergibt als beim Start (Linux,
+    Xveyn#201: Wechsel zwischen Monitoren mit verschiedener Skalierung).
+
+    Liest die Server-Property neu, unabhängig von `neutralize_xft_dpi` (das
+    wirkt nur auf Tks Sicht). Ohne `Xft.dpi` beim Start, ohne lesbaren Wert
+    oder bei einem Fehler: False — ein Alarm ohne Messung wäre Rauschen."""
+    if not _xft_found:
+        return False
+    try:
+        xft = get_xft_dpi()
+    except Exception:
+        log.debug("Xft.dpi beim Wechsel-Check nicht lesbar", exc_info=True)
+        return False
+    if xft is None:
+        return False
+    return abs(max(1.0, xft / BASE_DPI) - _system_scale) > 0.01
+
+
 def neutralize_xft_dpi(system: Optional[str] = None,
                        directory: Optional[str] = None) -> Optional[str]:
     """Lässt Tk `Xft.dpi` nur in **diesem Prozess** als 96 sehen (Xveyn#199).

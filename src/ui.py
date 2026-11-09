@@ -31,9 +31,11 @@ from src.storage import repair_notice_text, repair_toast_text
 from src.grid_renderer import GridRenderer
 from src.paths import get_resource_path, relaunch_command, relaunch_env
 from src.mail import friendly_token_message
-from src import keyring_store, removal, secret_migration
+from src import dpi, keyring_store, removal, secret_migration
 from src.topmost_relief import TopmostRelief, activity_hook
 from src.sync_orchestrator import classify_sync_error, SyncOrchestrator
+from src.scale_banner import ScaleBanner
+from src.scale_watch import ScaleWatcher
 from src.update_banner import UpdateBanner
 from src.update_coordinator import UpdateCoordinator
 from src.reminder_scheduler import ReminderScheduler
@@ -195,6 +197,14 @@ class App:
             self.root, self.settings, lambda: self._renderer.grid_container,
             on_resize=self._renderer.repin_geometry,
             on_open_updates_tab=lambda: self._open_settings(initial_tab="updates"))
+        # Monitorwechsel (Xveyn#201): Hinweis statt Neustart von selbst.
+        self._scale_banner = ScaleBanner(
+            self.root, lambda: self._renderer.grid_container,
+            on_restart=self.restart_for_scaling,
+            on_resize=self._renderer.repin_geometry)
+        self._scale_watch = ScaleWatcher(
+            self.root, dpi.system_scale_changed,
+            self._scale_banner.set_visible)
         # Update-Lebenszyklus (R11): Start-Check, Toast/Banner, Tray-Check,
         # Anwenden beim Beenden — und der AutoUpdater (R9) für den
         # Einstellungsdialog. Den Banner baut die App, weil er an root und
@@ -215,6 +225,10 @@ class App:
         # Tages-Tick: hält das ✓/⚠ aktuell, wenn die App über Mitternacht
         # offen bleibt (s. SyncOrchestrator.poll_day_change).
         self._sync.start_day_watch()
+        # Nur Linux: unter Windows liest ein Neustart denselben Systemwert
+        # (Xveyn#493), unter macOS löst das System die Skalierung selbst.
+        if platform.system() == "Linux":
+            self._scale_watch.start()
         # „Immer im Vordergrund" fällt kurz, solange der Schlüsselbund fragt
         # (Xveyn#186). Vor dem ersten Zugriff registrieren: der kommt gleich
         # unten beim Token-Refresh, wenn der Schlüsselbund meist noch zu ist.
@@ -1067,6 +1081,7 @@ class App:
             self._tray.stop()
         self._reminders.stop()
         self._send_reminders.stop()
+        self._scale_watch.stop()
         self._sync.stop_day_watch()
         if self._single_instance is not None:
             self._single_instance.release()
@@ -1122,6 +1137,7 @@ class App:
             self._tray.stop()
         self._reminders.stop()
         self._send_reminders.stop()
+        self._scale_watch.stop()
         self._sync.stop_day_watch()
 
         base = self.base_path
@@ -1225,5 +1241,6 @@ class App:
             self._tray.stop()
         self._reminders.stop()
         self._send_reminders.stop()
+        self._scale_watch.stop()
         self._sync.stop_day_watch()
         self.root.destroy()

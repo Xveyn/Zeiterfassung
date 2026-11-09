@@ -204,8 +204,26 @@ Die App folgt der Desktop-Skalierung über `Xft.dpi` (Xveyn#167; Begründung in
   einer X11-Sitzung.
 - **GNOME auf Xorg meldet bei gebrochenen Stufen (125/150/175 %) teils
   200 %**, die App wird dann entsprechend zu groß — über den
-  Skalierungsregler in den Einstellungen ausgleichbar. Ein Wechsel der
-  Desktop-Skalierung wirkt erst nach einem Neustart der App.
+  Skalierungsregler in den Einstellungen ausgleichbar.
+
+Der Faktor wird beim Start gelesen. Wechselt man bei laufender App den Monitor
+(etwa WQHD @ 100 % ↔ 4K @ 250 %), liest `dpi.system_scale_changed` `Xft.dpi`
+alle 5 s neu (`scale_watch.ScaleWatcher`) und blendet bei Abweichung einen
+Banner mit „Neu starten" ein (Xveyn#201). Neu gestartet wird nie von selbst.
+Greift nur, wo `Xft.dpi` sich beim Monitorwechsel tatsächlich ändert; ohne
+gefundenes `Xft.dpi` beim Start (und unter Tk 9) bleibt der Check aus.
+
+## Windows und macOS: kein Hinweis beim Monitorwechsel
+
+Der Banner aus Xveyn#201 gibt es nur unter Linux.
+
+- **Windows:** system-aware, nicht per-monitor. `GetDpiForSystem` ändert sich
+  bis zum nächsten Login nicht, ein Neustart der App läse denselben Wert — ein
+  Banner brächte dort nichts. Auf einem Monitor mit anderer Skalierung streckt
+  Windows das Fenster weiter als Bitmap. Offen in Xveyn#493.
+- **macOS:** Retina löst das System selbst, der Systemfaktor ist 1,0. Ein
+  Monitorwechsel mit unterschiedlicher Skalierung ist nicht untersucht — es
+  steht kein macOS-Gerät zum Testen zur Verfügung.
 
 ## Webhooks: Split-Horizon-DNS gilt als öffentliche Adresse
 
