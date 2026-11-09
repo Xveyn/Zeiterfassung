@@ -54,9 +54,10 @@ export class RelayTransport {
     this._log = log;
   }
 
-  /** @param {{method: string, path: string, token?: string|null, body: object,
+  /** `ackOnly`: löst beim `ok` des Relays mit `{status: 202, json: null}` auf, ohne auf eine Antwort des Desktops zu warten.
+   *  @param {{method: string, path: string, token?: string|null, body: object, ackOnly?: boolean,
    *  endpoint: {kind: 'relay', secret: string, have?: number, onHave?: (ver: number) => void}}} request */
-  async exchange({ method, path, token = null, body, endpoint }) {
+  async exchange({ method, path, token = null, body, endpoint, ackOnly = false }) {
     if (method !== 'POST') throw ERRORS.notPost();
     const nonce = envelopeNonce(body);
     if (nonce === null) throw ERRORS.refused();
@@ -75,7 +76,7 @@ export class RelayTransport {
       // `ok` gilt für diesen Versuch: ein früheres `ok` macht einen nun unerreichbaren Relay nicht zum
       // schweigenden Desktop.
       state.accepted = false;
-      const outcome = await this._attempt({ endpoint, payload, nonce, state, remaining });
+      const outcome = await this._attempt({ endpoint, payload, nonce, state, remaining, ackOnly });
       if (outcome.response) return outcome.response;
       if (outcome.timedOut) break;
     }
@@ -84,7 +85,7 @@ export class RelayTransport {
 
   /** Eine Verbindung. Löst mit `{ response }` (fertig), `{ dropped: true }` (neu versuchen) oder
    *  `{ timedOut: true }` auf; wirft bei einem Schließcode, der kein Neuverbinden verträgt. */
-  _attempt({ endpoint, payload, nonce, state, remaining }) {
+  _attempt({ endpoint, payload, nonce, state, remaining, ackOnly }) {
     return new Promise((resolve, reject) => {
       let socket;
       let timer = null;
@@ -128,6 +129,9 @@ export class RelayTransport {
         if (message === null) return;
         if (message.kind === 'ok') {
           state.accepted = true;
+          // Abmeldung (#499): die Anfrage liegt in der Box, der Desktop holt sie ab, wenn er verbindet; auf
+          // seine Antwort wartet niemand, das Handy löscht danach seine Daten.
+          if (ackOnly) finish(() => resolve({ response: { status: 202, json: null } }));
           return;
         }
         advance(message.ver);

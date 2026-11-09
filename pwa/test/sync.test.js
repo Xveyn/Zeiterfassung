@@ -44,7 +44,7 @@ function fakeFetch(handler, { deviceKey = DEVICE_KEY } = {}) {
     const call = { url, init, body: raw, plain: null, seq: null, envelope: raw };
     calls.push(call);
     let context = null;
-    if (init.method === 'POST' && (path === '/v1/pair' || path === '/v1/sync')) {
+    if (init.method === 'POST' && (path === '/v1/pair' || path === '/v1/sync' || path === '/v1/unpair')) {
       if (!isEnvelope(raw)) throw new Error(`Klartext-Anfrage an ${path}: ${init.body}`);
       const [requestKey, responseKey] = path === '/v1/pair' ? await pairKeys(CODE) : await deviceKeys(deviceKey);
       const aadDevice = path === '/v1/pair' ? '-' : DEVICE_ID;
@@ -1404,4 +1404,94 @@ test('without the capability the pause never goes on the wire; with it, it does'
       assert.equal(store.getMeta().reservation_pause, false);
     }
   }
+});
+
+
+// --- Abmelden (#499) ----------------------------------------------------------------------------------
+
+test('unpair over LAN is sent with an empty plaintext, counts seq and answers sent', async () => {
+  const { store, client, fetchFn } = await make({ handler: () => reply(200, { ok: true }) });
+
+  const result = await client.unpair();
+
+  assert.deepEqual(result, { state: 'sent' });
+  const call = fetchFn.calls[0];
+  assert.equal(new URL(call.url).pathname, '/v1/unpair');
+  assert.deepEqual(call.plain, {});
+  assert.equal(call.seq, 1);
+  assert.equal(call.init.headers.Authorization, 'Bearer T0');
+  assert.equal(store.getMeta().seq, 1);
+});
+
+for (const [label, handler] of [
+  ['a 404 from an older desktop', () => reply(404, { error: { code: 'not_found', message: 'x' } })],
+  ['a revoked token', () => reply(401, { error: { code: 'token_revoked', message: 'x' } }, { sealed: true })],
+  ['a replay', () => reply(409, { error: { code: 'replay', message: 'x' } }, { sealed: true })],
+  ['a network error', () => new TypeError('Failed to fetch')],
+]) {
+  test(`unpair over LAN fails without throwing on ${label}, and seq still counts`, async () => {
+    const { store, client } = await make({ handler });
+
+    assert.deepEqual(await client.unpair(), { state: 'failed' });
+    assert.equal(store.getMeta().seq, 1);
+  });
+}
+
+test('unpair on an unpaired phone fails without any network call', async () => {
+  const { client, fetchFn } = await make({ paired: false });
+
+  assert.deepEqual(await client.unpair(), { state: 'failed' });
+  assert.equal(fetchFn.calls.length, 0);
+});
+
+test('unpair on a phone without an encryption key fails without any network call', async () => {
+  const { store, client, fetchFn } = await make();
+  await store.setMeta({ key: '' });
+
+  assert.deepEqual(await client.unpair(), { state: 'failed' });
+  assert.equal(fetchFn.calls.length, 0);
+});
+
+test('two simultaneous unpair calls send once', async () => {
+  const { client, fetchFn } = await make({ handler: () => reply(200, { ok: true }) });
+
+  const [first, second] = await Promise.all([client.unpair(), client.unpair()]);
+
+  assert.deepEqual(first, { state: 'sent' });
+  assert.deepEqual(second, first);
+  assert.equal(fetchFn.calls.length, 1);
+});
+
+test('unpair over the relay is queued at the ok of the relay, counts seq and leaves have to the slots', async () => {
+  const { store, client, fetchFn, sockets } = await makeRelay({ handler: () => reply(200, { ok: true }) });
+
+  const result = await client.unpair();
+  await settle();
+
+  assert.deepEqual(result, { state: 'queued' });
+  assert.equal(fetchFn.calls[0].url, 'http://relay/v1/unpair');
+  assert.equal(fetchFn.calls[0].seq, 1);
+  assert.equal(store.getMeta().seq, 1);
+  assert.deepEqual(sockets[0].protocols, ['zeit.v1', BOX]);
+});
+
+test('unpair over a relay that never says ok is failed', async () => {
+  const store = new Store(createMemoryAdapter(), () => new Date(NOW));
+  await store.load();
+  await store.setMeta({ device_id: DEVICE_ID, token: 'T0', key: KEY_TEXT, seq: 0,
+    transport: 'relay', box_secret: BOX, box_have: 0, address: null });
+  const silent = () => ({
+    addEventListener() {}, close() {}, send() {}, binaryType: '',
+  });
+  const client = new SyncClient({ store, fetchFn: fakeFetch(() => reply(200, {})), webSocketFactory: silent,
+    now: () => new Date(NOW), timeoutMs: 50, locks: null });
+
+  assert.deepEqual(await client.unpair(), { state: 'failed' });
+  assert.equal(store.getMeta().seq, 1);
+});
+
+test('unpair never opens the answer of a queued relay request', async () => {
+  const { client } = await makeRelay({ handler: () => reply(200, { ok: 'egal' }) });
+
+  assert.deepEqual(await client.unpair(), { state: 'queued' });
 });
