@@ -598,6 +598,26 @@ export function connectionSummary({ online, desktopName, lastSyncAt, tokenUntil,
   return { pill: online ? 'Verbunden' : 'Offline', kind: online ? 'ok' : 'warn', name: desktopName || 'Desktop', detail: parts.join(' · ') };
 }
 
+/** Die Rückfrage vor „Trennen und lokale Daten löschen“ (#499). `syncOk`: der Abgleich davor gelang;
+ *  `openDays`: danach noch nicht übertragene Tage; `desktopUnpair`: der Desktop kennt die Abmeldung. Der Desktop erfährt
+ *  vom Trennen, wenn er sie kennt und die Anfrage ankommt: über den Relay liegt sie in der Box (auch ohne gelungenen
+ *  Abgleich), im WLAN nur, wenn er gerade erreichbar war. Fehlt eine Angabe, gilt die vorsichtige Lesart. */
+export function unpairDialogModel({ transport, syncOk, openDays = 0, desktopUnpair = false } = {}) {
+  const open = Number.isInteger(openDays) && openDays > 0 ? openDays : 0;
+  const summary = open > 0
+    ? { kind: 'warn', text: open === 1 ? '1 Tag ist noch nicht am Desktop.' : `${open} Tage sind noch nicht am Desktop.` }
+    : { kind: 'ok', text: 'Alle Tage sind am Desktop gesichert.' };
+  const notifiesDesktop = desktopUnpair === true && (transport === 'relay' || syncOk === true);
+  return {
+    summary,
+    notifiesDesktop,
+    warnDesktop: notifiesDesktop ? null
+      : 'Der Desktop erfährt nichts vom Trennen. Das Gerät bleibt dort in der Liste, bis du es unter Einstellungen → Mobil entfernst oder widerrufst.',
+    canRetry: open > 0,
+    confirmLabel: open > 0 ? 'Trotzdem löschen' : 'Ja, trennen und löschen',
+  };
+}
+
 /** Warnung im Reiter „Verbindung“, wenn der Browser die Daten nicht dauerhaft sichert (`persistent === false`);
  *  `refused`: die erneute Anfrage wurde abgelehnt, dann gibt es keinen Knopf mehr. */
 export function storageNotice(persistent, { refused = false } = {}) {

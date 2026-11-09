@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import {
   SETTINGS_TABS, categoriesModel, categoryRemovalText, categoryRenameHint, settingsTabLabel, retentionLabel,
   WEEKDAYS, dayTitle, categoryDisplay, categoryLabel, categoryOptions, conflictsModel, dayChanged, editLock, editorRows, focusKeyToRestore, hintKey, hintsModel, desktopHint, localTime, nextRow, olderModel, pickCategory, rowsToSlots, slotText,
-  statusModel, validateRows, weekModel, windowRow, reservationRows, reservationRowsToSlots, validateReservationRows,
+  unpairDialogModel, statusModel, validateRows, weekModel, windowRow, reservationRows, reservationRowsToSlots, validateReservationRows,
 } from '../view-model.js';
 import { SyncError } from '../sync.js';
 import { formatMinutes } from '../minutes.js';
@@ -1185,4 +1185,64 @@ test('back drops a scanned relay secret but keeps the name the user typed', () =
 test('back copes with a missing or odd state', () => {
   assert.equal(isSetupPhase(pairingAfterBack()), true);
   assert.equal(pairingAfterBack({ deviceName: 42 }).deviceName, '');
+});
+
+
+// --- Trennen: Rückfrage (#499) --------------------------------------------------------------------------
+
+const unpairInput = (over = {}) => ({ transport: 'relay', syncOk: true, openDays: 0, desktopUnpair: true, ...over });
+
+test('nothing open: green summary, the normal confirm label, no retry, the desktop is told', () => {
+  const model = unpairDialogModel(unpairInput());
+
+  assert.deepEqual(model.summary, { kind: 'ok', text: 'Alle Tage sind am Desktop gesichert.' });
+  assert.equal(model.confirmLabel, 'Ja, trennen und löschen');
+  assert.equal(model.canRetry, false);
+  assert.equal(model.notifiesDesktop, true);
+  assert.equal(model.warnDesktop, null);
+});
+
+test('open days name their number in singular and plural and switch to Trotzdem löschen with a retry', () => {
+  const one = unpairDialogModel(unpairInput({ syncOk: false, openDays: 1 }));
+  const three = unpairDialogModel(unpairInput({ syncOk: false, openDays: 3 }));
+
+  assert.deepEqual(one.summary, { kind: 'warn', text: '1 Tag ist noch nicht am Desktop.' });
+  assert.deepEqual(three.summary, { kind: 'warn', text: '3 Tage sind noch nicht am Desktop.' });
+  assert.equal(three.confirmLabel, 'Trotzdem löschen');
+  assert.equal(three.canRetry, true);
+});
+
+test('over the relay the unpair is queued even when the sync failed', () => {
+  const model = unpairDialogModel(unpairInput({ transport: 'relay', syncOk: false, openDays: 2 }));
+
+  assert.equal(model.notifiesDesktop, true);
+  assert.equal(model.warnDesktop, null);
+});
+
+test('over LAN a failed sync means the desktop will not hear about it, and the dialog says so', () => {
+  const model = unpairDialogModel(unpairInput({ transport: 'lan', syncOk: false, openDays: 0 }));
+
+  assert.equal(model.notifiesDesktop, false);
+  assert.match(model.warnDesktop, /erfährt nichts vom Trennen/);
+});
+
+test('over LAN with a working sync the desktop is told', () => {
+  const model = unpairDialogModel(unpairInput({ transport: 'lan', syncOk: true }));
+
+  assert.equal(model.notifiesDesktop, true);
+});
+
+test('a desktop without the capability is never told, over the relay too', () => {
+  const model = unpairDialogModel(unpairInput({ desktopUnpair: false }));
+
+  assert.equal(model.notifiesDesktop, false);
+  assert.match(model.warnDesktop, /entfernst oder widerrufst/);
+});
+
+test('unknown inputs fall back to the careful reading', () => {
+  const model = unpairDialogModel({});
+
+  assert.equal(model.notifiesDesktop, false);
+  assert.equal(typeof model.warnDesktop, 'string');
+  assert.equal(model.summary.kind, 'ok');
 });

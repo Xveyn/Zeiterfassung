@@ -26,6 +26,7 @@ export const PRECACHE = [
   './dom.js',
   './scanner.js',
   './qr-decode.js',
+  './unpair.js',
   './view-model.js',
   './messages.js',
   './sync-policy.js',
