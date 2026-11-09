@@ -114,6 +114,7 @@
   },
   "writable_settings": ["categories", "category_times"],
   "reservation_pause": true,
+  "unpair": true,
   "reservations": {
     "2026-10-15": {
       "slots": [

@@ -433,3 +433,24 @@ def test_pairing_again_resets_the_sequence():
     first, _ = mp.issue_device("phone-0001", "Pixel", NOW)
     again, _ = mp.issue_device("phone-0001", "Pixel", NOW, mp.with_seq(first, 9))
     assert again["last_seq"] == 0
+
+
+def test_revoke_by_device_marks_who_and_when_and_cuts_the_grace():
+    record, token = mp.issue_device("device-0001", "Pixel", NOW)
+    renewed, _ = mp.renew(record, NOW, keep_previous=False)
+
+    done = mp.revoke_by_device(renewed, "2026-10-09T08:00:00Z")
+
+    assert done["revoked"] is True and done["previous_token_hash"] == ""
+    assert (done["revoked_by"], done["revoked_at"]) == ("device", "2026-10-09T08:00:00Z")
+    assert mp.authenticate([done], token, NOW).status in ("revoked", "unauthorized")
+
+
+def test_pairing_again_after_a_device_unpair_drops_the_marker():
+    old, _ = mp.issue_device("device-0001", "Pixel", NOW)
+    old = mp.revoke_by_device(old, NOW)
+
+    record, _token = mp.issue_device("device-0001", "Pixel", NOW, existing=old)
+
+    assert record["revoked"] is False
+    assert "revoked_by" not in record and "revoked_at" not in record

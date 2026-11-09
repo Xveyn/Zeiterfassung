@@ -84,6 +84,11 @@ def _is_wellformed(record: Any) -> bool:
         return False
     if not isinstance(record.get("revoked"), bool):
         return False
+    # Vermerk einer Abmeldung durch das Handy (#499), additiv: fehlt er, ist nichts zu prüfen.
+    if "revoked_by" in record and record["revoked_by"] != "device":
+        return False
+    if "revoked_at" in record and not isinstance(record["revoked_at"], str):
+        return False
     # Replay-Zähler (#249); fehlt er (Datei von vorher), gilt 0 (`_load` setzt ihn).
     seq = record.get("last_seq", 0)
     return isinstance(seq, int) and not isinstance(seq, bool) and 0 <= seq <= _MAX_SEQ

@@ -65,6 +65,10 @@ def _no_change() -> None:
     return None
 
 
+def _no_unpaired(device_id: str, name: str) -> None:
+    return None
+
+
 def _never_closing() -> bool:
     return False
 
@@ -111,6 +115,9 @@ class MobileContext:
     # Geschrieben wird erst nach der Freigabe der Gerätesperre: die Datei wird gehärtet
     # (unter Windows `icacls`) und darf `devices_lock` nicht halten.
     relay_store: Any = None
+    # Nach einer Abmeldung durch das Handy (`POST /v1/unpair`, #499), außerhalb der Sperren:
+    # `(device_id, name)`. Der Dienst räumt damit im Worker auf, die UI meldet es dem Nutzer.
+    on_unpaired: Callable[[str, str], None] = _no_unpaired
 
 
 class _MobileError(Exception):
@@ -387,6 +394,57 @@ def _sync(request: ApiRequest, ctx: MobileContext, principal: Principal) -> ApiR
     return _sealed(response_key, path="/v1/sync", device_id=record["id"], seq=seq, payload=response)
 
 
+def _unpair(request: ApiRequest, ctx: MobileContext, principal: Principal) -> ApiResponse:
+    """Die Abmeldung durch das Handy (#499): dieselbe Prüfung wie `_sync` (Token gegen den frisch
+    gelesenen Datensatz, Zähler, Entschlüsseln), dann Widerruf mit Vermerk. Der Vorspann ist
+    bewusst nicht mit `_sync` geteilt: dessen Reihenfolge (erst Zähler festhalten, dann Erneuern)
+    unterscheidet sich im Detail, und ein gemeinsamer Helfer risse beide Pfade an."""
+    _no_query(request)
+    if not isinstance(principal, MobilePrincipal):
+        raise _MobileError(403, "insufficient_scope", "Dem Token fehlt die Berechtigung.")
+    _refuse_while_closing(ctx)
+    envelope = _envelope(request.body)
+    now = ctx.now()
+    with ctx.devices_lock:
+        _refuse_while_closing(ctx)
+        record = ctx.devices.get(principal.name)
+        if record is None or record.get("revoked"):
+            raise _MobileError(401, "token_revoked",
+                               "Das Token wurde widerrufen. Das Gerät muss neu gekoppelt werden.")
+        key = ctx.keys.get(record["id"])
+        if key is None:
+            raise _MobileError(401, "encryption_required",
+                               "Diese Kopplung ist nicht verschlüsselt. Das Gerät muss neu koppeln.")
+        _still_valid(principal, record, now)
+        seq = mc.envelope_seq(envelope)
+        if seq <= int(record.get("last_seq", 0)):
+            raise _MobileError(409, "replay", "Die Anfrage wurde bereits verarbeitet.")
+        request_key, response_key = mc.device_keys(key)
+        try:
+            mc.open_envelope(request_key, envelope, direction="req", method="POST",
+                             path="/v1/unpair", device_id=record["id"])
+        except mc.CryptoError:
+            raise _MobileError(400, "decrypt_failed",
+                               "Die Nachricht konnte nicht entschlüsselt werden.") from None
+        ctx.devices.save(mobile_pairing.revoke_by_device(mobile_pairing.with_seq(record, seq), now))
+        device_id, name = record["id"], record["name"]
+    _log.info("Handy abgemeldet: %s", device_id)
+    # Die Antwort ist schon gebaut, bevor das Aufräumen den Schlüssel entfernt.
+    response = _sealed(response_key, path="/v1/unpair", device_id=device_id, seq=seq,
+                       payload={"ok": True})
+    _notify_unpaired(ctx, device_id, name)
+    return response
+
+
+def _notify_unpaired(ctx: MobileContext, device_id: str, name: str) -> None:
+    try:
+        ctx.on_unpaired(device_id, name)
+    except Exception:
+        # Der Widerruf ist geschrieben und die Antwort gebaut; ein Fehler beim Aufräumen oder
+        # beim Hinweis darf daraus keine 500 machen.
+        _log.exception("Handy-Abmeldung: on_unpaired fehlgeschlagen")
+
+
 def _file_relay_secret(ctx: MobileContext, device_id: str, secret: str | None) -> None:
     """Legt das Relay-Geheimnis des Handys beim Gerät ab (nur bei einer Änderung schreibt der
     Speicher). Der Abgleich ist angewendet: scheitert das Ablegen, geht es im nächsten Abgleich
@@ -413,6 +471,7 @@ ROUTES: tuple[_Route, ...] = (
     _Route("POST", "/v1/pair", _pair, public=True),
     _Route("GET", "/v1/ping", _ping),
     _Route("POST", "/v1/sync", _sync),
+    _Route("POST", "/v1/unpair", _unpair),
 )
 
 

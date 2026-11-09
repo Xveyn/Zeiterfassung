@@ -275,6 +275,15 @@ def revoke(record: Mapping[str, Any]) -> Record:
     return updated
 
 
+def revoke_by_device(record: Mapping[str, Any], now: str) -> Record:
+    """Widerruf, den das Handy selbst ausgelöst hat (Abmeldung, #499): wie `revoke`, dazu der
+    Vermerk, damit die Geräteliste „vom Handy getrennt“ sagen kann."""
+    updated = revoke(record)
+    updated["revoked_by"] = "device"
+    updated["revoked_at"] = now
+    return updated
+
+
 @dataclass(frozen=True)
 class AuthOutcome:
     status: str                      # "ok" | "unauthorized" | "expired" | "revoked"

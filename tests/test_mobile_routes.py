@@ -93,12 +93,12 @@ def is_sealed(body):
     return isinstance(body, dict) and set(body) == {"v", "seq", "n", "c"}
 
 
-def opened(env, response, device=PHONE):
+def opened(env, response, device=PHONE, path="/v1/sync"):
     """Die Antwort wie die PWA sieht: ein Umschlag wird mit dem Geräteschlüssel geöffnet (Erfolg
     **und** Fehler nach dem Entschlüsseln), alles andere bleibt Klartext."""
     body = response.body
     if is_sealed(body):
-        body = env.phones[device].open_sync_response(body)
+        body = env.phones[device].open_sync_response(body, path)
     return types.SimpleNamespace(status=response.status, body=body, headers=response.headers,
                                  raw=response.body)
 
@@ -1058,3 +1058,92 @@ def test_a_refused_sync_logs_no_ok_line(env, caplog):
         mobile_routes.dispatch(
             ApiRequest("POST", "/v1/sync", {}, sync_body(env)), closing, principal_for(env, token))
     assert not [r for r in caplog.records if "Handy-Abgleich ok" in r.getMessage()]
+
+
+# --- Abmeldung durch das Handy (#499) ---------------------------------------------------------------
+
+def unpair_body(env, device=PHONE, seq=None):
+    return json.dumps(env.phones[device].unpair_request(seq=seq)).encode()
+
+
+def test_unpair_revokes_the_device_and_answers_ok_encrypted(env):
+    _record, token = add_device(env)
+    seen = []
+    ctx = dataclasses.replace(env.ctx, on_unpaired=lambda device_id, name: seen.append((device_id, name)))
+
+    response = mobile_routes.dispatch(
+        ApiRequest("POST", "/v1/unpair", {}, unpair_body(env)), ctx, principal_for(env, token))
+
+    assert response.status == 200 and is_sealed(response.body)
+    assert opened(env, response, path="/v1/unpair").body == {"ok": True}
+    stored = env.ctx.devices.get(PHONE)
+    assert stored["revoked"] is True and stored["revoked_by"] == "device"
+    assert stored["revoked_at"] == NOW
+    assert seen == [(PHONE, "Pixel")]
+
+
+def test_unpair_replay_on_an_active_device_is_409(env):
+    _record, token = add_device(env)
+    env.ctx.devices.save(mobile_pairing.with_seq(env.ctx.devices.get(PHONE), 5))
+
+    response = call(env, "POST", "/v1/unpair", body=unpair_body(env, seq=5), token=token)
+
+    assert (response.status, error_code(response)) == (409, "replay")
+    assert env.ctx.devices.get(PHONE)["revoked"] is False
+
+
+def test_unpair_with_an_old_token_after_repairing_is_401(env):
+    _record, old_token = add_device(env)
+    body = unpair_body(env)
+    principal = principal_for(env, old_token)          # der Prüfer lief, dann koppelte jemand neu
+    add_device(env)                                    # neu gekoppelt: neues Token, Zähler 0
+
+    response = call(env, "POST", "/v1/unpair", body=body, principal=principal)
+
+    assert response.status == 401
+    assert env.ctx.devices.get(PHONE)["revoked"] is False
+
+
+def test_unpair_of_a_revoked_device_is_401_token_revoked(env):
+    _record, token = add_device(env)
+    principal = principal_for(env, token)
+    env.ctx.devices.save(mobile_pairing.revoke(env.ctx.devices.get(PHONE)))
+
+    response = call(env, "POST", "/v1/unpair", body=unpair_body(env), principal=principal)
+
+    assert response.status == 401 and error_code(response) == "token_revoked"
+
+
+def test_unpair_of_an_expired_device_is_401_token_expired(env):
+    _record, token = add_device(env)
+    principal = principal_for(env, token)
+    env.clock["now"] = "2026-12-31T12:00:00Z"          # zwischen Prüfer und Handler abgelaufen
+
+    response = call(env, "POST", "/v1/unpair", body=unpair_body(env), principal=principal)
+
+    assert response.status == 401 and error_code(response) == "token_expired"
+
+
+def test_unpair_survives_a_failing_on_unpaired(env):
+    _record, token = add_device(env)
+
+    def boom(device_id, name):
+        raise RuntimeError("Dialog kaputt")
+
+    ctx = dataclasses.replace(env.ctx, on_unpaired=boom)
+    response = mobile_routes.dispatch(
+        ApiRequest("POST", "/v1/unpair", {}, unpair_body(env)), ctx, principal_for(env, token))
+
+    assert response.status == 200
+    assert env.ctx.devices.get(PHONE)["revoked"] is True
+
+
+def test_unpair_is_refused_while_the_app_closes(env):
+    _record, token = add_device(env)
+    closing = dataclasses.replace(env.ctx, closing=lambda: True)
+
+    response = mobile_routes.dispatch(
+        ApiRequest("POST", "/v1/unpair", {}, unpair_body(env)), closing, principal_for(env, token))
+
+    assert response.status == 503 and error_code(response) == "shutting_down"
+    assert env.ctx.devices.get(PHONE)["revoked"] is False
