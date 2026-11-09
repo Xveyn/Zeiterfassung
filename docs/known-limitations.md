@@ -619,8 +619,8 @@ läuft.
   in der PWA aus dem Abgleich mit dem Desktop (Reservierungen, Sende-Zeitpunkte). Im WLAN geht der Abgleich
   dort nicht (Mixed Content); über den Relay (s. u.) entsteht ein Plan. Auf einem aktuellen iPhone kommen die
   Benachrichtigungen an (als Web-App installiert; Web-Push braucht dort die installierte Web-App). In Firefox
-  auf Android kommen sie über den Relay ebenfalls an (2026-11-09, dieselbe Web-App wie in Chrome). Wie
-  Firefox und Safari die Benachrichtigung darstellen (Logo, Platzhalter), ist offen (#357).
+  auf Android funktionieren Koppeln, Abgleich und Push über den Relay (2026-11-09, dieselbe Web-App wie in
+  Chrome); die Benachrichtigung zeigt dort **kein Logo**. Wie Safari sie darstellt, ist offen (#357).
 - **Eine Reservierung, die am Desktop als Ist-Zeit erfasst wurde, meldet sich noch einmal**, bis der nächste
   Abgleich den Plan korrigiert (das Handy weiß es vorher nicht). Die Erlaubnis für Benachrichtigungen
   gilt je Gerät und Browser.
@@ -673,7 +673,8 @@ für Fragen: `docs/datenschutz.md` (die Web-App verlinkt es im Koppel-Bildschirm
   Der sichere Weg ist „QR-Code scannen“ **in** der Web-App. Die Web-App weist darauf hin.
 - **Nicht geprüft:** Safari im Hintergrund (schließt es die WebSocket sauber, Wiederverbinden), Neustart der
   installierten Web-App, der Desktop unter Linux und macOS (#421; Windows ist bestätigt),
-  Android und Firefox über den Relay.
+  Chrome auf Android über den Relay. Firefox auf Android ist geprüft: Koppeln, Abgleich und Push
+  (2026-11-09).
 - **Offene Randfälle:** #422 (Koppel-Dialog), #423 („verdrängt“ ohne Ausweg), #425 und #426 (Relay-Transport der
   Web-App, Tests und Doku).
 
