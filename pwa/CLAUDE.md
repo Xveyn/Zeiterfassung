@@ -569,7 +569,14 @@ einem Plattform-Authenticator und `userVerification: required`; Verifizierung ka
   Entsperrung („Entsperrung prüfen“, `confirmLock`); erst dann gilt die Sperre. Grund: Safari verlangt eine Nutzergeste je Abfrage, und eine
   Sperre, die sich nicht öffnen lässt, wäre eine Falle. Bricht der Nutzer ab, bleibt die Sperre aus (ein angelegter Passkey liegt dann
   ungenutzt im Passwortmanager). **Ausschalten** verlangt die Entsperrung (`removeLock`), scheitert sie, bleibt die Sperre an.
-- **Wann gesperrt wird:** bei jedem Start, sobald sie eingeschaltet ist, und nach dem Zurückkehren (`visibilitychange`, dazu
+- **Ein Neuladen innerhalb der Frist sperrt nicht noch einmal** (Wischen zum Aktualisieren): `hidden()` merkt sich, wann die
+  **entsperrte** Seite verlassen wurde, in `sessionStorage` (`createSessionSlot`, Schlüssel `zeiterfassung-lock-left-at`, gilt je Tab
+  und stirbt mit ihm), `start()` liest es und wendet dieselbe Frist an wie beim Zurückkehren. „Sofort“ sperrt weiter bei jedem Neuladen.
+  Der Merker wird beim Start, beim Zurückkehren und beim Entsperren verbraucht, gesperrt wird nie etwas gemerkt (ein Neuladen des
+  Sperrbildschirms bleibt gesperrt), und alles außer einer endlichen Zahl oder ein Fehler des Speichers heißt „sperren“. Ein neuer Tab
+  und ein Kaltstart haben keinen Merker und sperren wie bisher. Kein Schutz mehr als zuvor: wer das Handy innerhalb der Frist
+  entsperrt in der Hand hat, kommt auch beim Zurückkehren hinein.
+- **Wann gesperrt wird:** bei jedem Start (außer dem Neuladen oben), sobald sie eingeschaltet ist, und nach dem Zurückkehren (`visibilitychange`, dazu
   `pagehide`/`pageshow` für den Back-Forward-Cache), wenn die Frist abgelaufen ist (`shouldLock`; eine zurückgestellte Uhr sperrt). Gesperrt
   löst das Zurückkehren keinen Abgleich aus; das Entsperren holt ihn nach. Ein erfolgreiches Entsperren löscht die Verlassen-Zeit: zeigt der
   Browser während der Abfrage `hidden` und danach `visible`, sperrte „Sofort“ sonst gleich wieder.

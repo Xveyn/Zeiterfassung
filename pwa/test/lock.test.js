@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
-  DEFAULT_LOCK_DELAY_MS, LOCK_DELAYS, createLockController, createLockCredential, disableLock, enableLock, lockActive,
+  DEFAULT_LOCK_DELAY_MS, LOCK_DELAYS, createLockController, createSessionSlot, createLockCredential, disableLock, enableLock, lockActive,
   lockErrorText, lockModel, lockSupport, normalizeLockDelay, shouldLock, unlockWithCredential,
 } from '../lock.js';
 import { b64d, b64e } from '../crypto.js';
@@ -338,13 +338,14 @@ test('the lock is only switched off after the device was unlocked, and the crede
 
 // --- Ablauf der Sperre (ohne Oberfläche) ------------------------------------------------------------
 
-function controller({ meta = { lock_enabled: true, lock_credential: ID_TEXT, lock_delay_ms: 60_000 }, unlockResult = { ok: true } } = {}) {
+function controller({ meta = { lock_enabled: true, lock_credential: ID_TEXT, lock_delay_ms: 60_000 }, unlockResult = { ok: true }, session } = {}) {
   const log = { locks: 0, unlocks: [], lockedDuringUnlock: [] };
   const clock = { now: 1_000_000 };
   const state = { meta, unlockResult };
   const ctl = createLockController({
     getMeta: () => state.meta,
     now: () => clock.now,
+    session,
     unlockCredential: async (id) => { log.asked = id; return state.unlockResult; },
     onLock: () => { log.locks += 1; },
     onUnlock: (day) => { log.unlocks.push(day); log.lockedDuringUnlock.push(ctl.locked); },
@@ -441,4 +442,112 @@ test('a day requested while locked opens once after the unlock; unlocked it open
   await t.ctl.unlock();                                                      // nichts mehr vorgemerkt
   assert.equal(t.log.unlocks.length, 2);
   assert.equal(t.log.unlocks.at(-1), null);
+});
+
+// --- Neuladen (Wischen zum Aktualisieren) sperrt nicht noch einmal ------------------------------------------------
+
+/** Ein Merker wie `sessionStorage`: überlebt ein Neuladen des Tabs, nicht das Schließen. */
+function slot(initial = null) {
+  const memory = { value: initial, writes: [] };
+  return { memory, read: () => memory.value, write: (value) => { memory.value = value; memory.writes.push(value); } };
+}
+
+/** Ein Neuladen: die Seite wird verlassen (`hidden`), dann startet ein frischer Controller mit demselben Merker. */
+function reload(first, { after = 2_000, meta } = {}) {
+  first.ctl.hidden();
+  const next = controller({ meta: meta ?? first.state.meta, session: first.session });
+  next.clock.now = first.clock.now + after;
+  return next;
+}
+
+test('a reload within the delay does not lock again, a reload after it does', async () => {
+  const session = slot();
+  const first = { ...controller({ session }), session };
+  first.ctl.start();
+  await first.ctl.unlock();
+  assert.equal(first.ctl.locked, false);
+  const quick = reload(first, { after: 2_000 });
+  assert.equal(quick.ctl.start(), false, 'pull to refresh right after use: no new prompt');
+  assert.equal(quick.log.locks, 0);
+  const slow = reload(first, { after: 61_000 });
+  assert.equal(slow.ctl.start(), true, 'after the delay a start locks as before');
+});
+
+test('"Sofort" still locks on every reload', async () => {
+  const session = slot();
+  const meta = { lock_enabled: true, lock_credential: ID_TEXT, lock_delay_ms: 0 };
+  const first = { ...controller({ meta, session }), session };
+  first.ctl.start();
+  await first.ctl.unlock();
+  assert.equal(reload(first, { after: 0 }).ctl.start(), true);
+  assert.equal(reload(first, { after: 1 }).ctl.start(), true);
+});
+
+test('a reload while locked stays locked: the lock screen is not a way in', () => {
+  const session = slot();
+  const first = { ...controller({ session }), session };
+  first.ctl.start();                       // gesperrt, nie entsperrt
+  first.ctl.hidden();                      // Neuladen des Sperrbildschirms
+  assert.equal(session.memory.value, null, 'nothing remembered while locked');
+  assert.equal(reload(first, { after: 500 }).ctl.start(), true);
+});
+
+test('the remembered time is used once: a second start without leaving locks', async () => {
+  const session = slot();
+  const first = { ...controller({ session }), session };
+  first.ctl.start();
+  await first.ctl.unlock();
+  const quick = reload(first, { after: 1_000 });
+  assert.equal(quick.ctl.start(), false);
+  assert.equal(session.memory.value, null, 'consumed at start');
+  const again = controller({ session });
+  assert.equal(again.ctl.start(), true, 'no leave in between: the old time must not open it a second time');
+});
+
+test('returning after the delay locks and forgets the old time, so a later reload cannot use it', async () => {
+  const session = slot();
+  const first = { ...controller({ session }), session };
+  first.ctl.start();
+  await first.ctl.unlock();
+  first.ctl.hidden();
+  first.clock.now += 120_000;
+  first.ctl.visible();                    // Frist abgelaufen: gesperrt
+  assert.equal(first.ctl.locked, true);
+  assert.equal(session.memory.value, null);
+  await first.ctl.unlock();               // Nutzer entsperrt wieder
+  assert.equal(session.memory.value, null, 'unlocking clears it as well');
+});
+
+test('without a usable session store the start locks as before', async () => {
+  for (const broken of [undefined, null, { read: () => { throw new Error('no storage'); }, write: () => { throw new Error('no storage'); } }, slot('kaputt'), slot(NaN), slot(-5)]) {
+    const first = controller({ session: broken ?? undefined });
+    assert.equal(first.ctl.start(), true, String(broken));
+    await first.ctl.unlock();
+    first.ctl.hidden();                   // darf nie werfen
+  }
+});
+
+test('a clock set back past the remembered time locks', async () => {
+  const session = slot();
+  const first = { ...controller({ session }), session };
+  first.ctl.start();
+  await first.ctl.unlock();
+  assert.equal(reload(first, { after: -5_000 }).ctl.start(), true);
+});
+
+test('the session slot stores a number, reads garbage as nothing and survives a throwing store', () => {
+  const data = new Map();
+  const storage = { getItem: (key) => (data.has(key) ? data.get(key) : null), setItem: (key, value) => data.set(key, String(value)), removeItem: (key) => data.delete(key) };
+  const place = createSessionSlot(() => storage, 'k');
+  assert.equal(place.read(), null);
+  place.write(1234);
+  assert.equal(data.get('k'), '1234');
+  assert.equal(place.read(), 1234);
+  place.write(null);
+  assert.equal(data.has('k'), false);
+  data.set('k', 'abc');
+  assert.equal(place.read(), null, 'not a number');
+  const broken = createSessionSlot(() => { throw new Error('private mode'); }, 'k');
+  assert.equal(broken.read(), null);
+  assert.doesNotThrow(() => broken.write(5));
 });
