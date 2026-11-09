@@ -209,7 +209,9 @@ Die App folgt der Desktop-Skalierung über `Xft.dpi` (Xveyn#167; Begründung in
 Der Faktor wird beim Start gelesen. Wechselt man bei laufender App den Monitor
 (etwa WQHD @ 100 % ↔ 4K @ 250 %), liest `dpi.system_scale_changed` `Xft.dpi`
 alle 5 s neu (`scale_watch.ScaleWatcher`) und blendet bei Abweichung einen
-Banner mit „Neu starten" ein (Xveyn#201). Neu gestartet wird nie von selbst.
+Banner mit „Neu starten" ein (Xveyn#201). Neu gestartet wird nur von selbst, wenn „Skalierung bei Monitorwechsel
+automatisch anpassen“ (Einstellungen → App) an ist, und dann erst, wenn
+kein Dialog offen ist und nichts im Hintergrund läuft.
 Greift nur, wo `Xft.dpi` sich beim Monitorwechsel tatsächlich ändert; ohne
 gefundenes `Xft.dpi` beim Start (und unter Tk 9) bleibt der Check aus.
 
