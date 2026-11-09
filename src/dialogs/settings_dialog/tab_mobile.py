@@ -19,8 +19,8 @@ from src.dialogs.settings_dialog.fields import FieldSet
 from src.dialogs.settings_dialog.form_model import SaveOutcome
 from src.dialogs.settings_dialog.tab_rules import (
     FIRST_ENABLE_NOTICE, REVOKE_ERROR_TEXT, address_options, address_to_choice,
-    device_row_text, keystore_summary, mobile_status_view, mobile_updates, relay_pair_enabled,
-    revoke_all_prompt, revoke_outcome, revoke_prompt, test_push_outcome, test_push_text, validate_mobile,
+    device_row_text, is_device_unpaired, keystore_summary, mobile_status_view, mobile_updates,
+    relay_pair_enabled, revoke_all_prompt, revoke_button_label, revoke_outcome, revoke_prompt, test_push_outcome, test_push_text, validate_mobile,
     visible_devices, window_cap_options, window_cap_to_choice,
 )
 from src.theme import (
@@ -212,6 +212,10 @@ class MobileTab:
             self._empty.grid()
         self._sync_buttons()
 
+    def _selected_record(self):
+        selected = self._selected_id()
+        return next((r for r in self._rows if r["id"] == selected), None)
+
     def _selected_id(self):
         selection = self._listbox.curselection()
         if not selection or selection[0] >= len(self._rows):
@@ -226,6 +230,7 @@ class MobileTab:
         if self._relay_btn is not None:
             set_secondary_button_enabled(self._relay_btn, self._relay_pair_possible())
         set_secondary_button_enabled(self._revoke_btn, has_selection and not self._busy)
+        self._revoke_btn._label.config(text=revoke_button_label(self._selected_record()))
         set_secondary_button_enabled(self._revoke_all_btn, has_devices and not self._busy)
         selected = self._selected_id()
         set_secondary_button_enabled(
@@ -274,6 +279,15 @@ class MobileTab:
     def _revoke(self):
         device_id = self._selected_id()
         if device_id is None or self._busy:
+            return
+        record = self._selected_record()
+        if record is not None and is_device_unpaired(record):
+            # Das Handy hat sich selbst getrennt: es gibt nichts mehr zu widerrufen, nur den
+            # Eintrag zu entfernen (kein Rückfragedialog, der Datensatz ist ohnehin widerrufen).
+            self._busy = True
+            self._sync_buttons()
+            self._runner.run(
+                lambda: revoke_outcome(lambda: self._service.dismiss(device_id)), self._revoked)
             return
         name = next((r["name"] for r in self._rows if r["id"] == device_id), device_id)
         has_box = device_id in self._relay_states()

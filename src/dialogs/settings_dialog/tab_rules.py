@@ -582,11 +582,24 @@ def mobile_status_view(status: MobileStatus) -> tuple[str, str]:
     return "Aus.", "muted"
 
 
+def is_device_unpaired(record: Mapping[str, Any]) -> bool:
+    """Das Handy hat sich selbst getrennt (`POST /v1/unpair`, #499)."""
+    return record.get("revoked_by") == "device"
+
+
 def visible_devices(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Die Geräte, die der Tab zeigt: ohne die widerrufenen. Deren Datensatz bleibt im Speicher
     (die Antwort an das Handy lautet `token_revoked`, und das Koppel-Fenster erkennt an ihm eine
-    Neukopplung), in der Liste hat er aber nichts mehr verloren."""
-    return [record for record in records if not record.get("revoked")]
+    Neukopplung), in der Liste hat er aber nichts mehr verloren. Ausnahme: ein vom Handy getrenntes
+    Gerät bleibt sichtbar, bis der Nutzer es entfernt — sonst ginge die Meldung verloren, wenn
+    kein Toast zu sehen war (macOS ohne Tray)."""
+    return [record for record in records
+            if not record.get("revoked") or is_device_unpaired(record)]
+
+
+def revoke_button_label(record: Mapping[str, Any] | None) -> str:
+    """Beschriftung des Knopfes unter der Liste: ein getrenntes Gerät gibt es nur noch zu entfernen."""
+    return "Entfernen" if record is not None and is_device_unpaired(record) else "Widerrufen"
 
 
 # Zustände der Relay-Box (`relay_link.STATE_*`, dazu `relay_service.STATE_OFF`) als Text. Die
@@ -678,6 +691,8 @@ def device_row_text(record: Mapping[str, Any], now: str, relay_state: str | None
     Widerrufene Geräte kommen hier nicht an (`visible_devices`). `relay_state` (nur Geräte mit
     Box) hängt den Zustand der Relay-Verbindung an."""
     name = str(record.get("name") or record.get("id") or "?")
+    if is_device_unpaired(record):
+        return f"{name}  —  vom Handy getrennt am {format_iso_datetime(record.get('revoked_at'))}"
     mark = ""
     if str(record.get("expires_at") or "9999") <= now:
         mark = "  (abgelaufen)"
