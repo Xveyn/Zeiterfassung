@@ -13,6 +13,19 @@ log = logging.getLogger(__name__)
 
 _INTERVAL_MS = 5000
 
+# Frühestens so lange nach dem Start darf die App sich selbst neu starten:
+# flattert `Xft.dpi`, wäre es sonst eine Neustart-Schleife.
+MIN_UPTIME_S = 60
+
+
+def may_auto_restart(enabled: bool, mismatch: bool, dialog_open: bool,
+                     bg_busy: bool, uptime_s: float) -> bool:
+    """Ob der automatische Neustart jetzt laufen darf: Schalter an, die
+    Skalierung passt nicht, nichts offen oder in Arbeit, App lange genug
+    oben. Nie mitten in der Arbeit — sonst bleibt es beim Banner."""
+    return (enabled and mismatch and not dialog_open and not bg_busy
+            and uptime_s >= MIN_UPTIME_S)
+
 
 class ScaleWatcher:
     def __init__(self, root: Any, changed: Callable[[], bool],

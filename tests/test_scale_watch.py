@@ -59,3 +59,40 @@ def test_tick_reschedules_even_if_check_raises():
     root.scheduled[0][1]()
     assert len(root.scheduled) == 2
     assert seen == []
+
+
+# --- Automatischer Neustart (Xveyn#201) -------------------------------------
+
+from src.scale_watch import MIN_UPTIME_S, may_auto_restart  # noqa: E402
+
+
+def _ok(**over):
+    args = dict(enabled=True, mismatch=True, dialog_open=False,
+                bg_busy=False, uptime_s=MIN_UPTIME_S)
+    args.update(over)
+    return may_auto_restart(**args)
+
+
+def test_auto_restart_when_everything_allows_it():
+    assert _ok() is True
+
+
+def test_auto_restart_needs_the_setting():
+    assert _ok(enabled=False) is False
+
+
+def test_auto_restart_needs_a_mismatch():
+    assert _ok(mismatch=False) is False
+
+
+def test_auto_restart_never_with_a_dialog_open():
+    assert _ok(dialog_open=True) is False
+
+
+def test_auto_restart_waits_for_background_jobs():
+    assert _ok(bg_busy=True) is False
+
+
+def test_auto_restart_not_right_after_start():
+    """Schutz vor einer Neustart-Schleife bei flatterndem Xft.dpi."""
+    assert _ok(uptime_s=MIN_UPTIME_S - 1) is False

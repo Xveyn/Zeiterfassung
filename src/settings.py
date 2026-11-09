@@ -114,6 +114,9 @@ DEFAULTS = {
     "show_weekend": True,
     "workweek_only": False,
     "always_on_top": False,
+    # Linux: bei Monitorwechsel mit anderer Skalierung ohne Rückfrage neu
+    # starten, sobald nichts offen ist (Xveyn#201). Gerätelokal.
+    "auto_scale_restart": False,
     "minimize_to_tray": False,
     "reminders_enabled": False,
     "reminder_minutes_before": 15,

@@ -35,7 +35,7 @@ from src import dpi, keyring_store, removal, secret_migration
 from src.topmost_relief import TopmostRelief, activity_hook
 from src.sync_orchestrator import classify_sync_error, SyncOrchestrator
 from src.scale_banner import ScaleBanner
-from src.scale_watch import ScaleWatcher
+from src.scale_watch import ScaleWatcher, may_auto_restart
 from src.update_banner import UpdateBanner
 from src.update_coordinator import UpdateCoordinator
 from src.reminder_scheduler import ReminderScheduler
@@ -202,9 +202,11 @@ class App:
             self.root, lambda: self._renderer.grid_container,
             on_restart=self.restart_for_scaling,
             on_resize=self._renderer.repin_geometry)
+        self._scale_mismatch = False
+        self._scale_retry_id = None
+        self._started_at = time.monotonic()
         self._scale_watch = ScaleWatcher(
-            self.root, dpi.system_scale_changed,
-            self._scale_banner.set_visible)
+            self.root, dpi.system_scale_changed, self._on_scale_mismatch)
         # Update-Lebenszyklus (R11): Start-Check, Toast/Banner, Tray-Check,
         # Anwenden beim Beenden — und der AutoUpdater (R9) für den
         # Einstellungsdialog. Den Banner baut die App, weil er an root und
@@ -629,6 +631,7 @@ class App:
             self._apply_send_reminder_setting()
             self._apply_api_setting()
             self._apply_mobile_setting()
+            self._auto_scale_restart_tick()
             # Nach jeder Settings-Speicherung den sender_email-Fetch nochmal
             # anstoßen. Damit erscheint die Absender-Adresse automatisch nach
             # Sync-Aktivierung (frischer Token mit userinfo.email-Scope), ohne
@@ -1081,7 +1084,7 @@ class App:
             self._tray.stop()
         self._reminders.stop()
         self._send_reminders.stop()
-        self._scale_watch.stop()
+        self._stop_scale_watch()
         self._sync.stop_day_watch()
         if self._single_instance is not None:
             self._single_instance.release()
@@ -1137,7 +1140,7 @@ class App:
             self._tray.stop()
         self._reminders.stop()
         self._send_reminders.stop()
-        self._scale_watch.stop()
+        self._stop_scale_watch()
         self._sync.stop_day_watch()
 
         base = self.base_path
@@ -1181,16 +1184,73 @@ class App:
         self._bg.run(_work)
         return True
 
-    def restart_for_scaling(self):
+    def _on_scale_mismatch(self, mismatch):
+        """Der Monitor hat eine andere Skalierung als beim Start (oder wieder
+        dieselbe). Der Banner zeigt es immer; mit `auto_scale_restart` startet
+        die App zusätzlich selbst neu, sobald das gefahrlos geht."""
+        self._scale_mismatch = mismatch
+        self._scale_banner.set_visible(mismatch)
+        self._auto_scale_restart_tick()
+
+    def _dialog_open(self):
+        """Ob ein Dialog offen ist (modal per Grab oder als sichtbares
+        Toplevel). Ein gerade eingeblendeter Tooltip zählt mit und verschiebt
+        den Neustart um einen Tick."""
+        if self.root.grab_current() is not None:
+            return True
+        return any(isinstance(w, tk.Toplevel) and w.winfo_viewable()
+                   for w in self.root.winfo_children())
+
+    def _auto_scale_restart_tick(self):
+        """Startet bei Abweichung neu, wenn der Schalter an ist und nichts
+        offen oder in Arbeit ist; sonst nach 2 s erneut. Ohne Abweichung oder
+        Schalter endet die Schleife."""
+        if self._scale_retry_id is not None:
+            self.root.after_cancel(self._scale_retry_id)
+            self._scale_retry_id = None
+        enabled = bool(self.settings.get("auto_scale_restart"))
+        if not (enabled and self._scale_mismatch):
+            return
+        if may_auto_restart(
+                enabled, self._scale_mismatch, self._dialog_open(),
+                not self._bg.wait_idle(0),
+                time.monotonic() - self._started_at):
+            hidden = self.root.state() in ("withdrawn", "iconic")
+            logging.getLogger(__name__).info(
+                "Skalierung passt nicht zum Monitor — automatischer Neustart")
+            self.restart_for_scaling(keep_hidden=hidden)
+            return
+        self._scale_retry_id = self.root.after(
+            2000, self._auto_scale_restart_tick)
+
+    def _stop_scale_watch(self):
+        self._scale_watch.stop()
+        if self._scale_retry_id is not None:
+            try:
+                self.root.after_cancel(self._scale_retry_id)
+            except Exception:
+                # Die ID kann beim Beenden schon abgelaufen sein; das Ziel,
+                # keine weitere Wiederholung, ist so oder so erreicht.
+                logging.getLogger(__name__).debug(
+                    "after_cancel fehlgeschlagen", exc_info=True)
+            self._scale_retry_id = None
+
+    def restart_for_scaling(self, keep_hidden=False):
         """Startet die App neu, damit eine geänderte UI-Skalierung greift
         (tk-scaling wird nur beim Start gesetzt). Erst den neuen Prozess
         spawnen, dann erst das alte Fenster abbauen — schlägt Popen fehl,
         bleibt die laufende App vollständig intakt (Tray läuft, Fenster offen)
         und der Nutzer bekommt einen Hinweis. Kein Sync-Push: der Faktor ist
-        lokal, ein 5-s-Push würde den Neustart nur verzögern."""
+        lokal, ein 5-s-Push würde den Neustart nur verzögern.
+
+        `keep_hidden` (automatischer Neustart bei Monitorwechsel): war das
+        Fenster versteckt, startet die neue Instanz wieder minimiert, statt
+        unaufgefordert aufzutauchen."""
         frozen = getattr(sys, "frozen", False)
         cmd = relaunch_command(sys.argv, sys.executable, frozen,
                                appimage=os.environ.get("APPIMAGE"))
+        if keep_hidden:
+            cmd.append("--minimized")
         # Auch der API-Port muss VOR dem Spawn frei sein, sonst findet die neue
         # Instanz ihn belegt und die API bleibt dort aus.
         self._api.shutdown()
@@ -1241,6 +1301,6 @@ class App:
             self._tray.stop()
         self._reminders.stop()
         self._send_reminders.stop()
-        self._scale_watch.stop()
+        self._stop_scale_watch()
         self._sync.stop_day_watch()
         self.root.destroy()

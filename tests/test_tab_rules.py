@@ -129,6 +129,7 @@ def app_raw(**overrides):
     raw = {
         "autostart": False,
         "always_on_top": False, "minimize_to_tray": True, "ui_scale": 125,
+        "auto_scale_restart": False,
     }
     raw.update(overrides)
     return raw
@@ -314,7 +315,7 @@ _legacy_keys_base = {
     "werkstudent_limit_max_hours", "pause_warning_enabled", "workweek_only",
     "device_name", "auto_update_enabled", "reservations_enabled",
     "mobile_push_enabled", "mobile_push_reservation", "mobile_push_send",
-    "mobile_push_suppress_toast", "default_times_mode",
+    "mobile_push_suppress_toast", "default_times_mode", "auto_scale_restart",
 }
 LEGACY_KEYS = (
     _legacy_keys_base |
