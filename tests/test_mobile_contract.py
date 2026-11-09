@@ -454,3 +454,28 @@ def test_the_relay_request_decoder_yields_what_dispatch_expects():
         request = codec.decode_request(row["json"].encode())
         api_request = ApiRequest("POST", request.path, {}, json.dumps(request.envelope).encode())
         assert mobile_routes._envelope(api_request.body) == request.envelope
+
+
+# --- Abmeldung (#499) --------------------------------------------------------------------------------
+
+def test_the_unpair_examples_are_what_the_phone_sends_and_the_server_answers(tmp_path):
+    request = load("unpair-request.json")
+    example = load("unpair-response.json")
+    env = mr.make_env(tmp_path)
+    record, token = mobile_pairing.issue_device("phone-0001", "Pixel", env.ctx.now())
+    env.ctx.devices.save(record)
+    env.ctx.keys.put("phone-0001", mr.DEVICE_KEY)
+    phone = mr.Phone("phone-0001", "Pixel")
+    phone.key = mr.DEVICE_KEY
+    envelope = phone.unpair_request()
+    request_key, _ = mc.device_keys(mr.DEVICE_KEY)
+    plain = json.loads(mc.open_envelope(request_key, envelope, direction="req", method="POST",
+                                        path="/v1/unpair", device_id="phone-0001"))
+    principal = mobile_routes.make_verifier(env.ctx.devices, env.ctx.now)(token)
+
+    response = mobile_routes.dispatch(
+        ApiRequest("POST", "/v1/unpair", {}, json.dumps(envelope).encode()), env.ctx, principal)
+    answer = phone.open_sync_response(response.body, "/v1/unpair")
+
+    assert plain == request
+    assert response.status == 200 and answer == example

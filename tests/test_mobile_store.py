@@ -372,3 +372,22 @@ def test_read_only_is_visible_to_callers(path, monkeypatch):
         json.dump({"schema_version": 99, "devices": []}, handle)
     assert MobileStore(path).read_only is True
     assert MobileStore(str(path) + ".nicht-da").read_only is False
+
+
+def test_a_device_revoked_record_round_trips(path):
+    record, _ = make_record("device-0001")
+    store = MobileStore(path)
+    store.save(dict(record, revoked=True, revoked_by="device", revoked_at="2026-10-09T08:00:00Z"))
+
+    again = MobileStore(path).get("device-0001")
+
+    assert (again["revoked_by"], again["revoked_at"]) == ("device", "2026-10-09T08:00:00Z")
+
+
+@pytest.mark.parametrize("junk", [dict(revoked_by="x"), dict(revoked_by=5), dict(revoked_at=7)])
+def test_a_record_with_an_invalid_revocation_marker_is_skipped(path, junk):
+    good, _ = make_record("device-good")
+    open(path, "w", encoding="utf-8").write(json.dumps(
+        {"schema_version": 1, "devices": [dict(good, id="device-bad", **junk), good]}))
+
+    assert [r["id"] for r in MobileStore(path).get_all()] == ["device-good"]

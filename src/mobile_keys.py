@@ -79,6 +79,7 @@ class MobileKeyStore:
         self._entries: dict[str, Entry] = {}
         self._cache: dict[str, bytes] = {}
         self._last_try: dict[str, float] = {}
+        self._loading: set[str] = set()                   # Geräte, deren Schlüssel gerade nachgeladen wird
         self._readonly = False
         self._load_file()
 
@@ -231,14 +232,25 @@ class MobileKeyStore:
             if last is not None and now - last < LOAD_RETRY_SECONDS:
                 return
             self._last_try[device_id] = now
+            self._loading.add(device_id)
         threading.Thread(target=self._load_one, args=(device_id,), daemon=True,
                          name="mobile-keys-load").start()
 
+    def is_loading(self, device_id: str) -> bool:
+        """Läuft gerade ein Nachladen dieses Schlüssels? Wer nur wartet, wenn es läuft, hält sich nicht an
+        einem gedrosselten Versuch auf, der nie kommt."""
+        with self._lock:
+            return device_id in self._loading
+
     def _load_one(self, device_id: str) -> None:
-        value = keyring_store.fetch(keyring_key(device_id))
-        if value is None:
-            return                                        # nicht lesbar: der nächste Versuch kommt später
-        self._apply_fetched(device_id, value)
+        try:
+            value = keyring_store.fetch(keyring_key(device_id))
+            if value is None:
+                return                                    # nicht lesbar: der nächste Versuch kommt später
+            self._apply_fetched(device_id, value)
+        finally:
+            with self._lock:
+                self._loading.discard(device_id)
 
     def migrate(self) -> int:
         """Zieht Schlüssel mit Ort `file` in den Schlüsselbund. Pro Schlüssel: ablegen →

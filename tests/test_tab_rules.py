@@ -1195,3 +1195,51 @@ def test_autostart_path_hint_names_the_entry_on_linux_only():
     assert tr.autostart_path_hint("Linux", path) == f"Eintrag: {path}"
     assert tr.autostart_path_hint("Windows", path) is None      # Registry-Wert, kein Pfad
     assert tr.autostart_path_hint("Darwin", path) is None       # feste LaunchAgents-Plist, nichts zu verstellen
+
+
+# --- vom Handy getrennte Geräte (#499) -------------------------------------------------------------
+
+UNPAIRED = dict(revoked=True, revoked_by="device", revoked_at="2026-10-08T11:30:00Z")
+
+
+def test_is_device_unpaired_only_for_the_device_marker():
+    assert tr.is_device_unpaired(device(**UNPAIRED)) is True
+    assert tr.is_device_unpaired(device(revoked=True)) is False
+    assert tr.is_device_unpaired(device()) is False
+    assert tr.is_device_unpaired({"id": "x", "revoked_by": 5}) is False
+
+
+def test_visible_devices_keeps_device_unpaired_records_but_not_desktop_revoked_ones():
+    active, desktop_revoked = device(id="a"), device(id="b", revoked=True)
+    unpaired = device(id="c", **UNPAIRED)
+
+    assert tr.visible_devices([active, desktop_revoked, unpaired]) == [active, unpaired]
+
+
+def test_a_device_unpaired_row_says_so_with_the_date_and_shows_no_validity():
+    text = tr.device_row_text(device(**UNPAIRED), NOW_ISO)
+
+    assert "Pixel von Sven" in text and "vom Handy getrennt" in text and "08.10.2026 11:30" in text
+    assert "gültig bis" not in text and "Relay" not in text
+
+
+def test_a_device_unpaired_row_survives_a_broken_timestamp():
+    text = tr.device_row_text(device(**{**UNPAIRED, "revoked_at": "kaputt"}), NOW_ISO)
+
+    assert "vom Handy getrennt" in text
+
+
+def test_the_revoke_button_reads_entfernen_for_a_device_unpaired_row():
+    assert tr.revoke_button_label(device(**UNPAIRED)) == "Entfernen"
+    assert tr.revoke_button_label(device()) == "Widerrufen"
+    assert tr.revoke_button_label(None) == "Widerrufen"
+
+
+def test_revoke_all_has_something_to_do_only_with_an_active_device():
+    assert tr.has_revocable([device(), device(id="b", **UNPAIRED)]) is True
+    assert tr.has_revocable([device(id="b", **UNPAIRED)]) is False      # nur vom Handy getrennte: nichts mehr zu widerrufen
+    assert tr.has_revocable([]) is False
+
+
+def test_the_dismiss_error_text_does_not_say_the_device_can_still_sync():
+    assert "gekoppelt" not in tr.DISMISS_ERROR_TEXT and tr.DISMISS_ERROR_TEXT

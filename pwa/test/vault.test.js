@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 import { ENCRYPT_AT_REST, VaultError, createVaultAdapter, idbVaultKeyStore, isSealed, memoryVaultKeyStore } from '../vault.js';
 import { Store } from '../store.js';
 import { createMemoryAdapter } from '../memory-adapter.js';
+import { isPaired } from '../transport.js';
 
 const SLOT = { start: '08:00', end: '12:00', pause: 0, kategorie: 'Projekt' };
 const RECORD = { entry: { slots: [SLOT], modified_at: '2026-10-08T12:00:00Z', deleted: false }, dirty_version: 1, synced_version: 0, error: null };
@@ -323,4 +324,45 @@ test('a key database without its object store is rebuilt instead of failing for 
   assert.equal(kept.kid, 'dev1');
   await store.clear();
   assert.equal(idb.log.deleted, 1);                             // eine gesunde Datenbank bleibt unangetastet
+});
+
+test('after a wipe a fresh store is unpaired and empty: the setup screen is what the next start shows (#499)', async () => {
+  const { vault } = make();
+  const store = new Store(vault, () => new Date('2026-10-08T12:00:00Z'));
+  await store.load();
+  await store.setMeta({ device_id: 'phone-0001', token: 'T0', key: 'a'.repeat(43), seq: 3, relay_secret: 'R'.repeat(43),
+    transport: 'relay', box_secret: 'B'.repeat(43), lock_enabled: true, lock_credential: 'cred' });
+  await store.saveDay('2026-10-07', [SLOT]);
+  assert.equal(isPaired(store.getMeta()), true);
+
+  await vault.wipe();
+  const fresh = new Store(vault, () => new Date('2026-10-08T12:00:00Z'));
+  await fresh.load();
+
+  assert.equal(isPaired(fresh.getMeta()), false);
+  assert.deepEqual(fresh.days(), []);
+  assert.equal(fresh.pendingCount(), 0);
+  const meta = fresh.getMeta();
+  for (const key of ['token', 'key', 'device_id', 'relay_secret', 'box_secret', 'lock_credential']) {
+    assert.equal(meta[key] === '' || meta[key] === undefined || meta[key] === null, true, key);
+  }
+  assert.equal(meta.lock_enabled, false);
+});
+
+test('a frozen store writes nothing after the wipe: a late setMeta, saveDay or batch cannot bring the pairing back (#499)', async () => {
+  const { vault, inner } = make();
+  const store = new Store(vault, () => new Date('2026-10-08T12:00:00Z'));
+  await store.load();
+  await store.setMeta({ device_id: 'phone-0001', token: 'T0', key: 'a'.repeat(43) });
+  await vault.wipe();
+
+  store.freeze();
+  await store.setMeta({ push_signature: 'spät', push_sent_at: 1 });       // z. B. ein Zeitplan-Versand, der erst jetzt fertig wird
+  await store.saveDay('2026-10-07', [SLOT]);
+
+  assert.deepEqual(await inner.getAll('meta'), []);
+  assert.deepEqual(await inner.getAll('entries'), []);
+  const fresh = new Store(vault, () => new Date('2026-10-08T12:00:00Z'));
+  await fresh.load();
+  assert.equal(isPaired(fresh.getMeta()), false);
 });

@@ -18,14 +18,14 @@ from src import netinfo
 from src.dialogs.settings_dialog.fields import FieldSet
 from src.dialogs.settings_dialog.form_model import SaveOutcome
 from src.dialogs.settings_dialog.tab_rules import (
-    FIRST_ENABLE_NOTICE, REVOKE_ERROR_TEXT, address_options, address_to_choice,
-    device_row_text, keystore_summary, mobile_status_view, mobile_updates, relay_pair_enabled,
-    revoke_all_prompt, revoke_outcome, revoke_prompt, test_push_outcome, test_push_text, validate_mobile,
+    DISMISS_ERROR_TEXT, FIRST_ENABLE_NOTICE, REVOKE_ERROR_TEXT, address_options, address_to_choice,
+    device_row_text, has_revocable, is_device_unpaired, keystore_summary, mobile_status_view, mobile_updates,
+    relay_pair_enabled, revoke_all_prompt, revoke_button_label, revoke_outcome, revoke_prompt, test_push_outcome, test_push_text, validate_mobile,
     visible_devices, window_cap_options, window_cap_to_choice,
 )
 from src.theme import (
     ACCENT, BG, ENTRY_BG, FONT, STATUS_OK, STATUS_WARN, TEXT, TEXT_MUTED, Form, dark_combo,
-    dark_entry, empty_state, px, set_secondary_button_enabled, themed_askyesno,
+    dark_entry, empty_state, px, set_button_text, set_secondary_button_enabled, themed_askyesno,
     themed_showerror,
 )
 from src.time_utils import utc_now_iso
@@ -212,6 +212,10 @@ class MobileTab:
             self._empty.grid()
         self._sync_buttons()
 
+    def _selected_record(self):
+        selected = self._selected_id()
+        return next((r for r in self._rows if r["id"] == selected), None)
+
     def _selected_id(self):
         selection = self._listbox.curselection()
         if not selection or selection[0] >= len(self._rows):
@@ -220,12 +224,13 @@ class MobileTab:
 
     def _sync_buttons(self):
         running = self._service.status.state == "running"
-        has_devices = bool(self._rows)
+        has_devices = has_revocable(self._rows)
         has_selection = self._selected_id() is not None
         set_secondary_button_enabled(self._pair_btn, running and not self._busy)
         if self._relay_btn is not None:
             set_secondary_button_enabled(self._relay_btn, self._relay_pair_possible())
         set_secondary_button_enabled(self._revoke_btn, has_selection and not self._busy)
+        set_button_text(self._revoke_btn, revoke_button_label(self._selected_record()))
         set_secondary_button_enabled(self._revoke_all_btn, has_devices and not self._busy)
         selected = self._selected_id()
         set_secondary_button_enabled(
@@ -275,6 +280,16 @@ class MobileTab:
         device_id = self._selected_id()
         if device_id is None or self._busy:
             return
+        record = self._selected_record()
+        if record is not None and is_device_unpaired(record):
+            # Das Handy hat sich selbst getrennt: es gibt nichts mehr zu widerrufen, nur den
+            # Eintrag zu entfernen (kein Rückfragedialog, der Datensatz ist ohnehin widerrufen).
+            self._busy = True
+            self._sync_buttons()
+            self._runner.run(
+                lambda: revoke_outcome(lambda: self._service.dismiss(device_id)),
+                lambda outcome: self._revoked(outcome, dismissed=True))
+            return
         name = next((r["name"] for r in self._rows if r["id"] == device_id), device_id)
         has_box = device_id in self._relay_states()
         if not themed_askyesno(
@@ -320,7 +335,7 @@ class MobileTab:
         self._runner.run(
             lambda: revoke_outcome(self._service.revoke_all), self._revoked)
 
-    def _revoked(self, outcome):
+    def _revoked(self, outcome, dismissed=False):
         self._busy = False
         if not self._alive:
             return
@@ -328,6 +343,9 @@ class MobileTab:
             self._refresh_devices()
             self._sync_buttons()
             if not outcome["ok"]:
-                themed_showerror(self._dialog, "Widerruf fehlgeschlagen", REVOKE_ERROR_TEXT)
+                if dismissed:
+                    themed_showerror(self._dialog, "Entfernen fehlgeschlagen", DISMISS_ERROR_TEXT)
+                else:
+                    themed_showerror(self._dialog, "Widerruf fehlgeschlagen", REVOKE_ERROR_TEXT)
         except tk.TclError:
             self._alive = False

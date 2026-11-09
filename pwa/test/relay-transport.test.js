@@ -296,3 +296,33 @@ test('an ok from an earlier attempt does not make a later unreachable relay look
   sockets[1].serverClose(1006);                                     // der zweite Versuch kommt nicht einmal an
   await assert.rejects(pending, (error) => error.code === 'relay_unreachable' && error.kind === 'offline');
 });
+
+
+// --- Abmeldung: nur das `ok` des Relays zählt (#499) -----------------------------------------------
+
+test('ackOnly resolves at the ok with 202, sends one put and does not wait for a slot', async () => {
+  const { sockets, run } = setup({ timeoutMs: 2000 });
+  const pending = run({ ackOnly: true });
+  const ws = sockets[0];
+  ws.open();
+  ws.ok(5);
+
+  assert.deepEqual(await pending, { status: 202, json: null });
+  assert.equal(ws.sent.length, 1);
+  assert.equal(ws.closed, true);
+});
+
+test('ackOnly without an ok is still unreachable', async () => {
+  const { run } = setup({ timeoutMs: 40 });
+  await assert.rejects(run({ ackOnly: true }), (error) => error instanceof SyncError && error.kind === 'offline'
+    && error.code === 'relay_unreachable');
+});
+
+test('ackOnly does not advance have by itself (only a slot does)', async () => {
+  const { sockets, run, haves } = setup();
+  const pending = run({ ackOnly: true });
+  sockets[0].open();
+  sockets[0].ok(9);
+  await pending;
+  assert.deepEqual(haves, []);
+});

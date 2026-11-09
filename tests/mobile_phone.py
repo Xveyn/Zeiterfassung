@@ -72,12 +72,20 @@ class Phone:
                        device_id=self.device_id, seq=self.seq,
                        plaintext=json.dumps(SYNC_BODY if body is None else body).encode())
 
-    def open_sync_response(self, envelope: dict[str, Any]) -> dict[str, Any]:
+    def unpair_request(self, *, seq: int | None = None) -> dict[str, Any]:
+        """Die Abmeldung: Pfad `/v1/unpair`, Klartext `{}`; zählt den Zähler hoch wie ein Abgleich."""
+        assert self.key is not None
+        self.seq = self.seq + 1 if seq is None else seq
+        request_key, _ = mc.device_keys(self.key)
+        return mc.seal(request_key, direction="req", method="POST", path="/v1/unpair",
+                       device_id=self.device_id, seq=self.seq, plaintext=b"{}")
+
+    def open_sync_response(self, envelope: dict[str, Any], path: str = "/v1/sync") -> dict[str, Any]:
         """Öffnet eine Antwort (Erfolg oder verschlüsselter Fehler) zur **letzten** Anfrage."""
         assert self.key is not None
         _, response_key = mc.device_keys(self.key)
         plain = mc.open_envelope(response_key, envelope, direction="res", method="POST",
-                                 path="/v1/sync", device_id=self.device_id, seq=self.seq)
+                                 path=path, device_id=self.device_id, seq=self.seq)
         answer = json.loads(plain)
         if isinstance(answer.get("token"), str):
             self.token = answer["token"]

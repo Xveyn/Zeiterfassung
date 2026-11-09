@@ -382,6 +382,8 @@ def build_response(merged: Mapping[str, Any], *, sent_dates: Iterable[str],
         # Welche Einstellungen das Handy schreiben darf — daran erkennt die PWA einen Desktop, der
         # `settings` versteht (Feature-Erkennung; `defaults.category_times` gibt es schon länger).
         "writable_settings": list(mobile_settings.SETTING_KEYS),
+        # Fähigkeit: der Desktop kennt `POST /v1/unpair` (die PWA warnt sonst vor dem Trennen).
+        "unpair": True,
     }
     if reservations is not None:       # nur bei eingeschalteten Reservierungen (Feature-Erkennung)
         response["reservations"] = dict(reservations)

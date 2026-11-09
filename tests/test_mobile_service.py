@@ -1,5 +1,6 @@
 # tests/test_mobile_service.py
 import errno
+import dataclasses
 import http.client
 import json
 import socket
@@ -1078,3 +1079,86 @@ def test_a_failing_pair_failed_hook_does_not_hide_the_original_error(tmp_path, m
             _dispatch_pair(service)
     finally:
         service.shutdown()
+
+
+# --- Abmeldung durch das Handy (#499) ---------------------------------------------------------------
+
+def test_an_unpair_releases_the_key_the_relay_secret_and_the_box(relay):
+    service, ctx, store, calls = relay
+    cleaned = []
+    service.set_box_cleanup(lambda ids: cleaned.append(None if ids is None else list(ids)))
+    ctx.keys.put("phone-aaaa", bytes(range(32)))
+
+    service.context.on_unpaired("phone-aaaa", "phone-aaaa")
+
+    assert ctx.keys.get("phone-aaaa") is None
+    assert calls == [SECRET_A] and store.known_ids() == {"phone-bbbb"}
+    assert cleaned == [["phone-aaaa"]]
+
+
+def test_an_unpair_calls_the_outer_callback_with_id_and_name(tmp_path):
+    seen = []
+    service, _settings, ctx = make_service(tmp_path)
+    outer = dataclasses.replace(ctx, on_unpaired=lambda device_id, name: seen.append((device_id, name)))
+    service = MobileService(_settings, outer, run=sync_run, lan_candidates=lambda: [LOOPBACK])
+
+    service.context.on_unpaired("phone-aaaa", "Pixel")
+
+    assert seen == [("phone-aaaa", "Pixel")]
+
+
+def test_an_unpair_runs_the_cleanup_in_the_worker_not_in_the_caller(tmp_path):
+    jobs = []
+    service, _settings, ctx = make_service(tmp_path, run=lambda fn, on_done=None: jobs.append(fn))
+
+    service.context.on_unpaired("phone-aaaa", "Pixel")
+
+    assert len(jobs) == 1                               # nur eingereiht, noch nicht gelaufen
+
+
+def test_a_failing_cleanup_after_an_unpair_stays_a_log_entry(relay, monkeypatch):
+    service, _ctx, _store, _calls = relay
+    service.set_box_cleanup(lambda ids: (_ for _ in ()).throw(RuntimeError("Relay weg")))
+
+    service.context.on_unpaired("phone-aaaa", "phone-aaaa")           # wirft nicht
+
+
+def test_dismiss_removes_only_device_revoked_records(relay):
+    service, ctx, _store, _calls = relay
+    ctx.devices.save(mobile_pairing.revoke_by_device(ctx.devices.get("phone-aaaa"), utc_now_iso()))
+    ctx.devices.save(mobile_pairing.revoke(ctx.devices.get("phone-bbbb")))
+
+    assert service.dismiss("phone-bbbb") is False        # vom Desktop widerrufen: bleibt
+    assert service.dismiss("unbekannt") is False
+    assert service.dismiss("phone-aaaa") is True
+    assert ctx.devices.get("phone-aaaa") is None and ctx.devices.get("phone-bbbb") is not None
+
+
+def test_dismiss_leaves_an_active_device_alone(relay):
+    service, ctx, _store, _calls = relay
+    assert service.dismiss("phone-aaaa") is False
+    assert ctx.devices.get("phone-aaaa")["revoked"] is False
+
+
+def test_maintaining_the_keys_releases_what_a_device_unpair_left_behind(relay):
+    # Räumte der Dienst nach der Abmeldung nicht auf (beendet, Fehler), holt es der nächste Start nach.
+    service, ctx, store, calls = relay
+    cleaned = []
+    service.set_box_cleanup(lambda ids: cleaned.append(None if ids is None else list(ids)))
+    ctx.keys.put("phone-aaaa", bytes(range(32)))
+    ctx.devices.save(mobile_pairing.revoke_by_device(ctx.devices.get("phone-aaaa"), utc_now_iso()))
+
+    service._maintain_keys()
+
+    assert ctx.keys.get("phone-aaaa") is None
+    assert store.known_ids() == {"phone-bbbb"}                  # das Relay-Geheimnis des getrennten Geräts ist weg
+    assert cleaned and cleaned[-1] is None                      # Boxen widerrufener Geräte werden abgeräumt
+
+
+def test_maintaining_the_keys_keeps_the_key_of_an_active_device(relay):
+    service, ctx, _store, _calls = relay
+    ctx.keys.put("phone-bbbb", bytes(range(32)))
+
+    service._maintain_keys()
+
+    assert ctx.keys.get("phone-bbbb") is not None

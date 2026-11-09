@@ -9,7 +9,7 @@ export const MAX_PAYLOAD = MAX_FRAME - 1;    // Nutzbytes eines `put`
 export const PUTS_PER_MINUTE = 60;           // `LIMITS.putsPerMinute`
 export const TYPE = { put: 1, slot: 2, ok: 3 };
 
-const PATHS = new Set(['/v1/pair', '/v1/sync']);
+const PATHS = new Set(['/v1/pair', '/v1/sync', '/v1/unpair']);
 const TOKEN_RE = /^[\x21-\x7e]{1,512}$/;
 const NONCE_RE = /^[A-Za-z0-9_-]{16}$/;      // 12 Byte Nonce, Base64url ohne Auffüllung
 

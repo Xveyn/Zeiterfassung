@@ -1044,3 +1044,21 @@ test('the lock settings are device-local and default to off with a one-minute de
   await reloaded.load();
   assert.deepEqual([reloaded.getMeta().lock_enabled, reloaded.getMeta().lock_credential, reloaded.getMeta().lock_delay_ms], [true, 'abc', 300000]);
 });
+
+
+// --- Fähigkeit `unpair` (#499) -----------------------------------------------------------------------
+
+test('the capability unpair follows the response and defaults to false', async () => {
+  const { store } = await make();
+  assert.equal(store.getMeta().desktop_unpair, false);
+
+  const live = parseSyncResponse(liveResponse());
+  assert.equal(live.unpair, true);
+  await store.applyResponse(live, emptySnapshot(), '2026-10-08');
+  assert.equal(store.getMeta().desktop_unpair, true);
+
+  const old = parseSyncResponse(frozenResponse());
+  assert.equal(old.unpair, false);
+  await store.applyResponse(old, emptySnapshot(), '2026-10-08');
+  assert.equal(store.getMeta().desktop_unpair, false);
+});

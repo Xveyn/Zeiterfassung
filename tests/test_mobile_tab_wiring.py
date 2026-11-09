@@ -57,8 +57,8 @@ def test_the_tab_never_calls_the_service_writes_in_the_ui_thread():
                      for n in ast.walk(lam)}
     direct = [n for n in ast.walk(tree)
               if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
-              and n.func.attr in ("revoke", "revoke_all") and id(n) not in inside_lambda]
-    assert direct == [], "revoke/revoke_all gehören in den Worker (runner.run)"
+              and n.func.attr in ("revoke", "revoke_all", "dismiss") and id(n) not in inside_lambda]
+    assert direct == [], "revoke/revoke_all/dismiss gehören in den Worker (runner.run)"
     assert "self._service.revoke" in TAB.read_text(encoding="utf-8")
 
 
@@ -110,3 +110,21 @@ def test_the_test_button_goes_through_the_runner_and_the_service():
     assert "self._service.can_test(" in source
     # läuft im Worker, nie im Tk-Callback
     assert "self._runner.run(" in source.split("def _test(self):")[1].split("def _tested")[0]
+
+
+def test_a_device_unpaired_row_is_dismissed_through_the_runner():
+    source = TAB.read_text(encoding="utf-8")
+    assert "is_device_unpaired" in source and "self._service.dismiss(device_id)" in source
+    assert "revoke_button_label" in source
+
+
+def test_the_tab_sets_the_button_text_through_the_theme_helper_not_the_private_label():
+    source = TAB.read_text(encoding="utf-8")
+    assert "set_button_text(self._revoke_btn" in source
+    assert "_revoke_btn._label" not in source
+    assert "has_revocable" in source
+
+
+def test_a_failed_dismiss_does_not_claim_the_device_stays_paired():
+    source = TAB.read_text(encoding="utf-8")
+    assert "DISMISS_ERROR_TEXT" in source and "Entfernen fehlgeschlagen" in source

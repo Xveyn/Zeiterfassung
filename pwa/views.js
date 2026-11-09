@@ -448,6 +448,50 @@ export function confirmDialog({ title, text, confirmLabel }, onConfirm) {
   return openDialog(dialog);
 }
 
+/** Die Rückfrage vor dem Trennen (#499). `dialog.update({ phase, model, error })` zeichnet den Stand neu: `checking` (der
+ *  Abgleich läuft), `ready` (Modell aus `unpairDialogModel`), `running` (nach der Bestätigung: alles gesperrt, nicht mehr
+ *  schließbar, weder per Escape noch per Zurück-Geste), `error` (wie `ready`, mit Fehlertext). „Abbrechen“ hat den Anfangsfokus. */
+export function unpairDialog({ retry, confirm }) {
+  const dialog = h('dialog', { 'aria-labelledby': 'unpair-title', class: 'unpair-dialog' });
+  let phase = 'checking';
+  const body = h('div', {});
+  const cancel = button('Abbrechen', () => dialog.close(), '', { 'data-focus': 'unpair-cancel', autofocus: true });
+  const retryButton = button('Erneut abgleichen', () => retry(), '', { 'data-focus': 'unpair-retry' });
+  const confirmButton = button('Ja, trennen und löschen', () => confirm(), 'primary', { 'data-focus': 'unpair-confirm' });
+  const buttons = h('div', { class: 'buttons' }, retryButton, cancel, confirmButton);
+  // Läuft die Abmeldung schon, ist sie womöglich unterwegs: dann gibt es kein Zurück.
+  dialog.addEventListener('cancel', (event) => { if (phase === 'running') event.preventDefault(); });
+  // Chromium vergibt für ein zweites Escape ohne neue Nutzeraktivierung kein `cancel` mehr, sondern schließt: die Taste selbst abfangen.
+  dialog.addEventListener('keydown', (event) => { if (phase === 'running' && event.key === 'Escape') event.preventDefault(); });
+  dialog.append(h('h2', { id: 'unpair-title' }, 'Dieses Handy trennen?'), body, buttons);
+  dialog.update = ({ phase: next, model = null, error = '' }) => {
+    phase = next;
+    const running = next === 'running';
+    const busy = running || next === 'checking';
+    const lines = [];
+    if (next === 'checking') lines.push(h('p', { class: 'muted', role: 'status' }, 'Gleicht ab …'));
+    if (model) {
+      lines.push(h('div', { class: `hint ${model.summary.kind === 'ok' ? 'ok' : 'warn'}`, role: 'status' }, model.summary.text));
+      if (model.warnDesktop) lines.push(h('div', { class: 'hint warn', role: 'status' }, model.warnDesktop));
+      lines.push(h('ul', { class: 'unpair-folgen' },
+        model.notifiesDesktop && h('li', {}, 'Das Handy wird am Desktop abgemeldet, sobald der Desktop online ist.'),
+        h('li', {}, 'Alle Daten auf diesem Handy werden gelöscht.'),
+        h('li', {}, 'Danach musst du neu koppeln.')));
+    }
+    if (running) lines.push(h('p', { class: 'muted', role: 'status' }, 'Trennt …'));
+    if (error) lines.push(h('div', { class: 'hint error', role: 'alert' }, error));
+    body.replaceChildren(...lines);
+    // Nach einem Fehler beim Löschen kein erneuter Abgleich: ein weiterer `put` ersetzte die schon eingereihte Abmeldung.
+    retryButton.hidden = !(model?.canRetry && next === 'ready');
+    retryButton.disabled = busy;
+    cancel.disabled = running;
+    confirmButton.disabled = busy || !model;
+    if (model) confirmButton.textContent = model.confirmLabel;
+  };
+  dialog.update({ phase });
+  return openDialog(dialog);
+}
+
 export function conflictsDialog(conflicts, handlers) {
   const dialog = h('dialog', { 'aria-labelledby': 'conflicts-title' },
     h('h2', { id: 'conflicts-title' }, 'Konflikte'),
@@ -506,7 +550,17 @@ function connectionPanel({ desktopName, desktop, hint = '', address, transport =
         h('dt', { class: 'muted' }, 'Dauerhafter Speicher'), h('dd', {}, persistent === null ? 'unbekannt' : persistent ? 'ja' : 'nein'),
         h('dt', { class: 'muted' }, 'Verlauf'), h('dd', {}, windowState.text, ' ', resetWindow))),
     h('div', { class: 'buttons' },
-      button('QR neu scannen / Neu koppeln', () => closeThen(() => handlers.pair()), '', { 'data-focus': 'pair' })));
+      button('QR neu scannen / Neu koppeln', () => closeThen(() => handlers.pair()), '', { 'data-focus': 'pair' })),
+    unpairSection({ closeThen, handlers }));
+}
+
+/** Abschnitt „Trennen“ (#499): öffnet nur die Rückfrage, löscht nichts. Der Knopf ist kein Hauptknopf (rot umrandet,
+ *  nicht gefüllt), damit er nicht neben „Neu koppeln“ zum Antippen einlädt. */
+function unpairSection({ closeThen, handlers }) {
+  return h('section', { class: 'unpair' },
+    h('h3', {}, 'Trennen'),
+    h('p', { class: 'muted' }, 'Meldet dieses Handy am Desktop ab und löscht alle Daten auf dem Handy.'),
+    button('Trennen und lokale Daten löschen', () => closeThen(() => handlers.unpair()), 'unpair-open', { 'data-focus': 'unpair-open' }));
 }
 
 /** Abschnitt „Benachrichtigungen“: ein Schalter mit Statuszeile. Der Schalter ruft `handlers.setPush(on)` (in der

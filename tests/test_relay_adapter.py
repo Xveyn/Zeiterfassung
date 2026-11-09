@@ -652,3 +652,30 @@ def test_a_large_non_ascii_envelope_is_not_expanded_before_dispatch(ctx, monkeyp
     assert bodies[0] < len(payload)
     assert res["status"] == 400 and res["body"]["error"]["code"] == "invalid_envelope"
     assert ctx.devices.get(phone.device_id)["last_seq"] == 0
+
+
+# --- Abmeldung (#499) ---------------------------------------------------------------------------
+
+def test_an_unpair_request_is_answered_and_revokes_the_device(ctx):
+    adapter = RelayAdapter(ctx)
+    phone = paired(ctx, adapter)
+    envelope = phone.unpair_request()
+
+    res = answer(adapter.handle(frame("/v1/unpair", phone.token, envelope)))
+    opened = phone.open_sync_response(res["body"], "/v1/unpair")
+
+    assert res["status"] == 200 and res["seq"] == envelope["seq"] and res["n"] == envelope["n"]
+    assert opened == {"ok": True}
+    stored = ctx.devices.get(phone.device_id)
+    assert stored["revoked"] is True and stored["revoked_by"] == "device"
+
+
+def test_an_unpair_request_after_the_revocation_is_answered_token_revoked(ctx):
+    adapter = RelayAdapter(ctx)
+    phone = paired(ctx, adapter)
+    payload = frame("/v1/unpair", phone.token, phone.unpair_request())
+    assert answer(adapter.handle(payload))["status"] == 200
+
+    again = answer(adapter.handle(payload))             # die Box stellt die Anfrage erneut zu
+
+    assert again["status"] == 401 and again["body"]["error"]["code"] == "token_revoked"

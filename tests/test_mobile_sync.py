@@ -194,7 +194,7 @@ def test_the_response_carries_the_protocol_fields_and_no_token():
         "window_days": 90, "window_ahead_days": 14, "window_max_days": 365, "entries": {},
         "conflicts": [], "categories": ["Projekt"],
         "defaults": DEFAULTS, "desktop": DESKTOP,
-        "writable_settings": ["categories", "category_times"]}
+        "writable_settings": ["categories", "category_times"], "unpair": True}
 
 
 def test_the_window_is_today_minus_90_days_through_today_plus_14_days():
@@ -917,3 +917,7 @@ def test_the_reminders_block_follows_the_settings_after_applying(env):
 
 def test_build_response_leaves_the_block_out_when_none_is_given():
     assert "reminders" not in respond({})
+
+
+def test_every_response_announces_the_unpair_capability(env):
+    assert run(env, {})["unpair"] is True

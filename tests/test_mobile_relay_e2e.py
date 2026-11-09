@@ -67,6 +67,15 @@ class FakeBox:
         self.results: list[RelayResult] = []
         self.lose_next_response = False
         self.wipe_when_lost = False
+        self.desktop_offline = False                 # `put` wird bestätigt, aber nicht verarbeitet
+        self.pending: list[bytes] = []
+
+    def connect_desktop(self) -> None:
+        """Der Desktop verbindet sich und holt, was im `req`-Slot liegt (`have` des Desktops ist 0)."""
+        self.desktop_offline = False
+        for payload in self.pending:
+            self.results.append(self.adapter.process(payload))
+        self.pending.clear()
 
     def preload_foreign_response(self) -> None:
         """Im Slot liegt die Antwort auf eine **andere** Anfrage (fremde Nonce)."""
@@ -86,6 +95,10 @@ class FakeBox:
         self.puts.append(payload)
         self.req_ver += 1
         yield {"deliver": [{"type": "ok", "ver": self.req_ver}], "close": None, "more": True}
+        if self.desktop_offline:
+            self.pending = [payload]                  # ein Slot: das neueste `put` ersetzt das vorige
+            yield {"deliver": [], "close": None}
+            return
         result = self.adapter.process(payload)
         self.results.append(result)
         if result.frame is None:
@@ -390,3 +403,32 @@ def test_a_foreign_answer_delivered_on_connect_is_skipped(world):
     state = world.phone.call("state")
     assert state["pending"] == 0
     assert state["box_have"] == world.box.res_ver > foreign_ver     # `have` rückte auch über das fremde `slot` vor
+
+
+# --- Abmeldung (#499) ---------------------------------------------------------------------------------
+
+def test_an_unpair_sent_while_the_desktop_is_offline_is_picked_up_when_it_connects(world):
+    paired(world)
+    world.box.desktop_offline = True
+
+    result = world.phone.call("unpair")
+
+    assert result == {"state": "queued"}
+    (record,) = world.ctx.devices.get_all()
+    assert record["revoked"] is False and world.calls == []        # der Desktop weiß noch nichts
+
+    world.box.connect_desktop()
+
+    (record,) = world.ctx.devices.get_all()
+    assert record["revoked"] is True and record["revoked_by"] == "device"
+    assert world.calls == ["/v1/unpair"]
+
+
+def test_an_unpair_with_the_desktop_online_is_processed_at_once_and_answered(world):
+    paired(world)
+
+    assert world.phone.call("unpair") == {"state": "queued"}
+
+    (record,) = world.ctx.devices.get_all()
+    assert record["revoked_by"] == "device"
+    assert world.box.results[-1].frame is not None

@@ -47,6 +47,7 @@ const DEFAULT_META = Object.freeze({
   lock_delay_ms: 60000,    // Frist nach dem Verlassen der App, vor der gesperrt wird (0, 1 Minute, 5 Minuten)
   reservations_enabled: false, // Desktop bietet Reservierungen an (Feld in der Antwort); fehlt es, bleibt alles verborgen
   reservation_pause: false,   // Desktop versteht `pause` an Reservierungs-Slots (Feld `reservation_pause`, #455); sonst geht sie nie auf den Draht
+  desktop_unpair: false,      // Desktop kennt `POST /v1/unpair` (Feld `unpair` der Antwort, #499); sonst warnt die Rückfrage vor dem Trennen
   settings_writable: false,   // Desktop versteht `settings` (Feld `writable_settings` in der Antwort); sonst ist das Bearbeiten aus
   reminders: null,            // Block `reminders` der letzten Antwort (#331); null = Desktop kennt ihn nicht
   push_enabled: false,        // Benachrichtigungen in diesem Gerät eingeschaltet (#331); die Erlaubnis selbst liegt im Browser
@@ -88,6 +89,13 @@ export class Store {
     this._days = new Map();
     this._reservations = new Map();
     this._meta = structuredClone(DEFAULT_META);
+  }
+
+  /** Ab jetzt schreibt dieser Store nichts mehr (Trennen, #499): `setMeta` und alle anderen Schreibwege legten sonst
+   *  nach dem `wipe()` die ganze Meta (Schlüssel, Token) aus dem Speicher zurück in die Datenbank, etwa ein
+   *  Zeitplan-Versand, der erst jetzt fertig wird. Gelesen wird weiter nichts: der Store gilt als verworfen. */
+  freeze() {
+    this._adapter = { getAll: async () => [], batch: async () => {} };
   }
 
   /** Liest alles aus dem Adapter. Unbrauchbare Datensätze werden übersprungen, nie geworfen:
@@ -548,6 +556,7 @@ export class Store {
       // Desktop vorübergehend aus), bleibt das Flag stehen — sonst ginge eine dirty Pause beim Wiedereinschalten
       // ohne Pause hinaus und käme als 0 zurück.
       reservation_pause: parsed.reservations != null ? parsed.reservation_pause === true : this._meta.reservation_pause,
+      desktop_unpair: parsed.unpair === true,
       last_pull_at: parsed.last_pull_at,
       server_time: parsed.server_time,
       settings_writable: Array.isArray(parsed.writable_settings)

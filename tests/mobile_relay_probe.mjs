@@ -122,6 +122,7 @@ const handlers = {
   async sync() {
     try { return await client.sync(); } catch (error) { return failed(error); }
   },
+  async unpair() { return client.unpair(); },
   async state() { return state(); },
 };
 

@@ -136,6 +136,7 @@ export function parseSyncResponse(raw) {
     categories: [...raw.categories], token: raw.token, expires_at: raw.expires_at,
     defaults: parseDefaults(raw.defaults), desktop: parseDesktopInfo(raw.desktop),
     reservations: parseReservations(raw.reservations), reservation_pause: raw.reservation_pause === true,
+    unpair: raw.unpair === true,
     reminders: parseReminders(raw.reminders),
     writable_settings: Array.isArray(raw.writable_settings) ? raw.writable_settings.filter((key) => typeof key === 'string') : [],
   };
@@ -166,11 +167,12 @@ export class SyncClient {
     };
     this._locks = locks;
     this._running = null;
+    this._unpairing = null;
   }
 
-  async _request(method, path, endpoint, { token = null, body = null, openError = null } = {}) {
+  async _request(method, path, endpoint, { token = null, body = null, openError = null, ackOnly = false } = {}) {
     const transport = this._transports[endpoint.kind];
-    const { status, json } = await transport.exchange({ method, path, token, body, endpoint });
+    const { status, json } = await transport.exchange({ method, path, token, body, endpoint, ackOnly });
     if (status < 200 || status > 299) {
       // Fehler nach dem Entschlüsseln gehen verschlüsselt zurück: erst öffnen, dann einordnen.
       throw classifyHttpError(status, openError ? await openError(json) : json);
@@ -183,7 +185,7 @@ export class SyncClient {
    *  Liefert den entschlüsselten Klartext (Objekt) der Erfolgsantwort; ein Fehler-Umschlag wird
    *  geöffnet und als `SyncError` geworfen. Was nicht zu öffnen ist, ist `crypto` — nie ein
    *  Klartext, dem man glauben dürfte. */
-  async _sealedPost(path, endpoint, { token, requestKey, responseKey, aadRequest, aadResponse, seq, payload }) {
+  async _sealedPost(path, endpoint, { token, requestKey, responseKey, aadRequest, aadResponse, seq, payload, ackOnly = false }) {
     const envelope = await seal(requestKey, {
       direction: 'req', method: 'POST', path, deviceId: aadRequest, seq,
       plaintext: new TextEncoder().encode(JSON.stringify(payload)),
@@ -210,7 +212,8 @@ export class SyncClient {
       }
       return json;                                     // Fehler vor dem Entschlüsseln: nur der Grund
     };
-    const answer = await this._request('POST', path, endpoint, { token, body: envelope, openError });
+    const answer = await this._request('POST', path, endpoint, { token, body: envelope, openError, ackOnly });
+    if (ackOnly) return null;                          // nur das `ok` des Relays: es gibt keine Antwort zu öffnen
     if (!isEnvelope(answer)) throw protocolError('Die Antwort des Desktops ist nicht verschlüsselt.');
     return open(answer);
   }
@@ -316,11 +319,48 @@ export class SyncClient {
    *  sendete sonst denselben Zähler (`409 replay` → „neu koppeln“) und schriebe Zähler und Token des
    *  anderen zurück (#277). Ohne Web Locks (ältere Browser, Tests) bleibt es beim bisherigen Ablauf. */
   async _runExclusive() {
-    if (!this._locks) return this._run();
+    return this._exclusive(() => this._run());
+  }
+
+  async _exclusive(work) {
+    if (!this._locks) return work();
     return this._locks.request(SYNC_LOCK, async () => {
       await this._store.load();
-      return this._run();
+      return work();
     });
+  }
+
+  /** Meldet dieses Handy beim Desktop ab (#499). Wirft nie: `sent` (LAN, der Desktop hat geantwortet),
+   *  `queued` (Relay, die Anfrage liegt in der Box) oder `failed` (alles andere, auch ein älterer Desktop
+   *  ohne die Route). Gleichzeitige Aufrufe teilen sich EINEN Versuch; er läuft unter der Sperre des
+   *  Abgleichs und zählt `seq` wie dieser, vor dem Senden. Nach einer Abmeldung darf kein Abgleich mehr
+   *  folgen: ein weiteres `put` ersetzte den Slot, bevor der Desktop ihn abgeholt hat. */
+  unpair() {
+    if (!this._unpairing) {
+      this._unpairing = this._exclusive(() => this._unpairOnce())
+        .catch(() => ({ state: 'failed' }))
+        .finally(() => { this._unpairing = null; });
+    }
+    return this._unpairing;
+  }
+
+  async _unpairOnce() {
+    const meta = this._store.getMeta();
+    if (!isPaired(meta) || !KEY_RE.test(meta.key || '')) return { state: 'failed' };
+    const seq = meta.seq + 1;
+    await this._store.setMeta({ seq });
+    const [requestKey, responseKey] = await deviceKeys(b64d(meta.key));
+    const endpoint = this._endpoint(meta);
+    const relay = endpoint.kind === 'relay';
+    try {
+      await this._sealedPost('/v1/unpair', endpoint, {
+        token: meta.token, requestKey, responseKey, aadRequest: meta.device_id, aadResponse: meta.device_id,
+        seq, payload: {}, ackOnly: relay });
+    } catch {
+      // Jeder Grund (Netz, 401, 404, Zeitüberschreitung) heißt für den Aufrufer dasselbe: der Desktop erfährt es nicht.
+      return { state: 'failed' };
+    }
+    return { state: relay ? 'queued' : 'sent' };
   }
 
   _pairingChanged(meta) {

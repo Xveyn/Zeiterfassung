@@ -94,10 +94,12 @@ class MobileService:
         # Entfernen, Neustart) koppelt und gleicht keine Route mehr ab.
         self._on_paired_outer = context.on_paired
         self._on_pair_failed_outer = context.on_pair_failed
+        self._on_unpaired_outer = context.on_unpaired
         self._pair_failures = 0
         self._context = dataclasses.replace(context, closing=lambda: self._closed,
                                             on_paired=self._on_paired,
-                                            on_pair_failed=self._on_pair_failed)
+                                            on_pair_failed=self._on_pair_failed,
+                                            on_unpaired=self._on_unpaired)
         self._run = run
         self._on_status = on_status
         self._lan_candidates = lan_candidates
@@ -158,14 +160,17 @@ class MobileService:
         else:
             # Geräteliste und Abräum-Liste unter der Gerätesperre: ein Handy, das gerade koppelt
             # (Schlüssel vor Datensatz, ebenfalls unter ihr), verliert sonst seinen frischen Schlüssel (#277).
+            # Nur aktive Geräte behalten ihren Schlüssel: der eines widerrufenen ist nutzlos, und blieb er nach
+            # einer Abmeldung durch das Handy liegen (Dienst beendet, Fehler), holt dieser Lauf das Aufräumen nach.
             steps.insert(0, ("retain", lambda: keys.retain(
-                lambda: [r["id"] for r in self._context.devices.get_all()],
+                lambda: [r["id"] for r in self._context.devices.get_all() if not r.get("revoked")],
                 snapshot_lock=self._context.devices_lock)))
             relay_store = self._context.relay_store
             if relay_store is not None:
                 # Geheimnisse vergessener Geräte lokal weg; ihre Relay-Objekte verfallen dort nach 90 Tagen.
                 steps.append(("relay", lambda: relay_store.retain(
-                    [r["id"] for r in self._context.devices.get_all()])))
+                    [r["id"] for r in self._context.devices.get_all() if not r.get("revoked")])))
+            steps.append(("boxes", lambda: self._clean_boxes(None)))
         for name, step in steps:
             if self._closed:
                 return
@@ -332,11 +337,42 @@ class MobileService:
             if record is None:
                 return False
             self._context.devices.save(mobile_pairing.revoke(record))
-        # Außerhalb der Gerätesperre: der Schlüsselbund kann blockieren (Worker).
+        self._release_device(device_id)
+        return True
+
+    def _release_device(self, device_id: str) -> None:
+        """Gibt ab, was ein widerrufenes Gerät noch hält: Schlüssel, Relay-Objekt samt lokalem
+        Geheimnis, Relay-Box. Außerhalb der Gerätesperre: der Schlüsselbund kann blockieren (Worker)."""
         self._context.keys.remove(device_id)
         self._drop_relay_objects(lambda store: {device_id: secret}
                                  if (secret := store.remove(device_id)) else {})
         self._clean_boxes([device_id])
+
+    def _on_unpaired(self, device_id: str, name: str) -> None:
+        """Nach einer Abmeldung durch das Handy (Server-/Relay-Thread, außerhalb der Sperren): das
+        Aufräumen läuft im Worker, die Meldung an die UI gleich. Der Widerruf ist geschrieben und
+        die Antwort gebaut; ein Fehler hier bleibt ein Logeintrag."""
+        self._run(lambda: self._release_after_unpair(device_id))
+        self._on_unpaired_outer(device_id, name)
+
+    def _release_after_unpair(self, device_id: str) -> None:
+        if self._closed:
+            return
+        try:
+            self._release_device(device_id)
+        except Exception as exc:
+            # Nur der Typ: der Text könnte ein Geheimnis tragen.
+            _log.warning("Handy-Abmeldung: Aufräumen fehlgeschlagen (%s)", type(exc).__name__)
+
+    def dismiss(self, device_id: str) -> bool:
+        """Entfernt den Eintrag eines Geräts, das sich selbst getrennt hat (#499). Nur solche:
+        ein vom Desktop widerrufener Datensatz bleibt, an ihm erkennt das Koppel-Fenster eine
+        Neukopplung. `False`, wenn es das Gerät nicht gibt oder es nicht so getrennt wurde."""
+        with self._context.devices_lock:
+            records = self._context.devices.get_all()
+            if not any(r["id"] == device_id and r.get("revoked_by") == "device" for r in records):
+                return False
+            self._context.devices.replace_all([r for r in records if r["id"] != device_id])
         return True
 
     def revoke_all(self) -> int:

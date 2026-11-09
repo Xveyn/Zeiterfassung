@@ -329,3 +329,24 @@ test('the privacy link of the setup screen is grey, so the main button is the on
 test('the scrollbar gutter stays reserved, so the page does not jump sideways when content grows past the screen', () => {
   assert.match(rule('html'), /scrollbar-gutter:\s*stable/);
 });
+
+// --- Trennen (#499) ---------------------------------------------------------------------------------------
+
+test('the unpair section is no main button: outlined in the accent, text in the text token, never filled', () => {
+  const open = rule('.unpair button.unpair-open');
+  assert.match(open, /border:\s*1px solid var\(--accent\)/);
+  assert.match(open, /color:\s*var\(--accent-text\)/);
+  assert.match(open, /background:\s*none/);
+  assert.doesNotMatch(open, /opacity/);
+});
+
+test('the unpair rules use no opacity and hover only where there is a hover', () => {
+  const rules = [...css.matchAll(/(^|\n)(\.unpair[^{]*)\{([^}]*)\}/g)];
+  assert.ok(rules.length >= 4, 'the unpair rules exist');
+  for (const [, , selector, body] of rules) assert.doesNotMatch(body, /opacity/, selector);
+  assert.match(css, /@media \(hover: hover\) \{\n  \.unpair button\.unpair-open:hover/);
+});
+
+test('a green hint border exists for the all-synced summary of the unpair dialog', () => {
+  assert.match(css, /\.hint\.ok \{ border-color: var\(--ok\); \}/);
+});

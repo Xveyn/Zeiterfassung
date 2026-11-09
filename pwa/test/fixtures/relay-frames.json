@@ -83,6 +83,16 @@
       "n": "AAECAwQFBgcICQoL"
     },
     {
+      "name": "unpair with token and envelope",
+      "json": "{\"v\":1,\"path\":\"/v1/unpair\",\"token\":\"Zm9vYmFyYmF6cXV4Zm9vYmFyYmF6cXV4Zm9vYmFyYmE\",\"envelope\":{\"v\":2,\"seq\":7,\"n\":\"AAECAwQFBgcICQoL\",\"c\":\"q83vASNFZ4mrze8BI0VniQ\"}}",
+      "ok": true,
+      "canonical": true,
+      "path": "/v1/unpair",
+      "token": "Zm9vYmFyYmF6cXV4Zm9vYmFyYmF6cXV4Zm9vYmFyYmE",
+      "seq": 7,
+      "n": "AAECAwQFBgcICQoL"
+    },
+    {
       "name": "pair with null token",
       "json": "{\"v\":1,\"path\":\"/v1/pair\",\"token\":null,\"envelope\":{\"v\":2,\"seq\":1,\"n\":\"AAECAwQFBgcICQoL\",\"c\":\"q83vASNFZ4mrze8BI0VniQ\"}}",
       "ok": true,

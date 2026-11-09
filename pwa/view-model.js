@@ -598,6 +598,37 @@ export function connectionSummary({ online, desktopName, lastSyncAt, tokenUntil,
   return { pill: online ? 'Verbunden' : 'Offline', kind: online ? 'ok' : 'warn', name: desktopName || 'Desktop', detail: parts.join(' · ') };
 }
 
+/** Hat der Abgleich vor dem Trennen den Desktop erreicht? Ja, wenn er mit einem Status geantwortet hat (auch mit
+ *  einem Fehler wie „beschäftigt“ oder „Uhr weicht ab“: die Abmeldung käme an) und wenn der Relay die Anfrage
+ *  angenommen hat, der Desktop aber schweigt (`desktop_silent`: sie liegt dann in der Box). Nein bei keiner Antwort
+ *  und wenn die Antwort sagt, dass das Token nicht mehr gilt: dann widerrüfe der Desktop nichts. */
+export function reachedAfterSyncError(error) {
+  if (!error || typeof error !== 'object') return false;
+  if (error.kind === 'desktop_silent') return true;
+  if (error.code === 'token_expired' || error.code === 'token_revoked') return false;
+  return Number.isInteger(error.status) && error.status > 0;
+}
+
+/** Die Rückfrage vor „Trennen und lokale Daten löschen“ (#499). `reached`: der Abgleich davor hat den Desktop erreicht
+ *  (LAN) oder der Relay hat die Anfrage angenommen (auch wenn der Desktop schwieg: die Abmeldung liegt dann in der Box);
+ *  `openDays`: danach noch nicht übertragene Tage; `desktopUnpair`: der Desktop kennt die Abmeldung. Der Desktop erfährt
+ *  vom Trennen nur, wenn er sie kennt und der Weg dorthin offen war. Fehlt eine Angabe, gilt die vorsichtige Lesart. */
+export function unpairDialogModel({ reached, openDays = 0, desktopUnpair = false } = {}) {
+  const open = Number.isInteger(openDays) && openDays > 0 ? openDays : 0;
+  const summary = open > 0
+    ? { kind: 'warn', text: open === 1 ? '1 Änderung ist noch nicht am Desktop.' : `${open} Änderungen sind noch nicht am Desktop.` }
+    : { kind: 'ok', text: 'Alle Tage sind am Desktop gesichert.' };
+  const notifiesDesktop = desktopUnpair === true && reached === true;
+  return {
+    summary,
+    notifiesDesktop,
+    warnDesktop: notifiesDesktop ? null
+      : 'Der Desktop erfährt nichts vom Trennen. Das Gerät bleibt dort in der Liste, bis du es unter Einstellungen → Mobil entfernst oder widerrufst.',
+    canRetry: open > 0,
+    confirmLabel: open > 0 ? 'Trotzdem löschen' : 'Ja, trennen und löschen',
+  };
+}
+
 /** Warnung im Reiter „Verbindung“, wenn der Browser die Daten nicht dauerhaft sichert (`persistent === false`);
  *  `refused`: die erneute Anfrage wurde abgelehnt, dann gibt es keinen Knopf mehr. */
 export function storageNotice(persistent, { refused = false } = {}) {

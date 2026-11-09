@@ -314,3 +314,14 @@ dialog[open]::backdrop { animation: backdrop-in .18s ease-out; }
 .setup-more .alt .chev { color: var(--muted); }
 .setup-foot { text-align: center; font-size: .8rem; color: var(--muted); margin-top: 16px; }
 .setup-foot a { color: var(--muted); }
+
+/* Trennen und lokale Daten löschen (#499): kein Hauptknopf, nur rot umrandet; die Rückfrage trägt die Farben der Hinweise. */
+.unpair { margin-top: 24px; padding-top: 12px; border-top: 1px solid #2a3a5a; }
+.unpair h3 { font-size: 1rem; margin: 0 0 4px; }
+.unpair button.unpair-open { background: none; border: 1px solid var(--accent); color: var(--accent-text); width: 100%; }
+@media (hover: hover) {
+  .unpair button.unpair-open:hover { background: var(--cell); }
+}
+.hint.ok { border-color: var(--ok); }
+.unpair-dialog .unpair-folgen { margin: 0 0 8px; padding-left: 20px; }
+.unpair-dialog .unpair-folgen li { margin-bottom: 4px; }

@@ -27,14 +27,15 @@ import { shouldApplyUpdate, shouldCheckForUpdate } from './update-policy.js';
 import { blockSignature, rowsToBlock } from './categories.js';
 import {
   categoriesModel, conflictsModel, connectionLabel, dayChanged, dayTitle, desktopHint, editLock, editorRows, focusKeyToRestore, hintsModel, olderModel, pushModel, reservationRows,
-  iosInstallHint, isSetupPhase, pairingAfterBack, reservationRowsToSlots, rowsToSlots, setupModel, statusModel, validateReservationRows, validateRows, weekModel,
+  iosInstallHint, isSetupPhase, pairingAfterBack, reservationRowsToSlots, rowsToSlots, setupModel, statusModel, reachedAfterSyncError, unpairDialogModel, validateReservationRows, validateRows, weekModel,
 } from './view-model.js';
 import { BUILD, CACHE_PREFIX } from './sw-core.js';
 import { describeRepair, repairServiceWorker } from './sw-repair.js';
+import { createUnpairRunner } from './unpair.js';
 import { clear, focusByKey, focusState, h } from './dom.js';
 import {
   conflictsDialog, confirmDialog, editorDialog, fatalView, hintsHost, pairView,
-  lockDialog, patchHints, scanDialog, settingsDialog, statusBar, vaultView, weekView,
+  lockDialog, patchHints, scanDialog, settingsDialog, statusBar, unpairDialog, vaultView, weekView,
 } from './views.js';
 import { canScan, scanForPairLink } from './scanner.js';
 import { browserKind, isStandalone } from './browser-policy.js';
@@ -47,11 +48,16 @@ import {
 const LOCK_LEFT_KEY = 'zeiterfassung-lock-left-at';   // wann die entsperrte Seite zuletzt verlassen wurde (nur dieser Tab)
 const SAVE_SYNC_DELAY_MS = 2000;
 const SWIPE_CLICK_GUARD_MS = 400;
+const PUSH_JOB_WAIT_MS = 3000;          // so lange wartet das Trennen auf einen laufenden Zeitplan-Versand
 
 class App {
-  constructor(root, store, client, initialHash = location.hash, { resetLocalData = async () => {} } = {}) {
+  constructor(root, store, client, initialHash = location.hash,
+    { resetLocalData = async () => {}, wipeLocalData = async () => {}, reload = () => location.reload() } = {}) {
     this.initialHash = initialHash;
     this.resetLocalData = resetLocalData;       // löscht alle lokalen Daten und lädt neu (Notausgang der Sperre)
+    this.wipeLocalData = wipeLocalData;         // nur das Löschen, wirft bei einem Fehler (Trennen, #499)
+    this.reload = reload;
+    this.unpairing = false;                     // ab der Bestätigung geht nichts mehr an den Desktop (ein `put` ersetzte die Abmeldung)
     // Vor allem anderen: ab hier landet jedes `logFailure` auch im Protokoll.
     this.debugLog = createDebugLog({ store: idbLogStore() });
     setLogSink((context, error) => this.debugLog.recordError(context, error));
@@ -80,7 +86,9 @@ class App {
     this.saveTimer = null;
     this.pushTimer = null;
     this.pushBusy = false;
+    this.pushJob = null;                   // läuft `updatePushSchedule`, dessen Ende (Trennen wartet darauf)
     this.lockElement = null;               // die Sperre (#490) liegt als Dialog über allem
+    this.lockSlot = createSessionSlot(() => sessionStorage, LOCK_LEFT_KEY);
     this.lockCtl = createLockController({
       getMeta: () => this.store.getMeta(),
       now: () => Date.now(),
@@ -88,7 +96,7 @@ class App {
       onLock: () => this.showLock(),
       onUnlock: (day) => this.afterUnlock(day),
       // Ein Neuladen (Wischen zum Aktualisieren) innerhalb der Frist fragt nicht erneut; `sessionStorage` gilt je Tab.
-      session: createSessionSlot(() => sessionStorage, LOCK_LEFT_KEY),
+      session: this.lockSlot,
     });
     this.lockSupportState = { available: false, reason: 'pending' };
     this.pushError = null;
@@ -320,11 +328,65 @@ class App {
     }
   }
 
+  // --- Trennen (#499) ------------------------------------------------------------------------------
+
+  /** Die Rückfrage vor „Trennen und lokale Daten löschen“. Beim Öffnen läuft immer ein Abgleich (im WLAN die einzige
+   *  Erreichbarkeitsprüfung, außerdem frischt er die Fähigkeit des Desktops auf); ein laufender wird abgewartet. Erst
+   *  „Ja, trennen und löschen“ führt aus: Abmeldung, Push, Sitzungsmerker, Protokoll, `wipe()`, Neuladen. */
+  openUnpair() {
+    let dialog;
+    let model = null;
+    const runner = createUnpairRunner({
+      notifyDesktop: async () => (await this.client.unpair()).state,
+      disablePush: () => this.disablePush(),
+      clearSession: () => this.lockSlot.write(null),
+      clearDebug: async () => { if (!(await this.debugLog.clear())) throw new Error('Protokoll nicht geleert'); },
+      wipe: async () => { await this.wipeLocalData(); this.store.freeze(); },
+      reload: () => this.reload(),
+      // Der Schritt steht im Text: `logFailure` verlangt ein festes Wort als Kontext, die Schrittnamen sind feste Wörter.
+      log: (step, error) => logFailure('Trennen und lokale Daten löschen', new Error(`${step}: ${errorDetail(error)}`)),
+    });
+    const check = async () => {
+      dialog.update({ phase: 'checking' });
+      // Erreicht heißt: der Desktop hat geantwortet, oder der Relay hat die Anfrage angenommen und nur der Desktop
+      // schweigt (`desktop_silent`): dann läge die Abmeldung in der Box. Alles andere (Relay oder Desktop nicht
+      // erreichbar, Fehler am Handy) lässt sie verloren gehen. Der Grund des Scheiterns bleibt unprotokolliert: der
+      // Abgleich läuft hier am normalen Weg (Reiter, Debug-Protokoll) vorbei, die Rückfrage braucht nur „erreicht oder nicht“.
+      let reached = true;
+      try {
+        const result = await this.client.sync();
+        reached = !result.discarded;
+      } catch (error) {
+        reached = reachedAfterSyncError(error);
+      }
+      const meta = this.store.getMeta();
+      model = unpairDialogModel({ reached, openDays: this.store.pendingCount(), desktopUnpair: meta.desktop_unpair });
+      dialog.update({ phase: 'ready', model });
+    };
+    const confirm = async () => {
+      this.unpairing = true;
+      clearTimeout(this.saveTimer);
+      clearTimeout(this.pushTimer);
+      dialog.update({ phase: 'running', model });
+      // Ein laufender Zeitplan-Versand legte das Relay-Objekt nach dem Löschen neu an und schriebe Meta in den geleerten Vault.
+      if (this.pushJob) await Promise.race([this.pushJob, new Promise((resolve) => setTimeout(resolve, PUSH_JOB_WAIT_MS))]);
+      const result = await runner();
+      if (!result.ok) {
+        // `unpairing` bleibt gesetzt: die Abmeldung liegt womöglich schon in der Box, ein weiterer Abgleich ersetzte sie.
+        dialog.update({ phase: 'error', model,
+          error: 'Die lokalen Daten ließen sich nicht löschen. Bitte erneut versuchen.' });
+      }
+    };
+    dialog = unpairDialog({ retry: check, confirm });
+    check();
+    return dialog;
+  }
+
   async disablePush() {
     this.pushError = null;
     const { relay_secret: secret } = this.store.getMeta();
     try {
-      (await this.subscription())?.unsubscribe();
+      await (await this.subscription())?.unsubscribe();
       if (secret) await this.relay.deleteDevice(secret);
     } catch (error) {
       // Ein nicht erreichbarer Relay lässt das Objekt dort stehen; es räumt sich nach 90 Tagen selbst auf.
@@ -343,8 +405,10 @@ class App {
   /** Plan neu berechnen und, wenn er sich geändert hat, verschlüsselt an den Relay schicken. Scheitert
    *  der Relay, bleibt es ein Hinweis im Reiter: Speichern und Abgleich laufen unabhängig davon. */
   async updatePushSchedule() {
-    if (this.pushBusy) return;
+    if (this.pushBusy || this.unpairing) return;
     this.pushBusy = true;
+    let release;
+    this.pushJob = new Promise((resolve) => { release = resolve; });     // `openUnpair` wartet darauf, bevor es löscht
     try {
       const meta = this.store.getMeta();
       const state = await this.pushState();
@@ -364,7 +428,9 @@ class App {
       const subscription = await this.subscription();
       const blobs = [];
       for (const item of items) blobs.push({ id: item.id, fire_at: utcStamp(item.fireAt), blob: await seal(this.keys, messageFor(item)) });
+      if (this.unpairing) return;                          // inzwischen getrennt: kein Relay-Objekt neu anlegen
       await syncSchedule({ client: this.relay, secret: meta.relay_secret, subscription: subscription.toJSON(), items: blobs });
+      if (this.unpairing) return;
       await this.store.setMeta({ push_signature: plan, push_sent_at: now });
       this.pushError = null;
     } catch (error) {
@@ -372,6 +438,7 @@ class App {
       this.pushError = error instanceof RelayError ? error.message : withDetail('Der Zeitplan für die Benachrichtigungen ließ sich nicht senden.', error);
     } finally {
       this.pushBusy = false;
+      release();
     }
   }
 
@@ -445,6 +512,7 @@ class App {
   // --- Abgleich ----------------------------------------------------------------------------------
 
   trigger(name) {
+    if (this.unpairing) return;
     const allowed = shouldSync({
       trigger: name, paired: this.paired, syncing: this.syncing, online: this.online,
       now: Date.now(), lastAttemptAt: this.lastAttemptAt, lastError: this.lastError,
@@ -792,6 +860,7 @@ class App {
         if (on) await this.enablePush(); else await this.disablePush();
         return this.pushModelNow();
       },
+      unpair: () => this.openUnpair(),
       createLock: () => this.createLock(),
       confirmLock: (id) => this.confirmLock(id),
       removeLock: () => this.removeLock(),
@@ -1081,7 +1150,8 @@ async function main() {
       logFailure('Vorhandene Daten verschlüsseln', error);       // kein Grund, die App nicht zu starten: es bleibt Klartext
     }
   }
-  await new App(root, store, new SyncClient({ store }), startHash, { resetLocalData }).start();
+  await new App(root, store, new SyncClient({ store }), startHash,
+    { resetLocalData, wipeLocalData: () => vault.wipe() }).start();
 }
 
 main();

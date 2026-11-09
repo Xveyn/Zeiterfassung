@@ -46,7 +46,7 @@ MAX_SEQ: Final[int] = 2**53 - 1
 BOX_SECRET_RE: Final[re.Pattern[str]] = re.compile(r"[A-Za-z0-9_-]{43}")
 _TOKEN_RE: Final[re.Pattern[str]] = re.compile(r"[\x21-\x7e]{1,512}")
 _NONCE_RE: Final[re.Pattern[str]] = re.compile(r"[A-Za-z0-9_-]{16}")   # 12 Byte, Base64url
-_PATHS: Final[frozenset[str]] = frozenset({"/v1/pair", "/v1/sync"})
+_PATHS: Final[frozenset[str]] = frozenset({"/v1/pair", "/v1/sync", "/v1/unpair"})
 TOO_LARGE_CODE: Final[str] = "response_too_large"
 TOO_LARGE_MESSAGE: Final[str] = (
     "Die Antwort des Desktops ist zu groß für den Relay. "
