@@ -615,11 +615,12 @@ läuft.
   Massenanlegen von Geräten ab. Viele verteilte Adressen können das Tageslimit von 100.000 Anfragen trotzdem
   aufbrauchen; dann antwortet der Relay nicht mehr, bis der Tag um ist. Ein Gerät belegt höchstens rund
   235 KB (200 Einträge mit vollem Text, `relay/src/validate.js`), verwaiste verfallen nach 90 Tagen.
-- **Push auf iOS ist geprüft, auf Firefox nicht.** Der Zeitplan entsteht in der PWA aus dem Abgleich mit
-  dem Desktop (Reservierungen, Sende-Zeitpunkte). Im WLAN geht der Abgleich dort nicht (Mixed Content);
-  über den Relay (s. u.) entsteht ein Plan. Auf einem aktuellen iPhone kommen die Benachrichtigungen an
-  (als Web-App installiert; Web-Push braucht dort die installierte Web-App). Firefox ist nicht geprüft,
-  Chrome auf Android ist der bisher geprüfte Weg.
+- **Push ist auf iOS und in Firefox für Android geprüft, in Firefox am Desktop nicht.** Der Zeitplan entsteht
+  in der PWA aus dem Abgleich mit dem Desktop (Reservierungen, Sende-Zeitpunkte). Im WLAN geht der Abgleich
+  dort nicht (Mixed Content); über den Relay (s. u.) entsteht ein Plan. Auf einem aktuellen iPhone kommen die
+  Benachrichtigungen an (als Web-App installiert; Web-Push braucht dort die installierte Web-App). In Firefox
+  auf Android kommen sie über den Relay ebenfalls an (2026-11-09, dieselbe Web-App wie in Chrome). Wie
+  Firefox und Safari die Benachrichtigung darstellen (Logo, Platzhalter), ist offen (#357).
 - **Eine Reservierung, die am Desktop als Ist-Zeit erfasst wurde, meldet sich noch einmal**, bis der nächste
   Abgleich den Plan korrigiert (das Handy weiß es vorher nicht). Die Erlaubnis für Benachrichtigungen
   gilt je Gerät und Browser.
