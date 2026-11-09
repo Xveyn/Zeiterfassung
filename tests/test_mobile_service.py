@@ -1138,3 +1138,27 @@ def test_dismiss_leaves_an_active_device_alone(relay):
     service, ctx, _store, _calls = relay
     assert service.dismiss("phone-aaaa") is False
     assert ctx.devices.get("phone-aaaa")["revoked"] is False
+
+
+def test_maintaining_the_keys_releases_what_a_device_unpair_left_behind(relay):
+    # Räumte der Dienst nach der Abmeldung nicht auf (beendet, Fehler), holt es der nächste Start nach.
+    service, ctx, store, calls = relay
+    cleaned = []
+    service.set_box_cleanup(lambda ids: cleaned.append(None if ids is None else list(ids)))
+    ctx.keys.put("phone-aaaa", bytes(range(32)))
+    ctx.devices.save(mobile_pairing.revoke_by_device(ctx.devices.get("phone-aaaa"), utc_now_iso()))
+
+    service._maintain_keys()
+
+    assert ctx.keys.get("phone-aaaa") is None
+    assert store.known_ids() == {"phone-bbbb"}                  # das Relay-Geheimnis des getrennten Geräts ist weg
+    assert cleaned and cleaned[-1] is None                      # Boxen widerrufener Geräte werden abgeräumt
+
+
+def test_maintaining_the_keys_keeps_the_key_of_an_active_device(relay):
+    service, ctx, _store, _calls = relay
+    ctx.keys.put("phone-bbbb", bytes(range(32)))
+
+    service._maintain_keys()
+
+    assert ctx.keys.get("phone-bbbb") is not None

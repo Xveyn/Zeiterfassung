@@ -461,6 +461,8 @@ export function unpairDialog({ retry, confirm }) {
   const buttons = h('div', { class: 'buttons' }, retryButton, cancel, confirmButton);
   // Läuft die Abmeldung schon, ist sie womöglich unterwegs: dann gibt es kein Zurück.
   dialog.addEventListener('cancel', (event) => { if (phase === 'running') event.preventDefault(); });
+  // Chromium vergibt für ein zweites Escape ohne neue Nutzeraktivierung kein `cancel` mehr, sondern schließt: die Taste selbst abfangen.
+  dialog.addEventListener('keydown', (event) => { if (phase === 'running' && event.key === 'Escape') event.preventDefault(); });
   dialog.append(h('h2', { id: 'unpair-title' }, 'Dieses Handy trennen?'), body, buttons);
   dialog.update = ({ phase: next, model = null, error = '' }) => {
     phase = next;

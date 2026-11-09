@@ -664,6 +664,7 @@ Rückfrage (`unpairDialog`), nichts wird sofort gelöscht. Spec: `docs/superpowe
   Fehler (auch `404` eines älteren Desktops, `401`, Zeitüberschreitung) ist `failed`, gelöscht wird trotzdem.
 - **Fähigkeit.** Die Sync-Antwort trägt `unpair: true`, `parseSyncResponse` liest sie, `Store.applyResponse` legt sie als
   `meta.desktop_unpair` ab; ohne sie warnt die Rückfrage vorab (älterer Desktop).
+- **Vertrag.** Klartext und Antwort der Abmeldung stehen in `test/fixtures/unpair-request.json` (`{}`) und `unpair-response.json` (`{ok: true}`); `sync.test.js` und `tests/test_mobile_contract.py` lesen beide.
 - **Relay-Pfade.** `relay-frame.js` (`PATHS`) und `src/mobile_relay_codec.py` (`_PATHS`) erlauben `/v1/unpair`; Fixture
   `test/fixtures/relay-frames.json` hält beide zusammen.
 - **Was gelöscht wird:** alle Stores des Vaults samt Schlüssel (`vault.wipe()`, darin auch Sperre-Einstellungen,

@@ -160,14 +160,17 @@ class MobileService:
         else:
             # Geräteliste und Abräum-Liste unter der Gerätesperre: ein Handy, das gerade koppelt
             # (Schlüssel vor Datensatz, ebenfalls unter ihr), verliert sonst seinen frischen Schlüssel (#277).
+            # Nur aktive Geräte behalten ihren Schlüssel: der eines widerrufenen ist nutzlos, und blieb er nach
+            # einer Abmeldung durch das Handy liegen (Dienst beendet, Fehler), holt dieser Lauf das Aufräumen nach.
             steps.insert(0, ("retain", lambda: keys.retain(
-                lambda: [r["id"] for r in self._context.devices.get_all()],
+                lambda: [r["id"] for r in self._context.devices.get_all() if not r.get("revoked")],
                 snapshot_lock=self._context.devices_lock)))
             relay_store = self._context.relay_store
             if relay_store is not None:
                 # Geheimnisse vergessener Geräte lokal weg; ihre Relay-Objekte verfallen dort nach 90 Tagen.
                 steps.append(("relay", lambda: relay_store.retain(
-                    [r["id"] for r in self._context.devices.get_all()])))
+                    [r["id"] for r in self._context.devices.get_all() if not r.get("revoked")])))
+            steps.append(("boxes", lambda: self._clean_boxes(None)))
         for name, step in steps:
             if self._closed:
                 return

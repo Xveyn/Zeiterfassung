@@ -343,7 +343,8 @@ class App {
       clearDebug: async () => { if (!(await this.debugLog.clear())) throw new Error('Protokoll nicht geleert'); },
       wipe: () => this.wipeLocalData(),
       reload: () => this.reload(),
-      log: (_step, error) => logFailure('Trennen und lokale Daten löschen', error),
+      // Der Schritt steht im Text: `logFailure` verlangt ein festes Wort als Kontext, die Schrittnamen sind feste Wörter.
+      log: (step, error) => logFailure('Trennen und lokale Daten löschen', new Error(`${step}: ${errorDetail(error)}`)),
     });
     const check = async () => {
       dialog.update({ phase: 'checking' });

@@ -1495,3 +1495,10 @@ test('unpair never opens the answer of a queued relay request', async () => {
 
   assert.deepEqual(await client.unpair(), { state: 'queued' });
 });
+
+test('the unpair plaintext and the answer are the shared contract examples', async () => {
+  const { client, fetchFn } = await make({ handler: () => reply(200, fixture('unpair-response.json')) });
+
+  assert.deepEqual(await client.unpair(), { state: 'sent' });
+  assert.deepEqual(fetchFn.calls[0].plain, fixture('unpair-request.json'));
+});

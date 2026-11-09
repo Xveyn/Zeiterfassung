@@ -625,6 +625,15 @@ Augenhöhe mit den anderen beiden Plattformen.
   läuft (`minimize_to_tray` oder Erinnerungen an); macOS hat das Tray noch hinter `ZEIT_MACOS_TRAY=1`, dort gibt es ohne
   Opt-in keinen Toast. Ohne Toast bleibt ein sichtbares Fenster (Dialog), sonst ein Logeintrag, und das getrennte Gerät
   steht in der Geräteliste.
+- **Die Zusage der Rückfrage gilt für den Moment der Prüfung.** Fällt der Relay zwischen Rückfrage und Bestätigung aus
+  oder ist das Token seit 30 Tagen abgelaufen (der Desktop beantwortet es mit `token_expired`, ohne zu widerrufen),
+  erfährt der Desktop nichts; das Gerät bleibt dann dort stehen, bis es entfernt wird.
+- **Mehrere Tabs derselben Web-App** (oder ein Browser ohne Web Locks) können zwischen Abmeldung und Löschen noch einen
+  Abgleich in die Box legen und die Abmeldung ersetzen. Gesperrt wird nur im eigenen Tab (`App.unpairing`).
+- **Die Wartezeit auf den Schlüssel ist begrenzt.** Kommt die Abmeldung über den Relay kurz nach dem Start an, wartet der
+  Desktop bis zu 5 Sekunden auf den Schlüssel aus dem Schlüsselbund (`mobile_routes.KEY_WAIT_SECONDS`); danach `503`, und
+  die Abmeldung geht verloren. Beim nächsten Start räumt `MobileService._maintain_keys` liegengebliebene Reste getrennter
+  Geräte ab.
 - **Passkeys der App-Sperre** bleiben auf dem Handy: aus dem Web lässt sich ein Passkey nicht löschen.
 - **iOS:** Safari-Tab und installierte App haben getrennten Speicher; gelöscht wird nur der, in dem man gerade ist.
 

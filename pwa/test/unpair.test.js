@@ -41,6 +41,7 @@ for (const name of ['notifyDesktop', 'disablePush', 'clearSession', 'clearDebug'
     assert.equal(calls.includes(name), true);
     assert.equal(logs.length, 1);
     assert.match(logs[0][1], /kaputt/);
+    assert.ok(logs[0][0].length > 0, 'the step label is passed to the logger');
   });
 }
 
