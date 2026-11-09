@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import re
 
-VERSION = "1.27.0"
+VERSION = "1.28.0"
 
 # Kennung eines Releases: "1.19.0" (echtes Release) oder "1.19.0-pre.2"
 # (Pre-Release, s. .github/workflows/release.yml). Kein anderes Suffix ist

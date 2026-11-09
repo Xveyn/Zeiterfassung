@@ -83,7 +83,7 @@ Desktop-App zur Erfassung von Arbeitszeiten: im Kern Kalenderansicht und PDF-Ber
 - **Update-Check** — Konfigurierbare Hintergrund-Prüfung auf neue Releases; Updates-Tab mit manuellem Check, Changelog und Direkt-Download, bei aktivem Tray als einmaliger Toast statt Banner. Läuft die App im Infobereich, stößt **„Nach Updates suchen"** im Tray-Menü die Prüfung direkt an — das Ergebnis kommt als Toast, auch wenn alles aktuell ist. Optional lassen sich auch Vorabversionen (Pre-Releases) anbieten — Testbuilds vor dem echten Release
 - **Update aus der App** — Unter Windows und Linux lädt die App ein Update selbst, prüft es gegen die Prüfsummen des Releases und installiert es; auf Wunsch automatisch beim nächsten Beenden. Unter macOS öffnet der Knopf weiterhin den Download im Browser
 - **Dark Mode UI** — Modernes dunkles Design, für alle Dialoge einheitlich
-- **UI-Skalierung** — Stufenloser Skalierungsfaktor für die Oberfläche (gerätelokal). Unter Windows und Linux folgt die App zusätzlich der Anzeigeskalierung des Systems — unter Windows bleibt sie dabei scharf, unter Linux ist sie auf skalierten X11-Desktops nicht mehr winzig; der Faktor gilt dann obendrauf
+- **UI-Skalierung** — Stufenloser Skalierungsfaktor für die Oberfläche (gerätelokal). Unter Windows und Linux folgt die App zusätzlich der Anzeigeskalierung des Systems — unter Windows bleibt sie dabei scharf, unter Linux ist sie auf skalierten X11-Desktops nicht mehr winzig; der Faktor gilt dann obendrauf. Wechselst du unter Linux den Monitor und ändert sich dabei die Skalierung des Desktops, weist ein Banner „Skalierung passt nicht zum Monitor“ mit „Neu starten“ darauf hin; auf Wunsch startet die App selbst neu *(ab 1.28.0)*
 - **Cross-Platform-Installer** — Per PyInstaller gebaut, als Setup-Exe (Windows), DMG (macOS) und AppImage (Linux) paketierbar
 
 ![Einstellungs-Dialog, Tab Arbeitszeit](docs/screenshots/einstellungen-v1.26.0.png)
@@ -407,8 +407,8 @@ Die API läuft nur, solange die App läuft (Autostart hilft), nimmt nur Anfragen
 | Als App installieren | ✓ | ✓ (iPhone und iPad geprüft) | nicht geprüft |
 | QR-Code in der Web-App scannen | ✓ | ✓ *(ab 1.25.0)*, auf iPhone und iPad geprüft | nicht geprüft |
 | Abgleich im WLAN | ✓ | ✗ | ✗ (aus demselben Grund erwartet, nicht ausprobiert) |
-| Abgleich über den Relay *(ab 1.26.0)* | nicht geprüft | ✓ (iPhone und iPad geprüft, auch über Mobilfunk) | nicht geprüft |
-| Push-Erinnerungen | ✓ | ✓ (iPhone geprüft, als Web-App installiert) | nicht geprüft |
+| Abgleich über den Relay *(ab 1.26.0)* | nicht geprüft | ✓ (iPhone und iPad geprüft, auch über Mobilfunk) | ✓ (Android geprüft) |
+| Push-Erinnerungen | ✓ | ✓ (iPhone geprüft, als Web-App installiert) | ✓ (Android geprüft, die Benachrichtigung zeigt dort kein Logo) |
 
 Im WLAN scheitert der Abgleich in Safari, weil der Browser den Zugriff einer `https`-Seite auf eine `http://`-Adresse im WLAN sperrt („Mixed Content“). Daran ändern weder der Code noch die Adresse etwas. Für iPhone und iPad gibt es deshalb den **Relay-Weg** *(ab 1.26.0)* ([#358](https://github.com/Xveyn/Zeiterfassung/issues/358)): siehe „Über den Relay koppeln“ unten. Push-Erinnerungen kommen auf dem iPhone an (geprüft, dort als installierte Web-App; Web-Push braucht auf iOS die installierte Web-App).
 
@@ -430,14 +430,14 @@ Im WLAN scheitert der Abgleich in Safari, weil der Browser den Zugriff einer `ht
 
 <table>
 <tr>
-<td><img src="docs/screenshots/handy-woche-v--VERSION--.png" alt="Wochenansicht der Web-App mit heutigem Tag, einer Reservierung und der Zeile Noch ausstehend" width="200"></td>
-<td><img src="docs/screenshots/handy-editor-v--VERSION--.png" alt="Tages-Editor der Web-App, Reiter Reservierung mit Schnellwahl und Netto" width="200"></td>
-<td><img src="docs/screenshots/handy-verbindung-v--VERSION--.png" alt="Einstellungen der Web-App, Reiter Verbindung mit Zustandskarte und Benachrichtigungen" width="200"></td>
-<td><img src="docs/screenshots/handy-kategorien-v--VERSION--.png" alt="Einstellungen der Web-App, Reiter Kategorien" width="200"></td>
+<td><img src="docs/screenshots/handy-woche-v1.28.0.png" alt="Wochenansicht der Web-App mit heutigem Tag, einer Reservierung und der Zeile Noch ausstehend" width="200"></td>
+<td><img src="docs/screenshots/handy-editor-v1.28.0.png" alt="Tages-Editor der Web-App, Reiter Reservierung mit Schnellwahl und Netto" width="200"></td>
+<td><img src="docs/screenshots/handy-verbindung-v1.28.0.png" alt="Einstellungen der Web-App, Reiter Verbindung mit Zustandskarte, Benachrichtigungen, App-Sperre und Trennen" width="200"></td>
+<td><img src="docs/screenshots/handy-kategorien-v1.28.0.png" alt="Einstellungen der Web-App, Reiter Kategorien" width="200"></td>
 </tr>
 </table>
 
-*Die Web-App im Browser (von links): Woche mit dem heutigen Tag, einer Reservierung und „Noch ausstehend“, Tages-Editor (hier der Reiter „Reservierung“ mit Schnellwahl und Netto), Einstellungen → Verbindung, Einstellungen → Kategorien. Aufgenommen in Chrome am Rechner mit Demo-Daten.*
+*Die Web-App im Browser (von links): Woche mit dem heutigen Tag, einer Reservierung und „Noch ausstehend“, Tages-Editor (hier der Reiter „Reservierung“ mit Schnellwahl und Netto), Einstellungen → Verbindung (mit Benachrichtigungen, App-Sperre und „Trennen“), Einstellungen → Kategorien. Aufgenommen in Chrome am Rechner mit Demo-Daten.*
 
 ![Einstellungen am Rechner, Tab Mobil mit einem gekoppelten Demo-Handy](docs/screenshots/einstellungen-mobil-v1.26.0.png)
 
@@ -447,9 +447,19 @@ Im WLAN scheitert der Abgleich in Safari, weil der Browser den Zugriff einer `ht
 
 **Kategorien am Handy** *(ab 1.25.0)* — Kategorien samt Standardzeiten lassen sich auch auf dem Handy verwalten (Einstellungen → Kategorien); sie werden beim nächsten Abgleich zur App zurückgeschrieben.
 
+**Einrichtung** *(ab 1.28.0)* — Solange das Handy nicht gekoppelt ist, zeigt die Web-App einen kleinen Einrichtungs-Screen mit den Schritten für das jeweilige Gerät: Chrome mit „QR-Code scannen“ und, hinter „Andere Möglichkeiten“, der Eingabe von Adresse und Code im WLAN; Firefox und Safari mit dem Relay-Weg (dort sperrt der Browser das WLAN); auf dem iPhone zuerst die Installation als Web-App.
+
+<img src="docs/screenshots/handy-einrichtung-v1.28.0.png" alt="Einrichtungs-Screen der Web-App mit Robotergesicht und drei Schritten" width="200">
+
+**App-Sperre** *(ab 1.28.0)* — Optional (Einstellungen → Verbindung → „App mit Geräte-Entsperrung sperren“): Die Web-App verlangt nach einer wählbaren Frist (sofort, nach 1 oder 5 Minuten) die Entsperrung mit der Bildschirmsperre des Handys (Fingerabdruck, Gesicht oder PIN). Ein Neuladen innerhalb der Frist fragt nicht noch einmal. Das ist eine Komfort-Sperre für die Oberfläche; sie verschlüsselt die gespeicherten Daten nicht. Sie braucht eine sichere Verbindung (https) und eine eingerichtete Bildschirmsperre.
+
+**Debug-Protokoll** *(ab 1.28.0)* — Einstellungen → Debug zeigt den technischen Zustand der Web-App und ein lokales Protokoll der letzten Fehler und Abgleiche, ohne Adressen, Namen und Zeiten aus Einträgen. Du kannst es kopieren, als Datei teilen und löschen; die Haltezeit ist einstellbar. Es verlässt das Handy nie von selbst.
+
+**Trennen** *(ab 1.28.0)* — Einstellungen → Verbindung → „Trennen und lokale Daten löschen“ meldet das Handy am Rechner ab und löscht alle Daten auf dem Handy; danach steht wieder der Einrichtungs-Screen da. Vorher fragt die Web-App nach, gleicht ab und nennt, wie viele Änderungen noch nicht am Rechner sind. Die Abmeldung läuft im WLAN direkt, über den Relay *(ab 1.26.0)* liegt sie bereit, bis sich der Rechner verbindet. Im WLAN erfährt der Rechner sie nur, wenn er gerade erreichbar ist; sonst bleibt das Gerät dort in der Liste, bis du es entfernst. Grenzen: [bekannte Grenzen](docs/known-limitations.md#handy-trennen-499-bekannte-grenzen).
+
 **Erinnerungen aufs Handy** *(ab 1.25.0)* — Die Erinnerungen (Reservierung, monatliche und tagesbezogene Sende-Erinnerung) kommen auf Wunsch als Push-Benachrichtigung aufs Handy, **auch wenn der Rechner aus ist**. Einschalten: Einstellungen → Erinnerungen → „Auch aufs Handy senden“, danach in der Web-App (Einstellungen → Verbindung) den Schalter „Erinnerungen auf diesem Handy“ einschalten. Ob alles ankommt, prüfst du mit „Testbenachrichtigung“ (Einstellungen → Mobil am Rechner oder Einstellungen → Verbindung in der Web-App) *(ab 1.25.0)*. Dafür läuft ein kleiner Weiterleitungsdienst im Internet (der **Push-Relay**, ein Cloudflare Worker, Quelltext in `relay/`). Er kennt nur Zeitpunkte, das Abo deines Browsers und einen Text, den nur dein Handy entschlüsseln kann — keine Arbeitszeiten, Kategorien oder Namen. Fällt er aus, kommen keine Push-Erinnerungen; alles andere läuft weiter. Bekannt: Unter Android/Chrome zeigt die Benachrichtigung neben dem Logo der Web-App rechts einen grauen Kreis mit einem „X“ (vermutlich ein Platzhalter von Chrome, siehe [#357](https://github.com/Xveyn/Zeiterfassung/issues/357)). Geprüft sind Chrome auf Android und Safari auf dem iPhone, dort als installierte Web-App (siehe Tabelle oben); Details, was der Relay sieht, und die Grenzen: [Bekannte Einschränkungen](docs/known-limitations.md#push-relay-331-ein-neuer-vertrauens-ort). Wer den Relay selbst betreiben möchte (eigenes Cloudflare-Konto, kostenloser Plan), findet die Einrichtung in [`relay/README.md`](relay/README.md).
 
-**Geräte verwalten:** Einstellungen → Mobil zeigt die gekoppelten Handys mit „zuletzt …“ und „gültig bis …“. Ein Gerät ist 30 Tage ab seinem letzten Abgleich gekoppelt, danach koppelst du neu (die Einträge auf dem Handy bleiben dabei erhalten). „Widerrufen" und „Alle widerrufen" sperren Handys sofort aus; widerrufene Geräte verschwinden aus der Liste (das Handy meldet beim nächsten Abgleich, dass es neu gekoppelt werden muss).
+**Geräte verwalten:** Einstellungen → Mobil zeigt die gekoppelten Handys mit „zuletzt …“ und „gültig bis …“. Ein Gerät ist 30 Tage ab seinem letzten Abgleich gekoppelt, danach koppelst du neu (die Einträge auf dem Handy bleiben dabei erhalten). „Widerrufen" und „Alle widerrufen" sperren Handys sofort aus; widerrufene Geräte verschwinden aus der Liste (das Handy meldet beim nächsten Abgleich, dass es neu gekoppelt werden muss). Hat sich ein Handy selbst getrennt *(ab 1.28.0)*, zeigt der Rechner das als Hinweis (Dialog, bei verstecktem Fenster ein Toast im Infobereich) und führt es in der Liste als „vom Handy getrennt“, bis du es mit „Entfernen“ aus der Liste nimmst.
 
 **Sicherheit in Kürze:** Die Verbindung im WLAN ist nicht per HTTPS gesichert, aber **Ende-zu-Ende verschlüsselt** (AES-256-GCM): wer im selben WLAN mitliest, sieht weder Einträge noch Kategorien noch das Gerätetoken im Klartext und kann Anfragen weder fälschen noch wiedereinspielen. Sichtbar bleibt, dass ein Handy mit deinem Rechner spricht, wann und wie viel. Der Schlüssel entsteht beim Koppeln und liegt nur auf Handy und Rechner — am Rechner im Schlüsselbund des Betriebssystems, ohne Schlüsselbund in einer nur für dein Benutzerkonto lesbaren Datei. Der Rechner speichert vom Gerätetoken nur einen Hash, lauscht nur auf der gewählten Adresse, und die Funktion lässt sich jederzeit ausschalten. Die Push-Erinnerungen und der Relay-Weg für iPhone und iPad *(ab 1.26.0)* sind eine Ausnahme vom „bleibt im WLAN“: dafür spricht dein Handy mit dem Relay im Internet (Cloudflare) — er sieht bei den Push-Erinnerungen Zeitpunkte und verschlüsselten Text, beim Abgleich Metadaten (dass und wann, wie groß, IP-Adressen), nie Arbeitszeiten. Datenflüsse im Einzelnen: [`docs/datenschutz.md`](docs/datenschutz.md). Grenzen: [`docs/known-limitations.md`](docs/known-limitations.md#handy-erfassung-221-bekannte-grenzen) und für den Relay-Weg [`docs/known-limitations.md`](docs/known-limitations.md#abgleich-über-den-relay-358-ein-zweiter-vertrauens-ort).
 
@@ -471,6 +481,7 @@ Im WLAN scheitert der Abgleich in Safari, weil der Browser den Zugriff einer `ht
 | **Inhalt** | E-Mail-Body mit Platzhaltern |
 | **Grußformel** | Abschluss der E-Mail (Zeilenumbrüche mit `\n`) |
 | **Autostart** | App minimiert bei Systemanmeldung starten (Windows/macOS/Linux) |
+| **Skalierung bei Monitorwechsel automatisch anpassen** *(ab 1.28.0)* | Nur Linux (Tab „App“): startet die App bei geänderter Desktop-Skalierung selbst neu, wenn gerade nichts offen ist und nichts läuft (Standard: aus, gerätelokal); ohne den Schalter weist nur ein Banner mit „Neu starten“ darauf hin |
 | **Lokale API** *(ab 1.25.0)* | Tab „API“: lokale HTTP-API ein-/ausschalten, Port, Status, Token kopieren oder neu erzeugen (Standard: aus, gerätelokal) |
 | **Erinnerungen** | Tab „Erinnerungen“: Toast bei fälligen Reservierungen (Vorlaufzeit) und Erinnerung ans Verschicken; im Abschnitt „Handy“ *(ab 1.25.0)* „Auch aufs Handy senden“ (Push über den Relay, nur mit eingeschalteter Handy-Erfassung) und optional „Toast am Desktop unterdrücken“ |
 | **Reservierungen verwenden** | Tab „Arbeitszeit“: schaltet die zukünftigen Soll-Zeiten ein (auch ohne Google-Kalender); ohne den Schalter sind Reservierungen in der App, der API und am Handy unsichtbar |

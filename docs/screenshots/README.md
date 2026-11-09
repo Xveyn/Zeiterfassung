@@ -17,10 +17,11 @@ aktuelle Oberfläche zeigt oder eine drei Releases alte.
 | `konflikte-v1.26.0.png` | Konfliktdialog: zwei Karten, links die gruppierte Liste |
 | `einstellungen-erinnerungen-v1.26.0.png` | Einstellungen, Tab „Erinnerungen" mit dem Abschnitt „Handy" |
 | `einstellungen-mobil-v1.26.0.png` | Einstellungen, Tab „Mobil" mit einem gekoppelten Demo-Handy |
-| `handy-woche-v--VERSION--.png` | Handy-Web-App: Woche mit heutigem Tag, Reservierung und „Noch ausstehend" |
-| `handy-editor-v--VERSION--.png` | Handy-Web-App: Tages-Editor, Reiter „Reservierung" mit Schnellwahl und Netto |
-| `handy-verbindung-v--VERSION--.png` | Handy-Web-App: Einstellungen → Verbindung (Zustandskarte, Benachrichtigungen) |
-| `handy-kategorien-v--VERSION--.png` | Handy-Web-App: Einstellungen → Kategorien |
+| `handy-woche-v1.28.0.png` | Handy-Web-App: Woche mit heutigem Tag, Reservierung und „Noch ausstehend" |
+| `handy-editor-v1.28.0.png` | Handy-Web-App: Tages-Editor, Reiter „Reservierung" mit Schnellwahl und Netto |
+| `handy-verbindung-v1.28.0.png` | Handy-Web-App: Einstellungen → Verbindung (Zustandskarte, Benachrichtigungen, App-Sperre, Trennen); 390 × 1000 Pixel, damit der ganze Reiter im Bild steht |
+| `handy-kategorien-v1.28.0.png` | Handy-Web-App: Einstellungen → Kategorien |
+| `handy-einrichtung-v1.28.0.png` | Handy-Web-App: Einrichtungs-Screen vor dem Koppeln (Chrome auf Android, User-Agent per CDP gesetzt) |
 
 ## Neue Screenshots aufnehmen
 
@@ -62,7 +63,7 @@ bzw. `App._open_settings(initial_tab=…)` ruft und das Fenster aufnimmt (unter 
 
 **Handy-Ansichten** entstehen im Browser am Rechner, nicht auf einem Handy:
 `python scripts/pwa_devserver.py --reservations --api-port <frei>` startet die echte Handy-Instanz und die
-Web-App, der ausgegebene Koppel-Link koppelt einen Chrome mit **390×844 Pixeln** Fenstergröße. Alle vier Bilder
+Web-App, der ausgegebene Koppel-Link koppelt einen Chrome mit **390×844 Pixeln** Fenstergröße. Alle Bilder
 sind 390 Pixel breit und zeigen den Zustand ohne Dialog-Animation (Playwright: `animations: 'disabled'`).
 
 Die Demo-Woche stammt nicht von `--seed-days` (das legt gleichförmige Ein-Stunden-Tage an), sondern von einem kleinen
