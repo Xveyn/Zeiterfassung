@@ -6,6 +6,7 @@ import {
   addDays, dayMinutes, formatDateDe, formatMinutes, isIsoDate, isoWeek, mondayOf, normalizeSlots,
   parseTime, slotMinutes, snapTime, validateSlots, weekDays,
 } from './minutes.js';
+import { blocksLan } from './browser-policy.js';
 import { categoryRows, timesSummary } from './categories.js';
 import { WEEKDAY_KEYS, resolveSlotDefaults, weekdayKey } from './defaults.js';
 import { describeError } from './messages.js';
@@ -401,6 +402,79 @@ export function iosInstallHint({ browser, standalone } = {}) {
  *  unsichtbar (das Geheimnis steht nie auf dem Bildschirm); bei LAN werden Adresse und Code getippt. */
 export function pairFields({ relay = false } = {}) {
   return { address: !relay, code: !relay };
+}
+
+// --- Einrichtungs-Screen (#496) -----------------------------------------------------------------------
+
+const SETUP_TITLE = 'Zeiterfassung App';
+const SETUP_LEAD = 'Zeiten nachtragen, auch ohne Netz. Der Desktop bleibt die Quelle.';
+
+/** Ob die Koppel-Seite noch den Einrichtungs-Screen zeigt: solange nichts gelesen, getippt oder fehlgeschlagen ist.
+ *  Danach (Link gescannt, „Adresse und Code eintippen“, laufende oder gescheiterte Kopplung) folgt das Formular. */
+export function isSetupPhase({ relay = null, address = '', code = '', manual = false, busy = false, error = '' } = {}) {
+  return !relay && !address && !code && !manual && !busy && !error;
+}
+
+/** Der Koppel-Zustand nach „Zurück“ aus dem Formular: wieder der Einrichtungs-Screen. Eingetipptes, ein gelesener Link
+ *  (auch das Relay-Geheimnis) und ein Fehler entfallen; nur der Gerätename bleibt, den der Nutzer schon getippt hat. */
+export function pairingAfterBack(pairing = {}) {
+  const deviceName = typeof pairing?.deviceName === 'string' ? pairing.deviceName : '';
+  return { address: '', code: '', deviceName, busy: false, error: '', relay: null, manual: false };
+}
+
+const scanStep = (canScan) => ({
+  title: 'QR-Code scannen',
+  text: canScan
+    ? 'Der Code erscheint am Desktop.'
+    : 'Keine Kamera verfügbar: den QR-Code vom Desktop mit der Kamera-App des Handys öffnen.',
+  state: 'focus',
+});
+
+/** Der Einrichtungs-Screen ohne DOM: Variante, Schritte, Hauptknopf, Nebenwege (eingeklappt, grau) und Hinweis.
+ *  `lan`: Chromium und unbekannte Browser; `relay`: Engines, die das WLAN sperren (`blocksLan`); `install`: iOS im
+ *  Browser-Tab, erst installieren. Ein unbekannter Anzeigemodus (`standalone` nicht `false`) gilt nicht als „nicht
+ *  installiert“. Der Relay-Weg hat keine Eingabe von Hand: er läuft nur über den QR-Link des Desktops. */
+export function setupModel({ browser, standalone, canScan = false } = {}) {
+  const base = { title: SETUP_TITLE, lead: SETUP_LEAD };
+  const nameStep = (text) => ({ title: 'Handy benennen', text, state: 'todo' });
+  if (browser === 'ios' && standalone === false) {
+    return {
+      ...base, variant: 'install', scan: false,
+      steps: [
+        { title: 'Zum Home-Bildschirm', text: 'Teilen-Symbol antippen → „Zum Home-Bildschirm“, dann von dort öffnen.', state: 'focus' },
+        { title: 'Am Desktop öffnen', text: 'Einstellungen → Mobil → „Über Relay koppeln“', state: 'later' },
+        { title: 'QR-Code scannen', text: 'In dieser Web-App, nicht mit der Kamera-App.', state: 'later' },
+        { title: 'Handy benennen', text: 'Dann koppeln.', state: 'later' },
+      ],
+      alternatives: [{ id: 'browser-anyway', title: 'Trotzdem im Browser koppeln', text: 'Die Daten bleiben dann nur im Browser.', action: 'scan' }],
+      note: { kind: 'warn', text: 'Safari löscht Daten im Tab nach 7 Tagen ohne Nutzung. Erst als App installiert bleiben Einträge und Erinnerungen erhalten.' },
+    };
+  }
+  if (blocksLan(browser)) {
+    return {
+      ...base, variant: 'relay', scan: canScan,
+      steps: [
+        { title: 'Am Desktop öffnen', text: 'Einstellungen → Mobil → „Über Relay koppeln“', state: 'todo' },
+        scanStep(canScan),
+        nameStep('Dann koppeln.'),
+      ],
+      alternatives: [],
+      note: { kind: 'info', text: 'Dieser Browser erreicht den Desktop nicht direkt im WLAN. Der Abgleich läuft deshalb verschlüsselt über das Internet.' },
+    };
+  }
+  return {
+    ...base, variant: 'lan', scan: canScan,
+    steps: [
+      { title: 'Am Desktop öffnen', text: 'Einstellungen → Mobil → „Gerät koppeln“', state: 'todo' },
+      scanStep(canScan),
+      nameStep('Dann koppeln.'),
+    ],
+    alternatives: [
+      { id: 'relay-hint', title: 'Nicht im selben WLAN?', text: 'Am Desktop stattdessen „Über Relay koppeln“ wählen und den QR-Code scannen.', action: null },
+      { id: 'manual', title: 'Adresse und Code eintippen', text: 'Nur im selben WLAN.', action: 'manual' },
+    ],
+    note: null,
+  };
 }
 
 /** Der Weg zum Desktop als Anzeige: die LAN-Adresse (`host:port`) oder „Relay“, nie das Geheimnis. */

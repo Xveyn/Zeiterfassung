@@ -19,7 +19,10 @@
   -webkit-tap-highlight-color: transparent;   /* Android zeichnet sonst ein eigenes Aufleuchten auf den angetippten Knopf */
 }
 * { box-sizing: border-box; }
-html { -webkit-text-size-adjust: 100%; }
+/* Der Platz der senkrechten Scrollleiste bleibt immer reserviert: sonst springt die Seite seitwärts, sobald Inhalt die
+   Bildschirmhöhe überschreitet (Ausklappen auf dem Einrichtungs-Screen, Dialog auf/zu mit `overflow: hidden`). Auf Handys
+   mit überlagernden Leisten ohne Wirkung. */
+html { -webkit-text-size-adjust: 100%; scrollbar-gutter: stable; }
 body {
   margin: 0; background: var(--bg); color: var(--text);
   font: 16px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
@@ -285,3 +288,29 @@ dialog[open]::backdrop { animation: backdrop-in .18s ease-out; }
 .debug-log { list-style: none; margin: 0 0 12px; padding: 8px; max-height: 40vh; overflow: auto; border-radius: 8px; background: var(--cell); font-family: ui-monospace, monospace; font-size: .8rem; }
 .debug-log li { padding: 2px 0; overflow-wrap: anywhere; }
 .clipboard-proxy { position: fixed; opacity: 0; pointer-events: none; }
+
+/* Einrichtungs-Screen (#496): ein rotes Ziel (der Hauptknopf), alles andere grau. */
+.setup-hero { text-align: center; margin: 8px 0 16px; }
+.setup-hero img { width: 84px; height: 84px; border-radius: 50%; display: block; margin: 0 auto 10px; }
+.setup-hero h1 { font-size: 1.3rem; margin: 0 0 4px; }
+.setup-hero p { margin: 0; }
+.setup-heading { font-size: .75rem; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin: 16px 0 8px; }
+.setup-steps { list-style: none; margin: 0; padding: 0; }
+.setup-step { display: flex; gap: 10px; background: var(--cell); border: 1px solid transparent; border-radius: 10px; padding: 10px 12px; margin-bottom: 8px; }
+.setup-step.focus { border-color: var(--accent); }
+.setup-step .num { flex: none; width: 24px; height: 24px; margin-top: 1px; border-radius: 50%; background: var(--accent); color: #fff; font-size: .8rem; font-weight: 700; display: flex; align-items: center; justify-content: center; }
+.setup-step.later .num { background: var(--line); }
+.setup-step div b { display: block; margin-bottom: 1px; }
+.setup-step div span { color: var(--muted); font-size: .9rem; }
+.setup button.primary { width: 100%; margin-top: 12px; }
+.setup .hint { margin-top: 12px; }
+.setup-more { margin-top: 8px; }
+.setup-more summary { display: flex; justify-content: space-between; align-items: center; min-height: var(--tap); padding: 0 12px; border: 1px solid var(--line); border-radius: 8px; color: var(--muted); cursor: pointer; list-style: none; }
+.setup-more summary::-webkit-details-marker { display: none; }
+.setup-more summary::after { content: '▾'; }
+.setup-more[open] summary::after { content: '▴'; }
+.setup-more .alt { display: flex; justify-content: space-between; align-items: center; gap: 8px; width: 100%; min-height: 52px; margin-top: 6px; padding: 8px 12px; border-radius: 8px; background: var(--cell); color: var(--text); text-align: left; }
+.setup-more .alt small { display: block; color: var(--muted); font-size: .8rem; }
+.setup-more .alt .chev { color: var(--muted); }
+.setup-foot { text-align: center; font-size: .8rem; color: var(--muted); margin-top: 16px; }
+.setup-foot a { color: var(--muted); }

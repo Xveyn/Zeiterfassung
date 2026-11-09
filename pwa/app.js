@@ -27,7 +27,7 @@ import { shouldApplyUpdate, shouldCheckForUpdate } from './update-policy.js';
 import { blockSignature, rowsToBlock } from './categories.js';
 import {
   categoriesModel, conflictsModel, connectionLabel, dayChanged, dayTitle, desktopHint, editLock, editorRows, focusKeyToRestore, hintsModel, olderModel, pushModel, reservationRows,
-  iosInstallHint, reservationRowsToSlots, rowsToSlots, statusModel, validateReservationRows, validateRows, weekModel,
+  iosInstallHint, isSetupPhase, pairingAfterBack, reservationRowsToSlots, rowsToSlots, setupModel, statusModel, validateReservationRows, validateRows, weekModel,
 } from './view-model.js';
 import { BUILD, CACHE_PREFIX } from './sw-core.js';
 import { describeRepair, repairServiceWorker } from './sw-repair.js';
@@ -512,17 +512,21 @@ class App {
     if (this.screen === 'pair') {
       this.shell = null;
       clear(this.root);
+      const env = this.errorEnv('');
       this.root.append(pairView({
         address: this.pairing.address, code: this.pairing.code,
         deviceName: this.pairing.deviceName || this.store.getMeta().device_name || this.suggestedDeviceName(),
         error: this.pairing.error,
-        busy: this.pairing.busy, canScan: canScan(), canCancel: this.paired, relay: Boolean(this.pairing.relay),
-        installHint: iosInstallHint(this.errorEnv('')),
+        busy: this.pairing.busy, canScan: canScan(), canCancel: this.paired, canBack: !this.paired, relay: Boolean(this.pairing.relay),
+        installHint: iosInstallHint(env),
+        setup: isSetupPhase(this.pairing) ? setupModel({ browser: env.browser, standalone: env.standalone, canScan: canScan() }) : null,
       }, {
         submit: (values) => this.submitPairing(values),
         change: (field, value) => { this.pairing[field] = value; },
         scan: () => this.scanPairing(),
-        cancel: () => { this.screen = 'week'; this.render(); },
+        manual: () => { this.pairing = { ...this.pairing, manual: true }; this.render(); },
+        back: () => { this.pairing = pairingAfterBack(this.pairing); this.render(); },
+        cancel: () => { this.pairing = { ...this.pairing, manual: false }; this.screen = 'week'; this.render(); },
       }));
       this.lastFocusKey = focusByKey(this.root, focusKey) ? focusKey : null;
       return;
