@@ -490,8 +490,8 @@ ist nie Voraussetzung: ohne ihn läuft alles wie vorher, ein Fehler bleibt ein H
   **Bewusst kein `icon`** an `showNotification` (#355/#356): Chrome unter Android zeigt in der
   Kopfzeile ohnehin das App-Icon der installierten Web-App, das große `icon-192` erschien rechts
   ein zweites Mal. Seitdem erscheint dort ein grauer Kreis mit „X“ (vermutlich Chromes
-  Buchstaben-Platzhalter aus der Domain `xveyn.github.io`, nicht belegt); Lösungen und das
-  Verhalten in Firefox und Safari stehen in #357. Ein monochromes `badge` steuert nur das kleine
+  Buchstaben-Platzhalter aus der Domain `xveyn.github.io`, nicht belegt); Firefox auf Android zeigt
+  ohne `icon` gar kein Logo (geprüft 2026-11-09). Lösungen und das Verhalten in Safari stehen in #357. Ein monochromes `badge` steuert nur das kleine
   Statusleisten-Icon.
 - **`relay-client.js`** — `RELAY_URL`, `PRIVACY_URL` (`./datenschutz.html`, die eigene Datenschutzseite; Link im Koppel-Bildschirm und im Reiter Verbindung, s. „Datenschutzseite“), `PRIVACY_SOURCE_URL` (das Dokument im Projekt, Ersatz der Seite; dieselbe Adresse wie `privacy_doc.PRIVACY_DOC_URL` am Desktop, ein Test hält beide zusammen; Kontakt über GitHub, s. Abschnitt 6 des Dokuments), `VAPID_PUBLIC` (nie wechseln, alle Abos hängen daran), die drei
   Aufrufe und `syncSchedule` (bei `409 no_subscription` einmal neu anmelden und wiederholen). Das
