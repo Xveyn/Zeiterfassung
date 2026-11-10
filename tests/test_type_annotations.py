@@ -115,6 +115,7 @@ ANNOTATED_MODULES = [
     "src/secret_migration.py",
     "src/holidays_region.py",
     "src/region.py",
+    "src/locale_format.py",
     "src/platform_open.py",
     # Einstellungs-Dialog-Bausteine (#132)
     "src/theme/form_logic.py",

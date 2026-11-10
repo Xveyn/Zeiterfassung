@@ -59,6 +59,10 @@ DEFAULTS = {
     "country": "DE",
     "region": "",
     "region_migrated": False,
+    # Sprache der Oberfläche; gerätelokal, NICHT in SYNCED_SETTING_KEYS. Das
+    # Datumsformat folgt aus Sprache und Land (locale_format.locale_for),
+    # nicht aus einer eigenen Einstellung.
+    "language": "de",
     "last_update_check_at": "",
     "dismissed_version": "",
     "update_check_frequency": "daily",

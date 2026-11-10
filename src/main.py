@@ -21,7 +21,7 @@ from typing import Any
 # (oauth_utils.py) erkannt und per frischem Consent nachgeholt. Kein Blankoscheck.
 os.environ.setdefault("OAUTHLIB_RELAX_TOKEN_SCOPE", "1")
 
-from src import dpi, region, sync_history
+from src import dpi, locale_format, region, sync_history
 from src.autostart import migrate_legacy_autostart, refresh_linux_target
 from src.conflicts_store import ConflictsStore
 from src.desktop_entry import ensure_icon, write_menu_entry
@@ -387,6 +387,9 @@ def main():
     system_factor = dpi.init_system_scale(tk_version=tk.TkVersion)
     dpi.migrate_ui_scale(settings)
     region.migrate_state(settings)
+    # Datumsformat folgt aus Sprache und Land (nur Anzeige).
+    locale_format.set_active(locale_format.locale_for(
+        settings.get("language"), settings.get("country")))
     # Tks Schriftbackend skaliert sonst selbst mit Xft.dpi (Xveyn#199).
     dpi.neutralize_xft_dpi()
     root = _create_root()
