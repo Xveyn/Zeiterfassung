@@ -5,4 +5,7 @@
 export default {
   'i18n.beispiel': 'Hallo {name}, es sind {count} Einträge.',
   'i18n.ohne_parameter': 'Nur Text',
+  'einstellungen.sprache.titel': 'Sprache',
+  'einstellungen.sprache.label': 'Sprache der App',
+  'einstellungen.sprache.de': 'Deutsch',
 };

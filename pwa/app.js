@@ -16,6 +16,8 @@ import { DEFAULT_DEVICE_NAME, PROTOCOL, deviceNameFromUserAgent, isPairFragment,
 import { openDatabase, requestPersistentStorage } from './db.js';
 import { VaultError, createVaultAdapter, idbVaultKeyStore } from './vault.js';
 import { Store } from './store.js';
+import { applyLocale } from './language.js';
+import { normalizeLanguage, t } from './i18n.js';
 import { SyncClient, SyncError, clockSkewMs } from './sync.js';
 import { isPaired } from './transport.js';
 import { shouldQueue, shouldSync } from './sync-policy.js';
@@ -573,6 +575,7 @@ class App {
   }
 
   render() {
+    applyLocale(this.store.getMeta());     // Sprache und Datums-Locale folgen der Meta (Kopplung, Abgleich, Einstellung)
     const focusKey = focusKeyToRestore({ ...focusState(this.root), last: this.lastFocusKey });
     if (this.screen === 'pair') {
       this.shell = null;
@@ -833,6 +836,7 @@ class App {
         push,
         lock: this.lockModelNow(),
         shift: { step: normalizeShiftStep(meta.shift_step_minutes), options: shiftOptions() },
+        language: { value: normalizeLanguage(meta.language), options: [{ value: 'de', label: t('einstellungen.sprache.de') }] },
       },
       updates: { build: BUILD, update: { state: this.updateState, detail: this.updateDetail, auto: Boolean(meta.auto_update) } },
       categories: categoriesModel({
@@ -860,6 +864,10 @@ class App {
       confirmLock: (id) => this.confirmLock(id),
       removeLock: () => this.removeLock(),
       setLockDelay: (ms) => this.setLockDelay(ms),
+      setLanguage: async (value) => {
+        await this.store.setMeta({ language: normalizeLanguage(value) });
+        applyLocale(this.store.getMeta());
+      },
       setShiftStep: async (minutes) => {
         const step = normalizeShiftStep(minutes);
         await this.store.setMeta({ shift_step_minutes: step });

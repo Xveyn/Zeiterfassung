@@ -8,6 +8,7 @@ import { MAX_CATEGORY_LENGTH, TIME_STEP_MINUTES, formatMinutes, snapPause, snapT
 import { mayStartShift, shiftLabel, shiftWindow, stepsForDistance } from './shift-policy.js';
 import { updateStatusText } from './update-policy.js';
 import { createDialogHistory } from './dialog-history.js';
+import { t } from './i18n.js';
 import { PRIVACY_URL } from './relay-client.js';
 import { RESERVATION_CALENDAR_NOTE } from './messages.js';
 import { MAX_NAME_LENGTH, blockSignature, moveRow, rowsToBlock, timesSummary, validateCategoryRows } from './categories.js';
@@ -565,7 +566,7 @@ export function conflictsDialog(conflicts, handlers) {
 
 /** Reiter „Verbindung“: Stand der Kopplung und des Desktops, Verlauf, Neu koppeln. */
 function connectionPanel({ desktopName, desktop, hint = '', address, transport = 'lan', persistent, tokenUntil, window: windowInfo, push, lock, shift,
-  online = true, lastSyncAt = '' }, { closeThen, handlers }) {
+  language, online = true, lastSyncAt = '' }, { closeThen, handlers }) {
   const windowState = windowRow(windowInfo);
   const resetWindow = button('Auf 90 Tage zurücksetzen', () => closeThen(() => handlers.resetWindow()), '', { 'data-focus': 'reset-window' });
   resetWindow.hidden = !windowState.canReset;
@@ -594,6 +595,7 @@ function connectionPanel({ desktopName, desktop, hint = '', address, transport =
     pushSection(push, handlers),
     lock && lockSection(lock, handlers),
     shift && shiftSection(shift, handlers),
+    language && languageSection(language, handlers),
     h('p', { class: 'muted' }, 'Relay und Benachrichtigungen: ', privacyLink(), '.'),
     h('details', { class: 'tech' },
       h('summary', {}, 'Technische Details'),
@@ -606,6 +608,17 @@ function connectionPanel({ desktopName, desktop, hint = '', address, transport =
     h('div', { class: 'buttons' },
       button('QR neu scannen / Neu koppeln', () => closeThen(() => handlers.pair()), '', { 'data-focus': 'pair' })),
     unpairSection({ closeThen, handlers }));
+}
+
+/** Abschnitt „Sprache“: die Sprache der PWA, unabhängig vom Desktop (vorerst nur Deutsch). */
+function languageSection(model, handlers) {
+  const select = h('select', { id: 'app-language', 'data-focus': 'app-language' },
+    model.options.map((option) => h('option', { value: option.value }, option.label)));
+  select.value = model.value;
+  select.addEventListener('change', () => { void handlers.setLanguage(select.value); });
+  return h('section', { class: 'language' },
+    h('h3', {}, t('einstellungen.sprache.titel')),
+    h('label', { for: 'app-language' }, t('einstellungen.sprache.label')), select);
 }
 
 /** Abschnitt „Trennen“ (#499): öffnet nur die Rückfrage, löscht nichts. Der Knopf ist kein Hauptknopf (rot umrandet,

@@ -10,6 +10,8 @@
 // verlangt dort jedes (Status, Code)-Paar, das der Server senden kann.
 import { CryptoFailure, b64d, deviceKeys, isEnvelope, openEnvelope, pairKeys, seal } from './crypto.js';
 import { parseDefaults, parseDesktopInfo } from './defaults.js';
+import { DEFAULT_COUNTRY, adoptDesktopLanguage } from './language.js';
+import { normalizeLanguage } from './i18n.js';
 import { isIsoDate, localIsoDate, utcStamp } from './minutes.js';
 import {
   PROTOCOL, isBoxSecret, isLanAddress, isValidDeviceId, newDeviceId, normalizeCode, pairRequestBody,
@@ -149,9 +151,12 @@ export function clockSkewMs(serverTime, now) {
 }
 
 /** Was eine gelungene Kopplung in der Meta ablegt (gleich für beide Wege); der Zähler beginnt neu. */
-const pairingMeta = (answer) => ({
+const pairingMeta = (answer, meta) => ({
   token: answer.token, token_expires_at: answer.expires_at, desktop_name: answer.desktop_name,
   window_days: answer.window_days, key: answer.key, seq: 0,
+  // Älterer Desktop ohne Felder: `de`/`DE`. Eine schon gewählte Sprache der PWA bleibt.
+  ...adoptDesktopLanguage({ language: meta.language, country: DEFAULT_COUNTRY },
+    { language: normalizeLanguage(answer.language), country: answer.country }),
 });
 
 const DISCARDED = () => ({ sent: 0, conflicts: 0, excluded: false, discarded: true });
@@ -233,7 +238,7 @@ export class SyncClient {
     }
     const answer = await this._pairExchange({ kind: 'lan', host, port }, normalized, deviceName);
     await this._store.setMeta({
-      transport: 'lan', box_secret: '', box_have: 0, address: { host, port }, ...pairingMeta(answer),
+      transport: 'lan', box_secret: '', box_have: 0, address: { host, port }, ...pairingMeta(answer, this._store.getMeta()),
     });
     return { desktopName: answer.desktop_name };
   }
@@ -252,7 +257,7 @@ export class SyncClient {
     const endpoint = { kind: 'relay', secret, have: 0, onHave: (ver) => { have = ver === 0 ? 0 : Math.max(have, ver); } };
     const answer = await this._pairExchange(endpoint, normalized, deviceName);
     await this._store.setMeta({
-      transport: 'relay', box_secret: secret, box_have: have, address: null, ...pairingMeta(answer),
+      transport: 'relay', box_secret: secret, box_have: have, address: null, ...pairingMeta(answer, this._store.getMeta()),
     });
     return { desktopName: answer.desktop_name };
   }

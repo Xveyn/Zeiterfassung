@@ -75,7 +75,14 @@ export function parseDefaults(raw) {
 export function parseDesktopInfo(raw) {
   const text = (value) => (typeof value === 'string' && value.length <= MAX_TEXT ? value : '');
   const info = isObject(raw) ? raw : {};
-  return { name: text(info.name), version: text(info.version), platform: text(info.platform) };
+  const code = (value, re) => (typeof value === 'string' && re.test(value) ? value : '');
+  const language = code(info.language, /^[a-z]{2,3}$/);
+  const country = code(info.country, /^[A-Z]{2}$/);
+  // Fehlt oder taugt ein Feld nicht (älterer Desktop), bleibt der Schlüssel weg statt leer zu stehen.
+  return {
+    name: text(info.name), version: text(info.version), platform: text(info.platform),
+    ...(language && { language }), ...(country && { country }),
+  };
 }
 
 /** Start, Ende und Pause für einen Slot der Kategorie (`''` = keine) an einem Wochentag. Ein leeres

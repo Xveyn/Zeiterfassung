@@ -22,6 +22,7 @@ import {
 } from './reservations.js';
 import { aheadDays } from './window-policy.js';
 import { blockSignature, categoryRows, validateCategoryRows } from './categories.js';
+import { adoptDesktopLanguage } from './language.js';
 
 /** Die Meta des Stores. `null` heißt bei den markierten Feldern „älterer Desktop“ (Feature-Erkennung), nie „leer“.
  * @typedef {object} Meta
@@ -35,7 +36,9 @@ import { blockSignature, categoryRows, validateCategoryRows } from './categories
  * @property {string} last_pull_at
  * @property {string[]} categories
  * @property {Record<string, any> | null} defaults       Standardzeiten (#288); null = älterer Desktop
- * @property {{ name: string, version: string, platform: string }} desktop
+ * @property {{ name: string, version: string, platform: string, language?: string, country?: string }} desktop  language/country fehlen bei älterem Desktop
+ * @property {string | null} language        Sprache der PWA; null = nie gewählt (dann gilt der Vorschlag des Desktops beim Koppeln)
+ * @property {string} country                Land vom Desktop (ISO, Default 'DE')
  * @property {number} window_days
  * @property {number} window_wish            gewünschtes Fenster in Tagen (#250)
  * @property {number} window_wish_acked      Wunsch der zuletzt angewandten Antwort (#292)
@@ -79,6 +82,8 @@ const DEFAULT_META = Object.freeze({
   categories: [],
   defaults: null,          // Standardzeiten des Desktops (#288); null bei älterem Desktop
   desktop: { name: '', version: '', platform: '' },
+  language: null,          // Sprache der PWA; null = nie gewählt
+  country: 'DE',           // Land vom Desktop; fehlt es (älterer Desktop), bleibt der Stand
   window_days: 90,
   window_wish: 90,         // gewünschtes Fenster in Tagen (#250); der Desktop deckelt
   window_wish_acked: 90,   // der Wunsch, zu dem die letzte angewandte Antwort gehört (#292)
@@ -612,6 +617,7 @@ export class Store {
       defaults: nextDefaults,
       categories_edit: confirmed ? { ...edit, synced_version: edit.dirty_version, error: null } : edit,
       desktop: { ...parsed.desktop },
+      ...adoptDesktopLanguage(this._meta, parsed.desktop),
       window_days: parsed.window_days,
       window_ahead: parsed.window_ahead ?? null,
       window_max: parsed.window_max ?? null,
