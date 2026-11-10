@@ -2,14 +2,15 @@
 // Verdrahtung: Zustand der Oberfläche, Ereignisse, Abgleich-Auslöser, Service Worker. Die
 // Entscheidungen stehen in den getesteten Modulen (`view-model.js`, `sync-policy.js`,
 // `messages.js`); hier wird nur zusammengesteckt.
-import { addDays, formatDateDe, isIsoDate, localIsoDate, mondayOf, utcStamp } from './minutes.js';
+import { addDays, formatDateDe, isIsoDate, localIsoDate, mondayOf } from './minutes.js';
 import { weekdayKey } from './defaults.js';
 import { reservationEditable } from './reservations.js';
-import { planReminders, signature } from './reminders-plan.js';
-import { messageFor, testResultText } from './push-message.js';
-import { idbKeyStore, seal } from './push-blob.js';
-import { permissionState, shouldSchedule } from './push-policy.js';
-import { RelayClient, RelayError, VAPID_PUBLIC, newSecret, syncSchedule } from './relay-client.js';
+import { testResultText } from './push-message.js';
+import { idbKeyStore } from './push-blob.js';
+import { permissionState } from './push-policy.js';
+import { createPushScheduler } from './push-scheduler.js';
+import { syncPushPlan } from './push-sync.js';
+import { RelayClient, RelayError, VAPID_PUBLIC, newSecret } from './relay-client.js';
 import { DEFAULT_WISH, aheadDays, olderState } from './window-policy.js';
 import { DEFAULT_DEVICE_NAME, PROTOCOL, deviceNameFromUserAgent, isPairFragment, parseHostPort, parsePairLink } from './pairing.js';
 import { openDatabase, requestPersistentStorage } from './db.js';
@@ -48,6 +49,8 @@ import {
 const LOCK_LEFT_KEY = 'zeiterfassung-lock-left-at';   // wann die entsperrte Seite zuletzt verlassen wurde (nur dieser Tab)
 const SAVE_SYNC_DELAY_MS = 2000;
 const SWIPE_CLICK_GUARD_MS = 400;
+// Fehler des Relays, bei denen ein späterer Versuch helfen kann (kein Netz, Störung, Drossel).
+const RETRYABLE_RELAY_ERRORS = new Set(['offline', 'server', 'rate_limited']);
 const PUSH_JOB_WAIT_MS = 3000;          // so lange wartet das Trennen auf einen laufenden Zeitplan-Versand
 
 class App {
@@ -84,9 +87,8 @@ class App {
     this.applyRequested = false;     // für den wartenden Worker ist SKIP_WAITING schon raus (keine Neulade-Schleife)
     this.pairing = { address: '', code: '', deviceName: '', busy: false, error: '', relay: null };
     this.saveTimer = null;
-    this.pushTimer = null;
-    this.pushBusy = false;
-    this.pushJob = null;                   // läuft `updatePushSchedule`, dessen Ende (Trennen wartet darauf)
+    // Sendet den Zeitplan der Erinnerungen sofort bei jedem Auslöser, nie doppelt, und holt Verpasstes nach (#507).
+    this.pushScheduler = createPushScheduler({ run: () => this.sendPushPlan() });
     this.lockElement = null;               // die Sperre (#490) liegt als Dialog über allem
     this.lockSlot = createSessionSlot(() => sessionStorage, LOCK_LEFT_KEY);
     this.lockCtl = createLockController({
@@ -141,11 +143,16 @@ class App {
     this.captureFragment(this.initialHash);
     if (!this.paired) this.screen = 'pair';
     if (!this.paired) this.loadDeviceModel();
-    window.addEventListener('online', () => { this.online = true; this.trigger('online'); this.render(); });
+    // Der Plan geht auch ohne Desktop zum Relay: wieder Netz heißt, einen liegengebliebenen Plan nachzuholen.
+    window.addEventListener('online', () => { this.online = true; this.trigger('online'); this.updatePushSchedule(); this.render(); });
     window.addEventListener('hashchange', () => { if (this.captureFragment()) this.render(); });
     window.addEventListener('offline', () => { this.online = false; this.render(); });
     document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState !== 'visible') { this.lockCtl.hidden(); return; }
+      if (document.visibilityState !== 'visible') {
+        this.lockCtl.hidden();
+        this.updatePushSchedule();                     // letzte Gelegenheit, bevor das System die App anhält
+        return;
+      }
       this.lockCtl.visible();
       if (!this.locked) this.trigger('visible');       // gesperrt: kein Abgleich; das Entsperren holt ihn nach
       this.updatePushSchedule();
@@ -366,10 +373,10 @@ class App {
     const confirm = async () => {
       this.unpairing = true;
       clearTimeout(this.saveTimer);
-      clearTimeout(this.pushTimer);
       dialog.update({ phase: 'running', model });
       // Ein laufender Zeitplan-Versand legte das Relay-Objekt nach dem Löschen neu an und schriebe Meta in den geleerten Vault.
-      if (this.pushJob) await Promise.race([this.pushJob, new Promise((resolve) => setTimeout(resolve, PUSH_JOB_WAIT_MS))]);
+      this.pushScheduler.stop();
+      await Promise.race([this.pushScheduler.idle(), new Promise((resolve) => setTimeout(resolve, PUSH_JOB_WAIT_MS))]);
       const result = await runner();
       if (!result.ok) {
         // `unpairing` bleibt gesetzt: die Abmeldung liegt womöglich schon in der Box, ein weiterer Abgleich ersetzte sie.
@@ -396,49 +403,35 @@ class App {
     await this.store.setMeta({ push_enabled: false, push_signature: null, push_sent_at: 0 });
   }
 
-  /** Kurz nach einer Änderung neu planen, statt bei jedem Tastendruck des Nutzers. */
+  /** Nach einer Änderung sofort neu planen: wer die Zeit einträgt und die App gleich schließt, soll die Erinnerung
+   *  trotzdem nicht mehr bekommen. Mehrere Änderungen kurz hintereinander fasst der Planer selbst zusammen. */
   schedulePushUpdate() {
-    clearTimeout(this.pushTimer);
-    this.pushTimer = setTimeout(() => this.updatePushSchedule(), SAVE_SYNC_DELAY_MS);
+    this.pushScheduler.request();
   }
 
-  /** Plan neu berechnen und, wenn er sich geändert hat, verschlüsselt an den Relay schicken. Scheitert
-   *  der Relay, bleibt es ein Hinweis im Reiter: Speichern und Abgleich laufen unabhängig davon. */
-  async updatePushSchedule() {
-    if (this.pushBusy || this.unpairing) return;
-    this.pushBusy = true;
-    let release;
-    this.pushJob = new Promise((resolve) => { release = resolve; });     // `openUnpair` wartet darauf, bevor es löscht
+  /** Stößt das Senden des Zeitplans an; das Versprechen erfüllt sich, wenn nichts mehr läuft oder ansteht. */
+  updatePushSchedule() {
+    this.pushScheduler.request();
+    return this.pushScheduler.idle();
+  }
+
+  /** Ein Durchgang für den Planer: Plan rechnen und, wenn er sich geändert hat, verschlüsselt an den Relay schicken.
+   *  Scheitert der Relay, bleibt es ein Hinweis im Reiter (Speichern und Abgleich laufen unabhängig davon), und der
+   *  Planer wiederholt, wenn ein neuer Versuch helfen kann. */
+  async sendPushPlan() {
+    if (this.unpairing) return 'skipped';
     try {
-      const meta = this.store.getMeta();
-      const state = await this.pushState();
-      if (state !== 'on' || !meta.reminders || !meta.relay_secret) return;
-      const today = localIsoDate(new Date());
-      const since = (dates) => dates.filter((date) => date >= today);
-      const items = planReminders({
-        reservations: meta.reservations_enabled
-          ? Object.fromEntries(since(this.store.reservationDates()).map((date) => [date, this.store.getReservation(date)])) : {},
-        entries: Object.fromEntries(since(this.store.days()).map((date) => [date, this.store.getDay(date)])),
-        reminders: meta.reminders, now: new Date(),
+      const result = await syncPushPlan({
+        store: this.store, state: await this.pushState(), client: this.relay, keys: this.keys,
+        getSubscription: async () => (await this.subscription()).toJSON(),
+        aborted: () => this.unpairing,              // inzwischen getrennt: kein Relay-Objekt neu anlegen, keine Meta schreiben
       });
-      const plan = signature(items);
-      const now = Date.now();
-      if (!shouldSchedule({ state, remindersPresent: true, lastSignature: meta.push_signature, signature: plan,
-        lastSentAt: meta.push_sent_at, now })) return;
-      const subscription = await this.subscription();
-      const blobs = [];
-      for (const item of items) blobs.push({ id: item.id, fire_at: utcStamp(item.fireAt), blob: await seal(this.keys, messageFor(item)) });
-      if (this.unpairing) return;                          // inzwischen getrennt: kein Relay-Objekt neu anlegen
-      await syncSchedule({ client: this.relay, secret: meta.relay_secret, subscription: subscription.toJSON(), items: blobs });
-      if (this.unpairing) return;
-      await this.store.setMeta({ push_signature: plan, push_sent_at: now });
-      this.pushError = null;
+      if (result === 'sent') this.pushError = null;
+      return result;
     } catch (error) {
       if (!(error instanceof RelayError)) logFailure('Benachrichtigungs-Zeitplan senden', error);
       this.pushError = error instanceof RelayError ? error.message : withDetail('Der Zeitplan für die Benachrichtigungen ließ sich nicht senden.', error);
-    } finally {
-      this.pushBusy = false;
-      release();
+      return error instanceof RelayError && RETRYABLE_RELAY_ERRORS.has(error.kind) ? 'retry' : 'failed';
     }
   }
 

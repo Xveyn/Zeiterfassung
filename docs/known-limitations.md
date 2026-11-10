@@ -650,6 +650,11 @@ läuft.
 - **Was er nicht sieht:** Arbeitszeiten, Kategorien, Namen. Der Text der Benachrichtigung ist mit einem
   Schlüssel verschlüsselt, den nur Handy und Service Worker kennen. Die Push-Dienste (Google, Mozilla)
   sehen zusätzlich Metadaten, den Inhalt nicht.
+- **Eine am Handy eingetragene Zeit nimmt die Erinnerung nur heraus, wenn der neue Plan den Relay erreicht.**
+  Die Web-App sendet ihn sofort nach dem Speichern (auch ohne Desktop, #507) und wiederholt bei einem Fehler. Ist
+  das Handy dabei ohne Netz und wird die App geschlossen, bevor es wieder Netz hat, kommt die Erinnerung trotzdem;
+  beim nächsten Öffnen wird der Plan nachgezogen. Die Erinnerung entfällt außerdem nur bei einer Ist-Zeit
+  **derselben Kategorie** wie die Reservierung, wie am Desktop.
 - **Abhängigkeit:** Cloudflare (Free-Plan: 100.000 Anfragen/Tag, 10 ms CPU je Anfrage) und der Betreiber,
   der den Worker veröffentlicht. Fällt der Relay aus, kommen keine Push-Erinnerungen; alles andere läuft wie
   bisher (Desktop-Toasts, Erfassung, Abgleich).

@@ -361,3 +361,32 @@ test('the other methods on the test path are unknown', async () => {
   const { call } = setup();
   assert.equal((await call('GET', '/v1/test')).status, 404);
 });
+
+// --- Zurückgenommene Erinnerung (#507) ---------------------------------------------------------------
+
+test('a reminder taken back by a later schedule is not sent when its time comes', async () => {
+  const { call, clock, sent, device, storage, items } = setup();
+  await call('PUT', '/v1/device', SUB);
+  await call('PUT', '/v1/schedule', items(['upcoming', 5 * MIN], ['missed', 20 * MIN]));
+
+  await call('PUT', '/v1/schedule', { items: [] });        // die Zeit wurde am Handy eingetragen
+  clock.now = T0 + 5 * MIN;
+  await device.alarm();                                     // ein Alarm, der noch vom alten Plan stammt
+  clock.now = T0 + 20 * MIN;
+  await device.alarm();
+
+  assert.deepEqual(sent, []);
+  assert.deepEqual(await storage.get('items'), []);
+});
+
+test('taking back one of two reminders keeps the other', async () => {
+  const { call, clock, sent, device, items } = setup();
+  await call('PUT', '/v1/device', SUB);
+  await call('PUT', '/v1/schedule', items(['support', 5 * MIN], ['projekt', 6 * MIN]));
+
+  await call('PUT', '/v1/schedule', items(['projekt', 6 * MIN]));
+  clock.now = T0 + 7 * MIN;
+  await device.alarm();
+
+  assert.deepEqual(sent, ['projekt']);
+});
