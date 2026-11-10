@@ -24,6 +24,7 @@ import { createDebugLog, deliverExport, formatExport } from './debug-log.js';
 import { capped, describeEnvironment, workerFromRegistration } from './debug-info.js';
 import { idbLogStore } from './log-store.js';
 import { swipeDirection } from './swipe-policy.js';
+import { normalizeShiftStep, shiftOptions } from './shift-policy.js';
 import { shouldApplyUpdate, shouldCheckForUpdate } from './update-policy.js';
 import { blockSignature, rowsToBlock } from './categories.js';
 import {
@@ -831,6 +832,7 @@ class App {
         online: this.online, lastSyncAt: meta.server_time,
         push,
         lock: this.lockModelNow(),
+        shift: { step: normalizeShiftStep(meta.shift_step_minutes), options: shiftOptions() },
       },
       updates: { build: BUILD, update: { state: this.updateState, detail: this.updateDetail, auto: Boolean(meta.auto_update) } },
       categories: categoriesModel({
@@ -858,6 +860,11 @@ class App {
       confirmLock: (id) => this.confirmLock(id),
       removeLock: () => this.removeLock(),
       setLockDelay: (ms) => this.setLockDelay(ms),
+      setShiftStep: async (minutes) => {
+        const step = normalizeShiftStep(minutes);
+        await this.store.setMeta({ shift_step_minutes: step });
+        return step;
+      },
       applyUpdate: () => this.reloadForUpdate(),
       setAutoUpdate: async (on) => {
         await this.store.setMeta({ auto_update: on });
@@ -923,6 +930,7 @@ class App {
       } : null,
       startWith,
       pauseEnabled,
+      shiftStep: normalizeShiftStep(meta.shift_step_minutes),
     }, {
       loadOlder: () => { dialog.close(); void this.loadOlder(lock.wish); },
       save: async (kind, rows) => {

@@ -5,6 +5,7 @@
 import { DEFAULT_RETENTION_DAYS, RETENTION_CHOICES, formatEntry } from './debug-log.js';
 import { focusByKey, h } from './dom.js';
 import { MAX_CATEGORY_LENGTH, TIME_STEP_MINUTES, formatMinutes, snapPause, snapTime } from './minutes.js';
+import { mayStartShift, shiftLabel, shiftWindow, stepsForDistance } from './shift-policy.js';
 import { updateStatusText } from './update-policy.js';
 import { createDialogHistory } from './dialog-history.js';
 import { PRIVACY_URL } from './relay-client.js';
@@ -211,7 +212,11 @@ function footerButtons(destructive, cancel, primary) {
 /** Eine Liste von Slot-Zeilen (Arbeitszeit mit Pause, Reservierung ohne). Der Abschnitt hält seinen
  *  Zustand selbst: Eingaben gehen bei Hintergrund-Renders und beim Wechsel des Reiters nicht verloren.
  *  `onChange` meldet jede Eingabe (der Dialog prüft dann neu). */
-function slotSection({ rows, categories, defaults, weekday, withPause, pauseEnabled = false, onChange }) {
+const SHIFT_HINT = '↔ Ziehen verschiebt beide Zeiten';
+const SHIFT_LABEL_MS = 900;          // so lange bleibt „+20 min“ nach dem Loslassen stehen
+const SHIFT_CLICK_GUARD_MS = 400;    // ein Klick direkt nach dem Zug öffnete sonst die Zeitauswahl
+
+function slotSection({ rows, categories, defaults, weekday, withPause, pauseEnabled = false, shiftStep = 0, onChange }) {
   const list = h('div', {});
   const state = rows.map((row) => ({ ...row, base: row.base && { ...row.base } }));
   const prefix = withPause ? 'slot' : 'res';       // die Ids beider Abschnitte dürfen nicht kollidieren
@@ -263,6 +268,49 @@ function slotSection({ rows, categories, defaults, weekday, withPause, pauseEnab
     if (refs[index]) refs[index][key] = input;
     return h('div', {}, h('label', { for: id }, label), input);
   };
+  // Ein waagerechter Zug auf den Zeitfeldern verschiebt Start und Ende gemeinsam (#500); die Regeln stehen in
+  // `shift-policy.js`. Die Zeile wird dabei nicht neu gebaut: das berührte Feld muss das Ziel der Geste bleiben.
+  const watchShift = (row, index, line, hint) => {
+    let drag = null;
+    let guardUntil = -Infinity;
+    let resetTimer = null;
+    const finish = (event) => {
+      if (!drag || event.pointerId !== drag.id) return;
+      window.removeEventListener('pointerup', finish);
+      window.removeEventListener('pointercancel', finish);
+      if (drag.moved) guardUntil = event.timeStamp + SHIFT_CLICK_GUARD_MS;
+      drag = null;
+      resetTimer = setTimeout(() => { hint.textContent = SHIFT_HINT; hint.classList.remove('live'); }, SHIFT_LABEL_MS);
+    };
+    line.addEventListener('pointerdown', (event) => {
+      if (drag || !mayStartShift({ pointerType: event.pointerType, width: window.innerWidth, startX: event.clientX })) return;
+      if (!shiftWindow(row.start, row.end, 0, shiftStep)) return;
+      drag = { id: event.pointerId, x: event.clientX, start: row.start, end: row.end, steps: 0, moved: false };
+      // Am Fenster: verlässt der Finger den Bildschirm, kommt das Ende nicht mehr in der Zeile an.
+      window.addEventListener('pointerup', finish);
+      window.addEventListener('pointercancel', finish);
+    });
+    line.addEventListener('pointermove', (event) => {
+      if (!drag || event.pointerId !== drag.id) return;
+      const next = shiftWindow(drag.start, drag.end, stepsForDistance(event.clientX - drag.x), shiftStep);
+      if (!next || next.steps === drag.steps) return;
+      drag.steps = next.steps;
+      drag.moved = true;
+      row.start = next.start;
+      row.end = next.end;
+      refs[index].start.value = next.start;
+      refs[index].end.value = next.end;
+      if (labels[index]) labels[index].textContent = showCategory(index);
+      clearTimeout(resetTimer);
+      hint.textContent = shiftLabel(next.steps * shiftStep);
+      hint.classList.add('live');
+      update();
+      onChange();
+    });
+    line.addEventListener('click', (event) => {
+      if (event.timeStamp < guardUntil) { event.stopPropagation(); event.preventDefault(); }
+    }, true);
+  };
   // Modal statt <datalist>: auf dem Handy zeigt ein Datalist erst nach Eingabe etwas und filtert nach
   // dem Feldinhalt, und Chips blähen den Editor bei mehreren Slots auf.
   const categoryField = (index) => {
@@ -307,6 +355,10 @@ function slotSection({ rows, categories, defaults, weekday, withPause, pauseEnab
         ref.pauseChips.push({ chip, minutes });
         return chip;
       }) : [];
+      const timeRow = h('div', { class: shiftStep > 0 ? 'row shiftable' : 'row' }, startField, endField);
+      // Für Screenreader verborgen: die Geste gibt es nur per Finger, die Felder bleiben der barrierefreie Weg.
+      const shiftHint = shiftStep > 0 && h('div', { class: 'shift-hint', 'aria-hidden': 'true' }, SHIFT_HINT);
+      if (shiftHint) watchShift(row, index, timeRow, shiftHint);
       ref.error = h('div', { class: 'field-error', role: 'status' }, '');
       ref.netValue = h('b', {}, '');
       ref.net = h('div', { class: 'net' }, h('span', {}, 'Netto'), ref.netValue);
@@ -314,7 +366,8 @@ function slotSection({ rows, categories, defaults, weekday, withPause, pauseEnab
         state.length > 1 && h('div', { class: 'slot-head' },
           h('span', { class: 'muted' }, `Slot ${index + 1}`),
           button('×', () => { state.splice(index, 1); build(); onChange(); }, 'remove', { 'aria-label': `Slot ${index + 1} entfernen` })),
-        h('div', { class: 'row' }, startField, endField),
+        timeRow,
+        shiftHint,
         h('div', { class: 'chips', role: 'group', 'aria-label': 'Ende setzen' }, ...endChips),
         ref.error,
         h('div', { class: 'row' },
@@ -340,7 +393,7 @@ function slotSection({ rows, categories, defaults, weekday, withPause, pauseEnab
  *  `handlers.save(kind, rows)` liefert `null` bei Erfolg oder eine Fehlermeldung; `kind` ist
  *  `'work'` oder `'reservation'`. */
 export function editorDialog({ title, rows, categories, defaults = null, weekday = '', errors = {}, lock = null, canClear, validate,
-  reservation = null, startWith = 'work', pauseEnabled = false }, handlers) {
+  reservation = null, startWith = 'work', pauseEnabled = false, shiftStep = 0 }, handlers) {
   const message = h('div', { class: 'error-text', role: 'alert' }, '');
   const save = h('button', { type: 'submit', class: 'primary' }, 'Speichern');
   const dialog = h('dialog', { 'aria-labelledby': 'editor-title' });
@@ -359,10 +412,10 @@ export function editorDialog({ title, rows, categories, defaults = null, weekday
     else if (errors[active] && !edited[active]) message.textContent = errors[active];
     else message.textContent = attempted[active] && !result.ok ? result.message : '';
   };
-  const work = slotSection({ rows, categories, defaults, weekday, withPause: true,
+  const work = slotSection({ rows, categories, defaults, weekday, withPause: true, shiftStep,
     onChange: () => { edited.work = true; refresh(); } });
   const res = reservation && slotSection({ rows: reservation.rows, categories, defaults, weekday,
-    withPause: false, pauseEnabled, onChange: () => { edited.reservation = true; refresh(); } });
+    withPause: false, pauseEnabled, shiftStep, onChange: () => { edited.reservation = true; refresh(); } });
   const heading = h('h2', { id: 'editor-title' }, title);
   const clearButton = button('Tag leeren', () => handlers.clear(active, dialog), 'link destructive');
   // Gesperrte Arbeitszeit (#273): statt der Zeilen ein Hinweis, mit dem Ausweg „Ältere Zeiten laden“, wo es ihn gibt.
@@ -511,7 +564,7 @@ export function conflictsDialog(conflicts, handlers) {
 // --- Einstellungen -----------------------------------------------------------------------------------
 
 /** Reiter „Verbindung“: Stand der Kopplung und des Desktops, Verlauf, Neu koppeln. */
-function connectionPanel({ desktopName, desktop, hint = '', address, transport = 'lan', persistent, tokenUntil, window: windowInfo, push, lock,
+function connectionPanel({ desktopName, desktop, hint = '', address, transport = 'lan', persistent, tokenUntil, window: windowInfo, push, lock, shift,
   online = true, lastSyncAt = '' }, { closeThen, handlers }) {
   const windowState = windowRow(windowInfo);
   const resetWindow = button('Auf 90 Tage zurücksetzen', () => closeThen(() => handlers.resetWindow()), '', { 'data-focus': 'reset-window' });
@@ -540,6 +593,7 @@ function connectionPanel({ desktopName, desktop, hint = '', address, transport =
     hint && h('p', { class: 'hint warn', role: 'status' }, hint),
     pushSection(push, handlers),
     lock && lockSection(lock, handlers),
+    shift && shiftSection(shift, handlers),
     h('p', { class: 'muted' }, 'Relay und Benachrichtigungen: ', privacyLink(), '.'),
     h('details', { class: 'tech' },
       h('summary', {}, 'Technische Details'),
@@ -665,6 +719,23 @@ function lockSection(initial, handlers) {
     h('label', { class: 'switch', for: 'lock-toggle' }, h('span', {}, 'App mit Geräte-Entsperrung sperren'), toggle),
     h('label', { for: 'lock-delay' }, 'Sperren'), delay,
     note, status, message, pending);
+}
+
+/** Abschnitt „Zeiten verschieben“ (#500): Schrittweite des Wischs auf den Zeitfeldern des Tages-Editors, oder aus. */
+function shiftSection(model, handlers) {
+  const select = h('select', { id: 'shift-step', 'data-focus': 'shift-step' },
+    model.options.map((option) => h('option', { value: String(option.value) }, option.label)));
+  select.value = String(model.step);
+  select.addEventListener('change', async () => {
+    select.disabled = true;
+    select.value = String(await handlers.setShiftStep(Number(select.value)));
+    select.disabled = false;
+    select.focus();
+  });
+  return h('section', { class: 'shift' },
+    h('h3', {}, 'Zeiten verschieben'),
+    h('label', { for: 'shift-step' }, 'Wischen auf den Zeitfeldern'), select,
+    h('p', { class: 'muted' }, 'Im Tages-Editor verschiebt ein waagerechter Zug auf den Zeitfeldern Start und Ende gemeinsam: nach rechts später, nach links früher.'));
 }
 
 /** Die Sperre selbst: ein Dialog über allem, was offen ist (ein später geöffneter modaler Dialog liegt weiter oben in der

@@ -124,7 +124,8 @@ dialog > .buttons, dialog > form > .buttons {
   position: sticky; bottom: calc(-1 * var(--gutter)); background: var(--bg);
   margin: 12px calc(-1 * var(--gutter)) calc(-1 * var(--gutter)); padding: 8px var(--gutter) var(--gutter);
 }
-.slot { border: 1px solid #2a3a5a; border-radius: 8px; padding: 10px; margin-bottom: 10px; }
+/* `min-width: 0`: ein <fieldset> ist sonst mindestens so breit wie sein Inhalt und ragt bei 280 px aus dem Dialog. */
+.slot { border: 1px solid #2a3a5a; border-radius: 8px; padding: 10px; margin-bottom: 10px; min-width: 0; }
 /* Kopfzeile statt schwebendem ×: der Knopf nähme sonst der Zeile von/bis Breite weg (bei 320 px blieben 74 px je Zeitfeld). */
 .slot-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 4px; }
 .slot .remove { min-width: var(--tap); padding: 0; }
@@ -163,6 +164,9 @@ label.check input { width: auto; min-height: 0; flex: none; }
   .settings-dialog .tabs { gap: 2px; }
   .settings-dialog .tabs button { font-size: .7rem; padding-left: 2px; padding-right: 2px; }
   dialog .buttons button { padding: 0 12px; }
+  /* Volle Breite (der Browser-Standard deckelt <dialog> schmaler) und weniger Rand im Slot: die Zeitfelder behalten ~98 px. */
+  dialog { max-width: calc(100vw - 24px); }
+  .slot { padding-left: 6px; padding-right: 6px; }
 }
 .categories { list-style: none; margin: 0 0 12px; padding: 0; }
 .category { display: flex; gap: 6px; align-items: stretch; margin-bottom: 6px; }
@@ -202,6 +206,10 @@ label.check input { width: auto; min-height: 0; flex: none; }
 .slot input[aria-invalid="true"] { border-color: var(--accent); }
 .field-error { color: var(--accent-text); font-size: .85rem; min-height: 0; margin: -8px 0 8px; }
 .field-error:empty { display: none; }
+.slot .row.shiftable, .slot .row.shiftable input { touch-action: pan-y; }   /* waagerechte Züge gehören dem Verschieben (#500) */
+.slot .shift-hint { margin: -6px 0 10px; font-size: .8rem; color: var(--muted); overflow-wrap: anywhere; }
+.slot .shift-hint.live { color: var(--text); font-weight: 600; }
+.shift select { display: block; margin: 4px 0 8px; }
 .slot .net { display: flex; justify-content: space-between; font-size: .85rem; color: var(--muted); }
 .slot .net b { color: var(--ok); font-weight: 600; }
 .daysum { display: flex; justify-content: space-between; font-weight: 700; padding: 4px 2px 0; }
@@ -254,7 +262,7 @@ details.tech dl { margin-top: 0; }
 .lock-dialog { width: 100vw; max-width: none; height: 100dvh; max-height: none; margin: 0; border: 0; border-radius: 0; }
 .lock-dialog[open] { display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
 .lock-dialog > .buttons { position: static; justify-content: center; margin: 12px 0 0; padding: 0; background: none; }
-.lock { margin-top: 16px; }
+.lock, .shift { margin-top: 16px; }
 .lock select { display: block; margin: 4px 0 8px; }
 /* `display: flex` (`dialog .buttons`) überstimmt das `hidden` der Knopfgruppen. */
 .lock .buttons[hidden] { display: none; }
