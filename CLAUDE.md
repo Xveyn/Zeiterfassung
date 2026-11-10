@@ -287,12 +287,12 @@ Das Ruleset erzwingt: kein Löschen, kein Force-Push, PR-Pflicht (0 Reviews —
 ein Solo-Maintainer kann den eigenen PR nicht approven) und diese Required
 Checks:
 
-    changes, test, lint, typecheck, coverage, test-macos, test-windows, typecheck-js
+    changes, test, lint, typecheck, coverage, test-macos, test-windows, typecheck-js, gitleaks
 
 **Das Ruleset liegt außerhalb des Repos und driftet lautlos.** Bis 2026-09-25
 nannte diese Liste `test-macos`/`test-windows`, das Ruleset verlangte sie aber
 längst nicht mehr — `tests/test_claude_md_claims.py` prüft die Liste nur gegen
-die Jobs in `test.yml`, nicht gegen GitHub. Wer die Liste oder das Ruleset
+die Jobs in `test.yml` und `gitleaks.yml`, nicht gegen GitHub. Wer die Liste oder das Ruleset
 ändert, gleicht beides mit dem `gh api`-Aufruf oben ab.
 
 **Keine `test-matrix (…)`-Contexts in die Liste aufnehmen.** Sie standen dort
@@ -1246,7 +1246,7 @@ Die Test-Deps sind **exakt gepinnt** (Audit N25) — beim Bump gegen Python 3.12
 - **pwa** — `node --test` im Ordner `pwa/` (Node 22, `actions/setup-node`), hinter `changes` wie die übrigen Jobs. Bewusst **nicht** in der Liste der Required Checks oben: das Ruleset liegt außerhalb des Repos, die Aufnahme entscheidet der Maintainer (dann beides abgleichen, s. „Branch Protection"). `pwa/**` zählt als Code (nicht als Doku) und löst die ganze Matrix aus.
 - **relay** — `npm ci` und `node --test` im Ordner `relay/` (Node 22, `actions/setup-node`), hinter `changes` wie `pwa`. Ebenfalls **nicht** in der Liste der Required Checks (Aufnahme entscheidet der Maintainer, dann beides abgleichen). `relay/**` zählt als Code und löst die ganze Matrix aus. Der Job prüft zusätzlich die Konfiguration mit `wrangler deploy --dry-run` (ohne Token). Ausgerollt wird nicht hier, sondern von **`relay-deploy.yml`** nach dem Merge auf `master` (Environment `relay-production` mit den Cloudflare-Secrets, nur `master`, ohne zweite Freigabe — der Merge ist das Gate; Einrichtung in `relay/README.md`).
 
-- **gitleaks** — eigene Datei **`gitleaks.yml`** (Secret-Scan über die ganze Historie, `--redact`, damit Fundstellen nie im Log stehen). Eigene Datei statt Job in `test.yml`, weil `changes` dort reine Doku-PRs überspringt — ein Secret in einer Markdown-Datei ist trotzdem eins. Gepinntes Release-Binary mit SHA256-Prüfung statt `gitleaks-action` (die verlangt für Organisations-Repos eine Lizenz); beim Bump Version und Summe zusammen ändern. Ausnahmen stehen eng gefasst in **`.gitleaks.toml`** (Fixtures der PWA, Pläne mit denselben erfundenen Tokens, öffentlicher VAPID-Schlüssel) — jede nur für `generic-api-key` und einen Pfad bzw. Wert, damit ein echtes Token anderswo weiter auffällt. Ebenfalls **nicht** in der Liste der Required Checks (Aufnahme entscheidet der Maintainer, dann beides abgleichen). Lokal: `gitleaks git --redact`.
+- **gitleaks** — eigene Datei **`gitleaks.yml`** (Secret-Scan über die ganze Historie, `--redact`, damit Fundstellen nie im Log stehen). Eigene Datei statt Job in `test.yml`, weil `changes` dort reine Doku-PRs überspringt — ein Secret in einer Markdown-Datei ist trotzdem eins. Gepinntes Release-Binary mit SHA256-Prüfung statt `gitleaks-action` (die verlangt für Organisations-Repos eine Lizenz); beim Bump Version und Summe zusammen ändern. Ausnahmen stehen eng gefasst in **`.gitleaks.toml`** (Fixtures der PWA, Pläne mit denselben erfundenen Tokens, öffentlicher VAPID-Schlüssel) — jede nur für `generic-api-key` und einen Pfad bzw. Wert, damit ein echtes Token anderswo weiter auffällt. **Required Check**; sein Job steht in `gitleaks.yml`, nicht in `test.yml` — der Claims-Test sucht deshalb in beiden. Lokal: `gitleaks git --redact`.
 
 Lokal: `pytest` aus dem Repo-Root (Coverage: `pytest --cov=src --cov-report=term-missing`). Alle Tests müssen vor dem PR-Merge grün sein.
 
