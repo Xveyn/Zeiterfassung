@@ -69,6 +69,9 @@ ES-Module flach im Ordner:
   `app.js` (`watchSwipe`) bindet Pointer-Events einmal am `main`, `touch-action: pan-y` lässt das senkrechte
   Scrollen beim Browser; nur auf dem Wochen-Screen ohne offenen Dialog, ein Klick direkt nach dem Wisch wird
   verworfen. Wechsel beim Loslassen, die Woche folgt dem Finger nicht. Auf iOS ungeprüft (#358).
+- `shift-policy.js` — ein waagerechter Zug auf den Zeitfeldern eines Slots verschiebt Start und Ende gemeinsam (#500),
+  s. „Zeiten verschieben“: `mayStartShift`, `stepsForDistance`, `shiftWindow`, `shiftLabel`, dazu die Schrittweite
+  (`SHIFT_STEPS`, `normalizeShiftStep`, `shiftOptions`).
 - `browser-policy.js` — Engine hinter dem Browser (`browserKind`: chromium / firefox / ios / safari / unknown;
   jeder Browser auf dem iPhone ist WebKit) und `blocksLan` (sperrt eine https-Seite den Zugriff auf
   `http://<LAN-IP>`?). Nur dazu, die Meldung „Desktop nicht erreichbar“ **nach** einem Fehlschlag um die
@@ -319,9 +322,48 @@ und „Tag gesamt“, nur über ganze Minuten; ohne Pausenfeld zählt die Pause 
 - **Eine Schnellwahl schreibt in die Zeile und baut neu** — wie die Kategorie-Wahl; Fehler, Netto und Pressed-Zustand
   folgen jeder Eingabe über `update()`, ohne die Zeilen neu zu bauen (der Fokus bliebe sonst nicht).
 - **`display: flex` überstimmt `hidden`**: Zeilen, die per `hidden` verschwinden sollen, brauchen ein eigenes `[hidden]`-Rechteck in `app.css`.
+- **Der Slot-Kasten ist ein `<fieldset>` und braucht `min-width: 0`:** Browser geben ihm sonst `min-inline-size: min-content`,
+  bei 280 px ragte er 20 px über den Dialogrand. Allein drückte das die Zeitfelder auf 87 px („08:0“); deshalb bekommt der
+  Dialog bis 340 px seine volle Breite (`max-width: calc(100vw - 24px)`, der Browser-Standard deckelt `<dialog>` auf
+  `100% - 6px - 2em`, also schmaler als `width` verlangt) und der Kasten 6 statt 10 px Rand. Die Zeitfelder bleiben so bei
+  ~98 px. Gemessen in der Chromium-Emulation (mit Uhr-Symbol im Feld), nicht auf einem Gerät dieser Breite.
 - **Fußzeile mit Löschen** (`footerButtons`, auch „Kategorie bearbeiten“): „Tag leeren“/„Reservierung löschen“/„Löschen“ links
   (`.destructive`), „Abbrechen“ und der Hauptknopf als **eine** Gruppe (`.button-group`) rechts. Bei Platzmangel (390 px, langer Text)
   bricht die Gruppe als Ganzes um; als einzelne Flex-Kinder stand „Speichern“ allein unter „Abbrechen“.
+
+## Zeiten verschieben (#500)
+
+Im Tages-Editor verschiebt ein waagerechter Zug auf den Zeitfeldern eines Slots **Start und Ende gemeinsam**: nach
+rechts später, nach links früher; Dauer, Pause und Kategorie bleiben. Gedacht für den Fall, dass die Ist-Zeit aus der
+Reservierung vorbelegt ist und nur ihre Lage abweicht. Die Regeln stehen DOM-frei in `shift-policy.js`,
+`views.js::slotSection` (`watchShift`) sammelt die Pointer-Events; beide Reiter (Arbeitszeit, Reservierung) haben die Geste.
+
+- **Die Zeit läuft beim Ziehen mit**, alle `STEP_PX` (28 px) ein Schritt; ein kurzer Wisch ist ein Schritt. Bricht der
+  Browser die Geste ab (`pointercancel`), bleibt stehen, was bis dahin verschoben war (WebKit wechselt mitunter mitten im
+  Zug zum Scrollen).
+- **`touch-action: pan-y` auf Zeile und Feldern ist Voraussetzung** (`.slot .row.shiftable`): ohne sie bricht Chromium
+  einen waagerechten Zug auf einem `<input type="time">` nach zwei Bewegungen ab. Mit ihr öffnet ein Tipp weiter die
+  Zeitauswahl, ein senkrechter Zug scrollt weiter. Die Klasse steht nur, solange die Geste an ist.
+- **Tagesgrenzen:** Slots liegen innerhalb eines Tages. Das Fenster bleibt nach dem letzten ganzen Schritt stehen (Start
+  nicht vor 00:00, Ende nicht nach 23:59); die Dauer wird nie gekürzt, um noch einen Schritt zu schaffen.
+- **Kein Zug** bei leerem Start oder Ende, bei Ende vor Start, mit der Maus und bei einem Start im 24-px-Randstreifen
+  (`EDGE_PX`, der gehört der Zurück-Geste, die den Dialog schließt). Zeiten außerhalb des 5-Minuten-Rasters behalten
+  ihren Versatz (08:03 wird 08:13), sonst änderte sich die Dauer.
+- **Die Zeile wird beim Ziehen nicht neu gebaut** (kein `build()`): das berührte Feld muss das Ziel der Geste bleiben. Der
+  Zug schreibt in den Zeilenzustand und ruft `update()`/`onChange()` wie eine Eingabe. Das Ende der Geste hängt am
+  Fenster, weil es nicht mehr in der Zeile ankommt, wenn der Finger den Bildschirm verlässt. Ein Klick direkt nach
+  einem Zug wird verworfen (`SHIFT_CLICK_GUARD_MS`), sonst spränge die Zeitauswahl auf.
+- **Hinweiszeile** unter den Zeitfeldern („↔ Ziehen verschiebt beide Zeiten“, `--muted`), beim Ziehen die Verschiebung
+  („+20 min“, `--text`); für Screenreader verborgen, die Felder bleiben der barrierefreie Weg. `test/contrast.test.js`
+  hält die Farben fest.
+- **Einstellung** im Reiter „Verbindung“, Abschnitt „Zeiten verschieben“ (unter der Sperre): Aus, 5, 10, 15, 30 oder
+  60 Minuten je Schritt, Standard 10. Meta `shift_step_minutes` (0 = aus), gerätelokal, kein Abgleich; alles andere als
+  ein angebotener Wert gilt als 10. Bei „Aus“ fehlen Hinweiszeile und `touch-action`.
+- **Geprüft** in Node (`test/shift-policy.test.js`) und in Chromium mit Touch-Emulation gegen den Dev-Server (CDP
+  `Input.dispatchTouchEvent`; ein Zug, der links aus dem Bildschirm führt, liefert dort `pointerup` am `html`-Element).
+  Auf einem iPhone (Safari) kam der Zug am 2026-11-10 auf echten Zeitfeldern einer Testseite an, schon mit `pan-y`
+  allein. **Offen:** die fertige PWA auf iOS (Browser-Tab und installierte Web-App, auch ob die beiden Zeitfelder der
+  Slot-Zeile dort sauber nebeneinander stehen), ein echtes Android-Gerät und Firefox auf Android.
 
 ## Einstellungen › Kategorien: Anzeige (#461)
 

@@ -350,3 +350,23 @@ test('the unpair rules use no opacity and hover only where there is a hover', ()
 test('a green hint border exists for the all-synced summary of the unpair dialog', () => {
   assert.match(css, /\.hint\.ok \{ border-color: var\(--ok\); \}/);
 });
+
+test('the time row of a slot leaves horizontal drags to the shift gesture, but only while it is on', () => {
+  // Ohne `pan-y` bricht der Browser einen waagerechten Zug nach wenigen Bewegungen ab (`pointercancel`, #500).
+  assert.match(rule('.slot .row.shiftable, .slot .row.shiftable input'), /touch-action:\s*pan-y/);
+  assert.doesNotMatch(rule('form .row'), /touch-action/);
+});
+
+test('a slot box never grows wider than the dialog: a fieldset is at least as wide as its content by default', () => {
+  // Bei 280 px ragte der Kasten 20 px über den Dialogrand: `min-inline-size: min-content` ist der Browser-Standard.
+  assert.match(rule('.slot'), /min-width:\s*0/);
+});
+
+test('on very narrow screens the dialog gets its full width and the slot box gives room to the time fields', () => {
+  // Nur `min-width: 0` drückte die Zeitfelder bei 280 px auf 87 px („08:0“). Der Browser-Standard deckelt
+  // `<dialog>` schmaler als `width` verlangt; mit der vollen Breite und weniger Innenabstand bleiben 98 px.
+  const narrow = /@media \(max-width: 340px\) \{([\s\S]*?)\n\}/.exec(css);
+  assert.ok(narrow, 'Block für sehr schmale Bildschirme nicht gefunden');
+  assert.match(rule('dialog', narrow[1]), /max-width:\s*calc\(100vw - 24px\)/);
+  assert.match(rule('.slot', narrow[1]), /padding-left:\s*6px;\s*padding-right:\s*6px/);
+});

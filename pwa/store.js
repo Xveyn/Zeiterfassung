@@ -45,6 +45,7 @@ const DEFAULT_META = Object.freeze({
   lock_enabled: false,     // App-Sperre über die Geräte-Entsperrung (#490); gerätelokal, Standard aus
   lock_credential: '',     // Credential-ID (base64url) des Passkeys der Sperre; ohne sie gilt die Sperre nicht
   lock_delay_ms: 60000,    // Frist nach dem Verlassen der App, vor der gesperrt wird (0, 1 Minute, 5 Minuten)
+  shift_step_minutes: 10,  // Schrittweite des Wischs auf den Zeitfeldern (#500): 0 = aus, sonst 5/10/15/30/60; gerätelokal
   reservations_enabled: false, // Desktop bietet Reservierungen an (Feld in der Antwort); fehlt es, bleibt alles verborgen
   reservation_pause: false,   // Desktop versteht `pause` an Reservierungs-Slots (Feld `reservation_pause`, #455); sonst geht sie nie auf den Draht
   desktop_unpair: false,      // Desktop kennt `POST /v1/unpair` (Feld `unpair` der Antwort, #499); sonst warnt die Rückfrage vor dem Trennen

@@ -1033,6 +1033,15 @@ test('a desktop answer replaces the slot with its pause while the day is not dir
 });
 
 
+test('the shift step is device-local and defaults to ten minutes', async () => {
+  const { store } = await make();
+  assert.equal(store.getMeta().shift_step_minutes, 10);
+  await store.setMeta({ shift_step_minutes: 30 });
+  const reloaded = new Store(store._adapter, () => new Date());
+  await reloaded.load();
+  assert.equal(reloaded.getMeta().shift_step_minutes, 30);
+});
+
 test('the lock settings are device-local and default to off with a one-minute delay', async () => {
   const { store } = await make();
   const meta = store.getMeta();
