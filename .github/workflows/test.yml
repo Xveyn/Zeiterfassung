@@ -219,7 +219,7 @@ jobs:
     # PWA bleibt ohne Abhängigkeiten. Regeln und Geltungsbereich stehen in biome.json
     # (nur Lint, keine Formatierung). Eigener Job statt Schritt in `pwa`/`relay`: ein
     # Lauf für beide Ordner, und ein Lint-Fehler färbt nicht die Tests rot. Bewusst
-    # KEIN Required Check — die Aufnahme ins Ruleset entscheidet der Maintainer.
+    # Required Check (s. CLAUDE.md, „Branch Protection“).
     needs: changes
     if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
@@ -241,8 +241,8 @@ jobs:
   typecheck-js:
     # Typprüfung des JavaScripts per JSDoc und `tsc --noEmit` (Xveyn#513): kein Build, keine
     # Laufzeitänderung. In der PWA prüft nur, wer `// @ts-check` trägt; die Liste wächst pro PR.
-    # Das Relay prüft ganz, mit den `Env`-Typen aus `wrangler.toml` (`wrangler types`). Bewusst
-    # KEIN Required Check — die Aufnahme ins Ruleset entscheidet der Maintainer.
+    # Das Relay prüft ganz, mit den `Env`-Typen aus `wrangler.toml` (`wrangler types`).
+    # Required Check (s. CLAUDE.md, „Branch Protection“).
     needs: changes
     if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
