@@ -10,6 +10,10 @@ export const PRIVACY_SOURCE_URL = 'https://github.com/Xveyn/Zeiterfassung/blob/m
 // Der öffentliche VAPID-Schlüssel des Relays. Alle Abos hängen an ihm: nie wechseln (`relay/README.md`).
 export const VAPID_PUBLIC = 'BMZUZQIW3QNwt2vJp3q47zAAx4lLADWA0_r3kQQeyMT3d_GXsyyTjNlgBd1fOMtuZvlJhsLu1QRbHsT0hQHzC20';
 const TIMEOUT_MS = 15000;
+// Mit `keepalive` überlebt eine Anfrage das Schließen der Seite (Zeit eingetragen, App sofort weggewischt: der neue
+// Zeitplan muss den Relay trotzdem erreichen, #507). Browser begrenzen solche Anfragen auf 64 KiB und lehnen größere
+// ab; ein großer Plan geht deshalb ohne hinaus.
+const KEEPALIVE_MAX_BYTES = 60000;
 
 const MESSAGES = {
   unauthorized: 'Der Relay hat das Gerät nicht erkannt.',
@@ -69,11 +73,13 @@ export class RelayClient {
 
   async _call(method, path, secret, body) {
     let response;
+    const text = body === undefined ? undefined : JSON.stringify(body);
     try {
       response = await this._fetch(`${this._url}${path}`, {
         method,
-        headers: { authorization: `Bearer ${secret}`, ...(body === undefined ? {} : { 'content-type': 'application/json' }) },
-        body: body === undefined ? undefined : JSON.stringify(body),
+        headers: { authorization: `Bearer ${secret}`, ...(text === undefined ? {} : { 'content-type': 'application/json' }) },
+        body: text,
+        keepalive: text === undefined || new TextEncoder().encode(text).length <= KEEPALIVE_MAX_BYTES,
         signal: AbortSignal.timeout(TIMEOUT_MS),
       });
     } catch {

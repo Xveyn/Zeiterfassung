@@ -11,7 +11,7 @@ const ITEMS = [{ id: 'r1', fire_at: '2026-10-22T10:00:00Z', blob: 'abc' }];
 function fakeFetch(...statuses) {
   const calls = [];
   const fn = async (url, options) => {
-    calls.push({ url, method: options.method, auth: options.headers.authorization, body: options.body });
+    calls.push({ url, method: options.method, auth: options.headers.authorization, body: options.body, keepalive: options.keepalive });
     const next = statuses.shift();
     if (next instanceof Error) throw next;
     const [status, body] = Array.isArray(next) ? next : [next ?? 204, null];
@@ -138,4 +138,25 @@ test('the test call: a network error is offline', async () => {
 test('a 410 or 404 on the other calls keeps its old meaning', async () => {
   const client = new RelayClient({ fetchFn: fakeFetch([404, { error: 'not_found' }]) });
   await assert.rejects(client.putSchedule(SECRET, ITEMS), (error) => error.kind === 'invalid');
+});
+
+// --- keepalive (#507) ----------------------------------------------------------------------------------
+
+test('the schedule goes out with keepalive, so it survives closing the app right after saving', async () => {
+  const fetchFn = fakeFetch(204);
+  await new RelayClient({ fetchFn }).putSchedule(SECRET, ITEMS);
+  assert.equal(fetchFn.calls[0].keepalive, true);
+});
+
+test('a schedule above the keepalive limit of the browsers goes out without it instead of failing', async () => {
+  const fetchFn = fakeFetch(204);
+  const big = Array.from({ length: 80 }, (_, i) => ({ id: `r${i}`, fire_at: '2026-10-22T10:00:00Z', blob: 'x'.repeat(1000) }));
+  await new RelayClient({ fetchFn }).putSchedule(SECRET, big);
+  assert.equal(fetchFn.calls[0].keepalive, false);
+});
+
+test('deleting the device goes out with keepalive too', async () => {
+  const fetchFn = fakeFetch(204);
+  await new RelayClient({ fetchFn }).deleteDevice(SECRET);
+  assert.equal(fetchFn.calls[0].keepalive, true);
 });

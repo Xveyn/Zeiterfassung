@@ -93,8 +93,8 @@ ES-Module flach im Ordner:
   `zeiterfassung-log`) und `describeEnvironment` (technischer Zustand aus Parametern, nie aus `navigator`).
 - `view-model.js`, `messages.js`, `sync-policy.js`, `update-policy.js` —
   Anzeige- und Entscheidungslogik, DOM-frei und getestet.
-- `reminders-plan.js`, `push-blob.js`, `push-message.js`, `relay-client.js`, `push-policy.js` —
-  Benachrichtigungen (#331), DOM-frei und getestet, s. „Benachrichtigungen“.
+- `reminders-plan.js`, `push-blob.js`, `push-message.js`, `relay-client.js`, `push-policy.js`, `push-sync.js`,
+  `push-scheduler.js` — Benachrichtigungen (#331), DOM-frei und getestet, s. „Benachrichtigungen“.
 - `qr-decode.js` — QR-Decoder in reinem JavaScript (#326), DOM-frei: Graubild rein, Text oder
   `null` raus (s. „QR-Decoder“). `scanner.js` nutzt ihn, wo der `BarcodeDetector` fehlt.
 - `dom.js`, `views.js`, `scanner.js`, `app.js` — die DOM-Schicht. Sie baut
@@ -532,6 +532,26 @@ ist nie Voraussetzung: ohne ihn läuft alles wie vorher, ein Fehler bleibt ein H
 - **`push-policy.js`** — Zustand (`unsupported`/`denied`/`off`/`needs_resubscribe`/`on`) und die
   Entscheidung, wann gesendet wird: nur bei `on` und vorhandenem `reminders`-Block, bei neuer
   Signatur oder nach 12 h.
+- **`push-sync.js`** — ein Durchgang (`syncPushPlan`): Plan aus dem **lokalen Speicher** rechnen und, wenn er sich
+  geändert hat, verschlüsselt senden; liefert `skipped`/`unchanged`/`sent`, wirft bei einem Relay-Fehler (die Signatur
+  bleibt dann alt, der nächste Durchgang sendet den aktuellen Stand).
+- **`push-scheduler.js`** — wann ein Durchgang läuft (`createPushScheduler`): sofort bei jedem Auslöser, nie zwei
+  zugleich; ein Auslöser während eines laufenden Durchgangs wird danach genau einmal nachgeholt; ein gescheiterter
+  wird nach 5 s, 30 s und 2 min wiederholt (`RETRY_DELAYS_MS`), `stop()` beendet alles (Trennen).
+
+**Eine eingetragene Zeit nimmt ihre Erinnerung heraus, auch ohne Desktop (#507).** Die Erinnerung zu einer Reservierung
+entfällt, sobald am Tag eine Ist-Zeit **derselben Kategorie** steht (Regel von `src/reminders.py`). Der Relay ersetzt den
+Plan bei jedem `PUT /v1/schedule` ganz; es kommt also nur darauf an, dass der neue Plan ihn erreicht, bevor die Erinnerung
+fällig wird. Deshalb:
+- Der Plan hängt nur am Speicher des Handys, nie am Abgleich: ein Tag, den der Desktop noch nicht kennt, zählt.
+- Gesendet wird **sofort** nach dem Speichern (kein Timer davor: wer einträgt und die App wegwischt, hätte sonst nie
+  gesendet), mit `keepalive` bis 60 000 Byte (`relay-client.js`; Browser lehnen größere `keepalive`-Anfragen ab), damit
+  die Anfrage das Schließen der Seite überlebt.
+- Auslöser (`App.updatePushSchedule`): Start, Speichern, Zurückkehren in die App, **Verstecken** der App, wieder
+  **online**, nach einem gelungenen Abgleich. Alle laufen über den einen Planer; `test/push-wiring.test.js` hält die
+  Auslöser am Quelltext fest, `test/push-sync.test.js` das Szenario mit echtem Store und Relay-Attrappe.
+- Grenze: ist das Handy beim Eintragen ohne Netz und wird die App vor der Rückkehr des Netzes geschlossen, erreicht der
+  Plan den Relay erst beim nächsten Öffnen; die Erinnerung kann dann noch kommen.
 
 **Testbenachrichtigung (#340).** Im Abschnitt „Benachrichtigungen“ (nur im Zustand `on` mit Relay-Geheimnis) sendet „Testbenachrichtigung senden“ über `RelayClient.sendTest` (`POST /v1/test`) sofort einen Push, ohne den Zeitplan anzufassen. Der Relay schickt die feste, unverschlüsselte Nutzlast `TEST_PAYLOAD` (`push-message.js`, ein Test hält sie gleich der des Relays, s. `relay/CLAUDE.md`); der Service Worker erkennt sie **vor** dem Entschlüsseln und zeigt `describeTest()`, eine ältere Web-App zeigt die allgemeine Benachrichtigung. Das Ergebnis steht als Text im Abschnitt (`testResultText`, gleiche Texte wie am Desktop, `tab_rules.test_push_text`). Die `RelayError`-Arten der Testroute: `gone`, `too_soon`, `rate_limited`, `unknown_route` (alter Relay), `push_failed`; die beiden `429` trennt der Fehlercode im Body. Bei `push_failed` trägt `RelayError.cause` die Ursache aus dem Body (Status des Push-Dienstes, `network`, `build`), `testResultText(kind, cause)` hängt sie an („… nicht angenommen (Antwort 403).“; #473).
 
