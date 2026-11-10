@@ -327,6 +327,11 @@ und „Tag gesamt“, nur über ganze Minuten; ohne Pausenfeld zählt die Pause 
   Dialog bis 340 px seine volle Breite (`max-width: calc(100vw - 24px)`, der Browser-Standard deckelt `<dialog>` auf
   `100% - 6px - 2em`, also schmaler als `width` verlangt) und der Kasten 6 statt 10 px Rand. Die Zeitfelder bleiben so bei
   ~98 px. Gemessen in der Chromium-Emulation (mit Uhr-Symbol im Feld), nicht auf einem Gerät dieser Breite.
+- **Zeitfelder tragen `appearance: none`** (#511): Safari auf iOS zeichnet `<input type="time">` sonst nativ mit eigener
+  Mindestbreite und ignoriert `width`/`min-width`; „von“ und „bis“ überlappten in der zweispaltigen Zeile. Auf einem iOS-Gerät
+  gemessen: weder eine logische Mindestbreite noch `display: block; max-width: 100%` noch Abschneiden half, nur diese Regel.
+  Das Zeitrad und der Wisch (#500) funktionieren damit weiter; in Chromium ändert sie das Aussehen nicht. Firefox auf
+  Android ist ungeprüft.
 - **Fußzeile mit Löschen** (`footerButtons`, auch „Kategorie bearbeiten“): „Tag leeren“/„Reservierung löschen“/„Löschen“ links
   (`.destructive`), „Abbrechen“ und der Hauptknopf als **eine** Gruppe (`.button-group`) rechts. Bei Platzmangel (390 px, langer Text)
   bricht die Gruppe als Ganzes um; als einzelne Flex-Kinder stand „Speichern“ allein unter „Abbrechen“.
@@ -362,8 +367,8 @@ Reservierung vorbelegt ist und nur ihre Lage abweicht. Die Regeln stehen DOM-fre
 - **Geprüft** in Node (`test/shift-policy.test.js`) und in Chromium mit Touch-Emulation gegen den Dev-Server (CDP
   `Input.dispatchTouchEvent`; ein Zug, der links aus dem Bildschirm führt, liefert dort `pointerup` am `html`-Element).
   Auf einem iPhone (Safari) kam der Zug am 2026-11-10 auf echten Zeitfeldern einer Testseite an, schon mit `pan-y`
-  allein. **Offen:** die fertige PWA auf iOS (Browser-Tab und installierte Web-App, auch ob die beiden Zeitfelder der
-  Slot-Zeile dort sauber nebeneinander stehen), ein echtes Android-Gerät und Firefox auf Android.
+  allein. Die fertige PWA lief danach auf einem iOS-Gerät und einem Android-Gerät (Chrome); die dabei gefundene
+  Überlappung der Zeitfelder auf iOS ist #511. **Offen:** Firefox auf Android.
 
 ## Einstellungen › Kategorien: Anzeige (#461)
 
