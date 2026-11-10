@@ -84,7 +84,10 @@ function aad({ direction, method, path, deviceId, seq }) {
 
 const aesKey = (raw, usage) => crypto.subtle.importKey('raw', raw, 'AES-GCM', false, [usage]);
 
-/** Verschlüsselt `plaintext` (Uint8Array). `nonce` nur für die Testvektoren; sonst zufällig. */
+/** Verschlüsselt `plaintext` (Uint8Array). `nonce` nur für die Testvektoren; sonst zufällig.
+ * @param {any} key
+ * @param {{ direction: string, method: string, path: string, deviceId: string, seq: number,
+ *   plaintext: Uint8Array, nonce?: Uint8Array }} options */
 export async function seal(key, { direction, method, path, deviceId, seq, plaintext, nonce }) {
   if (!validSeq(seq)) throw new CryptoFailure('invalid_envelope', 'Ungültiger Zähler.');
   const iv = nonce ?? crypto.getRandomValues(new Uint8Array(NONCE_BYTES));
