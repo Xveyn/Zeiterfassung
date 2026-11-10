@@ -1,0 +1,15 @@
+{
+  "compilerOptions": {
+    "allowJs": true,
+    "checkJs": true,
+    "noEmit": true,
+    "strict": false,
+    "target": "es2022",
+    "module": "es2022",
+    "moduleResolution": "bundler",
+    "lib": ["es2023"],
+    "skipLibCheck": true,
+    "types": []
+  },
+  "include": ["src/**/*.js", "env.d.ts", "worker-configuration.d.ts"]
+}

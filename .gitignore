@@ -57,3 +57,4 @@ graphify-out/
 .balucode.yaml
 settings.json.*
 .playwright-mcp/
+pwa/node_modules

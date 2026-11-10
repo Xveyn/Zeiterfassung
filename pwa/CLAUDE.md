@@ -114,8 +114,8 @@ ES-Module flach im Ordner:
 
 `PRECACHE` und die Dateien unter `pwa/` müssen übereinstimmen: der Test
 `test/shell.test.js` verlangt, dass jede Laufzeitdatei gelistet ist. Nicht
-dazu zählen `test/`, `package.json`, `sw.js`, `memory-adapter.js` und
-Markdown-Dateien wie diese.
+dazu zählen `test/`, `package.json`, `package-lock.json`, `tsconfig.json`, `sw.js`,
+`memory-adapter.js` und Markdown-Dateien wie diese.
 
 ## Tests
 
@@ -1029,7 +1029,7 @@ Offen: andere Schreibwege eines veralteten Tabs (Tag speichern, Einstellungen) l
 
 `.github/workflows/pages.yml` (Push auf `master` mit Änderungen unter `pwa/**`,
 oder von Hand) kopiert die Laufzeitdateien nach `_site/` (ohne `test/`,
-`package.json` und Markdown), ersetzt in `sw-core.js` den Platzhalter
+`package.json` und Markdown; ebenso `package-lock.json` und `tsconfig.json`), ersetzt in `sw-core.js` den Platzhalter
 `__BUILD__` durch die Build-Kennung (`scripts/pwa_stamp.py`; sonst liefe jeder
 Deploy mit demselben Cache, und Updates kämen nie an) und veröffentlicht per
 `deploy-pages`.

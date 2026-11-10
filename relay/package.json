@@ -5,12 +5,14 @@
   "engines": { "node": ">=22" },
   "scripts": {
     "test": "node --test",
-    "dev": "wrangler dev"
+    "dev": "wrangler dev",
+    "typecheck": "wrangler types --strict-vars false && tsc -p ."
   },
   "dependencies": {
     "@block65/webcrypto-web-push": "2.0.0"
   },
   "devDependencies": {
+    "typescript": "5.9.3",
     "wrangler": "4.153.0"
   }
 }

@@ -28,7 +28,13 @@ async function readJson(request) {
   }
 }
 
+/** Gespeicherter Wert. Der Speicher kennt die Form nicht (`unknown`), sie legt der Schreiber fest: `any` an
+ *  dieser einen Stelle statt Zusicherungen an jedem Lesen. */
+const read = (/** @type {DurableObjectStorage} */ storage, /** @type {string} */ key) =>
+  /** @type {Promise<any>} */ (storage.get(key));
+
 export class Device {
+  /** @param {DurableObjectState} ctx @param {Env} env */
   constructor(ctx, env, { now = Date.now, send = (sub, blob, vars, report) => sendPush(sub, blob, vars, fetch, report) } = {}) {
     this.ctx = ctx;
     this.env = env;
@@ -59,7 +65,7 @@ export class Device {
     const { storage } = this.ctx;
     await storage.put('sub', subscription);
     await storage.put('idle', idleAt(this.now()));
-    await this.#arm((await storage.get('items')) ?? []);
+    await this.#arm((await read(storage, 'items')) ?? []);
     return empty();
   }
 
@@ -68,7 +74,7 @@ export class Device {
     // dann ohne weiteres Warten auf Netz oder Body prüfen und schreiben: nur Speicherzugriffe sind atomar.
     const items = parseSchedule(await readJson(request), this.now());
     const { storage } = this.ctx;
-    if (!(await storage.get('sub'))) return json(409, { error: 'no_subscription' });
+    if (!(await read(storage, 'sub'))) return json(409, { error: 'no_subscription' });
     await storage.put('items', items);
     await storage.put('idle', idleAt(this.now()));
     await this.#arm(items);
@@ -81,10 +87,10 @@ export class Device {
   async #test(request) {
     await request.text().catch(() => '');           // ein Body ist unnötig; lesen, damit workerd nicht klagt
     const { storage } = this.ctx;
-    const subscription = await storage.get('sub');
+    const subscription = await read(storage, 'sub');
     if (!subscription) return json(409, { error: 'no_subscription' });
     const now = this.now();
-    const previous = await storage.get('lastTest');
+    const previous = await read(storage, 'lastTest');
     if (previous !== undefined && now - previous < LIMITS.testCooldownSeconds * 1000) {
       return json(429, { error: 'too_soon' });
     }
@@ -97,7 +103,7 @@ export class Device {
       result = 'retry';
     }
     if (result === 'ok') return empty();
-    const current = await storage.get('sub');
+    const current = await read(storage, 'sub');
     if (result === 'gone' && current && current.endpoint === subscription.endpoint) {
       await this.#wipe();
       return json(410, { error: 'gone' });
@@ -110,7 +116,7 @@ export class Device {
   async #arm(items) {
     const { storage } = this.ctx;
     const now = this.now();
-    const plan = planAlarm(items, now, await storage.get('idle'));
+    const plan = planAlarm(items, now, await read(storage, 'idle'));
     await storage.setAlarm(plan.due.length > 0 ? now : plan.alarmAt);
   }
 
@@ -140,13 +146,13 @@ export class Device {
   async #run() {
     const { storage } = this.ctx;
     const start = this.now();
-    const idle = (await storage.get('idle')) ?? 0;
-    const subscription = await storage.get('sub');
+    const idle = (await read(storage, 'idle')) ?? 0;
+    const subscription = await read(storage, 'sub');
     if (!subscription || start >= idle) {
       await this.#wipe();
       return;
     }
-    const plan = planAlarm((await storage.get('items')) ?? [], start, idle);
+    const plan = planAlarm((await read(storage, 'items')) ?? [], start, idle);
 
     // Während des Sendens warten wir auf das Netz, und andere Anfragen (neuer Zeitplan, neues Abo, Löschen)
     // laufen dazwischen. Deshalb nur merken, was geschah, und danach gegen den aktuellen Stand anwenden.
@@ -171,21 +177,21 @@ export class Device {
       }
     }
 
-    const current = await storage.get('sub');
+    const current = await read(storage, 'sub');
     if (!current) return;                       // zwischenzeitlich gelöscht: nichts wieder anlegen
     if (gone && current.endpoint === subscription.endpoint) {
       await this.#wipe();
       return;
     }
     if (gone) return;                           // das Abo wurde inzwischen erneuert; der alte Endpoint ist egal
-    const stored = (await storage.get('items')) ?? [];
+    const stored = (await read(storage, 'items')) ?? [];
     const items = stored.filter((item) => !sent.has(`${item.id}@${item.fireAt}`));
     for (const again of retries) {
       if (!items.some((item) => item.id === again.id)) items.push(again);
     }
     const now = this.now();
     // Abgelaufene Einträge entfallen hier; was inzwischen fällig wurde (neuer Zeitplan), bleibt und klingelt gleich.
-    const next = planAlarm(items, now, (await storage.get('idle')) ?? idle);
+    const next = planAlarm(items, now, (await read(storage, 'idle')) ?? idle);
     await storage.put('items', [...next.due, ...next.keep]);
     await storage.setAlarm(next.due.length > 0 ? now : next.alarmAt);
   }

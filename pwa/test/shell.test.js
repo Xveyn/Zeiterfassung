@@ -21,7 +21,7 @@ function walk(dir) {
   });
 }
 
-const EXCLUDED = new Set(['package.json', 'sw.js', 'memory-adapter.js']);
+const EXCLUDED = new Set(['package.json', 'package-lock.json', 'tsconfig.json', 'sw.js', 'memory-adapter.js']);
 const runtimeFiles = () => walk(root)
   .map((path) => relative(root, path).split(sep).join('/'))   // Vorab-Cache-Einträge und Vergleiche sind POSIX-Pfade
   .filter((path) => !path.startsWith('test/') && !path.startsWith('node_modules/') && !path.endsWith('.md')
