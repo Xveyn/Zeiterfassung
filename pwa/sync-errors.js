@@ -4,10 +4,21 @@
 // zu importieren (das importiert sie). `sync.js` führt die Namen weiter aus.
 
 export class SyncError extends Error {
+  /** @param {{ kind: string, status?: number, code?: string, message?: string, needsRepair?: boolean,
+   *    retryable?: boolean, day?: string | null, dayKind?: string | null, setting?: string | null,
+   *    supportedProtocol?: number | null }} fields */
   constructor({ kind, status = 0, code = '', message = '', needsRepair = false, retryable = false, day = null, dayKind = null, setting = null, supportedProtocol = null }) {
     super(message);
     this.name = 'SyncError';
-    Object.assign(this, { kind, status, code, needsRepair, retryable, day, dayKind, setting, supportedProtocol });
+    this.kind = kind;
+    this.status = status;
+    this.code = code;
+    this.needsRepair = needsRepair;
+    this.retryable = retryable;
+    this.day = day;
+    this.dayKind = dayKind;
+    this.setting = setting;
+    this.supportedProtocol = supportedProtocol;
   }
 }
 

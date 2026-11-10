@@ -1,4 +1,5 @@
 // pwa/view-model.js
+// @ts-check
 // Alles, was die Oberfläche anzeigt, als reine Daten: Wochenliste, Statuszeile, Hinweise,
 // Konfliktliste, Editor-Zeilen. Kein DOM — die dünne Schicht in `views.js` macht daraus
 // Elemente. Summen nur über ganze Minuten (`minutes.js`).
@@ -73,6 +74,7 @@ function stampLabel(iso, timeZone) {
 
 // `aheadDays`: wie weit nach heute das Handy Ist-Zeiten kennt (`window-policy.aheadDays`, #265); Tage dahinter räumt der
 // Abgleich wieder auf.
+/** @param {{ getDay: (date: string) => any, getReservation?: (date: string) => any, [key: string]: any }} options */
 export function weekModel({ getDay, anchor, today, conflictDates = [], windowDays = 0, aheadDays = LEGACY_AHEAD_DAYS,
   getReservation = () => null, reservationsEnabled = false }) {
   const conflicts = new Set(conflictDates);
@@ -393,6 +395,7 @@ export function desktopHint(meta) {
  *  den Speicher im Tab nach sieben Tagen ohne Nutzung. Der Hinweis steht deshalb vor dem Koppeln und im
  *  Wochenbild, solange die Seite im Browser läuft; `standalone` muss ausdrücklich `false` sein (unbekannt
  *  heißt kein Hinweis). */
+/** @param {{ browser?: string, standalone?: boolean }} [state] */
 export function iosInstallHint({ browser, standalone } = {}) {
   if (browser !== 'ios' || standalone !== false) return '';
   return 'Auf dem iPhone und iPad zuerst zum Home-Bildschirm hinzufügen (Teilen → „Zum Home-Bildschirm“) und von dort öffnen, dann dort mit „QR-Code scannen“ koppeln (die Kamera-App geht oft auch, aber nicht immer: je nach iOS-Version öffnet sie den Link im Browser statt in der installierten Web-App). Im Browser gespeicherte Daten gehören nicht zur installierten Web-App, und iOS löscht sie dort nach sieben Tagen ohne Nutzung.';
@@ -434,6 +437,7 @@ const scanStep = (canScan) => ({
  *  `lan`: Chromium und unbekannte Browser; `relay`: Engines, die das WLAN sperren (`blocksLan`); `install`: iOS im
  *  Browser-Tab, erst installieren. Ein unbekannter Anzeigemodus (`standalone` nicht `false`) gilt nicht als „nicht
  *  installiert“. Der Relay-Weg hat keine Eingabe von Hand: er läuft nur über den QR-Link des Desktops. */
+/** @param {{ browser?: string, standalone?: boolean, canScan?: boolean }} [state] */
 export function setupModel({ browser, standalone, canScan = false } = {}) {
   const base = { title: SETUP_TITLE, lead: SETUP_LEAD };
   const nameStep = (text) => ({ title: 'Handy benennen', text, state: 'todo' });
@@ -613,6 +617,7 @@ export function reachedAfterSyncError(error) {
  *  (LAN) oder der Relay hat die Anfrage angenommen (auch wenn der Desktop schwieg: die Abmeldung liegt dann in der Box);
  *  `openDays`: danach noch nicht übertragene Tage; `desktopUnpair`: der Desktop kennt die Abmeldung. Der Desktop erfährt
  *  vom Trennen nur, wenn er sie kennt und der Weg dorthin offen war. Fehlt eine Angabe, gilt die vorsichtige Lesart. */
+/** @param {{ reached?: boolean, openDays?: number, desktopUnpair?: boolean }} [state] */
 export function unpairDialogModel({ reached, openDays = 0, desktopUnpair = false } = {}) {
   const open = Number.isInteger(openDays) && openDays > 0 ? openDays : 0;
   const summary = open > 0

@@ -1,4 +1,5 @@
 // pwa/sync.js
+// @ts-check
 // Der Sync-Client der Handy-Erfassung: Koppeln, Erreichbarkeit, Abgleich. Kennt nur
 // `Store`, `fetch` und die Uhr (beides wird hereingereicht) — kein DOM, kein globaler
 // Zustand. Fehler werden eingeordnet (`SyncError.kind`), die Oberfläche (PR 7) zeigt je Art
@@ -156,7 +157,7 @@ const pairingMeta = (answer) => ({
 const DISCARDED = () => ({ sent: 0, conflicts: 0, excluded: false, discarded: true });
 
 export class SyncClient {
-  constructor({ store, fetchFn = (...args) => globalThis.fetch(...args), now = () => new Date(), timeoutMs = 15000,
+  constructor({ store, fetchFn = (input, init) => globalThis.fetch(input, init), now = () => new Date(), timeoutMs = 15000,
     locks = globalThis.navigator?.locks ?? null, transports = null, webSocketFactory = undefined }) {
     this._store = store;
     this._now = now;
