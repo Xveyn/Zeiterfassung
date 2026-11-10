@@ -174,7 +174,7 @@ def _iso(offset):
 
 
 DEFAULTS = {"pause": 30, "weekdays": {}, "category_times": {}}
-DESKTOP = {"name": "PC", "version": "1.0.0", "platform": "Linux"}
+DESKTOP = {"name": "PC", "version": "1.0.0", "platform": "Linux", "language": "de", "country": "DE"}
 
 
 def respond(merged, *, sent=(), excluded=False, categories=("Projekt",), window_days=90,

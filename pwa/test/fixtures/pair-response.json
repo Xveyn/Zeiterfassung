@@ -4,5 +4,7 @@
   "window_days": 90,
   "desktop_name": "Desktop",
   "protocol": 2,
-  "key": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8"
+  "key": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+  "language": "de",
+  "country": "DE"
 }

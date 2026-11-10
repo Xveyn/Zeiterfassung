@@ -72,3 +72,19 @@ test('the response of a desktop before the reservation pause is still understood
     for (const slot of day.slots) assert.equal(slot.pause, 0);
   }
 });
+
+test('the response of a desktop before language and country is still understood', () => {
+  const doc = frozen('sync-response-pre-language.json');
+  assert.ok(!('language' in doc.desktop) && !('country' in doc.desktop));
+  const parsed = parseSyncResponse(doc);
+  assert.equal(parsed.desktop.name, doc.desktop.name);
+  assert.deepEqual(Object.keys(parsed.entries), Object.keys(doc.entries));
+});
+
+test('the pairing answer before language and country carries the fields the phone relies on', () => {
+  const doc = frozen('pair-response-pre-language.json');
+  for (const key of ['token', 'expires_at', 'window_days', 'desktop_name', 'protocol', 'key']) {
+    assert.ok(key in doc, key);
+  }
+  assert.ok(!('language' in doc) && !('country' in doc));
+});

@@ -479,3 +479,18 @@ def test_the_unpair_examples_are_what_the_phone_sends_and_the_server_answers(tmp
 
     assert plain == request
     assert response.status == 200 and answer == example
+
+
+def test_older_pwa_ignores_new_fields():
+    # Die Antwort bleibt ein Superset der eingefrorenen Form vor `language`/`country`; PROTOCOL bleibt 2.
+    assert mc.PROTOCOL == 2
+    for live, old in (("sync-response.json", "compat/sync-response-pre-language.json"),
+                      ("pair-response.json", "compat/pair-response-pre-language.json")):
+        now, before = load(live), load(old)
+        assert set(before) <= set(now)
+        assert now["protocol"] == before["protocol"] == 2
+        if "desktop" in before:
+            assert set(before["desktop"]) < set(now["desktop"])
+            assert {"language", "country"} <= set(now["desktop"]) - set(before["desktop"])
+        else:
+            assert {"language", "country"} <= set(now) - set(before)

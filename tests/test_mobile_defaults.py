@@ -76,4 +76,20 @@ def test_out_of_range_pause_is_dropped(pause):
 def test_desktop_info_maps_the_platform(system, expected):
     info = mobile_sync.desktop_info("Büro-PC", "1.24.0", system)
 
-    assert info == {"name": "Büro-PC", "version": "1.24.0", "platform": expected}
+    assert info == {"name": "Büro-PC", "version": "1.24.0", "platform": expected,
+                    "language": "de", "country": "DE"}
+
+
+def test_desktop_info_carries_language_and_country(monkeypatch):
+    # Heute kennt `region` nur de/DE; weitere Werte werden hier freigeschaltet, um den Durchgriff zu sehen.
+    monkeypatch.setattr("src.region.LANGUAGES", ("de", "en"))
+    monkeypatch.setattr("src.region.COUNTRIES", [("DE", "Deutschland"), ("AT", "Österreich")])
+    info = mobile_sync.desktop_info("PC", "1.0.0", "Linux", language="en", country="AT")
+
+    assert info["language"] == "en" and info["country"] == "AT"
+
+
+def test_desktop_info_sanitizes_foreign_language_and_country():
+    info = mobile_sync.desktop_info("PC", "1.0.0", "Linux", language="xx<b>", country=42)
+
+    assert info["language"] == "de" and info["country"] == "DE"

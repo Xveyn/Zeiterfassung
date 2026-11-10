@@ -194,6 +194,10 @@ Desktop) ist seltener, kommt aber vor. Sieben Regeln:
    die PWA muss die Antwort verstehen, `test/compat.test.js`; dass ohne Flag keine `pause` auf den Draht geht, prüfen
    `test/sync.test.js` und `test/store.test.js`, den ganzen Zyklus mit der echten Handy-Instanz
    `tests/test_mobile_reservation_pause_e2e.py` über `tests/mobile_session_probe.mjs`).
+   Dazu der Stand vor `language`/`country`
+   (`compat/sync-response-pre-language.json` ohne `desktop.language`/`desktop.country`,
+   `compat/pair-response-pre-language.json` ohne die beiden Felder in der Kopplungsantwort; additiv, Protokoll
+   bleibt 2; `test/compat.test.js`, `tests/test_mobile_contract.py::test_older_pwa_ignores_new_fields`).
    Die Fähigkeit `reservation_pause` ist Feature-Erkennung nach Regel 2: nicht „Desktop ≥ 1.27“, sondern
    „steht das Feld in der Antwort“.
 5. **Neue PWA, alter Desktop.** Ein Desktop vor #311 ignoriert `settings` in der
