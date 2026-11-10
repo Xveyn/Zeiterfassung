@@ -36,6 +36,51 @@ Eingaben, die kein Task der Spec ausdrücklich nennt; jede Zeile hat unten ihren
 
 ---
 
+## Korrekturen aus dem Review (verbindlich — bei Widerspruch gilt dieser Block vor den Task-Texten)
+
+Ein unabhängiges Review gegen den Code hat die folgenden Punkte belegt. Neue Entscheidungen sind als **[E]** markiert und in der Übergabe an den Nutzer aufgeführt.
+
+**Ausführungsreihenfolge:** Task 1, 2, **4, 3**, 5, 6, 7, 8, 9, 10, 11–14, 15. Der Dialog (Task 4) schreibt zuerst `country`/`region` **und** `state`; danach stellt Task 3 die Leser um. So ist jeder PR allein grün.
+
+**Allgemein (alle Tasks):** Jeder Task nennt Tests und Fixtures, die er anfasst; vor dem Commit läuft die **ganze** Suite (`pytest`, in der PWA `cd pwa && node --test && npm run typecheck`). Brechende Alt-Tests werden im selben PR angepasst, aber nur dort, wo sich der Vertrag bewusst ändert.
+
+- **[E] `state` wird beim Speichern mitgeschrieben**, solange `country == "DE"` (`state = region`). So zeigt ein Downgrade die aktuelle Region (Spec-Annahme „bleibt stehen" wird zu „bleibt aktuell"). `region_migrated` und der Test „Region ändert `state` nicht" in Task 4 entfallen bzw. kehren sich um (`test_saving_region_mirrors_state_for_de`).
+- **[E] Alias in `/v1/holidays`:** `state` ist `region` **normalisiert**; ein roher unbekannter Wert (`"XX"`) kommt nur aus beschädigten Settings und wird zu `""`. Für gültige Werte bitgleich. `tests/test_api_summary.py:82–86` wird entsprechend angepasst.
+- **[E] PWA-Textumfang:** Alle **Nutzertexte** wandern in den Katalog, in jeder Datei. **Log-Kontexte** (erstes Argument von `logFailure(...)` und `this._log(...)`), Protokoll-/Krypto-Fehlertexte (`crypto.js`, `relay-frame.js`, `db.js`) und `console`-Ausgaben bleiben deutsch und sind ausgenommen (analog zur Spec für den Desktop).
+
+**Task 1 (zusätzlich):** `scripts/demo_data.py:47` (Import) und `:172` (schreibt `country`/`region` statt `state`), `tests/test_demo_data.py`, `tests/test_tab_rules.py:7,28,116` (importiert `STATES`), `tests/test_type_annotations.py:116` (Whitelist-Eintrag `src/holidays_region.py`), Retry-Tests `tests/test_holidays_de.py:97,115` (patchen künftig `holidays.country_holidays`), Namensnennungen in `CLAUDE.md:935,1616`, `src/CLAUDE.md:753`, `CONTRIBUTING.md:177`, `src/settings.py:251`, `src/updater.py:55`, `src/send_reminder.py:104`. Der Satz zu `test_claude_md_claims.py` entfällt. **[E] Die Regel „leerer Code = keine Feiertage" gilt je Land** (`REGIONS`-Eintrag `""` markiert es); ein Land ohne Unterteilung bekäme Feiertage.
+
+**Task 2:** `migrate_state(settings: _Writable)` mit einem eigenen `Protocol` (`get`, `set_many`) statt `SettingsLike`; Tests bauen ein echtes `Settings(tmp_path)` wie `tests/test_dpi.py:_settings`, keinen `FakeSettings`. Zusätzlich `region.normalize_language(value: object) -> str` und `normalize_country(value: object) -> str` (Task 7 braucht sie getrennt).
+
+**Task 4 (korrigiert):** Die Funktion heißt `tab_rules.work_updates(raw, old)` (`tab_rules.py:93`), Tests in `tests/test_tab_rules.py` (nicht `test_settings_dialog.py`). Es brechen und werden angepasst: `test_work_updates_carries_state_and_weekend` (Z. 114) und `test_tabs_together_write_exactly_the_legacy_keys` (Z. 327, `_legacy_keys_base` Z. 306: Schlüsselmenge `country`, `region`, `state`). Neuer Test: `test_saving_region_mirrors_state_for_de`.
+
+**Task 3 (erweitert):**
+- Durchreich-Funktionen bekommen `country: str = "DE"` als Keyword **nach** `state`-losem Muster, d. h. der Parameter `state` heißt künftig `region`, `country` kommt als Keyword mit Default: `vacations._holiday_dates`/`expand_days` (`vacations.py:54,65`), `vacation_plan.plan_vacation_save` (`vacation_plan.py:29`; Aufrufer `api_routes.py:554`, `vacation_dialog.py:316`), `send_reminder.free_dates_for_month` (Z. 99), die Funktion bei `send_reminder.py:198`, `monthly_anchor_dates` (Aufrufer `send_dialog.py:104`, `send_reminder_scheduler.py:96`). `vacations.py` und `vacation_plan.py` gehören in die Files.
+- Der AST-Test beschränkt sich auf Empfänger `settings`, `_settings`, `ctx.settings`; erlaubt bleiben nur `src/region.py` und `src/dialogs/settings_dialog/tab_rules.py` (schreibt `state`, K1). `api_summary.py` ist **nicht** ausgenommen (der Alias ist ein Ausgabefeld, kein Lesen).
+- Fixtures mit `{"state": …}` ziehen auf `country`/`region` um: `tests/test_api_summary.py:66–86`, `tests/test_api_routes.py:789–796`, `tests/test_api_vacations.py:30,111`, `tests/test_send_reminder.py:299`, `tests/test_send_reminder_scheduler.py:21`, `tests/test_period_picker.py:83,95`.
+
+**Task 5:** zusätzlich `tests/test_api_routes.py` (exakter Body-Vergleich `{"year","state","country","region","holidays"}`); `holidays_for` reicht `settings["language"]` (normalisiert) als `language` an `get_holidays` durch (K6).
+
+**Task 6 (erweitert):** Tabelle enthält Langmuster, Kurzmuster ohne Jahr (`get_week_label:174`, `grid_renderer.py:889` `f"{day}.{month}."`) und Wochentagsnamen (`format_iso_weekday_date`, `WEEKDAYS_DE_FULL`). Die Inventur sucht zusätzlich `\.month\}|\.day\}`.
+
+**Task 7 (korrigiert):** Der einzige Aufrufer von `desktop_info` ist `mobile_routes.py:372`; `:260` ist die Kopplungsantwort. Bereinigung über `normalize_language`/`normalize_country` (Task 2), nicht `locale_for`. Pflicht-Anpassungen: `tests/test_mobile_contract.py:155,234` (exakter `shape(...)`-Vergleich), `pwa/test/fixtures/sync-response.json` (Block `desktop`) und `pair-response.json`, `tests/test_mobile_sync.py:196` (`DESKTOP`). Nach `pwa/CLAUDE.md` Regel 4 (Z. 181–198) wird der Vorgänger der Antwort **vor** der Änderung nach `pwa/test/compat/` eingefroren (`compat.test.js`, Doku); für die Kopplungsantwort gibt es noch keinen eingefrorenen Stand, er wird angelegt.
+
+**Task 8 (korrigiert):**
+- **Schritt 0 — Inventur per Skript** (`scripts/` oder einmalig im Test): listet je `pwa/*.js` die Nutzertexte. `PENDING` enthält **jede** Datei mit Treffern, mindestens `sync.js`, `lock.js`, `minutes.js`, `store.js`, `relay-transport.js`, `relay-client.js`, `update-policy.js`, `vault.js`, `sw-repair.js`, `push-policy.js`, `unpair.js` zusätzlich zur bisherigen Liste; Tasks 11–14 erhalten diese Dateien (Zuschnitt nach Inventur: je Task höchstens eine große Datei oder drei kleine).
+- Ratsche: **kein** Umlaut-Filter. Für nicht mehr in `PENDING` stehende Dateien gilt: außer in `t(`, `logFailure(`, `this._log(` und einer expliziten, kommentierten Erlaubnisliste kein String-Literal mit Leerzeichen oder Großbuchstaben am Anfang. Die Literal-Erkennung ist ein kleiner Tokenizer im Test (Kommentare, Template-Strings, Apostrophe in Kommentaren beachten), keine neue Abhängigkeit (`pwa` läuft ohne `npm ci`). Schlüssel dürfen nur als Literal übergeben werden (`t('…')`, keine dynamischen Schlüssel).
+- `./i18n.js` und `./i18n/de.js` gehören **zwingend** in `PRECACHE` (`pwa/sw-core.js`), sonst bricht `pwa/test/shell.test.js:33–38`. `<html lang="de">` bleibt im HTML (`shell.test.js:120` verlangt es, Inline-Skripte sind verboten); `lang` wird nur zur Laufzeit gesetzt.
+- Prüfen gegen `pwa/test/log-contexts.test.js` (verlangt Text-Literale in `logFailure`-Kontexten; die Ratsche nimmt sie aus).
+
+**Task 9 (korrigiert):** `Intl.DateTimeFormat.supportedLocalesOf` wirft bei `'de_DE'`, `''`, `'xx-ZZZ'`, `'-'`, `'de-'` selbst `RangeError` (in Node gemessen). `localeTag` prüft per Regex `^[a-z]{2,3}(-[A-Z]{2})?$` **und** `try/catch` um `Intl`. Die gemeinte Funktion heißt `localTime` (`view-model.js:62–66`), nicht `formatTime`. `view-model.js:122` (`formatDateDe(...).slice(0, 6)`) und `WEEKDAYS` (Z. 18) hängen am deutschen Muster und kommen mit: Kurzdatum über den Formatierer, Wochentage in den Katalog. `pwa/sw-core.js`: `./locale.js` in `PRECACHE`.
+
+**Task 10 (korrigiert):** Die Kopplungsantwort liest `pwa/sync.js` (`_pairExchange` Z. 262–276, `pairingMeta` Z. 152–155), nicht `pairing.js`; Tests in `pwa/test/sync.test.js`. `desktop.country`/`language` fallen heute in `pwa/defaults.js:75–79` (`parseDesktopInfo`) weg — `defaults.js` und `defaults.test.js` gehören in den Task, ebenso `store.js:38` (Typedef) und `:614`.
+
+**Task 14 (ergänzt):** `push-message.js` läuft im Service Worker (`sw.js:8`), mit eigener Modulinstanz und ohne `document`. **[E]** Der Service Worker liest die Sprache aus der Meta in IndexedDB beim Start eines Push-Handlers (`getLanguage` aus dem Store); Fallback `de`. Ist das aufwändig, bleibt es als dokumentierte Grenze in `pwa/CLAUDE.md` (Entscheidung beim Bauen, im PR zu begründen).
+
+**Task 15 (ergänzt):** `tests/test_pwa_claude_md_claims.py`, `CONTRIBUTING.md:177`.
+
+---
+
 ## PR 1 — Land/Region-Modul
 
 ### Task 1: `holidays_region` ersetzt `holidays_de`
