@@ -57,6 +57,8 @@ input, select {
   background: var(--cell); margin-bottom: 12px;
 }
 input[type="time"], input[type="number"] { min-width: 0; }
+/* Ohne nativen Stil: Safari auf iOS gibt dem Zeitfeld sonst eine eigene Mindestbreite, „von“ und „bis“ überlappten (#511). */
+input[type="time"] { -webkit-appearance: none; appearance: none; }
 form .row { display: flex; gap: 8px; }
 form .row > div { flex: 1; min-width: 0; }
 button.picker { width: 100%; min-height: var(--tap); margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; gap: 8px; text-align: left; border: 1px solid var(--line); }

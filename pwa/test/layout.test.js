@@ -370,3 +370,11 @@ test('on very narrow screens the dialog gets its full width and the slot box giv
   assert.match(rule('dialog', narrow[1]), /max-width:\s*calc\(100vw - 24px\)/);
   assert.match(rule('.slot', narrow[1]), /padding-left:\s*6px;\s*padding-right:\s*6px/);
 });
+
+test('time fields give up their native look: on iOS they otherwise ignore their width and overlap (#511)', () => {
+  // Safari auf iOS zeichnet `<input type="time">` nativ mit eigener Mindestbreite; „von“ und „bis“ schoben sich
+  // in der zweispaltigen Slot-Zeile ineinander. Auf dem Gerät gemessen: nur `appearance: none` behebt es.
+  const body = rule('input[type="time"]');
+  assert.match(body, /-webkit-appearance:\s*none/);
+  assert.match(body, /(?<!-)appearance:\s*none/);
+});
