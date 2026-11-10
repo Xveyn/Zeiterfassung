@@ -71,7 +71,7 @@ test('text never uses the fill colour; accent text and the control line come fro
 });
 
 test('the shift hint under the time fields is muted text, its live value normal text, never dimmed', () => {
-  const rule = (selector) => (css.match(new RegExp(`${selector.replace(/[.]/g, '\\.')} \\{([^}]*)\\}`)) || [])[1] || '';
+  const rule = (selector) => (css.match(new RegExp(`${selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} \\{([^}]*)\\}`)) || [])[1] || '';
   assert.match(rule('.slot .shift-hint'), /color: var\(--muted\)/);            // --muted erreicht 4,5:1 auf der Dialogfläche (--bg)
   assert.match(rule('.slot .shift-hint.live'), /color: var\(--text\)/);
   assert.doesNotMatch(rule('.slot .shift-hint') + rule('.slot .shift-hint.live'), /opacity/);
