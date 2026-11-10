@@ -25,7 +25,6 @@ const PENDING = new Set([
   'debug-info.js',     // 27
   'debug-log.js',      // 4
   'lock.js',           // 14
-  'messages.js',       // 35
   'minutes.js',        // 14
   'pairing.js',        // 1
   'privacy-view.js',   // 4
@@ -38,10 +37,8 @@ const PENDING = new Set([
   'shift-policy.js',   // 3
   'store.js',          // 4
   'sw-repair.js',      // 7
-  'sync-errors.js',    // 1
   'sync.js',           // 25
   'unpair.js',         // 6
-  'update-policy.js',  // 7
   'vault.js',          // 4
   'view-model.js',     // 102
   'views.js',          // 194
@@ -56,6 +53,9 @@ const ALLOWED = {
   'browser-policy.js': ['Chromium'],                    // Markenname im User-Agent-Vergleich
   'diagnose.js': ['[Zeiterfassung] ${}: ${}',            // console-Präfix
     'Failed to update a ServiceWorker: '],               // Chromes englischer Fehlertext, wird nur abgeschnitten
+  // views.js (noch PENDING) importiert die Konstante, layout.test.js legt ihren Wortlaut fest:
+  // die Umstellung auf einen Schlüssel kommt mit views.js.
+  'messages.js': ['Falls dein Desktop mit dem Google-Kalender abgleicht: Der Termin zeigt die volle Zeitspanne, die Pause wird dort nicht abgezogen.'],
   'transport.js': ['Bearer ${}', 'Content-Type'],        // HTTP-Kopfzeilen
 };
 
