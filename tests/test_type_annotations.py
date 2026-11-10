@@ -114,6 +114,7 @@ ANNOTATED_MODULES = [
     "src/webhook_secrets.py",
     "src/secret_migration.py",
     "src/holidays_region.py",
+    "src/region.py",
     "src/platform_open.py",
     # Einstellungs-Dialog-Bausteine (#132)
     "src/theme/form_logic.py",

@@ -53,6 +53,12 @@ DEFAULTS = {
     "mail_closing": "Mit freundlichen Grüßen",
     "hourly_rate": 0.0,
     "state": "",
+    # Land und Region der Feiertage (region.country_region); gerätelokal wie
+    # `state`, NICHT in SYNCED_SETTING_KEYS. `region_migrated` markiert die
+    # einmalige Übernahme von `state` (region.migrate_state).
+    "country": "DE",
+    "region": "",
+    "region_migrated": False,
     "last_update_check_at": "",
     "dismissed_version": "",
     "update_check_frequency": "daily",
