@@ -26,7 +26,8 @@ def hours_to_minutes_exact(hours: float) -> int:
     return int(round(hours * 60))
 
 
-def plan_vacation_save(name, date_from, date_to, mode, value, overrides, state):
+def plan_vacation_save(name, date_from, date_to, mode, value, overrides, region,
+                       country="DE"):
     """Baut die Tagesminuten einer Urlaubsperiode aus der Dialog-Eingabe.
 
     mode: "per_day" (value = Stunden je Arbeitstag) oder "total" (value =
@@ -39,7 +40,7 @@ def plan_vacation_save(name, date_from, date_to, mode, value, overrides, state):
     Prüfung landeten 48 h/Tag unbeanstandet im Store und im Bericht.
     overrides: {ISO: minutes} aus der aufgeklappten Tagesliste; sie gewinnen
     über den berechneten Wert. Tage außerhalb des Zeitraums werden ignoriert.
-    state: Bundesland-Code für die Feiertagsliste.
+    region/country: Region und Land für die Feiertagsliste.
 
     Liefert {"error": str|None, "days": {ISO: minutes}}. Alle Fehler sind
     bekannte, erwartete Fehler → der Aufrufer zeigt sie themed (Audit N14).
@@ -57,7 +58,7 @@ def plan_vacation_save(name, date_from, date_to, mode, value, overrides, state):
     if mode == "total":
         # Erst die Arbeitstage ermitteln (Expansion mit 1 Minute als Marker),
         # dann die Gesamtminuten exakt auf sie verteilen.
-        skeleton = expand_days(date_from, date_to, 1, state)
+        skeleton = expand_days(date_from, date_to, 1, region, country)
         workdays = [d for d, m in skeleton.items() if m]
         if not workdays:
             return {
@@ -87,7 +88,7 @@ def plan_vacation_save(name, date_from, date_to, mode, value, overrides, state):
                           f"es nicht."),
                 "days": {},
             }
-        days = expand_days(date_from, date_to, minutes_per_day, state)
+        days = expand_days(date_from, date_to, minutes_per_day, region, country)
 
     for day, minutes in overrides.items():
         if day in days:

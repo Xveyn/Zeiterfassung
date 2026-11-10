@@ -18,7 +18,7 @@ _DEFAULTS = {
     "send_reminder_shift_holidays": False,
     "send_reminder_reservations_enabled": False,
     "reservations_enabled": False,
-    "state": "",
+    "country": "DE", "region": "",
 }
 
 

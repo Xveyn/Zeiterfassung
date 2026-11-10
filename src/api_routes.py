@@ -47,6 +47,7 @@ from src.api_vacation_write import parse_vacation_body
 from src.api_summary import (
     category_names, holidays_for, parse_month, parse_week, parse_year, summarize,
 )
+from src.region import country_region
 from src.reservations import inherit_pause, normalize_pause, reservations_active
 from src.time_utils import utc_now_iso
 from src.vacation_plan import blocking_days, plan_vacation_save
@@ -551,9 +552,9 @@ def _post_vacation(request: ApiRequest, ctx: ApiContext, _match: re.Match[str]) 
     _only_params(request.query, frozenset())
     store = _vacation_store(ctx)
     parsed = parse_vacation_body(request.body)
-    state = ctx.settings.get("state") or ""
+    country, region = country_region(ctx.settings)
     plan = plan_vacation_save(parsed.name, parsed.date_from, parsed.date_to, parsed.mode,
-                              parsed.value, parsed.overrides, state)
+                              parsed.value, parsed.overrides, region, country)
     if plan["error"]:
         raise _ApiError(422, "invalid_vacation", plan["error"])
     with _locked(ctx):
@@ -571,7 +572,7 @@ def _post_vacation(request: ApiRequest, ctx: ApiContext, _match: re.Match[str]) 
         saved = store.get(period_id)
     _notify_vacations(ctx)
     wire = _wire_vacation({**(saved or {}), "id": period_id}) or {"id": period_id}
-    return ApiResponse(201, {**wire, "warnings": [] if state else [dict(_NO_STATE_WARNING)]})
+    return ApiResponse(201, {**wire, "warnings": [] if region else [dict(_NO_STATE_WARNING)]})
 
 
 def _delete_vacation(request: ApiRequest, ctx: ApiContext, match: re.Match[str]) -> ApiResponse:

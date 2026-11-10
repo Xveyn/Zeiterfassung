@@ -96,8 +96,9 @@ def shift_off_free_days(date: datetime.date, mode: str,
     return date
 
 
-def free_dates_for_month(year: int, month: int, state: str = "",
-                         include_holidays: bool = False) -> set[datetime.date]:
+def free_dates_for_month(year: int, month: int, region: str = "",
+                         include_holidays: bool = False,
+                         country: str = "DE") -> set[datetime.date]:
     """Arbeitsfreie Tage des Monats: immer Sa/So, optional die Feiertage des
     Bundeslands.
 
@@ -109,9 +110,9 @@ def free_dates_for_month(year: int, month: int, state: str = "",
     last_day = calendar.monthrange(year, month)[1]
     days = [datetime.date(year, month, d) for d in range(1, last_day + 1)]
     free = {d for d in days if d.weekday() >= 5}
-    if include_holidays and state:
+    if include_holidays and region:
         from src.holidays_region import get_holidays
-        feiertage = get_holidays("DE", state, year)
+        feiertage = get_holidays(country, region, year)
         free |= {d for d in days if d in feiertage}
     return free
 
@@ -195,9 +196,9 @@ def marked_reminder_dates(raw_reservations: dict[str, Any]) -> list[datetime.dat
 
 
 def monthly_anchor_dates(today: datetime.date, day: int, time_str: Any,
-                         shift_mode: str = "none", state: str = "",
+                         shift_mode: str = "none", region: str = "",
                          include_holidays: bool = False,
-                         months_back: int = 2) -> list[datetime.date]:
+                         months_back: int = 2, country: str = "DE") -> list[datetime.date]:
     """Die Monatstermine des laufenden und der `months_back` vorangehenden
     Monate — inklusive Monatslängen-Clamp und Verschiebung.
 
@@ -207,7 +208,8 @@ def monthly_anchor_dates(today: datetime.date, day: int, time_str: Any,
     out = []
     year, month = today.year, today.month
     for _ in range(months_back + 1):
-        free = free_dates_for_month(year, month, state, include_holidays)
+        free = free_dates_for_month(year, month, region, include_holidays,
+                                    country)
         due_at = scheduled_datetime(year, month, day, time_str, shift_mode, free)
         if due_at is not None:
             out.append(due_at.date())
@@ -254,7 +256,7 @@ def upcoming_send_times(now: datetime.datetime, *, monthly: Mapping[str, Any] | 
     Verschiebung, das Handy bekommt fertige Zeitpunkte.
 
     `now` ist die lokale (naive) Desktop-Zeit. `monthly` ist `{day, time, shift, state,
-    holidays}` der monatlichen Erinnerung oder `None`; `daily_slots` sind
+    country, holidays}` der monatlichen Erinnerung oder `None`; `daily_slots` sind
     `(Datum, Ende 'HH:MM', Minuten)` der markierten Reservierungs-Slots. Nur Zukünftiges,
     sortiert, ohne Doppelte, höchstens `MAX_SEND_TIMES`. `tz=None` heißt Systemzone; eine
     Zeit in der übersprungenen Stunde der Sommerzeit-Umstellung wird nicht geworfen,
@@ -267,7 +269,8 @@ def upcoming_send_times(now: datetime.datetime, *, monthly: Mapping[str, Any] | 
         year, month = now.year, now.month
         while (year, month) <= (horizon.year, horizon.month):
             free = free_dates_for_month(year, month, monthly.get("state", ""),
-                                        bool(monthly.get("holidays")))
+                                        bool(monthly.get("holidays")),
+                                        monthly.get("country", "DE"))
             due = scheduled_datetime(year, month, int(monthly.get("day", 1)),
                                      monthly.get("time"), monthly.get("shift", "none"), free)
             if due is not None:

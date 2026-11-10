@@ -80,7 +80,7 @@ def test_resolve_send_period_with_monthly_anchor():
                   send_reminder_enabled=True,
                   send_reminder_day=23, send_reminder_time="16:30",
                   send_reminder_weekend_shift="none",
-                  send_reminder_shift_holidays=False, state="")
+                  send_reminder_shift_holidays=False, country="DE", region="")
     assert resolve_send_period(settings, _MarkedStore(), datetime.date(2026, 9, 5))         == (datetime.date(2026, 8, 24), datetime.date(2026, 9, 5))
 
 
@@ -92,7 +92,7 @@ def test_resolve_send_period_ignores_monthly_when_reminder_off():
                   send_reminder_enabled=False,
                   send_reminder_day=23, send_reminder_time="16:30",
                   send_reminder_weekend_shift="none",
-                  send_reminder_shift_holidays=False, state="")
+                  send_reminder_shift_holidays=False, country="DE", region="")
     assert resolve_send_period(settings, _MarkedStore(), datetime.date(2026, 9, 5))         == (datetime.date(2026, 8, 3), datetime.date(2026, 9, 5))
 
 

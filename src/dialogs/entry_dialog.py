@@ -8,6 +8,7 @@ from src.dialogs.slot_rows import (
     category_from_display, category_to_display, slot_category_display,
 )
 from src.holidays_region import get_holidays
+from src.region import country_region
 from src.settings import WEEKDAY_KEYS, parse_reminder_minutes
 from src.theme import (
     BG, CELL_BG, FONT, FONT_BOLD, FONT_SMALL,
@@ -187,9 +188,9 @@ def open_entry_dialog(parent, date_str, storage, settings, on_change,
 
     # Feiertags-Warnung beim Anlegen einer Ist-Zeit (nicht beim Edit).
     if entry is None:
-        state = settings.get("state")
-        if state:
-            feiertage = get_holidays("DE", state, day.year)
+        country, region = country_region(settings)
+        if region:
+            feiertage = get_holidays(country, region, day.year)
             if day in feiertage:
                 date_de = format_date(day)
                 confirm = themed_askyesno(

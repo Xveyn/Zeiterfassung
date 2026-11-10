@@ -27,7 +27,7 @@ class Env:
         self.vacations = VacationStore(str(tmp_path / "vacations.json"))
         self.storage = Storage(str(tmp_path / "zeiterfassung.json"), device_id="dev")
         self.reservations = ReservationStore(str(tmp_path / "reservations.json"))
-        self.settings = {"state": "NW", "reservations_enabled": True}
+        self.settings = {"country": "DE", "region": "NW", "reservations_enabled": True}
         if settings:
             self.settings.update(settings)
         self.events = []
@@ -108,7 +108,7 @@ def test_post_holidays_follow_the_state_setting(env):
 
 
 def test_post_without_a_state_warns_that_holidays_are_not_known(tmp_path):
-    env = Env(tmp_path, settings={"state": ""})
+    env = Env(tmp_path, settings={"region": ""})
 
     response = env.post(make_body(name="Weihnachten", **{"from": "2026-12-23", "to": "2026-12-28"}))
 

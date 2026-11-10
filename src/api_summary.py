@@ -23,6 +23,7 @@ from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any
 
 from src.holidays_region import get_holidays
+from src.region import country_region
 from src.pause_requirement import check_day_pause
 from src.time_utils import calculate_hours, get_week_dates, hours_to_minutes
 from src.vacations import cap_by_worktime
@@ -108,13 +109,11 @@ def holidays_for(settings: SettingsLike, year: int) -> dict[str, Any]:
     """Feiertage des eingestellten Bundeslands. Ohne gesetztes Bundesland ist die
     Liste leer und `state` ist `""` — so unterscheidet der Client „keine
     Feiertage“ von „Bundesland fehlt“ (dieselbe Lücke wie beim Urlaub)."""
-    state = settings.get("state")
-    if not isinstance(state, str):
-        state = ""
-    found = get_holidays("DE", state, year)
+    country, region = country_region(settings)
+    found = get_holidays(country, region, year)
     return {
         "year": year,
-        "state": state,
+        "state": region,
         "holidays": [{"date": day.isoformat(), "name": name}
                      for day, name in sorted(found.items())],
     }

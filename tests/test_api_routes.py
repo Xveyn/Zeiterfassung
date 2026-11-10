@@ -786,7 +786,7 @@ def test_categories_default_to_an_empty_list(env):
 
 
 def test_holidays_use_the_state_of_the_settings(tmp_path):
-    env = Env(tmp_path, {"state": "BY"})
+    env = Env(tmp_path, {"country": "DE", "region": "BY"})
     body = get(env, "/v1/holidays/2026").body
     assert (body["year"], body["state"]) == (2026, "BY")
     assert {"date": "2026-01-01", "name": "Neujahr"} in body["holidays"]
