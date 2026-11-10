@@ -89,12 +89,13 @@ class TestRequiredChecks:
         return [name.strip() for name in raw.split(",")]
 
     def test_every_documented_check_is_a_job_in_test_yml(self):
-        jobs = _job_names("test.yml")
+        # `gitleaks` liegt bewusst in einer eigenen Datei (s. CLAUDE.md, Abschnitt gitleaks).
+        jobs = _job_names("test.yml") + _job_names("gitleaks.yml")
         missing = [name for name in self._documented() if name not in jobs]
         assert not missing, (
-            f"CLAUDE.md nennt Required Checks, die es in test.yml nicht (mehr) "
+            f"CLAUDE.md nennt Required Checks, die es in test.yml/gitleaks.yml nicht (mehr) "
             f"gibt: {missing}\n  dokumentiert: {self._documented()}\n"
-            f"  Jobs in test.yml: {jobs}\n"
+            f"  Jobs in test.yml/gitleaks.yml: {jobs}\n"
             "Ein Required Check ohne Job bleibt ewig „pending“ und blockiert "
             "jeden PR dauerhaft.")
 
