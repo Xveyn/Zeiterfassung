@@ -52,7 +52,7 @@ export function createPushScheduler({ run, setTimer = (fn, ms) => setTimeout(fn,
 
   function kick() {
     if (stopped) return;
-    if (running) { queued = true; return; }
+    if (running !== null) { queued = true; return; }
     running = loop().finally(() => { running = null; });
   }
 

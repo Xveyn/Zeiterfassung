@@ -116,6 +116,8 @@ Markdown-Dateien wie diese.
 
 ## Tests
 
+**Linter (#501):** `biome lint` im Repo-Root (Konfiguration im Repo-Root, CI-Job `lint-js`). Nur Lint, keine Formatierung. Ein Versprechen, auf das bewusst nicht gewartet wird, bekommt `void` davor (`void this.runSync();`), sonst meldet `noFloatingPromises` es als vergessenes `await`.
+
 ```
 cd pwa && node --test
 ```

@@ -174,6 +174,8 @@ Schließ-Codes der Box (`box.js`) und was der Client darauf tun muss:
 
 ## Regeln
 
+**Linter (#501):** `biome lint` im Repo-Root (Konfiguration im Repo-Root, CI-Job `lint-js`). Nur Lint, keine Formatierung. Ein Versprechen, auf das bewusst nicht gewartet wird, bekommt `void` davor (`void this.runSync();`), sonst meldet `noFloatingPromises` es als vergessenes `await`.
+
 - **Kein Logging** von Geheimnis, Abo, Blob oder Zeitplan, auch nicht in Fehlerpfaden. Ein
   Test (`worker.test.js`) hält das fest.
 - **Kein `Buffer`** im Laufzeitcode: Workers kennt es nur mit `nodejs_compat`. Test-Code darf es.

@@ -59,7 +59,7 @@ test('idle resolves only when nothing is running or queued', async () => {
   scheduler.request();
   scheduler.request();
   let idle = false;
-  scheduler.idle().then(() => { idle = true; });
+  void scheduler.idle().then(() => { idle = true; });
   await settle();
   assert.equal(idle, false);
 

@@ -213,6 +213,31 @@ jobs:
       - run: pip install ruff==0.15.10
       - run: ruff check .
 
+  lint-js:
+    # Linter für das JavaScript der Handy-PWA und des Relays (Xveyn#501): Biome als
+    # gepinntes Release-Binary mit SHA256-Prüfung, wie gitleaks. Kein npm-Paket: die
+    # PWA bleibt ohne Abhängigkeiten. Regeln und Geltungsbereich stehen in biome.json
+    # (nur Lint, keine Formatierung). Eigener Job statt Schritt in `pwa`/`relay`: ein
+    # Lauf für beide Ordner, und ein Lint-Fehler färbt nicht die Tests rot. Bewusst
+    # KEIN Required Check — die Aufnahme ins Ruleset entscheidet der Maintainer.
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    env:
+      BIOME_VERSION: 2.6.5
+      # SHA256 von biome-linux-x64 (Feld `digest` des Release-Assets).
+      BIOME_SHA256: 0653fd798e50565efac8b1958c9a2786fada55cc6c362b7da4f16efff8dd30d8
+    steps:
+      - uses: actions/checkout@v7
+      - name: Biome installieren
+        run: |
+          curl -sSfL -o biome \
+            "https://github.com/biomejs/biome/releases/download/%40biomejs%2Fbiome%40${BIOME_VERSION}/biome-linux-x64"
+          echo "${BIOME_SHA256}  biome" | sha256sum -c -
+          chmod +x biome
+      # --error-on-warnings: eine Warnung, die niemand liest, ist keine.
+      - run: ./biome lint --error-on-warnings
+
   typecheck:
     needs: changes
     if: needs.changes.outputs.code == 'true'

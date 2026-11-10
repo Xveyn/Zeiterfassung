@@ -960,7 +960,7 @@ export function settingsDialog({ tab = 'connection', connection, updates, catego
       panels[other].hidden = other !== key;
       tabs[other].setAttribute('aria-selected', String(other === key));
     }
-    if (key === 'debug') debug.load();      // jedes Zeigen liest neu
+    if (key === 'debug') void debug.load();      // jedes Zeigen liest neu
   };
   // Escape schließt einen Dialog von sich aus; mit ungespeicherten Kategorien erst nachfragen.
   dialog.addEventListener('cancel', (event) => {
