@@ -44,7 +44,7 @@ _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
-from src.holidays_de import get_holidays  # noqa: E402  (nach Bootstrap)
+from src.holidays_region import get_holidays  # noqa: E402  (nach Bootstrap)
 from src.reservations import ReservationStore  # noqa: E402
 from src.settings import Settings  # noqa: E402
 from src.smtp_store import SmtpStore  # noqa: E402
@@ -94,7 +94,7 @@ def build_demo(today, *, with_calendar=True):
     vac_days = expand_days(vac_from.isoformat(), vac_to.isoformat(), 480, STATE)
     holidays = set()
     for year in {today.year - 1, today.year, today.year + 1}:
-        holidays |= set(get_holidays(STATE, year))
+        holidays |= set(get_holidays("DE", STATE, year))
 
     def free(day):
         return (day.weekday() >= 5 or day in holidays
@@ -169,7 +169,9 @@ def build_demo(today, *, with_calendar=True):
         "name": "Max Mustermann",
         "recipient": "buchhaltung@example.com",
         "sender_email": "max.mustermann@example.com",
-        "state": STATE,
+        "country": "DE",
+        "region": STATE,
+        "state": STATE,  # bis die Leser auf country/region umgestellt sind
         "hourly_rate": 18.5,
         "categories": list(CATEGORIES),
         "category_times": {"Kundentermin": {"start": "09:00", "end": "15:00",

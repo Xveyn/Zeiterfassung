@@ -248,7 +248,7 @@ def _migrate_legacy_default_times(loaded: dict[str, Any]) -> None:
 # extrahiert aus settings_dialog.save_settings, Issue #51). settings.py bleibt
 # bewusst stdlib-only — kein holidays/google-Import (sync.py importiert dieses
 # Modul, vgl. Issue #48). Das State-Label→Code-Mapping lebt deshalb in
-# holidays_de.code_for_state_label, nicht hier.
+# holidays_region (REGIONS), nicht hier.
 
 
 def parse_hourly_rate(raw: str | None) -> float:

@@ -932,7 +932,7 @@ Folge zweier verschiedener Fragen.
 **Zwei bekannte Grenzen, die man kennen muss:**
 
 - **Ohne gesetztes Bundesland** (`settings["state"] == ""`, der Default eines
-  frischen Nutzers) kennt `holidays_de` keine Feiertage — ein Weihnachtsurlaub
+  frischen Nutzers) kennt `holidays_region` keine Feiertage — ein Weihnachtsurlaub
   trägt dann für den 25./26.12. volle Stunden. Der Anlege-Dialog weist darauf
   hin; die `days` werden **einmalig beim Anlegen** berechnet, ein späterer
   Bundesland-Wechsel korrigiert bestehende Perioden also nicht.
@@ -1613,7 +1613,7 @@ nicht mehr als „offen" führen — der Verweis lautet auf diese Grenze.
 - `src/category_defaults.py` — pure Logik der Per-Kategorie-Standardzeiten (`category_times`: ein Satz für alle Wochentage oder `mode: per_day`; fehlende Felder fallen je Feld auf den globalen Standard zurück). Tk-frei
 - `src/desktop_entry.py` — Freedesktop-`.desktop`-Dateien: schreibt den Menüeintrag (`write_menu_entry`, `ensure_icon`) und besitzt die `Exec=`-Quoting-Regel (`exec_line`), die auch `autostart.py` benutzt. Tk-frei, stdlib-only
 - `src/ui_queue.py` — Tk-freie, thread-sichere Übergabe von Callbacks aus Worker-Threads an den UI-Thread (`UiQueue`, Poll alle 50 ms per `root.after`); `App._marshal_to_ui` läuft darüber, weil `root.after` vor der Mainloop nicht aus Workern kommen darf (Xveyn#244; s. `src/CLAUDE.md`, „Threading-Modell“)
-- `src/holidays_de.py` — Feiertags-Lookup (über `holidays`-Lib)
+- `src/holidays_region.py` — Feiertags-Lookup nach Land und Region (über `holidays`-Lib)
 - `src/paths.py` — `get_base_path()` dispatched über `platform.system()` und Frozen- vs. Repo-Modus; `relaunch_command()` baut das Neustart-Kommando (Exe im Frozen-Build, `python -m src.main` im Repo)
 - `src/dpi.py` — Systemfaktor der UI-Skalierung: Windows-DPI-Awareness (#157)
   und Linux-`Xft.dpi` samt einmaliger `ui_scale`-Umrechnung (Xveyn#167; s.

@@ -4,7 +4,9 @@ der aufgeteilte Inhalt des früheren `save_settings`."""
 import pytest
 
 from src.dialogs.settings_dialog import tab_rules as tr
-from src.holidays_de import STATES
+from src.holidays_region import REGIONS
+
+STATES = REGIONS["DE"]
 from src.settings import WEEKDAY_KEYS
 from src.send_reminder import SHIFT_LABELS
 from src.updater import FREQUENCY_OPTIONS

@@ -174,7 +174,7 @@ Zeiterfassung/
 │   ├── updater.py         # GitHub-Releases-Check (stdlib-only, Frequenz konfigurierbar)
 │   ├── self_update.py     # Update laden, gegen SHA256SUMS prüfen und installieren (Windows/Linux)
 │   ├── changelog.py       # Lädt/parst den Changelog-Abschnitt einer Release-Version
-│   ├── holidays_de.py     # Feiertags-Lookup (python-holidays)
+│   ├── holidays_region.py # Feiertags-Lookup nach Land und Region (python-holidays)
 │   ├── time_utils.py      # Zeitberechnung und Validierung
 │   ├── logging_setup.py   # File-Logging + globaler Excepthook
 │   ├── platform_open.py   # os.startfile/open/xdg-open-Wrapper

@@ -24,7 +24,7 @@ from src.api_service import (
     REASON_TOKEN_UNAVAILABLE, STATE_ERROR, STATE_RUNNING, STATE_STARTING,
     ApiStatus, parse_port,
 )
-from src.holidays_de import code_for_state_label
+from src.holidays_region import REGIONS
 from src.mobile_service import (
     DEFAULT_PORT as MOBILE_DEFAULT_PORT, REASON_ADDRESS_GONE, REASON_NO_ADDRESS,
     REASON_INVALID_PORT as MOBILE_INVALID_PORT, REASON_PORT_IN_USE as MOBILE_PORT_IN_USE,
@@ -90,6 +90,11 @@ def validate_work(raw: Mapping[str, Any]) -> tuple[str, str] | None:
     return None
 
 
+def _state_code_for_label(label: str) -> str:
+    """Bundesland-Klartext → Code; Unbekanntes und „kein Bundesland“ → ""."""
+    return next((code for code, lbl in REGIONS["DE"] if lbl == label), "")
+
+
 def work_updates(raw: Mapping[str, Any],
                  old: Mapping[str, Any]) -> dict[str, Any]:
     """Settings-Werte des Arbeitszeit-Tabs. `old` trägt die bisherigen
@@ -111,7 +116,7 @@ def work_updates(raw: Mapping[str, Any],
                                   or old["werkstudent_limit_end"]),
         "werkstudent_limit_max_hours": max_hours,
         "workweek_only": bool(raw["workweek_only"]),
-        "state": code_for_state_label(raw["state"]),
+        "state": _state_code_for_label(raw["state"]),
         "show_weekend": bool(raw["show_weekend"]),
     }
     mode = mode_code(raw["default_times_mode"])

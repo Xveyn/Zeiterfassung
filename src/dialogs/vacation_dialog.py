@@ -11,7 +11,7 @@ import logging
 import tkinter as tk
 from tkinter import ttk
 
-from src.holidays_de import get_holidays
+from src.holidays_region import get_holidays
 from src.theme import (
     ACCENT, BG, CELL_BG, FONT, FONT_BOLD, FONT_SMALL, TEXT, TEXT_MUTED,
     apply_combobox_style,
@@ -340,7 +340,7 @@ def _open_edit_dialog(parent, vacation_store, settings, period_id, on_saved,
     from_row.frame.pack(anchor="w", padx=12, pady=4)
     to_row.frame.pack(anchor="w", padx=12, pady=4)
 
-    # Ohne gesetztes Bundesland kennt holidays_de keine Feiertage — dann
+    # Ohne gesetztes Bundesland kennt holidays_region keine Feiertage — dann
     # tragen der 25./26.12. volle Stunden und landen in „Zu vergüten gesamt".
     # Das ist der DEFAULT-Zustand eines frischen Nutzers (settings["state"]
     # ist ""), also gehört ein Hinweis in den Dialog statt einer stillen
@@ -439,7 +439,7 @@ def _open_edit_dialog(parent, vacation_store, settings, period_id, on_saved,
         day_vars.clear()
         holidays = {}
         for year in {d[:4] for d in days}:
-            holidays.update(get_holidays(state, int(year)))
+            holidays.update(get_holidays("DE", state, int(year)))
         for day in sorted(days):
             row = tk.Frame(day_rows_frame, bg=BG)
             row.pack(anchor="w", pady=1)

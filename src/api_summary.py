@@ -22,7 +22,7 @@ import re
 from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any
 
-from src.holidays_de import get_holidays
+from src.holidays_region import get_holidays
 from src.pause_requirement import check_day_pause
 from src.time_utils import calculate_hours, get_week_dates, hours_to_minutes
 from src.vacations import cap_by_worktime
@@ -111,7 +111,7 @@ def holidays_for(settings: SettingsLike, year: int) -> dict[str, Any]:
     state = settings.get("state")
     if not isinstance(state, str):
         state = ""
-    found = get_holidays(state, year)
+    found = get_holidays("DE", state, year)
     return {
         "year": year,
         "state": state,

@@ -750,7 +750,7 @@ Wert.
   `manual_outcome(ok, dialog_alive)`. Der stille Weg persistiert unabhängig
   davon, ob ein Dialog offen ist — die „Dialog zu"-Hälfte der alten
   Vier-Felder-Tabelle gibt es nur noch für den manuellen Weg.
-- `holidays_de.py`, `paths.py` (`get_base_path` Frozen-vs-Repo), `updater.py`
+- `holidays_region.py`, `paths.py` (`get_base_path` Frozen-vs-Repo), `updater.py`
   (GitHub-Releases, stdlib-only, Frequenz über `update_check_frequency`, Pre-Release-Opt-in über `prerelease_updates_enabled`), `changelog.py`
   (lädt/parst den Changelog-Abschnitt einer Release-Version vom GitHub-Tag), `platform_open.py`, `logging_setup.py`,
   `version.py` (einzige Versions-Quelle).

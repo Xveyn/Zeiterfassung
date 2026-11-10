@@ -13,7 +13,7 @@ from src.dialogs.settings_dialog.tab_rules import (
     WSL_KEYS, validate_work, work_updates, wsl_snapshot,
 )
 from src.dialogs.vacation_dialog import open_vacation_dialog
-from src.holidays_de import STATES
+from src.holidays_region import REGIONS
 from src.settings import WEEKDAY_KEYS
 from src.theme import (
     BG, FONT, PAUSE_VALUES, TEXT_MUTED, TIME_VALUES, Form, dark_combo,
@@ -41,10 +41,11 @@ class WorkTab:
         # --- Arbeitswoche ---
         workweek_only_var = tk.BooleanVar(value=settings.get("workweek_only"))
         show_weekend_var = tk.BooleanVar(value=settings.get("show_weekend"))
-        state_labels = [lbl for _, lbl in STATES]
+        state_labels = [lbl for _, lbl in REGIONS["DE"]]
         current_state = settings.get("state")
         state_var = tk.StringVar(value=next(
-            (lbl for code, lbl in STATES if code == current_state), STATES[0][1]))
+            (lbl for code, lbl in REGIONS["DE"] if code == current_state),
+            REGIONS["DE"][0][1]))
         form.section("Arbeitswoche")
         form.check("Nur Werktage — Wochenende (Sa/So) komplett ausblenden",
                    workweek_only_var)

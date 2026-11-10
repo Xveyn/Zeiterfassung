@@ -101,7 +101,7 @@ def free_dates_for_month(year: int, month: int, state: str = "",
     """Arbeitsfreie Tage des Monats: immer Sa/So, optional die Feiertage des
     Bundeslands.
 
-    holidays_de wird lazy importiert, damit dieses Modul ohne die
+    holidays_region wird lazy importiert, damit dieses Modul ohne die
     holidays-Lib importierbar bleibt. get_holidays ist intern gecached und
     liefert bei leerem/ungültigem Bundesland {} — der Minuten-Poll darf es
     also direkt aufrufen.
@@ -110,8 +110,8 @@ def free_dates_for_month(year: int, month: int, state: str = "",
     days = [datetime.date(year, month, d) for d in range(1, last_day + 1)]
     free = {d for d in days if d.weekday() >= 5}
     if include_holidays and state:
-        from src.holidays_de import get_holidays
-        feiertage = get_holidays(state, year)
+        from src.holidays_region import get_holidays
+        feiertage = get_holidays("DE", state, year)
         free |= {d for d in days if d in feiertage}
     return free
 

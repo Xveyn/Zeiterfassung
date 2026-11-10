@@ -28,7 +28,7 @@ import threading
 from dataclasses import dataclass
 from typing import Any, Collection
 
-from src.holidays_de import get_holidays
+from src.holidays_region import get_holidays
 from src.json_store import atomic_write_json, load_json_or_quarantine
 from src.time_utils import (
     calculate_hours, format_iso_date, hours_to_minutes, utc_now_iso,
@@ -57,7 +57,7 @@ def _holiday_dates(days: list[datetime.date], state: str) -> set[datetime.date]:
     Feiertag."""
     out: set[datetime.date] = set()
     for year in {d.year for d in days}:
-        out |= set(get_holidays(state, year))
+        out |= set(get_holidays("DE", state, year))
     return out
 
 

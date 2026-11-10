@@ -52,7 +52,7 @@ _FREQUENCY_INTERVAL_DAYS = {"daily": 1, "weekly": 7, "monthly": 30}
 def frequency_for_label(label: str) -> str:
     """Mappt ein im Updates-Tab gewähltes Klartext-Label (z.B. 'Wöchentlich')
     zurück auf den internen Frequency-Value ('weekly'). Unbekanntes Label
-    -> 'daily' (sicherer Default, analog holidays_de.code_for_state_label)."""
+    -> 'daily' (sicherer Default, analog Label→Code-Mappings)."""
     return next((value for value, lbl in FREQUENCY_OPTIONS if lbl == label), "daily")
 
 
