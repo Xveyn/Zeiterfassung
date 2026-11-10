@@ -171,7 +171,7 @@ def build_demo(today, *, with_calendar=True):
         "sender_email": "max.mustermann@example.com",
         "country": "DE",
         "region": STATE,
-        "state": STATE,  # bis die Leser auf country/region umgestellt sind
+        "state": STATE,  # gespiegelt, damit ein Downgrade dieselbe Region sieht
         "hourly_rate": 18.5,
         "categories": list(CATEGORIES),
         "category_times": {"Kundentermin": {"start": "09:00", "end": "15:00",

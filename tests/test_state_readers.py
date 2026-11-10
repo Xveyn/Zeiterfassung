@@ -9,7 +9,7 @@ from src.vacations import expand_days
 
 SRC = pathlib.Path(__file__).resolve().parent.parent / "src"
 ALLOWED = {"region.py", "dialogs/settings_dialog/tab_rules.py"}
-RECEIVERS = {"settings", "_settings", "ctx.settings"}
+RECEIVERS = {"settings", "_settings"}  # letztes Pfadsegment: auch self._settings, ctx.settings
 
 
 def _receiver(node):
@@ -19,7 +19,7 @@ def _receiver(node):
         node = node.value
     if isinstance(node, ast.Name):
         parts.append(node.id)
-        return ".".join(reversed(parts))
+        return parts[0]
     return None
 
 
@@ -33,6 +33,12 @@ def _state_reads(tree):
         if (isinstance(node, ast.Subscript) and isinstance(node.slice, ast.Constant)
                 and node.slice.value == "state" and _receiver(node.value) in RECEIVERS):
             yield node.lineno
+
+
+def test_guard_flags_attribute_receivers():
+    for code in ('self._settings.get("state")', 'ctx.settings["state"]', 'settings.get("state")'):
+        assert list(_state_reads(ast.parse(code)))
+    assert not list(_state_reads(ast.parse('status.get("state")')))
 
 
 def test_no_module_reads_state_key_directly():

@@ -83,7 +83,7 @@ def test_holidays_differ_by_state():
 def test_holidays_without_a_valid_state_are_empty(settings):
     result = holidays_for(settings, 2026)
     assert result["holidays"] == []
-    assert result["state"] in ("", "XX")
+    assert result["state"] == ""
 
 
 def day(*slots):
