@@ -42,7 +42,13 @@ function sendQuietly(ws, data) {
   }
 }
 
+/** Gespeicherter Wert. Der Speicher kennt die Form nicht (`unknown`), sie legt der Schreiber fest: `any` an
+ *  dieser einen Stelle statt Zusicherungen an jedem Lesen. */
+const read = (/** @type {DurableObjectStorage} */ storage, /** @type {string} */ key) =>
+  /** @type {Promise<any>} */ (storage.get(key));
+
 export class Box {
+  /** @param {DurableObjectState} ctx @param {Env} env */
   constructor(ctx, env, { now = Date.now, platform = socketPlatform } = {}) {
     this.ctx = ctx;
     this.env = env;
@@ -87,7 +93,7 @@ export class Box {
     }
     const { client, server } = this.platform.open();
     this.ctx.acceptWebSocket(server, [role]);
-    const slot = await this.ctx.storage.get(SLOT[PEER[role]]);
+    const slot = await read(this.ctx.storage, SLOT[PEER[role]]);
     if (slot && slot.ver > have) sendQuietly(server, encodeSlot(slot.ver, slot.data));
     return this.platform.upgrade(client, PROTOCOL);
   }
@@ -115,7 +121,7 @@ export class Box {
     const { storage } = this.ctx;
     const key = SLOT[role];
     const floor = Math.max(1, Math.floor((this.now() - VER_EPOCH) / 1000));
-    const ver = Math.max(((await storage.get(key))?.ver ?? 0) + 1, floor);
+    const ver = Math.max(((await read(storage, key))?.ver ?? 0) + 1, floor);
     await storage.put(key, { ver, data });
     await this.#touch();
     sendQuietly(ws, encodeOk(ver));
@@ -153,14 +159,14 @@ export class Box {
   async #touch() {
     const { storage } = this.ctx;
     const target = this.now() + LIMITS.idleDays * DAY_MS;
-    const idle = await storage.get('idle');
+    const idle = await read(storage, 'idle');
     if ((await storage.getAlarm()) !== null && idle !== undefined && target - idle <= DAY_MS) return;
     await storage.put('idle', target);
     await storage.setAlarm(target);
   }
 
   async alarm() {
-    const idle = (await this.ctx.storage.get('idle')) ?? 0;
+    const idle = (await read(this.ctx.storage, 'idle')) ?? 0;
     if (this.now() >= idle) {
       await this.#wipe();
       return;

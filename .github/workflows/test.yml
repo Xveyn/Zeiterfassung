@@ -238,6 +238,28 @@ jobs:
       # --error-on-warnings: eine Warnung, die niemand liest, ist keine.
       - run: ./biome lint --error-on-warnings
 
+  typecheck-js:
+    # Typprüfung des JavaScripts per JSDoc und `tsc --noEmit` (Xveyn#513): kein Build, keine
+    # Laufzeitänderung. In der PWA prüft nur, wer `// @ts-check` trägt; die Liste wächst pro PR.
+    # Das Relay prüft ganz, mit den `Env`-Typen aus `wrangler.toml` (`wrangler types`). Bewusst
+    # KEIN Required Check — die Aufnahme ins Ruleset entscheidet der Maintainer.
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - run: npm ci
+        working-directory: pwa
+      - run: npm run typecheck
+        working-directory: pwa
+      - run: npm ci
+        working-directory: relay
+      - run: npm run typecheck
+        working-directory: relay
+
   typecheck:
     needs: changes
     if: needs.changes.outputs.code == 'true'

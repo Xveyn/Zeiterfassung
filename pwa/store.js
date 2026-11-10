@@ -1,4 +1,5 @@
 // pwa/store.js
+// @ts-check
 // Lokaler Zustand der Handy-Erfassung: erfasste Tage, die Warteschlange der noch nicht
 // übertragenen und die Meta-Daten (Adresse, Token, Kategorien …). Rein bis auf den
 // Adapter, der das Schreiben übernimmt (IndexedDB in `db.js`, Speicher in den Tests).
@@ -22,6 +23,50 @@ import {
 import { aheadDays } from './window-policy.js';
 import { blockSignature, categoryRows, validateCategoryRows } from './categories.js';
 
+/** Die Meta des Stores. `null` heißt bei den markierten Feldern „älterer Desktop“ (Feature-Erkennung), nie „leer“.
+ * @typedef {object} Meta
+ * @property {string | null} address         Adresse des Desktops im LAN; null = nicht gekoppelt
+ * @property {string} token
+ * @property {string} token_expires_at
+ * @property {string} key                    Geräteschlüssel k_dev (base64url, #249)
+ * @property {number} seq                    höchster gesendeter Anfragezähler (Replay-Schutz)
+ * @property {string} device_id
+ * @property {string} desktop_name
+ * @property {string} last_pull_at
+ * @property {string[]} categories
+ * @property {Record<string, any> | null} defaults       Standardzeiten (#288); null = älterer Desktop
+ * @property {{ name: string, version: string, platform: string }} desktop
+ * @property {number} window_days
+ * @property {number} window_wish            gewünschtes Fenster in Tagen (#250)
+ * @property {number} window_wish_acked      Wunsch der zuletzt angewandten Antwort (#292)
+ * @property {number | null} window_ahead    Tage nach heute (#265); null = älterer Desktop
+ * @property {number | null} window_max      Obergrenze; null = kam nicht mit. Drei Zustände mit `window_max_known`
+ * @property {boolean} window_max_known      erst nach der ersten angewandten Antwort wahr
+ * @property {number} storage_hint_dismissed_at
+ * @property {boolean} auto_update
+ * @property {boolean} lock_enabled
+ * @property {string} lock_credential
+ * @property {number} lock_delay_ms
+ * @property {number} shift_step_minutes
+ * @property {boolean} reservations_enabled
+ * @property {boolean} reservation_pause
+ * @property {boolean} desktop_unpair
+ * @property {boolean} settings_writable
+ * @property {Record<string, any> | null} reminders      Block `reminders` der letzten Antwort (#331); null = Desktop kennt ihn nicht
+ * @property {boolean} push_enabled
+ * @property {string | null} push_signature  Signatur des zuletzt an den Relay gesendeten Plans
+ * @property {number} push_sent_at
+ * @property {string} relay_secret
+ * @property {'lan' | 'relay'} transport
+ * @property {string} box_secret
+ * @property {number} box_have
+ * @property {{ modified_at: string, dirty_version: number, synced_version: number, error: string | null } | null} categories_edit
+ * @property {boolean} excluded
+ * @property {any[]} conflicts
+ * @property {string} server_time
+ */
+
+/** @type {Readonly<Meta>} */
 const DEFAULT_META = Object.freeze({
   address: null,
   token: '',
@@ -89,6 +134,7 @@ export class Store {
     this._now = now;
     this._days = new Map();
     this._reservations = new Map();
+    /** @type {Meta} */
     this._meta = structuredClone(DEFAULT_META);
   }
 

@@ -15,6 +15,7 @@ export const TEST_PAYLOAD = 'zeiterfassung-test';
  *  Autopush lehnt das mit 413 ab, sobald es das Abo über seine FCM-Brücke bedient (Firefox auf Android): der
  *  Router prüft den als JSON verpackten, Base64-codierten Body gegen 4096 Zeichen (`message_size_check`,
  *  `routers/fcm/settings.rs`), 4096 Byte Body ergeben rund 5500. Das Auffüllen verbirgt nur die Länge der Nachricht. */
+/** @param {Env} env */
 async function buildRequest(subscription, blob, env) {
   const target = { endpoint: subscription.endpoint, expirationTime: null, keys: subscription.keys };
   const { headers } = await vapidHeaders(target, { subject: env.VAPID_SUBJECT, publicKey: env.VAPID_PUBLIC, privateKey: env.VAPID_PRIVATE });
@@ -39,6 +40,7 @@ async function buildRequest(subscription, blob, env) {
  *
  *  `ok` gesendet · `gone` Abo ist tot (404/410) · `retry` später noch einmal (429, 5xx, Netzfehler) ·
  *  `drop` der Dienst lehnt diese Nachricht ab (übrige 4xx), ein Wiederholen ändert nichts. */
+/** @param {Env} env @param {(cause: string | number) => void} [report] */
 export async function sendPush(subscription, blob, env, fetchFn = fetch, report = () => {}) {
   let request;
   try {

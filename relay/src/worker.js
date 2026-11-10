@@ -39,12 +39,14 @@ async function readBody(request) {
   return new TextDecoder().decode(await new Blob(chunks).arrayBuffer());
 }
 
+/** @param {Request} request @param {Env} env */
 function corsHeaders(request, env) {
   const origin = request.headers.get('origin');
   const allowed = origin && (origin === PAGES_ORIGIN || (env.DEV_ORIGIN && origin === env.DEV_ORIGIN));
   return allowed ? { 'access-control-allow-origin': origin, vary: 'Origin' } : {};
 }
 
+/** @param {Request} request @param {Env} env */
 function reply(request, env, status, body, extra = {}) {
   const headers = { ...corsHeaders(request, env), ...extra };
   return body === null ? new Response(null, { status, headers }) : Response.json(body, { status, headers });
@@ -68,7 +70,8 @@ export function limitKey(ip) {
 
 /** Pro Absender-Adresse, nicht pro Geheimnis: wer beliebig viele Geheimnisse erfindet, soll nicht
  *  beliebig viele Objekte anlegen. Fehlt das Binding (lokale Entwicklung) oder wirft es, geht die
- *  Anfrage durch — ein ausgefallener Zähler darf den Relay nicht abschalten. */
+ *  Anfrage durch — ein ausgefallener Zähler darf den Relay nicht abschalten.
+ *  @param {Request} request @param {Env} env */
 async function withinLimit(request, env) {
   if (!env.LIMITER) return true;
   try {
@@ -81,7 +84,8 @@ async function withinLimit(request, env) {
 
 /** Das Objekt der Box: in Produktion nur über die EU-Jurisdiktion gewählt, nie direkt über
  *  `env.BOX.idFromName`. `BOX_JURISDICTION` = `none` gibt es nur für `wrangler dev` (lokales workerd kennt keine
- *  Jurisdiktionen); jeder andere Wert wirft und endet im 500 `internal`. */
+ *  Jurisdiktionen); jeder andere Wert wirft und endet im 500 `internal`.
+ *  @param {Env} env */
 async function boxStub(env, secret) {
   const mode = env.BOX_JURISDICTION ?? 'eu';
   if (mode !== 'eu' && mode !== 'none') throw new Error('BOX_JURISDICTION ist ungültig.');
@@ -99,7 +103,8 @@ function boxRequest(request, path, role, have) {
 }
 
 /** `GET /v1/box/ws` (Upgrade) und `DELETE /v1/box`. Die 101-Antwort geht unverändert zurück: ein neu
- *  gebautes Response verlöre die WebSocket. */
+ *  gebautes Response verlöre die WebSocket.
+ *  @param {Request} request @param {Env} env */
 async function boxRoute(request, env, pathname) {
   const socket = pathname === '/v1/box/ws';
   if (socket) {
@@ -143,6 +148,7 @@ async function boxRoute(request, env, pathname) {
 }
 
 export default {
+  /** @param {Request} request @param {Env} env */
   async fetch(request, env) {
     const { pathname } = new URL(request.url);
     const methods = ROUTES[pathname];
