@@ -7,6 +7,8 @@
 // `time_utils.validate_slots`. Beides prüft `tests/test_mobile_contract.py` gegen
 // `test/fixtures/minutes-cases.json`.
 
+import { formatDate } from './locale.js';
+
 export const MAX_SLOTS = 50;
 export const MAX_CATEGORY_LENGTH = 100;
 const MAX_PAUSE_MINUTES = 24 * 60;
@@ -175,9 +177,7 @@ export function isoWeek(iso) {
 }
 
 export function formatDateDe(iso) {
-  if (!isIsoDate(iso)) return iso;
-  const [year, month, day] = iso.split('-');
-  return `${day}.${month}.${year}`;
+  return isIsoDate(iso) ? formatDate(iso) : iso;
 }
 
 /** Lokales Datum des Handys als ISO. */

@@ -10,6 +10,7 @@ import {
 import { blocksLan } from './browser-policy.js';
 import { categoryRows, timesSummary } from './categories.js';
 import { WEEKDAY_KEYS, resolveSlotDefaults, weekdayKey } from './defaults.js';
+import { formatClock, formatDateShort, getLocale, weekdayShort } from './locale.js';
 import { describeError } from './messages.js';
 import { openReservationSlots, pendingReservationMinutes, reservationBlockVisible, validateReservationSlots } from './reservations.js';
 import { describeState } from './push-policy.js';
@@ -17,11 +18,17 @@ import { LEGACY_AHEAD_DAYS, aheadDays, olderState } from './window-policy.js';
 
 export const WEEKDAYS = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
 
+/** Kurzer Wochentag (0 = Montag): deutsch wie bisher, sonst aus der Locale. */
+function weekdayName(index) {
+  const tag = getLocale();
+  return tag.startsWith('de') ? WEEKDAYS[index] : weekdayShort(index, tag);
+}
+
 /** Titel des Tages-Editors: Wochentag (Kurzform wie in der Wochenliste) und deutsches Datum,
  *  `Mi, 04.11.2026`. Was kein ISO-Datum ist, bleibt, wie es ist. */
 export function dayTitle(iso) {
   if (!isIsoDate(iso)) return iso;
-  return `${WEEKDAYS[WEEKDAY_KEYS.indexOf(weekdayKey(iso))]}, ${formatDateDe(iso)}`;
+  return `${weekdayName(WEEKDAY_KEYS.indexOf(weekdayKey(iso)))}, ${formatDateDe(iso)}`;
 }
 const SKEW_WARN_MS = 120000;
 
@@ -62,7 +69,7 @@ export function categoryDisplay(row, defaults, weekday, withPause) {
 export function localTime(iso, timeZone) {
   const time = Date.parse(iso);
   if (Number.isNaN(time)) return '';
-  return new Intl.DateTimeFormat('de-DE', { hour: '2-digit', minute: '2-digit', timeZone }).format(new Date(time));
+  return formatClock(time, timeZone);
 }
 
 function stampLabel(iso, timeZone) {
@@ -89,7 +96,7 @@ export function weekModel({ getDay, anchor, today, conflictDates = [], windowDay
     const reservation = planned && !planned.deleted && planned.slots.length > 0 ? planned : null;
     return {
       date,
-      weekday: WEEKDAYS[index],
+      weekday: weekdayName(index),
       label: formatDateDe(date),
       isToday: date === today,
       isWeekend: index >= 5,
@@ -119,7 +126,7 @@ export function weekModel({ getDay, anchor, today, conflictDates = [], windowDay
   const pending = week.reduce((sum, day) => sum + day.pendingMinutes, 0);
   return {
     title: `KW ${isoWeek(anchor).week}`,
-    range: `${formatDateDe(dates[0]).slice(0, 6)}–${formatDateDe(dates[6])}`,
+    range: `${formatDateShort(dates[0])}–${formatDateDe(dates[6])}`,
     anchor: mondayOf(anchor),
     isCurrent: dates.includes(today),
     days: week,
