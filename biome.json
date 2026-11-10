@@ -1,0 +1,54 @@
+{
+	"$schema": "https://biomejs.dev/schemas/2.6.5/schema.json",
+	"files": {
+		"includes": [
+			"pwa/**/*.js",
+			"relay/src/**/*.js",
+			"relay/test/**/*.js",
+			"relay/scripts/**/*.mjs",
+			"tests/*.mjs"
+		]
+	},
+	"formatter": {
+		"enabled": false
+	},
+	"assist": {
+		"enabled": false
+	},
+	"linter": {
+		"enabled": true,
+		"rules": {
+			"preset": "recommended",
+			"style": {
+				"useTemplate": "off"
+			},
+			"complexity": {
+				"useOptionalChain": "off",
+				"noUselessThisAlias": "off"
+			},
+			"correctness": {
+				"noUndeclaredVariables": "error",
+				"noUnusedVariables": "error",
+				"noUnusedImports": "error",
+				"noUnusedFunctionParameters": "off"
+			},
+			"suspicious": {
+				"useIterableCallbackReturn": "off",
+				"noAssignInExpressions": "off",
+				"noTemplateCurlyInString": "off"
+			},
+			"nursery": {
+				"noFloatingPromises": "error",
+				"noMisusedPromises": "error"
+			}
+		}
+	},
+	"overrides": [
+		{
+			"includes": ["relay/src/**/*.js"],
+			"javascript": {
+				"globals": ["WebSocketPair", "WebSocketRequestResponsePair"]
+			}
+		}
+	]
+}

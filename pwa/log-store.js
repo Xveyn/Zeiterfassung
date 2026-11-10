@@ -11,7 +11,7 @@ const CONFIG = 'config';
 export function idbLogStore(indexedDB = globalThis.indexedDB) {
   let opening = null;
   const openDb = () => {
-    if (opening) return opening;
+    if (opening !== null) return opening;
     opening = new Promise((resolve, reject) => {
       const request = indexedDB.open(DB_NAME, DB_VERSION);
       request.onupgradeneeded = () => {

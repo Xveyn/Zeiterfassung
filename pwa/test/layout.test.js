@@ -344,7 +344,7 @@ test('the unpair rules use no opacity and hover only where there is a hover', ()
   const rules = [...css.matchAll(/(^|\n)(\.unpair[^{]*)\{([^}]*)\}/g)];
   assert.ok(rules.length >= 4, 'the unpair rules exist');
   for (const [, , selector, body] of rules) assert.doesNotMatch(body, /opacity/, selector);
-  assert.match(css, /@media \(hover: hover\) \{\n  \.unpair button\.unpair-open:hover/);
+  assert.match(css, /@media \(hover: hover\) \{\n {2}\.unpair button\.unpair-open:hover/);
 });
 
 test('a green hint border exists for the all-synced summary of the unpair dialog', () => {

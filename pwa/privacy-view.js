@@ -62,5 +62,5 @@ export async function mountPrivacyPage(root) {
 }
 
 if (typeof document !== 'undefined' && document.getElementById('app')) {
-  mountPrivacyPage(document.getElementById('app'));
+  void mountPrivacyPage(document.getElementById('app'));
 }

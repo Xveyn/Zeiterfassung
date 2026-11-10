@@ -2,7 +2,7 @@
 // Verdrahtung: Zustand der Oberfläche, Ereignisse, Abgleich-Auslöser, Service Worker. Die
 // Entscheidungen stehen in den getesteten Modulen (`view-model.js`, `sync-policy.js`,
 // `messages.js`); hier wird nur zusammengesteckt.
-import { addDays, formatDateDe, isIsoDate, localIsoDate, mondayOf } from './minutes.js';
+import { addDays, formatDateDe, isIsoDate, localIsoDate } from './minutes.js';
 import { weekdayKey } from './defaults.js';
 import { reservationEditable } from './reservations.js';
 import { testResultText } from './push-message.js';
@@ -142,7 +142,7 @@ class App {
   async start() {
     this.captureFragment(this.initialHash);
     if (!this.paired) this.screen = 'pair';
-    if (!this.paired) this.loadDeviceModel();
+    if (!this.paired) void this.loadDeviceModel();
     // Der Plan geht auch ohne Desktop zum Relay: wieder Netz heißt, einen liegengebliebenen Plan nachzuholen.
     window.addEventListener('online', () => { this.online = true; this.trigger('online'); this.updatePushSchedule(); this.render(); });
     window.addEventListener('hashchange', () => { if (this.captureFragment()) this.render(); });
@@ -156,7 +156,7 @@ class App {
       this.lockCtl.visible();
       if (!this.locked) this.trigger('visible');       // gesperrt: kein Abgleich; das Entsperren holt ihn nach
       this.updatePushSchedule();
-      this.checkForUpdate('visible');
+      void this.checkForUpdate('visible');
       this.maybeApplyUpdate();
     });
     // Zurück aus dem Back-Forward-Cache gibt es kein `visibilitychange`, das die Frist prüft.
@@ -165,12 +165,12 @@ class App {
     // Ein Dialog, der sich schließt, kann der letzte Grund gewesen sein, ein wartendes Update aufzuschieben.
     // `close` bubbelt nicht: Capture fängt es am Dokument.
     document.addEventListener('close', () => this.maybeApplyUpdate(), true);
-    this.registerServiceWorker();
+    void this.registerServiceWorker();
     this.listenForNotificationClicks();
     this.render();
     // Bei jedem Start gesperrt, sobald die Sperre eingeschaltet ist: im selben Zug wie das erste Rendern, ohne Blitz.
     this.lockCtl.start();
-    this.lockSupportNow();            // im Hintergrund: die Einstellungen warten höchstens kurz darauf
+    void this.lockSupportNow();            // im Hintergrund: die Einstellungen warten höchstens kurz darauf
     this.persistent = await requestPersistentStorage();
     this.render();
     this.trigger('start');
@@ -385,7 +385,7 @@ class App {
       }
     };
     dialog = unpairDialog({ retry: check, confirm });
-    check();
+    void check();
     return dialog;
   }
 
@@ -510,7 +510,7 @@ class App {
       trigger: name, paired: this.paired, syncing: this.syncing, online: this.online,
       now: Date.now(), lastAttemptAt: this.lastAttemptAt, lastError: this.lastError,
     });
-    if (allowed) this.runSync();
+    if (allowed) void this.runSync();
     else if (shouldQueue({ trigger: name, paired: this.paired, syncing: this.syncing })) this.queued = true;
   }
 
@@ -924,7 +924,7 @@ class App {
       startWith,
       pauseEnabled,
     }, {
-      loadOlder: () => { dialog.close(); this.loadOlder(lock.wish); },
+      loadOlder: () => { dialog.close(); void this.loadOlder(lock.wish); },
       save: async (kind, rows) => {
         if (kind === 'reservation') {
           const current = this.store.getReservation(date);
@@ -992,7 +992,7 @@ class App {
       watch(registration.installing);
       registration.addEventListener('updatefound', () => watch(registration.installing));
       navigator.serviceWorker.addEventListener('controllerchange', () => { if (this.reloading) location.reload(); });
-      this.checkForUpdate('start');
+      void this.checkForUpdate('start');
     } catch (error) {
       // Ohne Service Worker läuft die App online weiter; offline starten kann sie dann nicht.
       logFailure('Service Worker registrieren', error);
@@ -1066,7 +1066,7 @@ class App {
       requested: this.applyRequested,
     })) return;
     this.applyRequested = true;
-    this.reloadForUpdate();
+    void this.reloadForUpdate();
   }
 
   /** „Ältere Zeiten laden“: den Wunsch erhöhen und abgleichen; der Desktop gewährt, was er darf. */
@@ -1147,4 +1147,4 @@ async function main() {
     { resetLocalData, wipeLocalData: () => vault.wipe() }).start();
 }
 
-main();
+void main();
