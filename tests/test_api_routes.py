@@ -793,7 +793,8 @@ def test_holidays_use_the_state_of_the_settings(tmp_path):
 
 
 def test_holidays_without_a_state_are_empty_and_say_so(env):
-    assert get(env, "/v1/holidays/2026").body == {"year": 2026, "state": "", "holidays": []}
+    assert get(env, "/v1/holidays/2026").body == {
+        "year": 2026, "state": "", "country": "DE", "region": "", "holidays": []}
 
 
 @pytest.mark.parametrize("path", ["/v1/summary/month/2026-01", "/v1/summary/week/2026-W02"])

@@ -14,7 +14,8 @@ Kopien liefern, ohne eigenen Lock). Schreibend: `PUT`/`DELETE
 `ctx.data_lock`, die Regeln der UI stehen in `api_entry_write`; `ctx.on_change`
 kommt danach, und nur bei einer Änderung.
 Auswertungen: `GET /v1/summary/week/{YYYY-Www}`, `/v1/summary/month/{YYYY-MM}`,
-`/v1/categories`, `/v1/holidays/{YYYY}` (Rechnung in `api_summary`).
+`/v1/categories`, `/v1/holidays/{YYYY}` (Rechnung in `api_summary`; Antwort
+`{year, state, country, region, holidays}`, `state` ist der Alias von `region`).
 Reservierungen (#239): `GET /v1/reservations[/{date}]`, `PUT`/`DELETE
 /v1/reservations/{date}` (Regeln in `api_reservation_write`; Schreiben nur mit
 eingeschalteten Reservierungen, danach der Kalender-Abgleich der UI).

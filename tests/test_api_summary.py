@@ -86,6 +86,19 @@ def test_holidays_without_a_valid_state_are_empty(settings):
     assert result["state"] == ""
 
 
+def test_holidays_keeps_state_alias():
+    result = holidays_for({"country": "DE", "region": "BY"}, 2026)
+    assert (result["state"], result["country"], result["region"]) == ("BY", "DE", "BY")
+    assert {"date": "2026-01-01", "name": "Neujahr"} in result["holidays"]
+
+
+def test_holidays_without_region_is_empty_with_empty_state():
+    result = holidays_for({}, 2026)
+    assert result["holidays"] == []
+    assert (result["state"], result["region"]) == ("", "")
+    assert result["country"] == "DE"
+
+
 def day(*slots):
     return {"slots": list(slots)}
 
