@@ -82,6 +82,10 @@ _MIGRATION_FAILURE = (
     "Eintrag in `MigrationReport.failures`: von keinem Dialog gelesen (Aufrufer `ui.App._on_secrets_migrated` "
     "prüft nur `moved_anything`), nur Berichts-Bezeichner für Tests und Log")
 _LOCALE_TABLE = "Locale-Tabelle: die eine Stelle für Namen und Muster je Locale, kein Katalogtext"
+_PROGRAM_ERROR = (
+    "ValueError einer verletzten Programm-Invariante; erscheint höchstens im nativen Catch-all-Dialog "
+    "mit Traceback (`webhook_dialog`), nie als kuratierte Meldung")
+_WIRE = "Ausgabe/Teil 3: Request-Header bzw. Multipart-Teil des Webhook-Versands, nie angezeigt"
 _TECH_DESKTOP = "Dateiinhalt einer Freedesktop-`.desktop`-Datei, gelesen vom Desktop"
 
 ALLOWED: dict[str, dict[str, str]] = {
@@ -241,6 +245,25 @@ ALLOWED: dict[str, dict[str, str]] = {
         "Von der Zeiterfassung verwalteter Urlaub.": _CALENDAR,
         "{}\nZeitspanne brutto, Pause {} min nicht abgezogen.": _CALENDAR,
     },
+    "src/smtp_store.py": {
+        "JSON nicht parsebar": _QUARANTINE,
+        "unerwartetes Toplevel-Format ({})": _QUARANTINE,
+    },
+    "src/webhook_store.py": {
+        "JSON nicht parsebar": _QUARANTINE,
+        "unerwartetes Toplevel-Format ({})": _QUARANTINE,
+        "save_if_unchanged: expected und record tragen verschiedene ids": _PROGRAM_ERROR,
+    },
+    "src/webhook_secrets.py": {
+        "Schlüsselbund-Markierung ohne gespeichertes Secret desselben Verfahrens": _PROGRAM_ERROR,
+    },
+    "src/webhook.py": {
+        "Authorization": _WIRE,
+        "X-Hub-Signature-256": _WIRE,
+        "application/json; charset=utf-8": _WIRE,
+        'Content-Disposition: form-data; name="report"; filename="{}"\r\n': _WIRE,
+        'multipart/form-data; boundary="{}"': _WIRE,
+    },
     "src/settings.py": {
         "Zeiterfassung — {zeitraum}": _MAIL_TEMPLATE,
         "Sehr geehrte Damen und Herren,": _MAIL_TEMPLATE,
@@ -257,15 +280,6 @@ PENDING: list[str] = [
     # Task 3
     # Task 4
     "src/dialogs/settings_dialog/oauth_task.py",
-    # Task 5
-    "src/smtp_store.py",
-    "src/webhook_store.py",
-    "src/webhook_secrets.py",
-    "src/vacation_plan.py",
-    "src/webhook.py",
-    "src/smtp.py",
-    "src/mime_message.py",
-    "src/share.py",
     # Task 6 (holidays_region: die Beschriftungen liest tab_work/tab_rules, beide hier)
     "src/dialogs/settings_dialog/tab_rules.py",
     "src/dialogs/settings_dialog/tab_work.py",
