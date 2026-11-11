@@ -212,6 +212,11 @@ ALLOWED: dict[str, dict[str, str]] = {
             "Programmfehler-Invariante (`FieldSet._check_new`, doppelte Registrierung beim Tab-Aufbau): "
             "ein `ValueError` im Aufbau, nie ein Nutzertext"),
     },
+    "src/dialogs/settings_dialog/tab_app.py": {
+        **{n: "Parameter `what` von `AppTab._open_folder`, dessen einziger Verbraucher die "
+              "`log.exception`-Zeile ist (Log bleibt deutsch); der Dialog nennt ihn nicht"
+           for n in ("Datenordner", "Log-Ordner")},
+    },
     "src/desktop_entry.py": {
         "[Desktop Entry]": _TECH_DESKTOP,
     },
@@ -288,11 +293,6 @@ PENDING: list[str] = [
     # Task 4
     "src/dialogs/settings_dialog/oauth_task.py",
     # Task 6b
-    "src/dialogs/settings_dialog/tab_work.py",
-    "src/dialogs/settings_dialog/tab_reminders.py",
-    "src/dialogs/settings_dialog/tab_app.py",
-    "src/dialogs/settings_dialog/tab_sending.py",
-    "src/dialogs/settings_dialog/dialog.py",
     # Task 7
     "src/dialogs/settings_dialog/tab_google.py",
     "src/dialogs/settings_dialog/tab_updates.py",

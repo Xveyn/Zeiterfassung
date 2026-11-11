@@ -5,6 +5,8 @@ im eigenen Abschnitt, der lazy Import, das Laden über den Ressourcenpfad samt E
 import ast
 import pathlib
 
+from src.i18n import TEXTS
+
 SRC = pathlib.Path(__file__).resolve().parent.parent / "src"
 TAB_APP = SRC / "dialogs" / "settings_dialog" / "tab_app.py"
 DIALOG = SRC / "dialogs" / "privacy_dialog.py"
@@ -24,8 +26,10 @@ def _calls(tree, dotted):
 
 def test_tab_app_has_the_privacy_button_in_its_own_section():
     source = TAB_APP.read_text(encoding="utf-8")
-    assert 'form.section("Datenschutz")' in source
-    assert '"Datenschutzhinweise"' in source
+    assert 'form.section(t("tab_app.datenschutz"))' in source
+    assert 't("tab_app.datenschutz_knopf")' in source
+    assert TEXTS["tab_app.datenschutz"] == "Datenschutz"
+    assert TEXTS["tab_app.datenschutz_knopf"] == "Datenschutzhinweise"
     tree = _tree(TAB_APP)
     top_level_imports = [
         node for node in tree.body
@@ -40,7 +44,9 @@ def test_tab_app_has_the_privacy_button_in_its_own_section():
 
 def test_the_privacy_section_comes_after_the_data_section():
     source = TAB_APP.read_text(encoding="utf-8")
-    assert source.index('form.section("Daten")') < source.index('form.section("Datenschutz")')
+    assert (
+        source.index('form.section(t("tab_app.abschnitt_daten"))')
+        < source.index('form.section(t("tab_app.datenschutz"))'))
 
 
 def test_the_dialog_loads_through_the_resource_path_and_falls_back():

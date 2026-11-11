@@ -21,6 +21,7 @@ TEXTS: dict[str, str] = {
     "knopf.verwerfen": "Verwerfen",
     "knopf.zurueck": "Zurück",
     "knopf.kopieren": "Kopieren",
+    "knopf.schliessen": "Schließen",
     # Freedesktop-Menüeintrag (`desktop_entry.write_menu_entry`, `Comment=` im Systemmenü).
     "desktop.kommentar": "Arbeitszeiten erfassen, berichten und versenden",
 }

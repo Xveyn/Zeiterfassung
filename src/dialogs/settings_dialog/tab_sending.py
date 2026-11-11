@@ -13,6 +13,7 @@ from src.dialogs.settings_dialog.form_model import SaveOutcome
 from src.dialogs.settings_dialog.tab_rules import sending_updates
 from src.dialogs.settings_dialog.tab_smtp import SmtpTab
 from src.dialogs.settings_dialog.tab_webhooks import WebhooksTab
+from src.i18n import t
 from src.theme import Form, dark_entry, dark_text
 
 
@@ -24,7 +25,7 @@ class SendingTab:
     def __init__(self, frame, dialog, settings, webhook_store, smtp_store,
                  runner, parent):
         self.frame = frame
-        self.title = "Versand"
+        self.title = t("tab_versand.titel")
         self._settings = settings
 
         form = Form(frame, scroll=True)
@@ -38,32 +39,31 @@ class SendingTab:
         name_var = tk.StringVar(value=settings.get("name"))
         subject_var = tk.StringVar(value=settings.get("mail_subject"))
         greeting_var = tk.StringVar(value=settings.get("mail_greeting"))
-        form.section("Bericht",
-                     hint="Name und Vorlage gelten für Gmail und alle SMTP-Konten; "
-                          "der Name steht auch im Bericht selbst.")
-        form.row("Dein Name:", dark_entry(body, name_var, width=35))
-        form.row("Betreff:", dark_entry(body, subject_var, width=35))
-        form.row("Anrede:", dark_entry(body, greeting_var, width=35))
+        form.section(t("tab_versand.abschnitt_bericht"),
+                     hint=t("tab_versand.bericht_hinweis"))
+        form.row(t("tab_versand.name"), dark_entry(body, name_var, width=35))
+        form.row(t("tab_versand.betreff"), dark_entry(body, subject_var, width=35))
+        form.row(t("tab_versand.anrede"), dark_entry(body, greeting_var, width=35))
         content_text = dark_text(body, 35, 3)
         content_text.insert("1.0", settings.get("mail_content"))
-        form.row("Inhalt:", content_text, align_top=True)
+        form.row(t("tab_versand.inhalt"), content_text, align_top=True)
         closing_text = dark_text(body, 35, 2)
         closing_text.insert("1.0", settings.get("mail_closing"))
-        form.row("Gruß:", closing_text, align_top=True)
-        form.hint("Platzhalter in allen Vorlagen-Feldern: {zeitraum}, {gesamt}")
+        form.row(t("tab_versand.gruss"), closing_text, align_top=True)
+        form.hint(t("tab_versand.platzhalter"))
 
         from_last_var = tk.BooleanVar(
             value=settings.get("send_period_from_last_reminder"))
         anchor_var = tk.BooleanVar(value=settings.get("send_period_anchor_monthly"))
-        form.section("Zeitraum im Sende-Dialog")
-        form.check("Zeitraum ab der letzten Erinnerung vorbelegen", from_last_var)
+        form.section(t("tab_versand.abschnitt_zeitraum"))
+        form.check(t("tab_versand.zeitraum_vorbelegen"), from_last_var)
         with form.depends_on(from_last_var):
-            form.check("inkl. Monatstermine der Sende-Erinnerung", anchor_var)
+            form.check(t("tab_versand.monatstermine"), anchor_var)
 
         recipient_var = tk.StringVar(value=settings.get("recipient"))
-        form.section("Gmail",
-                     hint="Absender ist dein Google-Konto (Tab Google).")
-        form.row("Empfänger:", dark_entry(body, recipient_var, width=35))
+        form.section(t("tab_versand.abschnitt_gmail"),
+                     hint=t("tab_versand.gmail_hinweis"))
+        form.row(t("tab_versand.empfaenger"), dark_entry(body, recipient_var, width=35))
 
         self.smtp = SmtpTab(form, dialog, smtp_store, runner, parent)
         self.webhooks = WebhooksTab(form, dialog, webhook_store, runner, parent)

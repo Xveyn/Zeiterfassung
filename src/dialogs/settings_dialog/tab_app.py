@@ -18,6 +18,7 @@ from src.dialogs.settings_dialog.form_model import SaveOutcome
 from src.dialogs.settings_dialog.tab_rules import (
     app_updates, autostart_path_hint, slider_percent,
 )
+from src.i18n import t
 from src.logging_setup import get_log_dir
 from src.platform_open import open_folder
 from src.theme import (
@@ -44,16 +45,16 @@ class AppTab:
         autostart_var = tk.BooleanVar(value=is_autostart_enabled())
         always_on_top_var = tk.BooleanVar(value=settings.get("always_on_top"))
         minimize_to_tray_var = tk.BooleanVar(value=settings.get("minimize_to_tray"))
-        form.section("Fenster")
-        form.check("Autostart (minimiert bei Anmeldung)", autostart_var)
+        form.section(t("tab_app.abschnitt_fenster"))
+        form.check(t("tab_app.autostart"), autostart_var)
         path_hint = autostart_path_hint(platform.system(), linux_desktop_path())
         if path_hint is not None:
             form.hint(path_hint)
-        form.check("Immer im Vordergrund", always_on_top_var)
-        form.check("Beim Schließen in den Infobereich minimieren", minimize_to_tray_var)
+        form.check(t("tab_app.vordergrund"), always_on_top_var)
+        form.check(t("tab_app.infobereich"), minimize_to_tray_var)
 
         # --- Darstellung (UI-Skalierung, gerätelokal) ---
-        form.section("Darstellung")
+        form.section(t("tab_app.abschnitt_darstellung"))
         scale_cell = tk.Frame(body, bg=BG)
         # ttk.Scale statt klassischer tk.Scale: das clam-Theme ist via
         # apply_combobox_style aktiv, klassische tk.Scale rendert unter Windows
@@ -99,47 +100,37 @@ class AppTab:
         )
         scale_widget.pack(side=tk.LEFT)
         scale_value_label.pack(side=tk.LEFT, padx=(8, 0))
-        form.row("Skalierung:", scale_cell)
-        form.hint("Änderung startet die App neu.")
+        form.row(t("tab_app.skalierung"), scale_cell)
+        form.hint(t("tab_app.skalierung_hinweis"))
         auto_scale_var = tk.BooleanVar(
             value=bool(settings.get("auto_scale_restart")))
         # Nur unter Linux: nur dort erkennt die App den Monitorwechsel
         # (Xveyn#201; Windows Xveyn#493).
         if platform.system() == "Linux":
-            form.check("Skalierung bei Monitorwechsel automatisch anpassen",
-                       auto_scale_var)
-            form.hint("Startet die App neu, wenn der Monitor eine andere "
-                      "Skalierung hat — erst, wenn kein Dialog offen ist "
-                      "und nichts im Hintergrund läuft. Ohne Haken erscheint "
-                      "stattdessen ein Hinweis mit Neustart-Knopf.")
+            form.check(t("tab_app.skalierung_auto"), auto_scale_var)
+            form.hint(t("tab_app.skalierung_auto_hinweis"))
         system_hint = dpi.scale_hint(dpi.system_scale())
         if system_hint:
             form.hint(system_hint)
 
         # --- Daten ---
-        form.section("Daten")
+        form.section(t("tab_app.abschnitt_daten"))
         # Zwei Reihen statt einer: drei Knöpfe nebeneinander würden bei großer
         # Skalierung den Dialog verbreitern.
-        form.buttons(("Datenordner öffnen", self._open_data_folder),
-                     ("Log-Ordner öffnen", self._open_log_folder))
+        form.buttons((t("tab_app.datenordner_oeffnen"), self._open_data_folder),
+                     (t("tab_app.log_oeffnen"), self._open_log_folder))
         if storage is not None:
-            form.buttons(("Daten importieren", self._open_import_dialog))
-        form.hint("Im Datenordner liegen Einträge, Einstellungen und "
-                  "credentials.json. Importiert werden geteilte Arbeitszeiten "
-                  "(JSON-Datei aus „Teilen“). Das Log "
-                  "(zeiterfassung.log) liegt im Unterordner „logs“ — für die "
-                  "Fehlersuche, etwa in einem Issue.")
+            form.buttons((t("tab_app.daten_importieren"), self._open_import_dialog))
+        form.hint(t("tab_app.daten_hinweis"))
         if on_request_removal is not None and removal.is_available(
                 platform.system(), getattr(sys, "frozen", False)):
-            form.buttons(("Zeiterfassung entfernen", self._request_removal))
-            form.hint("Räumt Schlüsselbund, Zugangsdaten, Autostart und "
-                      "Menüeintrag ab und beendet die App. Die Programmdatei "
-                      "löschst du danach selbst.")
+            form.buttons((t("tab_app.entfernen"), self._request_removal))
+            form.hint(t("tab_app.entfernen_hinweis"))
 
         # --- Datenschutz ---
-        form.section("Datenschutz")
-        form.buttons(("Datenschutzhinweise", self._open_privacy))
-        form.hint("Was die Handy-Erfassung über den Relay weitergibt und wo es liegt.")
+        form.section(t("tab_app.datenschutz"))
+        form.buttons((t("tab_app.datenschutz_knopf"), self._open_privacy))
+        form.hint(t("tab_app.datenschutz_hinweis"))
 
         self.autostart_var = autostart_var
         self.always_on_top_var = always_on_top_var
@@ -147,7 +138,7 @@ class AppTab:
         self.scale_var = scale_var
         self.auto_scale_var = auto_scale_var
 
-        self.title = "App"
+        self.title = t("tab_app.titel")
         self._settings = settings
         self._dialog = dialog
         self._parent = parent
@@ -194,8 +185,8 @@ class AppTab:
                     disable_autostart()
             except Exception as e:
                 themed_showerror(
-                    self._dialog, "Autostart-Fehler",
-                    f"Autostart konnte nicht geändert werden:\n{e}",
+                    self._dialog, t("tab_app.autostart_fehler_titel"),
+                    t("tab_app.autostart_fehler", fehler=e),
                 )
                 return SaveOutcome(saved=False)
         settings.apply_updates(updates)
@@ -210,8 +201,7 @@ class AppTab:
             # Bekannter Fall (das Logging-Setup ist nicht-fatal, s. `main()`):
             # kurze, kuratierte Meldung statt Traceback.
             themed_showinfo(
-                self._dialog, "Kein Log vorhanden",
-                "Es wurde noch kein Log geschrieben.")
+                self._dialog, t("tab_app.kein_log_titel"), t("tab_app.kein_log"))
             return
         self._open_folder(folder, "Log-Ordner")
 
@@ -222,7 +212,7 @@ class AppTab:
             logging.getLogger(__name__).exception(
                 "%s konnte nicht geöffnet werden", what)
             messagebox.showerror(
-                "Ordner konnte nicht geöffnet werden",
+                t("tab_app.ordner_fehler_titel"),
                 f"{type(e).__name__}: {e}\n\n{traceback.format_exc()}",
                 parent=self._dialog,
             )
@@ -275,11 +265,7 @@ class AppTab:
         if fits:
             return True
         return themed_askyesno(
-            self._dialog, "Passt nicht auf den Bildschirm",
-            f"Bei {round(new_scale * 100)} % braucht das Fenster etwa "
-            f"{needed} Pixel Höhe — dein Bildschirm bietet "
-            f"{available}.\n\nDie Fußzeile mit "
-            "„Arbeitszeiten senden“, „Export“ und „Teilen“ wäre dann "
-            "abgeschnitten. Die Einstellungen bleiben über das Zahnrad "
-            "oben erreichbar.\n\nTrotzdem übernehmen?",
+            self._dialog, t("tab_app.passt_nicht_titel"),
+            t("tab_app.passt_nicht", prozent=round(new_scale * 100),
+              hoehe=needed, verfuegbar=available),
         )

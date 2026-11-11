@@ -10,6 +10,7 @@ from src.dialogs.settings_dialog.tab_reminders import RemindersTab
 from src.dialogs.settings_dialog.tab_sending import SendingTab
 from src.dialogs.settings_dialog.tab_updates import UpdatesTab
 from src.dialogs.settings_dialog.tab_work import WorkTab
+from src.i18n import t
 from src.theme import (
     BG,
     apply_combobox_style, apply_notebook_style, attach_unfocus_on_click,
@@ -63,7 +64,8 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
     relay_service: der `relay_service.RelayService` der App (#358); ohne ihn fehlt im Tab
     „Mobil" der Knopf „Über Relay koppeln".
     """
-    dialog = create_dialog(parent, "Einstellungen", escape_closes=False)
+    dialog = create_dialog(parent, t("einstellungen_dialog.titel"),
+                           escape_closes=False)
 
     apply_combobox_style(dialog)
     apply_notebook_style(dialog)
@@ -102,8 +104,8 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
         # Dialog samt ungespeicherten Änderungen stehen und nichts wird entfernt.
         if on_request_removal(with_data) is False:
             themed_showinfo(
-                dialog, "Sync läuft",
-                "Gerade läuft ein Sync. Bitte in einem Moment erneut versuchen.")
+                dialog, t("einstellungen_dialog.sync_laeuft_titel"),
+                t("einstellungen_dialog.sync_laeuft"))
             return
         # Ohne Rückfrage nach ungespeicherten Änderungen schließen: ein Speichern
         # nach dem Aufräumen legte settings.json neu an (#50). Wie `_restart`
@@ -190,9 +192,9 @@ def open_settings_dialog(parent, settings, base_path, on_change, *,
 
     btn_frame = tk.Frame(dialog, bg=BG)
     btn_frame.pack(pady=12)
-    save_btn = primary_button(btn_frame, "Speichern", _save)
+    save_btn = primary_button(btn_frame, t("knopf.speichern"), _save)
     save_btn.pack(side=tk.LEFT, padx=5)
-    secondary_button(btn_frame, "Schließen", _close).pack(side=tk.LEFT, padx=5)
+    secondary_button(btn_frame, t("knopf.schliessen"), _close).pack(side=tk.LEFT, padx=5)
 
     for tab in tabs.values():
         tab.fields.on_edit(_refresh_save_button)
