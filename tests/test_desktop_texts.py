@@ -271,6 +271,10 @@ ALLOWED: dict[str, dict[str, str]] = {
     "src/webhook_secrets.py": {
         "Schlüsselbund-Markierung ohne gespeichertes Secret desselben Verfahrens": _PROGRAM_ERROR,
     },
+    "src/dialogs/webhook_dialog.py": {
+        "Authorization": "HTTP-Header-Name (Protokollbezeichner), Vorbelegung des Felds „Header:“ (DEFAULT_HEADERS) und Verbraucher auth_headers; nicht übersetzbar",
+        "X-Hub-Signature-256": "HTTP-Header-Name (Protokollbezeichner), Vorbelegung des Felds „Header:“ (DEFAULT_HEADERS) und Verbraucher auth_headers; nicht übersetzbar",
+    },
     "src/webhook.py": {
         "Authorization": _WIRE,
         "X-Hub-Signature-256": _WIRE,
@@ -307,12 +311,8 @@ PENDING: list[str] = [
     # eine Variable — die Regel sieht es nicht, die Umstellung muss es von Hand mitnehmen)
     # Task 9
     # Task 10
-    "src/dialogs/smtp_dialog.py",
-    "src/dialogs/webhook_dialog.py",
     "src/dialogs/vacation_dialog.py",
     "src/dialogs/mobile_pair_dialog.py",
-    "src/dialogs/removal_dialog.py",
-    "src/dialogs/privacy_dialog.py",
     # Task 11
     "src/ui.py",
     "src/grid_renderer.py",

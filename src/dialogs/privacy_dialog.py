@@ -11,6 +11,7 @@ import webbrowser
 from tkinter import font as tkfont
 from tkinter import ttk
 
+from src.i18n import t
 from src.paths import get_resource_path
 from src.privacy_doc import (
     fallback_blocks, is_web_url, load_privacy_doc, parse_privacy_markdown, sections_only,
@@ -96,7 +97,7 @@ def render_blocks(text, blocks):
 
 def open_privacy_dialog(parent):
     """Öffnet den Dialog (modal)."""
-    dialog = create_dialog(parent, "Datenschutzhinweise")
+    dialog = create_dialog(parent, t("datenschutz.titel"))
     apply_combobox_style(dialog)         # stylt `Vertical.TScrollbar` dunkel
 
     body = tk.Frame(dialog, bg=BG)
@@ -117,5 +118,5 @@ def open_privacy_dialog(parent):
 
     buttons = tk.Frame(dialog, bg=BG)
     buttons.pack(pady=(4, 12))
-    secondary_button(buttons, "Schließen", dialog.destroy).pack()
+    secondary_button(buttons, t("knopf.schliessen"), dialog.destroy).pack()
     center_dialog_on_parent(dialog, parent)

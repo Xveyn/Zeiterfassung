@@ -12,6 +12,7 @@ from tkinter import messagebox
 from typing import Any
 
 from src import webhook, webhook_secrets, webhook_store
+from src.i18n import N_, t
 from src.theme import (
     BG, CELL_BG, FONT, FONT_SMALL, TEXT, TEXT_MUTED,
     apply_combobox_style, attach_unfocus_on_click, center_dialog_on_parent,
@@ -20,11 +21,11 @@ from src.theme import (
     themed_showerror, themed_showinfo,
 )
 
-AUTH_LABELS = [
-    ("none", "Keine"),
-    ("header", "Token im Header (Bearer / API-Key)"),
-    ("hmac", "HMAC-Signatur (SHA-256)"),
-]
+AUTH_MODES = {
+    "none": N_("webhook_dialog.auth_keine"),
+    "header": N_("webhook_dialog.auth_header"),
+    "hmac": N_("webhook_dialog.auth_hmac"),
+}
 
 # Je Verfahren ein eigener Default. Ein gemeinsames, modusunabhängiges Feld
 # schickte eine HMAC-Signatur sonst als „Authorization: sha256=…" raus — der
@@ -33,12 +34,18 @@ AUTH_LABELS = [
 DEFAULT_HEADERS = {"header": "Authorization", "hmac": "X-Hub-Signature-256"}
 
 
+def _auth_labels():
+    """(Code, Anzeigetext) in der aktuellen Sprache; beim Aufruf aufgelöst."""
+    return [(m, t(AUTH_MODES[m])) for m in AUTH_MODES]
+
+
 def _mode_for_label(label):
-    return next((m for m, lbl in AUTH_LABELS if lbl == label), "none")
+    return next((m for m, lbl in _auth_labels() if lbl == label), "none")
 
 
 def _label_for_mode(mode):
-    return next((lbl for m, lbl in AUTH_LABELS if m == mode), AUTH_LABELS[0][1])
+    labels = _auth_labels()
+    return next((lbl for m, lbl in labels if m == mode), labels[0][1])
 
 
 def open_webhook_dialog(parent, store, runner, record: dict | None = None, on_saved=None):
@@ -56,7 +63,8 @@ def open_webhook_dialog(parent, store, runner, record: dict | None = None, on_sa
     stored_mode = auth.get("mode", "none")
 
     dialog = create_dialog(
-        parent, "Webhook hinzufügen" if is_new else "Webhook bearbeiten")
+        parent, t("webhook_dialog.titel_neu") if is_new
+        else t("webhook_dialog.titel_bearbeiten"))
     apply_combobox_style(dialog)
     attach_unfocus_on_click(dialog)
 
@@ -82,11 +90,11 @@ def open_webhook_dialog(parent, store, runner, record: dict | None = None, on_sa
         tk.Label(dialog, text=text, font=FONT, bg=BG, fg=TEXT).grid(
             row=row, column=0, **opts)
 
-    _label("Name:", 0, pady=(14, 6))
+    _label(t("verbindung_dialog.name"), 0, pady=(14, 6))
     dark_entry(dialog, name_var, width=32).grid(
         row=0, column=1, padx=10, pady=(14, 6), sticky="w")
 
-    _label("URL:", 1)
+    _label(t("webhook_dialog.url"), 1)
     dark_entry(dialog, url_var, width=32).grid(
         row=1, column=1, padx=10, pady=6, sticky="w")
 
@@ -101,12 +109,12 @@ def open_webhook_dialog(parent, store, runner, record: dict | None = None, on_sa
         cb.pack(anchor="w")
         return cb
 
-    _check(opts_frame, "Aktiv", enabled_var)
-    _check(opts_frame, "Arbeitszeiten als JSON senden", json_var)
-    _check(opts_frame, "Bericht als PDF senden", pdf_var)
+    _check(opts_frame, t("verbindung_dialog.aktiv"), enabled_var)
+    _check(opts_frame, t("webhook_dialog.json_senden"), json_var)
+    _check(opts_frame, t("webhook_dialog.pdf_senden"), pdf_var)
 
-    _label("Authentifizierung:", 3)
-    dark_combo(dialog, mode_var, [lbl for _, lbl in AUTH_LABELS], width=32).grid(
+    _label(t("webhook_dialog.authentifizierung"), 3)
+    dark_combo(dialog, mode_var, [lbl for _, lbl in _auth_labels()], width=32).grid(
         row=3, column=1, padx=10, pady=6, sticky="w")
 
     auth_frame = tk.Frame(dialog, bg=BG)
@@ -123,16 +131,16 @@ def open_webhook_dialog(parent, store, runner, record: dict | None = None, on_sa
             header_var.set(DEFAULT_HEADERS[mode])
         if mode == "none":
             tk.Label(auth_frame,
-                     text="Der Endpunkt wird ohne zusätzlichen Header aufgerufen.",
+                     text=t("webhook_dialog.ohne_header"),
                      font=FONT_SMALL, bg=BG, fg=TEXT_MUTED).grid(
                 row=0, column=0, columnspan=2, sticky="w", pady=(0, 4))
             return
-        rows = [("Header:", header_var, False)]
+        rows = [(t("webhook_dialog.feld_header"), header_var, False)]
         if mode == "header":
-            rows.append(("Wert:", value_var, True))
+            rows.append((t("webhook_dialog.feld_wert"), value_var, True))
         else:
-            rows.append(("Präfix:", prefix_var, False))
-            rows.append(("Secret:", secret_var, True))
+            rows.append((t("webhook_dialog.feld_praefix"), prefix_var, False))
+            rows.append((t("webhook_dialog.feld_secret"), secret_var, True))
         for i, (text, var, masked) in enumerate(rows):
             tk.Label(auth_frame, text=text, font=FONT, bg=BG, fg=TEXT).grid(
                 row=i, column=0, sticky="w", pady=4)
@@ -143,14 +151,13 @@ def open_webhook_dialog(parent, store, runner, record: dict | None = None, on_sa
         next_row = len(rows)
         if mode == "header":
             tk.Label(auth_frame,
-                     text="z. B.  Bearer dein-token  —  Präfix mit eintragen",
+                     text=t("webhook_dialog.beispiel_bearer"),
                      font=FONT_SMALL, bg=BG, fg=TEXT_MUTED).grid(
                 row=next_row, column=1, sticky="w", padx=(8, 0))
             next_row += 1
         if stored_in_keyring and mode == stored_mode:
             tk.Label(auth_frame,
-                     text="Liegt im Schlüsselbund des Betriebssystems. "
-                          "Leer lassen = unverändert.",
+                     text=t("webhook_dialog.im_schluesselbund"),
                      font=FONT_SMALL, bg=BG, fg=TEXT_MUTED,
                      justify="left", wraplength=px(380)).grid(
                 row=next_row, column=0, columnspan=2, sticky="w", pady=(4, 0))
@@ -189,7 +196,8 @@ def open_webhook_dialog(parent, store, runner, record: dict | None = None, on_sa
         candidate, typed = _collect()
         ok, msg = webhook_store.validate_record(candidate, store.get_all())
         if not ok:
-            themed_showerror(dialog, "Eingabe unvollständig", msg)
+            themed_showerror(
+                dialog, t("verbindung_dialog.unvollstaendig_titel"), msg)
             return None
         return candidate, typed
 
@@ -246,14 +254,13 @@ def open_webhook_dialog(parent, store, runner, record: dict | None = None, on_sa
                 # Unerwarteter Fehler: bewusst nativ und mit Traceback
                 # („bekannt-themed / unerwartet-nativ", CLAUDE.md, Audit N14).
                 messagebox.showerror(
-                    "Nicht gespeichert",
-                    "Beim Speichern des Webhooks ist ein unerwarteter Fehler "
-                    f"aufgetreten:\n\n{res['tb']}",
+                    t("verbindung_dialog.nicht_gespeichert_titel"),
+                    t("webhook_dialog.speichern_unerwartet", tb=res['tb']),
                     parent=target)
                 return
             themed_showerror(
-                target, "Nicht gespeichert",
-                f"Der Webhook konnte nicht gespeichert werden:\n\n{res['error']}")
+                target, t("verbindung_dialog.nicht_gespeichert_titel"),
+                t("webhook_dialog.speichern_fehler", fehler=res['error']))
 
         runner.run(fn, on_done)
 
@@ -298,12 +305,12 @@ def open_webhook_dialog(parent, store, runner, record: dict | None = None, on_sa
             set_secondary_button_enabled(test_btn, True)
             if res.get("ok"):
                 themed_showinfo(
-                    dialog, "Test erfolgreich",
-                    f"Der Endpunkt hat mit HTTP {res['status']} geantwortet.")
+                    dialog, t("webhook_dialog.test_ok_titel"),
+                    t("webhook_dialog.test_ok", status=res['status']))
                 return
             from src.dialogs.send_task import format_result_summary
             themed_showerror(
-                dialog, "Test fehlgeschlagen",
+                dialog, t("webhook_dialog.test_fehler_titel"),
                 format_result_summary(
                     [{"name": candidate["name"], "ok": False,
                       "kind": res.get("kind"), "detail": res.get("detail")}]))
@@ -312,11 +319,11 @@ def open_webhook_dialog(parent, store, runner, record: dict | None = None, on_sa
 
     btn_frame = tk.Frame(dialog, bg=BG)
     btn_frame.grid(row=5, column=0, columnspan=2, pady=14)
-    save_btn = primary_button(btn_frame, "Speichern", do_save)
+    save_btn = primary_button(btn_frame, t("knopf.speichern"), do_save)
     save_btn.pack(side=tk.LEFT, padx=5)
-    test_btn = secondary_button(btn_frame, "Testen", do_test)
+    test_btn = secondary_button(btn_frame, t("webhook_dialog.knopf_testen"), do_test)
     test_btn.pack(side=tk.LEFT, padx=5)
-    secondary_button(btn_frame, "Abbrechen", dialog.destroy).pack(side=tk.LEFT, padx=5)
+    secondary_button(btn_frame, t("knopf.abbrechen"), dialog.destroy).pack(side=tk.LEFT, padx=5)
 
     # Kein eigener <Escape>-Bind: create_dialog setzt ihn bereits
     # (escape_closes=True ist der Default) — die Fenster-Chrome gehört dorthin.
