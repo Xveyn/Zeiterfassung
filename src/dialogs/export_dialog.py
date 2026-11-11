@@ -2,6 +2,7 @@ import tkinter as tk
 from tkinter import filedialog, messagebox
 
 from src import workweek
+from src.i18n import t
 from src.report import default_pdf_filename
 from src.time_utils import format_date, validate_period
 from src.dialogs.period_picker import build_period_picker
@@ -17,7 +18,7 @@ from src.theme import (
 def open_export_dialog(parent, storage, settings, runner, vacation_store=None):
     """Modal: Zeitraum + Kategorien wählen, daraus die PDF erzeugen und lokal
     über einen 'Speichern unter'-Dialog speichern. Kein Gmail nötig."""
-    dialog = create_dialog(parent, "Als PDF exportieren")
+    dialog = create_dialog(parent, t("export.titel"))
     apply_combobox_style(dialog)
     attach_unfocus_on_click(dialog)
 
@@ -41,11 +42,12 @@ def open_export_dialog(parent, storage, settings, runner, vacation_store=None):
         # prüfen kostet nichts und macht den Vertrag am Aufrufer sichtbar
         # (sonst müsste der Leser die Korrelation im Picker nachschlagen).
         if date_from is None or date_to is None:
-            themed_showerror(dialog, "Ungültiges Datum", "Bitte ein gültiges Datum eingeben.")
+            themed_showerror(dialog, t("zeitraum.datum_ungueltig_titel"),
+                             t("zeitraum.datum_ungueltig"))
             return
         ok, msg = validate_period(date_from, date_to)
         if not ok:
-            themed_showerror(dialog, "Ungültiger Zeitraum", msg)
+            themed_showerror(dialog, t("zeitraum.zeitraum_ungueltig_titel"), msg)
             return
 
         # Frisch lesen (Hintergrund-Drive-Sync könnte den Storage geändert haben).
@@ -64,7 +66,7 @@ def open_export_dialog(parent, storage, settings, runner, vacation_store=None):
 
         busy["running"] = True
         set_primary_button_enabled(export_btn, False)
-        set_button_text(export_btn, "Erzeuge…")
+        set_button_text(export_btn, t("export.knopf_erzeuge"))
 
         def fn():
             return perform_export_pdf(
@@ -79,7 +81,7 @@ def open_export_dialog(parent, storage, settings, runner, vacation_store=None):
             if not dialog.winfo_exists():
                 # Dialog geschlossen = Abbrechen -> Ergebnis verwerfen.
                 return
-            set_button_text(export_btn, "Exportieren")
+            set_button_text(export_btn, t("export.knopf_exportieren"))
             # Nicht blind enablen: der Button-Zustand hängt an der
             # Kategorie-Auswahl (kann während des Laufs geändert worden sein) —
             # wie share_dialog über die Gate-Funktion re-syncen.
@@ -87,7 +89,7 @@ def open_export_dialog(parent, storage, settings, runner, vacation_store=None):
 
             if not res["ok"]:
                 messagebox.showerror(
-                    "Export fehlgeschlagen",
+                    t("export.fehlgeschlagen_titel"),
                     f"{type(res['error']).__name__}: {res['error']}\n\n{res['tb']}",
                     parent=dialog,
                 )
@@ -96,18 +98,18 @@ def open_export_dialog(parent, storage, settings, runner, vacation_store=None):
             pdf_bytes = res["pdf_bytes"]
             if pdf_bytes is None:
                 themed_showinfo(
-                    dialog, "Keine Einträge",
-                    f"Keine Einträge für {format_date(date_from)} – "
-                    f"{format_date(date_to)} vorhanden.",
+                    dialog, t("zeitraum.keine_eintraege_titel"),
+                    t("zeitraum.keine_eintraege",
+                      zeitraum=f"{format_date(date_from)} – {format_date(date_to)}"),
                 )
                 return
 
             path = filedialog.asksaveasfilename(
                 parent=dialog,
-                title="PDF speichern unter",
+                title=t("export.speichern_titel"),
                 initialfile=default_pdf_filename(date_from, date_to),
                 defaultextension=".pdf",
-                filetypes=[("PDF-Datei", "*.pdf")],
+                filetypes=[(t("export.dateityp_pdf"), "*.pdf")],
             )
             if not path:
                 return
@@ -117,20 +119,21 @@ def open_export_dialog(parent, storage, settings, runner, vacation_store=None):
                     f.write(pdf_bytes)
             except OSError as e:
                 themed_showerror(
-                    dialog, "Export fehlgeschlagen",
-                    f"Die Datei konnte nicht gespeichert werden:\n{e}")
+                    dialog, t("export.fehlgeschlagen_titel"),
+                    t("export.datei_nicht_gespeichert", fehler=e))
                 return
 
             dialog.destroy()
-            themed_showinfo(parent, "Exportiert", f"PDF gespeichert unter\n{path}")
+            themed_showinfo(parent, t("export.exportiert_titel"),
+                        t("export.exportiert", pfad=path))
 
         runner.run(fn, on_done)
 
     btn_frame = tk.Frame(dialog, bg=BG)
     btn_frame.grid(row=1, column=0, pady=12)
-    export_btn = primary_button(btn_frame, "Exportieren", do_export)
+    export_btn = primary_button(btn_frame, t("export.knopf_exportieren"), do_export)
     export_btn.pack(side=tk.LEFT, padx=5)
-    secondary_button(btn_frame, "Abbrechen", dialog.destroy).pack(side=tk.LEFT, padx=5)
+    secondary_button(btn_frame, t("knopf.abbrechen"), dialog.destroy).pack(side=tk.LEFT, padx=5)
 
     def _refresh_export_btn(*_):
         # "Exportieren" nur klickbar, wenn die Kategorie-Auswahl nicht leer ist.

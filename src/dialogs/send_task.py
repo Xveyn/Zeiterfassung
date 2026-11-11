@@ -15,6 +15,7 @@ import traceback
 
 from src import keyring_store, smtp, webhook, webhook_secrets
 from src.dialogs.mail_task import classify_mail_error
+from src.i18n import N_, t
 from src.mail import fetch_user_email, get_gmail_service, send_email
 from src.report import generate_pdf
 
@@ -92,8 +93,7 @@ def _send_smtp(*, record, subject, html, pdf_bytes, pdf_filename):
         log.warning("SMTP-Versand über %r: Passwort nicht aus dem "
                     "Schlüsselbund lesbar", record.get("name"))
         return {"ok": False, "kind": "keyring", "error": None, "tb": None,
-                "detail": "Das Passwort konnte nicht aus dem Schlüsselbund "
-                          "gelesen werden."}
+                "detail": t("senden.passwort_nicht_lesbar")}
     try:
         smtp.send(record, password, subject=subject, html=html,
                   attachment_bytes=pdf_bytes,
@@ -176,7 +176,7 @@ def perform_send(*, date_from, date_to, entries, name, categories,
             results.append({
                 "channel": "smtp", "name": _account_label(record),
                 "ok": False, "kind": "config",
-                "detail": "Betreff und Inhalt fehlen.", "error": None,
+                "detail": t("senden.betreff_inhalt_fehlen"), "error": None,
                 "tb": None})
         smtp_accounts = []
 
@@ -289,19 +289,19 @@ def perform_send(*, date_from, date_to, entries, name, categories,
 
 
 _KIND_TEXTS = {
-    "filenotfound": "Zugangsdaten fehlen",
-    "offline": "keine Internetverbindung",
-    "auth": "Zugangsdaten wurden abgelehnt",
-    "notfound": "Adresse nicht gefunden",
-    "recipient": "Empfänger oder Absender wurde abgelehnt",
-    "tls": "Verschlüsselung fehlgeschlagen",
-    "redirect": "Weiterleitung — bitte die endgültige Adresse eintragen",
-    "client": "Anfrage abgelehnt",
-    "server": "Server-Fehler",
-    "config": "Konfiguration ungültig",
-    "keyring": "Schlüsselbund nicht erreichbar",
-    "keyring_missing": "Zugangsdaten fehlen im Schlüsselbund",
-    "error": "unerwarteter Fehler",
+    "filenotfound": N_("senden.art_filenotfound"),
+    "offline": N_("senden.art_offline"),
+    "auth": N_("senden.art_auth"),
+    "notfound": N_("senden.art_notfound"),
+    "recipient": N_("senden.art_recipient"),
+    "tls": N_("senden.art_tls"),
+    "redirect": N_("senden.art_redirect"),
+    "client": N_("senden.art_client"),
+    "server": N_("senden.art_server"),
+    "config": N_("senden.art_config"),
+    "keyring": N_("senden.art_keyring"),
+    "keyring_missing": N_("senden.art_keyring_missing"),
+    "error": N_("senden.art_error"),
 }
 
 
@@ -310,10 +310,14 @@ def format_result_summary(results):
     lines = []
     for res in results:
         if res.get("ok"):
-            lines.append(f"✓  {res['name']}")
+            lines.append(t("senden.ergebnis_ok", name=res["name"]))
             continue
-        reason = _KIND_TEXTS.get(res.get("kind"), "Fehler")
+        reason = t(_KIND_TEXTS.get(res.get("kind"), N_("senden.art_unbekannt")))
         detail = (res.get("detail") or "").strip()
-        lines.append(f"✗  {res['name']} — {reason}"
-                     + (f" ({detail})" if detail else ""))
+        if detail:
+            lines.append(t("senden.ergebnis_fehler_detail", name=res["name"],
+                           grund=reason, detail=detail))
+        else:
+            lines.append(t("senden.ergebnis_fehler", name=res["name"],
+                           grund=reason))
     return "\n".join(lines)

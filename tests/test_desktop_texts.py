@@ -44,6 +44,8 @@ _spec.loader.exec_module(check)
 _OUTPUT = "Ausgabe (PDF, Mail, Teilen), Sprache folgt in Teil 3"
 _API = "Antworttexte der lokalen API, erscheinen nie in der Oberfläche (Teil 3)"
 _PROTOCOL = "Protokoll- und Fehlertexte von Handy-Abgleich und Relay, nie angezeigt"
+_LOG_LINE = ("Protokollzeile von `_log_summary` (Log, `summarize_results`: nur Kanal, Zählwerte und Art), "
+             "erreicht keinen Dialog; Format ist im Test festgehalten")
 FILE_EXEMPT: dict[str, str] = {
     "src/report.py": _OUTPUT,
     "src/share_message.py": _OUTPUT,
@@ -276,6 +278,11 @@ ALLOWED: dict[str, dict[str, str]] = {
         'Content-Disposition: form-data; name="report"; filename="{}"\r\n': _WIRE,
         'multipart/form-data; boundary="{}"': _WIRE,
     },
+    "src/dialogs/send_task.py": {
+        "kein Kanal gewählt": _LOG_LINE,
+        "%s %d/%d ok": _LOG_LINE,
+        " (Fehler: %s)": _LOG_LINE,
+    },
     "src/settings.py": {
         "Zeiterfassung — {zeitraum}": _MAIL_TEMPLATE,
         "Sehr geehrte Damen und Herren,": _MAIL_TEMPLATE,
@@ -296,9 +303,6 @@ PENDING: list[str] = [
     # Task 8 (category_dialog: auch „variabel“ (≈183 f.), ein einzelnes kleines Wort über
     # eine Variable — die Regel sieht es nicht, die Umstellung muss es von Hand mitnehmen)
     # Task 9
-    "src/dialogs/send_task.py",
-    "src/dialogs/send_dialog.py",
-    "src/dialogs/export_dialog.py",
     "src/dialogs/share_task.py",
     "src/dialogs/share_dialog.py",
     "src/dialogs/import_dialog.py",

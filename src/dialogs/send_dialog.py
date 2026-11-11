@@ -6,6 +6,7 @@ import traceback
 from tkinter import messagebox
 
 from src import workweek
+from src.i18n import t
 from src.region import country_region
 from src.dialogs.period_picker import build_period_picker
 from src.dialogs.send_task import format_result_summary, perform_send
@@ -31,23 +32,15 @@ def missing_credentials_text(base_path, google_action=None):
     genannt. Mit `google_action` („Google Kalender aktivieren") um eine
     Funktion, die es ohne Google gar nicht gibt: dann fällt der SMTP-Hinweis
     weg, er wäre dort eine falsche Fährte."""
-    head = f"credentials.json nicht gefunden unter:\n{base_path}\n\n"
+    head = t("meldungen.credentials_fehlen", pfad=base_path) + "\n\n"
     if google_action is not None:
-        return head + (
-            f"„{google_action}“ braucht ein Google Cloud Projekt; lade dessen "
-            "OAuth2 Client-ID als credentials.json in den Datenordner. Die "
-            "Einrichtung beschreibt die README.")
-    return head + (
-        "Für den Versand über Gmail wird ein Google Cloud Projekt mit "
-        "aktivierter Gmail API benötigt; lade die OAuth2 Client-ID als "
-        "credentials.json in den Datenordner.\n\n"
-        "Alternativ kannst Du unter Einstellungen → Versand ein eigenes "
-        "Mail-Konto einrichten — dann wird kein Google-Konto benötigt.")
+        return head + t("senden.zugangsdaten_google", aktion=google_action)
+    return head + t("senden.zugangsdaten_gmail")
 
 
 def show_missing_credentials_dialog(parent, base_path, google_action=None):
     """`google_action`: s. `missing_credentials_text`."""
-    dialog = create_dialog(parent, "Keine Zugangsdaten", escape_closes=False)
+    dialog = create_dialog(parent, t("senden.zugangsdaten_titel"), escape_closes=False)
 
     tk.Label(
         dialog,
@@ -62,7 +55,7 @@ def show_missing_credentials_dialog(parent, base_path, google_action=None):
         except Exception as e:
             logging.getLogger(__name__).exception("Datenordner konnte nicht geöffnet werden")
             messagebox.showerror(
-                "Ordner konnte nicht geöffnet werden",
+                t("tab_app.ordner_fehler_titel"),
                 f"{type(e).__name__}: {e}\n\n{traceback.format_exc()}",
                 parent=dialog,
             )
@@ -72,8 +65,8 @@ def show_missing_credentials_dialog(parent, base_path, google_action=None):
     btn_frame = tk.Frame(dialog, bg=BG)
     btn_frame.grid(row=1, column=0, columnspan=2, pady=(0, 16))
 
-    primary_button(btn_frame, "Datenordner öffnen", open_and_close).pack(side=tk.LEFT, padx=5)
-    secondary_button(btn_frame, "OK", dialog.destroy).pack(side=tk.LEFT, padx=5)
+    primary_button(btn_frame, t("tab_app.datenordner_oeffnen"), open_and_close).pack(side=tk.LEFT, padx=5)
+    secondary_button(btn_frame, t("knopf.ok"), dialog.destroy).pack(side=tk.LEFT, padx=5)
 
     dialog.bind("<Escape>", lambda _e: dialog.destroy())
     center_dialog_on_parent(dialog, parent)
@@ -141,18 +134,15 @@ def _show_single_failure(target, res):
     """
     kind = res.get("kind")
     if kind == "filenotfound":
-        themed_showerror(target, "Fehler", str(res["error"]))
+        themed_showerror(target, t("senden.fehler_titel"), str(res["error"]))
     elif kind == "offline":
         themed_showerror(
-            target, "Keine Internetverbindung",
-            "Der Bericht konnte nicht gesendet werden, weil keine "
-            "Verbindung zum Internet besteht.\n\n"
-            "Bitte prüfe deine Internetverbindung und versuche es "
-            "dann erneut.",
+            target, t("senden.offline_titel"), t("senden.offline"),
         )
     elif kind != "error":
         themed_showerror(
-            target, "Senden fehlgeschlagen", format_result_summary([res]))
+            target, t("senden.fehlgeschlagen_titel"),
+            format_result_summary([res]))
 
 
 FORMAT_LABELS = {(True, False): "JSON", (False, True): "PDF",
@@ -169,10 +159,10 @@ def mail_target_label(recipient, have_credentials):
     sie nicht anwählbar ist.
     """
     if not recipient:
-        return "Kein Empfänger eingetragen"
+        return t("senden.kein_empfaenger_zeile")
     if not have_credentials:
-        return f"An {recipient} (Zugangsdaten fehlen)"
-    return f"An {recipient}"
+        return t("senden.an_empfaenger_ohne_zugang", empfaenger=recipient)
+    return t("senden.an_empfaenger", empfaenger=recipient)
 
 
 def smtp_target_label(record):
@@ -200,17 +190,15 @@ def open_send_dialog(parent, storage, settings, base_path, runner,
     if not mail_possible and not accounts and not hooks:
         if not recipient:
             themed_showinfo(
-                parent, "Kein Empfänger",
-                "Bitte zuerst unter Einstellungen → Versand einen "
-                "Gmail-Empfänger angeben, ein SMTP-Konto oder einen "
-                "Webhook einrichten.")
+                parent, t("senden.kein_empfaenger_titel"),
+                t("senden.kein_empfaenger"))
         else:
             show_missing_credentials_dialog(parent, base_path)
         return
 
     mail_label = mail_target_label(recipient, have_credentials)
 
-    dialog = create_dialog(parent, "Zeitraum wählen")
+    dialog = create_dialog(parent, t("senden.titel"))
 
     apply_combobox_style(dialog)
     attach_unfocus_on_click(dialog)
@@ -241,7 +229,7 @@ def open_send_dialog(parent, storage, settings, base_path, runner,
         set_primary_button_enabled(send_btn, any_target)
 
     if hooks or accounts:
-        targets = tk.LabelFrame(dialog, text="Ziele", font=FONT, bg=BG, fg=TEXT_MUTED)
+        targets = tk.LabelFrame(dialog, text=t("senden.ziele"), font=FONT, bg=BG, fg=TEXT_MUTED)
         targets.grid(row=1, column=0, padx=10, pady=(4, 0), sticky="we")
 
         # Nach Kanal gruppiert: „Gmail", „SMTP" und „Webhooks" verschicken auf
@@ -259,7 +247,7 @@ def open_send_dialog(parent, storage, settings, base_path, runner,
                    padx=6, pady=(6, 0))
             target_row["n"] += 1
 
-        _section("Gmail")
+        _section(t("senden.abschnitt_gmail"))
         mail_cb = tk.Checkbutton(
             targets, text=mail_label,
             variable=mail_var, font=FONT, bg=BG, fg=TEXT, selectcolor=CELL_BG,
@@ -272,7 +260,7 @@ def open_send_dialog(parent, storage, settings, base_path, runner,
             mail_cb.config(state="disabled")
 
         if accounts:
-            _section("SMTP")
+            _section(t("senden.abschnitt_smtp"))
         for record in accounts:
             # Vorbelegt angehakt, wenn es KEINEN Gmail-Weg gibt: dann ist SMTP
             # der Standardweg und nicht die Ausnahme.
@@ -287,7 +275,7 @@ def open_send_dialog(parent, storage, settings, base_path, runner,
             target_row["n"] += 1
 
         if hooks:
-            _section("Webhooks")
+            _section(t("senden.abschnitt_webhooks"))
         for record in hooks:
             # Vorbelegt ABGEHAKT: Mail bleibt der Standardweg, ein Versand an
             # einen externen Endpunkt soll eine bewusste Entscheidung sein.
@@ -317,11 +305,12 @@ def open_send_dialog(parent, storage, settings, base_path, runner,
         # prüfen kostet nichts und macht den Vertrag am Aufrufer sichtbar
         # (sonst müsste der Leser die Korrelation im Picker nachschlagen).
         if date_from is None or date_to is None:
-            themed_showerror(dialog, "Ungültiges Datum", "Bitte ein gültiges Datum eingeben.")
+            themed_showerror(dialog, t("zeitraum.datum_ungueltig_titel"),
+                             t("zeitraum.datum_ungueltig"))
             return
         ok, msg = validate_period(date_from, date_to)
         if not ok:
-            themed_showerror(dialog, "Ungültiger Zeitraum", msg)
+            themed_showerror(dialog, t("zeitraum.zeitraum_ungueltig_titel"), msg)
             return
 
         # Frisch lesen statt den Dialog-Snapshot zu senden — der Storage kann
@@ -364,9 +353,9 @@ def open_send_dialog(parent, storage, settings, base_path, runner,
             ranged = filter_categories(ranged, categories)
         if period_has_no_content(ranged, vacation_days, date_from, date_to):
             themed_showinfo(
-                dialog, "Keine Einträge",
-                f"Keine Einträge für {format_date(date_from)} – "
-                f"{format_date(date_to)} vorhanden.")
+                dialog, t("zeitraum.keine_eintraege_titel"),
+                t("zeitraum.keine_eintraege",
+                  zeitraum=f"{format_date(date_from)} – {format_date(date_to)}"))
             return
 
         # (c) label und pdf_filename IMMER — die Erfolgsmeldung braucht label
@@ -391,8 +380,8 @@ def open_send_dialog(parent, storage, settings, base_path, runner,
             if html is None:
                 # Sicherheitsnetz — (b) sollte das schon abgefangen haben.
                 themed_showinfo(
-                    dialog, "Keine Einträge",
-                    f"Keine Einträge für {label} vorhanden.")
+                    dialog, t("zeitraum.keine_eintraege_titel"),
+                    t("zeitraum.keine_eintraege", zeitraum=label))
                 return
             subject = (
                 settings.get("mail_subject")
@@ -402,7 +391,7 @@ def open_send_dialog(parent, storage, settings, base_path, runner,
 
         busy["running"] = True
         set_primary_button_enabled(send_btn, False)
-        set_button_text(send_btn, "Sende…")
+        set_button_text(send_btn, t("senden.knopf_sendet"))
 
         def fn():
             return perform_send(
@@ -433,14 +422,14 @@ def open_send_dialog(parent, storage, settings, base_path, runner,
                     # ein Feature darf den häufigsten Pfad nicht schlechter
                     # erklären als vorher.
                     themed_showinfo(
-                        parent, "Gesendet",
-                        f"Bericht für {label} wurde an "
-                        f"{results[0]['name']} gesendet.")
+                        parent, t("senden.gesendet_titel"),
+                        t("senden.gesendet_einzeln", zeitraum=label,
+                          name=results[0]["name"]))
                 else:
                     themed_showinfo(
-                        parent, "Gesendet",
-                        f"Bericht für {label} gesendet:\n\n"
-                        + format_result_summary(results))
+                        parent, t("senden.gesendet_titel"),
+                        t("senden.gesendet_mehrere", zeitraum=label,
+                          ergebnisse=format_result_summary(results)))
                 return
 
             busy["running"] = False
@@ -448,7 +437,7 @@ def open_send_dialog(parent, storage, settings, base_path, runner,
             target = dialog if alive else parent
             if alive:
                 set_primary_button_enabled(send_btn, True)
-                set_button_text(send_btn, "Senden")
+                set_button_text(send_btn, t("senden.knopf_senden"))
 
             if len(results) == 1:
                 # Einzelkanal: die bestehende, ausführliche Formulierung
@@ -457,7 +446,7 @@ def open_send_dialog(parent, storage, settings, base_path, runner,
                 _show_single_failure(target, results[0])
             else:
                 themed_showerror(
-                    target, "Nicht alles konnte gesendet werden",
+                    target, t("senden.teilweise_titel"),
                     format_result_summary(results))
 
             # Unerwartete Fehler zusätzlich roh mit Traceback — themed Dialoge
@@ -466,7 +455,7 @@ def open_send_dialog(parent, storage, settings, base_path, runner,
             for r in results:
                 if r.get("kind") == "error" and r.get("tb"):
                     messagebox.showerror(
-                        "Senden fehlgeschlagen",
+                        t("senden.fehlgeschlagen_titel"),
                         f"{r['name']}: {type(r['error']).__name__}: "
                         f"{r['error']}\n\n{r['tb']}",
                         parent=target,
@@ -477,9 +466,9 @@ def open_send_dialog(parent, storage, settings, base_path, runner,
     btn_frame = tk.Frame(dialog, bg=BG)
     btn_frame.grid(row=2 if (hooks or accounts) else 1, column=0, pady=12)
 
-    send_btn = primary_button(btn_frame, "Senden", do_send)
+    send_btn = primary_button(btn_frame, t("senden.knopf_senden"), do_send)
     send_btn.pack(side=tk.LEFT, padx=5)
-    secondary_button(btn_frame, "Abbrechen", dialog.destroy).pack(side=tk.LEFT, padx=5)
+    secondary_button(btn_frame, t("knopf.abbrechen"), dialog.destroy).pack(side=tk.LEFT, padx=5)
     if hooks or accounts:
         _update_send_button()
 
