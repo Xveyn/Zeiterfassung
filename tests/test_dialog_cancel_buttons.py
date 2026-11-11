@@ -7,15 +7,19 @@ import pathlib
 
 import pytest
 
+from src.i18n import TEXTS
+
 DIALOGS = pathlib.Path(__file__).resolve().parent.parent / "src" / "dialogs"
 
 
 @pytest.mark.parametrize("name", ["entry_dialog.py", "category_dialog.py"])
 def test_save_dialog_has_cancel_button(name):
     source = (DIALOGS / name).read_text(encoding="utf-8")
-    assert '"Abbrechen"' in source
+    assert 't("knopf.abbrechen")' in source
+    # Wortlaut gegen den Katalog gepinnt
+    assert TEXTS["knopf.abbrechen"] == "Abbrechen"
 
 
 def test_category_dialog_has_no_misleading_close_button():
     source = (DIALOGS / "category_dialog.py").read_text(encoding="utf-8")
-    assert '"Schließen"' not in source
+    assert 't("knopf.schliessen")' not in source

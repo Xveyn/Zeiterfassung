@@ -3,7 +3,9 @@ import datetime
 import tkinter as tk
 
 from src import workweek
+from src.dialogs.slot_rows import no_category_label
 from src.dialogs.date_row import build_date_row
+from src.i18n import t
 from src.report import filter_categories, filter_period, total_hours
 from src.vacations import cap_by_worktime, cap_notice
 from src.theme import BG, CELL_BG, FONT, FONT_SMALL, TEXT, TEXT_MUTED, px
@@ -115,9 +117,9 @@ def build_period_picker(parent, storage, settings, on_change=None,
     # unten definierte _changed; er feuert erst bei Benutzer-Interaktion, also
     # ist _changed dann längst gebunden. label_width=4 hält "Von:"/"Bis:"
     # untereinander bündig.
-    from_row = build_date_row(frame, "Von:", from_value,
+    from_row = build_date_row(frame, t("zeitraum.von"), from_value,
                               on_change=lambda: _changed(), label_width=4)
-    to_row = build_date_row(frame, "Bis:", to_value,
+    to_row = build_date_row(frame, t("zeitraum.bis"), to_value,
                             on_change=lambda: _changed(), label_width=4)
     from_row.frame.grid(row=0, column=0, columnspan=6, sticky="w", padx=(10, 0), pady=8)
     to_row.frame.grid(row=1, column=0, columnspan=6, sticky="w", padx=(10, 0), pady=8)
@@ -143,14 +145,14 @@ def build_period_picker(parent, storage, settings, on_change=None,
     )
     category_vars = {}
     if present_categories:
-        tk.Label(frame, text="Kategorien:", font=FONT, bg=BG, fg=TEXT).grid(
+        tk.Label(frame, text=t("zeitraum.kategorien"), font=FONT, bg=BG, fg=TEXT).grid(
             row=2, column=0, padx=(10, 5), pady=(4, 8), sticky="nw")
         cat_frame = tk.Frame(frame, bg=BG)
         cat_frame.grid(row=2, column=1, columnspan=5, padx=(0, 10), pady=(4, 8), sticky="w")
         for kat in present_categories:
             var = tk.BooleanVar(value=True)
             category_vars[kat] = var
-            label = kat if kat else "(ohne Kategorie)"
+            label = kat if kat else no_category_label()
             tk.Checkbutton(
                 cat_frame, text=label, variable=var,
                 command=lambda: _changed(),
@@ -164,7 +166,7 @@ def build_period_picker(parent, storage, settings, on_change=None,
     # Tabelle ist opt-in. Greift in PDF-Export und Mail-Versand gleichermaßen.
     breakdown_var = tk.BooleanVar(value=False)
     tk.Checkbutton(
-        frame, text="Nach Kategorie aufschlüsseln", variable=breakdown_var,
+        frame, text=t("zeitraum.aufschluesseln"), variable=breakdown_var,
         font=FONT, bg=BG, fg=TEXT, selectcolor=CELL_BG,
         activebackground=BG, activeforeground=TEXT,
         highlightthickness=0, bd=0, anchor="w",
@@ -184,7 +186,7 @@ def build_period_picker(parent, storage, settings, on_change=None,
     if any(vacation_days.values()):
         vacation_var = tk.BooleanVar(value=False)
         tk.Checkbutton(
-            frame, text="Urlaub ausweisen", variable=vacation_var,
+            frame, text=t("zeitraum.urlaub_ausweisen"), variable=vacation_var,
             command=lambda: _changed(),
             font=FONT, bg=BG, fg=TEXT, selectcolor=CELL_BG,
             activebackground=BG, activeforeground=TEXT,
@@ -217,19 +219,19 @@ def build_period_picker(parent, storage, settings, on_change=None,
     def _update_total(*_):
         df, dt = handle.get_range()
         if df is None or dt is None or df > dt:
-            total_label.config(text="Gesamtstunden: —")
+            total_label.config(text=t("zeitraum.gesamt_leer"))
             weekend_hint.grid_remove()
             vacation_hint.grid_remove()
             return
         hours = total_hours(df, dt, all_entries, handle.get_categories())
-        text = f"Gesamtstunden: {hours}h"
+        text = t("zeitraum.gesamt", stunden=hours)
         notice = ""
         if handle.get_show_vacation():
             minutes, notice = vacation_preview(
                 df, dt, all_entries, handle.get_categories(), vacation_days)
             urlaub = round(minutes / 60, 2)
             if urlaub:
-                text += f"  (+ {urlaub}h Urlaub)"
+                text += t("zeitraum.urlaub_zusatz", stunden=urlaub)
         total_label.config(text=text)
         if notice:
             vacation_hint.config(text=notice)
@@ -239,11 +241,11 @@ def build_period_picker(parent, storage, settings, on_change=None,
         n = (workweek.count_weekend_entries(all_entries_raw, df, dt)
              if settings.get("workweek_only") else 0)
         if n == 1:
-            weekend_hint.config(text="1 Wochenend-Eintrag im Zeitraum wird nicht berücksichtigt.")
+            weekend_hint.config(text=t("zeitraum.wochenende.eins"))
             weekend_hint.grid()
         elif n > 1:
             weekend_hint.config(
-                text=f"{n} Wochenend-Einträge im Zeitraum werden nicht berücksichtigt.")
+                text=t("zeitraum.wochenende.viele", anzahl=n))
             weekend_hint.grid()
         else:
             weekend_hint.grid_remove()

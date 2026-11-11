@@ -295,10 +295,6 @@ PENDING: list[str] = [
     # Task 7
     # Task 8 (category_dialog: auch „variabel“ (≈183 f.), ein einzelnes kleines Wort über
     # eine Variable — die Regel sieht es nicht, die Umstellung muss es von Hand mitnehmen)
-    "src/dialogs/period_picker.py",
-    "src/dialogs/category_dialog.py",
-    "src/dialogs/conflicts_dialog.py",
-    "src/dialogs/entry_dialog.py",
     # Task 9
     "src/dialogs/send_task.py",
     "src/dialogs/send_dialog.py",

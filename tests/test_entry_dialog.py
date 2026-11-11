@@ -1,7 +1,7 @@
 import datetime
 
 from src.dialogs.entry_dialog import (
-    RESERVATION_CALENDAR_NOTE, category_choices,
+    category_choices, reservation_calendar_note,
     category_from_display, category_to_display, ist_prefill_pause,
     plan_entry_save, reservation_block_visible, reservation_note_visible,
     slot_category_display, suggest_ist_category,
@@ -317,7 +317,7 @@ class TestReservationPause:
 
 class TestCalendarNote:
     def test_note_text(self):
-        assert RESERVATION_CALENDAR_NOTE == (
+        assert reservation_calendar_note() == (
             "Der Google-Kalender-Termin zeigt die volle Zeitspanne, "
             "die Pause wird dort nicht abgezogen.")
 

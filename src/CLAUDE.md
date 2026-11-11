@@ -985,7 +985,7 @@ die Slot-Zeilen beider Blöcke baut seit R5 `slot_rows.SlotRowList` — beide
 Blöcke mit Pause-Spalte (Reservierung seit #455; `slot_rows.pause_choices` führt einen
 freien Wert wie 37 in der Auswahl mit, statt ihn zu runden; die Ist-Vorbelegung aus
 einer Reservierung nimmt deren Pause, wenn > 0 — `ist_prefill_pause`; bei aktivem
-Kalender-Abgleich zeigt der Reservierungs-Block `RESERVATION_CALENDAR_NOTE`, weil der
+Kalender-Abgleich zeigt der Reservierungs-Block `reservation_calendar_note()`, weil der
 Termin die volle Spanne zeigt; `slot_category_display` bekommt für Reservierungen
 weiter `pause=None`, deren Pause setzt kein `*`), `on_value_changed` hängt den Erinnerungs-Block an
 Zeit-/Kategorieänderungen. Dort liegen auch die Tk-freien Anzeige-Helfer

@@ -4,10 +4,11 @@ from typing import Callable
 
 from src.dialogs.category_dialog import open_category_dialog
 from src.dialogs.slot_rows import (
-    NO_CATEGORY_LABEL, OVERRIDE_MARKER, SlotRowList, category_choices,
+    OVERRIDE_MARKER, SlotRowList, category_choices,
     category_from_display, category_to_display, slot_category_display,
 )
 from src.holidays_region import get_holidays
+from src.i18n import t
 from src.region import country_region
 from src.settings import WEEKDAY_KEYS, parse_reminder_minutes
 from src.theme import (
@@ -25,12 +26,11 @@ from src.time_utils import (
 )
 from src.weekly_limit import check_week_limit
 
-# NO_CATEGORY_LABEL/OVERRIDE_MARKER und die category_*-Helfer leben seit R5 in
+# OVERRIDE_MARKER und die category_*-Helfer leben seit R5 in
 # `slot_rows.py` (dort steht die Zeile, die sie anzeigt) und werden hier
-# re-exportiert: sie gehören zur Oberfläche dieses Moduls und werden von
-# `tests/test_entry_dialog.py` sowie unten in `save_all` genutzt.
+# re-exportiert: sie gehören zur Oberfläche dieses Moduls.
 __all__ = [
-    "NO_CATEGORY_LABEL", "OVERRIDE_MARKER", "category_choices",
+    "OVERRIDE_MARKER", "category_choices",
     "category_from_display", "category_to_display", "slot_category_display",
     "open_entry_dialog", "plan_entry_save", "reminder_block_visible",
     "reminder_slot_labels", "apply_reminder_to_slots",
@@ -49,10 +49,9 @@ def suggest_ist_category(reservation_slots):
     return reservation_slots[0].get("kategorie", "")
 
 
-RESERVATION_CALENDAR_NOTE = (
-    "Der Google-Kalender-Termin zeigt die volle Zeitspanne, "
-    "die Pause wird dort nicht abgezogen."
-)
+def reservation_calendar_note():
+    """Hinweis unter dem Reservierungs-Block (Termin zeigt die volle Spanne)."""
+    return t("tag.kalender_hinweis")
 
 
 def reservation_note_visible(settings):
@@ -84,7 +83,7 @@ def plan_entry_save(ist_slots, res_slots, show_reservation):
         ok, msg = validate_slots(ist_slots, with_pause=True)
         if not ok:
             return {
-                "error": f"Arbeitszeit: {msg}" if show_reservation else msg,
+                "error": t("tag.fehler_arbeitszeit", meldung=msg) if show_reservation else msg,
                 "save_ist": False,
                 "save_reservation": False,
             }
@@ -92,7 +91,7 @@ def plan_entry_save(ist_slots, res_slots, show_reservation):
         ok, msg = validate_slots(res_slots, with_pause=True)
         if not ok:
             return {
-                "error": f"Reservierung: {msg}",
+                "error": t("tag.fehler_reservierung", meldung=msg),
                 "save_ist": False,
                 "save_reservation": False,
             }
@@ -194,9 +193,8 @@ def open_entry_dialog(parent, date_str, storage, settings, on_change,
             if day in feiertage:
                 date_de = format_date(day)
                 confirm = themed_askyesno(
-                    parent, "Feiertag",
-                    f"Der {date_de} ist {feiertage[day]} (Feiertag).\n\n"
-                    "Trotzdem Eintrag anlegen?",
+                    parent, t("tag.feiertag_titel"),
+                    t("tag.feiertag_frage", datum=date_de, name=feiertage[day]),
                 )
                 if not confirm:
                     return
@@ -222,7 +220,7 @@ def open_entry_dialog(parent, date_str, storage, settings, on_change,
     outer.pack(padx=12, pady=12)
 
     # ---------- Ist-Zeit ----------
-    tk.Label(outer, text="Arbeitszeit", font=FONT_BOLD, bg=BG, fg=TEXT).pack(anchor="w")
+    tk.Label(outer, text=t("tag.arbeitszeit"), font=FONT_BOLD, bg=BG, fg=TEXT).pack(anchor="w")
     ist_rows_frame = tk.Frame(outer, bg=BG)
     ist_rows_frame.pack(fill="x")
     res_rows = []  # Liste von {frame, start, end, kategorie}; bleibt leer ohne Reservierungs-Block
@@ -304,14 +302,14 @@ def open_entry_dialog(parent, date_str, storage, settings, on_change,
     ist_btns = tk.Frame(outer, bg=BG)
     ist_btns.pack(fill="x", pady=(2, 8))
     secondary_button(
-        ist_btns, "+ Slot",
+        ist_btns, t("tag.slot_neu"),
         lambda: add_ist_row(default_start, default_end, default_pause, ""),
     ).pack(side=tk.LEFT, padx=2)
 
     # ---------- Reservierung ----------
     if show_reservation:
         tk.Label(
-            outer, text="— Reservierung —", font=FONT_BOLD, bg=BG, fg=TEXT_MUTED,
+            outer, text=t("tag.reservierung"), font=FONT_BOLD, bg=BG, fg=TEXT_MUTED,
         ).pack(anchor="w", pady=(12, 2))
         res_rows_frame = tk.Frame(outer, bg=BG)
         res_rows_frame.pack(fill="x")
@@ -353,12 +351,12 @@ def open_entry_dialog(parent, date_str, storage, settings, on_change,
         res_btns = tk.Frame(outer, bg=BG)
         res_btns.pack(fill="x", pady=(2, 8))
         secondary_button(
-            res_btns, "+ Slot",
+            res_btns, t("tag.slot_neu"),
             lambda: add_res_row(default_start, default_end, default_pause, ""),
         ).pack(side=tk.LEFT, padx=2)
         if reservation_note_visible(settings):
             tk.Label(
-                outer, text=RESERVATION_CALENDAR_NOTE, font=FONT, bg=BG,
+                outer, text=reservation_calendar_note(), font=FONT, bg=BG,
                 fg=TEXT_MUTED, justify="left", wraplength=px(380),
             ).pack(anchor="w", padx=2, pady=(0, 4))
 
@@ -370,7 +368,7 @@ def open_entry_dialog(parent, date_str, storage, settings, on_change,
     reminder_ui = None
     if reminder_block_visible(settings, show_reservation):
         tk.Label(
-            outer, text="— Erinnerung —", font=FONT_BOLD, bg=BG, fg=TEXT_MUTED,
+            outer, text=t("tag.erinnerung"), font=FONT_BOLD, bg=BG, fg=TEXT_MUTED,
         ).pack(anchor="w", pady=(12, 2))
         rem_frame = tk.Frame(outer, bg=BG)
         rem_frame.pack(fill="x")
@@ -388,7 +386,7 @@ def open_entry_dialog(parent, date_str, storage, settings, on_change,
         rem_index = {"value": marked if marked is not None else None}
 
         rem_cb = tk.Checkbutton(
-            rem_frame, text="Ans Verschicken der Arbeitszeiten erinnern",
+            rem_frame, text=t("tag.erinnerung_text"),
             variable=rem_enabled, font=FONT, bg=BG, fg=TEXT, selectcolor=CELL_BG,
             activebackground=BG, activeforeground=TEXT, cursor="hand2",
         )
@@ -396,16 +394,16 @@ def open_entry_dialog(parent, date_str, storage, settings, on_change,
 
         rem_row = tk.Frame(rem_frame, bg=BG)
         rem_row.pack(anchor="w", pady=(2, 0))
-        tk.Label(rem_row, text="Slot:", font=FONT, bg=BG, fg=TEXT).pack(
+        tk.Label(rem_row, text=t("tag.slot_label"), font=FONT, bg=BG, fg=TEXT).pack(
             side=tk.LEFT, padx=(24, 8))
         slot_combo = dark_combo(rem_row, rem_slot, [], width=26)
         slot_combo.pack(side=tk.LEFT, padx=(0, 8))
         dark_combo(rem_row, rem_minutes,
                    [str(m) for m in range(0, 121, 5)], width=4).pack(side=tk.LEFT)
-        tk.Label(rem_row, text="Minuten vor Ende", font=FONT, bg=BG, fg=TEXT).pack(
+        tk.Label(rem_row, text=t("tag.minuten_vor_ende"), font=FONT, bg=BG, fg=TEXT).pack(
             side=tk.LEFT, padx=(8, 0))
         rem_hint = tk.Label(
-            rem_frame, text="Erst eine Reservierung anlegen.",
+            rem_frame, text=t("tag.erst_reservierung"),
             font=FONT_SMALL, bg=BG, fg=TEXT_MUTED)
 
         def on_slot_selected(*_a):
@@ -500,7 +498,7 @@ def open_entry_dialog(parent, date_str, storage, settings, on_change,
 
         plan = plan_entry_save(ist_slots, res_slots, show_reservation)
         if plan["error"]:
-            themed_showinfo(dialog, "Hinweis", plan["error"])
+            themed_showinfo(dialog, t("tag.hinweis_titel"), plan["error"])
             return
 
         save_locked["value"] = True
@@ -518,11 +516,10 @@ def open_entry_dialog(parent, date_str, storage, settings, on_change,
             if overshoot is not None:
                 week_label = get_week_label(overshoot["iso_year"], overshoot["iso_week"])
                 confirm = themed_askyesno(
-                    dialog, "Wochenlimit überschritten",
-                    f"{week_label}: {format_minutes_hm(overshoot['total_minutes'])} "
-                    f"Ist-Zeit überschreiten das konfigurierte Werkstudenten-Limit "
-                    f"von {format_minutes_hm(overshoot['limit_minutes'])}/Woche.\n\n"
-                    "Grobe Näherung, keine rechtliche Bewertung.\n\nTrotzdem speichern?",
+                    dialog, t("tag.limit_titel"),
+                    t("tag.limit_frage", woche=week_label,
+                      ist=format_minutes_hm(overshoot['total_minutes']),
+                      limit=format_minutes_hm(overshoot['limit_minutes'])),
                 )
                 if not confirm:
                     save_locked["value"] = False
@@ -538,14 +535,11 @@ def open_entry_dialog(parent, date_str, storage, settings, on_change,
             pause_violation = check_day_pause(settings, ist_slots)
             if pause_violation is not None:
                 confirm = themed_askyesno(
-                    dialog, "Pausenpflicht unterschritten",
-                    f"{format_minutes_hm(pause_violation['worked_minutes'])} Arbeitszeit "
-                    f"mit nur {pause_violation['actual_pause_minutes']} min Pause "
-                    f"eingetragen — §4 ArbZG schreibt ab dieser Arbeitszeit mindestens "
-                    f"{pause_violation['required_pause_minutes']} min vor.\n\n"
-                    "Gezählt werden nur die eingetragenen Pause-Minuten der Zeitblöcke, "
-                    "keine Lücke zwischen mehreren Blöcken am selben Tag.\n\n"
-                    "Grobe Näherung, keine rechtliche Bewertung.\n\nTrotzdem speichern?",
+                    dialog, t("tag.pause_titel"),
+                    t("tag.pause_frage",
+                      gearbeitet=format_minutes_hm(pause_violation['worked_minutes']),
+                      pause=pause_violation['actual_pause_minutes'],
+                      erforderlich=pause_violation['required_pause_minutes']),
                 )
                 if not confirm:
                     save_locked["value"] = False
@@ -563,9 +557,9 @@ def open_entry_dialog(parent, date_str, storage, settings, on_change,
 
     save_frame = tk.Frame(outer, bg=BG)
     save_frame.pack(fill="x", pady=(12, 0))
-    save_btn = primary_button(save_frame, "Speichern", save_all)
+    save_btn = primary_button(save_frame, t("knopf.speichern"), save_all)
     save_btn.pack(side=tk.LEFT, padx=2)
-    secondary_button(save_frame, "Abbrechen", dialog.destroy).pack(
+    secondary_button(save_frame, t("knopf.abbrechen"), dialog.destroy).pack(
         side=tk.LEFT, padx=2)
     refresh_save_state()  # startet gesperrt (Cooldown)
     dialog.after(int(STRAY_CLICK_GUARD_S * 1000), unlock_save)
