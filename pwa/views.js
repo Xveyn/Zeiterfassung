@@ -10,7 +10,6 @@ import { updateStatusText } from './update-policy.js';
 import { createDialogHistory } from './dialog-history.js';
 import { t } from './i18n.js';
 import { PRIVACY_URL } from './relay-client.js';
-import { RESERVATION_CALENDAR_NOTE } from './messages.js';
 import { MAX_NAME_LENGTH, blockSignature, moveRow, rowsToBlock, timesSummary, validateCategoryRows } from './categories.js';
 import {
   QUICK_END_MINUTES, QUICK_PAUSES, SETTINGS_TABS, addToTime, categoryDisplay, categoryOptions, categoryRemovalText,
@@ -23,7 +22,7 @@ const button = (label, onclick, className = '', extra = {}) =>
 
 // --- Hinweise und Statuszeile -----------------------------------------------------------------------
 
-const ACTION_LABELS = { pair: 'Neu koppeln', rescan: 'QR neu scannen', retry: 'Erneut versuchen', reload: 'Neu laden', conflicts: 'Anzeigen', persist: 'Dauerhaft sichern' };
+const actionLabels = () => ({ pair: t('aktion.neu_koppeln'), rescan: t('hinweis.aktion.rescan'), retry: t('hinweis.aktion.retry'), reload: t('hinweis.aktion.reload'), conflicts: t('hinweis.aktion.conflicts'), persist: t('hinweis.aktion.persist') });
 
 /** Persistenter Container der Hinweise. Er bleibt über alle Renders im Dokument, damit Screenreader
  *  Änderungen ansagen; `patchHints` tauscht nur, was sich geändert hat. */
@@ -35,8 +34,8 @@ function hintElement(hint, handlers) {
   return h('div', { class: `hint ${hint.kind}${hint.dismissible ? ' dismissible' : ''}`, role: hint.kind === 'error' ? 'alert' : 'status', 'data-key': hintKey(hint) },
     h('div', {}, hint.text),
     hint.action && h('div', { class: 'actions' },
-      button(ACTION_LABELS[hint.action], () => handlers[hint.action](), 'link', { 'data-focus': `hint-${hint.action}` })),
-    hint.dismissible && button('✕', () => handlers.dismiss(hint.id), 'dismiss', { 'aria-label': 'Hinweis schließen', 'data-focus': `hint-dismiss-${hint.id}` }));
+      button(actionLabels()[hint.action], () => handlers[hint.action](), 'link', { 'data-focus': `hint-${hint.action}` })),
+    hint.dismissible && button('✕', () => handlers.dismiss(hint.id), 'dismiss', { 'aria-label': t('hinweis.schliessen'), 'data-focus': `hint-dismiss-${hint.id}` }));
 }
 
 /** Gleicht die Hinweise im Container mit der Liste ab: unveränderte bleiben stehen (nicht erneut
@@ -59,10 +58,10 @@ export function statusBar(handlers) {
   const connection = h('div', {});
   const pending = h('div', {});
   const last = h('div', { class: 'muted' });
-  const sync = button('Jetzt abgleichen', handlers.sync, 'primary', { 'data-focus': 'sync' });
+  const sync = button(t('status.jetzt_abgleichen'), handlers.sync, 'primary', { 'data-focus': 'sync' });
   const element = h('footer', { class: 'statusbar' },
     h('div', { class: 'text', 'aria-live': 'polite' }, connection, pending, last),
-    button('Einstellungen', handlers.settings, '', { 'data-focus': 'settings' }),
+    button(t('einstellungen.titel'), handlers.settings, '', { 'data-focus': 'settings' }),
     sync);
   const setText = (node, text) => { if (node.textContent !== text) node.textContent = text; };
   const update = (status) => {
@@ -80,7 +79,7 @@ export function statusBar(handlers) {
 
 /** Link auf die Datenschutzhinweise; öffnet in einem neuen Tab, damit die Web-App (und ein halb ausgefülltes
  *  Koppel-Formular) stehen bleibt. */
-const privacyLink = (label = 'Datenschutzhinweise') =>
+const privacyLink = (label = t('datenschutz.link')) =>
   h('a', { href: PRIVACY_URL, target: '_blank', rel: 'noopener noreferrer' }, label);
 
 /** Der Einrichtungs-Screen (#496): Logo, Titel, nummerierte Schritte, der eine rote Knopf und, grau und
@@ -98,18 +97,18 @@ function setupView(model, { canCancel }, handlers) {
       h('img', { src: 'icons/icon-192.png', alt: '', width: 84, height: 84 }),
       h('h1', {}, model.title),
       h('p', { class: 'muted' }, model.lead)),
-    h('h2', { class: 'setup-heading' }, `Einrichtung · ${model.steps.length} Schritte`),
+    h('h2', { class: 'setup-heading' }, t('einrichtung.ueberschrift', { count: model.steps.length })),
     h('ol', { class: 'setup-steps' }, model.steps.map((step, index) =>
       h('li', { class: `setup-step ${step.state}` },
         h('span', { class: 'num', 'aria-hidden': 'true' }, String(index + 1)),
         h('div', {}, h('b', {}, step.title), h('span', {}, step.text))))),
-    model.scan && button('QR-Code scannen', handlers.scan, 'primary', { 'data-focus': 'setup-scan' }),
+    model.scan && button(t('aktion.qr_scannen'), handlers.scan, 'primary', { 'data-focus': 'setup-scan' }),
     model.note && h('p', { class: `hint ${model.note.kind}`, role: 'status' }, model.note.text),
     model.alternatives.length > 0 && h('details', { class: 'setup-more' },
-      h('summary', { 'data-focus': 'setup-more' }, 'Andere Möglichkeiten'),
+      h('summary', { 'data-focus': 'setup-more' }, t('einrichtung.andere')),
       model.alternatives.map(alternative)),
-    canCancel && h('div', { class: 'buttons' }, button('Abbrechen', handlers.cancel, '', { 'data-focus': 'setup-cancel' })),
-    h('p', { class: 'setup-foot' }, 'Was der Relay verarbeitet: ', privacyLink()));
+    canCancel && h('div', { class: 'buttons' }, button(t('aktion.abbrechen'), handlers.cancel, '', { 'data-focus': 'setup-cancel' })),
+    h('p', { class: 'setup-foot' }, t('einrichtung.relay_verarbeitet'), privacyLink()));
 }
 
 /** Die Koppel-Seite. Mit `setup` (Modell aus `setupModel`) erscheint der Einrichtungs-Screen, sonst das Formular
@@ -129,45 +128,51 @@ export function pairView({ address, code, deviceName, busy, canScan, canCancel, 
     input.addEventListener('input', () => handlers.change(field, input.value));
   }
   const intro = relay
-    ? 'Der QR-Code vom Desktop (Einstellungen → Mobil → „Über Relay koppeln“) wurde gelesen. Es fehlt nur noch der Name dieses Handys. Der Abgleich läuft dann verschlüsselt über das Internet.'
-    : 'Am Desktop: Einstellungen → Mobil → „Gerät koppeln …“ (im selben WLAN) oder „Über Relay koppeln“ (über das Internet, z. B. für iPhone und iPad). Dann den QR-Code scannen oder, im WLAN, Adresse und Kopplungscode eintippen.';
+    ? t('kopplung.intro.relay')
+    : t('kopplung.intro.lan');
   return h('main', {},
-    h('h1', {}, relay ? 'Über den Relay koppeln' : 'Mit dem Desktop koppeln'),
+    h('h1', {}, relay ? t('kopplung.titel.relay') : t('kopplung.titel.lan')),
     installHint && h('p', { class: 'hint warn', role: 'status' }, installHint),
     h('p', { class: 'muted' }, intro),
-    h('p', { class: 'muted' }, 'Der Abgleich über den Relay und Benachrichtigungen laufen über einen öffentlichen Dienst. Was er verarbeitet: ', privacyLink(), '.'),
-    canScan && button(relay ? 'Anderen QR-Code scannen' : 'QR-Code scannen', handlers.scan, relay ? '' : 'primary'),
+    h('p', { class: 'muted' }, t('kopplung.dienst_hinweis'), privacyLink(), '.'),
+    canScan && button(relay ? t('kopplung.anderer_qr') : t('aktion.qr_scannen'), handlers.scan, relay ? '' : 'primary'),
     h('form', { onsubmit: (event) => { event.preventDefault(); handlers.submit({ address: addressInput.value, code: codeInput.value, deviceName: nameInput.value }); } },
-      fields.address && h('label', { for: 'pair-address' }, 'Adresse des Desktops'), fields.address && addressInput,
-      fields.code && h('label', { for: 'pair-code' }, 'Kopplungscode'), fields.code && codeInput,
-      fields.code && h('p', { class: 'muted' }, 'Den Code zeigt der Desktop unter dem QR-Code. Er verschlüsselt die Verbindung.'),
-      h('label', { for: 'pair-name' }, 'Name dieses Handys'), nameInput,
+      fields.address && h('label', { for: 'pair-address' }, t('kopplung.adresse')), fields.address && addressInput,
+      fields.code && h('label', { for: 'pair-code' }, t('kopplung.code')), fields.code && codeInput,
+      fields.code && h('p', { class: 'muted' }, t('kopplung.code_hinweis')),
+      h('label', { for: 'pair-name' }, t('kopplung.name')), nameInput,
       h('div', { class: 'error-text', role: 'alert', id: 'pair-error' }, error || ''),
       h('div', { class: 'buttons' },
-        canCancel && button('Abbrechen', handlers.cancel),
-        canBack && button('Zurück', handlers.back, '', { disabled: busy, 'data-focus': 'pair-back' }),
-        h('button', { type: 'submit', class: 'primary', disabled: busy, 'data-focus': 'pair-submit' }, busy ? 'Koppele …' : 'Koppeln'))));
+        canCancel && button(t('aktion.abbrechen'), handlers.cancel),
+        canBack && button(t('aktion.zurueck'), handlers.back, '', { disabled: busy, 'data-focus': 'pair-back' }),
+        h('button', { type: 'submit', class: 'primary', disabled: busy, 'data-focus': 'pair-submit' }, busy ? t('kopplung.koppele') : t('kopplung.koppeln')))));
 }
 
 // --- Woche ---------------------------------------------------------------------------------------------
 
+function dayAriaLabel(day) {
+  const params = { weekday: day.weekday, label: day.label, minutes: day.minutesLabel };
+  if (day.isToday) return day.minutesLabel ? t('woche.tag.aria_heute_stunden', params) : t('woche.tag.aria_heute', params);
+  return day.minutesLabel ? t('woche.tag.aria_stunden', params) : t('woche.tag.aria', params);
+}
+
 function dayRow(day, handlers) {
   const classes = ['day', day.state, day.isWeekend && 'weekend', day.isToday && 'today', day.beyondWindow && 'future'];
   return h('li', {}, h('button', { type: 'button', class: classes.filter(Boolean).join(' '),
-    'aria-label': `${day.weekday} ${day.label}${day.isToday ? ', heute' : ''}${day.minutesLabel ? `, ${day.minutesLabel} Stunden` : ''}`,
+    'aria-label': dayAriaLabel(day),
     'data-focus': `day-${day.date}`, onclick: () => handlers.openDay(day.date) },
     h('span', {}, h('div', { class: 'wd' }, day.weekday), h('div', { class: 'date' }, day.label.slice(0, 6)),
-      day.isToday && h('div', { class: 'tag' }, 'heute')),
+      day.isToday && h('div', { class: 'tag' }, t('woche.heute'))),
     h('div', { class: 'content' },
       day.addHint && h('div', { class: 'add muted' }, day.addHint),
       h('ul', { class: 'slots' }, day.slots.map((text) => h('li', {}, text))),
       day.reservation?.slots.length > 0 && h('ul', { class: 'slots reserved' },
-        day.reservation.slots.map((text) => h('li', {}, `geplant ${text}`)))),
+        day.reservation.slots.map((text) => h('li', {}, t('woche.geplant', { text }))))),
     h('span', { class: 'sum' }, day.minutesLabel, day.addHint && h('span', { class: 'plus', 'aria-hidden': 'true' }, '+')),
     h('span', { class: 'marks' },
-      day.dirty && h('span', { class: 'mark-dirty', title: 'nicht übertragen' }, '● '),
-      day.reservation?.dirty && h('span', { class: 'mark-dirty', title: 'Reservierung nicht übertragen' }, '○ '),
-      day.conflict && h('span', { class: 'mark-conflict', title: 'Konflikt' }, '⚠')),
+      day.dirty && h('span', { class: 'mark-dirty', title: t('woche.nicht_uebertragen') }, '● '),
+      day.reservation?.dirty && h('span', { class: 'mark-dirty', title: t('woche.reservierung_nicht_uebertragen') }, '○ '),
+      day.conflict && h('span', { class: 'mark-conflict', title: t('woche.konflikt') }, '⚠')),
     day.error && h('span', { class: 'err' }, day.error),
     day.reservation?.error && h('span', { class: 'err' }, day.reservation.error)));
 }
@@ -175,17 +180,17 @@ function dayRow(day, handlers) {
 export function weekView(model, handlers) {
   return h('div', { class: 'week' },
     h('div', { class: 'weekbar' },
-      button('‹', handlers.previous, '', { 'aria-label': 'Vorherige Woche', 'data-focus': 'previous' }),
+      button('‹', handlers.previous, '', { 'aria-label': t('woche.vorherige'), 'data-focus': 'previous' }),
       h('div', { class: 'title' }, h('strong', {}, model.title), h('span', { class: 'muted' }, model.range)),
-      button('›', handlers.next, '', { 'aria-label': 'Nächste Woche', 'data-focus': 'next' })),
-    !model.isCurrent && button('Zur aktuellen Woche', handlers.today, 'link', { 'data-focus': 'today' }),
+      button('›', handlers.next, '', { 'aria-label': t('woche.naechste'), 'data-focus': 'next' })),
+    !model.isCurrent && button(t('woche.aktuelle'), handlers.today, 'link', { 'data-focus': 'today' }),
     h('ul', { class: 'days' }, model.days.map((day) => dayRow(day, handlers))),
     model.older && h('div', { class: 'hint older' },
       h('span', {}, model.older.text),
       model.older.action === 'older' && button(model.older.buttonText, () => handlers.older(model.older.wish), 'link', { 'data-focus': 'older' })),
-    h('div', { class: 'total' }, h('span', {}, 'Woche gesamt'), h('span', {}, model.totalLabel)),
+    h('div', { class: 'total' }, h('span', {}, t('woche.gesamt')), h('span', {}, model.totalLabel)),
     model.pendingMinutes > 0 && h('div', { class: 'total pending' },
-      h('span', {}, 'Noch ausstehend'), h('span', {}, model.pendingLabel)));
+      h('span', {}, t('woche.ausstehend')), h('span', {}, model.pendingLabel)));
 }
 
 // --- Dialoge -----------------------------------------------------------------------------------------------
@@ -213,7 +218,6 @@ function footerButtons(destructive, cancel, primary) {
 /** Eine Liste von Slot-Zeilen (Arbeitszeit mit Pause, Reservierung ohne). Der Abschnitt hält seinen
  *  Zustand selbst: Eingaben gehen bei Hintergrund-Renders und beim Wechsel des Reiters nicht verloren.
  *  `onChange` meldet jede Eingabe (der Dialog prüft dann neu). */
-const SHIFT_HINT = '↔ Ziehen verschiebt beide Zeiten';
 const SHIFT_LABEL_MS = 900;          // so lange bleibt „+20 min“ nach dem Loslassen stehen
 const SHIFT_CLICK_GUARD_MS = 400;    // ein Klick direkt nach dem Zug öffnete sonst die Zeitauswahl
 
@@ -227,7 +231,7 @@ function slotSection({ rows, categories, defaults, weekday, withPause, pauseEnab
   const touched = new Set();                        // Zeilen, deren Zeitfeld schon verlassen wurde
   let revealed = false;                             // nach einem Speicherversuch zeigen alle Zeilen ihre Fehler
   const total = h('span', {}, '');
-  const totalRow = h('div', { class: 'daysum' }, h('span', {}, 'Tag gesamt'), total);
+  const totalRow = h('div', { class: 'daysum' }, h('span', {}, t('editor.tag_gesamt')), total);
   // Fehler am Feld, Netto und Schnellwahl folgen jeder Eingabe, ohne die Zeilen neu zu bauen (der Fokus bliebe sonst nicht).
   const update = () => {
     state.forEach((row, index) => {
@@ -281,7 +285,7 @@ function slotSection({ rows, categories, defaults, weekday, withPause, pauseEnab
       window.removeEventListener('pointercancel', finish);
       if (drag.moved) guardUntil = event.timeStamp + SHIFT_CLICK_GUARD_MS;
       drag = null;
-      resetTimer = setTimeout(() => { hint.textContent = SHIFT_HINT; hint.classList.remove('live'); }, SHIFT_LABEL_MS);
+      resetTimer = setTimeout(() => { hint.textContent = t('editor.ziehen_hinweis'); hint.classList.remove('live'); }, SHIFT_LABEL_MS);
     };
     line.addEventListener('pointerdown', (event) => {
       if (drag || !mayStartShift({ pointerType: event.pointerType, width: window.innerWidth, startX: event.clientX })) return;
@@ -326,24 +330,24 @@ function slotSection({ rows, categories, defaults, weekday, withPause, pauseEnab
         document.getElementById(id)?.focus();
       });
     }, 'picker', { id });
-    return h('div', {}, h('label', { for: id }, 'Kategorie'), picker);
+    return h('div', {}, h('label', { for: id }, t('editor.kategorie')), picker);
   };
   // Eine Schnellwahl schreibt in die Zeile und baut neu; die Felder zeigen den neuen Wert.
-  const chipLabel = (minutes) => (minutes < 60 ? `+${minutes} min` : `+${minutes / 60} h`);
+  const chipLabel = (minutes) => (minutes < 60 ? t('editor.chip.minuten', { minutes }) : t('editor.chip.stunden', { hours: minutes / 60 }));
   const build = () => {
     refs.length = 0;
     list.replaceChildren(...state.map((row, index) => {
       const ref = { start: null, end: null, endChips: [], pauseChips: [] };
       refs[index] = ref;
-      const startField = field(index, 'start', 'von', { type: 'time', step: TIME_STEP_MINUTES * 60 });
-      const endField = field(index, 'end', 'bis', { type: 'time', step: TIME_STEP_MINUTES * 60 });
+      const startField = field(index, 'start', t('editor.von'), { type: 'time', step: TIME_STEP_MINUTES * 60 });
+      const endField = field(index, 'end', t('editor.bis'), { type: 'time', step: TIME_STEP_MINUTES * 60 });
       const endChips = QUICK_END_MINUTES.map((minutes) => {
         const chip = button(chipLabel(minutes), () => {
           row.end = addToTime(row.start, minutes);
           touched.add(row);
           build();
           onChange();
-        }, 'chip', { 'aria-label': `Ende ${chipLabel(minutes)} nach dem Start` });
+        }, 'chip', { 'aria-label': t('editor.chip.ende_aria', { dauer: chipLabel(minutes) }) });
         ref.endChips.push({ chip, minutes });
         return chip;
       });
@@ -352,29 +356,29 @@ function slotSection({ rows, categories, defaults, weekday, withPause, pauseEnab
           row.pause = String(minutes);
           build();
           onChange();
-        }, 'chip', { 'aria-label': `Pause ${minutes} Minuten` });
+        }, 'chip', { 'aria-label': t('editor.chip.pause_aria', { minutes }) });
         ref.pauseChips.push({ chip, minutes });
         return chip;
       }) : [];
       const timeRow = h('div', { class: shiftStep > 0 ? 'row shiftable' : 'row' }, startField, endField);
       // Für Screenreader verborgen: die Geste gibt es nur per Finger, die Felder bleiben der barrierefreie Weg.
-      const shiftHint = shiftStep > 0 && h('div', { class: 'shift-hint', 'aria-hidden': 'true' }, SHIFT_HINT);
+      const shiftHint = shiftStep > 0 && h('div', { class: 'shift-hint', 'aria-hidden': 'true' }, t('editor.ziehen_hinweis'));
       if (shiftHint) watchShift(row, index, timeRow, shiftHint);
       ref.error = h('div', { class: 'field-error', role: 'status' }, '');
       ref.netValue = h('b', {}, '');
-      ref.net = h('div', { class: 'net' }, h('span', {}, 'Netto'), ref.netValue);
+      ref.net = h('div', { class: 'net' }, h('span', {}, t('editor.netto')), ref.netValue);
       ref.fieldset = h('fieldset', { class: 'slot' },
         state.length > 1 && h('div', { class: 'slot-head' },
-          h('span', { class: 'muted' }, `Slot ${index + 1}`),
-          button('×', () => { state.splice(index, 1); build(); onChange(); }, 'remove', { 'aria-label': `Slot ${index + 1} entfernen` })),
+          h('span', { class: 'muted' }, t('editor.slot', { nummer: index + 1 })),
+          button('×', () => { state.splice(index, 1); build(); onChange(); }, 'remove', { 'aria-label': t('editor.slot_entfernen', { nummer: index + 1 }) })),
         timeRow,
         shiftHint,
-        h('div', { class: 'chips', role: 'group', 'aria-label': 'Ende setzen' }, ...endChips),
+        h('div', { class: 'chips', role: 'group', 'aria-label': t('editor.ende_setzen') }, ...endChips),
         ref.error,
         h('div', { class: 'row' },
-          showPause && field(index, 'pause', 'Pause (Min)', { type: 'number', inputmode: 'numeric', min: 0, step: TIME_STEP_MINUTES }),
+          showPause && field(index, 'pause', t('editor.pause_min'), { type: 'number', inputmode: 'numeric', min: 0, step: TIME_STEP_MINUTES }),
           categoryField(index)),
-        pauseChips.length > 0 && h('div', { class: 'chips', role: 'group', 'aria-label': 'Pause setzen' }, ...pauseChips),
+        pauseChips.length > 0 && h('div', { class: 'chips', role: 'group', 'aria-label': t('editor.pause_setzen') }, ...pauseChips),
         ref.net);
       return ref.fieldset;
     }));
@@ -382,9 +386,9 @@ function slotSection({ rows, categories, defaults, weekday, withPause, pauseEnab
   };
   build();
   const element = h('div', {}, list,
-    button('+ Slot', () => { state.push(nextRow(state.at(-1))); build(); onChange(); }, 'link'),
+    button(t('editor.slot_hinzu'), () => { state.push(nextRow(state.at(-1))); build(); onChange(); }, 'link'),
     totalRow,
-    !withPause && pauseEnabled && h('p', { class: 'muted note' }, 'ⓘ ', RESERVATION_CALENDAR_NOTE));
+    !withPause && pauseEnabled && h('p', { class: 'muted note' }, 'ⓘ ', t('editor.reservierung_kalender_hinweis')));
   update();
   return { element, state, reveal: () => { revealed = true; update(); } };
 }
@@ -396,7 +400,7 @@ function slotSection({ rows, categories, defaults, weekday, withPause, pauseEnab
 export function editorDialog({ title, rows, categories, defaults = null, weekday = '', errors = {}, lock = null, canClear, validate,
   reservation = null, startWith = 'work', pauseEnabled = false, shiftStep = 0 }, handlers) {
   const message = h('div', { class: 'error-text', role: 'alert' }, '');
-  const save = h('button', { type: 'submit', class: 'primary' }, 'Speichern');
+  const save = h('button', { type: 'submit', class: 'primary' }, t('aktion.speichern'));
   const dialog = h('dialog', { 'aria-labelledby': 'editor-title' });
   let active = reservation ? startWith : 'work';
 
@@ -418,14 +422,14 @@ export function editorDialog({ title, rows, categories, defaults = null, weekday
   const res = reservation && slotSection({ rows: reservation.rows, categories, defaults, weekday,
     withPause: false, pauseEnabled, shiftStep, onChange: () => { edited.reservation = true; refresh(); } });
   const heading = h('h2', { id: 'editor-title' }, title);
-  const clearButton = button('Tag leeren', () => handlers.clear(active, dialog), 'link destructive');
+  const clearButton = button(t('editor.tag_leeren'), () => handlers.clear(active, dialog), 'link destructive');
   // Gesperrte Arbeitszeit (#273): statt der Zeilen ein Hinweis, mit dem Ausweg „Ältere Zeiten laden“, wo es ihn gibt.
   const windowHint = lock && h('div', { class: 'hint warn', 'data-focus': 'edit-lock' },
     h('p', {}, lock.text),
     lock.action === 'older' && button(lock.buttonText, () => handlers.loadOlder(), 'primary', { 'data-focus': 'load-older' }));
   const tabs = reservation && {
-    work: h('button', { type: 'button', role: 'tab', 'data-focus': 'tab-work', onclick: () => show('work') }, 'Arbeitszeit'),
-    reservation: h('button', { type: 'button', role: 'tab', 'data-focus': 'tab-reservation', onclick: () => show('reservation') }, 'Reservierung'),
+    work: h('button', { type: 'button', role: 'tab', 'data-focus': 'tab-work', onclick: () => show('work') }, t('editor.tab.arbeitszeit')),
+    reservation: h('button', { type: 'button', role: 'tab', 'data-focus': 'tab-reservation', onclick: () => show('reservation') }, t('editor.tab.reservierung')),
   };
   const show = (kind) => {
     active = kind;
@@ -436,7 +440,7 @@ export function editorDialog({ title, rows, categories, defaults = null, weekday
       tabs.work.setAttribute('aria-selected', String(kind === 'work'));
       tabs.reservation.setAttribute('aria-selected', String(kind === 'reservation'));
     }
-    clearButton.textContent = kind === 'work' ? 'Tag leeren' : 'Reservierung löschen';
+    clearButton.textContent = kind === 'work' ? t('editor.tag_leeren') : t('editor.reservierung_loeschen');
     clearButton.hidden = !(kind === 'work' ? canClear : reservation.canClear);
     heading.textContent = editorTitle(title, kind, Boolean(reservation));
     refresh();
@@ -462,7 +466,7 @@ export function editorDialog({ title, rows, categories, defaults = null, weekday
       message,
       footerButtons(
         clearButton,
-        button('Abbrechen', () => dialog.close()),
+        button(t('aktion.abbrechen'), () => dialog.close()),
         save)));
   show(active);
   return openDialog(dialog);
@@ -477,19 +481,19 @@ export function categoryPickerDialog({ categories, current }, onPick) {
     h('button', { type: 'button', class: active ? 'option active' : 'option', 'aria-pressed': String(active), onclick: () => choose(name) },
       label, active && h('span', { 'aria-hidden': 'true' }, '✓')));
   const custom = h('input', { id: 'category-custom', type: 'text', maxlength: MAX_CATEGORY_LENGTH, autocomplete: 'off' });
-  const apply = button('Übernehmen', () => choose(custom.value.trim()), 'primary');
+  const apply = button(t('kategorie.uebernehmen'), () => choose(custom.value.trim()), 'primary');
   const sync = () => { apply.disabled = custom.value.trim() === ''; };
   custom.addEventListener('input', sync);
   custom.addEventListener('keydown', (event) => { if (event.key === 'Enter' && !apply.disabled) { event.preventDefault(); apply.click(); } });
   sync();
   dialog.append(
-    h('h2', { id: 'category-title' }, 'Kategorie'),
+    h('h2', { id: 'category-title' }, t('editor.kategorie')),
     h('ul', { class: 'options' },
-      row('Keine Kategorie', '', !current),
+      row(t('kategorie.keine'), '', !current),
       categoryOptions(categories, current).map((option) => row(option.name, option.name, option.active))),
-    h('label', { for: 'category-custom' }, 'Andere …'),
+    h('label', { for: 'category-custom' }, t('kategorie.andere')),
     h('div', { class: 'custom' }, custom, apply),
-    h('div', { class: 'buttons' }, button('Abbrechen', () => dialog.close())));
+    h('div', { class: 'buttons' }, button(t('aktion.abbrechen'), () => dialog.close())));
   return openDialog(dialog);
 }
 
@@ -497,7 +501,7 @@ export function confirmDialog({ title, text, confirmLabel }, onConfirm) {
   const dialog = h('dialog', { 'aria-labelledby': 'confirm-title' },
     h('h2', { id: 'confirm-title' }, title), h('p', {}, text),
     h('div', { class: 'buttons' },
-      button('Abbrechen', () => dialog.close()),
+      button(t('aktion.abbrechen'), () => dialog.close()),
       button(confirmLabel, () => { dialog.close(); onConfirm(); }, 'primary')));
   return openDialog(dialog);
 }
@@ -509,30 +513,30 @@ export function unpairDialog({ retry, confirm }) {
   const dialog = h('dialog', { 'aria-labelledby': 'unpair-title', class: 'unpair-dialog' });
   let phase = 'checking';
   const body = h('div', {});
-  const cancel = button('Abbrechen', () => dialog.close(), '', { 'data-focus': 'unpair-cancel', autofocus: true });
-  const retryButton = button('Erneut abgleichen', () => retry(), '', { 'data-focus': 'unpair-retry' });
-  const confirmButton = button('Ja, trennen und löschen', () => confirm(), 'primary', { 'data-focus': 'unpair-confirm' });
+  const cancel = button(t('aktion.abbrechen'), () => dialog.close(), '', { 'data-focus': 'unpair-cancel', autofocus: true });
+  const retryButton = button(t('trennen.erneut_abgleichen'), () => retry(), '', { 'data-focus': 'unpair-retry' });
+  const confirmButton = button(t('trennen.bestaetigen'), () => confirm(), 'primary', { 'data-focus': 'unpair-confirm' });
   const buttons = h('div', { class: 'buttons' }, retryButton, cancel, confirmButton);
   // Läuft die Abmeldung schon, ist sie womöglich unterwegs: dann gibt es kein Zurück.
   dialog.addEventListener('cancel', (event) => { if (phase === 'running') event.preventDefault(); });
   // Chromium vergibt für ein zweites Escape ohne neue Nutzeraktivierung kein `cancel` mehr, sondern schließt: die Taste selbst abfangen.
   dialog.addEventListener('keydown', (event) => { if (phase === 'running' && event.key === 'Escape') event.preventDefault(); });
-  dialog.append(h('h2', { id: 'unpair-title' }, 'Dieses Handy trennen?'), body, buttons);
+  dialog.append(h('h2', { id: 'unpair-title' }, t('trennen.titel')), body, buttons);
   dialog.update = ({ phase: next, model = null, error = '' }) => {
     phase = next;
     const running = next === 'running';
     const busy = running || next === 'checking';
     const lines = [];
-    if (next === 'checking') lines.push(h('p', { class: 'muted', role: 'status' }, 'Gleicht ab …'));
+    if (next === 'checking') lines.push(h('p', { class: 'muted', role: 'status' }, t('trennen.gleicht_ab')));
     if (model) {
       lines.push(h('div', { class: `hint ${model.summary.kind === 'ok' ? 'ok' : 'warn'}`, role: 'status' }, model.summary.text));
       if (model.warnDesktop) lines.push(h('div', { class: 'hint warn', role: 'status' }, model.warnDesktop));
       lines.push(h('ul', { class: 'unpair-folgen' },
-        model.notifiesDesktop && h('li', {}, 'Das Handy wird am Desktop abgemeldet, sobald der Desktop online ist.'),
-        h('li', {}, 'Alle Daten auf diesem Handy werden gelöscht.'),
-        h('li', {}, 'Danach musst du neu koppeln.')));
+        model.notifiesDesktop && h('li', {}, t('trennen.folge.desktop')),
+        h('li', {}, t('trennen.folge.daten')),
+        h('li', {}, t('trennen.folge.neu_koppeln'))));
     }
-    if (running) lines.push(h('p', { class: 'muted', role: 'status' }, 'Trennt …'));
+    if (running) lines.push(h('p', { class: 'muted', role: 'status' }, t('trennen.laeuft')));
     if (error) lines.push(h('div', { class: 'hint error', role: 'alert' }, error));
     body.replaceChildren(...lines);
     // Nach einem Fehler beim Löschen kein erneuter Abgleich: ein weiterer `put` ersetzte die schon eingereihte Abmeldung.
@@ -548,17 +552,17 @@ export function unpairDialog({ retry, confirm }) {
 
 export function conflictsDialog(conflicts, handlers) {
   const dialog = h('dialog', { 'aria-labelledby': 'conflicts-title' },
-    h('h2', { id: 'conflicts-title' }, 'Konflikte'),
-    h('p', { class: 'muted' }, 'Beide Fassungen sind gespeichert. Gelöst wird am Desktop (Einstellungen → Google → „Konflikte ansehen“).'),
-    conflicts.length === 0 && h('p', {}, 'Keine offenen Konflikte.'),
+    h('h2', { id: 'conflicts-title' }, t('konflikte.titel')),
+    h('p', { class: 'muted' }, t('konflikte.hinweis')),
+    conflicts.length === 0 && h('p', {}, t('konflikte.keine')),
     conflicts.map((conflict) => h('section', {},
       h('h2', {}, conflict.dateLabel),
       conflict.versions.map((version) => h('div', { class: 'version' },
         h('strong', {}, version.who), h('span', { class: 'muted' }, ` · ${version.when}`),
-        version.slots.length === 0 ? h('p', {}, 'gelöscht') : h('ul', {}, version.slots.map((text) => h('li', {}, text))),
-        h('div', {}, `Summe ${version.minutesLabel}`))),
-      button('Zu diesem Tag', () => { dialog.close(); handlers.openDay(conflict.date); }, 'link'))),
-    h('div', { class: 'buttons' }, button('Schließen', () => dialog.close())));
+        version.slots.length === 0 ? h('p', {}, t('konflikte.geloescht')) : h('ul', {}, version.slots.map((text) => h('li', {}, text))),
+        h('div', {}, t('konflikte.summe', { summe: version.minutesLabel })))),
+      button(t('konflikte.zum_tag'), () => { dialog.close(); handlers.openDay(conflict.date); }, 'link'))),
+    h('div', { class: 'buttons' }, button(t('aktion.schliessen'), () => dialog.close())));
   return openDialog(dialog);
 }
 
@@ -568,7 +572,7 @@ export function conflictsDialog(conflicts, handlers) {
 function connectionPanel({ desktopName, desktop, hint = '', address, transport = 'lan', persistent, tokenUntil, window: windowInfo, push, lock, shift,
   language, online = true, lastSyncAt = '' }, { closeThen, handlers }) {
   const windowState = windowRow(windowInfo);
-  const resetWindow = button('Auf 90 Tage zurücksetzen', () => closeThen(() => handlers.resetWindow()), '', { 'data-focus': 'reset-window' });
+  const resetWindow = button(t('einstellungen.verbindung.zuruecksetzen'), () => closeThen(() => handlers.resetWindow()), '', { 'data-focus': 'reset-window' });
   resetWindow.hidden = !windowState.canReset;
   const summary = connectionSummary({ online, desktopName, lastSyncAt, tokenUntil });
   const notice = h('div', { class: 'hint warn', role: 'status', 'data-focus': 'storage-notice' });
@@ -576,7 +580,7 @@ function connectionPanel({ desktopName, desktop, hint = '', address, transport =
     const model = storageNotice(persistent, { refused });
     notice.hidden = !model;
     if (!model) return;
-    const ask = model.action && button('Dauerhaft sichern', async () => {
+    const ask = model.action && button(t('hinweis.aktion.persist'), async () => {
       ask.disabled = true;
       persistent = await handlers.persist();
       showNotice(!persistent);
@@ -596,17 +600,17 @@ function connectionPanel({ desktopName, desktop, hint = '', address, transport =
     lock && lockSection(lock, handlers),
     shift && shiftSection(shift, handlers),
     language && languageSection(language, handlers),
-    h('p', { class: 'muted' }, 'Relay und Benachrichtigungen: ', privacyLink(), '.'),
+    h('p', { class: 'muted' }, t('einstellungen.verbindung.relay_datenschutz'), privacyLink(), '.'),
     h('details', { class: 'tech' },
-      h('summary', {}, 'Technische Details'),
+      h('summary', {}, t('einstellungen.verbindung.technik')),
       h('dl', {},
-        h('dt', { class: 'muted' }, 'Desktop-Version'), h('dd', {}, desktop?.version || '—'),
-        h('dt', { class: 'muted' }, 'Plattform'), h('dd', {}, desktop?.platform || '—'),
-        h('dt', { class: 'muted' }, transport === 'relay' ? 'Verbindung' : 'Adresse'), h('dd', {}, address || '—'),
-        h('dt', { class: 'muted' }, 'Dauerhafter Speicher'), h('dd', {}, persistent === null ? 'unbekannt' : persistent ? 'ja' : 'nein'),
-        h('dt', { class: 'muted' }, 'Verlauf'), h('dd', {}, windowState.text, ' ', resetWindow))),
+        h('dt', { class: 'muted' }, t('einstellungen.verbindung.desktop_version')), h('dd', {}, desktop?.version || '—'),
+        h('dt', { class: 'muted' }, t('einstellungen.verbindung.plattform')), h('dd', {}, desktop?.platform || '—'),
+        h('dt', { class: 'muted' }, transport === 'relay' ? t('einstellungen.verbindung.verbindung') : t('einstellungen.verbindung.adresse')), h('dd', {}, address || '—'),
+        h('dt', { class: 'muted' }, t('einstellungen.verbindung.speicher')), h('dd', {}, persistent === null ? t('einstellungen.verbindung.unbekannt') : persistent ? t('einstellungen.verbindung.ja') : t('einstellungen.verbindung.nein')),
+        h('dt', { class: 'muted' }, t('einstellungen.verbindung.verlauf')), h('dd', {}, windowState.text, ' ', resetWindow))),
     h('div', { class: 'buttons' },
-      button('QR neu scannen / Neu koppeln', () => closeThen(() => handlers.pair()), '', { 'data-focus': 'pair' })),
+      button(t('einstellungen.verbindung.neu_koppeln'), () => closeThen(() => handlers.pair()), '', { 'data-focus': 'pair' })),
     unpairSection({ closeThen, handlers }));
 }
 
@@ -625,9 +629,9 @@ function languageSection(model, handlers) {
  *  nicht gefüllt), damit er nicht neben „Neu koppeln“ zum Antippen einlädt. */
 function unpairSection({ closeThen, handlers }) {
   return h('section', { class: 'unpair' },
-    h('h3', {}, 'Trennen'),
-    h('p', { class: 'muted' }, 'Meldet dieses Handy am Desktop ab und löscht alle Daten auf dem Handy.'),
-    button('Trennen und lokale Daten löschen', () => closeThen(() => handlers.unpair()), 'unpair-open', { 'data-focus': 'unpair-open' }));
+    h('h3', {}, t('einstellungen.trennen.titel')),
+    h('p', { class: 'muted' }, t('einstellungen.trennen.text')),
+    button(t('einstellungen.trennen.knopf'), () => closeThen(() => handlers.unpair()), 'unpair-open', { 'data-focus': 'unpair-open' }));
 }
 
 /** Abschnitt „Benachrichtigungen“: ein Schalter mit Statuszeile. Der Schalter ruft `handlers.setPush(on)` (in der
@@ -635,9 +639,9 @@ function unpairSection({ closeThen, handlers }) {
  *  unterstützt ist er ausgegraut, und der Text sagt warum. */
 function pushSection(model, handlers) {
   const text = h('p', { role: 'status', class: 'push-state muted' }, model.text);
-  const test = button('Testbenachrichtigung senden', async () => {
+  const test = button(t('einstellungen.push.test'), async () => {
     test.disabled = true;
-    text.textContent = 'Sendet …';
+    text.textContent = t('einstellungen.push.sendet');
     text.textContent = await handlers.testPush();
     test.disabled = false;
   }, '', { 'data-focus': 'push-test' });
@@ -653,8 +657,8 @@ function pushSection(model, handlers) {
       test.hidden = !next.canTest;
     } });
   return h('section', { class: 'push' },
-    h('h3', {}, 'Benachrichtigungen'),
-    h('label', { class: 'switch', for: 'push-toggle' }, h('span', {}, 'Erinnerungen auf diesem Handy'), toggle),
+    h('h3', {}, t('einstellungen.push.titel')),
+    h('label', { class: 'switch', for: 'push-toggle' }, h('span', {}, t('einstellungen.push.schalter')), toggle),
     text, test);
 }
 
@@ -670,8 +674,8 @@ function lockSection(initial, handlers) {
   const toggle = h('input', { id: 'lock-toggle', type: 'checkbox', role: 'switch', class: 'switch-input', 'data-focus': 'lock-toggle' });
   const delay = h('select', { id: 'lock-delay', 'data-focus': 'lock-delay' },
     model.delayOptions.map((option) => h('option', { value: String(option.value) }, option.label)));
-  const confirm = button('Entsperrung prüfen', () => {}, 'primary', { 'data-focus': 'lock-confirm' });
-  const cancel = button('Abbrechen', () => {}, '', { 'data-focus': 'lock-cancel' });
+  const confirm = button(t('einstellungen.sperre.pruefen'), () => {}, 'primary', { 'data-focus': 'lock-confirm' });
+  const cancel = button(t('aktion.abbrechen'), () => {}, '', { 'data-focus': 'lock-cancel' });
   const pending = h('div', { class: 'buttons' }, confirm, cancel);
   const show = (next, { error = '', info = '' } = {}) => {
     model = next;
@@ -701,7 +705,7 @@ function lockSection(initial, handlers) {
       return;
     }
     pendingId = created.id;
-    show(model, { info: 'Passkey angelegt. Zum Einschalten die Entsperrung einmal bestätigen.' });
+    show(model, { info: t('einstellungen.sperre.passkey') });
     confirm.focus();
   });
   confirm.addEventListener('click', async () => {
@@ -709,7 +713,7 @@ function lockSection(initial, handlers) {
     const result = await handlers.confirmLock(pendingId);
     confirm.disabled = false;
     if (!result.ok) {
-      show(model, { error: result.error, info: 'Passkey angelegt. Zum Einschalten die Entsperrung einmal bestätigen.' });
+      show(model, { error: result.error, info: t('einstellungen.sperre.passkey') });
       return;
     }
     pendingId = null;
@@ -728,9 +732,9 @@ function lockSection(initial, handlers) {
   });
   show(model);
   return h('section', { class: 'lock' },
-    h('h3', {}, 'Sperre'),
-    h('label', { class: 'switch', for: 'lock-toggle' }, h('span', {}, 'App mit Geräte-Entsperrung sperren'), toggle),
-    h('label', { for: 'lock-delay' }, 'Sperren'), delay,
+    h('h3', {}, t('einstellungen.sperre.titel')),
+    h('label', { class: 'switch', for: 'lock-toggle' }, h('span', {}, t('einstellungen.sperre.schalter')), toggle),
+    h('label', { for: 'lock-delay' }, t('einstellungen.sperre.frist')), delay,
     note, status, message, pending);
 }
 
@@ -746,9 +750,9 @@ function shiftSection(model, handlers) {
     select.focus();
   });
   return h('section', { class: 'shift' },
-    h('h3', {}, 'Zeiten verschieben'),
-    h('label', { for: 'shift-step' }, 'Wischen auf den Zeitfeldern'), select,
-    h('p', { class: 'muted' }, 'Im Tages-Editor verschiebt ein waagerechter Zug auf den Zeitfeldern Start und Ende gemeinsam: nach rechts später, nach links früher.'));
+    h('h3', {}, t('einstellungen.verschieben.titel')),
+    h('label', { for: 'shift-step' }, t('einstellungen.verschieben.label')), select,
+    h('p', { class: 'muted' }, t('einstellungen.verschieben.text')));
 }
 
 /** Die Sperre selbst: ein Dialog über allem, was offen ist (ein später geöffneter modaler Dialog liegt weiter oben in der
@@ -758,7 +762,7 @@ function shiftSection(model, handlers) {
 export function lockDialog(handlers) {
   const message = h('p', { class: 'hint error', role: 'alert' });
   message.hidden = true;
-  const unlock = button('Entsperren', async () => {
+  const unlock = button(t('aktion.entsperren'), async () => {
     unlock.disabled = true;
     const result = await handlers.unlock();
     unlock.disabled = false;
@@ -768,15 +772,15 @@ export function lockDialog(handlers) {
     reset.hidden = false;
     unlock.focus();
   }, 'primary', { 'data-focus': 'unlock' });
-  const reset = button('Entsperren nicht möglich? Neu koppeln', () => confirmDialog({
-    title: 'Neu koppeln?',
-    text: 'Alle lokalen Daten dieser Web-App werden gelöscht, auch nicht übertragene Einträge. Danach koppelst du dieses Handy neu mit dem Desktop.',
-    confirmLabel: 'Löschen und neu koppeln',
+  const reset = button(t('neu_koppeln.knopf'), () => confirmDialog({
+    title: t('neu_koppeln.titel'),
+    text: t('neu_koppeln.text'),
+    confirmLabel: t('neu_koppeln.bestaetigen'),
   }, handlers.reset), 'link', { 'data-focus': 'lock-reset' });
   reset.hidden = true;
   const dialog = h('dialog', { 'aria-labelledby': 'lock-title', class: 'lock-dialog' },
-    h('h2', { id: 'lock-title' }, 'Zeiterfassung ist gesperrt'),
-    h('p', {}, 'Zum Öffnen die Geräte-Entsperrung bestätigen.'),
+    h('h2', { id: 'lock-title' }, t('sperre.titel')),
+    h('p', {}, t('sperre.text')),
     message,
     h('div', { class: 'buttons' }, unlock),
     h('div', { class: 'buttons' }, reset));
@@ -791,9 +795,9 @@ export function lockDialog(handlers) {
 /** Reiter „Updates“: Version der Handy-App, Suche, Neuladen, automatisches Einspielen. */
 function updatesPanel({ build, update }, { guard, handlers }) {
   const updateStatus = h('dd', { role: 'status' }, updateStatusText(update.state, update.detail));
-  const apply = button('Jetzt neu laden', () => guard(() => handlers.applyUpdate()), 'primary', { 'data-focus': 'apply-update' });
+  const apply = button(t('einstellungen.updates.neu_laden'), () => guard(() => handlers.applyUpdate()), 'primary', { 'data-focus': 'apply-update' });
   apply.hidden = update.state !== 'available';
-  const check = button('Nach Updates suchen', async () => {
+  const check = button(t('einstellungen.updates.suchen'), async () => {
     check.disabled = true;
     updateStatus.textContent = updateStatusText('checking');
     const { state, detail } = await handlers.checkUpdate();
@@ -802,10 +806,10 @@ function updatesPanel({ build, update }, { guard, handlers }) {
     check.disabled = false;
   }, '', { 'data-focus': 'check-update' });
   // Meldet die Suche einen Fehler wie „ServiceWorker cannot be started“, richtet das den Worker neu ein (#390).
-  const repair = button('Reparieren', async () => {
+  const repair = button(t('einstellungen.updates.reparieren'), async () => {
     repair.disabled = true;
     check.disabled = true;
-    updateStatus.textContent = 'Wird repariert …';
+    updateStatus.textContent = t('einstellungen.updates.repariert');
     const result = await handlers.repairUpdates();
     if (result.ok) return;                       // die Seite lädt neu
     updateStatus.textContent = result.text;
@@ -817,11 +821,11 @@ function updatesPanel({ build, update }, { guard, handlers }) {
     onchange: () => handlers.setAutoUpdate(auto.checked) });
   return h('div', {},
     h('dl', {},
-      h('dt', { class: 'muted' }, 'Handy-App'), h('dd', {}, build),
-      h('dt', { class: 'muted' }, 'Updates'), updateStatus),
+      h('dt', { class: 'muted' }, t('einstellungen.updates.handy_app')), h('dd', {}, build),
+      h('dt', { class: 'muted' }, t('einstellungen.updates.updates')), updateStatus),
     h('div', { class: 'buttons' }, check, apply, repair),
-    h('p', { class: 'muted' }, 'Meldet die Suche einen Fehler wie „ServiceWorker cannot be started“, hilft „Reparieren“: der Service Worker wird neu eingerichtet und die Seite lädt neu. Einträge und Kopplung bleiben erhalten. Braucht eine Internetverbindung.'),
-    h('label', { class: 'check', for: 'auto-update' }, auto, ' Updates automatisch einspielen'));
+    h('p', { class: 'muted' }, t('einstellungen.updates.reparatur_text')),
+    h('label', { class: 'check', for: 'auto-update' }, auto, t('einstellungen.updates.automatisch')));
 }
 
 /** Reiter „Debug“: technischer Zustand, Protokoll (neueste zuerst), Haltezeit, Kopieren/Teilen/Löschen.
@@ -830,10 +834,10 @@ function updatesPanel({ build, update }, { guard, handlers }) {
  *  `handlers.refreshDebug()` die Liste neu. Liefert `{ element, load }`. */
 function debugPanel({ handlers }) {
   const info = h('dl', {});
-  const list = h('ol', { class: 'debug-log', tabindex: 0, 'aria-label': 'Protokoll' });
-  const empty = h('p', { class: 'muted' }, 'Keine Einträge im Protokoll.');
-  const memoryNote = h('p', { class: 'hint warn' }, 'Das Protokoll liegt nur im Speicher dieser Seite.');
-  const loading = h('p', { class: 'muted', role: 'status' }, 'Wird geladen …');
+  const list = h('ol', { class: 'debug-log', tabindex: 0, 'aria-label': t('einstellungen.debug.protokoll') });
+  const empty = h('p', { class: 'muted' }, t('einstellungen.debug.leer'));
+  const memoryNote = h('p', { class: 'hint warn' }, t('einstellungen.debug.nur_speicher'));
+  const loading = h('p', { class: 'muted', role: 'status' }, t('einstellungen.debug.laedt'));
   const fill = (rows, isPersistent) => {
     list.replaceChildren(...rows.map((entry) => h('li', {}, formatEntry(entry))));
     list.hidden = rows.length === 0;
@@ -853,12 +857,12 @@ function debugPanel({ handlers }) {
         stored = Number(select.value);
       } catch {
         select.value = String(stored);
-        status.textContent = 'Haltezeit nicht gespeichert.';
+        status.textContent = t('einstellungen.debug.haltezeit_fehler');
         return;
       }
       await refresh();
     } catch {
-      status.textContent = 'Protokoll nicht lesbar.';
+      status.textContent = t('einstellungen.debug.nicht_lesbar');
     } finally { select.disabled = false; }
   } }, RETENTION_CHOICES.map((days) => h('option', { value: String(days), selected: days === DEFAULT_RETENTION_DAYS }, retentionLabel(days))));
   const refresh = async () => {
@@ -871,15 +875,15 @@ function debugPanel({ handlers }) {
     control.disabled = true;
     try { await action(); } catch { status.textContent = failure; } finally { control.disabled = false; }
   };
-  const copy = button('Kopieren', () => run(copy, async () => {
-    status.textContent = (await handlers.copyDebug()) === 'copied' ? 'In die Zwischenablage kopiert.' : 'Kopieren nicht möglich.';
-  }, 'Kopieren nicht möglich.')(), '', { 'data-focus': 'debug-copy' });
-  const share = button('Als Datei teilen', () => run(share, async () => {
+  const copy = button(t('einstellungen.debug.kopieren'), () => run(copy, async () => {
+    status.textContent = (await handlers.copyDebug()) === 'copied' ? t('einstellungen.debug.kopiert') : t('einstellungen.debug.kopieren_fehler');
+  }, t('einstellungen.debug.kopieren_fehler'))(), '', { 'data-focus': 'debug-copy' });
+  const share = button(t('einstellungen.debug.teilen'), () => run(share, async () => {
     const result = await handlers.shareDebug();
-    status.textContent = { shared: 'Geteilt.', downloaded: 'Als Datei heruntergeladen.', cancelled: 'Abgebrochen.' }[result] ?? '';
-  }, 'Teilen nicht möglich.')(), '', { 'data-focus': 'debug-share' });
-  const clearLog = button('Löschen', () => confirmDialog({ title: 'Protokoll löschen?',
-    text: 'Alle Einträge des Protokolls werden von diesem Gerät entfernt.', confirmLabel: 'Löschen' }, async () => {
+    status.textContent = { shared: t('einstellungen.debug.geteilt'), downloaded: t('einstellungen.debug.heruntergeladen'), cancelled: t('einstellungen.debug.abgebrochen') }[result] ?? '';
+  }, t('einstellungen.debug.teilen_fehler'))(), '', { 'data-focus': 'debug-share' });
+  const clearLog = button(t('aktion.loeschen'), () => confirmDialog({ title: t('einstellungen.debug.loeschen_titel'),
+    text: t('einstellungen.debug.loeschen_text'), confirmLabel: t('aktion.loeschen') }, async () => {
     status.textContent = '';
     let cleared = false;
     try {
@@ -888,7 +892,7 @@ function debugPanel({ handlers }) {
       cleared = false;
     }
     try { await refresh(); } catch { if (cleared) fill([], true); }
-    status.textContent = cleared ? 'Protokoll gelöscht.' : 'Löschen fehlgeschlagen.';
+    status.textContent = cleared ? t('einstellungen.debug.geloescht') : t('einstellungen.debug.loeschen_fehler');
   }), '', { 'data-focus': 'debug-clear' });
   for (const control of [copy, share, clearLog, select]) control.disabled = true;
   let latest = 0;
@@ -900,7 +904,7 @@ function debugPanel({ handlers }) {
     try {
       model = await handlers.loadDebug();
     } catch {
-      model = { info: [{ label: 'Zustand', value: 'unbekannt' }], entries: [], retention: stored, persistent: true };
+      model = { info: [{ label: t('einstellungen.debug.zustand'), value: t('einstellungen.verbindung.unbekannt') }], entries: [], retention: stored, persistent: true };
     }
     if (mine !== latest) return;              // ein neueres Laden ist unterwegs
     info.replaceChildren(...model.info.flatMap(({ label, value }) => [h('dt', { class: 'muted' }, label), h('dd', {}, value)]));
@@ -912,12 +916,12 @@ function debugPanel({ handlers }) {
   };
   const element = h('div', {},
     loading, info,
-    h('h3', {}, 'Protokoll'),
+    h('h3', {}, t('einstellungen.debug.protokoll')),
     memoryNote, empty, list,
-    h('label', { for: 'debug-retention' }, 'Einträge aufbewahren'), select,
+    h('label', { for: 'debug-retention' }, t('einstellungen.debug.aufbewahren')), select,
     h('div', { class: 'buttons' }, copy, share, clearLog),
     status,
-    h('p', { class: 'muted' }, 'Nichts davon verlässt dieses Gerät, solange Sie nicht kopieren oder teilen. Die App übergibt dem Protokoll keine Namen, Kategorien oder Einträge; Meldungen werden zusätzlich gefiltert.'));
+    h('p', { class: 'muted' }, t('einstellungen.debug.datenschutz')));
   return { element, load };
 }
 
@@ -936,10 +940,10 @@ function categoriesPanel(model, handlers) {
   const list = h('ul', { class: 'categories' });
   const storedError = h('p', { class: 'hint error', role: 'alert' }, model.error || '');
   storedError.hidden = !model.error;
-  const pending = h('p', { class: 'muted', role: 'status', tabindex: -1, 'data-focus': 'categories-status' }, 'Noch nicht an den Desktop übertragen.');
+  const pending = h('p', { class: 'muted', role: 'status', tabindex: -1, 'data-focus': 'categories-status' }, t('einstellungen.kategorien.nicht_uebertragen'));
   pending.hidden = !model.dirty;
   const message = h('div', { class: 'error-text', role: 'alert' }, '');
-  const save = button('Speichern', async () => {
+  const save = button(t('aktion.speichern'), async () => {
     save.disabled = true;
     const failure = await handlers.saveCategories(rows.map((row) => ({ ...row })));
     if (failure) {
@@ -949,14 +953,14 @@ function categoriesPanel(model, handlers) {
     }
     saved = signatureOf(rows);
     storedError.hidden = true;                    // ein neuer Stand ersetzt den abgelehnten
-    pending.textContent = 'Gespeichert — wird beim nächsten Abgleich an den Desktop übertragen.';
+    pending.textContent = t('einstellungen.kategorien.gespeichert');
     pending.hidden = false;
     refresh();
     pending.focus();                              // „Speichern“ ist jetzt gesperrt und hielte den Fokus nicht
   }, 'primary', { 'data-focus': 'categories-save' });
   const dirty = () => signatureOf(rows) !== saved;
   // Die Leiste steht oben und trägt „Speichern“ — sichtbar, sobald etwas geändert ist (der Knopf unten war grau und unscheinbar).
-  const dirtyBar = h('div', { class: 'dirty', role: 'status' }, h('span', {}, 'Änderungen nicht gespeichert'), save);
+  const dirtyBar = h('div', { class: 'dirty', role: 'status' }, h('span', {}, t('einstellungen.kategorien.ungespeichert')), save);
   const refresh = () => {
     const check = validateCategoryRows(rows);
     save.disabled = !model.editable || !dirty() || !check.ok;
@@ -984,16 +988,16 @@ function categoriesPanel(model, handlers) {
     },
   });
   const rowElement = (row, index) => {
-    const info = [h('strong', { class: 'name' }, row.name.trim() || '(ohne Namen)'), h('span', { class: 'muted summary' }, timesSummary(row))];
+    const info = [h('strong', { class: 'name' }, row.name.trim() || t('einstellungen.kategorien.ohne_namen')), h('span', { class: 'muted summary' }, timesSummary(row))];
     if (!model.editable) return h('li', { class: 'category' }, h('div', { class: 'info' }, info));
     return h('li', { class: 'category' },
-      button(info, () => edit(index), 'info', { 'aria-label': `Kategorie „${row.name.trim()}“ bearbeiten`, 'data-focus': `category-${index}` }),
-      button('▲', () => move(index, -1), 'move', { 'aria-label': 'Nach oben', disabled: index === 0, 'data-focus': `category-${index}-up` }),
-      button('▼', () => move(index, +1), 'move', { 'aria-label': 'Nach unten', disabled: index === rows.length - 1, 'data-focus': `category-${index}-down` }));
+      button(info, () => edit(index), 'info', { 'aria-label': t('einstellungen.kategorien.bearbeiten_aria', { name: row.name.trim() }), 'data-focus': `category-${index}` }),
+      button('▲', () => move(index, -1), 'move', { 'aria-label': t('einstellungen.kategorien.nach_oben'), disabled: index === 0, 'data-focus': `category-${index}-up` }),
+      button('▼', () => move(index, +1), 'move', { 'aria-label': t('einstellungen.kategorien.nach_unten'), disabled: index === rows.length - 1, 'data-focus': `category-${index}-down` }));
   };
   const build = () => {
     list.replaceChildren(...rows.map(rowElement));
-    if (rows.length === 0) list.append(h('li', { class: 'muted' }, 'Keine Kategorien.'));
+    if (rows.length === 0) list.append(h('li', { class: 'muted' }, t('einstellungen.kategorien.keine')));
   };
   build();
   refresh();
@@ -1005,7 +1009,7 @@ function categoriesPanel(model, handlers) {
     pending,
     message,
     model.editable && h('div', { class: 'buttons' },
-      button('+ Kategorie', () => categoryEditDialog(emptyCategoryRow(), {
+      button(t('einstellungen.kategorien.neu'), () => categoryEditDialog(emptyCategoryRow(), {
         isNew: true, onDone: (row) => change([...rows, row], [`category-${rows.length}`]),
       }), '', { 'data-focus': 'category-add' })));
   return { element, dirty };
@@ -1019,8 +1023,8 @@ export function settingsDialog({ tab = 'connection', connection, updates, catego
   let cats = null;
   const guard = (then) => {
     if (!cats?.dirty()) { then(); return; }
-    confirmDialog({ title: 'Änderungen verwerfen?', text: 'Die Änderungen an den Kategorien sind noch nicht gespeichert.',
-      confirmLabel: 'Verwerfen' }, then);
+    confirmDialog({ title: t('einstellungen.kategorien.verwerfen_titel'), text: t('einstellungen.kategorien.verwerfen_text'),
+      confirmLabel: t('aktion.verwerfen') }, then);
   };
   const closeThen = (then = () => {}) => guard(() => { dialog.close(); then(); });
   cats = categoriesPanel(categories, handlers);
@@ -1055,12 +1059,12 @@ export function settingsDialog({ tab = 'connection', connection, updates, catego
   // Kopfzeile mit ‹ (auf schmalen Bildschirmen füllt der Dialog den Schirm, dort ersetzt sie „Schließen“ unten); der Inhalt scrollt.
   dialog.append(
     h('div', { class: 'settings-head' },
-      button('‹', () => closeThen(), 'back', { 'aria-label': 'Zurück', 'data-focus': 'settings-back' }),
-      h('h2', { id: 'settings-title' }, 'Einstellungen')),
+      button('‹', () => closeThen(), 'back', { 'aria-label': t('aktion.zurueck'), 'data-focus': 'settings-back' }),
+      h('h2', { id: 'settings-title' }, t('einstellungen.titel'))),
     h('div', { class: 'settings-body' },
       h('div', { class: 'tabs', role: 'tablist' }, SETTINGS_TABS.map((key) => tabs[key])),
       ...SETTINGS_TABS.map((key) => panels[key])),
-    h('div', { class: 'buttons' }, button('Schließen', () => closeThen(), '', { 'data-focus': 'settings-close' })));
+    h('div', { class: 'buttons' }, button(t('aktion.schliessen'), () => closeThen(), '', { 'data-focus': 'settings-close' })));
   const initial = SETTINGS_TABS.includes(tab) ? tab : 'connection';
   show(initial);
   tabs[initial].autofocus = true;                 // Anfangsfokus auf den Reiter, nicht auf das ‹ in der Kopfzeile
@@ -1074,7 +1078,7 @@ export function categoryEditDialog(row, { onDone, onRemove, isNew = false }) {
   const dialog = h('dialog', { 'aria-labelledby': 'category-edit-title', class: 'category-edit-dialog' });
   const draft = { ...row, raw: row.raw && structuredClone(row.raw) };
   const message = h('div', { class: 'error-text', role: 'alert' }, '');
-  const done = button('Fertig', () => { dialog.close(); onDone(draft); }, 'primary', { 'data-focus': 'category-done' });
+  const done = button(t('aktion.fertig'), () => { dialog.close(); onDone(draft); }, 'primary', { 'data-focus': 'category-done' });
   const refresh = () => {
     const check = validateCategoryRows([draft]);
     done.disabled = !check.ok;
@@ -1092,26 +1096,26 @@ export function categoryEditDialog(row, { onDone, onRemove, isNew = false }) {
     return h('div', {}, h('label', { for: id }, label), input);
   };
   const times = draft.mode === 'per_day'
-    ? h('p', { class: 'hint info' }, 'Pro Wochentag eingestellt — am Desktop bearbeiten.')
+    ? h('p', { class: 'hint info' }, t('kategorie_dialog.pro_wochentag'))
     : h('div', {},
-      h('p', { class: 'muted' }, 'Leere Felder: der allgemeine Standard gilt.'),
+      h('p', { class: 'muted' }, t('kategorie_dialog.leer_standard')),
       h('div', { class: 'row' },
-        field('start', 'Start', { type: 'time', step: TIME_STEP_MINUTES * 60, placeholder: 'Standard' }),
-        field('end', 'Ende', { type: 'time', step: TIME_STEP_MINUTES * 60, placeholder: 'Standard' })),
-      field('pause', 'Pause (Min)', { type: 'number', inputmode: 'numeric', min: 0, step: TIME_STEP_MINUTES, placeholder: 'Standard' }));
-  const remove = !isNew && button('Löschen', () => confirmDialog({
-    title: 'Kategorie löschen?', text: categoryRemovalText(row.name), confirmLabel: 'Löschen',
+        field('start', t('kategorie_dialog.start'), { type: 'time', step: TIME_STEP_MINUTES * 60, placeholder: t('kategorie_dialog.standard') }),
+        field('end', t('kategorie_dialog.ende'), { type: 'time', step: TIME_STEP_MINUTES * 60, placeholder: t('kategorie_dialog.standard') })),
+      field('pause', t('editor.pause_min'), { type: 'number', inputmode: 'numeric', min: 0, step: TIME_STEP_MINUTES, placeholder: t('kategorie_dialog.standard') }));
+  const remove = !isNew && button(t('aktion.loeschen'), () => confirmDialog({
+    title: t('kategorie_dialog.loeschen_titel'), text: categoryRemovalText(row.name), confirmLabel: t('aktion.loeschen'),
   }, () => { dialog.close(); onRemove(); }), 'link destructive', { 'data-focus': 'category-remove' });
   dialog.append(
     h('form', { class: 'category-form', onsubmit: (event) => { event.preventDefault(); if (!done.disabled) done.click(); } },
-      h('h2', { id: 'category-edit-title' }, isNew ? 'Neue Kategorie' : 'Kategorie bearbeiten'),
-      field('name', 'Name', { type: 'text', maxlength: MAX_NAME_LENGTH, autocomplete: 'off' }),
+      h('h2', { id: 'category-edit-title' }, isNew ? t('kategorie_dialog.neu') : t('kategorie_dialog.bearbeiten')),
+      field('name', t('kategorie_dialog.name'), { type: 'text', maxlength: MAX_NAME_LENGTH, autocomplete: 'off' }),
       !isNew && h('p', { class: 'muted' }, categoryRenameHint),
       times,
       message,
       footerButtons(
         remove,
-        button('Abbrechen', () => dialog.close()),
+        button(t('aktion.abbrechen'), () => dialog.close()),
         done)));
   refresh();
   if (isNew) message.textContent = '';             // ein leerer Name ist hier noch kein Fehler
@@ -1120,28 +1124,28 @@ export function categoryEditDialog(row, { onDone, onRemove, isNew = false }) {
 
 export function scanDialog(onClose) {
   const video = h('video', { playsinline: true, muted: true });
-  const message = h('p', { class: 'muted', role: 'status' }, 'Kamera wird gestartet …');
+  const message = h('p', { class: 'muted', role: 'status' }, t('scan.kamera_startet'));
   const dialog = h('dialog', { 'aria-labelledby': 'scan-title' },
-    h('h2', { id: 'scan-title' }, 'QR-Code scannen'), video, message,
-    h('div', { class: 'buttons' }, button('Abbrechen', () => dialog.close())));
+    h('h2', { id: 'scan-title' }, t('aktion.qr_scannen')), video, message,
+    h('div', { class: 'buttons' }, button(t('aktion.abbrechen'), () => dialog.close())));
   dialog.addEventListener('close', onClose);
   openDialog(dialog);
   return { dialog, video, message };
 }
 
 export function fatalView(text) {
-  return h('main', {}, h('h1', {}, 'Zeiterfassung'), h('p', { class: 'hint error', role: 'alert' }, text));
+  return h('main', {}, h('h1', {}, t('app.titel')), h('p', { class: 'hint error', role: 'alert' }, text));
 }
 
 /** Der Speicher enthält verschlüsselte Daten, die sich nicht öffnen lassen (`vault.js`, `describeVaultError`).
  *  Nichts wird still gelöscht: „Neu koppeln“ fragt nach und verwirft die lokalen Daten erst dann. */
 export function vaultView({ text, canReset }, handlers) {
-  return h('main', {}, h('h1', {}, 'Zeiterfassung'), h('p', { class: 'hint error', role: 'alert' }, text),
+  return h('main', {}, h('h1', {}, t('app.titel')), h('p', { class: 'hint error', role: 'alert' }, text),
     h('div', { class: 'buttons' },
-      button('Seite neu laden', handlers.reload),
-      canReset && button('Neu koppeln', () => confirmDialog({
-        title: 'Neu koppeln?',
-        text: 'Alle lokalen Daten dieser Web-App werden gelöscht, auch nicht übertragene Einträge. Danach koppelst du dieses Handy neu mit dem Desktop.',
-        confirmLabel: 'Löschen und neu koppeln',
+      button(t('vault.neu_laden'), handlers.reload),
+      canReset && button(t('aktion.neu_koppeln'), () => confirmDialog({
+        title: t('neu_koppeln.titel'),
+        text: t('neu_koppeln.text'),
+        confirmLabel: t('neu_koppeln.bestaetigen'),
       }, handlers.reset), 'primary')));
 }

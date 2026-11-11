@@ -251,7 +251,7 @@ bietet sie nur an, wenn „Reservierungen verwenden“ an ist.
   (`pendingReservationMinutes`, nie negativ: eine Pause ab der Spanne aus Fremddaten zählt 0); die
   Tageszeile zeigt `08:00–15:30 · 30 min Pause`. Der **Google-Kalendertermin** bleibt brutto (volle
   Spanne), darauf weist unter dem Reservierungsblock ein Hinweis hin
-  (`RESERVATION_CALENDAR_NOTE`, nur mit Flag; bewusst bedingt formuliert „Falls dein Desktop mit dem Google-Kalender abgleicht …“, weil die PWA nicht weiß, ob der Abgleich an ist — anders als die Desktop-Konstante).
+  (Katalogschlüssel `editor.reservierung_kalender_hinweis`, nur mit Flag; bewusst bedingt formuliert „Falls dein Desktop mit dem Google-Kalender abgleicht …“, weil die PWA nicht weiß, ob der Abgleich an ist — anders als die Desktop-Konstante).
 - **Eingabefeld.** Das Feld „Pause (Min)“ erscheint im Reiter „Reservierung“ nur mit dem Flag
   (`pauseEnabled`); eine neue Zeile bekommt nur dann die Standardpause, ohne Flag steht sie auf 0 und
   geht nie in einen Slot (`reservationRows`/`reservationRowsToSlots`).

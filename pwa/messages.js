@@ -104,7 +104,3 @@ export function describeError(error, env = {}) {
       return defaultError();
   }
 }
-
-/** Hinweis unter dem Reservierungsblock (nur mit Pause, #455): der Kalendertermin kennt die Pause nicht.
- *  Bewusst bedingt formuliert (anders als die Desktop-Konstante): die PWA weiß nicht, ob der Abgleich an ist. */
-export const RESERVATION_CALENDAR_NOTE = 'Falls dein Desktop mit dem Google-Kalender abgleicht: Der Termin zeigt die volle Zeitspanne, die Pause wird dort nicht abgezogen.';

@@ -41,7 +41,6 @@ const PENDING = new Set([
   'unpair.js',         // 6
   'vault.js',          // 4
   'view-model.js',     // 102
-  'views.js',          // 194
 ]);
 
 // Protokoll-/Krypto-Fehlertexte und Test-Adapter: bleiben deutsch und technisch (Entscheidung der
@@ -53,9 +52,7 @@ const ALLOWED = {
   'browser-policy.js': ['Chromium'],                    // Markenname im User-Agent-Vergleich
   'diagnose.js': ['[Zeiterfassung] ${}: ${}',            // console-Präfix
     'Failed to update a ServiceWorker: '],               // Chromes englischer Fehlertext, wird nur abgeschnitten
-  // views.js (noch PENDING) importiert die Konstante, layout.test.js legt ihren Wortlaut fest:
-  // die Umstellung auf einen Schlüssel kommt mit views.js.
-  'messages.js': ['Falls dein Desktop mit dem Google-Kalender abgleicht: Der Termin zeigt die volle Zeitspanne, die Pause wird dort nicht abgezogen.'],
+  'views.js': ['Enter', 'Escape'],                       // KeyboardEvent.key-Werte
   'transport.js': ['Bearer ${}', 'Content-Type'],        // HTTP-Kopfzeilen
 };
 

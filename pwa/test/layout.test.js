@@ -5,6 +5,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import de from '../i18n/de.js';
 
 const css = readFileSync(new URL('../app.css', import.meta.url), 'utf8');
 const views = readFileSync(new URL('../views.js', import.meta.url), 'utf8');
@@ -66,13 +67,14 @@ test('time inputs step in five minutes and snap on change', () => {
 
 test('the pause fields step in five minutes and snap on change like the desktop picker', () => {
   assert.match(views, /\? snapPause :/);
-  assert.equal((views.match(/'Pause \(Min\)', \{[^}]*step: TIME_STEP_MINUTES/g) || []).length, 2);
+  assert.equal((views.match(/t\('editor\.pause_min'\), \{[^}]*step: TIME_STEP_MINUTES/g) || []).length, 2);
+  assert.equal(de['editor.pause_min'], 'Pause (Min)');
 });
 
 test('the reservation pause field is the same field as the actual-time one, shown only with the flag', () => {
   // Ein Feld, eine Zeile: gleiche Breitenregeln, gleiche Rasterung; nur die Bedingung unterscheidet sich.
   assert.match(views, /const showPause = withPause \|\| pauseEnabled;/);
-  assert.match(views, /showPause && field\(index, 'pause', 'Pause \(Min\)', \{ type: 'number', inputmode: 'numeric', min: 0, step: TIME_STEP_MINUTES \}\)/);
+  assert.match(views, /showPause && field\(index, 'pause', t\('editor\.pause_min'\), \{ type: 'number', inputmode: 'numeric', min: 0, step: TIME_STEP_MINUTES \}\)/);
   assert.equal((views.match(/field\(index, 'pause'/g) || []).length, 1);
 });
 
@@ -84,9 +86,9 @@ test('app.js hands pauseEnabled to the rows, the validation, the save and the ed
 });
 
 test('the calendar note sits only in the reservation tab and only with the flag', () => {
-  assert.match(readFileSync(new URL('../messages.js', import.meta.url), 'utf8'), /RESERVATION_CALENDAR_NOTE = 'Falls dein Desktop mit dem Google-Kalender abgleicht: Der Termin zeigt die volle Zeitspanne, die Pause wird dort nicht abgezogen\.'/);
-  assert.equal((views.match(/RESERVATION_CALENDAR_NOTE/g) || []).length, 2);     // Import + eine Verwendung
-  assert.match(views, /!withPause && pauseEnabled && h\('p', \{ class: 'muted note' \}, 'ⓘ ', RESERVATION_CALENDAR_NOTE/);
+  assert.equal(de['editor.reservierung_kalender_hinweis'], 'Falls dein Desktop mit dem Google-Kalender abgleicht: Der Termin zeigt die volle Zeitspanne, die Pause wird dort nicht abgezogen.');
+  assert.equal((views.match(/editor\.reservierung_kalender_hinweis/g) || []).length, 1);     // genau eine Verwendung
+  assert.match(views, /!withPause && pauseEnabled && h\('p', \{ class: 'muted note' \}, 'ⓘ ', t\('editor\.reservierung_kalender_hinweis'\)/);
   assert.match(views, /withPause: false, pauseEnabled/);
   assert.match(views, /categoryDisplay\(state\[index\], defaults, weekday, withPause\);/);   // Reservierungspause setzt kein `*`
 });
@@ -123,11 +125,13 @@ test('a dismissible hint leaves room for its close button so the text never runs
   assert.match(rule('.hint.dismissible'), /padding-right:\s*52px/);          // Knopf 44 px + Rand
   assert.match(rule('.hint .dismiss'), /min-width:\s*var\(--tap\)/);
   assert.match(views, /hint\.dismissible && button\('✕'/);
-  assert.match(views, /'aria-label': 'Hinweis schließen'/);
+  assert.match(views, /'aria-label': t\('hinweis\.schliessen'\)/);
+  assert.equal(de['hinweis.schliessen'], 'Hinweis schließen');
 });
 
 test('the “heute” label sits in the date column, not beside the weekday (the column is only 48 px wide)', () => {
-  assert.match(views, /day\.isToday && h\('div', \{ class: 'tag' \}, 'heute'\)/);
+  assert.match(views, /day\.isToday && h\('div', \{ class: 'tag' \}, t\('woche\.heute'\)\)/);
+  assert.equal(de['woche.heute'], 'heute');
   assert.match(css, /\.day \.tag \{[^}]*display: inline-block/);
   assert.match(css, /grid-template-columns: 48px 1fr auto/);
 });
@@ -140,7 +144,8 @@ test('the editor rows that use display:flex still honour [hidden] (day total, ne
 
 test('the unsaved-categories bar sits above the list, carries the save button and honours [hidden]', () => {
   const panel = /function categoriesPanel[\s\S]*?\n\}\r?\n/.exec(views)[0];
-  assert.match(panel, /h\('div', \{ class: 'dirty', role: 'status' \}, h\('span', \{\}, 'Änderungen nicht gespeichert'\), save\)/);
+  assert.match(panel, /h\('div', \{ class: 'dirty', role: 'status' \}, h\('span', \{\}, t\('einstellungen\.kategorien\.ungespeichert'\)\), save\)/);
+  assert.equal(de['einstellungen.kategorien.ungespeichert'], 'Änderungen nicht gespeichert');
   assert.ok(panel.indexOf('dirtyBar,') < panel.indexOf('    list,'));
   assert.match(panel, /dirtyBar\.hidden = !\(model\.editable && dirty\(\)\)/);
   assert.match(css, /\.dirty\[hidden\] \{ display: none; \}/);                // display:flex überstimmt sonst `hidden`
@@ -162,7 +167,8 @@ test('technical details are folded away; the state card and the storage notice c
   assert.ok(panel.indexOf("class: 'status-card'") < panel.indexOf('notice,'));
   assert.ok(panel.indexOf('notice,') < panel.indexOf('pushSection(push, handlers)'));
   assert.ok(panel.indexOf("h('details', { class: 'tech' }") > panel.indexOf('pushSection(push, handlers)'));
-  assert.match(panel, /h\('summary', \{\}, 'Technische Details'\)/);
+  assert.match(panel, /h\('summary', \{\}, t\('einstellungen\.verbindung\.technik'\)\)/);
+  assert.equal(de['einstellungen.verbindung.technik'], 'Technische Details');
 });
 
 test('the storage notice never hands null to the native replaceChildren (it would print “null”)', () => {
@@ -178,7 +184,8 @@ test('on phones the settings dialog fills the screen with a header and a scrolli
   assert.match(media[1], /\.settings-dialog > \.buttons \{ display: none; \}/);
   assert.match(css, /\.settings-head \.back \{ display: none;/);               // breit: kein ‹
   assert.match(views, /h\('div', \{ class: 'settings-head' \}/);
-  assert.match(views, /'aria-label': 'Zurück', 'data-focus': 'settings-back'/);
+  assert.match(views, /'aria-label': t\('aktion\.zurueck'\), 'data-focus': 'settings-back'/);
+  assert.equal(de['aktion.zurueck'], 'Zurück');
 });
 
 test('every dialog opens through openDialog, which ties it to the browser history (back gesture closes it) — except the lock', () => {
@@ -279,7 +286,8 @@ test('a dialog footer with a delete button keeps Cancel and Save together: delet
   assert.equal((views.match(/footerButtons\(/g) || []).length, 3);               // Definition + zwei Aufrufer
   assert.match(views, /footerButtons\(\s*clearButton,/);
   assert.match(views, /footerButtons\(\s*remove,/);
-  assert.match(views, /button\('Tag leeren', \(\) => handlers\.clear\(active, dialog\), 'link destructive'\)/);
+  assert.match(views, /button\(t\('editor\.tag_leeren'\), \(\) => handlers\.clear\(active, dialog\), 'link destructive'\)/);
+  assert.equal(de['editor.tag_leeren'], 'Tag leeren');
   assert.match(views, /'link destructive', \{ 'data-focus': 'category-remove' \}/);
 });
 
