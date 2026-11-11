@@ -13,7 +13,9 @@ from tkinter import messagebox
 
 from src.dialogs.date_row import build_date_row
 from src.dialogs.send_dialog import show_missing_credentials_dialog
+from src.dialogs.slot_rows import no_category_label
 from src.dialogs.share_task import perform_share
+from src.i18n import t
 from src.share import (
     build_share_doc, filter_records_by_category, filter_records_by_range,
     serialize_share_doc,
@@ -74,13 +76,12 @@ def open_share_dialog(parent, storage, settings, base_path, runner, reservation_
     if not entries and not reservations:
         themed_showinfo(
             parent,
-            "Nichts zum Teilen",
-            "Es sind weder Arbeitszeiten noch Reservierungen zum Teilen "
-            "vorhanden.",
+            t("teilen.nichts_titel"),
+            t("teilen.nichts"),
         )
         return
 
-    dialog = create_dialog(parent, "Teilen")
+    dialog = create_dialog(parent, t("teilen.titel"))
     # Pflicht, seit der Dialog Comboboxen hat (Zeitraum): ohne das rendern sie
     # im hellen ttk-Standard statt im Dark-Theme. Genauso in export_dialog,
     # send_dialog, entry_dialog, import_dialog, webhook_dialog.
@@ -89,13 +90,13 @@ def open_share_dialog(parent, storage, settings, base_path, runner, reservation_
 
     row = 0
     tk.Label(
-        dialog, text="Was möchtest Du teilen?", font=FONT, bg=BG, fg=TEXT,
+        dialog, text=t("teilen.frage"), font=FONT, bg=BG, fg=TEXT,
     ).grid(row=row, column=0, columnspan=2, padx=20, pady=(20, 6), sticky="w")
     row += 1
 
     include_entries_var = tk.BooleanVar(value=bool(entries))
     cb_entries = tk.Checkbutton(
-        dialog, text=f"Arbeitszeiten ({len(entries)} Tage)",
+        dialog, text=t("teilen.arbeitszeiten", tage=len(entries)),
         variable=include_entries_var,
         font=FONT, bg=BG, fg=TEXT, selectcolor=BG,
         activebackground=BG, activeforeground=TEXT,
@@ -108,7 +109,7 @@ def open_share_dialog(parent, storage, settings, base_path, runner, reservation_
 
     include_res_var = tk.BooleanVar(value=bool(reservations))
     cb_res = tk.Checkbutton(
-        dialog, text=f"Reservierungen ({len(reservations)} Tage)",
+        dialog, text=t("teilen.reservierungen", tage=len(reservations)),
         variable=include_res_var,
         font=FONT, bg=BG, fg=TEXT, selectcolor=BG,
         activebackground=BG, activeforeground=TEXT,
@@ -153,9 +154,9 @@ def open_share_dialog(parent, storage, settings, base_path, runner, reservation_
     # derselben Kante wie die Kategorie-Checkboxen und das Empfänger-Feld —
     # der Dialog behält seine zwei Spalten (Beschriftung | Inhalt), statt eine
     # dritte Ausrichtungslinie einzuführen.
-    from_row = build_date_row(dialog, "Von:", earliest, on_change=lambda: _refresh(),
+    from_row = build_date_row(dialog, t("zeitraum.von"), earliest, on_change=lambda: _refresh(),
                               year_from=year_from, label_width=10)
-    to_row = build_date_row(dialog, "Bis:", latest, on_change=lambda: _refresh(),
+    to_row = build_date_row(dialog, t("zeitraum.bis"), latest, on_change=lambda: _refresh(),
                             year_from=year_from, label_width=10)
     from_row.frame.grid(row=row, column=0, columnspan=2, padx=20, pady=(4, 0), sticky="w")
     row += 1
@@ -190,7 +191,7 @@ def open_share_dialog(parent, storage, settings, base_path, runner, reservation_
     category_vars = {}
     if present_categories:
         tk.Label(
-            dialog, text="Kategorien:", font=FONT, bg=BG, fg=TEXT,
+            dialog, text=t("zeitraum.kategorien"), font=FONT, bg=BG, fg=TEXT,
         ).grid(row=row, column=0, padx=(20, 6), pady=(0, 4), sticky="nw")
         cat_frame = tk.Frame(dialog, bg=BG)
         cat_frame.grid(row=row, column=1, padx=(0, 20), pady=(0, 4), sticky="w")
@@ -198,7 +199,7 @@ def open_share_dialog(parent, storage, settings, base_path, runner, reservation_
             var = tk.BooleanVar(value=True)
             category_vars[kat] = var
             tk.Checkbutton(
-                cat_frame, text=(kat if kat else "(ohne Kategorie)"), variable=var,
+                cat_frame, text=(kat if kat else no_category_label()), variable=var,
                 command=lambda: _refresh(),
                 font=FONT, bg=BG, fg=TEXT, selectcolor=CELL_BG,
                 activebackground=BG, activeforeground=TEXT,
@@ -232,12 +233,12 @@ def open_share_dialog(parent, storage, settings, base_path, runner, reservation_
 
         return _n(entries), _n(reservations)
 
-    transport_labels = (["Gmail"] if gmail_possible else []) + \
+    transport_labels = ([t("teilen.weg_gmail")] if gmail_possible else []) + \
         [a.get("name", "") for a in accounts]
     transport_var = tk.StringVar(value=transport_labels[0])
     transport_combo = None
     if len(transport_labels) > 1:
-        tk.Label(dialog, text="Versand über:", font=FONT, bg=BG, fg=TEXT).grid(
+        tk.Label(dialog, text=t("teilen.versand_ueber"), font=FONT, bg=BG, fg=TEXT).grid(
             row=row, column=0, padx=(20, 6), pady=(0, 4), sticky="w")
         transport_combo = dark_combo(dialog, transport_var, transport_labels, width=24)
         transport_combo.grid(row=row, column=1, padx=(0, 20), pady=(0, 4), sticky="w")
@@ -274,7 +275,7 @@ def open_share_dialog(parent, storage, settings, base_path, runner, reservation_
         return None
 
     tk.Label(
-        dialog, text="Empfänger:", font=FONT, bg=BG, fg=TEXT,
+        dialog, text=t("teilen.empfaenger"), font=FONT, bg=BG, fg=TEXT,
     ).grid(row=row, column=0, padx=(20, 6), pady=(0, 4), sticky="w")
 
     recipient_var = tk.StringVar(
@@ -310,7 +311,7 @@ def open_share_dialog(parent, storage, settings, base_path, runner, reservation_
     save_default_var = tk.BooleanVar(value=False)
     tk.Checkbutton(
         dialog,
-        text="Als Standard-Empfänger speichern",
+        text=t("teilen.als_standard"),
         variable=save_default_var,
         font=FONT, bg=BG, fg=TEXT, selectcolor=BG,
         activebackground=BG, activeforeground=TEXT,
@@ -334,8 +335,8 @@ def open_share_dialog(parent, storage, settings, base_path, runner, reservation_
         if not share_recipient:
             themed_showerror(
                 dialog,
-                "Empfänger fehlt",
-                "Bitte eine E-Mail-Adresse angeben.",
+                t("teilen.empfaenger_fehlt_titel"),
+                t("teilen.empfaenger_fehlt"),
             )
             return
         sender_email = settings.get("sender_email") or ""
@@ -367,7 +368,7 @@ def open_share_dialog(parent, storage, settings, base_path, runner, reservation_
 
         busy["running"] = True
         set_primary_button_enabled(send_btn, False)
-        set_button_text(send_btn, "Teile…")
+        set_button_text(send_btn, t("teilen.teile"))
 
         def fn():
             return perform_share(
@@ -386,33 +387,30 @@ def open_share_dialog(parent, storage, settings, base_path, runner, reservation_
                 if dialog.winfo_exists():
                     dialog.destroy()
                 themed_showinfo(
-                    parent, "Geteilt",
-                    f"{what} wurden an {share_recipient} gesendet.",
+                    parent, t("teilen.geteilt_titel"),
+                    t("teilen.geteilt", was=what, empfaenger=share_recipient),
                 )
                 return
             busy["running"] = False
             alive = dialog.winfo_exists()
             target = dialog if alive else parent
             if alive:
-                set_button_text(send_btn, "Senden")
+                set_button_text(send_btn, t("senden.knopf_senden"))
                 _refresh()
             kind = res["kind"]
             if kind == "filenotfound":
-                themed_showerror(target, "Fehler", str(res["error"]))
+                themed_showerror(target, t("senden.fehler_titel"), str(res["error"]))
             elif kind == "offline":
                 themed_showerror(
-                    target, "Keine Internetverbindung",
-                    "Die Daten konnten nicht gesendet werden, weil keine "
-                    "Verbindung zum Internet besteht.\n\n"
-                    "Bitte prüfe deine Internetverbindung und versuche es "
-                    "dann erneut.",
+                    target, t("senden.offline_titel"),
+                    t("teilen.offline"),
                 )
             elif res.get("tb"):
                 # Nur der Catch-all-Zweig ist nativ: ein themed Dialog baut
                 # selbst Tk-Widgets auf und ist im gestörten Zustand die
                 # unzuverlässigere Schicht (CLAUDE.md, Audit N14).
                 messagebox.showerror(
-                    "Teilen fehlgeschlagen",
+                    t("teilen.fehlgeschlagen_titel"),
                     f"{type(res['error']).__name__}: {res['error']}\n\n{res['tb']}",
                     parent=target,
                 )
@@ -421,7 +419,7 @@ def open_share_dialog(parent, storage, settings, base_path, runner, reservation_
                 # Meldung samt Serverantwort, themed.
                 from src.dialogs.send_task import format_result_summary
                 themed_showerror(
-                    target, "Teilen fehlgeschlagen",
+                    target, t("teilen.fehlgeschlagen_titel"),
                     format_result_summary([{
                         "name": share_recipient, "ok": False,
                         "kind": kind, "detail": res.get("detail")}]))
@@ -431,16 +429,16 @@ def open_share_dialog(parent, storage, settings, base_path, runner, reservation_
     btn_frame = tk.Frame(dialog, bg=BG)
     btn_frame.grid(row=row, column=0, columnspan=2, pady=(0, 16))
 
-    send_btn = primary_button(btn_frame, "Senden", do_send)
+    send_btn = primary_button(btn_frame, t("senden.knopf_senden"), do_send)
     send_btn.pack(side=tk.LEFT, padx=5)
-    secondary_button(btn_frame, "Abbrechen", dialog.destroy).pack(side=tk.LEFT, padx=5)
+    secondary_button(btn_frame, t("knopf.abbrechen"), dialog.destroy).pack(side=tk.LEFT, padx=5)
 
     def _refresh(*_):
         # Zahlen neben den Checkboxen zeigen die Tage im gewählten Zeitraum,
         # nicht den Gesamtbestand — sie sollen benennen, was rausgeht.
         n_entries, n_res = _selected_counts()
-        cb_entries.config(text=f"Arbeitszeiten ({n_entries} Tage)")
-        cb_res.config(text=f"Reservierungen ({n_res} Tage)")
+        cb_entries.config(text=t("teilen.arbeitszeiten", tage=n_entries))
+        cb_res.config(text=t("teilen.reservierungen", tage=n_res))
 
         # „Senden" nur klickbar, wenn mind. ein Datentyp UND (falls Kategorien
         # existieren) mind. eine Kategorie gewählt ist — und im Zeitraum

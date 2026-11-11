@@ -278,6 +278,9 @@ ALLOWED: dict[str, dict[str, str]] = {
         'Content-Disposition: form-data; name="report"; filename="{}"\r\n': _WIRE,
         'multipart/form-data; boundary="{}"': _WIRE,
     },
+    "src/dialogs/share_task.py": {
+        "Gmail": "Kanalname im Log (`log.info(\"Teilen ok (über %s)\")` in `perform_share`); erreicht nie die Oberfläche",
+    },
     "src/dialogs/send_task.py": {
         "kein Kanal gewählt": _LOG_LINE,
         "%s %d/%d ok": _LOG_LINE,
@@ -303,9 +306,6 @@ PENDING: list[str] = [
     # Task 8 (category_dialog: auch „variabel“ (≈183 f.), ein einzelnes kleines Wort über
     # eine Variable — die Regel sieht es nicht, die Umstellung muss es von Hand mitnehmen)
     # Task 9
-    "src/dialogs/share_task.py",
-    "src/dialogs/share_dialog.py",
-    "src/dialogs/import_dialog.py",
     # Task 10
     "src/dialogs/smtp_dialog.py",
     "src/dialogs/webhook_dialog.py",
