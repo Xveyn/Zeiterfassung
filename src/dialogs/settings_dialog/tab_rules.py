@@ -468,10 +468,10 @@ def api_routes() -> tuple[tuple[str, str], ...]:
         (t("regeln.api_pfad_eintraege"), t("regeln.api_route_eintraege")),
         (t("regeln.api_pfad_reservierungen"), t("regeln.api_route_reservierungen")),
         (t("regeln.api_pfad_urlaub"), t("regeln.api_route_urlaub")),
-        (t("regeln.api_pfad_woche"), t("regeln.api_route_woche")),
-        (t("regeln.api_pfad_monat"), t("regeln.api_route_monat")),
+        ("GET " + t("regeln.api_pfad_woche"), t("regeln.api_route_woche")),
+        ("GET " + t("regeln.api_pfad_monat"), t("regeln.api_route_monat")),
         ("GET /v1/categories", t("regeln.api_route_kategorien")),
-        (t("regeln.api_pfad_feiertage"), t("regeln.api_route_feiertage")),
+        ("GET " + t("regeln.api_pfad_feiertage"), t("regeln.api_route_feiertage")),
     )
 
 
@@ -556,9 +556,14 @@ def window_cap_to_choice(days: object) -> str:
 
 
 def window_cap_from_choice(choice: object) -> int:
-    """Die Obergrenze zu einer Auswahl; alles Unlesbare ist das Maximum. Die Zahl
-    steht in jeder Sprache vorn (`regeln.mobil_tage`)."""
-    head = str(choice or "").split(" ", 1)[0]
+    """Die Obergrenze zu einer Auswahl; alles Unlesbare ist das Maximum. Erkannt wird
+    der Anzeigetext der aktuellen Sprache (`regeln.mobil_tage`); unbekannter Text
+    wird wie bisher an seiner führenden Zahl gelesen."""
+    text = str(choice or "")
+    by_label = {t("regeln.mobil_tage", tage=days): days for days in WINDOW_CAP_CHOICES}
+    if text in by_label:
+        return by_label[text]
+    head = text.split(" ", 1)[0]
     return window_cap(int(head)) if head.isdigit() else window_cap(None)
 
 

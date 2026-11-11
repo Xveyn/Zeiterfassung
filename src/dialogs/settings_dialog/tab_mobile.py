@@ -15,15 +15,16 @@ App muss laufen); erst die Zustimmung wird gemerkt (`mobile_notice_accepted`).
 import tkinter as tk
 
 from src import netinfo
-from src.i18n import t
 from src.dialogs.settings_dialog.fields import FieldSet
 from src.dialogs.settings_dialog.form_model import SaveOutcome
 from src.dialogs.settings_dialog.tab_rules import (
-    address_options, address_to_choice, dismiss_error_text, first_enable_notice, revoke_error_text,
-    device_row_text, has_revocable, is_device_unpaired, keystore_summary, mobile_status_view, mobile_updates,
-    relay_pair_enabled, revoke_all_prompt, revoke_button_label, revoke_outcome, revoke_prompt, test_push_outcome, test_push_text, validate_mobile,
-    visible_devices, window_cap_options, window_cap_to_choice,
+    address_options, address_to_choice, dismiss_error_text, first_enable_notice,
+    revoke_error_text, device_row_text, has_revocable, is_device_unpaired, keystore_summary,
+    mobile_status_view, mobile_updates, relay_pair_enabled, revoke_all_prompt,
+    revoke_button_label, revoke_outcome, revoke_prompt, test_push_outcome, test_push_text,
+    validate_mobile, visible_devices, window_cap_options, window_cap_to_choice,
 )
+from src.i18n import t
 from src.theme import (
     ACCENT, BG, ENTRY_BG, FONT, STATUS_OK, STATUS_WARN, TEXT, TEXT_MUTED, Form, dark_combo,
     dark_entry, empty_state, px, set_button_text, set_secondary_button_enabled, themed_askyesno,

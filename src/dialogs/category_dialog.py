@@ -155,7 +155,7 @@ def open_category_dialog(parent, settings, on_change=None):
 
     tk.Label(outer, text=t("kategorien.kopf"), font=FONT_BOLD, bg=BG, fg=TEXT).pack(anchor="w")
     tk.Label(
-        outer, text=t("kategorien.hinweis"),
+        outer, text=t("kategorien.hinweis", standard=STANDARD),
         font=FONT, bg=BG, fg=TEXT_MUTED,
     ).pack(anchor="w", pady=(0, 6))
 

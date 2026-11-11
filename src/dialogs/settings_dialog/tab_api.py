@@ -20,11 +20,11 @@ import tkinter as tk
 
 from src.dialogs.settings_dialog.fields import FieldSet
 from src.dialogs.settings_dialog.form_model import SaveOutcome
-from src.i18n import N_, t
 from src.dialogs.settings_dialog.tab_rules import (
-    api_auth_hint, api_routes, api_updates, curl_example, port_hint, status_view, token_buttons_enabled,
-    token_label_view, validate_api,
+    api_auth_hint, api_routes, api_updates, curl_example, port_hint, status_view,
+    token_buttons_enabled, token_label_view, validate_api,
 )
+from src.i18n import N_, t
 from src.theme import (
     BG, FONT, FONT_SMALL, STATUS_OK, STATUS_WARN, TEXT, TEXT_MUTED, Form, dark_entry, px,
     set_secondary_button_enabled, themed_askyesno, themed_showerror,

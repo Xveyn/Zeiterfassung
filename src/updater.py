@@ -125,7 +125,7 @@ FAILURE_TEXTS: dict[str, str] = {
 
 def failure_text(failure: str | None) -> str:
     """Nutzertext zu einer Fehlerart; unbekannt oder `None` -> der allgemeine."""
-    return t(FAILURE_TEXTS.get(failure or "", N_("updater.fehler_sonst")))
+    return t(FAILURE_TEXTS.get(failure or "", FAILURE_TEXTS[FAILURE_OTHER]))
 
 
 def classify_fetch_error(exc: BaseException) -> str:

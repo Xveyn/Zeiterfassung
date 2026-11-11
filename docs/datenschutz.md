@@ -32,7 +32,7 @@ er sieht die Slots wie der Relay, also auch das Gerätetoken, aber nie den Inhal
 **Koppeln über das Internet:** der QR-Code des Relay-Koppel-Dialogs trägt das Geheimnis der Box. Wer ihn
 fotografiert, kann sich von überall im Internet koppeln, solange der Kopplungscode gilt (fünf Minuten);
 der LAN-QR verlangte Zugang zum Netz. Das ist eine Erweiterung des Vertrauens gegenüber dem LAN. Der Dialog
-sagt es, solange ein QR-Code steht (`tab_rules.RELAY_PAIR_HINT`), zeigt das Geheimnis nie als Text und der Einschalt-Hinweis
+sagt es, solange ein QR-Code steht (`tab_rules.relay_pair_hint()`), zeigt das Geheimnis nie als Text und der Einschalt-Hinweis
 der Handy-Erfassung nennt den Relay. Derselbe Hinweis steht in `known-limitations.md`, Abschnitt „Abgleich über den Relay“.
 
 ## 2. Aufbewahrung und Löschung

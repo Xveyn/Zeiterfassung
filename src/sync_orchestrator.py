@@ -66,7 +66,7 @@ def error_display_text(error):
     text = str(error)
     if text == NEWER_REMOTE_VERSION_MSG:
         return t("sync.neuere_version")
-    if REAUTH_REQUIRED_MSG in text:
+    if text == REAUTH_REQUIRED_MSG:
         return t("sync.reauth_anzeige")
     return text
 

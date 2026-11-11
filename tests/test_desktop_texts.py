@@ -138,13 +138,16 @@ ALLOWED: dict[str, dict[str, str]] = {
             "Nutzer entsteht aus den Zählern (`repair_notice_text`)",
         "apply_merge: entry {} missing keys {}": (
             "Programmfehler-Invariante (Pflichtfelder prüft `sync.validate_remote_doc` vorher): "
-            "`apply_merge` läuft nur im Sync-Worker (`sync.py`), ein `ValueError` erscheint "
-            "dort als Traceback im Catch-all-Dialog, nie als kuratierter Text"),
+            "`apply_merge` läuft im Sync-Worker, im Server-Thread des Handy-Abgleichs "
+            "(`mobile_sync`), in `compact_local` und im Never-synced-Prune; ein `ValueError` endet "
+            "immer als Traceback im nativen Catch-all-Dialog oder im Log, nie als kuratierter Text"),
     },
     "src/vacations.py": {
         "apply_reconciled: entry {} missing keys {}": (
-            "Invariante: die Eingabe stammt aus `store.get_all_raw()` (vacations_sync.py), "
-            "ein Verstoß endet als Worker-Traceback im nativen Fehlerdialog, nie als Meldung"),
+            "Invariante: die Eingabe stammt aus `store.get_all_raw()` (vacations_sync.py); ein "
+            "Verstoß erreicht den Nutzer roh über `run_vacation_purge` -> `vacation_dialog` "
+            "(`themed_showerror`) und den nativen Fehlerdialog in `ui.py`, der Kalender-Push "
+            "loggt ihn nur — nie als kuratierte Meldung"),
     },
     "src/oauth_utils.py": {
         "Kein gültiger Google-Token — Anmeldung erforderlich.": (
@@ -157,7 +160,15 @@ ALLOWED: dict[str, dict[str, str]] = {
             "(`mail_task`-Detail) ist `keyring_unavailable_detail()`"),
     },
     "src/mail.py": {
-        "expired or revoked": "Google-Fehlertext, nur verglichen (`friendly_token_message`), nie angezeigt",
+        "expired or revoked": (
+            "Google-Fehlertext, nur verglichen (`friendly_token_message` hier und "
+            "`sync_orchestrator.classify_sync_error`), nie angezeigt"),
+    },
+    "src/dialogs/category_dialog.py": {
+        "(Standard)": (
+            "Erkennungsmerkmal + Combo-Anzeigewert (`STANDARD` = globale Standardzeit, "
+            "in `_value_or_none`/`collect_categories` verglichen); `kategorien.hinweis` nennt "
+            "ihn über `{standard}` (Folgeaufgabe: Anzeige-Sentinel-Abbildung)"),
     },
     "src/dialogs/slot_rows.py": {
         "(ohne Kategorie)": (
@@ -197,8 +208,10 @@ ALLOWED: dict[str, dict[str, str]] = {
     },
     "src/reservations.py": {
         "apply_reconciled: entry {} missing keys {}": (
-            "Invariante: die Eingabe stammt aus dem Abgleich (`reservations_sync`), ein Verstoß endet als "
-            "Worker-Traceback im nativen Fehlerdialog, nie als kuratierte Meldung"),
+            "Invariante: die Eingabe stammt aus dem Abgleich (`reservations_sync`); ein Verstoß "
+            "erreicht den Nutzer roh über `run_vacation_purge` -> `vacation_dialog` "
+            "(`themed_showerror`) und den nativen Fehlerdialog in `ui.py`, der Kalender-Push "
+            "loggt ihn nur — nie als kuratierte Meldung"),
     },
     "src/json_store.py": {
         "JSON nicht parsebar": "Default-Grund der Logzeile von `quarantine_corrupt`, nie angezeigt",
@@ -602,3 +615,20 @@ def test_script_cli_runs(capsys):
     assert "insgesamt:" in capsys.readouterr().out
     if _has_git():
         assert check.main(["--base", "HEAD", "--files", "src/region.py"]) == 0
+
+
+def test_the_send_tab_placeholder_hint_is_called_without_parameters():
+    """`{zeitraum}, {gesamt}` sind Platzhalter der Vorlagen, kein Parameter von `t()`:
+    mit Parametern aufgerufen, würde `t` sie ersetzen oder verschlucken."""
+    import ast
+    from src.i18n import TEXTS, t
+    source = (REPO / "src/dialogs/settings_dialog/tab_sending.py").read_text(encoding="utf-8")
+    calls = [n for n in ast.walk(ast.parse(source))
+             if isinstance(n, ast.Call) and getattr(n.func, "id", "") == "t"
+             and n.args and isinstance(n.args[0], ast.Constant)
+             and n.args[0].value == "tab_versand.platzhalter"]
+    assert len(calls) == 1
+    assert len(calls[0].args) == 1 and not calls[0].keywords
+    expected = "Platzhalter in allen Vorlagen-Feldern: {zeitraum}, {gesamt}"
+    assert TEXTS["tab_versand.platzhalter"] == expected
+    assert t("tab_versand.platzhalter") == expected

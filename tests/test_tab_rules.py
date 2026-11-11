@@ -571,6 +571,28 @@ def test_the_window_cap_choice_parses_tolerantly(choice, days):
     assert tr.window_cap_from_choice(choice) == days
 
 
+@pytest.mark.parametrize("choice,days", [("90", 90), ("0 Tage", 365), ("x 30", 365),
+                                         ("90 Tage extra", 90), (" 30 Tage", 365), ("Tage", 365)])
+def test_the_window_cap_choice_keeps_the_old_parsing_for_unknown_text(choice, days):
+    assert tr.window_cap_from_choice(choice) == days
+
+
+def test_the_window_cap_choice_maps_back_through_the_catalog_text(monkeypatch):
+    """Die Rückabbildung läuft über den Anzeigetext, nicht über die Stellung der Zahl."""
+    from src import i18n
+    monkeypatch.setitem(i18n.TEXTS, "regeln.mobil_tage", "bis {tage} d")
+    assert tr.window_cap_options()[1] == "bis 90 d"
+    assert tr.window_cap_from_choice("bis 90 d") == 90
+    assert tr.window_cap_from_choice("bis 180 d") == 180
+
+
+def test_the_api_routes_prefix_the_method_in_code():
+    paths = [path for path, _what in tr.api_routes()]
+    assert "GET /v1/summary/week/JJJJ-Www" in paths
+    assert "GET /v1/summary/month/JJJJ-MM" in paths
+    assert "GET /v1/holidays/JJJJ" in paths
+
+
 def test_mobile_updates_carries_the_window_cap():
     assert tr.mobile_updates(mobile_raw(mobile_window_max_days="180 Tage"))["mobile_window_max_days"] == 180
     assert tr.mobile_updates(mobile_raw(mobile_window_max_days="kaputt"))["mobile_window_max_days"] == 365

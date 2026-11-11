@@ -100,7 +100,7 @@ TEXTS: dict[str, str] = {
     # Kategorien-Dialog (`category_dialog`).
     "kategorien.titel": "Kategorien verwalten",
     "kategorien.kopf": "Kategorien",
-    "kategorien.hinweis": "Pro Kategorie: Name + Standardzeiten. „(Standard)\" = globale Standardzeit verwenden.",
+    "kategorien.hinweis": "Pro Kategorie: Name + Standardzeiten. „{standard}\" = globale Standardzeit verwenden.",
     "kategorien.spalte_name": "Name",
     "kategorien.spalte_modus": "Modus",
     "kategorien.spalte_start": "Start",

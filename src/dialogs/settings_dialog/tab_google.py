@@ -21,10 +21,10 @@ from src.dialogs.settings_dialog.oauth_task import (
 )
 from src.dialogs.settings_dialog.tab_rules import calendar_update, google_updates
 from src.i18n import N_, t
-from src.sync_orchestrator import error_display_text
 from src.oauth_utils import (
     keyring_unavailable_hint, keyring_unavailable_title, is_keyring_unavailable,
 )
+from src.sync_orchestrator import error_display_text
 from src.sync_runtime import run_compaction_blocking
 from src.theme import (
     ACCENT, BG, FONT, FONT_SMALL, STATUS_OK, STATUS_WARN, TEXT_MUTED, Form,
@@ -513,7 +513,8 @@ class GoogleTab:
             elif not res.get("ok"):
                 if self._show_keyring_error(res.get("error")):
                     return
-                detail = f"{error_display_text(res.get('error', '?'))}\n\n{res.get('tb', '')}"
+                shown = error_display_text(res.get('error', '?'))
+                detail = f"{shown}\n\n{res.get('tb', '')}"
                 themed_showerror(
                     dialog,
                     t("tab_google.kompakt_fehler_titel"),

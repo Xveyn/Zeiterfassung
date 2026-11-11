@@ -40,14 +40,6 @@ from src.version import (
 )
 
 
-# Beschriftung der Changelog-Box. Ein Pre-Release hat bewusst KEINEN
-# kuratierten Changelog-Eintrag — dort stehen die generierten Release-Notes,
-# und die Box sagt das auch, statt "Changelog" zu behaupten.
-
-# Der Knopf heißt nur dort "Update installieren", wo die App das auch kann
-# (`update_banner.installieren`). Sonst bleibt es beim bisherigen
-# Browser-Download (`update_banner.download`).
-
 # Farbe der Statuszeile je Art (nur Palette-Farben). `muted` ist der Normalfall
 # (Prüfe…, Fortschritt); die übrigen tragen das Prüfergebnis, jeweils mit einem
 # Symbol (`tab_rules.update_status_text`), damit es nicht nur an der Farbe hängt.

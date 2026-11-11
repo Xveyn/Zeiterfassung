@@ -17,7 +17,6 @@ from src.tooltip import attach_tooltip
 from src.updater import pick_asset_url
 
 
-
 def _label_install():
     return t("update_banner.installieren")
 

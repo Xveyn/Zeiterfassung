@@ -75,3 +75,7 @@ def test_error_display_text_maps_sentinels_and_passes_others():
     assert error_display_text(NEWER_REMOTE_VERSION_MSG) == NEWER_REMOTE_VERSION_MSG
     assert error_display_text(REAUTH_REQUIRED_MSG) == REAUTH_REQUIRED_MSG
     assert error_display_text("kaputt") == "kaputt"
+    # Mit Präfix bleibt der Text unverändert (nichts geht verloren).
+    prefixed = "Drive: " + REAUTH_REQUIRED_MSG
+    assert error_display_text(prefixed) == prefixed
+    assert error_display_text(RuntimeError(prefixed)) == prefixed

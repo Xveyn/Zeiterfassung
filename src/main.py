@@ -164,9 +164,13 @@ def _create_root(tk_factory=None):
         return factory()
     except tk.TclError as exc:
         text = str(exc)
-        message = (t("main.kein_display") if "display" in text.lower()
+        no_display = "display" in text.lower()
+        message = (t("main.kein_display") if no_display
                    else t("main.tk_start_fehler", fehler=text))
-        logging.getLogger(__name__).error(message)
+        # Das Log bleibt deutsch, unabhängig von der Oberflächensprache.
+        logging.getLogger(__name__).error(
+            i18n.TEXTS["main.kein_display"] if no_display
+            else i18n.TEXTS["main.tk_start_fehler"].replace("{fehler}", text))
         # --noconsole (Windows): sys.stderr ist None. Der Fall ist dort
         # praktisch ausgeschlossen, darf aber nicht selbst zum Absturz werden.
         if sys.stderr is not None:
@@ -200,6 +204,9 @@ def _refresh_linux_integration(base):
     Dazu wird ein `<name>.old` weggeräumt, das das In-App-Update als Rollback
     hinterlassen hat: dass dieser Prozess läuft, IST der Beweis, dass die neue
     Datei startet.
+
+    Bekannte Grenze: das läuft vor `i18n.set_language`, der Menüeintrag
+    (`Comment=`) trägt daher immer den Standardtext der Katalogsprache.
 
     Fehler sind hier NIE fatal — ein nicht geschriebener Menüeintrag ist der
     Status quo, ein verhinderter Start wäre eine Regression (Muster wie beim

@@ -48,6 +48,7 @@ _ACRONYM_CLASS = re.compile(r"^[A-Z]{2,}[a-z]{2,}\w*$")
 _ABBREVIATION = re.compile(r"^(?:[^\W\d_]{1,3}\.)+$")
 # Satzzeichen am Ende (`Speichern...`, `Fertig.`, `Bis:`) machen ein Wort nicht technisch.
 _TRAILING_PUNCT = re.compile(r"[.!?:…]+$")
+_LEADING_SYMBOLS = re.compile(r"^[^\w\s]+")
 _WORD = re.compile(r"[^\W\d_]+")
 
 
@@ -82,7 +83,9 @@ def text_reason(template: str, ui_slot: bool = False) -> str | None:
         return None
     if re.search(r"\s", probe):
         return "Leerzeichen"
-    if bare[0].isupper():
+    # Ein führendes Nicht-Buchstaben-Zeichen (`(Standard)`, `+ Slot`, `▶ Start`) ändert nichts.
+    lead = _LEADING_SYMBOLS.sub("", bare)
+    if lead[:1].isupper():
         return "Großbuchstabe"
     if _UMLAUT.search(bare):
         return "Umlaut"

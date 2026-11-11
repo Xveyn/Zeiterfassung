@@ -172,3 +172,13 @@ def test_not_losing_active_per_day_row():
     rows = [_row("X", mode="per_day",
                  days=_pd_days(mon=("09:00", "18:00")))]
     assert categories_losing_per_day(rows) == []
+
+
+def test_the_category_hint_names_the_standard_sentinel():
+    """Der Hinweistext nennt den Erkennungswert über `{standard}`, nicht als festen Text."""
+    from src.dialogs.category_dialog import STANDARD
+    from src.i18n import TEXTS, t
+    assert "{standard}" in TEXTS["kategorien.hinweis"]
+    assert STANDARD not in TEXTS["kategorien.hinweis"]
+    assert t("kategorien.hinweis", standard=STANDARD) == (
+        "Pro Kategorie: Name + Standardzeiten. „(Standard)\" = globale Standardzeit verwenden.")
