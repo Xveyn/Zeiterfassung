@@ -7,9 +7,6 @@ from src.holidays_region import COUNTRIES, normalize_region
 
 MIGRATED_KEY = "region_migrated"
 DEFAULT_COUNTRY = "DE"
-# Die Sprachen bestimmt die Textschicht; hier nur Verweise für bestehende Leser.
-DEFAULT_LANGUAGE = i18n.DEFAULT_LANGUAGE
-LANGUAGES = i18n.LANGUAGES
 
 
 class _Readable(Protocol):

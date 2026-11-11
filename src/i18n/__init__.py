@@ -21,7 +21,7 @@ DEFAULT_LANGUAGE = "de"
 
 CATALOGS: dict[str, dict[str, str]] = {"de": de.TEXTS}
 
-# Die unterstützten Sprachen; `region.LANGUAGES` und `region.normalize_language` verweisen hierher.
+# Die unterstützten Sprachen; auch `region.normalize_language` liest sie hier.
 LANGUAGES: tuple[str, ...] = tuple(CATALOGS)
 
 # Katalog der Standardsprache, zugleich Rückfall für Lücken anderer Kataloge.
