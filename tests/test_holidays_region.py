@@ -4,10 +4,11 @@ from datetime import date
 import holidays
 
 from src.holidays_region import (
-    REGIONS, _holidays_cached, get_holidays, normalize_region, region_label,
+    REGIONS, _holidays_cached, country_choices, country_label, get_holidays,
+    normalize_region, region_choices, region_label,
 )
 
-STATES = REGIONS["DE"]
+STATES = region_choices("DE")
 
 
 def test_states_list_starts_with_empty_option():
@@ -126,3 +127,10 @@ def test_persistent_failure_falls_back_to_empty_dict(monkeypatch):
 
     assert get_holidays("DE", "BY", 2032) == {}
     _holidays_cached.cache_clear()
+
+
+def test_country_names_resolve_at_call_time():
+    assert country_choices() == [("DE", "Deutschland")]
+    assert country_label("DE") == "Deutschland"
+    assert country_label("FR") == ""
+    assert region_choices("FR") == []

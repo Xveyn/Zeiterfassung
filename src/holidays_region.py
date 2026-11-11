@@ -4,32 +4,60 @@ import time
 from datetime import date
 from functools import lru_cache
 
-COUNTRIES: list[tuple[str, str]] = [("DE", "Deutschland")]
+from src.i18n import N_, t
 
-# Pro Land (Code, Anzeigename). Der Eintrag mit leerem Code markiert „keine
-# Region gewählt": für dieses Land gilt dann „keine Feiertage". Ein Land ohne
-# solchen Eintrag hat keine Unterteilung.
+# Pro Land (Code, Schlüssel des Anzeigenamens); der Name wird beim Anzeigen
+# aufgelöst (`country_choices`), nie beim Import.
+COUNTRIES: list[tuple[str, str]] = [("DE", N_("land.de"))]
+
+# Pro Land (Code, Schlüssel des Anzeigenamens; `region_choices` löst auf). Der
+# Eintrag mit leerem Code markiert „keine Region gewählt": für dieses Land
+# gilt dann „keine Feiertage". Ein Land ohne solchen Eintrag hat keine
+# Unterteilung.
 REGIONS: dict[str, list[tuple[str, str]]] = {
     "DE": [
-        ("", "— kein Bundesland —"),
-        ("BW", "Baden-Württemberg"),
-        ("BY", "Bayern"),
-        ("BE", "Berlin"),
-        ("BB", "Brandenburg"),
-        ("HB", "Bremen"),
-        ("HH", "Hamburg"),
-        ("HE", "Hessen"),
-        ("MV", "Mecklenburg-Vorpommern"),
-        ("NI", "Niedersachsen"),
-        ("NW", "Nordrhein-Westfalen"),
-        ("RP", "Rheinland-Pfalz"),
-        ("SL", "Saarland"),
-        ("SN", "Sachsen"),
-        ("ST", "Sachsen-Anhalt"),
-        ("SH", "Schleswig-Holstein"),
-        ("TH", "Thüringen"),
+        ("", N_("region.de_keine")),
+        ("BW", N_("region.de_bw")),
+        ("BY", N_("region.de_by")),
+        ("BE", N_("region.de_be")),
+        ("BB", N_("region.de_bb")),
+        ("HB", N_("region.de_hb")),
+        ("HH", N_("region.de_hh")),
+        ("HE", N_("region.de_he")),
+        ("MV", N_("region.de_mv")),
+        ("NI", N_("region.de_ni")),
+        ("NW", N_("region.de_nw")),
+        ("RP", N_("region.de_rp")),
+        ("SL", N_("region.de_sl")),
+        ("SN", N_("region.de_sn")),
+        ("ST", N_("region.de_st")),
+        ("SH", N_("region.de_sh")),
+        ("TH", N_("region.de_th")),
     ],
 }
+
+
+# Tabellen für die Auflösung (Schlüssel bleiben Literale an den `N_`-Stellen oben).
+_COUNTRY_KEYS = dict(COUNTRIES)
+_REGION_KEYS = {(country, code): key
+                for country, entries in REGIONS.items() for code, key in entries}
+
+
+def country_choices() -> list[tuple[str, str]]:
+    """(Code, Anzeigename) der Länder in der aktuellen Sprache."""
+    return [(code, t(_COUNTRY_KEYS[code])) for code in _COUNTRY_KEYS]
+
+
+def country_label(country: str) -> str:
+    """Anzeigename des Landes; "" bei unbekanntem Code."""
+    return next((lbl for code, lbl in country_choices() if code == country), "")
+
+
+def region_choices(country: str) -> list[tuple[str, str]]:
+    """(Code, Anzeigename) der Regionen des Landes in der aktuellen Sprache;
+    leer bei einem Land ohne Unterteilung."""
+    return [(code, t(_REGION_KEYS[(country, code)]))
+            for code, _ in REGIONS.get(country, [])]
 
 
 def _valid_codes(country: str) -> set[str]:
@@ -38,7 +66,7 @@ def _valid_codes(country: str) -> set[str]:
 
 def region_label(country: str, region: str) -> str:
     """Anzeigename der Region; "" bei unbekanntem Land oder Code."""
-    return next((lbl for code, lbl in REGIONS.get(country, [])
+    return next((lbl for code, lbl in region_choices(country)
                  if code == region), "")
 
 
