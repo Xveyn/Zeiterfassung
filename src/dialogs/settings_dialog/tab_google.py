@@ -20,6 +20,8 @@ from src.dialogs.settings_dialog.oauth_task import (
     build_oauth_enable_task, show_known_google_failure,
 )
 from src.dialogs.settings_dialog.tab_rules import calendar_update, google_updates
+from src.i18n import t
+from src.sync_orchestrator import error_display_text
 from src.oauth_utils import (
     keyring_unavailable_hint, keyring_unavailable_title, is_keyring_unavailable,
 )
@@ -505,14 +507,13 @@ class GoogleTab:
                     "alle Geräte aktualisieren und synchronisieren.",
                 )
             elif res.get("reason") == "newer_version":
-                from src.sync import NEWER_REMOTE_VERSION_MSG
                 themed_showwarning(
-                    dialog, "Update erforderlich", NEWER_REMOTE_VERSION_MSG,
+                    dialog, "Update erforderlich", t("sync.neuere_version"),
                 )
             elif not res.get("ok"):
                 if self._show_keyring_error(res.get("error")):
                     return
-                detail = f"{res.get('error', '?')}\n\n{res.get('tb', '')}"
+                detail = f"{error_display_text(res.get('error', '?'))}\n\n{res.get('tb', '')}"
                 themed_showerror(
                     dialog,
                     "Kompaktierung fehlgeschlagen",

@@ -152,6 +152,55 @@ ALLOWED: dict[str, dict[str, str]] = {
             "(`api_entry_write._NO_CATEGORY_LABEL` spiegelt ihn, `test_api_entry_write` pinnt die "
             "Gleichheit); angezeigt wird `no_category_label()`"),
     },
+    "src/sync.py": {
+        "Ein anderes Gerät nutzt eine neuere App-Version mit einem Datenformat, das diese (ältere) Version "
+        "noch nicht versteht.\n\nBitte aktualisiere die App auf diesem Gerät. Bis dahin pausiert die "
+        "Synchronisation, damit keine Daten verloren gehen oder überschrieben werden.": (
+            "Erkennungsmerkmal: `NEWER_REMOTE_VERSION_MSG` wird in `sync_runtime` (Pull/Push) als `error` "
+            "gesetzt und in `sync_orchestrator._friendly_sync_message`/`error_display_text` per `==` "
+            "verglichen; angezeigt wird der gleichlautende Katalogtext `sync.neuere_version`"),
+        **{n: ("Grund aus `validate_remote_doc`: `sync_runtime` (Zeilen der drei Aufrufe) gibt ihn nur ins "
+               "Log (`Remote-Sync-Doc ungültig (%s)`), kein Dialog liest ihn")
+           for n in (
+            "Doc ist kein Objekt", "entries ist kein Objekt", "entry {} ist kein Objekt",
+            "entry {} fehlen Felder {}", "entry {}: modified_at ist kein String",
+            "entry {}: slots ist keine Liste", "entry {}: slots enthält ein Nicht-Objekt",
+            "settings ist kein Objekt", "setting {} ist kein Objekt", "setting {} ohne value",
+            "setting {}: modified_at ist kein String", "conflicts ist keine Liste",
+            "conflict ist kein Objekt", "conflict ohne gültige id", "conflict mit ungültigem kind",
+            "conflict ohne key", "conflict ohne candidates-Liste")},
+    },
+    "src/sync_orchestrator.py": {
+        "expired or revoked": "Google-Fehlertext, nur in `classify_sync_error` verglichen, nie angezeigt",
+        "insufficient authentication scopes": (
+            "Google-Fehlertext, nur in `classify_sync_error` verglichen, nie angezeigt"),
+    },
+    "src/sync_runtime.py": {
+        "Timeout": (
+            "Erkennungsmerkmal: `SYNC_TIMEOUT_MSG` wird in `run_push_blocking`/`run_compaction_blocking` "
+            "als `error` gesetzt und in `sync_orchestrator.classify_sync_error` per `==` verglichen; "
+            "angezeigt wird `sync.timeout_*` bzw. `sync.toast_timeout`"),
+        " (%d Einträge, %d Konflikte)": "Logzeile (`_log_ok`), nie angezeigt",
+    },
+    "src/reservations.py": {
+        "apply_reconciled: entry {} missing keys {}": (
+            "Invariante: die Eingabe stammt aus dem Abgleich (`reservations_sync`), ein Verstoß endet als "
+            "Worker-Traceback im nativen Fehlerdialog, nie als kuratierte Meldung"),
+    },
+    "src/json_store.py": {
+        "JSON nicht parsebar": "Default-Grund der Logzeile von `quarantine_corrupt`, nie angezeigt",
+    },
+    "src/startup_info.py": {
+        **{n: "Bestandteil einer Startzeile, die `main` nur ins Logfile schreibt (`describe_environment`/"
+              "`describe_features`), nie angezeigt"
+           for n in ("Zeiterfassung {} gestartet", "Kanal {}", "Quellcode", "Python {}", "Tk {}",
+                     "Funktionen an: ", " · aus: ", " · UI-Skalierung {} %")},
+    },
+    "src/dialogs/settings_dialog/fields.py": {
+        "Feld {} ist schon registriert": (
+            "Programmfehler-Invariante (`FieldSet._check_new`, doppelte Registrierung beim Tab-Aufbau): "
+            "ein `ValueError` im Aufbau, nie ein Nutzertext"),
+    },
     "src/desktop_entry.py": {
         "[Desktop Entry]": _TECH_DESKTOP,
     },
@@ -207,18 +256,7 @@ ALLOWED: dict[str, dict[str, str]] = {
 PENDING: list[str] = [
     # Task 3
     # Task 4
-    "src/weekly_limit.py",
-    "src/reminder_scheduler.py",
-    "src/send_reminder_scheduler.py",
-    "src/sync_orchestrator.py",
-    "src/sync.py",
     "src/dialogs/settings_dialog/oauth_task.py",
-    "src/drive.py",
-    "src/sync_runtime.py",
-    "src/reservations.py",
-    "src/json_store.py",
-    "src/startup_info.py",
-    "src/dialogs/settings_dialog/fields.py",
     # Task 5
     "src/smtp_store.py",
     "src/webhook_store.py",

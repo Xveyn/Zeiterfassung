@@ -30,6 +30,7 @@ from __future__ import annotations
 import datetime
 from typing import TYPE_CHECKING, Any, Iterable
 
+from src.i18n import t
 from src.time_utils import (
     calculate_hours, format_minutes_hm, get_week_dates, get_week_label,
     hours_to_minutes,
@@ -155,9 +156,10 @@ def format_limit_warnings(warnings: Iterable[dict[str, Any]]) -> str:
     check_week_limit) zu einem mehrzeiligen Anzeige-Text für einen
     Warn-Dialog — in Stunden und Minuten wie überall in der UI."""
     return "\n".join(
-        f"– {get_week_label(w['iso_year'], w['iso_week'])}: "
-        f"{format_minutes_hm(w['total_minutes'])} "
-        f"(Limit {format_minutes_hm(w['limit_minutes'])})"
+        t("wochenlimit.zeile",
+          woche=get_week_label(w['iso_year'], w['iso_week']),
+          ist=format_minutes_hm(w['total_minutes']),
+          limit=format_minutes_hm(w['limit_minutes']))
         for w in warnings
     )
 

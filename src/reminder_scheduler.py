@@ -10,6 +10,7 @@ import datetime
 import logging
 
 from src import reminders
+from src.i18n import t
 
 log = logging.getLogger(__name__)
 
@@ -93,8 +94,7 @@ class ReminderScheduler:
 
 
 def _toast_text(rem):
-    """Deutscher Toast-Text je Typ."""
+    """Toast-Text je Typ in der Oberflächensprache."""
     if rem.kind == "missed":
-        return f"'{rem.kategorie}' (bis {rem.end}) heute ohne erfasste Arbeitszeit."
-    return (f"Reservierung '{rem.kategorie}' endet um {rem.end} — "
-            "Arbeitszeit noch nicht eingetragen.")
+        return t("erinnerung.fehlt", kategorie=rem.kategorie, ende=rem.end)
+    return t("erinnerung.endet", kategorie=rem.kategorie, ende=rem.end)
