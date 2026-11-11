@@ -11,7 +11,6 @@
 import { CryptoFailure, b64d, deviceKeys, isEnvelope, openEnvelope, pairKeys, seal } from './crypto.js';
 import { parseDefaults, parseDesktopInfo } from './defaults.js';
 import { DEFAULT_COUNTRY, adoptDesktopLanguage } from './language.js';
-import { normalizeLanguage } from './i18n.js';
 import { isIsoDate, localIsoDate, utcStamp } from './minutes.js';
 import {
   PROTOCOL, isBoxSecret, isLanAddress, isValidDeviceId, newDeviceId, normalizeCode, pairRequestBody,
@@ -156,7 +155,7 @@ const pairingMeta = (answer, meta) => ({
   window_days: answer.window_days, key: answer.key, seq: 0,
   // Älterer Desktop ohne Felder: `de`/`DE`. Eine schon gewählte Sprache der PWA bleibt.
   ...adoptDesktopLanguage({ language: meta.language, country: DEFAULT_COUNTRY },
-    { language: normalizeLanguage(answer.language), country: answer.country }),
+    { language: answer.language, country: answer.country }),
 });
 
 const DISCARDED = () => ({ sent: 0, conflicts: 0, excluded: false, discarded: true });

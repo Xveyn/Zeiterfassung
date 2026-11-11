@@ -744,7 +744,8 @@ für Fragen: `docs/datenschutz.md` (die Web-App verlinkt es im Koppel-Bildschirm
 - **PWA, Datenschutzseite:** `datenschutz.html` erscheint immer in der Standardsprache, ebenso das gebündelte
   Dokument selbst.
 - **Downgrade:** `state` bleibt als Spiegel von `region` (nur Deutschland) erhalten, ein älterer Desktop liest also
-  weiter dasselbe Bundesland; `country`, `region` und `language` sind gerätelokal und reisen nicht per Drive-Sync.
+  weiter dasselbe Bundesland. Ändert die ältere Version dort nur `state`, übernimmt die neuere beim nächsten Start
+  dieses Bundesland als `region` (ein unlesbarer `state` ändert nichts); `country`, `region` und `language` sind gerätelokal und reisen nicht per Drive-Sync.
 
 ## Beschädigte oder fremde Daten (Storage)
 

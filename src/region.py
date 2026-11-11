@@ -38,11 +38,20 @@ def country_region(settings: _Readable) -> tuple[str, str]:
 
 
 def migrate_state(settings: _Writable) -> bool:
-    """Übernimmt `state` einmalig als `region` (Land DE). `state` bleibt
-    unberührt; der Marker verhindert, dass später gewählte Werte
-    überschrieben werden."""
+    """Übernimmt `state` als `region` (Land DE); `state` bleibt unberührt.
+
+    Mit gesetztem Marker nur noch bei Abweichung: die App spiegelt `state`
+    für Deutschland selbst aus `region`, ein Unterschied stammt also von einer
+    älteren Version, die nur `state` ändert — dann gilt `state`. Ein
+    unlesbarer `state` lässt eine gute `region` stehen. True bei Änderung."""
     if settings.get(MIGRATED_KEY) is True:
-        return False
+        if normalize_country(settings.get("country")) != DEFAULT_COUNTRY:
+            return False
+        state = normalize_region(DEFAULT_COUNTRY, settings.get("state"))
+        if not state or state == settings.get("region"):
+            return False
+        settings.set_many({"region": state})
+        return True
     settings.set_many({
         "country": DEFAULT_COUNTRY,
         "region": normalize_region(DEFAULT_COUNTRY, settings.get("state")),

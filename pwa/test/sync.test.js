@@ -8,6 +8,8 @@ import { pendingReservationMinutes } from '../reservations.js';
 import { decodeRequest } from '../relay-frame.js';
 import { endpointOf, isPaired } from '../transport.js';
 import { createMemoryAdapter } from '../memory-adapter.js';
+import { applyLocale } from '../language.js';
+import { getLanguage } from '../i18n.js';
 import { b64d, b64e, deviceKeys, isEnvelope, openEnvelope, pairKeys, seal } from '../crypto.js';
 import {
   SKEW_WARN_MS, SyncClient, SyncError, classifyHttpError, classifyNetworkError, clockSkewMs,
@@ -1520,7 +1522,9 @@ test('pairing against an old desktop without the fields gives de/DE', async () =
   delete answer.country;
   const { store, client } = await make({ paired: false, handler: () => reply(200, answer) });
   await client.pair(PAIR_ARGS);
-  assert.equal(store.getMeta().language, 'de');
+  assert.equal(store.getMeta().language, null);
+  applyLocale(store.getMeta());
+  assert.equal(getLanguage(), 'de');
   assert.equal(store.getMeta().country, 'DE');
 });
 

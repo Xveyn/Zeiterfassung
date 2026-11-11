@@ -28,10 +28,30 @@ def test_migrate_garbled_state_gives_empty_region(tmp_path, bad):
     assert s.get(region.MIGRATED_KEY) is True
 
 
-def test_migrate_runs_only_once(tmp_path):
+def test_migrate_after_marker_follows_state_changed_by_older_version(tmp_path):
     s = _settings(tmp_path, state="BY")
     region.migrate_state(s)
+    assert region.migrate_state(s) is False
     s.set("state", "HH")
+    assert region.migrate_state(s) is True
+    assert s.get("region") == "HH"
+    assert region.migrate_state(s) is False
+
+
+def test_migrate_after_marker_ignores_unreadable_state(tmp_path):
+    for bad in ("XX", None, 5, ""):
+        s = _settings(tmp_path, state="BY")
+        region.migrate_state(s)
+        s.set("state", bad)
+        assert region.migrate_state(s) is False
+        assert s.get("region") == "BY"
+
+
+def test_migrate_after_marker_leaves_other_countries_alone(tmp_path, monkeypatch):
+    monkeypatch.setattr(region, "COUNTRIES", [("DE", "Deutschland"), ("AT", "Österreich")])
+    s = _settings(tmp_path, state="BY")
+    region.migrate_state(s)
+    s.set_many({"country": "AT", "state": "HH"})
     assert region.migrate_state(s) is False
     assert s.get("region") == "BY"
 

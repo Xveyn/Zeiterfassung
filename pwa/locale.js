@@ -1,5 +1,5 @@
-// pwa/locale.js
 // @ts-check
+// pwa/locale.js
 // Locale der Oberfläche (BCP-47-Tag aus Sprache und Land, z. B. `de-DE`) und die Formatierer für
 // Datum und Uhrzeit. Ein Tag, kein eigener Datumsformat-Schalter: das Format folgt Sprache + Land.
 // `Intl` wirft bei kaputten Tags `RangeError` (auch `supportedLocalesOf`), deshalb prüft `localeTag`

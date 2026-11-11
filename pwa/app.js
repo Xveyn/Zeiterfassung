@@ -17,7 +17,7 @@ import { openDatabase, requestPersistentStorage } from './db.js';
 import { VaultError, createVaultAdapter, idbVaultKeyStore } from './vault.js';
 import { Store } from './store.js';
 import { applyLocale } from './language.js';
-import { normalizeLanguage, t } from './i18n.js';
+import { LANGUAGES, normalizeLanguage, t } from './i18n.js';
 import { SyncClient, SyncError, clockSkewMs } from './sync.js';
 import { isPaired } from './transport.js';
 import { shouldQueue, shouldSync } from './sync-policy.js';
@@ -836,7 +836,10 @@ class App {
         push,
         lock: this.lockModelNow(),
         shift: { step: normalizeShiftStep(meta.shift_step_minutes), options: shiftOptions() },
-        language: { value: normalizeLanguage(meta.language), options: [{ value: 'de', label: t('einstellungen.sprache.de') }] },
+        // Mit nur einer Sprache gibt es nichts zu wählen: der Abschnitt entfällt (wie die Länderauswahl am Desktop).
+        language: LANGUAGES.length > 1
+          ? { value: normalizeLanguage(meta.language), options: [{ value: 'de', label: t('einstellungen.sprache.de') }] }
+          : null,
       },
       updates: { build: BUILD, update: { state: this.updateState, detail: this.updateDetail, auto: Boolean(meta.auto_update) } },
       categories: categoriesModel({

@@ -10,6 +10,9 @@ export const DEFAULT_LANGUAGE = 'de';
 /** @type {Record<string, Record<string, string>>} */
 const CATALOGS = { de };
 
+/** Die wählbaren Sprachen (Codes der Kataloge). */
+export const LANGUAGES = Object.keys(CATALOGS);
+
 let current = DEFAULT_LANGUAGE;
 
 /** Ein Sprachcode des Katalogs; alles andere (auch `de-AT`, Groß-/Kleinschreibung) fällt auf den Basiscode, sonst Deutsch.
