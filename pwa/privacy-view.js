@@ -2,6 +2,7 @@
 // Die Seite „Datenschutzhinweise“ (`datenschutz.html`): lädt `datenschutz.md` (der Pages-Workflow kopiert
 // `docs/datenschutz.md` neben die Seite), zerlegt es mit `privacy-doc.js` und baut die Elemente über `dom.js`
 // (nie HTML-Strings). Scheitert das Laden, steht ein Ersatztext mit Link auf das Dokument im Projekt da.
+import { t } from './i18n.js';
 import { h } from './dom.js';
 import { isWebUrl, parsePrivacyMarkdown, sectionsOnly } from './privacy-doc.js';
 import { PRIVACY_SOURCE_URL } from './relay-client.js';
@@ -38,7 +39,7 @@ export function renderBlocks(blocks) {
 
 export function fallbackBlocks() {
   return [{ kind: 'paragraph', level: 0, segments: [
-    { text: 'Die Datenschutzhinweise konnten nicht geladen werden. Sie stehen im Projekt unter ', style: 'plain', url: null },
+    { text: t('datenschutz.fallback'), style: 'plain', url: null },
     { text: PRIVACY_SOURCE_URL, style: 'link', url: PRIVACY_SOURCE_URL },
   ] }];
 }
@@ -55,9 +56,9 @@ export async function loadBlocks(fetchFn = fetch) {
 }
 
 export async function mountPrivacyPage(root) {
-  const back = h('p', {}, h('a', { href: './' }, '‹ Zurück zur App'));
-  const content = h('div', { id: 'privacy-content' }, h('p', { class: 'muted' }, 'Lädt …'));
-  root.replaceChildren(h('main', { class: 'privacy' }, back, h('h1', {}, 'Datenschutzhinweise'), content));
+  const back = h('p', {}, h('a', { href: './' }, t('datenschutz.zurueck')));
+  const content = h('div', { id: 'privacy-content' }, h('p', { class: 'muted' }, t('datenschutz.laedt')));
+  root.replaceChildren(h('main', { class: 'privacy' }, back, h('h1', {}, t('datenschutz.titel')), content));
   content.replaceChildren(...renderBlocks(await loadBlocks()));
 }
 

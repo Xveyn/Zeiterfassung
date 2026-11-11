@@ -22,12 +22,6 @@ const sources = readdirSync(root).filter((f) => f.endsWith('.js')).sort();
 const PENDING = new Set([
   'debug-info.js',     // 27
   'debug-log.js',      // 4
-  'pairing.js',        // 1
-  'privacy-view.js',   // 4
-  'scanner.js',        // 2
-  'shift-policy.js',   // 3
-  'sw-repair.js',      // 7
-  'vault.js',          // 4
 ]);
 
 // Protokoll-/Krypto-Fehlertexte und Test-Adapter: bleiben deutsch und technisch (Entscheidung der
@@ -44,6 +38,9 @@ const ALLOWED = {
     'Zeiterfassung'],                                   // Produktname als rp-/Anzeigename des Passkeys
   'unpair.js': ['Abmeldung am Desktop', 'Push abmelden', 'Sitzungsmerker löschen', 'Protokoll löschen',
     'Lokale Daten löschen', 'Neu laden'],               // Schrittnamen: nur Log-Kontext (`log(step, error)` → Debug-Protokoll), nie angezeigt
+  'pairing.js': ['Handy'],                              // Standard-Gerätename, geht als Name ans Protokoll und steht in der Geräteliste am Desktop; von pairing.test.js als String geprüft
+  'vault.js': ['Gespeichert in einem neueren Format.', 'Der Schlüssel für die lokalen Daten fehlt.', 'Ein lokaler Datensatz ist beschädigt.', // VaultError-Meldungen: angezeigt wird `describeVaultError` nach `code`, die Meldung landet nur im Debug-Protokoll
+    'Transaktion abgebrochen'],                         // Ersatzmeldung einer abgebrochenen IndexedDB-Transaktion, nie angezeigt
   'browser-policy.js': ['Chromium'],                    // Markenname im User-Agent-Vergleich
   'push-blob.js': ['Kein Schlüssel für Benachrichtigungen.', 'Blob zu kurz.'], // Fehler von `open`: nur im Service Worker, dort per logFailure('Push entschlüsseln') im Debug-Protokoll, nie angezeigt
   'diagnose.js': ['[Zeiterfassung] ${}: ${}',            // console-Präfix

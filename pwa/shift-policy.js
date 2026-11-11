@@ -3,6 +3,7 @@
 // rechts später, links früher, die Dauer bleibt. Reine Entscheidung ohne Browser-API; `views.js`
 // sammelt die Pointer-Events und schreibt das Ergebnis in die Zeile.
 
+import { t } from './i18n.js';
 import { parseTime } from './minutes.js';
 import { EDGE_PX } from './swipe-policy.js';
 
@@ -22,7 +23,7 @@ export function normalizeShiftStep(value) {
 
 /** Auswahl im Abschnitt „Zeiten verschieben“ der Einstellungen. */
 export function shiftOptions() {
-  return SHIFT_STEPS.map((value) => ({ value, label: value === 0 ? 'Aus' : `${value} Minuten je Schritt` }));
+  return SHIFT_STEPS.map((value) => ({ value, label: value === 0 ? t('verschieben.aus') : t('verschieben.schritt', { value }) }));
 }
 
 /** Darf hier ein Zug beginnen? Nur Finger/Stift, und nie im Randstreifen der System-Zurück-Geste. */
@@ -55,6 +56,6 @@ export function shiftWindow(start, end, steps, stepMinutes) {
 
 /** Text der Live-Anzeige beim Ziehen: `+20 min`, `−10 min`, `±0 min`. */
 export function shiftLabel(minutes) {
-  if (minutes === 0) return '±0 min';
-  return `${minutes > 0 ? '+' : '−'}${Math.abs(minutes)} min`;
+  if (minutes === 0) return t('verschieben.null');
+  return minutes > 0 ? t('verschieben.plus', { value: minutes }) : t('verschieben.minus', { value: -minutes });
 }

@@ -415,5 +415,22 @@ export default {
   'sperre.fehler.cancelled': 'Die Entsperrung wurde nicht bestätigt.',
   'sperre.fehler.failed': 'Die Entsperrung hat nicht funktioniert.',
   'sperre.fehler.unverified': 'Das Gerät hat nicht bestätigt, dass du es entsperrt hast.',
-  'sperre.hinweis': 'Sperrt die Oberfläche der App, bis du das Gerät entsperrst (Fingerabdruck, Gesicht oder Geräte-PIN, je nach Handy). Die gespeicherten Daten werden dadurch nicht verschlüsselt oder geschützt.'
+  'sperre.hinweis': 'Sperrt die Oberfläche der App, bis du das Gerät entsperrst (Fingerabdruck, Gesicht oder Geräte-PIN, je nach Handy). Die gespeicherten Daten werden dadurch nicht verschlüsselt oder geschützt.',
+  'reparatur.fehlgeschlagen': 'Die Reparatur ist fehlgeschlagen.',
+  'reparatur.fehlgeschlagen.mit_hinweis': '{text} Einträge und Kopplung bleiben erhalten. Chrome und die Web-App schließen und neu öffnen.',
+  'reparatur.offline': 'Reparieren braucht eine Internetverbindung, damit die Web-App danach auch offline startet. Bitte online erneut versuchen.',
+  'reparatur.nicht_erreichbar.grund': 'Die Seite ist gerade nicht erreichbar.',
+  'reparatur.nicht_erreichbar': '{text} Es wurde nichts verändert.',
+  'reparatur.nicht_unterstuetzt': 'Dieser Browser unterstützt keine Service Worker, es gibt nichts zu reparieren.',
+  'datenschutz.fallback': 'Die Datenschutzhinweise konnten nicht geladen werden. Sie stehen im Projekt unter ',
+  'datenschutz.zurueck': '‹ Zurück zur App',
+  'datenschutz.laedt': 'Lädt …',
+  'datenschutz.titel': 'Datenschutzhinweise',
+  'scanner.halten': 'Den QR-Code vom Desktop in das Bild halten.',
+  'scanner.fremder_code': 'Das ist kein Koppel-Code dieser App.',
+  'verschieben.aus': 'Aus',
+  'verschieben.schritt': '{value} Minuten je Schritt',
+  'verschieben.null': '±0 min',
+  'verschieben.plus': '+{value} min',
+  'verschieben.minus': '−{value} min'
 };
