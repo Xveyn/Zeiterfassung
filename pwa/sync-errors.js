@@ -3,6 +3,8 @@
 // damit die Transporte (`transport.js`, `relay-transport.js`) `SyncError` werfen können, ohne `sync.js`
 // zu importieren (das importiert sie). `sync.js` führt die Namen weiter aus.
 
+import { t } from './i18n.js';
+
 export class SyncError extends Error {
   /** @param {{ kind: string, status?: number, code?: string, message?: string, needsRepair?: boolean,
    *    retryable?: boolean, day?: string | null, dayKind?: string | null, setting?: string | null,
@@ -73,7 +75,7 @@ export function classifyHttpError(status, body) {
 export function classifyNetworkError(error) {
   const timedOut = error?.name === 'TimeoutError';
   return new SyncError({
-    kind: timedOut ? 'timeout' : 'offline', message: 'Der Desktop ist nicht erreichbar.', retryable: true,
+    kind: timedOut ? 'timeout' : 'offline', message: t('fehler.desktop_nicht_erreichbar'), retryable: true,
     code: error?.name ?? '',
   });
 }

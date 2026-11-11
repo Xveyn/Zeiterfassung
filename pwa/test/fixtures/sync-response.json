@@ -110,7 +110,9 @@
   "desktop": {
     "name": "Büro-PC",
     "version": "1.24.0",
-    "platform": "Linux"
+    "platform": "Linux",
+    "language": "de",
+    "country": "DE"
   },
   "writable_settings": ["categories", "category_times"],
   "reservation_pause": true,

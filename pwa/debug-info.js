@@ -2,8 +2,9 @@
 // Technischer Zustand für den Debug-Reiter: bereits gesammelte Parameter rein, beschriftete Zeilen raus.
 // Ohne DOM und Browser-API. Bewusst nie dabei: Gerätemodell, Gerätename, Adressen, Geräte-ID — der Text
 // wird in Fehlerberichte kopiert. Alles Fehlende heißt `unbekannt`.
-
-const UNKNOWN = 'unbekannt';
+// Die Zeilen stehen im Debug-Reiter und gehen unverändert in den Export; die Texte kommen daher aus dem Katalog
+// (erst zur Laufzeit, nie beim Import). Eigennamen von Browsern und Systemen sind keine Übersetzung.
+import { t } from './i18n.js';
 
 /** Eine Browser-Abfrage mit Obergrenze: Ergebnis (auch `undefined`), bei Fehler, Verweigerung oder Zeitüberschreitung
  *  `null` — nie eine Ausnahme und nie länger als `ms`. */
@@ -67,30 +68,31 @@ function osName(userAgent, platformVersion) {
   return null;
 }
 
-const yesNo = (value) => (typeof value === 'boolean' ? (value ? 'ja' : 'nein') : null);
+const yesNo = (value) => (typeof value === 'boolean'
+  ? (value ? t('einstellungen.verbindung.ja') : t('einstellungen.verbindung.nein')) : null);
 
 function workerText(worker) {
   if (!worker || typeof worker !== 'object') return null;
-  if (worker.waiting) return 'wartet auf Neustart';
-  return worker.active ? 'aktiv' : 'nicht registriert';
+  if (worker.waiting) return t('debug.worker.wartet');
+  return worker.active ? t('debug.worker.aktiv') : t('debug.worker.nicht_registriert');
 }
 
 function notificationText(permission, subscribed) {
-  if (permission === 'denied') return 'blockiert';
-  if (permission === 'default') return 'nicht gefragt';
+  if (permission === 'denied') return t('debug.benachrichtigung.blockiert');
+  if (permission === 'default') return t('debug.benachrichtigung.nicht_gefragt');
   if (permission !== 'granted') return null;
   const sub = yesNo(subscribed);
-  return sub ? `erlaubt, Abo ${sub}` : 'erlaubt';
+  return sub ? t('debug.benachrichtigung.erlaubt_abo', { abo: sub }) : t('debug.benachrichtigung.erlaubt');
 }
 
 function storageText(storage) {
   if (!storage || typeof storage !== 'object') return null;
   const parts = [];
   const persisted = yesNo(storage.persisted);
-  if (persisted) parts.push(`dauerhaft ${persisted}`);
+  if (persisted) parts.push(t('debug.speicher.dauerhaft', { wert: persisted }));
   if (Number.isFinite(storage.usage) && storage.usage >= 0) {
     const mb = storage.usage / 1048576;
-    parts.push(mb > 0 && mb < 1 ? '< 1 MB' : `${Math.round(mb)} MB`);
+    parts.push(mb > 0 && mb < 1 ? t('debug.speicher.unter_1mb') : t('debug.speicher.mb', { mb: Math.round(mb) }));
   }
   return parts.length ? parts.join(', ') : null;
 }
@@ -105,18 +107,18 @@ export function describeEnvironment(env) {
   const e = env && typeof env === 'object' ? env : {};
   const pairing = { lan: 'LAN', relay: 'Relay' }[e.pairing];
   const rows = [
-    ['Browser', browserName(e.userAgent)],
-    ['Betriebssystem', osName(e.userAgent, e.platformVersion)],
-    ['Als App installiert', yesNo(e.standalone)],
-    ['Online', yesNo(e.online)],
-    ['Sprache', text(e.language)],
-    ['Bildschirm', screenText(e.screen)],
-    ['Build', text(e.build)],
-    ['Service Worker', workerText(e.worker)],
-    ['Benachrichtigungen', notificationText(e.notification, e.subscribed)],
-    ['Speicher', storageText(e.storage)],
-    ['Kopplungsweg', pairing ?? null],
-    ['Protokoll', Number.isInteger(e.protocol) ? String(e.protocol) : null],
+    [t('debug.zeile.browser'), browserName(e.userAgent)],
+    [t('debug.zeile.betriebssystem'), osName(e.userAgent, e.platformVersion)],
+    [t('debug.zeile.installiert'), yesNo(e.standalone)],
+    [t('debug.zeile.online'), yesNo(e.online)],
+    [t('debug.zeile.sprache'), text(e.language)],
+    [t('debug.zeile.bildschirm'), screenText(e.screen)],
+    [t('debug.zeile.build'), text(e.build)],
+    [t('debug.zeile.service_worker'), workerText(e.worker)],
+    [t('debug.zeile.benachrichtigungen'), notificationText(e.notification, e.subscribed)],
+    [t('debug.zeile.speicher'), storageText(e.storage)],
+    [t('debug.zeile.kopplungsweg'), pairing ?? null],
+    [t('debug.zeile.protokoll'), Number.isInteger(e.protocol) ? String(e.protocol) : null],
   ];
-  return rows.map(([label, value]) => ({ label, value: value ?? UNKNOWN }));
+  return rows.map(([label, value]) => ({ label, value: value ?? t('einstellungen.verbindung.unbekannt') }));
 }

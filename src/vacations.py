@@ -28,7 +28,7 @@ import threading
 from dataclasses import dataclass
 from typing import Any, Collection
 
-from src.holidays_de import get_holidays
+from src.holidays_region import get_holidays
 from src.json_store import atomic_write_json, load_json_or_quarantine
 from src.time_utils import (
     calculate_hours, format_iso_date, hours_to_minutes, utc_now_iso,
@@ -51,27 +51,28 @@ def _date_range(date_from: str, date_to: str) -> list[datetime.date]:
             for i in range((end - start).days + 1)]
 
 
-def _holiday_dates(days: list[datetime.date], state: str) -> set[datetime.date]:
+def _holiday_dates(days: list[datetime.date], region: str,
+                   country: str = "DE") -> set[datetime.date]:
     """Feiertage über den (ggf. jahresübergreifenden) Zeitraum. Ohne
     Bundesland liefert get_holidays ein leeres Dict — dann gilt kein Tag als
     Feiertag."""
     out: set[datetime.date] = set()
     for year in {d.year for d in days}:
-        out |= set(get_holidays(state, year))
+        out |= set(get_holidays(country, region, year))
     return out
 
 
 def expand_days(date_from: str, date_to: str, minutes_per_day: int,
-                state: str) -> dict[str, int]:
+                region: str, country: str = "DE") -> dict[str, int]:
     """Baut {ISO: minutes} über ALLE Kalendertage von `date_from` bis
     `date_to`.
 
-    Wochenenden (Sa/So) und Feiertage des Bundeslands `state` bekommen 0 —
+    Wochenenden (Sa/So) und Feiertage der Region `region` im Land `country` bekommen 0 —
     sie sind ohnehin frei und sollen keine Urlaubsstunden tragen. Sie bleiben
     aber im Dict, damit der Kalender den Zeitraum durchgehend einfärben kann.
     """
     days = _date_range(date_from, date_to)
-    holidays = _holiday_dates(days, state)
+    holidays = _holiday_dates(days, region, country)
     return {
         d.isoformat(): (
             0 if (d.weekday() >= 5 or d in holidays) else minutes_per_day

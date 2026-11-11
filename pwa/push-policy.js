@@ -1,6 +1,8 @@
 // pwa/push-policy.js
 // Wann die PWA den Zeitplan an den Relay schickt und was der Reiter über die Benachrichtigungen
 // sagt. Rein, ohne Browser-API: die Seite liest Berechtigung und Abo und fragt hier nur noch.
+import { t } from './i18n.js';
+
 export const RESEND_AFTER_MS = 12 * 60 * 60 * 1000;   // auch ein unveränderter Plan wird erneuert (hält das Objekt am Relay am Leben)
 
 /** `unsupported` | `denied` | `off` | `needs_resubscribe` | `on`. `enabled` ist der Wunsch des
@@ -21,15 +23,16 @@ export function shouldSchedule({ state, remindersPresent, lastSignature, signatu
 }
 
 const TEXTS = {
-  unsupported: ['Dieser Browser kann keine Benachrichtigungen anzeigen.', null],
-  denied: ['Benachrichtigungen sind für diese Seite gesperrt. In den Einstellungen des Browsers lassen sie sich wieder erlauben.', null],
-  off: ['Aus. Erinnerungen kommen nur am Desktop.', 'enable'],
-  needs_resubscribe: ['Das Abo ist abgelaufen. Erneut erlauben, dann kommen die Erinnerungen wieder.', 'enable'],
-  on: ['An. Erinnerungen kommen auch dann, wenn der Desktop aus ist.', 'disable'],
+  unsupported: [() => t('push.zustand.unsupported'), null],
+  denied: [() => t('push.zustand.denied'), null],
+  off: [() => t('push.zustand.off'), 'enable'],
+  needs_resubscribe: [() => t('push.zustand.needs_resubscribe'), 'enable'],
+  on: [() => t('push.zustand.on'), 'disable'],
 };
 
 /** Text und Aktion (`enable` | `disable` | `null`) für den Reiter; ein Fehler des Relays hängt am Text. */
 export function describeState(state, lastError) {
-  const [text, action] = TEXTS[state] ?? TEXTS.off;
+  const [textOf, action] = TEXTS[state] ?? TEXTS.off;
+  const text = textOf();
   return { text: lastError ? `${text} ${lastError}` : text, action };
 }

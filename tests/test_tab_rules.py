@@ -4,7 +4,9 @@ der aufgeteilte Inhalt des früheren `save_settings`."""
 import pytest
 
 from src.dialogs.settings_dialog import tab_rules as tr
-from src.holidays_de import STATES
+from src.holidays_region import REGIONS
+
+STATES = REGIONS["DE"]
 from src.settings import WEEKDAY_KEYS
 from src.send_reminder import SHIFT_LABELS
 from src.updater import FREQUENCY_OPTIONS
@@ -25,7 +27,8 @@ def work_raw(**overrides):
         "werkstudent_limit_end.month": "9",
         "werkstudent_limit_end.day": "30",
         "werkstudent_limit_max_hours": "20",
-        "state": STATES[1][1],
+        "country": "Deutschland",
+        "region": STATES[1][1],
         "show_weekend": True,
     }
     for key in WEEKDAY_KEYS:
@@ -111,10 +114,32 @@ def test_work_updates_keeps_old_date_when_unparseable():
     assert upd["werkstudent_limit_end"] == "2026-03-31"
 
 
-def test_work_updates_carries_state_and_weekend():
+def test_work_updates_carries_region_and_weekend():
     upd = tr.work_updates(work_raw(), OLD_WSL)
-    assert upd["state"] == STATES[1][0]
+    assert upd["country"] == "DE"
+    assert upd["region"] == STATES[1][0]
     assert upd["show_weekend"] is True
+
+
+def test_collect_returns_region_code():
+    upd = tr.work_updates(work_raw(region="Bayern"), OLD_WSL)
+    assert (upd["country"], upd["region"]) == ("DE", "BY")
+
+
+def test_unknown_label_gives_empty_region():
+    upd = tr.work_updates(work_raw(region="Atlantis"), OLD_WSL)
+    assert upd["region"] == ""
+    assert upd["state"] == ""
+
+
+def test_saving_region_mirrors_state_for_de():
+    upd = tr.work_updates(work_raw(region="Bayern"), OLD_WSL)
+    assert upd["state"] == "BY"
+
+
+def test_region_code_for_label_is_derived_from_regions():
+    assert tr.region_code_for_label("DE", "Berlin") == "BE"
+    assert tr.region_code_for_label("XX", "Berlin") == ""
 
 
 def test_wsl_snapshot_from_settings_and_updates_agree():
@@ -303,7 +328,7 @@ def test_work_updates_per_day_keeps_each_day():
 
 _legacy_keys_base = {
     "autostart", "default_pause", "recipient", "name", "mail_subject",
-    "mail_greeting", "mail_content", "mail_closing", "hourly_rate", "state",
+    "mail_greeting", "mail_content", "mail_closing", "hourly_rate", "country", "region", "state",
     "show_weekend", "always_on_top", "minimize_to_tray", "reminders_enabled",
     "reminder_minutes_before", "send_reminder_enabled", "send_reminder_day",
     "send_reminder_time", "send_reminder_weekend_shift",

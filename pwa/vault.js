@@ -12,6 +12,7 @@
 // `ENCRYPT_AT_REST`. Ein älterer Stand liest einen verschlüsselten Datensatz als „nicht gekoppelt“ und
 // überschriebe ihn beim nächsten Speichern mit Klartext-Standardwerten.
 import { b64d, b64e } from './crypto.js';
+import { t } from './i18n.js';
 
 export const ENCRYPT_AT_REST = false;
 
@@ -51,8 +52,8 @@ async function sealRecord(record, store, key, value) {
 }
 
 function openRecord(record, store, key, sealed) {
-  if (sealed.vault !== FORMAT) throw new VaultError('unsupported', 'Gespeichert in einem neueren Format.');
-  if (!record || record.kid !== sealed.kid) throw new VaultError('key_unavailable', 'Der Schlüssel für die lokalen Daten fehlt.');
+  if (sealed.vault !== FORMAT) throw new VaultError('unsupported', t('vault.fehler.neueres_format'));
+  if (!record || record.kid !== sealed.kid) throw new VaultError('key_unavailable', t('vault.fehler.schluessel_fehlt'));
   return decryptRecord(record, store, key, sealed);
 }
 
@@ -64,7 +65,7 @@ async function decryptRecord(record, store, key, sealed) {
   } catch {
     // Bewusst alles: falsche Kodierung, Prüfsumme, JSON — für den Aufrufer ist es dasselbe, ein Datensatz, der sich
     // nicht öffnen lässt. Ein Text (Inhalt, Schlüssel) steht nie in der Meldung.
-    throw new VaultError('unreadable', 'Ein lokaler Datensatz ist beschädigt.');
+    throw new VaultError('unreadable', t('vault.fehler.beschaedigt'));
   }
 }
 
@@ -101,7 +102,7 @@ export function idbVaultKeyStore(indexedDB = globalThis.indexedDB) {
         work(transaction.objectStore(STORE), (value) => { result = value; });
         transaction.oncomplete = () => resolve(result);
         transaction.onerror = () => reject(transaction.error);
-        transaction.onabort = () => reject(transaction.error ?? new Error('Transaktion abgebrochen'));
+        transaction.onabort = () => reject(transaction.error ?? new Error(t('vault.fehler.transaktion_abgebrochen')));
       });
     } finally {
       db.close();

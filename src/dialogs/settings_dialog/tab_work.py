@@ -10,10 +10,12 @@ from src.dialogs.date_row import build_date_row
 from src.dialogs.settings_dialog.fields import FieldSet
 from src.dialogs.settings_dialog.form_model import SaveOutcome
 from src.dialogs.settings_dialog.tab_rules import (
-    WSL_KEYS, validate_work, work_updates, wsl_snapshot,
+    WSL_KEYS, country_code_for_label, validate_work, work_updates,
+    wsl_snapshot,
 )
 from src.dialogs.vacation_dialog import open_vacation_dialog
-from src.holidays_de import STATES
+from src.holidays_region import COUNTRIES, REGIONS, region_label
+from src.region import country_region
 from src.settings import WEEKDAY_KEYS
 from src.theme import (
     BG, FONT, PAUSE_VALUES, TEXT_MUTED, TIME_VALUES, Form, dark_combo,
@@ -41,10 +43,10 @@ class WorkTab:
         # --- Arbeitswoche ---
         workweek_only_var = tk.BooleanVar(value=settings.get("workweek_only"))
         show_weekend_var = tk.BooleanVar(value=settings.get("show_weekend"))
-        state_labels = [lbl for _, lbl in STATES]
-        current_state = settings.get("state")
-        state_var = tk.StringVar(value=next(
-            (lbl for code, lbl in STATES if code == current_state), STATES[0][1]))
+        country, region = country_region(settings)
+        country_var = tk.StringVar(value=dict(COUNTRIES)[country])
+        region_var = tk.StringVar(value=region_label(country, region)
+                                  or REGIONS[country][0][1])
         form.section("Arbeitswoche")
         form.check("Nur Werktage — Wochenende (Sa/So) komplett ausblenden",
                    workweek_only_var)
@@ -52,8 +54,24 @@ class WorkTab:
         # Neben „Nur Werktage" braucht es keinen: grau, solange der an ist.
         with form.depends_on(workweek_only_var, invert=True, indent=False):
             form.check("Wochenende (Sa/So) im Kalender anzeigen", show_weekend_var)
-        form.row("Bundesland:", dark_combo(body, state_var, state_labels, width=22))
-        form.hint("Für Feiertage und Urlaub.")
+        region_combo = dark_combo(
+            body, region_var, [lbl for _, lbl in REGIONS[country]], width=22)
+
+        def _country_changed(_event=None):
+            code = country_code_for_label(country_var.get())
+            labels = [lbl for _, lbl in REGIONS.get(code, [])]
+            region_combo.configure(values=labels)
+            region_var.set(labels[0] if labels else "")
+
+        # Ein Land-Dropdown gibt es erst, wenn es mehr als ein Land gibt.
+        if len(COUNTRIES) > 1:
+            country_combo = dark_combo(
+                body, country_var, [lbl for _, lbl in COUNTRIES], width=22)
+            country_combo.bind("<<ComboboxSelected>>", _country_changed)
+            form.row("Land:", country_combo)
+        form.row("Bundesland:", region_combo)
+        form.hint("Für Feiertage und Urlaub. Bereits angelegte Urlaube werden "
+                  "bei einem Wechsel nicht neu berechnet.")
 
         # --- Standardzeiten ---
         form.section("Standardzeiten")
@@ -207,7 +225,8 @@ class WorkTab:
         self.wsl_hours_var = wsl_hours_var
         self.workweek_only_var = workweek_only_var
         self.show_weekend_var = show_weekend_var
-        self.state_var = state_var
+        self.country_var = country_var
+        self.region_var = region_var
 
         self.title = "Arbeitszeit"
         self._dialog = dialog
@@ -217,7 +236,8 @@ class WorkTab:
         fields = FieldSet()
         fields.add("workweek_only", workweek_only_var)
         fields.add("show_weekend", show_weekend_var)
-        fields.add("state", state_var)
+        fields.add("country", country_var)
+        fields.add("region", region_var)
         fields.add("default_times_mode", mode_var)
         fields.add("default_start_all", all_start_var)
         fields.add("default_end_all", all_end_var)

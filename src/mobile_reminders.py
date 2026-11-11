@@ -15,6 +15,7 @@ import re
 from collections.abc import Collection, Mapping
 from typing import Any, Literal
 
+from src.region import country_region
 from src.send_reminder import upcoming_send_times
 from src.settings import Settings, parse_reminder_minutes
 
@@ -64,9 +65,10 @@ def build_block(settings: Settings, reservation_store: Any, now: datetime.dateti
 
     at: list[str] = []
     if send_on:
+        country, region = country_region(settings)
         monthly = ({
             "day": settings.get("send_reminder_day"), "time": settings.get("send_reminder_time"),
-            "shift": settings.get("send_reminder_weekend_shift"), "state": settings.get("state") or "",
+            "shift": settings.get("send_reminder_weekend_shift"), "state": region, "country": country,
             "holidays": bool(settings.get("send_reminder_shift_holidays")),
         } if monthly_on else None)
         slots = (_marked_slots(reservation_store.get_all_raw())

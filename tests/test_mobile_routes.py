@@ -222,6 +222,35 @@ def test_the_pair_route_is_the_only_public_one(env):
     assert surface.route_methods("/v1/pair") == frozenset({"POST"})
 
 
+def test_pair_answer_carries_language_and_country(env, monkeypatch):
+    monkeypatch.setattr("src.region.LANGUAGES", ("de", "en"))
+    monkeypatch.setattr("src.region.COUNTRIES", [("DE", "Deutschland"), ("AT", "Österreich")])
+    env.ctx.settings.set_many({"language": "en", "country": "AT", "region": ""})
+
+    body = pair(env, new_code(env)).body
+
+    assert (body["language"], body["country"]) == ("en", "AT")
+
+
+def test_pair_answer_sanitizes_language_and_country(env):
+    env.ctx.settings.set_many({"language": "xx", "country": "ZZ"})
+
+    body = pair(env, new_code(env)).body
+
+    assert (body["language"], body["country"]) == ("de", "DE")
+
+
+def test_sync_answer_desktop_carries_language_and_country(env, monkeypatch):
+    monkeypatch.setattr("src.region.LANGUAGES", ("de", "en"))
+    monkeypatch.setattr("src.region.COUNTRIES", [("DE", "Deutschland"), ("AT", "Österreich")])
+    env.ctx.settings.set_many({"language": "en", "country": "AT", "region": ""})
+    _record, token = add_device(env, PHONE, "Pixel")
+
+    desktop = sync(env, token).body["desktop"]
+
+    assert (desktop["language"], desktop["country"]) == ("en", "AT")
+
+
 def test_a_correct_code_pairs_the_device_and_returns_token_and_key_only_inside_the_envelope(env):
     code = new_code(env)
 
@@ -230,7 +259,8 @@ def test_a_correct_code_pairs_the_device_and_returns_token_and_key_only_inside_t
     assert response.status == 200 and is_sealed(response.raw)               # nichts im Klartext
     raw = json.dumps(response.raw)
     body = response.body
-    assert set(body) == {"token", "expires_at", "window_days", "desktop_name", "protocol", "key"}
+    assert set(body) == {"token", "expires_at", "window_days", "desktop_name", "protocol", "key",
+                       "language", "country"}
     assert (body["window_days"], body["desktop_name"], body["protocol"]) == (90, "Desktop", 2)
     assert body["token"] not in raw and body["key"] not in raw and "Desktop" not in raw
     assert body["expires_at"] == "2026-11-07T12:00:00Z"

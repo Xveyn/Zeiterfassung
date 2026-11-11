@@ -24,7 +24,7 @@ from src.api_service import (
     REASON_TOKEN_UNAVAILABLE, STATE_ERROR, STATE_RUNNING, STATE_STARTING,
     ApiStatus, parse_port,
 )
-from src.holidays_de import code_for_state_label
+from src.holidays_region import COUNTRIES, REGIONS
 from src.mobile_service import (
     DEFAULT_PORT as MOBILE_DEFAULT_PORT, REASON_ADDRESS_GONE, REASON_NO_ADDRESS,
     REASON_INVALID_PORT as MOBILE_INVALID_PORT, REASON_PORT_IN_USE as MOBILE_PORT_IN_USE,
@@ -90,6 +90,19 @@ def validate_work(raw: Mapping[str, Any]) -> tuple[str, str] | None:
     return None
 
 
+def region_code_for_label(country: str, label: str) -> str:
+    """Anzeigename → Regionscode des Landes; Unbekanntes und „keine Region“
+    → "". Nur für die Auswahl im Dialog: der Code wird aus `REGIONS`
+    abgeleitet, nie aus übersetztem Text geparst."""
+    return next((code for code, lbl in REGIONS.get(country, [])
+                 if lbl == label), "")
+
+
+def country_code_for_label(label: str) -> str:
+    """Länder-Anzeigename → Code; Unbekanntes → "DE" (der Default)."""
+    return next((code for code, lbl in COUNTRIES if lbl == label), "DE")
+
+
 def work_updates(raw: Mapping[str, Any],
                  old: Mapping[str, Any]) -> dict[str, Any]:
     """Settings-Werte des Arbeitszeit-Tabs. `old` trägt die bisherigen
@@ -99,6 +112,8 @@ def work_updates(raw: Mapping[str, Any],
         max_hours = float(raw["werkstudent_limit_max_hours"])
     except (TypeError, ValueError):
         max_hours = old["werkstudent_limit_max_hours"]
+    country = country_code_for_label(raw["country"])
+    region = region_code_for_label(country, raw["region"])
     updates: dict[str, Any] = {
         "default_pause": int(raw["default_pause"]),
         "pause_warning_enabled": bool(raw["pause_warning_enabled"]),
@@ -111,7 +126,11 @@ def work_updates(raw: Mapping[str, Any],
                                   or old["werkstudent_limit_end"]),
         "werkstudent_limit_max_hours": max_hours,
         "workweek_only": bool(raw["workweek_only"]),
-        "state": code_for_state_label(raw["state"]),
+        "country": country,
+        "region": region,
+        # Für DE bleibt `state` aktuell, damit ein Downgrade dieselbe Region
+        # zeigt; andere Länder haben dort keine Entsprechung.
+        "state": region if country == "DE" else "",
         "show_weekend": bool(raw["show_weekend"]),
     }
     mode = mode_code(raw["default_times_mode"])

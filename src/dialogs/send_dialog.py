@@ -6,6 +6,7 @@ import traceback
 from tkinter import messagebox
 
 from src import workweek
+from src.region import country_region
 from src.dialogs.period_picker import build_period_picker
 from src.dialogs.send_task import format_result_summary, perform_send
 from src.platform_open import open_folder
@@ -96,13 +97,15 @@ def resolve_send_period(settings, reservation_store, today):
     marked = send_reminder.marked_reminder_dates(reservation_store.get_all_raw())
     monthly = []
     if settings.get("send_period_anchor_monthly") and settings.get("send_reminder_enabled"):
+        country, region = country_region(settings)
         monthly = send_reminder.monthly_anchor_dates(
             today,
             settings.get("send_reminder_day"),
             settings.get("send_reminder_time"),
             settings.get("send_reminder_weekend_shift"),
-            settings.get("state"),
+            region,
             bool(settings.get("send_reminder_shift_holidays")),
+            country=country,
         )
     return send_reminder.default_send_period(today, marked, monthly)
 

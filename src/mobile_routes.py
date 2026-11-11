@@ -42,6 +42,7 @@ from src.api_entry_write import WriteError, load_json_body
 from src.api_routes import ApiRequest, ApiResponse, error_response
 from src.api_server import Surface
 from src.mobile_sync import SyncError, grant_window, window_cap
+from src.region import country_region, normalize_language
 from src.reservations import reservations_active
 from src.pwa_constants import PWA_ORIGIN as _PWA_ORIGIN
 from src.pwa_constants import PWA_URL as _PWA_URL
@@ -257,7 +258,9 @@ def _pair(request: ApiRequest, ctx: MobileContext, principal: Principal) -> ApiR
     _, response_key = mc.pair_keys(opened["code"])
     return _sealed(response_key, path="/v1/pair", device_id=opened["device_id"], seq=1, payload={
         "token": token, "expires_at": record["expires_at"], "window_days": _standard_window(ctx),
-        "desktop_name": ctx.desktop_name(), "protocol": mc.PROTOCOL, "key": mc.b64e(key)})
+        "desktop_name": ctx.desktop_name(), "protocol": mc.PROTOCOL, "key": mc.b64e(key),
+        "language": normalize_language(ctx.settings.get("language")),
+        "country": country_region(ctx.settings)[0]})
 
 
 def _notify_paired(ctx: MobileContext) -> None:
@@ -369,7 +372,10 @@ def _sync(request: ApiRequest, ctx: MobileContext, principal: Principal) -> ApiR
                 last_pull_at=record["last_pull_at"],
                 storage=ctx.storage, settings=ctx.settings, conflicts_store=ctx.conflicts_store,
                 base=ctx.base, now=now, today=ctx.today(), data_lock=ctx.data_lock,
-                desktop=mobile_sync.desktop_info(ctx.desktop_name(), version_label(), platform.system()),
+                desktop=mobile_sync.desktop_info(
+                    ctx.desktop_name(), version_label(), platform.system(),
+                    language=normalize_language(ctx.settings.get("language")),
+                    country=country_region(ctx.settings)[0]),
                 sync_guard=ctx.sync_guard, reservation_store=ctx.reservation_store, report=report)
         except (_MobileError, SyncError) as exc:
             ctx.devices.save(seen)                       # nur der Zähler: Token bleibt unverändert

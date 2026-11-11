@@ -4,112 +4,103 @@
 // eigenen Text, damit ein neuer Fehlercode im Server nicht als „unbekannter Fehler" endet.
 
 import { blocksLan } from './browser-policy.js';
+import { t } from './i18n.js';
 import { PROTOCOL } from './pairing.js';
 
-const DEFAULT = { text: 'Der Abgleich ist fehlgeschlagen. Bitte später erneut versuchen.', action: 'retry' };
-
-const REPAIR = {
-  token_revoked: 'Dieses Handy wurde am Desktop widerrufen. Bitte neu koppeln — Ihre nicht übertragenen Einträge bleiben erhalten.',
-  token_expired: 'Die Kopplung ist abgelaufen. Bitte neu koppeln — Ihre nicht übertragenen Einträge bleiben erhalten.',
-};
-const REPAIR_FALLBACK = 'Die Kopplung wird vom Desktop nicht mehr akzeptiert (neu gekoppelt?). Bitte neu koppeln — Ihre nicht übertragenen Einträge bleiben erhalten.';
-
-const OFFLINE = 'Der Desktop ist nicht erreichbar. Läuft die App am Rechner, und sind Handy und Rechner im selben WLAN?';
-const BLOCKED = 'Der Desktop ist nicht erreichbar. Läuft die App am Rechner und sind beide im selben WLAN, sperrt dieser Browser vermutlich die Verbindung: die Seite kommt über https, der Rechner spricht http. Bitte Chrome auf Android verwenden — oder am Desktop unter Einstellungen → Mobil „Über Relay koppeln“ wählen und dieses Handy dort neu koppeln.';
-const RELAY_OFFLINE = 'Der Relay ist nicht erreichbar. Bitte die Internetverbindung des Handys prüfen und erneut versuchen.';
-const DESKTOP_SILENT = 'Der Relay hat die Anfrage angenommen, aber der Desktop hat nicht geantwortet. Läuft die Zeiterfassung am Rechner (nicht im Ruhezustand), und ist dort die Handy-Erfassung eingeschaltet? Wurde dieses Handy am Desktop widerrufen oder neu gekoppelt, hilft nur neu koppeln: Einstellungen → Verbindung → „QR neu scannen / Neu koppeln“.';
-const THROTTLED = 'Zu viele Anfragen auf einmal. Bitte eine Minute warten und erneut versuchen.';
-const REPLACED = 'Eine zweite Verbindung dieser Web-App hat übernommen. Bitte erneut versuchen.';
-const TOO_LARGE_ANSWER = 'Die Antwort des Desktops ist für den Relay zu groß. Unter Einstellungen → Verbindung lässt sich der Verlauf auf 90 Tage zurücksetzen.';
-const TOO_LARGE_REQUEST = 'Es sind zu viele nicht übertragene Änderungen auf einmal. Bitte später erneut versuchen.';
 const ADDRESS_RE = /^\d{1,3}(\.\d{1,3}){3}:\d{1,5}$/;
+
+function repairText(code) {
+  if (code === 'token_revoked') return t('fehler.neu_koppeln.token_revoked');
+  if (code === 'token_expired') return t('fehler.neu_koppeln.token_expired');
+  return t('fehler.neu_koppeln.unbekannt');
+}
+
+function vaultText(code) {
+  if (code === 'key_unavailable') return t('fehler.vault.key_unavailable');
+  if (code === 'unsupported') return t('fehler.vault.unsupported');
+  return t('fehler.vault.unreadable');
+}
+
+function defaultError() {
+  return { text: t('fehler.abgleich_fehlgeschlagen'), action: 'retry' };
+}
 
 /** Text für „offline“. Ein Netzfehler verrät den Grund nicht (Rechner aus oder Browser sperrt): der Text nennt
  *  deshalb beides, bei einem Browser, der den Zugriff bekanntermaßen sperrt, die wahrscheinlichere Ursache
  *  zuerst, und einen Test, der die beiden trennt (#275). Die Adresse erscheint nur in der Form `host:port`. */
 function offlineText({ browser, address } = {}) {
-  const base = blocksLan(browser) ? BLOCKED : OFFLINE;
+  const base = blocksLan(browser) ? t('fehler.offline.browser_sperrt') : t('fehler.offline.lan');
   if (typeof address !== 'string' || !ADDRESS_RE.test(address) || Number(address.split(':')[1]) > 65535) return base;
-  return `${base} Zum Prüfen im Browser des Handys http://${address}/v1/ping öffnen: antwortet er mit einem Fehlercode (z. B. 401), ist das Netz in Ordnung.`;
+  return t('fehler.offline.mit_adresse', { base, address });
 }
-
-const VAULT_TEXTS = {
-  key_unavailable: 'Die lokalen Daten sind verschlüsselt, der Schlüssel dafür fehlt auf diesem Gerät (zum Beispiel, weil Website-Daten teilweise gelöscht wurden). Sie lassen sich nicht mehr lesen. Nicht übertragene Einträge gehen verloren. Zum Weiterarbeiten musst du dieses Handy neu koppeln.',
-  unreadable: 'Ein Teil der lokalen Daten ist beschädigt und lässt sich nicht lesen. Nicht übertragene Einträge daraus gehen verloren. Zum Weiterarbeiten musst du dieses Handy neu koppeln.',
-  unsupported: 'Die lokalen Daten stammen von einer neueren Version der Web-App. Bitte die Seite neu laden, damit die neue Version geladen wird.',
-};
 
 /** Text und Ausweg, wenn der Speicher verschlüsselte Daten enthält, die sich nicht öffnen lassen (`vault.js`).
  *  `canReset`: Neu koppeln (löscht die lokalen Daten) ist sinnvoll; bei einem neueren Format nicht, dort hilft nur
  *  die neue Version. Ein unbekannter Fehler bietet das Neu-Koppeln an, damit der Nutzer nie in einer Sackgasse landet. */
 export function describeVaultError(error) {
   const code = error && typeof error === 'object' ? error.code : undefined;
-  return { text: VAULT_TEXTS[code] ?? VAULT_TEXTS.unreadable, canReset: code !== 'unsupported' };
+  return { text: vaultText(code), canReset: code !== 'unsupported' };
 }
 
 /** @param {unknown} error
  *  @param {{browser?: string, address?: string}} [env] Browser-Art (`browser-policy.browserKind`) und
  *  Adresse des Desktops; nur der Text für „offline“ nutzt sie. */
 export function describeError(error, env = {}) {
-  if (!error || typeof error !== 'object' || typeof error.kind !== 'string') return DEFAULT;
+  if (!error || typeof error !== 'object' || typeof error.kind !== 'string') return defaultError();
   const server = typeof error.message === 'string' ? error.message : '';
   switch (error.kind) {
     case 'offline':
-      if (env.transport === 'relay') return { text: RELAY_OFFLINE, action: 'retry' };
+      if (env.transport === 'relay') return { text: t('fehler.offline.relay'), action: 'retry' };
       return { text: offlineText(env), action: 'rescan' };
     case 'desktop_silent':
-      return { text: DESKTOP_SILENT, action: 'retry' };
+      return { text: t('fehler.desktop_schweigt'), action: 'retry' };
     case 'throttled':
-      return { text: THROTTLED, action: 'retry' };
+      return { text: t('fehler.zu_viele_anfragen'), action: 'retry' };
     case 'too_large':
-      return { text: error.code === 'request_too_large' ? TOO_LARGE_REQUEST : TOO_LARGE_ANSWER, action: null };
+      return { text: error.code === 'request_too_large' ? t('fehler.zu_gross.anfrage') : t('fehler.zu_gross.antwort'), action: null };
     case 'timeout':
-      return { text: 'Zeitüberschreitung: der Desktop hat nicht rechtzeitig geantwortet. Läuft die App am Rechner, und ist das WLAN stabil? Bei einem großen Verlauf kann auch die Datenmenge der Grund sein: unter Einstellungen → Verbindung lässt er sich auf 90 Tage zurücksetzen.', action: 'retry' };
+      return { text: t('fehler.zeitueberschreitung'), action: 'retry' };
     case 'address':
-      return { text: 'Falscher Desktop oder falsche Adresse. Den QR-Code am Desktop neu scannen.', action: 'rescan' };
+      return { text: t('fehler.falsche_adresse'), action: 'rescan' };
     case 'repair':
-      return { text: REPAIR[error.code] ?? REPAIR_FALLBACK, action: 'pair' };
+      return { text: repairText(error.code), action: 'pair' };
     case 'not_paired':
-      return { text: 'Dieses Handy ist noch nicht gekoppelt.', action: 'pair' };
+      return { text: t('fehler.nicht_gekoppelt'), action: 'pair' };
     case 'browser':
-      return { text: 'Dieser Browser sendet die Anfrage als seitenübergreifend (Sec-Fetch-Site) und der Desktop lehnt sie ab. Bitte Chrome auf Android verwenden.', action: null };
+      return { text: t('fehler.browser_cross_site'), action: null };
     case 'invalid_code':
-      return { text: 'Der Code ist ungültig oder abgelaufen. Am Desktop einen neuen Code erzeugen.', action: 'pair' };
+      return { text: t('fehler.code_ungueltig'), action: 'pair' };
     case 'clock_skew':
-      return { text: 'Die Uhr des Handys weicht mehr als 15 Minuten von der des Desktops ab. Datum und Uhrzeit am Handy prüfen.', action: null };
+      return { text: t('fehler.uhr_abweichung'), action: null };
     case 'invalid_entry':
-      return { text: `Der Desktop hat einen Tag abgelehnt: ${server || 'ungültiger Eintrag'}`, action: null };
+      return { text: t('fehler.tag_abgelehnt', { grund: server || t('fehler.tag_abgelehnt.ohne_grund') }), action: null };
     case 'crypto':
-      return { text: 'Die Verschlüsselung zwischen Handy und Desktop passt nicht mehr (Handy oder Rechner wurden zurückgesetzt?). Bitte neu koppeln — Ihre nicht übertragenen Einträge bleiben erhalten.', action: 'pair' };
+      return { text: t('fehler.verschluesselung.passt_nicht'), action: 'pair' };
     case 'encryption':
-      return { text: 'Diese Kopplung ist noch nicht verschlüsselt. Bitte neu koppeln — Ihre nicht übertragenen Einträge bleiben erhalten.', action: 'pair' };
+      return { text: t('fehler.verschluesselung.fehlt'), action: 'pair' };
     case 'transient':
-      if (error.code === 'replaced') return { text: REPLACED, action: 'retry' };
+      if (error.code === 'replaced') return { text: t('fehler.verbindung_ersetzt'), action: 'retry' };
       if (error.code === 'key_unavailable') {
-        return { text: 'Der Schlüsselbund am Rechner antwortet gerade nicht (gesperrt?). Bitte gleich erneut versuchen.', action: 'retry' };
+        return { text: t('fehler.schluesselbund'), action: 'retry' };
       }
-      return { text: 'Der Desktop ist gerade beschäftigt. Bitte gleich erneut versuchen.', action: 'retry' };
+      return { text: t('fehler.desktop_beschaeftigt'), action: 'retry' };
     case 'server':
-      return { text: 'Der Desktop meldet einen internen Fehler. Details stehen im Protokoll der Desktop-App.', action: 'retry' };
+      return { text: t('fehler.desktop_intern'), action: 'retry' };
     case 'protocol': {
       // Nennt der Desktop sein Protokoll (#290), sagen wir, welche Seite die ältere ist. Die Zahl kommt im
       // Klartext und ist damit nur ein Hinweis, kein Beleg.
       const theirs = error.supportedProtocol;
       if (Number.isInteger(theirs) && theirs > 0 && theirs < PROTOCOL) {
-        return { text: 'Die Desktop-App ist älter als diese Seite und spricht ein anderes Protokoll. Bitte die Desktop-App aktualisieren.', action: null };
+        return { text: t('fehler.protokoll.desktop_aelter'), action: null };
       }
       if (Number.isInteger(theirs) && theirs > PROTOCOL) {
-        return { text: 'Die Desktop-App ist neuer als diese Seite. Bitte diese Seite neu laden bzw. aktualisieren.', action: 'reload' };
+        return { text: t('fehler.protokoll.desktop_neuer'), action: 'reload' };
       }
-      return { text: 'Die App-Versionen von Handy und Desktop passen nicht zusammen. Desktop-App und diese Seite aktualisieren.', action: null };
+      return { text: t('fehler.protokoll.unpassend'), action: null };
     }
     case 'client_error':
-      return { text: `Anfrage abgelehnt: ${server || 'unbekannter Grund'}`, action: null };
+      return { text: t('fehler.anfrage_abgelehnt', { grund: server || t('fehler.anfrage_abgelehnt.ohne_grund') }), action: null };
     default:
-      return DEFAULT;
+      return defaultError();
   }
 }
-
-/** Hinweis unter dem Reservierungsblock (nur mit Pause, #455): der Kalendertermin kennt die Pause nicht.
- *  Bewusst bedingt formuliert (anders als die Desktop-Konstante): die PWA weiß nicht, ob der Abgleich an ist. */
-export const RESERVATION_CALENDAR_NOTE = 'Falls dein Desktop mit dem Google-Kalender abgleicht: Der Termin zeigt die volle Zeitspanne, die Pause wird dort nicht abgezogen.';

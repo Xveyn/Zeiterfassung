@@ -6,6 +6,8 @@
 // Eine installierte PWA, die nur aus dem Hintergrund nach vorn kommt, merkt ein neues Deploy deshalb
 // spät: die App stößt die Prüfung selbst an.
 
+import { t } from './i18n.js';
+
 export const UPDATE_CHECK_INTERVAL_MS = 30 * 60 * 1000;
 const AUTOMATIC = new Set(['start', 'visible']);
 
@@ -24,18 +26,20 @@ export function shouldApplyUpdate({ autoUpdate, updateReady, dialogOpen, syncing
   return Boolean(autoUpdate && updateReady && !dialogOpen && !syncing && !requested);
 }
 
-const STATUS = {
-  idle: 'Noch nicht geprüft.',
-  checking: 'Es wird nach einer neuen Version gesucht …',
-  current: 'Diese Seite ist aktuell.',
-  available: 'Neue Version verfügbar.',
-  offline: 'Offline — die Suche war nicht möglich.',
-  error: 'Die Suche nach einer neuen Version ist fehlgeschlagen.',
-  unsupported: 'Dieser Browser unterstützt keine Updates im Hintergrund.',
-};
+function statusText(state) {
+  switch (state) {
+    case 'checking': return t('update.status.checking');
+    case 'current': return t('update.status.current');
+    case 'available': return t('update.status.available');
+    case 'offline': return t('update.status.offline');
+    case 'error': return t('update.status.error');
+    case 'unsupported': return t('update.status.unsupported');
+    default: return t('update.status.idle');
+  }
+}
 
 /** `detail` (die Ursache, s. `diagnose.js`) hängt nur an einer fehlgeschlagenen Suche. */
 export function updateStatusText(state, detail = '') {
-  if (state === 'error' && detail) return `${STATUS.error.replace(/\.$/, '')} (${detail}).`;
-  return STATUS[state] ?? STATUS.idle;
+  if (state === 'error' && detail) return t('update.status.error_detail', { detail });
+  return statusText(state);
 }

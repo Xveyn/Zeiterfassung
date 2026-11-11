@@ -7,6 +7,9 @@
 // `time_utils.validate_slots`. Beides prüft `tests/test_mobile_contract.py` gegen
 // `test/fixtures/minutes-cases.json`.
 
+import { formatDate } from './locale.js';
+import { t } from './i18n.js';
+
 export const MAX_SLOTS = 50;
 export const MAX_CATEGORY_LENGTH = 100;
 const MAX_PAUSE_MINUTES = 24 * 60;
@@ -97,35 +100,35 @@ const fail = (message) => ({ ok: false, message });
 
 /** Prüft normalisierte Slots; liefert `{ok, message}` (`message` leer bei `ok`). */
 export function validateSlots(slots) {
-  if (!Array.isArray(slots)) return fail('Ungültige Slots.');
+  if (!Array.isArray(slots)) return fail(t('slots.fehler.ungueltig'));
   if (slots.length === 0) {
-    return fail('Mindestens ein Slot ist nötig (zum Leeren „Tag leeren“ benutzen).');
+    return fail(t('slots.fehler.mindestens_einer'));
   }
-  if (slots.length > MAX_SLOTS) return fail(`Höchstens ${MAX_SLOTS} Slots je Tag.`);
+  if (slots.length > MAX_SLOTS) return fail(t('slots.fehler.zu_viele', { max: MAX_SLOTS }));
   for (const slot of slots) {
-    if (slot === null || typeof slot !== 'object') return fail('Ungültiger Slot.');
+    if (slot === null || typeof slot !== 'object') return fail(t('slots.fehler.slot_ungueltig'));
     const start = parseTime(slot.start);
-    if (start === null) return fail('Startzeit ungültig (Format: HH:MM)');
+    if (start === null) return fail(t('slots.fehler.start'));
     const end = parseTime(slot.end);
-    if (end === null) return fail('Endzeit ungültig (Format: HH:MM)');
-    if (end <= start) return fail('Endzeit muss nach Startzeit liegen');
-    if (!Number.isInteger(slot.pause)) return fail('Pause muss eine ganze Zahl (Minuten) sein.');
-    if (slot.pause < 0) return fail('Pause darf nicht negativ sein');
+    if (end === null) return fail(t('slots.fehler.ende'));
+    if (end <= start) return fail(t('slots.fehler.ende_nach_start'));
+    if (!Number.isInteger(slot.pause)) return fail(t('slots.fehler.pause_ganzzahl'));
+    if (slot.pause < 0) return fail(t('slots.fehler.pause_negativ'));
     const working = end - start;
     if (slot.pause >= working) {
-      return fail(`Pause (${slot.pause} Min) muss kleiner als die Arbeitszeit (${working} Min) sein`);
+      return fail(t('slots.fehler.pause_zu_lang', { pause: slot.pause, arbeit: working }));
     }
-    if (typeof slot.kategorie !== 'string') return fail('Kategorie muss Text sein.');
+    if (typeof slot.kategorie !== 'string') return fail(t('slots.fehler.kategorie_text'));
     if ([...slot.kategorie].length > MAX_CATEGORY_LENGTH) {
-      return fail(`Kategorie darf höchstens ${MAX_CATEGORY_LENGTH} Zeichen haben.`);
+      return fail(t('slots.fehler.kategorie_laenge', { max: MAX_CATEGORY_LENGTH }));
     }
-    if (hasForbiddenCharacter(slot.kategorie)) return fail('Kategorie enthält ungültige Zeichen.');
+    if (hasForbiddenCharacter(slot.kategorie)) return fail(t('slots.fehler.kategorie_zeichen'));
   }
   const intervals = slots.map((slot) => [parseTime(slot.start), parseTime(slot.end)])
     .sort((a, b) => a[0] - b[0] || a[1] - b[1]);
   for (let i = 1; i < intervals.length; i += 1) {
     if (intervals[i][0] < intervals[i - 1][1]) {
-      return fail('Zeitslots dürfen sich zeitlich nicht überlappen.');
+      return fail(t('slots.fehler.ueberlappung'));
     }
   }
   return { ok: true, message: '' };
@@ -175,9 +178,7 @@ export function isoWeek(iso) {
 }
 
 export function formatDateDe(iso) {
-  if (!isIsoDate(iso)) return iso;
-  const [year, month, day] = iso.split('-');
-  return `${day}.${month}.${year}`;
+  return isIsoDate(iso) ? formatDate(iso) : iso;
 }
 
 /** Lokales Datum des Handys als ISO. */

@@ -10,25 +10,33 @@ import {
 import { blocksLan } from './browser-policy.js';
 import { categoryRows, timesSummary } from './categories.js';
 import { WEEKDAY_KEYS, resolveSlotDefaults, weekdayKey } from './defaults.js';
+import { formatClock, formatDateShort, getLocale, weekdayShort } from './locale.js';
+import { t } from './i18n.js';
 import { describeError } from './messages.js';
 import { openReservationSlots, pendingReservationMinutes, reservationBlockVisible, validateReservationSlots } from './reservations.js';
 import { describeState } from './push-policy.js';
 import { LEGACY_AHEAD_DAYS, aheadDays, olderState } from './window-policy.js';
 
-export const WEEKDAYS = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
+/** Kurzer Wochentag (0 = Montag): deutsch wie bisher, sonst aus der Locale. */
+function weekdayName(index) {
+  const tag = getLocale();
+  if (!tag.startsWith('de')) return weekdayShort(index, tag);
+  return [t('woche.tag.kurz.mo'), t('woche.tag.kurz.di'), t('woche.tag.kurz.mi'), t('woche.tag.kurz.do'),
+    t('woche.tag.kurz.fr'), t('woche.tag.kurz.sa'), t('woche.tag.kurz.so')][index];
+}
 
 /** Titel des Tages-Editors: Wochentag (Kurzform wie in der Wochenliste) und deutsches Datum,
  *  `Mi, 04.11.2026`. Was kein ISO-Datum ist, bleibt, wie es ist. */
 export function dayTitle(iso) {
   if (!isIsoDate(iso)) return iso;
-  return `${WEEKDAYS[WEEKDAY_KEYS.indexOf(weekdayKey(iso))]}, ${formatDateDe(iso)}`;
+  return `${weekdayName(WEEKDAY_KEYS.indexOf(weekdayKey(iso)))}, ${formatDateDe(iso)}`;
 }
 const SKEW_WARN_MS = 120000;
 
 const isObject = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
 
 export function slotText(slot) {
-  const pause = Number.isInteger(slot.pause) && slot.pause > 0 ? ` · ${slot.pause} min Pause` : '';
+  const pause = Number.isInteger(slot.pause) && slot.pause > 0 ? t('woche.slot.pause', { minutes: slot.pause }) : '';
   const category = typeof slot.kategorie === 'string' && slot.kategorie ? ` · ${slot.kategorie}` : '';
   return `${slot.start}–${slot.end}${pause}${category}`;
 }
@@ -43,7 +51,7 @@ export function categoryOptions(categories, current) {
 }
 
 export function categoryLabel(current) {
-  return current ? current : 'Wählen';
+  return current ? current : t('editor.kategorie.waehlen');
 }
 
 /** Label des Kategorie-Buttons einer Zeile. Wie `slot_category_display` am Desktop hängt es ein `*`
@@ -62,7 +70,7 @@ export function categoryDisplay(row, defaults, weekday, withPause) {
 export function localTime(iso, timeZone) {
   const time = Date.parse(iso);
   if (Number.isNaN(time)) return '';
-  return new Intl.DateTimeFormat('de-DE', { hour: '2-digit', minute: '2-digit', timeZone }).format(new Date(time));
+  return formatClock(time, timeZone);
 }
 
 function stampLabel(iso, timeZone) {
@@ -89,7 +97,7 @@ export function weekModel({ getDay, anchor, today, conflictDates = [], windowDay
     const reservation = planned && !planned.deleted && planned.slots.length > 0 ? planned : null;
     return {
       date,
-      weekday: WEEKDAYS[index],
+      weekday: weekdayName(index),
       label: formatDateDe(date),
       isToday: date === today,
       isWeekend: index >= 5,
@@ -107,7 +115,7 @@ export function weekModel({ getDay, anchor, today, conflictDates = [], windowDay
       conflict: conflicts.has(date),
       // Einladung auf leeren Tagen, an denen Eintragen geht (nicht außerhalb des Fensters, nicht mit Reservierung).
       addHint: (!day || cleared) && !reservation && !(date > addDays(today, aheadDays) || (windowDays > 0 && date < addDays(today, -windowDays)))
-        ? (visible ? 'Eintragen oder planen' : 'Eintragen') : '',
+        ? (visible ? t('woche.eintragen_oder_planen') : t('woche.eintragen')) : '',
       // Reservierungen zählen nicht in `minutes`/`totalMinutes`; vergangene Tage zeigen nie eine.
       reservationVisible: visible,
       reservation: reservation && {
@@ -118,8 +126,8 @@ export function weekModel({ getDay, anchor, today, conflictDates = [], windowDay
   const total = week.reduce((sum, day) => sum + day.minutes, 0);
   const pending = week.reduce((sum, day) => sum + day.pendingMinutes, 0);
   return {
-    title: `KW ${isoWeek(anchor).week}`,
-    range: `${formatDateDe(dates[0]).slice(0, 6)}–${formatDateDe(dates[6])}`,
+    title: t('woche.titel', { week: isoWeek(anchor).week }),
+    range: `${formatDateShort(dates[0])}–${formatDateDe(dates[6])}`,
     anchor: mondayOf(anchor),
     isCurrent: dates.includes(today),
     days: week,
@@ -133,13 +141,13 @@ export function weekModel({ getDay, anchor, today, conflictDates = [], windowDay
 // --- Status und Hinweise -------------------------------------------------------------------------
 
 export function statusModel({ paired, online, syncing, pending, lastSyncAt, timeZone }) {
-  const pendingText = pending === 0 ? '' : pending === 1 ? '1 Änderung nicht übertragen'
-    : `${pending} Änderungen nicht übertragen`;
+  const pendingText = pending === 0 ? '' : pending === 1 ? t('status.nicht_uebertragen.eins')
+    : t('status.nicht_uebertragen.mehr', { count: pending });
   const last = lastSyncAt ? localTime(lastSyncAt, timeZone) : '';
   return {
     paired, online, syncing, pendingText,
-    lastText: last ? `zuletzt abgeglichen um ${last}` : 'noch nicht abgeglichen',
-    connection: !paired ? 'Nicht gekoppelt' : syncing ? 'Gleiche ab …' : online ? 'Online' : 'Offline',
+    lastText: last ? t('status.zuletzt', { zeit: last }) : t('status.noch_nicht'),
+    connection: !paired ? t('status.nicht_gekoppelt') : syncing ? t('status.gleiche_ab') : online ? t('status.online') : t('status.offline'),
     canSync: paired && !syncing,
   };
 }
@@ -156,22 +164,22 @@ export function hintsModel({ lastError, excluded, skewMs, persistent, updateRead
     const { text, action } = describeError(lastError, errorEnv);
     hints.push({ id: 'error', kind: 'error', text, action });
   }
-  if (updateReady) hints.push({ id: 'update', kind: 'info', text: 'Neue Version verfügbar.', action: 'reload' });
+  if (updateReady) hints.push({ id: 'update', kind: 'info', text: t('hinweis.update'), action: 'reload' });
   if (conflictCount > 0) {
     hints.push({ id: 'conflicts', kind: 'warn', action: 'conflicts',
-      text: `${conflictCount} ${conflictCount === 1 ? 'Konflikt' : 'Konflikte'}: am Desktop lösen.` });
+      text: conflictCount === 1 ? t('hinweis.konflikt.eins', { count: conflictCount }) : t('hinweis.konflikt.mehr', { count: conflictCount }) });
   }
   if (errorDays > 0) {
     hints.push({ id: 'rejected', kind: 'warn', action: null,
-      text: `${errorDays} ${errorDays === 1 ? 'Tag wurde' : 'Tage wurden'} vom Desktop abgelehnt — bitte prüfen.` });
+      text: errorDays === 1 ? t('hinweis.abgelehnt.eins', { count: errorDays }) : t('hinweis.abgelehnt.mehr', { count: errorDays }) });
   }
   if (excluded) {
     hints.push({ id: 'excluded', kind: 'info', action: null,
-      text: 'Dieses Handy war länger offline als die letzte Kompaktierung am Desktop. Am Desktop gelöschte Einträge bleiben gelöscht.' });
+      text: t('hinweis.ausgeschlossen') });
   }
   if (Math.abs(skewMs || 0) >= SKEW_WARN_MS) {
     hints.push({ id: 'skew', kind: 'warn', action: null,
-      text: `Die Uhr des Handys weicht um etwa ${Math.round(Math.abs(skewMs) / 60000)} Minuten von der des Desktops ab. Datum und Uhrzeit am Handy prüfen.` });
+      text: t('hinweis.uhr_weicht_ab', { minutes: Math.round(Math.abs(skewMs) / 60000) }) });
   }
   // Eine Uhr, die hinter den Zeitpunkt des Schließens zurückgestellt wurde, verbirgt den Hinweis nicht für immer.
   const quiet = dismissedAt > 0 && dismissedAt <= now && now - dismissedAt < STORAGE_HINT_QUIET_MS;
@@ -335,9 +343,9 @@ export function rowProblems(row) {
   const problems = {};
   const start = parseTime(row.start);
   const end = parseTime(row.end);
-  if (row.start === '') problems.start = 'Start fehlt';
-  if (row.end === '') problems.end = 'Ende fehlt';
-  else if (start !== null && end !== null && end <= start) problems.end = 'Ende muss nach dem Start liegen';
+  if (row.start === '') problems.start = t('editor.problem.start_fehlt');
+  if (row.end === '') problems.end = t('editor.problem.ende_fehlt');
+  else if (start !== null && end !== null && end <= start) problems.end = t('editor.problem.ende_nach_start');
   return problems;
 }
 
@@ -352,7 +360,7 @@ export function addToTime(start, minutes) {
 /** Dialogtitel: das Datum, bei zwei Reitern mit dem aktiven Typ dahinter. */
 export function editorTitle(date, kind, hasBoth) {
   if (!hasBoth) return date;
-  return `${date} · ${kind === 'reservation' ? 'Reservierung' : 'Arbeitszeit'}`;
+  return kind === 'reservation' ? t('editor.titel.reservierung', { date }) : t('editor.titel.arbeitszeit', { date });
 }
 
 // --- Tag seit dem Öffnen des Editors geändert? -----------------------------------------------------
@@ -388,7 +396,7 @@ export function focusKeyToRestore({ activeKey, inRoot, isBody, last }) {
 export function desktopHint(meta) {
   if (!meta || !meta.last_pull_at) return '';
   const known = Boolean(meta.desktop && meta.desktop.version);
-  return known ? '' : 'Die Desktop-App ist älter als diese Seite, einige Funktionen fehlen (z. B. die Vorbelegung der Zeiten). Bitte die Desktop-App aktualisieren.';
+  return known ? '' : t('hinweis.desktop_aelter');
 }
 
 /** Auf iOS gehören Safari-Tab und installierte Web-App nicht zusammen (getrennter Speicher), und iOS löscht
@@ -398,7 +406,7 @@ export function desktopHint(meta) {
 /** @param {{ browser?: string, standalone?: boolean }} [state] */
 export function iosInstallHint({ browser, standalone } = {}) {
   if (browser !== 'ios' || standalone !== false) return '';
-  return 'Auf dem iPhone und iPad zuerst zum Home-Bildschirm hinzufügen (Teilen → „Zum Home-Bildschirm“) und von dort öffnen, dann dort mit „QR-Code scannen“ koppeln (die Kamera-App geht oft auch, aber nicht immer: je nach iOS-Version öffnet sie den Link im Browser statt in der installierten Web-App). Im Browser gespeicherte Daten gehören nicht zur installierten Web-App, und iOS löscht sie dort nach sieben Tagen ohne Nutzung.';
+  return t('hinweis.ios_installieren');
 }
 
 /** Welche Felder die Koppel-Seite zeigt: ein Relay-Link bringt Geheimnis und Code mit, beides bleibt
@@ -408,9 +416,6 @@ export function pairFields({ relay = false } = {}) {
 }
 
 // --- Einrichtungs-Screen (#496) -----------------------------------------------------------------------
-
-const SETUP_TITLE = 'Zeiterfassung App';
-const SETUP_LEAD = 'Zeiten nachtragen, auch ohne Netz. Der Desktop bleibt die Quelle.';
 
 /** Ob die Koppel-Seite noch den Einrichtungs-Screen zeigt: solange nichts gelesen, getippt oder fehlgeschlagen ist.
  *  Danach (Link gescannt, „Adresse und Code eintippen“, laufende oder gescheiterte Kopplung) folgt das Formular. */
@@ -426,10 +431,10 @@ export function pairingAfterBack(pairing = {}) {
 }
 
 const scanStep = (canScan) => ({
-  title: 'QR-Code scannen',
+  title: t('einrichtung.scan.titel'),
   text: canScan
-    ? 'Der Code erscheint am Desktop.'
-    : 'Keine Kamera verfügbar: den QR-Code vom Desktop mit der Kamera-App des Handys öffnen.',
+    ? t('einrichtung.scan.text_kamera')
+    : t('einrichtung.scan.text_ohne_kamera'),
   state: 'focus',
 });
 
@@ -439,43 +444,43 @@ const scanStep = (canScan) => ({
  *  installiert“. Der Relay-Weg hat keine Eingabe von Hand: er läuft nur über den QR-Link des Desktops. */
 /** @param {{ browser?: string, standalone?: boolean, canScan?: boolean }} [state] */
 export function setupModel({ browser, standalone, canScan = false } = {}) {
-  const base = { title: SETUP_TITLE, lead: SETUP_LEAD };
-  const nameStep = (text) => ({ title: 'Handy benennen', text, state: 'todo' });
+  const base = { title: t('einrichtung.titel'), lead: t('einrichtung.lead') };
+  const nameStep = (text) => ({ title: t('einrichtung.benennen.titel'), text, state: 'todo' });
   if (browser === 'ios' && standalone === false) {
     return {
       ...base, variant: 'install', scan: false,
       steps: [
-        { title: 'Zum Home-Bildschirm', text: 'Teilen-Symbol antippen → „Zum Home-Bildschirm“, dann von dort öffnen.', state: 'focus' },
-        { title: 'Am Desktop öffnen', text: 'Einstellungen → Mobil → „Über Relay koppeln“', state: 'later' },
-        { title: 'QR-Code scannen', text: 'In dieser Web-App, nicht mit der Kamera-App.', state: 'later' },
-        { title: 'Handy benennen', text: 'Dann koppeln.', state: 'later' },
+        { title: t('einrichtung.install.home_titel'), text: t('einrichtung.install.home_text'), state: 'focus' },
+        { title: t('einrichtung.desktop.titel'), text: t('einrichtung.desktop.text_relay'), state: 'later' },
+        { title: t('einrichtung.scan.titel'), text: t('einrichtung.install.scan_text'), state: 'later' },
+        { title: t('einrichtung.benennen.titel'), text: t('einrichtung.benennen.text'), state: 'later' },
       ],
-      alternatives: [{ id: 'browser-anyway', title: 'Trotzdem im Browser koppeln', text: 'Die Daten bleiben dann nur im Browser.', action: 'scan' }],
-      note: { kind: 'warn', text: 'Safari löscht Daten im Tab nach 7 Tagen ohne Nutzung. Erst als App installiert bleiben Einträge und Erinnerungen erhalten.' },
+      alternatives: [{ id: 'browser-anyway', title: t('einrichtung.alt.browser_titel'), text: t('einrichtung.alt.browser_text'), action: 'scan' }],
+      note: { kind: 'warn', text: t('einrichtung.note.install') },
     };
   }
   if (blocksLan(browser)) {
     return {
       ...base, variant: 'relay', scan: canScan,
       steps: [
-        { title: 'Am Desktop öffnen', text: 'Einstellungen → Mobil → „Über Relay koppeln“', state: 'todo' },
+        { title: t('einrichtung.desktop.titel'), text: t('einrichtung.desktop.text_relay'), state: 'todo' },
         scanStep(canScan),
-        nameStep('Dann koppeln.'),
+        nameStep(t('einrichtung.benennen.text')),
       ],
       alternatives: [],
-      note: { kind: 'info', text: 'Dieser Browser erreicht den Desktop nicht direkt im WLAN. Der Abgleich läuft deshalb verschlüsselt über das Internet.' },
+      note: { kind: 'info', text: t('einrichtung.note.relay') },
     };
   }
   return {
     ...base, variant: 'lan', scan: canScan,
     steps: [
-      { title: 'Am Desktop öffnen', text: 'Einstellungen → Mobil → „Gerät koppeln“', state: 'todo' },
+      { title: t('einrichtung.desktop.titel'), text: t('einrichtung.desktop.text_lan'), state: 'todo' },
       scanStep(canScan),
-      nameStep('Dann koppeln.'),
+      nameStep(t('einrichtung.benennen.text')),
     ],
     alternatives: [
-      { id: 'relay-hint', title: 'Nicht im selben WLAN?', text: 'Am Desktop stattdessen „Über Relay koppeln“ wählen und den QR-Code scannen.', action: null },
-      { id: 'manual', title: 'Adresse und Code eintippen', text: 'Nur im selben WLAN.', action: 'manual' },
+      { id: 'relay-hint', title: t('einrichtung.alt.relay_titel'), text: t('einrichtung.alt.relay_text'), action: null },
+      { id: 'manual', title: t('einrichtung.alt.manuell_titel'), text: t('einrichtung.alt.manuell_text'), action: 'manual' },
     ],
     note: null,
   };
@@ -483,7 +488,7 @@ export function setupModel({ browser, standalone, canScan = false } = {}) {
 
 /** Der Weg zum Desktop als Anzeige: die LAN-Adresse (`host:port`) oder „Relay“, nie das Geheimnis. */
 export function connectionLabel(meta) {
-  if (meta?.transport === 'relay') return 'Relay (über das Internet)';
+  if (meta?.transport === 'relay') return t('verbindung.relay');
   return meta?.address ? `${meta.address.host}:${meta.address.port}` : '';
 }
 
@@ -493,18 +498,18 @@ export function connectionLabel(meta) {
 export function olderModel(state) {
   switch (state.kind) {
     case 'load':
-      return { text: 'Ältere Zeiten sind noch nicht geladen.', action: 'older', wish: state.wish,
-        buttonText: `Ältere Zeiten laden (bis ${state.wish} Tage)` };
+      return { text: t('fenster.aelter.nicht_geladen'), action: 'older', wish: state.wish,
+        buttonText: t('fenster.aelter.laden', { wish: state.wish }) };
     case 'capped':
       // 365 ist das Maximum der Desktop-Einstellung: dorthin zu verweisen führt ins Leere.
-      if (state.days >= 365) return { text: 'Mehr als 365 Tage gibt es nur am Desktop.', action: null };
-      return { text: `Der Desktop liefert höchstens ${state.days} Tage. Die Obergrenze lässt sich am Desktop unter Einstellungen → Mobil ändern.`, action: null };
+      if (state.days >= 365) return { text: t('fenster.mehr_als_365'), action: null };
+      return { text: t('fenster.hoechstens', { days: state.days }), action: null };
     case 'trimmed':
-      return { text: `Der Desktop liefert wegen der Datenmenge nur ${state.days} Tage.`, action: null };
+      return { text: t('fenster.datenmenge', { days: state.days }), action: null };
     case 'unknown':
-      return { text: 'Ältere Zeiten sind noch nicht geladen. Sobald der Abgleich mit dem Desktop gelaufen ist, lässt sich der Verlauf erweitern.', action: null };
+      return { text: t('fenster.unbekannt'), action: null };
     case 'old_desktop':
-      return { text: 'Dieser Desktop kann nicht mehr als 90 Tage liefern. Bitte die Desktop-App aktualisieren.', action: null };
+      return { text: t('fenster.alter_desktop'), action: null };
     default:
       return null;
   }
@@ -523,24 +528,24 @@ export function editLock({ date, today, meta, hasRecord = false }) {
   const ahead = aheadDays(meta.window_ahead);
   if (date > addDays(today, ahead)) {
     return { kind: 'future', action: null,
-      text: `Dieser Tag lässt sich hier nicht bearbeiten: die Arbeitszeit geht nur bis ${ahead === 1 ? '1 Tag' : `${ahead} Tage`} im Voraus.` };
+      text: ahead === 1 ? t('sperre.zukunft.eins') : t('sperre.zukunft.mehr', { days: ahead }) };
   }
   const state = olderState({ firstDay: date, today, windowDays: meta.window_days, windowMax: meta.window_max,
     maxKnown: meta.window_max_known, acked: meta.window_wish_acked });
   const older = olderModel(state);
   if (!older) return null;
   return { kind: 'older', action: older.action, wish: older.wish, buttonText: older.buttonText,
-    text: `Dieser Tag liegt vor dem Zeitraum, den das Handy vom Desktop kennt, und lässt sich hier nicht bearbeiten, damit kein Eintrag am Desktop überschrieben wird. ${older.text}` };
+    text: t('sperre.aelter', { grund: older.text }) };
 }
 
 /** Die Zeile „Verlauf“ im Reiter „Verbindung“. */
 export function windowRow({ days, max, wish, ahead = null }) {
   const parts = [];
-  if (Number.isInteger(wish) && wish !== days) parts.push(`gewünscht ${wish}`);
-  if (Number.isInteger(max)) parts.push(`Desktop erlaubt bis ${max}`);
+  if (Number.isInteger(wish) && wish !== days) parts.push(t('fenster.zeile.gewuenscht', { wish }));
+  if (Number.isInteger(max)) parts.push(t('fenster.zeile.erlaubt', { max }));
   return {
-    text: (parts.length ? `${days} Tage (${parts.join(', ')})` : `${days} Tage`)
-      + (Number.isInteger(ahead) && ahead > 0 ? `, dazu ${ahead} Tage voraus` : ''),
+    text: (parts.length ? t('fenster.zeile.mit_zusatz', { days, parts: parts.join(', ') }) : t('fenster.zeile.tage', { days }))
+      + (Number.isInteger(ahead) && ahead > 0 ? t('fenster.zeile.voraus', { ahead }) : ''),
     canReset: Number.isInteger(wish) && wish > 90,
   };
 }
@@ -548,14 +553,21 @@ export function windowRow({ days, max, wish, ahead = null }) {
 // --- Einstellungen ---------------------------------------------------------------------------------
 
 export const SETTINGS_TABS = ['connection', 'categories', 'updates', 'debug'];
-const TAB_LABELS = { connection: 'Verbindung', categories: 'Kategorien', updates: 'Updates', debug: 'Debug' };
-export const retentionLabel = (days) => (days === 1 ? '1 Tag' : `${days} Tage`);
-export const settingsTabLabel = (key) => TAB_LABELS[key];
+export const retentionLabel = (days) => (days === 1 ? t('einstellungen.aufbewahrung.eins') : t('einstellungen.aufbewahrung.mehr', { days }));
+export function settingsTabLabel(key) {
+  switch (key) {
+    case 'connection': return t('einstellungen.tab.verbindung');
+    case 'categories': return t('einstellungen.tab.kategorien');
+    case 'updates': return t('einstellungen.tab.updates');
+    case 'debug': return t('einstellungen.tab.debug');
+    default: return undefined;
+  }
+}
 
-export const categoryRenameHint = 'Bestehende Einträge behalten den alten Namen.';
+export const categoryRenameHint = () => t('kategorien.umbenennen_hinweis');
 
 export function categoryRemovalText(name) {
-  return `Die Kategorie „${name}“ wird gelöscht. Bestehende Einträge behalten ihren Namen, sie erscheint nur nicht mehr in der Auswahl.`;
+  return t('einstellungen.kategorien.entfernen_text', { name });
 }
 
 /** Der Reiter „Kategorien“: Zeilen mit Kurzfassung, ob bearbeitet werden darf (der Desktop versteht
@@ -567,8 +579,8 @@ export function categoriesModel({ categories, defaults, writable, edit }) {
   const synced = defaults !== null && defaults !== undefined;
   const editable = Boolean(writable) && synced;
   let hint = '';
-  if (!writable) hint = 'Die Desktop-App ist älter als diese Seite: Kategorien lassen sich nur dort bearbeiten. Bitte die Desktop-App aktualisieren.';
-  else if (!synced) hint = 'Die Kategorien sind noch nicht abgeglichen. Bitte erst abgleichen.';
+  if (!writable) hint = t('einstellungen.kategorien.hinweis_alt');
+  else if (!synced) hint = t('einstellungen.kategorien.hinweis_nicht_abgeglichen');
   return {
     rows,
     editable,
@@ -580,16 +592,22 @@ export function categoriesModel({ categories, defaults, writable, edit }) {
 
 // --- Benachrichtigungen (#331) -------------------------------------------------------------------
 
-const PUSH_LABELS = { enable: 'Benachrichtigungen erlauben', disable: 'Ausschalten' };
+function pushActionLabel(action) {
+  switch (action) {
+    case 'enable': return t('push.aktion.erlauben');
+    case 'disable': return t('push.aktion.ausschalten');
+    default: return undefined;
+  }
+}
 
 /** Anzeige des Abschnitts „Benachrichtigungen“ im Reiter Verbindung. `desktopReady` heißt: die letzte
  *  Antwort trug einen `reminders`-Block (der Desktop kennt die Handy-Erinnerungen). */
 export function pushModel({ state, lastError, desktopReady, canTest = false }) {
   const { text, action } = describeState(state, lastError);
   const hint = state === 'on' && !desktopReady
-    ? ' Der Desktop sendet noch keine Erinnerungen für das Handy: dort „Auch aufs Handy senden“ einschalten und die Desktop-App aktualisieren.'
+    ? t('push.hinweis.desktop_ohne_erinnerungen')
     : '';
-  return { text: `${text}${hint}`, action, actionLabel: action ? PUSH_LABELS[action] : '', canTest: state === 'on' && canTest,
+  return { text: `${text}${hint}`, action, actionLabel: action ? pushActionLabel(action) : '', canTest: state === 'on' && canTest,
     // Schalter: Stellung und ob er sich umlegen lässt (gesperrt/nicht unterstützt: nur der Text).
     on: state === 'on', toggle: action !== null };
 }
@@ -597,9 +615,9 @@ export function pushModel({ state, lastError, desktopReady, canTest = false }) {
 /** Kopf des Reiters „Verbindung“: erst der Zustand, dann der Desktop und wann zuletzt abgeglichen wurde. */
 export function connectionSummary({ online, desktopName, lastSyncAt, tokenUntil, timeZone }) {
   const last = lastSyncAt ? localTime(lastSyncAt, timeZone) : '';
-  const parts = [last ? `zuletzt abgeglichen um ${last}` : 'noch nicht abgeglichen'];
-  if (tokenUntil) parts.push(`Kopplung gültig bis ${tokenUntil}`);
-  return { pill: online ? 'Verbunden' : 'Offline', kind: online ? 'ok' : 'warn', name: desktopName || 'Desktop', detail: parts.join(' · ') };
+  const parts = [last ? t('status.zuletzt', { zeit: last }) : t('status.noch_nicht')];
+  if (tokenUntil) parts.push(t('verbindung.kopplung_bis', { datum: tokenUntil }));
+  return { pill: online ? t('status.verbunden') : t('status.offline'), kind: online ? 'ok' : 'warn', name: desktopName || t('verbindung.desktop'), detail: parts.join(' · ') };
 }
 
 /** Hat der Abgleich vor dem Trennen den Desktop erreicht? Ja, wenn er mit einem Status geantwortet hat (auch mit
@@ -621,16 +639,16 @@ export function reachedAfterSyncError(error) {
 export function unpairDialogModel({ reached, openDays = 0, desktopUnpair = false } = {}) {
   const open = Number.isInteger(openDays) && openDays > 0 ? openDays : 0;
   const summary = open > 0
-    ? { kind: 'warn', text: open === 1 ? '1 Änderung ist noch nicht am Desktop.' : `${open} Änderungen sind noch nicht am Desktop.` }
-    : { kind: 'ok', text: 'Alle Tage sind am Desktop gesichert.' };
+    ? { kind: 'warn', text: open === 1 ? t('abmelden.offen.eins') : t('abmelden.offen.mehr', { count: open }) }
+    : { kind: 'ok', text: t('abmelden.gesichert') };
   const notifiesDesktop = desktopUnpair === true && reached === true;
   return {
     summary,
     notifiesDesktop,
     warnDesktop: notifiesDesktop ? null
-      : 'Der Desktop erfährt nichts vom Trennen. Das Gerät bleibt dort in der Liste, bis du es unter Einstellungen → Mobil entfernst oder widerrufst.',
+      : t('abmelden.desktop_erfaehrt_nichts'),
     canRetry: open > 0,
-    confirmLabel: open > 0 ? 'Trotzdem löschen' : 'Ja, trennen und löschen',
+    confirmLabel: open > 0 ? t('abmelden.trotzdem') : t('abmelden.ja'),
   };
 }
 
@@ -639,6 +657,6 @@ export function unpairDialogModel({ reached, openDays = 0, desktopUnpair = false
 export function storageNotice(persistent, { refused = false } = {}) {
   if (persistent !== false) return null;
   return refused
-    ? { text: 'Der Browser hat die Anfrage abgelehnt. Hilfreich: die App zum Startbildschirm hinzufügen und regelmäßig abgleichen.', action: null }
-    : { text: 'Der Browser sichert die Daten nicht dauerhaft. Nicht übertragene Einträge können bei Speichermangel verloren gehen.', action: 'persist' };
+    ? { text: t('speicher.abgelehnt'), action: null }
+    : { text: t('speicher.nicht_dauerhaft'), action: 'persist' };
 }

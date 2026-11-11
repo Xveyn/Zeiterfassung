@@ -38,6 +38,7 @@ from src.api_entry_write import WriteError, check_date_range, load_json_body, pa
 from src.api_summary import category_names
 from src.devices import sanitize_registry, with_own_entry
 from src.mobile_settings import clean_category_times, clock, pause
+from src.region import normalize_country, normalize_language
 from src.reservations import reservations_active
 from src.settings import WEEKDAY_KEYS
 from src.storage import sanitize_slot
@@ -316,10 +317,13 @@ def build_defaults(settings: Settings, categories: list[str]) -> dict[str, Any]:
             "category_times": category_times}
 
 
-def desktop_info(name: str, version: str, system: str) -> dict[str, str]:
+def desktop_info(name: str, version: str, system: str, *, language: str = "de",
+                 country: str = "DE") -> dict[str, str]:
     """Angaben zum Desktop für den Verbindungsdialog der PWA; `system` ist `platform.system()`.
-    Eine unbekannte Plattform bleibt leer, statt einen Rohwert anzuzeigen."""
-    return {"name": name, "version": version, "platform": _PLATFORMS.get(system, "")}
+    Eine unbekannte Plattform bleibt leer, statt einen Rohwert anzuzeigen. `language` und
+    `country` sind additiv (Protokoll bleibt 2) und werden als Fremddaten bereinigt."""
+    return {"name": name, "version": version, "platform": _PLATFORMS.get(system, ""),
+            "language": normalize_language(language), "country": normalize_country(country)}
 
 
 def _entry_bytes(date: str, clean: Mapping[str, Any]) -> int:

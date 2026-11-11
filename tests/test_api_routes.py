@@ -786,14 +786,15 @@ def test_categories_default_to_an_empty_list(env):
 
 
 def test_holidays_use_the_state_of_the_settings(tmp_path):
-    env = Env(tmp_path, {"state": "BY"})
+    env = Env(tmp_path, {"country": "DE", "region": "BY"})
     body = get(env, "/v1/holidays/2026").body
     assert (body["year"], body["state"]) == (2026, "BY")
     assert {"date": "2026-01-01", "name": "Neujahr"} in body["holidays"]
 
 
 def test_holidays_without_a_state_are_empty_and_say_so(env):
-    assert get(env, "/v1/holidays/2026").body == {"year": 2026, "state": "", "holidays": []}
+    assert get(env, "/v1/holidays/2026").body == {
+        "year": 2026, "state": "", "country": "DE", "region": "", "holidays": []}
 
 
 @pytest.mark.parametrize("path", ["/v1/summary/month/2026-01", "/v1/summary/week/2026-W02"])

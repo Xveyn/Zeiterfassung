@@ -1071,3 +1071,12 @@ test('the capability unpair follows the response and defaults to false', async (
   await store.applyResponse(old, emptySnapshot(), '2026-10-08');
   assert.equal(store.getMeta().desktop_unpair, false);
 });
+
+test('a meta from an older PWA without language and country loads with the defaults', async () => {
+  const adapter = createMemoryAdapter();
+  await adapter.batch([{ store: 'meta', op: 'put', key: 'meta', value: { token: 'T', device_id: 'phone-0001' } }]);
+  const store = new Store(adapter, clock());
+  await store.load();
+  assert.equal(store.getMeta().language, null);
+  assert.equal(store.getMeta().country, 'DE');
+});

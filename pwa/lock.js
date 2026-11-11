@@ -11,10 +11,16 @@
 //
 // DOM-frei: Browser-Schnittstellen (`credentials`, `PublicKeyCredential`) kommen als Parameter herein (Tests).
 import { b64d, b64e } from './crypto.js';
+import { t } from './i18n.js';
 
 export const LOCK_DELAYS = Object.freeze([0, 60_000, 300_000]);   // Sofort, 1 Minute, 5 Minuten
 export const DEFAULT_LOCK_DELAY_MS = 60_000;
-const DELAY_LABELS = new Map([[0, 'Sofort'], [60_000, 'Nach 1 Minute'], [300_000, 'Nach 5 Minuten']]);
+/** Beschriftung einer Frist aus `LOCK_DELAYS`, zum Aufrufzeitpunkt in der gewählten Sprache. */
+function delayLabel(value) {
+  if (value === 0) return t('sperre.frist.sofort');
+  if (value === 60_000) return t('sperre.frist.minute_1');
+  return t('sperre.frist.minuten_5');
+}
 const TIMEOUT_MS = 60_000;
 const ABORT_AFTER_MS = 65_000;             // etwas länger als `timeout` der Abfrage: ein Browser, der es ignoriert, hinge sonst ewig
 const FLAG_UP = 0x01;                      // user present
@@ -255,19 +261,18 @@ export function createLockController({ getMeta, now, unlockCredential, onLock, o
   };
 }
 
-const ERROR_TEXTS = {
-  insecure: 'Die Sperre braucht eine sichere Verbindung (https).',
-  no_api: 'Dieser Browser unterstützt die Geräte-Entsperrung nicht.',
-  no_authenticator: 'Auf diesem Gerät ist keine Bildschirmsperre oder Biometrie eingerichtet, die der Browser dafür nutzen kann.',
-  pending: 'Die Prüfung, ob dieses Gerät die Entsperrung anbietet, läuft noch. Einstellungen später noch einmal öffnen.',
-  cancelled: 'Die Entsperrung wurde nicht bestätigt.',
-  failed: 'Die Entsperrung hat nicht funktioniert.',
-  unverified: 'Das Gerät hat nicht bestätigt, dass du es entsperrt hast.',
-};
-
-export const lockErrorText = (reason) => ERROR_TEXTS[reason] ?? ERROR_TEXTS.failed;
-
-const NOTE = 'Sperrt die Oberfläche der App, bis du das Gerät entsperrst (Fingerabdruck, Gesicht oder Geräte-PIN, je nach Handy). Die gespeicherten Daten werden dadurch nicht verschlüsselt oder geschützt.';
+/** Text zu einem Grund; ein unbekannter Grund zeigt den von `failed`. */
+export function lockErrorText(reason) {
+  switch (reason) {
+    case 'insecure': return t('sperre.fehler.insecure');
+    case 'no_api': return t('sperre.fehler.no_api');
+    case 'no_authenticator': return t('sperre.fehler.no_authenticator');
+    case 'pending': return t('sperre.fehler.pending');
+    case 'cancelled': return t('sperre.fehler.cancelled');
+    case 'unverified': return t('sperre.fehler.unverified');
+    default: return t('sperre.fehler.failed');
+  }
+}
 
 /** Was der Abschnitt „Sperre“ im Reiter „Verbindung“ zeigt. */
 export function lockModel({ meta, support, busy = false }) {
@@ -280,8 +285,8 @@ export function lockModel({ meta, support, busy = false }) {
     canChange: available && !busy,
     delayMs: normalizeLockDelay(stored.lock_delay_ms),
     delayDisabled: !on || busy,
-    delayOptions: LOCK_DELAYS.map((value) => ({ value, label: DELAY_LABELS.get(value) })),
+    delayOptions: LOCK_DELAYS.map((value) => ({ value, label: delayLabel(value) })),
     hint: available ? '' : lockErrorText(support?.reason),
-    note: NOTE,
+    note: t('sperre.hinweis'),
   };
 }

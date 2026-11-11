@@ -22,7 +22,8 @@ import re
 from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any
 
-from src.holidays_de import get_holidays
+from src.holidays_region import get_holidays
+from src.region import country_region, normalize_language
 from src.pause_requirement import check_day_pause
 from src.time_utils import calculate_hours, get_week_dates, hours_to_minutes
 from src.vacations import cap_by_worktime
@@ -105,16 +106,19 @@ def category_names(settings: SettingsLike) -> list[str]:
 
 
 def holidays_for(settings: SettingsLike, year: int) -> dict[str, Any]:
-    """Feiertage des eingestellten Bundeslands. Ohne gesetztes Bundesland ist die
-    Liste leer und `state` ist `""` — so unterscheidet der Client „keine
-    Feiertage“ von „Bundesland fehlt“ (dieselbe Lücke wie beim Urlaub)."""
-    state = settings.get("state")
-    if not isinstance(state, str):
-        state = ""
-    found = get_holidays(state, year)
+    """Feiertage der eingestellten Region: `{year, state, country, region,
+    holidays}`. `state` ist der Alias von `region` (Vertrag älterer Clients, für
+    Deutschland bitgleich). Ohne Region ist die Liste leer und `region`/`state`
+    sind `""` — so unterscheidet der Client „keine Feiertage“ von „Region
+    fehlt“. Die Namen folgen `language`."""
+    country, region = country_region(settings)
+    found = get_holidays(country, region, year,
+                         normalize_language(settings.get("language")))
     return {
         "year": year,
-        "state": state,
+        "state": region,
+        "country": country,
+        "region": region,
         "holidays": [{"date": day.isoformat(), "name": name}
                      for day, name in sorted(found.items())],
     }

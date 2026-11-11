@@ -63,7 +63,7 @@ def test_category_names_tolerates_a_non_list(value):
 
 
 def test_holidays_for_a_state_are_sorted_with_german_names():
-    result = holidays_for({"state": "BY"}, 2026)
+    result = holidays_for({"country": "DE", "region": "BY"}, 2026)
     dates = [h["date"] for h in result["holidays"]]
     assert result["year"] == 2026 and result["state"] == "BY"
     assert dates == sorted(dates)
@@ -73,17 +73,30 @@ def test_holidays_for_a_state_are_sorted_with_german_names():
 
 
 def test_holidays_differ_by_state():
-    bayern = {h["date"] for h in holidays_for({"state": "BY"}, 2026)["holidays"]}
-    berlin = {h["date"] for h in holidays_for({"state": "BE"}, 2026)["holidays"]}
+    bayern = {h["date"] for h in holidays_for({"country": "DE", "region": "BY"}, 2026)["holidays"]}
+    berlin = {h["date"] for h in holidays_for({"country": "DE", "region": "BE"}, 2026)["holidays"]}
     assert "2026-01-06" in bayern and "2026-01-06" not in berlin
 
 
-@pytest.mark.parametrize("settings", [{}, {"state": ""}, {"state": None}, {"state": 5},
-                                      {"state": "XX"}])
+@pytest.mark.parametrize("settings", [{}, {"region": ""}, {"region": None}, {"region": 5},
+                                      {"region": "XX"}])
 def test_holidays_without_a_valid_state_are_empty(settings):
     result = holidays_for(settings, 2026)
     assert result["holidays"] == []
-    assert result["state"] in ("", "XX")
+    assert result["state"] == ""
+
+
+def test_holidays_keeps_state_alias():
+    result = holidays_for({"country": "DE", "region": "BY"}, 2026)
+    assert (result["state"], result["country"], result["region"]) == ("BY", "DE", "BY")
+    assert {"date": "2026-01-01", "name": "Neujahr"} in result["holidays"]
+
+
+def test_holidays_without_region_is_empty_with_empty_state():
+    result = holidays_for({}, 2026)
+    assert result["holidays"] == []
+    assert (result["state"], result["region"]) == ("", "")
+    assert result["country"] == "DE"
 
 
 def day(*slots):

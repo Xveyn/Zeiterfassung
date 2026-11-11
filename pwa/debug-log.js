@@ -3,6 +3,7 @@
 // DOM-frei; der Speicher kommt herein (IndexedDB in der Seite und im Service Worker, im Speicher in Tests).
 // Protokollieren darf nie selbst scheitern: bei einem Speicherfehler wechselt der Kern auf ein Array im Speicher.
 import { scrubText } from './log-scrub.js';
+import { t } from './i18n.js';
 
 export const RETENTION_CHOICES = [1, 7, 30];
 export const DEFAULT_RETENTION_DAYS = 7;
@@ -154,11 +155,11 @@ export function createDebugLog({ store, now = () => new Date() }) {
 export function formatEntry(entry) {
   const f = entry.fields || {};
   if (entry.kind === 'error') {
-    return `${entry.at} WARN ${f.context}: ${f.name ? `${f.name}: ` : ''}${f.detail}`;
+    return t('debug.eintrag.fehler', { at: entry.at, context: f.context, name: f.name ? `${f.name}: ` : '', detail: f.detail });
   }
   if (entry.kind === 'sync') {
-    return `${entry.at} INFO Abgleich ${f.result}, ${f.ms} ms, gesendet ${f.sent}, empfangen ${f.received}, `
-      + `Konflikte ${f.conflicts}, Fenster ${f.window}`;
+    return t('debug.eintrag.abgleich', { at: entry.at, result: f.result, ms: f.ms, sent: f.sent, received: f.received,
+      conflicts: f.conflicts, window: f.window });
   }
   return `${entry.at} INFO ${entry.kind}`;
 }

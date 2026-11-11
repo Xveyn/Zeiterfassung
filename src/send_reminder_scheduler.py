@@ -21,6 +21,7 @@ import datetime
 import logging
 
 from src import send_reminder
+from src.region import country_region
 from src.time_utils import MONTHS_DE
 
 log = logging.getLogger(__name__)
@@ -91,10 +92,12 @@ class SendReminderScheduler:
         time_str = self._settings.get("send_reminder_time")
         last_fired = self._settings.get("send_reminder_last_fired_month")
         shift_mode = self._settings.get("send_reminder_weekend_shift")
+        country, region = country_region(self._settings)
         free_dates = (
             send_reminder.free_dates_for_month(
-                now_dt.year, now_dt.month, self._settings.get("state"),
-                bool(self._settings.get("send_reminder_shift_holidays")))
+                now_dt.year, now_dt.month, region,
+                bool(self._settings.get("send_reminder_shift_holidays")),
+                country)
             if shift_mode in ("backward", "forward") else frozenset()
         )
         if not send_reminder.is_due(now_dt, day, time_str, last_fired,

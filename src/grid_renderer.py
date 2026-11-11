@@ -11,12 +11,13 @@ import platform
 import tkinter as tk
 
 from src.time_utils import (
-    DAYS_DE, MONTHS_DE,
+    DAYS_DE, MONTHS_DE, format_day_month,
     calculate_hours, format_hours_colon, format_iso_date, format_minutes_hm,
     get_week_dates, get_week_label, hours_to_minutes, week_spans_months,
 )
 from src import send_reminder
-from src.holidays_de import get_holidays
+from src.holidays_region import get_holidays
+from src.region import country_region
 from src.tooltip import attach_tooltip
 from src.vacations import period_for_day
 from src.theme import (
@@ -798,8 +799,9 @@ class GridRenderer:
             self._vacation_store.get_all() if self._vacation_store else {})
         total_minutes = 0
 
-        state = self._settings.get("state")
-        holidays_map = get_holidays(state, self._year) if state else {}
+        country, region = country_region(self._settings)
+        holidays_map = (get_holidays(country, region, self._year)
+                        if region else {})
 
         cell_size, entry_time_font, holiday_name_font, wide_cells = \
             self._cell_layout_metrics(new_frame)
@@ -868,11 +870,11 @@ class GridRenderer:
             self._vacation_store.get_all() if self._vacation_store else {})
         total_minutes = 0
         spans = week_spans_months(self._iso_year, self._current_week)
-        state = self._settings.get("state")
+        country, region = country_region(self._settings)
         holidays_map: dict[datetime.date, str] = {}
-        if state:
+        if region:
             for y in {dates[0].year, dates[-1].year}:
-                holidays_map.update(get_holidays(state, y))
+                holidays_map.update(get_holidays(country, region, y))
 
         cell_size, entry_time_font, holiday_name_font, wide_cells = \
             self._cell_layout_metrics(new_frame)
@@ -886,7 +888,7 @@ class GridRenderer:
             entry = entries.get(date_str)
             if entry:
                 total_minutes += self._display_minutes(entry)
-            day_text = f"{day_date.day}.{day_date.month}." if spans else str(day_date.day)
+            day_text = format_day_month(day_date) if spans else str(day_date.day)
 
             cell = self._build_day_cell(
                 new_frame, date_str, day_text, day_date,

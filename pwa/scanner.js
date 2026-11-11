@@ -3,6 +3,7 @@
 // fehlt oder keine QR-Codes liest (Firefox, Safari/iOS), liest der eigene Decoder (`qr-decode.js`)
 // Bilder aus dem Video. Das Ergebnis läuft in beiden Fällen durch `parsePairLink`: nur ein Koppel-Link
 // zählt (LAN mit privater IPv4-Adresse, oder Relay mit dem Geheimnis der Box, #358).
+import { t } from './i18n.js';
 import { parsePairLink } from './pairing.js';
 import { decodeQr } from './qr-decode.js';
 
@@ -75,14 +76,14 @@ export async function scanForPairLink(video, signal, onStatus = () => {}, env = 
     video.setAttribute('playsinline', '');
     video.srcObject = stream;
     await video.play();
-    onStatus('Den QR-Code vom Desktop in das Bild halten.');
+    onStatus(t('scanner.halten'));
     const readFrame = await frameReader(video, env);
     while (!signal.aborted) {
       const text = await readFrame();
       if (text !== null) {
         const link = parsePairLink(text);
         if (link) return link;
-        onStatus('Das ist kein Koppel-Code dieser App.');
+        onStatus(t('scanner.fremder_code'));
       }
       await env.wait(FRAME_INTERVAL_MS);
     }

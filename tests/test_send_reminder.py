@@ -296,7 +296,7 @@ NOW = datetime.datetime(2026, 10, 22, 8, 0)
 
 
 def monthly(**over):
-    return {"day": 28, "time": "18:00", "shift": "none", "state": "", "holidays": False, **over}
+    return {"day": 28, "time": "18:00", "shift": "none", "state": "", "country": "DE", "holidays": False, **over}
 
 
 def times(**kwargs):

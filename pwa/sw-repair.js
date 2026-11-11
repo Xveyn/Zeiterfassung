@@ -8,6 +8,7 @@
 // Web-App offline nicht mehr startet; deshalb nichts anfassen, solange das Netz fehlt oder `sw.js` nicht
 // abrufbar ist.
 
+import { t } from './i18n.js';
 import { withDetail } from './diagnose.js';
 
 export class RepairError extends Error {
@@ -45,15 +46,15 @@ export async function repairServiceWorker({ serviceWorker, cacheStorage, prefix,
 
 /** Der Text für die Anzeige. */
 export function describeRepair(error) {
-  if (!(error instanceof RepairError)) return withDetail('Die Reparatur ist fehlgeschlagen.', error);
+  if (!(error instanceof RepairError)) return withDetail(t('reparatur.fehlgeschlagen'), error);
   switch (error.kind) {
     case 'offline':
-      return 'Reparieren braucht eine Internetverbindung, damit die Web-App danach auch offline startet. Bitte online erneut versuchen.';
+      return t('reparatur.offline');
     case 'unreachable':
-      return `${withDetail('Die Seite ist gerade nicht erreichbar.', error.cause)} Es wurde nichts verändert.`;
+      return t('reparatur.nicht_erreichbar', { text: withDetail(t('reparatur.nicht_erreichbar.grund'), error.cause) });
     case 'unsupported':
-      return 'Dieser Browser unterstützt keine Service Worker, es gibt nichts zu reparieren.';
+      return t('reparatur.nicht_unterstuetzt');
     default:
-      return `${withDetail('Die Reparatur ist fehlgeschlagen.', error.cause)} Einträge und Kopplung bleiben erhalten. Chrome und die Web-App schließen und neu öffnen.`;
+      return t('reparatur.fehlgeschlagen.mit_hinweis', { text: withDetail(t('reparatur.fehlgeschlagen'), error.cause) });
   }
 }

@@ -4,6 +4,8 @@ from __future__ import annotations
 import datetime
 from typing import Any, TypeVar
 
+from src import locale_format
+
 # Slot-Dicts kommen aus storage/reservations. Der Typ wird hier lokal
 # geschrieben statt importiert: `storage.py` importiert `time_utils`, ein
 # Import zurück wäre ein Zyklus. Werte sind heterogen (str/int) → Any (N8).
@@ -17,10 +19,6 @@ Slot = dict[str, Any]
 _DateLike = TypeVar("_DateLike", datetime.date, str)
 
 DAYS_DE = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"]
-WEEKDAYS_DE_FULL = [
-    "Montag", "Dienstag", "Mittwoch", "Donnerstag",
-    "Freitag", "Samstag", "Sonntag",
-]
 MONTHS_DE = [
     "", "Januar", "Februar", "März", "April", "Mai", "Juni",
     "Juli", "August", "September", "Oktober", "November", "Dezember",
@@ -153,15 +151,32 @@ def get_week_dates(iso_year: int, iso_week: int) -> list[datetime.date]:
     return [monday + datetime.timedelta(days=i) for i in range(7)]
 
 
-def format_date(d: datetime.date) -> str:
-    """date/datetime → 'TT.MM.JJJJ' für die Anzeige (deutsches UI-Format).
+def format_date(d: datetime.date, locale: str | None = None) -> str:
+    """date/datetime → Anzeigedatum nach dem Locale (Standard: das aktive,
+    de-DE = 'TT.MM.JJJJ').
 
     Objekt-Pendant zu format_iso_date (das einen ISO-String erwartet):
     zentralisiert das über Dialoge und Report verstreute
     `d.strftime('%d.%m.%Y')` (Audit N20). ISO bleibt die Speicher-/interne
     Quelle — dies ist reine Anzeige-Formatierung.
     """
-    return d.strftime("%d.%m.%Y")
+    return d.strftime(locale_format.date_pattern(locale or locale_format.active()))
+
+
+def format_short_date(d: datetime.date, locale: str | None = None) -> str:
+    """Tag und Monat ohne Jahr (de-DE: '30.03.')."""
+    return d.strftime(locale_format.short_date_pattern(locale or locale_format.active()))
+
+
+def format_day_month(d: datetime.date, locale: str | None = None) -> str:
+    """Tag und Monat ohne Jahr und ohne führende Nullen (de-DE: '1.4.')."""
+    pattern = locale_format.day_month_pattern(locale or locale_format.active())
+    return pattern.format(day=d.day, month=d.month)
+
+
+def weekday_name(d: datetime.date, locale: str | None = None) -> str:
+    """Ausgeschriebener Wochentag nach dem Locale."""
+    return locale_format.weekday_names(locale or locale_format.active())[d.weekday()]
 
 
 def get_week_label(iso_year: int, iso_week: int) -> str:
@@ -171,7 +186,7 @@ def get_week_label(iso_year: int, iso_week: int) -> str:
     sunday = dates[6]
     if monday.year != sunday.year:
         return f"KW {iso_week} · {format_date(monday)} – {format_date(sunday)}"
-    return f"KW {iso_week} · {monday.strftime('%d.%m.')} – {format_date(sunday)}"
+    return f"KW {iso_week} · {format_short_date(monday)} – {format_date(sunday)}"
 
 
 def week_spans_months(iso_year: int, iso_week: int) -> bool:
@@ -180,7 +195,8 @@ def week_spans_months(iso_year: int, iso_week: int) -> bool:
     return dates[0].month != dates[6].month
 
 
-def format_iso_date(iso: str | None, fallback: str = "—") -> str:
+def format_iso_date(iso: str | None, fallback: str = "—",
+                    locale: str | None = None) -> str:
     """ISO-Datum oder -Zeitstempel → 'TT.MM.JJJJ' für die Anzeige.
 
     Akzeptiert sowohl reine Daten ('2026-06-02') als auch Zeitstempel
@@ -189,7 +205,7 @@ def format_iso_date(iso: str | None, fallback: str = "—") -> str:
     if not iso or len(iso) < 10:
         return fallback
     try:
-        return format_date(datetime.date.fromisoformat(iso[:10]))
+        return format_date(datetime.date.fromisoformat(iso[:10]), locale)
     except ValueError:
         return iso[:10]
 
@@ -228,7 +244,8 @@ def local_date_of_iso(iso: str | None,
     return stamp.astimezone(tz).date()
 
 
-def format_iso_weekday_date(iso: str | None, fallback: str = "—") -> str:
+def format_iso_weekday_date(iso: str | None, fallback: str = "—",
+                            locale: str | None = None) -> str:
     """ISO-Datum oder -Zeitstempel → 'Wochentag - TT.MM.JJJJ' für die Anzeige
     (z.B. 'Montag - 13.07.2026'). Leere oder unparsbare Werte liefern denselben
     Fallback-Weg wie format_iso_date (fallback bzw. roher 10-Zeichen-Prefix).
@@ -239,10 +256,12 @@ def format_iso_weekday_date(iso: str | None, fallback: str = "—") -> str:
         day = datetime.date.fromisoformat(iso[:10])
     except ValueError:
         return iso[:10]
-    return f"{WEEKDAYS_DE_FULL[day.weekday()]} - {format_date(day)}"
+    pattern = locale_format.weekday_date_pattern(locale or locale_format.active())
+    return pattern.format(weekday=weekday_name(day, locale), date=format_date(day, locale))
 
 
-def format_iso_datetime(iso: str | None, fallback: str = "—") -> str:
+def format_iso_datetime(iso: str | None, fallback: str = "—",
+                        locale: str | None = None) -> str:
     """ISO-Zeitstempel → 'TT.MM.JJJJ HH:MM' für die Anzeige.
 
     Die Uhrzeit wird unverändert aus dem String übernommen (keine
@@ -251,7 +270,7 @@ def format_iso_datetime(iso: str | None, fallback: str = "—") -> str:
     """
     if not iso or len(iso) < 10:
         return fallback
-    date_part = format_iso_date(iso, fallback)
+    date_part = format_iso_date(iso, fallback, locale)
     if len(iso) >= 16 and iso[10] in ("T", " "):
         return f"{date_part} {iso[11:16]}"
     return date_part

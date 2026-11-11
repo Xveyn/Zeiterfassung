@@ -53,6 +53,16 @@ DEFAULTS = {
     "mail_closing": "Mit freundlichen Grüßen",
     "hourly_rate": 0.0,
     "state": "",
+    # Land und Region der Feiertage (region.country_region); gerätelokal wie
+    # `state`, NICHT in SYNCED_SETTING_KEYS. `region_migrated` markiert die
+    # einmalige Übernahme von `state` (region.migrate_state).
+    "country": "DE",
+    "region": "",
+    "region_migrated": False,
+    # Sprache der Oberfläche; gerätelokal, NICHT in SYNCED_SETTING_KEYS. Das
+    # Datumsformat folgt aus Sprache und Land (locale_format.locale_for),
+    # nicht aus einer eigenen Einstellung.
+    "language": "de",
     "last_update_check_at": "",
     "dismissed_version": "",
     "update_check_frequency": "daily",
@@ -248,7 +258,7 @@ def _migrate_legacy_default_times(loaded: dict[str, Any]) -> None:
 # extrahiert aus settings_dialog.save_settings, Issue #51). settings.py bleibt
 # bewusst stdlib-only — kein holidays/google-Import (sync.py importiert dieses
 # Modul, vgl. Issue #48). Das State-Label→Code-Mapping lebt deshalb in
-# holidays_de.code_for_state_label, nicht hier.
+# holidays_region (REGIONS), nicht hier.
 
 
 def parse_hourly_rate(raw: str | None) -> float:

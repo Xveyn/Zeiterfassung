@@ -4,9 +4,10 @@ import assert from 'node:assert/strict';
 
 import {
   SETTINGS_TABS, categoriesModel, categoryRemovalText, categoryRenameHint, settingsTabLabel, retentionLabel,
-  WEEKDAYS, dayTitle, categoryDisplay, categoryLabel, categoryOptions, conflictsModel, dayChanged, editLock, editorRows, focusKeyToRestore, hintKey, hintsModel, desktopHint, localTime, nextRow, olderModel, pickCategory, rowsToSlots, slotText,
+  dayTitle, categoryDisplay, categoryLabel, categoryOptions, conflictsModel, dayChanged, editLock, editorRows, focusKeyToRestore, hintKey, hintsModel, desktopHint, localTime, nextRow, olderModel, pickCategory, rowsToSlots, slotText,
   reachedAfterSyncError, unpairDialogModel, statusModel, validateRows, weekModel, windowRow, reservationRows, reservationRowsToSlots, validateReservationRows,
 } from '../view-model.js';
+import de from '../i18n/de.js';
 import { SyncError } from '../sync.js';
 import { formatMinutes } from '../minutes.js';
 
@@ -48,7 +49,7 @@ test('the week model lists Monday to Sunday with German dates and the ISO week',
   assert.equal(week.range, '05.10.–11.10.2026');
   assert.equal(week.anchor, '2026-10-05');
   assert.equal(week.isCurrent, true);
-  assert.deepEqual(week.days.map((d) => d.weekday), WEEKDAYS);
+  assert.deepEqual(week.days.map((d) => d.weekday), ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So']);
   assert.deepEqual(week.days.map((d) => d.date), [
     '2026-10-05', '2026-10-06', '2026-10-07', '2026-10-08', '2026-10-09', '2026-10-10', '2026-10-11']);
   assert.equal(week.days[3].isToday, true);
@@ -678,7 +679,8 @@ test('the model reports a dirty and a rejected block', () => {
 test('removing and renaming say that existing entries keep the old name', () => {
   assert.match(categoryRemovalText('Projekt'), /Projekt/);
   assert.match(categoryRemovalText('Projekt'), /behalten/);
-  assert.match(categoryRenameHint, /alten Namen/);
+  assert.match(categoryRenameHint(), /alten Namen/);
+  assert.equal(categoryRenameHint(), de['kategorien.umbenennen_hinweis']);
 });
 
 // --- Benachrichtigungen (#331) -------------------------------------------------------------------

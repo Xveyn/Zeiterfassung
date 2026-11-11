@@ -366,3 +366,19 @@ test('a frozen store writes nothing after the wipe: a late setMeta, saveDay or b
   await fresh.load();
   assert.equal(isPaired(fresh.getMeta()), false);
 });
+
+test('VaultError messages keep their German wording (they reach the user through a failed sync)', async () => {
+  const { vault, inner } = make();
+  await vault.batch([{ store: 'entries', op: 'put', key: '2026-10-08', value: RECORD }]);
+  const [{ value }] = await inner.getAll('entries');
+  await inner.batch([{ store: 'reservations', op: 'put', key: '2026-10-08', value }]);
+  await assert.rejects(vault.getAll('reservations'), { message: 'Ein lokaler Datensatz ist beschädigt.' });
+
+  await vault.batch([{ store: 'meta', op: 'put', key: 'meta', value: META }]);
+  const lost = createVaultAdapter(inner, { keys: memoryVaultKeyStore(), encrypt: true });
+  await assert.rejects(lost.getAll('meta'), { message: 'Der Schlüssel für die lokalen Daten fehlt.' });
+
+  const plain = make({ encrypt: false });
+  await plain.inner.batch([{ store: 'meta', op: 'put', key: 'meta', value: { vault: 2, kid: 'x', iv: 'AA', ct: 'AA' } }]);
+  await assert.rejects(plain.vault.getAll('meta'), { message: 'Gespeichert in einem neueren Format.' });
+});

@@ -3,6 +3,8 @@
 // eigenen, nicht extrahierbaren Schlüssel, den nur dieses Gerät kennt (Seite und Service Worker
 // lesen ihn aus derselben IndexedDB). Bewusst nicht `k_dev` der Kopplung: der Desktop braucht
 // diesen Schlüssel nie. Läuft in der Seite **und** im Service Worker, daher keine DOM-API.
+import { t } from './i18n.js';
+
 export const MAX_BLOB = 1024;        // Grenze des Relays (`LIMITS.maxBlob`)
 const IV_BYTES = 12;
 const DB_NAME = 'zeiterfassung-push';
@@ -63,7 +65,7 @@ export async function seal(keys, plain) {
   all.set(iv);
   all.set(cipher, IV_BYTES);
   const blob = toBase64(all);
-  if (blob.length > MAX_BLOB) throw new Error('Der Text der Benachrichtigung ist zu groß.');
+  if (blob.length > MAX_BLOB) throw new Error(t('push.blob.zu_gross'));
   return blob;
 }
 

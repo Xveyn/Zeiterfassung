@@ -8,6 +8,8 @@ import { pendingReservationMinutes } from '../reservations.js';
 import { decodeRequest } from '../relay-frame.js';
 import { endpointOf, isPaired } from '../transport.js';
 import { createMemoryAdapter } from '../memory-adapter.js';
+import { applyLocale } from '../language.js';
+import { getLanguage } from '../i18n.js';
 import { b64d, b64e, deviceKeys, isEnvelope, openEnvelope, pairKeys, seal } from '../crypto.js';
 import {
   SKEW_WARN_MS, SyncClient, SyncError, classifyHttpError, classifyNetworkError, clockSkewMs,
@@ -149,7 +151,7 @@ test('the example response carries the defaults and the desktop info (#288)', ()
   const parsed = parseSyncResponse(fixture('sync-response.json'));
   assert.equal(parsed.defaults.pause, 30);
   assert.deepEqual(parsed.defaults.category_times.Projekt, { start: '09:00', end: '17:00', pause: 45 });
-  assert.deepEqual(parsed.desktop, { name: 'Büro-PC', version: '1.24.0', platform: 'Linux' });
+  assert.deepEqual(parsed.desktop, { name: 'Büro-PC', version: '1.24.0', platform: 'Linux', language: 'de', country: 'DE' });
 });
 
 test('a response from an older desktop without defaults and desktop info is still accepted', () => {
@@ -1501,4 +1503,55 @@ test('the unpair plaintext and the answer are the shared contract examples', asy
 
   assert.deepEqual(await client.unpair(), { state: 'sent' });
   assert.deepEqual(fetchFn.calls[0].plain, fixture('unpair-request.json'));
+});
+
+// --- Sprache und Land beim Koppeln (Task 10) ---------------------------------------------------------
+
+const PAIR_ARGS = { host: '192.168.1.20', port: 17654, code: CODE, deviceName: 'Pixel' };
+
+test('pairing against a desktop with language de adopts it and the country', async () => {
+  const { store, client } = await make({ paired: false, handler: () => reply(200, { ...PAIR_ANSWER(), language: 'de', country: 'AT' }) });
+  await client.pair(PAIR_ARGS);
+  assert.equal(store.getMeta().language, 'de');
+  assert.equal(store.getMeta().country, 'AT');
+});
+
+test('pairing against an old desktop without the fields gives de/DE', async () => {
+  const answer = PAIR_ANSWER();
+  delete answer.language;
+  delete answer.country;
+  const { store, client } = await make({ paired: false, handler: () => reply(200, answer) });
+  await client.pair(PAIR_ARGS);
+  assert.equal(store.getMeta().language, null);
+  applyLocale(store.getMeta());
+  assert.equal(getLanguage(), 'de');
+  assert.equal(store.getMeta().country, 'DE');
+});
+
+test('a second pairing never overwrites a chosen language', async () => {
+  const { store, client } = await make({ paired: false, handler: () => reply(200, { ...PAIR_ANSWER(), language: 'de', country: 'CH' }) });
+  await store.setMeta({ language: 'xx-chosen' });
+  await client.pair(PAIR_ARGS);
+  assert.equal(store.getMeta().language, 'xx-chosen');
+  assert.equal(store.getMeta().country, 'CH');
+});
+
+test('a sync answer with desktop.country updates the country and never the language', async () => {
+  const doc = fixture('sync-response.json');
+  const { store, client } = await make({ handler: () => reply(200, { ...doc, desktop: { ...doc.desktop, language: 'fr', country: 'AT' } }) });
+  await store.setMeta({ language: 'de', country: 'DE' });
+  await client.sync();
+  assert.equal(store.getMeta().country, 'AT');
+  assert.equal(store.getMeta().language, 'de');
+});
+
+test('a sync answer without country keeps the stored country', async () => {
+  const doc = fixture('sync-response.json');
+  const desktop = { ...doc.desktop };
+  delete desktop.country;
+  delete desktop.language;
+  const { store, client } = await make({ handler: () => reply(200, { ...doc, desktop }) });
+  await store.setMeta({ country: 'CH' });
+  await client.sync();
+  assert.equal(store.getMeta().country, 'CH');
 });

@@ -64,3 +64,15 @@ test('parseDesktopInfo accepts strings and falls back to empty values', () => {
   assert.deepEqual(parseDesktopInfo({ name: 5, version: null, platform: 'x'.repeat(500) }),
     { name: '', version: '', platform: '' });
 });
+
+test('parseDesktopInfo keeps valid language and country and drops garbage', () => {
+  const info = parseDesktopInfo({ name: 'PC', language: 'de', country: 'AT' });
+  assert.equal(info.language, 'de');
+  assert.equal(info.country, 'AT');
+  for (const bad of [5, null, 'xx<b>', 'DE', 'd', 'deutsch']) {
+    assert.equal('language' in parseDesktopInfo({ language: bad }), false, String(bad));
+  }
+  for (const bad of [5, null, 'de', 'AT<b>', 'A', 'AUT']) {
+    assert.equal('country' in parseDesktopInfo({ country: bad }), false, String(bad));
+  }
+});

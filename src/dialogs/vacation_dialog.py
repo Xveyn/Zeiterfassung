@@ -11,7 +11,8 @@ import logging
 import tkinter as tk
 from tkinter import ttk
 
-from src.holidays_de import get_holidays
+from src.holidays_region import get_holidays
+from src.region import country_region
 from src.theme import (
     ACCENT, BG, CELL_BG, FONT, FONT_BOLD, FONT_SMALL, TEXT, TEXT_MUTED,
     apply_combobox_style,
@@ -313,7 +314,7 @@ def _open_edit_dialog(parent, vacation_store, settings, period_id, on_saved,
     # Registriert die ttk-Styles des Dark-Themes — Dark.TCombobox für die
     # Von/Bis-Zeilen UND Vertical.TScrollbar für die Tagesliste unten.
     apply_combobox_style(dialog)
-    state = settings.get("state") or ""
+    country, region = country_region(settings)
 
     today = datetime.date.today()
     from_default = (datetime.date.fromisoformat(existing["from"])
@@ -340,12 +341,12 @@ def _open_edit_dialog(parent, vacation_store, settings, period_id, on_saved,
     from_row.frame.pack(anchor="w", padx=12, pady=4)
     to_row.frame.pack(anchor="w", padx=12, pady=4)
 
-    # Ohne gesetztes Bundesland kennt holidays_de keine Feiertage — dann
+    # Ohne gesetztes Bundesland kennt holidays_region keine Feiertage — dann
     # tragen der 25./26.12. volle Stunden und landen in „Zu vergüten gesamt".
-    # Das ist der DEFAULT-Zustand eines frischen Nutzers (settings["state"]
+    # Das ist der DEFAULT-Zustand eines frischen Nutzers (settings["region"]
     # ist ""), also gehört ein Hinweis in den Dialog statt einer stillen
     # Falschrechnung.
-    if not state:
+    if not region:
         tk.Label(
             dialog,
             text=("Kein Bundesland gewählt — Feiertage werden als "
@@ -431,7 +432,7 @@ def _open_edit_dialog(parent, vacation_store, settings, period_id, on_saved,
             return {"error": "Ungültiges Datum.", "days": {}}
         return plan_vacation_save(
             name_var.get().strip(), df.isoformat(), dt.isoformat(),
-            mode_var.get(), _value(), overrides, state)
+            mode_var.get(), _value(), overrides, region, country)
 
     def _rebuild_day_rows(days):
         for child in day_rows_frame.winfo_children():
@@ -439,7 +440,7 @@ def _open_edit_dialog(parent, vacation_store, settings, period_id, on_saved,
         day_vars.clear()
         holidays = {}
         for year in {d[:4] for d in days}:
-            holidays.update(get_holidays(state, int(year)))
+            holidays.update(get_holidays(country, region, int(year)))
         for day in sorted(days):
             row = tk.Frame(day_rows_frame, bg=BG)
             row.pack(anchor="w", pady=1)

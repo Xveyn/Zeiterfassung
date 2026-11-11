@@ -16,6 +16,8 @@ import { DEFAULT_DEVICE_NAME, PROTOCOL, deviceNameFromUserAgent, isPairFragment,
 import { openDatabase, requestPersistentStorage } from './db.js';
 import { VaultError, createVaultAdapter, idbVaultKeyStore } from './vault.js';
 import { Store } from './store.js';
+import { applyLocale } from './language.js';
+import { LANGUAGES, normalizeLanguage, t } from './i18n.js';
 import { SyncClient, SyncError, clockSkewMs } from './sync.js';
 import { isPaired } from './transport.js';
 import { shouldQueue, shouldSync } from './sync-policy.js';
@@ -244,14 +246,14 @@ class App {
   /** Probe-Entsperrung des neuen Passkeys; erst danach gilt die Sperre. */
   async confirmLock(id) {
     const result = await enableLock({ id, probe: (credential) => this.unlockCredential(credential), setMeta: (patch) => this.store.setMeta(patch) });
-    if (!result.ok) return { ok: false, error: `${lockErrorText(result.reason)} Die Sperre bleibt aus.` };
+    if (!result.ok) return { ok: false, error: t('sperre.bleibt_aus', { grund: lockErrorText(result.reason) }) };
     return { ok: true, model: this.lockModelNow() };
   }
 
   async removeLock() {
     const result = await disableLock({
       meta: this.store.getMeta(), probe: (credential) => this.unlockCredential(credential), setMeta: (patch) => this.store.setMeta(patch) });
-    if (!result.ok) return { ok: false, model: this.lockModelNow(), error: `${lockErrorText(result.reason)} Die Sperre bleibt an.` };
+    if (!result.ok) return { ok: false, model: this.lockModelNow(), error: t('sperre.bleibt_an', { grund: lockErrorText(result.reason) }) };
     return { ok: true, model: this.lockModelNow() };
   }
 
@@ -320,7 +322,7 @@ class App {
       this.trigger('manual');                       // der Desktop erfährt das Geheimnis im nächsten Abgleich
     } catch (error) {
       if (!(error instanceof RelayError)) logFailure('Benachrichtigungen einschalten', error);
-      this.pushError = error instanceof RelayError ? error.message : withDetail('Die Benachrichtigungen ließen sich nicht einschalten.', error);
+      this.pushError = error instanceof RelayError ? error.message : withDetail(t('push.fehler.einschalten'), error);
     }
   }
 
@@ -382,7 +384,7 @@ class App {
       if (!result.ok) {
         // `unpairing` bleibt gesetzt: die Abmeldung liegt womöglich schon in der Box, ein weiterer Abgleich ersetzte sie.
         dialog.update({ phase: 'error', model,
-          error: 'Die lokalen Daten ließen sich nicht löschen. Bitte erneut versuchen.' });
+          error: t('abmelden.fehler.loeschen') });
       }
     };
     dialog = unpairDialog({ retry: check, confirm });
@@ -431,7 +433,7 @@ class App {
       return result;
     } catch (error) {
       if (!(error instanceof RelayError)) logFailure('Benachrichtigungs-Zeitplan senden', error);
-      this.pushError = error instanceof RelayError ? error.message : withDetail('Der Zeitplan für die Benachrichtigungen ließ sich nicht senden.', error);
+      this.pushError = error instanceof RelayError ? error.message : withDetail(t('push.fehler.zeitplan'), error);
       return error instanceof RelayError && RETRYABLE_RELAY_ERRORS.has(error.kind) ? 'retry' : 'failed';
     }
   }
@@ -463,7 +465,7 @@ class App {
     const relay = this.pairing.relay;
     const target = relay ? null : parseHostPort(address);
     if (!relay && !target) {
-      this.pairing = { ...this.pairing, address, code, deviceName, busy: false, error: 'Die Adresse muss eine private IPv4-Adresse sein, zum Beispiel 192.168.178.20:17654.' };
+      this.pairing = { ...this.pairing, address, code, deviceName, busy: false, error: t('kopplung.fehler.adresse') };
       this.render();
       return;
     }
@@ -499,7 +501,7 @@ class App {
       }
     } catch (error) {
       logFailure('Kamera beim Koppeln', error);
-      message.textContent = withDetail('Die Kamera ist nicht verfügbar oder nicht freigegeben. Bitte Adresse und Code eintippen oder die Kamera-App benutzen.', error);
+      message.textContent = withDetail(t('kopplung.fehler.kamera'), error);
     }
   }
 
@@ -573,6 +575,7 @@ class App {
   }
 
   render() {
+    applyLocale(this.store.getMeta());     // Sprache und Datums-Locale folgen der Meta (Kopplung, Abgleich, Einstellung)
     const focusKey = focusKeyToRestore({ ...focusState(this.root), last: this.lastFocusKey });
     if (this.screen === 'pair') {
       this.shell = null;
@@ -737,7 +740,7 @@ class App {
 
   /** Modell des Debug-Reiters, beim Zeigen des Reiters geladen. Wirft nie: scheitert etwas, bleibt der Block leer. */
   async loadDebug() {
-    let info = [{ label: 'Zustand', value: 'unbekannt' }];
+    let info = [{ label: t('einstellungen.debug.zustand'), value: t('einstellungen.verbindung.unbekannt') }];
     let entries = [];
     let retention = 7;
     try {
@@ -833,6 +836,10 @@ class App {
         push,
         lock: this.lockModelNow(),
         shift: { step: normalizeShiftStep(meta.shift_step_minutes), options: shiftOptions() },
+        // Mit nur einer Sprache gibt es nichts zu wählen: der Abschnitt entfällt (wie die Länderauswahl am Desktop).
+        language: LANGUAGES.length > 1
+          ? { value: normalizeLanguage(meta.language), options: [{ value: 'de', label: t('einstellungen.sprache.de') }] }
+          : null,
       },
       updates: { build: BUILD, update: { state: this.updateState, detail: this.updateDetail, auto: Boolean(meta.auto_update) } },
       categories: categoriesModel({
@@ -860,6 +867,10 @@ class App {
       confirmLock: (id) => this.confirmLock(id),
       removeLock: () => this.removeLock(),
       setLockDelay: (ms) => this.setLockDelay(ms),
+      setLanguage: async (value) => {
+        await this.store.setMeta({ language: normalizeLanguage(value) });
+        applyLocale(this.store.getMeta());
+      },
       setShiftStep: async (minutes) => {
         const step = normalizeShiftStep(minutes);
         await this.store.setMeta({ shift_step_minutes: step });
@@ -874,7 +885,7 @@ class App {
         const current = signature(this.store.getMeta());
         if (current !== baseline) {
           baseline = current;   // bewusst gewarnt: das nächste Speichern überschreibt
-          return 'Die Kategorien wurden inzwischen aktualisiert (Abgleich). Nochmaliges Speichern überschreibt die neuere Fassung.';
+          return t('editor.warnung.kategorien_aktualisiert');
         }
         try {
           await this.store.saveCategories(rowsToBlock(rows));
@@ -938,7 +949,7 @@ class App {
           const current = this.store.getReservation(date);
           if (dayChanged(reservationBaseline, current)) {
             reservationBaseline = current;   // bewusst gewarnt: das nächste Speichern überschreibt
-            return 'Diese Reservierung wurde inzwischen aktualisiert (Abgleich). Nochmaliges Speichern überschreibt die neuere Fassung.';
+            return t('editor.warnung.reservierung_aktualisiert');
           }
           try {
             await this.store.saveReservation(date, reservationRowsToSlots(rows, { pauseEnabled }));
@@ -950,7 +961,7 @@ class App {
           const current = this.store.getDay(date);
           if (dayChanged(baseline, current)) {
             baseline = current;   // bewusst gewarnt: das nächste Speichern überschreibt
-            return 'Dieser Tag wurde inzwischen aktualisiert (Abgleich). Nochmaliges Speichern überschreibt die neuere Fassung.';
+            return t('editor.warnung.tag_aktualisiert');
           }
           try {
             await this.store.saveDay(date, rowsToSlots(rows));
@@ -963,12 +974,12 @@ class App {
         return null;
       },
       clear: (kind, dialog) => confirmDialog(kind === 'reservation' ? {
-        title: 'Reservierung löschen?',
-        text: `Die Reservierung vom ${formatDateDe(date)} wird gelöscht (beim nächsten Abgleich auch am Desktop).`,
-        confirmLabel: 'Reservierung löschen',
+        title: t('editor.loeschen.reservierung_titel'),
+        text: t('editor.loeschen.reservierung_text', { datum: formatDateDe(date) }),
+        confirmLabel: t('editor.loeschen.reservierung_bestaetigen'),
       } : {
-        title: 'Tag leeren?', text: `Alle Einträge vom ${formatDateDe(date)} werden gelöscht (beim nächsten Abgleich auch am Desktop).`,
-        confirmLabel: 'Tag leeren',
+        title: t('editor.loeschen.tag_titel'), text: t('editor.loeschen.tag_text', { datum: formatDateDe(date) }),
+        confirmLabel: t('editor.loeschen.tag_bestaetigen'),
       }, async () => {
         try {
           if (kind === 'reservation') await this.store.clearReservation(date);
@@ -1141,7 +1152,7 @@ async function main() {
       return;
     }
     logFailure('Speicher des Browsers öffnen', error);
-    root.append(fatalView(withDetail('Der Speicher des Browsers ist nicht verfügbar (privates Fenster oder gesperrt?). Ohne ihn kann diese App keine Einträge sichern.', error)));
+    root.append(fatalView(withDetail(t('fehler.speicher_nicht_verfuegbar'), error)));
     return;
   }
   if (vault.encrypting) {
