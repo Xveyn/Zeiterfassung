@@ -308,7 +308,7 @@ Zeitraum und welche Kategorien der Bericht gefiltert ist.
   überschreibt (`_retry_pending_backup`), und sagt im Log „ohne Sicherung“, wenn auch das
   scheitert. Es bleiben die neuesten `json_store.KEEP_BACKUPS` (5) Sicherungen je Datei; zwei
   Vorfälle in derselben Sekunde bekommen verschiedene Namen (`-1`, `-2`). Eine Reparatur
-  hinterlässt `Storage.repair_notice` (`(Problem, Sicherungspfad | None)`); `App._notify_storage_repaired`
+  hinterlässt `Storage.repair_notice` (`(RepairCounts, Sicherungspfad | None)`, Zähler statt Satz: der Text entsteht beim Anzeigen); `App._notify_storage_repaired`
   zeigt sie einmal beim Start (Dialog bei sichtbarem Fenster, Tray-Toast bei `--minimized`, sonst Log;
   Texte aus `storage.repair_notice_text`/`repair_toast_text`, #242). Dieselbe Reparatur
   (`_repair_entry_values`, #254) deckt, was Merge und Schreiben sprengt: `modified_at`/`device_id` ohne Text → `""` (ein `None` wirft in

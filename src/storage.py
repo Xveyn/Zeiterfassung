@@ -5,8 +5,9 @@ import datetime
 import logging
 import os
 import threading
-from typing import Any
+from typing import Any, NamedTuple
 
+from src.i18n import t
 from src.json_store import (
     atomic_write_json, backup_corrupt, load_json_or_quarantine, quarantine_corrupt,
 )
@@ -86,26 +87,41 @@ def _scrub_surrogates(value: Any) -> Any:
     return value
 
 
-def repair_notice_text(problems: str, backup_path: str | None) -> tuple[str, str]:
+class RepairCounts(NamedTuple):
+    """Was `_load` repariert hat, als Zähler: der Nutzertext entsteht erst beim
+    Anzeigen (`repair_notice_text`), in der Sprache, die dann gilt."""
+
+    dropped: int
+    slots: int
+    values: int
+
+
+def _problem_summary(counts: RepairCounts) -> str:
+    """Deutscher Satz für Sicherungsgrund und Log (bleibt deutsch)."""
+    return (f"{counts.dropped} Eintrag/Einträge ohne Objektform, "
+            f"{counts.slots} Eintrag/Einträge mit kaputter Slot-Liste, "
+            f"{counts.values} Eintrag/Einträge mit unbrauchbaren Metadaten/Zeichen")
+
+
+def repair_notice_text(counts: RepairCounts, backup_path: str | None) -> tuple[str, str]:
     """Titel und Text des einmaligen Hinweises nach einer Lade-Reparatur (#242):
     sagt, was verworfen wurde und wo die unveränderte Kopie liegt."""
+    problems = t("speicher.reparatur_probleme", verworfen=counts.dropped,
+                 slots=counts.slots, werte=counts.values)
     if backup_path:
-        where = ("Die ursprüngliche Datei wurde gesichert:\n"
-                 f"{backup_path}\n\nFehlen Stunden, stehen sie dort noch drin.")
+        text = t("speicher.reparatur_text_mit_sicherung", probleme=problems,
+                 pfad=backup_path)
     else:
-        where = ("Eine Sicherung war nicht möglich. Die Datei auf der Platte bleibt "
-                 "unverändert, bis die nächste Speicherung sie überschreibt.")
-    return ("Zeiterfassungsdaten repariert",
-            "Beim Start waren Teile der Zeiterfassungsdaten unbrauchbar und wurden "
-            f"verworfen bzw. repariert:\n{problems}\n\n{where}")
+        text = t("speicher.reparatur_text_ohne_sicherung", probleme=problems)
+    return t("speicher.reparatur_titel"), text
 
 
 def repair_toast_text(backup_path: str | None) -> str:
     """Kurzform für den Tray-Toast (Start mit --minimized)."""
     if backup_path:
-        return ("Zeiterfassungsdaten repariert, Sicherung: "
-                f"{os.path.basename(backup_path)}")
-    return "Zeiterfassungsdaten repariert, aber ohne Sicherung (siehe Log)."
+        return t("speicher.reparatur_toast_mit_sicherung",
+                 datei=os.path.basename(backup_path))
+    return t("speicher.reparatur_toast_ohne_sicherung")
 
 
 class Storage:
@@ -120,9 +136,9 @@ class Storage:
         self._lock = lock if lock is not None else threading.RLock()
         self._data: dict[str, Entry] = {}
         self._backup_pending: str | None = None     # Grund der noch fehlenden Sicherung
-        # Gesetzt, wenn _load() etwas repariert hat: (Problembeschreibung, Pfad der
-        # Sicherung oder None, falls keine möglich war). Die App zeigt das einmal an (#242).
-        self.repair_notice: tuple[str, str | None] | None = None
+        # Gesetzt, wenn _load() etwas repariert hat: (Zähler, Pfad der Sicherung oder
+        # None, falls keine möglich war). Die App zeigt das einmal an (#242).
+        self.repair_notice: tuple[RepairCounts, str | None] | None = None
         self._load()
 
     def _load(self) -> None:
@@ -143,9 +159,7 @@ class Storage:
         repaired = self._repair_slot_structure()
         repaired_values = self._repair_entry_values()
         if dropped or repaired or repaired_values:
-            self._heal(f"{dropped} Eintrag/Einträge ohne Objektform, "
-                       f"{repaired} Eintrag/Einträge mit kaputter Slot-Liste, "
-                       f"{repaired_values} Eintrag/Einträge mit unbrauchbaren Metadaten/Zeichen")
+            self._heal(RepairCounts(dropped, repaired, repaired_values))
 
     def _drop_non_object_entries(self) -> int:
         """Entfernt Tage, deren Wert kein Objekt ist (`null`, Text, Liste)."""
@@ -203,15 +217,16 @@ class Storage:
             fixed += changed
         return fixed
 
-    def _heal(self, problems: str) -> None:
+    def _heal(self, counts: RepairCounts) -> None:
         """Sichert die Datei, dann schreibt sie den reparierten Stand zurück —
         sonst fände jeder Start dasselbe vor und legte jedes Mal eine Sicherung an.
         Ohne Sicherung wird nicht geschrieben (nichts geht still verloren); der
         reparierte Stand gilt dann nur im Speicher."""
+        problems = _problem_summary(counts)
         try:
             backup_path = backup_corrupt(self.filepath, problems)
         except OSError:
-            self.repair_notice = (problems, None)
+            self.repair_notice = (counts, None)
             # Ohne Sicherung nicht schreiben. Der nächste normale Schreibvorgang
             # holt sie nach, bevor er die Datei überschreibt (`_save_to_disk`).
             self._backup_pending = problems
@@ -219,7 +234,7 @@ class Storage:
                         "möglich), der Stand gilt nur im Speicher",
                         os.path.basename(self.filepath), exc_info=True)
             return
-        self.repair_notice = (problems, backup_path)
+        self.repair_notice = (counts, backup_path)
         try:
             self._save_to_disk()
         except (OSError, ValueError):

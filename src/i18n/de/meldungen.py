@@ -65,4 +65,11 @@ TEXTS: dict[str, str] = {
     # Plattform-Fehler, die ein Dialog über `str(e)` zeigen kann (Autostart, Ordner öffnen).
     "autostart.nicht_unterstuetzt": "Autostart not supported on {system}",
     "platform_open.nicht_unterstuetzt": "Unsupported platform: {system}",
+    # Hinweis nach einer Reparatur der Zeiterfassungsdaten beim Laden (`storage`, #242).
+    "speicher.reparatur_titel": "Zeiterfassungsdaten repariert",
+    "speicher.reparatur_probleme": "{verworfen} Eintrag/Einträge ohne Objektform, {slots} Eintrag/Einträge mit kaputter Slot-Liste, {werte} Eintrag/Einträge mit unbrauchbaren Metadaten/Zeichen",
+    "speicher.reparatur_text_mit_sicherung": "Beim Start waren Teile der Zeiterfassungsdaten unbrauchbar und wurden verworfen bzw. repariert:\n{probleme}\n\nDie ursprüngliche Datei wurde gesichert:\n{pfad}\n\nFehlen Stunden, stehen sie dort noch drin.",
+    "speicher.reparatur_text_ohne_sicherung": "Beim Start waren Teile der Zeiterfassungsdaten unbrauchbar und wurden verworfen bzw. repariert:\n{probleme}\n\nEine Sicherung war nicht möglich. Die Datei auf der Platte bleibt unverändert, bis die nächste Speicherung sie überschreibt.",
+    "speicher.reparatur_toast_mit_sicherung": "Zeiterfassungsdaten repariert, Sicherung: {datei}",
+    "speicher.reparatur_toast_ohne_sicherung": "Zeiterfassungsdaten repariert, aber ohne Sicherung (siehe Log).",
 }

@@ -96,6 +96,17 @@ ALLOWED: dict[str, dict[str, str]] = {
     "src/version.py": {
         "{}-dev ({})": "Build-Kennung im Fenstertitel und Installer (`build_label`), sprachneutral",
     },
+    "src/storage.py": {
+        "Top-Level ist {}, erwartet ein Objekt": _QUARANTINE,
+        "{} Eintrag/Einträge ohne Objektform, {} Eintrag/Einträge mit kaputter Slot-Liste, "
+        "{} Eintrag/Einträge mit unbrauchbaren Metadaten/Zeichen":
+            "Grund der Sicherung und Logzeile (`_problem_summary`); der Hinweis an den "
+            "Nutzer entsteht aus den Zählern (`repair_notice_text`)",
+        "apply_merge: entry {} missing keys {}": (
+            "Programmfehler-Invariante (Pflichtfelder prüft `sync.validate_remote_doc` vorher): "
+            "`apply_merge` läuft nur im Sync-Worker (`sync.py`), ein `ValueError` erscheint "
+            "dort als Traceback im Catch-all-Dialog, nie als kuratierter Text"),
+    },
     "src/vacations.py": {
         "apply_reconciled: entry {} missing keys {}": (
             "Invariante: die Eingabe stammt aus `store.get_all_raw()` (vacations_sync.py), "
@@ -175,7 +186,6 @@ ALLOWED: dict[str, dict[str, str]] = {
 PENDING: list[str] = [
     # Task 3
     # Task 4
-    "src/storage.py",
     "src/removal.py",
     "src/updater.py",
     "src/self_update.py",
