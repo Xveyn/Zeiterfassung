@@ -40,7 +40,6 @@ const PENDING = new Set([
   'sync.js',           // 25
   'unpair.js',         // 6
   'vault.js',          // 4
-  'view-model.js',     // 102
 ]);
 
 // Protokoll-/Krypto-Fehlertexte und Test-Adapter: bleiben deutsch und technisch (Entscheidung der
@@ -52,6 +51,7 @@ const ALLOWED = {
   'browser-policy.js': ['Chromium'],                    // Markenname im User-Agent-Vergleich
   'diagnose.js': ['[Zeiterfassung] ${}: ${}',            // console-Präfix
     'Failed to update a ServiceWorker: '],               // Chromes englischer Fehlertext, wird nur abgeschnitten
+  'view-model.js': ['Bestehende Einträge behalten den alten Namen.'], // exportierte Konstante, von view-model.test.js als String geprüft; mit views.js umstellen (Funktion + Schlüssel)
   'views.js': ['Enter', 'Escape'],                       // KeyboardEvent.key-Werte
   'transport.js': ['Bearer ${}', 'Content-Type'],        // HTTP-Kopfzeilen
 };
