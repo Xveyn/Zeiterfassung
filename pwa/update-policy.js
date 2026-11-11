@@ -40,6 +40,6 @@ function statusText(state) {
 
 /** `detail` (die Ursache, s. `diagnose.js`) hängt nur an einer fehlgeschlagenen Suche. */
 export function updateStatusText(state, detail = '') {
-  if (state === 'error' && detail) return `${statusText('error').replace(/\.$/, '')} (${detail}).`;
+  if (state === 'error' && detail) return t('update.status.error_detail', { detail });
   return statusText(state);
 }

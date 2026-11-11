@@ -7,6 +7,7 @@ import {
   dayTitle, categoryDisplay, categoryLabel, categoryOptions, conflictsModel, dayChanged, editLock, editorRows, focusKeyToRestore, hintKey, hintsModel, desktopHint, localTime, nextRow, olderModel, pickCategory, rowsToSlots, slotText,
   reachedAfterSyncError, unpairDialogModel, statusModel, validateRows, weekModel, windowRow, reservationRows, reservationRowsToSlots, validateReservationRows,
 } from '../view-model.js';
+import de from '../i18n/de.js';
 import { SyncError } from '../sync.js';
 import { formatMinutes } from '../minutes.js';
 
@@ -678,7 +679,8 @@ test('the model reports a dirty and a rejected block', () => {
 test('removing and renaming say that existing entries keep the old name', () => {
   assert.match(categoryRemovalText('Projekt'), /Projekt/);
   assert.match(categoryRemovalText('Projekt'), /behalten/);
-  assert.match(categoryRenameHint, /alten Namen/);
+  assert.match(categoryRenameHint(), /alten Namen/);
+  assert.equal(categoryRenameHint(), de['kategorien.umbenennen_hinweis']);
 });
 
 // --- Benachrichtigungen (#331) -------------------------------------------------------------------

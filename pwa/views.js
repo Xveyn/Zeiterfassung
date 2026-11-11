@@ -1110,7 +1110,7 @@ export function categoryEditDialog(row, { onDone, onRemove, isNew = false }) {
     h('form', { class: 'category-form', onsubmit: (event) => { event.preventDefault(); if (!done.disabled) done.click(); } },
       h('h2', { id: 'category-edit-title' }, isNew ? t('kategorie_dialog.neu') : t('kategorie_dialog.bearbeiten')),
       field('name', t('kategorie_dialog.name'), { type: 'text', maxlength: MAX_NAME_LENGTH, autocomplete: 'off' }),
-      !isNew && h('p', { class: 'muted' }, categoryRenameHint),
+      !isNew && h('p', { class: 'muted' }, categoryRenameHint()),
       times,
       message,
       footerButtons(

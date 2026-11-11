@@ -40,7 +40,6 @@ const ALLOWED = {
   'push-blob.js': ['Kein Schlüssel für Benachrichtigungen.', 'Blob zu kurz.'], // Fehler von `open`: nur im Service Worker, dort per logFailure('Push entschlüsseln') im Debug-Protokoll, nie angezeigt
   'diagnose.js': ['[Zeiterfassung] ${}: ${}',            // console-Präfix
     'Failed to update a ServiceWorker: '],               // Chromes englischer Fehlertext, wird nur abgeschnitten
-  'view-model.js': ['Bestehende Einträge behalten den alten Namen.'], // exportierte Konstante, von view-model.test.js als String geprüft; mit views.js umstellen (Funktion + Schlüssel)
   'views.js': ['Enter', 'Escape'],                       // KeyboardEvent.key-Werte
   'relay-client.js': ['BMZUZQIW3QNwt2vJp3q47zAAx4lLADWA0_r3kQQeyMT3d_GXsyyTjNlgBd1fOMtuZvlJhsLu1QRbHsT0hQHzC20', // öffentlicher VAPID-Schlüssel
     'Bearer ${}'],                                      // HTTP-Kopfzeile

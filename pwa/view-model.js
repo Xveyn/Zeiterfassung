@@ -564,7 +564,7 @@ export function settingsTabLabel(key) {
   }
 }
 
-export const categoryRenameHint = 'Bestehende Einträge behalten den alten Namen.';
+export const categoryRenameHint = () => t('kategorien.umbenennen_hinweis');
 
 export function categoryRemovalText(name) {
   return t('einstellungen.kategorien.entfernen_text', { name });
