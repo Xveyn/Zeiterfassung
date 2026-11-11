@@ -33,6 +33,7 @@ from dataclasses import dataclass
 
 from src import desktop_entry, oauth_utils, secret_migration, self_update
 from src.autostart import disable_autostart, macos_plist_path
+from src.i18n import N_, t
 
 log = logging.getLogger(__name__)
 
@@ -49,22 +50,30 @@ USER_DATA_FILES: tuple[str, ...] = (
 SETTINGS_FILE = "settings.json"
 LOGS_DIR = "logs"
 
-README_HINT = (
-    "Bleibt etwas stehen, steht in der README unter „Vollständig entfernen“, "
-    "wie du es von Hand abräumst.")
-KEYRING_HINT = (
-    "Der Schlüsselbund wird nicht nachgeprüft: Bleibt dort ein Eintrag "
-    "„Zeiterfassung“ stehen, entferne ihn von Hand.")
-KEYRING_STEP = "Schlüsselbund-Einträge"
-BOX_STEP = "Relay-Boxen"
+# Schrittkennungen: ein Schritt wird über sie erkannt (`StepResult.name`), nie über
+# seinen Anzeigenamen. Den Namen löst `step_label` beim Anzeigen auf.
+KEYRING_STEP = "keyring"
+BOX_STEP = "boxes"
+AUTOSTART_STEP = "autostart"
+MENU_STEP = "menu_entry"
+PENDING_STEP = "pending_update"
+CREDENTIALS_STEP = "credentials"
+USER_DATA_STEP = "user_data"
+DATA_DIR_STEP = "data_dir"
+PLANNING_STEP = "planning"
+STEP_LABELS: dict[str, str] = {
+    KEYRING_STEP: N_("entfernen.schritt_schluesselbund"),
+    BOX_STEP: N_("entfernen.schritt_boxen"),
+    AUTOSTART_STEP: N_("entfernen.schritt_autostart"),
+    MENU_STEP: N_("entfernen.schritt_menue"),
+    PENDING_STEP: N_("entfernen.schritt_update"),
+    CREDENTIALS_STEP: N_("entfernen.schritt_zugangsdaten"),
+    USER_DATA_STEP: N_("entfernen.schritt_nutzerdaten"),
+    DATA_DIR_STEP: N_("entfernen.schritt_datenordner"),
+    PLANNING_STEP: N_("entfernen.schritt_planung"),
+}
 GOOGLE_PERMISSIONS_URL = "https://myaccount.google.com/permissions"
 TRANSLOCATION_MARKER = "/AppTranslocation/"
-TRANSLOCATION_HINT = (
-    "Die Programmdatei bleibt liegen. Die App lief aus einem temporären, "
-    "schreibgeschützten Ort (macOS App Translocation), dessen Pfad du nicht "
-    "löschen kannst. Lösche die .app dort, wo du sie heruntergeladen oder "
-    "hinkopiert hast — meist im Ordner „Downloads“ oder „Programme“."
-)
 # So lange wartet das Entfernen auf laufende Hintergrundjobs (Token-Refresh,
 # Kalender-Abgleich), bevor es Dateien löscht.
 IDLE_WAIT_S = 20.0
@@ -80,6 +89,25 @@ class StepResult:
     ok: bool
     error: str = ""
     note: str = ""
+
+
+def readme_hint() -> str:
+    return t("entfernen.hinweis_readme")
+
+
+def keyring_hint() -> str:
+    return t("entfernen.hinweis_schluesselbund")
+
+
+def translocation_hint() -> str:
+    return t("entfernen.hinweis_translocation")
+
+
+def step_label(step_id: str) -> str:
+    """Anzeigename eines Schritts; eine unbekannte Kennung steht roh da."""
+    if step_id in STEP_LABELS:
+        return t(STEP_LABELS[step_id])
+    return step_id
 
 
 def is_available(system: str, frozen: bool) -> bool:
@@ -110,9 +138,9 @@ def _forget_boxes(base_path: str) -> str | None:
     missed = secret_migration.forget_boxes(os.path.join(base_path, "mobile_box.json"))
     if not missed:
         return None
-    noun = "Box" if missed == 1 else "Boxen"
-    return (f"{missed} {noun} am Relay nicht erreicht — "
-            f"{'sie verfällt' if missed == 1 else 'sie verfallen'} nach 90 Tagen von selbst")
+    if missed == 1:
+        return t("entfernen.boxen_nicht_erreicht.eins", anzahl=missed)
+    return t("entfernen.boxen_nicht_erreicht.viele", anzahl=missed)
 
 
 def _glob(base_path: str, pattern: str) -> list[str]:
@@ -181,7 +209,7 @@ def _remove_dir_if_empty(base_path: str) -> str | None:
         # Nicht leer: fremde Dateien bleiben, und mit ihnen der Ordner. Das
         # ist gewollt, kein Fehler. Jeder andere Grund (Rechte) wird gemeldet.
         if os.path.isdir(base_path) and os.listdir(base_path):
-            return f"bleibt, enthält noch fremde Dateien: {base_path}"
+            return t("entfernen.ordner_bleibt", pfad=base_path)
         raise
     return None
 
@@ -225,22 +253,22 @@ def plan_removal(base_path: str, with_data: bool, system: str,
         (KEYRING_STEP, lambda: secret_migration.forget_all(base_path, boxes=False)),
         # Vor dem Löschen der Zugangsdaten: `mobile_box.json` trägt die Geheimnisse.
         (BOX_STEP, lambda: _forget_boxes(base_path)),
-        ("Autostart",
+        (AUTOSTART_STEP,
          _remove_macos_autostart if system == "Darwin"
          else lambda: disable_autostart(system)),
     ]
     if system == "Linux":
-        steps.append(("Menüeintrag", lambda: _remove_menu_entry(base_path)))
+        steps.append((MENU_STEP, lambda: _remove_menu_entry(base_path)))
     if pending_update_path:
-        steps.append(("Vorbereitetes Update",
+        steps.append((PENDING_STEP,
                       lambda: _discard_pending(
                           pending_update_path,
                           None if with_data else clear_pending)))
-    steps.append(("Zugangsdaten", lambda: _delete_credentials(base_path)))
+    steps.append((CREDENTIALS_STEP, lambda: _delete_credentials(base_path)))
     if with_data:
-        steps.append(("Zeiten, Einstellungen und Protokoll",
+        steps.append((USER_DATA_STEP,
                       lambda: _delete_user_data(base_path)))
-        steps.append(("Datenordner", lambda: _remove_dir_if_empty(base_path)))
+        steps.append((DATA_DIR_STEP, lambda: _remove_dir_if_empty(base_path)))
     return steps
 
 
@@ -271,7 +299,7 @@ def execute_removal(base_path: str, with_data: bool, system: str,
                              clear_pending)
     except Exception as e:
         log.exception("Entfernen: Planung fehlgeschlagen")
-        return [StepResult("Planung", False, f"{type(e).__name__}: {e}")]
+        return [StepResult(PLANNING_STEP, False, f"{type(e).__name__}: {e}")]
     return run_removal(steps)
 
 
@@ -318,28 +346,28 @@ def app_file_command(system: str, app_file: str | None) -> str | None:
 def format_summary(results: list[StepResult], app_file: str | None,
                    had_token: bool, command: str | None = None,
                    translocated: bool = False) -> str:
-    lines = [(f"✓ {r.name} — {r.note}" if r.note else f"✓ {r.name}") if r.ok
-             else f"✗ {r.name} — {r.error}" for r in results]
+    lines = [(f"✓ {step_label(r.name)} — {r.note}" if r.note
+              else f"✓ {step_label(r.name)}") if r.ok
+             else f"✗ {step_label(r.name)} — {r.error}" for r in results]
     lines.append("")
     if app_file:
-        lines.append("Die Programmdatei bleibt liegen. Lösche sie jetzt selbst:")
+        lines.append(t("entfernen.datei_selbst_loeschen"))
         lines.append(app_file)
         if command:
             lines.append("")
-            lines.append(f"Oder im Terminal:\n{command}")
+            lines.append(t("entfernen.oder_terminal", befehl=command))
     elif translocated:
-        lines.append(TRANSLOCATION_HINT)
+        lines.append(translocation_hint())
     else:
-        lines.append("Die Programmdatei bleibt liegen — lösche sie selbst.")
+        lines.append(t("entfernen.datei_bleibt"))
     if had_token:
         lines.append("")
-        lines.append("Die Freigabe im Google-Konto bleibt bestehen. Zurückziehen "
-                     f"lässt sie sich unter:\n{GOOGLE_PERMISSIONS_URL}")
+        lines.append(t("entfernen.google_freigabe", url=GOOGLE_PERMISSIONS_URL))
     if any(r.name == KEYRING_STEP and r.ok for r in results):
         lines.append("")
-        lines.append(KEYRING_HINT)
+        lines.append(keyring_hint())
     lines.append("")
-    lines.append(README_HINT)
+    lines.append(readme_hint())
     return "\n".join(lines)
 
 

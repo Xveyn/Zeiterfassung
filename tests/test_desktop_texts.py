@@ -96,6 +96,10 @@ ALLOWED: dict[str, dict[str, str]] = {
     "src/version.py": {
         "{}-dev ({})": "Build-Kennung im Fenstertitel und Installer (`build_label`), sprachneutral",
     },
+    "src/removal.py": {
+        "rm -- {}": "Shell-Befehl, den der Dialog zum Kopieren zeigt (`app_file_command`, "
+                    "eingebettet in `entfernen.oder_terminal`), sprachneutrale Technik",
+    },
     "src/storage.py": {
         "Top-Level ist {}, erwartet ein Objekt": _QUARANTINE,
         "{} Eintrag/Einträge ohne Objektform, {} Eintrag/Einträge mit kaputter Slot-Liste, "
@@ -186,7 +190,6 @@ ALLOWED: dict[str, dict[str, str]] = {
 PENDING: list[str] = [
     # Task 3
     # Task 4
-    "src/removal.py",
     "src/updater.py",
     "src/self_update.py",
     "src/secret_migration.py",
