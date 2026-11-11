@@ -223,7 +223,7 @@ def test_the_pair_route_is_the_only_public_one(env):
 
 
 def test_pair_answer_carries_language_and_country(env, monkeypatch):
-    monkeypatch.setattr("src.region.LANGUAGES", ("de", "en"))
+    monkeypatch.setattr("src.i18n.LANGUAGES", ("de", "en"))
     monkeypatch.setattr("src.region.COUNTRIES", [("DE", "Deutschland"), ("AT", "Österreich")])
     env.ctx.settings.set_many({"language": "en", "country": "AT", "region": ""})
 
@@ -241,7 +241,7 @@ def test_pair_answer_sanitizes_language_and_country(env):
 
 
 def test_sync_answer_desktop_carries_language_and_country(env, monkeypatch):
-    monkeypatch.setattr("src.region.LANGUAGES", ("de", "en"))
+    monkeypatch.setattr("src.i18n.LANGUAGES", ("de", "en"))
     monkeypatch.setattr("src.region.COUNTRIES", [("DE", "Deutschland"), ("AT", "Österreich")])
     env.ctx.settings.set_many({"language": "en", "country": "AT", "region": ""})
     _record, token = add_device(env, PHONE, "Pixel")
