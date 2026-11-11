@@ -7,6 +7,7 @@ from urllib.error import HTTPError, URLError
 
 import pytest
 
+from src.i18n import t
 from src.updater import (
     FAILURE_TEXTS, Asset, CheckOutcome, Release, check_for_update,
     check_for_update_outcome, classify_fetch_error, check_latest_release, frequency_for_label,
@@ -257,7 +258,7 @@ class TestResolveCheckResult:
     def test_no_connection_returns_failure_status_without_changelog(self):
         result = resolve_check_result("1.18.0", None)
         assert result == {
-            "status_text": FAILURE_TEXTS["other"],
+            "status_text": t(FAILURE_TEXTS["other"]),
             "show_download": False,
             "changelog_version": None,
             "changelog_notes": None,
@@ -509,11 +510,11 @@ class TestManualCheckToastText:
     verstecktem Fenster ist der Toast die einzige Antwortmöglichkeit."""
 
     def test_failed_fetch_says_so(self):
-        assert manual_check_toast_text("1.19.1", None) == FAILURE_TEXTS["other"]
+        assert manual_check_toast_text("1.19.1", None) == t(FAILURE_TEXTS["other"])
 
     def test_failed_fetch_names_the_reason(self):
         assert manual_check_toast_text(
-            "1.19.1", None, "offline") == FAILURE_TEXTS["offline"]
+            "1.19.1", None, "offline") == t(FAILURE_TEXTS["offline"])
 
     def test_up_to_date_names_the_installed_build(self):
         release = Release(version="1.19.1", html_url="https://x", assets=())
@@ -621,27 +622,28 @@ class TestCheckOutcome:
 class TestFailureTexts:
     def test_every_kind_has_its_own_text(self):
         assert set(FAILURE_TEXTS) == {"offline", "rate_limited", "server", "other"}
-        assert len(set(FAILURE_TEXTS.values())) == 4
+        assert len({t(k) for k in FAILURE_TEXTS.values()}) == 4
 
     def test_texts_are_for_users_not_for_logs(self):
-        for text in FAILURE_TEXTS.values():
+        for text in map(t, FAILURE_TEXTS.values()):
             for technical in ("HTTP", "403", "429", "500", "Exception", "URLError",
                               "api.github.com"):
                 assert technical not in text
 
     def test_only_the_offline_text_talks_about_the_connection(self):
-        for kind, text in FAILURE_TEXTS.items():
+        for kind, key in FAILURE_TEXTS.items():
+            text = t(key)
             assert ("Verbindung" in text) == (kind == "offline")
 
     def test_resolve_uses_the_text_of_the_failure(self):
         result = resolve_check_result("1.18.0", None, "rate_limited")
-        assert result["status_text"] == FAILURE_TEXTS["rate_limited"]
+        assert result["status_text"] == t(FAILURE_TEXTS["rate_limited"])
         assert result["latest_release"] is None
         assert result["show_download"] is False
 
     def test_resolve_without_reason_falls_back_to_the_generic_text(self):
         assert resolve_check_result("1.18.0", None)["status_text"] == (
-            FAILURE_TEXTS["other"])
+            t(FAILURE_TEXTS["other"]))
 
     def test_failure_reason_is_ignored_when_a_release_was_found(self):
         release = Release(version="1.19.0", html_url="https://x", assets=())

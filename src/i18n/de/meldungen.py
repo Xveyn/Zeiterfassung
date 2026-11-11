@@ -72,4 +72,18 @@ TEXTS: dict[str, str] = {
     "speicher.reparatur_text_ohne_sicherung": "Beim Start waren Teile der Zeiterfassungsdaten unbrauchbar und wurden verworfen bzw. repariert:\n{probleme}\n\nEine Sicherung war nicht möglich. Die Datei auf der Platte bleibt unverändert, bis die nächste Speicherung sie überschreibt.",
     "speicher.reparatur_toast_mit_sicherung": "Zeiterfassungsdaten repariert, Sicherung: {datei}",
     "speicher.reparatur_toast_ohne_sicherung": "Zeiterfassungsdaten repariert, aber ohne Sicherung (siehe Log).",
+    # Update-Prüfung (`updater`): Prüfhäufigkeit, Fehlerarten, Toast und Status.
+    "updater.haeufigkeit_taeglich": "Täglich",
+    "updater.haeufigkeit_woechentlich": "Wöchentlich",
+    "updater.haeufigkeit_monatlich": "Monatlich",
+    "updater.haeufigkeit_nie": "Nie",
+    "updater.fehler_offline": "Keine Verbindung zu GitHub. Prüfe deine Internetverbindung (auch Proxy oder Firewall) und versuche es erneut.",
+    "updater.fehler_limit": "GitHub hat die Anfrage abgelehnt, meist weil aus deinem Netzwerk gerade zu viele Anfragen kamen. Versuche es später erneut.",
+    "updater.fehler_server": "GitHub antwortet gerade nicht richtig. Versuche es später erneut.",
+    "updater.fehler_sonst": "Die Prüfung auf Updates ist fehlgeschlagen. Versuche es später erneut.",
+    "updater.toast_version": "Version {id} verfügbar — Details unter Einstellungen → Updates.",
+    "updater.toast_vorabversion": "Vorabversion {id} verfügbar — Details unter Einstellungen → Updates.",
+    "updater.status_version": "Version {id} verfügbar",
+    "updater.status_vorabversion": "Vorabversion {id} verfügbar",
+    "updater.status_aktuell": "Du hast die aktuelle Version ({id}).",
 }

@@ -190,7 +190,6 @@ ALLOWED: dict[str, dict[str, str]] = {
 PENDING: list[str] = [
     # Task 3
     # Task 4
-    "src/updater.py",
     "src/self_update.py",
     "src/secret_migration.py",
     "src/weekly_limit.py",

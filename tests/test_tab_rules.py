@@ -9,7 +9,7 @@ from src.holidays_region import REGIONS
 STATES = REGIONS["DE"]
 from src.settings import WEEKDAY_KEYS
 from src.send_reminder import label_for_shift
-from src.updater import FREQUENCY_OPTIONS
+from src.updater import frequency_options
 
 
 def work_raw(**overrides):
@@ -265,10 +265,10 @@ def test_calendar_update():
 
 
 def test_update_tab_updates():
-    raw = {"update_check_frequency": FREQUENCY_OPTIONS[1][1],
+    raw = {"update_check_frequency": frequency_options()[1][1],
            "prerelease_updates_enabled": True}
     assert tr.update_tab_updates(raw) == {
-        "update_check_frequency": FREQUENCY_OPTIONS[1][0],
+        "update_check_frequency": frequency_options()[1][0],
         "prerelease_updates_enabled": True}
     raw["auto_update_enabled"] = False
     assert tr.update_tab_updates(raw)["auto_update_enabled"] is False
@@ -356,7 +356,7 @@ def test_tabs_together_write_exactly_the_legacy_keys():
         tr.sending_updates(sending_raw()),
         tr.google_updates({"device_name": "", "gcal_calendar": ""}),
         tr.app_updates(app_raw()),
-        tr.update_tab_updates({"update_check_frequency": FREQUENCY_OPTIONS[0][1],
+        tr.update_tab_updates({"update_check_frequency": frequency_options()[0][1],
                                "prerelease_updates_enabled": False,
                                "auto_update_enabled": True}),
     ]

@@ -31,7 +31,7 @@ from src.theme import (
     set_button_style, set_button_text, themed_showerror,
 )
 from src.updater import (
-    FREQUENCY_OPTIONS, REPO, check_for_update_outcome, pick_asset_url,
+    REPO, frequency_options, check_for_update_outcome, pick_asset_url,
     resolve_check_result, today_iso,
 )
 from src.version import (
@@ -148,12 +148,12 @@ class UpdatesTab:
         form.section("Optionen")
         current_frequency = settings.get("update_check_frequency")
         current_label = next(
-            (lbl for value, lbl in FREQUENCY_OPTIONS if value == current_frequency),
-            FREQUENCY_OPTIONS[0][1],
+            (lbl for value, lbl in frequency_options() if value == current_frequency),
+            frequency_options()[0][1],
         )
         self.frequency_var = tk.StringVar(value=current_label)
         form.row("Automatisch prüfen:", dark_combo(
-            body, self.frequency_var, [lbl for _, lbl in FREQUENCY_OPTIONS], width=14))
+            body, self.frequency_var, [lbl for _, lbl in frequency_options()], width=14))
 
         # Nur bauen, wo Selbst-Update überhaupt möglich ist — ein Schalter
         # für ein Feature, das die Plattform nicht hat, ist Rauschen. Steht vor

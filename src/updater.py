@@ -13,6 +13,7 @@ from datetime import date
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
+from src.i18n import N_, t
 from src.version import VERSION, base_version, parse_release_id, strip_tag_prefix
 
 log = logging.getLogger(__name__)
@@ -39,21 +40,28 @@ def today_iso() -> str:
 
 REPO = "Xveyn/Zeiterfassung"
 
-FREQUENCY_OPTIONS: list[tuple[str, str]] = [
-    ("daily", "Täglich"),
-    ("weekly", "Wöchentlich"),
-    ("monthly", "Monatlich"),
-    ("never", "Nie"),
-]
+# Code -> Katalogschlüssel; die Reihenfolge ist die der Auswahlliste.
+FREQUENCY_LABELS: dict[str, str] = {
+    "daily": N_("updater.haeufigkeit_taeglich"),
+    "weekly": N_("updater.haeufigkeit_woechentlich"),
+    "monthly": N_("updater.haeufigkeit_monatlich"),
+    "never": N_("updater.haeufigkeit_nie"),
+}
 
 _FREQUENCY_INTERVAL_DAYS = {"daily": 1, "weekly": 7, "monthly": 30}
+
+
+def frequency_options() -> list[tuple[str, str]]:
+    """(Code, Anzeigetext) je Prüfhäufigkeit in der Sprache der Oberfläche."""
+    return [(code, t(FREQUENCY_LABELS[code])) for code in FREQUENCY_LABELS]
 
 
 def frequency_for_label(label: str) -> str:
     """Mappt ein im Updates-Tab gewähltes Klartext-Label (z.B. 'Wöchentlich')
     zurück auf den internen Frequency-Value ('weekly'). Unbekanntes Label
-    -> 'daily' (sicherer Default, analog Label→Code-Mappings)."""
-    return next((value for value, lbl in FREQUENCY_OPTIONS if lbl == label), "daily")
+    -> 'daily' (sicherer Default, analog Label→Code-Mappings). Die Umkehrtabelle
+    entsteht bei jedem Aufruf: das Label gilt in der Sprache von jetzt."""
+    return next((value for value, lbl in frequency_options() if lbl == label), "daily")
 
 
 def should_check(last_check: str | None, frequency: str, today: date | None = None) -> bool:
@@ -108,23 +116,16 @@ FAILURE_SERVER = "server"
 FAILURE_OTHER = "other"
 
 FAILURE_TEXTS: dict[str, str] = {
-    FAILURE_OFFLINE: (
-        "Keine Verbindung zu GitHub. Prüfe deine Internetverbindung "
-        "(auch Proxy oder Firewall) und versuche es erneut."),
-    FAILURE_RATE_LIMITED: (
-        "GitHub hat die Anfrage abgelehnt, meist weil aus deinem Netzwerk "
-        "gerade zu viele Anfragen kamen. Versuche es später erneut."),
-    FAILURE_SERVER: (
-        "GitHub antwortet gerade nicht richtig. Versuche es später erneut."),
-    FAILURE_OTHER: (
-        "Die Prüfung auf Updates ist fehlgeschlagen. "
-        "Versuche es später erneut."),
+    FAILURE_OFFLINE: N_("updater.fehler_offline"),
+    FAILURE_RATE_LIMITED: N_("updater.fehler_limit"),
+    FAILURE_SERVER: N_("updater.fehler_server"),
+    FAILURE_OTHER: N_("updater.fehler_sonst"),
 }
 
 
 def failure_text(failure: str | None) -> str:
     """Nutzertext zu einer Fehlerart; unbekannt oder `None` -> der allgemeine."""
-    return FAILURE_TEXTS.get(failure or "", FAILURE_TEXTS[FAILURE_OTHER])
+    return t(FAILURE_TEXTS.get(failure or "", N_("updater.fehler_sonst")))
 
 
 def classify_fetch_error(exc: BaseException) -> str:
@@ -153,13 +154,11 @@ class CheckOutcome:
 
 
 def update_toast_text(release: "Release") -> str:
-    """Deutscher Toast-Text für ein gefundenes Update (kein Klick-Handler —
+    """Toast-Text für ein gefundenes Update (kein Klick-Handler —
     der Toast verweist auf den Updates-Tab)."""
-    kind = "Vorabversion" if release.is_prerelease else "Version"
-    return (
-        f"{kind} {release.release_id} verfügbar — "
-        "Details unter Einstellungen → Updates."
-    )
+    if release.is_prerelease:
+        return t("updater.toast_vorabversion", id=release.release_id)
+    return t("updater.toast_version", id=release.release_id)
 
 
 def manual_check_toast_text(installed_id: str, release: "Release | None",
@@ -213,16 +212,19 @@ def resolve_check_result(installed_id: str, release: "Release | None",
         # Notes, was sein Testbuild enthält.
         own_build = release.is_prerelease and release.release_id == installed_id
         return {
-            "status_text": f"Du hast die aktuelle Version ({installed_id}).",
+            "status_text": t("updater.status_aktuell", id=installed_id),
             "show_download": False,
             "changelog_version": None if own_build else base_version(installed_id),
             "changelog_notes": release.notes if own_build else None,
             "persist": None,
             "latest_release": None,
         }
-    kind = "Vorabversion" if release.is_prerelease else "Version"
+    if release.is_prerelease:
+        status_text = t("updater.status_vorabversion", id=release.release_id)
+    else:
+        status_text = t("updater.status_version", id=release.release_id)
     return {
-        "status_text": f"{kind} {release.release_id} verfügbar",
+        "status_text": status_text,
         "show_download": True,
         "changelog_version": None if release.is_prerelease else release.version,
         "changelog_notes": release.notes if release.is_prerelease else None,
