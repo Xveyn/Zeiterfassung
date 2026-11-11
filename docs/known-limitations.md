@@ -755,7 +755,7 @@ Stellen müssen vorher nachgezogen werden.
 
 **Noch deutsch, weil Ausgabe oder Protokoll (Teil 3):** Inhalte von PDF-Bericht, Mail, Teilen und Webhook
 (`report.py`, `share_message.py`, Payload-Texte, Anhangsnamen), die Berichts-Wochentage und -Monate
-(`DAYS_DE`/`MONTHS_DE` in `report.py`, Wochentage in `time_utils`), die Mail-Vorlagen-Defaults in `settings.py`
+(`DAYS_DE` in `time_utils`, von `report.py` genutzt, und die Monatsnamen aus `locale_format`), die Mail-Vorlagen-Defaults in `settings.py`
 (gespeicherte Werte, ein Wechsel bräuchte Migration), die Texte der Kalendertermine (`gcal.py`), die Antworttexte
 der lokalen API (`api_*.py`) und die Protokolltexte von Handy-Abgleich und Relay (`mobile_*.py`, `relay_*.py`,
 `ws_client.py`). Log-Texte bleiben deutsch. Die PWA-Punkte stehen in `pwa/CLAUDE.md`.
@@ -781,10 +781,20 @@ der lokalen API (`api_*.py`) und die Protokolltexte von Handy-Abgleich und Relay
   einer Übersetzung beim Aufruf gebaut werden.
 - **`DEFAULT_DEVICE_NAME`:** der Standard-Gerätename geht als Datenwert in Sync-Doc und Geräteliste und ist kein
   Katalogtext.
+- **Titel aus übersetztem Nomen:** `ui.py` baut `loeschen.titel` (`{art} löschen`) aus einem übersetzten Nomen; eine
+  zweite Sprache braucht dafür drei ganze Titelschlüssel statt einer Fragmentkette.
+- **Ein Schlüssel, mehrere Rollen:** `fuss.senden`/`fuss.teilen`/`fuss.export` stehen im Footer und im Tray,
+  `knopf.loeschen` als Knopf und als Dialogtitel; eine Sprache, die dort verschieden formuliert, braucht getrennte
+  Schlüssel.
+- **`fenster.titel`** wird auch als Windows-AUMID-`DisplayName` geschrieben, bei jedem Start neu.
+- **Suffix- und Fragmentschlüssel** mit führendem `\n\n` oder Leerzeichen hängen an einem Satz an:
+  `update_banner.verfuegbar` (`{art} {version} verfügbar`; `updater.status_version` hat ganze Sätze),
+  `regeln.gekoppelt_ersetzt`, `regeln.zeile_relay`, `zelle.pause`, `zeitraum.urlaub_zusatz`. Eine zweite Sprache
+  braucht dafür ganze Sätze.
 
 **Was die Ratsche (`tests/test_desktop_texts.py`) nicht sieht:** ein einzelnes kleines Wort ohne Umlaut
 (`lokal`, `variabel`) außerhalb eines erkannten Anzeigearguments und Text, den eine Variable trägt, bevor er
-angezeigt wird (so entging `variabel` in `category_dialog` der Regel). Dort hilft nur Durchsicht bei der Review.
+angezeigt wird. Dort hilft nur Durchsicht bei der Review.
 
 ## Beschädigte oder fremde Daten (Storage)
 
