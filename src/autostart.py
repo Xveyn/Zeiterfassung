@@ -9,6 +9,7 @@ import subprocess
 import sys
 
 from src.desktop_entry import exec_line
+from src.i18n import t
 
 
 SHORTCUT_NAME = "Zeiterfassung.lnk"
@@ -123,7 +124,7 @@ def enable_autostart(target: str, arguments: str = "") -> None:
     elif system == "Linux":
         _enable_linux(target, arguments)
     else:
-        raise RuntimeError(f"Autostart not supported on {system}")
+        raise RuntimeError(t("autostart.nicht_unterstuetzt", system=system))
 
 
 def disable_autostart(system: str | None = None) -> None:
@@ -137,7 +138,7 @@ def disable_autostart(system: str | None = None) -> None:
     elif system == "Linux":
         _disable_linux()
     else:
-        raise RuntimeError(f"Autostart not supported on {system}")
+        raise RuntimeError(t("autostart.nicht_unterstuetzt", system=system))
 
 
 def is_autostart_enabled() -> bool:

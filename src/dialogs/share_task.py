@@ -16,6 +16,7 @@ ankommt, ist die Adresse, die im Feld stand.
 import logging
 
 from src import keyring_store, smtp
+from src.i18n import t
 from src.dialogs.mail_task import classify_mail_error
 from src.mail import get_gmail_service, send_email
 
@@ -76,8 +77,7 @@ def _share_via_smtp(*, record, payload, filename, recipient, subject, html):
         log.warning("Teilen über SMTP-Konto %r: Passwort nicht aus dem "
                     "Schlüsselbund lesbar", record.get("name"))
         return {"ok": False, "kind": "keyring", "error": None, "tb": None,
-                "detail": "Das Passwort konnte nicht aus dem Schlüsselbund "
-                          "gelesen werden."}
+                "detail": t("senden.passwort_nicht_lesbar")}
     try:
         smtp.send(record, password, subject=subject, html=html, to=recipient,
                   attachment_bytes=payload,

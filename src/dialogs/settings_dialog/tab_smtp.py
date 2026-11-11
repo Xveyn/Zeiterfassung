@@ -10,6 +10,7 @@ from src.dialogs.settings_dialog._record_list_tab import (
     RecordListKind, RecordListTab,
 )
 from src.dialogs.smtp_dialog import open_smtp_dialog
+from src.i18n import t
 
 
 def _open_dialog(parent, store, runner, **kwargs):
@@ -27,16 +28,13 @@ def _delete_secret(account_id):
 
 
 SMTP_KIND = RecordListKind(
-    intro=("Statt über die Gmail-API über einen eigenen Mail-Server senden. "
-           "Jedes Konto hat seinen eigenen Empfänger und lässt sich beim "
-           "Senden einzeln wählen. Gilt nur auf diesem Gerät und wird sofort "
-           "gespeichert, unabhängig vom Knopf „Speichern“."),
-    section="SMTP-Konten",
-    empty="Noch kein Konto — „Hinzufügen“ legt eins an.",
+    intro=lambda: t("liste_smtp.intro"),
+    section=lambda: t("liste_smtp.abschnitt"),
+    empty=lambda: t("liste_smtp.leer"),
     row_detail=lambda record: record.get("host", "?"),
     open_dialog=_open_dialog,
-    remove_title="SMTP-Konto entfernen",
-    remove_error="Das SMTP-Konto konnte nicht entfernt werden:",
+    remove_title=lambda: t("liste_smtp.entfernen_titel"),
+    remove_error=lambda: t("liste_smtp.entfernen_fehler"),
     read_only_error=smtp_store.SmtpStoreReadOnly,
     after_delete=_delete_secret,
 )

@@ -8,6 +8,7 @@ Tk-freie `src/conflict_view.py`; hier werden nur Widgets gebaut.
 import tkinter as tk
 
 from src import conflict_view, sync
+from src.i18n import t
 from src.theme import (
     ACCENT, BG, CELL_BG, ENTRY_BG, ENTRY_BG_HOVER, FONT, FONT_BOLD, FONT_HEADER_SMALL, SEPARATOR,
     STATUS_OK, STATUS_WARN, TEXT, TEXT_MUTED, TODAY_ACCENT, center_dialog_on_parent,
@@ -15,11 +16,17 @@ from src.theme import (
 )
 from src.time_utils import format_iso_date
 
-SUBTITLE = ("Zwei Geräte haben {what} unterschiedlich geändert. "
-            "Welcher Stand soll gelten?")
-DONE_TEXT = "Alle Konflikte aufgelöst."
-PICK_TEXT = "Wähle links einen Konflikt."
-NONE_FOR_DAY_TEXT = "Kein offener Konflikt mehr für diesen Tag."
+
+def done_text():
+    return t("konflikt_dialog.alle_geloest")
+
+
+def pick_text():
+    return t("konflikt_dialog.waehle")
+
+
+def none_for_day_text():
+    return t("konflikt_dialog.keiner_fuer_tag")
 
 
 def _entry_chosen(cand):
@@ -51,8 +58,8 @@ class ConflictsDialog:
         # setzt filter_key nicht.
         self._filter_key = filter_key
 
-        title = ("Konflikte auflösen" if filter_key is None
-                 else f"Konflikt auflösen — {format_iso_date(filter_key)}")
+        title = (t("konflikt_dialog.titel") if filter_key is None
+                 else t("konflikt_dialog.titel_tag", datum=format_iso_date(filter_key)))
         self.top = create_dialog(parent, title)
 
         self._build()
@@ -98,7 +105,7 @@ class ConflictsDialog:
 
         button_row = tk.Frame(self.right, bg=BG)
         button_row.pack(side="bottom", fill="x", pady=(10, 0))
-        secondary_button(button_row, "Schließen",
+        secondary_button(button_row, t("knopf.schliessen"),
                          self.top.destroy).pack(side="right")
 
     # --- Liste ---------------------------------------------------------------
@@ -113,8 +120,9 @@ class ConflictsDialog:
         entries, settings = conflict_view.group_conflicts(unresolved)
         self._unresolved = entries + settings
         self._rows = []
-        for header, group in ((f"ZEITEN · {len(entries)}", entries),
-                              (f"EINSTELLUNGEN · {len(settings)}", settings)):
+        for header, group in ((t("konflikt_dialog.kopf_zeiten", anzahl=len(entries)), entries),
+                              (t("konflikt_dialog.kopf_einstellungen", anzahl=len(settings)),
+                               settings)):
             if not group:
                 continue
             self._rows.append(("header", header))
@@ -135,8 +143,8 @@ class ConflictsDialog:
 
         if not self._unresolved:
             self._selected = None
-            self._show_message(NONE_FOR_DAY_TEXT if self._filter_key is not None
-                               else (DONE_TEXT if keep_pos is not None else PICK_TEXT))
+            self._show_message(none_for_day_text() if self._filter_key is not None
+                               else (done_text() if keep_pos is not None else pick_text()))
             return
         if self._filter_key is not None:
             self.listbox.selection_set(0)
@@ -146,7 +154,7 @@ class ConflictsDialog:
             self._select_pos(pos)
         else:
             self._selected = None
-            self._show_message(PICK_TEXT)
+            self._show_message(pick_text())
 
     def _row_of(self, pos):
         """Listenzeile des Konflikts an Position `pos` von `_unresolved`."""
@@ -200,10 +208,11 @@ class ConflictsDialog:
         cards = conflict_view.build_cards(
             conflict, registry, self.settings.get("device_id"),
             self.settings.get("device_name") or "")
-        what = ("diese Einstellung" if conflict.get("kind") == "setting"
-                else "diesen Tag")
+        subtitle = (t("konflikt_dialog.untertitel_einstellung")
+                    if conflict.get("kind") == "setting"
+                    else t("konflikt_dialog.untertitel_tag"))
         self.title_label.config(text=conflict_view.conflict_title(conflict))
-        self.sub_label.config(text=SUBTITLE.format(what=what))
+        self.sub_label.config(text=subtitle)
         self._clear_cards()
         self.cards_frame.rowconfigure(0, minsize=px(230))
         for col, card in enumerate(cards):
@@ -225,7 +234,7 @@ class ConflictsDialog:
         tk.Label(head, text=card.title, font=FONT_BOLD, bg=CELL_BG, fg=TEXT,
                  anchor="w").pack(side="left")
         if card.newer:
-            tk.Label(head, text="  ● neuer", font=FONT, bg=CELL_BG,
+            tk.Label(head, text=t("konflikt_dialog.neuer"), font=FONT, bg=CELL_BG,
                      fg=STATUS_OK).pack(side="left")
         for text in (card.device_line, card.modified):
             if text:
@@ -246,7 +255,7 @@ class ConflictsDialog:
         # ENTRY_BG statt des Secondary-Looks: CELL_BG wäre auf der Karte
         # unsichtbar.
         btn = label_button(
-            frame, "Diesen Stand behalten",
+            frame, t("konflikt_dialog.behalten"),
             lambda i=card.index: self._resolve_with_candidate(i),
             bg=ENTRY_BG, fg=TEXT, hover_bg=ENTRY_BG_HOVER, hover_fg=TEXT,
             font=FONT, label_padx=16, label_pady=4)
@@ -290,7 +299,7 @@ class ConflictsDialog:
                                   self.storage, self.settings, device_id,
                                   data_lock=self._data_lock)
         except Exception as e:
-            themed_showerror(self.top, "Konflikt-Resolution fehlgeschlagen", str(e))
+            themed_showerror(self.top, t("konflikt_dialog.fehler_titel"), str(e))
             return
         # Guard-Reset ist PFLICHT: die Buttons der Karten bleiben bis zum
         # Neuaufbau klickbar — ohne _selected=None würde ein zweiter Klick den

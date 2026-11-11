@@ -27,6 +27,7 @@ import threading
 import uuid
 from typing import Any
 
+from src.i18n import t
 from src.secure_file import write_secret_json
 from src.smtp import SECURITY_MODES
 
@@ -81,31 +82,30 @@ def validate_record(record: Account, existing: list[Account]) -> tuple[bool, str
     """
     name = (record.get("name") or "").strip()
     if not name:
-        return False, "Bitte einen Namen angeben."
+        return False, t("validierung.name_fehlt")
     for other in existing:
         if other.get("id") == record.get("id"):
             continue
         if (other.get("name") or "").strip().lower() == name.lower():
-            return False, "Es gibt bereits ein Konto mit diesem Namen."
+            return False, t("smtp.konto_doppelt")
 
     if not (record.get("host") or "").strip():
-        return False, "Bitte einen Server angeben."
+        return False, t("smtp.server_fehlt")
 
     port = record.get("port")
     if not isinstance(port, int) or isinstance(port, bool) or not 1 <= port <= 65535:
-        return False, "Der Port muss eine Zahl zwischen 1 und 65535 sein."
+        return False, t("smtp.port_ungueltig")
 
     if record.get("security") not in SECURITY_MODES:
-        return False, "Unbekannte Verschlüsselung."
+        return False, t("smtp.verschluesselung_unbekannt")
 
-    for field, label in (("from_addr", "Absenderadresse"),
-                         ("recipient", "Empfängeradresse")):
+    for field, label in (("from_addr", t("adresse.absender")),
+                         ("recipient", t("adresse.empfaenger"))):
         value = (record.get(field) or "").strip()
         if not value:
-            return False, f"Bitte eine {label} angeben."
+            return False, t("smtp.adresse_fehlt", bezeichnung=label)
         if any(ch in value for ch in _FORBIDDEN_CHARS):
-            return False, (f"Die {label} enthält unzulässige Steuerzeichen "
-                           "(Zeilenumbruch oder Nullbyte).")
+            return False, t("smtp.adresse_steuerzeichen", bezeichnung=label)
 
     return True, ""
 
@@ -205,9 +205,7 @@ class SmtpStore:
             # schlösse sich, die Liste zeigte den Eintrag (er steht in
             # self._accounts), auf Platte stünde nichts — auffallen würde es
             # erst nach dem Neustart.
-            raise SmtpStoreReadOnly(
-                "Die SMTP-Datei stammt von einer neueren Version oder ist "
-                "nicht lesbar und wird deshalb nicht überschrieben.")
+            raise SmtpStoreReadOnly(t("smtp.datei_schreibgeschuetzt"))
         payload = {"schema_version": SCHEMA_VERSION, "accounts": self._accounts}
         write_secret_json(self.filepath, payload, prefix=".smtp-")
 

@@ -21,8 +21,9 @@ import datetime
 import logging
 
 from src import send_reminder
+from src.i18n import t
 from src.region import country_region
-from src.time_utils import MONTHS_DE
+from src.time_utils import month_names
 
 log = logging.getLogger(__name__)
 
@@ -142,11 +143,10 @@ class SendReminderScheduler:
 
 
 def _toast_text(now_dt):
-    """Deutscher Toast-Text mit dem aktuellen Monat."""
-    return f"Zeit, deine Arbeitszeiten für {MONTHS_DE[now_dt.month]} zu verschicken."
+    """Toast-Text mit dem aktuellen Monat."""
+    return t("erinnerung.senden_monat", monat=month_names()[now_dt.month])
 
 
 def _day_toast_text(rem):
-    """Deutscher Toast-Text für die tagesbezogene Erinnerung."""
-    return (f"Reservierung endet um {rem.end} — Zeit, deine Arbeitszeiten "
-            "zu verschicken.")
+    """Toast-Text für die tagesbezogene Erinnerung."""
+    return t("erinnerung.senden_tag", ende=rem.end)

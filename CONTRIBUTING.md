@@ -177,6 +177,7 @@ Zeiterfassung/
 │   ├── holidays_region.py # Feiertags-Lookup nach Land und Region (python-holidays)
 │   ├── region.py          # Land/Region/Sprache aus den Einstellungen, Übernahme des alten `state`
 │   ├── locale_format.py   # Locale aus Sprache und Land, Datumsmuster
+│   ├── i18n/              # Textschicht des Desktops: t()/N_(), Katalog je Bereich in i18n/de/
 │   ├── time_utils.py      # Zeitberechnung und Validierung
 │   ├── logging_setup.py   # File-Logging + globaler Excepthook
 │   ├── platform_open.py   # os.startfile/open/xdg-open-Wrapper
@@ -251,6 +252,30 @@ mit — bei Bugfixes idealerweise erst einen Test, der den Fehler reproduziert.
 
 In der CI läuft die Test-Suite gegen Python 3.12–3.14 sowie zusätzlich auf Windows
 und macOS; dazu kommen `ruff check .` (Lint) und `pyright` (Typen).
+
+### Desktop-Texte (`src/i18n/`)
+
+Jeder Text, den der Nutzer in der Oberfläche liest, steht im Katalog und nicht im
+Quelltext. Ein neuer Text:
+
+1. Schlüssel und Wortlaut in das Bereichsmodul seines Verbrauchers unter
+   `src/i18n/de/` (`einstellungen`, `dialoge`, `meldungen`, `hauptfenster`,
+   `allgemein`); Schlüssel sind je Bereich geordnet und über alle Module eindeutig.
+2. Im Code `t("bereich.schluessel", name=wert)` mit **Schlüssel als Literal**. Ein Satz ist
+   ein Schlüssel mit `{param}`, Plural sind zwei Schlüssel (`….eins`/`….viele`). Tabellen
+   Code → Text markieren ihre Schlüssel mit `N_("…")` und lösen beim Aufruf auf
+   (`t(TABELLE[code])`); nie bei der Modul-Initialisierung.
+3. `python scripts/desktop_text_check.py --list` zeigt, was die Ratsche als Text zählt;
+   `pytest tests/test_desktop_texts.py` prüft jede Datei unter `src/`. Ein technisches oder nie
+   angezeigtes Literal kommt nur mit Grund und Verbraucher nach `ALLOWED` im Test. Log-Texte
+   bleiben deutsch, ebenso Berichts-, Mail- und API-Inhalte (Teil 3, `docs/known-limitations.md`).
+
+Hintergrund und Verträge: `CLAUDE.md` und `src/CLAUDE.md`, „Textschicht (Desktop)“.
+
+**pyright:** die CI nutzt `pyright` 1.1.411 und ist strenger als `ruff`. Lokal in einer
+Wegwerf-venv installieren (`python -m venv /tmp/pyr && /tmp/pyr/bin/pip install pyright==1.1.411`)
+und mit `--pythonpath "$(which python)"` laufen lassen; ohne `websockets` meldet es lokal fünf
+Importfehler, die die CI nicht hat.
 
 ### PWA (`pwa/`)
 
@@ -359,7 +384,7 @@ bewährt hat:
 ## Wichtige Projekt-Konventionen
 
 - **Datumsformat:** intern **immer ISO** (`YYYY-MM-DD`, Timestamps `…THH:MM…`) für
-  Storage, Filter, Sync und Payloads. In der **UI immer deutsch** (`TT.MM.JJJJ`) über
+  Storage, Filter, Sync und Payloads. In der **UI** nach Locale (heute nur `de-DE`: `TT.MM.JJJJ`) über
   die Helfer in `src/time_utils.py` (`format_iso_date` / `format_iso_datetime`) — nicht
   roh `isoformat()`/`str()` ausgeben.
 - **Sichtbare Fehler:** Fehler im Sendepfad (Gmail, PDF) müssen per

@@ -58,21 +58,22 @@ def test_plan_linux_with_data_in_order(tmp_path):
     steps = removal.plan_removal(str(tmp_path), True, "Linux",
                                  pending_update_path="/x/.u")
     assert _names(steps) == [
-        "Schlüsselbund-Einträge", "Relay-Boxen", "Autostart", "Menüeintrag",
-        "Vorbereitetes Update", "Zugangsdaten",
-        "Zeiten, Einstellungen und Protokoll", "Datenordner",
+        removal.KEYRING_STEP, removal.BOX_STEP, removal.AUTOSTART_STEP, removal.MENU_STEP,
+        removal.PENDING_STEP, removal.CREDENTIALS_STEP,
+        removal.USER_DATA_STEP, removal.DATA_DIR_STEP,
     ]
 
 
 def test_plan_macos_has_no_menu_entry_step(tmp_path):
     steps = removal.plan_removal(str(tmp_path), False, "Darwin")
-    assert _names(steps) == ["Schlüsselbund-Einträge", "Relay-Boxen", "Autostart", "Zugangsdaten"]
+    assert _names(steps) == [removal.KEYRING_STEP, removal.BOX_STEP, removal.AUTOSTART_STEP,
+                             removal.CREDENTIALS_STEP]
 
 
 def test_plan_without_data_skips_data_and_folder(tmp_path):
     names = _names(removal.plan_removal(str(tmp_path), False, "Linux"))
-    assert "Zeiten, Einstellungen und Protokoll" not in names
-    assert "Datenordner" not in names
+    assert removal.USER_DATA_STEP not in names
+    assert removal.DATA_DIR_STEP not in names
 
 
 def test_keyring_runs_before_any_file_is_deleted(tmp_path, monkeypatch):
@@ -274,7 +275,7 @@ def test_summary_mentions_google_only_with_token():
 def test_summary_always_points_to_readme():
     """Review Focus 1: der Schlüsselbund-Schritt meldet ✓ auch bei einem
     geschluckten Fehler — der Hinweis auf die Handarbeit muss immer da sein."""
-    text = removal.format_summary([StepResult("Schlüsselbund-Einträge", True)],
+    text = removal.format_summary([StepResult(removal.KEYRING_STEP, True)],
                                   None, had_token=False)
     assert "Vollständig entfernen" in text
 
@@ -353,7 +354,7 @@ def test_linux_autostart_still_uses_disable_autostart(tmp_path, monkeypatch):
 
 def test_summary_states_keyring_is_not_verified():
     """I3 / Review Focus 1: ✓ heißt „ausgeführt“, nicht „nachgeprüft“."""
-    text = removal.format_summary([StepResult("Schlüsselbund-Einträge", True)],
+    text = removal.format_summary([StepResult(removal.KEYRING_STEP, True)],
                                   None, had_token=False)
     assert "nicht nachgeprüft" in text
 
@@ -607,7 +608,7 @@ def test_pending_update_keys_kept_when_file_cannot_be_deleted(tmp_path, quiet,
                                       clear_pending=lambda: cleared.append(1))
 
     assert cleared == []
-    assert [r.ok for r in results if r.name == "Vorbereitetes Update"] == [False]
+    assert [r.ok for r in results if r.name == removal.PENDING_STEP] == [False]
 
 
 def test_the_mobile_devices_file_is_removed_and_ignored():
@@ -747,7 +748,7 @@ def test_removal_deletes_all_boxes_before_credentials(tmp_path, quiet, monkeypat
     assert seen == [(pending, True), (device, True)]
     assert all(r.ok for r in results), results
     assert not (tmp_path / "mobile_box.json").exists()
-    assert [r.name for r in results].index(removal.BOX_STEP) < [r.name for r in results].index("Zugangsdaten")
+    assert [r.name for r in results].index(removal.BOX_STEP) < [r.name for r in results].index(removal.CREDENTIALS_STEP)
 
 
 def test_removal_continues_when_relay_unreachable(tmp_path, quiet, monkeypatch):

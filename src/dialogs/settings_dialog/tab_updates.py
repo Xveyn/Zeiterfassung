@@ -15,10 +15,11 @@ from src.changelog import (
 from src.dialogs.settings_dialog.fields import FieldSet
 from src.dialogs.settings_dialog.form_model import SaveOutcome
 from src.dialogs.settings_dialog.tab_rules import (
-    CHANGELOG_DEFAULT_HEADING, changelog_box_lines, changelog_expected,
+    changelog_box_lines, changelog_default_heading, changelog_expected,
     changelog_heading, last_check_line, update_button_views,
     update_status_kind, update_status_text, update_tab_updates,
 )
+from src.i18n import t
 from src.self_update import (
     UpdateBlocked, apply_linux, apply_windows, discard_download,
     download_and_verify_update, download_dest, plan_update,
@@ -31,24 +32,13 @@ from src.theme import (
     set_button_style, set_button_text, themed_showerror,
 )
 from src.updater import (
-    FREQUENCY_OPTIONS, REPO, check_for_update_outcome, pick_asset_url,
+    REPO, frequency_options, check_for_update_outcome, pick_asset_url,
     resolve_check_result, today_iso,
 )
 from src.version import (
-    UPDATES_UNSUPPORTED_HINT, installed_release_id, updates_supported,
+    installed_release_id, updates_supported, updates_unsupported_hint,
 )
 
-
-# Beschriftung der Changelog-Box. Ein Pre-Release hat bewusst KEINEN
-# kuratierten Changelog-Eintrag — dort stehen die generierten Release-Notes,
-# und die Box sagt das auch, statt "Changelog" zu behaupten.
-
-# Der Knopf heißt nur dort "Update installieren", wo die App das auch kann.
-# Sonst bleibt es beim bisherigen Browser-Download.
-_LABEL_INSTALL = "Update installieren"
-_LABEL_DOWNLOAD = "Download"
-
-_STATUS_READY = "Update bereit — wird beim Beenden installiert"
 
 # Farbe der Statuszeile je Art (nur Palette-Farben). `muted` ist der Normalfall
 # (Prüfe…, Fortschritt); die übrigen tragen das Prüfergebnis, jeweils mit einem
@@ -89,7 +79,7 @@ class UpdatesTab:
         form.frame.pack(fill="both", expand=True)
         body = form.body
 
-        form.row("Installierte Version:", tk.Label(
+        form.row(t("tab_updates.installierte_version"), tk.Label(
             body, text=installed_release_id(), font=FONT, bg=BG, fg=TEXT))
         # Metazeile unter den Knöpfen: Datum der letzten ERFOLGREICHEN Prüfung
         # (ein fehlgeschlagener Abruf lässt es stehen). Dev-/Source-Builds
@@ -105,13 +95,14 @@ class UpdatesTab:
         form.block(self._status_label)
 
         btn_row = tk.Frame(body, bg=BG)
-        self._check_btn = primary_button(btn_row, "Jetzt prüfen", self._check_now)
+        self._check_btn = primary_button(btn_row, t("tab_updates.jetzt_pruefen"), self._check_now)
         self._check_btn.pack(side=tk.LEFT)
         self._can_self_update = supports_self_update(
             platform.system(), getattr(sys, "frozen", False))
         self._download_btn = secondary_button(
             btn_row,
-            _LABEL_INSTALL if self._can_self_update else _LABEL_DOWNLOAD,
+            (t("update_banner.installieren") if self._can_self_update
+             else t("update_banner.download")),
             self._open_latest_download,
         )
         # Dev-/Source-Builds: keine Knöpfe, stattdessen der Hinweis in der
@@ -121,7 +112,7 @@ class UpdatesTab:
             form.block(btn_row)
             form.block(self._last_check_label, pady=(0, 4))
         else:
-            self._set_status(UPDATES_UNSUPPORTED_HINT)
+            self._set_status(updates_unsupported_hint())
         self._restyle_buttons()
 
         # Direkt unter Status und Knöpfen (#132): bisher trennten drei
@@ -131,7 +122,7 @@ class UpdatesTab:
         # werden sie erst, wenn ein Prüfergebnis ohne Changelog eintrifft
         # (`_show_changelog`) — das läuft immer nach dem Dialogaufbau.
         self._changelog_label = tk.Label(
-            body, text=CHANGELOG_DEFAULT_HEADING, font=FONT, bg=BG, fg=TEXT,
+            body, text=changelog_default_heading(), font=FONT, bg=BG, fg=TEXT,
             anchor="w",
         )
         # Bei Dev-/Source-Builds ganz weg: es gibt keinen Check und damit
@@ -145,15 +136,15 @@ class UpdatesTab:
         self._changelog_text.tag_configure("hanging_indent", lmargin1=0, lmargin2=20)
         self._changelog_text.config(state="disabled")
 
-        form.section("Optionen")
+        form.section(t("tab_updates.optionen"))
         current_frequency = settings.get("update_check_frequency")
         current_label = next(
-            (lbl for value, lbl in FREQUENCY_OPTIONS if value == current_frequency),
-            FREQUENCY_OPTIONS[0][1],
+            (lbl for value, lbl in frequency_options() if value == current_frequency),
+            frequency_options()[0][1],
         )
         self.frequency_var = tk.StringVar(value=current_label)
-        form.row("Automatisch prüfen:", dark_combo(
-            body, self.frequency_var, [lbl for _, lbl in FREQUENCY_OPTIONS], width=14))
+        form.row(t("tab_updates.automatisch_pruefen"), dark_combo(
+            body, self.frequency_var, [lbl for _, lbl in frequency_options()], width=14))
 
         # Nur bauen, wo Selbst-Update überhaupt möglich ist — ein Schalter
         # für ein Feature, das die Plattform nicht hat, ist Rauschen. Steht vor
@@ -162,19 +153,18 @@ class UpdatesTab:
         if self._can_self_update:
             self.auto_update_var = tk.BooleanVar(
                 value=bool(settings.get("auto_update_enabled")))
-            form.check("Updates automatisch installieren", self.auto_update_var)
-            form.hint("Lädt im Hintergrund und installiert beim nächsten "
-                      "Beenden — nie mitten in der Arbeit.")
+            form.check(t("tab_updates.auto_installieren"), self.auto_update_var)
+            form.hint(t("tab_updates.auto_hinweis"))
 
         # Opt-in für Pre-Releases (Experten-Schalter, deshalb zuletzt): ohne
         # Häkchen verhält sich der Tab exakt wie bisher (nur echte Releases
         # über /releases/latest).
         self.prerelease_var = tk.BooleanVar(
             value=settings.get("prerelease_updates_enabled"))
-        form.check("Auch Vorabversionen (Pre-Releases) anbieten", self.prerelease_var)
-        form.hint("Testbuilds vor dem echten Release — können Fehler enthalten.")
+        form.check(t("tab_updates.vorabversionen"), self.prerelease_var)
+        form.hint(t("tab_updates.vorab_hinweis"))
 
-        self.title = "Updates"
+        self.title = t("tab_updates.titel")
         fields = FieldSet()
         fields.add("update_check_frequency", self.frequency_var)
         fields.add("prerelease_updates_enabled", self.prerelease_var)
@@ -204,7 +194,7 @@ class UpdatesTab:
 
     def _finish_checking(self):
         self._checking = False
-        set_button_text(self._check_btn, "Jetzt prüfen")
+        set_button_text(self._check_btn, t("tab_updates.jetzt_pruefen"))
         self._restyle_buttons()
 
     def _restyle_buttons(self):
@@ -272,13 +262,13 @@ class UpdatesTab:
             return
         self._checking = True
         self._latest_release = None
-        set_button_text(self._check_btn, "Prüfe…")
+        set_button_text(self._check_btn, t("tab_updates.pruefe"))
         self._restyle_buttons()
-        self._set_status("Prüfe…")
+        self._set_status(t("tab_updates.pruefe"))
         self._download_btn.pack_forget()
         # Zurücksetzen, sonst bliebe die Pre-Release-Beschriftung stehen,
         # wenn jemand das Häkchen abwählt und erneut prüft.
-        self._changelog_label.config(text=CHANGELOG_DEFAULT_HEADING)
+        self._changelog_label.config(text=changelog_default_heading())
         self._set_changelog("")
 
         # Tk-Variable im UI-Thread lesen und als Wert in die Closure geben —
@@ -349,7 +339,7 @@ class UpdatesTab:
             if not self.frame.winfo_exists():
                 return
             self._finish_checking()
-            self._set_changelog(text or "Changelog konnte nicht geladen werden.")
+            self._set_changelog(text or t("tab_updates.changelog_fehler"))
 
         self._runner.run(fn, on_done)
 
@@ -376,7 +366,7 @@ class UpdatesTab:
             release, on_progress=self._report_status,
             on_finished=self._on_auto_update_finished)
         if outcome == "pending":
-            self._set_status(_STATUS_READY, "ready")
+            self._set_status(t("update_banner.bereit"), "ready")
         elif outcome in ("started", "busy"):
             # Nur optisch (s. `set_button_style`) — ein Klick landet trotzdem
             # in `_start_self_update`, und dort stoppt ihn der gemeinsame
@@ -392,11 +382,9 @@ class UpdatesTab:
         self._download_busy = False
         self._restyle_buttons()
         if ok:
-            self._set_status(_STATUS_READY, "ready")
+            self._set_status(t("update_banner.bereit"), "ready")
         else:
-            self._set_status(
-                "Automatischer Download fehlgeschlagen — neuer Versuch beim "
-                "nächsten Check", "failed")
+            self._set_status(t("tab_updates.auto_fehlgeschlagen"), "failed")
 
     def _report_status(self, text):
         """Fortschrittstext aus dem Worker-Thread in die Statuszeile."""
@@ -432,7 +420,7 @@ class UpdatesTab:
             os.environ.get("APPIMAGE", ""), sys.executable)
         if isinstance(plan, UpdateBlocked):
             themed_showerror(
-                self.frame.winfo_toplevel(), "Update nicht möglich",
+                self.frame.winfo_toplevel(), t("tab_updates.nicht_moeglich"),
                 plan.reason)
             self._open_download(release)
             return
@@ -441,7 +429,7 @@ class UpdatesTab:
             # Der stille Download (Start-Check der App oder dieser Tab) läuft
             # schon. Ein zweiter daneben liesse beim sofortigen Installieren
             # den halben stillen Download in %TEMP% zurück (R9).
-            self._set_status("Update wird bereits im Hintergrund geladen …")
+            self._set_status(t("tab_updates.laedt_im_hintergrund"))
             return
 
         # ACHTUNG: `set_button_style` ändert NUR die Optik — die Klick-Bindung
@@ -484,7 +472,7 @@ class UpdatesTab:
                     "Downloads geschlossen")
                 discard_download(result.path)
                 return
-            self._set_status("Installiere …")
+            self._set_status(t("tab_updates.installiere"))
             self._apply(plan, result.path, result.sha256)
 
         self._runner.run(work, done)
@@ -501,9 +489,9 @@ class UpdatesTab:
         zusätzlich optisch tot bliebe."""
         self._updating = False
         self._restyle_buttons()
-        self._set_status("Update fehlgeschlagen", "failed")
+        self._set_status(t("tab_updates.fehlgeschlagen"), "failed")
         themed_showerror(
-            self.frame.winfo_toplevel(), "Update fehlgeschlagen", message)
+            self.frame.winfo_toplevel(), t("tab_updates.fehlgeschlagen"), message)
 
     def _apply(self, plan, local, expected_sha256):
         """Anwenden und die App beenden bzw. neu starten.
@@ -526,9 +514,7 @@ class UpdatesTab:
         """
         if not os.path.exists(local) or not verify_file(local, expected_sha256):
             discard_download(local)
-            self._fail_update(
-                "Die geladene Datei ist nicht mehr vorhanden oder wurde "
-                "zwischenzeitlich verändert. Bitte erneut versuchen.")
+            self._fail_update(t("tab_updates.datei_veraendert"))
             return
 
         # Ein vom Automatik-Lauf vorbereitetes Update wird HIER sofort
@@ -556,7 +542,7 @@ class UpdatesTab:
                 # dauerhaft im %TEMP% (die Zusage steht im Docstring von
                 # `download_dest`).
                 discard_download(local)
-                self._fail_update("Der Update-Helfer ließ sich nicht starten.")
+                self._fail_update(t("tab_updates.helfer"))
                 return
             self.frame.winfo_toplevel().quit()
             return

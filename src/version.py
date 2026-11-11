@@ -111,10 +111,12 @@ def build_channel() -> str:
     return getattr(_build_info, "CHANNEL", "dev")
 
 
-UPDATES_UNSUPPORTED_HINT = (
-    "Dev-Builds (Test-Builds aus der CI und Start aus dem Quellcode) "
-    "erhalten keine Updates."
-)
+def updates_unsupported_hint() -> str:
+    """Hinweis für Dev-Builds, die nie auf Updates prüfen."""
+    # Lokal importiert: Release-Skripte und -Workflows importieren dieses
+    # Modul nur für `VERSION`; ein Katalogfehler darf sie nicht brechen.
+    from src.i18n import t
+    return t("version.dev_ohne_updates")
 
 
 def updates_supported() -> bool:

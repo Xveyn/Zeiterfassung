@@ -24,6 +24,7 @@ import json
 import re
 from typing import TYPE_CHECKING, Any, Callable, Collection
 
+from src.i18n import t
 from src.sync import sorted_signature
 from src.time_utils import utc_now_iso
 
@@ -56,47 +57,53 @@ class ShareValidationError(Exception):
 
 def _validate_time(date_str: str, label: str, value: Any) -> None:
     if not isinstance(value, str) or not _TIME_RE.match(value):
-        raise ShareValidationError(f"Eintrag {date_str}: ungültige {label} {value!r}")
+        raise ShareValidationError(
+            t("share.zeit_ungueltig", datum=date_str, bezeichnung=label, wert=repr(value)))
     try:
         datetime.time.fromisoformat(value)
     except ValueError:
         raise ShareValidationError(
-            f"Eintrag {date_str}: ungültige {label} {value!r}") from None
+            t("share.zeit_ungueltig", datum=date_str, bezeichnung=label,
+              wert=repr(value))) from None
 
 
 def _validate_date_key(date_str: Any) -> None:
     if not isinstance(date_str, str) or not _DATE_RE.match(date_str):
-        raise ShareValidationError(f"Ungültiger Datums-Key: {date_str!r}")
+        raise ShareValidationError(t("share.datumsschluessel_ungueltig", wert=repr(date_str)))
     try:
         datetime.date.fromisoformat(date_str)
     except ValueError:
-        raise ShareValidationError(f"Ungültiges Datum: {date_str!r}") from None
+        raise ShareValidationError(t("share.datum_ungueltig", wert=repr(date_str))) from None
 
 
 def _check_keys(date_str: str, entry: Any, expected_keys: frozenset[str],
-                label: str = "Eintrag") -> None:
+                label: str | None = None) -> None:
+    if label is None:
+        label = t("share.bez_eintrag")
     if not isinstance(entry, dict):
-        raise ShareValidationError(f"{label} {date_str} ist kein Objekt.")
+        raise ShareValidationError(
+            t("share.kein_objekt", bezeichnung=label, datum=date_str))
     keys = set(entry.keys())
     if keys != expected_keys:
         extras = sorted(keys - expected_keys)
         missing = sorted(expected_keys - keys)
         parts = []
         if extras:
-            parts.append(f"unbekannte Felder: {extras}")
+            parts.append(t("share.felder_unbekannt", felder=str(extras)))
         if missing:
-            parts.append(f"fehlende Felder: {missing}")
+            parts.append(t("share.felder_fehlend", felder=str(missing)))
         raise ShareValidationError(f"{label} {date_str}: {'; '.join(parts)}")
 
 
 def _validate_pause(date_str: str, pause: Any) -> None:
     if not isinstance(pause, int) or isinstance(pause, bool) or pause < 0:
-        raise ShareValidationError(f"Eintrag {date_str}: ungültige Pause {pause!r}")
+        raise ShareValidationError(t("share.pause_ungueltig", datum=date_str, wert=repr(pause)))
 
 
 def _validate_kategorie(date_str: str, kategorie: Any) -> None:
     if not isinstance(kategorie, str):
-        raise ShareValidationError(f"Eintrag {date_str}: ungültige Kategorie {kategorie!r}")
+        raise ShareValidationError(
+            t("share.kategorie_ungueltig", datum=date_str, wert=repr(kategorie)))
 
 
 # --- v1/v2 (alte Shape) ---
@@ -105,17 +112,17 @@ def _validate_legacy_entries(entries: dict[str, Any]) -> None:
     for date_str, entry in entries.items():
         _validate_date_key(date_str)
         _check_keys(date_str, entry, _LEGACY_ENTRY_KEYS)
-        _validate_time(date_str, "Startzeit", entry["start"])
-        _validate_time(date_str, "Endzeit", entry["end"])
+        _validate_time(date_str, t("share.bez_startzeit"), entry["start"])
+        _validate_time(date_str, t("share.bez_endzeit"), entry["end"])
         _validate_pause(date_str, entry["pause"])
 
 
 def _validate_legacy_reservations(reservations: dict[str, Any]) -> None:
     for date_str, entry in reservations.items():
         _validate_date_key(date_str)
-        _check_keys(date_str, entry, _LEGACY_RESERVATION_KEYS, label="Reservierung")
-        _validate_time(date_str, "Startzeit", entry["start"])
-        _validate_time(date_str, "Endzeit", entry["end"])
+        _check_keys(date_str, entry, _LEGACY_RESERVATION_KEYS, label=t("share.bez_reservierung"))
+        _validate_time(date_str, t("share.bez_startzeit"), entry["start"])
+        _validate_time(date_str, t("share.bez_endzeit"), entry["end"])
 
 
 def _wrap_legacy_entries(entries: dict[str, Any]) -> dict[str, Any]:
@@ -138,13 +145,13 @@ def _wrap_legacy_reservations(reservations: dict[str, Any]) -> dict[str, Any]:
 def _validate_slot_record(date_str: str, record: Any, slot_keys: frozenset[str],
                           has_pause: bool) -> None:
     if not isinstance(record, dict) or set(record.keys()) != {"slots"}:
-        raise ShareValidationError(f"Eintrag {date_str}: erwartet {{\"slots\": [...]}}.")
+        raise ShareValidationError(t("share.slots_erwartet", datum=date_str))
     if not isinstance(record["slots"], list):
-        raise ShareValidationError(f"Eintrag {date_str}: 'slots' ist keine Liste.")
+        raise ShareValidationError(t("share.slots_keine_liste", datum=date_str))
     for slot in record["slots"]:
-        _check_keys(date_str, slot, slot_keys, label="Slot")
-        _validate_time(date_str, "Startzeit", slot["start"])
-        _validate_time(date_str, "Endzeit", slot["end"])
+        _check_keys(date_str, slot, slot_keys, label=t("share.bez_slot"))
+        _validate_time(date_str, t("share.bez_startzeit"), slot["start"])
+        _validate_time(date_str, t("share.bez_endzeit"), slot["end"])
         if has_pause:
             _validate_pause(date_str, slot["pause"])
         _validate_kategorie(date_str, slot["kategorie"])
@@ -169,24 +176,23 @@ def parse_share_doc(raw_bytes: bytes | str) -> dict[str, Any]:
     try:
         doc = json.loads(raw_bytes)
     except (ValueError, TypeError) as e:
-        raise ShareValidationError(f"Datei ist kein gültiges JSON: {e}") from e
+        raise ShareValidationError(t("share.kein_json", fehler=str(e))) from e
 
     if not isinstance(doc, dict):
-        raise ShareValidationError("Datei-Inhalt ist kein JSON-Objekt.")
+        raise ShareValidationError(t("share.inhalt_kein_objekt"))
 
     if doc.get("kind") != KIND:
-        raise ShareValidationError("Diese Datei ist keine geteilte Zeiterfassung.")
+        raise ShareValidationError(t("share.keine_zeiterfassung"))
 
     schema_version = doc.get("schema_version")
     if not isinstance(schema_version, int) or isinstance(schema_version, bool):
-        raise ShareValidationError("Fehlende oder ungültige schema_version.")
+        raise ShareValidationError(t("share.schema_fehlt"))
     if schema_version > SCHEMA_VERSION:
         raise ShareValidationError(
-            "Diese Datei wurde mit einer neueren Version erstellt. "
-            "Bitte App aktualisieren."
+            t("share.schema_neuer")
         )
     if schema_version < 1:
-        raise ShareValidationError(f"Unbekannte schema_version: {schema_version}")
+        raise ShareValidationError(t("share.schema_unbekannt", version=str(schema_version)))
 
     entries = doc.get("entries")
     reservations = doc.get("reservations")
@@ -194,7 +200,7 @@ def parse_share_doc(raw_bytes: bytes | str) -> dict[str, Any]:
     if schema_version == 1:
         # v1: nur entries, Pflichtfeld, alte Shape → wrappen.
         if not isinstance(entries, dict):
-            raise ShareValidationError("Feld 'entries' fehlt oder ist kein Objekt.")
+            raise ShareValidationError(t("share.entries_fehlt"))
         _validate_legacy_entries(entries)
         doc["entries"] = _wrap_legacy_entries(entries)
         return doc
@@ -203,14 +209,14 @@ def parse_share_doc(raw_bytes: bytes | str) -> dict[str, Any]:
         # v2: entries + reservations optional, alte Shape → wrappen.
         if entries is not None:
             if not isinstance(entries, dict):
-                raise ShareValidationError("Feld 'entries' ist kein Objekt.")
+                raise ShareValidationError(t("share.entries_kein_objekt"))
             _validate_legacy_entries(entries)
         if reservations is not None:
             if not isinstance(reservations, dict):
-                raise ShareValidationError("Feld 'reservations' ist kein Objekt.")
+                raise ShareValidationError(t("share.reservations_kein_objekt"))
             _validate_legacy_reservations(reservations)
         if not entries and not reservations:
-            raise ShareValidationError("Datei enthält weder Arbeitszeiten noch Reservierungen.")
+            raise ShareValidationError(t("share.leer"))
         if entries is not None:
             doc["entries"] = _wrap_legacy_entries(entries)
         if reservations is not None:
@@ -220,14 +226,14 @@ def parse_share_doc(raw_bytes: bytes | str) -> dict[str, Any]:
     # v3: Slot-Shape.
     if entries is not None:
         if not isinstance(entries, dict):
-            raise ShareValidationError("Feld 'entries' ist kein Objekt.")
+            raise ShareValidationError(t("share.entries_kein_objekt"))
         _validate_v3_entries(entries)
     if reservations is not None:
         if not isinstance(reservations, dict):
-            raise ShareValidationError("Feld 'reservations' ist kein Objekt.")
+            raise ShareValidationError(t("share.reservations_kein_objekt"))
         _validate_v3_reservations(reservations)
     if not entries and not reservations:
-        raise ShareValidationError("Datei enthält weder Arbeitszeiten noch Reservierungen.")
+        raise ShareValidationError(t("share.leer"))
     return doc
 
 

@@ -21,9 +21,10 @@ import tkinter as tk
 from src.dialogs.settings_dialog.fields import FieldSet
 from src.dialogs.settings_dialog.form_model import SaveOutcome
 from src.dialogs.settings_dialog.tab_rules import (
-    API_AUTH_HINT, API_ROUTES, api_updates, curl_example, port_hint, status_view, token_buttons_enabled,
-    token_label_view, validate_api,
+    api_auth_hint, api_routes, api_updates, curl_example, port_hint, status_view,
+    token_buttons_enabled, token_label_view, validate_api,
 )
+from src.i18n import N_, t
 from src.theme import (
     BG, FONT, FONT_SMALL, STATUS_OK, STATUS_WARN, TEXT, TEXT_MUTED, Form, dark_entry, px,
     set_secondary_button_enabled, themed_askyesno, themed_showerror,
@@ -40,10 +41,8 @@ _WRAP_PX = 380
 _STATUS_COLORS = {"ok": STATUS_OK, "muted": TEXT_MUTED, "error": STATUS_WARN}
 _TOKEN_COLORS = {"ok": STATUS_OK, "muted": TEXT_MUTED}
 _ROTATE_ERRORS = {
-    "closed": "Die App wird gerade beendet.",
-    "rotate_failed": ("Das neue Token konnte nicht geschrieben werden "
-                      "(Zugriffsrechte des Datenordners?). Das bisherige Token "
-                      "gilt weiter."),
+    "closed": N_("tab_api.rotation_beendet"),
+    "rotate_failed": N_("tab_api.rotation_fehlgeschlagen"),
 }
 
 
@@ -52,7 +51,7 @@ class ApiTab:
 
     def __init__(self, frame, dialog, settings, api_service, runner):
         self.frame = frame
-        self.title = "API"
+        self.title = t("tab_api.titel")
         self._dialog = dialog
         self._settings = settings
         self._service = api_service
@@ -73,37 +72,33 @@ class ApiTab:
         port_var = tk.StringVar(value=str(settings.get("api_port")))
         self._enabled_var = enabled_var
 
-        form.section("Lokale HTTP-API")
-        form.hint("Andere Programme auf diesem Rechner (Skripte, Taskplaner, "
-                  "Dashboards) können Zeiten lesen und eintragen. Erreichbar nur von diesem "
-                  "Rechner und nur mit Token.")
-        form.check("Lokale API aktivieren", enabled_var)
+        form.section(t("tab_api.abschnitt"))
+        form.hint(t("tab_api.hinweis"))
+        form.check(t("tab_api.aktivieren"), enabled_var)
         with form.depends_on(enabled_var):
-            form.row("Port:", dark_entry(body, port_var, width=7))
+            form.row(t("tab_form.port"), dark_entry(body, port_var, width=7))
             port_hint_label = form.hint(port_hint(port_var.get()))
         self._status_label = tk.Label(
             body, text="", font=FONT, bg=BG, fg=TEXT_MUTED, anchor="w",
             justify="left", wraplength=px(_WRAP_PX))
-        form.row("Status:", self._status_label)
+        form.row(t("tab_form.status"), self._status_label)
         with form.depends_on(enabled_var):
             self._token_label = tk.Label(
                 body, text="", font=FONT, bg=BG, fg=TEXT_MUTED, anchor="w",
                 justify="left", wraplength=px(_WRAP_PX))
-            form.row("Token:", self._token_label)
+            form.row(t("tab_api.token"), self._token_label)
         # Außerhalb der Gruppe (siehe Moduldocstring); Zustand: `_sync_buttons`.
         self._copy_btn, self._rotate_btn = form.buttons(
-            ("Token kopieren", self._copy_token),
-            ("Neu erzeugen", self._rotate))
+            (t("tab_api.token_kopieren"), self._copy_token),
+            (t("tab_api.neu_erzeugen"), self._rotate))
         with form.depends_on(enabled_var):
             example_label = form.hint(curl_example(port_var.get()))
-        form.hint("Die API läuft nur, solange die App läuft — Autostart gibt es "
-                  "im Tab „App“. Das Token verlässt diese Maske nur über die "
-                  "Zwischenablage.")
+        form.hint(t("tab_api.hinweis_laufzeit"))
 
-        form.section("So sprichst du sie an")
-        form.hint(API_AUTH_HINT)
+        form.section(t("tab_api.abschnitt_ansprache"))
+        form.hint(api_auth_hint())
         routes = tk.Frame(body, bg=BG)
-        for i, (path, what) in enumerate(API_ROUTES):
+        for i, (path, what) in enumerate(api_routes()):
             tk.Label(routes, text=path, font=FONT_SMALL, bg=BG, fg=TEXT,
                      anchor="w").grid(row=i, column=0, sticky="w", padx=(0, 14))
             tk.Label(routes, text=what, font=FONT_SMALL, bg=BG, fg=TEXT_MUTED,
@@ -238,13 +233,12 @@ class ApiTab:
             return
         try:
             if token is None:               # Datei zwischenzeitlich weg
-                themed_showinfo(self._dialog, "Kein Token",
-                                "Es gibt gerade kein lesbares Token. „Neu erzeugen“ "
-                                "legt ein neues an.")
+                themed_showinfo(self._dialog, t("tab_api.kein_token_titel"),
+                                t("tab_api.kein_token"))
                 return
             self._dialog.clipboard_clear()
             self._dialog.clipboard_append(token)
-            self._flash("In die Zwischenablage kopiert.")
+            self._flash(t("tab_api.kopiert"))
         except tk.TclError:
             self._alive = False
 
@@ -252,9 +246,8 @@ class ApiTab:
         if not self._actions_allowed():
             return
         if not themed_askyesno(
-                self._dialog, "Token neu erzeugen",
-                "Alle Programme, die das bisherige Token benutzen, werden "
-                "ausgesperrt und brauchen das neue.\n\nFortfahren?",
+                self._dialog, t("tab_api.neu_titel"),
+                t("tab_api.neu_frage"),
                 lock_ms=600):
             return
         self._busy = True
@@ -269,10 +262,10 @@ class ApiTab:
             self._sync_buttons()
             if result.ok:
                 self._refresh_token()
-                self._flash("Token erneuert — alte Clients sind ausgesperrt.")
+                self._flash(t("tab_api.erneuert"))
                 return
             themed_showerror(
-                self._dialog, "Token konnte nicht erneuert werden",
-                _ROTATE_ERRORS.get(result.reason, "Unbekannter Fehler."))
+                self._dialog, t("tab_api.erneuern_fehler_titel"),
+                t(_ROTATE_ERRORS.get(result.reason, N_("tab_api.unbekannter_fehler"))))
         except tk.TclError:
             self._alive = False

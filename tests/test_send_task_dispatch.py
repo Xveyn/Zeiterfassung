@@ -3,6 +3,7 @@
 import datetime
 
 import src.dialogs.send_task as st
+from src.i18n import t
 from src.dialogs.send_task import (
     format_result_summary, needs_json, needs_pdf, perform_send,
 )
@@ -371,4 +372,4 @@ def test_webhook_secret_is_resolved_before_delivery(monkeypatch, fake_keyring):
 
 
 def test_missing_keyring_entry_has_its_own_text():
-    assert "fehlen" in st._KIND_TEXTS["keyring_missing"]
+    assert "fehlen" in t(st._KIND_TEXTS["keyring_missing"])

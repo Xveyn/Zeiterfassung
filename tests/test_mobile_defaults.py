@@ -81,8 +81,8 @@ def test_desktop_info_maps_the_platform(system, expected):
 
 
 def test_desktop_info_carries_language_and_country(monkeypatch):
-    # Heute kennt `region` nur de/DE; weitere Werte werden hier freigeschaltet, um den Durchgriff zu sehen.
-    monkeypatch.setattr("src.region.LANGUAGES", ("de", "en"))
+    # Heute kennt die App nur de/DE; weitere Werte werden hier freigeschaltet, um den Durchgriff zu sehen.
+    monkeypatch.setattr("src.i18n.LANGUAGES", ("de", "en"))
     monkeypatch.setattr("src.region.COUNTRIES", [("DE", "Deutschland"), ("AT", "Österreich")])
     info = mobile_sync.desktop_info("PC", "1.0.0", "Linux", language="en", country="AT")
 

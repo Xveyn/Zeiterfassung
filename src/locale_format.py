@@ -19,6 +19,14 @@ _WEEKDAYS: dict[str, list[str]] = {
     "de-DE": ["Montag", "Dienstag", "Mittwoch", "Donnerstag",
               "Freitag", "Samstag", "Sonntag"],
 }
+_WEEKDAYS_SHORT: dict[str, list[str]] = {
+    "de-DE": ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"],
+}
+# Index 0 ist leer, damit `names[monat]` mit der Monatsnummer 1–12 passt.
+_MONTHS: dict[str, list[str]] = {
+    "de-DE": ["", "Januar", "Februar", "März", "April", "Mai", "Juni",
+              "Juli", "August", "September", "Oktober", "November", "Dezember"],
+}
 
 _active = DEFAULT_LOCALE
 
@@ -57,6 +65,16 @@ def weekday_date_pattern(locale: str) -> str:
 def weekday_names(locale: str) -> list[str]:
     """Ausgeschriebene Wochentage, Montag zuerst."""
     return _WEEKDAYS.get(locale, _WEEKDAYS[DEFAULT_LOCALE])
+
+
+def short_weekday_names(locale: str) -> list[str]:
+    """Wochentage in Kurzform, Montag zuerst."""
+    return _WEEKDAYS_SHORT.get(locale, _WEEKDAYS_SHORT[DEFAULT_LOCALE])
+
+
+def month_names(locale: str) -> list[str]:
+    """Monatsnamen mit leerem Index 0 (Monat 1 = Januar steht an Index 1)."""
+    return _MONTHS.get(locale, _MONTHS[DEFAULT_LOCALE])
 
 
 def set_active(locale: str) -> None:

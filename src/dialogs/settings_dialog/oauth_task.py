@@ -7,9 +7,10 @@ tests/test_settings_dialog.py sein messagebox im Funktions-Modul monkeypatcht.
 import traceback
 from tkinter import messagebox
 
+from src.i18n import t
 from src.mail import is_offline_error
 from src.oauth_utils import (
-    KEYRING_UNAVAILABLE_HINT, KEYRING_UNAVAILABLE_TITLE, is_keyring_unavailable,
+    keyring_unavailable_hint, keyring_unavailable_title, is_keyring_unavailable,
 )
 from src.theme import themed_showerror
 
@@ -34,16 +35,15 @@ def show_known_google_failure(dialog, error, base_path, action):
     Internetverbindung. `action` nennt,
     was gerade scheiterte („Google Kalender aktivieren")."""
     if is_keyring_unavailable(error):
-        themed_showerror(dialog, KEYRING_UNAVAILABLE_TITLE, KEYRING_UNAVAILABLE_HINT)
+        themed_showerror(dialog, keyring_unavailable_title(), keyring_unavailable_hint())
         return True
     if isinstance(error, FileNotFoundError) and base_path is not None:
         _show_missing_credentials(dialog, base_path, action)
         return True
     if is_offline_error(error):
         themed_showerror(
-            dialog, "Keine Internetverbindung",
-            f"„{action}“ braucht eine Verbindung zu Google.\n\n"
-            "Bitte prüfe deine Internetverbindung und versuche es dann erneut.",
+            dialog, t("oauth.keine_verbindung_titel"),
+            t("oauth.keine_verbindung", aktion=action),
         )
         return True
     return False
@@ -91,7 +91,7 @@ def build_oauth_enable_task(*, service_fn, settings, setting_key, checkbox,
                 return
             messagebox.showerror(
                 error_title,
-                f"OAuth-Flow fehlgeschlagen:\n\n{res['error']}\n\n{res['tb']}",
+                t("oauth.fehlgeschlagen", fehler=res["error"], trace=res["tb"]),
                 parent=dialog,
             )
 

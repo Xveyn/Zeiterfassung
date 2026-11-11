@@ -11,11 +11,12 @@ import platform
 import tkinter as tk
 
 from src.time_utils import (
-    DAYS_DE, MONTHS_DE, format_day_month,
+    format_day_month, month_names, short_day_names,
     calculate_hours, format_hours_colon, format_iso_date, format_minutes_hm,
     get_week_dates, get_week_label, hours_to_minutes, week_spans_months,
 )
 from src import send_reminder
+from src.i18n import t
 from src.holidays_region import get_holidays
 from src.region import country_region
 from src.tooltip import attach_tooltip
@@ -118,7 +119,7 @@ class GridRenderer:
             # FONT_HEADER (16pt) + width=16 — längste Variante "September 2026".
             font, width = FONT_HEADER, 16
             self._header_label.config(
-                text=f"{MONTHS_DE[self._month]} {self._year}", font=font, width=width,
+                text=f"{month_names()[self._month]} {self._year}", font=font, width=width,
             )
             self._refresh_month()
         else:
@@ -255,7 +256,7 @@ class GridRenderer:
             child.destroy()
         for col in range(7):
             self._configure_day_column(self._day_header, col, col < n)
-        for col, day_name in enumerate(DAYS_DE[:n]):
+        for col, day_name in enumerate(short_day_names()[:n]):
             fg = TEXT_MUTED if col < 5 else WEEKEND_FG
             tk.Label(
                 self._day_header, text=day_name, font=FONT_BOLD, bg=BG, fg=fg,
@@ -347,7 +348,7 @@ class GridRenderer:
         day_lbl = tk.Label(cell, text=day_text, font=FONT, bg=bg, fg=TEXT,
                            cursor="hand2")
         day_lbl.pack(pady=(pad, 0))
-        name_lbl = tk.Label(cell, text="Urlaub", font=time_font, bg=bg,
+        name_lbl = tk.Label(cell, text=t("zelle.urlaub"), font=time_font, bg=bg,
                             fg=VACATION_ACCENT, cursor="hand2")
         name_lbl.pack()
         # Die Stundenzeile ist abschaltbar (`vacation_show_hours`, Schalter im
@@ -358,7 +359,7 @@ class GridRenderer:
         show_hours = self._settings.get("vacation_show_hours")
         hours_lbl = tk.Label(
             cell,
-            text=(f"{format_hours_colon(minutes / 60)} h"
+            text=(t("zeit.stunden", h=format_hours_colon(minutes / 60))
                   if minutes and show_hours else ""),
             font=time_font, bg=bg, fg=TEXT, cursor="hand2")
         hours_lbl.pack(pady=(0, pad))
@@ -377,7 +378,7 @@ class GridRenderer:
         (nur Reservierungen) bei Pause > 0 zusätzlich '  · N min Pause'."""
         kat = f"  {slot['kategorie']}" if slot.get("kategorie") else ""
         pause = (slot.get("pause", 0) or 0) if with_pause else 0
-        pz = f"  \u00b7 {pause} min Pause" if pause > 0 else ""
+        pz = t("zelle.pause", pause=pause) if pause > 0 else ""
         return f"{GridRenderer._fmt_slot_time(slot)}{kat}{pz}"
 
     @staticmethod
@@ -440,27 +441,25 @@ class GridRenderer:
         """
         parts = []
         if entry and entry.get("slots"):
-            parts.append(
-                "Arbeitszeit:\n"
-                + "\n".join(
-                    GridRenderer._fmt_slot_line(s) for s in entry["slots"]))
+            parts.append(t("tooltip.arbeitszeit", zeilen="\n".join(
+                GridRenderer._fmt_slot_line(s) for s in entry["slots"])))
         if reservation is not None:
             lines = [GridRenderer._fmt_slot_line(s, with_pause=True)
                      for s in reservation.get("slots", [])]
             if reminder is not None:
                 lines.append(send_reminder.reminder_tooltip_line(*reminder))
-            parts.append("Reservierung:\n" + "\n".join(lines))
+            parts.append(t("tooltip.reservierung", zeilen="\n".join(lines)))
         if vacation is not None:
             span = (f"{format_iso_date(vacation.get('from'))} – "
                     f"{format_iso_date(vacation.get('to'))}")
             if vacation_minutes:
                 span += f"  ·  {format_minutes_hm(vacation_minutes)}"
-            parts.append(f"Urlaub: {vacation.get('name', '')}\n{span}")
+            parts.append(t("tooltip.urlaub", name=vacation.get('name', ''), zeitraum=span))
         if holiday_name and GridRenderer._holiday_in_combined_tip(
                 entry, reservation, vacation, has_conflict):
-            parts.append(f"Feiertag: {holiday_name}")
+            parts.append(t("tooltip.feiertag", name=holiday_name))
         if has_conflict:
-            parts.append("Konflikt — bitte auflösen")
+            parts.append(t("tooltip.konflikt"))
         return "\n".join(parts)
 
     def _add_reservation_marker(self, cell):
@@ -715,11 +714,11 @@ class GridRenderer:
             # Footer (Differenz sub-Cent, aber sichtbar inkonsistent).
             brutto = round(total_minutes / 60 * rate, 2)
             self._footer_label.config(
-                text=f"Gesamt: {total_text}  —  {brutto:.2f} € brutto",
+                text=t("fuss.gesamt_brutto", summe=total_text, brutto=f"{brutto:.2f}"),
                 width=42,
             )
         else:
-            self._footer_label.config(text=f"Gesamt: {total_text}", width=20)
+            self._footer_label.config(text=t("fuss.gesamt", summe=total_text), width=20)
 
     @staticmethod
     def _display_minutes(entry):
@@ -757,7 +756,9 @@ class GridRenderer:
         if not slots:
             return ""
         pause = sum(int(s.get("pause", 0)) for s in slots)
-        return f"{format_hours_colon(GridRenderer._entry_hours(entry))} h · P{pause}"
+        return t("zelle.stunden_pause",
+                 zeit=format_hours_colon(GridRenderer._entry_hours(entry)),
+                 pause=pause)
 
     def _dates_with_unresolved_conflicts(self):
         """Gibt die Menge der ISO-Datums-Strings zurück, für die ungelöste
@@ -967,7 +968,7 @@ class GridRenderer:
             # Geteilter Tooltip über alle drei Widgets — _Tooltip trackt sie
             # gemeinsam, sodass Pointer-Wechsel zwischen Frame und Child-
             # Labels den Tooltip nicht schließt/neu öffnet.
-            attach_tooltip((cell, day_lbl, name_lbl), f"Feiertag: {name}")
+            attach_tooltip((cell, day_lbl, name_lbl), t("tooltip.feiertag", name=name))
         return cell
 
     @staticmethod

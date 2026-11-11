@@ -7,6 +7,7 @@ Tkinter und das Theme in einen Serverthread-Pfad, der davon frei bleiben soll.
 `dialogs/vacation_dialog.py` importiert sie von hier unter ihren alten Namen.
 """
 
+from src.i18n import t
 from src.time_utils import format_iso_date
 from src.vacations import apportion_minutes, conflicting_days, expand_days
 
@@ -46,14 +47,14 @@ def plan_vacation_save(name, date_from, date_to, mode, value, overrides, region,
     bekannte, erwartete Fehler → der Aufrufer zeigt sie themed (Audit N14).
     """
     if not (name or "").strip():
-        return {"error": "Bitte einen Namen für den Urlaub eingeben.", "days": {}}
+        return {"error": t("urlaub.name_fehlt"), "days": {}}
     if date_to < date_from:
-        return {"error": "Das Bis-Datum liegt vor dem Von-Datum.", "days": {}}
+        return {"error": t("urlaub.bis_vor_von"), "days": {}}
     if value is None:
-        return {"error": "Bitte eine Zahl in das Stundenfeld eingeben.",
+        return {"error": t("urlaub.stunden_fehlen"),
                 "days": {}}
     if value < 0:
-        return {"error": "Die Stundenzahl darf nicht negativ sein.", "days": {}}
+        return {"error": t("urlaub.stunden_negativ"), "days": {}}
 
     if mode == "total":
         # Erst die Arbeitstage ermitteln (Expansion mit 1 Minute als Marker),
@@ -62,16 +63,14 @@ def plan_vacation_save(name, date_from, date_to, mode, value, overrides, region,
         workdays = [d for d, m in skeleton.items() if m]
         if not workdays:
             return {
-                "error": ("Im Zeitraum liegt kein Arbeitstag, auf den die "
-                          "Stunden verteilt werden könnten."),
+                "error": t("urlaub.kein_arbeitstag"),
                 "days": {},
             }
         parts = apportion_minutes(hours_to_minutes_exact(value), len(workdays))
         if parts and max(parts) > MAX_MINUTES_PER_DAY:
             return {
-                "error": (f"Die Gesamtstunden ergeben mehr als "
-                          f"{MAX_HOURS_PER_DAY} Stunden pro Arbeitstag "
-                          f"({len(workdays)} Arbeitstage im Zeitraum)."),
+                "error": t("urlaub.gesamt_zu_viel", stunden=str(MAX_HOURS_PER_DAY),
+                           tage=str(len(workdays))),
                 "days": {},
             }
         days = {d: 0 for d in skeleton}
@@ -84,8 +83,7 @@ def plan_vacation_save(name, date_from, date_to, mode, value, overrides, region,
         minutes_per_day = hours_to_minutes_exact(value)
         if minutes_per_day > MAX_MINUTES_PER_DAY:
             return {
-                "error": (f"Mehr als {MAX_HOURS_PER_DAY} Stunden pro Tag gibt "
-                          f"es nicht."),
+                "error": t("urlaub.tag_zu_viel", stunden=str(MAX_HOURS_PER_DAY)),
                 "days": {},
             }
         days = expand_days(date_from, date_to, minutes_per_day, region, country)
@@ -99,8 +97,7 @@ def plan_vacation_save(name, date_from, date_to, mode, value, overrides, region,
     over = sorted(d for d, m in days.items() if m > MAX_MINUTES_PER_DAY)
     if over:
         return {
-            "error": (f"Für diese Tage sind mehr als {MAX_HOURS_PER_DAY} "
-                      f"Stunden eingetragen:\n\n"
+            "error": (t("urlaub.tage_zu_viel", stunden=str(MAX_HOURS_PER_DAY))
                       + format_day_list(over)),
             "days": {},
         }
@@ -117,7 +114,7 @@ def format_day_list(days, limit=8):
     shown = [format_iso_date(d) for d in days[:limit]]
     rest = len(days) - len(shown)
     if rest > 0:
-        shown.append(f"… und {rest} weitere")
+        shown.append(t("urlaub.weitere", anzahl=str(rest)))
     return "\n".join(shown)
 
 

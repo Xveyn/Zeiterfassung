@@ -9,6 +9,8 @@ unten.
 
 from collections import namedtuple
 
+from src.i18n import t
+
 
 MenuEntry = namedtuple("MenuEntry", ["kind", "label", "callback", "visible"])
 
@@ -23,12 +25,12 @@ def build_menu_model(on_show, on_quit, actions):
     eine 0-arg-Callable → Bool (dynamische Sichtbarkeit).
     """
     entries = [
-        MenuEntry("item", "Anzeigen", on_show, None),
+        MenuEntry("item", t("tray.anzeigen"), on_show, None),
         MenuEntry("separator", None, None, None),
     ]
     for label, callback, visible in actions:
         entries.append(MenuEntry("item", label, callback, visible))
     if actions:
         entries.append(MenuEntry("separator", None, None, None))
-    entries.append(MenuEntry("item", "Beenden", on_quit, None))
+    entries.append(MenuEntry("item", t("tray.beenden"), on_quit, None))
     return entries

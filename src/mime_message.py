@@ -14,6 +14,7 @@ weil dieses Modul das HTML nur entgegennimmt.
 
 from __future__ import annotations
 
+from src.i18n import t
 from email.header import Header
 from email.message import Message
 from email.mime.application import MIMEApplication
@@ -34,11 +35,7 @@ def _reject_control_chars(value: str, label: str) -> None:
     nach RFC 2047, ein CRLF landet dort in der Nutzlast.
     """
     if any(ch in value for ch in _FORBIDDEN_CHARS):
-        raise ValueError(
-            f"Die {label} enthält unzulässige Steuerzeichen (Zeilenumbruch "
-            "oder Nullbyte). Bitte korrigiere die Adresse in den "
-            "Einstellungen."
-        )
+        raise ValueError(t("mime.adresse_steuerzeichen", bezeichnung=label))
 
 
 def build_message(*, to: str, subject: str, html_body: str,
@@ -51,9 +48,9 @@ def build_message(*, to: str, subject: str, html_body: str,
     `from_addr` wird nur gesetzt, wenn übergeben: die Gmail-API kennt den
     Absender aus dem Token, SMTP braucht ihn im Header.
     """
-    _reject_control_chars(to, "Empfängeradresse")
+    _reject_control_chars(to, t("adresse.empfaenger"))
     if from_addr is not None:
-        _reject_control_chars(from_addr, "Absenderadresse")
+        _reject_control_chars(from_addr, t("adresse.absender"))
 
     message: Message
     if attachment_bytes:

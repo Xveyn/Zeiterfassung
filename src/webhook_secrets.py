@@ -16,6 +16,7 @@ import copy
 import threading
 from typing import Any
 
+from src.i18n import t
 from src import keyring_store
 
 SECRET_LOCATION = "secret_location"
@@ -187,7 +188,6 @@ def keyring_failure(problem: str) -> dict[str, Any]:
     """Ergebnis-Dict eines Webhook-Kanals, dessen Secret nicht lesbar war."""
     if problem == "unavailable":
         return {"ok": False, "kind": "keyring", "error": None, "tb": None,
-                "detail": "Die Zugangsdaten konnten nicht aus dem "
-                          "Schlüsselbund gelesen werden."}
+                "detail": t("webhook.zugangsdaten_nicht_lesbar")}
     return {"ok": False, "kind": "keyring_missing", "error": None, "tb": None,
-            "detail": "Webhook bearbeiten und die Zugangsdaten neu eingeben."}
+            "detail": t("webhook.zugangsdaten_neu")}

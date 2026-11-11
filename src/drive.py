@@ -9,6 +9,7 @@ import io
 import logging
 import os
 
+from src.i18n import t
 from src.oauth_utils import REAUTH_REQUIRED_MSG, forget_token
 from src.token_store import load_credentials, save_credentials
 
@@ -81,10 +82,7 @@ def get_drive_service(credentials_path, token_path, gcal_enabled=False,
     Beenden) und Kompaktierung laufen ohne (Xveyn#129)."""
     if (Credentials is None or InstalledAppFlow is None
             or Request is None or build is None):
-        raise ImportError(
-            "Google-API-Libs fehlen — google-api-python-client und "
-            "google-auth-oauthlib müssen installiert sein."
-        )
+        raise ImportError(t("drive.libs_fehlen"))
     scopes = list(SYNC_SCOPES)
     if gcal_enabled:
         scopes.append("https://www.googleapis.com/auth/calendar.events")
@@ -110,7 +108,7 @@ def get_drive_service(credentials_path, token_path, gcal_enabled=False,
             raise DriveAuthError(REAUTH_REQUIRED_MSG)
         if not os.path.exists(credentials_path):
             raise FileNotFoundError(
-                f"credentials.json nicht gefunden unter:\n{credentials_path}"
+                t("meldungen.credentials_fehlen", pfad=credentials_path)
             )
         flow = InstalledAppFlow.from_client_secrets_file(credentials_path, scopes)
         creds = flow.run_local_server(port=0)
@@ -205,7 +203,7 @@ def download(service, file_id):
 
     Wirft DriveNetworkError bei API-Fehlern."""
     if MediaIoBaseDownload is None:
-        raise ImportError("googleapiclient fehlt — Drive-Sync nicht verfügbar.")
+        raise ImportError(t("drive.api_fehlt"))
     try:
         meta = service.files().get(fileId=file_id, fields="version").execute()
         request = service.files().get_media(fileId=file_id)
@@ -273,7 +271,7 @@ def upload(service, content_bytes, file_id=None):
     Liefert (file_id, new_version_token).
     """
     if MediaIoBaseUpload is None:
-        raise ImportError("googleapiclient fehlt — Drive-Sync nicht verfügbar.")
+        raise ImportError(t("drive.api_fehlt"))
     media = MediaIoBaseUpload(io.BytesIO(content_bytes),
                                 mimetype=SYNC_MIMETYPE,
                                 resumable=False)

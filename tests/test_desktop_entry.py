@@ -90,6 +90,7 @@ def test_write_menu_entry_creates_a_valid_entry(fake_home):
     assert content.startswith("[Desktop Entry]\n")
     assert "Type=Application\n" in content
     assert "Name=Zeiterfassung\n" in content
+    assert "Comment=Arbeitszeiten erfassen, berichten und versenden\n" in content
     assert "Exec=/opt/Zeiterfassung.AppImage\n" in content
     assert "Icon=/data/icon.png\n" in content
     assert "Terminal=false\n" in content

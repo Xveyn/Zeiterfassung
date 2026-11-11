@@ -13,7 +13,7 @@ import os
 import pytest
 
 from src.storage import (
-    MAX_PAUSE_MINUTES, Storage, repair_notice_text, repair_toast_text, sanitize_slot,
+    MAX_PAUSE_MINUTES, RepairCounts, Storage, repair_notice_text, repair_toast_text, sanitize_slot,
 )
 from tests.conftest import ist_slot
 
@@ -415,7 +415,7 @@ def test_a_repair_leaves_a_notice_pointing_at_the_backup(tmp_path):
     assert notice is not None
     problems, backup = notice
 
-    assert "ohne Objektform" in problems
+    assert problems.dropped == 1  # Zähler statt Satz: der Text entsteht beim Anzeigen
     (name,) = backups(tmp_path)
     assert backup == str(tmp_path / name)
     # Zweiter Start: Datei ist geheilt, kein erneuter Hinweis.
@@ -441,6 +441,6 @@ def test_a_repair_without_backup_leaves_a_notice_without_path(tmp_path, monkeypa
 
 
 def test_notice_text_names_the_backup_file():
-    title, text = repair_notice_text("1 Eintrag/Einträge ohne Objektform", "/d/z.json.corrupt-1")
+    title, text = repair_notice_text(RepairCounts(1, 0, 0), "/d/z.json.corrupt-1")
     assert "/d/z.json.corrupt-1" in text and "ohne Objektform" in text
     assert "z.json.corrupt-1" in repair_toast_text("/d/z.json.corrupt-1")

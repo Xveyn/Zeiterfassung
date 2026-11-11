@@ -4,12 +4,12 @@ der aufgeteilte Inhalt des früheren `save_settings`."""
 import pytest
 
 from src.dialogs.settings_dialog import tab_rules as tr
-from src.holidays_region import REGIONS
+from src.holidays_region import region_choices
 
-STATES = REGIONS["DE"]
+STATES = region_choices("DE")
 from src.settings import WEEKDAY_KEYS
-from src.send_reminder import SHIFT_LABELS
-from src.updater import FREQUENCY_OPTIONS
+from src.send_reminder import label_for_shift
+from src.updater import frequency_options
 
 
 def work_raw(**overrides):
@@ -165,7 +165,7 @@ def reminders_raw(**overrides):
         "reminders_enabled": True, "reminder_minutes_before": "15",
         "send_reminder_enabled": True, "send_reminder_day": "28",
         "send_reminder_time": "09:00",
-        "send_reminder_weekend_shift": SHIFT_LABELS["backward"],
+        "send_reminder_weekend_shift": label_for_shift("backward"),
         "send_reminder_shift_holidays": False,
         "send_reminder_reservations_enabled": True,
         "send_reminder_default_minutes": "30",
@@ -225,9 +225,9 @@ def test_reminders_updates_keeps_values_of_disabled_options():
 
 
 def test_shift_moves():
-    assert tr.shift_moves(SHIFT_LABELS["none"]) is False
-    assert tr.shift_moves(SHIFT_LABELS["backward"]) is True
-    assert tr.shift_moves(SHIFT_LABELS["forward"]) is True
+    assert tr.shift_moves(label_for_shift("none")) is False
+    assert tr.shift_moves(label_for_shift("backward")) is True
+    assert tr.shift_moves(label_for_shift("forward")) is True
 
 
 def test_app_updates_clamps_scale():
@@ -265,10 +265,10 @@ def test_calendar_update():
 
 
 def test_update_tab_updates():
-    raw = {"update_check_frequency": FREQUENCY_OPTIONS[1][1],
+    raw = {"update_check_frequency": frequency_options()[1][1],
            "prerelease_updates_enabled": True}
     assert tr.update_tab_updates(raw) == {
-        "update_check_frequency": FREQUENCY_OPTIONS[1][0],
+        "update_check_frequency": frequency_options()[1][0],
         "prerelease_updates_enabled": True}
     raw["auto_update_enabled"] = False
     assert tr.update_tab_updates(raw)["auto_update_enabled"] is False
@@ -356,7 +356,7 @@ def test_tabs_together_write_exactly_the_legacy_keys():
         tr.sending_updates(sending_raw()),
         tr.google_updates({"device_name": "", "gcal_calendar": ""}),
         tr.app_updates(app_raw()),
-        tr.update_tab_updates({"update_check_frequency": FREQUENCY_OPTIONS[0][1],
+        tr.update_tab_updates({"update_check_frequency": frequency_options()[0][1],
                                "prerelease_updates_enabled": False,
                                "auto_update_enabled": True}),
     ]
@@ -481,7 +481,7 @@ def test_token_buttons_need_the_api_on_a_known_token_and_no_rotation(api_on, tok
 
 def test_token_label_shows_the_mask_or_the_hint_without_a_notice():
     assert tr.token_label_view(token_known=True, notice=None) == (tr.TOKEN_MASK, "muted")
-    assert tr.token_label_view(token_known=False, notice=None) == (tr.TOKEN_MISSING, "muted")
+    assert tr.token_label_view(token_known=False, notice=None) == (tr.token_missing(), "muted")
     assert tr.token_label_view(token_known=True, notice="") == (tr.TOKEN_MASK, "muted")
 
 
@@ -505,8 +505,8 @@ def test_leading_zeros_are_accepted_as_the_plain_number():
 
 def test_the_missing_token_text_does_not_promise_a_first_time_creation():
     # Die Maske steht auch, wenn die API läuft und die Datei extern gelöscht wurde.
-    assert "ersten" not in tr.TOKEN_MISSING
-    assert "lesbar" in tr.TOKEN_MISSING and "Einschalten" in tr.TOKEN_MISSING
+    assert "ersten" not in tr.token_missing()
+    assert "lesbar" in tr.token_missing() and "Einschalten" in tr.token_missing()
 
 
 # --- Mobil-Tab (#221, PR 5) -----------------------------------------------------------------
@@ -522,7 +522,7 @@ from src.mobile_service import STATE_STARTING as M_STARTING  # noqa: E402
 
 
 def mobile_raw(**overrides):
-    raw = {"mobile_enabled": True, "mobile_port": "17654", "mobile_address": tr.AUTO_ADDRESS,
+    raw = {"mobile_enabled": True, "mobile_port": "17654", "mobile_address": tr.auto_address(),
            "mobile_window_max_days": "365 Tage"}
     raw.update(overrides)
     return raw
@@ -530,18 +530,18 @@ def mobile_raw(**overrides):
 
 def test_address_options_start_with_automatic_and_keep_the_order():
     assert tr.address_options(["192.168.1.20", "10.0.0.5"]) == [
-        tr.AUTO_ADDRESS, "192.168.1.20", "10.0.0.5"]
-    assert tr.address_options([]) == [tr.AUTO_ADDRESS]
+        tr.auto_address(), "192.168.1.20", "10.0.0.5"]
+    assert tr.address_options([]) == [tr.auto_address()]
 
 
 def test_address_choice_round_trips():
-    assert tr.address_from_choice(tr.AUTO_ADDRESS) == ""
+    assert tr.address_from_choice(tr.auto_address()) == ""
     assert tr.address_from_choice("192.168.1.20") == "192.168.1.20"
-    assert tr.address_to_choice("") == tr.AUTO_ADDRESS
+    assert tr.address_to_choice("") == tr.auto_address()
     assert tr.address_to_choice("192.168.1.20") == "192.168.1.20"
     # Müll fällt auf „Automatisch“ zurück (#260); eine gültige, vielleicht verschwundene Adresse nicht.
     for junk in ("123", "٣.٣.٣.٣", "evil.example", "8.8.8.8", " "):
-        assert tr.address_to_choice(junk) == tr.AUTO_ADDRESS, junk
+        assert tr.address_to_choice(junk) == tr.auto_address(), junk
 
 
 def test_valid_mobile_input_passes_and_converts():
@@ -569,6 +569,28 @@ def test_the_window_cap_shows_as_a_label_and_falls_back_to_the_maximum(days, lab
                                          ("", 365), ("abc", 365), (None, 365), ("7 Tage", 365)])
 def test_the_window_cap_choice_parses_tolerantly(choice, days):
     assert tr.window_cap_from_choice(choice) == days
+
+
+@pytest.mark.parametrize("choice,days", [("90", 90), ("0 Tage", 365), ("x 30", 365),
+                                         ("90 Tage extra", 90), (" 30 Tage", 365), ("Tage", 365)])
+def test_the_window_cap_choice_keeps_the_old_parsing_for_unknown_text(choice, days):
+    assert tr.window_cap_from_choice(choice) == days
+
+
+def test_the_window_cap_choice_maps_back_through_the_catalog_text(monkeypatch):
+    """Die Rückabbildung läuft über den Anzeigetext, nicht über die Stellung der Zahl."""
+    from src import i18n
+    monkeypatch.setitem(i18n.TEXTS, "regeln.mobil_tage", "bis {tage} d")
+    assert tr.window_cap_options()[1] == "bis 90 d"
+    assert tr.window_cap_from_choice("bis 90 d") == 90
+    assert tr.window_cap_from_choice("bis 180 d") == 180
+
+
+def test_the_api_routes_prefix_the_method_in_code():
+    paths = [path for path, _what in tr.api_routes()]
+    assert "GET /v1/summary/week/JJJJ-Www" in paths
+    assert "GET /v1/summary/month/JJJJ-MM" in paths
+    assert "GET /v1/holidays/JJJJ" in paths
 
 
 def test_mobile_updates_carries_the_window_cap():
@@ -673,7 +695,7 @@ def test_the_countdown(seconds, expected):
 
 
 def test_the_first_enable_notice_names_the_three_things_the_spec_demands():
-    notice = tr.FIRST_ENABLE_NOTICE
+    notice = tr.first_enable_notice()
     assert "Ende-zu-Ende verschlüsselt" in notice
     assert "vertrauenswürdig" in notice
     assert "Autostart" in notice
@@ -682,7 +704,7 @@ def test_the_first_enable_notice_names_the_three_things_the_spec_demands():
 def test_the_first_enable_notice_does_not_claim_the_connection_is_unencrypted():
     """Seit #249 laufen Kopplung und Abgleich als AES-256-GCM-Umschläge; das Gerätetoken im Header ist
     ohne den Schlüssel wertlos. Der Hinweis darf das nicht mehr als Mitlesegefahr darstellen (#361)."""
-    notice = tr.FIRST_ENABLE_NOTICE
+    notice = tr.first_enable_notice()
     assert "unverschlüsselt" not in notice
     assert "mitlesen" not in notice
 
@@ -799,13 +821,13 @@ def test_revoke_outcome_lets_a_programming_error_through():
 
 
 def test_the_revoke_error_text_names_the_consequence():
-    text = tr.REVOKE_ERROR_TEXT
+    text = tr.revoke_error_text()
     assert "weiterhin" in text and "Datenordner" in text
 
 
 def test_the_first_enable_notice_uses_real_line_breaks():
-    assert "\n\n" in tr.FIRST_ENABLE_NOTICE
-    assert "\\n" not in tr.FIRST_ENABLE_NOTICE
+    assert "\n\n" in tr.first_enable_notice()
+    assert "\\n" not in tr.first_enable_notice()
 
 
 # --- Schlüsselspeicher (#249) -------------------------------------------------------------------
@@ -950,13 +972,13 @@ def test_relay_pair_enabled_truth_table(saved, has_relay, busy, expected):
 
 
 def test_the_relay_pair_hint_warns_about_photographed_qr_and_names_the_limits():
-    hint = tr.RELAY_PAIR_HINT
+    hint = tr.relay_pair_hint()
     assert "fotografiert" in hint and "Metadaten" in hint and "Inhalt" in hint
     assert "unverschlüsselt" not in hint
 
 
 def test_the_refusal_text_names_all_three_causes():
-    text = tr.RELAY_PAIR_REFUSED_TEXT
+    text = tr.relay_pair_refused_text()
     assert "Handy-Erfassung ist aus" in text
     assert "Gerätedatei ist nicht schreibbar" in text
     assert "frühere Kopplung wird noch abgeschlossen" in text
@@ -964,8 +986,8 @@ def test_the_refusal_text_names_all_three_causes():
 
 def test_the_error_text_is_not_the_refusal_text():
     """Eine Ausnahme beim Öffnen hat keine der drei Ursachen der Ablehnung."""
-    assert tr.RELAY_PAIR_ERROR_TEXT != tr.RELAY_PAIR_REFUSED_TEXT
-    assert "Protokoll" in tr.RELAY_PAIR_ERROR_TEXT
+    assert tr.relay_pair_error_text() != tr.relay_pair_refused_text()
+    assert "Protokoll" in tr.relay_pair_error_text()
 
 
 def test_relay_open_view_shows_a_new_code_and_closes_nothing():
@@ -975,18 +997,18 @@ def test_relay_open_view_shows_a_new_code_and_closes_nothing():
 
 def test_relay_open_view_refusal_closes_the_dialogs_own_old_session():
     view = tr.relay_open_view(alive=True, code=None, failed=False, own_code="OLD")
-    assert not view.show and view.message == tr.RELAY_PAIR_REFUSED_TEXT
+    assert not view.show and view.message == tr.relay_pair_refused_text()
     assert view.close_codes == ("OLD",)
 
 
 def test_relay_open_view_refusal_without_an_own_session_closes_nothing():
     view = tr.relay_open_view(alive=True, code=None, failed=False, own_code=None)
-    assert view.message == tr.RELAY_PAIR_REFUSED_TEXT and view.close_codes == ()
+    assert view.message == tr.relay_pair_refused_text() and view.close_codes == ()
 
 
 def test_relay_open_view_failure_shows_the_error_text_and_closes_the_own_session():
     view = tr.relay_open_view(alive=True, code=None, failed=True, own_code="OLD")
-    assert not view.show and view.message == tr.RELAY_PAIR_ERROR_TEXT
+    assert not view.show and view.message == tr.relay_pair_error_text()
     assert view.close_codes == ("OLD",)
 
 
@@ -1005,7 +1027,7 @@ def test_the_relay_state_keys_match_the_link_and_service_constants():
 
 
 def test_the_first_enable_notice_names_the_relay_and_what_it_cannot_see():
-    notice = tr.FIRST_ENABLE_NOTICE
+    notice = tr.first_enable_notice()
     assert "Relay" in notice and "nie den Inhalt" in notice
 
 
@@ -1056,7 +1078,7 @@ def test_revoke_all_prompt_uses_the_plural_for_several_boxes():
 
 
 def test_the_relay_pair_dialog_tells_to_scan_inside_the_installed_web_app():
-    text = tr.PAIR_INTRO_RELAY
+    text = tr.pair_intro_relay()
     assert "installierten Web-App" in text
     assert "QR-Code scannen" in text
     assert "Kamera-App" in text and "nicht immer" in text     # die Kamera-App geht (iPhone geprüft), je nach iOS aber nicht immer
@@ -1065,11 +1087,11 @@ def test_the_relay_pair_dialog_tells_to_scan_inside_the_installed_web_app():
 
 
 def test_the_lan_pair_dialog_keeps_its_intro():
-    assert "Kamera-App" in tr.PAIR_INTRO_LAN and "Adresse" in tr.PAIR_INTRO_LAN
+    assert "Kamera-App" in tr.pair_intro_lan() and "Adresse" in tr.pair_intro_lan()
 
 
 def test_the_first_enable_notice_says_the_relay_is_the_only_way_on_ios_and_names_the_ip():
-    notice = tr.FIRST_ENABLE_NOTICE
+    notice = tr.first_enable_notice()
     assert "einzige Weg" in notice
     assert "IP-Adressen" in notice
     assert "optional" not in notice
@@ -1082,7 +1104,7 @@ def test_api_route_summary_matches_the_readme():
 
     readme = (Path(__file__).resolve().parent.parent / "README.md").read_text(
         encoding="utf-8")
-    for path, _what in tr.API_ROUTES:
+    for path, _what in tr.api_routes():
         base = re.search(r"/v1/[a-z]+(?:/[a-z]+)?", path).group(0)
         assert base in readme, path
 
@@ -1267,4 +1289,4 @@ def test_revoke_all_has_something_to_do_only_with_an_active_device():
 
 
 def test_the_dismiss_error_text_does_not_say_the_device_can_still_sync():
-    assert "gekoppelt" not in tr.DISMISS_ERROR_TEXT and tr.DISMISS_ERROR_TEXT
+    assert "gekoppelt" not in tr.dismiss_error_text() and tr.dismiss_error_text()

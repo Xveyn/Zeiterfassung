@@ -5,6 +5,7 @@ import datetime
 from typing import Any, TypeVar
 
 from src import locale_format
+from src.i18n import t
 
 # Slot-Dicts kommen aus storage/reservations. Der Typ wird hier lokal
 # geschrieben statt importiert: `storage.py` importiert `time_utils`, ein
@@ -18,11 +19,9 @@ Slot = dict[str, Any]
 # TypeVar hält genau das fest: beide Argumente, aber derselbe Typ.
 _DateLike = TypeVar("_DateLike", datetime.date, str)
 
+# Nur für den Bericht (`report.py`, Ausgabe, Teil 3); die Anzeige in der UI liest
+# `short_day_names()` über `locale_format`.
 DAYS_DE = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"]
-MONTHS_DE = [
-    "", "Januar", "Februar", "März", "April", "Mai", "Juni",
-    "Juli", "August", "September", "Oktober", "November", "Dezember",
-]
 
 
 def utc_now_iso() -> str:
@@ -84,10 +83,10 @@ def format_minutes_hm(total_min: int) -> str:
     Teil weg ('7 h', '30 min'); 0 → '0 h'."""
     h, m = divmod(total_min, 60)
     if m == 0:
-        return f"{h} h"
+        return t("zeit.stunden", h=h)
     if h == 0:
-        return f"{m} min"
-    return f"{h} h {m} min"
+        return t("zeit.minuten", m=m)
+    return t("zeit.stunden_minuten", h=h, m=m)
 
 
 def format_hours_hm(hours: float) -> str:
@@ -121,19 +120,19 @@ def validate_entry(start_str: str | None, end_str: str | None,
     """Validate a time entry. Returns (ok, error_message)."""
     start = parse_time(start_str)
     if start is None:
-        return False, "Startzeit ungültig (Format: HH:MM)"
+        return False, t("zeit.startzeit_ungueltig")
     end = parse_time(end_str)
     if end is None:
-        return False, "Endzeit ungültig (Format: HH:MM)"
+        return False, t("zeit.endzeit_ungueltig")
     start_min = start[0] * 60 + start[1]
     end_min = end[0] * 60 + end[1]
     if end_min <= start_min:
-        return False, "Endzeit muss nach Startzeit liegen"
+        return False, t("zeit.ende_nach_start")
     working_min = end_min - start_min
     if pause_minutes < 0:
-        return False, "Pause darf nicht negativ sein"
+        return False, t("zeit.pause_negativ")
     if pause_minutes >= working_min:
-        return False, f"Pause ({pause_minutes} Min) muss kleiner als die Arbeitszeit ({working_min} Min) sein"
+        return False, t("zeit.pause_zu_lang", pause=pause_minutes, arbeit=working_min)
     return True, ""
 
 
@@ -142,7 +141,7 @@ def validate_period(date_from: _DateLike, date_to: _DateLike) -> tuple[bool, str
     (ok, fehlermeldung). von > bis ist ungültig; von == bis ist erlaubt
     (Ein-Tages-Bericht)."""
     if date_from > date_to:
-        return False, "Das Von-Datum muss vor dem Bis-Datum liegen."
+        return False, t("zeit.von_nach_bis")
     return True, ""
 
 def get_week_dates(iso_year: int, iso_week: int) -> list[datetime.date]:
@@ -174,6 +173,16 @@ def format_day_month(d: datetime.date, locale: str | None = None) -> str:
     return pattern.format(day=d.day, month=d.month)
 
 
+def short_day_names(locale: str | None = None) -> list[str]:
+    """Kurze Wochentagsnamen (Montag zuerst) nach dem Locale, für Kopfzeilen."""
+    return locale_format.short_weekday_names(locale or locale_format.active())
+
+
+def month_names(locale: str | None = None) -> list[str]:
+    """Monatsnamen nach dem Locale, Index 0 leer (Monat 1 an Index 1)."""
+    return locale_format.month_names(locale or locale_format.active())
+
+
 def weekday_name(d: datetime.date, locale: str | None = None) -> str:
     """Ausgeschriebener Wochentag nach dem Locale."""
     return locale_format.weekday_names(locale or locale_format.active())[d.weekday()]
@@ -185,8 +194,8 @@ def get_week_label(iso_year: int, iso_week: int) -> str:
     monday = dates[0]
     sunday = dates[6]
     if monday.year != sunday.year:
-        return f"KW {iso_week} · {format_date(monday)} – {format_date(sunday)}"
-    return f"KW {iso_week} · {format_short_date(monday)} – {format_date(sunday)}"
+        return t("zeit.kw_label", kw=iso_week, von=format_date(monday), bis=format_date(sunday))
+    return t("zeit.kw_label", kw=iso_week, von=format_short_date(monday), bis=format_date(sunday))
 
 
 def week_spans_months(iso_year: int, iso_week: int) -> bool:
@@ -308,12 +317,12 @@ def validate_slots(slots: list[Slot], with_pause: bool = True) -> tuple[bool, st
             try:
                 pause = int(s.get("pause", 0))
             except (TypeError, ValueError):
-                return False, "Pause muss eine ganze Zahl (Minuten) sein."
+                return False, t("zeit.pause_keine_zahl")
         else:
             pause = 0
         ok, msg = validate_entry(s.get("start"), s.get("end"), pause_minutes=pause)
         if not ok:
             return False, msg
     if slots_overlap(slots):
-        return False, "Zeitslots dürfen sich zeitlich nicht überlappen."
+        return False, t("zeit.slots_ueberlappen")
     return True, ""

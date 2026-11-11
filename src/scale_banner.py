@@ -4,6 +4,7 @@ neu gestartet wird nie von selbst, der Nutzer entscheidet."""
 
 import tkinter as tk
 
+from src.i18n import t
 from src.theme import ACCENT, ACCENT_HOVER, FONT_BOLD, label_button
 
 
@@ -31,11 +32,11 @@ class ScaleBanner:
             before=self._get_anchor(), fill=tk.X, padx=10, pady=(5, 0))
         tk.Label(
             self._banner,
-            text="Skalierung passt nicht zum Monitor",
+            text=t("skalierung.banner"),
             bg=ACCENT, fg="#ffffff", font=FONT_BOLD,
         ).pack(side=tk.LEFT, padx=10, pady=6)
         label_button(
-            self._banner, "Neu starten", self._on_restart,
+            self._banner, t("skalierung.neu_starten"), self._on_restart,
             bg="#ffffff", fg=ACCENT,
             hover_bg="#f0f0f0", hover_fg=ACCENT_HOVER,
             font=FONT_BOLD, label_padx=14, label_pady=2,

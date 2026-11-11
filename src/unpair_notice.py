@@ -7,8 +7,9 @@ from __future__ import annotations
 
 from typing import Final
 
+from src.i18n import t
+
 _NAME_LIMIT: Final = 40
-_FALLBACK_NAME: Final = "Ein Handy"
 
 
 def unpair_notice_channel(*, window_visible: bool, tray_available: bool) -> str:
@@ -22,17 +23,15 @@ def _clean(name: str | None, limit: int) -> str:
     """Name in einer Zeile, gekürzt; leer wird zum Platzhalter. Der Name stammt vom Handy."""
     text = " ".join(str(name or "").split())
     if not text:
-        return _FALLBACK_NAME
+        return t("handy_getrennt.fallback_name")
     return text if len(text) <= limit else text[:limit - 1] + "…"
 
 
 def unpair_notice_text(name: str | None) -> tuple[str, str]:
     """(Titel, Text) des Dialogs."""
     who = _clean(name, 80)
-    return ("Handy getrennt",
-            f"{who} hat sich vom Desktop getrennt. Das Gerät wurde widerrufen; "
-            "zum erneuten Verbinden muss es neu gekoppelt werden.")
+    return (t("handy_getrennt.titel"), t("handy_getrennt.text", name=who))
 
 
 def unpair_toast_text(name: str | None) -> str:
-    return f"{_clean(name, _NAME_LIMIT)} hat sich vom Desktop getrennt."
+    return t("handy_getrennt.toast", name=_clean(name, _NAME_LIMIT))

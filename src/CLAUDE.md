@@ -308,7 +308,7 @@ Zeitraum und welche Kategorien der Bericht gefiltert ist.
   überschreibt (`_retry_pending_backup`), und sagt im Log „ohne Sicherung“, wenn auch das
   scheitert. Es bleiben die neuesten `json_store.KEEP_BACKUPS` (5) Sicherungen je Datei; zwei
   Vorfälle in derselben Sekunde bekommen verschiedene Namen (`-1`, `-2`). Eine Reparatur
-  hinterlässt `Storage.repair_notice` (`(Problem, Sicherungspfad | None)`); `App._notify_storage_repaired`
+  hinterlässt `Storage.repair_notice` (`(RepairCounts, Sicherungspfad | None)`, Zähler statt Satz: der Text entsteht beim Anzeigen); `App._notify_storage_repaired`
   zeigt sie einmal beim Start (Dialog bei sichtbarem Fenster, Tray-Toast bei `--minimized`, sonst Log;
   Texte aus `storage.repair_notice_text`/`repair_toast_text`, #242). Dieselbe Reparatur
   (`_repair_entry_values`, #254) deckt, was Merge und Schreiben sprengt: `modified_at`/`device_id` ohne Text → `""` (ein `None` wirft in
@@ -403,7 +403,7 @@ Zeitraum und welche Kategorien der Bericht gefiltert ist.
 
   `relay_link.py` — Verbindungsschicht (`RelayLink`, `LinkTiming`): je Box ein Leser-Thread (Heartbeat `ping`/`pong`, Backoff), ein gemeinsamer Arbeits-Thread, je Box höchstens ein wartender Slot („neuester gewinnt“), `put` unter einer Sendesperre je Box (nie zwei Schreiber), `set_boxes`/`states`/`shutdown` aus jedem Thread, nie blockierend über `connect`/`recv`/`send`/Handler. Schließcodes: `1000 replaced` ⇒ nicht neu verbinden, `1000 wiped` ⇒ Cursor auf 0 und neu verbinden, `1008` ⇒ mindestens `throttled_wait_s` warten, sonst Backoff. Je Geheimnis nie zwei gleichzeitige `connect` (`_live`-Warteketten). Das Geheimnis steht nie in Log, Thread-Name oder Status (`short_mark`: sechs Zeichen von sha256). Bekannte Grenzen: `put` (und der Heartbeat derselben Box, er wartet auf dieselbe Sendesperre) kann bei hängendem Netz bis zum Sende-Wächter des Sockets (`ws_client.SEND_TIMEOUT_S`, 30 s) bzw. bis zu `close()` blockieren; der Backoff setzt nach jeder gelungenen Verbindung zurück (eine flatternde Verbindung wartet nie lange).
 
-  `relay_service.py` — `RelayService`: die **Regeln** über dem Link (`apply`/`shutdown`/`reopen` wie `MobileService`; `open_pairing`/`close_pairing`/`forget_devices` im Worker; `states_by_device` liest nur Speicher und darf im UI-Thread laufen). Verbunden sind: gebundene Boxen, das offene nur bei aktiver Kopplungssitzung, ungebundene Reste; bei `mobile_enabled` aus oder beim Beenden keine. Binden, Aufräumen verwaister offener Geheimnisse, Löschen ersetzter Boxen am Relay (nach dem Lock, mit Cursor-Verwurf) und gescheitertes `bind` (Rest im Speicher, erneut gebunden in `_on_idle` und vor `open_pairing`) stehen unter „Threading-Modell“, „Regeln der Relay-Verbindung“. `_pair_lock` serialisiert Koppel-Anfrage und Schnappschuss-plus-`set_boxes` gegen Öffnen/Schließen/Abräumen (Reihenfolge `_pair_lock` → `devices_lock` → `sync_guard` → `data_lock`; nie über einem Netzaufruf). `MobileService` ruft `forget_devices` über `set_box_cleanup` nach der Gerätesperre; `forget_devices(None)` räumt nur widerrufene/unbekannte Geräte, bedingungsloses Abräumen läuft direkt über `MobileBoxStore`/`delete_box` in `removal`/`forget_all`. Die Oberfläche (PR 3c): der Koppel-Dialog im Modus „relay“ (`open_pair_dialog(…, relay=, runner=, mode="relay")`) ruft `open_pairing` und `close_pairing` ausschließlich über den `BackgroundTaskRunner` (Dateizugriff, `delete_box`); die Worker laufen ungeordnet, deshalb schließt der Dialog nach einem Öffnen, das erst nach dem Schließen ankommt, noch einmal — und **nur seine eigene Sitzung**: `open_pairing` liefert `RelayPairing(link, code)`, `close_pairing(code)` schließt über `PairingSession.close_if` nur bei übereinstimmendem Code (ein spätes Schließen trifft so nie die Sitzung eines inzwischen geöffneten anderen Dialogs; das Abräumen eines offenen Geheimnisses ohne aktive Sitzung läuft weiter). `open_pairing` liefert bei Ablehnung `None` ohne Grund — der Dialog zeigt einen Text für alle Ursachen (`tab_rules.RELAY_PAIR_REFUSED_TEXT`) und schließt dabei seine **eigene** alte Sitzung (der Dienst schließt bei Ablehnung keine fremde, ein LAN-Dialog kann sie besitzen); eine Ausnahme im Worker wird zum eigenen Text `RELAY_PAIR_ERROR_TEXT` (der Runner ruft `on_done` sonst nie). Die Entscheidung liegt Tk-frei in `tab_rules.relay_open_view`. Grenze: wirft `open_pairing` erst nach dem Öffnen der Sitzung, ist deren Code dem Dialog unbekannt; sie läuft nach fünf Minuten ab und das Aufräumen (`_on_idle`) holt das offene Geheimnis dann ab. Der Mobil-Tab (`tab_mobile`, nur mit `relay_service`) hat dafür „Über Relay koppeln“, aktiv bei gespeichertem `mobile_enabled` (nicht am LAN-Status), und hängt je Gerät mit Box den Zustand aus `states_by_device` an die Zeile (`tab_rules.device_row_text(…, relay_state)`); der Dev-Server (`scripts/pwa_devserver.py`) baut keinen Relay-Dienst.
+  `relay_service.py` — `RelayService`: die **Regeln** über dem Link (`apply`/`shutdown`/`reopen` wie `MobileService`; `open_pairing`/`close_pairing`/`forget_devices` im Worker; `states_by_device` liest nur Speicher und darf im UI-Thread laufen). Verbunden sind: gebundene Boxen, das offene nur bei aktiver Kopplungssitzung, ungebundene Reste; bei `mobile_enabled` aus oder beim Beenden keine. Binden, Aufräumen verwaister offener Geheimnisse, Löschen ersetzter Boxen am Relay (nach dem Lock, mit Cursor-Verwurf) und gescheitertes `bind` (Rest im Speicher, erneut gebunden in `_on_idle` und vor `open_pairing`) stehen unter „Threading-Modell“, „Regeln der Relay-Verbindung“. `_pair_lock` serialisiert Koppel-Anfrage und Schnappschuss-plus-`set_boxes` gegen Öffnen/Schließen/Abräumen (Reihenfolge `_pair_lock` → `devices_lock` → `sync_guard` → `data_lock`; nie über einem Netzaufruf). `MobileService` ruft `forget_devices` über `set_box_cleanup` nach der Gerätesperre; `forget_devices(None)` räumt nur widerrufene/unbekannte Geräte, bedingungsloses Abräumen läuft direkt über `MobileBoxStore`/`delete_box` in `removal`/`forget_all`. Die Oberfläche (PR 3c): der Koppel-Dialog im Modus „relay“ (`open_pair_dialog(…, relay=, runner=, mode="relay")`) ruft `open_pairing` und `close_pairing` ausschließlich über den `BackgroundTaskRunner` (Dateizugriff, `delete_box`); die Worker laufen ungeordnet, deshalb schließt der Dialog nach einem Öffnen, das erst nach dem Schließen ankommt, noch einmal — und **nur seine eigene Sitzung**: `open_pairing` liefert `RelayPairing(link, code)`, `close_pairing(code)` schließt über `PairingSession.close_if` nur bei übereinstimmendem Code (ein spätes Schließen trifft so nie die Sitzung eines inzwischen geöffneten anderen Dialogs; das Abräumen eines offenen Geheimnisses ohne aktive Sitzung läuft weiter). `open_pairing` liefert bei Ablehnung `None` ohne Grund — der Dialog zeigt einen Text für alle Ursachen (`tab_rules.relay_pair_refused_text()`) und schließt dabei seine **eigene** alte Sitzung (der Dienst schließt bei Ablehnung keine fremde, ein LAN-Dialog kann sie besitzen); eine Ausnahme im Worker wird zum eigenen Text `tab_rules.relay_pair_error_text()` (der Runner ruft `on_done` sonst nie). Die Entscheidung liegt Tk-frei in `tab_rules.relay_open_view`. Grenze: wirft `open_pairing` erst nach dem Öffnen der Sitzung, ist deren Code dem Dialog unbekannt; sie läuft nach fünf Minuten ab und das Aufräumen (`_on_idle`) holt das offene Geheimnis dann ab. Der Mobil-Tab (`tab_mobile`, nur mit `relay_service`) hat dafür „Über Relay koppeln“, aktiv bei gespeichertem `mobile_enabled` (nicht am LAN-Status), und hängt je Gerät mit Box den Zustand aus `states_by_device` an die Zeile (`tab_rules.device_row_text(…, relay_state)`); der Dev-Server (`scripts/pwa_devserver.py`) baut keinen Relay-Dienst.
 
   `mobile_box_cursor.py` — `have` je Box (`MobileBoxCursor`: `get`/`advance`/`reset`/`retain`), dauerhaft in `mobile_box_cursor.json` (`{schema_version, have: {sha256(Geheimnis): ver}}`, nur Hashes, kein Geheimnis, `json_store.atomic_write_json` ohne ACL-Härtung wie `mobile_store`, eigener Lock, kaputte Datei wird quarantäniert). Schreibfehler werfen nie: der Wert bleibt im Speicher, schlimmstenfalls kommt eine Antwort nach einem Neustart noch einmal (der Adapter ist über `last_seq` gesichert). Vorgerückt wird vor dem Handler, zurückgesetzt bei `wiped`.
 
@@ -659,7 +659,7 @@ TokenKeyringUnavailable` — **kein** Auth-Fehler (der Token ist nicht ungültig
 nur gerade nicht lesbar) und darf deshalb **keinen** interaktiven Consent-Flow
 auslösen (Xveyn#129); Aufrufer behandeln ihn wie einen eigenen Fehlerfall und
 fassen `token.json` nicht an. Gezeigt wird er überall als **bekannter** Fehler
-— themed, ohne Traceback, mit `oauth_utils.KEYRING_UNAVAILABLE_TITLE`/`_HINT`
+— themed, ohne Traceback, mit `oauth_utils.keyring_unavailable_title()`/`keyring_unavailable_hint()`
 als einziger Textquelle; erkannt über `oauth_utils.is_keyring_unavailable`
 (auch am bloßen Text, weil Kompaktierung und Sync nur `str(e)` weiterreichen).
 Senden/Teilen führen ihn als Kind `keyring`, der Sync über
@@ -985,7 +985,7 @@ die Slot-Zeilen beider Blöcke baut seit R5 `slot_rows.SlotRowList` — beide
 Blöcke mit Pause-Spalte (Reservierung seit #455; `slot_rows.pause_choices` führt einen
 freien Wert wie 37 in der Auswahl mit, statt ihn zu runden; die Ist-Vorbelegung aus
 einer Reservierung nimmt deren Pause, wenn > 0 — `ist_prefill_pause`; bei aktivem
-Kalender-Abgleich zeigt der Reservierungs-Block `RESERVATION_CALENDAR_NOTE`, weil der
+Kalender-Abgleich zeigt der Reservierungs-Block `reservation_calendar_note()`, weil der
 Termin die volle Spanne zeigt; `slot_category_display` bekommt für Reservierungen
 weiter `pause=None`, deren Pause setzt kein `*`), `on_value_changed` hängt den Erinnerungs-Block an
 Zeit-/Kategorieänderungen. Dort liegen auch die Tk-freien Anzeige-Helfer
@@ -1077,7 +1077,7 @@ Durchgesetzt wird sie am **Default** der beiden Service-Builder:
 `gcal.get_calendar_service` und `drive.get_drive_service` starten den Flow nur
 mit ausdrücklichem `interactive=True`. Ohne das wird ein fehlender,
 widerrufener oder scope-armer Token zu `CalendarAuthError` bzw.
-`DriveAuthError` (Text `oauth_utils.REAUTH_REQUIRED_MSG`), und der Token bleibt
+`DriveAuthError` (Erkennungstext `oauth_utils.REAUTH_REQUIRED_MSG`, angezeigt als Katalogtext `sync.reauth_anzeige` über `sync_orchestrator.error_display_text`), und der Token bleibt
 liegen — verworfen wird er nur, wenn der Consent unmittelbar folgt.
 
 `interactive=True` geben genau diese Aufrufer mit: Sync- und Kalender-Schalter
@@ -1172,8 +1172,66 @@ Alle Dialoge beziehen ihre Fenster-Chrome über `theme.create_dialog(...)`
 `attach_unfocus_on_click`) und `center_dialog_on_parent` ruft jeder Dialog
 selbst nach dem Aufbau.
 
+## Textschicht (Desktop)
+
+Regeln und Begründung: `CLAUDE.md`, „Textschicht (Desktop)“. Hier die Verträge.
+
+- **Sprache setzen:** `main.py` ruft `i18n.set_language(settings.get("language"))` **direkt
+  nach dem Bau der `Settings`**, vor `Storage` und allem, was Texte erzeugt. Danach wird nur
+  noch gelesen; `t()` ist damit aus **Worker-Threads aufrufbar** (kein Schreiben, kein Lock).
+  `set_language` im laufenden Betrieb gibt es nicht — ein Sprachwechsel wirkt nach dem
+  Neustart. Texte, die schon beim Laden eines Stores entstehen, baut der **Verbraucher beim
+  Anzeigen** aus Zählern/Codes (`storage.repair_notice_text`), nicht der Store als fertigen
+  Satz; der Log-Satz bleibt deutsch.
+- **`t(key, /, **params)`:** Schlüssel nur positionsgebunden; `{name}` wird in **einem**
+  Durchlauf per Regex ersetzt (kein `str.format`, Werte dürfen `{…}` enthalten), unbekannte
+  Platzhalter bleiben stehen, ein unbekannter Schlüssel liefert den Schlüssel selbst und
+  loggt einmal je Schlüssel, die Lücke einer Fremdsprache fällt auf den deutschen Text. Ein
+  Parameter darf `key` heißen: der Schlüssel ist positionsgebunden und kollidiert nicht damit.
+- **Verbraucher-Regel:** Die Ratsche gilt für jede Datei unter `src/`, auch für Tk-freie
+  Module. Ein Text aus `time_utils`, `share`, `webhook`, `smtp`, `mail`, `vacations` …, der
+  in einem Dialog erscheint (auch über `str(e)`, `result["detail"]`,
+  `ShareValidationError.reason`), gehört in den Katalog; ein Text, der nie angezeigt wird,
+  nach `ALLOWED` mit dem bis zum Dialog verfolgten Verbraucher.
+- **Tabellen Code → Text** sind `N_`-Tabellen und werden beim Aufruf aufgelöst:
+  `updater.FAILURE_TEXTS` (`failure_text`), `conflict_view.SETTING_LABELS` (`setting_label`),
+  `removal`-Schritte, `holidays_region` (Bundesländer) u. a. Label↔Code-Umkehrtabellen
+  (`tab_rules.window_cap_from_choice`) werden ebenfalls beim Aufruf gebaut; die Ausnahme ist
+  der Format-Combo des Versand-Dialogs (`send_dialog.FORMAT_LABELS`, s. `docs/known-limitations.md`).
+- **Sentinels** (Konstante bleibt für den Programmfluss, der Nutzer sieht den Anzeigetext):
+
+  | Konstante | Erzeuger → Vergleicher | Anzeige |
+  |---|---|---|
+  | `oauth_utils.KEYRING_UNAVAILABLE_MSG` | `TokenKeyringUnavailable` → `is_keyring_unavailable` (auch am Text) | `keyring_unavailable_detail()` / `_title()` / `_hint()` |
+  | `oauth_utils.REAUTH_REQUIRED_MSG` | drive/gcal → `classify_sync_error` | `sync.reauth_anzeige` über `sync_orchestrator.error_display_text` |
+  | `sync_runtime.SYNC_TIMEOUT_MSG` | `run_push_blocking`/`run_compaction_blocking` → `classify_sync_error` | `sync.timeout_*`, `sync.toast_timeout` |
+  | `sync.NEWER_REMOTE_VERSION_MSG` | `sync_runtime` → `_friendly_sync_message`/`error_display_text` | `sync.neuere_version` (gleichlautend) |
+  | `slot_rows.NO_CATEGORY_LABEL` | nur Definition des in der API verbotenen Namens, ohne Leser in `src/` (`api_entry_write._NO_CATEGORY_LABEL` hält einen eigenen Spiegel) | `slot_rows.no_category_label()` (`kategorie.ohne`) |
+  | `category_dialog.STANDARD` | `_value_or_none`/`collect_categories` | **keiner**: die Konstante ist zugleich Combo-Wert (s. `docs/known-limitations.md`) |
+
+  `error_display_text(error)` ersetzt einen Fehlertext, der **genau** einem Erkennungstext
+  entspricht, durch den Anzeigetext; jede Stelle, die einen rohen Sync- oder Kalender-Fehlertext
+  in eine Meldung setzt, geht darüber (`tab_google`, `vacation_dialog`, `_friendly_sync_message`).
+  Mail-, Export- und Teilen-Fehler tragen keinen Erkennungstext und gehen roh durch.
+  Bewusste Ausnahme: die nativen Catch-all-Dialoge von `tab_google.py` und `oauth_task.py` zeigen
+  `res["error"]` roh im Traceback-Dialog.
+- **Plural:** zwei Schlüssel (`….eins`/`….viele`), gewählt im Aufrufer; keine
+  Suffix-Bastelei. Wo der Altbestand keinen Plural hatte, bleibt der Wortlaut 1:1.
+- **Ausgabe ist nicht Oberfläche:** `report.py`, `share_message.py`, Payload-Texte, `gcal.py`
+  (Termintexte), Mail-Vorlagen-Defaults in `settings.py`, `api_*.py` und `mobile_*.py`/`relay_*.py`
+  bleiben deutsch (`FILE_EXEMPT`/`ALLOWED` im Ratschentest, Teil 3). Ein Text, der in UI **und**
+  Ausgabe erscheint (`time_utils.validate_slots`, `vacations.cap_notice`), liegt im Katalog
+  und folgt der Oberflächensprache; API und Bericht übernehmen ihn unverändert.
+- **Pakete:** `src/i18n/` importiert aus `src` nichts außer den eigenen Katalogen; die
+  Bereichsmodule (`de/allgemein`, `meldungen`, `einstellungen`, `dialoge`, `hauptfenster`)
+  haben disjunkte Schlüssel (Test) und gehören in `tests/test_type_annotations.py`. Die
+  Wahrheit über unterstützte Sprachen ist `i18n.LANGUAGES`/`normalize_language`;
+  `region.normalize_language` verweist darauf (`region` → `i18n`, `locale_format` → `region`).
+
 ## Wo gehört neuer Code hin?
 
+- **Ein neuer Text** für den Nutzer → Katalog (`src/i18n/de/`, Bereich des Verbrauchers) und `t()` im
+  Code, nie ein Literal (s. „Textschicht (Desktop)“).
 - Rendering/Zell-Logik → `grid_renderer.py`. Neuer Hintergrund-Task → `background_tasks.py`
   (über `run()`). Sync-**Bedienung** (Buttons, Status, Fehlermeldungen) → `sync_orchestrator.py`,
   ein neuer Sync-/Reconcile-**Flow** (Drive/Kalender sprechen, mergen, hochladen) →

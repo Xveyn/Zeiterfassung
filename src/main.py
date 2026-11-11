@@ -21,12 +21,13 @@ from typing import Any
 # (oauth_utils.py) erkannt und per frischem Consent nachgeholt. Kein Blankoscheck.
 os.environ.setdefault("OAUTHLIB_RELAX_TOKEN_SCOPE", "1")
 
-from src import dpi, locale_format, region, sync_history
+from src import dpi, i18n, locale_format, region, sync_history
 from src.autostart import migrate_legacy_autostart, refresh_linux_target
 from src.conflicts_store import ConflictsStore
 from src.desktop_entry import ensure_icon, write_menu_entry
 from src.device_id import derive_device_id
 from src.devices import default_device_name
+from src.i18n import t
 from src.logging_setup import setup_logging
 from src.paths import get_base_path, get_resource_path
 from src.reservations import ReservationStore, migrate_reservations_enabled
@@ -148,12 +149,6 @@ def _sweep_orphan_tombstones(storage, reservation_store, settings, base) -> int:
     return dropped
 
 
-NO_DISPLAY_MSG = (
-    "Kein Display gefunden — Zeiterfassung braucht eine grafische Sitzung. "
-    "Bitte aus einem Terminal im Desktop starten (per SSH fehlt das Display; "
-    "`ssh -X` zeigt das Fenster, das Tray-Icon aber nicht).")
-
-
 def _create_root(tk_factory=None):
     """Erzeugt den Tk-Root — oder beendet mit einer verständlichen Meldung.
 
@@ -169,9 +164,13 @@ def _create_root(tk_factory=None):
         return factory()
     except tk.TclError as exc:
         text = str(exc)
-        message = (NO_DISPLAY_MSG if "display" in text.lower()
-                   else f"Tk konnte nicht gestartet werden: {text}")
-        logging.getLogger(__name__).error(message)
+        no_display = "display" in text.lower()
+        message = (t("main.kein_display") if no_display
+                   else t("main.tk_start_fehler", fehler=text))
+        # Das Log bleibt deutsch, unabhängig von der Oberflächensprache.
+        logging.getLogger(__name__).error(
+            i18n.TEXTS["main.kein_display"] if no_display
+            else i18n.TEXTS["main.tk_start_fehler"].replace("{fehler}", text))
         # --noconsole (Windows): sys.stderr ist None. Der Fall ist dort
         # praktisch ausgeschlossen, darf aber nicht selbst zum Absturz werden.
         if sys.stderr is not None:
@@ -205,6 +204,9 @@ def _refresh_linux_integration(base):
     Dazu wird ein `<name>.old` weggeräumt, das das In-App-Update als Rollback
     hinterlassen hat: dass dieser Prozess läuft, IST der Beweis, dass die neue
     Datei startet.
+
+    Bekannte Grenze: das läuft vor `i18n.set_language`, der Menüeintrag
+    (`Comment=`) trägt daher immer den Standardtext der Katalogsprache.
 
     Fehler sind hier NIE fatal — ein nicht geschriebener Menüeintrag ist der
     Status quo, ein verhinderter Start wäre eine Regression (Muster wie beim
@@ -295,6 +297,8 @@ def main():
     sync_guard = threading.Lock()
 
     settings = Settings(os.path.join(base, "settings.json"), lock=data_lock)
+    # Vor allem, was Texte erzeugt (Stores, Dialoge, Toasts).
+    i18n.set_language(settings.get("language"))
     device_id = _ensure_device_id(settings)
     settings.device_id_for_sync = device_id
     _ensure_device_name(settings)

@@ -4,6 +4,8 @@ import os
 import platform
 import subprocess
 
+from src.i18n import t
+
 
 def open_folder(path: str) -> None:
     """Open the given directory in the OS file manager.
@@ -21,4 +23,4 @@ def open_folder(path: str) -> None:
     elif system == "Linux":
         subprocess.run(["xdg-open", path], check=True)
     else:
-        raise RuntimeError(f"Unsupported platform: {system}")
+        raise RuntimeError(t("platform_open.nicht_unterstuetzt", system=system))

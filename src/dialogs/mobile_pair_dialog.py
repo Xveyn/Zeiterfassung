@@ -21,9 +21,10 @@ import tkinter as tk
 from functools import partial
 
 from src import qr
+from src.i18n import t
 from src.dialogs.settings_dialog.tab_rules import (
-    PAIR_INTRO_LAN, PAIR_INTRO_RELAY, RELAY_PAIR_HINT, format_countdown, pair_changes,
-    pair_poll_keeps_running, pair_poll_view, paired_notice, relay_open_view,
+    format_countdown, pair_changes, pair_intro_lan, pair_intro_relay,
+    pair_poll_keeps_running, pair_poll_view, paired_notice, relay_open_view, relay_pair_hint,
 )
 from src.theme import (
     BG, FONT, FONT_BOLD, STATUS_OK, STATUS_WARN, TEXT, TEXT_MUTED, center_dialog_on_parent,
@@ -53,10 +54,11 @@ class _PairDialog:
         self._before = service.list_devices()
         self._failures_before = service.pair_failures
         self._dialog = dialog = create_dialog(
-            parent, "Handy über Relay koppeln" if self._relay_mode else "Handy koppeln")
+            parent, t("koppeln_dialog.titel_relay") if self._relay_mode
+            else t("koppeln_dialog.titel_lan"))
 
         tk.Label(
-            dialog, text=PAIR_INTRO_RELAY if self._relay_mode else PAIR_INTRO_LAN,
+            dialog, text=pair_intro_relay() if self._relay_mode else pair_intro_lan(),
             font=FONT, bg=BG, fg=TEXT, justify="left", anchor="w",
             wraplength=px(_WRAP_PX)).pack(padx=16, pady=(14, 8), anchor="w")
 
@@ -84,8 +86,8 @@ class _PairDialog:
 
         buttons = tk.Frame(dialog, bg=BG)
         buttons.pack(pady=12)
-        primary_button(buttons, "Neuer Code", self._new_code).pack(side=tk.LEFT, padx=5)
-        secondary_button(buttons, "Schließen", self._close).pack(side=tk.LEFT, padx=5)
+        primary_button(buttons, t("koppeln_dialog.neuer_code"), self._new_code).pack(side=tk.LEFT, padx=5)
+        secondary_button(buttons, t("knopf.schliessen"), self._close).pack(side=tk.LEFT, padx=5)
 
         dialog.protocol("WM_DELETE_WINDOW", self._close)
         dialog.bind("<Escape>", lambda _e: self._close())
@@ -117,8 +119,7 @@ class _PairDialog:
             self._clear_code()
             self._countdown.config(text="")
             self._result.config(
-                text="Die Handy-Erfassung läuft gerade nicht. Im Reiter „Mobil“ "
-                     "einschalten und speichern, dann hier erneut öffnen.",
+                text=t("koppeln_dialog.laeuft_nicht"),
                 fg=STATUS_WARN)
             self._canvas.config(width=1, height=1)
             return
@@ -126,14 +127,14 @@ class _PairDialog:
         self._failures_before = self._service.pair_failures
         code = self._service.pairing.open()
         link = self._service.pair_link(code)
-        self._address.config(text=f"Adresse: {status.address}:{status.port}")
-        self._code_title.config(text="Kopplungscode (zum Abtippen):")
+        self._address.config(text=t("koppeln_dialog.adresse", adresse=status.address, port=status.port))
+        self._code_title.config(text=t("koppeln_dialog.code_titel"))
         self._code.config(text=code)
-        self._hint.config(text=("Der Code gilt einmal, fünf Minuten lang, und verschlüsselt die "
-                                "Verbindung — nur dem eigenen Handy zeigen."))
+        self._hint.config(text=t("koppeln_dialog.code_hinweis"))
         # Sofort, nicht erst nach dem ersten Poll: sonst ist die Zeile eine Sekunde leer.
         self._countdown.config(
-            text=f"Gültig noch {format_countdown(self._service.pairing.seconds_left())}")
+            text=t("regeln.code_gueltig",
+                       zeit=format_countdown(self._service.pairing.seconds_left())))
         self._draw(link)
         self._schedule_poll()
 
@@ -143,7 +144,7 @@ class _PairDialog:
         self._blank_canvas()
         self._clear_code()
         self._result.config(text="")
-        self._countdown.config(text="Öffnet …")
+        self._countdown.config(text=t("koppeln_dialog.oeffnet"))
         self._waiting = True
         self._runner.run(self._open_relay_pairing, self._relay_opened)
 
@@ -178,9 +179,10 @@ class _PairDialog:
             self._session_code = pairing.code
             self._before = self._service.list_devices()
             self._failures_before = self._service.pair_failures
-            self._hint.config(text=RELAY_PAIR_HINT)
+            self._hint.config(text=relay_pair_hint())
             self._countdown.config(
-                text=f"Gültig noch {format_countdown(self._service.pairing.seconds_left())}")
+                text=t("regeln.code_gueltig",
+                       zeit=format_countdown(self._service.pairing.seconds_left())))
             self._draw(pairing.link)
             self._schedule_poll()
         except tk.TclError:
@@ -221,10 +223,8 @@ class _PairDialog:
             matrix = None
         if matrix is None:
             self._canvas.config(width=1, height=1)
-            text = ("Der QR-Code konnte nicht erzeugt werden. Das Koppeln über den Relay "
-                    "braucht ihn." if self._relay_mode else
-                    "Der QR-Code konnte nicht erzeugt werden — bitte Adresse und Code von "
-                    "Hand eintippen.")
+            text = (t("koppeln_dialog.qr_fehlt_relay") if self._relay_mode
+                    else t("koppeln_dialog.qr_fehlt_lan"))
             self._result.config(text=text, fg=STATUS_WARN)
             return
         size = qr.canvas_size(len(matrix), scale)

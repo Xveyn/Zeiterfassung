@@ -238,3 +238,19 @@ def test_blocking_days_counts_reservations_only_when_enabled(
     settings = {"reservations_enabled": enabled, "gcal_enabled": gcal}
 
     assert blocking_days(_DAYS, None, reservations, settings) == expected
+
+
+def test_purge_error_is_shown_via_error_display_text(monkeypatch):
+    """Der Fehlertext des Aufräum-Laufs kann ein Erkennungstext sein
+    (`CalendarAuthError(REAUTH_REQUIRED_MSG)`); angezeigt wird sein Katalogtext."""
+    import inspect
+
+    from src import sync_orchestrator
+    from src.dialogs import vacation_dialog
+    from src.oauth_utils import REAUTH_REQUIRED_MSG
+
+    assert "error_display_text(result.get(\"error\", \"\"))" in inspect.getsource(
+        vacation_dialog)
+    monkeypatch.setattr(sync_orchestrator, "t", lambda key, **_: "KATALOG:" + key)
+    assert vacation_dialog.error_display_text(REAUTH_REQUIRED_MSG) == "KATALOG:sync.reauth_anzeige"
+    assert vacation_dialog.error_display_text("anderer Fehler") == "anderer Fehler"

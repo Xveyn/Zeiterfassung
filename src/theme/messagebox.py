@@ -13,6 +13,7 @@ import logging
 import tkinter as tk
 from typing import Literal
 
+from src.i18n import t
 from src.theme.palette import BG, CELL_BG, TEXT
 from src.theme.fonts import FONT, px
 from src.theme.widgets import primary_button, secondary_button, set_primary_button_enabled
@@ -78,9 +79,9 @@ def themed_askyesno(parent, title: str, message: str, lock_ms: int = 0) -> bool:
 
     btn_frame = tk.Frame(dialog, bg=BG)
     btn_frame.pack(pady=(0, 18))
-    yes_btn = primary_button(btn_frame, "Ja", click_yes)
+    yes_btn = primary_button(btn_frame, t("knopf.ja"), click_yes)
     yes_btn.pack(side=tk.LEFT, padx=6)
-    secondary_button(btn_frame, "Nein", click_no).pack(side=tk.LEFT, padx=6)
+    secondary_button(btn_frame, t("knopf.nein"), click_no).pack(side=tk.LEFT, padx=6)
 
     if lock_ms > 0:
         set_primary_button_enabled(yes_btn, False)
@@ -152,9 +153,9 @@ def themed_ask_delete_choice(parent, title: str, message: str, options, lock_ms:
 
     btn_frame = tk.Frame(dialog, bg=BG)
     btn_frame.pack(pady=(14, 18))
-    delete_btn = primary_button(btn_frame, "Löschen", click_delete)
+    delete_btn = primary_button(btn_frame, t("knopf.loeschen"), click_delete)
     delete_btn.pack(side=tk.LEFT, padx=6)
-    secondary_button(btn_frame, "Abbrechen", click_cancel).pack(side=tk.LEFT, padx=6)
+    secondary_button(btn_frame, t("knopf.abbrechen"), click_cancel).pack(side=tk.LEFT, padx=6)
 
     def _refresh_delete_btn(*_):
         # Löschen nur klickbar, wenn der Lock abgelaufen ist UND mind. eine
@@ -192,14 +193,14 @@ def themed_ask_save_changes(parent, tab_title: str) -> SaveChoice:
     Rückgabe `"save"`, `"discard"` oder `"cancel"`. Escape, das X und
     „Zurück" sind `"cancel"` — wer nur weg will, verliert dabei nichts.
     Enter ist „Speichern", der hervorgehobene Knopf."""
-    dialog = create_dialog(parent, "Ungespeicherte Änderungen",
+    dialog = create_dialog(parent, t("messagebox.ungespeichert_titel"),
                            modal=False, escape_closes=False)
 
     result: dict[str, SaveChoice] = {"value": "cancel"}
 
     tk.Label(
         dialog,
-        text=f"Im Tab „{tab_title}“ gibt es ungespeicherte Änderungen.\nSollen sie gespeichert werden?",
+        text=t("messagebox.ungespeichert_text", tab=tab_title),
         font=FONT, bg=BG, fg=TEXT, wraplength=px(380), justify="left",
     ).pack(padx=24, pady=(20, 14))
 
@@ -209,11 +210,11 @@ def themed_ask_save_changes(parent, tab_title: str) -> SaveChoice:
 
     btn_frame = tk.Frame(dialog, bg=BG)
     btn_frame.pack(pady=(0, 18))
-    primary_button(btn_frame, "Speichern", lambda: choose("save")).pack(
+    primary_button(btn_frame, t("knopf.speichern"), lambda: choose("save")).pack(
         side=tk.LEFT, padx=6)
-    secondary_button(btn_frame, "Verwerfen", lambda: choose("discard")).pack(
+    secondary_button(btn_frame, t("knopf.verwerfen"), lambda: choose("discard")).pack(
         side=tk.LEFT, padx=6)
-    secondary_button(btn_frame, "Zurück", lambda: choose("cancel")).pack(
+    secondary_button(btn_frame, t("knopf.zurueck"), lambda: choose("cancel")).pack(
         side=tk.LEFT, padx=6)
 
     dialog.bind("<Return>", lambda e: choose("save"))
@@ -256,11 +257,12 @@ def _themed_ok_dialog(parent, title: str, message: str,
         def copy():
             dialog.clipboard_clear()
             dialog.clipboard_append(copy_text or message)
-            feedback.config(text="In die Zwischenablage kopiert")
+            feedback.config(text=t("messagebox.kopiert"))
         copy_btn = secondary_button(
-            btn_frame, "Befehl kopieren" if copy_text else "Kopieren", copy)
+            btn_frame,
+            t("messagebox.befehl_kopieren") if copy_text else t("knopf.kopieren"), copy)
         copy_btn.pack(side=tk.LEFT, padx=6)
-    primary_button(btn_frame, "OK", dialog.destroy).pack(side=tk.LEFT, padx=6)
+    primary_button(btn_frame, t("knopf.ok"), dialog.destroy).pack(side=tk.LEFT, padx=6)
 
     dialog.bind("<Return>", lambda e: dialog.destroy())
     dialog.bind("<Escape>", lambda e: dialog.destroy())

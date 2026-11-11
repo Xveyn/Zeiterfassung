@@ -20,9 +20,11 @@ from src.dialogs.settings_dialog.oauth_task import (
     build_oauth_enable_task, show_known_google_failure,
 )
 from src.dialogs.settings_dialog.tab_rules import calendar_update, google_updates
+from src.i18n import N_, t
 from src.oauth_utils import (
-    KEYRING_UNAVAILABLE_HINT, KEYRING_UNAVAILABLE_TITLE, is_keyring_unavailable,
+    keyring_unavailable_hint, keyring_unavailable_title, is_keyring_unavailable,
 )
+from src.sync_orchestrator import error_display_text
 from src.sync_runtime import run_compaction_blocking
 from src.theme import (
     ACCENT, BG, FONT, FONT_SMALL, STATUS_OK, STATUS_WARN, TEXT_MUTED, Form,
@@ -49,12 +51,19 @@ _SCOPE_MARKS = {
 # „unknown" (offline) bleibt bewusst gedämpft statt warnend: nicht prüfbar
 # ist nicht dasselbe wie abgelaufen, und ein falscher Alarm schickte den
 # Nutzer grundlos durch einen Re-Consent.
-_TOKEN_MARKS = {
-    "valid": ("✓ gültig", STATUS_OK),
-    "no_token": ("nicht angemeldet", TEXT_MUTED),
-    "reauth": ("⚠ abgelaufen — „Google neu verbinden“ nötig", STATUS_WARN),
-    "unknown": ("nicht prüfbar (offline)", TEXT_MUTED),
-    "keyring": ("⚠ Schlüsselbund nicht erreichbar", STATUS_WARN),
+_TOKEN_TEXTS = {
+    "valid": N_("tab_google.token_gueltig"),
+    "no_token": N_("tab_google.token_keiner"),
+    "reauth": N_("tab_google.token_abgelaufen"),
+    "unknown": N_("tab_google.token_unbekannt"),
+    "keyring": N_("tab_google.token_schluesselbund"),
+}
+_TOKEN_COLORS = {
+    "valid": STATUS_OK,
+    "no_token": TEXT_MUTED,
+    "reauth": STATUS_WARN,
+    "unknown": TEXT_MUTED,
+    "keyring": STATUS_WARN,
 }
 
 
@@ -97,7 +106,7 @@ class GoogleTab:
         self._scope_stamp = None
         self._scope_granted = None
 
-        self.title = "Google"
+        self.title = t("tab_google.titel")
         # Setzt der Dialog: nach dem Nachladen der Kalenderliste steht in
         # `cal_var` der Klarname statt der ID — das ist keine Änderung des
         # Nutzers, der Coordinator übernimmt es als gespeichert.
@@ -140,10 +149,10 @@ class GoogleTab:
     def _build_account_section(self):
         form, settings = self._form, self._settings
         body = form.body
-        form.section("Konto")
+        form.section(t("tab_google.konto"))
 
         self._status_label = tk.Label(body, text="", font=FONT_SMALL, bg=BG)
-        form.row("credentials.json:", self._status_label)
+        form.row(t("tab_google.credentials"), self._status_label)
         self._refresh_status()
 
         # Absender-Zeile: zeigt die authentifizierte E-Mail-Adresse, die ui.py
@@ -151,26 +160,27 @@ class GoogleTab:
         sender_row = tk.Frame(body, bg=BG)
         self._sender_label = tk.Label(
             sender_row,
-            text=settings.get("sender_email") or "(noch nicht ermittelt)",
+            text=settings.get("sender_email") or t("tab_google.nicht_ermittelt"),
             font=FONT, bg=BG, fg=TEXT_MUTED,
             wraplength=px(_SENDER_WRAP_PX), justify="left",
         )
         self._sender_label.pack(side=tk.LEFT)
         self._sender_btn = secondary_button(
             sender_row,
-            "Aktualisieren" if settings.get("sender_email") else "Anmelden",
+            (t("tab_google.aktualisieren") if settings.get("sender_email")
+             else t("tab_google.anmelden")),
             self._refresh_sender, padx=12, pady=2,
         )
         self._sender_btn.pack(side=tk.LEFT, padx=(10, 0))
-        form.row("Absender:", sender_row)
+        form.row(t("tab_google.absender"), sender_row)
 
         scopes_row = tk.Frame(body, bg=BG)
         secondary_button(
-            scopes_row, "Anzeigen", self._open_scopes, padx=12, pady=2,
+            scopes_row, t("tab_google.anzeigen"), self._open_scopes, padx=12, pady=2,
         ).pack(side=tk.LEFT)
         self._scopes_status = tk.Label(scopes_row, text="", font=FONT_SMALL, bg=BG)
         self._scopes_status.pack(side=tk.LEFT, padx=(10, 0))
-        form.row("Berechtigungen:", scopes_row)
+        form.row(t("tab_google.berechtigungen"), scopes_row)
         self._refresh_scopes_status()
 
         # Anmeldung: trägt der Token noch? Ergänzt die Zeile darüber, ersetzt
@@ -186,13 +196,13 @@ class GoogleTab:
         # des längeren von beiden.
         token_row = tk.Frame(body, bg=BG)
         self._token_status = tk.Label(
-            token_row, text="wird geprüft…", font=FONT_SMALL, bg=BG, fg=TEXT_MUTED)
+            token_row, text=t("tab_google.wird_geprueft"), font=FONT_SMALL, bg=BG, fg=TEXT_MUTED)
         self._token_status.pack(side=tk.TOP, anchor="w")
         secondary_button(
-            token_row, "Google neu verbinden", self._reconnect_google,
+            token_row, t("tab_google.neu_verbinden"), self._reconnect_google,
             padx=12, pady=2,
         ).pack(side=tk.TOP, anchor="w", pady=(4, 0))
-        form.row("Anmeldung:", token_row)
+        form.row(t("tab_google.anmeldung"), token_row)
         self._check_token()
 
     def _show_keyring_error(self, error):
@@ -202,18 +212,18 @@ class GoogleTab:
         Catch-all-Dialoge daneben."""
         if not is_keyring_unavailable(error):
             return False
-        themed_showerror(self._dialog, KEYRING_UNAVAILABLE_TITLE,
-                         KEYRING_UNAVAILABLE_HINT)
+        themed_showerror(self._dialog, keyring_unavailable_title(),
+                         keyring_unavailable_hint())
         return True
 
     def _refresh_status(self):
         if not self._status_label.winfo_exists():
             return
         if os.path.exists(self._creds_path):
-            self._status_label.config(text="✓ vorhanden", fg=STATUS_OK)
+            self._status_label.config(text=t("tab_google.vorhanden"), fg=STATUS_OK)
         else:
             self._status_label.config(
-                text="✗ fehlt (Datenordner: Tab App)", fg=ACCENT)
+                text=t("tab_google.fehlt"), fg=ACCENT)
         self._dialog.after(500, self._refresh_status)
 
     def _set_sender_btn_text(self, text):
@@ -235,27 +245,27 @@ class GoogleTab:
             show_missing_credentials_dialog(dialog, base_path)
             return
 
-        self._set_sender_btn_text("Verbinde…")
+        self._set_sender_btn_text(t("tab_google.verbinde"))
 
         def _on_done(res):
             if not self._sender_label.winfo_exists():
                 return
-            self._set_sender_btn_text("Aktualisieren")
+            self._set_sender_btn_text(t("tab_google.aktualisieren"))
             if not res["ok"]:
                 if show_known_google_failure(dialog, res.get("error"),
-                                             base_path, "Anmelden"):
+                                             base_path, t("tab_google.anmelden")):
                     return
                 messagebox.showerror(
-                    "Anmeldung fehlgeschlagen",
-                    "OAuth-Flow oder Userinfo-Aufruf fehlgeschlagen:\n\n"
-                    f"{res['error']}\n\n{res['tb']}",
+                    t("tab_google.anmeldung_fehler_titel"),
+                    t("tab_google.anmeldung_fehler", fehler=res["error"],
+                      trace=res["tb"]),
                     parent=dialog,
                 )
                 return
             email = res["email"]
             self._sender_label.config(
                 text=email if email
-                else "(nicht verfügbar — Scope fehlt evtl.)")
+                else t("tab_google.nicht_verfuegbar"))
 
         self._runner.run(lambda: fetch_sender_email(settings, base_path), _on_done)
 
@@ -277,10 +287,11 @@ class GoogleTab:
                 # Fehlerkanal — sie sagt „unbekannt", die Spur geht ins Log.
                 logging.getLogger(__name__).warning(
                     "Token-Status nicht ermittelbar: %s", res["tb"])
-                self._token_status.config(text="nicht prüfbar", fg=TEXT_MUTED)
+                self._token_status.config(text=t("tab_google.token_nicht_pruefbar"),
+                                          fg=TEXT_MUTED)
                 return
-            text, fg = _TOKEN_MARKS[res["state"]]
-            self._token_status.config(text=text, fg=fg)
+            self._token_status.config(text=t(_TOKEN_TEXTS[res["state"]]),
+                                      fg=_TOKEN_COLORS[res["state"]])
 
         self._runner.run(lambda: check_token_status(settings, base_path), _on_done)
 
@@ -314,8 +325,8 @@ class GoogleTab:
 
         granted = self._scope_granted
         if granted is None:
-            text = ("✗ nicht angemeldet" if stamp is None
-                    else "✗ Berechtigungen nicht lesbar")
+            text = (t("tab_google.scope_nicht_angemeldet") if stamp is None
+                    else t("tab_google.scope_nicht_lesbar"))
             self._scopes_status.config(text=text, fg=ACCENT)
         else:
             summary = scope_summary(
@@ -332,13 +343,13 @@ class GoogleTab:
     def _build_sync_section(self):
         form, settings = self._form, self._settings
         body = form.body
-        form.section("Synchronisation",
-                     hint="Der Schalter wirkt sofort (Anmeldung im Browser).")
+        form.section(t("tab_google.sync"),
+                     hint=t("tab_google.schalter_hinweis"))
 
         # Nicht in einer depends_on-Gruppe (Besitz-Vertrag): der Schalter
         # wird während des Consent-Flows selbst gesperrt (oauth_task).
         self._var_sync = tk.BooleanVar(value=settings.get("sync_enabled"))
-        self._cb_sync = form.check("Mit Google Drive synchronisieren", self._var_sync)
+        self._cb_sync = form.check(t("tab_google.sync_aktivieren"), self._var_sync)
         self._cb_sync.config(command=self._on_sync_toggled)
 
         # Gerätename: reist über die Sync-Registry mit und macht die
@@ -355,33 +366,33 @@ class GoogleTab:
             validatecommand=(body.register(
                 lambda proposed: len(proposed) <= MAX_NAME_LENGTH), "%P"),
         )
-        form.row("Gerät:", entry)
+        form.row(t("tab_google.geraet"), entry)
         # Bewusst KEIN Tooltip (Konvention „Tooltips" in CLAUDE.md): Dialoge
         # bekommen keine flächendeckenden, und ein Hover-Text an einem
         # Eingabefeld bliebe die ganze Tippdauer offen — er verdeckte dabei
         # genau die Zeilen darunter, weil `_Tooltip` starr unter dem Widget
         # aufpoppt und keinen Auto-Hide-Timeout kennt. Was nicht
         # selbsterklärend ist, steht deshalb als Hinweiszeile da.
-        form.hint("Wird anderen Geräten bei Sync-Konflikten angezeigt.")
+        form.hint(t("tab_google.geraet_hinweis"))
 
-        device_id = settings.get("device_id") or "(noch nicht gesetzt)"
+        device_id = settings.get("device_id") or t("tab_google.id_nicht_gesetzt")
         device_id_short = device_id[:8] + "…" if len(device_id) > 8 else device_id
-        form.row("Geräte-ID:", tk.Label(body, text=device_id_short, font=FONT,
+        form.row(t("tab_google.geraete_id"), tk.Label(body, text=device_id_short, font=FONT,
                                         bg=BG, fg=TEXT_MUTED))
 
         # Lokales Datum wie im Header-Status-Label (s. sync_orchestrator.
         # _status_view) — zwei verschiedene Daten für denselben Wert wären
         # schlimmer als ein um Mitternacht schiefes.
         _pulled_on = local_date_of_iso(settings.get("last_pull_at"))
-        last = format_date(_pulled_on) if _pulled_on else "noch nie"
-        form.row("Letzte Synchronisation:", tk.Label(
+        last = format_date(_pulled_on) if _pulled_on else t("tab_google.noch_nie")
+        form.row(t("tab_google.letzte_sync"), tk.Label(
             body, text=last, font=FONT, bg=BG, fg=TEXT_MUTED))
 
         unresolved = 0
         if self._conflicts_store is not None:
             unresolved = self._conflicts_store.count_unresolved()
         if unresolved > 0:
-            form.buttons((f"Konflikte ansehen ({unresolved})",
+            form.buttons((t("tab_google.konflikte", anzahl=unresolved),
                           self._open_conflicts_dialog))
 
     def _build_advanced_section(self):
@@ -401,11 +412,9 @@ class GoogleTab:
         # Abgesetzt ganz unten (#132): die Aktion entfernt Einträge endgültig
         # und stand vorher zwischen alltäglichen Knöpfen.
         self._form.section(
-            "Erweitert",
-            hint="Entfernt alte gelöschte Einträge endgültig aus dem Sync — "
-                 "nur, wenn alle Geräte aktuell sind und kürzlich "
-                 "synchronisiert haben.")
-        self._form.buttons(("Sync-Daten kompaktieren", self._on_compact_clicked))
+            t("tab_google.erweitert"),
+            hint=t("tab_google.erweitert_hinweis"))
+        self._form.buttons((t("tab_google.kompaktieren"), self._on_compact_clicked))
 
     def _on_sync_toggled(self):
         settings, base_path = self._settings, self._base_path
@@ -419,7 +428,7 @@ class GoogleTab:
                 setting_key="sync_enabled", checkbox=self._cb_sync,
                 toggle_var=self._var_sync, on_change=self._on_change,
                 dialog=self._dialog,
-                error_title="Synchronisation aktivieren",
+                error_title=t("tab_google.sync_aktivieren_titel"),
                 base_path=base_path,
             )
             self._runner.run(fn, on_done)
@@ -442,10 +451,8 @@ class GoogleTab:
         if self._reconnect_busy:
             return
         if not themed_askyesno(
-            dialog, "Google neu verbinden",
-            "Die App fragt die Google-Berechtigungen neu ab. Dazu öffnet sich "
-            "ein Browser-Fenster zur Anmeldung — bitte dort die Freigabe "
-            "bestätigen.\n\nFortfahren?",
+            dialog, t("tab_google.neu_verbinden"),
+            t("tab_google.neu_verbinden_frage"),
         ):
             return
         self._reconnect_busy = True
@@ -456,18 +463,17 @@ class GoogleTab:
                 return
             if res["ok"]:
                 themed_showinfo(
-                    dialog, "Google neu verbunden",
-                    "Die Google-Berechtigungen wurden erneuert. Die "
-                    "Synchronisation sollte jetzt wieder funktionieren.",
+                    dialog, t("tab_google.neu_verbunden_titel"),
+                    t("tab_google.neu_verbunden"),
                 )
                 return
             if show_known_google_failure(dialog, res.get("error"), base_path,
-                                         "Google neu verbinden"):
+                                         t("tab_google.neu_verbinden")):
                 return
             messagebox.showerror(
-                "Google neu verbinden",
-                "Die Neuverbindung ist fehlgeschlagen:\n\n"
-                f"{res['error']}\n\n{res['tb']}",
+                t("tab_google.neu_verbinden"),
+                t("tab_google.neuverbindung_fehler", fehler=res["error"],
+                  trace=res["tb"]),
                 parent=dialog,
             )
 
@@ -478,10 +484,8 @@ class GoogleTab:
 
         confirmed = themed_askyesno(
             dialog,
-            "Sync-Daten kompaktieren",
-            "Entfernt alte gelöschte Einträge endgültig aus dem Sync.\n\n"
-            "Nur ausführen, wenn ALLE deine Geräte auf der aktuellen Version "
-            "sind und kürzlich synchronisiert haben.\n\nFortfahren?",
+            t("tab_google.kompaktieren"),
+            t("tab_google.kompakt_frage"),
         )
         if not confirmed:
             return
@@ -492,36 +496,34 @@ class GoogleTab:
             if res.get("skipped"):
                 themed_showinfo(
                     dialog,
-                    "Kompaktierung",
-                    "Eine Synchronisation läuft gerade — bitte kurz "
-                    "warten und erneut versuchen.",
+                    t("tab_google.kompakt_titel"),
+                    t("tab_google.kompakt_laeuft"),
                 )
                 return
             if res.get("reason") == "old_version":
                 themed_showwarning(
                     dialog,
-                    "Kompaktierung abgebrochen",
-                    "Ein Gerät nutzt noch eine ältere Version — bitte erst "
-                    "alle Geräte aktualisieren und synchronisieren.",
+                    t("tab_google.kompakt_abbruch_titel"),
+                    t("tab_google.kompakt_alte_version"),
                 )
             elif res.get("reason") == "newer_version":
-                from src.sync import NEWER_REMOTE_VERSION_MSG
                 themed_showwarning(
-                    dialog, "Update erforderlich", NEWER_REMOTE_VERSION_MSG,
+                    dialog, t("sync.update_titel"), t("sync.neuere_version"),
                 )
             elif not res.get("ok"):
                 if self._show_keyring_error(res.get("error")):
                     return
-                detail = f"{res.get('error', '?')}\n\n{res.get('tb', '')}"
+                shown = error_display_text(res.get('error', '?'))
+                detail = f"{shown}\n\n{res.get('tb', '')}"
                 themed_showerror(
                     dialog,
-                    "Kompaktierung fehlgeschlagen",
-                    f"Die Kompaktierung ist fehlgeschlagen:\n\n{detail}",
+                    t("tab_google.kompakt_fehler_titel"),
+                    t("tab_google.kompakt_fehler", detail=detail),
                 )
             else:
                 themed_showinfo(
                     dialog,
-                    "Kompaktierung", "Sync-Daten wurden kompaktiert.",
+                    t("tab_google.kompakt_titel"), t("tab_google.kompakt_ok"),
                 )
 
         def _fn():
@@ -537,8 +539,8 @@ class GoogleTab:
     def _build_calendar_section(self):
         form, settings = self._form, self._settings
         body = form.body
-        form.section("Kalender",
-                     hint="Der Schalter wirkt sofort (Anmeldung im Browser).")
+        form.section(t("tab_google.kalender"),
+                     hint=t("tab_google.schalter_hinweis"))
 
         self._var_gcal = tk.BooleanVar(value=settings.get("gcal_enabled"))
         # Kalender-Auswahl: Combobox zeigt Klarnamen, gespeichert wird die ID.
@@ -548,12 +550,12 @@ class GoogleTab:
 
         # Wie beim Sync: nicht in eine Gruppe, der Consent sperrt ihn selbst.
         self._cb_gcal = form.check(
-            "Mit Google Kalender abgleichen (Reservierungen und Urlaub)", self._var_gcal)
+            t("tab_google.kalender_aktivieren"), self._var_gcal)
         self._cb_gcal.config(command=self._on_gcal_toggled)
         with form.depends_on(self._var_gcal):
             self._cal_combo = dark_combo(body, self.cal_var,
                                          [self.cal_var.get()], width=30)
-            form.row("Kalender:", self._cal_combo)
+            form.row(t("tab_google.kalender_feld"), self._cal_combo)
         # Außerhalb der Gruppe: „nicht verfügbar" soll lesbar bleiben.
         self._cal_status = form.hint("")
 
@@ -590,7 +592,7 @@ class GoogleTab:
         """
         settings, base_path, dialog = self._settings, self._base_path, self._dialog
 
-        self._cal_status.config(text="Kalenderliste wird geladen…")
+        self._cal_status.config(text=t("tab_google.kalender_laedt"))
 
         def _on_done(res):
             if not self._cal_status.winfo_exists():
@@ -598,26 +600,26 @@ class GoogleTab:
             if not res["ok"]:
                 if isinstance(res["error"], gcal.CalendarAuthError):
                     self._cal_status.config(
-                        text="Kalenderliste nicht geladen — Anmeldung erforderlich")
+                        text=t("tab_google.kalender_anmeldung"))
                     return
                 if is_keyring_unavailable(res["error"]):
                     self._cal_status.config(
-                        text="Kalenderliste nicht geladen — Schlüsselbund nicht erreichbar")
+                        text=t("tab_google.kalender_schluesselbund"))
                     if interactive:
                         self._show_keyring_error(res["error"])
                     return
-                self._cal_status.config(text="Kalenderliste nicht verfügbar")
+                self._cal_status.config(text=t("tab_google.kalender_nicht_verfuegbar"))
                 if not interactive:
                     logging.getLogger(__name__).warning(
                         "Kalenderliste beim Öffnen nicht geladen: %s", res["tb"])
                     return
                 if show_known_google_failure(dialog, res["error"], base_path,
-                                             "Kalenderliste laden"):
+                                             t("tab_google.kalenderliste_laden")):
                     return
                 messagebox.showerror(
-                    "Google Kalender",
-                    "Kalenderliste konnte nicht geladen werden:\n\n"
-                    f"{res['error']}\n\n{res['tb']}",
+                    t("tab_google.kalender_fehler_titel"),
+                    t("tab_google.kalender_fehler", fehler=res["error"],
+                      trace=res["tb"]),
                     parent=dialog,
                 )
                 return
@@ -639,7 +641,7 @@ class GoogleTab:
                 setting_key="gcal_enabled", checkbox=self._cb_gcal,
                 toggle_var=self._var_gcal, on_change=self._on_change,
                 dialog=self._dialog,
-                error_title="Google Kalender aktivieren",
+                error_title=t("tab_google.kalender_aktivieren_titel"),
                 base_path=base_path,
                 on_success_dialog_ui=self._load_calendars,
             )

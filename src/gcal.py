@@ -8,6 +8,7 @@ Die pure Helper `event_payload` / `parse_event` haben keine Google-Abhängigkeit
 
 import datetime
 
+from src.i18n import t
 from src.mail import get_scopes
 from src.oauth_utils import (
     REAUTH_REQUIRED_MSG, discard_token_for_scope_upgrade, token_lacks_scopes,
@@ -181,8 +182,7 @@ def get_calendar_service(credentials_path="credentials.json",
             raise CalendarAuthError(REAUTH_REQUIRED_MSG)
         if not os.path.exists(credentials_path):
             raise FileNotFoundError(
-                f"credentials.json nicht gefunden unter:\n{credentials_path}"
-            )
+                t("meldungen.credentials_fehlen", pfad=credentials_path))
         flow = InstalledAppFlow.from_client_secrets_file(credentials_path, scopes)
         creds = flow.run_local_server(port=0)
         save_credentials(creds, token_path)

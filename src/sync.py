@@ -41,6 +41,7 @@ from typing import TYPE_CHECKING, Any, Callable
 # würde dazu führen, dass sync.py einen synchronisierten Key nicht mergt →
 # stiller Datenverlust im Multi-Device-Sync (Issue #48). settings.py ist
 # stdlib-only und importiert sync.py nicht (kein Zyklus, CI-import-sicher).
+from src.i18n import t
 from src.settings import SYNCED_SETTING_KEYS
 from src.time_utils import utc_now_iso
 # Registry-Logik (Sanitizing, LWW, eigener Eintrag) liegt Tk- und I/O-frei in
@@ -585,7 +586,7 @@ def resolve_conflict(conflict_id: str, chosen_value: dict[str, Any],
         all_conflicts = conflicts_store.get_all()
         target = next((c for c in all_conflicts if c["id"] == conflict_id), None)
         if target is None:
-            raise KeyError(f"Konflikt {conflict_id!r} nicht gefunden")
+            raise KeyError(t("sync.konflikt_nicht_gefunden", id=repr(conflict_id)))
 
         now = utc_now_iso()
         target["resolved"] = True

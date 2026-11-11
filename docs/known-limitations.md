@@ -737,7 +737,7 @@ für Fragen: `docs/datenschutz.md` (die Web-App verlinkt es im Koppel-Bildschirm
   Anlegen aus den Feiertagen der damals eingestellten Region berechnet (Urlaub ist Periode als Einheit); der Hinweis
   in den Einstellungen sagt das. Wer die Region ändert, legt betroffene Perioden neu an.
 - **Heute gibt es nur Deutschland und Deutsch.** `COUNTRIES`, `LANGUAGES` und der PWA-Katalog kennen je einen
-  Eintrag; die Desktop-Oberfläche selbst ist nicht übersetzt (nur die PWA hat eine Textschicht).
+  Eintrag; die Desktop-Oberfläche hat seit der Textschicht einen Katalog (`src/i18n/de/`), aber nur den deutschen (s. „Desktop-Textschicht“).
 - **PWA, Service Worker:** Push-Texte nutzen die Standardsprache `de`, nicht die in der PWA gewählte. Mit nur einer
   Sprache ohne Wirkung; bei einer zweiten bleiben sie deutsch, bis der Worker die Sprache liest.
 - **PWA, Debug-Export:** er folgt der Sprache der Oberfläche statt einer festen Support-Sprache.
@@ -746,6 +746,55 @@ für Fragen: `docs/datenschutz.md` (die Web-App verlinkt es im Koppel-Bildschirm
 - **Downgrade:** `state` bleibt als Spiegel von `region` (nur Deutschland) erhalten, ein älterer Desktop liest also
   weiter dasselbe Bundesland. Ändert die ältere Version dort nur `state`, übernimmt die neuere beim nächsten Start
   dieses Bundesland als `region` (ein unlesbarer `state` ändert nichts); `country`, `region` und `language` sind gerätelokal und reisen nicht per Drive-Sync.
+
+## Desktop-Textschicht: bekannte Grenzen
+
+Die Oberflächentexte des Desktops stehen im Katalog `src/i18n/de/` und kommen über `t()` (`CLAUDE.md`,
+„Textschicht (Desktop)“). Es gibt **nur Deutsch**; eine zweite Sprache ist ein neuer Katalog, aber ein paar
+Stellen müssen vorher nachgezogen werden.
+
+**Noch deutsch, weil Ausgabe oder Protokoll (Teil 3):** Inhalte von PDF-Bericht, Mail, Teilen und Webhook
+(`report.py`, `share_message.py`, Payload-Texte, Anhangsnamen), die Berichts-Wochentage und -Monate
+(`DAYS_DE` in `time_utils`, von `report.py` genutzt, und die Monatsnamen aus `locale_format`), die Mail-Vorlagen-Defaults in `settings.py`
+(gespeicherte Werte, ein Wechsel bräuchte Migration), die Texte der Kalendertermine (`gcal.py`), die Antworttexte
+der lokalen API (`api_*.py`) und die Protokolltexte von Handy-Abgleich und Relay (`mobile_*.py`, `relay_*.py`,
+`ws_client.py`). Log-Texte bleiben deutsch. Die PWA-Punkte stehen in `pwa/CLAUDE.md`.
+
+**Grenzen für eine zweite Sprache:**
+
+- **Startreihenfolge:** `main._create_root` meldet einen Start ohne Display mit einem lokalisierten Text auf
+  stderr, im Log steht dieselbe Meldung deutsch; `_refresh_linux_integration` (`Comment=` der `.desktop`-Datei)
+  läuft vor `set_language` und schreibt damit die Standardsprache.
+- **`category_dialog.STANDARD`** (`(Standard)`) ist Erkennungsmerkmal **und** angezeigter Combo-Wert; es hat keinen
+  getrennten Anzeigetext. Folgeaufgabe: Anzeige↔Sentinel-Abbildung beim Aufruf, `kategorien.hinweis` nennt den
+  Wert bereits über `{standard}`.
+- **`NO_CATEGORY_LABEL`:** die API verbietet nur den deutschen Namen `(ohne Kategorie)`, nicht den Anzeigetext einer
+  anderen Sprache.
+- **`share_message.build_share_message`** liefert `what` (`Arbeitszeiten`, `Reservierungen`, `und`) deutsch; der
+  Satz im Teilen-Dialog wäre in einer zweiten Sprache gemischt.
+- **Plural:** manche Zählungen haben keine Pluralformen, wie schon im Altbestand (`Tage` in
+  `teilen.arbeitszeiten`/`reservierungen`, `Datensätze` in `import.importiert`).
+- **Zusammengesetzte Sätze:** `share.py` (≈86) baut einen Satz per Verkettung (`{label} {datum}: {teile}`), und
+  einige Parameter tragen einen Artikel (`share.zeit_ungueltig`, `webhook.steuerzeichen`, `smtp.adresse_fehlt`,
+  `mime.adresse_steuerzeichen`); die Grammatik anderer Sprachen trägt das nicht.
+- **Umkehrtabellen:** `send_dialog.FORMAT_LABELS`/`_FORMAT_BY_LABEL` (Anzeige → Code im Format-Combo) müssen bei
+  einer Übersetzung beim Aufruf gebaut werden.
+- **`DEFAULT_DEVICE_NAME`:** der Standard-Gerätename geht als Datenwert in Sync-Doc und Geräteliste und ist kein
+  Katalogtext.
+- **Titel aus übersetztem Nomen:** `ui.py` baut `loeschen.titel` (`{art} löschen`) aus einem übersetzten Nomen; eine
+  zweite Sprache braucht dafür drei ganze Titelschlüssel statt einer Fragmentkette.
+- **Ein Schlüssel, mehrere Rollen:** `fuss.senden`/`fuss.teilen`/`fuss.export` stehen im Footer und im Tray,
+  `knopf.loeschen` als Knopf und als Dialogtitel; eine Sprache, die dort verschieden formuliert, braucht getrennte
+  Schlüssel.
+- **`fenster.titel`** wird auch als Windows-AUMID-`DisplayName` geschrieben, bei jedem Start neu.
+- **Suffix- und Fragmentschlüssel** mit führendem `\n\n` oder Leerzeichen hängen an einem Satz an:
+  `update_banner.verfuegbar` (`{art} {version} verfügbar`; `updater.status_version` hat ganze Sätze),
+  `regeln.gekoppelt_ersetzt`, `regeln.zeile_relay`, `zelle.pause`, `zeitraum.urlaub_zusatz`. Eine zweite Sprache
+  braucht dafür ganze Sätze.
+
+**Was die Ratsche (`tests/test_desktop_texts.py`) nicht sieht:** ein einzelnes kleines Wort ohne Umlaut
+(`lokal`, `variabel`) außerhalb eines erkannten Anzeigearguments und Text, den eine Variable trägt, bevor er
+angezeigt wird. Dort hilft nur Durchsicht bei der Review.
 
 ## Beschädigte oder fremde Daten (Storage)
 

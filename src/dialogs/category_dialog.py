@@ -10,13 +10,14 @@ settings.set_synced.
 
 import tkinter as tk
 
+from src.i18n import t
 from src.settings import WEEKDAY_KEYS
 from src.theme import (
     BG, FONT, FONT_BOLD, PAUSE_VALUES, TEXT, TEXT_MUTED, TIME_VALUES,
     attach_unfocus_on_click, center_dialog_on_parent, create_dialog,
     dark_combo, dark_entry, px, primary_button, secondary_button, themed_askyesno,
 )
-from src.time_utils import DAYS_DE
+from src.time_utils import short_day_names
 
 # Sentinel-Eintrag in den Zeit-Combos: „kein eigener Wert, globaler Standard
 # gilt". Wird beim Speichern als fehlendes/leeres Feld abgelegt.
@@ -140,32 +141,36 @@ def _grid_all_standard(day_vars):
 def open_category_dialog(parent, settings, on_change=None):
     categories = list(settings.get("categories") or [])
     category_times = dict(settings.get("category_times") or {})
+    # Beim Aufruf aufgelöst (nicht beim Import), damit die Sprache gilt.
+    mode_general = t("kategorien.modus_allgemein")
+    mode_per_day = t("kategorien.modus_tageweise")
+    per_day_closed = t("kategorien.pro_tag_zu")
+    per_day_open = t("kategorien.pro_tag_auf")
 
-    dialog = create_dialog(parent, "Kategorien verwalten")
+    dialog = create_dialog(parent, t("kategorien.titel"))
     attach_unfocus_on_click(dialog)
 
     outer = tk.Frame(dialog, bg=BG)
     outer.pack(padx=12, pady=12)
 
-    tk.Label(outer, text="Kategorien", font=FONT_BOLD, bg=BG, fg=TEXT).pack(anchor="w")
+    tk.Label(outer, text=t("kategorien.kopf"), font=FONT_BOLD, bg=BG, fg=TEXT).pack(anchor="w")
     tk.Label(
-        outer, text='Pro Kategorie: Name + Standardzeiten. '
-                    '„(Standard)" = globale Standardzeit verwenden.',
+        outer, text=t("kategorien.hinweis", standard=STANDARD),
         font=FONT, bg=BG, fg=TEXT_MUTED,
     ).pack(anchor="w", pady=(0, 6))
 
     # Spaltenüberschriften
     head = tk.Frame(outer, bg=BG)
     head.pack(fill="x")
-    tk.Label(head, text="Name", font=FONT, bg=BG, fg=TEXT_MUTED,
+    tk.Label(head, text=t("kategorien.spalte_name"), font=FONT, bg=BG, fg=TEXT_MUTED,
              width=15, anchor="w").pack(side=tk.LEFT, padx=2)
-    tk.Label(head, text="Modus", font=FONT, bg=BG, fg=TEXT_MUTED,
+    tk.Label(head, text=t("kategorien.spalte_modus"), font=FONT, bg=BG, fg=TEXT_MUTED,
              width=12, anchor="w").pack(side=tk.LEFT, padx=4)
-    tk.Label(head, text="Start", font=FONT, bg=BG, fg=TEXT_MUTED,
+    tk.Label(head, text=t("kategorien.spalte_start"), font=FONT, bg=BG, fg=TEXT_MUTED,
              width=13, anchor="w").pack(side=tk.LEFT, padx=4)
-    tk.Label(head, text="Ende", font=FONT, bg=BG, fg=TEXT_MUTED,
+    tk.Label(head, text=t("kategorien.spalte_ende"), font=FONT, bg=BG, fg=TEXT_MUTED,
              width=15, anchor="w").pack(side=tk.LEFT, padx=4)
-    tk.Label(head, text="Pause", font=FONT, bg=BG, fg=TEXT_MUTED,
+    tk.Label(head, text=t("kategorien.spalte_pause"), font=FONT, bg=BG, fg=TEXT_MUTED,
              width=13, anchor="w").pack(side=tk.LEFT, padx=4)
 
     rows_frame = tk.Frame(outer, bg=BG)
@@ -180,14 +185,14 @@ def open_category_dialog(parent, settings, on_change=None):
     day_starts = [settings.get(f"default_start_{d}") for d in WEEKDAY_KEYS]
     day_ends = [settings.get(f"default_end_{d}") for d in WEEKDAY_KEYS]
     is_variable = len(set(day_starts)) > 1 or len(set(day_ends)) > 1
-    std_start = "variabel" if len(set(day_starts)) > 1 else day_starts[0]
-    std_end = "variabel" if len(set(day_ends)) > 1 else day_ends[0]
+    std_start = t("kategorien.variabel") if len(set(day_starts)) > 1 else day_starts[0]
+    std_end = t("kategorien.variabel") if len(set(day_ends)) > 1 else day_ends[0]
     std_pause = str(settings.get("default_pause"))
 
     std_row = tk.Frame(rows_frame, bg=BG)
     std_row.pack(fill="x", pady=3)
     for text, w, fg in (
-        ("Standard", 15, TEXT_MUTED),
+        (t("kategorien.standard"), 15, TEXT_MUTED),
         ("", 12, TEXT_MUTED),  # Spacer für Modus-Spalte
         (std_start, 13, TEXT),
         (std_end, 15, TEXT),
@@ -201,11 +206,11 @@ def open_category_dialog(parent, settings, on_change=None):
     # (read-only); das Fenster passt seine Höhe automatisch an.
     if is_variable:
         daygrid = tk.Frame(rows_frame, bg=BG)
-        tk.Label(daygrid, text="Start", font=FONT, bg=BG, fg=TEXT_MUTED).grid(
+        tk.Label(daygrid, text=t("kategorien.spalte_start"), font=FONT, bg=BG, fg=TEXT_MUTED).grid(
             row=0, column=1, padx=6)
-        tk.Label(daygrid, text="Ende", font=FONT, bg=BG, fg=TEXT_MUTED).grid(
+        tk.Label(daygrid, text=t("kategorien.spalte_ende"), font=FONT, bg=BG, fg=TEXT_MUTED).grid(
             row=0, column=2, padx=6)
-        for i, (key, lbl) in enumerate(zip(WEEKDAY_KEYS, DAYS_DE, strict=False), start=1):
+        for i, (key, lbl) in enumerate(zip(WEEKDAY_KEYS, short_day_names(), strict=False), start=1):
             tk.Label(daygrid, text=lbl, font=FONT, bg=BG, fg=TEXT,
                      width=4, anchor="w").grid(row=i, column=0, padx=(2, 8),
                                                pady=1, sticky="w")
@@ -219,13 +224,13 @@ def open_category_dialog(parent, settings, on_change=None):
         def _toggle_daygrid():
             if daygrid.winfo_ismapped():
                 daygrid.pack_forget()
-                toggle_holder["btn"]._label.config(text="Pro Tag ▶")
+                toggle_holder["btn"]._label.config(text=per_day_closed)
             else:
                 daygrid.pack(after=std_row, anchor="center", pady=(0, 4))
-                toggle_holder["btn"]._label.config(text="Pro Tag ▼")
+                toggle_holder["btn"]._label.config(text=per_day_open)
 
         toggle_holder["btn"] = secondary_button(
-            std_row, "Pro Tag ▶", _toggle_daygrid, padx=8, pady=0)
+            std_row, per_day_closed, _toggle_daygrid, padx=8, pady=0)
         toggle_holder["btn"].pack(side=tk.LEFT, padx=2)
 
     def add_row(name="", defaults=None):
@@ -248,7 +253,7 @@ def open_category_dialog(parent, settings, on_change=None):
         # Name-Entry
         dark_entry(row, nv, width=15).pack(side=tk.LEFT, padx=4, ipady=px(3))
         # Modus-Combo
-        mode_combo = dark_combo(row, mode_var, ["Allgemein", "Tageweise"], width=10)
+        mode_combo = dark_combo(row, mode_var, [mode_general, mode_per_day], width=10)
         mode_combo.pack(side=tk.LEFT, padx=4)
 
         # general_frame mit Start–Ende — Sichtbarkeit via _apply_mode
@@ -267,7 +272,7 @@ def open_category_dialog(parent, settings, on_change=None):
         # 7-Tage-Grid — Sichtbarkeit via _apply_mode
         day_vars = {}
         day_frame = tk.Frame(container, bg=BG)
-        for i, (key, lbl) in enumerate(zip(WEEKDAY_KEYS, DAYS_DE, strict=False)):
+        for i, (key, lbl) in enumerate(zip(WEEKDAY_KEYS, short_day_names(), strict=False)):
             d = (defaults["days"] or {}).get(key) or {}
             sv = tk.StringVar(value=d.get("start") or STANDARD)
             ev = tk.StringVar(value=d.get("end") or STANDARD)
@@ -289,16 +294,16 @@ def open_category_dialog(parent, settings, on_change=None):
         def _toggle_day_row():
             if day_frame.winfo_ismapped():
                 day_frame.pack_forget()
-                row_toggle_holder["btn"]._label.config(text="Pro Tag ▶")
+                row_toggle_holder["btn"]._label.config(text=per_day_closed)
             else:
                 day_frame.pack(after=row, anchor="w", pady=(0, 4))
-                row_toggle_holder["btn"]._label.config(text="Pro Tag ▼")
+                row_toggle_holder["btn"]._label.config(text=per_day_open)
 
         row_toggle_holder["btn"] = secondary_button(
-            row, "Pro Tag ▶", _toggle_day_row, padx=8, pady=0)
+            row, per_day_closed, _toggle_day_row, padx=8, pady=0)
 
         def _apply_mode(*_a, expand=True):
-            if mode_var.get() == "Tageweise":
+            if mode_var.get() == mode_per_day:
                 # Allgemeine Werte ins Grid spiegeln, falls Grid noch leer (STANDARD).
                 if _grid_all_standard(day_vars):
                     for tag in WEEKDAY_KEYS:
@@ -308,10 +313,10 @@ def open_category_dialog(parent, settings, on_change=None):
                 row_toggle_holder["btn"].pack(side=tk.LEFT, padx=4, before=pause_combo)
                 if expand:
                     day_frame.pack(after=row, anchor="w", pady=(0, 4))
-                    row_toggle_holder["btn"]._label.config(text="Pro Tag ▼")
+                    row_toggle_holder["btn"]._label.config(text=per_day_open)
                 else:
                     day_frame.pack_forget()
-                    row_toggle_holder["btn"]._label.config(text="Pro Tag ▶")
+                    row_toggle_holder["btn"]._label.config(text=per_day_closed)
             else:
                 # Montags-Werte in general zurückschreiben, falls general noch STANDARD.
                 if start_var.get() == STANDARD:
@@ -341,7 +346,7 @@ def open_category_dialog(parent, settings, on_change=None):
         # Initialen Modus setzen + Sichtbarkeit herstellen.
         # <<ComboboxSelected>> feuert bei programmatischem .set() NICHT.
         # expand=False: Tageweise-Grid beim Laden eingeklappt (Fenster kompakt).
-        mode_var.set("Tageweise" if defaults["mode"] == "per_day" else "Allgemein")
+        mode_var.set(mode_per_day if defaults["mode"] == "per_day" else mode_general)
         _apply_mode(expand=False)
 
         mode_combo.bind("<<ComboboxSelected>>", _apply_mode)
@@ -355,7 +360,7 @@ def open_category_dialog(parent, settings, on_change=None):
     btns = tk.Frame(outer, bg=BG)
     btns.pack(fill="x", pady=(2, 8))
     secondary_button(
-        btns, "+ Kategorie",
+        btns, t("kategorien.neu"),
         lambda: add_row("", row_defaults_from_entry({})),
     ).pack(side=tk.LEFT, padx=2)
 
@@ -364,7 +369,7 @@ def open_category_dialog(parent, settings, on_change=None):
         for r in rows:
             raw.append({
                 "name": r["name"].get(),
-                "mode": "per_day" if r["mode"].get() == "Tageweise" else "general",
+                "mode": "per_day" if r["mode"].get() == mode_per_day else "general",
                 "start": r["start"].get(),
                 "end": r["end"].get(),
                 "pause": r["pause"].get(),
@@ -378,9 +383,8 @@ def open_category_dialog(parent, settings, on_change=None):
         if losing:
             names = ", ".join(losing)
             if not themed_askyesno(
-                dialog, "Tageszeiten verwerfen?",
-                f"Für {names} gehen die tageweise gesetzten Zeiten verloren, "
-                "wenn als „Allgemein“ gespeichert wird.\n\nTrotzdem speichern?",
+                dialog, t("kategorien.verwerfen_titel"),
+                t("kategorien.verwerfen_frage", namen=names),
             ):
                 return
 
@@ -393,7 +397,7 @@ def open_category_dialog(parent, settings, on_change=None):
 
     save_row = tk.Frame(outer, bg=BG)
     save_row.pack(fill="x")
-    primary_button(save_row, "Speichern", on_save).pack(side=tk.LEFT, padx=2)
-    secondary_button(save_row, "Abbrechen", dialog.destroy).pack(side=tk.LEFT, padx=2)
+    primary_button(save_row, t("knopf.speichern"), on_save).pack(side=tk.LEFT, padx=2)
+    secondary_button(save_row, t("knopf.abbrechen"), dialog.destroy).pack(side=tk.LEFT, padx=2)
 
     center_dialog_on_parent(dialog, parent)

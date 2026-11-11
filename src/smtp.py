@@ -25,6 +25,7 @@ import ssl
 import traceback
 from typing import Any
 
+from src.i18n import t
 from src.mail import is_offline_error
 from src.mime_message import build_message
 
@@ -91,10 +92,8 @@ def _open(record: dict[str, Any], password: str) -> smtplib.SMTP:
     """
     security = record.get("security")
     if security not in SECURITY_MODES:
-        raise ValueError(
-            f"Unbekannter Verschlüsselungsmodus: {security!r}. "
-            f"Erlaubt sind: {', '.join(SECURITY_MODES)}."
-        )
+        raise ValueError(t("smtp.modus_unbekannt", modus=repr(security),
+                           erlaubt=", ".join(SECURITY_MODES)))
 
     host = record["host"]
     port = int(record["port"])

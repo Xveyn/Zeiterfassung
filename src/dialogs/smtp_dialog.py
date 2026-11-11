@@ -12,6 +12,7 @@ from tkinter import messagebox
 from typing import Any
 
 from src import keyring_store, smtp, smtp_store
+from src.i18n import N_, t
 from src.theme import (
     BG, CELL_BG, FONT, FONT_SMALL, TEXT, TEXT_MUTED,
     apply_combobox_style, attach_unfocus_on_click, center_dialog_on_parent,
@@ -20,35 +21,24 @@ from src.theme import (
     themed_askyesno, themed_showerror, themed_showinfo,
 )
 
-SECURITY_LABELS = [
-    ("starttls", "STARTTLS (üblich, Port 587)"),
-    ("ssl", "SSL/TLS (Port 465)"),
-    ("none", "Keine Verschlüsselung"),
-]
+SECURITY_MODES = {
+    "starttls": N_("smtp_dialog.verschl_starttls"),
+    "ssl": N_("smtp_dialog.verschl_ssl"),
+    "none": N_("smtp_dialog.verschl_keine"),
+}
 
-# Warum das hier steht und nicht in der Doku: ohne diesen Hinweis liest sich
-# das „535 Authentication unsuccessful" von Microsoft wie ein Tippfehler, und
-# der Nutzer sucht stundenlang am falschen Ende.
-PROVIDER_HINT = (
-    "Microsoft-Konten (Outlook.com, Microsoft 365) lassen sich hier nicht "
-    "einrichten — Microsoft hat SMTP mit Passwort 2026 abgeschaltet.\n"
-    "Für Gmail wird ein App-Passwort benötigt (nicht das Kontopasswort); "
-    "es setzt eine aktive Zwei-Faktor-Anmeldung voraus."
-)
-
-STORAGE_HINT = (
-    "Das Passwort wird im Schlüsselbund des Betriebssystems abgelegt. Steht "
-    "keiner zur Verfügung, wird es lokal in smtp.json gespeichert."
-)
+def _security_labels():
+    """(Code, Anzeigetext) in der aktuellen Sprache; beim Aufruf aufgelöst."""
+    return [(m, t(SECURITY_MODES[m])) for m in SECURITY_MODES]
 
 
 def _mode_for_label(label):
-    return next((m for m, lbl in SECURITY_LABELS if lbl == label), "starttls")
+    return next((m for m, lbl in _security_labels() if lbl == label), "starttls")
 
 
 def _label_for_mode(mode):
-    return next((lbl for m, lbl in SECURITY_LABELS if m == mode),
-                SECURITY_LABELS[0][1])
+    labels = _security_labels()
+    return next((lbl for m, lbl in labels if m == mode), labels[0][1])
 
 
 def open_smtp_dialog(parent, store, runner, record: dict | None = None,
@@ -62,7 +52,8 @@ def open_smtp_dialog(parent, store, runner, record: dict | None = None,
     })
 
     dialog = create_dialog(
-        parent, "SMTP-Konto hinzufügen" if is_new else "SMTP-Konto bearbeiten")
+        parent, t("smtp_dialog.titel_neu") if is_new
+        else t("smtp_dialog.titel_bearbeiten"))
     apply_combobox_style(dialog)
     attach_unfocus_on_click(dialog)
 
@@ -88,9 +79,9 @@ def open_smtp_dialog(parent, store, runner, record: dict | None = None,
 
     row = 0
     for text, var in (
-        ("Name:", name_var),
-        ("Server:", host_var),
-        ("Port:", port_var),
+        (t("verbindung_dialog.name"), name_var),
+        (t("smtp_dialog.server"), host_var),
+        (t("tab_form.port"), port_var),
     ):
         _label(text, row, pady=(14, 6) if row == 0 else 6)
         dark_entry(dialog, var, width=32).grid(
@@ -98,17 +89,17 @@ def open_smtp_dialog(parent, store, runner, record: dict | None = None,
             pady=(14, 6) if row == 0 else 6, sticky="w")
         row += 1
 
-    _label("Verschlüsselung:", row)
+    _label(t("smtp_dialog.verschluesselung"), row)
     dark_combo(dialog, security_var,
-               [lbl for _, lbl in SECURITY_LABELS], width=32).grid(
+               [lbl for _, lbl in _security_labels()], width=32).grid(
         row=row, column=1, padx=10, pady=6, sticky="w")
     row += 1
 
     for text, var, masked in (
-        ("Benutzer:", username_var, False),
-        ("Passwort:", password_var, True),
-        ("Absender:", from_var, False),
-        ("Empfänger:", recipient_var, False),
+        (t("smtp_dialog.benutzer"), username_var, False),
+        (t("smtp_dialog.passwort"), password_var, True),
+        (t("smtp_dialog.absender"), from_var, False),
+        (t("smtp_dialog.empfaenger"), recipient_var, False),
     ):
         _label(text, row)
         entry = dark_entry(dialog, var, width=32)
@@ -119,18 +110,17 @@ def open_smtp_dialog(parent, store, runner, record: dict | None = None,
 
     if not is_new:
         location = record.get("password_location")
-        stored_text = ("Passwort liegt im Schlüsselbund des Betriebssystems."
+        stored_text = (t("smtp_dialog.passwort_im_schluesselbund")
                        if location == "keyring" else
-                       "Kein Schlüsselbund verfügbar — das Passwort liegt "
-                       "lokal in smtp.json.")
-        tk.Label(dialog, text=f"{stored_text}  Leer lassen = unverändert.",
+                       t("smtp_dialog.passwort_in_datei"))
+        tk.Label(dialog, text=stored_text,
                  font=FONT_SMALL, bg=BG, fg=TEXT_MUTED, justify="left",
                  wraplength=px(380)).grid(row=row, column=0, columnspan=2,
                                       padx=10, pady=(0, 4), sticky="w")
         row += 1
 
     tk.Checkbutton(
-        dialog, text="Aktiv", variable=enabled_var, font=FONT,
+        dialog, text=t("verbindung_dialog.aktiv"), variable=enabled_var, font=FONT,
         bg=BG, fg=TEXT, selectcolor=CELL_BG, activebackground=BG,
         activeforeground=TEXT, cursor="hand2",
     ).grid(row=row, column=0, columnspan=2, padx=10, pady=(4, 2), sticky="w")
@@ -139,7 +129,10 @@ def open_smtp_dialog(parent, store, runner, record: dict | None = None,
     # wraplength ist Pflicht, nicht Kosmetik: ohne sie wird das Label so breit
     # wie seine längste Zeile und zieht den ganzen Dialog mit. 380 ist der im
     # Projekt übliche Wert.
-    for hint in (STORAGE_HINT, PROVIDER_HINT):
+    # Der Anbieter-Hinweis steht hier und nicht in der Doku: ohne ihn liest sich
+    # das „535 Authentication unsuccessful" von Microsoft wie ein Tippfehler.
+    for hint in (t("smtp_dialog.hinweis_speicher"),
+                 t("smtp_dialog.hinweis_anbieter")):
         tk.Label(dialog, text=hint, font=FONT_SMALL, bg=BG, fg=TEXT_MUTED,
                  justify="left", wraplength=px(380)).grid(
             row=row, column=0, columnspan=2, padx=10, pady=(6, 2), sticky="w")
@@ -169,14 +162,16 @@ def open_smtp_dialog(parent, store, runner, record: dict | None = None,
         candidate = _collect()
         ok, msg = smtp_store.validate_record(candidate, store.get_all())
         if not ok:
-            themed_showerror(dialog, "Eingabe unvollständig", msg)
+            themed_showerror(
+                dialog, t("verbindung_dialog.unvollstaendig_titel"), msg)
             return None
         # Beim Neuanlegen ist ein Passwort Pflicht, sobald ein Benutzer
         # gesetzt ist — validate_record kann das nicht prüfen, dort steht das
         # Passwort gar nicht drin.
         if is_new and candidate["username"] and not password_var.get():
-            themed_showerror(dialog, "Eingabe unvollständig",
-                             "Bitte ein Passwort angeben.")
+            themed_showerror(dialog,
+                             t("verbindung_dialog.unvollstaendig_titel"),
+                             t("smtp_dialog.passwort_fehlt"))
             return None
         return candidate
 
@@ -202,9 +197,8 @@ def open_smtp_dialog(parent, store, runner, record: dict | None = None,
         if candidate["security"] != "none" or not candidate["username"]:
             return True
         return themed_askyesno(
-            dialog, "Unverschlüsselte Anmeldung",
-            "Ohne Verschlüsselung werden Benutzername und Passwort "
-            "im Klartext übertragen. Konto trotzdem so speichern?")
+            dialog, t("smtp_dialog.klartext_titel"),
+            t("smtp_dialog.klartext_frage"))
 
     def do_save():
         if busy["saving"]:
@@ -265,10 +259,8 @@ def open_smtp_dialog(parent, store, runner, record: dict | None = None,
                 # feuerte der Hinweis bei jedem Speichern einer Namensänderung.
                 if res["fell_back"]:
                     themed_showinfo(
-                        parent, "Passwort lokal gespeichert",
-                        "Auf diesem System steht kein Schlüsselbund zur "
-                        "Verfügung. Das Passwort wurde deshalb lokal in "
-                        "smtp.json gespeichert.")
+                        parent, t("smtp_dialog.lokal_titel"),
+                        t("smtp_dialog.lokal_text"))
                 return
             if alive:
                 busy["saving"] = False
@@ -278,14 +270,13 @@ def open_smtp_dialog(parent, store, runner, record: dict | None = None,
                 # Unerwarteter Fehler: bewusst nativ und mit Traceback
                 # („bekannt-themed / unerwartet-nativ", CLAUDE.md, Audit N14).
                 messagebox.showerror(
-                    "Nicht gespeichert",
-                    "Beim Speichern des SMTP-Kontos ist ein unerwarteter "
-                    f"Fehler aufgetreten:\n\n{res['tb']}",
+                    t("verbindung_dialog.nicht_gespeichert_titel"),
+                    t("smtp_dialog.speichern_unerwartet", tb=res['tb']),
                     parent=target)
                 return
             themed_showerror(
-                target, "Nicht gespeichert",
-                f"Das SMTP-Konto konnte nicht gespeichert werden:\n\n{res['error']}")
+                target, t("verbindung_dialog.nicht_gespeichert_titel"),
+                t("smtp_dialog.speichern_fehler", fehler=res['error']))
 
         runner.run(fn, on_done)
 
@@ -317,8 +308,7 @@ def open_smtp_dialog(parent, store, runner, record: dict | None = None,
                     # wurden abgelehnt".
                     return {
                         "ok": False, "kind": "keyring",
-                        "detail": "Das Passwort konnte nicht aus dem "
-                                  "Schlüsselbund gelesen werden."}
+                        "detail": t("senden.passwort_nicht_lesbar")}
             try:
                 smtp.test_connection(candidate, password)
             except Exception as e:
@@ -335,16 +325,15 @@ def open_smtp_dialog(parent, store, runner, record: dict | None = None,
             if res.get("ok"):
                 # Ohne Benutzer wurde keine einzige Zugangsdatei geprüft —
                 # nur, dass der Server erreichbar ist und NOOP beantwortet.
-                message = ("Der Server hat die Zugangsdaten akzeptiert."
+                message = (t("smtp_dialog.test_ok_login")
                            if res["checked_login"] else
-                           "Der Server ist erreichbar. Zugangsdaten wurden "
-                           "nicht geprüft, weil kein Benutzer eingetragen ist.")
-                themed_showinfo(dialog, "Verbindung erfolgreich",
-                                f"{message} Es wurde keine E-Mail verschickt.")
+                           t("smtp_dialog.test_ok_ohne_login"))
+                themed_showinfo(dialog, t("smtp_dialog.test_ok_titel"),
+                                message)
                 return
             from src.dialogs.send_task import format_result_summary
             themed_showerror(
-                dialog, "Verbindung fehlgeschlagen",
+                dialog, t("smtp_dialog.test_fehler_titel"),
                 format_result_summary(
                     [{"name": candidate["name"], "ok": False,
                       "kind": res.get("kind"), "detail": res.get("detail")}]))
@@ -353,11 +342,11 @@ def open_smtp_dialog(parent, store, runner, record: dict | None = None,
 
     btn_frame = tk.Frame(dialog, bg=BG)
     btn_frame.grid(row=row, column=0, columnspan=2, pady=14)
-    save_btn = primary_button(btn_frame, "Speichern", do_save)
+    save_btn = primary_button(btn_frame, t("knopf.speichern"), do_save)
     save_btn.pack(side=tk.LEFT, padx=5)
-    test_btn = secondary_button(btn_frame, "Verbindung testen", do_test)
+    test_btn = secondary_button(btn_frame, t("smtp_dialog.knopf_testen"), do_test)
     test_btn.pack(side=tk.LEFT, padx=5)
-    secondary_button(btn_frame, "Abbrechen", dialog.destroy).pack(
+    secondary_button(btn_frame, t("knopf.abbrechen"), dialog.destroy).pack(
         side=tk.LEFT, padx=5)
 
     # Kein eigener <Escape>-Bind: create_dialog setzt ihn bereits.

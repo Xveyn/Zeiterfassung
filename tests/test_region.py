@@ -66,7 +66,7 @@ def test_country_region_defaults(tmp_path):
 
 def test_normalize_language_and_country():
     assert region.normalize_language("de") == "de"
-    for bad in ("xx", "", None, 5):
+    for bad in ("xx", "", None, 5, "de-AT"):
         assert region.normalize_language(bad) == "de"
     assert region.normalize_country("DE") == "DE"
     for bad in ("ZZ", "", None, ["DE"]):
@@ -76,3 +76,12 @@ def test_normalize_language_and_country():
 def test_new_keys_are_device_local():
     for key in ("country", "region", "region_migrated"):
         assert key not in SYNCED_SETTING_KEYS
+
+
+def test_normalize_language_takes_the_codes_from_i18n_but_stays_exact(monkeypatch):
+    # Die Menge der Sprachen kommt aus der Textschicht; anders als `i18n.normalize_language`
+    # nimmt `region` nur den genauen Code (der Wert geht an Handy und API).
+    monkeypatch.setattr("src.i18n.LANGUAGES", ("de", "en"))
+    assert region.normalize_language("en") == "en"
+    assert region.normalize_language("en-US") == "de"
+    assert region.normalize_language("xx") == "de"

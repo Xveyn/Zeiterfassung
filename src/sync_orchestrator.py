@@ -14,8 +14,9 @@ import traceback
 from tkinter import messagebox
 
 from src.drive import DriveAuthError, DriveNetworkError
+from src.i18n import t
 from src.oauth_utils import (
-    KEYRING_UNAVAILABLE_HINT, KEYRING_UNAVAILABLE_TITLE, REAUTH_REQUIRED_MSG,
+    keyring_unavailable_hint, keyring_unavailable_title, REAUTH_REQUIRED_MSG,
     is_keyring_unavailable,
 )
 from src.sync_runtime import SYNC_TIMEOUT_MSG, run_push_blocking
@@ -56,49 +57,38 @@ def classify_sync_error(error):
     return "unknown"
 
 
+def error_display_text(error):
+    """Anzeigetext eines Sync-Fehlers, wo der rohe Text in eine Meldung
+    gesetzt wird. Die beiden Erkennungstexte (`REAUTH_REQUIRED_MSG`,
+    `NEWER_REMOTE_VERSION_MSG`) bleiben für den Programmfluss Konstanten;
+    angezeigt wird ihr Katalogtext in der Oberflächensprache."""
+    from src.sync import NEWER_REMOTE_VERSION_MSG
+    text = str(error)
+    if text == NEWER_REMOTE_VERSION_MSG:
+        return t("sync.neuere_version")
+    if text == REAUTH_REQUIRED_MSG:
+        return t("sync.reauth_anzeige")
+    return text
+
+
 def _friendly_sync_message(error, tb=""):
     """Mappt einen Drive-Sync-Fehler auf (Titel, Meldung, known) für die Messagebox."""
     from src.sync import NEWER_REMOTE_VERSION_MSG
     if str(error) == NEWER_REMOTE_VERSION_MSG:
-        return ("Update erforderlich", NEWER_REMOTE_VERSION_MSG, True)
+        return (t("sync.update_titel"), t("sync.neuere_version"), True)
 
     kind = classify_sync_error(error)
 
     if kind == "auth":
-        return (
-            "Google-Verbindung erneuern",
-            "Die App braucht erneut deine Erlaubnis für Google Drive. Das "
-            "passiert, wenn die Verbindung abgelaufen oder widerrufen wurde "
-            "oder eine neue Freigabe nötig ist.\n\nBitte öffne die "
-            "Einstellungen und klicke auf „Google neu verbinden\" — danach "
-            "im Browser die Freigabe bestätigen.",
-            True,
-        )
+        return (t("sync.auth_titel"), t("sync.auth_text"), True)
     if kind == "keyring":
-        return (KEYRING_UNAVAILABLE_TITLE, KEYRING_UNAVAILABLE_HINT, True)
+        return (keyring_unavailable_title(), keyring_unavailable_hint(), True)
     if kind == "network":
-        return (
-            "Keine Internetverbindung",
-            "Die Synchronisation mit Google Drive ist fehlgeschlagen, weil "
-            "keine Verbindung zum Internet besteht.\n\nBitte prüfe deine "
-            "Verbindung und versuche es erneut.",
-            True,
-        )
+        return (t("sync.netz_titel"), t("sync.netz_text"), True)
     if kind == "timeout":
-        return (
-            "Synchronisation dauert zu lange",
-            "Die Synchronisation mit Google Drive hat zu lange gedauert und "
-            "wurde abgebrochen.\n\nBitte prüfe deine Verbindung und versuche "
-            "es erneut.",
-            True,
-        )
+        return (t("sync.timeout_titel"), t("sync.timeout_text"), True)
     detail = f"{error}\n\n{tb}" if tb else str(error)
-    return (
-        "Synchronisation fehlgeschlagen",
-        "Bei der Synchronisation mit Google Drive ist ein unerwarteter "
-        f"Fehler aufgetreten:\n\n{detail}",
-        False,
-    )
+    return (t("sync.fehler_titel"), t("sync.fehler_text", detail=detail), False)
 
 
 def _show_sync_error(parent, error, tb="", suffix=""):
@@ -130,35 +120,37 @@ def _status_view(n_conflicts, last_pull_at, today=None):
     an der Uhr des Rechners hängen.
     """
     if n_conflicts > 0:
-        plural = "e" if n_conflicts != 1 else ""
+        if n_conflicts == 1:
+            return (
+                t("sync.status_konflikte_eins", anzahl=n_conflicts),
+                STATUS_WARN,
+                t("sync.tooltip_konflikte_eins", anzahl=n_conflicts),
+            )
         return (
-            f"⚠ {n_conflicts} Konflikt{plural}",
+            t("sync.status_konflikte_viele", anzahl=n_conflicts),
             STATUS_WARN,
-            f"{n_conflicts} Sync-Konflikt{plural} offen — in den Einstellungen "
-            "unter „Google“ auflösen.",
+            t("sync.tooltip_konflikte_viele", anzahl=n_conflicts),
         )
 
     pulled_on = local_date_of_iso(last_pull_at)
     if pulled_on is None:
         return (
-            "⚠ noch nie",
+            t("sync.status_nie"),
             STATUS_WARN,
-            "Noch nie mit Google Drive synchronisiert.",
+            t("sync.tooltip_nie"),
         )
 
     shown = format_date(pulled_on)
     if pulled_on == (today or datetime.date.today()):
         return (
-            f"✓ {shown}",
+            t("sync.status_heute", datum=shown),
             TEXT_MUTED,
-            f"Heute synchronisiert ({shown}).",
+            t("sync.tooltip_heute", datum=shown),
         )
     return (
-        f"⚠ {shown}",
+        t("sync.status_alt", datum=shown),
         STATUS_WARN,
-        f"Zuletzt synchronisiert: {shown} — heute noch nicht.\n"
-        "Über ⟳ erneut versuchen; hält es an, die "
-        "Google-Verbindung prüfen.",
+        t("sync.tooltip_alt", datum=shown),
     )
 
 
@@ -178,23 +170,25 @@ def _short_sync_error(error):
     """
     kind = classify_sync_error(error)
     if kind == "auth":
-        return "Die Google-Verbindung muss erneuert werden."
+        return t("sync.toast_auth")
     if kind == "keyring":
-        return "Der Schlüsselbund ist nicht erreichbar."
+        return t("sync.toast_schluesselbund")
     if kind == "network":
-        return "Keine Internetverbindung."
+        return t("sync.toast_netz")
     if kind == "timeout":
-        return "Zeitüberschreitung."
-    return str(error)
+        return t("sync.toast_timeout")
+    return error_display_text(error)
 
 
 def _tray_toast(ok, n_conflicts, error):
     """Toast-Meldung nach Tray-Sync."""
     if not ok:
-        return f"Sync fehlgeschlagen:\n{_short_sync_error(error)}"
+        return t("sync.toast_fehler", grund=_short_sync_error(error))
     if n_conflicts == 0:
-        return "Synchronisiert."
-    return f"Synchronisiert — {n_conflicts} Konflikt{'e' if n_conflicts != 1 else ''} offen."
+        return t("sync.toast_ok")
+    if n_conflicts == 1:
+        return t("sync.toast_ok_konflikte_eins", anzahl=n_conflicts)
+    return t("sync.toast_ok_konflikte_viele", anzahl=n_conflicts)
 
 
 class SyncOrchestrator:
@@ -329,13 +323,13 @@ class SyncOrchestrator:
         if not self._settings.get("sync_enabled"):
             themed_showinfo(
                 self._root,
-                "Synchronisation",
-                "Synchronisation ist deaktiviert. In den Einstellungen aktivierbar.")
+                t("sync.titel"),
+                t("sync.deaktiviert"))
             return
         if self._sync_in_progress:
             return  # läuft bereits — Button ist nur optisch gedimmt
         self._sync_in_progress = True
-        self._status_label.config(text="Synchronisiere…", fg=TEXT_MUTED)
+        self._status_label.config(text=t("sync.laeuft"), fg=TEXT_MUTED)
         if self._sync_button is not None:
             set_icon_button_enabled(self._sync_button, False)
         self._runner.run(self._push, self._on_manual_done)
@@ -391,6 +385,5 @@ class SyncOrchestrator:
         if not result.get("ok"):
             _show_sync_error(
                 self._root, result.get("error", "?"), result.get("tb", ""),
-                suffix="Lokale Daten bleiben erhalten und werden beim "
-                       "nächsten Start synchronisiert.",
+                suffix=t("sync.quit_hinweis"),
             )

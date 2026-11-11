@@ -21,6 +21,7 @@ import threading
 
 from src.secure_file import write_secret_text
 from src import keyring_store
+from src.i18n import t
 
 log = logging.getLogger(__name__)
 
@@ -115,14 +116,22 @@ class TokenKeyringUnavailable(Exception):
         super().__init__(KEYRING_UNAVAILABLE_MSG)
 
 
-KEYRING_UNAVAILABLE_TITLE = "Schlüsselbund nicht erreichbar"
-KEYRING_UNAVAILABLE_HINT = (
-    "Die Google-Anmeldung liegt im Schlüsselbund des Betriebssystems, und der "
-    "antwortet gerade nicht (gesperrt oder nicht gestartet).\n\nBitte "
-    "entsperre ihn und versuche es erneut.")
-"""Titel und Text der themed Meldung für `TokenKeyringUnavailable` — ein
-bekannter Fehler, also kurz und ohne Traceback (Konvention „bekannt-themed /
-unerwartet-nativ"). Eine Quelle für Sync-Meldungen und Einstellungsdialog."""
+def keyring_unavailable_detail() -> str:
+    """Anzeigetext des Schlüsselbund-Ausfalls (Ergebniszeile des Versands). Getrennt
+    vom Erkennungsmerkmal `KEYRING_UNAVAILABLE_MSG`, das nur verglichen wird."""
+    return t("meldungen.schluesselbund_detail")
+
+
+def keyring_unavailable_title() -> str:
+    """Titel der themed Meldung für `TokenKeyringUnavailable` — ein bekannter
+    Fehler, also kurz und ohne Traceback (Konvention „bekannt-themed /
+    unerwartet-nativ"). Eine Quelle für Sync-Meldungen und Einstellungsdialog."""
+    return t("meldungen.schluesselbund_titel")
+
+
+def keyring_unavailable_hint() -> str:
+    """Text der themed Meldung (s. `keyring_unavailable_title`)."""
+    return t("meldungen.schluesselbund_hinweis")
 
 
 def is_keyring_unavailable(error: object) -> bool:

@@ -52,6 +52,8 @@ import platform
 import tempfile
 from typing import Any, Callable, Optional
 
+from src.i18n import t
+
 log = logging.getLogger(__name__)
 
 # Bezugsauflösung von Windows bei 100 % Anzeigeskalierung.
@@ -344,5 +346,4 @@ def scale_hint(factor: float) -> Optional[str]:
     """Hinweiszeile für den Skalierungsregler — None bei 100 %."""
     if round(factor * 100) == 100:
         return None
-    return (f"Die Anzeigeskalierung des Systems ({round(factor * 100)} %) wird "
-            "automatisch berücksichtigt; der Wert hier gilt zusätzlich.")
+    return t("skalierung.hinweis_system", prozent=round(factor * 100))

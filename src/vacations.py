@@ -29,6 +29,7 @@ from dataclasses import dataclass
 from typing import Any, Collection
 
 from src.holidays_region import get_holidays
+from src.i18n import t
 from src.json_store import atomic_write_json, load_json_or_quarantine
 from src.time_utils import (
     calculate_hours, format_iso_date, hours_to_minutes, utc_now_iso,
@@ -219,15 +220,14 @@ def cap_notice(hits: list[CappedDay]) -> str:
 
     gekuerzt = round(sum(h.vacation - h.capped for h in hits) / 60, 2)
     if len(hits) == 1:
-        wo = f"An 1 Tag ({format_iso_date(hits[0].date)})"
-        satz = f"Der Urlaub ist dort um {gekuerzt}h gekürzt, damit der Tag "               f"nicht doppelt zählt."
+        wo = t("urlaub.kappung_wo_eins", datum=format_iso_date(hits[0].date))
+        satz = t("urlaub.kappung_satz_eins", stunden=gekuerzt)
     else:
         liste = (f" ({', '.join(format_iso_date(h.date) for h in hits)})"
                  if len(hits) <= _MAX_LISTED_DAYS else "")
-        wo = f"An {len(hits)} Tagen{liste}"
-        satz = (f"Der Urlaub ist dort um insgesamt {gekuerzt}h gekürzt, "
-                f"damit die Tage nicht doppelt zählen.")
-    return f"{wo} liegt Urlaub auf erfasster Arbeitszeit. {satz}"
+        wo = t("urlaub.kappung_wo_viele", anzahl=len(hits), liste=liste)
+        satz = t("urlaub.kappung_satz_viele", stunden=gekuerzt)
+    return t("urlaub.kappung_gesamt", wo=wo, satz=satz)
 
 
 def total_minutes(day_minutes: dict[str, int]) -> int:
@@ -321,13 +321,10 @@ class VacationStore:
         """
         with self._lock:
             if date_to < date_from:
-                raise ValueError("Das Bis-Datum liegt vor dem Von-Datum.")
+                raise ValueError(t("urlaub.bis_vor_von"))
             collision = periods_overlap(self._data, period_id, date_from, date_to)
             if collision is not None:
-                raise ValueError(
-                    f"Der Zeitraum überschneidet sich mit dem Urlaub "
-                    f"„{collision}“. Bearbeite stattdessen diesen Urlaub, "
-                    f"wenn du ihn verlängern willst.")
+                raise ValueError(t("urlaub.ueberschneidung", name=collision))
             pid = period_id
             if pid is None:
                 # Nur für NEUE Perioden würfeln. Auch gegen Tombstones

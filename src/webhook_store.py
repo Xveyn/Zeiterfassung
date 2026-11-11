@@ -20,6 +20,7 @@ import threading
 import uuid
 from typing import Any
 
+from src.i18n import t
 from src.secure_file import write_secret_json
 from src.webhook import validate_url
 
@@ -72,11 +73,11 @@ def validate_record(record: Webhook, existing: list[Webhook]) -> tuple[bool, str
     """
     name = (record.get("name") or "").strip()
     if not name:
-        return False, "Bitte einen Namen angeben."
+        return False, t("validierung.name_fehlt")
     for other in existing:
         if other.get("id") != record.get("id") and \
                 (other.get("name") or "").strip().lower() == name.lower():
-            return False, f"Es gibt bereits einen Webhook namens „{name}“."
+            return False, t("webhook.name_doppelt", name=name)
 
     ok, msg = validate_url(record.get("url", ""))
     if not ok:
@@ -84,7 +85,7 @@ def validate_record(record: Webhook, existing: list[Webhook]) -> tuple[bool, str
 
     payload = record.get("payload") or {}
     if not payload.get("json") and not payload.get("pdf"):
-        return False, "Bitte mindestens JSON oder PDF auswählen."
+        return False, t("webhook.inhalt_fehlt")
 
     auth = record.get("auth") or {}
     mode = auth.get("mode")
@@ -93,16 +94,16 @@ def validate_record(record: Webhook, existing: list[Webhook]) -> tuple[bool, str
     keyring_held = auth.get("secret_location") == "keyring"
     if mode == "header":
         if not (auth.get("header") or "").strip():
-            return False, "Bitte einen Header-Namen angeben."
+            return False, t("webhook.header_name_fehlt")
         if not keyring_held and not (auth.get("value") or "").strip():
-            return False, "Bitte einen Header-Wert (Token) angeben."
+            return False, t("webhook.header_wert_fehlt")
     elif mode == "hmac":
         if not (auth.get("header") or "").strip():
-            return False, "Bitte einen Header-Namen angeben."
+            return False, t("webhook.header_name_fehlt")
         if not keyring_held and not (auth.get("secret") or "").strip():
-            return False, "Bitte ein Secret für die Signatur angeben."
+            return False, t("webhook.secret_fehlt")
     elif mode != "none":
-        return False, "Unbekanntes Auth-Verfahren."
+        return False, t("webhook.auth_unbekannt")
     return True, ""
 
 
@@ -191,9 +192,7 @@ class WebhookStore:
             # schlösse sich, die Liste zeigte den Eintrag (er steht in
             # self._webhooks), auf Platte stünde nichts — auffallen würde es
             # erst nach dem Neustart.
-            raise WebhookStoreReadOnly(
-                "Die Webhook-Datei stammt von einer neueren Version oder ist "
-                "nicht lesbar und wird deshalb nicht überschrieben.")
+            raise WebhookStoreReadOnly(t("webhook.datei_schreibgeschuetzt"))
         payload = {"schema_version": SCHEMA_VERSION, "webhooks": self._webhooks}
         write_secret_json(self.filepath, payload, prefix=".webhooks-")
 

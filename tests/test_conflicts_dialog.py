@@ -262,7 +262,7 @@ def test_refresh_list_says_done_when_nothing_is_left():
 
     ConflictsDialog._refresh_list(stub, keep_pos=0)
 
-    stub._show_message.assert_called_once_with(conflicts_dialog.DONE_TEXT)
+    stub._show_message.assert_called_once_with(conflicts_dialog.done_text())
     assert stub._selected is None
 
 

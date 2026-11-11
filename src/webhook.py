@@ -22,6 +22,7 @@ from http.client import HTTPMessage
 from typing import IO, Any, NoReturn
 from urllib.parse import unquote, urlsplit
 
+from src.i18n import t
 from src.mail import is_offline_error
 from src.report import filter_categories, filter_period
 from src.time_utils import calculate_hours, hours_to_minutes, utc_now_iso
@@ -100,15 +101,13 @@ def validate_url(url: str | None) -> tuple[bool, str]:
         parts = urlsplit((url or "").strip())
         host = parts.hostname
     except ValueError:
-        return False, "Die Adresse ist nicht lesbar."
+        return False, t("webhook.adresse_unlesbar")
     if parts.scheme not in ("http", "https"):
-        return False, "Die Adresse muss mit http:// oder https:// beginnen."
+        return False, t("webhook.adresse_schema")
     if not host:
-        return False, "Die Adresse enthält keinen Server-Namen."
+        return False, t("webhook.adresse_kein_host")
     if parts.scheme == "http" and not is_private_host(host):
-        return False, (
-            "Für Adressen außerhalb des lokalen Netzes ist https erforderlich."
-        )
+        return False, t("webhook.adresse_https")
     return True, ""
 
 
@@ -127,10 +126,7 @@ def _check_header_part(kind: str, value: str) -> None:
     fiele erst beim Empfänger auf (Muster wie mail.send_email, Audit N11).
     """
     if any(c in value for c in _CONTROL_CHARS):
-        raise ValueError(
-            f"{kind} enthält unzulässige Steuerzeichen "
-            "(Zeilenumbruch oder Nullbyte)."
-        )
+        raise ValueError(t("webhook.steuerzeichen", teil=kind))
 
 
 def sign_hmac(secret: str, body: bytes) -> str:
@@ -152,8 +148,8 @@ def auth_headers(auth: dict[str, Any] | None, body: bytes) -> dict[str, str]:
     if mode == "header":
         name = auth.get("header") or "Authorization"
         value = auth.get("value") or ""
-        _check_header_part("Der Header-Name", name)
-        _check_header_part("Der Header-Wert", value)
+        _check_header_part(t("webhook.header_name"), name)
+        _check_header_part(t("webhook.header_wert"), value)
         return {name: value}
     if mode == "hmac":
         name = auth.get("header") or "X-Hub-Signature-256"
@@ -164,10 +160,10 @@ def auth_headers(auth: dict[str, Any] | None, body: bytes) -> dict[str, str]:
         prefix = auth.get("prefix")
         if prefix is None:
             prefix = "sha256="
-        _check_header_part("Der Header-Name", name)
-        _check_header_part("Das Signatur-Präfix", prefix)
+        _check_header_part(t("webhook.header_name"), name)
+        _check_header_part(t("webhook.signatur_praefix"), prefix)
         return {name: prefix + sign_hmac(auth.get("secret") or "", body)}
-    raise ValueError(f"Unbekanntes Auth-Verfahren: {mode!r}")
+    raise ValueError(t("webhook.auth_verfahren_unbekannt", verfahren=repr(mode)))
 
 
 PAYLOAD_SCHEMA_VERSION = 2
@@ -292,7 +288,7 @@ def build_body(*, json_bytes: bytes | None, pdf_bytes: bytes | None,
     if pdf_bytes is not None and json_bytes is None:
         return "application/pdf", pdf_bytes
     if json_bytes is None and pdf_bytes is None:
-        raise ValueError("Weder JSON noch PDF zum Senden vorhanden.")
+        raise ValueError(t("webhook.nichts_zu_senden"))
 
     sep = f"--{boundary}\r\n".encode("latin-1")
     parts = [
@@ -338,8 +334,7 @@ class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
                          newurl: str) -> NoReturn:
         raise urllib.error.HTTPError(
             req.full_url, code,
-            "Der Endpunkt hat weitergeleitet — bitte die endgültige Adresse "
-            "eintragen.",
+            t("webhook.weitergeleitet"),
             headers, fp)
 
 
@@ -440,7 +435,7 @@ def deliver(record: Any, *, json_bytes: bytes | None, pdf_bytes: bytes | None,
     # ersten .get() scheitern.
     if not isinstance(record, dict):
         return {"ok": False, "kind": "config",
-                "detail": "Der Webhook-Datensatz ist kein Objekt.",
+                "detail": t("webhook.datensatz_kein_objekt"),
                 "error": None, "tb": None}
 
     try:

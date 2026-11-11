@@ -19,6 +19,7 @@ import tkinter as tk
 from dataclasses import dataclass
 from typing import Any, Callable
 
+from src.i18n import t
 from src.theme import (
     ACCENT, BG, ENTRY_BG, FONT, TEXT, empty_state, primary_button,
     secondary_button, themed_askyesno, themed_showerror,
@@ -29,13 +30,13 @@ from src.theme import (
 class RecordListKind:
     """Was einen Listen-Tab von seinem Zwilling unterscheidet."""
 
-    intro: str                                  # Hinweistext über der Liste
-    section: str                                # Abschnitts-Überschrift
-    empty: str                                  # Leertext der leeren Liste
+    intro: Callable[[], str]                    # Hinweistext über der Liste
+    section: Callable[[], str]                  # Abschnitts-Überschrift
+    empty: Callable[[], str]                    # Leertext der leeren Liste
     row_detail: Callable[[dict], str]           # rechts vom Namen, z.B. der Host
     open_dialog: Callable[..., None]            # (parent, store, runner, record=, on_saved=)
-    remove_title: str                           # Titel der Rückfrage beim Entfernen
-    remove_error: str                           # Satz vor der Fehlermeldung
+    remove_title: Callable[[], str]             # Titel der Rückfrage beim Entfernen
+    remove_error: Callable[[], str]             # Satz vor der Fehlermeldung
     read_only_error: type[Exception]            # Schreibschutz-Exception des Stores
     after_delete: Callable[[str], None] | None = None   # nach erfolgreichem Löschen
 
@@ -81,7 +82,7 @@ class RecordListTab:
         self._store = store
         self._runner = runner
 
-        form.section(self.KIND.section, hint=self.KIND.intro)
+        form.section(self.KIND.section(), hint=self.KIND.intro())
         box = tk.Frame(form.body, bg=BG)
         box.columnconfigure(0, weight=1)
 
@@ -100,14 +101,14 @@ class RecordListTab:
         self._listbox.bind("<Double-Button-1>", lambda _e: self._edit())
         # Liegt in derselben Zelle über der Liste; `refresh` blendet ihn
         # aus, sobald es Einträge gibt.
-        self._empty = empty_state(box, self.KIND.empty, bg=ENTRY_BG)
+        self._empty = empty_state(box, self.KIND.empty(), bg=ENTRY_BG)
         self._empty.grid(row=0, column=0, sticky="nsew")
 
         btns = tk.Frame(box, bg=BG)
         btns.grid(row=0, column=1, sticky="n", padx=(8, 0))
-        primary_button(btns, "Hinzufügen", self._add).pack(fill="x")
-        secondary_button(btns, "Bearbeiten", self._edit).pack(fill="x", pady=(4, 0))
-        secondary_button(btns, "Entfernen", self._remove).pack(fill="x", pady=(4, 0))
+        primary_button(btns, t("liste.hinzufuegen"), self._add).pack(fill="x")
+        secondary_button(btns, t("liste.bearbeiten"), self._edit).pack(fill="x", pady=(4, 0))
+        secondary_button(btns, t("regeln.knopf_entfernen"), self._remove).pack(fill="x", pady=(4, 0))
         form.block(box)
 
         self._records = []
@@ -146,8 +147,8 @@ class RecordListTab:
         if record is None:
             return
         if not themed_askyesno(
-                self._dialog, self.KIND.remove_title,
-                f"„{record.get('name', '')}“ wirklich entfernen?"):
+                self._dialog, self.KIND.remove_title(),
+                t("liste.entfernen_frage", name=record.get("name", ""))):
             return
 
         # Wie beim Speichern über den Runner: delete schreibt die Datei neu
@@ -168,8 +169,9 @@ class RecordListTab:
                 # send_dialog.on_done).
                 target = self._dialog if alive else self._parent
                 themed_showerror(
-                    target, "Nicht entfernt",
-                    f"{self.KIND.remove_error}\n\n{res['error']}")
+                    target, t("liste.nicht_entfernt"),
+                    t("liste.entfernen_fehler", satz=self.KIND.remove_error(),
+                      fehler=res["error"]))
             if alive:
                 self.refresh()
 

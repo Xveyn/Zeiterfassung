@@ -4,7 +4,7 @@ from unittest.mock import patch
 from urllib.error import HTTPError, URLError
 
 from src.changelog import (
-    NO_CHANGES_NOTICE, extract_version_section, fetch_changelog_entry,
+    no_changes_notice, extract_version_section, fetch_changelog_entry,
     parse_changelog_markdown, release_notes_for_display, split_version_sections,
 )
 
@@ -451,11 +451,11 @@ def test_release_notes_for_display_falls_back_when_nothing_is_left():
     Eine leere Box saehe aus wie ein Ladefehler."""
     md = ("<!-- Release notes generated -->\n\n## What's Changed\n\n"
           "**Full Changelog**: https://github.com/o/r/compare/v1...v2\n")
-    assert release_notes_for_display(md) == NO_CHANGES_NOTICE
+    assert release_notes_for_display(md) == no_changes_notice()
 
 
 def test_release_notes_for_display_on_empty_input():
-    assert release_notes_for_display("") == NO_CHANGES_NOTICE
+    assert release_notes_for_display("") == no_changes_notice()
 
 
 def test_release_notes_for_display_collapses_blank_runs():

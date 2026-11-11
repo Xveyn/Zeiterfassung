@@ -67,3 +67,12 @@ def test_day_month_follows_locale_and_unknown_falls_back(slash_locale):
     assert format_day_month(datetime.date(2026, 4, 1), locale="zz-ZZ") == "1.4."
     locale_format.set_active("de-DE")
     assert format_day_month(datetime.date(2026, 4, 1)) == "1.4."
+
+
+def test_short_weekday_and_month_names_follow_the_table():
+    assert locale_format.short_weekday_names("de-DE") == ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"]
+    months = locale_format.month_names("de-DE")
+    assert months[0] == "" and months[1] == "Januar" and months[12] == "Dezember"
+    # Unbekanntes Locale fällt auf den Standard zurück.
+    assert locale_format.month_names("xx-XX") == months
+    assert locale_format.short_weekday_names("xx-XX")[0] == "Mo"

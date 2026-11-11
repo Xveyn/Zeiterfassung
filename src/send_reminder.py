@@ -15,6 +15,8 @@ import datetime
 from collections import namedtuple
 from typing import Any, Collection, Iterable, Mapping
 
+from src.i18n import N_, t
+
 
 def scheduled_datetime(year: int, month: int, day: int, time_str: Any,
                        shift_mode: str = "none",
@@ -49,21 +51,27 @@ def _parse_hhmm(value: Any) -> tuple[int, int] | None:
     return hh, mm
 
 
-SHIFT_LABELS = {
-    "none": "nicht verschieben",
-    "backward": "vorziehen (davor)",
-    "forward": "nachziehen (danach)",
+SHIFT_LABEL_KEYS = {
+    "none": N_("erinnerung.verschiebung_keine"),
+    "backward": N_("erinnerung.verschiebung_davor"),
+    "forward": N_("erinnerung.verschiebung_danach"),
 }
+
+
+def shift_labels() -> dict[str, str]:
+    """Enum-Wert → Klartext in der aktuellen Sprache (beim Aufruf aufgelöst)."""
+    return {mode: t(SHIFT_LABEL_KEYS[mode]) for mode in SHIFT_LABEL_KEYS}
 
 
 def label_for_shift(mode: str) -> str:
     """Enum-Wert → Klartext fürs Dropdown. Unbekannt → Label von 'none'."""
-    return SHIFT_LABELS.get(mode, SHIFT_LABELS["none"])
+    labels = shift_labels()
+    return labels.get(mode, labels["none"])
 
 
 def shift_for_label(label: str) -> str:
     """Klartext aus dem Dropdown → Enum-Wert. Unbekannt → 'none'."""
-    for mode, text in SHIFT_LABELS.items():
+    for mode, text in shift_labels().items():
         if text == label:
             return mode
     return "none"
@@ -313,11 +321,12 @@ def reminder_tooltip_line(end: str, minutes: int) -> str:
     """Die Zeile im Tooltip der Kalenderzelle, z. B. `Erinnerung ans Verschicken: 15 min vor Ende
     (17:20 Uhr)`. Bei 0 Minuten `zum Ende`; ein unlesbares Ende lässt die Uhrzeit weg."""
     hh_mm = _parse_hhmm(end)
-    head = "Erinnerung ans Verschicken: "
     if hh_mm is None:
-        return f"{head}{minutes} min vor Ende" if minutes else f"{head}zum Ende"
+        if minutes:
+            return t("erinnerung.tooltip_vor_ende", minuten=minutes)
+        return t("erinnerung.tooltip_zum_ende")
     total = (hh_mm[0] * 60 + hh_mm[1] - minutes) % (24 * 60)
     at = f"{total // 60:02d}:{total % 60:02d}"
     if minutes == 0:
-        return f"{head}zum Ende ({at} Uhr)"
-    return f"{head}{minutes} min vor Ende ({at} Uhr)"
+        return t("erinnerung.tooltip_zum_ende_uhr", uhr=at)
+    return t("erinnerung.tooltip_vor_ende_uhr", minuten=minutes, uhr=at)

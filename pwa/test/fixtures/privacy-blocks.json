@@ -192,7 +192,7 @@
      "url": null
     },
     {
-     "text": "tab_rules.RELAY_PAIR_HINT",
+     "text": "tab_rules.relay_pair_hint()",
      "style": "code",
      "url": null
     },

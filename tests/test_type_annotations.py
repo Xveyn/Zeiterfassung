@@ -117,6 +117,14 @@ ANNOTATED_MODULES = [
     "src/region.py",
     "src/locale_format.py",
     "src/platform_open.py",
+    # Textschicht (Teil 2 der Sprache)
+    "src/i18n/__init__.py",
+    "src/i18n/de/__init__.py",
+    "src/i18n/de/allgemein.py",
+    "src/i18n/de/meldungen.py",
+    "src/i18n/de/einstellungen.py",
+    "src/i18n/de/dialoge.py",
+    "src/i18n/de/hauptfenster.py",
     # Einstellungs-Dialog-Bausteine (#132)
     "src/theme/form_logic.py",
     "src/dialogs/settings_dialog/form_model.py",
