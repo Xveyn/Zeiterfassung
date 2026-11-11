@@ -78,6 +78,9 @@ _CALENDAR = "Ausgabe/Teil 3: Text des Google-Kalendertermins"
 _MAIL_TEMPLATE = "Ausgabe/Teil 3: Default der Mail-Vorlage, gespeichert als Einstellungswert"
 _QUARANTINE = "Grund im Log der Quarantäne (`_quarantine_corrupt`), nie angezeigt"
 _CMD = "Windows-Helfer-Skript (`apply_windows`): Zeile der .cmd-Datei, die cmd.exe ausführt, nie angezeigt"
+_MIGRATION_FAILURE = (
+    "Eintrag in `MigrationReport.failures`: von keinem Dialog gelesen (Aufrufer `ui.App._on_secrets_migrated` "
+    "prüft nur `moved_anything`), nur Berichts-Bezeichner für Tests und Log")
 _LOCALE_TABLE = "Locale-Tabelle: die eine Stelle für Namen und Muster je Locale, kein Katalogtext"
 _TECH_DESKTOP = "Dateiinhalt einer Freedesktop-`.desktop`-Datei, gelesen vom Desktop"
 
@@ -96,6 +99,10 @@ ALLOWED: dict[str, dict[str, str]] = {
     },
     "src/version.py": {
         "{}-dev ({})": "Build-Kennung im Fenstertitel und Installer (`build_label`), sprachneutral",
+    },
+    "src/secret_migration.py": {
+        "Google-Anmeldung": _MIGRATION_FAILURE,
+        "Webhook „{}“": _MIGRATION_FAILURE,
     },
     "src/self_update.py": {
         "Content-Length": "HTTP-Kopfname der Antwort",
@@ -200,7 +207,6 @@ ALLOWED: dict[str, dict[str, str]] = {
 PENDING: list[str] = [
     # Task 3
     # Task 4
-    "src/secret_migration.py",
     "src/weekly_limit.py",
     "src/reminder_scheduler.py",
     "src/send_reminder_scheduler.py",

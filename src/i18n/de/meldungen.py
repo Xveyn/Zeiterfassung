@@ -101,4 +101,13 @@ TEXTS: dict[str, str] = {
     "selbst_update.nicht_ausfuehrbar": "Die geladene Datei ließ sich nicht ausführbar machen: {fehler}",
     "selbst_update.alte_nicht_gesichert": "Die alte AppImage ließ sich nicht sichern: {fehler}",
     "selbst_update.neue_nicht_eingesetzt": "Die neue AppImage ließ sich nicht einsetzen: {fehler}",
+    # Einmaliger Hinweis nach dem Umzug von Zugangsdaten in den Schlüsselbund (`secret_migration`, #101).
+    "schluesselbund_umzug.titel": "Zugangsdaten im Schlüsselbund",
+    "schluesselbund_umzug.nur_token": "Deine Google-Anmeldung liegt jetzt im Schlüsselbund des Betriebssystems statt im Klartext im Datenordner.",
+    "schluesselbund_umzug.token_und_webhook.eins": "Deine Google-Anmeldung und die Zugangsdaten von {anzahl} Webhook liegen jetzt im Schlüsselbund des Betriebssystems statt im Klartext im Datenordner.",
+    "schluesselbund_umzug.token_und_webhook.viele": "Deine Google-Anmeldung und die Zugangsdaten von {anzahl} Webhooks liegen jetzt im Schlüsselbund des Betriebssystems statt im Klartext im Datenordner.",
+    "schluesselbund_umzug.webhook.eins": "Die Zugangsdaten von {anzahl} Webhook liegen jetzt im Schlüsselbund des Betriebssystems statt im Klartext im Datenordner.",
+    "schluesselbund_umzug.webhook.viele": "Die Zugangsdaten von {anzahl} Webhooks liegen jetzt im Schlüsselbund des Betriebssystems statt im Klartext im Datenordner.",
+    "schluesselbund_umzug.macos": "\n\nmacOS kann nach App-Updates erneut fragen, ob Zeiterfassung auf den Schlüsselbund zugreifen darf.",
+    "schluesselbund_umzug.toast": "Zugangsdaten liegen jetzt im Schlüsselbund.",
 }

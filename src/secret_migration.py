@@ -22,6 +22,7 @@ import os
 from dataclasses import dataclass
 from typing import Any
 
+from src.i18n import t
 from src import box_relay, keyring_store, webhook_secrets
 from src.oauth_utils import (
     REFRESH_TOKEN_KEY, REFRESH_TOKEN_LOCATION, new_token_keyring_key,
@@ -160,28 +161,27 @@ def migrate(token_path: str, webhook_store: Any | None) -> MigrationReport:
 
 
 def notice(report: MigrationReport, system: str) -> tuple[str, str]:
-    """Titel und Text des einmaligen Hinweises nach einem Umzug."""
-    parts = []
-    if report.token_moved:
-        parts.append("deine Google-Anmeldung")
+    """Titel und Text des einmaligen Hinweises nach einem Umzug. Aufgerufen nur,
+    wenn etwas umgezogen ist (`MigrationReport.moved_anything`)."""
     n = len(report.webhooks_moved)
-    if n:
-        parts.append(f"die Zugangsdaten von {n} Webhook" + ("s" if n > 1 else ""))
-    what = " und ".join(parts)
-    # „liegt" nur, wenn allein die Google-Anmeldung umgezogen ist —
-    # „Zugangsdaten" ist Plural.
-    verb = "liegt" if parts == ["deine Google-Anmeldung"] else "liegen"
-    text = (f"{what[:1].upper()}{what[1:]} {verb} jetzt im Schlüsselbund des "
-            "Betriebssystems statt im Klartext im Datenordner.")
+    if report.token_moved and n == 0:
+        text = t("schluesselbund_umzug.nur_token")
+    elif report.token_moved and n == 1:
+        text = t("schluesselbund_umzug.token_und_webhook.eins", anzahl=n)
+    elif report.token_moved:
+        text = t("schluesselbund_umzug.token_und_webhook.viele", anzahl=n)
+    elif n == 1:
+        text = t("schluesselbund_umzug.webhook.eins", anzahl=n)
+    else:
+        text = t("schluesselbund_umzug.webhook.viele", anzahl=n)
     if system == "Darwin":
-        text += ("\n\nmacOS kann nach App-Updates erneut fragen, ob Zeiterfassung "
-                 "auf den Schlüsselbund zugreifen darf.")
-    return "Zugangsdaten im Schlüsselbund", text
+        text += t("schluesselbund_umzug.macos")
+    return t("schluesselbund_umzug.titel"), text
 
 
 def toast_text(report: MigrationReport) -> str:
     """Kurzform für den Tray-Toast (Autostart mit --minimized)."""
-    return "Zugangsdaten liegen jetzt im Schlüsselbund."
+    return t("schluesselbund_umzug.toast")
 
 
 def _forget_mobile_keys(path: str) -> None:
