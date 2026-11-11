@@ -115,11 +115,12 @@ def test_success_without_on_success_ui(monkeypatch):
 
 
 def test_shift_labels_are_distinct_and_mapped():
-    from src.send_reminder import SHIFT_LABELS, label_for_shift, shift_for_label
+    from src.send_reminder import label_for_shift, shift_for_label, shift_labels
 
-    assert set(SHIFT_LABELS) == {"none", "backward", "forward"}
-    assert len(set(SHIFT_LABELS.values())) == 3
-    for mode in SHIFT_LABELS:
+    labels = shift_labels()
+    assert set(labels) == {"none", "backward", "forward"}
+    assert len(set(labels.values())) == 3
+    for mode in labels:
         assert shift_for_label(label_for_shift(mode)) == mode
 
 

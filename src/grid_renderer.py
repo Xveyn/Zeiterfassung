@@ -11,7 +11,7 @@ import platform
 import tkinter as tk
 
 from src.time_utils import (
-    DAYS_DE, MONTHS_DE, format_day_month,
+    format_day_month, month_names, short_day_names,
     calculate_hours, format_hours_colon, format_iso_date, format_minutes_hm,
     get_week_dates, get_week_label, hours_to_minutes, week_spans_months,
 )
@@ -118,7 +118,7 @@ class GridRenderer:
             # FONT_HEADER (16pt) + width=16 — längste Variante "September 2026".
             font, width = FONT_HEADER, 16
             self._header_label.config(
-                text=f"{MONTHS_DE[self._month]} {self._year}", font=font, width=width,
+                text=f"{month_names()[self._month]} {self._year}", font=font, width=width,
             )
             self._refresh_month()
         else:
@@ -255,7 +255,7 @@ class GridRenderer:
             child.destroy()
         for col in range(7):
             self._configure_day_column(self._day_header, col, col < n)
-        for col, day_name in enumerate(DAYS_DE[:n]):
+        for col, day_name in enumerate(short_day_names()[:n]):
             fg = TEXT_MUTED if col < 5 else WEEKEND_FG
             tk.Label(
                 self._day_header, text=day_name, font=FONT_BOLD, bg=BG, fg=fg,

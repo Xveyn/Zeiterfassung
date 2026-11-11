@@ -149,3 +149,9 @@ def test_local_date_of_iso_empty_is_none():
 
 def test_local_date_of_iso_unparsable_is_none():
     assert local_date_of_iso("kein-datum") is None
+
+
+def test_short_day_and_month_names_use_the_active_locale():
+    from src.time_utils import month_names, short_day_names
+    assert short_day_names()[0] == "Mo" and len(short_day_names()) == 7
+    assert month_names()[3] == "März" and month_names()[0] == ""

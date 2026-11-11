@@ -10,23 +10,30 @@ gewählt hat. Rein, ohne Tkinter/IO.
 
 from collections.abc import Mapping
 
+from src.i18n import N_, t
 from src.settings import WEEKDAY_KEYS
 
 MODE_GENERAL = "general"
 MODE_PER_DAY = "per_day"
 
-MODE_LABELS = {MODE_GENERAL: "Allgemein", MODE_PER_DAY: "Tageweise"}
-_CODE_FOR_LABEL = {label: code for code, label in MODE_LABELS.items()}
+MODE_LABEL_KEYS = {MODE_GENERAL: N_("standardzeiten.modus_allgemein"),
+                   MODE_PER_DAY: N_("standardzeiten.modus_tageweise")}
+
+
+def mode_labels() -> dict[str, str]:
+    """Moduscode → Anzeigetext in der aktuellen Sprache (beim Aufruf aufgelöst)."""
+    return {code: t(MODE_LABEL_KEYS[code]) for code in MODE_LABEL_KEYS}
 
 
 def mode_label(code: str) -> str:
-    return MODE_LABELS.get(code, MODE_LABELS[MODE_GENERAL])
+    labels = mode_labels()
+    return labels.get(code, labels[MODE_GENERAL])
 
 
 def mode_code(label: str) -> str:
     """Anzeigetext der Combobox → Moduswert; Unbekanntes gilt als Tageweise,
     damit nie Tageswerte durch einen unlesbaren Wert verworfen werden."""
-    return _CODE_FOR_LABEL.get(label, MODE_PER_DAY)
+    return {text: code for code, text in mode_labels().items()}.get(label, MODE_PER_DAY)
 
 
 def days_differ(starts: Mapping[str, str], ends: Mapping[str, str]) -> bool:

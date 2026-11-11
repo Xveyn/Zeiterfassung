@@ -21,7 +21,7 @@ from src.theme import (
     BG, FONT, PAUSE_VALUES, TEXT_MUTED, TIME_VALUES, Form, dark_combo,
     dark_entry, themed_askyesno, themed_showwarning,
 )
-from src.time_utils import DAYS_DE
+from src.time_utils import short_day_names
 from src.weekly_limit import (
     format_limit_warnings, period_scan_needed, scan_period_for_warnings,
 )
@@ -98,7 +98,7 @@ class WorkTab:
         all_end_var = tk.StringVar(value=end_vars["mon"].get())
 
         form.row("Modus:", dark_combo(
-            body, mode_var, list(dt.MODE_LABELS.values()), width=12))
+            body, mode_var, list(dt.mode_labels().values()), width=12))
         general_cell = tk.Frame(body, bg=BG)
         dark_combo(general_cell, all_start_var, TIME_VALUES).pack(side=tk.LEFT)
         tk.Label(general_cell, text="–", font=FONT, bg=BG, fg=TEXT_MUTED).pack(
@@ -106,7 +106,7 @@ class WorkTab:
         dark_combo(general_cell, all_end_var, TIME_VALUES).pack(side=tk.LEFT)
         general_row = form.row("Alle Tage:", general_cell)
 
-        for key, lbl in zip(WEEKDAY_KEYS, DAYS_DE, strict=True):
+        for key, lbl in zip(WEEKDAY_KEYS, short_day_names(), strict=True):
             cell = tk.Frame(body, bg=BG)
             dark_combo(cell, start_vars[key], TIME_VALUES).pack(side=tk.LEFT)
             tk.Label(cell, text="–", font=FONT, bg=BG, fg=TEXT_MUTED).pack(

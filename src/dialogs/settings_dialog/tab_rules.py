@@ -41,7 +41,7 @@ from src.settings import (
     resolve_calendar_id,
 )
 from src.time_utils import (
-    DAYS_DE, format_iso_date, format_iso_datetime, validate_entry, validate_period,
+    short_day_names, format_iso_date, format_iso_datetime, validate_entry, validate_period,
 )
 from src.updater import frequency_for_label
 
@@ -73,7 +73,7 @@ def validate_work(raw: Mapping[str, Any]) -> tuple[str, str] | None:
         if not ok:
             return "Standard-Arbeitszeit ungültig", msg
     else:
-        for key, label in zip(WEEKDAY_KEYS, DAYS_DE, strict=True):
+        for key, label in zip(WEEKDAY_KEYS, short_day_names(), strict=True):
             ok, msg = validate_entry(raw[f"default_start_{key}"],
                                      raw[f"default_end_{key}"])
             if not ok:

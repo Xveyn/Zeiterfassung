@@ -14,12 +14,12 @@ import os
 import re
 from typing import TypedDict
 
+from src.i18n import t
+
 log = logging.getLogger(__name__)
 
 PRIVACY_DOC_RELATIVE = ("docs", "datenschutz.md")
 PRIVACY_DOC_URL = "https://github.com/Xveyn/Zeiterfassung/blob/master/docs/datenschutz.md"
-FALLBACK_TEXT = (
-    "Die Datenschutzhinweise konnten nicht geladen werden. Sie stehen im Projekt unter ")
 
 _HTML_COMMENT = re.compile(r"<!--.*?-->", re.DOTALL)
 _BULLET = re.compile(r"^(\s*)[-*]\s+(.*)$")
@@ -170,7 +170,7 @@ def load_privacy_doc(resource_dir: str) -> str | None:
 
 def fallback_blocks() -> list[Block]:
     """Der Ersatztext samt Link auf das Dokument im Repository."""
-    segments: list[Segment] = [_segment(FALLBACK_TEXT), _segment(PRIVACY_DOC_URL, "link", PRIVACY_DOC_URL)]
+    segments: list[Segment] = [_segment(t("datenschutz.ersatztext")), _segment(PRIVACY_DOC_URL, "link", PRIVACY_DOC_URL)]
     block: Block = {"kind": "paragraph", "segments": segments, "level": 0}
     return [block]
 

@@ -16,7 +16,7 @@ from typing import Any
 
 from src.devices import sanitize_device_name, short_device_id
 from src.time_utils import (
-    DAYS_DE, weekday_name, format_iso_date, format_iso_datetime,
+    short_day_names, weekday_name, format_iso_date, format_iso_datetime,
 )
 
 OWN_TITLE = "Dieses Gerät"
@@ -115,7 +115,7 @@ def list_label(conflict: dict[str, Any]) -> str:
     day = _date_of(key)
     if day is None:
         return key
-    return f"{DAYS_DE[day.weekday()]}, {format_iso_date(key)}"
+    return f"{short_day_names()[day.weekday()]}, {format_iso_date(key)}"
 
 
 def group_conflicts(conflicts: list[dict[str, Any]]

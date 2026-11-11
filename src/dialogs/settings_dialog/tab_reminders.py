@@ -14,7 +14,7 @@ from src.dialogs.settings_dialog.form_model import SaveOutcome
 from src.dialogs.settings_dialog.tab_rules import (
     phone_hint, reminders_updates, shift_moves, validate_reminders, visible_devices,
 )
-from src.send_reminder import SHIFT_LABELS, label_for_shift
+from src.send_reminder import label_for_shift
 from src.theme import TIME_VALUES, Form, dark_combo
 
 _MINUTES = [str(m) for m in range(0, 121, 5)]
@@ -88,7 +88,7 @@ class RemindersTab:
             form.row("Uhrzeit:", dark_combo(body, time_var, TIME_VALUES, width=6))
             form.row("Fällt er aufs Wochenende:", dark_combo(
                 body, shift_var,
-                [SHIFT_LABELS[m] for m in ("none", "backward", "forward")],
+                [label_for_shift(m) for m in ("none", "backward", "forward")],
                 width=18))
             with form.depends_on(shift_active):
                 form.check("auch Feiertage", holidays_var)

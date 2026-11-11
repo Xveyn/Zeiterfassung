@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import re
 
+from src.i18n import t
+
 VERSION = "1.28.0"
 
 # Kennung eines Releases: "1.19.0" (echtes Release) oder "1.19.0-pre.2"
@@ -111,10 +113,9 @@ def build_channel() -> str:
     return getattr(_build_info, "CHANNEL", "dev")
 
 
-UPDATES_UNSUPPORTED_HINT = (
-    "Dev-Builds (Test-Builds aus der CI und Start aus dem Quellcode) "
-    "erhalten keine Updates."
-)
+def updates_unsupported_hint() -> str:
+    """Hinweis für Dev-Builds, die nie auf Updates prüfen."""
+    return t("version.dev_ohne_updates")
 
 
 def updates_supported() -> bool:

@@ -8,7 +8,7 @@ from src.holidays_region import REGIONS
 
 STATES = REGIONS["DE"]
 from src.settings import WEEKDAY_KEYS
-from src.send_reminder import SHIFT_LABELS
+from src.send_reminder import label_for_shift
 from src.updater import FREQUENCY_OPTIONS
 
 
@@ -165,7 +165,7 @@ def reminders_raw(**overrides):
         "reminders_enabled": True, "reminder_minutes_before": "15",
         "send_reminder_enabled": True, "send_reminder_day": "28",
         "send_reminder_time": "09:00",
-        "send_reminder_weekend_shift": SHIFT_LABELS["backward"],
+        "send_reminder_weekend_shift": label_for_shift("backward"),
         "send_reminder_shift_holidays": False,
         "send_reminder_reservations_enabled": True,
         "send_reminder_default_minutes": "30",
@@ -225,9 +225,9 @@ def test_reminders_updates_keeps_values_of_disabled_options():
 
 
 def test_shift_moves():
-    assert tr.shift_moves(SHIFT_LABELS["none"]) is False
-    assert tr.shift_moves(SHIFT_LABELS["backward"]) is True
-    assert tr.shift_moves(SHIFT_LABELS["forward"]) is True
+    assert tr.shift_moves(label_for_shift("none")) is False
+    assert tr.shift_moves(label_for_shift("backward")) is True
+    assert tr.shift_moves(label_for_shift("forward")) is True
 
 
 def test_app_updates_clamps_scale():

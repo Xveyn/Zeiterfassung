@@ -14,6 +14,7 @@ from typing import Any
 from urllib.error import URLError
 from urllib.request import Request, urlopen
 
+from src.i18n import t
 from src.version import VERSION
 
 _RAW_URL = "https://raw.githubusercontent.com/{repo}/v{version}/CHANGELOG.md"
@@ -107,7 +108,12 @@ def _split_bold(content: str) -> list[tuple[str, tuple[str, ...]]]:
 # veröffentlichte Version, also genau das, was der Nutzer schon hat. Der Body
 # trägt aber Verweise, die im Updates-Tab nichts nützen — er ist ein reines
 # Text-Widget ohne Klick-Ziele.
-NO_CHANGES_NOTICE = "Keine Änderungen seit dem letzten Release."
+
+
+def no_changes_notice() -> str:
+    """Ersatztext, wenn die aufbereiteten Notes leer wären."""
+    return t("changelog.keine_aenderungen")
+
 
 # "**Full Changelog**: <url>" — ohne die URL bliebe ein nacktes Label ohne Ziel.
 _FULL_CHANGELOG_LINE = re.compile(r"^\*\*Full Changelog\*\*:.*$", re.MULTILINE)
@@ -134,7 +140,7 @@ def release_notes_for_display(notes: str) -> str:
     `parse_changelog_markdown`.
 
     Bleibt nichts übrig (ein Pre-Release direkt nach einem Release hat keine
-    PRs in den Notes), kommt `NO_CHANGES_NOTICE` zurück — eine leere Box sähe
+    PRs in den Notes), kommt `no_changes_notice()` zurück — eine leere Box sähe
     aus wie ein Ladefehler.
     """
     text = _HTML_COMMENT.sub("", notes)
@@ -151,7 +157,7 @@ def release_notes_for_display(notes: str) -> str:
         lines.append(line)
     while lines and not lines[-1]:
         lines.pop()
-    return "\n".join(lines) or NO_CHANGES_NOTICE
+    return "\n".join(lines) or no_changes_notice()
 
 
 def parse_changelog_markdown(text: str) -> list[dict[str, Any]]:

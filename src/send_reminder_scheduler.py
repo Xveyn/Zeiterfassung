@@ -22,7 +22,7 @@ import logging
 
 from src import send_reminder
 from src.region import country_region
-from src.time_utils import MONTHS_DE
+from src.time_utils import month_names
 
 log = logging.getLogger(__name__)
 
@@ -143,7 +143,7 @@ class SendReminderScheduler:
 
 def _toast_text(now_dt):
     """Deutscher Toast-Text mit dem aktuellen Monat."""
-    return f"Zeit, deine Arbeitszeiten für {MONTHS_DE[now_dt.month]} zu verschicken."
+    return f"Zeit, deine Arbeitszeiten für {month_names()[now_dt.month]} zu verschicken."
 
 
 def _day_toast_text(rem):

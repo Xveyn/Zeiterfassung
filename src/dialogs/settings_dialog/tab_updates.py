@@ -35,7 +35,7 @@ from src.updater import (
     resolve_check_result, today_iso,
 )
 from src.version import (
-    UPDATES_UNSUPPORTED_HINT, installed_release_id, updates_supported,
+    installed_release_id, updates_supported, updates_unsupported_hint,
 )
 
 
@@ -121,7 +121,7 @@ class UpdatesTab:
             form.block(btn_row)
             form.block(self._last_check_label, pady=(0, 4))
         else:
-            self._set_status(UPDATES_UNSUPPORTED_HINT)
+            self._set_status(updates_unsupported_hint())
         self._restyle_buttons()
 
         # Direkt unter Status und Knöpfen (#132): bisher trennten drei

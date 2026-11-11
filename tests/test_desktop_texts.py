@@ -77,7 +77,28 @@ FILE_EXEMPT: dict[str, str] = {
 _CALENDAR = "Ausgabe/Teil 3: Text des Google-Kalendertermins"
 _MAIL_TEMPLATE = "Ausgabe/Teil 3: Default der Mail-Vorlage, gespeichert als Einstellungswert"
 _QUARANTINE = "Grund im Log der Quarantäne (`_quarantine_corrupt`), nie angezeigt"
+_LOCALE_TABLE = "Locale-Tabelle: die eine Stelle für Namen und Muster je Locale, kein Katalogtext"
 ALLOWED: dict[str, dict[str, str]] = {
+    "src/locale_format.py": {
+        "{weekday} - {date}": _LOCALE_TABLE,
+        **{n: _LOCALE_TABLE for n in (
+            "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag",
+            "Mo", "Di", "Mi", "Do", "Fr", "Sa", "So",
+            "Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August",
+            "September", "Oktober", "November", "Dezember")},
+    },
+    "src/time_utils.py": {
+        **{n: "Ausgabe/Teil 3: Wochentage des Berichts (`DAYS_DE`, nur von report.py gelesen)"
+           for n in ("Mo", "Di", "Mi", "Do", "Fr", "Sa", "So")},
+    },
+    "src/version.py": {
+        "{}-dev ({})": "Build-Kennung im Fenstertitel und Installer (`build_label`), sprachneutral",
+    },
+    "src/vacations.py": {
+        "apply_reconciled: entry {} missing keys {}": (
+            "Invariante: die Eingabe stammt aus `store.get_all_raw()` (vacations_sync.py), "
+            "ein Verstoß endet als Worker-Traceback im nativen Fehlerdialog, nie als Meldung"),
+    },
     "src/gcal.py": {
         "Arbeitszeit (reserviert)": _CALENDAR,
         "Von der Zeiterfassung verwaltete Reservierung.": _CALENDAR,
@@ -99,17 +120,8 @@ ALLOWED: dict[str, dict[str, str]] = {
 # nimmt ihre Dateien heraus; eine Datei hier ohne verbleibende Fundstelle macht den Test rot.
 PENDING: list[str] = [
     # Task 2
-    "src/time_utils.py",
-    "src/vacations.py",
-    "src/default_times.py",
-    "src/send_reminder.py",
-    "src/dpi.py",
-    "src/version.py",
-    "src/changelog.py",
-    "src/privacy_doc.py",
     "src/oauth_utils.py",
     "src/mail.py",
-    "src/locale_format.py",
     "src/dialogs/slot_rows.py",
     # Task 3
     "src/theme/messagebox.py",
