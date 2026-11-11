@@ -25,6 +25,7 @@ from typing import Any, Callable
 from urllib.error import URLError
 from urllib.request import Request, urlopen
 
+from src.i18n import t
 from src.updater import pick_asset_url
 from src.version import VERSION
 
@@ -127,29 +128,28 @@ def download_and_verify_update(
     """
     sums_text = fetch_text(plan.sums_url)
     if sums_text is None:
-        return "Die Prüfsummen ließen sich nicht laden."
+        return t("selbst_update.pruefsummen_laden")
     expected = parse_sha256sums(sums_text).get(plan.asset_name)
     if not expected:
-        return "Für diese Datei steht keine Prüfsumme im Release."
+        return t("selbst_update.keine_pruefsumme")
 
     def progress(done: int, total: int) -> None:
         if on_progress is None:
             return
         pct = f"{done * 100 // total} %" if total else f"{done // 1024} KB"
-        on_progress(f"Lade {plan.asset_name} … {pct}")
+        on_progress(t("selbst_update.lade", datei=plan.asset_name, fortschritt=pct))
 
     if not download_to(plan.asset_url, dest, on_progress=progress):
-        return "Der Download ist fehlgeschlagen."
+        return t("selbst_update.download_fehlgeschlagen")
 
     if on_progress is not None:
-        on_progress("Prüfe Prüfsumme …")
+        on_progress(t("selbst_update.pruefe"))
     if not verify_file(dest, expected):
         try:
             os.remove(dest)
         except OSError:
             pass  # Löschen ist best-effort; die Datei wird nicht benutzt
-        return ("Die Prüfsumme der geladenen Datei stimmt nicht. "
-                "Die Datei wurde verworfen.")
+        return t("selbst_update.pruefsumme_falsch")
     return DownloadedUpdate(path=dest, sha256=expected)
 
 
@@ -176,34 +176,24 @@ def plan_update(release: Any, system: str, machine: str, frozen: bool,
     """
     if not supports_self_update(system, frozen):
         if system == "Darwin":
-            return UpdateBlocked(
-                "Unter macOS lädt die App das Update nicht selbst — "
-                "der Download öffnet sich im Browser.")
-        return UpdateBlocked(
-            "Das Update aus der App heraus gibt es nur in der installierten "
-            "Version. Der Download öffnet sich im Browser.")
+            return UpdateBlocked(t("selbst_update.macos"))
+        return UpdateBlocked(t("selbst_update.nur_installiert"))
 
     asset_url = pick_asset_url(release.assets, system, release.version, machine)
     if asset_url is None:
         # Bewusst OHNE das Wort „Architektur": `pick_asset_url` prüft sie nur
         # auf macOS und Linux. Unter Windows heißt `None` schlicht „das Asset
         # fehlt in diesem Release" — dieser Text ist in beiden Fällen wahr.
-        return UpdateBlocked(
-            "Für diesen Rechner gibt es in diesem Release keine passende "
-            "Datei.")
+        return UpdateBlocked(t("selbst_update.keine_datei"))
 
     sums_url = next(
         (a.url for a in release.assets if a.name == SUMS_ASSET_NAME), None)
     if sums_url is None:
-        return UpdateBlocked(
-            "Dieses Release enthält keine Prüfsummen-Datei — die App "
-            "installiert nur, was sie prüfen kann.")
+        return UpdateBlocked(t("selbst_update.keine_summen_datei"))
 
     if system == "Linux":
         if not appimage:
-            return UpdateBlocked(
-                "Die App läuft nicht als AppImage — nur dort kann sie sich "
-                "selbst aktualisieren. Der Download öffnet sich im Browser.")
+            return UpdateBlocked(t("selbst_update.kein_appimage"))
         target = appimage
     else:
         target = executable
@@ -353,12 +343,12 @@ def apply_linux(appimage: str, downloaded: str) -> str | None:
         mode = os.stat(downloaded).st_mode
         os.chmod(downloaded, mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
     except OSError as exc:
-        return f"Die geladene Datei ließ sich nicht ausführbar machen: {exc}"
+        return t("selbst_update.nicht_ausfuehrbar", fehler=exc)
 
     try:
         os.replace(appimage, backup)
     except OSError as exc:
-        return f"Die alte AppImage ließ sich nicht sichern: {exc}"
+        return t("selbst_update.alte_nicht_gesichert", fehler=exc)
 
     try:
         os.replace(downloaded, appimage)
@@ -367,7 +357,7 @@ def apply_linux(appimage: str, downloaded: str) -> str | None:
             os.replace(backup, appimage)
         except OSError:
             log.exception("Rollback der AppImage fehlgeschlagen")
-        return f"Die neue AppImage ließ sich nicht einsetzen: {exc}"
+        return t("selbst_update.neue_nicht_eingesetzt", fehler=exc)
     return None
 
 

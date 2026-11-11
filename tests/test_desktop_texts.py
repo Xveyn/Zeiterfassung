@@ -77,6 +77,7 @@ FILE_EXEMPT: dict[str, str] = {
 _CALENDAR = "Ausgabe/Teil 3: Text des Google-Kalendertermins"
 _MAIL_TEMPLATE = "Ausgabe/Teil 3: Default der Mail-Vorlage, gespeichert als Einstellungswert"
 _QUARANTINE = "Grund im Log der Quarantäne (`_quarantine_corrupt`), nie angezeigt"
+_CMD = "Windows-Helfer-Skript (`apply_windows`): Zeile der .cmd-Datei, die cmd.exe ausführt, nie angezeigt"
 _LOCALE_TABLE = "Locale-Tabelle: die eine Stelle für Namen und Muster je Locale, kein Katalogtext"
 _TECH_DESKTOP = "Dateiinhalt einer Freedesktop-`.desktop`-Datei, gelesen vom Desktop"
 
@@ -95,6 +96,15 @@ ALLOWED: dict[str, dict[str, str]] = {
     },
     "src/version.py": {
         "{}-dev ({})": "Build-Kennung im Fenstertitel und Installer (`build_label`), sprachneutral",
+    },
+    "src/self_update.py": {
+        "Content-Length": "HTTP-Kopfname der Antwort",
+        **{n: _CMD for n in (
+            "@echo off", "set TRIES={}", 'tasklist /FI "PID eq {}" 2>nul | find "{}" >nul',
+            "if errorlevel 1 goto install", "set /a TRIES-=1", "if %TRIES% LEQ 0 goto install",
+            "timeout /t 1 /nobreak >nul", "goto wait",
+            'echo Installer beendet mit %ERRORLEVEL% > "{}"', 'start "" "{}"',
+            'del "{}" >nul 2>&1')},
     },
     "src/removal.py": {
         "rm -- {}": "Shell-Befehl, den der Dialog zum Kopieren zeigt (`app_file_command`, "
@@ -190,7 +200,6 @@ ALLOWED: dict[str, dict[str, str]] = {
 PENDING: list[str] = [
     # Task 3
     # Task 4
-    "src/self_update.py",
     "src/secret_migration.py",
     "src/weekly_limit.py",
     "src/reminder_scheduler.py",
