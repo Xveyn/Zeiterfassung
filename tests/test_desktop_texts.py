@@ -271,6 +271,9 @@ ALLOWED: dict[str, dict[str, str]] = {
     "src/webhook_secrets.py": {
         "Schlüsselbund-Markierung ohne gespeichertes Secret desselben Verfahrens": _PROGRAM_ERROR,
     },
+    "src/dialogs/mobile_pair_dialog.py": {
+        "Der Relay-Modus braucht relay und runner": "Programmierfehler: open_pair_dialog ValueError bei Aufruf mit mode='relay' ohne relay/runner; alle Aufrufer (tab_mobile) übergeben beides, der Text erreicht keinen Dialog",
+    },
     "src/dialogs/webhook_dialog.py": {
         "Authorization": "HTTP-Header-Name (Protokollbezeichner), Vorbelegung des Felds „Header:“ (DEFAULT_HEADERS) und Verbraucher auth_headers; nicht übersetzbar",
         "X-Hub-Signature-256": "HTTP-Header-Name (Protokollbezeichner), Vorbelegung des Felds „Header:“ (DEFAULT_HEADERS) und Verbraucher auth_headers; nicht übersetzbar",
@@ -311,8 +314,6 @@ PENDING: list[str] = [
     # eine Variable — die Regel sieht es nicht, die Umstellung muss es von Hand mitnehmen)
     # Task 9
     # Task 10
-    "src/dialogs/vacation_dialog.py",
-    "src/dialogs/mobile_pair_dialog.py",
     # Task 11
     "src/ui.py",
     "src/grid_renderer.py",

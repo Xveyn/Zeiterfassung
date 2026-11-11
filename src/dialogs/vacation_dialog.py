@@ -12,6 +12,7 @@ import tkinter as tk
 from tkinter import ttk
 
 from src.holidays_region import get_holidays
+from src.i18n import t
 from src.region import country_region
 from src.theme import (
     ACCENT, BG, CELL_BG, FONT, FONT_BOLD, FONT_SMALL, TEXT, TEXT_MUTED,
@@ -114,9 +115,9 @@ def open_vacation_dialog(parent, vacation_store, settings, on_change=None,
     `on_display_change` (nur neu zeichnen), sonst löste ein Häkchen für eine
     Textzeile einen Netz-Reconcile aus.
     """
-    dialog = create_dialog(parent, "Urlaub verwalten")
+    dialog = create_dialog(parent, t("urlaub_dialog.titel"))
 
-    tk.Label(dialog, text="Urlaubszeiträume", font=FONT_BOLD, bg=BG,
+    tk.Label(dialog, text=t("urlaub_dialog.zeitraeume"), font=FONT_BOLD, bg=BG,
              fg=TEXT).pack(anchor="w", padx=12, pady=(12, 4))
 
     # Kalender-Schalter. Gebaut NUR bei nutzbarem Kalender (aktiviert und
@@ -128,7 +129,7 @@ def open_vacation_dialog(parent, vacation_store, settings, on_change=None,
     if gcal_ready:
         push_var = tk.BooleanVar(value=bool(settings.get("vacation_gcal_enabled")))
         tk.Checkbutton(
-            dialog, text="In den Google-Kalender eintragen",
+            dialog, text=t("urlaub_dialog.in_kalender"),
             variable=push_var, command=lambda: _toggle_push(),
             font=FONT, bg=BG, fg=TEXT, selectcolor=CELL_BG,
             activebackground=BG, activeforeground=TEXT,
@@ -140,7 +141,7 @@ def open_vacation_dialog(parent, vacation_store, settings, on_change=None,
     # nichts Externem, und die Zelle gibt es, sobald ein Urlaub existiert.
     show_hours_var = tk.BooleanVar(value=bool(settings.get("vacation_show_hours")))
     tk.Checkbutton(
-        dialog, text="Stunden an Urlaubstagen im Kalender anzeigen",
+        dialog, text=t("urlaub_dialog.stunden_anzeigen"),
         variable=show_hours_var, command=lambda: _toggle_show_hours(),
         font=FONT, bg=BG, fg=TEXT, selectcolor=CELL_BG,
         activebackground=BG, activeforeground=TEXT,
@@ -165,7 +166,7 @@ def open_vacation_dialog(parent, vacation_store, settings, on_change=None,
 
     hint = tk.Label(
         dialog,
-        text="Löschen geht auch per Rechtsklick auf einen Urlaubstag im Kalender.",
+        text=t("urlaub_dialog.loeschen_hinweis"),
         font=FONT_SMALL, bg=BG, fg=TEXT_MUTED)
     hint.pack(anchor="w", padx=12, pady=(4, 0))
 
@@ -202,8 +203,8 @@ def open_vacation_dialog(parent, vacation_store, settings, on_change=None,
         except OSError as e:
             show_hours_var.set(not enabled)
             themed_showerror(
-                dialog, "Einstellung nicht gespeichert",
-                f"Die Einstellungen konnten nicht geschrieben werden:\n\n{e}")
+                dialog, t("urlaub_dialog.einstellung_titel"),
+                t("urlaub_dialog.einstellung_fehler", fehler=e))
             return
         if on_display_change is not None:
             on_display_change()
@@ -224,8 +225,8 @@ def open_vacation_dialog(parent, vacation_store, settings, on_change=None,
         except OSError as e:
             push_var.set(not enabled)   # Anzeige und Zustand nicht auseinanderlaufen lassen
             themed_showerror(
-                dialog, "Einstellung nicht gespeichert",
-                f"Die Einstellungen konnten nicht geschrieben werden:\n\n{e}")
+                dialog, t("urlaub_dialog.einstellung_titel"),
+                t("urlaub_dialog.einstellung_fehler", fehler=e))
             return
 
         if enabled:
@@ -238,10 +239,8 @@ def open_vacation_dialog(parent, vacation_store, settings, on_change=None,
         if not pushed or runner is None:
             return
         if not themed_askyesno(
-                dialog, "Urlaubstermine entfernen?",
-                "Die bereits im Kalender eingetragenen Urlaubstermine "
-                "entfernen?\n\n„Nein“ lässt sie stehen — "
-                "die App fasst sie danach nicht mehr an.", lock_ms=600):
+                dialog, t("urlaub_dialog.termine_entfernen_titel"),
+                t("urlaub_dialog.termine_entfernen_frage"), lock_ms=600):
             return
 
         def _on_purged(result):
@@ -252,11 +251,9 @@ def open_vacation_dialog(parent, vacation_store, settings, on_change=None,
                 # einen TclError, den `_marshal_to_ui` still verschluckt.
                 target = dialog if dialog.winfo_exists() else parent
                 themed_showerror(
-                    target, "Urlaubstermine nicht entfernt",
-                    "Die Termine konnten nicht aus dem Kalender entfernt "
-                    "werden:\n\n" + result.get("error", "")
-                    + "\n\nDer Push ist trotzdem abgeschaltet; "
-                    "die Termine stehen noch im Kalender.")
+                    target, t("urlaub_dialog.termine_fehler_titel"),
+                    t("urlaub_dialog.termine_fehler",
+                      fehler=result.get("error", "")))
 
         runner.purge_vacations(_on_purged)
 
@@ -267,8 +264,8 @@ def open_vacation_dialog(parent, vacation_store, settings, on_change=None,
     def _edit():
         pid = _selected_id()
         if pid is None:
-            themed_showerror(dialog, "Kein Urlaub gewählt",
-                             "Bitte zuerst einen Urlaubszeitraum auswählen.")
+            themed_showerror(dialog, t("urlaub_dialog.keine_auswahl_titel"),
+                             t("urlaub_dialog.keine_auswahl"))
             return
         _open_edit_dialog(dialog, vacation_store, settings, pid, _changed,
                           storage, reservation_store)
@@ -276,8 +273,8 @@ def open_vacation_dialog(parent, vacation_store, settings, on_change=None,
     def _delete():
         pid = _selected_id()
         if pid is None:
-            themed_showerror(dialog, "Kein Urlaub gewählt",
-                             "Bitte zuerst einen Urlaubszeitraum auswählen.")
+            themed_showerror(dialog, t("urlaub_dialog.keine_auswahl_titel"),
+                             t("urlaub_dialog.keine_auswahl"))
             return
         period = vacation_store.get(pid)
         if period is None:
@@ -287,18 +284,19 @@ def open_vacation_dialog(parent, vacation_store, settings, on_change=None,
             _changed()
             return
         if not themed_askyesno(
-                dialog, "Urlaub löschen",
-                f"Urlaub „{period['name']}“ komplett löschen?", lock_ms=600):
+                dialog, t("urlaub_dialog.loeschen_titel"),
+                t("urlaub_dialog.loeschen_frage", name=period['name']),
+                lock_ms=600):
             return
         vacation_store.delete(pid)
         _changed()
 
     buttons = tk.Frame(dialog, bg=BG)
     buttons.pack(fill=tk.X, padx=12, pady=12)
-    secondary_button(buttons, "Neu", _new).pack(side=tk.LEFT)
-    secondary_button(buttons, "Bearbeiten", _edit).pack(side=tk.LEFT, padx=(8, 0))
-    secondary_button(buttons, "Löschen", _delete).pack(side=tk.LEFT, padx=(8, 0))
-    primary_button(buttons, "Schließen", dialog.destroy).pack(side=tk.RIGHT)
+    secondary_button(buttons, t("urlaub_dialog.neu"), _new).pack(side=tk.LEFT)
+    secondary_button(buttons, t("urlaub_dialog.bearbeiten"), _edit).pack(side=tk.LEFT, padx=(8, 0))
+    secondary_button(buttons, t("knopf.loeschen"), _delete).pack(side=tk.LEFT, padx=(8, 0))
+    primary_button(buttons, t("knopf.schliessen"), dialog.destroy).pack(side=tk.RIGHT)
 
     _reload()
     center_dialog_on_parent(dialog, parent)
@@ -309,7 +307,8 @@ def _open_edit_dialog(parent, vacation_store, settings, period_id, on_saved,
     """Anlegen bzw. Bearbeiten einer Periode: Name, Von/Bis, Stunden-Modus und
     die aufklappbare Tagesliste."""
     existing = vacation_store.get(period_id) if period_id else None
-    title = "Urlaub bearbeiten" if existing else "Urlaub eintragen"
+    title = (t("urlaub_dialog.titel_bearbeiten") if existing
+             else t("urlaub_dialog.titel_neu"))
     dialog = create_dialog(parent, title)
     # Registriert die ttk-Styles des Dark-Themes — Dark.TCombobox für die
     # Von/Bis-Zeilen UND Vertical.TScrollbar für die Tagesliste unten.
@@ -324,7 +323,7 @@ def _open_edit_dialog(parent, vacation_store, settings, period_id, on_saved,
 
     name_row = tk.Frame(dialog, bg=BG)
     name_row.pack(anchor="w", padx=12, pady=(12, 4))
-    tk.Label(name_row, text="Name:", font=FONT, bg=BG, fg=TEXT, width=6,
+    tk.Label(name_row, text=t("urlaub_dialog.name"), font=FONT, bg=BG, fg=TEXT, width=6,
              anchor="w").pack(side=tk.LEFT, padx=(0, 5))
     name_var = tk.StringVar(value=existing["name"] if existing else "")
     dark_entry(name_row, name_var, width=30).pack(side=tk.LEFT)
@@ -332,10 +331,10 @@ def _open_edit_dialog(parent, vacation_store, settings, period_id, on_saved,
     # year_to_offset=3 statt des Defaults 2: ein Urlaub über den Jahreswechsel
     # muss sich auch im laufenden Jahr noch für das übernächste eintragen
     # lassen (Default deckt 2026 nur bis 2027 ab).
-    from_row = build_date_row(dialog, "Von:", from_default,
+    from_row = build_date_row(dialog, t("zeitraum.von"), from_default,
                               on_change=lambda: _recalc(), label_width=6,
                               year_to_offset=3)
-    to_row = build_date_row(dialog, "Bis:", to_default,
+    to_row = build_date_row(dialog, t("zeitraum.bis"), to_default,
                             on_change=lambda: _recalc(), label_width=6,
                             year_to_offset=3)
     from_row.frame.pack(anchor="w", padx=12, pady=4)
@@ -349,8 +348,7 @@ def _open_edit_dialog(parent, vacation_store, settings, period_id, on_saved,
     if not region:
         tk.Label(
             dialog,
-            text=("Kein Bundesland gewählt — Feiertage werden als "
-                  "Urlaubstage mit Stunden gezählt."),
+            text=t("urlaub_dialog.kein_bundesland"),
             font=FONT_SMALL, bg=BG, fg=TEXT_MUTED, wraplength=px(380),
             justify="left",
         ).pack(anchor="w", padx=12, pady=(4, 0))
@@ -366,8 +364,8 @@ def _open_edit_dialog(parent, vacation_store, settings, period_id, on_saved,
 
     mode_frame = tk.Frame(dialog, bg=BG)
     mode_frame.pack(anchor="w", padx=12, pady=(8, 4))
-    for mode, label in (("per_day", "Stunden pro Tag"),
-                        ("total", "Gesamtstunden")):
+    for mode, label in (("per_day", t("urlaub_dialog.pro_tag")),
+                        ("total", t("urlaub_dialog.gesamtstunden"))):
         tk.Radiobutton(
             mode_frame, text=label, variable=mode_var, value=mode,
             command=lambda: _recalc(drop_overrides=True), font=FONT, bg=BG,
@@ -384,7 +382,7 @@ def _open_edit_dialog(parent, vacation_store, settings, period_id, on_saved,
     expanded = {"on": False}
 
     toggle = secondary_button(
-        dialog, "▸ Einzelne Tage anpassen", lambda: _toggle_days())
+        dialog, t("urlaub_dialog.tage_zu"), lambda: _toggle_days())
     toggle.pack(anchor="w", padx=12, pady=(8, 0))
 
     # Scrollbarer Container für die Tagesliste — Muster aus import_dialog.py:391.
@@ -429,7 +427,7 @@ def _open_edit_dialog(parent, vacation_store, settings, period_id, on_saved,
     def _current_plan():
         df, dt = _range()
         if df is None or dt is None:
-            return {"error": "Ungültiges Datum.", "days": {}}
+            return {"error": t("urlaub_dialog.datum_ungueltig"), "days": {}}
         return plan_vacation_save(
             name_var.get().strip(), df.isoformat(), dt.isoformat(),
             mode_var.get(), _value(), overrides, region, country)
@@ -468,10 +466,11 @@ def _open_edit_dialog(parent, vacation_store, settings, period_id, on_saved,
     def _update_total():
         plan = _current_plan()
         if plan["error"] and not plan["days"]:
-            total_label.config(text="Urlaub gesamt: —")
+            total_label.config(text=t("urlaub_dialog.gesamt_leer"))
             return
         total_label.config(
-            text=f"Urlaub gesamt: {format_minutes_hm(sum(plan['days'].values()))}")
+            text=t("urlaub_dialog.gesamt",
+                   dauer=format_minutes_hm(sum(plan['days'].values()))))
 
     def _recalc(drop_overrides=False):
         """Neu berechnen. `drop_overrides` NUR, wenn der Nutzer den
@@ -506,15 +505,15 @@ def _open_edit_dialog(parent, vacation_store, settings, period_id, on_saved,
             # späteres pack() hängt es HINTEN an — die Tagesliste landete sonst
             # unter „Urlaub gesamt" und unter den Buttons.
             day_scroll.pack(anchor="w", padx=24, fill=tk.X, before=total_label)
-            set_button_text(toggle, "▾ Einzelne Tage anpassen")
+            set_button_text(toggle, t("urlaub_dialog.tage_auf"))
         else:
             day_scroll.pack_forget()
-            set_button_text(toggle, "▸ Einzelne Tage anpassen")
+            set_button_text(toggle, t("urlaub_dialog.tage_zu"))
 
     def _save():
         plan = _current_plan()
         if plan["error"]:
-            themed_showerror(dialog, "Urlaub nicht gespeichert", plan["error"])
+            themed_showerror(dialog, t("urlaub_dialog.nicht_gespeichert"), plan["error"])
             return
         # Die Regel (Reservierungen nur, wenn eingeschaltet) liegt in
         # `blocking_days`, ausgewertet erst jetzt beim Speichern; hier nur die
@@ -527,13 +526,8 @@ def _open_edit_dialog(parent, vacation_store, settings, period_id, on_saved,
             settings)
         if blocked:
             themed_showerror(
-                dialog, "Urlaub nicht gespeichert",
-                "An diesen Tagen ist bereits Arbeitszeit oder eine "
-                "Reservierung erfasst:\n\n"
-                + _format_day_list(blocked)
-                + "\n\nUrlaub und Arbeitszeit schließen sich am selben Tag "
-                  "aus. Lösche zuerst die Einträge (Rechtsklick im Kalender) "
-                  "oder wähle einen anderen Zeitraum.")
+                dialog, t("urlaub_dialog.nicht_gespeichert"),
+                t("urlaub_dialog.gesperrt", tage=_format_day_list(blocked)))
             return
         df, dt = _range()
         try:
@@ -541,12 +535,12 @@ def _open_edit_dialog(parent, vacation_store, settings, period_id, on_saved,
                                 df.isoformat(), dt.isoformat(), plan["days"])
         except ValueError as e:
             # Überschneidung mit einer anderen Periode — bekannter Fehler.
-            themed_showerror(dialog, "Urlaub nicht gespeichert", str(e))
+            themed_showerror(dialog, t("urlaub_dialog.nicht_gespeichert"), str(e))
             return
         except OSError as e:
             themed_showerror(
-                dialog, "Urlaub nicht gespeichert",
-                f"Die Urlaubsdatei konnte nicht geschrieben werden:\n\n{e}")
+                dialog, t("urlaub_dialog.nicht_gespeichert"),
+                t("urlaub_dialog.datei_fehler", fehler=e))
             return
         # Sammelwert als Vorbelegung für den nächsten Urlaub merken — sonst
         # wäre die Einstellung nur per Hand-Edit der settings.json änderbar
@@ -571,8 +565,8 @@ def _open_edit_dialog(parent, vacation_store, settings, period_id, on_saved,
 
     buttons = tk.Frame(dialog, bg=BG)
     buttons.pack(fill=tk.X, padx=12, pady=12)
-    secondary_button(buttons, "Abbrechen", dialog.destroy).pack(side=tk.RIGHT)
-    primary_button(buttons, "Speichern", _save).pack(side=tk.RIGHT, padx=(0, 8))
+    secondary_button(buttons, t("knopf.abbrechen"), dialog.destroy).pack(side=tk.RIGHT)
+    primary_button(buttons, t("knopf.speichern"), _save).pack(side=tk.RIGHT, padx=(0, 8))
 
     _update_total()
     center_dialog_on_parent(dialog, parent)
