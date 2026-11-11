@@ -20,12 +20,10 @@ const sources = readdirSync(root).filter((f) => f.endsWith('.js')).sort();
 
 // Stand der Inventur (Treffer in Klammern: Nutzertexte außerhalb der Ausnahmen).
 const PENDING = new Set([
-  'app.js',            // 24
   'categories.js',     // 20
   'debug-info.js',     // 27
   'debug-log.js',      // 4
   'lock.js',           // 14
-  'minutes.js',        // 14
   'pairing.js',        // 1
   'privacy-view.js',   // 4
   'push-blob.js',      // 3
@@ -35,7 +33,6 @@ const PENDING = new Set([
   'relay-transport.js', // 8
   'scanner.js',        // 2
   'shift-policy.js',   // 3
-  'store.js',          // 4
   'sw-repair.js',      // 7
   'sync.js',           // 25
   'unpair.js',         // 6
@@ -48,6 +45,10 @@ const FILE_EXEMPT = new Set(['crypto.js', 'relay-frame.js', 'db.js', 'memory-ada
 
 // Einzelne technische Literale in sonst fertigen Dateien (Datei → Texte, mit Grund).
 const ALLOWED = {
+  'app.js': ['PushManager', 'Notification',               // Feature-Erkennung (Browser-API-Namen)
+    '(display-mode: standalone)',                       // Media-Query
+    'Zustand',                                          // Zeilenname des Debug-Blocks, mit debug-info.js entscheiden
+    'Kein Export vorbereitet', 'Protokoll nicht geleert'], // interne Errors, nie angezeigt (views.js/unpair.js fangen sie mit eigenem Text bzw. Log)
   'browser-policy.js': ['Chromium'],                    // Markenname im User-Agent-Vergleich
   'diagnose.js': ['[Zeiterfassung] ${}: ${}',            // console-Präfix
     'Failed to update a ServiceWorker: '],               // Chromes englischer Fehlertext, wird nur abgeschnitten

@@ -23,6 +23,7 @@ import {
 import { aheadDays } from './window-policy.js';
 import { blockSignature, categoryRows, validateCategoryRows } from './categories.js';
 import { adoptDesktopLanguage } from './language.js';
+import { t } from './i18n.js';
 
 /** Die Meta des Stores. `null` heißt bei den markierten Feldern „älterer Desktop“ (Feature-Erkennung), nie „leer“.
  * @typedef {object} Meta
@@ -278,7 +279,7 @@ export class Store {
 
   /** Speichert einen Tag (geprüfte Slots). Wirft bei ungültigen Slots oder Datum. */
   async saveDay(date, slots) {
-    if (!isIsoDate(date)) throw new Error(`Ungültiges Datum: ${date}`);
+    if (!isIsoDate(date)) throw new Error(t('fehler.ungueltiges_datum', { datum: date }));
     const normalized = normalizeSlots(slots);
     const check = validateSlots(normalized);
     if (!check.ok) throw new Error(check.message);
@@ -369,7 +370,7 @@ export class Store {
    *  (`categories`, `defaults.category_times`) ändert sich sofort; der Abgleich schickt den Block. */
   async saveCategories({ categories, category_times: categoryTimes }) {
     if (!this._meta.settings_writable || !this._meta.defaults) {
-      throw new Error('Der Desktop unterstützt das Bearbeiten der Kategorien nicht. Bitte die Desktop-App aktualisieren.');
+      throw new Error(t('fehler.kategorien_nicht_unterstuetzt'));
     }
     const check = validateCategoryRows(categoryRows(categories, categoryTimes));
     if (!check.ok) throw new Error(check.message);
@@ -409,10 +410,10 @@ export class Store {
 
   /** Speichert die Reservierung eines Tages. Wirft bei ungültigen Slots oder Datum. */
   async saveReservation(date, slots) {
-    if (!isIsoDate(date)) throw new Error(`Ungültiges Datum: ${date}`);
+    if (!isIsoDate(date)) throw new Error(t('fehler.ungueltiges_datum', { datum: date }));
     // Der Desktop lehnt Tage hinter heute + 365 mit der ganzen Anfrage ab: gar nicht erst annehmen.
     if (!reservationEditable(date, localIsoDate(this._now()))) {
-      throw new Error(`Reservierungen sind nur für heute und höchstens ${RESERVATION_HORIZON_DAYS - 1} Tage im Voraus möglich (365 Tage).`);
+      throw new Error(t('fehler.reservierung_zu_weit', { tage: RESERVATION_HORIZON_DAYS - 1 }));
     }
     const normalized = normalizeReservationSlots(slots);
     const check = validateReservationSlots(normalized);
