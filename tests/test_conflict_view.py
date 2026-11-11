@@ -69,8 +69,8 @@ def test_format_setting_value():
     f = cv.format_setting_value
     assert f("workweek_only", True) == "an"
     assert f("workweek_only", False) == "aus"
-    assert f("recipient", "") == cv.EMPTY_TEXT
-    assert f("recipient", None) == cv.EMPTY_TEXT
+    assert f("recipient", "") == cv.empty_text()
+    assert f("recipient", None) == cv.empty_text()
     assert f("werkstudent_limit_start", "2026-04-01") == "01.04.2026"
     assert f("hourly_rate", 12.5) == "12,50 €"
     assert f("werkstudent_limit_max_hours", 20.0) == "20 h"
@@ -87,7 +87,7 @@ def test_own_card_comes_first_and_keeps_candidate_index():
     cards = cv.build_cards(c, REGISTRY, OWN, "Sven-PC")
     assert [x.is_own for x in cards] == [True, False]
     assert [x.index for x in cards] == [1, 0]
-    assert cards[0].title == cv.OWN_TITLE
+    assert cards[0].title == cv.own_title()
     assert cards[0].device_line == "Sven-PC"
 
 
@@ -101,7 +101,7 @@ def test_other_card_shows_device_name_instead_of_generic_title():
 def test_other_card_without_known_name_shows_short_id():
     c = _entry(_cand(OWN, "a", [_slot()]), _cand("fremdes-geraet-1", "b", [_slot()]))
     other = cv.build_cards(c, REGISTRY, OWN, "")[1]
-    assert other.title == cv.OTHER_TITLE
+    assert other.title == cv.other_title()
     assert other.device_line == "fremdes-…"
 
 
@@ -114,7 +114,7 @@ def test_own_card_without_name_falls_back_to_short_id():
 def test_missing_or_garbage_device_ids_do_not_raise():
     c = _entry(_cand(None, "a", [_slot()]), _cand(["x"], "b", [_slot()]))
     cards = cv.build_cards(c, "kein-dict", OWN, "")
-    assert [x.title for x in cards] == [cv.OTHER_TITLE, cv.OTHER_TITLE]
+    assert [x.title for x in cards] == [cv.other_title(), cv.other_title()]
     assert [x.device_line for x in cards] == ["", ""]
 
 
@@ -160,7 +160,7 @@ def test_slot_differences_are_flagged_per_field():
         True, True, True, False)
     assert s.category.text == "Office"
     assert s.pause.text == "Pause 30 min"
-    assert other.slots[0].category.text == cv.NO_CATEGORY
+    assert other.slots[0].category.text == cv.no_category()
 
 
 def test_identical_slots_flag_nothing():
@@ -187,14 +187,14 @@ def test_zero_pause_reads_as_no_pause():
 def test_deleted_against_edited():
     c = _entry(_cand(OWN, "a", deleted=True), _cand(OTHER, "b", [_slot()]))
     own, other = cv.build_cards(c, REGISTRY, OWN, "")
-    assert own.deleted == cv.Field(cv.DELETED_TEXT, True)
+    assert own.deleted == cv.Field(cv.deleted_text(), True)
     assert own.slots == ()
     assert all(f.differs for f in (other.slots[0].start, other.slots[0].end))
 
 
 def test_both_deleted_is_not_a_difference():
     c = _entry(_cand(OWN, "a", deleted=True), _cand(OTHER, "b", deleted=True))
-    assert all(x.deleted == cv.Field(cv.DELETED_TEXT, False)
+    assert all(x.deleted == cv.Field(cv.deleted_text(), False)
                for x in cv.build_cards(c, REGISTRY, OWN, ""))
 
 

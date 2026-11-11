@@ -175,7 +175,6 @@ ALLOWED: dict[str, dict[str, str]] = {
 PENDING: list[str] = [
     # Task 3
     # Task 4
-    "src/conflict_view.py",
     "src/storage.py",
     "src/removal.py",
     "src/updater.py",

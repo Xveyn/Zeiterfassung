@@ -14,37 +14,53 @@ import datetime
 from dataclasses import dataclass
 from typing import Any
 
+from src.i18n import N_, t
 from src.devices import sanitize_device_name, short_device_id
 from src.time_utils import (
     short_day_names, weekday_name, format_iso_date, format_iso_datetime,
 )
 
-OWN_TITLE = "Dieses Gerät"
-OTHER_TITLE = "Anderes Gerät"
-NO_CATEGORY = "ohne Kategorie"
-DELETED_TEXT = "Gelöscht"
-EMPTY_TEXT = "(leer)"
 
-# Klartext statt Schlüssel. Jeder Eintrag aus `settings.SYNCED_SETTING_KEYS`
-# braucht eine Beschriftung (ein Test hält das fest); unbekannte Schlüssel
-# zeigt der Dialog roh.
+def own_title() -> str:
+    return t("konflikt.dieses_geraet")
+
+
+def other_title() -> str:
+    return t("konflikt.anderes_geraet")
+
+
+def no_category() -> str:
+    return t("konflikt.ohne_kategorie")
+
+
+def deleted_text() -> str:
+    return t("konflikt.geloescht")
+
+
+def empty_text() -> str:
+    return t("konflikt.leer")
+
+
+# Klartext statt Schlüssel (Katalogschlüssel, aufgelöst beim Anzeigen). Jeder
+# Eintrag aus `settings.SYNCED_SETTING_KEYS` braucht eine Beschriftung (ein
+# Test hält das fest); unbekannte Schlüssel zeigt der Dialog roh.
 SETTING_LABELS: dict[str, str] = {
-    "recipient": "Empfänger",
-    "name": "Name",
-    "hourly_rate": "Stundenlohn",
-    "mail_subject": "Mail-Betreff",
-    "mail_greeting": "Mail-Anrede",
-    "mail_content": "Mail-Text",
-    "mail_closing": "Mail-Grußformel",
-    "gcal_calendar_id": "Google Kalender",
-    "categories": "Kategorien",
-    "category_times": "Standardzeiten der Kategorien",
-    "werkstudent_limit_enabled": "Werkstudenten-Limit aktiv",
-    "werkstudent_limit_start": "Werkstudenten-Limit Beginn",
-    "werkstudent_limit_end": "Werkstudenten-Limit Ende",
-    "werkstudent_limit_max_hours": "Werkstudenten-Limit Stunden/Woche",
-    "pause_warning_enabled": "Pausenwarnung",
-    "workweek_only": "Nur Werktage",
+    "recipient": N_("konflikt.einstellung_empfaenger"),
+    "name": N_("konflikt.einstellung_name"),
+    "hourly_rate": N_("konflikt.einstellung_stundenlohn"),
+    "mail_subject": N_("konflikt.einstellung_mail_betreff"),
+    "mail_greeting": N_("konflikt.einstellung_mail_anrede"),
+    "mail_content": N_("konflikt.einstellung_mail_text"),
+    "mail_closing": N_("konflikt.einstellung_mail_gruss"),
+    "gcal_calendar_id": N_("konflikt.einstellung_kalender"),
+    "categories": N_("konflikt.einstellung_kategorien"),
+    "category_times": N_("konflikt.einstellung_kategorie_zeiten"),
+    "werkstudent_limit_enabled": N_("konflikt.einstellung_limit_aktiv"),
+    "werkstudent_limit_start": N_("konflikt.einstellung_limit_beginn"),
+    "werkstudent_limit_end": N_("konflikt.einstellung_limit_ende"),
+    "werkstudent_limit_max_hours": N_("konflikt.einstellung_limit_stunden"),
+    "pause_warning_enabled": N_("konflikt.einstellung_pausenwarnung"),
+    "workweek_only": N_("konflikt.einstellung_nur_werktage"),
 }
 
 
@@ -93,7 +109,9 @@ def _date_of(key: Any) -> datetime.date | None:
 
 
 def setting_label(key: str) -> str:
-    return SETTING_LABELS.get(key, key)
+    if key in SETTING_LABELS:
+        return t(SETTING_LABELS[key])
+    return key
 
 
 def conflict_title(conflict: dict[str, Any]) -> str:
@@ -131,15 +149,15 @@ def group_conflicts(conflicts: list[dict[str, Any]]
 
 def format_setting_value(key: str, value: Any) -> str:
     if isinstance(value, bool):
-        return "an" if value else "aus"
+        return t("konflikt.an") if value else t("konflikt.aus")
     if value is None or value == "" or value == [] or value == {}:
-        return EMPTY_TEXT
+        return empty_text()
     if key in ("werkstudent_limit_start", "werkstudent_limit_end"):
         return format_iso_date(str(value), fallback=str(value))
     if key == "hourly_rate" and isinstance(value, (int, float)):
         return f"{value:.2f}".replace(".", ",") + " €"
     if key == "werkstudent_limit_max_hours" and isinstance(value, (int, float)):
-        return f"{value:g} h".replace(".", ",")
+        return t("konflikt.stunden", wert=f"{value:g}".replace(".", ","))
     if isinstance(value, list):
         return ", ".join(str(v) for v in value)
     if isinstance(value, dict):
@@ -151,12 +169,13 @@ def _slot_fields(slot: Any) -> tuple[str, str, str, str]:
     s = _as_dict(slot)
     start = str(s.get("start") or "–")
     end = str(s.get("end") or "–")
-    category = str(s.get("kategorie") or "").strip() or NO_CATEGORY
+    category = str(s.get("kategorie") or "").strip() or no_category()
     try:
         pause = int(s.get("pause") or 0)
     except (TypeError, ValueError):
         pause = 0
-    pause_text = f"Pause {pause} min" if pause else "keine Pause"
+    pause_text = (t("konflikt.pause", minuten=pause) if pause
+                  else t("konflikt.keine_pause"))
     return start, end, category, pause_text
 
 
@@ -186,7 +205,7 @@ def _known_name(device_id: Any, registry: Any) -> str:
 
 def _modified(cand: dict[str, Any]) -> str:
     text = format_iso_datetime(cand.get("modified_at"), fallback="")
-    return f"geändert {text}" if text else ""
+    return t("konflikt.geaendert", zeit=text) if text else ""
 
 
 def _stamp(cand: dict[str, Any]) -> str:
@@ -201,11 +220,11 @@ def _titles(device_id: Any, own_device_id: Any, own_name: str,
     short = short_device_id(device_id) if has_id else ""
     if has_id and device_id == own_device_id:
         name = sanitize_device_name(own_name) or _known_name(device_id, registry)
-        return True, OWN_TITLE, name or short
+        return True, own_title(), name or short
     name = _known_name(device_id, registry)
     if name:
         return False, name, ""
-    return False, OTHER_TITLE, short
+    return False, other_title(), short
 
 
 def build_cards(conflict: dict[str, Any], registry: Any,
@@ -231,7 +250,7 @@ def build_cards(conflict: dict[str, Any], registry: Any,
         elif cand.get("deleted"):
             cards.append(CardView(
                 i, is_own, title, line, _modified(cand), newer,
-                deleted=Field(DELETED_TEXT, not other.get("deleted"))))
+                deleted=Field(deleted_text(), not other.get("deleted"))))
         else:
             cards.append(CardView(
                 i, is_own, title, line, _modified(cand), newer,
