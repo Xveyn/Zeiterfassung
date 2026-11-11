@@ -740,7 +740,7 @@ class App {
 
   /** Modell des Debug-Reiters, beim Zeigen des Reiters geladen. Wirft nie: scheitert etwas, bleibt der Block leer. */
   async loadDebug() {
-    let info = [{ label: 'Zustand', value: 'unbekannt' }];
+    let info = [{ label: t('einstellungen.debug.zustand'), value: t('einstellungen.verbindung.unbekannt') }];
     let entries = [];
     let retention = 7;
     try {

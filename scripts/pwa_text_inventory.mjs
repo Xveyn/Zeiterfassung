@@ -1,6 +1,6 @@
 // Inventur der Nutzertexte in pwa/*.js: je Datei die String-Literale, die wie Text aussehen
 // (ein Buchstabe und Leerraum oder Großbuchstabe am Anfang), außerhalb von t(, logFailure(,
-// this._log( und console.*(. Grundlage der PENDING-Liste in pwa/test/i18n-literals.test.js.
+// this._log( und console.*(. Zeigt die Texte, die die Ratsche in pwa/test/i18n-literals.test.js prüft.
 //   node scripts/pwa_text_inventory.mjs          # Zusammenfassung
 //   node scripts/pwa_text_inventory.mjs --list   # mit allen Fundstellen
 import { readdirSync, readFileSync } from 'node:fs';

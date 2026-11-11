@@ -6,9 +6,9 @@
 // Ausgenommen sind: die Argumente von `t(`, der Kontext (erstes Argument) von `logFailure(` und
 // `this._log(` sowie jede `console.*(`-Ausgabe — Log-Texte bleiben deutsch.
 //
-// PENDING sind die Dateien, die noch nicht umgestellt sind. Jede Umstellungs-Aufgabe nimmt ihre
-// Dateien aus dieser Liste heraus; der Test verlangt das auch: eine Datei in PENDING ohne Treffer
-// ist ein Fehler. Neu erzeugen/prüfen: `node scripts/pwa_text_inventory.mjs [--list]`.
+// Alle Dateien direkt unter pwa/ werden geprüft; ausgenommen sind nur FILE_EXEMPT (ganze Dateien) und
+// ALLOWED (einzelne Literale), beide mit Begründung. Die frühere Liste noch nicht umgestellter Dateien
+// (PENDING) ist leer und entfallen. Treffer auflisten: `node scripts/pwa_text_inventory.mjs [--list]`.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
@@ -18,12 +18,6 @@ import { looksLikeText } from './text-rule.js';
 const root = new URL('../', import.meta.url);
 const sources = readdirSync(root).filter((f) => f.endsWith('.js')).sort();
 
-// Stand der Inventur (Treffer in Klammern: Nutzertexte außerhalb der Ausnahmen).
-const PENDING = new Set([
-  'debug-info.js',     // 27
-  'debug-log.js',      // 4
-]);
-
 // Protokoll-/Krypto-Fehlertexte und Test-Adapter: bleiben deutsch und technisch (Entscheidung der
 // Spec, wie am Desktop die Log-Texte), werden nicht angezeigt, sondern über Fehlerarten abgebildet.
 const FILE_EXEMPT = new Set(['crypto.js', 'relay-frame.js', 'db.js', 'memory-adapter.js']);
@@ -32,13 +26,16 @@ const FILE_EXEMPT = new Set(['crypto.js', 'relay-frame.js', 'db.js', 'memory-ada
 const ALLOWED = {
   'app.js': ['PushManager', 'Notification',               // Feature-Erkennung (Browser-API-Namen)
     '(display-mode: standalone)',                       // Media-Query
-    'Zustand',                                          // Zeilenname des Debug-Blocks, mit debug-info.js entscheiden
     'Kein Export vorbereitet', 'Protokoll nicht geleert'], // interne Errors, nie angezeigt (views.js/unpair.js fangen sie mit eigenem Text bzw. Log)
   'lock.js': ['Zeitüberschreitung',                     // Meldung der AbortError-Ausnahme, nie angezeigt (`reasonOf` wählt nach `name`)
     'Zeiterfassung'],                                   // Produktname als rp-/Anzeigename des Passkeys
   'unpair.js': ['Abmeldung am Desktop', 'Push abmelden', 'Sitzungsmerker löschen', 'Protokoll löschen',
     'Lokale Daten löschen', 'Neu laden'],               // Schrittnamen: nur Log-Kontext (`log(step, error)` → Debug-Protokoll), nie angezeigt
   'pairing.js': ['Handy'],                              // Standard-Gerätename, geht als Name ans Protokoll und steht in der Geräteliste am Desktop; von pairing.test.js als String geprüft
+  'debug-info.js': ['Edge', 'Samsung Internet', 'Opera', 'Firefox', 'Chrome', 'Safari',   // Eigennamen aus dem User-Agent, keine Übersetzung
+    'Android ${}', 'Android', 'Windows', 'ChromeOS', 'Linux',
+    'Relay'],                                           // Eigenname des Kopplungswegs (wie `LAN`)
+  'debug-log.js': ['Haltezeit ${} nicht erlaubt'],       // RangeError bei einem Programmierfehler; der Aufrufer fängt ihn und zeigt `einstellungen.debug.haltezeit_fehler`
   'browser-policy.js': ['Chromium'],                    // Markenname im User-Agent-Vergleich
   'push-blob.js': ['Kein Schlüssel für Benachrichtigungen.', 'Blob zu kurz.'], // Fehler von `open`: nur im Service Worker, dort per logFailure('Push entschlüsseln') im Debug-Protokoll, nie angezeigt
   'diagnose.js': ['[Zeiterfassung] ${}: ${}',            // console-Präfix
@@ -116,18 +113,19 @@ test('scan: an apostrophe in a comment does not open a literal', () => {
 
 for (const file of sources) {
   if (FILE_EXEMPT.has(file)) continue;
-  if (PENDING.has(file)) {
-    test(`${file}: still has user texts (else remove it from PENDING)`, () => {
-      assert.ok(findings(read(file), file).length > 0, `${file} ist umgestellt: aus PENDING nehmen`);
-    });
-  } else {
-    test(`${file}: no user texts outside t(…)`, () => {
-      const hits = findings(read(file), file).map((l) => `${file}:${l.line} ${JSON.stringify(l.text)}`);
-      assert.deepEqual(hits, [], 'Text gehört in pwa/i18n/de.js und über t(\'…\') in den Code');
-    });
-  }
+  test(`${file}: no user texts outside t(…)`, () => {
+    const hits = findings(read(file), file).map((l) => `${file}:${l.line} ${JSON.stringify(l.text)}`);
+    assert.deepEqual(hits, [], 'Text gehört in pwa/i18n/de.js und über t(\'…\') in den Code');
+  });
 }
 
-test('PENDING and the exemptions name existing files', () => {
-  for (const file of [...PENDING, ...FILE_EXEMPT, ...Object.keys(ALLOWED)]) assert.ok(sources.includes(file), file);
+test('the exemptions name existing files', () => {
+  for (const file of [...FILE_EXEMPT, ...Object.keys(ALLOWED)]) assert.ok(sources.includes(file), file);
+});
+
+test('every ALLOWED text still occurs in its file (stale entries fail)', () => {
+  for (const [file, texts] of Object.entries(ALLOWED)) {
+    const found = new Set(scanLiterals(read(file)).map((l) => l.text));
+    assert.deepEqual(texts.filter((text) => !found.has(text)), [], file);
+  }
 });
