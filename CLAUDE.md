@@ -1153,8 +1153,9 @@ zweite Sprache ein Katalog wird und kein Umbau.
   Text-Literale außerhalb von `t(`/`N_(`, außer den ganzen Dateien in `FILE_EXEMPT` (Ausgabe,
   API, Protokoll; nie unter `dialogs/`, `theme/`, `tray/`) und den einzelnen Literalen in
   `ALLOWED` (je mit Grund und Verbraucher). Dazu: jeder Schlüssel im Quelltext steht im Katalog,
-  jeder Katalogschlüssel wird benutzt, kein Schlüssel ist berechnet, kein Schlüssel kommt in
-  zwei Bereichsmodulen vor, und veraltete Ausnahmen machen den Test rot. `raise`-Argumente sind
+  jeder Katalogschlüssel wird benutzt, kein Schlüssel ist berechnet, und veraltete Ausnahmen
+  machen den Test rot. Dass kein Schlüssel in zwei Bereichsmodulen vorkommt, prüft
+  `tests/test_i18n.py`. `raise`-Argumente sind
   **keine** Ausnahme: ein Text in einer Exception steht im Katalog oder in `ALLOWED` mit dem
   Nachweis, dass er den Nutzer nie erreicht.
 - **Werkzeug:** `python scripts/desktop_text_check.py --list` zeigt, was die Ratsche als Text
@@ -1660,7 +1661,7 @@ nicht mehr als „offen" führen — der Verweis lautet auf diese Grenze.
 - `src/category_defaults.py` — pure Logik der Per-Kategorie-Standardzeiten (`category_times`: ein Satz für alle Wochentage oder `mode: per_day`; fehlende Felder fallen je Feld auf den globalen Standard zurück). Tk-frei
 - `src/desktop_entry.py` — Freedesktop-`.desktop`-Dateien: schreibt den Menüeintrag (`write_menu_entry`, `ensure_icon`) und besitzt die `Exec=`-Quoting-Regel (`exec_line`), die auch `autostart.py` benutzt. Tk-frei, stdlib-only
 - `src/ui_queue.py` — Tk-freie, thread-sichere Übergabe von Callbacks aus Worker-Threads an den UI-Thread (`UiQueue`, Poll alle 50 ms per `root.after`); `App._marshal_to_ui` läuft darüber, weil `root.after` vor der Mainloop nicht aus Workern kommen darf (Xveyn#244; s. `src/CLAUDE.md`, „Threading-Modell“)
-- `src/holidays_region.py` — Feiertags-Lookup nach Land und Region (über `holidays`-Lib): `COUNTRIES`/`REGIONS` (Codes mit Anzeigenamen; der Eintrag mit leerem Code heißt „keine Region“ und liefert keine Feiertage), `normalize_region`, `region_label`, `get_holidays(country, region, year, language)`
+- `src/holidays_region.py` — Feiertags-Lookup nach Land und Region (über `holidays`-Lib): `COUNTRIES`/`REGIONS` (Paare aus Code und Katalogschlüssel, aufgelöst beim Aufruf über `country_choices()`/`region_choices()`/`region_label`; der Eintrag mit leerem Code heißt „keine Region“ und liefert keine Feiertage), `normalize_region`, `region_label`, `get_holidays(country, region, year, language)`
 - `src/region.py` — Land und Region aus den Einstellungen als Codes: `country_region(settings)`, `normalize_country`/`normalize_language` (Fremddaten, werfen nie, Fallback `DE`/`de`) und die Übernahme des alten `state` als `region` (`migrate_state`, Marker `region_migrated`; mit Marker folgt `region` einem abweichenden, lesbaren `state` — das kann nur eine ältere Version geändert haben). Beim Speichern der Einstellungen bleibt `state` für Deutschland als Spiegel von `region` stehen (Downgrade-Kompatibilität), sonst `""`. Tk-frei
 - `src/locale_format.py` — Locale aus `language` und `country` (`locale_for`, Standard `de-DE`), die **eine** Tabelle der Datumsmuster und Wochentagsnamen je Locale und das aktive Locale der App; dahinter hängen `time_utils.format_iso_date`/`format_iso_datetime`. Tk-frei
 - `src/i18n/` — die **Textschicht des Desktops** (s. „Textschicht (Desktop)“): `t(key, /, **params)` liest den Text zur gewählten Sprache, `N_(key)` markiert einen Schlüssel in einer Tabelle, `set_language`/`get_language`/`normalize_language`, `LANGUAGES`. Die Texte stehen je Bereich in `src/i18n/de/` (`allgemein`, `meldungen`, `einstellungen`, `dialoge`, `hauptfenster`; `de/__init__.py` vereinigt sie). Importiert aus `src` nichts außer den eigenen Katalogen; PyInstaller findet die Module über statische Importe

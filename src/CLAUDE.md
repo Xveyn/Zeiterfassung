@@ -1213,6 +1213,8 @@ Regeln und Begründung: `CLAUDE.md`, „Textschicht (Desktop)“. Hier die Vertr
   entspricht, durch den Anzeigetext; jede Stelle, die einen rohen Sync- oder Kalender-Fehlertext
   in eine Meldung setzt, geht darüber (`tab_google`, `vacation_dialog`, `_friendly_sync_message`).
   Mail-, Export- und Teilen-Fehler tragen keinen Erkennungstext und gehen roh durch.
+  Bewusste Ausnahme: die nativen Catch-all-Dialoge von `tab_google.py` und `oauth_task.py` zeigen
+  `res["error"]` roh im Traceback-Dialog.
 - **Plural:** zwei Schlüssel (`….eins`/`….viele`), gewählt im Aufrufer; keine
   Suffix-Bastelei. Wo der Altbestand keinen Plural hatte, bleibt der Wortlaut 1:1.
 - **Ausgabe ist nicht Oberfläche:** `report.py`, `share_message.py`, Payload-Texte, `gcal.py`
