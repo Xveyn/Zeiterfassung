@@ -12,6 +12,7 @@ from src.dialogs.settings_dialog._record_list_tab import (
     RecordListKind, RecordListTab,
 )
 from src.dialogs.webhook_dialog import open_webhook_dialog
+from src.i18n import t
 
 
 def _open_dialog(parent, store, runner, **kwargs):
@@ -29,15 +30,13 @@ def _forget_secret(webhook_id):
 
 
 WEBHOOKS_KIND = RecordListKind(
-    intro=("Den Bericht zusätzlich an HTTP-Endpunkte senden. Gilt nur auf "
-           "diesem Gerät und wird sofort gespeichert, unabhängig vom Knopf "
-           "„Speichern“."),
-    section="Webhooks",
-    empty="Noch kein Webhook — „Hinzufügen“ legt einen an.",
+    intro=lambda: t("liste_webhook.intro"),
+    section=lambda: t("liste_webhook.abschnitt"),
+    empty=lambda: t("liste_webhook.leer"),
     row_detail=lambda record: urlsplit(record.get("url", "")).hostname or "?",
     open_dialog=_open_dialog,
-    remove_title="Webhook entfernen",
-    remove_error="Der Webhook konnte nicht entfernt werden:",
+    remove_title=lambda: t("liste_webhook.entfernen_titel"),
+    remove_error=lambda: t("liste_webhook.entfernen_fehler"),
     read_only_error=webhook_store.WebhookStoreReadOnly,
     after_delete=_forget_secret,
 )

@@ -291,17 +291,8 @@ ALLOWED: dict[str, dict[str, str]] = {
 PENDING: list[str] = [
     # Task 3
     # Task 4
-    "src/dialogs/settings_dialog/oauth_task.py",
     # Task 6b
     # Task 7
-    "src/dialogs/settings_dialog/tab_google.py",
-    "src/dialogs/settings_dialog/tab_updates.py",
-    "src/dialogs/settings_dialog/tab_api.py",
-    "src/dialogs/settings_dialog/tab_mobile.py",
-    "src/dialogs/settings_dialog/tab_smtp.py",
-    "src/dialogs/settings_dialog/tab_webhooks.py",
-    "src/dialogs/settings_dialog/_record_list_tab.py",
-    "src/dialogs/scopes_dialog.py",
     # Task 8 (category_dialog: auch „variabel“ (≈183 f.), ein einzelnes kleines Wort über
     # eine Variable — die Regel sieht es nicht, die Umstellung muss es von Hand mitnehmen)
     "src/dialogs/period_picker.py",

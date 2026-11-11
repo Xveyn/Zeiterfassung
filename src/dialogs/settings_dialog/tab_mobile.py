@@ -15,6 +15,7 @@ App muss laufen); erst die Zustimmung wird gemerkt (`mobile_notice_accepted`).
 import tkinter as tk
 
 from src import netinfo
+from src.i18n import t
 from src.dialogs.settings_dialog.fields import FieldSet
 from src.dialogs.settings_dialog.form_model import SaveOutcome
 from src.dialogs.settings_dialog.tab_rules import (
@@ -40,7 +41,7 @@ class MobileTab:
 
     def __init__(self, frame, dialog, settings, mobile_service, runner, relay_service=None):
         self.frame = frame
-        self.title = "Mobil"
+        self.title = t("tab_mobil.titel")
         self._dialog = dialog
         self._settings = settings
         self._service = mobile_service
@@ -65,26 +66,21 @@ class MobileTab:
         self._enabled_var = enabled_var
         self._last_enabled = enabled_var.get()
 
-        form.section("Handy-Erfassung")
-        form.hint("Zeiten unterwegs auf dem Handy nachtragen — auch ohne Verbindung — und im "
-                  "selben WLAN mit dieser App abgleichen. Die Verbindung ist Ende-zu-Ende "
-                  "verschlüsselt (nur in vertrauenswürdigen Netzen nutzen), die App muss "
-                  "laufen. Unter Windows fragt die Firewall beim ersten Einschalten nach.")
-        form.check("Handy-Erfassung aktivieren", enabled_var)
+        form.section(t("tab_mobil.abschnitt"))
+        form.hint(t("tab_mobil.hinweis"))
+        form.check(t("tab_mobil.aktivieren"), enabled_var)
         with form.depends_on(enabled_var):
-            form.row("Port:", dark_entry(body, port_var, width=7))
+            form.row(t("tab_form.port"), dark_entry(body, port_var, width=7))
             self._combo = dark_combo(body, address_var, address_options([]), width=20)
-            form.row("Adresse:", self._combo)
-            form.row("Verlauf bis zu:", dark_combo(body, window_var, window_cap_options(), width=12))
-            form.hint("So viele Tage kann das Handy höchstens laden. Größere Fenster machen "
-                      "jeden Abgleich größer (365 Tage ≈ 100 KB); das Handy wählt selbst, wie "
-                      "viel es braucht.")
+            form.row(t("tab_mobil.adresse"), self._combo)
+            form.row(t("tab_mobil.verlauf"), dark_combo(body, window_var, window_cap_options(), width=12))
+            form.hint(t("tab_mobil.verlauf_hinweis"))
         self._status_label = tk.Label(
             body, text="", font=FONT, bg=BG, fg=TEXT_MUTED, anchor="w",
             justify="left", wraplength=px(_WRAP_PX))
-        form.row("Status:", self._status_label)
+        form.row(t("tab_form.status"), self._status_label)
 
-        form.section("Gekoppelte Geräte")
+        form.section(t("tab_mobil.abschnitt_geraete"))
         box = tk.Frame(body, bg=BG)
         box.columnconfigure(0, weight=1)
         self._listbox = tk.Listbox(
@@ -92,20 +88,19 @@ class MobileTab:
             selectforeground="#ffffff", relief="flat", highlightthickness=0,
             activestyle="none", exportselection=False)
         self._listbox.grid(row=0, column=0, sticky="nsew")
-        self._empty = empty_state(box, "Noch kein Handy gekoppelt.", bg=ENTRY_BG)
+        self._empty = empty_state(box, t("tab_mobil.leer"), bg=ENTRY_BG)
         self._empty.grid(row=0, column=0, sticky="nsew")
         form.block(box)
         (self._pair_btn, self._revoke_btn, self._revoke_all_btn,
          self._test_btn) = form.buttons(
-            ("Gerät koppeln", self._pair),
-            ("Widerrufen", self._revoke),
-            ("Alle widerrufen", self._revoke_all),
-            ("Testbenachrichtigung", self._test))
+            (t("tab_mobil.koppeln"), self._pair),
+            (t("regeln.knopf_widerrufen"), self._revoke),
+            (t("tab_mobil.alle_widerrufen"), self._revoke_all),
+            (t("tab_mobil.testen"), self._test))
         self._relay_btn = None
         if self._relay is not None:
-            (self._relay_btn,) = form.buttons(("Über Relay koppeln (iPhone)", self._pair_relay))
-            form.hint("iPhone und Co.: der Abgleich läuft über den Relay-Dienst, nicht über "
-                      "das WLAN.")
+            (self._relay_btn,) = form.buttons((t("tab_mobil.relay_koppeln"), self._pair_relay))
+            form.hint(t("tab_mobil.relay_hinweis"))
         self._test_label = form.hint("")
         self._keystore_label = form.hint("")
         self._listbox.bind("<<ListboxSelect>>", self._on_select)
@@ -145,7 +140,7 @@ class MobileTab:
     def _on_enabled_changed(self, *_args):
         enabled = bool(self._enabled_var.get())
         if enabled and not self._last_enabled and not self._settings.get("mobile_notice_accepted"):
-            if not themed_askyesno(self._dialog, "Handy-Erfassung einschalten",
+            if not themed_askyesno(self._dialog, t("tab_mobil.einschalten_titel"),
                                    first_enable_notice(), lock_ms=600):
                 self._enabled_var.set(False)            # zurück, nichts eingeschaltet
                 return
@@ -293,7 +288,7 @@ class MobileTab:
         name = next((r["name"] for r in self._rows if r["id"] == device_id), device_id)
         has_box = device_id in self._relay_states()
         if not themed_askyesno(
-                self._dialog, "Gerät widerrufen", revoke_prompt(name, has_box=has_box), lock_ms=600):
+                self._dialog, t("tab_mobil.widerruf_titel"), revoke_prompt(name, has_box=has_box), lock_ms=600):
             return
         self._busy = True
         self._sync_buttons()
@@ -307,7 +302,7 @@ class MobileTab:
         if device_id is None or self._busy or not self._service.can_test(device_id):
             return
         self._busy = True
-        self._test_label.config(text="Sendet …")
+        self._test_label.config(text=t("tab_mobil.sendet"))
         self._sync_buttons()
         self._runner.run(
             lambda: test_push_outcome(lambda: self._service.send_test(device_id)), self._tested)
@@ -328,7 +323,7 @@ class MobileTab:
         states = self._relay_states()
         boxes = sum(1 for record in self._rows if record["id"] in states)
         if not themed_askyesno(
-                self._dialog, "Alle Geräte widerrufen", revoke_all_prompt(boxes=boxes), lock_ms=600):
+                self._dialog, t("tab_mobil.alle_widerrufen_titel"), revoke_all_prompt(boxes=boxes), lock_ms=600):
             return
         self._busy = True
         self._sync_buttons()
@@ -344,8 +339,8 @@ class MobileTab:
             self._sync_buttons()
             if not outcome["ok"]:
                 if dismissed:
-                    themed_showerror(self._dialog, "Entfernen fehlgeschlagen", dismiss_error_text())
+                    themed_showerror(self._dialog, t("tab_mobil.entfernen_fehler_titel"), dismiss_error_text())
                 else:
-                    themed_showerror(self._dialog, "Widerruf fehlgeschlagen", revoke_error_text())
+                    themed_showerror(self._dialog, t("tab_mobil.widerruf_fehler_titel"), revoke_error_text())
         except tk.TclError:
             self._alive = False

@@ -5,6 +5,8 @@ Verdrahtung am Quelltext."""
 import ast
 import pathlib
 
+from src.i18n import TEXTS
+
 SRC = pathlib.Path(__file__).resolve().parent.parent / "src"
 DIALOG = SRC / "dialogs" / "settings_dialog" / "dialog.py"
 TAB = SRC / "dialogs" / "settings_dialog" / "tab_mobile.py"
@@ -39,7 +41,8 @@ def test_the_tab_title_and_interface():
     cls = next(n for n in tab.body if isinstance(n, ast.ClassDef) and n.name == "MobileTab")
     methods = {n.name for n in cls.body if isinstance(n, ast.FunctionDef)}
     assert {"values", "load", "validate", "save"} <= methods
-    assert 'self.title = "Mobil"' in TAB.read_text(encoding="utf-8")
+    assert 'self.title = t("tab_mobil.titel")' in TAB.read_text(encoding="utf-8")
+    assert TEXTS["tab_mobil.titel"] == "Mobil"
 
 
 def test_the_first_enable_asks_before_anything_is_switched_on():
@@ -104,7 +107,8 @@ def test_the_pair_dialog_imports_on_its_own():
 
 def test_the_test_button_goes_through_the_runner_and_the_service():
     source = TAB.read_text(encoding="utf-8")
-    assert '("Testbenachrichtigung", self._test)' in source
+    assert '(t("tab_mobil.testen"), self._test)' in source
+    assert TEXTS["tab_mobil.testen"] == "Testbenachrichtigung"
     assert "self._service.send_test(device_id)" in source
     assert "test_push_outcome" in source and "test_push_text" in source
     assert "self._service.can_test(" in source
@@ -127,4 +131,5 @@ def test_the_tab_sets_the_button_text_through_the_theme_helper_not_the_private_l
 
 def test_a_failed_dismiss_does_not_claim_the_device_stays_paired():
     source = TAB.read_text(encoding="utf-8")
-    assert "dismiss_error_text()" in source and "Entfernen fehlgeschlagen" in source
+    assert "dismiss_error_text()" in source and "tab_mobil.entfernen_fehler_titel" in source
+    assert TEXTS["tab_mobil.entfernen_fehler_titel"] == "Entfernen fehlgeschlagen"

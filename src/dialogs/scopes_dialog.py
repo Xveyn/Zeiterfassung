@@ -13,6 +13,7 @@ Invalidierung nach einem Re-Consent.
 import os
 import tkinter as tk
 
+from src.i18n import t
 from src.mail import scope_overview
 from src.oauth_utils import read_granted_scopes
 from src.theme import (
@@ -28,29 +29,26 @@ _MARKS = {
     "missing": ("✗", ACCENT),
 }
 
-_LEGEND = ("✓ gewährt und genutzt    ○ gewährt, zurzeit ungenutzt    "
-           "✗ fehlt, wird neu angefragt")
-
 
 def open_scopes_dialog(parent, settings, base_path):
     """Öffnet das Berechtigungs-Modal und liefert den Toplevel zurück."""
     token_path = os.path.join(base_path, "token.json")
     granted = read_granted_scopes(token_path)
 
-    dialog = create_dialog(parent, "Berechtigungen")
+    dialog = create_dialog(parent, t("berechtigung.titel"))
     body = tk.Frame(dialog, bg=BG)
     body.pack(fill=tk.BOTH, expand=True, padx=16, pady=12)
 
     tk.Label(
-        body, text="Berechtigungen des Google-Kontos", font=FONT_BOLD,
+        body, text=t("berechtigung.ueberschrift"), font=FONT_BOLD,
         bg=BG, fg=TEXT,
     ).pack(anchor="w", pady=(0, 8))
 
     if granted is None:
         message = (
-            "Berechtigungen nicht lesbar."
+            t("berechtigung.nicht_lesbar")
             if os.path.exists(token_path)
-            else "Noch nicht angemeldet — es sind keine Berechtigungen gewährt."
+            else t("berechtigung.nicht_angemeldet")
         )
         tk.Label(body, text=message, font=FONT, bg=BG, fg=TEXT_MUTED).pack(anchor="w")
     else:
@@ -71,7 +69,7 @@ def open_scopes_dialog(parent, settings, base_path):
 
         if extras:
             tk.Label(
-                body, text="Weitere Berechtigungen", font=FONT_BOLD,
+                body, text=t("berechtigung.weitere"), font=FONT_BOLD,
                 bg=BG, fg=TEXT,
             ).pack(anchor="w", pady=(12, 4))
             for scope in extras:
@@ -81,10 +79,10 @@ def open_scopes_dialog(parent, settings, base_path):
                 ).pack(anchor="w")
 
         tk.Label(
-            body, text=_LEGEND, font=FONT_SMALL, bg=BG, fg=TEXT_MUTED,
+            body, text=t("berechtigung.legende"), font=FONT_SMALL, bg=BG, fg=TEXT_MUTED,
         ).pack(anchor="w", pady=(12, 0))
 
-    secondary_button(body, "Schließen", dialog.destroy).pack(anchor="e", pady=(16, 0))
+    secondary_button(body, t("knopf.schliessen"), dialog.destroy).pack(anchor="e", pady=(16, 0))
 
     center_dialog_on_parent(dialog, parent)
     return dialog

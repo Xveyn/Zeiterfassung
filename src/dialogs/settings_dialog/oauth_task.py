@@ -7,6 +7,7 @@ tests/test_settings_dialog.py sein messagebox im Funktions-Modul monkeypatcht.
 import traceback
 from tkinter import messagebox
 
+from src.i18n import t
 from src.mail import is_offline_error
 from src.oauth_utils import (
     keyring_unavailable_hint, keyring_unavailable_title, is_keyring_unavailable,
@@ -41,9 +42,8 @@ def show_known_google_failure(dialog, error, base_path, action):
         return True
     if is_offline_error(error):
         themed_showerror(
-            dialog, "Keine Internetverbindung",
-            f"„{action}“ braucht eine Verbindung zu Google.\n\n"
-            "Bitte prüfe deine Internetverbindung und versuche es dann erneut.",
+            dialog, t("oauth.keine_verbindung_titel"),
+            t("oauth.keine_verbindung", aktion=action),
         )
         return True
     return False
@@ -91,7 +91,7 @@ def build_oauth_enable_task(*, service_fn, settings, setting_key, checkbox,
                 return
             messagebox.showerror(
                 error_title,
-                f"OAuth-Flow fehlgeschlagen:\n\n{res['error']}\n\n{res['tb']}",
+                t("oauth.fehlgeschlagen", fehler=res["error"], trace=res["tb"]),
                 parent=dialog,
             )
 
